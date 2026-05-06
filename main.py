@@ -41,6 +41,8 @@ def create_parser() -> argparse.ArgumentParser:
     run_all_p.add_argument("--query", required=True, help='Ej: "restaurante Montevideo"')
     run_all_p.add_argument("--max", type=int, default=100)
 
+    subparsers.add_parser("dashboard", help="Abrir panel de leads en el browser")
+
     return parser
 
 def cmd_scrape(args):
@@ -66,6 +68,10 @@ def cmd_send_emails(args):
     from email_sender import run
     run(DB_PATH, get_factory_config())
 
+def cmd_dashboard(args):
+    from dashboard import run
+    run(DB_PATH)
+
 def cmd_run_all(args):
     count = cmd_scrape(args)
     if not count:
@@ -86,6 +92,7 @@ def main():
         "deploy": cmd_deploy,
         "send-emails": cmd_send_emails,
         "run-all": cmd_run_all,
+        "dashboard": cmd_dashboard,
     }
     commands[args.command](args)
 
