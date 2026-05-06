@@ -31,6 +31,10 @@ def init_db(db_path: str) -> None:
                 email_sent_at   TIMESTAMP
             )
         """)
+        try:
+            conn.execute("ALTER TABLE businesses ADD COLUMN notes TEXT")
+        except sqlite3.OperationalError:
+            pass  # column already exists
         conn.commit()
     finally:
         conn.close()
@@ -72,7 +76,7 @@ ALLOWED_COLUMNS = {
     "name", "category", "address", "city", "phone", "email", "rating",
     "review_count", "hours", "maps_url", "facebook_url", "instagram_url",
     "color_scheme", "demo_html_path", "demo_url", "status", "error_message",
-    "scraped_at", "email_sent_at",
+    "scraped_at", "email_sent_at", "notes",
 }
 
 def update_business(db_path: str, business_id: int, **fields) -> None:
@@ -97,6 +101,15 @@ def get_businesses_by_status(db_path: str, status: str) -> list[dict]:
         cursor = conn.execute(
             "SELECT * FROM businesses WHERE status = ?", (status,)
         )
+        return [dict(row) for row in cursor.fetchall()]
+    finally:
+        conn.close()
+
+def get_all_businesses(db_path: str) -> list[dict]:
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        cursor = conn.execute("SELECT * FROM businesses ORDER BY scraped_at DESC")
         return [dict(row) for row in cursor.fetchall()]
     finally:
         conn.close()

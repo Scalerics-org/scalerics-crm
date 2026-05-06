@@ -1,5 +1,5 @@
 import pytest
-from database import init_db, insert_business, update_business, get_businesses_by_status
+from database import init_db, insert_business, update_business, get_businesses_by_status, get_all_businesses
 
 @pytest.fixture
 def db_path(tmp_path):
@@ -47,3 +47,21 @@ def test_update_business(db_path):
 def test_get_businesses_by_status_empty(db_path):
     results = get_businesses_by_status(db_path, "email_found")
     assert results == []
+
+def test_get_all_businesses_returns_all(db_path):
+    insert_business(db_path, {"name": "A", "maps_url": "http://a.com"})
+    insert_business(db_path, {"name": "B", "maps_url": "http://b.com"})
+    result = get_all_businesses(db_path)
+    assert len(result) == 2
+
+def test_notes_column_exists_after_init(db_path):
+    rows = get_all_businesses(db_path)
+    insert_business(db_path, {"name": "C", "maps_url": "http://c.com"})
+    rows = get_all_businesses(db_path)
+    assert "notes" in rows[0]
+
+def test_update_notes(db_path):
+    bid = insert_business(db_path, {"name": "D", "maps_url": "http://d.com"})
+    update_business(db_path, bid, notes="llamar mañana")
+    rows = get_all_businesses(db_path)
+    assert rows[0]["notes"] == "llamar mañana"
