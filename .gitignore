@@ -1,0 +1,9 @@
+venv/
+.env
+leads.db
+generated_demos/*.html
+*.pyc
+__pycache__/
+pipeline.log
+.superpowers/
+credentials.json
