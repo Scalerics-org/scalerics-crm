@@ -23,6 +23,13 @@ ICONS_BY_SCHEME = {
 
 DEFAULT_ICONS = ["✅", "⭐", "🚀"]
 
+TEMPLATE_MAP = {
+    "editorial": "template_editorial.html",
+    "retro":     "template_retro.html",
+    "boutique":  "template_boutique.html",
+    "modern":    "template_modern.html",
+}
+
 SYSTEM_PROMPT = """Sos un copywriter experto en diseño web para pymes de Uruguay.
 Respondé ÚNICAMENTE con un JSON válido, sin texto adicional, sin markdown, sin bloques de código."""
 
@@ -41,7 +48,8 @@ Respondé con este JSON exacto:
   "about": "descripción del negocio en 2-3 oraciones, tono cálido y profesional",
   "services": ["servicio 1", "servicio 2", "servicio 3"],
   "cta_text": "texto del botón de contacto (máx 4 palabras)",
-  "color_scheme": "uno de: warm, cool, dark, green, purple según el rubro"
+  "color_scheme": "uno de: warm, cool, dark, green, purple según el rubro",
+  "template": "uno de: editorial, retro, boutique, modern — editorial para bares/gyms/barberías/tattoo/peluquerías, retro para panaderías/almacenes/rotiserías/cafeterías, boutique para restaurantes/clínicas/spas/estudios/hoteles, modern para todo lo demás"
 }}"""
 
 def parse_claude_response(raw: str) -> dict:
@@ -54,14 +62,18 @@ def parse_claude_response(raw: str) -> dict:
 
 def render_html(content: dict, business: dict) -> str:
     scheme = content.get("color_scheme", "dark")
+    template_key = content.get("template", "modern")
+    template_file = TEMPLATE_MAP.get(template_key, "template_modern.html")
     icons = ICONS_BY_SCHEME.get(scheme, DEFAULT_ICONS)
     services_with_icons = [
         {"icon": icons[i % len(icons)], "name": svc}
         for i, svc in enumerate(content.get("services", []))
     ]
+    phone = business.get("phone", "") or ""
+    wa_number = re.sub(r"[^0-9]", "", phone)
 
     env = Environment(loader=FileSystemLoader(Path(__file__).parent / "templates"))
-    template = env.get_template("base.html")
+    template = env.get_template(template_file)
     return template.render(
         business_name=business.get("name", ""),
         category=business.get("category", ""),
@@ -69,11 +81,13 @@ def render_html(content: dict, business: dict) -> str:
         about=content.get("about", ""),
         services=services_with_icons,
         cta_text=content.get("cta_text", "Contactanos"),
-        phone=business.get("phone", ""),
+        phone=phone,
+        wa_number=wa_number,
         address=business.get("address", ""),
         city=business.get("city", ""),
         rating=business.get("rating"),
         review_count=business.get("review_count"),
+        hours=business.get("hours", "") or "",
         color_scheme=scheme,
     )
 
@@ -89,7 +103,10 @@ def generate_content(business: dict, api_key: str) -> dict:
     return parse_claude_response(raw)
 
 def run(db_path: str, api_key: str) -> None:
-    businesses = get_businesses_by_status(db_path, "email_found")
+    businesses = (
+        get_businesses_by_status(db_path, "email_found") +
+        get_businesses_by_status(db_path, "no_email")
+    )
     logger.info(f"Generando demos para {len(businesses)} negocios")
     output_dir = Path("generated_demos")
     output_dir.mkdir(exist_ok=True)

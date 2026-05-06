@@ -24,16 +24,37 @@ def test_parse_claude_response_raises_on_bad_json():
     with pytest.raises(ValueError):
         parse_claude_response("esto no es JSON válido")
 
+def test_build_prompt_includes_template_field():
+    business = {"name": "Test Bar", "category": "Bar", "city": "MVD",
+                 "rating": 4.5, "review_count": 10, "hours": ""}
+    prompt = build_prompt(business)
+    assert '"template"' in prompt
+    assert "editorial" in prompt
+
 def test_render_html_contains_business_name():
     content = {
-        "tagline": "Tagline",
-        "about": "Sobre nosotros.",
+        "tagline": "Tagline", "about": "Sobre nosotros.",
         "services": ["Servicio A", "Servicio B", "Servicio C"],
-        "cta_text": "Contactar",
-        "color_scheme": "warm",
+        "cta_text": "Contactar", "color_scheme": "warm", "template": "modern",
     }
-    business = {"name": "Mi Negocio", "category": "Comercio", "phone": "099 000 000", "address": "Calle 1", "city": "Mvd", "rating": 4.0, "review_count": 10}
+    business = {"name": "Mi Negocio", "category": "Comercio", "phone": "099 000 000",
+                 "address": "Calle 1", "city": "Mvd", "rating": 4.0, "review_count": 10, "hours": ""}
     html = render_html(content, business)
     assert "Mi Negocio" in html
     assert "Tagline" in html
-    assert "warm" in html
+
+def test_render_html_formats_wa_number():
+    content = {"tagline": "t", "about": "a", "services": [], "cta_text": "CTA",
+               "color_scheme": "warm", "template": "modern"}
+    business = {"name": "X", "phone": "+598 99 123 456", "category": "",
+                 "address": "", "city": "", "rating": None, "review_count": None, "hours": ""}
+    html = render_html(content, business)
+    assert "59899123456" in html
+
+def test_render_html_uses_editorial_template():
+    content = {"tagline": "t", "about": "a", "services": [], "cta_text": "CTA",
+               "color_scheme": "dark", "template": "editorial"}
+    business = {"name": "El Bar", "phone": "+598 99 000 000", "category": "Bar",
+                 "address": "", "city": "", "rating": None, "review_count": None, "hours": ""}
+    html = render_html(content, business)
+    assert "El Bar" in html
