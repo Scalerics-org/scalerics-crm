@@ -102,28 +102,35 @@ def scrape_google_maps(query: str, max_results: int, db_path: str) -> int:
 
         search_url = f"https://www.google.com/maps/search/{query.replace(' ', '+')}"
         logger.info(f"Buscando: {search_url}")
-        page.goto(search_url, wait_until="networkidle", timeout=30000)
+        page.goto(search_url, wait_until="domcontentloaded", timeout=30000)
         random_delay(2, 4)
 
         seen_urls: set[str] = set()
         prev_result_count = 0
 
         while inserted < max_results:
-            results = page.query_selector_all(".hfpxzc")
-            if not results:
+            hrefs = []
+            for el in page.query_selector_all(".hfpxzc"):
+                href = el.get_attribute("href") or ""
+                if href and href not in seen_urls:
+                    hrefs.append(href)
+
+            if not hrefs:
                 logger.warning("No se encontraron resultados en la página")
                 break
 
-            for result in results:
+            made_progress = False
+            for href in hrefs:
                 if inserted >= max_results:
                     break
+                if href in seen_urls:
+                    continue
+                seen_urls.add(href)
                 try:
-                    href = result.get_attribute("href") or ""
-                    if href in seen_urls:
+                    el = page.query_selector(f'.hfpxzc[href="{href}"]')
+                    if not el:
                         continue
-                    seen_urls.add(href)
-
-                    result.click()
+                    el.click()
                     page.wait_for_selector("h1.DUwDvf", timeout=10000)
                     random_delay()
 
@@ -135,17 +142,20 @@ def scrape_google_maps(query: str, max_results: int, db_path: str) -> int:
                         business_id = insert_business(db_path, data)
                         if business_id:
                             inserted += 1
+                            made_progress = True
                             logger.info(f"[{inserted}/{max_results}] Guardado: {data['name']}")
                         else:
                             logger.info(f"Duplicado, ignorado: {data['name']}")
 
-                    page.go_back(wait_until="networkidle")
+                    page.go_back(wait_until="domcontentloaded")
+                    page.wait_for_selector(".hfpxzc", timeout=10000)
                     random_delay()
 
                 except Exception as e:
                     logger.error(f"Error procesando resultado: {e}")
                     try:
-                        page.go_back(wait_until="networkidle")
+                        page.go_back(wait_until="domcontentloaded")
+                        page.wait_for_selector(".hfpxzc", timeout=10000)
                     except Exception:
                         pass
                     random_delay(2, 4)
@@ -157,7 +167,7 @@ def scrape_google_maps(query: str, max_results: int, db_path: str) -> int:
             random_delay(2, 3)
 
             new_results = page.query_selector_all(".hfpxzc")
-            if len(new_results) <= prev_result_count:
+            if len(new_results) <= prev_result_count and not made_progress:
                 logger.info("No hay más resultados para cargar")
                 break
             prev_result_count = len(new_results)

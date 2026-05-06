@@ -27,7 +27,7 @@ def find_email_on_page(page) -> str | None:
 
 def check_gmaps_page(maps_url: str, page) -> str | None:
     try:
-        page.goto(maps_url, wait_until="networkidle", timeout=20000)
+        page.goto(maps_url, wait_until="domcontentloaded", timeout=20000)
         random_delay(2, 4)
         return find_email_on_page(page)
     except Exception as e:
@@ -36,7 +36,7 @@ def check_gmaps_page(maps_url: str, page) -> str | None:
 
 def check_facebook_page(facebook_url: str, page) -> str | None:
     try:
-        page.goto(facebook_url, wait_until="networkidle", timeout=20000)
+        page.goto(facebook_url, wait_until="domcontentloaded", timeout=20000)
         random_delay(3, 5)
         close_btn = page.query_selector("[aria-label='Cerrar']")
         if close_btn:
@@ -49,7 +49,7 @@ def check_facebook_page(facebook_url: str, page) -> str | None:
 
 def check_instagram_page(instagram_url: str, page) -> str | None:
     try:
-        page.goto(instagram_url, wait_until="networkidle", timeout=20000)
+        page.goto(instagram_url, wait_until="domcontentloaded", timeout=20000)
         random_delay(3, 5)
         bio_el = page.query_selector("._aacl._aaco._aacu._aacx._aad7._aade")
         if bio_el:
