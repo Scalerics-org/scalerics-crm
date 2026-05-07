@@ -956,7 +956,7 @@ let _demoPhone = '';
 
 function extractPhoneFromTitle(title) {
   const m = title.match(/\+?\d[\d\s\-]{7,14}\d/);
-  return m ? m[0].replace(/[\s\-]/g,'') : null;
+  return m ? m[0].replace(/[\s\-\+]/g,'') : null;
 }
 
 function openDemoModal(phone, eventTitle) {
@@ -993,6 +993,8 @@ async function fetchLeadForDemo() {
       document.getElementById('demo-lead-hint').textContent = 'Lead: ' + (l.name||phone) + ' · Estado: ' + (l.state||'?');
       if (l.business_name) document.getElementById('demo-biz').value = l.business_name;
       if (l.city) document.getElementById('demo-city').value = l.city;
+      if (l.rubro_hint && !document.getElementById('demo-rubro').value)
+        document.getElementById('demo-rubro').value = l.rubro_hint;
       _demoMessages = d.messages || [];
       if (_demoMessages.length) {
         const infoEl = document.getElementById('demo-conv-info');
@@ -1000,7 +1002,7 @@ async function fetchLeadForDemo() {
         infoEl.style.display = '';
       }
     } else {
-      document.getElementById('demo-lead-hint').textContent = phone + ' no encontrado en la DB del bot — completá los campos manualmente.';
+      document.getElementById('demo-lead-hint').textContent = phone + ' — no encontrado. Podés completar los campos manualmente.';
     }
   } catch(e) {
     document.getElementById('demo-lead-hint').textContent = 'Error buscando lead — completá los campos manualmente.';
@@ -1526,6 +1528,34 @@ def api_calendar_events():
 # Demo generation routes
 # ---------------------------------------------------------------------------
 
+_BTYPE = {1:"Agencia o consultora",2:"E-commerce / tienda online",3:"Servicios profesionales",4:"SaaS o software",5:"Otro"}
+
+def _phone_variants(phone: str) -> list:
+    """Return all plausible formats for a Uruguayan phone number."""
+    import re as _re
+    digits = _re.sub(r"[^\d]", "", phone)
+    variants = set()
+    variants.add(digits)
+    if digits.startswith("00"):
+        digits = digits[2:]
+    # local 09XXXXXXX (9 digits) → 598XXXXXXXX
+    if len(digits) == 9 and digits.startswith("0"):
+        intl = "598" + digits[1:]
+        variants.update([digits, intl, "+" + intl])
+    # 8 bare digits → 598XXXXXXXX
+    elif len(digits) == 8:
+        intl = "598" + digits
+        variants.update([digits, intl, "+" + intl])
+    # already 598XXXXXXXXXX (11 digits)
+    elif len(digits) == 11 and digits.startswith("598"):
+        variants.update([digits, "+" + digits, "0" + digits[3:]])
+    # add + prefix for everything
+    for v in list(variants):
+        if not v.startswith("+"):
+            variants.add("+" + v)
+    return list(variants)
+
+
 @app.route("/api/wa/lead-by-phone/<path:phone>")
 def api_lead_by_phone(phone):
     conn, err = _get_bot_conn()
@@ -1533,26 +1563,31 @@ def api_lead_by_phone(phone):
         return jsonify({"error": err}), 500
     try:
         import psycopg2.extras
+        variants = _phone_variants(phone)
+        placeholders = ",".join(["%s"] * len(variants))
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute("""
+            cur.execute(f"""
                 SELECT id, phone, name, state, score,
                        business_type, main_problem, team_size, budget, urgency,
                        business_name, city
-                FROM leads WHERE phone = %s
-            """, (phone,))
+                FROM leads WHERE phone IN ({placeholders})
+            """, variants)
             lead = cur.fetchone()
             if not lead:
                 return jsonify({"error": "Lead no encontrado"}), 404
+            lead = dict(lead)
+            # Derive a human-readable rubro hint from business_type
+            bt = lead.get("business_type")
+            lead["rubro_hint"] = _BTYPE.get(bt, "") if bt else ""
             cur.execute("""
                 SELECT m.direction, m.content, m.sent_at
                 FROM messages m
-                JOIN leads l ON l.id = m.lead_id
-                WHERE l.phone = %s
+                WHERE m.lead_id = %s
                 ORDER BY m.sent_at ASC
                 LIMIT 120
-            """, (phone,))
+            """, (lead["id"],))
             msgs = [dict(r) for r in cur.fetchall()]
-        return jsonify({"lead": dict(lead), "messages": msgs})
+        return jsonify({"lead": lead, "messages": msgs})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     finally:
