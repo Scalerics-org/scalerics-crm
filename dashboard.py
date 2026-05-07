@@ -1116,6 +1116,22 @@ def api_wa_send():
         )
         if resp.status_code != 200:
             return jsonify({"ok": False, "error": resp.text})
+        # Save message to bot DB
+        try:
+            conn, _ = _get_bot_conn()
+            if conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT id FROM leads WHERE phone = %s", (phone,))
+                    row = cur.fetchone()
+                    if row:
+                        cur.execute(
+                            "INSERT INTO messages (lead_id, direction, content) VALUES (%s, %s, %s)",
+                            (row[0], "out", text)
+                        )
+                conn.commit()
+                conn.close()
+        except Exception:
+            pass
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)})
