@@ -203,11 +203,11 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .wa-state-NURTURE{background:#1e1b4b;color:#a78bfa}
 .wa-state-DISQUALIFIED{background:#2a1515;color:#f87171}
 .wa-lead-time{font-size:.65rem;color:#334155}
-.wa-chat{display:flex;flex-direction:column;background:#0f1117}
+.wa-chat{display:flex;flex-direction:column;background:#0f1117;overflow:hidden;min-height:0}
 .wa-chat-header{padding:14px 20px;border-bottom:1px solid #1e293b;flex-shrink:0;background:#161b27}
 .wa-chat-name{font-size:.9rem;font-weight:700;color:#fff}
 .wa-chat-phone{font-size:.72rem;color:#475569;margin-top:2px}
-.wa-messages{flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:8px}
+.wa-messages{flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:8px;min-height:0}
 .wa-bubble{max-width:68%;padding:9px 13px;border-radius:12px;font-size:.84rem;line-height:1.5;white-space:pre-wrap;word-break:break-word}
 .wa-bubble-in{background:#1e293b;color:#e2e8f0;align-self:flex-start;border-bottom-left-radius:3px}
 .wa-bubble-out{background:#0a3a5c;color:#e2e8f0;align-self:flex-end;border-bottom-right-radius:3px}
@@ -328,7 +328,7 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
       </div>
       <div class="wa-chat" id="wa-chat-area">
         <div class="wa-empty" id="wa-empty-state">← Seleccioná un lead para ver la conversación</div>
-        <div id="wa-chat-content" style="display:none;flex:1;display:none;flex-direction:column;height:100%">
+        <div id="wa-chat-content" style="display:none;flex:1;flex-direction:column;min-height:0;overflow:hidden">
           <div class="wa-chat-header">
             <div class="wa-chat-name" id="wa-chat-name"></div>
             <div class="wa-chat-phone" id="wa-chat-phone"></div>
