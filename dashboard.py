@@ -112,7 +112,10 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
   .wa-list{max-height:240px;border-right:none;border-bottom:1px solid #1e293b}
   .wa-chat{height:calc(100vh - 380px);min-height:320px}
   .cal-header{flex-wrap:wrap;gap:8px}
-  .cal-header h1{width:100%;font-size:1.1rem}
+  .cal-header h1{flex:1;font-size:1.1rem}
+  .cal-grid-header{font-size:.55rem;padding:6px 2px}
+  .cal-cell{min-height:60px;padding:4px}
+  .cal-event-chip{font-size:.55rem}
   .modal{width:95vw!important;max-width:95vw!important}
   .modal-row{grid-template-columns:1fr}
   .pipeline-input-row{flex-direction:column}
@@ -224,18 +227,16 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .cal-nav-btn{background:#1e293b;border:none;color:#94a3b8;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:.85rem;font-family:'Inter',sans-serif}
 .cal-nav-btn:hover{background:#334155;color:#fff}
 .cal-new-btn{background:linear-gradient(135deg,#0088cc,#3db648);border:none;color:#fff;padding:9px 16px;border-radius:8px;cursor:pointer;font-size:.82rem;font-weight:700;font-family:'Inter',sans-serif}
-.cal-days{display:flex;flex-direction:column;gap:12px}
-.cal-day-block{background:#161b27;border:1px solid #1e293b;border-radius:12px;overflow:hidden}
-.cal-day-header{padding:10px 18px;background:#0f1117;font-size:.72rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.8px;border-bottom:1px solid #1e293b}
-.cal-day-header.today{color:#6366f1}
-.cal-event-item{padding:10px 18px;border-bottom:1px solid #1a2234;display:flex;align-items:flex-start;gap:14px}
-.cal-event-item:last-child{border-bottom:none}
-.cal-event-time{font-size:.78rem;font-weight:600;color:#0088cc;white-space:nowrap;min-width:50px}
-.cal-event-title{font-size:.85rem;font-weight:600;color:#e2e8f0}
-.cal-meet-link{color:#5bc8f5;text-decoration:none;font-weight:600}
-.cal-meet-link:hover{color:#93dcff;text-decoration:underline}
-.cal-event-desc{font-size:.72rem;color:#475569;margin-top:2px}
-.cal-no-events{padding:14px 18px;font-size:.78rem;color:#334155}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:#1e293b;border-radius:12px;overflow:hidden}
+.cal-grid-header{background:#0f1117;padding:8px 4px;text-align:center;font-size:.62rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.5px}
+.cal-cell{background:#161b27;min-height:88px;padding:6px 8px}
+.cal-cell.other-month{background:#0d1117}
+.cal-cell.today{background:#0d1f33}
+.cal-cell-day{font-size:.72rem;font-weight:700;color:#475569;margin-bottom:4px;width:20px;height:20px;display:flex;align-items:center;justify-content:center;border-radius:50%}
+.cal-cell.today .cal-cell-day{color:#fff;background:#0088cc}
+.cal-event-chip{font-size:.62rem;padding:2px 5px;border-radius:3px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.5;cursor:default}
+.cal-event-chip.regular{background:#172036;color:#60a5fa}
+.cal-event-chip.meet{background:#1a2e1e;color:#4ade80}
 .cal-loading{padding:40px;text-align:center;color:#334155;font-size:.9rem}
 .cal-error{padding:16px;background:#2a1515;border:1px solid #7f1d1d;border-radius:8px;color:#f87171;font-size:.82rem;margin-bottom:16px}
 
@@ -346,9 +347,11 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
   <div id="cal-panel" class="panel">
     <div class="cal-header">
       <h1 id="cal-week-label">Calendario</h1>
-      <button class="cal-nav-btn" onclick="calChangeWeek(-1)">← Anterior</button>
-      <button class="cal-nav-btn" onclick="calChangeWeek(1)">Siguiente →</button>
-      <button class="cal-new-btn" onclick="openNewEventModal()">+ Nueva reunión</button>
+      <div style="display:flex;gap:8px;align-items:center;flex-shrink:0">
+        <button class="cal-nav-btn" onclick="calChangeMonth(-1)">←</button>
+        <button class="cal-nav-btn" onclick="calChangeMonth(1)">→</button>
+        <button class="cal-new-btn" onclick="openNewEventModal()">+ Nueva reunión</button>
+      </div>
     </div>
     <div id="cal-error" class="cal-error" style="display:none"></div>
     <div id="cal-days" class="cal-days"><div class="cal-loading">Cargando calendario...</div></div>
@@ -722,21 +725,11 @@ async function sendWaMessage() {
 
 // ========== Calendar panel ==========
 let calLoaded = false;
-let calWeekOffset = 0;
+let calMonthOffset = 0;
 
-function calChangeWeek(delta) {
-  calWeekOffset += delta;
+function calChangeMonth(delta) {
+  calMonthOffset += delta;
   renderCalendar();
-}
-
-function getWeekStart(offset) {
-  const now = new Date();
-  const day = now.getDay();
-  const diff = now.getDate() - day + (day === 0 ? -6 : 1);
-  const monday = new Date(now.setDate(diff));
-  monday.setDate(monday.getDate() + offset * 7);
-  monday.setHours(0,0,0,0);
-  return monday;
 }
 
 function isoDate(d) {
@@ -744,19 +737,21 @@ function isoDate(d) {
 }
 
 async function renderCalendar() {
-  const weekStart = getWeekStart(calWeekOffset);
-  const weekEnd = new Date(weekStart);
-  weekEnd.setDate(weekEnd.getDate() + 6);
-  weekEnd.setHours(23,59,59,999);
+  const now = new Date();
+  const target = new Date(now.getFullYear(), now.getMonth() + calMonthOffset, 1);
+  const year = target.getFullYear();
+  const month = target.getMonth();
+  const monthStart = new Date(year, month, 1);
+  const monthEnd = new Date(year, month + 1, 0);
 
-  const label = weekStart.toLocaleDateString('es-UY',{day:'numeric',month:'long'}) + ' — ' + weekEnd.toLocaleDateString('es-UY',{day:'numeric',month:'long',year:'numeric'});
-  document.getElementById('cal-week-label').textContent = label;
+  const monthNames = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  document.getElementById('cal-week-label').textContent = monthNames[month] + ' ' + year;
 
   const daysEl = document.getElementById('cal-days');
   daysEl.innerHTML = '<div class="cal-loading">Cargando...</div>';
   document.getElementById('cal-error').style.display = 'none';
 
-  const r = await fetch('/api/calendar/events?start='+isoDate(weekStart)+'&end='+isoDate(weekEnd));
+  const r = await fetch('/api/calendar/events?start='+isoDate(monthStart)+'&end='+isoDate(monthEnd));
   const d = await r.json();
 
   if (d.error) {
@@ -767,39 +762,43 @@ async function renderCalendar() {
   }
 
   const todayStr = isoDate(new Date());
-  const days = [];
-  for (let i = 0; i < 7; i++) {
-    const day = new Date(weekStart);
-    day.setDate(day.getDate() + i);
-    days.push(day);
+  const dayNames = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
+
+  const eventMap = {};
+  (d.events || []).forEach(ev => {
+    if (!eventMap[ev.date]) eventMap[ev.date] = [];
+    eventMap[ev.date].push(ev);
+  });
+
+  let firstWeekday = monthStart.getDay() - 1;
+  if (firstWeekday < 0) firstWeekday = 6;
+  const daysInMonth = monthEnd.getDate();
+  const totalCells = Math.ceil((firstWeekday + daysInMonth) / 7) * 7;
+
+  const cells = [];
+  for (let i = 0; i < totalCells; i++) {
+    const dayNum = i - firstWeekday + 1;
+    if (dayNum < 1 || dayNum > daysInMonth) {
+      cells.push({ empty: true });
+    } else {
+      const ds = isoDate(new Date(year, month, dayNum));
+      cells.push({ dayNum, ds, isToday: ds === todayStr, events: (eventMap[ds] || []).sort((a,b) => (a.time||'').localeCompare(b.time||'')) });
+    }
   }
 
-  const dayNames = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
-  const monthNames = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
-
-  daysEl.innerHTML = days.map(day => {
-    const ds = isoDate(day);
-    const isToday = ds === todayStr;
-    const dayLabel = dayNames[day.getDay()] + ' ' + day.getDate() + '/' + (day.getMonth()+1);
-    const dayEvents = (d.events || []).filter(ev => ev.date === ds).sort((a,b) => (a.time||'').localeCompare(b.time||''));
-    return `<div class="cal-day-block">
-      <div class="cal-day-header${isToday?' today':''}">
-        ${dayLabel}${isToday?' — Hoy':''}
-      </div>
-      ${dayEvents.length ? dayEvents.map(ev => `
-        <div class="cal-event-item">
-          <div class="cal-event-time">${esc(ev.time||'')}</div>
-          <div>
-            <div class="cal-event-title">
-              ${ev.meeting_url
-                ? `<a href="${ev.meeting_url}" target="_blank" class="cal-meet-link">${esc(ev.title||'')} 🎥</a>`
-                : esc(ev.title||'')}
-            </div>
-            ${ev.description ? `<div class="cal-event-desc">${esc(ev.description)}</div>` : ''}
-          </div>
-        </div>`).join('') : '<div class="cal-no-events">Sin eventos</div>'}
-    </div>`;
-  }).join('');
+  daysEl.innerHTML = `<div class="cal-grid">
+    ${dayNames.map(n => `<div class="cal-grid-header">${n}</div>`).join('')}
+    ${cells.map(c => c.empty
+      ? `<div class="cal-cell other-month"></div>`
+      : `<div class="cal-cell${c.isToday?' today':''}">
+          <div class="cal-cell-day">${c.dayNum}</div>
+          ${c.events.map(ev => `
+            <div class="cal-event-chip ${ev.meeting_url?'meet':'regular'}" title="${esc((ev.time?ev.time+' ':'')+ev.title)}">
+              ${ev.time?esc(ev.time)+' ':''}${ev.meeting_url?'🎥 ':''}${esc(ev.title||'')}
+            </div>`).join('')}
+        </div>`
+    ).join('')}
+  </div>`;
 }
 
 function openNewEventModal() {
