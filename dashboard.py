@@ -204,9 +204,13 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .wa-state-DISQUALIFIED{background:#2a1515;color:#f87171}
 .wa-lead-time{font-size:.65rem;color:#334155}
 .wa-chat{display:flex;flex-direction:column;background:#0f1117;overflow:hidden;min-height:0}
-.wa-chat-header{padding:14px 20px;border-bottom:1px solid #1e293b;flex-shrink:0;background:#161b27}
+.wa-chat-header{padding:10px 20px;border-bottom:1px solid #1e293b;flex-shrink:0;background:#161b27;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.wa-chat-info{flex:1;min-width:0}
 .wa-chat-name{font-size:.9rem;font-weight:700;color:#fff}
 .wa-chat-phone{font-size:.72rem;color:#475569;margin-top:2px}
+.wa-release-btn{background:#1a2e1e;border:none;color:#4ade80;font-size:.72rem;font-weight:700;padding:5px 10px;border-radius:6px;cursor:pointer;font-family:'Inter',sans-serif;white-space:nowrap;flex-shrink:0}
+.wa-release-btn:hover{background:#14532d}
+.wa-human-badge{font-size:.68rem;font-weight:700;color:#fbbf24;background:#292116;padding:3px 8px;border-radius:999px;flex-shrink:0}
 .wa-messages{flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:8px;min-height:0}
 .wa-bubble{max-width:68%;padding:9px 13px;border-radius:12px;font-size:.84rem;line-height:1.5;white-space:pre-wrap;word-break:break-word}
 .wa-bubble-in{background:#1e293b;color:#e2e8f0;align-self:flex-start;border-bottom-left-radius:3px}
@@ -330,8 +334,12 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
         <div class="wa-empty" id="wa-empty-state">← Seleccioná un lead para ver la conversación</div>
         <div id="wa-chat-content" style="display:none;flex:1;flex-direction:column;min-height:0;overflow:hidden">
           <div class="wa-chat-header">
-            <div class="wa-chat-name" id="wa-chat-name"></div>
-            <div class="wa-chat-phone" id="wa-chat-phone"></div>
+            <div class="wa-chat-info">
+              <div class="wa-chat-name" id="wa-chat-name"></div>
+              <div class="wa-chat-phone" id="wa-chat-phone"></div>
+            </div>
+            <span class="wa-human-badge" id="wa-human-badge" style="display:none">👤 Humano activo</span>
+            <button class="wa-release-btn" id="wa-release-btn" style="display:none" onclick="releaseToBot()">🤖 Devolver al bot</button>
           </div>
           <div class="wa-messages" id="wa-messages"></div>
           <div class="wa-input-row">
@@ -689,9 +697,25 @@ async function selectWaLead(phone, name) {
   document.getElementById('wa-chat-phone').textContent = phone;
   document.getElementById('wa-messages').innerHTML = '<div style="color:#334155;text-align:center;padding:20px">Cargando...</div>';
 
+  const lead = waLeads.find(l => l.phone === phone);
+  const isHuman = lead && (lead.state === 'HUMAN_QUEUED');
+  document.getElementById('wa-human-badge').style.display = isHuman ? 'inline-flex' : 'none';
+  document.getElementById('wa-release-btn').style.display = isHuman ? 'inline-flex' : 'none';
+
   await loadWaMessages(phone);
   if (waPolling) clearInterval(waPolling);
   waPolling = setInterval(() => { if (selectedPhone === phone) loadWaMessages(phone); }, 5000);
+}
+
+async function releaseToBot() {
+  if (!selectedPhone) return;
+  const r = await fetch('/api/wa/leads/' + encodeURIComponent(selectedPhone) + '/release', {method:'POST'});
+  const d = await r.json();
+  if (d.ok) {
+    document.getElementById('wa-human-badge').style.display = 'none';
+    document.getElementById('wa-release-btn').style.display = 'none';
+    await loadWaLeads();
+  }
 }
 
 async function loadWaMessages(phone) {
@@ -1091,6 +1115,25 @@ def api_wa_messages(phone):
         conn.close()
 
 
+@app.route("/api/wa/leads/<path:phone>/release", methods=["POST"])
+def api_wa_release(phone):
+    conn, err = _get_bot_conn()
+    if err:
+        return jsonify({"ok": False, "error": err})
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE leads SET human_requested = false, state = 'MENU' WHERE phone = %s",
+                (phone,)
+            )
+        conn.commit()
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)})
+    finally:
+        conn.close()
+
+
 @app.route("/api/wa/send", methods=["POST"])
 def api_wa_send():
     phone_number_id = os.environ.get("WA_PHONE_NUMBER_ID", "")
@@ -1116,7 +1159,7 @@ def api_wa_send():
         )
         if resp.status_code != 200:
             return jsonify({"ok": False, "error": resp.text})
-        # Save message to bot DB
+        # Save message and mark human as active
         try:
             conn, _ = _get_bot_conn()
             if conn:
@@ -1124,9 +1167,14 @@ def api_wa_send():
                     cur.execute("SELECT id FROM leads WHERE phone = %s", (phone,))
                     row = cur.fetchone()
                     if row:
+                        lead_id = row[0]
                         cur.execute(
                             "INSERT INTO messages (lead_id, direction, content) VALUES (%s, %s, %s)",
-                            (row[0], "out", text)
+                            (lead_id, "out", text)
+                        )
+                        cur.execute(
+                            "UPDATE leads SET human_requested = true, state = 'HUMAN_QUEUED' WHERE id = %s",
+                            (lead_id,)
                         )
                 conn.commit()
                 conn.close()
