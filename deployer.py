@@ -78,7 +78,7 @@ def run(db_path: str, vercel_token: str, project_name: str) -> None:
                 vercel_token,
                 project_name,
             )
-            update_business(db_path, biz["id"], demo_url=url, status="deployed")
+            update_business(db_path, biz["id"], demo_url=url, status="demo_deployed")
             logger.info(f"Deploy exitoso: {url}")
             time.sleep(2)
         except Exception as e:

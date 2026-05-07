@@ -905,10 +905,11 @@ async function renderCalendar() {
       : `<div class="cal-cell${c.isToday?' today':''}">
           <div class="cal-cell-day">${c.dayNum}</div>
           ${c.events.map(ev => {
-            const ph = extractPhoneFromTitle(ev.title||'');
+            const ph = extractPhoneFromText((ev.title||'')+' '+(ev.description||''));
+            const nm = extractNameFromTitle(ev.title||'');
             return `<div class="cal-event-chip ${ev.meeting_url?'meet':'regular'}" title="${esc((ev.time?ev.time+' ':'')+ev.title)}">
               ${ev.time?esc(ev.time)+' ':''}${ev.meeting_url?'🎥 ':''}${esc(ev.title||'')}
-              <button class="cal-demo-btn" onclick="event.stopPropagation();openDemoModal('${ph||''}','${esc(ev.title||'')}')">📊 Generar Demo</button>
+              <button class="cal-demo-btn" onclick="event.stopPropagation();openDemoModal('${ph||''}','${esc(ev.title||'')}','${nm||''}')">📊 Generar Demo</button>
             </div>`;
           }).join('')}
         </div>`
@@ -954,12 +955,18 @@ async function saveEvent() {
 let _demoMessages = [];
 let _demoPhone = '';
 
-function extractPhoneFromTitle(title) {
-  const m = title.match(/\+?\d[\d\s\-]{7,14}\d/);
+function extractPhoneFromText(text) {
+  const m = text.match(/\+?\d[\d\s\-]{7,14}\d/);
   return m ? m[0].replace(/[\s\-\+]/g,'') : null;
 }
 
-function openDemoModal(phone, eventTitle) {
+function extractNameFromTitle(title) {
+  // Calendly format: "Firstname Lastname: Meeting Type"
+  const m = title.match(/^([^:]+):/);
+  return m ? m[1].trim() : null;
+}
+
+function openDemoModal(phone, eventTitle, leadName) {
   _demoPhone = phone || '';
   _demoMessages = [];
   document.getElementById('demo-modal').classList.add('open');
@@ -973,8 +980,11 @@ function openDemoModal(phone, eventTitle) {
   document.getElementById('demo-conv-info').style.display = 'none';
   document.getElementById('demo-phone').value = phone || '';
   if (phone) {
-    document.getElementById('demo-lead-hint').textContent = 'Cargando datos del lead ' + phone + '...';
+    document.getElementById('demo-lead-hint').textContent = 'Cargando datos del lead...';
     fetchLeadForDemo();
+  } else if (leadName) {
+    document.getElementById('demo-lead-hint').textContent = 'Buscando por nombre: ' + leadName + '...';
+    fetchLeadByName(leadName);
   } else {
     document.getElementById('demo-lead-hint').textContent = 'Ingresá el teléfono del lead o completá los campos manualmente.';
   }
@@ -987,25 +997,48 @@ async function fetchLeadForDemo() {
   document.getElementById('demo-lead-hint').textContent = 'Buscando lead ' + phone + '...';
   try {
     const r = await fetch('/api/wa/lead-by-phone/' + encodeURIComponent(phone));
+    if (r.status === 401) { document.getElementById('demo-lead-hint').textContent = 'Sesión expirada — recargá la página y volvé a entrar.'; return; }
     const d = await r.json();
     if (d.lead) {
-      const l = d.lead;
-      document.getElementById('demo-lead-hint').textContent = 'Lead: ' + (l.name||phone) + ' · Estado: ' + (l.state||'?');
-      if (l.business_name) document.getElementById('demo-biz').value = l.business_name;
-      if (l.city) document.getElementById('demo-city').value = l.city;
-      if (l.rubro_hint && !document.getElementById('demo-rubro').value)
-        document.getElementById('demo-rubro').value = l.rubro_hint;
-      _demoMessages = d.messages || [];
-      if (_demoMessages.length) {
-        const infoEl = document.getElementById('demo-conv-info');
-        infoEl.textContent = '✅ ' + _demoMessages.length + ' mensajes de WhatsApp cargados.';
-        infoEl.style.display = '';
-      }
+      _applyLeadToModal(d, phone);
     } else {
-      document.getElementById('demo-lead-hint').textContent = phone + ' — no encontrado. Podés completar los campos manualmente.';
+      const msg = d.error || 'no encontrado';
+      document.getElementById('demo-lead-hint').textContent = phone + ' — ' + msg + '. Podés completar los campos manualmente.';
     }
   } catch(e) {
-    document.getElementById('demo-lead-hint').textContent = 'Error buscando lead — completá los campos manualmente.';
+    document.getElementById('demo-lead-hint').textContent = 'Error buscando lead: ' + e.message;
+  }
+}
+
+function _applyLeadToModal(d, label) {
+  const l = d.lead;
+  _demoPhone = l.phone || _demoPhone;
+  document.getElementById('demo-phone').value = _demoPhone;
+  document.getElementById('demo-lead-hint').textContent = 'Lead: ' + (l.name||label) + ' · Estado: ' + (l.state||'?');
+  if (l.business_name) document.getElementById('demo-biz').value = l.business_name;
+  if (l.city) document.getElementById('demo-city').value = l.city;
+  if (l.rubro_hint && !document.getElementById('demo-rubro').value)
+    document.getElementById('demo-rubro').value = l.rubro_hint;
+  _demoMessages = d.messages || [];
+  if (_demoMessages.length) {
+    const infoEl = document.getElementById('demo-conv-info');
+    infoEl.textContent = '✅ ' + _demoMessages.length + ' mensajes de WhatsApp cargados.';
+    infoEl.style.display = '';
+  }
+}
+
+async function fetchLeadByName(name) {
+  try {
+    const r = await fetch('/api/wa/lead-by-name/' + encodeURIComponent(name));
+    if (r.status === 401) { document.getElementById('demo-lead-hint').textContent = 'Sesión expirada — recargá la página.'; return; }
+    const d = await r.json();
+    if (d.lead) {
+      _applyLeadToModal(d, name);
+    } else {
+      document.getElementById('demo-lead-hint').textContent = name + ' — ' + (d.error||'no encontrado') + '. Completá los campos manualmente.';
+    }
+  } catch(e) {
+    document.getElementById('demo-lead-hint').textContent = 'Error buscando lead: ' + e.message;
   }
 }
 
@@ -1071,6 +1104,8 @@ def require_login():
     if request.endpoint in ("login", "logout", "static"):
         return
     if not session.get("logged_in"):
+        if request.path.startswith("/api/"):
+            return jsonify({"error": "session_expired"}), 401
         return redirect(url_for("login"))
 
 
@@ -1272,128 +1307,63 @@ def api_pipeline_status():
 # WhatsApp panel routes
 # ---------------------------------------------------------------------------
 
-def _get_bot_conn():
-    import psycopg2
-    import psycopg2.extras
-    db_url = os.environ.get("BOT_DB_URL", "")
-    if not db_url:
-        return None, "BOT_DB_URL no configurada en .env"
-    conn = psycopg2.connect(db_url)
-    return conn, None
+def _bot_req(method, path, **kwargs):
+    """Call the bot's admin API. Returns (response_dict, error_string)."""
+    base = os.environ.get("BOT_API_URL", "").rstrip("/")
+    token = os.environ.get("ADMIN_TOKEN", "")
+    if not base:
+        return None, "BOT_API_URL no configurada en .env"
+    if not token:
+        return None, "ADMIN_TOKEN no configurado en .env"
+    headers = {"x-admin-token": token, "Content-Type": "application/json"}
+    try:
+        r = http_requests.request(
+            method, f"{base}/api/{path.lstrip('/')}",
+            headers=headers, timeout=12, **kwargs
+        )
+        data = r.json()
+        if r.status_code >= 400:
+            return None, data.get("error", r.text)
+        return data, None
+    except Exception as e:
+        return None, str(e)
 
 
 @app.route("/api/wa/leads")
 def api_wa_leads():
-    conn, err = _get_bot_conn()
+    data, err = _bot_req("GET", "leads?limit=200")
     if err:
         return jsonify({"error": err})
-    try:
-        with conn.cursor(cursor_factory=__import__("psycopg2.extras", fromlist=["RealDictCursor"]).RealDictCursor) as cur:
-            cur.execute("""
-                SELECT phone, name, state, score, last_message_at AS last_activity
-                FROM leads
-                ORDER BY last_message_at DESC NULLS LAST
-                LIMIT 200
-            """)
-            rows = [dict(r) for r in cur.fetchall()]
-        return jsonify(rows)
-    except Exception as e:
-        return jsonify({"error": str(e)})
-    finally:
-        conn.close()
+    return jsonify(data.get("leads", []))
 
 
 @app.route("/api/wa/leads/<path:phone>/messages")
 def api_wa_messages(phone):
-    conn, err = _get_bot_conn()
+    data, err = _bot_req("GET", f"leads/phone/{phone}")
     if err:
         return jsonify({"error": err})
-    try:
-        import psycopg2.extras
-        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute("""
-                SELECT m.direction, m.content, m.sent_at AS created_at
-                FROM messages m
-                JOIN leads l ON l.id = m.lead_id
-                WHERE l.phone = %s
-                ORDER BY m.sent_at ASC
-            """, (phone,))
-            rows = [dict(r) for r in cur.fetchall()]
-        return jsonify(rows)
-    except Exception as e:
-        return jsonify({"error": str(e)})
-    finally:
-        conn.close()
+    return jsonify(data.get("messages", []))
 
 
 @app.route("/api/wa/leads/<path:phone>/release", methods=["POST"])
 def api_wa_release(phone):
-    conn, err = _get_bot_conn()
+    data, err = _bot_req("POST", f"leads/phone/{phone}/release")
     if err:
         return jsonify({"ok": False, "error": err})
-    try:
-        with conn.cursor() as cur:
-            cur.execute(
-                "UPDATE leads SET human_requested = false, state = 'MENU' WHERE phone = %s",
-                (phone,)
-            )
-        conn.commit()
-        return jsonify({"ok": True})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)})
-    finally:
-        conn.close()
+    return jsonify({"ok": True})
 
 
 @app.route("/api/wa/send", methods=["POST"])
 def api_wa_send():
-    phone_number_id = os.environ.get("WA_PHONE_NUMBER_ID", "")
-    access_token = os.environ.get("WA_ACCESS_TOKEN", "")
-    if not phone_number_id or not access_token:
-        return jsonify({"ok": False, "error": "WA_PHONE_NUMBER_ID y WA_ACCESS_TOKEN no configurados en .env"})
-    data = request.get_json() or {}
-    phone = data.get("phone", "").strip()
-    text = data.get("text", "").strip()
+    body = request.get_json() or {}
+    phone = body.get("phone", "").strip()
+    text = body.get("text", "").strip()
     if not phone or not text:
         return jsonify({"ok": False, "error": "phone y text requeridos"})
-    try:
-        resp = http_requests.post(
-            f"https://graph.facebook.com/v19.0/{phone_number_id}/messages",
-            headers={"Authorization": f"Bearer {access_token}"},
-            json={
-                "messaging_product": "whatsapp",
-                "to": phone,
-                "type": "text",
-                "text": {"body": text},
-            },
-            timeout=15,
-        )
-        if resp.status_code != 200:
-            return jsonify({"ok": False, "error": resp.text})
-        # Save message and mark human as active
-        try:
-            conn, _ = _get_bot_conn()
-            if conn:
-                with conn.cursor() as cur:
-                    cur.execute("SELECT id FROM leads WHERE phone = %s", (phone,))
-                    row = cur.fetchone()
-                    if row:
-                        lead_id = row[0]
-                        cur.execute(
-                            "INSERT INTO messages (lead_id, direction, content) VALUES (%s, %s, %s)",
-                            (lead_id, "out", text)
-                        )
-                        cur.execute(
-                            "UPDATE leads SET human_requested = true, state = 'HUMAN_QUEUED' WHERE id = %s",
-                            (lead_id,)
-                        )
-                conn.commit()
-                conn.close()
-        except Exception:
-            pass
-        return jsonify({"ok": True})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)})
+    data, err = _bot_req("POST", "send", json={"phone": phone, "text": text})
+    if err:
+        return jsonify({"ok": False, "error": err})
+    return jsonify({"ok": True})
 
 
 # ---------------------------------------------------------------------------
@@ -1556,42 +1526,26 @@ def _phone_variants(phone: str) -> list:
     return list(variants)
 
 
+@app.route("/api/wa/lead-by-name/<path:name>")
+def api_lead_by_name(name):
+    data, err = _bot_req("GET", f"leads/search?name={name}")
+    if err:
+        return jsonify({"error": err}), 404
+    lead = data.get("lead", {})
+    bt = lead.get("business_type")
+    lead["rubro_hint"] = _BTYPE.get(bt, "") if bt else ""
+    return jsonify({"lead": lead, "messages": data.get("messages", [])})
+
+
 @app.route("/api/wa/lead-by-phone/<path:phone>")
 def api_lead_by_phone(phone):
-    conn, err = _get_bot_conn()
+    data, err = _bot_req("GET", f"leads/phone/{phone}")
     if err:
-        return jsonify({"error": err}), 500
-    try:
-        import psycopg2.extras
-        variants = _phone_variants(phone)
-        placeholders = ",".join(["%s"] * len(variants))
-        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(f"""
-                SELECT id, phone, name, state, score,
-                       business_type, main_problem, team_size, budget, urgency,
-                       business_name, city
-                FROM leads WHERE phone IN ({placeholders})
-            """, variants)
-            lead = cur.fetchone()
-            if not lead:
-                return jsonify({"error": "Lead no encontrado"}), 404
-            lead = dict(lead)
-            # Derive a human-readable rubro hint from business_type
-            bt = lead.get("business_type")
-            lead["rubro_hint"] = _BTYPE.get(bt, "") if bt else ""
-            cur.execute("""
-                SELECT m.direction, m.content, m.sent_at
-                FROM messages m
-                WHERE m.lead_id = %s
-                ORDER BY m.sent_at ASC
-                LIMIT 120
-            """, (lead["id"],))
-            msgs = [dict(r) for r in cur.fetchall()]
-        return jsonify({"lead": lead, "messages": msgs})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-    finally:
-        conn.close()
+        return jsonify({"error": err}), 404
+    lead = data.get("lead", {})
+    bt = lead.get("business_type")
+    lead["rubro_hint"] = _BTYPE.get(bt, "") if bt else ""
+    return jsonify({"lead": lead, "messages": data.get("messages", [])})
 
 
 @app.route("/api/demo/generate", methods=["POST"])
