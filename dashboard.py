@@ -34,22 +34,25 @@ LOGIN_HTML = """<!DOCTYPE html>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
-body{font-family:'Inter',sans-serif;background:#0f1117;color:#e2e8f0;min-height:100vh;display:flex;align-items:center;justify-content:center}
-.card{background:#161b27;border:1px solid #1e293b;border-radius:16px;padding:40px 36px;width:340px;max-width:92vw}
-.logo{font-size:1.4rem;font-weight:800;color:#fff;margin-bottom:4px}
-.logo-sub{font-size:.75rem;color:#475569;margin-bottom:28px}
+body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:100vh;display:flex;align-items:center;justify-content:center}
+.card{background:#111827;border:1px solid #1e293b;border-radius:16px;padding:40px 36px;width:360px;max-width:92vw}
+.logo-wrap{margin-bottom:28px;display:flex;flex-direction:column;align-items:flex-start;gap:10px}
+.logo-wrap img{height:32px;object-fit:contain}
+.logo-sub{font-size:.75rem;color:#475569}
 label{font-size:.72rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.8px;display:block;margin-bottom:7px}
-input[type=password]{width:100%;background:#0f1117;border:1px solid #1e293b;border-radius:8px;padding:11px 14px;font-size:.92rem;color:#e2e8f0;font-family:'Inter',sans-serif;outline:none;margin-bottom:16px}
-input[type=password]:focus{border-color:#6366f1}
-button{width:100%;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;font-size:.88rem;font-weight:700;padding:12px;border-radius:8px;border:none;cursor:pointer;font-family:'Inter',sans-serif}
+input[type=password]{width:100%;background:#0a0f1a;border:1px solid #1e293b;border-radius:8px;padding:11px 14px;font-size:.92rem;color:#e2e8f0;font-family:'Inter',sans-serif;outline:none;margin-bottom:16px}
+input[type=password]:focus{border-color:#0088cc}
+button{width:100%;background:linear-gradient(135deg,#0088cc,#3db648);color:#fff;font-size:.88rem;font-weight:700;padding:12px;border-radius:8px;border:none;cursor:pointer;font-family:'Inter',sans-serif}
 button:hover{opacity:.9}
 .error{background:#2a1515;border:1px solid #7f1d1d;border-radius:8px;padding:10px 14px;font-size:.8rem;color:#f87171;margin-bottom:16px}
 </style>
 </head>
 <body>
 <div class="card">
-  <div class="logo">⚡ Scalerics</div>
-  <div class="logo-sub">CRM · Panel interno</div>
+  <div class="logo-wrap">
+    <img src="/static/logo.png" alt="Scalerics">
+    <span class="logo-sub">CRM · Panel interno</span>
+  </div>
   {% if error %}
   <div class="error">{{ error }}</div>
   {% endif %}
@@ -74,21 +77,47 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
-body{font-family:'Inter',sans-serif;background:#0f1117;color:#e2e8f0;min-height:100vh;display:flex}
-.sidebar{width:220px;min-height:100vh;background:#161b27;border-right:1px solid #1e293b;display:flex;flex-direction:column;padding:20px 0;flex-shrink:0;position:fixed;top:0;bottom:0;left:0}
-.sidebar-logo{padding:0 20px 22px;border-bottom:1px solid #1e293b;margin-bottom:14px}
-.brand{font-size:1.1rem;font-weight:800;color:#fff}
-.brand-sub{font-size:.7rem;color:#475569;margin-top:2px}
+body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:100vh;display:flex}
+.sidebar{width:220px;min-height:100vh;background:#111827;border-right:1px solid #1a2d3d;display:flex;flex-direction:column;padding:20px 0;flex-shrink:0;position:fixed;top:0;bottom:0;left:0;z-index:200;transition:transform .25s ease}
+.sidebar-logo{padding:12px 20px 18px;border-bottom:1px solid #1a2d3d;margin-bottom:14px}
+.sidebar-logo img{height:28px;object-fit:contain;max-width:160px}
 .nav-item{display:flex;align-items:center;gap:10px;padding:10px 20px;font-size:.85rem;font-weight:500;color:#64748b;cursor:pointer;border-left:3px solid transparent;transition:all .15s}
-.nav-item:hover{color:#e2e8f0;background:#1e293b}
-.nav-item.active{color:#fff;background:#1e293b;border-left-color:#6366f1}
-.sidebar-bottom{margin-top:auto;padding:16px 20px;border-top:1px solid #1e293b;display:flex;flex-direction:column;gap:8px}
-.run-btn{width:100%;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;font-size:.82rem;font-weight:700;padding:10px;border-radius:8px;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px}
-.logout-btn{width:100%;background:transparent;border:1px solid #1e293b;color:#475569;font-size:.78rem;font-weight:500;padding:8px;border-radius:8px;cursor:pointer;font-family:'Inter',sans-serif}
+.nav-item:hover{color:#e2e8f0;background:#1a2d3d}
+.nav-item.active{color:#fff;background:#1a2d3d;border-left-color:#0088cc}
+.sidebar-bottom{margin-top:auto;padding:16px 20px;border-top:1px solid #1a2d3d;display:flex;flex-direction:column;gap:8px}
+.run-btn{width:100%;background:linear-gradient(135deg,#0088cc,#3db648);color:#fff;font-size:.82rem;font-weight:700;padding:10px;border-radius:8px;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px}
+.logout-btn{width:100%;background:transparent;border:1px solid #1a2d3d;color:#475569;font-size:.78rem;font-weight:500;padding:8px;border-radius:8px;cursor:pointer;font-family:'Inter',sans-serif}
 .logout-btn:hover{color:#e2e8f0;border-color:#334155}
-.main{margin-left:220px;padding:28px 32px;flex:1}
+.sidebar-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:199}
+.topbar{display:none;align-items:center;gap:12px;padding:12px 16px;background:#111827;border-bottom:1px solid #1a2d3d;position:sticky;top:0;z-index:100}
+.topbar img{height:24px;object-fit:contain}
+.hamburger{background:none;border:none;color:#94a3b8;font-size:1.3rem;cursor:pointer;padding:4px 6px;line-height:1;flex-shrink:0}
+.main{margin-left:220px;padding:28px 32px;flex:1;min-width:0}
 .panel{display:none}
 .panel.active{display:block}
+@media(max-width:768px){
+  .sidebar{transform:translateX(-220px)}
+  .sidebar.open{transform:translateX(0)}
+  .sidebar-backdrop.open{display:block}
+  .topbar{display:flex}
+  .main{margin-left:0;padding:14px}
+  .stats{grid-template-columns:1fr 1fr}
+  .page-header h1{font-size:1.1rem}
+  .filters{gap:6px}
+  .search-box{width:100%;margin-left:0}
+  .table-wrap{overflow-x:auto}
+  .table-header,.table-row{grid-template-columns:1.8fr 1fr 1.4fr 1.2fr;min-width:480px}
+  .wa-container{grid-template-columns:1fr;height:auto}
+  .wa-list{max-height:260px;border-right:none;border-bottom:1px solid #1e293b}
+  .wa-chat{height:420px}
+  .cal-header{flex-wrap:wrap;gap:8px}
+  .cal-header h1{width:100%;font-size:1.1rem}
+  .modal{width:95vw!important;max-width:95vw!important}
+  .modal-row{grid-template-columns:1fr}
+}
+@media(max-width:480px){
+  .stats{grid-template-columns:1fr}
+}
 
 /* ---- Leads panel ---- */
 .page-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px}
@@ -104,7 +133,7 @@ body{font-family:'Inter',sans-serif;background:#0f1117;color:#e2e8f0;min-height:
 .filters{display:flex;gap:8px;margin-bottom:16px;align-items:center;flex-wrap:wrap}
 .filter-btn{padding:6px 14px;border-radius:8px;font-size:.78rem;font-weight:600;border:1px solid #1e293b;background:#161b27;color:#64748b;cursor:pointer;transition:all .15s}
 .filter-btn:hover{color:#e2e8f0}
-.filter-btn.active{background:#6366f1;border-color:#6366f1;color:#fff}
+.filter-btn.active{background:#0088cc;border-color:#0088cc;color:#fff}
 .filter-select{background:#161b27;border:1px solid #1e293b;border-radius:8px;padding:6px 12px;font-size:.78rem;color:#94a3b8;font-family:'Inter',sans-serif;cursor:pointer;outline:none}
 .filter-select option{background:#161b27}
 .search-box{margin-left:auto;background:#161b27;border:1px solid #1e293b;border-radius:8px;padding:7px 14px;font-size:.82rem;color:#e2e8f0;width:200px;outline:none;font-family:'Inter',sans-serif}
@@ -136,7 +165,7 @@ body{font-family:'Inter',sans-serif;background:#0f1117;color:#e2e8f0;min-height:
 .pipeline-input-row{display:flex;gap:10px;margin-bottom:12px}
 .pipeline-input{flex:1;background:#0f1117;border:1px solid #1e293b;border-radius:8px;padding:10px 14px;font-size:.88rem;color:#e2e8f0;font-family:'Inter',sans-serif;outline:none}
 .pipeline-input::placeholder{color:#334155}
-.pipeline-input:focus{border-color:#6366f1}
+.pipeline-input:focus{border-color:#0088cc}
 .max-input{width:76px;background:#0f1117;border:1px solid #1e293b;border-radius:8px;padding:10px 10px;font-size:.88rem;color:#e2e8f0;font-family:'Inter',sans-serif;outline:none;text-align:center}
 .pipeline-log{background:#0a0e18;border:1px solid #1e293b;border-radius:8px;padding:12px 14px;font-family:monospace;font-size:.76rem;height:210px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;margin-bottom:14px}
 .log-line{color:#64748b;line-height:1.6}
@@ -174,13 +203,13 @@ body{font-family:'Inter',sans-serif;background:#0f1117;color:#e2e8f0;min-height:
 .wa-messages{flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:8px}
 .wa-bubble{max-width:68%;padding:9px 13px;border-radius:12px;font-size:.84rem;line-height:1.5}
 .wa-bubble-in{background:#1e293b;color:#e2e8f0;align-self:flex-start;border-bottom-left-radius:3px}
-.wa-bubble-out{background:#312e81;color:#e2e8f0;align-self:flex-end;border-bottom-right-radius:3px}
+.wa-bubble-out{background:#0a3a5c;color:#e2e8f0;align-self:flex-end;border-bottom-right-radius:3px}
 .wa-bubble-time{font-size:.62rem;color:#475569;margin-top:4px}
 .wa-input-row{padding:12px 16px;border-top:1px solid #1e293b;display:flex;gap:10px;align-items:center;flex-shrink:0;background:#161b27}
 .wa-input{flex:1;background:#0f1117;border:1px solid #1e293b;border-radius:8px;padding:10px 14px;font-size:.85rem;color:#e2e8f0;font-family:'Inter',sans-serif;outline:none}
 .wa-input:focus{border-color:#6366f1}
-.wa-send-btn{background:#6366f1;border:none;color:#fff;padding:10px 18px;border-radius:8px;font-size:.82rem;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;white-space:nowrap}
-.wa-send-btn:hover{background:#4f46e5}
+.wa-send-btn{background:#0088cc;border:none;color:#fff;padding:10px 18px;border-radius:8px;font-size:.82rem;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;white-space:nowrap}
+.wa-send-btn:hover{background:#0077b3}
 .wa-empty{flex:1;display:flex;align-items:center;justify-content:center;color:#334155;font-size:.88rem}
 .wa-no-leads{padding:32px;text-align:center;color:#334155;font-size:.85rem}
 .wa-error-banner{padding:12px 18px;background:#2a1515;border:1px solid #7f1d1d;border-radius:8px;color:#f87171;font-size:.82rem;margin:16px}
@@ -190,17 +219,17 @@ body{font-family:'Inter',sans-serif;background:#0f1117;color:#e2e8f0;min-height:
 .cal-header h1{font-size:1.4rem;font-weight:800;color:#fff;flex:1}
 .cal-nav-btn{background:#1e293b;border:none;color:#94a3b8;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:.85rem;font-family:'Inter',sans-serif}
 .cal-nav-btn:hover{background:#334155;color:#fff}
-.cal-new-btn{background:linear-gradient(135deg,#6366f1,#8b5cf6);border:none;color:#fff;padding:9px 16px;border-radius:8px;cursor:pointer;font-size:.82rem;font-weight:700;font-family:'Inter',sans-serif}
+.cal-new-btn{background:linear-gradient(135deg,#0088cc,#3db648);border:none;color:#fff;padding:9px 16px;border-radius:8px;cursor:pointer;font-size:.82rem;font-weight:700;font-family:'Inter',sans-serif}
 .cal-days{display:flex;flex-direction:column;gap:12px}
 .cal-day-block{background:#161b27;border:1px solid #1e293b;border-radius:12px;overflow:hidden}
 .cal-day-header{padding:10px 18px;background:#0f1117;font-size:.72rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.8px;border-bottom:1px solid #1e293b}
 .cal-day-header.today{color:#6366f1}
 .cal-event-item{padding:10px 18px;border-bottom:1px solid #1a2234;display:flex;align-items:flex-start;gap:14px}
 .cal-event-item:last-child{border-bottom:none}
-.cal-event-time{font-size:.78rem;font-weight:600;color:#6366f1;white-space:nowrap;min-width:50px}
+.cal-event-time{font-size:.78rem;font-weight:600;color:#0088cc;white-space:nowrap;min-width:50px}
 .cal-event-title{font-size:.85rem;font-weight:600;color:#e2e8f0}
-.cal-meet-link{color:#a5b4fc;text-decoration:none;font-weight:600}
-.cal-meet-link:hover{color:#c7d2fe;text-decoration:underline}
+.cal-meet-link{color:#5bc8f5;text-decoration:none;font-weight:600}
+.cal-meet-link:hover{color:#93dcff;text-decoration:underline}
 .cal-event-desc{font-size:.72rem;color:#475569;margin-top:2px}
 .cal-no-events{padding:14px 18px;font-size:.78rem;color:#334155}
 .cal-loading{padding:40px;text-align:center;color:#334155;font-size:.9rem}
@@ -221,15 +250,15 @@ body{font-family:'Inter',sans-serif;background:#0f1117;color:#e2e8f0;min-height:
 .modal-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .modal-btns{display:flex;gap:10px;justify-content:flex-end}
 .btn-cancel{background:#1e293b;border:none;color:#64748b;padding:9px 18px;border-radius:8px;cursor:pointer;font-size:.82rem;font-weight:600;font-family:'Inter',sans-serif}
-.btn-confirm{background:#6366f1;border:none;color:#fff;padding:9px 18px;border-radius:8px;cursor:pointer;font-size:.82rem;font-weight:700;font-family:'Inter',sans-serif;display:inline-flex;align-items:center;gap:6px}
+.btn-confirm{background:#0088cc;border:none;color:#fff;padding:9px 18px;border-radius:8px;cursor:pointer;font-size:.82rem;font-weight:700;font-family:'Inter',sans-serif;display:inline-flex;align-items:center;gap:6px}
 .btn-confirm:disabled{opacity:.5;cursor:not-allowed}
 </style>
 </head>
 <body>
-<div class="sidebar">
+<div class="sidebar-backdrop" id="sidebar-backdrop" onclick="closeSidebar()"></div>
+<div class="sidebar" id="sidebar">
   <div class="sidebar-logo">
-    <div class="brand">⚡ Scalerics</div>
-    <div class="brand-sub">CRM interno</div>
+    <img src="/static/logo.png" alt="Scalerics">
   </div>
   <div class="nav-item active" id="nav-leads" onclick="showPanel('leads')">📋 Leads</div>
   <div class="nav-item" id="nav-wa" onclick="showPanel('wa')">💬 WhatsApp</div>
@@ -238,6 +267,11 @@ body{font-family:'Inter',sans-serif;background:#0f1117;color:#e2e8f0;min-height:
     <button class="run-btn" onclick="openPipelineModal()">▶ Correr pipeline</button>
     <button class="logout-btn" onclick="window.location.href='/logout'">Cerrar sesión</button>
   </div>
+</div>
+
+<div class="topbar">
+  <button class="hamburger" onclick="toggleSidebar()">☰</button>
+  <img src="/static/logo.png" alt="Scalerics" style="height:22px">
 </div>
 
 <div class="main">
@@ -399,6 +433,16 @@ body{font-family:'Inter',sans-serif;background:#0f1117;color:#e2e8f0;min-height:
 </div>
 
 <script>
+// ========== Sidebar mobile ==========
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+  document.getElementById('sidebar-backdrop').classList.toggle('open');
+}
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebar-backdrop').classList.remove('open');
+}
+
 // ========== Panel switching ==========
 let activePanel = 'leads';
 function showPanel(name) {
@@ -407,6 +451,7 @@ function showPanel(name) {
   document.getElementById(name + '-panel').classList.add('active');
   document.getElementById('nav-' + name).classList.add('active');
   activePanel = name;
+  closeSidebar();
   if (name === 'wa' && !waLoaded) loadWaLeads();
   if (name === 'cal' && !calLoaded) { calLoaded = true; renderCalendar(); }
 }
