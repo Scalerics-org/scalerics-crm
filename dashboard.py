@@ -253,6 +253,8 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .cal-event-chip{font-size:.62rem;padding:2px 5px;border-radius:3px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.5;cursor:default}
 .cal-event-chip.regular{background:#172036;color:#60a5fa}
 .cal-event-chip.meet{background:#1a2e1e;color:#4ade80}
+.cal-demo-btn{display:block;width:100%;text-align:left;background:rgba(6,182,212,.12);border:1px solid rgba(6,182,212,.25);color:#06B6D4;border-radius:3px;padding:1px 5px;font-size:.5rem;font-weight:700;letter-spacing:.03em;cursor:pointer;margin-top:2px;line-height:1.6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cal-demo-btn:hover{background:rgba(6,182,212,.25)}
 .cal-loading{padding:40px;text-align:center;color:#334155;font-size:.9rem}
 .cal-error{padding:16px;background:#2a1515;border:1px solid #7f1d1d;border-radius:8px;color:#f87171;font-size:.82rem;margin-bottom:16px}
 
@@ -455,6 +457,58 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
     <div class="modal-btns">
       <button class="btn-cancel" onclick="closeNewEventModal()">Cancelar</button>
       <button class="btn-confirm" id="ev-save-btn" onclick="saveEvent()">📅 Crear reunión</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Generar Demo -->
+<div class="modal-overlay" id="demo-modal">
+  <div class="modal" style="width:520px;max-width:95vw">
+    <div id="demo-form-section">
+      <h3>📊 Generar Demo</h3>
+      <p id="demo-lead-hint" style="margin-bottom:16px"></p>
+      <label class="modal-label">Nombre del negocio *</label>
+      <input type="text" id="demo-biz" placeholder="Ej: Bicicletería El Rayo">
+      <label class="modal-label">Rubro / qué venden *</label>
+      <input type="text" id="demo-rubro" placeholder="Ej: Bicicletería e-commerce, Restaurante, Clínica dental">
+      <div class="modal-row">
+        <div>
+          <label class="modal-label">Ciudad</label>
+          <input type="text" id="demo-city" placeholder="Montevideo">
+        </div>
+        <div>
+          <label class="modal-label">Color principal (hex, opcional)</label>
+          <input type="text" id="demo-color" placeholder="#2563EB">
+        </div>
+      </div>
+      <div id="demo-conv-info" style="display:none;background:#0a1628;border:1px solid #1e3a5f;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:.8rem;color:#94a3b8"></div>
+      <div class="modal-btns">
+        <button class="btn-cancel" onclick="closeDemoModal()">Cancelar</button>
+        <button class="btn-confirm" id="demo-gen-btn" onclick="startDemoGeneration()">✨ Generar Demo</button>
+      </div>
+    </div>
+    <div id="demo-loading-section" style="display:none;text-align:center;padding:36px 0">
+      <div style="font-size:2.5rem;margin-bottom:16px">🤖</div>
+      <div style="font-weight:700;font-size:1rem;margin-bottom:8px">Generando demo con Claude...</div>
+      <div style="color:#64748b;font-size:.84rem;line-height:1.6">Esto tarda entre 30 y 60 segundos.<br>Por favor esperá sin cerrar la ventana.</div>
+    </div>
+    <div id="demo-result-section" style="display:none">
+      <h3 style="margin-bottom:16px">✅ Demo lista</h3>
+      <div style="background:#0a1628;border:1px solid #1e3a5f;border-radius:8px;padding:14px;margin-bottom:16px">
+        <div style="font-size:.7rem;color:#475569;text-transform:uppercase;letter-spacing:.8px;margin-bottom:7px">URL pública</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <a id="demo-url-link" href="#" target="_blank" style="color:#06B6D4;font-size:.85rem;word-break:break-all;flex:1"></a>
+          <button onclick="copyDemoUrl()" style="background:#1e293b;border:1px solid #334155;border-radius:6px;padding:5px 10px;font-size:.72rem;color:#94a3b8;cursor:pointer;flex-shrink:0">Copiar</button>
+        </div>
+      </div>
+      <div id="demo-q-section" style="display:none">
+        <div style="font-size:.7rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px">Preguntas si acepta el presupuesto</div>
+        <ol id="demo-q-list" style="padding-left:18px;font-size:.82rem;color:#94a3b8;line-height:1.9"></ol>
+      </div>
+      <div class="modal-btns" style="margin-top:20px">
+        <button class="btn-cancel" onclick="closeDemoModal()">Cerrar</button>
+        <button class="btn-confirm" onclick="window.open(document.getElementById('demo-url-link').href,'_blank')">🔗 Abrir Demo</button>
+      </div>
     </div>
   </div>
 </div>
@@ -845,10 +899,13 @@ async function renderCalendar() {
       ? `<div class="cal-cell other-month"></div>`
       : `<div class="cal-cell${c.isToday?' today':''}">
           <div class="cal-cell-day">${c.dayNum}</div>
-          ${c.events.map(ev => `
-            <div class="cal-event-chip ${ev.meeting_url?'meet':'regular'}" title="${esc((ev.time?ev.time+' ':'')+ev.title)}">
+          ${c.events.map(ev => {
+            const ph = extractPhoneFromTitle(ev.title||'');
+            return `<div class="cal-event-chip ${ev.meeting_url?'meet':'regular'}" title="${esc((ev.time?ev.time+' ':'')+ev.title)}">
               ${ev.time?esc(ev.time)+' ':''}${ev.meeting_url?'🎥 ':''}${esc(ev.title||'')}
-            </div>`).join('')}
+              ${ph?`<button class="cal-demo-btn" onclick="event.stopPropagation();openDemoModal('${ph}','${esc(ev.title||'')}')">📊 Generar Demo</button>`:''}
+            </div>`;
+          }).join('')}
         </div>`
     ).join('')}
   </div>`;
@@ -886,6 +943,95 @@ async function saveEvent() {
   if (d.meet_url) {
     if (confirm('Reunión creada. ¿Abrir Google Meet ahora?')) window.open(d.meet_url, '_blank');
   }
+}
+
+// ========== Demo generation ==========
+let _demoMessages = [];
+let _demoPhone = '';
+
+function extractPhoneFromTitle(title) {
+  const m = title.match(/\+?\d[\d\s\-]{7,14}\d/);
+  return m ? m[0].replace(/[\s\-]/g,'') : null;
+}
+
+async function openDemoModal(phone, eventTitle) {
+  _demoPhone = phone;
+  _demoMessages = [];
+  document.getElementById('demo-modal').classList.add('open');
+  document.getElementById('demo-form-section').style.display = '';
+  document.getElementById('demo-loading-section').style.display = 'none';
+  document.getElementById('demo-result-section').style.display = 'none';
+  document.getElementById('demo-biz').value = '';
+  document.getElementById('demo-rubro').value = '';
+  document.getElementById('demo-city').value = '';
+  document.getElementById('demo-color').value = '';
+  document.getElementById('demo-lead-hint').textContent = 'Cargando datos del lead ' + phone + '...';
+  document.getElementById('demo-conv-info').style.display = 'none';
+  try {
+    const r = await fetch('/api/wa/lead-by-phone/' + encodeURIComponent(phone));
+    const d = await r.json();
+    if (d.lead) {
+      const l = d.lead;
+      document.getElementById('demo-lead-hint').textContent = 'Lead: ' + (l.name||phone) + ' · Estado: ' + (l.state||'?');
+      if (l.business_name) document.getElementById('demo-biz').value = l.business_name;
+      if (l.city) document.getElementById('demo-city').value = l.city;
+      _demoMessages = d.messages || [];
+      if (_demoMessages.length) {
+        const infoEl = document.getElementById('demo-conv-info');
+        infoEl.textContent = '✅ ' + _demoMessages.length + ' mensajes cargados de la conversación de WhatsApp.';
+        infoEl.style.display = '';
+      }
+    } else {
+      document.getElementById('demo-lead-hint').textContent = 'Lead: ' + phone + ' (no encontrado en bot DB — completá los campos manualmente)';
+    }
+  } catch(e) {
+    document.getElementById('demo-lead-hint').textContent = phone + ' — completá los campos manualmente.';
+  }
+}
+
+function closeDemoModal() {
+  document.getElementById('demo-modal').classList.remove('open');
+}
+
+async function startDemoGeneration() {
+  const biz = document.getElementById('demo-biz').value.trim();
+  const rubro = document.getElementById('demo-rubro').value.trim();
+  if (!biz || !rubro) { alert('El nombre del negocio y el rubro son obligatorios.'); return; }
+  const city = document.getElementById('demo-city').value.trim();
+  const color = document.getElementById('demo-color').value.trim();
+  const leadHint = document.getElementById('demo-lead-hint').textContent;
+  const leadName = leadHint.includes('Lead:') ? leadHint.split('Lead:')[1].split('·')[0].trim() : '';
+
+  document.getElementById('demo-form-section').style.display = 'none';
+  document.getElementById('demo-loading-section').style.display = '';
+
+  try {
+    const r = await fetch('/api/demo/generate', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({phone: _demoPhone, business_name: biz, rubro, city, client_color: color, lead_name: leadName, messages: _demoMessages})
+    });
+    const d = await r.json();
+    document.getElementById('demo-loading-section').style.display = 'none';
+    if (!d.ok) { document.getElementById('demo-form-section').style.display = ''; alert('Error: '+(d.error||'Error desconocido')); return; }
+    document.getElementById('demo-result-section').style.display = '';
+    const urlEl = document.getElementById('demo-url-link');
+    urlEl.href = d.url; urlEl.textContent = d.url;
+    if (d.questions && d.questions.length) {
+      const qs = document.getElementById('demo-q-section');
+      qs.style.display = '';
+      document.getElementById('demo-q-list').innerHTML = d.questions.map(q=>`<li>${q}</li>`).join('');
+    }
+  } catch(e) {
+    document.getElementById('demo-loading-section').style.display = 'none';
+    document.getElementById('demo-form-section').style.display = '';
+    alert('Error generando demo: ' + e.message);
+  }
+}
+
+function copyDemoUrl() {
+  const url = document.getElementById('demo-url-link').href;
+  navigator.clipboard.writeText(url).then(() => alert('URL copiada ✅')).catch(() => alert(url));
 }
 
 // Initial load
@@ -1349,6 +1495,66 @@ def api_calendar_events():
         ).execute()
         meet_url = created.get("hangoutLink", "")
         return jsonify({"ok": True, "meet_url": meet_url})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)})
+
+
+# ---------------------------------------------------------------------------
+# Demo generation routes
+# ---------------------------------------------------------------------------
+
+@app.route("/api/wa/lead-by-phone/<path:phone>")
+def api_lead_by_phone(phone):
+    conn, err = _get_bot_conn()
+    if err:
+        return jsonify({"error": err}), 500
+    try:
+        import psycopg2.extras
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""
+                SELECT id, phone, name, state, score,
+                       business_type, main_problem, team_size, budget, urgency,
+                       business_name, city
+                FROM leads WHERE phone = %s
+            """, (phone,))
+            lead = cur.fetchone()
+            if not lead:
+                return jsonify({"error": "Lead no encontrado"}), 404
+            cur.execute("""
+                SELECT m.direction, m.content, m.sent_at
+                FROM messages m
+                JOIN leads l ON l.id = m.lead_id
+                WHERE l.phone = %s
+                ORDER BY m.sent_at ASC
+                LIMIT 120
+            """, (phone,))
+            msgs = [dict(r) for r in cur.fetchall()]
+        return jsonify({"lead": dict(lead), "messages": msgs})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+
+@app.route("/api/demo/generate", methods=["POST"])
+def api_demo_generate():
+    data = request.get_json() or {}
+    business_name = data.get("business_name", "").strip()
+    rubro = data.get("rubro", "").strip()
+    if not business_name or not rubro:
+        return jsonify({"ok": False, "error": "Nombre del negocio y rubro son obligatorios"})
+    try:
+        import demo_ai
+        result = demo_ai.generate_and_deploy(
+            phone=data.get("phone", ""),
+            business_name=business_name,
+            rubro=rubro,
+            city=data.get("city", ""),
+            client_color=data.get("client_color", ""),
+            lead_name=data.get("lead_name", ""),
+            messages=data.get("messages", []),
+        )
+        return jsonify({"ok": True, **result})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)})
 
