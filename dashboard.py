@@ -96,27 +96,31 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .panel{display:none}
 .panel.active{display:block}
 @media(max-width:768px){
+  .topbar{position:fixed;top:0;left:0;right:0;display:flex}
   .sidebar{transform:translateX(-220px)}
   .sidebar.open{transform:translateX(0)}
   .sidebar-backdrop.open{display:block}
-  .topbar{display:flex}
-  .main{margin-left:0;padding:14px}
-  .stats{grid-template-columns:1fr 1fr}
+  .main{margin-left:0;padding:14px;padding-top:62px}
   .page-header h1{font-size:1.1rem}
+  .stats{grid-template-columns:1fr 1fr}
   .filters{gap:6px}
   .search-box{width:100%;margin-left:0}
   .table-wrap{overflow-x:auto}
-  .table-header,.table-row{grid-template-columns:1.8fr 1fr 1.4fr 1.2fr;min-width:480px}
+  .table-header span:nth-child(3),.table-row>div:nth-child(3){display:none}
+  .table-header,.table-row{grid-template-columns:2fr 1.1fr 1.4fr}
   .wa-container{grid-template-columns:1fr;height:auto}
-  .wa-list{max-height:260px;border-right:none;border-bottom:1px solid #1e293b}
-  .wa-chat{height:420px}
+  .wa-list{max-height:240px;border-right:none;border-bottom:1px solid #1e293b}
+  .wa-chat{height:calc(100vh - 380px);min-height:320px}
   .cal-header{flex-wrap:wrap;gap:8px}
   .cal-header h1{width:100%;font-size:1.1rem}
   .modal{width:95vw!important;max-width:95vw!important}
   .modal-row{grid-template-columns:1fr}
+  .pipeline-input-row{flex-direction:column}
+  .max-input{width:100%}
 }
 @media(max-width:480px){
   .stats{grid-template-columns:1fr}
+  .pitch-btn,.mail-btn,.contact-btn{padding:4px 7px;font-size:.67rem}
 }
 
 /* ---- Leads panel ---- */
