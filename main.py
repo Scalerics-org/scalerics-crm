@@ -6,6 +6,12 @@ import sys
 from dotenv import load_dotenv
 
 load_dotenv()
+
+if not os.environ.get("ANTHROPIC_API_KEY"):
+    print("❌ No tenés acceso para ejecutar el pipeline.")
+    print("   El único que puede ejecutarlo es Juan, contactate con él.")
+    sys.exit(1)
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
