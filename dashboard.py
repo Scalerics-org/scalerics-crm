@@ -467,6 +467,11 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
     <div id="demo-form-section">
       <h3>📊 Generar Demo</h3>
       <p id="demo-lead-hint" style="margin-bottom:16px"></p>
+      <label class="modal-label">Teléfono WhatsApp del lead</label>
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <input type="text" id="demo-phone" placeholder="59899123456" style="margin-bottom:0;flex:1">
+        <button onclick="fetchLeadForDemo()" style="background:#1e3a5f;border:1px solid #2d5a8f;border-radius:8px;padding:0 14px;color:#60a5fa;font-size:.8rem;cursor:pointer;white-space:nowrap">Buscar lead</button>
+      </div>
       <label class="modal-label">Nombre del negocio *</label>
       <input type="text" id="demo-biz" placeholder="Ej: Bicicletería El Rayo">
       <label class="modal-label">Rubro / qué venden *</label>
@@ -903,7 +908,7 @@ async function renderCalendar() {
             const ph = extractPhoneFromTitle(ev.title||'');
             return `<div class="cal-event-chip ${ev.meeting_url?'meet':'regular'}" title="${esc((ev.time?ev.time+' ':'')+ev.title)}">
               ${ev.time?esc(ev.time)+' ':''}${ev.meeting_url?'🎥 ':''}${esc(ev.title||'')}
-              ${ph?`<button class="cal-demo-btn" onclick="event.stopPropagation();openDemoModal('${ph}','${esc(ev.title||'')}')">📊 Generar Demo</button>`:''}
+              <button class="cal-demo-btn" onclick="event.stopPropagation();openDemoModal('${ph||''}','${esc(ev.title||'')}')">📊 Generar Demo</button>
             </div>`;
           }).join('')}
         </div>`
@@ -954,8 +959,8 @@ function extractPhoneFromTitle(title) {
   return m ? m[0].replace(/[\s\-]/g,'') : null;
 }
 
-async function openDemoModal(phone, eventTitle) {
-  _demoPhone = phone;
+function openDemoModal(phone, eventTitle) {
+  _demoPhone = phone || '';
   _demoMessages = [];
   document.getElementById('demo-modal').classList.add('open');
   document.getElementById('demo-form-section').style.display = '';
@@ -965,8 +970,21 @@ async function openDemoModal(phone, eventTitle) {
   document.getElementById('demo-rubro').value = '';
   document.getElementById('demo-city').value = '';
   document.getElementById('demo-color').value = '';
-  document.getElementById('demo-lead-hint').textContent = 'Cargando datos del lead ' + phone + '...';
   document.getElementById('demo-conv-info').style.display = 'none';
+  document.getElementById('demo-phone').value = phone || '';
+  if (phone) {
+    document.getElementById('demo-lead-hint').textContent = 'Cargando datos del lead ' + phone + '...';
+    fetchLeadForDemo();
+  } else {
+    document.getElementById('demo-lead-hint').textContent = 'Ingresá el teléfono del lead o completá los campos manualmente.';
+  }
+}
+
+async function fetchLeadForDemo() {
+  const phone = document.getElementById('demo-phone').value.trim();
+  if (!phone) { alert('Ingresá un número de teléfono.'); return; }
+  _demoPhone = phone;
+  document.getElementById('demo-lead-hint').textContent = 'Buscando lead ' + phone + '...';
   try {
     const r = await fetch('/api/wa/lead-by-phone/' + encodeURIComponent(phone));
     const d = await r.json();
@@ -978,14 +996,14 @@ async function openDemoModal(phone, eventTitle) {
       _demoMessages = d.messages || [];
       if (_demoMessages.length) {
         const infoEl = document.getElementById('demo-conv-info');
-        infoEl.textContent = '✅ ' + _demoMessages.length + ' mensajes cargados de la conversación de WhatsApp.';
+        infoEl.textContent = '✅ ' + _demoMessages.length + ' mensajes de WhatsApp cargados.';
         infoEl.style.display = '';
       }
     } else {
-      document.getElementById('demo-lead-hint').textContent = 'Lead: ' + phone + ' (no encontrado en bot DB — completá los campos manualmente)';
+      document.getElementById('demo-lead-hint').textContent = phone + ' no encontrado en la DB del bot — completá los campos manualmente.';
     }
   } catch(e) {
-    document.getElementById('demo-lead-hint').textContent = phone + ' — completá los campos manualmente.';
+    document.getElementById('demo-lead-hint').textContent = 'Error buscando lead — completá los campos manualmente.';
   }
 }
 
@@ -1444,6 +1462,11 @@ def api_calendar_events():
                         if ep.get("entryPointType") == "video":
                             meeting_url = ep.get("uri", "")
                             break
+                # Calendly puts the join URL in the location field
+                if not meeting_url:
+                    loc = item.get("location", "")
+                    if loc.startswith("http"):
+                        meeting_url = loc
                 events.append({
                     "id": item.get("id"),
                     "title": item.get("summary", ""),
