@@ -10,3 +10,5 @@ requests
 pytest
 pytest-mock
 flask
+psycopg2-binary
+gunicorn

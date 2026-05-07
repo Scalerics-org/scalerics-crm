@@ -33,6 +33,7 @@ def create_parser() -> argparse.ArgumentParser:
     scrape_p.add_argument("--max", type=int, default=100, help="Máximo de resultados")
 
     subparsers.add_parser("find-emails", help="Buscar emails de los negocios scraped")
+    subparsers.add_parser("generate-pitches", help="Generar texto de pitch WhatsApp por negocio")
     subparsers.add_parser("generate-demos", help="Generar páginas demo con IA")
     subparsers.add_parser("deploy", help="Subir demos a Vercel")
     subparsers.add_parser("send-emails", help="Enviar mails a los negocios")
@@ -51,6 +52,10 @@ def cmd_scrape(args):
 
 def cmd_find_emails(args):
     from email_finder import run
+    run(DB_PATH)
+
+def cmd_generate_pitches(args):
+    from pitch_generator import run
     run(DB_PATH)
 
 def cmd_generate_demos(args):
@@ -75,12 +80,10 @@ def cmd_dashboard(args):
 def cmd_run_all(args):
     count = cmd_scrape(args)
     if not count:
-        logging.getLogger(__name__).warning("Scraping no encontró negocios sin web. Abortando pipeline.")
+        logging.getLogger(__name__).warning("Scraping no encontró negocios. Abortando pipeline.")
         return
     cmd_find_emails(args)
-    cmd_generate_demos(args)
-    cmd_deploy(args)
-    cmd_send_emails(args)
+    cmd_generate_pitches(args)
 
 def main():
     parser = create_parser()
@@ -88,6 +91,7 @@ def main():
     commands = {
         "scrape": cmd_scrape,
         "find-emails": cmd_find_emails,
+        "generate-pitches": cmd_generate_pitches,
         "generate-demos": cmd_generate_demos,
         "deploy": cmd_deploy,
         "send-emails": cmd_send_emails,

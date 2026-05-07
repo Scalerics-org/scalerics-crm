@@ -1,6 +1,9 @@
 import logging
 import random
+import re
 import time
+import unicodedata
+import urllib.parse
 
 from dotenv import load_dotenv
 from playwright.sync_api import sync_playwright
@@ -17,6 +20,22 @@ USER_AGENTS = [
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
 ]
 
+# Domains that are NOT a real business website (directories, social, delivery, etc.)
+DIRECTORY_DOMAINS = {
+    "google.com", "maps.google.com", "facebook.com", "instagram.com",
+    "twitter.com", "x.com", "tiktok.com", "youtube.com", "linkedin.com",
+    "tripadvisor.com", "tripadvisor.com.ar", "tripadvisor.com.uy",
+    "yelp.com", "foursquare.com", "cybo.com",
+    "paginasamarillas.com.uy", "paginasamarillas.com",
+    "infonegocios.com.uy", "movete.com.uy", "gimnasios.com.uy",
+    "mercadofitness.com", "localgymsandfitness.com", "fitfit.fitness",
+    "mercadolibre.com", "mercadolibre.com.uy",
+    "carta.menu", "restorando.com", "pedidosya.com", "rappi.com", "glovo.com",
+    "booking.com", "airbnb.com", "whatsapp.com",
+    "dle.rae.es", "wordreference.com", "thefreedictionary.com",
+    "definicion.de", "definiciones-de.com", "significadosweb.com",
+}
+
 def random_delay(min_s: float = 3.0, max_s: float = 8.0) -> None:
     time.sleep(random.uniform(min_s, max_s))
 
@@ -26,6 +45,59 @@ def extract_text(page, selector: str) -> str:
         return el.inner_text().strip() if el else ""
     except Exception:
         return ""
+
+def _normalize(text: str) -> str:
+    nfkd = unicodedata.normalize("NFKD", text)
+    return "".join(c for c in nfkd if not unicodedata.combining(c)).lower()
+
+def _domain_from_cite(cite_text: str) -> str:
+    """Extract bare domain from a Bing cite element like 'https://www.example.com › page'."""
+    part = cite_text.split("›")[0].strip()
+    try:
+        host = urllib.parse.urlparse(part).hostname or part
+        return host.lower().removeprefix("www.")
+    except Exception:
+        return part.lower().removeprefix("www.")
+
+def _name_in_domain(name: str, domain: str) -> bool:
+    """True if any significant word from the business name appears in the domain."""
+    norm_domain = _normalize(domain)
+    words = [w for w in re.split(r"\W+", _normalize(name)) if len(w) > 3]
+    return any(w in norm_domain for w in words)
+
+def verify_no_website(name: str, city: str, page) -> bool:
+    """
+    Returns True if confident the business has no real website.
+    Uses Bing cite elements + business name matching.
+    """
+    query = f"{name} {city} Uruguay"
+    url = "https://www.bing.com/search?q=" + urllib.parse.quote(query)
+    try:
+        page.goto(url, wait_until="domcontentloaded", timeout=20000)
+        random_delay(2, 4)
+
+        cites = page.query_selector_all("cite")
+        for cite in cites[:8]:
+            raw = cite.inner_text().strip()
+            domain = _domain_from_cite(raw)
+            if not domain:
+                continue
+            # Skip known directories
+            if any(d in domain for d in DIRECTORY_DOMAINS):
+                continue
+            # If the domain contains words from the business name → it's their site
+            if _name_in_domain(name, domain):
+                logger.debug(f"Web encontrada (nombre coincide) para {name}: {domain}")
+                return False
+            # Any non-directory .com.uy or .uy domain in top 3 results → likely their site
+            if cites.index(cite) < 3 and (domain.endswith(".com.uy") or domain.endswith(".uy")):
+                logger.debug(f"Web encontrada (.uy en top 3) para {name}: {domain}")
+                return False
+
+        return True
+    except Exception as e:
+        logger.debug(f"Error en verificación Bing para {name}: {e}")
+        return True
 
 def extract_business_data(page) -> dict:
     name = extract_text(page, "h1.DUwDvf")
@@ -54,8 +126,10 @@ def extract_business_data(page) -> dict:
     except ValueError:
         review_count = None
 
+    maps_website_url = None
     website_el = page.query_selector("[data-item-id='authority']")
-    has_website = website_el is not None
+    if website_el:
+        maps_website_url = website_el.get_attribute("href") or None
 
     facebook_url = None
     instagram_url = None
@@ -83,7 +157,7 @@ def extract_business_data(page) -> dict:
         "maps_url": page.url,
         "facebook_url": facebook_url,
         "instagram_url": instagram_url,
-        "has_website": has_website,
+        "maps_website_url": maps_website_url,
     }
 
 def scrape_google_maps(query: str, max_results: int, db_path: str) -> int:
@@ -136,16 +210,35 @@ def scrape_google_maps(query: str, max_results: int, db_path: str) -> int:
 
                     data = extract_business_data(page)
 
-                    if data["has_website"]:
-                        logger.info(f"Saltando (tiene web): {data['name']}")
+                    # Step 1: Maps shows a website link → definitely has web, skip
+                    if data.get("maps_website_url"):
+                        logger.info(f"Saltando (web en Maps): {data['name']}")
+                        page.go_back(wait_until="domcontentloaded")
+                        page.wait_for_selector(".hfpxzc", timeout=10000)
+                        random_delay()
+                        continue
+
+                    # Step 2: No link on Maps → verify with DuckDuckGo
+                    logger.info(f"Verificando con DDG: {data['name']}")
+                    no_web = verify_no_website(data["name"], data["city"], page)
+
+                    if not no_web:
+                        logger.info(f"Saltando (web encontrada en DDG): {data['name']}")
+                        # Navigate back to Maps results
+                        maps_list_url = f"https://www.google.com/maps/search/{query.replace(' ', '+')}"
+                        page.goto(maps_list_url, wait_until="domcontentloaded", timeout=30000)
+                        page.wait_for_selector(".hfpxzc", timeout=10000)
+                        random_delay(2, 4)
+                        continue
+
+                    # Confirmed: no website → save
+                    business_id = insert_business(db_path, data)
+                    if business_id:
+                        inserted += 1
+                        made_progress = True
+                        logger.info(f"[{inserted}/{max_results}] Guardado: {data['name']}")
                     else:
-                        business_id = insert_business(db_path, data)
-                        if business_id:
-                            inserted += 1
-                            made_progress = True
-                            logger.info(f"[{inserted}/{max_results}] Guardado: {data['name']}")
-                        else:
-                            logger.info(f"Duplicado, ignorado: {data['name']}")
+                        logger.info(f"Duplicado, ignorado: {data['name']}")
 
                     page.go_back(wait_until="domcontentloaded")
                     page.wait_for_selector(".hfpxzc", timeout=10000)
@@ -160,7 +253,6 @@ def scrape_google_maps(query: str, max_results: int, db_path: str) -> int:
                         pass
                     random_delay(2, 4)
 
-            # Scroll para cargar más resultados
             scroll_container = page.query_selector(".m6QErb[aria-label]")
             if scroll_container:
                 scroll_container.evaluate("el => el.scrollBy(0, 1000)")

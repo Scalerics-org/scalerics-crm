@@ -34,7 +34,11 @@ def init_db(db_path: str) -> None:
         try:
             conn.execute("ALTER TABLE businesses ADD COLUMN notes TEXT")
         except sqlite3.OperationalError:
-            pass  # column already exists
+            pass
+        try:
+            conn.execute("ALTER TABLE businesses ADD COLUMN pitch_text TEXT")
+        except sqlite3.OperationalError:
+            pass
         conn.commit()
     finally:
         conn.close()
@@ -76,7 +80,7 @@ ALLOWED_COLUMNS = {
     "name", "category", "address", "city", "phone", "email", "rating",
     "review_count", "hours", "maps_url", "facebook_url", "instagram_url",
     "color_scheme", "demo_html_path", "demo_url", "status", "error_message",
-    "scraped_at", "email_sent_at", "notes",
+    "scraped_at", "email_sent_at", "notes", "pitch_text",
 }
 
 def update_business(db_path: str, business_id: int, **fields) -> None:
