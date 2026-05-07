@@ -205,7 +205,7 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .wa-chat-name{font-size:.9rem;font-weight:700;color:#fff}
 .wa-chat-phone{font-size:.72rem;color:#475569;margin-top:2px}
 .wa-messages{flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:8px}
-.wa-bubble{max-width:68%;padding:9px 13px;border-radius:12px;font-size:.84rem;line-height:1.5}
+.wa-bubble{max-width:68%;padding:9px 13px;border-radius:12px;font-size:.84rem;line-height:1.5;white-space:pre-wrap;word-break:break-word}
 .wa-bubble-in{background:#1e293b;color:#e2e8f0;align-self:flex-start;border-bottom-left-radius:3px}
 .wa-bubble-out{background:#0a3a5c;color:#e2e8f0;align-self:flex-end;border-bottom-right-radius:3px}
 .wa-bubble-time{font-size:.62rem;color:#475569;margin-top:4px}
@@ -701,11 +701,11 @@ async function loadWaMessages(phone) {
   const el = document.getElementById('wa-messages');
   if (!d.length) { el.innerHTML = '<div style="color:#334155;text-align:center;padding:20px">Sin mensajes</div>'; return; }
   el.innerHTML = d.map(m => `
-    <div style="display:flex;flex-direction:column;align-items:${m.direction==='outbound'?'flex-end':'flex-start'}">
-      <div class="wa-bubble ${m.direction==='outbound'?'wa-bubble-out':'wa-bubble-in'}">${esc(m.content||'')}</div>
+    <div style="display:flex;flex-direction:column;align-items:${m.direction==='out'?'flex-end':'flex-start'}">
+      <div class="wa-bubble ${m.direction==='out'?'wa-bubble-out':'wa-bubble-in'}">${esc(m.content||'')}</div>
       <div class="wa-bubble-time">${fmtWaTime(m.created_at)}</div>
     </div>`).join('');
-  el.scrollTop = el.scrollHeight;
+  setTimeout(() => { el.scrollTop = el.scrollHeight; }, 50);
 }
 
 async function sendWaMessage() {
