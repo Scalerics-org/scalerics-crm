@@ -13,7 +13,7 @@ import requests as http_requests
 from dotenv import load_dotenv
 from flask import Flask, jsonify, redirect, render_template_string, request, session, url_for
 
-from database import get_all_businesses, update_business
+from database import get_all_businesses, update_business, delete_business
 
 load_dotenv()
 
@@ -169,6 +169,18 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .contacted-tag{font-size:.72rem;color:#a5b4fc;font-weight:600}
 .no-pitch{font-size:.72rem;color:#1e293b}
 .empty-state{padding:40px;text-align:center;color:#334155;font-size:.9rem}
+.row-sin-contactar{background:#161b27}
+.row-contactado{background:#0d1f33}
+.row-agendo{background:#1f1a0d}
+.row-firmo{background:#0d1f12}
+.row-sin-contactar:hover{background:#1a2234}
+.row-contactado:hover{background:#112438}
+.row-agendo:hover{background:#251f0f}
+.row-firmo:hover{background:#0f2416}
+.status-sel{background:#0f1117;border:1px solid #1e293b;border-radius:6px;padding:4px 6px;font-size:.7rem;color:#94a3b8;font-family:'Inter',sans-serif;cursor:pointer;outline:none;max-width:110px}
+.status-sel:focus{border-color:#0088cc}
+.delete-btn{background:#2a1515;border:none;color:#f87171;padding:5px 8px;border-radius:6px;font-size:.7rem;cursor:pointer;font-family:'Inter',sans-serif}
+.delete-btn:hover{background:#7f1d1d;color:#fff}
 .pipeline-input-row{display:flex;gap:10px;margin-bottom:12px}
 .pipeline-input{flex:1;background:#0f1117;border:1px solid #1e293b;border-radius:8px;padding:10px 14px;font-size:.88rem;color:#e2e8f0;font-family:'Inter',sans-serif;outline:none}
 .pipeline-input::placeholder{color:#334155}
@@ -299,11 +311,11 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
       <div class="stat-card"><div class="stat-label">Contactados</div><div class="stat-val blue" id="stat-contacted">—</div></div>
     </div>
     <div class="filters">
-      <button class="filter-btn active" data-status="">Todos</button>
-      <button class="filter-btn" data-status="email_found">Con email</button>
-      <button class="filter-btn" data-status="no_email">Sin email</button>
-      <button class="filter-btn" data-status="email_sent">Mail enviado</button>
-      <button class="filter-btn" data-status="contacted">Contactados</button>
+      <button class="filter-btn active" data-crm="">Todos</button>
+      <button class="filter-btn" data-crm="sin_contactar">Sin contactar</button>
+      <button class="filter-btn" data-crm="contactado">Contactado</button>
+      <button class="filter-btn" data-crm="agendo">Agendó</button>
+      <button class="filter-btn" data-crm="firmo">Firmó</button>
       <select class="filter-select" id="category-filter">
         <option value="">Todos los rubros</option>
       </select>
@@ -472,7 +484,7 @@ function showPanel(name) {
 }
 
 // ========== Leads panel ==========
-let currentStatus = '';
+let currentCrm = '';
 let currentCategory = '';
 let currentSearch = '';
 let contactingId = null;
@@ -496,7 +508,7 @@ async function loadStats() {
 
 async function loadLeads() {
   const params = new URLSearchParams();
-  if (currentStatus) params.set('status', currentStatus);
+  if (currentCrm) params.set('crm_status', currentCrm);
   if (currentCategory) params.set('category', currentCategory);
   if (currentSearch) params.set('search', currentSearch);
   const r = await fetch('/api/leads?' + params);
@@ -505,8 +517,11 @@ async function loadLeads() {
   leads.forEach(b => { if (b.pitch_text) pitchMap[b.id] = b.pitch_text; });
   const body = document.getElementById('table-body');
   if (!leads.length) { body.innerHTML = '<div class="empty-state">No hay leads con estos filtros</div>'; return; }
-  body.innerHTML = leads.map(b => `
-    <div class="table-row">
+  const crmLabels = {sin_contactar:'Sin contactar',contactado:'Contactado',agendo:'Agendó',firmo:'Firmó'};
+  body.innerHTML = leads.map(b => {
+    const crm = b.crm_status || 'sin_contactar';
+    return `
+    <div class="table-row row-${crm}">
       <div>
         <div class="biz-name">${esc(b.name||'')}</div>
         <div class="biz-sub">${esc(b.category||'')}${b.city ? ' · '+esc(b.city) : ''}</div>
@@ -514,11 +529,14 @@ async function loadLeads() {
       <div>${b.phone ? `<a class="phone-val" href="https://wa.me/${waNum(b.phone)}" target="_blank" title="Abrir WhatsApp">${esc(b.phone)}</a>` : '<span class="no-val">—</span>'}</div>
       <div>${b.email ? `<span class="email-val">${esc(b.email)}</span>` : '<span class="no-val">—</span>'}</div>
       <div class="actions">
-        ${b.pitch_text ? `<button class="pitch-btn" onclick="openPitchModal(${b.id},'${esc(b.name||'')}')">📋 Pitch</button>` : '<span class="no-pitch">Sin pitch</span>'}
-        ${b.email && b.status !== 'email_sent' && b.status !== 'contacted' ? `<button class="mail-btn" onclick="sendMail(${b.id},this)">📧 Enviar</button>` : ''}
-        ${b.status !== 'contacted' ? `<button class="contact-btn" onclick="openContact(${b.id},'${esc(b.name||'')}')">✓</button>` : '<span class="contacted-tag">✓</span>'}
+        <select class="status-sel" onchange="setCrmStatus(${b.id},this.value)">
+          ${['sin_contactar','contactado','agendo','firmo'].map(s=>`<option value="${s}"${crm===s?' selected':''}>${crmLabels[s]}</option>`).join('')}
+        </select>
+        ${b.pitch_text ? `<button class="pitch-btn" onclick="openPitchModal(${b.id},'${esc(b.name||'')}')">📋</button>` : ''}
+        ${b.email && b.status !== 'email_sent' ? `<button class="mail-btn" onclick="sendMail(${b.id},this)">📧</button>` : ''}
+        <button class="delete-btn" onclick="deleteLead(${b.id},'${esc(b.name||'')}')">🗑</button>
       </div>
-    </div>`).join('');
+    </div>`}).join('');
 }
 
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
@@ -563,6 +581,17 @@ async function confirmContact() {
   const note = document.getElementById('modal-note').value;
   await fetch(`/api/leads/${contactingId}/contact`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({note})});
   closeContactModal(); loadStats(); loadLeads();
+}
+
+async function setCrmStatus(id, status) {
+  await fetch(`/api/leads/${id}/crm-status`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({crm_status:status})});
+  loadStats();
+}
+
+async function deleteLead(id, name) {
+  if (!confirm(`¿Eliminar "${name}"? Esta acción no se puede deshacer.`)) return;
+  await fetch(`/api/leads/${id}`, {method:'DELETE'});
+  loadStats(); loadLeads();
 }
 
 function openPipelineModal() { document.getElementById('pipeline-modal').classList.add('open'); }
@@ -624,7 +653,7 @@ document.querySelectorAll('.filter-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-    currentStatus = btn.dataset.status;
+    currentCrm = btn.dataset.crm;
     loadLeads();
   });
 });
@@ -913,16 +942,32 @@ def index():
 @app.route("/api/leads")
 def api_leads():
     businesses = get_all_businesses(_db_path)
-    status = request.args.get("status")
+    crm_status = request.args.get("crm_status")
     category = request.args.get("category")
     search = (request.args.get("search") or "").lower()
-    if status:
-        businesses = [b for b in businesses if b.get("status") == status]
+    if crm_status:
+        businesses = [b for b in businesses if (b.get("crm_status") or "sin_contactar") == crm_status]
     if category:
         businesses = [b for b in businesses if (b.get("category") or "").lower() == category.lower()]
     if search:
         businesses = [b for b in businesses if search in (b.get("name") or "").lower()]
     return jsonify(businesses)
+
+
+@app.route("/api/leads/<int:biz_id>/crm-status", methods=["POST"])
+def api_crm_status(biz_id):
+    data = request.get_json() or {}
+    crm_status = data.get("crm_status", "sin_contactar")
+    if crm_status not in ("sin_contactar", "contactado", "agendo", "firmo"):
+        return jsonify({"ok": False, "error": "Estado inválido"})
+    update_business(_db_path, biz_id, crm_status=crm_status)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/leads/<int:biz_id>", methods=["DELETE"])
+def api_delete_lead(biz_id):
+    delete_business(_db_path, biz_id)
+    return jsonify({"ok": True})
 
 
 @app.route("/api/leads/<int:biz_id>/contact", methods=["POST"])
