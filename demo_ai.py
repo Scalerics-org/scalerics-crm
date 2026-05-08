@@ -34,48 +34,56 @@ def _build_prompt(business_name: str, rubro: str, city: str, client_color: str,
 
     slug = re.sub(r"[^a-z0-9]", "", business_name.lower())[:20] or "negocio"
 
-    return f"""HTML completo: presentación de ventas interactiva para "{business_name}" ({rubro}, {city}).
+    browser_frame = (
+        f'<div style="width:100%;max-width:800px;border-radius:12px;overflow:hidden;'
+        f'box-shadow:0 28px 80px rgba(0,0,0,.8),0 0 0 1px rgba(255,255,255,.06)">'
+        f'<div style="background:#0d1117;padding:9px 14px;display:flex;align-items:center;gap:8px;border-bottom:1px solid rgba(255,255,255,.05)">'
+        f'<span style="width:11px;height:11px;border-radius:50%;background:#FF5F57;display:inline-block"></span>'
+        f'<span style="width:11px;height:11px;border-radius:50%;background:#FEBC2E;display:inline-block"></span>'
+        f'<span style="width:11px;height:11px;border-radius:50%;background:#28C840;display:inline-block"></span>'
+        f'<div style="flex:1;background:#161b22;border:1px solid rgba(255,255,255,.07);border-radius:5px;padding:4px 10px;font-size:11px;font-family:monospace;color:#64748b">🔒 www.{slug}.com.uy</div>'
+        f'</div><div style="height:400px;overflow:hidden">'
+    )
+    browser_close = '</div></div>'
+
+    return f"""HTML completo: presentación de ventas para "{business_name}" ({rubro}, {city}).
 
 LEAD: {lead_name} | {color_hint}
+WHATSAPP: {conv}
 
-WHATSAPP (personalizá con esto):
-{conv}
+TÉCNICO: 8 slides, position:absolute, opacity 0→1 (0.5s ease), progress bar #06B6D4 arriba, nav teclado ←→ + btns prev/next + dots (activo=píldora cyan), fondo #0F1419, DM Sans (Google Fonts), Font Awesome 6 CDN, logo exactamente: <img src="{_LOGO_PLACEHOLDER}" style="height:34px;object-fit:contain">.
 
-TÉCNICO: 10 slides, position:absolute, opacity 0→1 (0.5s ease), progress bar #06B6D4, nav ←→ + prev/next + dots (activo=píldora), fondo #0F1419, Google Fonts DM Sans+Cormorant, Font Awesome 6 CDN, logo: <img src="{_LOGO_PLACEHOLDER}" style="height:36px;object-fit:contain">.
+S1-PORTADA: Logo Scalerics arriba izq. H1 grande: "Tu web, {business_name}". Bajada 1 línea personalizada. 3 bullets con íconos FA relevantes. Glow cyan circular en fondo.
 
-SLIDES:
+S2-PROBLEMA (badge rojo "Hoy"): Título impactante. 3 cards glassmorphism (bg rgba(255,255,255,.04), backdrop-filter blur(12px), border 1px solid rgba(255,255,255,.07), border-radius 1.1rem) con problemas CONCRETOS de un {rubro} sin web.
 
-S1-PORTADA: Logo Scalerics. H1: "Tu presencia online, {business_name}". Bajada personalizada. 4 bullets FA-icons en fila. 2 glows circulares cyan+color rubro.
+S3-SOLUCIÓN (badge cyan "Lo que hacemos"): Título. 4 ítems: círculo cyan con ✓ + texto de entregable real para {rubro}. Abajo: 2 stats inline (números grandes, ej: "83% de compradores busca online antes de ir").
 
-S2-PROBLEMA (tag rojo): Título impactante. 3 cards glassmorphism (bg:rgba(255,255,255,.04);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.07);border-radius:1.2rem) con problemas reales de {rubro} sin web.
+S4-PROPUESTA 1 — [nombre estilo bold/energético para {rubro}]:
+Línea cursiva de la estética. Luego:
+{browser_frame}[MOCKUP 1 AQUÍ]{browser_close}
 
-S3-SOLUCIÓN (tag cyan): Título. 4 checkmarks (círculo cyan+✓) con entregables específicos de {rubro}.
+S5-PROPUESTA 2 — [nombre estilo clean/moderno]:
+Línea cursiva. Luego mismo frame, diseño MUY diferente al anterior.
+{browser_frame}[MOCKUP 2 AQUÍ]{browser_close}
 
-S4-PROPUESTA 1 [nombre de estilo para {rubro}]: Línea en cursiva de la estética. Browser frame:
-<div style="width:100%;max-width:820px;border-radius:14px;overflow:hidden;box-shadow:0 30px 90px rgba(0,0,0,.75),0 0 0 1px rgba(255,255,255,.06)"><div style="background:#0d1117;padding:10px 14px;display:flex;align-items:center;gap:10px;border-bottom:1px solid rgba(255,255,255,.05)"><span style="width:11px;height:11px;border-radius:50%;background:#FF5F57;display:inline-block"></span><span style="width:11px;height:11px;border-radius:50%;background:#FEBC2E;display:inline-block"></span><span style="width:11px;height:11px;border-radius:50%;background:#28C840;display:inline-block"></span><div style="flex:1;background:#161b22;border:1px solid rgba(255,255,255,.07);border-radius:6px;padding:5px 12px;font-size:11px;font-family:monospace;color:#64748b">🔒 www.{slug}.com.uy</div></div><div style="height:420px;overflow:hidden">[MOCKUP 1]</div></div>
+S6-PROPUESTA 3 — [nombre estilo premium/elegante]:
+Línea cursiva. Tercer frame, máximo contraste con S4 y S5.
+{browser_frame}[MOCKUP 3 AQUÍ]{browser_close}
 
-S5-PROPUESTA 2 [estilo diferente]: Mismo frame. Paleta+tipografía+layout completamente distintos.
+S7-INVERSIÓN: Título "¿Cuánto cuesta?". Card central con rango USD + "Sin compromiso". Debajo: 2 columnas, 4 deliverables con ícono FA cada uno (específicos para {rubro}). CTA btn "Quiero mi web".
 
-S6-PROPUESTA 3 [estilo más diferente]: Tercer frame. Máximo contraste con S4 y S5.
+S8-PRÓXIMOS PASOS: "¿Arrancamos, {lead_name}?" centrado grande. Btn WA verde grande (href="https://wa.me/59899000000" target="_blank"). Línea: hola@scalerics.com. Tagline pequeño: "Scalerics — Tu negocio, online."
 
-S7-STATS: 3 cards con números grandes (% verosímiles para {rubro}). Título "¿Por qué una web hoy?".
+MOCKUPS (S4-S6) — CRÍTICO, SIN EXCEPCIONES:
+Cada mockup: (1) navbar: fondo sólido, nombre negocio bold a la izq, 1 btn CTA a la der — SIN lista de links para ahorrar espacio; (2) hero: fondo gradiente fuerte, H1 grande impactante, subtítulo 1 línea, 1 btn CTA; (3) grid 3 productos: cada producto = emoji 64px + nombre real + precio $UY real + btn "Ver más". NADA MÁS (no footer, no about).
+Los 3 estilos COMPLETAMENTE diferentes en paleta, tipografía y composición: bold+colorido · clean+blanco · dark+serif.
+Productos con nombres y precios reales del rubro (mueblería→"Sillón Chester $24.900", restaurante→"Pasta al pesto $590", etc.).
 
-S8-QUÉ INCLUYE: Grid 2col con 6 ítems (ícono FA + texto), deliverables específicos para {rubro}.
+PREGUNTAS: al final del body:
+<div id="essential-questions" style="display:none"><ol>[6 preguntas concretas para {rubro}: logo?, productos principales?, fotos?, dominio?, redes?, etc.]</ol></div>
 
-S9-INVERSIÓN: Card central con rango USD. CTA agendar. Badge "Sin compromiso".
-
-S10-PRÓXIMOS PASOS: "¿Avanzamos, {lead_name}?" Botón WA verde (href="https://wa.me/59899000000"). hola@scalerics.com. Tagline "Scalerics — Tu negocio, online."
-
-MOCKUPS (S4-S6) — CRÍTICO:
-- Se ven como diseños REALES, NO wireframes
-- Cada uno: navbar (logo+links+CTA btn) + hero (gradiente fuerte, H1 grande, subtítulo, btn CTA) + grid 3 productos (emoji 70px, nombre real, precio $UY coherente, btn)
-- Los 3 estilos MUY diferentes: bold/colorido · clean/blanco · premium/oscuro-serif
-- Nombres de productos reales del rubro (bicicletería→"Trek Marlin 7 $45.990", restaurante→"Pasta al pesto $590", etc.)
-
-PREGUNTAS: al final del body exactamente:
-<div id="essential-questions" style="display:none"><ol>[8 preguntas específicas para {rubro}: logo existente, productos principales, fotos, etc.]</ol></div>
-
-Generá SOLO <!DOCTYPE html>..., sin markdown ni explicaciones."""
+Generá SOLO el HTML completo desde <!DOCTYPE html>. Sin markdown, sin explicaciones."""
 
 
 def generate_and_deploy(
@@ -96,7 +104,7 @@ def generate_and_deploy(
     client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
     msg = client.messages.create(
         model="claude-sonnet-4-6",
-        max_tokens=16000,
+        max_tokens=20000,
         messages=[{"role": "user", "content": prompt}],
         betas=["output-128k-2025-02-19"],
     )
