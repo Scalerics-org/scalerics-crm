@@ -42,6 +42,8 @@ def _content_prompt(business_name, rubro, city, client_color, lead_name, message
 LEAD: {lead_name} | {color_hint}
 WHATSAPP (personalizá con esto): {conv}
 
+⚠️ REGLA CRÍTICA DE JSON: En TODO el HTML que escribas dentro del JSON, usá ÚNICAMENTE comillas simples (') para atributos HTML — style='...', class='...', href='...'. NUNCA uses comillas dobles (") dentro de los valores del JSON porque rompe el parser. Solo se permiten comillas dobles para delimitar claves y valores del propio JSON.
+
 Respondé SOLO con un JSON válido con esta estructura exacta — sin markdown, sin explicaciones:
 
 {{
@@ -201,12 +203,19 @@ def generate_and_deploy(
     try:
         data = json.loads(raw)
     except json.JSONDecodeError as e:
-        # Try to extract JSON if there's extra text
-        m = re.search(r'\{.*\}', raw, re.DOTALL)
-        if m:
-            data = json.loads(m.group())
-        else:
-            raise Exception(f"Claude no devolvió JSON válido: {e}\n\nRaw: {raw[:500]}")
+        try:
+            from json_repair import repair_json
+            data = json.loads(repair_json(raw))
+        except Exception:
+            m = re.search(r'\{.*\}', raw, re.DOTALL)
+            if m:
+                try:
+                    from json_repair import repair_json
+                    data = json.loads(repair_json(m.group()))
+                except Exception:
+                    raise Exception(f"Claude no devolvió JSON válido: {e}\n\nRaw: {raw[:500]}")
+            else:
+                raise Exception(f"Claude no devolvió JSON válido: {e}\n\nRaw: {raw[:500]}")
 
     questions_html = "".join(f"<li>{q}</li>" for q in data.get("questions", []))
 

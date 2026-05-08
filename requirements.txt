@@ -12,3 +12,4 @@ pytest-mock
 flask
 psycopg2-binary
 gunicorn
+json-repair
