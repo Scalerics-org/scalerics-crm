@@ -161,12 +161,17 @@ def generate_and_deploy(
         model="claude-sonnet-4-6",
         max_tokens=16000,
         messages=[{"role": "user", "content": prompt}],
+        betas=["output-128k-2025-02-19"],
     )
 
     html = msg.content[0].text.strip()
     # Strip markdown code fences if Claude wrapped the output
     html = re.sub(r"^```[a-z]*\s*\n?", "", html)
     html = re.sub(r"\n?```\s*$", "", html)
+
+    # Detect truncation: if HTML doesn't close properly, log a warning
+    if not html.rstrip().endswith("</html>"):
+        print(f"[demo_ai] WARNING: HTML may be truncated. stop_reason={msg.stop_reason}, length={len(html)}")
 
     # Inject actual Scalerics logo
     html = html.replace(_LOGO_PLACEHOLDER, _logo_data_uri())
