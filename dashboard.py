@@ -499,6 +499,7 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
     </div>
     <div id="demo-result-section" style="display:none">
       <h3 style="margin-bottom:16px">✅ Demo lista</h3>
+      <div id="demo-cached-badge" style="display:none;background:#1a2e1a;border:1px solid #2d5a2d;border-radius:6px;padding:8px 12px;font-size:.78rem;color:#4ade80;margin-bottom:12px">♻️ Esta demo ya fue generada antes — se reutilizó la existente.</div>
       <div style="background:#0a1628;border:1px solid #1e3a5f;border-radius:8px;padding:14px;margin-bottom:16px">
         <div style="font-size:.7rem;color:#475569;text-transform:uppercase;letter-spacing:.8px;margin-bottom:7px">URL pública</div>
         <div style="display:flex;align-items:center;gap:8px">
@@ -1070,6 +1071,8 @@ async function startDemoGeneration() {
     document.getElementById('demo-result-section').style.display = '';
     const urlEl = document.getElementById('demo-url-link');
     urlEl.href = d.url; urlEl.textContent = d.url;
+    const cachedBadge = document.getElementById('demo-cached-badge');
+    if (cachedBadge) cachedBadge.style.display = d.cached ? '' : 'none';
     if (d.questions && d.questions.length) {
       const qs = document.getElementById('demo-q-section');
       qs.style.display = '';
@@ -1548,6 +1551,64 @@ def api_lead_by_phone(phone):
     return jsonify({"lead": lead, "messages": data.get("messages", [])})
 
 
+def _cal_event_title(business_name: str) -> str:
+    return f"🎨 Demo generada: {business_name}"
+
+
+def _find_existing_demo(business_name: str):
+    """Search Google Calendar for an existing demo event. Returns URL or None."""
+    service, err = _get_calendar_service()
+    if err:
+        return None
+    try:
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+        # Search 90 days back
+        past = now.replace(year=now.year - 1) if False else \
+            datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
+        from datetime import timedelta
+        time_min = (past - timedelta(days=90)).isoformat()
+        time_max = (now + timedelta(days=1)).isoformat()
+        result = service.events().list(
+            calendarId="primary",
+            q=_cal_event_title(business_name),
+            timeMin=time_min,
+            timeMax=time_max,
+            singleEvents=True,
+        ).execute()
+        for ev in result.get("items", []):
+            if _cal_event_title(business_name) in ev.get("summary", ""):
+                desc = ev.get("description", "")
+                for line in desc.splitlines():
+                    if line.startswith("https://"):
+                        return line.strip()
+    except Exception:
+        pass
+    return None
+
+
+def _register_demo_in_calendar(business_name: str, url: str, rubro: str, lead_name: str):
+    """Create a calendar event recording the generated demo."""
+    service, err = _get_calendar_service()
+    if err:
+        return
+    try:
+        from datetime import datetime, timezone, timedelta
+        now = datetime.now(timezone.utc)
+        service.events().insert(
+            calendarId="primary",
+            body={
+                "summary": _cal_event_title(business_name),
+                "description": f"{url}\n\nLead: {lead_name}\nRubro: {rubro}",
+                "start": {"dateTime": now.isoformat(), "timeZone": "America/Montevideo"},
+                "end": {"dateTime": (now + timedelta(minutes=30)).isoformat(), "timeZone": "America/Montevideo"},
+                "colorId": "2",  # sage green
+            }
+        ).execute()
+    except Exception as e:
+        print(f"[demo] Calendar registration failed: {e}")
+
+
 @app.route("/api/demo/generate", methods=["POST"])
 def api_demo_generate():
     data = request.get_json() or {}
@@ -1555,6 +1616,12 @@ def api_demo_generate():
     rubro = data.get("rubro", "").strip()
     if not business_name or not rubro:
         return jsonify({"ok": False, "error": "Nombre del negocio y rubro son obligatorios"})
+
+    # Check if a demo was already generated for this business
+    existing_url = _find_existing_demo(business_name)
+    if existing_url:
+        return jsonify({"ok": True, "url": existing_url, "questions": [], "cached": True})
+
     try:
         import demo_ai
         result = demo_ai.generate_and_deploy(
@@ -1566,6 +1633,8 @@ def api_demo_generate():
             lead_name=data.get("lead_name", ""),
             messages=data.get("messages", []),
         )
+        # Register in Google Calendar so other users see it was already done
+        _register_demo_in_calendar(business_name, result["url"], rubro, data.get("lead_name", ""))
         return jsonify({"ok": True, **result})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)})

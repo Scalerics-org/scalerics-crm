@@ -34,111 +34,48 @@ def _build_prompt(business_name: str, rubro: str, city: str, client_color: str,
 
     slug = re.sub(r"[^a-z0-9]", "", business_name.lower())[:20] or "negocio"
 
-    return f"""Generá un archivo HTML completo de una presentación interactiva de ventas para el negocio "{business_name}" ({rubro}, {city}).
+    return f"""HTML completo: presentación de ventas interactiva para "{business_name}" ({rubro}, {city}).
 
-DATOS DEL LEAD:
-- Nombre de contacto: {lead_name}
-- Negocio: {business_name}
-- Rubro: {rubro}
-- Ciudad: {city}
-- {color_hint}
+LEAD: {lead_name} | {color_hint}
 
-CONVERSACIÓN DE WHATSAPP (usala para personalizar el contenido):
+WHATSAPP (personalizá con esto):
 {conv}
 
-══════════════════════════════════════════════════════════
-REQUISITOS TÉCNICOS
+TÉCNICO: 10 slides, position:absolute, opacity 0→1 (0.5s ease), progress bar #06B6D4, nav ←→ + prev/next + dots (activo=píldora), fondo #0F1419, Google Fonts DM Sans+Cormorant, Font Awesome 6 CDN, logo: <img src="{_LOGO_PLACEHOLDER}" style="height:36px;object-fit:contain">.
 
-- 10 slides con position:absolute, opacity:0→1, transform para transiciones suaves (0.55s cubic-bezier)
-- Progress bar superior con gradiente #06B6D4
-- Navegación: flechas de teclado ←→ y botones prev/next abajo
-- Puntos de navegación (dots) con el dot activo expandido en píldora
-- Fondo general: #0F1419. Acento Scalerics: #06B6D4
-- Google Fonts: DM Sans (principal) y Cormorant Garamond (para elegancia)
-- Font Awesome 6 CDN para iconos
-- Para el logo de Scalerics usá exactamente: <img src="{_LOGO_PLACEHOLDER}" style="height:36px;object-fit:contain;filter:brightness(1.1)">
-- HTML completamente self-contained (solo deps externas: Google Fonts CDN y Font Awesome CDN)
+SLIDES:
 
-══════════════════════════════════════════════════════════
-LOS 10 SLIDES
+S1-PORTADA: Logo Scalerics. H1: "Tu presencia online, {business_name}". Bajada personalizada. 4 bullets FA-icons en fila. 2 glows circulares cyan+color rubro.
 
-SLIDE 1 — Portada:
-Logo Scalerics arriba. Título grande: "Tu presencia online, {business_name}". Bajada personalizada para este negocio en {city}. Cuatro bullets con iconos Font Awesome relevantes para {rubro} (en una fila). Fondo: dark con dos glows circulares de color #06B6D4 y color del rubro.
+S2-PROBLEMA (tag rojo): Título impactante. 3 cards glassmorphism (bg:rgba(255,255,255,.04);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.07);border-radius:1.2rem) con problemas reales de {rubro} sin web.
 
-SLIDE 2 — El problema (tag rojo "La situación hoy"):
-Título impactante sobre el problema real de un {rubro} sin presencia web. Tres cards glassmorphism (bg:rgba(255,255,255,0.04);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,0.07);border-radius:1.25rem) con problemas MUY ESPECÍFICOS del rubro {rubro}.
+S3-SOLUCIÓN (tag cyan): Título. 4 checkmarks (círculo cyan+✓) con entregables específicos de {rubro}.
 
-SLIDE 3 — La solución (tag cyan "Lo que hacemos"):
-Título + descripción. Cuatro items con checkmark (círculo cyan con ✓) y texto de entregables específicos para {rubro}.
+S4-PROPUESTA 1 [nombre de estilo para {rubro}]: Línea en cursiva de la estética. Browser frame:
+<div style="width:100%;max-width:820px;border-radius:14px;overflow:hidden;box-shadow:0 30px 90px rgba(0,0,0,.75),0 0 0 1px rgba(255,255,255,.06)"><div style="background:#0d1117;padding:10px 14px;display:flex;align-items:center;gap:10px;border-bottom:1px solid rgba(255,255,255,.05)"><span style="width:11px;height:11px;border-radius:50%;background:#FF5F57;display:inline-block"></span><span style="width:11px;height:11px;border-radius:50%;background:#FEBC2E;display:inline-block"></span><span style="width:11px;height:11px;border-radius:50%;background:#28C840;display:inline-block"></span><div style="flex:1;background:#161b22;border:1px solid rgba(255,255,255,.07);border-radius:6px;padding:5px 12px;font-size:11px;font-family:monospace;color:#64748b">🔒 www.{slug}.com.uy</div></div><div style="height:420px;overflow:hidden">[MOCKUP 1]</div></div>
 
-SLIDE 4 — Propuesta 1 — [inventá un nombre de estilo apropiado para {rubro}]:
-Una línea en cursiva describiendo la estética. Luego el browser frame completo:
+S5-PROPUESTA 2 [estilo diferente]: Mismo frame. Paleta+tipografía+layout completamente distintos.
 
-<div style="width:100%;max-width:820px;border-radius:14px;overflow:hidden;box-shadow:0 30px 90px rgba(0,0,0,.75),0 0 0 1px rgba(255,255,255,.06)">
-  <div style="background:#0d1117;padding:10px 14px;display:flex;align-items:center;gap:10px;border-bottom:1px solid rgba(255,255,255,.05)">
-    <span style="width:11px;height:11px;border-radius:50%;background:#FF5F57;display:inline-block"></span>
-    <span style="width:11px;height:11px;border-radius:50%;background:#FEBC2E;display:inline-block"></span>
-    <span style="width:11px;height:11px;border-radius:50%;background:#28C840;display:inline-block"></span>
-    <div style="flex:1;background:#161b22;border:1px solid rgba(255,255,255,.07);border-radius:6px;padding:5px 12px;font-size:11px;font-family:monospace;color:#64748b;display:flex;align-items:center;gap:6px">🔒 www.{slug}.com.uy</div>
-  </div>
-  <div style="overflow-y:auto;height:440px;scroll-behavior:smooth">
-    [HOMEPAGE ULTRA-REALISTA AQUÍ — ver instrucciones abajo]
-  </div>
-</div>
+S6-PROPUESTA 3 [estilo más diferente]: Tercer frame. Máximo contraste con S4 y S5.
 
-SLIDE 5 — Propuesta 2 — [nombre de estilo diferente]:
-Mismo browser frame pero estética completamente diferente: otra paleta, otra tipografía, otro layout de hero.
+S7-STATS: 3 cards con números grandes (% verosímiles para {rubro}). Título "¿Por qué una web hoy?".
 
-SLIDE 6 — Propuesta 3 — [nombre de estilo más diferente]:
-Tercer browser frame. Puede ser minimalista, editorial, retro o premium según lo que más contraste con las anteriores.
+S8-QUÉ INCLUYE: Grid 2col con 6 ítems (ícono FA + texto), deliverables específicos para {rubro}.
 
-SLIDE 7 — ¿Por qué una web profesional?:
-Stats y datos específicos para {rubro} (porcentajes inventados pero verosímiles). Tres cards con números grandes.
+S9-INVERSIÓN: Card central con rango USD. CTA agendar. Badge "Sin compromiso".
 
-SLIDE 8 — Qué incluye:
-Lista detallada de deliverables específicos para {rubro}. Grid de dos columnas con íconos.
+S10-PRÓXIMOS PASOS: "¿Avanzamos, {lead_name}?" Botón WA verde (href="https://wa.me/59899000000"). hola@scalerics.com. Tagline "Scalerics — Tu negocio, online."
 
-SLIDE 9 — La inversión:
-Título "¿Cuánto cuesta?". Card central con rango de precios (en USD, sin ser exacto). CTA para agendar.
+MOCKUPS (S4-S6) — CRÍTICO:
+- Se ven como diseños REALES, NO wireframes
+- Cada uno: navbar (logo+links+CTA btn) + hero (gradiente fuerte, H1 grande, subtítulo, btn CTA) + grid 3 productos (emoji 70px, nombre real, precio $UY coherente, btn)
+- Los 3 estilos MUY diferentes: bold/colorido · clean/blanco · premium/oscuro-serif
+- Nombres de productos reales del rubro (bicicletería→"Trek Marlin 7 $45.990", restaurante→"Pasta al pesto $590", etc.)
 
-SLIDE 10 — Próximos pasos:
-"¿Avanzamos, {lead_name}?" usando el nombre. Botón WhatsApp verde (href="https://wa.me/59899000000"). Email hola@scalerics.com. Tagline "Scalerics — Tu negocio, online."
+PREGUNTAS: al final del body exactamente:
+<div id="essential-questions" style="display:none"><ol>[8 preguntas específicas para {rubro}: logo existente, productos principales, fotos, etc.]</ol></div>
 
-══════════════════════════════════════════════════════════
-INSTRUCCIONES CRÍTICAS PARA LOS MOCKUPS (slides 4-6)
-
-Los tres browser mockups deben verse como DISEÑOS REALES y casi finales, NO wireframes.
-
-Cada homepage debe incluir OBLIGATORIAMENTE:
-1. Navbar sticky con logo/nombre del negocio, links de navegación y botón CTA
-2. Hero section con fondo de color fuerte (gradiente o color sólido), headline grande, subtítulo, botón CTA principal
-3. Grid de 4-6 productos o servicios con: emoji grande (80px) como placeholder de imagen, nombre real del producto, precio en pesos uruguayos (inventado pero coherente), botón de acción
-4. Una sección secundaria (about, testimonios, o beneficios)
-5. Footer con datos de contacto
-
-Los TRES estilos deben ser MUY diferentes entre sí:
-- Propuesta 1: puede ser bold/industrial, colorido y enérgico
-- Propuesta 2: puede ser clean/moderno, blanco con acentos de color
-- Propuesta 3: puede ser premium/elegante, oscuro o con serif
-
-Productos/servicios deben tener NOMBRES REALES apropiados para {rubro}:
-- Si es bicicletería: "Mountain Bike Trek 29\"" → $45.990, "Casco Giro Bike" → $3.490, etc.
-- Si es restaurante: "Pasta al pesto" → $590, "Medallón de cerdo" → $790, etc.
-- Adaptá siempre al rubro específico
-
-══════════════════════════════════════════════════════════
-PREGUNTAS ESENCIALES
-
-Al final del body incluí exactamente esto:
-<div id="essential-questions" style="display:none">
-<ol>
-[Exactamente 8 preguntas MUY ESPECÍFICAS para {rubro} que Juan necesita hacerle al cliente si acepta el presupuesto. Cosas como: ¿Tenés logo existente?, ¿Cuáles son tus 5 productos/servicios principales?, ¿Tenés fotos de productos?, ¿Manejás catálogo online o stock?, etc. Todo específico para {rubro}]
-</ol>
-</div>
-
-══════════════════════════════════════════════════════════
-
-Generá SOLO el HTML completo empezando con <!DOCTYPE html>. Sin explicaciones, sin markdown, sin bloques de código."""
+Generá SOLO <!DOCTYPE html>..., sin markdown ni explicaciones."""
 
 
 def generate_and_deploy(
