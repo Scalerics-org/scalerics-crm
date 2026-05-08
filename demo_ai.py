@@ -94,36 +94,81 @@ def _chat_prompt(business_name, rubro, city, client_color, lead_name, messages):
         direction = "Cliente" if m.get("direction") in ("in", "inbound") else "Bot"
         conv_lines.append(f"[{direction}]: {str(m.get('content',''))[:120]}")
     conv = "\n".join(conv_lines) or "(sin conversación previa)"
-    color_hint = f"Color principal del negocio: {client_color}." if client_color else f"Elegí colores representativos para {rubro}."
+    color_hint = f"Color principal del negocio: {client_color}." if client_color else f"Elegí colores que representen bien a {rubro}."
     slug = re.sub(r"[^a-z0-9]", "", business_name.lower())[:20] or "negocio"
 
-    return f"""Creá una presentación de ventas HTML completa y auto-contenida para Scalerics, agencia de desarrollo web, para el cliente "{business_name}" ({rubro}, {city}).
+    return f"""Sos un desarrollador web senior de Scalerics, agencia uruguaya. Creá una presentación de ventas HTML completa para el cliente "{business_name}" ({rubro}, {city}).
 
 Lead: {lead_name} | {color_hint}
-Contexto WhatsApp (personalizá la presentación con esto):
+Conversación WhatsApp (usala para personalizar):
 {conv}
 
-REQUISITOS TÉCNICOS:
-- HTML completo listo para browser (<!DOCTYPE html> ... </html>)
-- Google Fonts: DM Sans (body) + Cormorant Garamond (titles)
-- Font Awesome 6.5 CDN para íconos
-- Fondo: #0F1419 | Texto: #e2e8f0 | Acento: elige color vibrante para {rubro}
-- 8 slides con position:absolute, opacity/transform transition para animación fade+slide
-- Barra de progreso fija arriba (3px, gradiente cyan→azul)
-- Navegación: flechas prev/next + dots clickeables + teclas ← →
-- Contador de slide (ej: "3 / 8") arriba derecha
+━━━ TÉCNICO ━━━
+• HTML completo auto-contenido (<!DOCTYPE html>…</html>), listo para abrir en browser
+• Google Fonts: DM Sans 300/400/600/700/800 + Cormorant Garamond 400/600
+• Font Awesome 6.5 via CDN
+• 8 slides: position:absolute, inset:0, opacity+translateX transition .5s
+• Slide activa: opacity:1, translateX(0) | Inactiva: opacity:0, translateX(60px) | Saliente: translateX(-60px)
+• Barra progreso fija top:0, height:3px, gradiente #06B6D4→#3b82f6, z-index:100
+• Navegación fija bottom:28px centrada: btn prev (←) + dots + btn next (→) + teclas ArrowLeft/ArrowRight
+• Contador fijo top:16px right:20px — "N / 8"
+• Fondo global: #0F1419 | Texto: #e2e8f0
 
-SLIDES:
-1. Portada — H1 "Tu web, {business_name}", subtítulo 1 línea personalizado, 3 bullets emoji para {rubro}
-2. Problema — 3 cards: problema concreto de {rubro} sin web (emoji + título + 1 frase)
-3. Solución — "Lo que hacemos": 4 checkmarks con entregables + 2 stats en número grande
-4. Mockup estilo BOLD/COLORIDO — browser frame (barra con 3 dots rojo/amarillo/verde + URL 🔒 www.{slug}.com.uy) + mini-sitio con navbar, hero gradiente, grid 3 productos reales con precio $UY
-5. Mockup estilo CLEAN/BLANCO — mismo browser frame, diseño minimalista claro
-6. Mockup estilo DARK/PREMIUM — mismo browser frame, diseño oscuro elegante
-7. Inversión — Card central con rango USD + badge "Sin compromiso" + 4 deliverables en 2 columnas
-8. Próximos pasos — "¿Arrancamos, {lead_name}?" centrado + botón WhatsApp verde + hola@scalerics.com
+━━━ SLIDES ━━━
 
-Respondé ÚNICAMENTE con el HTML completo. Sin explicaciones, sin markdown, sin bloques de código. Empezá directamente con <!DOCTYPE html>."""
+[1] PORTADA
+H1 grande: "Tu web, {business_name}" | Subtítulo personalizado 1 línea | 3 bullets con emoji específicos para {rubro}
+
+[2] PROBLEMA — título impactante
+3 cards horizontales: cada una = emoji grande + título corto + 1 frase. Problemas MUY concretos de {rubro} sin presencia web (pérdida real de clientes, competencia, etc.)
+
+[3] SOLUCIÓN — "Lo que hacemos"
+4 filas: ✓ + entregable específico para {rubro}. Abajo: 2 stats en número grande relevantes (ej: "73% de los uruguayos busca negocios online antes de ir")
+
+[4][5][6] — MOCKUPS (3 estilos distintos, mismo browser frame)
+
+Browser frame EXACTO para los 3:
+<div style="width:100%;max-width:780px;border-radius:12px;overflow:hidden;box-shadow:0 24px 70px rgba(0,0,0,.8)">
+  <div style="background:#0d1117;padding:9px 14px;display:flex;align-items:center;gap:8px;border-bottom:1px solid rgba(255,255,255,.06)">
+    <span style="width:10px;height:10px;border-radius:50%;background:#FF5F57;display:inline-block"></span>
+    <span style="width:10px;height:10px;border-radius:50%;background:#FEBC2E;display:inline-block"></span>
+    <span style="width:10px;height:10px;border-radius:50%;background:#28C840;display:inline-block"></span>
+    <span style="flex:1;background:#161b22;border:1px solid rgba(255,255,255,.08);border-radius:5px;padding:3px 10px;font-size:11px;font-family:monospace;color:#64748b">🔒 www.{slug}.com.uy</span>
+  </div>
+  <div style="height:390px;overflow:hidden">
+    <!-- CONTENIDO DEL MINI-SITIO ACÁ -->
+  </div>
+</div>
+
+ESTRUCTURA INTERNA de cada mockup — adaptala según {rubro}:
+• Navbar: nombre negocio izq + menú items relevantes para {rubro} + btn CTA der
+• Hero: fondo con color/gradiente, H1 impactante, subtítulo, btn CTA principal
+• Sección principal adaptada al rubro:
+  - Restaurante/bar/panadería → menú con platos reales + precios $UY + "Pedir ahora"
+  - Ropa/calzado/accesorios → grid productos con foto-placeholder + nombre + precio + talle
+  - Clínica/odontología/salud → servicios con íconos médicos + turnos online + equipo
+  - Estetica/spa/peluquería → servicios con precios + galería before/after + reserva
+  - Taller/mecánica/servicio técnico → servicios + "Solicitar presupuesto" + horarios
+  - Educación/academia → cursos + niveles + "Inscribirse" + próximas fechas
+  - Inmobiliaria → propiedades destacadas + filtros + "Ver más"
+  - Veterinaria → servicios + turnos + productos para mascotas
+  - Cualquier otro → lo que tenga más sentido para ese rubro específico
+
+ESTILOS DIFERENTES (los 3 deben verse claramente distintos):
+[4] BOLD/COLORIDO — colores intensos saturados, tipografía grande y pesada, gradientes llamativos
+[5] CLEAN/PROFESIONAL — fondo blanco/gris muy claro, tipografía ligera, mucho espacio, minimalista
+[6] DARK/PREMIUM — fondo #0a0a0a o #0d0d1a, detalles dorados o neón, elegante y exclusivo
+
+[7] INVERSIÓN
+Card central: rango "USD 400–800" aprox + badge "Sin compromiso". 4 deliverables en 2 columnas con emoji, específicos para {rubro}.
+
+[8] PRÓXIMOS PASOS
+"¿Arrancamos, {lead_name}?" — texto grande centrado
+Botón WhatsApp verde: href="https://wa.me/59899000000"
+Email: hola@scalerics.com | Tagline: "Scalerics — Tu negocio, online."
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Respondé ÚNICAMENTE con el HTML completo. Sin explicaciones. Sin markdown. Sin bloques de código. Empezá directamente con <!DOCTYPE html> y terminá con </html>."""
 
 # ---------------------------------------------------------------------------
 # Fixed HTML shell — navigation, CSS, progress bar all pre-written
