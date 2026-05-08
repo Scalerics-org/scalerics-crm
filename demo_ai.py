@@ -1,6 +1,7 @@
 """Generate and deploy sales demo presentations using Claude AI + Vercel."""
 
 import base64
+import json
 import os
 import re
 import time
@@ -10,81 +11,168 @@ import anthropic
 import requests
 
 LOGO_PATH = Path(r"C:\Users\juant\OneDrive\Desktop\Scalerics\Assets\logo_full.png")
-_LOGO_PLACEHOLDER = "SCALERICS_LOGO_PLACEHOLDER"
 
 
 def _logo_data_uri() -> str:
-    with open(LOGO_PATH, "rb") as f:
-        b64 = base64.b64encode(f.read()).decode()
-    return f"data:image/png;base64,{b64}"
+    try:
+        with open(LOGO_PATH, "rb") as f:
+            b64 = base64.b64encode(f.read()).decode()
+        return f"data:image/png;base64,{b64}"
+    except Exception:
+        return ""
 
 
-def _build_prompt(business_name: str, rubro: str, city: str, client_color: str,
-                  lead_name: str, messages: list) -> str:
+# ---------------------------------------------------------------------------
+# Claude only generates slide CONTENT — ~4K tokens, never truncates
+# ---------------------------------------------------------------------------
+
+def _content_prompt(business_name, rubro, city, client_color, lead_name, messages):
     conv_lines = []
-    for m in messages[:40]:
-        direction = "Cliente" if m.get("direction") in ("in", "inbound") else "Bot Scalerics"
-        content = str(m.get("content", ""))[:200]
-        conv_lines.append(f"[{direction}]: {content}")
-    conv = "\n".join(conv_lines) if conv_lines else "(Sin conversación disponible)"
+    for m in messages[:30]:
+        direction = "Cliente" if m.get("direction") in ("in", "inbound") else "Bot"
+        conv_lines.append(f"[{direction}]: {str(m.get('content',''))[:150]}")
+    conv = "\n".join(conv_lines) or "(sin conversación)"
 
-    color_hint = (f"Color primario conocido del negocio: {client_color}. Usalo como color principal en los mockups."
-                  if client_color else
-                  f"Elegí colores simbólicos apropiados para el rubro '{rubro}'.")
-
+    color_hint = (f"Color primario del negocio: {client_color}." if client_color
+                  else f"Elegí colores simbólicos para '{rubro}'.")
     slug = re.sub(r"[^a-z0-9]", "", business_name.lower())[:20] or "negocio"
 
-    browser_frame = (
-        f'<div style="width:100%;max-width:800px;border-radius:12px;overflow:hidden;'
-        f'box-shadow:0 28px 80px rgba(0,0,0,.8),0 0 0 1px rgba(255,255,255,.06)">'
-        f'<div style="background:#0d1117;padding:9px 14px;display:flex;align-items:center;gap:8px;border-bottom:1px solid rgba(255,255,255,.05)">'
-        f'<span style="width:11px;height:11px;border-radius:50%;background:#FF5F57;display:inline-block"></span>'
-        f'<span style="width:11px;height:11px;border-radius:50%;background:#FEBC2E;display:inline-block"></span>'
-        f'<span style="width:11px;height:11px;border-radius:50%;background:#28C840;display:inline-block"></span>'
-        f'<div style="flex:1;background:#161b22;border:1px solid rgba(255,255,255,.07);border-radius:5px;padding:4px 10px;font-size:11px;font-family:monospace;color:#64748b">🔒 www.{slug}.com.uy</div>'
-        f'</div><div style="height:400px;overflow:hidden">'
-    )
-    browser_close = '</div></div>'
-
-    return f"""HTML completo: presentación de ventas para "{business_name}" ({rubro}, {city}).
+    return f"""Generá el contenido de 8 slides para una presentación de ventas de Scalerics para "{business_name}" ({rubro}, {city}).
 
 LEAD: {lead_name} | {color_hint}
-WHATSAPP: {conv}
+WHATSAPP (personalizá con esto): {conv}
 
-TÉCNICO: 8 slides, position:absolute, opacity 0→1 (0.5s ease), progress bar #06B6D4 arriba, nav teclado ←→ + btns prev/next + dots (activo=píldora cyan), fondo #0F1419, DM Sans (Google Fonts), Font Awesome 6 CDN, logo exactamente: <img src="{_LOGO_PLACEHOLDER}" style="height:34px;object-fit:contain">.
+Respondé SOLO con un JSON válido con esta estructura exacta — sin markdown, sin explicaciones:
 
-S1-PORTADA: Logo Scalerics arriba izq. H1 grande: "Tu web, {business_name}". Bajada 1 línea personalizada. 3 bullets con íconos FA relevantes. Glow cyan circular en fondo.
+{{
+  "accent": "#HEXCOLOR",
+  "s1": "<contenido HTML del slide 1>",
+  "s2": "<contenido HTML del slide 2>",
+  "s3": "<contenido HTML del slide 3>",
+  "s4_label": "Nombre estilo bold/energético",
+  "s4": "<mockup HTML 1>",
+  "s5_label": "Nombre estilo clean/moderno",
+  "s5": "<mockup HTML 2>",
+  "s6_label": "Nombre estilo premium/elegante",
+  "s6": "<mockup HTML 3>",
+  "s7": "<contenido HTML del slide 7>",
+  "s8": "<contenido HTML del slide 8>",
+  "questions": ["pregunta 1", "pregunta 2", "pregunta 3", "pregunta 4", "pregunta 5", "pregunta 6"]
+}}
 
-S2-PROBLEMA (badge rojo "Hoy"): Título impactante. 3 cards glassmorphism (bg rgba(255,255,255,.04), backdrop-filter blur(12px), border 1px solid rgba(255,255,255,.07), border-radius 1.1rem) con problemas CONCRETOS de un {rubro} sin web.
+INSTRUCCIONES POR SLIDE:
 
-S3-SOLUCIÓN (badge cyan "Lo que hacemos"): Título. 4 ítems: círculo cyan con ✓ + texto de entregable real para {rubro}. Abajo: 2 stats inline (números grandes, ej: "83% de compradores busca online antes de ir").
+s1-PORTADA: H1 grande "Tu web, {business_name}", subtítulo personalizado 1 línea, 3 bullets con emoji relevante para {rubro}. Sin nav.
 
-S4-PROPUESTA 1 — [nombre estilo bold/energético para {rubro}]:
-Línea cursiva de la estética. Luego:
-{browser_frame}[MOCKUP 1 AQUÍ]{browser_close}
+s2-PROBLEMA: Título impactante (sin web estás perdiendo clientes). 3 cards con problema CONCRETO de {rubro} (texto corto, directo). Cada card: emoji grande + título + 1 frase.
 
-S5-PROPUESTA 2 — [nombre estilo clean/moderno]:
-Línea cursiva. Luego mismo frame, diseño MUY diferente al anterior.
-{browser_frame}[MOCKUP 2 AQUÍ]{browser_close}
+s3-SOLUCIÓN: Título "Lo que hacemos". 4 filas: ✓ + entregable específico para {rubro}. Abajo: 2 stats en números grandes relevantes para {rubro}.
 
-S6-PROPUESTA 3 — [nombre estilo premium/elegante]:
-Línea cursiva. Tercer frame, máximo contraste con S4 y S5.
-{browser_frame}[MOCKUP 3 AQUÍ]{browser_close}
+s4/s5/s6-MOCKUPS: Cada uno es un mini-sitio completo dentro de un browser frame con estructura FIJA:
+- Navbar: nombre negocio bold izq + btn CTA der (colores del estilo)
+- Hero: fondo gradiente, H1 impactante, subtítulo 1 línea, btn CTA
+- Grid 3 productos: emoji 60px + nombre real + precio $UY + btn "Ver más"
+ESTILOS MUY DIFERENTES: s4=bold+colorido, s5=clean+blanco/claro, s6=dark+elegante
+Productos con nombres y precios REALES para {rubro}.
+Usá el browser frame EXACTO (no lo modifiques):
+<div style="width:100%;max-width:780px;border-radius:12px;overflow:hidden;box-shadow:0 24px 70px rgba(0,0,0,.8),0 0 0 1px rgba(255,255,255,.07)"><div style="background:#0d1117;padding:9px 14px;display:flex;align-items:center;gap:8px;border-bottom:1px solid rgba(255,255,255,.06)"><span style="width:10px;height:10px;border-radius:50%;background:#FF5F57;display:inline-block"></span><span style="width:10px;height:10px;border-radius:50%;background:#FEBC2E;display:inline-block"></span><span style="width:10px;height:10px;border-radius:50%;background:#28C840;display:inline-block"></span><span style="flex:1;background:#161b22;border:1px solid rgba(255,255,255,.08);border-radius:5px;padding:3px 10px;font-size:11px;font-family:monospace;color:#64748b">🔒 www.{slug}.com.uy</span></div><div style="height:390px;overflow:hidden">...CONTENIDO...</div></div>
 
-S7-INVERSIÓN: Título "¿Cuánto cuesta?". Card central con rango USD + "Sin compromiso". Debajo: 2 columnas, 4 deliverables con ícono FA cada uno (específicos para {rubro}). CTA btn "Quiero mi web".
+s7-INVERSIÓN: Título "¿Cuánto cuesta?". Card central con rango USD sin ser exacto + badge "Sin compromiso". 4 deliverables en 2 columnas (emoji + texto, específicos para {rubro}).
 
-S8-PRÓXIMOS PASOS: "¿Arrancamos, {lead_name}?" centrado grande. Btn WA verde grande (href="https://wa.me/59899000000" target="_blank"). Línea: hola@scalerics.com. Tagline pequeño: "Scalerics — Tu negocio, online."
+s8-PRÓXIMOS PASOS: "¿Arrancamos, {lead_name}?" grande y centrado. Btn WA verde (href="https://wa.me/59899000000"). Texto: hola@scalerics.com. Tagline: "Scalerics — Tu negocio, online."
 
-MOCKUPS (S4-S6) — CRÍTICO, SIN EXCEPCIONES:
-Cada mockup: (1) navbar: fondo sólido, nombre negocio bold a la izq, 1 btn CTA a la der — SIN lista de links para ahorrar espacio; (2) hero: fondo gradiente fuerte, H1 grande impactante, subtítulo 1 línea, 1 btn CTA; (3) grid 3 productos: cada producto = emoji 64px + nombre real + precio $UY real + btn "Ver más". NADA MÁS (no footer, no about).
-Los 3 estilos COMPLETAMENTE diferentes en paleta, tipografía y composición: bold+colorido · clean+blanco · dark+serif.
-Productos con nombres y precios reales del rubro (mueblería→"Sillón Chester $24.900", restaurante→"Pasta al pesto $590", etc.).
+"accent": color hex que mejor representa el rubro (vibrante, no negro ni blanco).
+"questions": 6 preguntas concretas que necesitás hacerle al cliente si acepta (logo?, productos principales?, fotos?, dominio?, redes?, etc.)."""
 
-PREGUNTAS: al final del body:
-<div id="essential-questions" style="display:none"><ol>[6 preguntas concretas para {rubro}: logo?, productos principales?, fotos?, dominio?, redes?, etc.]</ol></div>
 
-Generá SOLO el HTML completo desde <!DOCTYPE html>. Sin markdown, sin explicaciones."""
+# ---------------------------------------------------------------------------
+# Fixed HTML shell — navigation, CSS, progress bar all pre-written
+# ---------------------------------------------------------------------------
 
+_HTML_SHELL = """\
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{business_name} — Propuesta Scalerics</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700;800&family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<style>
+*,*::before,*::after{{box-sizing:border-box;margin:0;padding:0}}
+body{{font-family:'DM Sans',sans-serif;background:#0F1419;color:#e2e8f0;overflow:hidden;height:100vh;width:100vw}}
+#progress{{position:fixed;top:0;left:0;height:3px;background:linear-gradient(90deg,#06B6D4,#3b82f6);transition:width .4s ease;z-index:100}}
+#slides{{position:relative;width:100%;height:100vh}}
+.slide{{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 60px;opacity:0;pointer-events:none;transition:opacity .5s ease,transform .5s ease;transform:translateX(60px)}}
+.slide.active{{opacity:1;pointer-events:auto;transform:translateX(0)}}
+.slide.prev{{transform:translateX(-60px)}}
+#nav{{position:fixed;bottom:28px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:16px;z-index:100}}
+.nav-btn{{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);color:#e2e8f0;width:40px;height:40px;border-radius:50%;cursor:pointer;font-size:1rem;display:flex;align-items:center;justify-content:center;transition:background .2s}}
+.nav-btn:hover{{background:rgba(255,255,255,.18)}}
+#dots{{display:flex;gap:8px;align-items:center}}
+.dot{{width:7px;height:7px;border-radius:99px;background:rgba(255,255,255,.25);cursor:pointer;transition:all .3s ease}}
+.dot.active{{width:22px;background:#06B6D4}}
+#slide-counter{{position:fixed;top:16px;right:20px;font-size:.72rem;color:#475569;z-index:100}}
+.badge-red{{background:#7f1d1d;color:#fca5a5;border:1px solid #991b1b;padding:4px 12px;border-radius:99px;font-size:.7rem;font-weight:700;letter-spacing:.06em;display:inline-block;margin-bottom:18px}}
+.badge-cyan{{background:rgba(6,182,212,.15);color:#06B6D4;border:1px solid rgba(6,182,212,.3);padding:4px 12px;border-radius:99px;font-size:.7rem;font-weight:700;letter-spacing:.06em;display:inline-block;margin-bottom:18px}}
+.glass-card{{background:rgba(255,255,255,.04);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.07);border-radius:1.1rem;padding:24px}}
+</style>
+</head>
+<body>
+<div id="progress"></div>
+<div id="slide-counter"></div>
+<div id="slides">
+<div class="slide active" id="slide-0">{s1}</div>
+<div class="slide" id="slide-1">{s2}</div>
+<div class="slide" id="slide-2">{s3}</div>
+<div class="slide" id="slide-3">
+  <p style="font-style:italic;color:#94a3b8;margin-bottom:18px;font-size:.95rem">{s4_label}</p>
+  {s4}
+</div>
+<div class="slide" id="slide-4">
+  <p style="font-style:italic;color:#94a3b8;margin-bottom:18px;font-size:.95rem">{s5_label}</p>
+  {s5}
+</div>
+<div class="slide" id="slide-5">
+  <p style="font-style:italic;color:#94a3b8;margin-bottom:18px;font-size:.95rem">{s6_label}</p>
+  {s6}
+</div>
+<div class="slide" id="slide-6">{s7}</div>
+<div class="slide" id="slide-7">{s8}</div>
+</div>
+<nav id="nav">
+  <button class="nav-btn" id="btn-prev" onclick="move(-1)"><i class="fa fa-chevron-left"></i></button>
+  <div id="dots"></div>
+  <button class="nav-btn" id="btn-next" onclick="move(1)"><i class="fa fa-chevron-right"></i></button>
+</nav>
+<div id="essential-questions" style="display:none"><ol>{questions_html}</ol></div>
+<script>
+const TOTAL=8;let cur=0;
+const slides=document.querySelectorAll('.slide');
+const dotsEl=document.getElementById('dots');
+const prog=document.getElementById('progress');
+const counter=document.getElementById('slide-counter');
+for(let i=0;i<TOTAL;i++){{const d=document.createElement('div');d.className='dot'+(i===0?' active':'');d.onclick=()=>go(i);dotsEl.appendChild(d);}}
+function go(n){{
+  slides[cur].classList.remove('active');slides[cur].classList.add('prev');
+  setTimeout(()=>slides[cur].classList.remove('prev'),500);
+  cur=Math.max(0,Math.min(TOTAL-1,n));
+  slides[cur].classList.add('active');
+  document.querySelectorAll('.dot').forEach((d,i)=>d.classList.toggle('active',i===cur));
+  prog.style.width=((cur+1)/TOTAL*100)+'%';
+  counter.textContent=(cur+1)+' / '+TOTAL;
+}}
+function move(d){{go(cur+d);}}
+document.addEventListener('keydown',e=>{{if(e.key==='ArrowRight'||e.key==='ArrowDown')move(1);if(e.key==='ArrowLeft'||e.key==='ArrowUp')move(-1);}});
+go(0);
+</script>
+</body>
+</html>"""
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
 
 def generate_and_deploy(
     phone: str,
@@ -95,47 +183,58 @@ def generate_and_deploy(
     lead_name: str,
     messages: list,
 ) -> dict:
-    """Generate demo HTML with Claude Opus, inject logo, deploy to Vercel.
+    """Generate demo HTML with Claude (content only), wrap in shell, deploy to Vercel."""
 
-    Returns {"url": str, "questions": list[str]}.
-    """
-    prompt = _build_prompt(business_name, rubro, city, client_color, lead_name, messages)
+    prompt = _content_prompt(business_name, rubro, city, client_color, lead_name, messages)
 
     client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
     msg = client.messages.create(
         model="claude-sonnet-4-6",
-        max_tokens=32000,
+        max_tokens=8000,
         messages=[{"role": "user", "content": prompt}],
-        betas=["output-128k-2025-02-19"],
     )
 
-    html = msg.content[0].text.strip()
-    # Strip markdown code fences if Claude wrapped the output
-    html = re.sub(r"^```[a-z]*\s*\n?", "", html)
-    html = re.sub(r"\n?```\s*$", "", html)
+    raw = msg.content[0].text.strip()
+    raw = re.sub(r"^```[a-z]*\s*\n?", "", raw)
+    raw = re.sub(r"\n?```\s*$", "", raw)
 
-    # Detect truncation: if HTML doesn't close properly, log a warning
-    if not html.rstrip().endswith("</html>"):
-        print(f"[demo_ai] WARNING: HTML may be truncated. stop_reason={msg.stop_reason}, length={len(html)}")
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as e:
+        # Try to extract JSON if there's extra text
+        m = re.search(r'\{.*\}', raw, re.DOTALL)
+        if m:
+            data = json.loads(m.group())
+        else:
+            raise Exception(f"Claude no devolvió JSON válido: {e}\n\nRaw: {raw[:500]}")
 
-    # Inject actual Scalerics logo
-    html = html.replace(_LOGO_PLACEHOLDER, _logo_data_uri())
+    questions_html = "".join(f"<li>{q}</li>" for q in data.get("questions", []))
 
-    questions = _extract_questions(html)
+    html = _HTML_SHELL.format(
+        business_name=business_name,
+        s1=data.get("s1", ""),
+        s2=data.get("s2", ""),
+        s3=data.get("s3", ""),
+        s4_label=data.get("s4_label", "Propuesta 1"),
+        s4=data.get("s4", ""),
+        s5_label=data.get("s5_label", "Propuesta 2"),
+        s5=data.get("s5", ""),
+        s6_label=data.get("s6_label", "Propuesta 3"),
+        s6=data.get("s6", ""),
+        s7=data.get("s7", ""),
+        s8=data.get("s8", ""),
+        questions_html=questions_html,
+    )
+
+    # Inject Scalerics logo into slide 1
+    logo_uri = _logo_data_uri()
+    if logo_uri:
+        logo_tag = f'<img src="{logo_uri}" style="height:34px;object-fit:contain;margin-bottom:24px;display:block">'
+        html = html.replace('<div class="slide active" id="slide-0">',
+                            f'<div class="slide active" id="slide-0">{logo_tag}', 1)
+
     url = _deploy_to_vercel(html, business_name)
-
-    return {"url": url, "questions": questions}
-
-
-def _extract_questions(html: str) -> list:
-    match = re.search(
-        r'id=["\']essential-questions["\'][^>]*>(.*?)</div>',
-        html, re.DOTALL | re.IGNORECASE
-    )
-    if not match:
-        return []
-    items = re.findall(r"<li>(.*?)</li>", match.group(1), re.DOTALL)
-    return [re.sub(r"<[^>]+>", "", q).strip() for q in items if q.strip()]
+    return {"url": url, "questions": data.get("questions", [])}
 
 
 def _deploy_to_vercel(html_content: str, business_name: str) -> str:
