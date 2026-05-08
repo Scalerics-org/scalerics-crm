@@ -487,15 +487,26 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
         </div>
       </div>
       <div id="demo-conv-info" style="display:none;background:#0a1628;border:1px solid #1e3a5f;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:.8rem;color:#94a3b8"></div>
-      <div class="modal-btns">
-        <button class="btn-cancel" onclick="closeDemoModal()">Cancelar</button>
-        <button class="btn-confirm" id="demo-gen-btn" onclick="startDemoGeneration()">✨ Generar Demo</button>
+      <div style="display:flex;gap:8px;margin-bottom:6px">
+        <button class="btn-cancel" onclick="closeDemoModal()" style="flex:0 0 auto">Cancelar</button>
+        <button id="demo-gen-btn" onclick="startDemoGeneration()" style="flex:1;background:linear-gradient(135deg,#0088cc,#3db648);color:#fff;font-size:.82rem;font-weight:700;padding:10px 12px;border-radius:8px;border:none;cursor:pointer">✨ Generar con API</button>
+        <button id="demo-chat-btn" onclick="startDemoChat()" style="flex:1;background:#1e1b4b;border:1px solid #4f46e5;color:#a5b4fc;font-size:.82rem;font-weight:700;padding:10px 12px;border-radius:8px;cursor:pointer">💬 Claude Chat</button>
       </div>
+      <div style="font-size:.7rem;color:#475569;text-align:center">API → deploy automático en Vercel &nbsp;|&nbsp; Chat → gratis, copiás el HTML vos</div>
     </div>
     <div id="demo-loading-section" style="display:none;text-align:center;padding:36px 0">
       <div style="font-size:2.5rem;margin-bottom:16px">🤖</div>
       <div style="font-weight:700;font-size:1rem;margin-bottom:8px">Generando demo con Claude...</div>
       <div style="color:#64748b;font-size:.84rem;line-height:1.6">Esto tarda entre 30 y 60 segundos.<br>Por favor esperá sin cerrar la ventana.</div>
+    </div>
+    <div id="demo-chat-section" style="display:none">
+      <h3 style="margin-bottom:6px">💬 Demo vía Claude Chat</h3>
+      <p style="font-size:.8rem;color:#64748b;margin-bottom:14px">Claude.ai se abre con el prompt listo. Claude genera el HTML completo — copialo y guardalo como <strong style="color:#a5b4fc">demo.html</strong> para abrirlo en el browser.</p>
+      <div id="demo-chat-copied" style="display:none;background:#1a2e1a;border:1px solid #2d5a2d;border-radius:6px;padding:8px 12px;font-size:.78rem;color:#4ade80;margin-bottom:12px">✅ Prompt copiado al portapapeles.</div>
+      <div class="modal-btns">
+        <button class="btn-cancel" onclick="closeDemoModal()">Cerrar</button>
+        <button onclick="copyAndOpenClaude()" style="background:#4f46e5;border:none;color:#fff;font-size:.82rem;font-weight:700;padding:10px 18px;border-radius:8px;cursor:pointer">📋 Copiar prompt y abrir Claude.ai</button>
+      </div>
     </div>
     <div id="demo-result-section" style="display:none">
       <h3 style="margin-bottom:16px">✅ Demo lista</h3>
@@ -1045,6 +1056,10 @@ async function fetchLeadByName(name) {
 
 function closeDemoModal() {
   document.getElementById('demo-modal').classList.remove('open');
+  document.getElementById('demo-form-section').style.display = '';
+  document.getElementById('demo-loading-section').style.display = 'none';
+  document.getElementById('demo-result-section').style.display = 'none';
+  document.getElementById('demo-chat-section').style.display = 'none';
 }
 
 async function startDemoGeneration() {
@@ -1088,6 +1103,45 @@ async function startDemoGeneration() {
 function copyDemoUrl() {
   const url = document.getElementById('demo-url-link').href;
   navigator.clipboard.writeText(url).then(() => alert('URL copiada ✅')).catch(() => alert(url));
+}
+
+let _chatPromptText = '';
+
+async function startDemoChat() {
+  const biz = document.getElementById('demo-biz').value.trim();
+  const rubro = document.getElementById('demo-rubro').value.trim();
+  if (!biz || !rubro) { alert('El nombre del negocio y el rubro son obligatorios.'); return; }
+  const city = document.getElementById('demo-city').value.trim();
+  const color = document.getElementById('demo-color').value.trim();
+  const leadHint = document.getElementById('demo-lead-hint').textContent;
+  const leadName = leadHint.includes('Lead:') ? leadHint.split('Lead:')[1].split('·')[0].trim() : '';
+
+  const btn = document.getElementById('demo-chat-btn');
+  btn.disabled = true; btn.textContent = 'Generando prompt...';
+
+  try {
+    const r = await fetch('/api/demo/prompt', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({phone: _demoPhone, business_name: biz, rubro, city, client_color: color, lead_name: leadName, messages: _demoMessages})
+    });
+    const d = await r.json();
+    if (!d.ok) { alert('Error: ' + (d.error || 'Error desconocido')); return; }
+    _chatPromptText = d.prompt;
+    document.getElementById('demo-form-section').style.display = 'none';
+    document.getElementById('demo-chat-section').style.display = '';
+    document.getElementById('demo-chat-copied').style.display = 'none';
+  } catch(e) {
+    alert('Error: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '💬 Claude Chat';
+  }
+}
+
+function copyAndOpenClaude() {
+  navigator.clipboard.writeText(_chatPromptText).catch(() => {});
+  document.getElementById('demo-chat-copied').style.display = '';
+  window.open('https://claude.ai/new', '_blank');
 }
 
 // Initial load
@@ -1607,6 +1661,28 @@ def _register_demo_in_calendar(business_name: str, url: str, rubro: str, lead_na
         ).execute()
     except Exception as e:
         print(f"[demo] Calendar registration failed: {e}")
+
+
+@app.route("/api/demo/prompt", methods=["POST"])
+def api_demo_prompt():
+    data = request.get_json() or {}
+    business_name = data.get("business_name", "").strip()
+    rubro = data.get("rubro", "").strip()
+    if not business_name or not rubro:
+        return jsonify({"ok": False, "error": "Nombre del negocio y rubro son obligatorios"})
+    try:
+        import demo_ai
+        prompt = demo_ai._chat_prompt(
+            business_name=business_name,
+            rubro=rubro,
+            city=data.get("city", "Montevideo"),
+            client_color=data.get("client_color", ""),
+            lead_name=data.get("lead_name", ""),
+            messages=data.get("messages", []),
+        )
+        return jsonify({"ok": True, "prompt": prompt})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)})
 
 
 @app.route("/api/demo/generate", methods=["POST"])

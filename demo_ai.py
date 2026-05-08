@@ -87,6 +87,44 @@ s8-PRÓXIMOS PASOS: "¿Arrancamos, {lead_name}?" grande y centrado. Btn WA verde
 "questions": 6 preguntas concretas que necesitás hacerle al cliente si acepta (logo?, productos principales?, fotos?, dominio?, redes?, etc.)."""
 
 
+def _chat_prompt(business_name, rubro, city, client_color, lead_name, messages):
+    """Prompt for Claude.ai chat (asks for full deployable HTML, no API wrapper needed)."""
+    conv_lines = []
+    for m in messages[:20]:
+        direction = "Cliente" if m.get("direction") in ("in", "inbound") else "Bot"
+        conv_lines.append(f"[{direction}]: {str(m.get('content',''))[:120]}")
+    conv = "\n".join(conv_lines) or "(sin conversación previa)"
+    color_hint = f"Color principal del negocio: {client_color}." if client_color else f"Elegí colores representativos para {rubro}."
+    slug = re.sub(r"[^a-z0-9]", "", business_name.lower())[:20] or "negocio"
+
+    return f"""Creá una presentación de ventas HTML completa y auto-contenida para Scalerics, agencia de desarrollo web, para el cliente "{business_name}" ({rubro}, {city}).
+
+Lead: {lead_name} | {color_hint}
+Contexto WhatsApp (personalizá la presentación con esto):
+{conv}
+
+REQUISITOS TÉCNICOS:
+- HTML completo listo para browser (<!DOCTYPE html> ... </html>)
+- Google Fonts: DM Sans (body) + Cormorant Garamond (titles)
+- Font Awesome 6.5 CDN para íconos
+- Fondo: #0F1419 | Texto: #e2e8f0 | Acento: elige color vibrante para {rubro}
+- 8 slides con position:absolute, opacity/transform transition para animación fade+slide
+- Barra de progreso fija arriba (3px, gradiente cyan→azul)
+- Navegación: flechas prev/next + dots clickeables + teclas ← →
+- Contador de slide (ej: "3 / 8") arriba derecha
+
+SLIDES:
+1. Portada — H1 "Tu web, {business_name}", subtítulo 1 línea personalizado, 3 bullets emoji para {rubro}
+2. Problema — 3 cards: problema concreto de {rubro} sin web (emoji + título + 1 frase)
+3. Solución — "Lo que hacemos": 4 checkmarks con entregables + 2 stats en número grande
+4. Mockup estilo BOLD/COLORIDO — browser frame (barra con 3 dots rojo/amarillo/verde + URL 🔒 www.{slug}.com.uy) + mini-sitio con navbar, hero gradiente, grid 3 productos reales con precio $UY
+5. Mockup estilo CLEAN/BLANCO — mismo browser frame, diseño minimalista claro
+6. Mockup estilo DARK/PREMIUM — mismo browser frame, diseño oscuro elegante
+7. Inversión — Card central con rango USD + badge "Sin compromiso" + 4 deliverables en 2 columnas
+8. Próximos pasos — "¿Arrancamos, {lead_name}?" centrado + botón WhatsApp verde + hola@scalerics.com
+
+Respondé ÚNICAMENTE con el HTML completo. Sin explicaciones, sin markdown, sin bloques de código. Empezá directamente con <!DOCTYPE html>."""
+
 # ---------------------------------------------------------------------------
 # Fixed HTML shell — navigation, CSS, progress bar all pre-written
 # ---------------------------------------------------------------------------
@@ -268,6 +306,13 @@ def _deploy_to_vercel(html_content: str, business_name: str) -> str:
 
     data = resp.json()
     if "url" not in data:
+        err = data.get("error", {})
+        if err.get("invalidToken") or err.get("code") == "forbidden":
+            raise Exception(
+                "Token de Vercel inválido o expirado. "
+                "Generá uno nuevo en vercel.com/account/tokens y actualizalo "
+                "en las variables de entorno de Railway (VERCEL_TOKEN)."
+            )
         raise Exception(f"Vercel deploy failed: {data}")
 
     return f"https://{data['url']}"
