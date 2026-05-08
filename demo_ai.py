@@ -104,7 +104,7 @@ def generate_and_deploy(
     client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
     msg = client.messages.create(
         model="claude-sonnet-4-6",
-        max_tokens=20000,
+        max_tokens=32000,
         messages=[{"role": "user", "content": prompt}],
         betas=["output-128k-2025-02-19"],
     )
