@@ -43,49 +43,38 @@ def _content_prompt(business_name, rubro, city, client_color, lead_name, message
 LEAD: {lead_name} | {color_hint}
 WHATSAPP (personalizá con esto): {conv}
 
-⚠️ REGLA CRÍTICA DE JSON: En TODO el HTML que escribas dentro del JSON, usá ÚNICAMENTE comillas simples (') para atributos HTML — style='...', class='...', href='...'. NUNCA uses comillas dobles (") dentro de los valores del JSON porque rompe el parser. Solo se permiten comillas dobles para delimitar claves y valores del propio JSON.
+⚠️ REGLAS CRÍTICAS:
+1. JSON: usá SOLO comillas simples (') para atributos HTML dentro del JSON. Nunca comillas dobles dentro de los valores.
+2. CSS: NUNCA uses llaves ({{ }}) dentro del HTML de los slides — todo debe ser inline styles (style='...'). Las llaves rompen el parser.
+3. Sé CONCISO en cada slide: el HTML debe ser simple y directo, sin estilos repetitivos ni clases CSS internas.
 
-Respondé SOLO con un JSON válido con esta estructura exacta — sin markdown, sin explicaciones:
+Respondé SOLO con JSON válido, sin markdown ni explicaciones:
 
-{{
-  "accent": "#HEXCOLOR",
-  "s1": "<contenido HTML del slide 1>",
-  "s2": "<contenido HTML del slide 2>",
-  "s3": "<contenido HTML del slide 3>",
-  "s4_label": "Nombre estilo bold/energético",
-  "s4": "<mockup HTML 1>",
-  "s5_label": "Nombre estilo clean/moderno",
-  "s5": "<mockup HTML 2>",
-  "s6_label": "Nombre estilo premium/elegante",
-  "s6": "<mockup HTML 3>",
-  "s7": "<contenido HTML del slide 7>",
-  "s8": "<contenido HTML del slide 8>",
-  "questions": ["pregunta 1", "pregunta 2", "pregunta 3", "pregunta 4", "pregunta 5", "pregunta 6"]
-}}
+{{"s1":"<html slide 1>","s2":"<html slide 2>","s3":"<html slide 3>","s4_label":"Nombre estilo 1","s4":"<mockup 1>","s5_label":"Nombre estilo 2","s5":"<mockup 2>","s6_label":"Nombre estilo 3","s6":"<mockup 3>","s7":"<html slide 7>","s8":"<html slide 8>","questions":["q1","q2","q3","q4","q5","q6"]}}
 
-INSTRUCCIONES POR SLIDE:
+COLORES — MUY IMPORTANTE:
+- s1, s2, s3, s7, s8 → usá SOLO colores de Scalerics: fondo #0F1419, texto #e2e8f0, acento #06B6D4 (cyan) o #10b981 (verde), títulos con gradiente text de cyan a azul. NUNCA el color del cliente en estos slides.
+- s4, s5, s6 (mockups) → usá el color del cliente ({color_hint}) para el diseño del mini-sitio.
 
-s1-PORTADA: H1 grande "Tu web, {business_name}", subtítulo personalizado 1 línea, 3 bullets con emoji relevante para {rubro}. Sin nav.
+INSTRUCCIONES POR SLIDE (sé breve, máximo 8 líneas de HTML por slide):
 
-s2-PROBLEMA: Título impactante (sin web estás perdiendo clientes). 3 cards con problema CONCRETO de {rubro} (texto corto, directo). Cada card: emoji grande + título + 1 frase.
+s1-PORTADA: H1 grande "Tu web, {business_name}" con gradiente cyan→azul. Subtítulo 1 línea personalizado. 3 bullets con emoji para {rubro}.
 
-s3-SOLUCIÓN: Título "Lo que hacemos". 4 filas: ✓ + entregable específico para {rubro}. Abajo: 2 stats en números grandes relevantes para {rubro}.
+s2-PROBLEMA: Título impactante en #06B6D4. 3 cards horizontales con fondo rgba(255,255,255,.05) y borde rgba(255,255,255,.08): emoji + título + 1 frase concreta de problema de {rubro} sin web.
 
-s4/s5/s6-MOCKUPS: Cada uno es un mini-sitio completo dentro de un browser frame con estructura FIJA:
-- Navbar: nombre negocio bold izq + btn CTA der (colores del estilo)
-- Hero: fondo gradiente, H1 impactante, subtítulo 1 línea, btn CTA
-- Grid 3 productos: emoji 60px + nombre real + precio $UY + btn "Ver más"
-ESTILOS MUY DIFERENTES: s4=bold+colorido, s5=clean+blanco/claro, s6=dark+elegante
-Productos con nombres y precios REALES para {rubro}.
-Usá el browser frame EXACTO (no lo modifiques):
-<div style="width:100%;max-width:780px;border-radius:12px;overflow:hidden;box-shadow:0 24px 70px rgba(0,0,0,.8),0 0 0 1px rgba(255,255,255,.07)"><div style="background:#0d1117;padding:9px 14px;display:flex;align-items:center;gap:8px;border-bottom:1px solid rgba(255,255,255,.06)"><span style="width:10px;height:10px;border-radius:50%;background:#FF5F57;display:inline-block"></span><span style="width:10px;height:10px;border-radius:50%;background:#FEBC2E;display:inline-block"></span><span style="width:10px;height:10px;border-radius:50%;background:#28C840;display:inline-block"></span><span style="flex:1;background:#161b22;border:1px solid rgba(255,255,255,.08);border-radius:5px;padding:3px 10px;font-size:11px;font-family:monospace;color:#64748b">🔒 www.{slug}.com.uy</span></div><div style="height:390px;overflow:hidden">...CONTENIDO...</div></div>
+s3-SOLUCIÓN: Título "Lo que hacemos" en blanco. 4 filas con ✓ verde + entregable para {rubro}. 2 stats grandes (número + descripción) en cyan.
 
-s7-INVERSIÓN: Título "¿Cuánto cuesta?". Card central con rango USD sin ser exacto + badge "Sin compromiso". 4 deliverables en 2 columnas (emoji + texto, específicos para {rubro}).
+s4/s5/s6-MOCKUPS — browser frame exacto:
+<div style='width:100%;max-width:780px;border-radius:12px;overflow:hidden;box-shadow:0 24px 70px rgba(0,0,0,.8)'><div style='background:#0d1117;padding:9px 14px;display:flex;align-items:center;gap:8px'><span style='width:10px;height:10px;border-radius:50%;background:#FF5F57;display:inline-block'></span><span style='width:10px;height:10px;border-radius:50%;background:#FEBC2E;display:inline-block'></span><span style='width:10px;height:10px;border-radius:50%;background:#28C840;display:inline-block'></span><span style='flex:1;background:#161b22;border-radius:5px;padding:3px 10px;font-size:11px;font-family:monospace;color:#64748b'>🔒 www.{slug}.com.uy</span></div><div style='height:390px;overflow:hidden'>CONTENIDO</div></div>
 
-s8-PRÓXIMOS PASOS: "¿Arrancamos, {lead_name}?" grande y centrado. Btn WA verde (href="https://wa.me/{wa_number}"). Texto: hola@scalerics.com. Tagline: "Scalerics — Tu negocio, online."
+Dentro de CONTENIDO: navbar (nombre izq + CTA der) + hero (gradiente, H1, btn) + grid 3 items reales para {rubro} con precio en $UY.
+Elegí 3 estilos apropiados para {rubro} (ej: para comida NO usar dark/premium; para joyería SÍ).
 
-"accent": color hex que mejor representa el rubro (vibrante, no negro ni blanco).
-"questions": 6 preguntas concretas que necesitás hacerle al cliente si acepta (logo?, productos principales?, fotos?, dominio?, redes?, etc.)."""
+s7-INVERSIÓN: Título "¿Cuánto cuesta?" en blanco. Card central con rango USD + badge "Sin compromiso" en cyan. 4 deliverables en 2 columnas para {rubro}.
+
+s8-PRÓXIMOS PASOS: "¿Arrancamos, {lead_name}?" grande, gradiente cyan→verde. Btn WA verde (href='https://wa.me/{wa_number}'). hola@scalerics.com. "Scalerics — Tu negocio, online."
+
+"questions": 6 preguntas para hacerle al cliente si acepta (logo, productos, fotos, dominio, redes, etc.)."""
 
 
 def _chat_prompt(business_name, rubro, city, client_color, lead_name, messages, phone=""):
@@ -283,11 +272,16 @@ def generate_and_deploy(
     client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
     msg = client.messages.create(
         model="claude-sonnet-4-6",
-        max_tokens=8000,
+        max_tokens=16000,
+        betas=["output-128k-2025-02-19"],
         messages=[{"role": "user", "content": prompt}],
     )
 
+    if msg.stop_reason == "max_tokens":
+        print(f"[demo_ai] WARNING: Claude hit max_tokens — response truncated!")
+
     raw = msg.content[0].text.strip()
+    print(f"[demo_ai] Raw response length: {len(raw)} chars, stop_reason: {msg.stop_reason}")
     raw = re.sub(r"^```[a-z]*\s*\n?", "", raw)
     raw = re.sub(r"\n?```\s*$", "", raw)
 
@@ -308,21 +302,28 @@ def generate_and_deploy(
             else:
                 raise Exception(f"Claude no devolvió JSON válido: {e}\n\nRaw: {raw[:500]}")
 
+    present_keys = [k for k in ["s1","s2","s3","s4","s5","s6","s7","s8"] if data.get(k)]
+    print(f"[demo_ai] Slides received: {present_keys}")
+
+    def _s(key, fallback=""):
+        # Escape { } so Python .format() doesn't misinterpret CSS/JS braces in Claude's HTML
+        return data.get(key, fallback).replace("{", "{{").replace("}", "}}")
+
     questions_html = "".join(f"<li>{q}</li>" for q in data.get("questions", []))
 
     html = _HTML_SHELL.format(
         business_name=business_name,
-        s1=data.get("s1", ""),
-        s2=data.get("s2", ""),
-        s3=data.get("s3", ""),
+        s1=_s("s1"),
+        s2=_s("s2"),
+        s3=_s("s3"),
         s4_label=data.get("s4_label", "Propuesta 1"),
-        s4=data.get("s4", ""),
+        s4=_s("s4"),
         s5_label=data.get("s5_label", "Propuesta 2"),
-        s5=data.get("s5", ""),
+        s5=_s("s5"),
         s6_label=data.get("s6_label", "Propuesta 3"),
-        s6=data.get("s6", ""),
-        s7=data.get("s7", ""),
-        s8=data.get("s8", ""),
+        s6=_s("s6"),
+        s7=_s("s7"),
+        s8=_s("s8"),
         questions_html=questions_html,
     )
 
