@@ -1679,6 +1679,7 @@ def api_demo_prompt():
             client_color=data.get("client_color", ""),
             lead_name=data.get("lead_name", ""),
             messages=data.get("messages", []),
+            phone=data.get("phone", ""),
         )
         return jsonify({"ok": True, "prompt": prompt})
     except Exception as e:

@@ -26,7 +26,7 @@ def _logo_data_uri() -> str:
 # Claude only generates slide CONTENT — ~4K tokens, never truncates
 # ---------------------------------------------------------------------------
 
-def _content_prompt(business_name, rubro, city, client_color, lead_name, messages):
+def _content_prompt(business_name, rubro, city, client_color, lead_name, messages, phone=""):
     conv_lines = []
     for m in messages[:30]:
         direction = "Cliente" if m.get("direction") in ("in", "inbound") else "Bot"
@@ -36,6 +36,7 @@ def _content_prompt(business_name, rubro, city, client_color, lead_name, message
     color_hint = (f"Color primario del negocio: {client_color}." if client_color
                   else f"Elegí colores simbólicos para '{rubro}'.")
     slug = re.sub(r"[^a-z0-9]", "", business_name.lower())[:20] or "negocio"
+    wa_number = re.sub(r"[^0-9]", "", phone) or "59899000000"
 
     return f"""Generá el contenido de 8 slides para una presentación de ventas de Scalerics para "{business_name}" ({rubro}, {city}).
 
@@ -81,13 +82,13 @@ Usá el browser frame EXACTO (no lo modifiques):
 
 s7-INVERSIÓN: Título "¿Cuánto cuesta?". Card central con rango USD sin ser exacto + badge "Sin compromiso". 4 deliverables en 2 columnas (emoji + texto, específicos para {rubro}).
 
-s8-PRÓXIMOS PASOS: "¿Arrancamos, {lead_name}?" grande y centrado. Btn WA verde (href="https://wa.me/59899000000"). Texto: hola@scalerics.com. Tagline: "Scalerics — Tu negocio, online."
+s8-PRÓXIMOS PASOS: "¿Arrancamos, {lead_name}?" grande y centrado. Btn WA verde (href="https://wa.me/{wa_number}"). Texto: hola@scalerics.com. Tagline: "Scalerics — Tu negocio, online."
 
 "accent": color hex que mejor representa el rubro (vibrante, no negro ni blanco).
 "questions": 6 preguntas concretas que necesitás hacerle al cliente si acepta (logo?, productos principales?, fotos?, dominio?, redes?, etc.)."""
 
 
-def _chat_prompt(business_name, rubro, city, client_color, lead_name, messages):
+def _chat_prompt(business_name, rubro, city, client_color, lead_name, messages, phone=""):
     """Prompt for Claude.ai chat (asks for full deployable HTML, no API wrapper needed)."""
     conv_lines = []
     for m in messages[:20]:
@@ -96,6 +97,7 @@ def _chat_prompt(business_name, rubro, city, client_color, lead_name, messages):
     conv = "\n".join(conv_lines) or "(sin conversación previa)"
     color_hint = f"Color principal del negocio: {client_color}." if client_color else f"Elegí colores que representen bien a {rubro}."
     slug = re.sub(r"[^a-z0-9]", "", business_name.lower())[:20] or "negocio"
+    wa_number = re.sub(r"[^0-9]", "", phone) or "59899000000"
 
     return f"""Sos un desarrollador web senior de Scalerics, agencia uruguaya. Creá una presentación de ventas HTML completa para el cliente "{business_name}" ({rubro}, {city}).
 
@@ -154,17 +156,23 @@ ESTRUCTURA INTERNA de cada mockup — adaptala según {rubro}:
   - Veterinaria → servicios + turnos + productos para mascotas
   - Cualquier otro → lo que tenga más sentido para ese rubro específico
 
-ESTILOS DIFERENTES (los 3 deben verse claramente distintos):
-[4] BOLD/COLORIDO — colores intensos saturados, tipografía grande y pesada, gradientes llamativos
-[5] CLEAN/PROFESIONAL — fondo blanco/gris muy claro, tipografía ligera, mucho espacio, minimalista
-[6] DARK/PREMIUM — fondo #0a0a0a o #0d0d1a, detalles dorados o neón, elegante y exclusivo
+ESTILOS — elegí vos 3 estilos que tengan sentido real para "{rubro}". No uses siempre los mismos. Pensá qué espera ver un cliente de ese rubro, qué le genera confianza, qué está bien en ese mercado. Ejemplos de cómo razonar:
+• Puesto de comida / rotisería → "Vibrante y popular" + "Rápido y moderno" + "Cálido y familiar" (no dark/premium, no tiene sentido)
+• Joyería / relojería → "Elegante dorado" + "Minimalista blanco" + "Oscuro lujoso" (acá sí tiene sentido el premium)
+• Clínica / médico → "Limpio y confiable" + "Moderno azul" + "Cálido y cercano" (nada demasiado oscuro o agresivo)
+• Kinder / academia infantil → "Alegre y colorido" + "Ordenado y profesional" + "Fresco pastel" (nada oscuro)
+• Estudio contable / abogados → "Serio y confiable" + "Moderno gris" + "Clásico premium"
+• Gimnasio / CrossFit → "Energético rojo/negro" + "Moderno minimalista" + "Motivacional gradiente"
+• Peluquería / estética → "Trendy y moderno" + "Minimalista chic" + depende si es barrio o premium
+
+Para cada estilo poné una etiqueta descriptiva de 3-4 palabras como título del slide (ej: "Moderno y vibrante", "Clásico y confiable") — nada genérico como "Opción 1".
 
 [7] INVERSIÓN
 Card central: rango "USD 400–800" aprox + badge "Sin compromiso". 4 deliverables en 2 columnas con emoji, específicos para {rubro}.
 
 [8] PRÓXIMOS PASOS
 "¿Arrancamos, {lead_name}?" — texto grande centrado
-Botón WhatsApp verde: href="https://wa.me/59899000000"
+Botón WhatsApp verde: href="https://wa.me/{wa_number}"
 Email: hola@scalerics.com | Tagline: "Scalerics — Tu negocio, online."
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -270,7 +278,7 @@ def generate_and_deploy(
 ) -> dict:
     """Generate demo HTML with Claude (content only), wrap in shell, deploy to Vercel."""
 
-    prompt = _content_prompt(business_name, rubro, city, client_color, lead_name, messages)
+    prompt = _content_prompt(business_name, rubro, city, client_color, lead_name, messages, phone)
 
     client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
     msg = client.messages.create(
