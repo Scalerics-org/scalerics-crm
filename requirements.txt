@@ -10,6 +10,6 @@ requests
 pytest
 pytest-mock
 flask
-psycopg2-binary
 gunicorn
 json-repair
+pytz

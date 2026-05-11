@@ -1,11 +1,14 @@
 import os
+
 from dotenv import load_dotenv
+
 load_dotenv()
 
-import dashboard
-from database import init_db
+from database import init_db, seed_pitch_templates
+from dashboard import create_app
 
 db_path = os.environ.get("DB_PATH", "leads.db")
 init_db(db_path)
-dashboard._db_path = db_path
-app = dashboard.app
+seed_pitch_templates(db_path)
+
+app = create_app(db_path)

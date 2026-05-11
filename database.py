@@ -4,9 +4,29 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-def init_db(db_path: str) -> None:
-    conn = sqlite3.connect(db_path)
+
+# ─── Schema helpers ──────────────────────────────────────────────────────────
+
+def _add_column(conn: sqlite3.Connection, table: str, column: str, definition: str) -> None:
     try:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+    except sqlite3.OperationalError:
+        pass  # column already exists
+
+
+def _connect(db_path: str) -> sqlite3.Connection:
+    conn = sqlite3.connect(db_path, timeout=10)
+    conn.execute("PRAGMA journal_mode=WAL")  # better concurrency
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+# ─── Init ────────────────────────────────────────────────────────────────────
+
+def init_db(db_path: str) -> None:
+    conn = _connect(db_path)
+    try:
+        # ── Existing table ────────────────────────────────────────────────────
         conn.execute("""
             CREATE TABLE IF NOT EXISTS businesses (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -31,33 +51,150 @@ def init_db(db_path: str) -> None:
                 email_sent_at   TIMESTAMP
             )
         """)
-        try:
-            conn.execute("ALTER TABLE businesses ADD COLUMN notes TEXT")
-        except sqlite3.OperationalError:
-            pass
-        try:
-            conn.execute("ALTER TABLE businesses ADD COLUMN pitch_text TEXT")
-        except sqlite3.OperationalError:
-            pass
-        try:
-            conn.execute("ALTER TABLE businesses ADD COLUMN crm_status TEXT DEFAULT 'sin_contactar'")
-        except sqlite3.OperationalError:
-            pass
+        # Additive column migrations for businesses
+        _add_column(conn, "businesses", "notes", "TEXT")
+        _add_column(conn, "businesses", "pitch_text", "TEXT")
+        _add_column(conn, "businesses", "crm_status", "TEXT DEFAULT 'sin_contactar'")
+        _add_column(conn, "businesses", "has_whatsapp", "INTEGER DEFAULT 1")
+
+        # ── demos ─────────────────────────────────────────────────────────────
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS demos (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_id       INTEGER NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+                status          TEXT NOT NULL DEFAULT 'pending',
+                html_path       TEXT,
+                url             TEXT,
+                generated_at    TIMESTAMP,
+                generated_by    TEXT,
+                error_message   TEXT,
+                created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(client_id)
+            )
+        """)
+
+        # ── jobs ──────────────────────────────────────────────────────────────
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS jobs (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                type            TEXT NOT NULL,
+                status          TEXT NOT NULL DEFAULT 'pending',
+                payload         TEXT,
+                result          TEXT,
+                error_message   TEXT,
+                retry_count     INTEGER DEFAULT 0,
+                max_retries     INTEGER DEFAULT 3,
+                created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                started_at      TIMESTAMP,
+                completed_at    TIMESTAMP
+            )
+        """)
+
+        # ── meetings ──────────────────────────────────────────────────────────
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS meetings (
+                id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_id           INTEGER NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+                calendar_event_id   TEXT UNIQUE,
+                title               TEXT,
+                start_at            TIMESTAMP,
+                end_at              TIMESTAMP,
+                meet_link           TEXT,
+                status              TEXT DEFAULT 'scheduled',
+                transcript          TEXT,
+                summary             TEXT,
+                requirements        TEXT,
+                created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # ── budgets ───────────────────────────────────────────────────────────
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS budgets (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_id       INTEGER NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+                meeting_id      INTEGER REFERENCES meetings(id),
+                items           TEXT,
+                total_amount    REAL,
+                status          TEXT DEFAULT 'draft',
+                notes           TEXT,
+                created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                sent_at         TIMESTAMP
+            )
+        """)
+
+        # ── tasks ─────────────────────────────────────────────────────────────
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS tasks (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_id       INTEGER REFERENCES businesses(id),
+                title           TEXT NOT NULL,
+                description     TEXT,
+                priority        TEXT DEFAULT 'medium',
+                status          TEXT DEFAULT 'todo',
+                assignee        TEXT,
+                deadline        TIMESTAMP,
+                created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # ── client_info ───────────────────────────────────────────────────────
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS client_info (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_id       INTEGER NOT NULL UNIQUE REFERENCES businesses(id) ON DELETE CASCADE,
+                lead_name       TEXT,
+                business_name   TEXT,
+                rubro           TEXT,
+                budget_range    TEXT,
+                colors          TEXT,
+                needs           TEXT,
+                instagram       TEXT,
+                web             TEXT,
+                updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # ── pitch_templates ───────────────────────────────────────────────────
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS pitch_templates (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                category_group  TEXT NOT NULL,
+                content         TEXT NOT NULL,
+                is_active       INTEGER DEFAULT 1,
+                usage_count     INTEGER DEFAULT 0,
+                last_used_at    TIMESTAMP,
+                created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
         conn.commit()
     finally:
         conn.close()
 
+
+# ─── Businesses (existing API, preserved) ────────────────────────────────────
+
+ALLOWED_COLUMNS = {
+    "name", "category", "address", "city", "phone", "email", "rating",
+    "review_count", "hours", "maps_url", "facebook_url", "instagram_url",
+    "color_scheme", "demo_html_path", "demo_url", "status", "error_message",
+    "scraped_at", "email_sent_at", "notes", "pitch_text", "crm_status",
+    "has_whatsapp",
+}
+
+
 def insert_business(db_path: str, data: dict) -> Optional[int]:
-    conn = sqlite3.connect(db_path)
+    conn = _connect(db_path)
     try:
         cursor = conn.execute("""
             INSERT OR IGNORE INTO businesses
             (name, category, address, city, phone, rating, review_count,
-             hours, maps_url, facebook_url, instagram_url, email,
-             color_scheme, demo_html_path, demo_url, status)
+             hours, maps_url, facebook_url, instagram_url,
+             color_scheme, demo_html_path, demo_url, status, has_whatsapp)
             VALUES (:name, :category, :address, :city, :phone, :rating,
                     :review_count, :hours, :maps_url, :facebook_url, :instagram_url,
-                    :email, :color_scheme, :demo_html_path, :demo_url, 'scraped')
+                    :color_scheme, :demo_html_path, :demo_url, 'scraped', :has_whatsapp)
         """, {
             "name": data.get("name"),
             "category": data.get("category"),
@@ -70,22 +207,16 @@ def insert_business(db_path: str, data: dict) -> Optional[int]:
             "maps_url": data.get("maps_url"),
             "facebook_url": data.get("facebook_url"),
             "instagram_url": data.get("instagram_url"),
-            "email": data.get("email"),
             "color_scheme": data.get("color_scheme"),
             "demo_html_path": data.get("demo_html_path"),
             "demo_url": data.get("demo_url"),
+            "has_whatsapp": data.get("has_whatsapp", 1),
         })
         conn.commit()
         return cursor.lastrowid if cursor.rowcount > 0 else None
     finally:
         conn.close()
 
-ALLOWED_COLUMNS = {
-    "name", "category", "address", "city", "phone", "email", "rating",
-    "review_count", "hours", "maps_url", "facebook_url", "instagram_url",
-    "color_scheme", "demo_html_path", "demo_url", "status", "error_message",
-    "scraped_at", "email_sent_at", "notes", "pitch_text", "crm_status",
-}
 
 def update_business(db_path: str, business_id: int, **fields) -> None:
     if not fields:
@@ -95,16 +226,16 @@ def update_business(db_path: str, business_id: int, **fields) -> None:
         raise ValueError(f"Invalid column names: {invalid}")
     set_clause = ", ".join(f"{k} = :{k}" for k in fields)
     fields["id"] = business_id
-    conn = sqlite3.connect(db_path)
+    conn = _connect(db_path)
     try:
         conn.execute(f"UPDATE businesses SET {set_clause} WHERE id = :id", fields)
         conn.commit()
     finally:
         conn.close()
 
+
 def get_businesses_by_status(db_path: str, status: str) -> list[dict]:
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
+    conn = _connect(db_path)
     try:
         cursor = conn.execute(
             "SELECT * FROM businesses WHERE status = ?", (status,)
@@ -113,19 +244,407 @@ def get_businesses_by_status(db_path: str, status: str) -> list[dict]:
     finally:
         conn.close()
 
+
+def get_all_businesses(db_path: str) -> list[dict]:
+    conn = _connect(db_path)
+    try:
+        cursor = conn.execute("SELECT * FROM businesses ORDER BY scraped_at DESC")
+        return [dict(row) for row in cursor.fetchall()]
+    finally:
+        conn.close()
+
+
+def get_business(db_path: str, business_id: int) -> Optional[dict]:
+    conn = _connect(db_path)
+    try:
+        cursor = conn.execute("SELECT * FROM businesses WHERE id = ?", (business_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
 def delete_business(db_path: str, business_id: int) -> None:
-    conn = sqlite3.connect(db_path)
+    conn = _connect(db_path)
     try:
         conn.execute("DELETE FROM businesses WHERE id = ?", (business_id,))
         conn.commit()
     finally:
         conn.close()
 
-def get_all_businesses(db_path: str) -> list[dict]:
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
+
+# ─── Demos ────────────────────────────────────────────────────────────────────
+
+_DEMO_COLUMNS = {"status", "html_path", "url", "generated_at", "generated_by", "error_message"}
+
+
+def get_demo_for_client(db_path: str, client_id: int) -> Optional[dict]:
+    conn = _connect(db_path)
     try:
-        cursor = conn.execute("SELECT * FROM businesses ORDER BY scraped_at DESC")
+        cursor = conn.execute(
+            "SELECT * FROM demos WHERE client_id = ?", (client_id,)
+        )
+        row = cursor.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def create_demo(db_path: str, client_id: int) -> int:
+    """Raises sqlite3.IntegrityError if demo already exists for this client."""
+    conn = _connect(db_path)
+    try:
+        cursor = conn.execute(
+            "INSERT INTO demos (client_id, status) VALUES (?, 'pending')",
+            (client_id,)
+        )
+        conn.commit()
+        return cursor.lastrowid
+    finally:
+        conn.close()
+
+
+def update_demo(db_path: str, demo_id: int, **fields) -> None:
+    invalid = set(fields) - _DEMO_COLUMNS
+    if invalid:
+        raise ValueError(f"Invalid demo columns: {invalid}")
+    if not fields:
+        return
+    set_clause = ", ".join(f"{k} = :{k}" for k in fields)
+    fields["id"] = demo_id
+    conn = _connect(db_path)
+    try:
+        conn.execute(f"UPDATE demos SET {set_clause} WHERE id = :id", fields)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+# ─── Jobs ─────────────────────────────────────────────────────────────────────
+
+_JOB_COLUMNS = {"status", "result", "error_message", "retry_count", "started_at", "completed_at"}
+
+
+def create_job(db_path: str, job_type: str, payload: str, max_retries: int = 3) -> int:
+    conn = _connect(db_path)
+    try:
+        cursor = conn.execute(
+            "INSERT INTO jobs (type, payload, max_retries) VALUES (?, ?, ?)",
+            (job_type, payload, max_retries)
+        )
+        conn.commit()
+        return cursor.lastrowid
+    finally:
+        conn.close()
+
+
+def get_next_pending_job(db_path: str) -> Optional[dict]:
+    """Atomically claims the next pending job by marking it as running."""
+    conn = _connect(db_path)
+    try:
+        # Recover stale running jobs (>5 min) back to pending
+        conn.execute("""
+            UPDATE jobs SET status = 'pending'
+            WHERE status = 'running'
+              AND started_at < datetime('now', '-5 minutes')
+              AND retry_count < max_retries
+        """)
+        # Claim next pending job
+        conn.execute("""
+            UPDATE jobs SET status = 'running', started_at = CURRENT_TIMESTAMP
+            WHERE id = (
+                SELECT id FROM jobs
+                WHERE status = 'pending'
+                ORDER BY created_at ASC
+                LIMIT 1
+            )
+        """)
+        conn.commit()
+        cursor = conn.execute(
+            "SELECT * FROM jobs WHERE status = 'running' ORDER BY started_at DESC LIMIT 1"
+        )
+        row = cursor.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def update_job(db_path: str, job_id: int, **fields) -> None:
+    allowed = _JOB_COLUMNS | {"status"}
+    invalid = set(fields) - allowed
+    if invalid:
+        raise ValueError(f"Invalid job columns: {invalid}")
+    if not fields:
+        return
+    if fields.get("status") == "completed":
+        fields.setdefault("completed_at", "CURRENT_TIMESTAMP")
+    set_clause = ", ".join(
+        f"{k} = {v}" if v == "CURRENT_TIMESTAMP" else f"{k} = :{k}"
+        for k, v in fields.items()
+    )
+    filtered = {k: v for k, v in fields.items() if v != "CURRENT_TIMESTAMP"}
+    filtered["id"] = job_id
+    conn = _connect(db_path)
+    try:
+        conn.execute(f"UPDATE jobs SET {set_clause} WHERE id = :id", filtered)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_job(db_path: str, job_id: int) -> Optional[dict]:
+    conn = _connect(db_path)
+    try:
+        cursor = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+# ─── Meetings ─────────────────────────────────────────────────────────────────
+
+_MEETING_COLUMNS = {
+    "calendar_event_id", "title", "start_at", "end_at", "meet_link",
+    "status", "transcript", "summary", "requirements",
+}
+
+
+def create_meeting(db_path: str, client_id: int, **fields) -> int:
+    allowed_fields = {k: v for k, v in fields.items() if k in _MEETING_COLUMNS}
+    cols = ["client_id"] + list(allowed_fields)
+    vals = [client_id] + list(allowed_fields.values())
+    placeholders = ", ".join("?" for _ in vals)
+    conn = _connect(db_path)
+    try:
+        cursor = conn.execute(
+            f"INSERT INTO meetings ({', '.join(cols)}) VALUES ({placeholders})", vals
+        )
+        conn.commit()
+        return cursor.lastrowid
+    finally:
+        conn.close()
+
+
+def update_meeting(db_path: str, meeting_id: int, **fields) -> None:
+    invalid = set(fields) - _MEETING_COLUMNS
+    if invalid:
+        raise ValueError(f"Invalid meeting columns: {invalid}")
+    if not fields:
+        return
+    set_clause = ", ".join(f"{k} = :{k}" for k in fields)
+    fields["id"] = meeting_id
+    conn = _connect(db_path)
+    try:
+        conn.execute(f"UPDATE meetings SET {set_clause} WHERE id = :id", fields)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_meetings_for_client(db_path: str, client_id: int) -> list[dict]:
+    conn = _connect(db_path)
+    try:
+        cursor = conn.execute(
+            "SELECT * FROM meetings WHERE client_id = ? ORDER BY start_at DESC",
+            (client_id,)
+        )
         return [dict(row) for row in cursor.fetchall()]
+    finally:
+        conn.close()
+
+
+def get_meeting_by_calendar_id(db_path: str, calendar_event_id: str) -> Optional[dict]:
+    conn = _connect(db_path)
+    try:
+        cursor = conn.execute(
+            "SELECT * FROM meetings WHERE calendar_event_id = ?", (calendar_event_id,)
+        )
+        row = cursor.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+# ─── Tasks ────────────────────────────────────────────────────────────────────
+
+_TASK_COLUMNS = {"client_id", "title", "description", "priority", "status", "assignee", "deadline"}
+
+
+def create_task(db_path: str, **fields) -> int:
+    allowed = {k: v for k, v in fields.items() if k in _TASK_COLUMNS}
+    if "title" not in allowed:
+        raise ValueError("title is required for tasks")
+    cols = list(allowed)
+    vals = list(allowed.values())
+    placeholders = ", ".join("?" for _ in vals)
+    conn = _connect(db_path)
+    try:
+        cursor = conn.execute(
+            f"INSERT INTO tasks ({', '.join(cols)}) VALUES ({placeholders})", vals
+        )
+        conn.commit()
+        return cursor.lastrowid
+    finally:
+        conn.close()
+
+
+def update_task(db_path: str, task_id: int, **fields) -> None:
+    invalid = set(fields) - _TASK_COLUMNS
+    if invalid:
+        raise ValueError(f"Invalid task columns: {invalid}")
+    if not fields:
+        return
+    set_clause = ", ".join(f"{k} = :{k}" for k in fields)
+    fields["id"] = task_id
+    conn = _connect(db_path)
+    try:
+        conn.execute(f"UPDATE tasks SET {set_clause} WHERE id = :id", fields)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_tasks(db_path: str, client_id: Optional[int] = None, status: Optional[str] = None) -> list[dict]:
+    where_parts = []
+    params: list = []
+    if client_id is not None:
+        where_parts.append("client_id = ?")
+        params.append(client_id)
+    if status is not None:
+        where_parts.append("status = ?")
+        params.append(status)
+    where = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
+    conn = _connect(db_path)
+    try:
+        cursor = conn.execute(
+            f"SELECT * FROM tasks {where} ORDER BY created_at DESC", params
+        )
+        return [dict(row) for row in cursor.fetchall()]
+    finally:
+        conn.close()
+
+
+def delete_task(db_path: str, task_id: int) -> None:
+    conn = _connect(db_path)
+    try:
+        conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+# ─── Client info ──────────────────────────────────────────────────────────────
+
+_CLIENT_INFO_COLUMNS = {
+    "lead_name", "business_name", "rubro", "budget_range",
+    "colors", "needs", "instagram", "web",
+}
+
+
+def get_client_info(db_path: str, client_id: int) -> Optional[dict]:
+    conn = _connect(db_path)
+    try:
+        cursor = conn.execute(
+            "SELECT * FROM client_info WHERE client_id = ?", (client_id,)
+        )
+        row = cursor.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def upsert_client_info(db_path: str, client_id: int, **fields) -> None:
+    allowed = {k: v for k, v in fields.items() if k in _CLIENT_INFO_COLUMNS}
+    if not allowed:
+        return
+    conn = _connect(db_path)
+    try:
+        existing = conn.execute(
+            "SELECT id FROM client_info WHERE client_id = ?", (client_id,)
+        ).fetchone()
+        if existing:
+            set_clause = ", ".join(f"{k} = :{k}" for k in allowed)
+            allowed["client_id"] = client_id
+            conn.execute(
+                f"UPDATE client_info SET {set_clause}, updated_at = CURRENT_TIMESTAMP WHERE client_id = :client_id",
+                allowed,
+            )
+        else:
+            cols = ["client_id"] + list(allowed)
+            vals = {"client_id": client_id, **allowed}
+            placeholders = ", ".join(f":{c}" for c in cols)
+            conn.execute(
+                f"INSERT INTO client_info ({', '.join(cols)}) VALUES ({placeholders})", vals
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+# ─── Pitch templates ──────────────────────────────────────────────────────────
+
+def get_pitch_templates(db_path: str, category_group: Optional[str] = None) -> list[dict]:
+    conn = _connect(db_path)
+    try:
+        if category_group:
+            cursor = conn.execute(
+                "SELECT * FROM pitch_templates WHERE is_active = 1 AND category_group = ? ORDER BY usage_count ASC",
+                (category_group,)
+            )
+        else:
+            cursor = conn.execute(
+                "SELECT * FROM pitch_templates WHERE is_active = 1 ORDER BY usage_count ASC"
+            )
+        return [dict(row) for row in cursor.fetchall()]
+    finally:
+        conn.close()
+
+
+def increment_template_usage(db_path: str, template_id: int) -> None:
+    conn = _connect(db_path)
+    try:
+        conn.execute(
+            "UPDATE pitch_templates SET usage_count = usage_count + 1, last_used_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (template_id,)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def seed_pitch_templates(db_path: str) -> None:
+    """Inserts default pitch templates if the table is empty."""
+    conn = _connect(db_path)
+    try:
+        count = conn.execute("SELECT COUNT(*) FROM pitch_templates").fetchone()[0]
+        if count > 0:
+            return
+
+        templates = [
+            ("gym", "Buenas, ¿cómo andás? Soy de Scalerics, una software factory uruguaya.\n\nVimos que {name} no tiene página web propia — con {rating} estrellas en Google, una web te ayudaría a convertir más búsquedas en socios nuevos. ¿Te interesaría que charlemos unos minutos?"),
+            ("gym", "Hola! Te escribo de Scalerics. Vi que {name} en {city} tiene {review_count} reseñas en Google pero sin web propia.\n\nTenemos una propuesta concreta para que captures más clientes sin esfuerzo extra. ¿5 minutos para contártelo?"),
+            ("peluqueria", "Buenas! Soy Juan de Scalerics. Vi que {name} tiene {rating}★ en Google pero sin web propia.\n\nUna página te ayudaría a que la gente reserve turno directo, sin llamar. ¿Te interesa que te mostremos cómo?"),
+            ("peluqueria", "Hola! Te contacto de Scalerics. {name} aparece bien posicionado en Google con {review_count} reseñas.\n\nCon una web propia podrías recibir reservas 24/7 sin intermediarios. ¿Charlamos?"),
+            ("restaurante", "Buenas! De parte de Scalerics. Vimos que {name} tiene muy buena reputación en Google ({rating}★) pero sin web propia.\n\nUna web aumenta las reservas directas y evita las comisiones de las apps de delivery. ¿Te interesa?"),
+            ("restaurante", "Hola! Soy de Scalerics. {name} tiene {review_count} opiniones en Google — eso es tráfico que podrías convertir en reservas directas con una web.\n\n¿Tenés 5 minutos para que te mostremos cómo?"),
+            ("bar", "Buenas! Te escribo de Scalerics. Vi que {name} aparece en Google con {rating}★ pero sin web propia.\n\nCon una web mostrás la carta, los eventos y el horario — y la gente llega más preparada. ¿Lo charlamos?"),
+            ("panaderia", "Hola! De Scalerics. {name} tiene muy buena presencia en Google con {review_count} reseñas.\n\nCon una web podés mostrar tu carta del día y recibir pedidos anticipados. ¿Hablamos?"),
+            ("panaderia", "Buenas! Soy de Scalerics. Vi que {name} en {city} tiene clientes fieles según Google.\n\nUna web sencilla te ayuda a llegar a nuevos clientes del barrio que buscan panaderías cerca. ¿Te cuento más?"),
+            ("delivery", "Hola! Te escribo de Scalerics. {name} aparece en Google pero sin web propia.\n\nTener web propia significa recibir pedidos sin pagarle comisión a las apps. ¿Lo analizamos juntos?"),
+            ("salud", "Buenas! De Scalerics. {name} tiene {rating}★ en Google — excelente reputación.\n\nCon una web tus pacientes pueden pedir turno online las 24hs. ¿Te mostramos cómo?"),
+            ("hotel", "Hola! Soy de Scalerics. Vi que {name} tiene {review_count} reseñas en Google pero sin web propia.\n\nCon web propia recibís reservas directas sin comisión de Booking o Airbnb. ¿Charlamos?"),
+            ("ferreteria", "Buenas! De Scalerics. {name} en {city} tiene buena presencia en Google pero sin web.\n\nUna web con catálogo de productos ayuda a que los clientes encuentren lo que buscan antes de venir. ¿Te interesa?"),
+            ("veterinaria", "Hola! Te escribo de Scalerics. {name} tiene {rating}★ en Google — tus clientes te valoran.\n\nCon una web podés mostrar servicios, precios y agendar turnos online. ¿Lo vemos?"),
+            ("default", "Buenas! Soy de Scalerics, agencia web uruguaya. Vi que {name} en {city} tiene {rating}★ en Google pero sin sitio web propio.\n\nUna web profesional te ayuda a conseguir más clientes. ¿Te interesa que te mostremos una demo gratuita?"),
+            ("default", "Hola! Te contacto de Scalerics. {name} aparece en Google con {review_count} opiniones pero sin página web.\n\nPreparamos demos personalizadas sin costo para que veas cómo quedaría tu sitio. ¿Charlamos?"),
+        ]
+
+        conn.executemany(
+            "INSERT INTO pitch_templates (category_group, content) VALUES (?, ?)",
+            templates
+        )
+        conn.commit()
+        logger.info(f"Seeded {len(templates)} pitch templates")
     finally:
         conn.close()

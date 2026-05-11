@@ -1,26 +1,24 @@
-import base64
-import datetime
-import html as html_lib
 import os
-import subprocess
-import sys
 import threading
 import webbrowser
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
 
-import requests as http_requests
 from dotenv import load_dotenv
 from flask import Flask, jsonify, redirect, render_template_string, request, session, url_for
 
-from database import get_all_businesses, update_business, delete_business
+from database import init_db, seed_pitch_templates
+from routes.leads import leads_bp
+from routes.demos import demos_bp
+from routes.calendar import calendar_bp
+from routes.wa import wa_bp
+from routes.pipeline import pipeline_bp
+from routes.tasks import tasks_bp
+from services.demo_service import demo_job_handler
+from services.job_service import init_worker
 
 load_dotenv()
 
-app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY") or "scalerics-dev-key-change-in-prod"
-_db_path: str = ""
 _pipeline_status: dict = {"running": False, "log": [], "error": None}
+_pipeline_lock = threading.Lock()
 
 # ---------------------------------------------------------------------------
 # Login page
@@ -1152,577 +1150,59 @@ loadLeads();
 </html>"""
 
 
-# ---------------------------------------------------------------------------
-# Auth
-# ---------------------------------------------------------------------------
+def create_app(db_path: str) -> Flask:
+    app = Flask(__name__)
+    app.secret_key = os.environ.get("SECRET_KEY") or "scalerics-dev-key-change-in-prod"
+    app.config["DB_PATH"] = db_path
+    app.config["PIPELINE_STATUS"] = _pipeline_status
+    app.config["PIPELINE_LOCK"] = _pipeline_lock
 
-@app.before_request
-def require_login():
-    if request.endpoint in ("login", "logout", "static"):
-        return
-    if not session.get("logged_in"):
-        if request.path.startswith("/api/"):
-            return jsonify({"error": "session_expired"}), 401
+    for bp in (leads_bp, demos_bp, calendar_bp, wa_bp, pipeline_bp, tasks_bp):
+        app.register_blueprint(bp)
+
+    @app.before_request
+    def require_login():
+        if request.endpoint in ("login", "logout", "static"):
+            return
+        if not session.get("logged_in"):
+            if request.path.startswith("/api/"):
+                return jsonify({"error": "session_expired"}), 401
+            return redirect(url_for("login"))
+
+    @app.route("/login", methods=["GET", "POST"])
+    def login():
+        error = None
+        if request.method == "POST":
+            password = request.form.get("password", "")
+            expected = os.environ.get("DASHBOARD_PASSWORD", "")
+            if not expected:
+                session["logged_in"] = True
+                return redirect(url_for("index"))
+            if password == expected:
+                session["logged_in"] = True
+                return redirect(url_for("index"))
+            error = "Contraseña incorrecta"
+        return render_template_string(LOGIN_HTML, error=error)
+
+    @app.route("/logout")
+    def logout():
+        session.clear()
         return redirect(url_for("login"))
 
+    @app.route("/")
+    def index():
+        return render_template_string(DASHBOARD_HTML)
 
-@app.route("/login", methods=["GET", "POST"])
-def login():
-    error = None
-    if request.method == "POST":
-        password = request.form.get("password", "")
-        expected = os.environ.get("DASHBOARD_PASSWORD", "")
-        if not expected:
-            session["logged_in"] = True
-            return redirect(url_for("index"))
-        if password == expected:
-            session["logged_in"] = True
-            return redirect(url_for("index"))
-        error = "Contraseña incorrecta"
-    return render_template_string(LOGIN_HTML, error=error)
+    worker = init_worker(db_path)
+    worker.register("demo", demo_job_handler)
+    worker.start()
 
+    return app
 
-@app.route("/logout")
-def logout():
-    session.clear()
-    return redirect(url_for("login"))
-
-
-# ---------------------------------------------------------------------------
-# Main routes (leads)
-# ---------------------------------------------------------------------------
-
-@app.route("/")
-def index():
-    return render_template_string(DASHBOARD_HTML)
-
-
-@app.route("/api/leads")
-def api_leads():
-    businesses = get_all_businesses(_db_path)
-    crm_status = request.args.get("crm_status")
-    category = request.args.get("category")
-    search = (request.args.get("search") or "").lower()
-    if crm_status:
-        businesses = [b for b in businesses if (b.get("crm_status") or "sin_contactar") == crm_status]
-    if category:
-        businesses = [b for b in businesses if (b.get("category") or "").lower() == category.lower()]
-    if search:
-        businesses = [b for b in businesses if search in (b.get("name") or "").lower()]
-    return jsonify(businesses)
-
-
-@app.route("/api/leads/<int:biz_id>/crm-status", methods=["POST"])
-def api_crm_status(biz_id):
-    data = request.get_json() or {}
-    crm_status = data.get("crm_status", "sin_contactar")
-    if crm_status not in ("sin_contactar", "contactado", "agendo", "firmo"):
-        return jsonify({"ok": False, "error": "Estado inválido"})
-    update_business(_db_path, biz_id, crm_status=crm_status)
-    return jsonify({"ok": True})
-
-
-@app.route("/api/leads/<int:biz_id>", methods=["DELETE"])
-def api_delete_lead(biz_id):
-    delete_business(_db_path, biz_id)
-    return jsonify({"ok": True})
-
-
-@app.route("/api/leads/<int:biz_id>/contact", methods=["POST"])
-def api_contact(biz_id):
-    data = request.get_json() or {}
-    note = data.get("note", "")
-    update_business(_db_path, biz_id, status="contacted", notes=note)
-    return jsonify({"ok": True})
-
-
-@app.route("/api/leads/<int:biz_id>/send-email", methods=["POST"])
-def api_send_email(biz_id):
-    try:
-        from google.oauth2.credentials import Credentials
-        from googleapiclient.discovery import build
-    except ImportError:
-        return jsonify({"ok": False, "error": "google-api-python-client no instalado"})
-
-    client_id = os.environ.get("GMAIL_CLIENT_ID")
-    client_secret = os.environ.get("GMAIL_CLIENT_SECRET")
-    refresh_token = os.environ.get("GMAIL_REFRESH_TOKEN")
-    sender_email = os.environ.get("FACTORY_EMAIL", "")
-
-    if not all([client_id, client_secret, refresh_token, sender_email]):
-        return jsonify({"ok": False, "error": "Faltan variables Gmail en .env"})
-
-    businesses = get_all_businesses(_db_path)
-    biz = next((b for b in businesses if b["id"] == biz_id), None)
-    if not biz:
-        return jsonify({"ok": False, "error": "Negocio no encontrado"})
-    if not biz.get("email"):
-        return jsonify({"ok": False, "error": "Este negocio no tiene email"})
-
-    try:
-        creds = Credentials(
-            token=None,
-            refresh_token=refresh_token,
-            token_uri="https://oauth2.googleapis.com/token",
-            client_id=client_id,
-            client_secret=client_secret,
-            scopes=["https://www.googleapis.com/auth/gmail.send"],
-        )
-        service = build("gmail", "v1", credentials=creds)
-        factory_name = os.environ.get("FACTORY_NAME", "Scalerics")
-        factory_phone = os.environ.get("FACTORY_PHONE", "")
-        name_esc = html_lib.escape(biz.get("name", "") or "")
-        phone_line = f"📞 {factory_phone}" if factory_phone else ""
-        email_html = f"""<!DOCTYPE html>
-<html lang="es"><head><meta charset="UTF-8"></head>
-<body style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;color:#333;padding:20px">
-  <div style="border-top:4px solid #7c3aed;padding-top:24px">
-    <h2 style="color:#7c3aed;margin-bottom:4px">{html_lib.escape(factory_name)}</h2>
-    <p style="color:#666;margin-top:0;font-size:0.9em">Software factory · www.scalerics.com</p>
-  </div>
-  <p style="margin-top:24px">Hola equipo de <strong>{name_esc}</strong>,</p>
-  <p>Notamos que todavía no tienen página web propia. Hoy la mayoría de los clientes busca en Google antes de visitar un negocio — y sin web, no aparecen.</p>
-  <p>En <strong>{html_lib.escape(factory_name)}</strong> desarrollamos sitios web para negocios locales uruguayos, rápido y a precios accesibles.</p>
-  <p>¿Charlamos 15 minutos esta semana?</p>
-  <div style="margin-top:32px;padding:16px;background:#f5f3ff;border-radius:8px;font-size:0.9em">
-    <strong>{html_lib.escape(factory_name)}</strong><br>
-    📧 <a href="mailto:{html_lib.escape(sender_email)}" style="color:#7c3aed">{html_lib.escape(sender_email)}</a><br>
-    {phone_line}
-  </div>
-  <p style="font-size:0.75em;color:#999;margin-top:24px">Si no querés recibir más mensajes, respondé con "no gracias".</p>
-</body></html>"""
-        message = MIMEMultipart("alternative")
-        message["From"] = sender_email
-        message["To"] = biz["email"]
-        message["Subject"] = f"¿Le puedo mostrar algo a {biz['name']}?"
-        message.attach(MIMEText(email_html, "html", "utf-8"))
-        raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
-        service.users().messages().send(userId="me", body={"raw": raw}).execute()
-        update_business(_db_path, biz_id, status="email_sent",
-                        email_sent_at=datetime.datetime.now().isoformat())
-        return jsonify({"ok": True})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)})
-
-
-@app.route("/api/stats")
-def api_stats():
-    businesses = get_all_businesses(_db_path)
-    categories = sorted({b.get("category") or "" for b in businesses if b.get("category")})
-    return jsonify({
-        "total": len(businesses),
-        "with_pitch": sum(1 for b in businesses if b.get("pitch_text")),
-        "with_email": sum(1 for b in businesses if b.get("email")),
-        "contacted": sum(1 for b in businesses if b.get("status") in ("contacted", "email_sent")),
-        "categories": categories,
-    })
-
-
-@app.route("/api/run-pipeline", methods=["POST"])
-def api_run_pipeline():
-    global _pipeline_status
-    if _pipeline_status["running"]:
-        return jsonify({"ok": False, "error": "El pipeline ya está corriendo"})
-    data = request.get_json() or {}
-    query = (data.get("query") or "").strip()
-    max_results = int(data.get("max") or 30)
-    if not query:
-        return jsonify({"ok": False, "error": "Escribí qué negocios buscar"})
-    _pipeline_status = {"running": True, "log": [], "error": None}
-
-    def _run():
-        global _pipeline_status
-        try:
-            cmd = [sys.executable, "main.py", "run-all", "--query", query, "--max", str(max_results)]
-            proc = subprocess.Popen(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                text=True, encoding="utf-8", errors="replace",
-                cwd=os.path.dirname(os.path.abspath(__file__)),
-            )
-            for line in proc.stdout:
-                line = line.rstrip()
-                if line:
-                    _pipeline_status["log"].append(line)
-            proc.wait()
-            if proc.returncode != 0:
-                _pipeline_status["error"] = f"El pipeline terminó con código {proc.returncode}"
-        except Exception as e:
-            _pipeline_status["error"] = str(e)
-        finally:
-            _pipeline_status["running"] = False
-
-    threading.Thread(target=_run, daemon=True).start()
-    return jsonify({"ok": True})
-
-
-@app.route("/api/pipeline-status")
-def api_pipeline_status():
-    return jsonify(_pipeline_status)
-
-
-# ---------------------------------------------------------------------------
-# WhatsApp panel routes
-# ---------------------------------------------------------------------------
-
-def _bot_req(method, path, **kwargs):
-    """Call the bot's admin API. Returns (response_dict, error_string)."""
-    base = os.environ.get("BOT_API_URL", "").rstrip("/")
-    token = os.environ.get("ADMIN_TOKEN", "")
-    if not base:
-        return None, "BOT_API_URL no configurada en .env"
-    if not token:
-        return None, "ADMIN_TOKEN no configurado en .env"
-    headers = {"x-admin-token": token, "Content-Type": "application/json"}
-    try:
-        r = http_requests.request(
-            method, f"{base}/api/{path.lstrip('/')}",
-            headers=headers, timeout=12, **kwargs
-        )
-        data = r.json()
-        if r.status_code >= 400:
-            return None, data.get("error", r.text)
-        return data, None
-    except Exception as e:
-        return None, str(e)
-
-
-@app.route("/api/wa/leads")
-def api_wa_leads():
-    data, err = _bot_req("GET", "leads?limit=200")
-    if err:
-        return jsonify({"error": err})
-    return jsonify(data.get("leads", []))
-
-
-@app.route("/api/wa/leads/<path:phone>/messages")
-def api_wa_messages(phone):
-    data, err = _bot_req("GET", f"leads/phone/{phone}")
-    if err:
-        return jsonify({"error": err})
-    return jsonify(data.get("messages", []))
-
-
-@app.route("/api/wa/leads/<path:phone>/release", methods=["POST"])
-def api_wa_release(phone):
-    data, err = _bot_req("POST", f"leads/phone/{phone}/release")
-    if err:
-        return jsonify({"ok": False, "error": err})
-    return jsonify({"ok": True})
-
-
-@app.route("/api/wa/send", methods=["POST"])
-def api_wa_send():
-    body = request.get_json() or {}
-    phone = body.get("phone", "").strip()
-    text = body.get("text", "").strip()
-    if not phone or not text:
-        return jsonify({"ok": False, "error": "phone y text requeridos"})
-    data, err = _bot_req("POST", "send", json={"phone": phone, "text": text})
-    if err:
-        return jsonify({"ok": False, "error": err})
-    return jsonify({"ok": True})
-
-
-# ---------------------------------------------------------------------------
-# Calendar panel routes
-# ---------------------------------------------------------------------------
-
-def _get_calendar_service():
-    try:
-        from google.oauth2.credentials import Credentials
-        from googleapiclient.discovery import build
-    except ImportError:
-        return None, "google-api-python-client no instalado"
-    client_id = os.environ.get("GCAL_CLIENT_ID", "")
-    client_secret = os.environ.get("GCAL_CLIENT_SECRET", "")
-    refresh_token = os.environ.get("GCAL_REFRESH_TOKEN", "")
-    if not all([client_id, client_secret, refresh_token]):
-        return None, "Faltan GCAL_CLIENT_ID, GCAL_CLIENT_SECRET o GCAL_REFRESH_TOKEN en .env. Ejecutá setup_calendar.py primero."
-    creds = Credentials(
-        token=None,
-        refresh_token=refresh_token,
-        token_uri="https://oauth2.googleapis.com/token",
-        client_id=client_id,
-        client_secret=client_secret,
-        scopes=["https://www.googleapis.com/auth/calendar"],
-    )
-    service = build("calendar", "v3", credentials=creds)
-    return service, None
-
-
-@app.route("/api/calendar/events", methods=["GET", "POST"])
-def api_calendar_events():
-    if request.method == "GET":
-        service, err = _get_calendar_service()
-        if err:
-            return jsonify({"error": err})
-        start = request.args.get("start")
-        end = request.args.get("end")
-        if not start or not end:
-            return jsonify({"error": "Parámetros start y end requeridos"})
-        try:
-            time_min = start + "T00:00:00Z"
-            time_max = end + "T23:59:59Z"
-            result = service.events().list(
-                calendarId="primary",
-                timeMin=time_min,
-                timeMax=time_max,
-                singleEvents=True,
-                orderBy="startTime",
-                maxResults=100,
-            ).execute()
-            events = []
-            for item in result.get("items", []):
-                start_data = item.get("start", {})
-                date_str = start_data.get("dateTime", start_data.get("date", ""))
-                time_str = ""
-                day_str = ""
-                if "T" in date_str:
-                    montevideo = datetime.timezone(datetime.timedelta(hours=-3))
-                    dt = datetime.datetime.fromisoformat(date_str.replace("Z", "+00:00"))
-                    dt_local = dt.astimezone(montevideo)
-                    day_str = dt_local.strftime("%Y-%m-%d")
-                    time_str = dt_local.strftime("%H:%M")
-                else:
-                    day_str = date_str
-                meeting_url = item.get("hangoutLink") or ""
-                if not meeting_url:
-                    for ep in (item.get("conferenceData") or {}).get("entryPoints", []):
-                        if ep.get("entryPointType") == "video":
-                            meeting_url = ep.get("uri", "")
-                            break
-                # Calendly puts the join URL in the location field
-                if not meeting_url:
-                    loc = item.get("location", "")
-                    if loc.startswith("http"):
-                        meeting_url = loc
-                events.append({
-                    "id": item.get("id"),
-                    "title": item.get("summary", ""),
-                    "description": item.get("description", ""),
-                    "date": day_str,
-                    "time": time_str,
-                    "meeting_url": meeting_url,
-                })
-            return jsonify({"events": events})
-        except Exception as e:
-            return jsonify({"error": str(e)})
-
-    # POST — create event
-    service, err = _get_calendar_service()
-    if err:
-        return jsonify({"ok": False, "error": err})
-    data = request.get_json() or {}
-    title = data.get("title", "").strip()
-    date = data.get("date", "")
-    time = data.get("time", "")
-    duration_min = int(data.get("duration_min") or 60)
-    attendee_email = data.get("attendee_email", "").strip()
-    description = data.get("description", "").strip()
-    if not title or not date or not time:
-        return jsonify({"ok": False, "error": "title, date y time requeridos"})
-    try:
-        start_dt = datetime.datetime.fromisoformat(f"{date}T{time}:00")
-        end_dt = start_dt + datetime.timedelta(minutes=duration_min)
-        import uuid
-        event_body = {
-            "summary": title,
-            "description": description,
-            "start": {"dateTime": start_dt.isoformat(), "timeZone": "America/Montevideo"},
-            "end": {"dateTime": end_dt.isoformat(), "timeZone": "America/Montevideo"},
-            "conferenceData": {
-                "createRequest": {
-                    "requestId": str(uuid.uuid4()),
-                    "conferenceSolutionKey": {"type": "hangoutsMeet"},
-                }
-            },
-        }
-        if attendee_email:
-            event_body["attendees"] = [{"email": attendee_email}]
-        created = service.events().insert(
-            calendarId="primary",
-            body=event_body,
-            conferenceDataVersion=1,
-            sendUpdates="all" if attendee_email else "none",
-        ).execute()
-        meet_url = created.get("hangoutLink", "")
-        return jsonify({"ok": True, "meet_url": meet_url})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)})
-
-
-# ---------------------------------------------------------------------------
-# Demo generation routes
-# ---------------------------------------------------------------------------
-
-_BTYPE = {1:"Agencia o consultora",2:"E-commerce / tienda online",3:"Servicios profesionales",4:"SaaS o software",5:"Otro"}
-
-def _phone_variants(phone: str) -> list:
-    """Return all plausible formats for a Uruguayan phone number."""
-    import re as _re
-    digits = _re.sub(r"[^\d]", "", phone)
-    variants = set()
-    variants.add(digits)
-    if digits.startswith("00"):
-        digits = digits[2:]
-    # local 09XXXXXXX (9 digits) → 598XXXXXXXX
-    if len(digits) == 9 and digits.startswith("0"):
-        intl = "598" + digits[1:]
-        variants.update([digits, intl, "+" + intl])
-    # 8 bare digits → 598XXXXXXXX
-    elif len(digits) == 8:
-        intl = "598" + digits
-        variants.update([digits, intl, "+" + intl])
-    # already 598XXXXXXXXXX (11 digits)
-    elif len(digits) == 11 and digits.startswith("598"):
-        variants.update([digits, "+" + digits, "0" + digits[3:]])
-    # add + prefix for everything
-    for v in list(variants):
-        if not v.startswith("+"):
-            variants.add("+" + v)
-    return list(variants)
-
-
-@app.route("/api/wa/lead-by-name/<path:name>")
-def api_lead_by_name(name):
-    data, err = _bot_req("GET", f"leads/search?name={name}")
-    if err:
-        return jsonify({"error": err}), 404
-    lead = data.get("lead", {})
-    bt = lead.get("business_type")
-    lead["rubro_hint"] = _BTYPE.get(bt, "") if bt else ""
-    return jsonify({"lead": lead, "messages": data.get("messages", [])})
-
-
-@app.route("/api/wa/lead-by-phone/<path:phone>")
-def api_lead_by_phone(phone):
-    data, err = _bot_req("GET", f"leads/phone/{phone}")
-    if err:
-        return jsonify({"error": err}), 404
-    lead = data.get("lead", {})
-    bt = lead.get("business_type")
-    lead["rubro_hint"] = _BTYPE.get(bt, "") if bt else ""
-    return jsonify({"lead": lead, "messages": data.get("messages", [])})
-
-
-def _cal_event_title(business_name: str) -> str:
-    return f"🎨 Demo generada: {business_name}"
-
-
-def _find_existing_demo(business_name: str):
-    """Search Google Calendar for an existing demo event. Returns URL or None."""
-    service, err = _get_calendar_service()
-    if err:
-        return None
-    try:
-        from datetime import datetime, timezone
-        now = datetime.now(timezone.utc)
-        # Search 90 days back
-        past = now.replace(year=now.year - 1) if False else \
-            datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
-        from datetime import timedelta
-        time_min = (past - timedelta(days=90)).isoformat()
-        time_max = (now + timedelta(days=1)).isoformat()
-        result = service.events().list(
-            calendarId="primary",
-            q=_cal_event_title(business_name),
-            timeMin=time_min,
-            timeMax=time_max,
-            singleEvents=True,
-        ).execute()
-        for ev in result.get("items", []):
-            if _cal_event_title(business_name) in ev.get("summary", ""):
-                desc = ev.get("description", "")
-                for line in desc.splitlines():
-                    if line.startswith("https://"):
-                        return line.strip()
-    except Exception:
-        pass
-    return None
-
-
-def _register_demo_in_calendar(business_name: str, url: str, rubro: str, lead_name: str):
-    """Create a calendar event recording the generated demo."""
-    service, err = _get_calendar_service()
-    if err:
-        return
-    try:
-        from datetime import datetime, timezone, timedelta
-        now = datetime.now(timezone.utc)
-        service.events().insert(
-            calendarId="primary",
-            body={
-                "summary": _cal_event_title(business_name),
-                "description": f"{url}\n\nLead: {lead_name}\nRubro: {rubro}",
-                "start": {"dateTime": now.isoformat(), "timeZone": "America/Montevideo"},
-                "end": {"dateTime": (now + timedelta(minutes=30)).isoformat(), "timeZone": "America/Montevideo"},
-                "colorId": "2",  # sage green
-            }
-        ).execute()
-    except Exception as e:
-        print(f"[demo] Calendar registration failed: {e}")
-
-
-@app.route("/api/demo/prompt", methods=["POST"])
-def api_demo_prompt():
-    data = request.get_json() or {}
-    business_name = data.get("business_name", "").strip()
-    rubro = data.get("rubro", "").strip()
-    if not business_name or not rubro:
-        return jsonify({"ok": False, "error": "Nombre del negocio y rubro son obligatorios"})
-    try:
-        import demo_ai
-        prompt = demo_ai._chat_prompt(
-            business_name=business_name,
-            rubro=rubro,
-            city=data.get("city", "Montevideo"),
-            client_color=data.get("client_color", ""),
-            lead_name=data.get("lead_name", ""),
-            messages=data.get("messages", []),
-            phone=data.get("phone", ""),
-        )
-        return jsonify({"ok": True, "prompt": prompt})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)})
-
-
-@app.route("/api/demo/generate", methods=["POST"])
-def api_demo_generate():
-    data = request.get_json() or {}
-    business_name = data.get("business_name", "").strip()
-    rubro = data.get("rubro", "").strip()
-    if not business_name or not rubro:
-        return jsonify({"ok": False, "error": "Nombre del negocio y rubro son obligatorios"})
-
-    # Check if a demo was already generated for this business
-    existing_url = _find_existing_demo(business_name)
-    if existing_url:
-        return jsonify({"ok": True, "url": existing_url, "questions": [], "cached": True})
-
-    try:
-        import demo_ai
-        result = demo_ai.generate_and_deploy(
-            phone=data.get("phone", ""),
-            business_name=business_name,
-            rubro=rubro,
-            city=data.get("city", ""),
-            client_color=data.get("client_color", ""),
-            lead_name=data.get("lead_name", ""),
-            messages=data.get("messages", []),
-        )
-        # Register in Google Calendar so other users see it was already done
-        _register_demo_in_calendar(business_name, result["url"], rubro, data.get("lead_name", ""))
-        return jsonify({"ok": True, **result})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)})
-
-
-# ---------------------------------------------------------------------------
-# Server startup
-# ---------------------------------------------------------------------------
 
 def run(db_path: str) -> None:
-    global _db_path
-    _db_path = db_path
+    init_db(db_path)
+    seed_pitch_templates(db_path)
+    app = create_app(db_path)
     threading.Timer(1.2, lambda: webbrowser.open("http://localhost:5000")).start()
     app.run(port=5000, debug=False, use_reloader=False)

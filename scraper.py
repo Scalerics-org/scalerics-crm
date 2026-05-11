@@ -200,58 +200,65 @@ def scrape_google_maps(query: str, max_results: int, db_path: str) -> int:
                 if href in seen_urls:
                     continue
                 seen_urls.add(href)
-                try:
-                    el = page.query_selector(f'.hfpxzc[href="{href}"]')
-                    if not el:
-                        continue
-                    el.click()
-                    page.wait_for_selector("h1.DUwDvf", timeout=10000)
-                    random_delay()
 
-                    data = extract_business_data(page)
-
-                    # Step 1: Maps shows a website link → definitely has web, skip
-                    if data.get("maps_website_url"):
-                        logger.info(f"Saltando (web en Maps): {data['name']}")
-                        page.go_back(wait_until="domcontentloaded")
-                        page.wait_for_selector(".hfpxzc", timeout=10000)
+                for attempt in range(3):
+                    try:
+                        el = page.query_selector(f'.hfpxzc[href="{href}"]')
+                        if not el:
+                            break
+                        el.click()
+                        page.wait_for_selector("h1.DUwDvf", timeout=10000)
                         random_delay()
-                        continue
 
-                    # Step 2: No link on Maps → verify with DuckDuckGo
-                    logger.info(f"Verificando con DDG: {data['name']}")
-                    no_web = verify_no_website(data["name"], data["city"], page)
+                        data = extract_business_data(page)
 
-                    if not no_web:
-                        logger.info(f"Saltando (web encontrada en DDG): {data['name']}")
-                        # Navigate back to Maps results
+                        # Maps shows a website link → has web, skip
+                        if data.get("maps_website_url"):
+                            logger.info(f"Saltando (web en Maps): {data['name']}")
+                            page.go_back(wait_until="domcontentloaded")
+                            page.wait_for_selector(".hfpxzc", timeout=10000)
+                            random_delay()
+                            break
+
+                        # No Maps link → verify with Bing
+                        logger.info(f"Verificando con Bing: {data['name']}")
+                        no_web = verify_no_website(data["name"], data["city"], page)
+
                         maps_list_url = f"https://www.google.com/maps/search/{query.replace(' ', '+')}"
+                        if not no_web:
+                            logger.info(f"Saltando (web encontrada en Bing): {data['name']}")
+                            page.goto(maps_list_url, wait_until="domcontentloaded", timeout=30000)
+                            page.wait_for_selector(".hfpxzc", timeout=10000)
+                            random_delay(2, 4)
+                            break
+
+                        # Confirmed: no website → save
+                        business_id = insert_business(db_path, data)
+                        if business_id:
+                            inserted += 1
+                            made_progress = True
+                            logger.info(f"[{inserted}/{max_results}] Guardado: {data['name']}")
+                        else:
+                            logger.info(f"Duplicado, ignorado: {data['name']}")
+
                         page.goto(maps_list_url, wait_until="domcontentloaded", timeout=30000)
                         page.wait_for_selector(".hfpxzc", timeout=10000)
-                        random_delay(2, 4)
-                        continue
+                        random_delay()
+                        break
 
-                    # Confirmed: no website → save
-                    business_id = insert_business(db_path, data)
-                    if business_id:
-                        inserted += 1
-                        made_progress = True
-                        logger.info(f"[{inserted}/{max_results}] Guardado: {data['name']}")
-                    else:
-                        logger.info(f"Duplicado, ignorado: {data['name']}")
-
-                    page.go_back(wait_until="domcontentloaded")
-                    page.wait_for_selector(".hfpxzc", timeout=10000)
-                    random_delay()
-
-                except Exception as e:
-                    logger.error(f"Error procesando resultado: {e}")
-                    try:
-                        page.go_back(wait_until="domcontentloaded")
-                        page.wait_for_selector(".hfpxzc", timeout=10000)
-                    except Exception:
-                        pass
-                    random_delay(2, 4)
+                    except Exception as e:
+                        if attempt < 2:
+                            logger.warning(f"Reintentando resultado (intento {attempt + 1}): {e}")
+                            random_delay(2, 4)
+                        else:
+                            logger.error(f"Saltando resultado tras 3 intentos fallidos: {e}")
+                            try:
+                                maps_list_url = f"https://www.google.com/maps/search/{query.replace(' ', '+')}"
+                                page.goto(maps_list_url, wait_until="domcontentloaded", timeout=30000)
+                                page.wait_for_selector(".hfpxzc", timeout=10000)
+                            except Exception:
+                                pass
+                            random_delay(2, 4)
 
             scroll_container = page.query_selector(".m6QErb[aria-label]")
             if scroll_container:

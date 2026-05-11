@@ -7,3 +7,7 @@ __pycache__/
 pipeline.log
 .superpowers/
 credentials.json
+
+# Bot
+bot/node_modules/
+bot/.env

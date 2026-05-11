@@ -10,7 +10,10 @@ from pathlib import Path
 import anthropic
 import requests
 
-LOGO_PATH = Path(r"C:\Users\juant\OneDrive\Desktop\Scalerics\Assets\logo_full.png")
+LOGO_PATH = Path(os.environ.get(
+    "SCALERICS_LOGO_PATH",
+    str(Path(__file__).parent / "static" / "logo.png"),
+))
 
 
 def _logo_data_uri() -> str:
@@ -270,7 +273,7 @@ def generate_and_deploy(
     prompt = _content_prompt(business_name, rubro, city, client_color, lead_name, messages, phone)
 
     client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
-    msg = client.messages.create(
+    msg = client.beta.messages.create(
         model="claude-sonnet-4-6",
         max_tokens=16000,
         betas=["output-128k-2025-02-19"],
