@@ -185,7 +185,7 @@ def scrape_google_maps(query: str, max_results: int, db_path: str, verify_web: b
 
         while inserted < max_results:
             hrefs = []
-            for el in page.query_selector_all("a[href^="https://www.google.com/maps/place/"]"):
+            for el in page.query_selector_all('a[href^="https://www.google.com/maps/place/"]'):
                 href = el.get_attribute("href") or ""
                 if href and href not in seen_urls:
                     hrefs.append(href)
@@ -217,7 +217,7 @@ def scrape_google_maps(query: str, max_results: int, db_path: str, verify_web: b
                         if data.get("maps_website_url"):
                             logger.info(f"Saltando (web en Maps): {data['name']}")
                             page.go_back(wait_until="domcontentloaded")
-                            page.wait_for_selector("a[href^="https://www.google.com/maps/place/"]", timeout=10000)
+                            page.wait_for_selector('a[href^="https://www.google.com/maps/place/"]', timeout=10000)
                             random_delay()
                             break
 
@@ -228,7 +228,7 @@ def scrape_google_maps(query: str, max_results: int, db_path: str, verify_web: b
                             if not no_web:
                                 logger.info(f"Saltando (web encontrada en Bing): {data['name']}")
                                 page.goto(maps_list_url, wait_until="domcontentloaded", timeout=30000)
-                                page.wait_for_selector("a[href^="https://www.google.com/maps/place/"]", timeout=10000)
+                                page.wait_for_selector('a[href^="https://www.google.com/maps/place/"]', timeout=10000)
                                 random_delay(2, 4)
                                 break
 
@@ -242,7 +242,7 @@ def scrape_google_maps(query: str, max_results: int, db_path: str, verify_web: b
                             logger.debug(f"Duplicado, ignorado: {data['name']}")
 
                         page.goto(maps_list_url, wait_until="domcontentloaded", timeout=30000)
-                        page.wait_for_selector("a[href^="https://www.google.com/maps/place/"]", timeout=10000)
+                        page.wait_for_selector('a[href^="https://www.google.com/maps/place/"]', timeout=10000)
                         random_delay()
                         break
 
@@ -254,7 +254,7 @@ def scrape_google_maps(query: str, max_results: int, db_path: str, verify_web: b
                             logger.error(f"Saltando resultado tras 3 intentos fallidos: {e}")
                             try:
                                 page.goto(maps_list_url, wait_until="domcontentloaded", timeout=30000)
-                                page.wait_for_selector("a[href^="https://www.google.com/maps/place/"]", timeout=10000)
+                                page.wait_for_selector('a[href^="https://www.google.com/maps/place/"]', timeout=10000)
                             except Exception:
                                 pass
                             random_delay(2, 4)
@@ -264,7 +264,7 @@ def scrape_google_maps(query: str, max_results: int, db_path: str, verify_web: b
                 scroll_container.evaluate("el => el.scrollBy(0, 1000)")
             random_delay(2, 3)
 
-            new_results = page.query_selector_all("a[href^="https://www.google.com/maps/place/"]")
+            new_results = page.query_selector_all('a[href^="https://www.google.com/maps/place/"]')
             if len(new_results) <= prev_result_count and not made_progress:
                 logger.info("No hay más resultados para cargar")
                 break
