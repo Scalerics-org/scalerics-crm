@@ -38,7 +38,7 @@ async function handleQual2(lead, input) {
 }
 
 async function handleQual3(lead, input) {
-  await leadsService.update(lead.id, { main_problem: parseInt(input, 10) });
+  await leadsService.update(lead.id, { budget: parseInt(input, 10) });
   await wa.sendText(lead.phone, T.QUAL_3, lead.id);
 }
 
@@ -47,24 +47,7 @@ async function handleQual4(lead, input) {
   await wa.sendText(lead.phone, T.QUAL_4, lead.id);
 }
 
-async function handleQual5(lead, input) {
-  await leadsService.update(lead.id, { budget: parseInt(input, 10) });
-  await wa.sendText(lead.phone, T.QUAL_5, lead.id);
-}
-
-async function handleQual6(lead, input) {
-  await leadsService.update(lead.id, { urgency: parseInt(input, 10) });
-  await wa.sendText(lead.phone, T.QUAL_6, lead.id);
-}
-
-async function handleQual7(lead, input) {
-  await leadsService.update(lead.id, { colors: input });
-  await wa.sendText(lead.phone, T.QUAL_7, lead.id);
-}
-
 async function handleScored(lead, input) {
-  // Save instagram/web (last qualifying answer — free text)
-  await leadsService.update(lead.id, { instagram_web: input });
 
   // Score the lead (imported here to avoid circular deps)
   const { scoreLead } = require('../services/ai');
@@ -126,9 +109,6 @@ module.exports = {
   handleQual2,
   handleQual3,
   handleQual4,
-  handleQual5,
-  handleQual6,
-  handleQual7,
   handleScored,
   handleMeetingSent,
   handleScheduled,

@@ -21,9 +21,9 @@ const S = {
 
 // States where numbered options are expected and invalid input should be retried
 const QUALIFYING_STATES = new Set([
-  S.QUAL_1, S.QUAL_2, S.QUAL_3, S.QUAL_4, S.QUAL_5,
+  S.QUAL_1, S.QUAL_2, S.QUAL_3,
 ]);
-// QUAL_6 and QUAL_7 are free-text — any input advances, no retry
+// QUAL_4 is free-text (colors) — any input advances, no retry
 
 // Global keyword map: input → target state (takes priority over FSM table)
 // "ayuda" removed: too ambiguous (users say "ayuda" meaning their real problem, not "get me a human")

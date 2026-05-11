@@ -88,7 +88,6 @@ def cmd_run_all(args):
     if not count:
         logging.getLogger(__name__).warning("Scraping no encontró negocios. Abortando pipeline.")
         return
-    cmd_find_emails(args)
     cmd_generate_pitches(args)
 
 def main():

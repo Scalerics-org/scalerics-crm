@@ -109,20 +109,16 @@ async function _executeTransition(lead, input, fromState, toState) {
     case S.QUAL_4:
       await handlers.handleQual4(lead, input);
       break;
-    case S.QUAL_5:
-      await handlers.handleQual5(lead, input);
-      break;
-    case S.QUAL_6:
-      await handlers.handleQual6(lead, input);
-      break;
-    case S.QUAL_7:
-      await handlers.handleQual7(lead, input);
-      break;
     case S.SCORED:
       finalState = await handlers.handleScored(lead, input) || toState;
       break;
     case S.MEETING_SENT:
-      await handlers.handleMeetingSent(lead, input);
+      if (fromState === S.QUAL_4) {
+        if (input) await leadsService.update(lead.id, { colors: input });
+        await wa.sendText(lead.phone, T.MEETING_OFFER(lead.name), lead.id);
+      } else {
+        await handlers.handleMeetingSent(lead, input);
+      }
       break;
     case S.SCHEDULED:
       await handlers.handleScheduled(lead);

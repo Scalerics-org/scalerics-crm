@@ -5,35 +5,25 @@ const T = {
 
   WELCOME: (name) =>
     name
-      ? `Hola ${name} 👋 Soy el asistente de *Scalerics*.\n\nAyudamos a negocios a automatizar sus ventas y atención al cliente en WhatsApp.\n\n¿Qué te trae por acá?\n\n*1* → ¿Qué hace Scalerics?\n*2* → Ver si mi negocio califica\n*3* → Hablar con alguien del equipo`
-      : `Hola 👋 Soy el asistente de *Scalerics*.\n\nAyudamos a negocios a automatizar sus ventas y atención al cliente en WhatsApp.\n\n¿Qué te trae por acá?\n\n*1* → ¿Qué hace Scalerics?\n*2* → Ver si mi negocio califica\n*3* → Hablar con alguien del equipo`,
-
-  // ── Menú info ────────────────────────────────────────────────────────────────
-
-  MENU_INFO: `Buena pregunta 😄\n\nEn Scalerics construimos sistemas que trabajan por vos:\n\n✅ Responden consultas de clientes las 24hs\n✅ Califican leads y los priorizan solos\n✅ Agendan reuniones sin que vayas a tocar nada\n✅ Hacen seguimiento hasta que el cliente compra\n\nTodo conectado a WhatsApp, tu CRM y tu calendario.\n\nNuestros clientes ahorran entre 10 y 30 horas semanales en tareas manuales.\n\n¿Querés ver si aplica para tu negocio?\n\n*1* → Sí, quiero saber\n*2* → Volver al menú`,
+      ? `Hola ${name} 👋 Soy el asistente de *Scalerics*.\n\nSomos una agencia uruguaya de desarrollo web y software — creamos páginas web, e-commerce, apps y automatizaciones para negocios de toda escala.\n\n¿En qué te puedo ayudar?\n\n*1* → Quiero un presupuesto\n*2* → Hablar con alguien del equipo`
+      : `Hola 👋 Soy el asistente de *Scalerics*.\n\nSomos una agencia uruguaya de desarrollo web y software — creamos páginas web, e-commerce, apps y automatizaciones para negocios de toda escala.\n\n¿En qué te puedo ayudar?\n\n*1* → Quiero un presupuesto\n*2* → Hablar con alguien del equipo`,
 
   // ── Calificación ─────────────────────────────────────────────────────────────
 
-  QUAL_0: `Buenísimo 😄\n\nAntes de empezar — ¿cómo se llama tu negocio y a qué se dedica?\n\n_(Ej: "Bicicletería El Rayo, vendemos bicis y accesorios en Montevideo")_`,
+  QUAL_0: `Perfecto 😄\n\n¿Cómo se llama tu negocio?`,
 
-  QUAL_1: `Buenísimo, hacemos unas preguntas rápidas para ver si somos un buen match.\n\n¿Qué tipo de negocio tenés?\n\n*1* → Agencia o consultora\n*2* → E-commerce o tienda online\n*3* → Servicios profesionales (salud, legal, finanzas)\n*4* → SaaS o software\n*5* → Otro`,
+  QUAL_1: `¿Qué tipo de proyecto tenés en mente?\n\n*1* → Página web\n*2* → E-commerce / tienda online\n*3* → Automatización (WhatsApp, procesos internos, etc.)\n*4* → App a medida`,
 
-  QUAL_2: `¿Cuál es el problema más grande que tenés hoy?\n\n*1* → Pierdo clientes porque no respondo a tiempo\n*2* → Mi equipo pierde mucho tiempo en cosas repetitivas\n*3* → No tengo visibilidad de mis ventas\n*4* → Quiero escalar pero no puedo contratar más gente\n*5* → Otro`,
+  QUAL_2: `¿Tenés algún rango de presupuesto aproximado? (sin compromiso, es solo para orientarnos)\n\n*1* → Menos de $500 USD\n*2* → Entre $500 y $3.000 USD\n*3* → Más de $3.000 USD\n*4* → Todavía no lo tengo claro`,
 
-  QUAL_3: `¿Cuántas personas manejan ventas o atención en tu negocio?\n\n*1* → Solo yo\n*2* → 2 a 5 personas\n*3* → 6 a 20 personas\n*4* → Más de 20`,
+  QUAL_3: `¿Cuántas personas trabajan en el negocio?\n\n*1* → Solo yo\n*2* → 2 a 5 personas\n*3* → 6 a 20 personas\n*4* → Más de 20`,
 
-  QUAL_4: `¿Y cómo está el tema presupuesto?\n\nImplementar una automatización que realmente funcione suele estar entre $500 y $3.000 USD según el alcance.\n\n*1* → Tengo presupuesto disponible\n*2* → Depende del retorno que me muestren\n*3* → Todavía no, pero quiero informarme`,
-
-  QUAL_5: `Última pregunta antes de pasarte con el equipo: ¿Para cuándo necesitás tener esto andando?\n\n*1* → Lo antes posible, este mes\n*2* → En los próximos 2 o 3 meses\n*3* → Estoy evaluando para más adelante`,
-
-  QUAL_6: `Para preparar algo concreto antes de llamarnos — ¿qué colores usás en tu negocio?\n\n_(Ej: "azul marino y blanco", "verde oscuro", "no tengo colores definidos")_`,
-
-  QUAL_7: `¿Tenés Instagram o algún sitio web donde pueda ver más del negocio?\n\n_(Mandame el link o usuario, o escribí "no tengo" si no hay)_`,
+  QUAL_4: `Última cosa — ¿qué colores tiene tu marca o negocio?\n\n_(Ej: "azul y blanco", "rojo y negro", "no tengo definidos todavía")_`,
 
   // ── Transición a reunión ─────────────────────────────────────────────────────
 
   MEETING_OFFER: (name) =>
-    `Perfecto${name ? `, ${name}` : ''} 🎯\n\nCon lo que me contaste, creo que hay bastante para trabajar juntos.\n\nEl próximo paso es una *llamada de 30 minutos* (sin costo) donde:\n\n→ Revisamos cómo está tu proceso hoy\n→ Te mostramos exactamente qué automatizaríamos\n→ Te damos un presupuesto claro\n\n¿Le damos?\n\n*1* → Sí, quiero agendar\n*2* → Primero quiero saber un poco más`,
+    `Perfecto${name ? `, ${name}` : ''} 🎯\n\nCon lo que me contaste puedo armar algo concreto para mostrarte.\n\nEl siguiente paso es una *videollamada de 30 minutos* (sin costo, sin compromiso) donde:\n\n→ Entendemos bien lo que necesitás\n→ Te mostramos ejemplos de trabajos similares\n→ Te damos un presupuesto claro\n\n¿Agendamos?\n\n*1* → Sí, quiero agendar\n*2* → Primero quiero saber más`,
 
   MEETING_LINK: `Genial 👌\n\nElegí el horario que mejor te quede:\n\n🗓️ ${config.CALENDLY_LINK}\n\nHay disponibilidad esta semana y la que viene.\n\nCuando reserves, te llega la confirmación automática con el link de la videollamada.`,
 
