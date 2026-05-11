@@ -1,10 +1,12 @@
 """WhatsApp panel routes — proxy to bot admin API."""
 
+import logging
 import os
 
 import requests as http_requests
 from flask import Blueprint, current_app, jsonify, request
 
+logger = logging.getLogger(__name__)
 wa_bp = Blueprint("wa", __name__)
 
 _BTYPE = {
@@ -130,11 +132,14 @@ def api_bot_lead_qualified():
     )
 
     token = request.headers.get("x-admin-token", "")
-    if token != os.environ.get("ADMIN_TOKEN", ""):
+    expected = os.environ.get("ADMIN_TOKEN", "")
+    if token != expected:
+        logger.warning(f"[bot-sync] 401 — token mismatch (received={token!r}, expected len={len(expected)})")
         return jsonify({"error": "unauthorized"}), 401
 
     data = request.get_json() or {}
     phone = (data.get("phone") or "").strip()
+    logger.info(f"[bot-sync] lead-qualified received: phone={phone!r}, state={data.get('state')!r}")
     if not phone:
         return jsonify({"ok": False, "error": "phone requerido"}), 400
 
@@ -184,4 +189,5 @@ def api_bot_lead_qualified():
             needs=data.get("needs") or team_label,
         )
 
+    logger.info(f"[bot-sync] lead-qualified done: business_id={biz_id}, crm_status={crm_status!r}")
     return jsonify({"ok": True, "business_id": biz_id})
