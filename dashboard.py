@@ -1702,7 +1702,7 @@ function _cpRenderConv() {
   if (!msgs.length) return `<div style="color:#475569;font-size:.85rem;padding:20px 0">Sin conversación registrada en el bot de WhatsApp.</div>`;
   return `<div class="cp-wa-msgs">` + msgs.map(m => {
     const dir = m.direction === 'outbound' ? 'out' : 'in';
-    return `<div class="cp-wa-msg ${dir}">${m.body || ''}</div>`;
+    return `<div class="cp-wa-msg ${dir}">${m.content || m.body || ''}</div>`;
   }).join('') + `</div>`;
 }
 
