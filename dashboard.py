@@ -349,6 +349,32 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .kanban-card-phone{font-size:.72rem;color:#0088cc}
 .kanban-card-rating{font-size:.68rem;color:#fbbf24}
 .kanban-empty{color:#334155;font-size:.78rem;text-align:center;padding:20px 10px}
+
+/* ── Tasks panel ──────────────────────────────────────────────────────────── */
+.tasks-filters{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+.task-row{background:#111827;border:1px solid #1e293b;border-radius:10px;padding:14px 16px;margin-bottom:8px;display:flex;align-items:flex-start;gap:12px;transition:border-color .15s}
+.task-row:hover{border-color:#334155}
+.task-check{width:18px;height:18px;border:2px solid #334155;border-radius:4px;cursor:pointer;flex-shrink:0;margin-top:2px;display:flex;align-items:center;justify-content:center;transition:all .15s}
+.task-check.done{background:#16a34a;border-color:#16a34a;color:#fff;font-size:.7rem}
+.task-check:hover:not(.done){border-color:#0088cc}
+.task-body{flex:1;min-width:0}
+.task-title{font-size:.88rem;font-weight:600;color:#f1f5f9;margin-bottom:3px}
+.task-title.done-text{text-decoration:line-through;color:#475569}
+.task-meta{font-size:.72rem;color:#475569;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.task-client-link{color:#0088cc;cursor:pointer}
+.task-client-link:hover{text-decoration:underline}
+.task-priority{padding:2px 7px;border-radius:99px;font-size:.65rem;font-weight:700}
+.task-priority.high{background:#450a0a;color:#f87171}
+.task-priority.medium{background:#1c1917;color:#fb923c}
+.task-priority.low{background:#0c1a0c;color:#86efac}
+.task-deadline{color:#fbbf24}
+.task-deadline.overdue{color:#f87171}
+.task-actions{display:flex;gap:6px;flex-shrink:0}
+.task-del-btn{background:none;border:none;color:#334155;cursor:pointer;font-size:.9rem;padding:2px 4px}
+.task-del-btn:hover{color:#f87171}
+.tasks-empty{text-align:center;color:#334155;padding:40px;font-size:.88rem}
+/* Add-task modal */
+#add-task-modal .modal{width:440px}
 </style>
 </head>
 <body>
@@ -359,6 +385,7 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
   </div>
   <div class="nav-item active" id="nav-leads" onclick="showPanel('leads')">📋 Leads</div>
   <div class="nav-item" id="nav-kanban" onclick="showPanel('kanban')">🗂 Kanban</div>
+  <div class="nav-item" id="nav-tasks" onclick="showPanel('tasks')">✅ Tareas</div>
   <div class="nav-item" id="nav-wa" onclick="showPanel('wa')">💬 WhatsApp</div>
   <div class="nav-item" id="nav-cal" onclick="showPanel('cal')">📅 Calendario</div>
   <div class="sidebar-bottom">
@@ -451,6 +478,21 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
     </div>
   </div>
 
+  <!-- ======= TASKS PANEL ======= -->
+  <div id="tasks-panel" class="panel">
+    <div class="page-header">
+      <div><h1>Tareas</h1><div class="page-date">Tareas y seguimientos del equipo</div></div>
+      <button class="run-btn" style="width:auto;padding:8px 16px" onclick="openAddTaskModal()">+ Nueva tarea</button>
+    </div>
+    <div class="tasks-filters">
+      <button class="filter-btn active" data-tfilter="all" onclick="filterTasks('all',this)">Todas</button>
+      <button class="filter-btn" data-tfilter="todo" onclick="filterTasks('todo',this)">Pendientes</button>
+      <button class="filter-btn" data-tfilter="in_progress" onclick="filterTasks('in_progress',this)">En progreso</button>
+      <button class="filter-btn" data-tfilter="done" onclick="filterTasks('done',this)">Hechas</button>
+    </div>
+    <div id="tasks-list"></div>
+  </div>
+
   <!-- ======= CALENDAR PANEL ======= -->
   <div id="cal-panel" class="panel">
     <div class="cal-header">
@@ -475,6 +517,42 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
     <div class="modal-btns">
       <button class="btn-cancel" onclick="closeContactModal()">Cancelar</button>
       <button class="btn-confirm" onclick="confirmContact()">✓ Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Add Task -->
+<div class="modal-overlay" id="add-task-modal">
+  <div class="modal" style="width:440px">
+    <h3>Nueva tarea</h3>
+    <div style="margin-top:14px">
+      <label class="modal-label">Título</label>
+      <input type="text" id="task-title-input" class="modal-input" placeholder="Ej: Enviar presupuesto, Llamar el martes...">
+    </div>
+    <div class="modal-row" style="margin-top:10px">
+      <div>
+        <label class="modal-label">Prioridad</label>
+        <select id="task-priority-input" class="modal-input">
+          <option value="medium">Media</option>
+          <option value="high">Alta</option>
+          <option value="low">Baja</option>
+        </select>
+      </div>
+      <div>
+        <label class="modal-label">Vencimiento</label>
+        <input type="date" id="task-deadline-input" class="modal-input">
+      </div>
+    </div>
+    <div style="margin-top:10px">
+      <label class="modal-label">Cliente (opcional)</label>
+      <input type="text" id="task-client-search" class="modal-input" placeholder="Buscar negocio..." oninput="_taskClientSearch(this.value)">
+      <div id="task-client-results" style="background:#0a0f1a;border:1px solid #1e293b;border-radius:6px;margin-top:4px;display:none;max-height:140px;overflow-y:auto"></div>
+      <input type="hidden" id="task-client-id">
+      <div id="task-client-chosen" style="font-size:.78rem;color:#0088cc;margin-top:4px"></div>
+    </div>
+    <div class="modal-btns" style="margin-top:16px">
+      <button class="btn-cancel" onclick="document.getElementById('add-task-modal').classList.remove('open')">Cancelar</button>
+      <button class="btn-confirm" onclick="submitAddTask()">+ Crear tarea</button>
     </div>
   </div>
 </div>
@@ -639,6 +717,7 @@ function showPanel(name) {
   if (name === 'wa' && !waLoaded) loadWaLeads();
   if (name === 'cal' && !calLoaded) { calLoaded = true; renderCalendar(); }
   if (name === 'kanban') loadKanban();
+  if (name === 'tasks') loadTasks();
 }
 
 // ========== Leads panel ==========
@@ -1248,6 +1327,168 @@ function copyAndOpenClaude() {
   window.open('https://claude.ai/new', '_blank');
 }
 
+// ── Tasks (global panel) ──────────────────────────────────────────────────────
+
+let _allTasks = [];
+let _allLeads = [];
+let _taskStatusFilter = 'all';
+
+async function loadTasks() {
+  try {
+    const [tr, lr] = await Promise.all([
+      fetch('/api/tasks').then(r => r.json()),
+      fetch('/api/leads').then(r => r.json()),
+    ]);
+    _allTasks = Array.isArray(tr) ? tr : [];
+    _allLeads = Array.isArray(lr) ? lr : [];
+  } catch { _allTasks = []; }
+  renderTasksList();
+}
+
+function filterTasks(status, btn) {
+  _taskStatusFilter = status;
+  document.querySelectorAll('.tasks-filters .filter-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  renderTasksList();
+}
+
+function renderTasksList() {
+  const container = document.getElementById('tasks-list');
+  if (!container) return;
+  let tasks = _taskStatusFilter === 'all'
+    ? _allTasks
+    : _allTasks.filter(t => t.status === _taskStatusFilter);
+  tasks = [...tasks].sort((a, b) => {
+    const prio = {high:0,medium:1,low:2};
+    return (prio[a.priority]||1) - (prio[b.priority]||1);
+  });
+  if (!tasks.length) { container.innerHTML = '<div class="tasks-empty">Sin tareas. Agregá una con el botón de arriba.</div>'; return; }
+  container.innerHTML = tasks.map(t => _taskRowHtml(t)).join('');
+}
+
+function _taskRowHtml(t) {
+  const done = t.status === 'done';
+  const lead = t.client_id ? _allLeads.find(l => l.id === t.client_id) : null;
+  const now = new Date(); const dl = t.deadline ? new Date(t.deadline) : null;
+  const overdue = dl && dl < now && !done;
+  const dlStr = dl ? dl.toLocaleDateString('es-UY',{day:'2-digit',month:'2-digit'}) : '';
+  return `<div class="task-row" id="task-row-${t.id}">
+    <div class="task-check ${done ? 'done' : ''}" onclick="_toggleTask(${t.id},${done})">${done ? '✓' : ''}</div>
+    <div class="task-body">
+      <div class="task-title ${done ? 'done-text' : ''}">${esc(t.title)}</div>
+      <div class="task-meta">
+        ${t.priority ? `<span class="task-priority ${t.priority}">${{high:'Alta',medium:'Media',low:'Baja'}[t.priority]||t.priority}</span>` : ''}
+        ${lead ? `<span class="task-client-link" onclick="openClientPanel(${lead.id})">${esc(lead.name||'')}</span>` : ''}
+        ${dlStr ? `<span class="task-deadline ${overdue ? 'overdue' : ''}">📅 ${dlStr}${overdue?' (vencida)':''}</span>` : ''}
+      </div>
+    </div>
+    <div class="task-actions">
+      <button class="task-del-btn" onclick="_deleteTask(${t.id})" title="Eliminar">🗑</button>
+    </div>
+  </div>`;
+}
+
+async function _toggleTask(id, wasDone) {
+  const newStatus = wasDone ? 'todo' : 'done';
+  await fetch('/api/tasks/' + id, {
+    method:'PUT', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({status: newStatus})
+  });
+  const t = _allTasks.find(t => t.id === id);
+  if (t) t.status = newStatus;
+  renderTasksList();
+}
+
+async function _deleteTask(id) {
+  await fetch('/api/tasks/' + id, {method:'DELETE'});
+  _allTasks = _allTasks.filter(t => t.id !== id);
+  renderTasksList();
+  if (_cpClientId) { _cpData.tasks = (_cpData.tasks||[]).filter(t => t.id !== id); _cpSwitchTab('ctasks'); }
+}
+
+function openAddTaskModal(clientId, clientName) {
+  document.getElementById('task-title-input').value = '';
+  document.getElementById('task-priority-input').value = 'medium';
+  document.getElementById('task-deadline-input').value = '';
+  document.getElementById('task-client-search').value = clientName || '';
+  document.getElementById('task-client-id').value = clientId || '';
+  document.getElementById('task-client-chosen').textContent = clientName ? 'Cliente: ' + clientName : '';
+  document.getElementById('task-client-results').style.display = 'none';
+  document.getElementById('add-task-modal').classList.add('open');
+  setTimeout(() => document.getElementById('task-title-input').focus(), 50);
+}
+
+function _taskClientSearch(q) {
+  const res = document.getElementById('task-client-results');
+  if (!q.trim()) { res.style.display = 'none'; return; }
+  const matches = _allLeads.filter(l => l.name && l.name.toLowerCase().includes(q.toLowerCase())).slice(0,6);
+  if (!matches.length) { res.style.display = 'none'; return; }
+  res.style.display = '';
+  res.innerHTML = matches.map(l => `<div style="padding:8px 12px;cursor:pointer;font-size:.82rem;color:#e2e8f0;border-bottom:1px solid #1e293b" onmousedown="_pickTaskClient(${l.id},'${esc(l.name||'')}')">${esc(l.name||'')}</div>`).join('');
+}
+
+function _pickTaskClient(id, name) {
+  document.getElementById('task-client-id').value = id;
+  document.getElementById('task-client-search').value = name;
+  document.getElementById('task-client-chosen').textContent = 'Cliente: ' + name;
+  document.getElementById('task-client-results').style.display = 'none';
+}
+
+async function submitAddTask() {
+  const title = document.getElementById('task-title-input').value.trim();
+  if (!title) { document.getElementById('task-title-input').focus(); return; }
+  const body = {
+    title,
+    priority: document.getElementById('task-priority-input').value,
+    deadline: document.getElementById('task-deadline-input').value || null,
+    status: 'todo',
+  };
+  const clientId = document.getElementById('task-client-id').value;
+  if (clientId) body.client_id = parseInt(clientId);
+  const r = await fetch('/api/tasks', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+  const d = await r.json();
+  document.getElementById('add-task-modal').classList.remove('open');
+  const newTask = {id: d.id, ...body};
+  _allTasks.unshift(newTask);
+  renderTasksList();
+  if (_cpClientId && body.client_id === _cpClientId) {
+    _cpData.tasks = [newTask, ...(_cpData.tasks||[])];
+    _cpSwitchTab('ctasks');
+  }
+}
+
+// ── Client panel: Tasks tab ───────────────────────────────────────────────────
+
+function _cpRenderTasks() {
+  const tasks = _cpData.tasks || [];
+  const pending = tasks.filter(t => t.status !== 'done');
+  const done = tasks.filter(t => t.status === 'done');
+  const renderList = (list) => list.length
+    ? list.map(t => _taskRowHtml(t)).join('')
+    : '<div style="color:#334155;font-size:.78rem">Sin tareas.</div>';
+  return `<div class="cp-section">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <div class="cp-section-title" style="margin:0">Pendientes</div>
+      <button class="cp-btn cp-btn-ghost" onclick="openAddTaskModal(${_cpClientId},'${esc((_cpData.lead||{}).name||'')}')">+ Nueva</button>
+    </div>
+    ${renderList(pending)}
+  </div>
+  ${done.length ? `<div class="cp-section">
+    <div class="cp-section-title">Completadas</div>
+    ${renderList(done)}
+  </div>` : ''}`;
+}
+
+async function _cpBindTasks() {
+  if (!_cpData.tasks) {
+    try {
+      const r = await fetch('/api/tasks?client_id=' + _cpClientId);
+      _cpData.tasks = await r.json();
+    } catch { _cpData.tasks = []; }
+    _cpSwitchTab('ctasks');
+  }
+}
+
 // ── Kanban ────────────────────────────────────────────────────────────────────
 
 const KANBAN_COLS = [
@@ -1409,6 +1650,7 @@ function _cpSwitchTab(tab) {
   else if (tab === 'meet') { body.innerHTML = _cpRenderMeetings(); _cpBindMeetings(); }
   else if (tab === 'budget') { body.innerHTML = _cpRenderBudget(); _cpBindBudget(); }
   else if (tab === 'demo') body.innerHTML = _cpRenderDemo();
+  else if (tab === 'ctasks') { body.innerHTML = _cpRenderTasks(); _cpBindTasks(); }
 }
 
 function _cpRenderInfo() {
@@ -1553,6 +1795,7 @@ function _cpRenderBudget() {
       <button class="cp-btn cp-btn-primary" onclick="_cpSaveBudget()">💾 Guardar cambios</button>
       ${b.status !== 'sent' ? `<button class="cp-btn cp-btn-success" onclick="_cpMarkBudgetSent()">✅ Marcar como enviado</button>` : `<span class="cp-badge cp-badge-sent">Enviado</span>`}
       <button class="cp-btn cp-btn-ghost" onclick="_cpRegeneraBudget()">⚡ Regenerar</button>
+      <a class="cp-btn cp-btn-ghost" href="/api/leads/${_cpClientId}/budget/preview" target="_blank">🖨 Ver PDF</a>
     </div>`;
   } else {
     itemsHtml = `<div style="color:#475569;font-size:.85rem;margin-bottom:14px">Sin presupuesto generado aún.</div>`;
@@ -1673,6 +1916,7 @@ function _cpChangeStatus(val) {
       <div class="cp-tab" data-tab="meet" onclick="_cpSwitchTab('meet')">Reuniones</div>
       <div class="cp-tab" data-tab="budget" onclick="_cpSwitchTab('budget')">Presupuesto</div>
       <div class="cp-tab" data-tab="demo" onclick="_cpSwitchTab('demo')">Demo</div>
+      <div class="cp-tab" data-tab="ctasks" onclick="_cpSwitchTab('ctasks')">Tareas</div>
     </div>
   </div>
   <div class="cp-body" id="cp-body">
