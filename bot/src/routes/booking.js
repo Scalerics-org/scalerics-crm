@@ -8,6 +8,7 @@ const wa = require('../services/whatsapp');
 const T = require('../messages/templates');
 const { S } = require('../fsm/states');
 const { reminderQueue } = require('../services/scheduler');
+const { notifyCRM } = require('../services/crm');
 
 function verifyCalendlySignature(req) {
   if (!config.CALENDLY_WEBHOOK_SECRET) return true; // Skip if not configured
@@ -77,6 +78,7 @@ router.post('/booking-confirmed', express.json(), async (req, res) => {
       meeting_url: meetingUrl,
     });
     await session.setSession(phone, { state: S.SCHEDULED, leadId: lead.id });
+    notifyCRM(lead).catch(err => console.error('[CRM sync] booking failed:', err.message));
 
     // Format date/time for message
     const mt = new Date(meetingTime);
