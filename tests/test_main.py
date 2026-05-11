@@ -14,12 +14,3 @@ def test_parser_run_all_command():
     assert args.query == "peluqueria Salto"
     assert args.max == 100  # default
 
-def test_parser_find_emails_command():
-    parser = create_parser()
-    args = parser.parse_args(["find-emails"])
-    assert args.command == "find-emails"
-
-def test_parser_send_emails_command():
-    parser = create_parser()
-    args = parser.parse_args(["send-emails"])
-    assert args.command == "send-emails"

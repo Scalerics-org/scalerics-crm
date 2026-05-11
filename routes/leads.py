@@ -1,12 +1,5 @@
 """Lead / business CRUD routes."""
 
-import base64
-import datetime
-import html as html_lib
-import os
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-
 from flask import Blueprint, current_app, jsonify, request
 
 from database import get_all_businesses, update_business, delete_business, get_business, get_client_info
@@ -96,68 +89,3 @@ def api_stats():
     })
 
 
-@leads_bp.route("/api/leads/<int:biz_id>/send-email", methods=["POST"])
-def api_send_email(biz_id):
-    """Legacy email sending — kept for backwards compat."""
-    try:
-        from google.oauth2.credentials import Credentials
-        from googleapiclient.discovery import build
-    except ImportError:
-        return jsonify({"ok": False, "error": "google-api-python-client no instalado"})
-
-    client_id = os.environ.get("GMAIL_CLIENT_ID")
-    client_secret = os.environ.get("GMAIL_CLIENT_SECRET")
-    refresh_token = os.environ.get("GMAIL_REFRESH_TOKEN")
-    sender_email = os.environ.get("FACTORY_EMAIL", "")
-
-    if not all([client_id, client_secret, refresh_token, sender_email]):
-        return jsonify({"ok": False, "error": "Faltan variables Gmail en .env"})
-
-    biz = get_business(_db(), biz_id)
-    if not biz:
-        return jsonify({"ok": False, "error": "Lead no encontrado"}), 404
-    if not biz.get("email"):
-        return jsonify({"ok": False, "error": "Este negocio no tiene email"})
-
-    try:
-        creds = Credentials(
-            token=None, refresh_token=refresh_token,
-            token_uri="https://oauth2.googleapis.com/token",
-            client_id=client_id, client_secret=client_secret,
-            scopes=["https://www.googleapis.com/auth/gmail.send"],
-        )
-        service = build("gmail", "v1", credentials=creds)
-        factory_name = os.environ.get("FACTORY_NAME", "Scalerics")
-        factory_phone = os.environ.get("FACTORY_PHONE", "")
-        name_esc = html_lib.escape(biz.get("name", "") or "")
-        phone_line = f"📞 {factory_phone}" if factory_phone else ""
-        email_html = f"""<!DOCTYPE html>
-<html lang="es"><head><meta charset="UTF-8"></head>
-<body style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;color:#333;padding:20px">
-  <div style="border-top:4px solid #7c3aed;padding-top:24px">
-    <h2 style="color:#7c3aed;margin-bottom:4px">{html_lib.escape(factory_name)}</h2>
-    <p style="color:#666;margin-top:0;font-size:0.9em">Software factory · www.scalerics.com</p>
-  </div>
-  <p style="margin-top:24px">Hola equipo de <strong>{name_esc}</strong>,</p>
-  <p>Notamos que todavía no tienen página web propia. Hoy la mayoría de los clientes busca en Google antes de visitar un negocio — y sin web, no aparecen.</p>
-  <p>En <strong>{html_lib.escape(factory_name)}</strong> desarrollamos sitios web para negocios locales uruguayos, rápido y a precios accesibles.</p>
-  <p>¿Charlamos 15 minutos esta semana?</p>
-  <div style="margin-top:32px;padding:16px;background:#f5f3ff;border-radius:8px;font-size:0.9em">
-    <strong>{html_lib.escape(factory_name)}</strong><br>
-    📧 <a href="mailto:{html_lib.escape(sender_email)}" style="color:#7c3aed">{html_lib.escape(sender_email)}</a><br>
-    {phone_line}
-  </div>
-  <p style="font-size:0.75em;color:#999;margin-top:24px">Si no querés recibir más mensajes, respondé con "no gracias".</p>
-</body></html>"""
-        message = MIMEMultipart("alternative")
-        message["From"] = sender_email
-        message["To"] = biz["email"]
-        message["Subject"] = f"¿Le puedo mostrar algo a {biz['name']}?"
-        message.attach(MIMEText(email_html, "html", "utf-8"))
-        raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
-        service.users().messages().send(userId="me", body={"raw": raw}).execute()
-        update_business(_db(), biz_id, status="email_sent",
-                        email_sent_at=datetime.datetime.now().isoformat())
-        return jsonify({"ok": True})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)})

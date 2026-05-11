@@ -39,11 +39,9 @@ def create_parser() -> argparse.ArgumentParser:
     scrape_p.add_argument("--max", type=int, default=100, help="Máximo de resultados")
     scrape_p.add_argument("--verify-web", action="store_true", help="Verificar con Bing si el negocio tiene web (lento, off por default)")
 
-    subparsers.add_parser("find-emails", help="Buscar emails de los negocios scraped")
     subparsers.add_parser("generate-pitches", help="Generar texto de pitch WhatsApp por negocio")
     subparsers.add_parser("generate-demos", help="Generar páginas demo con IA")
     subparsers.add_parser("deploy", help="Subir demos a Vercel")
-    subparsers.add_parser("send-emails", help="Enviar mails a los negocios")
 
     run_all_p = subparsers.add_parser("run-all", help="Ejecutar el pipeline completo")
     run_all_p.add_argument("--query", required=True, help='Ej: "restaurante Montevideo"')
@@ -57,10 +55,6 @@ def create_parser() -> argparse.ArgumentParser:
 def cmd_scrape(args):
     from scraper import run
     return run(args.query, args.max, DB_PATH, verify_web=getattr(args, 'verify_web', False))
-
-def cmd_find_emails(args):
-    from email_finder import run
-    run(DB_PATH)
 
 def cmd_generate_pitches(args):
     from pitch_generator import run
@@ -76,10 +70,6 @@ def cmd_deploy(args):
     token = os.environ["VERCEL_TOKEN"]
     project = os.environ.get("VERCEL_PROJECT_NAME", "scalerics-demos")
     run(DB_PATH, token, project)
-
-def cmd_send_emails(args):
-    from email_sender import run
-    run(DB_PATH, get_factory_config())
 
 def cmd_dashboard(args):
     from dashboard import run
@@ -97,11 +87,9 @@ def main():
     args = parser.parse_args()
     commands = {
         "scrape": cmd_scrape,
-        "find-emails": cmd_find_emails,
         "generate-pitches": cmd_generate_pitches,
         "generate-demos": cmd_generate_demos,
         "deploy": cmd_deploy,
-        "send-emails": cmd_send_emails,
         "run-all": cmd_run_all,
         "dashboard": cmd_dashboard,
     }

@@ -411,7 +411,6 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
     <div class="stats">
       <div class="stat-card"><div class="stat-label">Total leads</div><div class="stat-val" id="stat-total">—</div></div>
       <div class="stat-card"><div class="stat-label">Con pitch</div><div class="stat-val green" id="stat-pitch">—</div></div>
-      <div class="stat-card"><div class="stat-label">Con email</div><div class="stat-val yellow" id="stat-email">—</div></div>
       <div class="stat-card"><div class="stat-label">Contactados</div><div class="stat-val blue" id="stat-contacted">—</div></div>
     </div>
     <div class="filters">
@@ -433,7 +432,7 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
     </div>
     <div class="table-wrap">
       <div class="table-header">
-        <span>Negocio</span><span>Teléfono</span><span>Email</span><span>Acciones</span>
+        <span>Negocio</span><span>Teléfono</span><span>Acciones</span>
       </div>
       <div id="table-body"></div>
     </div>
@@ -617,10 +616,6 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
         <label class="modal-label">Duración (min)</label>
         <input type="number" id="ev-duration" value="60" min="15" max="480">
       </div>
-      <div>
-        <label class="modal-label">Email asistente</label>
-        <input type="email" id="ev-attendee" placeholder="(opcional)">
-      </div>
     </div>
     <label class="modal-label">Descripción</label>
     <textarea id="ev-desc" placeholder="(opcional)" style="min-height:60px"></textarea>
@@ -739,7 +734,6 @@ async function loadStats() {
   const d = await r.json();
   document.getElementById('stat-total').textContent = d.total;
   document.getElementById('stat-pitch').textContent = d.with_pitch;
-  document.getElementById('stat-email').textContent = d.with_email;
   document.getElementById('stat-contacted').textContent = d.contacted;
   const sel = document.getElementById('category-filter');
   const prev = sel.value;
@@ -770,7 +764,6 @@ async function loadLeads() {
         <div class="biz-sub">${esc(b.category||'')}${b.city ? ' · '+esc(b.city) : ''}</div>
       </div>
       <div>${b.phone ? `<a class="phone-val" href="https://wa.me/${waNum(b.phone)}" target="_blank" title="Abrir WhatsApp">${esc(b.phone)}</a>` : '<span class="no-val">—</span>'}</div>
-      <div>${b.email ? `<span class="email-val">${esc(b.email)}</span>` : '<span class="no-val">—</span>'}</div>
       <div class="actions">
         <select class="status-sel" onchange="setCrmStatus(${b.id},this.value)">
           ${['sin_contactar','contactado','reunion_agendada','reunion_hecha','presupuesto_enviado','negociacion','cliente_cerrado','en_desarrollo','finalizado'].map(s=>`<option value="${s}"${crm===s?' selected':''}>${crmLabels[s]||s}</option>`).join('')}
@@ -802,14 +795,6 @@ function copyPitchText() {
     btn.textContent = '✓ Copiado';
     setTimeout(() => { btn.textContent = '📋 Copiar'; }, 1800);
   });
-}
-
-async function sendMail(id, btn) {
-  btn.disabled = true; btn.textContent = '...';
-  const r = await fetch(`/api/leads/${id}/send-email`, {method:'POST'});
-  const d = await r.json();
-  if (d.ok) { loadStats(); loadLeads(); }
-  else { alert('Error enviando mail: ' + (d.error||'Error desconocido')); btn.disabled = false; btn.textContent = '📧 Enviar'; }
 }
 
 function openContact(id, name) {

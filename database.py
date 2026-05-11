@@ -183,7 +183,7 @@ ALLOWED_COLUMNS = {
     "name", "category", "address", "city", "phone", "rating",
     "review_count", "hours", "maps_url", "facebook_url", "instagram_url",
     "color_scheme", "demo_html_path", "demo_url", "status", "error_message",
-    "scraped_at", "email_sent_at", "notes", "pitch_text", "crm_status",
+    "scraped_at", "notes", "pitch_text", "crm_status",
     "has_whatsapp",
 }
 
