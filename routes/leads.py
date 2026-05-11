@@ -9,7 +9,7 @@ from email.mime.text import MIMEText
 
 from flask import Blueprint, current_app, jsonify, request
 
-from database import get_all_businesses, update_business, delete_business, get_business
+from database import get_all_businesses, update_business, delete_business, get_business, get_client_info
 
 leads_bp = Blueprint("leads", __name__)
 
@@ -47,6 +47,7 @@ def api_get_lead(biz_id):
     biz = get_business(_db(), biz_id)
     if not biz:
         return jsonify({"error": "Lead no encontrado"}), 404
+    biz["client_info"] = get_client_info(_db(), biz_id) or {}
     return jsonify(biz)
 
 

@@ -47,7 +47,23 @@ async function handleQual4(lead, input) {
   await wa.sendText(lead.phone, T.QUAL_4, lead.id);
 }
 
-async function handleScored(lead, input) {
+async function handleQual5(lead, input) {
+  // Save colors (answer to QUAL_4)
+  if (input) await leadsService.update(lead.id, { colors: input });
+  await wa.sendText(lead.phone, T.QUAL_5, lead.id);
+}
+
+async function handleQual6(lead, input) {
+  // Save instagram_web (answer to QUAL_5)
+  if (input) await leadsService.update(lead.id, { instagram_web: input });
+  await wa.sendText(lead.phone, T.QUAL_6, lead.id);
+}
+
+async function handleScored(lead, input, fromState) {
+  // Save needs (answer to QUAL_6)
+  if (fromState === S.QUAL_6 && input) {
+    await leadsService.update(lead.id, { needs: input });
+  }
 
   // Score the lead (imported here to avoid circular deps)
   const { scoreLead } = require('../services/ai');
@@ -109,6 +125,8 @@ module.exports = {
   handleQual2,
   handleQual3,
   handleQual4,
+  handleQual5,
+  handleQual6,
   handleScored,
   handleMeetingSent,
   handleScheduled,

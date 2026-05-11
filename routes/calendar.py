@@ -165,6 +165,8 @@ def api_calendar_events():
                 meet_link=meet_url,
                 status="scheduled",
             )
+            from database import update_business
+            update_business(_db(), int(client_id), crm_status="reunion_agendada")
 
         return jsonify({"ok": True, "meet_url": meet_url, "event_id": cal_event_id})
     except Exception as e:
@@ -245,4 +247,25 @@ Devolvé SOLO un JSON (sin texto extra, sin markdown):
         summary=result.get("summary", ""),
         requirements=result.get("requirements", ""),
     )
-    return jsonify({"ok": True, "summary": result})
+
+    budget_generated = False
+    try:
+        from database import get_meeting as _get_meeting
+        from routes.budgets import _generate_budget_internal
+        meeting_record = _get_meeting(_db(), meeting_id)
+        if meeting_record and meeting_record.get("client_id"):
+            cid = meeting_record["client_id"]
+            auto = _generate_budget_internal(
+                _db(), cid,
+                requirements=result.get("requirements", ""),
+                service_type=result.get("service_type", ""),
+            )
+            if auto:
+                from database import update_business
+                update_business(_db(), cid, crm_status="presupuesto_enviado")
+                budget_generated = True
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Auto-budget failed for meeting {meeting_id}: {e}")
+
+    return jsonify({"ok": True, "summary": result, "budget_generated": budget_generated})

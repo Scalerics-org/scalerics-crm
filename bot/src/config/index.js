@@ -39,4 +39,8 @@ module.exports = {
 
   // Admin
   ADMIN_TOKEN: process.env.ADMIN_TOKEN || '',
+
+  // CRM sync (optional)
+  CRM_API_URL: process.env.CRM_API_URL || '',
+  CRM_ADMIN_TOKEN: process.env.CRM_ADMIN_TOKEN || '',
 };

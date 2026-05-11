@@ -160,8 +160,10 @@ def extract_business_data(page) -> dict:
         "maps_website_url": maps_website_url,
     }
 
-def scrape_google_maps(query: str, max_results: int, db_path: str) -> int:
+def scrape_google_maps(query: str, max_results: int, db_path: str, verify_web: bool = False) -> int:
     inserted = 0
+    maps_list_url = f"https://www.google.com/maps/search/{query.replace(' ', '+')}"
+
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         context = browser.new_context(
@@ -174,9 +176,8 @@ def scrape_google_maps(query: str, max_results: int, db_path: str) -> int:
         page = context.new_page()
         Stealth().apply_stealth_sync(page)
 
-        search_url = f"https://www.google.com/maps/search/{query.replace(' ', '+')}"
-        logger.info(f"Buscando: {search_url}")
-        page.goto(search_url, wait_until="domcontentloaded", timeout=30000)
+        logger.info(f"Buscando: {maps_list_url}")
+        page.goto(maps_list_url, wait_until="domcontentloaded", timeout=30000)
         random_delay(2, 4)
 
         seen_urls: set[str] = set()
@@ -212,7 +213,7 @@ def scrape_google_maps(query: str, max_results: int, db_path: str) -> int:
 
                         data = extract_business_data(page)
 
-                        # Maps shows a website link → has web, skip
+                        # Maps shows a website link → business already has web, skip
                         if data.get("maps_website_url"):
                             logger.info(f"Saltando (web en Maps): {data['name']}")
                             page.go_back(wait_until="domcontentloaded")
@@ -220,26 +221,25 @@ def scrape_google_maps(query: str, max_results: int, db_path: str) -> int:
                             random_delay()
                             break
 
-                        # No Maps link → verify with Bing
-                        logger.info(f"Verificando con Bing: {data['name']}")
-                        no_web = verify_no_website(data["name"], data["city"], page)
+                        # Optional Bing double-check (slow, off by default)
+                        if verify_web:
+                            logger.info(f"Verificando con Bing: {data['name']}")
+                            no_web = verify_no_website(data["name"], data["city"], page)
+                            if not no_web:
+                                logger.info(f"Saltando (web encontrada en Bing): {data['name']}")
+                                page.goto(maps_list_url, wait_until="domcontentloaded", timeout=30000)
+                                page.wait_for_selector(".hfpxzc", timeout=10000)
+                                random_delay(2, 4)
+                                break
 
-                        maps_list_url = f"https://www.google.com/maps/search/{query.replace(' ', '+')}"
-                        if not no_web:
-                            logger.info(f"Saltando (web encontrada en Bing): {data['name']}")
-                            page.goto(maps_list_url, wait_until="domcontentloaded", timeout=30000)
-                            page.wait_for_selector(".hfpxzc", timeout=10000)
-                            random_delay(2, 4)
-                            break
-
-                        # Confirmed: no website → save
+                        # Insert business
                         business_id = insert_business(db_path, data)
                         if business_id:
                             inserted += 1
                             made_progress = True
                             logger.info(f"[{inserted}/{max_results}] Guardado: {data['name']}")
                         else:
-                            logger.info(f"Duplicado, ignorado: {data['name']}")
+                            logger.debug(f"Duplicado, ignorado: {data['name']}")
 
                         page.goto(maps_list_url, wait_until="domcontentloaded", timeout=30000)
                         page.wait_for_selector(".hfpxzc", timeout=10000)
@@ -253,7 +253,6 @@ def scrape_google_maps(query: str, max_results: int, db_path: str) -> int:
                         else:
                             logger.error(f"Saltando resultado tras 3 intentos fallidos: {e}")
                             try:
-                                maps_list_url = f"https://www.google.com/maps/search/{query.replace(' ', '+')}"
                                 page.goto(maps_list_url, wait_until="domcontentloaded", timeout=30000)
                                 page.wait_for_selector(".hfpxzc", timeout=10000)
                             except Exception:
@@ -276,6 +275,6 @@ def scrape_google_maps(query: str, max_results: int, db_path: str) -> int:
     logger.info(f"Scraping completo. Guardados: {inserted} negocios")
     return inserted
 
-def run(query: str, max_results: int, db_path: str) -> int:
+def run(query: str, max_results: int, db_path: str, verify_web: bool = False) -> int:
     init_db(db_path)
-    return scrape_google_maps(query, max_results, db_path)
+    return scrape_google_maps(query, max_results, db_path, verify_web=verify_web)

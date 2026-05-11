@@ -37,6 +37,7 @@ def create_parser() -> argparse.ArgumentParser:
     scrape_p = subparsers.add_parser("scrape", help="Raspar Google Maps")
     scrape_p.add_argument("--query", required=True, help='Ej: "restaurante Montevideo"')
     scrape_p.add_argument("--max", type=int, default=100, help="Máximo de resultados")
+    scrape_p.add_argument("--verify-web", action="store_true", help="Verificar con Bing si el negocio tiene web (lento, off por default)")
 
     subparsers.add_parser("find-emails", help="Buscar emails de los negocios scraped")
     subparsers.add_parser("generate-pitches", help="Generar texto de pitch WhatsApp por negocio")
@@ -47,6 +48,7 @@ def create_parser() -> argparse.ArgumentParser:
     run_all_p = subparsers.add_parser("run-all", help="Ejecutar el pipeline completo")
     run_all_p.add_argument("--query", required=True, help='Ej: "restaurante Montevideo"')
     run_all_p.add_argument("--max", type=int, default=100)
+    run_all_p.add_argument("--verify-web", action="store_true", help="Verificar con Bing si el negocio tiene web (lento)")
 
     subparsers.add_parser("dashboard", help="Abrir panel de leads en el browser")
 
@@ -54,7 +56,7 @@ def create_parser() -> argparse.ArgumentParser:
 
 def cmd_scrape(args):
     from scraper import run
-    return run(args.query, args.max, DB_PATH)
+    return run(args.query, args.max, DB_PATH, verify_web=getattr(args, 'verify_web', False))
 
 def cmd_find_emails(args):
     from email_finder import run

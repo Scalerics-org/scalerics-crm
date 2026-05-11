@@ -5,6 +5,7 @@ const session = require('../services/session');
 const leadsService = require('../services/leads');
 const wa = require('../services/whatsapp');
 const T = require('../messages/templates');
+const { notifyCRM } = require('../services/crm');
 
 const MAX_RETRIES = 4;
 
@@ -109,16 +110,17 @@ async function _executeTransition(lead, input, fromState, toState) {
     case S.QUAL_4:
       await handlers.handleQual4(lead, input);
       break;
+    case S.QUAL_5:
+      await handlers.handleQual5(lead, input);
+      break;
+    case S.QUAL_6:
+      await handlers.handleQual6(lead, input);
+      break;
     case S.SCORED:
-      finalState = await handlers.handleScored(lead, input) || toState;
+      finalState = await handlers.handleScored(lead, input, fromState) || toState;
       break;
     case S.MEETING_SENT:
-      if (fromState === S.QUAL_4) {
-        if (input) await leadsService.update(lead.id, { colors: input });
-        await wa.sendText(lead.phone, T.MEETING_OFFER(lead.name), lead.id);
-      } else {
-        await handlers.handleMeetingSent(lead, input);
-      }
+      await handlers.handleMeetingSent(lead, input);
       break;
     case S.SCHEDULED:
       await handlers.handleScheduled(lead);
@@ -143,6 +145,11 @@ async function _executeTransition(lead, input, fromState, toState) {
   // Persist state
   await session.setSession(lead.phone, { state: finalState, leadId: lead.id });
   await leadsService.update(lead.id, { state: finalState });
+
+  // Notify CRM when lead qualifies
+  if (finalState === S.MEETING_SENT || finalState === S.HUMAN_QUEUED) {
+    notifyCRM(lead).catch(err => console.error('[CRM sync] failed:', err.message));
+  }
 }
 
 module.exports = { process };

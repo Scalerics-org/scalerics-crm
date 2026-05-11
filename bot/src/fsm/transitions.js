@@ -43,7 +43,13 @@ const TRANSITIONS = {
     '*': S.QUAL_3,
   },
   [S.QUAL_4]: {
-    '*': S.MEETING_SENT,
+    '*': S.QUAL_5,
+  },
+  [S.QUAL_5]: {
+    '*': S.QUAL_6,
+  },
+  [S.QUAL_6]: {
+    '*': S.SCORED,
   },
   [S.MEETING_SENT]: {
     '1': S.MEETING_SENT, // re-send link (handled in engine)

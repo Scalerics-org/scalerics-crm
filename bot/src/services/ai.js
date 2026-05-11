@@ -53,20 +53,21 @@ async function scoreLead(lead) {
     return scoreByRules(lead);
   }
 
-  const prompt = `Sos un calificador de leads para una agencia de automatización (Scalerics) que vende a PyMEs.
+  const prompt = `Sos un calificador de leads para una agencia de desarrollo web y software (Scalerics) que vende a PyMEs uruguayas.
 
 Analizá estas respuestas y devolvé un JSON:
 
-Tipo de negocio: ${BUSINESS_LABELS[lead.business_type] || 'No especificado'}
-Problema principal: ${PROBLEM_LABELS[lead.main_problem] || 'No especificado'}
+Tipo de proyecto: ${BUSINESS_LABELS[lead.business_type] || 'No especificado'}
 Tamaño del equipo: ${TEAM_LABELS[lead.team_size] || 'No especificado'}
 Presupuesto: ${BUDGET_LABELS[lead.budget] || 'No especificado'}
-Urgencia: ${URGENCY_LABELS[lead.urgency] || 'No especificado'}
+Colores de marca: ${lead.colors || 'No especificado'}
+Instagram/web: ${lead.instagram_web || 'Ninguno'}
+Necesidades: ${lead.needs || 'No especificado'}
 
 Devolvé SOLO este JSON, sin texto adicional:
 {"score":<1-10>,"priority":"<high|medium|low>","recommended_action":"<meeting|nurture|disqualify>","reason":"<una línea>"}
 
-Criterios: score 8-10 = presupuesto disponible + urgencia alta + equipo mediano/grande. Score 5-7 = condicional. Score 1-4 = sin presupuesto ni urgencia.`;
+Criterios: score 8-10 = presupuesto disponible + necesidades claras + ya tiene presencia online. Score 5-7 = potencial condicional. Score 1-4 = sin presupuesto ni claridad.`;
 
   try {
     const message = await anthropic.messages.create({

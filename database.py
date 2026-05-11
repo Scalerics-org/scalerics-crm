@@ -1,3 +1,4 @@
+import re
 import sqlite3
 import logging
 from typing import Optional
@@ -54,7 +55,7 @@ def init_db(db_path: str) -> None:
         _add_column(conn, "businesses", "notes", "TEXT")
         _add_column(conn, "businesses", "pitch_text", "TEXT")
         _add_column(conn, "businesses", "crm_status", "TEXT DEFAULT 'sin_contactar'")
-        _add_column(conn, "businesses", "has_whatsapp", "INTEGER DEFAULT 1")
+        _add_column(conn, "businesses", "has_whatsapp", "INTEGER")
 
         # ── demos ─────────────────────────────────────────────────────────────
         conn.execute("""
@@ -209,7 +210,7 @@ def insert_business(db_path: str, data: dict) -> Optional[int]:
             "color_scheme": data.get("color_scheme"),
             "demo_html_path": data.get("demo_html_path"),
             "demo_url": data.get("demo_url"),
-            "has_whatsapp": data.get("has_whatsapp", 1),
+            "has_whatsapp": data.get("has_whatsapp"),
         })
         conn.commit()
         return cursor.lastrowid if cursor.rowcount > 0 else None
@@ -259,6 +260,22 @@ def get_business(db_path: str, business_id: int) -> Optional[dict]:
         cursor = conn.execute("SELECT * FROM businesses WHERE id = ?", (business_id,))
         row = cursor.fetchone()
         return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def get_business_by_phone(db_path: str, phone: str) -> Optional[dict]:
+    digits = re.sub(r"[^\d]", "", phone)
+    variants = [phone, digits, "+" + digits]
+    if digits.startswith("598") and len(digits) == 11:
+        variants.append("0" + digits[3:])
+    conn = _connect(db_path)
+    try:
+        for v in variants:
+            row = conn.execute("SELECT * FROM businesses WHERE phone = ?", (v,)).fetchone()
+            if row:
+                return dict(row)
+        return None
     finally:
         conn.close()
 

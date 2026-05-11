@@ -49,7 +49,7 @@ router.get('/leads/phone/:phone', authMiddleware, async (req, res) => {
     const placeholders = ph.map((_, i) => `$${i + 1}`).join(', ');
     const leadRes = await query(
       `SELECT id, phone, name, state, score, business_type, main_problem,
-              team_size, budget, urgency, business_name, created_at, last_message_at
+              team_size, budget, urgency, business_name, colors, instagram_web, needs, created_at, last_message_at
        FROM leads WHERE phone IN (${placeholders})`,
       ph
     );
@@ -91,7 +91,7 @@ router.get('/leads/search', authMiddleware, async (req, res) => {
     if (!name) return res.status(400).json({ error: 'name query param required' });
     const result = await query(
       `SELECT id, phone, name, state, score, business_type, main_problem,
-              team_size, budget, urgency, business_name, created_at, last_message_at
+              team_size, budget, urgency, business_name, colors, instagram_web, needs, created_at, last_message_at
        FROM leads WHERE name ILIKE $1 ORDER BY last_message_at DESC LIMIT 5`,
       [`%${name}%`]
     );

@@ -3,7 +3,7 @@
 import os
 
 import requests as http_requests
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
 
 wa_bp = Blueprint("wa", __name__)
 
@@ -120,3 +120,68 @@ def api_lead_by_phone(phone):
     bt = lead.get("business_type")
     lead["rubro_hint"] = _BTYPE.get(bt, "") if bt else ""
     return jsonify({"lead": lead, "messages": data.get("messages", [])})
+
+
+@wa_bp.route("/api/bot/lead-qualified", methods=["POST"])
+def api_bot_lead_qualified():
+    """Receives a push from the bot when a lead qualifies (MEETING_SENT / HUMAN_QUEUED)."""
+    from database import (
+        get_business_by_phone, insert_business, update_business, upsert_client_info,
+    )
+
+    token = request.headers.get("x-admin-token", "")
+    if token != os.environ.get("ADMIN_TOKEN", ""):
+        return jsonify({"error": "unauthorized"}), 401
+
+    data = request.get_json() or {}
+    phone = (data.get("phone") or "").strip()
+    if not phone:
+        return jsonify({"ok": False, "error": "phone requerido"}), 400
+
+    BTYPE = {1: "Página web", 2: "E-commerce", 3: "Automatización", 4: "App a medida"}
+    BUDGET = {1: "Menos de $500 USD", 2: "$500–$3.000 USD", 3: "Más de $3.000 USD", 4: "Sin definir"}
+    TEAM = {1: "Solo yo", 2: "2–5 personas", 3: "6–20 personas", 4: "Más de 20"}
+    STATE_TO_CRM = {
+        "MEETING_SENT": "reunion_agendada",
+        "SCHEDULED": "reunion_agendada",
+        "HUMAN_QUEUED": "contactado",
+    }
+
+    category = BTYPE.get(data.get("business_type"), "desarrollo web")
+    budget_range = BUDGET.get(data.get("budget"), "no especificado")
+    team_label = TEAM.get(data.get("team_size"), "no especificado")
+    crm_status = STATE_TO_CRM.get(data.get("state"), "contactado")
+
+    db = current_app.config["DB_PATH"]
+    biz = get_business_by_phone(db, phone)
+    if biz:
+        biz_id = biz["id"]
+        update_business(
+            db, biz_id,
+            crm_status=crm_status,
+            name=data.get("business_name") or biz.get("name") or "Sin nombre",
+        )
+    else:
+        biz_id = insert_business(db, {
+            "phone": phone,
+            "name": data.get("business_name") or data.get("name") or "Sin nombre",
+            "category": category,
+            "city": "Montevideo",
+            "status": "bot_qualified",
+        })
+        if biz_id:
+            update_business(db, biz_id, crm_status=crm_status)
+
+    if biz_id:
+        upsert_client_info(
+            db, biz_id,
+            lead_name=data.get("name"),
+            business_name=data.get("business_name"),
+            rubro=category,
+            budget_range=budget_range,
+            colors=data.get("colors"),
+            instagram=data.get("instagram_web"),
+            needs=data.get("needs") or team_label,
+        )
+
+    return jsonify({"ok": True, "business_id": biz_id})

@@ -418,8 +418,14 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
       <button class="filter-btn active" data-crm="">Todos</button>
       <button class="filter-btn" data-crm="sin_contactar">Sin contactar</button>
       <button class="filter-btn" data-crm="contactado">Contactado</button>
-      <button class="filter-btn" data-crm="agendo">Agendó</button>
-      <button class="filter-btn" data-crm="firmo">Firmó</button>
+      <button class="filter-btn" data-crm="reunion_agendada">Reunión agendada</button>
+      <button class="filter-btn" data-crm="demo_generada">Demo generada</button>
+      <button class="filter-btn" data-crm="reunion_hecha">Reunión hecha</button>
+      <button class="filter-btn" data-crm="presupuesto_enviado">Presupuesto enviado</button>
+      <button class="filter-btn" data-crm="negociacion">Negociación</button>
+      <button class="filter-btn" data-crm="cliente_cerrado">Cerrado</button>
+      <button class="filter-btn" data-crm="en_desarrollo">En desarrollo</button>
+      <button class="filter-btn" data-crm="finalizado">Finalizado</button>
       <select class="filter-select" id="category-filter">
         <option value="">Todos los rubros</option>
       </select>
@@ -1372,12 +1378,13 @@ function _taskRowHtml(t) {
   const now = new Date(); const dl = t.deadline ? new Date(t.deadline) : null;
   const overdue = dl && dl < now && !done;
   const dlStr = dl ? dl.toLocaleDateString('es-UY',{day:'2-digit',month:'2-digit'}) : '';
+  const prioLabel = ({'high':'Alta','medium':'Media','low':'Baja'})[t.priority] || t.priority;
   return `<div class="task-row" id="task-row-${t.id}">
     <div class="task-check ${done ? 'done' : ''}" onclick="_toggleTask(${t.id},${done})">${done ? '✓' : ''}</div>
     <div class="task-body">
       <div class="task-title ${done ? 'done-text' : ''}">${esc(t.title)}</div>
       <div class="task-meta">
-        ${t.priority ? `<span class="task-priority ${t.priority}">${{high:'Alta',medium:'Media',low:'Baja'}[t.priority]||t.priority}</span>` : ''}
+        ${t.priority ? `<span class="task-priority ${t.priority}">${prioLabel}</span>` : ''}
         ${lead ? `<span class="task-client-link" onclick="openClientPanel(${lead.id})">${esc(lead.name||'')}</span>` : ''}
         ${dlStr ? `<span class="task-deadline ${overdue ? 'overdue' : ''}">📅 ${dlStr}${overdue?' (vencida)':''}</span>` : ''}
       </div>
@@ -1655,7 +1662,9 @@ function _cpSwitchTab(tab) {
 
 function _cpRenderInfo() {
   const l = _cpData.lead || {};
+  const ci = l.client_info || {};
   const stars = l.rating ? '⭐ ' + l.rating + (l.review_count ? ' (' + l.review_count + ' reseñas)' : '') : '';
+  const hasBotData = ci.lead_name || ci.budget_range || ci.colors || ci.instagram || ci.needs;
   return `<div class="cp-section">
     <div class="cp-section-title">Información del negocio</div>
     ${l.phone ? `<div class="cp-field"><span class="cp-field-label">Teléfono</span><span class="cp-field-val">${l.phone}</span></div>` : ''}
@@ -1663,8 +1672,15 @@ function _cpRenderInfo() {
     ${l.category ? `<div class="cp-field"><span class="cp-field-label">Rubro</span><span class="cp-field-val">${l.category}</span></div>` : ''}
     ${l.address ? `<div class="cp-field"><span class="cp-field-label">Dirección</span><span class="cp-field-val">${l.address}</span></div>` : ''}
     ${stars ? `<div class="cp-field"><span class="cp-field-label">Rating</span><span class="cp-field-val">${stars}</span></div>` : ''}
-    ${l.notes ? `<div class="cp-field"><span class="cp-field-label">Notas</span><span class="cp-field-val" style="color:#94a3b8">${l.notes}</span></div>` : ''}
   </div>
+  ${hasBotData ? `<div class="cp-section">
+    <div class="cp-section-title">Datos del bot <span style="font-size:.7rem;color:#475569;font-weight:400">(calificación WA)</span></div>
+    ${ci.lead_name ? `<div class="cp-field"><span class="cp-field-label">Contacto</span><span class="cp-field-val">${ci.lead_name}</span></div>` : ''}
+    ${ci.budget_range ? `<div class="cp-field"><span class="cp-field-label">Presupuesto</span><span class="cp-field-val">${ci.budget_range}</span></div>` : ''}
+    ${ci.colors ? `<div class="cp-field"><span class="cp-field-label">Colores de marca</span><span class="cp-field-val">${ci.colors}</span></div>` : ''}
+    ${ci.instagram ? `<div class="cp-field"><span class="cp-field-label">Instagram / web</span><span class="cp-field-val">${ci.instagram}</span></div>` : ''}
+    ${ci.needs ? `<div class="cp-field"><span class="cp-field-label">Necesidades</span><span class="cp-field-val">${ci.needs}</span></div>` : ''}
+  </div>` : ''}
   <div class="cp-section">
     <div class="cp-section-title">Notas internas</div>
     <textarea class="cp-req-area" id="cp-notes-area" placeholder="Agregar notas sobre este lead...">${l.notes || ''}</textarea>
@@ -1749,6 +1765,14 @@ async function _cpSummarize(meetingId) {
       meet.summary = d.summary.summary || '';
       meet.requirements = d.summary.requirements || '';
     }
+    if (d.budget_generated) {
+      const budgetRes = await fetch('/api/leads/' + _cpClientId + '/budget');
+      _cpData.budget = await budgetRes.json();
+      const budgetTab = document.querySelector('[data-tab="budget"]');
+      if (budgetTab && !budgetTab.querySelector('.budget-new-badge')) {
+        budgetTab.insertAdjacentHTML('beforeend', '<span class="budget-new-badge" style="background:#4ade80;color:#000;font-size:.65rem;padding:1px 5px;border-radius:4px;margin-left:4px">Nuevo</span>');
+      }
+    }
     _cpSwitchTab('meet');
   } catch(e) { alert('Error: ' + e); }
   finally { if (spin) spin.style.display = 'none'; }
@@ -1770,39 +1794,46 @@ function _cpGenerateBudgetFromMeeting(meetingId) {
 
 function _cpRenderBudget() {
   const b = _cpData.budget;
-  let itemsHtml = '';
-  let metaHtml = '';
-  if (b && b.items && b.items.length) {
+  let budgetHtml = '';
+  if (b && b.items) {
     const meta = typeof b.notes === 'object' ? b.notes : {};
-    itemsHtml = `<table class="budget-table">
-      <thead><tr><th>Ítem</th><th>Descripción</th><th>Horas</th><th>$/h</th><th>Total</th></tr></thead>
-      <tbody>` + b.items.map((item, idx) => `
-        <tr>
-          <td><input value="${item.name || ''}" onchange="_cpBudgetItemChange(${idx},'name',this.value)"></td>
-          <td><input value="${item.description || ''}" onchange="_cpBudgetItemChange(${idx},'description',this.value)"></td>
-          <td><input type="number" style="width:55px" value="${item.hours || 0}" onchange="_cpBudgetItemChange(${idx},'hours',+this.value)"></td>
-          <td><input type="number" style="width:55px" value="${item.unit_price || 0}" onchange="_cpBudgetItemChange(${idx},'unit_price',+this.value)"></td>
-          <td style="color:#4ade80">$${(item.total || 0).toLocaleString()}</td>
-        </tr>`).join('') + `
-        <tr class="budget-total-row">
-          <td colspan="4">Total</td>
-          <td style="color:#4ade80">$${(b.total_amount || 0).toLocaleString()} ${meta.currency || 'USD'}</td>
-        </tr>
-      </tbody></table>
-    <div style="font-size:.78rem;color:#475569;margin-bottom:10px">${meta.notes || ''}</div>
-    <div style="font-size:.78rem;color:#475569;margin-bottom:14px">${meta.payment_terms || ''} · Válido ${meta.validity_days || 30} días</div>
+    const devPrice = b.total_amount || meta.dev_price || 0;
+    const monthlyPrice = meta.monthly_price || 0;
+    const sections = Array.isArray(b.items) ? b.items : [];
+    const sectionsPreview = sections.slice(0, 2).map(s =>
+      `<div style="margin-bottom:6px"><span style="color:#0088cc;font-size:.78rem;font-weight:600">${s.title || ''}</span>` +
+      (s.subsections ? ` <span style="color:#475569;font-size:.75rem">(${s.subsections.length} módulos)</span>` :
+       s.items ? ` <span style="color:#475569;font-size:.75rem">(${s.items.length} ítems)</span>` : '') +
+      `</div>`
+    ).join('');
+    budgetHtml = `
+    <div style="background:#0a0f1a;border-radius:8px;padding:14px;margin-bottom:14px">
+      <div style="font-size:.72rem;color:#475569;text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px">Resumen del presupuesto</div>
+      ${meta.hero_title ? `<div style="color:#e2e8f0;font-size:.9rem;font-weight:600;margin-bottom:8px">${meta.hero_title}</div>` : ''}
+      ${sectionsPreview}
+      ${sections.length > 2 ? `<div style="color:#475569;font-size:.75rem">+${sections.length-2} secciones más...</div>` : ''}
+      <div style="display:flex;gap:20px;margin-top:12px;padding-top:12px;border-top:1px solid #1e293b">
+        <div>
+          <div style="font-size:.68rem;color:#475569;text-transform:uppercase;letter-spacing:.5px">Desarrollo</div>
+          <div style="font-size:1.1rem;font-weight:700;color:#4ade80">USD ${devPrice.toLocaleString()}</div>
+        </div>
+        ${monthlyPrice ? `<div>
+          <div style="font-size:.68rem;color:#475569;text-transform:uppercase;letter-spacing:.5px">Mensual</div>
+          <div style="font-size:1.1rem;font-weight:700;color:#94a3b8">USD ${monthlyPrice.toLocaleString()}/mes</div>
+        </div>` : ''}
+      </div>
+    </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="cp-btn cp-btn-primary" onclick="_cpSaveBudget()">💾 Guardar cambios</button>
-      ${b.status !== 'sent' ? `<button class="cp-btn cp-btn-success" onclick="_cpMarkBudgetSent()">✅ Marcar como enviado</button>` : `<span class="cp-badge cp-badge-sent">Enviado</span>`}
+      <a class="cp-btn cp-btn-primary" href="/api/leads/${_cpClientId}/budget/preview" target="_blank">🖨 Ver / imprimir PDF</a>
+      ${b.status !== 'sent' ? `<button class="cp-btn cp-btn-success" onclick="_cpMarkBudgetSent()">✅ Marcar enviado</button>` : `<span class="cp-badge cp-badge-sent">Enviado</span>`}
       <button class="cp-btn cp-btn-ghost" onclick="_cpRegeneraBudget()">⚡ Regenerar</button>
-      <a class="cp-btn cp-btn-ghost" href="/api/leads/${_cpClientId}/budget/preview" target="_blank">🖨 Ver PDF</a>
     </div>`;
   } else {
-    itemsHtml = `<div style="color:#475569;font-size:.85rem;margin-bottom:14px">Sin presupuesto generado aún.</div>`;
+    budgetHtml = `<div style="color:#475569;font-size:.85rem;margin-bottom:14px">Sin presupuesto generado aún.</div>`;
   }
   return `<div class="cp-section">
     <div class="cp-section-title">Requerimientos adicionales</div>
-    <textarea class="cp-req-area" id="cp-extra-req" placeholder="Describí qué necesita el cliente (opcional, se suman a los de la reunión)...">${_cpData.budget ? '' : ''}</textarea>
+    <textarea class="cp-req-area" id="cp-extra-req" placeholder="Describí qué necesita el cliente (opcional, se suman a los de la reunión)..."></textarea>
     <button class="cp-btn cp-btn-primary" id="cp-gen-btn" onclick="_cpRegeneraBudget()">
       <span id="budget-spin" style="display:none" class="cp-spinner"></span>
       ⚡ Generar presupuesto con IA
@@ -1810,27 +1841,12 @@ function _cpRenderBudget() {
   </div>
   <div class="cp-section">
     <div class="cp-section-title">Presupuesto ${b && b.status === 'sent' ? '<span class=\\"cp-badge cp-badge-sent\\">Enviado</span>' : b ? '<span class=\\"cp-badge cp-badge-draft\\">Borrador</span>' : ''}</div>
-    ${itemsHtml}
+    ${budgetHtml}
   </div>`;
 }
 
-function _cpBudgetItemChange(idx, field, val) {
-  if (!_cpData.budget || !_cpData.budget.items) return;
-  _cpData.budget.items[idx][field] = val;
-  if (field === 'hours' || field === 'unit_price') {
-    const item = _cpData.budget.items[idx];
-    item.total = (item.hours || 0) * (item.unit_price || 0);
-    const total = _cpData.budget.items.reduce((s, i) => s + (i.total || 0), 0);
-    _cpData.budget.total_amount = total;
-  }
-}
-
 async function _cpSaveBudget() {
-  if (!_cpData.budget) return;
-  await fetch('/api/budgets/' + _cpData.budget.id, {
-    method: 'PUT', headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({items: _cpData.budget.items, total_amount: _cpData.budget.total_amount})
-  });
+  // No-op: budget editing is done via the full preview/PDF page
 }
 
 async function _cpMarkBudgetSent() {
@@ -1866,19 +1882,37 @@ function _cpBindBudget() {}
 function _cpRenderDemo() {
   const d = _cpData.demo;
   const l = _cpData.lead || {};
-  const statusBadge = (s) => {
-    const map = {completed:'cp-badge-completed',generating:'cp-badge-generating',failed:'cp-badge-failed',pending:'cp-badge-pending'};
-    return `<span class="cp-badge ${map[s]||'cp-badge-draft'}">${s||'sin demo'}</span>`;
-  };
+  const isDone = d && d.status === 'completed' && d.url;
+  const isGenerating = d && ['generating', 'pending'].includes(d.status);
+  const demoPayload = JSON.stringify({id:l.id,name:l.name||'',category:l.category||'',city:l.city||'',phone:l.phone||''});
+  if (isDone) {
+    return `<div class="cp-section">
+      <div class="cp-section-title">Demo <span class="cp-badge cp-badge-completed">Lista</span></div>
+      <div class="cp-field"><span class="cp-field-label">URL de la demo</span>
+        <a href="${d.url}" target="_blank" class="cp-meeting-link" style="display:block;margin-top:4px;word-break:break-all">${d.url}</a>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+        <a class="cp-btn cp-btn-primary" href="${d.url}" target="_blank">🔗 Ver demo</a>
+        <button class="cp-btn cp-btn-ghost" onclick="navigator.clipboard.writeText('${d.url}').then(()=>alert('Link copiado'))">📋 Copiar link</button>
+      </div>
+      <div style="margin-top:10px;font-size:.75rem;color:#475569">La demo ya fue generada. Para regenerar contactá al administrador.</div>
+    </div>`;
+  }
+  if (isGenerating) {
+    return `<div class="cp-section">
+      <div class="cp-section-title">Demo <span class="cp-badge cp-badge-generating">Generando...</span></div>
+      <div style="display:flex;align-items:center;gap:8px;color:#94a3b8;font-size:.85rem">
+        <span class="cp-spinner"></span> Generando demo con IA...
+      </div>
+      <div style="font-size:.75rem;color:#475569;margin-top:6px">Puede tomar 1-2 minutos. Actualizá la página para ver el estado.</div>
+    </div>`;
+  }
   return `<div class="cp-section">
-    <div class="cp-section-title">Estado de la demo</div>
-    ${d ? `
-      <div style="margin-bottom:12px">${statusBadge(d.status)}</div>
-      ${d.url ? `<div class="cp-field"><span class="cp-field-label">URL</span><a href="${d.url}" target="_blank" class="cp-meeting-link">${d.url}</a></div>` : ''}
-      ${d.error_message ? `<div style="color:#f87171;font-size:.8rem;margin-bottom:8px">${d.error_message}</div>` : ''}
-    ` : `<div style="color:#475569;font-size:.85rem;margin-bottom:12px">Sin demo generada.</div>`}
-    <button class="cp-btn cp-btn-primary" onclick="closeClientPanel();openDemoModalFromCRM(${JSON.stringify({id:l.id,name:l.name||'',category:l.category||'',city:l.city||'',phone:l.phone||''})})">
-      📊 ${d && d.url ? 'Regenerar demo' : 'Generar demo'}
+    <div class="cp-section-title">Demo</div>
+    ${d && d.error_message ? `<div style="color:#f87171;font-size:.8rem;margin-bottom:8px;background:#0a0f1a;padding:8px;border-radius:6px">Error anterior: ${d.error_message}</div>` : ''}
+    <div style="color:#475569;font-size:.85rem;margin-bottom:12px">Sin demo generada para este cliente.</div>
+    <button class="cp-btn cp-btn-primary" onclick="closeClientPanel();openDemoModalFromCRM(${demoPayload})">
+      📊 Generar demo
     </button>
   </div>`;
 }
@@ -1902,6 +1936,7 @@ function _cpChangeStatus(val) {
         <option value="sin_contactar">Sin contactar</option>
         <option value="contactado">Contactado</option>
         <option value="reunion_agendada">Reunión agendada</option>
+        <option value="demo_generada">Demo generada</option>
         <option value="reunion_hecha">Reunión hecha</option>
         <option value="presupuesto_enviado">Presupuesto enviado</option>
         <option value="negociacion">Negociación</option>

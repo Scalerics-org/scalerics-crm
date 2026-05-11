@@ -20,6 +20,10 @@ const T = {
 
   QUAL_4: `Última cosa — ¿qué colores tiene tu marca o negocio?\n\n_(Ej: "azul y blanco", "rojo y negro", "no tengo definidos todavía")_`,
 
+  QUAL_5: `¿Tienen Instagram, página web o redes sociales actualmente?\n\n_(Ej: "@mirestaurante", "www.minegocio.com", "no tenemos nada todavía")_`,
+
+  QUAL_6: `¿Qué es lo más importante que necesitás que haga tu proyecto?\n\n_(Describilo en tus palabras, sin limitaciones)_`,
+
   // ── Transición a reunión ─────────────────────────────────────────────────────
 
   MEETING_OFFER: (name) =>

@@ -96,7 +96,7 @@ def demo_job_handler(payload: dict) -> dict:
         )
         url: str = result.get("url", "")
         update_demo(db_path, demo_id, status="completed", url=url)
-        update_business(db_path, client_id, demo_url=url, status="demo_generated")
+        update_business(db_path, client_id, demo_url=url, status="demo_generated", crm_status="demo_generada")
         logger.info(f"Demo completed for client {client_id}: {url}")
         return {"url": url, "questions": result.get("questions", [])}
     except Exception as e:
