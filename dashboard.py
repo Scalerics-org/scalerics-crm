@@ -1976,6 +1976,9 @@ def create_app(db_path: str) -> Flask:
     def require_login():
         if request.endpoint in ("login", "logout", "static"):
             return
+        # Bot webhook uses its own x-admin-token auth, not session
+        if request.path == "/api/bot/lead-qualified":
+            return
         if not session.get("logged_in"):
             if request.path.startswith("/api/"):
                 return jsonify({"error": "session_expired"}), 401
