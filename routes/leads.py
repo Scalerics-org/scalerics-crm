@@ -74,6 +74,14 @@ def api_contact(biz_id):
     return jsonify({"ok": True})
 
 
+@leads_bp.route("/api/leads/<int:biz_id>/notes", methods=["PUT"])
+def api_update_notes(biz_id):
+    data = request.get_json() or {}
+    notes = data.get("notes", "")
+    update_business(_db(), biz_id, notes=notes)
+    return jsonify({"ok": True})
+
+
 @leads_bp.route("/api/stats")
 def api_stats():
     businesses = get_all_businesses(_db())

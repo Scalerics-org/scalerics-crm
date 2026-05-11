@@ -332,6 +332,23 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 @keyframes spin{to{transform:rotate(360deg)}}
 .cp-req-area{width:100%;background:#0a0f1a;border:1px solid #1e293b;border-radius:8px;color:#e2e8f0;font-size:.82rem;padding:10px;font-family:'Inter',sans-serif;resize:vertical;min-height:70px;margin-bottom:8px}
 .cp-req-area:focus{outline:none;border-color:#0088cc}
+
+/* ── Kanban ───────────────────────────────────────────────────────────────── */
+.kanban-board{display:flex;gap:14px;overflow-x:auto;padding-bottom:20px;align-items:flex-start;min-height:calc(100vh - 180px)}
+.kanban-col{background:#111827;border:1px solid #1e293b;border-radius:12px;min-width:220px;width:220px;flex-shrink:0;display:flex;flex-direction:column;max-height:calc(100vh - 200px)}
+.kanban-col-header{padding:12px 14px 10px;border-bottom:1px solid #1e293b;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.kanban-col-title{font-size:.78rem;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.6px}
+.kanban-count{background:#1e293b;color:#475569;font-size:.68rem;font-weight:700;padding:2px 7px;border-radius:99px}
+.kanban-cards{padding:8px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:8px}
+.kanban-col.drag-over{background:#1a2d3d;border-color:#0088cc}
+.kanban-card{background:#0a0f1a;border:1px solid #1e293b;border-radius:10px;padding:12px;cursor:pointer;transition:border-color .15s,transform .1s}
+.kanban-card:hover{border-color:#334155;transform:translateY(-1px)}
+.kanban-card.dragging{opacity:.4;transform:rotate(1deg)}
+.kanban-card-name{font-size:.85rem;font-weight:600;color:#f1f5f9;margin-bottom:4px}
+.kanban-card-meta{font-size:.72rem;color:#475569;margin-bottom:6px}
+.kanban-card-phone{font-size:.72rem;color:#0088cc}
+.kanban-card-rating{font-size:.68rem;color:#fbbf24}
+.kanban-empty{color:#334155;font-size:.78rem;text-align:center;padding:20px 10px}
 </style>
 </head>
 <body>
@@ -341,6 +358,7 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
     <img src="/static/logo.png" alt="Scalerics">
   </div>
   <div class="nav-item active" id="nav-leads" onclick="showPanel('leads')">📋 Leads</div>
+  <div class="nav-item" id="nav-kanban" onclick="showPanel('kanban')">🗂 Kanban</div>
   <div class="nav-item" id="nav-wa" onclick="showPanel('wa')">💬 WhatsApp</div>
   <div class="nav-item" id="nav-cal" onclick="showPanel('cal')">📅 Calendario</div>
   <div class="sidebar-bottom">
@@ -419,6 +437,17 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
           </div>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- ======= KANBAN PANEL ======= -->
+  <div id="kanban-panel" class="panel">
+    <div class="page-header">
+      <div><h1>Kanban</h1><div class="page-date">Pipeline de ventas</div></div>
+      <button class="run-btn" style="width:auto;padding:8px 16px" onclick="loadKanban()">↺ Actualizar</button>
+    </div>
+    <div class="kanban-board" id="kanban-board">
+      <div style="color:#475569;font-size:.85rem">Cargando...</div>
     </div>
   </div>
 
@@ -609,6 +638,7 @@ function showPanel(name) {
   closeSidebar();
   if (name === 'wa' && !waLoaded) loadWaLeads();
   if (name === 'cal' && !calLoaded) { calLoaded = true; renderCalendar(); }
+  if (name === 'kanban') loadKanban();
 }
 
 // ========== Leads panel ==========
@@ -645,7 +675,7 @@ async function loadLeads() {
   leads.forEach(b => { if (b.pitch_text) pitchMap[b.id] = b.pitch_text; });
   const body = document.getElementById('table-body');
   if (!leads.length) { body.innerHTML = '<div class="empty-state">No hay leads con estos filtros</div>'; return; }
-  const crmLabels = {sin_contactar:'Sin contactar',contactado:'Contactado',agendo:'Agendó',firmo:'Firmó'};
+  const crmLabels = {sin_contactar:'Sin contactar',contactado:'Contactado',reunion_agendada:'Reunión agendada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Presupuesto enviado',negociacion:'Negociación',cliente_cerrado:'Cliente cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado',agendo:'Agendó',firmo:'Firmó'};
   body.innerHTML = leads.map(b => {
     const crm = b.crm_status || 'sin_contactar';
     return `
@@ -658,7 +688,7 @@ async function loadLeads() {
       <div>${b.email ? `<span class="email-val">${esc(b.email)}</span>` : '<span class="no-val">—</span>'}</div>
       <div class="actions">
         <select class="status-sel" onchange="setCrmStatus(${b.id},this.value)">
-          ${['sin_contactar','contactado','agendo','firmo'].map(s=>`<option value="${s}"${crm===s?' selected':''}>${crmLabels[s]}</option>`).join('')}
+          ${['sin_contactar','contactado','reunion_agendada','reunion_hecha','presupuesto_enviado','negociacion','cliente_cerrado','en_desarrollo','finalizado'].map(s=>`<option value="${s}"${crm===s?' selected':''}>${crmLabels[s]||s}</option>`).join('')}
         </select>
         ${b.pitch_text ? `<button class="pitch-btn" onclick="openPitchModal(${b.id},'${esc(b.name||'')}')">📋</button>` : ''}
         ${b.phone ? `<button class="pitch-btn" style="background:rgba(6,182,212,.15);border-color:rgba(6,182,212,.3);color:#06b6d4" onclick="openDemoModalFromCRM(${JSON.stringify({id:b.id,name:b.name||'',category:b.category||'',city:b.city||'',phone:b.phone||''})})">📊</button>` : ''}
@@ -1218,6 +1248,97 @@ function copyAndOpenClaude() {
   window.open('https://claude.ai/new', '_blank');
 }
 
+// ── Kanban ────────────────────────────────────────────────────────────────────
+
+const KANBAN_COLS = [
+  {key:'sin_contactar',  label:'Sin contactar'},
+  {key:'contactado',     label:'Contactado'},
+  {key:'reunion_agendada', label:'Reunión agendada'},
+  {key:'reunion_hecha',  label:'Reunión hecha'},
+  {key:'presupuesto_enviado', label:'Presupuesto enviado'},
+  {key:'negociacion',    label:'Negociación'},
+  {key:'cliente_cerrado',label:'Cliente cerrado'},
+];
+
+let _kanbanLeads = [];
+let _kanbanDragging = null;
+
+async function loadKanban() {
+  const board = document.getElementById('kanban-board');
+  board.innerHTML = '<div style="color:#475569;font-size:.85rem">Cargando...</div>';
+  try {
+    const r = await fetch('/api/leads');
+    _kanbanLeads = await r.json();
+  } catch { board.innerHTML = '<div style="color:#f87171">Error cargando leads</div>'; return; }
+  renderKanban();
+}
+
+function renderKanban() {
+  const board = document.getElementById('kanban-board');
+  const grouped = {};
+  KANBAN_COLS.forEach(c => grouped[c.key] = []);
+  _kanbanLeads.forEach(l => {
+    const k = l.crm_status || 'sin_contactar';
+    if (grouped[k]) grouped[k].push(l);
+    else grouped['sin_contactar'] && grouped['sin_contactar'].push({...l, crm_status:'sin_contactar'});
+  });
+  board.innerHTML = KANBAN_COLS.map(col => `
+    <div class="kanban-col" data-col="${col.key}"
+         ondragover="event.preventDefault();this.classList.add('drag-over')"
+         ondragleave="this.classList.remove('drag-over')"
+         ondrop="_kanbanDrop(event,'${col.key}')">
+      <div class="kanban-col-header">
+        <span class="kanban-col-title">${col.label}</span>
+        <span class="kanban-count">${grouped[col.key].length}</span>
+      </div>
+      <div class="kanban-cards">
+        ${grouped[col.key].length === 0
+          ? '<div class="kanban-empty">Sin leads</div>'
+          : grouped[col.key].map(l => _kanbanCard(l)).join('')}
+      </div>
+    </div>`).join('');
+}
+
+function _kanbanCard(l) {
+  const rating = l.rating ? `⭐ ${l.rating}` : '';
+  const meta = [l.category, l.city].filter(Boolean).join(' · ');
+  return `<div class="kanban-card" draggable="true" data-id="${l.id}"
+    ondragstart="_kanbanDragStart(event,${l.id})"
+    ondragend="_kanbanDragEnd(event)"
+    onclick="openClientPanel(${l.id})">
+    <div class="kanban-card-name">${esc(l.name||'')}</div>
+    ${meta ? `<div class="kanban-card-meta">${esc(meta)}</div>` : ''}
+    ${l.phone ? `<div class="kanban-card-phone">${esc(l.phone)}</div>` : ''}
+    ${rating ? `<div class="kanban-card-rating">${rating}</div>` : ''}
+  </div>`;
+}
+
+function _kanbanDragStart(e, id) {
+  _kanbanDragging = id;
+  e.currentTarget.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+}
+
+function _kanbanDragEnd(e) {
+  e.currentTarget.classList.remove('dragging');
+  document.querySelectorAll('.kanban-col').forEach(c => c.classList.remove('drag-over'));
+}
+
+async function _kanbanDrop(e, newStatus) {
+  e.currentTarget.classList.remove('drag-over');
+  if (!_kanbanDragging) return;
+  const id = _kanbanDragging;
+  _kanbanDragging = null;
+  const lead = _kanbanLeads.find(l => l.id === id);
+  if (!lead || lead.crm_status === newStatus) return;
+  lead.crm_status = newStatus;
+  renderKanban();
+  await fetch(`/api/leads/${id}/crm-status`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({crm_status: newStatus})
+  });
+}
+
 // Initial load
 loadStats();
 loadLeads();
@@ -1311,9 +1432,9 @@ function _cpRenderInfo() {
 
 async function _cpSaveNotes() {
   const notes = document.getElementById('cp-notes-area').value;
-  await fetch('/api/leads/' + _cpClientId + '/contact', {
-    method: 'POST', headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({note: notes})
+  await fetch('/api/leads/' + _cpClientId + '/notes', {
+    method: 'PUT', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({notes})
   });
   _cpData.lead = {..._cpData.lead, notes};
 }
