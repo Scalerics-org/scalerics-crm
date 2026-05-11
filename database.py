@@ -56,6 +56,8 @@ def init_db(db_path: str) -> None:
         _add_column(conn, "businesses", "pitch_text", "TEXT")
         _add_column(conn, "businesses", "crm_status", "TEXT DEFAULT 'sin_contactar'")
         _add_column(conn, "businesses", "has_whatsapp", "INTEGER")
+        _add_column(conn, "client_info", "meeting_time", "TEXT")
+        _add_column(conn, "client_info", "meeting_url", "TEXT")
 
         # ── demos ─────────────────────────────────────────────────────────────
         conn.execute("""
@@ -151,6 +153,8 @@ def init_db(db_path: str) -> None:
                 needs           TEXT,
                 instagram       TEXT,
                 web             TEXT,
+                meeting_time    TEXT,
+                meeting_url     TEXT,
                 updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -614,7 +618,7 @@ def delete_task(db_path: str, task_id: int) -> None:
 
 _CLIENT_INFO_COLUMNS = {
     "lead_name", "business_name", "rubro", "budget_range",
-    "colors", "needs", "instagram", "web",
+    "colors", "needs", "instagram", "web", "meeting_time", "meeting_url",
 }
 
 

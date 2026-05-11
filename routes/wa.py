@@ -187,6 +187,8 @@ def api_bot_lead_qualified():
             colors=data.get("colors"),
             instagram=data.get("instagram_web"),
             needs=data.get("needs") or team_label,
+            meeting_time=data.get("meeting_time"),
+            meeting_url=data.get("meeting_url"),
         )
 
     logger.info(f"[bot-sync] lead-qualified done: business_id={biz_id}, crm_status={crm_status!r}")

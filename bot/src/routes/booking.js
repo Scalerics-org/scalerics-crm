@@ -8,7 +8,7 @@ const wa = require('../services/whatsapp');
 const T = require('../messages/templates');
 const { S } = require('../fsm/states');
 const { reminderQueue } = require('../services/scheduler');
-const { notifyCRM } = require('../services/crm');
+const { notifyCRM, notifyCRMDirect } = require('../services/crm');
 
 function verifyCalendlySignature(req) {
   if (!config.CALENDLY_WEBHOOK_SECRET) return true; // Skip if not configured
@@ -46,11 +46,10 @@ router.post('/booking-confirmed', express.json(), async (req, res) => {
 
     if (!invitee || !scheduled) return;
 
-    // Extract phone from questions_and_answers or name
+    // Extract phone from questions_and_answers
+    const PHONE_KEYWORDS = ['whatsapp','teléfono','telefono','celular','phone','número','numero','mobile','cel'];
     const phoneAnswer = invitee.questions_and_answers?.find(
-      (q) => q.question.toLowerCase().includes('whatsapp') ||
-             q.question.toLowerCase().includes('teléfono') ||
-             q.question.toLowerCase().includes('celular')
+      (q) => PHONE_KEYWORDS.some(kw => q.question.toLowerCase().includes(kw))
     );
 
     // Normalize phone: strip spaces, dashes, add + if missing
@@ -58,17 +57,35 @@ router.post('/booking-confirmed', express.json(), async (req, res) => {
     phone = phone.replace(/[\s\-\(\)]/g, '');
     if (phone && !phone.startsWith('+')) phone = `+${phone}`;
 
+    // Fallback: any answer that looks like a phone number
     if (!phone) {
-      console.warn('Calendly booking: no phone found in invitee answers', invitee.email);
-      return;
+      const fallback = invitee.questions_and_answers?.find(
+        (q) => /^\+?[\d\s\-\(\)]{7,20}$/.test((q.answer || '').trim())
+      );
+      if (fallback) {
+        phone = fallback.answer.replace(/[\s\-\(\)]/g, '');
+        if (!phone.startsWith('+')) phone = `+${phone}`;
+      }
     }
 
     const meetingTime = scheduled.start_time;
     const meetingUrl = scheduled.location?.join_url || scheduled.location?.location || '';
 
+    if (!phone) {
+      console.warn('Calendly booking: no phone found in invitee answers', invitee.email);
+      return;
+    }
+
     const lead = await leadsService.findByPhone(phone);
     if (!lead) {
-      console.warn('Calendly booking: lead not found for phone', phone);
+      console.warn('Calendly booking: lead not found for phone', phone, '— notifying CRM directly');
+      notifyCRMDirect({
+        phone,
+        name: invitee.name || '',
+        state: 'SCHEDULED',
+        meeting_time: meetingTime,
+        meeting_url: meetingUrl,
+      }).catch(err => console.error('[CRM sync] direct booking failed:', err.message));
       return;
     }
 

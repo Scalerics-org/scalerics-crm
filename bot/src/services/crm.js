@@ -33,4 +33,13 @@ async function notifyCRM(lead) {
   );
 }
 
-module.exports = { notifyCRM };
+async function notifyCRMDirect(data) {
+  if (!config.CRM_API_URL || !config.CRM_ADMIN_TOKEN) return;
+  await axios.post(
+    `${config.CRM_API_URL}/api/bot/lead-qualified`,
+    data,
+    { headers: { 'x-admin-token': config.CRM_ADMIN_TOKEN }, timeout: 5000 }
+  );
+}
+
+module.exports = { notifyCRM, notifyCRMDirect };
