@@ -966,8 +966,8 @@ let _demoMessages = [];
 let _demoPhone = '';
 
 function extractPhoneFromText(text) {
-  const m = text.match(/[+]?\d[\d\s\-]{7,14}\d/);
-  return m ? m[0].replace(/[\s\-\+]/g,'') : null;
+  const m = text.match(/[+]?\\d[\\d\\s\\-]{7,14}\\d/);
+  return m ? m[0].replace(/[\\s\\-\\+]/g,'') : null;
 }
 
 function extractNameFromTitle(title) {

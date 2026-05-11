@@ -39,10 +39,10 @@ def test_insert_duplicate_maps_url_is_ignored(db_path):
 def test_update_business(db_path):
     data = {"name": "Peluquería Ana", "maps_url": "https://maps.google.com/?cid=456"}
     business_id = insert_business(db_path, data)
-    update_business(db_path, business_id, email="ana@gmail.com", status="email_found")
-    results = get_businesses_by_status(db_path, "email_found")
+    update_business(db_path, business_id, notes="llamar esta semana", status="contactado")
+    results = get_businesses_by_status(db_path, "contactado")
     assert len(results) == 1
-    assert results[0]["email"] == "ana@gmail.com"
+    assert results[0]["notes"] == "llamar esta semana"
 
 def test_get_businesses_by_status_empty(db_path):
     results = get_businesses_by_status(db_path, "email_found")
