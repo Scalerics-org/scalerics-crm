@@ -180,14 +180,36 @@ def scrape_google_maps(query: str, max_results: int, db_path: str, verify_web: b
         page.goto(maps_list_url, wait_until="domcontentloaded", timeout=30000)
         random_delay(2, 4)
 
+        # Handle Google consent / cookie dialog (common on cloud IPs)
+        if "consent.google" in page.url or page.query_selector('form[action*="consent"]'):
+            logger.info("Detectado dialog de consentimiento Google — aceptando...")
+            for sel in ['button[aria-label*="Accept"]', 'button[jsname="b3VHJd"]',
+                        'form:nth-of-type(2) button', 'button:has-text("Aceptar")']:
+                try:
+                    btn = page.query_selector(sel)
+                    if btn:
+                        btn.click()
+                        page.wait_for_load_state("domcontentloaded", timeout=10000)
+                        random_delay(1, 2)
+                        break
+                except Exception:
+                    pass
+
+        logger.info(f"URL actual: {page.url!r} | Título: {page.title()!r}")
+        # Count total links to diagnose what loaded
+        all_links = page.query_selector_all("a[href]")
+        place_links = [el.get_attribute("href") for el in all_links
+                       if "/maps/place/" in (el.get_attribute("href") or "")]
+        logger.info(f"Total <a>: {len(all_links)} | Links a /maps/place/: {len(place_links)}")
+
         seen_urls: set[str] = set()
         prev_result_count = 0
 
         while inserted < max_results:
             hrefs = []
-            for el in page.query_selector_all('a[href^="https://www.google.com/maps/place/"]'):
+            for el in page.query_selector_all("a[href]"):
                 href = el.get_attribute("href") or ""
-                if href and href not in seen_urls:
+                if "/maps/place/" in href and href not in seen_urls:
                     hrefs.append(href)
 
             if not hrefs:
