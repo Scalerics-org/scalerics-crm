@@ -602,7 +602,7 @@ async function loadLeads() {
           ${['sin_contactar','contactado','agendo','firmo'].map(s=>`<option value="${s}"${crm===s?' selected':''}>${crmLabels[s]}</option>`).join('')}
         </select>
         ${b.pitch_text ? `<button class="pitch-btn" onclick="openPitchModal(${b.id},'${esc(b.name||'')}')">📋</button>` : ''}
-        ${b.email && b.status !== 'email_sent' ? `<button class="mail-btn" onclick="sendMail(${b.id},this)">📧</button>` : ''}
+        ${b.phone ? `<button class="pitch-btn" style="background:rgba(6,182,212,.15);border-color:rgba(6,182,212,.3);color:#06b6d4" onclick="openDemoModalFromCRM(${JSON.stringify({id:b.id,name:b.name||'',category:b.category||'',city:b.city||'',phone:b.phone||''})})">📊</button>` : ''}
         <button class="delete-btn" onclick="deleteLead(${b.id},'${esc(b.name||'')}')">🗑</button>
       </div>
     </div>`}).join('');
@@ -974,6 +974,23 @@ function extractNameFromTitle(title) {
   // Calendly format: "Firstname Lastname: Meeting Type"
   const m = title.match(/^([^:]+):/);
   return m ? m[1].trim() : null;
+}
+
+function openDemoModalFromCRM(b) {
+  _demoPhone = b.phone || '';
+  _demoMessages = [];
+  document.getElementById('demo-modal').classList.add('open');
+  document.getElementById('demo-form-section').style.display = '';
+  document.getElementById('demo-loading-section').style.display = 'none';
+  document.getElementById('demo-result-section').style.display = 'none';
+  document.getElementById('demo-chat-section').style.display = 'none';
+  document.getElementById('demo-phone').value = b.phone || '';
+  document.getElementById('demo-biz').value = b.name || '';
+  document.getElementById('demo-rubro').value = b.category || '';
+  document.getElementById('demo-city').value = b.city || '';
+  document.getElementById('demo-color').value = '';
+  document.getElementById('demo-conv-info').style.display = 'none';
+  document.getElementById('demo-lead-hint').textContent = b.name ? 'Lead: ' + b.name + (b.city ? ' · ' + b.city : '') : '';
 }
 
 function openDemoModal(phone, eventTitle, leadName) {
