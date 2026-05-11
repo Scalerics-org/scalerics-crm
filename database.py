@@ -465,6 +465,66 @@ def get_meeting_by_calendar_id(db_path: str, calendar_event_id: str) -> Optional
         conn.close()
 
 
+def get_meeting(db_path: str, meeting_id: int) -> Optional[dict]:
+    conn = _connect(db_path)
+    try:
+        cursor = conn.execute("SELECT * FROM meetings WHERE id = ?", (meeting_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+# ─── Budgets ──────────────────────────────────────────────────────────────────
+
+_BUDGET_COLUMNS = {"items", "total_amount", "status", "notes", "sent_at", "meeting_id"}
+
+
+def create_budget(db_path: str, client_id: int, **fields) -> int:
+    allowed = {k: v for k, v in fields.items() if k in _BUDGET_COLUMNS}
+    cols = ["client_id"] + list(allowed)
+    vals = [client_id] + list(allowed.values())
+    placeholders = ", ".join("?" for _ in vals)
+    conn = _connect(db_path)
+    try:
+        cursor = conn.execute(
+            f"INSERT INTO budgets ({', '.join(cols)}) VALUES ({placeholders})", vals
+        )
+        conn.commit()
+        return cursor.lastrowid
+    finally:
+        conn.close()
+
+
+def update_budget(db_path: str, budget_id: int, **fields) -> None:
+    invalid = set(fields) - _BUDGET_COLUMNS
+    if invalid:
+        raise ValueError(f"Invalid budget columns: {invalid}")
+    if not fields:
+        return
+    set_clause = ", ".join(f"{k} = :{k}" for k in fields)
+    fields["id"] = budget_id
+    conn = _connect(db_path)
+    try:
+        conn.execute(f"UPDATE budgets SET {set_clause} WHERE id = :id", fields)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_budget_for_client(db_path: str, client_id: int) -> Optional[dict]:
+    conn = _connect(db_path)
+    try:
+        cursor = conn.execute(
+            "SELECT * FROM budgets WHERE client_id = ? ORDER BY created_at DESC LIMIT 1",
+            (client_id,)
+        )
+        row = cursor.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
 # ─── Tasks ────────────────────────────────────────────────────────────────────
 
 _TASK_COLUMNS = {"client_id", "title", "description", "priority", "status", "assignee", "deadline"}

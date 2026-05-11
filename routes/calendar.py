@@ -9,7 +9,6 @@ from flask import Blueprint, current_app, jsonify, request
 from database import (
     create_meeting,
     get_meetings_for_client,
-    get_meeting_by_calendar_id,
     update_meeting,
 )
 
@@ -178,6 +177,15 @@ def api_client_meetings(client_id):
     return jsonify(meetings)
 
 
+@calendar_bp.route("/api/calendar/meetings/<int:meeting_id>", methods=["GET"])
+def api_get_meeting(meeting_id):
+    from database import get_meeting
+    meeting = get_meeting(_db(), meeting_id)
+    if not meeting:
+        return jsonify({"error": "Reunión no encontrada"}), 404
+    return jsonify(meeting)
+
+
 @calendar_bp.route("/api/calendar/meetings/<int:meeting_id>/notes", methods=["POST"])
 def api_meeting_notes(meeting_id):
     data = request.get_json() or {}
@@ -188,3 +196,53 @@ def api_meeting_notes(meeting_id):
         requirements=data.get("requirements"),
     )
     return jsonify({"ok": True})
+
+
+@calendar_bp.route("/api/calendar/meetings/<int:meeting_id>/summarize", methods=["POST"])
+def api_summarize_meeting(meeting_id):
+    import json, os
+    import anthropic
+    from database import get_meeting
+
+    data = request.get_json() or {}
+    transcript = (data.get("transcript") or "").strip()
+    if not transcript:
+        return jsonify({"ok": False, "error": "transcript requerido"}), 400
+
+    prompt = f"""Resumí esta transcripción de reunión de ventas y extraé los requerimientos del proyecto.
+
+TRANSCRIPCIÓN:
+{transcript[:6000]}
+
+Devolvé SOLO un JSON (sin texto extra, sin markdown):
+{{
+  "summary": "resumen de 2-3 oraciones de qué se habló y qué quiere el cliente",
+  "requirements": "requerimientos detallados del proyecto (en bullet points con guión)",
+  "service_type": "web|ecommerce|app|automatizacion|otro",
+  "next_steps": ["acción concreta 1", "acción concreta 2"]
+}}"""
+
+    try:
+        ai = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
+        msg = ai.messages.create(
+            model="claude-haiku-4-5",
+            max_tokens=800,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        raw = msg.content[0].text.strip()
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+            raw = raw.rstrip("`").strip()
+        result = json.loads(raw)
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"Error resumiendo: {e}"}), 500
+
+    update_meeting(
+        _db(), meeting_id,
+        transcript=transcript,
+        summary=result.get("summary", ""),
+        requirements=result.get("requirements", ""),
+    )
+    return jsonify({"ok": True, "summary": result})

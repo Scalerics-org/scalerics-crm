@@ -12,6 +12,7 @@ from routes.calendar import calendar_bp
 from routes.wa import wa_bp
 from routes.pipeline import pipeline_bp
 from routes.tasks import tasks_bp
+from routes.budgets import budgets_bp
 from services.demo_service import demo_job_handler
 from services.job_service import init_worker
 
@@ -273,6 +274,64 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .btn-cancel{background:#1e293b;border:none;color:#64748b;padding:9px 18px;border-radius:8px;cursor:pointer;font-size:.82rem;font-weight:600;font-family:'Inter',sans-serif}
 .btn-confirm{background:#0088cc;border:none;color:#fff;padding:9px 18px;border-radius:8px;cursor:pointer;font-size:.82rem;font-weight:700;font-family:'Inter',sans-serif;display:inline-flex;align-items:center;gap:6px}
 .btn-confirm:disabled{opacity:.5;cursor:not-allowed}
+
+/* ── Client Panel ─────────────────────────────────────────────────────────── */
+.cp-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:400}
+.cp-backdrop.open{display:block}
+.client-panel{position:fixed;top:0;right:0;bottom:0;width:580px;max-width:100vw;background:#111827;border-left:1px solid #1e293b;z-index:401;display:flex;flex-direction:column;transform:translateX(100%);transition:transform .25s ease}
+.client-panel.open{transform:translateX(0)}
+.cp-header{padding:18px 20px 0;border-bottom:1px solid #1e293b;flex-shrink:0}
+.cp-title{font-size:1.1rem;font-weight:700;color:#f1f5f9;margin:0 0 4px}
+.cp-sub{font-size:.78rem;color:#475569;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.cp-status-sel{background:#0a0f1a;border:1px solid #1e293b;color:#94a3b8;border-radius:6px;padding:3px 8px;font-size:.75rem;font-family:'Inter',sans-serif;cursor:pointer}
+.cp-tabs{display:flex;gap:0;border-bottom:1px solid #1e293b;margin-top:4px}
+.cp-tab{padding:10px 16px;font-size:.8rem;font-weight:600;color:#475569;cursor:pointer;border-bottom:2px solid transparent;transition:all .15s;white-space:nowrap}
+.cp-tab.active{color:#fff;border-bottom-color:#0088cc}
+.cp-tab:hover:not(.active){color:#94a3b8}
+.cp-body{flex:1;overflow-y:auto;padding:20px}
+.cp-close{position:absolute;top:14px;right:16px;background:none;border:none;color:#475569;font-size:1.3rem;cursor:pointer;line-height:1;padding:4px 6px}
+.cp-close:hover{color:#e2e8f0}
+.cp-section{margin-bottom:22px}
+.cp-section-title{font-size:.7rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.7px;margin-bottom:10px}
+.cp-field{display:flex;align-items:flex-start;gap:8px;margin-bottom:8px;font-size:.85rem}
+.cp-field-label{color:#64748b;min-width:80px;flex-shrink:0}
+.cp-field-val{color:#e2e8f0;word-break:break-word}
+.cp-meeting-card{background:#0a0f1a;border:1px solid #1e293b;border-radius:10px;padding:14px;margin-bottom:10px}
+.cp-meeting-title{font-size:.88rem;font-weight:600;color:#f1f5f9;margin-bottom:4px}
+.cp-meeting-meta{font-size:.75rem;color:#475569;margin-bottom:10px}
+.cp-meeting-link{font-size:.75rem;color:#0088cc;text-decoration:none;display:inline-block;margin-bottom:10px}
+.cp-meeting-link:hover{text-decoration:underline}
+.cp-summary-box{background:#1e293b;border-radius:8px;padding:12px;margin-top:10px;font-size:.8rem;color:#94a3b8;line-height:1.6;white-space:pre-wrap}
+.cp-summary-label{font-size:.68rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px}
+.cp-transcript-area{width:100%;background:#0a0f1a;border:1px solid #1e293b;border-radius:8px;color:#e2e8f0;font-size:.8rem;padding:10px;font-family:'Inter',sans-serif;resize:vertical;min-height:100px;margin-bottom:8px}
+.cp-transcript-area:focus{outline:none;border-color:#0088cc}
+.budget-table{width:100%;border-collapse:collapse;font-size:.82rem;margin:12px 0}
+.budget-table th{color:#475569;font-size:.68rem;text-transform:uppercase;letter-spacing:.6px;padding:6px 8px;text-align:left;border-bottom:1px solid #1e293b}
+.budget-table td{padding:8px;border-bottom:1px solid #1e293b15;color:#e2e8f0;vertical-align:top}
+.budget-table td input{background:transparent;border:none;color:#e2e8f0;font-family:'Inter',sans-serif;font-size:.82rem;width:100%;outline:none}
+.budget-table td input:focus{background:#0a0f1a;border-radius:4px;padding:2px 4px}
+.budget-total-row td{font-weight:700;color:#f1f5f9;border-top:1px solid #1e293b;border-bottom:none;padding-top:12px}
+.cp-btn{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:8px;border:none;font-size:.8rem;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;transition:opacity .15s}
+.cp-btn:hover{opacity:.85}
+.cp-btn:disabled{opacity:.4;cursor:not-allowed}
+.cp-btn-primary{background:#0088cc;color:#fff}
+.cp-btn-success{background:#16a34a;color:#fff}
+.cp-btn-ghost{background:#1e293b;color:#94a3b8}
+.cp-badge{display:inline-block;padding:2px 8px;border-radius:99px;font-size:.7rem;font-weight:600}
+.cp-badge-draft{background:#1e293b;color:#94a3b8}
+.cp-badge-sent{background:#064e3b;color:#34d399}
+.cp-badge-pending{background:#1e3a5f;color:#60a5fa}
+.cp-badge-completed{background:#14532d;color:#4ade80}
+.cp-badge-generating{background:#451a03;color:#fb923c}
+.cp-badge-failed{background:#450a0a;color:#f87171}
+.cp-wa-msg{padding:8px 12px;border-radius:10px;font-size:.8rem;margin-bottom:6px;max-width:88%;line-height:1.5}
+.cp-wa-msg.out{background:#1e3a5f;color:#bfdbfe;align-self:flex-end;margin-left:auto}
+.cp-wa-msg.in{background:#1e293b;color:#e2e8f0}
+.cp-wa-msgs{display:flex;flex-direction:column;gap:2px;max-height:260px;overflow-y:auto;padding:8px;background:#0a0f1a;border-radius:8px;border:1px solid #1e293b}
+.cp-spinner{display:inline-block;width:14px;height:14px;border:2px solid #334155;border-top-color:#0088cc;border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.cp-req-area{width:100%;background:#0a0f1a;border:1px solid #1e293b;border-radius:8px;color:#e2e8f0;font-size:.82rem;padding:10px;font-family:'Inter',sans-serif;resize:vertical;min-height:70px;margin-bottom:8px}
+.cp-req-area:focus{outline:none;border-color:#0088cc}
 </style>
 </head>
 <body>
@@ -592,7 +651,7 @@ async function loadLeads() {
     return `
     <div class="table-row row-${crm}">
       <div>
-        <div class="biz-name">${esc(b.name||'')}</div>
+        <div class="biz-name" style="cursor:pointer;text-decoration:underline;text-decoration-color:#334155" onclick="openClientPanel(${b.id})">${esc(b.name||'')}</div>
         <div class="biz-sub">${esc(b.category||'')}${b.city ? ' · '+esc(b.city) : ''}</div>
       </div>
       <div>${b.phone ? `<a class="phone-val" href="https://wa.me/${waNum(b.phone)}" target="_blank" title="Abrir WhatsApp">${esc(b.phone)}</a>` : '<span class="no-val">—</span>'}</div>
@@ -1162,7 +1221,343 @@ function copyAndOpenClaude() {
 // Initial load
 loadStats();
 loadLeads();
+
+// ── Client Panel ─────────────────────────────────────────────────────────────
+
+let _cpClientId = null;
+let _cpTab = 'info';
+let _cpData = {};
+
+function openClientPanel(id) {
+  _cpClientId = id;
+  _cpTab = 'info';
+  document.getElementById('cp-backdrop').classList.add('open');
+  document.getElementById('client-panel').classList.add('open');
+  _cpLoadAll();
+}
+
+function closeClientPanel() {
+  document.getElementById('cp-backdrop').classList.remove('open');
+  document.getElementById('client-panel').classList.remove('open');
+  _cpClientId = null;
+  _cpData = {};
+}
+
+async function _cpLoadAll() {
+  if (!_cpClientId) return;
+  const [leadRes, meetRes, budgetRes, demoRes, waRes] = await Promise.allSettled([
+    fetch('/api/leads/' + _cpClientId).then(r => r.json()),
+    fetch('/api/calendar/meetings/' + _cpClientId).then(r => r.json()),
+    fetch('/api/leads/' + _cpClientId + '/budget').then(r => r.json()),
+    fetch('/api/demo/status/' + _cpClientId).then(r => r.json()),
+    fetch('/api/wa/lead-by-phone/').then(() => null).catch(() => null),
+  ]);
+  _cpData.lead    = leadRes.status === 'fulfilled' ? leadRes.value : {};
+  _cpData.meetings = meetRes.status === 'fulfilled' && Array.isArray(meetRes.value) ? meetRes.value : [];
+  _cpData.budget  = budgetRes.status === 'fulfilled' ? budgetRes.value : null;
+  _cpData.demo    = demoRes.status === 'fulfilled' ? demoRes.value : null;
+
+  if (_cpData.lead && _cpData.lead.phone) {
+    try {
+      const wr = await fetch('/api/wa/lead-by-phone/' + encodeURIComponent(_cpData.lead.phone));
+      const wj = await wr.json();
+      _cpData.waMessages = wj.messages || [];
+    } catch { _cpData.waMessages = []; }
+  } else {
+    _cpData.waMessages = [];
+  }
+
+  _cpRenderHeader();
+  _cpSwitchTab(_cpTab);
+}
+
+function _cpRenderHeader() {
+  const l = _cpData.lead || {};
+  document.getElementById('cp-title').textContent = l.name || 'Cliente';
+  document.getElementById('cp-phone').textContent = l.phone || '';
+  const sel = document.getElementById('cp-status-sel');
+  sel.value = l.crm_status || 'sin_contactar';
+}
+
+function _cpSwitchTab(tab) {
+  _cpTab = tab;
+  document.querySelectorAll('.cp-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+  const body = document.getElementById('cp-body');
+  if (tab === 'info')      body.innerHTML = _cpRenderInfo();
+  else if (tab === 'conv') body.innerHTML = _cpRenderConv();
+  else if (tab === 'meet') { body.innerHTML = _cpRenderMeetings(); _cpBindMeetings(); }
+  else if (tab === 'budget') { body.innerHTML = _cpRenderBudget(); _cpBindBudget(); }
+  else if (tab === 'demo') body.innerHTML = _cpRenderDemo();
+}
+
+function _cpRenderInfo() {
+  const l = _cpData.lead || {};
+  const stars = l.rating ? '⭐ ' + l.rating + (l.review_count ? ' (' + l.review_count + ' reseñas)' : '') : '';
+  return `<div class="cp-section">
+    <div class="cp-section-title">Información del negocio</div>
+    ${l.phone ? `<div class="cp-field"><span class="cp-field-label">Teléfono</span><span class="cp-field-val">${l.phone}</span></div>` : ''}
+    ${l.city ? `<div class="cp-field"><span class="cp-field-label">Ciudad</span><span class="cp-field-val">${l.city}</span></div>` : ''}
+    ${l.category ? `<div class="cp-field"><span class="cp-field-label">Rubro</span><span class="cp-field-val">${l.category}</span></div>` : ''}
+    ${l.address ? `<div class="cp-field"><span class="cp-field-label">Dirección</span><span class="cp-field-val">${l.address}</span></div>` : ''}
+    ${stars ? `<div class="cp-field"><span class="cp-field-label">Rating</span><span class="cp-field-val">${stars}</span></div>` : ''}
+    ${l.notes ? `<div class="cp-field"><span class="cp-field-label">Notas</span><span class="cp-field-val" style="color:#94a3b8">${l.notes}</span></div>` : ''}
+  </div>
+  <div class="cp-section">
+    <div class="cp-section-title">Notas internas</div>
+    <textarea class="cp-req-area" id="cp-notes-area" placeholder="Agregar notas sobre este lead...">${l.notes || ''}</textarea>
+    <button class="cp-btn cp-btn-ghost" onclick="_cpSaveNotes()">Guardar notas</button>
+  </div>`;
+}
+
+async function _cpSaveNotes() {
+  const notes = document.getElementById('cp-notes-area').value;
+  await fetch('/api/leads/' + _cpClientId + '/contact', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({note: notes})
+  });
+  _cpData.lead = {..._cpData.lead, notes};
+}
+
+function _cpRenderConv() {
+  const msgs = _cpData.waMessages || [];
+  if (!msgs.length) return `<div style="color:#475569;font-size:.85rem;padding:20px 0">Sin conversación registrada en el bot de WhatsApp.</div>`;
+  return `<div class="cp-wa-msgs">` + msgs.map(m => {
+    const dir = m.direction === 'outbound' ? 'out' : 'in';
+    return `<div class="cp-wa-msg ${dir}">${m.body || ''}</div>`;
+  }).join('') + `</div>`;
+}
+
+function _cpRenderMeetings() {
+  const meets = _cpData.meetings || [];
+  let html = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+    <div class="cp-section-title" style="margin:0">Reuniones</div>
+    <button class="cp-btn cp-btn-ghost" onclick="_cpOpenNewMeeting()">+ Nueva reunión</button>
+  </div>`;
+  if (!meets.length) html += `<div style="color:#475569;font-size:.85rem">No hay reuniones registradas.</div>`;
+  meets.forEach(m => {
+    const hasSummary = m.summary || m.requirements;
+    html += `<div class="cp-meeting-card" id="meet-card-${m.id}">
+      <div class="cp-meeting-title">${m.title || 'Reunión'}</div>
+      <div class="cp-meeting-meta">${m.start_at ? m.start_at.substring(0,16).replace('T',' ') : ''} · ${_cpMeetStatus(m.status)}</div>
+      ${m.meet_link ? `<a class="cp-meeting-link" href="${m.meet_link}" target="_blank">🔗 ${m.meet_link}</a>` : ''}
+      ${hasSummary ? `
+        <div class="cp-summary-label">Resumen</div>
+        <div class="cp-summary-box">${m.summary || ''}</div>
+        ${m.requirements ? `<div class="cp-summary-label" style="margin-top:10px">Requerimientos</div>
+        <div class="cp-summary-box">${m.requirements}</div>` : ''}
+        <button class="cp-btn cp-btn-primary" style="margin-top:10px" onclick="_cpGenerateBudgetFromMeeting(${m.id})">⚡ Generar presupuesto</button>
+      ` : ''}
+      <div style="margin-top:10px">
+        <div class="cp-summary-label">Transcripción de la reunión</div>
+        <textarea class="cp-transcript-area" id="transcript-${m.id}" placeholder="Pegá la transcripción de Google Meet acá...">${m.transcript || ''}</textarea>
+        <button class="cp-btn cp-btn-primary" onclick="_cpSummarize(${m.id})">
+          <span id="sum-spin-${m.id}" style="display:none" class="cp-spinner"></span>
+          Resumir con IA
+        </button>
+      </div>
+    </div>`;
+  });
+  return html;
+}
+
+function _cpMeetStatus(s) {
+  const map = {scheduled:'agendada',completed:'realizada',cancelled:'cancelada'};
+  return map[s] || s || '';
+}
+
+function _cpBindMeetings() {}
+
+async function _cpSummarize(meetingId) {
+  const textarea = document.getElementById('transcript-' + meetingId);
+  const transcript = (textarea ? textarea.value : '').trim();
+  if (!transcript) { alert('Pegá la transcripción primero.'); return; }
+  const spin = document.getElementById('sum-spin-' + meetingId);
+  if (spin) spin.style.display = '';
+  try {
+    const r = await fetch('/api/calendar/meetings/' + meetingId + '/summarize', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({transcript})
+    });
+    const d = await r.json();
+    if (!d.ok) { alert('Error: ' + d.error); return; }
+    const meet = _cpData.meetings.find(m => m.id === meetingId);
+    if (meet) {
+      meet.transcript = transcript;
+      meet.summary = d.summary.summary || '';
+      meet.requirements = d.summary.requirements || '';
+    }
+    _cpSwitchTab('meet');
+  } catch(e) { alert('Error: ' + e); }
+  finally { if (spin) spin.style.display = 'none'; }
+}
+
+function _cpOpenNewMeeting() {
+  // Reuse existing calendar new-event form by switching to calendar panel and pre-filling client
+  document.querySelector('.nav-item[data-panel="calendar"]').click();
+  closeClientPanel();
+}
+
+function _cpGenerateBudgetFromMeeting(meetingId) {
+  const meet = _cpData.meetings.find(m => m.id === meetingId);
+  _cpSwitchTab('budget');
+  if (meet && meet.requirements) {
+    document.getElementById('cp-extra-req') && (document.getElementById('cp-extra-req').value = meet.requirements);
+  }
+}
+
+function _cpRenderBudget() {
+  const b = _cpData.budget;
+  let itemsHtml = '';
+  let metaHtml = '';
+  if (b && b.items && b.items.length) {
+    const meta = typeof b.notes === 'object' ? b.notes : {};
+    itemsHtml = `<table class="budget-table">
+      <thead><tr><th>Ítem</th><th>Descripción</th><th>Horas</th><th>$/h</th><th>Total</th></tr></thead>
+      <tbody>` + b.items.map((item, idx) => `
+        <tr>
+          <td><input value="${item.name || ''}" onchange="_cpBudgetItemChange(${idx},'name',this.value)"></td>
+          <td><input value="${item.description || ''}" onchange="_cpBudgetItemChange(${idx},'description',this.value)"></td>
+          <td><input type="number" style="width:55px" value="${item.hours || 0}" onchange="_cpBudgetItemChange(${idx},'hours',+this.value)"></td>
+          <td><input type="number" style="width:55px" value="${item.unit_price || 0}" onchange="_cpBudgetItemChange(${idx},'unit_price',+this.value)"></td>
+          <td style="color:#4ade80">$${(item.total || 0).toLocaleString()}</td>
+        </tr>`).join('') + `
+        <tr class="budget-total-row">
+          <td colspan="4">Total</td>
+          <td style="color:#4ade80">$${(b.total_amount || 0).toLocaleString()} ${meta.currency || 'USD'}</td>
+        </tr>
+      </tbody></table>
+    <div style="font-size:.78rem;color:#475569;margin-bottom:10px">${meta.notes || ''}</div>
+    <div style="font-size:.78rem;color:#475569;margin-bottom:14px">${meta.payment_terms || ''} · Válido ${meta.validity_days || 30} días</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="cp-btn cp-btn-primary" onclick="_cpSaveBudget()">💾 Guardar cambios</button>
+      ${b.status !== 'sent' ? `<button class="cp-btn cp-btn-success" onclick="_cpMarkBudgetSent()">✅ Marcar como enviado</button>` : `<span class="cp-badge cp-badge-sent">Enviado</span>`}
+      <button class="cp-btn cp-btn-ghost" onclick="_cpRegeneraBudget()">⚡ Regenerar</button>
+    </div>`;
+  } else {
+    itemsHtml = `<div style="color:#475569;font-size:.85rem;margin-bottom:14px">Sin presupuesto generado aún.</div>`;
+  }
+  return `<div class="cp-section">
+    <div class="cp-section-title">Requerimientos adicionales</div>
+    <textarea class="cp-req-area" id="cp-extra-req" placeholder="Describí qué necesita el cliente (opcional, se suman a los de la reunión)...">${_cpData.budget ? '' : ''}</textarea>
+    <button class="cp-btn cp-btn-primary" id="cp-gen-btn" onclick="_cpRegeneraBudget()">
+      <span id="budget-spin" style="display:none" class="cp-spinner"></span>
+      ⚡ Generar presupuesto con IA
+    </button>
+  </div>
+  <div class="cp-section">
+    <div class="cp-section-title">Presupuesto ${b && b.status === 'sent' ? '<span class=\\"cp-badge cp-badge-sent\\">Enviado</span>' : b ? '<span class=\\"cp-badge cp-badge-draft\\">Borrador</span>' : ''}</div>
+    ${itemsHtml}
+  </div>`;
+}
+
+function _cpBudgetItemChange(idx, field, val) {
+  if (!_cpData.budget || !_cpData.budget.items) return;
+  _cpData.budget.items[idx][field] = val;
+  if (field === 'hours' || field === 'unit_price') {
+    const item = _cpData.budget.items[idx];
+    item.total = (item.hours || 0) * (item.unit_price || 0);
+    const total = _cpData.budget.items.reduce((s, i) => s + (i.total || 0), 0);
+    _cpData.budget.total_amount = total;
+  }
+}
+
+async function _cpSaveBudget() {
+  if (!_cpData.budget) return;
+  await fetch('/api/budgets/' + _cpData.budget.id, {
+    method: 'PUT', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({items: _cpData.budget.items, total_amount: _cpData.budget.total_amount})
+  });
+}
+
+async function _cpMarkBudgetSent() {
+  if (!_cpData.budget) return;
+  await fetch('/api/budgets/' + _cpData.budget.id + '/mark-sent', {method:'POST'});
+  _cpData.budget.status = 'sent';
+  _cpSwitchTab('budget');
+}
+
+async function _cpRegeneraBudget() {
+  const req = document.getElementById('cp-extra-req');
+  const requirements = req ? req.value.trim() : '';
+  const spin = document.getElementById('budget-spin');
+  const btn = document.getElementById('cp-gen-btn');
+  if (spin) spin.style.display = '';
+  if (btn) btn.disabled = true;
+  try {
+    const r = await fetch('/api/leads/' + _cpClientId + '/budget/generate', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({requirements})
+    });
+    const d = await r.json();
+    if (!d.ok) { alert('Error: ' + d.error); return; }
+    const budgetRes = await fetch('/api/leads/' + _cpClientId + '/budget');
+    _cpData.budget = await budgetRes.json();
+    _cpSwitchTab('budget');
+  } catch(e) { alert('Error: ' + e); }
+  finally { if (spin) spin.style.display = 'none'; if (btn) btn.disabled = false; }
+}
+
+function _cpBindBudget() {}
+
+function _cpRenderDemo() {
+  const d = _cpData.demo;
+  const l = _cpData.lead || {};
+  const statusBadge = (s) => {
+    const map = {completed:'cp-badge-completed',generating:'cp-badge-generating',failed:'cp-badge-failed',pending:'cp-badge-pending'};
+    return `<span class="cp-badge ${map[s]||'cp-badge-draft'}">${s||'sin demo'}</span>`;
+  };
+  return `<div class="cp-section">
+    <div class="cp-section-title">Estado de la demo</div>
+    ${d ? `
+      <div style="margin-bottom:12px">${statusBadge(d.status)}</div>
+      ${d.url ? `<div class="cp-field"><span class="cp-field-label">URL</span><a href="${d.url}" target="_blank" class="cp-meeting-link">${d.url}</a></div>` : ''}
+      ${d.error_message ? `<div style="color:#f87171;font-size:.8rem;margin-bottom:8px">${d.error_message}</div>` : ''}
+    ` : `<div style="color:#475569;font-size:.85rem;margin-bottom:12px">Sin demo generada.</div>`}
+    <button class="cp-btn cp-btn-primary" onclick="closeClientPanel();openDemoModalFromCRM(${JSON.stringify({id:l.id,name:l.name||'',category:l.category||'',city:l.city||'',phone:l.phone||''})})">
+      📊 ${d && d.url ? 'Regenerar demo' : 'Generar demo'}
+    </button>
+  </div>`;
+}
+
+function _cpChangeStatus(val) {
+  fetch('/api/leads/' + _cpClientId + '/crm-status', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({crm_status: val})
+  }).then(() => { if (_cpData.lead) _cpData.lead.crm_status = val; });
+}
 </script>
+
+<div class="cp-backdrop" id="cp-backdrop" onclick="closeClientPanel()"></div>
+<div class="client-panel" id="client-panel">
+  <button class="cp-close" onclick="closeClientPanel()">×</button>
+  <div class="cp-header">
+    <div class="cp-title" id="cp-title">Cliente</div>
+    <div class="cp-sub">
+      <span id="cp-phone"></span>
+      <select class="cp-status-sel" id="cp-status-sel" onchange="_cpChangeStatus(this.value)">
+        <option value="sin_contactar">Sin contactar</option>
+        <option value="contactado">Contactado</option>
+        <option value="reunion_agendada">Reunión agendada</option>
+        <option value="reunion_hecha">Reunión hecha</option>
+        <option value="presupuesto_enviado">Presupuesto enviado</option>
+        <option value="negociacion">Negociación</option>
+        <option value="cliente_cerrado">Cliente cerrado</option>
+        <option value="en_desarrollo">En desarrollo</option>
+        <option value="finalizado">Finalizado</option>
+      </select>
+    </div>
+    <div class="cp-tabs">
+      <div class="cp-tab active" data-tab="info" onclick="_cpSwitchTab('info')">Info</div>
+      <div class="cp-tab" data-tab="conv" onclick="_cpSwitchTab('conv')">Conversación</div>
+      <div class="cp-tab" data-tab="meet" onclick="_cpSwitchTab('meet')">Reuniones</div>
+      <div class="cp-tab" data-tab="budget" onclick="_cpSwitchTab('budget')">Presupuesto</div>
+      <div class="cp-tab" data-tab="demo" onclick="_cpSwitchTab('demo')">Demo</div>
+    </div>
+  </div>
+  <div class="cp-body" id="cp-body">
+    <div style="color:#475569">Cargando...</div>
+  </div>
+</div>
 </body>
 </html>"""
 
@@ -1174,7 +1569,7 @@ def create_app(db_path: str) -> Flask:
     app.config["PIPELINE_STATUS"] = _pipeline_status
     app.config["PIPELINE_LOCK"] = _pipeline_lock
 
-    for bp in (leads_bp, demos_bp, calendar_bp, wa_bp, pipeline_bp, tasks_bp):
+    for bp in (leads_bp, demos_bp, calendar_bp, wa_bp, pipeline_bp, tasks_bp, budgets_bp):
         app.register_blueprint(bp)
 
     @app.before_request
