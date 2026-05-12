@@ -612,6 +612,42 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
     <div id="cal-error" class="cal-error" style="display:none"></div>
     <div id="cal-days" class="cal-days"><div class="cal-loading">Cargando calendario...</div></div>
   </div>
+
+  <!-- ======= METRICS PANEL ======= -->
+  <div id="metrics-panel" class="panel">
+    <div class="page-header">
+      <div>
+        <h1>Métricas</h1>
+        <div class="page-date" id="metrics-date"></div>
+      </div>
+      <button class="export-btn" onclick="loadMetrics()">↻ Actualizar</button>
+    </div>
+    <div class="metrics-grid" id="metrics-kpis">
+      <div class="stat-card"><div class="stat-label">Total leads</div><div class="stat-val" id="m-total">—</div></div>
+      <div class="stat-card"><div class="stat-label">Clientes cerrados</div><div class="stat-val green" id="m-closed">—</div></div>
+      <div class="stat-card"><div class="stat-label">Tasa de conversión</div><div class="stat-val blue" id="m-conv">—</div></div>
+    </div>
+    <div class="metrics-grid-2">
+      <div class="m-card">
+        <div class="m-card-title">Funnel CRM</div>
+        <div id="m-funnel"></div>
+      </div>
+      <div class="m-card">
+        <div class="m-card-title">Top rubros</div>
+        <div id="m-rubros"></div>
+      </div>
+    </div>
+    <div class="metrics-grid-2">
+      <div class="m-card">
+        <div class="m-card-title">Leads por mes</div>
+        <div id="m-months"></div>
+      </div>
+      <div class="m-card">
+        <div class="m-card-title">Top ciudades</div>
+        <div id="m-cities"></div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- Modal: Contactar -->
@@ -2299,41 +2335,6 @@ async function loadMetrics() {
     <div style="color:#475569">Cargando...</div>
   </div>
 </div>
-  <!-- ======= METRICS PANEL ======= -->
-  <div id="metrics-panel" class="panel">
-    <div class="page-header">
-      <div>
-        <h1>Métricas</h1>
-        <div class="page-date" id="metrics-date"></div>
-      </div>
-      <button class="export-btn" onclick="loadMetrics()">↻ Actualizar</button>
-    </div>
-    <div class="metrics-grid" id="metrics-kpis">
-      <div class="stat-card"><div class="stat-label">Total leads</div><div class="stat-val" id="m-total">—</div></div>
-      <div class="stat-card"><div class="stat-label">Clientes cerrados</div><div class="stat-val green" id="m-closed">—</div></div>
-      <div class="stat-card"><div class="stat-label">Tasa de conversión</div><div class="stat-val blue" id="m-conv">—</div></div>
-    </div>
-    <div class="metrics-grid-2">
-      <div class="m-card">
-        <div class="m-card-title">Funnel CRM</div>
-        <div id="m-funnel"></div>
-      </div>
-      <div class="m-card">
-        <div class="m-card-title">Top rubros</div>
-        <div id="m-rubros"></div>
-      </div>
-    </div>
-    <div class="metrics-grid-2">
-      <div class="m-card">
-        <div class="m-card-title">Leads por mes</div>
-        <div id="m-months"></div>
-      </div>
-      <div class="m-card">
-        <div class="m-card-title">Top ciudades</div>
-        <div id="m-cities"></div>
-      </div>
-    </div>
-  </div>
 
 <div class="batch-bar" id="batch-bar">
   <span class="batch-count" id="batch-count">0 seleccionados</span>
