@@ -1,8 +1,10 @@
 """Lead / business CRUD routes."""
 
+import os
+
 from flask import Blueprint, current_app, jsonify, request
 
-from database import get_all_businesses, update_business, delete_business, get_business, get_client_info
+from database import get_all_businesses, update_business, delete_business, get_business, get_client_info, insert_business
 
 leads_bp = Blueprint("leads", __name__)
 
@@ -18,6 +20,20 @@ _VALID_CRM_STATES = {
 
 def _db() -> str:
     return current_app.config["DB_PATH"]
+
+
+@leads_bp.route("/api/leads", methods=["POST"])
+def api_create_lead():
+    """Remote insert used by local scraper → Railway CRM sync."""
+    token = request.headers.get("x-admin-token", "")
+    expected = os.environ.get("ADMIN_TOKEN", "")
+    if not expected or token != expected:
+        return jsonify({"error": "unauthorized"}), 401
+    data = request.get_json() or {}
+    business_id = insert_business(_db(), data)
+    if business_id:
+        return jsonify({"ok": True, "id": business_id}), 201
+    return jsonify({"ok": False, "reason": "duplicate"}), 200
 
 
 @leads_bp.route("/api/leads")

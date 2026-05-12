@@ -1,10 +1,12 @@
 import logging
+import os
 import random
 import re
 import time
 import unicodedata
 import urllib.parse
 
+import requests as http_requests
 from dotenv import load_dotenv
 from playwright.sync_api import sync_playwright
 from playwright_stealth import Stealth
@@ -129,7 +131,13 @@ def extract_business_data(page) -> dict:
     maps_website_url = None
     website_el = page.query_selector("[data-item-id='authority']")
     if website_el:
-        maps_website_url = website_el.get_attribute("href") or None
+        href = website_el.get_attribute("href") or ""
+        # Only treat as a real website if it's NOT a social/directory domain
+        if href and not any(d in href for d in (
+            "facebook.com", "instagram.com", "twitter.com", "x.com",
+            "tiktok.com", "youtube.com", "linkedin.com", "wa.me", "whatsapp.com",
+        )):
+            maps_website_url = href
 
     facebook_url = None
     instagram_url = None
@@ -159,6 +167,28 @@ def extract_business_data(page) -> dict:
         "instagram_url": instagram_url,
         "maps_website_url": maps_website_url,
     }
+
+def _remote_insert(data: dict) -> bool:
+    """POST a business to the remote Railway CRM. Returns True if inserted, False if duplicate/error."""
+    crm_url = os.environ.get("CRM_URL", "").rstrip("/")
+    token = os.environ.get("ADMIN_TOKEN", "")
+    if not crm_url or not token:
+        return False
+    try:
+        resp = http_requests.post(
+            f"{crm_url}/api/leads",
+            json=data,
+            headers={"x-admin-token": token},
+            timeout=10,
+        )
+        body = resp.json()
+        if resp.status_code not in (200, 201):
+            logger.warning(f"CRM remoto respondió {resp.status_code}: {body}")
+        return resp.status_code == 201 and body.get("ok", False)
+    except Exception as e:
+        logger.warning(f"Error al enviar a CRM remoto: {e}")
+        return False
+
 
 def scrape_google_maps(query: str, max_results: int, db_path: str, verify_web: bool = False) -> int:
     inserted = 0
@@ -226,10 +256,7 @@ def scrape_google_maps(query: str, max_results: int, db_path: str, verify_web: b
 
                 for attempt in range(3):
                     try:
-                        el = page.query_selector(f'a[href="{href}"]')
-                        if not el:
-                            break
-                        el.click()
+                        page.goto(href, wait_until="domcontentloaded", timeout=15000)
                         page.wait_for_selector("h1.DUwDvf", timeout=10000)
                         random_delay()
 
@@ -238,8 +265,7 @@ def scrape_google_maps(query: str, max_results: int, db_path: str, verify_web: b
                         # Maps shows a website link → business already has web, skip
                         if data.get("maps_website_url"):
                             logger.info(f"Saltando (web en Maps): {data['name']}")
-                            page.go_back(wait_until="domcontentloaded")
-                            page.wait_for_selector('a[href^="https://www.google.com/maps/place/"]', timeout=10000)
+                            page.goto(maps_list_url, wait_until="domcontentloaded", timeout=30000)
                             random_delay()
                             break
 
@@ -254,14 +280,17 @@ def scrape_google_maps(query: str, max_results: int, db_path: str, verify_web: b
                                 random_delay(2, 4)
                                 break
 
-                        # Insert business
-                        business_id = insert_business(db_path, data)
-                        if business_id:
+                        # Insert business — remote Railway CRM or local SQLite
+                        if os.environ.get("CRM_URL"):
+                            saved = _remote_insert(data)
+                        else:
+                            saved = bool(insert_business(db_path, data))
+                        if saved:
                             inserted += 1
                             made_progress = True
                             logger.info(f"[{inserted}/{max_results}] Guardado: {data['name']}")
                         else:
-                            logger.debug(f"Duplicado, ignorado: {data['name']}")
+                            logger.warning(f"No guardado (duplicado o error CRM remoto): {data['name']}")
 
                         page.goto(maps_list_url, wait_until="domcontentloaded", timeout=30000)
                         page.wait_for_selector('a[href^="https://www.google.com/maps/place/"]', timeout=10000)
