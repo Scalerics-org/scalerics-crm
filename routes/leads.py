@@ -115,6 +115,19 @@ def api_crm_status(biz_id):
     return jsonify({"ok": True})
 
 
+@leads_bp.route("/api/leads/batch-status", methods=["POST"])
+def api_batch_status():
+    data = request.get_json() or {}
+    ids = data.get("ids", [])
+    crm_status = data.get("crm_status", "")
+    if not ids or crm_status not in _VALID_CRM_STATES:
+        return jsonify({"ok": False, "error": "ids o estado inválido"}), 400
+    db = _db()
+    for biz_id in ids:
+        update_business(db, int(biz_id), crm_status=crm_status)
+    return jsonify({"ok": True, "updated": len(ids)})
+
+
 @leads_bp.route("/api/leads/<int:biz_id>", methods=["DELETE"])
 def api_delete_lead(biz_id):
     delete_business(_db(), biz_id)

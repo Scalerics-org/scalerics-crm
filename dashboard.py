@@ -61,6 +61,24 @@ button:hover{opacity:.9}
     <button type="submit">Entrar</button>
   </form>
 </div>
+<div class="batch-bar" id="batch-bar">
+  <span class="batch-count" id="batch-count">0 seleccionados</span>
+  <select class="batch-sel" id="batch-status">
+    <option value="">— Cambiar estado —</option>
+    <option value="sin_contactar">Sin contactar</option>
+    <option value="contactado">Contactado</option>
+    <option value="reunion_agendada">Reunión agendada</option>
+    <option value="demo_generada">Demo generada</option>
+    <option value="reunion_hecha">Reunión hecha</option>
+    <option value="presupuesto_enviado">Presupuesto enviado</option>
+    <option value="negociacion">Negociación</option>
+    <option value="cliente_cerrado">Cliente cerrado</option>
+    <option value="en_desarrollo">En desarrollo</option>
+    <option value="finalizado">Finalizado</option>
+  </select>
+  <button class="batch-apply" onclick="applyBatch()">Aplicar</button>
+  <button class="batch-cancel" onclick="clearSelection()">Cancelar</button>
+</div>
 </body>
 </html>"""
 
@@ -145,9 +163,9 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .search-box{margin-left:auto;background:#161b27;border:1px solid #1e293b;border-radius:8px;padding:7px 14px;font-size:.82rem;color:#e2e8f0;width:200px;outline:none;font-family:'Inter',sans-serif}
 .search-box::placeholder{color:#334155}
 .table-wrap{background:#161b27;border:1px solid #1e293b;border-radius:14px;overflow:hidden}
-.table-header{display:grid;grid-template-columns:2fr 1.2fr 1.8fr 1.5fr;padding:12px 20px;background:#0f1117;border-bottom:1px solid #1e293b}
+
 .table-header span{font-size:.65rem;font-weight:700;color:#334155;text-transform:uppercase;letter-spacing:1px}
-.table-row{display:grid;grid-template-columns:2fr 1.2fr 1.8fr 1.5fr;padding:13px 20px;border-bottom:1px solid #1a2234;align-items:center;transition:background .1s}
+
 .table-row:hover{background:#1a2234}
 .table-row:last-child{border-bottom:none}
 .biz-name{font-weight:600;font-size:.88rem;color:#e2e8f0}
@@ -179,6 +197,18 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .status-sel{background:#0f1117;border:1px solid #1e293b;border-radius:6px;padding:4px 6px;font-size:.7rem;color:#94a3b8;font-family:'Inter',sans-serif;cursor:pointer;outline:none;max-width:110px}
 .status-sel:focus{border-color:#0088cc}
 .delete-btn{background:#2a1515;border:none;color:#f87171;padding:5px 8px;border-radius:6px;font-size:.7rem;cursor:pointer;font-family:'Inter',sans-serif}
+.export-btn{background:#1a2d1e;border:1px solid #166534;color:#4ade80;padding:7px 14px;border-radius:8px;font-size:.78rem;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif}
+.export-btn:hover{background:#166534;color:#fff}
+.cb-col{width:36px;display:flex;align-items:center;justify-content:center}
+.cb{width:15px;height:15px;accent-color:#0088cc;cursor:pointer}
+.table-header{display:grid;grid-template-columns:36px 2fr 1.2fr 1.8fr 1.5fr;padding:12px 20px;background:#0f1117;border-bottom:1px solid #1e293b}
+.table-row{display:grid;grid-template-columns:36px 2fr 1.2fr 1.8fr 1.5fr;padding:13px 20px;border-bottom:1px solid #1a2234;align-items:center;transition:background .1s}
+.batch-bar{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1e293b;border:1px solid #334155;border-radius:12px;padding:10px 18px;display:none;align-items:center;gap:12px;z-index:500;box-shadow:0 4px 24px rgba(0,0,0,.5)}
+.batch-bar.open{display:flex}
+.batch-count{font-size:.82rem;color:#94a3b8;white-space:nowrap}
+.batch-sel{background:#0f1117;border:1px solid #1e293b;border-radius:8px;padding:6px 10px;font-size:.78rem;color:#e2e8f0;font-family:'Inter',sans-serif;outline:none;cursor:pointer}
+.batch-apply{background:linear-gradient(135deg,#0088cc,#3db648);color:#fff;border:none;padding:7px 16px;border-radius:8px;font-size:.78rem;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif}
+.batch-cancel{background:transparent;border:none;color:#475569;font-size:.78rem;cursor:pointer;font-family:'Inter',sans-serif}
 .delete-btn:hover{background:#7f1d1d;color:#fff}
 .pipeline-input-row{display:flex;gap:10px;margin-bottom:12px}
 .pipeline-input{flex:1;background:#0f1117;border:1px solid #1e293b;border-radius:8px;padding:10px 14px;font-size:.88rem;color:#e2e8f0;font-family:'Inter',sans-serif;outline:none}
@@ -421,6 +451,7 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
         <h1>Leads</h1>
         <div class="page-date" id="page-date"></div>
       </div>
+      <button class="export-btn" onclick="exportCSV()">⬇ Exportar CSV</button>
     </div>
     <div class="stats">
       <div class="stat-card"><div class="stat-label">Total leads</div><div class="stat-val" id="stat-total">—</div></div>
@@ -445,6 +476,7 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
     </div>
     <div class="table-wrap">
       <div class="table-header">
+        <span class="cb-col"><input type="checkbox" class="cb" id="cb-all" onchange="toggleSelectAll(this.checked)"></span>
         <span>Negocio</span><span>Teléfono</span><span>Acciones</span>
       </div>
       <div id="table-body"></div>
@@ -772,6 +804,7 @@ async function loadLeads() {
     const crm = b.crm_status || 'sin_contactar';
     return `
     <div class="table-row row-${crm}">
+      <div class="cb-col"><input type="checkbox" class="cb row-cb" data-id="${b.id}" onchange="toggleSelect(${b.id},this.checked)"></div>
       <div>
         <div class="biz-name" style="cursor:pointer;text-decoration:underline;text-decoration-color:#334155" onclick="openClientPanel(${b.id})">${esc(b.name||'')}</div>
         <div class="biz-sub">${esc(b.category||'')}${b.city ? ' · '+esc(b.city) : ''}</div>
@@ -781,6 +814,78 @@ async function loadLeads() {
         ${(!crm || crm === 'sin_contactar') ? `<button class="pitch-btn" onclick="markContacted(${b.id})">Contactar</button>` : `<span style="color:#3db648;font-size:.75rem">✓ ${crmLabels[crm]||crm}</span>`}
       </div>
     </div>`}).join('');
+}
+
+// ── Batch selection ─────────────────────────────────────────────────────────
+let selectedIds = new Set();
+
+function toggleSelect(id, checked) {
+  checked ? selectedIds.add(id) : selectedIds.delete(id);
+  updateBatchBar();
+}
+
+function toggleSelectAll(checked) {
+  document.querySelectorAll('.row-cb').forEach(cb => {
+    cb.checked = checked;
+    const id = parseInt(cb.dataset.id);
+    checked ? selectedIds.add(id) : selectedIds.delete(id);
+  });
+  updateBatchBar();
+}
+
+function updateBatchBar() {
+  const bar = document.getElementById('batch-bar');
+  const count = document.getElementById('batch-count');
+  const n = selectedIds.size;
+  if (n > 0) {
+    bar.classList.add('open');
+    count.textContent = n + (n === 1 ? ' seleccionado' : ' seleccionados');
+  } else {
+    bar.classList.remove('open');
+    document.getElementById('cb-all').checked = false;
+  }
+}
+
+function clearSelection() {
+  selectedIds.clear();
+  document.querySelectorAll('.row-cb').forEach(cb => cb.checked = false);
+  document.getElementById('cb-all').checked = false;
+  updateBatchBar();
+}
+
+async function applyBatch() {
+  const status = document.getElementById('batch-status').value;
+  if (!status) { alert('Elegí un estado'); return; }
+  if (!selectedIds.size) return;
+  const res = await fetch('/api/leads/batch-status', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ids: [...selectedIds], crm_status: status})
+  });
+  const data = await res.json();
+  clearSelection();
+  document.getElementById('batch-status').value = '';
+  loadLeads();
+}
+
+// ── CSV Export ───────────────────────────────────────────────────────────────
+function exportCSV() {
+  const cols = ['id','name','phone','category','city','crm_status','rating','address','scraped_at'];
+  const headers = ['ID','Nombre','Teléfono','Rubro','Ciudad','Estado CRM','Rating','Dirección','Fecha scrape'];
+  const rows = [headers.join(',')];
+  for (const b of allLeads) {
+    const row = cols.map(k => {
+      const v = b[k] == null ? '' : String(b[k]);
+      return '"' + v.replace(/"/g, '""') + '"';
+    });
+    rows.push(row.join(','));
+  }
+  const blob = new Blob([rows.join('
+')], {type: 'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'leads_scalerics.csv'; a.click();
+  URL.revokeObjectURL(url);
 }
 
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
@@ -2046,6 +2151,24 @@ function _cpChangeStatus(val) {
   <div class="cp-body" id="cp-body">
     <div style="color:#475569">Cargando...</div>
   </div>
+</div>
+<div class="batch-bar" id="batch-bar">
+  <span class="batch-count" id="batch-count">0 seleccionados</span>
+  <select class="batch-sel" id="batch-status">
+    <option value="">— Cambiar estado —</option>
+    <option value="sin_contactar">Sin contactar</option>
+    <option value="contactado">Contactado</option>
+    <option value="reunion_agendada">Reunión agendada</option>
+    <option value="demo_generada">Demo generada</option>
+    <option value="reunion_hecha">Reunión hecha</option>
+    <option value="presupuesto_enviado">Presupuesto enviado</option>
+    <option value="negociacion">Negociación</option>
+    <option value="cliente_cerrado">Cliente cerrado</option>
+    <option value="en_desarrollo">En desarrollo</option>
+    <option value="finalizado">Finalizado</option>
+  </select>
+  <button class="batch-apply" onclick="applyBatch()">Aplicar</button>
+  <button class="batch-cancel" onclick="clearSelection()">Cancelar</button>
 </div>
 </body>
 </html>"""
