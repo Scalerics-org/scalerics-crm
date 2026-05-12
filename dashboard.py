@@ -1963,9 +1963,12 @@ def create_app(db_path: str) -> Flask:
     def require_login():
         if request.endpoint in ("login", "logout", "static"):
             return
-        # These endpoints use x-admin-token auth, not session
-        if request.path in ("/api/bot/lead-qualified", "/api/leads") and request.method == "POST":
-            return
+        # Any /api/ request with valid x-admin-token bypasses session auth
+        if request.path.startswith("/api/"):
+            token = request.headers.get("x-admin-token", "")
+            expected = os.environ.get("ADMIN_TOKEN", "")
+            if expected and token == expected:
+                return
         if not session.get("logged_in"):
             if request.path.startswith("/api/"):
                 return jsonify({"error": "session_expired"}), 401
