@@ -10,39 +10,35 @@ from pitch_generator import generate_pitch
 
 leads_bp = Blueprint("leads", __name__)
 
-_CATEGORY_BLOCKLIST = {
-    "agregar sitio web", "agregar descripción", "agregar descripcion",
-    "agregar categoría", "agregar categoria",
-    "agregar horario", "add website", "centro comercial", "e-commerce",
-}
+_CATEGORY_BLOCKLIST_KEYWORDS = [
+    "agregar ", "add website", "e-commerce", "centro comercial",
+]
 
-_CATEGORY_MAP = {
-    # distribución
-    "distribuidor de comestibles":          "Distribuidora",
-    "distribuidor de papel":                "Distribuidora",
-    "servicio de distribución":             "Distribuidora",
-    "mayorista":                            "Distribuidora",
-    "mayorista de confitería":              "Distribuidora",
-    "proveedor mayorista de alimentos":     "Distribuidora",
-    # peluquería
-    "hairdresser":                          "Hair salon",
-    # construcción
-    "constructor":                          "Construcción",
-    "bloquera":                             "Construcción",
-    "empresa constructora":                 "Construcción",
-    "empresa de hormigonado":               "Construcción",
-    "proveedor de materiales de construcción": "Construcción",
-    "tienda de materiales de construcción": "Construcción",
+_CATEGORY_KEYWORD_MAP = [
+    # construcción — cualquier variante
+    (["construc", "bloquera", "bloque", "hormigon", "barraca", "prefabric",
+      "ladrillo", "materiales de construc"], "Construcción"),
     # ferretería
-    "tienda de herramientas":               "Ferretería",
-}
+    (["ferreteri", "ferreter", "herramientas"], "Ferretería"),
+    # distribución
+    (["distribui", "mayorist", "proveedor mayorist", "servicio de distribu"], "Distribuidora"),
+    # peluquería
+    (["hairdress", "peluquer", "estilis", "barber", "coiffeur"], "Hair salon"),
+    # flores
+    (["mercado de flores", "floriste", "floral"], "Mercado de flores"),
+]
 
 
 def _normalize_category(raw: str) -> str | None:
     low = (raw or "").strip().lower()
-    if not low or low in _CATEGORY_BLOCKLIST:
+    if not low:
         return None
-    return _CATEGORY_MAP.get(low, raw.strip())
+    if any(kw in low for kw in _CATEGORY_BLOCKLIST_KEYWORDS):
+        return None
+    for keywords, canonical in _CATEGORY_KEYWORD_MAP:
+        if any(kw in low for kw in keywords):
+            return canonical
+    return raw.strip()
 
 
 # Full set of valid CRM states

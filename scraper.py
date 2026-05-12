@@ -23,11 +23,9 @@ USER_AGENTS = [
 ]
 
 # Domains that are NOT a real business website (directories, social, delivery, etc.)
-_CATEGORY_BLOCKLIST = {
-    "agregar sitio web", "agregar descripción", "agregar descripcion",
-    "agregar categoría", "agregar categoria",
-    "agregar horario", "add website", "centro comercial", "e-commerce",
-}
+_CATEGORY_BLOCKLIST_KEYWORDS = [
+    "agregar ", "add website", "e-commerce", "centro comercial",
+]
 
 DIRECTORY_DOMAINS = {
     "google.com", "maps.google.com", "facebook.com", "instagram.com",
@@ -270,7 +268,7 @@ def scrape_google_maps(query: str, max_results: int, db_path: str, verify_web: b
 
                         # Apply default_category when Maps returns no category or garbage
                         if default_category and (not data.get("category") or
-                                data["category"].strip().lower() in _CATEGORY_BLOCKLIST):
+                                any(kw in data["category"].strip().lower() for kw in _CATEGORY_BLOCKLIST_KEYWORDS)):
                             data["category"] = default_category
 
                         # No phone → impossible to contact, skip
