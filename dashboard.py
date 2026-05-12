@@ -766,7 +766,7 @@ async function loadLeads() {
         <div class="biz-name" style="cursor:pointer;text-decoration:underline;text-decoration-color:#334155" onclick="openClientPanel(${b.id})">${esc(b.name||'')}</div>
         <div class="biz-sub">${esc(b.category||'')}${b.city ? ' · '+esc(b.city) : ''}</div>
       </div>
-      <div>${b.phone ? (hasWhatsApp(b.phone) ? `<a class="phone-val" href="https://wa.me/${waNum(b.phone)}" target="_blank" title="Abrir WhatsApp">${esc(b.phone)}</a>` : `<span class="phone-val">${esc(b.phone)}</span>`) : '<span class="no-val">—</span>'}</div>
+      <div>${b.phone ? (hasWhatsApp(b.phone) ? `<a class="phone-val" href="https://wa.me/${waNum(b.phone)}${b.pitch_text ? '?text='+encodeURIComponent(b.pitch_text) : ''}" target="_blank" title="Abrir WhatsApp con pitch">${esc(b.phone)}</a>` : `<span class="phone-val">${esc(b.phone)}</span>`) : '<span class="no-val">—</span>'}</div>
       <div class="actions">
         <button class="pitch-btn" onclick="openContact(${b.id},'${esc(b.name||'')}')">Contactar</button>
         ${crm !== 'sin_contactar' && crm ? `<span style="color:#3db648;font-size:.75rem;margin-left:4px">✓ ${crmLabels[crm]||crm}</span>` : ''}
