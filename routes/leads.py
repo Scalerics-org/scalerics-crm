@@ -7,7 +7,8 @@ from flask import Blueprint, Response, current_app, jsonify, request
 
 from database import (get_all_businesses, update_business, delete_business, get_business,
                       get_client_info, insert_business,
-                      add_attachment, get_attachments, get_attachment_file, delete_attachment)
+                      add_attachment, get_attachments, get_attachment_file, delete_attachment,
+                      add_lead_event, get_lead_events)
 from pitch_generator import generate_pitch
 
 leads_bp = Blueprint("leads", __name__)
@@ -111,7 +112,9 @@ def api_crm_status(biz_id):
     crm_status = data.get("crm_status", "sin_contactar")
     if crm_status not in _VALID_CRM_STATES:
         return jsonify({"ok": False, "error": f"Estado inválido: {crm_status}"}), 400
-    update_business(_db(), biz_id, crm_status=crm_status)
+    db = _db()
+    update_business(db, biz_id, crm_status=crm_status)
+    add_lead_event(db, biz_id, crm_status)
     return jsonify({"ok": True})
 
 
@@ -124,8 +127,15 @@ def api_batch_status():
         return jsonify({"ok": False, "error": "ids o estado inválido"}), 400
     db = _db()
     for biz_id in ids:
-        update_business(db, int(biz_id), crm_status=crm_status)
+        biz_id = int(biz_id)
+        update_business(db, biz_id, crm_status=crm_status)
+        add_lead_event(db, biz_id, crm_status)
     return jsonify({"ok": True, "updated": len(ids)})
+
+
+@leads_bp.route("/api/leads/<int:biz_id>/events")
+def api_lead_events(biz_id):
+    return jsonify(get_lead_events(_db(), biz_id))
 
 
 @leads_bp.route("/api/leads/<int:biz_id>", methods=["DELETE"])
@@ -138,7 +148,9 @@ def api_delete_lead(biz_id):
 def api_contact(biz_id):
     data = request.get_json() or {}
     note = data.get("note", "")
-    update_business(_db(), biz_id, status="contacted", notes=note, crm_status="contactado")
+    db = _db()
+    update_business(db, biz_id, status="contacted", notes=note, crm_status="contactado")
+    add_lead_event(db, biz_id, "contactado", note=note)
     return jsonify({"ok": True})
 
 

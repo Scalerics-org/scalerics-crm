@@ -186,6 +186,18 @@ def init_db(db_path: str) -> None:
             )
         """)
 
+        # ── lead_events ───────────────────────────────────────────────────────
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS lead_events (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                lead_id     INTEGER NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+                new_status  TEXT NOT NULL,
+                note        TEXT,
+                created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        _add_column(conn, "businesses", "last_event_at", "TIMESTAMP")
+
         conn.commit()
     finally:
         conn.close()
@@ -198,7 +210,7 @@ ALLOWED_COLUMNS = {
     "review_count", "hours", "maps_url", "facebook_url", "instagram_url",
     "color_scheme", "demo_html_path", "demo_url", "status", "error_message",
     "scraped_at", "notes", "pitch_text", "crm_status",
-    "has_whatsapp",
+    "has_whatsapp", "last_event_at",
 }
 
 
@@ -789,5 +801,35 @@ def seed_pitch_templates(db_path: str) -> None:
         )
         conn.commit()
         logger.info(f"Seeded {len(templates)} pitch templates")
+    finally:
+        conn.close()
+
+
+# ─── Lead events ──────────────────────────────────────────────────────────────
+
+def add_lead_event(db_path: str, lead_id: int, new_status: str, note: str = "") -> None:
+    conn = _connect(db_path)
+    try:
+        conn.execute(
+            "INSERT INTO lead_events (lead_id, new_status, note) VALUES (?, ?, ?)",
+            (lead_id, new_status, note or ""),
+        )
+        conn.execute(
+            "UPDATE businesses SET last_event_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (lead_id,),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_lead_events(db_path: str, lead_id: int) -> list[dict]:
+    conn = _connect(db_path)
+    try:
+        cursor = conn.execute(
+            "SELECT id, new_status, note, created_at FROM lead_events WHERE lead_id = ? ORDER BY created_at DESC",
+            (lead_id,),
+        )
+        return [dict(r) for r in cursor.fetchall()]
     finally:
         conn.close()

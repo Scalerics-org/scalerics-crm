@@ -807,7 +807,7 @@ async function loadLeads() {
       <div class="cb-col"><input type="checkbox" class="cb row-cb" data-id="${b.id}" onchange="toggleSelect(${b.id},this.checked)"></div>
       <div>
         <div class="biz-name" style="cursor:pointer;text-decoration:underline;text-decoration-color:#334155" onclick="openClientPanel(${b.id})">${esc(b.name||'')}</div>
-        <div class="biz-sub">${esc(b.category||'')}${b.city ? ' · '+esc(b.city) : ''}</div>
+        <div class="biz-sub">${esc(b.category||'')}${b.city ? ' · '+esc(b.city) : ''}${b.last_event_at ? ' · <span style="color:#60a5fa">'+timeAgo(b.last_event_at)+'</span>' : ''}</div>
       </div>
       <div>${b.phone ? (hasWhatsApp(b.phone) ? `<a class="phone-val" href="https://wa.me/${waNum(b.phone)}${b.pitch_text ? '?text='+encodeURIComponent(b.pitch_text) : ''}" target="_blank" title="Abrir WhatsApp con pitch">${esc(b.phone)}</a>` : `<span class="phone-val">${esc(b.phone)}</span>`) : '<span class="no-val">—</span>'}</div>
       <div class="actions">
@@ -889,6 +889,15 @@ function exportCSV() {
 }
 
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+function timeAgo(ts) {
+  if (!ts) return '';
+  const diff = Math.floor((Date.now() - new Date(ts + 'Z').getTime()) / 1000);
+  if (diff < 60) return 'hace un momento';
+  if (diff < 3600) return 'hace ' + Math.floor(diff/60) + 'm';
+  if (diff < 86400) return 'hace ' + Math.floor(diff/3600) + 'h';
+  const d = Math.floor(diff/86400);
+  return 'hace ' + d + (d===1?' día':' días');
+}
 function waNum(phone) {
   let n = String(phone).replace(/[^0-9]/g,'');
   if (n.startsWith('598')) return n;
@@ -1721,13 +1730,14 @@ function closeClientPanel() {
 
 async function _cpLoadAll() {
   if (!_cpClientId) return;
-  const [leadRes, meetRes, budgetRes, demoRes, attBudgetRes, attDemoRes] = await Promise.allSettled([
+  const [leadRes, meetRes, budgetRes, demoRes, attBudgetRes, attDemoRes, eventsRes] = await Promise.allSettled([
     fetch('/api/leads/' + _cpClientId).then(r => r.json()),
     fetch('/api/calendar/meetings/' + _cpClientId).then(r => r.json()),
     fetch('/api/leads/' + _cpClientId + '/budget').then(r => r.json()),
     fetch('/api/demo/status/' + _cpClientId).then(r => r.json()),
     fetch('/api/leads/' + _cpClientId + '/attachments?section=budget').then(r => r.json()),
     fetch('/api/leads/' + _cpClientId + '/attachments?section=demo').then(r => r.json()),
+    fetch('/api/leads/' + _cpClientId + '/events').then(r => r.json()),
   ]);
   _cpData.lead    = leadRes.status === 'fulfilled' ? leadRes.value : {};
   _cpData.meetings = meetRes.status === 'fulfilled' && Array.isArray(meetRes.value) ? meetRes.value : [];
@@ -1735,6 +1745,7 @@ async function _cpLoadAll() {
   _cpData.demo    = demoRes.status === 'fulfilled' ? demoRes.value : null;
   _cpData.attBudget = attBudgetRes.status === 'fulfilled' && Array.isArray(attBudgetRes.value) ? attBudgetRes.value : [];
   _cpData.attDemo   = attDemoRes.status === 'fulfilled' && Array.isArray(attDemoRes.value) ? attDemoRes.value : [];
+  _cpData.events    = eventsRes.status === 'fulfilled' && Array.isArray(eventsRes.value) ? eventsRes.value : [];
 
   if (_cpData.lead && _cpData.lead.phone) {
     try {
@@ -1803,6 +1814,30 @@ function _cpRenderInfo() {
     <div class="cp-section-title">Notas internas</div>
     <textarea class="cp-req-area" id="cp-notes-area" placeholder="Agregar notas sobre este lead...">${l.notes || ''}</textarea>
     <button class="cp-btn cp-btn-ghost" onclick="_cpSaveNotes()">Guardar notas</button>
+  </div>
+  ${_cpRenderHistory()}`;
+}
+
+function _cpRenderHistory() {
+  const events = _cpData.events || [];
+  if (!events.length) return '';
+  const crmLabels = {sin_contactar:'Sin contactar',contactado:'Contactado',reunion_agendada:'Reunión agendada',demo_generada:'Demo generada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Presupuesto enviado',negociacion:'Negociación',cliente_cerrado:'Cliente cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado',agendo:'Agendó',firmo:'Firmó'};
+  const items = events.map(e => {
+    const label = crmLabels[e.new_status] || e.new_status;
+    const when = timeAgo(e.created_at);
+    const note = e.note ? `<div style="font-size:.72rem;color:#64748b;margin-top:2px">${esc(e.note)}</div>` : '';
+    return `<div style="display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-bottom:1px solid #1a2234">
+      <div style="width:8px;height:8px;border-radius:50%;background:#0088cc;margin-top:5px;flex-shrink:0"></div>
+      <div style="flex:1">
+        <span style="font-size:.8rem;color:#e2e8f0;font-weight:600">${label}</span>
+        <span style="font-size:.72rem;color:#475569;margin-left:8px">${when}</span>
+        ${note}
+      </div>
+    </div>`;
+  }).join('');
+  return `<div class="cp-section">
+    <div class="cp-section-title">Historial de estados</div>
+    ${items}
   </div>`;
 }
 
