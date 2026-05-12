@@ -2219,10 +2219,6 @@ function _cpChangeStatus(val) {
 }
 
 async function loadMetrics() {
-  const tbl = s => `<table style="width:100%;border-collapse:collapse;font-size:.83rem"><thead><tr>
-    <th style="text-align:left;color:#64748b;padding:3px 0;border-bottom:1px solid #1e293b">Nombre</th>
-    <th style="text-align:right;color:#64748b;padding:3px 0;border-bottom:1px solid #1e293b">Leads</th>
-    </tr></thead><tbody style="color:#cbd5e1">${s}</tbody></table>`;
   try {
     const r = await fetch('/api/metrics');
     const m = await r.json();
@@ -2230,18 +2226,38 @@ async function loadMetrics() {
     if (el('m-total')) el('m-total').textContent = m.total;
     if (el('m-closed')) el('m-closed').textContent = m.closed;
     if (el('m-conv')) el('m-conv').textContent = m.conversion + '%';
-    if (el('m-funnel')) el('m-funnel').innerHTML = tbl(
-      (m.funnel||[]).map(f=>`<tr><td>${esc(f.status)}</td><td style="text-align:right;font-weight:600">${f.count}</td></tr>`).join('')
-    );
-    if (el('m-rubros')) el('m-rubros').innerHTML = tbl(
-      (m.top_rubros||[]).map(f=>`<tr><td>${esc(f.name)}</td><td style="text-align:right;font-weight:600">${f.count}</td></tr>`).join('')
-    );
-    if (el('m-months')) el('m-months').innerHTML = tbl(
-      (m.by_month||[]).map(f=>`<tr><td>${esc(f.month)}</td><td style="text-align:right;font-weight:600">${f.count}</td></tr>`).join('')
-    );
-    if (el('m-cities')) el('m-cities').innerHTML = tbl(
-      (m.top_cities||[]).map(f=>`<tr><td>${esc(f.name)}</td><td style="text-align:right;font-weight:600">${f.count}</td></tr>`).join('')
-    );
+    const stateLabels = {sin_contactar:'Sin contactar',contactado:'Contactado',reunion_agendada:'Reunión agendada',demo_generada:'Demo generada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Presupuesto enviado',negociacion:'Negociación',cliente_cerrado:'Cliente cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado'};
+    const stateColors = {sin_contactar:'#334155',contactado:'#3b82f6',reunion_agendada:'#f59e0b',demo_generada:'#8b5cf6',reunion_hecha:'#f97316',presupuesto_enviado:'#eab308',negociacion:'#f97316',cliente_cerrado:'#22c55e',en_desarrollo:'#10b981',finalizado:'#4ade80'};
+    if (el('m-funnel')) {
+      const maxF = Math.max(...(m.funnel||[]).map(f=>f.count), 1);
+      el('m-funnel').innerHTML = (m.funnel||[]).filter(f=>f.count>0).map(f=>{
+        const pct = Math.round(f.count/maxF*100);
+        const col = stateColors[f.status]||'#64748b';
+        return `<div class="funnel-row"><div class="funnel-label">${esc(stateLabels[f.status]||f.status)}</div><div class="bar-track" style="flex:1"><div class="bar-fill" style="width:${pct}%;background:${col}"></div></div><div class="bar-val">${f.count}</div></div>`;
+      }).join('')||'<div style="color:#475569;font-size:.8rem">Sin datos</div>';
+    }
+    if (el('m-rubros')) {
+      const maxR = Math.max(...(m.top_rubros||[]).map(r=>r.count), 1);
+      el('m-rubros').innerHTML = (m.top_rubros||[]).map(r=>{
+        const pct = Math.round(r.count/maxR*100);
+        return `<div class="bar-row"><div class="bar-label">${esc(r.name)}</div><div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div><div class="bar-val">${r.count}</div></div>`;
+      }).join('')||'<div style="color:#475569;font-size:.8rem">Sin datos</div>';
+    }
+    if (el('m-months')) {
+      const maxM = Math.max(...(m.by_month||[]).map(b=>b.count), 1);
+      el('m-months').innerHTML = '<div class="month-bars">'+(m.by_month||[]).map(b=>{
+        const barH = Math.max(4, Math.round(b.count/maxM*60));
+        const short = b.month.length>=7 ? b.month.slice(5) : b.month;
+        return `<div class="month-col"><div style="font-size:.6rem;color:#64748b;line-height:1;margin-bottom:2px">${b.count}</div><div class="month-bar" style="height:${barH}px"></div><div class="month-tick">${short}</div></div>`;
+      }).join('')+'</div>';
+    }
+    if (el('m-cities')) {
+      const maxC = Math.max(...(m.top_cities||[]).map(c=>c.count), 1);
+      el('m-cities').innerHTML = (m.top_cities||[]).map(c=>{
+        const pct = Math.round(c.count/maxC*100);
+        return `<div class="bar-row"><div class="bar-label">${esc(c.name)}</div><div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div><div class="bar-val">${c.count}</div></div>`;
+      }).join('')||'<div style="color:#475569;font-size:.8rem">Sin datos</div>';
+    }
     if (el('metrics-date')) el('metrics-date').textContent = 'Actualizado: ' + new Date().toLocaleString('es-UY');
   } catch(e) {
     const p = document.getElementById('metrics-panel');
