@@ -1,10 +1,12 @@
 """Lead / business CRUD routes."""
 
 import os
+import threading
 
 from flask import Blueprint, current_app, jsonify, request
 
 from database import get_all_businesses, update_business, delete_business, get_business, get_client_info, insert_business
+from pitch_generator import generate_pitch
 
 leads_bp = Blueprint("leads", __name__)
 
@@ -22,6 +24,15 @@ def _db() -> str:
     return current_app.config["DB_PATH"]
 
 
+def _bg_pitch(db_path: str, business_id: int, data: dict) -> None:
+    try:
+        pitch = generate_pitch(data, db_path)
+        if pitch:
+            update_business(db_path, business_id, pitch_text=pitch)
+    except Exception:
+        pass
+
+
 @leads_bp.route("/api/leads", methods=["POST"])
 def api_create_lead():
     """Remote insert used by local scraper → Railway CRM sync."""
@@ -32,6 +43,7 @@ def api_create_lead():
     data = request.get_json() or {}
     business_id = insert_business(_db(), data)
     if business_id:
+        threading.Thread(target=_bg_pitch, args=(_db(), business_id, data), daemon=True).start()
         return jsonify({"ok": True, "id": business_id}), 201
     return jsonify({"ok": False, "reason": "duplicate"}), 200
 

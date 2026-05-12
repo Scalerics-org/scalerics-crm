@@ -768,12 +768,8 @@ async function loadLeads() {
       </div>
       <div>${b.phone ? `<a class="phone-val" href="https://wa.me/${waNum(b.phone)}" target="_blank" title="Abrir WhatsApp">${esc(b.phone)}</a>` : '<span class="no-val">—</span>'}</div>
       <div class="actions">
-        <select class="status-sel" onchange="setCrmStatus(${b.id},this.value)">
-          ${['sin_contactar','contactado','reunion_agendada','reunion_hecha','presupuesto_enviado','cliente_cerrado','en_desarrollo','finalizado'].map(s=>`<option value="${s}"${crm===s?' selected':''}>${crmLabels[s]||s}</option>`).join('')}
-        </select>
-        ${b.pitch_text ? `<button class="pitch-btn" onclick="openPitchModal(${b.id},'${esc(b.name||'')}')">📋</button>` : ''}
-        ${b.phone ? `<button class="pitch-btn" style="background:rgba(6,182,212,.15);border-color:rgba(6,182,212,.3);color:#06b6d4" onclick="openDemoModalFromCRM(${JSON.stringify({id:b.id,name:b.name||'',category:b.category||'',city:b.city||'',phone:b.phone||''})})">📊</button>` : ''}
-        <button class="delete-btn" onclick="deleteLead(${b.id},'${esc(b.name||'')}')">🗑</button>
+        <button class="pitch-btn" onclick="openContact(${b.id},'${esc(b.name||'')}')">Contactar</button>
+        ${crm !== 'sin_contactar' && crm ? `<span style="color:#3db648;font-size:.75rem;margin-left:4px">✓ ${crmLabels[crm]||crm}</span>` : ''}
       </div>
     </div>`}).join('');
 }
@@ -1487,7 +1483,6 @@ async function _cpBindTasks() {
 // ── Kanban ────────────────────────────────────────────────────────────────────
 
 const KANBAN_COLS = [
-  {key:'sin_contactar',  label:'Sin contactar'},
   {key:'contactado',     label:'Contactado'},
   {key:'reunion_agendada', label:'Reunión agendada'},
   {key:'reunion_hecha',  label:'Reunión hecha'},
@@ -1535,7 +1530,6 @@ function renderKanban() {
 }
 
 function _kanbanCard(l) {
-  const rating = l.rating ? `⭐ ${l.rating}` : '';
   const meta = [l.category, l.city].filter(Boolean).join(' · ');
   return `<div class="kanban-card" draggable="true" data-id="${l.id}"
     ondragstart="_kanbanDragStart(event,${l.id})"
@@ -1544,7 +1538,6 @@ function _kanbanCard(l) {
     <div class="kanban-card-name">${esc(l.name||'')}</div>
     ${meta ? `<div class="kanban-card-meta">${esc(meta)}</div>` : ''}
     ${l.phone ? `<div class="kanban-card-phone">${esc(l.phone)}</div>` : ''}
-    ${rating ? `<div class="kanban-card-rating">${rating}</div>` : ''}
   </div>`;
 }
 
