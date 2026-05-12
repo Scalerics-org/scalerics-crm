@@ -1835,9 +1835,11 @@ function _cpRenderAttachBox(section) {
 
 async function _cpUploadFile(input, section) {
   const file = input.files[0]; if (!file) return;
+  if (file.size > 10*1024*1024) { alert('Archivo demasiado grande (máx 10 MB)'); input.value=''; return; }
   const fd = new FormData(); fd.append('file', file);
   const r = await fetch(`/api/leads/${_cpClientId}/attachments?section=${section}`, {method:'POST', body:fd});
-  if ((await r.json()).ok) { await _cpReloadAttach(section); _cpSwitchTab(_cpTab); }
+  const d = await r.json();
+  if (d.ok) { await _cpReloadAttach(section); _cpSwitchTab(_cpTab); } else alert(d.error||'Error');
   input.value = '';
 }
 
@@ -1845,9 +1847,11 @@ async function _cpDropFile(e, section) {
   e.preventDefault();
   document.getElementById('attach-drop-'+section).classList.remove('dragover');
   const file = e.dataTransfer.files[0]; if (!file) return;
+  if (file.size > 10*1024*1024) { alert('Archivo demasiado grande (máx 10 MB)'); return; }
   const fd = new FormData(); fd.append('file', file);
   const r = await fetch(`/api/leads/${_cpClientId}/attachments?section=${section}`, {method:'POST', body:fd});
-  if ((await r.json()).ok) { await _cpReloadAttach(section); _cpSwitchTab(_cpTab); }
+  const d = await r.json();
+  if (d.ok) { await _cpReloadAttach(section); _cpSwitchTab(_cpTab); } else alert(d.error||'Error');
 }
 
 async function _cpSaveLink(section) {

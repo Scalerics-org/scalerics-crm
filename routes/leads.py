@@ -188,6 +188,8 @@ def api_add_attachment(biz_id):
     if not f:
         return jsonify({"ok": False, "error": "file or url required"}), 400
     file_data = f.read()
+    if len(file_data) > 10 * 1024 * 1024:
+        return jsonify({"ok": False, "error": "Archivo demasiado grande (máx 10 MB)"}), 413
     mime_type = f.content_type or "application/octet-stream"
     name = f.filename or "archivo"
     attach_id = add_attachment(_db(), biz_id, section, name, file_data=file_data, mime_type=mime_type)
