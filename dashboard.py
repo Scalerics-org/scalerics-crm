@@ -61,6 +61,42 @@ button:hover{opacity:.9}
     <button type="submit">Entrar</button>
   </form>
 </div>
+  <!-- ======= METRICS PANEL ======= -->
+  <div id="metrics-panel" class="panel">
+    <div class="page-header">
+      <div>
+        <h1>Métricas</h1>
+        <div class="page-date" id="metrics-date"></div>
+      </div>
+      <button class="export-btn" onclick="loadMetrics()">↻ Actualizar</button>
+    </div>
+    <div class="metrics-grid" id="metrics-kpis">
+      <div class="stat-card"><div class="stat-label">Total leads</div><div class="stat-val" id="m-total">—</div></div>
+      <div class="stat-card"><div class="stat-label">Clientes cerrados</div><div class="stat-val green" id="m-closed">—</div></div>
+      <div class="stat-card"><div class="stat-label">Tasa de conversión</div><div class="stat-val blue" id="m-conv">—</div></div>
+    </div>
+    <div class="metrics-grid-2">
+      <div class="m-card">
+        <div class="m-card-title">Funnel CRM</div>
+        <div id="m-funnel"></div>
+      </div>
+      <div class="m-card">
+        <div class="m-card-title">Top rubros</div>
+        <div id="m-rubros"></div>
+      </div>
+    </div>
+    <div class="metrics-grid-2">
+      <div class="m-card">
+        <div class="m-card-title">Leads por mes</div>
+        <div id="m-months"></div>
+      </div>
+      <div class="m-card">
+        <div class="m-card-title">Top ciudades</div>
+        <div id="m-cities"></div>
+      </div>
+    </div>
+  </div>
+
 <div class="batch-bar" id="batch-bar">
   <span class="batch-count" id="batch-count">0 seleccionados</span>
   <select class="batch-sel" id="batch-status">
@@ -209,6 +245,25 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .batch-sel{background:#0f1117;border:1px solid #1e293b;border-radius:8px;padding:6px 10px;font-size:.78rem;color:#e2e8f0;font-family:'Inter',sans-serif;outline:none;cursor:pointer}
 .batch-apply{background:linear-gradient(135deg,#0088cc,#3db648);color:#fff;border:none;padding:7px 16px;border-radius:8px;font-size:.78rem;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif}
 .batch-cancel{background:transparent;border:none;color:#475569;font-size:.78rem;cursor:pointer;font-family:'Inter',sans-serif}
+.metrics-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px}
+.metrics-grid-2{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-bottom:24px}
+@media(max-width:768px){.metrics-grid{grid-template-columns:1fr 1fr}.metrics-grid-2{grid-template-columns:1fr}}
+@media(max-width:480px){.metrics-grid{grid-template-columns:1fr}}
+.m-card{background:#161b27;border:1px solid #1e293b;border-radius:14px;padding:20px 22px}
+.m-card-title{font-size:.7rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:1px;margin-bottom:16px}
+.bar-row{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.bar-label{font-size:.75rem;color:#94a3b8;width:140px;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bar-track{flex:1;background:#1e293b;border-radius:4px;height:8px;overflow:hidden}
+.bar-fill{height:100%;border-radius:4px;background:linear-gradient(90deg,#0088cc,#3db648);transition:width .4s}
+.bar-val{font-size:.72rem;color:#64748b;width:28px;text-align:right;flex-shrink:0}
+.funnel-row{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.funnel-label{font-size:.75rem;color:#94a3b8;width:150px;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.month-bars{display:flex;align-items:flex-end;gap:4px;height:80px;margin-top:8px}
+.month-col{display:flex;flex-direction:column;align-items:center;flex:1;gap:3px}
+.month-bar{width:100%;border-radius:3px 3px 0 0;background:linear-gradient(180deg,#0088cc,#3db648);min-height:2px}
+.month-tick{font-size:.55rem;color:#334155;white-space:nowrap}
+.conv-big{font-size:2.6rem;font-weight:800;color:#4ade80;line-height:1}
+.conv-sub{font-size:.75rem;color:#475569;margin-top:6px}
 .delete-btn:hover{background:#7f1d1d;color:#fff}
 .pipeline-input-row{display:flex;gap:10px;margin-bottom:12px}
 .pipeline-input{flex:1;background:#0f1117;border:1px solid #1e293b;border-radius:8px;padding:10px 14px;font-size:.88rem;color:#e2e8f0;font-family:'Inter',sans-serif;outline:none}
@@ -433,6 +488,7 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
   <div class="nav-item" id="nav-tasks" onclick="showPanel('tasks')">✅ Tareas</div>
   <div class="nav-item" id="nav-wa" onclick="showPanel('wa')">💬 WhatsApp</div>
   <div class="nav-item" id="nav-cal" onclick="showPanel('cal')">📅 Calendario</div>
+  <div class="nav-item" id="nav-metrics" onclick="showPanel('metrics')">📊 Métricas</div>
   <div class="sidebar-bottom">
     <button class="logout-btn" onclick="window.location.href='/logout'">Cerrar sesión</button>
   </div>
@@ -764,6 +820,7 @@ function showPanel(name) {
   if (name === 'cal' && !calLoaded) { calLoaded = true; renderCalendar(); }
   if (name === 'kanban') loadKanban();
   if (name === 'tasks') loadTasks();
+  if (name === 'metrics') loadMetrics();
 }
 
 // ========== Leads panel ==========
@@ -2187,6 +2244,42 @@ function _cpChangeStatus(val) {
     <div style="color:#475569">Cargando...</div>
   </div>
 </div>
+  <!-- ======= METRICS PANEL ======= -->
+  <div id="metrics-panel" class="panel">
+    <div class="page-header">
+      <div>
+        <h1>Métricas</h1>
+        <div class="page-date" id="metrics-date"></div>
+      </div>
+      <button class="export-btn" onclick="loadMetrics()">↻ Actualizar</button>
+    </div>
+    <div class="metrics-grid" id="metrics-kpis">
+      <div class="stat-card"><div class="stat-label">Total leads</div><div class="stat-val" id="m-total">—</div></div>
+      <div class="stat-card"><div class="stat-label">Clientes cerrados</div><div class="stat-val green" id="m-closed">—</div></div>
+      <div class="stat-card"><div class="stat-label">Tasa de conversión</div><div class="stat-val blue" id="m-conv">—</div></div>
+    </div>
+    <div class="metrics-grid-2">
+      <div class="m-card">
+        <div class="m-card-title">Funnel CRM</div>
+        <div id="m-funnel"></div>
+      </div>
+      <div class="m-card">
+        <div class="m-card-title">Top rubros</div>
+        <div id="m-rubros"></div>
+      </div>
+    </div>
+    <div class="metrics-grid-2">
+      <div class="m-card">
+        <div class="m-card-title">Leads por mes</div>
+        <div id="m-months"></div>
+      </div>
+      <div class="m-card">
+        <div class="m-card-title">Top ciudades</div>
+        <div id="m-cities"></div>
+      </div>
+    </div>
+  </div>
+
 <div class="batch-bar" id="batch-bar">
   <span class="batch-count" id="batch-count">0 seleccionados</span>
   <select class="batch-sel" id="batch-status">
