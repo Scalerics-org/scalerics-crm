@@ -10,6 +10,31 @@ from pitch_generator import generate_pitch
 
 leads_bp = Blueprint("leads", __name__)
 
+_CATEGORY_BLOCKLIST = {
+    "agregar sitio web", "agregar descripción", "agregar descripcion",
+    "agregar horario", "add website", "centro comercial", "e-commerce",
+}
+
+_CATEGORY_MAP = {
+    "distribuidor de comestibles":      "Distribuidora",
+    "distribuidor de papel":            "Distribuidora",
+    "servicio de distribución":         "Distribuidora",
+    "mayorista":                        "Distribuidora",
+    "mayorista de confitería":          "Distribuidora",
+    "proveedor mayorista de alimentos": "Distribuidora",
+    "hairdresser":                      "Hair salon",
+    "constructor":                      "Construcción",
+    "bloquera":                         "Construcción",
+}
+
+
+def _normalize_category(raw: str) -> str | None:
+    low = (raw or "").strip().lower()
+    if not low or low in _CATEGORY_BLOCKLIST:
+        return None
+    return _CATEGORY_MAP.get(low, raw.strip())
+
+
 # Full set of valid CRM states
 _VALID_CRM_STATES = {
     "sin_contactar", "contactado", "reunion_agendada", "demo_generada",
@@ -57,7 +82,7 @@ def api_leads():
     if crm_status:
         businesses = [b for b in businesses if (b.get("crm_status") or "sin_contactar") == crm_status]
     if category:
-        businesses = [b for b in businesses if (b.get("category") or "").lower() == category.lower()]
+        businesses = [b for b in businesses if _normalize_category(b.get("category") or "") == category]
     if search:
         businesses = [b for b in businesses if search in (b.get("name") or "").lower()]
     return jsonify(businesses)
@@ -115,7 +140,12 @@ def api_update_pitch(biz_id):
 @leads_bp.route("/api/stats")
 def api_stats():
     businesses = get_all_businesses(_db())
-    categories = sorted({b.get("category") or "" for b in businesses if b.get("category")})
+    cats = set()
+    for b in businesses:
+        n = _normalize_category(b.get("category") or "")
+        if n:
+            cats.add(n)
+    categories = sorted(cats)
     return jsonify({
         "total": len(businesses),
         "with_pitch": sum(1 for b in businesses if b.get("pitch_text")),

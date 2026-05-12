@@ -54,7 +54,8 @@ def create_parser() -> argparse.ArgumentParser:
 
 def cmd_scrape(args):
     from scraper import run
-    return run(args.query, args.max, DB_PATH, verify_web=not getattr(args, 'no_verify_web', False))
+    default_cat = args.query.split()[0].capitalize()
+    return run(args.query, args.max, DB_PATH, verify_web=not getattr(args, 'no_verify_web', False), default_category=default_cat)
 
 def cmd_generate_pitches(args):
     from pitch_generator import run

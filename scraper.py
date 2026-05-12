@@ -23,6 +23,11 @@ USER_AGENTS = [
 ]
 
 # Domains that are NOT a real business website (directories, social, delivery, etc.)
+_CATEGORY_BLOCKLIST = {
+    "agregar sitio web", "agregar descripción", "agregar descripcion",
+    "agregar horario", "add website", "centro comercial", "e-commerce",
+}
+
 DIRECTORY_DOMAINS = {
     "google.com", "maps.google.com", "facebook.com", "instagram.com",
     "twitter.com", "x.com", "tiktok.com", "youtube.com", "linkedin.com",
@@ -190,7 +195,7 @@ def _remote_insert(data: dict) -> bool:
         return False
 
 
-def scrape_google_maps(query: str, max_results: int, db_path: str, verify_web: bool = False) -> int:
+def scrape_google_maps(query: str, max_results: int, db_path: str, verify_web: bool = False, default_category: str = "") -> int:
     inserted = 0
     maps_list_url = f"https://www.google.com/maps/search/{query.replace(' ', '+')}"
 
@@ -261,6 +266,11 @@ def scrape_google_maps(query: str, max_results: int, db_path: str, verify_web: b
                         random_delay()
 
                         data = extract_business_data(page)
+
+                        # Apply default_category when Maps returns no category or garbage
+                        if default_category and (not data.get("category") or
+                                data["category"].strip().lower() in _CATEGORY_BLOCKLIST):
+                            data["category"] = default_category
 
                         # No phone → impossible to contact, skip
                         if not data.get("phone"):
@@ -333,6 +343,6 @@ def scrape_google_maps(query: str, max_results: int, db_path: str, verify_web: b
     logger.info(f"Scraping completo. Guardados: {inserted} negocios")
     return inserted
 
-def run(query: str, max_results: int, db_path: str, verify_web: bool = False) -> int:
+def run(query: str, max_results: int, db_path: str, verify_web: bool = False, default_category: str = "") -> int:
     init_db(db_path)
-    return scrape_google_maps(query, max_results, db_path, verify_web=verify_web)
+    return scrape_google_maps(query, max_results, db_path, verify_web=verify_web, default_category=default_category)
