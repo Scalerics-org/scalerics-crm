@@ -1661,6 +1661,13 @@ function _cpRenderInfo() {
     ${ci.instagram ? `<div class="cp-field"><span class="cp-field-label">Instagram / web</span><span class="cp-field-val">${ci.instagram}</span></div>` : ''}
     ${ci.needs ? `<div class="cp-field"><span class="cp-field-label">Necesidades</span><span class="cp-field-val">${ci.needs}</span></div>` : ''}
   </div>` : ''}
+  ${l.pitch_text ? `<div class="cp-section">
+    <div class="cp-section-title" style="display:flex;justify-content:space-between;align-items:center">
+      <span>Pitch WhatsApp</span>
+      <button class="cp-btn cp-btn-ghost" style="padding:3px 10px;font-size:.72rem" onclick="navigator.clipboard.writeText(_cpData.lead.pitch_text||'');this.textContent='✓ Copiado';setTimeout(()=>this.textContent='Copiar',1500)">Copiar</button>
+    </div>
+    <div style="font-size:.82rem;color:#94a3b8;white-space:pre-wrap;line-height:1.5;background:#0a0f1a;border:1px solid #1e293b;border-radius:8px;padding:12px">${esc(l.pitch_text||'')}</div>
+  </div>` : ''}
   <div class="cp-section">
     <div class="cp-section-title">Notas internas</div>
     <textarea class="cp-req-area" id="cp-notes-area" placeholder="Agregar notas sobre este lead...">${l.notes || ''}</textarea>
