@@ -852,6 +852,8 @@ async function loadLeads() {
   if (currentSearch) params.set('search', currentSearch);
   const r = await fetch('/api/leads?' + params);
   const leads = await r.json();
+  if (!Array.isArray(leads)) return;
+  _allLeads = leads;
   pitchMap = {};
   leads.forEach(b => { if (b.pitch_text) pitchMap[b.id] = b.pitch_text; });
   const body = document.getElementById('table-body');
@@ -2210,72 +2212,33 @@ function _cpChangeStatus(val) {
 }
 
 async function loadMetrics() {
-  const panel = document.getElementById('panel-metrics');
-  if (!panel) return;
-  panel.innerHTML = '<p style="color:#64748b;padding:24px">Cargando métricas...</p>';
+  const tbl = s => `<table style="width:100%;border-collapse:collapse;font-size:.83rem"><thead><tr>
+    <th style="text-align:left;color:#64748b;padding:3px 0;border-bottom:1px solid #1e293b">Nombre</th>
+    <th style="text-align:right;color:#64748b;padding:3px 0;border-bottom:1px solid #1e293b">Leads</th>
+    </tr></thead><tbody style="color:#cbd5e1">${s}</tbody></table>`;
   try {
     const r = await fetch('/api/metrics');
     const m = await r.json();
-    const funnelRows = (m.funnel || []).map(f =>
-      `<tr><td>${f.status}</td><td style="text-align:right;font-weight:600">${f.count}</td></tr>`
-    ).join('');
-    const rubroRows = (m.top_rubros || []).map(r =>
-      `<tr><td>${esc(r.name)}</td><td style="text-align:right;font-weight:600">${r.count}</td></tr>`
-    ).join('');
-    const cityRows = (m.top_cities || []).map(c =>
-      `<tr><td>${esc(c.name)}</td><td style="text-align:right;font-weight:600">${c.count}</td></tr>`
-    ).join('');
-    const monthRows = (m.by_month || []).map(b =>
-      `<tr><td>${b.month}</td><td style="text-align:right;font-weight:600">${b.count}</td></tr>`
-    ).join('');
-    panel.innerHTML = `
-      <h2 style="font-size:1.3rem;font-weight:700;color:#e2e8f0;margin-bottom:24px">📊 Métricas</h2>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:16px;margin-bottom:32px">
-        <div style="background:#0f172a;border:1px solid #1e293b;border-radius:10px;padding:20px;text-align:center">
-          <div style="font-size:2rem;font-weight:700;color:#38bdf8">${m.total}</div>
-          <div style="color:#64748b;font-size:.85rem;margin-top:4px">Total leads</div>
-        </div>
-        <div style="background:#0f172a;border:1px solid #1e293b;border-radius:10px;padding:20px;text-align:center">
-          <div style="font-size:2rem;font-weight:700;color:#4ade80">${m.closed}</div>
-          <div style="color:#64748b;font-size:.85rem;margin-top:4px">Clientes cerrados</div>
-        </div>
-        <div style="background:#0f172a;border:1px solid #1e293b;border-radius:10px;padding:20px;text-align:center">
-          <div style="font-size:2rem;font-weight:700;color:#f59e0b">${m.conversion}%</div>
-          <div style="color:#64748b;font-size:.85rem;margin-top:4px">Conversión global</div>
-        </div>
-      </div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:24px">
-        <div>
-          <h3 style="font-size:.95rem;font-weight:600;color:#94a3b8;margin-bottom:12px">Embudo CRM</h3>
-          <table style="width:100%;border-collapse:collapse;font-size:.85rem">
-            <thead><tr><th style="text-align:left;color:#64748b;padding:4px 0;border-bottom:1px solid #1e293b">Estado</th><th style="text-align:right;color:#64748b;padding:4px 0;border-bottom:1px solid #1e293b">Leads</th></tr></thead>
-            <tbody style="color:#cbd5e1">${funnelRows}</tbody>
-          </table>
-        </div>
-        <div>
-          <h3 style="font-size:.95rem;font-weight:600;color:#94a3b8;margin-bottom:12px">Top rubros</h3>
-          <table style="width:100%;border-collapse:collapse;font-size:.85rem">
-            <thead><tr><th style="text-align:left;color:#64748b;padding:4px 0;border-bottom:1px solid #1e293b">Rubro</th><th style="text-align:right;color:#64748b;padding:4px 0;border-bottom:1px solid #1e293b">Leads</th></tr></thead>
-            <tbody style="color:#cbd5e1">${rubroRows}</tbody>
-          </table>
-        </div>
-        <div>
-          <h3 style="font-size:.95rem;font-weight:600;color:#94a3b8;margin-bottom:12px">Top ciudades</h3>
-          <table style="width:100%;border-collapse:collapse;font-size:.85rem">
-            <thead><tr><th style="text-align:left;color:#64748b;padding:4px 0;border-bottom:1px solid #1e293b">Ciudad</th><th style="text-align:right;color:#64748b;padding:4px 0;border-bottom:1px solid #1e293b">Leads</th></tr></thead>
-            <tbody style="color:#cbd5e1">${cityRows}</tbody>
-          </table>
-        </div>
-        <div>
-          <h3 style="font-size:.95rem;font-weight:600;color:#94a3b8;margin-bottom:12px">Leads por mes</h3>
-          <table style="width:100%;border-collapse:collapse;font-size:.85rem">
-            <thead><tr><th style="text-align:left;color:#64748b;padding:4px 0;border-bottom:1px solid #1e293b">Mes</th><th style="text-align:right;color:#64748b;padding:4px 0;border-bottom:1px solid #1e293b">Leads</th></tr></thead>
-            <tbody style="color:#cbd5e1">${monthRows}</tbody>
-          </table>
-        </div>
-      </div>`;
+    const el = id => document.getElementById(id);
+    if (el('m-total')) el('m-total').textContent = m.total;
+    if (el('m-closed')) el('m-closed').textContent = m.closed;
+    if (el('m-conv')) el('m-conv').textContent = m.conversion + '%';
+    if (el('m-funnel')) el('m-funnel').innerHTML = tbl(
+      (m.funnel||[]).map(f=>`<tr><td>${esc(f.status)}</td><td style="text-align:right;font-weight:600">${f.count}</td></tr>`).join('')
+    );
+    if (el('m-rubros')) el('m-rubros').innerHTML = tbl(
+      (m.top_rubros||[]).map(f=>`<tr><td>${esc(f.name)}</td><td style="text-align:right;font-weight:600">${f.count}</td></tr>`).join('')
+    );
+    if (el('m-months')) el('m-months').innerHTML = tbl(
+      (m.by_month||[]).map(f=>`<tr><td>${esc(f.month)}</td><td style="text-align:right;font-weight:600">${f.count}</td></tr>`).join('')
+    );
+    if (el('m-cities')) el('m-cities').innerHTML = tbl(
+      (m.top_cities||[]).map(f=>`<tr><td>${esc(f.name)}</td><td style="text-align:right;font-weight:600">${f.count}</td></tr>`).join('')
+    );
+    if (el('metrics-date')) el('metrics-date').textContent = 'Actualizado: ' + new Date().toLocaleString('es-UY');
   } catch(e) {
-    panel.innerHTML = '<p style="color:#f87171;padding:24px">Error cargando métricas.</p>';
+    const p = document.getElementById('metrics-panel');
+    if (p) p.insertAdjacentHTML('afterbegin','<p style="color:#f87171;margin-bottom:16px">Error cargando métricas.</p>');
   }
 }
 </script>
@@ -2418,7 +2381,11 @@ def create_app(db_path: str) -> Flask:
 
     @app.route("/")
     def index():
-        return render_template_string(DASHBOARD_HTML)
+        from flask import make_response
+        resp = make_response(render_template_string(DASHBOARD_HTML))
+        resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        resp.headers["Pragma"] = "no-cache"
+        return resp
 
     worker = init_worker(db_path)
     worker.register("demo", demo_job_handler)
