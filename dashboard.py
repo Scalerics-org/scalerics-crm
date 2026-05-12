@@ -332,6 +332,16 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 @keyframes spin{to{transform:rotate(360deg)}}
 .cp-req-area{width:100%;background:#0a0f1a;border:1px solid #1e293b;border-radius:8px;color:#e2e8f0;font-size:.82rem;padding:10px;font-family:'Inter',sans-serif;resize:vertical;min-height:70px;margin-bottom:8px}
 .cp-req-area:focus{outline:none;border-color:#0088cc}
+.attach-drop{border:1.5px dashed #1e293b;border-radius:8px;padding:18px;text-align:center;color:#475569;font-size:.8rem;cursor:pointer;transition:border-color .15s,background .15s;margin-bottom:8px}
+.attach-drop.dragover{border-color:#0088cc;background:#0a1628}
+.attach-drop:hover{border-color:#334155}
+.attach-list{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.attach-item{display:flex;align-items:center;gap:8px;background:#0a0f1a;border:1px solid #1e293b;border-radius:6px;padding:7px 10px;font-size:.8rem}
+.attach-item-name{flex:1;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.attach-item-name a{color:#3b82f6;text-decoration:none}
+.attach-item-name a:hover{text-decoration:underline}
+.attach-del{background:none;border:none;color:#475569;cursor:pointer;font-size:.85rem;padding:0 2px;flex-shrink:0}
+.attach-del:hover{color:#f87171}
 
 /* ── Scrollbars ───────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar{width:5px;height:5px}
@@ -1606,17 +1616,20 @@ function closeClientPanel() {
 
 async function _cpLoadAll() {
   if (!_cpClientId) return;
-  const [leadRes, meetRes, budgetRes, demoRes, waRes] = await Promise.allSettled([
+  const [leadRes, meetRes, budgetRes, demoRes, attBudgetRes, attDemoRes] = await Promise.allSettled([
     fetch('/api/leads/' + _cpClientId).then(r => r.json()),
     fetch('/api/calendar/meetings/' + _cpClientId).then(r => r.json()),
     fetch('/api/leads/' + _cpClientId + '/budget').then(r => r.json()),
     fetch('/api/demo/status/' + _cpClientId).then(r => r.json()),
-    fetch('/api/wa/lead-by-phone/').then(() => null).catch(() => null),
+    fetch('/api/leads/' + _cpClientId + '/attachments?section=budget').then(r => r.json()),
+    fetch('/api/leads/' + _cpClientId + '/attachments?section=demo').then(r => r.json()),
   ]);
   _cpData.lead    = leadRes.status === 'fulfilled' ? leadRes.value : {};
   _cpData.meetings = meetRes.status === 'fulfilled' && Array.isArray(meetRes.value) ? meetRes.value : [];
   _cpData.budget  = budgetRes.status === 'fulfilled' ? budgetRes.value : null;
   _cpData.demo    = demoRes.status === 'fulfilled' ? demoRes.value : null;
+  _cpData.attBudget = attBudgetRes.status === 'fulfilled' && Array.isArray(attBudgetRes.value) ? attBudgetRes.value : [];
+  _cpData.attDemo   = attDemoRes.status === 'fulfilled' && Array.isArray(attDemoRes.value) ? attDemoRes.value : [];
 
   if (_cpData.lead && _cpData.lead.phone) {
     try {
@@ -1792,6 +1805,74 @@ function _cpGenerateBudgetFromMeeting(meetingId) {
   }
 }
 
+function _cpRenderAttachBox(section) {
+  const items = section === 'budget' ? (_cpData.attBudget||[]) : (_cpData.attDemo||[]);
+  const listHtml = items.length ? `<div class="attach-list">` + items.map(a => {
+    const href = a.has_file ? `/api/attachments/${a.id}/file` : (a.url||'#');
+    return `<div class="attach-item">
+      <span class="attach-item-name"><a href="${href}" target="_blank">${esc(a.name)}</a></span>
+      <button class="attach-del" title="Eliminar" onclick="_cpDeleteAttach(${a.id},'${section}')">✕</button>
+    </div>`;
+  }).join('') + `</div>` : '';
+  return `<div class="cp-section">
+    <div class="cp-section-title">Archivos y links</div>
+    <div class="attach-drop" id="attach-drop-${section}"
+         onclick="document.getElementById('attach-file-${section}').click()"
+         ondragover="event.preventDefault();this.classList.add('dragover')"
+         ondragleave="this.classList.remove('dragover')"
+         ondrop="_cpDropFile(event,'${section}')">
+      Arrastrá un archivo acá o hacé click para subir
+    </div>
+    <input type="file" id="attach-file-${section}" style="display:none" onchange="_cpUploadFile(this,'${section}')">
+    <div style="display:flex;gap:6px;margin-bottom:4px">
+      <input type="text" id="attach-link-${section}" placeholder="Pegar link (GitHub, Google Drive, etc.)"
+             style="flex:1;background:#0a0f1a;border:1px solid #1e293b;border-radius:6px;color:#e2e8f0;font-size:.8rem;padding:6px 10px">
+      <button class="cp-btn cp-btn-ghost" style="white-space:nowrap" onclick="_cpSaveLink('${section}')">Guardar link</button>
+    </div>
+    ${listHtml}
+  </div>`;
+}
+
+async function _cpUploadFile(input, section) {
+  const file = input.files[0]; if (!file) return;
+  const fd = new FormData(); fd.append('file', file);
+  const r = await fetch(`/api/leads/${_cpClientId}/attachments?section=${section}`, {method:'POST', body:fd});
+  if ((await r.json()).ok) { await _cpReloadAttach(section); _cpSwitchTab(_cpTab); }
+  input.value = '';
+}
+
+async function _cpDropFile(e, section) {
+  e.preventDefault();
+  document.getElementById('attach-drop-'+section).classList.remove('dragover');
+  const file = e.dataTransfer.files[0]; if (!file) return;
+  const fd = new FormData(); fd.append('file', file);
+  const r = await fetch(`/api/leads/${_cpClientId}/attachments?section=${section}`, {method:'POST', body:fd});
+  if ((await r.json()).ok) { await _cpReloadAttach(section); _cpSwitchTab(_cpTab); }
+}
+
+async function _cpSaveLink(section) {
+  const inp = document.getElementById('attach-link-'+section);
+  const url = (inp.value||'').trim(); if (!url) return;
+  const name = url.replace(/^https?:\/\//,'').split('/')[0];
+  const r = await fetch(`/api/leads/${_cpClientId}/attachments?section=${section}`, {
+    method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({url, name})
+  });
+  if ((await r.json()).ok) { inp.value=''; await _cpReloadAttach(section); _cpSwitchTab(_cpTab); }
+}
+
+async function _cpDeleteAttach(id, section) {
+  await fetch(`/api/attachments/${id}`, {method:'DELETE'});
+  await _cpReloadAttach(section);
+  _cpSwitchTab(_cpTab);
+}
+
+async function _cpReloadAttach(section) {
+  const r = await fetch(`/api/leads/${_cpClientId}/attachments?section=${section}`);
+  const data = await r.json();
+  if (section === 'budget') _cpData.attBudget = Array.isArray(data) ? data : [];
+  else _cpData.attDemo = Array.isArray(data) ? data : [];
+}
+
 function _cpRenderBudget() {
   const b = _cpData.budget;
   let budgetHtml = '';
@@ -1842,7 +1923,8 @@ function _cpRenderBudget() {
   <div class="cp-section">
     <div class="cp-section-title">Presupuesto ${b && b.status === 'sent' ? '<span class=\\"cp-badge cp-badge-sent\\">Enviado</span>' : b ? '<span class=\\"cp-badge cp-badge-draft\\">Borrador</span>' : ''}</div>
     ${budgetHtml}
-  </div>`;
+  </div>
+  ${_cpRenderAttachBox('budget')}`;
 }
 
 async function _cpSaveBudget() {
@@ -1896,7 +1978,8 @@ function _cpRenderDemo() {
         <button class="cp-btn cp-btn-ghost" onclick="navigator.clipboard.writeText('${d.url}').then(()=>alert('Link copiado'))">📋 Copiar link</button>
       </div>
       <div style="margin-top:10px;font-size:.75rem;color:#475569">La demo ya fue generada. Para regenerar contactá al administrador.</div>
-    </div>`;
+    </div>
+    ${_cpRenderAttachBox('demo')}`;
   }
   if (isGenerating) {
     return `<div class="cp-section">
@@ -1905,7 +1988,8 @@ function _cpRenderDemo() {
         <span class="cp-spinner"></span> Generando demo con IA...
       </div>
       <div style="font-size:.75rem;color:#475569;margin-top:6px">Puede tomar 1-2 minutos. Actualizá la página para ver el estado.</div>
-    </div>`;
+    </div>
+    ${_cpRenderAttachBox('demo')}`;
   }
   return `<div class="cp-section">
     <div class="cp-section-title">Demo</div>
@@ -1914,7 +1998,8 @@ function _cpRenderDemo() {
     <button class="cp-btn cp-btn-primary" onclick="closeClientPanel();openDemoModalFromCRM(${demoPayload})">
       📊 Generar demo
     </button>
-  </div>`;
+  </div>
+  ${_cpRenderAttachBox('demo')}`;
 }
 
 function _cpChangeStatus(val) {

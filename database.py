@@ -172,6 +172,20 @@ def init_db(db_path: str) -> None:
             )
         """)
 
+        # ── lead_attachments ──────────────────────────────────────────────────
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS lead_attachments (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                lead_id     INTEGER NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+                section     TEXT NOT NULL,
+                name        TEXT NOT NULL,
+                url         TEXT,
+                file_data   BLOB,
+                mime_type   TEXT,
+                created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
         conn.commit()
     finally:
         conn.close()
@@ -688,6 +702,55 @@ def increment_template_usage(db_path: str, template_id: int) -> None:
             "UPDATE pitch_templates SET usage_count = usage_count + 1, last_used_at = CURRENT_TIMESTAMP WHERE id = ?",
             (template_id,)
         )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+# ─── Attachments ─────────────────────────────────────────────────────────────
+
+def add_attachment(db_path: str, lead_id: int, section: str, name: str,
+                   url: str = None, file_data: bytes = None, mime_type: str = None) -> int:
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute(
+            "INSERT INTO lead_attachments (lead_id, section, name, url, file_data, mime_type) VALUES (?,?,?,?,?,?)",
+            (lead_id, section, name, url, file_data, mime_type)
+        )
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def get_attachments(db_path: str, lead_id: int, section: str) -> list:
+    conn = _connect(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT id, name, url, mime_type, created_at, (file_data IS NOT NULL) AS has_file "
+            "FROM lead_attachments WHERE lead_id=? AND section=? ORDER BY created_at",
+            (lead_id, section)
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_attachment_file(db_path: str, attach_id: int) -> Optional[dict]:
+    conn = _connect(db_path)
+    try:
+        row = conn.execute(
+            "SELECT name, file_data, mime_type FROM lead_attachments WHERE id=?", (attach_id,)
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def delete_attachment(db_path: str, attach_id: int) -> None:
+    conn = _connect(db_path)
+    try:
+        conn.execute("DELETE FROM lead_attachments WHERE id=?", (attach_id,))
         conn.commit()
     finally:
         conn.close()

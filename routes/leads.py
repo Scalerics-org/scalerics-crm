@@ -3,9 +3,11 @@
 import os
 import threading
 
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, Response, current_app, jsonify, request
 
-from database import get_all_businesses, update_business, delete_business, get_business, get_client_info, insert_business
+from database import (get_all_businesses, update_business, delete_business, get_business,
+                      get_client_info, insert_business,
+                      add_attachment, get_attachments, get_attachment_file, delete_attachment)
 from pitch_generator import generate_pitch
 
 leads_bp = Blueprint("leads", __name__)
@@ -161,3 +163,49 @@ def api_stats():
     })
 
 
+# ─── Attachments ─────────────────────────────────────────────────────────────
+
+@leads_bp.route("/api/leads/<int:biz_id>/attachments")
+def api_list_attachments(biz_id):
+    section = request.args.get("section", "budget")
+    return jsonify(get_attachments(_db(), biz_id, section))
+
+
+@leads_bp.route("/api/leads/<int:biz_id>/attachments", methods=["POST"])
+def api_add_attachment(biz_id):
+    section = request.args.get("section", "budget")
+    # Link upload (JSON)
+    if request.content_type and "application/json" in request.content_type:
+        data = request.get_json() or {}
+        name = (data.get("name") or data.get("url") or "Link").strip()
+        url = data.get("url", "").strip()
+        if not url:
+            return jsonify({"ok": False, "error": "url required"}), 400
+        attach_id = add_attachment(_db(), biz_id, section, name, url=url)
+        return jsonify({"ok": True, "id": attach_id}), 201
+    # File upload (multipart)
+    f = request.files.get("file")
+    if not f:
+        return jsonify({"ok": False, "error": "file or url required"}), 400
+    file_data = f.read()
+    mime_type = f.content_type or "application/octet-stream"
+    name = f.filename or "archivo"
+    attach_id = add_attachment(_db(), biz_id, section, name, file_data=file_data, mime_type=mime_type)
+    return jsonify({"ok": True, "id": attach_id}), 201
+
+
+@leads_bp.route("/api/attachments/<int:attach_id>/file")
+def api_attachment_file(attach_id):
+    row = get_attachment_file(_db(), attach_id)
+    if not row or not row["file_data"]:
+        return jsonify({"error": "not found"}), 404
+    mime = row["mime_type"] or "application/octet-stream"
+    resp = Response(row["file_data"], mimetype=mime)
+    resp.headers["Content-Disposition"] = f'inline; filename="{row["name"]}"'
+    return resp
+
+
+@leads_bp.route("/api/attachments/<int:attach_id>", methods=["DELETE"])
+def api_delete_attachment(attach_id):
+    delete_attachment(_db(), attach_id)
+    return jsonify({"ok": True})
