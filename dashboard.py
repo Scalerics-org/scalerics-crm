@@ -333,6 +333,11 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .cp-req-area{width:100%;background:#0a0f1a;border:1px solid #1e293b;border-radius:8px;color:#e2e8f0;font-size:.82rem;padding:10px;font-family:'Inter',sans-serif;resize:vertical;min-height:70px;margin-bottom:8px}
 .cp-req-area:focus{outline:none;border-color:#0088cc}
 
+/* ── Scrollbars ───────────────────────────────────────────────────────────── */
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#1e293b;border-radius:99px}
+::-webkit-scrollbar-thumb:hover{background:#334155}
 /* ── Kanban ───────────────────────────────────────────────────────────────── */
 .kanban-board{display:flex;gap:14px;overflow-x:auto;padding-bottom:20px;align-items:flex-start;min-height:calc(100vh - 180px)}
 .kanban-col{background:#111827;border:1px solid #1e293b;border-radius:12px;min-width:220px;width:220px;flex-shrink:0;display:flex;flex-direction:column;max-height:calc(100vh - 200px)}
@@ -389,7 +394,6 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
   <div class="nav-item" id="nav-wa" onclick="showPanel('wa')">💬 WhatsApp</div>
   <div class="nav-item" id="nav-cal" onclick="showPanel('cal')">📅 Calendario</div>
   <div class="sidebar-bottom">
-    <button class="run-btn" onclick="openPipelineModal()">▶ Correr pipeline</button>
     <button class="logout-btn" onclick="window.location.href='/logout'">Cerrar sesión</button>
   </div>
 </div>
@@ -421,7 +425,6 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
       <button class="filter-btn" data-crm="demo_generada">Demo generada</button>
       <button class="filter-btn" data-crm="reunion_hecha">Reunión hecha</button>
       <button class="filter-btn" data-crm="presupuesto_enviado">Presupuesto enviado</button>
-      <button class="filter-btn" data-crm="negociacion">Negociación</button>
       <button class="filter-btn" data-crm="cliente_cerrado">Cerrado</button>
       <button class="filter-btn" data-crm="en_desarrollo">En desarrollo</button>
       <button class="filter-btn" data-crm="finalizado">Finalizado</button>
@@ -766,7 +769,7 @@ async function loadLeads() {
       <div>${b.phone ? `<a class="phone-val" href="https://wa.me/${waNum(b.phone)}" target="_blank" title="Abrir WhatsApp">${esc(b.phone)}</a>` : '<span class="no-val">—</span>'}</div>
       <div class="actions">
         <select class="status-sel" onchange="setCrmStatus(${b.id},this.value)">
-          ${['sin_contactar','contactado','reunion_agendada','reunion_hecha','presupuesto_enviado','negociacion','cliente_cerrado','en_desarrollo','finalizado'].map(s=>`<option value="${s}"${crm===s?' selected':''}>${crmLabels[s]||s}</option>`).join('')}
+          ${['sin_contactar','contactado','reunion_agendada','reunion_hecha','presupuesto_enviado','cliente_cerrado','en_desarrollo','finalizado'].map(s=>`<option value="${s}"${crm===s?' selected':''}>${crmLabels[s]||s}</option>`).join('')}
         </select>
         ${b.pitch_text ? `<button class="pitch-btn" onclick="openPitchModal(${b.id},'${esc(b.name||'')}')">📋</button>` : ''}
         ${b.phone ? `<button class="pitch-btn" style="background:rgba(6,182,212,.15);border-color:rgba(6,182,212,.3);color:#06b6d4" onclick="openDemoModalFromCRM(${JSON.stringify({id:b.id,name:b.name||'',category:b.category||'',city:b.city||'',phone:b.phone||''})})">📊</button>` : ''}
@@ -1489,7 +1492,6 @@ const KANBAN_COLS = [
   {key:'reunion_agendada', label:'Reunión agendada'},
   {key:'reunion_hecha',  label:'Reunión hecha'},
   {key:'presupuesto_enviado', label:'Presupuesto enviado'},
-  {key:'negociacion',    label:'Negociación'},
   {key:'cliente_cerrado',label:'Cliente cerrado'},
 ];
 
