@@ -25,6 +25,7 @@ USER_AGENTS = [
 # Domains that are NOT a real business website (directories, social, delivery, etc.)
 _CATEGORY_BLOCKLIST = {
     "agregar sitio web", "agregar descripción", "agregar descripcion",
+    "agregar categoría", "agregar categoria",
     "agregar horario", "add website", "centro comercial", "e-commerce",
 }
 

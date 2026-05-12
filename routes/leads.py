@@ -12,19 +12,29 @@ leads_bp = Blueprint("leads", __name__)
 
 _CATEGORY_BLOCKLIST = {
     "agregar sitio web", "agregar descripción", "agregar descripcion",
+    "agregar categoría", "agregar categoria",
     "agregar horario", "add website", "centro comercial", "e-commerce",
 }
 
 _CATEGORY_MAP = {
-    "distribuidor de comestibles":      "Distribuidora",
-    "distribuidor de papel":            "Distribuidora",
-    "servicio de distribución":         "Distribuidora",
-    "mayorista":                        "Distribuidora",
-    "mayorista de confitería":          "Distribuidora",
-    "proveedor mayorista de alimentos": "Distribuidora",
-    "hairdresser":                      "Hair salon",
-    "constructor":                      "Construcción",
-    "bloquera":                         "Construcción",
+    # distribución
+    "distribuidor de comestibles":          "Distribuidora",
+    "distribuidor de papel":                "Distribuidora",
+    "servicio de distribución":             "Distribuidora",
+    "mayorista":                            "Distribuidora",
+    "mayorista de confitería":              "Distribuidora",
+    "proveedor mayorista de alimentos":     "Distribuidora",
+    # peluquería
+    "hairdresser":                          "Hair salon",
+    # construcción
+    "constructor":                          "Construcción",
+    "bloquera":                             "Construcción",
+    "empresa constructora":                 "Construcción",
+    "empresa de hormigonado":               "Construcción",
+    "proveedor de materiales de construcción": "Construcción",
+    "tienda de materiales de construcción": "Construcción",
+    # ferretería
+    "tienda de herramientas":               "Ferretería",
 }
 
 
