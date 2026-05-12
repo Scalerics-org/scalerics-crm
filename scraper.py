@@ -262,6 +262,13 @@ def scrape_google_maps(query: str, max_results: int, db_path: str, verify_web: b
 
                         data = extract_business_data(page)
 
+                        # No phone → impossible to contact, skip
+                        if not data.get("phone"):
+                            logger.info(f"Saltando (sin teléfono): {data['name']}")
+                            page.goto(maps_list_url, wait_until="domcontentloaded", timeout=30000)
+                            random_delay()
+                            break
+
                         # Maps shows a website link → business already has web, skip
                         if data.get("maps_website_url"):
                             logger.info(f"Saltando (web en Maps): {data['name']}")
