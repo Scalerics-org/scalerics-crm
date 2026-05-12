@@ -832,7 +832,9 @@ let pipelinePolling = null;
 let pitchMap = {};
 
 async function loadStats() {
+  try {
   const r = await fetch('/api/stats');
+  if (!r.ok) { document.getElementById('stat-total').textContent = 'ERR '+r.status; return; }
   const d = await r.json();
   document.getElementById('stat-total').textContent = d.total;
   document.getElementById('stat-pitch').textContent = d.with_pitch;
@@ -843,20 +845,24 @@ async function loadStats() {
   (d.categories || []).forEach(c => { sel.add(new Option(c, c)); });
   if (prev) sel.value = prev;
   document.getElementById('page-date').textContent = 'Actualizado: ' + new Date().toLocaleString('es-UY');
+  } catch(e) { document.getElementById('stat-total').textContent = 'JS:'+e.message; }
 }
 
 async function loadLeads() {
+  const body2 = document.getElementById('table-body');
+  try {
   const params = new URLSearchParams();
   if (currentCrm) params.set('crm_status', currentCrm);
   if (currentCategory) params.set('category', currentCategory);
   if (currentSearch) params.set('search', currentSearch);
   const r = await fetch('/api/leads?' + params);
+  if (!r.ok) { body2.innerHTML = `<div style="color:#f87171;padding:16px">API error ${r.status}</div>`; return; }
   const leads = await r.json();
-  if (!Array.isArray(leads)) return;
+  if (!Array.isArray(leads)) { body2.innerHTML = `<div style="color:#f87171;padding:16px">Respuesta inesperada: ${JSON.stringify(leads).slice(0,100)}</div>`; return; }
   _allLeads = leads;
   pitchMap = {};
   leads.forEach(b => { if (b.pitch_text) pitchMap[b.id] = b.pitch_text; });
-  const body = document.getElementById('table-body');
+  const body = body2;
   if (!leads.length) { body.innerHTML = '<div class="empty-state">No hay leads con estos filtros</div>'; return; }
   const crmLabels = {sin_contactar:'Sin contactar',contactado:'Contactado',reunion_agendada:'Reunión agendada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Presupuesto enviado',negociacion:'Negociación',cliente_cerrado:'Cliente cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado',agendo:'Agendó',firmo:'Firmó'};
   body.innerHTML = leads.map(b => {
@@ -873,6 +879,7 @@ async function loadLeads() {
         ${(!crm || crm === 'sin_contactar') ? `<button class="pitch-btn" onclick="markContacted(${b.id})">Contactar</button>` : `<span style="color:#3db648;font-size:.75rem">✓ ${crmLabels[crm]||crm}</span>`}
       </div>
     </div>`}).join('');
+  } catch(e) { document.getElementById('table-body').innerHTML = `<div style="color:#f87171;padding:16px">Error JS: ${e.message}</div>`; }
 }
 
 // ── Batch selection ─────────────────────────────────────────────────────────
