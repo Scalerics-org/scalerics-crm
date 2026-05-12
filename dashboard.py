@@ -930,7 +930,7 @@ function exportCSV() {
   const cols = ['id','name','phone','category','city','crm_status','rating','address','scraped_at'];
   const headers = ['ID','Nombre','Teléfono','Rubro','Ciudad','Estado CRM','Rating','Dirección','Fecha scrape'];
   const rows = [headers.join(',')];
-  for (const b of allLeads) {
+  for (const b of _allLeads) {
     const row = cols.map(k => {
       const v = b[k] == null ? '' : String(b[k]);
       return '"' + v.replace(/"/g, '""') + '"';
@@ -2207,6 +2207,76 @@ function _cpChangeStatus(val) {
     method: 'POST', headers: {'Content-Type':'application/json'},
     body: JSON.stringify({crm_status: val})
   }).then(() => { if (_cpData.lead) _cpData.lead.crm_status = val; });
+}
+
+async function loadMetrics() {
+  const panel = document.getElementById('panel-metrics');
+  if (!panel) return;
+  panel.innerHTML = '<p style="color:#64748b;padding:24px">Cargando métricas...</p>';
+  try {
+    const r = await fetch('/api/metrics');
+    const m = await r.json();
+    const funnelRows = (m.funnel || []).map(f =>
+      `<tr><td>${f.status}</td><td style="text-align:right;font-weight:600">${f.count}</td></tr>`
+    ).join('');
+    const rubroRows = (m.top_rubros || []).map(r =>
+      `<tr><td>${esc(r.name)}</td><td style="text-align:right;font-weight:600">${r.count}</td></tr>`
+    ).join('');
+    const cityRows = (m.top_cities || []).map(c =>
+      `<tr><td>${esc(c.name)}</td><td style="text-align:right;font-weight:600">${c.count}</td></tr>`
+    ).join('');
+    const monthRows = (m.by_month || []).map(b =>
+      `<tr><td>${b.month}</td><td style="text-align:right;font-weight:600">${b.count}</td></tr>`
+    ).join('');
+    panel.innerHTML = `
+      <h2 style="font-size:1.3rem;font-weight:700;color:#e2e8f0;margin-bottom:24px">📊 Métricas</h2>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:16px;margin-bottom:32px">
+        <div style="background:#0f172a;border:1px solid #1e293b;border-radius:10px;padding:20px;text-align:center">
+          <div style="font-size:2rem;font-weight:700;color:#38bdf8">${m.total}</div>
+          <div style="color:#64748b;font-size:.85rem;margin-top:4px">Total leads</div>
+        </div>
+        <div style="background:#0f172a;border:1px solid #1e293b;border-radius:10px;padding:20px;text-align:center">
+          <div style="font-size:2rem;font-weight:700;color:#4ade80">${m.closed}</div>
+          <div style="color:#64748b;font-size:.85rem;margin-top:4px">Clientes cerrados</div>
+        </div>
+        <div style="background:#0f172a;border:1px solid #1e293b;border-radius:10px;padding:20px;text-align:center">
+          <div style="font-size:2rem;font-weight:700;color:#f59e0b">${m.conversion}%</div>
+          <div style="color:#64748b;font-size:.85rem;margin-top:4px">Conversión global</div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:24px">
+        <div>
+          <h3 style="font-size:.95rem;font-weight:600;color:#94a3b8;margin-bottom:12px">Embudo CRM</h3>
+          <table style="width:100%;border-collapse:collapse;font-size:.85rem">
+            <thead><tr><th style="text-align:left;color:#64748b;padding:4px 0;border-bottom:1px solid #1e293b">Estado</th><th style="text-align:right;color:#64748b;padding:4px 0;border-bottom:1px solid #1e293b">Leads</th></tr></thead>
+            <tbody style="color:#cbd5e1">${funnelRows}</tbody>
+          </table>
+        </div>
+        <div>
+          <h3 style="font-size:.95rem;font-weight:600;color:#94a3b8;margin-bottom:12px">Top rubros</h3>
+          <table style="width:100%;border-collapse:collapse;font-size:.85rem">
+            <thead><tr><th style="text-align:left;color:#64748b;padding:4px 0;border-bottom:1px solid #1e293b">Rubro</th><th style="text-align:right;color:#64748b;padding:4px 0;border-bottom:1px solid #1e293b">Leads</th></tr></thead>
+            <tbody style="color:#cbd5e1">${rubroRows}</tbody>
+          </table>
+        </div>
+        <div>
+          <h3 style="font-size:.95rem;font-weight:600;color:#94a3b8;margin-bottom:12px">Top ciudades</h3>
+          <table style="width:100%;border-collapse:collapse;font-size:.85rem">
+            <thead><tr><th style="text-align:left;color:#64748b;padding:4px 0;border-bottom:1px solid #1e293b">Ciudad</th><th style="text-align:right;color:#64748b;padding:4px 0;border-bottom:1px solid #1e293b">Leads</th></tr></thead>
+            <tbody style="color:#cbd5e1">${cityRows}</tbody>
+          </table>
+        </div>
+        <div>
+          <h3 style="font-size:.95rem;font-weight:600;color:#94a3b8;margin-bottom:12px">Leads por mes</h3>
+          <table style="width:100%;border-collapse:collapse;font-size:.85rem">
+            <thead><tr><th style="text-align:left;color:#64748b;padding:4px 0;border-bottom:1px solid #1e293b">Mes</th><th style="text-align:right;color:#64748b;padding:4px 0;border-bottom:1px solid #1e293b">Leads</th></tr></thead>
+            <tbody style="color:#cbd5e1">${monthRows}</tbody>
+          </table>
+        </div>
+      </div>`;
+  } catch(e) {
+    panel.innerHTML = '<p style="color:#f87171;padding:24px">Error cargando métricas.</p>';
+  }
 }
 </script>
 
