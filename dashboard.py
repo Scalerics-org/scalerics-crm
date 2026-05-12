@@ -768,8 +768,7 @@ async function loadLeads() {
       </div>
       <div>${b.phone ? (hasWhatsApp(b.phone) ? `<a class="phone-val" href="https://wa.me/${waNum(b.phone)}${b.pitch_text ? '?text='+encodeURIComponent(b.pitch_text) : ''}" target="_blank" title="Abrir WhatsApp con pitch">${esc(b.phone)}</a>` : `<span class="phone-val">${esc(b.phone)}</span>`) : '<span class="no-val">—</span>'}</div>
       <div class="actions">
-        <button class="pitch-btn" onclick="openContact(${b.id},'${esc(b.name||'')}')">Contactar</button>
-        ${crm !== 'sin_contactar' && crm ? `<span style="color:#3db648;font-size:.75rem;margin-left:4px">✓ ${crmLabels[crm]||crm}</span>` : ''}
+        ${(!crm || crm === 'sin_contactar') ? `<button class="pitch-btn" onclick="markContacted(${b.id})">Contactar</button>` : `<span style="color:#3db648;font-size:.75rem">✓ ${crmLabels[crm]||crm}</span>`}
       </div>
     </div>`}).join('');
 }
@@ -821,6 +820,11 @@ async function confirmContact() {
 async function setCrmStatus(id, status) {
   await fetch(`/api/leads/${id}/crm-status`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({crm_status:status})});
   loadStats();
+}
+
+async function markContacted(id) {
+  await fetch(`/api/leads/${id}/crm-status`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({crm_status:'contactado'})});
+  loadStats(); loadLeads();
 }
 
 async function deleteLead(id, name) {
