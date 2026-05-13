@@ -61,60 +61,6 @@ button:hover{opacity:.9}
     <button type="submit">Entrar</button>
   </form>
 </div>
-  <!-- ======= METRICS PANEL ======= -->
-  <div id="metrics-panel" class="panel">
-    <div class="page-header">
-      <div>
-        <h1>Métricas</h1>
-        <div class="page-date" id="metrics-date"></div>
-      </div>
-      <button class="export-btn" onclick="loadMetrics()">↻ Actualizar</button>
-    </div>
-    <div class="metrics-grid" id="metrics-kpis">
-      <div class="stat-card"><div class="stat-label">Total leads</div><div class="stat-val" id="m-total">—</div></div>
-      <div class="stat-card"><div class="stat-label">Clientes cerrados</div><div class="stat-val green" id="m-closed">—</div></div>
-      <div class="stat-card"><div class="stat-label">Tasa de conversión</div><div class="stat-val blue" id="m-conv">—</div></div>
-    </div>
-    <div class="metrics-grid-2">
-      <div class="m-card">
-        <div class="m-card-title">Funnel CRM</div>
-        <div id="m-funnel"></div>
-      </div>
-      <div class="m-card">
-        <div class="m-card-title">Top rubros</div>
-        <div id="m-rubros"></div>
-      </div>
-    </div>
-    <div class="metrics-grid-2">
-      <div class="m-card">
-        <div class="m-card-title">Leads por mes</div>
-        <div id="m-months"></div>
-      </div>
-      <div class="m-card">
-        <div class="m-card-title">Top ciudades</div>
-        <div id="m-cities"></div>
-      </div>
-    </div>
-  </div>
-
-<div class="batch-bar" id="batch-bar">
-  <span class="batch-count" id="batch-count">0 seleccionados</span>
-  <select class="batch-sel" id="batch-status">
-    <option value="">— Cambiar estado —</option>
-    <option value="sin_contactar">Sin contactar</option>
-    <option value="contactado">Contactado</option>
-    <option value="reunion_agendada">Reunión agendada</option>
-    <option value="demo_generada">Demo generada</option>
-    <option value="reunion_hecha">Reunión hecha</option>
-    <option value="presupuesto_enviado">Presupuesto enviado</option>
-    <option value="negociacion">Negociación</option>
-    <option value="cliente_cerrado">Cliente cerrado</option>
-    <option value="en_desarrollo">En desarrollo</option>
-    <option value="finalizado">Finalizado</option>
-  </select>
-  <button class="batch-apply" onclick="applyBatch()">Aplicar</button>
-  <button class="batch-cancel" onclick="clearSelection()">Cancelar</button>
-</div>
 </body>
 </html>"""
 
