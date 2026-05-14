@@ -199,7 +199,9 @@ def api_metrics():
         "reunion_hecha", "presupuesto_enviado", "negociacion",
         "cliente_cerrado", "en_desarrollo", "finalizado",
     ]
-    crm_counts = Counter((b.get("crm_status") or "sin_contactar") for b in businesses)
+    _legacy = {"firmo": "cliente_cerrado", "agendo": "reunion_agendada"}
+    def _norm(s): return _legacy.get(s or "sin_contactar", s or "sin_contactar")
+    crm_counts = Counter(_norm(b.get("crm_status")) for b in businesses)
     funnel = [{"status": s, "count": crm_counts.get(s, 0)} for s in funnel_order]
 
     # Top rubros
@@ -226,7 +228,7 @@ def api_metrics():
 
     # Tasa de conversión global
     total = len(businesses)
-    closed = sum(1 for b in businesses if (b.get("crm_status") or "") in ("cliente_cerrado", "finalizado", "firmo"))
+    closed = sum(1 for b in businesses if _norm(b.get("crm_status")) in ("cliente_cerrado", "finalizado"))
     conversion = round(closed / total * 100, 1) if total else 0
 
     return jsonify({
