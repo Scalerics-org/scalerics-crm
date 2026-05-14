@@ -1286,7 +1286,6 @@ function openNewEventModal() {
   document.getElementById('ev-date').value = today;
   document.getElementById('ev-time').value = '10:00';
   document.getElementById('ev-duration').value = '60';
-  document.getElementById('ev-attendee').value = '';
   document.getElementById('ev-desc').value = '';
   document.getElementById('event-modal').classList.add('open');
 }
@@ -1298,12 +1297,11 @@ async function saveEvent() {
   const date = document.getElementById('ev-date').value;
   const time = document.getElementById('ev-time').value;
   const duration = parseInt(document.getElementById('ev-duration').value) || 60;
-  const attendee = document.getElementById('ev-attendee').value.trim();
   const desc = document.getElementById('ev-desc').value.trim();
   if (!title || !date || !time) { alert('Completá el título, fecha y hora'); return; }
   const btn = document.getElementById('ev-save-btn');
   btn.disabled = true; btn.textContent = '...';
-  const r = await fetch('/api/calendar/events', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({title,date,time,duration_min:duration,attendee_email:attendee,description:desc})});
+  const r = await fetch('/api/calendar/events', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({title,date,time,duration_min:duration,description:desc})});
   const d = await r.json();
   btn.disabled = false; btn.textContent = '📅 Crear reunión';
   if (!d.ok) { alert('Error: '+(d.error||'Error desconocido')); return; }
