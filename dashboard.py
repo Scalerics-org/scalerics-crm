@@ -211,6 +211,7 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .conv-big{font-size:2.6rem;font-weight:800;color:#4ade80;line-height:1}
 .conv-sub{font-size:.75rem;color:#475569;margin-top:6px}
 .delete-btn:hover{background:#7f1d1d;color:#fff}
+.copy-pitch-btn{background:none;border:none;cursor:pointer;font-size:.85rem;padding:2px 4px;border-radius:4px;opacity:.6;transition:opacity .15s}.copy-pitch-btn:hover{opacity:1}
 .pipeline-input-row{display:flex;gap:10px;margin-bottom:12px}
 .pipeline-input{flex:1;background:#0f1117;border:1px solid #1e293b;border-radius:8px;padding:10px 14px;font-size:.88rem;color:#e2e8f0;font-family:'Inter',sans-serif;outline:none}
 .pipeline-input::placeholder{color:#334155}
@@ -856,7 +857,7 @@ async function loadLeads() {
         <div class="biz-name" style="cursor:pointer;text-decoration:underline;text-decoration-color:#334155" onclick="openClientPanel(${b.id})">${esc(b.name||'')}</div>
         <div class="biz-sub">${esc(b.category||'')}${b.city ? ' · '+esc(b.city) : ''}${b.last_event_at ? ' · <span style="color:#60a5fa">'+timeAgo(b.last_event_at)+'</span>' : ''}</div>
       </div>
-      <div>${b.phone ? (hasWhatsApp(b.phone) ? `<a class="phone-val" href="https://wa.me/${waNum(b.phone)}${b.pitch_text ? '?text='+encodeURIComponent(b.pitch_text) : ''}" target="_blank" title="Abrir WhatsApp con pitch">${esc(b.phone)}</a>` : `<span class="phone-val">${esc(b.phone)}</span>`) : '<span class="no-val">—</span>'}</div>
+      <div style="display:flex;align-items:center;gap:6px">${b.phone ? (hasWhatsApp(b.phone) ? `<a class="phone-val" href="https://wa.me/${waNum(b.phone)}" target="_blank" title="Abrir WhatsApp">${esc(b.phone)}</a>` : `<span class="phone-val">${esc(b.phone)}</span>`) : '<span class="no-val">—</span>'}${b.pitch_text ? `<button class="copy-pitch-btn" onclick="copyPitch(${b.id},event)" title="Copiar pitch">📋</button>` : ''}</div>
       <div class="actions">
         ${(!crm || crm === 'sin_contactar') ? `<button class="pitch-btn" onclick="markContacted(${b.id})">Contactar</button>` : `<span style="color:#3db648;font-size:.75rem">✓ ${crmLabels[crm]||crm}</span>`}
       </div>
@@ -958,6 +959,17 @@ function hasWhatsApp(phone) {
   // Uruguay mobile: starts with 09 (raw) or 9 after stripping leading 0
   const local = n.startsWith('598') ? n.slice(3) : (n.startsWith('0') ? n.slice(1) : n);
   return local.startsWith('9');
+}
+
+async function copyPitch(id, ev) {
+  const btn = ev.currentTarget;
+  try {
+    const r = await fetch('/api/leads/'+id);
+    const b = await r.json();
+    await navigator.clipboard.writeText(b.pitch_text||'');
+    btn.textContent = '✅';
+    setTimeout(()=>{ btn.textContent = '📋'; }, 1500);
+  } catch(e) { btn.textContent = '❌'; setTimeout(()=>{ btn.textContent = '📋'; }, 1500); }
 }
 
 function openPitchModal(id, name) {
