@@ -154,6 +154,8 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .biz-sub{font-size:.7rem;color:#475569;margin-top:2px}
 .phone-val{font-size:.8rem;color:#4ade80;font-family:monospace;text-decoration:none}
 .phone-val:hover{color:#86efac;text-decoration:underline}
+.phone-plain{font-size:.8rem;color:#64748b;font-family:monospace}
+.call-btn{border:1px solid #1e293b;background:none;color:#64748b;padding:2px 7px;border-radius:5px;font-size:.72rem;cursor:pointer;text-decoration:none;font-family:'Inter',sans-serif;transition:all .15s}.call-btn:hover{border-color:#334155;color:#94a3b8}
 .no-val{font-size:.75rem;color:#1e293b}
 .email-val{font-size:.76rem;color:#94a3b8;word-break:break-all}
 .dot{width:5px;height:5px;border-radius:50%;display:inline-block}
@@ -857,7 +859,7 @@ async function loadLeads() {
         <div class="biz-name" style="cursor:pointer;text-decoration:underline;text-decoration-color:#334155" onclick="openClientPanel(${b.id})">${esc(b.name||'')}</div>
         <div class="biz-sub">${esc(b.category||'')}${b.city ? ' · '+esc(b.city) : ''}${b.last_event_at ? ' · <span style="color:#60a5fa">'+timeAgo(b.last_event_at)+'</span>' : ''}</div>
       </div>
-      <div style="display:flex;align-items:center;gap:6px">${b.phone ? (hasWhatsApp(b.phone) ? `<a class="phone-val" href="https://wa.me/${waNum(b.phone)}" target="_blank" title="Abrir WhatsApp">${esc(b.phone)}</a>` : `<span class="phone-val">${esc(b.phone)}</span>`) : '<span class="no-val">—</span>'}${b.pitch_text ? `<button class="copy-pitch-btn" onclick="copyPitch(${b.id},event)" title="Copiar pitch">📋</button>` : ''}</div>
+      <div style="display:flex;align-items:center;gap:6px">${b.phone ? (hasWhatsApp(b.phone) ? `<a class="phone-val" href="https://wa.me/${waNum(b.phone)}${b.pitch_text ? '?text='+encodeURIComponent(b.pitch_text) : ''}" target="_blank" title="Abrir WhatsApp">${esc(b.phone)}</a>` : `<span class="phone-plain">${esc(b.phone)}</span>`) : '<span class="no-val">—</span>'}${b.phone ? `<a class="call-btn" href="tel:${esc(b.phone)}" title="Llamar">📞</a>` : ''}${b.pitch_text ? `<button class="copy-pitch-btn" onclick="copyPitch(${b.id},event)" title="Copiar pitch">📋</button>` : ''}</div>
       <div class="actions">
         ${(!crm || crm === 'sin_contactar') ? `<button class="pitch-btn" onclick="markContacted(${b.id})">Contactar</button>` : `<span style="color:#3db648;font-size:.75rem">✓ ${crmLabels[crm]||crm}</span>`}
       </div>
