@@ -283,6 +283,13 @@ def scrape_google_maps(query: str, max_results: int, db_path: str, verify_web: b
                                 any(kw in data["category"].strip().lower() for kw in _CATEGORY_BLOCKLIST_KEYWORDS)):
                             data["category"] = default_category
 
+                        # Zero reviews → likely ghost listing or inactive, skip
+                        if not data.get("review_count"):
+                            logger.info(f"Saltando (sin reseñas): {data['name']}")
+                            page.goto(maps_list_url, wait_until="domcontentloaded", timeout=30000)
+                            random_delay()
+                            break
+
                         # No phone → impossible to contact, skip
                         if not data.get("phone"):
                             logger.info(f"Saltando (sin teléfono): {data['name']}")

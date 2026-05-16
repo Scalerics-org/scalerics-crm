@@ -862,6 +862,7 @@ async function loadLeads() {
       <div style="display:flex;align-items:center;gap:6px">${b.phone ? (hasWhatsApp(b.phone) ? `<a class="phone-val" href="https://wa.me/${waNum(b.phone)}${b.pitch_text ? '?text='+encodeURIComponent(b.pitch_text) : ''}" target="_blank" title="Abrir WhatsApp">${esc(b.phone)}</a>` : `<span class="phone-plain">${esc(b.phone)}</span>`) : '<span class="no-val">—</span>'}${b.phone ? `<a class="call-btn" href="tel:${esc(b.phone)}" title="Llamar">📞</a>` : ''}${b.pitch_text ? `<button class="copy-pitch-btn" onclick="copyPitch(${b.id},event)" title="Copiar pitch">📋</button>` : ''}</div>
       <div class="actions">
         ${(!crm || crm === 'sin_contactar') ? `<button class="pitch-btn" onclick="markContacted(${b.id})">Contactar</button>` : `<span style="color:#3db648;font-size:.75rem">✓ ${crmLabels[crm]||crm}</span>`}
+        <button class="delete-btn" onclick="deleteLead(${b.id},event)" title="Borrar lead">🗑</button>
       </div>
     </div>`}).join('');
   } catch(e) { document.getElementById('table-body').innerHTML = `<div style="color:#f87171;padding:16px">Error JS: ${e.message}</div>`; }
@@ -1005,6 +1006,13 @@ async function confirmContact() {
 async function setCrmStatus(id, status) {
   await fetch(`/api/leads/${id}/crm-status`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({crm_status:status})});
   loadStats();
+}
+
+async function deleteLead(id, ev) {
+  if (!confirm('¿Borrar este lead? No se puede deshacer.')) return;
+  ev.stopPropagation();
+  await fetch(`/api/leads/${id}`, {method:'DELETE'});
+  loadStats(); loadLeads();
 }
 
 async function markContacted(id) {
