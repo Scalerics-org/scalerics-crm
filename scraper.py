@@ -105,6 +105,11 @@ def verify_no_website(name: str, city: str, page) -> bool:
         logger.debug(f"Error en verificación Bing para {name}: {e}")
         return True
 
+def is_permanently_closed(page) -> bool:
+    """Returns True if Google Maps shows the business as permanently closed."""
+    content = (page.content() or "").lower()
+    return "permanentemente cerrado" in content or "permanently closed" in content
+
 def extract_business_data(page) -> dict:
     name = extract_text(page, "h1.DUwDvf")
     category = extract_text(page, ".DkEaL")
@@ -263,6 +268,13 @@ def scrape_google_maps(query: str, max_results: int, db_path: str, verify_web: b
                         page.goto(href, wait_until="domcontentloaded", timeout=15000)
                         page.wait_for_selector("h1.DUwDvf", timeout=10000)
                         random_delay()
+
+                        # Permanently closed → no point contacting them
+                        if is_permanently_closed(page):
+                            logger.info(f"Saltando (cerrado permanentemente): {extract_text(page, 'h1.DUwDvf')}")
+                            page.goto(maps_list_url, wait_until="domcontentloaded", timeout=30000)
+                            random_delay()
+                            break
 
                         data = extract_business_data(page)
 
