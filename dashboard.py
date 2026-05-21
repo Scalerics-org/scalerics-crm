@@ -13,6 +13,7 @@ from routes.wa import wa_bp
 from routes.pipeline import pipeline_bp
 from routes.tasks import tasks_bp
 from routes.budgets import budgets_bp
+from routes.tokens import tokens_bp
 from services.demo_service import demo_job_handler
 from services.job_service import init_worker
 
@@ -288,6 +289,8 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .cal-event-chip.meet{background:#1a2e1e;color:#4ade80}
 .cal-demo-btn{display:block;width:100%;text-align:left;background:rgba(6,182,212,.12);border:1px solid rgba(6,182,212,.25);color:#06B6D4;border-radius:3px;padding:1px 5px;font-size:.5rem;font-weight:700;letter-spacing:.03em;cursor:pointer;margin-top:2px;line-height:1.6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cal-demo-btn:hover{background:rgba(6,182,212,.25)}
+.cal-del-btn{display:block;width:100%;text-align:left;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.2);color:#f87171;border-radius:3px;padding:1px 5px;font-size:.5rem;font-weight:700;letter-spacing:.03em;cursor:pointer;margin-top:2px;line-height:1.6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cal-del-btn:hover{background:rgba(239,68,68,.25)}
 .cal-loading{padding:40px;text-align:center;color:#334155;font-size:.9rem}
 .cal-error{padding:16px;background:#2a1515;border:1px solid #7f1d1d;border-radius:8px;color:#f87171;font-size:.82rem;margin-bottom:16px}
 
@@ -399,6 +402,18 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .kanban-card-rating{font-size:.68rem;color:#fbbf24}
 .kanban-empty{color:#334155;font-size:.78rem;text-align:center;padding:20px 10px}
 
+/* ── Token health panel ───────────────────────────────────────────────────── */
+.token-health{margin-bottom:20px}
+.token-health-title{font-size:.7rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.7px;margin-bottom:10px}
+.token-cards{display:flex;gap:10px;flex-wrap:wrap}
+.token-card{background:#111827;border:1px solid #1e293b;border-radius:10px;padding:12px 16px;min-width:140px;flex:1}
+.token-card-name{font-size:.75rem;font-weight:600;color:#94a3b8;margin-bottom:4px}
+.token-card-label{font-size:.85rem;font-weight:700}
+.token-card.ok .token-card-label{color:#4ade80}
+.token-card.warning .token-card-label{color:#fbbf24}
+.token-card.danger .token-card-label{color:#f87171}
+.token-card.permanent .token-card-label{color:#60a5fa}
+.token-card.unknown .token-card-label{color:#475569}
 /* ── Tasks panel ──────────────────────────────────────────────────────────── */
 .tasks-filters{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
 .task-row{background:#111827;border:1px solid #1e293b;border-radius:10px;padding:14px 16px;margin-bottom:8px;display:flex;align-items:flex-start;gap:12px;transition:border-color .15s}
@@ -544,6 +559,10 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
       <button class="filter-btn" data-tfilter="todo" onclick="filterTasks('todo',this)">Pendientes</button>
       <button class="filter-btn" data-tfilter="in_progress" onclick="filterTasks('in_progress',this)">En progreso</button>
       <button class="filter-btn" data-tfilter="done" onclick="filterTasks('done',this)">Hechas</button>
+    </div>
+    <div id="token-health" class="token-health" style="display:none">
+      <div class="token-health-title">Estado del sistema</div>
+      <div class="token-cards" id="token-cards"></div>
     </div>
     <div id="tasks-list"></div>
   </div>
@@ -1283,6 +1302,7 @@ async function renderCalendar() {
             return `<div class="cal-event-chip ${ev.meeting_url?'meet':'regular'}" title="${esc((ev.time?ev.time+' ':'')+ev.title)}">
               ${ev.time?esc(ev.time)+' ':''}${ev.meeting_url?'🎥 ':''}${esc(ev.title||'')}
               <button class="cal-demo-btn" onclick="event.stopPropagation();openDemoModal('${ph||''}','${esc(ev.title||'')}','${nm||''}')">📊 Generar Demo</button>
+              <button class="cal-del-btn" onclick="event.stopPropagation();deleteCalEvent('${ev.id}','${esc(ev.title||'')}')">🗑 Borrar</button>
             </div>`;
           }).join('')}
         </div>`
@@ -1301,6 +1321,14 @@ function openNewEventModal() {
 }
 function closeNewEventModal() { document.getElementById('event-modal').classList.remove('open'); }
 document.getElementById('event-modal').addEventListener('click', e => { if(e.target===e.currentTarget) closeNewEventModal(); });
+
+async function deleteCalEvent(eventId, title) {
+  if (!confirm('¿Borrar "' + title + '" del calendario?')) return;
+  const r = await fetch('/api/calendar/events/' + encodeURIComponent(eventId), { method: 'DELETE' });
+  const d = await r.json();
+  if (d.ok) { renderCalendar(); }
+  else { alert('Error al borrar: ' + (d.error || 'desconocido')); }
+}
 
 async function saveEvent() {
   const title = document.getElementById('ev-title').value.trim();
@@ -1526,8 +1554,25 @@ let _allTasks = [];
 let _allLeads = [];
 let _taskStatusFilter = 'all';
 
+async function loadTokenHealth() {
+  try {
+    const tokens = await fetch('/api/tokens/status').then(r => r.json());
+    const container = document.getElementById('token-cards');
+    const panel = document.getElementById('token-health');
+    if (!container || !panel) return;
+    container.innerHTML = tokens.map(t =>
+      `<div class="token-card ${t.status}">
+        <div class="token-card-name">${t.name}</div>
+        <div class="token-card-label">${t.label}</div>
+      </div>`
+    ).join('');
+    panel.style.display = 'block';
+  } catch { /* silencioso */ }
+}
+
 async function loadTasks() {
   try {
+    loadTokenHealth();
     const [tr, lr] = await Promise.all([
       fetch('/api/tasks').then(r => r.json()),
       fetch('/api/leads').then(r => r.json()),
@@ -1936,7 +1981,10 @@ function _cpRenderMeetings() {
   meets.forEach(m => {
     const hasSummary = m.summary || m.requirements;
     html += `<div class="cp-meeting-card" id="meet-card-${m.id}">
-      <div class="cp-meeting-title">${m.title || 'Reunión'}</div>
+      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+        <div class="cp-meeting-title">${m.title || 'Reunión'}</div>
+        <button class="cp-btn cp-btn-ghost" style="color:#ef4444;font-size:.8rem;padding:2px 8px" onclick="_cpDeleteMeeting(${m.id})">Borrar</button>
+      </div>
       <div class="cp-meeting-meta">${m.start_at ? m.start_at.substring(0,16).replace('T',' ') : ''} · ${_cpMeetStatus(m.status)}</div>
       ${m.meet_link ? `<a class="cp-meeting-link" href="${m.meet_link}" target="_blank">🔗 ${m.meet_link}</a>` : ''}
       ${hasSummary ? `
@@ -1965,6 +2013,18 @@ function _cpMeetStatus(s) {
 }
 
 function _cpBindMeetings() {}
+
+async function _cpDeleteMeeting(meetingId) {
+  if (!confirm('¿Borrar esta reunión? También se cancela el evento en Google Calendar.')) return;
+  const r = await fetch('/api/calendar/meetings/' + meetingId, { method: 'DELETE' });
+  const data = await r.json();
+  if (data.ok) {
+    _cpData.meetings = (_cpData.meetings || []).filter(m => m.id !== meetingId);
+    document.getElementById('cp-tab-meetings').innerHTML = _cpRenderMeetings();
+  } else {
+    alert('Error al borrar: ' + (data.error || 'desconocido'));
+  }
+}
 
 async function _cpSummarize(meetingId) {
   const textarea = document.getElementById('transcript-' + meetingId);
@@ -2331,7 +2391,7 @@ def create_app(db_path: str) -> Flask:
     app.config["PIPELINE_STATUS"] = _pipeline_status
     app.config["PIPELINE_LOCK"] = _pipeline_lock
 
-    for bp in (leads_bp, demos_bp, calendar_bp, wa_bp, pipeline_bp, tasks_bp, budgets_bp):
+    for bp in (leads_bp, demos_bp, calendar_bp, wa_bp, pipeline_bp, tasks_bp, budgets_bp, tokens_bp):
         app.register_blueprint(bp)
 
     @app.before_request
