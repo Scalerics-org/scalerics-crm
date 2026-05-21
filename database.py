@@ -197,6 +197,7 @@ def init_db(db_path: str) -> None:
             )
         """)
         _add_column(conn, "businesses", "last_event_at", "TIMESTAMP")
+        _add_column(conn, "businesses", "score", "INTEGER")
 
         conn.commit()
     finally:
@@ -210,7 +211,7 @@ ALLOWED_COLUMNS = {
     "review_count", "hours", "maps_url", "facebook_url", "instagram_url",
     "color_scheme", "demo_html_path", "demo_url", "status", "error_message",
     "scraped_at", "notes", "pitch_text", "crm_status",
-    "has_whatsapp", "last_event_at",
+    "has_whatsapp", "last_event_at", "score",
 }
 
 
@@ -221,10 +222,10 @@ def insert_business(db_path: str, data: dict) -> Optional[int]:
             INSERT OR IGNORE INTO businesses
             (name, category, address, city, phone, rating, review_count,
              hours, maps_url, facebook_url, instagram_url,
-             color_scheme, demo_html_path, demo_url, status, has_whatsapp)
+             color_scheme, demo_html_path, demo_url, status, has_whatsapp, score)
             VALUES (:name, :category, :address, :city, :phone, :rating,
                     :review_count, :hours, :maps_url, :facebook_url, :instagram_url,
-                    :color_scheme, :demo_html_path, :demo_url, 'scraped', :has_whatsapp)
+                    :color_scheme, :demo_html_path, :demo_url, 'scraped', :has_whatsapp, :score)
         """, {
             "name": data.get("name"),
             "category": data.get("category"),
@@ -241,6 +242,7 @@ def insert_business(db_path: str, data: dict) -> Optional[int]:
             "demo_html_path": data.get("demo_html_path"),
             "demo_url": data.get("demo_url"),
             "has_whatsapp": data.get("has_whatsapp"),
+            "score": data.get("score"),
         })
         conn.commit()
         return cursor.lastrowid if cursor.rowcount > 0 else None
@@ -278,7 +280,7 @@ def get_businesses_by_status(db_path: str, status: str) -> list[dict]:
 def get_all_businesses(db_path: str) -> list[dict]:
     conn = _connect(db_path)
     try:
-        cursor = conn.execute("SELECT * FROM businesses ORDER BY scraped_at DESC")
+        cursor = conn.execute("SELECT * FROM businesses ORDER BY CASE WHEN score IS NULL THEN 1 ELSE 0 END, score DESC, scraped_at DESC")
         return [dict(row) for row in cursor.fetchall()]
     finally:
         conn.close()
@@ -518,6 +520,15 @@ def get_meeting(db_path: str, meeting_id: int) -> Optional[dict]:
         cursor = conn.execute("SELECT * FROM meetings WHERE id = ?", (meeting_id,))
         row = cursor.fetchone()
         return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def delete_meeting(db_path: str, meeting_id: int) -> None:
+    conn = _connect(db_path)
+    try:
+        conn.execute("DELETE FROM meetings WHERE id = ?", (meeting_id,))
+        conn.commit()
     finally:
         conn.close()
 
