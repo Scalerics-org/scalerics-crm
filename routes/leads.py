@@ -4,6 +4,7 @@ import os
 import threading
 
 from flask import Blueprint, Response, current_app, jsonify, request
+from werkzeug.utils import secure_filename
 
 from database import (get_all_businesses, update_business, delete_business, get_business,
                       get_client_info, insert_business,
@@ -270,7 +271,7 @@ def api_add_attachment(biz_id):
     if len(file_data) > 10 * 1024 * 1024:
         return jsonify({"ok": False, "error": "Archivo demasiado grande (máx 10 MB)"}), 413
     mime_type = f.content_type or "application/octet-stream"
-    name = f.filename or "archivo"
+    name = secure_filename(f.filename) or "archivo"
     attach_id = add_attachment(_db(), biz_id, section, name, file_data=file_data, mime_type=mime_type)
     return jsonify({"ok": True, "id": attach_id}), 201
 
