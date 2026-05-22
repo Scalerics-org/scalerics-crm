@@ -1,4 +1,5 @@
 import os
+import secrets
 import threading
 import webbrowser
 
@@ -2418,7 +2419,7 @@ def create_app(db_path: str) -> Flask:
             if not expected:
                 session["logged_in"] = True
                 return redirect(url_for("index"))
-            if password == expected:
+            if expected and secrets.compare_digest(password, expected):
                 session["logged_in"] = True
                 return redirect(url_for("index"))
             error = "Contraseña incorrecta"
