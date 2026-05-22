@@ -196,7 +196,8 @@ def api_generate_budget(client_id):
         )
         budget_data = json.loads(_clean_json(msg.content[0].text.strip()))
     except Exception as e:
-        return jsonify({"ok": False, "error": f"Error generando presupuesto: {e}"}), 500
+        logger.error("Error generando presupuesto cliente %s: %s", client_id, e, exc_info=True)
+        return jsonify({"ok": False, "error": "Error generando presupuesto. Intentá de nuevo."}), 500
 
     sections_json = json.dumps(budget_data.get("sections", []), ensure_ascii=False)
     try:
