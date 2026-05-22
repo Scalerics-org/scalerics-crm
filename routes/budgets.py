@@ -155,13 +155,15 @@ def api_get_budget(client_id):
     if budget.get("items") and isinstance(budget["items"], str):
         try:
             budget["items"] = json.loads(budget["items"])
-        except Exception:
-            budget["items"] = []
+        except Exception as e:
+            logger.error("Error leyendo items del presupuesto %s: %s", budget.get("id"), e, exc_info=True)
+            return jsonify({"ok": False, "error": "Error leyendo datos del presupuesto. Intentá de nuevo."}), 400
     if budget.get("notes") and isinstance(budget["notes"], str):
         try:
             budget["notes"] = json.loads(budget["notes"])
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error("Error leyendo notas del presupuesto %s: %s", budget.get("id"), e, exc_info=True)
+            return jsonify({"ok": False, "error": "Error leyendo datos del presupuesto. Intentá de nuevo."}), 400
     return jsonify(budget)
 
 
