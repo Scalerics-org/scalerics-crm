@@ -155,8 +155,12 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 
 .table-row:hover{background:#1a2234}
 .table-row:last-child{border-bottom:none}
-.biz-name{font-weight:600;font-size:.88rem;color:#e2e8f0}
+.biz-name{font-weight:600;font-size:.88rem;color:#e2e8f0;display:flex;align-items:center;gap:7px}
 .biz-sub{font-size:.7rem;color:#475569;margin-top:2px}
+.score-badge{display:inline-flex;align-items:center;gap:3px;font-size:.62rem;font-weight:700;padding:1px 6px;border-radius:4px;letter-spacing:.02em;flex-shrink:0}
+.score-hot{background:rgba(16,185,129,.15);color:#34d399;border:1px solid rgba(16,185,129,.25)}
+.score-mid{background:rgba(0,136,204,.12);color:#60a5fa;border:1px solid rgba(0,136,204,.22)}
+.score-low{background:rgba(100,116,139,.1);color:#64748b;border:1px solid rgba(100,116,139,.18)}
 .phone-val{font-size:.8rem;color:#4ade80;font-family:monospace;text-decoration:none}
 .phone-val:hover{color:#86efac;text-decoration:underline}
 .phone-plain{font-size:.8rem;color:#64748b;font-family:monospace}
@@ -919,7 +923,7 @@ async function loadLeads() {
     <div class="table-row row-${crm}">
       <div class="cb-col"><input type="checkbox" class="cb row-cb" data-id="${b.id}" onchange="toggleSelect(${b.id},this.checked)"></div>
       <div>
-        <div class="biz-name" style="cursor:pointer;text-decoration:underline;text-decoration-color:#334155" onclick="openClientPanel(${b.id})">${esc(b.name||'')}</div>
+        <div class="biz-name"><span style="cursor:pointer;text-decoration:underline;text-decoration-color:#334155" onclick="openClientPanel(${b.id})">${esc(b.name||'')}</span>${b.score != null ? `<span class="score-badge ${b.score>=60?'score-hot':b.score>=30?'score-mid':'score-low'}">⚡${b.score}</span>` : ''}</div>
         <div class="biz-sub">${esc(b.category||'')}${b.city ? ' · '+esc(b.city) : ''}${b.last_event_at ? ' · <span style="color:#60a5fa">'+timeAgo(b.last_event_at)+'</span>' : ''}</div>
       </div>
       <div style="display:flex;align-items:center;gap:6px">${b.phone ? (hasWhatsApp(b.phone) ? `<a class="phone-val" href="https://wa.me/${waNum(b.phone)}${b.pitch_text ? '?text='+encodeURIComponent(b.pitch_text) : ''}" target="_blank" title="Abrir WhatsApp">${esc(b.phone)}</a>` : `<span class="phone-plain">${esc(b.phone)}</span>`) : '<span class="no-val">—</span>'}${b.phone ? `<a class="call-btn" href="tel:${esc(b.phone)}" title="Llamar">📞</a>` : ''}${b.pitch_text ? `<button class="copy-pitch-btn" onclick="copyPitch(${b.id},event)" title="Copiar pitch">📋</button>` : ''}</div>
