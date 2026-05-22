@@ -156,7 +156,7 @@ Botón WhatsApp verde: href="https://wa.me/{wa_number}"
 Email: hola@scalerics.com | Tagline: "Scalerics — Tu negocio, online."
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Respondé ÚNICAMENTE con el HTML completo. Sin explicaciones. Sin markdown. Sin bloques de código. Empezá directamente con <!DOCTYPE html> y terminá con </html>."""
+Si necesitás más información para hacer la mejor demo posible (colores, productos, fotos, estilo preferido, etc.), hacé las preguntas antes de generar. Si tenés suficiente contexto, generá el HTML directamente sin pedir confirmación."""
 
 # ---------------------------------------------------------------------------
 # Fixed HTML shell — navigation, CSS, progress bar all pre-written
