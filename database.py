@@ -198,6 +198,7 @@ def init_db(db_path: str) -> None:
         """)
         _add_column(conn, "businesses", "last_event_at", "TIMESTAMP")
         _add_column(conn, "businesses", "score", "INTEGER")
+        _add_column(conn, "meetings", "recall_bot_id", "TEXT")
 
         conn.execute("""
             CREATE TABLE IF NOT EXISTS wa_templates (
@@ -496,7 +497,7 @@ def get_job(db_path: str, job_id: int) -> Optional[dict]:
 
 _MEETING_COLUMNS = {
     "calendar_event_id", "title", "start_at", "end_at", "meet_link",
-    "status", "transcript", "summary", "requirements",
+    "status", "transcript", "summary", "requirements", "recall_bot_id",
 }
 
 

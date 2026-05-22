@@ -74,6 +74,26 @@ def _get_calendar_service():
     return build("calendar", "v3", credentials=creds), None
 
 
+def _create_recall_bot(meet_url: str) -> str | None:
+    import os, requests
+    api_key = os.environ.get("RECALL_API_KEY", "")
+    if not api_key or not meet_url:
+        return None
+    try:
+        r = requests.post(
+            "https://us-east-1.recall.ai/api/v1/bot/",
+            headers={"Authorization": f"Token {api_key}", "Content-Type": "application/json"},
+            json={"meeting_url": meet_url, "bot_name": "Scalerics Bot"},
+            timeout=10,
+        )
+        r.raise_for_status()
+        return r.json().get("id")
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Recall bot creation failed: {e}")
+        return None
+
+
 def _get_drive_service():
     try:
         from googleapiclient.discovery import build
@@ -196,6 +216,8 @@ def api_calendar_events():
         meet_url = created.get("hangoutLink", "")
         cal_event_id = created.get("id", "")
 
+        recall_bot_id = _create_recall_bot(meet_url) if meet_url else None
+
         if client_id:
             create_meeting(
                 _db(),
@@ -206,11 +228,12 @@ def api_calendar_events():
                 end_at=end_dt.isoformat(),
                 meet_link=meet_url,
                 status="scheduled",
+                recall_bot_id=recall_bot_id,
             )
             from database import update_business
             update_business(_db(), int(client_id), crm_status="reunion_agendada")
 
-        return jsonify({"ok": True, "meet_url": meet_url, "event_id": cal_event_id})
+        return jsonify({"ok": True, "meet_url": meet_url, "event_id": cal_event_id, "recall_bot_id": recall_bot_id})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)})
 
@@ -310,6 +333,64 @@ Devolvé SOLO un JSON (sin texto extra, sin markdown):
         logging.getLogger(__name__).warning(f"Auto-budget failed for meeting {meeting_id}: {e}")
 
     return jsonify({"ok": True, "summary": result, "budget_generated": budget_generated})
+
+
+@calendar_bp.route("/api/calendar/meetings/<int:meeting_id>/recall-transcript", methods=["GET"])
+def api_recall_transcript(meeting_id):
+    import os, requests
+    meeting = get_meeting(_db(), meeting_id)
+    if not meeting:
+        return jsonify({"ok": False, "error": "Reunión no encontrada"}), 404
+
+    bot_id = meeting.get("recall_bot_id")
+    if not bot_id:
+        return jsonify({"ok": False, "error": "Esta reunión no tiene bot de Recall asignado"})
+
+    api_key = os.environ.get("RECALL_API_KEY", "")
+    if not api_key:
+        return jsonify({"ok": False, "error": "RECALL_API_KEY no configurada"})
+
+    headers = {"Authorization": f"Token {api_key}"}
+
+    # Check bot status first
+    try:
+        status_r = requests.get(
+            f"https://us-east-1.recall.ai/api/v1/bot/{bot_id}/",
+            headers=headers, timeout=10,
+        )
+        status_r.raise_for_status()
+        status_data = status_r.json()
+        status_changes = status_data.get("status_changes") or []
+        latest = status_changes[-1]["code"] if status_changes else "unknown"
+        if latest not in ("call_ended", "done", "recording_done"):
+            return jsonify({"ok": False, "error": f"La reunión aún no terminó (estado: {latest})"})
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"No se pudo consultar el bot: {e}"})
+
+    # Fetch transcript
+    try:
+        tr_r = requests.get(
+            f"https://us-east-1.recall.ai/api/v1/bot/{bot_id}/transcript/",
+            headers=headers, timeout=15,
+        )
+        tr_r.raise_for_status()
+        segments = tr_r.json()
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"Error al obtener la transcripción: {e}"})
+
+    if not segments:
+        return jsonify({"ok": False, "error": "La transcripción está vacía todavía, esperá unos minutos."})
+
+    lines = []
+    for seg in segments:
+        speaker = seg.get("speaker") or "Participante"
+        words = seg.get("words") or []
+        text = " ".join(w.get("text", "") for w in words).strip()
+        if text:
+            lines.append(f"{speaker}: {text}")
+    transcript_text = "\n".join(lines)
+
+    return jsonify({"ok": True, "transcript": transcript_text})
 
 
 @calendar_bp.route("/api/calendar/meetings/<int:meeting_id>/fetch-transcript", methods=["GET"])

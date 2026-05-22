@@ -2172,7 +2172,7 @@ function _cpRenderMeetings() {
           <div class="cp-summary-label" style="margin:0">Transcripción de la reunión</div>
           <button class="cp-btn cp-btn-ghost" style="font-size:.75rem;padding:2px 8px" onclick="_cpFetchTranscript(${m.id})" id="fetch-tr-btn-${m.id}">
             <span id="fetch-tr-spin-${m.id}" style="display:none" class="cp-spinner"></span>
-            ⬇ Obtener de Drive
+            ⬇ Obtener transcripción
           </button>
         </div>
         <textarea class="cp-transcript-area" id="transcript-${m.id}" placeholder="Pegá la transcripción de Google Meet acá, o usá ⬇ Obtener de Drive...">${m.transcript || ''}</textarea>
@@ -2237,8 +2237,13 @@ async function _cpFetchTranscript(meetingId) {
   if (spin) spin.style.display = 'inline-block';
   if (btn) btn.disabled = true;
   try {
-    const r = await fetch('/api/calendar/meetings/' + meetingId + '/fetch-transcript');
-    const d = await r.json();
+    // Try Recall first, fall back to Drive
+    let r = await fetch('/api/calendar/meetings/' + meetingId + '/recall-transcript');
+    let d = await r.json();
+    if (!d.ok) {
+      r = await fetch('/api/calendar/meetings/' + meetingId + '/fetch-transcript');
+      d = await r.json();
+    }
     if (d.ok) {
       const ta = document.getElementById('transcript-' + meetingId);
       if (ta) ta.value = d.transcript;
