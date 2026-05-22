@@ -900,6 +900,7 @@ function toggleSelectAll(checked) {
   document.querySelectorAll('.row-cb').forEach(cb => {
     cb.checked = checked;
     const id = parseInt(cb.dataset.id);
+    if (isNaN(id)) return;
     checked ? selectedIds.add(id) : selectedIds.delete(id);
   });
   updateBatchBar();
