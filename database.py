@@ -204,6 +204,9 @@ def init_db(db_path: str) -> None:
         # Idempotent unique index — prevents duplicate leads from concurrent bot pushes
         try:
             conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_businesses_phone ON businesses(phone)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_businesses_crm_status ON businesses(crm_status)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_businesses_score ON businesses(score)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_businesses_category ON businesses(category)")
             conn.commit()
         except Exception:
             pass
