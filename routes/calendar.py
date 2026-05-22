@@ -287,6 +287,34 @@ Devolvé SOLO un JSON (sin texto extra, sin markdown):
     return jsonify({"ok": True, "summary": result, "budget_generated": budget_generated})
 
 
+@calendar_bp.route("/api/calendar/events/<string:cal_event_id>/attendees", methods=["POST"])
+def api_add_attendee(cal_event_id):
+    service, err = _get_calendar_service()
+    if err:
+        return jsonify({"ok": False, "error": err})
+
+    data = request.get_json() or {}
+    email = (data.get("email") or "").strip()
+    if not email:
+        return jsonify({"ok": False, "error": "email requerido"})
+
+    try:
+        event = service.events().get(calendarId="primary", eventId=cal_event_id).execute()
+        attendees = event.get("attendees", [])
+        if not any(a.get("email") == email for a in attendees):
+            attendees.append({"email": email})
+        event["attendees"] = attendees
+        service.events().update(
+            calendarId="primary",
+            eventId=cal_event_id,
+            body=event,
+            sendUpdates="all",
+        ).execute()
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)})
+
+
 @calendar_bp.route("/api/calendar/events/<string:cal_event_id>", methods=["DELETE"])
 def api_delete_cal_event(cal_event_id):
     service, err = _get_calendar_service()

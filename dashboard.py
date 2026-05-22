@@ -295,6 +295,8 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .cal-demo-btn:hover{background:rgba(6,182,212,.25)}
 .cal-del-btn{display:block;width:100%;text-align:left;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.2);color:#f87171;border-radius:3px;padding:1px 5px;font-size:.5rem;font-weight:700;letter-spacing:.03em;cursor:pointer;margin-top:2px;line-height:1.6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cal-del-btn:hover{background:rgba(239,68,68,.25)}
+.cal-join-btn{display:block;width:100%;text-align:left;background:rgba(74,222,128,.1);border:1px solid rgba(74,222,128,.25);color:#4ade80;border-radius:3px;padding:1px 5px;font-size:.5rem;font-weight:700;letter-spacing:.03em;cursor:pointer;margin-top:2px;line-height:1.6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-decoration:none}
+.cal-join-btn:hover{background:rgba(74,222,128,.25)}
 .cal-loading{padding:40px;text-align:center;color:#334155;font-size:.9rem}
 .cal-error{padding:16px;background:#2a1515;border:1px solid #7f1d1d;border-radius:8px;color:#f87171;font-size:.82rem;margin-bottom:16px}
 
@@ -739,6 +741,8 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
         <input type="number" id="ev-duration" value="60" min="15" max="480">
       </div>
     </div>
+    <label class="modal-label">Email del invitado</label>
+    <input type="email" id="ev-email" placeholder="(opcional) cliente@ejemplo.com" style="margin-bottom:12px">
     <label class="modal-label">Descripción</label>
     <textarea id="ev-desc" placeholder="(opcional)" style="min-height:60px"></textarea>
     <div class="modal-btns">
@@ -1390,6 +1394,7 @@ async function renderCalendar() {
             const nm = extractNameFromTitle(ev.title||'');
             return `<div class="cal-event-chip ${ev.meeting_url?'meet':'regular'}" title="${esc((ev.time?ev.time+' ':'')+ev.title)}">
               ${ev.time?esc(ev.time)+' ':''}${ev.meeting_url?'🎥 ':''}${esc(ev.title||'')}
+              ${ev.meeting_url?`<a class="cal-join-btn" href="${esc(ev.meeting_url)}" target="_blank" onclick="event.stopPropagation()">▶ Unirse</a>`:''}
               <button class="cal-demo-btn" onclick="event.stopPropagation();openDemoModal('${ph||''}','${esc(ev.title||'')}','${nm||''}')">📊 Generar Demo</button>
               <button class="cal-del-btn" onclick="event.stopPropagation();deleteCalEvent('${ev.id}','${esc(ev.title||'')}')">🗑 Borrar</button>
             </div>`;
@@ -1406,6 +1411,7 @@ function openNewEventModal() {
   document.getElementById('ev-time').value = '10:00';
   document.getElementById('ev-duration').value = '60';
   document.getElementById('ev-desc').value = '';
+  document.getElementById('ev-email').value = '';
   document.getElementById('event-modal').classList.add('open');
 }
 function closeNewEventModal() { document.getElementById('event-modal').classList.remove('open'); }
@@ -1426,17 +1432,15 @@ async function saveEvent() {
   const duration = parseInt(document.getElementById('ev-duration').value) || 60;
   const desc = document.getElementById('ev-desc').value.trim();
   if (!title || !date || !time) { alert('Completá el título, fecha y hora'); return; }
+  const email = document.getElementById('ev-email').value.trim();
   const btn = document.getElementById('ev-save-btn');
   btn.disabled = true; btn.textContent = '...';
-  const r = await fetch('/api/calendar/events', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({title,date,time,duration_min:duration,description:desc})});
+  const r = await fetch('/api/calendar/events', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({title,date,time,duration_min:duration,description:desc,attendee_email:email})});
   const d = await r.json();
   btn.disabled = false; btn.textContent = '📅 Crear reunión';
   if (!d.ok) { alert('Error: '+(d.error||'Error desconocido')); return; }
   closeNewEventModal();
   renderCalendar();
-  if (d.meet_url) {
-    if (confirm('Reunión creada. ¿Abrir Google Meet ahora?')) window.open(d.meet_url, '_blank');
-  }
 }
 
 // ========== Demo generation ==========
@@ -2148,7 +2152,14 @@ function _cpRenderMeetings() {
         <button class="cp-btn cp-btn-ghost" style="color:#ef4444;font-size:.8rem;padding:2px 8px" onclick="_cpDeleteMeeting(${m.id})">Borrar</button>
       </div>
       <div class="cp-meeting-meta">${m.start_at ? m.start_at.substring(0,16).replace('T',' ') : ''} · ${_cpMeetStatus(m.status)}</div>
-      ${m.meet_link ? `<a class="cp-meeting-link" href="${m.meet_link}" target="_blank">🔗 ${m.meet_link}</a>` : ''}
+      ${m.meet_link ? `<div style="margin-bottom:8px"><a class="cp-meeting-link" href="${m.meet_link}" target="_blank" style="margin:0">▶ Unirse a la reunión</a></div>` : ''}
+      ${m.calendar_event_id ? `<div style="margin-bottom:8px">
+        <button class="cp-btn cp-btn-ghost" style="font-size:.75rem;padding:2px 8px" onclick="_cpToggleAddEmail(${m.id})">+ Agregar email</button>
+        <div id="add-email-form-${m.id}" style="display:none;margin-top:6px;gap:6px;align-items:center;flex-wrap:wrap">
+          <input type="email" id="add-email-input-${m.id}" placeholder="email@ejemplo.com" style="font-size:.8rem;padding:4px 8px;background:#0f172a;border:1px solid #1e293b;border-radius:6px;color:#f1f5f9;width:220px">
+          <button class="cp-btn cp-btn-primary" style="font-size:.75rem;padding:4px 10px;margin-top:4px" onclick="_cpAddEmailToMeeting(${m.id},'${m.calendar_event_id}')">Agregar</button>
+        </div>
+      </div>` : ''}
       ${hasSummary ? `
         <div class="cp-summary-label">Resumen</div>
         <div class="cp-summary-box">${m.summary || ''}</div>
@@ -2185,6 +2196,32 @@ async function _cpDeleteMeeting(meetingId) {
     document.getElementById('cp-tab-meetings').innerHTML = _cpRenderMeetings();
   } else {
     alert('Error al borrar: ' + (data.error || 'desconocido'));
+  }
+}
+
+function _cpToggleAddEmail(meetId) {
+  const form = document.getElementById('add-email-form-' + meetId);
+  if (!form) return;
+  const visible = form.style.display === 'flex';
+  form.style.display = visible ? 'none' : 'flex';
+}
+
+async function _cpAddEmailToMeeting(meetId, calEventId) {
+  const input = document.getElementById('add-email-input-' + meetId);
+  const email = (input ? input.value : '').trim();
+  if (!email) { alert('Ingresá un email'); return; }
+  const r = await fetch('/api/calendar/events/' + encodeURIComponent(calEventId) + '/attendees', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({email})
+  });
+  const d = await r.json();
+  if (d.ok) {
+    if (input) input.value = '';
+    document.getElementById('add-email-form-' + meetId).style.display = 'none';
+    alert('Email agregado al evento.');
+  } else {
+    alert('Error: ' + (d.error || 'desconocido'));
   }
 }
 
