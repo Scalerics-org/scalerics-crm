@@ -291,8 +291,8 @@ def get_all_businesses(db_path: str, crm_status: str | None = None) -> list[dict
     conn = _connect(db_path)
     try:
         if crm_status == "sin_contactar":
-            where = "WHERE (crm_status IS NULL OR crm_status = 'sin_contactar')"
-            params: list = []
+            where = "WHERE (crm_status IS NULL OR crm_status = ?)"
+            params: list = ["sin_contactar"]
         elif crm_status:
             where = "WHERE crm_status = ?"
             params = [crm_status]
