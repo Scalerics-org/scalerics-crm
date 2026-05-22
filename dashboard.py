@@ -2394,6 +2394,13 @@ async function _cpRegeneraBudget() {
 
 function _cpBindBudget() {}
 
+function _cpOpenDemoModal() {
+  const l = _cpData.lead || {};
+  const b = {id: l.id, name: l.name||'', category: l.category||'', city: l.city||'', phone: l.phone||''};
+  closeClientPanel();
+  openDemoModalFromCRM(b);
+}
+
 function _cpRenderDemo() {
   const d = _cpData.demo;
   const l = _cpData.lead || {};
@@ -2428,7 +2435,7 @@ function _cpRenderDemo() {
     <div class="cp-section-title">Demo</div>
     ${d && d.error_message ? `<div style="color:#f87171;font-size:.8rem;margin-bottom:8px;background:#0a0f1a;padding:8px;border-radius:6px">Error anterior: ${d.error_message}</div>` : ''}
     <div style="color:#475569;font-size:.85rem;margin-bottom:12px">Sin demo generada para este cliente.</div>
-    <button class="cp-btn cp-btn-primary" onclick="closeClientPanel();openDemoModalFromCRM(${demoPayload})">
+    <button class="cp-btn cp-btn-primary" onclick="_cpOpenDemoModal()">
       📊 Generar demo
     </button>
   </div>
