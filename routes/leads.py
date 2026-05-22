@@ -85,12 +85,10 @@ def api_create_lead():
 
 @leads_bp.route("/api/leads")
 def api_leads():
-    businesses = get_all_businesses(_db())
     crm_status = request.args.get("crm_status")
     category = request.args.get("category")
     search = (request.args.get("search") or "").lower()
-    if crm_status:
-        businesses = [b for b in businesses if (b.get("crm_status") or "sin_contactar") == crm_status]
+    businesses = get_all_businesses(_db(), crm_status=crm_status)
     if category:
         businesses = [b for b in businesses if _normalize_category(b.get("category") or "") == category]
     if search:
