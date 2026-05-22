@@ -54,6 +54,8 @@ _VALID_CRM_STATES = {
     "agendo", "firmo",
 }
 
+_PER_PAGE = 50
+
 
 def _db() -> str:
     return current_app.config["DB_PATH"]
@@ -88,11 +90,22 @@ def api_leads():
     crm_status = request.args.get("crm_status")
     category = request.args.get("category")
     search = (request.args.get("search") or "").lower()
+    page_str = request.args.get("page")
     businesses = get_all_businesses(_db(), crm_status=crm_status)
     if category:
         businesses = [b for b in businesses if _normalize_category(b.get("category") or "") == category]
     if search:
         businesses = [b for b in businesses if search in (b.get("name") or "").lower()]
+    if page_str is not None:
+        try:
+            page = max(1, int(page_str))
+        except ValueError:
+            page = 1
+        total = len(businesses)
+        pages = max(1, (total + _PER_PAGE - 1) // _PER_PAGE)
+        page = min(page, pages)
+        offset = (page - 1) * _PER_PAGE
+        return jsonify({"items": businesses[offset:offset + _PER_PAGE], "total": total, "pages": pages, "page": page})
     return jsonify(businesses)
 
 
