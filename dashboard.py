@@ -745,6 +745,7 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
     <input type="email" id="ev-email" placeholder="(opcional) cliente@ejemplo.com" style="margin-bottom:12px">
     <label class="modal-label">Descripción</label>
     <textarea id="ev-desc" placeholder="(opcional)" style="min-height:60px"></textarea>
+    <input type="hidden" id="ev-client-id" value="">
     <div class="modal-btns">
       <button class="btn-cancel" onclick="closeNewEventModal()">Cancelar</button>
       <button class="btn-confirm" id="ev-save-btn" onclick="saveEvent()">📅 Crear reunión</button>
@@ -1412,6 +1413,7 @@ function openNewEventModal() {
   document.getElementById('ev-duration').value = '60';
   document.getElementById('ev-desc').value = '';
   document.getElementById('ev-email').value = '';
+  document.getElementById('ev-client-id').value = '';
   document.getElementById('event-modal').classList.add('open');
 }
 function closeNewEventModal() { document.getElementById('event-modal').classList.remove('open'); }
@@ -1433,9 +1435,10 @@ async function saveEvent() {
   const desc = document.getElementById('ev-desc').value.trim();
   if (!title || !date || !time) { alert('Completá el título, fecha y hora'); return; }
   const email = document.getElementById('ev-email').value.trim();
+  const clientId = document.getElementById('ev-client-id').value.trim() || null;
   const btn = document.getElementById('ev-save-btn');
   btn.disabled = true; btn.textContent = '...';
-  const r = await fetch('/api/calendar/events', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({title,date,time,duration_min:duration,description:desc,attendee_email:email})});
+  const r = await fetch('/api/calendar/events', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({title,date,time,duration_min:duration,description:desc,attendee_email:email,client_id:clientId})});
   const d = await r.json();
   btn.disabled = false; btn.textContent = '📅 Crear reunión';
   if (!d.ok) { alert('Error: '+(d.error||'Error desconocido')); return; }
@@ -2289,9 +2292,14 @@ async function _cpSummarize(meetingId) {
 }
 
 function _cpOpenNewMeeting() {
-  // Reuse existing calendar new-event form by switching to calendar panel and pre-filling client
   document.querySelector('.nav-item[data-panel="calendar"]').click();
   closeClientPanel();
+  openNewEventModal();
+  if (_cpClientId) {
+    document.getElementById('ev-client-id').value = _cpClientId;
+    const clientName = _cpData.info && _cpData.info.name ? _cpData.info.name : '';
+    if (clientName) document.getElementById('ev-title').value = 'Reunión con ' + clientName;
+  }
 }
 
 function _cpGenerateBudgetFromMeeting(meetingId) {
