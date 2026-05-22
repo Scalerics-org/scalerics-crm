@@ -80,6 +80,10 @@ def _chat_prompt(business_name, rubro, city, client_color, lead_name, messages, 
     return f"""Sos un desarrollador web senior de Scalerics, agencia uruguaya. Creá una presentación de ventas HTML completa para el cliente "{business_name}" ({rubro}, {city}).
 
 Demos anteriores como referencia de estructura y calidad (abrí los que sean útiles):
+• Página web genérica: https://raw.githubusercontent.com/juantomasetti1/scalerics-assets/main/templates/demos/pagina-web.html
+• E-commerce / tienda online: https://raw.githubusercontent.com/juantomasetti1/scalerics-assets/main/templates/demos/ecommerce.html
+• Automatizaciones / WhatsApp bot: https://raw.githubusercontent.com/juantomasetti1/scalerics-assets/main/templates/demos/automatizaciones.html
+• App a medida: https://raw.githubusercontent.com/juantomasetti1/scalerics-assets/main/templates/demos/app-a-medida.html
 • Bloquera (bloques/construcción): https://raw.githubusercontent.com/juantomasetti1/scalerics-assets/main/templates/demos/bloquera-martinez.html
 • Carpa (eventos/carpas): https://raw.githubusercontent.com/juantomasetti1/scalerics-assets/main/templates/demos/carpa.html
 • Aberturas (carpintería/aberturas): https://raw.githubusercontent.com/juantomasetti1/scalerics-assets/main/templates/demos/aberturas.html
