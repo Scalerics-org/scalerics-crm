@@ -1931,7 +1931,7 @@ function closeClientPanel() {
 
 async function _cpLoadAll() {
   if (!_cpClientId) return;
-  const [leadRes, meetRes, budgetRes, demoRes, attBudgetRes, attDemoRes, eventsRes] = await Promise.allSettled([
+  const [leadRes, meetRes, budgetRes, demoRes, attBudgetRes, attDemoRes, eventsRes, callsRes] = await Promise.allSettled([
     fetch('/api/leads/' + _cpClientId).then(r => r.json()),
     fetch('/api/calendar/meetings/' + _cpClientId).then(r => r.json()),
     fetch('/api/leads/' + _cpClientId + '/budget').then(r => r.json()),
@@ -1939,6 +1939,7 @@ async function _cpLoadAll() {
     fetch('/api/leads/' + _cpClientId + '/attachments?section=budget').then(r => r.json()),
     fetch('/api/leads/' + _cpClientId + '/attachments?section=demo').then(r => r.json()),
     fetch('/api/leads/' + _cpClientId + '/events').then(r => r.json()),
+    fetch('/api/leads/' + _cpClientId + '/calls').then(r => r.json()),
   ]);
   _cpData.lead    = leadRes.status === 'fulfilled' ? leadRes.value : {};
   _cpData.meetings = meetRes.status === 'fulfilled' && Array.isArray(meetRes.value) ? meetRes.value : [];
@@ -1947,6 +1948,7 @@ async function _cpLoadAll() {
   _cpData.attBudget = attBudgetRes.status === 'fulfilled' && Array.isArray(attBudgetRes.value) ? attBudgetRes.value : [];
   _cpData.attDemo   = attDemoRes.status === 'fulfilled' && Array.isArray(attDemoRes.value) ? attDemoRes.value : [];
   _cpData.events    = eventsRes.status === 'fulfilled' && Array.isArray(eventsRes.value) ? eventsRes.value : [];
+  _cpData.calls     = callsRes.status === 'fulfilled' && Array.isArray(callsRes.value) ? callsRes.value : [];
 
   if (_cpData.lead && _cpData.lead.phone) {
     try {
@@ -1980,6 +1982,7 @@ function _cpSwitchTab(tab) {
   else if (tab === 'budget') { body.innerHTML = _cpRenderBudget(); _cpBindBudget(); }
   else if (tab === 'demo') body.innerHTML = _cpRenderDemo();
   else if (tab === 'ctasks') { body.innerHTML = _cpRenderTasks(); _cpBindTasks(); }
+  else if (tab === 'calls')  body.innerHTML = _cpRenderCalls();
 }
 
 async function _cpLoadWaTemplates() {
@@ -2047,6 +2050,47 @@ function _cpRenderInfo() {
   ${_cpRenderHistory()}`;
 }
 
+function _cpRenderCalls() {
+  const calls = _cpData.calls || [];
+  const outcomeLabel = {'contestó':'Contestó','no_contestó':'No contestó','buzón':'Buzón'};
+  const outcomeColor = {'contestó':'#4ade80','no_contestó':'#f87171','buzón':'#fbbf24'};
+  const history = calls.length ? `<div class="cp-section">
+    <div class="cp-section-title">Historial de llamadas</div>
+    ${calls.map(c => `<div style="display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-bottom:1px solid #1a2234">
+      <div style="width:8px;height:8px;border-radius:50%;background:${outcomeColor[c.outcome]||'#475569'};margin-top:5px;flex-shrink:0"></div>
+      <div style="flex:1">
+        <span style="font-size:.8rem;color:#e2e8f0;font-weight:600">${outcomeLabel[c.outcome]||c.outcome}</span>
+        <span style="font-size:.72rem;color:#475569;margin-left:8px">${timeAgo(c.called_at)}${c.created_by && c.created_by !== 'sistema' ? ' · por ' + esc(c.created_by) : ''}</span>
+        ${c.notes ? `<div style="font-size:.72rem;color:#64748b;margin-top:2px">${esc(c.notes)}</div>` : ''}
+      </div>
+    </div>`).join('')}
+  </div>` : '<div style="padding:12px 0;font-size:.82rem;color:#475569">Sin llamadas registradas</div>';
+  return `<div class="cp-section">
+    <div class="cp-section-title">Registrar llamada</div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <select id="call-outcome" style="background:#111827;border:1px solid #1e293b;color:#e2e8f0;padding:6px 10px;border-radius:6px;font-size:.8rem">
+        <option value="">Resultado...</option>
+        <option value="contestó">Contestó</option>
+        <option value="no_contestó">No contestó</option>
+        <option value="buzón">Buzón</option>
+      </select>
+      <input id="call-notes" placeholder="Notas (opcional)" style="flex:1;min-width:120px;background:#111827;border:1px solid #1e293b;color:#e2e8f0;padding:6px 10px;border-radius:6px;font-size:.8rem">
+      <button onclick="_cpLogCall()" style="background:#0088cc;border:none;color:#fff;padding:6px 14px;border-radius:6px;font-size:.8rem;cursor:pointer">Registrar</button>
+    </div>
+  </div>
+  ${history}`;
+}
+
+async function _cpLogCall() {
+  const outcome = (document.getElementById('call-outcome') || {}).value || '';
+  const notes = (document.getElementById('call-notes') || {}).value || '';
+  if (!outcome) { alert('Elegí un resultado'); return; }
+  await fetch(`/api/leads/${_cpClientId}/calls`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({outcome, notes})});
+  const r = await fetch(`/api/leads/${_cpClientId}/calls`);
+  _cpData.calls = await r.json();
+  _cpSwitchTab('calls');
+}
+
 function _cpRenderHistory() {
   const events = _cpData.events || [];
   if (!events.length) return '';
@@ -2054,12 +2098,13 @@ function _cpRenderHistory() {
   const items = events.map(e => {
     const label = crmLabels[e.new_status] || e.new_status;
     const when = timeAgo(e.created_at);
+    const by = (e.created_by && e.created_by !== 'sistema') ? ` · por ${esc(e.created_by)}` : '';
     const note = e.note ? `<div style="font-size:.72rem;color:#64748b;margin-top:2px">${esc(e.note)}</div>` : '';
     return `<div style="display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-bottom:1px solid #1a2234">
       <div style="width:8px;height:8px;border-radius:50%;background:#0088cc;margin-top:5px;flex-shrink:0"></div>
       <div style="flex:1">
         <span style="font-size:.8rem;color:#e2e8f0;font-weight:600">${label}</span>
-        <span style="font-size:.72rem;color:#475569;margin-left:8px">${when}</span>
+        <span style="font-size:.72rem;color:#475569;margin-left:8px">${when}${by}</span>
         ${note}
       </div>
     </div>`;
@@ -2472,6 +2517,7 @@ async function loadMetrics() {
       <div class="cp-tab" data-tab="budget" onclick="_cpSwitchTab('budget')">Presupuesto</div>
       <div class="cp-tab" data-tab="demo" onclick="_cpSwitchTab('demo')">Demo</div>
       <div class="cp-tab" data-tab="ctasks" onclick="_cpSwitchTab('ctasks')">Tareas</div>
+      <div class="cp-tab" data-tab="calls" onclick="_cpSwitchTab('calls')">📞 Llamadas</div>
     </div>
   </div>
   <div class="cp-body" id="cp-body">
