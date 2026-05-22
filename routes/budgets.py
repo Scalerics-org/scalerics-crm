@@ -42,12 +42,6 @@ def _clean_json(raw: str) -> str:
 def _build_budget_prompt(client: dict, service_type: str, budget_range: str, needs: str, requirements: str) -> str:
     return f"""Generá un presupuesto profesional para un proyecto de {service_type} para el negocio "{client.get('name', '')}".
 
-Presupuestos anteriores como referencia de estructura y nivel de detalle:
-• Damián (web + ecommerce): https://raw.githubusercontent.com/juantomasetti1/scalerics-assets/main/templates/presupuestos/damian.html
-• Fernando: https://raw.githubusercontent.com/juantomasetti1/scalerics-assets/main/templates/presupuestos/fernando.html
-• La Casa de las Aberturas (web completa): https://raw.githubusercontent.com/juantomasetti1/scalerics-assets/main/templates/presupuestos/aberturas.html
-• La Casa de las Aberturas sin automatización: https://raw.githubusercontent.com/juantomasetti1/scalerics-assets/main/templates/presupuestos/aberturas-sin-auto.html
-
 Información del cliente:
 - Negocio: {client.get('name', '')} ({client.get('category', '')})
 - Ciudad: {client.get('city', 'Montevideo')}, Uruguay
