@@ -199,6 +199,26 @@ def init_db(db_path: str) -> None:
         _add_column(conn, "businesses", "last_event_at", "TIMESTAMP")
         _add_column(conn, "businesses", "score", "INTEGER")
 
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS wa_templates (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                name        TEXT NOT NULL,
+                body        TEXT NOT NULL,
+                created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS call_logs (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                lead_id     INTEGER NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+                called_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                outcome     TEXT NOT NULL,
+                notes       TEXT,
+                created_by  TEXT DEFAULT 'sistema'
+            )
+        """)
+        _add_column(conn, "lead_events", "created_by", "TEXT DEFAULT 'sistema'")
+
         conn.commit()
 
         # Idempotent unique index — prevents duplicate leads from concurrent bot pushes
@@ -840,12 +860,12 @@ def seed_pitch_templates(db_path: str) -> None:
 
 # ─── Lead events ──────────────────────────────────────────────────────────────
 
-def add_lead_event(db_path: str, lead_id: int, new_status: str, note: str = "") -> None:
+def add_lead_event(db_path: str, lead_id: int, new_status: str, note: str = "", created_by: str = "sistema") -> None:
     conn = _connect(db_path)
     try:
         conn.execute(
-            "INSERT INTO lead_events (lead_id, new_status, note) VALUES (?, ?, ?)",
-            (lead_id, new_status, note or ""),
+            "INSERT INTO lead_events (lead_id, new_status, note, created_by) VALUES (?, ?, ?, ?)",
+            (lead_id, new_status, note or "", created_by),
         )
         conn.execute(
             "UPDATE businesses SET last_event_at = CURRENT_TIMESTAMP WHERE id = ?",
@@ -860,7 +880,66 @@ def get_lead_events(db_path: str, lead_id: int) -> list[dict]:
     conn = _connect(db_path)
     try:
         cursor = conn.execute(
-            "SELECT id, new_status, note, created_at FROM lead_events WHERE lead_id = ? ORDER BY created_at DESC",
+            "SELECT id, new_status, note, created_at, created_by FROM lead_events WHERE lead_id = ? ORDER BY created_at DESC",
+            (lead_id,),
+        )
+        return [dict(r) for r in cursor.fetchall()]
+    finally:
+        conn.close()
+
+
+# ─── WA Templates ─────────────────────────────────────────────────────────────
+
+def get_wa_templates(db_path: str) -> list[dict]:
+    conn = _connect(db_path)
+    try:
+        cursor = conn.execute("SELECT * FROM wa_templates ORDER BY created_at ASC")
+        return [dict(r) for r in cursor.fetchall()]
+    finally:
+        conn.close()
+
+
+def create_wa_template(db_path: str, name: str, body: str) -> int:
+    conn = _connect(db_path)
+    try:
+        cursor = conn.execute(
+            "INSERT INTO wa_templates (name, body) VALUES (?, ?)", (name, body)
+        )
+        conn.commit()
+        return cursor.lastrowid
+    finally:
+        conn.close()
+
+
+def delete_wa_template(db_path: str, template_id: int) -> None:
+    conn = _connect(db_path)
+    try:
+        conn.execute("DELETE FROM wa_templates WHERE id = ?", (template_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+# ─── Call Logs ────────────────────────────────────────────────────────────────
+
+def add_call_log(db_path: str, lead_id: int, outcome: str, notes: str = "", created_by: str = "sistema") -> int:
+    conn = _connect(db_path)
+    try:
+        cursor = conn.execute(
+            "INSERT INTO call_logs (lead_id, outcome, notes, created_by) VALUES (?, ?, ?, ?)",
+            (lead_id, outcome, notes or "", created_by),
+        )
+        conn.commit()
+        return cursor.lastrowid
+    finally:
+        conn.close()
+
+
+def get_call_logs(db_path: str, lead_id: int) -> list[dict]:
+    conn = _connect(db_path)
+    try:
+        cursor = conn.execute(
+            "SELECT * FROM call_logs WHERE lead_id = ? ORDER BY called_at DESC",
             (lead_id,),
         )
         return [dict(r) for r in cursor.fetchall()]
