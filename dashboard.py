@@ -58,6 +58,7 @@ button:hover{opacity:.9}
   <div class="error">{{ error }}</div>
   {% endif %}
   <form method="POST">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <label>Contraseña</label>
     <input type="password" name="password" autofocus placeholder="Ingresá la contraseña del equipo">
     <button type="submit">Entrar</button>
@@ -2415,16 +2416,23 @@ def create_app(db_path: str) -> Flask:
     def login():
         error = None
         if request.method == "POST":
-            password = request.form.get("password", "")
-            expected = os.environ.get("DASHBOARD_PASSWORD", "")
-            if not expected:
-                session["logged_in"] = True
-                return redirect(url_for("index"))
-            if expected and secrets.compare_digest(password, expected):
-                session["logged_in"] = True
-                return redirect(url_for("index"))
-            error = "Contraseña incorrecta"
-        return render_template_string(LOGIN_HTML, error=error)
+            form_csrf = request.form.get("csrf_token", "")
+            expected_csrf = session.pop("csrf_token", "")
+            if not expected_csrf or not secrets.compare_digest(form_csrf, expected_csrf):
+                error = "Token inválido. Recargá la página."
+            else:
+                password = request.form.get("password", "")
+                expected = os.environ.get("DASHBOARD_PASSWORD", "")
+                if not expected:
+                    session["logged_in"] = True
+                    return redirect(url_for("index"))
+                if secrets.compare_digest(password, expected):
+                    session["logged_in"] = True
+                    return redirect(url_for("index"))
+                error = "Contraseña incorrecta"
+        csrf_token = secrets.token_hex(32)
+        session["csrf_token"] = csrf_token
+        return render_template_string(LOGIN_HTML, error=error, csrf_token=csrf_token)
 
     @app.route("/logout")
     def logout():
