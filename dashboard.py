@@ -2406,7 +2406,6 @@ function _cpRenderDemo() {
   const l = _cpData.lead || {};
   const isDone = d && d.status === 'completed' && d.url;
   const isGenerating = d && ['generating', 'pending'].includes(d.status);
-  const demoPayload = JSON.stringify({id:l.id,name:l.name||'',category:l.category||'',city:l.city||'',phone:l.phone||''});
   if (isDone) {
     return `<div class="cp-section">
       <div class="cp-section-title">Demo <span class="cp-badge cp-badge-completed">Lista</span></div>
