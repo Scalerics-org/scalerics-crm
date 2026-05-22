@@ -3,13 +3,14 @@
 import os
 import threading
 
-from flask import Blueprint, Response, current_app, jsonify, request
+from flask import Blueprint, Response, current_app, jsonify, request, session
 from werkzeug.utils import secure_filename
 
 from database import (get_all_businesses, update_business, delete_business, get_business,
                       get_client_info, insert_business,
                       add_attachment, get_attachments, get_attachment_file, delete_attachment,
-                      add_lead_event, get_lead_events)
+                      add_lead_event, get_lead_events,
+                      add_call_log, get_call_logs)
 from pitch_generator import generate_pitch
 
 leads_bp = Blueprint("leads", __name__)
@@ -55,6 +56,7 @@ _VALID_CRM_STATES = {
 }
 
 _PER_PAGE = 50
+_VALID_OUTCOMES = {"contestó", "no_contestó", "buzón"}
 
 
 def _db() -> str:
@@ -126,7 +128,7 @@ def api_crm_status(biz_id):
         return jsonify({"ok": False, "error": f"Estado inválido: {crm_status}"}), 400
     db = _db()
     update_business(db, biz_id, crm_status=crm_status)
-    add_lead_event(db, biz_id, crm_status)
+    add_lead_event(db, biz_id, crm_status, created_by=session.get("user_name", "sistema"))
     return jsonify({"ok": True})
 
 
@@ -141,7 +143,7 @@ def api_batch_status():
     for biz_id in ids:
         biz_id = int(biz_id)
         update_business(db, biz_id, crm_status=crm_status)
-        add_lead_event(db, biz_id, crm_status)
+        add_lead_event(db, biz_id, crm_status, created_by=session.get("user_name", "sistema"))
     return jsonify({"ok": True, "updated": len(ids)})
 
 
@@ -162,7 +164,7 @@ def api_contact(biz_id):
     note = data.get("note", "")
     db = _db()
     update_business(db, biz_id, status="contacted", notes=note, crm_status="contactado")
-    add_lead_event(db, biz_id, "contactado", note=note)
+    add_lead_event(db, biz_id, "contactado", note=note, created_by=session.get("user_name", "sistema"))
     return jsonify({"ok": True})
 
 
@@ -302,3 +304,20 @@ def api_attachment_file(attach_id):
 def api_delete_attachment(attach_id):
     delete_attachment(_db(), attach_id)
     return jsonify({"ok": True})
+
+
+@leads_bp.route("/api/leads/<int:biz_id>/calls", methods=["POST"])
+def api_add_call(biz_id):
+    data = request.get_json() or {}
+    outcome = (data.get("outcome") or "").strip()
+    notes = (data.get("notes") or "").strip()
+    if outcome not in _VALID_OUTCOMES:
+        return jsonify({"ok": False, "error": f"Outcome inválido: {outcome}"}), 400
+    created_by = session.get("user_name", "sistema")
+    add_call_log(_db(), biz_id, outcome, notes, created_by)
+    return jsonify({"ok": True}), 201
+
+
+@leads_bp.route("/api/leads/<int:biz_id>/calls", methods=["GET"])
+def api_get_calls(biz_id):
+    return jsonify(get_call_logs(_db(), biz_id))
