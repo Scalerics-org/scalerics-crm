@@ -200,6 +200,13 @@ def init_db(db_path: str) -> None:
         _add_column(conn, "businesses", "score", "INTEGER")
 
         conn.commit()
+
+        # Idempotent unique index — prevents duplicate leads from concurrent bot pushes
+        try:
+            conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_businesses_phone ON businesses(phone)")
+            conn.commit()
+        except Exception:
+            pass
     finally:
         conn.close()
 
