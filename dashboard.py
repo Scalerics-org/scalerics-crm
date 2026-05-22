@@ -59,6 +59,8 @@ button:hover{opacity:.9}
   {% endif %}
   <form method="POST">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Tu nombre</label>
+    <input type="text" name="nombre" placeholder="Ej: Juan" autocomplete="off">
     <label>Contraseña</label>
     <input type="password" name="password" autofocus placeholder="Ingresá la contraseña del equipo">
     <button type="submit">Entrar</button>
@@ -2449,9 +2451,11 @@ def create_app(db_path: str) -> Flask:
                 expected = os.environ.get("DASHBOARD_PASSWORD", "")
                 if not expected:
                     session["logged_in"] = True
+                    session["user_name"] = request.form.get("nombre", "").strip() or "sistema"
                     return redirect(url_for("index"))
                 if secrets.compare_digest(password, expected):
                     session["logged_in"] = True
+                    session["user_name"] = request.form.get("nombre", "").strip() or "sistema"
                     return redirect(url_for("index"))
                 error = "Contraseña incorrecta"
         csrf_token = secrets.token_hex(32)
