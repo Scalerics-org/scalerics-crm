@@ -1,28 +1,14 @@
 """Generate and deploy sales demo presentations using Claude AI + Vercel."""
 
-import base64
 import json
 import os
 import re
 import time
-from pathlib import Path
 
 import anthropic
 import requests
 
-LOGO_PATH = Path(os.environ.get(
-    "SCALERICS_LOGO_PATH",
-    str(Path(__file__).parent / "static" / "logo.png"),
-))
-
-
-def _logo_data_uri() -> str:
-    try:
-        with open(LOGO_PATH, "rb") as f:
-            b64 = base64.b64encode(f.read()).decode()
-        return f"data:image/png;base64,{b64}"
-    except Exception:
-        return ""
+SCALERICS_LOGO_URL = "https://raw.githubusercontent.com/juantomasetti1/scalerics-assets/main/logo_full_alt.png"
 
 
 # ---------------------------------------------------------------------------
@@ -111,6 +97,7 @@ Conversación WhatsApp (usala para personalizar):
 ━━━ SLIDES ━━━
 
 [1] PORTADA
+Logo Scalerics: <img src="{SCALERICS_LOGO_URL}" style="height:34px;object-fit:contain;display:block;margin-bottom:24px">
 H1 grande: "Tu web, {business_name}" | Subtítulo personalizado 1 línea | 3 bullets con emoji específicos para {rubro}
 
 [2] PROBLEMA — título impactante
@@ -163,6 +150,7 @@ Para cada estilo poné una etiqueta descriptiva de 3-4 palabras como título del
 Card central: rango "USD 400–800" aprox + badge "Sin compromiso". 4 deliverables en 2 columnas con emoji, específicos para {rubro}.
 
 [8] PRÓXIMOS PASOS
+Logo Scalerics: <img src="{SCALERICS_LOGO_URL}" style="height:28px;object-fit:contain;display:block;margin-bottom:20px">
 "¿Arrancamos, {lead_name}?" — texto grande centrado
 Botón WhatsApp verde: href="https://wa.me/{wa_number}"
 Email: hola@scalerics.com | Tagline: "Scalerics — Tu negocio, online."
@@ -331,11 +319,9 @@ def generate_and_deploy(
     )
 
     # Inject Scalerics logo into slide 1
-    logo_uri = _logo_data_uri()
-    if logo_uri:
-        logo_tag = f'<img src="{logo_uri}" style="height:34px;object-fit:contain;margin-bottom:24px;display:block">'
-        html = html.replace('<div class="slide active" id="slide-0">',
-                            f'<div class="slide active" id="slide-0">{logo_tag}', 1)
+    logo_tag = f'<img src="{SCALERICS_LOGO_URL}" style="height:34px;object-fit:contain;margin-bottom:24px;display:block">'
+    html = html.replace('<div class="slide active" id="slide-0">',
+                        f'<div class="slide active" id="slide-0">{logo_tag}', 1)
 
     url = _deploy_to_vercel(html, business_name)
     return {"url": url, "questions": data.get("questions", [])}

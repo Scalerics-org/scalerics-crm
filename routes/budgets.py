@@ -411,7 +411,7 @@ ul.items li::before{content:'▸';position:absolute;left:0;color:var(--accent-li
         "</div>\n"
         '<div class="page">\n'
         '  <div class="header">\n'
-        '    <div class="logo-text">Scale<span>rics</span></div>\n'
+        '    <img src="https://raw.githubusercontent.com/juantomasetti1/scalerics-assets/main/logo_full_alt.png" style="height:38px;object-fit:contain">\n'
         '    <div class="header-title">Presupuesto</div>\n'
         "  </div>\n"
         '  <div class="meta-row">\n'
