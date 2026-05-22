@@ -502,6 +502,7 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
         <span>Negocio</span><span>Teléfono</span><span>Acciones</span>
       </div>
       <div id="table-body"></div>
+      <div id="leads-pagination" style="display:none;justify-content:center;align-items:center;gap:12px;padding:16px 0;font-size:.85rem;color:#94a3b8"></div>
     </div>
   </div>
 
@@ -833,6 +834,8 @@ function showPanel(name) {
 let currentCrm = '';
 let currentCategory = '';
 let currentSearch = '';
+let currentPage = 1;
+let totalPages = 1;
 let contactingId = null;
 let pipelinePolling = null;
 let pitchMap = {};
@@ -854,6 +857,23 @@ async function loadStats() {
   } catch(e) { document.getElementById('stat-total').textContent = 'JS:'+e.message; }
 }
 
+function _updatePagination() {
+  const el = document.getElementById('leads-pagination');
+  if (!el) return;
+  if (totalPages <= 1) { el.style.display = 'none'; return; }
+  el.style.display = 'flex';
+  el.innerHTML =
+    `<button onclick="gotoPage(${currentPage - 1})" ${currentPage <= 1 ? 'disabled' : ''} style="background:#1e293b;border:1px solid #334155;color:#e2e8f0;padding:6px 14px;border-radius:6px;cursor:pointer">← Anterior</button>` +
+    `<span>Página ${currentPage} de ${totalPages}</span>` +
+    `<button onclick="gotoPage(${currentPage + 1})" ${currentPage >= totalPages ? 'disabled' : ''} style="background:#1e293b;border:1px solid #334155;color:#e2e8f0;padding:6px 14px;border-radius:6px;cursor:pointer">Siguiente →</button>`;
+}
+
+function gotoPage(p) {
+  if (p < 1 || p > totalPages) return;
+  currentPage = p;
+  loadLeads();
+}
+
 async function loadLeads() {
   const body2 = document.getElementById('table-body');
   try {
@@ -861,10 +881,12 @@ async function loadLeads() {
   if (currentCrm) params.set('crm_status', currentCrm);
   if (currentCategory) params.set('category', currentCategory);
   if (currentSearch) params.set('search', currentSearch);
+  params.set('page', currentPage);
   const r = await fetch('/api/leads?' + params);
   if (!r.ok) { body2.innerHTML = `<div style="color:#f87171;padding:16px">API error ${r.status}</div>`; return; }
-  const leads = await r.json();
-  if (!Array.isArray(leads)) { body2.innerHTML = `<div style="color:#f87171;padding:16px">Respuesta inesperada: ${JSON.stringify(leads).slice(0,100)}</div>`; return; }
+  const data = await r.json();
+  const leads = Array.isArray(data) ? data : (data.items || []);
+  if (data.pages !== undefined) { totalPages = data.pages; currentPage = data.page || currentPage; }
   _allLeads = leads;
   pitchMap = {};
   leads.forEach(b => { if (b.pitch_text) pitchMap[b.id] = b.pitch_text; });
@@ -886,6 +908,7 @@ async function loadLeads() {
         <button class="delete-btn" onclick="deleteLead(${b.id},event)" title="Borrar lead">🗑</button>
       </div>
     </div>`}).join('');
+  _updatePagination();
   } catch(e) { document.getElementById('table-body').innerHTML = `<div style="color:#f87171;padding:16px">Error JS: ${e.message}</div>`; }
 }
 
@@ -1108,14 +1131,15 @@ document.querySelectorAll('.filter-btn').forEach(btn => {
     document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     currentCrm = btn.dataset.crm;
+    currentPage = 1;
     loadLeads();
   });
 });
-document.getElementById('category-filter').addEventListener('change', e => { currentCategory = e.target.value; loadLeads(); });
+document.getElementById('category-filter').addEventListener('change', e => { currentCategory = e.target.value; currentPage = 1; loadLeads(); });
 let searchTimeout;
 document.getElementById('search-input').addEventListener('input', e => {
   clearTimeout(searchTimeout);
-  searchTimeout = setTimeout(() => { currentSearch = e.target.value; loadLeads(); }, 300);
+  searchTimeout = setTimeout(() => { currentSearch = e.target.value; currentPage = 1; loadLeads(); }, 300);
 });
 document.getElementById('contact-modal').addEventListener('click', e => { if(e.target===e.currentTarget) closeContactModal(); });
 document.getElementById('pitch-modal').addEventListener('click', e => { if(e.target===e.currentTarget) closePitchModal(); });
