@@ -34,11 +34,16 @@ def _maybe_revert_lead_status(db_path: str, client_id: int) -> None:
         update_business(db_path, client_id, crm_status="contactado")
 
 
-def _get_calendar_service():
+_GCAL_SCOPES = [
+    "https://www.googleapis.com/auth/calendar",
+    "https://www.googleapis.com/auth/drive.readonly",
+]
+
+
+def _build_creds():
     import os
     try:
         from google.oauth2.credentials import Credentials
-        from googleapiclient.discovery import build
     except ImportError:
         return None, "google-api-python-client no instalado"
 
@@ -48,16 +53,36 @@ def _get_calendar_service():
     if not all([client_id, client_secret, refresh_token]):
         return None, "Faltan GCAL_CLIENT_ID, GCAL_CLIENT_SECRET o GCAL_REFRESH_TOKEN en .env"
 
-    creds = Credentials(
+    return Credentials(
         token=None,
         refresh_token=refresh_token,
         token_uri="https://oauth2.googleapis.com/token",
         client_id=client_id,
         client_secret=client_secret,
-        scopes=["https://www.googleapis.com/auth/calendar"],
-    )
-    service = build("calendar", "v3", credentials=creds)
-    return service, None
+        scopes=_GCAL_SCOPES,
+    ), None
+
+
+def _get_calendar_service():
+    try:
+        from googleapiclient.discovery import build
+    except ImportError:
+        return None, "google-api-python-client no instalado"
+    creds, err = _build_creds()
+    if err:
+        return None, err
+    return build("calendar", "v3", credentials=creds), None
+
+
+def _get_drive_service():
+    try:
+        from googleapiclient.discovery import build
+    except ImportError:
+        return None, "google-api-python-client no instalado"
+    creds, err = _build_creds()
+    if err:
+        return None, err
+    return build("drive", "v3", credentials=creds), None
 
 
 def _db() -> str:
@@ -285,6 +310,77 @@ Devolvé SOLO un JSON (sin texto extra, sin markdown):
         logging.getLogger(__name__).warning(f"Auto-budget failed for meeting {meeting_id}: {e}")
 
     return jsonify({"ok": True, "summary": result, "budget_generated": budget_generated})
+
+
+@calendar_bp.route("/api/calendar/meetings/<int:meeting_id>/fetch-transcript", methods=["GET"])
+def api_fetch_transcript(meeting_id):
+    meeting = get_meeting(_db(), meeting_id)
+    if not meeting:
+        return jsonify({"ok": False, "error": "Reunión no encontrada"}), 404
+
+    cal_event_id = meeting.get("calendar_event_id")
+    if not cal_event_id:
+        return jsonify({"ok": False, "error": "Reunión sin evento de Calendar asociado"})
+
+    cal_service, err = _get_calendar_service()
+    if err:
+        return jsonify({"ok": False, "error": err})
+
+    drive_service, derr = _get_drive_service()
+    if derr:
+        return jsonify({"ok": False, "error": derr})
+
+    try:
+        event = cal_service.events().get(calendarId="primary", eventId=cal_event_id).execute()
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"No se pudo obtener el evento: {e}"})
+
+    # 1. Buscar transcript en los attachments del evento de Calendar
+    file_id = None
+    for att in event.get("attachments", []):
+        title = (att.get("title") or "").lower()
+        if "transcript" in title or "transcripci" in title:
+            file_id = att.get("fileId")
+            break
+
+    # 2. Si no está en attachments, buscar en Drive por nombre
+    if not file_id:
+        event_title = (event.get("summary") or "").replace("'", "\\'")
+        try:
+            q = (
+                f"(name contains '{event_title}' or name contains 'Transcript')"
+                " and mimeType = 'application/vnd.google-apps.document'"
+                " and trashed = false"
+            )
+            results = drive_service.files().list(
+                q=q,
+                spaces="drive",
+                fields="files(id,name,createdTime)",
+                orderBy="createdTime desc",
+                pageSize=5,
+            ).execute()
+            files = results.get("files", [])
+            if files:
+                file_id = files[0]["id"]
+        except Exception:
+            pass
+
+    if not file_id:
+        return jsonify({
+            "ok": False,
+            "error": "No se encontró la transcripción en Drive. "
+                     "Verificá que la transcripción esté habilitada en Meet y que la reunión haya finalizado."
+        })
+
+    try:
+        content = drive_service.files().export(
+            fileId=file_id,
+            mimeType="text/plain",
+        ).execute()
+        text = content.decode("utf-8", errors="replace") if isinstance(content, bytes) else str(content)
+        return jsonify({"ok": True, "transcript": text})
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"No se pudo leer el archivo: {e}"})
 
 
 @calendar_bp.route("/api/calendar/events/<string:cal_event_id>/attendees", methods=["POST"])

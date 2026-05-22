@@ -2168,8 +2168,14 @@ function _cpRenderMeetings() {
         <button class="cp-btn cp-btn-primary" style="margin-top:10px" onclick="_cpGenerateBudgetFromMeeting(${m.id})">⚡ Generar presupuesto</button>
       ` : ''}
       <div style="margin-top:10px">
-        <div class="cp-summary-label">Transcripción de la reunión</div>
-        <textarea class="cp-transcript-area" id="transcript-${m.id}" placeholder="Pegá la transcripción de Google Meet acá...">${m.transcript || ''}</textarea>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <div class="cp-summary-label" style="margin:0">Transcripción de la reunión</div>
+          <button class="cp-btn cp-btn-ghost" style="font-size:.75rem;padding:2px 8px" onclick="_cpFetchTranscript(${m.id})" id="fetch-tr-btn-${m.id}">
+            <span id="fetch-tr-spin-${m.id}" style="display:none" class="cp-spinner"></span>
+            ⬇ Obtener de Drive
+          </button>
+        </div>
+        <textarea class="cp-transcript-area" id="transcript-${m.id}" placeholder="Pegá la transcripción de Google Meet acá, o usá ⬇ Obtener de Drive...">${m.transcript || ''}</textarea>
         <button class="cp-btn cp-btn-primary" onclick="_cpSummarize(${m.id})">
           <span id="sum-spin-${m.id}" style="display:none" class="cp-spinner"></span>
           Resumir con IA
@@ -2222,6 +2228,26 @@ async function _cpAddEmailToMeeting(meetId, calEventId) {
     alert('Email agregado al evento.');
   } else {
     alert('Error: ' + (d.error || 'desconocido'));
+  }
+}
+
+async function _cpFetchTranscript(meetingId) {
+  const btn = document.getElementById('fetch-tr-btn-' + meetingId);
+  const spin = document.getElementById('fetch-tr-spin-' + meetingId);
+  if (spin) spin.style.display = 'inline-block';
+  if (btn) btn.disabled = true;
+  try {
+    const r = await fetch('/api/calendar/meetings/' + meetingId + '/fetch-transcript');
+    const d = await r.json();
+    if (d.ok) {
+      const ta = document.getElementById('transcript-' + meetingId);
+      if (ta) ta.value = d.transcript;
+    } else {
+      alert('No se pudo obtener la transcripción: ' + (d.error || 'error desconocido'));
+    }
+  } finally {
+    if (spin) spin.style.display = 'none';
+    if (btn) btn.disabled = false;
   }
 }
 

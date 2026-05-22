@@ -1,10 +1,12 @@
 """
-Run this script ONCE to obtain the Google Calendar OAuth2 refresh token.
+Run this script ONCE (or again when scopes change) to obtain the OAuth2 refresh token.
 It opens a browser window for authentication and saves credentials to .env.
 
 Steps:
 1. Google Cloud Console → proyecto scrao-495517
-2. APIs & Services → Library → buscar "Google Calendar API" → Enable
+2. APIs & Services → Library → habilitar:
+   - "Google Calendar API"
+   - "Google Drive API"
 3. Run: python setup_calendar.py
 """
 import json
@@ -13,7 +15,10 @@ from datetime import datetime, timezone
 from google_auth_oauthlib.flow import InstalledAppFlow
 from dotenv import load_dotenv, set_key
 
-SCOPES = ["https://www.googleapis.com/auth/calendar"]
+SCOPES = [
+    "https://www.googleapis.com/auth/calendar",
+    "https://www.googleapis.com/auth/drive.readonly",
+]
 CREDENTIALS_FILE = "credentials.json"
 
 def main():
