@@ -8,6 +8,8 @@ from flask import Blueprint, current_app, jsonify, request
 
 from database import (
     create_meeting,
+    delete_meeting,
+    get_meeting,
     get_meetings_for_client,
     update_meeting,
 )
@@ -15,6 +17,21 @@ from database import (
 calendar_bp = Blueprint("calendar", __name__)
 
 MVD = pytz.timezone("America/Montevideo")
+
+
+def _maybe_revert_lead_status(db_path: str, client_id: int) -> None:
+    """Revert lead CRM status to 'contactado' if they have no remaining meetings."""
+    if not client_id:
+        return
+    from database import get_business, update_business
+    biz = get_business(db_path, client_id)
+    if not biz:
+        return
+    if biz.get("crm_status") != "reunion_agendada":
+        return
+    remaining = get_meetings_for_client(db_path, client_id)
+    if not remaining:
+        update_business(db_path, client_id, crm_status="contactado")
 
 
 def _get_calendar_service():
@@ -181,7 +198,6 @@ def api_client_meetings(client_id):
 
 @calendar_bp.route("/api/calendar/meetings/<int:meeting_id>", methods=["GET"])
 def api_get_meeting(meeting_id):
-    from database import get_meeting
     meeting = get_meeting(_db(), meeting_id)
     if not meeting:
         return jsonify({"error": "Reunión no encontrada"}), 404
@@ -269,3 +285,63 @@ Devolvé SOLO un JSON (sin texto extra, sin markdown):
         logging.getLogger(__name__).warning(f"Auto-budget failed for meeting {meeting_id}: {e}")
 
     return jsonify({"ok": True, "summary": result, "budget_generated": budget_generated})
+
+
+@calendar_bp.route("/api/calendar/events/<string:cal_event_id>", methods=["DELETE"])
+def api_delete_cal_event(cal_event_id):
+    service, err = _get_calendar_service()
+    if service:
+        try:
+            service.events().delete(
+                calendarId="primary",
+                eventId=cal_event_id,
+                sendUpdates="all",
+            ).execute()
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"No se pudo borrar evento {cal_event_id} en Calendar: {e}")
+
+    import sqlite3
+    db = _db()
+    client_id = None
+    try:
+        con = sqlite3.connect(db)
+        row = con.execute("SELECT client_id FROM meetings WHERE calendar_event_id = ?", (cal_event_id,)).fetchone()
+        client_id = row[0] if row else None
+        con.execute("DELETE FROM meetings WHERE calendar_event_id = ?", (cal_event_id,))
+        con.commit()
+        con.close()
+    except Exception:
+        pass
+
+    if client_id:
+        _maybe_revert_lead_status(db, client_id)
+
+    return jsonify({"ok": True})
+
+
+@calendar_bp.route("/api/calendar/meetings/<int:meeting_id>", methods=["DELETE"])
+def api_delete_meeting(meeting_id):
+    meeting = get_meeting(_db(), meeting_id)
+    if not meeting:
+        return jsonify({"ok": False, "error": "Reunión no encontrada"}), 404
+
+    cal_event_id = meeting.get("calendar_event_id")
+    if cal_event_id:
+        service, err = _get_calendar_service()
+        if service:
+            try:
+                service.events().delete(
+                    calendarId="primary",
+                    eventId=cal_event_id,
+                    sendUpdates="all",
+                ).execute()
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(f"No se pudo cancelar evento en Calendar: {e}")
+
+    delete_meeting(_db(), meeting_id)
+    client_id = meeting.get("client_id")
+    if client_id:
+        _maybe_revert_lead_status(_db(), client_id)
+    return jsonify({"ok": True})
