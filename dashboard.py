@@ -537,6 +537,18 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
             <input class="wa-input" id="wa-input" placeholder="Escribir mensaje..." onkeydown="if(event.key==='Enter')sendWaMessage()">
             <button class="wa-send-btn" onclick="sendWaMessage()">Enviar</button>
           </div>
+          <div id="wa-templates-panel" style="border-top:1px solid #1e293b;padding:10px;background:#0d1525">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+              <span style="font-size:.75rem;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.5px">Plantillas</span>
+              <button onclick="toggleWaTemplateForm()" style="font-size:.72rem;background:#1e293b;border:none;color:#94a3b8;padding:3px 8px;border-radius:4px;cursor:pointer">+ Nueva</button>
+            </div>
+            <div id="wa-template-form" style="display:none;margin-bottom:8px">
+              <input id="wa-tmpl-name" placeholder="Nombre de la plantilla" style="width:100%;background:#111827;border:1px solid #1e293b;color:#e2e8f0;padding:5px 8px;border-radius:4px;font-size:.78rem;margin-bottom:4px;box-sizing:border-box">
+              <textarea id="wa-tmpl-body" rows="2" placeholder="Texto del mensaje..." style="width:100%;background:#111827;border:1px solid #1e293b;color:#e2e8f0;padding:5px 8px;border-radius:4px;font-size:.78rem;resize:none;margin-bottom:4px;box-sizing:border-box"></textarea>
+              <button onclick="saveWaTemplate()" style="font-size:.75rem;background:#0088cc;border:none;color:#fff;padding:4px 12px;border-radius:4px;cursor:pointer">Guardar</button>
+            </div>
+            <div id="wa-template-list" style="max-height:120px;overflow-y:auto"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -826,6 +838,7 @@ function showPanel(name) {
   activePanel = name;
   closeSidebar();
   if (name === 'wa' && !waLoaded) loadWaLeads();
+  if (name === 'wa') loadWaTemplates();
   if (name === 'cal' && !calLoaded) { calLoaded = true; renderCalendar(); }
   if (name === 'kanban') loadKanban();
   if (name === 'tasks') loadTasks();
@@ -1146,6 +1159,53 @@ document.getElementById('search-input').addEventListener('input', e => {
 document.getElementById('contact-modal').addEventListener('click', e => { if(e.target===e.currentTarget) closeContactModal(); });
 document.getElementById('pitch-modal').addEventListener('click', e => { if(e.target===e.currentTarget) closePitchModal(); });
 document.getElementById('pipeline-modal').addEventListener('click', e => { if(e.target===e.currentTarget) closePipelineModal(); });
+
+// ========== WA Templates ==========
+async function loadWaTemplates() {
+  try {
+    const r = await fetch('/api/wa/templates');
+    const templates = await r.json();
+    const list = document.getElementById('wa-template-list');
+    if (!list) return;
+    if (!templates.length) { list.innerHTML = '<div style="font-size:.72rem;color:#475569;padding:2px 0">Sin plantillas guardadas</div>'; return; }
+    list.innerHTML = templates.map(t =>
+      `<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid #1a2234">
+        <span style="font-size:.78rem;color:#94a3b8;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-right:8px">${esc(t.name)}</span>
+        <div style="display:flex;gap:4px;flex-shrink:0">
+          <button onclick="useWaTemplate(${JSON.stringify(t.body)})" style="font-size:.7rem;background:#1e293b;border:none;color:#60a5fa;padding:2px 8px;border-radius:4px;cursor:pointer">Usar</button>
+          <button onclick="deleteWaTemplate(${t.id})" style="font-size:.7rem;background:#1e293b;border:none;color:#f87171;padding:2px 8px;border-radius:4px;cursor:pointer">✕</button>
+        </div>
+      </div>`
+    ).join('');
+  } catch(e) { console.error('loadWaTemplates', e); }
+}
+
+function toggleWaTemplateForm() {
+  const f = document.getElementById('wa-template-form');
+  if (f) f.style.display = f.style.display === 'none' ? 'block' : 'none';
+}
+
+async function saveWaTemplate() {
+  const name = (document.getElementById('wa-tmpl-name').value || '').trim();
+  const body = (document.getElementById('wa-tmpl-body').value || '').trim();
+  if (!name || !body) return;
+  await fetch('/api/wa/templates', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({name, body})});
+  document.getElementById('wa-tmpl-name').value = '';
+  document.getElementById('wa-tmpl-body').value = '';
+  const f = document.getElementById('wa-template-form');
+  if (f) f.style.display = 'none';
+  loadWaTemplates();
+}
+
+function useWaTemplate(body) {
+  const input = document.getElementById('wa-input');
+  if (input) { input.value = body; input.focus(); }
+}
+
+async function deleteWaTemplate(id) {
+  await fetch(`/api/wa/templates/${id}`, {method:'DELETE'});
+  loadWaTemplates();
+}
 
 // ========== WhatsApp panel ==========
 let waLoaded = false;
@@ -1914,12 +1974,31 @@ function _cpSwitchTab(tab) {
   _cpTab = tab;
   document.querySelectorAll('.cp-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
   const body = document.getElementById('cp-body');
-  if (tab === 'info')      body.innerHTML = _cpRenderInfo();
+  if (tab === 'info')      { body.innerHTML = _cpRenderInfo(); _cpLoadWaTemplates(); }
   else if (tab === 'conv') body.innerHTML = _cpRenderConv();
   else if (tab === 'meet') { body.innerHTML = _cpRenderMeetings(); _cpBindMeetings(); }
   else if (tab === 'budget') { body.innerHTML = _cpRenderBudget(); _cpBindBudget(); }
   else if (tab === 'demo') body.innerHTML = _cpRenderDemo();
   else if (tab === 'ctasks') { body.innerHTML = _cpRenderTasks(); _cpBindTasks(); }
+}
+
+async function _cpLoadWaTemplates() {
+  const sel = document.getElementById('cp-wa-tmpl-sel');
+  if (!sel) return;
+  try {
+    const r = await fetch('/api/wa/templates');
+    const templates = await r.json();
+    sel.innerHTML = '<option value="">Elegir plantilla...</option>' +
+      templates.map(t => `<option value="${esc(t.body)}">${esc(t.name)}</option>`).join('');
+  } catch {}
+}
+
+function _cpUseWaTemplate() {
+  const sel = document.getElementById('cp-wa-tmpl-sel');
+  const phone = (_cpData.lead || {}).phone || '';
+  if (!sel || !sel.value || !phone) return;
+  const digits = phone.replace(/\\D/g, '');
+  window.open(`https://wa.me/${digits}?text=${encodeURIComponent(sel.value)}`, '_blank');
 }
 
 function _cpRenderInfo() {
@@ -1943,6 +2022,15 @@ function _cpRenderInfo() {
     ${ci.colors ? `<div class="cp-field"><span class="cp-field-label">Colores de marca</span><span class="cp-field-val">${ci.colors}</span></div>` : ''}
     ${ci.instagram ? `<div class="cp-field"><span class="cp-field-label">Instagram / web</span><span class="cp-field-val">${ci.instagram}</span></div>` : ''}
     ${ci.needs ? `<div class="cp-field"><span class="cp-field-label">Necesidades</span><span class="cp-field-val">${ci.needs}</span></div>` : ''}
+  </div>` : ''}
+  ${l.phone ? `<div class="cp-section">
+    <div class="cp-section-title">Enviar por WhatsApp</div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <select id="cp-wa-tmpl-sel" style="background:#111827;border:1px solid #1e293b;color:#94a3b8;padding:5px 10px;border-radius:6px;font-size:.78rem;flex:1">
+        <option value="">Elegir plantilla...</option>
+      </select>
+      <button onclick="_cpUseWaTemplate()" style="background:#0088cc;border:none;color:#fff;padding:5px 14px;border-radius:6px;font-size:.78rem;cursor:pointer;white-space:nowrap">Abrir WA →</button>
+    </div>
   </div>` : ''}
   ${l.pitch_text ? `<div class="cp-section">
     <div class="cp-section-title" style="display:flex;justify-content:space-between;align-items:center">
