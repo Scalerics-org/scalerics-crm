@@ -220,6 +220,20 @@ def init_db(db_path: str) -> None:
         """)
         _add_column(conn, "lead_events", "created_by", "TEXT DEFAULT 'sistema'")
 
+        # Backfill scores for leads that were scraped before scoring was added
+        conn.execute("""
+            UPDATE businesses SET score = (
+                COALESCE((CASE WHEN instagram_url IS NOT NULL AND instagram_url != '' THEN 35 ELSE 0 END), 0) +
+                COALESCE((CASE WHEN facebook_url  IS NOT NULL AND facebook_url  != '' THEN 15 ELSE 0 END), 0) +
+                COALESCE((CASE WHEN CAST(rating AS REAL) >= 4.0 THEN 20
+                               WHEN CAST(rating AS REAL) >= 3.5 THEN 10 ELSE 0 END), 0) +
+                COALESCE((CASE WHEN CAST(review_count AS INTEGER) >= 20 THEN 15
+                               WHEN CAST(review_count AS INTEGER) >= 5  THEN 8  ELSE 0 END), 0) +
+                COALESCE((CASE WHEN hours   IS NOT NULL AND hours   != '' THEN 10 ELSE 0 END), 0) +
+                COALESCE((CASE WHEN address IS NOT NULL AND address != '' THEN 5  ELSE 0 END), 0)
+            )
+            WHERE score IS NULL
+        """)
         conn.commit()
 
         # Idempotent unique index — prevents duplicate leads from concurrent bot pushes
