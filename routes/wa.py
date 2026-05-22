@@ -193,3 +193,28 @@ def api_bot_lead_qualified():
 
     logger.info(f"[bot-sync] lead-qualified done: business_id={biz_id}, crm_status={crm_status!r}")
     return jsonify({"ok": True, "business_id": biz_id})
+
+
+@wa_bp.route("/api/wa/templates", methods=["GET"])
+def api_wa_templates_list():
+    from database import get_wa_templates
+    return jsonify(get_wa_templates(current_app.config["DB_PATH"]))
+
+
+@wa_bp.route("/api/wa/templates", methods=["POST"])
+def api_wa_templates_create():
+    from database import create_wa_template
+    data = request.get_json() or {}
+    name = (data.get("name") or "").strip()
+    body = (data.get("body") or "").strip()
+    if not name or not body:
+        return jsonify({"ok": False, "error": "name y body requeridos"}), 400
+    tid = create_wa_template(current_app.config["DB_PATH"], name, body)
+    return jsonify({"ok": True, "id": tid}), 201
+
+
+@wa_bp.route("/api/wa/templates/<int:template_id>", methods=["DELETE"])
+def api_wa_templates_delete(template_id):
+    from database import delete_wa_template
+    delete_wa_template(current_app.config["DB_PATH"], template_id)
+    return jsonify({"ok": True})
