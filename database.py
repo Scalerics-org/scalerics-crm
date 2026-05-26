@@ -220,6 +220,29 @@ def init_db(db_path: str) -> None:
         """)
         _add_column(conn, "lead_events", "created_by", "TEXT DEFAULT 'sistema'")
 
+        # ── users ─────────────────────────────────────────────────────────────
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                name        TEXT NOT NULL,
+                email       TEXT NOT NULL UNIQUE,
+                phone       TEXT NOT NULL,
+                password    TEXT NOT NULL,
+                created_at  TEXT NOT NULL
+            )
+        """)
+
+        # ── password_reset_tokens ─────────────────────────────────────────────
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                token       TEXT NOT NULL UNIQUE,
+                created_at  TEXT NOT NULL,
+                used_at     TEXT
+            )
+        """)
+
         # Backfill scores for leads that were scraped before scoring was added
         conn.execute("""
             UPDATE businesses SET score = (
@@ -958,5 +981,105 @@ def get_call_logs(db_path: str, lead_id: int) -> list[dict]:
             (lead_id,),
         )
         return [dict(r) for r in cursor.fetchall()]
+    finally:
+        conn.close()
+
+
+# ─── Users ────────────────────────────────────────────────────────────────────
+
+def create_user(db_path: str, name: str, email: str, phone: str, password_hash: str) -> Optional[int]:
+    from datetime import datetime, timezone
+    conn = _connect(db_path)
+    try:
+        cursor = conn.execute(
+            "INSERT OR IGNORE INTO users (name, email, phone, password, created_at) VALUES (?, ?, ?, ?, ?)",
+            (name, email, phone, password_hash, datetime.now(timezone.utc).isoformat()),
+        )
+        conn.commit()
+        return cursor.lastrowid if cursor.rowcount > 0 else None
+    finally:
+        conn.close()
+
+
+def get_user_by_email(db_path: str, email: str) -> Optional[dict]:
+    conn = _connect(db_path)
+    try:
+        row = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def get_user_by_id(db_path: str, user_id: int) -> Optional[dict]:
+    conn = _connect(db_path)
+    try:
+        row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def get_all_users(db_path: str) -> list[dict]:
+    conn = _connect(db_path)
+    try:
+        cursor = conn.execute("SELECT id, name, email, phone, created_at FROM users ORDER BY created_at ASC")
+        return [dict(r) for r in cursor.fetchall()]
+    finally:
+        conn.close()
+
+
+def delete_user(db_path: str, user_id: int) -> None:
+    conn = _connect(db_path)
+    try:
+        conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def update_user_password(db_path: str, user_id: int, password_hash: str) -> None:
+    conn = _connect(db_path)
+    try:
+        conn.execute("UPDATE users SET password = ? WHERE id = ?", (password_hash, user_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+# ─── Password reset tokens ────────────────────────────────────────────────────
+
+def create_reset_token(db_path: str, user_id: int, token: str) -> None:
+    from datetime import datetime, timezone
+    conn = _connect(db_path)
+    try:
+        conn.execute(
+            "INSERT INTO password_reset_tokens (user_id, token, created_at) VALUES (?, ?, ?)",
+            (user_id, token, datetime.now(timezone.utc).isoformat()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_reset_token(db_path: str, token: str) -> Optional[dict]:
+    conn = _connect(db_path)
+    try:
+        row = conn.execute(
+            "SELECT * FROM password_reset_tokens WHERE token = ?", (token,)
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def use_reset_token(db_path: str, token: str) -> None:
+    from datetime import datetime, timezone
+    conn = _connect(db_path)
+    try:
+        conn.execute(
+            "UPDATE password_reset_tokens SET used_at = ? WHERE token = ?",
+            (datetime.now(timezone.utc).isoformat(), token),
+        )
+        conn.commit()
     finally:
         conn.close()
