@@ -49,12 +49,16 @@ button:hover{opacity:.9}
 .links{margin-top:18px;display:flex;flex-direction:column;gap:8px;align-items:center}
 .links a{font-size:.78rem;color:#64748b;text-decoration:none}
 .links a:hover{color:#0088cc}
+.pw-wrap{position:relative;margin-bottom:16px}
+.pw-wrap input{margin-bottom:0}
+.pw-toggle{position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;color:#475569;cursor:pointer;padding:0;width:auto;font-size:.8rem;font-family:'Inter',sans-serif}
+.pw-toggle:hover{color:#94a3b8;opacity:1}
 </style>
 </head>
 <body>
 <div class="card">
   <div class="logo-wrap">
-    <img src="https://raw.githubusercontent.com/juantomasetti1/scalerics-assets/main/logo_full.png" alt="Scalerics">
+    <img src="https://raw.githubusercontent.com/juantomasetti1/scalerics-assets/main/logo_full_alt.png" alt="Scalerics">
     <span class="logo-sub">CRM interno</span>
   </div>
   {% if error %}<div class="error">{{ error }}</div>{% endif %}
@@ -62,7 +66,10 @@ button:hover{opacity:.9}
     <label>Email</label>
     <input type="email" name="email" autocomplete="email" required autofocus>
     <label>Contraseña</label>
-    <input type="password" name="password" autocomplete="current-password" required>
+    <div class="pw-wrap">
+      <input type="password" name="password" id="pw" autocomplete="current-password" required>
+      <button type="button" class="pw-toggle" onclick="var i=document.getElementById('pw');i.type=i.type==='password'?'text':'password';this.textContent=i.type==='password'?'Ver':'Ocultar'">Ver</button>
+    </div>
     <button type="submit">Ingresar</button>
   </form>
   <div class="links">
