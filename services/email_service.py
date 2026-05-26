@@ -19,7 +19,7 @@ def send_reset_email(to_email: str, reset_url: str) -> bool:
             "https://api.resend.com/emails",
             headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
             json={
-                "from": os.environ.get("FACTORY_EMAIL", "noreply@scalerics.com"),
+                "from": os.environ.get("RESEND_FROM_EMAIL", "Scalerics CRM <crm@noreply.scalerics.com>"),
                 "to": [to_email],
                 "subject": "Resetear contraseña — Scalerics CRM",
                 "html": f"""
@@ -84,7 +84,7 @@ def send_task_assignment_email(
             "https://api.resend.com/emails",
             headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
             json={
-                "from": os.environ.get("FACTORY_EMAIL", "noreply@scalerics.com"),
+                "from": os.environ.get("RESEND_FROM_EMAIL", "Scalerics CRM <crm@noreply.scalerics.com>"),
                 "to": [to_email],
                 "subject": f"Nueva tarea: {task_title} — Scalerics CRM",
                 "html": html,
