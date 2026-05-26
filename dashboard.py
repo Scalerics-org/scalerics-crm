@@ -3005,6 +3005,16 @@ def create_app(db_path: str) -> Flask:
     worker.register("demo", demo_job_handler)
     worker.start()
 
+    try:
+        from database import get_all_users
+        if not get_all_users(db_path):
+            import logging as _logging
+            _logging.getLogger(__name__).warning(
+                "No hay usuarios registrados. Entrá a /register para crear el primer usuario."
+            )
+    except Exception:
+        pass
+
     return app
 
 
