@@ -2006,9 +2006,12 @@ function _pickTaskClient(id, name) {
   document.getElementById('task-client-results').style.display = 'none';
 }
 
+let _taskSubmitting = false;
 async function submitAddTask() {
+  if (_taskSubmitting) return;
   const title = document.getElementById('task-title-input').value.trim();
   if (!title) { document.getElementById('task-title-input').focus(); return; }
+  _taskSubmitting = true;
   const body = {
     title,
     description: document.getElementById('task-desc-input').value.trim() || null,
@@ -2032,15 +2035,19 @@ async function submitAddTask() {
     body.goal = goalVal;
     body.progress = 0;
   }
-  const r = await fetch('/api/tasks', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
-  const d = await r.json();
-  document.getElementById('add-task-modal').classList.remove('open');
-  const newTask = {id: d.id, ...body};
-  _allTasks.unshift(newTask);
-  renderTasksList();
-  if (_cpClientId && body.client_id === _cpClientId) {
-    _cpData.tasks = [newTask, ...(_cpData.tasks||[])];
-    _cpSwitchTab('ctasks');
+  try {
+    const r = await fetch('/api/tasks', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+    const d = await r.json();
+    document.getElementById('add-task-modal').classList.remove('open');
+    const newTask = {id: d.id, ...body};
+    _allTasks.unshift(newTask);
+    renderTasksList();
+    if (_cpClientId && body.client_id === _cpClientId) {
+      _cpData.tasks = [newTask, ...(_cpData.tasks||[])];
+      _cpSwitchTab('ctasks');
+    }
+  } finally {
+    _taskSubmitting = false;
   }
 }
 
