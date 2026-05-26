@@ -2,6 +2,7 @@ import re
 import sqlite3
 import logging
 from typing import Optional
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -265,6 +266,7 @@ def init_db(db_path: str) -> None:
             conn.execute("CREATE INDEX IF NOT EXISTS idx_businesses_crm_status ON businesses(crm_status)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_businesses_score ON businesses(score)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_businesses_category ON businesses(category)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_prt_user_id ON password_reset_tokens(user_id)")
             conn.commit()
         except Exception:
             pass
@@ -988,7 +990,6 @@ def get_call_logs(db_path: str, lead_id: int) -> list[dict]:
 # ─── Users ────────────────────────────────────────────────────────────────────
 
 def create_user(db_path: str, name: str, email: str, phone: str, password_hash: str) -> Optional[int]:
-    from datetime import datetime, timezone
     conn = _connect(db_path)
     try:
         cursor = conn.execute(
@@ -1049,7 +1050,6 @@ def update_user_password(db_path: str, user_id: int, password_hash: str) -> None
 # ─── Password reset tokens ────────────────────────────────────────────────────
 
 def create_reset_token(db_path: str, user_id: int, token: str) -> None:
-    from datetime import datetime, timezone
     conn = _connect(db_path)
     try:
         conn.execute(
@@ -1072,14 +1072,14 @@ def get_reset_token(db_path: str, token: str) -> Optional[dict]:
         conn.close()
 
 
-def use_reset_token(db_path: str, token: str) -> None:
-    from datetime import datetime, timezone
+def use_reset_token(db_path: str, token: str) -> bool:
     conn = _connect(db_path)
     try:
-        conn.execute(
+        cursor = conn.execute(
             "UPDATE password_reset_tokens SET used_at = ? WHERE token = ?",
             (datetime.now(timezone.utc).isoformat(), token),
         )
         conn.commit()
+        return cursor.rowcount > 0
     finally:
         conn.close()

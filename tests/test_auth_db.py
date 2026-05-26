@@ -59,6 +59,7 @@ def test_get_all_users(db):
     create_user(db, name="B", email="b@test.com", phone="2", password_hash="h")
     users = get_all_users(db)
     assert len(users) == 2
+    assert "password" not in users[0]
 
 
 def test_delete_user(db):
