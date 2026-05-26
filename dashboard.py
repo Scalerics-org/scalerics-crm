@@ -2720,8 +2720,102 @@ async function loadMetrics() {
     if (p) p.insertAdjacentHTML('afterbegin','<p style="color:#f87171;margin-bottom:16px">Error cargando métricas.</p>');
   }
 }
+</script>
 
+<div class="cp-backdrop" id="cp-backdrop" onclick="closeClientPanel()"></div>
+<div class="client-panel" id="client-panel">
+  <button class="cp-close" onclick="closeClientPanel()">×</button>
+  <div class="cp-header">
+    <div class="cp-title" id="cp-title">Cliente</div>
+    <div class="cp-sub">
+      <span id="cp-phone"></span>
+      <select class="cp-status-sel" id="cp-status-sel" onchange="_cpChangeStatus(this.value)">
+        <option value="sin_contactar">Sin contactar</option>
+        <option value="contactado">Contactado</option>
+        <option value="reunion_agendada">Reunión agendada</option>
+        <option value="demo_generada">Demo generada</option>
+        <option value="reunion_hecha">Reunión hecha</option>
+        <option value="presupuesto_enviado">Presupuesto enviado</option>
+        <option value="negociacion">Negociación</option>
+        <option value="cliente_cerrado">Cliente cerrado</option>
+        <option value="en_desarrollo">En desarrollo</option>
+        <option value="finalizado">Finalizado</option>
+      </select>
+    </div>
+    <div class="cp-tabs">
+      <div class="cp-tab active" data-tab="info" onclick="_cpSwitchTab('info')">Info</div>
+      <div class="cp-tab" data-tab="conv" onclick="_cpSwitchTab('conv')">Conversación</div>
+      <div class="cp-tab" data-tab="meet" onclick="_cpSwitchTab('meet')">Reuniones</div>
+      <div class="cp-tab" data-tab="budget" onclick="_cpSwitchTab('budget')">Presupuesto</div>
+      <div class="cp-tab" data-tab="demo" onclick="_cpSwitchTab('demo')">Demo</div>
+      <div class="cp-tab" data-tab="ctasks" onclick="_cpSwitchTab('ctasks')">Tareas</div>
+      <div class="cp-tab" data-tab="calls" onclick="_cpSwitchTab('calls')">📞 Llamadas</div>
+    </div>
+  </div>
+  <div class="cp-body" id="cp-body">
+    <div style="color:#475569">Cargando...</div>
+  </div>
+</div>
 
+<div class="batch-bar" id="batch-bar">
+  <span class="batch-count" id="batch-count">0 seleccionados</span>
+  <select class="batch-sel" id="batch-status">
+    <option value="">— Cambiar estado —</option>
+    <option value="sin_contactar">Sin contactar</option>
+    <option value="contactado">Contactado</option>
+    <option value="reunion_agendada">Reunión agendada</option>
+    <option value="demo_generada">Demo generada</option>
+    <option value="reunion_hecha">Reunión hecha</option>
+    <option value="presupuesto_enviado">Presupuesto enviado</option>
+    <option value="negociacion">Negociación</option>
+    <option value="cliente_cerrado">Cliente cerrado</option>
+    <option value="en_desarrollo">En desarrollo</option>
+    <option value="finalizado">Finalizado</option>
+  </select>
+  <button class="batch-apply" onclick="applyBatch()">Aplicar</button>
+  <button class="batch-cancel" onclick="clearSelection()">Cancelar</button>
+</div>
+<div id="profile-panel" style="display:none;position:fixed;top:0;right:0;bottom:0;width:380px;background:#111827;border-left:1px solid #1e293b;z-index:1500;flex-direction:column;overflow:hidden">
+  <div style="padding:20px 20px 0;display:flex;align-items:center;justify-content:space-between">
+    <span style="font-size:.85rem;font-weight:700;color:#e2e8f0">Mi perfil</span>
+    <button onclick="closeProfilePanel()" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:1.2rem">&times;</button>
+  </div>
+  <div style="padding:16px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:12px">
+    <div>
+      <label style="font-size:.72rem;color:#64748b;display:block;margin-bottom:4px">Nombre</label>
+      <input id="prof-name" type="text" style="width:100%;background:#0a0f1a;border:1px solid #1e293b;border-radius:6px;padding:8px 10px;color:#e2e8f0;font-size:.82rem;font-family:inherit;outline:none">
+    </div>
+    <div>
+      <label style="font-size:.72rem;color:#64748b;display:block;margin-bottom:4px">Email</label>
+      <input id="prof-email" type="email" style="width:100%;background:#0a0f1a;border:1px solid #1e293b;border-radius:6px;padding:8px 10px;color:#e2e8f0;font-size:.82rem;font-family:inherit;outline:none">
+    </div>
+    <div>
+      <label style="font-size:.72rem;color:#64748b;display:block;margin-bottom:4px">Teléfono</label>
+      <input id="prof-phone" type="text" style="width:100%;background:#0a0f1a;border:1px solid #1e293b;border-radius:6px;padding:8px 10px;color:#e2e8f0;font-size:.82rem;font-family:inherit;outline:none">
+    </div>
+    <div style="border-top:1px solid #1e293b;padding-top:12px">
+      <div style="font-size:.72rem;color:#475569;margin-bottom:8px">Contraseña nueva (dejá vacío para no cambiar)</div>
+      <div style="margin-bottom:8px">
+        <label style="font-size:.72rem;color:#64748b;display:block;margin-bottom:4px">Nueva contraseña</label>
+        <input id="prof-pw" type="password" autocomplete="new-password" style="width:100%;background:#0a0f1a;border:1px solid #1e293b;border-radius:6px;padding:8px 10px;color:#e2e8f0;font-size:.82rem;font-family:inherit;outline:none">
+      </div>
+      <div>
+        <label style="font-size:.72rem;color:#64748b;display:block;margin-bottom:4px">Confirmar contraseña</label>
+        <input id="prof-pw2" type="password" autocomplete="new-password" style="width:100%;background:#0a0f1a;border:1px solid #1e293b;border-radius:6px;padding:8px 10px;color:#e2e8f0;font-size:.82rem;font-family:inherit;outline:none">
+      </div>
+    </div>
+    <div id="prof-msg" style="font-size:.75rem;display:none;padding:6px 10px;border-radius:6px"></div>
+    <button onclick="saveProfile()" style="background:#0088CC;border:none;border-radius:8px;padding:10px;color:#fff;font-size:.82rem;font-weight:600;cursor:pointer;font-family:inherit">Guardar cambios</button>
+  </div>
+</div>
+<div id="admin-panel" style="display:none;position:fixed;top:0;right:0;bottom:0;width:380px;background:#111827;border-left:1px solid #1e293b;z-index:1500;flex-direction:column;overflow:hidden">
+  <div style="padding:20px 20px 0;display:flex;align-items:center;justify-content:space-between">
+    <span style="font-size:.85rem;font-weight:700;color:#e2e8f0">Usuarios</span>
+    <button onclick="closeAdminPanel()" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:1.2rem">&times;</button>
+  </div>
+  <div id="admin-users-list" style="padding:16px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:10px"></div>
+</div>
+<script>
 // ── User info & admin visibility ────────────────────────────────────────────
 async function initUserInfo(){
   try{
@@ -2830,102 +2924,6 @@ async function saveProfile(){
   }catch(e){showMsg('Error de conexión',false);}
 }
 </script>
-
-
-<div class="cp-backdrop" id="cp-backdrop" onclick="closeClientPanel()"></div>
-<div class="client-panel" id="client-panel">
-  <button class="cp-close" onclick="closeClientPanel()">×</button>
-  <div class="cp-header">
-    <div class="cp-title" id="cp-title">Cliente</div>
-    <div class="cp-sub">
-      <span id="cp-phone"></span>
-      <select class="cp-status-sel" id="cp-status-sel" onchange="_cpChangeStatus(this.value)">
-        <option value="sin_contactar">Sin contactar</option>
-        <option value="contactado">Contactado</option>
-        <option value="reunion_agendada">Reunión agendada</option>
-        <option value="demo_generada">Demo generada</option>
-        <option value="reunion_hecha">Reunión hecha</option>
-        <option value="presupuesto_enviado">Presupuesto enviado</option>
-        <option value="negociacion">Negociación</option>
-        <option value="cliente_cerrado">Cliente cerrado</option>
-        <option value="en_desarrollo">En desarrollo</option>
-        <option value="finalizado">Finalizado</option>
-      </select>
-    </div>
-    <div class="cp-tabs">
-      <div class="cp-tab active" data-tab="info" onclick="_cpSwitchTab('info')">Info</div>
-      <div class="cp-tab" data-tab="conv" onclick="_cpSwitchTab('conv')">Conversación</div>
-      <div class="cp-tab" data-tab="meet" onclick="_cpSwitchTab('meet')">Reuniones</div>
-      <div class="cp-tab" data-tab="budget" onclick="_cpSwitchTab('budget')">Presupuesto</div>
-      <div class="cp-tab" data-tab="demo" onclick="_cpSwitchTab('demo')">Demo</div>
-      <div class="cp-tab" data-tab="ctasks" onclick="_cpSwitchTab('ctasks')">Tareas</div>
-      <div class="cp-tab" data-tab="calls" onclick="_cpSwitchTab('calls')">📞 Llamadas</div>
-    </div>
-  </div>
-  <div class="cp-body" id="cp-body">
-    <div style="color:#475569">Cargando...</div>
-  </div>
-</div>
-
-<div class="batch-bar" id="batch-bar">
-  <span class="batch-count" id="batch-count">0 seleccionados</span>
-  <select class="batch-sel" id="batch-status">
-    <option value="">— Cambiar estado —</option>
-    <option value="sin_contactar">Sin contactar</option>
-    <option value="contactado">Contactado</option>
-    <option value="reunion_agendada">Reunión agendada</option>
-    <option value="demo_generada">Demo generada</option>
-    <option value="reunion_hecha">Reunión hecha</option>
-    <option value="presupuesto_enviado">Presupuesto enviado</option>
-    <option value="negociacion">Negociación</option>
-    <option value="cliente_cerrado">Cliente cerrado</option>
-    <option value="en_desarrollo">En desarrollo</option>
-    <option value="finalizado">Finalizado</option>
-  </select>
-  <button class="batch-apply" onclick="applyBatch()">Aplicar</button>
-  <button class="batch-cancel" onclick="clearSelection()">Cancelar</button>
-</div>
-<div id="profile-panel" style="display:none;position:fixed;top:0;right:0;bottom:0;width:380px;background:#111827;border-left:1px solid #1e293b;z-index:1500;flex-direction:column;overflow:hidden">
-  <div style="padding:20px 20px 0;display:flex;align-items:center;justify-content:space-between">
-    <span style="font-size:.85rem;font-weight:700;color:#e2e8f0">Mi perfil</span>
-    <button onclick="closeProfilePanel()" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:1.2rem">&times;</button>
-  </div>
-  <div style="padding:16px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:12px">
-    <div>
-      <label style="font-size:.72rem;color:#64748b;display:block;margin-bottom:4px">Nombre</label>
-      <input id="prof-name" type="text" style="width:100%;background:#0a0f1a;border:1px solid #1e293b;border-radius:6px;padding:8px 10px;color:#e2e8f0;font-size:.82rem;font-family:inherit;outline:none">
-    </div>
-    <div>
-      <label style="font-size:.72rem;color:#64748b;display:block;margin-bottom:4px">Email</label>
-      <input id="prof-email" type="email" style="width:100%;background:#0a0f1a;border:1px solid #1e293b;border-radius:6px;padding:8px 10px;color:#e2e8f0;font-size:.82rem;font-family:inherit;outline:none">
-    </div>
-    <div>
-      <label style="font-size:.72rem;color:#64748b;display:block;margin-bottom:4px">Teléfono</label>
-      <input id="prof-phone" type="text" style="width:100%;background:#0a0f1a;border:1px solid #1e293b;border-radius:6px;padding:8px 10px;color:#e2e8f0;font-size:.82rem;font-family:inherit;outline:none">
-    </div>
-    <div style="border-top:1px solid #1e293b;padding-top:12px">
-      <div style="font-size:.72rem;color:#475569;margin-bottom:8px">Contraseña nueva (dejá vacío para no cambiar)</div>
-      <div style="margin-bottom:8px">
-        <label style="font-size:.72rem;color:#64748b;display:block;margin-bottom:4px">Nueva contraseña</label>
-        <input id="prof-pw" type="password" autocomplete="new-password" style="width:100%;background:#0a0f1a;border:1px solid #1e293b;border-radius:6px;padding:8px 10px;color:#e2e8f0;font-size:.82rem;font-family:inherit;outline:none">
-      </div>
-      <div>
-        <label style="font-size:.72rem;color:#64748b;display:block;margin-bottom:4px">Confirmar contraseña</label>
-        <input id="prof-pw2" type="password" autocomplete="new-password" style="width:100%;background:#0a0f1a;border:1px solid #1e293b;border-radius:6px;padding:8px 10px;color:#e2e8f0;font-size:.82rem;font-family:inherit;outline:none">
-      </div>
-    </div>
-    <div id="prof-msg" style="font-size:.75rem;display:none;padding:6px 10px;border-radius:6px"></div>
-    <button onclick="saveProfile()" style="background:#0088CC;border:none;border-radius:8px;padding:10px;color:#fff;font-size:.82rem;font-weight:600;cursor:pointer;font-family:inherit">Guardar cambios</button>
-  </div>
-</div>
-<div id="admin-panel" style="display:none;position:fixed;top:0;right:0;bottom:0;width:380px;background:#111827;border-left:1px solid #1e293b;z-index:1500;flex-direction:column;overflow:hidden">
-  <div style="padding:20px 20px 0;display:flex;align-items:center;justify-content:space-between">
-    <span style="font-size:.85rem;font-weight:700;color:#e2e8f0">Usuarios</span>
-    <button onclick="closeAdminPanel()" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:1.2rem">&times;</button>
-  </div>
-  <div id="admin-users-list" style="padding:16px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:10px"></div>
-</div>
-
 </body>
 </html>"""
 
