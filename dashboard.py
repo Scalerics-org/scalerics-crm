@@ -2826,9 +2826,9 @@ async function initUserInfo(){
     const sb=document.getElementById('sidebar-user');
     if(sb)sb.textContent=me.name;
     if(me.is_admin){const btn=document.getElementById('admin-btn');if(btn)btn.style.display='';}
-  }catch(e){}
+  }catch(e){console.error('initUserInfo:',e);}
 }
-initUserInfo();
+document.addEventListener('DOMContentLoaded',initUserInfo);
 
 // ── Admin panel ─────────────────────────────────────────────────────────────
 async function openAdminPanel(){
@@ -2876,15 +2876,22 @@ async function adminResetPwd(id){
 
 // ── Profile panel ───────────────────────────────────────────────────────────
 function openProfilePanel(){
+  const panel=document.getElementById('profile-panel');
+  if(!panel){alert('Error: panel no encontrado');return;}
   const me=window._meData||{};
-  document.getElementById('prof-name').value=me.name||'';
-  document.getElementById('prof-email').value=me.email||'';
-  document.getElementById('prof-phone').value=me.phone||'';
-  document.getElementById('prof-pw').value='';
-  document.getElementById('prof-pw2').value='';
-  const msg=document.getElementById('prof-msg');
-  msg.style.display='none';
-  document.getElementById('profile-panel').style.display='flex';
+  const fname=document.getElementById('prof-name');
+  const femail=document.getElementById('prof-email');
+  const fphone=document.getElementById('prof-phone');
+  const fpw=document.getElementById('prof-pw');
+  const fpw2=document.getElementById('prof-pw2');
+  const fmsg=document.getElementById('prof-msg');
+  if(fname)fname.value=me.name||'';
+  if(femail)femail.value=me.email||'';
+  if(fphone)fphone.value=me.phone||'';
+  if(fpw)fpw.value='';
+  if(fpw2)fpw2.value='';
+  if(fmsg)fmsg.style.display='none';
+  panel.style.display='flex';
 }
 function closeProfilePanel(){document.getElementById('profile-panel').style.display='none';}
 async function saveProfile(){
@@ -2941,6 +2948,12 @@ def create_app(db_path: str) -> Flask:
             expected = os.environ.get("ADMIN_TOKEN", "")
             if expected and token == expected:
                 return
+        # Invalidate pre-multiuser sessions that lack user_id
+        if session.get("logged_in") and not session.get("user_id"):
+            session.clear()
+            if request.path.startswith("/api/"):
+                return jsonify({"error": "session_expired"}), 401
+            return redirect(url_for("login"))
         if not session.get("logged_in"):
             if request.path.startswith("/api/"):
                 return jsonify({"error": "session_expired"}), 401
