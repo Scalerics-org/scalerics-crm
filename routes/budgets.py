@@ -6,14 +6,16 @@ import logging
 import os
 from typing import Optional
 
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, current_app, jsonify, request, session
 
 from database import (
     create_budget,
+    get_budget_by_id,
     get_budget_for_client,
     get_business,
     get_client_info,
     get_meetings_for_client,
+    log_activity,
     update_budget,
 )
 
@@ -216,6 +218,9 @@ def api_generate_budget(client_id):
     else:
         budget_id = create_budget(_db(), client_id, items=sections_json, total_amount=dev_price, notes=notes_json)
 
+    log_activity(_db(), session.get("user_name", "sistema"), "budget_generated",
+                 "lead", client_id, client.get("name", ""), "",
+                 user_id=session.get("user_id"))
     return jsonify({"ok": True, "budget_id": budget_id, "data": budget_data})
 
 
@@ -238,7 +243,14 @@ def api_update_budget(budget_id):
 
 @budgets_bp.route("/api/budgets/<int:budget_id>/mark-sent", methods=["POST"])
 def api_mark_budget_sent(budget_id):
-    update_budget(_db(), budget_id, status="sent", sent_at=datetime.datetime.now().isoformat())
+    db = _db()
+    update_budget(db, budget_id, status="sent", sent_at=datetime.datetime.now().isoformat())
+    budget = get_budget_by_id(db, budget_id)
+    if budget:
+        client = get_business(db, budget["client_id"]) or {}
+        log_activity(db, session.get("user_name", "sistema"), "budget_sent",
+                     "lead", budget["client_id"], client.get("name", ""), "",
+                     user_id=session.get("user_id"))
     return jsonify({"ok": True})
 
 

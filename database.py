@@ -244,6 +244,21 @@ def init_db(db_path: str) -> None:
             )
         """)
 
+        # ── activity_log ──────────────────────────────────────────────────────
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS activity_log (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id     INTEGER,
+                user_name   TEXT NOT NULL DEFAULT 'sistema',
+                action      TEXT NOT NULL,
+                entity_type TEXT,
+                entity_id   INTEGER,
+                entity_name TEXT,
+                detail      TEXT,
+                created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
         # Backfill scores for leads that were scraped before scoring was added
         conn.execute("""
             UPDATE businesses SET score = (
@@ -267,6 +282,7 @@ def init_db(db_path: str) -> None:
             conn.execute("CREATE INDEX IF NOT EXISTS idx_businesses_score ON businesses(score)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_businesses_category ON businesses(category)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_prt_user_id ON password_reset_tokens(user_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_activity_log_time ON activity_log(created_at)")
             conn.commit()
         except Exception:
             pass
@@ -652,6 +668,15 @@ def update_budget(db_path: str, budget_id: int, **fields) -> None:
         conn.close()
 
 
+def get_budget_by_id(db_path: str, budget_id: int) -> Optional[dict]:
+    conn = _connect(db_path)
+    try:
+        row = conn.execute("SELECT * FROM budgets WHERE id = ?", (budget_id,)).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
 def get_budget_for_client(db_path: str, client_id: int) -> Optional[dict]:
     conn = _connect(db_path)
     try:
@@ -720,6 +745,15 @@ def get_tasks(db_path: str, client_id: Optional[int] = None, status: Optional[st
             f"SELECT * FROM tasks {where} ORDER BY created_at DESC", params
         )
         return [dict(row) for row in cursor.fetchall()]
+    finally:
+        conn.close()
+
+
+def get_task_by_id(db_path: str, task_id: int) -> Optional[dict]:
+    conn = _connect(db_path)
+    try:
+        row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+        return dict(row) if row else None
     finally:
         conn.close()
 
@@ -922,6 +956,36 @@ def get_lead_events(db_path: str, lead_id: int) -> list[dict]:
         cursor = conn.execute(
             "SELECT id, new_status, note, created_at, created_by FROM lead_events WHERE lead_id = ? ORDER BY created_at DESC",
             (lead_id,),
+        )
+        return [dict(r) for r in cursor.fetchall()]
+    finally:
+        conn.close()
+
+
+# ─── Activity log ─────────────────────────────────────────────────────────────
+
+def log_activity(db_path: str, user_name: str, action: str,
+                 entity_type: str = "", entity_id: int = None,
+                 entity_name: str = "", detail: str = "", user_id: int = None) -> None:
+    conn = _connect(db_path)
+    try:
+        conn.execute(
+            "INSERT INTO activity_log (user_id, user_name, action, entity_type, entity_id, entity_name, detail) VALUES (?,?,?,?,?,?,?)",
+            (user_id, user_name or "sistema", action, entity_type or "", entity_id, entity_name or "", detail or ""),
+        )
+        conn.commit()
+    except Exception:
+        pass
+    finally:
+        conn.close()
+
+
+def get_activity_feed(db_path: str, limit: int = 60) -> list[dict]:
+    conn = _connect(db_path)
+    try:
+        cursor = conn.execute(
+            "SELECT id, user_name, action, entity_type, entity_id, entity_name, detail, created_at FROM activity_log ORDER BY created_at DESC LIMIT ?",
+            (limit,),
         )
         return [dict(r) for r in cursor.fetchall()]
     finally:

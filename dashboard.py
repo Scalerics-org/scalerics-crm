@@ -606,6 +606,7 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
   <div class="nav-item" id="nav-wa" onclick="showPanel('wa')">💬 WhatsApp</div>
   <div class="nav-item" id="nav-cal" onclick="showPanel('cal')">📅 Calendario</div>
   <div class="nav-item" id="nav-metrics" onclick="showPanel('metrics')">📊 Métricas</div>
+  <div class="nav-item" id="nav-activity" onclick="showPanel('activity')">&#128337; Actividad</div>
   <div class="sidebar-bottom">
     <a id="admin-link" href="/admin/users" style="display:none;background:none;border:1px solid #1e293b;border-radius:8px;padding:6px 12px;font-size:.75rem;color:#64748b;cursor:pointer;width:100%;text-align:left;text-decoration:none;box-sizing:border-box">&#9881; Usuarios</a>
     <a href="/profile" style="background:none;border:1px solid #1e293b;border-radius:8px;padding:6px 12px;font-size:.75rem;color:#64748b;cursor:pointer;width:100%;text-align:left;text-decoration:none;box-sizing:border-box;display:block">&#128100; Mi perfil</a>
@@ -785,6 +786,17 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
     </div>
   </div>
 </div>
+
+  <div id="activity-panel" class="panel">
+    <div class="page-header">
+      <div>
+        <h1>Actividad reciente</h1>
+        <div class="page-date" id="activity-date"></div>
+      </div>
+      <button class="export-btn" onclick="loadActivity()">↻ Actualizar</button>
+    </div>
+    <div id="activity-list" style="max-width:760px"></div>
+  </div>
 
 <!-- Modal: Contactar -->
 <div class="modal-overlay" id="contact-modal">
@@ -997,6 +1009,7 @@ function showPanel(name) {
   if (name === 'kanban') loadKanban();
   if (name === 'tasks') loadTasks();
   if (name === 'metrics') loadMetrics();
+  if (name === 'activity') loadActivity();
 }
 
 // ========== Leads panel ==========
@@ -2252,7 +2265,7 @@ async function _cpLogCall() {
 function _cpRenderHistory() {
   const events = _cpData.events || [];
   if (!events.length) return '';
-  const crmLabels = {sin_contactar:'Sin contactar',contactado:'Contactado',reunion_agendada:'Reunión agendada',demo_generada:'Demo generada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Presupuesto enviado',negociacion:'Negociación',cliente_cerrado:'Cliente cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado',agendo:'Agendó',firmo:'Firmó'};
+  const crmLabels = {sin_contactar:'Sin contactar',contactado:'Contactado',reunion_agendada:'Reunión agendada',demo_generada:'Demo generada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Presupuesto enviado',negociacion:'Negociación',cliente_cerrado:'Cliente cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado',agendo:'Agendó',firmo:'Firmó',nota_actualizada:'Nota actualizada',adjunto_agregado:'Adjunto agregado'};
   const items = events.map(e => {
     const label = crmLabels[e.new_status] || e.new_status;
     const when = timeAgo(e.created_at);
@@ -2721,6 +2734,57 @@ async function loadMetrics() {
     if (p) p.insertAdjacentHTML('afterbegin','<p style="color:#f87171;margin-bottom:16px">Error cargando métricas.</p>');
   }
 }
+
+// ========== Activity feed ==========
+const _actActionLabels = {
+  status_change: (i) => `cambió estado${i.entity_name ? ' de <b>'+esc(i.entity_name)+'</b>' : ''} a <b>${_actCrmLabel(i.detail)}</b>`,
+  note_updated:  (i) => `actualizó notas${i.entity_name ? ' de <b>'+esc(i.entity_name)+'</b>' : ''}`,
+  attachment_added: (i) => `adjuntó archivo${i.entity_name ? ' a <b>'+esc(i.entity_name)+'</b>' : ''}${i.detail ? ': '+esc(i.detail) : ''}`,
+  call_logged:   (i) => `registró llamada${i.entity_name ? ' a <b>'+esc(i.entity_name)+'</b>' : ''}: <b>${_actCallLabel(i.detail)}</b>`,
+  budget_generated: (i) => `generó presupuesto${i.entity_name ? ' para <b>'+esc(i.entity_name)+'</b>' : ''}`,
+  budget_sent:   (i) => `marcó presupuesto como enviado${i.entity_name ? ' para <b>'+esc(i.entity_name)+'</b>' : ''}`,
+  task_created:  (i) => `creó tarea: <b>${esc(i.detail || i.entity_name)}</b>`,
+  task_updated:  (i) => `actualizó tarea: <b>${esc(i.entity_name)}</b>${i.detail ? ' ('+esc(i.detail)+')' : ''}`,
+  task_deleted:  (i) => `eliminó tarea: <b>${esc(i.entity_name)}</b>`,
+  meeting_scheduled: (i) => `agendó reunión${i.entity_name ? ' con <b>'+esc(i.entity_name)+'</b>' : ''}${i.detail ? ': '+esc(i.detail) : ''}`,
+  lead_deleted:  (i) => `eliminó lead: <b>${esc(i.entity_name)}</b>`,
+  batch_status:  (i) => i.detail || 'actualizó múltiples leads',
+};
+const _actCrmMap = {sin_contactar:'Sin contactar',contactado:'Contactado',reunion_agendada:'Reunión agendada',demo_generada:'Demo generada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Presupuesto enviado',negociacion:'Negociación',cliente_cerrado:'Cliente cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado'};
+function _actCrmLabel(s) { return _actCrmMap[s] || s || ''; }
+function _actCallLabel(s) { return {contestó:'Contestó',no_contestó:'No contestó',buzón:'Buzón'‌}[s] || s || ''; }
+const _actIcons = {status_change:'🔄',note_updated:'📝',attachment_added:'📎',call_logged:'📞',budget_generated:'💰',budget_sent:'📨',task_created:'✅',task_updated:'✏️',task_deleted:'🗑️',meeting_scheduled:'📅',lead_deleted:'🗑️',batch_status:'🔄'};
+
+async function loadActivity() {
+  const list = document.getElementById('activity-list');
+  if (!list) return;
+  list.innerHTML = '<div style="color:#475569;padding:16px 0">Cargando...</div>';
+  try {
+    const r = await fetch('/api/activity');
+    if (!r.ok) { list.innerHTML = '<div style="color:#f87171">Error cargando actividad</div>'; return; }
+    const items = await r.json();
+    if (!items.length) { list.innerHTML = '<div style="color:#475569;padding:16px 0">Sin actividad registrada todavía.</div>'; return; }
+    list.innerHTML = items.map(i => {
+      const fn = _actActionLabels[i.action];
+      const desc = fn ? fn(i) : esc(i.action);
+      const icon = _actIcons[i.action] || '·';
+      const when = timeAgo(i.created_at);
+      return `<div style="display:flex;gap:14px;align-items:flex-start;padding:13px 0;border-bottom:1px solid #1e293b">
+        <div style="width:34px;height:34px;border-radius:50%;background:#1a2234;display:flex;align-items:center;justify-content:center;font-size:.95rem;flex-shrink:0">${icon}</div>
+        <div style="flex:1;min-width:0">
+          <span style="font-weight:600;color:#e2e8f0">${esc(i.user_name)}</span>
+          <span style="color:#64748b"> · </span>
+          <span style="color:#94a3b8;font-size:.85rem">${desc}</span>
+          <div style="font-size:.72rem;color:#475569;margin-top:3px">${when}</div>
+        </div>
+      </div>`;
+    }).join('');
+    const d = document.getElementById('activity-date');
+    if (d) d.textContent = 'Actualizado: ' + new Date().toLocaleString('es-UY');
+  } catch(e) {
+    list.innerHTML = '<div style="color:#f87171">Error cargando actividad</div>';
+  }
+}
 </script>
 
 <div class="cp-backdrop" id="cp-backdrop" onclick="closeClientPanel()"></div>
@@ -2912,6 +2976,11 @@ def create_app(db_path: str) -> Flask:
 
         return render_template_string(RESET_HTML, error=error, valid=valid)
 
+
+    @app.route("/api/activity", methods=["GET"])
+    def api_activity():
+        from database import get_activity_feed
+        return jsonify(get_activity_feed(db_path))
 
     @app.route("/api/me", methods=["GET"])
     def api_me():

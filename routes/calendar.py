@@ -4,13 +4,15 @@ import datetime
 import uuid
 
 import pytz
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, current_app, jsonify, request, session
 
 from database import (
     create_meeting,
     delete_meeting,
+    get_business,
     get_meeting,
     get_meetings_for_client,
+    log_activity,
     update_meeting,
 )
 
@@ -219,8 +221,9 @@ def api_calendar_events():
         recall_bot_id = _create_recall_bot(meet_url) if meet_url else None
 
         if client_id:
+            db = _db()
             create_meeting(
-                _db(),
+                db,
                 int(client_id),
                 calendar_event_id=cal_event_id,
                 title=title,
@@ -231,7 +234,11 @@ def api_calendar_events():
                 recall_bot_id=recall_bot_id,
             )
             from database import update_business
-            update_business(_db(), int(client_id), crm_status="reunion_agendada")
+            update_business(db, int(client_id), crm_status="reunion_agendada")
+            client = get_business(db, int(client_id)) or {}
+            log_activity(db, session.get("user_name", "sistema"), "meeting_scheduled",
+                         "lead", int(client_id), client.get("name", ""), title,
+                         user_id=session.get("user_id"))
 
         return jsonify({"ok": True, "meet_url": meet_url, "event_id": cal_event_id, "recall_bot_id": recall_bot_id})
     except Exception as e:

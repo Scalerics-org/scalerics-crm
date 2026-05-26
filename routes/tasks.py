@@ -1,8 +1,8 @@
 """Task kanban routes."""
 
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, current_app, jsonify, request, session
 
-from database import create_task, delete_task, get_tasks, update_task
+from database import create_task, delete_task, get_task_by_id, get_tasks, log_activity, update_task
 
 tasks_bp = Blueprint("tasks", __name__)
 
@@ -24,18 +24,33 @@ def api_create_task():
     data = request.get_json() or {}
     if not data.get("title"):
         return jsonify({"ok": False, "error": "title requerido"}), 400
-    task_id = create_task(_db(), **data)
+    db = _db()
+    task_id = create_task(db, **data)
+    log_activity(db, session.get("user_name", "sistema"), "task_created",
+                 "task", task_id, data["title"], data["title"],
+                 user_id=session.get("user_id"))
     return jsonify({"ok": True, "id": task_id}), 201
 
 
 @tasks_bp.route("/api/tasks/<int:task_id>", methods=["PUT"])
 def api_update_task(task_id):
     data = request.get_json() or {}
-    update_task(_db(), task_id, **data)
+    db = _db()
+    task = get_task_by_id(db, task_id) or {}
+    update_task(db, task_id, **data)
+    detail = f"estado: {data['status']}" if "status" in data else ""
+    log_activity(db, session.get("user_name", "sistema"), "task_updated",
+                 "task", task_id, task.get("title", ""), detail,
+                 user_id=session.get("user_id"))
     return jsonify({"ok": True})
 
 
 @tasks_bp.route("/api/tasks/<int:task_id>", methods=["DELETE"])
 def api_delete_task(task_id):
-    delete_task(_db(), task_id)
+    db = _db()
+    task = get_task_by_id(db, task_id) or {}
+    log_activity(db, session.get("user_name", "sistema"), "task_deleted",
+                 "task", task_id, task.get("title", ""), "",
+                 user_id=session.get("user_id"))
+    delete_task(db, task_id)
     return jsonify({"ok": True})

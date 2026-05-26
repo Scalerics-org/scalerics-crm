@@ -10,7 +10,8 @@ from database import (get_all_businesses, update_business, delete_business, get_
                       get_client_info, insert_business,
                       add_attachment, get_attachments, get_attachment_file, delete_attachment,
                       add_lead_event, get_lead_events,
-                      add_call_log, get_call_logs)
+                      add_call_log, get_call_logs,
+                      log_activity)
 from pitch_generator import generate_pitch
 
 leads_bp = Blueprint("leads", __name__)
@@ -127,8 +128,12 @@ def api_crm_status(biz_id):
     if crm_status not in _VALID_CRM_STATES:
         return jsonify({"ok": False, "error": f"Estado inválido: {crm_status}"}), 400
     db = _db()
+    biz = get_business(db, biz_id) or {}
+    user_name = session.get("user_name", "sistema")
     update_business(db, biz_id, crm_status=crm_status)
-    add_lead_event(db, biz_id, crm_status, created_by=session.get("user_name", "sistema"))
+    add_lead_event(db, biz_id, crm_status, created_by=user_name)
+    log_activity(db, user_name, "status_change", "lead", biz_id, biz.get("name", ""), crm_status,
+                 user_id=session.get("user_id"))
     return jsonify({"ok": True})
 
 
@@ -140,10 +145,13 @@ def api_batch_status():
     if not ids or crm_status not in _VALID_CRM_STATES:
         return jsonify({"ok": False, "error": "ids o estado inválido"}), 400
     db = _db()
+    user_name = session.get("user_name", "sistema")
     for biz_id in ids:
         biz_id = int(biz_id)
         update_business(db, biz_id, crm_status=crm_status)
-        add_lead_event(db, biz_id, crm_status, created_by=session.get("user_name", "sistema"))
+        add_lead_event(db, biz_id, crm_status, created_by=user_name)
+    log_activity(db, user_name, "batch_status", "", None, "",
+                 f"{len(ids)} leads → {crm_status}", user_id=session.get("user_id"))
     return jsonify({"ok": True, "updated": len(ids)})
 
 
@@ -154,7 +162,12 @@ def api_lead_events(biz_id):
 
 @leads_bp.route("/api/leads/<int:biz_id>", methods=["DELETE"])
 def api_delete_lead(biz_id):
-    delete_business(_db(), biz_id)
+    db = _db()
+    biz = get_business(db, biz_id) or {}
+    user_name = session.get("user_name", "sistema")
+    log_activity(db, user_name, "lead_deleted", "lead", biz_id, biz.get("name", ""), "",
+                 user_id=session.get("user_id"))
+    delete_business(db, biz_id)
     return jsonify({"ok": True})
 
 
@@ -163,8 +176,12 @@ def api_contact(biz_id):
     data = request.get_json() or {}
     note = data.get("note", "")
     db = _db()
+    biz = get_business(db, biz_id) or {}
+    user_name = session.get("user_name", "sistema")
     update_business(db, biz_id, status="contacted", notes=note, crm_status="contactado")
-    add_lead_event(db, biz_id, "contactado", note=note, created_by=session.get("user_name", "sistema"))
+    add_lead_event(db, biz_id, "contactado", note=note, created_by=user_name)
+    log_activity(db, user_name, "status_change", "lead", biz_id, biz.get("name", ""), "contactado",
+                 user_id=session.get("user_id"))
     return jsonify({"ok": True})
 
 
@@ -172,7 +189,13 @@ def api_contact(biz_id):
 def api_update_notes(biz_id):
     data = request.get_json() or {}
     notes = data.get("notes", "")
-    update_business(_db(), biz_id, notes=notes)
+    db = _db()
+    biz = get_business(db, biz_id) or {}
+    user_name = session.get("user_name", "sistema")
+    update_business(db, biz_id, notes=notes)
+    add_lead_event(db, biz_id, "nota_actualizada", created_by=user_name)
+    log_activity(db, user_name, "note_updated", "lead", biz_id, biz.get("name", ""), "",
+                 user_id=session.get("user_id"))
     return jsonify({"ok": True})
 
 
@@ -275,6 +298,9 @@ def api_add_attachment(biz_id):
         if not url:
             return jsonify({"ok": False, "error": "url required"}), 400
         attach_id = add_attachment(_db(), biz_id, section, name, url=url)
+        log_activity(_db(), session.get("user_name", "sistema"), "attachment_added", "lead", biz_id,
+                     (get_business(_db(), biz_id) or {}).get("name", ""), name,
+                     user_id=session.get("user_id"))
         return jsonify({"ok": True, "id": attach_id}), 201
     # File upload (multipart)
     f = request.files.get("file")
@@ -285,7 +311,11 @@ def api_add_attachment(biz_id):
         return jsonify({"ok": False, "error": "Archivo demasiado grande (máx 10 MB)"}), 413
     mime_type = f.content_type or "application/octet-stream"
     name = secure_filename(f.filename) or "archivo"
-    attach_id = add_attachment(_db(), biz_id, section, name, file_data=file_data, mime_type=mime_type)
+    db = _db()
+    attach_id = add_attachment(db, biz_id, section, name, file_data=file_data, mime_type=mime_type)
+    log_activity(db, session.get("user_name", "sistema"), "attachment_added", "lead", biz_id,
+                 (get_business(db, biz_id) or {}).get("name", ""), name,
+                 user_id=session.get("user_id"))
     return jsonify({"ok": True, "id": attach_id}), 201
 
 
@@ -313,8 +343,12 @@ def api_add_call(biz_id):
     notes = (data.get("notes") or "").strip()
     if outcome not in _VALID_OUTCOMES:
         return jsonify({"ok": False, "error": f"Outcome inválido: {outcome}"}), 400
+    db = _db()
     created_by = session.get("user_name", "sistema")
-    add_call_log(_db(), biz_id, outcome, notes, created_by)
+    biz = get_business(db, biz_id) or {}
+    add_call_log(db, biz_id, outcome, notes, created_by)
+    log_activity(db, created_by, "call_logged", "lead", biz_id, biz.get("name", ""), outcome,
+                 user_id=session.get("user_id"))
     return jsonify({"ok": True}), 201
 
 
