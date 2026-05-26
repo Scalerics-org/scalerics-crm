@@ -6,6 +6,7 @@ from database import (
     get_user_by_id,
     get_all_users,
     delete_user,
+    update_user_password,
     create_reset_token,
     get_reset_token,
     use_reset_token,
@@ -86,3 +87,10 @@ def test_use_reset_token(db):
 
 def test_get_nonexistent_token(db):
     assert get_reset_token(db, "noexiste") is None
+
+
+def test_update_user_password(db):
+    uid = create_user(db, name="Pw", email="pw@test.com", phone="0", password_hash="old_hash")
+    update_user_password(db, uid, "new_hash")
+    user = get_user_by_id(db, uid)
+    assert user["password"] == "new_hash"
