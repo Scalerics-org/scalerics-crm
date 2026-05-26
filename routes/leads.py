@@ -11,7 +11,7 @@ from database import (get_all_businesses, update_business, delete_business, get_
                       add_attachment, get_attachments, get_attachment_file, delete_attachment,
                       add_lead_event, get_lead_events,
                       add_call_log, get_call_logs,
-                      log_activity)
+                      increment_task_progress, log_activity)
 from pitch_generator import generate_pitch
 
 leads_bp = Blueprint("leads", __name__)
@@ -134,6 +134,8 @@ def api_crm_status(biz_id):
     add_lead_event(db, biz_id, crm_status, created_by=user_name)
     log_activity(db, user_name, "status_change", "lead", biz_id, biz.get("name", ""), crm_status,
                  user_id=session.get("user_id"))
+    if crm_status == "contactado":
+        increment_task_progress(db, session.get("user_id"), "leads_contactados")
     return jsonify({"ok": True})
 
 
@@ -182,6 +184,7 @@ def api_contact(biz_id):
     add_lead_event(db, biz_id, "contactado", note=note, created_by=user_name)
     log_activity(db, user_name, "status_change", "lead", biz_id, biz.get("name", ""), "contactado",
                  user_id=session.get("user_id"))
+    increment_task_progress(db, session.get("user_id"), "leads_contactados")
     return jsonify({"ok": True})
 
 

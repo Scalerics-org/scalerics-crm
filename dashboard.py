@@ -812,11 +812,15 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 
 <!-- Modal: Add Task -->
 <div class="modal-overlay" id="add-task-modal">
-  <div class="modal" style="width:440px">
+  <div class="modal" style="width:480px">
     <h3>Nueva tarea</h3>
     <div style="margin-top:14px">
       <label class="modal-label">Título</label>
-      <input type="text" id="task-title-input" class="modal-input" placeholder="Ej: Enviar presupuesto, Llamar el martes...">
+      <input type="text" id="task-title-input" class="modal-input" placeholder="Ej: Agendar 10 reuniones, Llamar el martes...">
+    </div>
+    <div style="margin-top:10px">
+      <label class="modal-label">Descripción (opcional)</label>
+      <input type="text" id="task-desc-input" class="modal-input" placeholder="Detalle de la tarea...">
     </div>
     <div class="modal-row" style="margin-top:10px">
       <div>
@@ -830,6 +834,25 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
       <div>
         <label class="modal-label">Vencimiento</label>
         <input type="date" id="task-deadline-input" class="modal-input">
+      </div>
+    </div>
+    <div style="margin-top:10px">
+      <label class="modal-label">Asignar a</label>
+      <select id="task-assignee-input" class="modal-input" onchange="_onTaskAssigneeChange(this)">
+        <option value="">— Sin asignar —</option>
+      </select>
+      <input type="hidden" id="task-assignee-id">
+      <input type="hidden" id="task-assignee-email">
+    </div>
+    <div style="margin-top:10px">
+      <label class="modal-label">Meta (opcional)</label>
+      <div style="display:flex;gap:8px;align-items:center">
+        <select id="task-goal-type-input" class="modal-input" style="flex:2" onchange="_onTaskGoalTypeChange()">
+          <option value="">Sin meta automática</option>
+          <option value="reuniones_agendadas">Reuniones agendadas</option>
+          <option value="leads_contactados">Leads contactados</option>
+        </select>
+        <input type="number" id="task-goal-input" class="modal-input" style="flex:1;display:none" placeholder="Cantidad" min="1">
       </div>
     </div>
     <div style="margin-top:10px">
@@ -1868,15 +1891,33 @@ function _taskRowHtml(t) {
   const overdue = dl && dl < now && !done;
   const dlStr = dl ? dl.toLocaleDateString('es-UY',{day:'2-digit',month:'2-digit'}) : '';
   const prioLabel = ({'high':'Alta','medium':'Media','low':'Baja'})[t.priority] || t.priority;
+  const goalTypeLabel = {'reuniones_agendadas':'reuniones agendadas','leads_contactados':'leads contactados'};
+  const progress = t.goal ? Math.min(t.progress || 0, t.goal) : 0;
+  const pct = t.goal ? Math.round(progress / t.goal * 100) : 0;
+  const progressBar = t.goal ? `
+    <div style="margin-top:6px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
+        <span style="font-size:.72rem;color:#64748b">${goalTypeLabel[t.goal_type]||t.goal_type}: </span>
+        <span style="font-size:.72rem;font-weight:600;color:${done||pct>=100?'#10b981':'#e2e8f0'}">${progress}/${t.goal}</span>
+        ${pct >= 100 ? '<span style="font-size:.68rem;color:#10b981">✓ Meta alcanzada</span>' : ''}
+      </div>
+      <div style="height:4px;background:#1e293b;border-radius:2px;overflow:hidden;max-width:240px">
+        <div style="height:100%;width:${pct}%;background:${pct>=100?'#10b981':'#0088cc'};transition:width .3s"></div>
+      </div>
+    </div>` : '';
+  const assigneeBadge = t.assignee_name ? `<span style="font-size:.72rem;color:#64748b;background:#1a2234;padding:2px 7px;border-radius:10px">→ ${esc(t.assignee_name)}</span>` : '';
+  const createdByBadge = t.created_by_name && t.assignee_name ? `<span style="font-size:.72rem;color:#334155">de ${esc(t.created_by_name)}</span>` : '';
   return `<div class="task-row" id="task-row-${t.id}">
     <div class="task-check ${done ? 'done' : ''}" onclick="_toggleTask(${t.id},${done})">${done ? '✓' : ''}</div>
-    <div class="task-body">
+    <div class="task-body" style="flex:1;min-width:0">
       <div class="task-title ${done ? 'done-text' : ''}">${esc(t.title)}</div>
       <div class="task-meta">
         ${t.priority ? `<span class="task-priority ${t.priority}">${prioLabel}</span>` : ''}
         ${lead ? `<span class="task-client-link" onclick="openClientPanel(${lead.id})">${esc(lead.name||'')}</span>` : ''}
         ${dlStr ? `<span class="task-deadline ${overdue ? 'overdue' : ''}">📅 ${dlStr}${overdue?' (vencida)':''}</span>` : ''}
+        ${assigneeBadge}${createdByBadge}
       </div>
+      ${progressBar}
     </div>
     <div class="task-actions">
       <button class="task-del-btn" onclick="_deleteTask(${t.id})" title="Eliminar">🗑</button>
@@ -1902,14 +1943,49 @@ async function _deleteTask(id) {
   if (_cpClientId) { _cpData.tasks = (_cpData.tasks||[]).filter(t => t.id !== id); _cpSwitchTab('ctasks'); }
 }
 
-function openAddTaskModal(clientId, clientName) {
+let _allUsers = [];
+async function _loadUsersForTask() {
+  if (_allUsers.length) return;
+  try {
+    const r = await fetch('/api/users');
+    _allUsers = await r.json();
+  } catch { _allUsers = []; }
+}
+
+function _onTaskAssigneeChange(sel) {
+  const opt = sel.options[sel.selectedIndex];
+  document.getElementById('task-assignee-id').value = opt.dataset.uid || '';
+  document.getElementById('task-assignee-email').value = opt.dataset.email || '';
+}
+
+function _onTaskGoalTypeChange() {
+  const goalType = document.getElementById('task-goal-type-input').value;
+  document.getElementById('task-goal-input').style.display = goalType ? '' : 'none';
+}
+
+async function openAddTaskModal(clientId, clientName) {
   document.getElementById('task-title-input').value = '';
+  document.getElementById('task-desc-input').value = '';
   document.getElementById('task-priority-input').value = 'medium';
   document.getElementById('task-deadline-input').value = '';
+  document.getElementById('task-goal-type-input').value = '';
+  document.getElementById('task-goal-input').value = '';
+  document.getElementById('task-goal-input').style.display = 'none';
   document.getElementById('task-client-search').value = clientName || '';
   document.getElementById('task-client-id').value = clientId || '';
   document.getElementById('task-client-chosen').textContent = clientName ? 'Cliente: ' + clientName : '';
   document.getElementById('task-client-results').style.display = 'none';
+  await _loadUsersForTask();
+  const sel = document.getElementById('task-assignee-input');
+  sel.innerHTML = '<option value="">— Sin asignar —</option>';
+  _allUsers.forEach(u => {
+    const opt = new Option(u.name, u.id);
+    opt.dataset.uid = u.id;
+    opt.dataset.email = u.email;
+    sel.appendChild(opt);
+  });
+  document.getElementById('task-assignee-id').value = '';
+  document.getElementById('task-assignee-email').value = '';
   document.getElementById('add-task-modal').classList.add('open');
   setTimeout(() => document.getElementById('task-title-input').focus(), 50);
 }
@@ -1935,12 +2011,27 @@ async function submitAddTask() {
   if (!title) { document.getElementById('task-title-input').focus(); return; }
   const body = {
     title,
+    description: document.getElementById('task-desc-input').value.trim() || null,
     priority: document.getElementById('task-priority-input').value,
     deadline: document.getElementById('task-deadline-input').value || null,
     status: 'todo',
   };
   const clientId = document.getElementById('task-client-id').value;
   if (clientId) body.client_id = parseInt(clientId);
+  const assigneeId = document.getElementById('task-assignee-id').value;
+  if (assigneeId) {
+    body.assignee_id = parseInt(assigneeId);
+    body.assignee_name = document.getElementById('task-assignee-input').options[document.getElementById('task-assignee-input').selectedIndex].text;
+    body.assignee_email = document.getElementById('task-assignee-email').value;
+    body.assignee = body.assignee_name;
+  }
+  const goalType = document.getElementById('task-goal-type-input').value;
+  const goalVal = parseInt(document.getElementById('task-goal-input').value);
+  if (goalType && goalVal > 0) {
+    body.goal_type = goalType;
+    body.goal = goalVal;
+    body.progress = 0;
+  }
   const r = await fetch('/api/tasks', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
   const d = await r.json();
   document.getElementById('add-task-modal').classList.remove('open');
@@ -2975,6 +3066,11 @@ def create_app(db_path: str) -> Flask:
 
         return render_template_string(RESET_HTML, error=error, valid=valid)
 
+
+    @app.route("/api/users", methods=["GET"])
+    def api_users():
+        from database import get_all_users
+        return jsonify(get_all_users(db_path))
 
     @app.route("/api/activity", methods=["GET"])
     def api_activity():

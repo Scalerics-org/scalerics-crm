@@ -3,6 +3,7 @@
 from flask import Blueprint, current_app, jsonify, request, session
 
 from database import create_task, delete_task, get_task_by_id, get_tasks, log_activity, update_task
+from services.email_service import send_task_assignment_email
 
 tasks_bp = Blueprint("tasks", __name__)
 
@@ -24,11 +25,33 @@ def api_create_task():
     data = request.get_json() or {}
     if not data.get("title"):
         return jsonify({"ok": False, "error": "title requerido"}), 400
+    data["created_by_id"] = session.get("user_id")
+    data["created_by_name"] = session.get("user_name", "sistema")
     db = _db()
     task_id = create_task(db, **data)
     log_activity(db, session.get("user_name", "sistema"), "task_created",
                  "task", task_id, data["title"], data["title"],
                  user_id=session.get("user_id"))
+    # Send assignment email when task is assigned to someone else
+    if data.get("assignee_email") and data.get("assignee_id") != session.get("user_id"):
+        import threading
+        import os
+        crm_url = os.environ.get("CRM_URL", "")
+        threading.Thread(
+            target=send_task_assignment_email,
+            args=(
+                data["assignee_email"],
+                data.get("assignee_name", ""),
+                data["title"],
+                data.get("description", ""),
+                data.get("goal"),
+                data.get("goal_type"),
+                data.get("deadline"),
+                session.get("user_name", "sistema"),
+                crm_url,
+            ),
+            daemon=True,
+        ).start()
     return jsonify({"ok": True, "id": task_id}), 201
 
 

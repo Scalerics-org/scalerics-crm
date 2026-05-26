@@ -259,6 +259,16 @@ def init_db(db_path: str) -> None:
             )
         """)
 
+        # ── task assignment & goal tracking ────────────────────────────────────
+        _add_column(conn, "tasks", "assignee_id",    "INTEGER REFERENCES users(id) ON DELETE SET NULL")
+        _add_column(conn, "tasks", "assignee_name",  "TEXT")
+        _add_column(conn, "tasks", "assignee_email", "TEXT")
+        _add_column(conn, "tasks", "created_by_id",  "INTEGER")
+        _add_column(conn, "tasks", "created_by_name","TEXT")
+        _add_column(conn, "tasks", "goal",           "INTEGER")
+        _add_column(conn, "tasks", "progress",       "INTEGER DEFAULT 0")
+        _add_column(conn, "tasks", "goal_type",      "TEXT")
+
         # Backfill scores for leads that were scraped before scoring was added
         conn.execute("""
             UPDATE businesses SET score = (
@@ -692,7 +702,12 @@ def get_budget_for_client(db_path: str, client_id: int) -> Optional[dict]:
 
 # ─── Tasks ────────────────────────────────────────────────────────────────────
 
-_TASK_COLUMNS = {"client_id", "title", "description", "priority", "status", "assignee", "deadline"}
+_TASK_COLUMNS = {
+    "client_id", "title", "description", "priority", "status", "assignee", "deadline",
+    "assignee_id", "assignee_name", "assignee_email",
+    "created_by_id", "created_by_name",
+    "goal", "progress", "goal_type",
+}
 
 
 def create_task(db_path: str, **fields) -> int:
@@ -745,6 +760,35 @@ def get_tasks(db_path: str, client_id: Optional[int] = None, status: Optional[st
             f"SELECT * FROM tasks {where} ORDER BY created_at DESC", params
         )
         return [dict(row) for row in cursor.fetchall()]
+    finally:
+        conn.close()
+
+
+def increment_task_progress(db_path: str, user_id: int, goal_type: str) -> list[int]:
+    """Increment progress on active tasks assigned to user_id with matching goal_type.
+    Auto-completes tasks that reach their goal. Returns list of newly completed task IDs."""
+    if not user_id:
+        return []
+    conn = _connect(db_path)
+    try:
+        conn.execute(
+            "UPDATE tasks SET progress = COALESCE(progress, 0) + 1 "
+            "WHERE assignee_id = ? AND goal_type = ? AND status != 'done'",
+            (user_id, goal_type),
+        )
+        cursor = conn.execute(
+            "SELECT id FROM tasks WHERE assignee_id = ? AND goal_type = ? "
+            "AND goal IS NOT NULL AND COALESCE(progress, 0) >= goal AND status != 'done'",
+            (user_id, goal_type),
+        )
+        completed = [r[0] for r in cursor.fetchall()]
+        if completed:
+            conn.execute(
+                f"UPDATE tasks SET status = 'done' WHERE id IN ({','.join('?' * len(completed))})",
+                completed,
+            )
+        conn.commit()
+        return completed
     finally:
         conn.close()
 

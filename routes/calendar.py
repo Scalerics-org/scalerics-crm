@@ -12,6 +12,7 @@ from database import (
     get_business,
     get_meeting,
     get_meetings_for_client,
+    increment_task_progress,
     log_activity,
     update_meeting,
 )
@@ -239,6 +240,7 @@ def api_calendar_events():
             log_activity(db, session.get("user_name", "sistema"), "meeting_scheduled",
                          "lead", int(client_id), client.get("name", ""), title,
                          user_id=session.get("user_id"))
+            increment_task_progress(db, session.get("user_id"), "reuniones_agendadas")
 
         return jsonify({"ok": True, "meet_url": meet_url, "event_id": cal_event_id, "recall_bot_id": recall_bot_id})
     except Exception as e:
