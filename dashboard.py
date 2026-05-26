@@ -3070,7 +3070,14 @@ def create_app(db_path: str) -> Flask:
     @app.route("/api/users", methods=["GET"])
     def api_users():
         from database import get_all_users
-        return jsonify(get_all_users(db_path))
+        admin_email = os.environ.get("ADMIN_EMAIL", "").lower()
+        users = get_all_users(db_path)
+        filtered = [
+            u for u in users
+            if not (admin_email and u["email"].lower() == admin_email)
+            and not (not admin_email and u["id"] == 1)
+        ]
+        return jsonify(filtered)
 
     @app.route("/api/activity", methods=["GET"])
     def api_activity():
