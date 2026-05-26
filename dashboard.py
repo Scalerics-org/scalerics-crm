@@ -607,9 +607,8 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
   <div class="nav-item" id="nav-cal" onclick="showPanel('cal')">📅 Calendario</div>
   <div class="nav-item" id="nav-metrics" onclick="showPanel('metrics')">📊 Métricas</div>
   <div class="sidebar-bottom">
-    <div id="sidebar-user" style="font-size:.72rem;color:#475569;padding:0 0 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
-    <button id="admin-btn" onclick="openAdminPanel()" style="display:none;background:none;border:1px solid #1e293b;border-radius:8px;padding:6px 12px;font-size:.75rem;color:#64748b;cursor:pointer;width:100%;text-align:left">&#9881; Usuarios</button>
-    <button onclick="openProfilePanel()" style="background:none;border:1px solid #1e293b;border-radius:8px;padding:6px 12px;font-size:.75rem;color:#64748b;cursor:pointer;width:100%;text-align:left">&#128100; Mi perfil</button>
+    <a id="admin-link" href="/admin/users" style="display:none;background:none;border:1px solid #1e293b;border-radius:8px;padding:6px 12px;font-size:.75rem;color:#64748b;cursor:pointer;width:100%;text-align:left;text-decoration:none;box-sizing:border-box">&#9881; Usuarios</a>
+    <a href="/profile" style="background:none;border:1px solid #1e293b;border-radius:8px;padding:6px 12px;font-size:.75rem;color:#64748b;cursor:pointer;width:100%;text-align:left;text-decoration:none;box-sizing:border-box;display:block">&#128100; Mi perfil</a>
     <button class="logout-btn" onclick="window.location.href='/logout'">Cerrar sesión</button>
   </div>
 </div>
@@ -2064,6 +2063,8 @@ async function _kanbanDrop(e, newStatus) {
 // Initial load
 loadStats();
 loadLeads();
+// Admin link visibility
+(async()=>{try{const r=await fetch('/api/me');if(!r.ok)return;const m=await r.json();if(m.is_admin){const a=document.getElementById('admin-link');if(a)a.style.display='block';}}catch(e){}})();
 
 // ── Client Panel ─────────────────────────────────────────────────────────────
 
@@ -2775,155 +2776,6 @@ async function loadMetrics() {
   <button class="batch-apply" onclick="applyBatch()">Aplicar</button>
   <button class="batch-cancel" onclick="clearSelection()">Cancelar</button>
 </div>
-<div id="profile-panel" style="display:none;position:fixed;top:0;right:0;bottom:0;width:380px;background:#111827;border-left:1px solid #1e293b;z-index:1500;flex-direction:column;overflow:hidden">
-  <div style="padding:20px 20px 0;display:flex;align-items:center;justify-content:space-between">
-    <span style="font-size:.85rem;font-weight:700;color:#e2e8f0">Mi perfil</span>
-    <button onclick="closeProfilePanel()" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:1.2rem">&times;</button>
-  </div>
-  <div style="padding:16px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:12px">
-    <div>
-      <label style="font-size:.72rem;color:#64748b;display:block;margin-bottom:4px">Nombre</label>
-      <input id="prof-name" type="text" style="width:100%;background:#0a0f1a;border:1px solid #1e293b;border-radius:6px;padding:8px 10px;color:#e2e8f0;font-size:.82rem;font-family:inherit;outline:none">
-    </div>
-    <div>
-      <label style="font-size:.72rem;color:#64748b;display:block;margin-bottom:4px">Email</label>
-      <input id="prof-email" type="email" style="width:100%;background:#0a0f1a;border:1px solid #1e293b;border-radius:6px;padding:8px 10px;color:#e2e8f0;font-size:.82rem;font-family:inherit;outline:none">
-    </div>
-    <div>
-      <label style="font-size:.72rem;color:#64748b;display:block;margin-bottom:4px">Teléfono</label>
-      <input id="prof-phone" type="text" style="width:100%;background:#0a0f1a;border:1px solid #1e293b;border-radius:6px;padding:8px 10px;color:#e2e8f0;font-size:.82rem;font-family:inherit;outline:none">
-    </div>
-    <div style="border-top:1px solid #1e293b;padding-top:12px">
-      <div style="font-size:.72rem;color:#475569;margin-bottom:8px">Contraseña nueva (dejá vacío para no cambiar)</div>
-      <div style="margin-bottom:8px">
-        <label style="font-size:.72rem;color:#64748b;display:block;margin-bottom:4px">Nueva contraseña</label>
-        <input id="prof-pw" type="password" autocomplete="new-password" style="width:100%;background:#0a0f1a;border:1px solid #1e293b;border-radius:6px;padding:8px 10px;color:#e2e8f0;font-size:.82rem;font-family:inherit;outline:none">
-      </div>
-      <div>
-        <label style="font-size:.72rem;color:#64748b;display:block;margin-bottom:4px">Confirmar contraseña</label>
-        <input id="prof-pw2" type="password" autocomplete="new-password" style="width:100%;background:#0a0f1a;border:1px solid #1e293b;border-radius:6px;padding:8px 10px;color:#e2e8f0;font-size:.82rem;font-family:inherit;outline:none">
-      </div>
-    </div>
-    <div id="prof-msg" style="font-size:.75rem;display:none;padding:6px 10px;border-radius:6px"></div>
-    <button onclick="saveProfile()" style="background:#0088CC;border:none;border-radius:8px;padding:10px;color:#fff;font-size:.82rem;font-weight:600;cursor:pointer;font-family:inherit">Guardar cambios</button>
-  </div>
-</div>
-<div id="admin-panel" style="display:none;position:fixed;top:0;right:0;bottom:0;width:380px;background:#111827;border-left:1px solid #1e293b;z-index:1500;flex-direction:column;overflow:hidden">
-  <div style="padding:20px 20px 0;display:flex;align-items:center;justify-content:space-between">
-    <span style="font-size:.85rem;font-weight:700;color:#e2e8f0">Usuarios</span>
-    <button onclick="closeAdminPanel()" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:1.2rem">&times;</button>
-  </div>
-  <div id="admin-users-list" style="padding:16px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:10px"></div>
-</div>
-<script>
-// ── User info & admin visibility ────────────────────────────────────────────
-async function initUserInfo(){
-  try{
-    const res=await fetch('/api/me');
-    if(!res.ok)return;
-    const me=await res.json();
-    window._meData=me;
-    const sb=document.getElementById('sidebar-user');
-    if(sb)sb.textContent=me.name;
-    if(me.is_admin){const btn=document.getElementById('admin-btn');if(btn)btn.style.display='';}
-  }catch(e){console.error('initUserInfo:',e);}
-}
-initUserInfo();
-
-// ── Admin panel ─────────────────────────────────────────────────────────────
-async function openAdminPanel(){
-  const panel=document.getElementById('admin-panel');
-  const list=document.getElementById('admin-users-list');
-  panel.style.display='flex';
-  list.innerHTML='<div style="color:#64748b;font-size:.8rem">Cargando…</div>';
-  try{
-    const res=await fetch('/api/admin/users');
-    if(!res.ok){
-      list.innerHTML='<div style="color:#f87171;font-size:.8rem">Error '+res.status+'<\/div>';
-      return;
-    }
-    const users=await res.json();
-    if(!users.length){list.innerHTML='<div style="color:#64748b;font-size:.8rem">Sin usuarios<\/div>';return;}
-    list.innerHTML=users.map(u=>`
-      <div style="background:#0a0f1a;border:1px solid #1e293b;border-radius:10px;padding:14px 16px">
-        <div style="font-size:.88rem;font-weight:600;color:#e2e8f0">${esc(u.name)}<\/div>
-        <div style="font-size:.75rem;color:#64748b;margin:2px 0">${esc(u.email)} &middot; ${esc(u.phone)}<\/div>
-        <div style="font-size:.7rem;color:#475569;margin-bottom:10px">Desde ${u.created_at.slice(0,10)}<\/div>
-        <div style="display:flex;gap:8px">
-          <button onclick="adminResetPwd(${u.id})" style="flex:1;background:#1e293b;border:none;border-radius:6px;padding:7px;font-size:.72rem;color:#94a3b8;cursor:pointer">Resetear contraseña<\/button>
-          <button onclick="adminDeleteUser(${u.id})" style="background:#2a1515;border:1px solid #7f1d1d;border-radius:6px;padding:7px 10px;font-size:.72rem;color:#f87171;cursor:pointer">Eliminar<\/button>
-        <\/div>
-      <\/div>
-    `).join('');
-  }catch(e){
-    list.innerHTML='<div style="color:#f87171;font-size:.8rem">Error: '+e.message+'<\/div>';
-  }
-}
-function closeAdminPanel(){document.getElementById('admin-panel').style.display='none';}
-async function adminDeleteUser(id){
-  if(!confirm('¿Eliminar este usuario?'))return;
-  const r=await fetch('/api/admin/users/'+id,{method:'DELETE'});
-  const d=await r.json();
-  if(d.ok)openAdminPanel();
-  else alert(d.error||'Error al eliminar');
-}
-async function adminResetPwd(id){
-  const r=await fetch('/api/admin/users/'+id+'/reset-password',{method:'POST'});
-  const d=await r.json();
-  if(d.ok)alert('Link de reset:\n'+d.reset_url);
-  else alert(d.error||'Error');
-}
-
-// ── Profile panel ───────────────────────────────────────────────────────────
-function openProfilePanel(){
-  const panel=document.getElementById('profile-panel');
-  if(!panel){alert('Error: panel no encontrado');return;}
-  const me=window._meData||{};
-  const fname=document.getElementById('prof-name');
-  const femail=document.getElementById('prof-email');
-  const fphone=document.getElementById('prof-phone');
-  const fpw=document.getElementById('prof-pw');
-  const fpw2=document.getElementById('prof-pw2');
-  const fmsg=document.getElementById('prof-msg');
-  if(fname)fname.value=me.name||'';
-  if(femail)femail.value=me.email||'';
-  if(fphone)fphone.value=me.phone||'';
-  if(fpw)fpw.value='';
-  if(fpw2)fpw2.value='';
-  if(fmsg)fmsg.style.display='none';
-  panel.style.display='flex';
-}
-function closeProfilePanel(){document.getElementById('profile-panel').style.display='none';}
-async function saveProfile(){
-  const name=document.getElementById('prof-name').value.trim();
-  const email=document.getElementById('prof-email').value.trim();
-  const phone=document.getElementById('prof-phone').value.trim();
-  const pw=document.getElementById('prof-pw').value;
-  const pw2=document.getElementById('prof-pw2').value;
-  const msg=document.getElementById('prof-msg');
-  const showMsg=(text,ok)=>{
-    msg.textContent=text;
-    msg.style.background=ok?'rgba(16,185,129,.12)':'rgba(239,68,68,.1)';
-    msg.style.color=ok?'#10B981':'#f87171';
-    msg.style.display='block';
-  };
-  if(!name||!email||!phone){showMsg('Nombre, email y teléfono son requeridos',false);return;}
-  if(pw&&pw.length<8){showMsg('La contraseña debe tener al menos 8 caracteres',false);return;}
-  if(pw&&pw!==pw2){showMsg('Las contraseñas no coinciden',false);return;}
-  const body={name,email,phone};
-  if(pw)body.password=pw;
-  try{
-    const r=await fetch('/api/me',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-    const d=await r.json();
-    if(!r.ok){showMsg(d.error||'Error al guardar',false);return;}
-    window._meData={...window._meData,name,email,phone};
-    const sb=document.getElementById('sidebar-user');
-    if(sb)sb.textContent=name;
-    showMsg('Cambios guardados',true);
-    setTimeout(()=>msg.style.display='none',2500);
-  }catch(e){showMsg('Error de conexión',false);}
-}
-</script>
 </body>
 </html>"""
 
@@ -3167,6 +3019,155 @@ def create_app(db_path: str) -> Flask:
     def logout():
         session.clear()
         return redirect(url_for("login"))
+
+    @app.route("/profile", methods=["GET", "POST"])
+    def profile():
+        from werkzeug.security import generate_password_hash
+        from database import get_user_by_id, get_user_by_email, update_user_password, update_user_profile
+        user_id = session.get("user_id")
+        user = get_user_by_id(db_path, user_id) if user_id else None
+        if not user:
+            return redirect(url_for("login"))
+        error = None
+        success = None
+        if request.method == "POST":
+            name = (request.form.get("name") or "").strip()
+            email = (request.form.get("email") or "").strip().lower()
+            phone = (request.form.get("phone") or "").strip()
+            password = request.form.get("password", "")
+            password2 = request.form.get("password2", "")
+            if not name or not email or not phone:
+                error = "Nombre, email y teléfono son requeridos"
+            elif password and len(password) < 8:
+                error = "La contraseña debe tener al menos 8 caracteres"
+            elif password and password != password2:
+                error = "Las contraseñas no coinciden"
+            else:
+                if email != user["email"]:
+                    existing = get_user_by_email(db_path, email)
+                    if existing and existing["id"] != user_id:
+                        error = "Ya existe una cuenta con ese email"
+                if not error:
+                    update_user_profile(db_path, user_id, name=name, email=email, phone=phone)
+                    if password:
+                        update_user_password(db_path, user_id, generate_password_hash(password))
+                    session["user_name"] = name
+                    user = get_user_by_id(db_path, user_id)
+                    success = "Cambios guardados"
+        PROFILE_PAGE = """<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mi perfil — Scalerics</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+.card{background:#111827;border:1px solid #1e293b;border-radius:14px;padding:32px;width:100%;max-width:440px}
+.back{display:inline-flex;align-items:center;gap:6px;color:#64748b;font-size:.82rem;text-decoration:none;margin-bottom:20px}
+.back:hover{color:#e2e8f0}
+h2{font-size:1.1rem;font-weight:700;margin-bottom:24px}
+label{display:block;font-size:.72rem;color:#64748b;margin-bottom:4px}
+input{width:100%;background:#0a0f1a;border:1px solid #1e293b;border-radius:6px;padding:9px 12px;color:#e2e8f0;font-size:.85rem;font-family:inherit;outline:none;margin-bottom:14px}
+input:focus{border-color:#0088CC}
+.sep{border-top:1px solid #1e293b;margin:18px 0;font-size:.75rem;color:#475569;padding-top:14px}
+.btn{width:100%;background:#0088CC;border:none;border-radius:8px;padding:11px;color:#fff;font-size:.88rem;font-weight:600;cursor:pointer;font-family:inherit;margin-top:4px}
+.btn:hover{background:#0077bb}
+.msg-ok{background:rgba(16,185,129,.12);color:#10B981;border-radius:6px;padding:8px 12px;font-size:.8rem;margin-bottom:14px}
+.msg-err{background:rgba(239,68,68,.1);color:#f87171;border-radius:6px;padding:8px 12px;font-size:.8rem;margin-bottom:14px}
+</style>
+</head>
+<body>
+<div class="card">
+  <a class="back" href="/">&#8592; Volver al dashboard</a>
+  <h2>Mi perfil</h2>
+  {% if success %}<div class="msg-ok">{{ success }}</div>{% endif %}
+  {% if error %}<div class="msg-err">{{ error }}</div>{% endif %}
+  <form method="POST">
+    <label>Nombre</label>
+    <input type="text" name="name" value="{{ user.name }}" required>
+    <label>Email</label>
+    <input type="email" name="email" value="{{ user.email }}" required>
+    <label>Teléfono</label>
+    <input type="text" name="phone" value="{{ user.phone }}" required>
+    <div class="sep">Cambiar contraseña (dejá vacío para no cambiar)</div>
+    <label>Nueva contraseña</label>
+    <input type="password" name="password" autocomplete="new-password">
+    <label>Confirmar contraseña</label>
+    <input type="password" name="password2" autocomplete="new-password">
+    <button class="btn" type="submit">Guardar cambios</button>
+  </form>
+</div>
+</body>
+</html>"""
+        return render_template_string(PROFILE_PAGE, user=user, error=error, success=success)
+
+    @app.route("/admin/users", methods=["GET"])
+    def admin_users_page():
+        admin_email = os.environ.get("ADMIN_EMAIL", "")
+        user_id = session.get("user_id")
+        from database import get_user_by_id, get_all_users, delete_user
+        current = get_user_by_id(db_path, user_id) if user_id else None
+        if not current:
+            return redirect(url_for("login"))
+        is_admin = (admin_email and current["email"].lower() == admin_email.lower()) or (not admin_email and current["id"] == 1)
+        if not is_admin:
+            return redirect(url_for("index"))
+        users = get_all_users(db_path)
+        ADMIN_PAGE = """<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Usuarios — Scalerics</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:100vh;padding:32px}
+.back{display:inline-flex;align-items:center;gap:6px;color:#64748b;font-size:.82rem;text-decoration:none;margin-bottom:20px}
+.back:hover{color:#e2e8f0}
+h2{font-size:1.1rem;font-weight:700;margin-bottom:24px}
+.user-card{background:#111827;border:1px solid #1e293b;border-radius:10px;padding:16px;margin-bottom:12px;max-width:500px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.user-info .name{font-size:.88rem;font-weight:600}
+.user-info .sub{font-size:.75rem;color:#64748b;margin-top:2px}
+.user-info .date{font-size:.7rem;color:#475569;margin-top:2px}
+.btn-del{background:#2a1515;border:1px solid #7f1d1d;border-radius:6px;padding:6px 12px;font-size:.75rem;color:#f87171;cursor:pointer;font-family:inherit}
+.btn-del:hover{background:#3d1515}
+.msg-ok{background:rgba(16,185,129,.12);color:#10B981;border-radius:6px;padding:8px 12px;font-size:.8rem;margin-bottom:16px;max-width:500px}
+</style>
+</head>
+<body>
+<a class="back" href="/">&#8592; Volver al dashboard</a>
+<h2>Gestión de usuarios</h2>
+{% if request.args.get('deleted') %}<div class="msg-ok">Usuario eliminado</div>{% endif %}
+{% for u in users %}
+<div class="user-card">
+  <div class="user-info">
+    <div class="name">{{ u.name }}</div>
+    <div class="sub">{{ u.email }} &middot; {{ u.phone }}</div>
+    <div class="date">Desde {{ u.created_at[:10] }}</div>
+  </div>
+  <form method="POST" action="/admin/users/{{ u.id }}/delete" onsubmit="return confirm('Eliminar a ' + '{{ u.name }}' + '?')">
+    <button class="btn-del" type="submit">Eliminar</button>
+  </form>
+</div>
+{% endfor %}
+</body>
+</html>"""
+        return render_template_string(ADMIN_PAGE, users=users)
+
+    @app.route("/admin/users/<int:user_id>/delete", methods=["POST"])
+    def admin_delete_user_page(user_id):
+        admin_email = os.environ.get("ADMIN_EMAIL", "")
+        current_uid = session.get("user_id")
+        from database import get_user_by_id, delete_user
+        current = get_user_by_id(db_path, current_uid) if current_uid else None
+        if not current:
+            return redirect(url_for("login"))
+        is_admin = (admin_email and current["email"].lower() == admin_email.lower()) or (not admin_email and current["id"] == 1)
+        if not is_admin or user_id == current_uid:
+            return redirect(url_for("index"))
+        delete_user(db_path, user_id)
+        return redirect(url_for("admin_users_page") + "?deleted=1")
 
     @app.route("/")
     def index():
