@@ -600,6 +600,7 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
   <div class="nav-item" id="nav-cal" onclick="showPanel('cal')">📅 Calendario</div>
   <div class="nav-item" id="nav-metrics" onclick="showPanel('metrics')">📊 Métricas</div>
   <div class="sidebar-bottom">
+    <button onclick="openAdminPanel()" style="background:none;border:1px solid #1e293b;border-radius:8px;padding:6px 12px;font-size:.75rem;color:#64748b;cursor:pointer">&#9881; Usuarios</button>
     <button class="logout-btn" onclick="window.location.href='/logout'">Cerrar sesión</button>
   </div>
 </div>
@@ -2765,6 +2766,43 @@ async function loadMetrics() {
   <button class="batch-apply" onclick="applyBatch()">Aplicar</button>
   <button class="batch-cancel" onclick="clearSelection()">Cancelar</button>
 </div>
+<div id="admin-panel" style="display:none;position:fixed;top:0;right:0;bottom:0;width:380px;background:#111827;border-left:1px solid #1e293b;z-index:200;flex-direction:column;overflow:hidden">
+  <div style="padding:20px 20px 0;display:flex;align-items:center;justify-content:space-between">
+    <span style="font-size:.85rem;font-weight:700;color:#e2e8f0">Usuarios</span>
+    <button onclick="closeAdminPanel()" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:1.2rem">&times;</button>
+  </div>
+  <div id="admin-users-list" style="padding:16px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:10px"></div>
+</div>
+<script>
+async function openAdminPanel(){
+  document.getElementById('admin-panel').style.display='flex';
+  const res=await fetch('/api/admin/users');
+  if(!res.ok){alert('No autorizado');closeAdminPanel();return;}
+  const users=await res.json();
+  document.getElementById('admin-users-list').innerHTML=users.map(u=>`
+    <div style="background:#0a0f1a;border:1px solid #1e293b;border-radius:10px;padding:14px 16px">
+      <div style="font-size:.88rem;font-weight:600;color:#e2e8f0">${u.name}</div>
+      <div style="font-size:.75rem;color:#64748b;margin:2px 0">${u.email} · ${u.phone}</div>
+      <div style="font-size:.7rem;color:#475569;margin-bottom:10px">Desde ${u.created_at.slice(0,10)}</div>
+      <div style="display:flex;gap:8px">
+        <button onclick="adminResetPwd(${u.id})" style="flex:1;background:#1e293b;border:none;border-radius:6px;padding:7px;font-size:.72rem;color:#94a3b8;cursor:pointer">Resetear contraseña</button>
+        <button onclick="adminDeleteUser(${u.id})" style="background:#2a1515;border:1px solid #7f1d1d;border-radius:6px;padding:7px 10px;font-size:.72rem;color:#f87171;cursor:pointer">Eliminar</button>
+      </div>
+    </div>
+  `).join('');
+}
+function closeAdminPanel(){document.getElementById('admin-panel').style.display='none';}
+async function adminDeleteUser(id){
+  if(!confirm('¿Eliminar este usuario?'))return;
+  const r=await fetch('/api/admin/users/'+id,{method:'DELETE'});
+  if((await r.json()).ok)openAdminPanel();
+}
+async function adminResetPwd(id){
+  const r=await fetch('/api/admin/users/'+id+'/reset-password',{method:'POST'});
+  const d=await r.json();
+  if(d.ok)alert('Link de reset:\n'+d.reset_url);
+}
+</script>
 </body>
 </html>"""
 
@@ -2894,6 +2932,62 @@ def create_app(db_path: str) -> Flask:
                 return redirect(url_for("login"))
 
         return render_template_string(RESET_HTML, error=error, valid=valid)
+
+    @app.route("/api/admin/users", methods=["GET"])
+    def admin_list_users():
+        admin_email = os.environ.get("ADMIN_EMAIL", "")
+        current_user_id = session.get("user_id")
+        from database import get_user_by_id, get_all_users
+        current = get_user_by_id(db_path, current_user_id) if current_user_id else None
+        if not current:
+            return jsonify({"error": "No autorizado"}), 403
+        if admin_email and current["email"].lower() != admin_email.lower():
+            return jsonify({"error": "No autorizado"}), 403
+        if not admin_email and current["id"] != 1:
+            return jsonify({"error": "No autorizado"}), 403
+        return jsonify(get_all_users(db_path))
+
+    @app.route("/api/admin/users/<int:user_id>", methods=["DELETE"])
+    def admin_delete_user(user_id):
+        admin_email = os.environ.get("ADMIN_EMAIL", "")
+        current_user_id = session.get("user_id")
+        from database import get_user_by_id, delete_user
+        current = get_user_by_id(db_path, current_user_id) if current_user_id else None
+        if not current:
+            return jsonify({"error": "No autorizado"}), 403
+        if admin_email and current["email"].lower() != admin_email.lower():
+            return jsonify({"error": "No autorizado"}), 403
+        if not admin_email and current["id"] != 1:
+            return jsonify({"error": "No autorizado"}), 403
+        if user_id == current_user_id:
+            return jsonify({"error": "No podés eliminar tu propia cuenta"}), 400
+        delete_user(db_path, user_id)
+        return jsonify({"ok": True})
+
+    @app.route("/api/admin/users/<int:user_id>/reset-password", methods=["POST"])
+    def admin_reset_user_password(user_id):
+        import secrets as _secrets
+        admin_email = os.environ.get("ADMIN_EMAIL", "")
+        current_user_id = session.get("user_id")
+        from database import get_user_by_id, create_reset_token
+        from services.email_service import send_reset_email
+        current = get_user_by_id(db_path, current_user_id) if current_user_id else None
+        if not current:
+            return jsonify({"error": "No autorizado"}), 403
+        if admin_email and current["email"].lower() != admin_email.lower():
+            return jsonify({"error": "No autorizado"}), 403
+        if not admin_email and current["id"] != 1:
+            return jsonify({"error": "No autorizado"}), 403
+        target = get_user_by_id(db_path, user_id)
+        if not target:
+            return jsonify({"error": "Usuario no encontrado"}), 404
+        token = _secrets.token_urlsafe(32)
+        create_reset_token(db_path, user_id=user_id, token=token)
+        base_url = request.host_url.rstrip("/")
+        reset_url = f"{base_url}/reset-password/{token}"
+        send_reset_email(target["email"], reset_url)
+        return jsonify({"ok": True, "reset_url": reset_url})
+
     @app.route("/logout")
     def logout():
         session.clear()
