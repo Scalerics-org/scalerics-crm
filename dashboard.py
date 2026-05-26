@@ -2775,7 +2775,7 @@ async function loadMetrics() {
   <button class="batch-apply" onclick="applyBatch()">Aplicar</button>
   <button class="batch-cancel" onclick="clearSelection()">Cancelar</button>
 </div>
-<div id="profile-panel" style="display:none;position:fixed;top:0;right:0;bottom:0;width:380px;background:#111827;border-left:1px solid #1e293b;z-index:201;flex-direction:column;overflow:hidden">
+<div id="profile-panel" style="display:none;position:fixed;top:0;right:0;bottom:0;width:380px;background:#111827;border-left:1px solid #1e293b;z-index:1500;flex-direction:column;overflow:hidden">
   <div style="padding:20px 20px 0;display:flex;align-items:center;justify-content:space-between">
     <span style="font-size:.85rem;font-weight:700;color:#e2e8f0">Mi perfil</span>
     <button onclick="closeProfilePanel()" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:1.2rem">&times;</button>
@@ -2808,7 +2808,7 @@ async function loadMetrics() {
     <button onclick="saveProfile()" style="background:#0088CC;border:none;border-radius:8px;padding:10px;color:#fff;font-size:.82rem;font-weight:600;cursor:pointer;font-family:inherit">Guardar cambios</button>
   </div>
 </div>
-<div id="admin-panel" style="display:none;position:fixed;top:0;right:0;bottom:0;width:380px;background:#111827;border-left:1px solid #1e293b;z-index:200;flex-direction:column;overflow:hidden">
+<div id="admin-panel" style="display:none;position:fixed;top:0;right:0;bottom:0;width:380px;background:#111827;border-left:1px solid #1e293b;z-index:1500;flex-direction:column;overflow:hidden">
   <div style="padding:20px 20px 0;display:flex;align-items:center;justify-content:space-between">
     <span style="font-size:.85rem;font-weight:700;color:#e2e8f0">Usuarios</span>
     <button onclick="closeAdminPanel()" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:1.2rem">&times;</button>
@@ -2828,7 +2828,7 @@ async function initUserInfo(){
     if(me.is_admin){const btn=document.getElementById('admin-btn');if(btn)btn.style.display='';}
   }catch(e){console.error('initUserInfo:',e);}
 }
-document.addEventListener('DOMContentLoaded',initUserInfo);
+initUserInfo();
 
 // ── Admin panel ─────────────────────────────────────────────────────────────
 async function openAdminPanel(){
