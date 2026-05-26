@@ -1,8 +1,8 @@
-# Auth multi-usuario con código de invitación
+# Auth multi-usuario con recuperación de contraseña
 
 ## Objetivo
 
-Reemplazar el login de contraseña única por un sistema de usuarios individuales con registro controlado por código de invitación.
+Reemplazar el login de contraseña única por un sistema de usuarios individuales con registro abierto (controlado por unicidad de email) y recuperación de contraseña por email.
 
 ---
 
@@ -20,16 +20,16 @@ CREATE TABLE users (
     created_at  TEXT NOT NULL
 );
 
-CREATE TABLE invite_codes (
+CREATE TABLE password_reset_tokens (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    code        TEXT NOT NULL UNIQUE,
+    user_id     INTEGER NOT NULL REFERENCES users(id),
+    token       TEXT NOT NULL UNIQUE,
     created_at  TEXT NOT NULL,
-    used_by     INTEGER REFERENCES users(id),
     used_at     TEXT
 );
 ```
 
-Unicidad de cuenta garantizada por `UNIQUE` en `email`.
+Unicidad de cuenta garantizada por `UNIQUE` en `email`. Un email = una cuenta, sin excepción.
 
 ---
 
@@ -37,64 +37,72 @@ Unicidad de cuenta garantizada por `UNIQUE` en `email`.
 
 **Login** (`GET/POST /login`):
 - Formulario: email + contraseña
-- Verifica email existe → compara hash → crea sesión con `user_id`, `user_name`
 - Error genérico si falla ("Email o contraseña incorrectos") — no revela si el email existe
+- Link "Olvidé mi contraseña" debajo del botón
 
 **Registro** (`GET/POST /register`):
-- Formulario: código de invitación + nombre + email + teléfono + contraseña
-- Validaciones en orden:
-  1. Código existe y no fue usado
-  2. Email no registrado ya
-  3. Contraseña mínimo 8 caracteres
-- Si todo ok: crea user, marca código como `used_by` + `used_at`, inicia sesión
-- Redirige al dashboard
+- Formulario: nombre + email + teléfono + contraseña
+- Validaciones:
+  1. Email no registrado ya (error: "Ya existe una cuenta con ese email")
+  2. Contraseña mínimo 8 caracteres
+- Si ok: crea usuario, inicia sesión, redirige al dashboard
 
 **Logout** (`GET /logout`):
 - Limpia sesión, redirige a login
 
 ---
 
-## Panel de admin — gestión de invitaciones
+## Flujo de recuperación de contraseña
 
-Nueva sección en el dashboard (visible solo para el usuario admin):
-- Botón "Generar código" → crea un `invite_codes` nuevo con `secrets.token_urlsafe(12)`, lo muestra en pantalla para copiar
-- Lista de usuarios registrados: nombre, email, teléfono, fecha de registro
-- Lista de códigos: código, estado (disponible / usado por quién)
+**Paso 1 — Solicitud** (`GET/POST /forgot-password`):
+- Formulario: solo email
+- Si el email existe: genera token con `secrets.token_urlsafe(32)`, lo guarda en `password_reset_tokens` con TTL de 1 hora
+- Envía email con link `https://<dominio>/reset-password/<token>` usando **Resend** (a configurar)
+- Siempre muestra el mismo mensaje ("Si el email está registrado, recibirás un link") — no revela si existe
 
-El usuario admin es el primero registrado (id=1), o se puede definir por email en `.env` (`ADMIN_EMAIL`).
+**Paso 2 — Reset** (`GET/POST /reset-password/<token>`):
+- GET: valida token (existe, no usado, no expirado) → muestra formulario de nueva contraseña
+- POST: valida token + nueva contraseña (mín. 8 chars) → actualiza hash → marca token como usado → redirige a login
+- Token expirado o inválido: muestra error con link para solicitar uno nuevo
+
+**Integración Resend** (stub por ahora):
+- Función `send_reset_email(to_email, reset_url)` en `services/email_service.py`
+- Por ahora loguea el link en consola en vez de enviarlo
+- Cuando se configure Resend, solo se edita esa función
+
+---
+
+## Panel de admin — gestión de usuarios
+
+Nueva sección en el dashboard visible para el usuario admin (id=1 o email en `ADMIN_EMAIL`):
+- Lista de usuarios: nombre, email, teléfono, fecha de registro
+- Botón "Resetear contraseña" por usuario → genera token y loguea el link (mismo mecanismo que forgot-password)
+- Botón "Eliminar usuario"
 
 ---
 
 ## Migración
 
-Al arrancar la app por primera vez con el nuevo código:
-- Si la tabla `users` no existe, se crea
-- Si la tabla `invite_codes` no existe, se crea
-- Se genera automáticamente un código de invitación inicial y se loguea en consola para que el admin pueda registrarse
+Al arrancar la app con el nuevo código:
+- Si `users` no existe, se crea automáticamente
+- Si `password_reset_tokens` no existe, se crea automáticamente
+- Se loguea en consola un aviso para que el admin se registre primero
 
-La variable `DASHBOARD_PASSWORD` queda deprecada y se ignora.
-
----
-
-## Seguridad
-
-- Passwords hasheados con `werkzeug.security.generate_password_hash` (pbkdf2:sha256)
-- Sin CSRF token — el nuevo flujo usa sesión Flask estándar sin ese mecanismo
-- `SECRET_KEY` en `.env` sigue siendo necesaria para firmar las sesiones
-- Rate limiting: no se implementa (fuera de scope, Railway ya tiene protección básica)
+`DASHBOARD_PASSWORD` queda deprecada e ignorada.
 
 ---
 
 ## Archivos afectados
 
-- `database.py` — agregar funciones: `create_user`, `get_user_by_email`, `get_all_users`, `create_invite_code`, `get_invite_code`, `use_invite_code`, `get_all_invite_codes`
-- `dashboard.py` — reemplazar login HTML + rutas `/login`, `/logout`, agregar `/register`, panel de admin de invitaciones
-- `.env` — agregar `ADMIN_EMAIL` opcional
+- `database.py` — agregar: `create_user`, `get_user_by_email`, `get_user_by_id`, `get_all_users`, `delete_user`, `create_reset_token`, `get_reset_token`, `use_reset_token`
+- `services/email_service.py` — nuevo archivo, función `send_reset_email` (stub con log)
+- `dashboard.py` — reemplazar login HTML + rutas `/login`, `/logout`, agregar `/register`, `/forgot-password`, `/reset-password/<token>`, panel admin de usuarios
+- `.env` — agregar `ADMIN_EMAIL` opcional, `RESEND_API_KEY` (cuando se configure)
 
 ---
 
 ## Fuera de scope
 
-- Recuperación de contraseña (olvidé mi contraseña)
 - Roles/permisos distintos entre usuarios
 - 2FA
+- Bloqueo por intentos fallidos
