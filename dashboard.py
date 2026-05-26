@@ -785,8 +785,6 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
       </div>
     </div>
   </div>
-</div>
-
   <div id="activity-panel" class="panel">
     <div class="page-header">
       <div>
@@ -797,6 +795,7 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
     </div>
     <div id="activity-list" style="max-width:760px"></div>
   </div>
+</div>
 
 <!-- Modal: Contactar -->
 <div class="modal-overlay" id="contact-modal">
