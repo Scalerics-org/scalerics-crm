@@ -607,7 +607,9 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
   <div class="nav-item" id="nav-cal" onclick="showPanel('cal')">📅 Calendario</div>
   <div class="nav-item" id="nav-metrics" onclick="showPanel('metrics')">📊 Métricas</div>
   <div class="sidebar-bottom">
-    <button onclick="openAdminPanel()" style="background:none;border:1px solid #1e293b;border-radius:8px;padding:6px 12px;font-size:.75rem;color:#64748b;cursor:pointer">&#9881; Usuarios</button>
+    <div id="sidebar-user" style="font-size:.72rem;color:#475569;padding:0 0 4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
+    <button id="admin-btn" onclick="openAdminPanel()" style="display:none;background:none;border:1px solid #1e293b;border-radius:8px;padding:6px 12px;font-size:.75rem;color:#64748b;cursor:pointer;width:100%;text-align:left">&#9881; Usuarios</button>
+    <button onclick="openProfilePanel()" style="background:none;border:1px solid #1e293b;border-radius:8px;padding:6px 12px;font-size:.75rem;color:#64748b;cursor:pointer;width:100%;text-align:left">&#128100; Mi perfil</button>
     <button class="logout-btn" onclick="window.location.href='/logout'">Cerrar sesión</button>
   </div>
 </div>
@@ -2773,6 +2775,39 @@ async function loadMetrics() {
   <button class="batch-apply" onclick="applyBatch()">Aplicar</button>
   <button class="batch-cancel" onclick="clearSelection()">Cancelar</button>
 </div>
+<div id="profile-panel" style="display:none;position:fixed;top:0;right:0;bottom:0;width:380px;background:#111827;border-left:1px solid #1e293b;z-index:201;flex-direction:column;overflow:hidden">
+  <div style="padding:20px 20px 0;display:flex;align-items:center;justify-content:space-between">
+    <span style="font-size:.85rem;font-weight:700;color:#e2e8f0">Mi perfil</span>
+    <button onclick="closeProfilePanel()" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:1.2rem">&times;</button>
+  </div>
+  <div style="padding:16px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:12px">
+    <div>
+      <label style="font-size:.72rem;color:#64748b;display:block;margin-bottom:4px">Nombre</label>
+      <input id="prof-name" type="text" style="width:100%;background:#0a0f1a;border:1px solid #1e293b;border-radius:6px;padding:8px 10px;color:#e2e8f0;font-size:.82rem;font-family:inherit;outline:none">
+    </div>
+    <div>
+      <label style="font-size:.72rem;color:#64748b;display:block;margin-bottom:4px">Email</label>
+      <input id="prof-email" type="email" style="width:100%;background:#0a0f1a;border:1px solid #1e293b;border-radius:6px;padding:8px 10px;color:#e2e8f0;font-size:.82rem;font-family:inherit;outline:none">
+    </div>
+    <div>
+      <label style="font-size:.72rem;color:#64748b;display:block;margin-bottom:4px">Teléfono</label>
+      <input id="prof-phone" type="text" style="width:100%;background:#0a0f1a;border:1px solid #1e293b;border-radius:6px;padding:8px 10px;color:#e2e8f0;font-size:.82rem;font-family:inherit;outline:none">
+    </div>
+    <div style="border-top:1px solid #1e293b;padding-top:12px">
+      <div style="font-size:.72rem;color:#475569;margin-bottom:8px">Contraseña nueva (dejá vacío para no cambiar)</div>
+      <div style="margin-bottom:8px">
+        <label style="font-size:.72rem;color:#64748b;display:block;margin-bottom:4px">Nueva contraseña</label>
+        <input id="prof-pw" type="password" autocomplete="new-password" style="width:100%;background:#0a0f1a;border:1px solid #1e293b;border-radius:6px;padding:8px 10px;color:#e2e8f0;font-size:.82rem;font-family:inherit;outline:none">
+      </div>
+      <div>
+        <label style="font-size:.72rem;color:#64748b;display:block;margin-bottom:4px">Confirmar contraseña</label>
+        <input id="prof-pw2" type="password" autocomplete="new-password" style="width:100%;background:#0a0f1a;border:1px solid #1e293b;border-radius:6px;padding:8px 10px;color:#e2e8f0;font-size:.82rem;font-family:inherit;outline:none">
+      </div>
+    </div>
+    <div id="prof-msg" style="font-size:.75rem;display:none;padding:6px 10px;border-radius:6px"></div>
+    <button onclick="saveProfile()" style="background:#0088CC;border:none;border-radius:8px;padding:10px;color:#fff;font-size:.82rem;font-weight:600;cursor:pointer;font-family:inherit">Guardar cambios</button>
+  </div>
+</div>
 <div id="admin-panel" style="display:none;position:fixed;top:0;right:0;bottom:0;width:380px;background:#111827;border-left:1px solid #1e293b;z-index:200;flex-direction:column;overflow:hidden">
   <div style="padding:20px 20px 0;display:flex;align-items:center;justify-content:space-between">
     <span style="font-size:.85rem;font-weight:700;color:#e2e8f0">Usuarios</span>
@@ -2781,33 +2816,105 @@ async function loadMetrics() {
   <div id="admin-users-list" style="padding:16px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:10px"></div>
 </div>
 <script>
+// ── User info & admin visibility ────────────────────────────────────────────
+async function initUserInfo(){
+  try{
+    const res=await fetch('/api/me');
+    if(!res.ok)return;
+    const me=await res.json();
+    window._meData=me;
+    const sb=document.getElementById('sidebar-user');
+    if(sb)sb.textContent=me.name;
+    if(me.is_admin){const btn=document.getElementById('admin-btn');if(btn)btn.style.display='';}
+  }catch(e){}
+}
+initUserInfo();
+
+// ── Admin panel ─────────────────────────────────────────────────────────────
 async function openAdminPanel(){
-  document.getElementById('admin-panel').style.display='flex';
-  const res=await fetch('/api/admin/users');
-  if(!res.ok){alert('No autorizado');closeAdminPanel();return;}
-  const users=await res.json();
-  document.getElementById('admin-users-list').innerHTML=users.map(u=>`
-    <div style="background:#0a0f1a;border:1px solid #1e293b;border-radius:10px;padding:14px 16px">
-      <div style="font-size:.88rem;font-weight:600;color:#e2e8f0">${u.name}</div>
-      <div style="font-size:.75rem;color:#64748b;margin:2px 0">${u.email} · ${u.phone}</div>
-      <div style="font-size:.7rem;color:#475569;margin-bottom:10px">Desde ${u.created_at.slice(0,10)}</div>
-      <div style="display:flex;gap:8px">
-        <button onclick="adminResetPwd(${u.id})" style="flex:1;background:#1e293b;border:none;border-radius:6px;padding:7px;font-size:.72rem;color:#94a3b8;cursor:pointer">Resetear contraseña</button>
-        <button onclick="adminDeleteUser(${u.id})" style="background:#2a1515;border:1px solid #7f1d1d;border-radius:6px;padding:7px 10px;font-size:.72rem;color:#f87171;cursor:pointer">Eliminar</button>
-      </div>
-    </div>
-  `).join('');
+  const panel=document.getElementById('admin-panel');
+  const list=document.getElementById('admin-users-list');
+  panel.style.display='flex';
+  list.innerHTML='<div style="color:#64748b;font-size:.8rem">Cargando…</div>';
+  try{
+    const res=await fetch('/api/admin/users');
+    if(!res.ok){
+      list.innerHTML='<div style="color:#f87171;font-size:.8rem">Error '+res.status+'<\/div>';
+      return;
+    }
+    const users=await res.json();
+    if(!users.length){list.innerHTML='<div style="color:#64748b;font-size:.8rem">Sin usuarios<\/div>';return;}
+    list.innerHTML=users.map(u=>`
+      <div style="background:#0a0f1a;border:1px solid #1e293b;border-radius:10px;padding:14px 16px">
+        <div style="font-size:.88rem;font-weight:600;color:#e2e8f0">${esc(u.name)}<\/div>
+        <div style="font-size:.75rem;color:#64748b;margin:2px 0">${esc(u.email)} &middot; ${esc(u.phone)}<\/div>
+        <div style="font-size:.7rem;color:#475569;margin-bottom:10px">Desde ${u.created_at.slice(0,10)}<\/div>
+        <div style="display:flex;gap:8px">
+          <button onclick="adminResetPwd(${u.id})" style="flex:1;background:#1e293b;border:none;border-radius:6px;padding:7px;font-size:.72rem;color:#94a3b8;cursor:pointer">Resetear contraseña<\/button>
+          <button onclick="adminDeleteUser(${u.id})" style="background:#2a1515;border:1px solid #7f1d1d;border-radius:6px;padding:7px 10px;font-size:.72rem;color:#f87171;cursor:pointer">Eliminar<\/button>
+        <\/div>
+      <\/div>
+    `).join('');
+  }catch(e){
+    list.innerHTML='<div style="color:#f87171;font-size:.8rem">Error: '+e.message+'<\/div>';
+  }
 }
 function closeAdminPanel(){document.getElementById('admin-panel').style.display='none';}
 async function adminDeleteUser(id){
   if(!confirm('¿Eliminar este usuario?'))return;
   const r=await fetch('/api/admin/users/'+id,{method:'DELETE'});
-  if((await r.json()).ok)openAdminPanel();
+  const d=await r.json();
+  if(d.ok)openAdminPanel();
+  else alert(d.error||'Error al eliminar');
 }
 async function adminResetPwd(id){
   const r=await fetch('/api/admin/users/'+id+'/reset-password',{method:'POST'});
   const d=await r.json();
   if(d.ok)alert('Link de reset:\n'+d.reset_url);
+  else alert(d.error||'Error');
+}
+
+// ── Profile panel ───────────────────────────────────────────────────────────
+function openProfilePanel(){
+  const me=window._meData||{};
+  document.getElementById('prof-name').value=me.name||'';
+  document.getElementById('prof-email').value=me.email||'';
+  document.getElementById('prof-phone').value=me.phone||'';
+  document.getElementById('prof-pw').value='';
+  document.getElementById('prof-pw2').value='';
+  const msg=document.getElementById('prof-msg');
+  msg.style.display='none';
+  document.getElementById('profile-panel').style.display='flex';
+}
+function closeProfilePanel(){document.getElementById('profile-panel').style.display='none';}
+async function saveProfile(){
+  const name=document.getElementById('prof-name').value.trim();
+  const email=document.getElementById('prof-email').value.trim();
+  const phone=document.getElementById('prof-phone').value.trim();
+  const pw=document.getElementById('prof-pw').value;
+  const pw2=document.getElementById('prof-pw2').value;
+  const msg=document.getElementById('prof-msg');
+  const showMsg=(text,ok)=>{
+    msg.textContent=text;
+    msg.style.background=ok?'rgba(16,185,129,.12)':'rgba(239,68,68,.1)';
+    msg.style.color=ok?'#10B981':'#f87171';
+    msg.style.display='block';
+  };
+  if(!name||!email||!phone){showMsg('Nombre, email y teléfono son requeridos',false);return;}
+  if(pw&&pw.length<8){showMsg('La contraseña debe tener al menos 8 caracteres',false);return;}
+  if(pw&&pw!==pw2){showMsg('Las contraseñas no coinciden',false);return;}
+  const body={name,email,phone};
+  if(pw)body.password=pw;
+  try{
+    const r=await fetch('/api/me',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const d=await r.json();
+    if(!r.ok){showMsg(d.error||'Error al guardar',false);return;}
+    window._meData={...window._meData,name,email,phone};
+    const sb=document.getElementById('sidebar-user');
+    if(sb)sb.textContent=name;
+    showMsg('Cambios guardados',true);
+    setTimeout(()=>msg.style.display='none',2500);
+  }catch(e){showMsg('Error de conexión',false);}
 }
 </script>
 </body>
@@ -2939,6 +3046,54 @@ def create_app(db_path: str) -> Flask:
                 return redirect(url_for("login"))
 
         return render_template_string(RESET_HTML, error=error, valid=valid)
+
+
+    @app.route("/api/me", methods=["GET"])
+    def api_me():
+        from database import get_user_by_id
+        user_id = session.get("user_id")
+        user = get_user_by_id(db_path, user_id) if user_id else None
+        if not user:
+            return jsonify({"error": "not_logged_in"}), 401
+        admin_email = os.environ.get("ADMIN_EMAIL", "")
+        is_admin = bool(
+            (admin_email and user["email"].lower() == admin_email.lower())
+            or (not admin_email and user["id"] == 1)
+        )
+        return jsonify({
+            "id": user["id"],
+            "name": user["name"],
+            "email": user["email"],
+            "phone": user["phone"],
+            "is_admin": is_admin,
+        })
+
+    @app.route("/api/me", methods=["PUT"])
+    def api_me_update():
+        from werkzeug.security import generate_password_hash
+        from database import get_user_by_id, get_user_by_email, update_user_password, update_user_profile
+        user_id = session.get("user_id")
+        user = get_user_by_id(db_path, user_id) if user_id else None
+        if not user:
+            return jsonify({"error": "No autorizado"}), 403
+        data = request.get_json(force=True) or {}
+        name = (data.get("name") or "").strip()
+        email = (data.get("email") or "").strip().lower()
+        phone = (data.get("phone") or "").strip()
+        password = data.get("password", "")
+        if not name or not email or not phone:
+            return jsonify({"error": "Nombre, email y tel\u00e9fono son requeridos"}), 400
+        if password and len(password) < 8:
+            return jsonify({"error": "La contrase\u00f1a debe tener al menos 8 caracteres"}), 400
+        if email != user["email"]:
+            existing = get_user_by_email(db_path, email)
+            if existing and existing["id"] != user_id:
+                return jsonify({"error": "Ya existe una cuenta con ese email"}), 409
+        update_user_profile(db_path, user_id, name=name, email=email, phone=phone)
+        if password:
+            update_user_password(db_path, user_id, generate_password_hash(password))
+        session["user_name"] = name
+        return jsonify({"ok": True})
 
     @app.route("/api/admin/users", methods=["GET"])
     def admin_list_users():

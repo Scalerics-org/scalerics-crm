@@ -1046,6 +1046,17 @@ def update_user_password(db_path: str, user_id: int, password_hash: str) -> None
     finally:
         conn.close()
 
+def update_user_profile(db_path: str, user_id: int, name: str, email: str, phone: str) -> None:
+    conn = _connect(db_path)
+    try:
+        conn.execute(
+            "UPDATE users SET name=?, email=?, phone=? WHERE id=?",
+            (name, email, phone, user_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
 
 # ─── Password reset tokens ────────────────────────────────────────────────────
 
