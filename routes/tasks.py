@@ -33,7 +33,7 @@ def api_create_task():
                  "task", task_id, data["title"], data["title"],
                  user_id=session.get("user_id"))
     # Send assignment email when task is assigned to someone else
-    if data.get("assignee_email"):
+    if data.get("assignee_email") and data.get("assignee_id") != session.get("user_id"):
         import threading
         import os
         crm_url = os.environ.get("CRM_URL", "")
