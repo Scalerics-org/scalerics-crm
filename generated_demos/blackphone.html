@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Blackphone · Tu tienda de iPhones · Scalerics</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Raleway:ital,wght@0,700;0,800;0,900;1,700;1,900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #09090f;
+      --surface: rgba(255,255,255,.04);
+      --border: rgba(255,255,255,.07);
+      --text: #e2e8f0;
+      --muted: #64748b;
+      --blue: #0088CC;
+      --blue-lt: #33aadd;
+      --blue-dk: #005f8e;
+      --blue-glow: rgba(0,136,204,.14);
+      --blue-border: rgba(0,136,204,.28);
+      --green: #10B981;
+      --green-lt: #34d399;
+      --green-glow: rgba(16,185,129,.12);
+      --ff: 'Inter', sans-serif;
+      --ff-d: 'Raleway', sans-serif;
+    }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: var(--ff); }
+    #progress { position: fixed; top: 0; left: 0; height: 3px; width: 14.28%; background: linear-gradient(90deg, var(--blue-dk), var(--blue), var(--blue-lt)); z-index: 100; transition: width .5s cubic-bezier(.4,0,.2,1); box-shadow: 0 0 10px var(--blue-glow); }
+    #counter { position: fixed; top: 16px; right: 20px; z-index: 100; font-size: 11px; color: var(--muted); letter-spacing: .06em; font-weight: 300; }
+    #deck { position: relative; width: 100%; height: 100vh; }
+    .slide { position: absolute; inset: 0; opacity: 0; transform: translateX(60px); pointer-events: none; z-index: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 64px 52px 100px; transition: opacity .45s cubic-bezier(.4,0,.2,1), transform .45s cubic-bezier(.4,0,.2,1); }
+    .slide.active { opacity: 1; transform: translateX(0); pointer-events: all; z-index: 2; }
+    .slide.out { opacity: 0; transform: translateX(-60px); }
+    #nav { position: fixed; bottom: 22px; left: 0; right: 0; display: flex; justify-content: center; align-items: center; gap: 14px; z-index: 100; }
+    .nbtn { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 13px; transition: background .2s; }
+    .nbtn:hover { background: rgba(255,255,255,.1); }
+    .nbtn.nxt { background: linear-gradient(135deg, var(--blue-dk), var(--blue)); border: none; box-shadow: 0 4px 16px rgba(0,136,204,.3); }
+    .nbtn.nxt:hover { opacity: .85; transform: translateY(-1px); }
+    #dots { display: flex; gap: 7px; align-items: center; }
+    .dot { width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,.18); cursor: pointer; transition: all .3s; }
+    .dot.on { background: var(--blue); width: 20px; border-radius: 3px; }
+    #wm { position: fixed; bottom: 66px; left: 20px; font-size: 10px; color: rgba(255,255,255,.07); letter-spacing: .12em; text-transform: uppercase; font-weight: 600; z-index: 99; }
+    .label { font-size: 11px; letter-spacing: .2em; text-transform: uppercase; color: var(--blue); font-weight: 700; margin-bottom: 12px; }
+    .s-title { font-family: var(--ff-d); font-size: clamp(26px, 3.8vw, 48px); font-weight: 800; line-height: 1.1; text-align: center; margin-bottom: 36px; }
+    .s-title em { font-style: italic; color: var(--blue); }
+    .s-title span.g { background: linear-gradient(135deg, var(--blue), var(--green)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    #s1 { align-items: flex-start; overflow: hidden; }
+    #s1::before { content: ''; position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse 55% 70% at 90% 38%, rgba(0,136,204,.08) 0%, transparent 65%), radial-gradient(ellipse 30% 40% at 5% 80%, rgba(16,185,129,.06) 0%, transparent 60%); }
+    .s1-inner { position: relative; z-index: 1; max-width: 700px; }
+    .s1-logo { height: 32px; object-fit: contain; margin-bottom: 40px; opacity: .9; }
+    .s1-badge { display: inline-flex; align-items: center; gap: 8px; background: rgba(0,136,204,.1); border: 1px solid var(--blue-border); border-radius: 100px; padding: 5px 16px; font-size: 11px; color: var(--blue-lt); letter-spacing: .08em; font-weight: 600; text-transform: uppercase; margin-bottom: 26px; }
+    .s1-h1 { font-family: var(--ff-d); font-size: clamp(50px, 7vw, 86px); font-weight: 900; line-height: .92; letter-spacing: -.025em; margin-bottom: 12px; }
+    .s1-h1 em { font-style: italic; color: var(--blue); }
+    .s1-sub { font-size: 16px; color: rgba(226,232,240,.5); font-weight: 300; margin-bottom: 42px; max-width: 500px; line-height: 1.65; }
+    .s1-pills { display: flex; gap: 10px; flex-wrap: wrap; }
+    .s1-pill { display: flex; align-items: center; gap: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 9px 16px; font-size: 13px; font-weight: 500; }
+    .s1-pill i { color: var(--blue); font-size: 14px; }
+    .prob-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; max-width: 820px; width: 100%; }
+    .prob-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 26px 20px; text-align: center; }
+    .prob-icon { font-size: 28px; margin-bottom: 12px; }
+    .prob-title { font-weight: 700; font-size: 14px; margin-bottom: 8px; }
+    .prob-desc { font-size: 13px; color: rgba(226,232,240,.55); line-height: 1.55; }
+    .sol-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; max-width: 700px; width: 100%; margin-bottom: 30px; }
+    .sol-row { display: flex; align-items: flex-start; gap: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+    .sol-check { width: 22px; height: 22px; border-radius: 6px; background: var(--green-glow); border: 1px solid rgba(16,185,129,.3); display: flex; align-items: center; justify-content: center; color: var(--green); font-size: 11px; flex-shrink: 0; margin-top: 1px; }
+    .sol-text { font-size: 13px; line-height: 1.5; color: rgba(226,232,240,.8); }
+    .sol-text strong { color: var(--text); font-weight: 600; }
+    .sol-stats { display: flex; gap: 40px; }
+    .sol-stat .num { font-family: var(--ff-d); font-size: 38px; font-weight: 900; color: var(--blue); line-height: 1; }
+    .sol-stat .desc { font-size: 12px; color: var(--muted); margin-top: 4px; }
+    .browser { border-radius: 10px; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,.7); }
+    .brow-bar { background: #131722; padding: 9px 14px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid rgba(255,255,255,.06); }
+    .bdot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+    .burl { flex: 1; background: #1c2133; border: 1px solid rgba(255,255,255,.07); border-radius: 5px; padding: 3px 10px; font-size: 11px; font-family: monospace; color: var(--muted); }
+    .burl i { font-size: 9px; color: var(--green); margin-right: 4px; }
+    .brow-body { height: 460px; overflow-y: auto; overflow-x: hidden; }
+    .brow-body::-webkit-scrollbar { width: 5px; }
+    .brow-body::-webkit-scrollbar-track { background: rgba(255,255,255,.04); }
+    .brow-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,.2); border-radius: 3px; }
+    .slide.mock { padding: 28px 40px 80px; }
+    .mwrap { width: 100%; max-width: 920px; }
+    .mlabel { font-size: 10px; font-weight: 700; color: var(--muted); margin-bottom: 8px; letter-spacing: .1em; text-transform: uppercase; }
+    .price-card { background: var(--surface); border: 1px solid var(--blue-border); border-radius: 20px; padding: 38px 42px; max-width: 520px; width: 100%; text-align: center; position: relative; }
+    .price-glow { position: absolute; inset: -1px; border-radius: 20px; background: linear-gradient(135deg, rgba(0,136,204,.2), transparent 60%); pointer-events: none; }
+    .price-range { font-family: var(--ff-d); font-size: 52px; font-weight: 900; color: var(--blue); line-height: 1; margin-bottom: 6px; letter-spacing: -.02em; }
+    .price-sub { font-size: 13px; color: var(--muted); margin-bottom: 28px; }
+    .price-list { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; text-align: left; }
+    .price-item { display: flex; align-items: center; gap: 8px; font-size: 13px; color: rgba(226,232,240,.75); }
+    .price-item i { color: var(--green); font-size: 11px; }
+    .wa-btn { display: inline-flex; align-items: center; gap: 10px; background: #25D366; color: #fff; border-radius: 10px; padding: 13px 26px; font-size: 14px; font-weight: 700; margin-top: 22px; text-decoration: none; }
+    .wa-btn i { font-size: 18px; }
+  </style>
+</head>
+<body>
+<div id="progress"></div>
+<div id="counter">1 / 7</div>
+<div id="wm">Scalerics</div>
+<div id="deck">
+
+  <!-- S1: PORTADA -->
+  <section class="slide active" id="s1">
+    <div class="s1-inner">
+      <img class="s1-logo" src="https://raw.githubusercontent.com/juantomasetti1/scalerics-assets/main/logo_full_alt.png" alt="Scalerics">
+      <div class="s1-badge"><i class="fa fa-mobile-screen-button"></i> Tienda de iPhones</div>
+      <h1 class="s1-h1">Tu iPhone,<br><em>siempre de confianza.</em></h1>
+      <p class="s1-sub">Catálogo online, precios en dólares y dos locales físicos en San Luis. Blackphone — Tu iPhone de confianza.</p>
+      <div class="s1-pills">
+        <div class="s1-pill"><i class="fa fa-shield-halved"></i> Garantía incluida</div>
+        <div class="s1-pill"><i class="fa fa-location-dot"></i> Villa Mercedes y San Luis</div>
+        <div class="s1-pill"><i class="fa fa-dollar-sign"></i> Precios en USD</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- S2: PROBLEMA -->
+  <section class="slide" id="s2">
+    <div class="label">El problema</div>
+    <h2 class="s-title">Comprar un iPhone en Argentina<br>es <em>un riesgo.</em></h2>
+    <div class="prob-grid">
+      <div class="prob-card">
+        <div class="prob-icon">⚠️</div>
+        <div class="prob-title">Páginas sin garantía</div>
+        <div class="prob-desc">Comprás online y cuando llega el equipo no funciona. Nadie responde. El vendedor desaparece.</div>
+      </div>
+      <div class="prob-card">
+        <div class="prob-icon">💸</div>
+        <div class="prob-title">Precios en pesos que no cierran</div>
+        <div class="prob-desc">El precio cambia entre que lo ves y lo pagás. Sin referencia clara en dólares, nunca sabés si pagás de más.</div>
+      </div>
+      <div class="prob-card">
+        <div class="prob-icon">🔇</div>
+        <div class="prob-title">Sin soporte post-venta</div>
+        <div class="prob-desc">Si algo falla después de comprar, no tenés a quién reclamarle. El chat de Instagram deja de responder.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- S3: SOLUCIÓN -->
+  <section class="slide" id="s3">
+    <div class="label">Lo que armamos</div>
+    <h2 class="s-title">Tu tienda de iPhones<br><span class="g">lista para vender</span></h2>
+    <div class="sol-grid">
+      <div class="sol-row">
+        <div class="sol-check"><i class="fa fa-check"></i></div>
+        <div class="sol-text"><strong>Catálogo online</strong> con modelos, fotos y precios en USD actualizados en tiempo real</div>
+      </div>
+      <div class="sol-row">
+        <div class="sol-check"><i class="fa fa-check"></i></div>
+        <div class="sol-text"><strong>Garantía verificada</strong> en cada equipo — certificado incluido con la compra</div>
+      </div>
+      <div class="sol-row">
+        <div class="sol-check"><i class="fa fa-check"></i></div>
+        <div class="sol-text"><strong>Dos locales físicos</strong> en Villa Mercedes y San Luis para ver y retirar el equipo</div>
+      </div>
+      <div class="sol-row">
+        <div class="sol-check"><i class="fa fa-check"></i></div>
+        <div class="sol-text"><strong>Soporte real</strong> por WhatsApp y en persona — post-venta de verdad</div>
+      </div>
+    </div>
+    <div class="sol-stats">
+      <div class="sol-stat"><div class="num">+20</div><div class="desc">modelos disponibles</div></div>
+      <div class="sol-stat"><div class="num">90</div><div class="desc">días de garantía</div></div>
+      <div class="sol-stat"><div class="num">2</div><div class="desc">locales físicos</div></div>
+    </div>
+  </section>
+
+  <!-- S4: MOCKUP 1 — Ultra Black Premium -->
+  <section class="slide mock" id="s4">
+    <div class="mlabel">Demo · Tienda premium — Estilo oscuro</div>
+    <div class="mwrap">
+      <div class="browser">
+        <div class="brow-bar">
+          <span class="bdot" style="background:#FF5F57"></span>
+          <span class="bdot" style="background:#FEBC2E"></span>
+          <span class="bdot" style="background:#28C840"></span>
+          <div class="burl"><i class="fa fa-lock"></i> www.blackphone.com.ar</div>
+        </div>
+        <div class="brow-body" style="background:#000;display:flex;flex-direction:column;">
+          <div style="background:#111;padding:5px 20px;display:flex;justify-content:space-between;flex-shrink:0;border-bottom:1px solid #1a1a1a">
+            <span style="font-size:10px;color:#aaa;font-weight:500">🚚 Envío a todo San Luis · Villa Mercedes y capital</span>
+            <span style="font-size:10px;color:#555">L–V 9–19hs · Sáb 9–14hs</span>
+          </div>
+          <div style="background:#0a0a0a;padding:0 20px;display:flex;align-items:center;gap:14px;height:52px;border-bottom:1px solid #1a1a1a;flex-shrink:0">
+            <img src="data:image/png;base64,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" style="height:22px;object-fit:contain;opacity:.95">
+            <div style="flex:1;background:#141414;border:1px solid #242424;border-radius:6px;padding:7px 12px;display:flex;align-items:center;gap:7px;max-width:320px">
+              <i class="fa fa-magnifying-glass" style="color:#444;font-size:11px"></i>
+              <span style="font-size:11px;color:#333">Buscar modelos...</span>
+            </div>
+            <div style="display:flex;gap:16px;font-size:11px;color:rgba(255,255,255,.35);margin-left:auto;white-space:nowrap">
+              <span>Novedades</span><span>Modelos</span><span>Reacondicionados</span>
+            </div>
+            <div style="background:#fff;color:#000;border-radius:7px;padding:6px 14px;font-size:11px;font-weight:800;display:flex;align-items:center;gap:5px;margin-left:8px">
+              <i class="fa fa-cart-shopping" style="font-size:11px"></i> Carrito
+            </div>
+          </div>
+          <div style="background:#0d0d0d;border-bottom:1px solid #1a1a1a;padding:0 20px;display:flex;gap:0;flex-shrink:0">
+            <div style="padding:8px 14px;font-size:11px;color:#fff;border-bottom:2px solid #fff;font-weight:700">iPhone 15</div>
+            <div style="padding:8px 14px;font-size:11px;color:rgba(255,255,255,.35)">iPhone 14</div>
+            <div style="padding:8px 14px;font-size:11px;color:rgba(255,255,255,.35)">iPhone 13</div>
+            <div style="padding:8px 14px;font-size:11px;color:rgba(255,255,255,.35)">Reacondicionados</div>
+            <div style="padding:8px 14px;font-size:11px;color:rgba(255,255,255,.35)">Accesorios</div>
+          </div>
+          <div style="display:flex;gap:0;">
+            <div style="width:260px;flex-shrink:0;background:linear-gradient(160deg,#0d0d0d 0%,#060606 100%);padding:22px 18px;display:flex;flex-direction:column;justify-content:center;border-right:1px solid #1a1a1a">
+              <div style="font-size:9px;color:#666;letter-spacing:.15em;text-transform:uppercase;font-weight:700;margin-bottom:8px">Nueva generación</div>
+              <div style="font-family:'Raleway',sans-serif;font-size:20px;font-weight:900;color:#fff;line-height:1.15;margin-bottom:6px">iPhone 15<br><span style="color:#aaa;font-weight:700">Pro Max</span></div>
+              <div style="font-size:11px;color:#444;margin-bottom:16px;line-height:1.55">Chip A17 Pro · Cámara 48MP<br>Titanio · Garantía 90 días</div>
+              <div style="font-size:16px;font-weight:900;color:#fff;margin-bottom:12px">$1,199 <span style="font-size:10px;color:#555;font-weight:400">USD</span></div>
+              <div style="background:#fff;color:#000;border-radius:7px;padding:8px 16px;font-size:11px;font-weight:800;text-align:center">Ver modelo →</div>
+              <img src="https://images.unsplash.com/photo-1695048133142-1a20484d2569?w=200&q=80" style="width:100%;border-radius:8px;margin-top:14px;opacity:.85;object-fit:cover;height:80px">
+            </div>
+            <div style="flex:1;padding:14px;display:grid;grid-template-columns:repeat(3,1fr);gap:10px;align-content:start;background:#000">
+              <div style="background:#0d0d0d;border:1px solid #1a1a1a;border-radius:8px;overflow:hidden">
+                <img src="https://images.unsplash.com/photo-1695048133142-1a20484d2569?w=300&q=80" style="width:100%;height:70px;object-fit:cover">
+                <div style="padding:9px">
+                  <div style="font-size:8px;color:#555;margin-bottom:3px;text-transform:uppercase;letter-spacing:.08em">iPhone 15</div>
+                  <div style="font-size:11px;color:#e2e8f0;font-weight:700;margin-bottom:5px;line-height:1.3">Pro Max</div>
+                  <div style="font-size:12px;color:#fff;font-weight:800;margin-bottom:7px">$1,199</div>
+                  <div style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:5px;padding:4px 9px;font-size:9px;color:#fff;font-weight:700;text-align:center">Ver →</div>
+                </div>
+              </div>
+              <div style="background:#0d0d0d;border:1px solid #2a2a2a;border-radius:8px;overflow:hidden;position:relative">
+                <div style="position:absolute;top:6px;left:6px;background:#fff;color:#000;border-radius:3px;padding:2px 6px;font-size:7px;font-weight:900;letter-spacing:.05em">NUEVO</div>
+                <img src="https://images.unsplash.com/photo-1607936854279-55e8a4c64888?w=300&q=80" style="width:100%;height:70px;object-fit:cover">
+                <div style="padding:9px">
+                  <div style="font-size:8px;color:#555;margin-bottom:3px;text-transform:uppercase;letter-spacing:.08em">iPhone 15</div>
+                  <div style="font-size:11px;color:#e2e8f0;font-weight:700;margin-bottom:5px;line-height:1.3">Pro</div>
+                  <div style="font-size:12px;color:#fff;font-weight:800;margin-bottom:7px">$999</div>
+                  <div style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:5px;padding:4px 9px;font-size:9px;color:#fff;font-weight:700;text-align:center">Ver →</div>
+                </div>
+              </div>
+              <div style="background:#0d0d0d;border:1px solid #1a1a1a;border-radius:8px;overflow:hidden">
+                <img src="https://images.unsplash.com/photo-1580910051074-3eb694886505?w=300&q=80" style="width:100%;height:70px;object-fit:cover">
+                <div style="padding:9px">
+                  <div style="font-size:8px;color:#555;margin-bottom:3px;text-transform:uppercase;letter-spacing:.08em">iPhone 15</div>
+                  <div style="font-size:11px;color:#e2e8f0;font-weight:700;margin-bottom:5px;line-height:1.3">Estándar</div>
+                  <div style="font-size:12px;color:#fff;font-weight:800;margin-bottom:7px">$849</div>
+                  <div style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:5px;padding:4px 9px;font-size:9px;color:#fff;font-weight:700;text-align:center">Ver →</div>
+                </div>
+              </div>
+              <div style="background:#0d0d0d;border:1px solid #1a1a1a;border-radius:8px;overflow:hidden">
+                <img src="https://images.unsplash.com/photo-1663499482523-1c0c1bae4ce1?w=300&q=80" style="width:100%;height:70px;object-fit:cover">
+                <div style="padding:9px">
+                  <div style="font-size:8px;color:#555;margin-bottom:3px;text-transform:uppercase;letter-spacing:.08em">iPhone 14</div>
+                  <div style="font-size:11px;color:#e2e8f0;font-weight:700;margin-bottom:5px;line-height:1.3">Pro</div>
+                  <div style="font-size:12px;color:#fff;font-weight:800;margin-bottom:7px">$799</div>
+                  <div style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:5px;padding:4px 9px;font-size:9px;color:#fff;font-weight:700;text-align:center">Ver →</div>
+                </div>
+              </div>
+              <div style="background:#0d0d0d;border:1px solid #1a1a1a;border-radius:8px;overflow:hidden">
+                <img src="https://images.unsplash.com/photo-1632661674596-df8be070a5c5?w=300&q=80" style="width:100%;height:70px;object-fit:cover">
+                <div style="padding:9px">
+                  <div style="font-size:8px;color:#555;margin-bottom:3px;text-transform:uppercase;letter-spacing:.08em">iPhone 14</div>
+                  <div style="font-size:11px;color:#e2e8f0;font-weight:700;margin-bottom:5px;line-height:1.3">Estándar</div>
+                  <div style="font-size:12px;color:#fff;font-weight:800;margin-bottom:7px">$649</div>
+                  <div style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:5px;padding:4px 9px;font-size:9px;color:#fff;font-weight:700;text-align:center">Ver →</div>
+                </div>
+              </div>
+              <div style="background:#0d0d0d;border:1px solid #1a1a1a;border-radius:8px;overflow:hidden">
+                <img src="https://images.unsplash.com/photo-1510557880182-3d4d3cba35a5?w=300&q=80" style="width:100%;height:70px;object-fit:cover">
+                <div style="padding:9px">
+                  <div style="font-size:8px;color:#555;margin-bottom:3px;text-transform:uppercase;letter-spacing:.08em">iPhone 13</div>
+                  <div style="font-size:11px;color:#e2e8f0;font-weight:700;margin-bottom:5px;line-height:1.3">Estándar</div>
+                  <div style="font-size:12px;color:#fff;font-weight:800;margin-bottom:7px">$499</div>
+                  <div style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:5px;padding:4px 9px;font-size:9px;color:#fff;font-weight:700;text-align:center">Ver →</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div style="background:#0a0a0a;border-top:1px solid #1a1a1a;padding:12px 20px;display:flex;justify-content:space-around;flex-shrink:0">
+            <div style="text-align:center"><div style="font-size:16px">🛡️</div><div style="font-size:9px;color:#555;margin-top:3px">Garantía 90 días</div></div>
+            <div style="text-align:center"><div style="font-size:16px">📍</div><div style="font-size:9px;color:#555;margin-top:3px">2 locales físicos</div></div>
+            <div style="text-align:center"><div style="font-size:16px">💵</div><div style="font-size:9px;color:#555;margin-top:3px">Precios en USD</div></div>
+            <div style="text-align:center"><div style="font-size:16px">💬</div><div style="font-size:9px;color:#555;margin-top:3px">Soporte WhatsApp</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- S5: MOCKUP 2 — White Minimal Clean -->
+  <section class="slide mock" id="s5">
+    <div class="mlabel">Demo · Tienda limpia — Estilo claro</div>
+    <div class="mwrap">
+      <div class="browser">
+        <div class="brow-bar">
+          <span class="bdot" style="background:#FF5F57"></span>
+          <span class="bdot" style="background:#FEBC2E"></span>
+          <span class="bdot" style="background:#28C840"></span>
+          <div class="burl"><i class="fa fa-lock"></i> www.blackphone.com.ar</div>
+        </div>
+        <div class="brow-body" style="background:#f8f9fa;display:flex;flex-direction:column;">
+          <div style="background:#fff;padding:0 20px;display:flex;align-items:center;gap:14px;height:52px;border-bottom:1px solid #e5e7eb;flex-shrink:0;box-shadow:0 1px 3px rgba(0,0,0,.06)">
+            <img src="data:image/png;base64,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" style="height:22px;object-fit:contain">
+            <div style="flex:1;background:#f3f4f6;border:1px solid #e5e7eb;border-radius:6px;padding:7px 12px;display:flex;align-items:center;gap:7px;max-width:320px">
+              <i class="fa fa-magnifying-glass" style="color:#9ca3af;font-size:11px"></i>
+              <span style="font-size:11px;color:#9ca3af">Buscar modelos...</span>
+            </div>
+            <div style="display:flex;gap:16px;font-size:11px;color:#6b7280;margin-left:auto;white-space:nowrap">
+              <span>Novedades</span><span>Modelos</span><span>Reacondicionados</span>
+            </div>
+            <div style="background:#000;color:#fff;border-radius:7px;padding:6px 14px;font-size:11px;font-weight:800;display:flex;align-items:center;gap:5px;margin-left:8px">
+              <i class="fa fa-cart-shopping" style="font-size:11px"></i> Carrito
+            </div>
+          </div>
+          <div style="background:#fff;border-bottom:1px solid #e5e7eb;padding:0 20px;display:flex;gap:0;flex-shrink:0">
+            <div style="padding:8px 14px;font-size:11px;color:#000;border-bottom:2px solid #000;font-weight:700">iPhone 15</div>
+            <div style="padding:8px 14px;font-size:11px;color:#6b7280">iPhone 14</div>
+            <div style="padding:8px 14px;font-size:11px;color:#6b7280">iPhone 13</div>
+            <div style="padding:8px 14px;font-size:11px;color:#6b7280">Reacondicionados</div>
+            <div style="padding:8px 14px;font-size:11px;color:#6b7280">Accesorios</div>
+          </div>
+          <div style="display:flex;gap:0;">
+            <div style="width:260px;flex-shrink:0;background:linear-gradient(160deg,#f0f0f0 0%,#e8e8e8 100%);padding:22px 18px;display:flex;flex-direction:column;justify-content:center;border-right:1px solid #e5e7eb">
+              <div style="font-size:9px;color:#9ca3af;letter-spacing:.15em;text-transform:uppercase;font-weight:700;margin-bottom:8px">Nueva generación</div>
+              <div style="font-family:'Raleway',sans-serif;font-size:20px;font-weight:900;color:#000;line-height:1.15;margin-bottom:6px">iPhone 15<br><span style="color:#374151;font-weight:700">Pro Max</span></div>
+              <div style="font-size:11px;color:#9ca3af;margin-bottom:16px;line-height:1.55">Chip A17 Pro · Cámara 48MP<br>Titanio · Garantía 90 días</div>
+              <div style="font-size:16px;font-weight:900;color:#000;margin-bottom:12px">$1,199 <span style="font-size:10px;color:#9ca3af;font-weight:400">USD</span></div>
+              <div style="background:#000;color:#fff;border-radius:7px;padding:8px 16px;font-size:11px;font-weight:800;text-align:center">Ver modelo →</div>
+              <img src="https://images.unsplash.com/photo-1695048133142-1a20484d2569?w=200&q=80" style="width:100%;border-radius:8px;margin-top:14px;object-fit:cover;height:80px">
+            </div>
+            <div style="flex:1;padding:14px;display:grid;grid-template-columns:repeat(3,1fr);gap:10px;align-content:start;background:#f8f9fa">
+              <div style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.06)">
+                <img src="https://images.unsplash.com/photo-1695048133142-1a20484d2569?w=300&q=80" style="width:100%;height:70px;object-fit:cover">
+                <div style="padding:9px"><div style="font-size:8px;color:#9ca3af;margin-bottom:3px;text-transform:uppercase;letter-spacing:.08em">iPhone 15</div><div style="font-size:11px;color:#111;font-weight:700;margin-bottom:5px">Pro Max</div><div style="font-size:12px;color:#000;font-weight:800;margin-bottom:7px">$1,199</div><div style="background:#000;color:#fff;border-radius:5px;padding:4px 9px;font-size:9px;font-weight:700;text-align:center">Ver →</div></div>
+              </div>
+              <div style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.06);position:relative">
+                <div style="position:absolute;top:6px;left:6px;background:#000;color:#fff;border-radius:3px;padding:2px 6px;font-size:7px;font-weight:900">NUEVO</div>
+                <img src="https://images.unsplash.com/photo-1607936854279-55e8a4c64888?w=300&q=80" style="width:100%;height:70px;object-fit:cover">
+                <div style="padding:9px"><div style="font-size:8px;color:#9ca3af;margin-bottom:3px;text-transform:uppercase;letter-spacing:.08em">iPhone 15</div><div style="font-size:11px;color:#111;font-weight:700;margin-bottom:5px">Pro</div><div style="font-size:12px;color:#000;font-weight:800;margin-bottom:7px">$999</div><div style="background:#000;color:#fff;border-radius:5px;padding:4px 9px;font-size:9px;font-weight:700;text-align:center">Ver →</div></div>
+              </div>
+              <div style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.06)">
+                <img src="https://images.unsplash.com/photo-1580910051074-3eb694886505?w=300&q=80" style="width:100%;height:70px;object-fit:cover">
+                <div style="padding:9px"><div style="font-size:8px;color:#9ca3af;margin-bottom:3px;text-transform:uppercase;letter-spacing:.08em">iPhone 15</div><div style="font-size:11px;color:#111;font-weight:700;margin-bottom:5px">Estándar</div><div style="font-size:12px;color:#000;font-weight:800;margin-bottom:7px">$849</div><div style="background:#000;color:#fff;border-radius:5px;padding:4px 9px;font-size:9px;font-weight:700;text-align:center">Ver →</div></div>
+              </div>
+              <div style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.06)">
+                <img src="https://images.unsplash.com/photo-1663499482523-1c0c1bae4ce1?w=300&q=80" style="width:100%;height:70px;object-fit:cover">
+                <div style="padding:9px"><div style="font-size:8px;color:#9ca3af;margin-bottom:3px;text-transform:uppercase;letter-spacing:.08em">iPhone 14</div><div style="font-size:11px;color:#111;font-weight:700;margin-bottom:5px">Pro</div><div style="font-size:12px;color:#000;font-weight:800;margin-bottom:7px">$799</div><div style="background:#000;color:#fff;border-radius:5px;padding:4px 9px;font-size:9px;font-weight:700;text-align:center">Ver →</div></div>
+              </div>
+              <div style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.06)">
+                <img src="https://images.unsplash.com/photo-1632661674596-df8be070a5c5?w=300&q=80" style="width:100%;height:70px;object-fit:cover">
+                <div style="padding:9px"><div style="font-size:8px;color:#9ca3af;margin-bottom:3px;text-transform:uppercase;letter-spacing:.08em">iPhone 14</div><div style="font-size:11px;color:#111;font-weight:700;margin-bottom:5px">Estándar</div><div style="font-size:12px;color:#000;font-weight:800;margin-bottom:7px">$649</div><div style="background:#000;color:#fff;border-radius:5px;padding:4px 9px;font-size:9px;font-weight:700;text-align:center">Ver →</div></div>
+              </div>
+              <div style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.06)">
+                <img src="https://images.unsplash.com/photo-1510557880182-3d4d3cba35a5?w=300&q=80" style="width:100%;height:70px;object-fit:cover">
+                <div style="padding:9px"><div style="font-size:8px;color:#9ca3af;margin-bottom:3px;text-transform:uppercase;letter-spacing:.08em">iPhone 13</div><div style="font-size:11px;color:#111;font-weight:700;margin-bottom:5px">Estándar</div><div style="font-size:12px;color:#000;font-weight:800;margin-bottom:7px">$499</div><div style="background:#000;color:#fff;border-radius:5px;padding:4px 9px;font-size:9px;font-weight:700;text-align:center">Ver →</div></div>
+              </div>
+            </div>
+          </div>
+          <div style="background:#fff;border-top:1px solid #e5e7eb;padding:12px 20px;display:flex;justify-content:space-around;flex-shrink:0">
+            <div style="text-align:center"><div style="font-size:16px">🛡️</div><div style="font-size:9px;color:#9ca3af;margin-top:3px">Garantía 90 días</div></div>
+            <div style="text-align:center"><div style="font-size:16px">📍</div><div style="font-size:9px;color:#9ca3af;margin-top:3px">2 locales físicos</div></div>
+            <div style="text-align:center"><div style="font-size:16px">💵</div><div style="font-size:9px;color:#9ca3af;margin-top:3px">Precios en USD</div></div>
+            <div style="text-align:center"><div style="font-size:16px">💬</div><div style="font-size:9px;color:#9ca3af;margin-top:3px">Soporte WhatsApp</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- S6: MOCKUP 3 — Dark Slate Elegante -->
+  <section class="slide mock" id="s6">
+    <div class="mlabel">Demo · Tienda tech — Estilo grafito</div>
+    <div class="mwrap">
+      <div class="browser">
+        <div class="brow-bar">
+          <span class="bdot" style="background:#FF5F57"></span>
+          <span class="bdot" style="background:#FEBC2E"></span>
+          <span class="bdot" style="background:#28C840"></span>
+          <div class="burl"><i class="fa fa-lock"></i> www.blackphone.com.ar</div>
+        </div>
+        <div class="brow-body" style="background:#0d0d0d;display:flex;flex-direction:column;">
+          <div style="background:#1a1a1a;padding:5px 20px;display:flex;justify-content:center;flex-shrink:0;border-bottom:1px solid #252525">
+            <span style="font-size:10px;color:#777;font-weight:500">🚚 Envío gratis a Villa Mercedes y San Luis capital · Retiro en local disponible</span>
+          </div>
+          <div style="background:#161616;padding:0 20px;display:flex;align-items:center;gap:14px;height:52px;border-bottom:1px solid #252525;flex-shrink:0">
+            <img src="data:image/png;base64,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" style="height:22px;object-fit:contain;opacity:.9">
+            <div style="flex:1;background:#1f1f1f;border:1px solid #2e2e2e;border-radius:6px;padding:7px 12px;display:flex;align-items:center;gap:7px;max-width:320px">
+              <i class="fa fa-magnifying-glass" style="color:#555;font-size:11px"></i>
+              <span style="font-size:11px;color:#444">Buscar modelos...</span>
+            </div>
+            <div style="display:flex;gap:16px;font-size:11px;color:rgba(255,255,255,.3);margin-left:auto;white-space:nowrap">
+              <span>Novedades</span><span>Modelos</span><span>Reacondicionados</span>
+            </div>
+            <div style="border:1px solid #3a3a3a;color:#ccc;border-radius:7px;padding:6px 14px;font-size:11px;font-weight:700;display:flex;align-items:center;gap:5px;margin-left:8px">
+              <i class="fa fa-cart-shopping" style="font-size:11px"></i> Carrito
+            </div>
+          </div>
+          <div style="background:#111;border-bottom:1px solid #222;padding:0 20px;display:flex;gap:0;flex-shrink:0">
+            <div style="padding:8px 14px;font-size:11px;color:#ddd;border-bottom:2px solid #555;font-weight:600">iPhone 15</div>
+            <div style="padding:8px 14px;font-size:11px;color:rgba(255,255,255,.3)">iPhone 14</div>
+            <div style="padding:8px 14px;font-size:11px;color:rgba(255,255,255,.3)">iPhone 13</div>
+            <div style="padding:8px 14px;font-size:11px;color:rgba(255,255,255,.3)">Reacondicionados</div>
+            <div style="padding:8px 14px;font-size:11px;color:rgba(255,255,255,.3)">Accesorios</div>
+          </div>
+          <div style="display:flex;gap:0;">
+            <div style="width:260px;flex-shrink:0;background:linear-gradient(160deg,#141414 0%,#0a0a0a 100%);padding:22px 18px;display:flex;flex-direction:column;justify-content:center;border-right:1px solid #222">
+              <div style="font-size:9px;color:#555;letter-spacing:.15em;text-transform:uppercase;font-weight:700;margin-bottom:8px">Nueva generación</div>
+              <div style="font-family:'Raleway',sans-serif;font-size:20px;font-weight:900;color:#e2e8f0;line-height:1.15;margin-bottom:6px">iPhone 15<br><span style="color:#888;font-weight:700">Pro Max</span></div>
+              <div style="font-size:11px;color:#444;margin-bottom:16px;line-height:1.55">Chip A17 Pro · Cámara 48MP<br>Titanio · Garantía 90 días</div>
+              <div style="font-size:16px;font-weight:900;color:#ddd;margin-bottom:12px">$1,199 <span style="font-size:10px;color:#555;font-weight:400">USD</span></div>
+              <div style="background:linear-gradient(135deg,#2a2a2a,#3a3a3a);color:#fff;border-radius:7px;padding:8px 16px;font-size:11px;font-weight:700;text-align:center;border:1px solid #444">Ver modelo →</div>
+              <img src="https://images.unsplash.com/photo-1695048133142-1a20484d2569?w=200&q=80" style="width:100%;border-radius:8px;margin-top:14px;opacity:.7;object-fit:cover;height:80px">
+            </div>
+            <div style="flex:1;padding:14px;display:grid;grid-template-columns:repeat(3,1fr);gap:10px;align-content:start;background:#0d0d0d">
+              <div style="background:#141414;border:1px solid #222;border-radius:8px;overflow:hidden">
+                <img src="https://images.unsplash.com/photo-1695048133142-1a20484d2569?w=300&q=80" style="width:100%;height:70px;object-fit:cover;opacity:.85">
+                <div style="padding:9px"><div style="font-size:8px;color:#555;margin-bottom:3px;text-transform:uppercase;letter-spacing:.08em">iPhone 15</div><div style="font-size:11px;color:#ccc;font-weight:700;margin-bottom:5px">Pro Max</div><div style="font-size:12px;color:#ddd;font-weight:800;margin-bottom:7px">$1,199</div><div style="background:linear-gradient(135deg,#222,#333);border:1px solid #3a3a3a;border-radius:5px;padding:4px 9px;font-size:9px;color:#bbb;font-weight:600;text-align:center">Ver →</div></div>
+              </div>
+              <div style="background:#141414;border:1px solid #2e2e2e;border-radius:8px;overflow:hidden;position:relative">
+                <div style="position:absolute;top:6px;left:6px;background:#3a3a3a;color:#ccc;border-radius:3px;padding:2px 6px;font-size:7px;font-weight:800">NUEVO</div>
+                <img src="https://images.unsplash.com/photo-1607936854279-55e8a4c64888?w=300&q=80" style="width:100%;height:70px;object-fit:cover;opacity:.85">
+                <div style="padding:9px"><div style="font-size:8px;color:#555;margin-bottom:3px;text-transform:uppercase;letter-spacing:.08em">iPhone 15</div><div style="font-size:11px;color:#ccc;font-weight:700;margin-bottom:5px">Pro</div><div style="font-size:12px;color:#ddd;font-weight:800;margin-bottom:7px">$999</div><div style="background:linear-gradient(135deg,#222,#333);border:1px solid #3a3a3a;border-radius:5px;padding:4px 9px;font-size:9px;color:#bbb;font-weight:600;text-align:center">Ver →</div></div>
+              </div>
+              <div style="background:#141414;border:1px solid #222;border-radius:8px;overflow:hidden">
+                <img src="https://images.unsplash.com/photo-1580910051074-3eb694886505?w=300&q=80" style="width:100%;height:70px;object-fit:cover;opacity:.85">
+                <div style="padding:9px"><div style="font-size:8px;color:#555;margin-bottom:3px;text-transform:uppercase;letter-spacing:.08em">iPhone 15</div><div style="font-size:11px;color:#ccc;font-weight:700;margin-bottom:5px">Estándar</div><div style="font-size:12px;color:#ddd;font-weight:800;margin-bottom:7px">$849</div><div style="background:linear-gradient(135deg,#222,#333);border:1px solid #3a3a3a;border-radius:5px;padding:4px 9px;font-size:9px;color:#bbb;font-weight:600;text-align:center">Ver →</div></div>
+              </div>
+              <div style="background:#141414;border:1px solid #222;border-radius:8px;overflow:hidden">
+                <img src="https://images.unsplash.com/photo-1663499482523-1c0c1bae4ce1?w=300&q=80" style="width:100%;height:70px;object-fit:cover;opacity:.85">
+                <div style="padding:9px"><div style="font-size:8px;color:#555;margin-bottom:3px;text-transform:uppercase;letter-spacing:.08em">iPhone 14</div><div style="font-size:11px;color:#ccc;font-weight:700;margin-bottom:5px">Pro</div><div style="font-size:12px;color:#ddd;font-weight:800;margin-bottom:7px">$799</div><div style="background:linear-gradient(135deg,#222,#333);border:1px solid #3a3a3a;border-radius:5px;padding:4px 9px;font-size:9px;color:#bbb;font-weight:600;text-align:center">Ver →</div></div>
+              </div>
+              <div style="background:#141414;border:1px solid #222;border-radius:8px;overflow:hidden">
+                <img src="https://images.unsplash.com/photo-1632661674596-df8be070a5c5?w=300&q=80" style="width:100%;height:70px;object-fit:cover;opacity:.85">
+                <div style="padding:9px"><div style="font-size:8px;color:#555;margin-bottom:3px;text-transform:uppercase;letter-spacing:.08em">iPhone 14</div><div style="font-size:11px;color:#ccc;font-weight:700;margin-bottom:5px">Estándar</div><div style="font-size:12px;color:#ddd;font-weight:800;margin-bottom:7px">$649</div><div style="background:linear-gradient(135deg,#222,#333);border:1px solid #3a3a3a;border-radius:5px;padding:4px 9px;font-size:9px;color:#bbb;font-weight:600;text-align:center">Ver →</div></div>
+              </div>
+              <div style="background:#141414;border:1px solid #222;border-radius:8px;overflow:hidden">
+                <img src="https://images.unsplash.com/photo-1510557880182-3d4d3cba35a5?w=300&q=80" style="width:100%;height:70px;object-fit:cover;opacity:.85">
+                <div style="padding:9px"><div style="font-size:8px;color:#555;margin-bottom:3px;text-transform:uppercase;letter-spacing:.08em">iPhone 13</div><div style="font-size:11px;color:#ccc;font-weight:700;margin-bottom:5px">Estándar</div><div style="font-size:12px;color:#ddd;font-weight:800;margin-bottom:7px">$499</div><div style="background:linear-gradient(135deg,#222,#333);border:1px solid #3a3a3a;border-radius:5px;padding:4px 9px;font-size:9px;color:#bbb;font-weight:600;text-align:center">Ver →</div></div>
+              </div>
+            </div>
+          </div>
+          <div style="background:#111;border-top:1px solid #1e1e1e;padding:12px 20px;display:flex;justify-content:space-around;flex-shrink:0">
+            <div style="text-align:center"><div style="font-size:16px">🛡️</div><div style="font-size:9px;color:#555;margin-top:3px">Garantía 90 días</div></div>
+            <div style="text-align:center"><div style="font-size:16px">📍</div><div style="font-size:9px;color:#555;margin-top:3px">2 locales físicos</div></div>
+            <div style="text-align:center"><div style="font-size:16px">💵</div><div style="font-size:9px;color:#555;margin-top:3px">Precios en USD</div></div>
+            <div style="text-align:center"><div style="font-size:16px">💬</div><div style="font-size:9px;color:#555;margin-top:3px">Soporte WhatsApp</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- S7: CIERRE -->
+  <section class="slide" id="s7">
+    <div class="label">Siguiente paso</div>
+    <h2 class="s-title">Empezamos<br>cuando <em>quieras.</em></h2>
+    <div class="price-card">
+      <div class="price-glow"></div>
+      <div class="price-range">$_____</div>
+      <div class="price-sub">inversión única · sin comisiones por venta</div>
+      <div class="price-list">
+        <div class="price-item"><i class="fa fa-check"></i> Diseño personalizado</div>
+        <div class="price-item"><i class="fa fa-check"></i> Catálogo de productos</div>
+        <div class="price-item"><i class="fa fa-check"></i> Panel de administración</div>
+        <div class="price-item"><i class="fa fa-check"></i> Dominio + hosting</div>
+        <div class="price-item"><i class="fa fa-check"></i> Precios en USD</div>
+        <div class="price-item"><i class="fa fa-check"></i> Soporte técnico</div>
+      </div>
+      <a class="wa-btn" href="https://wa.me/+549XXXXXXXXXX">
+        <i class="fa-brands fa-whatsapp"></i> Hablemos por WhatsApp
+      </a>
+    </div>
+  </section>
+
+</div><!-- /deck -->
+
+<div id="nav">
+  <button class="nbtn prv" onclick="go(-1)"><i class="fa fa-chevron-left"></i></button>
+  <div id="dots"></div>
+  <button class="nbtn nxt" onclick="go(1)"><i class="fa fa-chevron-right"></i></button>
+</div>
+
+<script>
+  const slides = document.querySelectorAll('.slide');
+  const dots = document.getElementById('dots');
+  const progress = document.getElementById('progress');
+  const counter = document.getElementById('counter');
+  let cur = 0;
+
+  slides.forEach((_, i) => {
+    const d = document.createElement('div');
+    d.className = 'dot' + (i === 0 ? ' on' : '');
+    d.onclick = () => go(i - cur);
+    dots.appendChild(d);
+  });
+
+  function go(dir) {
+    const next = Math.max(0, Math.min(slides.length - 1, cur + dir));
+    if (next === cur) return;
+    slides[cur].classList.remove('active');
+    slides[cur].classList.add('out');
+    setTimeout(() => slides[cur].classList.remove('out'), 450);
+    cur = next;
+    slides.forEach((s, i) => {
+      s.classList.remove('active', 'out');
+      if (i < cur) s.style.transform = 'translateX(-60px)';
+    });
+    slides[cur].classList.add('active');
+    slides[cur].style.transform = '';
+    document.querySelectorAll('.dot').forEach((d, i) => d.classList.toggle('on', i === cur));
+    progress.style.width = ((cur + 1) / slides.length * 100) + '%';
+    counter.textContent = (cur + 1) + ' / ' + slides.length;
+  }
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === ' ') go(1);
+    if (e.key === 'ArrowLeft') go(-1);
+  });
+</script>
+</body>
+</html>
