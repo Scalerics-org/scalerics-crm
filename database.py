@@ -59,6 +59,7 @@ def init_db(db_path: str) -> None:
         _add_column(conn, "businesses", "has_whatsapp", "INTEGER")
         _add_column(conn, "businesses", "callback_date", "TEXT")
         _add_column(conn, "businesses", "source", "TEXT")
+        _add_column(conn, "businesses", "form_data", "TEXT")
         _add_column(conn, "client_info", "meeting_time", "TEXT")
         _add_column(conn, "client_info", "meeting_url", "TEXT")
 
@@ -309,7 +310,7 @@ ALLOWED_COLUMNS = {
     "review_count", "hours", "maps_url", "facebook_url", "instagram_url",
     "color_scheme", "demo_html_path", "demo_url", "status", "error_message",
     "scraped_at", "notes", "pitch_text", "crm_status",
-    "has_whatsapp", "last_event_at", "score", "callback_date", "source",
+    "has_whatsapp", "last_event_at", "score", "callback_date", "source", "form_data",
 }
 
 
@@ -320,10 +321,10 @@ def insert_business(db_path: str, data: dict) -> Optional[int]:
             INSERT OR IGNORE INTO businesses
             (name, category, address, city, phone, rating, review_count,
              hours, maps_url, facebook_url, instagram_url,
-             color_scheme, demo_html_path, demo_url, status, has_whatsapp, score, source, notes)
+             color_scheme, demo_html_path, demo_url, status, has_whatsapp, score, source, notes, form_data)
             VALUES (:name, :category, :address, :city, :phone, :rating,
                     :review_count, :hours, :maps_url, :facebook_url, :instagram_url,
-                    :color_scheme, :demo_html_path, :demo_url, 'scraped', :has_whatsapp, :score, :source, :notes)
+                    :color_scheme, :demo_html_path, :demo_url, 'scraped', :has_whatsapp, :score, :source, :notes, :form_data)
         """, {
             "name": data.get("name"),
             "category": data.get("category"),
@@ -343,6 +344,7 @@ def insert_business(db_path: str, data: dict) -> Optional[int]:
             "score": data.get("score"),
             "source": data.get("source"),
             "notes": data.get("notes"),
+            "form_data": data.get("form_data"),
         })
         conn.commit()
         return cursor.lastrowid if cursor.rowcount > 0 else None

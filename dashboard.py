@@ -961,8 +961,8 @@ body.light .btn-icon{stroke:currentColor}
       <input class="search-box" id="meta-search-input" placeholder="🔍 Buscar..." oninput="metaSearch(this.value)">
     </div>
     <div class="table-wrap">
-      <div class="table-header no-cb">
-        <span>Nombre</span><span>Teléfono</span><span>Campaña</span><span>Notas</span><span>Acciones</span>
+      <div class="table-header no-cb" style="grid-template-columns:1.8fr 1fr 1.2fr 1.2fr 1fr 1.3fr">
+        <span>Nombre / Negocio</span><span>Teléfono</span><span>Qué busca</span><span>Presupuesto</span><span>Ciudad</span><span>Acciones</span>
       </div>
       <div id="meta-body"></div>
     </div>
@@ -1485,22 +1485,49 @@ function renderMetaTable() {
   if (!leads.length) { body.innerHTML = '<div class="empty-state">No hay leads de Meta Ads todavía</div>'; return; }
   const crmLabels = {sin_contactar:'Sin contactar',contactado:'Contactado',reunion_agendada:'Reunión agendada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Ppto enviado',negociacion:'Negociación',cliente_cerrado:'Cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado',llamar_despues:'Llamar después',no_interesa:'No le interesa'};
   const crmColor = {sin_contactar:'#475569',contactado:'#60a5fa',reunion_agendada:'#3b82f6',reunion_hecha:'#14b8a6',presupuesto_enviado:'#f97316',negociacion:'#fbbf24',cliente_cerrado:'#10b981',en_desarrollo:'#0088cc',finalizado:'#6ee7b7',llamar_despues:'#f59e0b',no_interesa:'#ef4444'};
+  const buscarLabels = {
+    'una_nueva_p\u00e1gina_web':'Nueva web',
+    'una_nueva_pagina_web':'Nueva web',
+    'crear_mi_ecommerce':'E-commerce',
+    'una_tienda_online':'E-commerce',
+    'redise\u00f1ar_mi_p\u00e1gina':'Rediseño',
+    'redisenar_mi_pagina':'Rediseño',
+    'una_app_a_medida':'App a medida',
+    'automatizaciones':'Automatizaciones',
+    'otro':'Otro',
+  };
+  const presupLabels = {
+    'menos_de_usd_500':'< USD 500',
+    'entre_usd_500_y_usd_1.000':'USD 500-1K',
+    'entre_usd_1.000_y_usd_3.000':'USD 1K-3K',
+    'm\u00e1s_de_usd_3.000':'> USD 3K',
+    'mas_de_usd_3000':'> USD 3K',
+    'a\u00fan_no_lo_se':'No sabe',
+    'aun_no_lo_se':'No sabe',
+  };
   body.innerHTML = leads.map(b => {
     const crm = b.crm_status || 'sin_contactar';
     const color = crmColor[crm] || '#475569';
-    const campaign = (b.notes||'').replace('Meta Lead Ad · ','').trim() || '—';
+    let fd = {};
+    try { fd = JSON.parse(b.form_data || '{}'); } catch(e) {}
+    const negocio = fd['\u00bfc\u00f3mo_se_llama_tu_negocio?'] || fd['como_se_llama_tu_negocio'] || fd['nombre_del_negocio'] || '';
+    const buscaRaw = fd['\u00bfque_es_lo_que_busc\u00e1s_para_tu_negocio?'] || fd['que_buscas'] || fd['que_busca'] || '';
+    const busca = buscarLabels[buscaRaw] || buscaRaw.replace(/_/g,' ') || '—';
+    const presupRaw = fd['\u00bfcont\u00e1s_con_un_presupuesto_para_este_proyecto?'] || fd['presupuesto'] || '';
+    const presup = presupLabels[presupRaw] || presupRaw.replace(/_/g,' ') || '—';
     return `
-    <div class="table-row no-cb row-${crm}">
+    <div class="table-row no-cb row-${crm}" style="grid-template-columns:1.8fr 1fr 1.2fr 1.2fr 1fr 1.3fr">
       <div>
         <div class="biz-name"><span style="cursor:pointer;text-decoration:underline;text-decoration-color:#334155" onclick="openClientPanel(${b.id})">${esc(b.name||'')}</span>
         <span style="font-size:.65rem;background:linear-gradient(135deg,#833ab4,#fd1d1d,#fcb045);color:#fff;padding:1px 6px;border-radius:99px;font-weight:700;margin-left:4px">IG/FB</span></div>
-        <div class="biz-sub">${esc(b.city||'')}${b.last_event_at?' · <span style="color:#60a5fa">'+timeAgo(b.last_event_at)+'</span>':''}</div>
+        <div class="biz-sub">${negocio ? esc(negocio) : (esc(b.city||'') || '—')}</div>
       </div>
       <div>${b.phone ? `<a class="phone-val" href="tel:${esc(b.phone)}">${esc(b.phone)}</a>` : '<span class="no-val">—</span>'}</div>
-      <div style="font-size:.75rem;color:#64748b">${esc(campaign)}</div>
-      <div><textarea class="notes-inline" data-id="${b.id}" data-notes="${esc(b.notes||'')}" placeholder="Agregar nota..." rows="1" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea></div>
+      <div style="font-size:.78rem;color:#94a3b8">${esc(busca)}</div>
+      <div style="font-size:.78rem;color:#94a3b8">${esc(presup)}</div>
+      <div style="font-size:.78rem;color:#64748b">${esc(b.city||'—')}</div>
       <div class="actions">
-        <span style="font-size:.7rem;font-weight:600;color:${color};background:${color}18;padding:2px 7px;border-radius:99px">${crmLabels[crm]||crm}</span>
+        <span style="font-size:.68rem;font-weight:600;color:${color};background:${color}18;padding:2px 6px;border-radius:99px">${crmLabels[crm]||crm}</span>
         <button class="pitch-btn" onclick="openClientPanel(${b.id})">Ver ficha</button>
       </div>
     </div>`;

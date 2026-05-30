@@ -77,14 +77,15 @@ for form in forms:
         notes = f"Meta Lead Ad · {campaign_name or ad_name or form_name}".strip(" ·")
 
         biz_id = insert_business(DB_PATH, {
-            "name":     name,
-            "phone":    phone or None,
-            "city":     city or None,
-            "category": "Meta Lead Ad",
-            "status":   "scraped",
-            "notes":    notes,
-            "score":    70,
-            "source":   "meta",
+            "name":      name,
+            "phone":     phone or None,
+            "city":      city or None,
+            "category":  "Meta Lead Ad",
+            "status":    "scraped",
+            "notes":     notes,
+            "score":     70,
+            "source":    "meta",
+            "form_data": json.dumps(fields, ensure_ascii=False),
         })
 
         if biz_id:

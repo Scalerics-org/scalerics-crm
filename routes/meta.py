@@ -105,14 +105,15 @@ def _fetch_and_store_lead(app, lead_id: str, form_id: str):
             notes = f"Meta Lead Ad · {campaign_name or ad_name or form_id or ''}".strip(" ·")
 
             biz_id = insert_business(db, {
-                "name":     name,
-                "phone":    phone or None,
-                "city":     city or None,
-                "category": "Meta Lead Ad",
-                "status":   "scraped",
-                "notes":    notes,
-                "score":    70,
-                "source":   "meta",
+                "name":      name,
+                "phone":     phone or None,
+                "city":      city or None,
+                "category":  "Meta Lead Ad",
+                "status":    "scraped",
+                "notes":     notes,
+                "score":     70,
+                "source":    "meta",
+                "form_data": json.dumps(fields, ensure_ascii=False),
             })
 
             if biz_id:
@@ -177,9 +178,15 @@ def meta_import_leads():
                     campaign = lead.get("campaign_name") or lead.get("ad_name") or form.get("name", "")
                     notes = f"Meta Lead Ad · {campaign}".strip(" ·")
                     biz_id = insert_business(db, {
-                        "name": name, "phone": phone or None, "city": city or None,
-                        "category": "Meta Lead Ad", "status": "scraped",
-                        "notes": notes, "score": 70, "source": "meta",
+                        "name":      name,
+                        "phone":     phone or None,
+                        "city":      city or None,
+                        "category":  "Meta Lead Ad",
+                        "status":    "scraped",
+                        "notes":     notes,
+                        "score":     70,
+                        "source":    "meta",
+                        "form_data": json.dumps(fields, ensure_ascii=False),
                     })
                     if biz_id:
                         new += 1
