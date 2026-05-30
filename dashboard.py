@@ -1441,12 +1441,17 @@ async function loadColaStats() {
     const d = await r.json();
     const cola = await fetch('/api/leads?crm_status=sin_contactar');
     const colaData = await cola.json();
-    const seg = await fetch('/api/leads?crm_status=llamar_despues');
-    const segData = await seg.json();
+    const [segR, conR] = await Promise.all([
+      fetch('/api/leads?crm_status=llamar_despues'),
+      fetch('/api/leads?crm_status=contactado'),
+    ]);
+    const [segData, conData] = await Promise.all([segR.json(), conR.json()]);
+    const segTotal = (Array.isArray(segData) ? segData.length : (segData.total||0)) +
+                     (Array.isArray(conData) ? conData.length : (conData.total||0));
     const noInt = await fetch('/api/leads?crm_status=no_interesa');
     const noIntData = await noInt.json();
     document.getElementById('stat-cola').textContent = Array.isArray(colaData) ? colaData.length : (colaData.total || 0);
-    document.getElementById('stat-seguimientos').textContent = Array.isArray(segData) ? segData.length : (segData.total || 0);
+    document.getElementById('stat-seguimientos').textContent = segTotal;
     document.getElementById('stat-no-interesa').textContent = Array.isArray(noIntData) ? noIntData.length : (noIntData.total || 0);
     const sel = document.getElementById('cola-category-filter');
     const prev = sel.value;
@@ -1522,18 +1527,34 @@ async function loadSeguimientos() {
   const body = document.getElementById('seguimientos-body');
   body.innerHTML = '<div style="color:#475569;padding:16px;font-size:.85rem">Cargando...</div>';
   try {
-    const r = await fetch('/api/leads?crm_status=llamar_despues');
-    const data = await r.json();
-    const leads = Array.isArray(data) ? data : (data.items || []);
+    const [r1, r2] = await Promise.all([
+      fetch('/api/leads?crm_status=llamar_despues'),
+      fetch('/api/leads?crm_status=contactado'),
+    ]);
+    const [d1, d2] = await Promise.all([r1.json(), r2.json()]);
+    const leads = [
+      ...(Array.isArray(d1) ? d1 : (d1.items || [])),
+      ...(Array.isArray(d2) ? d2 : (d2.items || [])),
+    ].sort((a,b) => {
+      // llamar_despues with date first, then contactado
+      if (a.callback_date && !b.callback_date) return -1;
+      if (!a.callback_date && b.callback_date) return 1;
+      if (a.callback_date && b.callback_date) return a.callback_date.localeCompare(b.callback_date);
+      return 0;
+    });
     if (!leads.length) { body.innerHTML = '<div class="empty-state">No hay seguimientos pendientes</div>'; return; }
     const today = new Date().toISOString().split('T')[0];
     body.innerHTML = leads.map(b => {
       const cd = b.callback_date || '';
-      let urgencyClass = '', pillClass = 'cb-date-future', pillLabel = cd || 'Sin fecha';
-      if (cd) {
-        if (cd < today) { urgencyClass = 'cb-overdue'; pillClass = 'cb-date-overdue'; pillLabel = '⚠ ' + cd; }
-        else if (cd === today) { urgencyClass = 'cb-today'; pillClass = 'cb-date-today'; pillLabel = '📅 Hoy'; }
-        else pillLabel = cd;
+      const isContactado = b.crm_status === 'contactado';
+      let urgencyClass = '', pillClass = 'cb-date-future', pillLabel = 'Sin fecha';
+      if (isContactado && !cd) {
+        pillClass = 'cb-date-future'; pillLabel = 'Contactado';
+      } else if (cd) {
+        const cdDate = cd.split('T')[0];
+        pillLabel = cd.replace('T',' ').replace(/:\d{2}$/,'');
+        if (cdDate < today) { urgencyClass = 'cb-overdue'; pillClass = 'cb-date-overdue'; pillLabel = '⚠ ' + pillLabel; }
+        else if (cdDate === today) { urgencyClass = 'cb-today'; pillClass = 'cb-date-today'; pillLabel = '📅 Hoy ' + cd.split('T')[1]?.replace(/:\d{2}$/,''); }
       }
       return `
       <div class="table-row no-cb row-llamar_despues ${urgencyClass}">
