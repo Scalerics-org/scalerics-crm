@@ -805,6 +805,7 @@ body.light .btn-icon{stroke:currentColor}
 .outcome-not-interested:hover{background:#2a1515;border-color:#f87171;color:#f87171}
 .outcome-callback:hover{background:#1a2d3d;border-color:#60a5fa;color:#60a5fa}
 .outcome-interested:hover{background:#0f2a1a;border-color:#4ade80;color:#4ade80}
+.outcome-meeting:hover{background:#0d1f35;border-color:#3b82f6;color:#60a5fa}
 .outcome-contacted:hover{background:#1a2d3d;border-color:#0088cc;color:#0088cc}
 /* ── Callback urgency ─────────────────────────────────────────────────────── */
 .cb-overdue{background:#2a1515;border-color:#7f1d1d !important}
@@ -1139,6 +1140,7 @@ body.light .btn-icon{stroke:currentColor}
       <button class="outcome-btn outcome-not-interested" onclick="logCallOutcome('no_interesa')"><i data-lucide="x-circle" class="outcome-icon"></i><span style="font-size:.75rem">No le interesa</span></button>
       <button class="outcome-btn outcome-callback" onclick="toggleCallbackRow()"><i data-lucide="clock" class="outcome-icon"></i><span style="font-size:.75rem">Llamar después</span></button>
       <button class="outcome-btn outcome-interested" onclick="toggleCallbackRow()"><i data-lucide="star" class="outcome-icon"></i><span style="font-size:.75rem">Interesado</span></button>
+      <button class="outcome-btn outcome-meeting" onclick="logCallOutcome('reunion')" style="grid-column:span 2"><i data-lucide="calendar-check" class="outcome-icon" style="display:inline-block;vertical-align:middle;margin-right:6px"></i><span style="font-size:.75rem">Agendó reunión</span></button>
     </div>
     <div id="callback-row" style="display:none;background:#0d1525;border:1px solid #1e293b;border-radius:8px;padding:12px;margin-bottom:12px">
       <label style="font-size:.72rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.8px;display:block;margin-bottom:8px">Fecha para llamar</label>
@@ -1437,6 +1439,10 @@ async function logCallOutcome(outcome) {
   await fetch(`/api/leads/${_callLeadId}/calls`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({outcome, notes})});
   if (outcome === 'contestó') {
     await fetch(`/api/leads/${_callLeadId}/crm-status`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({crm_status:'contactado'})});
+  } else if (outcome === 'no_interesa' && _callActivePanel === 'seguimientos') {
+    await fetch(`/api/leads/${_callLeadId}/crm-status`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({crm_status:'sin_contactar'})});
+  } else if (outcome === 'reunion') {
+    await fetch(`/api/leads/${_callLeadId}/crm-status`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({crm_status:'reunion_agendada'})});
   }
   closeCallModal();
   _reloadActiveCallPanel();
