@@ -126,6 +126,73 @@ def _fetch_and_store_lead(app, lead_id: str, form_id: str):
             logger.error(f"Error processing Meta lead {lead_id}: {e}")
 
 
+# ── Trigger historical import from production server ─────────────────────────
+
+@meta_bp.route("/api/meta/import-leads", methods=["POST"])
+def meta_import_leads():
+    from flask import session
+    token = request.headers.get("x-admin-token", "")
+    expected = os.environ.get("ADMIN_TOKEN", "")
+    if not (session.get("user_id") or (expected and token == expected)):
+        return jsonify({"ok": False, "error": "Unauthorized"}), 401
+
+    db = _db()
+    pt = PAGE_TOKEN
+    page_id = os.environ.get("META_PAGE_ID", "")
+    if not pt or not page_id:
+        return jsonify({"ok": False, "error": "META_PAGE_TOKEN o META_PAGE_ID no configurado"}), 400
+
+    def _run():
+        new, dup = 0, 0
+        try:
+            def get_all(url, params):
+                results = []
+                while url:
+                    r = requests.get(url, params=params, timeout=15)
+                    if not r.ok:
+                        break
+                    d = r.json()
+                    results.extend(d.get("data", []))
+                    url = d.get("paging", {}).get("next")
+                    params = {}
+                return results
+
+            forms = get_all(
+                f"https://graph.facebook.com/v20.0/{page_id}/leadgen_forms",
+                {"access_token": pt, "fields": "id,name,status"}
+            )
+            for form in forms:
+                leads = get_all(
+                    f"https://graph.facebook.com/v20.0/{form['id']}/leads",
+                    {"access_token": pt, "fields": "id,created_time,field_data,ad_name,campaign_name"}
+                )
+                for lead in leads:
+                    fields = {f["name"].lower(): f["values"][0] if f.get("values") else ""
+                              for f in lead.get("field_data", [])}
+                    name  = (fields.get("full_name") or fields.get("nombre") or
+                             fields.get("name") or "Lead Meta")
+                    phone = (fields.get("phone_number") or fields.get("telefono") or
+                             fields.get("phone") or fields.get("celular") or "")
+                    city  = fields.get("city") or fields.get("ciudad") or ""
+                    campaign = lead.get("campaign_name") or lead.get("ad_name") or form.get("name", "")
+                    notes = f"Meta Lead Ad · {campaign}".strip(" ·")
+                    biz_id = insert_business(db, {
+                        "name": name, "phone": phone or None, "city": city or None,
+                        "category": "Meta Lead Ad", "status": "scraped",
+                        "notes": notes, "score": 70, "source": "meta",
+                    })
+                    if biz_id:
+                        new += 1
+                    else:
+                        dup += 1
+        except Exception as e:
+            logger.error(f"Import error: {e}")
+        logger.info(f"Meta import done: {new} new, {dup} dup")
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"ok": True, "message": "Importación iniciada en background"})
+
+
 # ── One-time setup: exchange user token → long-lived page token ───────────────
 
 @meta_bp.route("/api/meta/setup-token", methods=["POST"])
