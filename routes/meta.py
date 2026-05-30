@@ -129,6 +129,31 @@ def _fetch_and_store_lead(app, lead_id: str, form_id: str):
 
 # ── Trigger historical import from production server ─────────────────────────
 
+@meta_bp.route("/api/meta/reset-import", methods=["POST"])
+def meta_reset_import():
+    """Delete all Meta leads and reimport fresh."""
+    import sqlite3
+    token = request.headers.get("x-admin-token", "")
+    expected = os.environ.get("ADMIN_TOKEN", "")
+    if not (expected and token == expected):
+        return jsonify({"ok": False, "error": "Unauthorized"}), 401
+    db = _db()
+    conn = sqlite3.connect(db)
+    try:
+        cur = conn.execute("DELETE FROM businesses WHERE category='Meta Lead Ad'")
+        deleted = cur.rowcount
+        conn.commit()
+    finally:
+        conn.close()
+    # Trigger reimport in background
+    requests.post(
+        request.url_root + "api/meta/import-leads",
+        headers={"x-admin-token": expected, "Content-Type": "application/json"},
+        timeout=5
+    )
+    return jsonify({"ok": True, "deleted": deleted, "message": "Reimport iniciado"})
+
+
 @meta_bp.route("/api/meta/import-leads", methods=["POST"])
 def meta_import_leads():
     from flask import session
