@@ -1490,9 +1490,11 @@ function renderMetaTable() {
     'una_nueva_pagina_web':'Nueva web',
     'crear_mi_ecommerce':'E-commerce',
     'una_tienda_online':'E-commerce',
-    'redise\u00f1ar_mi_p\u00e1gina':'Rediseño',
-    'redisenar_mi_pagina':'Rediseño',
-    'una_app_a_medida':'App a medida',
+    'redise\u00f1ar_mi_p\u00e1gina':'Redise\u00f1o',
+    'redisenar_mi_pagina':'Redise\u00f1o',
+    'una_app_a_medida':'App/Software',
+    'un_software_a_medida':'App/Software',
+    'software_a_medida':'App/Software',
     'automatizaciones':'Automatizaciones',
     'otro':'Otro',
   };
@@ -1502,6 +1504,8 @@ function renderMetaTable() {
     'entre_usd_1.000_y_usd_3.000':'USD 1K-3K',
     'm\u00e1s_de_usd_3.000':'> USD 3K',
     'mas_de_usd_3000':'> USD 3K',
+    'mas_de_usd_1.000':'> USD 1K',
+    'm\u00e1s_de_usd_1.000':'> USD 1K',
     'a\u00fan_no_lo_se':'No sabe',
     'aun_no_lo_se':'No sabe',
   };
