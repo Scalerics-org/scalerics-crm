@@ -377,29 +377,32 @@ def get_businesses_by_status(db_path: str, status: str) -> list[dict]:
 def get_all_businesses(db_path: str, crm_status: str | None = None, crm_statuses: list | None = None) -> list[dict]:
     conn = _connect(db_path)
     try:
+        count_sql = (
+            "(SELECT COUNT(*) FROM call_logs cl WHERE cl.lead_id = b.id AND cl.outcome = 'no_contestó') as no_contesto_count, "
+            "(SELECT COUNT(*) FROM call_logs cl WHERE cl.lead_id = b.id AND cl.outcome = 'no_interesa') as no_interesa_count"
+        )
+        select = f"SELECT b.*, {count_sql} FROM businesses b"
         if crm_statuses:
             placeholders = ",".join("?" * len(crm_statuses))
-            where = f"WHERE crm_status IN ({placeholders})"
+            where = f"WHERE b.crm_status IN ({placeholders})"
             params: list = list(crm_statuses)
         elif crm_status == "sin_contactar":
-            where = "WHERE (crm_status IS NULL OR crm_status = ?)"
+            where = "WHERE (b.crm_status IS NULL OR b.crm_status = ?)"
             params = ["sin_contactar"]
         elif crm_status == "llamar_despues":
-            where = "WHERE crm_status = ? ORDER BY CASE WHEN callback_date IS NULL THEN 1 ELSE 0 END, callback_date ASC"
-            # We return early with a special query to preserve ORDER BY
             cursor = conn.execute(
-                f"SELECT * FROM businesses {where}",
+                f"{select} WHERE b.crm_status = ? ORDER BY CASE WHEN b.callback_date IS NULL THEN 1 ELSE 0 END, b.callback_date ASC",
                 ["llamar_despues"],
             )
             return [dict(row) for row in cursor.fetchall()]
         elif crm_status:
-            where = "WHERE crm_status = ?"
+            where = f"WHERE b.crm_status = ?"
             params = [crm_status]
         else:
             where = ""
             params = []
         cursor = conn.execute(
-            f"SELECT * FROM businesses {where} ORDER BY CASE WHEN score IS NULL THEN 1 ELSE 0 END, score DESC, scraped_at DESC",
+            f"{select} {where} ORDER BY CASE WHEN b.score IS NULL THEN 1 ELSE 0 END, b.score DESC, b.scraped_at DESC",
             params,
         )
         return [dict(row) for row in cursor.fetchall()]

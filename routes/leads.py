@@ -49,7 +49,7 @@ def _normalize_category(raw: str) -> str | None:
 
 # Full set of valid CRM states
 _VALID_CRM_STATES = {
-    "sin_contactar", "contactado", "reunion_agendada", "demo_generada",
+    "sin_contactar", "contactado", "reunion_agendada",
     "reunion_hecha", "presupuesto_enviado", "negociacion",
     "cliente_cerrado", "en_desarrollo", "finalizado",
     "llamar_despues", "no_interesa",
@@ -57,7 +57,7 @@ _VALID_CRM_STATES = {
     "agendo", "firmo",
 }
 
-_PIPELINE_STATUSES = ["reunion_agendada", "demo_generada", "reunion_hecha", "presupuesto_enviado", "negociacion"]
+_PIPELINE_STATUSES = ["reunion_agendada", "reunion_hecha", "presupuesto_enviado", "negociacion"]
 _CLIENT_STATUSES   = ["cliente_cerrado", "en_desarrollo", "finalizado"]
 
 _PER_PAGE = 50
@@ -245,7 +245,7 @@ def api_metrics():
 
     # Funnel por estado CRM
     funnel_order = [
-        "sin_contactar", "contactado", "reunion_agendada", "demo_generada",
+        "sin_contactar", "contactado", "reunion_agendada",
         "reunion_hecha", "presupuesto_enviado", "negociacion",
         "cliente_cerrado", "en_desarrollo", "finalizado",
     ]

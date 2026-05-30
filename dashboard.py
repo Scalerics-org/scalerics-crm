@@ -541,6 +541,16 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .attach-del{background:none;border:none;color:#475569;cursor:pointer;font-size:.85rem;padding:0 2px;flex-shrink:0}
 .attach-del:hover{color:#f87171}
 
+.cp-event-row{display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-bottom:1px solid #1a2234}
+.cp-event-dot{width:8px;height:8px;border-radius:50%;margin-top:5px;flex-shrink:0}
+.cp-event-body{flex:1;min-width:0}
+.cp-event-label{font-size:.8rem;color:#e2e8f0;font-weight:600}
+.cp-event-meta{font-size:.72rem;color:#475569;margin-left:8px}
+.cp-event-note{font-size:.72rem;color:#64748b;margin-top:2px}
+body.light .cp-event-row{border-bottom-color:#f1f5f9}
+body.light .cp-event-label{color:#0f172a !important}
+body.light .cp-event-meta{color:#94a3b8 !important}
+body.light .cp-event-note{color:#64748b !important}
 .act-row{display:flex;gap:14px;align-items:flex-start;padding:13px 0;border-bottom:1px solid #1e293b}
 .act-avatar{width:34px;height:34px;border-radius:50%;background:#1a2234;display:flex;align-items:center;justify-content:center;font-size:.95rem;flex-shrink:0}
 .act-body{flex:1;min-width:0}
@@ -548,6 +558,62 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .act-sep{color:#64748b}
 .act-desc{color:#94a3b8;font-size:.85rem}
 .act-when{font-size:.72rem;color:#475569;margin-top:3px}
+.no-answer-badge{display:inline-flex;align-items:center;gap:3px;background:rgba(239,68,68,.15);color:#f87171;font-size:.65rem;font-weight:700;padding:2px 6px;border-radius:99px;border:1px solid rgba(239,68,68,.3)}
+.no-interest-badge{display:inline-flex;align-items:center;gap:3px;background:rgba(245,158,11,.15);color:#fbbf24;font-size:.65rem;font-weight:700;padding:2px 6px;border-radius:99px;border:1px solid rgba(245,158,11,.3)}
+body.light .no-answer-badge{background:rgba(239,68,68,.1);color:#dc2626;border-color:rgba(239,68,68,.25)}
+body.light .no-interest-badge{background:rgba(245,158,11,.1);color:#b45309;border-color:rgba(245,158,11,.25)}
+/* ── Row status colors ────────────────────────────────────────────────────── */
+.row-sin_contactar{border-left:3px solid transparent}
+.row-no_interesa{border-left:3px solid #ef4444;background:rgba(239,68,68,.05)}
+.row-llamar_despues{border-left:3px solid #f59e0b;background:rgba(245,158,11,.05)}
+.row-contactado{border-left:3px solid #60a5fa;background:rgba(96,165,250,.04)}
+.row-reunion_agendada{border-left:3px solid #3b82f6;background:rgba(59,130,246,.06)}
+.row-demo_generada{border-left:3px solid #a78bfa;background:rgba(167,139,250,.06)}
+.row-reunion_hecha{border-left:3px solid #14b8a6;background:rgba(20,184,166,.06)}
+.row-presupuesto_enviado{border-left:3px solid #f97316;background:rgba(249,115,22,.06)}
+.row-negociacion{border-left:3px solid #fbbf24;background:rgba(251,191,36,.06)}
+.row-cliente_cerrado{border-left:3px solid #10b981;background:rgba(16,185,129,.07)}
+.row-en_desarrollo{border-left:3px solid #0088cc;background:rgba(0,136,204,.06)}
+.row-finalizado{border-left:3px solid #6ee7b7;background:rgba(110,231,183,.06)}
+/* light mode row colors */
+body.light .row-no_interesa{background:rgba(239,68,68,.07)}
+body.light .row-llamar_despues{background:rgba(245,158,11,.07)}
+body.light .row-contactado{background:rgba(96,165,250,.07)}
+body.light .row-reunion_agendada{background:rgba(59,130,246,.08)}
+body.light .row-demo_generada{background:rgba(167,139,250,.08)}
+body.light .row-reunion_hecha{background:rgba(20,184,166,.08)}
+body.light .row-presupuesto_enviado{background:rgba(249,115,22,.08)}
+body.light .row-negociacion{background:rgba(251,191,36,.08)}
+body.light .row-cliente_cerrado{background:rgba(16,185,129,.1)}
+body.light .row-en_desarrollo{background:rgba(0,136,204,.08)}
+body.light .row-finalizado{background:rgba(110,231,183,.1)}
+/* ── Calendar light mode ──────────────────────────────────────────────────── */
+body.light .cal-header h1{color:#0f172a !important}
+body.light .cal-nav-btn{background:#f1f5f9;border:1px solid #e2e8f0;color:#475569}
+body.light .cal-nav-btn:hover{background:#e2e8f0;color:#0f172a}
+body.light .cal-grid{background:#e2e8f0}
+body.light .cal-grid-header{background:#f8fafc;color:#94a3b8}
+body.light .cal-cell{background:#fff}
+body.light .cal-cell.other-month{background:#f8fafc}
+body.light .cal-cell.today{background:#eff6ff}
+body.light .cal-cell-day{color:#64748b}
+body.light .cal-cell.today .cal-cell-day{color:#fff;background:#0088cc}
+body.light .cal-event-chip.regular{background:#dbeafe;color:#1d4ed8}
+body.light .cal-event-chip.meet{background:#dcfce7;color:#15803d}
+body.light .cal-demo-btn{background:rgba(6,182,212,.08);color:#0e7490;border-color:rgba(6,182,212,.2)}
+body.light .cal-del-btn{background:rgba(239,68,68,.07);color:#dc2626;border-color:rgba(239,68,68,.18)}
+body.light .cal-join-btn{background:rgba(22,163,74,.08);color:#15803d;border-color:rgba(22,163,74,.2)}
+body.light .cal-loading{color:#94a3b8}
+/* ── Metrics light mode ───────────────────────────────────────────────────── */
+body.light .metrics-card{background:#fff;border-color:#e2e8f0}
+body.light .metrics-card-title{color:#64748b !important}
+body.light .metrics-card-val{color:#0f172a !important}
+body.light .bar-label{color:#475569 !important}
+body.light .bar-val{color:#475569 !important}
+body.light .bar-track{background:#f1f5f9}
+body.light .funnel-label{color:#475569 !important}
+body.light .funnel-val,.bar-val{color:#475569}
+body.light .metrics-section-title{color:#64748b !important}
 /* ── Nav icon colors ──────────────────────────────────────────────────────── */
 #nav-cola .nav-icon{stroke:#60a5fa}
 #nav-seguimientos .nav-icon{stroke:#f59e0b}
@@ -698,7 +764,17 @@ body.light .modal p{color:#475569}
 body.light .modal input,body.light .modal textarea,body.light .modal select{background:#f8fafc;border-color:#e2e8f0;color:#0f172a}
 body.light .token-card{background:#f8fafc;border-color:#e2e8f0}
 body.light .token-card-name{color:#64748b !important}
-body.light .act-row{border-bottom-color:#f1f5f9}
+body.light .cp-event-row{display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-bottom:1px solid #1a2234}
+.cp-event-dot{width:8px;height:8px;border-radius:50%;margin-top:5px;flex-shrink:0}
+.cp-event-body{flex:1;min-width:0}
+.cp-event-label{font-size:.8rem;color:#e2e8f0;font-weight:600}
+.cp-event-meta{font-size:.72rem;color:#475569;margin-left:8px}
+.cp-event-note{font-size:.72rem;color:#64748b;margin-top:2px}
+body.light .cp-event-row{border-bottom-color:#f1f5f9}
+body.light .cp-event-label{color:#0f172a !important}
+body.light .cp-event-meta{color:#94a3b8 !important}
+body.light .cp-event-note{color:#64748b !important}
+.act-row{border-bottom-color:#f1f5f9}
 body.light .act-avatar{background:#f1f5f9;color:#475569}
 body.light .act-user{color:#0f172a !important}
 body.light .act-sep{color:#94a3b8}
@@ -1335,9 +1411,7 @@ async function logCallOutcome(outcome) {
   if (!_callLeadId) return;
   const notes = document.getElementById('call-notes-input').value;
   await fetch(`/api/leads/${_callLeadId}/calls`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({outcome, notes})});
-  if (outcome === 'no_interesa') {
-    await fetch(`/api/leads/${_callLeadId}/crm-status`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({crm_status:'no_interesa'})});
-  } else if (outcome === 'contestó') {
+  if (outcome === 'contestó') {
     await fetch(`/api/leads/${_callLeadId}/crm-status`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({crm_status:'contactado'})});
   }
   closeCallModal();
@@ -1416,16 +1490,17 @@ function renderCola() {
   leads.forEach(b => { if (b.pitch_text) pitchMap[b.id] = b.pitch_text; });
   if (!leads.length) { body.innerHTML = '<div class="empty-state">No hay leads en la cola</div>'; return; }
   body.innerHTML = leads.map(b => `
-    <div class="table-row">
+    <div class="table-row row-${b.crm_status||'sin_contactar'}">
       <div class="cb-col"><input type="checkbox" class="cb row-cb-cola" data-id="${b.id}" onchange="toggleSelectCola(${b.id},this.checked)"></div>
       <div>
         <div class="biz-name"><span style="cursor:pointer;text-decoration:underline;text-decoration-color:#334155" onclick="openClientPanel(${b.id})">${esc(b.name||'')}</span>${b.score != null ? `<span class="score-badge ${b.score>=60?'score-hot':b.score>=30?'score-mid':'score-low'}">⚡${b.score}</span>` : ''}</div>
         <div class="biz-sub">${esc(b.category||'')}${b.city ? ' · '+esc(b.city) : ''}</div>
       </div>
-      <div style="display:flex;align-items:center;gap:6px">${b.phone ? `<a class="phone-val" href="tel:${esc(b.phone)}">${esc(b.phone)}</a>` : '<span class="no-val">—</span>'}${b.phone ? `<button class="copy-pitch-btn" onclick="navigator.clipboard.writeText('${esc(b.phone)}')" title="Copiar teléfono">📋</button>` : ''}</div>
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">${b.phone ? `<a class="phone-val" href="tel:${esc(b.phone)}">${esc(b.phone)}</a>` : '<span class="no-val">—</span>'}${b.no_contesto_count ? `<span class="no-answer-badge" title="${b.no_contesto_count} veces sin contestar">✗ ${b.no_contesto_count}</span>` : ''}${b.no_interesa_count ? `<span class="no-interest-badge" title="Dijo que no le interesa ${b.no_interesa_count} vez/veces">✕ NI</span>` : ''}</div>
       <div><textarea class="notes-inline" data-id="${b.id}" data-notes="${esc(b.notes||'')}" placeholder="Agregar nota..." rows="1" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea></div>
       <div class="actions">
-        <button class="pitch-btn" onclick="openCallModal(${b.id},'${esc(b.name||'')}','${esc(b.phone||'')}','cola')"><i data-lucide=\"phone\" class=\"btn-icon\"></i> Llamada</button>
+        <a class="pitch-btn" href="tel:${b.phone||''}" style="text-decoration:none"><i data-lucide=\"phone\" class=\"btn-icon\"></i> Llamar</a>
+        <button class="pitch-btn" onclick="openCallModal(${b.id},'${esc(b.name||'')}','${esc(b.phone||'')}','cola')" style="background:#1e293b"><i data-lucide=\"clipboard-list\" class=\"btn-icon\"></i> Resultado</button>
         <button class="delete-btn" onclick="deleteLead(${b.id},'${esc(b.name||'')}')" title="Borrar"><i data-lucide=\"trash-2\" class=\"btn-icon\"></i></button>
       </div>
     </div>`).join('');
@@ -1460,7 +1535,7 @@ async function loadSeguimientos() {
         else pillLabel = cd;
       }
       return `
-      <div class="table-row no-cb ${urgencyClass}">
+      <div class="table-row no-cb row-llamar_despues ${urgencyClass}">
         <div>
           <div class="biz-name"><span style="cursor:pointer;text-decoration:underline;text-decoration-color:#334155" onclick="openClientPanel(${b.id})">${esc(b.name||'')}</span></div>
           <div class="biz-sub">${esc(b.category||'')}${b.city ? ' · '+esc(b.city) : ''}</div>
@@ -1469,7 +1544,8 @@ async function loadSeguimientos() {
         <div><span class="cb-date-pill ${pillClass}">${pillLabel}</span></div>
         <div><textarea class="notes-inline" data-id="${b.id}" data-notes="${esc(b.notes||'')}" placeholder="Agregar nota..." rows="1" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea></div>
         <div class="actions">
-          <button class="pitch-btn" onclick="openCallModal(${b.id},'${esc(b.name||'')}','${esc(b.phone||'')}','seguimientos')"><i data-lucide=\"phone\" class=\"btn-icon\"></i> Llamada</button>
+          <a class="pitch-btn" href="tel:${b.phone||''}" style="text-decoration:none"><i data-lucide=\"phone\" class=\"btn-icon\"></i> Llamar</a>
+          <button class="pitch-btn" onclick="openCallModal(${b.id},'${esc(b.name||'')}','${esc(b.phone||'')}','seguimientos')" style="background:#1e293b"><i data-lucide=\"clipboard-list\" class=\"btn-icon\"></i> Resultado</button>
           <button class="delete-btn" onclick="deleteLead(${b.id},'${esc(b.name||'')}')" title="Borrar"><i data-lucide=\"trash-2\" class=\"btn-icon\"></i></button>
         </div>
       </div>`; }).join('');
@@ -1495,8 +1571,8 @@ async function loadPipelinePanel() {
 
 function renderPipelineTable() {
   const body = document.getElementById('pipeline-body');
-  const crmLabels = {reunion_agendada:'Reunión agendada',demo_generada:'Demo generada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Presupuesto enviado',negociacion:'Negociación'};
-  const crmColor = {reunion_agendada:'#60a5fa',demo_generada:'#a78bfa',reunion_hecha:'#34d399',presupuesto_enviado:'#fbbf24',negociacion:'#fb923c'};
+  const crmLabels = {reunion_agendada:'Reunión agendada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Presupuesto enviado',negociacion:'Negociación'};
+  const crmColor = {reunion_agendada:'#60a5fa',reunion_hecha:'#34d399',presupuesto_enviado:'#fbbf24',negociacion:'#fb923c'};
   let leads = _pipelineLeads;
   if (_pipelineSearch) leads = leads.filter(b => (b.name||'').toLowerCase().includes(_pipelineSearch));
   if (!leads.length) { body.innerHTML = '<div class="empty-state">No hay leads en el pipeline</div>'; return; }
@@ -1504,7 +1580,7 @@ function renderPipelineTable() {
     const crm = b.crm_status || '';
     const color = crmColor[crm] || '#475569';
     return `
-    <div class="table-row no-cb">
+    <div class="table-row no-cb row-${crm}">
       <div>
         <div class="biz-name"><span style="cursor:pointer;text-decoration:underline;text-decoration-color:#334155" onclick="openClientPanel(${b.id})">${esc(b.name||'')}</span></div>
         <div class="biz-sub">${esc(b.category||'')}${b.city ? ' · '+esc(b.city) : ''}</div>
@@ -1534,7 +1610,7 @@ async function loadClientesPanel() {
       const crm = b.crm_status || '';
       const color = crmColor[crm] || '#475569';
       return `
-      <div class="table-row no-cb">
+      <div class="table-row no-cb row-${crm}">
         <div>
           <div class="biz-name"><span style="cursor:pointer;text-decoration:underline;text-decoration-color:#334155" onclick="openClientPanel(${b.id})">${esc(b.name||'')}</span></div>
           <div class="biz-sub">${esc(b.category||'')}${b.city ? ' · '+esc(b.city) : ''}</div>
@@ -2912,17 +2988,21 @@ async function _cpLogCall() {
 function _cpRenderHistory() {
   const events = _cpData.events || [];
   if (!events.length) return '';
-  const crmLabels = {sin_contactar:'Sin contactar',contactado:'Contactado',reunion_agendada:'Reunión agendada',demo_generada:'Demo generada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Presupuesto enviado',negociacion:'Negociación',cliente_cerrado:'Cliente cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado',agendo:'Agendó',firmo:'Firmó',nota_actualizada:'Nota actualizada',adjunto_agregado:'Adjunto agregado'};
+  const crmLabels = {sin_contactar:'Sin contactar',contactado:'Contactado',reunion_agendada:'Reunión agendada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Presupuesto enviado',negociacion:'Negociación',cliente_cerrado:'Cliente cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado',llamar_despues:'Llamar después',no_interesa:'No le interesa',agendo:'Agendó',firmo:'Firmó',nota_actualizada:'Nota actualizada',adjunto_agregado:'Adjunto agregado'};
+  const crmDot = {sin_contactar:'#475569',contactado:'#60a5fa',reunion_agendada:'#3b82f6',reunion_hecha:'#14b8a6',presupuesto_enviado:'#f97316',negociacion:'#fbbf24',cliente_cerrado:'#10b981',en_desarrollo:'#0088cc',finalizado:'#6ee7b7',llamar_despues:'#f59e0b',no_interesa:'#ef4444',nota_actualizada:'#64748b',adjunto_agregado:'#64748b'};
   const items = events.map(e => {
     const label = crmLabels[e.new_status] || e.new_status;
+    const dot = crmDot[e.new_status] || '#0088cc';
     const when = timeAgo(e.created_at);
     const by = (e.created_by && e.created_by !== 'sistema') ? ` · por ${esc(e.created_by)}` : '';
-    const note = e.note ? `<div style="font-size:.72rem;color:#64748b;margin-top:2px">${esc(e.note)}</div>` : '';
-    return `<div style="display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-bottom:1px solid #1a2234">
-      <div style="width:8px;height:8px;border-radius:50%;background:#0088cc;margin-top:5px;flex-shrink:0"></div>
-      <div style="flex:1">
-        <span style="font-size:.8rem;color:#e2e8f0;font-weight:600">${label}</span>
-        <span style="font-size:.72rem;color:#475569;margin-left:8px">${when}${by}</span>
+    const rawNote = e.note || '';
+    const cleanNote = rawNote.replace(/^Callback:\s*/i,'').replace('T',' ').replace(/:\d{2}$/,'');
+    const note = rawNote ? `<div class="cp-event-note">${esc(cleanNote)}</div>` : '';
+    return `<div class="cp-event-row">
+      <div class="cp-event-dot" style="background:${dot}"></div>
+      <div class="cp-event-body">
+        <span class="cp-event-label">${label}</span>
+        <span class="cp-event-meta">${when}${by}</span>
         ${note}
       </div>
     </div>`;
@@ -3343,8 +3423,8 @@ async function loadMetrics() {
     if (el('m-total')) el('m-total').textContent = m.total;
     if (el('m-closed')) el('m-closed').textContent = m.closed;
     if (el('m-conv')) el('m-conv').textContent = m.conversion + '%';
-    const stateLabels = {sin_contactar:'Sin contactar',contactado:'Contactado',reunion_agendada:'Reunión agendada',demo_generada:'Demo generada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Presupuesto enviado',negociacion:'Negociación',cliente_cerrado:'Cliente cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado'};
-    const stateColors = {sin_contactar:'#334155',contactado:'#3b82f6',reunion_agendada:'#f59e0b',demo_generada:'#8b5cf6',reunion_hecha:'#f97316',presupuesto_enviado:'#eab308',negociacion:'#f97316',cliente_cerrado:'#22c55e',en_desarrollo:'#10b981',finalizado:'#4ade80'};
+    const stateLabels = {sin_contactar:'Sin contactar',contactado:'Contactado',reunion_agendada:'Reunión agendada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Presupuesto enviado',negociacion:'Negociación',cliente_cerrado:'Cliente cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado'};
+    const stateColors = {sin_contactar:'#334155',contactado:'#3b82f6',reunion_agendada:'#f59e0b',reunion_hecha:'#f97316',presupuesto_enviado:'#eab308',negociacion:'#f97316',cliente_cerrado:'#22c55e',en_desarrollo:'#10b981',finalizado:'#4ade80'};
     if (el('m-funnel')) {
       const maxF = Math.max(...(m.funnel||[]).map(f=>f.count), 1);
       el('m-funnel').innerHTML = (m.funnel||[]).filter(f=>f.count>0).map(f=>{
@@ -3397,7 +3477,7 @@ const _actActionLabels = {
   lead_deleted:  (i) => `eliminó lead: <b>${esc(i.entity_name)}</b>`,
   batch_status:  (i) => i.detail || 'actualizó múltiples leads',
 };
-const _actCrmMap = {sin_contactar:'Sin contactar',contactado:'Contactado',reunion_agendada:'Reunión agendada',demo_generada:'Demo generada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Presupuesto enviado',negociacion:'Negociación',cliente_cerrado:'Cliente cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado'};
+const _actCrmMap = {sin_contactar:'Sin contactar',contactado:'Contactado',reunion_agendada:'Reunión agendada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Presupuesto enviado',negociacion:'Negociación',cliente_cerrado:'Cliente cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado'};
 function _actCrmLabel(s) { return _actCrmMap[s] || s || ''; }
 function _actCallLabel(s) { return {contestó:'Contestó',no_contestó:'No contestó',buzón:'Buzón'}[s] || s || ''; }
 const _actIcons = {status_change:'🔄',note_updated:'📝',attachment_added:'📎',call_logged:'📞',budget_generated:'💰',budget_sent:'📨',task_created:'✅',task_updated:'✏️',task_deleted:'🗑️',meeting_scheduled:'📅',lead_deleted:'🗑️',batch_status:'🔄'};
@@ -3445,7 +3525,6 @@ async function loadActivity() {
         <option value="sin_contactar">Sin contactar</option>
         <option value="contactado">Contactado</option>
         <option value="reunion_agendada">Reunión agendada</option>
-        <option value="demo_generada">Demo generada</option>
         <option value="reunion_hecha">Reunión hecha</option>
         <option value="presupuesto_enviado">Presupuesto enviado</option>
         <option value="negociacion">Negociación</option>
@@ -3476,7 +3555,6 @@ async function loadActivity() {
     <option value="sin_contactar">Sin contactar</option>
     <option value="contactado">Contactado</option>
     <option value="reunion_agendada">Reunión agendada</option>
-    <option value="demo_generada">Demo generada</option>
     <option value="reunion_hecha">Reunión hecha</option>
     <option value="presupuesto_enviado">Presupuesto enviado</option>
     <option value="negociacion">Negociación</option>
