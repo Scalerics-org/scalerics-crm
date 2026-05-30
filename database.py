@@ -58,6 +58,7 @@ def init_db(db_path: str) -> None:
         _add_column(conn, "businesses", "crm_status", "TEXT DEFAULT 'sin_contactar'")
         _add_column(conn, "businesses", "has_whatsapp", "INTEGER")
         _add_column(conn, "businesses", "callback_date", "TEXT")
+        _add_column(conn, "businesses", "source", "TEXT")
         _add_column(conn, "client_info", "meeting_time", "TEXT")
         _add_column(conn, "client_info", "meeting_url", "TEXT")
 
@@ -308,7 +309,7 @@ ALLOWED_COLUMNS = {
     "review_count", "hours", "maps_url", "facebook_url", "instagram_url",
     "color_scheme", "demo_html_path", "demo_url", "status", "error_message",
     "scraped_at", "notes", "pitch_text", "crm_status",
-    "has_whatsapp", "last_event_at", "score", "callback_date",
+    "has_whatsapp", "last_event_at", "score", "callback_date", "source",
 }
 
 
@@ -374,7 +375,7 @@ def get_businesses_by_status(db_path: str, status: str) -> list[dict]:
         conn.close()
 
 
-def get_all_businesses(db_path: str, crm_status: str | None = None, crm_statuses: list | None = None) -> list[dict]:
+def get_all_businesses(db_path: str, crm_status: str | None = None, crm_statuses: list | None = None, source: str | None = None) -> list[dict]:
     conn = _connect(db_path)
     try:
         count_sql = (
@@ -382,12 +383,15 @@ def get_all_businesses(db_path: str, crm_status: str | None = None, crm_statuses
             "(SELECT COUNT(*) FROM call_logs cl WHERE cl.lead_id = b.id AND cl.outcome = 'no_interesa') as no_interesa_count"
         )
         select = f"SELECT b.*, {count_sql} FROM businesses b"
-        if crm_statuses:
+        if source:
+            where = "WHERE b.source = ?"
+            params: list = [source]
+        elif crm_statuses:
             placeholders = ",".join("?" * len(crm_statuses))
             where = f"WHERE b.crm_status IN ({placeholders})"
             params: list = list(crm_statuses)
         elif crm_status == "sin_contactar":
-            where = "WHERE (b.crm_status IS NULL OR b.crm_status = ?)"
+            where = "WHERE (b.crm_status IS NULL OR b.crm_status = ?) AND (b.source IS NULL OR b.source != 'meta')"
             params = ["sin_contactar"]
         elif crm_status == "llamar_despues":
             cursor = conn.execute(

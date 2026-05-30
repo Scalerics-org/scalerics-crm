@@ -103,6 +103,8 @@ def api_leads():
         businesses = get_all_businesses(_db(), crm_statuses=_PIPELINE_STATUSES)
     elif crm_group == "clientes":
         businesses = get_all_businesses(_db(), crm_statuses=_CLIENT_STATUSES)
+    elif crm_group == "meta":
+        businesses = get_all_businesses(_db(), source="meta")
     else:
         businesses = get_all_businesses(_db(), crm_status=crm_status)
     if category:

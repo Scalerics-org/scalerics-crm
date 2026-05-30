@@ -615,6 +615,8 @@ body.light .bar-track{background:#f1f5f9}
 body.light .funnel-label{color:#475569 !important}
 body.light .funnel-val,.bar-val{color:#475569}
 body.light .metrics-section-title{color:#64748b !important}
+#nav-meta .nav-icon{stroke:#e1306c}
+body.light #nav-meta .nav-icon{stroke:#c13584}
 /* ── Nav icon colors ──────────────────────────────────────────────────────── */
 #nav-cola .nav-icon{stroke:#60a5fa}
 #nav-seguimientos .nav-icon{stroke:#f59e0b}
@@ -876,6 +878,7 @@ body.light .btn-icon{stroke:currentColor}
   <div class="nav-section-label">LLAMADAS</div>
   <div class="nav-item active" id="nav-cola" onclick="showPanel('cola')"><i data-lucide="inbox" class="nav-icon"></i> Cola</div>
   <div class="nav-item" id="nav-seguimientos" onclick="showPanel('seguimientos')"><i data-lucide="bookmark" class="nav-icon"></i> Seguimientos</div>
+  <div class="nav-item" id="nav-meta" onclick="showPanel('meta')"><i data-lucide="instagram" class="nav-icon"></i> Meta Ads</div>
   <div class="nav-section-label">VENTAS</div>
   <div class="nav-item" id="nav-pipeline" onclick="showPanel('pipeline')"><i data-lucide="trending-up" class="nav-icon"></i> Pipeline</div>
   <div class="nav-item" id="nav-clientes" onclick="showPanel('clientes')"><i data-lucide="users" class="nav-icon"></i> Clientes</div>
@@ -942,6 +945,25 @@ body.light .btn-icon{stroke:currentColor}
         <span>Negocio</span><span>Teléfono</span><span>Callback</span><span>Notas</span><span>Acciones</span>
       </div>
       <div id="seguimientos-body"></div>
+    </div>
+  </div>
+
+  <!-- ======= META ADS PANEL ======= -->
+  <div id="meta-panel" class="panel">
+    <div class="page-header">
+      <div>
+        <h1>Meta Ads</h1>
+        <div class="page-date">Leads de formularios de Facebook e Instagram</div>
+      </div>
+    </div>
+    <div class="filters">
+      <input class="search-box" id="meta-search-input" placeholder="🔍 Buscar..." oninput="metaSearch(this.value)">
+    </div>
+    <div class="table-wrap">
+      <div class="table-header no-cb">
+        <span>Nombre</span><span>Teléfono</span><span>Campaña</span><span>Notas</span><span>Acciones</span>
+      </div>
+      <div id="meta-body"></div>
     </div>
   </div>
 
@@ -1359,6 +1381,7 @@ function showPanel(name) {
   if (name === 'seguimientos') loadSeguimientos();
   if (name === 'pipeline') loadPipelinePanel();
   if (name === 'clientes') loadClientesPanel();
+  if (name === 'meta') loadMetaPanel();
   if (name === 'wa' && !waLoaded) loadWaLeads();
   if (name === 'wa') loadWaTemplates();
   if (name === 'cal' && !calLoaded) { calLoaded = true; renderCalendar(); }
@@ -1431,6 +1454,52 @@ function _reloadActiveCallPanel() {
   if (_callActivePanel === 'cola') loadCola();
   else if (_callActivePanel === 'seguimientos') loadSeguimientos();
   loadColaStats();
+}
+
+// ── Meta Ads panel ───────────────────────────────────────────────────────────
+let _metaSearch = '';
+let _metaLeads = [];
+function metaSearch(v) { _metaSearch = v.toLowerCase(); renderMetaTable(); }
+
+async function loadMetaPanel() {
+  const body = document.getElementById('meta-body');
+  body.innerHTML = '<div style="color:#475569;padding:16px;font-size:.85rem">Cargando...</div>';
+  try {
+    const r = await fetch('/api/leads?crm_group=meta');
+    const data = await r.json();
+    _metaLeads = Array.isArray(data) ? data : (data.items || []);
+    renderMetaTable();
+  } catch(e) { body.innerHTML = `<div style="color:#f87171;padding:16px">Error: ${e.message}</div>`; }
+}
+
+function renderMetaTable() {
+  const body = document.getElementById('meta-body');
+  let leads = _metaLeads;
+  if (_metaSearch) leads = leads.filter(b => (b.name||'').toLowerCase().includes(_metaSearch) || (b.notes||'').toLowerCase().includes(_metaSearch));
+  if (!leads.length) { body.innerHTML = '<div class="empty-state">No hay leads de Meta Ads todavía</div>'; return; }
+  const crmLabels = {sin_contactar:'Sin contactar',contactado:'Contactado',reunion_agendada:'Reunión agendada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Ppto enviado',negociacion:'Negociación',cliente_cerrado:'Cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado',llamar_despues:'Llamar después',no_interesa:'No le interesa'};
+  const crmColor = {sin_contactar:'#475569',contactado:'#60a5fa',reunion_agendada:'#3b82f6',reunion_hecha:'#14b8a6',presupuesto_enviado:'#f97316',negociacion:'#fbbf24',cliente_cerrado:'#10b981',en_desarrollo:'#0088cc',finalizado:'#6ee7b7',llamar_despues:'#f59e0b',no_interesa:'#ef4444'};
+  body.innerHTML = leads.map(b => {
+    const crm = b.crm_status || 'sin_contactar';
+    const color = crmColor[crm] || '#475569';
+    const campaign = (b.notes||'').replace('Meta Lead Ad · ','').trim() || '—';
+    return `
+    <div class="table-row no-cb row-${crm}">
+      <div>
+        <div class="biz-name"><span style="cursor:pointer;text-decoration:underline;text-decoration-color:#334155" onclick="openClientPanel(${b.id})">${esc(b.name||'')}</span>
+        <span style="font-size:.65rem;background:linear-gradient(135deg,#833ab4,#fd1d1d,#fcb045);color:#fff;padding:1px 6px;border-radius:99px;font-weight:700;margin-left:4px">IG/FB</span></div>
+        <div class="biz-sub">${esc(b.city||'')}${b.last_event_at?' · <span style="color:#60a5fa">'+timeAgo(b.last_event_at)+'</span>':''}</div>
+      </div>
+      <div>${b.phone ? `<a class="phone-val" href="tel:${esc(b.phone)}">${esc(b.phone)}</a>` : '<span class="no-val">—</span>'}</div>
+      <div style="font-size:.75rem;color:#64748b">${esc(campaign)}</div>
+      <div><textarea class="notes-inline" data-id="${b.id}" data-notes="${esc(b.notes||'')}" placeholder="Agregar nota..." rows="1" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea></div>
+      <div class="actions">
+        <span style="font-size:.7rem;font-weight:600;color:${color};background:${color}18;padding:2px 7px;border-radius:99px">${crmLabels[crm]||crm}</span>
+        <button class="pitch-btn" onclick="openClientPanel(${b.id})">Ver ficha</button>
+      </div>
+    </div>`;
+  }).join('');
+  _populateNotes(body);
 }
 
 // ── Cola stats ────────────────────────────────────────────────────────────────

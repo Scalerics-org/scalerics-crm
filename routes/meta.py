@@ -112,6 +112,7 @@ def _fetch_and_store_lead(app, lead_id: str, form_id: str):
                 "status":   "scraped",
                 "notes":    notes,
                 "score":    70,
+                "source":   "meta",
             })
 
             if biz_id:
