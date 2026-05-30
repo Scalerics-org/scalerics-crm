@@ -71,6 +71,29 @@ def _name_in_domain(name: str, domain: str) -> bool:
     words = [w for w in re.split(r"\W+", _normalize(name)) if len(w) > 3]
     return any(w in norm_domain for w in words)
 
+def score_lead(data: dict) -> int:
+    score = 0
+    if data.get("instagram_url"):
+        score += 35
+    if data.get("facebook_url"):
+        score += 15
+    rating = data.get("rating") or 0
+    if rating >= 4.0:
+        score += 20
+    elif rating >= 3.5:
+        score += 10
+    reviews = data.get("review_count") or 0
+    if reviews >= 20:
+        score += 15
+    elif reviews >= 5:
+        score += 8
+    if data.get("hours"):
+        score += 10
+    if data.get("address"):
+        score += 5
+    return score
+
+
 def verify_no_website(name: str, city: str, page) -> bool:
     """
     Returns True if confident the business has no real website.
@@ -278,17 +301,11 @@ def scrape_google_maps(query: str, max_results: int, db_path: str, verify_web: b
 
                         data = extract_business_data(page)
 
-                        # Apply default_category when Maps returns no category or garbage
-                        if default_category and (not data.get("category") or
-                                any(kw in data["category"].strip().lower() for kw in _CATEGORY_BLOCKLIST_KEYWORDS)):
+                        # default_category always wins — whatever Maps says gets replaced
+                        if default_category:
                             data["category"] = default_category
 
-                        # Zero reviews → likely ghost listing or inactive, skip
-                        if not data.get("review_count"):
-                            logger.info(f"Saltando (sin reseñas): {data['name']}")
-                            page.goto(maps_list_url, wait_until="domcontentloaded", timeout=30000)
-                            random_delay()
-                            break
+                        data["score"] = score_lead(data)
 
                         # No phone → impossible to contact, skip
                         if not data.get("phone"):

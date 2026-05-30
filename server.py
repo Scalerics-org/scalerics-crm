@@ -12,3 +12,7 @@ init_db(db_path)
 seed_pitch_templates(db_path)
 
 app = create_app(db_path)
+
+if __name__ == "__main__":
+    from dashboard import run
+    run(db_path)

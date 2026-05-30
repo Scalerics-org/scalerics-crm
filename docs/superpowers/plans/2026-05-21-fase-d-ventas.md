@@ -800,7 +800,66 @@ git commit -m "feat: Llamadas tab in client panel + activity trail (created_by) 
 
 ---
 
-### Task D7: Deploy a Railway
+### Task D7: Fix botón "Generar demo" en panel de cliente
+
+**Files:**
+- Modify: `dashboard.py`
+
+**Contexto:** El botón "Generar demo" en la pestaña Demo del panel de cliente llama a `openDemoModalFromCRM(${demoPayload})` donde `demoPayload` es un JSON con comillas dobles. Al estar embebido en un atributo HTML `onclick` (delimitado por comillas dobles), las comillas del JSON rompen el atributo y el click no hace nada. La solución es usar una función wrapper que lea `_cpData.lead` antes de cerrar el panel.
+
+- [ ] **Step 1: Agregar función wrapper _cpOpenDemoModal**
+
+En `dashboard.py`, justo ANTES de `function _cpRenderDemo()` (alrededor de la línea 2262), insertar:
+
+```javascript
+function _cpOpenDemoModal() {
+  const l = _cpData.lead || {};
+  const b = {id: l.id, name: l.name||'', category: l.category||'', city: l.city||'', phone: l.phone||''};
+  closeClientPanel();
+  openDemoModalFromCRM(b);
+}
+
+```
+
+- [ ] **Step 2: Cambiar el botón en _cpRenderDemo para usar el wrapper**
+
+En `dashboard.py`, dentro de `_cpRenderDemo()`, encontrar:
+```javascript
+    <button class="cp-btn cp-btn-primary" onclick="closeClientPanel();openDemoModalFromCRM(${demoPayload})">
+      📊 Generar demo
+    </button>
+```
+
+Reemplazar con:
+```javascript
+    <button class="cp-btn cp-btn-primary" onclick="_cpOpenDemoModal()">
+      📊 Generar demo
+    </button>
+```
+
+- [ ] **Step 3: Verificar**
+
+```bash
+python -c "import dashboard; print('OK')"
+```
+
+Verificar también que `_cpOpenDemoModal` aparece en el archivo:
+```bash
+python -c "print('_cpOpenDemoModal' in open('dashboard.py').read())"
+```
+
+Esperado: `True`
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add dashboard.py
+git commit -m "fix: generar demo button in client panel (broken by JSON quotes in onclick)"
+```
+
+---
+
+### Task D8: Deploy a Railway
 
 **Files:** ninguno
 
@@ -815,7 +874,7 @@ Esperado: `OK`
 - [ ] **Step 2: Revisar commits**
 
 ```bash
-git log --oneline -7
+git log --oneline -8
 ```
 
 - [ ] **Step 3: Deploy**

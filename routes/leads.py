@@ -52,12 +52,16 @@ _VALID_CRM_STATES = {
     "sin_contactar", "contactado", "reunion_agendada", "demo_generada",
     "reunion_hecha", "presupuesto_enviado", "negociacion",
     "cliente_cerrado", "en_desarrollo", "finalizado",
+    "llamar_despues", "no_interesa",
     # legacy aliases kept for backwards compat
     "agendo", "firmo",
 }
 
+_PIPELINE_STATUSES = ["reunion_agendada", "demo_generada", "reunion_hecha", "presupuesto_enviado", "negociacion"]
+_CLIENT_STATUSES   = ["cliente_cerrado", "en_desarrollo", "finalizado"]
+
 _PER_PAGE = 50
-_VALID_OUTCOMES = {"contestó", "no_contestó", "buzón"}
+_VALID_OUTCOMES = {"contestó", "no_contestó", "buzón", "no_interesa", "llamar_despues"}
 
 
 def _db() -> str:
@@ -91,10 +95,16 @@ def api_create_lead():
 @leads_bp.route("/api/leads")
 def api_leads():
     crm_status = request.args.get("crm_status")
+    crm_group  = request.args.get("crm_group")
     category = request.args.get("category")
     search = (request.args.get("search") or "").lower()
     page_str = request.args.get("page")
-    businesses = get_all_businesses(_db(), crm_status=crm_status)
+    if crm_group == "pipeline":
+        businesses = get_all_businesses(_db(), crm_statuses=_PIPELINE_STATUSES)
+    elif crm_group == "clientes":
+        businesses = get_all_businesses(_db(), crm_statuses=_CLIENT_STATUSES)
+    else:
+        businesses = get_all_businesses(_db(), crm_status=crm_status)
     if category:
         businesses = [b for b in businesses if _normalize_category(b.get("category") or "") == category]
     if search:
@@ -336,6 +346,26 @@ def api_attachment_file(attach_id):
 @leads_bp.route("/api/attachments/<int:attach_id>", methods=["DELETE"])
 def api_delete_attachment(attach_id):
     delete_attachment(_db(), attach_id)
+    return jsonify({"ok": True})
+
+
+@leads_bp.route("/api/leads/<int:biz_id>/callback", methods=["POST"])
+def api_set_callback(biz_id):
+    data = request.get_json() or {}
+    callback_date = (data.get("callback_date") or "").strip()
+    notes = (data.get("notes") or "").strip()
+    if not callback_date:
+        return jsonify({"ok": False, "error": "callback_date requerida"}), 400
+    db = _db()
+    user_name = session.get("user_name", "sistema")
+    biz = get_business(db, biz_id) or {}
+    update_business(db, biz_id, crm_status="llamar_despues", callback_date=callback_date)
+    if notes:
+        update_business(db, biz_id, notes=notes)
+    add_lead_event(db, biz_id, "llamar_despues", note=f"Callback: {callback_date}", created_by=user_name)
+    add_call_log(db, biz_id, "llamar_despues", notes or f"Callback: {callback_date}", user_name)
+    log_activity(db, user_name, "callback_set", "lead", biz_id, biz.get("name", ""), callback_date,
+                 user_id=session.get("user_id"))
     return jsonify({"ok": True})
 
 

@@ -57,6 +57,7 @@ def init_db(db_path: str) -> None:
         _add_column(conn, "businesses", "pitch_text", "TEXT")
         _add_column(conn, "businesses", "crm_status", "TEXT DEFAULT 'sin_contactar'")
         _add_column(conn, "businesses", "has_whatsapp", "INTEGER")
+        _add_column(conn, "businesses", "callback_date", "TEXT")
         _add_column(conn, "client_info", "meeting_time", "TEXT")
         _add_column(conn, "client_info", "meeting_url", "TEXT")
 
@@ -307,7 +308,7 @@ ALLOWED_COLUMNS = {
     "review_count", "hours", "maps_url", "facebook_url", "instagram_url",
     "color_scheme", "demo_html_path", "demo_url", "status", "error_message",
     "scraped_at", "notes", "pitch_text", "crm_status",
-    "has_whatsapp", "last_event_at", "score",
+    "has_whatsapp", "last_event_at", "score", "callback_date",
 }
 
 
@@ -373,12 +374,24 @@ def get_businesses_by_status(db_path: str, status: str) -> list[dict]:
         conn.close()
 
 
-def get_all_businesses(db_path: str, crm_status: str | None = None) -> list[dict]:
+def get_all_businesses(db_path: str, crm_status: str | None = None, crm_statuses: list | None = None) -> list[dict]:
     conn = _connect(db_path)
     try:
-        if crm_status == "sin_contactar":
+        if crm_statuses:
+            placeholders = ",".join("?" * len(crm_statuses))
+            where = f"WHERE crm_status IN ({placeholders})"
+            params: list = list(crm_statuses)
+        elif crm_status == "sin_contactar":
             where = "WHERE (crm_status IS NULL OR crm_status = ?)"
-            params: list = ["sin_contactar"]
+            params = ["sin_contactar"]
+        elif crm_status == "llamar_despues":
+            where = "WHERE crm_status = ? ORDER BY CASE WHEN callback_date IS NULL THEN 1 ELSE 0 END, callback_date ASC"
+            # We return early with a special query to preserve ORDER BY
+            cursor = conn.execute(
+                f"SELECT * FROM businesses {where}",
+                ["llamar_despues"],
+            )
+            return [dict(row) for row in cursor.fetchall()]
         elif crm_status:
             where = "WHERE crm_status = ?"
             params = [crm_status]

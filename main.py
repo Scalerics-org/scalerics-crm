@@ -48,6 +48,11 @@ def create_parser() -> argparse.ArgumentParser:
     run_all_p.add_argument("--max", type=int, default=100)
     run_all_p.add_argument("--verify-web", action="store_true", help="Verificar con Bing si el negocio tiene web (lento)")
 
+    multi_p = subparsers.add_parser("scrape-multi", help="Scrape en paralelo para los 19 departamentos de Uruguay")
+    multi_p.add_argument("--query", required=True, help='Ej: "bloquera" — se agrega el departamento automáticamente')
+    multi_p.add_argument("--max-per-dept", type=int, default=20, help="Máximo de leads por departamento")
+    multi_p.add_argument("--workers", type=int, default=3, help="Threads paralelos (default 3, máx recomendado 4)")
+
     subparsers.add_parser("dashboard", help="Abrir panel de leads en el browser")
 
     return parser
@@ -76,6 +81,53 @@ def cmd_dashboard(args):
     from dashboard import run
     run(DB_PATH)
 
+_DEPARTAMENTOS = [
+    "Montevideo", "Canelones", "Maldonado", "Colonia", "San José",
+    "Soriano", "Río Negro", "Paysandú", "Salto", "Artigas",
+    "Rivera", "Tacuarembó", "Cerro Largo", "Treinta y Tres",
+    "Rocha", "Lavalleja", "Florida", "Flores", "Durazno",
+]
+
+
+def cmd_scrape_multi(args):
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from scraper import run
+
+    logger = logging.getLogger(__name__)
+    base_query = args.query.strip()
+    max_per = args.max_per_dept
+    workers = min(args.workers, len(_DEPARTAMENTOS))
+    default_cat = base_query.split()[0].capitalize()
+
+    logger.info(f"scrape-multi: '{base_query}' × {len(_DEPARTAMENTOS)} depts | {workers} workers | máx {max_per}/dept")
+
+    results: dict[str, int] = {}
+    errors: dict[str, str] = {}
+
+    def _scrape_dept(dept: str) -> tuple[str, int]:
+        query = f"{base_query} {dept} Uruguay"
+        count = run(query, max_per, DB_PATH, verify_web=False, default_category=default_cat)
+        return dept, count
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {pool.submit(_scrape_dept, d): d for d in _DEPARTAMENTOS}
+        for future in as_completed(futures):
+            dept = futures[future]
+            try:
+                _, count = future.result()
+                results[dept] = count
+                logger.info(f"[{dept}] ✓ {count} leads guardados")
+            except Exception as exc:
+                errors[dept] = str(exc)
+                logger.error(f"[{dept}] ✗ {exc}")
+
+    total = sum(results.values())
+    logger.info(f"scrape-multi completo. Total: {total} leads en {len(results)} departamentos")
+    if errors:
+        logger.warning(f"Errores en: {', '.join(errors)}")
+    return total
+
+
 def cmd_run_all(args):
     count = cmd_scrape(args)
     if not count:
@@ -88,6 +140,7 @@ def main():
     args = parser.parse_args()
     commands = {
         "scrape": cmd_scrape,
+        "scrape-multi": cmd_scrape_multi,
         "generate-pitches": cmd_generate_pitches,
         "generate-demos": cmd_generate_demos,
         "deploy": cmd_deploy,
