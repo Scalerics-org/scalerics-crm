@@ -15,6 +15,7 @@ from routes.pipeline import pipeline_bp
 from routes.tasks import tasks_bp
 from routes.budgets import budgets_bp
 from routes.tokens import tokens_bp
+from routes.meta import meta_bp
 from services.demo_service import demo_job_handler
 from services.job_service import init_worker
 
@@ -3576,7 +3577,7 @@ def create_app(db_path: str) -> Flask:
     app.config["PIPELINE_STATUS"] = _pipeline_status
     app.config["PIPELINE_LOCK"] = _pipeline_lock
 
-    for bp in (leads_bp, demos_bp, calendar_bp, wa_bp, pipeline_bp, tasks_bp, budgets_bp, tokens_bp):
+    for bp in (leads_bp, demos_bp, calendar_bp, wa_bp, pipeline_bp, tasks_bp, budgets_bp, tokens_bp, meta_bp):
         app.register_blueprint(bp)
 
     @app.before_request
