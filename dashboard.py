@@ -3605,6 +3605,8 @@ def create_app(db_path: str) -> Flask:
     def require_login():
         if request.endpoint in ("login", "logout", "register", "forgot_password", "reset_password", "static"):
             return
+        if request.path.startswith("/api/meta/webhook"):
+            return
         # Any /api/ request with valid x-admin-token bypasses session auth
         if request.path.startswith("/api/"):
             token = request.headers.get("x-admin-token", "")
