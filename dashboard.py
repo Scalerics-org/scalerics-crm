@@ -961,8 +961,8 @@ body.light .btn-icon{stroke:currentColor}
       <input class="search-box" id="meta-search-input" placeholder="🔍 Buscar..." oninput="metaSearch(this.value)">
     </div>
     <div class="table-wrap">
-      <div class="table-header no-cb" style="grid-template-columns:1.8fr 1fr 1.2fr 1.2fr 1fr 1.3fr">
-        <span>Nombre / Negocio</span><span>Teléfono</span><span>Qué busca</span><span>Presupuesto</span><span>Ciudad</span><span>Acciones</span>
+      <div class="table-header no-cb" style="grid-template-columns:1.8fr 1fr 1.2fr 1.2fr 0.9fr 0.8fr 1.1fr">
+        <span>Nombre / Negocio</span><span>Teléfono</span><span>Qué busca</span><span>Presupuesto</span><span>Ciudad</span><span style="cursor:pointer" onclick="toggleMetaSort()">Fecha <span id="meta-sort-icon">↓</span></span><span>Acciones</span>
       </div>
       <div id="meta-body"></div>
     </div>
@@ -1465,7 +1465,9 @@ function _reloadActiveCallPanel() {
 // ── Meta Ads panel ───────────────────────────────────────────────────────────
 let _metaSearch = '';
 let _metaLeads = [];
+let _metaSortDesc = true;
 function metaSearch(v) { _metaSearch = v.toLowerCase(); renderMetaTable(); }
+function toggleMetaSort() { _metaSortDesc = !_metaSortDesc; document.getElementById('meta-sort-icon').textContent = _metaSortDesc ? '↓' : '↑'; renderMetaTable(); }
 
 async function loadMetaPanel() {
   const body = document.getElementById('meta-body');
@@ -1485,6 +1487,10 @@ function renderMetaTable() {
   if (!leads.length) { body.innerHTML = '<div class="empty-state">No hay leads de Meta Ads todavía</div>'; return; }
   const crmLabels = {sin_contactar:'Sin contactar',contactado:'Contactado',reunion_agendada:'Reunión agendada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Ppto enviado',negociacion:'Negociación',cliente_cerrado:'Cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado',llamar_despues:'Llamar después',no_interesa:'No le interesa'};
   const crmColor = {sin_contactar:'#475569',contactado:'#60a5fa',reunion_agendada:'#3b82f6',reunion_hecha:'#14b8a6',presupuesto_enviado:'#f97316',negociacion:'#fbbf24',cliente_cerrado:'#10b981',en_desarrollo:'#0088cc',finalizado:'#6ee7b7',llamar_despues:'#f59e0b',no_interesa:'#ef4444'};
+  leads.sort((a,b) => {
+    const da = new Date(a.scraped_at||0), db2 = new Date(b.scraped_at||0);
+    return _metaSortDesc ? db2-da : da-db2;
+  });
   const buscarLabels = {
     'una_nueva_p\u00e1gina_web':'Nueva web',
     'una_nueva_pagina_web':'Nueva web',
@@ -1520,7 +1526,7 @@ function renderMetaTable() {
     const presupRaw = fd['\u00bfcont\u00e1s_con_un_presupuesto_para_este_proyecto?'] || fd['presupuesto'] || '';
     const presup = presupLabels[presupRaw] || presupRaw.replace(/_/g,' ') || '—';
     return `
-    <div class="table-row no-cb row-${crm}" style="grid-template-columns:1.8fr 1fr 1.2fr 1.2fr 1fr 1.3fr">
+    <div class="table-row no-cb row-${crm}" style="grid-template-columns:1.8fr 1fr 1.2fr 1.2fr 0.9fr 0.8fr 1.1fr">
       <div>
         <div class="biz-name"><span style="cursor:pointer;text-decoration:underline;text-decoration-color:#334155" onclick="openClientPanel(${b.id})">${esc(b.name||'')}</span>
         <span style="font-size:.65rem;background:linear-gradient(135deg,#833ab4,#fd1d1d,#fcb045);color:#fff;padding:1px 6px;border-radius:99px;font-weight:700;margin-left:4px">IG/FB</span></div>
@@ -1530,6 +1536,7 @@ function renderMetaTable() {
       <div style="font-size:.78rem;color:#94a3b8">${esc(busca)}</div>
       <div style="font-size:.78rem;color:#94a3b8">${esc(presup)}</div>
       <div style="font-size:.78rem;color:#64748b">${esc(b.city||'—')}</div>
+      <div style="font-size:.72rem;color:#475569">${b.scraped_at ? new Date(b.scraped_at+'Z').toLocaleDateString('es-UY',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '—'}</div>
       <div class="actions">
         <span style="font-size:.68rem;font-weight:600;color:${color};background:${color}18;padding:2px 6px;border-radius:99px">${crmLabels[crm]||crm}</span>
         <button class="pitch-btn" onclick="openClientPanel(${b.id})">Ver ficha</button>
