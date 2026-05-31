@@ -243,9 +243,12 @@ def api_stats():
 @leads_bp.route("/api/metrics")
 def api_metrics():
     from collections import Counter, defaultdict
-    businesses = get_all_businesses(_db())
+    import sqlite3 as _sq
 
-    # Funnel por estado CRM
+    # Solo leads SDR (excluye Meta)
+    all_biz = get_all_businesses(_db())
+    businesses = [b for b in all_biz if (b.get("source") or "") != "meta"]
+
     funnel_order = [
         "sin_contactar", "contactado", "reunion_agendada",
         "reunion_hecha", "presupuesto_enviado", "negociacion",
@@ -253,44 +256,71 @@ def api_metrics():
     ]
     _legacy = {"firmo": "cliente_cerrado", "agendo": "reunion_agendada"}
     def _norm(s): return _legacy.get(s or "sin_contactar", s or "sin_contactar")
+
     crm_counts = Counter(_norm(b.get("crm_status")) for b in businesses)
     funnel = [{"status": s, "count": crm_counts.get(s, 0)} for s in funnel_order]
 
-    # Top rubros
     rubro_counts = Counter(
         _normalize_category(b.get("category") or "") for b in businesses
         if _normalize_category(b.get("category") or "")
     )
     top_rubros = [{"name": k, "count": v} for k, v in rubro_counts.most_common(10)]
 
-    # Top ciudades
     city_counts = Counter(
         (b.get("city") or "").strip() for b in businesses if (b.get("city") or "").strip()
     )
     top_cities = [{"name": k, "count": v} for k, v in city_counts.most_common(10)]
 
-    # Leads por mes (últimos 12)
     month_counts: dict = defaultdict(int)
     for b in businesses:
         ts = b.get("scraped_at") or ""
         if ts and len(ts) >= 7:
             month_counts[ts[:7]] += 1
-    sorted_months = sorted(month_counts.items())[-12:]
-    by_month = [{"month": m, "count": c} for m, c in sorted_months]
+    by_month = [{"month": m, "count": c} for m, c in sorted(month_counts.items())[-12:]]
 
-    # Tasa de conversión global
     total = len(businesses)
-    closed = sum(1 for b in businesses if _norm(b.get("crm_status")) in ("cliente_cerrado", "finalizado"))
-    conversion = round(closed / total * 100, 1) if total else 0
+    _contacted_st = {"contactado", "reunion_agendada", "reunion_hecha",
+                     "presupuesto_enviado", "negociacion",
+                     "cliente_cerrado", "en_desarrollo", "finalizado"}
+    _meeting_st   = {"reunion_agendada", "reunion_hecha", "presupuesto_enviado",
+                     "negociacion", "cliente_cerrado", "en_desarrollo", "finalizado"}
+    _closed_st    = {"cliente_cerrado", "en_desarrollo", "finalizado"}
+
+    contacted = sum(1 for b in businesses if _norm(b.get("crm_status")) in _contacted_st)
+    meetings  = sum(1 for b in businesses if _norm(b.get("crm_status")) in _meeting_st)
+    closed    = sum(1 for b in businesses if _norm(b.get("crm_status")) in _closed_st)
+
+    contact_rate = round(contacted / total * 100, 1) if total else 0
+    meeting_rate = round(meetings / contacted * 100, 1) if contacted else 0
+    conversion   = round(closed / total * 100, 1) if total else 0
+
+    # Stats de llamadas para leads SDR desde call_logs
+    conn3 = _sq.connect(_db()); conn3.row_factory = _sq.Row
+    try:
+        rows = conn3.execute("""
+            SELECT cl.outcome, COUNT(*) as cnt
+            FROM call_logs cl
+            JOIN businesses b ON cl.lead_id = b.id
+            WHERE (b.source IS NULL OR b.source != 'meta')
+            GROUP BY cl.outcome
+        """).fetchall()
+    finally:
+        conn3.close()
+    call_stats = {r["outcome"]: r["cnt"] for r in rows}
 
     return jsonify({
         "total": total,
+        "contacted": contacted,
+        "meetings": meetings,
         "closed": closed,
+        "contact_rate": contact_rate,
+        "meeting_rate": meeting_rate,
         "conversion": conversion,
         "funnel": funnel,
         "top_rubros": top_rubros,
         "top_cities": top_cities,
         "by_month": by_month,
+        "call_stats": call_stats,
     })
 
 
