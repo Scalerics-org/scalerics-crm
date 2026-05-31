@@ -1227,8 +1227,13 @@ body.light .btn-icon{stroke:currentColor}
       <div style="display:flex;gap:8px;align-items:center">
         <select id="task-goal-type-input" class="modal-input" style="flex:2" onchange="_onTaskGoalTypeChange()">
           <option value="">Sin meta automática</option>
-          <option value="reuniones_agendadas">Reuniones agendadas</option>
           <option value="leads_contactados">Leads contactados</option>
+          <option value="llamadas_realizadas">Llamadas realizadas</option>
+          <option value="llamadas_contestadas">Llamadas contestadas</option>
+          <option value="reuniones_agendadas">Reuniones agendadas</option>
+          <option value="reuniones_hechas">Reuniones hechas</option>
+          <option value="presupuestos_enviados">Presupuestos enviados</option>
+          <option value="clientes_cerrados">Clientes cerrados</option>
         </select>
         <input type="number" id="task-goal-input" class="modal-input" style="flex:1;display:none" placeholder="Cantidad" min="1">
       </div>
@@ -2644,19 +2649,29 @@ function _taskRowHtml(t) {
   const overdue = dl && dl < now && !done;
   const dlStr = dl ? dl.toLocaleDateString('es-UY',{day:'2-digit',month:'2-digit'}) : '';
   const prioLabel = ({'high':'Alta','medium':'Media','low':'Baja'})[t.priority] || t.priority;
-  const goalTypeLabel = {'reuniones_agendadas':'reuniones agendadas','leads_contactados':'leads contactados'};
+  const goalTypeLabel = {
+    'leads_contactados':    'leads contactados',
+    'llamadas_realizadas':  'llamadas realizadas',
+    'llamadas_contestadas': 'llamadas contestadas',
+    'reuniones_agendadas':  'reuniones agendadas',
+    'reuniones_hechas':     'reuniones hechas',
+    'presupuestos_enviados':'presupuestos enviados',
+    'clientes_cerrados':    'clientes cerrados',
+  };
   const progress = t.goal ? Math.min(t.progress || 0, t.goal) : 0;
   const pct = t.goal ? Math.round(progress / t.goal * 100) : 0;
   const progressBar = t.goal ? `
     <div style="margin-top:6px">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;cursor:pointer" onclick="_toggleTaskHistory(${t.id})">
         <span style="font-size:.72rem;color:#64748b">${goalTypeLabel[t.goal_type]||t.goal_type}: </span>
         <span style="font-size:.72rem;font-weight:600;color:${done||pct>=100?'#10b981':'#e2e8f0'}">${progress}/${t.goal}</span>
         ${pct >= 100 ? '<span style="font-size:.68rem;color:#10b981">✓ Meta alcanzada</span>' : ''}
+        <span style="font-size:.68rem;color:#334155">▾ historial</span>
       </div>
       <div style="height:4px;background:#1e293b;border-radius:2px;overflow:hidden;max-width:240px">
         <div style="height:100%;width:${pct}%;background:${pct>=100?'#10b981':'#0088cc'};transition:width .3s"></div>
       </div>
+      <div id="task-history-${t.id}" style="display:none;margin-top:6px;padding:6px 0;border-top:1px solid #1e293b"></div>
     </div>` : '';
   const assigneeBadge = t.assignee_name ? `<span style="font-size:.72rem;color:#64748b;background:#1a2234;padding:2px 7px;border-radius:10px">→ ${esc(t.assignee_name)}</span>` : '';
   const createdByBadge = t.created_by_name && t.assignee_name ? `<span style="font-size:.72rem;color:#334155">de ${esc(t.created_by_name)}</span>` : '';
@@ -2709,6 +2724,34 @@ function _onTaskAssigneeChange(sel) {
   const opt = sel.options[sel.selectedIndex];
   document.getElementById('task-assignee-id').value = opt.dataset.uid || '';
   document.getElementById('task-assignee-email').value = opt.dataset.email || '';
+}
+
+async function _toggleTaskHistory(taskId) {
+  const el = document.getElementById(`task-history-${taskId}`);
+  if (!el) return;
+  if (el.style.display !== 'none') { el.style.display = 'none'; return; }
+  el.innerHTML = '<div style="font-size:.72rem;color:#475569;padding:2px 0">Cargando...</div>';
+  el.style.display = '';
+  try {
+    const r = await fetch(`/api/tasks/${taskId}/progress-history`);
+    const items = await r.json();
+    if (!Array.isArray(items) || !items.length) {
+      el.innerHTML = '<div style="font-size:.72rem;color:#475569;padding:2px 0">Sin historial aún</div>';
+      return;
+    }
+    el.innerHTML = items.slice(0, 50).map(i => {
+      const d = new Date(i.created_at);
+      const dStr = d.toLocaleDateString('es-UY',{day:'2-digit',month:'2-digit'})
+                 + ' ' + d.toLocaleTimeString('es-UY',{hour:'2-digit',minute:'2-digit'});
+      return `<div style="display:flex;gap:8px;align-items:baseline;padding:2px 0;font-size:.72rem">
+        <span style="color:#10b981;font-weight:700;min-width:20px">+1</span>
+        <span style="color:#94a3b8;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${i.lead_name ? esc(i.lead_name) : '—'}</span>
+        <span style="color:#475569;white-space:nowrap">${dStr}</span>
+      </div>`;
+    }).join('');
+  } catch(e) {
+    el.innerHTML = '<div style="font-size:.72rem;color:#f87171;padding:2px 0">Error cargando historial</div>';
+  }
 }
 
 function _onTaskGoalTypeChange() {
