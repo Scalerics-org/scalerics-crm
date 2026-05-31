@@ -309,17 +309,43 @@ def init_db(db_path: str) -> None:
         """)
         conn.commit()
 
-        # Idempotent unique index — prevents duplicate leads from concurrent bot pushes
+        # Remove duplicate phone rows before creating unique index (keeps oldest row)
         try:
-            conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_businesses_phone ON businesses(phone)")
+            conn.execute("""
+                DELETE FROM businesses
+                WHERE phone IS NOT NULL
+                  AND id NOT IN (
+                      SELECT MIN(id) FROM businesses
+                      WHERE phone IS NOT NULL
+                      GROUP BY phone
+                  )
+            """)
+            # Remove duplicate null-phone meta leads by (name, date)
+            conn.execute("""
+                DELETE FROM businesses
+                WHERE source = 'meta' AND phone IS NULL
+                  AND id NOT IN (
+                      SELECT MIN(id) FROM businesses
+                      WHERE source = 'meta' AND phone IS NULL
+                      GROUP BY name, SUBSTR(COALESCE(scraped_at, ''), 1, 10)
+                  )
+            """)
+            conn.commit()
+        except Exception as e:
+            logger.warning(f"Dedup migration: {e}")
+
+        # Partial unique index on phone — prevents future duplicates, allows multiple NULLs
+        try:
+            conn.execute("DROP INDEX IF EXISTS idx_businesses_phone")
+            conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_businesses_phone ON businesses(phone) WHERE phone IS NOT NULL")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_businesses_crm_status ON businesses(crm_status)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_businesses_score ON businesses(score)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_businesses_category ON businesses(category)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_prt_user_id ON password_reset_tokens(user_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_activity_log_time ON activity_log(created_at)")
             conn.commit()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Index creation: {e}")
     finally:
         conn.close()
 
