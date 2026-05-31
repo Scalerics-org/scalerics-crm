@@ -2,7 +2,9 @@
 
 from flask import Blueprint, current_app, jsonify, request, session
 
-from database import create_task, delete_task, get_task_by_id, get_tasks, log_activity, update_task
+import os
+from database import (create_task, delete_task, get_task_by_id, get_tasks,
+                      log_activity, update_task, get_task_progress_history)
 from services.email_service import send_task_assignment_email
 
 tasks_bp = Blueprint("tasks", __name__)
@@ -77,3 +79,28 @@ def api_delete_task(task_id):
                  user_id=session.get("user_id"))
     delete_task(db, task_id)
     return jsonify({"ok": True})
+
+
+@tasks_bp.route("/api/tasks/<int:task_id>/progress-history")
+def api_task_progress_history(task_id):
+    db = _db()
+    task = get_task_by_id(db, task_id)
+    if not task:
+        return jsonify({"error": "Not found"}), 404
+    uid = session.get("user_id")
+    admin_email = os.environ.get("ADMIN_EMAIL", "")
+    import sqlite3 as _sq
+    conn2 = _sq.connect(db); conn2.row_factory = _sq.Row
+    try:
+        u = conn2.execute("SELECT id, email FROM users WHERE id=?", (uid,)).fetchone()
+    finally:
+        conn2.close()
+    is_admin = bool(
+        u and (
+            (admin_email and u["email"].lower() == admin_email.lower())
+            or (not admin_email and u["id"] == 1)
+        )
+    )
+    if not is_admin and task.get("assignee_id") != uid and task.get("created_by_id") != uid:
+        return jsonify({"error": "No autorizado"}), 403
+    return jsonify(get_task_progress_history(db, task_id))
