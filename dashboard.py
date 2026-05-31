@@ -4028,6 +4028,21 @@ def create_app(db_path: str) -> Flask:
             return jsonify({"ok": True})
         finally: conn2.close()
 
+    @app.route("/api/admin/users-data", methods=["GET"])
+    def admin_users_data():
+        admin_email = os.environ.get("ADMIN_EMAIL", "")
+        current_user_id = session.get("user_id")
+        from database import get_user_by_id, get_all_users
+        current = get_user_by_id(db_path, current_user_id) if current_user_id else None
+        if not current:
+            return jsonify({"error": "No autorizado"}), 403
+        if admin_email and current["email"].lower() != admin_email.lower():
+            return jsonify({"error": "No autorizado"}), 403
+        if not admin_email and current["id"] != 1:
+            return jsonify({"error": "No autorizado"}), 403
+        users = get_all_users(db_path)
+        return jsonify([dict(u) for u in users])
+
     @app.route("/api/admin/users", methods=["GET"])
     def admin_list_users():
         admin_email = os.environ.get("ADMIN_EMAIL", "")
@@ -4324,9 +4339,10 @@ async function createRole() {
   else alert(d.error);
 }
 
+let _users = {{ users | tojson }};
 function renderUsers() {
   const el = document.getElementById('users-list');
-  const users = {{ users | tojson }};
+  const users = _users;
   el.innerHTML = users.map(u => {
     const opts = `<option value="">Sin rol (acceso total)</option>` +
       _roles.map(r => `<option value="${r.id}" ${u.role_id==r.id?'selected':''}>${r.name}</option>`).join('');
@@ -4349,10 +4365,18 @@ function renderUsers() {
 
 async function setRole(uid, roleId) {
   await fetch(`/api/admin/users/${uid}/role`, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({role_id: roleId ? parseInt(roleId) : null})});
-  await loadRoles();
+  await loadAll();
 }
 
-loadRoles();
+async function loadAll() {
+  const [rolesRes, usersRes] = await Promise.all([fetch('/api/admin/roles'), fetch('/api/admin/users-data')]);
+  _roles = await rolesRes.json();
+  _users = await usersRes.json();
+  renderRoles();
+  renderUsers();
+}
+
+loadAll();
 </script>
 </body>
 </html>"""
