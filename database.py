@@ -321,10 +321,11 @@ def insert_business(db_path: str, data: dict) -> Optional[int]:
             INSERT OR IGNORE INTO businesses
             (name, category, address, city, phone, rating, review_count,
              hours, maps_url, facebook_url, instagram_url,
-             color_scheme, demo_html_path, demo_url, status, has_whatsapp, score, source, notes, form_data)
+             color_scheme, demo_html_path, demo_url, status, has_whatsapp, score, source, notes, form_data, scraped_at)
             VALUES (:name, :category, :address, :city, :phone, :rating,
                     :review_count, :hours, :maps_url, :facebook_url, :instagram_url,
-                    :color_scheme, :demo_html_path, :demo_url, 'scraped', :has_whatsapp, :score, :source, :notes, :form_data)
+                    :color_scheme, :demo_html_path, :demo_url, 'scraped', :has_whatsapp, :score, :source, :notes, :form_data,
+                    COALESCE(:scraped_at, CURRENT_TIMESTAMP))
         """, {
             "name": data.get("name"),
             "category": data.get("category"),
@@ -345,6 +346,7 @@ def insert_business(db_path: str, data: dict) -> Optional[int]:
             "source": data.get("source"),
             "notes": data.get("notes"),
             "form_data": data.get("form_data"),
+            "scraped_at": data.get("scraped_at"),
         })
         conn.commit()
         return cursor.lastrowid if cursor.rowcount > 0 else None
