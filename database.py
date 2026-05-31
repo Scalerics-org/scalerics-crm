@@ -164,6 +164,17 @@ def init_db(db_path: str) -> None:
                 created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS task_progress_events (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_id      INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+                user_id      INTEGER,
+                lead_id      INTEGER REFERENCES businesses(id) ON DELETE SET NULL,
+                lead_name    TEXT,
+                event_type   TEXT NOT NULL,
+                created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
 
         # ── client_info ───────────────────────────────────────────────────────
         conn.execute("""
@@ -837,31 +848,69 @@ def get_tasks(db_path: str, client_id: Optional[int] = None, status: Optional[st
         conn.close()
 
 
-def increment_task_progress(db_path: str, user_id: int, goal_type: str) -> list[int]:
-    """Increment progress on active tasks assigned to user_id with matching goal_type.
-    Auto-completes tasks that reach their goal. Returns list of newly completed task IDs."""
-    if not user_id:
+def get_lead_contributor_ids(db_path: str, lead_id: int) -> list[int]:
+    """Return unique user_ids from activity_log for a given lead (excludes NULLs)."""
+    if not lead_id:
         return []
     conn = _connect(db_path)
     try:
-        conn.execute(
-            "UPDATE tasks SET progress = COALESCE(progress, 0) + 1 "
-            "WHERE assignee_id = ? AND goal_type = ? AND status != 'done'",
-            (user_id, goal_type),
-        )
-        cursor = conn.execute(
-            "SELECT id FROM tasks WHERE assignee_id = ? AND goal_type = ? "
-            "AND goal IS NOT NULL AND COALESCE(progress, 0) >= goal AND status != 'done'",
-            (user_id, goal_type),
-        )
-        completed = [r[0] for r in cursor.fetchall()]
-        if completed:
+        rows = conn.execute(
+            "SELECT DISTINCT user_id FROM activity_log "
+            "WHERE entity_id = ? AND entity_type = 'lead' AND user_id IS NOT NULL",
+            (lead_id,),
+        ).fetchall()
+        return [r[0] for r in rows]
+    finally:
+        conn.close()
+
+
+def increment_task_progress(
+    db_path: str,
+    user_ids: list[int],
+    goal_type: str,
+    lead_id: int | None = None,
+    lead_name: str = "",
+) -> list[int]:
+    """Increment progress for all user_ids on tasks matching goal_type.
+    Logs each increment to task_progress_events. Returns newly completed task IDs."""
+    unique_ids = list({uid for uid in (user_ids or []) if uid})
+    if not unique_ids:
+        return []
+    conn = _connect(db_path)
+    all_completed: list[int] = []
+    try:
+        for uid in unique_ids:
             conn.execute(
-                f"UPDATE tasks SET status = 'done' WHERE id IN ({','.join('?' * len(completed))})",
-                completed,
+                "UPDATE tasks SET progress = COALESCE(progress, 0) + 1 "
+                "WHERE assignee_id = ? AND goal_type = ? AND status != 'done'",
+                (uid, goal_type),
             )
+            active = conn.execute(
+                "SELECT id FROM tasks WHERE assignee_id = ? AND goal_type = ? AND status != 'done'",
+                (uid, goal_type),
+            ).fetchall()
+            for row in active:
+                conn.execute(
+                    "INSERT INTO task_progress_events "
+                    "(task_id, user_id, lead_id, lead_name, event_type) VALUES (?, ?, ?, ?, ?)",
+                    (row[0], uid, lead_id, lead_name or "", goal_type),
+                )
+            completed = [
+                r[0] for r in conn.execute(
+                    "SELECT id FROM tasks WHERE assignee_id = ? AND goal_type = ? "
+                    "AND goal IS NOT NULL AND COALESCE(progress, 0) >= goal AND status != 'done'",
+                    (uid, goal_type),
+                ).fetchall()
+            ]
+            if completed:
+                conn.execute(
+                    f"UPDATE tasks SET status = 'done' "
+                    f"WHERE id IN ({','.join('?' * len(completed))})",
+                    completed,
+                )
+            all_completed.extend(completed)
         conn.commit()
-        return completed
+        return all_completed
     finally:
         conn.close()
 
@@ -880,6 +929,20 @@ def delete_task(db_path: str, task_id: int) -> None:
     try:
         conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
         conn.commit()
+    finally:
+        conn.close()
+
+
+def get_task_progress_history(db_path: str, task_id: int, limit: int = 50) -> list[dict]:
+    """Return the last `limit` progress events for a task, newest first."""
+    conn = _connect(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT * FROM task_progress_events WHERE task_id = ? "
+            "ORDER BY created_at DESC LIMIT ?",
+            (task_id, limit),
+        ).fetchall()
+        return [dict(r) for r in rows]
     finally:
         conn.close()
 
