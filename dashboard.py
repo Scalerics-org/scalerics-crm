@@ -2911,6 +2911,34 @@ async function _kanbanDrop(e, newStatus) {
 // Initial load
 loadCola();
 
+// ── Panel access control ──────────────────────────────────────────────────────
+const ALL_PANELS = ['cola','seguimientos','meta','pipeline','clientes','tasks','wa','cal','metrics','activity'];
+(async () => {
+  try {
+    const r = await fetch('/api/me');
+    if (!r.ok) return;
+    const m = await r.json();
+    if (m.is_admin) {
+      const a = document.getElementById('admin-link');
+      if (a) a.style.display = 'block';
+    }
+    const access = m.panel_access ? JSON.parse(m.panel_access) : null;
+    if (access && !m.is_admin) {
+      ALL_PANELS.forEach(p => {
+        if (!access.includes(p)) {
+          const nav = document.getElementById('nav-' + p);
+          if (nav) nav.style.display = 'none';
+        }
+      });
+      // If current panel not allowed, redirect to first allowed
+      if (!access.includes(activePanel)) {
+        const first = access[0];
+        if (first) showPanel(first);
+      }
+    }
+  } catch(e) {}
+})();
+
 // ── Theme toggle ──────────────────────────────────────────────────────────────
 const LOGO_DARK  = 'https://raw.githubusercontent.com/juantomasetti1/scalerics-assets/main/logo_full_alt.png';
 const LOGO_LIGHT = 'https://raw.githubusercontent.com/juantomasetti1/scalerics-assets/main/logo_full.png';
@@ -3868,12 +3896,14 @@ def create_app(db_path: str) -> Flask:
             (admin_email and user["email"].lower() == admin_email.lower())
             or (not admin_email and user["id"] == 1)
         )
+        panel_access = user.get("panel_access")  # None = all panels
         return jsonify({
             "id": user["id"],
             "name": user["name"],
             "email": user["email"],
             "phone": user["phone"],
             "is_admin": is_admin,
+            "panel_access": panel_access,
         })
 
     @app.route("/api/me", methods=["PUT"])
@@ -3901,6 +3931,26 @@ def create_app(db_path: str) -> Flask:
         if password:
             update_user_password(db_path, user_id, generate_password_hash(password))
         session["user_name"] = name
+        return jsonify({"ok": True})
+
+    @app.route("/api/admin/users/<int:uid>/panel-access", methods=["PUT"])
+    def admin_set_panel_access(uid):
+        import json as _json
+        from database import get_user_by_id
+        current = get_user_by_id(db_path, session.get("user_id")) or {}
+        admin_email = os.environ.get("ADMIN_EMAIL", "")
+        is_admin = bool((admin_email and current.get("email","").lower() == admin_email.lower()) or (not admin_email and current.get("id") == 1))
+        if not is_admin:
+            return jsonify({"ok": False, "error": "No autorizado"}), 403
+        data = request.get_json() or {}
+        panels = data.get("panels")  # None = all access, list = specific panels
+        val = _json.dumps(panels) if panels is not None else None
+        conn2 = __import__("sqlite3").connect(db_path)
+        try:
+            conn2.execute("UPDATE users SET panel_access=? WHERE id=?", (val, uid))
+            conn2.commit()
+        finally:
+            conn2.close()
         return jsonify({"ok": True})
 
     @app.route("/api/admin/users", methods=["GET"])
@@ -4069,13 +4119,26 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .back{display:inline-flex;align-items:center;gap:6px;color:#64748b;font-size:.82rem;text-decoration:none;margin-bottom:20px}
 .back:hover{color:#e2e8f0}
 h2{font-size:1.1rem;font-weight:700;margin-bottom:24px}
-.user-card{background:#111827;border:1px solid #1e293b;border-radius:10px;padding:16px;margin-bottom:12px;max-width:500px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.user-card{background:#111827;border:1px solid #1e293b;border-radius:12px;padding:18px;margin-bottom:16px;max-width:640px}
+.user-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
 .user-info .name{font-size:.88rem;font-weight:600}
 .user-info .sub{font-size:.75rem;color:#64748b;margin-top:2px}
 .user-info .date{font-size:.7rem;color:#475569;margin-top:2px}
 .btn-del{background:#2a1515;border:1px solid #7f1d1d;border-radius:6px;padding:6px 12px;font-size:.75rem;color:#f87171;cursor:pointer;font-family:inherit}
 .btn-del:hover{background:#3d1515}
-.msg-ok{background:rgba(16,185,129,.12);color:#10B981;border-radius:6px;padding:8px 12px;font-size:.8rem;margin-bottom:16px;max-width:500px}
+.panels-title{font-size:.7rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px}
+.panels-grid{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.panel-chip{display:flex;align-items:center;gap:5px;background:#1e293b;border:1px solid #334155;border-radius:6px;padding:4px 10px;font-size:.75rem;cursor:pointer;transition:all .15s;user-select:none}
+.panel-chip input{accent-color:#0088cc;cursor:pointer}
+.panel-chip.meta-chip{border-color:#833ab4;background:rgba(131,58,180,.1)}
+.panel-chip.checked{border-color:#0088cc;background:rgba(0,136,204,.1);color:#60a5fa}
+.panel-chip.checked.meta-chip{border-color:#c084fc;background:rgba(192,132,252,.1);color:#c084fc}
+.btn-save{background:#0088cc;border:none;border-radius:6px;padding:6px 16px;font-size:.78rem;color:#fff;cursor:pointer;font-family:inherit;font-weight:600}
+.btn-save:hover{opacity:.85}
+.btn-all{background:#1e293b;border:1px solid #334155;border-radius:6px;padding:4px 10px;font-size:.72rem;color:#94a3b8;cursor:pointer;font-family:inherit}
+.btn-all:hover{color:#e2e8f0}
+.msg-ok{background:rgba(16,185,129,.12);color:#10B981;border-radius:6px;padding:8px 12px;font-size:.8rem;margin-bottom:16px;max-width:640px}
+.save-msg{font-size:.75rem;color:#4ade80;margin-left:10px;display:none}
 </style>
 </head>
 <body>
@@ -4083,17 +4146,61 @@ h2{font-size:1.1rem;font-weight:700;margin-bottom:24px}
 <h2>Gestión de usuarios</h2>
 {% if request.args.get('deleted') %}<div class="msg-ok">Usuario eliminado</div>{% endif %}
 {% for u in users %}
-<div class="user-card">
-  <div class="user-info">
-    <div class="name">{{ u.name }}</div>
-    <div class="sub">{{ u.email }} &middot; {{ u.phone }}</div>
-    <div class="date">Desde {{ u.created_at[:10] }}</div>
+<div class="user-card" id="card-{{ u.id }}">
+  <div class="user-header">
+    <div class="user-info">
+      <div class="name">{{ u.name }}</div>
+      <div class="sub">{{ u.email }} &middot; {{ u.phone }}</div>
+      <div class="date">Desde {{ u.created_at[:10] }}</div>
+    </div>
+    <form method="POST" action="/admin/users/{{ u.id }}/delete" onsubmit="return confirm('Eliminar a {{ u.name }}?')">
+      <button class="btn-del" type="submit">Eliminar</button>
+    </form>
   </div>
-  <form method="POST" action="/admin/users/{{ u.id }}/delete" onsubmit="return confirm('Eliminar a ' + '{{ u.name }}' + '?')">
-    <button class="btn-del" type="submit">Eliminar</button>
-  </form>
+  <div class="panels-title">Acceso a paneles</div>
+  <div class="panels-grid" id="panels-{{ u.id }}">
+    {% set pa = u.panel_access %}
+    {% set panels = [('cola','Cola'),('seguimientos','Seguimientos'),('meta','Meta Ads'),('pipeline','Pipeline'),('clientes','Clientes'),('tasks','Tareas'),('wa','WhatsApp'),('cal','Calendario'),('metrics','Métricas'),('activity','Actividad')] %}
+    {% for key, label in panels %}
+    {% set checked = not pa or key in pa %}
+    <label class="panel-chip {% if key == 'meta' %}meta-chip{% endif %} {% if checked %}checked{% endif %}">
+      <input type="checkbox" data-panel="{{ key }}" data-uid="{{ u.id }}" {% if checked %}checked{% endif %} onchange="updateChip(this)"> {{ label }}
+    </label>
+    {% endfor %}
+  </div>
+  <div style="display:flex;align-items:center;gap:8px">
+    <button class="btn-all" onclick="setAll({{ u.id }}, true)">Todo</button>
+    <button class="btn-all" onclick="setAll({{ u.id }}, false)">Ninguno</button>
+    <button class="btn-save" onclick="savePanels({{ u.id }})">Guardar</button>
+    <span class="save-msg" id="msg-{{ u.id }}">✓ Guardado</span>
+  </div>
 </div>
 {% endfor %}
+<script>
+function updateChip(cb) {
+  const chip = cb.closest('.panel-chip');
+  chip.classList.toggle('checked', cb.checked);
+}
+function setAll(uid, val) {
+  document.querySelectorAll(`#panels-${uid} input[type=checkbox]`).forEach(cb => {
+    cb.checked = val;
+    updateChip(cb);
+  });
+}
+async function savePanels(uid) {
+  const cbs = document.querySelectorAll(`#panels-${uid} input[type=checkbox]`);
+  const checked = [...cbs].filter(c=>c.checked).map(c=>c.dataset.panel);
+  const isAll = checked.length === cbs.length;
+  const r = await fetch(`/api/admin/users/${uid}/panel-access`, {
+    method:'PUT', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({panels: isAll ? null : checked})
+  });
+  if (r.ok) {
+    const msg = document.getElementById('msg-'+uid);
+    msg.style.display='inline'; setTimeout(()=>{msg.style.display='none'},2000);
+  }
+}
+</script>
 </body>
 </html>"""
         return render_template_string(ADMIN_PAGE, users=users)

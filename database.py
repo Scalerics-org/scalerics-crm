@@ -60,6 +60,7 @@ def init_db(db_path: str) -> None:
         _add_column(conn, "businesses", "callback_date", "TEXT")
         _add_column(conn, "businesses", "source", "TEXT")
         _add_column(conn, "businesses", "form_data", "TEXT")
+        _add_column(conn, "users", "panel_access", "TEXT")
         _add_column(conn, "client_info", "meeting_time", "TEXT")
         _add_column(conn, "client_info", "meeting_url", "TEXT")
 
@@ -1154,10 +1155,10 @@ def get_user_by_id(db_path: str, user_id: int) -> Optional[dict]:
         conn.close()
 
 
-def get_all_users(db_path: str) -> list[dict]:
+def get_all_users(db_path: str) -> list[dict]:  # noqa: E302
     conn = _connect(db_path)
     try:
-        cursor = conn.execute("SELECT id, name, email, phone, created_at FROM users ORDER BY created_at ASC")
+        cursor = conn.execute("SELECT id, name, email, phone, created_at, panel_access FROM users ORDER BY created_at ASC")
         return [dict(r) for r in cursor.fetchall()]
     finally:
         conn.close()
