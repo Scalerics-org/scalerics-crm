@@ -288,6 +288,66 @@ def meta_setup_token():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+@meta_bp.route("/api/meta/import-sync", methods=["POST"])
+def meta_import_sync():
+    token = request.headers.get("x-admin-token", "")
+    expected = os.environ.get("ADMIN_TOKEN", "")
+    if not (expected and token == expected):
+        return jsonify({"ok": False, "error": "Unauthorized"}), 401
+    db = _db()
+    pt = os.environ.get("META_PAGE_TOKEN", "") or PAGE_TOKEN
+    page_id = os.environ.get("META_PAGE_ID", "")
+    if not pt or not page_id:
+        return jsonify({"ok": False, "error": f"Missing: page_token={bool(pt)} page_id={bool(page_id)}"}), 400
+    new_c, dup, errors = 0, 0, []
+    try:
+        def _ga(url, params):
+            results = []
+            while url:
+                r = requests.get(url, params=params, timeout=15)
+                if not r.ok:
+                    errors.append(f"HTTP {r.status_code}: {r.text[:100]}")
+                    break
+                d = r.json()
+                if "error" in d:
+                    errors.append(str(d["error"])[:200])
+                    break
+                results.extend(d.get("data", []))
+                url = d.get("paging", {}).get("next")
+                params = {}
+            return results
+        forms = _ga(f"https://graph.facebook.com/v20.0/{page_id}/leadgen_forms",
+                    {"access_token": pt, "fields": "id,name,leads_count"})
+        for form in forms:
+            leads = _ga(f"https://graph.facebook.com/v20.0/{form['id']}/leads",
+                        {"access_token": pt, "fields": "id,created_time,field_data,ad_name,campaign_name"})
+            for lead in leads:
+                fields = {f["name"].lower(): (f.get("values") or [""])[0] for f in lead.get("field_data", [])}
+                name  = fields.get("full_name") or fields.get("nombre") or fields.get("name") or "Lead Meta"
+                phone = fields.get("phone_number") or fields.get("telefono") or fields.get("phone") or ""
+                city  = fields.get("city") or fields.get("ciudad") or ""
+                ct = lead.get("created_time", "")
+                if ct:
+                    try:
+                        from datetime import datetime, timezone as tz
+                        ct = datetime.fromisoformat(ct.replace("+0000","")).replace(tzinfo=tz.utc).strftime("%Y-%m-%d %H:%M:%S")
+                    except Exception as e2:
+                        errors.append(f"date: {e2}"); ct = ""
+                biz_id = insert_business(db, {
+                    "name": name, "phone": phone or None, "city": city or None,
+                    "category": "Meta Lead Ad", "status": "scraped",
+                    "notes": f"Meta Lead Ad · {lead.get('campaign_name') or form.get('name','')}".strip(" ·"),
+                    "score": 70, "source": "meta",
+                    "form_data": json.dumps(fields, ensure_ascii=False),
+                    "scraped_at": ct or None,
+                })
+                if biz_id: new_c += 1
+                else: dup += 1
+    except Exception as e:
+        errors.append(str(e))
+    return jsonify({"ok": True, "new": new_c, "dup": dup, "forms": len(forms) if "forms" in dir() else 0, "errors": errors})
+
+
 def _update_env(key: str, value: str):
     env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
     try:
