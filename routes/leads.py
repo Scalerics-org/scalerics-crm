@@ -328,7 +328,7 @@ def api_metrics():
     conn3 = _sq.connect(_db()); conn3.row_factory = _sq.Row
     try:
         rows = conn3.execute("""
-            SELECT cl.outcome, COUNT(*) as cnt
+            SELECT cl.outcome, COUNT(DISTINCT cl.lead_id) as cnt
             FROM call_logs cl
             JOIN businesses b ON cl.lead_id = b.id
             WHERE (b.source IS NULL OR b.source != 'meta')
