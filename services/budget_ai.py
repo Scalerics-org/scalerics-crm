@@ -19,6 +19,16 @@ notas y pie de página.
 Devolvé ÚNICAMENTE el HTML completo listo para abrir en el navegador, sin explicaciones ni markdown."""
 
 
+def _strip_markdown(text: str) -> str:
+    """Remove markdown code fences (```html ... ```) if the model wrapped its response."""
+    text = text.strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[-1]  # drop first line (```html or ```)
+    if text.endswith("```"):
+        text = text.rsplit("```", 1)[0]
+    return text.strip()
+
+
 def ai_edit_html(original_html: str, instructions: str) -> str:
     """Apply AI instructions to an existing HTML budget. Returns modified HTML."""
     client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
@@ -33,7 +43,7 @@ def ai_edit_html(original_html: str, instructions: str) -> str:
             }
         ],
     )
-    return message.content[0].text
+    return _strip_markdown(message.content[0].text)
 
 
 def generate_budget_html(business_name: str, category: str, city: str, instructions: str = "") -> str:
@@ -48,4 +58,4 @@ def generate_budget_html(business_name: str, category: str, city: str, instructi
         system=_GEN_SYSTEM,
         messages=[{"role": "user", "content": prompt}],
     )
-    return message.content[0].text
+    return _strip_markdown(message.content[0].text)
