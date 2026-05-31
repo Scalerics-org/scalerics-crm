@@ -924,8 +924,7 @@ body.light .btn-icon{stroke:currentColor}
       <input class="search-box" id="cola-search-input" placeholder="🔍 Buscar negocio..." oninput="colaSearch(this.value)">
     </div>
     <div class="table-wrap">
-      <div class="table-header">
-        <span class="cb-col"><input type="checkbox" class="cb" id="cb-all-cola" onchange="toggleSelectAllCola(this.checked)"></span>
+      <div class="table-header no-cb">
         <span>Negocio</span><span>Teléfono</span><span>Notas</span><span>Acciones</span>
       </div>
       <div id="cola-body"></div>
@@ -1605,7 +1604,6 @@ async function loadColaStats() {
 let _colaSearch = '';
 let _colaCategory = '';
 let _colaLeads = [];
-let _selectedColаIds = new Set();
 
 function colaSearch(v) { _colaSearch = v.toLowerCase(); renderCola(); }
 
@@ -1635,8 +1633,7 @@ function renderCola() {
   leads.forEach(b => { if (b.pitch_text) pitchMap[b.id] = b.pitch_text; });
   if (!leads.length) { body.innerHTML = '<div class="empty-state">No hay leads en la cola</div>'; return; }
   body.innerHTML = leads.map(b => `
-    <div class="table-row row-${b.crm_status||'sin_contactar'}">
-      <div class="cb-col"><input type="checkbox" class="cb row-cb-cola" data-id="${b.id}" onchange="toggleSelectCola(${b.id},this.checked)"></div>
+    <div class="table-row no-cb row-${b.crm_status||'sin_contactar'}">
       <div>
         <div class="biz-name"><span style="cursor:pointer;text-decoration:underline;text-decoration-color:#334155" onclick="openClientPanel(${b.id})">${esc(b.name||'')}</span>${b.score != null ? `<span class="score-badge ${b.score>=60?'score-hot':b.score>=30?'score-mid':'score-low'}">⚡${b.score}</span>` : ''}</div>
         <div class="biz-sub">${esc(b.category||'')}${b.city ? ' · '+esc(b.city) : ''}</div>
@@ -1652,14 +1649,6 @@ function renderCola() {
   _populateNotes(body);
 }
 
-function toggleSelectCola(id, checked) { checked ? _selectedColаIds.add(id) : _selectedColаIds.delete(id); }
-function toggleSelectAllCola(checked) {
-  document.querySelectorAll('.row-cb-cola').forEach(cb => {
-    cb.checked = checked;
-    const id = parseInt(cb.dataset.id);
-    if (!isNaN(id)) checked ? _selectedColаIds.add(id) : _selectedColаIds.delete(id);
-  });
-}
 
 // ── Seguimientos (llamar_despues) ─────────────────────────────────────────────
 async function loadSeguimientos() {
