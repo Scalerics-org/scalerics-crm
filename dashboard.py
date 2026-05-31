@@ -3825,7 +3825,7 @@ async function loadActivity() {
       <span id="cp-phone"></span>
       <select class="cp-status-sel" id="cp-status-sel" onchange="_cpChangeStatus(this.value)">
         <option value="sin_contactar">Sin contactar</option>
-        <option value="contactado">Contactado</option>
+        <option value="interesado">Interesado</option>
         <option value="reunion_agendada">Reunión agendada</option>
         <option value="reunion_hecha">Reunión hecha</option>
         <option value="presupuesto_enviado">Presupuesto enviado</option>
