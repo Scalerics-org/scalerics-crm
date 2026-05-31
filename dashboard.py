@@ -3908,7 +3908,7 @@ def create_app(db_path: str) -> Flask:
                     if role: panel_access = role["panel_access"]
                 finally: conn3.close()
             else:
-                panel_access = user.get("panel_access")
+                panel_access = user.get("panel_access") or "[]"
         return jsonify({
             "id": user["id"],
             "name": user["name"],
