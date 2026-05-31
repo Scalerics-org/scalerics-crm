@@ -320,6 +320,10 @@ def init_db(db_path: str) -> None:
         """)
         conn.commit()
 
+        # Migrate contactado → interesado (idempotent)
+        conn.execute("UPDATE businesses SET crm_status = 'interesado' WHERE crm_status = 'contactado'")
+        conn.commit()
+
         # Remove duplicate phone rows before creating unique index (keeps oldest row)
         try:
             conn.execute("""
