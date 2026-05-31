@@ -61,6 +61,26 @@ def init_db(db_path: str) -> None:
         _add_column(conn, "businesses", "source", "TEXT")
         _add_column(conn, "businesses", "form_data", "TEXT")
         _add_column(conn, "users", "panel_access", "TEXT")
+        _add_column(conn, "users", "role_id", "INTEGER REFERENCES roles(id) ON DELETE SET NULL")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS roles (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                name         TEXT NOT NULL UNIQUE,
+                panel_access TEXT NOT NULL,
+                created_at   TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        # Seed default roles if none exist
+        if not conn.execute("SELECT 1 FROM roles LIMIT 1").fetchone():
+            import json as _j
+            _ALL = _j.dumps(["cola","seguimientos","meta","pipeline","clientes","tasks","wa","cal","metrics","activity"])
+            _CALLER = _j.dumps(["cola","seguimientos","meta","wa"])
+            _SALES = _j.dumps(["seguimientos","meta","pipeline","clientes","cal","metrics"])
+            conn.executemany("INSERT INTO roles (name, panel_access) VALUES (?,?)", [
+                ("Admin",  _ALL),
+                ("Caller", _CALLER),
+                ("Ventas", _SALES),
+            ])
         _add_column(conn, "client_info", "meeting_time", "TEXT")
         _add_column(conn, "client_info", "meeting_url", "TEXT")
 
@@ -1158,7 +1178,7 @@ def get_user_by_id(db_path: str, user_id: int) -> Optional[dict]:
 def get_all_users(db_path: str) -> list[dict]:  # noqa: E302
     conn = _connect(db_path)
     try:
-        cursor = conn.execute("SELECT id, name, email, phone, created_at, panel_access FROM users ORDER BY created_at ASC")
+        cursor = conn.execute("SELECT u.id, u.name, u.email, u.phone, u.created_at, u.panel_access, u.role_id, r.name as role_name, r.panel_access as role_panels FROM users u LEFT JOIN roles r ON u.role_id=r.id ORDER BY u.created_at ASC")
         return [dict(r) for r in cursor.fetchall()]
     finally:
         conn.close()

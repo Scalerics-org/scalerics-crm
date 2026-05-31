@@ -3896,7 +3896,19 @@ def create_app(db_path: str) -> Flask:
             (admin_email and user["email"].lower() == admin_email.lower())
             or (not admin_email and user["id"] == 1)
         )
-        panel_access = user.get("panel_access")  # None = all panels
+        # Role-based access: role takes priority over direct panel_access
+        import sqlite3 as _sq2, json as _j2
+        panel_access = None
+        if not is_admin:
+            role_id = user.get("role_id")
+            if role_id:
+                conn3 = _sq2.connect(db_path); conn3.row_factory = _sq2.Row
+                try:
+                    role = conn3.execute("SELECT panel_access FROM roles WHERE id=?", (role_id,)).fetchone()
+                    if role: panel_access = role["panel_access"]
+                finally: conn3.close()
+            else:
+                panel_access = user.get("panel_access")
         return jsonify({
             "id": user["id"],
             "name": user["name"],
@@ -3904,6 +3916,7 @@ def create_app(db_path: str) -> Flask:
             "phone": user["phone"],
             "is_admin": is_admin,
             "panel_access": panel_access,
+            "role_id": user.get("role_id"),
         })
 
     @app.route("/api/me", methods=["PUT"])
@@ -3952,6 +3965,68 @@ def create_app(db_path: str) -> Flask:
         finally:
             conn2.close()
         return jsonify({"ok": True})
+
+    @app.route("/api/admin/roles", methods=["GET"])
+    def admin_list_roles():
+        import sqlite3 as _sq
+        conn2 = _sq.connect(db_path); conn2.row_factory = _sq.Row
+        try:
+            rows = conn2.execute("SELECT * FROM roles ORDER BY id").fetchall()
+            return jsonify([dict(r) for r in rows])
+        finally: conn2.close()
+
+    @app.route("/api/admin/roles", methods=["POST"])
+    def admin_create_role():
+        import sqlite3 as _sq, json as _j
+        data = request.get_json() or {}
+        name = (data.get("name") or "").strip()
+        panels = data.get("panels", [])
+        if not name: return jsonify({"ok": False, "error": "Nombre requerido"}), 400
+        conn2 = _sq.connect(db_path)
+        try:
+            conn2.execute("INSERT INTO roles (name, panel_access) VALUES (?,?)", (name, _j.dumps(panels)))
+            conn2.commit()
+            rid = conn2.execute("SELECT last_insert_rowid()").fetchone()[0]
+            return jsonify({"ok": True, "id": rid})
+        except _sq.IntegrityError: return jsonify({"ok": False, "error": "Nombre ya existe"}), 409
+        finally: conn2.close()
+
+    @app.route("/api/admin/roles/<int:rid>", methods=["PUT"])
+    def admin_update_role(rid):
+        import sqlite3 as _sq, json as _j
+        data = request.get_json() or {}
+        name = (data.get("name") or "").strip()
+        panels = data.get("panels")
+        conn2 = _sq.connect(db_path)
+        try:
+            if name: conn2.execute("UPDATE roles SET name=? WHERE id=?", (name, rid))
+            if panels is not None: conn2.execute("UPDATE roles SET panel_access=? WHERE id=?", (_j.dumps(panels), rid))
+            conn2.commit()
+            return jsonify({"ok": True})
+        finally: conn2.close()
+
+    @app.route("/api/admin/roles/<int:rid>", methods=["DELETE"])
+    def admin_delete_role(rid):
+        import sqlite3 as _sq
+        conn2 = _sq.connect(db_path)
+        try:
+            conn2.execute("UPDATE users SET role_id=NULL WHERE role_id=?", (rid,))
+            conn2.execute("DELETE FROM roles WHERE id=?", (rid,))
+            conn2.commit()
+            return jsonify({"ok": True})
+        finally: conn2.close()
+
+    @app.route("/api/admin/users/<int:uid>/role", methods=["PUT"])
+    def admin_set_user_role(uid):
+        import sqlite3 as _sq
+        data = request.get_json() or {}
+        role_id = data.get("role_id")  # None = no role (full access for admins)
+        conn2 = _sq.connect(db_path)
+        try:
+            conn2.execute("UPDATE users SET role_id=? WHERE id=?", (role_id, uid))
+            conn2.commit()
+            return jsonify({"ok": True})
+        finally: conn2.close()
 
     @app.route("/api/admin/users", methods=["GET"])
     def admin_list_users():
@@ -4111,95 +4186,173 @@ input:focus{border-color:#0088CC}
 <html lang="es">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Usuarios — Scalerics</title>
+<title>Gestión — Scalerics</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:100vh;padding:32px}
-.back{display:inline-flex;align-items:center;gap:6px;color:#64748b;font-size:.82rem;text-decoration:none;margin-bottom:20px}
+body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:100vh;padding:32px;max-width:780px}
+.back{display:inline-flex;align-items:center;gap:6px;color:#64748b;font-size:.82rem;text-decoration:none;margin-bottom:24px}
 .back:hover{color:#e2e8f0}
-h2{font-size:1.1rem;font-weight:700;margin-bottom:24px}
-.user-card{background:#111827;border:1px solid #1e293b;border-radius:12px;padding:18px;margin-bottom:16px;max-width:640px}
-.user-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
-.user-info .name{font-size:.88rem;font-weight:600}
-.user-info .sub{font-size:.75rem;color:#64748b;margin-top:2px}
-.user-info .date{font-size:.7rem;color:#475569;margin-top:2px}
-.btn-del{background:#2a1515;border:1px solid #7f1d1d;border-radius:6px;padding:6px 12px;font-size:.75rem;color:#f87171;cursor:pointer;font-family:inherit}
-.btn-del:hover{background:#3d1515}
-.panels-title{font-size:.7rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px}
-.panels-grid{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
-.panel-chip{display:flex;align-items:center;gap:5px;background:#1e293b;border:1px solid #334155;border-radius:6px;padding:4px 10px;font-size:.75rem;cursor:pointer;transition:all .15s;user-select:none}
-.panel-chip input{accent-color:#0088cc;cursor:pointer}
-.panel-chip.meta-chip{border-color:#833ab4;background:rgba(131,58,180,.1)}
-.panel-chip.checked{border-color:#0088cc;background:rgba(0,136,204,.1);color:#60a5fa}
-.panel-chip.checked.meta-chip{border-color:#c084fc;background:rgba(192,132,252,.1);color:#c084fc}
-.btn-save{background:#0088cc;border:none;border-radius:6px;padding:6px 16px;font-size:.78rem;color:#fff;cursor:pointer;font-family:inherit;font-weight:600}
-.btn-save:hover{opacity:.85}
-.btn-all{background:#1e293b;border:1px solid #334155;border-radius:6px;padding:4px 10px;font-size:.72rem;color:#94a3b8;cursor:pointer;font-family:inherit}
-.btn-all:hover{color:#e2e8f0}
-.msg-ok{background:rgba(16,185,129,.12);color:#10B981;border-radius:6px;padding:8px 12px;font-size:.8rem;margin-bottom:16px;max-width:640px}
-.save-msg{font-size:.75rem;color:#4ade80;margin-left:10px;display:none}
+h2{font-size:1rem;font-weight:700;margin-bottom:6px;color:#f1f5f9}
+.section{margin-bottom:36px}
+.section-title{font-size:.7rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.9px;margin-bottom:14px;padding-bottom:8px;border-bottom:1px solid #1e293b}
+.card{background:#111827;border:1px solid #1e293b;border-radius:10px;padding:16px;margin-bottom:10px}
+.row{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.name{font-size:.88rem;font-weight:600;flex:1}
+.sub{font-size:.72rem;color:#64748b}
+.badge{font-size:.7rem;font-weight:600;background:#1e293b;color:#94a3b8;padding:2px 8px;border-radius:99px}
+.badge.has-role{background:rgba(0,136,204,.15);color:#60a5fa}
+input[type=text]{background:#0a0f1a;border:1px solid #1e293b;border-radius:6px;color:#e2e8f0;padding:7px 10px;font-size:.82rem;font-family:inherit;outline:none;width:180px}
+input[type=text]:focus{border-color:#0088cc}
+select{background:#0a0f1a;border:1px solid #1e293b;border-radius:6px;color:#e2e8f0;padding:6px 10px;font-size:.82rem;font-family:inherit;outline:none;cursor:pointer}
+select:focus{border-color:#0088cc}
+.btn{border:none;border-radius:6px;padding:6px 14px;font-size:.78rem;font-weight:600;cursor:pointer;font-family:inherit;transition:opacity .15s}
+.btn:hover{opacity:.85}
+.btn-primary{background:#0088cc;color:#fff}
+.btn-ghost{background:#1e293b;color:#94a3b8}
+.btn-ghost:hover{color:#e2e8f0}
+.btn-danger{background:#2a1515;border:1px solid #7f1d1d;color:#f87171}
+.panels-wrap{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
+.chip{display:inline-flex;align-items:center;gap:4px;background:#1e293b;border:1px solid #334155;border-radius:5px;padding:3px 9px;font-size:.72rem;cursor:pointer;user-select:none;transition:all .15s}
+.chip input{accent-color:#0088cc;cursor:pointer;width:12px;height:12px}
+.chip.on{border-color:#0088cc;background:rgba(0,136,204,.12);color:#60a5fa}
+.chip.meta-on{border-color:#c084fc;background:rgba(192,132,252,.1);color:#c084fc}
+.toast{display:none;font-size:.75rem;color:#4ade80;margin-left:8px}
+.msg-ok{background:rgba(16,185,129,.1);color:#4ade80;border-radius:6px;padding:8px 12px;font-size:.8rem;margin-bottom:14px}
+.divider{height:1px;background:#1e293b;margin:10px 0}
 </style>
 </head>
 <body>
-<a class="back" href="/">&#8592; Volver al dashboard</a>
-<h2>Gestión de usuarios</h2>
-{% if request.args.get('deleted') %}<div class="msg-ok">Usuario eliminado</div>{% endif %}
-{% for u in users %}
-<div class="user-card" id="card-{{ u.id }}">
-  <div class="user-header">
-    <div class="user-info">
-      <div class="name">{{ u.name }}</div>
-      <div class="sub">{{ u.email }} &middot; {{ u.phone }}</div>
-      <div class="date">Desde {{ u.created_at[:10] }}</div>
+<a class="back" href="/">&#8592; Dashboard</a>
+
+<div class="section">
+  <div class="section-title">Roles y permisos</div>
+  <div id="roles-list"></div>
+  <div class="card" id="new-role-form">
+    <div class="row">
+      <input type="text" id="new-role-name" placeholder="Nombre del rol" maxlength="40">
+      <button class="btn btn-primary" onclick="createRole()">+ Crear rol</button>
     </div>
-    <form method="POST" action="/admin/users/{{ u.id }}/delete" onsubmit="return confirm('Eliminar a {{ u.name }}?')">
-      <button class="btn-del" type="submit">Eliminar</button>
-    </form>
-  </div>
-  <div class="panels-title">Acceso a paneles</div>
-  <div class="panels-grid" id="panels-{{ u.id }}">
-    {% set pa = u.panel_access %}
-    {% set panels = [('cola','Cola'),('seguimientos','Seguimientos'),('meta','Meta Ads'),('pipeline','Pipeline'),('clientes','Clientes'),('tasks','Tareas'),('wa','WhatsApp'),('cal','Calendario'),('metrics','Métricas'),('activity','Actividad')] %}
-    {% for key, label in panels %}
-    {% set checked = not pa or key in pa %}
-    <label class="panel-chip {% if key == 'meta' %}meta-chip{% endif %} {% if checked %}checked{% endif %}">
-      <input type="checkbox" data-panel="{{ key }}" data-uid="{{ u.id }}" {% if checked %}checked{% endif %} onchange="updateChip(this)"> {{ label }}
-    </label>
-    {% endfor %}
-  </div>
-  <div style="display:flex;align-items:center;gap:8px">
-    <button class="btn-all" onclick="setAll({{ u.id }}, true)">Todo</button>
-    <button class="btn-all" onclick="setAll({{ u.id }}, false)">Ninguno</button>
-    <button class="btn-save" onclick="savePanels({{ u.id }})">Guardar</button>
-    <span class="save-msg" id="msg-{{ u.id }}">✓ Guardado</span>
+    <div class="panels-wrap" id="new-role-panels"></div>
   </div>
 </div>
-{% endfor %}
+
+<div class="section">
+  <div class="section-title">Usuarios</div>
+  {% if request.args.get('deleted') %}<div class="msg-ok">Usuario eliminado</div>{% endif %}
+  <div id="users-list"></div>
+</div>
+
 <script>
-function updateChip(cb) {
-  const chip = cb.closest('.panel-chip');
-  chip.classList.toggle('checked', cb.checked);
+const ALL_PANELS = ['cola','seguimientos','meta','pipeline','clientes','tasks','wa','cal','metrics','activity'];
+const PANEL_LABELS = {cola:'Cola',seguimientos:'Seguimientos',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Métricas',activity:'Actividad'};
+let _roles = [];
+
+function makeChips(containerId, checkedArr, prefix) {
+  const el = document.getElementById(containerId);
+  el.innerHTML = ALL_PANELS.map(p => {
+    const on = checkedArr ? checkedArr.includes(p) : true;
+    const isMeta = p === 'meta';
+    return `<label class="chip ${on?(isMeta?'meta-on':'on'):''}" id="${prefix}-chip-${p}">
+      <input type="checkbox" id="${prefix}-cb-${p}" ${on?'checked':''} onchange="toggleChip('${prefix}','${p}',this.checked)">
+      ${PANEL_LABELS[p]}
+    </label>`;
+  }).join('');
 }
-function setAll(uid, val) {
-  document.querySelectorAll(`#panels-${uid} input[type=checkbox]`).forEach(cb => {
-    cb.checked = val;
-    updateChip(cb);
+function toggleChip(prefix, p, on) {
+  const chip = document.getElementById(`${prefix}-chip-${p}`);
+  chip.classList.toggle('on', on && p !== 'meta');
+  chip.classList.toggle('meta-on', on && p === 'meta');
+}
+function getChecked(prefix) {
+  return ALL_PANELS.filter(p => document.getElementById(`${prefix}-cb-${p}`)?.checked);
+}
+
+async function loadRoles() {
+  const r = await fetch('/api/admin/roles');
+  _roles = await r.json();
+  renderRoles();
+  renderUsers();
+}
+
+function renderRoles() {
+  const el = document.getElementById('roles-list');
+  el.innerHTML = _roles.map(role => {
+    const panels = JSON.parse(role.panel_access || '[]');
+    return `<div class="card" id="role-card-${role.id}">
+      <div class="row">
+        <input type="text" value="${role.name}" id="role-name-${role.id}" style="flex:1;max-width:200px">
+        <button class="btn btn-primary" onclick="saveRole(${role.id})">Guardar</button>
+        <button class="btn btn-danger" onclick="deleteRole(${role.id},'${role.name}')">Borrar</button>
+        <span class="toast" id="role-toast-${role.id}">✓</span>
+      </div>
+      <div class="panels-wrap" id="role-panels-${role.id}"></div>
+    </div>`;
+  }).join('');
+  _roles.forEach(role => {
+    const panels = JSON.parse(role.panel_access || '[]');
+    makeChips(`role-panels-${role.id}`, panels, `r${role.id}`);
   });
 }
-async function savePanels(uid) {
-  const cbs = document.querySelectorAll(`#panels-${uid} input[type=checkbox]`);
-  const checked = [...cbs].filter(c=>c.checked).map(c=>c.dataset.panel);
-  const isAll = checked.length === cbs.length;
-  const r = await fetch(`/api/admin/users/${uid}/panel-access`, {
-    method:'PUT', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({panels: isAll ? null : checked})
-  });
+
+async function saveRole(id) {
+  const name = document.getElementById(`role-name-${id}`).value.trim();
+  const panels = ALL_PANELS.filter(p => document.getElementById(`r${id}-cb-${p}`)?.checked);
+  const r = await fetch(`/api/admin/roles/${id}`, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name, panels})});
   if (r.ok) {
-    const msg = document.getElementById('msg-'+uid);
-    msg.style.display='inline'; setTimeout(()=>{msg.style.display='none'},2000);
+    const t = document.getElementById(`role-toast-${id}`);
+    t.style.display='inline'; setTimeout(()=>{t.style.display='none'},2000);
+    await loadRoles();
   }
 }
+
+async function deleteRole(id, name) {
+  if (!confirm(`Borrar el rol "${name}"? Los usuarios con este rol quedarán sin rol.`)) return;
+  await fetch(`/api/admin/roles/${id}`, {method:'DELETE'});
+  await loadRoles();
+}
+
+// New role form
+makeChips('new-role-panels', [], 'new');
+async function createRole() {
+  const name = document.getElementById('new-role-name').value.trim();
+  if (!name) { document.getElementById('new-role-name').focus(); return; }
+  const panels = ALL_PANELS.filter(p => document.getElementById(`new-cb-${p}`)?.checked);
+  const r = await fetch('/api/admin/roles', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name, panels})});
+  const d = await r.json();
+  if (d.ok) { document.getElementById('new-role-name').value=''; await loadRoles(); }
+  else alert(d.error);
+}
+
+function renderUsers() {
+  const el = document.getElementById('users-list');
+  const users = {{ users | tojson }};
+  el.innerHTML = users.map(u => {
+    const opts = `<option value="">Sin rol (acceso total)</option>` +
+      _roles.map(r => `<option value="${r.id}" ${u.role_id==r.id?'selected':''}>${r.name}</option>`).join('');
+    const roleName = u.role_name || 'Sin rol';
+    return `<div class="card">
+      <div class="row">
+        <div style="flex:1">
+          <div class="name">${u.name}</div>
+          <div class="sub">${u.email} · ${u.phone}</div>
+        </div>
+        <span class="badge ${u.role_id?'has-role':''}">${roleName}</span>
+        <select onchange="setRole(${u.id}, this.value)">${opts}</select>
+        <form method="POST" action="/admin/users/${u.id}/delete" onsubmit="return confirm('Eliminar a ${u.name}?')" style="display:inline">
+          <button class="btn btn-danger" type="submit">Borrar</button>
+        </form>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function setRole(uid, roleId) {
+  await fetch(`/api/admin/users/${uid}/role`, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({role_id: roleId ? parseInt(roleId) : null})});
+  await loadRoles();
+}
+
+loadRoles();
 </script>
 </body>
 </html>"""
