@@ -1,6 +1,7 @@
 """Lead / business CRUD routes."""
 
 import os
+import re
 import threading
 
 from flask import Blueprint, Response, current_app, jsonify, request, session
@@ -12,7 +13,9 @@ from database import (get_all_businesses, update_business, delete_business, get_
                       add_lead_event, get_lead_events,
                       add_call_log, get_call_logs,
                       increment_task_progress, get_lead_contributor_ids, log_activity)
+from database import get_attachment_file, update_attachment_file
 from pitch_generator import generate_pitch
+from services.budget_ai import ai_edit_html, generate_budget_html
 
 leads_bp = Blueprint("leads", __name__)
 
@@ -573,3 +576,70 @@ def api_add_call(biz_id):
 @leads_bp.route("/api/leads/<int:biz_id>/calls", methods=["GET"])
 def api_get_calls(biz_id):
     return jsonify(get_call_logs(_db(), biz_id))
+
+
+@leads_bp.route("/api/attachments/<int:attach_id>/ai-edit", methods=["POST"])
+def api_attachment_ai_edit(attach_id):
+    data = request.get_json() or {}
+    instructions = (data.get("instructions") or "").strip()
+    if not instructions:
+        return jsonify({"ok": False, "error": "instructions requeridas"}), 400
+    row = get_attachment_file(_db(), attach_id)
+    if not row or not row["file_data"]:
+        return jsonify({"ok": False, "error": "Adjunto no encontrado"}), 404
+    if (row.get("mime_type") or "") != "text/html":
+        return jsonify({"ok": False, "error": "El adjunto no es HTML"}), 400
+    try:
+        original_html = row["file_data"].decode("utf-8")
+        modified_html = ai_edit_html(original_html, instructions)
+        return jsonify({"ok": True, "html": modified_html})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@leads_bp.route("/api/attachments/<int:attach_id>/ai-apply", methods=["POST"])
+def api_attachment_ai_apply(attach_id):
+    data = request.get_json() or {}
+    html = (data.get("html") or "").strip()
+    if not html:
+        return jsonify({"ok": False, "error": "html requerido"}), 400
+    update_attachment_file(_db(), attach_id, html.encode("utf-8"))
+    return jsonify({"ok": True})
+
+
+@leads_bp.route("/api/attachments/<int:attach_id>/print")
+def api_attachment_print(attach_id):
+    """Serve the HTML with auto-print injected so the browser opens the print dialog."""
+    row = get_attachment_file(_db(), attach_id)
+    if not row or not row["file_data"]:
+        return jsonify({"error": "not found"}), 404
+    html = row["file_data"].decode("utf-8")
+    print_script = "<script>window.addEventListener('load',()=>window.print())</script>"
+    if "</body>" in html:
+        html = html.replace("</body>", f"{print_script}</body>", 1)
+    else:
+        html += print_script
+    return Response(html, mimetype="text/html")
+
+
+@leads_bp.route("/api/leads/<int:biz_id>/budget/generate", methods=["POST"])
+def api_budget_generate(biz_id):
+    biz = get_business(_db(), biz_id)
+    if not biz:
+        return jsonify({"ok": False, "error": "Lead no encontrado"}), 404
+    data = request.get_json() or {}
+    instructions = (data.get("instructions") or "").strip()
+    try:
+        html = generate_budget_html(
+            business_name=biz.get("name", ""),
+            category=biz.get("category", ""),
+            city=biz.get("city", ""),
+            instructions=instructions,
+        )
+        file_data = html.encode("utf-8")
+        safe_name = re.sub(r"[^a-z0-9]", "-", (biz.get("name") or "cliente").lower()).strip("-")
+        attach_id = add_attachment(_db(), biz_id, "budget", f"presupuesto-{safe_name}.html",
+                                   file_data=file_data, mime_type="text/html")
+        return jsonify({"ok": True, "attachment_id": attach_id})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
