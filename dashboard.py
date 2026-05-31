@@ -4024,6 +4024,15 @@ def create_app(db_path: str) -> Flask:
                     session["logged_in"] = True
                     session["user_id"] = uid
                     session["user_name"] = name
+                    import threading
+                    from services.email_service import send_new_user_notification
+                    admin_email = os.environ.get("ADMIN_EMAIL", "")
+                    if admin_email:
+                        threading.Thread(
+                            target=send_new_user_notification,
+                            args=(name, email, phone, admin_email),
+                            daemon=True,
+                        ).start()
                     return redirect(url_for("index"))
                 error = "Error al crear la cuenta"
         return render_template_string(REGISTER_HTML, error=error)
