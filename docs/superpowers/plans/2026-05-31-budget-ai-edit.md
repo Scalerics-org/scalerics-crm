@@ -16,8 +16,8 @@
 |---|---|
 | `database.py` | Agregar `update_attachment_file()` |
 | `services/budget_ai.py` | Crear — funciones `ai_edit_html()` y `generate_budget_html()` |
-| `routes/leads.py` | Agregar 3 endpoints: `ai-edit`, `ai-apply`, `budget/generate` |
-| `dashboard.py` | Reescribir `_cpRenderBudget()` + modal Editar IA + modal Generar IA |
+| `routes/leads.py` | Agregar 4 endpoints: `ai-edit`, `ai-apply`, `budget/generate`, `print` |
+| `dashboard.py` | Reescribir `_cpRenderBudget()` + modal Editar IA + modal Generar IA + botón PDF |
 | `tests/test_budget_ai.py` | Crear — tests para `services/budget_ai.py` |
 
 ---
@@ -204,7 +204,7 @@ from database import get_attachment_file, update_attachment_file
 from services.budget_ai import ai_edit_html, generate_budget_html
 ```
 
-- [ ] **Agregar los tres endpoints al final de `routes/leads.py`** (antes del EOF):
+- [ ] **Agregar los cuatro endpoints al final de `routes/leads.py`** (antes del EOF):
 
 ```python
 @leads_bp.route("/api/attachments/<int:attach_id>/ai-edit", methods=["POST"])
@@ -234,6 +234,22 @@ def api_attachment_ai_apply(attach_id):
         return jsonify({"ok": False, "error": "html requerido"}), 400
     update_attachment_file(_db(), attach_id, html.encode("utf-8"))
     return jsonify({"ok": True})
+
+
+@leads_bp.route("/api/attachments/<int:attach_id>/print")
+def api_attachment_print(attach_id):
+    """Serve the HTML with auto-print injected so the browser opens the print dialog."""
+    row = get_attachment_file(_db(), attach_id)
+    if not row or not row["file_data"]:
+        return jsonify({"error": "not found"}), 404
+    html = row["file_data"].decode("utf-8")
+    # Inject print trigger just before </body>
+    print_script = "<script>window.addEventListener('load',()=>window.print())</script>"
+    if "</body>" in html:
+        html = html.replace("</body>", f"{print_script}</body>", 1)
+    else:
+        html += print_script
+    return Response(html, mimetype="text/html")
 
 
 @leads_bp.route("/api/leads/<int:biz_id>/budget/generate", methods=["POST"])
@@ -304,6 +320,7 @@ function _cpRenderBudget() {
     <div class="attach-item" style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:#0a0f1a;border-radius:6px;margin-bottom:6px">
       <a href="/api/attachments/${a.id}/file" target="_blank" style="color:#33aadd;font-size:.85rem;text-decoration:none">📄 ${esc(a.name)}</a>
       <div style="display:flex;gap:6px">
+        <a class="cp-btn cp-btn-ghost" style="font-size:.75rem;padding:3px 10px;text-decoration:none" href="/api/attachments/${a.id}/print" target="_blank">🖨 PDF</a>
         <button class="cp-btn cp-btn-ghost" style="font-size:.75rem;padding:3px 10px" onclick="_cpOpenAiEditModal(${a.id},'${esc(a.name)}')">✏️ Editar con IA</button>
         <button class="attach-del" title="Eliminar" onclick="_cpDeleteAttach(${a.id},'budget')">✕</button>
       </div>
