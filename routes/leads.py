@@ -372,9 +372,12 @@ def api_metrics_meta():
 
     # Leads por campaña (desde notes: "Meta Lead Ad · {campaign}")
     campaign_counts: Counter = Counter()
+    PREFIX = "Meta Lead Ad · "
     for b in businesses:
-        parts = (b.get("notes") or "").split(" · ", 1)
-        campaign = parts[1].strip() if len(parts) > 1 and parts[1].strip() else "Sin campaña"
+        notes = b.get("notes") or ""
+        campaign = notes[len(PREFIX):].strip() if notes.startswith(PREFIX) else "Sin campaña"
+        if not campaign:
+            campaign = "Sin campaña"
         campaign_counts[campaign] += 1
     by_campaign = [{"name": k, "count": v} for k, v in campaign_counts.most_common(10)]
 
