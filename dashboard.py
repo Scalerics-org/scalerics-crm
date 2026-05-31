@@ -2783,7 +2783,7 @@ async function openAddTaskModal(clientId, clientName) {
   document.getElementById('task-title-input').value = '';
   document.getElementById('task-desc-input').value = '';
   document.getElementById('task-priority-input').value = 'medium';
-  document.getElementById('task-deadline-input').value = '';
+  document.getElementById('task-deadline-input').value = new Date().toISOString().slice(0,10);
   document.getElementById('task-goal-type-input').value = '';
   document.getElementById('task-goal-input').value = '';
   document.getElementById('task-goal-input').style.display = 'none';
