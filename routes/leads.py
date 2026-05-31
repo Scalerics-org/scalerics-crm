@@ -308,7 +308,8 @@ def api_metrics():
     by_month = [{"month": m, "count": c} for m, c in sorted(month_counts.items())[-12:]]
 
     total = len(businesses)
-    _contacted_st = {"contactado", "reunion_agendada", "reunion_hecha",
+    _contacted_st = {"interesado", "llamar_despues", "no_interesa",
+                     "contactado", "reunion_agendada", "reunion_hecha",
                      "presupuesto_enviado", "negociacion",
                      "cliente_cerrado", "en_desarrollo", "finalizado"}
     _meeting_st   = {"reunion_agendada", "reunion_hecha", "presupuesto_enviado",
