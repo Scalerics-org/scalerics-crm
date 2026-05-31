@@ -567,6 +567,7 @@ body.light .no-interest-badge{background:rgba(245,158,11,.1);color:#b45309;borde
 .row-sin_contactar{border-left:3px solid transparent}
 .row-no_interesa{border-left:3px solid #ef4444;background:rgba(239,68,68,.05)}
 .row-llamar_despues{border-left:3px solid #f59e0b;background:rgba(245,158,11,.05)}
+.row-interesado{border-left:3px solid #10b981;background:rgba(16,185,129,.05)}
 .row-contactado{border-left:3px solid #60a5fa;background:rgba(96,165,250,.04)}
 .row-reunion_agendada{border-left:3px solid #3b82f6;background:rgba(59,130,246,.06)}
 .row-demo_generada{border-left:3px solid #a78bfa;background:rgba(167,139,250,.06)}
@@ -881,7 +882,7 @@ body.light .btn-icon{stroke:currentColor}
   <div class="nav-item" id="nav-seguimientos" onclick="showPanel('seguimientos')"><i data-lucide="bookmark" class="nav-icon"></i> Seguimientos</div>
   <div class="nav-item" id="nav-meta" onclick="showPanel('meta')"><i data-lucide="instagram" class="nav-icon"></i> Meta Ads</div>
   <div class="nav-section-label">VENTAS</div>
-  <div class="nav-item" id="nav-pipeline" onclick="showPanel('pipeline')"><i data-lucide="trending-up" class="nav-icon"></i> Pipeline</div>
+  <div class="nav-item" id="nav-pipeline" onclick="showPanel('pipeline')"><i data-lucide="trending-up" class="nav-icon"></i> Proceso de venta</div>
   <div class="nav-item" id="nav-clientes" onclick="showPanel('clientes')"><i data-lucide="users" class="nav-icon"></i> Clientes</div>
   <div class="nav-section-label">GESTIÓN</div>
   <div class="nav-item" id="nav-tasks" onclick="showPanel('tasks')"><i data-lucide="check-square" class="nav-icon"></i> Tareas</div>
@@ -922,6 +923,10 @@ body.light .btn-icon{stroke:currentColor}
         <option value="">Todos los rubros</option>
       </select>
       <input class="search-box" id="cola-search-input" placeholder="🔍 Buscar negocio..." oninput="colaSearch(this.value)">
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <button id="cola-filter-sin" onclick="setColaFilter('sin_contactar')" style="padding:5px 14px;border-radius:8px;border:1px solid #0088cc;background:#0088cc;color:#fff;font-size:.78rem;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">Sin contactar</button>
+      <button id="cola-filter-no" onclick="setColaFilter('no_interesa')" style="padding:5px 14px;border-radius:8px;border:1px solid #1e293b;background:transparent;color:#64748b;font-size:.78rem;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">No interesa</button>
     </div>
     <div class="table-wrap">
       <div class="table-header no-cb">
@@ -971,7 +976,7 @@ body.light .btn-icon{stroke:currentColor}
   <div id="pipeline-panel" class="panel">
     <div class="page-header">
       <div>
-        <h1>Pipeline</h1>
+        <h1>Proceso de venta</h1>
         <div class="page-date">Leads en proceso de venta activo</div>
       </div>
     </div>
@@ -1515,8 +1520,8 @@ function renderMetaTable() {
   let leads = _metaLeads;
   if (_metaSearch) leads = leads.filter(b => (b.name||'').toLowerCase().includes(_metaSearch) || (b.notes||'').toLowerCase().includes(_metaSearch));
   if (!leads.length) { body.innerHTML = '<div class="empty-state">No hay leads de Meta Ads todavía</div>'; return; }
-  const crmLabels = {sin_contactar:'Sin contactar',contactado:'Contactado',reunion_agendada:'Reunión agendada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Ppto enviado',negociacion:'Negociación',cliente_cerrado:'Cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado',llamar_despues:'Llamar después',no_interesa:'No le interesa'};
-  const crmColor = {sin_contactar:'#475569',contactado:'#60a5fa',reunion_agendada:'#3b82f6',reunion_hecha:'#14b8a6',presupuesto_enviado:'#f97316',negociacion:'#fbbf24',cliente_cerrado:'#10b981',en_desarrollo:'#0088cc',finalizado:'#6ee7b7',llamar_despues:'#f59e0b',no_interesa:'#ef4444'};
+  const crmLabels = {sin_contactar:'Sin contactar',interesado:'Interesado',contactado:'Interesado',reunion_agendada:'Reunión agendada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Ppto enviado',negociacion:'Negociación',cliente_cerrado:'Cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado',llamar_despues:'Llamar después',no_interesa:'No le interesa'};
+  const crmColor = {sin_contactar:'#475569',interesado:'#10b981',contactado:'#10b981',reunion_agendada:'#3b82f6',reunion_hecha:'#14b8a6',presupuesto_enviado:'#f97316',negociacion:'#fbbf24',cliente_cerrado:'#10b981',en_desarrollo:'#0088cc',finalizado:'#6ee7b7',llamar_despues:'#f59e0b',no_interesa:'#ef4444'};
   leads.sort((a,b) => {
     const da = new Date(a.scraped_at||0), db2 = new Date(b.scraped_at||0);
     return _metaSortDesc ? db2-da : da-db2;
@@ -3679,8 +3684,8 @@ function _funnelBars(items, stateLabels, stateColors) {
 }
 
 async function loadMetrics() {
-  const stateLabels = {sin_contactar:'Sin contactar',contactado:'Contactado',reunion_agendada:'Reunión agendada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Presupuesto enviado',negociacion:'Negociación',cliente_cerrado:'Cliente cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado'};
-  const stateColors = {sin_contactar:'#334155',contactado:'#3b82f6',reunion_agendada:'#f59e0b',reunion_hecha:'#f97316',presupuesto_enviado:'#eab308',negociacion:'#f97316',cliente_cerrado:'#22c55e',en_desarrollo:'#10b981',finalizado:'#4ade80'};
+  const stateLabels = {sin_contactar:'Sin contactar',interesado:'Interesado',contactado:'Interesado',reunion_agendada:'Reunión agendada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Presupuesto enviado',negociacion:'Negociación',cliente_cerrado:'Cliente cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado'};
+  const stateColors = {sin_contactar:'#334155',interesado:'#10b981',contactado:'#10b981',reunion_agendada:'#f59e0b',reunion_hecha:'#f97316',presupuesto_enviado:'#eab308',negociacion:'#f97316',cliente_cerrado:'#22c55e',en_desarrollo:'#10b981',finalizado:'#4ade80'};
   const el = id => document.getElementById(id);
 
   try {
