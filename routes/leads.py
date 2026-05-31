@@ -324,6 +324,108 @@ def api_metrics():
     })
 
 
+
+@leads_bp.route("/api/metrics/meta")
+def api_metrics_meta():
+    from collections import Counter, defaultdict
+    from datetime import datetime, timezone, timedelta
+    import sqlite3 as _sq4
+    import json as _j4
+    import os as _os4
+
+    # Admin check
+    uid = session.get("user_id")
+    if not uid:
+        return jsonify({"error": "No autorizado"}), 403
+    conn4 = _sq4.connect(_db()); conn4.row_factory = _sq4.Row
+    try:
+        u = conn4.execute("SELECT id, email FROM users WHERE id=?", (uid,)).fetchone()
+    finally:
+        conn4.close()
+    if not u:
+        return jsonify({"error": "No autorizado"}), 403
+    admin_email = _os4.environ.get("ADMIN_EMAIL", "")
+    is_admin = bool(
+        (admin_email and u["email"].lower() == admin_email.lower())
+        or (not admin_email and u["id"] == 1)
+    )
+    if not is_admin:
+        return jsonify({"error": "No autorizado"}), 403
+
+    businesses = get_all_businesses(_db(), source="meta")
+
+    _legacy = {"firmo": "cliente_cerrado", "agendo": "reunion_agendada"}
+    def _norm(s): return _legacy.get(s or "sin_contactar", s or "sin_contactar")
+    _closed_st = {"cliente_cerrado", "en_desarrollo", "finalizado"}
+
+    total  = len(businesses)
+    now    = datetime.now(timezone.utc)
+    month_prefix = now.strftime("%Y-%m")
+    week_start   = (now - timedelta(days=now.weekday())).strftime("%Y-%m-%d")
+
+    this_month = sum(1 for b in businesses
+                     if (b.get("scraped_at") or "").startswith(month_prefix))
+    this_week  = sum(1 for b in businesses
+                     if (b.get("scraped_at") or "")[:10] >= week_start)
+    closed     = sum(1 for b in businesses if _norm(b.get("crm_status")) in _closed_st)
+    conversion = round(closed / total * 100, 1) if total else 0
+
+    # Leads por campaña (desde notes: "Meta Lead Ad · {campaign}")
+    campaign_counts: Counter = Counter()
+    for b in businesses:
+        parts = (b.get("notes") or "").split(" · ", 1)
+        campaign = parts[1].strip() if len(parts) > 1 and parts[1].strip() else "Sin campaña"
+        campaign_counts[campaign] += 1
+    by_campaign = [{"name": k, "count": v} for k, v in campaign_counts.most_common(10)]
+
+    # Leads por mes
+    month_counts: defaultdict = defaultdict(int)
+    for b in businesses:
+        ts = b.get("scraped_at") or ""
+        if ts and len(ts) >= 7:
+            month_counts[ts[:7]] += 1
+    by_month = [{"month": m, "count": c} for m, c in sorted(month_counts.items())[-12:]]
+
+    # Funnel CRM
+    funnel_order = ["sin_contactar", "contactado", "reunion_agendada", "reunion_hecha",
+                    "presupuesto_enviado", "negociacion", "cliente_cerrado",
+                    "en_desarrollo", "finalizado"]
+    crm_counts = Counter(_norm(b.get("crm_status")) for b in businesses)
+    funnel = [{"status": s, "count": crm_counts.get(s, 0)} for s in funnel_order]
+
+    # Qué buscan / presupuesto desde form_data JSON
+    que_busca_counts: Counter = Counter()
+    presupuesto_counts: Counter = Counter()
+    for b in businesses:
+        try:
+            fd = _j4.loads(b.get("form_data") or "{}")
+            qb = (fd.get("que_busca") or fd.get("que_buscas") or fd.get("servicio") or "").strip()
+            if qb:
+                que_busca_counts[qb] += 1
+            pr = (fd.get("presupuesto") or fd.get("budget_range") or fd.get("budget") or "").strip()
+            if pr:
+                presupuesto_counts[pr] += 1
+        except Exception:
+            pass
+
+    city_counts = Counter(
+        (b.get("city") or "").strip() for b in businesses if (b.get("city") or "").strip()
+    )
+
+    return jsonify({
+        "total":       total,
+        "this_month":  this_month,
+        "this_week":   this_week,
+        "conversion":  conversion,
+        "by_campaign": by_campaign,
+        "by_month":    by_month,
+        "funnel":      funnel,
+        "que_busca":   [{"name": k, "count": v} for k, v in que_busca_counts.most_common(10)],
+        "presupuesto": [{"name": k, "count": v} for k, v in presupuesto_counts.most_common(10)],
+        "top_cities":  [{"name": k, "count": v} for k, v in city_counts.most_common(10)],
+    })
+
+
 # ─── Attachments ─────────────────────────────────────────────────────────────
 
 @leads_bp.route("/api/leads/<int:biz_id>/attachments")
