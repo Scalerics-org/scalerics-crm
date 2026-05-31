@@ -1092,29 +1092,54 @@ body.light .btn-icon{stroke:currentColor}
       </div>
       <button class="export-btn" onclick="loadMetrics()">↻ Actualizar</button>
     </div>
-    <div class="metrics-grid" id="metrics-kpis">
-      <div class="stat-card"><div class="stat-label">Total leads</div><div class="stat-val" id="m-total">—</div></div>
-      <div class="stat-card"><div class="stat-label">Clientes cerrados</div><div class="stat-val green" id="m-closed">—</div></div>
-      <div class="stat-card"><div class="stat-label">Tasa de conversión</div><div class="stat-val blue" id="m-conv">—</div></div>
+    <div style="display:flex;gap:8px;margin-bottom:24px">
+      <button id="tab-sdr-btn" onclick="switchMetricsTab('sdr')" style="padding:6px 18px;border-radius:8px;border:1px solid #1e293b;background:#0088cc;color:#fff;font-size:.82rem;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif">SDR</button>
+      <button id="tab-meta-btn" onclick="switchMetricsTab('meta')" style="display:none;padding:6px 18px;border-radius:8px;border:1px solid #1e293b;background:transparent;color:#64748b;font-size:.82rem;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif">Meta Ads</button>
     </div>
-    <div class="metrics-grid-2">
-      <div class="m-card">
-        <div class="m-card-title">Funnel CRM</div>
-        <div id="m-funnel"></div>
+    <!-- Tab SDR -->
+    <div id="metrics-sdr">
+      <div class="metrics-grid" style="grid-template-columns:repeat(4,1fr)">
+        <div class="stat-card"><div class="stat-label">Total leads SDR</div><div class="stat-val" id="m-total">—</div></div>
+        <div class="stat-card"><div class="stat-label">Contactados</div><div class="stat-val blue" id="m-contacted">—</div></div>
+        <div class="stat-card"><div class="stat-label">Reuniones agendadas</div><div class="stat-val" style="color:#f59e0b" id="m-meetings">—</div></div>
+        <div class="stat-card"><div class="stat-label">Clientes cerrados</div><div class="stat-val green" id="m-closed">—</div></div>
       </div>
-      <div class="m-card">
-        <div class="m-card-title">Top rubros</div>
-        <div id="m-rubros"></div>
+      <div class="metrics-grid" style="grid-template-columns:repeat(3,1fr)">
+        <div class="stat-card"><div class="stat-label">Tasa de contacto</div><div class="stat-val blue" id="m-contact-rate">—</div></div>
+        <div class="stat-card"><div class="stat-label">Tasa de reunión</div><div class="stat-val" style="color:#f59e0b" id="m-meeting-rate">—</div></div>
+        <div class="stat-card"><div class="stat-label">Tasa de conversión</div><div class="stat-val green" id="m-conv">—</div></div>
+      </div>
+      <div class="metrics-grid-2">
+        <div class="m-card"><div class="m-card-title">Funnel CRM</div><div id="m-funnel"></div></div>
+        <div class="m-card"><div class="m-card-title">Llamadas</div><div id="m-calls"></div></div>
+      </div>
+      <div class="metrics-grid-2">
+        <div class="m-card"><div class="m-card-title">Leads por mes</div><div id="m-months"></div></div>
+        <div class="m-card"><div class="m-card-title">Top rubros</div><div id="m-rubros"></div></div>
+      </div>
+      <div class="metrics-grid-2">
+        <div class="m-card"><div class="m-card-title">Top ciudades</div><div id="m-cities"></div></div>
       </div>
     </div>
-    <div class="metrics-grid-2">
-      <div class="m-card">
-        <div class="m-card-title">Leads por mes</div>
-        <div id="m-months"></div>
+    <!-- Tab Meta Ads (solo admin) -->
+    <div id="metrics-meta" style="display:none">
+      <div class="metrics-grid" style="grid-template-columns:repeat(4,1fr)">
+        <div class="stat-card"><div class="stat-label">Total leads Meta</div><div class="stat-val" id="mm-total">—</div></div>
+        <div class="stat-card"><div class="stat-label">Este mes</div><div class="stat-val blue" id="mm-month">—</div></div>
+        <div class="stat-card"><div class="stat-label">Esta semana</div><div class="stat-val" style="color:#f59e0b" id="mm-week">—</div></div>
+        <div class="stat-card"><div class="stat-label">Conversión Meta</div><div class="stat-val green" id="mm-conv">—</div></div>
       </div>
-      <div class="m-card">
-        <div class="m-card-title">Top ciudades</div>
-        <div id="m-cities"></div>
+      <div class="metrics-grid-2">
+        <div class="m-card"><div class="m-card-title">Leads por campaña</div><div id="mm-campaigns"></div></div>
+        <div class="m-card"><div class="m-card-title">Leads por mes</div><div id="mm-months"></div></div>
+      </div>
+      <div class="metrics-grid-2">
+        <div class="m-card"><div class="m-card-title">Funnel CRM Meta</div><div id="mm-funnel"></div></div>
+        <div class="m-card"><div class="m-card-title">Qué buscan</div><div id="mm-busca"></div></div>
+      </div>
+      <div class="metrics-grid-2">
+        <div class="m-card"><div class="m-card-title">Presupuesto declarado</div><div id="mm-presupuesto"></div></div>
+        <div class="m-card"><div class="m-card-title">Top ciudades Meta</div><div id="mm-cities"></div></div>
       </div>
     </div>
   </div>
