@@ -11,10 +11,18 @@ from database import (get_all_businesses, update_business, delete_business, get_
                       add_attachment, get_attachments, get_attachment_file, delete_attachment,
                       add_lead_event, get_lead_events,
                       add_call_log, get_call_logs,
-                      increment_task_progress, log_activity)
+                      increment_task_progress, get_lead_contributor_ids, log_activity)
 from pitch_generator import generate_pitch
 
 leads_bp = Blueprint("leads", __name__)
+
+
+def _contributors(db: str, lead_id: int, current_uid: int | None) -> list[int]:
+    ids = set(get_lead_contributor_ids(db, lead_id))
+    if current_uid:
+        ids.add(current_uid)
+    return list(ids)
+
 
 _CATEGORY_BLOCKLIST_KEYWORDS = [
     "agregar ", "add website", "e-commerce", "centro comercial",
@@ -146,8 +154,15 @@ def api_crm_status(biz_id):
     add_lead_event(db, biz_id, crm_status, created_by=user_name)
     log_activity(db, user_name, "status_change", "lead", biz_id, biz.get("name", ""), crm_status,
                  user_id=session.get("user_id"))
-    if crm_status == "contactado":
-        increment_task_progress(db, session.get("user_id"), "leads_contactados")
+    _STATUS_TO_GOAL = {
+        "contactado":      "leads_contactados",
+        "reunion_hecha":   "reuniones_hechas",
+        "cliente_cerrado": "clientes_cerrados",
+    }
+    if crm_status in _STATUS_TO_GOAL:
+        uids = _contributors(db, biz_id, session.get("user_id"))
+        increment_task_progress(db, uids, _STATUS_TO_GOAL[crm_status],
+                                lead_id=biz_id, lead_name=biz.get("name", ""))
     return jsonify({"ok": True})
 
 
@@ -166,6 +181,18 @@ def api_batch_status():
         add_lead_event(db, biz_id, crm_status, created_by=user_name)
     log_activity(db, user_name, "batch_status", "", None, "",
                  f"{len(ids)} leads → {crm_status}", user_id=session.get("user_id"))
+    _STATUS_TO_GOAL_BATCH = {
+        "contactado":      "leads_contactados",
+        "reunion_hecha":   "reuniones_hechas",
+        "cliente_cerrado": "clientes_cerrados",
+    }
+    if crm_status in _STATUS_TO_GOAL_BATCH:
+        goal = _STATUS_TO_GOAL_BATCH[crm_status]
+        for bid in ids:
+            bid = int(bid)
+            biz_name = (get_business(db, bid) or {}).get("name", "")
+            uids = _contributors(db, bid, session.get("user_id"))
+            increment_task_progress(db, uids, goal, lead_id=bid, lead_name=biz_name)
     return jsonify({"ok": True, "updated": len(ids)})
 
 
@@ -196,7 +223,9 @@ def api_contact(biz_id):
     add_lead_event(db, biz_id, "contactado", note=note, created_by=user_name)
     log_activity(db, user_name, "status_change", "lead", biz_id, biz.get("name", ""), "contactado",
                  user_id=session.get("user_id"))
-    increment_task_progress(db, session.get("user_id"), "leads_contactados")
+    uids = _contributors(db, biz_id, session.get("user_id"))
+    increment_task_progress(db, uids, "leads_contactados",
+                            lead_id=biz_id, lead_name=biz.get("name", ""))
     return jsonify({"ok": True})
 
 
@@ -524,6 +553,12 @@ def api_add_call(biz_id):
     add_call_log(db, biz_id, outcome, notes, created_by)
     log_activity(db, created_by, "call_logged", "lead", biz_id, biz.get("name", ""), outcome,
                  user_id=session.get("user_id"))
+    uids = _contributors(db, biz_id, session.get("user_id"))
+    increment_task_progress(db, uids, "llamadas_realizadas",
+                            lead_id=biz_id, lead_name=biz.get("name", ""))
+    if outcome == "contestó":
+        increment_task_progress(db, uids, "llamadas_contestadas",
+                                lead_id=biz_id, lead_name=biz.get("name", ""))
     return jsonify({"ok": True}), 201
 
 
