@@ -3516,55 +3516,33 @@ async function _cpReloadAttach(section) {
 }
 
 function _cpRenderBudget() {
-  const b = _cpData.budget;
-  let budgetHtml = '';
-  if (b && b.items) {
-    const meta = typeof b.notes === 'object' ? b.notes : {};
-    const devPrice = b.total_amount || meta.dev_price || 0;
-    const monthlyPrice = meta.monthly_price || 0;
-    const sections = Array.isArray(b.items) ? b.items : [];
-    const sectionsPreview = sections.slice(0, 2).map(s =>
-      `<div style="margin-bottom:6px"><span style="color:#0088cc;font-size:.78rem;font-weight:600">${s.title || ''}</span>` +
-      (s.subsections ? ` <span style="color:#475569;font-size:.75rem">(${s.subsections.length} módulos)</span>` :
-       s.items ? ` <span style="color:#475569;font-size:.75rem">(${s.items.length} ítems)</span>` : '') +
-      `</div>`
-    ).join('');
-    budgetHtml = `
-    <div style="background:#0a0f1a;border-radius:8px;padding:14px;margin-bottom:14px">
-      <div style="font-size:.72rem;color:#475569;text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px">Resumen del presupuesto</div>
-      ${meta.hero_title ? `<div style="color:#e2e8f0;font-size:.9rem;font-weight:600;margin-bottom:8px">${meta.hero_title}</div>` : ''}
-      ${sectionsPreview}
-      ${sections.length > 2 ? `<div style="color:#475569;font-size:.75rem">+${sections.length-2} secciones más...</div>` : ''}
-      <div style="display:flex;gap:20px;margin-top:12px;padding-top:12px;border-top:1px solid #1e293b">
-        <div>
-          <div style="font-size:.68rem;color:#475569;text-transform:uppercase;letter-spacing:.5px">Desarrollo</div>
-          <div style="font-size:1.1rem;font-weight:700;color:#4ade80">USD ${devPrice.toLocaleString()}</div>
-        </div>
-        ${monthlyPrice ? `<div>
-          <div style="font-size:.68rem;color:#475569;text-transform:uppercase;letter-spacing:.5px">Mensual</div>
-          <div style="font-size:1.1rem;font-weight:700;color:#94a3b8">USD ${monthlyPrice.toLocaleString()}/mes</div>
-        </div>` : ''}
-      </div>
+  const items = (_cpData.attBudget || []).filter(a => a.mime_type === 'text/html');
+  const hasBudget = items.length > 0;
+
+  if (!hasBudget) {
+    return `<div class="cp-section">
+      <div class="cp-section-title">Presupuesto</div>
+      <div style="color:#475569;font-size:.85rem;margin-bottom:14px">No hay presupuesto para este cliente.</div>
+      <button class="cp-btn cp-btn-primary" onclick="_cpOpenGenBudgetModal()">
+        ⚡ Generar con IA
+      </button>
     </div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <a class="cp-btn cp-btn-primary" href="/api/leads/${_cpClientId}/budget/preview" target="_blank">🖨 Ver / imprimir PDF</a>
-      ${b.status !== 'sent' ? `<button class="cp-btn cp-btn-success" onclick="_cpMarkBudgetSent()">✅ Marcar enviado</button>` : `<span class="cp-badge cp-badge-sent">Enviado</span>`}
-      <button class="cp-btn cp-btn-ghost" onclick="_cpRegeneraBudget()">⚡ Regenerar</button>
-    </div>`;
-  } else {
-    budgetHtml = `<div style="color:#475569;font-size:.85rem;margin-bottom:14px">Sin presupuesto generado aún.</div>`;
+    ${_cpRenderAttachBox('budget')}`;
   }
+
+  const listHtml = items.map(a => `
+    <div class="attach-item" style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:#0a0f1a;border-radius:6px;margin-bottom:6px">
+      <a href="/api/attachments/${a.id}/file" target="_blank" style="color:#33aadd;font-size:.85rem;text-decoration:none">📄 ${esc(a.name)}</a>
+      <div style="display:flex;gap:6px">
+        <a class="cp-btn cp-btn-ghost" style="font-size:.75rem;padding:3px 10px;text-decoration:none" href="/api/attachments/${a.id}/print" target="_blank">🖨 PDF</a>
+        <button class="cp-btn cp-btn-ghost" style="font-size:.75rem;padding:3px 10px" onclick="_cpOpenAiEditModal(${a.id},'${esc(a.name)}')">✏️ Editar con IA</button>
+        <button class="attach-del" title="Eliminar" onclick="_cpDeleteAttach(${a.id},'budget')">✕</button>
+      </div>
+    </div>`).join('');
+
   return `<div class="cp-section">
-    <div class="cp-section-title">Requerimientos adicionales</div>
-    <textarea class="cp-req-area" id="cp-extra-req" placeholder="Describí qué necesita el cliente (opcional, se suman a los de la reunión)..."></textarea>
-    <button class="cp-btn cp-btn-primary" id="cp-gen-btn" onclick="_cpRegeneraBudget()">
-      <span id="budget-spin" style="display:none" class="cp-spinner"></span>
-      ⚡ Generar presupuesto con IA
-    </button>
-  </div>
-  <div class="cp-section">
-    <div class="cp-section-title">Presupuesto ${b && b.status === 'sent' ? '<span class=\\"cp-badge cp-badge-sent\\">Enviado</span>' : b ? '<span class=\\"cp-badge cp-badge-draft\\">Borrador</span>' : ''}</div>
-    ${budgetHtml}
+    <div class="cp-section-title">Presupuesto</div>
+    ${listHtml}
   </div>
   ${_cpRenderAttachBox('budget')}`;
 }
@@ -3602,6 +3580,121 @@ async function _cpRegeneraBudget() {
 }
 
 function _cpBindBudget() {}
+
+function _cpOpenAiEditModal(attachId, attachName) {
+  const existing = document.getElementById('ai-edit-modal');
+  if (existing) existing.remove();
+  const modal = document.createElement('div');
+  modal.id = 'ai-edit-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:center;justify-content:center';
+  modal.innerHTML = `
+    <div style="background:#0f172a;border:1px solid #1e293b;border-radius:10px;padding:24px;width:min(680px,95vw);max-height:90vh;overflow:auto">
+      <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:700;color:#e2e8f0;margin-bottom:16px">✏️ Editar con IA — ${esc(attachName)}</div>
+      <textarea id="ai-edit-instr" placeholder="Ej: cambia el precio a $500 USD, agrega mantenimiento mensual de $30..."
+        style="width:100%;height:80px;background:#0a0f1a;border:1px solid #1e293b;border-radius:6px;color:#e2e8f0;font-size:.85rem;padding:10px;resize:vertical;box-sizing:border-box"></textarea>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button class="cp-btn cp-btn-primary" id="ai-edit-preview-btn" onclick="_cpAiEditPreview(${attachId})">
+          <span id="ai-edit-spin" class="cp-spinner" style="display:none"></span>
+          Generar preview
+        </button>
+        <button class="cp-btn cp-btn-ghost" onclick="document.getElementById('ai-edit-modal').remove()">Cancelar</button>
+      </div>
+      <div id="ai-edit-preview-wrap" style="display:none;margin-top:16px">
+        <div style="font-size:.75rem;color:#475569;margin-bottom:6px">Preview:</div>
+        <iframe id="ai-edit-iframe" style="width:100%;height:400px;border:1px solid #1e293b;border-radius:6px;background:#fff"></iframe>
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <button class="cp-btn cp-btn-success" id="ai-edit-save-btn" onclick="_cpAiEditSave(${attachId})">✅ Guardar</button>
+          <button class="cp-btn cp-btn-ghost" onclick="document.getElementById('ai-edit-modal').remove()">Cancelar</button>
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+}
+
+let _aiEditPendingHtml = '';
+
+async function _cpAiEditPreview(attachId) {
+  const instr = (document.getElementById('ai-edit-instr').value || '').trim();
+  if (!instr) { alert('Escribí las instrucciones primero'); return; }
+  const btn = document.getElementById('ai-edit-preview-btn');
+  const spin = document.getElementById('ai-edit-spin');
+  const textarea = document.getElementById('ai-edit-instr');
+  btn.disabled = true; spin.style.display = 'inline-block'; textarea.disabled = true;
+  try {
+    const r = await fetch(`/api/attachments/${attachId}/ai-edit`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({instructions: instr})
+    });
+    const d = await r.json();
+    if (!d.ok) { alert(d.error || 'Error generando preview'); return; }
+    _aiEditPendingHtml = d.html;
+    const iframe = document.getElementById('ai-edit-iframe');
+    iframe.srcdoc = d.html;
+    document.getElementById('ai-edit-preview-wrap').style.display = '';
+  } catch(e) { alert('Error: ' + e); }
+  finally { btn.disabled = false; spin.style.display = 'none'; textarea.disabled = false; }
+}
+
+async function _cpAiEditSave(attachId) {
+  if (!_aiEditPendingHtml) return;
+  const btn = document.getElementById('ai-edit-save-btn');
+  btn.disabled = true;
+  try {
+    const r = await fetch(`/api/attachments/${attachId}/ai-apply`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({html: _aiEditPendingHtml})
+    });
+    const d = await r.json();
+    if (d.ok) {
+      document.getElementById('ai-edit-modal').remove();
+      await _cpReloadAttach('budget');
+      _cpSwitchTab('budget');
+    } else { alert(d.error || 'Error guardando'); }
+  } catch(e) { alert('Error: ' + e); }
+  finally { btn.disabled = false; }
+}
+
+function _cpOpenGenBudgetModal() {
+  const existing = document.getElementById('gen-budget-modal');
+  if (existing) existing.remove();
+  const modal = document.createElement('div');
+  modal.id = 'gen-budget-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:center;justify-content:center';
+  modal.innerHTML = `
+    <div style="background:#0f172a;border:1px solid #1e293b;border-radius:10px;padding:24px;width:min(480px,95vw)">
+      <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:700;color:#e2e8f0;margin-bottom:16px">⚡ Generar presupuesto con IA</div>
+      <textarea id="gen-budget-instr" placeholder="Instrucciones adicionales (opcional). Ej: sitio web para arquitecta, precio $370 USD, mantenimiento $25/mes..."
+        style="width:100%;height:80px;background:#0a0f1a;border:1px solid #1e293b;border-radius:6px;color:#e2e8f0;font-size:.85rem;padding:10px;resize:vertical;box-sizing:border-box"></textarea>
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <button class="cp-btn cp-btn-primary" id="gen-budget-btn" onclick="_cpGenBudget()">
+          <span id="gen-budget-spin" class="cp-spinner" style="display:none"></span>
+          Generar
+        </button>
+        <button class="cp-btn cp-btn-ghost" onclick="document.getElementById('gen-budget-modal').remove()">Cancelar</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+}
+
+async function _cpGenBudget() {
+  const instr = (document.getElementById('gen-budget-instr').value || '').trim();
+  const btn = document.getElementById('gen-budget-btn');
+  const spin = document.getElementById('gen-budget-spin');
+  btn.disabled = true; spin.style.display = 'inline-block';
+  try {
+    const r = await fetch(`/api/leads/${_cpClientId}/budget/generate`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({instructions: instr})
+    });
+    const d = await r.json();
+    if (d.ok) {
+      document.getElementById('gen-budget-modal').remove();
+      await _cpReloadAttach('budget');
+      _cpSwitchTab('budget');
+    } else { alert(d.error || 'Error generando presupuesto'); }
+  } catch(e) { alert('Error: ' + e); }
+  finally { btn.disabled = false; spin.style.display = 'none'; }
+}
 
 function _cpOpenDemoModal() {
   const l = _cpData.lead || {};
