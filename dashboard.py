@@ -1385,6 +1385,7 @@ body.light .btn-icon{stroke:currentColor}
 </div>
 
 <script>
+window._isAdmin = false; // default until /api/me resolves
 // ========== Sidebar mobile ==========
 function toggleSidebar() {
   document.getElementById('sidebar').classList.toggle('open');
