@@ -3993,8 +3993,12 @@ def create_app(db_path: str) -> Flask:
             if role_id:
                 conn3 = _sq2.connect(db_path); conn3.row_factory = _sq2.Row
                 try:
-                    role = conn3.execute("SELECT panel_access FROM roles WHERE id=?", (role_id,)).fetchone()
-                    if role: panel_access = role["panel_access"]
+                    role = conn3.execute("SELECT name, panel_access FROM roles WHERE id=?", (role_id,)).fetchone()
+                    if role:
+                        if (role["name"] or "").lower() == "admin":
+                            is_admin = True
+                        else:
+                            panel_access = role["panel_access"]
                 finally: conn3.close()
             else:
                 panel_access = user.get("panel_access") or "[]"

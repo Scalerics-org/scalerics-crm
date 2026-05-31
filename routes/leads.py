@@ -339,7 +339,11 @@ def api_metrics_meta():
         return jsonify({"error": "No autorizado"}), 403
     conn4 = _sq4.connect(_db()); conn4.row_factory = _sq4.Row
     try:
-        u = conn4.execute("SELECT id, email FROM users WHERE id=?", (uid,)).fetchone()
+        u = conn4.execute("""
+            SELECT u.id, u.email, r.name as role_name
+            FROM users u LEFT JOIN roles r ON u.role_id = r.id
+            WHERE u.id=?
+        """, (uid,)).fetchone()
     finally:
         conn4.close()
     if not u:
@@ -348,6 +352,7 @@ def api_metrics_meta():
     is_admin = bool(
         (admin_email and u["email"].lower() == admin_email.lower())
         or (not admin_email and u["id"] == 1)
+        or (u["role_name"] or "").lower() == "admin"
     )
     if not is_admin:
         return jsonify({"error": "No autorizado"}), 403
