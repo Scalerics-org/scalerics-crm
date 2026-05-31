@@ -10,6 +10,7 @@ from database import (
     create_meeting,
     delete_meeting,
     get_business,
+    get_lead_contributor_ids,
     get_meeting,
     get_meetings_for_client,
     increment_task_progress,
@@ -110,6 +111,13 @@ def _get_drive_service():
 
 def _db() -> str:
     return current_app.config["DB_PATH"]
+
+
+def _contributors(db: str, lead_id: int, current_uid: int | None) -> list[int]:
+    ids = set(get_lead_contributor_ids(db, lead_id))
+    if current_uid:
+        ids.add(current_uid)
+    return list(ids)
 
 
 @calendar_bp.route("/api/calendar/events", methods=["GET", "POST"])
@@ -240,7 +248,9 @@ def api_calendar_events():
             log_activity(db, session.get("user_name", "sistema"), "meeting_scheduled",
                          "lead", int(client_id), client.get("name", ""), title,
                          user_id=session.get("user_id"))
-            increment_task_progress(db, session.get("user_id"), "reuniones_agendadas")
+            uids = _contributors(db, int(client_id), session.get("user_id"))
+            increment_task_progress(db, uids, "reuniones_agendadas",
+                                    lead_id=int(client_id), lead_name=client.get("name", ""))
 
         return jsonify({"ok": True, "meet_url": meet_url, "event_id": cal_event_id, "recall_bot_id": recall_bot_id})
     except Exception as e:

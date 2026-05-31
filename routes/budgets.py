@@ -17,6 +17,8 @@ from database import (
     get_meetings_for_client,
     log_activity,
     update_budget,
+    increment_task_progress,
+    get_lead_contributor_ids,
 )
 
 budgets_bp = Blueprint("budgets", __name__)
@@ -25,6 +27,13 @@ logger = logging.getLogger(__name__)
 
 def _db() -> str:
     return current_app.config["DB_PATH"]
+
+
+def _contributors(db: str, lead_id: int, current_uid: int | None) -> list[int]:
+    ids = set(get_lead_contributor_ids(db, lead_id))
+    if current_uid:
+        ids.add(current_uid)
+    return list(ids)
 
 
 def _he(s):
@@ -248,9 +257,14 @@ def api_mark_budget_sent(budget_id):
     budget = get_budget_by_id(db, budget_id)
     if budget:
         client = get_business(db, budget["client_id"]) or {}
+        client_id = budget["client_id"]
+        client_name = client.get("name", "")
         log_activity(db, session.get("user_name", "sistema"), "budget_sent",
-                     "lead", budget["client_id"], client.get("name", ""), "",
+                     "lead", client_id, client_name, "",
                      user_id=session.get("user_id"))
+        uids = _contributors(db, client_id, session.get("user_id"))
+        increment_task_progress(db, uids, "presupuestos_enviados",
+                                lead_id=client_id, lead_name=client_name)
     return jsonify({"ok": True})
 
 
