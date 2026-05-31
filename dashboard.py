@@ -1066,10 +1066,7 @@ body.light .btn-icon{stroke:currentColor}
       <button class="filter-btn" data-tfilter="in_progress" onclick="filterTasks('in_progress',this)">En progreso</button>
       <button class="filter-btn" data-tfilter="done" onclick="filterTasks('done',this)">Hechas</button>
     </div>
-    <div id="token-health" class="token-health" style="display:none">
-      <div class="token-health-title">Estado del sistema</div>
-      <div class="token-cards" id="token-cards"></div>
-    </div>
+
     <div id="tasks-list"></div>
   </div>
 
@@ -2612,25 +2609,9 @@ let _allTasks = [];
 let _allLeads = [];
 let _taskStatusFilter = 'all';
 
-async function loadTokenHealth() {
-  try {
-    const tokens = await fetch('/api/tokens/status').then(r => r.json());
-    const container = document.getElementById('token-cards');
-    const panel = document.getElementById('token-health');
-    if (!container || !panel) return;
-    container.innerHTML = tokens.map(t =>
-      `<div class="token-card ${t.status}">
-        <div class="token-card-name">${t.name}</div>
-        <div class="token-card-label">${t.label}</div>
-      </div>`
-    ).join('');
-    panel.style.display = 'block';
-  } catch { /* silencioso */ }
-}
 
 async function loadTasks() {
   try {
-    loadTokenHealth();
     const [tr, lr] = await Promise.all([
       fetch('/api/tasks').then(r => r.json()),
       fetch('/api/leads').then(r => r.json()),
