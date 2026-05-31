@@ -1980,7 +1980,9 @@ function timeAgo(ts) {
   return 'hace ' + d + (d===1?' día':' días');
 }
 function waNum(phone) {
-  let n = String(phone).replace(/[^0-9]/g,'');
+  const raw = String(phone).trim();
+  let n = raw.replace(/[^0-9]/g,'');
+  if (raw.startsWith('+')) return n;  // already has country code (+54, +598, etc.)
   if (n.startsWith('598')) return n;
   if (n.startsWith('0')) n = n.slice(1);
   return '598' + n;
