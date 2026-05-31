@@ -1070,6 +1070,18 @@ def get_attachment_file(db_path: str, attach_id: int) -> Optional[dict]:
         conn.close()
 
 
+def update_attachment_file(db_path: str, attach_id: int, file_data: bytes, mime_type: str = "text/html") -> None:
+    conn = _connect(db_path)
+    try:
+        conn.execute(
+            "UPDATE lead_attachments SET file_data=?, mime_type=? WHERE id=?",
+            (file_data, mime_type, attach_id)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def delete_attachment(db_path: str, attach_id: int) -> None:
     conn = _connect(db_path)
     try:
