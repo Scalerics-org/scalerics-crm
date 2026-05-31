@@ -3826,6 +3826,8 @@ async function loadActivity() {
       <select class="cp-status-sel" id="cp-status-sel" onchange="_cpChangeStatus(this.value)">
         <option value="sin_contactar">Sin contactar</option>
         <option value="interesado">Interesado</option>
+        <option value="llamar_despues">Llamar después</option>
+        <option value="no_interesa">No le interesa</option>
         <option value="reunion_agendada">Reunión agendada</option>
         <option value="reunion_hecha">Reunión hecha</option>
         <option value="presupuesto_enviado">Presupuesto enviado</option>
@@ -3855,7 +3857,9 @@ async function loadActivity() {
   <select class="batch-sel" id="batch-status">
     <option value="">— Cambiar estado —</option>
     <option value="sin_contactar">Sin contactar</option>
-    <option value="contactado">Contactado</option>
+    <option value="interesado">Interesado</option>
+    <option value="llamar_despues">Llamar después</option>
+    <option value="no_interesa">No le interesa</option>
     <option value="reunion_agendada">Reunión agendada</option>
     <option value="reunion_hecha">Reunión hecha</option>
     <option value="presupuesto_enviado">Presupuesto enviado</option>
