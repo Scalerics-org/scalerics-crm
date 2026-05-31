@@ -57,7 +57,7 @@ def _normalize_category(raw: str) -> str | None:
 
 # Full set of valid CRM states
 _VALID_CRM_STATES = {
-    "sin_contactar", "contactado", "reunion_agendada",
+    "sin_contactar", "interesado", "contactado", "reunion_agendada",
     "reunion_hecha", "presupuesto_enviado", "negociacion",
     "cliente_cerrado", "en_desarrollo", "finalizado",
     "llamar_despues", "no_interesa",
@@ -69,7 +69,7 @@ _PIPELINE_STATUSES = ["reunion_agendada", "reunion_hecha", "presupuesto_enviado"
 _CLIENT_STATUSES   = ["cliente_cerrado", "en_desarrollo", "finalizado"]
 
 _PER_PAGE = 50
-_VALID_OUTCOMES = {"contestó", "no_contestó", "buzón", "no_interesa", "llamar_despues"}
+_VALID_OUTCOMES = {"contestó", "no_contestó", "buzón", "no_interesa", "llamar_despues", "interesado"}
 
 
 def _db() -> str:
@@ -155,7 +155,7 @@ def api_crm_status(biz_id):
     log_activity(db, user_name, "status_change", "lead", biz_id, biz.get("name", ""), crm_status,
                  user_id=session.get("user_id"))
     _STATUS_TO_GOAL = {
-        "contactado":      "leads_contactados",
+        "interesado":      "leads_contactados",
         "reunion_hecha":   "reuniones_hechas",
         "cliente_cerrado": "clientes_cerrados",
     }
@@ -182,7 +182,7 @@ def api_batch_status():
     log_activity(db, user_name, "batch_status", "", None, "",
                  f"{len(ids)} leads → {crm_status}", user_id=session.get("user_id"))
     _STATUS_TO_GOAL_BATCH = {
-        "contactado":      "leads_contactados",
+        "interesado":      "leads_contactados",
         "reunion_hecha":   "reuniones_hechas",
         "cliente_cerrado": "clientes_cerrados",
     }
@@ -219,9 +219,9 @@ def api_contact(biz_id):
     db = _db()
     biz = get_business(db, biz_id) or {}
     user_name = session.get("user_name", "sistema")
-    update_business(db, biz_id, status="contacted", notes=note, crm_status="contactado")
-    add_lead_event(db, biz_id, "contactado", note=note, created_by=user_name)
-    log_activity(db, user_name, "status_change", "lead", biz_id, biz.get("name", ""), "contactado",
+    update_business(db, biz_id, status="contacted", notes=note, crm_status="interesado")
+    add_lead_event(db, biz_id, "interesado", note=note, created_by=user_name)
+    log_activity(db, user_name, "status_change", "lead", biz_id, biz.get("name", ""), "interesado",
                  user_id=session.get("user_id"))
     uids = _contributors(db, biz_id, session.get("user_id"))
     increment_task_progress(db, uids, "leads_contactados",
@@ -279,11 +279,11 @@ def api_metrics():
     businesses = [b for b in all_biz if (b.get("source") or "") != "meta"]
 
     funnel_order = [
-        "sin_contactar", "contactado", "reunion_agendada",
+        "sin_contactar", "interesado", "reunion_agendada",
         "reunion_hecha", "presupuesto_enviado", "negociacion",
         "cliente_cerrado", "en_desarrollo", "finalizado",
     ]
-    _legacy = {"firmo": "cliente_cerrado", "agendo": "reunion_agendada"}
+    _legacy = {"firmo": "cliente_cerrado", "agendo": "reunion_agendada", "contactado": "interesado"}
     def _norm(s): return _legacy.get(s or "sin_contactar", s or "sin_contactar")
 
     crm_counts = Counter(_norm(b.get("crm_status")) for b in businesses)
@@ -388,7 +388,7 @@ def api_metrics_meta():
 
     businesses = get_all_businesses(_db(), source="meta")
 
-    _legacy = {"firmo": "cliente_cerrado", "agendo": "reunion_agendada"}
+    _legacy = {"firmo": "cliente_cerrado", "agendo": "reunion_agendada", "contactado": "interesado"}
     def _norm(s): return _legacy.get(s or "sin_contactar", s or "sin_contactar")
     _closed_st = {"cliente_cerrado", "en_desarrollo", "finalizado"}
 
@@ -424,7 +424,7 @@ def api_metrics_meta():
     by_month = [{"month": m, "count": c} for m, c in sorted(month_counts.items())[-12:]]
 
     # Funnel CRM
-    funnel_order = ["sin_contactar", "contactado", "reunion_agendada", "reunion_hecha",
+    funnel_order = ["sin_contactar", "interesado", "reunion_agendada", "reunion_hecha",
                     "presupuesto_enviado", "negociacion", "cliente_cerrado",
                     "en_desarrollo", "finalizado"]
     crm_counts = Counter(_norm(b.get("crm_status")) for b in businesses)
@@ -525,18 +525,25 @@ def api_set_callback(biz_id):
     data = request.get_json() or {}
     callback_date = (data.get("callback_date") or "").strip()
     notes = (data.get("notes") or "").strip()
+    outcome = data.get("outcome", "llamar_despues")
+    if outcome not in ("llamar_despues", "interesado"):
+        outcome = "llamar_despues"
     if not callback_date:
         return jsonify({"ok": False, "error": "callback_date requerida"}), 400
     db = _db()
     user_name = session.get("user_name", "sistema")
     biz = get_business(db, biz_id) or {}
-    update_business(db, biz_id, crm_status="llamar_despues", callback_date=callback_date)
+    update_business(db, biz_id, crm_status=outcome, callback_date=callback_date)
     if notes:
         update_business(db, biz_id, notes=notes)
-    add_lead_event(db, biz_id, "llamar_despues", note=f"Callback: {callback_date}", created_by=user_name)
-    add_call_log(db, biz_id, "llamar_despues", notes or f"Callback: {callback_date}", user_name)
+    add_lead_event(db, biz_id, outcome, note=f"Callback: {callback_date}", created_by=user_name)
+    add_call_log(db, biz_id, outcome, notes or f"Callback: {callback_date}", user_name)
     log_activity(db, user_name, "callback_set", "lead", biz_id, biz.get("name", ""), callback_date,
                  user_id=session.get("user_id"))
+    if outcome == "interesado":
+        uids = _contributors(db, biz_id, session.get("user_id"))
+        increment_task_progress(db, uids, "leads_contactados",
+                                lead_id=biz_id, lead_name=biz.get("name", ""))
     return jsonify({"ok": True})
 
 
