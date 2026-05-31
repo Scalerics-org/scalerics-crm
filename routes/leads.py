@@ -13,7 +13,7 @@ from database import (get_all_businesses, update_business, delete_business, get_
                       add_lead_event, get_lead_events,
                       add_call_log, get_call_logs,
                       increment_task_progress, get_lead_contributor_ids, log_activity)
-from database import get_attachment_file, update_attachment_file
+from database import get_attachment_file, update_attachment_file, get_attachments
 from pitch_generator import generate_pitch
 from services.budget_ai import ai_edit_html, generate_budget_html
 
@@ -637,9 +637,16 @@ def api_budget_generate(biz_id):
             instructions=instructions,
         )
         file_data = html.encode("utf-8")
-        safe_name = re.sub(r"[^a-z0-9]", "-", (biz.get("name") or "cliente").lower()).strip("-")
-        attach_id = add_attachment(_db(), biz_id, "budget", f"presupuesto-{safe_name}.html",
-                                   file_data=file_data, mime_type="text/html")
+        db = _db()
+        existing = get_attachments(db, biz_id, "budget")
+        html_attachments = [a for a in existing if (a.get("mime_type") or "") == "text/html"]
+        if html_attachments:
+            attach_id = html_attachments[0]["id"]
+            update_attachment_file(db, attach_id, file_data)
+        else:
+            safe_name = re.sub(r"[^a-z0-9]", "-", (biz.get("name") or "cliente").lower()).strip("-")
+            attach_id = add_attachment(db, biz_id, "budget", f"presupuesto-{safe_name}.html",
+                                       file_data=file_data, mime_type="text/html")
         return jsonify({"ok": True, "attachment_id": attach_id})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
