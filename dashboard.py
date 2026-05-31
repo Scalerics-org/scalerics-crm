@@ -1167,8 +1167,8 @@ body.light .btn-icon{stroke:currentColor}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
       <button class="outcome-btn outcome-no-answer" onclick="logCallOutcome('no_contestó')"><i data-lucide="phone-missed" class="outcome-icon"></i><span style="font-size:.75rem">No contestó</span></button>
       <button class="outcome-btn outcome-not-interested" onclick="logCallOutcome('no_interesa')"><i data-lucide="x-circle" class="outcome-icon"></i><span style="font-size:.75rem">No le interesa</span></button>
-      <button class="outcome-btn outcome-callback" onclick="toggleCallbackRow()"><i data-lucide="clock" class="outcome-icon"></i><span style="font-size:.75rem">Llamar después</span></button>
-      <button class="outcome-btn outcome-interested" onclick="toggleCallbackRow()"><i data-lucide="star" class="outcome-icon"></i><span style="font-size:.75rem">Interesado</span></button>
+      <button class="outcome-btn outcome-callback" onclick="setCallbackOutcome('llamar_despues')"><i data-lucide="clock" class="outcome-icon"></i><span style="font-size:.75rem">Llamar después</span></button>
+      <button class="outcome-btn outcome-interested" onclick="setCallbackOutcome('interesado')"><i data-lucide="star" class="outcome-icon"></i><span style="font-size:.75rem">Interesado</span></button>
       <button class="outcome-btn outcome-meeting" onclick="logCallOutcome('reunion')" style="grid-column:span 2"><i data-lucide="calendar-check" class="outcome-icon" style="display:inline-block;vertical-align:middle;margin-right:6px"></i><span style="font-size:.75rem">Agendó reunión</span></button>
     </div>
     <div id="callback-row" style="display:none;background:#0d1525;border:1px solid #1e293b;border-radius:8px;padding:12px;margin-bottom:12px">
@@ -1464,6 +1464,12 @@ function closeCallModal() {
   document.getElementById('call-modal').classList.remove('open');
   _callLeadId = null;
 }
+let _callbackOutcome = 'llamar_despues';
+function setCallbackOutcome(outcome) {
+  _callbackOutcome = outcome;
+  const row = document.getElementById('callback-row');
+  row.style.display = 'block';
+}
 function toggleCallbackRow() {
   const row = document.getElementById('callback-row');
   row.style.display = row.style.display === 'none' ? 'block' : 'none';
@@ -1472,10 +1478,8 @@ async function logCallOutcome(outcome) {
   if (!_callLeadId) return;
   const notes = document.getElementById('call-notes-input').value;
   await fetch(`/api/leads/${_callLeadId}/calls`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({outcome, notes})});
-  if (outcome === 'contestó') {
-    await fetch(`/api/leads/${_callLeadId}/crm-status`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({crm_status:'contactado'})});
-  } else if (outcome === 'no_interesa' && _callActivePanel === 'seguimientos') {
-    await fetch(`/api/leads/${_callLeadId}/crm-status`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({crm_status:'sin_contactar'})});
+  if (outcome === 'no_interesa') {
+    await fetch(`/api/leads/${_callLeadId}/crm-status`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({crm_status:'no_interesa'})});
   } else if (outcome === 'reunion') {
     await fetch(`/api/leads/${_callLeadId}/crm-status`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({crm_status:'reunion_agendada'})});
   }
@@ -1487,7 +1491,7 @@ async function confirmCallback() {
   const date = document.getElementById('callback-date-input').value;
   if (!date) { alert('Elegí una fecha'); return; }
   const notes = document.getElementById('call-notes-input').value;
-  await fetch(`/api/leads/${_callLeadId}/callback`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({callback_date:date, notes})});
+  await fetch(`/api/leads/${_callLeadId}/callback`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({callback_date:date, notes, outcome:_callbackOutcome})});
   closeCallModal();
   _reloadActiveCallPanel();
 }
@@ -1591,7 +1595,7 @@ async function loadColaStats() {
     const colaData = await cola.json();
     const [segR, conR] = await Promise.all([
       fetch('/api/leads?crm_status=llamar_despues'),
-      fetch('/api/leads?crm_status=contactado'),
+      fetch('/api/leads?crm_status=interesado'),
     ]);
     const [segData, conData] = await Promise.all([segR.json(), conR.json()]);
     const segTotal = (Array.isArray(segData) ? segData.length : (segData.total||0)) +
@@ -1614,6 +1618,15 @@ async function loadColaStats() {
 let _colaSearch = '';
 let _colaCategory = '';
 let _colaLeads = [];
+let _colaFilter = 'sin_contactar';
+function setColaFilter(f) {
+  _colaFilter = f;
+  const sinBtn = document.getElementById('cola-filter-sin');
+  const noBtn  = document.getElementById('cola-filter-no');
+  if (sinBtn) { sinBtn.style.background = f === 'sin_contactar' ? '#0088cc' : 'transparent'; sinBtn.style.borderColor = f === 'sin_contactar' ? '#0088cc' : '#1e293b'; sinBtn.style.color = f === 'sin_contactar' ? '#fff' : '#64748b'; }
+  if (noBtn)  { noBtn.style.background  = f === 'no_interesa'   ? '#ef4444' : 'transparent'; noBtn.style.borderColor  = f === 'no_interesa'   ? '#ef4444' : '#1e293b'; noBtn.style.color  = f === 'no_interesa'   ? '#fff' : '#64748b'; }
+  loadCola();
+}
 
 function colaSearch(v) { _colaSearch = v.toLowerCase(); renderCola(); }
 
@@ -1626,7 +1639,7 @@ async function loadCola() {
   const body = document.getElementById('cola-body');
   body.innerHTML = '<div style="color:#475569;padding:16px;font-size:.85rem">Cargando...</div>';
   try {
-    const r = await fetch('/api/leads?crm_status=sin_contactar');
+    const r = await fetch(`/api/leads?crm_status=${_colaFilter}`);
     const data = await r.json();
     _colaLeads = Array.isArray(data) ? data : (data.items || []);
     renderCola();
@@ -1667,7 +1680,7 @@ async function loadSeguimientos() {
   try {
     const [r1, r2] = await Promise.all([
       fetch('/api/leads?crm_status=llamar_despues'),
-      fetch('/api/leads?crm_status=contactado'),
+      fetch('/api/leads?crm_status=interesado'),
     ]);
     const [d1, d2] = await Promise.all([r1.json(), r2.json()]);
     const leads = [
@@ -1684,10 +1697,10 @@ async function loadSeguimientos() {
     const today = new Date().toISOString().split('T')[0];
     body.innerHTML = leads.map(b => {
       const cd = b.callback_date || '';
-      const isContactado = b.crm_status === 'contactado';
+      const isContactado = b.crm_status === 'interesado';
       let urgencyClass = '', pillClass = 'cb-date-future', pillLabel = 'Sin fecha';
       if (isContactado && !cd) {
-        pillClass = 'cb-date-future'; pillLabel = 'Contactado';
+        pillClass = 'cb-date-future'; pillLabel = 'Interesado';
       } else if (cd) {
         const cdDate = cd.split('T')[0];
         pillLabel = cd.replace('T',' ').replace(/:\d{2}$/,'');
@@ -2033,7 +2046,7 @@ async function deleteLead(id, ev) {
 }
 
 async function markContacted(id) {
-  await fetch(`/api/leads/${id}/crm-status`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({crm_status:'contactado'})});
+  await fetch(`/api/leads/${id}/crm-status`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({crm_status:'interesado'})});
   loadStats(); loadLeads();
 }
 
