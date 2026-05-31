@@ -104,16 +104,24 @@ def _fetch_and_store_lead(app, lead_id: str, form_id: str):
             campaign_name = lead_data.get("campaign_name", "")
             notes = f"Meta Lead Ad · {campaign_name or ad_name or form_id or ''}".strip(" ·")
 
+            created_at = lead_data.get("created_time", "")
+            if created_at:
+                try:
+                    from datetime import datetime, timezone
+                    created_at = datetime.fromisoformat(created_at.replace("+0000","")).replace(tzinfo=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+                except Exception:
+                    created_at = ""
             biz_id = insert_business(db, {
-                "name":      name,
-                "phone":     phone or None,
-                "city":      city or None,
-                "category":  "Meta Lead Ad",
-                "status":    "scraped",
-                "notes":     notes,
-                "score":     70,
-                "source":    "meta",
-                "form_data": json.dumps(fields, ensure_ascii=False),
+                "name":       name,
+                "phone":      phone or None,
+                "city":       city or None,
+                "category":   "Meta Lead Ad",
+                "status":     "scraped",
+                "notes":      notes,
+                "score":      70,
+                "source":     "meta",
+                "form_data":  json.dumps(fields, ensure_ascii=False),
+                "scraped_at": created_at or None,
             })
 
             if biz_id:
@@ -202,16 +210,24 @@ def meta_import_leads():
                     city  = fields.get("city") or fields.get("ciudad") or ""
                     campaign = lead.get("campaign_name") or lead.get("ad_name") or form.get("name", "")
                     notes = f"Meta Lead Ad · {campaign}".strip(" ·")
+                    ct = lead.get("created_time","")
+                    if ct:
+                        try:
+                            from datetime import datetime, timezone as tz
+                            ct = datetime.fromisoformat(ct.replace("+0000","")).replace(tzinfo=tz.utc).strftime("%Y-%m-%d %H:%M:%S")
+                        except Exception:
+                            ct = ""
                     biz_id = insert_business(db, {
-                        "name":      name,
-                        "phone":     phone or None,
-                        "city":      city or None,
-                        "category":  "Meta Lead Ad",
-                        "status":    "scraped",
-                        "notes":     notes,
-                        "score":     70,
-                        "source":    "meta",
-                        "form_data": json.dumps(fields, ensure_ascii=False),
+                        "name":       name,
+                        "phone":      phone or None,
+                        "city":       city or None,
+                        "category":   "Meta Lead Ad",
+                        "status":     "scraped",
+                        "notes":      notes,
+                        "score":      70,
+                        "source":     "meta",
+                        "form_data":  json.dumps(fields, ensure_ascii=False),
+                        "scraped_at": ct or None,
                     })
                     if biz_id:
                         new += 1

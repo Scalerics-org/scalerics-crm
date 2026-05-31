@@ -76,16 +76,24 @@ for form in forms:
         campaign_name = lead.get("campaign_name", "")
         notes = f"Meta Lead Ad · {campaign_name or ad_name or form_name}".strip(" ·")
 
+        ct = lead.get("created_time","")
+        if ct:
+            try:
+                from datetime import datetime, timezone
+                ct = datetime.fromisoformat(ct.replace("+0000","")).replace(tzinfo=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+            except Exception:
+                ct = ""
         biz_id = insert_business(DB_PATH, {
-            "name":      name,
-            "phone":     phone or None,
-            "city":      city or None,
-            "category":  "Meta Lead Ad",
-            "status":    "scraped",
-            "notes":     notes,
-            "score":     70,
-            "source":    "meta",
-            "form_data": json.dumps(fields, ensure_ascii=False),
+            "name":       name,
+            "phone":      phone or None,
+            "city":       city or None,
+            "category":   "Meta Lead Ad",
+            "status":     "scraped",
+            "notes":      notes,
+            "score":      70,
+            "source":     "meta",
+            "form_data":  json.dumps(fields, ensure_ascii=False),
+            "scraped_at": ct or None,
         })
 
         if biz_id:
