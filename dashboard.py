@@ -3833,10 +3833,10 @@ function _cpRenderInfo() {
     <div id="unmatched-banner" style="background:rgba(251,146,60,.1);border:1px solid rgba(251,146,60,.35);border-radius:10px;padding:14px 16px;margin-bottom:18px">
       <div style="font-size:.78rem;font-weight:700;color:#fb923c;margin-bottom:6px">⚠️ Agendó por Calendly — sin match automático</div>
       <div style="font-size:.75rem;color:#94a3b8;margin-bottom:12px">Este cliente puede ya estar en el CRM. Buscalo abajo para fusionar, o confirmá que es nuevo.</div>
-      <input id="merge-search" type="text" placeholder="Buscar cliente existente..."
+      <input id="banner-merge-search" type="text" placeholder="Buscar cliente existente..."
         style="width:100%;background:#0a0f1a;border:1px solid #1e293b;border-radius:6px;padding:8px 10px;font-size:.8rem;color:#e2e8f0;font-family:inherit;outline:none;margin-bottom:8px"
-        oninput="_mergeSearch(this.value)">
-      <div id="merge-results" style="margin-bottom:10px"></div>
+        oninput="_mergeSearch(this.value, 'banner-merge-results')">
+      <div id="banner-merge-results" style="margin-bottom:10px"></div>
       <button onclick="_confirmNewLead()" style="background:#1e293b;border:1px solid #334155;color:#94a3b8;font-size:.75rem;font-weight:600;padding:6px 12px;border-radius:6px;cursor:pointer;font-family:inherit">
         ✓ Es un cliente nuevo
       </button>
@@ -3882,14 +3882,36 @@ function _cpRenderInfo() {
     <textarea class="cp-req-area" id="cp-notes-area" placeholder="Agregar notas sobre este lead...">${l.notes || ''}</textarea>
     <button class="cp-btn cp-btn-ghost" onclick="_cpSaveNotes()">Guardar notas</button>
   </div>
+  <div class="cp-section">
+    <div class="cp-section-title" style="display:flex;align-items:center;justify-content:space-between">
+      <span>Fusionar con otro cliente</span>
+      <button onclick="_toggleMergeSection(this)" style="background:none;border:none;color:#475569;font-size:.72rem;cursor:pointer;font-family:inherit">Mostrar</button>
+    </div>
+    <div id="merge-section" style="display:none;margin-top:8px">
+      <input id="merge-search" type="text" placeholder="Buscar cliente existente..."
+        style="width:100%;background:#0a0f1a;border:1px solid #1e293b;border-radius:6px;padding:8px 10px;font-size:.8rem;color:#e2e8f0;font-family:inherit;outline:none;margin-bottom:8px"
+        oninput="_mergeSearch(this.value)">
+      <div id="merge-results"></div>
+      <div style="font-size:.72rem;color:#475569;margin-top:6px">⚠️ Esto transfiere las reuniones, adjuntos y eventos al cliente destino y elimina este registro.</div>
+    </div>
+  </div>
   ${_cpRenderHistory()}`;
+}
+
+function _toggleMergeSection(btn) {
+  const sec = document.getElementById('merge-section');
+  if (!sec) return;
+  const open = sec.style.display !== 'none';
+  sec.style.display = open ? 'none' : '';
+  btn.textContent = open ? 'Mostrar' : 'Ocultar';
+  if (!open) sec.querySelector('input').focus();
 }
 
 let _mergeSearchTimeout = null;
 
-async function _mergeSearch(query) {
+async function _mergeSearch(query, resultsId) {
   clearTimeout(_mergeSearchTimeout);
-  const res = document.getElementById('merge-results');
+  const res = document.getElementById(resultsId || 'merge-results');
   if (!res) return;
   if (!query || query.length < 2) { res.innerHTML = ''; return; }
   _mergeSearchTimeout = setTimeout(async () => {
