@@ -4489,7 +4489,7 @@ def create_app(db_path: str) -> Flask:
                             panel_access = role["panel_access"]
                 finally: conn3.close()
             else:
-                panel_access = user.get("panel_access") or "[]"
+                panel_access = "[]"  # sin rol = sin acceso
         return jsonify({
             "id": user["id"],
             "name": user["name"],
@@ -4925,7 +4925,7 @@ function renderUsers() {
   const el = document.getElementById('users-list');
   const users = _users;
   el.innerHTML = users.map(u => {
-    const opts = `<option value="">Sin rol (acceso total)</option>` +
+    const opts = `<option value="">Sin rol (sin acceso)</option>` +
       _roles.map(r => `<option value="${r.id}" ${u.role_id==r.id?'selected':''}>${r.name}</option>`).join('');
     const roleName = u.role_name || 'Sin rol';
     return `<div class="card">
