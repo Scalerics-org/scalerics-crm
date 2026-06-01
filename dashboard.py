@@ -1065,6 +1065,7 @@ body.light .upick-name{color:#0f172a}
   <div class="nav-item" id="nav-cal" onclick="showPanel('cal')"><i data-lucide="calendar" class="nav-icon"></i> Calendario</div>
   <div class="nav-item" id="nav-metrics" onclick="showPanel('metrics')"><i data-lucide="bar-chart-2" class="nav-icon"></i> Métricas</div>
   <div class="nav-item" id="nav-activity" onclick="showPanel('activity')"><i data-lucide="clock" class="nav-icon"></i> Actividad</div>
+  <div class="nav-item" id="nav-sdr" onclick="showPanel('sdr')"><i data-lucide="phone-call" class="nav-icon"></i> SDR</div>
   <div class="sidebar-bottom">
     <a id="admin-link" href="/admin/users" style="display:none;background:none;border:1px solid #1e293b;border-radius:8px;padding:6px 12px;font-size:.75rem;color:#64748b;cursor:pointer;width:100%;text-align:left;text-decoration:none;box-sizing:border-box">&#9881; Usuarios</a>
     <a href="/profile" style="background:none;border:1px solid #1e293b;border-radius:8px;padding:6px 12px;font-size:.75rem;color:#64748b;cursor:pointer;width:100%;text-align:left;text-decoration:none;box-sizing:border-box;display:block">&#128100; Mi perfil</a>
@@ -1338,6 +1339,17 @@ body.light .upick-name{color:#0f172a}
       </div>
     </div>
   </div>
+  <div id="sdr-panel" class="panel">
+    <div class="page-header">
+      <div>
+        <h1>SDR</h1>
+        <div class="page-date">Rendimiento por vendedor</div>
+      </div>
+      <button class="export-btn" onclick="loadSdr()">↻ Actualizar</button>
+    </div>
+    <div id="sdr-content"></div>
+  </div>
+
   <div id="activity-panel" class="panel">
     <div class="page-header">
       <div>
@@ -1632,6 +1644,7 @@ function showPanel(name) {
   if (name === 'tasks') loadTasks();
   if (name === 'metrics') loadMetrics();
   if (name === 'activity') loadActivity();
+  if (name === 'sdr') loadSdr();
 }
 
 // ========== Leads / Cola panel ==========
@@ -4553,6 +4566,132 @@ function _actCrmLabel(s) { return _actCrmMap[s] || s || ''; }
 function _actCallLabel(s) { return {contestó:'Contestó',no_contestó:'No contestó',buzón:'Buzón'}[s] || s || ''; }
 const _actIcons = {status_change:'🔄',note_updated:'📝',attachment_added:'📎',call_logged:'📞',budget_generated:'💰',budget_sent:'📨',task_created:'✅',task_updated:'✏️',task_deleted:'🗑️',meeting_scheduled:'📅',lead_deleted:'🗑️',batch_status:'🔄'};
 
+// ── SDR panel ──────────────────────────────────────────────────────────────────
+async function loadSdr() {
+  const wrap = document.getElementById('sdr-content');
+  wrap.innerHTML = '<div style="color:#475569;padding:20px;font-size:.85rem">Cargando...</div>';
+  const data = await fetch('/api/sdr-stats').then(r => r.json()).catch(() => null);
+  if (!data) { wrap.innerHTML = '<div style="color:#ef4444;padding:20px">Error al cargar datos.</div>'; return; }
+
+  // Build days array (last 14 days)
+  const days = [];
+  const today = new Date(); today.setHours(0,0,0,0);
+  for (let i = 13; i >= 0; i--) {
+    const d = new Date(today); d.setDate(d.getDate() - i);
+    days.push(d.toISOString().split('T')[0]);
+  }
+
+  // Index data: {user -> {day -> {calls, leads}}}
+  const byUser = {};
+  for (const r of data.daily) {
+    if (!byUser[r.user]) byUser[r.user] = {};
+    byUser[r.user][r.day] = { calls: r.calls, leads: r.leads };
+  }
+
+  // Outcome index: {user -> {outcome -> count}}
+  const outMap = {};
+  for (const o of data.outcomes) {
+    if (!outMap[o.user]) outMap[o.user] = {};
+    outMap[o.user][o.outcome] = (outMap[o.user][o.outcome] || 0) + o.count;
+  }
+
+  const users = Object.keys(byUser).sort();
+  if (!users.length) {
+    wrap.innerHTML = '<div style="color:#475569;padding:20px">No hay llamadas registradas aún.</div>';
+    return;
+  }
+
+  const todayStr = days[days.length - 1];
+
+  // Render summary cards
+  const cards = users.map(u => {
+    const todayData = byUser[u][todayStr] || { calls: 0, leads: 0 };
+    const totalCalls = Object.values(byUser[u]).reduce((s, d) => s + d.calls, 0);
+    const color = _sdrNameColor(u);
+    const initials = u.split(' ').slice(0,2).map(w=>w[0]||'').join('').toUpperCase()||'?';
+    const heat = todayData.calls >= 30 ? '#10b981' : todayData.calls >= 15 ? '#38bdf8' : todayData.calls >= 5 ? '#fbbf24' : '#64748b';
+    const outs = outMap[u] || {};
+    const reunion = outs['reunion'] || 0;
+    const interesado = outs['interesado'] || 0;
+    const noContesto = outs['no_contestó'] || 0;
+    return `<div style="background:#111827;border:1px solid #1e293b;border-radius:16px;padding:20px 24px;display:flex;flex-direction:column;gap:14px;min-width:220px;flex:1">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div style="width:42px;height:42px;border-radius:50%;background:${color};display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:800;color:#fff;flex-shrink:0">${initials}</div>
+        <div>
+          <div style="font-size:.95rem;font-weight:700;color:#f1f5f9">${esc(u)}</div>
+          <div style="font-size:.7rem;color:#64748b">${totalCalls} llamadas en 14 días</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:flex-end;gap:8px">
+        <div style="font-size:3rem;font-weight:800;color:${heat};line-height:1">${todayData.calls}</div>
+        <div style="font-size:.8rem;color:#64748b;padding-bottom:6px">llamadas hoy</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;border-top:1px solid #1e293b;padding-top:12px">
+        <div style="text-align:center">
+          <div style="font-size:1.1rem;font-weight:800;color:#10b981">${reunion}</div>
+          <div style="font-size:.62rem;color:#64748b">Reuniones</div>
+        </div>
+        <div style="text-align:center">
+          <div style="font-size:1.1rem;font-weight:800;color:#38bdf8">${interesado}</div>
+          <div style="font-size:.62rem;color:#64748b">Interesados</div>
+        </div>
+        <div style="text-align:center">
+          <div style="font-size:1.1rem;font-weight:800;color:#475569">${noContesto}</div>
+          <div style="font-size:.62rem;color:#64748b">No contestó</div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Render heatmap table (last 14 days)
+  const shortDay = d => { const dt = new Date(d+'T12:00:00'); return ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'][dt.getDay()]+' '+dt.getDate(); };
+  const maxCalls = Math.max(1, ...Object.values(byUser).flatMap(u => Object.values(u).map(d => d.calls)));
+
+  const tableHead = '<tr><th style="text-align:left;padding:8px 12px;font-size:.72rem;color:#64748b;font-weight:600;white-space:nowrap">SDR</th>' +
+    days.map(d => {
+      const isToday = d === todayStr;
+      return `<th style="padding:6px 4px;font-size:.62rem;color:${isToday?'#38bdf8':'#64748b'};font-weight:${isToday?700:500};text-align:center;min-width:38px;white-space:nowrap${isToday?';border-bottom:2px solid #38bdf8':''}">${shortDay(d)}</th>`;
+    }).join('') + '<th style="padding:8px 12px;font-size:.72rem;color:#64748b;font-weight:600;text-align:center">Total</th></tr>';
+
+  const tableRows = users.map(u => {
+    const color = _sdrNameColor(u);
+    const initials = u.split(' ').slice(0,2).map(w=>w[0]||'').join('').toUpperCase()||'?';
+    const total = Object.values(byUser[u]).reduce((s,d) => s + d.calls, 0);
+    const cells = days.map(d => {
+      const v = (byUser[u][d] || {}).calls || 0;
+      const isToday = d === todayStr;
+      const intensity = v === 0 ? 0 : Math.min(1, v / (maxCalls * 0.7));
+      const bg = v === 0 ? (isToday ? '#0d1b2a' : 'transparent') :
+        \`rgba(0,136,204,\${0.15 + intensity * 0.75})\`;
+      const fc = v === 0 ? '#334155' : intensity > 0.5 ? '#fff' : '#93c5fd';
+      return \`<td style="text-align:center;padding:6px 4px">
+        <div style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:28px;border-radius:6px;background:\${bg};font-size:.78rem;font-weight:\${v>0?700:400};color:\${fc}\${isToday?';outline:1px solid #1e3a5f':''}">\${v||'·'}</div>
+      </td>\`;
+    }).join('');
+    return \`<tr>
+      <td style="padding:6px 12px;white-space:nowrap">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="width:24px;height:24px;border-radius:50%;background:\${color};display:flex;align-items:center;justify-content:center;font-size:.55rem;font-weight:800;color:#fff;flex-shrink:0">\${initials}</div>
+          <span style="font-size:.82rem;font-weight:600;color:#e2e8f0">\${esc(u.split(' ')[0])}</span>
+        </div>
+      </td>
+      \${cells}
+      <td style="text-align:center;padding:6px 12px;font-size:.88rem;font-weight:800;color:#f1f5f9">\${total}</td>
+    </tr>\`;
+  }).join('');
+
+  wrap.innerHTML = \`
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:28px">\${cards}</div>
+    <div style="background:#111827;border:1px solid #1e293b;border-radius:16px;padding:20px;overflow-x:auto">
+      <div style="font-size:.78rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:16px">Llamadas por día (últimas 2 semanas)</div>
+      <table style="border-collapse:collapse;width:100%;min-width:600px">
+        <thead>\${tableHead}</thead>
+        <tbody>\${tableRows}</tbody>
+      </table>
+    </div>
+  \`;
+}
+
 async function loadActivity() {
   const list = document.getElementById('activity-list');
   if (!list) return;
@@ -4833,6 +4972,38 @@ def create_app(db_path: str) -> Flask:
             })
         finally:
             conn2.close()
+
+    @app.route("/api/sdr-stats", methods=["GET"])
+    def api_sdr_stats():
+        import sqlite3 as _sq3, datetime as _dt3
+        conn3 = _sq3.connect(db_path); conn3.row_factory = _sq3.Row
+        try:
+            # Last 14 days of call_logged per user per day
+            rows = conn3.execute("""
+                SELECT user_name, DATE(created_at) as day,
+                  SUM(CASE WHEN action='call_logged' THEN 1 ELSE 0 END) as calls,
+                  COUNT(DISTINCT entity_id) as leads_touched
+                FROM activity_log
+                WHERE created_at >= date('now','-13 days')
+                  AND user_name NOT IN ('sistema','sistema-auto','','meta_import')
+                  AND entity_type = 'lead'
+                GROUP BY user_name, day
+                ORDER BY day ASC
+            """).fetchall()
+            # Outcome breakdown per user (all time for ref)
+            outcomes = conn3.execute("""
+                SELECT user_name, detail as outcome, COUNT(*) as c
+                FROM activity_log
+                WHERE action='call_logged'
+                  AND user_name NOT IN ('sistema','sistema-auto','','meta_import')
+                GROUP BY user_name, detail
+            """).fetchall()
+            return jsonify({
+                "daily": [{"user": r["user_name"], "day": r["day"], "calls": r["calls"], "leads": r["leads_touched"]} for r in rows],
+                "outcomes": [{"user": r["user_name"], "outcome": r["outcome"], "count": r["c"]} for r in outcomes],
+            })
+        finally:
+            conn3.close()
 
     @app.route("/api/me", methods=["GET"])
     def api_me():
