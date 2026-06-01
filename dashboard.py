@@ -3495,12 +3495,36 @@ function _syncMobileNav(panelName) {
 function openMasSheet() {
   const grid = document.getElementById('mas-sheet-grid');
   if (grid) {
-    grid.innerHTML = _mobileNavOverflow.map(p => `
+    const isLight = document.body.classList.contains('light');
+    const panelItems = _mobileNavOverflow.map(p => `
       <div class="mas-sheet-item" onclick="closeMasSheet();showPanel('${p}')">
         <i data-lucide="${NAV_ICONS[p]}" class="mas-sheet-icon"></i>
         <span class="mas-sheet-label">${NAV_LABELS[p]}</span>
       </div>
     `).join('');
+    const adminLink = document.getElementById('admin-link');
+    const adminItem = adminLink && adminLink.style.display !== 'none'
+      ? `<a class="mas-sheet-item" href="/admin/users" style="text-decoration:none">
+           <i data-lucide="users" class="mas-sheet-icon"></i>
+           <span class="mas-sheet-label">Usuarios</span>
+         </a>` : '';
+    const settingsItems = `
+      <div style="grid-column:1/-1;height:1px;background:#1e293b;margin:4px 0"></div>
+      ${adminItem}
+      <a class="mas-sheet-item" href="/profile" style="text-decoration:none">
+        <i data-lucide="user" class="mas-sheet-icon"></i>
+        <span class="mas-sheet-label">Mi perfil</span>
+      </a>
+      <div class="mas-sheet-item" onclick="closeMasSheet();toggleTheme()">
+        <i data-lucide="${isLight ? 'moon' : 'sun'}" class="mas-sheet-icon"></i>
+        <span class="mas-sheet-label">Modo ${isLight ? 'oscuro' : 'claro'}</span>
+      </div>
+      <div class="mas-sheet-item" onclick="window.location.href='/logout'" style="grid-column:1/-1">
+        <i data-lucide="log-out" class="mas-sheet-icon"></i>
+        <span class="mas-sheet-label">Cerrar sesión</span>
+      </div>
+    `;
+    grid.innerHTML = panelItems + settingsItems;
     if (window.lucide) lucide.createIcons({nodes: [grid]});
   }
   document.getElementById('mas-sheet-backdrop').classList.add('open');
