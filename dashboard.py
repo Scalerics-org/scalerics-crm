@@ -869,6 +869,27 @@ body.light .btn-icon{stroke:currentColor}
 .tasks-empty{text-align:center;color:#334155;padding:40px;font-size:.88rem}
 /* Add-task modal */
 #add-task-modal .modal{width:440px}
+/* Custom user picker */
+.upick-wrap{position:relative}
+.upick-trigger{display:flex;align-items:center;gap:8px;background:#0a0f1a;border:1px solid #334155;border-radius:8px;padding:8px 12px;cursor:pointer;transition:border-color .15s;user-select:none}
+.upick-trigger:hover{border-color:#0088cc55}
+.upick-trigger.open{border-color:#0088cc}
+.upick-label{flex:1;font-size:.82rem;color:#e2e8f0}
+.upick-chevron{color:#475569;font-size:.7rem;transition:transform .15s}
+.upick-trigger.open .upick-chevron{transform:rotate(180deg)}
+.upick-dropdown{position:absolute;top:calc(100% + 6px);left:0;right:0;background:#111827;border:1px solid #334155;border-radius:10px;overflow:hidden;z-index:200;box-shadow:0 8px 24px rgba(0,0,0,.4)}
+.upick-option{display:flex;align-items:center;gap:10px;padding:9px 12px;cursor:pointer;transition:background .12s}
+.upick-option:hover{background:#1a2234}
+.upick-option.upick-sel{background:#0c1a2e}
+.upick-av{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.65rem;font-weight:800;flex-shrink:0;color:#fff}
+.upick-name{font-size:.82rem;color:#e2e8f0;font-weight:500;flex:1}
+.upick-check{color:#0088cc;font-size:.8rem;font-weight:700}
+body.light .upick-trigger{background:#fff;border-color:#e2e8f0}
+body.light .upick-dropdown{background:#fff;border-color:#e2e8f0;box-shadow:0 8px 24px rgba(0,0,0,.12)}
+body.light .upick-option:hover{background:#f8fafc}
+body.light .upick-option.upick-sel{background:#eff6ff}
+body.light .upick-label{color:#0f172a}
+body.light .upick-name{color:#0f172a}
 </style>
 </head>
 <body>
@@ -2847,6 +2868,99 @@ async function submitAddTask() {
     _taskSubmitting = false;
   }
 }
+
+// ── Custom user picker ────────────────────────────────────────────────────────
+
+const _upickColors = ['#0369a1','#7e22ce','#065f46','#9a3412','#be185d','#0f766e','#1d4ed8','#a16207'];
+function _upickColor(id) { return _upickColors[Number(id||0) % _upickColors.length]; }
+function _upickInitials(name) { return (name||'').split(' ').slice(0,2).map(w=>w[0]||'').join('').toUpperCase()||'?'; }
+
+function _upickToggle(id) {
+  const trigger = document.getElementById('upick-'+id+'-trigger');
+  const dd = document.getElementById('upick-'+id+'-dropdown');
+  if (!dd) return;
+  const isOpen = dd.style.display !== 'none';
+  // close all pickers
+  ['filter','modal'].forEach(k => {
+    const d = document.getElementById('upick-'+k+'-dropdown');
+    const t = document.getElementById('upick-'+k+'-trigger');
+    if (d) d.style.display = 'none';
+    if (t) t.classList.remove('open');
+  });
+  if (!isOpen) {
+    _upickRenderDropdown(id);
+    dd.style.display = '';
+    if (trigger) trigger.classList.add('open');
+  }
+}
+
+function _upickRenderDropdown(id) {
+  const dd = document.getElementById('upick-'+id+'-dropdown');
+  if (!dd) return;
+  const selectedId = id === 'filter' ? _taskUserFilter
+    : (document.getElementById('task-assignee-id')||{}).value || '';
+  const isFilter = id === 'filter';
+  const noneLabel = isFilter ? 'Todos los usuarios' : '— Sin asignar —';
+  const noneAv = isFilter ? '👤' : '—';
+  const noneAvStyle = isFilter
+    ? 'background:#1e293b;color:#475569;font-size:.8rem'
+    : 'background:#1e293b;color:#475569;font-size:.9rem';
+  const noneSel = !selectedId;
+  let html = `<div class="upick-option ${noneSel?'upick-sel':''}" onclick="_upickSelect('${id}','','','','${noneLabel}')">
+    <div class="upick-av" style="${noneAvStyle}">${noneAv}</div>
+    <span class="upick-name" style="color:#64748b">${noneLabel}</span>
+    ${noneSel?'<span class="upick-check">✓</span>':''}
+  </div>`;
+  html += _allUsers.map(u => {
+    const sel = String(u.id) === String(selectedId);
+    return `<div class="upick-option ${sel?'upick-sel':''}" onclick="_upickSelect('${id}',${u.id},'${esc(u.name||'')}','${esc(u.email||'')}','${esc(u.name||'')}')">
+      <div class="upick-av" style="background:${_upickColor(u.id)}">${_upickInitials(u.name)}</div>
+      <span class="upick-name">${esc(u.name)}</span>
+      ${sel?'<span class="upick-check">✓</span>':''}
+    </div>`;
+  }).join('');
+  dd.innerHTML = html;
+}
+
+function _upickSelect(id, userId, userName, userEmail, label) {
+  const trigger = document.getElementById('upick-'+id+'-trigger');
+  const av = document.getElementById('upick-'+id+'-av');
+  const lbl = document.getElementById('upick-'+id+'-label');
+  if (userId) {
+    if (av) { av.style.cssText = `background:${_upickColor(userId)};font-size:.65rem`; av.textContent = _upickInitials(userName); }
+    if (lbl) lbl.textContent = userName;
+  } else {
+    const isFilter = id === 'filter';
+    if (av) { av.style.cssText = 'background:#1e293b;color:#475569'; av.style.fontSize = isFilter ? '.8rem' : '.9rem'; av.textContent = isFilter ? '👤' : '—'; }
+    if (lbl) lbl.textContent = label;
+  }
+  const dd = document.getElementById('upick-'+id+'-dropdown');
+  if (dd) dd.style.display = 'none';
+  if (trigger) trigger.classList.remove('open');
+  if (id === 'modal') {
+    const aid = document.getElementById('task-assignee-id');
+    const aem = document.getElementById('task-assignee-email');
+    if (aid) aid.value = userId || '';
+    if (aem) aem.value = userEmail || '';
+  }
+  if (id === 'filter') {
+    _taskUserFilter = String(userId);
+    _updateFilterCounts();
+    renderTasksList();
+  }
+}
+
+// close picker on outside click
+document.addEventListener('click', e => {
+  if (!e.target.closest('.upick-wrap')) {
+    ['filter','modal'].forEach(k => {
+      const d = document.getElementById('upick-'+k+'-dropdown');
+      const t = document.getElementById('upick-'+k+'-trigger');
+      if (d) d.style.display = 'none';
+      if (t) t.classList.remove('open');
+    });
+  }
+}, true);
 
 // ── Client panel: Tasks tab ───────────────────────────────────────────────────
 
