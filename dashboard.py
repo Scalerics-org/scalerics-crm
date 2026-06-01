@@ -1114,12 +1114,29 @@ body.light .upick-name{color:#0f172a}
       <div><h1>Tareas</h1><div class="page-date">Tareas y seguimientos del equipo</div></div>
       <button class="run-btn" style="width:auto;padding:8px 16px" onclick="openAddTaskModal()">+ Nueva tarea</button>
     </div>
-    <div class="tasks-filters">
-      <button class="filter-btn active" data-tfilter="all" onclick="filterTasks('all',this)">Todas</button>
-      <button class="filter-btn" data-tfilter="todo" onclick="filterTasks('todo',this)">Pendientes</button>
-      <button class="filter-btn" data-tfilter="in_progress" onclick="filterTasks('in_progress',this)">En progreso</button>
-      <button class="filter-btn" data-tfilter="done" onclick="filterTasks('done',this)">Hechas</button>
+    <div class="filter-bar">
+      <div class="filter-row-1">
+        <input type="text" id="task-search" class="search-input" placeholder="🔍 Buscar tarea..." oninput="_onTaskSearch(this.value)">
+        <div class="upick-wrap">
+          <div class="upick-trigger" id="upick-filter-trigger" onclick="_upickToggle('filter')">
+            <div class="upick-av" id="upick-filter-av" style="background:#1e293b;color:#475569;font-size:.8rem">👤</div>
+            <span class="upick-label" id="upick-filter-label">Todos los usuarios</span>
+            <span class="upick-chevron">▾</span>
+          </div>
+          <div class="upick-dropdown" id="upick-filter-dropdown" style="display:none"></div>
+        </div>
+      </div>
+      <div class="filter-row-2">
+        <button class="pill active" id="pill-all" onclick="filterTasks('all',this)">Todas <span class="pill-count" id="pill-count-all">0</span></button>
+        <button class="pill" id="pill-todo" onclick="filterTasks('todo',this)">Pendientes <span class="pill-count" id="pill-count-todo">0</span></button>
+        <button class="pill" id="pill-inprogress" onclick="filterTasks('in_progress',this)">En progreso <span class="pill-count" id="pill-count-inprogress">0</span></button>
+        <button class="pill" id="pill-done" onclick="filterTasks('done',this)">Hechas <span class="pill-count" id="pill-count-done">0</span></button>
+        <div style="width:1px;height:20px;background:#1e293b;margin:0 2px;flex-shrink:0"></div>
+        <button class="pill warn" id="pill-high" onclick="filterTasksQuick('high',this)">⚠ Alta prioridad <span class="pill-count" id="pill-count-high">0</span></button>
+        <button class="pill orange" id="pill-overdue" onclick="filterTasksQuick('overdue',this)">🕐 Vencidas <span class="pill-count" id="pill-count-overdue">0</span></button>
+      </div>
     </div>
+    <div id="tasks-summary" class="tasks-summary"></div>
 
     <div id="tasks-list"></div>
   </div>
