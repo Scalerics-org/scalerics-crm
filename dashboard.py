@@ -1561,8 +1561,10 @@ function showPanel(name) {
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById(name + '-panel').classList.add('active');
-  document.getElementById('nav-' + name).classList.add('active');
+  const sideNav = document.getElementById('nav-' + name);
+  if (sideNav) sideNav.classList.add('active');
   activePanel = name;
+  _syncMobileNav(name);
   closeSidebar();
   if (name === 'cola') loadCola();
   if (name === 'seguimientos') loadSeguimientos();
@@ -3384,6 +3386,69 @@ async function _kanbanDrop(e, newStatus) {
 // Initial load
 loadCola();
 
+// ── Mobile navigation ─────────────────────────────────────────────────────────
+const NAV_PRIORITY = ['cola','seguimientos','meta','cal','tasks','pipeline','clientes','wa','metrics','activity'];
+const NAV_ICONS = {
+  cola:'inbox',seguimientos:'bookmark',meta:'instagram',cal:'calendar',
+  tasks:'check-square',pipeline:'trending-up',clientes:'users',
+  wa:'message-circle',metrics:'bar-chart-2',activity:'clock'
+};
+const NAV_LABELS = {
+  cola:'Cola',seguimientos:'Seguim.',meta:'Meta',cal:'Agenda',
+  tasks:'Tareas',pipeline:'Pipeline',clientes:'Clientes',
+  wa:'WA',metrics:'Métricas',activity:'Actividad'
+};
+let _mobileNavOverflow = [];
+
+function _buildMobileNav(allowedPanels) {
+  const nav = document.getElementById('mobile-bottom-nav');
+  if (!nav) return;
+  const ordered = NAV_PRIORITY.filter(p => allowedPanels.includes(p));
+  const visible = ordered.slice(0, 5);
+  _mobileNavOverflow = ordered.slice(5);
+  nav.innerHTML = visible.map(p => `
+    <div class="mbn-item" id="mbn-${p}" onclick="showPanel('${p}')">
+      <i data-lucide="${NAV_ICONS[p]}" class="mbn-icon"></i>
+      <span class="mbn-label">${NAV_LABELS[p]}</span>
+    </div>
+  `).join('') + (_mobileNavOverflow.length ? `
+    <div class="mbn-item" id="mbn-mas" onclick="openMasSheet()">
+      <i data-lucide="more-horizontal" class="mbn-icon"></i>
+      <span class="mbn-label">Más</span>
+    </div>
+  ` : '');
+  if (window.lucide) lucide.createIcons({nodes: [nav]});
+}
+
+function _syncMobileNav(panelName) {
+  document.querySelectorAll('.mbn-item').forEach(i => i.classList.remove('active'));
+  const item = document.getElementById('mbn-' + panelName);
+  if (item) item.classList.add('active');
+  else { const mas = document.getElementById('mbn-mas'); if (mas) mas.classList.add('active'); }
+  const fab = document.getElementById('mobile-fab-task');
+  if (fab) fab.style.display = (panelName === 'tasks' && window.innerWidth <= 768) ? 'flex' : 'none';
+}
+
+function openMasSheet() {
+  const grid = document.getElementById('mas-sheet-grid');
+  if (grid) {
+    grid.innerHTML = _mobileNavOverflow.map(p => `
+      <div class="mas-sheet-item" onclick="closeMasSheet();showPanel('${p}')">
+        <i data-lucide="${NAV_ICONS[p]}" class="mas-sheet-icon"></i>
+        <span class="mas-sheet-label">${NAV_LABELS[p]}</span>
+      </div>
+    `).join('');
+    if (window.lucide) lucide.createIcons({nodes: [grid]});
+  }
+  document.getElementById('mas-sheet-backdrop').classList.add('open');
+  document.getElementById('mas-sheet').classList.add('open');
+}
+
+function closeMasSheet() {
+  document.getElementById('mas-sheet-backdrop').classList.remove('open');
+  document.getElementById('mas-sheet').classList.remove('open');
+}
+
 // ── Panel access control ──────────────────────────────────────────────────────
 const ALL_PANELS = ['cola','seguimientos','meta','pipeline','clientes','tasks','wa','cal','metrics','activity'];
 (async () => {
@@ -3397,6 +3462,7 @@ const ALL_PANELS = ['cola','seguimientos','meta','pipeline','clientes','tasks','
       if (a) a.style.display = 'block';
     }
     const access = m.panel_access ? JSON.parse(m.panel_access) : null;
+    const allowedPanels = (access && !m.is_admin) ? access : ALL_PANELS;
     if (access && !m.is_admin) {
       ALL_PANELS.forEach(p => {
         if (!access.includes(p)) {
@@ -3404,12 +3470,13 @@ const ALL_PANELS = ['cola','seguimientos','meta','pipeline','clientes','tasks','
           if (nav) nav.style.display = 'none';
         }
       });
-      // If current panel not allowed, redirect to first allowed
       if (!access.includes(activePanel)) {
         const first = access[0];
         if (first) showPanel(first);
       }
     }
+    _buildMobileNav(allowedPanels);
+    _syncMobileNav(activePanel);
   } catch(e) {}
 })();
 
