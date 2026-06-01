@@ -3051,7 +3051,8 @@ async function submitAddTask() {
   const assigneeId = document.getElementById('task-assignee-id').value;
   if (assigneeId) {
     body.assignee_id = parseInt(assigneeId);
-    body.assignee_name = document.getElementById('task-assignee-input').options[document.getElementById('task-assignee-input').selectedIndex].text;
+    const assigneeUser = _allUsers.find(u => String(u.id) === String(assigneeId));
+    body.assignee_name = assigneeUser ? assigneeUser.name : '';
     body.assignee_email = document.getElementById('task-assignee-email').value;
     body.assignee = body.assignee_name;
   }
