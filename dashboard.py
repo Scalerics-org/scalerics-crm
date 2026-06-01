@@ -2744,7 +2744,22 @@ async function loadTasks() {
     _allTasks = Array.isArray(tr) ? tr : [];
     _allLeads = Array.isArray(lr) ? lr : [];
   } catch { _allTasks = []; }
+  await _loadUsersForTask();
+  _populateUserFilter();
+  _updateFilterCounts();
   renderTasksList();
+}
+
+function _populateUserFilter() {
+  if (_taskUserFilter) {
+    const u = _allUsers.find(u => String(u.id) === String(_taskUserFilter));
+    if (u) {
+      const av = document.getElementById('upick-filter-av');
+      const lbl = document.getElementById('upick-filter-label');
+      if (av) { av.style.cssText = `background:${_upickColor(u.id)};font-size:.65rem`; av.textContent = _upickInitials(u.name); }
+      if (lbl) lbl.textContent = u.name;
+    }
+  }
 }
 
 function filterTasks(status, btn) {
