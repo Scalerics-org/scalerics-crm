@@ -270,6 +270,35 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
   .cal-grid-header{font-size:.55rem;padding:6px 2px}
   .cal-cell{min-height:60px;padding:4px}
   .cal-event-chip{font-size:.55rem}
+  /* ── Lead cards ── */
+  .table-wrap{background:transparent!important;border:none!important;border-radius:0!important;overflow:visible!important}
+  .table-header{display:none!important}
+  .table-row,.table-row.no-cb{
+    display:flex!important;flex-direction:column!important;gap:6px;
+    padding:14px 16px!important;background:#111827!important;
+    border:1px solid #1e293b!important;border-radius:14px!important;
+    margin-bottom:10px;grid-template-columns:none!important;
+    align-items:stretch!important;
+  }
+  .table-row:last-child{border-bottom:1px solid #1e293b!important}
+  .table-row:hover{background:#141d2e!important}
+  /* no-cb: col1=nombre, col2=fuente, col3=estado, col4+=ocultar, last=acciones */
+  .table-row.no-cb>div:nth-child(1){order:1}
+  .table-row.no-cb>div:nth-child(2){order:3;font-size:.72rem!important;color:#64748b!important}
+  .table-row.no-cb>div:nth-child(3){order:2;display:flex!important;align-items:center;gap:8px;flex-wrap:wrap}
+  .table-row.no-cb>div:nth-child(4){display:none!important}
+  .table-row.no-cb>div:last-child:not(:nth-child(1)):not(:nth-child(2)):not(:nth-child(3)){order:10;display:flex!important;gap:8px;flex-wrap:wrap;margin-top:4px}
+  .table-row.no-cb>div:last-child button,.table-row.no-cb>div:last-child a{min-height:40px!important;flex:1}
+  /* con checkbox: col1=checkbox(ocultar), col2=nombre, col3=fuente(ocultar), col4=estado, last=acciones */
+  .table-row:not(.no-cb)>div:nth-child(1){display:none!important}
+  .table-row:not(.no-cb)>div:nth-child(2){order:1}
+  .table-row:not(.no-cb)>div:nth-child(3){display:none!important}
+  .table-row:not(.no-cb)>div:nth-child(4){order:2;display:flex!important;align-items:center;gap:8px;flex-wrap:wrap}
+  .table-row:not(.no-cb)>div:last-child{order:10;display:flex!important;gap:8px;flex-wrap:wrap;margin-top:4px}
+  .table-row:not(.no-cb)>div:last-child button{min-height:40px!important;flex:1}
+  /* Meta panel: 7 cols — ocultar 5 y 6 que son metadata extra */
+  #meta-panel .table-row.no-cb>div:nth-child(5),
+  #meta-panel .table-row.no-cb>div:nth-child(6){display:none!important}
   .modal{width:95vw!important;max-width:95vw!important}
   .modal-row{grid-template-columns:1fr}
   .pipeline-input-row{flex-direction:column}
