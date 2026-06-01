@@ -2892,9 +2892,28 @@ async function _toggleTask(id, wasDone) {
   renderTasksList();
 }
 
+async function _setTaskStatus(id) {
+  const t = _allTasks.find(t => t.id === id);
+  if (!t) return;
+  const cycle = {todo: 'in_progress', in_progress: 'done', done: 'todo'};
+  const newStatus = cycle[t.status] || 'in_progress';
+  await fetch('/api/tasks/' + id, {
+    method: 'PUT', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({status: newStatus})
+  });
+  t.status = newStatus;
+  _updateFilterCounts();
+  renderTasksList();
+  if (_cpClientId) {
+    const ct = (_cpData.tasks||[]).find(ct => ct.id === id);
+    if (ct) { ct.status = newStatus; _cpSwitchTab('ctasks'); }
+  }
+}
+
 async function _deleteTask(id) {
   await fetch('/api/tasks/' + id, {method:'DELETE'});
   _allTasks = _allTasks.filter(t => t.id !== id);
+  _updateFilterCounts();
   renderTasksList();
   if (_cpClientId) { _cpData.tasks = (_cpData.tasks||[]).filter(t => t.id !== id); _cpSwitchTab('ctasks'); }
 }
