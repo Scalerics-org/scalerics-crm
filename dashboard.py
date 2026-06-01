@@ -2889,6 +2889,7 @@ async function _toggleTask(id, wasDone) {
   });
   const t = _allTasks.find(t => t.id === id);
   if (t) t.status = newStatus;
+  _updateFilterCounts();
   renderTasksList();
 }
 
@@ -3061,7 +3062,7 @@ async function submitAddTask() {
   if (goalType && goalVal > 0) {
     body.goal_type = goalType;
     body.goal = goalVal;
-    body.progress = 0;
+    if (!_editingTaskId) body.progress = 0;
   }
   try {
     if (_editingTaskId) {
@@ -3071,7 +3072,11 @@ async function submitAddTask() {
       document.getElementById('add-task-modal').classList.remove('open');
       _updateFilterCounts();
       renderTasksList();
-      if (_cpClientId) _cpSwitchTab('ctasks');
+      if (_cpClientId) {
+        const cpIdx = (_cpData.tasks||[]).findIndex(t => t.id === _editingTaskId);
+        if (cpIdx !== -1) _cpData.tasks[cpIdx] = {..._cpData.tasks[cpIdx], ...body};
+        _cpSwitchTab('ctasks');
+      }
     } else {
       const r = await fetch('/api/tasks', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
       const d = await r.json();
