@@ -710,7 +710,8 @@ body.light .export-btn{background:#f1f5f9;border-color:#e2e8f0;color:#475569}
 body.light .modal-overlay .modal{background:#fff;border-color:#e2e8f0;color:#0f172a}
 body.light .modal h3,.modal-title{color:#0f172a}
 body.light .modal label{color:#64748b}
-body.light .modal input,.modal textarea,.modal select{background:#f8fafc;border-color:#e2e8f0;color:#0f172a}
+body.light .modal input,body.light .modal textarea,body.light .modal select,body.light .modal-input{background:#f8fafc;border-color:#e2e8f0;color:#0f172a}
+body.light .modal input[type=datetime-local]::-webkit-calendar-picker-indicator{filter:none;opacity:.6}
 body.light .outcome-btn{background:#f8fafc;border-color:#e2e8f0;color:#0f172a}
 body.light .outcome-btn:hover{background:#f1f5f9}
 body.light .client-panel{background:#fff;border-left-color:#e2e8f0}
