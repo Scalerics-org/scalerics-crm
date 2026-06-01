@@ -1123,7 +1123,6 @@ body.light .upick-name{color:#0f172a}
         <div class="page-date">Leads que pidieron que los llamen después</div>
       </div>
     </div>
-    <div id="sdr-stats-bar" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px"></div>
     <div class="table-wrap">
       <div class="table-header no-cb">
         <span>Negocio</span><span>Teléfono</span><span>Callback</span><span>Notas</span><span>Acciones</span>
@@ -1927,14 +1926,11 @@ async function loadSeguimientos() {
   const body = document.getElementById('seguimientos-body');
   body.innerHTML = '<div style="color:#475569;padding:16px;font-size:.85rem">Cargando...</div>';
   try {
-    const [r1, r2, r3] = await Promise.all([
+    const [r1, r2] = await Promise.all([
       fetch('/api/leads?crm_status=llamar_despues'),
       fetch('/api/leads?crm_status=interesado'),
-      fetch('/api/sdr-activity'),
     ]);
-    const [d1, d2, sdrData] = await Promise.all([r1.json(), r2.json(), r3.json()]);
-    _sdrLastActor = sdrData.last_actor || {};
-    _renderSdrStats(sdrData.today || []);
+    const [d1, d2] = await Promise.all([r1.json(), r2.json()]);
     const leads = [
       ...(Array.isArray(d1) ? d1 : (d1.items || [])),
       ...(Array.isArray(d2) ? d2 : (d2.items || [])),
@@ -1959,21 +1955,11 @@ async function loadSeguimientos() {
         if (cdDate < today) { urgencyClass = 'cb-overdue'; pillClass = 'cb-date-overdue'; pillLabel = '⚠ ' + pillLabel; }
         else if (cdDate === today) { urgencyClass = 'cb-today'; pillClass = 'cb-date-today'; pillLabel = '📅 Hoy ' + cd.split('T')[1]?.replace(/:\d{2}$/,''); }
       }
-      const actor = _sdrLastActor[b.id];
-      const actorHtml = actor
-        ? `<div style="font-size:.68rem;color:#475569;margin-top:2px;display:flex;align-items:center;gap:4px">
-            <span style="display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;background:${_sdrNameColor(actor.user)};color:#fff;font-size:.45rem;font-weight:800;flex-shrink:0">${(actor.user||'').charAt(0).toUpperCase()}</span>
-            <span>${esc(actor.user.split(' ')[0])}</span>
-            <span style="color:#334155">·</span>
-            <span>${timeAgo(actor.at)}</span>
-           </div>`
-        : '<div style="font-size:.68rem;color:#334155;margin-top:2px">Sin actividad</div>';
       return `
       <div class="table-row no-cb row-llamar_despues ${urgencyClass}">
         <div>
           <div class="biz-name"><span style="cursor:pointer;text-decoration:underline;text-decoration-color:#334155" onclick="openClientPanel(${b.id})">${esc(b.name||'')}</span></div>
           <div class="biz-sub">${esc(b.category||'')}${b.city ? ' · '+esc(b.city) : ''}</div>
-          ${actorHtml}
         </div>
         <div style="display:flex;align-items:center;gap:6px">${b.phone ? (hasWhatsApp(b.phone) ? `<a class="phone-val" href="https://wa.me/${waNum(b.phone)}${b.pitch_text ? '?text='+encodeURIComponent(b.pitch_text) : ''}" target="_blank" title="Abrir WhatsApp">${esc(b.phone)}</a>` : `<span class="phone-plain">${esc(b.phone)}</span>`) : '<span class="no-val">—</span>'}</div>
         <div><span class="cb-date-pill ${pillClass}">${pillLabel}</span></div>
