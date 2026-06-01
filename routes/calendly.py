@@ -2,6 +2,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 
 from flask import Blueprint, request, jsonify
 
@@ -67,12 +68,24 @@ def calendly_webhook():
 
         name      = invitee.get("name", "")
         email     = invitee.get("email", "")
+
+        # Extract phone using keyword matching, then fallback to regex
+        PHONE_KEYWORDS = ["whatsapp", "teléfono", "telefono", "celular", "phone",
+                          "número", "numero", "mobile", "cel"]
         phone_raw = ""
-        for q in invitee.get("questions_and_answers", []):
-            ans = q.get("answer", "")
-            if any(c.isdigit() for c in ans) and len(ans) <= 20:
-                phone_raw = ans
+        qas = invitee.get("questions_and_answers", [])
+        # First pass: match by keyword
+        for q in qas:
+            if any(kw in q.get("question", "").lower() for kw in PHONE_KEYWORDS):
+                phone_raw = q.get("answer", "")
                 break
+        # Fallback: first answer that looks like a phone number
+        if not phone_raw:
+            for q in qas:
+                ans = (q.get("answer") or "").strip()
+                if re.match(r"^\+?[\d\s\-\(\)]{7,20}$", ans):
+                    phone_raw = ans
+                    break
 
         start_at  = event.get("start_time", "")
         end_at    = event.get("end_time", "")
@@ -88,7 +101,7 @@ def calendly_webhook():
             try:
                 cur = conn.execute(
                     "INSERT INTO businesses (name, email, phone, crm_status, source) VALUES (?,?,?,?,?)",
-                    (name or email, email, _normalize_phone(phone_raw), "reunion_agendada", "calendly")
+                    (name or email, email, _normalize_phone(phone_raw), "reunion_agendada", "calendly_unmatched")
                 )
                 conn.commit()
                 client_id = cur.lastrowid
