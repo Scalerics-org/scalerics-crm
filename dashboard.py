@@ -1864,7 +1864,7 @@ function renderCola() {
   body.innerHTML = leads.map(b => `
     <div class="table-row no-cb row-${b.crm_status||'sin_contactar'}">
       <div>
-        <div class="biz-name"><span style="cursor:pointer;text-decoration:underline;text-decoration-color:#334155" onclick="openClientPanel(${b.id})">${esc(b.name||'')}</span>${b.score != null ? `<span class="score-badge ${b.score>=60?'score-hot':b.score>=30?'score-mid':'score-low'}">⚡${b.score}</span>` : ''}</div>
+        <div class="biz-name"><span style="cursor:pointer;text-decoration:underline;text-decoration-color:#334155" onclick="openClientPanel(${b.id})">${esc(b.name||'')}</span>${_scoreBadge(b)}${_socialIcons(b)}</div>
         <div class="biz-sub">${esc(b.category||'')}${b.city ? ' · '+esc(b.city) : ''}</div>
       </div>
       <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">${b.phone ? (hasWhatsApp(b.phone) ? `<a class="phone-val" href="https://wa.me/${waNum(b.phone)}${b.pitch_text ? '?text='+encodeURIComponent(b.pitch_text) : ''}" target="_blank" title="Abrir WhatsApp">${esc(b.phone)}</a>` : `<span class="phone-plain">${esc(b.phone)}</span>`) : '<span class="no-val">—</span>'}${b.no_contesto_count ? `<span class="no-answer-badge" title="${b.no_contesto_count} veces sin contestar">✗ ${b.no_contesto_count}</span>` : ''}${b.no_interesa_count ? `<span class="no-interest-badge" title="Dijo que no le interesa ${b.no_interesa_count} vez/veces">✕ NI</span>` : ''}</div>
@@ -2090,7 +2090,7 @@ async function loadLeads() {
     <div class="table-row row-${crm}">
       <div class="cb-col"><input type="checkbox" class="cb row-cb" data-id="${b.id}" onchange="toggleSelect(${b.id},this.checked)"></div>
       <div>
-        <div class="biz-name"><span style="cursor:pointer;text-decoration:underline;text-decoration-color:#334155" onclick="openClientPanel(${b.id})">${esc(b.name||'')}</span>${b.score != null ? `<span class="score-badge ${b.score>=60?'score-hot':b.score>=30?'score-mid':'score-low'}">⚡${b.score}</span>` : ''}</div>
+        <div class="biz-name"><span style="cursor:pointer;text-decoration:underline;text-decoration-color:#334155" onclick="openClientPanel(${b.id})">${esc(b.name||'')}</span>${_scoreBadge(b)}${_socialIcons(b)}</div>
         <div class="biz-sub">${esc(b.category||'')}${b.city ? ' · '+esc(b.city) : ''}${b.last_event_at ? ' · <span style="color:#60a5fa">'+timeAgo(b.last_event_at)+'</span>' : ''}</div>
       </div>
       <div style="display:flex;align-items:center;gap:6px">${b.phone ? (hasWhatsApp(b.phone) ? `<a class="phone-val" href="https://wa.me/${waNum(b.phone)}${b.pitch_text ? '?text='+encodeURIComponent(b.pitch_text) : ''}" target="_blank" title="Abrir WhatsApp">${esc(b.phone)}</a>` : `<span class="phone-plain">${esc(b.phone)}</span>`) : '<span class="no-val">—</span>'}${b.phone ? `<a class="call-btn" href="tel:${esc(b.phone)}" title="Llamar">📞</a>` : ''}${b.pitch_text ? `<button class="copy-pitch-btn" onclick="copyPitch(${b.id},event)" title="Copiar pitch">📋</button>` : ''}</div>
@@ -3462,6 +3462,60 @@ async function _kanbanDrop(e, newStatus) {
 // Initial load
 loadCola();
 
+// ── Score badge + social icons ────────────────────────────────────────────────
+
+function _scoreBadge(b) {
+  if (b.score == null) return '';
+  const cls = b.score >= 60 ? 'score-hot' : b.score >= 30 ? 'score-mid' : 'score-low';
+  return `<span class="score-badge ${cls}" style="cursor:pointer"
+    data-ig="${b.instagram_url?1:0}" data-fb="${b.facebook_url?1:0}"
+    data-rating="${b.rating||0}" data-reviews="${b.review_count||0}"
+    data-hours="${b.hours?1:0}" data-address="${b.address?1:0}"
+    onclick="_showScoreBreakdown(event,this)">⚡${b.score}</span>`;
+}
+
+function _socialIcons(b) {
+  let s = '';
+  if (b.instagram_url) s += `<a href="${esc(b.instagram_url)}" target="_blank" title="Instagram" style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:4px;background:linear-gradient(135deg,#f09433,#dc2743,#bc1888);color:#fff;font-size:.52rem;font-weight:800;text-decoration:none;flex-shrink:0;line-height:1" onclick="event.stopPropagation()">IG</a>`;
+  if (b.facebook_url) s += `<a href="${esc(b.facebook_url)}" target="_blank" title="Facebook" style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:4px;background:#1877f2;color:#fff;font-size:.52rem;font-weight:800;text-decoration:none;flex-shrink:0;line-height:1" onclick="event.stopPropagation()">FB</a>`;
+  return s ? `<span style="display:inline-flex;gap:3px;align-items:center;margin-left:2px">${s}</span>` : '';
+}
+
+function _showScoreBreakdown(event, el) {
+  event.stopPropagation();
+  const existing = document.getElementById('score-tooltip');
+  if (existing) { const same = existing._src === el; existing.remove(); if (same) return; }
+  const d = el.dataset;
+  const rating = parseFloat(d.rating || 0);
+  const reviews = parseInt(d.reviews || 0);
+  const rows = [
+    {ok: d.ig==='1',    label: 'Instagram',                                   pts: 35},
+    {ok: d.fb==='1',    label: 'Facebook',                                    pts: 15},
+    {ok: rating>=4.0,   label: `Rating ${rating||'—'}`,                       pts: rating>=4.0?20:rating>=3.5?10:0, note: rating>=3.5&&rating<4.0?'+10':null},
+    {ok: rating>=3.5&&rating<4.0, label: `Rating ${rating}`, pts:10, _skip: rating>=4.0||!rating},
+    {ok: reviews>=20,   label: `${reviews||'0'} reseñas`,                    pts: reviews>=20?15:reviews>=5?8:0, note: reviews>=5&&reviews<20?'+8':null},
+    {ok: reviews>=5&&reviews<20, label: `${reviews} reseñas`, pts:8, _skip: reviews>=20||!reviews},
+    {ok: d.hours==='1', label: 'Horario publicado',                            pts: 10},
+    {ok: d.address==='1',label:'Dirección',                                   pts: 5},
+  ].filter(r => !r._skip);
+  const tip = document.createElement('div');
+  tip.id = 'score-tooltip';
+  tip._src = el;
+  tip.style.cssText = 'position:fixed;background:#1e293b;border:1px solid #334155;border-radius:10px;padding:10px 14px;z-index:2000;min-width:190px;box-shadow:0 8px 28px rgba(0,0,0,.5);font-size:.72rem;font-family:Inter,sans-serif';
+  tip.innerHTML = `<div style="font-weight:700;color:#64748b;margin-bottom:8px;font-size:.62rem;text-transform:uppercase;letter-spacing:.06em">Desglose ⚡${el.textContent.replace('⚡','')}</div>`
+    + rows.map(r => `<div style="display:flex;justify-content:space-between;gap:12px;padding:3px 0;color:${r.ok?'#e2e8f0':'#334155'}">
+      <span>${r.ok?'✓':'—'} ${r.label}</span>
+      <span style="font-weight:700;color:${r.ok?(r.pts>=20?'#10b981':r.pts>=10?'#38bdf8':'#94a3b8'):'#334155'}">${r.pts?'+'+r.pts:'—'}</span>
+    </div>`).join('');
+  document.body.appendChild(tip);
+  const rect = el.getBoundingClientRect();
+  let top = rect.bottom + 6, left = rect.left;
+  if (left + 200 > window.innerWidth - 8) left = window.innerWidth - 208;
+  if (top + 220 > window.innerHeight) top = rect.top - 226;
+  tip.style.top = top + 'px'; tip.style.left = Math.max(8, left) + 'px';
+  setTimeout(() => document.addEventListener('click', function _c() { const t = document.getElementById('score-tooltip'); if(t)t.remove(); document.removeEventListener('click',_c); }), 10);
+}
+
 // ── Mobile navigation ─────────────────────────────────────────────────────────
 const NAV_PRIORITY = ['cola','seguimientos','meta','cal','tasks','pipeline','clientes','wa','metrics','activity'];
 const NAV_ICONS = {
@@ -3719,6 +3773,8 @@ function _cpRenderInfo() {
     ${l.address ? `<div class="cp-field"><span class="cp-field-label">Dirección</span><span class="cp-field-val">${l.address}</span></div>` : ''}
     ${l.maps_url ? `<div class="cp-field"><span class="cp-field-label">Google Maps</span><span class="cp-field-val"><a href="${l.maps_url}" target="_blank" style="color:#3b82f6">Ver en Maps →</a></span></div>` : ''}
     ${stars ? `<div class="cp-field"><span class="cp-field-label">Rating</span><span class="cp-field-val">${stars}</span></div>` : ''}
+    ${l.instagram_url ? `<div class="cp-field"><span class="cp-field-label">Instagram</span><span class="cp-field-val"><a href="${esc(l.instagram_url)}" target="_blank" style="display:inline-flex;align-items:center;gap:7px;color:#e2e8f0;text-decoration:none"><span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:linear-gradient(135deg,#f09433,#dc2743,#bc1888);color:#fff;font-size:.6rem;font-weight:800;flex-shrink:0">IG</span>Ver perfil →</a></span></div>` : ''}
+    ${l.facebook_url ? `<div class="cp-field"><span class="cp-field-label">Facebook</span><span class="cp-field-val"><a href="${esc(l.facebook_url)}" target="_blank" style="display:inline-flex;align-items:center;gap:7px;color:#e2e8f0;text-decoration:none"><span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:#1877f2;color:#fff;font-size:.6rem;font-weight:800;flex-shrink:0">FB</span>Ver perfil →</a></span></div>` : ''}
   </div>
   ${hasBotData ? `<div class="cp-section">
     <div class="cp-section-title">Datos del bot <span style="font-size:.7rem;color:#475569;font-weight:400">(calificación WA)</span></div>
