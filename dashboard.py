@@ -3908,7 +3908,7 @@ async function _mergeSearch(query) {
             <div style="font-size:.8rem;font-weight:600;color:#e2e8f0">${esc(l.name||'')}</div>
             <div style="font-size:.7rem;color:#475569">${esc(l.phone||'')} · ${esc(l.crm_status||'')}</div>
           </div>
-          <button onclick="_mergeLead(${l.id},'${(l.name||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')"
+          <button data-tid="${l.id}" data-tname="${esc(l.name||'')}" onclick="_mergeLead(+this.dataset.tid, this.dataset.tname)"
             style="background:#0088cc22;border:1px solid #0088cc55;color:#60a5fa;font-size:.72rem;font-weight:600;padding:4px 10px;border-radius:6px;cursor:pointer;font-family:inherit;flex-shrink:0">
             Fusionar →
           </button>
