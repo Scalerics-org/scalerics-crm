@@ -4578,22 +4578,19 @@ async function loadSdr() {
   const data = await fetch('/api/sdr-stats').then(r => r.json()).catch(() => null);
   if (!data) { wrap.innerHTML = '<div style="color:#ef4444;padding:20px">Error al cargar datos.</div>'; return; }
 
-  // Build days array (last 14 days)
   const days = [];
   const today = new Date(); today.setHours(0,0,0,0);
   for (let i = 13; i >= 0; i--) {
     const d = new Date(today); d.setDate(d.getDate() - i);
     days.push(d.toISOString().split('T')[0]);
   }
+  const todayStr = days[days.length - 1];
 
-  // Index data: {user -> {day -> {calls, leads}}}
   const byUser = {};
   for (const r of data.daily) {
     if (!byUser[r.user]) byUser[r.user] = {};
     byUser[r.user][r.day] = { calls: r.calls, leads: r.leads };
   }
-
-  // Outcome index: {user -> {outcome -> count}}
   const outMap = {};
   for (const o of data.outcomes) {
     if (!outMap[o.user]) outMap[o.user] = {};
@@ -4602,13 +4599,10 @@ async function loadSdr() {
 
   const users = Object.keys(byUser).sort();
   if (!users.length) {
-    wrap.innerHTML = '<div style="color:#475569;padding:20px">No hay llamadas registradas aún.</div>';
+    wrap.innerHTML = '<div style="color:#475569;padding:20px">No hay llamadas registradas aun.</div>';
     return;
   }
 
-  const todayStr = days[days.length - 1];
-
-  // Render summary cards
   const cards = users.map(u => {
     const todayData = byUser[u][todayStr] || { calls: 0, leads: 0 };
     const totalCalls = Object.values(byUser[u]).reduce((s, d) => s + d.calls, 0);
@@ -4619,44 +4613,30 @@ async function loadSdr() {
     const reunion = outs['reunion'] || 0;
     const interesado = outs['interesado'] || 0;
     const noContesto = outs['no_contestó'] || 0;
-    return `<div style="background:#111827;border:1px solid #1e293b;border-radius:16px;padding:20px 24px;display:flex;flex-direction:column;gap:14px;min-width:220px;flex:1">
-      <div style="display:flex;align-items:center;gap:12px">
-        <div style="width:42px;height:42px;border-radius:50%;background:${color};display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:800;color:#fff;flex-shrink:0">${initials}</div>
-        <div>
-          <div style="font-size:.95rem;font-weight:700;color:#f1f5f9">${esc(u)}</div>
-          <div style="font-size:.7rem;color:#64748b">${totalCalls} llamadas en 14 días</div>
-        </div>
-      </div>
-      <div style="display:flex;align-items:flex-end;gap:8px">
-        <div style="font-size:3rem;font-weight:800;color:${heat};line-height:1">${todayData.calls}</div>
-        <div style="font-size:.8rem;color:#64748b;padding-bottom:6px">llamadas hoy</div>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;border-top:1px solid #1e293b;padding-top:12px">
-        <div style="text-align:center">
-          <div style="font-size:1.1rem;font-weight:800;color:#10b981">${reunion}</div>
-          <div style="font-size:.62rem;color:#64748b">Reuniones</div>
-        </div>
-        <div style="text-align:center">
-          <div style="font-size:1.1rem;font-weight:800;color:#38bdf8">${interesado}</div>
-          <div style="font-size:.62rem;color:#64748b">Interesados</div>
-        </div>
-        <div style="text-align:center">
-          <div style="font-size:1.1rem;font-weight:800;color:#475569">${noContesto}</div>
-          <div style="font-size:.62rem;color:#64748b">No contestó</div>
-        </div>
-      </div>
-    </div>`;
+    return '<div style="background:#111827;border:1px solid #1e293b;border-radius:16px;padding:20px 24px;display:flex;flex-direction:column;gap:14px;min-width:220px;flex:1">'
+      + '<div style="display:flex;align-items:center;gap:12px">'
+      + '<div style="width:42px;height:42px;border-radius:50%;background:' + color + ';display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:800;color:#fff;flex-shrink:0">' + initials + '</div>'
+      + '<div><div style="font-size:.95rem;font-weight:700;color:#f1f5f9">' + esc(u) + '</div>'
+      + '<div style="font-size:.7rem;color:#64748b">' + totalCalls + ' llamadas en 14 dias</div></div></div>'
+      + '<div style="display:flex;align-items:flex-end;gap:8px">'
+      + '<div style="font-size:3rem;font-weight:800;color:' + heat + ';line-height:1">' + todayData.calls + '</div>'
+      + '<div style="font-size:.8rem;color:#64748b;padding-bottom:6px">llamadas hoy</div></div>'
+      + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;border-top:1px solid #1e293b;padding-top:12px">'
+      + '<div style="text-align:center"><div style="font-size:1.1rem;font-weight:800;color:#10b981">' + reunion + '</div><div style="font-size:.62rem;color:#64748b">Reuniones</div></div>'
+      + '<div style="text-align:center"><div style="font-size:1.1rem;font-weight:800;color:#38bdf8">' + interesado + '</div><div style="font-size:.62rem;color:#64748b">Interesados</div></div>'
+      + '<div style="text-align:center"><div style="font-size:1.1rem;font-weight:800;color:#475569">' + noContesto + '</div><div style="font-size:.62rem;color:#64748b">No contestó</div></div>'
+      + '</div></div>';
   }).join('');
 
-  // Render heatmap table (last 14 days)
-  const shortDay = d => { const dt = new Date(d+'T12:00:00'); return ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'][dt.getDay()]+' '+dt.getDate(); };
+  const shortDay = d => { const dt = new Date(d+'T12:00:00'); return ['Dom','Lun','Mar','Mie','Jue','Vie','Sab'][dt.getDay()]+' '+dt.getDate(); };
   const maxCalls = Math.max(1, ...Object.values(byUser).flatMap(u => Object.values(u).map(d => d.calls)));
 
-  const tableHead = '<tr><th style="text-align:left;padding:8px 12px;font-size:.72rem;color:#64748b;font-weight:600;white-space:nowrap">SDR</th>' +
-    days.map(d => {
-      const isToday = d === todayStr;
-      return `<th style="padding:6px 4px;font-size:.62rem;color:${isToday?'#38bdf8':'#64748b'};font-weight:${isToday?700:500};text-align:center;min-width:38px;white-space:nowrap${isToday?';border-bottom:2px solid #38bdf8':''}">${shortDay(d)}</th>`;
-    }).join('') + '<th style="padding:8px 12px;font-size:.72rem;color:#64748b;font-weight:600;text-align:center">Total</th></tr>';
+  const tableHead = '<tr><th style="text-align:left;padding:8px 12px;font-size:.72rem;color:#64748b;font-weight:600;white-space:nowrap">SDR</th>'
+    + days.map(d => {
+        const isToday = d === todayStr;
+        return '<th style="padding:6px 4px;font-size:.62rem;color:' + (isToday?'#38bdf8':'#64748b') + ';font-weight:' + (isToday?700:500) + ';text-align:center;min-width:38px;white-space:nowrap' + (isToday?';border-bottom:2px solid #38bdf8':'') + '">' + shortDay(d) + '</th>';
+      }).join('')
+    + '<th style="padding:8px 12px;font-size:.72rem;color:#64748b;font-weight:600;text-align:center">Total</th></tr>';
 
   const tableRows = users.map(u => {
     const color = _sdrNameColor(u);
@@ -4666,35 +4646,25 @@ async function loadSdr() {
       const v = (byUser[u][d] || {}).calls || 0;
       const isToday = d === todayStr;
       const intensity = v === 0 ? 0 : Math.min(1, v / (maxCalls * 0.7));
-      const bg = v === 0 ? (isToday ? '#0d1b2a' : 'transparent') :
-        \`rgba(0,136,204,\${0.15 + intensity * 0.75})\`;
+      const alpha = (0.15 + intensity * 0.75).toFixed(2);
+      const bg = v === 0 ? (isToday ? '#0d1b2a' : 'transparent') : 'rgba(0,136,204,' + alpha + ')';
+      const fw = v > 0 ? 700 : 400;
       const fc = v === 0 ? '#334155' : intensity > 0.5 ? '#fff' : '#93c5fd';
-      return \`<td style="text-align:center;padding:6px 4px">
-        <div style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:28px;border-radius:6px;background:\${bg};font-size:.78rem;font-weight:\${v>0?700:400};color:\${fc}\${isToday?';outline:1px solid #1e3a5f':''}">\${v||'·'}</div>
-      </td>\`;
+      const outline = isToday ? ';outline:1px solid #1e3a5f' : '';
+      return '<td style="text-align:center;padding:6px 4px"><div style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:28px;border-radius:6px;background:' + bg + ';font-size:.78rem;font-weight:' + fw + ';color:' + fc + outline + '">' + (v||'&middot;') + '</div></td>';
     }).join('');
-    return \`<tr>
-      <td style="padding:6px 12px;white-space:nowrap">
-        <div style="display:flex;align-items:center;gap:8px">
-          <div style="width:24px;height:24px;border-radius:50%;background:\${color};display:flex;align-items:center;justify-content:center;font-size:.55rem;font-weight:800;color:#fff;flex-shrink:0">\${initials}</div>
-          <span style="font-size:.82rem;font-weight:600;color:#e2e8f0">\${esc(u.split(' ')[0])}</span>
-        </div>
-      </td>
-      \${cells}
-      <td style="text-align:center;padding:6px 12px;font-size:.88rem;font-weight:800;color:#f1f5f9">\${total}</td>
-    </tr>\`;
+    return '<tr><td style="padding:6px 12px;white-space:nowrap"><div style="display:flex;align-items:center;gap:8px">'
+      + '<div style="width:24px;height:24px;border-radius:50%;background:' + color + ';display:flex;align-items:center;justify-content:center;font-size:.55rem;font-weight:800;color:#fff;flex-shrink:0">' + initials + '</div>'
+      + '<span style="font-size:.82rem;font-weight:600;color:#e2e8f0">' + esc(u.split(' ')[0]) + '</span>'
+      + '</div></td>' + cells
+      + '<td style="text-align:center;padding:6px 12px;font-size:.88rem;font-weight:800;color:#f1f5f9">' + total + '</td></tr>';
   }).join('');
 
-  wrap.innerHTML = \`
-    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:28px">\${cards}</div>
-    <div style="background:#111827;border:1px solid #1e293b;border-radius:16px;padding:20px;overflow-x:auto">
-      <div style="font-size:.78rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:16px">Llamadas por día (últimas 2 semanas)</div>
-      <table style="border-collapse:collapse;width:100%;min-width:600px">
-        <thead>\${tableHead}</thead>
-        <tbody>\${tableRows}</tbody>
-      </table>
-    </div>
-  \`;
+  wrap.innerHTML = '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:28px">' + cards + '</div>'
+    + '<div style="background:#111827;border:1px solid #1e293b;border-radius:16px;padding:20px;overflow-x:auto">'
+    + '<div style="font-size:.78rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:16px">Llamadas por dia (ultimas 2 semanas)</div>'
+    + '<table style="border-collapse:collapse;width:100%;min-width:600px"><thead>' + tableHead + '</thead><tbody>' + tableRows + '</tbody></table>'
+    + '</div>';
 }
 
 async function loadActivity() {
