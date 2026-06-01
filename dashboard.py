@@ -1283,15 +1283,20 @@ body.light .upick-name{color:#0f172a}
         </select>
       </div>
       <div>
-        <label class="modal-label">Vencimiento</label>
-        <input type="date" id="task-deadline-input" class="modal-input">
+        <label class="modal-label">Vencimiento y hora</label>
+        <input type="datetime-local" id="task-deadline-input" class="modal-input">
       </div>
     </div>
     <div style="margin-top:10px">
       <label class="modal-label">Asignar a</label>
-      <select id="task-assignee-input" class="modal-input" onchange="_onTaskAssigneeChange(this)">
-        <option value="">— Sin asignar —</option>
-      </select>
+      <div class="upick-wrap">
+        <div class="upick-trigger" id="upick-modal-trigger" onclick="_upickToggle('modal')">
+          <div class="upick-av" id="upick-modal-av" style="background:#1e293b;color:#475569;font-size:.9rem">—</div>
+          <span class="upick-label" id="upick-modal-label">— Sin asignar —</span>
+          <span class="upick-chevron">▾</span>
+        </div>
+        <div class="upick-dropdown" id="upick-modal-dropdown" style="display:none"></div>
+      </div>
       <input type="hidden" id="task-assignee-id">
       <input type="hidden" id="task-assignee-email">
     </div>
@@ -1318,9 +1323,18 @@ body.light .upick-name{color:#0f172a}
       <input type="hidden" id="task-client-id">
       <div id="task-client-chosen" style="font-size:.78rem;color:#0088cc;margin-top:4px"></div>
     </div>
+    <div style="margin-top:10px">
+      <label class="modal-label">Estado</label>
+      <select id="task-status-input" class="modal-input">
+        <option value="todo">● Pendiente</option>
+        <option value="in_progress">⚡ En progreso</option>
+        <option value="done">✓ Hecha</option>
+      </select>
+    </div>
+    <input type="hidden" id="task-edit-id">
     <div class="modal-btns" style="margin-top:16px">
       <button class="btn-cancel" onclick="document.getElementById('add-task-modal').classList.remove('open')">Cancelar</button>
-      <button class="btn-confirm" onclick="submitAddTask()">+ Crear tarea</button>
+      <button class="btn-confirm" id="task-submit-btn" onclick="submitAddTask()">+ Crear tarea</button>
     </div>
   </div>
 </div>
