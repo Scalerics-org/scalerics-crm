@@ -250,11 +250,11 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .panel{display:none}
 .panel.active{display:block}
 @media(max-width:768px){
-  .topbar{position:fixed;top:0;left:0;right:0;display:flex}
+  .topbar{display:none!important}
   .sidebar{transform:translateX(-220px)}
   .sidebar.open{transform:translateX(0)}
   .sidebar-backdrop.open{display:block}
-  .main{margin-left:0;padding:14px;padding-top:62px}
+  .main{margin-left:0;padding:14px 14px 90px}
   .page-header h1{font-size:1.1rem}
   .stats{grid-template-columns:1fr 1fr}
   .filters{gap:6px}
