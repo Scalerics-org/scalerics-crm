@@ -2906,20 +2906,26 @@ function _upickRenderDropdown(id) {
     ? 'background:#1e293b;color:#475569;font-size:.8rem'
     : 'background:#1e293b;color:#475569;font-size:.9rem';
   const noneSel = !selectedId;
-  let html = `<div class="upick-option ${noneSel?'upick-sel':''}" onclick="_upickSelect('${id}','','','','${noneLabel}')">
+  let html = `<div class="upick-option ${noneSel?'upick-sel':''}" data-uid="" data-name="" data-email="" data-label="${noneLabel}">
     <div class="upick-av" style="${noneAvStyle}">${noneAv}</div>
     <span class="upick-name" style="color:#64748b">${noneLabel}</span>
     ${noneSel?'<span class="upick-check">✓</span>':''}
   </div>`;
   html += _allUsers.map(u => {
     const sel = String(u.id) === String(selectedId);
-    return `<div class="upick-option ${sel?'upick-sel':''}" onclick="_upickSelect('${id}',${u.id},'${esc(u.name||'')}','${esc(u.email||'')}','${esc(u.name||'')}')">
+    return `<div class="upick-option ${sel?'upick-sel':''}" data-uid="${u.id}" data-name="${esc(u.name||'')}" data-email="${esc(u.email||'')}" data-label="${esc(u.name||'')}">
       <div class="upick-av" style="background:${_upickColor(u.id)}">${_upickInitials(u.name)}</div>
       <span class="upick-name">${esc(u.name)}</span>
       ${sel?'<span class="upick-check">✓</span>':''}
     </div>`;
   }).join('');
   dd.innerHTML = html;
+  // delegated click — reads data attrs, safe for any name/email content
+  dd.onclick = e => {
+    const opt = e.target.closest('.upick-option');
+    if (!opt) return;
+    _upickSelect(id, opt.dataset.uid, opt.dataset.name, opt.dataset.email, opt.dataset.label);
+  };
 }
 
 function _upickSelect(id, userId, userName, userEmail, label) {
@@ -2931,7 +2937,7 @@ function _upickSelect(id, userId, userName, userEmail, label) {
     if (lbl) lbl.textContent = userName;
   } else {
     const isFilter = id === 'filter';
-    if (av) { av.style.cssText = 'background:#1e293b;color:#475569'; av.style.fontSize = isFilter ? '.8rem' : '.9rem'; av.textContent = isFilter ? '👤' : '—'; }
+    if (av) { av.style.cssText = `background:#1e293b;color:#475569;font-size:${isFilter?'.8rem':'.9rem'}`; av.textContent = isFilter ? '👤' : '—'; }
     if (lbl) lbl.textContent = label;
   }
   const dd = document.getElementById('upick-'+id+'-dropdown');
