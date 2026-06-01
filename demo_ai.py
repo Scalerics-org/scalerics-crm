@@ -61,7 +61,7 @@ Elegí 3 estilos apropiados para {rubro} (ej: para comida NO usar dark/premium; 
 
 s7-INVERSIÓN: Título "¿Cuánto cuesta?" en blanco. Card central con rango USD + badge "Sin compromiso" en cyan. 4 deliverables en 2 columnas para {rubro}.
 
-s8-PRÓXIMOS PASOS: "¿Arrancamos, {lead_name}?" grande, gradiente cyan→verde. Btn WA verde (href='https://wa.me/{wa_number}'). hola@scalerics.com. "Scalerics — Tu negocio, online."
+s8-PRÓXIMOS PASOS: "¿Arrancamos, {lead_name}?" grande, gradiente cyan→verde. Btn WA verde (href='https://wa.me/{wa_number}'). scalerics@gmail.com. "Scalerics — Tu negocio, online."
 
 "questions": 6 preguntas para hacerle al cliente si acepta (logo, productos, fotos, dominio, redes, etc.)."""
 
@@ -163,7 +163,7 @@ Card central: rango "USD 400–800" aprox + badge "Sin compromiso". 4 deliverabl
 Logo Scalerics: <img src="{SCALERICS_LOGO_URL}" style="height:28px;object-fit:contain;display:block;margin-bottom:20px">
 "¿Arrancamos, {lead_name}?" — texto grande centrado
 Botón WhatsApp verde: href="https://wa.me/{wa_number}"
-Email: hola@scalerics.com | Tagline: "Scalerics — Tu negocio, online."
+Email: scalerics@gmail.com | Tagline: "Scalerics — Tu negocio, online."
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Si necesitás más información para hacer la mejor demo posible (colores, productos, fotos, estilo preferido, etc.), hacé las preguntas antes de generar. Si tenés suficiente contexto, generá el HTML directamente sin pedir confirmación."""

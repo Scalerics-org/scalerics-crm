@@ -4597,7 +4597,8 @@ async function loadSdr() {
     outMap[o.user][o.outcome] = (outMap[o.user][o.outcome] || 0) + o.count;
   }
 
-  const users = Object.keys(byUser).sort();
+  // Use sdr_users from backend to show all SDRs even with zero activity
+  const users = (data.sdr_users && data.sdr_users.length ? data.sdr_users : Object.keys(byUser)).sort();
   if (!users.length) {
     wrap.innerHTML = '<div style="color:#475569;padding:20px">No hay llamadas registradas aun.</div>';
     return;
@@ -4950,32 +4951,40 @@ def create_app(db_path: str) -> Flask:
 
     @app.route("/api/sdr-stats", methods=["GET"])
     def api_sdr_stats():
-        import sqlite3 as _sq3, datetime as _dt3
+        import sqlite3 as _sq3
         conn3 = _sq3.connect(db_path); conn3.row_factory = _sq3.Row
         try:
-            # Last 14 days of call_logged per user per day
-            rows = conn3.execute("""
+            # SDR users only (role name = 'SDR')
+            sdr_names = [r["name"] for r in conn3.execute("""
+                SELECT u.name FROM users u
+                JOIN roles r ON u.role_id = r.id
+                WHERE r.name = 'SDR'
+            """).fetchall()]
+            if not sdr_names:
+                return jsonify({"daily": [], "outcomes": [], "sdr_users": []})
+            placeholders = ','.join('?' * len(sdr_names))
+            rows = conn3.execute(f"""
                 SELECT user_name, DATE(created_at) as day,
                   SUM(CASE WHEN action='call_logged' THEN 1 ELSE 0 END) as calls,
                   COUNT(DISTINCT entity_id) as leads_touched
                 FROM activity_log
                 WHERE created_at >= date('now','-13 days')
-                  AND user_name NOT IN ('sistema','sistema-auto','','meta_import')
+                  AND user_name IN ({placeholders})
                   AND entity_type = 'lead'
                 GROUP BY user_name, day
                 ORDER BY day ASC
-            """).fetchall()
-            # Outcome breakdown per user (all time for ref)
-            outcomes = conn3.execute("""
+            """, sdr_names).fetchall()
+            outcomes = conn3.execute(f"""
                 SELECT user_name, detail as outcome, COUNT(*) as c
                 FROM activity_log
                 WHERE action='call_logged'
-                  AND user_name NOT IN ('sistema','sistema-auto','','meta_import')
+                  AND user_name IN ({placeholders})
                 GROUP BY user_name, detail
-            """).fetchall()
+            """, sdr_names).fetchall()
             return jsonify({
                 "daily": [{"user": r["user_name"], "day": r["day"], "calls": r["calls"], "leads": r["leads_touched"]} for r in rows],
                 "outcomes": [{"user": r["user_name"], "outcome": r["outcome"], "count": r["c"]} for r in outcomes],
+                "sdr_users": sdr_names,
             })
         finally:
             conn3.close()
