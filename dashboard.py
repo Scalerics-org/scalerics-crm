@@ -743,6 +743,7 @@ body.light .filters{background:transparent}
 body.light .filter-btn{background:#fff;border-color:#e2e8f0;color:#475569}
 body.light .filter-btn:hover,body.light .filter-btn.active{background:#0088cc;color:#fff;border-color:#0088cc}
 body.light .filter-select{background:#fff;border-color:#e2e8f0;color:#0f172a}
+body.light .filter-select option{background:#fff;color:#0f172a}
 body.light .search-box{background:#fff;border-color:#e2e8f0;color:#0f172a}
 body.light .search-box::placeholder{color:#94a3b8}
 body.light .table-wrap{background:#fff;border-color:#e2e8f0}
