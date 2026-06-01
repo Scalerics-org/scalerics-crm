@@ -2693,7 +2693,47 @@ function copyAndOpenClaude() {
 let _allTasks = [];
 let _allLeads = [];
 let _taskStatusFilter = 'all';
+let _taskUserFilter = '';
+let _taskSearchQuery = '';
+let _taskQuickFilter = '';
+let _editingTaskId = null;
+let _taskSearchTimer = null;
 
+function _getFilteredTasks() {
+  let tasks = _allTasks;
+  if (_taskUserFilter) tasks = tasks.filter(t => String(t.assignee_id) === String(_taskUserFilter));
+  if (_taskQuickFilter === 'high') {
+    tasks = tasks.filter(t => t.priority === 'high');
+  } else if (_taskQuickFilter === 'overdue') {
+    const now = new Date();
+    tasks = tasks.filter(t => t.deadline && new Date(t.deadline) < now && t.status !== 'done');
+  } else if (_taskStatusFilter !== 'all') {
+    tasks = tasks.filter(t => t.status === _taskStatusFilter);
+  }
+  if (_taskSearchQuery) {
+    const q = _taskSearchQuery.toLowerCase();
+    tasks = tasks.filter(t => (t.title||'').toLowerCase().includes(q) || (t.description||'').toLowerCase().includes(q));
+  }
+  return tasks;
+}
+
+function _updateFilterCounts() {
+  let base = _allTasks;
+  if (_taskUserFilter) base = base.filter(t => String(t.assignee_id) === String(_taskUserFilter));
+  const now = new Date();
+  const counts = {
+    all: base.length,
+    todo: base.filter(t => t.status === 'todo').length,
+    inprogress: base.filter(t => t.status === 'in_progress').length,
+    done: base.filter(t => t.status === 'done').length,
+    high: base.filter(t => t.priority === 'high').length,
+    overdue: base.filter(t => t.deadline && new Date(t.deadline) < now && t.status !== 'done').length,
+  };
+  ['all','todo','inprogress','done','high','overdue'].forEach(k => {
+    const el = document.getElementById('pill-count-' + k);
+    if (el) el.textContent = counts[k];
+  });
+}
 
 async function loadTasks() {
   try {
