@@ -762,6 +762,16 @@ body.light .task-row:hover{border-color:#94a3b8}
 body.light .task-title{color:#0f172a !important}
 body.light .task-meta{color:#64748b}
 body.light .task-check{border-color:#94a3b8}
+body.light .search-input{background:#fff;border-color:#e2e8f0;color:#0f172a}
+body.light .search-input::placeholder{color:#94a3b8}
+body.light .user-select{background:#fff;border-color:#e2e8f0;color:#0f172a}
+body.light .pill{background:#f8fafc;border-color:#e2e8f0;color:#475569}
+body.light .pill:hover{color:#0f172a}
+body.light .pill.active{background:#dbeafe;color:#1d4ed8;border-color:#93c5fd}
+body.light .task-status-badge.todo{background:#f1f5f9;color:#64748b}
+body.light .task-status-badge.in_progress{background:#dbeafe;color:#1d4ed8;border-color:#93c5fd}
+body.light .task-status-badge.done{background:#dcfce7;color:#16a34a;border-color:#86efac}
+body.light .tasks-summary{color:#94a3b8}
 body.light .modal h3,body.light .modal-title{color:#0f172a !important}
 body.light .modal label{color:#475569}
 body.light .modal p{color:#475569}
@@ -845,7 +855,30 @@ body.light .btn-icon{stroke:currentColor}
 .token-card.permanent .token-card-label{color:#60a5fa}
 .token-card.unknown .token-card-label{color:#475569}
 /* ── Tasks panel ──────────────────────────────────────────────────────────── */
-.tasks-filters{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+.filter-bar{display:flex;flex-direction:column;gap:10px;margin-bottom:14px}
+.filter-row-1{display:flex;gap:8px}
+.filter-row-2{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.search-input{flex:1;background:#111827;border:1px solid #1e293b;color:#e2e8f0;border-radius:8px;padding:7px 12px;font-size:.82rem}
+.search-input::placeholder{color:#334155}
+.user-select{background:#111827;border:1px solid #1e293b;color:#e2e8f0;border-radius:8px;padding:7px 12px;font-size:.82rem;min-width:150px}
+.pill{padding:4px 12px;border-radius:99px;font-size:.72rem;font-weight:600;cursor:pointer;border:1px solid #1e293b;background:#111827;color:#64748b;transition:all .15s;white-space:nowrap}
+.pill:hover{color:#e2e8f0}
+.pill.active{background:#0088cc22;color:#38bdf8;border-color:#0088cc44}
+.pill.warn{border-color:#450a0a}
+.pill.warn.active{background:#450a0a22;color:#f87171;border-color:#450a0a}
+.pill.orange{border-color:#431407}
+.pill.orange.active{background:#431407;color:#fb923c;border-color:#9a3412}
+.pill-count{font-weight:400;color:#334155;margin-left:3px;font-size:.68rem}
+.pill.active .pill-count{color:#0088cc99}
+.tasks-summary{font-size:.75rem;color:#475569;margin-bottom:10px}
+.task-status-badge{padding:3px 9px;border-radius:99px;font-size:.68rem;font-weight:700;cursor:pointer;transition:all .15s;border:1px solid transparent;user-select:none}
+.task-status-badge.todo{background:#1e293b;color:#64748b}
+.task-status-badge.in_progress{background:#0c1f2e;color:#38bdf8;border-color:#0369a133}
+.task-status-badge.done{background:#052e16;color:#4ade80;border-color:#16a34a33}
+.task-row.in-progress{border-left:3px solid #0369a1}
+.task-row.overdue{border-left:3px solid #f87171}
+.task-edit-btn{background:none;border:1px solid #1e293b;color:#64748b;cursor:pointer;font-size:.78rem;padding:3px 7px;border-radius:6px;transition:all .15s}
+.task-edit-btn:hover{border-color:#334155;color:#94a3b8}
 .task-row{background:#111827;border:1px solid #1e293b;border-radius:10px;padding:14px 16px;margin-bottom:8px;display:flex;align-items:flex-start;gap:12px;transition:border-color .15s}
 .task-row:hover{border-color:#334155}
 .task-check{width:18px;height:18px;border:2px solid #334155;border-radius:4px;cursor:pointer;flex-shrink:0;margin-top:2px;display:flex;align-items:center;justify-content:center;transition:all .15s}
