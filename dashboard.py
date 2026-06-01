@@ -3828,7 +3828,21 @@ function _cpRenderInfo() {
   const ci = l.client_info || {};
   const stars = l.rating ? '⭐ ' + l.rating + (l.review_count ? ' (' + l.review_count + ' reseñas)' : '') : '';
   const hasBotData = ci.lead_name || ci.budget_range || ci.colors || ci.instagram || ci.needs;
-  return `<div class="cp-section">
+
+  const unmatchedBanner = l.source === 'calendly_unmatched' ? `
+    <div id="unmatched-banner" style="background:rgba(251,146,60,.1);border:1px solid rgba(251,146,60,.35);border-radius:10px;padding:14px 16px;margin-bottom:18px">
+      <div style="font-size:.78rem;font-weight:700;color:#fb923c;margin-bottom:6px">⚠️ Agendó por Calendly — sin match automático</div>
+      <div style="font-size:.75rem;color:#94a3b8;margin-bottom:12px">Este cliente puede ya estar en el CRM. Buscalo abajo para fusionar, o confirmá que es nuevo.</div>
+      <input id="merge-search" type="text" placeholder="Buscar cliente existente..."
+        style="width:100%;background:#0a0f1a;border:1px solid #1e293b;border-radius:6px;padding:8px 10px;font-size:.8rem;color:#e2e8f0;font-family:inherit;outline:none;margin-bottom:8px"
+        oninput="_mergeSearch(this.value)">
+      <div id="merge-results" style="margin-bottom:10px"></div>
+      <button onclick="_confirmNewLead()" style="background:#1e293b;border:1px solid #334155;color:#94a3b8;font-size:.75rem;font-weight:600;padding:6px 12px;border-radius:6px;cursor:pointer;font-family:inherit">
+        ✓ Es un cliente nuevo
+      </button>
+    </div>` : '';
+
+  return unmatchedBanner + `<div class="cp-section">
     <div class="cp-section-title">Información del negocio</div>
     ${l.phone ? `<div class="cp-field"><span class="cp-field-label">Teléfono</span><span class="cp-field-val">${l.phone}</span></div>` : ''}
     ${l.city ? `<div class="cp-field"><span class="cp-field-label">Ciudad</span><span class="cp-field-val">${l.city}</span></div>` : ''}
@@ -3869,6 +3883,74 @@ function _cpRenderInfo() {
     <button class="cp-btn cp-btn-ghost" onclick="_cpSaveNotes()">Guardar notas</button>
   </div>
   ${_cpRenderHistory()}`;
+}
+
+let _mergeSearchTimeout = null;
+
+async function _mergeSearch(query) {
+  clearTimeout(_mergeSearchTimeout);
+  const res = document.getElementById('merge-results');
+  if (!res) return;
+  if (!query || query.length < 2) { res.innerHTML = ''; return; }
+  _mergeSearchTimeout = setTimeout(async () => {
+    try {
+      const r = await fetch('/api/leads?search=' + encodeURIComponent(query));
+      const data = await r.json();
+      const leads = Array.isArray(data) ? data : (data.items || []);
+      const filtered = leads.filter(l => l.id !== _cpClientId).slice(0, 5);
+      if (!filtered.length) {
+        res.innerHTML = '<div style="font-size:.75rem;color:#475569;padding:4px 0">Sin resultados</div>';
+        return;
+      }
+      res.innerHTML = filtered.map(l => `
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 8px;border-radius:6px;background:#111827;margin-bottom:4px">
+          <div>
+            <div style="font-size:.8rem;font-weight:600;color:#e2e8f0">${esc(l.name||'')}</div>
+            <div style="font-size:.7rem;color:#475569">${esc(l.phone||'')} · ${esc(l.crm_status||'')}</div>
+          </div>
+          <button onclick="_mergeLead(${l.id},'${(l.name||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')"
+            style="background:#0088cc22;border:1px solid #0088cc55;color:#60a5fa;font-size:.72rem;font-weight:600;padding:4px 10px;border-radius:6px;cursor:pointer;font-family:inherit;flex-shrink:0">
+            Fusionar →
+          </button>
+        </div>`).join('');
+    } catch { res.innerHTML = ''; }
+  }, 300);
+}
+
+async function _mergeLead(targetId, targetName) {
+  if (!_cpClientId) return;
+  if (!confirm(`¿Fusionar con "${targetName}"? Los datos del cliente actual se transferirán y éste se eliminará.`)) return;
+  try {
+    const r = await fetch('/api/leads/' + _cpClientId + '/merge', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({into_id: targetId}),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      closeClientPanel();
+      await loadLeads();
+      openClientPanel(targetId);
+    } else {
+      alert('Error: ' + (d.error || 'desconocido'));
+    }
+  } catch (e) {
+    alert('Error de red: ' + e.message);
+  }
+}
+
+async function _confirmNewLead() {
+  if (!_cpClientId) return;
+  try {
+    const r = await fetch('/api/leads/' + _cpClientId + '/confirm-new', {method: 'POST'});
+    const d = await r.json();
+    if (d.ok) {
+      _cpData.lead.source = 'calendly';
+      const banner = document.getElementById('unmatched-banner');
+      if (banner) banner.remove();
+      await loadLeads();
+    }
+  } catch {}
 }
 
 function _cpRenderCalls() {
