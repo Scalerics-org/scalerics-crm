@@ -1272,6 +1272,7 @@ body.light .upick-name{color:#0f172a}
         <button class="cal-nav-btn" onclick="calChangeMonth(-1)">←</button>
         <button class="cal-nav-btn" onclick="calChangeMonth(1)">→</button>
         <button class="cal-new-btn" onclick="openNewEventModal()">+ Nueva reunión</button>
+        <a href="https://calendly.com/scalerics/consultoriagratuita" target="_blank" class="cal-new-btn" style="background:#0f2a1a;border-color:#10b981;color:#10b981;text-decoration:none">Calendly</a>
       </div>
     </div>
     <div id="cal-error" class="cal-error" style="display:none"></div>
@@ -3964,7 +3965,10 @@ function _cpRenderMeetings() {
   const meets = _cpData.meetings || [];
   let html = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
     <div class="cp-section-title" style="margin:0">Reuniones</div>
-    <button class="cp-btn cp-btn-ghost" onclick="_cpOpenNewMeeting()">+ Nueva reunión</button>
+    <div style="display:flex;gap:8px">
+      <a href="https://calendly.com/scalerics/consultoriagratuita" target="_blank" class="cp-btn cp-btn-ghost" style="color:#10b981;border-color:#10b981;text-decoration:none;font-size:.75rem" title="Abrir Calendly">Calendly</a>
+      <button class="cp-btn cp-btn-ghost" onclick="_cpOpenNewMeeting()">+ Nueva reunión</button>
+    </div>
   </div>`;
   if (!meets.length) html += `<div style="color:#475569;font-size:.85rem">No hay reuniones registradas.</div>`;
   meets.forEach(m => {
