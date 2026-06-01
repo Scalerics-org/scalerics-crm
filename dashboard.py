@@ -2824,11 +2824,16 @@ function renderTasksList() {
 
 function _taskRowHtml(t) {
   const done = t.status === 'done';
+  const inProgress = t.status === 'in_progress';
   const lead = t.client_id ? _allLeads.find(l => l.id === t.client_id) : null;
   const now = new Date(); const dl = t.deadline ? new Date(t.deadline) : null;
   const overdue = dl && dl < now && !done;
-  const dlStr = dl ? dl.toLocaleDateString('es-UY',{day:'2-digit',month:'2-digit'}) : '';
+  const hasTime = dl && (dl.getHours() !== 0 || dl.getMinutes() !== 0);
+  const dlStr = dl ? dl.toLocaleDateString('es-UY',{day:'2-digit',month:'2-digit'})
+    + (hasTime ? ' ' + dl.toLocaleTimeString('es-UY',{hour:'2-digit',minute:'2-digit'}) : '') : '';
   const prioLabel = ({'high':'Alta','medium':'Media','low':'Baja'})[t.priority] || t.priority;
+  const statusLabel = {todo:'● Pendiente', in_progress:'⚡ En progreso', done:'✓ Hecha'}[t.status] || '● Pendiente';
+  const statusClass = t.status || 'todo';
   const goalTypeLabel = {
     'leads_contactados':    'leads contactados',
     'llamadas_realizadas':  'llamadas realizadas',
@@ -2855,11 +2860,13 @@ function _taskRowHtml(t) {
     </div>` : '';
   const assigneeBadge = t.assignee_name ? `<span style="font-size:.72rem;color:#64748b;background:#1a2234;padding:2px 7px;border-radius:10px">→ ${esc(t.assignee_name)}</span>` : '';
   const createdByBadge = t.created_by_name && t.assignee_name ? `<span style="font-size:.72rem;color:#334155">de ${esc(t.created_by_name)}</span>` : '';
-  return `<div class="task-row" id="task-row-${t.id}">
-    <div class="task-check ${done ? 'done' : ''}" onclick="_toggleTask(${t.id},${done})">${done ? '✓' : ''}</div>
+  const rowExtra = inProgress ? ' in-progress' : overdue ? ' overdue' : '';
+  return `<div class="task-row${rowExtra}" id="task-row-${t.id}">
     <div class="task-body" style="flex:1;min-width:0">
       <div class="task-title ${done ? 'done-text' : ''}">${esc(t.title)}</div>
+      ${t.description ? `<div style="font-size:.75rem;color:#64748b;margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.description)}</div>` : ''}
       <div class="task-meta">
+        <span class="task-status-badge ${statusClass}" onclick="_setTaskStatus(${t.id})" title="Click para cambiar estado">${statusLabel}</span>
         ${t.priority ? `<span class="task-priority ${t.priority}">${prioLabel}</span>` : ''}
         ${lead ? `<span class="task-client-link" onclick="openClientPanel(${lead.id})">${esc(lead.name||'')}</span>` : ''}
         ${dlStr ? `<span class="task-deadline ${overdue ? 'overdue' : ''}">📅 ${dlStr}${overdue?' (vencida)':''}</span>` : ''}
@@ -2868,6 +2875,7 @@ function _taskRowHtml(t) {
       ${progressBar}
     </div>
     <div class="task-actions">
+      <button class="task-edit-btn" onclick="openEditTaskModal(${t.id})" title="Editar">✏️</button>
       <button class="task-del-btn" onclick="_deleteTask(${t.id})" title="Eliminar">🗑</button>
     </div>
   </div>`;
