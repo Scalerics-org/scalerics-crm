@@ -1122,7 +1122,7 @@ body.light .upick-name{color:#0f172a}
     </div>
     <div class="table-wrap">
       <div class="table-header no-cb">
-        <span>Negocio</span><span>Teléfono</span><span>Callback</span><span>Notas</span><span>Acciones</span>
+        <span>Negocio</span><span>Teléfono</span><span>Fecha</span><span>Acciones</span>
       </div>
       <div id="seguimientos-body"></div>
     </div>
@@ -2094,6 +2094,17 @@ async function loadLeads() {
         <div class="biz-sub">${esc(b.category||'')}${b.city ? ' · '+esc(b.city) : ''}${b.last_event_at ? ' · <span style="color:#60a5fa">'+timeAgo(b.last_event_at)+'</span>' : ''}</div>
       </div>
       <div style="display:flex;align-items:center;gap:6px">${b.phone ? (hasWhatsApp(b.phone) ? `<a class="phone-val" href="https://wa.me/${waNum(b.phone)}${b.pitch_text ? '?text='+encodeURIComponent(b.pitch_text) : ''}" target="_blank" title="Abrir WhatsApp">${esc(b.phone)}</a>` : `<span class="phone-plain">${esc(b.phone)}</span>`) : '<span class="no-val">—</span>'}${b.phone ? `<a class="call-btn" href="tel:${esc(b.phone)}" title="Llamar">📞</a>` : ''}${b.pitch_text ? `<button class="copy-pitch-btn" onclick="copyPitch(${b.id},event)" title="Copiar pitch">📋</button>` : ''}</div>
+      <div style="font-size:.75rem;color:#94a3b8">${(() => {
+        const raw = b.callback_date || b.last_event_at;
+        if (!raw) return '<span style="color:#334155">—</span>';
+        const d = new Date(raw);
+        const now = new Date();
+        const isCallback = !!b.callback_date;
+        const isPast = isCallback && d < now;
+        const dateStr = d.toLocaleDateString('es-UY',{day:'2-digit',month:'2-digit',year:'2-digit'});
+        if (isCallback) return `<span style="color:${isPast?'#f87171':'#fbbf24'};font-weight:600">📅 ${dateStr}</span>`;
+        return `<span style="color:#64748b">${dateStr}</span>`;
+      })()}</div>
       <div class="actions">
         ${(!crm || crm === 'sin_contactar') ? `<button class="pitch-btn" onclick="markContacted(${b.id})">Contactar</button>` : `<span style="color:#3db648;font-size:.75rem">✓ ${crmLabels[crm]||crm}</span>`}
         <button class="delete-btn" onclick="deleteLead(${b.id},event)" title="Borrar lead">🗑</button>
