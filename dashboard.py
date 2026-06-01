@@ -4980,6 +4980,76 @@ def create_app(db_path: str) -> Flask:
         finally:
             conn3.close()
 
+    @app.route("/api/admin/import-calendly", methods=["POST"])
+    def admin_import_calendly():
+        import base64 as _b64, json as _json, sqlite3 as _sq, requests as _req
+        from database import create_meeting, get_business_by_phone, get_all_businesses, log_activity as _log
+        TOKEN = (request.json or {}).get("token", "")
+        if not TOKEN:
+            return jsonify({"error": "token required"}), 400
+        _pl = TOKEN.split('.')[1]; _pl += '=' * (4 - len(_pl) % 4)
+        user_uri = 'https://api.calendly.com/users/' + _json.loads(_b64.b64decode(_pl))['user_uuid']
+        H = {'Authorization': f'Bearer {TOKEN}'}
+        all_events = []
+        url = 'https://api.calendly.com/scheduled_events'
+        params = {'user': user_uri, 'count': 100}
+        while url:
+            r = _req.get(url, headers=H, params=params).json()
+            all_events.extend(r.get('collection', [])); url = r.get('pagination', {}).get('next_page'); params = {}
+        def _norm(p): return ''.join(c for c in (p or '') if c.isdigit() or c == '+')
+        def _find(email, phone):
+            n = _norm(phone)
+            if n:
+                b = get_business_by_phone(db_path, n)
+                if b: return b['id'], b['name']
+                if n.startswith('+598'):
+                    b = get_business_by_phone(db_path, n[4:])
+                    if b: return b['id'], b['name']
+            if email:
+                for b in get_all_businesses(db_path):
+                    if (b.get('email') or '').lower() == email.lower(): return b['id'], b['name']
+            return None, None
+        imported = skipped = 0
+        results = []
+        for ev in all_events:
+            ev_uri = ev.get('uri', '')
+            conn2 = _sq.connect(db_path)
+            existing = conn2.execute('SELECT id FROM meetings WHERE calendar_event_id=?', (ev_uri,)).fetchone()
+            conn2.close()
+            if existing: skipped += 1; continue
+            inv_r = _req.get(ev_uri + '/invitees', headers=H).json()
+            invitees = inv_r.get('collection', [])
+            if not invitees: skipped += 1; continue
+            inv = invitees[0]
+            name = inv.get('name',''); email = inv.get('email',''); phone = ''
+            for qa in inv.get('questions_and_answers', []):
+                ans = qa.get('answer','')
+                if any(c.isdigit() for c in ans) and len(ans) <= 20: phone = ans; break
+            loc = ev.get('location', {})
+            meet_link = (loc.get('join_url','') or loc.get('location','')) if isinstance(loc, dict) else ''
+            status = 'scheduled' if ev.get('status') == 'active' else 'canceled'
+            title = ('Reunion con ' + name) if name else 'Reunion Calendly'
+            client_id, client_name = _find(email, phone)
+            if not client_id:
+                n = _norm(phone)
+                conn2 = _sq.connect(db_path)
+                try:
+                    cur = conn2.execute('INSERT INTO businesses (name,email,phone,crm_status,source) VALUES (?,?,?,?,?)',
+                        (name or email, email, n or None, 'reunion_agendada', 'calendly'))
+                    conn2.commit(); client_id = cur.lastrowid; client_name = name
+                except Exception:
+                    row = conn2.execute('SELECT id,name FROM businesses WHERE phone=?', (n,)).fetchone()
+                    if row: client_id, client_name = row[0], row[1]
+                finally: conn2.close()
+            if not client_id: skipped += 1; continue
+            create_meeting(db_path, client_id=client_id, calendar_event_id=ev_uri,
+                title=title, start_at=ev.get('start_time',''), end_at=ev.get('end_time',''),
+                meet_link=meet_link, status=status)
+            _log(db_path, 'calendly-import', 'meeting_scheduled', 'lead', client_id, client_name, 'Calendly import')
+            results.append({'title': title, 'date': ev.get('start_time','')[:10], 'client_id': client_id})
+            imported += 1
+        return jsonify({'imported': imported, 'skipped': skipped, 'meetings': results})
+
     @app.route("/api/me", methods=["GET"])
     def api_me():
         from database import get_user_by_id
