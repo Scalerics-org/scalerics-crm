@@ -988,6 +988,13 @@ body.light .upick-name{color:#0f172a}
 </head>
 <body>
 <div class="sidebar-backdrop" id="sidebar-backdrop" onclick="closeSidebar()"></div>
+<nav class="mobile-bottom-nav" id="mobile-bottom-nav"></nav>
+<div class="mas-sheet-backdrop" id="mas-sheet-backdrop" onclick="closeMasSheet()"></div>
+<div class="mas-sheet" id="mas-sheet">
+  <div class="mas-sheet-handle"></div>
+  <div class="mas-sheet-title">Más secciones</div>
+  <div class="mas-sheet-grid" id="mas-sheet-grid"></div>
+</div>
 <div class="sidebar" id="sidebar">
   <div class="sidebar-logo">
     <img id="sidebar-logo" src="https://raw.githubusercontent.com/juantomasetti1/scalerics-assets/main/logo_full_alt.png" alt="Scalerics">
@@ -1198,7 +1205,7 @@ body.light .upick-name{color:#0f172a}
       </div>
     </div>
     <div id="tasks-summary" class="tasks-summary"></div>
-
+    <button class="mobile-fab" id="mobile-fab-task" onclick="openAddTaskModal()" aria-label="Nueva tarea">+</button>
     <div id="tasks-list"></div>
   </div>
 
