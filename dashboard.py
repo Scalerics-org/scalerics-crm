@@ -464,9 +464,11 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .modal p{font-size:.82rem;color:#64748b;margin-bottom:18px}
 .modal textarea{width:100%;background:#0f1117;border:1px solid #1e293b;border-radius:8px;padding:10px 14px;font-size:.85rem;color:#e2e8f0;font-family:'Inter',sans-serif;resize:vertical;min-height:80px;outline:none;margin-bottom:16px}
 .modal textarea::placeholder{color:#334155}
-.modal input[type=text],.modal input[type=date],.modal input[type=time],.modal input[type=number],.modal input[type=email]{width:100%;background:#0f1117;border:1px solid #1e293b;border-radius:8px;padding:10px 14px;font-size:.85rem;color:#e2e8f0;font-family:'Inter',sans-serif;outline:none;margin-bottom:12px}
+.modal input[type=text],.modal input[type=date],.modal input[type=time],.modal input[type=number],.modal input[type=email],.modal input[type=datetime-local],.modal-input{width:100%;background:#0f1117;border:1px solid #1e293b;border-radius:8px;padding:10px 14px;font-size:.85rem;color:#e2e8f0;font-family:'Inter',sans-serif;outline:none;margin-bottom:12px;box-sizing:border-box}
+.modal select,.modal-input select{width:100%;background:#0f1117;border:1px solid #1e293b;border-radius:8px;padding:10px 14px;font-size:.85rem;color:#e2e8f0;font-family:'Inter',sans-serif;outline:none;margin-bottom:12px;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:36px;cursor:pointer}
+.modal input[type=datetime-local]::-webkit-calendar-picker-indicator{filter:invert(1);opacity:.4;cursor:pointer}
 .modal input::placeholder{color:#334155}
-.modal input:focus,.modal textarea:focus{border-color:#6366f1}
+.modal input:focus,.modal textarea:focus,.modal select:focus{border-color:#0088cc;outline:none}
 .modal-label{font-size:.7rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.7px;display:block;margin-bottom:5px}
 .modal-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .modal-btns{display:flex;gap:10px;justify-content:flex-end}
