@@ -269,7 +269,18 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
   .cal-header h1{flex:1;font-size:1.1rem}
   .cal-grid-header{font-size:.55rem;padding:6px 2px}
   .cal-cell{min-height:60px;padding:4px}
-  .cal-event-chip{font-size:.55rem}
+  /* ── Tareas mobile ── */
+  .filter-row-1{flex-direction:column!important}
+  .search-input,.upick-wrap,.upick-trigger{width:100%!important}
+  .filter-row-2{gap:5px}
+  .pill{font-size:.68rem;padding:5px 10px}
+  .task-edit-btn,.task-del-btn{min-height:36px;padding:6px 10px}
+  .task-status-badge{padding:5px 12px;font-size:.74rem}
+  .task-row{padding:12px 14px;border-radius:12px}
+  /* ── Calendario compacto ── */
+  .cal-cell{min-height:44px!important;padding:3px 2px!important}
+  .cal-event-chip{font-size:0!important;width:7px!important;height:7px!important;border-radius:50%!important;padding:0!important;min-width:0!important;display:inline-block!important;margin:1px!important}
+  #cal-day-events-mobile{display:block}
   /* ── Lead cards ── */
   .table-wrap{background:transparent!important;border:none!important;border-radius:0!important;overflow:visible!important}
   .table-header{display:none!important}
@@ -1250,6 +1261,7 @@ body.light .upick-name{color:#0f172a}
     </div>
     <div id="cal-error" class="cal-error" style="display:none"></div>
     <div id="cal-days" class="cal-days"><div class="cal-loading">Cargando calendario...</div></div>
+    <div id="cal-day-events-mobile" style="display:none;margin-top:12px;padding:0 4px"></div>
   </div>
 
   <!-- ======= METRICS PANEL ======= -->
@@ -2510,6 +2522,7 @@ async function renderCalendar() {
     if (!eventMap[ev.date]) eventMap[ev.date] = [];
     eventMap[ev.date].push(ev);
   });
+  window._calEventMap = eventMap;
 
   let firstWeekday = monthStart.getDay() - 1;
   if (firstWeekday < 0) firstWeekday = 6;
@@ -2531,7 +2544,7 @@ async function renderCalendar() {
     ${dayNames.map(n => `<div class="cal-grid-header">${n}</div>`).join('')}
     ${cells.map(c => c.empty
       ? `<div class="cal-cell other-month"></div>`
-      : `<div class="cal-cell${c.isToday?' today':''}">
+      : `<div class="cal-cell${c.isToday?' today':''}" data-date="${c.ds}" onclick="_calCellClick(this,'${c.ds}')">
           <div class="cal-cell-day">${c.dayNum}</div>
           ${c.events.map(ev => {
             const ph = extractPhoneFromText((ev.title||'')+' '+(ev.description||''));
@@ -2546,6 +2559,27 @@ async function renderCalendar() {
         </div>`
     ).join('')}
   </div>`;
+}
+
+function _calCellClick(cell, dateStr) {
+  if (window.innerWidth > 768) return;
+  const mobileList = document.getElementById('cal-day-events-mobile');
+  if (!mobileList) return;
+  document.querySelectorAll('.cal-cell').forEach(c => c.style.outline = '');
+  cell.style.outline = '2px solid #0088cc';
+  const events = (window._calEventMap || {})[dateStr] || [];
+  if (!events.length) {
+    mobileList.innerHTML = '<div style="color:#475569;font-size:.78rem;padding:8px 0">Sin eventos este día.</div>';
+  } else {
+    mobileList.innerHTML = events.map(ev => `
+      <div style="background:#111827;border:1px solid #1e293b;border-radius:10px;padding:12px;margin-bottom:8px">
+        <div style="font-size:.82rem;font-weight:600;color:#f1f5f9">${esc(ev.title||'')}</div>
+        ${ev.time ? `<div style="font-size:.72rem;color:#0088cc;margin-top:3px">🕐 ${esc(ev.time)}</div>` : ''}
+        ${ev.meeting_url ? `<a href="${esc(ev.meeting_url)}" target="_blank" style="display:inline-flex;align-items:center;gap:4px;margin-top:6px;font-size:.72rem;color:#4ade80;text-decoration:none">▶ Unirse a reunión</a>` : ''}
+      </div>
+    `).join('');
+  }
+  mobileList.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
 
 function openNewEventModal() {
