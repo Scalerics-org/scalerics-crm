@@ -2749,22 +2749,61 @@ async function loadTasks() {
 
 function filterTasks(status, btn) {
   _taskStatusFilter = status;
-  document.querySelectorAll('.tasks-filters .filter-btn').forEach(b => b.classList.remove('active'));
+  _taskQuickFilter = '';
+  document.querySelectorAll('.filter-row-2 .pill').forEach(b => b.classList.remove('active'));
   if (btn) btn.classList.add('active');
   renderTasksList();
+}
+
+function filterTasksQuick(type, btn) {
+  _taskQuickFilter = _taskQuickFilter === type ? '' : type;
+  _taskStatusFilter = 'all';
+  document.querySelectorAll('.filter-row-2 .pill').forEach(b => b.classList.remove('active'));
+  if (_taskQuickFilter && btn) {
+    btn.classList.add('active');
+  } else {
+    const pillAll = document.getElementById('pill-all');
+    if (pillAll) pillAll.classList.add('active');
+  }
+  renderTasksList();
+}
+
+function _onTaskUserFilterChange(val) {
+  _taskUserFilter = val;
+  _updateFilterCounts();
+  renderTasksList();
+}
+
+function _onTaskSearch(val) {
+  clearTimeout(_taskSearchTimer);
+  _taskSearchTimer = setTimeout(() => {
+    _taskSearchQuery = val.trim();
+    renderTasksList();
+  }, 200);
 }
 
 function renderTasksList() {
   const container = document.getElementById('tasks-list');
   if (!container) return;
-  let tasks = _taskStatusFilter === 'all'
-    ? _allTasks
-    : _allTasks.filter(t => t.status === _taskStatusFilter);
+  let tasks = _getFilteredTasks();
   tasks = [...tasks].sort((a, b) => {
     const prio = {high:0,medium:1,low:2};
     return (prio[a.priority]||1) - (prio[b.priority]||1);
   });
-  if (!tasks.length) { container.innerHTML = '<div class="tasks-empty">Sin tareas. Agregá una con el botón de arriba.</div>'; return; }
+  const summary = document.getElementById('tasks-summary');
+  if (summary) {
+    const userLabel = _taskUserFilter
+      ? '👤 ' + ((_allUsers.find(u => String(u.id) === String(_taskUserFilter)) || {}).name || '')
+      : 'todos los usuarios';
+    const filterLabel = _taskQuickFilter === 'high' ? 'Alta prioridad'
+      : _taskQuickFilter === 'overdue' ? 'Vencidas'
+      : _taskStatusFilter === 'all' ? 'Todas'
+      : _taskStatusFilter === 'todo' ? 'Pendientes'
+      : _taskStatusFilter === 'in_progress' ? 'En progreso'
+      : 'Hechas';
+    summary.textContent = `${tasks.length} tarea${tasks.length !== 1 ? 's' : ''} · ${userLabel} · ${filterLabel}`;
+  }
+  if (!tasks.length) { container.innerHTML = '<div class="tasks-empty">Sin tareas para este filtro.</div>'; return; }
   container.innerHTML = tasks.map(t => _taskRowHtml(t)).join('');
 }
 
