@@ -2967,10 +2967,11 @@ function _onTaskGoalTypeChange() {
 }
 
 async function openAddTaskModal(clientId, clientName) {
+  _editingTaskId = null;
   document.getElementById('task-title-input').value = '';
   document.getElementById('task-desc-input').value = '';
   document.getElementById('task-priority-input').value = 'medium';
-  document.getElementById('task-deadline-input').value = new Date().toISOString().slice(0,10);
+  document.getElementById('task-deadline-input').value = new Date().toISOString().slice(0,16);
   document.getElementById('task-goal-type-input').value = '';
   document.getElementById('task-goal-input').value = '';
   document.getElementById('task-goal-input').style.display = 'none';
@@ -2978,17 +2979,40 @@ async function openAddTaskModal(clientId, clientName) {
   document.getElementById('task-client-id').value = clientId || '';
   document.getElementById('task-client-chosen').textContent = clientName ? 'Cliente: ' + clientName : '';
   document.getElementById('task-client-results').style.display = 'none';
+  document.getElementById('task-status-input').value = 'todo';
   await _loadUsersForTask();
-  const sel = document.getElementById('task-assignee-input');
-  sel.innerHTML = '<option value="">— Sin asignar —</option>';
-  _allUsers.forEach(u => {
-    const opt = new Option(u.name, u.id);
-    opt.dataset.uid = u.id;
-    opt.dataset.email = u.email;
-    sel.appendChild(opt);
-  });
-  document.getElementById('task-assignee-id').value = '';
-  document.getElementById('task-assignee-email').value = '';
+  _upickSelect('modal', '', '', '', '— Sin asignar —');
+  const h3 = document.getElementById('add-task-modal').querySelector('h3');
+  if (h3) h3.textContent = 'Nueva tarea';
+  const submitBtn = document.getElementById('task-submit-btn');
+  if (submitBtn) submitBtn.textContent = '+ Crear tarea';
+  document.getElementById('add-task-modal').classList.add('open');
+  setTimeout(() => document.getElementById('task-title-input').focus(), 50);
+}
+
+async function openEditTaskModal(taskId) {
+  const t = _allTasks.find(t => t.id === taskId);
+  if (!t) return;
+  _editingTaskId = taskId;
+  document.getElementById('task-title-input').value = t.title || '';
+  document.getElementById('task-desc-input').value = t.description || '';
+  document.getElementById('task-priority-input').value = t.priority || 'medium';
+  document.getElementById('task-deadline-input').value = t.deadline ? t.deadline.slice(0,16).replace(' ','T') : '';
+  document.getElementById('task-goal-type-input').value = t.goal_type || '';
+  document.getElementById('task-goal-input').value = t.goal || '';
+  document.getElementById('task-goal-input').style.display = t.goal_type ? '' : 'none';
+  document.getElementById('task-status-input').value = t.status || 'todo';
+  const clientLead = t.client_id ? _allLeads.find(l => l.id === t.client_id) : null;
+  document.getElementById('task-client-search').value = clientLead ? (clientLead.name||'') : '';
+  document.getElementById('task-client-id').value = t.client_id || '';
+  document.getElementById('task-client-chosen').textContent = clientLead ? 'Cliente: ' + (clientLead.name||'') : '';
+  document.getElementById('task-client-results').style.display = 'none';
+  await _loadUsersForTask();
+  _upickSelect('modal', t.assignee_id||'', t.assignee_name||'', t.assignee_email||'', t.assignee_name||'— Sin asignar —');
+  const h3 = document.getElementById('add-task-modal').querySelector('h3');
+  if (h3) h3.textContent = 'Editar tarea';
+  const submitBtn = document.getElementById('task-submit-btn');
+  if (submitBtn) submitBtn.textContent = 'Guardar cambios';
   document.getElementById('add-task-modal').classList.add('open');
   setTimeout(() => document.getElementById('task-title-input').focus(), 50);
 }
@@ -3020,7 +3044,7 @@ async function submitAddTask() {
     description: document.getElementById('task-desc-input').value.trim() || null,
     priority: document.getElementById('task-priority-input').value,
     deadline: document.getElementById('task-deadline-input').value || null,
-    status: 'todo',
+    status: document.getElementById('task-status-input').value || 'todo',
   };
   const clientId = document.getElementById('task-client-id').value;
   if (clientId) body.client_id = parseInt(clientId);
@@ -3039,15 +3063,26 @@ async function submitAddTask() {
     body.progress = 0;
   }
   try {
-    const r = await fetch('/api/tasks', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
-    const d = await r.json();
-    document.getElementById('add-task-modal').classList.remove('open');
-    const newTask = {id: d.id, ...body};
-    _allTasks.unshift(newTask);
-    renderTasksList();
-    if (_cpClientId && body.client_id === _cpClientId) {
-      _cpData.tasks = [newTask, ...(_cpData.tasks||[])];
-      _cpSwitchTab('ctasks');
+    if (_editingTaskId) {
+      await fetch('/api/tasks/' + _editingTaskId, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+      const idx = _allTasks.findIndex(t => t.id === _editingTaskId);
+      if (idx !== -1) _allTasks[idx] = {..._allTasks[idx], ...body};
+      document.getElementById('add-task-modal').classList.remove('open');
+      _updateFilterCounts();
+      renderTasksList();
+      if (_cpClientId) _cpSwitchTab('ctasks');
+    } else {
+      const r = await fetch('/api/tasks', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+      const d = await r.json();
+      document.getElementById('add-task-modal').classList.remove('open');
+      const newTask = {id: d.id, ...body};
+      _allTasks.unshift(newTask);
+      _updateFilterCounts();
+      renderTasksList();
+      if (_cpClientId && body.client_id === _cpClientId) {
+        _cpData.tasks = [newTask, ...(_cpData.tasks||[])];
+        _cpSwitchTab('ctasks');
+      }
     }
   } finally {
     _taskSubmitting = false;
