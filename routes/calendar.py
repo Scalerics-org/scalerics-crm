@@ -123,75 +123,48 @@ def _contributors(db: str, lead_id: int, current_uid: int | None) -> list[int]:
 @calendar_bp.route("/api/calendar/events", methods=["GET", "POST"])
 def api_calendar_events():
     if request.method == "GET":
-        service, err = _get_calendar_service()
-        if err:
-            return jsonify({"error": err})
-
-        start = request.args.get("start")
-        end = request.args.get("end")
-        if not start or not end:
-            return jsonify({"error": "Parámetros start y end requeridos"})
-
+        # Read meetings from local DB (no Google Calendar dependency)
+        import sqlite3 as _sq
+        start = request.args.get("start", "")
+        end = request.args.get("end", "")
+        db = _db()
+        conn = _sq.connect(db); conn.row_factory = _sq.Row
         try:
-            time_min = start + "T00:00:00Z"
-            time_max = end + "T23:59:59Z"
-            result = service.events().list(
-                calendarId="primary",
-                timeMin=time_min,
-                timeMax=time_max,
-                singleEvents=True,
-                orderBy="startTime",
-                maxResults=100,
-            ).execute()
-
+            rows = conn.execute("""
+                SELECT m.id, m.title, m.start_at, m.end_at, m.meet_link, m.status,
+                       b.name as client_name, m.client_id
+                FROM meetings m
+                LEFT JOIN businesses b ON m.client_id = b.id
+                WHERE m.status != 'canceled'
+                  AND (? = '' OR DATE(m.start_at) >= ?)
+                  AND (? = '' OR DATE(m.start_at) <= ?)
+                ORDER BY m.start_at ASC
+            """, (start, start, end, end)).fetchall()
             events = []
-            for item in result.get("items", []):
-                start_data = item.get("start", {})
-                date_str = start_data.get("dateTime", start_data.get("date", ""))
-                time_str = ""
-                day_str = ""
-                if "T" in date_str:
-                    dt = datetime.datetime.fromisoformat(date_str.replace("Z", "+00:00"))
-                    dt_local = dt.astimezone(MVD)
-                    day_str = dt_local.strftime("%Y-%m-%d")
-                    time_str = dt_local.strftime("%H:%M")
-                else:
-                    day_str = date_str
-
-                meet_url = item.get("hangoutLink") or ""
-                if not meet_url:
-                    for ep in (item.get("conferenceData") or {}).get("entryPoints", []):
-                        if ep.get("entryPointType") == "video":
-                            meet_url = ep.get("uri", "")
-                            break
-                if not meet_url:
-                    loc = item.get("location", "")
-                    if loc.startswith("http"):
-                        meet_url = loc
-
+            for r in rows:
+                sa = r["start_at"] or ""
+                day_str = sa[:10] if sa else ""
+                time_str = sa[11:16] if "T" in sa else ""
                 events.append({
-                    "id": item.get("id"),
-                    "title": item.get("summary", ""),
-                    "description": item.get("description", ""),
+                    "id": str(r["id"]),
+                    "title": r["title"] or r["client_name"] or "Reunión",
                     "date": day_str,
                     "time": time_str,
-                    "meeting_url": meet_url,
+                    "meeting_url": r["meet_link"] or "",
+                    "client_id": r["client_id"],
+                    "client_name": r["client_name"] or "",
                 })
             return jsonify({"events": events})
-        except Exception as e:
-            return jsonify({"error": str(e)})
+        finally:
+            conn.close()
 
-    # POST — create event
-    service, err = _get_calendar_service()
-    if err:
-        return jsonify({"ok": False, "error": err})
-
+    # POST — save meeting to DB only (no Google Calendar)
     data = request.get_json() or {}
     title = (data.get("title") or "").strip()
     date = data.get("date", "")
     time = data.get("time", "")
     duration_min = int(data.get("duration_min") or 60)
-    attendee_email = (data.get("attendee_email") or "").strip()
+    meet_link = (data.get("meet_link") or "").strip()
     description = (data.get("description") or "").strip()
     client_id = data.get("client_id")
 
@@ -201,46 +174,17 @@ def api_calendar_events():
     try:
         start_dt = datetime.datetime.fromisoformat(f"{date}T{time}:00")
         end_dt = start_dt + datetime.timedelta(minutes=duration_min)
+        db = _db()
 
-        event_body = {
-            "summary": title,
-            "description": description,
-            "start": {"dateTime": start_dt.isoformat(), "timeZone": "America/Montevideo"},
-            "end": {"dateTime": end_dt.isoformat(), "timeZone": "America/Montevideo"},
-            "conferenceData": {
-                "createRequest": {
-                    "requestId": str(uuid.uuid4()),
-                    "conferenceSolutionKey": {"type": "hangoutsMeet"},
-                }
-            },
-        }
-        if attendee_email:
-            event_body["attendees"] = [{"email": attendee_email}]
-
-        created = service.events().insert(
-            calendarId="primary",
-            body=event_body,
-            conferenceDataVersion=1,
-            sendUpdates="all" if attendee_email else "none",
-        ).execute()
-
-        meet_url = created.get("hangoutLink", "")
-        cal_event_id = created.get("id", "")
-
-        recall_bot_id = _create_recall_bot(meet_url) if meet_url else None
-
+        meeting_id = None
         if client_id:
-            db = _db()
-            create_meeting(
-                db,
-                int(client_id),
-                calendar_event_id=cal_event_id,
+            meeting_id = create_meeting(
+                db, int(client_id),
                 title=title,
                 start_at=start_dt.isoformat(),
                 end_at=end_dt.isoformat(),
-                meet_link=meet_url,
+                meet_link=meet_link,
                 status="scheduled",
-                recall_bot_id=recall_bot_id,
             )
             from database import update_business
             update_business(db, int(client_id), crm_status="reunion_agendada")
@@ -252,7 +196,7 @@ def api_calendar_events():
             increment_task_progress(db, uids, "reuniones_agendadas",
                                     lead_id=int(client_id), lead_name=client.get("name", ""))
 
-        return jsonify({"ok": True, "meet_url": meet_url, "event_id": cal_event_id, "recall_bot_id": recall_bot_id})
+        return jsonify({"ok": True, "meeting_id": meeting_id, "meet_url": meet_link, "event_id": None})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)})
 

@@ -1272,8 +1272,7 @@ body.light .upick-name{color:#0f172a}
       <div style="display:flex;gap:8px;align-items:center;flex-shrink:0">
         <button class="cal-nav-btn" onclick="calChangeMonth(-1)">←</button>
         <button class="cal-nav-btn" onclick="calChangeMonth(1)">→</button>
-        <button class="cal-new-btn" onclick="openNewEventModal()">+ Nueva reunión</button>
-        <a href="https://calendly.com/scalerics/consultoriagratuita" target="_blank" class="cal-new-btn" style="background:#0f2a1a;border-color:#10b981;color:#10b981;text-decoration:none">Calendly</a>
+        <a href="https://calendly.com/scalerics/consultoriagratuita" target="_blank" class="cal-new-btn" style="background:#0f2a1a;border:1px solid #10b981;color:#10b981;text-decoration:none">+ Calendly</a>
       </div>
     </div>
     <div id="cal-error" class="cal-error" style="display:none"></div>
@@ -1531,8 +1530,8 @@ body.light .upick-name{color:#0f172a}
         <input type="number" id="ev-duration" value="60" min="15" max="480">
       </div>
     </div>
-    <label class="modal-label">Email del invitado</label>
-    <input type="email" id="ev-email" placeholder="(opcional) cliente@ejemplo.com" style="margin-bottom:12px">
+    <label class="modal-label">Link de reunión</label>
+    <input type="url" id="ev-email" placeholder="(opcional) https://meet.google.com/..." style="margin-bottom:12px">
     <label class="modal-label">Descripción</label>
     <textarea id="ev-desc" placeholder="(opcional)" style="min-height:60px"></textarea>
     <input type="hidden" id="ev-client-id" value="">
@@ -2691,11 +2690,11 @@ async function saveEvent() {
   const duration = parseInt(document.getElementById('ev-duration').value) || 60;
   const desc = document.getElementById('ev-desc').value.trim();
   if (!title || !date || !time) { alert('Completá el título, fecha y hora'); return; }
-  const email = document.getElementById('ev-email').value.trim();
+  const meet_link = document.getElementById('ev-email').value.trim();
   const clientId = document.getElementById('ev-client-id').value.trim() || null;
   const btn = document.getElementById('ev-save-btn');
   btn.disabled = true; btn.textContent = '...';
-  const r = await fetch('/api/calendar/events', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({title,date,time,duration_min:duration,description:desc,attendee_email:email,client_id:clientId})});
+  const r = await fetch('/api/calendar/events', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({title,date,time,duration_min:duration,description:desc,meet_link,client_id:clientId})});
   const d = await r.json();
   btn.disabled = false; btn.textContent = '📅 Crear reunión';
   if (!d.ok) { alert('Error: '+(d.error||'Error desconocido')); return; }
