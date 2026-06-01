@@ -22,6 +22,169 @@
 
 ---
 
+## Task 0: CSS + JS — Custom User Picker
+
+Dropdown personalizado con avatar (inicial coloreada + nombre) usado en dos lugares:
+- Filtro de usuario en la barra de filtros (`upick-filter`)
+- Campo "Asignar a" en el modal de tarea (`upick-modal`)
+
+Reemplaza los `<select>` nativos que se veían inconsistentes. Los hidden inputs `task-assignee-id` y `task-assignee-email` se mantienen para no cambiar `submitAddTask()`.
+
+**Files:**
+- Modify: `dashboard.py` (CSS ~línea 870, JS al final de la sección tasks)
+
+- [ ] **Step 1: Agregar CSS del custom picker**
+
+Encontrar:
+```css
+/* Add-task modal */
+#add-task-modal .modal{width:440px}
+```
+
+Reemplazar con:
+```css
+/* Add-task modal */
+#add-task-modal .modal{width:440px}
+/* Custom user picker */
+.upick-wrap{position:relative}
+.upick-trigger{display:flex;align-items:center;gap:8px;background:#0a0f1a;border:1px solid #334155;border-radius:8px;padding:8px 12px;cursor:pointer;transition:border-color .15s;user-select:none}
+.upick-trigger:hover{border-color:#0088cc55}
+.upick-trigger.open{border-color:#0088cc}
+.upick-label{flex:1;font-size:.82rem;color:#e2e8f0}
+.upick-chevron{color:#475569;font-size:.7rem;transition:transform .15s}
+.upick-trigger.open .upick-chevron{transform:rotate(180deg)}
+.upick-dropdown{position:absolute;top:calc(100% + 6px);left:0;right:0;background:#111827;border:1px solid #334155;border-radius:10px;overflow:hidden;z-index:200;box-shadow:0 8px 24px rgba(0,0,0,.4)}
+.upick-option{display:flex;align-items:center;gap:10px;padding:9px 12px;cursor:pointer;transition:background .12s}
+.upick-option:hover{background:#1a2234}
+.upick-option.upick-sel{background:#0c1a2e}
+.upick-av{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.65rem;font-weight:800;flex-shrink:0;color:#fff}
+.upick-name{font-size:.82rem;color:#e2e8f0;font-weight:500;flex:1}
+.upick-check{color:#0088cc;font-size:.8rem;font-weight:700}
+body.light .upick-trigger{background:#fff;border-color:#e2e8f0}
+body.light .upick-dropdown{background:#fff;border-color:#e2e8f0;box-shadow:0 8px 24px rgba(0,0,0,.12)}
+body.light .upick-option:hover{background:#f8fafc}
+body.light .upick-option.upick-sel{background:#eff6ff}
+body.light .upick-label{color:#0f172a}
+body.light .upick-name{color:#0f172a}
+```
+
+- [ ] **Step 2: Agregar JS del custom picker (al final del bloque JS de tasks, antes del cierre `// ── Client panel`)**
+
+Encontrar:
+```javascript
+// ── Client panel: Tasks tab ───────────────────────────────────────────────────
+```
+
+Insertar antes de esa línea:
+```javascript
+// ── Custom user picker ────────────────────────────────────────────────────────
+
+const _upickColors = ['#0369a1','#7e22ce','#065f46','#9a3412','#be185d','#0f766e','#1d4ed8','#a16207'];
+function _upickColor(id) { return _upickColors[Number(id||0) % _upickColors.length]; }
+function _upickInitials(name) { return (name||'').split(' ').slice(0,2).map(w=>w[0]||'').join('').toUpperCase()||'?'; }
+
+function _upickToggle(id) {
+  const trigger = document.getElementById('upick-'+id+'-trigger');
+  const dd = document.getElementById('upick-'+id+'-dropdown');
+  if (!dd) return;
+  const isOpen = dd.style.display !== 'none';
+  // close all pickers
+  ['filter','modal'].forEach(k => {
+    const d = document.getElementById('upick-'+k+'-dropdown');
+    const t = document.getElementById('upick-'+k+'-trigger');
+    if (d) d.style.display = 'none';
+    if (t) t.classList.remove('open');
+  });
+  if (!isOpen) {
+    _upickRenderDropdown(id);
+    dd.style.display = '';
+    if (trigger) trigger.classList.add('open');
+  }
+}
+
+function _upickRenderDropdown(id) {
+  const dd = document.getElementById('upick-'+id+'-dropdown');
+  if (!dd) return;
+  const selectedId = id === 'filter' ? _taskUserFilter
+    : (document.getElementById('task-assignee-id')||{}).value || '';
+  const isFilter = id === 'filter';
+  const noneLabel = isFilter ? 'Todos los usuarios' : '— Sin asignar —';
+  const noneAv = isFilter ? '👤' : '—';
+  const noneAvStyle = isFilter
+    ? 'background:#1e293b;color:#475569;font-size:.8rem'
+    : 'background:#1e293b;color:#475569;font-size:.9rem';
+  const noneSel = !selectedId;
+  let html = `<div class="upick-option ${noneSel?'upick-sel':''}" onclick="_upickSelect('${id}','','','','${noneLabel}')">
+    <div class="upick-av" style="${noneAvStyle}">${noneAv}</div>
+    <span class="upick-name" style="color:#64748b">${noneLabel}</span>
+    ${noneSel?'<span class="upick-check">✓</span>':''}
+  </div>`;
+  html += _allUsers.map(u => {
+    const sel = String(u.id) === String(selectedId);
+    return `<div class="upick-option ${sel?'upick-sel':''}" onclick="_upickSelect('${id}',${u.id},'${esc(u.name||'')}','${esc(u.email||'')}','${esc(u.name||'')}')">
+      <div class="upick-av" style="background:${_upickColor(u.id)}">${_upickInitials(u.name)}</div>
+      <span class="upick-name">${esc(u.name)}</span>
+      ${sel?'<span class="upick-check">✓</span>':''}
+    </div>`;
+  }).join('');
+  dd.innerHTML = html;
+}
+
+function _upickSelect(id, userId, userName, userEmail, label) {
+  const trigger = document.getElementById('upick-'+id+'-trigger');
+  const av = document.getElementById('upick-'+id+'-av');
+  const lbl = document.getElementById('upick-'+id+'-label');
+  if (userId) {
+    if (av) { av.style.cssText = `background:${_upickColor(userId)};font-size:.65rem`; av.textContent = _upickInitials(userName); }
+    if (lbl) lbl.textContent = userName;
+  } else {
+    const isFilter = id === 'filter';
+    if (av) { av.style.cssText = 'background:#1e293b;color:#475569'; av.style.fontSize = isFilter ? '.8rem' : '.9rem'; av.textContent = isFilter ? '👤' : '—'; }
+    if (lbl) lbl.textContent = label;
+  }
+  const dd = document.getElementById('upick-'+id+'-dropdown');
+  if (dd) dd.style.display = 'none';
+  if (trigger) trigger.classList.remove('open');
+  if (id === 'modal') {
+    const aid = document.getElementById('task-assignee-id');
+    const aem = document.getElementById('task-assignee-email');
+    if (aid) aid.value = userId || '';
+    if (aem) aem.value = userEmail || '';
+  }
+  if (id === 'filter') {
+    _taskUserFilter = String(userId);
+    _updateFilterCounts();
+    renderTasksList();
+  }
+}
+
+// close picker on outside click
+document.addEventListener('click', e => {
+  if (!e.target.closest('.upick-wrap')) {
+    ['filter','modal'].forEach(k => {
+      const d = document.getElementById('upick-'+k+'-dropdown');
+      const t = document.getElementById('upick-'+k+'-trigger');
+      if (d) d.style.display = 'none';
+      if (t) t.classList.remove('open');
+    });
+  }
+}, true);
+
+```
+
+- [ ] **Step 3: Verificar que la página carga sin errores**
+
+Las funciones están definidas pero no se usan aún (el HTML todavía tiene los `<select>` viejos). No debe haber errores en consola.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add dashboard.py
+git commit -m "feat: custom user picker CSS y JS"
+```
+
+---
+
 ## Task 1: CSS — Nuevos estilos
 
 **Files:**
@@ -121,9 +284,14 @@ Reemplazar con:
     <div class="filter-bar">
       <div class="filter-row-1">
         <input type="text" id="task-search" class="search-input" placeholder="🔍 Buscar tarea..." oninput="_onTaskSearch(this.value)">
-        <select id="task-user-filter" class="user-select" onchange="_onTaskUserFilterChange(this.value)">
-          <option value="">👤 Todos los usuarios</option>
-        </select>
+        <div class="upick-wrap">
+          <div class="upick-trigger" id="upick-filter-trigger" onclick="_upickToggle('filter')">
+            <div class="upick-av" id="upick-filter-av" style="background:#1e293b;color:#475569;font-size:.8rem">👤</div>
+            <span class="upick-label" id="upick-filter-label">Todos los usuarios</span>
+            <span class="upick-chevron">▾</span>
+          </div>
+          <div class="upick-dropdown" id="upick-filter-dropdown" style="display:none"></div>
+        </div>
       </div>
       <div class="filter-row-2">
         <button class="pill active" id="pill-all" onclick="filterTasks('all',this)">Todas <span class="pill-count" id="pill-count-all">0</span></button>
@@ -185,7 +353,38 @@ Reemplazar con:
     </div>
 ```
 
-- [ ] **Step 2: Cambiar el input de vencimiento de `date` a `datetime-local`**
+- [ ] **Step 2: Reemplazar `<select>` de "Asignar a" por el custom picker**
+
+Encontrar en el modal:
+```html
+    <div style="margin-top:10px">
+      <label class="modal-label">Asignar a</label>
+      <select id="task-assignee-input" class="modal-input" onchange="_onTaskAssigneeChange(this)">
+        <option value="">— Sin asignar —</option>
+      </select>
+      <input type="hidden" id="task-assignee-id">
+      <input type="hidden" id="task-assignee-email">
+    </div>
+```
+
+Reemplazar con:
+```html
+    <div style="margin-top:10px">
+      <label class="modal-label">Asignar a</label>
+      <div class="upick-wrap">
+        <div class="upick-trigger" id="upick-modal-trigger" onclick="_upickToggle('modal')">
+          <div class="upick-av" id="upick-modal-av" style="background:#1e293b;color:#475569;font-size:.9rem">—</div>
+          <span class="upick-label" id="upick-modal-label">— Sin asignar —</span>
+          <span class="upick-chevron">▾</span>
+        </div>
+        <div class="upick-dropdown" id="upick-modal-dropdown" style="display:none"></div>
+      </div>
+      <input type="hidden" id="task-assignee-id">
+      <input type="hidden" id="task-assignee-email">
+    </div>
+```
+
+- [ ] **Step 3: Cambiar el input de vencimiento de `date` a `datetime-local`**
 
 Encontrar en el modal:
 ```html
@@ -199,15 +398,15 @@ Reemplazar con:
         <input type="datetime-local" id="task-deadline-input" class="modal-input">
 ```
 
-- [ ] **Step 3: Verificar en browser**
+- [ ] **Step 4: Verificar en browser**
 
-Abrir modal con "+ Nueva tarea": debe verse el campo Estado al final con "● Pendiente" por defecto, y el campo de vencimiento debe mostrar date + time picker.
+Abrir modal con "+ Nueva tarea": el campo "Asignar a" debe ser el custom picker (trigger con "—" y dropdown al hacer click), el campo Estado con "● Pendiente", y el vencimiento con date + time picker.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add dashboard.py
-git commit -m "feat: campo Estado, hora en vencimiento e IDs en modal de tarea"
+git commit -m "feat: custom picker en modal, campo Estado, hora en vencimiento"
 ```
 
 ---
@@ -442,15 +641,16 @@ async function loadTasks() {
 }
 
 function _populateUserFilter() {
-  const sel = document.getElementById('task-user-filter');
-  if (!sel) return;
-  const current = sel.value;
-  sel.innerHTML = '<option value="">👤 Todos los usuarios</option>';
-  _allUsers.forEach(u => {
-    const opt = new Option('👤 ' + u.name, u.id);
-    sel.appendChild(opt);
-  });
-  if (current) sel.value = current;
+  // Restore filter picker display after reload (preserves selected user if any)
+  if (_taskUserFilter) {
+    const u = _allUsers.find(u => String(u.id) === String(_taskUserFilter));
+    if (u) {
+      const av = document.getElementById('upick-filter-av');
+      const lbl = document.getElementById('upick-filter-label');
+      if (av) { av.style.cssText = `background:${_upickColor(u.id)};font-size:.65rem`; av.textContent = _upickInitials(u.name); }
+      if (lbl) lbl.textContent = u.name;
+    }
+  }
 }
 ```
 
@@ -724,16 +924,7 @@ async function openAddTaskModal(clientId, clientName) {
   document.getElementById('task-client-results').style.display = 'none';
   document.getElementById('task-status-input').value = 'todo';
   await _loadUsersForTask();
-  const sel = document.getElementById('task-assignee-input');
-  sel.innerHTML = '<option value="">— Sin asignar —</option>';
-  _allUsers.forEach(u => {
-    const opt = new Option(u.name, u.id);
-    opt.dataset.uid = u.id;
-    opt.dataset.email = u.email;
-    sel.appendChild(opt);
-  });
-  document.getElementById('task-assignee-id').value = '';
-  document.getElementById('task-assignee-email').value = '';
+  _upickSelect('modal', '', '', '', '— Sin asignar —');
   const h3 = document.getElementById('add-task-modal').querySelector('h3');
   if (h3) h3.textContent = 'Nueva tarea';
   const submitBtn = document.getElementById('task-submit-btn');
@@ -760,17 +951,7 @@ async function openEditTaskModal(taskId) {
   document.getElementById('task-client-chosen').textContent = clientLead ? 'Cliente: ' + (clientLead.name||'') : '';
   document.getElementById('task-client-results').style.display = 'none';
   await _loadUsersForTask();
-  const sel = document.getElementById('task-assignee-input');
-  sel.innerHTML = '<option value="">— Sin asignar —</option>';
-  _allUsers.forEach(u => {
-    const opt = new Option(u.name, u.id);
-    opt.dataset.uid = u.id;
-    opt.dataset.email = u.email;
-    if (u.id === t.assignee_id) opt.selected = true;
-    sel.appendChild(opt);
-  });
-  document.getElementById('task-assignee-id').value = t.assignee_id || '';
-  document.getElementById('task-assignee-email').value = t.assignee_email || '';
+  _upickSelect('modal', t.assignee_id||'', t.assignee_name||'', t.assignee_email||'', t.assignee_name||'— Sin asignar —');
   const h3 = document.getElementById('add-task-modal').querySelector('h3');
   if (h3) h3.textContent = 'Editar tarea';
   const submitBtn = document.getElementById('task-submit-btn');
