@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Agregar filtro por usuario, buscador, pills con conteo, filtros rápidos (Alta prioridad/Vencidas), status badge clickeable 3-estados, y edición de tareas al panel de Tareas del CRM.
+**Goal:** Agregar filtro por usuario, buscador, pills con conteo, filtros rápidos (Alta prioridad/Vencidas), status badge clickeable 3-estados, edición de tareas, y hora en el vencimiento al panel de Tareas del CRM.
 
 **Architecture:** Todos los cambios están en `dashboard.py` (Flask + Jinja2 + vanilla JS en un solo archivo). El filtrado es client-side: se carga todo con `loadTasks()` y se filtra en `_getFilteredTasks()`. El modal de creación se reutiliza para edición con un flag `_editingTaskId`.
 
@@ -185,15 +185,29 @@ Reemplazar con:
     </div>
 ```
 
-- [ ] **Step 2: Verificar en browser**
+- [ ] **Step 2: Cambiar el input de vencimiento de `date` a `datetime-local`**
 
-Abrir modal con "+ Nueva tarea": debe verse el campo Estado al final, con "● Pendiente" por defecto.
+Encontrar en el modal:
+```html
+        <label class="modal-label">Vencimiento</label>
+        <input type="date" id="task-deadline-input" class="modal-input">
+```
 
-- [ ] **Step 3: Commit**
+Reemplazar con:
+```html
+        <label class="modal-label">Vencimiento y hora</label>
+        <input type="datetime-local" id="task-deadline-input" class="modal-input">
+```
+
+- [ ] **Step 3: Verificar en browser**
+
+Abrir modal con "+ Nueva tarea": debe verse el campo Estado al final con "● Pendiente" por defecto, y el campo de vencimiento debe mostrar date + time picker.
+
+- [ ] **Step 4: Commit**
 
 ```bash
 git add dashboard.py
-git commit -m "feat: campo Estado e ID en modal de tarea"
+git commit -m "feat: campo Estado, hora en vencimiento e IDs en modal de tarea"
 ```
 
 ---
@@ -496,7 +510,9 @@ function _taskRowHtml(t) {
   const lead = t.client_id ? _allLeads.find(l => l.id === t.client_id) : null;
   const now = new Date(); const dl = t.deadline ? new Date(t.deadline) : null;
   const overdue = dl && dl < now && !done;
-  const dlStr = dl ? dl.toLocaleDateString('es-UY',{day:'2-digit',month:'2-digit'}) : '';
+  const hasTime = dl && (dl.getHours() !== 0 || dl.getMinutes() !== 0);
+  const dlStr = dl ? dl.toLocaleDateString('es-UY',{day:'2-digit',month:'2-digit'})
+    + (hasTime ? ' ' + dl.toLocaleTimeString('es-UY',{hour:'2-digit',minute:'2-digit'}) : '') : '';
   const prioLabel = ({'high':'Alta','medium':'Media','low':'Baja'})[t.priority] || t.priority;
   const statusLabel = {todo:'● Pendiente', in_progress:'⚡ En progreso', done:'✓ Hecha'}[t.status] || '● Pendiente';
   const statusClass = t.status || 'todo';
@@ -667,7 +683,7 @@ async function openAddTaskModal(clientId, clientName) {
   document.getElementById('task-title-input').value = '';
   document.getElementById('task-desc-input').value = '';
   document.getElementById('task-priority-input').value = 'medium';
-  document.getElementById('task-deadline-input').value = new Date().toISOString().slice(0,10);
+  document.getElementById('task-deadline-input').value = new Date().toISOString().slice(0,16);
   document.getElementById('task-goal-type-input').value = '';
   document.getElementById('task-goal-input').value = '';
   document.getElementById('task-goal-input').style.display = 'none';
@@ -698,7 +714,7 @@ async function openAddTaskModal(clientId, clientName) {
   document.getElementById('task-title-input').value = '';
   document.getElementById('task-desc-input').value = '';
   document.getElementById('task-priority-input').value = 'medium';
-  document.getElementById('task-deadline-input').value = new Date().toISOString().slice(0,10);
+  document.getElementById('task-deadline-input').value = new Date().toISOString().slice(0,16);
   document.getElementById('task-goal-type-input').value = '';
   document.getElementById('task-goal-input').value = '';
   document.getElementById('task-goal-input').style.display = 'none';
@@ -733,7 +749,7 @@ async function openEditTaskModal(taskId) {
   document.getElementById('task-title-input').value = t.title || '';
   document.getElementById('task-desc-input').value = t.description || '';
   document.getElementById('task-priority-input').value = t.priority || 'medium';
-  document.getElementById('task-deadline-input').value = t.deadline ? t.deadline.slice(0,10) : '';
+  document.getElementById('task-deadline-input').value = t.deadline ? t.deadline.slice(0,16).replace(' ','T') : '';
   document.getElementById('task-goal-type-input').value = t.goal_type || '';
   document.getElementById('task-goal-input').value = t.goal || '';
   document.getElementById('task-goal-input').style.display = t.goal_type ? '' : 'none';
