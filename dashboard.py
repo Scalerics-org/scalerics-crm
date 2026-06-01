@@ -1120,9 +1120,10 @@ body.light .upick-name{color:#0f172a}
         <div class="page-date">Leads que pidieron que los llamen después</div>
       </div>
     </div>
+    <div id="sdr-stats-bar" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px"></div>
     <div class="table-wrap">
       <div class="table-header no-cb">
-        <span>Negocio</span><span>Teléfono</span><span>Fecha</span><span>Acciones</span>
+        <span>Negocio</span><span>Teléfono</span><span>Callback</span><span>Notas</span><span>Acciones</span>
       </div>
       <div id="seguimientos-body"></div>
     </div>
@@ -1880,15 +1881,45 @@ function renderCola() {
 
 
 // ── Seguimientos (llamar_despues) ─────────────────────────────────────────────
+function _sdrNameColor(name) {
+  const colors = ['#0369a1','#7e22ce','#065f46','#9a3412','#be185d','#0f766e','#1d4ed8','#a16207'];
+  let h = 0; for (let i = 0; i < (name||'').length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xff;
+  return colors[h % colors.length];
+}
+
+function _renderSdrStats(stats) {
+  const bar = document.getElementById('sdr-stats-bar');
+  if (!bar) return;
+  if (!stats || !stats.length) { bar.innerHTML = '<div style="color:#334155;font-size:.75rem;padding:4px 0">Sin actividad registrada hoy</div>'; return; }
+  bar.innerHTML = stats.map(s => {
+    const color = _sdrNameColor(s.user);
+    const initials = (s.user||'').split(' ').slice(0,2).map(w=>w[0]||'').join('').toUpperCase()||'?';
+    const heat = s.count >= 15 ? '#10b981' : s.count >= 8 ? '#38bdf8' : s.count >= 3 ? '#fbbf24' : '#64748b';
+    return `<div style="display:flex;align-items:center;gap:10px;background:#111827;border:1px solid #1e293b;border-radius:12px;padding:10px 14px;flex:0 0 auto">
+      <div style="width:34px;height:34px;border-radius:50%;background:${color};display:flex;align-items:center;justify-content:center;font-size:.65rem;font-weight:800;color:#fff;flex-shrink:0">${initials}</div>
+      <div>
+        <div style="font-size:.82rem;font-weight:700;color:#f1f5f9">${esc(s.user)}</div>
+        <div style="font-size:.68rem;color:#64748b">Hoy</div>
+      </div>
+      <div style="margin-left:8px;font-size:1.4rem;font-weight:800;color:${heat};min-width:28px;text-align:right">${s.count}</div>
+    </div>`;
+  }).join('');
+}
+
+let _sdrLastActor = {};
+
 async function loadSeguimientos() {
   const body = document.getElementById('seguimientos-body');
   body.innerHTML = '<div style="color:#475569;padding:16px;font-size:.85rem">Cargando...</div>';
   try {
-    const [r1, r2] = await Promise.all([
+    const [r1, r2, r3] = await Promise.all([
       fetch('/api/leads?crm_status=llamar_despues'),
       fetch('/api/leads?crm_status=interesado'),
+      fetch('/api/sdr-activity'),
     ]);
-    const [d1, d2] = await Promise.all([r1.json(), r2.json()]);
+    const [d1, d2, sdrData] = await Promise.all([r1.json(), r2.json(), r3.json()]);
+    _sdrLastActor = sdrData.last_actor || {};
+    _renderSdrStats(sdrData.today || []);
     const leads = [
       ...(Array.isArray(d1) ? d1 : (d1.items || [])),
       ...(Array.isArray(d2) ? d2 : (d2.items || [])),
@@ -1913,11 +1944,21 @@ async function loadSeguimientos() {
         if (cdDate < today) { urgencyClass = 'cb-overdue'; pillClass = 'cb-date-overdue'; pillLabel = '⚠ ' + pillLabel; }
         else if (cdDate === today) { urgencyClass = 'cb-today'; pillClass = 'cb-date-today'; pillLabel = '📅 Hoy ' + cd.split('T')[1]?.replace(/:\d{2}$/,''); }
       }
+      const actor = _sdrLastActor[b.id];
+      const actorHtml = actor
+        ? `<div style="font-size:.68rem;color:#475569;margin-top:2px;display:flex;align-items:center;gap:4px">
+            <span style="display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;background:${_sdrNameColor(actor.user)};color:#fff;font-size:.45rem;font-weight:800;flex-shrink:0">${(actor.user||'').charAt(0).toUpperCase()}</span>
+            <span>${esc(actor.user.split(' ')[0])}</span>
+            <span style="color:#334155">·</span>
+            <span>${timeAgo(actor.at)}</span>
+           </div>`
+        : '<div style="font-size:.68rem;color:#334155;margin-top:2px">Sin actividad</div>';
       return `
       <div class="table-row no-cb row-llamar_despues ${urgencyClass}">
         <div>
           <div class="biz-name"><span style="cursor:pointer;text-decoration:underline;text-decoration-color:#334155" onclick="openClientPanel(${b.id})">${esc(b.name||'')}</span></div>
           <div class="biz-sub">${esc(b.category||'')}${b.city ? ' · '+esc(b.city) : ''}</div>
+          ${actorHtml}
         </div>
         <div style="display:flex;align-items:center;gap:6px">${b.phone ? (hasWhatsApp(b.phone) ? `<a class="phone-val" href="https://wa.me/${waNum(b.phone)}${b.pitch_text ? '?text='+encodeURIComponent(b.pitch_text) : ''}" target="_blank" title="Abrir WhatsApp">${esc(b.phone)}</a>` : `<span class="phone-plain">${esc(b.phone)}</span>`) : '<span class="no-val">—</span>'}</div>
         <div><span class="cb-date-pill ${pillClass}">${pillLabel}</span></div>
@@ -4763,6 +4804,35 @@ def create_app(db_path: str) -> Flask:
     def api_activity():
         from database import get_activity_feed
         return jsonify(get_activity_feed(db_path))
+
+    @app.route("/api/sdr-activity", methods=["GET"])
+    def api_sdr_activity():
+        import sqlite3 as _sq2, datetime as _dt2
+        today = _dt2.date.today().isoformat()
+        conn2 = _sq2.connect(db_path); conn2.row_factory = _sq2.Row
+        try:
+            # Unique leads touched per user today (exclude sistema/automatico)
+            today_rows = conn2.execute("""
+                SELECT user_name, COUNT(DISTINCT entity_id) as count
+                FROM activity_log
+                WHERE DATE(created_at) = ? AND entity_type = 'lead'
+                  AND user_name NOT IN ('sistema','sistema-auto','')
+                GROUP BY user_name ORDER BY count DESC
+            """, (today,)).fetchall()
+            # Last actor + timestamp per lead
+            actor_rows = conn2.execute("""
+                SELECT entity_id, user_name, MAX(created_at) as last_at
+                FROM activity_log
+                WHERE entity_type = 'lead'
+                  AND user_name NOT IN ('sistema','sistema-auto','')
+                GROUP BY entity_id
+            """).fetchall()
+            return jsonify({
+                "today": [{"user": r["user_name"], "count": r["count"]} for r in today_rows],
+                "last_actor": {r["entity_id"]: {"user": r["user_name"], "at": r["last_at"]} for r in actor_rows}
+            })
+        finally:
+            conn2.close()
 
     @app.route("/api/me", methods=["GET"])
     def api_me():
