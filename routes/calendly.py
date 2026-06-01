@@ -97,6 +97,24 @@ def calendly_webhook():
         else:
             client_id = client["id"]
 
+        # Create Recall bot to transcribe the Google Meet
+        recall_bot_id = None
+        if meet_link:
+            try:
+                import requests as _req
+                recall_key = os.environ.get("RECALL_API_KEY", "")
+                if recall_key:
+                    rb = _req.post(
+                        "https://us-east-1.recall.ai/api/v1/bot/",
+                        headers={"Authorization": f"Token {recall_key}"},
+                        json={"meeting_url": meet_link, "bot_name": "Scalerics Bot"},
+                        timeout=10,
+                    )
+                    if rb.ok:
+                        recall_bot_id = rb.json().get("id")
+            except Exception:
+                pass
+
         meeting_id = create_meeting(
             db_path,
             client_id=client_id,
@@ -106,13 +124,14 @@ def calendly_webhook():
             end_at=end_at,
             meet_link=meet_link,
             status="scheduled",
+            recall_bot_id=recall_bot_id,
         )
 
         log_activity(db_path, "calendly", "meeting_scheduled", "lead", client_id,
                      client["name"] if client else name,
                      f"Calendly: {title} · {start_at[:16] if start_at else ''}")
 
-        return jsonify({"ok": True, "meeting_id": meeting_id})
+        return jsonify({"ok": True, "meeting_id": meeting_id, "recall_bot_id": recall_bot_id})
 
     if event_type == "invitee.canceled":
         event_uri = payload.get("payload", {}).get("event", {}).get("uri", "")
