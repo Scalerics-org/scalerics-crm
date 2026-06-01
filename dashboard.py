@@ -1357,7 +1357,12 @@ body.light .upick-name{color:#0f172a}
         <h1>Actividad reciente</h1>
         <div class="page-date" id="activity-date"></div>
       </div>
-      <button class="export-btn" onclick="loadActivity()">↻ Actualizar</button>
+      <div style="display:flex;gap:8px;align-items:center">
+        <select class="filter-select" id="activity-user-filter" onchange="loadActivity()" style="font-size:.8rem">
+          <option value="">Todos los usuarios</option>
+        </select>
+        <button class="export-btn" onclick="loadActivity()">↻</button>
+      </div>
     </div>
     <div id="activity-list" style="max-width:760px"></div>
   </div>
@@ -4658,25 +4663,33 @@ async function loadActivity() {
   const list = document.getElementById('activity-list');
   if (!list) return;
   list.innerHTML = '<div style="color:#475569;padding:16px 0">Cargando...</div>';
+  const sel = document.getElementById('activity-user-filter');
+  const user = sel ? sel.value : '';
   try {
-    const r = await fetch('/api/activity');
+    const r = await fetch('/api/activity' + (user ? '?user=' + encodeURIComponent(user) : ''));
     if (!r.ok) { list.innerHTML = '<div style="color:#f87171">Error cargando actividad</div>'; return; }
-    const items = await r.json();
-    if (!items.length) { list.innerHTML = '<div style="color:#475569;padding:16px 0">Sin actividad registrada todavía.</div>'; return; }
+    const data = await r.json();
+    const items = data.items || data;
+    // Populate user filter dropdown (preserve selected)
+    if (sel && data.users) {
+      const cur = sel.value;
+      sel.innerHTML = '<option value="">Todos los usuarios</option>'
+        + data.users.map(u => '<option value="' + esc(u) + '"' + (u === cur ? ' selected' : '') + '>' + esc(u) + '</option>').join('');
+    }
+    if (!items.length) { list.innerHTML = '<div style="color:#475569;padding:16px 0">Sin actividad registrada.</div>'; return; }
     list.innerHTML = items.map(i => {
       const fn = _actActionLabels[i.action];
       const desc = fn ? fn(i) : esc(i.action);
       const icon = _actIcons[i.action] || '·';
       const when = timeAgo(i.created_at);
-      return `<div class="act-row">
-        <div class="act-avatar">${icon}</div>
-        <div class="act-body">
-          <span class="act-user">${esc(i.user_name)}</span>
-          <span class="act-sep"> · </span>
-          <span class="act-desc">${desc}</span>
-          <div class="act-when">${when}</div>
-        </div>
-      </div>`;
+      return '<div class="act-row">'
+        + '<div class="act-avatar">' + icon + '</div>'
+        + '<div class="act-body">'
+        + '<span class="act-user">' + esc(i.user_name) + '</span>'
+        + '<span class="act-sep"> · </span>'
+        + '<span class="act-desc">' + desc + '</span>'
+        + '<div class="act-when">' + when + '</div>'
+        + '</div></div>';
     }).join('');
     const d = document.getElementById('activity-date');
     if (d) d.textContent = 'Actualizado: ' + new Date().toLocaleString('es-UY');
@@ -4903,8 +4916,26 @@ def create_app(db_path: str) -> Flask:
 
     @app.route("/api/activity", methods=["GET"])
     def api_activity():
-        from database import get_activity_feed
-        return jsonify(get_activity_feed(db_path))
+        import sqlite3 as _sqa
+        user_filter = request.args.get("user", "").strip()
+        conn_a = _sqa.connect(db_path); conn_a.row_factory = _sqa.Row
+        try:
+            # Distinct users for filter dropdown
+            users = [r["user_name"] for r in conn_a.execute(
+                "SELECT DISTINCT user_name FROM activity_log WHERE user_name NOT IN ('','sistema','sistema-auto','meta_import','calendly','calendly-import') ORDER BY user_name"
+            ).fetchall()]
+            if user_filter:
+                rows = conn_a.execute(
+                    "SELECT id,user_name,action,entity_type,entity_id,entity_name,detail,created_at FROM activity_log WHERE user_name=? ORDER BY created_at DESC LIMIT 120",
+                    (user_filter,)
+                ).fetchall()
+            else:
+                rows = conn_a.execute(
+                    "SELECT id,user_name,action,entity_type,entity_id,entity_name,detail,created_at FROM activity_log ORDER BY created_at DESC LIMIT 120"
+                ).fetchall()
+            return jsonify({"items": [dict(r) for r in rows], "users": users})
+        finally:
+            conn_a.close()
 
     @app.route("/api/sdr-activity", methods=["GET"])
     def api_sdr_activity():
