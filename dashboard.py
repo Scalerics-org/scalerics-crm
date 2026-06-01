@@ -326,7 +326,9 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
   .modal-row{grid-template-columns:1fr!important}
   /* Touch targets mínimo 44px */
   .filter-btn,.btn-cancel,.btn-confirm,.run-btn,.contact-btn,.pitch-btn,.mail-btn{min-height:44px}
-  .cp-tab{padding:12px 14px;font-size:.78rem}
+  .cp-tabs{overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;flex-shrink:0}
+  .cp-tabs::-webkit-scrollbar{display:none}
+  .cp-tab{padding:10px 14px;font-size:.76rem;white-space:nowrap;flex-shrink:0}
   /* Kanban: scroll táctil */
   .kanban-board{-webkit-overflow-scrolling:touch;scroll-snap-type:x mandatory;padding-bottom:24px}
   .kanban-col{scroll-snap-align:start}
