@@ -517,6 +517,40 @@ def delete_business(db_path: str, business_id: int) -> None:
         conn.close()
 
 
+def merge_business(db_path: str, source_id: int, target_id: int) -> None:
+    """Transfer all relations from source_id to target_id, then delete source."""
+    conn = _connect(db_path)
+    try:
+        for table, col in [
+            ("meetings",         "client_id"),
+            ("demos",            "client_id"),
+            ("budgets",          "client_id"),
+            ("tasks",            "client_id"),
+            ("lead_attachments", "lead_id"),
+            ("lead_events",      "lead_id"),
+            ("call_logs",        "lead_id"),
+        ]:
+            conn.execute(
+                f"UPDATE {table} SET {col} = ? WHERE {col} = ?",
+                (target_id, source_id),
+            )
+
+        # client_info has UNIQUE on client_id — only transfer if target has none
+        has_ci = conn.execute(
+            "SELECT 1 FROM client_info WHERE client_id = ?", (target_id,)
+        ).fetchone()
+        if not has_ci:
+            conn.execute(
+                "UPDATE client_info SET client_id = ? WHERE client_id = ?",
+                (target_id, source_id),
+            )
+
+        conn.execute("DELETE FROM businesses WHERE id = ?", (source_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
 # ─── Demos ────────────────────────────────────────────────────────────────────
 
 _DEMO_COLUMNS = {"status", "html_path", "url", "generated_at", "generated_by", "error_message"}
