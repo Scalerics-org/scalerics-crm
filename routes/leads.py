@@ -8,7 +8,7 @@ from flask import Blueprint, Response, current_app, jsonify, request, session
 from werkzeug.utils import secure_filename
 
 from database import (get_all_businesses, update_business, delete_business, get_business,
-                      get_client_info, insert_business,
+                      get_client_info, insert_business, merge_business,
                       add_attachment, get_attachments, get_attachment_file, delete_attachment,
                       add_lead_event, get_lead_events,
                       add_call_log, get_call_logs,
@@ -212,6 +212,50 @@ def api_delete_lead(biz_id):
     log_activity(db, user_name, "lead_deleted", "lead", biz_id, biz.get("name", ""), "",
                  user_id=session.get("user_id"))
     delete_business(db, biz_id)
+    return jsonify({"ok": True})
+
+
+@leads_bp.route("/api/leads/<int:biz_id>/merge", methods=["POST"])
+def api_merge_lead(biz_id):
+    """Merge biz_id (duplicate) into another existing lead."""
+    if not session.get("user_id"):
+        token = request.headers.get("x-admin-token", "")
+        expected = os.environ.get("ADMIN_TOKEN", "")
+        if not expected or token != expected:
+            return jsonify({"error": "unauthorized"}), 401
+
+    data = request.get_json() or {}
+    into_id = data.get("into_id")
+    if not into_id:
+        return jsonify({"ok": False, "error": "into_id requerido"}), 400
+
+    db = _db()
+    source = get_business(db, biz_id)
+    target = get_business(db, int(into_id))
+    if not source:
+        return jsonify({"ok": False, "error": "Lead origen no encontrado"}), 404
+    if not target:
+        return jsonify({"ok": False, "error": "Lead destino no encontrado"}), 404
+
+    merge_business(db, biz_id, int(into_id))
+    log_activity(db, session.get("user_name", "sistema"), "lead_merged",
+                 "lead", int(into_id), target.get("name", ""),
+                 f"Fusionado con {source.get('name', '')} (id {biz_id})",
+                 user_id=session.get("user_id"))
+    return jsonify({"ok": True, "target_id": int(into_id)})
+
+
+@leads_bp.route("/api/leads/<int:biz_id>/confirm-new", methods=["POST"])
+def api_confirm_new_lead(biz_id):
+    """Mark a calendly_unmatched lead as confirmed new client."""
+    db = _db()
+    biz = get_business(db, biz_id)
+    if not biz:
+        return jsonify({"ok": False, "error": "Lead no encontrado"}), 404
+    update_business(db, biz_id, source="calendly")
+    log_activity(db, session.get("user_name", "sistema"), "lead_confirmed_new",
+                 "lead", biz_id, biz.get("name", ""), "Confirmado como nuevo cliente desde Calendly",
+                 user_id=session.get("user_id"))
     return jsonify({"ok": True})
 
 
