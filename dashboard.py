@@ -274,6 +274,21 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
   .modal-row{grid-template-columns:1fr}
   .pipeline-input-row{flex-direction:column}
   .max-input{width:100%}
+  /* ── Global mobile ── */
+  .main{padding:14px 14px 90px!important}
+  .page-header{margin-bottom:16px}
+  .page-header h1{font-size:1.1rem}
+  .nav-section-label{display:none}
+  /* Modales como bottom sheets */
+  .modal-overlay{align-items:flex-end!important}
+  .modal{border-radius:20px 20px 0 0!important;width:100%!important;max-width:100%!important;max-height:90vh;overflow-y:auto}
+  .modal-row{grid-template-columns:1fr!important}
+  /* Touch targets mínimo 44px */
+  .filter-btn,.btn-cancel,.btn-confirm,.run-btn,.contact-btn,.pitch-btn,.mail-btn{min-height:44px}
+  .cp-tab{padding:12px 14px;font-size:.78rem}
+  /* Kanban: scroll táctil */
+  .kanban-board{-webkit-overflow-scrolling:touch;scroll-snap-type:x mandatory;padding-bottom:24px}
+  .kanban-col{scroll-snap-align:start}
 }
 @media(max-width:480px){
   .stats{grid-template-columns:1fr}
@@ -775,6 +790,19 @@ body.light .task-status-badge.todo{background:#f1f5f9;color:#64748b}
 body.light .task-status-badge.in_progress{background:#dbeafe;color:#1d4ed8;border-color:#93c5fd}
 body.light .task-status-badge.done{background:#dcfce7;color:#16a34a;border-color:#86efac}
 body.light .tasks-summary{color:#94a3b8}
+body.light .mobile-bottom-nav{background:rgba(255,255,255,.92);border-color:rgba(0,0,0,.1)}
+body.light .mbn-icon{stroke:#94a3b8}
+body.light .mbn-label{color:#94a3b8}
+body.light .mbn-item.active{background:rgba(0,136,204,.12)}
+body.light .mbn-item.active .mbn-icon{stroke:#0088cc}
+body.light .mbn-item.active .mbn-label{color:#0088cc}
+body.light .mas-sheet{background:#fff;border-top-color:#e2e8f0}
+body.light .mas-sheet-handle{background:#e2e8f0}
+body.light .mas-sheet-title{color:#94a3b8}
+body.light .mas-sheet-item{background:#f8fafc;border-color:#e2e8f0}
+body.light .mas-sheet-icon{stroke:#475569}
+body.light .mas-sheet-label{color:#0f172a}
+body.light .mas-sheet-backdrop{background:rgba(0,0,0,.3)}
 body.light .modal h3,body.light .modal-title{color:#0f172a !important}
 body.light .modal label{color:#475569}
 body.light .modal p{color:#475569}
