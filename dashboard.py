@@ -251,10 +251,11 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .panel.active{display:block}
 @media(max-width:768px){
   .topbar{display:none!important}
-  .sidebar{transform:translateX(-220px)}
+  .sidebar{transform:translateX(-100%)}
   .sidebar.open{transform:translateX(0)}
   .sidebar-backdrop.open{display:block}
-  .main{margin-left:0;padding:14px 14px 90px}
+  .mobile-header{display:flex}
+  .main{margin-left:0;padding:64px 14px 90px}
   .page-header h1{font-size:1.1rem}
   .stats{grid-template-columns:1fr 1fr}
   .filters{gap:6px}
@@ -971,6 +972,12 @@ body.light .btn-icon{stroke:currentColor}
 .task-del-btn{background:none;border:none;color:#334155;cursor:pointer;font-size:.9rem;padding:2px 4px}
 .task-del-btn:hover{color:#f87171}
 .tasks-empty{text-align:center;color:#334155;padding:40px;font-size:.88rem}
+/* Mobile header */
+.mobile-header{display:none;position:fixed;top:0;left:0;right:0;height:52px;background:rgba(17,24,39,.95);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid rgba(255,255,255,.07);z-index:250;align-items:center;padding:0 16px;gap:12px}
+.mobile-header img{height:24px;object-fit:contain}
+.mobile-header-title{flex:1;font-size:.88rem;font-weight:700;color:#f1f5f9}
+body.light .mobile-header{background:rgba(255,255,255,.95);border-bottom-color:#e2e8f0}
+body.light .mobile-header-title{color:#0f172a}
 /* Add-task modal */
 #add-task-modal .modal{width:440px}
 /* Mobile bottom navigation */
@@ -1028,6 +1035,10 @@ body.light .upick-name{color:#0f172a}
 </head>
 <body>
 <div class="sidebar-backdrop" id="sidebar-backdrop" onclick="closeSidebar()"></div>
+<header class="mobile-header" id="mobile-header">
+  <img id="mobile-header-logo" src="https://raw.githubusercontent.com/juantomasetti1/scalerics-assets/main/logo_full_alt.png" alt="Scalerics">
+  <span class="mobile-header-title" id="mobile-header-title"></span>
+</header>
 <nav class="mobile-bottom-nav" id="mobile-bottom-nav"></nav>
 <div class="mas-sheet-backdrop" id="mas-sheet-backdrop" onclick="closeMasSheet()"></div>
 <div class="mas-sheet" id="mas-sheet">
@@ -3490,6 +3501,8 @@ function _syncMobileNav(panelName) {
   else { const mas = document.getElementById('mbn-mas'); if (mas) mas.classList.add('active'); }
   const fab = document.getElementById('mobile-fab-task');
   if (fab) fab.style.display = (panelName === 'tasks' && window.innerWidth <= 768) ? 'flex' : 'none';
+  const title = document.getElementById('mobile-header-title');
+  if (title) title.textContent = NAV_LABELS[panelName] || '';
 }
 
 function openMasSheet() {
@@ -3579,6 +3592,8 @@ function toggleTheme() {
 function _applyThemeUI(isLight) {
   const logo = document.getElementById('sidebar-logo');
   if (logo) logo.src = isLight ? LOGO_LIGHT : LOGO_DARK;
+  const mLogo = document.getElementById('mobile-header-logo');
+  if (mLogo) mLogo.src = isLight ? LOGO_LIGHT : LOGO_DARK;
   const label = document.getElementById('theme-label');
   if (label) label.textContent = isLight ? 'Modo oscuro' : 'Modo claro';
   lucide.createIcons();
