@@ -10,7 +10,10 @@ import threading
 import requests
 from flask import Blueprint, current_app, jsonify, request
 
+import sqlite3 as _sq_meta
+
 from database import insert_business, update_business, get_business, log_activity
+from services.email_service import send_new_meta_lead_notification
 
 logger = logging.getLogger(__name__)
 meta_bp = Blueprint("meta", __name__)
@@ -22,6 +25,39 @@ PAGE_TOKEN   = os.environ.get("META_PAGE_TOKEN", "")
 
 def _db() -> str:
     return current_app.config["DB_PATH"]
+
+
+def _get_admin_emails(db: str) -> list[str]:
+    emails = set()
+    admin_env = os.environ.get("ADMIN_EMAIL", "").strip().lower()
+    try:
+        conn = _sq_meta.connect(db); conn.row_factory = _sq_meta.Row
+        rows = conn.execute("""
+            SELECT u.email FROM users u
+            LEFT JOIN roles r ON u.role_id = r.id
+            WHERE LOWER(r.name) = 'admin'
+        """).fetchall()
+        for r in rows:
+            if r["email"]:
+                emails.add(r["email"].strip().lower())
+        conn.close()
+    except Exception as e:
+        logger.warning(f"Could not query admin emails: {e}")
+    if admin_env:
+        emails.add(admin_env)
+    return list(emails)
+
+
+def _notify_new_meta_lead(db: str, lead_name: str, phone: str, campaign: str, city: str, lead_id: int):
+    for email in _get_admin_emails(db):
+        try:
+            send_new_meta_lead_notification(email, lead_name, phone, campaign, city, lead_id)
+        except Exception as e:
+            logger.error(f"Failed to notify {email} of new Meta lead: {e}")
+    # WhatsApp — configurar ADMIN_WA_PHONE en .env cuando esté listo
+    # wa_phone = os.environ.get("ADMIN_WA_PHONE", "")
+    # if wa_phone:
+    #     _send_wa_notification(wa_phone, lead_name, phone, campaign)
 
 
 def _verify_signature(payload: bytes, sig_header: str) -> bool:
@@ -128,6 +164,11 @@ def _fetch_and_store_lead(app, lead_id: str, form_id: str):
                 log_activity(db, "meta_webhook", "lead_created", "lead", biz_id, name,
                              f"Fuente: Meta Lead Ad · {campaign_name or ad_name}", user_id=None)
                 logger.info(f"Meta lead stored: {name} ({phone}) → id {biz_id}")
+                threading.Thread(
+                    target=_notify_new_meta_lead,
+                    args=(db, name, phone, campaign_name or ad_name or "", city, biz_id),
+                    daemon=True,
+                ).start()
             else:
                 logger.info(f"Meta lead duplicate skipped: {name} ({phone})")
 

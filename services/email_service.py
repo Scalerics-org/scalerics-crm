@@ -149,6 +149,28 @@ def send_new_user_notification(new_name: str, new_email: str, new_phone: str, ad
     return _send(admin_email, f"Nuevo usuario: {new_name} — Scalerics CRM", html)
 
 
+def send_new_meta_lead_notification(to_email: str, lead_name: str, phone: str, campaign: str, city: str, lead_id: int) -> bool:
+    rows = [("Nombre", lead_name)]
+    if phone:
+        rows.append(("Teléfono", phone))
+    if city:
+        rows.append(("Ciudad", city))
+    if campaign:
+        rows.append(("Campaña", campaign))
+    body = (
+        _muted("Llegó un nuevo lead de Meta Ads al CRM.")
+        + _info_card(rows)
+    )
+    html = _layout(
+        badge="Nuevo lead Meta Ads",
+        title=f"🔔 {lead_name}",
+        body=body,
+        cta_url=f"{_CRM_URL}",
+        cta_label="Ver en CRM →",
+    )
+    return _send(to_email, f"Nuevo lead Meta: {lead_name} — Scalerics CRM", html)
+
+
 _GOAL_TYPE_LABELS = {
     "reuniones_agendadas": "reuniones agendadas",
     "leads_contactados": "leads contactados",
