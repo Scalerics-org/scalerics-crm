@@ -4719,13 +4719,15 @@ async function loadSdr() {
   const periodCallsMap = {};
   for (const r of (data.period_calls || [])) periodCallsMap[r.user] = r.count;
   const periodLabel = {week:'esta semana', month:'este mes', year:'este año'}[data.period || 'month'];
-  const outMap = {};
-  for (const o of data.outcomes) {
-    if (!outMap[o.user]) outMap[o.user] = {};
-    outMap[o.user][o.outcome] = (outMap[o.user][o.outcome] || 0) + o.count;
+
+  // daily_outcomes: {user: {day: {outcome: count}}}
+  const dailyOutMap = {};
+  for (const o of (data.daily_outcomes || [])) {
+    if (!dailyOutMap[o.user]) dailyOutMap[o.user] = {};
+    if (!dailyOutMap[o.user][o.day]) dailyOutMap[o.user][o.day] = {};
+    dailyOutMap[o.user][o.day][o.outcome] = (dailyOutMap[o.user][o.day][o.outcome] || 0) + o.count;
   }
 
-  // Use sdr_users from backend to show all SDRs even with zero activity
   const users = (data.sdr_users && data.sdr_users.length ? data.sdr_users : Object.keys(byUser)).sort();
   if (!users.length) {
     wrap.innerHTML = '<div style="color:#475569;padding:20px">No hay llamadas registradas aun.</div>';
@@ -4733,15 +4735,15 @@ async function loadSdr() {
   }
 
   const cards = users.map(u => {
-    const todayData = byUser[u] ? (byUser[u][todayStr] || { calls: 0, leads: 0 }) : { calls: 0, leads: 0 };
+    const todayData = byUser[u] ? (byUser[u][todayStr] || { calls: 0 }) : { calls: 0 };
     const periodCalls = periodCallsMap[u] || 0;
     const color = _sdrNameColor(u);
     const initials = u.split(' ').slice(0,2).map(w=>w[0]||'').join('').toUpperCase()||'?';
     const heat = todayData.calls >= 30 ? '#10b981' : todayData.calls >= 15 ? '#38bdf8' : todayData.calls >= 5 ? '#fbbf24' : '#64748b';
-    const outs = outMap[u] || {};
-    const reunion = outs['reunion'] || 0;
-    const interesado = outs['interesado'] || 0;
-    const noContesto = outs['no_contestó'] || 0;
+    const todayOuts = (dailyOutMap[u] || {})[todayStr] || {};
+    const reunion = todayOuts['reunion'] || 0;
+    const interesado = todayOuts['interesado'] || 0;
+    const noContesto = todayOuts['no_contestó'] || 0;
     return '<div style="background:#111827;border:1px solid #1e293b;border-radius:16px;padding:20px 24px;display:flex;flex-direction:column;gap:14px;min-width:220px;flex:1">'
       + '<div style="display:flex;align-items:center;gap:12px">'
       + '<div style="width:42px;height:42px;border-radius:50%;background:' + color + ';display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:800;color:#fff;flex-shrink:0">' + initials + '</div>'
@@ -4751,28 +4753,36 @@ async function loadSdr() {
       + '<div style="font-size:3rem;font-weight:800;color:' + heat + ';line-height:1">' + todayData.calls + '</div>'
       + '<div style="font-size:.8rem;color:#64748b;padding-bottom:6px">llamadas hoy</div></div>'
       + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;border-top:1px solid #1e293b;padding-top:12px">'
-      + '<div style="text-align:center"><div style="font-size:1.1rem;font-weight:800;color:#10b981">' + reunion + '</div><div style="font-size:.62rem;color:#64748b">Reuniones</div></div>'
-      + '<div style="text-align:center"><div style="font-size:1.1rem;font-weight:800;color:#38bdf8">' + interesado + '</div><div style="font-size:.62rem;color:#64748b">Interesados</div></div>'
-      + '<div style="text-align:center"><div style="font-size:1.1rem;font-weight:800;color:#475569">' + noContesto + '</div><div style="font-size:.62rem;color:#64748b">No contestó</div></div>'
+      + '<div style="text-align:center"><div style="font-size:1.1rem;font-weight:800;color:#10b981">' + reunion + '</div><div style="font-size:.62rem;color:#64748b">Reuniones hoy</div></div>'
+      + '<div style="text-align:center"><div style="font-size:1.1rem;font-weight:800;color:#38bdf8">' + interesado + '</div><div style="font-size:.62rem;color:#64748b">Interesados hoy</div></div>'
+      + '<div style="text-align:center"><div style="font-size:1.1rem;font-weight:800;color:#475569">' + noContesto + '</div><div style="font-size:.62rem;color:#64748b">No contestó hoy</div></div>'
       + '</div></div>';
   }).join('');
 
   const shortDay = d => { const dt = new Date(d+'T12:00:00'); return ['Dom','Lun','Mar','Mie','Jue','Vie','Sab'][dt.getDay()]+' '+dt.getDate(); };
   const maxCalls = Math.max(1, ...Object.values(byUser).flatMap(u => Object.values(u).map(d => d.calls)));
 
-  const tableHead = '<tr><th style="text-align:left;padding:8px 12px;font-size:.72rem;color:#64748b;font-weight:600;white-space:nowrap">SDR</th>'
+  const tableHead = '<tr>'
+    + '<th style="text-align:left;padding:8px 12px;font-size:.72rem;color:#64748b;font-weight:600;white-space:nowrap">SDR</th>'
     + days.map(d => {
         const isToday = d === todayStr;
-        return '<th style="padding:6px 4px;font-size:.62rem;color:' + (isToday?'#38bdf8':'#64748b') + ';font-weight:' + (isToday?700:500) + ';text-align:center;min-width:38px;white-space:nowrap' + (isToday?';border-bottom:2px solid #38bdf8':'') + '">' + shortDay(d) + '</th>';
+        return '<th style="padding:6px 4px;font-size:.62rem;color:' + (isToday?'#38bdf8':'#64748b') + ';font-weight:' + (isToday?700:500) + ';text-align:center;min-width:44px;white-space:nowrap' + (isToday?';border-bottom:2px solid #38bdf8':'') + '">' + shortDay(d) + '</th>';
       }).join('')
     + '<th style="padding:8px 12px;font-size:.72rem;color:#64748b;font-weight:600;text-align:center">Total</th></tr>';
+
+  const outcomeRows = [
+    { key: 'reunion',     label: 'Reuniones',   color: '#10b981' },
+    { key: 'interesado',  label: 'Interesados',  color: '#38bdf8' },
+    { key: 'no_contestó', label: 'No contestó',  color: '#475569' },
+  ];
 
   const tableRows = users.map(u => {
     const color = _sdrNameColor(u);
     const initials = u.split(' ').slice(0,2).map(w=>w[0]||'').join('').toUpperCase()||'?';
-    const total = Object.values(byUser[u]).reduce((s,d) => s + d.calls, 0);
-    const cells = days.map(d => {
-      const v = (byUser[u][d] || {}).calls || 0;
+    const uDays = byUser[u] || {};
+    const total = Object.values(uDays).reduce((s,d) => s + d.calls, 0);
+    const callCells = days.map(d => {
+      const v = (uDays[d] || {}).calls || 0;
       const isToday = d === todayStr;
       const intensity = v === 0 ? 0 : Math.min(1, v / (maxCalls * 0.7));
       const alpha = (0.15 + intensity * 0.75).toFixed(2);
@@ -4780,18 +4790,34 @@ async function loadSdr() {
       const fw = v > 0 ? 700 : 400;
       const fc = v === 0 ? '#334155' : intensity > 0.5 ? '#fff' : '#93c5fd';
       const outline = isToday ? ';outline:1px solid #1e3a5f' : '';
-      return '<td style="text-align:center;padding:6px 4px"><div style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:28px;border-radius:6px;background:' + bg + ';font-size:.78rem;font-weight:' + fw + ';color:' + fc + outline + '">' + (v||'&middot;') + '</div></td>';
+      return '<td style="text-align:center;padding:4px 4px"><div style="display:inline-flex;align-items:center;justify-content:center;width:36px;height:26px;border-radius:6px;background:' + bg + ';font-size:.78rem;font-weight:' + fw + ';color:' + fc + outline + '">' + (v||'&middot;') + '</div></td>';
     }).join('');
-    return '<tr><td style="padding:6px 12px;white-space:nowrap"><div style="display:flex;align-items:center;gap:8px">'
+    const nameCell = '<td style="padding:4px 12px;white-space:nowrap" rowspan="4"><div style="display:flex;align-items:center;gap:8px">'
       + '<div style="width:24px;height:24px;border-radius:50%;background:' + color + ';display:flex;align-items:center;justify-content:center;font-size:.55rem;font-weight:800;color:#fff;flex-shrink:0">' + initials + '</div>'
       + '<span style="font-size:.82rem;font-weight:600;color:#e2e8f0">' + esc(u.split(' ')[0]) + '</span>'
-      + '</div></td>' + cells
-      + '<td style="text-align:center;padding:6px 12px;font-size:.88rem;font-weight:800;color:#f1f5f9">' + total + '</td></tr>';
+      + '</div></td>';
+    const callRow = '<tr style="border-top:2px solid #1e293b">' + nameCell
+      + '<td style="padding:4px 12px;font-size:.65rem;font-weight:700;color:#64748b;white-space:nowrap;text-align:right">Llamadas</td>'
+      + callCells
+      + '<td style="text-align:center;padding:4px 12px;font-size:.88rem;font-weight:800;color:#f1f5f9">' + total + '</td></tr>';
+    const outRows = outcomeRows.map(oc => {
+      const cells = days.map(d => {
+        const v = ((dailyOutMap[u] || {})[d] || {})[oc.key] || 0;
+        const isToday = d === todayStr;
+        const outline = isToday ? ';outline:1px solid #1e3a5f' : '';
+        return '<td style="text-align:center;padding:2px 4px"><div style="display:inline-flex;align-items:center;justify-content:center;width:36px;height:20px;border-radius:4px;font-size:.7rem;font-weight:' + (v?700:400) + ';color:' + (v?oc.color:'#1e293b') + outline + '">' + (v||'&middot;') + '</div></td>';
+      }).join('');
+      const ocTotal = days.reduce((s,d) => s + (((dailyOutMap[u]||{})[d]||{})[oc.key]||0), 0);
+      return '<tr><td style="padding:2px 12px;font-size:.62rem;font-weight:600;color:' + oc.color + ';white-space:nowrap;text-align:right;opacity:.7">' + oc.label + '</td>'
+        + cells
+        + '<td style="text-align:center;padding:2px 12px;font-size:.75rem;font-weight:700;color:' + oc.color + '">' + (ocTotal||'&middot;') + '</td></tr>';
+    }).join('');
+    return callRow + outRows;
   }).join('');
 
   wrap.innerHTML = '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:28px">' + cards + '</div>'
     + '<div style="background:#111827;border:1px solid #1e293b;border-radius:16px;padding:20px;overflow-x:auto">'
-    + '<div style="font-size:.78rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:16px">Llamadas por dia (ultimas 2 semanas)</div>'
+    + '<div style="font-size:.78rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:16px">Actividad por dia (ultimas 2 semanas)</div>'
     + '<table style="border-collapse:collapse;width:100%;min-width:600px"><thead>' + tableHead + '</thead><tbody>' + tableRows + '</tbody></table>'
     + '</div>';
 }
@@ -5138,14 +5164,14 @@ def create_app(db_path: str) -> Flask:
                 GROUP BY user_name, day
                 ORDER BY day ASC
             """, sdr_names).fetchall()
-            outcomes = conn3.execute(f"""
-                SELECT user_name, detail as outcome, COUNT(*) as c
+            daily_outcomes = conn3.execute(f"""
+                SELECT user_name, DATE(created_at) as day, detail as outcome, COUNT(*) as c
                 FROM activity_log
                 WHERE action='call_logged'
                   AND user_name IN ({placeholders})
-                  AND DATE(created_at) >= ?
-                GROUP BY user_name, detail
-            """, sdr_names + [date_from]).fetchall()
+                  AND created_at >= date('now','-13 days')
+                GROUP BY user_name, day, detail
+            """, sdr_names).fetchall()
             period_calls = conn3.execute(f"""
                 SELECT user_name, COUNT(*) as c
                 FROM activity_log
@@ -5156,7 +5182,7 @@ def create_app(db_path: str) -> Flask:
             """, sdr_names + [date_from]).fetchall()
             return jsonify({
                 "daily": [{"user": r["user_name"], "day": r["day"], "calls": r["calls"], "leads": r["leads_touched"]} for r in rows],
-                "outcomes": [{"user": r["user_name"], "outcome": r["outcome"], "count": r["c"]} for r in outcomes],
+                "daily_outcomes": [{"user": r["user_name"], "day": r["day"], "outcome": r["outcome"], "count": r["c"]} for r in daily_outcomes],
                 "period_calls": [{"user": r["user_name"], "count": r["c"]} for r in period_calls],
                 "sdr_users": sdr_names,
                 "period": period,
