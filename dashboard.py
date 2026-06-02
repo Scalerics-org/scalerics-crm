@@ -4744,6 +4744,7 @@ async function loadSdr() {
     const reunion = todayOuts['reunion'] || 0;
     const interesado = todayOuts['interesado'] || 0;
     const noContesto = todayOuts['no_contestó'] || 0;
+    const noInteresa = todayOuts['no_interesa'] || 0;
     return '<div style="background:#111827;border:1px solid #1e293b;border-radius:16px;padding:20px 24px;display:flex;flex-direction:column;gap:14px;min-width:220px;flex:1">'
       + '<div style="display:flex;align-items:center;gap:12px">'
       + '<div style="width:42px;height:42px;border-radius:50%;background:' + color + ';display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:800;color:#fff;flex-shrink:0">' + initials + '</div>'
@@ -4752,10 +4753,11 @@ async function loadSdr() {
       + '<div style="display:flex;align-items:flex-end;gap:8px">'
       + '<div style="font-size:3rem;font-weight:800;color:' + heat + ';line-height:1">' + todayData.calls + '</div>'
       + '<div style="font-size:.8rem;color:#64748b;padding-bottom:6px">llamadas hoy</div></div>'
-      + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;border-top:1px solid #1e293b;padding-top:12px">'
+      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;border-top:1px solid #1e293b;padding-top:12px">'
       + '<div style="text-align:center"><div style="font-size:1.1rem;font-weight:800;color:#10b981">' + reunion + '</div><div style="font-size:.62rem;color:#64748b">Reuniones hoy</div></div>'
       + '<div style="text-align:center"><div style="font-size:1.1rem;font-weight:800;color:#38bdf8">' + interesado + '</div><div style="font-size:.62rem;color:#64748b">Interesados hoy</div></div>'
       + '<div style="text-align:center"><div style="font-size:1.1rem;font-weight:800;color:#475569">' + noContesto + '</div><div style="font-size:.62rem;color:#64748b">No contestó hoy</div></div>'
+      + '<div style="text-align:center"><div style="font-size:1.1rem;font-weight:800;color:#ef4444">' + noInteresa + '</div><div style="font-size:.62rem;color:#64748b">No le interesa hoy</div></div>'
       + '</div></div>';
   }).join('');
 
@@ -4771,9 +4773,10 @@ async function loadSdr() {
     + '<th style="padding:8px 12px;font-size:.72rem;color:#64748b;font-weight:600;text-align:center">Total</th></tr>';
 
   const outcomeRows = [
-    { key: 'reunion',     label: 'Reuniones',   color: '#10b981' },
-    { key: 'interesado',  label: 'Interesados',  color: '#38bdf8' },
-    { key: 'no_contestó', label: 'No contestó',  color: '#475569' },
+    { key: 'reunion',     label: 'Reuniones',     color: '#10b981' },
+    { key: 'interesado',  label: 'Interesados',   color: '#38bdf8' },
+    { key: 'no_interesa', label: 'No le interesa', color: '#ef4444' },
+    { key: 'no_contestó', label: 'No contestó',   color: '#475569' },
   ];
 
   const tableRows = users.map(u => {
