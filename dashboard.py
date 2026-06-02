@@ -620,6 +620,8 @@ body.light .cp-event-note{color:#64748b !important}
 .act-sep{color:#64748b}
 .act-desc{color:#94a3b8;font-size:.85rem}
 .act-when{font-size:.72rem;color:#475569;margin-top:3px}
+.act-entity-link{cursor:pointer;color:#38bdf8;text-decoration:underline;text-decoration-color:rgba(56,189,248,.35)}
+.act-entity-link:hover{color:#7dd3fc}
 .no-answer-badge{display:inline-flex;align-items:center;gap:3px;background:rgba(239,68,68,.15);color:#f87171;font-size:.65rem;font-weight:700;padding:2px 6px;border-radius:99px;border:1px solid rgba(239,68,68,.3)}
 .no-interest-badge{display:inline-flex;align-items:center;gap:3px;background:rgba(245,158,11,.15);color:#fbbf24;font-size:.65rem;font-weight:700;padding:2px 6px;border-radius:99px;border:1px solid rgba(245,158,11,.3)}
 body.light .no-answer-badge{background:rgba(239,68,68,.1);color:#dc2626;border-color:rgba(239,68,68,.25)}
@@ -1346,7 +1348,12 @@ body.light .upick-name{color:#0f172a}
         <h1>SDR</h1>
         <div class="page-date">Rendimiento por vendedor</div>
       </div>
-      <button class="export-btn" onclick="loadSdr()">↻ Actualizar</button>
+      <div style="display:flex;gap:6px;align-items:center">
+        <button id="sdr-pill-week"  onclick="setSdrPeriod('week')"  style="padding:5px 14px;border-radius:99px;border:1px solid #1e293b;background:transparent;color:#64748b;font-size:.78rem;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">Semana</button>
+        <button id="sdr-pill-month" onclick="setSdrPeriod('month')" style="padding:5px 14px;border-radius:99px;border:1px solid #0088cc;background:#0088cc;color:#fff;font-size:.78rem;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">Mes</button>
+        <button id="sdr-pill-year"  onclick="setSdrPeriod('year')"  style="padding:5px 14px;border-radius:99px;border:1px solid #1e293b;background:transparent;color:#64748b;font-size:.78rem;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">Año</button>
+        <button class="export-btn"  onclick="loadSdr()">↻ Actualizar</button>
+      </div>
     </div>
     <div id="sdr-content"></div>
   </div>
@@ -4652,17 +4659,23 @@ async function loadMetrics() {
 }
 
 // ========== Activity feed ==========
+function _actEntityLink(i) {
+  if (!i.entity_name) return '';
+  if (i.entity_type === 'lead' && i.entity_id)
+    return '<b><span class="act-entity-link" onclick="openClientPanel('+Number(i.entity_id)+')">'+esc(i.entity_name)+'</span></b>';
+  return '<b>'+esc(i.entity_name)+'</b>';
+}
 const _actActionLabels = {
-  status_change: (i) => `cambió estado${i.entity_name ? ' de <b>'+esc(i.entity_name)+'</b>' : ''} a <b>${_actCrmLabel(i.detail)}</b>`,
-  note_updated:  (i) => `actualizó notas${i.entity_name ? ' de <b>'+esc(i.entity_name)+'</b>' : ''}`,
-  attachment_added: (i) => `adjuntó archivo${i.entity_name ? ' a <b>'+esc(i.entity_name)+'</b>' : ''}${i.detail ? ': '+esc(i.detail) : ''}`,
-  call_logged:   (i) => `registró llamada${i.entity_name ? ' a <b>'+esc(i.entity_name)+'</b>' : ''}: <b>${_actCallLabel(i.detail)}</b>`,
-  budget_generated: (i) => `generó presupuesto${i.entity_name ? ' para <b>'+esc(i.entity_name)+'</b>' : ''}`,
-  budget_sent:   (i) => `marcó presupuesto como enviado${i.entity_name ? ' para <b>'+esc(i.entity_name)+'</b>' : ''}`,
+  status_change: (i) => `cambió estado${i.entity_name ? ' de '+_actEntityLink(i) : ''} a <b>${_actCrmLabel(i.detail)}</b>`,
+  note_updated:  (i) => `actualizó notas${i.entity_name ? ' de '+_actEntityLink(i) : ''}`,
+  attachment_added: (i) => `adjuntó archivo${i.entity_name ? ' a '+_actEntityLink(i) : ''}${i.detail ? ': '+esc(i.detail) : ''}`,
+  call_logged:   (i) => `registró llamada${i.entity_name ? ' a '+_actEntityLink(i) : ''}: <b>${_actCallLabel(i.detail)}</b>`,
+  budget_generated: (i) => `generó presupuesto${i.entity_name ? ' para '+_actEntityLink(i) : ''}`,
+  budget_sent:   (i) => `marcó presupuesto como enviado${i.entity_name ? ' para '+_actEntityLink(i) : ''}`,
   task_created:  (i) => `creó tarea: <b>${esc(i.detail || i.entity_name)}</b>`,
   task_updated:  (i) => `actualizó tarea: <b>${esc(i.entity_name)}</b>${i.detail ? ' ('+esc(i.detail)+')' : ''}`,
   task_deleted:  (i) => `eliminó tarea: <b>${esc(i.entity_name)}</b>`,
-  meeting_scheduled: (i) => `agendó reunión${i.entity_name ? ' con <b>'+esc(i.entity_name)+'</b>' : ''}${i.detail ? ': '+esc(i.detail) : ''}`,
+  meeting_scheduled: (i) => `agendó reunión${i.entity_name ? ' con '+_actEntityLink(i) : ''}${i.detail ? ': '+esc(i.detail) : ''}`,
   lead_deleted:  (i) => `eliminó lead: <b>${esc(i.entity_name)}</b>`,
   batch_status:  (i) => i.detail || 'actualizó múltiples leads',
 };
@@ -4672,10 +4685,22 @@ function _actCallLabel(s) { return {contestó:'Contestó',no_contestó:'No conte
 const _actIcons = {status_change:'🔄',note_updated:'📝',attachment_added:'📎',call_logged:'📞',budget_generated:'💰',budget_sent:'📨',task_created:'✅',task_updated:'✏️',task_deleted:'🗑️',meeting_scheduled:'📅',lead_deleted:'🗑️',batch_status:'🔄'};
 
 // ── SDR panel ──────────────────────────────────────────────────────────────────
+let _sdrPeriod = 'month';
+function setSdrPeriod(p) {
+  _sdrPeriod = p;
+  ['week','month','year'].forEach(k => {
+    const el = document.getElementById('sdr-pill-' + k);
+    if (!el) return;
+    if (k === p) { el.style.background='#0088cc'; el.style.color='#fff'; el.style.borderColor='#0088cc'; }
+    else { el.style.background='transparent'; el.style.color='#64748b'; el.style.borderColor='#1e293b'; }
+  });
+  loadSdr();
+}
+
 async function loadSdr() {
   const wrap = document.getElementById('sdr-content');
   wrap.innerHTML = '<div style="color:#475569;padding:20px;font-size:.85rem">Cargando...</div>';
-  const data = await fetch('/api/sdr-stats').then(r => r.json()).catch(() => null);
+  const data = await fetch('/api/sdr-stats?period=' + _sdrPeriod).then(r => r.json()).catch(() => null);
   if (!data) { wrap.innerHTML = '<div style="color:#ef4444;padding:20px">Error al cargar datos.</div>'; return; }
 
   const days = [];
@@ -4691,6 +4716,9 @@ async function loadSdr() {
     if (!byUser[r.user]) byUser[r.user] = {};
     byUser[r.user][r.day] = { calls: r.calls, leads: r.leads };
   }
+  const periodCallsMap = {};
+  for (const r of (data.period_calls || [])) periodCallsMap[r.user] = r.count;
+  const periodLabel = {week:'esta semana', month:'este mes', year:'este año'}[data.period || 'month'];
   const outMap = {};
   for (const o of data.outcomes) {
     if (!outMap[o.user]) outMap[o.user] = {};
@@ -4705,8 +4733,8 @@ async function loadSdr() {
   }
 
   const cards = users.map(u => {
-    const todayData = byUser[u][todayStr] || { calls: 0, leads: 0 };
-    const totalCalls = Object.values(byUser[u]).reduce((s, d) => s + d.calls, 0);
+    const todayData = byUser[u] ? (byUser[u][todayStr] || { calls: 0, leads: 0 }) : { calls: 0, leads: 0 };
+    const periodCalls = periodCallsMap[u] || 0;
     const color = _sdrNameColor(u);
     const initials = u.split(' ').slice(0,2).map(w=>w[0]||'').join('').toUpperCase()||'?';
     const heat = todayData.calls >= 30 ? '#10b981' : todayData.calls >= 15 ? '#38bdf8' : todayData.calls >= 5 ? '#fbbf24' : '#64748b';
@@ -4718,7 +4746,7 @@ async function loadSdr() {
       + '<div style="display:flex;align-items:center;gap:12px">'
       + '<div style="width:42px;height:42px;border-radius:50%;background:' + color + ';display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:800;color:#fff;flex-shrink:0">' + initials + '</div>'
       + '<div><div style="font-size:.95rem;font-weight:700;color:#f1f5f9">' + esc(u) + '</div>'
-      + '<div style="font-size:.7rem;color:#64748b">' + totalCalls + ' llamadas en 14 dias</div></div></div>'
+      + '<div style="font-size:.7rem;color:#64748b">' + periodCalls + ' llamadas ' + periodLabel + '</div></div></div>'
       + '<div style="display:flex;align-items:flex-end;gap:8px">'
       + '<div style="font-size:3rem;font-weight:800;color:' + heat + ';line-height:1">' + todayData.calls + '</div>'
       + '<div style="font-size:.8rem;color:#64748b;padding-bottom:6px">llamadas hoy</div></div>'
@@ -5078,8 +5106,18 @@ def create_app(db_path: str) -> Flask:
     @app.route("/api/sdr-stats", methods=["GET"])
     def api_sdr_stats():
         import sqlite3 as _sq3
+        from datetime import date, timedelta
         conn3 = _sq3.connect(db_path); conn3.row_factory = _sq3.Row
         try:
+            period = request.args.get('period', 'month')
+            today = date.today()
+            if period == 'week':
+                date_from = (today - timedelta(days=today.weekday())).isoformat()
+            elif period == 'year':
+                date_from = today.replace(month=1, day=1).isoformat()
+            else:
+                date_from = today.replace(day=1).isoformat()
+                period = 'month'
             # SDR users only (role name = 'SDR')
             sdr_names = [r["name"] for r in conn3.execute("""
                 SELECT u.name FROM users u
@@ -5087,7 +5125,7 @@ def create_app(db_path: str) -> Flask:
                 WHERE r.name = 'SDR'
             """).fetchall()]
             if not sdr_names:
-                return jsonify({"daily": [], "outcomes": [], "sdr_users": []})
+                return jsonify({"daily": [], "outcomes": [], "period_calls": [], "sdr_users": [], "period": period})
             placeholders = ','.join('?' * len(sdr_names))
             rows = conn3.execute(f"""
                 SELECT user_name, DATE(created_at) as day,
@@ -5105,12 +5143,23 @@ def create_app(db_path: str) -> Flask:
                 FROM activity_log
                 WHERE action='call_logged'
                   AND user_name IN ({placeholders})
+                  AND DATE(created_at) >= ?
                 GROUP BY user_name, detail
-            """, sdr_names).fetchall()
+            """, sdr_names + [date_from]).fetchall()
+            period_calls = conn3.execute(f"""
+                SELECT user_name, COUNT(*) as c
+                FROM activity_log
+                WHERE action='call_logged'
+                  AND user_name IN ({placeholders})
+                  AND DATE(created_at) >= ?
+                GROUP BY user_name
+            """, sdr_names + [date_from]).fetchall()
             return jsonify({
                 "daily": [{"user": r["user_name"], "day": r["day"], "calls": r["calls"], "leads": r["leads_touched"]} for r in rows],
                 "outcomes": [{"user": r["user_name"], "outcome": r["outcome"], "count": r["c"]} for r in outcomes],
+                "period_calls": [{"user": r["user_name"], "count": r["c"]} for r in period_calls],
                 "sdr_users": sdr_names,
+                "period": period,
             })
         finally:
             conn3.close()
