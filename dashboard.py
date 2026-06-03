@@ -4720,6 +4720,21 @@ async function loadSdr() {
   }
   const periodCallsMap = {};
   for (const r of (data.period_calls || [])) periodCallsMap[r.user] = r.count;
+  const periodReunionesMap = {};
+  for (const r of (data.period_reuniones || [])) periodReunionesMap[r.user] = r.count;
+
+  // llamar_despues neto por dia/user
+  const llamarDespuesMap = {};
+  for (const r of (data.llamar_despues || [])) {
+    if (!llamarDespuesMap[r.user]) llamarDespuesMap[r.user] = {};
+    llamarDespuesMap[r.user][r.day] = r.count;
+  }
+  // reuniones agendadas via calendario por dia/user
+  const reunionesCalMap = {};
+  for (const r of (data.reuniones_cal || [])) {
+    if (!reunionesCalMap[r.user]) reunionesCalMap[r.user] = {};
+    reunionesCalMap[r.user][r.day] = r.count;
+  }
   const periodLabel = {week:'esta semana', month:'este mes', year:'este año'}[data.period || 'month'];
 
   // daily_outcomes: {user: {day: {outcome: count}}}
@@ -4747,19 +4762,24 @@ async function loadSdr() {
     const interesado = todayOuts['interesado'] || 0;
     const noContesto = todayOuts['no_contestó'] || 0;
     const noInteresa = todayOuts['no_interesa'] || 0;
+    const llamarDespuesHoy = (llamarDespuesMap[u] || {})[todayStr] || 0;
+    const reunionesCalHoy  = (reunionesCalMap[u] || {})[todayStr] || 0;
+    const periodReunionesCal = periodReunionesMap[u] || 0;
     return '<div style="background:#111827;border:1px solid #1e293b;border-radius:16px;padding:20px 24px;display:flex;flex-direction:column;gap:14px;min-width:220px;flex:1">'
       + '<div style="display:flex;align-items:center;gap:12px">'
       + '<div style="width:42px;height:42px;border-radius:50%;background:' + color + ';display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:800;color:#fff;flex-shrink:0">' + initials + '</div>'
       + '<div><div style="font-size:.95rem;font-weight:700;color:#f1f5f9">' + esc(u) + '</div>'
-      + '<div style="font-size:.7rem;color:#64748b">' + periodCalls + ' llamadas ' + periodLabel + '</div></div></div>'
+      + '<div style="font-size:.7rem;color:#64748b">' + periodCalls + ' llamadas · ' + periodReunionesCal + ' reuniones ' + periodLabel + '</div></div></div>'
       + '<div style="display:flex;align-items:flex-end;gap:8px">'
       + '<div data-u="' + esc(u) + '" data-d="' + todayStr + '" data-tp="calls" data-lb="hoy" onclick="if(Number(this.textContent)>0)openSdrDetailEl(this)" style="font-size:3rem;font-weight:800;color:' + heat + ';line-height:1' + (todayData.calls > 0 ? ';cursor:pointer' : '') + '">' + todayData.calls + '</div>'
       + '<div style="font-size:.8rem;color:#64748b;padding-bottom:6px">llamadas hoy</div></div>'
-      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;border-top:1px solid #1e293b;padding-top:12px">'
-      + '<div data-u="' + esc(u) + '" data-d="' + todayStr + '" data-tp="reunion" data-lb="hoy" onclick="if(' + reunion + ')openSdrDetailEl(this)" style="text-align:center' + (reunion > 0 ? ';cursor:pointer' : '') + '"><div style="font-size:1.1rem;font-weight:800;color:#10b981">' + reunion + '</div><div style="font-size:.62rem;color:#64748b">Reuniones hoy</div></div>'
+      + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;border-top:1px solid #1e293b;padding-top:12px">'
+      + '<div style="text-align:center"><div style="font-size:1.1rem;font-weight:800;color:#3b82f6">' + reunionesCalHoy + '</div><div style="font-size:.62rem;color:#64748b">Reuniones agendadas</div></div>'
       + '<div data-u="' + esc(u) + '" data-d="' + todayStr + '" data-tp="interesado" data-lb="hoy" onclick="if(' + interesado + ')openSdrDetailEl(this)" style="text-align:center' + (interesado > 0 ? ';cursor:pointer' : '') + '"><div style="font-size:1.1rem;font-weight:800;color:#38bdf8">' + interesado + '</div><div style="font-size:.62rem;color:#64748b">Interesados hoy</div></div>'
+      + '<div data-u="' + esc(u) + '" data-d="' + todayStr + '" data-tp="llamar_despues" data-lb="hoy" onclick="if(' + llamarDespuesHoy + ')openSdrDetailEl(this)" style="text-align:center' + (llamarDespuesHoy > 0 ? ';cursor:pointer' : '') + '"><div style="font-size:1.1rem;font-weight:800;color:#f59e0b">' + llamarDespuesHoy + '</div><div style="font-size:.62rem;color:#64748b">Llamar después</div></div>'
       + '<div data-u="' + esc(u) + '" data-d="' + todayStr + '" data-tp="no_contestó" data-lb="hoy" onclick="if(' + noContesto + ')openSdrDetailEl(this)" style="text-align:center' + (noContesto > 0 ? ';cursor:pointer' : '') + '"><div style="font-size:1.1rem;font-weight:800;color:#475569">' + noContesto + '</div><div style="font-size:.62rem;color:#64748b">No contestó hoy</div></div>'
       + '<div data-u="' + esc(u) + '" data-d="' + todayStr + '" data-tp="no_interesa" data-lb="hoy" onclick="if(' + noInteresa + ')openSdrDetailEl(this)" style="text-align:center' + (noInteresa > 0 ? ';cursor:pointer' : '') + '"><div style="font-size:1.1rem;font-weight:800;color:#ef4444">' + noInteresa + '</div><div style="font-size:.62rem;color:#64748b">No le interesa hoy</div></div>'
+      + '<div data-u="' + esc(u) + '" data-d="' + todayStr + '" data-tp="reunion" data-lb="hoy" onclick="if(' + reunion + ')openSdrDetailEl(this)" style="text-align:center' + (reunion > 0 ? ';cursor:pointer' : '') + '"><div style="font-size:1.1rem;font-weight:800;color:#10b981">' + reunion + '</div><div style="font-size:.62rem;color:#64748b">Marcó reunión</div></div>'
       + '</div></div>';
   }).join('');
 
@@ -4775,10 +4795,12 @@ async function loadSdr() {
     + '<th style="padding:8px 12px;font-size:.72rem;color:#64748b;font-weight:600;text-align:center">Total</th></tr>';
 
   const outcomeRows = [
-    { key: 'reunion',     label: 'Reuniones',     color: '#10b981' },
-    { key: 'interesado',  label: 'Interesados',   color: '#38bdf8' },
-    { key: 'no_interesa', label: 'No le interesa', color: '#ef4444' },
-    { key: 'no_contestó', label: 'No contestó',   color: '#475569' },
+    { key: 'reunion',        label: 'Marcó reunión',     color: '#10b981', src: 'outcomes' },
+    { key: 'reunion_cal',    label: 'Reuniones agendadas', color: '#3b82f6', src: 'cal' },
+    { key: 'interesado',     label: 'Interesados',        color: '#38bdf8', src: 'outcomes' },
+    { key: 'llamar_despues', label: 'Llamar después',     color: '#f59e0b', src: 'llamar' },
+    { key: 'no_interesa',    label: 'No le interesa',     color: '#ef4444', src: 'outcomes' },
+    { key: 'no_contestó',    label: 'No contestó',        color: '#475569', src: 'outcomes' },
   ];
 
   const tableRows = users.map(u => {
@@ -4800,7 +4822,7 @@ async function loadSdr() {
         : '<div style="display:inline-flex;align-items:center;justify-content:center;width:36px;height:26px;border-radius:6px;background:' + bg + ';font-size:.78rem;font-weight:' + fw + ';color:' + fc + outline + '">&middot;</div>';
       return '<td style="text-align:center;padding:4px 4px">' + cellEl + '</td>';
     }).join('');
-    const nameCell = '<td style="padding:4px 12px;white-space:nowrap" rowspan="5"><div style="display:flex;align-items:center;gap:8px">'
+    const nameCell = '<td style="padding:4px 12px;white-space:nowrap" rowspan="7"><div style="display:flex;align-items:center;gap:8px">'
       + '<div style="width:24px;height:24px;border-radius:50%;background:' + color + ';display:flex;align-items:center;justify-content:center;font-size:.55rem;font-weight:800;color:#fff;flex-shrink:0">' + initials + '</div>'
       + '<span style="font-size:.82rem;font-weight:600;color:#e2e8f0">' + esc(u.split(' ')[0]) + '</span>'
       + '</div></td>';
@@ -4810,7 +4832,9 @@ async function loadSdr() {
       + '<td style="text-align:center;padding:4px 12px;font-size:.88rem;font-weight:800;color:#f1f5f9">' + total + '</td></tr>';
     const outRows = outcomeRows.map(oc => {
       const cells = days.map(d => {
-        const v = ((dailyOutMap[u] || {})[d] || {})[oc.key] || 0;
+        const v = oc.src === 'cal'    ? ((reunionesCalMap[u]  || {})[d] || 0)
+                : oc.src === 'llamar' ? ((llamarDespuesMap[u] || {})[d] || 0)
+                : ((dailyOutMap[u] || {})[d] || {})[oc.key] || 0;
         const isToday = d === todayStr;
         const outline = isToday ? ';outline:1px solid #1e3a5f' : '';
         const ocEl = v > 0
@@ -4818,7 +4842,11 @@ async function loadSdr() {
           : '<div style="display:inline-flex;align-items:center;justify-content:center;width:36px;height:20px;border-radius:4px;font-size:.7rem;font-weight:400;color:#1e293b' + outline + '">&middot;</div>';
         return '<td style="text-align:center;padding:2px 4px">' + ocEl + '</td>';
       }).join('');
-      const ocTotal = days.reduce((s,d) => s + (((dailyOutMap[u]||{})[d]||{})[oc.key]||0), 0);
+      const ocTotal = days.reduce((s,d) => s + (
+        oc.src === 'cal'    ? ((reunionesCalMap[u]  || {})[d] || 0)
+        : oc.src === 'llamar' ? ((llamarDespuesMap[u] || {})[d] || 0)
+        : ((dailyOutMap[u]||{})[d]||{})[oc.key]||0
+      ), 0);
       return '<tr><td style="padding:2px 12px;font-size:.62rem;font-weight:600;color:' + oc.color + ';white-space:nowrap;text-align:right;opacity:.7">' + oc.label + '</td>'
         + cells
         + '<td style="text-align:center;padding:2px 12px;font-size:.75rem;font-weight:700;color:' + oc.color + '">' + (ocTotal||'&middot;') + '</td></tr>';
@@ -5305,10 +5333,52 @@ def create_app(db_path: str) -> Flask:
                   AND DATE(created_at) >= ?
                 GROUP BY user_name
             """, sdr_names + [date_from]).fetchall()
+
+            # llamar_despues neto: leads donde el ultimo outcome del dia fue llamar_despues
+            llamar_despues = conn3.execute(f"""
+                SELECT al.user_name, DATE(al.created_at) as day, COUNT(DISTINCT al.entity_id) as c
+                FROM activity_log al
+                WHERE al.action='call_logged'
+                  AND al.detail='llamar_despues'
+                  AND al.user_name IN ({placeholders})
+                  AND al.created_at >= date('now','-13 days')
+                  AND NOT EXISTS (
+                    SELECT 1 FROM activity_log later
+                    WHERE later.action='call_logged'
+                      AND later.entity_id=al.entity_id
+                      AND later.user_name=al.user_name
+                      AND DATE(later.created_at)=DATE(al.created_at)
+                      AND later.created_at > al.created_at
+                  )
+                GROUP BY al.user_name, day
+            """, sdr_names).fetchall()
+
+            # reuniones agendadas via calendario
+            reuniones_cal = conn3.execute(f"""
+                SELECT user_name, DATE(created_at) as day, COUNT(*) as c
+                FROM activity_log
+                WHERE action='meeting_scheduled'
+                  AND user_name IN ({placeholders})
+                  AND created_at >= date('now','-13 days')
+                GROUP BY user_name, day
+            """, sdr_names).fetchall()
+
+            period_reuniones = conn3.execute(f"""
+                SELECT user_name, COUNT(*) as c
+                FROM activity_log
+                WHERE action='meeting_scheduled'
+                  AND user_name IN ({placeholders})
+                  AND DATE(created_at) >= ?
+                GROUP BY user_name
+            """, sdr_names + [date_from]).fetchall()
+
             return jsonify({
                 "daily": [{"user": r["user_name"], "day": r["day"], "calls": r["calls"], "leads": r["leads_touched"]} for r in rows],
                 "daily_outcomes": [{"user": r["user_name"], "day": r["day"], "outcome": r["outcome"], "count": r["c"]} for r in daily_outcomes],
                 "period_calls": [{"user": r["user_name"], "count": r["c"]} for r in period_calls],
+                "llamar_despues": [{"user": r["user_name"], "day": r["day"], "count": r["c"]} for r in llamar_despues],
+                "reuniones_cal": [{"user": r["user_name"], "day": r["day"], "count": r["c"]} for r in reuniones_cal],
+                "period_reuniones": [{"user": r["user_name"], "count": r["c"]} for r in period_reuniones],
                 "sdr_users": sdr_names,
                 "period": period,
             })
