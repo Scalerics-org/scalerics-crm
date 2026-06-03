@@ -72,7 +72,7 @@ _PIPELINE_STATUSES = ["reunion_agendada", "reunion_hecha", "presupuesto_enviado"
 _CLIENT_STATUSES   = ["cliente_cerrado", "en_desarrollo", "finalizado"]
 
 _PER_PAGE = 50
-_VALID_OUTCOMES = {"contestó", "no_contestó", "buzón", "no_interesa", "llamar_despues", "interesado"}
+_VALID_OUTCOMES = {"contestó", "no_contestó", "buzón", "no_interesa", "llamar_despues", "interesado", "reunion"}
 
 
 def _db() -> str:
@@ -167,6 +167,24 @@ def api_crm_status(biz_id):
         increment_task_progress(db, uids, _STATUS_TO_GOAL[crm_status],
                                 lead_id=biz_id, lead_name=biz.get("name", ""))
     return jsonify({"ok": True})
+
+
+@leads_bp.route("/api/leads/remap-category", methods=["POST"])
+def api_remap_category():
+    """Bulk rename a category across all leads. Admin only."""
+    data = request.get_json() or {}
+    from_cat = (data.get("from") or "").strip()
+    to_cat = (data.get("to") or "").strip()
+    if not from_cat or not to_cat:
+        return jsonify({"ok": False, "error": "from y to requeridos"}), 400
+    db = _db()
+    businesses = get_all_businesses(db)
+    updated = 0
+    for b in businesses:
+        if (b.get("category") or "").strip().lower() == from_cat.lower():
+            update_business(db, b["id"], category=to_cat)
+            updated += 1
+    return jsonify({"ok": True, "updated": updated})
 
 
 @leads_bp.route("/api/leads/batch-status", methods=["POST"])
@@ -613,6 +631,14 @@ def api_add_call(biz_id):
                             lead_id=biz_id, lead_name=biz.get("name", ""))
     if outcome == "contestó":
         increment_task_progress(db, uids, "llamadas_contestadas",
+                                lead_id=biz_id, lead_name=biz.get("name", ""))
+    if outcome == "reunion":
+        from database import update_business, add_lead_event
+        update_business(db, biz_id, crm_status="reunion_agendada")
+        add_lead_event(db, biz_id, "reunion_agendada", created_by=created_by)
+        log_activity(db, created_by, "status_change", "lead", biz_id, biz.get("name", ""),
+                     "reunion_agendada", user_id=session.get("user_id"))
+        increment_task_progress(db, uids, "reuniones_agendadas",
                                 lead_id=biz_id, lead_name=biz.get("name", ""))
     return jsonify({"ok": True}), 201
 

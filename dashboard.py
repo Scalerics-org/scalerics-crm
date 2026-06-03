@@ -5353,20 +5353,28 @@ def create_app(db_path: str) -> Flask:
                 GROUP BY al.user_name, day
             """, sdr_names).fetchall()
 
-            # reuniones agendadas via calendario
+            # reuniones agendadas: calendario + outcome 'reunion' del modal + status_change directo
             reuniones_cal = conn3.execute(f"""
-                SELECT user_name, DATE(created_at) as day, COUNT(*) as c
+                SELECT user_name, DATE(created_at) as day, COUNT(DISTINCT entity_id) as c
                 FROM activity_log
-                WHERE action='meeting_scheduled'
+                WHERE (
+                    action='meeting_scheduled'
+                    OR (action='call_logged' AND detail='reunion')
+                    OR (action='status_change' AND detail='reunion_agendada')
+                )
                   AND user_name IN ({placeholders})
                   AND created_at >= date('now','-13 days')
                 GROUP BY user_name, day
             """, sdr_names).fetchall()
 
             period_reuniones = conn3.execute(f"""
-                SELECT user_name, COUNT(*) as c
+                SELECT user_name, COUNT(DISTINCT entity_id) as c
                 FROM activity_log
-                WHERE action='meeting_scheduled'
+                WHERE (
+                    action='meeting_scheduled'
+                    OR (action='call_logged' AND detail='reunion')
+                    OR (action='status_change' AND detail='reunion_agendada')
+                )
                   AND user_name IN ({placeholders})
                   AND DATE(created_at) >= ?
                 GROUP BY user_name
