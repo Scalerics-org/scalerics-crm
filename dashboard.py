@@ -621,6 +621,8 @@ body.light .cp-event-note{color:#64748b !important}
 .act-desc{color:#94a3b8;font-size:.85rem}
 .act-when{font-size:.72rem;color:#475569;margin-top:3px}
 .act-entity-link{cursor:pointer;color:#38bdf8;text-decoration:underline;text-decoration-color:rgba(56,189,248,.35)}
+.sdr-detail-row{display:flex;align-items:center;gap:10px;padding:9px 8px;border-radius:8px;cursor:pointer;transition:background .12s}
+.sdr-detail-row:hover{background:#1e293b}
 .act-entity-link:hover{color:#7dd3fc}
 .no-answer-badge{display:inline-flex;align-items:center;gap:3px;background:rgba(239,68,68,.15);color:#f87171;font-size:.65rem;font-weight:700;padding:2px 6px;border-radius:99px;border:1px solid rgba(239,68,68,.3)}
 .no-interest-badge{display:inline-flex;align-items:center;gap:3px;background:rgba(245,158,11,.15);color:#fbbf24;font-size:.65rem;font-weight:700;padding:2px 6px;border-radius:99px;border:1px solid rgba(245,158,11,.3)}
@@ -4857,7 +4859,7 @@ async function _openSdrDetail(user, day, type, label) {
     var ocCol = ocColors[l.last_outcome] || '#64748b';
     var ocLab = ocLabels[l.last_outcome] || l.last_outcome || '';
     var badge = l.call_count > 1 ? '<span style="font-size:.63rem;background:#1e293b;color:#64748b;padding:1px 6px;border-radius:99px;margin-left:4px">' + l.call_count + 'x</span>' : '';
-    return '<div data-lid="' + Number(l.id) + '" onclick="closeSdrDetail();openClientPanel(Number(this.getAttribute(\'data-lid\')))" style="display:flex;align-items:center;gap:10px;padding:9px 8px;border-radius:8px;cursor:pointer" onmouseover="this.style.background=\'#1e293b\'" onmouseout="this.style.background=\'transparent\'">'
+    return '<div data-lid="' + Number(l.id) + '" onclick="closeSdrDetail();openClientPanel(Number(this.dataset.lid))" class="sdr-detail-row">'
       + '<div style="flex:1;min-width:0"><div style="font-size:.84rem;font-weight:600;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(l.name||'—') + badge + '</div>'
       + (ocLab ? '<div style="font-size:.7rem;color:' + ocCol + ';margin-top:1px">' + ocLab + '</div>' : '') + '</div>'
       + (time ? '<div style="font-size:.7rem;color:#475569;flex-shrink:0">' + time + '</div>' : '')
