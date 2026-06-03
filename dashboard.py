@@ -5410,6 +5410,26 @@ def create_app(db_path: str) -> Flask:
                     "WHERE action='call_logged' AND user_name=? AND DATE(created_at)=? ORDER BY created_at",
                     (user, day)
                 ).fetchall()
+            elif type_ == 'reunion_cal':
+                rows = conn5.execute(
+                    "SELECT entity_id, entity_name, detail, created_at FROM activity_log "
+                    "WHERE (action='meeting_scheduled' OR (action='call_logged' AND detail='reunion') "
+                    "       OR (action='status_change' AND detail='reunion_agendada')) "
+                    "AND user_name=? AND DATE(created_at)=? ORDER BY created_at",
+                    (user, day)
+                ).fetchall()
+            elif type_ == 'llamar_despues':
+                rows = conn5.execute(
+                    "SELECT al.entity_id, al.entity_name, al.detail, al.created_at FROM activity_log al "
+                    "WHERE al.action='call_logged' AND al.detail='llamar_despues' "
+                    "AND al.user_name=? AND DATE(al.created_at)=? "
+                    "AND NOT EXISTS ("
+                    "  SELECT 1 FROM activity_log later WHERE later.action='call_logged' "
+                    "  AND later.entity_id=al.entity_id AND later.user_name=al.user_name "
+                    "  AND DATE(later.created_at)=DATE(al.created_at) AND later.created_at > al.created_at"
+                    ") ORDER BY al.created_at",
+                    (user, day)
+                ).fetchall()
             else:
                 rows = conn5.execute(
                     "SELECT entity_id, entity_name, detail, created_at FROM activity_log "
