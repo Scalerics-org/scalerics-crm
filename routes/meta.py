@@ -452,3 +452,83 @@ def start_meta_token_monitor(app) -> None:
     t = threading.Thread(target=_loop, daemon=True, name="meta-token-monitor")
     t.start()
     logger.info("Meta token monitor started (checks every 24h)")
+
+
+# ── Daily import cron ─────────────────────────────────────────────────────────
+
+def _run_import_sync(db: str) -> tuple[int, int]:
+    pt = os.environ.get("META_PAGE_TOKEN", "") or PAGE_TOKEN
+    page_id = os.environ.get("META_PAGE_ID", "")
+    if not pt or not page_id:
+        logger.warning("Meta daily import: PAGE_TOKEN or PAGE_ID not set")
+        return 0, 0
+
+    new_c, dup = 0, 0
+
+    def _ga(url, params):
+        results = []
+        while url:
+            r = requests.get(url, params=params, timeout=15)
+            if not r.ok:
+                break
+            d = r.json()
+            if "error" in d:
+                logger.error(f"Meta API error during import: {d['error']}")
+                break
+            results.extend(d.get("data", []))
+            url = d.get("paging", {}).get("next")
+            params = {}
+        return results
+
+    forms = _ga(
+        f"https://graph.facebook.com/v20.0/{page_id}/leadgen_forms",
+        {"access_token": pt, "fields": "id,name,leads_count"},
+    )
+    for form in forms:
+        leads = _ga(
+            f"https://graph.facebook.com/v20.0/{form['id']}/leads",
+            {"access_token": pt, "fields": "id,created_time,field_data,ad_name,campaign_name"},
+        )
+        for lead in leads:
+            fields = {f["name"].lower(): (f.get("values") or [""])[0] for f in lead.get("field_data", [])}
+            name  = fields.get("full_name") or fields.get("nombre") or fields.get("name") or "Lead Meta"
+            phone = fields.get("phone_number") or fields.get("telefono") or fields.get("phone") or fields.get("celular") or ""
+            city  = fields.get("city") or fields.get("ciudad") or ""
+            ct = lead.get("created_time", "")
+            if ct:
+                try:
+                    from datetime import datetime, timezone as tz
+                    ct = datetime.fromisoformat(ct.replace("+0000", "")).replace(tzinfo=tz.utc).strftime("%Y-%m-%d %H:%M:%S")
+                except Exception:
+                    ct = ""
+            biz_id = insert_business(db, {
+                "name": name, "phone": phone or None, "city": city or None,
+                "category": "Meta Lead Ad", "status": "scraped",
+                "notes": f"Meta Lead Ad · {lead.get('campaign_name') or form.get('name', '')}".strip(" ·"),
+                "score": 70, "source": "meta",
+                "form_data": json.dumps(fields, ensure_ascii=False),
+                "scraped_at": ct or None,
+            })
+            if biz_id:
+                new_c += 1
+            else:
+                dup += 1
+
+    logger.info(f"Meta daily import done: {new_c} new, {dup} dup")
+    return new_c, dup
+
+
+def start_meta_daily_import(app) -> None:
+    def _loop():
+        time.sleep(120)  # esperar a que la app levante
+        while True:
+            try:
+                with app.app_context():
+                    _run_import_sync(app.config["DB_PATH"])
+            except Exception as e:
+                logger.warning(f"Meta daily import error: {e}")
+            time.sleep(_CHECK_INTERVAL)
+
+    t = threading.Thread(target=_loop, daemon=True, name="meta-daily-import")
+    t.start()
+    logger.info("Meta daily import started (runs every 24h)")

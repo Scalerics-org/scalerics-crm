@@ -15,7 +15,7 @@ from routes.pipeline import pipeline_bp
 from routes.tasks import tasks_bp
 from routes.budgets import budgets_bp
 from routes.tokens import tokens_bp
-from routes.meta import meta_bp, start_meta_token_monitor
+from routes.meta import meta_bp, start_meta_token_monitor, start_meta_daily_import
 from routes.calendly import calendly_bp
 from services.demo_service import demo_job_handler
 from services.job_service import init_worker
@@ -5809,6 +5809,7 @@ loadAll();
     worker.start()
 
     start_meta_token_monitor(app)
+    start_meta_daily_import(app)
 
     try:
         from database import get_all_users
