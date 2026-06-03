@@ -4882,7 +4882,12 @@ async function _openSdrDetail(user, day, type, label) {
   if (!data || !data.leads.length) { body.innerHTML = '<div style="color:#475569;padding:12px 0;font-size:.82rem">Sin registros.</div>'; return; }
   var ocColors  = {reunion:'#10b981',interesado:'#38bdf8',no_interesa:'#ef4444','no_contestó':'#64748b',llamar_despues:'#f59e0b'};
   var ocLabels  = {reunion:'Reunión',interesado:'Interesado',no_interesa:'No le interesa','no_contestó':'No contestó',llamar_despues:'Llamar después'};
-  body.innerHTML = data.leads.map(function(l) {
+  var totalCalls = data.leads.reduce(function(s,l){ return s + (l.call_count||1); }, 0);
+  var totalLeads = data.leads.length;
+  var summary = totalCalls !== totalLeads
+    ? '<div style="font-size:.72rem;color:#475569;padding:4px 8px 10px;border-bottom:1px solid #1e293b;margin-bottom:6px">' + totalCalls + ' llamadas · ' + totalLeads + ' leads</div>'
+    : '';
+  body.innerHTML = summary + data.leads.map(function(l) {
     var time  = (l.last_time || '').split(' ')[1] || ''; time = time.slice(0,5);
     var ocCol = ocColors[l.last_outcome] || '#64748b';
     var ocLab = ocLabels[l.last_outcome] || l.last_outcome || '';
@@ -5308,7 +5313,7 @@ def create_app(db_path: str) -> Flask:
             placeholders = ','.join('?' * len(sdr_names))
             rows = conn3.execute(f"""
                 SELECT user_name, DATE(created_at) as day,
-                  SUM(CASE WHEN action='call_logged' THEN 1 ELSE 0 END) as calls,
+                  COUNT(DISTINCT CASE WHEN action='call_logged' THEN entity_id END) as calls,
                   COUNT(DISTINCT entity_id) as leads_touched
                 FROM activity_log
                 WHERE created_at >= date('now','-13 days')
@@ -5318,7 +5323,7 @@ def create_app(db_path: str) -> Flask:
                 ORDER BY day ASC
             """, sdr_names).fetchall()
             daily_outcomes = conn3.execute(f"""
-                SELECT user_name, DATE(created_at) as day, detail as outcome, COUNT(*) as c
+                SELECT user_name, DATE(created_at) as day, detail as outcome, COUNT(DISTINCT entity_id) as c
                 FROM activity_log
                 WHERE action='call_logged'
                   AND user_name IN ({placeholders})
