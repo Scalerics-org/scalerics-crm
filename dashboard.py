@@ -5313,7 +5313,10 @@ def create_app(db_path: str) -> Flask:
             placeholders = ','.join('?' * len(sdr_names))
             rows = conn3.execute(f"""
                 SELECT user_name, DATE(created_at) as day,
-                  COUNT(DISTINCT CASE WHEN action='call_logged' THEN entity_id END) as calls,
+                  COUNT(DISTINCT CASE WHEN action='call_logged'
+                    OR action='meeting_scheduled'
+                    OR (action='status_change' AND detail='reunion_agendada')
+                    THEN entity_id END) as calls,
                   COUNT(DISTINCT entity_id) as leads_touched
                 FROM activity_log
                 WHERE created_at >= date('now','-13 days')
