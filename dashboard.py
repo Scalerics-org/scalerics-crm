@@ -4751,13 +4751,15 @@ async function loadSdr() {
       + '<div><div style="font-size:.95rem;font-weight:700;color:#f1f5f9">' + esc(u) + '</div>'
       + '<div style="font-size:.7rem;color:#64748b">' + periodCalls + ' llamadas ' + periodLabel + '</div></div></div>'
       + '<div style="display:flex;align-items:flex-end;gap:8px">'
-      + '<div style="font-size:3rem;font-weight:800;color:' + heat + ';line-height:1">' + todayData.calls + '</div>'
+      + (todayData.calls > 0
+          ? '<div style="font-size:3rem;font-weight:800;color:' + heat + ';line-height:1;cursor:pointer" onclick="openSdrDetail(' + JSON.stringify(u) + ',\'' + todayStr + '\',\'calls\',\'hoy\')">' + todayData.calls + '</div>'
+          : '<div style="font-size:3rem;font-weight:800;color:' + heat + ';line-height:1">' + todayData.calls + '</div>')
       + '<div style="font-size:.8rem;color:#64748b;padding-bottom:6px">llamadas hoy</div></div>'
       + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;border-top:1px solid #1e293b;padding-top:12px">'
-      + '<div style="text-align:center"><div style="font-size:1.1rem;font-weight:800;color:#10b981">' + reunion + '</div><div style="font-size:.62rem;color:#64748b">Reuniones hoy</div></div>'
-      + '<div style="text-align:center"><div style="font-size:1.1rem;font-weight:800;color:#38bdf8">' + interesado + '</div><div style="font-size:.62rem;color:#64748b">Interesados hoy</div></div>'
-      + '<div style="text-align:center"><div style="font-size:1.1rem;font-weight:800;color:#475569">' + noContesto + '</div><div style="font-size:.62rem;color:#64748b">No contestó hoy</div></div>'
-      + '<div style="text-align:center"><div style="font-size:1.1rem;font-weight:800;color:#ef4444">' + noInteresa + '</div><div style="font-size:.62rem;color:#64748b">No le interesa hoy</div></div>'
+      + '<div style="text-align:center;' + (reunion > 0 ? 'cursor:pointer" onclick="openSdrDetail(' + JSON.stringify(u) + ',\'' + todayStr + '\',\'reunion\',\'hoy\')"' : '"') + '><div style="font-size:1.1rem;font-weight:800;color:#10b981">' + reunion + '</div><div style="font-size:.62rem;color:#64748b">Reuniones hoy</div></div>'
+      + '<div style="text-align:center;' + (interesado > 0 ? 'cursor:pointer" onclick="openSdrDetail(' + JSON.stringify(u) + ',\'' + todayStr + '\',\'interesado\',\'hoy\')"' : '"') + '><div style="font-size:1.1rem;font-weight:800;color:#38bdf8">' + interesado + '</div><div style="font-size:.62rem;color:#64748b">Interesados hoy</div></div>'
+      + '<div style="text-align:center;' + (noContesto > 0 ? 'cursor:pointer" onclick="openSdrDetail(' + JSON.stringify(u) + ',\'' + todayStr + '\',\'no_contestó\',\'hoy\')"' : '"') + '><div style="font-size:1.1rem;font-weight:800;color:#475569">' + noContesto + '</div><div style="font-size:.62rem;color:#64748b">No contestó hoy</div></div>'
+      + '<div style="text-align:center;' + (noInteresa > 0 ? 'cursor:pointer" onclick="openSdrDetail(' + JSON.stringify(u) + ',\'' + todayStr + '\',\'no_interesa\',\'hoy\')"' : '"') + '><div style="font-size:1.1rem;font-weight:800;color:#ef4444">' + noInteresa + '</div><div style="font-size:.62rem;color:#64748b">No le interesa hoy</div></div>'
       + '</div></div>';
   }).join('');
 
@@ -4793,7 +4795,9 @@ async function loadSdr() {
       const fw = v > 0 ? 700 : 400;
       const fc = v === 0 ? '#334155' : intensity > 0.5 ? '#fff' : '#93c5fd';
       const outline = isToday ? ';outline:1px solid #1e3a5f' : '';
-      return '<td style="text-align:center;padding:4px 4px"><div style="display:inline-flex;align-items:center;justify-content:center;width:36px;height:26px;border-radius:6px;background:' + bg + ';font-size:.78rem;font-weight:' + fw + ';color:' + fc + outline + '">' + (v||'&middot;') + '</div></td>';
+      const clickable = v > 0 ? ' onclick="openSdrDetail(' + JSON.stringify(u) + ',\'' + d + '\',\'calls\',\'' + shortDay(d) + '\')" style="display:inline-flex;align-items:center;justify-content:center;width:36px;height:26px;border-radius:6px;background:' + bg + ';font-size:.78rem;font-weight:' + fw + ';color:' + fc + outline + ';cursor:pointer"'
+                               : ' style="display:inline-flex;align-items:center;justify-content:center;width:36px;height:26px;border-radius:6px;background:' + bg + ';font-size:.78rem;font-weight:' + fw + ';color:' + fc + outline + '"';
+      return '<td style="text-align:center;padding:4px 4px"><div' + clickable + '>' + (v||'&middot;') + '</div></td>';
     }).join('');
     const nameCell = '<td style="padding:4px 12px;white-space:nowrap" rowspan="4"><div style="display:flex;align-items:center;gap:8px">'
       + '<div style="width:24px;height:24px;border-radius:50%;background:' + color + ';display:flex;align-items:center;justify-content:center;font-size:.55rem;font-weight:800;color:#fff;flex-shrink:0">' + initials + '</div>'
@@ -4808,7 +4812,11 @@ async function loadSdr() {
         const v = ((dailyOutMap[u] || {})[d] || {})[oc.key] || 0;
         const isToday = d === todayStr;
         const outline = isToday ? ';outline:1px solid #1e3a5f' : '';
-        return '<td style="text-align:center;padding:2px 4px"><div style="display:inline-flex;align-items:center;justify-content:center;width:36px;height:20px;border-radius:4px;font-size:.7rem;font-weight:' + (v?700:400) + ';color:' + (v?oc.color:'#1e293b') + outline + '">' + (v||'&middot;') + '</div></td>';
+        const baseStyle = 'display:inline-flex;align-items:center;justify-content:center;width:36px;height:20px;border-radius:4px;font-size:.7rem;font-weight:' + (v?700:400) + ';color:' + (v?oc.color:'#1e293b') + outline;
+        const inner = v > 0
+          ? '<div style="' + baseStyle + ';cursor:pointer" onclick="openSdrDetail(' + JSON.stringify(u) + ',\'' + d + '\',\'' + oc.key + '\',\'' + shortDay(d) + '\')">' + v + '</div>'
+          : '<div style="' + baseStyle + '">&middot;</div>';
+        return '<td style="text-align:center;padding:2px 4px">' + inner + '</td>';
       }).join('');
       const ocTotal = days.reduce((s,d) => s + (((dailyOutMap[u]||{})[d]||{})[oc.key]||0), 0);
       return '<tr><td style="padding:2px 12px;font-size:.62rem;font-weight:600;color:' + oc.color + ';white-space:nowrap;text-align:right;opacity:.7">' + oc.label + '</td>'
@@ -4823,6 +4831,52 @@ async function loadSdr() {
     + '<div style="font-size:.78rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:16px">Actividad por dia (ultimas 2 semanas)</div>'
     + '<table style="border-collapse:collapse;width:100%;min-width:600px"><thead>' + tableHead + '</thead><tbody>' + tableRows + '</tbody></table>'
     + '</div>';
+}
+
+// ── SDR detail modal ───────────────────────────────────────────────────────────
+const _sdrOutcomeLabels = {reunion:'Reunión',interesado:'Interesado',no_interesa:'No le interesa','no_contestó':'No contestó',llamar_despues:'Llamar después',contestó:'Contestó'};
+const _sdrOutcomeColors = {reunion:'#10b981',interesado:'#38bdf8',no_interesa:'#ef4444','no_contestó':'#64748b',llamar_despues:'#f59e0b',contestó:'#a3e635'};
+
+async function openSdrDetail(user, day, type, dayLabel) {
+  const modal    = document.getElementById('sdr-detail-modal');
+  const backdrop = document.getElementById('sdr-detail-backdrop');
+  const title    = document.getElementById('sdr-detail-title');
+  const body     = document.getElementById('sdr-detail-body');
+
+  const typeLabel = {calls:'Llamadas',reunion:'Reuniones',interesado:'Interesados',no_interesa:'No le interesa','no_contestó':'No contestó'}[type] || type;
+  title.textContent = user.split(' ')[0] + ' · ' + dayLabel + ' · ' + typeLabel;
+  body.innerHTML = '<div style="color:#475569;padding:12px 0;font-size:.82rem">Cargando...</div>';
+  modal.style.display = 'flex';
+  backdrop.style.display = 'block';
+
+  const data = await fetch('/api/sdr-detail?user=' + encodeURIComponent(user) + '&day=' + day + '&type=' + encodeURIComponent(type))
+    .then(r => r.json()).catch(() => null);
+
+  if (!data || !data.leads.length) {
+    body.innerHTML = '<div style="color:#475569;padding:12px 0;font-size:.82rem">Sin registros para este día.</div>';
+    return;
+  }
+
+  body.innerHTML = data.leads.map(l => {
+    const time = (l.last_time || '').split(' ')[1]?.slice(0,5) || '';
+    const ocColor = _sdrOutcomeColors[l.last_outcome] || '#64748b';
+    const ocLabel = _sdrOutcomeLabels[l.last_outcome] || l.last_outcome || '';
+    const badge   = l.call_count > 1
+      ? '<span style="font-size:.63rem;background:#1e293b;color:#64748b;padding:1px 7px;border-radius:99px;margin-left:5px">' + l.call_count + 'x</span>'
+      : '';
+    return '<div onclick="closeSdrDetail();openClientPanel(' + Number(l.id) + ')" style="display:flex;align-items:center;gap:10px;padding:10px 8px;border-radius:10px;cursor:pointer;transition:background .12s" onmouseover="this.style.background=\'#1e293b\'" onmouseout="this.style.background=\'transparent\'">'
+      + '<div style="flex:1;min-width:0">'
+      + '<div style="font-size:.85rem;font-weight:600;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(l.name || '—') + badge + '</div>'
+      + (ocLabel ? '<div style="font-size:.7rem;color:' + ocColor + ';margin-top:1px">' + ocLabel + '</div>' : '')
+      + '</div>'
+      + (time ? '<div style="font-size:.72rem;color:#475569;white-space:nowrap;flex-shrink:0">' + time + '</div>' : '')
+      + '</div>';
+  }).join('');
+}
+
+function closeSdrDetail() {
+  document.getElementById('sdr-detail-modal').style.display = 'none';
+  document.getElementById('sdr-detail-backdrop').style.display = 'none';
 }
 
 async function loadActivity() {
@@ -4864,6 +4918,15 @@ async function loadActivity() {
   }
 }
 </script>
+
+<div id="sdr-detail-backdrop" onclick="closeSdrDetail()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:1100;backdrop-filter:blur(2px)"></div>
+<div id="sdr-detail-modal" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#0f172a;border:1px solid #1e293b;border-radius:16px;z-index:1101;width:420px;max-width:95vw;max-height:78vh;flex-direction:column;box-shadow:0 24px 48px rgba(0,0,0,.5)">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #1e293b;flex-shrink:0">
+    <div id="sdr-detail-title" style="font-size:.88rem;font-weight:700;color:#f1f5f9"></div>
+    <button onclick="closeSdrDetail()" style="background:none;border:none;color:#475569;font-size:1.3rem;cursor:pointer;line-height:1;padding:2px 8px;border-radius:6px">×</button>
+  </div>
+  <div id="sdr-detail-body" style="overflow-y:auto;padding:8px 12px;flex:1"></div>
+</div>
 
 <div class="cp-backdrop" id="cp-backdrop" onclick="closeClientPanel()"></div>
 <div class="client-panel" id="client-panel">
@@ -5192,6 +5255,45 @@ def create_app(db_path: str) -> Flask:
             })
         finally:
             conn3.close()
+
+    @app.route("/api/sdr-detail", methods=["GET"])
+    def api_sdr_detail():
+        import sqlite3 as _sq5
+        user = request.args.get('user', '').strip()
+        day  = request.args.get('day', '').strip()
+        type_ = request.args.get('type', 'calls').strip()
+        if not user or not day:
+            return jsonify({"leads": []})
+        conn5 = _sq5.connect(db_path); conn5.row_factory = _sq5.Row
+        try:
+            if type_ == 'calls':
+                rows = conn5.execute("""
+                    SELECT entity_id, entity_name, detail, created_at
+                    FROM activity_log
+                    WHERE action='call_logged' AND user_name=? AND DATE(created_at)=?
+                    ORDER BY created_at
+                """, (user, day)).fetchall()
+            else:
+                rows = conn5.execute("""
+                    SELECT entity_id, entity_name, detail, created_at
+                    FROM activity_log
+                    WHERE action='call_logged' AND user_name=? AND DATE(created_at)=? AND detail=?
+                    ORDER BY created_at
+                """, (user, day, type_)).fetchall()
+            # Group by entity_id keeping last outcome and call count
+            from collections import OrderedDict
+            leads = OrderedDict()
+            for r in rows:
+                eid = r['entity_id']
+                if eid not in leads:
+                    leads[eid] = {'id': eid, 'name': r['entity_name'], 'call_count': 0,
+                                  'last_outcome': r['detail'], 'last_time': r['created_at']}
+                leads[eid]['call_count'] += 1
+                leads[eid]['last_outcome'] = r['detail']
+                leads[eid]['last_time'] = r['created_at']
+            return jsonify({"leads": list(leads.values())})
+        finally:
+            conn5.close()
 
     @app.route("/api/me", methods=["GET"])
     def api_me():
