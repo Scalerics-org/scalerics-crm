@@ -13,7 +13,7 @@ seed_pitch_templates(db_path)
 
 app = create_app(db_path)
 
-@app.route('/admin/download-db')
+@app.route('/api/download-db')
 def download_db():
     import os
     from flask import send_file, abort, request
