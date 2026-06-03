@@ -4788,6 +4788,7 @@ async function loadSdr() {
 
   const tableHead = '<tr>'
     + '<th style="text-align:left;padding:8px 12px;font-size:.72rem;color:#64748b;font-weight:600;white-space:nowrap">SDR</th>'
+    + '<th></th>'
     + days.map(d => {
         const isToday = d === todayStr;
         return '<th style="padding:6px 4px;font-size:.62rem;color:' + (isToday?'#38bdf8':'#64748b') + ';font-weight:' + (isToday?700:500) + ';text-align:center;min-width:44px;white-space:nowrap' + (isToday?';border-bottom:2px solid #38bdf8':'') + '">' + shortDay(d) + '</th>';
