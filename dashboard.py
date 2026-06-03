@@ -5318,7 +5318,7 @@ def create_app(db_path: str) -> Flask:
                 ORDER BY day ASC
             """, sdr_names).fetchall()
             daily_outcomes = conn3.execute(f"""
-                SELECT user_name, DATE(created_at) as day, detail as outcome, COUNT(DISTINCT entity_id) as c
+                SELECT user_name, DATE(created_at) as day, detail as outcome, COUNT(*) as c
                 FROM activity_log
                 WHERE action='call_logged'
                   AND user_name IN ({placeholders})
