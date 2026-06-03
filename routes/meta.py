@@ -12,8 +12,10 @@ from flask import Blueprint, current_app, jsonify, request
 
 import sqlite3 as _sq_meta
 
+import time
+
 from database import insert_business, update_business, get_business, log_activity
-from services.email_service import send_new_meta_lead_notification
+from services.email_service import send_new_meta_lead_notification, send_meta_token_alert
 
 logger = logging.getLogger(__name__)
 meta_bp = Blueprint("meta", __name__)
@@ -406,3 +408,47 @@ def _update_env(key: str, value: str):
         os.environ[key] = value
     except Exception as e:
         logger.warning(f"Could not update .env: {e}")
+
+
+# ── Background token health monitor ──────────────────────────────────────────
+
+_CHECK_INTERVAL = 24 * 60 * 60  # 24 horas
+
+
+def _check_token_once(db: str) -> None:
+    token = os.environ.get("META_PAGE_TOKEN", "")
+    if not token:
+        return
+    try:
+        r = requests.get(
+            "https://graph.facebook.com/v20.0/me",
+            params={"fields": "name", "access_token": token},
+            timeout=10,
+        )
+        data = r.json()
+        if "error" in data:
+            err = data["error"]
+            detail = f"[{err.get('code')}] {err.get('message', '')}"
+            logger.error(f"Meta token invalid: {detail}")
+            for email in _get_admin_emails(db):
+                send_meta_token_alert(email, detail)
+        else:
+            logger.debug(f"Meta token OK — page: {data.get('name')}")
+    except Exception as e:
+        logger.warning(f"Meta token check failed (network?): {e}")
+
+
+def start_meta_token_monitor(app) -> None:
+    def _loop():
+        time.sleep(60)  # esperar a que la app levante
+        while True:
+            try:
+                with app.app_context():
+                    _check_token_once(app.config["DB_PATH"])
+            except Exception as e:
+                logger.warning(f"Token monitor error: {e}")
+            time.sleep(_CHECK_INTERVAL)
+
+    t = threading.Thread(target=_loop, daemon=True, name="meta-token-monitor")
+    t.start()
+    logger.info("Meta token monitor started (checks every 24h)")

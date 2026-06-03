@@ -214,3 +214,26 @@ def send_task_assignment_email(
         cta_label="Abrir CRM →",
     )
     return _send(to_email, f"Nueva tarea: {task_title} — Scalerics CRM", html)
+
+
+def send_meta_token_alert(to_email: str, error_detail: str) -> bool:
+    body = (
+        _muted(
+            "El token de Meta (PAGE_TOKEN) ya no es válido. "
+            "Los leads nuevos de Meta Ads <b>no se están guardando en el CRM</b> hasta que se renueve."
+        )
+        + _info_card([("Error", error_detail)])
+        + _muted(
+            "Para renovarlo: entrá al Graph Explorer de Meta, generá un nuevo User Token "
+            "con permisos <code>leads_retrieval</code> y <code>pages_read_engagement</code>, "
+            "y usá el endpoint <code>POST /api/meta/setup-token</code> del CRM."
+        )
+    )
+    html = _layout(
+        badge="Alerta de integración",
+        title="Token de Meta Ads vencido o revocado",
+        body=body,
+        cta_url=f"{_CRM_URL}",
+        cta_label="Ir al CRM →",
+    )
+    return _send(to_email, "ALERTA: Token Meta Ads inválido — Scalerics CRM", html)
