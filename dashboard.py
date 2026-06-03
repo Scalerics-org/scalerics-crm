@@ -5342,12 +5342,15 @@ def create_app(db_path: str) -> Flask:
                 GROUP BY user_name
             """, sdr_names + [date_from]).fetchall()
 
-            # llamar_despues neto: leads donde el ultimo outcome del dia fue llamar_despues
+            # llamar_despues neto: call_logged detail=llamar_despues O callback_set,
+            # excluyendo leads donde hubo otra llamada posterior el mismo dia
             llamar_despues = conn3.execute(f"""
                 SELECT al.user_name, DATE(al.created_at) as day, COUNT(DISTINCT al.entity_id) as c
                 FROM activity_log al
-                WHERE al.action='call_logged'
-                  AND al.detail='llamar_despues'
+                WHERE (
+                    (al.action='call_logged' AND al.detail='llamar_despues')
+                    OR al.action='callback_set'
+                )
                   AND al.user_name IN ({placeholders})
                   AND al.created_at >= date('now','-13 days')
                   AND NOT EXISTS (
@@ -5429,7 +5432,7 @@ def create_app(db_path: str) -> Flask:
             elif type_ == 'llamar_despues':
                 rows = conn5.execute(
                     "SELECT al.entity_id, al.entity_name, al.detail, al.created_at FROM activity_log al "
-                    "WHERE al.action='call_logged' AND al.detail='llamar_despues' "
+                    "WHERE ((al.action='call_logged' AND al.detail='llamar_despues') OR al.action='callback_set') "
                     "AND al.user_name=? AND DATE(al.created_at)=? "
                     "AND NOT EXISTS ("
                     "  SELECT 1 FROM activity_log later WHERE later.action='call_logged' "
