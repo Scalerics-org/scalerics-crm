@@ -4769,10 +4769,10 @@ async function loadSdr() {
       + '<div style="display:flex;align-items:center;gap:12px">'
       + '<div style="width:42px;height:42px;border-radius:50%;background:' + color + ';display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:800;color:#fff;flex-shrink:0">' + initials + '</div>'
       + '<div><div style="font-size:.95rem;font-weight:700;color:#f1f5f9">' + esc(u) + '</div>'
-      + '<div style="font-size:.7rem;color:#64748b">' + periodCalls + ' llamadas · ' + periodReunionesCal + ' reuniones ' + periodLabel + '</div></div></div>'
+      + '<div style="font-size:.7rem;color:#64748b">' + periodCalls + ' contactados · ' + periodReunionesCal + ' reuniones ' + periodLabel + '</div></div></div>'
       + '<div style="display:flex;align-items:flex-end;gap:8px">'
       + '<div data-u="' + esc(u) + '" data-d="' + todayStr + '" data-tp="calls" data-lb="hoy" onclick="if(Number(this.textContent)>0)openSdrDetailEl(this)" style="font-size:3rem;font-weight:800;color:' + heat + ';line-height:1' + (todayData.calls > 0 ? ';cursor:pointer' : '') + '">' + todayData.calls + '</div>'
-      + '<div style="font-size:.8rem;color:#64748b;padding-bottom:6px">llamadas hoy</div></div>'
+      + '<div style="font-size:.8rem;color:#64748b;padding-bottom:6px">leads contactados hoy</div></div>'
       + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;border-top:1px solid #1e293b;padding-top:12px">'
       + '<div style="text-align:center"><div style="font-size:1.1rem;font-weight:800;color:#3b82f6">' + reunionesCalHoy + '</div><div style="font-size:.62rem;color:#64748b">Reuniones agendadas</div></div>'
       + '<div data-u="' + esc(u) + '" data-d="' + todayStr + '" data-tp="interesado" data-lb="hoy" onclick="if(' + interesado + ')openSdrDetailEl(this)" style="text-align:center' + (interesado > 0 ? ';cursor:pointer' : '') + '"><div style="font-size:1.1rem;font-weight:800;color:#38bdf8">' + interesado + '</div><div style="font-size:.62rem;color:#64748b">Interesados hoy</div></div>'
@@ -4827,7 +4827,7 @@ async function loadSdr() {
       + '<span style="font-size:.82rem;font-weight:600;color:#e2e8f0">' + esc(u.split(' ')[0]) + '</span>'
       + '</div></td>';
     const callRow = '<tr style="border-top:2px solid #1e293b">' + nameCell
-      + '<td style="padding:4px 12px;font-size:.65rem;font-weight:700;color:#64748b;white-space:nowrap;text-align:right">Llamadas</td>'
+      + '<td style="padding:4px 12px;font-size:.65rem;font-weight:700;color:#64748b;white-space:nowrap;text-align:right">Leads contactados</td>'
       + callCells
       + '<td style="text-align:center;padding:4px 12px;font-size:.88rem;font-weight:800;color:#f1f5f9">' + total + '</td></tr>';
     const outRows = outcomeRows.map(oc => {
