@@ -5315,6 +5315,7 @@ def create_app(db_path: str) -> Flask:
                 SELECT user_name, DATE(created_at) as day,
                   COUNT(DISTINCT CASE WHEN action='call_logged'
                     OR action='meeting_scheduled'
+                    OR action='callback_set'
                     OR (action='status_change' AND detail='reunion_agendada')
                     THEN entity_id END) as calls,
                   COUNT(DISTINCT entity_id) as leads_touched
