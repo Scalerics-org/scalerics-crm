@@ -4751,15 +4751,15 @@ async function loadSdr() {
       + '<div><div style="font-size:.95rem;font-weight:700;color:#f1f5f9">' + esc(u) + '</div>'
       + '<div style="font-size:.7rem;color:#64748b">' + periodCalls + ' llamadas ' + periodLabel + '</div></div></div>'
       + '<div style="display:flex;align-items:flex-end;gap:8px">'
-      + (todayData.calls > 0
-          ? '<div style="font-size:3rem;font-weight:800;color:' + heat + ';line-height:1;cursor:pointer" onclick="openSdrDetail(' + JSON.stringify(u) + ',\'' + todayStr + '\',\'calls\',\'hoy\')">' + todayData.calls + '</div>'
-          : '<div style="font-size:3rem;font-weight:800;color:' + heat + ';line-height:1">' + todayData.calls + '</div>')
+      + '<div data-user="' + esc(u) + '" data-day="' + todayStr + '" data-type="calls" data-label="hoy"'
+      + (todayData.calls > 0 ? ' onclick="openSdrDetailEl(this)" style="font-size:3rem;font-weight:800;color:' + heat + ';line-height:1;cursor:pointer"' : ' style="font-size:3rem;font-weight:800;color:' + heat + ';line-height:1"')
+      + '>' + todayData.calls + '</div>'
       + '<div style="font-size:.8rem;color:#64748b;padding-bottom:6px">llamadas hoy</div></div>'
       + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;border-top:1px solid #1e293b;padding-top:12px">'
-      + '<div style="text-align:center;' + (reunion > 0 ? 'cursor:pointer" onclick="openSdrDetail(' + JSON.stringify(u) + ',\'' + todayStr + '\',\'reunion\',\'hoy\')"' : '"') + '><div style="font-size:1.1rem;font-weight:800;color:#10b981">' + reunion + '</div><div style="font-size:.62rem;color:#64748b">Reuniones hoy</div></div>'
-      + '<div style="text-align:center;' + (interesado > 0 ? 'cursor:pointer" onclick="openSdrDetail(' + JSON.stringify(u) + ',\'' + todayStr + '\',\'interesado\',\'hoy\')"' : '"') + '><div style="font-size:1.1rem;font-weight:800;color:#38bdf8">' + interesado + '</div><div style="font-size:.62rem;color:#64748b">Interesados hoy</div></div>'
-      + '<div style="text-align:center;' + (noContesto > 0 ? 'cursor:pointer" onclick="openSdrDetail(' + JSON.stringify(u) + ',\'' + todayStr + '\',\'no_contestó\',\'hoy\')"' : '"') + '><div style="font-size:1.1rem;font-weight:800;color:#475569">' + noContesto + '</div><div style="font-size:.62rem;color:#64748b">No contestó hoy</div></div>'
-      + '<div style="text-align:center;' + (noInteresa > 0 ? 'cursor:pointer" onclick="openSdrDetail(' + JSON.stringify(u) + ',\'' + todayStr + '\',\'no_interesa\',\'hoy\')"' : '"') + '><div style="font-size:1.1rem;font-weight:800;color:#ef4444">' + noInteresa + '</div><div style="font-size:.62rem;color:#64748b">No le interesa hoy</div></div>'
+      + '<div data-user="' + esc(u) + '" data-day="' + todayStr + '" data-type="reunion" data-label="hoy" style="text-align:center' + (reunion > 0 ? ';cursor:pointer" onclick="openSdrDetailEl(this)"' : '"') + '><div style="font-size:1.1rem;font-weight:800;color:#10b981">' + reunion + '</div><div style="font-size:.62rem;color:#64748b">Reuniones hoy</div></div>'
+      + '<div data-user="' + esc(u) + '" data-day="' + todayStr + '" data-type="interesado" data-label="hoy" style="text-align:center' + (interesado > 0 ? ';cursor:pointer" onclick="openSdrDetailEl(this)"' : '"') + '><div style="font-size:1.1rem;font-weight:800;color:#38bdf8">' + interesado + '</div><div style="font-size:.62rem;color:#64748b">Interesados hoy</div></div>'
+      + '<div data-user="' + esc(u) + '" data-day="' + todayStr + '" data-type="no_contestó" data-label="hoy" style="text-align:center' + (noContesto > 0 ? ';cursor:pointer" onclick="openSdrDetailEl(this)"' : '"') + '><div style="font-size:1.1rem;font-weight:800;color:#475569">' + noContesto + '</div><div style="font-size:.62rem;color:#64748b">No contestó hoy</div></div>'
+      + '<div data-user="' + esc(u) + '" data-day="' + todayStr + '" data-type="no_interesa" data-label="hoy" style="text-align:center' + (noInteresa > 0 ? ';cursor:pointer" onclick="openSdrDetailEl(this)"' : '"') + '><div style="font-size:1.1rem;font-weight:800;color:#ef4444">' + noInteresa + '</div><div style="font-size:.62rem;color:#64748b">No le interesa hoy</div></div>'
       + '</div></div>';
   }).join('');
 
@@ -4795,9 +4795,11 @@ async function loadSdr() {
       const fw = v > 0 ? 700 : 400;
       const fc = v === 0 ? '#334155' : intensity > 0.5 ? '#fff' : '#93c5fd';
       const outline = isToday ? ';outline:1px solid #1e3a5f' : '';
-      const clickable = v > 0 ? ' onclick="openSdrDetail(' + JSON.stringify(u) + ',\'' + d + '\',\'calls\',\'' + shortDay(d) + '\')" style="display:inline-flex;align-items:center;justify-content:center;width:36px;height:26px;border-radius:6px;background:' + bg + ';font-size:.78rem;font-weight:' + fw + ';color:' + fc + outline + ';cursor:pointer"'
-                               : ' style="display:inline-flex;align-items:center;justify-content:center;width:36px;height:26px;border-radius:6px;background:' + bg + ';font-size:.78rem;font-weight:' + fw + ';color:' + fc + outline + '"';
-      return '<td style="text-align:center;padding:4px 4px"><div' + clickable + '>' + (v||'&middot;') + '</div></td>';
+      const baseCell = 'display:inline-flex;align-items:center;justify-content:center;width:36px;height:26px;border-radius:6px;background:' + bg + ';font-size:.78rem;font-weight:' + fw + ';color:' + fc + outline;
+      const inner = v > 0
+        ? '<div data-user="' + esc(u) + '" data-day="' + d + '" data-type="calls" data-label="' + shortDay(d) + '" onclick="openSdrDetailEl(this)" style="' + baseCell + ';cursor:pointer">' + v + '</div>'
+        : '<div style="' + baseCell + '">&middot;</div>';
+      return '<td style="text-align:center;padding:4px 4px">' + inner + '</td>';
     }).join('');
     const nameCell = '<td style="padding:4px 12px;white-space:nowrap" rowspan="4"><div style="display:flex;align-items:center;gap:8px">'
       + '<div style="width:24px;height:24px;border-radius:50%;background:' + color + ';display:flex;align-items:center;justify-content:center;font-size:.55rem;font-weight:800;color:#fff;flex-shrink:0">' + initials + '</div>'
@@ -4814,7 +4816,7 @@ async function loadSdr() {
         const outline = isToday ? ';outline:1px solid #1e3a5f' : '';
         const baseStyle = 'display:inline-flex;align-items:center;justify-content:center;width:36px;height:20px;border-radius:4px;font-size:.7rem;font-weight:' + (v?700:400) + ';color:' + (v?oc.color:'#1e293b') + outline;
         const inner = v > 0
-          ? '<div style="' + baseStyle + ';cursor:pointer" onclick="openSdrDetail(' + JSON.stringify(u) + ',\'' + d + '\',\'' + oc.key + '\',\'' + shortDay(d) + '\')">' + v + '</div>'
+          ? '<div data-user="' + esc(u) + '" data-day="' + d + '" data-type="' + oc.key + '" data-label="' + shortDay(d) + '" onclick="openSdrDetailEl(this)" style="' + baseStyle + ';cursor:pointer">' + v + '</div>'
           : '<div style="' + baseStyle + '">&middot;</div>';
         return '<td style="text-align:center;padding:2px 4px">' + inner + '</td>';
       }).join('');
@@ -4872,6 +4874,10 @@ async function openSdrDetail(user, day, type, dayLabel) {
       + (time ? '<div style="font-size:.72rem;color:#475569;white-space:nowrap;flex-shrink:0">' + time + '</div>' : '')
       + '</div>';
   }).join('');
+}
+
+function openSdrDetailEl(el) {
+  openSdrDetail(el.dataset.user, el.dataset.day, el.dataset.type, el.dataset.label);
 }
 
 function closeSdrDetail() {
