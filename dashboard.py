@@ -4987,7 +4987,7 @@ def create_app(db_path: str) -> Flask:
 
     @app.before_request
     def require_login():
-        if request.endpoint in ("login", "logout", "register", "forgot_password", "reset_password", "static"):
+        if request.endpoint in ("login", "logout", "register", "forgot_password", "reset_password", "static", "privacidad"):
             return
         if request.path.startswith("/api/meta/webhook"):
             return
@@ -5007,6 +5007,77 @@ def create_app(db_path: str) -> Flask:
             if request.path.startswith("/api/"):
                 return jsonify({"error": "session_expired"}), 401
             return redirect(url_for("login"))
+
+    @app.route("/privacidad")
+    def privacidad():
+        return render_template_string("""<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Política de Privacidad — Scalerics</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Segoe UI',Arial,sans-serif;background:#f1f5f9;color:#1e293b;line-height:1.7}
+  header{background:#0f1f3d;padding:20px 0;text-align:center}
+  header img{height:32px}
+  main{max-width:760px;margin:48px auto;background:#fff;border-radius:10px;
+       box-shadow:0 2px 16px rgba(15,31,61,.08);padding:48px 56px}
+  h1{font-size:26px;font-weight:700;color:#0f1f3d;margin-bottom:8px}
+  .updated{font-size:13px;color:#64748b;margin-bottom:36px}
+  h2{font-size:16px;font-weight:700;color:#0f1f3d;margin:32px 0 10px}
+  p,li{font-size:15px;color:#334155}
+  ul{padding-left:20px;margin-top:6px}
+  li{margin-bottom:4px}
+  a{color:#0088cc;text-decoration:none}
+  footer{text-align:center;padding:24px;font-size:13px;color:#94a3b8}
+</style>
+</head>
+<body>
+<header>
+  <img src="https://raw.githubusercontent.com/juantomasetti1/scalerics-assets/main/logo_full_alt.png" alt="Scalerics">
+</header>
+<main>
+  <h1>Política de Privacidad</h1>
+  <p class="updated">Última actualización: junio de 2026</p>
+
+  <h2>1. Quiénes somos</h2>
+  <p>Scalerics es una agencia de software y marketing digital. Esta política describe cómo tratamos los datos personales que recopilamos a través de nuestros formularios de Meta Lead Ads y herramientas internas.</p>
+
+  <h2>2. Datos que recopilamos</h2>
+  <p>A través de formularios de anuncios en Facebook e Instagram podemos recopilar:</p>
+  <ul>
+    <li>Nombre completo</li>
+    <li>Número de teléfono</li>
+    <li>Correo electrónico</li>
+    <li>Ciudad o ubicación</li>
+  </ul>
+
+  <h2>3. Cómo usamos los datos</h2>
+  <p>Los datos recopilados se utilizan exclusivamente para:</p>
+  <ul>
+    <li>Contactar al interesado en respuesta a su consulta</li>
+    <li>Presentar propuestas de servicios de Scalerics</li>
+    <li>Gestionar el seguimiento comercial interno</li>
+  </ul>
+  <p>No compartimos los datos con terceros ni los utilizamos con fines publicitarios propios.</p>
+
+  <h2>4. Almacenamiento y seguridad</h2>
+  <p>Los datos se almacenan en una base de datos segura con acceso restringido al equipo interno de Scalerics. Se aplican medidas técnicas para proteger la información contra accesos no autorizados.</p>
+
+  <h2>5. Plazo de conservación</h2>
+  <p>Los datos se conservan mientras exista una relación comercial activa o potencial. Podés solicitar la eliminación de tus datos en cualquier momento.</p>
+
+  <h2>6. Tus derechos</h2>
+  <p>Tenés derecho a acceder, rectificar o eliminar tus datos personales. Para ejercerlos, contactanos en:</p>
+  <p><a href="mailto:juantomasetti240@gmail.com">juantomasetti240@gmail.com</a></p>
+
+  <h2>7. Contacto</h2>
+  <p>Ante cualquier consulta sobre esta política podés escribirnos a <a href="mailto:juantomasetti240@gmail.com">juantomasetti240@gmail.com</a>.</p>
+</main>
+<footer>© 2026 Scalerics · Todos los derechos reservados</footer>
+</body>
+</html>""")
 
     @app.route("/login", methods=["GET", "POST"])
     def login():
