@@ -1719,9 +1719,13 @@ async function logCallOutcome(outcome) {
     await fetch(`/api/leads/${_callLeadId}/crm-status`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({crm_status:'reunion_agendada'})});
   }
   closeCallModal();
-  if (outcome === 'no_contestó' && _callActivePanel === 'cola') {
-    const lead = _colaLeads.find(b => b.id === _callLeadId);
-    if (lead) lead.no_contesto_count = (lead.no_contesto_count || 0) + 1;
+  if (_callActivePanel === 'cola' && (outcome === 'no_contestó' || outcome === 'no_interesa')) {
+    if (outcome === 'no_contestó') {
+      const lead = _colaLeads.find(b => b.id === _callLeadId);
+      if (lead) lead.no_contesto_count = (lead.no_contesto_count || 0) + 1;
+    } else {
+      _colaLeads = _colaLeads.filter(b => b.id !== _callLeadId);
+    }
     const scrollY = window.scrollY;
     renderCola();
     window.scrollTo(0, scrollY);
