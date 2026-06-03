@@ -11,7 +11,7 @@ APP_ID       = os.environ["META_APP_ID"]
 APP_SECRET   = os.environ["META_APP_SECRET"]
 PAGE_ID      = os.environ["META_PAGE_ID"]
 VERIFY_TOKEN = os.environ["META_VERIFY_TOKEN"]
-CRM_URL      = os.environ.get("CRM_URL", "https://web-production-cb6e.up.railway.app")
+CRM_URL      = os.environ.get("CRM_URL", "https://scalerics-crm.fly.dev")
 WEBHOOK_URL  = f"{CRM_URL}/api/meta/webhook"
 
 USER_TOKEN = input("Pegá el user access token del Graph API Explorer: ").strip()

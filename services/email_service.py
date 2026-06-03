@@ -6,7 +6,7 @@ import requests
 logger = logging.getLogger(__name__)
 
 _LOGO = "https://raw.githubusercontent.com/juantomasetti1/scalerics-assets/main/logo_full_alt.png"
-_CRM_URL = os.environ.get("CRM_URL", "https://web-production-cb6e.up.railway.app")
+_CRM_URL = os.environ.get("CRM_URL", "https://scalerics-crm.fly.dev")
 
 
 # ── Shared layout ──────────────────────────────────────────────────────────────
