@@ -5325,13 +5325,22 @@ def create_app(db_path: str) -> Flask:
                 GROUP BY user_name, day
                 ORDER BY day ASC
             """, sdr_names).fetchall()
+            # Ultimo outcome por lead por dia (si se equivoca y corrige, cuenta el ultimo)
             daily_outcomes = conn3.execute(f"""
-                SELECT user_name, DATE(created_at) as day, detail as outcome, COUNT(DISTINCT entity_id) as c
-                FROM activity_log
-                WHERE action='call_logged'
-                  AND user_name IN ({placeholders})
-                  AND created_at >= date('now','-13 days')
-                GROUP BY user_name, day, detail
+                SELECT user_name, day, outcome, COUNT(*) as c
+                FROM (
+                    SELECT user_name, DATE(created_at) as day, detail as outcome, entity_id,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY user_name, entity_id, DATE(created_at)
+                               ORDER BY created_at DESC
+                           ) as rn
+                    FROM activity_log
+                    WHERE action='call_logged'
+                      AND user_name IN ({placeholders})
+                      AND created_at >= date('now','-13 days')
+                )
+                WHERE rn = 1
+                GROUP BY user_name, day, outcome
             """, sdr_names).fetchall()
             period_calls = conn3.execute(f"""
                 SELECT user_name, COUNT(*) as c
@@ -5364,32 +5373,58 @@ def create_app(db_path: str) -> Flask:
                 GROUP BY al.user_name, day
             """, sdr_names).fetchall()
 
-            # reuniones agendadas: calendario + outcome 'reunion' del modal + status_change directo
+            # Reuniones: meeting_scheduled siempre cuenta; status_change solo si fue el ultimo del dia
             reuniones_cal = conn3.execute(f"""
                 SELECT user_name, DATE(created_at) as day, COUNT(DISTINCT entity_id) as c
-                FROM activity_log
-                WHERE (
-                    action='meeting_scheduled'
-                    OR (action='call_logged' AND detail='reunion')
-                    OR (action='status_change' AND detail='reunion_agendada')
+                FROM (
+                    SELECT user_name, entity_id, created_at
+                    FROM activity_log
+                    WHERE action='meeting_scheduled'
+                      AND user_name IN ({placeholders})
+                      AND created_at >= date('now','-13 days')
+                    UNION ALL
+                    SELECT user_name, entity_id, created_at
+                    FROM (
+                        SELECT user_name, entity_id, created_at, detail,
+                               ROW_NUMBER() OVER (
+                                   PARTITION BY user_name, entity_id, DATE(created_at)
+                                   ORDER BY created_at DESC
+                               ) as rn
+                        FROM activity_log
+                        WHERE (action='status_change' OR (action='call_logged' AND detail='reunion'))
+                          AND user_name IN ({placeholders})
+                          AND created_at >= date('now','-13 days')
+                    )
+                    WHERE rn = 1 AND detail='reunion_agendada'
                 )
-                  AND user_name IN ({placeholders})
-                  AND created_at >= date('now','-13 days')
-                GROUP BY user_name, day
-            """, sdr_names).fetchall()
+                GROUP BY user_name, DATE(created_at)
+            """, sdr_names + sdr_names).fetchall()
 
             period_reuniones = conn3.execute(f"""
                 SELECT user_name, COUNT(DISTINCT entity_id) as c
-                FROM activity_log
-                WHERE (
-                    action='meeting_scheduled'
-                    OR (action='call_logged' AND detail='reunion')
-                    OR (action='status_change' AND detail='reunion_agendada')
+                FROM (
+                    SELECT user_name, entity_id
+                    FROM activity_log
+                    WHERE action='meeting_scheduled'
+                      AND user_name IN ({placeholders})
+                      AND DATE(created_at) >= ?
+                    UNION ALL
+                    SELECT user_name, entity_id
+                    FROM (
+                        SELECT user_name, entity_id, detail,
+                               ROW_NUMBER() OVER (
+                                   PARTITION BY user_name, entity_id, DATE(created_at)
+                                   ORDER BY created_at DESC
+                               ) as rn
+                        FROM activity_log
+                        WHERE (action='status_change' OR (action='call_logged' AND detail='reunion'))
+                          AND user_name IN ({placeholders})
+                          AND DATE(created_at) >= ?
+                    )
+                    WHERE rn = 1 AND detail='reunion_agendada'
                 )
-                  AND user_name IN ({placeholders})
-                  AND DATE(created_at) >= ?
                 GROUP BY user_name
-            """, sdr_names + [date_from]).fetchall()
+            """, sdr_names + [date_from] + sdr_names + [date_from]).fetchall()
 
             return jsonify({
                 "daily": [{"user": r["user_name"], "day": r["day"], "calls": r["calls"], "leads": r["leads_touched"]} for r in rows],
