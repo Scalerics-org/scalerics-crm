@@ -2723,7 +2723,7 @@ document.getElementById('event-modal').addEventListener('click', e => { if(e.tar
 
 async function deleteCalEvent(eventId, title) {
   if (!confirm('¿Borrar "' + title + '" del calendario?')) return;
-  const r = await fetch('/api/calendar/events/' + encodeURIComponent(eventId), { method: 'DELETE' });
+  const r = await fetch('/api/calendar/meetings/' + eventId, { method: 'DELETE' });
   const d = await r.json();
   if (d.ok) { renderCalendar(); }
   else { alert('Error al borrar: ' + (d.error || 'desconocido')); }
