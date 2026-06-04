@@ -1061,7 +1061,7 @@ body.light .upick-name{color:#0f172a}
   <div class="nav-section-label">LLAMADAS</div>
   <div class="nav-item active" id="nav-cola" onclick="showPanel('cola')"><i data-lucide="inbox" class="nav-icon"></i> Cola</div>
   <div class="nav-item" id="nav-seguimientos" onclick="showPanel('seguimientos')"><i data-lucide="bookmark" class="nav-icon"></i> Seguimientos</div>
-  <div class="nav-item" id="nav-meta" onclick="showPanel('meta')"><i data-lucide="instagram" class="nav-icon"></i> Meta Ads</div>
+  <div class="nav-item" id="nav-meta" onclick="showPanel('meta');clearMetaBadge()"><i data-lucide="instagram" class="nav-icon"></i> Meta Ads <span id="meta-badge" style="display:none;background:#e1306c;color:#fff;font-size:.65rem;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:4px">NEW</span></div>
   <div class="nav-section-label">VENTAS</div>
   <div class="nav-item" id="nav-pipeline" onclick="showPanel('pipeline')"><i data-lucide="trending-up" class="nav-icon"></i> Proceso de venta</div>
   <div class="nav-item" id="nav-clientes" onclick="showPanel('clientes')"><i data-lucide="users" class="nav-icon"></i> Clientes</div>
@@ -1753,6 +1753,36 @@ function _reloadActiveCallPanel() {
 let _metaSearch = '';
 let _metaLeads = [];
 let _metaSortDesc = true;
+let _metaKnownIds = new Set();
+let _metaPollTimer = null;
+
+function clearMetaBadge() {
+  document.getElementById('meta-badge').style.display = 'none';
+}
+
+function _startMetaPoll() {
+  if (_metaPollTimer) return;
+  _metaPollTimer = setInterval(async () => {
+    try {
+      const r = await fetch('/api/leads?crm_group=meta');
+      const data = await r.json();
+      const leads = Array.isArray(data) ? data : (data.items || []);
+      const newOnes = leads.filter(l => !_metaKnownIds.has(l.id));
+      if (newOnes.length && _metaKnownIds.size > 0) {
+        const badge = document.getElementById('meta-badge');
+        badge.textContent = newOnes.length === 1 ? 'NEW' : `+${newOnes.length}`;
+        badge.style.display = '';
+        _metaLeads = leads;
+        const activePanel = document.querySelector('.panel.active');
+        if (activePanel && activePanel.id === 'meta-panel') {
+          renderMetaTable();
+          clearMetaBadge();
+        }
+      }
+      leads.forEach(l => _metaKnownIds.add(l.id));
+    } catch(e) {}
+  }, 60000);
+}
 function metaSearch(v) { _metaSearch = v.toLowerCase(); renderMetaTable(); }
 function toggleMetaSort() { _metaSortDesc = !_metaSortDesc; document.getElementById('meta-sort-icon').textContent = _metaSortDesc ? '↓' : '↑'; renderMetaTable(); }
 
@@ -1763,7 +1793,9 @@ async function loadMetaPanel() {
     const r = await fetch('/api/leads?crm_group=meta');
     const data = await r.json();
     _metaLeads = Array.isArray(data) ? data : (data.items || []);
+    _metaLeads.forEach(l => _metaKnownIds.add(l.id));
     renderMetaTable();
+    _startMetaPoll();
   } catch(e) { body.innerHTML = `<div style="color:#f87171;padding:16px">Error: ${e.message}</div>`; }
 }
 
@@ -4101,7 +4133,7 @@ function _cpRenderMeetings() {
         <div class="cp-meeting-title">${m.title || 'Reunión'}</div>
         <button class="cp-btn cp-btn-ghost" style="color:#ef4444;font-size:.8rem;padding:2px 8px" onclick="_cpDeleteMeeting(${m.id})">Borrar</button>
       </div>
-      <div class="cp-meeting-meta">${m.start_at ? m.start_at.substring(0,16).replace('T',' ') : ''} · ${_cpMeetStatus(m.status)}</div>
+      <div class="cp-meeting-meta">${m.start_at ? new Date(m.start_at).toLocaleString('es-UY',{timeZone:'America/Montevideo',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : ''} · ${_cpMeetStatus(m.status)}</div>
       ${m.meet_link ? `<div style="margin-bottom:8px"><a class="cp-meeting-link" href="${m.meet_link}" target="_blank" style="margin:0">▶ Unirse a la reunión</a></div>` : ''}
       ${m.calendar_event_id ? `<div style="margin-bottom:8px">
         <button class="cp-btn cp-btn-ghost" style="font-size:.75rem;padding:2px 8px" onclick="_cpToggleAddEmail(${m.id})">+ Agregar email</button>
@@ -5036,6 +5068,8 @@ def create_app(db_path: str) -> Flask:
         if request.endpoint in ("login", "logout", "register", "forgot_password", "reset_password", "static", "privacidad"):
             return
         if request.path.startswith("/api/meta/webhook"):
+            return
+        if request.path.startswith("/api/calendly/webhook"):
             return
         # Any /api/ request with valid x-admin-token bypasses session auth
         if request.path.startswith("/api/"):
