@@ -136,8 +136,8 @@ def api_calendar_events():
                 FROM meetings m
                 LEFT JOIN businesses b ON m.client_id = b.id
                 WHERE m.status != 'canceled'
-                  AND (? = '' OR DATE(m.start_at) >= ?)
-                  AND (? = '' OR DATE(m.start_at) <= ?)
+                  AND (? = '' OR SUBSTR(m.start_at, 1, 10) >= ?)
+                  AND (? = '' OR SUBSTR(m.start_at, 1, 10) <= ?)
                 ORDER BY m.start_at ASC
             """, (start, start, end, end)).fetchall()
             events = []
@@ -273,19 +273,30 @@ Devolvé SOLO un JSON (sin texto extra, sin markdown):
         transcript=transcript,
         summary=result.get("summary", ""),
         requirements=result.get("requirements", ""),
+        status="completed",
     )
 
     budget_generated = False
     try:
-        from database import get_meeting as _get_meeting
+        from database import get_meeting as _get_meeting, get_business
         from routes.budgets import _generate_budget_internal
         meeting_record = _get_meeting(_db(), meeting_id)
         if meeting_record and meeting_record.get("client_id"):
             cid = meeting_record["client_id"]
+            # Mark lead as reunion_hecha unless already further along
+            _BEFORE_REUNION = {
+                "sin_contactar", "interesado", "contactado",
+                "reunion_agendada", "llamar_despues",
+            }
+            biz = get_business(_db(), cid)
+            if biz and biz.get("crm_status") in _BEFORE_REUNION:
+                from database import update_business as _upd
+                _upd(_db(), cid, crm_status="reunion_hecha")
             auto = _generate_budget_internal(
                 _db(), cid,
                 requirements=result.get("requirements", ""),
                 service_type=result.get("service_type", ""),
+                transcript=transcript,
             )
             if auto:
                 from database import update_business

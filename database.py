@@ -60,6 +60,7 @@ def init_db(db_path: str) -> None:
         _add_column(conn, "businesses", "callback_date", "TEXT")
         _add_column(conn, "businesses", "source", "TEXT")
         _add_column(conn, "businesses", "form_data", "TEXT")
+        _add_column(conn, "businesses", "email", "TEXT")
         _add_column(conn, "users", "panel_access", "TEXT")
         _add_column(conn, "users", "role_id", "INTEGER REFERENCES roles(id) ON DELETE SET NULL")
         conn.execute("""
@@ -368,7 +369,7 @@ def init_db(db_path: str) -> None:
 # ─── Businesses (existing API, preserved) ────────────────────────────────────
 
 ALLOWED_COLUMNS = {
-    "name", "category", "address", "city", "phone", "rating",
+    "name", "category", "address", "city", "phone", "email", "rating",
     "review_count", "hours", "maps_url", "facebook_url", "instagram_url",
     "color_scheme", "demo_html_path", "demo_url", "status", "error_message",
     "scraped_at", "notes", "pitch_text", "crm_status",

@@ -6,7 +6,7 @@ import re
 
 from flask import Blueprint, request, jsonify
 
-from database import create_meeting, get_business_by_phone, get_all_businesses, log_activity
+from database import create_meeting, get_business_by_phone, get_all_businesses, log_activity, update_business
 
 calendly_bp = Blueprint("calendly", __name__)
 
@@ -15,8 +15,19 @@ def _verify_signature(payload: bytes, signature_header: str) -> bool:
     secret = os.environ.get("CALENDLY_WEBHOOK_SECRET", "")
     if not secret:
         return True  # skip verification if secret not configured
-    expected = "sha256=" + hmac.new(secret.encode(), payload, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(expected, signature_header or "")
+    # Calendly v2 format: "t=<unix_timestamp>,v1=<hmac_hex>"
+    # Signed content: "<timestamp>.<body>"
+    try:
+        parts = dict(p.split("=", 1) for p in (signature_header or "").split(","))
+        timestamp = parts.get("t", "")
+        v1 = parts.get("v1", "")
+        if not timestamp or not v1:
+            return False
+    except Exception:
+        return False
+    signed = (timestamp + ".").encode() + payload
+    expected = hmac.new(secret.encode(), signed, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, v1)
 
 
 def _normalize_phone(phone: str) -> str:
@@ -87,8 +98,11 @@ def calendly_webhook():
                     phone_raw = ans
                     break
 
-        start_at  = event.get("start_time", "")
-        end_at    = event.get("end_time", "")
+        # Strip Z suffix and microseconds so SQLite DATE() works correctly
+        def _norm_time(t):
+            return t.replace("Z", "").split(".")[0] if t else ""
+        start_at  = _norm_time(event.get("start_time", ""))
+        end_at    = _norm_time(event.get("end_time", ""))
         meet_link = event.get("location", {}).get("join_url", "") or event.get("location", {}).get("location", "")
         event_uri = event.get("uri", "")
         title     = f"Reunión con {name}" if name else "Reunión Calendly"
@@ -101,7 +115,7 @@ def calendly_webhook():
             try:
                 cur = conn.execute(
                     "INSERT INTO businesses (name, email, phone, crm_status, source) VALUES (?,?,?,?,?)",
-                    (name or email, email, _normalize_phone(phone_raw), "reunion_agendada", "calendly_unmatched")
+                    (name or email, email or None, _normalize_phone(phone_raw) or None, "reunion_agendada", "calendly_unmatched")
                 )
                 conn.commit()
                 client_id = cur.lastrowid
@@ -109,6 +123,7 @@ def calendly_webhook():
                 conn.close()
         else:
             client_id = client["id"]
+            update_business(db_path, client_id, crm_status="reunion_agendada")
 
         # Create Recall bot to transcribe the Google Meet
         recall_bot_id = None
@@ -128,17 +143,21 @@ def calendly_webhook():
             except Exception:
                 pass
 
-        meeting_id = create_meeting(
-            db_path,
-            client_id=client_id,
-            calendar_event_id=event_uri or None,
-            title=title,
-            start_at=start_at,
-            end_at=end_at,
-            meet_link=meet_link,
-            status="scheduled",
-            recall_bot_id=recall_bot_id,
-        )
+        try:
+            meeting_id = create_meeting(
+                db_path,
+                client_id=client_id,
+                calendar_event_id=event_uri or None,
+                title=title,
+                start_at=start_at,
+                end_at=end_at,
+                meet_link=meet_link,
+                status="scheduled",
+                recall_bot_id=recall_bot_id,
+            )
+        except Exception:
+            # Duplicate webhook from Calendly — meeting already exists
+            return jsonify({"ok": True, "duplicate": True})
 
         log_activity(db_path, "calendly", "meeting_scheduled", "lead", client_id,
                      client["name"] if client else name,
