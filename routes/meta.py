@@ -91,6 +91,7 @@ def meta_webhook_verify():
 def meta_webhook_receive():
     sig = request.headers.get("X-Hub-Signature-256", "")
     if not _verify_signature(request.data, sig):
+        logger.warning(f"Meta webhook: invalid signature (sig={sig[:20] if sig else 'empty'})")
         return "Invalid signature", 403
 
     data = request.get_json(silent=True) or {}
@@ -104,6 +105,7 @@ def meta_webhook_receive():
             lead_id = change.get("value", {}).get("leadgen_id")
             form_id = change.get("value", {}).get("form_id")
             if lead_id:
+                logger.info(f"Meta webhook received: leadgen_id={lead_id} form_id={form_id}")
                 threading.Thread(
                     target=_fetch_and_store_lead,
                     args=(current_app._get_current_object(), lead_id, form_id),
