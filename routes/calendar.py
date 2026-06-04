@@ -120,14 +120,93 @@ def _contributors(db: str, lead_id: int, current_uid: int | None) -> list[int]:
     return list(ids)
 
 
+def _sync_gcal_to_db(db: str, start: str, end: str) -> None:
+    """Pull Google Calendar events for the given date range and upsert into meetings table."""
+    import re, sqlite3 as _sq
+    service, err = _get_calendar_service()
+    if err or not service:
+        return
+    try:
+        items = service.events().list(
+            calendarId="primary",
+            timeMin=f"{start}T00:00:00Z",
+            timeMax=f"{end}T23:59:59Z",
+            singleEvents=True,
+            orderBy="startTime",
+            maxResults=100,
+        ).execute().get("items", [])
+    except Exception as e:
+        import logging; logging.getLogger(__name__).warning(f"GCal sync error: {e}")
+        return
+
+    conn = _sq.connect(db); conn.row_factory = _sq.Row
+    try:
+        for ev in items:
+            gcal_id = ev.get("id", "")
+            if not gcal_id:
+                continue
+            if conn.execute("SELECT id FROM meetings WHERE calendar_event_id=?", (gcal_id,)).fetchone():
+                continue
+
+            summary = ev.get("summary", "Reunión")
+            raw_start = ev.get("start", {}).get("dateTime") or ev.get("start", {}).get("date", "")
+            raw_end   = ev.get("end",   {}).get("dateTime") or ev.get("end",   {}).get("date", "")
+            # Strip timezone offset so SQLite SUBSTR filtering works
+            start_at = re.sub(r"(\.\d+)?([+-]\d{2}:\d{2}|Z)$", "", raw_start)
+            end_at   = re.sub(r"(\.\d+)?([+-]\d{2}:\d{2}|Z)$", "", raw_end)
+
+            meet_link = ""
+            for ep in (ev.get("conferenceData") or {}).get("entryPoints", []):
+                if ep.get("entryPointType") == "video":
+                    meet_link = ep.get("uri", "")
+                    break
+
+            # Find invitee (first non-organizer attendee)
+            invitee_email = invitee_name = ""
+            for att in (ev.get("attendees") or []):
+                if att.get("organizer") or att.get("self"):
+                    continue
+                invitee_email = att.get("email", "")
+                invitee_name  = att.get("displayName", "")
+                break
+
+            # Try to match to existing client
+            client_id = None
+            if invitee_email:
+                row = conn.execute("SELECT id FROM businesses WHERE email=?", (invitee_email,)).fetchone()
+                if row:
+                    client_id = row["id"]
+            if not client_id:
+                name = invitee_name or invitee_email or summary
+                cur = conn.execute(
+                    "INSERT INTO businesses (name, email, crm_status, source) VALUES (?,?,?,?)",
+                    (name, invitee_email or None, "reunion_agendada", "calendly_gcal"),
+                )
+                client_id = cur.lastrowid
+
+            conn.execute(
+                "INSERT INTO meetings (client_id, calendar_event_id, title, start_at, end_at, meet_link, status) VALUES (?,?,?,?,?,?,?)",
+                (client_id, gcal_id, summary, start_at, end_at, meet_link, "scheduled"),
+            )
+        conn.commit()
+    except Exception as e:
+        import logging; logging.getLogger(__name__).warning(f"GCal upsert error: {e}")
+    finally:
+        conn.close()
+
+
 @calendar_bp.route("/api/calendar/events", methods=["GET", "POST"])
 def api_calendar_events():
     if request.method == "GET":
-        # Read meetings from local DB (no Google Calendar dependency)
         import sqlite3 as _sq
         start = request.args.get("start", "")
         end = request.args.get("end", "")
         db = _db()
+
+        # Sync new Google Calendar events (Calendly creates them there)
+        if start and end:
+            _sync_gcal_to_db(db, start, end)
+
         conn = _sq.connect(db); conn.row_factory = _sq.Row
         try:
             rows = conn.execute("""
