@@ -147,6 +147,11 @@ def _sync_gcal_to_db(db: str, start: str, end: str) -> None:
                 continue
             if conn.execute("SELECT id FROM meetings WHERE calendar_event_id=?", (gcal_id,)).fetchone():
                 continue
+            # Skip if a meeting already exists at the same hour (Calendly webhook may have created it)
+            if start_at and conn.execute(
+                "SELECT id FROM meetings WHERE SUBSTR(start_at,1,13)=?", (start_at[:13],)
+            ).fetchone():
+                continue
 
             summary = ev.get("summary", "Reunión")
             raw_start = ev.get("start", {}).get("dateTime") or ev.get("start", {}).get("date", "")
