@@ -162,15 +162,16 @@ def _sync_gcal_to_db(db: str, start: str, end: str) -> None:
             raw_start = ev.get("start", {}).get("dateTime") or ev.get("start", {}).get("date", "")
             raw_end   = ev.get("end",   {}).get("dateTime") or ev.get("end",   {}).get("date", "")
 
-            # Convert to UTC so times match existing Calendly-webhook entries in DB
+            # Keep local Uruguay time — strip timezone offset but preserve local value
             def _to_utc(raw):
                 if not raw:
                     return ""
                 try:
                     import datetime as _dt
                     d = _dt.datetime.fromisoformat(raw)
+                    # Convert to Uruguay (UTC-3) local time
                     if d.tzinfo:
-                        d = d.astimezone(_tz.utc).replace(tzinfo=None)
+                        d = d.astimezone(_dt.timezone(-_dt.timedelta(hours=3))).replace(tzinfo=None)
                     return d.strftime("%Y-%m-%dT%H:%M:%S")
                 except Exception:
                     return re.sub(r"(\.\d+)?([+-]\d{2}:\d{2}|Z)$", "", raw)

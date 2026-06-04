@@ -98,9 +98,17 @@ def calendly_webhook():
                     phone_raw = ans
                     break
 
-        # Strip Z suffix and microseconds so SQLite DATE() works correctly
+        # Convert UTC to Uruguay local time (UTC-3) and strip microseconds
         def _norm_time(t):
-            return t.replace("Z", "").split(".")[0] if t else ""
+            if not t:
+                return ""
+            import datetime as _dt
+            try:
+                d = _dt.datetime.fromisoformat(t.replace("Z", "+00:00").split(".")[0] + ("+00:00" if t.endswith("Z") else ""))
+                d = d.astimezone(_dt.timezone(- _dt.timedelta(hours=3))).replace(tzinfo=None)
+                return d.strftime("%Y-%m-%dT%H:%M:%S")
+            except Exception:
+                return t.replace("Z", "").split(".")[0]
         start_at  = _norm_time(event.get("start_time", ""))
         end_at    = _norm_time(event.get("end_time", ""))
         meet_link = event.get("location", {}).get("join_url", "") or event.get("location", {}).get("location", "")
