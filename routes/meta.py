@@ -501,16 +501,24 @@ def _run_import_sync(db: str) -> tuple[int, int]:
                     ct = datetime.fromisoformat(ct.replace("+0000", "")).replace(tzinfo=tz.utc).strftime("%Y-%m-%d %H:%M:%S")
                 except Exception:
                     ct = ""
+            campaign = lead.get("campaign_name") or form.get("name", "")
             biz_id = insert_business(db, {
                 "name": name, "phone": phone or None, "city": city or None,
                 "category": "Meta Lead Ad", "status": "scraped",
-                "notes": f"Meta Lead Ad · {lead.get('campaign_name') or form.get('name', '')}".strip(" ·"),
+                "notes": f"Meta Lead Ad · {campaign}".strip(" ·"),
                 "score": 70, "source": "meta",
                 "form_data": json.dumps(fields, ensure_ascii=False),
                 "scraped_at": ct or None,
             })
             if biz_id:
                 new_c += 1
+                log_activity(db, "meta_daily_import", "lead_created", "lead", biz_id, name,
+                             f"Fuente: Meta Lead Ad · {campaign}", user_id=None)
+                threading.Thread(
+                    target=_notify_new_meta_lead,
+                    args=(db, name, phone, campaign, city, biz_id),
+                    daemon=True,
+                ).start()
             else:
                 dup += 1
 

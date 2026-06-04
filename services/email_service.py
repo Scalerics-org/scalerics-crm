@@ -163,9 +163,9 @@ def send_new_meta_lead_notification(to_email: str, lead_name: str, phone: str, c
     )
     html = _layout(
         badge="Nuevo lead Meta Ads",
-        title=f"🔔 {lead_name}",
+        title=f"Nuevo lead: {lead_name}",
         body=body,
-        cta_url=f"{_CRM_URL}",
+        cta_url=f"{_CRM_URL}/?highlight={lead_id}",
         cta_label="Ver en CRM →",
     )
     return _send(to_email, f"Nuevo lead Meta: {lead_name} — Scalerics CRM", html)
