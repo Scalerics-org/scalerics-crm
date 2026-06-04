@@ -412,7 +412,7 @@ def _update_env(key: str, value: str):
 
 # ── Background token health monitor ──────────────────────────────────────────
 
-_CHECK_INTERVAL = 24 * 60 * 60  # 24 horas
+_CHECK_INTERVAL = 10 * 60  # 10 minutos
 
 
 def _check_token_once(db: str) -> None:
