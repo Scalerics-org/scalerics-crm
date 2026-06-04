@@ -123,6 +123,7 @@ def _contributors(db: str, lead_id: int, current_uid: int | None) -> list[int]:
 def _sync_gcal_to_db(db: str, start: str, end: str) -> None:
     """Pull Google Calendar events for the given date range and upsert into meetings table."""
     import re, sqlite3 as _sq
+    from datetime import timezone as _tz
     service, err = _get_calendar_service()
     if err or not service:
         return
@@ -145,20 +146,43 @@ def _sync_gcal_to_db(db: str, start: str, end: str) -> None:
             gcal_id = ev.get("id", "")
             if not gcal_id:
                 continue
+            # Skip cancelled events
+            if ev.get("status") == "cancelled":
+                continue
+            summary = ev.get("summary", "Reunión")
+            if summary.startswith("Cancelado:"):
+                continue
+
             if conn.execute("SELECT id FROM meetings WHERE calendar_event_id=?", (gcal_id,)).fetchone():
                 continue
-            # Skip if a meeting already exists at the same hour (Calendly webhook may have created it)
+
+            # Will be set after UTC conversion — check for existing meeting at same hour
+
+
+            raw_start = ev.get("start", {}).get("dateTime") or ev.get("start", {}).get("date", "")
+            raw_end   = ev.get("end",   {}).get("dateTime") or ev.get("end",   {}).get("date", "")
+
+            # Convert to UTC so times match existing Calendly-webhook entries in DB
+            def _to_utc(raw):
+                if not raw:
+                    return ""
+                try:
+                    import datetime as _dt
+                    d = _dt.datetime.fromisoformat(raw)
+                    if d.tzinfo:
+                        d = d.astimezone(_tz.utc).replace(tzinfo=None)
+                    return d.strftime("%Y-%m-%dT%H:%M:%S")
+                except Exception:
+                    return re.sub(r"(\.\d+)?([+-]\d{2}:\d{2}|Z)$", "", raw)
+
+            start_at = _to_utc(raw_start)
+            end_at   = _to_utc(raw_end)
+
+            # Skip if meeting already exists at same UTC hour
             if start_at and conn.execute(
                 "SELECT id FROM meetings WHERE SUBSTR(start_at,1,13)=?", (start_at[:13],)
             ).fetchone():
                 continue
-
-            summary = ev.get("summary", "Reunión")
-            raw_start = ev.get("start", {}).get("dateTime") or ev.get("start", {}).get("date", "")
-            raw_end   = ev.get("end",   {}).get("dateTime") or ev.get("end",   {}).get("date", "")
-            # Strip timezone offset so SQLite SUBSTR filtering works
-            start_at = re.sub(r"(\.\d+)?([+-]\d{2}:\d{2}|Z)$", "", raw_start)
-            end_at   = re.sub(r"(\.\d+)?([+-]\d{2}:\d{2}|Z)$", "", raw_end)
 
             meet_link = ""
             for ep in (ev.get("conferenceData") or {}).get("entryPoints", []):
