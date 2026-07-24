@@ -5353,11 +5353,11 @@ def create_app(db_path: str) -> Flask:
             else:
                 date_from = today.replace(day=1).isoformat()
                 period = 'month'
-            # SDR users only (role name = 'SDR')
+            # Usuarios que hacen llamadas (rol 'SDR' o 'Caller', el default sembrado)
             sdr_names = [r["name"] for r in conn3.execute("""
                 SELECT u.name FROM users u
                 JOIN roles r ON u.role_id = r.id
-                WHERE r.name = 'SDR'
+                WHERE r.name IN ('SDR', 'Caller')
             """).fetchall()]
             if not sdr_names:
                 return jsonify({"daily": [], "outcomes": [], "period_calls": [], "sdr_users": [], "period": period})
