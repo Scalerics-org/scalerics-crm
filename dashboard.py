@@ -2363,22 +2363,21 @@ async function setCrmStatus(id, status) {
   loadStats();
 }
 
-async function deleteLead(id, ev) {
-  if (!confirm('¿Borrar este lead? No se puede deshacer.')) return;
-  ev.stopPropagation();
-  await fetch(`/api/leads/${id}`, {method:'DELETE'});
-  loadStats(); loadLeads();
-}
-
 async function markContacted(id) {
   await fetch(`/api/leads/${id}/crm-status`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({crm_status:'interesado'})});
   loadStats(); loadLeads();
 }
 
+function _refreshActivePanel() {
+  if (activePanel === 'cola') loadCola();
+  else if (activePanel === 'seguimientos') loadSeguimientos();
+  else if (activePanel === 'clientes') loadClientesPanel();
+}
+
 async function deleteLead(id, name) {
   if (!confirm(`¿Eliminar "${name}"? Esta acción no se puede deshacer.`)) return;
   await fetch(`/api/leads/${id}`, {method:'DELETE'});
-  loadStats(); loadLeads();
+  _refreshActivePanel();
 }
 
 function openPipelineModal() { document.getElementById('pipeline-modal').classList.add('open'); }
