@@ -310,7 +310,7 @@ def api_calendar_events():
         return jsonify({"ok": False, "error": str(e)})
 
 
-@calendar_bp.route("/api/calendar/meetings/<int:client_id>", methods=["GET"])
+@calendar_bp.route("/api/calendar/clients/<int:client_id>/meetings", methods=["GET"])
 def api_client_meetings(client_id):
     meetings = get_meetings_for_client(_db(), client_id)
     return jsonify(meetings)

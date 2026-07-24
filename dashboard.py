@@ -3811,7 +3811,7 @@ async function _cpLoadAll() {
   if (!_cpClientId) return;
   const [leadRes, meetRes, budgetRes, demoRes, attBudgetRes, attDemoRes, eventsRes, callsRes] = await Promise.allSettled([
     fetch('/api/leads/' + _cpClientId).then(r => r.json()),
-    fetch('/api/calendar/meetings/' + _cpClientId).then(r => r.json()),
+    fetch('/api/calendar/clients/' + _cpClientId + '/meetings').then(r => r.json()),
     fetch('/api/leads/' + _cpClientId + '/budget').then(r => r.json()),
     fetch('/api/demo/status/' + _cpClientId).then(r => r.json()),
     fetch('/api/leads/' + _cpClientId + '/attachments?section=budget').then(r => r.json()),
