@@ -4276,7 +4276,7 @@ async function _cpSummarize(meetingId) {
 }
 
 function _cpOpenNewMeeting() {
-  document.querySelector('.nav-item[data-panel="calendar"]').click();
+  showPanel('cal');
   closeClientPanel();
   openNewEventModal();
   if (_cpClientId) {
