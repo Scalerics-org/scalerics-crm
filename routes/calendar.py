@@ -405,7 +405,6 @@ Devolvé SOLO un JSON (sin texto extra, sin markdown):
                 _db(), cid,
                 requirements=result.get("requirements", ""),
                 service_type=result.get("service_type", ""),
-                transcript=transcript,
             )
             if auto:
                 from database import update_business
