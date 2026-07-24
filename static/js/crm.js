@@ -1,39 +1,3 @@
-window._isAdmin = false; // default until /api/me resolves
-// ========== Sidebar mobile ==========
-function toggleSidebar() {
-  document.getElementById('sidebar').classList.toggle('open');
-  document.getElementById('sidebar-backdrop').classList.toggle('open');
-}
-function closeSidebar() {
-  document.getElementById('sidebar').classList.remove('open');
-  document.getElementById('sidebar-backdrop').classList.remove('open');
-}
-
-// ========== Panel switching ==========
-let activePanel = 'cola';
-function showPanel(name) {
-  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-  document.getElementById(name + '-panel').classList.add('active');
-  const sideNav = document.getElementById('nav-' + name);
-  if (sideNav) sideNav.classList.add('active');
-  activePanel = name;
-  _syncMobileNav(name);
-  closeSidebar();
-  if (name === 'cola') loadCola();
-  if (name === 'seguimientos') loadSeguimientos();
-  if (name === 'pipeline') loadPipelinePanel();
-  if (name === 'clientes') loadClientesPanel();
-  if (name === 'meta') loadMetaPanel();
-  if (name === 'wa' && !waLoaded) loadWaLeads();
-  if (name === 'wa') loadWaTemplates();
-  if (name === 'cal' && !calLoaded) { calLoaded = true; renderCalendar(); }
-  if (name === 'tasks') loadTasks();
-  if (name === 'metrics') loadMetrics();
-  if (name === 'activity') loadActivity();
-  if (name === 'sdr') loadSdr();
-}
-
 // ========== Leads / Cola panel ==========
 let currentCrm = '';
 let currentCategory = '';
@@ -3354,3 +3318,16 @@ async function loadActivity() {
     list.innerHTML = '<div style="color:#f87171">Error cargando actividad</div>';
   }
 }
+
+// -- Registro de paneles (OCP): cada uno se despacha via showPanel --
+registerPanel('cola', loadCola);
+registerPanel('seguimientos', loadSeguimientos);
+registerPanel('pipeline', loadPipelinePanel);
+registerPanel('clientes', loadClientesPanel);
+registerPanel('meta', loadMetaPanel);
+registerPanel('wa', () => { if (!waLoaded) loadWaLeads(); loadWaTemplates(); });
+registerPanel('cal', () => { if (!calLoaded) { calLoaded = true; renderCalendar(); } });
+registerPanel('tasks', loadTasks);
+registerPanel('metrics', loadMetrics);
+registerPanel('activity', loadActivity);
+registerPanel('sdr', loadSdr);
