@@ -88,3 +88,20 @@ Script de referencia: `upload_templates.py`
 
 - Presupuestos con precios: solo en `budgets/`, nunca en repositorios públicos
 - Tokens OAuth: en `.env`, nunca en código fuente
+
+---
+
+## Convenciones de código (Clean Code + SOLID)
+
+Seguir **`docs/clean-code.md`** en todo código que se toque o agregue (guía completa, adaptada de C# a Python/JS). Reglas clave:
+
+- **Sin strings mágicos** para estados/roles → enums/constantes (`CrmStatus`, `TASK_STATUS`, etc.).
+- **Máx ~2–3 argumentos** por función; el resto agrupado en objeto/dataclass (en JS, objeto de opciones).
+- **Guard clauses** (fail-fast), evitar negaciones poco claras, y condiciones complejas en variables/funciones con nombre.
+- **Mapear con comprehensions/`map`**, no loops manuales; encapsular el mapeo Request→entidad y entidad→response fuera del route.
+- **No `commit` dentro de loops** — batch afuera.
+- **Nombres:** Python `snake_case`; JS `camelCase`; clases `PascalCase`; privados con `_`; constantes `UPPER_CASE`.
+- **Fechas:** parseo explícito con formato + timezone.
+- Aplicar al código tocado, **sin reescribir todo de golpe**.
+
+**Arquitectura (SOLID):** apuntar a SRP (cada archivo una responsabilidad), OCP (registries en vez de switches hardcodeados), DIP (depender de interfaces para IA y deploy, no de proveedores concretos). Ver el plan/spec de extracción del frontend en `docs/superpowers/`. No inventar abstracciones para casos con una sola implementación sin segundo caso a la vista.
