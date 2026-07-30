@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ business_name }}</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;700&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{font-family:'Inter',sans-serif;background:#0d0d0d;color:#e5e7eb}
+.demo-banner{background:#1a1a1a;border-bottom:1px solid #222;color:#6b7280;text-align:center;padding:8px 16px;font-size:.75rem}
+.demo-banner strong{color:#e5e7eb}
+.demo-banner a{color:#ff3b00;text-decoration:none;font-weight:600}
+nav{position:sticky;top:0;z-index:100;background:rgba(13,13,13,.95);backdrop-filter:blur(10px);border-bottom:1px solid #1f1f1f;padding:0 20px;display:flex;align-items:center;justify-content:space-between;height:54px}
+.nav-logo{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:1rem;color:#fff;letter-spacing:-.3px}
+.nav-cta{background:#ff3b00;color:#fff;padding:7px 16px;border-radius:6px;font-size:.8rem;font-weight:700;text-decoration:none;letter-spacing:.3px}
+.hero{padding:56px 24px 48px;border-bottom:1px solid #1f1f1f;max-width:900px;margin:0 auto}
+.hero-category{color:#ff3b00;font-size:.68rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin-bottom:12px}
+.hero-title{font-family:'Space Grotesk',sans-serif;font-size:clamp(3rem,10vw,6rem);font-weight:700;line-height:.92;letter-spacing:-3px;color:#fff;margin-bottom:20px;text-transform:uppercase}
+.hero-title em{color:#ff3b00;font-style:normal}
+.hero-tagline{font-size:1rem;color:#6b7280;line-height:1.6;max-width:420px;margin-bottom:28px}
+.hero-btns{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+.btn-call{background:#ff3b00;color:#fff;padding:13px 24px;border-radius:6px;font-weight:700;font-size:.92rem;text-decoration:none;letter-spacing:.3px}
+.btn-wa{background:#111;border:1px solid #333;color:#e5e7eb;padding:13px 24px;border-radius:6px;font-weight:600;font-size:.92rem;text-decoration:none}
+.hero-stats{display:flex;gap:32px;margin-top:36px;padding-top:28px;border-top:1px solid #1f1f1f;flex-wrap:wrap}
+.stat-val{font-family:'Space Grotesk',sans-serif;font-size:1.6rem;font-weight:700;color:#fff}
+.stat-label{font-size:.65rem;color:#4b5563;text-transform:uppercase;letter-spacing:1px;margin-top:2px}
+.section{padding:52px 24px;max-width:900px;margin:0 auto;border-bottom:1px solid #1a1a1a}
+.section-label{font-size:.65rem;color:#ff3b00;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin-bottom:10px}
+.section h2{font-family:'Space Grotesk',sans-serif;font-size:clamp(1.4rem,4vw,2rem);font-weight:700;color:#fff;margin-bottom:16px;letter-spacing:-1px}
+.about-text{font-size:.98rem;line-height:1.8;color:#9ca3af;max-width:600px}
+.services-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1px;background:#1f1f1f;margin-top:20px;border:1px solid #1f1f1f}
+.service-card{background:#0d0d0d;padding:28px 20px;text-align:center}
+.service-card:hover{background:#111}
+.svc-icon{font-size:1.8rem;display:block;margin-bottom:10px}
+.service-card h3{font-size:.85rem;font-weight:700;color:#e5e7eb;font-family:'Space Grotesk',sans-serif;text-transform:uppercase;letter-spacing:.5px}
+.contact-section{background:#0d0d0d;border-top:1px solid #1f1f1f;padding:60px 24px;text-align:center}
+.contact-section .section-label{color:#ff3b00}
+.contact-section h2{font-family:'Space Grotesk',sans-serif;color:#fff;font-size:clamp(1.6rem,4vw,2.2rem);font-weight:700;letter-spacing:-1px;margin-bottom:10px}
+.contact-section>p{color:#6b7280;margin-bottom:28px}
+.contact-cards{display:flex;gap:1px;justify-content:center;flex-wrap:wrap;margin-top:28px;background:#1f1f1f;border:1px solid #1f1f1f;max-width:600px;margin-left:auto;margin-right:auto}
+.contact-card{background:#0d0d0d;padding:20px 24px;flex:1;min-width:140px;text-align:center}
+.ci-icon{font-size:1.3rem;margin-bottom:6px}
+.ci-label{font-size:.62rem;color:#4b5563;letter-spacing:1px;text-transform:uppercase;margin-bottom:4px}
+.ci-value{font-weight:700;font-size:.88rem;color:#e5e7eb}
+footer{background:#080808;color:#374151;padding:16px 24px;text-align:center;font-size:.75rem;border-top:1px solid #111}
+footer a{color:#ff3b00;text-decoration:none}
+</style>
+</head>
+<body>
+<div class="demo-banner">⚡ Demo gratuita por <strong>Scalerics</strong> · <a href="https://wa.me/59899000000">¿Querés tu sitio?</a></div>
+<nav>
+  <div class="nav-logo">{{ business_name }}</div>
+  {% if phone %}<a href="tel:{{ phone }}" class="nav-cta">📞 Llamar</a>{% endif %}
+</nav>
+<div class="hero">
+  <div class="hero-category">{{ category }}{% if city %} · {{ city }}{% endif %}</div>
+  {% set words = business_name.split() %}
+  {% if words|length >= 2 %}
+  <div class="hero-title">{{ words[:-1]|join(' ') }}<br><em>{{ words[-1] }}</em></div>
+  {% else %}
+  <div class="hero-title"><em>{{ business_name }}</em></div>
+  {% endif %}
+  <p class="hero-tagline">{{ tagline }}</p>
+  <div class="hero-btns">
+    {% if phone %}<a href="tel:{{ phone }}" class="btn-call">📞 {{ phone }}</a>{% endif %}
+    {% if wa_number %}<a href="https://wa.me/{{ wa_number }}" class="btn-wa">💬 WhatsApp</a>{% endif %}
+  </div>
+  <div class="hero-stats">
+    {% if rating %}<div><div class="stat-val">{{ rating }}★</div><div class="stat-label">Google Maps</div></div>{% endif %}
+    {% if review_count %}<div><div class="stat-val">{{ review_count }}</div><div class="stat-label">Reseñas</div></div>{% endif %}
+    {% if city %}<div><div class="stat-val">{{ city }}</div><div class="stat-label">Ubicación</div></div>{% endif %}
+  </div>
+</div>
+<div class="section">
+  <div class="section-label">Quiénes somos</div>
+  <h2>Sobre nosotros</h2>
+  <p class="about-text">{{ about }}</p>
+</div>
+<div class="section" style="border-bottom:none">
+  <div class="section-label">Lo que hacemos</div>
+  <h2>Servicios</h2>
+  <div class="services-grid">
+    {% for svc in services %}<div class="service-card"><span class="svc-icon">{{ svc.icon }}</span><h3>{{ svc.name }}</h3></div>{% endfor %}
+  </div>
+</div>
+<div class="contact-section">
+  <div class="section-label">Contacto</div>
+  <h2>Hablemos</h2>
+  <p>{{ cta_text }} — te respondemos rápido</p>
+  {% if phone %}<a href="tel:{{ phone }}" class="btn-call">📞 {{ cta_text }}</a>{% endif %}
+  <div class="contact-cards">
+    {% if phone %}<div class="contact-card"><div class="ci-icon">📞</div><div class="ci-label">Teléfono</div><div class="ci-value">{{ phone }}</div></div>{% endif %}
+    {% if address %}<div class="contact-card"><div class="ci-icon">📍</div><div class="ci-label">Dirección</div><div class="ci-value">{{ address }}</div></div>{% endif %}
+    {% if hours %}<div class="contact-card"><div class="ci-icon">⏰</div><div class="ci-label">Horario</div><div class="ci-value">{{ hours }}</div></div>{% endif %}
+  </div>
+</div>
+<footer>Creado por <a href="https://wa.me/59899000000">Scalerics</a></footer>
+</body>
+</html>

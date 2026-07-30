@@ -1,0 +1,24 @@
+venv/
+.env
+leads.db
+generated_demos/*.html
+*.pyc
+__pycache__/
+pipeline.log
+.superpowers/
+credentials.json
+
+# Bot
+bot/node_modules/
+bot/.env
+
+# Secretos y datos — nunca al repo
+ll_token.txt
+pages.json
+budgets/
+*.db
+prod_snapshot*.db
+prod_limpia.db
+backups/
+bot/bot_dump.json
+bot/backup_scalerics_wa_bot.sql
