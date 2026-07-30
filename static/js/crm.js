@@ -1,0 +1,940 @@
+// ========== Leads / Cola panel ==========
+let currentCrm = '';
+let currentCategory = '';
+let currentSearch = '';
+let currentPage = 1;
+let totalPages = 1;
+let contactingId = null;
+let pipelinePolling = null;
+let pitchMap = {};
+
+// ── call modal state ──────────────────────────────────────────────────────────
+let _callLeadId = null;
+let _callActivePanel = 'cola';
+
+function openCallModal(id, name, phone, panelName) {
+  _callLeadId = id;
+  _callActivePanel = panelName || 'cola';
+  document.getElementById('call-modal-name').textContent = name;
+  document.getElementById('call-modal-phone').textContent = phone || '';
+  document.getElementById('call-notes-input').value = '';
+  document.getElementById('callback-row').style.display = 'none';
+  // Pre-fill datetime to +3h rounded to nearest 30min
+  const d = new Date(Date.now() + 3 * 3600 * 1000);
+  d.setMinutes(d.getMinutes() < 30 ? 0 : 30, 0, 0);
+  const pad = n => String(n).padStart(2,'0');
+  const defaultDt = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const now = new Date(); const nowPad = n => String(n).padStart(2,'0');
+  const minDt = `${now.getFullYear()}-${nowPad(now.getMonth()+1)}-${nowPad(now.getDate())}T${nowPad(now.getHours())}:${nowPad(now.getMinutes())}`;
+  const inp = document.getElementById('callback-date-input');
+  inp.min = minDt;
+  inp.value = defaultDt;
+  document.getElementById('call-modal').classList.add('open');
+}
+function closeCallModal() {
+  document.getElementById('call-modal').classList.remove('open');
+  _callLeadId = null;
+}
+let _callbackOutcome = 'llamar_despues';
+function setCallbackOutcome(outcome) {
+  _callbackOutcome = outcome;
+  const row = document.getElementById('callback-row');
+  row.style.display = 'block';
+}
+function toggleCallbackRow() {
+  const row = document.getElementById('callback-row');
+  row.style.display = row.style.display === 'none' ? 'block' : 'none';
+}
+async function logCallOutcome(outcome) {
+  if (!_callLeadId) return;
+  const notes = document.getElementById('call-notes-input').value;
+  await fetch(`/api/leads/${_callLeadId}/calls`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({outcome, notes})});
+  if (outcome === 'no_interesa') {
+    await fetch(`/api/leads/${_callLeadId}/crm-status`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({crm_status:'no_interesa'})});
+  } else if (outcome === 'reunion') {
+    await fetch(`/api/leads/${_callLeadId}/crm-status`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({crm_status:'reunion_agendada'})});
+  }
+  closeCallModal();
+  if (_callActivePanel === 'cola' && (outcome === 'no_contestó' || outcome === 'no_interesa')) {
+    if (outcome === 'no_contestó') {
+      const lead = _colaLeads.find(b => b.id === _callLeadId);
+      if (lead) lead.no_contesto_count = (lead.no_contesto_count || 0) + 1;
+    } else {
+      _colaLeads = _colaLeads.filter(b => b.id !== _callLeadId);
+    }
+    const scrollY = window.scrollY;
+    renderCola();
+    window.scrollTo(0, scrollY);
+    loadColaStats();
+  } else {
+    _reloadActiveCallPanel();
+  }
+}
+async function confirmCallback() {
+  if (!_callLeadId) return;
+  const date = document.getElementById('callback-date-input').value;
+  if (!date) { alert('Elegí una fecha'); return; }
+  const notes = document.getElementById('call-notes-input').value;
+  await fetch(`/api/leads/${_callLeadId}/callback`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({callback_date:date, notes, outcome:_callbackOutcome})});
+  closeCallModal();
+  _reloadActiveCallPanel();
+}
+function _reloadActiveCallPanel() {
+  if (_callActivePanel === 'cola') loadCola();
+  else if (_callActivePanel === 'seguimientos') loadSeguimientos();
+  loadColaStats();
+}
+
+let _sdrLastActor = {};
+
+// ── Save notes inline ─────────────────────────────────────────────────────────
+async function saveNote(id, notes) {
+  await fetch(`/api/leads/${id}/notes`, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({notes})});
+}
+document.addEventListener('focusout', async e => {
+  if (!e.target.classList.contains('notes-inline')) return;
+  const id = e.target.dataset.id;
+  if (!id) return;
+  await saveNote(id, e.target.value);
+});
+document.addEventListener('keydown', async e => {
+  if (!e.target.classList.contains('notes-inline')) return;
+  if (e.key !== 'Enter' || e.shiftKey) return;
+  e.preventDefault();
+  const id = e.target.dataset.id;
+  if (!id) return;
+  await saveNote(id, e.target.value);
+  e.target.blur();
+});
+function _populateNotes(container) {
+  container.querySelectorAll('.notes-inline[data-notes]').forEach(ta => {
+    ta.value = ta.dataset.notes || '';
+    if (ta.value) { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; }
+  });
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+async function loadStats() {
+  try {
+  const r = await fetch('/api/stats');
+  if (!r.ok) { document.getElementById('stat-total').textContent = 'ERR '+r.status; return; }
+  const d = await r.json();
+  document.getElementById('stat-total').textContent = d.total;
+  document.getElementById('stat-pitch').textContent = d.with_pitch;
+  document.getElementById('stat-contacted').textContent = d.contacted;
+  const sel = document.getElementById('category-filter');
+  const prev = sel ? sel.value : '';
+  if (sel) { while (sel.options.length > 1) sel.remove(1); (d.categories || []).forEach(c => { sel.add(new Option(c, c)); }); if (prev) sel.value = prev; }
+  const pd = document.getElementById('page-date');
+  if (pd) pd.textContent = 'Actualizado: ' + new Date().toLocaleString('es-UY');
+  } catch(e) {}
+}
+
+function _updatePagination() {
+  const el = document.getElementById('leads-pagination');
+  if (!el) return;
+  if (totalPages <= 1) { el.style.display = 'none'; return; }
+  el.style.display = 'flex';
+  el.innerHTML =
+    `<button onclick="gotoPage(${currentPage - 1})" ${currentPage <= 1 ? 'disabled' : ''} style="background:#1e293b;border:1px solid #334155;color:#e2e8f0;padding:6px 14px;border-radius:6px;cursor:pointer">← Anterior</button>` +
+    `<span>Página ${currentPage} de ${totalPages}</span>` +
+    `<button onclick="gotoPage(${currentPage + 1})" ${currentPage >= totalPages ? 'disabled' : ''} style="background:#1e293b;border:1px solid #334155;color:#e2e8f0;padding:6px 14px;border-radius:6px;cursor:pointer">Siguiente →</button>`;
+}
+
+function gotoPage(p) {
+  if (p < 1 || p > totalPages) return;
+  currentPage = p;
+  loadLeads();
+}
+
+async function loadLeads() {
+  const body2 = document.getElementById('table-body');
+  try {
+  const params = new URLSearchParams();
+  if (currentCrm) params.set('crm_status', currentCrm);
+  if (currentCategory) params.set('category', currentCategory);
+  if (currentSearch) params.set('search', currentSearch);
+  params.set('page', currentPage);
+  const r = await fetch('/api/leads?' + params);
+  if (!r.ok) { body2.innerHTML = `<div style="color:#f87171;padding:16px">API error ${r.status}</div>`; return; }
+  const data = await r.json();
+  const leads = Array.isArray(data) ? data : (data.items || []);
+  if (data.pages !== undefined) { totalPages = data.pages; currentPage = data.page || currentPage; }
+  _allLeads = leads;
+  pitchMap = {};
+  leads.forEach(b => { if (b.pitch_text) pitchMap[b.id] = b.pitch_text; });
+  const body = body2;
+  if (!leads.length) { body.innerHTML = '<div class="empty-state">No hay leads con estos filtros</div>'; return; }
+  const crmLabels = {sin_contactar:'Sin contactar',contactado:'Contactado',reunion_agendada:'Reunión agendada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Presupuesto enviado',negociacion:'Negociación',cliente_cerrado:'Cliente cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado',agendo:'Agendó',firmo:'Firmó'};
+  body.innerHTML = leads.map(b => {
+    const crm = b.crm_status || 'sin_contactar';
+    return `
+    <div class="table-row row-${crm}">
+      <div class="cb-col"><input type="checkbox" class="cb row-cb" data-id="${b.id}" onchange="toggleSelect(${b.id},this.checked)"></div>
+      <div>
+        <div class="biz-name"><span style="cursor:pointer;text-decoration:underline;text-decoration-color:#334155" onclick="openClientPanel(${b.id})">${esc(b.name||'')}</span>${_scoreBadge(b)}${_socialIcons(b)}${_calendlyBadge(b)}</div>
+        <div class="biz-sub">${esc(b.category||'')}${b.city ? ' · '+esc(b.city) : ''}${b.last_event_at ? ' · <span style="color:#60a5fa">'+timeAgo(b.last_event_at)+'</span>' : ''}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">${b.phone ? (hasWhatsApp(b.phone) ? `<a class="phone-val" href="https://wa.me/${waNum(b.phone)}${b.pitch_text ? '?text='+encodeURIComponent(b.pitch_text) : ''}" target="_blank" title="Abrir WhatsApp">${esc(b.phone)}</a>` : `<span class="phone-plain">${esc(b.phone)}</span>`) : '<span class="no-val">—</span>'}${b.phone ? `<a class="call-btn" href="tel:${esc(b.phone)}" title="Llamar">📞</a>` : ''}${b.pitch_text ? `<button class="copy-pitch-btn" onclick="copyPitch(${b.id},event)" title="Copiar pitch">📋</button>` : ''}</div>
+      <div style="font-size:.75rem;color:#94a3b8">${(() => {
+        const raw = b.callback_date || b.last_event_at;
+        if (!raw) return '<span style="color:#334155">—</span>';
+        const d = new Date(raw);
+        const now = new Date();
+        const isCallback = !!b.callback_date;
+        const isPast = isCallback && d < now;
+        const dateStr = d.toLocaleDateString('es-UY',{day:'2-digit',month:'2-digit',year:'2-digit'});
+        if (isCallback) return `<span style="color:${isPast?'#f87171':'#fbbf24'};font-weight:600">📅 ${dateStr}</span>`;
+        return `<span style="color:#64748b">${dateStr}</span>`;
+      })()}</div>
+      <div class="actions">
+        ${(!crm || crm === 'sin_contactar') ? `<button class="pitch-btn" onclick="markContacted(${b.id})">Contactar</button>` : `<span style="color:#3db648;font-size:.75rem">✓ ${crmLabels[crm]||crm}</span>`}
+        <button class="delete-btn" onclick="deleteLead(${b.id},${escJs(b.name||'')})" title="Borrar lead">🗑</button>
+      </div>
+    </div>`}).join('');
+  _updatePagination();
+  } catch(e) { document.getElementById('table-body').innerHTML = `<div style="color:#f87171;padding:16px">Error JS: ${e.message}</div>`; }
+}
+
+// ── Batch selection ─────────────────────────────────────────────────────────
+let selectedIds = new Set();
+
+function toggleSelect(id, checked) {
+  checked ? selectedIds.add(id) : selectedIds.delete(id);
+  updateBatchBar();
+}
+
+function toggleSelectAll(checked) {
+  document.querySelectorAll('.row-cb').forEach(cb => {
+    cb.checked = checked;
+    const id = parseInt(cb.dataset.id);
+    if (isNaN(id)) return;
+    checked ? selectedIds.add(id) : selectedIds.delete(id);
+  });
+  updateBatchBar();
+}
+
+function updateBatchBar() {
+  const bar = document.getElementById('batch-bar');
+  const count = document.getElementById('batch-count');
+  const n = selectedIds.size;
+  if (n > 0) {
+    bar.classList.add('open');
+    count.textContent = n + (n === 1 ? ' seleccionado' : ' seleccionados');
+  } else {
+    bar.classList.remove('open');
+    document.getElementById('cb-all').checked = false;
+  }
+}
+
+function clearSelection() {
+  selectedIds.clear();
+  document.querySelectorAll('.row-cb').forEach(cb => cb.checked = false);
+  document.getElementById('cb-all').checked = false;
+  updateBatchBar();
+}
+
+async function applyBatch() {
+  const status = document.getElementById('batch-status').value;
+  if (!status) { alert('Elegí un estado'); return; }
+  if (!selectedIds.size) return;
+  const res = await fetch('/api/leads/batch-status', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ids: [...selectedIds], crm_status: status})
+  });
+  const data = await res.json();
+  clearSelection();
+  document.getElementById('batch-status').value = '';
+  loadLeads();
+}
+
+// ── CSV Export ───────────────────────────────────────────────────────────────
+function exportCSV() {
+  const cols = ['id','name','phone','category','city','crm_status','rating','address','scraped_at'];
+  const headers = ['ID','Nombre','Teléfono','Rubro','Ciudad','Estado CRM','Rating','Dirección','Fecha scrape'];
+  const rows = [headers.join(',')];
+  for (const b of _allLeads) {
+    const row = cols.map(k => {
+      const v = b[k] == null ? '' : String(b[k]);
+      return '"' + v.replace(/"/g, '""') + '"';
+    });
+    rows.push(row.join(','));
+  }
+  const blob = new Blob([rows.join('\\n')], {type: 'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'leads_scalerics.csv'; a.click();
+  URL.revokeObjectURL(url);
+}
+
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+// Safe JS-string literal for embedding inside inline onclick="..." handlers.
+// esc() alone is unsafe there: the browser decodes HTML entities (e.g. &#39; -> ')
+// BEFORE parsing the attribute as JS, so an escaped quote still breaks out of a
+// hand-wrapped '...' literal for any name containing an apostrophe or quote.
+// JSON.stringify produces a correctly-quoted/escaped JS string; we then HTML-escape
+// the result so it survives being embedded inside the double-quoted onclick="" attribute.
+function escJs(s) { return JSON.stringify(String(s == null ? '' : s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function timeAgo(ts) {
+  if (!ts) return '';
+  const diff = Math.floor((Date.now() - new Date(ts + 'Z').getTime()) / 1000);
+  if (diff < 60) return 'hace un momento';
+  if (diff < 3600) return 'hace ' + Math.floor(diff/60) + 'm';
+  if (diff < 86400) return 'hace ' + Math.floor(diff/3600) + 'h';
+  const d = Math.floor(diff/86400);
+  return 'hace ' + d + (d===1?' día':' días');
+}
+function waNum(phone) {
+  const raw = String(phone).trim();
+  let n = raw.replace(/[^0-9]/g,'');
+  if (raw.startsWith('+')) return n;  // already has country code (+54, +598, etc.)
+  if (n.startsWith('598')) return n;
+  if (n.startsWith('0')) n = n.slice(1);
+  return '598' + n;
+}
+function hasWhatsApp(phone) {
+  // International numbers (+ prefix) → assume WA
+  if (String(phone).trim().startsWith('+')) return true;
+  const n = String(phone).replace(/[^0-9]/g,'');
+  // Uruguay mobile: starts with 09 (raw) or 9 after stripping leading 0
+  const local = n.startsWith('598') ? n.slice(3) : (n.startsWith('0') ? n.slice(1) : n);
+  return local.startsWith('9');
+}
+
+async function copyPitch(id, ev) {
+  const btn = ev.currentTarget;
+  try {
+    const r = await fetch('/api/leads/'+id);
+    const b = await r.json();
+    await navigator.clipboard.writeText(b.pitch_text||'');
+    btn.textContent = '✅';
+    setTimeout(()=>{ btn.textContent = '📋'; }, 1500);
+  } catch(e) { btn.textContent = '❌'; setTimeout(()=>{ btn.textContent = '📋'; }, 1500); }
+}
+
+function openPitchModal(id, name) {
+  document.getElementById('pitch-modal-title').textContent = name;
+  document.getElementById('pitch-modal-text').value = pitchMap[id] || '';
+  document.getElementById('pitch-modal').classList.add('open');
+}
+function closePitchModal() { document.getElementById('pitch-modal').classList.remove('open'); }
+function copyPitchText() {
+  navigator.clipboard.writeText(document.getElementById('pitch-modal-text').value).then(() => {
+    const btn = document.querySelector('#pitch-modal .btn-confirm');
+    btn.textContent = '✓ Copiado';
+    setTimeout(() => { btn.textContent = '📋 Copiar'; }, 1800);
+  });
+}
+
+function openContact(id, name) {
+  contactingId = id;
+  document.getElementById('modal-title').textContent = `Contactar: ${name}`;
+  document.getElementById('modal-note').value = '';
+  document.getElementById('contact-modal').classList.add('open');
+}
+function closeContactModal() { document.getElementById('contact-modal').classList.remove('open'); contactingId = null; }
+async function confirmContact() {
+  if (!contactingId) return;
+  const note = document.getElementById('modal-note').value;
+  await fetch(`/api/leads/${contactingId}/contact`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({note})});
+  closeContactModal(); loadStats(); loadLeads();
+}
+
+async function setCrmStatus(id, status) {
+  await fetch(`/api/leads/${id}/crm-status`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({crm_status:status})});
+  loadStats();
+}
+
+async function markContacted(id) {
+  await fetch(`/api/leads/${id}/crm-status`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({crm_status:'interesado'})});
+  loadStats(); loadLeads();
+}
+
+function _refreshActivePanel() {
+  if (activePanel === 'cola') loadCola();
+  else if (activePanel === 'seguimientos') loadSeguimientos();
+  else if (activePanel === 'clientes') loadClientesPanel();
+  else if (activePanel === 'pipeline') loadPipelinePanel();
+  else if (typeof loadLeads === 'function') loadLeads();
+}
+
+async function deleteLead(id, name) {
+  if (!confirm(`¿Eliminar "${name}"? Esta acción no se puede deshacer.`)) return;
+  await fetch(`/api/leads/${id}`, {method:'DELETE'});
+  _refreshActivePanel();
+}
+
+function openPipelineModal() { document.getElementById('pipeline-modal').classList.add('open'); }
+function closePipelineModal() { if (pipelinePolling) return; document.getElementById('pipeline-modal').classList.remove('open'); }
+
+async function runPipeline() {
+  const query = document.getElementById('pipeline-query').value.trim();
+  const max = parseInt(document.getElementById('pipeline-max').value) || 30;
+  if (!query) { document.getElementById('pipeline-query').focus(); return; }
+  const btn = document.getElementById('pipeline-run-btn');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Corriendo...';
+  setPipelinePill('running');
+  document.getElementById('pipeline-log').innerHTML = '';
+  const res = await fetch('/api/run-pipeline', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({query, max})});
+  const d = await res.json();
+  if (!d.ok) { appendLog('ERROR: '+(d.error||'Error desconocido'),'err'); resetPipelineBtn(); setPipelinePill('error'); return; }
+  pipelinePolling = setInterval(pollPipeline, 1500);
+}
+
+async function pollPipeline() {
+  const r = await fetch('/api/pipeline-status');
+  const d = await r.json();
+  const logEl = document.getElementById('pipeline-log');
+  if (d.log && d.log.length) {
+    logEl.innerHTML = d.log.map(l => {
+      const low = l.toLowerCase();
+      const cls = (low.includes('error')||low.includes('traceback')) ? 'err' : (low.includes('warn')||low.includes('skip')) ? 'warn' : 'ok';
+      return `<div class="log-line ${cls}">${esc(l)}</div>`;
+    }).join('');
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+  if (!d.running) {
+    clearInterval(pipelinePolling); pipelinePolling = null; resetPipelineBtn();
+    if (d.error) { appendLog('✕ '+d.error,'err'); setPipelinePill('error'); }
+    else { appendLog('✓ Pipeline completado','ok'); setPipelinePill('done'); loadStats(); loadLeads(); }
+  }
+}
+
+function appendLog(msg, cls) {
+  const logEl = document.getElementById('pipeline-log');
+  const div = document.createElement('div');
+  div.className = 'log-line '+(cls||''); div.textContent = msg;
+  logEl.appendChild(div); logEl.scrollTop = logEl.scrollHeight;
+}
+function resetPipelineBtn() {
+  const btn = document.getElementById('pipeline-run-btn');
+  btn.disabled = false; btn.innerHTML = '▶ Buscar leads y generar pitches';
+}
+function setPipelinePill(state) {
+  const pill = document.getElementById('pipeline-pill');
+  pill.className = 'status-pill '+state;
+  if (state==='running') pill.innerHTML = '<span class="spinner"></span> Corriendo...';
+  else if (state==='done') pill.textContent = '✓ Completado';
+  else if (state==='error') pill.textContent = '✕ Error';
+  else pill.textContent = '● Listo';
+}
+
+document.querySelectorAll('.filter-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentCrm = btn.dataset.crm;
+    currentPage = 1;
+    loadLeads();
+  });
+});
+let searchTimeout;
+document.getElementById('contact-modal').addEventListener('click', e => { if(e.target===e.currentTarget) closeContactModal(); });
+document.getElementById('pitch-modal').addEventListener('click', e => { if(e.target===e.currentTarget) closePitchModal(); });
+document.getElementById('pipeline-modal').addEventListener('click', e => { if(e.target===e.currentTarget) closePipelineModal(); });
+document.getElementById('event-modal').addEventListener('click', e => { if(e.target===e.currentTarget) closeNewEventModal(); });
+
+// ========== Demo generation ==========
+let _demoMessages = [];
+let _demoPhone = '';
+
+function extractPhoneFromText(text) {
+  const m = text.match(/[+]?\\d[\\d\\s\\-]{7,14}\\d/);
+  return m ? m[0].replace(/[\\s\\-\\+]/g,'') : null;
+}
+
+function extractNameFromTitle(title) {
+  // Calendly format: "Firstname Lastname: Meeting Type"
+  const m = title.match(/^([^:]+):/);
+  return m ? m[1].trim() : null;
+}
+
+function openDemoModalFromCRM(b) {
+  _demoPhone = b.phone || '';
+  _demoMessages = [];
+  document.getElementById('demo-modal').classList.add('open');
+  document.getElementById('demo-form-section').style.display = '';
+  document.getElementById('demo-loading-section').style.display = 'none';
+  document.getElementById('demo-result-section').style.display = 'none';
+  document.getElementById('demo-chat-section').style.display = 'none';
+  document.getElementById('demo-phone').value = b.phone || '';
+  document.getElementById('demo-biz').value = b.name || '';
+  document.getElementById('demo-rubro').value = b.category || '';
+  document.getElementById('demo-city').value = b.city || '';
+  document.getElementById('demo-color').value = '';
+  document.getElementById('demo-conv-info').style.display = 'none';
+  document.getElementById('demo-lead-hint').textContent = b.name ? 'Lead: ' + b.name + (b.city ? ' · ' + b.city : '') : '';
+}
+
+function openDemoModal(phone, eventTitle, leadName) {
+  _demoPhone = phone || '';
+  _demoMessages = [];
+  document.getElementById('demo-modal').classList.add('open');
+  document.getElementById('demo-form-section').style.display = '';
+  document.getElementById('demo-loading-section').style.display = 'none';
+  document.getElementById('demo-result-section').style.display = 'none';
+  document.getElementById('demo-biz').value = '';
+  document.getElementById('demo-rubro').value = '';
+  document.getElementById('demo-city').value = '';
+  document.getElementById('demo-color').value = '';
+  document.getElementById('demo-conv-info').style.display = 'none';
+  document.getElementById('demo-phone').value = phone || '';
+  if (phone) {
+    document.getElementById('demo-lead-hint').textContent = 'Cargando datos del lead...';
+    fetchLeadForDemo();
+  } else if (leadName) {
+    document.getElementById('demo-lead-hint').textContent = 'Buscando por nombre: ' + leadName + '...';
+    fetchLeadByName(leadName);
+  } else {
+    document.getElementById('demo-lead-hint').textContent = 'Ingresá el teléfono del lead o completá los campos manualmente.';
+  }
+}
+
+async function fetchLeadForDemo() {
+  const phone = document.getElementById('demo-phone').value.trim();
+  if (!phone) { alert('Ingresá un número de teléfono.'); return; }
+  _demoPhone = phone;
+  document.getElementById('demo-lead-hint').textContent = 'Buscando lead ' + phone + '...';
+  try {
+    const r = await fetch('/api/wa/lead-by-phone/' + encodeURIComponent(phone));
+    if (r.status === 401) { document.getElementById('demo-lead-hint').textContent = 'Sesión expirada — recargá la página y volvé a entrar.'; return; }
+    const d = await r.json();
+    if (d.lead) {
+      _applyLeadToModal(d, phone);
+    } else {
+      const msg = d.error || 'no encontrado';
+      document.getElementById('demo-lead-hint').textContent = phone + ' — ' + msg + '. Podés completar los campos manualmente.';
+    }
+  } catch(e) {
+    document.getElementById('demo-lead-hint').textContent = 'Error buscando lead: ' + e.message;
+  }
+}
+
+function _applyLeadToModal(d, label) {
+  const l = d.lead;
+  _demoPhone = l.phone || _demoPhone;
+  document.getElementById('demo-phone').value = _demoPhone;
+  document.getElementById('demo-lead-hint').textContent = 'Lead: ' + (l.name||label) + ' · Estado: ' + (l.state||'?');
+  if (l.business_name) document.getElementById('demo-biz').value = l.business_name;
+  if (l.city) document.getElementById('demo-city').value = l.city;
+  if (l.rubro_hint && !document.getElementById('demo-rubro').value)
+    document.getElementById('demo-rubro').value = l.rubro_hint;
+  _demoMessages = d.messages || [];
+  if (_demoMessages.length) {
+    const infoEl = document.getElementById('demo-conv-info');
+    infoEl.textContent = '✅ ' + _demoMessages.length + ' mensajes de WhatsApp cargados.';
+    infoEl.style.display = '';
+  }
+}
+
+async function fetchLeadByName(name) {
+  try {
+    const r = await fetch('/api/wa/lead-by-name/' + encodeURIComponent(name));
+    if (r.status === 401) { document.getElementById('demo-lead-hint').textContent = 'Sesión expirada — recargá la página.'; return; }
+    const d = await r.json();
+    if (d.lead) {
+      _applyLeadToModal(d, name);
+    } else {
+      document.getElementById('demo-lead-hint').textContent = name + ' — ' + (d.error||'no encontrado') + '. Completá los campos manualmente.';
+    }
+  } catch(e) {
+    document.getElementById('demo-lead-hint').textContent = 'Error buscando lead: ' + e.message;
+  }
+}
+
+function closeDemoModal() {
+  document.getElementById('demo-modal').classList.remove('open');
+  document.getElementById('demo-form-section').style.display = '';
+  document.getElementById('demo-loading-section').style.display = 'none';
+  document.getElementById('demo-result-section').style.display = 'none';
+  document.getElementById('demo-chat-section').style.display = 'none';
+}
+
+async function startDemoGeneration() {
+  const biz = document.getElementById('demo-biz').value.trim();
+  const rubro = document.getElementById('demo-rubro').value.trim();
+  if (!biz || !rubro) { alert('El nombre del negocio y el rubro son obligatorios.'); return; }
+  const city = document.getElementById('demo-city').value.trim();
+  const color = document.getElementById('demo-color').value.trim();
+  const leadHint = document.getElementById('demo-lead-hint').textContent;
+  const leadName = leadHint.includes('Lead:') ? leadHint.split('Lead:')[1].split('·')[0].trim() : '';
+
+  document.getElementById('demo-form-section').style.display = 'none';
+  document.getElementById('demo-loading-section').style.display = '';
+
+  try {
+    const r = await fetch('/api/demo/generate', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({phone: _demoPhone, business_name: biz, rubro, city, client_color: color, lead_name: leadName, messages: _demoMessages})
+    });
+    const d = await r.json();
+    document.getElementById('demo-loading-section').style.display = 'none';
+    if (!d.ok) { document.getElementById('demo-form-section').style.display = ''; alert('Error: '+(d.error||'Error desconocido')); return; }
+    document.getElementById('demo-result-section').style.display = '';
+    const urlEl = document.getElementById('demo-url-link');
+    urlEl.href = d.url; urlEl.textContent = d.url;
+    const cachedBadge = document.getElementById('demo-cached-badge');
+    if (cachedBadge) cachedBadge.style.display = d.cached ? '' : 'none';
+    if (d.questions && d.questions.length) {
+      const qs = document.getElementById('demo-q-section');
+      qs.style.display = '';
+      document.getElementById('demo-q-list').innerHTML = d.questions.map(q=>`<li>${q}</li>`).join('');
+    }
+  } catch(e) {
+    document.getElementById('demo-loading-section').style.display = 'none';
+    document.getElementById('demo-form-section').style.display = '';
+    alert('Error generando demo: ' + e.message);
+  }
+}
+
+function copyDemoUrl() {
+  const url = document.getElementById('demo-url-link').href;
+  navigator.clipboard.writeText(url).then(() => alert('URL copiada ✅')).catch(() => alert(url));
+}
+
+let _chatPromptText = '';
+
+async function startDemoChat() {
+  const biz = document.getElementById('demo-biz').value.trim();
+  const rubro = document.getElementById('demo-rubro').value.trim();
+  if (!biz || !rubro) { alert('El nombre del negocio y el rubro son obligatorios.'); return; }
+  const city = document.getElementById('demo-city').value.trim();
+  const color = document.getElementById('demo-color').value.trim();
+  const leadHint = document.getElementById('demo-lead-hint').textContent;
+  const leadName = leadHint.includes('Lead:') ? leadHint.split('Lead:')[1].split('·')[0].trim() : '';
+
+  const btn = document.getElementById('demo-chat-btn');
+  btn.disabled = true; btn.textContent = 'Generando prompt...';
+
+  try {
+    const r = await fetch('/api/demo/prompt', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({phone: _demoPhone, business_name: biz, rubro, city, client_color: color, lead_name: leadName, messages: _demoMessages})
+    });
+    const d = await r.json();
+    if (!d.ok) { alert('Error: ' + (d.error || 'Error desconocido')); return; }
+    _chatPromptText = d.prompt;
+    document.getElementById('demo-form-section').style.display = 'none';
+    document.getElementById('demo-chat-section').style.display = '';
+    document.getElementById('demo-chat-copied').style.display = 'none';
+  } catch(e) {
+    alert('Error: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '💬 Claude Chat';
+  }
+}
+
+function copyAndOpenClaude() {
+  navigator.clipboard.writeText(_chatPromptText).catch(() => {});
+  document.getElementById('demo-chat-copied').style.display = '';
+  window.open('https://claude.ai/new', '_blank');
+}
+
+// close picker on outside click
+document.addEventListener('click', e => {
+  if (!e.target.closest('.upick-wrap')) {
+    ['filter','modal'].forEach(k => {
+      const d = document.getElementById('upick-'+k+'-dropdown');
+      const t = document.getElementById('upick-'+k+'-trigger');
+      if (d) d.style.display = 'none';
+      if (t) t.classList.remove('open');
+    });
+  }
+}, true);
+
+// ── Kanban ────────────────────────────────────────────────────────────────────
+
+const KANBAN_COLS = [
+  {key:'contactado',     label:'Contactado'},
+  {key:'reunion_agendada', label:'Reunión agendada'},
+  {key:'reunion_hecha',  label:'Reunión hecha'},
+  {key:'presupuesto_enviado', label:'Presupuesto enviado'},
+  {key:'cliente_cerrado',label:'Cliente cerrado'},
+];
+
+let _kanbanLeads = [];
+let _kanbanDragging = null;
+
+async function loadKanban() {
+  const board = document.getElementById('kanban-board');
+  board.innerHTML = '<div style="color:#475569;font-size:.85rem">Cargando...</div>';
+  try {
+    const r = await fetch('/api/leads');
+    _kanbanLeads = await r.json();
+  } catch { board.innerHTML = '<div style="color:#f87171">Error cargando leads</div>'; return; }
+  renderKanban();
+}
+
+function renderKanban() {
+  const board = document.getElementById('kanban-board');
+  const grouped = {};
+  KANBAN_COLS.forEach(c => grouped[c.key] = []);
+  _kanbanLeads.forEach(l => {
+    const k = l.crm_status || 'sin_contactar';
+    if (grouped[k]) grouped[k].push(l);
+    else grouped['sin_contactar'] && grouped['sin_contactar'].push({...l, crm_status:'sin_contactar'});
+  });
+  board.innerHTML = KANBAN_COLS.map(col => `
+    <div class="kanban-col" data-col="${col.key}"
+         ondragover="event.preventDefault();this.classList.add('drag-over')"
+         ondragleave="this.classList.remove('drag-over')"
+         ondrop="_kanbanDrop(event,'${col.key}')">
+      <div class="kanban-col-header">
+        <span class="kanban-col-title">${col.label}</span>
+        <span class="kanban-count">${grouped[col.key].length}</span>
+      </div>
+      <div class="kanban-cards">
+        ${grouped[col.key].length === 0
+          ? '<div class="kanban-empty">Sin leads</div>'
+          : grouped[col.key].map(l => _kanbanCard(l)).join('')}
+      </div>
+    </div>`).join('');
+}
+
+function _kanbanCard(l) {
+  const meta = [l.category, l.city].filter(Boolean).join(' · ');
+  return `<div class="kanban-card" draggable="true" data-id="${l.id}"
+    ondragstart="_kanbanDragStart(event,${l.id})"
+    ondragend="_kanbanDragEnd(event)"
+    onclick="openClientPanel(${l.id})">
+    <div class="kanban-card-name">${esc(l.name||'')}</div>
+    ${meta ? `<div class="kanban-card-meta">${esc(meta)}</div>` : ''}
+    ${l.phone ? `<div class="kanban-card-phone">${esc(l.phone)}</div>` : ''}
+  </div>`;
+}
+
+function _kanbanDragStart(e, id) {
+  _kanbanDragging = id;
+  e.currentTarget.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+}
+
+function _kanbanDragEnd(e) {
+  e.currentTarget.classList.remove('dragging');
+  document.querySelectorAll('.kanban-col').forEach(c => c.classList.remove('drag-over'));
+}
+
+async function _kanbanDrop(e, newStatus) {
+  e.currentTarget.classList.remove('drag-over');
+  if (!_kanbanDragging) return;
+  const id = _kanbanDragging;
+  _kanbanDragging = null;
+  const lead = _kanbanLeads.find(l => l.id === id);
+  if (!lead || lead.crm_status === newStatus) return;
+  lead.crm_status = newStatus;
+  renderKanban();
+  await fetch(`/api/leads/${id}/crm-status`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({crm_status: newStatus})
+  });
+}
+
+// ── Score badge + social icons ────────────────────────────────────────────────
+
+function _scoreBadge(b) {
+  if (b.score == null) return '';
+  const cls = b.score >= 60 ? 'score-hot' : b.score >= 30 ? 'score-mid' : 'score-low';
+  return `<span class="score-badge ${cls}" style="cursor:pointer"
+    data-ig="${b.instagram_url?1:0}" data-fb="${b.facebook_url?1:0}"
+    data-rating="${b.rating||0}" data-reviews="${b.review_count||0}"
+    data-hours="${b.hours?1:0}" data-address="${b.address?1:0}"
+    onclick="_showScoreBreakdown(event,this)">⚡${b.score}</span>`;
+}
+
+function _calendlyBadge(b) {
+  if (b.source !== 'calendly_unmatched') return '';
+  return '<span style="font-size:.62rem;font-weight:700;background:rgba(251,146,60,.15);color:#fb923c;border:1px solid rgba(251,146,60,.3);padding:1px 6px;border-radius:99px;margin-left:4px" title="Vino de Calendly — verificar si ya es un cliente existente">Sin verificar</span>';
+}
+
+function _socialIcons(b) {
+  let s = '';
+  if (b.instagram_url) s += `<a href="${esc(b.instagram_url)}" target="_blank" title="Instagram" style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:4px;background:linear-gradient(135deg,#f09433,#dc2743,#bc1888);color:#fff;font-size:.52rem;font-weight:800;text-decoration:none;flex-shrink:0;line-height:1" onclick="event.stopPropagation()">IG</a>`;
+  if (b.facebook_url) s += `<a href="${esc(b.facebook_url)}" target="_blank" title="Facebook" style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:4px;background:#1877f2;color:#fff;font-size:.52rem;font-weight:800;text-decoration:none;flex-shrink:0;line-height:1" onclick="event.stopPropagation()">FB</a>`;
+  return s ? `<span style="display:inline-flex;gap:3px;align-items:center;margin-left:2px">${s}</span>` : '';
+}
+
+function _showScoreBreakdown(event, el) {
+  event.stopPropagation();
+  const existing = document.getElementById('score-tooltip');
+  if (existing) { const same = existing._src === el; existing.remove(); if (same) return; }
+  const d = el.dataset;
+  const rating = parseFloat(d.rating || 0);
+  const reviews = parseInt(d.reviews || 0);
+  const rows = [
+    {ok: d.ig==='1',    label: 'Instagram',                                   pts: 35},
+    {ok: d.fb==='1',    label: 'Facebook',                                    pts: 15},
+    {ok: rating>=4.0,   label: `Rating ${rating||'—'}`,                       pts: rating>=4.0?20:rating>=3.5?10:0, note: rating>=3.5&&rating<4.0?'+10':null},
+    {ok: rating>=3.5&&rating<4.0, label: `Rating ${rating}`, pts:10, _skip: rating>=4.0||!rating},
+    {ok: reviews>=20,   label: `${reviews||'0'} reseñas`,                    pts: reviews>=20?15:reviews>=5?8:0, note: reviews>=5&&reviews<20?'+8':null},
+    {ok: reviews>=5&&reviews<20, label: `${reviews} reseñas`, pts:8, _skip: reviews>=20||!reviews},
+    {ok: d.hours==='1', label: 'Horario publicado',                            pts: 10},
+    {ok: d.address==='1',label:'Dirección',                                   pts: 5},
+  ].filter(r => !r._skip);
+  const tip = document.createElement('div');
+  tip.id = 'score-tooltip';
+  tip._src = el;
+  tip.style.cssText = 'position:fixed;background:#1e293b;border:1px solid #334155;border-radius:10px;padding:10px 14px;z-index:2000;min-width:190px;box-shadow:0 8px 28px rgba(0,0,0,.5);font-size:.72rem;font-family:Inter,sans-serif';
+  tip.innerHTML = `<div style="font-weight:700;color:#64748b;margin-bottom:8px;font-size:.62rem;text-transform:uppercase;letter-spacing:.06em">Desglose ⚡${el.textContent.replace('⚡','')}</div>`
+    + rows.map(r => `<div style="display:flex;justify-content:space-between;gap:12px;padding:3px 0;color:${r.ok?'#e2e8f0':'#334155'}">
+      <span>${r.ok?'✓':'—'} ${r.label}</span>
+      <span style="font-weight:700;color:${r.ok?(r.pts>=20?'#10b981':r.pts>=10?'#38bdf8':'#94a3b8'):'#334155'}">${r.pts?'+'+r.pts:'—'}</span>
+    </div>`).join('');
+  document.body.appendChild(tip);
+  const rect = el.getBoundingClientRect();
+  let top = rect.bottom + 6, left = rect.left;
+  if (left + 200 > window.innerWidth - 8) left = window.innerWidth - 208;
+  if (top + 220 > window.innerHeight) top = rect.top - 226;
+  tip.style.top = top + 'px'; tip.style.left = Math.max(8, left) + 'px';
+  setTimeout(() => document.addEventListener('click', function _c() { const t = document.getElementById('score-tooltip'); if(t)t.remove(); document.removeEventListener('click',_c); }), 10);
+}
+
+// ── Mobile navigation ─────────────────────────────────────────────────────────
+const NAV_PRIORITY = ['cola','seguimientos','cal','tasks','pipeline','clientes','wa','metrics','activity'];
+const NAV_ICONS = {
+  cola:'inbox',seguimientos:'bookmark',cal:'calendar',
+  tasks:'check-square',pipeline:'trending-up',clientes:'users',
+  wa:'message-circle',metrics:'bar-chart-2',activity:'clock'
+};
+const NAV_LABELS = {
+  cola:'Cola',seguimientos:'Seguim.',cal:'Agenda',
+  tasks:'Tareas',pipeline:'Pipeline',clientes:'Clientes',
+  wa:'WA',metrics:'Métricas',activity:'Actividad'
+};
+let _mobileNavOverflow = [];
+
+function _buildMobileNav(allowedPanels) {
+  const nav = document.getElementById('mobile-bottom-nav');
+  if (!nav) return;
+  const ordered = NAV_PRIORITY.filter(p => allowedPanels.includes(p));
+  const visible = ordered.slice(0, 5);
+  _mobileNavOverflow = ordered.slice(5);
+  nav.innerHTML = visible.map(p => `
+    <div class="mbn-item" id="mbn-${p}" onclick="showPanel('${p}')">
+      <i data-lucide="${NAV_ICONS[p]}" class="mbn-icon"></i>
+      <span class="mbn-label">${NAV_LABELS[p]}</span>
+    </div>
+  `).join('') + (_mobileNavOverflow.length ? `
+    <div class="mbn-item" id="mbn-mas" onclick="openMasSheet()">
+      <i data-lucide="more-horizontal" class="mbn-icon"></i>
+      <span class="mbn-label">Más</span>
+    </div>
+  ` : '');
+  if (window.lucide) lucide.createIcons({nodes: [nav]});
+}
+
+function _syncMobileNav(panelName) {
+  document.querySelectorAll('.mbn-item').forEach(i => i.classList.remove('active'));
+  const item = document.getElementById('mbn-' + panelName);
+  if (item) item.classList.add('active');
+  else { const mas = document.getElementById('mbn-mas'); if (mas) mas.classList.add('active'); }
+  const fab = document.getElementById('mobile-fab-task');
+  if (fab) fab.style.display = (panelName === 'tasks' && window.innerWidth <= 768) ? 'flex' : 'none';
+  const title = document.getElementById('mobile-header-title');
+  if (title) title.textContent = NAV_LABELS[panelName] || '';
+}
+
+function openMasSheet() {
+  const grid = document.getElementById('mas-sheet-grid');
+  if (grid) {
+    const isLight = document.body.classList.contains('light');
+    const panelItems = _mobileNavOverflow.map(p => `
+      <div class="mas-sheet-item" onclick="closeMasSheet();showPanel('${p}')">
+        <i data-lucide="${NAV_ICONS[p]}" class="mas-sheet-icon"></i>
+        <span class="mas-sheet-label">${NAV_LABELS[p]}</span>
+      </div>
+    `).join('');
+    const adminLink = document.getElementById('admin-link');
+    const adminItem = adminLink && adminLink.style.display !== 'none'
+      ? `<a class="mas-sheet-item" href="/admin/users" style="text-decoration:none">
+           <i data-lucide="users" class="mas-sheet-icon"></i>
+           <span class="mas-sheet-label">Usuarios</span>
+         </a>` : '';
+    const settingsItems = `
+      <div style="grid-column:1/-1;height:1px;background:#1e293b;margin:4px 0"></div>
+      ${adminItem}
+      <a class="mas-sheet-item" href="/profile" style="text-decoration:none">
+        <i data-lucide="user" class="mas-sheet-icon"></i>
+        <span class="mas-sheet-label">Mi perfil</span>
+      </a>
+      <div class="mas-sheet-item" onclick="closeMasSheet();toggleTheme()">
+        <i data-lucide="${isLight ? 'moon' : 'sun'}" class="mas-sheet-icon"></i>
+        <span class="mas-sheet-label">Modo ${isLight ? 'oscuro' : 'claro'}</span>
+      </div>
+      <div class="mas-sheet-item" onclick="window.location.href='/logout'" style="grid-column:1/-1">
+        <i data-lucide="log-out" class="mas-sheet-icon"></i>
+        <span class="mas-sheet-label">Cerrar sesión</span>
+      </div>
+    `;
+    grid.innerHTML = panelItems + settingsItems;
+    if (window.lucide) lucide.createIcons({nodes: [grid]});
+  }
+  document.getElementById('mas-sheet-backdrop').classList.add('open');
+  document.getElementById('mas-sheet').classList.add('open');
+}
+
+function closeMasSheet() {
+  document.getElementById('mas-sheet-backdrop').classList.remove('open');
+  document.getElementById('mas-sheet').classList.remove('open');
+}
+
+// ── Panel access control ──────────────────────────────────────────────────────
+const ALL_PANELS = ['cola','seguimientos','pipeline','clientes','tasks','wa','cal','metrics','activity','sdr'];
+(async () => {
+  try {
+    const r = await fetch('/api/me');
+    if (!r.ok) return;
+    const m = await r.json();
+    window._isAdmin = m.is_admin;
+    if (m.is_admin) {
+      const a = document.getElementById('admin-link');
+      if (a) a.style.display = 'block';
+    }
+    const access = m.panel_access ? JSON.parse(m.panel_access) : null;
+    const allowedPanels = (access && !m.is_admin) ? access : ALL_PANELS;
+    if (access && !m.is_admin) {
+      ALL_PANELS.forEach(p => {
+        if (!access.includes(p)) {
+          const nav = document.getElementById('nav-' + p);
+          if (nav) nav.style.display = 'none';
+        }
+      });
+      if (!access.includes(activePanel)) {
+        const first = access[0];
+        if (first) showPanel(first);
+      }
+    }
+    _buildMobileNav(allowedPanels);
+    _syncMobileNav(activePanel);
+  } catch(e) {}
+})();
+
+// ── Theme toggle ──────────────────────────────────────────────────────────────
+const LOGO_DARK  = 'https://raw.githubusercontent.com/juantomasetti1/scalerics-assets/main/logo_full_alt.png';
+const LOGO_LIGHT = 'https://raw.githubusercontent.com/juantomasetti1/scalerics-assets/main/logo_full.png';
+
+function toggleTheme() {
+  const isLight = document.body.classList.toggle('light');
+  localStorage.setItem('crm-theme', isLight ? 'light' : 'dark');
+  _applyThemeUI(isLight);
+}
+function _applyThemeUI(isLight) {
+  const logo = document.getElementById('sidebar-logo');
+  if (logo) logo.src = isLight ? LOGO_LIGHT : LOGO_DARK;
+  const mLogo = document.getElementById('mobile-header-logo');
+  if (mLogo) mLogo.src = isLight ? LOGO_LIGHT : LOGO_DARK;
+  const label = document.getElementById('theme-label');
+  if (label) label.textContent = isLight ? 'Modo oscuro' : 'Modo claro';
+  lucide.createIcons();
+}
+(function() {
+  const saved = localStorage.getItem('crm-theme');
+  if (saved === 'light') { document.body.classList.add('light'); _applyThemeUI(true); }
+})();
+
+// ── Lucide icons ──────────────────────────────────────────────────────────────
+lucide.createIcons();
+// Admin link visibility
+(async()=>{try{const r=await fetch('/api/me');if(!r.ok)return;const m=await r.json();if(m.is_admin){const a=document.getElementById('admin-link');if(a)a.style.display='block';}}catch(e){}})();
