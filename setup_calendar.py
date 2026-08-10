@@ -10,10 +10,14 @@ Steps:
 3. Run: python setup_calendar.py
 """
 import json
+import os
 import subprocess
 from datetime import datetime, timezone
 from google_auth_oauthlib.flow import InstalledAppFlow
 from dotenv import load_dotenv, set_key
+
+# App de Fly.io donde corre el CRM (ver fly.toml).
+FLY_APP = os.environ.get("FLY_APP", "scalerics-crm")
 
 SCOPES = [
     "https://www.googleapis.com/auth/calendar",
@@ -41,18 +45,20 @@ def main():
     print(f"  REFRESH_TOKEN: {creds.refresh_token[:30]}...")
     print(f"  RENEWED_AT:    {renewed_at}")
 
-    print("Sincronizando con Railway...")
+    print("Sincronizando con Fly.io...")
     try:
         subprocess.run(
-            ["railway", "variables", "set",
+            ["fly", "secrets", "set",
+             f"GCAL_CLIENT_ID={client_config['client_id']}",
+             f"GCAL_CLIENT_SECRET={client_config['client_secret']}",
              f"GCAL_REFRESH_TOKEN={creds.refresh_token}",
              f"GCAL_TOKEN_RENEWED_AT={renewed_at}",
-             "--service", "web"],
+             "--app", FLY_APP],
             check=True, capture_output=True, text=True
         )
-        print("  Railway actualizado.")
+        print("  Fly.io actualizado. El servidor va a reiniciar solo.")
     except Exception as e:
-        print(f"  Railway no actualizado (hacelo manual): {e}")
+        print(f"  Fly.io no actualizado (hacelo manual): {e}")
 
 if __name__ == "__main__":
     main()
