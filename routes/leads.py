@@ -704,7 +704,6 @@ def api_attachment_print(attach_id):
 @leads_bp.route("/api/attachments/<int:attach_id>/pdf")
 def api_attachment_pdf(attach_id):
     """Render HTML attachment as PDF using Playwright and return as download."""
-    import tempfile, os
     from playwright.sync_api import sync_playwright
 
     row = get_attachment_file(_db(), attach_id)
@@ -714,34 +713,37 @@ def api_attachment_pdf(attach_id):
     html = row["file_data"].decode("utf-8")
     name = (row.get("name") or "presupuesto").replace(".html", "")
 
-    with tempfile.NamedTemporaryFile(suffix=".html", delete=False, mode="w", encoding="utf-8") as f:
-        f.write(html)
-        tmp_html = f.name
-
-    tmp_pdf = tmp_html.replace(".html", ".pdf")
     try:
         with sync_playwright() as p:
-            browser = p.chromium.launch()
+            # Estos flags son los que necesita Chromium para arrancar dentro de un
+            # contenedor (produccion corre en Docker sobre Fly).
+            browser = p.chromium.launch(args=[
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+                "--disable-setuid-sandbox",
+                "--no-zygote",
+            ])
             page = browser.new_page()
-            page.goto(f"file://{tmp_html}")
-            page.pdf(path=tmp_pdf, format="A4", print_background=True,
-                     margin={"top": "0", "bottom": "0", "left": "0", "right": "0"})
-            browser.close()
 
-        with open(tmp_pdf, "rb") as f:
-            pdf_bytes = f.read()
+            # Sin esto el render se queda esperando a Google Fonts.
+            def _block_fonts(route):
+                if any(d in route.request.url for d in ("fonts.googleapis.com", "fonts.gstatic.com")):
+                    route.abort()
+                else:
+                    route.continue_()
+            page.route("**/*", _block_fonts)
+
+            page.set_content(html, wait_until="load", timeout=30000)
+            pdf_bytes = page.pdf(format="A4", print_background=True,
+                                 margin={"top": "0", "bottom": "0", "left": "0", "right": "0"})
+            browser.close()
 
         resp = Response(pdf_bytes, mimetype="application/pdf")
         resp.headers["Content-Disposition"] = f'attachment; filename="{name}.pdf"'
         return resp
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-    finally:
-        for p in (tmp_html, tmp_pdf):
-            try:
-                os.unlink(p)
-            except OSError:
-                pass
 
 
 @leads_bp.route("/api/leads/<int:biz_id>/budget/generate", methods=["POST"])
