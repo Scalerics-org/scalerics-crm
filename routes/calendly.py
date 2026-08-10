@@ -1,12 +1,15 @@
 import hashlib
 import hmac
 import json
+import logging
 import os
 import re
 
 from flask import Blueprint, request, jsonify
 
 from database import create_meeting, get_business_by_phone, get_all_businesses, log_activity, update_business
+
+logger = logging.getLogger(__name__)
 
 calendly_bp = Blueprint("calendly", __name__)
 
@@ -80,6 +83,11 @@ def calendly_webhook():
         name      = invitee.get("name", "")
         email     = invitee.get("email", "")
 
+        # Reuniones internas (el equipo agendandose entre si, pruebas) no son leads.
+        blocked = {e.strip().lower() for e in os.environ.get("CALENDLY_BLOCKED_EMAILS", "").split(",") if e.strip()}
+        if email and email.lower() in blocked:
+            return jsonify({"ok": True, "skipped": "blocked_email"})
+
         # Extract phone using keyword matching, then fallback to regex
         PHONE_KEYWORDS = ["whatsapp", "teléfono", "telefono", "celular", "phone",
                           "número", "numero", "mobile", "cel"]
@@ -133,9 +141,21 @@ def calendly_webhook():
             client_id = client["id"]
             update_business(db_path, client_id, crm_status="reunion_agendada")
 
+        # Calendly manda su propio link de redireccion, no el de Meet. Recall
+        # necesita la URL real, asi que se resuelve el redirect antes de llamarlo.
+        actual_meet_url = meet_link
+        if meet_link and "meet.google.com" not in meet_link:
+            try:
+                import requests as _req2
+                r_head = _req2.head(meet_link, allow_redirects=True, timeout=8)
+                if "meet.google.com" in r_head.url:
+                    actual_meet_url = r_head.url
+            except Exception as _e:
+                logger.warning(f"No se pudo resolver el link de Calendly {meet_link}: {_e}")
+
         # Create Recall bot to transcribe the Google Meet
         recall_bot_id = None
-        if meet_link:
+        if actual_meet_url and "meet.google.com" in actual_meet_url:
             try:
                 import requests as _req
                 recall_key = os.environ.get("RECALL_API_KEY", "")
@@ -143,13 +163,15 @@ def calendly_webhook():
                     rb = _req.post(
                         "https://us-east-1.recall.ai/api/v1/bot/",
                         headers={"Authorization": f"Token {recall_key}"},
-                        json={"meeting_url": meet_link, "bot_name": "Scalerics Bot"},
+                        json={"meeting_url": actual_meet_url, "bot_name": "Scalerics Bot"},
                         timeout=10,
                     )
                     if rb.ok:
                         recall_bot_id = rb.json().get("id")
-            except Exception:
-                pass
+                    else:
+                        logger.warning(f"Recall bot creation failed: {rb.status_code} {rb.text}")
+            except Exception as _e:
+                logger.warning(f"Recall bot exception: {_e}")
 
         try:
             meeting_id = create_meeting(
@@ -159,7 +181,7 @@ def calendly_webhook():
                 title=title,
                 start_at=start_at,
                 end_at=end_at,
-                meet_link=meet_link,
+                meet_link=actual_meet_url or meet_link,
                 status="scheduled",
                 recall_bot_id=recall_bot_id,
             )
