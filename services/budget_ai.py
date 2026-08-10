@@ -1,14 +1,25 @@
 """AI service for budget HTML editing and generation using Claude Haiku."""
 
 import os
+import json
 import anthropic
 
 MODEL = "claude-haiku-4-5-20251001"
 
 _EDIT_SYSTEM = """Sos un asistente que edita documentos HTML de presupuestos profesionales.
-Tu tarea es aplicar los cambios solicitados preservando exactamente la estructura,
-los estilos CSS y el formato visual del documento original.
-Devolvé ÚNICAMENTE el HTML completo modificado, sin explicaciones ni bloques markdown."""
+En lugar de devolver el HTML completo, devolvés ÚNICAMENTE un array JSON con los cambios a aplicar.
+Cada cambio es un objeto con dos campos:
+  - "old": el fragmento de texto exacto a reemplazar (debe ser único en el documento)
+  - "new": el texto que lo reemplaza
+
+Reglas:
+- Devolvé SOLO el array JSON, sin explicaciones ni bloques markdown.
+- Cada "old" debe ser lo más corto posible pero suficientemente único para identificar el lugar exacto.
+- No toques nada que no sea necesario para cumplir las instrucciones.
+- Si una instrucción no se puede aplicar de forma segura, omitila del array.
+
+Ejemplo de respuesta:
+[{"old": "U$S 1.000", "new": "U$S 1.200"}, {"old": "plazo de 3 semanas", "new": "plazo de 4 semanas"}]"""
 
 _GEN_SYSTEM = """Sos un asistente que genera presupuestos HTML profesionales para
 Scalerics, una agencia de desarrollo web en Uruguay.
@@ -30,11 +41,15 @@ def _strip_markdown(text: str) -> str:
 
 
 def ai_edit_html(original_html: str, instructions: str) -> str:
-    """Apply AI instructions to an existing HTML budget. Returns modified HTML."""
+    """Apply AI instructions to an existing HTML budget using a diff-based approach.
+
+    The model returns a JSON array of {old, new} pairs instead of the full HTML,
+    avoiding token-limit truncation on large documents.
+    """
     client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
     message = client.messages.create(
         model=MODEL,
-        max_tokens=8096,
+        max_tokens=2048,
         system=_EDIT_SYSTEM,
         messages=[
             {
@@ -43,7 +58,26 @@ def ai_edit_html(original_html: str, instructions: str) -> str:
             }
         ],
     )
-    return _strip_markdown(message.content[0].text)
+    raw = _strip_markdown(message.content[0].text)
+    try:
+        changes = json.loads(raw)
+    except json.JSONDecodeError:
+        raise ValueError(f"La IA devolvió una respuesta no válida: {raw[:200]}")
+
+    result = original_html
+    aplicados = 0
+    for change in changes:
+        old = change.get("old", "")
+        new = change.get("new", "")
+        if old and old in result:
+            result = result.replace(old, new, 1)
+            aplicados += 1
+    if changes and not aplicados:
+        raise ValueError(
+            "Ningun cambio se pudo aplicar: la IA devolvio fragmentos que no estan "
+            "en el documento. Probá reformulando las instrucciones."
+        )
+    return result
 
 
 def generate_budget_html(business_name: str, category: str, city: str, instructions: str = "") -> str:
