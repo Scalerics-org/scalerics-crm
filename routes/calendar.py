@@ -279,31 +279,33 @@ def api_calendar_events():
 
     if not title or not date or not time:
         return jsonify({"ok": False, "error": "title, date y time requeridos"})
+    # meetings.client_id es NOT NULL: sin cliente no hay reunion que guardar.
+    # Antes se devolvia ok:true sin guardar nada y la reunion desaparecia.
+    if not client_id:
+        return jsonify({"ok": False, "error": "Eligi un cliente para la reunion"})
 
     try:
         start_dt = datetime.datetime.fromisoformat(f"{date}T{time}:00")
         end_dt = start_dt + datetime.timedelta(minutes=duration_min)
         db = _db()
 
-        meeting_id = None
-        if client_id:
-            meeting_id = create_meeting(
-                db, int(client_id),
-                title=title,
-                start_at=start_dt.isoformat(),
-                end_at=end_dt.isoformat(),
-                meet_link=meet_link,
-                status="scheduled",
-            )
-            from database import update_business
-            update_business(db, int(client_id), crm_status="reunion_agendada")
-            client = get_business(db, int(client_id)) or {}
-            log_activity(db, session.get("user_name", "sistema"), "meeting_scheduled",
-                         "lead", int(client_id), client.get("name", ""), title,
-                         user_id=session.get("user_id"))
-            uids = _contributors(db, int(client_id), session.get("user_id"))
-            increment_task_progress(db, uids, "reuniones_agendadas",
-                                    lead_id=int(client_id), lead_name=client.get("name", ""))
+        meeting_id = create_meeting(
+            db, int(client_id),
+            title=title,
+            start_at=start_dt.isoformat(),
+            end_at=end_dt.isoformat(),
+            meet_link=meet_link,
+            status="scheduled",
+        )
+        from database import update_business
+        update_business(db, int(client_id), crm_status="reunion_agendada")
+        client = get_business(db, int(client_id)) or {}
+        log_activity(db, session.get("user_name", "sistema"), "meeting_scheduled",
+                     "lead", int(client_id), client.get("name", ""), title,
+                     user_id=session.get("user_id"))
+        uids = _contributors(db, int(client_id), session.get("user_id"))
+        increment_task_progress(db, uids, "reuniones_agendadas",
+                                lead_id=int(client_id), lead_name=client.get("name", ""))
 
         return jsonify({"ok": True, "meeting_id": meeting_id, "meet_url": meet_link, "event_id": None})
     except Exception as e:
