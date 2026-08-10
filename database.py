@@ -61,8 +61,6 @@ def init_db(db_path: str) -> None:
         _add_column(conn, "businesses", "source", "TEXT")
         _add_column(conn, "businesses", "form_data", "TEXT")
         _add_column(conn, "businesses", "email", "TEXT")
-        _add_column(conn, "users", "panel_access", "TEXT")
-        _add_column(conn, "users", "role_id", "INTEGER REFERENCES roles(id) ON DELETE SET NULL")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS roles (
                 id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -268,6 +266,12 @@ def init_db(db_path: str) -> None:
                 created_at  TEXT NOT NULL
             )
         """)
+
+        # Estas dos van aca y no arriba: _add_column es un ALTER, y sobre una base
+        # nueva la tabla users todavia no existe, asi que fallaba en silencio y las
+        # columnas nunca se creaban.
+        _add_column(conn, "users", "panel_access", "TEXT")
+        _add_column(conn, "users", "role_id", "INTEGER REFERENCES roles(id) ON DELETE SET NULL")
 
         # ── password_reset_tokens ─────────────────────────────────────────────
         conn.execute("""

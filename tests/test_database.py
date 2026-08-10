@@ -65,3 +65,45 @@ def test_update_notes(db_path):
     update_business(db_path, bid, notes="llamar mañana")
     rows = get_all_businesses(db_path)
     assert rows[0]["notes"] == "llamar mañana"
+
+
+def test_insert_business_guarda_los_campos_basicos(tmp_path):
+    """Un insert con los campos minimos tiene que quedar consultable."""
+    from database import init_db, insert_business, get_business
+
+    db = str(tmp_path / "t.db")
+    init_db(db)
+    biz_id = insert_business(db, {
+        "name": "Negocio Test",
+        "phone": "+59899000000",
+        "city": "Montevideo",
+        "category": "Test",
+        "status": "scraped",
+        "source": "scraped",
+    })
+    assert biz_id
+    assert get_business(db, biz_id)["name"] == "Negocio Test"
+
+
+def test_base_nueva_tiene_las_columnas_de_permisos(tmp_path):
+    """init_db agregaba las columnas de users antes de crear la tabla: en una
+    base nueva el ALTER fallaba en silencio y quedaban sin existir."""
+    import sqlite3
+
+    from database import init_db
+
+    db = str(tmp_path / "nueva.db")
+    init_db(db)
+
+    cols = [r[1] for r in sqlite3.connect(db).execute("PRAGMA table_info(users)")]
+    assert "panel_access" in cols
+    assert "role_id" in cols
+
+
+def test_get_all_users_anda_en_base_nueva(tmp_path):
+    from database import get_all_users, init_db
+
+    db = str(tmp_path / "nueva.db")
+    init_db(db)
+
+    assert get_all_users(db) == []
