@@ -577,6 +577,11 @@ def api_attachment_file(attach_id):
     mime = row["mime_type"] or "application/octet-stream"
     resp = Response(row["file_data"], mimetype=mime)
     resp.headers["Content-Disposition"] = f'inline; filename="{row["name"]}"'
+    if mime == "text/html":
+        # Los presupuestos son HTML generado por IA y editable: si se renderizan
+        # en el origen del CRM, un <script> inyectado corre con la sesion del
+        # usuario. sandbox sin allow-scripts los deja verse pero no ejecutar.
+        resp.headers["Content-Security-Policy"] = "sandbox"
     return resp
 
 
@@ -689,7 +694,11 @@ def api_attachment_print(attach_id):
         html = html.replace("</body>", f"{print_script}</body>", 1)
     else:
         html += print_script
-    return Response(html, mimetype="text/html")
+    resp = Response(html, mimetype="text/html")
+    # sandbox allow-scripts: print script runs, but the page gets a unique opaque
+    # origin — document.cookie and localStorage are inaccessible to any injected JS.
+    resp.headers["Content-Security-Policy"] = "sandbox allow-scripts"
+    return resp
 
 
 @leads_bp.route("/api/attachments/<int:attach_id>/pdf")
