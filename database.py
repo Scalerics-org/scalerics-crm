@@ -72,7 +72,7 @@ def init_db(db_path: str) -> None:
         # Seed default roles if none exist
         if not conn.execute("SELECT 1 FROM roles LIMIT 1").fetchone():
             import json as _j
-            _ALL = _j.dumps(["cola","seguimientos","meta","pipeline","clientes","tasks","wa","cal","metrics","activity"])
+            _ALL = _j.dumps(["cola","seguimientos","meta","pipeline","clientes","tasks","wa","cal","metrics","activity","sdr"])
             _CALLER = _j.dumps(["cola","seguimientos","meta","wa"])
             _SALES = _j.dumps(["seguimientos","meta","pipeline","clientes","cal","metrics"])
             conn.executemany("INSERT INTO roles (name, panel_access) VALUES (?,?)", [
