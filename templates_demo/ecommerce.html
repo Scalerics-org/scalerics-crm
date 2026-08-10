@@ -99,6 +99,23 @@
     .price-list { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; text-align: left; }
     .price-item { display: flex; align-items: center; gap: 8px; font-size: 13px; color: rgba(226,232,240,.75); }
     .price-item i { color: var(--green); font-size: 11px; }
+    @media print {
+      * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+      @page { margin: 0; size: A4 landscape; }
+      html, body { overflow: visible !important; height: auto !important; background: #09090f !important; }
+      #progress, #counter, #nav, #wm { display: none !important; }
+      #deck { position: static !important; height: auto !important; }
+      .slide {
+        position: relative !important; opacity: 1 !important; transform: none !important;
+        pointer-events: all !important; display: flex !important;
+        height: 100vh !important; overflow: hidden !important;
+        page-break-after: always !important; break-after: page !important;
+        padding: 40px 52px 60px !important;
+      }
+      .slide.mock { padding: 20px 40px 60px !important; }
+      .brow-body { height: auto !important; overflow: visible !important; max-height: none !important; }
+      .mwrap { max-width: 100% !important; width: 100% !important; }
+    }
   </style>
 </head>
 <body>
