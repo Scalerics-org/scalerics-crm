@@ -3,28 +3,11 @@
 import base64
 import json
 import os
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 
 from flask import Blueprint, jsonify
 
 tokens_bp = Blueprint("tokens", __name__)
-
-GOOGLE_TTL_DAYS = 7  # testing mode expiry
-
-
-def _days_left(renewed_at_iso: str) -> float | None:
-    if not renewed_at_iso:
-        return None
-    try:
-        renewed = datetime.fromisoformat(renewed_at_iso)
-        if renewed.tzinfo is None:
-            renewed = renewed.replace(tzinfo=timezone.utc)
-        expires = renewed + timedelta(days=GOOGLE_TTL_DAYS)
-        delta = expires - datetime.now(timezone.utc)
-        return delta.total_seconds() / 86400
-    except Exception:
-        return None
-
 
 def _format_label(days: float | None) -> str:
     if days is None:
@@ -70,22 +53,21 @@ def _decode_jwt_exp(token: str) -> float | None:
 def api_tokens_status():
     results = []
 
-    # Gmail
-    gmail_days = _days_left(os.environ.get("GMAIL_TOKEN_RENEWED_AT", ""))
+    # Gmail y Google Calendar — la app de OAuth esta publicada ("En produccion"),
+    # asi que los refresh tokens no caducan. La expiracion a 7 dias aplica solo
+    # mientras la app esta en estado "En prueba".
     results.append({
         "name": "Gmail",
         "key": "GMAIL_REFRESH_TOKEN",
-        "status": _status_from_days(gmail_days),
-        "label": _format_label(gmail_days),
+        "status": "permanent",
+        "label": "Permanente",
     })
 
-    # Google Calendar
-    gcal_days = _days_left(os.environ.get("GCAL_TOKEN_RENEWED_AT", ""))
     results.append({
         "name": "Google Calendar",
         "key": "GCAL_REFRESH_TOKEN",
-        "status": _status_from_days(gcal_days),
-        "label": _format_label(gcal_days),
+        "status": "permanent",
+        "label": "Permanente",
     })
 
     # WhatsApp (try JWT decode)
