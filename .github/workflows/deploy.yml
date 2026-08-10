@@ -1,9 +1,16 @@
 name: Deploy to Fly.io
 
+# Deploy manual, a proposito: se dispara desde Actions > Run workflow.
+#
+# Estaba en "push a main", pero este repo recien se esta reconectando con su
+# remoto y produccion corre una version distinta de la que hay aca. Un deploy
+# automatico en el primer push saldria sin que nadie lo mire.
+#
+# Para volver a deploy automatico, reemplazar workflow_dispatch por:
+#   push:
+#     branches: [main]
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
 
 jobs:
   deploy:
