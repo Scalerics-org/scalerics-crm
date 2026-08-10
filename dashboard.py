@@ -124,6 +124,8 @@ button:hover{opacity:.9}
     <input type="tel" name="phone" required>
     <label>Contraseña</label>
     <input type="password" name="password" autocomplete="new-password" required>
+    <label>Código de invitación</label>
+    <input type="text" name="code" required>
     <button type="submit">Crear cuenta</button>
   </form>
   <div class="back"><a href="/login">&#8592; Volver al login</a></div>
@@ -344,15 +346,31 @@ def create_app(db_path: str) -> Flask:
 
     @app.route("/register", methods=["GET", "POST"])
     def register():
+        import hmac as _hmac
+
         from werkzeug.security import generate_password_hash
         from database import create_user, get_user_by_email
+
+        # El alta exige un codigo de invitacion. Sin REGISTER_CODE configurado el
+        # registro queda cerrado: falla cerrado a proposito, porque este endpoint
+        # esta exento del login y sin codigo cualquiera se creaba una cuenta.
+        codigo_ok = os.environ.get("REGISTER_CODE", "").strip()
+        if not codigo_ok:
+            return render_template_string(
+                REGISTER_HTML,
+                error="El registro está cerrado. Pedile la cuenta a un administrador.",
+            ), 403
+
         error = None
         if request.method == "POST":
             name = request.form.get("name", "").strip()
             email = request.form.get("email", "").strip().lower()
             phone = request.form.get("phone", "").strip()
             password = request.form.get("password", "")
-            if not all([name, email, phone, password]):
+            codigo = request.form.get("code", "").strip()
+            if not _hmac.compare_digest(codigo, codigo_ok):
+                error = "Código de invitación inválido"
+            elif not all([name, email, phone, password]):
                 error = "Todos los campos son requeridos"
             elif len(password) < 8:
                 error = "La contraseña debe tener al menos 8 caracteres"
