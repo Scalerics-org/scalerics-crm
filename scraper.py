@@ -27,6 +27,22 @@ _CATEGORY_BLOCKLIST_KEYWORDS = [
     "agregar ", "add website", "e-commerce", "centro comercial",
 ]
 
+# Car brands that indicate an official franchise concession — already have a parent website
+CAR_BRAND_PREFIXES = {
+    "hyundai", "chevrolet", "toyota", "fiat", "peugeot", "renault", "volkswagen",
+    "ford", "nissan", "byd", "suzuki", "citroen", "citroën", "kia", "mitsubishi",
+    "honda", "mazda", "jeep", "dodge", "chery", "dfsk", "geely", "mg", "gwm",
+    "haval", "changan", "jac", "seat", "skoda", "volvo", "bmw", "mercedes",
+    "audi", "subaru", "ram", "isuzu", "ssangyong", "jetour", "omoda", "jaecoo",
+}
+
+
+def _is_brand_franchise(name: str) -> bool:
+    """Returns True if the business name starts with a known car brand (official concession)."""
+    first_word = _normalize(name).split()[0] if name.strip() else ""
+    return first_word in CAR_BRAND_PREFIXES
+
+
 DIRECTORY_DOMAINS = {
     "google.com", "maps.google.com", "facebook.com", "instagram.com",
     "twitter.com", "x.com", "tiktok.com", "youtube.com", "linkedin.com",
@@ -105,7 +121,20 @@ def verify_no_website(name: str, city: str, page) -> bool:
         page.goto(url, wait_until="domcontentloaded", timeout=20000)
         random_delay(2, 4)
 
+        # Sin resultados cargados no se puede concluir nada: si Bing tarda o no
+        # devuelve cites, asumir "tiene web" y descartar el lead en vez de darlo
+        # por bueno con informacion incompleta.
+        try:
+            page.wait_for_selector("cite", timeout=6000)
+        except Exception:
+            logger.debug(f"Bing sin elementos cite para {name} — conservador: asume web")
+            return False
+
         cites = page.query_selector_all("cite")
+        if not cites:
+            logger.debug(f"Bing devolvió lista cite vacía para {name} — conservador: asume web")
+            return False
+
         for cite in cites[:8]:
             raw = cite.inner_text().strip()
             domain = _domain_from_cite(raw)
@@ -222,7 +251,7 @@ def _remote_insert(data: dict) -> bool:
         return False
 
 
-def scrape_google_maps(query: str, max_results: int, db_path: str, verify_web: bool = False, default_category: str = "") -> int:
+def scrape_google_maps(query: str, max_results: int, db_path: str, verify_web: bool = False, default_category: str = "", skip_branded: bool = False) -> int:
     inserted = 0
     maps_list_url = f"https://www.google.com/maps/search/{query.replace(' ', '+')}"
 
@@ -321,6 +350,13 @@ def scrape_google_maps(query: str, max_results: int, db_path: str, verify_web: b
                             random_delay()
                             break
 
+                        # Franchise of a known brand → already has parent website, skip
+                        if skip_branded and _is_brand_franchise(data.get("name", "")):
+                            logger.info(f"Saltando (franquicia de marca): {data['name']}")
+                            page.goto(maps_list_url, wait_until="domcontentloaded", timeout=30000)
+                            random_delay()
+                            break
+
                         # Optional Bing double-check (slow, off by default)
                         if verify_web:
                             logger.info(f"Verificando con Bing: {data['name']}")
@@ -378,6 +414,6 @@ def scrape_google_maps(query: str, max_results: int, db_path: str, verify_web: b
     logger.info(f"Scraping completo. Guardados: {inserted} negocios")
     return inserted
 
-def run(query: str, max_results: int, db_path: str, verify_web: bool = False, default_category: str = "") -> int:
+def run(query: str, max_results: int, db_path: str, verify_web: bool = False, default_category: str = "", skip_branded: bool = False) -> int:
     init_db(db_path)
-    return scrape_google_maps(query, max_results, db_path, verify_web=verify_web, default_category=default_category)
+    return scrape_google_maps(query, max_results, db_path, verify_web=verify_web, default_category=default_category, skip_branded=skip_branded)
