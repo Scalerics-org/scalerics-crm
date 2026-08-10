@@ -15,5 +15,15 @@ bot/.env
 # Presupuestos con precios: nunca se suben a ningun repo
 budgets/
 
+# Secretos y datos — nunca al repo
+ll_token.txt
+pages.json
+*.db
+prod_snapshot*.db
+prod_limpia.db
+backups/
+bot/bot_dump.json
+bot/backup_scalerics_wa_bot.sql
+
 # hexast-cajas tiene repo propio (Scalerics-org/hexast-cajas)
 hexast-cajas/
