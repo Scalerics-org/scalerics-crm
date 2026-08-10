@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Baqueano Proyectos Marítimos · Lanchaje y Servicios Integrales — Lancha PIPE</title>
+<meta name="description" content="BPM — Baqueano Proyectos Marítimos. Lanchaje a buques, transporte de pasajeros, carga y logística, batimetría y paseos en el Puerto de Montevideo a bordo de la lancha multipropósito PIPE." />
+
+<!-- Google Fonts: Playfair Display (títulos) + Inter (cuerpo) -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@500;600;700;800&display=swap" rel="stylesheet" />
+
+<!-- Tailwind CSS (CDN) -->
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          marino: '#01204F',
+          acero: '#1B4965',
+          arena: '#F4F6F8',
+          dorado: '#C9A24B',
+          'dorado-lt': '#E1C079',
+        },
+        fontFamily: {
+          display: ['"Playfair Display"', 'serif'],
+          sans: ['Inter', 'system-ui', 'sans-serif'],
+        },
+      },
+    },
+  };
+</script>
+
+<style>
+  html { scroll-behavior: smooth; }
+  body { font-family: 'Inter', system-ui, sans-serif; }
+  .font-display { font-family: 'Playfair Display', serif; }
+
+  /* Fade-in al hacer scroll */
+  .reveal {
+    opacity: 0;
+    transform: translateY(28px);
+    transition: opacity .8s cubic-bezier(.16,1,.3,1), transform .8s cubic-bezier(.16,1,.3,1);
+    will-change: opacity, transform;
+  }
+  .reveal.is-visible { opacity: 1; transform: none; }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .reveal { opacity: 1; transform: none; transition: none; }
+  }
+
+  /* Placeholder de marca detrás de cada imagen: si la foto falta, se ve este fondo */
+  .img-frame { position: relative; overflow: hidden; background: linear-gradient(135deg, #01204F 0%, #1B4965 100%); }
+  .img-frame::after {
+    content: "⚓";
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 2.6rem; color: rgba(201,162,75,.35);
+    pointer-events: none;
+  }
+  .img-frame > img { position: relative; z-index: 1; }
+  .img-frame > img[data-broken] { display: none; }
+
+  /* Línea decorativa dorada */
+  .rule-gold { width: 64px; height: 3px; background: #C9A24B; border-radius: 2px; }
+
+  /* Menú móvil */
+  .nav-open { max-height: 24rem; }
+</style>
+</head>
+
+<body class="bg-white text-marino antialiased">
+
+<!-- ============ HEADER FIJO ============ -->
+<header id="top" class="fixed inset-x-0 top-0 z-50 bg-marino/95 backdrop-blur-md border-b border-white/10 shadow-lg shadow-marino/20">
+  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+    <div class="flex h-16 md:h-20 items-center justify-between gap-4">
+
+      <!-- Logo + nombre -->
+      <a href="#top" class="flex items-center gap-3 shrink-0">
+        <span class="img-frame block h-10 w-10 md:h-12 md:w-12 rounded-full ring-1 ring-dorado/50">
+          <img src="fotos/00-logo-bpm-navy.jpeg" alt="Logo BPM — Baqueano Proyectos Marítimos"
+               class="h-full w-full object-cover" onerror="this.setAttribute('data-broken','')" />
+        </span>
+        <span class="leading-tight">
+          <span class="block font-display text-base md:text-lg font-700 text-white tracking-wide">Baqueano Proyectos Marítimos</span>
+          <span class="block text-[10px] md:text-xs uppercase tracking-[0.25em] text-dorado">Lanchaje y Servicios Integrales</span>
+        </span>
+      </a>
+
+      <!-- Nav desktop -->
+      <nav class="hidden lg:flex items-center gap-7 text-sm font-500 text-arena/90">
+        <a href="#servicios" class="hover:text-dorado transition-colors">Servicios</a>
+        <a href="#lancha" class="hover:text-dorado transition-colors">La Lancha</a>
+        <a href="#seguridad" class="hover:text-dorado transition-colors">Seguridad</a>
+        <a href="#galeria" class="hover:text-dorado transition-colors">Galería</a>
+        <a href="#contacto" class="hover:text-dorado transition-colors">Contacto</a>
+      </nav>
+
+      <!-- Teléfono (derecha) + toggle móvil -->
+      <div class="flex items-center gap-3">
+        <a href="tel:097967121"
+           class="hidden sm:inline-flex items-center gap-2 rounded-full bg-dorado px-4 py-2 text-sm font-600 text-marino shadow-md hover:bg-dorado-lt transition-colors">
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13 1.05.36 2.07.7 3a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.13-1.13a2 2 0 0 1 2.11-.45c.93.34 1.95.57 3 .7A2 2 0 0 1 22 16.92z"/></svg>
+          097 967 121
+        </a>
+        <button id="navToggle" aria-label="Abrir menú" aria-expanded="false"
+                class="lg:hidden inline-flex items-center justify-center h-10 w-10 rounded-md text-arena hover:bg-white/10 transition-colors">
+          <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Menú móvil desplegable -->
+  <div id="mobileNav" class="lg:hidden overflow-hidden max-h-0 transition-all duration-300 bg-marino border-t border-white/10">
+    <nav class="flex flex-col px-6 py-4 gap-1 text-arena/90">
+      <a href="#servicios" class="py-2.5 border-b border-white/5 hover:text-dorado transition-colors">Servicios</a>
+      <a href="#lancha" class="py-2.5 border-b border-white/5 hover:text-dorado transition-colors">La Lancha</a>
+      <a href="#seguridad" class="py-2.5 border-b border-white/5 hover:text-dorado transition-colors">Seguridad</a>
+      <a href="#galeria" class="py-2.5 border-b border-white/5 hover:text-dorado transition-colors">Galería</a>
+      <a href="#contacto" class="py-2.5 border-b border-white/5 hover:text-dorado transition-colors">Contacto</a>
+      <a href="tel:097967121" class="mt-3 inline-flex items-center justify-center gap-2 rounded-full bg-dorado px-4 py-2.5 font-600 text-marino">Llamar · 097 967 121</a>
+    </nav>
+  </div>
+</header>
+
+<!-- ============ HERO ============ -->
+<section class="relative min-h-[92vh] flex items-center img-frame">
+  <img src="fotos/07-pipe-puerto-panoramica.jpeg" alt="Lancha PIPE en el Puerto de Montevideo"
+       class="absolute inset-0 h-full w-full object-cover" onerror="this.setAttribute('data-broken','')" />
+  <!-- Overlay marino -->
+  <div class="absolute inset-0 z-[2] bg-gradient-to-br from-marino/90 via-marino/75 to-acero/70"></div>
+  <div class="absolute inset-0 z-[2] bg-marino/20"></div>
+
+  <div class="relative z-10 mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-28 pb-20 w-full">
+    <div class="max-w-3xl reveal">
+      <span class="inline-flex items-center gap-2 rounded-full border border-dorado/50 bg-marino/40 px-4 py-1.5 text-xs uppercase tracking-[0.25em] text-dorado backdrop-blur-sm">
+        <span class="h-1.5 w-1.5 rounded-full bg-dorado"></span> Puerto de Montevideo
+      </span>
+      <h1 class="mt-6 font-display text-4xl sm:text-5xl lg:text-6xl font-700 leading-[1.1] text-white">
+        Servicios portuarios y paseos en el Puerto de Montevideo
+      </h1>
+      <p class="mt-6 text-lg sm:text-xl text-arena/90 max-w-2xl leading-relaxed">
+        A bordo de la <span class="text-dorado font-600">lancha multipropósito PIPE</span> —
+        rápida, homologada y equipada para lanchaje, transporte, logística y navegación segura.
+      </p>
+
+      <div class="mt-9 flex flex-col sm:flex-row gap-4">
+        <a href="tel:097967121"
+           class="inline-flex items-center justify-center gap-2 rounded-full bg-dorado px-7 py-3.5 text-base font-600 text-marino shadow-xl hover:bg-dorado-lt hover:-translate-y-0.5 transition-all">
+          <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13 1.05.36 2.07.7 3a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.13-1.13a2 2 0 0 1 2.11-.45c.93.34 1.95.57 3 .7A2 2 0 0 1 22 16.92z"/></svg>
+          Llamar
+        </a>
+        <a href="mailto:LANCHASBAQUEANONAVIERA@gmail.com"
+           class="inline-flex items-center justify-center gap-2 rounded-full border border-white/40 bg-white/5 px-7 py-3.5 text-base font-600 text-white backdrop-blur-sm hover:bg-white/15 hover:-translate-y-0.5 transition-all">
+          <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+          Escribir
+        </a>
+      </div>
+
+      <!-- Quick stats -->
+      <div class="mt-12 grid grid-cols-3 gap-6 max-w-md">
+        <div>
+          <div class="font-display text-3xl font-700 text-dorado">20</div>
+          <div class="text-xs uppercase tracking-wider text-arena/70 mt-1">Pasajeros</div>
+        </div>
+        <div>
+          <div class="font-display text-3xl font-700 text-dorado">12,25 m</div>
+          <div class="text-xs uppercase tracking-wider text-arena/70 mt-1">Eslora</div>
+        </div>
+        <div>
+          <div class="font-display text-3xl font-700 text-dorado">2×250 HP</div>
+          <div class="text-xs uppercase tracking-wider text-arena/70 mt-1">Evinrude</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SERVICIOS ============ -->
+<section id="servicios" class="bg-white py-20 lg:py-28">
+  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+    <div class="max-w-2xl reveal">
+      <span class="text-sm font-600 uppercase tracking-[0.25em] text-dorado">Qué hacemos</span>
+      <h2 class="mt-3 font-display text-3xl sm:text-4xl font-700 text-marino">Servicios integrales en el puerto</h2>
+      <div class="rule-gold mt-5"></div>
+      <p class="mt-5 text-acero text-lg leading-relaxed">Soluciones náuticas para operadores portuarios, agencias, tripulaciones y grupos.</p>
+    </div>
+
+    <div class="mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+      <!-- Tarjeta -->
+      <article class="reveal group rounded-2xl border border-marino/10 bg-arena p-7 hover:border-dorado/60 hover:shadow-xl hover:shadow-marino/10 hover:-translate-y-1 transition-all">
+        <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-marino text-dorado group-hover:bg-dorado group-hover:text-marino transition-colors">
+          <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18h18M5 18l1-9h12l1 9M12 3v6M8 9V6M16 9V6"/></svg>
+        </div>
+        <h3 class="mt-5 font-display text-xl font-600 text-marino">Lanchaje a buques</h3>
+        <p class="mt-2 text-acero leading-relaxed">Traslado de tripulaciones, prácticos y personal desde y hacia buques fondeados o en muelle.</p>
+      </article>
+
+      <article class="reveal group rounded-2xl border border-marino/10 bg-arena p-7 hover:border-dorado/60 hover:shadow-xl hover:shadow-marino/10 hover:-translate-y-1 transition-all">
+        <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-marino text-dorado group-hover:bg-dorado group-hover:text-marino transition-colors">
+          <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        </div>
+        <h3 class="mt-5 font-display text-xl font-600 text-marino">Transporte de pasajeros</h3>
+        <p class="mt-2 text-acero leading-relaxed">Capacidad para hasta <strong class="text-marino">20 personas</strong> con salón cerrado, climatizado y homologado.</p>
+      </article>
+
+      <article class="reveal group rounded-2xl border border-marino/10 bg-arena p-7 hover:border-dorado/60 hover:shadow-xl hover:shadow-marino/10 hover:-translate-y-1 transition-all">
+        <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-marino text-dorado group-hover:bg-dorado group-hover:text-marino transition-colors">
+          <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+        </div>
+        <h3 class="mt-5 font-display text-xl font-600 text-marino">Carga y logística</h3>
+        <p class="mt-2 text-acero leading-relaxed">Transporte de hasta <strong class="text-marino">3 T</strong> en cubierta y capacidad de <strong class="text-marino">8.000 kg</strong> en popa.</p>
+      </article>
+
+      <article class="reveal group rounded-2xl border border-marino/10 bg-arena p-7 hover:border-dorado/60 hover:shadow-xl hover:shadow-marino/10 hover:-translate-y-1 transition-all">
+        <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-marino text-dorado group-hover:bg-dorado group-hover:text-marino transition-colors">
+          <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h4l3 8 4-16 3 8h4"/></svg>
+        </div>
+        <h3 class="mt-5 font-display text-xl font-600 text-marino">Batimetría</h3>
+        <p class="mt-2 text-acero leading-relaxed">Relevamiento de profundidades y apoyo a estudios hidrográficos con sonda de precisión.</p>
+      </article>
+
+      <article class="reveal group rounded-2xl border border-marino/10 bg-arena p-7 hover:border-dorado/60 hover:shadow-xl hover:shadow-marino/10 hover:-translate-y-1 transition-all">
+        <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-marino text-dorado group-hover:bg-dorado group-hover:text-marino transition-colors">
+          <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M3 12h18M3 18h18"/><circle cx="7" cy="6" r="1.5" fill="currentColor"/><circle cx="14" cy="12" r="1.5" fill="currentColor"/><circle cx="10" cy="18" r="1.5" fill="currentColor"/></svg>
+        </div>
+        <h3 class="mt-5 font-display text-xl font-600 text-marino">Barreras OSRO</h3>
+        <p class="mt-2 text-acero leading-relaxed">Despliegue y apoyo con barreras de contención para respuesta ante derrames de hidrocarburos.</p>
+      </article>
+
+      <article class="reveal group rounded-2xl border border-marino/10 bg-arena p-7 hover:border-dorado/60 hover:shadow-xl hover:shadow-marino/10 hover:-translate-y-1 transition-all">
+        <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-marino text-dorado group-hover:bg-dorado group-hover:text-marino transition-colors">
+          <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+        </div>
+        <h3 class="mt-5 font-display text-xl font-600 text-marino">Reparaciones navales</h3>
+        <p class="mt-2 text-acero leading-relaxed">Asistencia y apoyo a tareas de mantenimiento y reparación a flote dentro del recinto portuario.</p>
+      </article>
+
+      <article class="reveal group rounded-2xl border border-marino/10 bg-arena p-7 hover:border-dorado/60 hover:shadow-xl hover:shadow-marino/10 hover:-translate-y-1 transition-all">
+        <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-marino text-dorado group-hover:bg-dorado group-hover:text-marino transition-colors">
+          <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 20a6 6 0 0 0 12 0c0-3-2-5-2-8a4 4 0 0 1 8 0M12 12V6M9 9l3-3 3 3"/></svg>
+        </div>
+        <h3 class="mt-5 font-display text-xl font-600 text-marino">Paseos y grupos</h3>
+        <p class="mt-2 text-acero leading-relaxed">Salidas privadas y grupales por la bahía de Montevideo, con confort a bordo y tripulación profesional.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ============ LA LANCHA PIPE ============ -->
+<section id="lancha" class="bg-marino py-20 lg:py-28 text-arena">
+  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+    <div class="grid lg:grid-cols-2 gap-12 lg:gap-16 items-start">
+
+      <!-- Foto -->
+      <div class="reveal">
+        <div class="img-frame rounded-2xl ring-1 ring-white/10 shadow-2xl shadow-black/40 aspect-[4/3]">
+          <img src="fotos/02-timonera-interior.jpeg" alt="Timonera interior de la lancha PIPE"
+               class="h-full w-full object-cover" onerror="this.setAttribute('data-broken','')" />
+        </div>
+      </div>
+
+      <!-- Ficha técnica -->
+      <div class="reveal">
+        <span class="text-sm font-600 uppercase tracking-[0.25em] text-dorado">La embarcación</span>
+        <h2 class="mt-3 font-display text-3xl sm:text-4xl font-700 text-white">Lancha multipropósito PIPE</h2>
+        <div class="rule-gold mt-5"></div>
+        <p class="mt-5 text-arena/80 leading-relaxed">Construida en fibra naval homologada por el Astillero Benavídez (2016). Matrícula <strong class="text-dorado">8650</strong>.</p>
+
+        <!-- Tabla ficha -->
+        <div class="mt-8 rounded-2xl border border-white/10 bg-white/5 overflow-hidden">
+          <dl class="divide-y divide-white/10 text-sm">
+            <div class="flex justify-between px-5 py-3"><dt class="text-arena/70">Eslora</dt><dd class="font-600 text-white">12,25 m</dd></div>
+            <div class="flex justify-between px-5 py-3"><dt class="text-arena/70">Manga</dt><dd class="font-600 text-white">3,10 m</dd></div>
+            <div class="flex justify-between px-5 py-3"><dt class="text-arena/70">Puntal</dt><dd class="font-600 text-white">1,24 m</dd></div>
+            <div class="flex justify-between px-5 py-3"><dt class="text-arena/70">Calado</dt><dd class="font-600 text-white">0,50 m</dd></div>
+            <div class="flex justify-between px-5 py-3"><dt class="text-arena/70">Motorización</dt><dd class="font-600 text-white">2× Evinrude 250 HP</dd></div>
+            <div class="flex justify-between px-5 py-3"><dt class="text-arena/70">Velocidad crucero</dt><dd class="font-600 text-white">12–20 kts</dd></div>
+            <div class="flex justify-between px-5 py-3"><dt class="text-arena/70">Capacidad</dt><dd class="font-600 text-white">20 pasajeros</dd></div>
+            <div class="flex justify-between px-5 py-3"><dt class="text-arena/70">Construcción</dt><dd class="font-600 text-white">Fibra naval homologada</dd></div>
+            <div class="flex justify-between px-5 py-3"><dt class="text-arena/70">Astillero</dt><dd class="font-600 text-white">Benavídez · 2016</dd></div>
+            <div class="flex justify-between px-5 py-3"><dt class="text-arena/70">Matrícula</dt><dd class="font-600 text-dorado">8650</dd></div>
+          </dl>
+        </div>
+
+        <!-- Equipos de navegación -->
+        <h3 class="mt-8 font-display text-lg font-600 text-white">Equipos de navegación</h3>
+        <div class="mt-4 flex flex-wrap gap-2.5">
+          <span class="rounded-full border border-dorado/30 bg-marino px-3.5 py-1.5 text-xs font-500 text-arena/90">Radar JRC</span>
+          <span class="rounded-full border border-dorado/30 bg-marino px-3.5 py-1.5 text-xs font-500 text-arena/90">VHF ICOM ×2</span>
+          <span class="rounded-full border border-dorado/30 bg-marino px-3.5 py-1.5 text-xs font-500 text-arena/90">AIS Plotter ONWA</span>
+          <span class="rounded-full border border-dorado/30 bg-marino px-3.5 py-1.5 text-xs font-500 text-arena/90">Sonda Garmin</span>
+          <span class="rounded-full border border-dorado/30 bg-marino px-3.5 py-1.5 text-xs font-500 text-arena/90">Compás Ritchie</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SEGURIDAD Y EQUIPAMIENTO ============ -->
+<section id="seguridad" class="bg-arena py-20 lg:py-28">
+  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+    <div class="max-w-2xl reveal">
+      <span class="text-sm font-600 uppercase tracking-[0.25em] text-dorado">Navegar tranquilos</span>
+      <h2 class="mt-3 font-display text-3xl sm:text-4xl font-700 text-marino">Seguridad y equipamiento</h2>
+      <div class="rule-gold mt-5"></div>
+      <p class="mt-5 text-acero text-lg leading-relaxed">Equipada según normativa para operar con los máximos estándares de seguridad a bordo.</p>
+    </div>
+
+    <div class="mt-14 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <!-- Ítems -->
+      <div class="reveal flex items-start gap-4 rounded-xl bg-white p-5 border border-marino/10 shadow-sm">
+        <span class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-marino text-dorado"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18"/></svg></span>
+        <p class="text-marino"><strong>Balsa salvavidas 20 personas</strong>, con liberación hidrostática.</p>
+      </div>
+      <div class="reveal flex items-start gap-4 rounded-xl bg-white p-5 border border-marino/10 shadow-sm">
+        <span class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-marino text-dorado"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 0-16 0M12 4v8l3 3"/></svg></span>
+        <p class="text-marino"><strong>20 chalecos salvavidas</strong> con luz de localización.</p>
+      </div>
+      <div class="reveal flex items-start gap-4 rounded-xl bg-white p-5 border border-marino/10 shadow-sm">
+        <span class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-marino text-dorado"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v6M12 8a5 5 0 0 1 5 5v3H7v-3a5 5 0 0 1 5-5zM7 19h10M9 22h6"/></svg></span>
+        <p class="text-marino"><strong>EPIRB</strong> — baliza de emergencia satelital.</p>
+      </div>
+      <div class="reveal flex items-start gap-4 rounded-xl bg-white p-5 border border-marino/10 shadow-sm">
+        <span class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-marino text-dorado"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="8" width="10" height="13" rx="2"/><path d="M12 8V4M9 4h6M12 12v4"/></svg></span>
+        <p class="text-marino"><strong>2 Handy GMDSS</strong> para comunicación de socorro.</p>
+      </div>
+      <div class="reveal flex items-start gap-4 rounded-xl bg-white p-5 border border-marino/10 shadow-sm">
+        <span class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-marino text-dorado"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v4M8 7c-2 1-3 3-3 6v9h6v-9c0-3-1-5-3-6zM15 21V9a3 3 0 0 1 6 0"/></svg></span>
+        <p class="text-marino"><strong>Extintores ABC y CO₂</strong> distribuidos a bordo.</p>
+      </div>
+      <div class="reveal flex items-start gap-4 rounded-xl bg-white p-5 border border-marino/10 shadow-sm">
+        <span class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-marino text-dorado"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64A9 9 0 1 1 5.64 6.64M12 2v10"/></svg></span>
+        <p class="text-marino"><strong>Corte de combustible remoto</strong> de seguridad.</p>
+      </div>
+      <div class="reveal flex items-start gap-4 rounded-xl bg-white p-5 border border-marino/10 shadow-sm">
+        <span class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-marino text-dorado"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2 5 4-10 2 5h6"/></svg></span>
+        <p class="text-marino"><strong>Bombas de achique</strong> de alto caudal.</p>
+      </div>
+      <div class="reveal flex items-start gap-4 rounded-xl bg-white p-5 border border-marino/10 shadow-sm">
+        <span class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-marino text-dorado"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18a5 5 0 1 1 6 0M12 2v3M4 10h3M17 10h3M12 22v-4"/></svg></span>
+        <p class="text-marino"><strong>Sensores de humo</strong> en salón y sala de máquinas.</p>
+      </div>
+      <div class="reveal flex items-start gap-4 rounded-xl bg-white p-5 border border-marino/10 shadow-sm">
+        <span class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-marino text-dorado"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M2 12h20"/><rect x="8" y="8" width="8" height="8" rx="1"/></svg></span>
+        <p class="text-marino"><strong>Botiquín</strong> de primeros auxilios completo.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SERVICIOS A BORDO ============ -->
+<section class="bg-white py-20 lg:py-28">
+  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+    <div class="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
+
+      <!-- Texto -->
+      <div class="reveal order-2 lg:order-1">
+        <span class="text-sm font-600 uppercase tracking-[0.25em] text-dorado">Confort a bordo</span>
+        <h2 class="mt-3 font-display text-3xl sm:text-4xl font-700 text-marino">Servicios a bordo</h2>
+        <div class="rule-gold mt-5"></div>
+        <p class="mt-5 text-acero text-lg leading-relaxed">Un salón cerrado y equipado para que cada travesía sea cómoda, sin importar el clima.</p>
+
+        <ul class="mt-8 grid sm:grid-cols-2 gap-x-8 gap-y-4">
+          <li class="flex items-center gap-3 text-marino"><span class="h-2 w-2 rounded-full bg-dorado"></span> Salón con aire acondicionado</li>
+          <li class="flex items-center gap-3 text-marino"><span class="h-2 w-2 rounded-full bg-dorado"></span> Mesa de reuniones / comedor</li>
+          <li class="flex items-center gap-3 text-marino"><span class="h-2 w-2 rounded-full bg-dorado"></span> Cafetera</li>
+          <li class="flex items-center gap-3 text-marino"><span class="h-2 w-2 rounded-full bg-dorado"></span> Microondas</li>
+          <li class="flex items-center gap-3 text-marino sm:col-span-2"><span class="h-2 w-2 rounded-full bg-dorado"></span> Baño con ducha</li>
+        </ul>
+      </div>
+
+      <!-- Foto -->
+      <div class="reveal order-1 lg:order-2">
+        <div class="img-frame rounded-2xl ring-1 ring-marino/10 shadow-2xl shadow-marino/20 aspect-[4/3]">
+          <img src="fotos/08-pipe-cubierta-popa.jpeg" alt="Cubierta de popa de la lancha PIPE"
+               class="h-full w-full object-cover" onerror="this.setAttribute('data-broken','')" />
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ GALERÍA ============ -->
+<section id="galeria" class="bg-arena py-20 lg:py-28">
+  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+    <div class="max-w-2xl reveal">
+      <span class="text-sm font-600 uppercase tracking-[0.25em] text-dorado">La PIPE en acción</span>
+      <h2 class="mt-3 font-display text-3xl sm:text-4xl font-700 text-marino">Galería</h2>
+      <div class="rule-gold mt-5"></div>
+    </div>
+
+    <div class="mt-12 grid grid-cols-2 md:grid-cols-3 gap-4 lg:gap-5">
+      <!-- Cada figura: fotos 01, 03, 04, 05, 06 + 07 panorámica -->
+      <figure class="reveal img-frame group rounded-xl aspect-[4/3] ring-1 ring-marino/10 sm:aspect-square md:aspect-[4/3]">
+        <img src="fotos/01-pipe.jpeg" alt="Lancha PIPE" class="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110" onerror="this.setAttribute('data-broken','')" />
+      </figure>
+      <figure class="reveal img-frame group rounded-xl aspect-[4/3] ring-1 ring-marino/10 sm:aspect-square md:aspect-[4/3] md:row-span-2 md:aspect-auto">
+        <img src="fotos/03-pipe.jpeg" alt="Lancha PIPE en navegación" class="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110" onerror="this.setAttribute('data-broken','')" />
+      </figure>
+      <figure class="reveal img-frame group rounded-xl aspect-[4/3] ring-1 ring-marino/10 sm:aspect-square md:aspect-[4/3]">
+        <img src="fotos/04-pipe.jpeg" alt="Detalle de la lancha PIPE" class="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110" onerror="this.setAttribute('data-broken','')" />
+      </figure>
+      <figure class="reveal img-frame group rounded-xl aspect-[4/3] ring-1 ring-marino/10 sm:aspect-square md:aspect-[4/3]">
+        <img src="fotos/05-pipe.jpeg" alt="Lancha PIPE en el puerto" class="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110" onerror="this.setAttribute('data-broken','')" />
+      </figure>
+      <figure class="reveal img-frame group rounded-xl aspect-[4/3] ring-1 ring-marino/10 sm:aspect-square md:aspect-[4/3]">
+        <img src="fotos/06-pipe.jpeg" alt="Tripulación y lancha PIPE" class="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110" onerror="this.setAttribute('data-broken','')" />
+      </figure>
+      <figure class="reveal img-frame group rounded-xl aspect-[4/3] ring-1 ring-marino/10 sm:aspect-square md:aspect-[4/3]">
+        <img src="fotos/07-pipe-puerto-panoramica.jpeg" alt="Panorámica de la lancha PIPE en el Puerto de Montevideo" class="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110" onerror="this.setAttribute('data-broken','')" />
+      </figure>
+    </div>
+  </div>
+</section>
+
+<!-- ============ CONTACTO ============ -->
+<section id="contacto" class="bg-marino py-20 lg:py-28 text-arena">
+  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+    <div class="max-w-2xl reveal">
+      <span class="text-sm font-600 uppercase tracking-[0.25em] text-dorado">Hablemos</span>
+      <h2 class="mt-3 font-display text-3xl sm:text-4xl font-700 text-white">Contacto</h2>
+      <div class="rule-gold mt-5"></div>
+      <p class="mt-5 text-arena/80 text-lg leading-relaxed">Coordiná tu servicio o paseo. Respondemos rápido por teléfono, correo o WhatsApp.</p>
+    </div>
+
+    <div class="mt-12 grid gap-5 md:grid-cols-3">
+      <!-- Teléfono -->
+      <a href="tel:097967121" class="reveal group rounded-2xl border border-white/10 bg-white/5 p-7 hover:border-dorado/60 hover:bg-white/10 transition-all">
+        <span class="flex h-12 w-12 items-center justify-center rounded-xl bg-dorado text-marino"><svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13 1.05.36 2.07.7 3a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.13-1.13a2 2 0 0 1 2.11-.45c.93.34 1.95.57 3 .7A2 2 0 0 1 22 16.92z"/></svg></span>
+        <div class="mt-5 text-xs uppercase tracking-widest text-arena/60">Teléfono</div>
+        <div class="mt-1 font-display text-2xl font-600 text-white group-hover:text-dorado transition-colors">097 967 121</div>
+      </a>
+
+      <!-- Email -->
+      <a href="mailto:LANCHASBAQUEANONAVIERA@gmail.com" class="reveal group rounded-2xl border border-white/10 bg-white/5 p-7 hover:border-dorado/60 hover:bg-white/10 transition-all">
+        <span class="flex h-12 w-12 items-center justify-center rounded-xl bg-dorado text-marino"><svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></span>
+        <div class="mt-5 text-xs uppercase tracking-widest text-arena/60">Email</div>
+        <div class="mt-1 font-600 text-base text-white break-all group-hover:text-dorado transition-colors">LANCHASBAQUEANONAVIERA@gmail.com</div>
+      </a>
+
+      <!-- Ubicación -->
+      <div class="reveal rounded-2xl border border-white/10 bg-white/5 p-7">
+        <span class="flex h-12 w-12 items-center justify-center rounded-xl bg-dorado text-marino"><svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg></span>
+        <div class="mt-5 text-xs uppercase tracking-widest text-arena/60">Ubicación</div>
+        <div class="mt-1 font-600 text-base text-white">Recinto Portuario<br />Puerto de Montevideo</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FOOTER ============ -->
+<footer class="bg-[#01152f] py-12 text-arena/70">
+  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+    <div class="flex flex-col sm:flex-row items-center justify-between gap-6">
+      <div class="flex items-center gap-3">
+        <span class="img-frame block h-11 w-11 rounded-full ring-1 ring-dorado/40">
+          <img src="fotos/00-logo-bpm-navy.jpeg" alt="Logo BPM" class="h-full w-full object-cover" onerror="this.setAttribute('data-broken','')" />
+        </span>
+        <span class="font-display text-lg font-600 text-white">Baqueano Proyectos Marítimos</span>
+      </div>
+      <a href="#top" class="text-xs uppercase tracking-[0.2em] text-dorado hover:text-dorado-lt transition-colors">Volver arriba ↑</a>
+    </div>
+    <div class="mt-8 border-t border-white/10 pt-6 text-center text-sm">
+      <p>Baqueano Proyectos Marítimos · Lanchaje y Servicios Integrales · Lancha PIPE · Matrícula 8650</p>
+      <p class="mt-2 text-arena/50">© <span id="year">2026</span> — Todos los derechos reservados.</p>
+    </div>
+  </div>
+</footer>
+
+<!-- ============ BOTÓN FLOTANTE WHATSAPP ============ -->
+<a href="https://wa.me/59897967121?text=Hola,%20quer%C3%ADa%20consultar%20por%20los%20servicios%20de%20la%20lancha%20PIPE"
+   target="_blank" rel="noopener"
+   aria-label="Escribinos por WhatsApp"
+   class="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-full bg-[#25D366] px-4 py-3.5 text-white font-600 shadow-2xl shadow-black/30 hover:scale-105 hover:bg-[#1ebe5b] transition-all">
+  <svg class="h-6 w-6" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.372-.025-.521-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51l-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.002-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+  <span class="hidden sm:inline">WhatsApp</span>
+</a>
+
+<!-- ============ JAVASCRIPT ============ -->
+<script>
+  // Año dinámico
+  document.getElementById('year').textContent = new Date().getFullYear();
+
+  // Menú móvil
+  (function () {
+    const toggle = document.getElementById('navToggle');
+    const nav = document.getElementById('mobileNav');
+    if (!toggle || !nav) return;
+    toggle.addEventListener('click', function () {
+      const open = nav.classList.toggle('nav-open');
+      toggle.setAttribute('aria-expanded', String(open));
+    });
+    // Cerrar al hacer clic en un enlace
+    nav.querySelectorAll('a').forEach(function (a) {
+      a.addEventListener('click', function () {
+        nav.classList.remove('nav-open');
+        toggle.setAttribute('aria-expanded', 'false');
+      });
+    });
+  })();
+
+  // Fade-in al hacer scroll (IntersectionObserver)
+  (function () {
+    const els = document.querySelectorAll('.reveal');
+    if (!('IntersectionObserver' in window)) {
+      els.forEach(function (el) { el.classList.add('is-visible'); });
+      return;
+    }
+    const io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('is-visible');
+          io.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
+    els.forEach(function (el) { io.observe(el); });
+  })();
+</script>
+</body>
+</html>

@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Easy Rider · Cómo apuntar el dominio | Scalerics</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --navy:#12263f;
+  --navy-2:#1b3557;
+  --green:#10B981;
+  --green-dk:#059669;
+  --green-soft:#ecfdf5;
+  --green-line:#a7f3d0;
+  --blue:#2563eb;
+  --blue-soft:#eff6ff;
+  --blue-line:#bfdbfe;
+  --amber-soft:#fffbeb;
+  --amber-line:#fde68a;
+  --amber-tx:#92400e;
+  --ink:#12263f;
+  --body:#3d4f63;
+  --muted:#7a8ca3;
+  --line:#e4e9f0;
+  --bg-soft:#f7f9fc;
+  --ff:'Inter',-apple-system,Segoe UI,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#fff;color:var(--body);font-family:var(--ff);font-size:14px;line-height:1.6;
+  -webkit-font-smoothing:antialiased}
+.wrap{max-width:900px;margin:0 auto;padding:0 34px}
+
+/* ── Header ── */
+.top{background:var(--navy);color:#fff}
+.top-in{max-width:900px;margin:0 auto;padding:22px 34px;display:flex;align-items:center;
+  justify-content:space-between;gap:20px}
+.logo{display:flex;align-items:center;gap:10px}
+.logo svg{width:22px;height:22px;flex:none}
+.logo-tx{font-size:19px;font-weight:700;letter-spacing:-.01em}
+.top-kind{font-size:17px;font-weight:600}
+
+/* ── Meta ── */
+.meta{display:grid;grid-template-columns:repeat(4,1fr);border-bottom:1px solid var(--line)}
+.meta-c{padding:16px 20px;border-right:1px solid var(--line)}
+.meta-c:last-child{border-right:none}
+.meta-k{font-size:9.5px;font-weight:600;letter-spacing:.11em;text-transform:uppercase;
+  color:var(--muted);margin-bottom:5px}
+.meta-v{font-size:13.5px;font-weight:600;color:var(--ink);line-height:1.35}
+
+/* ── Hero ── */
+.hero{background:var(--navy);border-radius:11px;padding:26px 30px;margin:26px 0 22px;color:#fff}
+.hero h1{font-size:22px;font-weight:700;color:var(--green);line-height:1.3;margin-bottom:11px}
+.hero p{font-size:13.5px;color:#c3d0e0;line-height:1.65}
+
+/* ── Secciones ── */
+section{margin-bottom:26px;break-inside:auto}
+.sec-h{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin-bottom:13px}
+.sec-h h2{font-size:16.5px;font-weight:700;color:var(--ink);display:flex;align-items:center;gap:8px}
+.sec-h h2::before{content:"▶";color:var(--green);font-size:11px}
+.sec-note{font-size:11.5px;color:var(--muted);text-align:right;flex:none}
+p.intro{margin-bottom:14px}
+strong{color:var(--ink);font-weight:600}
+
+/* ── Tabla ── */
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th{text-align:left;padding:9px 14px;font-size:9.5px;font-weight:600;letter-spacing:.11em;
+  text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--line)}
+td{padding:11px 14px;border-bottom:1px solid var(--line)}
+td:first-child{color:var(--ink);font-weight:500}
+
+/* ── Pasos ── */
+.steps{border:1px solid var(--line);border-radius:11px;overflow:hidden}
+.step{display:flex;gap:15px;padding:15px 18px;border-bottom:1px solid var(--line);break-inside:avoid}
+.step:last-child{border-bottom:none}
+.step:nth-child(even){background:var(--bg-soft)}
+.step-n{flex:none;width:25px;height:25px;border-radius:50%;background:var(--navy);color:#fff;
+  display:grid;place-items:center;font-size:12px;font-weight:700}
+.step-b{flex:1;min-width:0}
+.step-t{display:flex;align-items:baseline;justify-content:space-between;gap:14px;margin-bottom:4px}
+.step-t h3{font-size:14px;font-weight:600;color:var(--ink)}
+.who{font-size:11.5px;font-weight:600;flex:none}
+.who.us{color:var(--muted)}
+.who.you{color:var(--blue)}
+.step-b p{font-size:13px;margin-bottom:8px}
+.step-b p:last-child{margin-bottom:0}
+
+/* ── Datos ── */
+.data{background:var(--bg-soft);border:1px solid var(--line);border-radius:8px;padding:11px 13px;
+  margin:9px 0;font-family:ui-monospace,Menlo,monospace;font-size:12.5px;color:var(--navy);
+  word-break:break-word}
+.data-k{display:block;font-family:var(--ff);font-size:9.5px;font-weight:600;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+
+/* ── Cajas ── */
+.box{border-radius:10px;padding:15px 18px;margin:14px 0;font-size:13px;border:1px solid;break-inside:avoid}
+.box-t{font-weight:600;margin-bottom:4px}
+.box.ok{background:var(--green-soft);border-color:var(--green-line)}
+.box.ok .box-t{color:var(--green-dk)}
+.box.ok p{color:#065f46}
+.box.warn{background:var(--amber-soft);border-color:var(--amber-line)}
+.box.warn .box-t{color:var(--amber-tx)}
+.box.warn p{color:#78350f}
+.box.info{background:var(--blue-soft);border-color:var(--blue-line)}
+.box.info .box-t{color:#1e40af}
+.box.info p{color:#1e3a8a}
+
+/* ── Listas ── */
+ul.check{list-style:none}
+ul.check li{position:relative;padding-left:24px;margin-bottom:9px;font-size:13.5px}
+ul.check li::before{content:"";position:absolute;left:0;top:4px;width:13px;height:13px;border-radius:3px;
+  border:1.5px solid var(--green)}
+ul.dot{list-style:none}
+ul.dot li{position:relative;padding-left:17px;margin-bottom:7px;font-size:13.5px}
+ul.dot li::before{content:"";position:absolute;left:2px;top:8px;width:5px;height:5px;border-radius:50%;
+  background:var(--green)}
+
+/* ── FAQ ── */
+.faqs{display:grid;gap:11px}
+.faq{border:1px solid var(--line);border-radius:10px;padding:15px 18px;break-inside:avoid}
+.faq h3{font-size:13.5px;font-weight:600;color:var(--ink);margin-bottom:4px}
+.faq p{font-size:13px}
+
+/* ── Footer ── */
+.foot{background:var(--navy);color:#fff;margin-top:30px}
+.foot-in{max-width:900px;margin:0 auto;padding:20px 34px;display:flex;align-items:center;
+  justify-content:space-between;gap:20px;flex-wrap:wrap;font-size:13px}
+.foot-cta{font-weight:600}
+.foot-c{color:#a9bdd4;font-size:12.5px}
+.pg{text-align:right;color:var(--muted);font-size:10.5px;padding:10px 0 0}
+
+@media(max-width:640px){
+  .wrap,.top-in,.foot-in{padding-left:20px;padding-right:20px}
+  .meta{grid-template-columns:repeat(2,1fr)}
+  .meta-c:nth-child(2){border-right:none}
+  .meta-c:nth-child(-n+2){border-bottom:1px solid var(--line)}
+  .step-t{flex-direction:column;gap:2px}
+}
+
+/* ── Impresión ── */
+@page{margin:0}
+@media print{
+  html,body{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .wrap{max-width:100%;padding:0 16mm}
+  .top-in,.foot-in{max-width:100%;padding-left:16mm;padding-right:16mm}
+  .step,.faq,.box,table,.hero{break-inside:avoid}
+  h2,h3{break-after:avoid}
+  section{margin-bottom:22px}
+}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <div class="top-in">
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M13.5 2 4 13.2h6.1L9.4 22 20 10.6h-6.4L13.5 2Z" fill="#10B981"/>
+      </svg>
+      <span class="logo-tx">Scalerics</span>
+    </div>
+    <div class="top-kind">Guía</div>
+  </div>
+</div>
+
+<div class="wrap">
+  <div class="meta">
+    <div class="meta-c">
+      <div class="meta-k">Cliente</div>
+      <div class="meta-v">Easy Rider</div>
+    </div>
+    <div class="meta-c">
+      <div class="meta-k">Fecha</div>
+      <div class="meta-v">07/08/2026</div>
+    </div>
+    <div class="meta-c">
+      <div class="meta-k">Dominio</div>
+      <div class="meta-v">easyrider.com.uy</div>
+    </div>
+    <div class="meta-c">
+      <div class="meta-k">Tema</div>
+      <div class="meta-v">Apuntar el dominio al nuevo sitio</div>
+    </div>
+  </div>
+
+  <div class="hero">
+    <h1>Tu dominio ya es tuyo — sólo hay que decirle dónde está la tienda</h1>
+    <p>
+      <strong style="color:#fff">easyrider.com.uy</strong> está registrado y vigente. Hoy muestra una
+      página vacía de Antel porque nunca se le indicó dónde está el sitio. Se resuelve con un cambio,
+      una sola vez, sin costo y sin conocimientos técnicos. De los cinco pasos, sólo dos los hacés vos.
+    </p>
+  </div>
+
+  <section>
+    <div class="sec-h">
+      <h2>Qué cambia</h2>
+      <span class="sec-note">Antes y después del cambio</span>
+    </div>
+    <table>
+      <tr><th>Situación</th><th>Hoy</th><th>Después</th></tr>
+      <tr><td>Tu dominio</td><td>Página vacía de Antel</td><td>Tu tienda online</td></tr>
+      <tr><td>Candado de seguridad (HTTPS)</td><td>No tiene</td><td>Incluido, sin costo</td></tr>
+      <tr><td>Correos @easyrider.com.uy</td><td>No existen</td><td>Se pueden crear, gratis</td></tr>
+      <tr><td>Costo del cambio</td><td colspan="2">Ninguno</td></tr>
+    </table>
+
+    <div class="box ok">
+      <div class="box-t">✓ No se rompe nada</div>
+      <p>
+        Revisamos tu dominio: no tiene sitio publicado ni casillas de correo configuradas. Lo único
+        que desaparece es la página vacía de Antel, que es justamente lo que queremos.
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-h">
+      <h2>Antes de empezar</h2>
+      <span class="sec-note">Dos accesos necesarios</span>
+    </div>
+    <ul class="check">
+      <li>
+        <strong>El panel donde está registrado el dominio.</strong> Suele ser Antel o NIC.uy. Si no
+        sabés cuál es o perdiste la clave, escribinos antes de seguir.
+      </li>
+      <li>
+        <strong>El correo easyriders@adinet.com.uy</strong>, que figura como contacto del dominio.
+        Ahí pueden llegar los avisos de confirmación.
+      </li>
+    </ul>
+    <div class="box warn">
+      <div class="box-t">⚠ Si perdiste el acceso al correo</div>
+      <p>
+        Resolvelo primero con Antel. Sin ese acceso puede que no se pueda validar el cambio, y es lo
+        que más demora si aparece un problema.
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-h">
+      <h2>Los cinco pasos</h2>
+      <span class="sec-note">Vos sólo hacés el 3 y el 4</span>
+    </div>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-n">1</div>
+        <div class="step-b">
+          <div class="step-t">
+            <h3>Damos de alta el dominio en Cloudflare</h3>
+            <span class="who us">lo hacemos nosotros</span>
+          </div>
+          <p>
+            Agregamos <strong>easyrider.com.uy</strong> a nuestra cuenta de Cloudflare en el plan
+            gratuito. El sistema copia solo la configuración que ya tenés.
+          </p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-n">2</div>
+        <div class="step-b">
+          <div class="step-t">
+            <h3>Te pasamos dos direcciones</h3>
+            <span class="who us">lo hacemos nosotros</span>
+          </div>
+          <p>Cloudflare nos da dos nameservers. Te los enviamos y se ven parecidos a esto:</p>
+          <div class="data">
+            <span class="data-k">Ejemplo — los tuyos te los pasamos por WhatsApp</span>
+            alina.ns.cloudflare.com<br>rick.ns.cloudflare.com
+          </div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-n">3</div>
+        <div class="step-b">
+          <div class="step-t">
+            <h3>Entrás al panel de tu dominio</h3>
+            <span class="who you">lo hacés vos</span>
+          </div>
+          <p>
+            Ingresás donde administrás <strong>easyrider.com.uy</strong> y buscás la sección
+            <strong>DNS</strong>, <strong>Servidores de nombres</strong> o <strong>Nameservers</strong>.
+            Vas a ver estas dos direcciones cargadas:
+          </p>
+          <div class="data">
+            <span class="data-k">Lo que vas a encontrar</span>
+            ns1.anteldata.com.uy<br>ns2.anteldata.com.uy
+          </div>
+          <p>
+            Si no encontrás dónde está, sacale una foto a la pantalla y mandanosla: te decimos
+            exactamente dónde tocar.
+          </p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-n">4</div>
+        <div class="step-b">
+          <div class="step-t">
+            <h3>Reemplazás las dos direcciones</h3>
+            <span class="who you">lo hacés vos</span>
+          </div>
+          <p>
+            Borrás las dos de Antel, ponés las dos que te pasamos en el paso 2 y guardás. Eso es todo.
+          </p>
+          <div class="box info" style="margin:9px 0 0">
+            <div class="box-t">Importante</div>
+            <p>
+              Tienen que quedar <strong style="color:inherit">sólo las dos nuevas</strong>. Si quedan
+              mezcladas con las de Antel, el sitio va a funcionar a veces sí y a veces no.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-n">5</div>
+        <div class="step-b">
+          <div class="step-t">
+            <h3>Conectamos todo</h3>
+            <span class="who us">lo hacemos nosotros</span>
+          </div>
+          <p>
+            Cuando el cambio se propaga, conectamos tu tienda al dominio, activamos el candado de
+            seguridad y dejamos listos los correos. Te avisamos cuando esté funcionando.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-h">
+      <h2>Cuánto demora</h2>
+      <span class="sec-note">Suele ser cuestión de minutos</span>
+    </div>
+    <p class="intro">
+      El cambio no es instantáneo: internet tarda un rato en enterarse. Por norma puede llevar hasta
+      24 horas, aunque casi siempre es mucho menos.
+    </p>
+    <ul class="dot">
+      <li>Durante ese tiempo tu dominio puede mostrarse de forma intermitente. Es normal.</li>
+      <li>Mientras tanto, la tienda sigue disponible en su dirección actual.</li>
+      <li>Cloudflare nos avisa por correo apenas queda activo.</li>
+    </ul>
+  </section>
+
+  <section>
+    <div class="sec-h">
+      <h2>Preguntas frecuentes</h2>
+      <span class="sec-note">Las que siempre aparecen</span>
+    </div>
+    <div class="faqs">
+      <div class="faq">
+        <h3>¿Pierdo el dominio o tengo que pagarlo de nuevo?</h3>
+        <p>
+          No. Sigue siendo tuyo y se renueva donde lo renovás hoy. Sólo cambia hacia dónde apunta.
+          Cloudflare no cobra por esto.
+        </p>
+      </div>
+      <div class="faq">
+        <h3>¿Se pierde algún correo?</h3>
+        <p>
+          No, porque hoy no tenés casillas con tu dominio. Al contrario: después del cambio vamos a
+          poder crearte direcciones como <strong>ventas@easyrider.com.uy</strong> sin costo.
+        </p>
+      </div>
+      <div class="faq">
+        <h3>¿Puedo volver atrás si algo sale mal?</h3>
+        <p>
+          Sí. Se vuelven a poner los nameservers de Antel y queda como estaba. Nada de esto es
+          definitivo.
+        </p>
+      </div>
+      <div class="faq">
+        <h3>¿Quién queda como dueño del dominio?</h3>
+        <p>
+          Vos, siempre. Nosotros administramos a dónde apunta, pero la titularidad no se toca ni se
+          transfiere a nadie.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <div class="pg">Guía Easy Rider · Dominio</div>
+</div>
+
+<div class="foot">
+  <div class="foot-in">
+    <span class="foot-cta">¿Dudas con algún paso? Escribinos y lo hacemos juntos.</span>
+    <span class="foot-c">scalerics@gmail.com &nbsp;·&nbsp; +598 94 053 389 &nbsp;·&nbsp; scalerics.com</span>
+  </div>
+</div>
+
+</body>
+</html>

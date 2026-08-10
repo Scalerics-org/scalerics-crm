@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hexast Implantes Médicos · Control de stock · Scalerics</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Raleway:ital,wght@0,700;0,800;0,900;1,700;1,900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #09090f;
+      --surface: rgba(255,255,255,.04);
+      --border: rgba(255,255,255,.07);
+      --text: #e2e8f0;
+      --muted: #64748b;
+      --blue: #0088CC;
+      --blue-lt: #33aadd;
+      --blue-dk: #005f8e;
+      --blue-glow: rgba(0,136,204,.14);
+      --blue-border: rgba(0,136,204,.28);
+      --green: #10B981;
+      --green-lt: #34d399;
+      --green-glow: rgba(16,185,129,.12);
+      --ff: 'Inter', sans-serif;
+      --ff-d: 'Raleway', sans-serif;
+    }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: var(--ff); }
+
+    #progress { position: fixed; top: 0; left: 0; height: 3px; width: 14.28%; background: linear-gradient(90deg, var(--blue-dk), var(--blue), var(--blue-lt)); z-index: 100; transition: width .5s cubic-bezier(.4,0,.2,1); box-shadow: 0 0 10px var(--blue-glow); }
+    #counter { position: fixed; top: 16px; right: 20px; z-index: 100; font-size: 11px; color: var(--muted); letter-spacing: .06em; font-weight: 300; }
+    #deck { position: relative; width: 100%; height: 100vh; }
+    .slide { position: absolute; inset: 0; opacity: 0; transform: translateX(60px); pointer-events: none; z-index: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 64px 52px 100px; transition: opacity .45s cubic-bezier(.4,0,.2,1), transform .45s cubic-bezier(.4,0,.2,1); }
+    .slide.active { opacity: 1; transform: translateX(0); pointer-events: all; z-index: 2; }
+    .slide.out { opacity: 0; transform: translateX(-60px); }
+    #nav { position: fixed; bottom: 22px; left: 0; right: 0; display: flex; justify-content: center; align-items: center; gap: 14px; z-index: 100; }
+    .nbtn { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 13px; transition: background .2s; }
+    .nbtn:hover { background: rgba(255,255,255,.1); }
+    .nbtn.nxt { background: linear-gradient(135deg, var(--blue-dk), var(--blue)); border: none; box-shadow: 0 4px 16px rgba(0,136,204,.3); }
+    .nbtn.nxt:hover { opacity: .85; transform: translateY(-1px); }
+    #dots { display: flex; gap: 7px; align-items: center; }
+    .dot { width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,.18); cursor: pointer; transition: all .3s; }
+    .dot.on { background: var(--blue); width: 20px; border-radius: 3px; }
+    #wm { position: fixed; bottom: 66px; left: 20px; font-size: 10px; color: rgba(255,255,255,.07); letter-spacing: .12em; text-transform: uppercase; font-weight: 600; z-index: 99; }
+
+    /* shared */
+    .label { font-size: 11px; letter-spacing: .2em; text-transform: uppercase; color: var(--blue); font-weight: 700; margin-bottom: 12px; }
+    .s-title { font-family: var(--ff-d); font-size: clamp(26px, 3.8vw, 48px); font-weight: 800; line-height: 1.1; text-align: center; margin-bottom: 36px; }
+    .s-title em { font-style: italic; color: var(--blue); }
+    .s-title span.g { background: linear-gradient(135deg, var(--blue), var(--green)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+
+    /* S1 cover */
+    #s1 { align-items: flex-start; overflow: hidden; }
+    #s1::before { content: ''; position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse 55% 70% at 90% 40%, rgba(0,136,204,.08) 0%, transparent 65%), radial-gradient(ellipse 30% 40% at 5% 80%, rgba(16,185,129,.06) 0%, transparent 60%); }
+    .s1-inner { position: relative; z-index: 1; max-width: 760px; }
+    .s1-logo { height: 32px; object-fit: contain; margin-bottom: 40px; opacity: .9; }
+    .s1-badge { display: inline-flex; align-items: center; gap: 8px; background: rgba(0,136,204,.1); border: 1px solid var(--blue-border); border-radius: 100px; padding: 5px 16px; font-size: 11px; color: var(--blue-lt); letter-spacing: .08em; font-weight: 600; text-transform: uppercase; margin-bottom: 26px; }
+    .s1-h1 { font-family: var(--ff-d); font-size: clamp(46px, 6.4vw, 78px); font-weight: 900; line-height: .94; letter-spacing: -.025em; margin-bottom: 14px; }
+    .s1-h1 em { font-style: italic; color: var(--blue); }
+    .s1-sub { font-size: 16px; color: rgba(226,232,240,.5); font-weight: 300; margin-bottom: 42px; max-width: 540px; line-height: 1.65; }
+    .s1-pills { display: flex; gap: 10px; flex-wrap: wrap; }
+    .s1-pill { display: flex; align-items: center; gap: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 9px 16px; font-size: 13px; font-weight: 500; }
+    .s1-pill i { color: var(--blue); font-size: 14px; }
+
+    /* S2 problem */
+    .prob-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; max-width: 860px; width: 100%; }
+    .prob-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 26px 20px; text-align: center; }
+    .prob-icon { font-size: 28px; margin-bottom: 12px; }
+    .prob-title { font-weight: 700; font-size: 14px; margin-bottom: 8px; }
+    .prob-desc { font-size: 13px; color: rgba(226,232,240,.55); line-height: 1.55; }
+
+    /* S3 solution */
+    .sol-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; max-width: 740px; width: 100%; margin-bottom: 30px; }
+    .sol-row { display: flex; align-items: flex-start; gap: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+    .sol-check { width: 22px; height: 22px; border-radius: 6px; background: var(--green-glow); border: 1px solid rgba(16,185,129,.3); display: flex; align-items: center; justify-content: center; color: var(--green); font-size: 11px; flex-shrink: 0; margin-top: 1px; }
+    .sol-text { font-size: 13px; line-height: 1.5; color: rgba(226,232,240,.8); }
+    .sol-text strong { color: var(--text); font-weight: 600; }
+    .sol-stats { display: flex; gap: 44px; }
+    .sol-stat { text-align: center; }
+    .sol-stat .num { font-family: var(--ff-d); font-size: 38px; font-weight: 900; color: var(--blue); line-height: 1; }
+    .sol-stat .desc { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+    /* S4-6 browser mockups */
+    .browser { border-radius: 10px; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,.7); }
+    .brow-bar { background: #131722; padding: 9px 14px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid rgba(255,255,255,.06); }
+    .bdot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+    .burl { flex: 1; background: #1c2133; border: 1px solid rgba(255,255,255,.07); border-radius: 5px; padding: 3px 10px; font-size: 11px; font-family: monospace; color: var(--muted); }
+    .burl i { font-size: 9px; color: var(--green); margin-right: 4px; }
+    .brow-body { height: 460px; overflow-y: auto; overflow-x: hidden; }
+    .brow-body::-webkit-scrollbar { width: 5px; }
+    .brow-body::-webkit-scrollbar-track { background: rgba(255,255,255,.04); }
+    .brow-body::-webkit-scrollbar-thumb { background: rgba(0,136,204,.4); border-radius: 3px; }
+    .brow-body::-webkit-scrollbar-thumb:hover { background: rgba(0,136,204,.65); }
+    .slide.mock { padding: 28px 40px 80px; }
+    .mwrap { width: 100%; max-width: 920px; }
+    .mlabel { font-size: 10px; font-weight: 700; color: var(--muted); margin-bottom: 8px; letter-spacing: .1em; text-transform: uppercase; }
+
+    /* S7 pricing */
+    .price-card { background: var(--surface); border: 1px solid var(--blue-border); border-radius: 20px; padding: 38px 42px; max-width: 540px; width: 100%; text-align: center; position: relative; }
+    .price-glow { position: absolute; inset: -1px; border-radius: 20px; background: linear-gradient(135deg, rgba(0,136,204,.2), transparent 60%); pointer-events: none; }
+    .price-badge { display: inline-block; background: rgba(16,185,129,.12); border: 1px solid rgba(16,185,129,.3); color: var(--green); border-radius: 100px; padding: 4px 14px; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 18px; }
+    .cta-price { display: flex; align-items: flex-start; justify-content: center; gap: 4px; margin-bottom: 6px; }
+    .cta-price-currency { font-family: var(--ff-d); font-size: 26px; font-weight: 800; color: var(--blue); margin-top: 8px; }
+    .cta-price-amount { font-family: var(--ff-d); font-size: 56px; font-weight: 900; color: var(--blue); line-height: 1; }
+    .cta-price-label { font-size: 12px; color: var(--muted); align-self: flex-end; margin-bottom: 8px; margin-left: 4px; }
+    .price-sub { font-size: 13px; color: var(--muted); margin-bottom: 28px; }
+    .price-list { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; text-align: left; }
+    .price-item { display: flex; align-items: center; gap: 8px; font-size: 13px; color: rgba(226,232,240,.75); }
+    .price-item i { color: var(--green); font-size: 11px; }
+    .wa-btn { display: inline-flex; align-items: center; gap: 9px; margin-top: 26px; background: linear-gradient(135deg, #0f9d6e, var(--green)); color: #fff; border-radius: 10px; padding: 12px 26px; font-size: 14px; font-weight: 700; text-decoration: none; box-shadow: 0 6px 20px rgba(16,185,129,.25); transition: transform .2s, opacity .2s; }
+    .wa-btn:hover { transform: translateY(-2px); opacity: .92; }
+  </style>
+</head>
+<body>
+<div id="progress"></div>
+<div id="counter">1 / 7</div>
+<div id="wm">Scalerics</div>
+<div id="deck">
+
+  <!-- S1: PORTADA -->
+  <section class="slide active" id="s1">
+    <div class="s1-inner">
+      <img class="s1-logo" src="https://raw.githubusercontent.com/juantomasetti1/scalerics-assets/main/logo_full_alt.png" alt="Scalerics">
+      <div class="s1-badge"><i class="fa fa-boxes-stacked"></i> Hexast Implantes Médicos</div>
+      <h1 class="s1-h1">Cada implante,<br><em>siempre ubicado.</em></h1>
+      <p class="s1-sub">Un solo sistema para los depósitos de Buenos Aires y Tucumán. Stock real, trazabilidad por lote y serie, y control de todo lo que sale a cirugía.</p>
+      <div class="s1-pills">
+        <div class="s1-pill"><i class="fa fa-warehouse"></i> Dos depósitos unificados</div>
+        <div class="s1-pill"><i class="fa fa-barcode"></i> Lote, serie y vencimiento</div>
+        <div class="s1-pill"><i class="fa fa-hospital"></i> Consignación controlada</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- S2: PROBLEMA -->
+  <section class="slide" id="s2">
+    <div class="label">La situación hoy</div>
+    <h2 class="s-title">El Excel ya no alcanza<br>para <em>dos depósitos</em></h2>
+    <div class="prob-grid">
+      <div class="prob-card">
+        <div class="prob-icon">📊</div>
+        <div class="prob-title">Dos planillas que no coinciden</div>
+        <div class="prob-desc">Buenos Aires tiene su Excel y Tucumán el suyo. Nadie puede responder rápido cuánto hay en total ni de dónde conviene despachar.</div>
+      </div>
+      <div class="prob-card">
+        <div class="prob-icon">🏥</div>
+        <div class="prob-title">No se sabe qué hay en la calle</div>
+        <div class="prob-desc">Los sets salen a cirugía y vuelven incompletos. La diferencia aparece semanas después, cuando ya no hay a quién reclamarle.</div>
+      </div>
+      <div class="prob-card">
+        <div class="prob-icon">⏳</div>
+        <div class="prob-title">Lote y vencimiento a mano</div>
+        <div class="prob-desc">Rastrear un lote hacia atrás lleva horas de buscar entre remitos. Y la mercadería se vence sin que nadie lo vea venir.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- S3: SOLUCIÓN -->
+  <section class="slide" id="s3">
+    <div class="label">Lo que construimos</div>
+    <h2 class="s-title">Un sistema pensado para <span class="g">implantes médicos</span></h2>
+    <div class="sol-grid">
+      <div class="sol-row">
+        <div class="sol-check"><i class="fa fa-check"></i></div>
+        <div class="sol-text"><strong>Stock unificado</strong> de Buenos Aires y Tucumán, actualizado en el momento</div>
+      </div>
+      <div class="sol-row">
+        <div class="sol-check"><i class="fa fa-check"></i></div>
+        <div class="sol-text"><strong>Cada unidad con lote, serie y vencimiento</strong>, escaneando el código del producto</div>
+      </div>
+      <div class="sol-row">
+        <div class="sol-check"><i class="fa fa-check"></i></div>
+        <div class="sol-text"><strong>Consignaciones bajo control:</strong> qué salió, a qué sanatorio, qué se implantó y qué volvió</div>
+      </div>
+      <div class="sol-row">
+        <div class="sol-check"><i class="fa fa-check"></i></div>
+        <div class="sol-text"><strong>Alertas automáticas</strong> de vencimientos próximos, stock mínimo y cajas sin devolver</div>
+      </div>
+      <div class="sol-row">
+        <div class="sol-check"><i class="fa fa-check"></i></div>
+        <div class="sol-text"><strong>Trazabilidad completa</strong> de punta a punta: de qué remito entró hasta en qué cirugía se usó</div>
+      </div>
+      <div class="sol-row">
+        <div class="sol-check"><i class="fa fa-check"></i></div>
+        <div class="sol-text"><strong>Transferencias entre depósitos</strong> con confirmación de recepción, sin mercadería en el limbo</div>
+      </div>
+    </div>
+    <div class="sol-stats">
+      <div class="sol-stat"><div class="num">2</div><div class="desc">depósitos en una vista</div></div>
+      <div class="sol-stat"><div class="num">0</div><div class="desc">planillas de Excel</div></div>
+      <div class="sol-stat"><div class="num">100%</div><div class="desc">de las unidades trazadas</div></div>
+    </div>
+  </section>
+
+  <!-- S4: MOCKUP 1 — Panel de stock -->
+  <section class="slide mock" id="s4">
+    <div class="mlabel">Demo · Panel de stock — los dos depósitos</div>
+    <div class="mwrap">
+      <div class="browser">
+        <div class="brow-bar">
+          <span class="bdot" style="background:#FF5F57"></span>
+          <span class="bdot" style="background:#FEBC2E"></span>
+          <span class="bdot" style="background:#28C840"></span>
+          <div class="burl"><i class="fa fa-lock"></i> app.hexast.com.ar/stock</div>
+        </div>
+        <div class="brow-body" style="background:#0d1117;display:flex;flex-direction:column;">
+          <!-- Topbar -->
+          <div style="background:#0a0d14;border-bottom:1px solid rgba(255,255,255,.06);padding:0 16px;height:42px;display:flex;align-items:center;gap:12px;flex-shrink:0">
+            <div style="font-family:'Raleway',sans-serif;font-weight:800;font-size:13px;color:#0088CC">HEXAST</div>
+            <div style="display:flex;gap:5px">
+              <span style="font-size:9px;background:rgba(0,136,204,.14);color:#33aadd;border:1px solid rgba(0,136,204,.25);border-radius:5px;padding:3px 9px;font-weight:600">Todos los depósitos</span>
+              <span style="font-size:9px;color:#64748b;border:1px solid rgba(255,255,255,.06);border-radius:5px;padding:3px 9px">Buenos Aires</span>
+              <span style="font-size:9px;color:#64748b;border:1px solid rgba(255,255,255,.06);border-radius:5px;padding:3px 9px">Tucumán</span>
+            </div>
+            <div style="flex:1"></div>
+            <div style="background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.2);border-radius:5px;padding:3px 9px;font-size:9px;color:#10B981;font-weight:600">🟢 Sincronizado</div>
+            <span style="font-size:11px;color:#64748b">Depósito BsAs</span>
+          </div>
+          <!-- Layout -->
+          <div style="display:flex;flex:1">
+            <!-- Sidebar -->
+            <div style="width:172px;background:#0a0d14;border-right:1px solid rgba(255,255,255,.06);flex-shrink:0">
+              <div style="padding:8px 12px;font-size:10px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid rgba(255,255,255,.05)">Operación</div>
+              <div style="padding:9px 14px;background:rgba(0,136,204,.08);border-left:2px solid #0088CC;display:flex;align-items:center;gap:8px">
+                <i class="fa fa-boxes-stacked" style="color:#0088CC;font-size:10px;width:12px"></i>
+                <span style="font-size:11px;color:#e2e8f0">Stock</span>
+              </div>
+              <div style="padding:9px 14px;border-bottom:1px solid rgba(255,255,255,.04);display:flex;align-items:center;gap:8px">
+                <i class="fa fa-right-left" style="color:#64748b;font-size:10px;width:12px"></i>
+                <span style="font-size:11px;color:#64748b">Movimientos</span>
+              </div>
+              <div style="padding:9px 14px;border-bottom:1px solid rgba(255,255,255,.04);display:flex;align-items:center;justify-content:space-between">
+                <div style="display:flex;align-items:center;gap:8px">
+                  <i class="fa fa-hospital" style="color:#64748b;font-size:10px;width:12px"></i>
+                  <span style="font-size:11px;color:#64748b">Consignaciones</span>
+                </div>
+                <span style="background:rgba(0,136,204,.15);color:#0088CC;border-radius:4px;padding:1px 5px;font-size:9px">14</span>
+              </div>
+              <div style="padding:9px 14px;border-bottom:1px solid rgba(255,255,255,.04);display:flex;align-items:center;gap:8px">
+                <i class="fa fa-truck-ramp-box" style="color:#64748b;font-size:10px;width:12px"></i>
+                <span style="font-size:11px;color:#64748b">Ingresos</span>
+              </div>
+              <div style="padding:9px 14px;border-bottom:1px solid rgba(255,255,255,.04);display:flex;align-items:center;gap:8px">
+                <i class="fa fa-barcode" style="color:#64748b;font-size:10px;width:12px"></i>
+                <span style="font-size:11px;color:#64748b">Trazabilidad</span>
+              </div>
+              <div style="padding:9px 14px;border-bottom:1px solid rgba(255,255,255,.04);display:flex;align-items:center;justify-content:space-between">
+                <div style="display:flex;align-items:center;gap:8px">
+                  <i class="fa fa-triangle-exclamation" style="color:#64748b;font-size:10px;width:12px"></i>
+                  <span style="font-size:11px;color:#64748b">Alertas</span>
+                </div>
+                <span style="background:rgba(251,191,36,.15);color:#fbbf24;border-radius:4px;padding:1px 5px;font-size:9px">7</span>
+              </div>
+              <div style="padding:9px 14px;border-bottom:1px solid rgba(255,255,255,.04);display:flex;align-items:center;gap:8px">
+                <i class="fa fa-chart-bar" style="color:#64748b;font-size:10px;width:12px"></i>
+                <span style="font-size:11px;color:#64748b">Reportes</span>
+              </div>
+              <div style="padding:9px 14px;display:flex;align-items:center;gap:8px">
+                <i class="fa fa-gear" style="color:#64748b;font-size:10px;width:12px"></i>
+                <span style="font-size:11px;color:#64748b">Configuración</span>
+              </div>
+            </div>
+            <!-- Main -->
+            <div style="flex:1;padding:12px;display:flex;flex-direction:column;gap:10px">
+              <!-- 4 stat cards -->
+              <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
+                <div style="background:#131722;border-radius:8px;padding:12px;border:1px solid rgba(255,255,255,.06)">
+                  <div style="font-size:8px;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Unidades en depósito</div>
+                  <div style="font-size:20px;font-weight:700;color:#e2e8f0">1.847</div>
+                  <div style="font-size:9px;color:#64748b">1.203 BsAs · 644 Tucumán</div>
+                </div>
+                <div style="background:#131722;border-radius:8px;padding:12px;border:1px solid rgba(255,255,255,.06)">
+                  <div style="font-size:8px;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">En consignación</div>
+                  <div style="font-size:20px;font-weight:700;color:#0088CC">213</div>
+                  <div style="font-size:9px;color:#64748b">en 14 sanatorios</div>
+                </div>
+                <div style="background:#131722;border-radius:8px;padding:12px;border:1px solid rgba(251,191,36,.18)">
+                  <div style="font-size:8px;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Vencen en 90 días</div>
+                  <div style="font-size:20px;font-weight:700;color:#fbbf24">34</div>
+                  <div style="font-size:9px;color:#fbbf24">requieren rotación</div>
+                </div>
+                <div style="background:#131722;border-radius:8px;padding:12px;border:1px solid rgba(255,255,255,.06)">
+                  <div style="font-size:8px;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Movimientos hoy</div>
+                  <div style="font-size:20px;font-weight:700;color:#10B981">18</div>
+                  <div style="font-size:9px;color:#64748b">9 salidas · 6 ingresos · 3 transf.</div>
+                </div>
+              </div>
+              <!-- Stock table -->
+              <div style="background:#131722;border-radius:8px;border:1px solid rgba(255,255,255,.06);overflow:hidden">
+                <div style="padding:9px 14px;font-size:10px;font-weight:600;color:#94a3b8;border-bottom:1px solid rgba(255,255,255,.05);display:flex;justify-content:space-between;align-items:center">
+                  <span>Stock por producto</span>
+                  <span style="font-size:9px;color:#64748b;background:#1c2133;border:1px solid rgba(255,255,255,.06);border-radius:4px;padding:2px 8px"><i class="fa fa-magnifying-glass" style="font-size:8px"></i> Buscar código o descripción</span>
+                </div>
+                <div style="display:grid;grid-template-columns:1.9fr .55fr .55fr .5fr .8fr;padding:6px 14px;font-size:8px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid rgba(255,255,255,.05)">
+                  <span>Producto</span><span style="text-align:center">BsAs</span><span style="text-align:center">Tuc.</span><span style="text-align:center">Total</span><span style="text-align:right">Estado</span>
+                </div>
+                <div style="display:grid;grid-template-columns:1.9fr .55fr .55fr .5fr .8fr;padding:7px 14px;align-items:center;border-bottom:1px solid rgba(255,255,255,.04)">
+                  <div><div style="font-size:11px;color:#e2e8f0">Placa LCP tibia proximal 4.5</div><div style="font-size:8px;color:#64748b">HX-PL-4501</div></div>
+                  <span style="font-size:11px;color:#e2e8f0;text-align:center">42</span>
+                  <span style="font-size:11px;color:#e2e8f0;text-align:center">18</span>
+                  <span style="font-size:11px;color:#e2e8f0;text-align:center;font-weight:600">60</span>
+                  <span style="text-align:right"><span style="font-size:9px;background:rgba(16,185,129,.12);color:#10B981;border:1px solid rgba(16,185,129,.2);border-radius:4px;padding:2px 7px">Normal</span></span>
+                </div>
+                <div style="display:grid;grid-template-columns:1.9fr .55fr .55fr .5fr .8fr;padding:7px 14px;align-items:center;border-bottom:1px solid rgba(255,255,255,.04)">
+                  <div><div style="font-size:11px;color:#e2e8f0">Tornillo cortical 3.5 × 40mm</div><div style="font-size:8px;color:#64748b">HX-TC-3540</div></div>
+                  <span style="font-size:11px;color:#e2e8f0;text-align:center">386</span>
+                  <span style="font-size:11px;color:#e2e8f0;text-align:center">204</span>
+                  <span style="font-size:11px;color:#e2e8f0;text-align:center;font-weight:600">590</span>
+                  <span style="text-align:right"><span style="font-size:9px;background:rgba(16,185,129,.12);color:#10B981;border:1px solid rgba(16,185,129,.2);border-radius:4px;padding:2px 7px">Normal</span></span>
+                </div>
+                <div style="display:grid;grid-template-columns:1.9fr .55fr .55fr .5fr .8fr;padding:7px 14px;align-items:center;border-bottom:1px solid rgba(255,255,255,.04);background:rgba(251,191,36,.03)">
+                  <div><div style="font-size:11px;color:#e2e8f0">Clavo endomedular femoral 10mm</div><div style="font-size:8px;color:#64748b">HX-CE-1000</div></div>
+                  <span style="font-size:11px;color:#e2e8f0;text-align:center">3</span>
+                  <span style="font-size:11px;color:#e2e8f0;text-align:center">1</span>
+                  <span style="font-size:11px;color:#fbbf24;text-align:center;font-weight:600">4</span>
+                  <span style="text-align:right"><span style="font-size:9px;background:rgba(251,191,36,.1);color:#fbbf24;border:1px solid rgba(251,191,36,.22);border-radius:4px;padding:2px 7px">Stock bajo</span></span>
+                </div>
+                <div style="display:grid;grid-template-columns:1.9fr .55fr .55fr .5fr .8fr;padding:7px 14px;align-items:center;border-bottom:1px solid rgba(255,255,255,.04)">
+                  <div><div style="font-size:11px;color:#e2e8f0">Placa DHS 135° 4 orificios</div><div style="font-size:8px;color:#64748b">HX-DHS-1354</div></div>
+                  <span style="font-size:11px;color:#e2e8f0;text-align:center">16</span>
+                  <span style="font-size:11px;color:#e2e8f0;text-align:center">11</span>
+                  <span style="font-size:11px;color:#e2e8f0;text-align:center;font-weight:600">27</span>
+                  <span style="text-align:right"><span style="font-size:9px;background:rgba(16,185,129,.12);color:#10B981;border:1px solid rgba(16,185,129,.2);border-radius:4px;padding:2px 7px">Normal</span></span>
+                </div>
+                <div style="display:grid;grid-template-columns:1.9fr .55fr .55fr .5fr .8fr;padding:7px 14px;align-items:center;border-bottom:1px solid rgba(255,255,255,.04)">
+                  <div><div style="font-size:11px;color:#e2e8f0">Tornillo canulado 7.0 × 65mm</div><div style="font-size:8px;color:#64748b">HX-TK-7065</div></div>
+                  <span style="font-size:11px;color:#e2e8f0;text-align:center">74</span>
+                  <span style="font-size:11px;color:#e2e8f0;text-align:center">0</span>
+                  <span style="font-size:11px;color:#e2e8f0;text-align:center;font-weight:600">74</span>
+                  <span style="text-align:right"><span style="font-size:9px;background:rgba(0,136,204,.12);color:#0088CC;border:1px solid rgba(0,136,204,.22);border-radius:4px;padding:2px 7px">Transferir</span></span>
+                </div>
+                <div style="display:grid;grid-template-columns:1.9fr .55fr .55fr .5fr .8fr;padding:7px 14px;align-items:center">
+                  <div><div style="font-size:11px;color:#e2e8f0">Tornillo bloqueado 5.0 × 35mm</div><div style="font-size:8px;color:#64748b">HX-TB-5035</div></div>
+                  <span style="font-size:11px;color:#e2e8f0;text-align:center">128</span>
+                  <span style="font-size:11px;color:#e2e8f0;text-align:center">96</span>
+                  <span style="font-size:11px;color:#e2e8f0;text-align:center;font-weight:600">224</span>
+                  <span style="text-align:right"><span style="font-size:9px;background:rgba(16,185,129,.12);color:#10B981;border:1px solid rgba(16,185,129,.2);border-radius:4px;padding:2px 7px">Normal</span></span>
+                </div>
+              </div>
+              <!-- Below fold: alerts + comparison -->
+              <div style="display:grid;grid-template-columns:1.15fr 1fr;gap:10px">
+                <div style="background:#131722;border-radius:8px;border:1px solid rgba(255,255,255,.06);overflow:hidden">
+                  <div style="padding:9px 12px;font-size:10px;font-weight:600;color:#94a3b8;border-bottom:1px solid rgba(255,255,255,.05)">Alertas activas</div>
+                  <div style="padding:8px 12px;display:flex;gap:9px;align-items:flex-start;border-bottom:1px solid rgba(255,255,255,.04)">
+                    <div style="width:7px;height:7px;border-radius:50%;background:#fbbf24;margin-top:4px;flex-shrink:0"></div>
+                    <div><div style="font-size:10px;color:#e2e8f0">Lote L-24187 vence en 42 días</div><div style="font-size:9px;color:#64748b">12 unidades · Depósito Tucumán</div></div>
+                  </div>
+                  <div style="padding:8px 12px;display:flex;gap:9px;align-items:flex-start;border-bottom:1px solid rgba(255,255,255,.04)">
+                    <div style="width:7px;height:7px;border-radius:50%;background:#ef4444;margin-top:4px;flex-shrink:0"></div>
+                    <div><div style="font-size:10px;color:#e2e8f0">Consignación sin devolver hace 38 días</div><div style="font-size:9px;color:#64748b">Sanatorio 9 de Julio · Set #C-0412</div></div>
+                  </div>
+                  <div style="padding:8px 12px;display:flex;gap:9px;align-items:flex-start">
+                    <div style="width:7px;height:7px;border-radius:50%;background:#0088CC;margin-top:4px;flex-shrink:0"></div>
+                    <div><div style="font-size:10px;color:#e2e8f0">Clavo endomedular por debajo del mínimo</div><div style="font-size:9px;color:#64748b">4 unidades totales · reponer</div></div>
+                  </div>
+                </div>
+                <div style="background:#131722;border-radius:8px;padding:12px 14px;border:1px solid rgba(255,255,255,.06)">
+                  <div style="font-size:10px;color:#64748b;margin-bottom:10px">Salidas por mes</div>
+                  <div style="display:flex;align-items:flex-end;gap:8px;height:62px">
+                    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px">
+                      <div style="width:100%;background:rgba(0,136,204,.28);border-radius:3px 3px 0 0;height:58%"></div>
+                      <span style="font-size:8px;color:#64748b">Feb</span>
+                    </div>
+                    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px">
+                      <div style="width:100%;background:rgba(0,136,204,.38);border-radius:3px 3px 0 0;height:70%"></div>
+                      <span style="font-size:8px;color:#64748b">Mar</span>
+                    </div>
+                    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px">
+                      <div style="width:100%;background:rgba(0,136,204,.5);border-radius:3px 3px 0 0;height:64%"></div>
+                      <span style="font-size:8px;color:#64748b">Abr</span>
+                    </div>
+                    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px">
+                      <div style="width:100%;background:rgba(0,136,204,.65);border-radius:3px 3px 0 0;height:84%"></div>
+                      <span style="font-size:8px;color:#64748b">May</span>
+                    </div>
+                    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px">
+                      <div style="width:100%;background:#0088CC;border-radius:3px 3px 0 0;height:100%"></div>
+                      <span style="font-size:8px;color:#0088CC;font-weight:600">Jun</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- S5: MOCKUP 2 — Consignaciones -->
+  <section class="slide mock" id="s5">
+    <div class="mlabel">Demo · Consignaciones — qué está afuera y qué volvió</div>
+    <div class="mwrap">
+      <div class="browser">
+        <div class="brow-bar">
+          <span class="bdot" style="background:#FF5F57"></span>
+          <span class="bdot" style="background:#FEBC2E"></span>
+          <span class="bdot" style="background:#28C840"></span>
+          <div class="burl"><i class="fa fa-lock"></i> app.hexast.com.ar/consignaciones</div>
+        </div>
+        <div class="brow-body" style="background:#0d1117;display:flex;flex-direction:column;">
+          <!-- Topbar -->
+          <div style="background:#0a0d14;border-bottom:1px solid rgba(255,255,255,.06);padding:0 16px;height:42px;display:flex;align-items:center;gap:12px;flex-shrink:0">
+            <div style="font-family:'Raleway',sans-serif;font-weight:800;font-size:13px;color:#0088CC">HEXAST</div>
+            <div style="font-size:10px;color:#64748b;padding:4px 10px;background:rgba(255,255,255,.04);border-radius:5px;border:1px solid rgba(255,255,255,.06)">Consignaciones</div>
+            <div style="flex:1"></div>
+            <div style="font-size:9px;background:rgba(0,136,204,.12);color:#0088CC;border:1px solid rgba(0,136,204,.25);border-radius:5px;padding:3px 9px;font-weight:600">+ Nueva salida a cirugía</div>
+          </div>
+          <div style="padding:12px;display:flex;flex-direction:column;gap:10px">
+            <!-- Summary strip -->
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
+              <div style="background:#131722;border-radius:8px;padding:11px 12px;border:1px solid rgba(255,255,255,.06)">
+                <div style="font-size:8px;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Sets afuera</div>
+                <div style="font-size:19px;font-weight:700;color:#0088CC">14</div>
+              </div>
+              <div style="background:#131722;border-radius:8px;padding:11px 12px;border:1px solid rgba(255,255,255,.06)">
+                <div style="font-size:8px;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Unidades en la calle</div>
+                <div style="font-size:19px;font-weight:700;color:#e2e8f0">213</div>
+              </div>
+              <div style="background:#131722;border-radius:8px;padding:11px 12px;border:1px solid rgba(239,68,68,.2)">
+                <div style="font-size:8px;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Vencidas +30 días</div>
+                <div style="font-size:19px;font-weight:700;color:#ef4444">2</div>
+              </div>
+              <div style="background:#131722;border-radius:8px;padding:11px 12px;border:1px solid rgba(255,255,255,.06)">
+                <div style="font-size:8px;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">A facturar</div>
+                <div style="font-size:19px;font-weight:700;color:#10B981">9</div>
+              </div>
+            </div>
+            <!-- Consignment list -->
+            <div style="background:#131722;border-radius:8px;border:1px solid rgba(255,255,255,.06);overflow:hidden">
+              <div style="padding:9px 14px;font-size:10px;font-weight:600;color:#94a3b8;border-bottom:1px solid rgba(255,255,255,.05)">Sets en consignación</div>
+              <div style="display:grid;grid-template-columns:.6fr 1.5fr .9fr .5fr .8fr;padding:6px 14px;font-size:8px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid rgba(255,255,255,.05)">
+                <span>Set</span><span>Sanatorio</span><span>Salida</span><span style="text-align:center">Días</span><span style="text-align:right">Estado</span>
+              </div>
+              <div style="display:grid;grid-template-columns:.6fr 1.5fr .9fr .5fr .8fr;padding:8px 14px;align-items:center;border-bottom:1px solid rgba(255,255,255,.04);background:rgba(239,68,68,.04)">
+                <span style="font-size:10px;color:#e2e8f0;font-weight:600">C-0412</span>
+                <div><div style="font-size:11px;color:#e2e8f0">Sanatorio 9 de Julio</div><div style="font-size:8px;color:#64748b">Tucumán · Dr. Ferreyra</div></div>
+                <span style="font-size:10px;color:#64748b">23/05/2026</span>
+                <span style="font-size:11px;color:#ef4444;text-align:center;font-weight:700">38</span>
+                <span style="text-align:right"><span style="font-size:9px;background:rgba(239,68,68,.1);color:#ef4444;border:1px solid rgba(239,68,68,.25);border-radius:4px;padding:2px 7px">Sin devolver</span></span>
+              </div>
+              <div style="display:grid;grid-template-columns:.6fr 1.5fr .9fr .5fr .8fr;padding:8px 14px;align-items:center;border-bottom:1px solid rgba(255,255,255,.04)">
+                <span style="font-size:10px;color:#e2e8f0;font-weight:600">C-0431</span>
+                <div><div style="font-size:11px;color:#e2e8f0">Sanatorio Anchorena</div><div style="font-size:8px;color:#64748b">Buenos Aires · Dra. Pereyra</div></div>
+                <span style="font-size:10px;color:#64748b">26/06/2026</span>
+                <span style="font-size:11px;color:#e2e8f0;text-align:center">4</span>
+                <span style="text-align:right"><span style="font-size:9px;background:rgba(0,136,204,.12);color:#0088CC;border:1px solid rgba(0,136,204,.22);border-radius:4px;padding:2px 7px">En cirugía</span></span>
+              </div>
+              <div style="display:grid;grid-template-columns:.6fr 1.5fr .9fr .5fr .8fr;padding:8px 14px;align-items:center;border-bottom:1px solid rgba(255,255,255,.04)">
+                <span style="font-size:10px;color:#e2e8f0;font-weight:600">C-0433</span>
+                <div><div style="font-size:11px;color:#e2e8f0">Hospital Italiano</div><div style="font-size:8px;color:#64748b">Buenos Aires · Dr. Cabrera</div></div>
+                <span style="font-size:10px;color:#64748b">28/06/2026</span>
+                <span style="font-size:11px;color:#e2e8f0;text-align:center">2</span>
+                <span style="text-align:right"><span style="font-size:9px;background:rgba(16,185,129,.12);color:#10B981;border:1px solid rgba(16,185,129,.2);border-radius:4px;padding:2px 7px">Devuelto</span></span>
+              </div>
+              <div style="display:grid;grid-template-columns:.6fr 1.5fr .9fr .5fr .8fr;padding:8px 14px;align-items:center">
+                <span style="font-size:10px;color:#e2e8f0;font-weight:600">C-0435</span>
+                <div><div style="font-size:11px;color:#e2e8f0">Sanatorio Modelo</div><div style="font-size:8px;color:#64748b">Tucumán · Dr. Juárez</div></div>
+                <span style="font-size:10px;color:#64748b">29/06/2026</span>
+                <span style="font-size:11px;color:#e2e8f0;text-align:center">1</span>
+                <span style="text-align:right"><span style="font-size:9px;background:rgba(100,116,139,.12);color:#94a3b8;border:1px solid rgba(100,116,139,.2);border-radius:4px;padding:2px 7px">Programada</span></span>
+              </div>
+            </div>
+            <!-- Detail panel (below fold) -->
+            <div style="background:#131722;border-radius:8px;border:1px solid rgba(0,136,204,.18);overflow:hidden">
+              <div style="padding:10px 14px;border-bottom:1px solid rgba(255,255,255,.05);display:flex;justify-content:space-between;align-items:center">
+                <div>
+                  <div style="font-size:11px;font-weight:600;color:#e2e8f0">Set C-0433 · Hospital Italiano</div>
+                  <div style="font-size:9px;color:#64748b">Cirugía 28/06 · Cadera · Dr. Cabrera · Salió de Buenos Aires</div>
+                </div>
+                <span style="font-size:9px;background:rgba(16,185,129,.12);color:#10B981;border:1px solid rgba(16,185,129,.2);border-radius:4px;padding:3px 9px;font-weight:600">Cerrado y conciliado</span>
+              </div>
+              <div style="display:grid;grid-template-columns:1.6fr .9fr .7fr .8fr;padding:6px 14px;font-size:8px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid rgba(255,255,255,.05)">
+                <span>Unidad</span><span>Serie</span><span>Lote</span><span style="text-align:right">Resultado</span>
+              </div>
+              <div style="display:grid;grid-template-columns:1.6fr .9fr .7fr .8fr;padding:7px 14px;align-items:center;border-bottom:1px solid rgba(255,255,255,.04)">
+                <span style="font-size:10px;color:#e2e8f0">Prótesis cadera vástago cementado</span>
+                <span style="font-size:9px;color:#64748b;font-family:monospace">HX-0098421</span>
+                <span style="font-size:9px;color:#64748b">L-24187</span>
+                <span style="text-align:right"><span style="font-size:9px;background:rgba(0,136,204,.12);color:#0088CC;border:1px solid rgba(0,136,204,.22);border-radius:4px;padding:2px 7px">Implantado</span></span>
+              </div>
+              <div style="display:grid;grid-template-columns:1.6fr .9fr .7fr .8fr;padding:7px 14px;align-items:center;border-bottom:1px solid rgba(255,255,255,.04)">
+                <span style="font-size:10px;color:#e2e8f0">Tornillo bloqueado 5.0 × 35mm</span>
+                <span style="font-size:9px;color:#64748b;font-family:monospace">HX-0098455</span>
+                <span style="font-size:9px;color:#64748b">L-24190</span>
+                <span style="text-align:right"><span style="font-size:9px;background:rgba(0,136,204,.12);color:#0088CC;border:1px solid rgba(0,136,204,.22);border-radius:4px;padding:2px 7px">Implantado</span></span>
+              </div>
+              <div style="display:grid;grid-template-columns:1.6fr .9fr .7fr .8fr;padding:7px 14px;align-items:center;border-bottom:1px solid rgba(255,255,255,.04)">
+                <span style="font-size:10px;color:#e2e8f0">Tornillo bloqueado 5.0 × 35mm</span>
+                <span style="font-size:9px;color:#64748b;font-family:monospace">HX-0098456</span>
+                <span style="font-size:9px;color:#64748b">L-24190</span>
+                <span style="text-align:right"><span style="font-size:9px;background:rgba(16,185,129,.12);color:#10B981;border:1px solid rgba(16,185,129,.2);border-radius:4px;padding:2px 7px">Devuelto</span></span>
+              </div>
+              <div style="display:grid;grid-template-columns:1.6fr .9fr .7fr .8fr;padding:7px 14px;align-items:center">
+                <span style="font-size:10px;color:#e2e8f0">Placa LCP tibia proximal 4.5</span>
+                <span style="font-size:9px;color:#64748b;font-family:monospace">HX-0098502</span>
+                <span style="font-size:9px;color:#64748b">L-24201</span>
+                <span style="text-align:right"><span style="font-size:9px;background:rgba(16,185,129,.12);color:#10B981;border:1px solid rgba(16,185,129,.2);border-radius:4px;padding:2px 7px">Devuelto</span></span>
+              </div>
+              <div style="padding:10px 14px;background:rgba(0,136,204,.05);border-top:1px solid rgba(255,255,255,.05);display:flex;justify-content:space-between;align-items:center">
+                <div style="font-size:9px;color:#64748b">2 unidades implantadas · 2 reingresadas al depósito · sin faltantes</div>
+                <div style="display:flex;gap:6px">
+                  <span style="font-size:9px;background:#0088CC;color:#fff;border-radius:5px;padding:4px 10px;font-weight:600">Generar parte de consumo</span>
+                  <span style="font-size:9px;color:#64748b;border:1px solid rgba(255,255,255,.08);border-radius:5px;padding:4px 10px">Exportar</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- S6: MOCKUP 3 — Trazabilidad -->
+  <section class="slide mock" id="s6">
+    <div class="mlabel">Demo · Trazabilidad — la historia completa de cada unidad</div>
+    <div class="mwrap">
+      <div class="browser">
+        <div class="brow-bar">
+          <span class="bdot" style="background:#FF5F57"></span>
+          <span class="bdot" style="background:#FEBC2E"></span>
+          <span class="bdot" style="background:#28C840"></span>
+          <div class="burl"><i class="fa fa-lock"></i> app.hexast.com.ar/trazabilidad</div>
+        </div>
+        <div class="brow-body" style="background:#0d1117;display:flex;flex-direction:column;">
+          <!-- Topbar -->
+          <div style="background:#0a0d14;border-bottom:1px solid rgba(255,255,255,.06);padding:0 16px;height:42px;display:flex;align-items:center;gap:12px;flex-shrink:0">
+            <div style="font-family:'Raleway',sans-serif;font-weight:800;font-size:13px;color:#0088CC">HEXAST</div>
+            <div style="font-size:10px;color:#64748b;padding:4px 10px;background:rgba(255,255,255,.04);border-radius:5px;border:1px solid rgba(255,255,255,.06)">Trazabilidad</div>
+            <div style="flex:1"></div>
+            <div style="font-size:9px;background:rgba(16,185,129,.12);color:#10B981;border:1px solid rgba(16,185,129,.25);border-radius:5px;padding:3px 9px;font-weight:600">Exportar informe</div>
+          </div>
+          <div style="padding:12px;display:flex;flex-direction:column;gap:10px">
+            <!-- Scan search bar -->
+            <div style="background:linear-gradient(135deg,rgba(0,136,204,.1),rgba(0,136,204,.03));border:1px solid rgba(0,136,204,.22);border-radius:8px;padding:12px 14px;display:flex;align-items:center;gap:12px">
+              <i class="fa fa-barcode" style="color:#0088CC;font-size:20px"></i>
+              <div style="flex:1">
+                <div style="font-size:8px;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Escaneá o ingresá el número de serie</div>
+                <div style="font-size:14px;color:#e2e8f0;font-family:monospace;font-weight:600">HX-0098421</div>
+              </div>
+              <span style="font-size:9px;background:rgba(16,185,129,.12);color:#10B981;border:1px solid rgba(16,185,129,.2);border-radius:4px;padding:3px 9px;font-weight:600">Unidad encontrada</span>
+            </div>
+            <!-- Unit card -->
+            <div style="background:#131722;border-radius:8px;border:1px solid rgba(255,255,255,.06);padding:13px 14px">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:11px">
+                <div>
+                  <div style="font-size:13px;font-weight:600;color:#e2e8f0">Prótesis cadera vástago cementado</div>
+                  <div style="font-size:9px;color:#64748b">HX-PC-8800 · Serie HX-0098421</div>
+                </div>
+                <span style="font-size:9px;background:rgba(0,136,204,.12);color:#0088CC;border:1px solid rgba(0,136,204,.22);border-radius:4px;padding:3px 9px;font-weight:600">Implantado</span>
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
+                <div style="background:#0d1117;border-radius:6px;padding:8px 10px;border:1px solid rgba(255,255,255,.05)">
+                  <div style="font-size:8px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">Lote</div>
+                  <div style="font-size:11px;color:#e2e8f0;font-weight:600">L-24187</div>
+                </div>
+                <div style="background:#0d1117;border-radius:6px;padding:8px 10px;border:1px solid rgba(255,255,255,.05)">
+                  <div style="font-size:8px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">Vencimiento</div>
+                  <div style="font-size:11px;color:#e2e8f0;font-weight:600">03/2029</div>
+                </div>
+                <div style="background:#0d1117;border-radius:6px;padding:8px 10px;border:1px solid rgba(255,255,255,.05)">
+                  <div style="font-size:8px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">Proveedor</div>
+                  <div style="font-size:11px;color:#e2e8f0;font-weight:600">Ortho Import SA</div>
+                </div>
+                <div style="background:#0d1117;border-radius:6px;padding:8px 10px;border:1px solid rgba(255,255,255,.05)">
+                  <div style="font-size:8px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">Ingresó</div>
+                  <div style="font-size:11px;color:#e2e8f0;font-weight:600">14/02/2026</div>
+                </div>
+              </div>
+            </div>
+            <!-- Timeline -->
+            <div style="background:#131722;border-radius:8px;border:1px solid rgba(255,255,255,.06);overflow:hidden">
+              <div style="padding:9px 14px;font-size:10px;font-weight:600;color:#94a3b8;border-bottom:1px solid rgba(255,255,255,.05)">Historial de la unidad</div>
+              <div style="padding:12px 16px">
+                <div style="display:flex;gap:12px;padding-bottom:14px;position:relative">
+                  <div style="width:9px;height:9px;border-radius:50%;background:#10B981;flex-shrink:0;margin-top:3px;box-shadow:0 0 0 3px rgba(16,185,129,.12)"></div>
+                  <div style="position:absolute;left:4px;top:15px;bottom:0;width:1px;background:rgba(255,255,255,.08)"></div>
+                  <div>
+                    <div style="font-size:11px;color:#e2e8f0;font-weight:600">Ingreso a depósito Buenos Aires</div>
+                    <div style="font-size:9px;color:#64748b">14/02/2026 · Remito 0003-00021784 · Ortho Import SA · cargado por Laura M.</div>
+                  </div>
+                </div>
+                <div style="display:flex;gap:12px;padding-bottom:14px;position:relative">
+                  <div style="width:9px;height:9px;border-radius:50%;background:#0088CC;flex-shrink:0;margin-top:3px;box-shadow:0 0 0 3px rgba(0,136,204,.12)"></div>
+                  <div style="position:absolute;left:4px;top:15px;bottom:0;width:1px;background:rgba(255,255,255,.08)"></div>
+                  <div>
+                    <div style="font-size:11px;color:#e2e8f0;font-weight:600">Transferencia a depósito Tucumán</div>
+                    <div style="font-size:9px;color:#64748b">08/04/2026 · recibido y confirmado el 11/04 por Diego R.</div>
+                  </div>
+                </div>
+                <div style="display:flex;gap:12px;padding-bottom:14px;position:relative">
+                  <div style="width:9px;height:9px;border-radius:50%;background:#0088CC;flex-shrink:0;margin-top:3px;box-shadow:0 0 0 3px rgba(0,136,204,.12)"></div>
+                  <div style="position:absolute;left:4px;top:15px;bottom:0;width:1px;background:rgba(255,255,255,.08)"></div>
+                  <div>
+                    <div style="font-size:11px;color:#e2e8f0;font-weight:600">Salida en consignación · Set C-0433</div>
+                    <div style="font-size:9px;color:#64748b">26/06/2026 · Hospital Italiano · Dr. Cabrera · remito 0002-00004411</div>
+                  </div>
+                </div>
+                <div style="display:flex;gap:12px;position:relative">
+                  <div style="width:9px;height:9px;border-radius:50%;background:#fbbf24;flex-shrink:0;margin-top:3px;box-shadow:0 0 0 3px rgba(251,191,36,.12)"></div>
+                  <div>
+                    <div style="font-size:11px;color:#e2e8f0;font-weight:600">Implantado en cirugía</div>
+                    <div style="font-size:9px;color:#64748b">28/06/2026 · protocolo quirúrgico #4471 · listo para facturar</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <!-- Below fold: expiry table -->
+            <div style="background:#131722;border-radius:8px;border:1px solid rgba(255,255,255,.06);overflow:hidden">
+              <div style="padding:9px 14px;font-size:10px;font-weight:600;color:#94a3b8;border-bottom:1px solid rgba(255,255,255,.05);display:flex;justify-content:space-between">
+                <span>Próximos vencimientos</span>
+                <span style="color:#0088CC;font-size:9px">Ver todos →</span>
+              </div>
+              <div style="display:grid;grid-template-columns:1.5fr .7fr .8fr .6fr .7fr;padding:6px 14px;font-size:8px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid rgba(255,255,255,.05)">
+                <span>Producto</span><span>Lote</span><span>Depósito</span><span style="text-align:center">Unid.</span><span style="text-align:right">Vence en</span>
+              </div>
+              <div style="display:grid;grid-template-columns:1.5fr .7fr .8fr .6fr .7fr;padding:7px 14px;align-items:center;border-bottom:1px solid rgba(255,255,255,.04)">
+                <span style="font-size:10px;color:#e2e8f0">Tornillo canulado 7.0 × 65mm</span>
+                <span style="font-size:9px;color:#64748b">L-24102</span>
+                <span style="font-size:10px;color:#94a3b8">Tucumán</span>
+                <span style="font-size:10px;color:#e2e8f0;text-align:center">12</span>
+                <span style="font-size:10px;color:#ef4444;text-align:right;font-weight:600">42 días</span>
+              </div>
+              <div style="display:grid;grid-template-columns:1.5fr .7fr .8fr .6fr .7fr;padding:7px 14px;align-items:center;border-bottom:1px solid rgba(255,255,255,.04)">
+                <span style="font-size:10px;color:#e2e8f0">Placa DHS 135° 4 orificios</span>
+                <span style="font-size:9px;color:#64748b">L-24118</span>
+                <span style="font-size:10px;color:#94a3b8">Buenos Aires</span>
+                <span style="font-size:10px;color:#e2e8f0;text-align:center">7</span>
+                <span style="font-size:10px;color:#fbbf24;text-align:right;font-weight:600">78 días</span>
+              </div>
+              <div style="display:grid;grid-template-columns:1.5fr .7fr .8fr .6fr .7fr;padding:7px 14px;align-items:center">
+                <span style="font-size:10px;color:#e2e8f0">Tornillo cortical 3.5 × 40mm</span>
+                <span style="font-size:9px;color:#64748b">L-24140</span>
+                <span style="font-size:10px;color:#94a3b8">Buenos Aires</span>
+                <span style="font-size:10px;color:#e2e8f0;text-align:center">15</span>
+                <span style="font-size:10px;color:#94a3b8;text-align:right">124 días</span>
+              </div>
+            </div>
+            <!-- CTA -->
+            <div style="background:linear-gradient(135deg,rgba(0,136,204,.12),rgba(16,185,129,.08));border:1px solid rgba(0,136,204,.2);border-radius:8px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between">
+              <div>
+                <div style="font-size:10px;font-weight:600;color:#e2e8f0">Todo el historial de un implante, en un solo lugar</div>
+                <div style="font-size:9px;color:#64748b">De qué remito entró hasta en qué cirugía se usó · exportable en un clic</div>
+              </div>
+              <div style="background:#0088CC;border-radius:6px;padding:5px 12px;font-size:9px;font-weight:700;color:#fff;white-space:nowrap">Hablemos →</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- S7: CIERRE -->
+  <section class="slide" id="s7">
+    <div class="label">Inversión</div>
+    <h2 class="s-title" style="margin-bottom:28px;">¿Cuánto cuesta?</h2>
+    <div class="price-card">
+      <div class="price-glow"></div>
+      <div class="price-badge">Cotización sin compromiso</div>
+      <div class="cta-price">
+        <span class="cta-price-currency">USD</span>
+        <span class="cta-price-amount">800–2.500</span>
+      </div>
+      <div class="price-sub">según alcance y funcionalidades</div>
+      <div class="price-list">
+        <div class="price-item"><i class="fa fa-check"></i> Stock de los dos depósitos</div>
+        <div class="price-item"><i class="fa fa-check"></i> Lote, serie y vencimiento</div>
+        <div class="price-item"><i class="fa fa-check"></i> Módulo de consignaciones</div>
+        <div class="price-item"><i class="fa fa-check"></i> Trazabilidad y exportación</div>
+        <div class="price-item"><i class="fa fa-check"></i> Usuarios por depósito</div>
+        <div class="price-item"><i class="fa fa-check"></i> Migración del Excel actual</div>
+        <div class="price-item"><i class="fa fa-check"></i> Hosting incluido 1 año</div>
+        <div class="price-item"><i class="fa fa-check"></i> Soporte técnico 3 meses</div>
+      </div>
+      <a class="wa-btn" href="https://wa.me/59899999999?text=Hola!%20Quiero%20avanzar%20con%20el%20sistema%20de%20stock%20de%20Hexast" target="_blank" rel="noopener">
+        <i class="fa-brands fa-whatsapp" style="font-size:17px"></i> Coordinar por WhatsApp
+      </a>
+    </div>
+    <p style="margin-top:20px;font-size:12px;color:var(--muted);">Analizamos el circuito de Hexast antes de cerrar el alcance definitivo.</p>
+  </section>
+
+</div>
+
+<!-- Navigation -->
+<div id="nav">
+  <button class="nbtn" id="prev" aria-label="Anterior"><i class="fa fa-chevron-left" style="font-size:12px"></i></button>
+  <div id="dots"></div>
+  <button class="nbtn nxt" id="next" aria-label="Siguiente"><i class="fa fa-chevron-right" style="font-size:12px"></i></button>
+</div>
+
+<script>
+  const slides = document.querySelectorAll('.slide');
+  const prog = document.getElementById('progress');
+  const counter = document.getElementById('counter');
+  const dotsEl = document.getElementById('dots');
+  let cur = 0;
+
+  function buildDots() {
+    dotsEl.innerHTML = '';
+    slides.forEach((_, i) => {
+      const d = document.createElement('span');
+      d.className = 'dot' + (i === 0 ? ' on' : '');
+      d.onclick = () => goTo(i);
+      dotsEl.appendChild(d);
+    });
+  }
+
+  function goTo(n) {
+    slides[cur].classList.remove('active');
+    slides[cur].classList.add('out');
+    setTimeout(() => slides[cur].classList.remove('out'), 450);
+    cur = Math.max(0, Math.min(n, slides.length - 1));
+    slides[cur].classList.add('active');
+    prog.style.width = ((cur + 1) / slides.length * 100) + '%';
+    counter.textContent = (cur + 1) + ' / ' + slides.length;
+    dotsEl.querySelectorAll('.dot').forEach((d, i) => d.classList.toggle('on', i === cur));
+    document.querySelectorAll('.brow-body').forEach(b => b.scrollTop = 0);
+  }
+
+  document.getElementById('next').onclick = () => { if (cur < slides.length - 1) goTo(cur + 1); };
+  document.getElementById('prev').onclick = () => { if (cur > 0) goTo(cur - 1); };
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight') { if (cur < slides.length - 1) goTo(cur + 1); }
+    if (e.key === 'ArrowLeft') { if (cur > 0) goTo(cur - 1); }
+  });
+
+  buildDots();
+  document.querySelectorAll('.brow-body').forEach(el => {
+    el.addEventListener('wheel', e => e.stopPropagation(), { passive: true });
+    el.addEventListener('touchstart', e => e.stopPropagation(), { passive: true });
+    el.addEventListener('touchmove', e => e.stopPropagation(), { passive: true });
+  });
+</script>
+</body>
+</html>

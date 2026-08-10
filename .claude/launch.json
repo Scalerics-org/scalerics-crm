@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "hexast-cajas",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "hexast-cajas", "run", "dev"],
+      "port": 3000
+    }
+  ]
+}

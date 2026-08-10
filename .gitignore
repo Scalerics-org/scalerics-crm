@@ -11,3 +11,9 @@ credentials.json
 # Bot
 bot/node_modules/
 bot/.env
+
+# Presupuestos con precios: nunca se suben a ningun repo
+budgets/
+
+# hexast-cajas tiene repo propio (Scalerics-org/hexast-cajas)
+hexast-cajas/
