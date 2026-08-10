@@ -26,12 +26,45 @@ def _mock_response(text: str):
     return msg
 
 
-def test_ai_edit_html_returns_modified_html():
+def _edit(original: str, respuesta: str) -> str:
     with patch("services.budget_ai.anthropic.Anthropic") as MockClient, \
          patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}):
-        MockClient.return_value.messages.create.return_value = _mock_response("<html>editado</html>")
-        result = ai_edit_html("<html>original</html>", "cambia el precio a $500")
-    assert result == "<html>editado</html>"
+        MockClient.return_value.messages.create.return_value = _mock_response(respuesta)
+        return ai_edit_html(original, "cambia el precio a $500")
+
+
+def test_ai_edit_html_aplica_los_reemplazos_del_json():
+    """La IA devuelve pares {old,new}, no el HTML entero: asi no se trunca."""
+    original = "<html><p>U$S 1.000</p><p>plazo de 3 semanas</p></html>"
+    respuesta = '[{"old": "U$S 1.000", "new": "U$S 500"}, {"old": "3 semanas", "new": "4 semanas"}]'
+
+    assert _edit(original, respuesta) == "<html><p>U$S 500</p><p>plazo de 4 semanas</p></html>"
+
+
+def test_ai_edit_html_conserva_el_resto_del_documento():
+    original = "<html><head><style>body{color:red}</style></head><p>U$S 1.000</p></html>"
+
+    result = _edit(original, '[{"old": "U$S 1.000", "new": "U$S 2.000"}]')
+
+    assert "<style>body{color:red}</style>" in result
+    assert "U$S 2.000" in result
+
+
+def test_ai_edit_html_acepta_el_json_envuelto_en_markdown():
+    result = _edit("<p>viejo</p>", '```json\n[{"old": "viejo", "new": "nuevo"}]\n```')
+
+    assert result == "<p>nuevo</p>"
+
+
+def test_ai_edit_html_falla_si_la_respuesta_no_es_json():
+    with pytest.raises(ValueError, match="no válida"):
+        _edit("<p>original</p>", "<html>editado</html>")
+
+
+def test_ai_edit_html_falla_si_ningun_fragmento_existe():
+    """Sin esto, devolvia el documento sin tocar y el usuario no se enteraba."""
+    with pytest.raises(ValueError, match="Ningun cambio"):
+        _edit("<p>original</p>", '[{"old": "no esta en el documento", "new": "x"}]')
 
 
 def test_generate_budget_html_returns_html():
