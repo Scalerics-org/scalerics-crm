@@ -3,10 +3,14 @@ Run this script ONCE to obtain the Gmail OAuth2 refresh token.
 It opens a browser window for authentication and saves credentials to .env.
 """
 import json
+import os
 import subprocess
 from datetime import datetime, timezone
 from google_auth_oauthlib.flow import InstalledAppFlow
 from dotenv import load_dotenv, set_key
+
+# App de Fly.io donde corre el CRM (ver fly.toml).
+FLY_APP = os.environ.get("FLY_APP", "scalerics-crm")
 
 SCOPES = ["https://www.googleapis.com/auth/gmail.send"]
 
@@ -30,18 +34,18 @@ def main():
     print(f"  REFRESH_TOKEN: {creds.refresh_token[:30]}...")
     print(f"  RENEWED_AT:    {renewed_at}")
 
-    print("Sincronizando con Railway...")
+    print("Sincronizando con Fly.io...")
     try:
         subprocess.run(
-            ["railway", "variables", "set",
+            ["fly", "secrets", "set",
              f"GMAIL_REFRESH_TOKEN={creds.refresh_token}",
              f"GMAIL_TOKEN_RENEWED_AT={renewed_at}",
-             "--service", "web"],
+             "--app", FLY_APP],
             check=True, capture_output=True, text=True
         )
-        print("  Railway actualizado.")
+        print("  Fly.io actualizado. El servidor va a reiniciar solo.")
     except Exception as e:
-        print(f"  Railway no actualizado (hacelo manual): {e}")
+        print(f"  Fly.io no actualizado (hacelo manual): {e}")
 
 if __name__ == "__main__":
     main()
