@@ -1,0 +1,22 @@
+{
+  "name": "scalerics-wa-service",
+  "version": "0.1.0",
+  "description": "Notificaciones automaticas de leads por WhatsApp para Scalerics",
+  "main": "src/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "test": "node --test test/"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.7.0",
+    "dotenv": "^16.4.7",
+    "fastify": "^5.2.0",
+    "pino": "^9.6.0",
+    "zod": "^3.24.1"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
