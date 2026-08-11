@@ -1,0 +1,262 @@
+'use strict';
+
+const test = require('node:test');
+const assert = require('node:assert');
+const { construir } = require('../src/app');
+const { S } = require('../src/funnel/states');
+const { porReglas } = require('../src/funnel/scoring');
+
+const CLAVE = 'clave-de-test-larguita-1234';
+
+function cfgTest(extra = {}) {
+  return Object.freeze({
+    PORT: 0, NODE_ENV: 'test', LOG_LEVEL: 'silent', WA_API_KEY: CLAVE,
+    WA_PROVIDER: 'mock', DB_PATH: ':memory:', BAILEYS_AUTH_DIR: './auth',
+    AM_PHONES: '59899000111', amPhones: ['59899000111'],
+    DEFAULT_COUNTRY_CODE: '598', TZ: 'America/Montevideo',
+    ANTHROPIC_API_KEY: '', CALENDLY_LINK: 'https://calendly.com/scalerics/diagnostico',
+    FUNNEL_ENABLED: true,
+    FOLLOWUP_DELAY_HOURS: 24, FOLLOWUP_JITTER_MINUTES: 0,
+    DELAY_AM_MIN_MS: 0, DELAY_AM_MAX_MS: 0,
+    DELAY_WELCOME_MIN_MS: 0, DELAY_WELCOME_MAX_MS: 0,
+    DELAY_BETWEEN_MIN_MS: 0, DELAY_BETWEEN_MAX_MS: 0,
+    TYPING_ENABLED: false,
+    ...extra,
+  });
+}
+
+/** Monta el servicio con un lead ya dado de alta y la cola limpia. */
+async function conLead(extra) {
+  const s = construir(cfgTest(extra), { logger: null });
+  await s.proveedor.conectar();
+  s.servicioLeads.alta({
+    external_id: 'l1', nombre: 'Martín Pereyra', rubro: 'Inmobiliaria',
+    telefono: '099123456', necesidad: 'automatizar consultas', origen: 'form',
+  });
+  await s.cola.vacia();
+  s.proveedor.limpiar();
+  return s;
+}
+
+/** Manda un mensaje del lead y espera a que la cola drene. */
+async function lead(s, texto) {
+  await s.servicioLeads.registrarRespuesta('59899123456', texto);
+  await s.cola.vacia();
+  return s.proveedor.getEnviados().filter((e) => e.to === '59899123456').map((e) => e.texto);
+}
+
+const estado = (s) => s.repo.leadPorTelefono('59899123456').fsm_state;
+
+test('la primera respuesta abre el menu', async () => {
+  const s = await conLead();
+  const msgs = await lead(s, 'hola');
+
+  assert.equal(estado(s), S.MENU);
+  assert.match(msgs.at(-1), /asistente de \*Scalerics\*/);
+  assert.match(msgs.at(-1), /Quiero un presupuesto/);
+});
+
+test('recorre el embudo entero hasta la oferta de reunion', async () => {
+  const s = await conLead();
+
+  await lead(s, 'hola');            // → MENU
+  await lead(s, '1');               // → QUAL_0 (nombre del negocio)
+  assert.equal(estado(s), S.QUAL_0);
+
+  await lead(s, 'Inmobiliaria Pereyra'); // → QUAL_1
+  assert.equal(estado(s), S.QUAL_1);
+
+  await lead(s, '2');               // e-commerce → QUAL_2
+  await lead(s, '3');               // >3000 USD  → QUAL_3
+  await lead(s, '3');               // 6-20 pers. → QUAL_4
+  await lead(s, 'azul y blanco');   // → QUAL_5
+  await lead(s, '@inmopereyra');    // → QUAL_6
+  const msgs = await lead(s, 'quiero dejar de perder consultas'); // → SCORED
+
+  const l = s.repo.leadPorTelefono('59899123456');
+  assert.equal(l.business_name, 'Inmobiliaria Pereyra');
+  assert.equal(l.business_type, 2);
+  assert.equal(l.budget, 3);
+  assert.equal(l.team_size, 3);
+  assert.equal(l.colors, 'azul y blanco');
+  assert.equal(l.instagram_web, '@inmopereyra');
+  assert.equal(l.needs, 'quiero dejar de perder consultas');
+
+  // budget 3 (+3) + team>=2 (+2) + ecommerce (+2) = 7 → reunion
+  assert.equal(l.score, 7);
+  assert.equal(l.priority, 'high');
+  assert.equal(l.fsm_state, S.MEETING_SENT);
+  assert.match(msgs.at(-1), /videollamada de 30 minutos/);
+});
+
+test('un lead flojo cae en nurture y no se le ofrece reunion', async () => {
+  const s = await conLead();
+  await lead(s, 'hola');
+  await lead(s, '1');
+  await lead(s, 'Kiosco Don José');
+  await lead(s, '1');               // pagina web
+  await lead(s, '1');               // menos de 500 USD
+  await lead(s, '1');               // solo yo
+  await lead(s, 'no tengo');
+  await lead(s, 'no tengo');
+  const msgs = await lead(s, 'algo simple');
+
+  const l = s.repo.leadPorTelefono('59899123456');
+  assert.equal(l.score, 1, 'solo suma el presupuesto minimo');
+  assert.equal(l.fsm_state, S.DISQUALIFIED);
+  assert.ok(!msgs.at(-1).includes('videollamada'));
+});
+
+test('pedir el link de la reunion despues de la oferta', async () => {
+  const s = await conLead();
+  for (const t of ['hola', '1', 'Mi negocio', '2', '3', '3', 'azul', '@x', 'necesito ventas']) {
+    await lead(s, t);
+  }
+  assert.equal(estado(s), S.MEETING_SENT);
+
+  const msgs = await lead(s, '1');
+  assert.match(msgs.at(-1), /calendly\.com\/scalerics\/diagnostico/);
+
+  const mas = await lead(s, '2');
+  assert.match(mas.at(-1), /Caso real/);
+});
+
+test('respuesta invalida: reintenta y despues deriva a un humano', async () => {
+  const s = await conLead();
+  await lead(s, 'hola');
+  await lead(s, '1');
+  await lead(s, 'Mi negocio');
+  assert.equal(estado(s), S.QUAL_1);
+
+  const r1 = await lead(s, 'no se');
+  assert.match(r1.at(-1), /No entendí/);
+  assert.equal(estado(s), S.QUAL_1, 'no avanza');
+
+  const r2 = await lead(s, 'ni idea');
+  assert.match(r2.at(-1), /Sigo sin entender/);
+
+  await lead(s, 'que se yo');
+  const r4 = await lead(s, 'nada');
+  assert.equal(estado(s), S.HUMAN_QUEUED, 'al cuarto intento pasa a un humano');
+  assert.match(r4.at(-1), /le paso tu contacto a alguien del equipo/);
+});
+
+test('un numero valido resetea el contador de reintentos', async () => {
+  const s = await conLead();
+  await lead(s, 'hola'); await lead(s, '1'); await lead(s, 'Mi negocio');
+
+  await lead(s, 'no se');
+  assert.equal(s.repo.leadPorTelefono('59899123456').fsm_retries, 1);
+
+  await lead(s, '1');
+  assert.equal(s.repo.leadPorTelefono('59899123456').fsm_retries, 0);
+  assert.equal(estado(s), S.QUAL_2);
+});
+
+test('"baja" da de baja al lead y despues hay silencio', async () => {
+  const s = await conLead();
+  await lead(s, 'hola');
+
+  const msgs = await lead(s, 'baja');
+  assert.equal(estado(s), S.OPT_OUT);
+  assert.match(msgs.at(-1), /no te escribo más/);
+
+  const l = s.repo.leadPorTelefono('59899123456');
+  assert.equal(l.opt_out, 1);
+  assert.equal(l.status, 'closed');
+
+  // Y no se le vuelve a escribir nunca, ni siquiera el follow-up.
+  s.proveedor.limpiar();
+  await lead(s, 'hola?');
+  assert.equal(s.proveedor.getEnviados().length, 0);
+
+  s.scheduler.correrVencidos(new Date(Date.now() + 25 * 3600 * 1000));
+  await s.cola.vacia();
+  assert.equal(s.proveedor.getEnviados().length, 0, 'el follow-up tampoco sale');
+});
+
+test('"humano" congela el bot y solo "menu" lo reactiva', async () => {
+  const s = await conLead();
+  await lead(s, 'hola');
+  await lead(s, 'quiero hablar con una persona');
+  assert.equal(estado(s), S.HUMAN_QUEUED);
+  assert.equal(s.repo.leadPorTelefono('59899123456').human_requested, 1);
+
+  // Mientras hay un humano a cargo, el bot no contesta nada.
+  s.proveedor.limpiar();
+  await lead(s, 'hola?');
+  await lead(s, '1');
+  assert.equal(s.proveedor.getEnviados().length, 0);
+
+  const msgs = await lead(s, 'menu');
+  assert.equal(estado(s), S.MENU);
+  assert.equal(s.repo.leadPorTelefono('59899123456').human_requested, 0);
+  assert.match(msgs.at(-1), /asistente de \*Scalerics\*/);
+});
+
+test('al AM se le avisa una sola vez, no por cada mensaje del embudo', async () => {
+  const s = await conLead();
+  await lead(s, 'hola');
+  await lead(s, '1');
+  await lead(s, 'Mi negocio');
+
+  const alAM = s.proveedor.getEnviados().filter((e) => e.to === '59899000111');
+  assert.equal(alAM.length, 1);
+  assert.match(alAM[0].texto, /respondió/);
+});
+
+test('el texto libre se guarda crudo, con acentos y mayusculas', async () => {
+  // La normalizacion es para enrutar, no para guardar. El original persistia el
+  // texto ya normalizado y "la atención de mañana" quedaba "la atencion de manana".
+  const s = await conLead();
+  await lead(s, 'hola');
+  await lead(s, '1');
+  await lead(s, 'Inmobiliaria Pereyra');
+  await lead(s, '2'); await lead(s, '3'); await lead(s, '3');
+  await lead(s, 'Azul y Blanco');
+  await lead(s, '@InmoPereyra');
+  await lead(s, 'Necesito automatizar la atención de mañana');
+
+  const l = s.repo.leadPorTelefono('59899123456');
+  assert.equal(l.business_name, 'Inmobiliaria Pereyra');
+  assert.equal(l.colors, 'Azul y Blanco');
+  assert.equal(l.instagram_web, '@InmoPereyra');
+  assert.equal(l.needs, 'Necesito automatizar la atención de mañana');
+});
+
+test('el embudo se puede apagar con FUNNEL_ENABLED', async () => {
+  const s = await conLead({ FUNNEL_ENABLED: false });
+  await lead(s, 'hola');
+
+  assert.equal(estado(s), 'NEW', 'no se mueve del estado inicial');
+  assert.equal(
+    s.proveedor.getEnviados().filter((e) => e.to === '59899123456').length, 0,
+    'no le contesta al lead'
+  );
+});
+
+// ── scoring por reglas ────────────────────────────────────────────────────────
+
+test('el scoring por reglas ya no depende de urgency', () => {
+  // El original sumaba hasta 3 puntos por lead.urgency y pedia >= 7 para
+  // ofrecer reunion. Nadie escribe ese campo desde que se saco la pregunta,
+  // asi que casi ningun lead llegaba al umbral.
+  const bueno = porReglas({ budget: 3, team_size: 3, business_type: 2 });
+  assert.equal(bueno.score, 7);
+  assert.equal(bueno.recommended_action, 'meeting');
+
+  const medio = porReglas({ budget: 2, team_size: 1, business_type: 1 });
+  assert.equal(medio.score, 2);
+  assert.equal(medio.recommended_action, 'disqualify');
+
+  const conPresupuesto = porReglas({ budget: 3, team_size: 1, business_type: 1 });
+  assert.equal(conPresupuesto.score, 3);
+  assert.equal(conPresupuesto.recommended_action, 'nurture');
+
+  const vacio = porReglas({});
+  assert.equal(vacio.score, 0);
+  assert.equal(vacio.recommended_action, 'disqualify');
+
+  // Un campo urgency suelto no cambia nada.
+  assert.deepEqual(porReglas({ budget: 3, urgency: 1 }), porReglas({ budget: 3 }));
+});

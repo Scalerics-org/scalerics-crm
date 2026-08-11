@@ -77,6 +77,21 @@ function crearRepo(db) {
       return stmt.leadPorId.get(id);
     },
 
+    /** Campos del embudo. Lista blanca igual que actualizarLead. */
+    actualizarFunnel(id, campos) {
+      const permitidos = [
+        'fsm_state', 'fsm_retries', 'opt_out', 'human_requested',
+        'business_name', 'business_type', 'budget', 'team_size',
+        'colors', 'instagram_web', 'needs',
+        'score', 'priority', 'score_reason', 'meeting_url', 'meeting_time',
+      ];
+      const set = Object.keys(campos).filter((k) => permitidos.includes(k));
+      if (!set.length) return stmt.leadPorId.get(id);
+      const sql = `UPDATE leads SET ${set.map((k) => `${k} = ?`).join(', ')} WHERE id = ?`;
+      db.prepare(sql).run(...set.map((k) => campos[k]), id);
+      return stmt.leadPorId.get(id);
+    },
+
     registrarMensaje(m) {
       const info = stmt.insertMensaje.run({
         lead_id: m.lead_id ?? null,

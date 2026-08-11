@@ -136,7 +136,7 @@ test('si el lead responde se cancela el follow-up y se avisa al AM', async () =>
   await s.cola.vacia();
   s.proveedor.limpiar();
 
-  s.servicioLeads.registrarRespuesta('59899123456', 'Sí, me interesa. ¿Cuánto sale?');
+  await s.servicioLeads.registrarRespuesta('59899123456', 'Sí, me interesa. ¿Cuánto sale?');
   await s.cola.vacia();
 
   const lead = s.repo.leadPorTelefono('59899123456');

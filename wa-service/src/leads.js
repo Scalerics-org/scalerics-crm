@@ -8,7 +8,7 @@ const { entre } = require('./outbound/queue');
  * Orquesta el alta de un lead: ficha al AM, bienvenida al lead y follow-up
  * programado. Es el corazon del servicio.
  */
-function crearServicioLeads({ repo, cola, cfg, logger, ahora = () => new Date() }) {
+function crearServicioLeads({ repo, cola, cfg, logger, embudo = null, ahora = () => new Date() }) {
 
   function fechaLegible(d) {
     return d.toLocaleString('es-UY', {
@@ -106,9 +106,10 @@ function crearServicioLeads({ repo, cola, cfg, logger, ahora = () => new Date() 
     },
 
     /**
-     * El lead contesto: se cancela el follow-up y se avisa al AM.
+     * El lead contesto: se cancela el follow-up, se avisa al AM y la
+     * conversacion sigue en el embudo de calificacion.
      */
-    registrarRespuesta(telefono, texto) {
+    async registrarRespuesta(telefono, texto) {
       const lead = repo.leadPorTelefono(telefono);
       if (!lead) return null;
 
@@ -117,6 +118,9 @@ function crearServicioLeads({ repo, cola, cfg, logger, ahora = () => new Date() 
         provider: 'entrante', status: 'delivered',
       });
 
+      // El aviso al AM sale una sola vez, en la primera respuesta. Despues el
+      // lead puede mandar diez mensajes contestando el embudo y no tiene
+      // sentido avisar por cada uno.
       if (!lead.replied_at) {
         repo.actualizarLead(lead.id, { status: 'replied', replied_at: ahora().toISOString() });
         repo.cancelarJobs(lead.id, 'followup');
@@ -130,6 +134,11 @@ function crearServicioLeads({ repo, cola, cfg, logger, ahora = () => new Date() 
           });
         }
       }
+
+      if (embudo && cfg.FUNNEL_ENABLED) {
+        await embudo.procesar(lead.id, texto);
+      }
+
       return repo.leadPorId(lead.id);
     },
   };

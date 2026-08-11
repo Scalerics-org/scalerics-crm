@@ -8,6 +8,9 @@ const { crearServicioLeads } = require('./leads');
 const { crearScheduler } = require('./scheduler/followup');
 const { crearServidor } = require('./http/server');
 const { crear: crearLogger } = require('./logger');
+const { crearEmbudo } = require('./funnel/engine');
+const { crearScorer } = require('./funnel/scoring');
+const { crearTextos } = require('./templates/funnel');
 
 /**
  * Arma el servicio entero y devuelve las piezas.
@@ -23,11 +26,22 @@ function construir(cfg, { logger } = {}) {
   const repo = crearRepo(db);
   const proveedor = crearProveedor(cfg, { logger: log });
   const cola = crearCola({ proveedor, repo, cfg, logger: log });
-  const servicioLeads = crearServicioLeads({ repo, cola, cfg, logger: log });
+
+  // Sin ANTHROPIC_API_KEY el scoring cae a reglas, no se rompe.
+  let anthropic = null;
+  if (cfg.ANTHROPIC_API_KEY) {
+    const Anthropic = require('@anthropic-ai/sdk');
+    anthropic = new Anthropic({ apiKey: cfg.ANTHROPIC_API_KEY });
+  }
+  const scorer = crearScorer({ anthropic, logger: log });
+  const textos = crearTextos({ calendlyLink: cfg.CALENDLY_LINK });
+  const embudo = crearEmbudo({ repo, cola, textos, scorer, logger: log });
+
+  const servicioLeads = crearServicioLeads({ repo, cola, cfg, logger: log, embudo });
   const scheduler = crearScheduler({ repo, cola, cfg, logger: log });
   const app = crearServidor({ cfg, repo, cola, proveedor, servicioLeads, scheduler, logger: log });
 
-  return { cfg, db, repo, proveedor, cola, servicioLeads, scheduler, app, logger: log };
+  return { cfg, db, repo, proveedor, cola, servicioLeads, scheduler, embudo, scorer, app, logger: log };
 }
 
 module.exports = { construir };

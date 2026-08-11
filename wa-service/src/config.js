@@ -28,6 +28,11 @@ const esquema = z.object({
   DEFAULT_COUNTRY_CODE: z.string().default('598'),
   TZ: z.string().default('America/Montevideo'),
 
+  // Embudo de calificacion. Sin ANTHROPIC_API_KEY el scoring cae a reglas.
+  ANTHROPIC_API_KEY: z.string().default(''),
+  CALENDLY_LINK: z.string().default('https://calendly.com/scalerics/diagnostico'),
+  FUNNEL_ENABLED: booleanoDeEnv.default(true),
+
   FOLLOWUP_DELAY_HOURS: z.coerce.number().nonnegative().default(24),
   FOLLOWUP_JITTER_MINUTES: z.coerce.number().nonnegative().default(90),
 
