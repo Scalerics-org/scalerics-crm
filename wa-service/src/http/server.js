@@ -2,6 +2,7 @@
 
 const Fastify = require('fastify');
 const { z } = require('zod');
+const rutasCrm = require('./routes/crm');
 
 const altaLeadSchema = z.object({
   external_id: z.union([z.string(), z.number()]).optional().transform((v) => (v == null ? undefined : String(v))),
@@ -21,14 +22,20 @@ const envioSchema = z.object({
 function crearServidor({ cfg, repo, cola, proveedor, servicioLeads, scheduler, logger }) {
   const app = Fastify({ logger: false });
 
-  // x-api-key en todo menos /health. El servicio no se expone a internet:
-  // solo red interna o 127.0.0.1.
+  // x-api-key en todo menos /health y /api/*. El servicio no se expone a
+  // internet: solo red interna o 127.0.0.1.
+  //
+  // /api/* es el contrato heredado que consume el panel WA del CRM y va con
+  // x-admin-token: lo valida su propio hook en routes/crm.js.
   app.addHook('onRequest', async (req, reply) => {
     if (req.url === '/health' || req.url.startsWith('/health?')) return;
+    if (req.url.startsWith('/api/')) return;
     if (req.headers['x-api-key'] !== cfg.WA_API_KEY) {
       return reply.code(401).send({ ok: false, error: 'no autorizado' });
     }
   });
+
+  rutasCrm.registrar(app, { cfg, repo, cola, logger });
 
   app.get('/health', async () => ({
     ok: true,

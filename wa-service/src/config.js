@@ -18,6 +18,13 @@ const esquema = z.object({
   LOG_LEVEL: z.string().default('info'),
   WA_API_KEY: z.string().min(16, 'WA_API_KEY tiene que tener al menos 16 caracteres'),
 
+  // Token del panel WA del CRM. Es el mismo ADMIN_TOKEN que ya usa routes/wa.py,
+  // que autentica con el header x-admin-token y no con x-api-key.
+  ADMIN_TOKEN: z.string().default(''),
+  // Para avisarle al CRM cuando un lead califica.
+  CRM_API_URL: z.string().default(''),
+  CRM_ADMIN_TOKEN: z.string().default(''),
+
   WA_PROVIDER: z.enum(['baileys', 'mock']).default('mock'),
   DB_PATH: z.string().default('./data/scalerics-wa.db'),
 

@@ -11,6 +11,7 @@ const { crear: crearLogger } = require('./logger');
 const { crearEmbudo } = require('./funnel/engine');
 const { crearScorer } = require('./funnel/scoring');
 const { crearTextos } = require('./templates/funnel');
+const { crearNotificadorCRM } = require('./crm-notify');
 
 /**
  * Arma el servicio entero y devuelve las piezas.
@@ -35,7 +36,8 @@ function construir(cfg, { logger } = {}) {
   }
   const scorer = crearScorer({ anthropic, logger: log });
   const textos = crearTextos({ calendlyLink: cfg.CALENDLY_LINK });
-  const embudo = crearEmbudo({ repo, cola, textos, scorer, logger: log });
+  const crmNotify = crearNotificadorCRM({ cfg, repo, logger: log });
+  const embudo = crearEmbudo({ repo, cola, textos, scorer, logger: log, crmNotify });
 
   const servicioLeads = crearServicioLeads({ repo, cola, cfg, logger: log, embudo });
   const scheduler = crearScheduler({ repo, cola, cfg, logger: log });

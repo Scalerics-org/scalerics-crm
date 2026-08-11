@@ -29,7 +29,7 @@ function palabraGlobal(entrada) {
  * - No manda mensajes directo: los encola, asi pasan por los mismos delays y
  *   limites que el resto del servicio.
  */
-function crearEmbudo({ repo, cola, textos, scorer, logger, ahora = () => new Date() }) {
+function crearEmbudo({ repo, cola, textos, scorer, logger, crmNotify = null, ahora = () => new Date() }) {
 
   function decir(lead, texto) {
     cola.encolar({ to: lead.telefono, texto, kind: 'manual', leadId: lead.id });
@@ -177,6 +177,12 @@ function crearEmbudo({ repo, cola, textos, scorer, logger, ahora = () => new Dat
     async _transicionar(lead, entrada, destino) {
       const final = await alEntrar(repo.leadPorId(lead.id), destino, entrada);
       repo.actualizarFunnel(lead.id, { fsm_state: final });
+
+      // El CRM se entera cuando el lead califica o pide un humano — los dos
+      // momentos en que alguien del equipo tiene que hacer algo.
+      if (crmNotify && (final === S.MEETING_SENT || final === S.HUMAN_QUEUED)) {
+        await crmNotify.leadCalifico(lead.id);
+      }
       return final;
     },
   };
