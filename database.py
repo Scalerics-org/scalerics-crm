@@ -60,6 +60,9 @@ def init_db(db_path: str) -> None:
         _add_column(conn, "businesses", "callback_date", "TEXT")
         _add_column(conn, "businesses", "source", "TEXT")
         _add_column(conn, "businesses", "email", "TEXT")
+        # Qué servicio pidió el lead (web/Calendly). Aparte de `category`,
+        # que es el rubro del negocio.
+        _add_column(conn, "businesses", "interest", "TEXT")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS roles (
                 id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -367,6 +370,7 @@ ALLOWED_COLUMNS = {
     "color_scheme", "demo_html_path", "demo_url", "status", "error_message",
     "scraped_at", "notes", "pitch_text", "crm_status",
     "has_whatsapp", "last_event_at", "score", "callback_date", "source",
+    "interest",
 }
 
 

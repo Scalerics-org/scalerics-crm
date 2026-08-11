@@ -3392,7 +3392,7 @@ function renderKanban() {
 }
 
 function _kanbanCard(l) {
-  const meta = [l.category, l.city].filter(Boolean).join(' · ');
+  const meta = [l.interest, l.category, l.city].filter(Boolean).join(' · ');
   return `<div class="kanban-card" draggable="true" data-id="${l.id}"
     ondragstart="_kanbanDragStart(event,${l.id})"
     ondragend="_kanbanDragEnd(event)"
