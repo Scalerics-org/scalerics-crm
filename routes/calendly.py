@@ -66,6 +66,25 @@ def _find_client(db_path: str, email: str, phone: str, name: str):
     return None
 
 
+@calendly_bp.route("/api/calendly/sync", methods=["POST"])
+def calendly_sync():
+    """Carga los leads de Calendly leyendo Google Calendar.
+
+    El webhook de Calendly necesita plan Standard; esta vía anda en Free.
+    Protegida por el before_request del dashboard (sesión o x-admin-token).
+    """
+    db_path = os.environ.get("DB_PATH", "leads.db")
+    dry_run = request.args.get("dry") in ("1", "true", "yes")
+    try:
+        from services.calendly_gcal import fetch_and_sync
+        stats = fetch_and_sync(db_path, dry_run=dry_run)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).exception("calendly sync falló")
+        return jsonify({"ok": False, "error": str(e)}), 500
+    return jsonify({"ok": True, **stats})
+
+
 @calendly_bp.route("/api/calendly/webhook", methods=["POST"])
 def calendly_webhook():
     db_path = os.environ.get("DB_PATH", "leads.db")
