@@ -18,7 +18,6 @@ import time
 from database import (
     insert_business,
     update_business,
-    get_business,
     get_business_by_phone,
     log_activity,
 )
