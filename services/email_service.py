@@ -237,3 +237,16 @@ def send_meta_token_alert(to_email: str, error_detail: str) -> bool:
         cta_label="Ir al CRM →",
     )
     return _send(to_email, "ALERTA: Token Meta Ads inválido — Scalerics CRM", html)
+
+
+def send_meta_lead_failure_alert(email: str, lead_id: str, error: str) -> None:
+    """Avisa que un lead de Meta llegó pero no se pudo guardar."""
+    asunto = f"[CRM] No se pudo guardar un lead de Meta ({lead_id})"
+    cuerpo = (
+        f"<p>Llegó un lead de Meta y el CRM no lo pudo guardar.</p>"
+        f"<p><b>leadgen_id:</b> {lead_id}</p>"
+        f"<p><b>Error:</b> {error}</p>"
+        f"<p>Se puede recuperar a mano desde el panel de formularios de Meta "
+        f"buscando ese id.</p>"
+    )
+    _send(email, asunto, cuerpo)

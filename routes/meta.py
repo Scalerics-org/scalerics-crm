@@ -178,6 +178,12 @@ def _fetch_and_store_lead(app, lead_id: str, form_id: str):
 
         except Exception as e:
             logger.error(f"Error processing Meta lead {lead_id}: {e}")
+            from services.email_service import send_meta_lead_failure_alert
+            for admin in _get_admin_emails(db):
+                try:
+                    send_meta_lead_failure_alert(admin, lead_id, str(e))
+                except Exception as mail_err:
+                    logger.error(f"Tampoco se pudo avisar del fallo: {mail_err}")
 
 
 # ── Trigger historical import from production server ─────────────────────────
