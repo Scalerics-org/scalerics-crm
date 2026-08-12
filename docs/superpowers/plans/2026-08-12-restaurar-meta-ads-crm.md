@@ -651,6 +651,16 @@ curl -s "https://graph.facebook.com/debug_token?input_token=<PAGE_TOKEN>&access_
 
 Esperado: `"is_valid": true`. Si dice `false` o el `expires_at` ya pasó, **parar**: hay que regenerar el token de página antes de seguir, no tiene sentido deployar contra un token muerto.
 
+- [ ] **Step 2b: Verificar que `v26.0` existe, con una llamada real**
+
+Todo el código pega contra `GRAPH_VERSION = "v26.0"`. Que la versión aparezca en el desplegable de la UI de Meta **no** es lo mismo que que la API la sirva para esta app: si no existe, cada llamada vuelve con `Unsupported get request` y el webhook guarda cero leads.
+
+```bash
+curl -s "https://graph.facebook.com/v26.0/me?access_token=<PAGE_TOKEN>"
+```
+
+Esperado: un JSON con el `name` y el `id` de la página. Si vuelve `{"error": ...}` con código 2500 / "Unsupported", **parar** y bajar `GRAPH_VERSION` en `meta_config.py` a la última versión que sí responda, antes de deployar.
+
 - [ ] **Step 3: Cargar los cinco secrets**
 
 ```bash
@@ -658,6 +668,8 @@ flyctl secrets set -a scalerics-crm META_APP_ID=<valor> META_APP_SECRET=<valor> 
 ```
 
 Un solo comando con los cinco: cada `flyctl secrets set` dispara un redeploy, y así es uno solo.
+
+> **Los secrets van sí o sí antes de tocar la URL de callback en Meta (Task 7, Step 1).** Sin `META_APP_SECRET` el GET de verificación pasa igual —`META_VERIFY_TOKEN` tiene un default hardcodeado en `routes/meta.py`— pero todo POST se rechaza con 403 por firma no verificable. O sea: Meta muestra el webhook en verde mientras descarta **cada lead que llega**, y tras suficientes fallos deshabilita la suscripción sola. Cargar los secrets primero, cambiar la URL después.
 
 Nota: `routes/meta.py` también lee `ADMIN_WA_PHONE`, pero está comentado en el código y tiene default `""`. No hace falta cargarlo.
 
@@ -732,6 +744,24 @@ flyctl deploy -a scalerics-crm > /c/Users/juant/AppData/Local/Temp/claude/C--Use
 flyctl status -a scalerics-crm
 ```
 
+- [ ] **Step 4b: Chequear que los 7 `CLIENTES_VIVOS` tengan teléfono**
+
+`restore_meta_leads.py` les devuelve `source='meta'`. Pero `init_db` corre en **cada arranque** un borrado de deduplicación (`database.py`, bloque "Remove duplicate null-phone meta leads"):
+
+```sql
+DELETE FROM businesses
+WHERE source = 'meta' AND phone IS NULL
+  AND id NOT IN (SELECT MIN(id) FROM businesses WHERE source='meta' AND phone IS NULL GROUP BY name, SUBSTR(COALESCE(scraped_at,''),1,10))
+```
+
+Un cliente real con `phone IS NULL` hoy está fuera de ese alcance porque su `source` no es `'meta'`. Devolvérselo lo mete adentro por primera vez: si otro lead de Meta comparte nombre y fecha, el que quede con el id más alto se borra en el próximo arranque.
+
+```bash
+flyctl ssh console -a scalerics-crm -C "python -c \"import sqlite3; c=sqlite3.connect('/data/leads.db'); print(c.execute('SELECT id, name, phone, scraped_at FROM businesses WHERE id IN (598,626,655,694,20149,26740,32095)').fetchall())\""
+```
+
+Esperado: los 7 con teléfono. **Si alguno tiene `phone` en NULL, parar** y decidir a mano: cargarle el teléfono antes de restaurar, o sacarlo del UPDATE.
+
 - [ ] **Step 5: Restaurar los datos, primero en seco**
 
 Subir el backup y el script, y correr el dry-run:
@@ -740,7 +770,21 @@ Subir el backup y el script, y correr el dry-run:
 flyctl ssh console -a scalerics-crm -C "python /data/restore_meta_leads.py /data/leads.db /data/meta_leads.json --dry-run"
 ```
 
-Esperado: `{'inserted': 192, 'updated': 7, 'skipped': 0}`. **Si `inserted` no da 192 o `updated` no da 7, parar** — algo no cuadra entre el backup y el estado de la base.
+> **El dry-run ya no es de solo lectura.** Ejecuta los mismos INSERT/UPDATE que la corrida real y recién al final hace `rollback()` — es lo que hace que los conteos sean de verdad. Consecuencia: toma el **write lock** de `/data/leads.db` mientras corre. La base está en WAL, así que las lecturas siguen andando, pero **las escrituras del CRM esperan y pueden fallar por timeout**. Correrlo con el equipo fuera del CRM, y el backup del Step 1 no es opcional.
+
+El script devuelve **cuatro** claves. Esperado:
+
+```
+{'inserted': 192, 'updated': 7, 'skipped': 0, 'insert_conflicts': 0}
+```
+
+La compuerta es `inserted == 192 and updated == 7 and insert_conflicts == 0`. **Si alguno de los tres no da, parar.**
+
+**`insert_conflicts > 0` es el caso que importa:** son leads del backup cuyo teléfono (o `maps_url`) **ya existe en producción**, así que el `INSERT OR IGNORE` los descarta enteros y en silencio. Son exactamente los que se perderían sin que nadie se entere. No seguir de largo: sacar la lista y **decidir uno por uno** si el lead viejo se descarta, si se fusiona a mano con el negocio que ya está, o si hay que cambiarle el teléfono. Para ubicarlos:
+
+```bash
+flyctl ssh console -a scalerics-crm -C "python -c \"import json,sqlite3; c=sqlite3.connect('/data/leads.db'); b=json.load(open('/data/meta_leads.json')); vivos={598,626,655,694,20149,26740,32095}; print([(f['id'], f.get('name'), f.get('phone')) for f in b['businesses'] if f.get('id') not in vivos and c.execute('SELECT 1 FROM businesses WHERE id=? OR (phone IS NOT NULL AND phone=?)', (f.get('id'), f.get('phone'))).fetchone()])\""
+```
 
 - [ ] **Step 6: Restaurar de verdad**
 
@@ -771,6 +815,8 @@ Esta es la única tarea que prueba lo que importa: que un lead de verdad llegue 
 App "Scalerics CRM" (id `1306976674838718`) → Casos de uso → Webhooks → producto **Page**.
 
 Cambiar la URL de callback a `https://scalerics-crm.fly.dev/api/meta/webhook` con el `META_VERIFY_TOKEN` que se cargó en el Step 3 de la Task 5.
+
+**Antes de tocar esta pantalla, confirmar que los secrets ya están cargados** (`flyctl secrets list -a scalerics-crm` tiene que mostrar los cinco `META_*`). Sin `META_APP_SECRET` la verificación GET pasa igual y Meta deja el webhook en verde, pero cada POST se rechaza con 403: se pierden todos los leads del intervalo y Meta termina deshabilitando la suscripción sola.
 
 - [ ] **Step 2: Confirmar la versión del campo `leadgen`**
 
@@ -809,3 +855,15 @@ Recién ahora, y **sin borrarlo**: pausar el proyecto `scalerics-meta-hook` en V
 - [ ] **Step 7: Merge de la rama**
 
 Usar la skill `superpowers:finishing-a-development-branch`. Ojo: `meta-restore` salió de `d500b14`, que incluye trabajo de Calendly de otra sesión. Coordinar antes de mergear para no pisarse.
+
+---
+
+## Notas operativas (leer antes de tocar producción)
+
+- **El import automático puede resucitar un lead borrado del panel.** `start_meta_daily_import` corre cada 24h reales (antes compartía constante con el monitor de token y corría cada 10 minutos; se separó en `_IMPORT_INTERVAL`). Repasa **todos** los formularios de la página y reinserta lo que no encuentre en la base, sin filtrar por fecha: un lead borrado a mano del CRM vuelve a aparecer, como mucho una vez por día, mientras Graph lo siga reteniendo (~90 días). **Es una decisión tomada a conciencia**, no un olvido: se prefirió eso a arriesgar que un lead nuevo se pierda si el webhook falla. Si molesta, la salida no es apagar el import sino borrar el lead también del panel de formularios de Meta.
+
+- **Un lead de Meta cuyo teléfono ya está en la base no crea una fila nueva.** El `INSERT OR IGNORE` choca con `businesses.phone UNIQUE`, así que el webhook le devuelve `source='meta'` al negocio que ya existía, le guarda el `form_data` y notifica apuntando a ese id. Efecto secundario esperable: ese negocio **sale de la Cola y pasa al panel de Meta** (la Cola excluye `source='meta'`). Queda un `warning` en los logs y una entrada `lead_updated` en el activity log.
+
+- **El token se renueva con `flyctl secrets set META_PAGE_TOKEN=<nuevo> -a scalerics-crm`**, que reinicia la app con el entorno nuevo. `POST /api/meta/setup-token` escribe un `.env` que en el contenedor no existe: no sirve en producción. El mail de alerta del monitor ya dice esto.
+
+- **`POST /api/meta/reset-import` ya no existe.** Borraba `businesses WHERE category='Meta Lead Ad'` y reimportaba desde Graph, que solo retiene ~90 días: se llevaba puestos justo los 199 leads que esta rama restaura. No volver a agregarlo.
