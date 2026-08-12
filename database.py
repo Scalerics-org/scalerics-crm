@@ -19,6 +19,11 @@ def _add_column(conn: sqlite3.Connection, table: str, column: str, definition: s
 def _connect(db_path: str) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path, timeout=10)
     conn.execute("PRAGMA journal_mode=WAL")  # better concurrency
+    # SQLite arranca con las foreign keys DESACTIVADAS y hay que activarlas por
+    # conexion. Sin esto los 14 REFERENCES del esquema (y sus ON DELETE CASCADE)
+    # eran decorativos: borrar un lead dejaba vivos sus lead_events, adjuntos y
+    # call_logs con la PII adentro. Se activa antes de cualquier transaccion.
+    conn.execute("PRAGMA foreign_keys=ON")
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -329,30 +334,15 @@ def init_db(db_path: str) -> None:
         conn.execute("UPDATE businesses SET crm_status = 'interesado' WHERE crm_status = 'contactado'")
         conn.commit()
 
-        # Remove duplicate phone rows before creating unique index (keeps oldest row)
-        try:
-            conn.execute("""
-                DELETE FROM businesses
-                WHERE phone IS NOT NULL
-                  AND id NOT IN (
-                      SELECT MIN(id) FROM businesses
-                      WHERE phone IS NOT NULL
-                      GROUP BY phone
-                  )
-            """)
-            # Remove duplicate null-phone meta leads by (name, date)
-            conn.execute("""
-                DELETE FROM businesses
-                WHERE source = 'meta' AND phone IS NULL
-                  AND id NOT IN (
-                      SELECT MIN(id) FROM businesses
-                      WHERE source = 'meta' AND phone IS NULL
-                      GROUP BY name, SUBSTR(COALESCE(scraped_at, ''), 1, 10)
-                  )
-            """)
-            conn.commit()
-        except Exception as e:
-            logger.warning(f"Dedup migration: {e}")
+        # OJO: aca habia dos DELETE FROM businesses que corrian en CADA arranque
+        # (server.py llama init_db al importar). El segundo borraba leads de Meta sin
+        # telefono agrupando por (name, fecha), y routes/meta.py usa 'Lead Meta' como
+        # nombre por defecto: un formulario sin telefono colapsaba todos los leads de
+        # Meta del dia a uno solo, en silencio y sin vuelta atras.
+        #
+        # La deduplicacion es una migracion de una sola vez, no parte del arranque.
+        # Se movio a scripts/dedupe_once.py (con --dry-run). Si quedan duplicados, la
+        # creacion del indice unico de abajo falla y se loguea; la app sigue andando.
 
         # Partial unique index on phone — prevents future duplicates, allows multiple NULLs
         try:

@@ -1,5 +1,6 @@
 import pytest
-from database import init_db, add_attachment, get_attachment_file, update_attachment_file
+from database import (init_db, add_attachment, get_attachment_file,
+                      insert_business, update_attachment_file)
 from unittest.mock import MagicMock, patch
 from services.budget_ai import ai_edit_html, generate_budget_html
 
@@ -12,7 +13,11 @@ def db_path(tmp_path):
 
 
 def test_update_attachment_file_replaces_content(db_path):
-    attach_id = add_attachment(db_path, 1, "budget", "presupuesto.html",
+    # El lead tiene que existir de verdad: lead_attachments.lead_id es una FK a
+    # businesses. Antes este test pasaba con lead_id=1 sobre una base vacia porque
+    # SQLite tenia las foreign keys apagadas y aceptaba el huerfano.
+    lead_id = insert_business(db_path, {"name": "Cliente de prueba", "phone": "+59899000001"})
+    attach_id = add_attachment(db_path, lead_id, "budget", "presupuesto.html",
                                file_data=b"<html>original</html>", mime_type="text/html")
     update_attachment_file(db_path, attach_id, b"<html>modificado</html>")
     row = get_attachment_file(db_path, attach_id)
