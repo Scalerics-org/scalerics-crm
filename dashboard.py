@@ -1,4 +1,5 @@
-﻿import logging
+﻿import hmac
+import logging
 import os
 import secrets
 import threading
@@ -6,7 +7,7 @@ import webbrowser
 from datetime import timedelta
 
 from dotenv import load_dotenv
-from flask import Flask, jsonify, redirect, render_template_string, request, session, url_for
+from flask import Flask, g, jsonify, redirect, render_template_string, request, session, url_for
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
@@ -21,7 +22,7 @@ from routes.budgets import budgets_bp
 from routes.tokens import tokens_bp
 from routes.meta import meta_bp, start_meta_token_monitor, start_meta_daily_import
 from routes.calendly import calendly_bp
-from services.auth import require_admin
+from services.auth import ALL_PANELS, enforce_panel_access, require_admin
 from services.demo_service import demo_job_handler
 from services.job_service import init_worker
 
@@ -3742,12 +3743,16 @@ function closeMasSheet() {
 }
 
 // ── Panel access control ──────────────────────────────────────────────────────
-const ALL_PANELS = ['cola','seguimientos','meta','pipeline','clientes','tasks','wa','cal','metrics','activity'];
+// Fallback nada mas: la lista real la manda /api/me (services/auth.ALL_PANELS).
+// Estaba hardcodeada aca y en la pagina de admin, y a las dos les faltaba 'sdr',
+// asi que guardar cualquier rol borraba ese permiso.
+let ALL_PANELS = ['cola','seguimientos','meta','pipeline','clientes','tasks','wa','cal','metrics','sdr','activity'];
 (async () => {
   try {
     const r = await fetch('/api/me');
     if (!r.ok) return;
     const m = await r.json();
+    if (Array.isArray(m.all_panels) && m.all_panels.length) ALL_PANELS = m.all_panels;
     window._isAdmin = m.is_admin;
     if (m.is_admin) {
       const a = document.getElementById('admin-link');
@@ -5195,7 +5200,9 @@ def create_app(db_path: str) -> Flask:
         if request.path.startswith("/api/"):
             token = request.headers.get("x-admin-token", "")
             expected = os.environ.get("ADMIN_TOKEN", "")
-            if expected and token == expected:
+            # compare_digest para no filtrar el token por diferencia de tiempos
+            if expected and hmac.compare_digest(token, expected):
+                g.admin_token_auth = True
                 return
         # Invalidate pre-multiuser sessions that lack user_id
         if session.get("logged_in") and not session.get("user_id"):
@@ -5207,6 +5214,16 @@ def create_app(db_path: str) -> Flask:
             if request.path.startswith("/api/"):
                 return jsonify({"error": "session_expired"}), 401
             return redirect(url_for("login"))
+
+    @app.before_request
+    def require_panel():
+        """Aplica los permisos de panel del lado del servidor.
+
+        Corre DESPUES de require_login (Flask respeta el orden de registro), asi
+        que aca el usuario ya esta autenticado. Hasta ahora panel_access solo
+        escondia items del nav en JavaScript.
+        """
+        return enforce_panel_access(db_path)
 
     @app.route("/privacidad")
     def privacidad():
@@ -5720,6 +5737,9 @@ def create_app(db_path: str) -> Flask:
             "is_admin": is_admin,
             "panel_access": panel_access,
             "role_id": user.get("role_id"),
+            # El frontend tenia esta lista hardcodeada en dos constantes distintas,
+            # y a las dos les faltaba 'sdr'. Ahora viene del backend.
+            "all_panels": list(ALL_PANELS),
         })
 
     @app.route("/api/me", methods=["PUT"])
@@ -6087,8 +6107,11 @@ function jsStr(s) {
     c => '\\x' + c.charCodeAt(0).toString(16).padStart(2, '0'));
 }
 
-const ALL_PANELS = ['cola','seguimientos','meta','pipeline','clientes','tasks','wa','cal','metrics','activity'];
-const PANEL_LABELS = {cola:'Cola',seguimientos:'Seguimientos',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Métricas',activity:'Actividad'};
+// Viene del backend (services/auth.ALL_PANELS) para que no vuelva a divergir con
+// la del dashboard: a ambas les faltaba 'sdr', y como getChecked() itera esta
+// lista, guardar un rol borraba ese permiso de la base sin avisar.
+const ALL_PANELS = {{ all_panels | tojson }};
+const PANEL_LABELS = {cola:'Cola',seguimientos:'Seguimientos',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Métricas',sdr:'SDR',activity:'Actividad'};
 let _roles = [];
 
 function makeChips(containerId, checkedArr, prefix) {
@@ -6208,7 +6231,7 @@ loadAll();
 </script>
 </body>
 </html>"""
-        return render_template_string(ADMIN_PAGE, users=users)
+        return render_template_string(ADMIN_PAGE, users=users, all_panels=list(ALL_PANELS))
 
     @app.route("/admin/users/<int:user_id>/delete", methods=["POST"])
     def admin_delete_user_page(user_id):
