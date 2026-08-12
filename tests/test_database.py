@@ -107,3 +107,124 @@ def test_get_all_users_anda_en_base_nueva(tmp_path):
     init_db(db)
 
     assert get_all_users(db) == []
+
+
+# ── Migración: panel "meta" para los roles que ya existen ────────────────────
+
+def _roles(db):
+    import json
+    import sqlite3
+
+    conn = sqlite3.connect(db)
+    filas = conn.execute("SELECT name, panel_access FROM roles").fetchall()
+    conn.close()
+    return {nombre: json.loads(acceso) for nombre, acceso in filas}
+
+
+def test_roles_existentes_reciben_el_panel_meta(tmp_path):
+    """El bloque que siembra roles solo corre con la tabla vacía. En producción
+    los roles ya existen: sin migración ningún usuario no-admin ve el panel."""
+    import json
+    import sqlite3
+
+    from database import init_db
+
+    db = str(tmp_path / "prod.db")
+    init_db(db)
+
+    # Simular producción: roles ya creados, sin "meta" en el panel_access
+    conn = sqlite3.connect(db)
+    conn.execute("UPDATE roles SET panel_access = ?", (json.dumps(["cola", "seguimientos", "wa"]),))
+    conn.commit()
+    conn.close()
+
+    init_db(db)  # el arranque siguiente
+
+    for nombre, paneles in _roles(db).items():
+        assert "meta" in paneles, f"el rol {nombre} tiene que ver el panel de Meta"
+        assert "cola" in paneles and "wa" in paneles, "no se pisa el resto del array"
+
+
+def test_migracion_de_panel_es_idempotente(tmp_path):
+    """Corre en cada arranque: no puede acumular 'meta' ni reescribir de más."""
+    import json
+    import sqlite3
+
+    from database import init_db
+
+    db = str(tmp_path / "prod.db")
+    init_db(db)
+    conn = sqlite3.connect(db)
+    conn.execute("UPDATE roles SET panel_access = ?", (json.dumps(["cola"]),))
+    conn.commit()
+    conn.close()
+
+    init_db(db)
+    primera = _roles(db)
+    init_db(db)
+    init_db(db)
+    tercera = _roles(db)
+
+    assert primera == tercera, "arrancar de nuevo no cambia nada"
+    for paneles in tercera.values():
+        assert paneles.count("meta") == 1, "'meta' no se puede duplicar en el array"
+
+
+def test_panel_access_ilegible_no_rompe_el_arranque(tmp_path):
+    """Un panel_access vacío, con JSON inválido o que no es una lista se saltea
+    sin pisarlo: init_db corre en cada arranque y no puede tirar la app."""
+    import sqlite3
+
+    from database import init_db
+
+    db = str(tmp_path / "rara.db")
+    init_db(db)
+
+    conn = sqlite3.connect(db)
+    conn.execute("UPDATE roles SET panel_access = 'no-es-json' WHERE name = 'Caller'")
+    conn.execute("UPDATE roles SET panel_access = '' WHERE name = 'Ventas'")
+    conn.execute("UPDATE roles SET panel_access = '{\"cola\": true}' WHERE name = 'Admin'")
+    conn.commit()
+    conn.close()
+
+    init_db(db)  # no explota
+
+    conn = sqlite3.connect(db)
+    valores = dict(conn.execute("SELECT name, panel_access FROM roles").fetchall())
+    conn.close()
+    assert valores["Caller"] == "no-es-json", "lo que no se entiende no se pisa"
+    assert valores["Ventas"] == ""
+    assert valores["Admin"] == '{"cola": true}'
+
+
+def test_panel_access_en_null_no_rompe(tmp_path):
+    """panel_access es NOT NULL en el esquema, pero una base vieja puede traer
+    NULL: la migración tiene que saltearlo igual, no reventar el arranque."""
+    import sqlite3
+
+    from database import init_db
+
+    db = str(tmp_path / "null.db")
+    init_db(db)
+
+    conn = sqlite3.connect(db)
+    conn.execute("PRAGMA writable_schema = ON")
+    conn.execute(
+        "UPDATE sqlite_master SET sql = replace(sql, 'panel_access TEXT NOT NULL', 'panel_access TEXT') "
+        "WHERE type = 'table' AND name = 'roles'"
+    )
+    conn.execute("PRAGMA writable_schema = OFF")
+    conn.commit()
+    conn.close()
+
+    conn = sqlite3.connect(db)
+    conn.execute("UPDATE roles SET panel_access = NULL WHERE name = 'Caller'")
+    conn.commit()
+    conn.close()
+
+    init_db(db)  # no explota
+
+    conn = sqlite3.connect(db)
+    valor = conn.execute("SELECT panel_access FROM roles WHERE name = 'Caller'").fetchone()[0]
+    conn.close()
+    assert valor is None, "un NULL se saltea, no se inventa un array"
