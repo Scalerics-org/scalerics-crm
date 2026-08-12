@@ -1045,6 +1045,32 @@ body.light .upick-option:hover{background:#f8fafc}
 body.light .upick-option.upick-sel{background:#eff6ff}
 body.light .upick-label{color:#0f172a}
 body.light .upick-name{color:#0f172a}
+
+/* Avisos de error de la API. Antes un fallo de red o un 500 no mostraba nada:
+   el usuario se quedaba con un spinner colgado sin saber que habia pasado. */
+#avisos{position:fixed;top:16px;right:16px;z-index:9999;display:flex;flex-direction:column;
+        gap:8px;max-width:min(380px,calc(100vw - 32px));pointer-events:none}
+.aviso{pointer-events:auto;background:#1e293b;border:1px solid #334155;border-left:3px solid #64748b;
+       border-radius:8px;padding:11px 14px;font-size:.82rem;color:#e2e8f0;line-height:1.45;
+       box-shadow:0 8px 24px rgba(0,0,0,.35);animation:avisoIn .18s ease-out}
+.aviso-error{border-left-color:#ef4444}
+.aviso-warn{border-left-color:#f59e0b}
+.aviso-titulo{font-weight:700;margin-bottom:2px}
+.aviso-cerrar{float:right;background:none;border:none;color:#64748b;cursor:pointer;
+              font-size:1rem;line-height:1;padding:0 0 0 10px;font-family:inherit}
+.aviso-cerrar:hover{color:#e2e8f0}
+@keyframes avisoIn{from{opacity:0;transform:translateX(12px)}to{opacity:1;transform:none}}
+body.light .aviso{background:#fff;border-color:#e2e8f0;color:#0f172a}
+
+/* Cortina de sesion vencida */
+#sesion-vencida{display:none;position:fixed;inset:0;z-index:10000;background:rgba(2,6,23,.82);
+                backdrop-filter:blur(3px);align-items:center;justify-content:center}
+#sesion-vencida .caja{background:#0f172a;border:1px solid #1e293b;border-radius:12px;
+                      padding:28px 32px;max-width:380px;text-align:center;color:#e2e8f0}
+#sesion-vencida h3{margin:0 0 8px;font-size:1.05rem}
+#sesion-vencida p{margin:0 0 18px;font-size:.85rem;color:#94a3b8;line-height:1.5}
+#sesion-vencida a{display:inline-block;background:#0088cc;color:#fff;text-decoration:none;
+                  padding:8px 20px;border-radius:8px;font-size:.85rem;font-weight:600}
 </style>
 </head>
 <body>
@@ -1088,6 +1114,18 @@ body.light .upick-name{color:#0f172a}
   </div>
 </div>
 
+
+<!-- Contenedor de avisos y cortina de sesion vencida. Antes, cuando la sesion
+     caducaba, los fetch recibian un 401 que nadie miraba: la pantalla quedaba
+     vacia o girando para siempre, sin decir que habia que volver a entrar. -->
+<div id="avisos"></div>
+<div id="sesion-vencida">
+  <div class="caja">
+    <h3>Tu sesión venció</h3>
+    <p>Por seguridad cerramos la sesión después de un rato de inactividad. Volvé a entrar para seguir trabajando.</p>
+    <a href="/login">Iniciar sesión</a>
+  </div>
+</div>
 
 <div class="main">
   <!-- ======= COLA PANEL ======= -->
@@ -1631,6 +1669,103 @@ body.light .upick-name{color:#0f172a}
 
 <script>
 window._isAdmin = false; // default until /api/me resolves
+
+// ========== Manejo central de errores de la API ==========
+// De los 101 fetch() del panel, solo 4 miraban el 401. Cuando la sesion vencia,
+// el resto recibia un JSON de error donde esperaba datos: la vista quedaba vacia
+// o con un spinner eterno, y un SDR podia perder media jornada de trabajo sin
+// enterarse de que ya no estaba logueado.
+//
+// En vez de tocar los 101 call sites (y arriesgar romper alguno), se envuelve
+// window.fetch: todas las llamadas existentes y futuras quedan cubiertas, y la
+// Response se devuelve intacta para no cambiar el comportamiento de nadie.
+
+function mostrarAviso(mensaje, titulo, tipo) {
+  let cont = document.getElementById('avisos');
+  if (!cont) {
+    cont = document.createElement('div');
+    cont.id = 'avisos';
+    document.body.appendChild(cont);
+  }
+  const el = document.createElement('div');
+  el.className = 'aviso aviso-' + (tipo || 'error');
+  const btn = document.createElement('button');
+  btn.className = 'aviso-cerrar';
+  btn.textContent = '×';
+  btn.onclick = () => el.remove();
+  const cuerpo = document.createElement('div');
+  if (titulo) {
+    const h = document.createElement('div');
+    h.className = 'aviso-titulo';
+    h.textContent = titulo;      // textContent, no innerHTML: el detalle viene del server
+    cuerpo.appendChild(h);
+  }
+  cuerpo.appendChild(document.createTextNode(mensaje));
+  el.appendChild(btn);
+  el.appendChild(cuerpo);
+  cont.appendChild(el);
+  setTimeout(() => el.remove(), 7000);
+}
+
+let _sesionYaVencida = false;
+function _avisarSesionVencida() {
+  if (_sesionYaVencida) return;   // no apilar una cortina por cada fetch en vuelo
+  _sesionYaVencida = true;
+  const cortina = document.getElementById('sesion-vencida');
+  if (cortina) cortina.style.display = 'flex';
+  else window.location.href = '/login';
+}
+
+(function envolverFetch() {
+  const original = window.fetch.bind(window);
+  const esApi = (u) => {
+    try {
+      return new URL(u, window.location.origin).pathname.startsWith('/api/');
+    } catch (e) { return false; }
+  };
+
+  window.fetch = async function (input, init) {
+    const url = typeof input === 'string' ? input : (input && input.url) || '';
+    let resp;
+    try {
+      resp = await original(input, init);
+    } catch (e) {
+      if (esApi(url)) {
+        mostrarAviso('No se pudo contactar al servidor. Revisá tu conexión.',
+                     'Sin conexión', 'error');
+      }
+      throw e;   // se relanza: el codigo que ya tenia catch sigue funcionando igual
+    }
+
+    if (!resp.ok && esApi(url)) {
+      if (resp.status === 401) {
+        _avisarSesionVencida();
+      } else {
+        // clone() para no consumir el body: quien llamo sigue pudiendo leerlo.
+        resp.clone().json().then(d => {
+          const detalle = (d && (d.detail || d.error)) || '';
+          if (resp.status === 403) {
+            mostrarAviso(detalle || 'No tenés permiso para esta acción.',
+                         'Acceso denegado', 'warn');
+          } else if (resp.status === 429) {
+            mostrarAviso(detalle || 'Demasiados intentos, esperá un momento.',
+                         'Frenando un poco', 'warn');
+          } else if (resp.status >= 500) {
+            mostrarAviso(detalle || 'Error interno del servidor.',
+                         'Algo falló', 'error');
+          }
+        }).catch(() => {
+          if (resp.status >= 500) {
+            mostrarAviso('El servidor respondió con un error inesperado.',
+                         'Algo falló', 'error');
+          }
+        });
+      }
+    }
+    return resp;
+  };
+})();
+
 // ========== Sidebar mobile ==========
 function toggleSidebar() {
   document.getElementById('sidebar').classList.toggle('open');
@@ -2300,7 +2435,7 @@ function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').re
 // HTML ni en el JS. Uso: onclick="fn('${jsStr(valor)}')"
 function jsStr(s) {
   return String(s == null ? '' : s).replace(/[^a-zA-Z0-9 _.\-:@\/]/g,
-    c => '\\x' + c.charCodeAt(0).toString(16).padStart(2, '0'));
+    c => String.fromCharCode(92) + 'x' + c.charCodeAt(0).toString(16).padStart(2, '0'));
 }
 
 // Para href/src: bloquea javascript:, data:, vbscript: y demas esquemas ejecutables.
@@ -5177,7 +5312,11 @@ def create_app(db_path: str) -> Flask:
         resp.headers.setdefault(
             "Content-Security-Policy",
             "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline'; "
+            # unpkg sirve la libreria de iconos (lucide). Sin esto el navegador la
+            # bloquea y TODOS los iconos del panel desaparecen con
+            # "lucide is not defined". Conviene auto-hospedarla al extraer el JS a
+            # static/, y ahi sacar este origen.
+            "script-src 'self' 'unsafe-inline' https://unpkg.com; "
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
             "img-src 'self' data: https:; "
             "font-src 'self' https://fonts.gstatic.com; "
@@ -6104,7 +6243,7 @@ select:focus{border-color:#0088cc}
 function esc(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 function jsStr(s) {
   return String(s == null ? '' : s).replace(/[^a-zA-Z0-9 _.\-:@\/]/g,
-    c => '\\x' + c.charCodeAt(0).toString(16).padStart(2, '0'));
+    c => String.fromCharCode(92) + 'x' + c.charCodeAt(0).toString(16).padStart(2, '0'));
 }
 
 // Viene del backend (services/auth.ALL_PANELS) para que no vuelva a divergir con
