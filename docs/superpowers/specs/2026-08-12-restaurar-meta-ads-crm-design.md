@@ -85,6 +85,11 @@ Recién **después** de verificar que el CRM recibe leads de verdad. El proyecto
 de Vercel se apaga pero no se borra en el mismo día: si algo sale mal, volver
 a apuntar la URL de callback tiene que seguir siendo un cambio de un campo.
 
+El hook tiene un cron semanal que avisa antes de que venza el token. Esa
+función no se pierde: `routes/meta.py` trae `start_meta_token_monitor`, que
+hace lo mismo dentro del CRM. Hay que confirmar que arranca, si no la
+jubilación del hook deja el vencimiento del token sin vigilancia.
+
 ## Secrets
 
 Los cinco `META_*` **no están en Fly** — se rotaron y se sacaron durante la
