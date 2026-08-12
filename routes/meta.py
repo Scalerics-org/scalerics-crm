@@ -21,9 +21,12 @@ from services.email_service import send_new_meta_lead_notification, send_meta_to
 logger = logging.getLogger(__name__)
 meta_bp = Blueprint("meta", __name__)
 
-VERIFY_TOKEN = os.environ.get("META_VERIFY_TOKEN", "scalerics_meta_webhook_2026")
-APP_SECRET   = os.environ.get("META_APP_SECRET", "")
-PAGE_TOKEN   = os.environ.get("META_PAGE_TOKEN", "")
+VERIFY_TOKEN   = os.environ.get("META_VERIFY_TOKEN", "scalerics_meta_webhook_2026")
+APP_SECRET     = os.environ.get("META_APP_SECRET", "")
+PAGE_TOKEN     = os.environ.get("META_PAGE_TOKEN", "")
+GRAPH_VERSION  = "v26.0"
+GRAPH          = f"https://graph.facebook.com/{GRAPH_VERSION}"
+ALLOW_UNSIGNED = os.environ.get("META_ALLOW_UNSIGNED", "").lower() == "true"
 
 
 def _db() -> str:
@@ -74,8 +77,14 @@ def _redact_secrets(text: str) -> str:
 
 
 def _verify_signature(payload: bytes, sig_header: str) -> bool:
-    if not APP_SECRET or not sig_header:
-        return True  # skip in dev if not configured
+    if not APP_SECRET:
+        if ALLOW_UNSIGNED:
+            logger.warning("META_APP_SECRET sin configurar y META_ALLOW_UNSIGNED=true — firma no verificada")
+            return True
+        logger.error("META_APP_SECRET sin configurar — se rechaza el webhook")
+        return False
+    if not sig_header:
+        return False
     try:
         expected = "sha256=" + hmac.new(APP_SECRET.encode(), payload, hashlib.sha256).hexdigest()
         return hmac.compare_digest(expected, sig_header)
@@ -135,7 +144,7 @@ def _fetch_and_store_lead(app, lead_id: str, form_id: str):
                 return
 
             r = requests.get(
-                f"https://graph.facebook.com/v20.0/{lead_id}",
+                f"{GRAPH}/{lead_id}",
                 params={"access_token": PAGE_TOKEN, "fields": "field_data,created_time,ad_name,campaign_name,form_id"},
                 timeout=10,
             )
@@ -260,12 +269,12 @@ def meta_import_leads():
                 return results
 
             forms = get_all(
-                f"https://graph.facebook.com/v20.0/{page_id}/leadgen_forms",
+                f"{GRAPH}/{page_id}/leadgen_forms",
                 {"access_token": pt, "fields": "id,name,status"}
             )
             for form in forms:
                 leads = get_all(
-                    f"https://graph.facebook.com/v20.0/{form['id']}/leads",
+                    f"{GRAPH}/{form['id']}/leads",
                     {"access_token": pt, "fields": "id,created_time,field_data,ad_name,campaign_name"}
                 )
                 for lead in leads:
@@ -328,7 +337,7 @@ def meta_setup_token():
 
     try:
         # 1. Long-lived user token
-        r = requests.get("https://graph.facebook.com/v20.0/oauth/access_token", params={
+        r = requests.get(f"{GRAPH}/oauth/access_token", params={
             "grant_type": "fb_exchange_token",
             "client_id": app_id, "client_secret": app_secret,
             "fb_exchange_token": user_token,
@@ -338,7 +347,7 @@ def meta_setup_token():
 
         # 2. Page token for the configured page
         page_id = os.environ.get("META_PAGE_ID", "")
-        r2 = requests.get(f"https://graph.facebook.com/v20.0/{page_id}", params={
+        r2 = requests.get(f"{GRAPH}/{page_id}", params={
             "fields": "access_token,name",
             "access_token": ll_user_token,
         }, timeout=10)
@@ -384,10 +393,10 @@ def meta_import_sync():
                 url = d.get("paging", {}).get("next")
                 params = {}
             return results
-        forms = _ga(f"https://graph.facebook.com/v20.0/{page_id}/leadgen_forms",
+        forms = _ga(f"{GRAPH}/{page_id}/leadgen_forms",
                     {"access_token": pt, "fields": "id,name,leads_count"})
         for form in forms:
-            leads = _ga(f"https://graph.facebook.com/v20.0/{form['id']}/leads",
+            leads = _ga(f"{GRAPH}/{form['id']}/leads",
                         {"access_token": pt, "fields": "id,created_time,field_data,ad_name,campaign_name"})
             for lead in leads:
                 fields = {f["name"].lower(): (f.get("values") or [""])[0] for f in lead.get("field_data", [])}
@@ -446,7 +455,7 @@ def _check_token_once(db: str) -> None:
         return
     try:
         r = requests.get(
-            "https://graph.facebook.com/v20.0/me",
+            f"{GRAPH}/me",
             params={"fields": "name", "access_token": token},
             timeout=10,
         )
@@ -506,12 +515,12 @@ def _run_import_sync(db: str) -> tuple[int, int]:
         return results
 
     forms = _ga(
-        f"https://graph.facebook.com/v20.0/{page_id}/leadgen_forms",
+        f"{GRAPH}/{page_id}/leadgen_forms",
         {"access_token": pt, "fields": "id,name,leads_count"},
     )
     for form in forms:
         leads = _ga(
-            f"https://graph.facebook.com/v20.0/{form['id']}/leads",
+            f"{GRAPH}/{form['id']}/leads",
             {"access_token": pt, "fields": "id,created_time,field_data,ad_name,campaign_name"},
         )
         for lead in leads:

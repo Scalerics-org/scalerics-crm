@@ -69,3 +69,31 @@ def test_fetch_failure_without_admins_logs_explicitly(app, monkeypatch, caplog):
         "LEAD-789" in record.message and "admin" in record.message.lower()
         for record in caplog.records
     ), "tiene que quedar un log explicito de que nadie fue avisado, distinguible del caso normal"
+
+
+def test_signature_fails_closed_without_secret(monkeypatch):
+    """Sin APP_SECRET no se puede aceptar cualquier payload: eso es un webhook abierto."""
+    from routes import meta
+
+    monkeypatch.setattr(meta, "APP_SECRET", "")
+    monkeypatch.setattr(meta, "ALLOW_UNSIGNED", False)
+    assert meta._verify_signature(b'{"object":"page"}', "") is False
+
+
+def test_signature_allows_unsigned_only_when_explicit(monkeypatch):
+    """En dev se puede saltear, pero tiene que ser una decisión explícita."""
+    from routes import meta
+
+    monkeypatch.setattr(meta, "APP_SECRET", "")
+    monkeypatch.setattr(meta, "ALLOW_UNSIGNED", True)
+    assert meta._verify_signature(b'{"object":"page"}', "") is True
+
+
+def test_graph_version_is_single_constant():
+    """La versión de Graph vive en un solo lugar."""
+    from routes import meta
+
+    fuente = open(meta.__file__, encoding="utf-8-sig").read()
+    assert meta.GRAPH_VERSION == "v26.0"
+    assert "graph.facebook.com/v" not in fuente, \
+        "no hardcodear la versión en las URLs, usar GRAPH_VERSION"
