@@ -148,6 +148,29 @@ def send_new_user_notification(new_name: str, new_email: str, new_phone: str, ad
     )
     return _send(admin_email, f"Nuevo usuario: {new_name} — Scalerics CRM", html)
 
+
+def send_new_meta_lead_notification(to_email: str, lead_name: str, phone: str, campaign: str, city: str, lead_id: int) -> bool:
+    rows = [("Nombre", lead_name)]
+    if phone:
+        rows.append(("Teléfono", phone))
+    if city:
+        rows.append(("Ciudad", city))
+    if campaign:
+        rows.append(("Campaña", campaign))
+    body = (
+        _muted("Llegó un nuevo lead de Meta Ads al CRM.")
+        + _info_card(rows)
+    )
+    html = _layout(
+        badge="Nuevo lead Meta Ads",
+        title=f"Nuevo lead: {lead_name}",
+        body=body,
+        cta_url=f"{_CRM_URL}/?highlight={lead_id}",
+        cta_label="Ver en CRM →",
+    )
+    return _send(to_email, f"Nuevo lead Meta: {lead_name} — Scalerics CRM", html)
+
+
 _GOAL_TYPE_LABELS = {
     "reuniones_agendadas": "reuniones agendadas",
     "leads_contactados": "leads contactados",
@@ -191,3 +214,26 @@ def send_task_assignment_email(
         cta_label="Abrir CRM →",
     )
     return _send(to_email, f"Nueva tarea: {task_title} — Scalerics CRM", html)
+
+
+def send_meta_token_alert(to_email: str, error_detail: str) -> bool:
+    body = (
+        _muted(
+            "El token de Meta (PAGE_TOKEN) ya no es válido. "
+            "Los leads nuevos de Meta Ads <b>no se están guardando en el CRM</b> hasta que se renueve."
+        )
+        + _info_card([("Error", error_detail)])
+        + _muted(
+            "Para renovarlo: entrá al Graph Explorer de Meta, generá un nuevo User Token "
+            "con permisos <code>leads_retrieval</code> y <code>pages_read_engagement</code>, "
+            "y usá el endpoint <code>POST /api/meta/setup-token</code> del CRM."
+        )
+    )
+    html = _layout(
+        badge="Alerta de integración",
+        title="Token de Meta Ads vencido o revocado",
+        body=body,
+        cta_url=f"{_CRM_URL}",
+        cta_label="Ir al CRM →",
+    )
+    return _send(to_email, "ALERTA: Token Meta Ads inválido — Scalerics CRM", html)

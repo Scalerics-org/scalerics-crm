@@ -15,6 +15,7 @@ from routes.pipeline import pipeline_bp
 from routes.tasks import tasks_bp
 from routes.budgets import budgets_bp
 from routes.tokens import tokens_bp
+from routes.meta import meta_bp, start_meta_token_monitor, start_meta_daily_import
 from routes.calendly import calendly_bp
 from services.demo_service import demo_job_handler
 from services.job_service import init_worker
@@ -311,6 +312,9 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
   .table-row:not(.no-cb)>div:nth-child(4){order:2;display:flex!important;align-items:center;gap:8px;flex-wrap:wrap}
   .table-row:not(.no-cb)>div:last-child{order:10;display:flex!important;gap:8px;flex-wrap:wrap;margin-top:4px}
   .table-row:not(.no-cb)>div:last-child button{min-height:40px!important;flex:1}
+  /* Meta panel: 7 cols — ocultar 5 y 6 que son metadata extra */
+  #meta-panel .table-row.no-cb>div:nth-child(5),
+  #meta-panel .table-row.no-cb>div:nth-child(6){display:none!important}
   .modal{width:95vw!important;max-width:95vw!important}
   .modal-row{grid-template-columns:1fr}
   .pipeline-input-row{flex-direction:column}
@@ -682,6 +686,8 @@ body.light .bar-track{background:#f1f5f9}
 body.light .funnel-label{color:#475569 !important}
 body.light .funnel-val,.bar-val{color:#475569}
 body.light .metrics-section-title{color:#64748b !important}
+#nav-meta .nav-icon{stroke:#e1306c}
+body.light #nav-meta .nav-icon{stroke:#c13584}
 /* ── Nav icon colors ──────────────────────────────────────────────────────── */
 #nav-cola .nav-icon{stroke:#60a5fa}
 #nav-seguimientos .nav-icon{stroke:#f59e0b}
@@ -1061,6 +1067,7 @@ body.light .upick-name{color:#0f172a}
   <div class="nav-section-label">LLAMADAS</div>
   <div class="nav-item active" id="nav-cola" onclick="showPanel('cola')"><i data-lucide="inbox" class="nav-icon"></i> Cola</div>
   <div class="nav-item" id="nav-seguimientos" onclick="showPanel('seguimientos')"><i data-lucide="bookmark" class="nav-icon"></i> Seguimientos</div>
+  <div class="nav-item" id="nav-meta" onclick="showPanel('meta');clearMetaBadge()"><i data-lucide="instagram" class="nav-icon"></i> Meta Ads <span id="meta-badge" style="display:none;background:#e1306c;color:#fff;font-size:.65rem;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:4px">NEW</span></div>
   <div class="nav-section-label">VENTAS</div>
   <div class="nav-item" id="nav-pipeline" onclick="showPanel('pipeline')"><i data-lucide="trending-up" class="nav-icon"></i> Proceso de venta</div>
   <div class="nav-item" id="nav-clientes" onclick="showPanel('clientes')"><i data-lucide="users" class="nav-icon"></i> Clientes</div>
@@ -1132,6 +1139,25 @@ body.light .upick-name{color:#0f172a}
         <span>Negocio</span><span>Teléfono</span><span>Callback</span><span>Notas</span><span>Acciones</span>
       </div>
       <div id="seguimientos-body"></div>
+    </div>
+  </div>
+
+  <!-- ======= META ADS PANEL ======= -->
+  <div id="meta-panel" class="panel">
+    <div class="page-header">
+      <div>
+        <h1>Meta Ads</h1>
+        <div class="page-date">Leads de formularios de Facebook e Instagram</div>
+      </div>
+    </div>
+    <div class="filters">
+      <input class="search-box" id="meta-search-input" placeholder="🔍 Buscar..." oninput="metaSearch(this.value)">
+    </div>
+    <div class="table-wrap">
+      <div class="table-header no-cb" style="grid-template-columns:1.8fr 1fr 1.2fr 1.2fr 0.9fr 0.8fr 1.1fr">
+        <span>Nombre / Negocio</span><span>Teléfono</span><span>Qué busca</span><span>Presupuesto</span><span>Ciudad</span><span style="cursor:pointer" onclick="toggleMetaSort()">Fecha <span id="meta-sort-icon">↓</span></span><span>Acciones</span>
+      </div>
+      <div id="meta-body"></div>
     </div>
   </div>
 
@@ -1275,6 +1301,11 @@ body.light .upick-name{color:#0f172a}
       </div>
       <button class="export-btn" onclick="loadMetrics()">↻ Actualizar</button>
     </div>
+    <div style="display:flex;gap:8px;margin-bottom:24px">
+      <button id="tab-sdr-btn" onclick="switchMetricsTab('sdr')" style="padding:6px 18px;border-radius:8px;border:1px solid #1e293b;background:#0088cc;color:#fff;font-size:.82rem;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif">SDR</button>
+      <button id="tab-meta-btn" onclick="switchMetricsTab('meta')" style="display:none;padding:6px 18px;border-radius:8px;border:1px solid #1e293b;background:transparent;color:#64748b;font-size:.82rem;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif">Meta Ads</button>
+    </div>
+    <!-- Tab SDR -->
     <div id="metrics-sdr">
       <div class="metrics-grid" style="grid-template-columns:repeat(4,1fr)">
         <div class="stat-card"><div class="stat-label">Total leads SDR</div><div class="stat-val" id="m-total">—</div></div>
@@ -1297,6 +1328,27 @@ body.light .upick-name{color:#0f172a}
       </div>
       <div class="metrics-grid-2">
         <div class="m-card"><div class="m-card-title">Top ciudades</div><div id="m-cities"></div></div>
+      </div>
+    </div>
+    <!-- Tab Meta Ads (solo admin) -->
+    <div id="metrics-meta" style="display:none">
+      <div class="metrics-grid" style="grid-template-columns:repeat(4,1fr)">
+        <div class="stat-card"><div class="stat-label">Total leads Meta</div><div class="stat-val" id="mm-total">—</div></div>
+        <div class="stat-card"><div class="stat-label">Este mes</div><div class="stat-val blue" id="mm-month">—</div></div>
+        <div class="stat-card"><div class="stat-label">Esta semana</div><div class="stat-val" style="color:#f59e0b" id="mm-week">—</div></div>
+        <div class="stat-card"><div class="stat-label">Conversión Meta</div><div class="stat-val green" id="mm-conv">—</div></div>
+      </div>
+      <div class="metrics-grid-2">
+        <div class="m-card"><div class="m-card-title">Leads por campaña</div><div id="mm-campaigns"></div></div>
+        <div class="m-card"><div class="m-card-title">Leads por mes</div><div id="mm-months"></div></div>
+      </div>
+      <div class="metrics-grid-2">
+        <div class="m-card"><div class="m-card-title">Funnel CRM Meta</div><div id="mm-funnel"></div></div>
+        <div class="m-card"><div class="m-card-title">Qué buscan</div><div id="mm-busca"></div></div>
+      </div>
+      <div class="metrics-grid-2">
+        <div class="m-card"><div class="m-card-title">Presupuesto declarado</div><div id="mm-presupuesto"></div></div>
+        <div class="m-card"><div class="m-card-title">Top ciudades Meta</div><div id="mm-cities"></div></div>
       </div>
     </div>
   </div>
@@ -1615,6 +1667,7 @@ function showPanel(name) {
   if (name === 'seguimientos') loadSeguimientos();
   if (name === 'pipeline') loadPipelinePanel();
   if (name === 'clientes') loadClientesPanel();
+  if (name === 'meta') loadMetaPanel();
   if (name === 'wa' && !waLoaded) loadWaLeads();
   if (name === 'wa') loadWaTemplates();
   if (name === 'cal' && !calLoaded) { calLoaded = true; renderCalendar(); }
@@ -1709,6 +1762,123 @@ function _reloadActiveCallPanel() {
   if (_callActivePanel === 'cola') loadCola();
   else if (_callActivePanel === 'seguimientos') loadSeguimientos();
   loadColaStats();
+}
+
+// ── Meta Ads panel ───────────────────────────────────────────────────────────
+let _metaSearch = '';
+let _metaLeads = [];
+let _metaSortDesc = true;
+let _metaKnownIds = new Set();
+let _metaPollTimer = null;
+
+function clearMetaBadge() {
+  document.getElementById('meta-badge').style.display = 'none';
+}
+
+function _startMetaPoll() {
+  if (_metaPollTimer) return;
+  _metaPollTimer = setInterval(async () => {
+    try {
+      const r = await fetch('/api/leads?crm_group=meta');
+      const data = await r.json();
+      const leads = Array.isArray(data) ? data : (data.items || []);
+      const newOnes = leads.filter(l => !_metaKnownIds.has(l.id));
+      if (newOnes.length && _metaKnownIds.size > 0) {
+        const badge = document.getElementById('meta-badge');
+        badge.textContent = newOnes.length === 1 ? 'NEW' : `+${newOnes.length}`;
+        badge.style.display = '';
+        _metaLeads = leads;
+        const activePanel = document.querySelector('.panel.active');
+        if (activePanel && activePanel.id === 'meta-panel') {
+          renderMetaTable();
+          clearMetaBadge();
+        }
+      }
+      leads.forEach(l => _metaKnownIds.add(l.id));
+    } catch(e) {}
+  }, 60000);
+}
+function metaSearch(v) { _metaSearch = v.toLowerCase(); renderMetaTable(); }
+function toggleMetaSort() { _metaSortDesc = !_metaSortDesc; document.getElementById('meta-sort-icon').textContent = _metaSortDesc ? '↓' : '↑'; renderMetaTable(); }
+
+async function loadMetaPanel() {
+  const body = document.getElementById('meta-body');
+  body.innerHTML = '<div style="color:#475569;padding:16px;font-size:.85rem">Cargando...</div>';
+  try {
+    const r = await fetch('/api/leads?crm_group=meta');
+    const data = await r.json();
+    _metaLeads = Array.isArray(data) ? data : (data.items || []);
+    _metaLeads.forEach(l => _metaKnownIds.add(l.id));
+    renderMetaTable();
+    _startMetaPoll();
+  } catch(e) { body.innerHTML = `<div style="color:#f87171;padding:16px">Error: ${e.message}</div>`; }
+}
+
+function renderMetaTable() {
+  const body = document.getElementById('meta-body');
+  let leads = _metaLeads;
+  if (_metaSearch) leads = leads.filter(b => (b.name||'').toLowerCase().includes(_metaSearch) || (b.notes||'').toLowerCase().includes(_metaSearch));
+  if (!leads.length) { body.innerHTML = '<div class="empty-state">No hay leads de Meta Ads todavía</div>'; return; }
+  const crmLabels = {sin_contactar:'Sin contactar',interesado:'Interesado',contactado:'Interesado',reunion_agendada:'Reunión agendada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Ppto enviado',negociacion:'Negociación',cliente_cerrado:'Cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado',llamar_despues:'Llamar después',no_interesa:'No le interesa'};
+  const crmColor = {sin_contactar:'#475569',interesado:'#10b981',contactado:'#10b981',reunion_agendada:'#3b82f6',reunion_hecha:'#14b8a6',presupuesto_enviado:'#f97316',negociacion:'#fbbf24',cliente_cerrado:'#10b981',en_desarrollo:'#0088cc',finalizado:'#6ee7b7',llamar_despues:'#f59e0b',no_interesa:'#ef4444'};
+  leads.sort((a,b) => {
+    const da = new Date(a.scraped_at||0), db2 = new Date(b.scraped_at||0);
+    return _metaSortDesc ? db2-da : da-db2;
+  });
+  const buscarLabels = {
+    'una_nueva_p\u00e1gina_web':'Nueva web',
+    'una_nueva_pagina_web':'Nueva web',
+    'crear_mi_ecommerce':'E-commerce',
+    'una_tienda_online':'E-commerce',
+    'redise\u00f1ar_mi_p\u00e1gina':'Redise\u00f1o',
+    'redisenar_mi_pagina':'Redise\u00f1o',
+    'una_app_a_medida':'App/Software',
+    'un_software_a_medida':'App/Software',
+    'software_a_medida':'App/Software',
+    'automatizaciones':'Automatizaciones',
+    'otro':'Otro',
+  };
+  const presupLabels = {
+    'menos_de_usd_500':'< USD 500',
+    'entre_usd_500_y_usd_1.000':'USD 500-1K',
+    'entre_usd_1.000_y_usd_3.000':'USD 1K-3K',
+    'm\u00e1s_de_usd_3.000':'> USD 3K',
+    'mas_de_usd_3000':'> USD 3K',
+    'mas_de_usd_1.000':'> USD 1K',
+    'm\u00e1s_de_usd_1.000':'> USD 1K',
+    'a\u00fan_no_lo_se':'No sabe',
+    'aun_no_lo_se':'No sabe',
+  };
+  body.innerHTML = leads.map(b => {
+    const crm = b.crm_status || 'sin_contactar';
+    const color = crmColor[crm] || '#475569';
+    let fd = {};
+    try { fd = JSON.parse(b.form_data || '{}'); } catch(e) {}
+    const negocio = fd['\u00bfc\u00f3mo_se_llama_tu_negocio?'] || fd['como_se_llama_tu_negocio'] || fd['nombre_del_negocio'] || '';
+    const buscaRaw = fd['\u00bfque_es_lo_que_busc\u00e1s_para_tu_negocio?'] || fd['que_buscas'] || fd['que_busca'] || '';
+    const busca = buscarLabels[buscaRaw] || buscaRaw.replace(/_/g,' ') || '—';
+    const presupRaw = fd['\u00bfcont\u00e1s_con_un_presupuesto_para_este_proyecto?'] || fd['presupuesto'] || '';
+    const presup = presupLabels[presupRaw] || presupRaw.replace(/_/g,' ') || '—';
+    return `
+    <div class="table-row no-cb row-${crm}" style="grid-template-columns:1.8fr 1fr 1.2fr 1.2fr 0.9fr 0.8fr 1.1fr">
+      <div>
+        <div class="biz-name"><span style="cursor:pointer;text-decoration:underline;text-decoration-color:#334155" onclick="openClientPanel(${b.id})">${esc(b.name||'')}</span>
+        <span style="font-size:.65rem;background:linear-gradient(135deg,#833ab4,#fd1d1d,#fcb045);color:#fff;padding:1px 6px;border-radius:99px;font-weight:700;margin-left:4px">IG/FB</span></div>
+        <div class="biz-sub">${negocio ? esc(negocio) : (esc(b.city||'') || '—')}</div>
+      </div>
+      <div>${b.phone ? (hasWhatsApp(b.phone) ? `<a class="phone-val" href="https://wa.me/${waNum(b.phone)}${b.pitch_text ? '?text='+encodeURIComponent(b.pitch_text) : ''}" target="_blank" title="Abrir WhatsApp">${esc(b.phone)}</a>` : `<span class="phone-plain">${esc(b.phone)}</span>`) : '<span class="no-val">—</span>'}</div>
+      <div style="font-size:.78rem;color:#94a3b8">${esc(busca)}</div>
+      <div style="font-size:.78rem;color:#94a3b8">${esc(presup)}</div>
+      <div style="font-size:.78rem;color:#64748b">${esc(b.city||'—')}</div>
+      <div style="font-size:.72rem;color:#475569">${b.scraped_at ? new Date(b.scraped_at+'Z').toLocaleString('es-UY',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—'}</div>
+      <div class="actions">
+        <span style="font-size:.68rem;font-weight:600;color:${color};background:${color}18;padding:2px 6px;border-radius:99px">${crmLabels[crm]||crm}</span>
+        <button class="pitch-btn" onclick="openClientPanel(${b.id})">Ver ficha</button>
+        <button class="delete-btn" onclick="deleteLead(${b.id},${escJs(b.name||'')},loadMetaPanel)" title="Borrar"><i data-lucide=\"trash-2\" class=\"btn-icon\"></i></button>
+      </div>
+    </div>`;
+  }).join('');
+  _populateNotes(body);
 }
 
 // ── Cola stats ────────────────────────────────────────────────────────────────
@@ -3492,14 +3662,14 @@ function _showScoreBreakdown(event, el) {
 }
 
 // ── Mobile navigation ─────────────────────────────────────────────────────────
-const NAV_PRIORITY = ['cola','seguimientos','cal','tasks','pipeline','clientes','wa','metrics','activity'];
+const NAV_PRIORITY = ['cola','seguimientos','meta','cal','tasks','pipeline','clientes','wa','metrics','activity'];
 const NAV_ICONS = {
-  cola:'inbox',seguimientos:'bookmark',cal:'calendar',
+  cola:'inbox',seguimientos:'bookmark',meta:'instagram',cal:'calendar',
   tasks:'check-square',pipeline:'trending-up',clientes:'users',
   wa:'message-circle',metrics:'bar-chart-2',activity:'clock'
 };
 const NAV_LABELS = {
-  cola:'Cola',seguimientos:'Seguim.',cal:'Agenda',
+  cola:'Cola',seguimientos:'Seguim.',meta:'Meta',cal:'Agenda',
   tasks:'Tareas',pipeline:'Pipeline',clientes:'Clientes',
   wa:'WA',metrics:'Métricas',activity:'Actividad'
 };
@@ -3581,7 +3751,7 @@ function closeMasSheet() {
 }
 
 // ── Panel access control ──────────────────────────────────────────────────────
-const ALL_PANELS = ['cola','seguimientos','pipeline','clientes','tasks','wa','cal','metrics','activity','sdr'];
+const ALL_PANELS = ['cola','seguimientos','meta','pipeline','clientes','tasks','wa','cal','metrics','activity','sdr'];
 (async () => {
   try {
     const r = await fetch('/api/me');
@@ -4454,6 +4624,18 @@ function _cpChangeStatus(val) {
   }).then(() => { if (_cpData.lead) _cpData.lead.crm_status = val; });
 }
 
+let _metricsTab = 'sdr';
+
+function switchMetricsTab(tab) {
+  _metricsTab = tab;
+  document.getElementById('metrics-sdr').style.display  = tab === 'sdr'  ? '' : 'none';
+  document.getElementById('metrics-meta').style.display = tab === 'meta' ? '' : 'none';
+  const sdrBtn  = document.getElementById('tab-sdr-btn');
+  const metaBtn = document.getElementById('tab-meta-btn');
+  if (sdrBtn)  { sdrBtn.style.background  = tab === 'sdr'  ? '#0088cc' : 'transparent'; sdrBtn.style.color  = tab === 'sdr'  ? '#fff' : '#64748b'; }
+  if (metaBtn) { metaBtn.style.background = tab === 'meta' ? '#e1306c' : 'transparent'; metaBtn.style.color = tab === 'meta' ? '#fff' : '#64748b'; }
+}
+
 function _barList(items, maxVal) {
   if (!items || !items.length) return '<div style="color:#475569;font-size:.8rem">Sin datos</div>';
   const max = maxVal || Math.max(...items.map(i => i.count), 1);
@@ -4489,7 +4671,9 @@ async function loadMetrics() {
   const el = id => document.getElementById(id);
 
   try {
-    const results = await Promise.all([fetch('/api/metrics')]);
+    const fetches = [fetch('/api/metrics')];
+    if (window._isAdmin) fetches.push(fetch('/api/metrics/meta'));
+    const results = await Promise.all(fetches);
     const m = await results[0].json();
 
     if (el('m-total'))        el('m-total').textContent        = m.total;
@@ -4524,6 +4708,23 @@ async function loadMetrics() {
     if (el('m-months')) el('m-months').innerHTML = _monthBars(m.by_month);
     if (el('m-rubros')) el('m-rubros').innerHTML = _barList(m.top_rubros);
     if (el('m-cities')) el('m-cities').innerHTML = _barList(m.top_cities);
+
+    if (window._isAdmin && results[1]) {
+      document.getElementById('tab-meta-btn').style.display = '';
+      const mm = await results[1].json();
+
+      if (el('mm-total'))       el('mm-total').textContent       = mm.total;
+      if (el('mm-month'))       el('mm-month').textContent       = mm.this_month;
+      if (el('mm-week'))        el('mm-week').textContent        = mm.this_week;
+      if (el('mm-conv'))        el('mm-conv').textContent        = mm.conversion + '%';
+
+      if (el('mm-campaigns'))   el('mm-campaigns').innerHTML     = _barList(mm.by_campaign);
+      if (el('mm-months'))      el('mm-months').innerHTML        = _monthBars(mm.by_month);
+      if (el('mm-funnel'))      el('mm-funnel').innerHTML        = _funnelBars(mm.funnel, stateLabels, stateColors);
+      if (el('mm-busca'))       el('mm-busca').innerHTML         = _barList(mm.que_busca);
+      if (el('mm-presupuesto')) el('mm-presupuesto').innerHTML   = _barList(mm.presupuesto);
+      if (el('mm-cities'))      el('mm-cities').innerHTML        = _barList(mm.top_cities);
+    }
 
     if (el('metrics-date')) el('metrics-date').textContent = 'Actualizado: ' + new Date().toLocaleString('es-UY');
   } catch(e) {
@@ -4887,12 +5088,14 @@ def create_app(db_path: str) -> Flask:
     app.config["PIPELINE_STATUS"] = _pipeline_status
     app.config["PIPELINE_LOCK"] = _pipeline_lock
 
-    for bp in (leads_bp, demos_bp, calendar_bp, wa_bp, pipeline_bp, tasks_bp, budgets_bp, tokens_bp, calendly_bp):
+    for bp in (leads_bp, demos_bp, calendar_bp, wa_bp, pipeline_bp, tasks_bp, budgets_bp, tokens_bp, meta_bp, calendly_bp):
         app.register_blueprint(bp)
 
     @app.before_request
     def require_login():
         if request.endpoint in ("login", "logout", "register", "forgot_password", "reset_password", "static", "privacidad"):
+            return
+        if request.path.startswith("/api/meta/webhook"):
             return
         if request.path.startswith("/api/calendly/webhook"):
             return
@@ -5131,7 +5334,7 @@ def create_app(db_path: str) -> Flask:
         try:
             # Distinct users for filter dropdown
             users = [r["user_name"] for r in conn_a.execute(
-                "SELECT DISTINCT user_name FROM activity_log WHERE user_name NOT IN ('','sistema','sistema-auto','calendly','calendly-import') ORDER BY user_name"
+                "SELECT DISTINCT user_name FROM activity_log WHERE user_name NOT IN ('','sistema','sistema-auto','meta_import','calendly','calendly-import') ORDER BY user_name"
             ).fetchall()]
             if user_filter:
                 rows = conn_a.execute(
@@ -5735,6 +5938,7 @@ select:focus{border-color:#0088cc}
 .chip{display:inline-flex;align-items:center;gap:4px;background:#1e293b;border:1px solid #334155;border-radius:5px;padding:3px 9px;font-size:.72rem;cursor:pointer;user-select:none;transition:all .15s}
 .chip input{accent-color:#0088cc;cursor:pointer;width:12px;height:12px}
 .chip.on{border-color:#0088cc;background:rgba(0,136,204,.12);color:#60a5fa}
+.chip.meta-on{border-color:#c084fc;background:rgba(192,132,252,.1);color:#c084fc}
 .toast{display:none;font-size:.75rem;color:#4ade80;margin-left:8px}
 .msg-ok{background:rgba(16,185,129,.1);color:#4ade80;border-radius:6px;padding:8px 12px;font-size:.8rem;margin-bottom:14px}
 .divider{height:1px;background:#1e293b;margin:10px 0}
@@ -5762,15 +5966,16 @@ select:focus{border-color:#0088cc}
 </div>
 
 <script>
-const ALL_PANELS = ['cola','seguimientos','pipeline','clientes','tasks','wa','cal','metrics','activity','sdr'];
-const PANEL_LABELS = {cola:'Cola',seguimientos:'Seguimientos',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Métricas',activity:'Actividad',sdr:'SDR'};
+const ALL_PANELS = ['cola','seguimientos','meta','pipeline','clientes','tasks','wa','cal','metrics','activity','sdr'];
+const PANEL_LABELS = {cola:'Cola',seguimientos:'Seguimientos',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Métricas',activity:'Actividad',sdr:'SDR'};
 let _roles = [];
 
 function makeChips(containerId, checkedArr, prefix) {
   const el = document.getElementById(containerId);
   el.innerHTML = ALL_PANELS.map(p => {
     const on = checkedArr ? checkedArr.includes(p) : true;
-    return `<label class="chip ${on?'on':''}" id="${prefix}-chip-${p}">
+    const isMeta = p === 'meta';
+    return `<label class="chip ${on?(isMeta?'meta-on':'on'):''}" id="${prefix}-chip-${p}">
       <input type="checkbox" id="${prefix}-cb-${p}" ${on?'checked':''} onchange="toggleChip('${prefix}','${p}',this.checked)">
       ${PANEL_LABELS[p]}
     </label>`;
@@ -5778,7 +5983,8 @@ function makeChips(containerId, checkedArr, prefix) {
 }
 function toggleChip(prefix, p, on) {
   const chip = document.getElementById(`${prefix}-chip-${p}`);
-  chip.classList.toggle('on', on);
+  chip.classList.toggle('on', on && p !== 'meta');
+  chip.classList.toggle('meta-on', on && p === 'meta');
 }
 function getChecked(prefix) {
   return ALL_PANELS.filter(p => document.getElementById(`${prefix}-cb-${p}`)?.checked);
@@ -5908,6 +6114,9 @@ loadAll();
     worker = init_worker(db_path)
     worker.register("demo", demo_job_handler)
     worker.start()
+
+    start_meta_token_monitor(app)
+    start_meta_daily_import(app)
 
     try:
         from database import get_all_users

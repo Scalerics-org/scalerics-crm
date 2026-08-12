@@ -59,6 +59,7 @@ def init_db(db_path: str) -> None:
         _add_column(conn, "businesses", "has_whatsapp", "INTEGER")
         _add_column(conn, "businesses", "callback_date", "TEXT")
         _add_column(conn, "businesses", "source", "TEXT")
+        _add_column(conn, "businesses", "form_data", "TEXT")
         _add_column(conn, "businesses", "email", "TEXT")
         # Qué servicio pidió el lead (web/Calendly). Aparte de `category`,
         # que es el rubro del negocio.
@@ -74,9 +75,9 @@ def init_db(db_path: str) -> None:
         # Seed default roles if none exist
         if not conn.execute("SELECT 1 FROM roles LIMIT 1").fetchone():
             import json as _j
-            _ALL = _j.dumps(["cola","seguimientos","pipeline","clientes","tasks","wa","cal","metrics","activity","sdr"])
-            _CALLER = _j.dumps(["cola","seguimientos","wa"])
-            _SALES = _j.dumps(["seguimientos","pipeline","clientes","cal","metrics"])
+            _ALL = _j.dumps(["cola","seguimientos","meta","pipeline","clientes","tasks","wa","cal","metrics","activity","sdr"])
+            _CALLER = _j.dumps(["cola","seguimientos","meta","wa"])
+            _SALES = _j.dumps(["seguimientos","meta","pipeline","clientes","cal","metrics"])
             conn.executemany("INSERT INTO roles (name, panel_access) VALUES (?,?)", [
                 ("Admin",  _ALL),
                 ("Caller", _CALLER),
@@ -342,6 +343,16 @@ def init_db(db_path: str) -> None:
                       GROUP BY phone
                   )
             """)
+            # Remove duplicate null-phone meta leads by (name, date)
+            conn.execute("""
+                DELETE FROM businesses
+                WHERE source = 'meta' AND phone IS NULL
+                  AND id NOT IN (
+                      SELECT MIN(id) FROM businesses
+                      WHERE source = 'meta' AND phone IS NULL
+                      GROUP BY name, SUBSTR(COALESCE(scraped_at, ''), 1, 10)
+                  )
+            """)
             conn.commit()
         except Exception as e:
             logger.warning(f"Dedup migration: {e}")
@@ -370,7 +381,7 @@ ALLOWED_COLUMNS = {
     "color_scheme", "demo_html_path", "demo_url", "status", "error_message",
     "scraped_at", "notes", "pitch_text", "crm_status",
     "has_whatsapp", "last_event_at", "score", "callback_date", "source",
-    "interest",
+    "interest", "form_data",
 }
 
 
@@ -381,10 +392,10 @@ def insert_business(db_path: str, data: dict) -> Optional[int]:
             INSERT OR IGNORE INTO businesses
             (name, category, address, city, phone, rating, review_count,
              hours, maps_url, facebook_url, instagram_url,
-             color_scheme, demo_html_path, demo_url, status, has_whatsapp, score, source, notes, scraped_at)
+             color_scheme, demo_html_path, demo_url, status, has_whatsapp, score, source, notes, form_data, scraped_at)
             VALUES (:name, :category, :address, :city, :phone, :rating,
                     :review_count, :hours, :maps_url, :facebook_url, :instagram_url,
-                    :color_scheme, :demo_html_path, :demo_url, 'scraped', :has_whatsapp, :score, :source, :notes,
+                    :color_scheme, :demo_html_path, :demo_url, 'scraped', :has_whatsapp, :score, :source, :notes, :form_data,
                     COALESCE(:scraped_at, CURRENT_TIMESTAMP))
         """, {
             "name": data.get("name"),
@@ -405,6 +416,7 @@ def insert_business(db_path: str, data: dict) -> Optional[int]:
             "score": data.get("score"),
             "source": data.get("source"),
             "notes": data.get("notes"),
+            "form_data": data.get("form_data"),
             "scraped_at": data.get("scraped_at"),
         })
         conn.commit()
@@ -456,7 +468,7 @@ def get_all_businesses(db_path: str, crm_status: str | None = None, crm_statuses
             where = f"WHERE b.crm_status IN ({placeholders})"
             params: list = list(crm_statuses)
         elif crm_status == "sin_contactar":
-            where = "WHERE (b.crm_status IS NULL OR b.crm_status = ?)"
+            where = "WHERE (b.crm_status IS NULL OR b.crm_status = ?) AND (b.source IS NULL OR b.source != 'meta')"
             params = ["sin_contactar"]
         elif crm_status == "llamar_despues":
             cursor = conn.execute(
