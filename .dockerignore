@@ -1,0 +1,39 @@
+# El Dockerfile hace `COPY . .`, asi que sin este archivo la imagen se lleva
+# secretos y datos productivos horneados en cada capa.
+
+.env
+.env.*
+!.env.example
+credentials.json
+ll_token.txt
+pages.json
+
+# Bases de datos: nunca dentro de la imagen. La base vive en el volumen (/data).
+*.db
+*.db-wal
+*.db-shm
+prod_snapshot*.db
+prod_limpia.db
+backups/
+
+# Presupuestos con precios — CLAUDE.md: nunca salen del entorno local
+budgets/
+
+.git/
+.github/
+.gitignore
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.superpowers/
+.claude/
+docs/
+tests/
+generated_demos/
+pipeline.log
+bot/node_modules/
+bot/.env
+bot/bot_dump.json
+bot/backup_scalerics_wa_bot.sql
+hexast-cajas/

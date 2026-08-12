@@ -7,19 +7,27 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-if not os.environ.get("ANTHROPIC_API_KEY"):
-    print("❌ No tenés acceso para ejecutar el pipeline.")
-    print("   El único que puede ejecutarlo es Juan, contactate con él.")
-    sys.exit(1)
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[
-        logging.StreamHandler(sys.stdout),
-        logging.FileHandler("pipeline.log", encoding="utf-8"),
-    ],
-)
+def _check_access() -> None:
+    """El guard de acceso y la config de logging estaban a nivel de MODULO, o sea
+    que corrian con solo importar main.py. tests/test_main.py lo importa, asi que
+    pytest moria durante la coleccion con INTERNALERROR y la suite entera (48
+    tests) nunca corrio. Ahora se ejecutan solo cuando se invoca el CLI."""
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        print("❌ No tenés acceso para ejecutar el pipeline.")
+        print("   El único que puede ejecutarlo es Juan, contactate con él.")
+        sys.exit(1)
+
+
+def _setup_logging() -> None:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        handlers=[
+            logging.StreamHandler(sys.stdout),
+            logging.FileHandler("pipeline.log", encoding="utf-8"),
+        ],
+    )
 
 DB_PATH = os.environ.get("DB_PATH", "leads.db")
 
@@ -142,6 +150,8 @@ def cmd_run_all(args):
     cmd_generate_pitches(args)
 
 def main():
+    _check_access()
+    _setup_logging()
     parser = create_parser()
     args = parser.parse_args()
     commands = {
