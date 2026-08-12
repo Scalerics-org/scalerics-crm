@@ -296,3 +296,50 @@ def test_sin_telefono_ni_mail_no_se_crea_basura(db):
         assert conn.execute("SELECT COUNT(*) FROM businesses").fetchone()[0] == 0
     finally:
         conn.close()
+
+
+# ─── reuniones que ya pasaron ────────────────────────────────────────────────
+
+def test_reunion_pasada_no_retrocede_el_estado_del_lead(db):
+    from database import update_business
+    bid = insert_business(db, {
+        "name": "Ferretería El Sol",
+        "email": "cliente@ferreteriasol.com.uy",
+        "phone": "+59899123456",
+    })
+    update_business(db, bid, crm_status="cliente")
+    ev = _event(guest="cliente@ferreteriasol.com.uy")
+    ev["start"] = {"dateTime": "2026-07-13T17:30:00-03:00"}
+    ev["end"] = {"dateTime": "2026-07-13T18:15:00-03:00"}
+
+    sync_events(db, [ev], host_email=HOST, team_emails=TEAM,
+                now="2026-08-12T00:00:00")
+
+    conn = sqlite3.connect(db)
+    conn.row_factory = sqlite3.Row
+    try:
+        lead = dict(conn.execute("SELECT * FROM businesses").fetchone())
+    finally:
+        conn.close()
+    assert lead["crm_status"] == "cliente"      # no vuelve a reunion_agendada
+    assert len(_meetings(db)) == 1              # la reunión igual queda cargada
+
+
+def test_reunion_futura_si_marca_reunion_agendada(db):
+    from database import update_business
+    bid = insert_business(db, {
+        "name": "Ferretería El Sol",
+        "email": "cliente@ferreteriasol.com.uy",
+        "phone": "+59899123456",
+    })
+    update_business(db, bid, crm_status="interesado")
+    sync_events(db, [_event(guest="cliente@ferreteriasol.com.uy")],
+                host_email=HOST, team_emails=TEAM, now="2026-08-12T00:00:00")
+
+    conn = sqlite3.connect(db)
+    conn.row_factory = sqlite3.Row
+    try:
+        lead = dict(conn.execute("SELECT * FROM businesses").fetchone())
+    finally:
+        conn.close()
+    assert lead["crm_status"] == "reunion_agendada"

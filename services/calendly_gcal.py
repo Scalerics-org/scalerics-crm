@@ -190,7 +190,8 @@ def _existing_meeting(db_path: str, event_uri: str):
 
 
 def sync_events(db_path: str, events: list, host_email: str,
-                dry_run: bool = False, team_emails: set = None) -> dict:
+                dry_run: bool = False, team_emails: set = None,
+                now: str = None) -> dict:
     """Carga al CRM los eventos de Calendly que todavía no estén.
 
     Idempotente: se apoya en calendar_event_id, así que se puede correr
@@ -202,6 +203,9 @@ def sync_events(db_path: str, events: list, host_email: str,
              "sin_contacto": 0, "would_create": []}
     if team_emails is None:
         team_emails = team_emails_from_env()
+    if now is None:
+        import datetime
+        now = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
 
     for event in events or []:
         data = parse_calendly_event(event, host_email, team_emails)
@@ -282,7 +286,11 @@ def sync_events(db_path: str, events: list, host_email: str,
                 conn.close()
         else:
             client_id = client["id"]
-            updates = {"crm_status": "reunion_agendada"}
+            updates = {}
+            # Una reunión que ya pasó no dice nada sobre dónde está hoy el
+            # lead: pisarle el estado lo haría retroceder desde "cliente".
+            if data["start_at"] and data["start_at"] > now:
+                updates["crm_status"] = "reunion_agendada"
             if data["service"] and not (client.get("interest") or "").strip():
                 updates["interest"] = data["service"]
             if data["email"] and not (client.get("email") or "").strip():
