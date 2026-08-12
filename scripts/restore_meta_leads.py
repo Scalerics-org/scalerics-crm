@@ -50,11 +50,22 @@ def _id_de_negocio(tabla: str, fila: dict):
 
 
 def restore(db_path: str, backup_path: str, dry_run: bool = False) -> dict:
+    """Ejecuta siempre el mismo camino de SQL, dry_run o no: la única
+    diferencia es si al final se hace commit() o rollback(). Así el conteo
+    de dry-run refleja lo que la corrida real de verdad escribiría —
+    incluidos los conflictos de UNIQUE (phone, maps_url, calendar_event_id)
+    que `INSERT OR IGNORE` puede tragarse en silencio.
+    """
     with open(backup_path, encoding="utf-8") as f:
         datos = json.load(f)
 
     conn = sqlite3.connect(db_path)
-    res = {"inserted": 0, "updated": 0, "skipped": 0}
+    res = {
+        "inserted": 0,          # filas realmente escritas (rowcount > 0)
+        "updated": 0,           # filas realmente actualizadas (rowcount > 0)
+        "skipped": 0,           # filas del backup sin id
+        "insert_conflicts": 0,  # INSERT intentado pero descartado por PK/UNIQUE
+    }
 
     cols_biz = _columnas(conn, "businesses")
     # Solo los negocios que de verdad se re-insertan (nunca los 7 vivos)
@@ -73,33 +84,31 @@ def restore(db_path: str, backup_path: str, dry_run: bool = False) -> dict:
                 "SELECT 1 FROM businesses WHERE id = ?", (bid,)
             ).fetchone()
             if existe:
-                if not dry_run:
-                    conn.execute(
-                        "UPDATE businesses SET source = ?, form_data = ? WHERE id = ?",
-                        (fila.get("source"), fila.get("form_data"), bid),
-                    )
-                res["updated"] += 1
+                cur = conn.execute(
+                    "UPDATE businesses SET source = ?, form_data = ? WHERE id = ?",
+                    (fila.get("source"), fila.get("form_data"), bid),
+                )
+                res["updated"] += cur.rowcount
                 continue
 
         datos_fila = _filtrar(fila, cols_biz)
         campos = ", ".join(datos_fila)
         marcas = ", ".join("?" for _ in datos_fila)
-        if not dry_run:
-            conn.execute(
-                f"INSERT OR IGNORE INTO businesses ({campos}) VALUES ({marcas})",
-                list(datos_fila.values()),
-            )
-        res["inserted"] += 1
-        ids_insertados.add(bid)
+        cur = conn.execute(
+            f"INSERT OR IGNORE INTO businesses ({campos}) VALUES ({marcas})",
+            list(datos_fila.values()),
+        )
+        if cur.rowcount:
+            res["inserted"] += 1
+            ids_insertados.add(bid)
+        else:
+            res["insert_conflicts"] += 1
 
     for tabla in TABLAS_RELACIONADAS:
         filas = datos.get(tabla, [])
         if not filas:
             continue
-        try:
-            cols = _columnas(conn, tabla)
-        except sqlite3.Error:
-            continue
+        cols = _columnas(conn, tabla)
         if not cols:
             continue
         for fila in filas:
@@ -110,13 +119,14 @@ def restore(db_path: str, backup_path: str, dry_run: bool = False) -> dict:
                 continue
             campos = ", ".join(datos_fila)
             marcas = ", ".join("?" for _ in datos_fila)
-            if not dry_run:
-                conn.execute(
-                    f"INSERT OR IGNORE INTO {tabla} ({campos}) VALUES ({marcas})",
-                    list(datos_fila.values()),
-                )
+            conn.execute(
+                f"INSERT OR IGNORE INTO {tabla} ({campos}) VALUES ({marcas})",
+                list(datos_fila.values()),
+            )
 
-    if not dry_run:
+    if dry_run:
+        conn.rollback()
+    else:
         conn.commit()
     conn.close()
     return res
