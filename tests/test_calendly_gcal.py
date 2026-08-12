@@ -227,3 +227,22 @@ def test_dry_run_avisa_cuando_el_lead_ya_existe(db):
     res = sync_events(db, [_event()], host_email=HOST, dry_run=True)
 
     assert res["would_create"][0]["match"] == "Ferretería El Sol"
+
+
+def test_corta_el_sufijo_del_host_sin_displayName():
+    # Google devuelve el organizador sin displayName en los eventos reales.
+    ev = _event(summary="Gonzalo/Scalerics y Contacto Scalerics")
+    ev["organizer"] = {"email": HOST}
+    assert parse_calendly_event(ev, host_email=HOST)["name"] == "Gonzalo/Scalerics"
+
+
+def test_corta_por_el_ultimo_y_sin_displayName():
+    ev = _event(summary="Pedro y Pablo SRL y Contacto Scalerics")
+    ev["organizer"] = {"email": HOST}
+    assert parse_calendly_event(ev, host_email=HOST)["name"] == "Pedro y Pablo SRL"
+
+
+def test_nombre_sin_sufijo_queda_intacto():
+    ev = _event(summary="Ferretería El Sol")
+    ev["organizer"] = {"email": HOST}
+    assert parse_calendly_event(ev, host_email=HOST)["name"] == "Ferretería El Sol"

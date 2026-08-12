@@ -1,0 +1,5 @@
+# Los scripts que corren dentro del contenedor tienen que quedar con LF aunque
+# se hayan clonado en Windows: un shebang con CRLF rompe el arranque.
+*.sh text eol=lf
+Dockerfile text eol=lf
+Procfile text eol=lf

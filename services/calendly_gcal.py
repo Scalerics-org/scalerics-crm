@@ -96,11 +96,18 @@ def _guest_name(summary: str, host_name: str) -> str:
         if low.startswith(prefix):
             name = name[len(prefix):].strip()
             break
-    # Cortar por el sufijo exacto del host evita romper nombres con " y ".
+    # Cortar por el sufijo exacto del host es lo más seguro...
     if host_name:
         suffix = f" y {host_name}"
         if name.endswith(suffix):
-            name = name[: -len(suffix)].strip()
+            return name[: -len(suffix)].strip()
+    # ...pero Google no siempre devuelve displayName del organizador (en los
+    # eventos reales de Scalerics viene sólo el email). Cortamos por el ÚLTIMO
+    # " y ", que es el separador que pone Calendly: así "Pedro y Pablo SRL y
+    # Contacto Scalerics" queda como "Pedro y Pablo SRL".
+    head, sep, _tail = name.rpartition(" y ")
+    if sep and head.strip():
+        return head.strip()
     return name
 
 

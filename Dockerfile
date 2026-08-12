@@ -16,7 +16,9 @@ COPY . .
 
 # Startup script: copies DB to persistent volume on first run, then starts app
 COPY start.sh /start.sh
-RUN chmod +x /start.sh
+# Normalizar CRLF: un checkout en Windows deja el shebang como "#!/bin/sh\r" y
+# el kernel busca un intérprete que no existe ("no such file or directory").
+RUN sed -i 's/\r$//' /start.sh && chmod +x /start.sh
 
 ENV DB_PATH=/data/leads.db
 ENV PORT=8080
