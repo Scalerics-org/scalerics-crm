@@ -1,12 +1,16 @@
 """Google Calendar routes."""
 
 import datetime
+import logging
+import os
+import threading
 import uuid
 
 import pytz
 from flask import Blueprint, current_app, jsonify, request, session
 
 from database import (
+    _connect,
     create_meeting,
     delete_meeting,
     get_business,
@@ -120,6 +124,42 @@ def _contributors(db: str, lead_id: int, current_uid: int | None) -> list[int]:
     return list(ids)
 
 
+def _mails_internos() -> set:
+    """Mails del equipo: agendar con ellos no genera un lead. routes/calendly.py ya
+    usaba CALENDLY_BLOCKED_EMAILS para esto, pero el sync de Google la ignoraba."""
+    crudo = os.environ.get("CALENDLY_BLOCKED_EMAILS", "")
+    return {m.strip().lower() for m in crudo.split(",") if m.strip()}
+
+
+_sync_lock = threading.Lock()
+_sync_en_curso: set = set()
+
+
+def _lanzar_sync_en_background(db: str, start: str, end: str) -> None:
+    """Dispara el sync con Google fuera del request.
+
+    Se descarta si ya hay uno corriendo para el mismo rango: con 4 threads de
+    gunicorn, varias pestanas abiertas dispararian syncs simultaneos sobre las
+    mismas filas.
+    """
+    clave = (start, end)
+    with _sync_lock:
+        if clave in _sync_en_curso:
+            return
+        _sync_en_curso.add(clave)
+
+    def _correr():
+        try:
+            _sync_gcal_to_db(db, start, end)
+        except Exception as e:
+            logging.getLogger(__name__).warning(f"Sync de calendario en background fallo: {e}")
+        finally:
+            with _sync_lock:
+                _sync_en_curso.discard(clave)
+
+    threading.Thread(target=_correr, daemon=True).start()
+
+
 def _sync_gcal_to_db(db: str, start: str, end: str) -> None:
     """Pull Google Calendar events for the given date range and upsert into meetings table."""
     import re, sqlite3 as _sq
@@ -153,11 +193,10 @@ def _sync_gcal_to_db(db: str, start: str, end: str) -> None:
             if summary.startswith("Cancelado:"):
                 continue
 
-            if conn.execute("SELECT id FROM meetings WHERE calendar_event_id=?", (gcal_id,)).fetchone():
-                continue
-
-            # Will be set after UTC conversion — check for existing meeting at same hour
-
+            fila_existente = conn.execute(
+                "SELECT id, title, start_at, end_at, meet_link FROM meetings WHERE calendar_event_id=?",
+                (gcal_id,),
+            ).fetchone()
 
             raw_start = ev.get("start", {}).get("dateTime") or ev.get("start", {}).get("date", "")
             raw_end   = ev.get("end",   {}).get("dateTime") or ev.get("end",   {}).get("date", "")
@@ -179,17 +218,25 @@ def _sync_gcal_to_db(db: str, start: str, end: str) -> None:
             start_at = _to_utc(raw_start)
             end_at   = _to_utc(raw_end)
 
-            # Skip if meeting already exists at same UTC hour
-            if start_at and conn.execute(
-                "SELECT id FROM meetings WHERE SUBSTR(start_at,1,13)=?", (start_at[:13],)
-            ).fetchone():
-                continue
-
             meet_link = ""
             for ep in (ev.get("conferenceData") or {}).get("entryPoints", []):
                 if ep.get("entryPointType") == "video":
                     meet_link = ep.get("uri", "")
                     break
+
+            # Antes era insert-only: si el evento ya existia se salteaba y listo, asi
+            # que reprogramar o renombrar en Google nunca se propagaba y el equipo
+            # veia una hora en el CRM y otra en su agenda real.
+            if fila_existente:
+                if ((fila_existente["title"] or "") != summary
+                        or (fila_existente["start_at"] or "") != start_at
+                        or (fila_existente["end_at"] or "") != end_at
+                        or (fila_existente["meet_link"] or "") != meet_link):
+                    conn.execute(
+                        "UPDATE meetings SET title=?, start_at=?, end_at=?, meet_link=? WHERE id=?",
+                        (summary, start_at, end_at, meet_link, fila_existente["id"]),
+                    )
+                continue
 
             # Find invitee (first non-organizer attendee)
             invitee_email = invitee_name = ""
@@ -206,13 +253,38 @@ def _sync_gcal_to_db(db: str, start: str, end: str) -> None:
                 row = conn.execute("SELECT id FROM businesses WHERE email=?", (invitee_email,)).fetchone()
                 if row:
                     client_id = row["id"]
-            if not client_id:
-                name = invitee_name or invitee_email or summary
+
+            # Solo se crea un lead si hay un invitado externo real. Antes cualquier
+            # evento sin match generaba uno: el dentista, el gimnasio y cada standup
+            # recurrente entraban como negocio en 'reunion_agendada', que esta en
+            # _PIPELINE_STATUSES y por lo tanto aparecian como oportunidades de venta.
+            # Los eventos personales igual se importan como reunion (client_id NULL)
+            # para que sigan visibles en el calendario.
+            if not client_id and invitee_email and invitee_email.lower() not in _mails_internos():
                 cur = conn.execute(
                     "INSERT INTO businesses (name, email, crm_status, source) VALUES (?,?,?,?)",
-                    (name, invitee_email or None, "reunion_agendada", "calendly_gcal"),
+                    (invitee_name or invitee_email, invitee_email, "reunion_agendada", "calendly_gcal"),
                 )
                 client_id = cur.lastrowid
+
+            # Dedup acotado. Cubre el unico caso real de doble alta: el webhook de
+            # Calendly ya creo la reunion y despues la ve el sync de Google, cada uno
+            # guardando un calendar_event_id distinto.
+            #
+            # Antes esto comparaba SOLO la hora de reloj (SUBSTR(start_at,1,13)) de
+            # forma global, sin mirar cliente ni minuto: con los slots de 30 min de
+            # Calendly, dos reuniones a las 10:00 y 10:30 importaban una sola, y la
+            # segunda no entraba nunca mas porque la condicion seguia siendo cierta
+            # en cada sync posterior.
+            #
+            # Solo aplica cuando hay cliente: con client_id NULL (evento personal)
+            # la comparacion NULL = NULL da NULL, no true. Esos eventos se deduplican
+            # por calendar_event_id, que es UNIQUE y ya se chequeo mas arriba.
+            if client_id and start_at and conn.execute(
+                "SELECT id FROM meetings WHERE client_id=? AND start_at=?",
+                (client_id, start_at),
+            ).fetchone():
+                continue
 
             conn.execute(
                 "INSERT INTO meetings (client_id, calendar_event_id, title, start_at, end_at, meet_link, status) VALUES (?,?,?,?,?,?,?)",
@@ -233,9 +305,12 @@ def api_calendar_events():
         end = request.args.get("end", "")
         db = _db()
 
-        # Sync new Google Calendar events (Calendly creates them there)
+        # El sync con Google corre en background. Antes se hacia dentro del request,
+        # asi que abrir el calendario esperaba una llamada de red a Google: si Google
+        # estaba lento o caido, el CRM se colgaba. Ahora la vista responde al toque
+        # con lo que hay en la base y el sync actualiza para la proxima carga.
         if start and end:
-            _sync_gcal_to_db(db, start, end)
+            _lanzar_sync_en_background(db, start, end)
 
         conn = _sq.connect(db); conn.row_factory = _sq.Row
         try:
@@ -615,8 +690,18 @@ def api_delete_meeting(meeting_id):
     if not meeting:
         return jsonify({"ok": False, "error": "Reunión no encontrada"}), 404
 
-    cal_event_id = meeting.get("calendar_event_id")
-    if cal_event_id:
+    import logging as _log
+    logger = _log.getLogger(__name__)
+
+    cal_event_id = meeting.get("calendar_event_id") or ""
+    # routes/calendly.py guarda la URI de Calendly (https://api.calendly.com/...)
+    # en calendar_event_id, que NO es un eventId de Google. Pasarsela a la API de
+    # Calendar falla siempre; antes ese error se tragaba, se borraba igual la fila
+    # local, se devolvia ok:true, y el proximo sync reimportaba la reunion.
+    es_uri_calendly = cal_event_id.startswith("http")
+    borrado_en_google = False
+
+    if cal_event_id and not es_uri_calendly:
         service, err = _get_calendar_service()
         if service:
             try:
@@ -625,12 +710,32 @@ def api_delete_meeting(meeting_id):
                     eventId=cal_event_id,
                     sendUpdates="all",
                 ).execute()
+                borrado_en_google = True
             except Exception as e:
-                import logging
-                logging.getLogger(__name__).warning(f"No se pudo cancelar evento en Calendar: {e}")
+                logger.warning(f"No se pudo cancelar el evento en Calendar: {e}")
+        else:
+            logger.warning(f"Sin acceso a Google Calendar para cancelar: {err}")
+
+    client_id = meeting.get("client_id")
+
+    if cal_event_id and not borrado_en_google:
+        # El evento sigue vivo en Google: si borramos la fila local, el proximo
+        # sync la trae de vuelta. Se marca cancelada — la lista ya filtra por
+        # status != 'canceled', asi que desaparece de la vista sin resucitar.
+        conn = _connect(_db())
+        try:
+            conn.execute("UPDATE meetings SET status='canceled' WHERE id=?", (meeting_id,))
+            conn.commit()
+        finally:
+            conn.close()
+        if client_id:
+            _maybe_revert_lead_status(_db(), client_id)
+        motivo = ("es una reunión de Calendly: cancelala desde Calendly para que se "
+                  "borre del calendario de Google") if es_uri_calendly else \
+                 "no se pudo borrar de Google Calendar"
+        return jsonify({"ok": False, "canceled_locally": True, "error": motivo}), 200
 
     delete_meeting(_db(), meeting_id)
-    client_id = meeting.get("client_id")
     if client_id:
         _maybe_revert_lead_status(_db(), client_id)
     return jsonify({"ok": True})

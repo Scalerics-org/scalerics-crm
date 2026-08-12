@@ -16,6 +16,71 @@ def _add_column(conn: sqlite3.Connection, table: str, column: str, definition: s
         pass  # column already exists
 
 
+def _migrar_meetings_client_id_nullable(conn: sqlite3.Connection) -> None:
+    """Saca el NOT NULL de meetings.client_id en bases que ya existen.
+
+    SQLite no puede quitar un NOT NULL con ALTER TABLE: hay que reconstruir la
+    tabla. Es idempotente — si la columna ya admite NULL no hace nada.
+    """
+    cols = {r[1]: r for r in conn.execute("PRAGMA table_info(meetings)").fetchall()}
+    if "client_id" not in cols or not cols["client_id"][3]:  # [3] = notnull
+        return
+
+    logger.info("Migrando meetings.client_id a NULLABLE (reconstruccion de tabla)")
+    # init_db() viene ejecutando DML, asi que el modulo sqlite3 ya abrio una
+    # transaccion implicita: sin este commit, el BEGIN de abajo tira "cannot start
+    # a transaction within a transaction" y ademas el PRAGMA foreign_keys se
+    # ignora en silencio (no se puede cambiar dentro de una transaccion).
+    conn.commit()
+    # El procedimiento recomendado por SQLite para cambiar el esquema: las FK se
+    # apagan durante la reconstruccion y se verifican antes de confirmar.
+    conn.execute("PRAGMA foreign_keys=OFF")
+    try:
+        conn.execute("BEGIN")
+        conn.execute("""
+            CREATE TABLE meetings_nuevo (
+                id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_id           INTEGER REFERENCES businesses(id) ON DELETE CASCADE,
+                calendar_event_id   TEXT UNIQUE,
+                title               TEXT,
+                start_at            TIMESTAMP,
+                end_at              TIMESTAMP,
+                meet_link           TEXT,
+                status              TEXT DEFAULT 'scheduled',
+                transcript          TEXT,
+                summary             TEXT,
+                requirements        TEXT,
+                created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.execute("""
+            INSERT INTO meetings_nuevo
+                (id, client_id, calendar_event_id, title, start_at, end_at,
+                 meet_link, status, transcript, summary, requirements, created_at)
+            SELECT id, client_id, calendar_event_id, title, start_at, end_at,
+                   meet_link, status, transcript, summary, requirements, created_at
+            FROM meetings
+        """)
+        conn.execute("DROP TABLE meetings")
+        conn.execute("ALTER TABLE meetings_nuevo RENAME TO meetings")
+        # Acotado a meetings a proposito: la version global tambien ve los huerfanos
+        # preexistentes de lead_events/attachments/demos (que limpia
+        # scripts/limpiar_huerfanos.py) y abortaria una migracion que no tiene nada
+        # que ver con ellos.
+        violaciones = conn.execute("PRAGMA foreign_key_check(meetings)").fetchall()
+        if violaciones:
+            conn.execute("ROLLBACK")
+            logger.error(f"Migracion de meetings abortada: {len(violaciones)} violaciones de FK en meetings")
+            return
+        conn.execute("COMMIT")
+        logger.info("meetings.client_id ahora admite NULL")
+    except Exception as e:
+        conn.execute("ROLLBACK")
+        logger.error(f"Migracion de meetings fallo, la tabla queda como estaba: {e}")
+    finally:
+        conn.execute("PRAGMA foreign_keys=ON")
+
+
 def _connect(db_path: str) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path, timeout=10)
     conn.execute("PRAGMA journal_mode=WAL")  # better concurrency
@@ -122,10 +187,15 @@ def init_db(db_path: str) -> None:
         """)
 
         # ── meetings ──────────────────────────────────────────────────────────
+        # client_id es NULLABLE a proposito: los eventos personales de la agenda
+        # (dentista, gimnasio, standups) se importan para que sigan visibles en el
+        # calendario, pero NO son un lead. Antes eran NOT NULL, asi que el sync
+        # creaba un negocio fantasma en 'reunion_agendada' por cada uno, y ese
+        # estado esta en _PIPELINE_STATUSES: aparecian como oportunidades de venta.
         conn.execute("""
             CREATE TABLE IF NOT EXISTS meetings (
                 id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-                client_id           INTEGER NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+                client_id           INTEGER REFERENCES businesses(id) ON DELETE CASCADE,
                 calendar_event_id   TEXT UNIQUE,
                 title               TEXT,
                 start_at            TIMESTAMP,
@@ -138,6 +208,7 @@ def init_db(db_path: str) -> None:
                 created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        _migrar_meetings_client_id_nullable(conn)
 
         # ── budgets ───────────────────────────────────────────────────────────
         conn.execute("""
