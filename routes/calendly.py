@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import re
+import time
 
 from flask import Blueprint, request, jsonify
 
@@ -14,10 +15,24 @@ logger = logging.getLogger(__name__)
 calendly_bp = Blueprint("calendly", __name__)
 
 
+_TOLERANCIA_FIRMA_SEG = 300
+
+
 def _verify_signature(payload: bytes, signature_header: str) -> bool:
+    """Valida la firma del webhook de Calendly.
+
+    Falla CERRADO a proposito. El endpoint esta exento de login, asi que sin
+    secreto configurado cualquiera que conozca la URL crea reuniones y leads.
+    REQUIERE CALENDLY_WEBHOOK_SECRET en el entorno: sin esa variable el webhook
+    queda rechazado y las reuniones dejan de entrar.
+    """
     secret = os.environ.get("CALENDLY_WEBHOOK_SECRET", "")
     if not secret:
-        return True  # skip verification if secret not configured
+        logger.error(
+            "CALENDLY_WEBHOOK_SECRET no configurado — se rechaza el webhook. "
+            "Cargalo con el valor que devuelve Calendly al crear la suscripcion."
+        )
+        return False
     # Calendly v2 format: "t=<unix_timestamp>,v1=<hmac_hex>"
     # Signed content: "<timestamp>.<body>"
     try:
@@ -27,6 +42,15 @@ def _verify_signature(payload: bytes, signature_header: str) -> bool:
         if not timestamp or not v1:
             return False
     except Exception:
+        return False
+    # Ventana de frescura: sin esto, un POST valido capturado se puede reenviar
+    # indefinidamente y duplicar la reunion.
+    try:
+        edad = abs(time.time() - int(timestamp))
+    except (TypeError, ValueError):
+        return False
+    if edad > _TOLERANCIA_FIRMA_SEG:
+        logger.warning(f"Calendly webhook fuera de la ventana de frescura ({edad:.0f}s) — rechazado")
         return False
     signed = (timestamp + ".").encode() + payload
     expected = hmac.new(secret.encode(), signed, hashlib.sha256).hexdigest()

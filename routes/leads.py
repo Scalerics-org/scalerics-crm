@@ -19,6 +19,26 @@ from services.budget_ai import ai_edit_html, generate_budget_html
 
 leads_bp = Blueprint("leads", __name__)
 
+# Tipos que se pueden renderizar inline sin riesgo. NO incluye image/svg+xml:
+# los SVG admiten <script> y se ejecutarian en el origen del CRM.
+_MIME_INLINE_SEGUROS = frozenset({
+    "image/png", "image/jpeg", "image/gif", "image/webp",
+    "application/pdf", "text/plain",
+})
+
+
+def _normalizar_mime(raw: str) -> str:
+    """Saca parametros ('; charset=utf-8') y normaliza a minusculas, para que las
+    comparaciones por tipo no se puedan esquivar cambiando el Content-Type."""
+    return (raw or "").split(";")[0].strip().lower() or "application/octet-stream"
+
+
+def _content_disposition(modo: str, nombre: str) -> str:
+    """Arma el header sin permitir inyeccion: el nombre puede venir de un adjunto
+    creado por otra ruta que no paso por secure_filename()."""
+    limpio = re.sub(r'[^A-Za-z0-9._ -]', "_", (nombre or "archivo"))[:120]
+    return f'{modo}; filename="{limpio}"'
+
 
 def _contributors(db: str, lead_id: int, current_uid: int | None) -> list[int]:
     ids = set(get_lead_contributor_ids(db, lead_id))
@@ -539,6 +559,12 @@ def api_list_attachments(biz_id):
 
 @leads_bp.route("/api/leads/<int:biz_id>/attachments", methods=["POST"])
 def api_add_attachment(biz_id):
+    # Antes no se validaba: adjuntar a un lead inexistente creaba una fila
+    # huerfana en silencio (asi quedaron los 31 huerfanos de la base productiva).
+    # Con las foreign keys ya activas seria un IntegrityError -> 500; un 404 dice
+    # lo que realmente pasa.
+    if not get_business(_db(), biz_id):
+        return jsonify({"ok": False, "error": "lead inexistente"}), 404
     section = request.args.get("section", "budget")
     # Link upload (JSON)
     if request.content_type and "application/json" in request.content_type:
@@ -559,7 +585,7 @@ def api_add_attachment(biz_id):
     file_data = f.read()
     if len(file_data) > 10 * 1024 * 1024:
         return jsonify({"ok": False, "error": "Archivo demasiado grande (máx 10 MB)"}), 413
-    mime_type = f.content_type or "application/octet-stream"
+    mime_type = _normalizar_mime(f.content_type)
     name = secure_filename(f.filename) or "archivo"
     db = _db()
     attach_id = add_attachment(db, biz_id, section, name, file_data=file_data, mime_type=mime_type)
@@ -574,14 +600,24 @@ def api_attachment_file(attach_id):
     row = get_attachment_file(_db(), attach_id)
     if not row or not row["file_data"]:
         return jsonify({"error": "not found"}), 404
-    mime = row["mime_type"] or "application/octet-stream"
+    # El mime lo elegia quien subia el archivo y se comparaba con == "text/html"
+    # exacto, asi que 'text/html; charset=utf-8' o 'image/svg+xml' (los SVG
+    # ejecutan <script>) esquivaban el sandbox y corrian en el origen del CRM.
+    mime = _normalizar_mime(row["mime_type"])
     resp = Response(row["file_data"], mimetype=mime)
-    resp.headers["Content-Disposition"] = f'inline; filename="{row["name"]}"'
+    resp.headers["X-Content-Type-Options"] = "nosniff"
     if mime == "text/html":
         # Los presupuestos son HTML generado por IA y editable: si se renderizan
         # en el origen del CRM, un <script> inyectado corre con la sesion del
         # usuario. sandbox sin allow-scripts los deja verse pero no ejecutar.
         resp.headers["Content-Security-Policy"] = "sandbox"
+        resp.headers["Content-Disposition"] = _content_disposition("inline", row["name"])
+    elif mime in _MIME_INLINE_SEGUROS:
+        resp.headers["Content-Disposition"] = _content_disposition("inline", row["name"])
+    else:
+        # Todo lo desconocido se descarga en vez de renderizarse. Cubre SVG,
+        # XML, octet-stream y cualquier tipo nuevo que aparezca.
+        resp.headers["Content-Disposition"] = _content_disposition("attachment", row["name"])
     return resp
 
 

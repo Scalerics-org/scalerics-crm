@@ -63,8 +63,20 @@ def _notify_new_meta_lead(db: str, lead_name: str, phone: str, campaign: str, ci
 
 
 def _verify_signature(payload: bytes, sig_header: str) -> bool:
-    if not APP_SECRET or not sig_header:
-        return True  # skip in dev if not configured
+    """Valida la firma HMAC de Meta.
+
+    Falla CERRADO a proposito. El endpoint esta exento de login (dashboard.py,
+    require_login), asi que aceptar un POST sin firma valida deja que cualquiera
+    inyecte leads falsos. Antes esto devolvia True cuando faltaba el header, que
+    lo controla el cliente: bastaba omitirlo para saltear la validacion incluso
+    con META_APP_SECRET bien configurado.
+    """
+    if not APP_SECRET:
+        logger.error("META_APP_SECRET no configurado — se rechaza el webhook de Meta")
+        return False
+    if not sig_header:
+        logger.warning("Meta webhook sin X-Hub-Signature-256 — rechazado")
+        return False
     try:
         expected = "sha256=" + hmac.new(APP_SECRET.encode(), payload, hashlib.sha256).hexdigest()
         return hmac.compare_digest(expected, sig_header)
@@ -167,14 +179,16 @@ def _fetch_and_store_lead(app, lead_id: str, form_id: str):
             if biz_id:
                 log_activity(db, "meta_webhook", "lead_created", "lead", biz_id, name,
                              f"Fuente: Meta Lead Ad · {campaign_name or ad_name}", user_id=None)
-                logger.info(f"Meta lead stored: {name} ({phone}) → id {biz_id}")
+                # Sin PII: el nombre y el telefono en claro terminaban en los logs
+                # de Fly. El id alcanza para rastrear el lead en la base.
+                logger.info(f"Meta lead stored: id={biz_id} campaign={campaign_name or ad_name!r}")
                 threading.Thread(
                     target=_notify_new_meta_lead,
                     args=(db, name, phone, campaign_name or ad_name or "", city, biz_id),
                     daemon=True,
                 ).start()
             else:
-                logger.info(f"Meta lead duplicate skipped: {name} ({phone})")
+                logger.info(f"Meta lead duplicate skipped (phone ...{(phone or '')[-4:]})")
 
         except Exception as e:
             logger.error(f"Error processing Meta lead {lead_id}: {e}")
