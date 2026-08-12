@@ -111,7 +111,18 @@ def _guest_name(summary: str, host_name: str) -> str:
     return name
 
 
-def parse_calendly_event(event: dict, host_email: str) -> dict:
+def team_emails_from_env() -> set:
+    """Mails del equipo, que Calendly suma como attendees de las reuniones.
+
+    Sin esto los tomábamos por el cliente y cuatro reuniones distintas
+    terminaban con el mismo mail.
+    """
+    raw = os.environ.get("CALENDLY_TEAM_EMAILS", "")
+    return {e.strip().lower() for e in raw.split(",") if e.strip()}
+
+
+def parse_calendly_event(event: dict, host_email: str,
+                         team_emails: set = None) -> dict:
     """Devuelve los datos del invitado, o None si el evento no es de Calendly."""
     description = event.get("description") or ""
     m = _EVENT_UUID_RE.search(description)
@@ -121,10 +132,14 @@ def parse_calendly_event(event: dict, host_email: str) -> dict:
     answers = _extract_answers(description)
     host_name = (event.get("organizer") or {}).get("displayName") or ""
 
+    if team_emails is None:
+        team_emails = team_emails_from_env()
+    ignorar = {(host_email or "").lower()} | {e.lower() for e in team_emails}
+
     email = ""
     for a in event.get("attendees") or []:
         addr = (a.get("email") or "").lower()
-        if addr and addr != (host_email or "").lower():
+        if addr and addr not in ignorar:
             email = a.get("email")
             break
 
@@ -175,7 +190,7 @@ def _existing_meeting(db_path: str, event_uri: str):
 
 
 def sync_events(db_path: str, events: list, host_email: str,
-                dry_run: bool = False) -> dict:
+                dry_run: bool = False, team_emails: set = None) -> dict:
     """Carga al CRM los eventos de Calendly que todavía no estén.
 
     Idempotente: se apoya en calendar_event_id, así que se puede correr
@@ -184,10 +199,12 @@ def sync_events(db_path: str, events: list, host_email: str,
     reuniones viejas ya existentes.
     """
     stats = {"created": 0, "skipped": 0, "canceled": 0, "ignored": 0,
-             "would_create": []}
+             "sin_contacto": 0, "would_create": []}
+    if team_emails is None:
+        team_emails = team_emails_from_env()
 
     for event in events or []:
-        data = parse_calendly_event(event, host_email)
+        data = parse_calendly_event(event, host_email, team_emails)
         if not data:
             stats["ignored"] += 1
             continue
@@ -215,6 +232,12 @@ def sync_events(db_path: str, events: list, host_email: str,
 
         if existing:
             stats["skipped"] += 1
+            continue
+
+        # Las reuniones viejas, de antes de que el formulario pidiera datos, no
+        # traen con qué contactar a nadie: cargarlas sólo ensucia el CRM.
+        if not data["phone"] and not data["email"]:
+            stats["sin_contacto"] += 1
             continue
 
         note_lines = []
@@ -338,4 +361,5 @@ def fetch_and_sync(db_path: str, days_back: int = 30, days_ahead: int = 90,
     if not host_email:
         host_email = service.calendars().get(calendarId="primary").execute().get("id", "")
 
-    return sync_events(db_path, events, host_email=host_email, dry_run=dry_run)
+    return sync_events(db_path, events, host_email=host_email, dry_run=dry_run,
+                       team_emails=team_emails_from_env())

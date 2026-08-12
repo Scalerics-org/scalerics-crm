@@ -246,3 +246,53 @@ def test_nombre_sin_sufijo_queda_intacto():
     ev = _event(summary="Ferretería El Sol")
     ev["organizer"] = {"email": HOST}
     assert parse_calendly_event(ev, host_email=HOST)["name"] == "Ferretería El Sol"
+
+
+# ─── mails del equipo ────────────────────────────────────────────────────────
+# Calendly suma a los co-hosts como attendees del evento. Antes los tomábamos
+# como si fueran el cliente, y cuatro reuniones distintas terminaban con el
+# mismo mail.
+
+TEAM = {"juan.pereyra.comunicacion@gmail.com", "gonzasiuciak@gmail.com"}
+
+
+def test_no_toma_el_mail_de_un_companero_como_cliente():
+    ev = _event(guest="juan.pereyra.comunicacion@gmail.com")
+    p = parse_calendly_event(ev, host_email=HOST, team_emails=TEAM)
+    assert p["email"] == ""
+
+
+def test_el_mail_de_un_cliente_real_si_se_toma():
+    ev = _event(guest="cliente@ferreteriasol.com.uy")
+    p = parse_calendly_event(ev, host_email=HOST, team_emails=TEAM)
+    assert p["email"] == "cliente@ferreteriasol.com.uy"
+
+
+def test_sin_mail_el_lead_se_crea_igual_y_matchea_por_telefono(db):
+    ev = _event(guest="juan.pereyra.comunicacion@gmail.com")
+    sync_events(db, [ev], host_email=HOST, team_emails=TEAM)
+
+    conn = sqlite3.connect(db)
+    conn.row_factory = sqlite3.Row
+    try:
+        lead = dict(conn.execute("SELECT * FROM businesses").fetchone())
+    finally:
+        conn.close()
+    assert lead["phone"] == "+59899123456"
+    assert lead["email"] is None          # mejor vacío que el mail equivocado
+    assert lead["interest"] == "E-commerce / tienda online"
+
+
+def test_sin_telefono_ni_mail_no_se_crea_basura(db):
+    # Reuniones viejas, de antes de que el formulario pidiera datos.
+    ev = _event(description=DESCRIPTION_SIN_PREGUNTAS,
+                guest="juan.pereyra.comunicacion@gmail.com")
+    res = sync_events(db, [ev], host_email=HOST, team_emails=TEAM)
+
+    assert res["sin_contacto"] == 1
+    assert res["created"] == 0
+    conn = sqlite3.connect(db)
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM businesses").fetchone()[0] == 0
+    finally:
+        conn.close()
