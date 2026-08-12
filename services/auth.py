@@ -23,6 +23,7 @@ import sqlite3
 from flask import g, jsonify, request, session
 
 from database import get_user_by_id
+from database import connect as _db_connect
 
 # Fuente de verdad unica de los paneles. Estaba duplicada en dos constantes de
 # JavaScript (el dashboard y la pagina de admin) y a AMBAS les faltaba 'sdr', que
@@ -93,7 +94,7 @@ def paneles_del_usuario(db_path: str, user_id) -> set | None:
     crudo = None
     role_id = user.get("role_id")
     if role_id:
-        conn = sqlite3.connect(db_path)
+        conn = _db_connect(db_path)
         conn.row_factory = sqlite3.Row
         try:
             rol = conn.execute(

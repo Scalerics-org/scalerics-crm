@@ -11,6 +11,7 @@ from flask import Blueprint, request, jsonify
 from database import create_meeting, get_business_by_phone, get_all_businesses, log_activity, update_business
 
 logger = logging.getLogger(__name__)
+from database import connect as _db_connect
 
 calendly_bp = Blueprint("calendly", __name__)
 
@@ -151,7 +152,7 @@ def calendly_webhook():
         if not client:
             # Create a placeholder business so the meeting isn't lost
             import sqlite3, datetime
-            conn = sqlite3.connect(db_path)
+            conn = _db_connect(db_path)
             try:
                 cur = conn.execute(
                     "INSERT INTO businesses (name, email, phone, crm_status, source) VALUES (?,?,?,?,?)",
@@ -223,7 +224,7 @@ def calendly_webhook():
         event_uri = payload.get("payload", {}).get("event", {}).get("uri", "")
         if event_uri:
             import sqlite3
-            conn = sqlite3.connect(db_path)
+            conn = _db_connect(db_path)
             try:
                 conn.execute(
                     "UPDATE meetings SET status='canceled' WHERE calendar_event_id=?",

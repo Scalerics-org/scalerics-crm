@@ -21,6 +21,7 @@ from database import (
     log_activity,
     update_meeting,
 )
+from database import connect as _db_connect
 
 calendar_bp = Blueprint("calendar", __name__)
 
@@ -180,7 +181,7 @@ def _sync_gcal_to_db(db: str, start: str, end: str) -> None:
         import logging; logging.getLogger(__name__).warning(f"GCal sync error: {e}")
         return
 
-    conn = _sq.connect(db); conn.row_factory = _sq.Row
+    conn = _db_connect(db); conn.row_factory = _sq.Row
     try:
         for ev in items:
             gcal_id = ev.get("id", "")
@@ -312,7 +313,7 @@ def api_calendar_events():
         if start and end:
             _lanzar_sync_en_background(db, start, end)
 
-        conn = _sq.connect(db); conn.row_factory = _sq.Row
+        conn = _db_connect(db); conn.row_factory = _sq.Row
         try:
             rows = conn.execute("""
                 SELECT m.id, m.title, m.start_at, m.end_at, m.meet_link, m.status,
@@ -669,7 +670,7 @@ def api_delete_cal_event(cal_event_id):
     db = _db()
     client_id = None
     try:
-        con = sqlite3.connect(db)
+        con = _db_connect(db)
         row = con.execute("SELECT client_id FROM meetings WHERE calendar_event_id = ?", (cal_event_id,)).fetchone()
         client_id = row[0] if row else None
         con.execute("DELETE FROM meetings WHERE calendar_event_id = ?", (cal_event_id,))

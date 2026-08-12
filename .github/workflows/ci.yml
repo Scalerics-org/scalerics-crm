@@ -1,0 +1,78 @@
+name: CI
+
+# El unico workflow que existia era el deploy: no corria tests, ni lint, ni scan
+# de secretos. Ademas los tests NO PODIAN correr (main.py hacia sys.exit(1) al
+# importarse), asi que 48 tests escritos nunca se ejecutaron.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Instalar dependencias
+        run: |
+          pip install -r requirements.txt
+          pip install pytest-cov
+
+      - name: Verificar que todo compila
+        run: python -m compileall -q dashboard.py database.py server.py main.py routes services scripts
+
+      - name: Tests con cobertura
+        # Se mide solo el codigo fuente (incluir tests/ inflaba el numero al 34%
+        # porque cada test se cubre a si mismo al 100%). Real hoy: 29%.
+        #
+        # El umbral arranca bajo a proposito: es un trinquete, no una meta. Lo
+        # importante es que NO BAJE; se sube a medida que se escriben tests. Las
+        # areas mas flojas son routes/budgets (11%), routes/calendly (11%) y
+        # routes/meta (14%).
+        run: |
+          pytest -q --cov=database --cov=routes --cov=services --cov=dashboard --cov=main \
+                 --cov-report=term-missing --cov-fail-under=28
+
+      # dashboard.py tiene el frontend embebido como string de Python, asi que ni
+      # py_compile ni pytest miran el JavaScript. Un escape mal armado (jsStr
+      # emitiendo '\x') hacia que el navegador no cargara el <script> entero y el
+      # panel quedaba muerto, con todo el CI en verde. Este paso lo detecta.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Validar el JavaScript embebido
+        env:
+          SECRET_KEY: ci
+          ANTHROPIC_API_KEY: ci
+        run: python scripts/check_js.py
+
+  seguridad:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # gitleaks necesita el historial completo
+
+      - name: Buscar secretos filtrados
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Bloquear bases de datos versionadas
+        # leads_backup.db (692 KB, 6 cuentas con hash y PII de 421 negocios) estuvo
+        # trackeado pese a que .gitignore tiene *.db: se habia agregado con -f.
+        run: |
+          if git ls-files | grep -E '\.db$'; then
+            echo "::error::Hay archivos .db versionados. Sacalos con git rm --cached."
+            exit 1
+          fi
+          echo "OK: no hay bases versionadas"

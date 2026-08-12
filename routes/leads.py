@@ -15,6 +15,7 @@ from database import (get_all_businesses, update_business, delete_business, get_
                       increment_task_progress, get_lead_contributor_ids, log_activity)
 from database import get_attachment_file, update_attachment_file, get_attachments
 from pitch_generator import generate_pitch
+from database import connect as _db_connect
 from services.budget_ai import ai_edit_html, generate_budget_html
 
 leads_bp = Blueprint("leads", __name__)
@@ -410,7 +411,7 @@ def api_metrics():
     conversion   = round(closed / total * 100, 1) if total else 0
 
     # Stats de llamadas para leads SDR desde call_logs
-    conn3 = _sq.connect(_db()); conn3.row_factory = _sq.Row
+    conn3 = _db_connect(_db()); conn3.row_factory = _sq.Row
     try:
         rows = conn3.execute("""
             SELECT cl.outcome, COUNT(DISTINCT cl.lead_id) as cnt
@@ -452,7 +453,7 @@ def api_metrics_meta():
     uid = session.get("user_id")
     if not uid:
         return jsonify({"error": "No autorizado"}), 403
-    conn4 = _sq4.connect(_db()); conn4.row_factory = _sq4.Row
+    conn4 = _db_connect(_db()); conn4.row_factory = _sq4.Row
     try:
         u = conn4.execute("""
             SELECT u.id, u.email, r.name as role_name

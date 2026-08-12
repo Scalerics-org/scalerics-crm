@@ -5,6 +5,7 @@ from flask import Blueprint, current_app, jsonify, request, session
 import os
 from database import (create_task, delete_task, get_task_by_id, get_tasks,
                       log_activity, update_task, get_task_progress_history)
+from database import connect as _db_connect
 from services.email_service import send_task_assignment_email
 
 tasks_bp = Blueprint("tasks", __name__)
@@ -90,7 +91,7 @@ def api_task_progress_history(task_id):
     uid = session.get("user_id")
     admin_email = os.environ.get("ADMIN_EMAIL", "")
     import sqlite3 as _sq
-    conn2 = _sq.connect(db); conn2.row_factory = _sq.Row
+    conn2 = _db_connect(db); conn2.row_factory = _sq.Row
     try:
         u = conn2.execute("SELECT id, email FROM users WHERE id=?", (uid,)).fetchone()
     finally:

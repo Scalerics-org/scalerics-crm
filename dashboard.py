@@ -11,7 +11,8 @@ from flask import Flask, g, jsonify, redirect, render_template_string, request, 
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
-from database import init_db, seed_pitch_templates
+from database import _connect, init_db, seed_pitch_templates
+from database import connect as _db_connect
 from routes.leads import leads_bp
 from routes.demos import demos_bp
 from routes.calendar import calendar_bp
@@ -5329,7 +5330,8 @@ def create_app(db_path: str) -> Flask:
 
     @app.before_request
     def require_login():
-        if request.endpoint in ("login", "logout", "register", "forgot_password", "reset_password", "static", "privacidad"):
+        if request.endpoint in ("login", "logout", "register", "forgot_password",
+                                "reset_password", "static", "privacidad", "health"):
             return
         if request.path.startswith("/api/meta/webhook"):
             return
@@ -5363,6 +5365,26 @@ def create_app(db_path: str) -> Flask:
         escondia items del nav en JavaScript.
         """
         return enforce_panel_access(db_path)
+
+    @app.route("/health")
+    def health():
+        """Healthcheck para Fly. Toca la base a proposito: un proceso que responde
+        pero no puede leer SQLite (volumen no montado, base corrupta, disco lleno)
+        esta caido a los efectos practicos, y antes se veia sano.
+
+        Exento de login — si no, el chequeo recibiria un redirect a /login y daria
+        por sana una app que no puede consultar nada.
+        """
+        try:
+            conn = _connect(db_path)
+            try:
+                conn.execute("SELECT 1 FROM users LIMIT 1").fetchone()
+            finally:
+                conn.close()
+        except Exception as e:
+            app.logger.error("Healthcheck fallo al consultar la base: %s", e)
+            return jsonify({"status": "error", "db": "unreachable"}), 503
+        return jsonify({"status": "ok", "db": "ok"}), 200
 
     @app.route("/privacidad")
     def privacidad():
@@ -5582,7 +5604,7 @@ def create_app(db_path: str) -> Flask:
     def api_activity():
         import sqlite3 as _sqa
         user_filter = request.args.get("user", "").strip()
-        conn_a = _sqa.connect(db_path); conn_a.row_factory = _sqa.Row
+        conn_a = _db_connect(db_path); conn_a.row_factory = _sqa.Row
         try:
             # Distinct users for filter dropdown
             users = [r["user_name"] for r in conn_a.execute(
@@ -5605,7 +5627,7 @@ def create_app(db_path: str) -> Flask:
     def api_sdr_activity():
         import sqlite3 as _sq2, datetime as _dt2
         today = _dt2.date.today().isoformat()
-        conn2 = _sq2.connect(db_path); conn2.row_factory = _sq2.Row
+        conn2 = _db_connect(db_path); conn2.row_factory = _sq2.Row
         try:
             # Unique leads touched per user today (exclude sistema/automatico)
             today_rows = conn2.execute("""
@@ -5634,7 +5656,7 @@ def create_app(db_path: str) -> Flask:
     def api_sdr_stats():
         import sqlite3 as _sq3
         from datetime import date, timedelta
-        conn3 = _sq3.connect(db_path); conn3.row_factory = _sq3.Row
+        conn3 = _db_connect(db_path); conn3.row_factory = _sq3.Row
         try:
             period = request.args.get('period', 'month')
             today = date.today()
@@ -5792,7 +5814,7 @@ def create_app(db_path: str) -> Flask:
         type_ = request.args.get('type', 'calls').strip()
         if not user or not day:
             return jsonify({"leads": []})
-        conn5 = _sq5.connect(db_path); conn5.row_factory = _sq5.Row
+        conn5 = _db_connect(db_path); conn5.row_factory = _sq5.Row
         try:
             if type_ == 'calls':
                 rows = conn5.execute(
@@ -5857,7 +5879,7 @@ def create_app(db_path: str) -> Flask:
         if not is_admin:
             role_id = user.get("role_id")
             if role_id:
-                conn3 = _sq2.connect(db_path); conn3.row_factory = _sq2.Row
+                conn3 = _db_connect(db_path); conn3.row_factory = _sq2.Row
                 try:
                     role = conn3.execute("SELECT name, panel_access FROM roles WHERE id=?", (role_id,)).fetchone()
                     if role:
@@ -5920,7 +5942,7 @@ def create_app(db_path: str) -> Flask:
         data = request.get_json() or {}
         panels = data.get("panels")  # None = all access, list = specific panels
         val = _json.dumps(panels) if panels is not None else None
-        conn2 = __import__("sqlite3").connect(db_path)
+        conn2 = _db_connect(db_path)
         try:
             conn2.execute("UPDATE users SET panel_access=? WHERE id=?", (val, uid))
             conn2.commit()
@@ -5934,7 +5956,7 @@ def create_app(db_path: str) -> Flask:
         err = require_admin(db_path)
         if err:
             return err
-        conn2 = _sq.connect(db_path); conn2.row_factory = _sq.Row
+        conn2 = _db_connect(db_path); conn2.row_factory = _sq.Row
         try:
             rows = conn2.execute("SELECT * FROM roles ORDER BY id").fetchall()
             return jsonify([dict(r) for r in rows])
@@ -5950,7 +5972,7 @@ def create_app(db_path: str) -> Flask:
         name = (data.get("name") or "").strip()
         panels = data.get("panels", [])
         if not name: return jsonify({"ok": False, "error": "Nombre requerido"}), 400
-        conn2 = _sq.connect(db_path)
+        conn2 = _db_connect(db_path)
         try:
             conn2.execute("INSERT INTO roles (name, panel_access) VALUES (?,?)", (name, _j.dumps(panels)))
             conn2.commit()
@@ -5968,7 +5990,7 @@ def create_app(db_path: str) -> Flask:
         data = request.get_json() or {}
         name = (data.get("name") or "").strip()
         panels = data.get("panels")
-        conn2 = _sq.connect(db_path)
+        conn2 = _db_connect(db_path)
         try:
             if name: conn2.execute("UPDATE roles SET name=? WHERE id=?", (name, rid))
             if panels is not None: conn2.execute("UPDATE roles SET panel_access=? WHERE id=?", (_j.dumps(panels), rid))
@@ -5982,7 +6004,7 @@ def create_app(db_path: str) -> Flask:
         err = require_admin(db_path)
         if err:
             return err
-        conn2 = _sq.connect(db_path)
+        conn2 = _db_connect(db_path)
         try:
             conn2.execute("UPDATE users SET role_id=NULL WHERE role_id=?", (rid,))
             conn2.execute("DELETE FROM roles WHERE id=?", (rid,))
@@ -5998,7 +6020,7 @@ def create_app(db_path: str) -> Flask:
             return err
         data = request.get_json() or {}
         role_id = data.get("role_id")  # None = no role (full access for admins)
-        conn2 = _sq.connect(db_path)
+        conn2 = _db_connect(db_path)
         try:
             conn2.execute("UPDATE users SET role_id=? WHERE id=?", (role_id, uid))
             conn2.commit()

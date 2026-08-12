@@ -15,6 +15,7 @@ import sqlite3 as _sq_meta
 import time
 
 from database import insert_business, update_business, get_business, log_activity
+from database import connect as _db_connect
 from services.email_service import send_new_meta_lead_notification, send_meta_token_alert
 
 logger = logging.getLogger(__name__)
@@ -33,7 +34,7 @@ def _get_admin_emails(db: str) -> list[str]:
     emails = set()
     admin_env = os.environ.get("ADMIN_EMAIL", "").strip().lower()
     try:
-        conn = _sq_meta.connect(db); conn.row_factory = _sq_meta.Row
+        conn = _db_connect(db); conn.row_factory = _sq_meta.Row
         rows = conn.execute("""
             SELECT u.email FROM users u
             LEFT JOIN roles r ON u.role_id = r.id
@@ -205,7 +206,7 @@ def meta_reset_import():
     if not (expected and token == expected):
         return jsonify({"ok": False, "error": "Unauthorized"}), 401
     db = _db()
-    conn = sqlite3.connect(db)
+    conn = _db_connect(db)
     try:
         cur = conn.execute("DELETE FROM businesses WHERE category='Meta Lead Ad'")
         deleted = cur.rowcount

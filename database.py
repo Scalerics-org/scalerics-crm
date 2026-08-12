@@ -81,6 +81,17 @@ def _migrar_meetings_client_id_nullable(conn: sqlite3.Connection) -> None:
         conn.execute("PRAGMA foreign_keys=ON")
 
 
+def connect(db_path: str) -> sqlite3.Connection:
+    """Conexion publica. Usar SIEMPRE esta en vez de sqlite3.connect() directo.
+
+    Habia 18 conexiones crudas repartidas por dashboard.py y routes/ que esquivaban
+    _connect(), asi que corrian sin foreign_keys (sus borrados no cascadeaban) y con
+    el timeout por defecto de 5s en vez de 10. El resultado era que cualquier
+    arreglo aplicado aca quedaba a medias.
+    """
+    return _connect(db_path)
+
+
 def _connect(db_path: str) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path, timeout=10)
     conn.execute("PRAGMA journal_mode=WAL")  # better concurrency
