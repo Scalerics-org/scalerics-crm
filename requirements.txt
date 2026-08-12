@@ -10,6 +10,7 @@ requests
 pytest
 pytest-mock
 flask
+flask-limiter>=3.5
 gunicorn
 json-repair
 pytz
