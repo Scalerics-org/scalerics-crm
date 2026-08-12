@@ -15,7 +15,13 @@ import sqlite3 as _sq_meta
 
 import time
 
-from database import insert_business, update_business, get_business, log_activity
+from database import (
+    insert_business,
+    update_business,
+    get_business,
+    get_business_by_phone,
+    log_activity,
+)
 from services.email_service import send_new_meta_lead_notification, send_meta_token_alert
 from meta_config import GRAPH_VERSION, GRAPH  # re-exportados: mismo nombre para no tocar los usos internos
 
@@ -63,6 +69,17 @@ def _notify_new_meta_lead(db: str, lead_name: str, phone: str, campaign: str, ci
     # wa_phone = os.environ.get("ADMIN_WA_PHONE", "")
     # if wa_phone:
     #     _send_wa_notification(wa_phone, lead_name, phone, campaign)
+
+
+def _page_token() -> str:
+    """El token vigente.
+
+    En Fly el token se renueva con `flyctl secrets set META_PAGE_TOKEN=...`,
+    que reinicia el proceso con el entorno nuevo. Leer `os.environ` en cada
+    llamada — y no la constante de módulo, que quedó congelada en el import —
+    es lo que hace que el valor nuevo se use sin depender de un redeploy.
+    """
+    return os.environ.get("META_PAGE_TOKEN") or PAGE_TOKEN
 
 
 def _redact_secrets(text: str) -> str:
@@ -134,17 +151,45 @@ def meta_webhook_receive():
     return "ok", 200
 
 
+def _merge_lead_into_existing(db: str, phone: str, fields: dict) -> int | None:
+    """El INSERT no creó fila: ya hay un negocio con ese teléfono.
+
+    `insert_business` usa `INSERT OR IGNORE` sobre `businesses.phone UNIQUE`,
+    así que un negocio ya scrapeado de Google que después llena el formulario
+    de Meta se descartaba entero. El lead es real y llegó: al negocio que ya
+    estaba se le devuelve `source='meta'` y se le guarda el `form_data`.
+
+    Devuelve el id del negocio existente, o None si no se pudo ubicar
+    (sin teléfono no hay por dónde buscarlo).
+    """
+    if not phone:
+        return None
+    try:
+        existente = get_business_by_phone(db, phone)
+    except Exception as e:
+        logger.error(f"No se pudo buscar el negocio existente por teléfono: {_redact_secrets(str(e))}")
+        return None
+    if not existente:
+        return None
+    biz_id = existente["id"]
+    update_business(db, biz_id,
+                    source="meta",
+                    form_data=json.dumps(fields, ensure_ascii=False))
+    return biz_id
+
+
 def _fetch_and_store_lead(app, lead_id: str, form_id: str):
     with app.app_context():
         db = app.config["DB_PATH"]
         try:
-            if not PAGE_TOKEN:
+            page_token = _page_token()
+            if not page_token:
                 logger.warning("META_PAGE_TOKEN not set — cannot fetch lead")
                 return
 
             r = requests.get(
                 f"{GRAPH}/{lead_id}",
-                params={"access_token": PAGE_TOKEN, "fields": "field_data,created_time,ad_name,campaign_name,form_id"},
+                params={"access_token": page_token, "fields": "field_data,created_time,ad_name,campaign_name,form_id"},
                 timeout=10,
             )
             r.raise_for_status()
@@ -193,10 +238,28 @@ def _fetch_and_store_lead(app, lead_id: str, form_id: str):
                     daemon=True,
                 ).start()
             else:
-                logger.info(f"Meta lead duplicate skipped: {name} ({phone})")
+                existente_id = _merge_lead_into_existing(db, phone, fields)
+                if existente_id:
+                    logger.warning(
+                        f"Meta lead sobre un negocio que ya existia: {name} ({phone}) "
+                        f"→ id {existente_id}; se le devolvio source='meta' y se guardo el form_data"
+                    )
+                    log_activity(db, "meta_webhook", "lead_updated", "lead", existente_id, name,
+                                 f"Lead de Meta sobre un negocio ya existente · {campaign_name or ad_name}",
+                                 user_id=None)
+                    threading.Thread(
+                        target=_notify_new_meta_lead,
+                        args=(db, name, phone, campaign_name or ad_name or "", city, existente_id),
+                        daemon=True,
+                    ).start()
+                else:
+                    logger.warning(
+                        f"Meta lead descartado por el INSERT y sin negocio existente que lo reciba: "
+                        f"{name} ({phone}) — recuperar a mano desde el panel de formularios de Meta"
+                    )
 
         except Exception as e:
-            logger.error(f"Error processing Meta lead {lead_id}: {e}")
+            logger.error(f"Error processing Meta lead {lead_id}: {_redact_secrets(str(e))}")
             from services.email_service import send_meta_lead_failure_alert
             admins = _get_admin_emails(db)
             if not admins:
@@ -212,30 +275,12 @@ def _fetch_and_store_lead(app, lead_id: str, form_id: str):
 
 
 # ── Trigger historical import from production server ─────────────────────────
-
-@meta_bp.route("/api/meta/reset-import", methods=["POST"])
-def meta_reset_import():
-    """Delete all Meta leads and reimport fresh."""
-    import sqlite3
-    token = request.headers.get("x-admin-token", "")
-    expected = os.environ.get("ADMIN_TOKEN", "")
-    if not (expected and token == expected):
-        return jsonify({"ok": False, "error": "Unauthorized"}), 401
-    db = _db()
-    conn = sqlite3.connect(db)
-    try:
-        cur = conn.execute("DELETE FROM businesses WHERE category='Meta Lead Ad'")
-        deleted = cur.rowcount
-        conn.commit()
-    finally:
-        conn.close()
-    # Trigger reimport in background
-    requests.post(
-        request.url_root + "api/meta/import-leads",
-        headers={"x-admin-token": expected, "Content-Type": "application/json"},
-        timeout=5
-    )
-    return jsonify({"ok": True, "deleted": deleted, "message": "Reimport iniciado"})
+#
+# Acá vivía `POST /api/meta/reset-import`, que hacía
+# `DELETE FROM businesses WHERE category='Meta Lead Ad'` y reimportaba desde
+# Graph. Graph solo retiene ~90 días: una llamada borraba para siempre los
+# leads viejos que esta rama restaura. Se eliminó a propósito — no volver a
+# agregarlo.
 
 
 @meta_bp.route("/api/meta/import-leads", methods=["POST"])
@@ -247,7 +292,7 @@ def meta_import_leads():
         return jsonify({"ok": False, "error": "Unauthorized"}), 401
 
     db = _db()
-    pt = PAGE_TOKEN
+    pt = _page_token()
     page_id = os.environ.get("META_PAGE_ID", "")
     if not pt or not page_id:
         return jsonify({"ok": False, "error": "META_PAGE_TOKEN o META_PAGE_ID no configurado"}), 400
@@ -308,9 +353,14 @@ def meta_import_leads():
                     if biz_id:
                         new += 1
                     else:
+                        # Import masivo: acá el `else` se cuenta y nada más.
+                        # A diferencia del webhook no se pisa el negocio que ya
+                        # existe ni se notifica: esta importación repasa todos
+                        # los formularios de la página, así que casi todos los
+                        # leads ya están y notificarlos sería spam.
                         dup += 1
         except Exception as e:
-            logger.error(f"Import error: {e}")
+            logger.error(f"Import error: {_redact_secrets(str(e))}")
         logger.info(f"Meta import done: {new} new, {dup} dup")
 
     threading.Thread(target=_run, daemon=True).start()
@@ -371,7 +421,7 @@ def meta_import_sync():
     if not (expected and token == expected):
         return jsonify({"ok": False, "error": "Unauthorized"}), 401
     db = _db()
-    pt = os.environ.get("META_PAGE_TOKEN", "") or PAGE_TOKEN
+    pt = _page_token()
     page_id = os.environ.get("META_PAGE_ID", "")
     if not pt or not page_id:
         return jsonify({"ok": False, "error": f"Missing: page_token={bool(pt)} page_id={bool(page_id)}"}), 400
@@ -418,9 +468,9 @@ def meta_import_sync():
                     "scraped_at": ct or None,
                 })
                 if biz_id: new_c += 1
-                else: dup += 1
+                else: dup += 1  # import masivo: solo se cuenta (ver meta_import_leads)
     except Exception as e:
-        errors.append(str(e))
+        errors.append(_redact_secrets(str(e)))
     return jsonify({"ok": True, "new": new_c, "dup": dup, "forms": len(forms) if "forms" in dir() else 0, "errors": errors})
 
 
@@ -445,11 +495,17 @@ def _update_env(key: str, value: str):
 
 # ── Background token health monitor ──────────────────────────────────────────
 
+# Cada cuánto se revisa que el token de página siga vivo.
 _CHECK_INTERVAL = 10 * 60  # 10 minutos
+
+# Cada cuánto corre el import de respaldo contra Graph. Es el colchón por si
+# el webhook se cae; no hace falta más seguido, y compartía constante con el
+# monitor de token, así que el "import diario" corría cada 10 minutos.
+_IMPORT_INTERVAL = 24 * 60 * 60  # 24 horas
 
 
 def _check_token_once(db: str) -> None:
-    token = os.environ.get("META_PAGE_TOKEN", "")
+    token = _page_token()  # el mismo que usa el webhook: vigilar otro no sirve
     if not token:
         return
     try:
@@ -468,7 +524,7 @@ def _check_token_once(db: str) -> None:
         else:
             logger.debug(f"Meta token OK — page: {data.get('name')}")
     except Exception as e:
-        logger.warning(f"Meta token check failed (network?): {e}")
+        logger.warning(f"Meta token check failed (network?): {_redact_secrets(str(e))}")
 
 
 def start_meta_token_monitor(app) -> None:
@@ -484,13 +540,13 @@ def start_meta_token_monitor(app) -> None:
 
     t = threading.Thread(target=_loop, daemon=True, name="meta-token-monitor")
     t.start()
-    logger.info("Meta token monitor started (checks every 24h)")
+    logger.info("Meta token monitor started (checks every 10 min)")
 
 
 # ── Daily import cron ─────────────────────────────────────────────────────────
 
 def _run_import_sync(db: str) -> tuple[int, int]:
-    pt = os.environ.get("META_PAGE_TOKEN", "") or PAGE_TOKEN
+    pt = _page_token()
     page_id = os.environ.get("META_PAGE_ID", "")
     if not pt or not page_id:
         logger.warning("Meta daily import: PAGE_TOKEN or PAGE_ID not set")
@@ -553,6 +609,11 @@ def _run_import_sync(db: str) -> tuple[int, int]:
                     daemon=True,
                 ).start()
             else:
+                # Repaso diario de todos los formularios: la enorme mayoría de
+                # estas filas ya está en la base. Se cuentan y nada más — pisar
+                # el negocio existente o notificar acá repetiría el aviso una
+                # vez por día, todos los días. El camino que sí lo hace, una
+                # sola vez y cuando el lead llega, es el webhook.
                 dup += 1
 
     logger.info(f"Meta daily import done: {new_c} new, {dup} dup")
@@ -567,8 +628,8 @@ def start_meta_daily_import(app) -> None:
                 with app.app_context():
                     _run_import_sync(app.config["DB_PATH"])
             except Exception as e:
-                logger.warning(f"Meta daily import error: {e}")
-            time.sleep(_CHECK_INTERVAL)
+                logger.warning(f"Meta daily import error: {_redact_secrets(str(e))}")
+            time.sleep(_IMPORT_INTERVAL)
 
     t = threading.Thread(target=_loop, daemon=True, name="meta-daily-import")
     t.start()
