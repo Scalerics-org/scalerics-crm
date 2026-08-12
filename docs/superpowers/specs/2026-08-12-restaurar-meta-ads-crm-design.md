@@ -125,9 +125,9 @@ businesses, y solo para los ids que efectivamente se restauraron.
 Fly **antes** de deployar el código que la lee, para no dejar la app rota
 entre el deploy y la migración.
 
-## Dos arreglos que van con la restauración
+## Tres arreglos que van con la restauración
 
-No son mejoras opcionales: el código que vuelve tiene dos fallas conocidas.
+No son mejoras opcionales: el código que vuelve tiene tres fallas conocidas.
 
 **1. La falla silenciosa.** `_fetch_and_store_lead` corre en un thread y
 termina en `except Exception as e: logger.error(...)`. El webhook ya devolvió
@@ -144,6 +144,16 @@ responde — el meta-hook usa la misma y funciona — pero está vieja. Se sube 
 `v26.0`, la misma en la que ya está la suscripción del campo `leadgen`, y
 **se verifica en el momento con una llamada real**, no de fe. La versión
 queda en una constante única, no repetida por llamada.
+
+**3. La firma falla abierta.** `_verify_signature` devuelve `True` cuando
+`META_APP_SECRET` está vacío — un `skip in dev if not configured` que en un
+endpoint público significa que cualquiera puede POSTear leads falsos si el
+secret no está cargado. Y el secret hoy **no está en Fly**, así que el primer
+deploy con la ruta viva y sin los secrets cargados dejaría el webhook abierto.
+
+Pasa a fallar cerrado: sin `META_APP_SECRET` se rechaza el webhook. El
+salteo queda detrás de un `META_ALLOW_UNSIGNED=true` explícito para
+desarrollo local.
 
 ## Verificación
 
