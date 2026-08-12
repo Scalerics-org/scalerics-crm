@@ -2,41 +2,9 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
-const { construir } = require('../src/app');
+const { conLead } = require('./helpers');
 const { S } = require('../src/funnel/states');
 const { porReglas } = require('../src/funnel/scoring');
-
-const CLAVE = 'clave-de-test-larguita-1234';
-
-function cfgTest(extra = {}) {
-  return Object.freeze({
-    PORT: 0, NODE_ENV: 'test', LOG_LEVEL: 'silent', WA_API_KEY: CLAVE,
-    WA_PROVIDER: 'mock', DB_PATH: ':memory:', BAILEYS_AUTH_DIR: './auth',
-    AM_PHONES: '59899000111', amPhones: ['59899000111'],
-    DEFAULT_COUNTRY_CODE: '598', TZ: 'America/Montevideo',
-    ANTHROPIC_API_KEY: '', CALENDLY_LINK: 'https://calendly.com/scalerics/diagnostico',
-    FUNNEL_ENABLED: true,
-    FOLLOWUP_DELAY_HOURS: 24, FOLLOWUP_JITTER_MINUTES: 0,
-    DELAY_AM_MIN_MS: 0, DELAY_AM_MAX_MS: 0,
-    DELAY_WELCOME_MIN_MS: 0, DELAY_WELCOME_MAX_MS: 0,
-    DELAY_BETWEEN_MIN_MS: 0, DELAY_BETWEEN_MAX_MS: 0,
-    TYPING_ENABLED: false,
-    ...extra,
-  });
-}
-
-/** Monta el servicio con un lead ya dado de alta y la cola limpia. */
-async function conLead(extra) {
-  const s = construir(cfgTest(extra), { logger: null });
-  await s.proveedor.conectar();
-  s.servicioLeads.alta({
-    external_id: 'l1', nombre: 'Martín Pereyra', rubro: 'Inmobiliaria',
-    telefono: '099123456', necesidad: 'automatizar consultas', origen: 'form',
-  });
-  await s.cola.vacia();
-  s.proveedor.limpiar();
-  return s;
-}
 
 /** Manda un mensaje del lead y espera a que la cola drene. */
 async function lead(s, texto) {

@@ -55,6 +55,21 @@ const esquema = z.object({
   // "escribiendo..." antes de cada mensaje. Se apaga solo en tests: sacarlo en
   // produccion es justamente lo que hace que el envio parezca de bot.
   TYPING_ENABLED: booleanoDeEnv.default(true),
+
+  // ── anti-baneo ──────────────────────────────────────────────────────────
+  MAX_MSGS_PER_HOUR: z.coerce.number().int().positive().default(30),
+  // El que mas pesa: primer mensaje a un numero que nunca escribio.
+  MAX_NEW_CONTACTS_PER_HOUR: z.coerce.number().int().positive().default(12),
+  MAX_MSGS_PER_DAY: z.coerce.number().int().positive().default(200),
+  // Fecha de alta del numero (YYYY-MM-DD). Vacio = sin rampa de warm-up.
+  WARMUP_START_DATE: z.string().default(''),
+
+  BUSINESS_HOURS: z.string().default('09:00-19:00'),
+  BUSINESS_DAYS: z.string().default('mon-sat'),
+
+  CIRCUIT_BREAKER_FAILS: z.coerce.number().int().positive().default(3),
+  CIRCUIT_BREAKER_WINDOW_MIN: z.coerce.number().int().positive().default(10),
+  CIRCUIT_BREAKER_PAUSE_MIN: z.coerce.number().int().positive().default(30),
 });
 
 function cargar(env = process.env) {

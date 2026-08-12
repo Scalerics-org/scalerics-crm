@@ -2,51 +2,8 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
-const { construir } = require('../src/app');
+const { CLAVE, LEAD, montar } = require('./helpers');
 
-const CLAVE = 'clave-de-test-larguita-1234';
-
-/** Config de test: base en memoria y delays en cero para que no tarde. */
-function cfgTest(extra = {}) {
-  return Object.freeze({
-    PORT: 0,
-    NODE_ENV: 'test',
-    LOG_LEVEL: 'silent',
-    WA_API_KEY: CLAVE,
-    WA_PROVIDER: 'mock',
-    DB_PATH: ':memory:',
-    BAILEYS_AUTH_DIR: './auth',
-    AM_PHONES: '59899000111',
-    amPhones: ['59899000111'],
-    DEFAULT_COUNTRY_CODE: '598',
-    TZ: 'America/Montevideo',
-    FOLLOWUP_DELAY_HOURS: 24,
-    FOLLOWUP_JITTER_MINUTES: 0,
-    DELAY_AM_MIN_MS: 0,
-    DELAY_AM_MAX_MS: 0,
-    DELAY_WELCOME_MIN_MS: 0,
-    DELAY_WELCOME_MAX_MS: 0,
-    DELAY_BETWEEN_MIN_MS: 0,
-    DELAY_BETWEEN_MAX_MS: 0,
-    TYPING_ENABLED: false,
-    ...extra,
-  });
-}
-
-async function montar(extra) {
-  const s = construir(cfgTest(extra), { logger: null });
-  await s.proveedor.conectar();
-  return s;
-}
-
-const LEAD = {
-  external_id: 'lead_8842',
-  nombre: 'Martín Pereyra',
-  rubro: 'Inmobiliaria',
-  telefono: '+598 99 123 456',
-  necesidad: 'Quiero automatizar el seguimiento de consultas de alquiler',
-  origen: 'form',
-};
 
 function postLead(s, body = LEAD) {
   return s.app.inject({

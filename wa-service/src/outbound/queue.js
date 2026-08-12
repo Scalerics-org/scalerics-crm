@@ -1,48 +1,69 @@
 'use strict';
 
-const crypto = require('node:crypto');
+const { entre, jitter, simularEscritura, dormir } = require('./humanize');
 
 const PRIORIDAD = { am_notice: 0, welcome: 1, manual: 1, followup: 2 };
-
-const dormir = (ms) => (ms > 0 ? new Promise((r) => setTimeout(r, ms)) : Promise.resolve());
-
-/** Entero uniforme en [min, max]. crypto en vez de Math.random. */
-function entre(min, max) {
-  if (max <= min) return min;
-  return min + crypto.randomInt(0, max - min + 1);
-}
+const INTERNO = new Set(['am_notice']);
 
 /**
  * Cola de salida con un unico worker: nunca hay dos envios simultaneos.
  *
  * Orden: prioridad primero (la ficha al AM va antes que un follow-up), y a
  * igual prioridad, orden de llegada.
+ *
+ * Si los limites o el horario no dejan mandar, el mensaje NO se descarta: se
+ * reprograma con noAntesDe y se sigue con el resto de la cola.
  */
-function crearCola({ proveedor, repo, cfg, logger }) {
+function crearCola({ proveedor, repo, cfg, logger, limites, ahora = () => new Date() }) {
   const items = [];
   let corriendo = false;
   let esperandoVacio = [];
   let seq = 0;
 
+  // Circuit breaker: si el proveedor empieza a fallar, se para en vez de
+  // insistir. Reintentar en loop contra WhatsApp acelera el baneo.
+  const fallosRecientes = [];
+  let pausadaHasta = null;
+  let alPausar = null;
+
+  const estaPausada = () => Boolean(pausadaHasta && ahora() < pausadaHasta);
+
+  /** Lo que puede salir ahora: pausada, solo pasan los avisos internos. */
+  function listos() {
+    const t = ahora();
+    return items.filter(
+      (i) => (!i.noAntesDe || i.noAntesDe <= t) && (!estaPausada() || INTERNO.has(i.kind))
+    );
+  }
+
   function notificarVacio() {
-    if (items.length === 0 && !corriendo) {
+    if (!listos().length && !corriendo) {
       esperandoVacio.forEach((r) => r());
       esperandoVacio = [];
+    }
+  }
+
+  function registrarFallo() {
+    const t = ahora().getTime();
+    fallosRecientes.push(t);
+    const ventana = cfg.CIRCUIT_BREAKER_WINDOW_MIN * 60_000;
+    while (fallosRecientes.length && t - fallosRecientes[0] > ventana) fallosRecientes.shift();
+
+    if (fallosRecientes.length >= cfg.CIRCUIT_BREAKER_FAILS) {
+      pausadaHasta = new Date(t + cfg.CIRCUIT_BREAKER_PAUSE_MIN * 60_000);
+      fallosRecientes.length = 0;
+      logger?.error(
+        { hasta: pausadaHasta.toISOString() },
+        'circuit breaker abierto: demasiados fallos seguidos, se pausa la cola'
+      );
+      alPausar?.(pausadaHasta);
     }
   }
 
   async function procesar(item) {
     const esPrimerContacto = !repo.yaFueContactado(item.to);
 
-    if (cfg.TYPING_ENABLED && proveedor.capacidades.typingIndicator && item.texto) {
-      // "escribiendo..." proporcional al largo, con techo: un texto largo no
-      // puede dejar el indicador tres minutos prendido.
-      const ms = Math.min(item.texto.length * 40, 6000);
-      await proveedor.setPresencia(item.to, 'composing');
-      await dormir(Math.round(ms * (0.7 + crypto.randomInt(0, 61) / 100)));
-      await proveedor.setPresencia(item.to, 'paused');
-      await dormir(entre(400, 1200));
-    }
+    await simularEscritura(proveedor, item.to, item.texto, cfg);
 
     const msgId = repo.registrarMensaje({
       lead_id: item.leadId ?? null,
@@ -63,28 +84,62 @@ function crearCola({ proveedor, repo, cfg, logger }) {
       repo.db.prepare('UPDATE messages SET status = ?, error = ? WHERE id = ?')
         .run('failed', String(e.message || e), msgId);
       logger?.error({ kind: item.kind, to: item.to, err: String(e.message || e) }, 'envio fallido');
+      registrarFallo();
       throw e;
     }
+  }
+
+  function siguiente() {
+    const candidatos = listos();
+    if (!candidatos.length) return null;
+    candidatos.sort((a, b) => PRIORIDAD[a.kind] - PRIORIDAD[b.kind] || a.seq - b.seq);
+    const elegido = candidatos[0];
+    items.splice(items.indexOf(elegido), 1);
+    return elegido;
   }
 
   async function loop() {
     if (corriendo) return;
     corriendo = true;
     try {
-      while (items.length) {
-        items.sort((a, b) => PRIORIDAD[a.kind] - PRIORIDAD[b.kind] || a.seq - b.seq);
-        const item = items.shift();
+      for (;;) {
+        if (pausadaHasta && ahora() >= pausadaHasta) pausadaHasta = null;
+
+        // Con la cola pausada solo salen los avisos al AM: la alerta de que el
+        // canal se cayo no puede quedar atrapada en la cola que se acaba de
+        // pausar. Si el proveedor esta caido del todo tampoco llegara, y para
+        // eso hace falta el canal de respaldo por mail, que todavia no existe.
+        const item = siguiente();
+        if (!item) break;
 
         if (item.delayMs) await dormir(item.delayMs);
+
+        const veredicto = limites.permitido({
+          esPrimerContacto: !repo.yaFueContactado(item.to),
+          esInterno: INTERNO.has(item.kind),
+          ahora: ahora(),
+        });
+
+        if (!veredicto.ok) {
+          const demoraMin = Math.round((veredicto.reintentarEn - ahora()) / 60_000);
+          logger?.warn(
+            { kind: item.kind, motivo: veredicto.motivo, demoraMin },
+            'mensaje reprogramado, no descartado'
+          );
+          items.push({ ...item, delayMs: 0, noAntesDe: veredicto.reintentarEn, reprogramado: true });
+          continue;
+        }
 
         try {
           await procesar(item);
         } catch {
-          // El error ya quedo en messages.status='failed' y en el log.
-          // No se corta la cola por un destinatario.
+          // El fallo ya quedo en messages.status='failed', en el log y en el
+          // contador del circuit breaker. No se corta la cola por uno.
         }
 
-        if (items.length) await dormir(entre(cfg.DELAY_BETWEEN_MIN_MS, cfg.DELAY_BETWEEN_MAX_MS));
+        if (items.length) {
+          await dormir(jitter(cfg.DELAY_BETWEEN_MIN_MS, cfg.DELAY_BETWEEN_MAX_MS));
+        }
       }
     } finally {
       corriendo = false;
@@ -93,21 +148,22 @@ function crearCola({ proveedor, repo, cfg, logger }) {
   }
 
   return {
-    /**
-     * @param {{to: string, texto: string, kind: string, leadId?: number, delayMs?: number}} item
-     */
     encolar(item) {
       items.push({ ...item, seq: seq++ });
       queueMicrotask(() => loop().catch((e) => logger?.error({ err: String(e) }, 'loop de cola')));
     },
 
-    /** Resuelve cuando no queda nada pendiente. Para tests. */
+    /** Resuelve cuando no queda nada que pueda salir ahora. Para tests. */
     vacia() {
-      if (items.length === 0 && !corriendo) return Promise.resolve();
+      if (!listos().length && !corriendo) return Promise.resolve();
       return new Promise((r) => esperandoVacio.push(r));
     },
 
     pendientes: () => items.length,
+    reprogramados: () => items.filter((i) => i.reprogramado).length,
+    pausada: () => estaPausada(),
+    /** Callback para avisar al AM cuando se abre el breaker. */
+    onPausa(fn) { alPausar = fn; },
   };
 }
 
