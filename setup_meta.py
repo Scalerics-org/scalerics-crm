@@ -7,7 +7,7 @@ import os, requests
 from dotenv import load_dotenv
 load_dotenv()
 
-from routes.meta import GRAPH
+from meta_config import GRAPH
 
 APP_ID       = os.environ["META_APP_ID"]
 APP_SECRET   = os.environ["META_APP_SECRET"]

@@ -90,10 +90,23 @@ def test_signature_allows_unsigned_only_when_explicit(monkeypatch):
 
 
 def test_graph_version_is_single_constant():
-    """La versión de Graph vive en un solo lugar."""
+    """La versión de Graph vive en meta_config.py, sin arrastrar Flask a los scripts sueltos."""
+    import os
+
+    import meta_config
     from routes import meta
 
-    fuente = open(meta.__file__, encoding="utf-8-sig").read()
-    assert meta.GRAPH_VERSION == "v26.0"
-    assert "graph.facebook.com/v" not in fuente, \
-        "no hardcodear la versión en las URLs, usar GRAPH_VERSION"
+    assert meta_config.GRAPH_VERSION == "v26.0"
+    assert meta.GRAPH_VERSION == "v26.0"  # routes/meta.py re-exporta desde meta_config, mismo valor
+
+    repo_root = os.path.dirname(os.path.abspath(meta_config.__file__))
+    archivos = [
+        meta_config.__file__,
+        meta.__file__,
+        os.path.join(repo_root, "import_meta_leads.py"),
+        os.path.join(repo_root, "setup_meta.py"),
+    ]
+    for path in archivos:
+        fuente = open(path, encoding="utf-8-sig").read()
+        assert "graph.facebook.com/v" not in fuente, \
+            f"no hardcodear la versión en las URLs, usar GRAPH de meta_config ({path})"

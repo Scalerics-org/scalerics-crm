@@ -13,7 +13,7 @@ DB_PATH    = os.environ.get("DB_PATH", "leads.db")
 import sys
 sys.path.insert(0, os.path.dirname(__file__))
 from database import init_db, insert_business, update_business, get_business, log_activity
-from routes.meta import GRAPH
+from meta_config import GRAPH
 
 init_db(DB_PATH)
 

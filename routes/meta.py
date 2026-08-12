@@ -17,6 +17,7 @@ import time
 
 from database import insert_business, update_business, get_business, log_activity
 from services.email_service import send_new_meta_lead_notification, send_meta_token_alert
+from meta_config import GRAPH_VERSION, GRAPH  # re-exportados: mismo nombre para no tocar los usos internos
 
 logger = logging.getLogger(__name__)
 meta_bp = Blueprint("meta", __name__)
@@ -24,8 +25,6 @@ meta_bp = Blueprint("meta", __name__)
 VERIFY_TOKEN   = os.environ.get("META_VERIFY_TOKEN", "scalerics_meta_webhook_2026")
 APP_SECRET     = os.environ.get("META_APP_SECRET", "")
 PAGE_TOKEN     = os.environ.get("META_PAGE_TOKEN", "")
-GRAPH_VERSION  = "v26.0"
-GRAPH          = f"https://graph.facebook.com/{GRAPH_VERSION}"
 ALLOW_UNSIGNED = os.environ.get("META_ALLOW_UNSIGNED", "").lower() == "true"
 
 
