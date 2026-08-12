@@ -353,6 +353,21 @@ def init_db(db_path: str) -> None:
             )
         """)
 
+        # ── meta_token_alerts ─────────────────────────────────────────────────
+        # Dedup del monitor de salud del token de Meta (routes/meta.py): sin
+        # esto, cada ciclo de `_check_token_once` (cada 10 min) le manda un
+        # mail a cada admin mientras el token siga vencido. Vive en la misma
+        # base que `businesses` — montada en /data en Fly — para que el
+        # silencio sobreviva a un restart o redeploy.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS meta_token_alerts (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                alert_key     TEXT NOT NULL UNIQUE,
+                detail        TEXT,
+                last_sent_at  REAL NOT NULL
+            )
+        """)
+
         # ── task assignment & goal tracking ────────────────────────────────────
         _add_column(conn, "tasks", "assignee_id",    "INTEGER REFERENCES users(id) ON DELETE SET NULL")
         _add_column(conn, "tasks", "assignee_name",  "TEXT")

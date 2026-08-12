@@ -289,3 +289,75 @@ def test_graph_version_is_single_constant():
         fuente = open(path, encoding="utf-8-sig").read()
         assert "graph.facebook.com/v" not in fuente, \
             f"no hardcodear la versión en las URLs, usar GRAPH de meta_config ({path})"
+
+
+# ── Dedup de la alerta de token vencido ──────────────────────────────────────
+
+def _respuesta_token_vencido(subcode: int = 463) -> MagicMock:
+    r = MagicMock()
+    r.json.return_value = {
+        "error": {"code": 190, "error_subcode": subcode, "message": "Session has expired"}
+    }
+    return r
+
+
+def test_token_alert_no_se_repite_dentro_del_intervalo(app, monkeypatch):
+    """Dos chequeos seguidos del mismo token vencido no pueden mandar dos
+    mails: con la máquina despierta 24/7 eso son ~288 mails por día por
+    admin, y de paso revientan la cuota de Resend que usa todo el CRM."""
+    from database import init_db
+    from routes import meta
+
+    db = app.config["DB_PATH"]
+    init_db(db)
+    monkeypatch.setattr(meta, "PAGE_TOKEN", "token-de-prueba")
+
+    with patch.object(meta.requests, "get", return_value=_respuesta_token_vencido()), \
+         patch.object(meta, "_get_admin_emails", return_value=["admin@scalerics.com"]), \
+         patch.object(meta, "send_meta_token_alert") as alert:
+        meta._check_token_once(db)
+        meta._check_token_once(db)
+
+    assert alert.call_count == 1, "el segundo chequeo del mismo problema no puede volver a mandar el mail"
+
+
+def test_token_alert_distingue_incidente_nuevo(app, monkeypatch):
+    """Un código de error distinto (revocado vs. vencido) es un incidente
+    nuevo: no lo puede tapar el silencio del incidente anterior."""
+    from database import init_db
+    from routes import meta
+
+    db = app.config["DB_PATH"]
+    init_db(db)
+    monkeypatch.setattr(meta, "PAGE_TOKEN", "token-de-prueba")
+
+    with patch.object(meta, "_get_admin_emails", return_value=["admin@scalerics.com"]), \
+         patch.object(meta, "send_meta_token_alert") as alert:
+        with patch.object(meta.requests, "get", return_value=_respuesta_token_vencido(subcode=463)):
+            meta._check_token_once(db)
+        with patch.object(meta.requests, "get", return_value=_respuesta_token_vencido(subcode=460)):
+            meta._check_token_once(db)
+
+    assert alert.call_count == 2, "un tipo de falla distinto tiene que avisar aunque el anterior siga silenciado"
+
+
+def test_token_alert_se_repite_pasado_el_intervalo(app, monkeypatch):
+    """Un token vencido es un incidente real que no se puede silenciar para
+    siempre: pasado el intervalo de re-alerta tiene que volver a avisar."""
+    from database import init_db
+    from routes import meta
+
+    db = app.config["DB_PATH"]
+    init_db(db)
+    monkeypatch.setattr(meta, "PAGE_TOKEN", "token-de-prueba")
+
+    with patch.object(meta.requests, "get", return_value=_respuesta_token_vencido()), \
+         patch.object(meta, "_get_admin_emails", return_value=["admin@scalerics.com"]), \
+         patch.object(meta, "send_meta_token_alert") as alert, \
+         patch.object(meta.time, "time") as fake_time:
+        fake_time.return_value = 1_000_000
+        meta._check_token_once(db)
+        fake_time.return_value = 1_000_000 + 10**7  # muy por encima de cualquier intervalo razonable
+        meta._check_token_once(db)
+
+    assert alert.call_count == 2, "pasado el intervalo de re-alerta tiene que volver a mandar el mail"

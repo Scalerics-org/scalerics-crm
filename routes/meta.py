@@ -502,6 +502,60 @@ _CHECK_INTERVAL = 10 * 60  # 10 minutos
 # monitor de token, así que el "import diario" corría cada 10 minutos.
 _IMPORT_INTERVAL = 24 * 60 * 60  # 24 horas
 
+# Cada cuánto se repite el mail de "token vencido" mientras el mismo
+# incidente sigue vivo. Ni cada _CHECK_INTERVAL (spam: ~288 mails/día por
+# admin, y de paso revientan la cuota de Resend que usa todo el CRM) ni una
+# sola vez (un token vencido un fin de semana largo queda sin nadie avisado).
+_TOKEN_ALERT_RESEND_INTERVAL = 6 * 60 * 60  # 6 horas → 4 mails/día por admin mientras dure
+
+
+def _token_alert_key(err: dict) -> str:
+    """Identifica el *tipo* de falla, no el mensaje textual completo.
+
+    Dos chequeos seguidos del mismo token vencido traen el mismo
+    `code`/`error_subcode` de Meta: eso es "lo mismo" y no debe repetir el
+    mail. Un `code`/`error_subcode` distinto (por ejemplo revocado en vez de
+    vencido) es un incidente nuevo y tiene que avisar aunque el anterior
+    siga silenciado.
+    """
+    return f"{err.get('code', '')}:{err.get('error_subcode', '')}"
+
+
+def _should_send_token_alert(db: str, alert_key: str, detail: str) -> bool:
+    """True si hay que mandar el mail para `alert_key`: primera vez que se ve
+    ese tipo de falla, o ya pasó `_TOKEN_ALERT_RESEND_INTERVAL` desde el
+    último envío. Registra el intento en `meta_token_alerts` (misma base que
+    `leads.db`, montada en /data en Fly), así el silencio sobrevive a un
+    restart o redeploy en vez de vivir en memoria del proceso.
+
+    Si la tabla no está disponible por lo que sea, se manda igual: ante la
+    duda, un mail de más es preferible a un incidente real que quede mudo.
+    """
+    now = time.time()
+    try:
+        conn = _sq_meta.connect(db)
+        row = conn.execute(
+            "SELECT last_sent_at FROM meta_token_alerts WHERE alert_key = ?",
+            (alert_key,),
+        ).fetchone()
+        if row and (now - row[0]) < _TOKEN_ALERT_RESEND_INTERVAL:
+            conn.close()
+            return False
+        conn.execute(
+            """
+            INSERT INTO meta_token_alerts (alert_key, detail, last_sent_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(alert_key) DO UPDATE SET detail = excluded.detail, last_sent_at = excluded.last_sent_at
+            """,
+            (alert_key, detail, now),
+        )
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.warning(f"No se pudo evaluar el estado de la alerta de token, se avisa igual: {e}")
+        return True
+
 
 def _check_token_once(db: str) -> None:
     token = _page_token()  # el mismo que usa el webhook: vigilar otro no sirve
@@ -518,8 +572,12 @@ def _check_token_once(db: str) -> None:
             err = data["error"]
             detail = f"[{err.get('code')}] {err.get('message', '')}"
             logger.error(f"Meta token invalid: {detail}")
-            for email in _get_admin_emails(db):
-                send_meta_token_alert(email, detail)
+            alert_key = _token_alert_key(err)
+            if _should_send_token_alert(db, alert_key, detail):
+                for email in _get_admin_emails(db):
+                    send_meta_token_alert(email, detail)
+            else:
+                logger.info(f"Meta token alert silenciada (mismo incidente hace menos de {_TOKEN_ALERT_RESEND_INTERVAL}s): {alert_key}")
         else:
             logger.debug(f"Meta token OK — page: {data.get('name')}")
     except Exception as e:
