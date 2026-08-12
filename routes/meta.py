@@ -5,6 +5,7 @@ import hmac
 import json
 import logging
 import os
+import re
 import threading
 
 import requests
@@ -60,6 +61,16 @@ def _notify_new_meta_lead(db: str, lead_name: str, phone: str, campaign: str, ci
     # wa_phone = os.environ.get("ADMIN_WA_PHONE", "")
     # if wa_phone:
     #     _send_wa_notification(wa_phone, lead_name, phone, campaign)
+
+
+def _redact_secrets(text: str) -> str:
+    """Saca el access_token de un mensaje de error antes de que viaje por mail.
+
+    requests.raise_for_status() incluye la URL completa en el mensaje de
+    excepción, y esa URL lleva el PAGE_TOKEN en el query string. El log
+    puede quedarse con el error crudo; el mail no.
+    """
+    return re.sub(r"access_token=[^&\s]+", "access_token=***", text)
 
 
 def _verify_signature(payload: bytes, sig_header: str) -> bool:
@@ -179,9 +190,15 @@ def _fetch_and_store_lead(app, lead_id: str, form_id: str):
         except Exception as e:
             logger.error(f"Error processing Meta lead {lead_id}: {e}")
             from services.email_service import send_meta_lead_failure_alert
-            for admin in _get_admin_emails(db):
+            admins = _get_admin_emails(db)
+            if not admins:
+                logger.error(
+                    f"Meta lead {lead_id} failed with no admin email configured — "
+                    f"nobody was alerted, recover manually from the Meta forms panel"
+                )
+            for admin in admins:
                 try:
-                    send_meta_lead_failure_alert(admin, lead_id, str(e))
+                    send_meta_lead_failure_alert(admin, lead_id, _redact_secrets(str(e)))
                 except Exception as mail_err:
                     logger.error(f"Tampoco se pudo avisar del fallo: {mail_err}")
 
