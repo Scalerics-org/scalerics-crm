@@ -7,7 +7,7 @@ import threading
 from flask import Blueprint, Response, current_app, jsonify, request, session
 from werkzeug.utils import secure_filename
 
-from database import (get_all_businesses, update_business, delete_business, get_business,
+from database import (count_businesses, get_all_businesses, update_business, delete_business, get_business,
                       get_client_info, insert_business, merge_business,
                       add_attachment, get_attachments, get_attachment_file, delete_attachment,
                       add_lead_event, get_lead_events,
@@ -100,6 +100,13 @@ def _db() -> str:
     return current_app.config["DB_PATH"]
 
 
+def _pagina(valor: str) -> int:
+    try:
+        return max(1, int(valor))
+    except (TypeError, ValueError):
+        return 1
+
+
 def _bg_pitch(db_path: str, business_id: int, data: dict) -> None:
     try:
         pitch = generate_pitch(data, db_path)
@@ -131,29 +138,102 @@ def api_leads():
     category = request.args.get("category")
     search = (request.args.get("search") or "").lower()
     page_str = request.args.get("page")
+    filtros = {"search": search or None}
     if crm_group == "pipeline":
-        businesses = get_all_businesses(_db(), crm_statuses=_PIPELINE_STATUSES)
+        filtros["crm_statuses"] = _PIPELINE_STATUSES
     elif crm_group == "clientes":
-        businesses = get_all_businesses(_db(), crm_statuses=_CLIENT_STATUSES)
+        filtros["crm_statuses"] = _CLIENT_STATUSES
     elif crm_group == "meta":
-        businesses = get_all_businesses(_db(), source="meta")
+        filtros["source"] = "meta"
     else:
-        businesses = get_all_businesses(_db(), crm_status=crm_status)
+        filtros["crm_status"] = crm_status
+
+    # El filtro por categoria pasa por _normalize_category(), que son keyword maps
+    # en Python y no se pueden expresar en SQL. Cuando esta activo hay que traer
+    # todo y filtrar en memoria; el resto de los casos pagina en la base.
     if category:
-        businesses = [b for b in businesses if _normalize_category(b.get("category") or "") == category]
-    if search:
-        businesses = [b for b in businesses if search in (b.get("name") or "").lower()]
-    if page_str is not None:
-        try:
-            page = max(1, int(page_str))
-        except ValueError:
-            page = 1
+        businesses = [b for b in get_all_businesses(_db(), **filtros)
+                      if _normalize_category(b.get("category") or "") == category]
+        if page_str is None:
+            return jsonify(businesses)
+        page = _pagina(page_str)
         total = len(businesses)
-        pages = max(1, (total + _PER_PAGE - 1) // _PER_PAGE)
-        page = min(page, pages)
-        offset = (page - 1) * _PER_PAGE
-        return jsonify({"items": businesses[offset:offset + _PER_PAGE], "total": total, "pages": pages, "page": page})
-    return jsonify(businesses)
+        paginas = max(1, (total + _PER_PAGE - 1) // _PER_PAGE)
+        page = min(page, paginas)
+        inicio = (page - 1) * _PER_PAGE
+        return jsonify({"items": businesses[inicio:inicio + _PER_PAGE],
+                        "total": total, "pages": paginas, "page": page})
+
+    if page_str is None:
+        return jsonify(get_all_businesses(_db(), **filtros))
+
+    # Paginacion real: antes se traia la tabla ENTERA y se recortaba en Python, asi
+    # que el costo base -> proceso no bajaba por mas que el usuario viera 50 filas.
+    total = count_businesses(_db(), **filtros)
+    paginas = max(1, (total + _PER_PAGE - 1) // _PER_PAGE)
+    page = min(_pagina(page_str), paginas)
+    items = get_all_businesses(_db(), **filtros, limit=_PER_PAGE,
+                               offset=(page - 1) * _PER_PAGE)
+    return jsonify({"items": items, "total": total, "pages": paginas, "page": page})
+
+
+_EXPORT_COLUMNAS = [
+    ("id", "ID"), ("name", "Nombre"), ("phone", "Teléfono"), ("email", "Email"),
+    ("category", "Rubro"), ("city", "Ciudad"), ("crm_status", "Estado CRM"),
+    ("rating", "Rating"), ("address", "Dirección"), ("scraped_at", "Fecha scrape"),
+]
+
+
+def _celda_csv(valor) -> str:
+    """Escapa una celda y neutraliza la inyeccion de formulas.
+
+    Excel y Sheets ejecutan lo que empieza con = + - @: un lead llamado
+    '=HYPERLINK("http://evil","click")' se convierte en una formula viva en la
+    maquina de quien abra el export. Los nombres vienen del scraping y de webhooks
+    publicos, asi que son input no confiable.
+    """
+    texto = "" if valor is None else str(valor)
+    if texto[:1] in ("=", "+", "-", "@", "\t", "\r"):
+        texto = "'" + texto
+    return '"' + texto.replace('"', '""') + '"'
+
+
+@leads_bp.route("/api/leads/export.csv")
+def api_export_leads_csv():
+    """Export completo, del lado del servidor.
+
+    El boton armaba el CSV en el browser desde _allLeads, que segun el panel que
+    hubiera cargado ultimo contenia la pagina actual (50 filas) o la lista entera:
+    el archivo salia incompleto o vacio sin ningun aviso. Con la paginacion real
+    ese camino exportaria siempre 50 filas.
+    """
+    crm_group = request.args.get("crm_group")
+    category = request.args.get("category")
+    filtros = {"search": (request.args.get("search") or "").lower() or None}
+    if crm_group == "pipeline":
+        filtros["crm_statuses"] = _PIPELINE_STATUSES
+    elif crm_group == "clientes":
+        filtros["crm_statuses"] = _CLIENT_STATUSES
+    elif crm_group == "meta":
+        filtros["source"] = "meta"
+    else:
+        filtros["crm_status"] = request.args.get("crm_status")
+
+    filas = get_all_businesses(_db(), **filtros)
+    if category:
+        filas = [b for b in filas if _normalize_category(b.get("category") or "") == category]
+
+    def generar():
+        # BOM para que Excel abra los acentos bien.
+        yield "﻿" + ",".join(e for _, e in _EXPORT_COLUMNAS) + "\r\n"
+        for b in filas:
+            yield ",".join(_celda_csv(b.get(c)) for c, _ in _EXPORT_COLUMNAS) + "\r\n"
+
+    return Response(
+        generar(),
+        mimetype="text/csv; charset=utf-8",
+        headers={"Content-Disposition": _content_disposition("attachment", "leads_scalerics.csv")},
+    )
 
 
 @leads_bp.route("/api/leads/<int:biz_id>", methods=["GET"])

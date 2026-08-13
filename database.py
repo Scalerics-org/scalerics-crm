@@ -525,7 +525,50 @@ def get_businesses_by_status(db_path: str, status: str) -> list[dict]:
         conn.close()
 
 
-def get_all_businesses(db_path: str, crm_status: str | None = None, crm_statuses: list | None = None, source: str | None = None) -> list[dict]:
+def _filtro_businesses(crm_status: str | None, crm_statuses: list | None,
+                       source: str | None, search: str | None) -> tuple[str, list]:
+    """Arma el WHERE compartido por get_all_businesses() y count_businesses(),
+    para que la lista y el total no puedan contar universos distintos."""
+    partes: list[str] = []
+    params: list = []
+    if source:
+        partes.append("b.source = ?")
+        params.append(source)
+    elif crm_statuses:
+        partes.append(f"b.crm_status IN ({','.join('?' * len(crm_statuses))})")
+        params.extend(crm_statuses)
+    elif crm_status == "sin_contactar":
+        partes.append("(b.crm_status IS NULL OR b.crm_status = ?) AND (b.source IS NULL OR b.source != 'meta')")
+        params.append("sin_contactar")
+    elif crm_status:
+        partes.append("b.crm_status = ?")
+        params.append(crm_status)
+    if search:
+        # La busqueda se hacia en Python DESPUES de traer la tabla entera.
+        partes.append("LOWER(b.name) LIKE ?")
+        params.append(f"%{search.lower()}%")
+    return ("WHERE " + " AND ".join(partes)) if partes else "", params
+
+
+def count_businesses(db_path: str, crm_status: str | None = None,
+                     crm_statuses: list | None = None, source: str | None = None,
+                     search: str | None = None) -> int:
+    where, params = _filtro_businesses(crm_status, crm_statuses, source, search)
+    conn = _connect(db_path)
+    try:
+        return conn.execute(f"SELECT COUNT(*) FROM businesses b {where}", params).fetchone()[0]
+    finally:
+        conn.close()
+
+
+def get_all_businesses(db_path: str, crm_status: str | None = None,
+                       crm_statuses: list | None = None, source: str | None = None,
+                       search: str | None = None, limit: int | None = None,
+                       offset: int = 0) -> list[dict]:
+    """limit=None devuelve todo, para no romper a los llamadores que esperan la
+    lista completa (stats, metricas, export). La paginacion se hacia en Python
+    despues de traer la tabla entera, asi que el costo base -> proceso no bajaba:
+    con miles de leads del scraper eso se degrada rapido."""
     conn = _connect(db_path)
     try:
         count_sql = (
@@ -533,32 +576,19 @@ def get_all_businesses(db_path: str, crm_status: str | None = None, crm_statuses
             "(SELECT COUNT(*) FROM call_logs cl WHERE cl.lead_id = b.id AND cl.outcome = 'no_interesa') as no_interesa_count"
         )
         select = f"SELECT b.*, {count_sql} FROM businesses b"
-        if source:
-            where = "WHERE b.source = ?"
-            params: list = [source]
-        elif crm_statuses:
-            placeholders = ",".join("?" * len(crm_statuses))
-            where = f"WHERE b.crm_status IN ({placeholders})"
-            params: list = list(crm_statuses)
-        elif crm_status == "sin_contactar":
-            where = "WHERE (b.crm_status IS NULL OR b.crm_status = ?) AND (b.source IS NULL OR b.source != 'meta')"
-            params = ["sin_contactar"]
-        elif crm_status == "llamar_despues":
-            cursor = conn.execute(
-                f"{select} WHERE b.crm_status = ? ORDER BY CASE WHEN b.callback_date IS NULL THEN 1 ELSE 0 END, b.callback_date ASC",
-                ["llamar_despues"],
-            )
-            return [dict(row) for row in cursor.fetchall()]
-        elif crm_status:
-            where = f"WHERE b.crm_status = ?"
-            params = [crm_status]
+        where, params = _filtro_businesses(crm_status, crm_statuses, source, search)
+
+        if crm_status == "llamar_despues":
+            orden = "ORDER BY CASE WHEN b.callback_date IS NULL THEN 1 ELSE 0 END, b.callback_date ASC"
         else:
-            where = ""
-            params = []
-        cursor = conn.execute(
-            f"{select} {where} ORDER BY CASE WHEN b.score IS NULL THEN 1 ELSE 0 END, b.score DESC, b.scraped_at DESC",
-            params,
-        )
+            orden = "ORDER BY CASE WHEN b.score IS NULL THEN 1 ELSE 0 END, b.score DESC, b.scraped_at DESC"
+
+        limite = ""
+        if limit is not None:
+            limite = "LIMIT ? OFFSET ?"
+            params = [*params, int(limit), int(offset)]
+
+        cursor = conn.execute(f"{select} {where} {orden} {limite}", params)
         return [dict(row) for row in cursor.fetchall()]
     finally:
         conn.close()

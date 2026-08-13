@@ -2410,21 +2410,17 @@ async function applyBatch() {
 
 // ── CSV Export ───────────────────────────────────────────────────────────────
 function exportCSV() {
-  const cols = ['id','name','phone','category','city','crm_status','rating','address','scraped_at'];
-  const headers = ['ID','Nombre','Teléfono','Rubro','Ciudad','Estado CRM','Rating','Dirección','Fecha scrape'];
-  const rows = [headers.join(',')];
-  for (const b of _allLeads) {
-    const row = cols.map(k => {
-      const v = b[k] == null ? '' : String(b[k]);
-      return '"' + v.replace(/"/g, '""') + '"';
-    });
-    rows.push(row.join(','));
-  }
-  const blob = new Blob([rows.join('\\n')], {type: 'text/csv;charset=utf-8;'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = 'leads_scalerics.csv'; a.click();
-  URL.revokeObjectURL(url);
+  // Antes se armaba el CSV en el browser desde _allLeads, que segun el panel que
+  // hubiera cargado ultimo tenia la pagina actual (50 filas) o la lista entera: el
+  // archivo salia incompleto sin ningun aviso. Ahora lo genera el servidor con los
+  // MISMOS filtros que se ven en pantalla, y exporta todo lo que matchea.
+  // Mismas variables que usa loadLeads(), para que el archivo contenga exactamente
+  // lo que el usuario esta viendo filtrado.
+  const params = new URLSearchParams();
+  if (currentCrm) params.set('crm_status', currentCrm);
+  if (currentCategory) params.set('category', currentCategory);
+  if (currentSearch) params.set('search', currentSearch);
+  window.location.href = '/api/leads/export.csv?' + params;
 }
 
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
@@ -2881,8 +2877,16 @@ async function deleteCalEvent(eventId, title) {
   if (!confirm('¿Borrar "' + title + '" del calendario?')) return;
   const r = await fetch('/api/calendar/meetings/' + eventId, { method: 'DELETE' });
   const d = await r.json();
-  if (d.ok) { renderCalendar(); }
-  else { alert('Error al borrar: ' + (d.error || 'desconocido')); }
+  // canceled_locally: no se pudo confirmar el borrado en Google (o es una reunión
+  // de Calendly, cuyo id no es un eventId de Google), asi que quedo CANCELADA en
+  // el CRM. Hay que refrescar igual — si no, sigue visible como si no hubiera
+  // pasado nada — y explicar por que no desaparecio de la agenda de Google.
+  if (d.ok || d.canceled_locally) {
+    renderCalendar();
+    if (!d.ok) mostrarAviso(d.error || 'Quedó cancelada en el CRM.', 'Ojo', 'warn');
+  } else {
+    mostrarAviso(d.error || 'No se pudo borrar la reunión.', 'Error al borrar', 'error');
+  }
 }
 
 async function saveEvent() {
@@ -2899,9 +2903,18 @@ async function saveEvent() {
   const r = await fetch('/api/calendar/events', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({title,date,time,duration_min:duration,description:desc,meet_link,client_id:clientId})});
   const d = await r.json();
   btn.disabled = false; btn.textContent = '📅 Crear reunión';
-  if (!d.ok) { alert('Error: '+(d.error||'Error desconocido')); return; }
+  if (!d.ok) { mostrarAviso(d.error || 'No se pudo crear la reunión.', 'Error', 'error'); return; }
   closeNewEventModal();
   renderCalendar();
+  // La reunion se crea en el CRM y en Google Calendar. Si Google fallo, o el
+  // cliente no tiene email y no se le pudo mandar invitacion, hay que decirlo: si
+  // no, el usuario se queda pensando que ya esta invitado y nadie aparece.
+  if (d.google_ok === false) {
+    mostrarAviso(d.aviso || 'Quedó en el CRM pero no se creó en Google Calendar.',
+                 'Revisá Google Calendar', 'warn');
+  } else if (d.aviso) {
+    mostrarAviso(d.aviso, 'Ojo', 'warn');
+  }
 }
 
 // ========== Demo generation ==========
@@ -4344,11 +4357,16 @@ async function _cpDeleteMeeting(meetingId) {
   if (!confirm('¿Borrar esta reunión? También se cancela el evento en Google Calendar.')) return;
   const r = await fetch('/api/calendar/meetings/' + meetingId, { method: 'DELETE' });
   const data = await r.json();
-  if (data.ok) {
+  // Igual que en el calendario: canceled_locally significa que la reunion quedo
+  // cancelada en el CRM aunque Google no lo haya confirmado. Se saca de la lista
+  // y se explica el motivo, en vez de dejarla ahi como si el borrado no hubiera
+  // ocurrido.
+  if (data.ok || data.canceled_locally) {
     _cpData.meetings = (_cpData.meetings || []).filter(m => m.id !== meetingId);
     document.getElementById('cp-tab-meetings').innerHTML = _cpRenderMeetings();
+    if (!data.ok) mostrarAviso(data.error || 'Quedó cancelada en el CRM.', 'Ojo', 'warn');
   } else {
-    alert('Error al borrar: ' + (data.error || 'desconocido'));
+    mostrarAviso(data.error || 'No se pudo borrar la reunión.', 'Error al borrar', 'error');
   }
 }
 
