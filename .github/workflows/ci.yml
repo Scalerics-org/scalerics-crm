@@ -31,12 +31,11 @@ jobs:
 
       - name: Tests con cobertura
         # Se mide solo el codigo fuente (incluir tests/ inflaba el numero al 34%
-        # porque cada test se cubre a si mismo al 100%). Real hoy: 29%.
+        # porque cada test se cubre a si mismo al 100%). Real hoy: 40%.
         #
-        # El umbral arranca bajo a proposito: es un trinquete, no una meta. Lo
-        # importante es que NO BAJE; se sube a medida que se escriben tests. Las
-        # areas mas flojas son routes/budgets (11%), routes/calendly (11%) y
-        # routes/meta (14%).
+        # El umbral es un trinquete, no una meta: lo importante es que NO BAJE. Se
+        # sube cada vez que se escriben tests. Las areas mas flojas hoy son
+        # routes/calendly, routes/meta y routes/wa.
         run: |
           pytest -q --cov=database --cov=routes --cov=services --cov=dashboard --cov=main \
                  --cov-report=term-missing --cov-fail-under=38
