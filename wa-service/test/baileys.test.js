@@ -106,12 +106,46 @@ test('un mensaje entrante entra al embudo', async () => {
   assert.ok(alLead.length > 0, 'le contesta el menu');
 });
 
-test('un mensaje de un numero desconocido no rompe nada', async () => {
+test('quien escribe al numero sin pasar por el formulario tambien entra', async () => {
+  // El bot viejo hacia findOrCreate: era inbound-first, la gente escribia desde
+  // un QR o un anuncio. Sin esto, el que le escribe al WhatsApp de la empresa
+  // recibe silencio.
   const s = await montar();
-  s.proveedor.simularEntrante({ from: '59891111111', texto: 'hola', id: 'wamid.2' });
+  s.proveedor.simularEntrante({
+    from: '59891111111', texto: 'hola, vi su web', id: 'wamid.2', nombre: 'Ana Torres',
+  });
   await new Promise((r) => setImmediate(r));
   await s.cola.vacia();
-  assert.equal(s.proveedor.getEnviados().length, 0);
+
+  const lead = s.repo.leadPorTelefono('59891111111');
+  assert.ok(lead, 'se da de alta el lead');
+  assert.equal(lead.origen, 'wa');
+  assert.equal(lead.nombre, 'Ana Torres', 'usa el nombre de perfil de WhatsApp');
+  assert.equal(lead.fsm_state, 'MENU');
+
+  const alLead = s.proveedor.getEnviados().filter((e) => e.to === '59891111111');
+  assert.equal(alLead.length, 1, 'le contesta el menu');
+  assert.match(alLead[0].texto, /Hola Ana/);
+
+  // Al AM le llega un "nuevo contacto", no un "respondió": no respondio nada,
+  // escribio de la nada.
+  const alAM = s.proveedor.getEnviados().find((e) => e.to === '59899000111');
+  assert.match(alAM.texto, /Nuevo contacto por WhatsApp/);
+  assert.match(alAM.texto, /wa\.me\/59891111111/);
+  assert.ok(!alAM.texto.includes('respondió'));
+});
+
+test('sin nombre de perfil igual entra, y el saludo no queda raro', async () => {
+  const s = await montar();
+  s.proveedor.simularEntrante({ from: '59891111112', texto: 'hola', id: 'wamid.3' });
+  await new Promise((r) => setImmediate(r));
+  await s.cola.vacia();
+
+  const alLead = s.proveedor.getEnviados().find((e) => e.to === '59891111112');
+  assert.match(alLead.texto, /^Hola 👋/, 'sin nombre no deja un espacio colgando');
+
+  const alAM = s.proveedor.getEnviados().find((e) => e.to === '59899000111');
+  assert.match(alAM.texto, /sin nombre/);
 });
 
 // ── endpoints de sesion ───────────────────────────────────────────────────────

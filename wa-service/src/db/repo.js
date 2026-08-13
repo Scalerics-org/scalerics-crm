@@ -122,6 +122,18 @@ function crearRepo(db) {
       return true;
     },
 
+    /**
+     * Cuerpo de un saliente por su id en el proveedor. Lo necesita Baileys para
+     * reenviar un mensaje cuando el dispositivo del destinatario no lo pudo
+     * descifrar y pide el reintento.
+     */
+    cuerpoPorProviderId(providerMsgId) {
+      const f = db.prepare(
+        "SELECT body FROM messages WHERE provider_msg_id = ? AND direction = 'out'"
+      ).get(providerMsgId);
+      return f ? f.body : null;
+    },
+
     /** Salientes que el proveedor acepto pero nadie confirmo haber recibido. */
     sinConfirmar(desdeIso) {
       return db.prepare(

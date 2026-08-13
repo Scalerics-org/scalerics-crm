@@ -179,8 +179,20 @@ function avisoRespuesta(lead, texto) {
   return `💬 ${lead.nombre} respondió: "${recorte}"`;
 }
 
+/** Alguien escribio al numero sin pasar por el formulario. No es una respuesta. */
+function avisoContactoNuevo(lead, texto) {
+  const recorte = String(texto || '').slice(0, 200);
+  return [
+    '🔔 Nuevo contacto por WhatsApp',
+    `👤 ${lead.nombre || 'sin nombre'}`,
+    `📱 +${lead.telefono}`,
+    `💬 "${recorte}"`,
+    `wa.me/${lead.telefono}`,
+  ].join('\n');
+}
+
 function avisoSinRespuesta(lead) {
   return `⏰ ${lead.nombre} no respondió en 24h — follow-up enviado.`;
 }
 
-module.exports = { PLANTILLAS, fichaAM, avisoRespuesta, avisoSinRespuesta };
+module.exports = { PLANTILLAS, fichaAM, avisoRespuesta, avisoContactoNuevo, avisoSinRespuesta };

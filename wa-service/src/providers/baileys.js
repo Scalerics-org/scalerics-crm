@@ -64,7 +64,11 @@ function textoDeMensaje(msg) {
   );
 }
 
-function crear(cfg, { logger } = {}) {
+/**
+ * @param {object} deps.buscarMensaje (providerMsgId) => texto|null. Lo usa
+ *   Baileys para reenviar un mensaje que el destinatario no pudo descifrar.
+ */
+function crear(cfg, { logger, buscarMensaje = null } = {}) {
   let sock = null;
   let conectado = false;
   let qrActual = null;
@@ -113,6 +117,25 @@ function crear(cfg, { logger } = {}) {
       logger: require('pino')({ level: 'error' }),
       markOnlineOnConnect: false,
       syncFullHistory: false,
+
+      /**
+       * Cuando un dispositivo del destinatario no puede descifrar un mensaje,
+       * WhatsApp pide que se lo reenvien y baileys llama aca para recuperar el
+       * contenido original y volver a cifrarlo para ese dispositivo.
+       *
+       * Sin esto no hay nada que reenviar y el mensaje queda en "Esperando este
+       * mensaje" para siempre en el dispositivo que fallo — que es exactamente
+       * lo que pasaba: llegaba a WhatsApp Web pero no al celular.
+       */
+      getMessage: async (key) => {
+        const texto = buscarMensaje?.(key?.id);
+        if (!texto) {
+          logger?.warn({ id: key?.id }, 'reintento de descifrado: no se encontro el mensaje');
+          return undefined;
+        }
+        logger?.info({ id: key?.id }, 'reenviando mensaje por pedido de reintento');
+        return { conversation: texto };
+      },
     });
 
     logger?.info({ browser }, 'conectando a WhatsApp');
@@ -221,7 +244,10 @@ function crear(cfg, { logger } = {}) {
         }
 
         logger?.info({ from }, 'mensaje entrante');
-        handler({ from, texto, id: msg.key.id });
+        // pushName es el nombre que la persona tiene puesto en WhatsApp. Para
+        // quien escribe al numero sin pasar por el formulario, es lo unico que
+        // hay para saludarlo por su nombre.
+        handler({ from, texto, id: msg.key.id, nombre: msg.pushName || '' });
       }
     });
   }

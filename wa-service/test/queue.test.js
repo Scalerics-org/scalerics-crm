@@ -203,3 +203,17 @@ test('/health cuenta los salientes sin confirmar', async () => {
     0
   );
 });
+
+test('se puede recuperar el cuerpo de un saliente por su id del proveedor', async () => {
+  // Lo necesita baileys para reenviar cuando el dispositivo del destinatario no
+  // pudo descifrar y pide el reintento. Sin esto el mensaje queda en
+  // "Esperando este mensaje" para siempre en ese dispositivo.
+  const s = await conLead();
+  s.cola.encolar({ to: LEAD_TEL, texto: 'texto a reenviar', kind: 'manual' });
+  await s.cola.vacia();
+
+  const m = s.repo.db
+    .prepare("SELECT provider_msg_id AS id FROM messages WHERE body='texto a reenviar'").get();
+  assert.equal(s.repo.cuerpoPorProviderId(m.id), 'texto a reenviar');
+  assert.equal(s.repo.cuerpoPorProviderId('no-existe'), null);
+});

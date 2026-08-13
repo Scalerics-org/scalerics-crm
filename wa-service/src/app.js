@@ -26,7 +26,12 @@ function construir(cfg, { logger, ahora = () => new Date() } = {}) {
 
   const db = abrir(cfg.DB_PATH);
   const repo = crearRepo(db);
-  const proveedor = crearProveedor(cfg, { logger: log });
+  // buscarMensaje deja que baileys reenvie un mensaje cuando el dispositivo del
+  // destinatario no lo pudo descifrar y pide el reintento.
+  const proveedor = crearProveedor(cfg, {
+    logger: log,
+    buscarMensaje: (providerMsgId) => repo.cuerpoPorProviderId(providerMsgId),
+  });
   const limites = crearLimites({ repo, cfg, logger: log });
   const cola = crearCola({ proveedor, repo, cfg, logger: log, limites, ahora });
 
@@ -66,8 +71,8 @@ function construir(cfg, { logger, ahora = () => new Date() } = {}) {
     }
   });
 
-  proveedor.alRecibir(({ from, texto }) => {
-    servicioLeads.registrarRespuesta(from, texto).catch((e) => {
+  proveedor.alRecibir(({ from, texto, nombre }) => {
+    servicioLeads.registrarRespuesta(from, texto, nombre).catch((e) => {
       log.error({ from, err: String(e.message || e) }, 'fallo procesando un mensaje entrante');
     });
   });

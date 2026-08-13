@@ -106,12 +106,28 @@ function crearServicioLeads({ repo, cola, cfg, logger, embudo = null, ahora = ()
     },
 
     /**
-     * El lead contesto: se cancela el follow-up, se avisa al AM y la
-     * conversacion sigue en el embudo de calificacion.
+     * El lead contesto, o alguien escribio al numero por primera vez: se cancela
+     * el follow-up, se avisa al AM y la conversacion sigue en el embudo.
+     *
+     * @param {string} [nombreWa] nombre de perfil de WhatsApp, para los que
+     *   escriben al numero sin haber pasado por el formulario.
      */
-    async registrarRespuesta(telefono, texto) {
-      const lead = repo.leadPorTelefono(telefono);
-      if (!lead) return null;
+    async registrarRespuesta(telefono, texto, nombreWa = '') {
+      let lead = repo.leadPorTelefono(telefono);
+
+      // Nadie con ese telefono: escribio al numero directo, sin formulario de
+      // por medio (un QR, un anuncio, el numero en la web). Se da de alta y
+      // entra al embudo igual, como hacia el bot viejo con findOrCreate.
+      // Sin esto, quien escribe al WhatsApp de la empresa recibe silencio.
+      if (!lead) {
+        lead = repo.crearLead({
+          nombre: nombreWa || '',
+          telefono,
+          origen: 'wa',
+          status: 'replied',
+        });
+        logger?.info({ leadId: lead.id, nombre: nombreWa || '(sin nombre)' }, 'lead nuevo por WhatsApp');
+      }
 
       repo.registrarMensaje({
         lead_id: lead.id, direction: 'in', kind: 'reply', body: texto,
@@ -128,7 +144,9 @@ function crearServicioLeads({ repo, cola, cfg, logger, embudo = null, ahora = ()
         for (const am of cfg.amPhones) {
           cola.encolar({
             to: am,
-            texto: plantillas.avisoRespuesta(lead, texto),
+            texto: lead.origen === 'wa'
+              ? plantillas.avisoContactoNuevo(lead, texto)
+              : plantillas.avisoRespuesta(lead, texto),
             kind: 'am_notice',
             leadId: lead.id,
           });
