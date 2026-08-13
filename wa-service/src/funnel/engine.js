@@ -2,6 +2,7 @@
 
 const { S, ESTADOS_CON_OPCIONES, PALABRAS_GLOBALES } = require('./states');
 const { TRANSICIONES, OPCIONES, CAMPO_RESPUESTA } = require('./transitions');
+const { primerNombre } = require('../telefono');
 
 const MAX_REINTENTOS = 4;
 
@@ -60,7 +61,10 @@ function crearEmbudo({ repo, cola, textos, scorer, logger, crmNotify = null, aho
   async function alEntrar(lead, estado, entrada) {
     switch (estado) {
       case S.MENU:
-        decir(lead, textos.MENU(lead.business_name || lead.nombre));
+        // Se saluda a la PERSONA, no a la empresa. Con business_name adelante,
+        // despues de la pregunta del negocio el menu decia "Hola Inmobiliaria
+        // Pereyra". El nombre de la empresa es dato para el CRM, no un saludo.
+        decir(lead, textos.MENU(primerNombre(lead.nombre)));
         return estado;
 
       case S.QUAL_0: decir(lead, textos.QUAL_0); return estado;
@@ -80,7 +84,7 @@ function crearEmbudo({ repo, cola, textos, scorer, logger, crmNotify = null, aho
         logger?.info({ leadId: lead.id, score: r.score, accion: r.recommended_action }, 'lead calificado');
 
         if (r.recommended_action === 'meeting') {
-          decir(lead, textos.MEETING_OFFER(fresco.business_name || fresco.nombre));
+          decir(lead, textos.MEETING_OFFER(primerNombre(fresco.nombre)));
           return S.MEETING_SENT;
         }
         if (r.recommended_action === 'nurture') {
@@ -119,7 +123,7 @@ function crearEmbudo({ repo, cola, textos, scorer, logger, crmNotify = null, aho
         return estado; // el mensaje ya salio desde SCORED
 
       default:
-        decir(lead, textos.MENU(lead.nombre));
+        decir(lead, textos.MENU(primerNombre(lead.nombre)));
         return S.MENU;
     }
   }

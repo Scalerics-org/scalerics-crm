@@ -149,20 +149,33 @@ function crear(cfg, { logger } = {}) {
     });
 
     sock.ev.on('messages.upsert', ({ messages, type }) => {
+      logger?.debug({ type, cantidad: messages?.length, hayHandler: Boolean(handler) }, 'upsert');
+
       if (type !== 'notify' || !handler) return;
       for (const msg of messages) {
-        if (msg.key?.fromMe) continue;
+        const jid = msg.key?.remoteJid;
+
+        if (msg.key?.fromMe) {
+          logger?.debug({ jid }, 'entrante ignorado: es propio');
+          continue;
+        }
         // Los grupos no son leads: el embudo es uno a uno.
-        if (msg.key?.remoteJid?.endsWith('@g.us')) continue;
+        if (jid?.endsWith('@g.us')) {
+          logger?.debug({ jid }, 'entrante ignorado: es de grupo');
+          continue;
+        }
 
         const texto = textoDeMensaje(msg);
-        if (!texto) continue;
+        if (!texto) {
+          logger?.debug(
+            { jid, tipos: Object.keys(msg.message || {}) },
+            'entrante ignorado: sin texto reconocible'
+          );
+          continue;
+        }
 
-        handler({
-          from: telefonoDeJid(msg.key.remoteJid),
-          texto,
-          id: msg.key.id,
-        });
+        logger?.info({ from: telefonoDeJid(jid) }, 'mensaje entrante');
+        handler({ from: telefonoDeJid(jid), texto, id: msg.key.id });
       }
     });
   }

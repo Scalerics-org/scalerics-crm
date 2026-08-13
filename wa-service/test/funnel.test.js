@@ -173,6 +173,38 @@ test('al AM se le avisa una sola vez, no por cada mensaje del embudo', async () 
   assert.match(alAM[0].texto, /respondió/);
 });
 
+test('siempre saluda a la persona, no a la empresa', async () => {
+  // business_name adelante hacia que, despues de la pregunta del negocio, el
+  // menu saludara "Hola Inmobiliaria Pereyra". La empresa es dato del CRM.
+  const s = await conLead(undefined, {
+    external_id: 'l1', nombre: 'Martín Pereyra', rubro: 'Inmobiliaria',
+    telefono: '099123456', necesidad: 'x', origen: 'form',
+  });
+
+  await lead(s, 'hola');
+  await lead(s, '1');
+  await lead(s, 'Inmobiliaria Pereyra');
+
+  const menu = await lead(s, 'menu');
+  assert.match(menu.at(-1), /Hola Martín/);
+  assert.ok(!menu.at(-1).includes('Inmobiliaria Pereyra'), 'no saluda con la empresa');
+  assert.ok(!menu.at(-1).includes('Pereyra 👋'), 'usa el primer nombre, no el completo');
+
+  // Y el nombre del negocio sigue guardado para el CRM.
+  assert.equal(s.repo.leadPorTelefono('59899123456').business_name, 'Inmobiliaria Pereyra');
+});
+
+test('la oferta de reunion tambien va a nombre de la persona', async () => {
+  const s = await conLead();
+  for (const t of ['hola', '1', 'Inmobiliaria Pereyra', '2', '3', '3', 'azul', '@x', 'ventas']) {
+    await lead(s, t);
+  }
+  const ofertas = s.proveedor.getEnviados()
+    .filter((e) => e.to === '59899123456' && e.texto.includes('videollamada'));
+  assert.equal(ofertas.length, 1);
+  assert.match(ofertas[0].texto, /Perfecto, Martín/);
+});
+
 test('el texto libre se guarda crudo, con acentos y mayusculas', async () => {
   // La normalizacion es para enrutar, no para guardar. El original persistia el
   // texto ya normalizado y "la atención de mañana" quedaba "la atencion de manana".
