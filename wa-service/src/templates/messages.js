@@ -179,6 +179,37 @@ function avisoRespuesta(lead, texto) {
   return `💬 ${lead.nombre} respondió: "${recorte}"`;
 }
 
+const TIPO_PROYECTO = {
+  1: 'Página web', 2: 'E-commerce', 3: 'Automatización', 4: 'App a medida',
+};
+const PRESUPUESTO = {
+  1: 'menos de $500', 2: '$500 a $3.000', 3: 'más de $3.000', 4: 'no lo tiene claro',
+};
+const EQUIPO = { 1: 'solo', 2: '2-5 personas', 3: '6-20 personas', 4: 'más de 20' };
+
+/**
+ * Resumen para el AM cuando el lead termina el embudo. Sin esto, un lead que
+ * contesta las seis preguntas y no llega al umbral de reunion queda en la base
+ * y nadie del equipo se entera de que existio.
+ */
+function resumenEmbudo(lead, desenlace) {
+  const titulo = {
+    meeting: '🎯 Lead calificado — se le ofreció reunión',
+    nurture: '🌱 Lead en pausa — no llegó al umbral de reunión',
+    disqualify: '📋 Lead descartado por el embudo',
+  }[desenlace] || '📋 Lead terminó el embudo';
+
+  const lineas = [titulo, `👤 ${lead.business_name || lead.nombre || 'sin nombre'}`];
+  if (lead.business_type) lineas.push(`🛠 ${TIPO_PROYECTO[lead.business_type] || lead.business_type}`);
+  if (lead.budget) lineas.push(`💵 ${PRESUPUESTO[lead.budget] || lead.budget}`);
+  if (lead.team_size) lineas.push(`👥 ${EQUIPO[lead.team_size] || lead.team_size}`);
+  if (lead.instagram_web) lineas.push(`🔗 ${lead.instagram_web}`);
+  if (lead.needs) lineas.push(`💬 "${String(lead.needs).slice(0, 200)}"`);
+  lineas.push(`⭐ score ${lead.score ?? '?'}`);
+  lineas.push(`wa.me/${lead.telefono}`);
+  return lineas.join('\n');
+}
+
 /** Alguien escribio al numero sin pasar por el formulario. No es una respuesta. */
 function avisoContactoNuevo(lead, texto) {
   const recorte = String(texto || '').slice(0, 200);
@@ -195,4 +226,4 @@ function avisoSinRespuesta(lead) {
   return `⏰ ${lead.nombre} no respondió en 24h — follow-up enviado.`;
 }
 
-module.exports = { PLANTILLAS, fichaAM, avisoRespuesta, avisoContactoNuevo, avisoSinRespuesta };
+module.exports = { PLANTILLAS, fichaAM, avisoRespuesta, avisoContactoNuevo, avisoSinRespuesta, resumenEmbudo };

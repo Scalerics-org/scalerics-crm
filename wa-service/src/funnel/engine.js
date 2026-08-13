@@ -3,6 +3,7 @@
 const { S, ESTADOS_CON_OPCIONES, PALABRAS_GLOBALES } = require('./states');
 const { TRANSICIONES, OPCIONES, CAMPO_RESPUESTA } = require('./transitions');
 const { primerNombre } = require('../telefono');
+const plantillas = require('../templates');
 
 const MAX_REINTENTOS = 4;
 
@@ -30,7 +31,18 @@ function palabraGlobal(entrada) {
  * - No manda mensajes directo: los encola, asi pasan por los mismos delays y
  *   limites que el resto del servicio.
  */
-function crearEmbudo({ repo, cola, textos, scorer, logger, crmNotify = null, ahora = () => new Date() }) {
+function crearEmbudo({ repo, cola, textos, scorer, logger, cfg = { amPhones: [] }, crmNotify = null, ahora = () => new Date() }) {
+
+  /** El AM se entera de como termino el embudo, gane o pierda. */
+  function avisarDesenlace(leadId, desenlace) {
+    const fresco = repo.leadPorId(leadId);
+    for (const am of cfg.amPhones) {
+      cola.encolar({
+        to: am, texto: plantillas.resumenEmbudo(fresco, desenlace),
+        kind: 'am_notice', leadId,
+      });
+    }
+  }
 
   function decir(lead, texto) {
     cola.encolar({ to: lead.telefono, texto, kind: 'manual', leadId: lead.id });
@@ -82,6 +94,8 @@ function crearEmbudo({ repo, cola, textos, scorer, logger, crmNotify = null, aho
           score: r.score, priority: r.priority, score_reason: r.reason,
         });
         logger?.info({ leadId: lead.id, score: r.score, accion: r.recommended_action }, 'lead calificado');
+
+        avisarDesenlace(lead.id, r.recommended_action);
 
         if (r.recommended_action === 'meeting') {
           decir(lead, textos.MEETING_OFFER(primerNombre(fresco.nombre)));

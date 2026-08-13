@@ -55,7 +55,7 @@ function construir(cfg, { logger, ahora = () => new Date() } = {}) {
   const scorer = crearScorer({ anthropic, logger: log });
   const textos = crearTextos({ calendlyLink: cfg.CALENDLY_LINK });
   const crmNotify = crearNotificadorCRM({ cfg, repo, logger: log });
-  const embudo = crearEmbudo({ repo, cola, textos, scorer, logger: log, crmNotify });
+  const embudo = crearEmbudo({ repo, cola, textos, scorer, logger: log, cfg, crmNotify });
 
   const servicioLeads = crearServicioLeads({ repo, cola, cfg, logger: log, embudo, ahora });
   const scheduler = crearScheduler({ repo, cola, cfg, logger: log, ahora });

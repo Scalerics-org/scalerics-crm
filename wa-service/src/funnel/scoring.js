@@ -32,8 +32,15 @@ function porReglas(lead) {
   // Equipo: mas de una persona suele significar presupuesto real.
   if (lead.team_size >= 2) score += 2;
 
-  // E-commerce y app a medida son los proyectos de mayor ticket.
-  if ([2, 4].includes(lead.business_type)) score += 2;
+  // Todo lo que no sea una web institucional simple es proyecto de mayor
+  // alcance. Automatizacion estaba en 0 puntos, y es el servicio del que habla
+  // toda la comunicacion de Scalerics: un lead que la pide terminaba descartado.
+  if ([2, 3, 4].includes(lead.business_type)) score += 2;
+
+  // Un brief escrito con contenido real es de las mejores seniales que da el
+  // embudo, y las reglas eran ciegas a el. Aproxima pobremente lo que el
+  // scoring con IA hace bien: sin ANTHROPIC_API_KEY es lo unico que hay.
+  if (String(lead.needs || '').trim().length >= 25) score += 1;
 
   const accion =
     score >= UMBRAL_REUNION ? 'meeting' : score >= UMBRAL_NURTURE ? 'nurture' : 'disqualify';

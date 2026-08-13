@@ -30,7 +30,10 @@ function crearTextos({ calendlyLink }) {
 
     MORE_INFO: 'Bueno, te cuento 💡\n\nScalerics es una agencia uruguaya que ayuda a negocios a automatizar sus ventas y atención.\n\nCaso real: una empresa recibe 50 consultas por día en WhatsApp. Con nuestro sistema, el 80% se resuelve solo — sin que nadie en el equipo tenga que contestar.\n\nResultado:\n→ Tu equipo se enfoca en cerrar, no en responder\n→ Más leads atendidos = más ventas\n→ Escalás sin contratar más gente\n\n¿Agendamos la llamada de diagnóstico? Es gratis y sin compromiso.\n\n*1* → Sí, agendar\n*2* → Todavía no',
 
-    NURTURE: 'Gracias por tu tiempo 🙏\n\nCapaz no es el momento ideal, pero no hay apuro.\n\nCuando quieras retomar, escribime *MENÚ* y arrancamos de nuevo.',
+    // No despide: lo que conto queda anotado y alguien lo va a mirar. El texto
+    // anterior ("capaz no es el momento ideal") era un portazo amable para
+    // alguien que acababa de dar un brief completo.
+    NURTURE: 'Gracias, ya tengo todo anotado 🙏\n\nSe lo paso al equipo para que lo mire con calma. Si encaja con lo que hacemos, te escriben para coordinar una llamada.\n\nSi mientras tanto querés adelantar algo, escribime *MENÚ*.',
 
     DISQUALIFIED: 'Gracias por contestar 🙏\n\nPor ahora no tenemos exactamente lo que necesitás, pero puede cambiar.\n\nSi querés explorar opciones a futuro, escribime *MENÚ* y vemos.',
 

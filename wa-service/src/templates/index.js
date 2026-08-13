@@ -2,7 +2,7 @@
 
 const crypto = require('node:crypto');
 const { clasificar } = require('./rubros');
-const { PLANTILLAS, fichaAM, avisoRespuesta, avisoContactoNuevo, avisoSinRespuesta } = require('./messages');
+const { PLANTILLAS, fichaAM, avisoRespuesta, avisoContactoNuevo, avisoSinRespuesta, resumenEmbudo } = require('./messages');
 const { primerNombre } = require('../telefono');
 
 /** Entero uniforme en [0, max). crypto en vez de Math.random: sin valores redondos. */
@@ -48,4 +48,5 @@ module.exports = {
   avisoRespuesta,
   avisoContactoNuevo,
   avisoSinRespuesta,
+  resumenEmbudo,
 };

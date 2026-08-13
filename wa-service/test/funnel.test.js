@@ -50,8 +50,8 @@ test('recorre el embudo entero hasta la oferta de reunion', async () => {
   assert.equal(l.instagram_web, '@inmopereyra');
   assert.equal(l.needs, 'quiero dejar de perder consultas');
 
-  // budget 3 (+3) + team>=2 (+2) + ecommerce (+2) = 7 → reunion
-  assert.equal(l.score, 7);
+  // budget 3 (+3) + team>=2 (+2) + ecommerce (+2) + brief con contenido (+1) = 8
+  assert.equal(l.score, 8);
   assert.equal(l.priority, 'high');
   assert.equal(l.fsm_state, S.MEETING_SENT);
   assert.match(msgs.at(-1), /videollamada de 30 minutos/);
@@ -70,7 +70,7 @@ test('un lead flojo cae en nurture y no se le ofrece reunion', async () => {
   const msgs = await lead(s, 'algo simple');
 
   const l = s.repo.leadPorTelefono('59899123456');
-  assert.equal(l.score, 1, 'solo suma el presupuesto minimo');
+  assert.equal(l.score, 1, 'solo suma el presupuesto minimo: el brief es muy corto');
   assert.equal(l.fsm_state, S.DISQUALIFIED);
   assert.ok(!msgs.at(-1).includes('videollamada'));
 });
@@ -259,4 +259,31 @@ test('el scoring por reglas ya no depende de urgency', () => {
 
   // Un campo urgency suelto no cambia nada.
   assert.deepEqual(porReglas({ budget: 3, urgency: 1 }), porReglas({ budget: 3 }));
+});
+
+test('automatizacion puntua como proyecto de alcance, no como cero', () => {
+  // Estaba en [2,4]: automatizacion, que es de lo que habla toda la
+  // comunicacion de Scalerics, sumaba 0 y el lead terminaba descartado.
+  const base = { budget: 2, team_size: 2, needs: 'necesito un sistema para gestionar stock' };
+
+  assert.equal(porReglas({ ...base, business_type: 3 }).recommended_action, 'meeting', 'automatizacion');
+  assert.equal(porReglas({ ...base, business_type: 2 }).recommended_action, 'meeting', 'ecommerce');
+  assert.equal(porReglas({ ...base, business_type: 4 }).recommended_action, 'meeting', 'app a medida');
+});
+
+test('un brief escrito de verdad suma; uno de dos palabras no', () => {
+  const base = { business_type: 1, budget: 2, team_size: 1 };
+  assert.equal(porReglas({ ...base, needs: 'algo simple' }).score, 2);
+  assert.equal(porReglas({ ...base, needs: 'necesito un sistema para gestionar el stock' }).score, 3);
+});
+
+test('el AM se entera de como termino el embudo, no solo cuando gana', async () => {
+  const s = await conLead();
+  for (const t of ['hola', '1', 'Kiosco', '1', '1', '1', 'no', 'no', 'algo']) await lead(s, t);
+
+  const resumenes = s.proveedor.getEnviados()
+    .filter((e) => e.to === '59899000111' && /score/.test(e.texto));
+  assert.equal(resumenes.length, 1, 'llega un resumen aunque el lead no califique');
+  assert.match(resumenes[0].texto, /descartado|pausa/);
+  assert.match(resumenes[0].texto, /wa\.me\/59899123456/);
 });
