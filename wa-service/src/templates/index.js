@@ -63,6 +63,7 @@ module.exports = {
   avisoRespuesta: M.avisoRespuesta,
   avisoContactoNuevo: M.avisoContactoNuevo,
   avisoSinRespuesta: M.avisoSinRespuesta,
+  avisoDerivacion: M.avisoDerivacion,
   avisoReunionAgendada: M.avisoReunionAgendada,
   resumenEmbudo: M.resumenEmbudo,
 };

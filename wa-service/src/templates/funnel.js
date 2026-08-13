@@ -39,6 +39,19 @@ function crearTextos({ calendlyLink }) {
 
     HUMAN_QUEUED: 'Listo, le paso tu contacto a alguien del equipo 👤\n\nTe escribe en los próximos minutos.\n\n_Horario de atención: Lun-Vie 9-18hs (GMT-3)_\n\n💡 Si querés volver al menú automático, escribí *MENÚ*.',
 
+    /**
+     * Respuesta al primer "¿cuánto sale?". Es textual del superprompt: el bot
+     * NUNCA da un numero ni un rango, aunque el lead insista. Si vuelve a
+     * preguntar, se deriva a un humano.
+     */
+    PRECIO: 'El precio depende del alcance del proyecto, por eso el primer paso es una charla rápida para entenderlo — así te armamos un presupuesto real, no una cifra al aire.\n\n¿Te sirve que coordinemos 15 minutos esta semana?',
+
+    /** Alguien enojado o con un reclamo: no se le explica nada, se deriva. */
+    QUEJA: 'Entiendo, y perdón por la molestia. Te paso ahora mismo con alguien del equipo para que lo resuelva directo con vos.',
+
+    /** Cobros y facturas son tema humano, sin excepcion. */
+    FACTURACION: 'Eso lo maneja el equipo directamente. Te paso con la persona que lo puede ver con vos ahora.',
+
     INVALID_1: (opciones) =>
       `No entendí esa respuesta 😅\n\nRespondé con el número de tu opción:\n${opciones}`,
 

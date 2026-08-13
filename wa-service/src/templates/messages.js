@@ -131,6 +131,29 @@ function avisoSinRespuesta(lead, horas) {
   return `⏰ ${lead.nombre || lead.telefono} no respondió en ${horas}h — follow-up enviado.`;
 }
 
+/**
+ * Aviso al humano cuando se le deriva una conversacion. El superprompt pide
+ * "nombre del contacto, de que se trata, y el historial reciente": sin el
+ * historial, quien atiende arranca a ciegas y el lead tiene que repetir todo.
+ */
+function avisoDerivacion(lead, { motivo, historial = [] }) {
+  const lineas = [
+    '🙋 Te pasan una conversación',
+    `👤 ${lead.business_name || lead.nombre || 'sin nombre'}`,
+    `📌 Motivo: ${motivo}`,
+    `📱 +${lead.telefono}`,
+  ];
+  if (historial.length) {
+    lineas.push('', '💬 Últimos mensajes:');
+    for (const m of historial) {
+      const quien = m.direction === 'in' ? '←' : '→';
+      lineas.push(`${quien} ${String(m.body).replace(/\n+/g, ' ').slice(0, 90)}`);
+    }
+  }
+  lineas.push('', `wa.me/${lead.telefono}`);
+  return lineas.join('\n');
+}
+
 function avisoReunionAgendada(lead, { cuando, link }) {
   return [
     '🗓 Reunión agendada',
@@ -179,6 +202,7 @@ module.exports = {
   avisoRespuesta,
   avisoContactoNuevo,
   avisoSinRespuesta,
+  avisoDerivacion,
   avisoReunionAgendada,
   resumenEmbudo,
   recordatorioDiaAntes,

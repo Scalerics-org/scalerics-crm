@@ -4,6 +4,7 @@ const { S, ESTADOS_CON_OPCIONES, PALABRAS_GLOBALES } = require('./states');
 const { TRANSICIONES, OPCIONES, CAMPO_RESPUESTA } = require('./transitions');
 const { primerNombre } = require('../telefono');
 const plantillas = require('../templates');
+const { detectar, ETIQUETA } = require('./derivacion');
 
 const MAX_REINTENTOS = 4;
 
@@ -32,6 +33,29 @@ function palabraGlobal(entrada) {
  *   limites que el resto del servicio.
  */
 function crearEmbudo({ repo, cola, textos, scorer, logger, cfg = { amPhones: [] }, crmNotify = null, ahora = () => new Date() }) {
+
+  /**
+   * Deriva a un humano y le manda el contexto: quien es, por que, y los ultimos
+   * mensajes. Sin el historial, quien atiende arranca a ciegas.
+   */
+  function derivar(lead, motivo) {
+    // Solo el motivo: el flag human_requested lo pone el handler de
+    // HUMAN_QUEUED. Si se marcara aca, ese handler creeria que ya estaba
+    // derivado y no le avisaria al lead que lo estan pasando con alguien.
+    repo.actualizarFunnel(lead.id, { motivo_derivacion: motivo });
+    for (const am of cfg.amPhones) {
+      cola.encolar({
+        to: am,
+        texto: plantillas.avisoDerivacion(repo.leadPorId(lead.id), {
+          motivo: ETIQUETA[motivo] || motivo,
+          historial: repo.ultimosMensajes(lead.id, 6),
+        }),
+        kind: 'am_notice',
+        leadId: lead.id,
+      });
+    }
+    logger?.info({ leadId: lead.id, motivo }, 'conversacion derivada a un humano');
+  }
 
   /** El AM se entera de como termino el embudo, gane o pierda. */
   function avisarDesenlace(leadId, desenlace) {
@@ -165,7 +189,39 @@ function crearEmbudo({ repo, cola, textos, scorer, logger, cfg = { amPhones: [] 
         return this._transicionar(lead, entrada, S.MENU);
       }
 
-      if (global) return this._transicionar(lead, entrada, global);
+      if (global) {
+        if (global === S.HUMAN_QUEUED) derivar(lead, 'pedido');
+        return this._transicionar(lead, entrada, global);
+      }
+
+      // Casos que el superprompt manda derivar sin excepcion. Van antes de la
+      // tabla de transiciones: aplican en cualquier punto del embudo.
+      const disparador = detectar(textoCrudo);
+      if (disparador) {
+        if (disparador.motivo === 'queja') {
+          decir(lead, textos.QUEJA);
+          derivar(lead, 'queja');
+          return this._transicionar(lead, entrada, S.HUMAN_QUEUED);
+        }
+
+        if (disparador.motivo === 'facturacion') {
+          decir(lead, textos.FACTURACION);
+          derivar(lead, 'facturacion');
+          return this._transicionar(lead, entrada, S.HUMAN_QUEUED);
+        }
+
+        // Precio: la primera vez se contesta el criterio, sin dar numeros. Si
+        // vuelve a preguntar es que no se conformo, y ahi va a un humano.
+        const consultas = (lead.consultas_precio || 0) + 1;
+        repo.actualizarFunnel(lead.id, { consultas_precio: consultas });
+
+        if (consultas === 1) {
+          decir(lead, textos.PRECIO);
+          return lead.fsm_state || S.NEW;
+        }
+        derivar(lead, 'precio');
+        return this._transicionar(lead, entrada, S.HUMAN_QUEUED);
+      }
 
       const actual = lead.fsm_state || S.NEW;
       const mapa = TRANSICIONES[actual] || {};
@@ -179,6 +235,7 @@ function crearEmbudo({ repo, cola, textos, scorer, logger, cfg = { amPhones: [] 
 
         if (reintentos >= MAX_REINTENTOS) {
           repo.actualizarFunnel(lead.id, { fsm_retries: 0 });
+          derivar(lead, 'invalidos');
           return this._transicionar(lead, entrada, S.HUMAN_QUEUED);
         }
 

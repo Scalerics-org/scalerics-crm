@@ -84,6 +84,7 @@ function crearRepo(db) {
         'business_name', 'business_type', 'budget', 'team_size',
         'colors', 'instagram_web', 'needs',
         'score', 'priority', 'score_reason', 'meeting_url', 'meeting_time',
+        'consultas_precio', 'motivo_derivacion',
       ];
       const set = Object.keys(campos).filter((k) => permitidos.includes(k));
       if (!set.length) return stmt.leadPorId.get(id);
@@ -107,6 +108,11 @@ function crearRepo(db) {
     },
 
     mensajesDeLead: (leadId) => stmt.mensajesDeLead.all(leadId),
+
+    /** Ultimos mensajes de la conversacion, para el resumen al humano. */
+    ultimosMensajes: (leadId, n = 6) =>
+      db.prepare('SELECT direction, body FROM messages WHERE lead_id = ? ORDER BY id DESC LIMIT ?')
+        .all(leadId, n).reverse(),
 
     /**
      * Marca la entrega/lectura que reporta el proveedor. Solo avanza: un acuse
