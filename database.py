@@ -458,15 +458,20 @@ def insert_business(db_path: str, data: dict) -> Optional[int]:
     try:
         cursor = conn.execute("""
             INSERT OR IGNORE INTO businesses
-            (name, category, address, city, phone, rating, review_count,
+            (name, email, category, address, city, phone, rating, review_count,
              hours, maps_url, facebook_url, instagram_url,
              color_scheme, demo_html_path, demo_url, status, has_whatsapp, score, source, notes, form_data, scraped_at)
-            VALUES (:name, :category, :address, :city, :phone, :rating,
+            VALUES (:name, :email, :category, :address, :city, :phone, :rating,
                     :review_count, :hours, :maps_url, :facebook_url, :instagram_url,
                     :color_scheme, :demo_html_path, :demo_url, 'scraped', :has_whatsapp, :score, :source, :notes, :form_data,
                     COALESCE(:scraped_at, CURRENT_TIMESTAMP))
         """, {
             "name": data.get("name"),
+            # La columna email existia pero NO estaba en este INSERT: todo lead que
+            # entraba por aca (webhook de Meta, sync del scraper, alta manual)
+            # perdia el email en silencio. Sin email no se puede invitar al cliente
+            # a la reunion ni escribirle.
+            "email": (data.get("email") or "").strip() or None,
             "category": data.get("category"),
             "address": data.get("address"),
             "city": data.get("city"),

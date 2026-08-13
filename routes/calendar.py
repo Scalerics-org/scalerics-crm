@@ -132,6 +132,61 @@ def _mails_internos() -> set:
     return {m.strip().lower() for m in crudo.split(",") if m.strip()}
 
 
+def _crear_evento_en_google(titulo: str, inicio, fin, descripcion: str = "",
+                            email_invitado: str = "", pedir_meet: bool = True):
+    """Crea el evento en Google Calendar.
+
+    Devuelve (evento, aviso). `evento` es None si no se pudo crear; `aviso` es un
+    texto para mostrarle al usuario. Nunca levanta excepcion: si Google falla, la
+    reunion igual se guarda en el CRM y el llamador decide que informar.
+
+    Las horas se mandan con la zona de Uruguay explicita. El resto del modulo
+    guarda naive local, asi que sin localizar aca Google interpretaria la hora en
+    UTC y el evento caeria 3 horas corrido.
+    """
+    service, err = _get_calendar_service()
+    if not service:
+        return None, f"La reunión quedó en el CRM pero no se creó en Google Calendar: {err}"
+
+    cuerpo = {
+        "summary": titulo,
+        "description": descripcion or "",
+        "start": {"dateTime": MVD.localize(inicio).isoformat(), "timeZone": "America/Montevideo"},
+        "end":   {"dateTime": MVD.localize(fin).isoformat(),    "timeZone": "America/Montevideo"},
+    }
+    if email_invitado:
+        cuerpo["attendees"] = [{"email": email_invitado}]
+    if pedir_meet:
+        cuerpo["conferenceData"] = {
+            "createRequest": {
+                "requestId": str(uuid.uuid4()),
+                "conferenceSolutionKey": {"type": "hangoutsMeet"},
+            }
+        }
+
+    try:
+        creado = service.events().insert(
+            calendarId="primary",
+            body=cuerpo,
+            conferenceDataVersion=1 if pedir_meet else 0,
+            sendUpdates="all" if email_invitado else "none",
+        ).execute()
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"No se pudo crear el evento en Google: {e}")
+        return None, "La reunión quedó en el CRM, pero Google Calendar rechazó la creación. Revisá el calendario."
+
+    enlace = ""
+    for ep in (creado.get("conferenceData") or {}).get("entryPoints", []):
+        if ep.get("entryPointType") == "video":
+            enlace = ep.get("uri", "")
+            break
+
+    aviso = ""
+    if not email_invitado:
+        aviso = "El cliente no tiene email cargado, así que no se le envió invitación."
+    return {"id": creado.get("id"), "meet_link": enlace}, aviso
+
+
 _sync_lock = threading.Lock()
 _sync_en_curso: set = set()
 
@@ -343,7 +398,7 @@ def api_calendar_events():
         finally:
             conn.close()
 
-    # POST — save meeting to DB only (no Google Calendar)
+    # POST — crea la reunion en el CRM y en Google Calendar
     data = request.get_json() or {}
     title = (data.get("title") or "").strip()
     date = data.get("date", "")
@@ -355,15 +410,31 @@ def api_calendar_events():
 
     if not title or not date or not time:
         return jsonify({"ok": False, "error": "title, date y time requeridos"})
-    # meetings.client_id es NOT NULL: sin cliente no hay reunion que guardar.
+    # meetings.client_id ya admite NULL (los eventos personales que importa el sync
+    # no son un lead), pero una reunion que se carga A MANO desde el CRM siempre es
+    # con alguien: sin cliente no se sabe a quien invitar ni a que ficha asociarla.
     # Antes se devolvia ok:true sin guardar nada y la reunion desaparecia.
     if not client_id:
-        return jsonify({"ok": False, "error": "Eligi un cliente para la reunion"})
+        return jsonify({"ok": False, "error": "Elegí un cliente para la reunión"}), 400
 
     try:
         start_dt = datetime.datetime.fromisoformat(f"{date}T{time}:00")
         end_dt = start_dt + datetime.timedelta(minutes=duration_min)
         db = _db()
+        client = get_business(db, int(client_id)) or {}
+
+        # Antes esto guardaba SOLO en la base y devolvia event_id: None. La reunion
+        # no existia en Google, asi que no le llegaba invitacion a nadie, no habia
+        # recordatorio, no habia Meet, y no aparecia en la agenda real del equipo:
+        # habia que cargarla a mano por segunda vez.
+        evento_google, aviso_google = _crear_evento_en_google(
+            titulo=title, inicio=start_dt, fin=end_dt,
+            descripcion=description,
+            email_invitado=(client.get("email") or "").strip(),
+            pedir_meet=not meet_link,
+        )
+        if evento_google:
+            meet_link = meet_link or evento_google.get("meet_link", "")
 
         meeting_id = create_meeting(
             db, int(client_id),
@@ -373,9 +444,19 @@ def api_calendar_events():
             meet_link=meet_link,
             status="scheduled",
         )
+        # El id de Google se guarda para que el sync reconozca la reunion como ya
+        # importada en vez de duplicarla, y para poder cancelarla desde el CRM.
+        if evento_google and evento_google.get("id") and meeting_id:
+            conn = _db_connect(db)
+            try:
+                conn.execute("UPDATE meetings SET calendar_event_id=? WHERE id=?",
+                             (evento_google["id"], meeting_id))
+                conn.commit()
+            finally:
+                conn.close()
+
         from database import update_business
         update_business(db, int(client_id), crm_status="reunion_agendada")
-        client = get_business(db, int(client_id)) or {}
         log_activity(db, session.get("user_name", "sistema"), "meeting_scheduled",
                      "lead", int(client_id), client.get("name", ""), title,
                      user_id=session.get("user_id"))
@@ -383,9 +464,19 @@ def api_calendar_events():
         increment_task_progress(db, uids, "reuniones_agendadas",
                                 lead_id=int(client_id), lead_name=client.get("name", ""))
 
-        return jsonify({"ok": True, "meeting_id": meeting_id, "meet_url": meet_link, "event_id": None})
+        return jsonify({
+            "ok": True,
+            "meeting_id": meeting_id,
+            "meet_url": meet_link,
+            "event_id": (evento_google or {}).get("id"),
+            # Si Google fallo, la reunion igual quedo guardada en el CRM. Se avisa
+            # en vez de mentir con un ok:true limpio.
+            "google_ok": bool(evento_google),
+            "aviso": aviso_google,
+        })
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)})
+        logging.getLogger(__name__).exception("Error creando la reunion")
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 @calendar_bp.route("/api/calendar/clients/<int:client_id>/meetings", methods=["GET"])
