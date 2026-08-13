@@ -600,7 +600,16 @@ def delete_business(db_path: str, business_id: int) -> None:
 
 
 def merge_business(db_path: str, source_id: int, target_id: int) -> None:
-    """Transfer all relations from source_id to target_id, then delete source."""
+    """Transfer all relations from source_id to target_id, then delete source.
+
+    Fusionar un lead consigo mismo BORRA el lead: los UPDATE quedan en no-op
+    (mueven cada fila a donde ya estaba) y despues el DELETE se lo lleva. Con las
+    foreign keys activas la cascada ademas arrastra sus reuniones, adjuntos,
+    eventos y llamadas. Se corta aca, no solo en la ruta, para que ningun otro
+    llamador pueda provocarlo.
+    """
+    if source_id == target_id:
+        raise ValueError("No se puede fusionar un lead consigo mismo")
     conn = _connect(db_path)
     try:
         for table, col in [
@@ -1000,20 +1009,44 @@ def increment_task_progress(
     all_completed: list[int] = []
     try:
         for uid in unique_ids:
+            activas = [
+                r[0] for r in conn.execute(
+                    "SELECT id FROM tasks WHERE assignee_id = ? AND goal_type = ? AND status != 'done'",
+                    (uid, goal_type),
+                ).fetchall()
+            ]
+
+            # Idempotencia por lead. Antes esto hacia progress = progress + 1 en
+            # cada llamada: mover un lead a 'reunion_hecha', volverlo atras y
+            # adelantarlo de nuevo sumaba dos veces por la MISMA reunion, y la meta
+            # se daba por cumplida sin haberse cumplido. task_progress_events ya
+            # registraba que lead genero cada incremento, pero nadie lo consultaba.
+            #
+            # Solo aplica cuando el avance viene de un lead concreto: con lead_id
+            # None no hay con que deduplicar y se cuenta cada vez.
+            if lead_id is not None and activas:
+                ya_contadas = {
+                    r[0] for r in conn.execute(
+                        "SELECT task_id FROM task_progress_events "
+                        f"WHERE lead_id = ? AND event_type = ? AND task_id IN ({','.join('?' * len(activas))})",
+                        (lead_id, goal_type, *activas),
+                    ).fetchall()
+                }
+                activas = [t for t in activas if t not in ya_contadas]
+
+            if not activas:
+                continue
+
             conn.execute(
-                "UPDATE tasks SET progress = COALESCE(progress, 0) + 1 "
-                "WHERE assignee_id = ? AND goal_type = ? AND status != 'done'",
-                (uid, goal_type),
+                f"UPDATE tasks SET progress = COALESCE(progress, 0) + 1 "
+                f"WHERE id IN ({','.join('?' * len(activas))})",
+                activas,
             )
-            active = conn.execute(
-                "SELECT id FROM tasks WHERE assignee_id = ? AND goal_type = ? AND status != 'done'",
-                (uid, goal_type),
-            ).fetchall()
-            for row in active:
+            for task_id_activa in activas:
                 conn.execute(
                     "INSERT INTO task_progress_events "
                     "(task_id, user_id, lead_id, lead_name, event_type) VALUES (?, ?, ?, ?, ?)",
-                    (row[0], uid, lead_id, lead_name or "", goal_type),
+                    (task_id_activa, uid, lead_id, lead_name or "", goal_type),
                 )
             completed = [
                 r[0] for r in conn.execute(

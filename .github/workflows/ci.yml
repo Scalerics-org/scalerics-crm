@@ -39,7 +39,7 @@ jobs:
         # routes/meta (14%).
         run: |
           pytest -q --cov=database --cov=routes --cov=services --cov=dashboard --cov=main \
-                 --cov-report=term-missing --cov-fail-under=28
+                 --cov-report=term-missing --cov-fail-under=32
 
       # dashboard.py tiene el frontend embebido como string de Python, asi que ni
       # py_compile ni pytest miran el JavaScript. Un escape mal armado (jsStr

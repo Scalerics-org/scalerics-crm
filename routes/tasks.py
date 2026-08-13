@@ -3,9 +3,10 @@
 from flask import Blueprint, current_app, jsonify, request, session
 
 import os
+
 from database import (create_task, delete_task, get_task_by_id, get_tasks,
                       log_activity, update_task, get_task_progress_history)
-from database import connect as _db_connect
+from services.auth import is_admin
 from services.email_service import send_task_assignment_email
 
 tasks_bp = Blueprint("tasks", __name__)
@@ -13,6 +14,24 @@ tasks_bp = Blueprint("tasks", __name__)
 
 def _db() -> str:
     return current_app.config["DB_PATH"]
+
+
+def _puede_tocar(task: dict) -> bool:
+    """Solo el asignado, quien la creo, o un admin.
+
+    PUT y DELETE no chequeaban NADA: cualquier usuario logueado podia reasignar,
+    reescribir o borrar la tarea de otro. El endpoint vecino
+    (progress-history) si validaba con esta misma regla, o sea que era una
+    omision y no una decision.
+    """
+    uid = session.get("user_id")
+    if is_admin(_db(), uid):
+        return True
+    return uid is not None and uid in (task.get("assignee_id"), task.get("created_by_id"))
+
+
+def _no_autorizado():
+    return jsonify({"ok": False, "error": "Solo podés modificar tus propias tareas"}), 403
 
 
 @tasks_bp.route("/api/tasks", methods=["GET"])
@@ -62,8 +81,17 @@ def api_create_task():
 def api_update_task(task_id):
     data = request.get_json() or {}
     db = _db()
-    task = get_task_by_id(db, task_id) or {}
-    update_task(db, task_id, **data)
+    task = get_task_by_id(db, task_id)
+    if not task:
+        return jsonify({"ok": False, "error": "Tarea no encontrada"}), 404
+    if not _puede_tocar(task):
+        return _no_autorizado()
+    try:
+        update_task(db, task_id, **data)
+    except ValueError as e:
+        # update_task rechaza columnas desconocidas. Es un error del cliente, no
+        # del servidor: antes salia como 500.
+        return jsonify({"ok": False, "error": str(e)}), 400
     detail = f"estado: {data['status']}" if "status" in data else ""
     log_activity(db, session.get("user_name", "sistema"), "task_updated",
                  "task", task_id, task.get("title", ""), detail,
@@ -74,7 +102,13 @@ def api_update_task(task_id):
 @tasks_bp.route("/api/tasks/<int:task_id>", methods=["DELETE"])
 def api_delete_task(task_id):
     db = _db()
-    task = get_task_by_id(db, task_id) or {}
+    task = get_task_by_id(db, task_id)
+    if not task:
+        # Antes devolvia ok:true para una tarea inexistente, asi que el frontend
+        # daba por borrado algo que nunca existio.
+        return jsonify({"ok": False, "error": "Tarea no encontrada"}), 404
+    if not _puede_tocar(task):
+        return _no_autorizado()
     log_activity(db, session.get("user_name", "sistema"), "task_deleted",
                  "task", task_id, task.get("title", ""), "",
                  user_id=session.get("user_id"))
@@ -88,20 +122,8 @@ def api_task_progress_history(task_id):
     task = get_task_by_id(db, task_id)
     if not task:
         return jsonify({"error": "Not found"}), 404
-    uid = session.get("user_id")
-    admin_email = os.environ.get("ADMIN_EMAIL", "")
-    import sqlite3 as _sq
-    conn2 = _db_connect(db); conn2.row_factory = _sq.Row
-    try:
-        u = conn2.execute("SELECT id, email FROM users WHERE id=?", (uid,)).fetchone()
-    finally:
-        conn2.close()
-    is_admin = bool(
-        u and (
-            (admin_email and u["email"].lower() == admin_email.lower())
-            or (not admin_email and u["id"] == 1)
-        )
-    )
-    if not is_admin and task.get("assignee_id") != uid and task.get("created_by_id") != uid:
+    # Este chequeo era una cuarta copia del mismo bloque de admin. Ahora sale de
+    # services/auth, igual que PUT y DELETE.
+    if not _puede_tocar(task):
         return jsonify({"error": "No autorizado"}), 403
     return jsonify(get_task_progress_history(db, task_id))

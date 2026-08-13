@@ -267,6 +267,14 @@ def api_merge_lead(biz_id):
     into_id = data.get("into_id")
     if not into_id:
         return jsonify({"ok": False, "error": "into_id requerido"}), 400
+    try:
+        into_id = int(into_id)
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "into_id inválido"}), 400
+    # Fusionar consigo mismo borraba el lead y, con las FK activas, arrastraba en
+    # cascada sus reuniones, adjuntos, eventos y llamadas.
+    if into_id == biz_id:
+        return jsonify({"ok": False, "error": "No se puede fusionar un lead consigo mismo"}), 400
 
     db = _db()
     source = get_business(db, biz_id)
