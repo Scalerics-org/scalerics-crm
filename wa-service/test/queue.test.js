@@ -161,3 +161,45 @@ test('cada mensaje queda registrado con su estado final', async () => {
   assert.equal(m.provider, 'mock');
   assert.ok(m.provider_msg_id);
 });
+
+test('el acuse de entrega solo avanza, nunca retrocede', async () => {
+  // "sent" solo dice que el proveedor lo acepto. Si un acuse de entrega llega
+  // tarde no puede pisar un "leido" ya registrado.
+  const s = await conLead();
+  s.cola.encolar({ to: LEAD_TEL, texto: 'hola', kind: 'manual' });
+  await s.cola.vacia();
+
+  const m = s.repo.db.prepare("SELECT provider_msg_id AS id FROM messages WHERE body='hola'").get();
+  const estado = () =>
+    s.repo.db.prepare('SELECT status FROM messages WHERE provider_msg_id = ?').get(m.id).status;
+
+  assert.equal(estado(), 'sent');
+
+  assert.equal(s.repo.marcarEntrega(m.id, 'delivered'), true);
+  assert.equal(estado(), 'delivered');
+
+  assert.equal(s.repo.marcarEntrega(m.id, 'read'), true);
+  assert.equal(estado(), 'read');
+
+  assert.equal(s.repo.marcarEntrega(m.id, 'delivered'), false, 'no retrocede');
+  assert.equal(estado(), 'read');
+
+  assert.equal(s.repo.marcarEntrega('no-existe', 'read'), false);
+});
+
+test('/health cuenta los salientes sin confirmar', async () => {
+  const s = await conLead();
+  s.cola.encolar({ to: LEAD_TEL, texto: 'sin acuse', kind: 'manual' });
+  await s.cola.vacia();
+
+  // Con created_at de ahora, todavia no entra en la ventana de 5 minutos.
+  const enElFuturo = new Date(Date.now() + 10 * 60_000).toISOString().replace('T', ' ').slice(0, 19);
+  assert.ok(s.repo.sinConfirmar(enElFuturo) >= 1, 'aparece como no confirmado');
+
+  const m = s.repo.db.prepare("SELECT provider_msg_id AS id FROM messages WHERE body='sin acuse'").get();
+  s.repo.marcarEntrega(m.id, 'delivered');
+  assert.equal(
+    s.repo.db.prepare("SELECT COUNT(*) n FROM messages WHERE body='sin acuse' AND status='sent'").get().n,
+    0
+  );
+});

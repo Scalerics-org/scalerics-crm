@@ -26,6 +26,29 @@ function telefonoDeJid(jid) {
   return String(jid || '').split('@')[0].split(':')[0];
 }
 
+/**
+ * Telefono real del que manda un mensaje.
+ *
+ * WhatsApp migro a direccionamiento @lid: remoteJid puede traer un
+ * identificador de dispositivo (227771510997245@lid) en vez del numero, que es
+ * justamente lo que oculta. El numero real viaja aparte, en senderPn o
+ * participantPn.
+ *
+ * @returns {string|null} E.164 sin '+', o null si es un LID sin numero asociado.
+ */
+function telefonoDelMensaje(key) {
+  const pn = key?.senderPn || key?.participantPn;
+  if (pn) return telefonoDeJid(pn);
+
+  const jid = String(key?.remoteJid || '');
+  // Sin senderPn no hay forma de saber a quien corresponde: atribuirselo a
+  // alguien por el LID seria peor que descartarlo.
+  if (jid.endsWith('@lid')) return null;
+
+  const tel = telefonoDeJid(jid);
+  return tel || null;
+}
+
 /** Saca el texto de un mensaje entrante, sea plano o con formato. */
 function textoDeMensaje(msg) {
   const m = msg?.message;
@@ -48,6 +71,7 @@ function crear(cfg, { logger } = {}) {
   let telefonoPropio = null;
   let desdeCuando = null;
   let handler = null;
+  let alActualizarEstado = null;
   let intentos = 0;
   let cerrandoAProposito = false;
   let baileys = null;
@@ -148,6 +172,22 @@ function crear(cfg, { logger } = {}) {
       }
     });
 
+    /**
+     * Acuses de recibo. Sin esto, "enviado" solo significa que Baileys acepto
+     * el mensaje: si el destinatario no lo puede descifrar y le queda en
+     * "Esperando este mensaje", nadie se entera.
+     * 2 = entregado en el dispositivo, 3/4 = leido.
+     */
+    sock.ev.on('messages.update', (updates) => {
+      if (!alActualizarEstado) return;
+      for (const u of updates) {
+        const s = u.update?.status;
+        if (s === undefined || s === null) continue;
+        const estado = s >= 3 ? 'read' : s === 2 ? 'delivered' : null;
+        if (estado && u.key?.id) alActualizarEstado(u.key.id, estado);
+      }
+    });
+
     sock.ev.on('messages.upsert', ({ messages, type }) => {
       logger?.debug({ type, cantidad: messages?.length, hayHandler: Boolean(handler) }, 'upsert');
 
@@ -174,8 +214,14 @@ function crear(cfg, { logger } = {}) {
           continue;
         }
 
-        logger?.info({ from: telefonoDeJid(jid) }, 'mensaje entrante');
-        handler({ from: telefonoDeJid(jid), texto, id: msg.key.id });
+        const from = telefonoDelMensaje(msg.key);
+        if (!from) {
+          logger?.warn({ jid }, 'entrante descartado: LID sin telefono asociado');
+          continue;
+        }
+
+        logger?.info({ from }, 'mensaje entrante');
+        handler({ from, texto, id: msg.key.id });
       }
     });
   }
@@ -245,7 +291,12 @@ function crear(cfg, { logger } = {}) {
     alRecibir(fn) {
       handler = fn;
     },
+
+    /** Se llama con (idDelProveedor, "delivered"|"read") al llegar el acuse. */
+    alCambiarEstado(fn) {
+      alActualizarEstado = fn;
+    },
   };
 }
 
-module.exports = { crear, jidDeTelefono, telefonoDeJid, textoDeMensaje, BACKOFF_MS };
+module.exports = { crear, jidDeTelefono, telefonoDeJid, telefonoDelMensaje, textoDeMensaje, BACKOFF_MS };

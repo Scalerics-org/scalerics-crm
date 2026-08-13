@@ -108,6 +108,27 @@ function crearRepo(db) {
 
     mensajesDeLead: (leadId) => stmt.mensajesDeLead.all(leadId),
 
+    /**
+     * Marca la entrega/lectura que reporta el proveedor. Solo avanza: un acuse
+     * de entrega que llega tarde no puede pisar un "leido" ya registrado.
+     */
+    marcarEntrega(providerMsgId, estado) {
+      const orden = { queued: 0, sent: 1, delivered: 2, read: 3 };
+      const fila = db.prepare('SELECT id, status FROM messages WHERE provider_msg_id = ?')
+        .get(providerMsgId);
+      if (!fila) return false;
+      if ((orden[estado] ?? 0) <= (orden[fila.status] ?? 0)) return false;
+      db.prepare('UPDATE messages SET status = ? WHERE id = ?').run(estado, fila.id);
+      return true;
+    },
+
+    /** Salientes que el proveedor acepto pero nadie confirmo haber recibido. */
+    sinConfirmar(desdeIso) {
+      return db.prepare(
+        "SELECT COUNT(*) AS n FROM messages WHERE direction = 'out' AND status = 'sent' AND created_at <= ?"
+      ).get(desdeIso).n;
+    },
+
     encolarJob: (leadId, tipo, runAtIso) => stmt.insertJob.run(leadId, tipo, runAtIso),
     jobsVencidos: (ahoraIso) => stmt.jobsVencidos.all(ahoraIso),
     marcarJob: (id, estado, error = null) => stmt.marcarJob.run(estado, error, id),

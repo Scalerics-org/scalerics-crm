@@ -40,13 +40,21 @@ function crearServidor({ cfg, repo, cola, proveedor, servicioLeads, scheduler, l
 
   rutasCrm.registrar(app, { cfg, repo, cola, logger });
 
-  app.get('/health', async () => ({
-    ok: true,
-    provider: proveedor.nombre,
-    connected: proveedor.estado().conectado,
-    queue_depth: cola.pendientes(),
-    db: 'ok',
-  }));
+  app.get('/health', async () => {
+    // Salientes aceptados por el proveedor hace mas de 5 minutos que siguen sin
+    // acuse de entrega. Si esto crece, los mensajes estan quedando en
+    // "Esperando este mensaje" del lado del destinatario.
+    const hace5min = new Date(Date.now() - 5 * 60_000).toISOString().replace('T', ' ').slice(0, 19);
+    return {
+      ok: true,
+      provider: proveedor.nombre,
+      connected: proveedor.estado().conectado,
+      queue_depth: cola.pendientes(),
+      queue_paused: cola.pausada(),
+      undelivered: repo.sinConfirmar(hace5min),
+      db: 'ok',
+    };
+  });
 
   app.post('/leads', async (req, reply) => {
     const parsed = altaLeadSchema.safeParse(req.body ?? {});

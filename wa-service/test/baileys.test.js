@@ -134,3 +134,34 @@ test('POST /session/logout exige confirmacion explicita', async () => {
   assert.equal(sin.statusCode, 400);
   assert.match(sin.json().error, /confirm/);
 });
+
+// ── direccionamiento @lid ─────────────────────────────────────────────────────
+
+const { telefonoDelMensaje } = require('../src/providers/baileys');
+
+test('con @lid usa senderPn, que es donde viaja el telefono real', () => {
+  // WhatsApp migro a LIDs: remoteJid trae un id de dispositivo, no el numero.
+  // Leer solo remoteJid daba "227771510997245" y ningun lead matcheaba.
+  assert.equal(
+    telefonoDelMensaje({ remoteJid: '227771510997245@lid', senderPn: '59894053389@s.whatsapp.net' }),
+    '59894053389'
+  );
+});
+
+test('en grupos usa participantPn', () => {
+  assert.equal(
+    telefonoDelMensaje({ remoteJid: '1203@g.us', participantPn: '59894053389@s.whatsapp.net' }),
+    '59894053389'
+  );
+});
+
+test('sin LID sigue leyendo remoteJid', () => {
+  assert.equal(telefonoDelMensaje({ remoteJid: '59894053389@s.whatsapp.net' }), '59894053389');
+  assert.equal(telefonoDelMensaje({ remoteJid: '59894053389:12@s.whatsapp.net' }), '59894053389');
+});
+
+test('un LID sin telefono asociado se descarta en vez de adivinar', () => {
+  assert.equal(telefonoDelMensaje({ remoteJid: '227771510997245@lid' }), null);
+  assert.equal(telefonoDelMensaje({}), null);
+  assert.equal(telefonoDelMensaje(null), null);
+});

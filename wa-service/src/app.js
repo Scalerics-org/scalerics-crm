@@ -57,6 +57,15 @@ function construir(cfg, { logger, ahora = () => new Date() } = {}) {
 
   // Todo lo que entra por WhatsApp pasa por aca: marca la respuesta, cancela el
   // follow-up, avisa al AM y sigue el embudo.
+  // Acuses de entrega. "sent" solo dice que el proveedor lo acepto; si el
+  // destinatario no lo puede descifrar y le queda en "Esperando este mensaje",
+  // sin esto nadie se entera.
+  proveedor.alCambiarEstado?.((providerMsgId, estado) => {
+    if (repo.marcarEntrega(providerMsgId, estado)) {
+      log.debug({ providerMsgId, estado }, 'acuse de recibo');
+    }
+  });
+
   proveedor.alRecibir(({ from, texto }) => {
     servicioLeads.registrarRespuesta(from, texto).catch((e) => {
       log.error({ from, err: String(e.message || e) }, 'fallo procesando un mensaje entrante');
