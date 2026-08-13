@@ -11,10 +11,15 @@
  * - Sin mayusculas sostenidas, un emoji como maximo, sin exclamaciones
  *   multiples. Frases cortas.
  *
- * DECISION TOMADA: el primer mensaje lleva el link de Calendly. Un link en el
- * primer contacto a alguien que nunca escribio es de las cosas que mas disparan
- * filtros de spam y sube el riesgo de baneo del numero. Se eligio conversion
- * sobre riesgo: el lead que quiere agendar puede hacerlo en ese momento.
+ * DONDE VA EL LINK DE CALENDLY: en el follow-up, no en la bienvenida.
+ *
+ * El primer mensaje termina en pregunta abierta. Que el lead conteste hace dos
+ * cosas: baja el riesgo de baneo (un link en el primer contacto en frio es de
+ * las senales de spam mas fuertes) y —lo que mas pesa— establece la sesion de
+ * cifrado. Todo lo que quedo sin entregar en las pruebas fue a numeros que
+ * nunca nos habian escrito; a los que contestaron primero llega siempre.
+ *
+ * El follow-up si lo lleva: para entonces ya hubo un primer contacto.
  */
 
 /** Gancho especifico por rubro, del superprompt. */
@@ -33,12 +38,10 @@ const GENERICO = {
     (l) => `Hola ${l.primerNombre}, somos Scalerics.
 Nos llegó tu consulta${l.necesidadCorta ? ` sobre ${l.necesidadCorta}` : ''}.
 Contanos un poco más de lo que necesitás y te decimos cómo te podemos ayudar.
-¿Tenés 15 minutos esta semana para una videollamada con el equipo?
-${l.calendly}`,
+¿Tenés 15 minutos esta semana para una videollamada con el equipo? ¿Qué día te queda cómodo?`,
     (l) => `Hola ${l.primerNombre}, te escribo de Scalerics.
 Vimos lo que nos dejaste${l.necesidadCorta ? ` sobre ${l.necesidadCorta}` : ''} y queremos entenderlo bien antes de proponerte nada.
-Agendá cuando te quede cómodo y lo charlamos en 15 minutos:
-${l.calendly}`,
+¿Charlamos 15 minutos esta semana? Decime qué día te sirve y coordinamos.`,
   ],
   followup: [
     (l) => `Hola ${l.primerNombre}, te escribimos hace unos días${l.necesidadCorta ? ` por ${l.necesidadCorta}` : ''}.
@@ -54,12 +57,10 @@ function plantillaDeRubro(gancho) {
       (l) => `Hola ${l.primerNombre}, somos Scalerics.
 Vimos que nos escribiste${l.necesidadCorta ? ` por ${l.necesidadCorta}` : ''}.
 ${gancho}
-¿Tenés 15 minutos esta semana para una videollamada rápida con el equipo?
-${l.calendly}`,
+¿Tenés 15 minutos esta semana para una videollamada rápida con el equipo? ¿Qué día te queda cómodo?`,
       (l) => `Hola ${l.primerNombre}, te escribo de Scalerics.
 ${gancho}
-Si te sirve, agendá una llamada corta cuando te quede cómodo:
-${l.calendly}`,
+Si te sirve, coordinamos una llamada corta. ¿Qué día de esta semana te viene bien?`,
     ],
     followup: [
       (l) => `Hola ${l.primerNombre}, te escribimos hace unos días${l.necesidadCorta ? ` por ${l.necesidadCorta}` : ''}.

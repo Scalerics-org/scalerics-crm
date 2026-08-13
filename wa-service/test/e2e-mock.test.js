@@ -48,9 +48,11 @@ test('manda la ficha al AM y la bienvenida al lead', async () => {
   assert.ok(bienvenida, 'la bienvenida va al lead');
   assert.match(bienvenida.texto, /Martín/);
   assert.match(bienvenida.texto, /inmobiliarias/i, 'usa el gancho del rubro');
-  // Decision del negocio: se prioriza conversion sobre riesgo de baneo, asi que
-  // el primer mensaje lleva el link para agendar.
-  assert.match(bienvenida.texto, /calendly\.com/, 'el primer mensaje trae el link de Calendly');
+  // El link va en el follow-up, no aca: un link en el primer contacto en frio
+  // es senial de spam y ademas los mensajes a numeros que nunca escribieron son
+  // los que fallan al descifrarse. La bienvenida cierra con pregunta abierta.
+  assert.ok(!/https?:\/\//.test(bienvenida.texto), 'la bienvenida no lleva links');
+  assert.match(bienvenida.texto, /\?$/, 'termina en pregunta, para que conteste');
 });
 
 test('la ficha al AM sale antes que la bienvenida', async () => {
@@ -179,4 +181,20 @@ test('rechaza un alta sin nombre ni telefono', async () => {
   });
   assert.equal(r.statusCode, 400);
   assert.match(r.json().error, /nombre/);
+});
+
+test('el link de Calendly va en el follow-up, no en la bienvenida', async () => {
+  const s = await montar();
+  await postLead(s);
+  await s.cola.vacia();
+
+  const bienvenida = s.proveedor.getEnviados().find((e) => e.to === '59899123456');
+  assert.ok(!bienvenida.texto.includes('calendly'), 'la bienvenida no lo lleva');
+
+  s.proveedor.limpiar();
+  s.scheduler.correrVencidos(new Date(Date.now() + 73 * 3600 * 1000));
+  await s.cola.vacia();
+
+  const followup = s.proveedor.getEnviados().find((e) => e.to === '59899123456');
+  assert.match(followup.texto, /calendly\.com/, 'el follow-up si');
 });
