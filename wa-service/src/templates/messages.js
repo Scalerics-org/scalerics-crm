@@ -3,162 +3,97 @@
 /**
  * Textos de los mensajes. Marketing edita aca sin tocar logica.
  *
+ * Los ganchos por rubro salen del superprompt de Scalerics.
+ *
  * Reglas de redaccion, que no son estilo sino anti-reporte:
- * - Cada rubro tiene 2-3 variantes. Mandar el mismo texto identico a muchos
- *   numeros es de las senales mas fuertes de spam.
- * - Sin bloques en mayusculas, un emoji como maximo, y SIN LINKS en el primer
- *   mensaje: los links en el primer contacto disparan filtros.
- * - Cuatro lineas como maximo, y termina en pregunta abierta: que el lead
- *   conteste abre la ventana de conversacion y baja el riesgo.
+ * - Cada rubro tiene 2 variantes y se sortea una por lead. Mandar el mismo
+ *   texto identico a muchos numeros es de las senales mas fuertes de spam.
+ * - Sin mayusculas sostenidas, un emoji como maximo, sin exclamaciones
+ *   multiples. Frases cortas.
+ *
+ * DECISION TOMADA: el primer mensaje lleva el link de Calendly. Un link en el
+ * primer contacto a alguien que nunca escribio es de las cosas que mas disparan
+ * filtros de spam y sube el riesgo de baneo del numero. Se eligio conversion
+ * sobre riesgo: el lead que quiere agendar puede hacerlo en ese momento.
  */
+
+/** Gancho especifico por rubro, del superprompt. */
+const GANCHOS = {
+  gastronomia: 'Solemos ayudar a locales como el tuyo a armar un sistema de pedidos online que se integra con lo que ya usan.',
+  salud: 'Para consultorios y centros como el tuyo, lo más pedido es un sistema de turnos online con recordatorios automáticos.',
+  retail: 'Para comercios como el tuyo, lo típico es una tienda online con cobro integrado, lista para vender desde el primer día.',
+  servicios_profesionales: 'Para este tipo de negocio, lo que más piden es una web que transmita confianza y un sistema simple para gestionar presupuestos.',
+  inmobiliaria: 'Con inmobiliarias lo que más ordenamos es el seguimiento de consultas, para que ninguna quede sin responder.',
+  educacion: 'Con institutos y academias trabajamos inscripciones y seguimiento de interesados, que es donde más gente se cae.',
+  automotriz: 'Con automotoras y talleres armamos el seguimiento de consultas por unidad y los turnos de servicio.',
+};
 
 const GENERICO = {
   bienvenida: [
-    (l) => `Hola ${l.primerNombre}! Soy del equipo de Scalerics 👋
-Vi que nos escribiste desde la web${l.necesidadCorta ? ` por ${l.necesidadCorta}` : ''}.
-Trabajamos con negocios como el tuyo automatizando lo que hoy se hace a mano.
-¿Te sirve si te muestro en 15 minutos cómo lo resolvemos? ¿Qué día te queda cómodo?`,
-    (l) => `Hola ${l.primerNombre}, ¿cómo va? Te escribo de Scalerics.
-Nos llegó tu consulta${l.necesidadCorta ? ` sobre ${l.necesidadCorta}` : ''} y me quedé con ganas de entenderla mejor.
-¿Tenés un rato esta semana para una llamada corta y te cuento qué haríamos?`,
+    (l) => `Hola ${l.primerNombre}, somos Scalerics.
+Nos llegó tu consulta${l.necesidadCorta ? ` sobre ${l.necesidadCorta}` : ''}.
+Contanos un poco más de lo que necesitás y te decimos cómo te podemos ayudar.
+¿Tenés 15 minutos esta semana para una videollamada con el equipo?
+${l.calendly}`,
+    (l) => `Hola ${l.primerNombre}, te escribo de Scalerics.
+Vimos lo que nos dejaste${l.necesidadCorta ? ` sobre ${l.necesidadCorta}` : ''} y queremos entenderlo bien antes de proponerte nada.
+Agendá cuando te quede cómodo y lo charlamos en 15 minutos:
+${l.calendly}`,
   ],
   followup: [
-    (l) => `Hola ${l.primerNombre}, ¿pudiste ver mi mensaje?
-Si preferís te paso un caso corto de un cliente parecido y lo mirás con calma. Avisame.`,
-    (l) => `${l.primerNombre}, no quiero ser insistente 😅
-Si el momento no es ahora, decime y te escribo más adelante. Y si querés avanzar, agendamos cuando digas.`,
+    (l) => `Hola ${l.primerNombre}, te escribimos hace unos días${l.necesidadCorta ? ` por ${l.necesidadCorta}` : ''}.
+¿Seguís interesado en que hablemos? Cualquier horario te acomodamos.
+${l.calendly}`,
   ],
 };
 
-const PLANTILLAS = {
-  inmobiliaria: {
+/** Arma las variantes de bienvenida y el follow-up de un rubro. */
+function plantillaDeRubro(gancho) {
+  return {
     bienvenida: [
-      (l) => `Hola ${l.primerNombre}! Soy del equipo de Scalerics 👋
-Vi que nos escribiste desde la web${l.necesidadCorta ? ` por ${l.necesidadCorta}` : ''}.
-Trabajamos bastante con inmobiliarias, sobre todo automatizando el seguimiento de consultas para que ninguna quede sin responder.
-¿Te sirve si te muestro en 15 minutos cómo lo resolvemos? ¿Qué día te queda cómodo?`,
+      (l) => `Hola ${l.primerNombre}, somos Scalerics.
+Vimos que nos escribiste${l.necesidadCorta ? ` por ${l.necesidadCorta}` : ''}.
+${gancho}
+¿Tenés 15 minutos esta semana para una videollamada rápida con el equipo?
+${l.calendly}`,
       (l) => `Hola ${l.primerNombre}, te escribo de Scalerics.
-En inmobiliarias lo que más vemos es consultas que se pierden entre WhatsApp, mail y el portal.
-Eso se puede ordenar y automatizar bastante. ¿Charlamos 15 minutos esta semana?`,
+${gancho}
+Si te sirve, agendá una llamada corta cuando te quede cómodo:
+${l.calendly}`,
     ],
     followup: [
-      (l) => `Hola ${l.primerNombre}, ¿pudiste ver mi mensaje?
-Si querés te dejo un caso corto de una inmobiliaria que bajó el tiempo de respuesta de 4 horas a 2 minutos. Avisame y te lo paso.`,
-      (l) => `${l.primerNombre}, te dejo la puerta abierta.
-Si en algún momento querés ver cómo ordenar el seguimiento de consultas, escribime y lo vemos.`,
+      (l) => `Hola ${l.primerNombre}, te escribimos hace unos días${l.necesidadCorta ? ` por ${l.necesidadCorta}` : ''}.
+¿Seguís interesado en que hablemos? Cualquier horario te acomodamos.
+${l.calendly}`,
     ],
-  },
+  };
+}
 
-  salud: {
-    bienvenida: [
-      (l) => `Hola ${l.primerNombre}! Soy del equipo de Scalerics 👋
-Vi tu consulta desde la web${l.necesidadCorta ? ` sobre ${l.necesidadCorta}` : ''}.
-Con consultorios y clínicas trabajamos mucho el tema turnos y recordatorios, que es donde se pierde más tiempo.
-¿Te viene bien una llamada corta esta semana?`,
-      (l) => `Hola ${l.primerNombre}, te escribo de Scalerics.
-Lo que más nos piden en salud es reducir las ausencias a los turnos y dejar de confirmar uno por uno a mano.
-¿Querés que te muestre cómo queda funcionando? ¿Qué día te sirve?`,
-    ],
-    followup: [
-      (l) => `Hola ${l.primerNombre}, ¿llegaste a ver mi mensaje?
-Si querés te cuento en dos líneas cómo una clínica bajó las ausencias con recordatorios automáticos.`,
-      (l) => `${l.primerNombre}, sin apuro.
-Si más adelante querés ver el tema turnos y recordatorios, escribime y lo charlamos.`,
-    ],
-  },
+const PLANTILLAS = Object.fromEntries(
+  Object.entries(GANCHOS).map(([clave, gancho]) => [clave, plantillaDeRubro(gancho)])
+);
+PLANTILLAS.generico = GENERICO;
 
-  gastronomia: {
-    bienvenida: [
-      (l) => `Hola ${l.primerNombre}! Soy del equipo de Scalerics 👋
-Nos escribiste desde la web${l.necesidadCorta ? ` por ${l.necesidadCorta}` : ''}.
-En gastronomía solemos ayudar con pedidos y reservas, para no depender de contestar cada mensaje a mano.
-¿Te sirve una llamada corta esta semana?`,
-      (l) => `Hola ${l.primerNombre}, te escribo de Scalerics.
-Vimos tu consulta. Con restaurantes lo que mejor funciona es automatizar reservas y pedidos por WhatsApp.
-¿Charlamos 15 minutos y te muestro?`,
-    ],
-    followup: [
-      (l) => `Hola ${l.primerNombre}, ¿pudiste verlo?
-Si querés te paso un ejemplo de cómo queda el flujo de pedidos andando. Avisame.`,
-      (l) => `${l.primerNombre}, quedo por acá.
-Cuando quieras retomar el tema pedidos o reservas, escribime.`,
-    ],
-  },
+// ── recordatorios de reunion ────────────────────────────────────────────────
 
-  retail: {
-    bienvenida: [
-      (l) => `Hola ${l.primerNombre}! Soy del equipo de Scalerics 👋
-Vi tu consulta desde la web${l.necesidadCorta ? ` sobre ${l.necesidadCorta}` : ''}.
-Con comercios trabajamos catálogo online y atención automatizada, que es lo que más tiempo libera.
-¿Te viene bien una llamada corta?`,
-      (l) => `Hola ${l.primerNombre}, te escribo de Scalerics.
-Lo que más nos piden en comercio es vender sin tener que contestar cada consulta a mano.
-¿Querés que te muestre cómo lo armamos? ¿Qué día te queda bien?`,
-    ],
-    followup: [
-      (l) => `Hola ${l.primerNombre}, ¿viste mi mensaje?
-Si querés te muestro una tienda que armamos hace poco y lo comparás con lo que tenés hoy.`,
-      (l) => `${l.primerNombre}, sin problema si no es el momento.
-Cuando quieras verlo, escribime y lo retomamos.`,
-    ],
-  },
+function recordatorioDiaAntes(lead, { cuando, link }) {
+  return [
+    `📅 Hola ${lead.primerNombre}, te recuerdo la llamada con Scalerics.`,
+    `Es mañana ${cuando}.`,
+    link ? `🔗 ${link}` : null,
+    'Si te surgió algo y necesitás moverla, avisame y la reprogramamos.',
+  ].filter(Boolean).join('\n');
+}
 
-  servicios_profesionales: {
-    bienvenida: [
-      (l) => `Hola ${l.primerNombre}! Soy del equipo de Scalerics 👋
-Nos llegó tu consulta desde la web${l.necesidadCorta ? ` sobre ${l.necesidadCorta}` : ''}.
-Con estudios y consultoras lo que más ordenamos es la captación de clientes y el seguimiento, que suele quedar disperso.
-¿Te sirve una llamada corta esta semana?`,
-      (l) => `Hola ${l.primerNombre}, te escribo de Scalerics.
-En estudios profesionales el cuello de botella suele ser el seguimiento de consultas nuevas.
-¿Charlamos 15 minutos y te cuento cómo lo resolvemos?`,
-    ],
-    followup: [
-      (l) => `Hola ${l.primerNombre}, ¿pudiste ver mi mensaje?
-Si querés te cuento en corto cómo lo hicimos con un estudio parecido al tuyo.`,
-      (l) => `${l.primerNombre}, quedo atento.
-Si más adelante querés ordenar el tema captación y seguimiento, escribime.`,
-    ],
-  },
+function recordatorio30Minutos(lead, { cuando, link }) {
+  return [
+    `⏰ ${lead.primerNombre}, en media hora es la llamada con Scalerics (${cuando}).`,
+    link ? `🔗 ${link}` : null,
+    'Nos vemos.',
+  ].filter(Boolean).join('\n');
+}
 
-  educacion: {
-    bienvenida: [
-      (l) => `Hola ${l.primerNombre}! Soy del equipo de Scalerics 👋
-Vi tu consulta desde la web${l.necesidadCorta ? ` sobre ${l.necesidadCorta}` : ''}.
-Con institutos y academias trabajamos inscripciones y seguimiento de interesados, que es donde más se cae gente.
-¿Te viene bien una llamada corta?`,
-      (l) => `Hola ${l.primerNombre}, te escribo de Scalerics.
-Lo que más piden los institutos es no perder a los que consultan y nunca se inscriben.
-¿Querés que te muestre cómo se automatiza? ¿Qué día te queda cómodo?`,
-    ],
-    followup: [
-      (l) => `Hola ${l.primerNombre}, ¿llegaste a verlo?
-Si querés te paso un caso de una academia que mejoró bastante la conversión de consultas a inscripciones.`,
-      (l) => `${l.primerNombre}, sin apuro.
-Cuando quieras retomar, escribime y lo vemos.`,
-    ],
-  },
-
-  automotriz: {
-    bienvenida: [
-      (l) => `Hola ${l.primerNombre}! Soy del equipo de Scalerics 👋
-Nos escribiste desde la web${l.necesidadCorta ? ` por ${l.necesidadCorta}` : ''}.
-Con automotoras y talleres trabajamos el seguimiento de consultas por unidad y los turnos de servicio.
-¿Te sirve una llamada corta esta semana?`,
-      (l) => `Hola ${l.primerNombre}, te escribo de Scalerics.
-En el rubro automotor lo que más se pierde son las consultas que llegan fuera de hora y nadie retoma.
-¿Charlamos 15 minutos y te muestro cómo lo resolvemos?`,
-    ],
-    followup: [
-      (l) => `Hola ${l.primerNombre}, ¿pudiste ver mi mensaje?
-Si querés te cuento cómo una automotora dejó de perder consultas de fin de semana.`,
-      (l) => `${l.primerNombre}, quedo por acá.
-Cuando quieras verlo, escribime y lo retomamos.`,
-    ],
-  },
-
-  generico: GENERICO,
-};
+// ── avisos al account manager ───────────────────────────────────────────────
 
 /** Ficha del lead para el account manager. Es contacto interno: sin restricciones. */
 function fichaAM(lead, { waLink }) {
@@ -177,6 +112,32 @@ function fichaAM(lead, { waLink }) {
 function avisoRespuesta(lead, texto) {
   const recorte = String(texto || '').slice(0, 200);
   return `💬 ${lead.nombre} respondió: "${recorte}"`;
+}
+
+/** Alguien escribio al numero sin pasar por el formulario. No es una respuesta. */
+function avisoContactoNuevo(lead, texto) {
+  const recorte = String(texto || '').slice(0, 200);
+  return [
+    '🔔 Nuevo contacto por WhatsApp',
+    `👤 ${lead.nombre || 'sin nombre'}`,
+    `📱 +${lead.telefono}`,
+    `💬 "${recorte}"`,
+    `wa.me/${lead.telefono}`,
+  ].join('\n');
+}
+
+function avisoSinRespuesta(lead, horas) {
+  return `⏰ ${lead.nombre || lead.telefono} no respondió en ${horas}h — follow-up enviado.`;
+}
+
+function avisoReunionAgendada(lead, { cuando, link }) {
+  return [
+    '🗓 Reunión agendada',
+    `👤 ${lead.business_name || lead.nombre || lead.telefono}`,
+    `🕐 ${cuando}`,
+    link ? `🔗 ${link}` : null,
+    `wa.me/${lead.telefono}`,
+  ].filter(Boolean).join('\n');
 }
 
 const TIPO_PROYECTO = {
@@ -210,20 +171,15 @@ function resumenEmbudo(lead, desenlace) {
   return lineas.join('\n');
 }
 
-/** Alguien escribio al numero sin pasar por el formulario. No es una respuesta. */
-function avisoContactoNuevo(lead, texto) {
-  const recorte = String(texto || '').slice(0, 200);
-  return [
-    '🔔 Nuevo contacto por WhatsApp',
-    `👤 ${lead.nombre || 'sin nombre'}`,
-    `📱 +${lead.telefono}`,
-    `💬 "${recorte}"`,
-    `wa.me/${lead.telefono}`,
-  ].join('\n');
-}
-
-function avisoSinRespuesta(lead) {
-  return `⏰ ${lead.nombre} no respondió en 24h — follow-up enviado.`;
-}
-
-module.exports = { PLANTILLAS, fichaAM, avisoRespuesta, avisoContactoNuevo, avisoSinRespuesta, resumenEmbudo };
+module.exports = {
+  PLANTILLAS,
+  GANCHOS,
+  fichaAM,
+  avisoRespuesta,
+  avisoContactoNuevo,
+  avisoSinRespuesta,
+  avisoReunionAgendada,
+  resumenEmbudo,
+  recordatorioDiaAntes,
+  recordatorio30Minutos,
+};

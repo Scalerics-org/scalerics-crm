@@ -138,7 +138,7 @@ test('"baja" da de baja al lead y despues hay silencio', async () => {
   await lead(s, 'hola?');
   assert.equal(s.proveedor.getEnviados().length, 0);
 
-  s.scheduler.correrVencidos(new Date(Date.now() + 25 * 3600 * 1000));
+  s.scheduler.correrVencidos(new Date(Date.now() + 73 * 3600 * 1000));
   await s.cola.vacia();
   assert.equal(s.proveedor.getEnviados().length, 0, 'el follow-up tampoco sale');
 });

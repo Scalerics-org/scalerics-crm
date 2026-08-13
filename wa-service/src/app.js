@@ -12,6 +12,7 @@ const { crear: crearLogger } = require('./logger');
 const { crearEmbudo } = require('./funnel/engine');
 const { crearScorer } = require('./funnel/scoring');
 const { crearTextos } = require('./templates/funnel');
+const { crearTextosLead } = require('./templates');
 const { crearNotificadorCRM } = require('./crm-notify');
 
 /**
@@ -54,11 +55,14 @@ function construir(cfg, { logger, ahora = () => new Date() } = {}) {
   }
   const scorer = crearScorer({ anthropic, logger: log });
   const textos = crearTextos({ calendlyLink: cfg.CALENDLY_LINK });
+  const textosLead = crearTextosLead({ calendlyLink: cfg.CALENDLY_LINK });
   const crmNotify = crearNotificadorCRM({ cfg, repo, logger: log });
   const embudo = crearEmbudo({ repo, cola, textos, scorer, logger: log, cfg, crmNotify });
 
-  const servicioLeads = crearServicioLeads({ repo, cola, cfg, logger: log, embudo, ahora });
-  const scheduler = crearScheduler({ repo, cola, cfg, logger: log, ahora });
+  const scheduler = crearScheduler({ repo, cola, cfg, textosLead, logger: log, ahora });
+  const servicioLeads = crearServicioLeads({
+    repo, cola, cfg, logger: log, textosLead, embudo, scheduler, ahora,
+  });
 
   // Todo lo que entra por WhatsApp pasa por aca: marca la respuesta, cancela el
   // follow-up, avisa al AM y sigue el embudo.

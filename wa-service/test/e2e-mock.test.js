@@ -47,8 +47,10 @@ test('manda la ficha al AM y la bienvenida al lead', async () => {
   const bienvenida = enviados.find((e) => e.to === '59899123456');
   assert.ok(bienvenida, 'la bienvenida va al lead');
   assert.match(bienvenida.texto, /Martín/);
-  assert.match(bienvenida.texto, /inmobiliaria/i, 'el texto es el del rubro');
-  assert.ok(!/https?:\/\//.test(bienvenida.texto), 'sin links en el primer mensaje');
+  assert.match(bienvenida.texto, /inmobiliarias/i, 'usa el gancho del rubro');
+  // Decision del negocio: se prioriza conversion sobre riesgo de baneo, asi que
+  // el primer mensaje lleva el link para agendar.
+  assert.match(bienvenida.texto, /calendly\.com/, 'el primer mensaje trae el link de Calendly');
 });
 
 test('la ficha al AM sale antes que la bienvenida', async () => {
@@ -60,19 +62,18 @@ test('la ficha al AM sale antes que la bienvenida', async () => {
   assert.equal(enviados[0].to, '59899000111', 'am_notice tiene prioridad sobre welcome');
 });
 
-test('a las 24h sin respuesta sale el follow-up', async () => {
+test('a las 72h sin respuesta sale el follow-up', async () => {
   const s = await montar();
   await postLead(s);
   await s.cola.vacia();
   s.proveedor.limpiar();
 
-  // Antes de las 24h no corresponde todavia.
-  const enMediaHora = new Date(Date.now() + 30 * 60 * 1000);
-  assert.equal(s.scheduler.correrVencidos(enMediaHora), 0);
-
-  // Adelantamos el reloj 25 horas.
+  // A las 25 horas todavia no: el plazo pasa a 72h.
   const en25Horas = new Date(Date.now() + 25 * 3600 * 1000);
-  assert.equal(s.scheduler.correrVencidos(en25Horas), 1);
+  assert.equal(s.scheduler.correrVencidos(en25Horas), 0);
+
+  const en73Horas = new Date(Date.now() + 73 * 3600 * 1000);
+  assert.equal(s.scheduler.correrVencidos(en73Horas), 1);
   await s.cola.vacia();
 
   const enviados = s.proveedor.getEnviados();
@@ -81,7 +82,7 @@ test('a las 24h sin respuesta sale el follow-up', async () => {
   assert.match(followup.texto, /Martín/);
 
   const avisoAM = enviados.find((e) => e.to === '59899000111');
-  assert.match(avisoAM.texto, /no respondió en 24h/);
+  assert.match(avisoAM.texto, /no respondió en 72h/);
 
   const lead = s.repo.leadPorTelefono('59899123456');
   assert.equal(lead.status, 'followed_up');
@@ -106,8 +107,8 @@ test('si el lead responde se cancela el follow-up y se avisa al AM', async () =>
 
   // Y a las 25h ya no sale nada.
   s.proveedor.limpiar();
-  const en25Horas = new Date(Date.now() + 25 * 3600 * 1000);
-  s.scheduler.correrVencidos(en25Horas);
+  const en73Horas = new Date(Date.now() + 73 * 3600 * 1000);
+  s.scheduler.correrVencidos(en73Horas);
   await s.cola.vacia();
   assert.equal(s.proveedor.getEnviados().length, 0, 'no se le insiste a quien ya contesto');
 });

@@ -13,6 +13,14 @@ const altaLeadSchema = z.object({
   origen: z.string().trim().optional().default('form'),
 });
 
+const reunionSchema = z.object({
+  telefono: z.string().trim().min(1, 'telefono requerido'),
+  // ISO 8601. Es la hora de la reunion, no la de la reserva.
+  meeting_time: z.string().trim().min(1, 'meeting_time requerido')
+    .refine((v) => !Number.isNaN(new Date(v).getTime()), 'meeting_time no es una fecha valida'),
+  meeting_url: z.string().trim().optional(),
+});
+
 const envioSchema = z.object({
   telefono: z.string().trim().min(1),
   text: z.string().trim().min(1),
@@ -96,6 +104,29 @@ function crearServidor({ cfg, repo, cola, proveedor, servicioLeads, scheduler, l
       delayMs: parsed.data.skip_delay ? 0 : undefined,
     });
     return reply.code(202).send({ ok: true });
+  });
+
+  /**
+   * El CRM avisa que el lead agendo en Calendly (lo sabe por su webhook).
+   * Cancela el follow-up y programa los recordatorios.
+   */
+  app.post('/meetings', async (req, reply) => {
+    const parsed = reunionSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return reply.code(400).send({
+        ok: false,
+        error: parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '),
+      });
+    }
+    const { normalizar } = require('../telefono');
+    const tel = normalizar(parsed.data.telefono, cfg.DEFAULT_COUNTRY_CODE);
+    if (!tel) return reply.code(400).send({ ok: false, error: 'telefono invalido' });
+
+    const lead = repo.leadPorTelefono(tel);
+    if (!lead) return reply.code(404).send({ ok: false, error: 'no hay lead con ese telefono' });
+
+    const resultado = servicioLeads.registrarReunion(lead.id, parsed.data);
+    return reply.code(200).send({ ok: true, lead_id: lead.id, ...resultado });
   });
 
   app.get('/session/status', async () => proveedor.estado());

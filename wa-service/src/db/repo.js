@@ -142,6 +142,18 @@ function crearRepo(db) {
     },
 
     encolarJob: (leadId, tipo, runAtIso) => stmt.insertJob.run(leadId, tipo, runAtIso),
+
+    /**
+     * Registra que el lead agendo en Calendly. Cancela el follow-up pendiente:
+     * el que ya agendo no tiene que recibir un "¿seguís interesado?".
+     */
+    registrarReunion(leadId, { meetingTime, meetingUrl, ahoraIso }) {
+      db.prepare(
+        'UPDATE leads SET meeting_time = ?, meeting_url = ?, meeting_booked_at = ? WHERE id = ?'
+      ).run(meetingTime, meetingUrl ?? null, ahoraIso, leadId);
+      stmt.cancelarJobs.run(leadId, 'followup');
+      return stmt.leadPorId.get(leadId);
+    },
     jobsVencidos: (ahoraIso) => stmt.jobsVencidos.all(ahoraIso),
     marcarJob: (id, estado, error = null) => stmt.marcarJob.run(estado, error, id),
     cancelarJobs: (leadId, tipo) => stmt.cancelarJobs.run(leadId, tipo),

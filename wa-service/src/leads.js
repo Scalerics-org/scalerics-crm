@@ -8,7 +8,7 @@ const { entre } = require('./outbound/queue');
  * Orquesta el alta de un lead: ficha al AM, bienvenida al lead y follow-up
  * programado. Es el corazon del servicio.
  */
-function crearServicioLeads({ repo, cola, cfg, logger, embudo = null, ahora = () => new Date() }) {
+function crearServicioLeads({ repo, cola, cfg, logger, textosLead, embudo = null, scheduler = null, ahora = () => new Date() }) {
 
   function fechaLegible(d) {
     return d.toLocaleString('es-UY', {
@@ -86,7 +86,7 @@ function crearServicioLeads({ repo, cola, cfg, logger, embudo = null, ahora = ()
       const delay = entre(cfg.DELAY_WELCOME_MIN_MS, cfg.DELAY_WELCOME_MAX_MS);
       cola.encolar({
         to: telefono,
-        texto: plantillas.render(lead, 'bienvenida'),
+        texto: textosLead.render(lead, 'bienvenida'),
         kind: 'welcome',
         leadId: lead.id,
         delayMs: delay,
@@ -103,6 +103,36 @@ function crearServicioLeads({ repo, cola, cfg, logger, embudo = null, ahora = ()
         yaExistia: false,
         welcomeEnSegundos: Math.round(delay / 1000),
       };
+    },
+
+    /**
+     * El lead agendo la consultoria en Calendly. Cancela el follow-up —solo se
+     * insiste a quien NO agendo— y programa los recordatorios.
+     */
+    registrarReunion(leadId, { meeting_time, meeting_url }) {
+      const lead = repo.registrarReunion(leadId, {
+        meetingTime: meeting_time,
+        meetingUrl: meeting_url,
+        ahoraIso: ahora().toISOString(),
+      });
+
+      const recordatorios = scheduler ? scheduler.programarRecordatorios(lead, ahora()) : [];
+
+      const cuando = new Date(meeting_time).toLocaleString('es-UY', {
+        weekday: 'long', day: '2-digit', month: '2-digit',
+        hour: '2-digit', minute: '2-digit', timeZone: cfg.TZ,
+      });
+      for (const am of cfg.amPhones) {
+        cola.encolar({
+          to: am,
+          texto: plantillas.avisoReunionAgendada(lead, { cuando, link: meeting_url }),
+          kind: 'am_notice',
+          leadId: lead.id,
+        });
+      }
+
+      logger?.info({ leadId, meeting_time, recordatorios }, 'reunion agendada');
+      return { recordatorios, followup_cancelado: true };
     },
 
     /**

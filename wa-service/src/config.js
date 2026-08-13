@@ -43,8 +43,14 @@ const esquema = z.object({
   CALENDLY_LINK: z.string().default('https://calendly.com/scalerics/diagnostico'),
   FUNNEL_ENABLED: booleanoDeEnv.default(true),
 
-  FOLLOWUP_DELAY_HOURS: z.coerce.number().nonnegative().default(24),
+  // 72h segun el superprompt. Solo sale si el lead NO agendo en Calendly.
+  FOLLOWUP_DELAY_HOURS: z.coerce.number().nonnegative().default(72),
   FOLLOWUP_JITTER_MINUTES: z.coerce.number().nonnegative().default(90),
+
+  // Recordatorios de una reunion agendada. El del dia antes solo se programa si
+  // al agendar falta mas de un dia.
+  REMINDER_DAY_BEFORE_HOURS: z.coerce.number().nonnegative().default(24),
+  REMINDER_MINUTES_BEFORE: z.coerce.number().nonnegative().default(30),
 
   // La ficha al AM es contacto interno: sale casi sin demora.
   DELAY_AM_MIN_MS: z.coerce.number().nonnegative().default(1000),
