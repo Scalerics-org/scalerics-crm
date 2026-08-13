@@ -54,6 +54,14 @@ function construir(cfg, { logger, ahora = () => new Date() } = {}) {
 
   const servicioLeads = crearServicioLeads({ repo, cola, cfg, logger: log, embudo, ahora });
   const scheduler = crearScheduler({ repo, cola, cfg, logger: log, ahora });
+
+  // Todo lo que entra por WhatsApp pasa por aca: marca la respuesta, cancela el
+  // follow-up, avisa al AM y sigue el embudo.
+  proveedor.alRecibir(({ from, texto }) => {
+    servicioLeads.registrarRespuesta(from, texto).catch((e) => {
+      log.error({ from, err: String(e.message || e) }, 'fallo procesando un mensaje entrante');
+    });
+  });
   const app = crearServidor({ cfg, repo, cola, proveedor, servicioLeads, scheduler, logger: log });
 
   return { cfg, db, repo, proveedor, cola, limites, servicioLeads, scheduler, embudo, scorer, app, logger: log };

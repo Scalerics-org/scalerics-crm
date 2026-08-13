@@ -30,6 +30,9 @@ function crearServidor({ cfg, repo, cola, proveedor, servicioLeads, scheduler, l
   app.addHook('onRequest', async (req, reply) => {
     if (req.url === '/health' || req.url.startsWith('/health?')) return;
     if (req.url.startsWith('/api/')) return;
+    // El QR se escanea desde un browser, que no puede mandar headers: se acepta
+    // la clave por query. El servicio no esta expuesto a internet.
+    if (req.url.startsWith('/session/qr') && req.query?.key === cfg.WA_API_KEY) return;
     if (req.headers['x-api-key'] !== cfg.WA_API_KEY) {
       return reply.code(401).send({ ok: false, error: 'no autorizado' });
     }
@@ -88,6 +91,67 @@ function crearServidor({ cfg, repo, cola, proveedor, servicioLeads, scheduler, l
   });
 
   app.get('/session/status', async () => proveedor.estado());
+
+  /**
+   * QR para vincular el numero. PNG por defecto para poder abrirlo del celular;
+   * ?format=json devuelve el string crudo.
+   */
+  app.get('/session/qr', async (req, reply) => {
+    const crudo = proveedor.qrCrudo?.();
+    if (!crudo) {
+      return reply.code(404).send({
+        ok: false,
+        error: proveedor.estado().conectado
+          ? 'ya esta vinculado, no hay QR pendiente'
+          : 'todavia no hay QR: esperar unos segundos a que el proveedor conecte',
+      });
+    }
+    if (req.query.format === 'json') return { ok: true, qr: crudo };
+
+    const png = await require('qrcode').toBuffer(crudo, { width: 512, margin: 2 });
+    if (req.query.format === 'png') {
+      return reply.type('image/png').header('Cache-Control', 'no-store').send(png);
+    }
+
+    // Por defecto una pagina que se refresca sola: el QR de WhatsApp caduca a
+    // los ~20 segundos, y abrir una imagen fija lleva a escanear uno vencido.
+    const clave = encodeURIComponent(req.query.key || '');
+    return reply.type('text/html').header('Cache-Control', 'no-store').send(`<!doctype html>
+<meta charset="utf-8"><title>Vincular WhatsApp — Scalerics</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  body{font-family:system-ui,sans-serif;background:#0a0f1a;color:#e2e8f0;
+       min-height:100vh;margin:0;display:flex;flex-direction:column;
+       align-items:center;justify-content:center;gap:18px;padding:24px}
+  img{background:#fff;padding:12px;border-radius:12px;width:min(320px,80vw)}
+  p{max-width:380px;text-align:center;color:#94a3b8;font-size:.9rem;line-height:1.5;margin:0}
+  b{color:#e2e8f0}
+</style>
+<img id="qr" src="/session/qr?format=png&key=${clave}" alt="Código QR">
+<p>En el teléfono del <b>número secundario</b>: WhatsApp → Ajustes →
+   <b>Dispositivos vinculados</b> → Vincular un dispositivo.</p>
+<p id="e" style="color:#64748b">El código se renueva solo cada 15 segundos.</p>
+<script>
+  setInterval(async () => {
+    const r = await fetch('/session/status', { headers: { 'x-api-key': decodeURIComponent('${clave}') } });
+    const s = await r.json().catch(() => ({}));
+    if (s.conectado) { document.body.innerHTML =
+      '<p style="font-size:1.4rem;color:#34d399">✅ Vinculado como ' + (s.telefono || '') + '</p>'; return; }
+    document.getElementById('qr').src = '/session/qr?format=png&key=${clave}&t=' + Date.now();
+  }, 15000);
+</script>`);
+  });
+
+  app.post('/session/logout', async (req, reply) => {
+    if ((req.body || {}).confirm !== true) {
+      return reply.code(400).send({
+        ok: false,
+        error: 'mandar {"confirm": true}: esto cierra la sesion y obliga a re-escanear el QR',
+      });
+    }
+    await proveedor.cerrarSesion?.();
+    return { ok: true };
+  });
 
   // Util para operar: dispara los jobs vencidos sin esperar al intervalo.
   app.post('/jobs/run', async () => ({ ok: true, procesados: scheduler.correrVencidos() }));
