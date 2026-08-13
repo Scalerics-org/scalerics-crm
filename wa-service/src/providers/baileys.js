@@ -75,17 +75,23 @@ function crear(cfg, { logger } = {}) {
     const { state, saveCreds } = await useMultiFileAuthState(cfg.BAILEYS_AUTH_DIR);
     const { version } = await fetchLatestBaileysVersion();
 
+    // [plataforma, nombre, version]. El del medio es lo que muestra el telefono
+    // en "Dispositivos vinculados", y se manda al vincular: cambiarlo despues
+    // no renombra una sesion ya activa, hay que desvincular y escanear de nuevo.
+    const [plataforma, , versionSO] = Browsers.appropriate('Desktop');
+    const browser = [plataforma, cfg.BAILEYS_DEVICE_NAME, versionSO];
+
     sock = makeWASocket({
       version,
       auth: state,
-      // Un navegador de escritorio comun: es lo que espera ver el servidor.
-      browser: Browsers.appropriate('Desktop'),
+      browser,
       // El log de baileys es ruidosisimo en info; solo interesan los errores.
       logger: require('pino')({ level: 'error' }),
       markOnlineOnConnect: false,
       syncFullHistory: false,
     });
 
+    logger?.info({ browser }, 'conectando a WhatsApp');
     sock.ev.on('creds.update', saveCreds);
 
     sock.ev.on('connection.update', (u) => {

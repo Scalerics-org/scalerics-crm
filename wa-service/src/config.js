@@ -29,6 +29,9 @@ const esquema = z.object({
   DB_PATH: z.string().default('./data/scalerics-wa.db'),
 
   BAILEYS_AUTH_DIR: z.string().default('./auth'),
+  // Nombre que aparece en "Dispositivos vinculados" del telefono.
+  // Se manda al vincular: cambiarlo despues no renombra una sesion ya activa.
+  BAILEYS_DEVICE_NAME: z.string().default('Chrome'),
 
   // Coma-separado. Puede ser un JID de grupo (...@g.us) cuando el proveedor lo soporte.
   AM_PHONES: z.string().default(''),
