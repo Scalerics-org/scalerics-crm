@@ -336,10 +336,35 @@ def _sync_gcal_to_db(db: str, start: str, end: str) -> None:
             # Solo aplica cuando hay cliente: con client_id NULL (evento personal)
             # la comparacion NULL = NULL da NULL, no true. Esos eventos se deduplican
             # por calendar_event_id, que es UNIQUE y ya se chequeo mas arriba.
-            if client_id and start_at and conn.execute(
-                "SELECT id FROM meetings WHERE client_id=? AND start_at=?",
+            #
+            # Se ignoran las CANCELADAS a proposito. Antes contaban, asi que si un
+            # cliente cancelaba y volvia a reservar el mismo horario, la nueva
+            # reunion no entraba nunca: el equipo no la veia y no llegaba. Ese era
+            # el "a veces" — dependia de que hubiera una cancelada en ese slot.
+            gemela = conn.execute(
+                "SELECT id, calendar_event_id FROM meetings "
+                "WHERE client_id=? AND start_at=? AND status != 'canceled'",
                 (client_id, start_at),
-            ).fetchone():
+            ).fetchone() if (client_id and start_at) else None
+
+            # Este dedup existe SOLO para unir la doble entrada Calendly + Google,
+            # no para impedir que haya varias reuniones a la misma hora. La forma de
+            # distinguirlas es de donde viene el id de la que ya esta guardada:
+            #
+            #   - empieza con http  -> es la URI de Calendly, o sea que la creo el
+            #     webhook y este evento de Google es LA MISMA reunion. Se enlazan.
+            #   - es un id de Google -> ya esta enlazada con su evento, asi que este
+            #     es un evento DISTINTO que simplemente cae en el mismo horario. Se
+            #     inserta: agendar dos reuniones a la misma hora es valido.
+            if gemela and str(gemela["calendar_event_id"] or "").startswith("http"):
+                # Guardar el eventId de Google es ademas lo que permite cancelarla de
+                # verdad desde el CRM: con la URI de Calendly ahi, el delete contra
+                # la API de Google fallaba siempre.
+                conn.execute(
+                    "UPDATE meetings SET calendar_event_id=?, meet_link=COALESCE(NULLIF(?,''), meet_link) "
+                    "WHERE id=?",
+                    (gcal_id, meet_link, gemela["id"]),
+                )
                 continue
 
             conn.execute(
