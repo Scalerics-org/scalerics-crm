@@ -6,7 +6,7 @@ import logging
 import os
 from typing import Optional
 
-from flask import Blueprint, current_app, jsonify, request, session
+from flask import Blueprint, Response, current_app, jsonify, request, session
 
 from database import (
     create_budget,
@@ -158,6 +158,37 @@ def _generate_budget_internal(
     return budget_data
 
 
+def _guardar_documento(db_path: str, client_id: int, client: dict, budget_id: int):
+    """Renderiza el HTML del presupuesto y lo deja como adjunto del lead.
+
+    Reemplaza el adjunto HTML anterior en vez de acumular uno por generacion. Si
+    algo falla, se loguea y se sigue: el presupuesto estructurado ya quedo
+    guardado y es el dato que importa.
+    """
+    import re as _re
+
+    from database import add_attachment, get_attachments, update_attachment_file
+
+    budget = get_budget_by_id(db_path, budget_id)
+    if not budget:
+        return None
+    try:
+        html = _render_budget_html(client, budget)
+        datos = html.encode("utf-8")
+        previos = [a for a in get_attachments(db_path, client_id, "budget")
+                   if (a.get("mime_type") or "").split(";")[0].strip().lower() == "text/html"]
+        if previos:
+            update_attachment_file(db_path, previos[0]["id"], datos)
+            return previos[0]["id"]
+        nombre = _re.sub(r"[^a-z0-9]", "-", (client.get("name") or "cliente").lower()).strip("-")
+        return add_attachment(db_path, client_id, "budget", f"presupuesto-{nombre}.html",
+                              file_data=datos, mime_type="text/html")
+    except Exception as e:
+        logger.error("No se pudo guardar el documento del presupuesto %s: %s",
+                     budget_id, e, exc_info=True)
+        return None
+
+
 @budgets_bp.route("/api/leads/<int:client_id>/budget", methods=["GET"])
 def api_get_budget(client_id):
     budget = get_budget_for_client(_db(), client_id)
@@ -190,7 +221,10 @@ def api_generate_budget(client_id):
     client_info = get_client_info(_db(), client_id) or {}
     meetings = get_meetings_for_client(_db(), client_id)
 
-    extra_req = (data.get("requirements") or "").strip()
+    # El frontend tiene dos accesos a esta misma URL: uno manda 'requirements'
+    # (desde la ficha) y el otro 'instructions' (desde el modal de generar). Cada
+    # uno hablaba con una mitad distinta del sistema; se aceptan los dos.
+    extra_req = ((data.get("requirements") or "") + " " + (data.get("instructions") or "")).strip()
     meeting_reqs = "\n".join(m["requirements"] for m in meetings if m.get("requirements"))
     requirements = "\n".join(filter(None, [extra_req, meeting_reqs])) or "sitio web profesional con diseño moderno"
 
@@ -227,10 +261,18 @@ def api_generate_budget(client_id):
     else:
         budget_id = create_budget(_db(), client_id, items=sections_json, total_amount=dev_price, notes=notes_json)
 
+    # Las dos mitades del presupuesto estaban desconectadas: esta ruta guardaba el
+    # dato estructurado (montos, secciones, estado) pero quedaba tapada por otra en
+    # leads_bp que solo generaba un adjunto HTML, sin monto ni estado. Ahora el
+    # estructurado es la fuente de verdad y de ahi se renderiza el documento, que
+    # se guarda como adjunto para que el flujo de PDF del browser siga andando.
+    attach_id = _guardar_documento(_db(), client_id, client, budget_id)
+
     log_activity(_db(), session.get("user_name", "sistema"), "budget_generated",
                  "lead", client_id, client.get("name", ""), "",
                  user_id=session.get("user_id"))
-    return jsonify({"ok": True, "budget_id": budget_id, "data": budget_data})
+    return jsonify({"ok": True, "budget_id": budget_id,
+                    "attachment_id": attach_id, "data": budget_data})
 
 
 @budgets_bp.route("/api/budgets/<int:budget_id>", methods=["PUT"])
@@ -252,20 +294,41 @@ def api_update_budget(budget_id):
 
 @budgets_bp.route("/api/budgets/<int:budget_id>/mark-sent", methods=["POST"])
 def api_mark_budget_sent(budget_id):
+    """Marca el presupuesto como enviado. Es MANUAL a proposito: el CRM no puede
+    saber si realmente se mando por WhatsApp o mail, y descargar el PDF no es
+    enviarlo. Marcarlo mueve el lead en el pipeline y avanza la meta.
+
+    Este endpoint vivia en el blueprint que quedaba tapado por una ruta duplicada,
+    asi que era inalcanzable: por eso los 3 presupuestos de la base estan en
+    'draft' y la meta 'presupuestos_enviados' nunca avanzaba.
+    """
     db = _db()
-    update_budget(db, budget_id, status="sent", sent_at=datetime.datetime.now().isoformat())
     budget = get_budget_by_id(db, budget_id)
-    if budget:
-        client = get_business(db, budget["client_id"]) or {}
-        client_id = budget["client_id"]
-        client_name = client.get("name", "")
-        log_activity(db, session.get("user_name", "sistema"), "budget_sent",
-                     "lead", client_id, client_name, "",
-                     user_id=session.get("user_id"))
-        uids = _contributors(db, client_id, session.get("user_id"))
-        increment_task_progress(db, uids, "presupuestos_enviados",
-                                lead_id=client_id, lead_name=client_name)
-    return jsonify({"ok": True})
+    if not budget:
+        return jsonify({"ok": False, "error": "Presupuesto no encontrado"}), 404
+    if budget.get("status") == "sent":
+        # Idempotente: volver a marcarlo no puede sumar de nuevo a la meta.
+        return jsonify({"ok": True, "ya_estaba": True})
+
+    update_budget(db, budget_id, status="sent", sent_at=datetime.datetime.now().isoformat())
+    client_id = budget["client_id"]
+    client = get_business(db, client_id) or {}
+    client_name = client.get("name", "")
+
+    # El lead avanza en el pipeline. Sin esto habia que acordarse de moverlo a mano
+    # y el panel mostraba un estado que no reflejaba lo que ya habia pasado.
+    if client.get("crm_status") in (None, "", "sin_contactar", "interesado", "contactado",
+                                    "reunion_agendada", "reunion_hecha"):
+        from database import update_business
+        update_business(db, client_id, crm_status="presupuesto_enviado")
+
+    log_activity(db, session.get("user_name", "sistema"), "budget_sent",
+                 "lead", client_id, client_name, "",
+                 user_id=session.get("user_id"))
+    uids = _contributors(db, client_id, session.get("user_id"))
+    increment_task_progress(db, uids, "presupuestos_enviados",
+                            lead_id=client_id, lead_name=client_name)
+    return jsonify({"ok": True, "crm_status": "presupuesto_enviado"})
 
 
 @budgets_bp.route("/api/leads/<int:client_id>/budget/preview")
@@ -276,7 +339,21 @@ def api_budget_preview(client_id):
     budget = get_budget_for_client(_db(), client_id)
     if not budget:
         return "Sin presupuesto generado para este lead.", 404
+    # sandbox: el HTML sale de datos que genero un modelo a partir de texto de
+    # leads, que es input no confiable. Se muestra, no se ejecuta.
+    return Response(_render_budget_html(client, budget),
+                    mimetype="text/html",
+                    headers={"Content-Security-Policy": "sandbox",
+                             "X-Content-Type-Options": "nosniff"})
 
+
+def _render_budget_html(client: dict, budget: dict) -> str:
+    """Arma el documento HTML del presupuesto a partir de la fila estructurada.
+
+    Es la unica fuente del documento: lo usan tanto la vista previa como la
+    generacion, que lo guarda como adjunto para que el flujo de PDF del browser
+    siga funcionando sobre el mismo contenido.
+    """
     sections = []
     if budget.get("items"):
         try:

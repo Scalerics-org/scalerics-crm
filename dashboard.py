@@ -4544,12 +4544,39 @@ async function _cpReloadAttach(section) {
   else _cpData.attDemo = Array.isArray(data) ? data : [];
 }
 
+// Cabecera con el dato ESTRUCTURADO del presupuesto: monto, estado y el boton de
+// marcar enviado. La pestaña solo listaba los adjuntos HTML, asi que el monto y el
+// estado —lo unico que permite medir cuanto se presupuesto y cuanto se cerro— no
+// se veian en ningun lado, y _cpMarkBudgetSent() estaba definida pero sin ningun
+// boton que la llamara.
+function _cpRenderBudgetResumen() {
+  const b = _cpData.budget;
+  if (!b || !b.id) return '';
+  const enviado = b.status === 'sent';
+  const monto = Number(b.total_amount || 0).toLocaleString('es-UY');
+  const chip = enviado
+    ? '<span style="background:rgba(16,185,129,.15);color:#34d399;border:1px solid rgba(16,185,129,.3);border-radius:999px;padding:2px 10px;font-size:.72rem;font-weight:700">Enviado</span>'
+    : '<span style="background:rgba(148,163,184,.12);color:#94a3b8;border:1px solid #334155;border-radius:999px;padding:2px 10px;font-size:.72rem;font-weight:700">Borrador</span>';
+  return `<div class="cp-section" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+    <div>
+      <div style="font-size:.72rem;color:#64748b;text-transform:uppercase;letter-spacing:.04em">Monto presupuestado</div>
+      <div style="font-size:1.45rem;font-weight:800;color:#e2e8f0;line-height:1.2">USD ${esc(monto)}</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      ${chip}
+      <a class="cp-btn cp-btn-ghost" style="font-size:.75rem;padding:4px 12px;text-decoration:none" href="/api/leads/${_cpClientId}/budget/preview" target="_blank">👁️ Vista previa</a>
+      ${enviado ? '' : `<button class="cp-btn cp-btn-primary" style="font-size:.75rem;padding:4px 12px" onclick="_cpMarkBudgetSent()">✓ Marcar enviado</button>`}
+    </div>
+  </div>`;
+}
+
 function _cpRenderBudget() {
   const items = (_cpData.attBudget || []).filter(a => a.mime_type === 'text/html');
   const hasBudget = items.length > 0;
 
   if (!hasBudget) {
-    return `<div class="cp-section">
+    return `${_cpRenderBudgetResumen()}
+    <div class="cp-section">
       <div class="cp-section-title">Presupuesto</div>
       <div style="color:#475569;font-size:.85rem;margin-bottom:14px">No hay presupuesto para este cliente.</div>
       <button class="cp-btn cp-btn-primary" onclick="_cpOpenGenBudgetModal()">
@@ -4569,7 +4596,8 @@ function _cpRenderBudget() {
       </div>
     </div>`).join('');
 
-  return `<div class="cp-section">
+  return `${_cpRenderBudgetResumen()}
+  <div class="cp-section">
     <div class="cp-section-title">Presupuesto</div>
     ${listHtml}
   </div>
@@ -4581,10 +4609,18 @@ async function _cpSaveBudget() {
 }
 
 async function _cpMarkBudgetSent() {
-  if (!_cpData.budget) return;
-  await fetch('/api/budgets/' + _cpData.budget.id + '/mark-sent', {method:'POST'});
+  if (!_cpData.budget || !_cpData.budget.id) return;
+  const r = await fetch('/api/budgets/' + _cpData.budget.id + '/mark-sent', {method:'POST'});
+  const d = await r.json().catch(() => ({}));
+  if (!d.ok) { mostrarAviso(d.error || 'No se pudo marcar como enviado.', 'Error', 'error'); return; }
   _cpData.budget.status = 'sent';
+  // El backend tambien mueve el lead en el pipeline: se refleja aca para que la
+  // ficha no quede mostrando un estado viejo hasta que se recargue.
+  if (d.crm_status && _cpData.lead) _cpData.lead = {..._cpData.lead, crm_status: d.crm_status};
   _cpSwitchTab('budget');
+  mostrarAviso(d.ya_estaba ? 'Ya estaba marcado como enviado.'
+                           : 'Presupuesto marcado como enviado. El lead pasó a "presupuesto enviado".',
+               'Listo', 'warn');
 }
 
 async function _cpRegeneraBudget() {
