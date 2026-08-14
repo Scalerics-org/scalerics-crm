@@ -47,10 +47,15 @@ const OPCIONES = {
  */
 const CAMPO_RESPUESTA = {
   [S.QUAL_0]: { campo: 'business_name', numerico: false },
+  // QUAL_4 preguntaba los colores de la marca. Se cambio por el rubro: los
+  // colores se sacan de la web o el Instagram (que se piden en QUAL_5), pero a
+  // que se dedica el negocio no se puede deducir de ningun lado, y sin eso la
+  // demo sale generica. Los leads del formulario traen rubro; los que escriben
+  // al WhatsApp directo, no.
   [S.QUAL_1]: { campo: 'business_type', numerico: true },
   [S.QUAL_2]: { campo: 'budget', numerico: true },
   [S.QUAL_3]: { campo: 'team_size', numerico: true },
-  [S.QUAL_4]: { campo: 'colors', numerico: false },
+  [S.QUAL_4]: { campo: 'rubro', numerico: false },
   [S.QUAL_5]: { campo: 'instagram_web', numerico: false },
   [S.QUAL_6]: { campo: 'needs', numerico: false },
 };

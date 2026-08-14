@@ -76,6 +76,14 @@ const esquema = z.object({
   BUSINESS_HOURS: z.string().default('09:00-19:00'),
   BUSINESS_DAYS: z.string().default('mon-sat'),
 
+  /**
+   * Lo que se le dice al lead cuando queda esperando a una persona. No se
+   * deriva de BUSINESS_HOURS: ese rango es cuando el bot tiene permitido
+   * mandar, y hoy esta abierto de par en par para probar. Este es cuando hay
+   * alguien del otro lado, que es otra cosa.
+   */
+  HORARIO_ATENCION: z.string().default('Lun a sáb, 9 a 19hs'),
+
   CIRCUIT_BREAKER_FAILS: z.coerce.number().int().positive().default(3),
   CIRCUIT_BREAKER_WINDOW_MIN: z.coerce.number().int().positive().default(10),
   CIRCUIT_BREAKER_PAUSE_MIN: z.coerce.number().int().positive().default(30),

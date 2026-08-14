@@ -4,7 +4,7 @@
  * Textos del embudo de calificacion. Portados de bot/src/messages/templates.js.
  * Los de recordatorio de reunion quedan para cuando se porte esa parte.
  */
-function crearTextos({ calendlyLink }) {
+function crearTextos({ calendlyLink, horarioAtencion = 'Lun a sáb, 9 a 19hs' }) {
   return {
     MENU: (nombre) =>
       `Hola${nombre ? ` ${nombre}` : ''} 👋 Soy el asistente de *Scalerics*.\n\nSomos una agencia uruguaya de desarrollo web y software — creamos páginas web, e-commerce, apps y automatizaciones para negocios de toda escala.\n\n¿En qué te puedo ayudar?\n\n*1* → Quiero un presupuesto\n*2* → Hablar con alguien del equipo`,
@@ -17,18 +17,36 @@ function crearTextos({ calendlyLink }) {
 
     QUAL_3: '¿Cuántas personas trabajan en el negocio?\n\n*1* → Solo yo\n*2* → 2 a 5 personas\n*3* → 6 a 20 personas\n*4* → Más de 20',
 
-    QUAL_4: 'Última cosa — ¿qué colores tiene tu marca o negocio?\n\n_(Ej: "azul y blanco", "rojo y negro", "no tengo definidos todavía")_',
+    /**
+     * A que se dedica. Es el dato que mas cambia lo que se le muestra despues:
+     * sin esto no se sabe si es una carniceria o un estudio contable, y la demo
+     * sale generica. Los leads que entran por el formulario del CRM traen el
+     * rubro; los que escriben directo al WhatsApp, no — para esos esta es la
+     * unica forma de saberlo.
+     */
+    QUAL_4: '¿A qué se dedica el negocio?\n\n_(Ej: "carnicería de barrio", "estudio contable", "vendo ropa por Instagram")_',
 
-    QUAL_5: '¿Tienen Instagram, página web o redes sociales actualmente?\n\n_(Ej: "@mirestaurante", "www.minegocio.com", "no tenemos nada todavía")_',
+    /**
+     * La red o la web es de donde salen las fotos, los colores y el tono para
+     * armar la demo. Se le dice para que es: quien entiende que va a ver algo
+     * suyo contesta con el usuario, no con un "sí, tenemos".
+     */
+    QUAL_5: '¿Tenés Instagram, web o alguna red donde vea tu negocio?\n\nAsí en la llamada te muestro algo armado con tus cosas, no un ejemplo genérico.\n\n_(Ej: "@mirestaurante", "www.minegocio.com", "no tengo nada todavía")_',
 
-    QUAL_6: '¿Qué es lo más importante que necesitás que haga tu proyecto?\n\n_(Describilo en tus palabras, sin limitaciones)_',
+    QUAL_6: 'Última — ¿qué te gustaría lograr con esto?\n\n_(Contámelo en tus palabras: qué te está costando hoy o qué te gustaría que pasara)_',
 
     MEETING_OFFER: (nombre) =>
       `Perfecto${nombre ? `, ${nombre}` : ''} 🎯\n\nCon lo que me contaste puedo armar algo concreto para mostrarte.\n\nEl siguiente paso es una *videollamada de 30 minutos* (sin costo, sin compromiso) donde:\n\n→ Entendemos bien lo que necesitás\n→ Te mostramos ejemplos de trabajos similares\n→ Te damos un presupuesto claro\n\n¿Agendamos?\n\n*1* → Sí, quiero agendar\n*2* → Primero quiero saber más`,
 
     MEETING_LINK: `Genial 👌\n\nElegí el horario que mejor te quede:\n\n🗓️ ${calendlyLink}\n\nHay disponibilidad esta semana y la que viene.\n\nCuando reserves, te llega la confirmación automática con el link de la videollamada.`,
 
-    MORE_INFO: 'Bueno, te cuento 💡\n\nScalerics es una agencia uruguaya que ayuda a negocios a automatizar sus ventas y atención.\n\nCaso real: una empresa recibe 50 consultas por día en WhatsApp. Con nuestro sistema, el 80% se resuelve solo — sin que nadie en el equipo tenga que contestar.\n\nResultado:\n→ Tu equipo se enfoca en cerrar, no en responder\n→ Más leads atendidos = más ventas\n→ Escalás sin contratar más gente\n\n¿Agendamos la llamada de diagnóstico? Es gratis y sin compromiso.\n\n*1* → Sí, agendar\n*2* → Todavía no',
+    /**
+     * Antes esto contaba un "caso real" con un cliente y dos porcentajes, todo
+     * inventado. El superprompt lo prohibe explicitamente, y ademas es una
+     * promesa que despues alguien tiene que sostener en la llamada. Lo que
+     * queda es lo unico verificable: que hacemos y como es la reunion.
+     */
+    MORE_INFO: 'Te cuento 💡\n\nSomos una agencia uruguaya. Hacemos páginas web, e-commerce, apps y automatizaciones — para negocios de acá, no plantillas.\n\nLa llamada son 30 minutos por videollamada. Con lo que ya me contaste, llegamos con algo armado para mostrarte y te decimos qué costaría. Si no te cierra, quedamos como amigos.\n\n*1* → Dale, agendemos\n*2* → Todavía no',
 
     /**
      * "Todavia no" despues de haber pedido mas informacion. Es distinto de
@@ -45,7 +63,10 @@ function crearTextos({ calendlyLink }) {
 
     DISQUALIFIED: 'Gracias por contestar 🙏\n\nPor ahora no tenemos exactamente lo que necesitás, pero puede cambiar.\n\nSi querés explorar opciones a futuro, escribime *MENÚ* y vemos.',
 
-    HUMAN_QUEUED: 'Listo, le paso tu contacto a alguien del equipo 👤\n\nTe escribe en los próximos minutos.\n\n_Horario de atención: Lun-Vie 9-18hs (GMT-3)_\n\n💡 Si querés volver al menú automático, escribí *MENÚ*.',
+    // El horario sale de la config (BUSINESS_DAYS y BUSINESS_HOURS), no de una
+    // constante en el texto: escrito a mano decia "Lun-Vie 9-18" mientras el
+    // servicio atendia de lunes a sabado hasta las 19.
+    HUMAN_QUEUED: `Listo, le paso tu contacto a alguien del equipo 👤\n\nTe escribe en los próximos minutos.\n\n_Horario de atención: ${horarioAtencion} (GMT-3)_\n\n💡 Si querés volver al menú automático, escribí *MENÚ*.`,
 
     /**
      * Respuesta al primer "¿cuánto sale?". Es textual del superprompt: el bot

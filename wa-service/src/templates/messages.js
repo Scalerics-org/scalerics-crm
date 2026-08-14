@@ -185,6 +185,7 @@ function resumenEmbudo(lead, desenlace) {
   }[desenlace] || '📋 Lead terminó el embudo';
 
   const lineas = [titulo, `👤 ${lead.business_name || lead.nombre || 'sin nombre'}`];
+  if (lead.rubro) lineas.push(`🏢 ${lead.rubro}`);
   if (lead.business_type) lineas.push(`🛠 ${TIPO_PROYECTO[lead.business_type] || lead.business_type}`);
   if (lead.budget) lineas.push(`💵 ${PRESUPUESTO[lead.budget] || lead.budget}`);
   if (lead.team_size) lineas.push(`👥 ${EQUIPO[lead.team_size] || lead.team_size}`);

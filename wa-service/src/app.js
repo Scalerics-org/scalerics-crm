@@ -54,7 +54,10 @@ function construir(cfg, { logger, ahora = () => new Date() } = {}) {
     anthropic = new Anthropic({ apiKey: cfg.ANTHROPIC_API_KEY });
   }
   const scorer = crearScorer({ anthropic, logger: log });
-  const textos = crearTextos({ calendlyLink: cfg.CALENDLY_LINK });
+  const textos = crearTextos({
+    calendlyLink: cfg.CALENDLY_LINK,
+    horarioAtencion: cfg.HORARIO_ATENCION,
+  });
   const textosLead = crearTextosLead({ calendlyLink: cfg.CALENDLY_LINK });
   const crmNotify = crearNotificadorCRM({ cfg, repo, logger: log });
   const embudo = crearEmbudo({ repo, cola, textos, scorer, logger: log, cfg, crmNotify });

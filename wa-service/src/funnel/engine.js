@@ -91,7 +91,16 @@ function crearEmbudo({ repo, cola, textos, scorer, logger, cfg = { amPhones: [] 
     }
 
     const texto = String(crudo ?? entrada).trim();
-    if (texto) repo.actualizarFunnel(lead.id, { [campo.campo]: texto });
+    if (!texto) return;
+
+    // El rubro se clasifica al guardarlo, igual que cuando llega del formulario:
+    // rubro_norm es lo que elige el gancho del follow-up. Sin esto, al lead que
+    // escribio directo al WhatsApp se le manda siempre el texto generico.
+    if (campo.campo === 'rubro') {
+      repo.actualizarFunnel(lead.id, { rubro: texto, rubro_norm: plantillas.clasificar(texto) });
+      return;
+    }
+    repo.actualizarFunnel(lead.id, { [campo.campo]: texto });
   }
 
   async function alEntrar(lead, estado, entrada) {

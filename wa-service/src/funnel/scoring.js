@@ -60,10 +60,10 @@ function construirPrompt(lead) {
 
 Analizá estas respuestas y devolvé un JSON:
 
+Rubro del negocio: ${lead.rubro || 'No especificado'}
 Tipo de proyecto: ${ETIQUETAS.business_type[lead.business_type] || 'No especificado'}
 Tamaño del equipo: ${ETIQUETAS.team_size[lead.team_size] || 'No especificado'}
 Presupuesto: ${ETIQUETAS.budget[lead.budget] || 'No especificado'}
-Colores de marca: ${lead.colors || 'No especificado'}
 Instagram/web: ${lead.instagram_web || 'Ninguno'}
 Necesidades: ${lead.needs || 'No especificado'}
 

@@ -82,7 +82,7 @@ function crearRepo(db) {
       const permitidos = [
         'fsm_state', 'fsm_retries', 'opt_out', 'human_requested',
         'business_name', 'business_type', 'budget', 'team_size',
-        'colors', 'instagram_web', 'needs',
+        'colors', 'instagram_web', 'needs', 'rubro', 'rubro_norm',
         'score', 'priority', 'score_reason', 'meeting_url', 'meeting_time',
         'consultas_precio', 'motivo_derivacion',
       ];

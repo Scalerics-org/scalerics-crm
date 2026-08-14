@@ -37,7 +37,7 @@ test('recorre el embudo entero hasta la oferta de reunion', async () => {
   await lead(s, '2');               // e-commerce → QUAL_2
   await lead(s, '3');               // >3000 USD  → QUAL_3
   await lead(s, '3');               // 6-20 pers. → QUAL_4
-  await lead(s, 'azul y blanco');   // → QUAL_5
+  await lead(s, 'inmobiliaria');    // → QUAL_5
   await lead(s, '@inmopereyra');    // → QUAL_6
   const msgs = await lead(s, 'quiero dejar de perder consultas'); // → SCORED
 
@@ -46,7 +46,8 @@ test('recorre el embudo entero hasta la oferta de reunion', async () => {
   assert.equal(l.business_type, 2);
   assert.equal(l.budget, 3);
   assert.equal(l.team_size, 3);
-  assert.equal(l.colors, 'azul y blanco');
+  assert.equal(l.rubro, 'inmobiliaria');
+  assert.equal(l.rubro_norm, 'inmobiliaria', 'se clasifica al guardarlo, como el del formulario');
   assert.equal(l.instagram_web, '@inmopereyra');
   assert.equal(l.needs, 'quiero dejar de perder consultas');
 
@@ -77,7 +78,7 @@ test('un lead flojo cae en nurture y no se le ofrece reunion', async () => {
 
 test('pedir el link de la reunion despues de la oferta', async () => {
   const s = await conLead();
-  for (const t of ['hola', '1', 'Mi negocio', '2', '3', '3', 'azul', '@x', 'necesito ventas']) {
+  for (const t of ['hola', '1', 'Mi negocio', '2', '3', '3', 'inmobiliaria', '@x', 'necesito ventas']) {
     await lead(s, t);
   }
   assert.equal(estado(s), S.MEETING_SENT);
@@ -86,7 +87,7 @@ test('pedir el link de la reunion despues de la oferta', async () => {
   assert.match(msgs.at(-1), /calendly\.com\/scalerics\/diagnostico/);
 
   const mas = await lead(s, '2');
-  assert.match(mas.at(-1), /Caso real/);
+  assert.match(mas.at(-1), /agencia uruguaya/);
   assert.equal(estado(s), S.MEETING_INFO);
 });
 
@@ -95,7 +96,7 @@ test('insistir con "todavia no" corta la insistencia en vez de repetir', async (
   // "2" y se quedaba en el mismo estado, asi que el lead recibia el mismo
   // parrafo tantas veces como apretara la opcion.
   const s = await conLead();
-  for (const t of ['hola', '1', 'Mi negocio', '2', '3', '3', 'azul', '@x', 'necesito ventas']) {
+  for (const t of ['hola', '1', 'Mi negocio', '2', '3', '3', 'inmobiliaria', '@x', 'necesito ventas']) {
     await lead(s, t);
   }
   await lead(s, '2');               // → MEETING_INFO, le cuenta
@@ -103,7 +104,7 @@ test('insistir con "todavia no" corta la insistencia en vez de repetir', async (
 
   const otra = await lead(s, '2');  // "todavia no"
   assert.equal(estado(s), S.NURTURE);
-  assert.ok(!/Caso real/.test(otra.at(-1)), 'no repite el mismo texto');
+  assert.ok(!/agencia uruguaya/.test(otra.at(-1)), 'no repite el mismo texto');
   assert.match(otra.at(-1), /sin apuro/);
   assert.match(otra.at(-1), /calendly/, 'le deja el link por las dudas');
 
@@ -115,7 +116,7 @@ test('insistir con "todavia no" corta la insistencia en vez de repetir', async (
 
 test('desde "quiero saber mas" se puede volver a pedir el link', async () => {
   const s = await conLead();
-  for (const t of ['hola', '1', 'Mi negocio', '2', '3', '3', 'azul', '@x', 'necesito ventas']) {
+  for (const t of ['hola', '1', 'Mi negocio', '2', '3', '3', 'inmobiliaria', '@x', 'necesito ventas']) {
     await lead(s, t);
   }
   await lead(s, '2');
@@ -250,7 +251,7 @@ test('siempre saluda a la persona, no a la empresa', async () => {
 
 test('la oferta de reunion tambien va a nombre de la persona', async () => {
   const s = await conLead();
-  for (const t of ['hola', '1', 'Inmobiliaria Pereyra', '2', '3', '3', 'azul', '@x', 'ventas']) {
+  for (const t of ['hola', '1', 'Inmobiliaria Pereyra', '2', '3', '3', 'inmobiliaria', '@x', 'ventas']) {
     await lead(s, t);
   }
   const ofertas = s.proveedor.getEnviados()
@@ -267,13 +268,13 @@ test('el texto libre se guarda crudo, con acentos y mayusculas', async () => {
   await lead(s, '1');
   await lead(s, 'Inmobiliaria Pereyra');
   await lead(s, '2'); await lead(s, '3'); await lead(s, '3');
-  await lead(s, 'Azul y Blanco');
+  await lead(s, 'Venta de Autos Usados');
   await lead(s, '@InmoPereyra');
   await lead(s, 'Necesito automatizar la atención de mañana');
 
   const l = s.repo.leadPorTelefono('59899123456');
   assert.equal(l.business_name, 'Inmobiliaria Pereyra');
-  assert.equal(l.colors, 'Azul y Blanco');
+  assert.equal(l.rubro, 'Venta de Autos Usados');
   assert.equal(l.instagram_web, '@InmoPereyra');
   assert.equal(l.needs, 'Necesito automatizar la atención de mañana');
 });
@@ -340,4 +341,70 @@ test('el AM se entera de como termino el embudo, no solo cuando gana', async () 
   assert.equal(resumenes.length, 1, 'llega un resumen aunque el lead no califique');
   assert.match(resumenes[0].texto, /descartado|pausa/);
   assert.match(resumenes[0].texto, /wa\.me\/59899123456/);
+});
+
+// ── datos que se le sacan al lead ────────────────────────────────────────────
+
+test('al que escribe directo al WhatsApp se le pregunta el rubro', async () => {
+  // El del formulario trae rubro; este no. Sin preguntarlo, la demo de la
+  // primera llamada sale generica y el follow-up usa el gancho de nadie.
+  const s = await require('./helpers').montar();
+  s.proveedor.simularEntrante({ from: '59891234567', texto: 'hola', id: 'w.1', nombre: 'Jorge' });
+  await new Promise((r) => setImmediate(r));
+  await s.cola.vacia();
+
+  const responder = async (t) => {
+    await s.servicioLeads.registrarRespuesta('59891234567', t);
+    await s.cola.vacia();
+    return s.proveedor.getEnviados().filter((e) => e.to === '59891234567').map((e) => e.texto);
+  };
+
+  await responder('1');
+  await responder('Parrilla El Fogón');
+  await responder('1'); await responder('2'); await responder('2');
+  const preg = await responder('parrilla y delivery');
+
+  const l = s.repo.leadPorTelefono('59891234567');
+  assert.equal(l.rubro, 'parrilla y delivery');
+  assert.equal(l.rubro_norm, 'gastronomia', 'queda clasificado para el gancho del follow-up');
+
+  // Y la pregunta que sigue explica para que sirve la red social.
+  assert.match(preg.at(-1), /Instagram/);
+  assert.match(preg.at(-1), /te muestro algo armado con tus cosas/);
+});
+
+test('el AM recibe el rubro en el resumen del embudo', async () => {
+  const s = await conLead();
+  for (const t of ['hola', '1', 'Mi negocio', '2', '3', '3', 'inmobiliaria', '@x', 'necesito ventas']) {
+    await lead(s, t);
+  }
+  const resumen = s.proveedor.getEnviados()
+    .filter((e) => e.to === '59899000111')
+    .find((e) => /Lead calificado/.test(e.texto));
+
+  assert.ok(resumen, 'le llega el resumen');
+  assert.match(resumen.texto, /🏢 inmobiliaria/);
+  assert.match(resumen.texto, /🔗 @x/, 'y la red, que es con lo que arma la demo');
+});
+
+test('el texto de "quiero saber mas" no inventa casos ni numeros', async () => {
+  // El superprompt lo prohibe, y ademas cada cifra que promete el bot despues
+  // la tiene que sostener alguien en la llamada. Decia "una empresa recibe 50
+  // consultas por dia" y "el 80% se resuelve solo": los dos inventados.
+  const { crearTextos } = require('../src/templates/funnel');
+  const t = crearTextos({ calendlyLink: 'x' });
+
+  assert.ok(!/\d+\s*%/.test(t.MORE_INFO), 'sin porcentajes');
+  assert.ok(!/caso real|un cliente|una empresa/i.test(t.MORE_INFO), 'sin casos inventados');
+  assert.match(t.MORE_INFO, /agencia uruguaya/);
+});
+
+test('el horario de atencion sale de la config, no del texto', async () => {
+  const { crearTextos } = require('../src/templates/funnel');
+
+  assert.match(crearTextos({ calendlyLink: 'x' }).HUMAN_QUEUED, /Lun a sáb, 9 a 19hs/);
+  assert.match(
+    crearTextos({ calendlyLink: 'x', horarioAtencion: 'Lun a vie, 10 a 16hs' }).HUMAN_QUEUED,
+    /Lun a vie, 10 a 16hs/
+  );
 });
