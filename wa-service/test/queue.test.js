@@ -22,7 +22,7 @@ test('50 leads de golpe se serializan: nunca hay dos envios simultaneos', async 
   };
 
   for (let i = 0; i < 50; i++) {
-    s.servicioLeads.alta({
+    await s.servicioLeads.alta({
       external_id: `masivo_${i}`, nombre: `Lead ${i}`, rubro: 'salud',
       telefono: `09912${String(i).padStart(4, '0')}`, origen: 'form',
     });
@@ -61,7 +61,7 @@ test('un lead que entra de madrugada igual le llega al AM, y el lead espera', as
   const domingo = new Date('2026-08-09T06:00:00Z');
   const s = await montar({ BUSINESS_HOURS: '09:00-19:00', BUSINESS_DAYS: 'mon-sat' }, domingo);
 
-  s.servicioLeads.alta({
+  await s.servicioLeads.alta({
     external_id: 'nocturno', nombre: 'Ana', rubro: 'salud',
     telefono: '099555444', origen: 'form',
   });

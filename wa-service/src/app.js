@@ -12,8 +12,8 @@ const { crear: crearLogger } = require('./logger');
 const { crearEmbudo } = require('./funnel/engine');
 const { crearScorer } = require('./funnel/scoring');
 const { crearTextos } = require('./templates/funnel');
-const { crearTextosLead } = require('./templates');
 const { crearNotificadorCRM } = require('./crm-notify');
+const { crearAgrupador } = require('./inbound/agrupador');
 
 /**
  * Arma el servicio entero y devuelve las piezas.
@@ -55,11 +55,7 @@ function construir(cfg, { logger, ahora = () => new Date(), openai: clienteIA = 
     openai = new OpenAI({ apiKey: cfg.OPENAI_API_KEY });
   }
   const scorer = crearScorer({ openai, modelo: cfg.IA_MODELO, logger: log });
-  const textos = crearTextos({
-    calendlyLink: cfg.CALENDLY_LINK,
-    horarioAtencion: cfg.HORARIO_ATENCION,
-  });
-  const textosLead = crearTextosLead({ calendlyLink: cfg.CALENDLY_LINK });
+  const textos = crearTextos({ horarioAtencion: cfg.HORARIO_ATENCION });
   const crmNotify = crearNotificadorCRM({ cfg, repo, logger: log });
 
   // Sin clave el agente queda inactivo y el embudo de preguntas fijas atiende
@@ -71,6 +67,12 @@ function construir(cfg, { logger, ahora = () => new Date(), openai: clienteIA = 
     calendly: cfg.CALENDLY_LINK,
     logger: log,
   });
+  const redactor = require('./ia/redactor').crearRedactor({
+    openai: cfg.IA_CONVERSACION ? openai : null,
+    modelo: cfg.IA_MODELO,
+    calendly: cfg.CALENDLY_LINK,
+    logger: log,
+  });
   const transcriptor = require('./ia/transcripcion').crearTranscriptor({
     openai: cfg.IA_TRANSCRIPCION ? openai : null,
     modelo: cfg.IA_MODELO_AUDIO,
@@ -78,15 +80,20 @@ function construir(cfg, { logger, ahora = () => new Date(), openai: clienteIA = 
     logger: log,
   });
   log.info(
-    { conversacion: agente.activo, transcripcion: transcriptor.activo, modelo: agente.activo ? cfg.IA_MODELO : null },
+    {
+      conversacion: agente.activo,
+      redaccion: redactor.activo,
+      transcripcion: transcriptor.activo,
+      modelo: agente.activo ? cfg.IA_MODELO : null,
+    },
     'capa de IA'
   );
 
-  const embudo = crearEmbudo({ repo, cola, textos, scorer, logger: log, cfg, crmNotify, agente });
+  const embudo = crearEmbudo({ repo, cola, textos, scorer, logger: log, cfg, crmNotify, agente, redactor });
 
-  const scheduler = crearScheduler({ repo, cola, cfg, textosLead, logger: log, ahora });
+  const scheduler = crearScheduler({ repo, cola, cfg, redactor, logger: log, ahora });
   const servicioLeads = crearServicioLeads({
-    repo, cola, cfg, logger: log, textosLead, embudo, scheduler, ahora,
+    repo, cola, cfg, logger: log, redactor, embudo, scheduler, ahora,
   });
 
   // Todo lo que entra por WhatsApp pasa por aca: marca la respuesta, cancela el
@@ -119,11 +126,14 @@ function construir(cfg, { logger, ahora = () => new Date(), openai: clienteIA = 
     }
   });
 
-  proveedor.alRecibir(({ from, texto, nombre }) => {
-    servicioLeads.registrarRespuesta(from, texto, nombre).catch((e) => {
-      log.error({ from, err: String(e.message || e) }, 'fallo procesando un mensaje entrante');
-    });
+  // Los entrantes no van directo al embudo: pasan por el agrupador, que junta
+  // los fragmentos de una misma tanda y los atiende de a uno.
+  const agrupador = crearAgrupador({
+    procesar: (from, texto, nombre) => servicioLeads.registrarRespuesta(from, texto, nombre),
+    esperaMs: cfg.AGRUPAR_ENTRANTES_MS,
+    logger: log,
   });
+  proveedor.alRecibir((m) => agrupador.recibir(m));
 
   // Audios, fotos y archivos. No se puede leer el contenido, pero contestar
   // algo es mejor que el silencio. Se avisa una vez cada tanto y no en cada
@@ -142,7 +152,7 @@ function construir(cfg, { logger, ahora = () => new Date(), openai: clienteIA = 
         const texto = await transcriptor.transcribir(await descargar(), segundos);
         if (texto) {
           log.info({ from, segundos, largo: texto.length }, 'audio transcripto');
-          await servicioLeads.registrarRespuesta(from, texto, nombre);
+          agrupador.recibir({ from, texto, nombre });
           return;
         }
       } catch (e) {
@@ -156,12 +166,21 @@ function construir(cfg, { logger, ahora = () => new Date(), openai: clienteIA = 
     if (Date.now() - ultimo < cfg.AVISO_SIN_TEXTO_MINUTOS * 60_000) return;
     avisadoSinTexto.set(from, Date.now());
 
-    cola.encolar({ to: from, texto: textos.SIN_TEXTO(tipo), kind: 'manual', leadId: lead?.id ?? null });
+    const situacion = tipo === 'audio' ? 'sin_texto_audio' : 'sin_texto_archivo';
+    const texto = await redactor.escribir(lead || { telefono: from }, situacion);
+    if (!texto) {
+      log.warn({ from, tipo }, 'no se pudo redactar el aviso de entrante sin texto');
+      return;
+    }
+    cola.encolar({ to: from, texto, kind: 'manual', leadId: lead?.id ?? null });
     log.info({ from, tipo }, 'entrante sin texto: se le pide que escriba');
   });
   const app = crearServidor({ cfg, repo, cola, proveedor, servicioLeads, scheduler, logger: log });
 
-  return { cfg, db, repo, proveedor, cola, limites, servicioLeads, scheduler, embudo, scorer, app, logger: log };
+  return {
+    cfg, db, repo, proveedor, cola, limites, servicioLeads,
+    scheduler, embudo, scorer, agrupador, app, logger: log,
+  };
 }
 
 module.exports = { construir };

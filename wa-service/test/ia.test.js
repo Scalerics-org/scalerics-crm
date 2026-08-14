@@ -3,15 +3,16 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const { montar, conLead, CLAVE } = require('./helpers');
-const { crearAgente, mencionaPlata, sanearDatos, aMensajes } = require('../src/ia/agente');
+const { crearAgente, sanearDatos, aMensajes } = require('../src/ia/agente');
+const { mencionaPlata } = require('../src/ia/precio');
 const { construirSystem, faltantes } = require('../src/ia/prompt');
 const { crearTextos } = require('../src/templates/funnel');
 const { S } = require('../src/funnel/states');
 
-const textos = crearTextos({ calendlyLink: 'https://calendly.com/scalerics/diagnostico' });
+const textos = crearTextos();
 
 /** Cliente falso: devuelve lo que se le diga, y anota como lo llamaron. */
-function openaiFalso(respuestas) {
+function openaiFalso(respuestas, { falla = null } = {}) {
   const pila = Array.isArray(respuestas) ? respuestas.slice() : [respuestas];
   const llamadas = [];
   const transcripciones = [];
@@ -21,6 +22,14 @@ function openaiFalso(respuestas) {
     chat: {
       completions: {
         create: async (args) => {
+          // Sin tools es el redactor pidiendo un mensaje suelto. Se contesta
+          // con el marcador de la situacion, igual que el stub compartido: los
+          // guiones de estos tests son para la conversacion.
+          if (!args.tools) {
+            if (falla) throw new Error(falla);
+            const m = args.messages[0].content.match(/situación: (\w+)/);
+            return { choices: [{ message: { content: `[${m ? m[1] : 'desconocida'}]` } }] };
+          }
           llamadas.push(args);
           const r = pila.length > 1 ? pila.shift() : pila[0];
           if (r instanceof Error) throw r;
@@ -144,8 +153,8 @@ test('con todos los datos, el cierre lo hace el codigo y no la IA', async () => 
   assert.equal(l.score, 9);
 
   const alLead = s.proveedor.getEnviados().filter((e) => e.to === '59899123456').map((e) => e.texto);
-  assert.match(alLead.at(-1), /videollamada de 30 minutos/);
-  assert.ok(!alLead.some((m) => /te paso mi Calendly ahora mismo/.test(m)), 'no sale su texto');
+  assert.equal(alLead.at(-1), '[oferta_reunion]', 'la dispara el score, no el modelo');
+  assert.ok(!alLead.some((m) => /te paso mi Calendly ahora mismo/.test(m)), 'no sale su texto de cierre');
 });
 
 test('una queja se deriva por codigo, sin pasar por la IA', async () => {
@@ -172,14 +181,14 @@ test('la baja se respeta por codigo, sin pasar por la IA', async () => {
 
 // ── que pasa cuando la IA no esta ────────────────────────────────────────────
 
-test('sin clave el agente queda inactivo y contesta el embudo de siempre', async () => {
-  const s = await conLead();   // sin cliente de IA
+test('sin clave el agente queda inactivo y el lead va a una persona', async () => {
+  const s = await conLead({ sinIA: true });
   await s.servicioLeads.registrarRespuesta('59899123456', 'hola');
   await s.cola.vacia();
 
   const alLead = s.proveedor.getEnviados().filter((e) => e.to === '59899123456').map((e) => e.texto);
-  assert.match(alLead.at(-1), /asistente de \*Scalerics\*/);
-  assert.equal(s.repo.leadPorTelefono('59899123456').fsm_state, S.MENU);
+  assert.match(alLead.at(-1), /te paso con alguien del equipo/, 'sin IA va a una persona');
+  assert.equal(s.repo.leadPorTelefono('59899123456').fsm_state, S.HUMAN_QUEUED);
 });
 
 test('si la API falla, el lead no se queda sin respuesta', async () => {
@@ -190,7 +199,7 @@ test('si la API falla, el lead no se queda sin respuesta', async () => {
 
   const alLead = s.proveedor.getEnviados().filter((e) => e.to === '59899123456').map((e) => e.texto);
   assert.equal(alLead.length, 1, 'contesta igual');
-  assert.match(alLead.at(-1), /asistente de \*Scalerics\*/, 'cae al embudo fijo');
+  assert.match(alLead.at(-1), /te paso con alguien del equipo/, 'pero lo pasa con una persona');
 });
 
 test('si la IA guarda datos pero no contesta, tampoco se queda mudo', async () => {
@@ -245,21 +254,21 @@ test('el historial se arma alternando roles, como pide la API', () => {
 
 // ── entrantes sin texto ──────────────────────────────────────────────────────
 
-test('a un audio se le contesta en vez de dejarlo hablando solo', async () => {
+test('un audio que no se puede bajar igual recibe respuesta', async () => {
   // Antes textoDeMensaje devolvia '' y el entrante se descartaba: la persona
   // mandaba una nota de voz y no pasaba nada.
   const s = await montar();
-  s.proveedor.simularSinTexto({ from: '59899123456', tipo: 'audio' });
+  await s.proveedor.simularSinTexto({ from: '59899123456', tipo: 'audio' });
   await s.cola.vacia();
 
   const alLead = s.proveedor.getEnviados().filter((e) => e.to === '59899123456').map((e) => e.texto);
   assert.equal(alLead.length, 1);
-  assert.match(alLead[0], /no puedo escuchar audios/);
+  assert.equal(alLead[0], '[sin_texto_audio]');
 });
 
 test('cuatro audios seguidos no son cuatro disculpas', async () => {
   const s = await montar();
-  for (let i = 0; i < 4; i++) s.proveedor.simularSinTexto({ from: '59899123456', tipo: 'audio' });
+  for (let i = 0; i < 4; i++) await s.proveedor.simularSinTexto({ from: '59899123456', tipo: 'audio' });
   await s.cola.vacia();
 
   assert.equal(s.proveedor.getEnviados().filter((e) => e.to === '59899123456').length, 1);
@@ -324,6 +333,8 @@ test('una nota de voz entra al embudo como si la hubieran escrito', async () => 
     from: '59899123456', tipo: 'audio', segundos: 9,
     descargar: async () => Buffer.from('ogg-falso'),
   });
+  // El audio transcripto entra por el agrupador, igual que un mensaje escrito.
+  await s.agrupador.vaciar();
   await s.cola.vacia();
 
   const l = s.repo.leadPorTelefono('59899123456');
@@ -344,7 +355,7 @@ test('si no se puede transcribir, le pide que escriba', async () => {
   await s.cola.vacia();
 
   const alLead = s.proveedor.getEnviados().filter((e) => e.to === '59899123456').map((e) => e.texto);
-  assert.match(alLead.at(-1), /no puedo escuchar audios/);
+  assert.equal(alLead.at(-1), '[sin_texto_audio]');
 });
 
 test('una foto no se manda a transcribir', async () => {
@@ -360,5 +371,5 @@ test('una foto no se manda a transcribir', async () => {
 
   assert.equal(openai.transcripciones.length, 0);
   const alLead = s.proveedor.getEnviados().filter((e) => e.to === '59899123456').map((e) => e.texto);
-  assert.match(alLead.at(-1), /no lo puedo abrir/);
+  assert.equal(alLead.at(-1), '[sin_texto_archivo]');
 });

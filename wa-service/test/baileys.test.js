@@ -87,7 +87,7 @@ test('un proveedor desconocido falla al construirse', () => {
 
 test('un mensaje entrante entra al embudo', async () => {
   const s = await montar();
-  s.servicioLeads.alta({
+  await s.servicioLeads.alta({
     external_id: 'ent1', nombre: 'Ana', rubro: 'salud', telefono: '099555444', origen: 'form',
   });
   await s.cola.vacia();
@@ -100,10 +100,10 @@ test('un mensaje entrante entra al embudo', async () => {
 
   const lead = s.repo.leadPorTelefono('59899555444');
   assert.equal(lead.status, 'replied');
-  assert.equal(lead.fsm_state, 'MENU');
+  assert.equal(lead.fsm_state, 'CONVERSANDO');
 
   const alLead = s.proveedor.getEnviados().filter((e) => e.to === '59899555444');
-  assert.ok(alLead.length > 0, 'le contesta el menu');
+  assert.ok(alLead.length > 0, 'le contesta');
 });
 
 test('quien escribe al numero sin pasar por el formulario tambien entra', async () => {
@@ -121,11 +121,11 @@ test('quien escribe al numero sin pasar por el formulario tambien entra', async 
   assert.ok(lead, 'se da de alta el lead');
   assert.equal(lead.origen, 'wa');
   assert.equal(lead.nombre, 'Ana Torres', 'usa el nombre de perfil de WhatsApp');
-  assert.equal(lead.fsm_state, 'MENU');
+  assert.equal(lead.fsm_state, 'CONVERSANDO');
 
   const alLead = s.proveedor.getEnviados().filter((e) => e.to === '59891111111');
-  assert.equal(alLead.length, 1, 'le contesta el menu');
-  assert.match(alLead[0].texto, /Hola Ana/);
+  assert.equal(alLead.length, 1, 'le contesta');
+  assert.equal(alLead[0].texto, '[conversacion]');
 
   // Al AM le llega un "nuevo contacto", no un "respondió": no respondio nada,
   // escribio de la nada.
@@ -142,7 +142,7 @@ test('sin nombre de perfil igual entra, y el saludo no queda raro', async () => 
   await s.cola.vacia();
 
   const alLead = s.proveedor.getEnviados().find((e) => e.to === '59891111112');
-  assert.match(alLead.texto, /^Hola 👋/, 'sin nombre no deja un espacio colgando');
+  assert.equal(alLead.texto, '[conversacion]', 'igual le contesta');
 
   const alAM = s.proveedor.getEnviados().find((e) => e.to === '59899000111');
   assert.match(alAM.texto, /sin nombre/);

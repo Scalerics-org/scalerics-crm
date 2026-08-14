@@ -8,7 +8,7 @@ const { entre } = require('./outbound/queue');
  * Orquesta el alta de un lead: ficha al AM, bienvenida al lead y follow-up
  * programado. Es el corazon del servicio.
  */
-function crearServicioLeads({ repo, cola, cfg, logger, textosLead, embudo = null, scheduler = null, ahora = () => new Date() }) {
+function crearServicioLeads({ repo, cola, cfg, logger, redactor = null, embudo = null, scheduler = null, ahora = () => new Date() }) {
 
   function fechaLegible(d) {
     return d.toLocaleString('es-UY', {
@@ -53,7 +53,7 @@ function crearServicioLeads({ repo, cola, cfg, logger, textosLead, embudo = null
      * Alta de un lead nuevo. Idempotente por external_id.
      * @returns {{lead: object, yaExistia: boolean, welcomeEnSegundos: number|null}}
      */
-    alta(datos) {
+    async alta(datos) {
       if (datos.external_id) {
         const previo = repo.leadPorExternalId(datos.external_id);
         if (previo) return { lead: previo, yaExistia: true, welcomeEnSegundos: null };
@@ -83,15 +83,23 @@ function crearServicioLeads({ repo, cola, cfg, logger, textosLead, embudo = null
         return { lead, yaExistia: false, welcomeEnSegundos: null };
       }
 
+      // La bienvenida la escribe la IA con lo que el lead puso en el
+      // formulario. Si no se puede, no se manda un texto armado: queda
+      // pendiente y el AM —que ya recibio la ficha— lo saluda a mano.
       const delay = entre(cfg.DELAY_WELCOME_MIN_MS, cfg.DELAY_WELCOME_MAX_MS);
-      cola.encolar({
-        to: telefono,
-        texto: textosLead.render(lead, 'bienvenida'),
-        kind: 'welcome',
-        leadId: lead.id,
-        delayMs: delay,
-      });
-      repo.actualizarLead(lead.id, { status: 'welcomed', welcomed_at: ahora().toISOString() });
+      const bienvenida = await redactor?.escribir(lead, 'bienvenida');
+      if (bienvenida) {
+        cola.encolar({
+          to: telefono,
+          texto: bienvenida,
+          kind: 'welcome',
+          leadId: lead.id,
+          delayMs: delay,
+        });
+        repo.actualizarLead(lead.id, { status: 'welcomed', welcomed_at: ahora().toISOString() });
+      } else {
+        logger?.error({ leadId: lead.id }, 'sin bienvenida: la IA no pudo escribirla');
+      }
 
       // Follow-up a las 24h con jitter, para que no salgan todos a la misma hora.
       const jitterMs = entre(-cfg.FOLLOWUP_JITTER_MINUTES, cfg.FOLLOWUP_JITTER_MINUTES) * 60_000;

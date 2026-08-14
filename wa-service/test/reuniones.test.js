@@ -10,7 +10,7 @@ const LEAD_TEL = '59899123456';
 /** Servicio con el lead ya dado de alta y la cola limpia. */
 async function conLeadLimpio(extra) {
   const s = await montar(extra);
-  s.servicioLeads.alta(LEAD);
+  await s.servicioLeads.alta(LEAD);
   await s.cola.vacia();
   s.proveedor.limpiar();
   return s;
@@ -43,7 +43,7 @@ test('agendar cancela el follow-up: solo se insiste al que no agendo', async () 
   // Y a las 73h no le llega ningun "¿seguís interesado?".
   await s.cola.vacia();
   s.proveedor.limpiar();
-  s.scheduler.correrVencidos(new Date(Date.now() + 73 * 3600_000));
+  await s.scheduler.correrVencidos(new Date(Date.now() + 73 * 3600_000));
   await s.cola.vacia();
   const alLead = s.proveedor.getEnviados().filter((e) => e.to === LEAD_TEL);
   assert.ok(!alLead.some((m) => /seguís interesado/i.test(m.texto)));
@@ -79,16 +79,16 @@ test('el recordatorio del dia antes sale a las 24h de la reunion', async () => {
   s.proveedor.limpiar();
 
   // 25 horas antes de la reunion: todavia no.
-  assert.equal(s.scheduler.correrVencidos(new Date(reunion.getTime() - 25 * 3600_000)), 0);
+  assert.equal(await s.scheduler.correrVencidos(new Date(reunion.getTime() - 25 * 3600_000)), 0);
 
   // 23 horas antes: sale.
-  assert.equal(s.scheduler.correrVencidos(new Date(reunion.getTime() - 23 * 3600_000)), 1);
+  assert.equal(await s.scheduler.correrVencidos(new Date(reunion.getTime() - 23 * 3600_000)), 1);
   await s.cola.vacia();
 
   const msg = s.proveedor.getEnviados().find((e) => e.to === LEAD_TEL);
-  assert.match(msg.texto, /te recuerdo la llamada/i);
-  assert.match(msg.texto, /mañana/);
-  assert.match(msg.texto, /meet\.google\.com\/abc/);
+  // La fecha y el link ya no se arman en codigo: se le pasan a la IA como
+  // contexto. Como suena el mensaje se mide en evals/.
+  assert.equal(msg.texto, '[recordatorio_dia_antes]');
 });
 
 test('el recordatorio de 30 minutos sale justo antes', async () => {
@@ -98,13 +98,25 @@ test('el recordatorio de 30 minutos sale justo antes', async () => {
   await s.cola.vacia();
   s.proveedor.limpiar();
 
-  assert.equal(s.scheduler.correrVencidos(new Date(reunion.getTime() - 45 * 60_000)), 0);
-  assert.equal(s.scheduler.correrVencidos(new Date(reunion.getTime() - 20 * 60_000)), 1);
+  assert.equal(await s.scheduler.correrVencidos(new Date(reunion.getTime() - 45 * 60_000)), 0);
+  assert.equal(await s.scheduler.correrVencidos(new Date(reunion.getTime() - 20 * 60_000)), 1);
   await s.cola.vacia();
 
   const msg = s.proveedor.getEnviados().find((e) => e.to === LEAD_TEL);
-  assert.match(msg.texto, /en media hora/i);
-  assert.match(msg.texto, /meet\.google\.com\/xyz/);
+  assert.equal(msg.texto, '[recordatorio_30min]');
+});
+
+test('a la IA se le pasan la fecha y el link para el recordatorio', async () => {
+  // El texto lo escribe ella, pero los datos duros salen del lead: si no se le
+  // pasan, el recordatorio no puede decir a que hora es ni por donde entrar.
+  const { construirRedaccion } = require('../src/ia/prompt');
+
+  const prompt = construirRedaccion(
+    { nombre: 'Martín' }, 'recordatorio_30min', 'x',
+    'La reunión es mañana a las 15:00. El link para entrar es https://meet.google.com/xyz'
+  );
+  assert.match(prompt, /meet\.google\.com\/xyz/);
+  assert.match(prompt, /15:00/);
 });
 
 test('al AM le avisa que se agendo, con fecha y link', async () => {
@@ -129,7 +141,7 @@ test('si el lead se da de baja no le llegan los recordatorios', async () => {
   await s.cola.vacia();
   s.proveedor.limpiar();
 
-  s.scheduler.correrVencidos(new Date(reunion.getTime() - 20 * 60_000));
+  await s.scheduler.correrVencidos(new Date(reunion.getTime() - 20 * 60_000));
   await s.cola.vacia();
   assert.equal(s.proveedor.getEnviados().length, 0);
 });

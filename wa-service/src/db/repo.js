@@ -29,6 +29,7 @@ function crearRepo(db) {
       SELECT * FROM jobs WHERE status = 'pending' AND run_at <= ? ORDER BY run_at ASC
     `),
     marcarJob: db.prepare('UPDATE jobs SET status = ?, last_error = ? WHERE id = ?'),
+    reprogramarJob: db.prepare("UPDATE jobs SET run_at = ?, attempts = attempts + 1 WHERE id = ?"),
     cancelarJobs: db.prepare(
       "UPDATE jobs SET status = 'cancelled' WHERE lead_id = ? AND type = ? AND status = 'pending'"
     ),
@@ -162,6 +163,8 @@ function crearRepo(db) {
     },
     jobsVencidos: (ahoraIso) => stmt.jobsVencidos.all(ahoraIso),
     marcarJob: (id, estado, error = null) => stmt.marcarJob.run(estado, error, id),
+    /** Corre un job pendiente a mas adelante, sin perderlo. */
+    reprogramarJob: (id, runAtIso) => stmt.reprogramarJob.run(runAtIso, id),
     cancelarJobs: (leadId, tipo) => stmt.cancelarJobs.run(leadId, tipo),
 
     registrarEnvio: (tel, esPrimero) => stmt.insertSendLog.run(tel, esPrimero ? 1 : 0),

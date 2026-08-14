@@ -1,12 +1,9 @@
 'use strict';
 
-const { S, ESTADOS_CON_OPCIONES, PALABRAS_GLOBALES } = require('./states');
-const { TRANSICIONES, OPCIONES, CAMPO_RESPUESTA } = require('./transitions');
-const { primerNombre } = require('../telefono');
+const { S, palabraGlobal } = require('./states');
+const { TRANSICIONES } = require('./transitions');
 const plantillas = require('../templates');
 const { detectar, ETIQUETA } = require('./derivacion');
-
-const MAX_REINTENTOS = 4;
 
 /**
  * "ya agende", "ya reserve". En primera persona y en pasado a proposito: con
@@ -14,7 +11,6 @@ const MAX_REINTENTOS = 4;
  * La entrada llega normalizada, sin acentos.
  */
 const YA_AGENDO = /\b(ya\s+)?(agende|reserve|coordine|saque\s+(el\s+)?turno|lo\s+saque)\b/;
-const dijoQueAgendo = (entrada) => YA_AGENDO.test(entrada);
 
 function normalizar(texto) {
   return String(texto || '')
@@ -24,44 +20,48 @@ function normalizar(texto) {
     .replace(/[̀-ͯ]/g, '');
 }
 
-function palabraGlobal(entrada) {
-  for (const [palabra, destino] of Object.entries(PALABRAS_GLOBALES)) {
-    if (entrada.includes(palabra)) return destino;
+/**
+ * Estados donde la IA todavia esta averiguando. Al salir de aca se califica y
+ * se ofrece —o no— la reunion, y esa decision es del score, no del modelo.
+ */
+const FASE_CALIFICACION = new Set([S.NEW, S.CONVERSANDO, S.NURTURE, S.DISQUALIFIED]);
+
+/**
+ * De la oferta en adelante la IA sigue conversando pero ya no puede volver a
+ * ofrecer: el salto a SCORED solo corre mientras califica. Conversar no es
+ * decidir.
+ */
+const FASE_CIERRE = new Set([S.MEETING_SENT, S.MEETING_INFO, S.SCHEDULED]);
+
+/**
+ * Motor del embudo.
+ *
+ * Ya no decide QUE decir —eso lo escribe la IA— sino CUANDO decir algo y a
+ * quien le toca: al modelo o a una persona. Las decisiones que quedaron en
+ * codigo son las que no pueden depender de que un modelo obedezca una
+ * instruccion: la baja, la derivacion por queja o facturacion, el limite de una
+ * sola consulta de precio, y que la reunion se ofrezca por score.
+ */
+function crearEmbudo({
+  repo, cola, textos, scorer, logger, cfg = { amPhones: [] },
+  crmNotify = null, agente = null, redactor = null, ahora = () => new Date(),
+}) {
+  const CALENDLY = cfg.CALENDLY_LINK || '';
+
+  function decir(lead, texto) {
+    cola.encolar({ to: lead.telefono, texto, kind: 'manual', leadId: lead.id });
   }
-  return null;
-}
 
-/**
- * Motor del embudo. Portado de bot/src/fsm/engine.js con dos cambios:
- *
- * - Sin Redis: el estado y el contador de reintentos van en la fila del lead,
- *   que pasa a ser la unica fuente de verdad. Antes habia dos (Redis y Postgres)
- *   y el codigo tenia que elegir cual creer.
- * - No manda mensajes directo: los encola, asi pasan por los mismos delays y
- *   limites que el resto del servicio.
- */
-/**
- * Estados donde la IA puede conducir: los de averiguar quien es y que necesita.
- * Desde la oferta de reunion en adelante manda el codigo — ofrecer, agendar,
- * derivar y dar de baja son decisiones que no se delegan.
- */
-const FASE_CALIFICACION = new Set([
-  S.NEW, S.MENU, S.MENU_INFO, S.CONVERSANDO,
-  S.QUAL_0, S.QUAL_1, S.QUAL_2, S.QUAL_3, S.QUAL_4, S.QUAL_5, S.QUAL_6,
-]);
-
-/**
- * Despues de la oferta la IA tambien puede hablar, pero no volver a ofrecer.
- *
- * Estaba afuera y era peor el remedio: el lead recibia el link y a partir de
- * ahi cualquier cosa que escribiera —"hola", "ya agende"— le devolvia el mismo
- * link, textual, para siempre. Conversar no es lo mismo que decidir: la
- * reunion ya se ofrecio, y que quede agendada lo dice el webhook de Calendly,
- * no el modelo.
- */
-const FASE_CIERRE = new Set([S.MEETING_SENT, S.MEETING_INFO, S.MEETING_LINK_SENT, S.SCHEDULED]);
-
-function crearEmbudo({ repo, cola, textos, scorer, logger, cfg = { amPhones: [] }, crmNotify = null, agente = null, ahora = () => new Date() }) {
+  /**
+   * Le pide a la IA el mensaje de una situacion y lo manda.
+   * @returns {Promise<boolean>} false si no se pudo escribir.
+   */
+  async function decirIA(lead, situacion, extra = '') {
+    const texto = await redactor?.escribir(lead, situacion, extra);
+    if (!texto) return false;
+    decir(lead, texto);
+    return true;
+  }
 
   /**
    * Deriva a un humano y le manda el contexto: quien es, por que, y los ultimos
@@ -97,39 +97,9 @@ function crearEmbudo({ repo, cola, textos, scorer, logger, cfg = { amPhones: [] 
     }
   }
 
-  function decir(lead, texto) {
-    cola.encolar({ to: lead.telefono, texto, kind: 'manual', leadId: lead.id });
-  }
-
   /**
-   * La normalizacion existe para enrutar ("1", "menu", "baja"), no para
-   * guardar: los campos de texto libre se persisten crudos. El original
-   * guardaba la version normalizada, asi que "la atención de mañana" quedaba
-   * como "la atencion de manana" — degradado justo en el texto que despues
-   * alimenta el prompt del scoring y se le muestra al AM.
-   */
-  function guardarRespuesta(lead, estado, entrada, crudo) {
-    const campo = CAMPO_RESPUESTA[estado];
-    if (!campo || !entrada) return;
-
-    if (campo.numerico) {
-      const valor = parseInt(entrada, 10);
-      if (Number.isNaN(valor)) return;
-      repo.actualizarFunnel(lead.id, { [campo.campo]: valor });
-      return;
-    }
-
-    const texto = String(crudo ?? entrada).trim();
-    if (!texto) return;
-    guardarCampos(lead.id, { [campo.campo]: texto });
-  }
-
-  /**
-   * Persiste campos del embudo, vengan del FSM o de la IA.
-   *
-   * El rubro se clasifica al guardarlo, igual que cuando llega del formulario:
-   * rubro_norm es lo que elige el gancho del follow-up. Sin esto, al lead que
-   * escribio directo al WhatsApp se le manda siempre el texto generico.
+   * Persiste lo que extrajo la IA. El rubro se clasifica al guardarlo, igual
+   * que cuando llega del formulario: rubro_norm es lo que elige el gancho.
    */
   function guardarCampos(leadId, campos) {
     const conNorm = campos.rubro
@@ -138,23 +108,20 @@ function crearEmbudo({ repo, cola, textos, scorer, logger, cfg = { amPhones: [] 
     repo.actualizarFunnel(leadId, conNorm);
   }
 
+  /**
+   * La IA no pudo escribir y hay alguien esperando. No se disimula con un texto
+   * armado: se lo pasa a una persona. Es la unica salida honesta sin el modelo.
+   */
+  function sinIA(lead, motivo) {
+    logger?.warn({ leadId: lead.id, motivo }, 'la IA no respondio, va a una persona');
+    derivar(lead, 'sin_ia');
+    repo.actualizarFunnel(lead.id, { human_requested: 1, fsm_state: S.HUMAN_QUEUED });
+    decir(lead, textos.SIN_IA);
+    return S.HUMAN_QUEUED;
+  }
+
   async function alEntrar(lead, estado, entrada) {
     switch (estado) {
-      case S.MENU:
-        // Se saluda a la PERSONA, no a la empresa. Con business_name adelante,
-        // despues de la pregunta del negocio el menu decia "Hola Inmobiliaria
-        // Pereyra". El nombre de la empresa es dato para el CRM, no un saludo.
-        decir(lead, textos.MENU(primerNombre(lead.nombre)));
-        return estado;
-
-      case S.QUAL_0: decir(lead, textos.QUAL_0); return estado;
-      case S.QUAL_1: decir(lead, textos.QUAL_1); return estado;
-      case S.QUAL_2: decir(lead, textos.QUAL_2); return estado;
-      case S.QUAL_3: decir(lead, textos.QUAL_3); return estado;
-      case S.QUAL_4: decir(lead, textos.QUAL_4); return estado;
-      case S.QUAL_5: decir(lead, textos.QUAL_5); return estado;
-      case S.QUAL_6: decir(lead, textos.QUAL_6); return estado;
-
       case S.SCORED: {
         const fresco = repo.leadPorId(lead.id);
         const r = await scorer.calificar(fresco);
@@ -165,23 +132,20 @@ function crearEmbudo({ repo, cola, textos, scorer, logger, cfg = { amPhones: [] 
 
         avisarDesenlace(lead.id, r.recommended_action);
 
-        if (r.recommended_action === 'meeting') {
-          decir(lead, textos.MEETING_OFFER(primerNombre(fresco.nombre)));
-          return S.MEETING_SENT;
-        }
-        // El mensaje lo manda el handler del estado destino, no este: a NURTURE
-        // tambien se llega desde MEETING_INFO, y si el texto saliera solo desde
-        // aca ese camino terminaba en silencio.
-        if (r.recommended_action === 'nurture') return alEntrar(fresco, S.NURTURE, entrada);
-        return alEntrar(fresco, S.DISQUALIFIED, entrada);
+        const destino = {
+          meeting: S.MEETING_SENT,
+          nurture: S.NURTURE,
+        }[r.recommended_action] || S.DISQUALIFIED;
+
+        return alEntrar(fresco, destino, entrada);
       }
 
       case S.MEETING_SENT:
-        decir(lead, textos.MEETING_LINK);
+        if (!await decirIA(lead, 'oferta_reunion')) return sinIA(lead, 'oferta_reunion');
         return estado;
 
       case S.MEETING_INFO:
-        decir(lead, textos.MORE_INFO);
+        if (!await decirIA(lead, 'mas_info')) return sinIA(lead, 'mas_info');
         return estado;
 
       /**
@@ -192,44 +156,43 @@ function crearEmbudo({ repo, cola, textos, scorer, logger, cfg = { amPhones: [] 
        */
       case S.MEETING_LINK_SENT: {
         if (lead.fsm_state !== S.MEETING_LINK_SENT) {
-          decir(lead, textos.MEETING_LINK);
+          if (!await decirIA(lead, 'link_reunion')) return sinIA(lead, 'link_reunion');
           repo.actualizarFunnel(lead.id, { fsm_retries: 0 });
           return estado;
         }
 
-        if (dijoQueAgendo(entrada)) {
+        if (YA_AGENDO.test(entrada)) {
           // No se cancela el follow-up: la verdad la trae el webhook de
           // Calendly. Si de veras reservo, ese lo cancela; si se confundio, el
           // follow-up es exactamente lo que hay que mandarle.
-          decir(lead, textos.YA_AGENDO);
+          if (!await decirIA(lead, 'ya_agendo')) return sinIA(lead, 'ya_agendo');
           repo.actualizarFunnel(lead.id, { fsm_retries: 0 });
           return estado;
         }
 
         // Ya tiene el link y sigue escribiendo: quiere otra cosa. Se le
-        // pregunta una vez y despues va a una persona, en vez de dejarlo
-        // rebotando contra el mismo mensaje.
+        // pregunta una vez y despues va a una persona.
         const insistencias = (lead.fsm_retries || 0) + 1;
         if (insistencias >= 2) {
           derivar(lead, 'post_oferta');
           return alEntrar(lead, S.HUMAN_QUEUED, entrada);
         }
         repo.actualizarFunnel(lead.id, { fsm_retries: insistencias });
-        decir(lead, textos.YA_TIENE_LINK);
+        if (!await decirIA(lead, 'ya_tiene_link')) return sinIA(lead, 'ya_tiene_link');
         return estado;
       }
 
       case S.SCHEDULED:
-        // Solo al confirmarse. Repetir "te esperamos" a cada mensaje posterior
-        // es el mismo loop que tenia MEETING_SENT.
-        if (lead.fsm_state !== S.SCHEDULED) decir(lead, textos.SCHEDULED);
+        // Solo al confirmarse. Repetirlo en cada mensaje posterior es el loop
+        // que tenia MEETING_SENT.
+        if (lead.fsm_state !== S.SCHEDULED) await decirIA(lead, 'reunion_confirmada');
         return estado;
 
       case S.HUMAN_QUEUED:
         if (!lead.human_requested) {
           repo.actualizarFunnel(lead.id, { human_requested: 1 });
-          decir(lead, textos.HUMAN_QUEUED);
-          logger?.info({ leadId: lead.id, estadoPrevio: lead.fsm_state }, 'lead pide humano');
+          if (!await decirIA(lead, 'derivacion')) decir(lead, textos.SIN_IA);
+          logger?.info({ leadId: lead.id, estadoPrevio: lead.fsm_state }, 'lead pasa a una persona');
         }
         return estado;
 
@@ -237,24 +200,24 @@ function crearEmbudo({ repo, cola, textos, scorer, logger, cfg = { amPhones: [] 
         repo.actualizarFunnel(lead.id, { opt_out: 1 });
         repo.actualizarLead(lead.id, { status: 'closed' });
         repo.cancelarJobs(lead.id, 'followup');
+        // Este es fijo a proposito: tiene que salir aunque no haya IA, y no se
+        // le da al modelo la chance de intentar retenerlo.
         decir(lead, textos.OPT_OUT);
         return estado;
 
       case S.NURTURE:
-        // lead.fsm_state es todavia el estado anterior: _transicionar lo guarda
-        // recien despues. Al que califico y dijo "todavia no" no se le contesta
-        // que su caso "se va a mirar a ver si encaja" — ya encajo, lo que falta
-        // es el momento.
-        decir(lead, lead.fsm_state === S.MEETING_INFO ? textos.NOT_NOW : textos.NURTURE);
+        // lead.fsm_state es todavia el estado anterior. Al que califico y dijo
+        // "todavia no" no se le contesta que su caso "se va a mirar a ver si
+        // encaja" — ya encajo, lo que falta es el momento.
+        await decirIA(lead, lead.fsm_state === S.MEETING_INFO ? 'no_ahora' : 'nurture');
         return estado;
 
       case S.DISQUALIFIED:
-        decir(lead, textos.DISQUALIFIED);
+        await decirIA(lead, 'descartado');
         return estado;
 
       default:
-        decir(lead, textos.MENU(primerNombre(lead.nombre)));
-        return S.MENU;
+        return estado;
     }
   }
 
@@ -274,12 +237,9 @@ function crearEmbudo({ repo, cola, textos, scorer, logger, cfg = { amPhones: [] 
 
       const global = palabraGlobal(entrada);
 
-      // Con un humano a cargo, lo unico que reactiva el bot es pedir el menu.
-      if (lead.human_requested) {
-        if (global !== S.MENU) return null;
-        repo.actualizarFunnel(lead.id, { human_requested: 0 });
-        return this._transicionar(lead, entrada, S.MENU);
-      }
+      // Con un humano a cargo, el bot no vuelve solo. Lo devuelve el CRM con
+      // POST /api/leads/phone/:phone/release.
+      if (lead.human_requested) return null;
 
       if (global) {
         if (global === S.HUMAN_QUEUED) derivar(lead, 'pedido');
@@ -287,17 +247,18 @@ function crearEmbudo({ repo, cola, textos, scorer, logger, cfg = { amPhones: [] 
       }
 
       // Casos que el superprompt manda derivar sin excepcion. Van antes de la
-      // tabla de transiciones: aplican en cualquier punto del embudo.
+      // IA: aplican en cualquier punto y no se delegan.
       const disparador = detectar(textoCrudo);
       if (disparador) {
         if (disparador.motivo === 'queja') {
-          decir(lead, textos.QUEJA);
+          // Una queja no la escribe el modelo si puede evitarse, pero tampoco
+          // se calla: si no hay IA, el texto de derivacion alcanza.
           derivar(lead, 'queja');
           return this._transicionar(lead, entrada, S.HUMAN_QUEUED);
         }
 
         if (disparador.motivo === 'facturacion') {
-          decir(lead, textos.FACTURACION);
+          if (!await decirIA(lead, 'facturacion')) decir(lead, textos.SIN_IA);
           derivar(lead, 'facturacion');
           return this._transicionar(lead, entrada, S.HUMAN_QUEUED);
         }
@@ -308,7 +269,9 @@ function crearEmbudo({ repo, cola, textos, scorer, logger, cfg = { amPhones: [] 
         repo.actualizarFunnel(lead.id, { consultas_precio: consultas });
 
         if (consultas === 1) {
-          decir(lead, textos.PRECIO);
+          // Si la IA no puede, sale el texto del superprompt tal cual: es el
+          // unico mensaje donde las palabras exactas estan dictadas.
+          if (!await decirIA(lead, 'precio')) decir(lead, textos.PRECIO);
           return lead.fsm_state || S.NEW;
         }
         derivar(lead, 'precio');
@@ -316,50 +279,25 @@ function crearEmbudo({ repo, cola, textos, scorer, logger, cfg = { amPhones: [] 
       }
 
       const actual = lead.fsm_state || S.NEW;
-
-      // La IA conduce la parte de averiguar, y solo despues de los rieles de
-      // arriba: la baja, el pedido de humano, la queja y el precio ya quedaron
-      // resueltos por codigo. Si no esta configurada o falla, devuelve null y
-      // sigue el embudo fijo — que existe justamente para eso.
       const califica = FASE_CALIFICACION.has(actual);
+
       if (agente?.activo && (califica || FASE_CIERRE.has(actual))) {
         const r = await agente.responder(lead, textoCrudo, repo.ultimosMensajes(lead.id, 20), actual);
         if (r) return this._conversar(lead, entrada, r, { actual, puedeCerrar: califica });
+        return sinIA(lead, 'conversacion');
       }
+
+      // Sin IA no hay embudo que lo atienda: la unica salida es una persona.
+      if (!agente?.activo) return sinIA(lead, 'sin_clave');
 
       const mapa = TRANSICIONES[actual] || {};
-      const siguiente = mapa[entrada] ?? mapa['*'];
-
-      if (!siguiente) return this._transicionar(lead, entrada, S.MENU);
-
-      // Respuesta invalida en un estado que espera un numero.
-      if (ESTADOS_CON_OPCIONES.has(actual) && siguiente === actual) {
-        const reintentos = (lead.fsm_retries || 0) + 1;
-
-        if (reintentos >= MAX_REINTENTOS) {
-          repo.actualizarFunnel(lead.id, { fsm_retries: 0 });
-          derivar(lead, 'invalidos');
-          return this._transicionar(lead, entrada, S.HUMAN_QUEUED);
-        }
-
-        repo.actualizarFunnel(lead.id, { fsm_retries: reintentos });
-        decir(lead, reintentos === 1 ? textos.INVALID_1(OPCIONES[actual] || '') : textos.INVALID_2);
-        return actual;
-      }
-
-      guardarRespuesta(lead, actual, entrada, textoCrudo);
-      // Solo cuando el embudo avanza. Reseteandolo siempre, un estado que se
-      // repite a si mismo —como el de "ya te pase el link"— no puede llevar la
-      // cuenta de cuantas veces insistieron: la borraba justo antes de leerla.
-      if (siguiente !== actual) repo.actualizarFunnel(lead.id, { fsm_retries: 0 });
-      return this._transicionar(lead, entrada, siguiente);
+      return this._transicionar(lead, entrada, mapa['*'] || S.CONVERSANDO);
     },
 
     /**
      * Un turno conducido por la IA: guarda lo que extrajo y contesta. Cuando ya
-     * no falta ningun dato, el cierre lo hace el codigo — ofrecer la reunion o
-     * no depende del score, no de lo que le parezca al modelo, y su texto de
-     * cierre se descarta.
+     * no falta ningun dato, el cierre lo hace el codigo — ofrecer la reunion
+     * sale del score, no de lo que le parezca al modelo.
      */
     async _conversar(lead, entrada, { texto, datos }, { actual, puedeCerrar }) {
       if (Object.keys(datos).length) {
@@ -367,16 +305,19 @@ function crearEmbudo({ repo, cola, textos, scorer, logger, cfg = { amPhones: [] 
         logger?.info({ leadId: lead.id, campos: Object.keys(datos) }, 'la IA extrajo datos');
       }
 
-      // Con todo junto cierra el codigo: ofrecer la reunion sale del score, no
-      // de lo que le parezca al modelo. Solo mientras esta calificando — pasada
-      // la oferta, volver a SCORED seria ofrecersela de nuevo en cada mensaje.
       if (puedeCerrar) {
         const fresco = repo.leadPorId(lead.id);
         if (!agente.faltantes(fresco).length) return this._transicionar(fresco, entrada, S.SCORED);
       }
 
       decir(lead, texto);
-      const destino = puedeCerrar ? S.CONVERSANDO : actual;
+
+      // Quien decide mandar el link es la IA —lo tiene en las instrucciones de
+      // su etapa— pero quien se entera de que salio tiene que ser el codigo.
+      // Si no, nadie sabe que el lead ya lo tiene y se lo puede volver a
+      // mandar indefinidamente, que es justo el loop que habia antes.
+      const mandoElLink = CALENDLY && texto.includes(CALENDLY);
+      const destino = mandoElLink ? S.MEETING_LINK_SENT : (puedeCerrar ? S.CONVERSANDO : actual);
       repo.actualizarFunnel(lead.id, { fsm_state: destino, fsm_retries: 0 });
       return destino;
     },
@@ -395,4 +336,4 @@ function crearEmbudo({ repo, cola, textos, scorer, logger, cfg = { amPhones: [] 
   };
 }
 
-module.exports = { crearEmbudo, MAX_REINTENTOS, normalizar };
+module.exports = { crearEmbudo, normalizar, FASE_CALIFICACION, FASE_CIERRE };

@@ -103,6 +103,15 @@ const esquema = z.object({
   AVISO_SIN_TEXTO_MINUTOS: z.coerce.number().nonnegative().default(30),
 
   /**
+   * Cuanto se espera antes de contestar, por si siguen escribiendo. La gente
+   * manda "Necesito un" / "ecommerce" / "a medida" en tres mensajes seguidos;
+   * sin esta espera el bot contesta tres veces y desordenado.
+   *
+   * Es corto al lado de los delays de la cola de salida, asi que no se nota.
+   */
+  AGRUPAR_ENTRANTES_MS: z.coerce.number().nonnegative().default(7000),
+
+  /**
    * Lo que se le dice al lead cuando queda esperando a una persona. No se
    * deriva de BUSINESS_HOURS: ese rango es cuando el bot tiene permitido
    * mandar, y hoy esta abierto de par en par para probar. Este es cuando hay

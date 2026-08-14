@@ -1,36 +1,22 @@
 'use strict';
 
 /**
- * Estados del embudo de calificacion. Portado de bot/src/fsm/states.js.
+ * Estados del embudo. Ya no marcan que pregunta toca —eso lo decide la IA
+ * mirando que datos faltan— sino en que momento de la relacion esta el lead.
  *
- * Cambios respecto del original: se saca QUAL_7, que estaba declarado y no lo
- * referenciaba nadie.
+ * Los QUAL_0..QUAL_6 y el MENU numerado se fueron con el embudo de preguntas
+ * fijas: cada uno existia para saber que texto mandar, y ya no hay textos.
  */
 const S = {
   NEW: 'NEW',
-  MENU: 'MENU',
-  MENU_INFO: 'MENU_INFO',
-  QUAL_0: 'QUAL_0',
-  QUAL_1: 'QUAL_1',
-  QUAL_2: 'QUAL_2',
-  QUAL_3: 'QUAL_3',
-  QUAL_4: 'QUAL_4',
-  QUAL_5: 'QUAL_5',
-  QUAL_6: 'QUAL_6',
-  // La IA esta conduciendo la conversacion. Si se apaga (sin clave, API caida),
-  // el lead vuelve al menu del embudo fijo: se le repiten preguntas, pero sigue
-  // atendido, que es lo que importa.
+  // La IA esta averiguando quien es y que necesita.
   CONVERSANDO: 'CONVERSANDO',
+  // Momento de calificar. Es de paso: nunca queda guardado.
   SCORED: 'SCORED',
   MEETING_SENT: 'MEETING_SENT',
-  // El link de Calendly ya salio. Existe para no volver a mandarlo: sin este
-  // estado, MEETING_SENT contestaba el mismo link a cualquier cosa que
-  // escribieran —"hola" incluido— y la conversacion no tenia salida.
-  MEETING_LINK_SENT: 'MEETING_LINK_SENT',
-  // Se le contesto el "quiero saber mas". Existe para no volver a mandarle lo
-  // mismo si insiste con esa opcion: sin este estado, el "2" se atendia siempre
-  // igual y la conversacion quedaba en loop.
   MEETING_INFO: 'MEETING_INFO',
+  // El link de Calendly ya salio. Existe para no volver a mandarlo.
+  MEETING_LINK_SENT: 'MEETING_LINK_SENT',
   SCHEDULED: 'SCHEDULED',
   NURTURE: 'NURTURE',
   DISQUALIFIED: 'DISQUALIFIED',
@@ -38,24 +24,49 @@ const S = {
   OPT_OUT: 'OPT_OUT',
 };
 
-// Estados donde se espera un numero: si viene otra cosa se reintenta.
-// QUAL_4, QUAL_5 y QUAL_6 son texto libre, cualquier cosa avanza.
-const ESTADOS_CON_OPCIONES = new Set([S.QUAL_1, S.QUAL_2, S.QUAL_3]);
+/**
+ * Lo que gana sobre cualquier otra cosa, en cualquier estado: irse y pedir una
+ * persona. No se le delega al modelo, y no alcanza con una palabra suelta.
+ *
+ * Antes era un mapa de substrings y solo entendia "baja" literal: "sacame de la
+ * lista" y "no me escribas mas" —que es como lo dice la gente de verdad—
+ * seguian de largo hacia el bot.
+ *
+ * "cancelar" salio de la lista: el que escribe "quiero cancelar la reunion" no
+ * se esta dando de baja, y darlo de baja era perderlo entero.
+ * "ayuda" nunca estuvo: la gente la usa para describir su problema.
+ */
+const BAJA = [
+  /\bbaja\b/,
+  /\bstop\b/,
+  /\bunsubscribe\b/,
+  /no me escrib/,
+  /dej[aá] de escribirme/,
+  /dejen de escribir/,
+  /sacame de la lista/,
+  /borrame/,
+  /no quiero recibir/,
+  /no me mand[eé]s? m[aá]s/,
+  /no me contacten/,
+];
+
+const HUMANO = [
+  /\bhumano\b/,
+  /\basesor\b/,
+  /\bpersona\b/,
+  /hablar con alguien/,
+  /alguien del equipo/,
+  /un encargado/,
+];
 
 /**
- * Palabras que ganan sobre la tabla de transiciones, en cualquier estado.
- * "ayuda" quedo afuera a proposito: la gente la usa para describir su problema,
- * no para pedir un humano.
+ * La entrada llega normalizada: minusculas y sin acentos.
+ * @returns {string|null} el estado al que hay que ir, o null.
  */
-const PALABRAS_GLOBALES = {
-  humano: S.HUMAN_QUEUED,
-  asesor: S.HUMAN_QUEUED,
-  persona: S.HUMAN_QUEUED,
-  stop: S.OPT_OUT,
-  baja: S.OPT_OUT,
-  cancelar: S.OPT_OUT,
-  listo: S.MENU,
-  menu: S.MENU,
-};
+function palabraGlobal(entrada) {
+  if (BAJA.some((re) => re.test(entrada))) return S.OPT_OUT;
+  if (HUMANO.some((re) => re.test(entrada))) return S.HUMAN_QUEUED;
+  return null;
+}
 
-module.exports = { S, ESTADOS_CON_OPCIONES, PALABRAS_GLOBALES };
+module.exports = { S, palabraGlobal, BAJA, HUMANO };

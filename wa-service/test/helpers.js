@@ -3,6 +3,62 @@
 const { cargar } = require('../src/config');
 const { construir } = require('../src/app');
 
+/**
+ * Cliente de OpenAI falso y deterministico.
+ *
+ * Los tests verifican CABLEADO —que situacion se dispara, en que estado queda
+ * el lead, que datos se guardan— y no redaccion. Por eso devuelve marcadores
+ * como "[bienvenida]" en vez de texto realista: si un test dependiera de las
+ * palabras exactas, cambiar una coma del prompt lo romperia.
+ *
+ * La calidad de la redaccion se mide aparte, en evals/, contra la API de verdad.
+ */
+function stubOpenAI({ respuestas = {}, datos = {}, falla = null } = {}) {
+  const llamadas = [];
+  return {
+    llamadas,
+    chat: {
+      completions: {
+        create: async (args) => {
+          llamadas.push(args);
+          if (falla) throw new Error(falla);
+
+          // Con tools es la conversacion; sin tools, un mensaje suelto.
+          if (args.tools) {
+            const mensaje = respuestas.conversacion || '[conversacion]';
+            return {
+              choices: [{
+                message: {
+                  content: null,
+                  tool_calls: [{
+                    type: 'function',
+                    function: { name: 'responder', arguments: JSON.stringify({ mensaje, ...datos }) },
+                  }],
+                },
+              }],
+            };
+          }
+
+          const prompt = args.messages[0].content;
+          const m = prompt.match(/situación: (\w+)/);
+          const situacion = m ? m[1] : 'desconocida';
+          return {
+            choices: [{ message: { content: respuestas[situacion] || `[${situacion}]` } }],
+          };
+        },
+      },
+    },
+    audio: {
+      transcriptions: {
+        create: async () => {
+          if (falla) throw new Error(falla);
+          return { text: respuestas.transcripcion || 'audio transcripto' };
+        },
+      },
+    },
+  };
+}
+
 const CLAVE = 'clave-de-test-larguita-1234';
 const ADMIN = 'admin-token-de-prueba';
 
@@ -31,6 +87,8 @@ function cfgTest(extra = {}) {
     FOLLOWUP_JITTER_MINUTES: '0',
     BUSINESS_HOURS: '00:00-23:59',
     BUSINESS_DAYS: 'sun-sat',
+    // Sin espera: agrupar entrantes tiene sus propios tests.
+    AGRUPAR_ENTRANTES_MS: '0',
     ...extra,
   });
 }
@@ -42,10 +100,12 @@ function cfgTest(extra = {}) {
 async function montar(extra, reloj) {
   // `openai` no es una clave de config: es el cliente falso que usan los tests
   // de la capa de IA. Se separa antes de armar la config.
-  const { openai = null, ...cfgExtra } = extra || {};
+  // Por defecto va el stub: sin IA el bot deriva todo a una persona, que es
+  // el camino degradado y no el que hay que probar.
+  const { openai = stubOpenAI(), sinIA = false, ...cfgExtra } = extra || {};
   const s = construir(cfgTest(cfgExtra), {
     logger: null,
-    openai,
+    openai: sinIA ? null : openai,
     ahora: reloj ? () => reloj : undefined,
   });
   await s.proveedor.conectar();
@@ -64,10 +124,10 @@ const LEAD = {
 /** Servicio con un lead ya dado de alta y la cola limpia. */
 async function conLead(extra, datos = LEAD) {
   const s = await montar(extra);
-  s.servicioLeads.alta(datos);
+  await s.servicioLeads.alta(datos);
   await s.cola.vacia();
   s.proveedor.limpiar();
   return s;
 }
 
-module.exports = { CLAVE, ADMIN, LEAD, cfgTest, montar, conLead };
+module.exports = { CLAVE, ADMIN, LEAD, cfgTest, montar, conLead, stubOpenAI };

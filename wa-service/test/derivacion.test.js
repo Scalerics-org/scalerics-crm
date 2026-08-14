@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
-const { conLead } = require('./helpers');
+const { conLead, stubOpenAI } = require('./helpers');
 const { detectar } = require('../src/funnel/derivacion');
 const { S } = require('../src/funnel/states');
 
@@ -60,7 +60,7 @@ test('al primer "cuánto sale" contesta el criterio, sin dar numeros', async () 
   await lead(s, 'hola');
   const msgs = await lead(s, '¿cuánto sale una página web?');
 
-  assert.match(msgs.at(-1), /depende del alcance/);
+  assert.equal(msgs.at(-1), '[precio]');
   assert.ok(!/\d{3}/.test(msgs.at(-1)), 'no menciona ninguna cifra');
   assert.notEqual(estado(s), S.HUMAN_QUEUED, 'todavia no deriva');
   assert.equal(s.repo.leadPorTelefono(LEAD_TEL).consultas_precio, 1);
@@ -75,7 +75,7 @@ test('si vuelve a preguntar el precio, pasa a un humano', async () => {
   const msgs = await lead(s, 'dale pero decime un precio aproximado');
 
   assert.equal(estado(s), S.HUMAN_QUEUED);
-  assert.match(msgs.at(-1), /le paso tu contacto/);
+  assert.equal(msgs.at(-1), '[derivacion]');
   assert.equal(s.repo.leadPorTelefono(LEAD_TEL).motivo_derivacion, 'precio');
 });
 
@@ -87,9 +87,9 @@ test('una queja deriva en el acto, sin explicar nada', async () => {
   const msgs = await lead(s, 'estoy enojado, el proyecto se atrasó dos semanas');
 
   assert.equal(estado(s), S.HUMAN_QUEUED);
-  assert.match(msgs[0], /Te paso ahora mismo con alguien del equipo/);
-  // El superprompt lo dice explicito: el bot no explica ni promete fechas.
-  assert.ok(!/porque|semana que viene|va a estar/i.test(msgs[0]));
+  assert.equal(msgs.at(-1), '[derivacion]');
+  // El superprompt lo dice explicito: el bot no explica ni promete fechas. Eso
+  // ahora vive en el objetivo de la situacion 'derivacion' y se mide en evals/.
 });
 
 test('una consulta de facturacion deriva en el acto', async () => {
@@ -106,7 +106,6 @@ test('una consulta de facturacion deriva en el acto', async () => {
 test('al humano le llega el motivo y el historial reciente', async () => {
   const s = await conLead();
   await lead(s, 'hola');
-  await lead(s, '1');
   s.proveedor.limpiar();
 
   await lead(s, 'esto es una estafa');
@@ -120,18 +119,15 @@ test('al humano le llega el motivo y el historial reciente', async () => {
   assert.match(aviso.texto, /wa\.me\/59899123456/);
 });
 
-test('derivado, el bot se calla hasta que alguien escriba MENU', async () => {
+test('derivado, el bot se calla hasta que el CRM lo devuelva', async () => {
   const s = await conLead();
   await lead(s, 'hola');
   await lead(s, 'quiero hacer un reclamo');
   s.proveedor.limpiar();
 
   await lead(s, '¿hay alguien?');
-  await lead(s, '1');
-  assert.equal(s.proveedor.getEnviados().length, 0);
-
-  const msgs = await lead(s, 'menu');
-  assert.match(msgs.at(-1), /asistente de \*Scalerics\*/);
+  await lead(s, 'dale');
+  assert.equal(s.proveedor.getEnviados().length, 0, 'con una persona a cargo el bot no se mete');
 });
 
 test('el motivo tambien queda cuando pide un humano o no entiende', async () => {
@@ -140,18 +136,20 @@ test('el motivo tambien queda cuando pide un humano o no entiende', async () => 
   await lead(s, 'quiero hablar con una persona');
   assert.equal(s.repo.leadPorTelefono(LEAD_TEL).motivo_derivacion, 'pedido');
 
-  const s2 = await conLead();
-  await lead(s2, 'hola'); await lead(s2, '1'); await lead(s2, 'Mi negocio');
-  for (const t of ['no se', 'ni idea', 'que se yo', 'nada']) await lead(s2, t);
-  assert.equal(s2.repo.leadPorTelefono(LEAD_TEL).motivo_derivacion, 'invalidos');
+  // El motivo 'invalidos' se fue con el embudo numerado: sin opciones que
+  // entender mal, no hay respuesta invalida. Ahora el equivalente es que la IA
+  // no pueda contestar, y ese motivo es 'sin_ia'.
+  const s2 = await conLead({ openai: stubOpenAI({ falla: '500' }) });
+  await lead(s2, 'hola');
+  assert.equal(s2.repo.leadPorTelefono(LEAD_TEL).motivo_derivacion, 'sin_ia');
 });
 
-test('el embudo normal no se ve afectado', async () => {
+test('la conversacion normal no se deriva por error', async () => {
   const s = await conLead();
-  for (const t of ['hola', '1', 'Inmobiliaria Pereyra', '2', '3', '3', 'azul', '@x', 'necesito stock']) {
+  for (const t of ['hola', 'tengo una inmobiliaria', 'somos 6', 'necesito ordenar las consultas']) {
     await lead(s, t);
   }
-  assert.equal(estado(s), S.MEETING_SENT, 'llega al final sin derivarse por error');
+  assert.equal(estado(s), S.CONVERSANDO, 'sigue conversando, no se deriva');
 });
 
 test('"lista de precios" es un requerimiento, no una consulta comercial', () => {

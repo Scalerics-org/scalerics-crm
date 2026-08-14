@@ -73,7 +73,7 @@ function crearServidor({ cfg, repo, cola, proveedor, servicioLeads, scheduler, l
       });
     }
 
-    const { lead, yaExistia, welcomeEnSegundos } = servicioLeads.alta(parsed.data);
+    const { lead, yaExistia, welcomeEnSegundos } = await servicioLeads.alta(parsed.data);
 
     if (yaExistia) {
       return reply.code(200).send({ ok: true, lead_id: lead.id, status: 'ya_existia' });
@@ -209,7 +209,7 @@ function crearServidor({ cfg, repo, cola, proveedor, servicioLeads, scheduler, l
   });
 
   // Util para operar: dispara los jobs vencidos sin esperar al intervalo.
-  app.post('/jobs/run', async () => ({ ok: true, procesados: scheduler.correrVencidos() }));
+  app.post('/jobs/run', async () => ({ ok: true, procesados: await scheduler.correrVencidos() }));
 
   return app;
 }

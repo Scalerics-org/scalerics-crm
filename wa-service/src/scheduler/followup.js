@@ -10,7 +10,10 @@ const INTERVALO_MS = 5 * 60 * 1000; // cada 5 minutos
  * correrVencidos() recibe la fecha por parametro a proposito: los tests
  * adelantan el reloj pasando un valor, sin tocar timers.
  */
-function crearScheduler({ repo, cola, cfg, textosLead, logger, ahora = () => new Date() }) {
+// Cuanto se corre un job cuando la IA no pudo escribir el mensaje.
+const REINTENTO_MIN = 30;
+
+function crearScheduler({ repo, cola, cfg, redactor = null, logger, ahora = () => new Date() }) {
 
   function fechaLegible(iso) {
     const d = new Date(iso);
@@ -27,52 +30,49 @@ function crearScheduler({ repo, cola, cfg, textosLead, logger, ahora = () => new
     }
   }
 
-  /** @returns {boolean} true si el job se resolvio, false si hay que cancelarlo. */
-  function ejecutar(job, lead, momento) {
-    const datosReunion = {
-      cuando: lead.meeting_time ? fechaLegible(lead.meeting_time) : '',
-      link: lead.meeting_url,
-    };
+  const SITUACION = {
+    followup: 'followup',
+    reminder_24h: 'recordatorio_dia_antes',
+    reminder_30m: 'recordatorio_30min',
+  };
+
+  /**
+   * Todos estos mensajes los escribe la IA. Si no puede, el job NO se manda con
+   * un texto fijo: se reprograma. Nadie esta esperando en tiempo real de este
+   * lado —son mensajes que arranca el servicio, no respuestas— asi que
+   * conviene mandarlo bien media hora despues que mandarlo enlatado ahora.
+   *
+   * @returns {Promise<boolean>} false si hay que reintentar mas adelante.
+   */
+  async function ejecutar(job, lead, momento) {
+    const situacion = SITUACION[job.type];
+    if (!situacion) return true;
+
+    const extra = lead.meeting_time
+      ? `La reunión es ${fechaLegible(lead.meeting_time)}.${lead.meeting_url ? ` El link para entrar es ${lead.meeting_url}` : ''}`
+      : '';
+
+    const texto = await redactor?.escribir(lead, situacion, extra);
+    if (!texto) return false;
+
+    cola.encolar({
+      to: lead.telefono,
+      texto,
+      kind: job.type === 'followup' ? 'followup' : 'manual',
+      leadId: lead.id,
+    });
 
     if (job.type === 'followup') {
-      cola.encolar({
-        to: lead.telefono,
-        texto: textosLead.render(lead, 'followup'),
-        kind: 'followup',
-        leadId: lead.id,
-      });
       repo.actualizarLead(lead.id, {
         status: 'followed_up',
         followup_sent_at: momento.toISOString(),
       });
       avisarAM(lead, plantillas.avisoSinRespuesta(lead, cfg.FOLLOWUP_DELAY_HOURS));
-      return true;
     }
-
-    if (job.type === 'reminder_24h') {
-      cola.encolar({
-        to: lead.telefono,
-        texto: textosLead.recordatorioDiaAntes(lead, datosReunion),
-        kind: 'manual',
-        leadId: lead.id,
-      });
-      return true;
-    }
-
-    if (job.type === 'reminder_30m') {
-      cola.encolar({
-        to: lead.telefono,
-        texto: textosLead.recordatorio30Minutos(lead, datosReunion),
-        kind: 'manual',
-        leadId: lead.id,
-      });
-      return true;
-    }
-
     return true;
   }
 
-  function correrVencidos(momento = ahora()) {
+  async function correrVencidos(momento = ahora()) {
     const jobs = repo.jobsVencidos(momento.toISOString());
     let procesados = 0;
 
@@ -109,7 +109,13 @@ function crearScheduler({ repo, cola, cfg, textosLead, logger, ahora = () => new
       }
 
       try {
-        ejecutar(job, lead, momento);
+        if (!await ejecutar(job, lead, momento)) {
+          // La IA no pudo escribirlo. Se corre el job en vez de perderlo.
+          const reintento = new Date(momento.getTime() + REINTENTO_MIN * 60_000);
+          repo.reprogramarJob(job.id, reintento.toISOString());
+          logger?.warn({ jobId: job.id, tipo: job.type }, 'no se pudo redactar, se reprograma');
+          continue;
+        }
         repo.marcarJob(job.id, 'done');
         procesados += 1;
       } catch (e) {

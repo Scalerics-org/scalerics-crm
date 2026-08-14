@@ -46,13 +46,14 @@ test('manda la ficha al AM y la bienvenida al lead', async () => {
 
   const bienvenida = enviados.find((e) => e.to === '59899123456');
   assert.ok(bienvenida, 'la bienvenida va al lead');
-  assert.match(bienvenida.texto, /Martín/);
-  assert.match(bienvenida.texto, /inmobiliarias/i, 'usa el gancho del rubro');
-  // El link va en el follow-up, no aca: un link en el primer contacto en frio
-  // es senial de spam y ademas los mensajes a numeros que nunca escribieron son
-  // los que fallan al descifrarse. La bienvenida cierra con pregunta abierta.
-  assert.ok(!/https?:\/\//.test(bienvenida.texto), 'la bienvenida no lleva links');
-  assert.match(bienvenida.texto, /\?$/, 'termina en pregunta, para que conteste');
+  assert.equal(bienvenida.texto, '[bienvenida]');
+
+  // El gancho del rubro ya no se verifica en el texto —lo escribe la IA— sino
+  // en que se le haya pasado. Como suena el mensaje se mide en evals/.
+  const { construirRedaccion } = require('../src/ia/prompt');
+  const prompt = construirRedaccion(s.repo.leadPorTelefono('59899123456'), 'bienvenida', 'x');
+  assert.match(prompt, /inmobiliarias/i, 'el prompt lleva el gancho del rubro');
+  assert.match(prompt, /seguimiento de consultas de alquiler/, 'y lo que puso en el formulario');
 });
 
 test('la ficha al AM sale antes que la bienvenida', async () => {
@@ -72,16 +73,16 @@ test('a las 72h sin respuesta sale el follow-up', async () => {
 
   // A las 25 horas todavia no: el plazo pasa a 72h.
   const en25Horas = new Date(Date.now() + 25 * 3600 * 1000);
-  assert.equal(s.scheduler.correrVencidos(en25Horas), 0);
+  assert.equal(await s.scheduler.correrVencidos(en25Horas), 0);
 
   const en73Horas = new Date(Date.now() + 73 * 3600 * 1000);
-  assert.equal(s.scheduler.correrVencidos(en73Horas), 1);
+  assert.equal(await s.scheduler.correrVencidos(en73Horas), 1);
   await s.cola.vacia();
 
   const enviados = s.proveedor.getEnviados();
   const followup = enviados.find((e) => e.to === '59899123456');
   assert.ok(followup, 'le llega el follow-up al lead');
-  assert.match(followup.texto, /Martín/);
+  assert.equal(followup.texto, '[followup]');
 
   const avisoAM = enviados.find((e) => e.to === '59899000111');
   assert.match(avisoAM.texto, /no respondió en 72h/);
@@ -110,7 +111,7 @@ test('si el lead responde se cancela el follow-up y se avisa al AM', async () =>
   // Y a las 25h ya no sale nada.
   s.proveedor.limpiar();
   const en73Horas = new Date(Date.now() + 73 * 3600 * 1000);
-  s.scheduler.correrVencidos(en73Horas);
+  await s.scheduler.correrVencidos(en73Horas);
   await s.cola.vacia();
   assert.equal(s.proveedor.getEnviados().length, 0, 'no se le insiste a quien ya contesto');
 });
@@ -155,8 +156,12 @@ test('un rubro desconocido usa la plantilla generica', async () => {
   assert.equal(lead.rubro_norm, 'generico');
 
   const bienvenida = s.proveedor.getEnviados().find((e) => e.to === '59899123456');
-  assert.match(bienvenida.texto, /Martín/);
-  assert.ok(bienvenida.texto.length > 40);
+  assert.equal(bienvenida.texto, '[bienvenida]', 'igual se le escribe');
+
+  // Sin rubro conocido no hay gancho, y el prompt no inventa uno.
+  const { construirRedaccion } = require('../src/ia/prompt');
+  const prompt = construirRedaccion(lead, 'bienvenida', 'x');
+  assert.ok(!/Gancho útil/.test(prompt));
 });
 
 test('sin x-api-key no se entra', async () => {
@@ -184,17 +189,13 @@ test('rechaza un alta sin nombre ni telefono', async () => {
 });
 
 test('el link de Calendly va en el follow-up, no en la bienvenida', async () => {
-  const s = await montar();
-  await postLead(s);
-  await s.cola.vacia();
+  // Ya no se puede mirar el texto —lo escribe la IA— asi que se mira la
+  // instruccion. Un link en el primer mensaje a alguien que nunca te escribio
+  // es de las seniales de spam mas fuertes, y esa regla tiene que estar dicha.
+  const { situaciones } = require('../src/ia/prompt');
+  const s = situaciones('https://calendly.com/scalerics/diagnostico');
 
-  const bienvenida = s.proveedor.getEnviados().find((e) => e.to === '59899123456');
-  assert.ok(!bienvenida.texto.includes('calendly'), 'la bienvenida no lo lleva');
-
-  s.proveedor.limpiar();
-  s.scheduler.correrVencidos(new Date(Date.now() + 73 * 3600 * 1000));
-  await s.cola.vacia();
-
-  const followup = s.proveedor.getEnviados().find((e) => e.to === '59899123456');
-  assert.match(followup.texto, /calendly\.com/, 'el follow-up si');
+  assert.ok(!s.bienvenida.includes('calendly.com'), 'a la bienvenida no se le da el link');
+  assert.match(s.bienvenida, /No mandes ningún link/);
+  assert.match(s.followup, /calendly\.com/, 'al follow-up si');
 });
