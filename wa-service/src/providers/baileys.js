@@ -304,7 +304,23 @@ function crear(cfg, { logger, buscarMensaje = null } = {}) {
           logger?.info({ from, tipo, tipos: Object.keys(msg.message || {}) }, 'entrante sin texto');
           if (tipo && handlerSinTexto) {
             try {
-              handlerSinTexto({ from, tipo, id: msg.key.id, nombre: msg.pushName || '' });
+              handlerSinTexto({
+                from,
+                tipo,
+                id: msg.key.id,
+                nombre: msg.pushName || '',
+                segundos: msg.message?.audioMessage?.seconds || 0,
+                // Perezosa: bajar y descifrar el medio cuesta, y la mayoria de
+                // las veces no hace falta (una foto, un sticker, o audio sin
+                // transcripcion configurada).
+                descargar: async () => {
+                  const b = await cargarBaileys();
+                  return b.downloadMediaMessage(msg, 'buffer', {}, {
+                    logger: require('pino')({ level: 'error' }),
+                    reuploadRequest: sock.updateMediaMessage,
+                  });
+                },
+              });
             } catch (e) {
               logger?.error({ err: String(e.message || e) }, 'fallo el handler de entrante sin texto');
             }

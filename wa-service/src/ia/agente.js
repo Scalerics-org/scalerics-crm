@@ -16,19 +16,38 @@ const CAMPOS = {
   needs: { tipo: 'string' },
 };
 
+/**
+ * Una sola herramienta que devuelve TODO: el mensaje y los datos.
+ *
+ * Podria pedirsele el texto por content y los datos por tool call, que es lo
+ * natural, pero los modelos de OpenAI suelen mandar content vacio cuando llaman
+ * una herramienta. Ahi habria que hacer una segunda llamada para conseguir la
+ * respuesta —el doble de latencia y de costo en cada turno donde extrae algo—
+ * o arriesgarse a que el lead no reciba nada. Metiendo el mensaje adentro de la
+ * herramienta y forzandola con tool_choice, siempre viene todo en una llamada y
+ * con forma conocida.
+ */
 const HERRAMIENTA = {
-  name: 'guardar_datos',
-  description: 'Guarda lo que se sepa del lead. Llamala en el mismo turno en que te enterás de algo, con los campos nuevos únicamente.',
-  input_schema: {
-    type: 'object',
-    properties: {
-      business_name: { type: 'string', description: 'Nombre del negocio, tal como lo dijo' },
-      rubro: { type: 'string', description: 'A qué se dedica, en sus palabras (ej: "carnicería de barrio")' },
-      business_type: { type: 'integer', description: '1 página web, 2 e-commerce, 3 automatización, 4 app a medida' },
-      budget: { type: 'integer', description: '1 menos de USD 500, 2 entre 500 y 3.000, 3 más de 3.000, 4 no lo tiene claro' },
-      team_size: { type: 'integer', description: '1 solo él, 2 de 2 a 5, 3 de 6 a 20, 4 más de 20' },
-      instagram_web: { type: 'string', description: 'Usuario de Instagram, URL de la web o lo que haya dicho' },
-      needs: { type: 'string', description: 'Qué quiere lograr, en sus palabras' },
+  type: 'function',
+  function: {
+    name: 'responder',
+    description: 'Contesta al lead y guarda lo que hayas averiguado de él.',
+    parameters: {
+      type: 'object',
+      properties: {
+        mensaje: {
+          type: 'string',
+          description: 'Lo que se le manda por WhatsApp. Dos o tres líneas, una sola pregunta.',
+        },
+        business_name: { type: 'string', description: 'Nombre del negocio, tal como lo dijo' },
+        rubro: { type: 'string', description: 'A qué se dedica, en sus palabras (ej: "carnicería de barrio")' },
+        business_type: { type: 'integer', description: '1 página web, 2 e-commerce, 3 automatización, 4 app a medida' },
+        budget: { type: 'integer', description: '1 menos de USD 500, 2 entre 500 y 3.000, 3 más de 3.000, 4 no lo tiene claro' },
+        team_size: { type: 'integer', description: '1 solo él, 2 de 2 a 5, 3 de 6 a 20, 4 más de 20' },
+        instagram_web: { type: 'string', description: 'Usuario de Instagram, URL de la web o lo que haya dicho' },
+        needs: { type: 'string', description: 'Qué quiere lograr, en sus palabras' },
+      },
+      required: ['mensaje'],
     },
   },
 };
@@ -83,7 +102,7 @@ function aMensajes(historial, entrante) {
     const contenido = String(m.body ?? m.content ?? '').trim();
     if (!contenido) continue;
     const rol = m.direction === 'in' ? 'user' : 'assistant';
-    // La API rechaza dos turnos seguidos del mismo rol.
+    // Turnos seguidos del mismo rol se juntan: es una sola cosa que dijo.
     if (msgs.length && msgs[msgs.length - 1].role === rol) {
       msgs[msgs.length - 1].content += `\n${contenido}`;
       continue;
@@ -99,8 +118,6 @@ function aMensajes(historial, entrante) {
       msgs.push({ role: 'user', content: ultimo });
     }
   }
-  // Un historial que arranca con el bot hablando es valido, pero la API pide
-  // que el primer turno sea del usuario.
   while (msgs.length && msgs[0].role === 'assistant') msgs.shift();
   return msgs;
 }
@@ -111,39 +128,48 @@ function aMensajes(historial, entrante) {
  * pasa los controles. El que llama cae al embudo de siempre con ese null: el
  * FSM sigue existiendo justamente para eso.
  */
-function crearAgente({ anthropic = null, modelo, textos, logger = null } = {}) {
+function crearAgente({ openai = null, modelo, textos, logger = null } = {}) {
   return {
-    activo: Boolean(anthropic),
+    activo: Boolean(openai),
 
     async responder(lead, entrante, historial = []) {
-      if (!anthropic) return null;
+      if (!openai) return null;
 
-      const mensajes = aMensajes(historial, entrante);
-      if (!mensajes.length) return null;
+      const conversacion = aMensajes(historial, entrante);
+      if (!conversacion.length) return null;
 
       let respuesta;
       try {
-        respuesta = await anthropic.messages.create({
+        respuesta = await openai.chat.completions.create({
           model: modelo,
-          max_tokens: 400,
-          system: construirSystem(lead),
+          max_tokens: 500,
+          messages: [{ role: 'system', content: construirSystem(lead) }, ...conversacion],
           tools: [HERRAMIENTA],
-          messages: mensajes,
+          // Forzada: sin esto el modelo a veces contesta por content y a veces
+          // por la herramienta, y hay que manejar los dos caminos.
+          tool_choice: { type: 'function', function: { name: 'responder' } },
         });
       } catch (e) {
         logger?.warn({ leadId: lead.id, err: String(e.message || e) }, 'la IA fallo, se usa el embudo fijo');
         return null;
       }
 
-      const bloques = respuesta?.content || [];
-      const texto = bloques.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
-      const llamada = bloques.find((b) => b.type === 'tool_use' && b.name === HERRAMIENTA.name);
-      const datos = sanearDatos(llamada?.input);
+      const llamada = respuesta?.choices?.[0]?.message?.tool_calls?.[0];
+      let argumentos;
+      try {
+        argumentos = JSON.parse(llamada?.function?.arguments || '{}');
+      } catch (e) {
+        logger?.warn({ leadId: lead.id }, 'la IA devolvio argumentos que no son JSON');
+        return null;
+      }
+
+      const texto = String(argumentos.mensaje || '').trim();
+      const datos = sanearDatos(argumentos);
 
       // Que haya guardado datos no sirve de nada si no contesto: el lead esta
       // esperando del otro lado.
       if (!texto) {
-        logger?.warn({ leadId: lead.id }, 'la IA no devolvio texto');
+        logger?.warn({ leadId: lead.id }, 'la IA no devolvio mensaje');
         return null;
       }
 

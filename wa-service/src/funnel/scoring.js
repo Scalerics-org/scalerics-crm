@@ -11,7 +11,7 @@ const UMBRAL_REUNION = 5;
 const UMBRAL_NURTURE = 3;
 
 /**
- * Scoring por reglas. Es el camino que corre cuando no hay ANTHROPIC_API_KEY.
+ * Scoring por reglas. Es el camino que corre cuando no hay OPENAI_API_KEY.
  *
  * Difiere del original de bot/src/services/ai.js a proposito: aquel sumaba
  * hasta 3 puntos por `lead.urgency` y pedia score >= 7 para ofrecer reunion.
@@ -39,7 +39,7 @@ function porReglas(lead) {
 
   // Un brief escrito con contenido real es de las mejores seniales que da el
   // embudo, y las reglas eran ciegas a el. Aproxima pobremente lo que el
-  // scoring con IA hace bien: sin ANTHROPIC_API_KEY es lo unico que hay.
+  // scoring con IA hace bien: sin OPENAI_API_KEY es lo unico que hay.
   if (String(lead.needs || '').trim().length >= 25) score += 1;
 
   const accion =
@@ -74,20 +74,21 @@ Criterios: score 8-10 = presupuesto disponible + necesidades claras + ya tiene p
 }
 
 /**
- * @param {object} deps.anthropic cliente ya construido, o null para ir por reglas.
+ * @param {object} deps.openai cliente ya construido, o null para ir por reglas.
  */
-function crearScorer({ anthropic = null, logger = null } = {}) {
+function crearScorer({ openai = null, modelo = 'gpt-4o-mini', logger = null } = {}) {
   return {
     async calificar(lead) {
-      if (!anthropic) return porReglas(lead);
+      if (!openai) return porReglas(lead);
 
       try {
-        const msg = await anthropic.messages.create({
-          model: 'claude-haiku-4-5-20251001',
+        const r = await openai.chat.completions.create({
+          model: modelo,
           max_tokens: 150,
+          response_format: { type: 'json_object' },
           messages: [{ role: 'user', content: construirPrompt(lead) }],
         });
-        const json = JSON.parse((msg.content[0]?.text || '').trim());
+        const json = JSON.parse((r.choices?.[0]?.message?.content || '').trim());
 
         return {
           score: Math.min(Math.max(parseInt(json.score, 10) || 0, 1), 10),

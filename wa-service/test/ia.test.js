@@ -11,27 +11,47 @@ const { S } = require('../src/funnel/states');
 const textos = crearTextos({ calendlyLink: 'https://calendly.com/scalerics/diagnostico' });
 
 /** Cliente falso: devuelve lo que se le diga, y anota como lo llamaron. */
-function anthropicFalso(respuestas) {
+function openaiFalso(respuestas) {
   const pila = Array.isArray(respuestas) ? respuestas.slice() : [respuestas];
   const llamadas = [];
+  const transcripciones = [];
   return {
     llamadas,
-    messages: {
-      create: async (args) => {
-        llamadas.push(args);
-        const r = pila.length > 1 ? pila.shift() : pila[0];
-        if (r instanceof Error) throw r;
-        return r;
+    transcripciones,
+    chat: {
+      completions: {
+        create: async (args) => {
+          llamadas.push(args);
+          const r = pila.length > 1 ? pila.shift() : pila[0];
+          if (r instanceof Error) throw r;
+          return r;
+        },
+      },
+    },
+    audio: {
+      transcriptions: {
+        create: async (args) => {
+          transcripciones.push(args);
+          const r = pila.length > 1 ? pila.shift() : pila[0];
+          if (r instanceof Error) throw r;
+          return r;
+        },
       },
     },
   };
 }
 
-const conTexto = (texto, datos = null) => ({
-  content: [
-    { type: 'text', text: texto },
-    ...(datos ? [{ type: 'tool_use', name: 'guardar_datos', input: datos }] : []),
-  ],
+/** La respuesta viene toda por la herramienta, mensaje incluido. */
+const conTexto = (mensaje, datos = {}) => ({
+  choices: [{
+    message: {
+      content: null,
+      tool_calls: [{
+        type: 'function',
+        function: { name: 'responder', arguments: JSON.stringify({ mensaje, ...datos }) },
+      }],
+    },
+  }],
 });
 
 // ── el guard de precios ──────────────────────────────────────────────────────
@@ -62,7 +82,7 @@ test('no bloquea las respuestas que SI tiene que poder dar', () => {
 
 test('si la IA se manda un precio, sale el texto fijo en su lugar', async () => {
   const agente = crearAgente({
-    anthropic: anthropicFalso(conTexto('Una web te sale unos USD 900 más IVA')),
+    openai: openaiFalso(conTexto('Una web te sale unos USD 900 más IVA')),
     modelo: 'x', textos,
   });
   const r = await agente.responder({ id: 1, nombre: 'Ana' }, 'cuanto sale?', []);
@@ -90,7 +110,7 @@ test('solo guarda los campos permitidos y con el tipo correcto', () => {
 
 test('el rubro que extrae la IA queda clasificado, como el del formulario', async () => {
   const s = await conLead({
-    anthropic: anthropicFalso(conTexto('¡Buenísimo! ¿Y qué te gustaría lograr?', {
+    openai: openaiFalso(conTexto('¡Buenísimo! ¿Y qué te gustaría lograr?', {
       rubro: 'parrilla y delivery',
     })),
   });
@@ -109,7 +129,7 @@ test('con todos los datos, el cierre lo hace el codigo y no la IA', async () => 
   // La IA podria decidir ofrecer la reunion cuando le parezca. La oferta sale
   // del score, asi que su texto de cierre se descarta.
   const s = await conLead({
-    anthropic: anthropicFalso(conTexto('Listo, te paso mi Calendly ahora mismo', {
+    openai: openaiFalso(conTexto('Listo, te paso mi Calendly ahora mismo', {
       business_name: 'Inmobiliaria Pereyra', rubro: 'inmobiliaria',
       business_type: 2, budget: 3, team_size: 3,
       instagram_web: '@inmopereyra', needs: 'quiero dejar de perder consultas',
@@ -129,31 +149,31 @@ test('con todos los datos, el cierre lo hace el codigo y no la IA', async () => 
 });
 
 test('una queja se deriva por codigo, sin pasar por la IA', async () => {
-  const anthropic = anthropicFalso(conTexto('Uy, contame qué pasó'));
-  const s = await conLead({ anthropic });
+  const openai = openaiFalso(conTexto('Uy, contame qué pasó'));
+  const s = await conLead({ openai });
 
   await s.servicioLeads.registrarRespuesta('59899123456', 'esto es una estafa');
   await s.cola.vacia();
 
   assert.equal(s.repo.leadPorTelefono('59899123456').fsm_state, S.HUMAN_QUEUED);
-  assert.equal(anthropic.llamadas.length, 0, 'ni se le pregunta al modelo');
+  assert.equal(openai.llamadas.length, 0, 'ni se le pregunta al modelo');
 });
 
 test('la baja se respeta por codigo, sin pasar por la IA', async () => {
-  const anthropic = anthropicFalso(conTexto('¡No te vayas!'));
-  const s = await conLead({ anthropic });
+  const openai = openaiFalso(conTexto('¡No te vayas!'));
+  const s = await conLead({ openai });
 
   await s.servicioLeads.registrarRespuesta('59899123456', 'baja');
   await s.cola.vacia();
 
   assert.equal(s.repo.leadPorTelefono('59899123456').opt_out, 1);
-  assert.equal(anthropic.llamadas.length, 0);
+  assert.equal(openai.llamadas.length, 0);
 });
 
 // ── que pasa cuando la IA no esta ────────────────────────────────────────────
 
 test('sin clave el agente queda inactivo y contesta el embudo de siempre', async () => {
-  const s = await conLead();   // sin anthropic
+  const s = await conLead();   // sin cliente de IA
   await s.servicioLeads.registrarRespuesta('59899123456', 'hola');
   await s.cola.vacia();
 
@@ -163,7 +183,7 @@ test('sin clave el agente queda inactivo y contesta el embudo de siempre', async
 });
 
 test('si la API falla, el lead no se queda sin respuesta', async () => {
-  const s = await conLead({ anthropic: anthropicFalso(new Error('529 overloaded')) });
+  const s = await conLead({ openai: openaiFalso(new Error('529 overloaded')) });
 
   await s.servicioLeads.registrarRespuesta('59899123456', 'hola');
   await s.cola.vacia();
@@ -175,7 +195,7 @@ test('si la API falla, el lead no se queda sin respuesta', async () => {
 
 test('si la IA guarda datos pero no contesta, tampoco se queda mudo', async () => {
   const s = await conLead({
-    anthropic: anthropicFalso({ content: [{ type: 'tool_use', name: 'guardar_datos', input: { rubro: 'x' } }] }),
+    openai: openaiFalso({ content: [{ type: 'tool_use', name: 'guardar_datos', input: { rubro: 'x' } }] }),
   });
 
   await s.servicioLeads.registrarRespuesta('59899123456', 'hola');
@@ -254,4 +274,91 @@ test('al que se dio de baja no se le contesta el audio', async () => {
   s.proveedor.simularSinTexto({ from: '59899123456', tipo: 'audio' });
   await s.cola.vacia();
   assert.equal(s.proveedor.getEnviados().length, 0);
+});
+
+// ── transcripcion de audios ──────────────────────────────────────────────────
+
+const { crearTranscriptor } = require('../src/ia/transcripcion');
+
+test('manda el audio tal cual: WhatsApp usa OGG y la API lo acepta', async () => {
+  const openai = openaiFalso({ text: '  Hola, tengo una parrilla en Pocitos  ' });
+  const t = crearTranscriptor({ openai, modelo: 'whisper-1' });
+
+  const texto = await t.transcribir(Buffer.from('audio-falso'), 12);
+
+  assert.equal(texto, 'Hola, tengo una parrilla en Pocitos', 'devuelve el texto sin espacios sobrantes');
+  assert.equal(openai.transcripciones[0].model, 'whisper-1');
+  assert.equal(openai.transcripciones[0].language, 'es', 'le dice que es español');
+});
+
+test('un audio larguisimo no se transcribe', async () => {
+  const openai = openaiFalso({ text: 'lo que sea' });
+  const t = crearTranscriptor({ openai, modelo: 'whisper-1', maxSegundos: 300 });
+
+  assert.equal(await t.transcribir(Buffer.from('x'), 900), null);
+  assert.equal(openai.transcripciones.length, 0, 'ni se llama a la API');
+});
+
+test('sin clave no transcribe y no rompe', async () => {
+  const t = crearTranscriptor({ openai: null, modelo: 'whisper-1' });
+  assert.equal(t.activo, false);
+  assert.equal(await t.transcribir(Buffer.from('x'), 5), null);
+});
+
+test('si la transcripcion falla devuelve null en vez de tirar', async () => {
+  const t = crearTranscriptor({ openai: openaiFalso(new Error('429')), modelo: 'whisper-1' });
+  assert.equal(await t.transcribir(Buffer.from('x'), 5), null);
+});
+
+test('una nota de voz entra al embudo como si la hubieran escrito', async () => {
+  // Es el punto de todo esto: el audio no se contesta con "escribime", se
+  // escucha y sigue el mismo camino que el texto.
+  const s = await conLead({
+    openai: openaiFalso([
+      { text: 'Hola, tenemos una parrilla con delivery en Pocitos' },
+      conTexto('¡Buenísimo! ¿Y qué te gustaría lograr?', { rubro: 'parrilla con delivery' }),
+    ]),
+  });
+
+  await s.proveedor.simularSinTexto({
+    from: '59899123456', tipo: 'audio', segundos: 9,
+    descargar: async () => Buffer.from('ogg-falso'),
+  });
+  await s.cola.vacia();
+
+  const l = s.repo.leadPorTelefono('59899123456');
+  assert.equal(l.rubro, 'parrilla con delivery', 'lo que dijo por audio quedo guardado');
+
+  const alLead = s.proveedor.getEnviados().filter((e) => e.to === '59899123456').map((e) => e.texto);
+  assert.match(alLead.at(-1), /qué te gustaría lograr/);
+  assert.ok(!alLead.some((m) => /no puedo escuchar audios/.test(m)), 'no le pide que escriba');
+});
+
+test('si no se puede transcribir, le pide que escriba', async () => {
+  const s = await conLead({ openai: openaiFalso(new Error('sin credito')) });
+
+  await s.proveedor.simularSinTexto({
+    from: '59899123456', tipo: 'audio', segundos: 9,
+    descargar: async () => Buffer.from('ogg-falso'),
+  });
+  await s.cola.vacia();
+
+  const alLead = s.proveedor.getEnviados().filter((e) => e.to === '59899123456').map((e) => e.texto);
+  assert.match(alLead.at(-1), /no puedo escuchar audios/);
+});
+
+test('una foto no se manda a transcribir', async () => {
+  const openai = openaiFalso({ text: 'no deberia llamarse' });
+  const s = await conLead({ openai });
+  s.proveedor.limpiar();
+
+  await s.proveedor.simularSinTexto({
+    from: '59899123456', tipo: 'imagen',
+    descargar: async () => Buffer.from('jpg'),
+  });
+  await s.cola.vacia();
+
+  assert.equal(openai.transcripciones.length, 0);
+  const alLead = s.proveedor.getEnviados().filter((e) => e.to === '59899123456').map((e) => e.texto);
+  assert.match(alLead.at(-1), /no lo puedo abrir/);
 });

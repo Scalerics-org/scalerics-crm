@@ -38,8 +38,8 @@ const esquema = z.object({
   DEFAULT_COUNTRY_CODE: z.string().default('598'),
   TZ: z.string().default('America/Montevideo'),
 
-  // Embudo de calificacion. Sin ANTHROPIC_API_KEY el scoring cae a reglas.
-  ANTHROPIC_API_KEY: z.string().default(''),
+  // Embudo de calificacion. Sin OPENAI_API_KEY el scoring cae a reglas.
+  OPENAI_API_KEY: z.string().default(''),
   CALENDLY_LINK: z.string().default('https://calendly.com/scalerics/diagnostico'),
   FUNNEL_ENABLED: booleanoDeEnv.default(true),
 
@@ -78,14 +78,25 @@ const esquema = z.object({
 
   /**
    * Con IA_CONVERSACION la parte de averiguar la conduce el modelo en vez del
-   * embudo de preguntas fijas. Requiere ANTHROPIC_API_KEY: sin clave se ignora
-   * y sigue el embudo, no rompe nada.
+   * embudo de preguntas fijas. Requiere OPENAI_API_KEY: sin clave se ignora y
+   * sigue el embudo, no rompe nada.
    *
-   * Haiku alcanza para esto y sale una fraccion de Sonnet. Si las respuestas
-   * quedan cortas de calidad, se cambia por claude-sonnet-5 aca y listo.
+   * gpt-4o-mini alcanza para esto y sale una fraccion de los modelos grandes.
+   * Si las respuestas quedan cortas de calidad, se cambia el modelo aca.
    */
   IA_CONVERSACION: booleanoDeEnv.default(true),
-  IA_MODELO: z.string().default('claude-haiku-4-5-20251001'),
+  IA_MODELO: z.string().default('gpt-4o-mini'),
+
+  /**
+   * Notas de voz a texto. Las de WhatsApp vienen en OGG/Opus, que la API acepta
+   * tal cual: no hace falta convertir nada.
+   *
+   * El corte por duracion es por costo y por sentido — nadie describe su
+   * negocio en diez minutos, y si lo hace conviene que lo escuche una persona.
+   */
+  IA_TRANSCRIPCION: booleanoDeEnv.default(true),
+  IA_MODELO_AUDIO: z.string().default('whisper-1'),
+  MAX_AUDIO_SEGUNDOS: z.coerce.number().positive().default(300),
 
   // Cada cuanto, como mucho, se le pide a alguien que escriba en vez de mandar
   // audios. Quien manda cuatro seguidos no necesita cuatro disculpas.

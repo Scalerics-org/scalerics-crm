@@ -40,12 +40,12 @@ function cfgTest(extra = {}) {
  * @param {Date} [reloj] congela el tiempo, para probar horario comercial.
  */
 async function montar(extra, reloj) {
-  // `anthropic` no es una clave de config: es el cliente falso que usan los
-  // tests de la capa conversacional. Se separa antes de armar la config.
-  const { anthropic = null, ...cfgExtra } = extra || {};
+  // `openai` no es una clave de config: es el cliente falso que usan los tests
+  // de la capa de IA. Se separa antes de armar la config.
+  const { openai = null, ...cfgExtra } = extra || {};
   const s = construir(cfgTest(cfgExtra), {
     logger: null,
-    anthropic,
+    openai,
     ahora: reloj ? () => reloj : undefined,
   });
   await s.proveedor.conectar();
