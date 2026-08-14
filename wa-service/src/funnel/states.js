@@ -19,6 +19,10 @@ const S = {
   QUAL_6: 'QUAL_6',
   SCORED: 'SCORED',
   MEETING_SENT: 'MEETING_SENT',
+  // Se le contesto el "quiero saber mas". Existe para no volver a mandarle lo
+  // mismo si insiste con esa opcion: sin este estado, el "2" se atendia siempre
+  // igual y la conversacion quedaba en loop.
+  MEETING_INFO: 'MEETING_INFO',
   SCHEDULED: 'SCHEDULED',
   NURTURE: 'NURTURE',
   DISQUALIFIED: 'DISQUALIFIED',

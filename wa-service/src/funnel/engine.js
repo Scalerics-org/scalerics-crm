@@ -125,16 +125,19 @@ function crearEmbudo({ repo, cola, textos, scorer, logger, cfg = { amPhones: [] 
           decir(lead, textos.MEETING_OFFER(primerNombre(fresco.nombre)));
           return S.MEETING_SENT;
         }
-        if (r.recommended_action === 'nurture') {
-          decir(lead, textos.NURTURE);
-          return S.NURTURE;
-        }
-        decir(lead, textos.DISQUALIFIED);
-        return S.DISQUALIFIED;
+        // El mensaje lo manda el handler del estado destino, no este: a NURTURE
+        // tambien se llega desde MEETING_INFO, y si el texto saliera solo desde
+        // aca ese camino terminaba en silencio.
+        if (r.recommended_action === 'nurture') return alEntrar(fresco, S.NURTURE, entrada);
+        return alEntrar(fresco, S.DISQUALIFIED, entrada);
       }
 
       case S.MEETING_SENT:
-        decir(lead, entrada === '2' ? textos.MORE_INFO : textos.MEETING_LINK);
+        decir(lead, textos.MEETING_LINK);
+        return estado;
+
+      case S.MEETING_INFO:
+        decir(lead, textos.MORE_INFO);
         return estado;
 
       case S.SCHEDULED:
@@ -157,8 +160,16 @@ function crearEmbudo({ repo, cola, textos, scorer, logger, cfg = { amPhones: [] 
         return estado;
 
       case S.NURTURE:
+        // lead.fsm_state es todavia el estado anterior: _transicionar lo guarda
+        // recien despues. Al que califico y dijo "todavia no" no se le contesta
+        // que su caso "se va a mirar a ver si encaja" — ya encajo, lo que falta
+        // es el momento.
+        decir(lead, lead.fsm_state === S.MEETING_INFO ? textos.NOT_NOW : textos.NURTURE);
+        return estado;
+
       case S.DISQUALIFIED:
-        return estado; // el mensaje ya salio desde SCORED
+        decir(lead, textos.DISQUALIFIED);
+        return estado;
 
       default:
         decir(lead, textos.MENU(primerNombre(lead.nombre)));

@@ -87,6 +87,60 @@ test('pedir el link de la reunion despues de la oferta', async () => {
 
   const mas = await lead(s, '2');
   assert.match(mas.at(-1), /Caso real/);
+  assert.equal(estado(s), S.MEETING_INFO);
+});
+
+test('insistir con "todavia no" corta la insistencia en vez de repetir', async () => {
+  // Pasaba esto en produccion: MEETING_SENT mandaba MORE_INFO ante cualquier
+  // "2" y se quedaba en el mismo estado, asi que el lead recibia el mismo
+  // parrafo tantas veces como apretara la opcion.
+  const s = await conLead();
+  for (const t of ['hola', '1', 'Mi negocio', '2', '3', '3', 'azul', '@x', 'necesito ventas']) {
+    await lead(s, t);
+  }
+  await lead(s, '2');               // → MEETING_INFO, le cuenta
+  s.proveedor.limpiar();
+
+  const otra = await lead(s, '2');  // "todavia no"
+  assert.equal(estado(s), S.NURTURE);
+  assert.ok(!/Caso real/.test(otra.at(-1)), 'no repite el mismo texto');
+  assert.match(otra.at(-1), /sin apuro/);
+  assert.match(otra.at(-1), /calendly/, 'le deja el link por las dudas');
+
+  // Y no queda encerrado: el siguiente mensaje vuelve al menu.
+  const despues = await lead(s, 'hola');
+  assert.equal(estado(s), S.MENU);
+  assert.match(despues.at(-1), /asistente de \*Scalerics\*/);
+});
+
+test('desde "quiero saber mas" se puede volver a pedir el link', async () => {
+  const s = await conLead();
+  for (const t of ['hola', '1', 'Mi negocio', '2', '3', '3', 'azul', '@x', 'necesito ventas']) {
+    await lead(s, t);
+  }
+  await lead(s, '2');
+  const msgs = await lead(s, '1');
+
+  assert.equal(estado(s), S.MEETING_SENT);
+  assert.match(msgs.at(-1), /calendly\.com\/scalerics\/diagnostico/);
+});
+
+test('el lead flojo recibe el texto de nurture, no el de "todavia no"', async () => {
+  // NURTURE se alcanza por dos caminos y cada uno tiene su texto. Si el
+  // handler de SCORED dejara de mandar el mensaje, este camino quedaria mudo.
+  const s = await conLead();
+  await lead(s, 'hola');
+  await lead(s, '1');
+  await lead(s, 'Kiosco Don José');
+  await lead(s, '3');               // automatizacion
+  await lead(s, '2');               // 500 a 3000
+  await lead(s, '1');               // solo yo
+  await lead(s, 'no tengo');
+  await lead(s, 'no tengo');
+  const msgs = await lead(s, 'algo simple');
+
+  assert.equal(estado(s), S.NURTURE);
+  assert.match(msgs.at(-1), /ya tengo todo anotado/);
 });
 
 test('respuesta invalida: reintenta y despues deriva a un humano', async () => {

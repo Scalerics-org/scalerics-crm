@@ -30,6 +30,14 @@ function crearTextos({ calendlyLink }) {
 
     MORE_INFO: 'Bueno, te cuento 💡\n\nScalerics es una agencia uruguaya que ayuda a negocios a automatizar sus ventas y atención.\n\nCaso real: una empresa recibe 50 consultas por día en WhatsApp. Con nuestro sistema, el 80% se resuelve solo — sin que nadie en el equipo tenga que contestar.\n\nResultado:\n→ Tu equipo se enfoca en cerrar, no en responder\n→ Más leads atendidos = más ventas\n→ Escalás sin contratar más gente\n\n¿Agendamos la llamada de diagnóstico? Es gratis y sin compromiso.\n\n*1* → Sí, agendar\n*2* → Todavía no',
 
+    /**
+     * "Todavia no" despues de haber pedido mas informacion. Es distinto de
+     * NURTURE: este lead ya califico, lo unico que dijo es que no es el momento.
+     * Se le deja el link igual — si cambia de idea a las dos horas, no tiene que
+     * volver a escribir para pedirlo.
+     */
+    NOT_NOW: `Dale, sin apuro 👍\n\nTe dejo el link igual, por si más adelante querés coordinar:\n\n🗓️ ${calendlyLink}\n\nY si preferís, en unos días te escribo para ver cómo venís.\n\nCualquier cosa, escribime *MENÚ*.`,
+
     // No despide: lo que conto queda anotado y alguien lo va a mirar. El texto
     // anterior ("capaz no es el momento ideal") era un portazo amable para
     // alguien que acababa de dar un brief completo.
