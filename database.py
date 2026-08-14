@@ -220,6 +220,11 @@ def init_db(db_path: str) -> None:
             )
         """)
         _migrar_meetings_client_id_nullable(conn)
+        # Quien atiende la reunion. Sin esto la meta 'reuniones_hechas' se repartia
+        # entre todos los "contributors" del lead: si uno agendaba y otro atendia,
+        # el progreso les sumaba a los dos.
+        _add_column(conn, "meetings", "owner_id", "INTEGER REFERENCES users(id) ON DELETE SET NULL")
+        _add_column(conn, "meetings", "outcome_at", "TIMESTAMP")
 
         # ── budgets ───────────────────────────────────────────────────────────
         conn.execute("""
@@ -806,7 +811,22 @@ def get_job(db_path: str, job_id: int) -> Optional[dict]:
 _MEETING_COLUMNS = {
     "calendar_event_id", "title", "start_at", "end_at", "meet_link",
     "status", "transcript", "summary", "requirements", "recall_bot_id",
+    "owner_id", "outcome_at",
 }
+
+# status: donde esta la reunion.
+#   scheduled  agendada, todavia no paso
+#   realizada  el cliente vino
+#   no_asistio el cliente no aparecio  <- antes era indistinguible de 'realizada'
+#   reagendada se movio a otra fecha
+#   canceled   se cancelo
+#
+# Sin 'no_asistio' un plantón se veia igual que una reunion exitosa: no habia forma
+# de medir la tasa de asistencia ni de saber a quien reagendar.
+ESTADOS_REUNION = {"scheduled", "realizada", "no_asistio", "reagendada", "canceled"}
+
+# Estados que cuentan como "ya paso y se resolvio".
+ESTADOS_CERRADOS = {"realizada", "no_asistio", "reagendada", "canceled"}
 
 
 def create_meeting(db_path: str, client_id: int, **fields) -> int:

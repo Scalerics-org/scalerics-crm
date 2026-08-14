@@ -4311,7 +4311,7 @@ function _cpRenderMeetings() {
         <div class="cp-meeting-title">${esc(m.title || 'Reunión')}</div>
         <button class="cp-btn cp-btn-ghost" style="color:#ef4444;font-size:.8rem;padding:2px 8px" onclick="_cpDeleteMeeting(${m.id})">Borrar</button>
       </div>
-      <div class="cp-meeting-meta">${m.start_at ? new Date(m.start_at).toLocaleString('es-UY',{timeZone:'America/Montevideo',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : ''} · ${_cpMeetStatus(m.status)}</div>
+      <div class="cp-meeting-meta">${m.start_at ? new Date(m.start_at).toLocaleString('es-UY',{timeZone:'America/Montevideo',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : ''} · <span style="color:${(_MEET_ESTADOS[m.status]||{}).color||'#94a3b8'};font-weight:600">${_cpMeetStatus(m.status)}</span>${m.owner_name ? ' · ' + esc(m.owner_name) : ''}</div>
       ${m.meet_link ? `<div style="margin-bottom:8px"><a class="cp-meeting-link" href="${safeUrl(m.meet_link)}" target="_blank" rel="noopener noreferrer" style="margin:0">▶ Unirse a la reunión</a></div>` : ''}
       ${m.calendar_event_id ? `<div style="margin-bottom:8px">
         <button class="cp-btn cp-btn-ghost" style="font-size:.75rem;padding:2px 8px" onclick="_cpToggleAddEmail(${m.id})">+ Agregar email</button>
@@ -4320,6 +4320,7 @@ function _cpRenderMeetings() {
           <button class="cp-btn cp-btn-primary" style="font-size:.75rem;padding:4px 10px;margin-top:4px" onclick="_cpAddEmailToMeeting(${m.id},'${jsStr(m.calendar_event_id)}')">Agregar</button>
         </div>
       </div>` : ''}
+      ${_cpRenderCierre(m)}
       ${hasSummary ? `
         <div class="cp-summary-label">Resumen</div>
         <div class="cp-summary-box">${m.summary || ''}</div>
@@ -4346,9 +4347,54 @@ function _cpRenderMeetings() {
   return html;
 }
 
+// El mapa anterior usaba 'completed' y 'cancelled' (doble L), valores que la base
+// nunca guardo: el estado real se mostraba crudo o vacio.
+const _MEET_ESTADOS = {
+  scheduled:  {texto:'agendada',   color:'#94a3b8'},
+  realizada:  {texto:'realizada',  color:'#34d399'},
+  no_asistio: {texto:'no asistió', color:'#f87171'},
+  reagendada: {texto:'reagendada', color:'#fbbf24'},
+  canceled:   {texto:'cancelada',  color:'#64748b'},
+};
+
 function _cpMeetStatus(s) {
-  const map = {scheduled:'agendada',completed:'realizada',cancelled:'cancelada'};
-  return map[s] || s || '';
+  return (_MEET_ESTADOS[s] || {}).texto || s || '';
+}
+
+// Botonera de cierre. Solo aparece cuando la reunion ya paso y sigue en
+// 'agendada': antes una reunion terminaba y el CRM no pedia nada, asi que un
+// planton quedaba registrado igual que una reunion exitosa.
+function _cpRenderCierre(m) {
+  const paso = m.start_at && new Date(m.start_at) < new Date();
+  if (!paso || (m.status && m.status !== 'scheduled')) return '';
+  return `<div style="margin-top:10px;padding-top:10px;border-top:1px solid #1e293b">
+    <div style="font-size:.72rem;color:#64748b;margin-bottom:6px">¿Qué pasó con esta reunión?</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button class="cp-btn cp-btn-ghost" style="font-size:.75rem;padding:3px 10px;color:#34d399;border-color:#34d399" onclick="_cpCerrarReunion(${m.id},'realizada')">✓ Se hizo</button>
+      <button class="cp-btn cp-btn-ghost" style="font-size:.75rem;padding:3px 10px;color:#f87171;border-color:#f87171" onclick="_cpCerrarReunion(${m.id},'no_asistio')">✕ No vino</button>
+      <button class="cp-btn cp-btn-ghost" style="font-size:.75rem;padding:3px 10px;color:#fbbf24;border-color:#fbbf24" onclick="_cpCerrarReunion(${m.id},'reagendada')">↻ Se reagendó</button>
+    </div>
+  </div>`;
+}
+
+async function _cpCerrarReunion(meetingId, resultado) {
+  const r = await fetch('/api/calendar/meetings/' + meetingId + '/outcome', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({outcome: resultado})
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!d.ok) { mostrarAviso(d.error || 'No se pudo registrar el resultado.', 'Error', 'error'); return; }
+  const m = (_cpData.meetings || []).find(x => x.id === meetingId);
+  if (m) m.status = d.status;
+  // El backend tambien mueve el lead: se refleja para que la ficha no quede
+  // mostrando un estado viejo.
+  if (d.crm_status && _cpData.lead) _cpData.lead = {..._cpData.lead, crm_status: d.crm_status};
+  document.getElementById('cp-tab-meetings').innerHTML = _cpRenderMeetings();
+  mostrarAviso(
+    resultado === 'realizada'  ? 'Reunión marcada como realizada. El lead avanzó.' :
+    resultado === 'no_asistio' ? 'Registrado: el cliente no asistió.' :
+                                 'Registrado: la reunión se reagendó.',
+    'Listo', 'warn');
 }
 
 function _cpBindMeetings() {}

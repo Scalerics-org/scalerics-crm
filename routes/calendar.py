@@ -125,6 +125,15 @@ def _contributors(db: str, lead_id: int, current_uid: int | None) -> list[int]:
     return list(ids)
 
 
+def _ahora_local() -> str:
+    """Ahora en hora de Uruguay, en el mismo formato naive que guarda start_at.
+
+    El resto del modulo guarda la hora local sin zona; comparar contra utcnow()
+    correria todo 3 horas y marcaria reuniones como pasadas antes de tiempo.
+    """
+    return datetime.datetime.now(MVD).replace(tzinfo=None).isoformat()
+
+
 def _mails_internos() -> set:
     """Mails del equipo: agendar con ellos no genera un lead. routes/calendly.py ya
     usaba CALENDLY_BLOCKED_EMAILS para esto, pero el sync de Google la ignoraba."""
@@ -397,9 +406,11 @@ def api_calendar_events():
         try:
             rows = conn.execute("""
                 SELECT m.id, m.title, m.start_at, m.end_at, m.meet_link, m.status,
-                       b.name as client_name, m.client_id
+                       b.name as client_name, m.client_id,
+                       m.owner_id, u.name as owner_name
                 FROM meetings m
                 LEFT JOIN businesses b ON m.client_id = b.id
+                LEFT JOIN users u ON m.owner_id = u.id
                 WHERE m.status != 'canceled'
                   AND (? = '' OR SUBSTR(m.start_at, 1, 10) >= ?)
                   AND (? = '' OR SUBSTR(m.start_at, 1, 10) <= ?)
@@ -418,6 +429,15 @@ def api_calendar_events():
                     "meeting_url": r["meet_link"] or "",
                     "client_id": r["client_id"],
                     "client_name": r["client_name"] or "",
+                    # status y responsable: la UI necesita distinguir una reunion
+                    # que todavia no paso de una realizada o un planton.
+                    "status": r["status"] or "scheduled",
+                    "owner_id": r["owner_id"],
+                    "owner_name": r["owner_name"] or "",
+                    "pendiente_cierre": bool(
+                        (r["status"] or "scheduled") == "scheduled"
+                        and (r["start_at"] or "") < _ahora_local()
+                    ),
                 })
             return jsonify({"events": events})
         finally:
@@ -468,6 +488,8 @@ def api_calendar_events():
             end_at=end_dt.isoformat(),
             meet_link=meet_link,
             status="scheduled",
+            # Quien la crea queda como responsable por defecto. Se puede reasignar.
+            owner_id=session.get("user_id"),
         )
         # El id de Google se guarda para que el sync reconozca la reunion como ya
         # importada en vez de duplicarla, y para poder cancelarla desde el CRM.
@@ -502,6 +524,87 @@ def api_calendar_events():
     except Exception as e:
         logging.getLogger(__name__).exception("Error creando la reunion")
         return jsonify({"ok": False, "error": str(e)}), 500
+
+
+_RESULTADOS = {
+    # resultado -> (status de la reunion, nuevo estado del lead o None)
+    "realizada":  ("realizada",  "reunion_hecha"),
+    "no_asistio": ("no_asistio", None),
+    "reagendada": ("reagendada", None),
+}
+
+
+@calendar_bp.route("/api/calendar/meetings/<int:meeting_id>/outcome", methods=["POST"])
+def api_meeting_outcome(meeting_id):
+    """Registra que paso con la reunion.
+
+    Antes solo existian 'scheduled' y 'canceled': un planton se veia EXACTAMENTE
+    igual que una reunion exitosa. No habia forma de medir la tasa de asistencia,
+    ni de saber a quien reagendar, ni de distinguir "el cliente cancelo" (avisó) de
+    "el cliente no aparecio" (no avisó), que comercialmente no son lo mismo.
+    """
+    data = request.get_json() or {}
+    resultado = (data.get("outcome") or "").strip()
+    if resultado not in _RESULTADOS:
+        return jsonify({"ok": False,
+                        "error": f"Resultado inválido. Opciones: {', '.join(_RESULTADOS)}"}), 400
+
+    db = _db()
+    meeting = get_meeting(db, meeting_id)
+    if not meeting:
+        return jsonify({"ok": False, "error": "Reunión no encontrada"}), 404
+
+    nuevo_status, nuevo_estado_lead = _RESULTADOS[resultado]
+    ya_estaba = meeting.get("status") == nuevo_status
+    update_meeting(db, meeting_id, status=nuevo_status,
+                   outcome_at=datetime.datetime.now(MVD).replace(tzinfo=None).isoformat())
+
+    client_id = meeting.get("client_id")
+    nombre_cliente = ""
+    if client_id:
+        cliente = get_business(db, client_id) or {}
+        nombre_cliente = cliente.get("name", "")
+
+        # El lead avanza solo. Sin esto habia que acordarse de moverlo a mano.
+        if nuevo_estado_lead and cliente.get("crm_status") in (
+                None, "", "sin_contactar", "interesado", "contactado", "reunion_agendada"):
+            from database import update_business
+            update_business(db, client_id, crm_status=nuevo_estado_lead)
+
+        if resultado == "realizada" and not ya_estaba:
+            # La meta se acredita a QUIEN ATENDIO, no a todos los que tocaron el
+            # lead alguna vez. increment_task_progress ya es idempotente por lead,
+            # asi que si el estado del lead tambien dispara el conteo no suma dos
+            # veces.
+            responsable = meeting.get("owner_id") or session.get("user_id")
+            increment_task_progress(db, [responsable] if responsable else [],
+                                    "reuniones_hechas",
+                                    lead_id=client_id, lead_name=nombre_cliente)
+
+    log_activity(db, session.get("user_name", "sistema"), f"meeting_{resultado}",
+                 "lead", client_id, nombre_cliente, meeting.get("title", ""),
+                 user_id=session.get("user_id"))
+    return jsonify({"ok": True, "status": nuevo_status,
+                    "crm_status": nuevo_estado_lead if client_id else None})
+
+
+@calendar_bp.route("/api/calendar/meetings/<int:meeting_id>/owner", methods=["PUT"])
+def api_meeting_owner(meeting_id):
+    """Reasigna el responsable de la reunion."""
+    data = request.get_json() or {}
+    owner_id = data.get("owner_id")
+    if not get_meeting(db := _db(), meeting_id):
+        return jsonify({"ok": False, "error": "Reunión no encontrada"}), 404
+    if owner_id is not None:
+        try:
+            owner_id = int(owner_id)
+        except (TypeError, ValueError):
+            return jsonify({"ok": False, "error": "owner_id inválido"}), 400
+        from database import get_user_by_id
+        if not get_user_by_id(db, owner_id):
+            return jsonify({"ok": False, "error": "Usuario inexistente"}), 400
+    update_meeting(db, meeting_id, owner_id=owner_id)
+    return jsonify({"ok": True, "owner_id": owner_id})
 
 
 @calendar_bp.route("/api/calendar/clients/<int:client_id>/meetings", methods=["GET"])
