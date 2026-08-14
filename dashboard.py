@@ -26,6 +26,7 @@ from routes.calendly import calendly_bp
 from services.auth import ALL_PANELS, enforce_panel_access, require_admin
 from services.demo_service import demo_job_handler
 from services.job_service import init_worker
+from services.reminder_service import iniciar_scheduler
 
 load_dotenv()
 
@@ -6522,6 +6523,7 @@ loadAll();
 
     start_meta_token_monitor(app)
     start_meta_daily_import(app)
+    iniciar_scheduler(app)
 
     try:
         from database import get_all_users

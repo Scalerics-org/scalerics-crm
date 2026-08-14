@@ -216,6 +216,42 @@ def send_task_assignment_email(
     return _send(to_email, f"Nueva tarea: {task_title} — Scalerics CRM", html)
 
 
+def send_meeting_reminder(to_email: str, nombre_cliente: str, titulo: str,
+                          cuando: str, meet_link: str = "",
+                          horas_antes: int = 24) -> bool:
+    """Recordatorio de reunion al cliente.
+
+    El CRM no enviaba ningun aviso previo: los no-shows salian caros y no habia
+    forma de reducirlos. El link de Meet va adentro para que no tengan que buscarlo.
+    """
+    from markupsafe import escape
+
+    saludo = f"Hola{' ' + str(escape(nombre_cliente)) if nombre_cliente else ''},"
+    cuerpo_texto = (
+        "te recordamos que mañana tenemos nuestra reunión."
+        if horas_antes >= 12 else
+        "te recordamos que en un rato tenemos nuestra reunión."
+    )
+    filas = [("Reunión", str(escape(titulo))), ("Cuándo", str(escape(cuando)))]
+    body = (
+        _muted(f"{saludo} {cuerpo_texto}")
+        + _info_card(filas)
+        + (_muted("Si no podés en ese horario, respondé este mail y lo reprogramamos.")
+           if horas_antes >= 12 else
+           _muted("Te esperamos."))
+    )
+    html = _layout(
+        badge="Recordatorio",
+        title="Tu reunión con Scalerics",
+        body=body,
+        cta_url=meet_link or "",
+        cta_label="Entrar a la reunión →" if meet_link else "",
+    )
+    asunto = ("Recordatorio: reunión mañana con Scalerics" if horas_antes >= 12
+              else "Tu reunión con Scalerics es en 1 hora")
+    return _send(to_email, asunto, html)
+
+
 def send_meta_token_alert(to_email: str, error_detail: str) -> bool:
     body = (
         _muted(

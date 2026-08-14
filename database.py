@@ -225,6 +225,12 @@ def init_db(db_path: str) -> None:
         # el progreso les sumaba a los dos.
         _add_column(conn, "meetings", "owner_id", "INTEGER REFERENCES users(id) ON DELETE SET NULL")
         _add_column(conn, "meetings", "outcome_at", "TIMESTAMP")
+        # Cuando se mando cada recordatorio. NULL = todavia no. Es lo que hace que
+        # el aviso no se repita en cada pasada del scheduler.
+        _add_column(conn, "meetings", "reminder_24h_at", "TIMESTAMP")
+        _add_column(conn, "meetings", "reminder_1h_at", "TIMESTAMP")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_meetings_start_at ON meetings(start_at)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_meetings_client_id ON meetings(client_id)")
 
         # ── budgets ───────────────────────────────────────────────────────────
         conn.execute("""
@@ -811,7 +817,7 @@ def get_job(db_path: str, job_id: int) -> Optional[dict]:
 _MEETING_COLUMNS = {
     "calendar_event_id", "title", "start_at", "end_at", "meet_link",
     "status", "transcript", "summary", "requirements", "recall_bot_id",
-    "owner_id", "outcome_at",
+    "owner_id", "outcome_at", "reminder_24h_at", "reminder_1h_at",
 }
 
 # status: donde esta la reunion.

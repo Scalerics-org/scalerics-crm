@@ -167,6 +167,10 @@ def _fetch_and_store_lead(app, lead_id: str, form_id: str):
             biz_id = insert_business(db, {
                 "name":       name,
                 "phone":      phone or None,
+                # El email se extraia del formulario y despues se descartaba: no se
+                # pasaba a insert_business, que ademas tampoco lo guardaba. Sin el
+                # no se le puede escribir al lead ni invitarlo a una reunion.
+                "email":      email or None,
                 "city":       city or None,
                 "category":   "Meta Lead Ad",
                 "status":     "scraped",
@@ -429,7 +433,18 @@ def _update_env(key: str, value: str):
 
 # ── Background token health monitor ──────────────────────────────────────────
 
-_CHECK_INTERVAL = 10 * 60  # 10 minutos
+# Los dos loops de abajo loguean "every 24h" pero compartian un intervalo de 10
+# MINUTOS. No se notaba porque auto_stop_machines apagaba la maquina y casi nunca
+# llegaban a correr. Con min_machines_running=1 pasarian a ejecutarse cada 10
+# minutos para siempre: el import de Meta 144 veces por dia, y la alerta de token
+# vencido a CADA admin cada 10 minutos (~576 mails diarios con 4 admins).
+_INTERVALO_TOKEN = 6 * 60 * 60      # 6 horas
+_INTERVALO_IMPORT = 24 * 60 * 60    # 24 horas, como decia el log
+
+# La alerta de token se manda como maximo una vez por dia aunque el chequeo corra
+# mas seguido: el token roto sigue roto, no hace falta repetirlo cada vez.
+_ESPERA_ENTRE_ALERTAS = 24 * 60 * 60
+_ultima_alerta_token = 0.0
 
 
 def _check_token_once(db: str) -> None:
@@ -444,9 +459,15 @@ def _check_token_once(db: str) -> None:
         )
         data = r.json()
         if "error" in data:
+            global _ultima_alerta_token
             err = data["error"]
             detail = f"[{err.get('code')}] {err.get('message', '')}"
             logger.error(f"Meta token invalid: {detail}")
+            ahora = time.time()
+            if ahora - _ultima_alerta_token < _ESPERA_ENTRE_ALERTAS:
+                logger.info("Alerta de token ya enviada hace poco — no se repite")
+                return
+            _ultima_alerta_token = ahora
             for email in _get_admin_emails(db):
                 send_meta_token_alert(email, detail)
         else:
@@ -464,11 +485,11 @@ def start_meta_token_monitor(app) -> None:
                     _check_token_once(app.config["DB_PATH"])
             except Exception as e:
                 logger.warning(f"Token monitor error: {e}")
-            time.sleep(_CHECK_INTERVAL)
+            time.sleep(_INTERVALO_TOKEN)
 
     t = threading.Thread(target=_loop, daemon=True, name="meta-token-monitor")
     t.start()
-    logger.info("Meta token monitor started (checks every 24h)")
+    logger.info("Meta token monitor started (cada 6h)")
 
 
 # ── Daily import cron ─────────────────────────────────────────────────────────
@@ -552,8 +573,8 @@ def start_meta_daily_import(app) -> None:
                     _run_import_sync(app.config["DB_PATH"])
             except Exception as e:
                 logger.warning(f"Meta daily import error: {e}")
-            time.sleep(_CHECK_INTERVAL)
+            time.sleep(_INTERVALO_IMPORT)
 
     t = threading.Thread(target=_loop, daemon=True, name="meta-daily-import")
     t.start()
-    logger.info("Meta daily import started (runs every 24h)")
+    logger.info("Meta daily import started (cada 24h)")
