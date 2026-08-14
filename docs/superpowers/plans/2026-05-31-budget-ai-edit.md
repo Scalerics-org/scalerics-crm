@@ -530,9 +530,9 @@ git push origin main
 - [ ] **Esperar el deploy y verificar el endpoint nuevo:**
 
 ```bash
-curl -s -X POST https://web-production-cb6e.up.railway.app/api/leads/598/budget/generate \
+curl -s -X POST https://scalerics-crm.fly.dev/api/leads/598/budget/generate \
   -H "Content-Type: application/json" \
-  -H "x-admin-token: 1bb3154c39b9d9d86206a35649fd8ec2721098c16d3bd3cefd56a5a08abc7a4d" \
+  -H "x-admin-token: $ADMIN_TOKEN" \
   -d '{"instructions":"test"}'
 ```
 

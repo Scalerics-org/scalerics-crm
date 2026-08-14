@@ -61,10 +61,34 @@ jobs:
         with:
           fetch-depth: 0   # gitleaks necesita el historial completo
 
-      - name: Buscar secretos filtrados
-        uses: gitleaks/gitleaks-action@v2
+      # Se usa el BINARIO de gitleaks, no gitleaks-action: la action exige una
+      # licencia paga para repos de organizacion (Scalerics-org lo es) y falla con
+      # "missing gitleaks license". El binario es MIT y hace exactamente lo mismo.
+      # Version pineada a proposito, para que un release nuevo no cambie el
+      # comportamiento del CI sin que nadie lo mire.
+      - name: Instalar gitleaks
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_VERSION: 8.30.1
+        run: |
+          curl -sSfL -o gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          tar -xzf gitleaks.tar.gz gitleaks
+          sudo mv gitleaks /usr/local/bin/
+          gitleaks version
+
+      - name: Buscar secretos filtrados
+        # --no-git escanea los ARCHIVOS tal como estan, no el historial.
+        #
+        # Es a proposito: el ADMIN_TOKEN que se filtro sigue vivo en commits viejos
+        # y sacarlo requiere un git-filter-repo coordinado con todo el que tenga un
+        # clon. Escanear el historial dejaria este job en rojo permanente hasta que
+        # eso pase, y un gate que siempre falla se termina ignorando o apagando.
+        #
+        # Lo que este paso SI garantiza: que no entre un secreto nuevo. La purga
+        # del historial esta en el checklist del PR como tarea aparte.
+        #
+        # --redact para no reimprimir el secreto en el log del build.
+        run: gitleaks detect --source . --no-git --redact --verbose --exit-code 1
 
       - name: Bloquear bases de datos versionadas
         # leads_backup.db (692 KB, 6 cuentas con hash y PII de 421 negocios) estuvo
