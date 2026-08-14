@@ -85,6 +85,7 @@ const ETIQUETA = {
   facturacion: 'consulta de facturación o pagos',
   invalidos: 'no entendió las opciones varias veces',
   pedido: 'pidió hablar con una persona',
+  post_oferta: 'sigue escribiendo despues de recibir el link',
 };
 
 module.exports = { detectar, normalizar, ETIQUETA, PRECIO, PRECIO_DE_PRODUCTO, QUEJA, FACTURACION };

@@ -23,6 +23,10 @@ const S = {
   CONVERSANDO: 'CONVERSANDO',
   SCORED: 'SCORED',
   MEETING_SENT: 'MEETING_SENT',
+  // El link de Calendly ya salio. Existe para no volver a mandarlo: sin este
+  // estado, MEETING_SENT contestaba el mismo link a cualquier cosa que
+  // escribieran —"hola" incluido— y la conversacion no tenia salida.
+  MEETING_LINK_SENT: 'MEETING_LINK_SENT',
   // Se le contesto el "quiero saber mas". Existe para no volver a mandarle lo
   // mismo si insiste con esa opcion: sin este estado, el "2" se atendia siempre
   // igual y la conversacion quedaba en loop.

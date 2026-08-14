@@ -79,9 +79,34 @@ function yaSabemos(lead) {
   return l.length ? l.join(' ') : 'Todavía no sabemos nada de él.';
 }
 
-function construirSystem(lead) {
+/**
+ * Que hacer segun donde este la conversacion. Despues de la oferta el objetivo
+ * ya no es averiguar sino que reserve, y sobre todo NO volver a mandar el link
+ * que ya tiene: eso era lo que hacia el embudo y terminaba mandando el mismo
+ * mensaje cuatro veces seguidas.
+ */
+function objetivos(calendly) {
+  return {
+    MEETING_SENT: `Ya le ofreciste la videollamada y está decidiendo.
+Si dice que sí, pasale el link: ${calendly}. Si duda, entendé qué lo frena antes de insistir.`,
+
+    MEETING_INFO: `Le contaste de qué se trata y está decidiendo.
+Si se copa, pasale el link: ${calendly}. Si dice que todavía no, dejalo ahí sin presionar — no pasa nada.`,
+
+    MEETING_LINK_SENT: `Ya tiene el link de Calendly, se lo mandaste antes.
+NO se lo vuelvas a mandar salvo que te lo pida. Si escribe teniéndolo es porque quiere otra cosa: entendé qué necesita.
+Si dice que ya reservó, dale, confirmale y listo — no le pidas que lo haga de nuevo.
+Si tiene una duda que no podés resolver, ofrecele que le escriba alguien del equipo.`,
+
+    SCHEDULED: `Ya tiene la reunión agendada. No le ofrezcas agendar nada.
+Contestale lo que pregunte y, si es algo que hay que ver en la llamada, decile que lo hablan ahí.`,
+  };
+}
+
+function construirSystem(lead, fase = null, calendly = '') {
   const pendientes = faltantes(lead);
   const gancho = GANCHOS[lead.rubro_norm];
+  const objetivo = objetivos(calendly)[fase];
 
   return `Sos el asistente de Scalerics por WhatsApp. Scalerics es una agencia uruguaya de desarrollo: páginas web, e-commerce, apps y automatizaciones para PyMEs.
 
@@ -107,10 +132,12 @@ No te inventás servicios que no listamos arriba.
 ${yaSabemos(lead)}
 ${gancho ? `\nGancho útil para su rubro: ${gancho}` : ''}
 
-# Qué te falta averiguar
+${objetivo
+    ? `# En qué momento estás\n${objetivo}`
+    : `# Qué te falta averiguar
 ${pendientes.length
-    ? `${pendientes.map(describirFaltante).join('\n')}\n\nPreguntá de a uno, en ese orden, y solo lo que falte. Cuando alguien te da un dato sin que se lo pidas, guardalo igual.`
-    : 'Nada: ya tenés todo. Cerrá ofreciéndole la videollamada.'}
+      ? `${pendientes.map(describirFaltante).join('\n')}\n\nPreguntá de a uno, en ese orden, y solo lo que falte. Cuando alguien te da un dato sin que se lo pidas, guardalo igual.`
+      : 'Nada: ya tenés todo. Cerrá ofreciéndole la videollamada.'}`}
 
 # Cómo guardás
 Guardás en el mismo turno en que contestás. Lo que no guardes se pierde: el equipo lo lee de ahí para preparar la llamada.

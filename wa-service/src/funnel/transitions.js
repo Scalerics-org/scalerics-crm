@@ -22,8 +22,9 @@ const TRANSICIONES = {
   // El "2" (quiero saber mas) lleva a MEETING_INFO, y desde ahi otro "2"
   // (todavia no) cierra la insistencia. Cuando los dos estados eran uno solo,
   // cada "2" volvia a caer en el mismo lugar y repetia el mismo mensaje.
-  [S.MEETING_SENT]: { 2: S.MEETING_INFO, '*': S.MEETING_SENT },
-  [S.MEETING_INFO]: { 2: S.NURTURE, '*': S.MEETING_SENT },
+  [S.MEETING_SENT]: { 2: S.MEETING_INFO, '*': S.MEETING_LINK_SENT },
+  [S.MEETING_INFO]: { 2: S.NURTURE, '*': S.MEETING_LINK_SENT },
+  [S.MEETING_LINK_SENT]: { '*': S.MEETING_LINK_SENT },
   [S.SCHEDULED]:    { '*': S.SCHEDULED },
   [S.NURTURE]:      { '*': S.MENU },
   [S.DISQUALIFIED]: { '*': S.MENU },

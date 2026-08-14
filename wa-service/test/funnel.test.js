@@ -83,12 +83,14 @@ test('pedir el link de la reunion despues de la oferta', async () => {
   }
   assert.equal(estado(s), S.MEETING_SENT);
 
-  const msgs = await lead(s, '1');
-  assert.match(msgs.at(-1), /calendly\.com\/scalerics\/diagnostico/);
-
+  // El "2" pide saber mas; cualquier otra cosa se toma como que quiere el link.
   const mas = await lead(s, '2');
   assert.match(mas.at(-1), /agencia uruguaya/);
   assert.equal(estado(s), S.MEETING_INFO);
+
+  const msgs = await lead(s, '1');
+  assert.match(msgs.at(-1), /calendly\.com\/scalerics\/diagnostico/);
+  assert.equal(estado(s), S.MEETING_LINK_SENT);
 });
 
 test('insistir con "todavia no" corta la insistencia en vez de repetir', async () => {
@@ -122,7 +124,7 @@ test('desde "quiero saber mas" se puede volver a pedir el link', async () => {
   await lead(s, '2');
   const msgs = await lead(s, '1');
 
-  assert.equal(estado(s), S.MEETING_SENT);
+  assert.equal(estado(s), S.MEETING_LINK_SENT);
   assert.match(msgs.at(-1), /calendly\.com\/scalerics\/diagnostico/);
 });
 
@@ -447,4 +449,82 @@ test('el rubro puede inclinar un lead del medio hacia la reunion', () => {
 
   assert.equal(porReglas(medio).recommended_action, 'nurture');
   assert.equal(porReglas({ ...medio, rubro_norm: 'automotriz' }).recommended_action, 'meeting');
+});
+
+// ── despues de mandar el link ────────────────────────────────────────────────
+
+/** Lleva un lead hasta tener el link de Calendly en la mano. */
+async function conLink(s) {
+  for (const t of ['hola', '1', 'Mi negocio', '2', '3', '3', 'inmobiliaria', '@x', 'necesito ventas']) {
+    await lead(s, t);
+  }
+  await lead(s, 'dale');            // → MEETING_LINK_SENT, le manda el link
+  assert.equal(estado(s), S.MEETING_LINK_SENT);
+  s.proveedor.limpiar();
+}
+
+test('el link de Calendly no se manda dos veces', async () => {
+  // Esto pasaba en produccion: MEETING_SENT contestaba el link a cualquier cosa
+  // y se quedaba en si mismo, asi que un "hola" devolvia el link, y otro "hola"
+  // devolvia el link, sin final.
+  const s = await conLead();
+  await conLink(s);
+
+  const msgs = await lead(s, 'hola');
+  assert.ok(!/calendly/.test(msgs.at(-1)), 'no repite el link');
+  assert.match(msgs.at(-1), /¿Pudiste agendar\?/);
+});
+
+test('si dice que ya agendo, se le cree y se deja de insistir', async () => {
+  const s = await conLead();
+  await conLink(s);
+
+  const msgs = await lead(s, 'ya agendé para el jueves');
+  assert.match(msgs.at(-1), /quedamos así/);
+  assert.ok(!/calendly/.test(msgs.at(-1)), 'no le pide que agende de nuevo');
+
+  // El follow-up NO se cancela: la verdad la trae el webhook de Calendly. Si
+  // se confundio y no reservo, el follow-up es justo lo que hay que mandarle.
+  const l = s.repo.leadPorTelefono('59899123456');
+  assert.equal(l.opt_out, 0);
+});
+
+test('"agendamos?" no se confunde con "ya agendé"', async () => {
+  // El que pregunta "agendamos?" todavia NO reservo. Si se tomara como que si,
+  // se le dejaria de insistir justo al que estaba por convertir.
+  const s = await conLead();
+  await conLink(s);
+
+  const msgs = await lead(s, 'agendamos entonces?');
+  assert.ok(!/quedamos así/.test(msgs.at(-1)));
+});
+
+test('el que sigue escribiendo con el link en la mano termina con una persona', async () => {
+  const s = await conLead();
+  await conLink(s);
+
+  await lead(s, 'hola');            // primera insistencia: se le pregunta
+  const msgs = await lead(s, 'hola?');  // segunda: quiere otra cosa
+
+  assert.equal(estado(s), S.HUMAN_QUEUED);
+  assert.match(msgs.at(-1), /le paso tu contacto a alguien del equipo/);
+  assert.equal(s.repo.leadPorTelefono('59899123456').motivo_derivacion, 'post_oferta');
+});
+
+test('con la reunion agendada no se repite el "te esperamos"', async () => {
+  const s = await conLead();
+  const lid = s.repo.leadPorTelefono('59899123456').id;
+  s.servicioLeads.registrarReunion(lid, {
+    telefono: '59899123456',
+    meeting_time: new Date(Date.now() + 48 * 3600 * 1000).toISOString(),
+    meeting_url: 'https://meet.google.com/x',
+  });
+  await s.cola.vacia();
+  s.proveedor.limpiar();
+
+  await lead(s, 'hola');
+  await lead(s, 'una consulta');
+  const repetidos = s.proveedor.getEnviados()
+    .filter((e) => e.to === '59899123456' && /te esperamos/.test(e.texto));
+  assert.equal(repetidos.length, 0, 'ya lo dijo al confirmarse, no lo repite');
 });

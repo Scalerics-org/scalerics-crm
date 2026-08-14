@@ -8,6 +8,14 @@ const { detectar, ETIQUETA } = require('./derivacion');
 
 const MAX_REINTENTOS = 4;
 
+/**
+ * "ya agende", "ya reserve". En primera persona y en pasado a proposito: con
+ * "agendamos?" —que lo dice el que todavia NO reservo— seria justo al reves.
+ * La entrada llega normalizada, sin acentos.
+ */
+const YA_AGENDO = /\b(ya\s+)?(agende|reserve|coordine|saque\s+(el\s+)?turno|lo\s+saque)\b/;
+const dijoQueAgendo = (entrada) => YA_AGENDO.test(entrada);
+
 function normalizar(texto) {
   return String(texto || '')
     .trim()
@@ -41,6 +49,17 @@ const FASE_CALIFICACION = new Set([
   S.NEW, S.MENU, S.MENU_INFO, S.CONVERSANDO,
   S.QUAL_0, S.QUAL_1, S.QUAL_2, S.QUAL_3, S.QUAL_4, S.QUAL_5, S.QUAL_6,
 ]);
+
+/**
+ * Despues de la oferta la IA tambien puede hablar, pero no volver a ofrecer.
+ *
+ * Estaba afuera y era peor el remedio: el lead recibia el link y a partir de
+ * ahi cualquier cosa que escribiera —"hola", "ya agende"— le devolvia el mismo
+ * link, textual, para siempre. Conversar no es lo mismo que decidir: la
+ * reunion ya se ofrecio, y que quede agendada lo dice el webhook de Calendly,
+ * no el modelo.
+ */
+const FASE_CIERRE = new Set([S.MEETING_SENT, S.MEETING_INFO, S.MEETING_LINK_SENT, S.SCHEDULED]);
 
 function crearEmbudo({ repo, cola, textos, scorer, logger, cfg = { amPhones: [] }, crmNotify = null, agente = null, ahora = () => new Date() }) {
 
@@ -165,8 +184,45 @@ function crearEmbudo({ repo, cola, textos, scorer, logger, cfg = { amPhones: [] 
         decir(lead, textos.MORE_INFO);
         return estado;
 
+      /**
+       * Se llega aca la primera vez para mandar el link, y despues cada vez que
+       * el lead escribe teniendolo. La diferencia importa: lead.fsm_state es
+       * todavia el estado anterior, asi que se sabe si recien entro o si esta
+       * insistiendo.
+       */
+      case S.MEETING_LINK_SENT: {
+        if (lead.fsm_state !== S.MEETING_LINK_SENT) {
+          decir(lead, textos.MEETING_LINK);
+          repo.actualizarFunnel(lead.id, { fsm_retries: 0 });
+          return estado;
+        }
+
+        if (dijoQueAgendo(entrada)) {
+          // No se cancela el follow-up: la verdad la trae el webhook de
+          // Calendly. Si de veras reservo, ese lo cancela; si se confundio, el
+          // follow-up es exactamente lo que hay que mandarle.
+          decir(lead, textos.YA_AGENDO);
+          repo.actualizarFunnel(lead.id, { fsm_retries: 0 });
+          return estado;
+        }
+
+        // Ya tiene el link y sigue escribiendo: quiere otra cosa. Se le
+        // pregunta una vez y despues va a una persona, en vez de dejarlo
+        // rebotando contra el mismo mensaje.
+        const insistencias = (lead.fsm_retries || 0) + 1;
+        if (insistencias >= 2) {
+          derivar(lead, 'post_oferta');
+          return alEntrar(lead, S.HUMAN_QUEUED, entrada);
+        }
+        repo.actualizarFunnel(lead.id, { fsm_retries: insistencias });
+        decir(lead, textos.YA_TIENE_LINK);
+        return estado;
+      }
+
       case S.SCHEDULED:
-        decir(lead, textos.SCHEDULED);
+        // Solo al confirmarse. Repetir "te esperamos" a cada mensaje posterior
+        // es el mismo loop que tenia MEETING_SENT.
+        if (lead.fsm_state !== S.SCHEDULED) decir(lead, textos.SCHEDULED);
         return estado;
 
       case S.HUMAN_QUEUED:
@@ -265,9 +321,10 @@ function crearEmbudo({ repo, cola, textos, scorer, logger, cfg = { amPhones: [] 
       // arriba: la baja, el pedido de humano, la queja y el precio ya quedaron
       // resueltos por codigo. Si no esta configurada o falla, devuelve null y
       // sigue el embudo fijo — que existe justamente para eso.
-      if (agente?.activo && FASE_CALIFICACION.has(actual)) {
-        const r = await agente.responder(lead, textoCrudo, repo.ultimosMensajes(lead.id, 20));
-        if (r) return this._conversar(lead, entrada, r);
+      const califica = FASE_CALIFICACION.has(actual);
+      if (agente?.activo && (califica || FASE_CIERRE.has(actual))) {
+        const r = await agente.responder(lead, textoCrudo, repo.ultimosMensajes(lead.id, 20), actual);
+        if (r) return this._conversar(lead, entrada, r, { actual, puedeCerrar: califica });
       }
 
       const mapa = TRANSICIONES[actual] || {};
@@ -291,7 +348,10 @@ function crearEmbudo({ repo, cola, textos, scorer, logger, cfg = { amPhones: [] 
       }
 
       guardarRespuesta(lead, actual, entrada, textoCrudo);
-      repo.actualizarFunnel(lead.id, { fsm_retries: 0 });
+      // Solo cuando el embudo avanza. Reseteandolo siempre, un estado que se
+      // repite a si mismo —como el de "ya te pase el link"— no puede llevar la
+      // cuenta de cuantas veces insistieron: la borraba justo antes de leerla.
+      if (siguiente !== actual) repo.actualizarFunnel(lead.id, { fsm_retries: 0 });
       return this._transicionar(lead, entrada, siguiente);
     },
 
@@ -301,18 +361,24 @@ function crearEmbudo({ repo, cola, textos, scorer, logger, cfg = { amPhones: [] 
      * no depende del score, no de lo que le parezca al modelo, y su texto de
      * cierre se descarta.
      */
-    async _conversar(lead, entrada, { texto, datos }) {
+    async _conversar(lead, entrada, { texto, datos }, { actual, puedeCerrar }) {
       if (Object.keys(datos).length) {
         guardarCampos(lead.id, datos);
         logger?.info({ leadId: lead.id, campos: Object.keys(datos) }, 'la IA extrajo datos');
       }
 
-      const fresco = repo.leadPorId(lead.id);
-      if (!agente.faltantes(fresco).length) return this._transicionar(fresco, entrada, S.SCORED);
+      // Con todo junto cierra el codigo: ofrecer la reunion sale del score, no
+      // de lo que le parezca al modelo. Solo mientras esta calificando — pasada
+      // la oferta, volver a SCORED seria ofrecersela de nuevo en cada mensaje.
+      if (puedeCerrar) {
+        const fresco = repo.leadPorId(lead.id);
+        if (!agente.faltantes(fresco).length) return this._transicionar(fresco, entrada, S.SCORED);
+      }
 
       decir(lead, texto);
-      repo.actualizarFunnel(lead.id, { fsm_state: S.CONVERSANDO, fsm_retries: 0 });
-      return S.CONVERSANDO;
+      const destino = puedeCerrar ? S.CONVERSANDO : actual;
+      repo.actualizarFunnel(lead.id, { fsm_state: destino, fsm_retries: 0 });
+      return destino;
     },
 
     async _transicionar(lead, entrada, destino) {

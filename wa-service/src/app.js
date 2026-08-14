@@ -68,6 +68,7 @@ function construir(cfg, { logger, ahora = () => new Date(), openai: clienteIA = 
     openai: cfg.IA_CONVERSACION ? openai : null,
     modelo: cfg.IA_MODELO,
     textos,
+    calendly: cfg.CALENDLY_LINK,
     logger: log,
   });
   const transcriptor = require('./ia/transcripcion').crearTranscriptor({

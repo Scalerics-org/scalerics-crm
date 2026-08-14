@@ -138,11 +138,11 @@ function aMensajes(historial, entrante) {
  * pasa los controles. El que llama cae al embudo de siempre con ese null: el
  * FSM sigue existiendo justamente para eso.
  */
-function crearAgente({ openai = null, modelo, textos, logger = null } = {}) {
+function crearAgente({ openai = null, modelo, textos, calendly = '', logger = null } = {}) {
   return {
     activo: Boolean(openai),
 
-    async responder(lead, entrante, historial = []) {
+    async responder(lead, entrante, historial = [], fase = null) {
       if (!openai) return null;
 
       const conversacion = aMensajes(historial, entrante);
@@ -153,7 +153,7 @@ function crearAgente({ openai = null, modelo, textos, logger = null } = {}) {
         respuesta = await openai.chat.completions.create({
           model: modelo,
           max_tokens: 500,
-          messages: [{ role: 'system', content: construirSystem(lead) }, ...conversacion],
+          messages: [{ role: 'system', content: construirSystem(lead, fase, calendly) }, ...conversacion],
           tools: [HERRAMIENTA],
           // Forzada: sin esto el modelo a veces contesta por content y a veces
           // por la herramienta, y hay que manejar los dos caminos.

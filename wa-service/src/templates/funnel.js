@@ -91,6 +91,16 @@ function crearTextos({ calendlyLink, horarioAtencion = 'Lun a sáb, 9 a 19hs' })
     SCHEDULED: '✅ Confirmado, ¡te esperamos!',
 
     /**
+     * Sigue escribiendo despues de recibir el link. Antes esto era el link de
+     * nuevo, textual, cuantas veces escribiera. No se lo vuelve a mandar: si ya
+     * lo tiene y aun asi escribe, es que quiere otra cosa.
+     */
+    YA_TIENE_LINK: '¿Pudiste agendar? 🗓️\n\nSi te queda más cómodo que te escriba alguien del equipo, decímelo y te paso con una persona.',
+
+    /** Dice que ya reservo. Se le cree y se deja de insistir. */
+    YA_AGENDO: 'Genial, quedamos así entonces 🙌\n\nTe va a llegar la confirmación con el link de la videollamada. Nos vemos ahí.',
+
+    /**
      * Llego un audio, una foto o un archivo. No lo sabemos leer, pero del otro
      * lado hay alguien esperando: antes esto era silencio y el lead se quedaba
      * hablando solo.
