@@ -267,7 +267,7 @@ def api_calendar_events():
         finally:
             conn.close()
 
-    # POST — save meeting and optionally create Google Calendar event
+    # POST — save meeting to DB only (no Google Calendar)
     data = request.get_json() or {}
     title = (data.get("title") or "").strip()
     date = data.get("date", "")
@@ -276,73 +276,38 @@ def api_calendar_events():
     meet_link = (data.get("meet_link") or "").strip()
     description = (data.get("description") or "").strip()
     client_id = data.get("client_id")
-    meeting_status = data.get("meeting_status", "scheduled")
-    if meeting_status not in ("scheduled", "done", "canceled"):
-        meeting_status = "scheduled"
 
     if not title or not date or not time:
         return jsonify({"ok": False, "error": "title, date y time requeridos"})
+    # meetings.client_id es NOT NULL: sin cliente no hay reunion que guardar.
+    # Antes se devolvia ok:true sin guardar nada y la reunion desaparecia.
+    if not client_id:
+        return jsonify({"ok": False, "error": "Eligi un cliente para la reunion"})
 
     try:
         start_dt = datetime.datetime.fromisoformat(f"{date}T{time}:00")
         end_dt = start_dt + datetime.timedelta(minutes=duration_min)
         db = _db()
 
-        crm_status = "reunion_hecha" if meeting_status == "done" else "reunion_agendada"
+        meeting_id = create_meeting(
+            db, int(client_id),
+            title=title,
+            start_at=start_dt.isoformat(),
+            end_at=end_dt.isoformat(),
+            meet_link=meet_link,
+            status="scheduled",
+        )
+        from database import update_business
+        update_business(db, int(client_id), crm_status="reunion_agendada")
+        client = get_business(db, int(client_id)) or {}
+        log_activity(db, session.get("user_name", "sistema"), "meeting_scheduled",
+                     "lead", int(client_id), client.get("name", ""), title,
+                     user_id=session.get("user_id"))
+        uids = _contributors(db, int(client_id), session.get("user_id"))
+        increment_task_progress(db, uids, "reuniones_agendadas",
+                                lead_id=int(client_id), lead_name=client.get("name", ""))
 
-        # Create Google Calendar event (always, regardless of status)
-        gcal_event_id = None
-        try:
-            service, err = _get_calendar_service()
-            if service and not err:
-                tz = "America/Montevideo"
-                gcal_event = {
-                    "summary": title,
-                    "description": description or "",
-                    "start": {"dateTime": start_dt.isoformat(), "timeZone": tz},
-                    "end": {"dateTime": end_dt.isoformat(), "timeZone": tz},
-                }
-                if meet_link:
-                    gcal_event["location"] = meet_link
-                created = service.events().insert(calendarId="primary", body=gcal_event).execute()
-                gcal_event_id = created.get("id")
-        except Exception:
-            pass  # GCal failure doesn't block saving to DB
-
-        # Save to DB always — with or without client
-        import sqlite3 as _sq
-        if client_id:
-            meeting_id = create_meeting(
-                db, int(client_id),
-                title=title,
-                start_at=start_dt.isoformat(),
-                end_at=end_dt.isoformat(),
-                meet_link=meet_link,
-                status=meeting_status,
-                calendar_event_id=gcal_event_id,
-            )
-            from database import update_business
-            update_business(db, int(client_id), crm_status=crm_status)
-            client = get_business(db, int(client_id)) or {}
-            log_activity(db, session.get("user_name", "sistema"), "meeting_scheduled",
-                         "lead", int(client_id), client.get("name", ""), title,
-                         user_id=session.get("user_id"))
-            uids = _contributors(db, int(client_id), session.get("user_id"))
-            increment_task_progress(db, uids, "reuniones_agendadas",
-                                    lead_id=int(client_id), lead_name=client.get("name", ""))
-        else:
-            conn = _sq.connect(db)
-            try:
-                cur = conn.execute(
-                    "INSERT INTO meetings (title, start_at, end_at, meet_link, status, calendar_event_id) VALUES (?,?,?,?,?,?)",
-                    (title, start_dt.isoformat(), end_dt.isoformat(), meet_link or None, meeting_status, gcal_event_id)
-                )
-                conn.commit()
-                meeting_id = cur.lastrowid
-            finally:
-                conn.close()
-
-        return jsonify({"ok": True, "meeting_id": meeting_id, "meet_url": meet_link, "event_id": gcal_event_id})
+        return jsonify({"ok": True, "meeting_id": meeting_id, "meet_url": meet_link, "event_id": None})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)})
 

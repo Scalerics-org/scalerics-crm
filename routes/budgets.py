@@ -50,8 +50,7 @@ def _clean_json(raw: str) -> str:
     return raw
 
 
-def _build_budget_prompt(client: dict, service_type: str, budget_range: str, needs: str, requirements: str, transcript: str = "") -> str:
-    transcript_section = f"\nTranscripción de la reunión de ventas (usala como contexto principal — prestá atención a precios mencionados, plazos, funcionalidades discutidas y expectativas del cliente):\n{transcript[:4000]}\n" if transcript else ""
+def _build_budget_prompt(client: dict, service_type: str, budget_range: str, needs: str, requirements: str) -> str:
     return f"""Generá un presupuesto profesional para un proyecto de {service_type} para el negocio "{client.get('name', '')}".
 
 Información del cliente:
@@ -60,7 +59,7 @@ Información del cliente:
 - Tamaño del equipo / necesidades: {needs}
 - Rango de presupuesto indicado: {budget_range}
 - Requerimientos del proyecto:
-{requirements}{transcript_section}
+{requirements}
 
 Devolvé SOLO un JSON con este formato exacto (sin texto extra, sin markdown):
 {{
@@ -113,7 +112,6 @@ def _generate_budget_internal(
     client_id: int,
     requirements: str = "",
     service_type: str = "",
-    transcript: str = "",
 ) -> Optional[dict]:
     """Generate and persist a budget via Claude. Returns budget_data or None if budget exists/error."""
     import anthropic
@@ -134,7 +132,7 @@ def _generate_budget_internal(
     budget_range = client_info.get("budget_range") or "no especificado"
     needs = client_info.get("needs") or "no especificado"
 
-    prompt = _build_budget_prompt(client, svc, budget_range, needs, all_reqs, transcript=transcript)
+    prompt = _build_budget_prompt(client, svc, budget_range, needs, all_reqs)
 
     try:
         ai = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", ""))

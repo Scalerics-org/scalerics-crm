@@ -36,10 +36,12 @@ CAR_BRAND_PREFIXES = {
     "audi", "subaru", "ram", "isuzu", "ssangyong", "jetour", "omoda", "jaecoo",
 }
 
+
 def _is_brand_franchise(name: str) -> bool:
     """Returns True if the business name starts with a known car brand (official concession)."""
     first_word = _normalize(name).split()[0] if name.strip() else ""
     return first_word in CAR_BRAND_PREFIXES
+
 
 DIRECTORY_DOMAINS = {
     "google.com", "maps.google.com", "facebook.com", "instagram.com",
@@ -119,6 +121,9 @@ def verify_no_website(name: str, city: str, page) -> bool:
         page.goto(url, wait_until="domcontentloaded", timeout=20000)
         random_delay(2, 4)
 
+        # Sin resultados cargados no se puede concluir nada: si Bing tarda o no
+        # devuelve cites, asumir "tiene web" y descartar el lead en vez de darlo
+        # por bueno con informacion incompleta.
         try:
             page.wait_for_selector("cite", timeout=6000)
         except Exception:
@@ -129,6 +134,7 @@ def verify_no_website(name: str, city: str, page) -> bool:
         if not cites:
             logger.debug(f"Bing devolvió lista cite vacía para {name} — conservador: asume web")
             return False
+
         for cite in cites[:8]:
             raw = cite.inner_text().strip()
             domain = _domain_from_cite(raw)
@@ -337,16 +343,16 @@ def scrape_google_maps(query: str, max_results: int, db_path: str, verify_web: b
                             random_delay()
                             break
 
-                        # Franchise of a known brand → already has parent website, skip
-                        if skip_branded and _is_brand_franchise(data.get("name", "")):
-                            logger.info(f"Saltando (franquicia de marca): {data['name']}")
+                        # Maps shows a website link → business already has web, skip
+                        if data.get("maps_website_url"):
+                            logger.info(f"Saltando (web en Maps): {data['name']}")
                             page.goto(maps_list_url, wait_until="domcontentloaded", timeout=30000)
                             random_delay()
                             break
 
-                        # Maps shows a website link → business already has web, skip
-                        if data.get("maps_website_url"):
-                            logger.info(f"Saltando (web en Maps): {data['name']}")
+                        # Franchise of a known brand → already has parent website, skip
+                        if skip_branded and _is_brand_franchise(data.get("name", "")):
+                            logger.info(f"Saltando (franquicia de marca): {data['name']}")
                             page.goto(maps_list_url, wait_until="domcontentloaded", timeout=30000)
                             random_delay()
                             break

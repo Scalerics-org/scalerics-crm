@@ -2,10 +2,11 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# cairo/pango/gdk-pixbuf estaban para WeasyPrint, que no se usa: los PDF de
+# presupuestos los genera el browser del usuario desde /api/attachments/<id>/print.
 RUN apt-get update && apt-get install -y \
     curl wget gnupg \
-    libcairo2 libpango-1.0-0 libpangocairo-1.0-0 \
-    libgdk-pixbuf-xlib-2.0-0 libffi-dev shared-mime-info \
+    libffi-dev \
     libxml2 libxslt1.1 \
     && rm -rf /var/lib/apt/lists/*
 

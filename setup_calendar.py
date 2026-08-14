@@ -10,10 +10,14 @@ Steps:
 3. Run: python setup_calendar.py
 """
 import json
+import os
 import subprocess
 from datetime import datetime, timezone
 from google_auth_oauthlib.flow import InstalledAppFlow
 from dotenv import load_dotenv, set_key
+
+# App de Fly.io donde corre el CRM (ver fly.toml).
+FLY_APP = os.environ.get("FLY_APP", "scalerics-crm")
 
 SCOPES = [
     "https://www.googleapis.com/auth/calendar",
@@ -49,7 +53,7 @@ def main():
              f"GCAL_CLIENT_SECRET={client_config['client_secret']}",
              f"GCAL_REFRESH_TOKEN={creds.refresh_token}",
              f"GCAL_TOKEN_RENEWED_AT={renewed_at}",
-             "--app", "scalerics-crm"],
+             "--app", FLY_APP],
             check=True, capture_output=True, text=True
         )
         print("  Fly.io actualizado. El servidor va a reiniciar solo.")

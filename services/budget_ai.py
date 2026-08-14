@@ -5,7 +5,6 @@ import json
 import anthropic
 
 MODEL = "claude-haiku-4-5-20251001"
-MODEL_GEN = "claude-sonnet-4-6"
 
 _EDIT_SYSTEM = """Sos un asistente que edita documentos HTML de presupuestos profesionales.
 En lugar de devolver el HTML completo, devolvés ÚNICAMENTE un array JSON con los cambios a aplicar.
@@ -32,10 +31,10 @@ Devolvé ÚNICAMENTE el HTML completo listo para abrir en el navegador, sin expl
 
 
 def _strip_markdown(text: str) -> str:
-    """Remove markdown code fences if the model wrapped its response."""
+    """Remove markdown code fences (```html ... ```) if the model wrapped its response."""
     text = text.strip()
     if text.startswith("```"):
-        text = text.split("\n", 1)[-1]
+        text = text.split("\n", 1)[-1]  # drop first line (```html or ```)
     if text.endswith("```"):
         text = text.rsplit("```", 1)[0]
     return text.strip()
@@ -66,11 +65,18 @@ def ai_edit_html(original_html: str, instructions: str) -> str:
         raise ValueError(f"La IA devolvió una respuesta no válida: {raw[:200]}")
 
     result = original_html
+    aplicados = 0
     for change in changes:
         old = change.get("old", "")
         new = change.get("new", "")
         if old and old in result:
             result = result.replace(old, new, 1)
+            aplicados += 1
+    if changes and not aplicados:
+        raise ValueError(
+            "Ningun cambio se pudo aplicar: la IA devolvio fragmentos que no estan "
+            "en el documento. Probá reformulando las instrucciones."
+        )
     return result
 
 

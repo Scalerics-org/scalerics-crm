@@ -1,12 +1,15 @@
 import hashlib
 import hmac
 import json
+import logging
 import os
 import re
 
 from flask import Blueprint, request, jsonify
 
 from database import create_meeting, get_business_by_phone, get_all_businesses, log_activity, update_business
+
+logger = logging.getLogger(__name__)
 
 calendly_bp = Blueprint("calendly", __name__)
 
@@ -102,17 +105,16 @@ def calendly_webhook():
     event_type = payload.get("event", "")
 
     if event_type == "invitee.created":
-        _blocked = {e.strip().lower() for e in os.environ.get("CALENDLY_BLOCKED_EMAILS", "").split(",") if e.strip()}
-        _invitee_email = (payload.get("payload", {}).get("invitee", {}).get("email") or "").lower()
-        if _invitee_email and _invitee_email in _blocked:
-            return jsonify({"ok": True, "skipped": "blocked_email"})
-
-    if event_type == "invitee.created":
         invitee   = payload.get("payload", {}).get("invitee", {})
         event     = payload.get("payload", {}).get("event", {})
 
         name      = invitee.get("name", "")
         email     = invitee.get("email", "")
+
+        # Reuniones internas (el equipo agendandose entre si, pruebas) no son leads.
+        blocked = {e.strip().lower() for e in os.environ.get("CALENDLY_BLOCKED_EMAILS", "").split(",") if e.strip()}
+        if email and email.lower() in blocked:
+            return jsonify({"ok": True, "skipped": "blocked_email"})
 
         # Extract phone using keyword matching, then fallback to regex
         PHONE_KEYWORDS = ["whatsapp", "teléfono", "telefono", "celular", "phone",
@@ -193,7 +195,8 @@ def calendly_webhook():
                     updates["notes"] = f"{existing}\n\n{booking_note}".strip()
             update_business(db_path, client_id, **updates)
 
-        # Resolve Calendly redirect to actual Google Meet URL if needed
+        # Calendly manda su propio link de redireccion, no el de Meet. Recall
+        # necesita la URL real, asi que se resuelve el redirect antes de llamarlo.
         actual_meet_url = meet_link
         if meet_link and "meet.google.com" not in meet_link:
             try:
@@ -201,15 +204,14 @@ def calendly_webhook():
                 r_head = _req2.head(meet_link, allow_redirects=True, timeout=8)
                 if "meet.google.com" in r_head.url:
                     actual_meet_url = r_head.url
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.warning(f"No se pudo resolver el link de Calendly {meet_link}: {_e}")
 
         # Create Recall bot to transcribe the Google Meet
         recall_bot_id = None
         if actual_meet_url and "meet.google.com" in actual_meet_url:
             try:
                 import requests as _req
-                import logging as _log
                 recall_key = os.environ.get("RECALL_API_KEY", "")
                 if recall_key:
                     rb = _req.post(
@@ -221,10 +223,9 @@ def calendly_webhook():
                     if rb.ok:
                         recall_bot_id = rb.json().get("id")
                     else:
-                        _log.getLogger(__name__).warning(f"Recall bot creation failed: {rb.status_code} {rb.text}")
+                        logger.warning(f"Recall bot creation failed: {rb.status_code} {rb.text}")
             except Exception as _e:
-                import logging as _log2
-                _log2.getLogger(__name__).warning(f"Recall bot exception: {_e}")
+                logger.warning(f"Recall bot exception: {_e}")
 
         try:
             meeting_id = create_meeting(

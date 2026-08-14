@@ -576,10 +576,12 @@ def api_attachment_file(attach_id):
         return jsonify({"error": "not found"}), 404
     mime = row["mime_type"] or "application/octet-stream"
     resp = Response(row["file_data"], mimetype=mime)
-    # Force download for HTML to prevent stored XSS — scripts in stored budgets
-    # must not execute in the CRM's origin.
-    disposition = "attachment" if mime == "text/html" else "inline"
-    resp.headers["Content-Disposition"] = f'{disposition}; filename="{row["name"]}"'
+    resp.headers["Content-Disposition"] = f'inline; filename="{row["name"]}"'
+    if mime == "text/html":
+        # Los presupuestos son HTML generado por IA y editable: si se renderizan
+        # en el origen del CRM, un <script> inyectado corre con la sesion del
+        # usuario. sandbox sin allow-scripts los deja verse pero no ejecutar.
+        resp.headers["Content-Security-Policy"] = "sandbox"
     return resp
 
 
@@ -701,8 +703,7 @@ def api_attachment_print(attach_id):
 
 @leads_bp.route("/api/attachments/<int:attach_id>/pdf")
 def api_attachment_pdf(attach_id):
-    """Render HTML attachment as PDF using Playwright Chromium."""
-    import tempfile, os
+    """Render HTML attachment as PDF using Playwright and return as download."""
     from playwright.sync_api import sync_playwright
 
     row = get_attachment_file(_db(), attach_id)
@@ -714,6 +715,8 @@ def api_attachment_pdf(attach_id):
 
     try:
         with sync_playwright() as p:
+            # Estos flags son los que necesita Chromium para arrancar dentro de un
+            # contenedor (produccion corre en Docker sobre Fly).
             browser = p.chromium.launch(args=[
                 "--no-sandbox",
                 "--disable-dev-shm-usage",
@@ -723,6 +726,7 @@ def api_attachment_pdf(attach_id):
             ])
             page = browser.new_page()
 
+            # Sin esto el render se queda esperando a Google Fonts.
             def _block_fonts(route):
                 if any(d in route.request.url for d in ("fonts.googleapis.com", "fonts.gstatic.com")):
                     route.abort()

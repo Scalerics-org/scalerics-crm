@@ -1283,7 +1283,6 @@ body.light .upick-name{color:#0f172a}
       <div style="display:flex;gap:8px;align-items:center;flex-shrink:0">
         <button class="cal-nav-btn" onclick="calChangeMonth(-1)">←</button>
         <button class="cal-nav-btn" onclick="calChangeMonth(1)">→</button>
-        <button class="cal-new-btn" onclick="openNewEventModal()">+ Nueva reunión</button>
         <a href="https://calendly.com/scalerics/consultoriagratuita" target="_blank" class="cal-new-btn" style="background:#0f2a1a;border:1px solid #10b981;color:#10b981;text-decoration:none">+ Calendly</a>
       </div>
     </div>
@@ -1550,13 +1549,6 @@ body.light .upick-name{color:#0f172a}
       <div>
         <label class="modal-label">Duración (min)</label>
         <input type="number" id="ev-duration" value="60" min="15" max="480">
-      </div>
-      <div>
-        <label class="modal-label">Estado</label>
-        <select id="ev-status" style="width:100%">
-          <option value="scheduled">Programada</option>
-          <option value="done">Realizada</option>
-        </select>
       </div>
     </div>
     <label class="modal-label">Link de reunión</label>
@@ -1961,8 +1953,8 @@ function renderCola() {
       <div><textarea class="notes-inline" data-id="${b.id}" data-notes="${esc(b.notes||'')}" placeholder="Agregar nota..." rows="1" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea></div>
       <div class="actions">
         <a class="pitch-btn" href="tel:${b.phone||''}" style="text-decoration:none"><i data-lucide=\"phone\" class=\"btn-icon\"></i> Llamar</a>
-        <button class="pitch-btn" onclick="openCallModal(${b.id},${escJs(b.name||'')},${escJs(b.phone||'')},'cola')" style="background:#1e293b"><i data-lucide=\"clipboard-list\" class=\"btn-icon\"></i> Resultado</button>
-        <button class="delete-btn" onclick="deleteLead(${b.id},${escJs(b.name||'')})" title="Borrar"><i data-lucide=\"trash-2\" class=\"btn-icon\"></i></button>
+        <button class="pitch-btn" onclick="openCallModal(${b.id},'${esc(b.name||'')}','${esc(b.phone||'')}','cola')" style="background:#1e293b"><i data-lucide=\"clipboard-list\" class=\"btn-icon\"></i> Resultado</button>
+        <button class="delete-btn" onclick="deleteLead(${b.id},'${esc(b.name||'')}')" title="Borrar"><i data-lucide=\"trash-2\" class=\"btn-icon\"></i></button>
       </div>
     </div>`).join('');
   _populateNotes(body);
@@ -2041,8 +2033,8 @@ async function loadSeguimientos() {
         <div><textarea class="notes-inline" data-id="${b.id}" data-notes="${esc(b.notes||'')}" placeholder="Agregar nota..." rows="1" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea></div>
         <div class="actions">
           <a class="pitch-btn" href="tel:${b.phone||''}" style="text-decoration:none"><i data-lucide=\"phone\" class=\"btn-icon\"></i> Llamar</a>
-          <button class="pitch-btn" onclick="openCallModal(${b.id},${escJs(b.name||'')},${escJs(b.phone||'')},'seguimientos')" style="background:#1e293b"><i data-lucide=\"clipboard-list\" class=\"btn-icon\"></i> Resultado</button>
-          <button class="delete-btn" onclick="deleteLead(${b.id},${escJs(b.name||'')})" title="Borrar"><i data-lucide=\"trash-2\" class=\"btn-icon\"></i></button>
+          <button class="pitch-btn" onclick="openCallModal(${b.id},'${esc(b.name||'')}','${esc(b.phone||'')}','seguimientos')" style="background:#1e293b"><i data-lucide=\"clipboard-list\" class=\"btn-icon\"></i> Resultado</button>
+          <button class="delete-btn" onclick="deleteLead(${b.id},'${esc(b.name||'')}')" title="Borrar"><i data-lucide=\"trash-2\" class=\"btn-icon\"></i></button>
         </div>
       </div>`; }).join('');
     _populateNotes(body);
@@ -2086,7 +2078,6 @@ function renderPipelineTable() {
       <div><textarea class="notes-inline" data-id="${b.id}" data-notes="${esc(b.notes||'')}" placeholder="Agregar nota..." rows="1" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea></div>
       <div class="actions">
         <button class="pitch-btn" onclick="openClientPanel(${b.id})">Ver ficha</button>
-        <button class="delete-btn" onclick="deleteLead(${b.id},${escJs(b.name||'')})" title="Borrar"><i data-lucide=\"trash-2\" class=\"btn-icon\"></i></button>
       </div>
     </div>`; }).join('');
   _populateNotes(body);
@@ -2117,7 +2108,6 @@ async function loadClientesPanel() {
         <div><textarea class="notes-inline" data-id="${b.id}" data-notes="${esc(b.notes||'')}" placeholder="Agregar nota..." rows="1" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea></div>
         <div class="actions">
           <button class="pitch-btn" onclick="openClientPanel(${b.id})">Ver ficha</button>
-          <button class="delete-btn" onclick="deleteLead(${b.id},${escJs(b.name||'')})" title="Borrar"><i data-lucide=\"trash-2\" class=\"btn-icon\"></i></button>
         </div>
       </div>`; }).join('');
     _populateNotes(body);
@@ -2226,7 +2216,7 @@ async function loadLeads() {
       })()}</div>
       <div class="actions">
         ${(!crm || crm === 'sin_contactar') ? `<button class="pitch-btn" onclick="markContacted(${b.id})">Contactar</button>` : `<span style="color:#3db648;font-size:.75rem">✓ ${crmLabels[crm]||crm}</span>`}
-        <button class="delete-btn" onclick="deleteLead(${b.id},${escJs(b.name||'')})" title="Borrar lead">🗑</button>
+        <button class="delete-btn" onclick="deleteLead(${b.id},event)" title="Borrar lead">🗑</button>
       </div>
     </div>`}).join('');
   _updatePagination();
@@ -2306,13 +2296,6 @@ function exportCSV() {
 }
 
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
-// Safe JS-string literal for embedding inside inline onclick="..." handlers.
-// esc() alone is unsafe there: the browser decodes HTML entities (e.g. &#39; -> ')
-// BEFORE parsing the attribute as JS, so an escaped quote still breaks out of a
-// hand-wrapped '...' literal for any name containing an apostrophe or quote.
-// JSON.stringify produces a correctly-quoted/escaped JS string; we then HTML-escape
-// the result so it survives being embedded inside the double-quoted onclick="" attribute.
-function escJs(s) { return JSON.stringify(String(s == null ? '' : s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function timeAgo(ts) {
   if (!ts) return '';
   const diff = Math.floor((Date.now() - new Date(ts + 'Z').getTime()) / 1000);
@@ -2392,8 +2375,6 @@ function _refreshActivePanel() {
   if (activePanel === 'cola') loadCola();
   else if (activePanel === 'seguimientos') loadSeguimientos();
   else if (activePanel === 'clientes') loadClientesPanel();
-  else if (activePanel === 'pipeline') loadPipelinePanel();
-  else if (typeof loadLeads === 'function') loadLeads();
 }
 
 async function deleteLead(id, name) {
@@ -2555,7 +2536,7 @@ async function loadWaLeads() {
   waLeads = d;
   if (!d.length) { listEl.innerHTML = '<div class="wa-no-leads">No hay leads en el bot</div>'; return; }
   listEl.innerHTML = d.map(lead => `
-    <div class="wa-lead-item" id="wa-lead-${esc(lead.phone)}" onclick="selectWaLead(${escJs(lead.phone)},${escJs(lead.name||lead.phone)})">
+    <div class="wa-lead-item" id="wa-lead-${esc(lead.phone)}" onclick="selectWaLead('${esc(lead.phone)}','${esc(lead.name||lead.phone)}')">
       <div class="wa-lead-name">${esc(lead.name || lead.phone)}</div>
       <div class="wa-lead-meta">
         <span class="wa-state-badge ${waStateBadgeClass(lead.state)}">${esc(lead.state||'NEW')}</span>
@@ -2703,8 +2684,8 @@ async function renderCalendar() {
             return `<div class="cal-event-chip ${ev.meeting_url?'meet':'regular'}" title="${esc((ev.time?ev.time+' ':'')+ev.title)}">
               ${ev.time?esc(ev.time)+' ':''}${ev.meeting_url?'🎥 ':''}${esc(ev.title||'')}
               ${ev.meeting_url?`<a class="cal-join-btn" href="${esc(ev.meeting_url)}" target="_blank" onclick="event.stopPropagation()">▶ Unirse</a>`:''}
-              <button class="cal-demo-btn" onclick="event.stopPropagation();openDemoModal(${escJs(ph||'')},${escJs(ev.title||'')},${escJs(nm||'')})">📊 Generar Demo</button>
-              <button class="cal-del-btn" onclick="event.stopPropagation();deleteCalEvent(${escJs(ev.id)},${escJs(ev.title||'')})">🗑 Borrar</button>
+              <button class="cal-demo-btn" onclick="event.stopPropagation();openDemoModal('${ph||''}','${esc(ev.title||'')}','${nm||''}')">📊 Generar Demo</button>
+              <button class="cal-del-btn" onclick="event.stopPropagation();deleteCalEvent('${ev.id}','${esc(ev.title||'')}')">🗑 Borrar</button>
             </div>`;
           }).join('')}
         </div>`
@@ -2742,7 +2723,6 @@ function openNewEventModal() {
   document.getElementById('ev-desc').value = '';
   document.getElementById('ev-email').value = '';
   document.getElementById('ev-client-id').value = '';
-  document.getElementById('ev-status').value = 'scheduled';
   document.getElementById('event-modal').classList.add('open');
 }
 function closeNewEventModal() { document.getElementById('event-modal').classList.remove('open'); }
@@ -2765,10 +2745,9 @@ async function saveEvent() {
   if (!title || !date || !time) { alert('Completá el título, fecha y hora'); return; }
   const meet_link = document.getElementById('ev-email').value.trim();
   const clientId = document.getElementById('ev-client-id').value.trim() || null;
-  const meeting_status = document.getElementById('ev-status').value;
   const btn = document.getElementById('ev-save-btn');
   btn.disabled = true; btn.textContent = '...';
-  const r = await fetch('/api/calendar/events', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({title,date,time,duration_min:duration,description:desc,meet_link,client_id:clientId,meeting_status})});
+  const r = await fetch('/api/calendar/events', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({title,date,time,duration_min:duration,description:desc,meet_link,client_id:clientId})});
   const d = await r.json();
   btn.disabled = false; btn.textContent = '📅 Crear reunión';
   if (!d.ok) { alert('Error: '+(d.error||'Error desconocido')); return; }
@@ -3310,7 +3289,7 @@ function _taskClientSearch(q) {
   const matches = _allLeads.filter(l => l.name && l.name.toLowerCase().includes(q.toLowerCase())).slice(0,6);
   if (!matches.length) { res.style.display = 'none'; return; }
   res.style.display = '';
-  res.innerHTML = matches.map(l => `<div style="padding:8px 12px;cursor:pointer;font-size:.82rem;color:#e2e8f0;border-bottom:1px solid #1e293b" onmousedown="_pickTaskClient(${l.id},${escJs(l.name||'')})">${esc(l.name||'')}</div>`).join('');
+  res.innerHTML = matches.map(l => `<div style="padding:8px 12px;cursor:pointer;font-size:.82rem;color:#e2e8f0;border-bottom:1px solid #1e293b" onmousedown="_pickTaskClient(${l.id},'${esc(l.name||'')}')">${esc(l.name||'')}</div>`).join('');
 }
 
 function _pickTaskClient(id, name) {
@@ -3492,7 +3471,7 @@ function _cpRenderTasks() {
   return `<div class="cp-section">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
       <div class="cp-section-title" style="margin:0">Pendientes</div>
-      <button class="cp-btn cp-btn-ghost" onclick="openAddTaskModal(${_cpClientId},${escJs((_cpData.lead||{}).name||'')})">+ Nueva</button>
+      <button class="cp-btn cp-btn-ghost" onclick="openAddTaskModal(${_cpClientId},'${esc((_cpData.lead||{}).name||'')}')">+ Nueva</button>
     </div>
     ${renderList(pending)}
   </div>
@@ -4408,8 +4387,8 @@ function _cpRenderBudget() {
     <div class="attach-item" style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:#0a0f1a;border-radius:6px;margin-bottom:6px">
       <a href="/api/attachments/${a.id}/file" target="_blank" style="color:#33aadd;font-size:.85rem;text-decoration:none">📄 ${esc(a.name)}</a>
       <div style="display:flex;gap:6px">
-        <a class="cp-btn cp-btn-ghost" style="font-size:.75rem;padding:3px 10px;text-decoration:none" href="/api/attachments/${a.id}/print" target="_blank">⬇️ PDF</a>
-        <button class="cp-btn cp-btn-ghost" style="font-size:.75rem;padding:3px 10px" onclick="_cpOpenAiEditModal(${a.id},${escJs(a.name)})">✏️ Editar con IA</button>
+        <a class="cp-btn cp-btn-ghost" style="font-size:.75rem;padding:3px 10px;text-decoration:none" href="/api/attachments/${a.id}/print" target="_blank">🖨️ PDF</a>
+        <button class="cp-btn cp-btn-ghost" style="font-size:.75rem;padding:3px 10px" onclick="_cpOpenAiEditModal(${a.id},'${esc(a.name)}')">✏️ Editar con IA</button>
         <button class="attach-del" title="Eliminar" onclick="_cpDeleteAttach(${a.id},'budget')">✕</button>
       </div>
     </div>`).join('');
@@ -5150,10 +5129,10 @@ def create_app(db_path: str) -> Flask:
   <p class="updated">Última actualización: junio de 2026</p>
 
   <h2>1. Quiénes somos</h2>
-  <p>Scalerics es una agencia de software y marketing digital. Esta política describe cómo tratamos los datos personales que recopilamos a través de nuestros formularios de captación y herramientas internas.</p>
+  <p>Scalerics es una agencia de software y marketing digital. Esta política describe cómo tratamos los datos personales que recopilamos a través de nuestros formularios de Meta Lead Ads y herramientas internas.</p>
 
   <h2>2. Datos que recopilamos</h2>
-  <p>A través de nuestros formularios de captación en redes sociales podemos recopilar:</p>
+  <p>A través de formularios de anuncios en Facebook e Instagram podemos recopilar:</p>
   <ul>
     <li>Nombre completo</li>
     <li>Número de teléfono</li>

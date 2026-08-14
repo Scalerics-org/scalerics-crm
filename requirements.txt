@@ -13,4 +13,3 @@ flask
 gunicorn
 json-repair
 pytz
-weasyprint

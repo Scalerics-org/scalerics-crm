@@ -22,3 +22,6 @@ prod_limpia.db
 backups/
 bot/bot_dump.json
 bot/backup_scalerics_wa_bot.sql
+
+# hexast-cajas tiene repo propio (Scalerics-org/hexast-cajas)
+hexast-cajas/
