@@ -41,9 +41,19 @@ const HERRAMIENTA = {
         },
         business_name: { type: 'string', description: 'Nombre del negocio, tal como lo dijo' },
         rubro: { type: 'string', description: 'A qué se dedica, en sus palabras (ej: "carnicería de barrio")' },
-        business_type: { type: 'integer', description: '1 página web, 2 e-commerce, 3 automatización, 4 app a medida' },
-        budget: { type: 'integer', description: '1 menos de USD 500, 2 entre 500 y 3.000, 3 más de 3.000, 4 no lo tiene claro' },
-        team_size: { type: 'integer', description: '1 solo él, 2 de 2 a 5, 3 de 6 a 20, 4 más de 20' },
+        business_type: { type: 'integer', description: 'NÚMERO DE OPCIÓN: 1 página web, 2 e-commerce, 3 automatización, 4 app a medida' },
+        // El modelo confunde la cantidad con la opcion: a "somos 4" le ponia
+        // team_size 4, que en esta escala es "mas de 20 personas". El score no
+        // cambia (cualquiera >= 2 suma igual) pero al AM le llegaba una ficha
+        // que decia otra cosa de la que le dijeron.
+        budget: {
+          type: 'integer',
+          description: 'NÚMERO DE OPCIÓN, no el monto: 1 menos de USD 500, 2 entre 500 y 3.000, 3 más de 3.000, 4 no lo tiene claro. Ejemplo: "unos 1000 dólares" es 2.',
+        },
+        team_size: {
+          type: 'integer',
+          description: 'NÚMERO DE OPCIÓN, no la cantidad de gente: 1 solo él, 2 de 2 a 5 personas, 3 de 6 a 20, 4 más de 20. Ejemplos: "somos 4" es 2, "somos 8" es 3, "estoy solo" es 1.',
+        },
         instagram_web: { type: 'string', description: 'Usuario de Instagram, URL de la web o lo que haya dicho' },
         needs: { type: 'string', description: 'Qué quiere lograr, en sus palabras' },
       },
