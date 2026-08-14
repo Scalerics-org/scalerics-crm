@@ -2000,6 +2000,7 @@ function renderMetaTable() {
       <div class="actions">
         <span style="font-size:.68rem;font-weight:600;color:${color};background:${color}18;padding:2px 6px;border-radius:99px">${crmLabels[crm]||crm}</span>
         <button class="pitch-btn" onclick="openClientPanel(${b.id})">Ver ficha</button>
+        <button class="delete-btn" onclick="deleteLead(${b.id},${escJs(b.name||'')},loadMetaPanel)" title="Borrar"><i data-lucide=\"trash-2\" class=\"btn-icon\"></i></button>
       </div>
     </div>`;
   }).join('');
@@ -2086,8 +2087,8 @@ function renderCola() {
       <div><textarea class="notes-inline" data-id="${b.id}" data-notes="${esc(b.notes||'')}" placeholder="Agregar nota..." rows="1" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea></div>
       <div class="actions">
         <a class="pitch-btn" href="tel:${b.phone||''}" style="text-decoration:none"><i data-lucide=\"phone\" class=\"btn-icon\"></i> Llamar</a>
-        <button class="pitch-btn" onclick="openCallModal(${b.id},'${jsStr(b.name||'')}','${jsStr(b.phone||'')}','cola')" style="background:#1e293b"><i data-lucide=\"clipboard-list\" class=\"btn-icon\"></i> Resultado</button>
-        <button class="delete-btn" onclick="deleteLead(${b.id},'${jsStr(b.name||'')}')" title="Borrar"><i data-lucide=\"trash-2\" class=\"btn-icon\"></i></button>
+        <button class="pitch-btn" onclick="openCallModal(${b.id},${escJs(b.name||'')},${escJs(b.phone||'')},'cola')" style="background:#1e293b"><i data-lucide=\"clipboard-list\" class=\"btn-icon\"></i> Resultado</button>
+        <button class="delete-btn" onclick="deleteLead(${b.id},${escJs(b.name||'')})" title="Borrar"><i data-lucide=\"trash-2\" class=\"btn-icon\"></i></button>
       </div>
     </div>`).join('');
   _populateNotes(body);
@@ -2166,8 +2167,8 @@ async function loadSeguimientos() {
         <div><textarea class="notes-inline" data-id="${b.id}" data-notes="${esc(b.notes||'')}" placeholder="Agregar nota..." rows="1" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea></div>
         <div class="actions">
           <a class="pitch-btn" href="tel:${b.phone||''}" style="text-decoration:none"><i data-lucide=\"phone\" class=\"btn-icon\"></i> Llamar</a>
-          <button class="pitch-btn" onclick="openCallModal(${b.id},'${jsStr(b.name||'')}','${jsStr(b.phone||'')}','seguimientos')" style="background:#1e293b"><i data-lucide=\"clipboard-list\" class=\"btn-icon\"></i> Resultado</button>
-          <button class="delete-btn" onclick="deleteLead(${b.id},'${jsStr(b.name||'')}')" title="Borrar"><i data-lucide=\"trash-2\" class=\"btn-icon\"></i></button>
+          <button class="pitch-btn" onclick="openCallModal(${b.id},${escJs(b.name||'')},${escJs(b.phone||'')},'seguimientos')" style="background:#1e293b"><i data-lucide=\"clipboard-list\" class=\"btn-icon\"></i> Resultado</button>
+          <button class="delete-btn" onclick="deleteLead(${b.id},${escJs(b.name||'')})" title="Borrar"><i data-lucide=\"trash-2\" class=\"btn-icon\"></i></button>
         </div>
       </div>`; }).join('');
     _populateNotes(body);
@@ -2349,7 +2350,7 @@ async function loadLeads() {
       })()}</div>
       <div class="actions">
         ${(!crm || crm === 'sin_contactar') ? `<button class="pitch-btn" onclick="markContacted(${b.id})">Contactar</button>` : `<span style="color:#3db648;font-size:.75rem">✓ ${crmLabels[crm]||crm}</span>`}
-        <button class="delete-btn" onclick="deleteLead(${b.id},event)" title="Borrar lead">🗑</button>
+        <button class="delete-btn" onclick="deleteLead(${b.id},${escJs(b.name||'')})" title="Borrar lead">🗑</button>
       </div>
     </div>`}).join('');
   _updatePagination();
@@ -2425,16 +2426,14 @@ function exportCSV() {
 }
 
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
-
-// esc() NO sirve para interpolar dentro de un atributo de evento (onclick="fn('...')").
-// El parser HTML decodifica &#39; ANTES de que el motor JS compile el handler, asi que
-// la comilla reaparece y cierra el string literal. jsStr() escapa a hexadecimal todo
-// lo que no sea alfanumerico, con lo cual no queda ninguna comilla ni en el contexto
-// HTML ni en el JS. Uso: onclick="fn('${jsStr(valor)}')"
-function jsStr(s) {
-  return String(s == null ? '' : s).replace(/[^a-zA-Z0-9 _.\-:@\/]/g,
-    c => String.fromCharCode(92) + 'x' + c.charCodeAt(0).toString(16).padStart(2, '0'));
-}
+// Literal de JS seguro para meter dentro de un onclick="..." inline.
+// esc() sola no alcanza ahi: el navegador decodifica las entidades HTML
+// (&#39; -> ') ANTES de parsear el atributo como JS, asi que una comilla
+// escapada igual rompe un literal '...' armado a mano, para cualquier nombre
+// con apostrofe. JSON.stringify produce un string de JS bien citado y
+// escapado; despues se escapa el HTML para que sobreviva dentro del
+// atributo onclick="" con comillas dobles.
+function escJs(s) { return JSON.stringify(String(s == null ? '' : s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 // Para href/src: bloquea javascript:, data:, vbscript: y demas esquemas ejecutables.
 // Devuelve '#' si la URL no es http(s), y escapa el resto para el atributo.
@@ -2682,7 +2681,7 @@ async function loadWaLeads() {
   waLeads = d;
   if (!d.length) { listEl.innerHTML = '<div class="wa-no-leads">No hay leads en el bot</div>'; return; }
   listEl.innerHTML = d.map(lead => `
-    <div class="wa-lead-item" id="wa-lead-${esc(lead.phone)}" onclick="selectWaLead('${jsStr(lead.phone)}','${jsStr(lead.name||lead.phone)}')">
+    <div class="wa-lead-item" id="wa-lead-${esc(lead.phone)}" onclick="selectWaLead(${escJs(lead.phone)},${escJs(lead.name||lead.phone)})">
       <div class="wa-lead-name">${esc(lead.name || lead.phone)}</div>
       <div class="wa-lead-meta">
         <span class="wa-state-badge ${waStateBadgeClass(lead.state)}">${esc(lead.state||'NEW')}</span>
@@ -2830,8 +2829,8 @@ async function renderCalendar() {
             return `<div class="cal-event-chip ${ev.meeting_url?'meet':'regular'}" title="${esc((ev.time?ev.time+' ':'')+ev.title)}">
               ${ev.time?esc(ev.time)+' ':''}${ev.meeting_url?'🎥 ':''}${esc(ev.title||'')}
               ${ev.meeting_url?`<a class="cal-join-btn" href="${safeUrl(ev.meeting_url)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">▶ Unirse</a>`:''}
-              <button class="cal-demo-btn" onclick="event.stopPropagation();openDemoModal('${jsStr(ph||'')}','${jsStr(ev.title||'')}','${jsStr(nm||'')}')">📊 Generar Demo</button>
-              <button class="cal-del-btn" onclick="event.stopPropagation();deleteCalEvent('${jsStr(ev.id)}','${jsStr(ev.title||'')}')">🗑 Borrar</button>
+              <button class="cal-demo-btn" onclick="event.stopPropagation();openDemoModal(${escJs(ph||'')},${escJs(ev.title||'')},${escJs(nm||'')})">📊 Generar Demo</button>
+              <button class="cal-del-btn" onclick="event.stopPropagation();deleteCalEvent(${escJs(ev.id)},${escJs(ev.title||'')})">🗑 Borrar</button>
             </div>`;
           }).join('')}
         </div>`
@@ -3452,7 +3451,7 @@ function _taskClientSearch(q) {
   const matches = _allLeads.filter(l => l.name && l.name.toLowerCase().includes(q.toLowerCase())).slice(0,6);
   if (!matches.length) { res.style.display = 'none'; return; }
   res.style.display = '';
-  res.innerHTML = matches.map(l => `<div style="padding:8px 12px;cursor:pointer;font-size:.82rem;color:#e2e8f0;border-bottom:1px solid #1e293b" onmousedown="_pickTaskClient(${l.id},'${esc(l.name||'')}')">${esc(l.name||'')}</div>`).join('');
+  res.innerHTML = matches.map(l => `<div style="padding:8px 12px;cursor:pointer;font-size:.82rem;color:#e2e8f0;border-bottom:1px solid #1e293b" onmousedown="_pickTaskClient(${l.id},${escJs(l.name||'')})">${esc(l.name||'')}</div>`).join('');
 }
 
 function _pickTaskClient(id, name) {
@@ -3634,7 +3633,7 @@ function _cpRenderTasks() {
   return `<div class="cp-section">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
       <div class="cp-section-title" style="margin:0">Pendientes</div>
-      <button class="cp-btn cp-btn-ghost" onclick="openAddTaskModal(${_cpClientId},'${jsStr((_cpData.lead||{}).name||'')}')">+ Nueva</button>
+      <button class="cp-btn cp-btn-ghost" onclick="openAddTaskModal(${_cpClientId},${escJs((_cpData.lead||{}).name||'')})">+ Nueva</button>
     </div>
     ${renderList(pending)}
   </div>
@@ -3704,7 +3703,7 @@ function renderKanban() {
 }
 
 function _kanbanCard(l) {
-  const meta = [l.category, l.city].filter(Boolean).join(' · ');
+  const meta = [l.interest, l.category, l.city].filter(Boolean).join(' · ');
   return `<div class="kanban-card" draggable="true" data-id="${l.id}"
     ondragstart="_kanbanDragStart(event,${l.id})"
     ondragend="_kanbanDragEnd(event)"
@@ -4318,7 +4317,7 @@ function _cpRenderMeetings() {
         <button class="cp-btn cp-btn-ghost" style="font-size:.75rem;padding:2px 8px" onclick="_cpToggleAddEmail(${m.id})">+ Agregar email</button>
         <div id="add-email-form-${m.id}" style="display:none;margin-top:6px;gap:6px;align-items:center;flex-wrap:wrap">
           <input type="email" id="add-email-input-${m.id}" placeholder="email@ejemplo.com" style="font-size:.8rem;padding:4px 8px;background:#0f172a;border:1px solid #1e293b;border-radius:6px;color:#f1f5f9;width:220px">
-          <button class="cp-btn cp-btn-primary" style="font-size:.75rem;padding:4px 10px;margin-top:4px" onclick="_cpAddEmailToMeeting(${m.id},'${jsStr(m.calendar_event_id)}')">Agregar</button>
+          <button class="cp-btn cp-btn-primary" style="font-size:.75rem;padding:4px 10px;margin-top:4px" onclick="_cpAddEmailToMeeting(${m.id},${escJs(m.calendar_event_id)})">Agregar</button>
         </div>
       </div>` : ''}
       ${_cpRenderCierre(m)}
@@ -4638,7 +4637,7 @@ function _cpRenderBudget() {
       <a href="/api/attachments/${a.id}/file" target="_blank" style="color:#33aadd;font-size:.85rem;text-decoration:none">📄 ${esc(a.name)}</a>
       <div style="display:flex;gap:6px">
         <a class="cp-btn cp-btn-ghost" style="font-size:.75rem;padding:3px 10px;text-decoration:none" href="/api/attachments/${a.id}/print" target="_blank">🖨️ PDF</a>
-        <button class="cp-btn cp-btn-ghost" style="font-size:.75rem;padding:3px 10px" onclick="_cpOpenAiEditModal(${a.id},'${jsStr(a.name)}')">✏️ Editar con IA</button>
+        <button class="cp-btn cp-btn-ghost" style="font-size:.75rem;padding:3px 10px" onclick="_cpOpenAiEditModal(${a.id},${escJs(a.name)})">✏️ Editar con IA</button>
         <button class="attach-del" title="Eliminar" onclick="_cpDeleteAttach(${a.id},'budget')">✕</button>
       </div>
     </div>`).join('');
@@ -6364,10 +6363,6 @@ select:focus{border-color:#0088cc}
 // perfil, un nombre con HTML se ejecutaba en la sesion del admin al abrir
 // /admin/users: escalada desde el rol mas bajo. Mismos helpers que DASHBOARD_HTML.
 function esc(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
-function jsStr(s) {
-  return String(s == null ? '' : s).replace(/[^a-zA-Z0-9 _.\-:@\/]/g,
-    c => String.fromCharCode(92) + 'x' + c.charCodeAt(0).toString(16).padStart(2, '0'));
-}
 
 // Viene del backend (services/auth.ALL_PANELS) para que no vuelva a divergir con
 // la del dashboard: a ambas les faltaba 'sdr', y como getChecked() itera esta
@@ -6468,7 +6463,7 @@ function renderUsers() {
         </div>
         <span class="badge ${u.role_id?'has-role':''}">${esc(roleName)}</span>
         <select onchange="setRole(${u.id}, this.value)">${opts}</select>
-        <form method="POST" action="/admin/users/${u.id}/delete" onsubmit="return confirm('Eliminar a ${jsStr(u.name)}?')" style="display:inline">
+        <form method="POST" action="/admin/users/${u.id}/delete" onsubmit="return confirm('Eliminar a ' + ${escJs(u.name)} + '?')" style="display:inline">
           <button class="btn btn-danger" type="submit">Borrar</button>
         </form>
       </div>
@@ -6517,13 +6512,18 @@ loadAll();
         resp.headers["Pragma"] = "no-cache"
         return resp
 
-    worker = init_worker(db_path)
-    worker.register("demo", demo_job_handler)
-    worker.start()
+    # Los procesos de fondo se saltean con CRM_SIN_PROCESOS_DE_FONDO=true.
+    # En los tests cada create_app dejaba tres threads vivos que seguian
+    # tocando SQLite durante el test siguiente: de ahi el "database is locked"
+    # intermitente y el ruido de "no such table: jobs".
+    if os.environ.get("CRM_SIN_PROCESOS_DE_FONDO", "").lower() != "true":
+        worker = init_worker(db_path)
+        worker.register("demo", demo_job_handler)
+        worker.start()
 
-    start_meta_token_monitor(app)
-    start_meta_daily_import(app)
-    iniciar_scheduler(app)
+        start_meta_token_monitor(app)
+        start_meta_daily_import(app)
+        iniciar_scheduler(app)
 
     try:
         from database import get_all_users

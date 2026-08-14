@@ -7,6 +7,8 @@ import os, requests
 from dotenv import load_dotenv
 load_dotenv()
 
+from meta_config import GRAPH
+
 APP_ID       = os.environ["META_APP_ID"]
 APP_SECRET   = os.environ["META_APP_SECRET"]
 PAGE_ID      = os.environ["META_PAGE_ID"]
@@ -18,7 +20,7 @@ USER_TOKEN = input("Pegá el user access token del Graph API Explorer: ").strip(
 
 # ── 1. Long-lived user token ──────────────────────────────────────────────────
 print("\n[1] Convirtiendo a long-lived user token...")
-r = requests.get("https://graph.facebook.com/v20.0/oauth/access_token", params={
+r = requests.get(f"{GRAPH}/oauth/access_token", params={
     "grant_type": "fb_exchange_token",
     "client_id": APP_ID, "client_secret": APP_SECRET,
     "fb_exchange_token": USER_TOKEN,
@@ -29,7 +31,7 @@ print("    OK — long-lived user token obtenido")
 
 # ── 2. Page access token ──────────────────────────────────────────────────────
 print(f"[2] Obteniendo page token para página {PAGE_ID}...")
-r = requests.get(f"https://graph.facebook.com/v20.0/{PAGE_ID}", params={
+r = requests.get(f"{GRAPH}/{PAGE_ID}", params={
     "fields": "access_token,name", "access_token": ll_user,
 })
 r.raise_for_status()
@@ -51,7 +53,7 @@ print("    Guardado en .env")
 
 # ── 4. Subscribe webhook to page ─────────────────────────────────────────────
 print(f"[3] Suscribiendo webhook {WEBHOOK_URL} a la página...")
-r = requests.post(f"https://graph.facebook.com/v20.0/{PAGE_ID}/subscribed_apps", params={
+r = requests.post(f"{GRAPH}/{PAGE_ID}/subscribed_apps", params={
     "access_token": page_token,
     "subscribed_fields": "leadgen",
 })
@@ -59,7 +61,7 @@ print("    Respuesta:", r.json())
 
 # ── 5. Register webhook on the app ───────────────────────────────────────────
 print("[4] Registrando webhook en la app de Meta...")
-r = requests.post(f"https://graph.facebook.com/v20.0/{APP_ID}/subscriptions", params={
+r = requests.post(f"{GRAPH}/{APP_ID}/subscriptions", params={
     "access_token": f"{APP_ID}|{APP_SECRET}",
     "object": "page",
     "callback_url": WEBHOOK_URL,

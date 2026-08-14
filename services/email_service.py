@@ -1,3 +1,4 @@
+import html
 import logging
 import os
 
@@ -150,25 +151,35 @@ def send_new_user_notification(new_name: str, new_email: str, new_phone: str, ad
 
 
 def send_new_meta_lead_notification(to_email: str, lead_name: str, phone: str, campaign: str, city: str, lead_id: int) -> bool:
-    rows = [("Nombre", lead_name)]
-    if phone:
-        rows.append(("Teléfono", phone))
-    if city:
-        rows.append(("Ciudad", city))
-    if campaign:
-        rows.append(("Campaña", campaign))
+    # Todo esto sale del formulario de Meta, que llena cualquiera en internet:
+    # sin escapar, un `<a href="https://phishing/">` en el campo nombre le
+    # inyecta un link al mail que reciben los admins.
+    nombre_esc   = html.escape(lead_name or "")
+    telefono_esc = html.escape(phone or "")
+    ciudad_esc   = html.escape(city or "")
+    campana_esc  = html.escape(campaign or "")
+
+    rows = [("Nombre", nombre_esc)]
+    if telefono_esc:
+        rows.append(("Teléfono", telefono_esc))
+    if ciudad_esc:
+        rows.append(("Ciudad", ciudad_esc))
+    if campana_esc:
+        rows.append(("Campaña", campana_esc))
     body = (
         _muted("Llegó un nuevo lead de Meta Ads al CRM.")
         + _info_card(rows)
     )
-    html = _layout(
+    cuerpo_html = _layout(
         badge="Nuevo lead Meta Ads",
-        title=f"Nuevo lead: {lead_name}",
+        title=f"Nuevo lead: {nombre_esc}",
         body=body,
-        cta_url=f"{_CRM_URL}/?highlight={lead_id}",
+        cta_url=f"{_CRM_URL}/?highlight={html.escape(str(lead_id))}",
         cta_label="Ver en CRM →",
     )
-    return _send(to_email, f"Nuevo lead Meta: {lead_name} — Scalerics CRM", html)
+    # El asunto es texto plano, no HTML: va el nombre tal cual, sin saltos de línea.
+    asunto = f"Nuevo lead Meta: {(lead_name or '').replace(chr(10), ' ').replace(chr(13), ' ')} — Scalerics CRM"
+    return _send(to_email, asunto, cuerpo_html)
 
 
 _GOAL_TYPE_LABELS = {
@@ -262,7 +273,10 @@ def send_meta_token_alert(to_email: str, error_detail: str) -> bool:
         + _muted(
             "Para renovarlo: entrá al Graph Explorer de Meta, generá un nuevo User Token "
             "con permisos <code>leads_retrieval</code> y <code>pages_read_engagement</code>, "
-            "y usá el endpoint <code>POST /api/meta/setup-token</code> del CRM."
+            "canjealo por un Page Token de larga duración, y cargalo en Fly:<br>"
+            "<code>flyctl secrets set META_PAGE_TOKEN=&lt;nuevo&gt; -a scalerics-crm</code><br>"
+            "Ese comando reinicia la app con el token nuevo. No alcanza con escribir un "
+            "<code>.env</code>: el filesystem del contenedor es efímero fuera de <code>/data</code>."
         )
     )
     html = _layout(
@@ -273,3 +287,20 @@ def send_meta_token_alert(to_email: str, error_detail: str) -> bool:
         cta_label="Ir al CRM →",
     )
     return _send(to_email, "ALERTA: Token Meta Ads inválido — Scalerics CRM", html)
+
+
+def send_meta_lead_failure_alert(email: str, lead_id: str, error: str) -> None:
+    """Avisa que un lead de Meta llegó pero no se pudo guardar."""
+    # `lead_id` viene del payload del webhook y `error` puede arrastrar texto
+    # de la respuesta de Graph: ninguno de los dos es HTML de confianza.
+    lead_id_esc = html.escape(str(lead_id))
+    error_esc   = html.escape(str(error))
+    asunto = f"[CRM] No se pudo guardar un lead de Meta ({lead_id})"
+    cuerpo = (
+        f"<p>Llegó un lead de Meta y el CRM no lo pudo guardar.</p>"
+        f"<p><b>leadgen_id:</b> {lead_id_esc}</p>"
+        f"<p><b>Error:</b> {error_esc}</p>"
+        f"<p>Se puede recuperar a mano desde el panel de formularios de Meta "
+        f"buscando ese id.</p>"
+    )
+    _send(email, asunto, cuerpo)

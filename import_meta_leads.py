@@ -13,6 +13,7 @@ DB_PATH    = os.environ.get("DB_PATH", "leads.db")
 import sys
 sys.path.insert(0, os.path.dirname(__file__))
 from database import init_db, insert_business, update_business, get_business, log_activity
+from meta_config import GRAPH
 
 init_db(DB_PATH)
 
@@ -30,7 +31,7 @@ def get_all(url, params):
 # 1. Get all lead forms for the page
 print(f"[1] Fetching lead forms for page {PAGE_ID}...")
 forms = get_all(
-    f"https://graph.facebook.com/v20.0/{PAGE_ID}/leadgen_forms",
+    f"{GRAPH}/{PAGE_ID}/leadgen_forms",
     {"access_token": PAGE_TOKEN, "fields": "id,name,status,leads_count"}
 )
 print(f"    Found {len(forms)} form(s)")
@@ -51,7 +52,7 @@ for form in forms:
     print(f"\n[2] Importing leads from form: {form_name}...")
 
     leads = get_all(
-        f"https://graph.facebook.com/v20.0/{form_id}/leads",
+        f"{GRAPH}/{form_id}/leads",
         {
             "access_token": PAGE_TOKEN,
             "fields": "id,created_time,field_data,ad_name,campaign_name",

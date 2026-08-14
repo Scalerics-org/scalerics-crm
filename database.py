@@ -91,6 +91,55 @@ def connect(db_path: str) -> sqlite3.Connection:
     """
     return _connect(db_path)
 
+def _grant_panel_to_existing_roles(conn: sqlite3.Connection, panel: str) -> int:
+    """Suma `panel` al panel_access de los roles que ya existen y no lo tengan.
+
+    La siembra de roles por defecto solo corre con la tabla vacía, así que en
+    una base que ya tiene roles (producción) un panel nuevo no le llega a
+    nadie salvo a los admin, que reciben todos. Esto lo arregla en el arranque.
+
+    Idempotente: si el panel ya está, no toca la fila. Un `panel_access` en
+    NULL, vacío, con JSON inválido o con un JSON que no es una lista se saltea
+    con un warning — no se pisa lo que no se entiende. Devuelve cuántas filas
+    modificó.
+    """
+    import json as _j
+    tocadas = 0
+    try:
+        filas = conn.execute("SELECT id, panel_access FROM roles").fetchall()
+    except sqlite3.Error as e:
+        logger.warning(f"panel_access migration: no se pudo leer roles ({e})")
+        return 0
+
+    for fila in filas:
+        rid, crudo = fila[0], fila[1]
+        try:
+            paneles = _j.loads(crudo) if crudo else None
+        except (ValueError, TypeError):
+            paneles = None
+        if not isinstance(paneles, list):
+            logger.warning(
+                f"panel_access migration: rol id={rid} tiene un panel_access "
+                f"ilegible, se deja como está"
+            )
+            continue
+        if panel in paneles:
+            continue
+        paneles.append(panel)
+        try:
+            conn.execute(
+                "UPDATE roles SET panel_access = ? WHERE id = ?",
+                (_j.dumps(paneles), rid),
+            )
+            tocadas += 1
+        except sqlite3.Error as e:
+            logger.warning(f"panel_access migration: rol id={rid} no se pudo actualizar ({e})")
+
+    if tocadas:
+        conn.commit()
+        logger.info(f"panel_access migration: '{panel}' agregado a {tocadas} rol(es)")
+    return tocadas
+
 
 def _connect(db_path: str) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path, timeout=10)
@@ -142,6 +191,9 @@ def init_db(db_path: str) -> None:
         _add_column(conn, "businesses", "source", "TEXT")
         _add_column(conn, "businesses", "form_data", "TEXT")
         _add_column(conn, "businesses", "email", "TEXT")
+        # Qué servicio pidió el lead (web/Calendly). Aparte de `category`,
+        # que es el rubro del negocio.
+        _add_column(conn, "businesses", "interest", "TEXT")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS roles (
                 id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -161,6 +213,7 @@ def init_db(db_path: str) -> None:
                 ("Caller", _CALLER),
                 ("Ventas", _SALES),
             ])
+        _grant_panel_to_existing_roles(conn, "meta")
         _add_column(conn, "client_info", "meeting_time", "TEXT")
         _add_column(conn, "client_info", "meeting_url", "TEXT")
 
@@ -397,6 +450,21 @@ def init_db(db_path: str) -> None:
             )
         """)
 
+        # ── meta_token_alerts ─────────────────────────────────────────────────
+        # Dedup del monitor de salud del token de Meta (routes/meta.py): sin
+        # esto, cada ciclo de `_check_token_once` (cada 10 min) le manda un
+        # mail a cada admin mientras el token siga vencido. Vive en la misma
+        # base que `businesses` — montada en /data en Fly — para que el
+        # silencio sobreviva a un restart o redeploy.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS meta_token_alerts (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                alert_key     TEXT NOT NULL UNIQUE,
+                detail        TEXT,
+                last_sent_at  REAL NOT NULL
+            )
+        """)
+
         # ── task assignment & goal tracking ────────────────────────────────────
         _add_column(conn, "tasks", "assignee_id",    "INTEGER REFERENCES users(id) ON DELETE SET NULL")
         _add_column(conn, "tasks", "assignee_name",  "TEXT")
@@ -460,7 +528,8 @@ ALLOWED_COLUMNS = {
     "review_count", "hours", "maps_url", "facebook_url", "instagram_url",
     "color_scheme", "demo_html_path", "demo_url", "status", "error_message",
     "scraped_at", "notes", "pitch_text", "crm_status",
-    "has_whatsapp", "last_event_at", "score", "callback_date", "source", "form_data",
+    "has_whatsapp", "last_event_at", "score", "callback_date", "source",
+    "interest", "form_data",
 }
 
 
