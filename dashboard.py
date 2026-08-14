@@ -1,6 +1,8 @@
-﻿import os
+﻿import logging
+import os
 import secrets
 import threading
+import time
 import webbrowser
 
 from dotenv import load_dotenv
@@ -4880,6 +4882,44 @@ async function loadActivity() {
 </html>"""
 
 
+_calendly_sync_state = {"at": 0.0}
+_calendly_sync_lock = threading.Lock()
+CALENDLY_SYNC_EVERY = int(os.environ.get("CALENDLY_SYNC_EVERY", "600"))
+
+
+def _maybe_sync_calendly(db_path: str) -> None:
+    """Trae los leads de Calendly cuando alguien abre el CRM.
+
+    La máquina de Fly se duerme sin tráfico, así que un cron interno no
+    correría. Va en un hilo aparte para no demorar la carga de la página, y
+    con throttle para no pegarle a Google en cada request.
+    """
+    if not os.environ.get("GMAIL_REFRESH_TOKEN"):
+        return
+    now = time.time()
+    with _calendly_sync_lock:
+        if now - _calendly_sync_state["at"] < CALENDLY_SYNC_EVERY:
+            return
+        _calendly_sync_state["at"] = now
+
+    def _run():
+        try:
+            # Gmail primero: aporta el mail del invitado y el calendario, que
+            # es el único que ve las cancelaciones, pasa después.
+            from services.calendly_gcal import fetch_and_sync
+            from services.calendly_gmail import fetch_and_sync_gmail
+            g = fetch_and_sync_gmail(db_path)
+            c = fetch_and_sync(db_path)
+            if g["created"] or c["created"] or c["canceled"]:
+                logging.getLogger(__name__).info(
+                    "calendly sync: %s nuevas por mail, %s por calendario, %s canceladas",
+                    g["created"], c["created"], c["canceled"])
+        except Exception:
+            logging.getLogger(__name__).warning("calendly sync falló", exc_info=True)
+
+    threading.Thread(target=_run, daemon=True).start()
+
+
 def create_app(db_path: str) -> Flask:
     app = Flask(__name__)
     app.secret_key = os.environ.get("SECRET_KEY") or "scalerics-dev-key-change-in-prod"
@@ -4912,6 +4952,10 @@ def create_app(db_path: str) -> Flask:
             if request.path.startswith("/api/"):
                 return jsonify({"error": "session_expired"}), 401
             return redirect(url_for("login"))
+
+        # Sesión válida: aprovechamos la visita para traer lo de Calendly.
+        if not request.path.startswith(("/api/", "/static/")):
+            _maybe_sync_calendly(app.config["DB_PATH"])
 
     @app.route("/privacidad")
     def privacidad():
