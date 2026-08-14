@@ -1953,8 +1953,8 @@ function renderCola() {
       <div><textarea class="notes-inline" data-id="${b.id}" data-notes="${esc(b.notes||'')}" placeholder="Agregar nota..." rows="1" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea></div>
       <div class="actions">
         <a class="pitch-btn" href="tel:${b.phone||''}" style="text-decoration:none"><i data-lucide=\"phone\" class=\"btn-icon\"></i> Llamar</a>
-        <button class="pitch-btn" onclick="openCallModal(${b.id},'${esc(b.name||'')}','${esc(b.phone||'')}','cola')" style="background:#1e293b"><i data-lucide=\"clipboard-list\" class=\"btn-icon\"></i> Resultado</button>
-        <button class="delete-btn" onclick="deleteLead(${b.id},'${esc(b.name||'')}')" title="Borrar"><i data-lucide=\"trash-2\" class=\"btn-icon\"></i></button>
+        <button class="pitch-btn" onclick="openCallModal(${b.id},${escJs(b.name||'')},${escJs(b.phone||'')},'cola')" style="background:#1e293b"><i data-lucide=\"clipboard-list\" class=\"btn-icon\"></i> Resultado</button>
+        <button class="delete-btn" onclick="deleteLead(${b.id},${escJs(b.name||'')})" title="Borrar"><i data-lucide=\"trash-2\" class=\"btn-icon\"></i></button>
       </div>
     </div>`).join('');
   _populateNotes(body);
@@ -2033,8 +2033,8 @@ async function loadSeguimientos() {
         <div><textarea class="notes-inline" data-id="${b.id}" data-notes="${esc(b.notes||'')}" placeholder="Agregar nota..." rows="1" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea></div>
         <div class="actions">
           <a class="pitch-btn" href="tel:${b.phone||''}" style="text-decoration:none"><i data-lucide=\"phone\" class=\"btn-icon\"></i> Llamar</a>
-          <button class="pitch-btn" onclick="openCallModal(${b.id},'${esc(b.name||'')}','${esc(b.phone||'')}','seguimientos')" style="background:#1e293b"><i data-lucide=\"clipboard-list\" class=\"btn-icon\"></i> Resultado</button>
-          <button class="delete-btn" onclick="deleteLead(${b.id},'${esc(b.name||'')}')" title="Borrar"><i data-lucide=\"trash-2\" class=\"btn-icon\"></i></button>
+          <button class="pitch-btn" onclick="openCallModal(${b.id},${escJs(b.name||'')},${escJs(b.phone||'')},'seguimientos')" style="background:#1e293b"><i data-lucide=\"clipboard-list\" class=\"btn-icon\"></i> Resultado</button>
+          <button class="delete-btn" onclick="deleteLead(${b.id},${escJs(b.name||'')})" title="Borrar"><i data-lucide=\"trash-2\" class=\"btn-icon\"></i></button>
         </div>
       </div>`; }).join('');
     _populateNotes(body);
@@ -2216,7 +2216,7 @@ async function loadLeads() {
       })()}</div>
       <div class="actions">
         ${(!crm || crm === 'sin_contactar') ? `<button class="pitch-btn" onclick="markContacted(${b.id})">Contactar</button>` : `<span style="color:#3db648;font-size:.75rem">✓ ${crmLabels[crm]||crm}</span>`}
-        <button class="delete-btn" onclick="deleteLead(${b.id},event)" title="Borrar lead">🗑</button>
+        <button class="delete-btn" onclick="deleteLead(${b.id},${escJs(b.name||'')})" title="Borrar lead">🗑</button>
       </div>
     </div>`}).join('');
   _updatePagination();
@@ -2296,6 +2296,14 @@ function exportCSV() {
 }
 
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+// Literal de JS seguro para meter dentro de un onclick="..." inline.
+// esc() sola no alcanza ahi: el navegador decodifica las entidades HTML
+// (&#39; -> ') ANTES de parsear el atributo como JS, asi que una comilla
+// escapada igual rompe un literal '...' armado a mano, para cualquier nombre
+// con apostrofe. JSON.stringify produce un string de JS bien citado y
+// escapado; despues se escapa el HTML para que sobreviva dentro del
+// atributo onclick="" con comillas dobles.
+function escJs(s) { return JSON.stringify(String(s == null ? '' : s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function timeAgo(ts) {
   if (!ts) return '';
   const diff = Math.floor((Date.now() - new Date(ts + 'Z').getTime()) / 1000);
@@ -2536,7 +2544,7 @@ async function loadWaLeads() {
   waLeads = d;
   if (!d.length) { listEl.innerHTML = '<div class="wa-no-leads">No hay leads en el bot</div>'; return; }
   listEl.innerHTML = d.map(lead => `
-    <div class="wa-lead-item" id="wa-lead-${esc(lead.phone)}" onclick="selectWaLead('${esc(lead.phone)}','${esc(lead.name||lead.phone)}')">
+    <div class="wa-lead-item" id="wa-lead-${esc(lead.phone)}" onclick="selectWaLead(${escJs(lead.phone)},${escJs(lead.name||lead.phone)})">
       <div class="wa-lead-name">${esc(lead.name || lead.phone)}</div>
       <div class="wa-lead-meta">
         <span class="wa-state-badge ${waStateBadgeClass(lead.state)}">${esc(lead.state||'NEW')}</span>
@@ -2684,8 +2692,8 @@ async function renderCalendar() {
             return `<div class="cal-event-chip ${ev.meeting_url?'meet':'regular'}" title="${esc((ev.time?ev.time+' ':'')+ev.title)}">
               ${ev.time?esc(ev.time)+' ':''}${ev.meeting_url?'🎥 ':''}${esc(ev.title||'')}
               ${ev.meeting_url?`<a class="cal-join-btn" href="${esc(ev.meeting_url)}" target="_blank" onclick="event.stopPropagation()">▶ Unirse</a>`:''}
-              <button class="cal-demo-btn" onclick="event.stopPropagation();openDemoModal('${ph||''}','${esc(ev.title||'')}','${nm||''}')">📊 Generar Demo</button>
-              <button class="cal-del-btn" onclick="event.stopPropagation();deleteCalEvent('${ev.id}','${esc(ev.title||'')}')">🗑 Borrar</button>
+              <button class="cal-demo-btn" onclick="event.stopPropagation();openDemoModal(${escJs(ph||'')},${escJs(ev.title||'')},${escJs(nm||'')})">📊 Generar Demo</button>
+              <button class="cal-del-btn" onclick="event.stopPropagation();deleteCalEvent(${escJs(ev.id)},${escJs(ev.title||'')})">🗑 Borrar</button>
             </div>`;
           }).join('')}
         </div>`
@@ -3289,7 +3297,7 @@ function _taskClientSearch(q) {
   const matches = _allLeads.filter(l => l.name && l.name.toLowerCase().includes(q.toLowerCase())).slice(0,6);
   if (!matches.length) { res.style.display = 'none'; return; }
   res.style.display = '';
-  res.innerHTML = matches.map(l => `<div style="padding:8px 12px;cursor:pointer;font-size:.82rem;color:#e2e8f0;border-bottom:1px solid #1e293b" onmousedown="_pickTaskClient(${l.id},'${esc(l.name||'')}')">${esc(l.name||'')}</div>`).join('');
+  res.innerHTML = matches.map(l => `<div style="padding:8px 12px;cursor:pointer;font-size:.82rem;color:#e2e8f0;border-bottom:1px solid #1e293b" onmousedown="_pickTaskClient(${l.id},${escJs(l.name||'')})">${esc(l.name||'')}</div>`).join('');
 }
 
 function _pickTaskClient(id, name) {
@@ -3471,7 +3479,7 @@ function _cpRenderTasks() {
   return `<div class="cp-section">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
       <div class="cp-section-title" style="margin:0">Pendientes</div>
-      <button class="cp-btn cp-btn-ghost" onclick="openAddTaskModal(${_cpClientId},'${esc((_cpData.lead||{}).name||'')}')">+ Nueva</button>
+      <button class="cp-btn cp-btn-ghost" onclick="openAddTaskModal(${_cpClientId},${escJs((_cpData.lead||{}).name||'')})">+ Nueva</button>
     </div>
     ${renderList(pending)}
   </div>
@@ -4388,7 +4396,7 @@ function _cpRenderBudget() {
       <a href="/api/attachments/${a.id}/file" target="_blank" style="color:#33aadd;font-size:.85rem;text-decoration:none">📄 ${esc(a.name)}</a>
       <div style="display:flex;gap:6px">
         <a class="cp-btn cp-btn-ghost" style="font-size:.75rem;padding:3px 10px;text-decoration:none" href="/api/attachments/${a.id}/print" target="_blank">🖨️ PDF</a>
-        <button class="cp-btn cp-btn-ghost" style="font-size:.75rem;padding:3px 10px" onclick="_cpOpenAiEditModal(${a.id},'${esc(a.name)}')">✏️ Editar con IA</button>
+        <button class="cp-btn cp-btn-ghost" style="font-size:.75rem;padding:3px 10px" onclick="_cpOpenAiEditModal(${a.id},${escJs(a.name)})">✏️ Editar con IA</button>
         <button class="attach-del" title="Eliminar" onclick="_cpDeleteAttach(${a.id},'budget')">✕</button>
       </div>
     </div>`).join('');
@@ -6090,12 +6098,17 @@ loadAll();
         resp.headers["Pragma"] = "no-cache"
         return resp
 
-    worker = init_worker(db_path)
-    worker.register("demo", demo_job_handler)
-    worker.start()
+    # Los procesos de fondo se saltean con CRM_SIN_PROCESOS_DE_FONDO=true.
+    # En los tests cada create_app dejaba tres threads vivos que seguian
+    # tocando SQLite durante el test siguiente: de ahi el "database is locked"
+    # intermitente y el ruido de "no such table: jobs".
+    if os.environ.get("CRM_SIN_PROCESOS_DE_FONDO", "").lower() != "true":
+        worker = init_worker(db_path)
+        worker.register("demo", demo_job_handler)
+        worker.start()
 
-    start_meta_token_monitor(app)
-    start_meta_daily_import(app)
+        start_meta_token_monitor(app)
+        start_meta_daily_import(app)
 
     try:
         from database import get_all_users
