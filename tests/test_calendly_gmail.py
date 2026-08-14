@@ -130,3 +130,45 @@ def test_no_duplica_lo_que_ya_entro_por_el_calendario(db):
         assert conn.execute("SELECT COUNT(*) FROM meetings").fetchone()[0] == 1
     finally:
         conn.close()
+
+
+def test_el_mail_de_cancelacion_no_trae_id_y_se_descarta():
+    # Verificado contra un mail real: el "Canceled" de Calendly no incluye
+    # ningún link a calendly.com/events/<uuid>, así que por esta vía no se
+    # puede asociar la baja. De eso se ocupa el calendario.
+    cancel = """<html><body>
+    <p>Hi Contacto Scalerics,</p>
+    <p>The event below has been canceled.</p>
+    <div>Invitee:</div><div>PRUEBA - borrar</div>
+    <div>Invitee Email:</div><div>juantomasetti240@gmail.com</div>
+    <div>Canceled by:</div><div>Contacto Scalerics</div>
+    </body></html>"""
+    assert parse_calendly_email(cancel, team_emails=TEAM) is None
+
+
+def test_una_reunion_creada_por_mail_la_cancela_el_calendario(db):
+    # Es el motivo por el que el endpoint corre gmail primero y calendario
+    # despues: los dos comparten event_uri.
+    from services.calendly_gcal import sync_parsed, parse_calendly_event
+    sync_parsed(db, [parse_calendly_email(MAIL, team_emails=TEAM)],
+                now="2026-08-01T00:00:00")
+
+    evento_cancelado = {
+        "summary": "Cancelado: Ana Clara Veterinaria y Contacto Scalerics",
+        "description": f"https://calendly.com/events/{UUID}/google_meet",
+        "start": {"dateTime": "2026-08-14T12:30:00-03:00"},
+        "end": {"dateTime": "2026-08-14T13:15:00-03:00"},
+        "organizer": {"email": "scalerics@gmail.com"},
+        "attendees": [{"email": "scalerics@gmail.com"}],
+    }
+    res = sync_parsed(db, [parse_calendly_event(evento_cancelado,
+                                                host_email="scalerics@gmail.com",
+                                                team_emails=TEAM)],
+                      now="2026-08-01T00:00:00")
+
+    assert res["canceled"] == 1
+    conn = sqlite3.connect(db)
+    try:
+        assert conn.execute("SELECT status FROM meetings").fetchone()[0] == "canceled"
+    finally:
+        conn.close()

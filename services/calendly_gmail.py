@@ -115,8 +115,10 @@ def parse_calendly_email(raw_html: str, team_emails: set = None) -> dict:
         email = ""
 
     answers = _questions(lines)
-    canceled = any(ln.startswith("This event has been canceled")
-                   or ln == "Event Canceled" for ln in lines)
+    # La cancelación llega como un mail aparte, con el mismo evento pero sin
+    # bloque de preguntas. Texto real: "The event below has been canceled."
+    canceled = any("has been canceled" in ln.lower()
+                   or "canceled by:" in ln.lower() for ln in lines)
 
     return {
         "event_uri": f"https://api.calendly.com/scheduled_events/{m.group(1)}",
