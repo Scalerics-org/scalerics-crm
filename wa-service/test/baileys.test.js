@@ -199,3 +199,20 @@ test('un LID sin telefono asociado se descarta en vez de adivinar', () => {
   assert.equal(telefonoDelMensaje({}), null);
   assert.equal(telefonoDelMensaje(null), null);
 });
+
+test('resuelve el telefono con los nombres de campo de baileys 6 y de 7', () => {
+  // 7.x renombro senderPn/participantPn a remoteJidAlt/participantAlt. Mirar
+  // solo los viejos hacia que TODOS los entrantes se descartaran tras subir.
+  assert.equal(
+    telefonoDelMensaje({ remoteJid: '10660209537270@lid', remoteJidAlt: '59892781598@s.whatsapp.net' }),
+    '59892781598', 'baileys 7'
+  );
+  assert.equal(
+    telefonoDelMensaje({ remoteJid: '1203@g.us', participantAlt: '59892781598@s.whatsapp.net' }),
+    '59892781598', 'baileys 7, grupo'
+  );
+  assert.equal(
+    telefonoDelMensaje({ remoteJid: '10660209537270@lid', senderPn: '59892781598@s.whatsapp.net' }),
+    '59892781598', 'baileys 6'
+  );
+});

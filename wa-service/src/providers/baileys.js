@@ -45,12 +45,15 @@ function telefonoDeJid(jid) {
  * @returns {string|null} E.164 sin '+', o null si es un LID sin numero asociado.
  */
 function telefonoDelMensaje(key) {
-  const pn = key?.senderPn || key?.participantPn;
+  // El nombre del campo cambio entre versiones de baileys: en 6.x venia como
+  // senderPn/participantPn y en 7.x como remoteJidAlt/participantAlt. Se miran
+  // los cuatro para no depender de la version.
+  const pn = key?.remoteJidAlt || key?.participantAlt || key?.senderPn || key?.participantPn;
   if (pn) return telefonoDeJid(pn);
 
   const jid = String(key?.remoteJid || '');
-  // Sin senderPn no hay forma de saber a quien corresponde: atribuirselo a
-  // alguien por el LID seria peor que descartarlo.
+  // Sin el JID alternativo no hay forma de saber a quien corresponde:
+  // atribuirselo a alguien por el LID seria peor que descartarlo.
   if (jid.endsWith('@lid')) return null;
 
   const tel = telefonoDeJid(jid);
@@ -146,16 +149,19 @@ function crear(cfg, { logger, buscarMensaje = null } = {}) {
           return undefined;
         }
 
-        // Si el mismo mensaje se pide dos veces, reenviarlo de nuevo no va a
-        // servir: la sesion con ese dispositivo esta rota. Se borran sus claves
-        // para que el proximo envio renegocie desde cero.
+        // Antes se borraban las claves del destinatario tras dos pedidos del
+        // mismo mensaje. Eso era un parche para la 6.x, que no sabia recrear
+        // sesiones; con la 7 lo hace la libreria ("session recreation and
+        // improved message retry") y borrarlas por afuera le deja el estado en
+        // memoria desincronizado del disco — de ahi los PreKeyError.
+        // El reset manual queda disponible en POST /session/reset-cifrado.
         const veces = (reintentosPorMensaje.get(key.id) || 0) + 1;
         reintentosPorMensaje.set(key.id, veces);
-        if (veces >= 2) {
-          const tel = telefonoDelMensaje(key) || telefonoDeJid(key.remoteJid);
-          logger?.warn({ id: key.id, veces, tel }, 'reintentos repetidos: se reinicia el cifrado');
-          reiniciarCifrado(tel);
-          reintentosPorMensaje.delete(key.id);
+        if (veces >= 3) {
+          logger?.warn(
+            { id: key.id, veces },
+            'el destinatario sigue sin poder descifrar despues de varios reenvios'
+          );
         }
 
         logger?.info({ id: key?.id, veces }, 'reenviando mensaje por pedido de reintento');
