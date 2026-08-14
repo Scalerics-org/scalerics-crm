@@ -5,6 +5,7 @@ import logging
 import os
 import re
 
+import requests as http_requests
 from flask import Blueprint, request, jsonify
 
 from database import create_meeting, get_business_by_phone, get_all_businesses, log_activity, update_business
@@ -35,6 +36,39 @@ def _verify_signature(payload: bytes, signature_header: str) -> bool:
 
 def _normalize_phone(phone: str) -> str:
     return "".join(c for c in (phone or "") if c.isdigit() or c == "+")
+
+
+def _avisar_reunion_al_wa_service(phone: str, start_at: str, meet_url: str) -> None:
+    """Le avisa al wa-service que el lead agendo, para que cancele el follow-up
+    y programe los recordatorios (el dia antes y 30 minutos antes).
+
+    Nunca levanta excepcion: si el servicio de WhatsApp esta caido, la reunion
+    ya quedo guardada en el CRM y eso es lo que no se puede perder. Lo unico que
+    se pierden son los recordatorios.
+    """
+    base = os.environ.get("WA_SERVICE_URL", "").rstrip("/")
+    clave = os.environ.get("WA_API_KEY", "")
+    if not base or not clave:
+        return
+    if not phone or not start_at:
+        logger.warning("No se avisa la reunion al wa-service: falta telefono o fecha")
+        return
+
+    try:
+        r = http_requests.post(
+            f"{base}/meetings",
+            json={"telefono": phone, "meeting_time": start_at, "meeting_url": meet_url or ""},
+            headers={"x-api-key": clave, "Content-Type": "application/json"},
+            timeout=5,
+        )
+        if r.status_code == 404:
+            # El wa-service no conoce ese telefono: el lead nunca paso por ahi.
+            logger.info(f"wa-service no tiene lead para {phone[-4:]}, sin recordatorios")
+            return
+        r.raise_for_status()
+        logger.info(f"Reunion avisada al wa-service: {r.json().get('recordatorios')}")
+    except Exception as e:
+        logger.warning(f"No se pudo avisar la reunion al wa-service: {e}")
 
 
 def _find_client(db_path: str, email: str, phone: str, name: str):
@@ -192,6 +226,14 @@ def calendly_webhook():
         log_activity(db_path, "calendly", "meeting_scheduled", "lead", client_id,
                      client["name"] if client else name,
                      f"Calendly: {title} · {start_at[:16] if start_at else ''}")
+
+        # El bot de WhatsApp deja de insistir con el follow-up y agenda los
+        # recordatorios. Va despues de guardar, nunca antes.
+        _avisar_reunion_al_wa_service(
+            _normalize_phone(phone_raw) or (client or {}).get("phone", ""),
+            start_at,
+            actual_meet_url or meet_link,
+        )
 
         return jsonify({"ok": True, "meeting_id": meeting_id, "recall_bot_id": recall_bot_id})
 

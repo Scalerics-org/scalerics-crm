@@ -129,6 +129,22 @@ function crearServidor({ cfg, repo, cola, proveedor, servicioLeads, scheduler, l
     return reply.code(200).send({ ok: true, lead_id: lead.id, ...resultado });
   });
 
+  /**
+   * Reinicia las claves de cifrado con un destinatario. Se usa cuando le queda
+   * un mensaje en "Esperando este mensaje": el proximo envio renegocia.
+   */
+  app.post('/session/reset-cifrado', async (req, reply) => {
+    if (!proveedor.reiniciarCifrado) {
+      return reply.code(400).send({ ok: false, error: 'el proveedor no maneja cifrado' });
+    }
+    const { normalizar } = require('../telefono');
+    const tel = normalizar((req.body || {}).telefono, cfg.DEFAULT_COUNTRY_CODE);
+    if (!tel) return reply.code(400).send({ ok: false, error: 'telefono invalido' });
+
+    const borradas = proveedor.reiniciarCifrado(tel);
+    return { ok: true, telefono: tel, sesiones_borradas: borradas };
+  });
+
   app.get('/session/status', async () => proveedor.estado());
 
   /**

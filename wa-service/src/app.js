@@ -75,6 +75,25 @@ function construir(cfg, { logger, ahora = () => new Date() } = {}) {
     }
   });
 
+  // Si la conexion no vuelve despues de varios intentos, el canal esta mudo y
+  // alguien tiene que enterarse. Solo se avisa una vez por caida.
+  let avisadoCaida = false;
+  proveedor.alDesconectarse?.((intentos, esperaMs) => {
+    if (intentos < 3 || avisadoCaida) return;
+    avisadoCaida = true;
+    for (const am of cfg.amPhones) {
+      cola.encolar({
+        to: am,
+        texto: [
+          '⚠️ El bot de WhatsApp perdió la conexión y no logra reconectar.',
+          `Lleva ${intentos} intentos; sigue reintentando cada ${Math.round(esperaMs / 60000)} min.`,
+          'Mientras tanto hay que contestar a mano.',
+        ].join('\n'),
+        kind: 'am_notice',
+      });
+    }
+  });
+
   proveedor.alRecibir(({ from, texto, nombre }) => {
     servicioLeads.registrarRespuesta(from, texto, nombre).catch((e) => {
       log.error({ from, err: String(e.message || e) }, 'fallo procesando un mensaje entrante');

@@ -14,7 +14,15 @@ const path = require('node:path');
  * CommonJS: con require() Node lo carga igual pero tira un warning experimental.
  */
 
-/** Backoff de reconexion. Insistir en loop contra WhatsApp acelera el baneo. */
+/**
+ * Backoff de reconexion. Se espera cada vez mas —insistir en loop contra
+ * WhatsApp acelera el baneo— pero NO se deja de intentar: el ultimo valor se
+ * repite indefinidamente.
+ *
+ * Antes se rendia despues del tercer intento. Una caida de red a las 3 de la
+ * manana dejaba el bot mudo hasta que alguien lo notara a mano, que es
+ * exactamente lo que paso.
+ */
 const BACKOFF_MS = [30_000, 5 * 60_000, 30 * 60_000];
 
 function jidDeTelefono(telefono) {
@@ -76,9 +84,13 @@ function crear(cfg, { logger, buscarMensaje = null } = {}) {
   let desdeCuando = null;
   let handler = null;
   let alActualizarEstado = null;
+  let alPerderConexion = null;
   let intentos = 0;
   let cerrandoAProposito = false;
   let baileys = null;
+  // Cuantas veces WhatsApp pidio reenviar cada mensaje. Dos pedidos del mismo
+  // significan que la sesion con ese dispositivo no se recupera sola.
+  const reintentosPorMensaje = new Map();
 
   async function cargarBaileys() {
     if (!baileys) baileys = await import('baileys');
@@ -133,7 +145,20 @@ function crear(cfg, { logger, buscarMensaje = null } = {}) {
           logger?.warn({ id: key?.id }, 'reintento de descifrado: no se encontro el mensaje');
           return undefined;
         }
-        logger?.info({ id: key?.id }, 'reenviando mensaje por pedido de reintento');
+
+        // Si el mismo mensaje se pide dos veces, reenviarlo de nuevo no va a
+        // servir: la sesion con ese dispositivo esta rota. Se borran sus claves
+        // para que el proximo envio renegocie desde cero.
+        const veces = (reintentosPorMensaje.get(key.id) || 0) + 1;
+        reintentosPorMensaje.set(key.id, veces);
+        if (veces >= 2) {
+          const tel = telefonoDelMensaje(key) || telefonoDeJid(key.remoteJid);
+          logger?.warn({ id: key.id, veces, tel }, 'reintentos repetidos: se reinicia el cifrado');
+          reiniciarCifrado(tel);
+          reintentosPorMensaje.delete(key.id);
+        }
+
+        logger?.info({ id: key?.id, veces }, 'reenviando mensaje por pedido de reintento');
         return { conversation: texto };
       },
     });
@@ -181,14 +206,15 @@ function crear(cfg, { logger, buscarMensaje = null } = {}) {
           return;
         }
 
-        if (intentos >= BACKOFF_MS.length) {
-          logger?.error({ intentos }, 'se agotaron los reintentos de conexion, no se insiste mas');
-          return;
-        }
-
-        const espera = BACKOFF_MS[intentos];
+        // Se sigue reintentando siempre, con el ultimo intervalo como techo.
+        const espera = BACKOFF_MS[Math.min(intentos, BACKOFF_MS.length - 1)];
         intentos += 1;
-        logger?.warn({ codigo, intentos, esperaMs: espera }, 'conexion caida, se reintenta con backoff');
+        const nivel = intentos > BACKOFF_MS.length ? 'error' : 'warn';
+        logger?.[nivel](
+          { codigo, intentos, esperaMs: espera },
+          'conexion caida, se reintenta con backoff'
+        );
+        alPerderConexion?.(intentos, espera);
         setTimeout(() => {
           conectar().catch((e) => logger?.error({ err: String(e.message || e) }, 'fallo al reconectar'));
         }, espera).unref?.();
@@ -252,8 +278,36 @@ function crear(cfg, { logger, buscarMensaje = null } = {}) {
     });
   }
 
+  /**
+   * Borra las sesiones de Signal guardadas para un destinatario, en todos sus
+   * dispositivos. El proximo mensaje renegocia las claves desde cero.
+   *
+   * Hace falta porque WhatsApp cifra por dispositivo: si la sesion con uno solo
+   * se corrompe, ese aparato ve "Esperando este mensaje" para siempre mientras
+   * los demas leen bien. Reenviar no alcanza — se recifra con la misma sesion
+   * rota. Ademas, desde la migracion a @lid, un mismo contacto puede tener
+   * sesiones bajo dos identidades y hay que limpiar las dos.
+   *
+   * @returns {string[]} las sesiones borradas.
+   */
+  function reiniciarCifrado(telefono) {
+    const dir = cfg.BAILEYS_AUTH_DIR;
+    const prefijo = `session-${telefono}.`;
+    let borradas = [];
+    try {
+      borradas = fs.readdirSync(dir).filter((f) => f.startsWith(prefijo));
+      for (const f of borradas) fs.rmSync(path.join(dir, f), { force: true });
+    } catch (e) {
+      logger?.error({ err: String(e.message || e) }, 'no se pudieron borrar las sesiones');
+      return [];
+    }
+    logger?.warn({ telefono, borradas: borradas.length }, 'sesiones de cifrado reiniciadas');
+    return borradas.map((f) => f.replace(/^session-|\.json$/g, ''));
+  }
+
   return {
     nombre: 'baileys',
+    reiniciarCifrado,
     // Baileys manda texto libre y soporta grupos; es justamente lo que lo hace
     // atractivo y lo que lo pone del lado no oficial.
     capacidades: { typingIndicator: true, textoLibre: true, grupos: true },
@@ -321,6 +375,11 @@ function crear(cfg, { logger, buscarMensaje = null } = {}) {
     /** Se llama con (idDelProveedor, "delivered"|"read") al llegar el acuse. */
     alCambiarEstado(fn) {
       alActualizarEstado = fn;
+    },
+
+    /** Se llama con (intentos, esperaMs) cada vez que se cae la conexion. */
+    alDesconectarse(fn) {
+      alPerderConexion = fn;
     },
   };
 }
