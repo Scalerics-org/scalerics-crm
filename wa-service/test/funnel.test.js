@@ -51,8 +51,8 @@ test('recorre el embudo entero hasta la oferta de reunion', async () => {
   assert.equal(l.instagram_web, '@inmopereyra');
   assert.equal(l.needs, 'quiero dejar de perder consultas');
 
-  // budget 3 (+3) + team>=2 (+2) + ecommerce (+2) + brief con contenido (+1) = 8
-  assert.equal(l.score, 8);
+  // budget 3 (+3) + team>=2 (+2) + ecommerce (+2) + brief (+1) + rubro conocido (+1) = 9
+  assert.equal(l.score, 9);
   assert.equal(l.priority, 'high');
   assert.equal(l.fsm_state, S.MEETING_SENT);
   assert.match(msgs.at(-1), /videollamada de 30 minutos/);
@@ -407,4 +407,44 @@ test('el horario de atencion sale de la config, no del texto', async () => {
     crearTextos({ calendlyLink: 'x', horarioAtencion: 'Lun a vie, 10 a 16hs' }).HUMAN_QUEUED,
     /Lun a vie, 10 a 16hs/
   );
+});
+
+// ── el rubro en el scoring ───────────────────────────────────────────────────
+
+test('un rubro que Scalerics sabe atender suma un punto', () => {
+  const base = { budget: 2, team_size: 1, business_type: 1, needs: 'algo' };
+
+  assert.equal(porReglas({ ...base }).score, 2, 'sin rubro');
+  assert.equal(porReglas({ ...base, rubro_norm: 'generico' }).score, 2, 'no clasificado, no suma');
+
+  for (const r of ['gastronomia', 'salud', 'retail', 'servicios_profesionales',
+                   'inmobiliaria', 'educacion', 'automotriz']) {
+    assert.equal(porReglas({ ...base, rubro_norm: r }).score, 3, r);
+  }
+});
+
+test('ningun rubro pesa mas que otro', () => {
+  // A proposito: poner uno arriba de otro seria inventar un ranking que nadie
+  // midio. La tabla existe para cuando haya datos de conversion por vertical.
+  const puntos = ['gastronomia', 'salud', 'retail', 'servicios_profesionales',
+                  'inmobiliaria', 'educacion', 'automotriz']
+    .map((r) => porReglas({ rubro_norm: r }).score);
+
+  assert.equal(new Set(puntos).size, 1, 'todos valen lo mismo');
+});
+
+test('el rubro solo no alcanza para una reunion', () => {
+  // Es un empujon, no un atajo: sin presupuesto ni proyecto sigue descartado.
+  const r = porReglas({ rubro_norm: 'gastronomia' });
+  assert.equal(r.score, 1);
+  assert.equal(r.recommended_action, 'disqualify');
+});
+
+test('el rubro puede inclinar un lead del medio hacia la reunion', () => {
+  // budget 2 (+2) + team>=2 (+2) = 4, justo debajo del umbral. Con el rubro
+  // identificado llega a 5. Es el caso que el cambio busca mover.
+  const medio = { budget: 2, team_size: 2, business_type: 1, needs: 'corto' };
+
+  assert.equal(porReglas(medio).recommended_action, 'nurture');
+  assert.equal(porReglas({ ...medio, rubro_norm: 'automotriz' }).recommended_action, 'meeting');
 });

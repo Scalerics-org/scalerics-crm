@@ -141,7 +141,7 @@ test('con todos los datos, el cierre lo hace el codigo y no la IA', async () => 
 
   const l = s.repo.leadPorTelefono('59899123456');
   assert.equal(l.fsm_state, S.MEETING_SENT);
-  assert.equal(l.score, 8);
+  assert.equal(l.score, 9);
 
   const alLead = s.proveedor.getEnviados().filter((e) => e.to === '59899123456').map((e) => e.texto);
   assert.match(alLead.at(-1), /videollamada de 30 minutos/);

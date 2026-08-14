@@ -6,7 +6,29 @@ const ETIQUETAS = {
   budget: { 1: 'Menos de $500 USD', 2: '$500 a $3.000 USD', 3: 'Más de $3.000 USD', 4: 'No lo tiene claro' },
 };
 
-// Con las respuestas que el embudo realmente pide, el maximo es 7.
+/**
+ * Cuanto suma el rubro. Todos valen lo mismo a proposito.
+ *
+ * Lo que se premia no es el rubro en si sino que se haya podido identificar:
+ * son los siete para los que Scalerics tiene una propuesta armada y un gancho
+ * escrito. El que describe su negocio y cae en alguno es un lead al que se le
+ * sabe vender; el que queda en generico puede ser cualquier cosa.
+ *
+ * Poner a gastronomia por encima de salud, o al reves, seria inventar un
+ * ranking que nadie midio. La tabla queda para cuando haya datos de conversion
+ * por vertical y se pueda ajustar con fundamento.
+ */
+const PESO_RUBRO = {
+  gastronomia: 1,
+  salud: 1,
+  retail: 1,
+  servicios_profesionales: 1,
+  inmobiliaria: 1,
+  educacion: 1,
+  automotriz: 1,
+};
+
+// Con lo que el embudo realmente pregunta, el maximo alcanzable es 9.
 const UMBRAL_REUNION = 5;
 const UMBRAL_NURTURE = 3;
 
@@ -42,6 +64,10 @@ function porReglas(lead) {
   // scoring con IA hace bien: sin OPENAI_API_KEY es lo unico que hay.
   if (String(lead.needs || '').trim().length >= 25) score += 1;
 
+  // El rubro, cuando se pudo clasificar. rubro_norm lo escriben las dos vias:
+  // el alta desde el formulario del CRM y la pregunta del embudo.
+  score += PESO_RUBRO[lead.rubro_norm] || 0;
+
   const accion =
     score >= UMBRAL_REUNION ? 'meeting' : score >= UMBRAL_NURTURE ? 'nurture' : 'disqualify';
   const prioridad =
@@ -70,7 +96,9 @@ Necesidades: ${lead.needs || 'No especificado'}
 Devolvé SOLO este JSON, sin texto adicional:
 {"score":<1-10>,"priority":"<high|medium|low>","recommended_action":"<meeting|nurture|disqualify>","reason":"<una línea>"}
 
-Criterios: score 8-10 = presupuesto disponible + necesidades claras + ya tiene presencia online. Score 5-7 = potencial condicional. Score 1-4 = sin presupuesto ni claridad.`;
+Criterios: score 8-10 = presupuesto disponible + necesidades claras + ya tiene presencia online. Score 5-7 = potencial condicional. Score 1-4 = sin presupuesto ni claridad.
+
+Sobre el rubro: Scalerics tiene propuesta armada para gastronomía, salud, comercio/retail, servicios profesionales (estudios, contadores, abogados), inmobiliarias, educación y automotriz. Un negocio de esos es terreno conocido y suma. Uno fuera de esa lista no resta por sí solo — puede ser un gran lead — pero no suma por rubro.`;
 }
 
 /**
