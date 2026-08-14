@@ -77,6 +77,21 @@ const esquema = z.object({
   BUSINESS_DAYS: z.string().default('mon-sat'),
 
   /**
+   * Con IA_CONVERSACION la parte de averiguar la conduce el modelo en vez del
+   * embudo de preguntas fijas. Requiere ANTHROPIC_API_KEY: sin clave se ignora
+   * y sigue el embudo, no rompe nada.
+   *
+   * Haiku alcanza para esto y sale una fraccion de Sonnet. Si las respuestas
+   * quedan cortas de calidad, se cambia por claude-sonnet-5 aca y listo.
+   */
+  IA_CONVERSACION: booleanoDeEnv.default(true),
+  IA_MODELO: z.string().default('claude-haiku-4-5-20251001'),
+
+  // Cada cuanto, como mucho, se le pide a alguien que escriba en vez de mandar
+  // audios. Quien manda cuatro seguidos no necesita cuatro disculpas.
+  AVISO_SIN_TEXTO_MINUTOS: z.coerce.number().nonnegative().default(30),
+
+  /**
    * Lo que se le dice al lead cuando queda esperando a una persona. No se
    * deriva de BUSINESS_HOURS: ese rango es cuando el bot tiene permitido
    * mandar, y hoy esta abierto de par en par para probar. Este es cuando hay

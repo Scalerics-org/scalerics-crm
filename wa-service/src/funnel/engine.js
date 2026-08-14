@@ -32,7 +32,17 @@ function palabraGlobal(entrada) {
  * - No manda mensajes directo: los encola, asi pasan por los mismos delays y
  *   limites que el resto del servicio.
  */
-function crearEmbudo({ repo, cola, textos, scorer, logger, cfg = { amPhones: [] }, crmNotify = null, ahora = () => new Date() }) {
+/**
+ * Estados donde la IA puede conducir: los de averiguar quien es y que necesita.
+ * Desde la oferta de reunion en adelante manda el codigo — ofrecer, agendar,
+ * derivar y dar de baja son decisiones que no se delegan.
+ */
+const FASE_CALIFICACION = new Set([
+  S.NEW, S.MENU, S.MENU_INFO, S.CONVERSANDO,
+  S.QUAL_0, S.QUAL_1, S.QUAL_2, S.QUAL_3, S.QUAL_4, S.QUAL_5, S.QUAL_6,
+]);
+
+function crearEmbudo({ repo, cola, textos, scorer, logger, cfg = { amPhones: [] }, crmNotify = null, agente = null, ahora = () => new Date() }) {
 
   /**
    * Deriva a un humano y le manda el contexto: quien es, por que, y los ultimos
@@ -92,15 +102,21 @@ function crearEmbudo({ repo, cola, textos, scorer, logger, cfg = { amPhones: [] 
 
     const texto = String(crudo ?? entrada).trim();
     if (!texto) return;
+    guardarCampos(lead.id, { [campo.campo]: texto });
+  }
 
-    // El rubro se clasifica al guardarlo, igual que cuando llega del formulario:
-    // rubro_norm es lo que elige el gancho del follow-up. Sin esto, al lead que
-    // escribio directo al WhatsApp se le manda siempre el texto generico.
-    if (campo.campo === 'rubro') {
-      repo.actualizarFunnel(lead.id, { rubro: texto, rubro_norm: plantillas.clasificar(texto) });
-      return;
-    }
-    repo.actualizarFunnel(lead.id, { [campo.campo]: texto });
+  /**
+   * Persiste campos del embudo, vengan del FSM o de la IA.
+   *
+   * El rubro se clasifica al guardarlo, igual que cuando llega del formulario:
+   * rubro_norm es lo que elige el gancho del follow-up. Sin esto, al lead que
+   * escribio directo al WhatsApp se le manda siempre el texto generico.
+   */
+  function guardarCampos(leadId, campos) {
+    const conNorm = campos.rubro
+      ? { ...campos, rubro_norm: plantillas.clasificar(campos.rubro) }
+      : campos;
+    repo.actualizarFunnel(leadId, conNorm);
   }
 
   async function alEntrar(lead, estado, entrada) {
@@ -244,6 +260,16 @@ function crearEmbudo({ repo, cola, textos, scorer, logger, cfg = { amPhones: [] 
       }
 
       const actual = lead.fsm_state || S.NEW;
+
+      // La IA conduce la parte de averiguar, y solo despues de los rieles de
+      // arriba: la baja, el pedido de humano, la queja y el precio ya quedaron
+      // resueltos por codigo. Si no esta configurada o falla, devuelve null y
+      // sigue el embudo fijo — que existe justamente para eso.
+      if (agente?.activo && FASE_CALIFICACION.has(actual)) {
+        const r = await agente.responder(lead, textoCrudo, repo.ultimosMensajes(lead.id, 20));
+        if (r) return this._conversar(lead, entrada, r);
+      }
+
       const mapa = TRANSICIONES[actual] || {};
       const siguiente = mapa[entrada] ?? mapa['*'];
 
@@ -267,6 +293,26 @@ function crearEmbudo({ repo, cola, textos, scorer, logger, cfg = { amPhones: [] 
       guardarRespuesta(lead, actual, entrada, textoCrudo);
       repo.actualizarFunnel(lead.id, { fsm_retries: 0 });
       return this._transicionar(lead, entrada, siguiente);
+    },
+
+    /**
+     * Un turno conducido por la IA: guarda lo que extrajo y contesta. Cuando ya
+     * no falta ningun dato, el cierre lo hace el codigo — ofrecer la reunion o
+     * no depende del score, no de lo que le parezca al modelo, y su texto de
+     * cierre se descarta.
+     */
+    async _conversar(lead, entrada, { texto, datos }) {
+      if (Object.keys(datos).length) {
+        guardarCampos(lead.id, datos);
+        logger?.info({ leadId: lead.id, campos: Object.keys(datos) }, 'la IA extrajo datos');
+      }
+
+      const fresco = repo.leadPorId(lead.id);
+      if (!agente.faltantes(fresco).length) return this._transicionar(fresco, entrada, S.SCORED);
+
+      decir(lead, texto);
+      repo.actualizarFunnel(lead.id, { fsm_state: S.CONVERSANDO, fsm_retries: 0 });
+      return S.CONVERSANDO;
     },
 
     async _transicionar(lead, entrada, destino) {

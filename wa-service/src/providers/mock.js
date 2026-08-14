@@ -9,6 +9,7 @@ function crear({ logger } = {}) {
   const enviados = [];
   const presencias = [];
   let handler = null;
+  let handlerSinTexto = null;
   let conectado = false;
   let contador = 0;
 
@@ -45,12 +46,18 @@ function crear({ logger } = {}) {
       handler = fn;
     },
 
+    alRecibirSinTexto(fn) {
+      handlerSinTexto = fn;
+    },
+
     // ── solo para tests ────────────────────────────────────────────────────
     getEnviados: () => enviados.slice(),
     getPresencias: () => presencias.slice(),
     limpiar: () => { enviados.length = 0; presencias.length = 0; },
     /** Simula que entra un mensaje del lead. */
     simularEntrante: (m) => handler && handler(m),
+    /** Simula un audio, una foto o cualquier cosa sin texto. */
+    simularSinTexto: (m) => handlerSinTexto && handlerSinTexto(m),
   };
 }
 

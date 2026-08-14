@@ -17,6 +17,8 @@ const TRANSICIONES = {
   [S.QUAL_4]:       { '*': S.QUAL_5 },
   [S.QUAL_5]:       { '*': S.QUAL_6 },
   [S.QUAL_6]:       { '*': S.SCORED },
+  // Solo se usa si la IA se apaga con leads a mitad de conversacion.
+  [S.CONVERSANDO]:  { '*': S.MENU },
   // El "2" (quiero saber mas) lleva a MEETING_INFO, y desde ahi otro "2"
   // (todavia no) cierra la insistencia. Cuando los dos estados eran uno solo,
   // cada "2" volvia a caer en el mismo lugar y repetia el mismo mensaje.

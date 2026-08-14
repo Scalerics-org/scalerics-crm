@@ -17,6 +17,10 @@ const S = {
   QUAL_4: 'QUAL_4',
   QUAL_5: 'QUAL_5',
   QUAL_6: 'QUAL_6',
+  // La IA esta conduciendo la conversacion. Si se apaga (sin clave, API caida),
+  // el lead vuelve al menu del embudo fijo: se le repiten preguntas, pero sigue
+  // atendido, que es lo que importa.
+  CONVERSANDO: 'CONVERSANDO',
   SCORED: 'SCORED',
   MEETING_SENT: 'MEETING_SENT',
   // Se le contesto el "quiero saber mas". Existe para no volver a mandarle lo

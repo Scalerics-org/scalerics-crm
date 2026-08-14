@@ -89,6 +89,15 @@ function crearTextos({ calendlyLink, horarioAtencion = 'Lun a sáb, 9 a 19hs' })
     OPT_OUT: 'Entendido, no te escribo más 👍\n\nSi en algún momento querés retomar, escribime *MENÚ*.\n\n¡Hasta pronto!',
 
     SCHEDULED: '✅ Confirmado, ¡te esperamos!',
+
+    /**
+     * Llego un audio, una foto o un archivo. No lo sabemos leer, pero del otro
+     * lado hay alguien esperando: antes esto era silencio y el lead se quedaba
+     * hablando solo.
+     */
+    SIN_TEXTO: (tipo) => (tipo === 'audio'
+      ? 'Perdón, todavía no puedo escuchar audios 🙈\n\n¿Me lo escribís? Así te contesto bien.'
+      : `Me llegó tu ${tipo}, pero por acá no lo puedo abrir 🙈\n\n¿Me contás por escrito de qué se trata?`),
   };
 }
 

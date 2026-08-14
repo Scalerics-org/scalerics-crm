@@ -76,6 +76,34 @@ function textoDeMensaje(msg) {
 }
 
 /**
+ * Tipos que traen contenido que no sabemos leer, pero que son una persona
+ * hablandole al numero. Un audio sin caption devolvia texto vacio y el mensaje
+ * se descartaba sin mas: el lead mandaba una nota de voz y el bot no contestaba
+ * nunca. En Uruguay la mitad de WhatsApp son audios, asi que era silencio en
+ * uno de cada dos contactos.
+ *
+ * La API de Anthropic no transcribe audio. Hasta que se enchufe un servicio de
+ * transcripcion aparte, lo minimo honesto es avisar que no lo escuchamos.
+ */
+const NO_LEIBLES = {
+  audioMessage: 'audio',
+  videoMessage: 'video',
+  imageMessage: 'imagen',
+  documentMessage: 'documento',
+  stickerMessage: 'sticker',
+  locationMessage: 'ubicacion',
+  contactMessage: 'contacto',
+};
+
+function tipoNoLeible(msg) {
+  const m = msg?.message || {};
+  for (const [clave, nombre] of Object.entries(NO_LEIBLES)) {
+    if (m[clave]) return nombre;
+  }
+  return null;
+}
+
+/**
  * @param {object} deps.buscarMensaje (providerMsgId) => texto|null. Lo usa
  *   Baileys para reenviar un mensaje que el destinatario no pudo descifrar.
  */
@@ -86,6 +114,7 @@ function crear(cfg, { logger, buscarMensaje = null } = {}) {
   let telefonoPropio = null;
   let desdeCuando = null;
   let handler = null;
+  let handlerSinTexto = null;
   let alActualizarEstado = null;
   let alPerderConexion = null;
   let intentos = 0;
@@ -260,18 +289,26 @@ function crear(cfg, { logger, buscarMensaje = null } = {}) {
           continue;
         }
 
-        const texto = textoDeMensaje(msg);
-        if (!texto) {
-          logger?.debug(
-            { jid, tipos: Object.keys(msg.message || {}) },
-            'entrante ignorado: sin texto reconocible'
-          );
-          continue;
-        }
-
         const from = telefonoDelMensaje(msg.key);
         if (!from) {
           logger?.warn({ jid }, 'entrante descartado: LID sin telefono asociado');
+          continue;
+        }
+
+        const texto = textoDeMensaje(msg);
+        if (!texto) {
+          // Un audio o una foto sin epigrafe no se puede leer, pero del otro
+          // lado hay alguien esperando respuesta. Se avisa hacia arriba para
+          // que conteste algo en vez de dejarlo hablando solo.
+          const tipo = tipoNoLeible(msg);
+          logger?.info({ from, tipo, tipos: Object.keys(msg.message || {}) }, 'entrante sin texto');
+          if (tipo && handlerSinTexto) {
+            try {
+              handlerSinTexto({ from, tipo, id: msg.key.id, nombre: msg.pushName || '' });
+            } catch (e) {
+              logger?.error({ err: String(e.message || e) }, 'fallo el handler de entrante sin texto');
+            }
+          }
           continue;
         }
 
@@ -376,6 +413,11 @@ function crear(cfg, { logger, buscarMensaje = null } = {}) {
 
     alRecibir(fn) {
       handler = fn;
+    },
+
+    /** Audios, fotos y demas que no traen texto. Se llama con {from, tipo}. */
+    alRecibirSinTexto(fn) {
+      handlerSinTexto = fn;
     },
 
     /** Se llama con (idDelProveedor, "delivered"|"read") al llegar el acuse. */
