@@ -75,9 +75,17 @@ def calendly_sync():
     """
     db_path = os.environ.get("DB_PATH", "leads.db")
     dry_run = request.args.get("dry") in ("1", "true", "yes")
+    fuente = request.args.get("fuente", "ambas")
     try:
-        from services.calendly_gcal import fetch_and_sync
-        stats = fetch_and_sync(db_path, dry_run=dry_run)
+        stats = {}
+        if fuente in ("ambas", "calendario"):
+            from services.calendly_gcal import fetch_and_sync
+            stats["calendario"] = fetch_and_sync(db_path, dry_run=dry_run)
+        # El mail va segundo: aporta el mail del invitado, que el calendario
+        # no trae. Lo que ya cargó el calendario se saltea por event_uri.
+        if fuente in ("ambas", "gmail"):
+            from services.calendly_gmail import fetch_and_sync_gmail
+            stats["gmail"] = fetch_and_sync_gmail(db_path, dry_run=dry_run)
     except Exception as e:
         import logging
         logging.getLogger(__name__).exception("calendly sync falló")

@@ -199,19 +199,34 @@ def sync_events(db_path: str, events: list, host_email: str,
     `would_create` lo que cargaría — útil para el primer sync, que barre
     reuniones viejas ya existentes.
     """
-    stats = {"created": 0, "skipped": 0, "canceled": 0, "ignored": 0,
-             "sin_contacto": 0, "would_create": []}
     if team_emails is None:
         team_emails = team_emails_from_env()
+
+    parsed, ignored = [], 0
+    for event in events or []:
+        data = parse_calendly_event(event, host_email, team_emails)
+        if data:
+            parsed.append(data)
+        else:
+            ignored += 1
+    return sync_parsed(db_path, parsed, dry_run=dry_run, now=now,
+                       ignored=ignored)
+
+
+def sync_parsed(db_path: str, datas: list, dry_run: bool = False,
+                now: str = None, ignored: int = 0) -> dict:
+    """Escribe al CRM una lista ya parseada, venga del calendario o del mail.
+
+    Las dos vías comparten el mismo `event_uri`, así que un evento que ya
+    entró por una no se duplica por la otra.
+    """
+    stats = {"created": 0, "skipped": 0, "canceled": 0, "ignored": ignored,
+             "sin_contacto": 0, "would_create": []}
     if now is None:
         import datetime
         now = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
 
-    for event in events or []:
-        data = parse_calendly_event(event, host_email, team_emails)
-        if not data:
-            stats["ignored"] += 1
-            continue
+    for data in datas or []:
 
         existing = _existing_meeting(db_path, data["event_uri"])
 
