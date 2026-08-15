@@ -95,7 +95,7 @@ test('un mensaje entrante entra al embudo', async () => {
 
   // Como si Baileys hubiera recibido el mensaje.
   s.proveedor.simularEntrante({ from: '59899555444', texto: 'hola', id: 'wamid.1' });
-  await new Promise((r) => setImmediate(r));
+  await s.agrupador.vaciar();
   await s.cola.vacia();
 
   const lead = s.repo.leadPorTelefono('59899555444');
@@ -114,7 +114,7 @@ test('quien escribe al numero sin pasar por el formulario tambien entra', async 
   s.proveedor.simularEntrante({
     from: '59891111111', texto: 'hola, vi su web', id: 'wamid.2', nombre: 'Ana Torres',
   });
-  await new Promise((r) => setImmediate(r));
+  await s.agrupador.vaciar();
   await s.cola.vacia();
 
   const lead = s.repo.leadPorTelefono('59891111111');
@@ -138,7 +138,7 @@ test('quien escribe al numero sin pasar por el formulario tambien entra', async 
 test('sin nombre de perfil igual entra, y el saludo no queda raro', async () => {
   const s = await montar();
   s.proveedor.simularEntrante({ from: '59891111112', texto: 'hola', id: 'wamid.3' });
-  await new Promise((r) => setImmediate(r));
+  await s.agrupador.vaciar();
   await s.cola.vacia();
 
   const alLead = s.proveedor.getEnviados().find((e) => e.to === '59891111112');

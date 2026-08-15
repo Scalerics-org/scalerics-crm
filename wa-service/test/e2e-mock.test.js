@@ -199,3 +199,16 @@ test('el link de Calendly va en el follow-up, no en la bienvenida', async () => 
   assert.match(s.bienvenida, /No mandes ningún link/);
   assert.match(s.followup, /calendly\.com/, 'al follow-up si');
 });
+
+test('el objetivo de la bienvenida no trae una frase copiable', async () => {
+  // Esto paso de verdad: el objetivo daba un ejemplo entre comillas de como
+  // retomar lo que el lead conto, y el modelo se lo mandaba textual a leads que
+  // no habian contado nada. La instruccion que buscaba evitar el invento era la
+  // que lo causaba. Los ejemplos de contenido en un prompt se copian; los de
+  // forma —"tenés" y no "tienes"— no.
+  const { situaciones } = require('../src/ia/prompt');
+  const b = situaciones('https://calendly.com/x').bienvenida;
+
+  assert.ok(!/"vi que quer|"nos lleg|"me alegra/i.test(b), 'sin frases de ejemplo entrecomilladas');
+  assert.match(b, /SOLO podés mencionar lo que figura arriba/, 'y si con la prohibicion de inventar');
+});
