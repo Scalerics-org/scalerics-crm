@@ -397,6 +397,7 @@ def test_la_pagina_de_baja_funciona_sin_login(tmp_path):
     from services.meta_reminders import esta_dado_de_baja, registrar_envio
 
     ruta = str(tmp_path / "baja.db")
+    init_db(ruta)  # create_app NO crea las tablas: eso lo hace server.py aparte
     app = create_app(ruta)
     app.config["TESTING"] = True
     token = registrar_envio(ruta, 99)
@@ -410,7 +411,9 @@ def test_la_pagina_de_baja_funciona_sin_login(tmp_path):
 def test_la_pagina_de_baja_con_token_invalido_no_rompe(tmp_path):
     from dashboard import create_app
 
-    app = create_app(str(tmp_path / "baja2.db"))
+    ruta = str(tmp_path / "baja2.db")
+    init_db(ruta)
+    app = create_app(ruta)
     app.config["TESTING"] = True
 
     r = app.test_client().get("/baja/no-existe")
