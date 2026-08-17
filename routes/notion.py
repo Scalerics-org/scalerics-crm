@@ -39,4 +39,18 @@ def api_vincular_tarea(task_id):
 
 @notion_bp.route("/api/notion/sync", methods=["POST"])
 def api_sync():
-    return jsonify({"ok": True, "cambiadas": traer_y_aplicar(_db())})
+    """Trae los cambios del tablero a pedido.
+
+    Es el instrumento con el que una persona prueba que la configuracion de
+    Notion quedo bien, asi que una consulta que fallo no puede contestar
+    `ok: true`: el unico rastro seria un warning en los logs de Fly.
+    """
+    db = _db()
+    cambiadas, error = traer_y_aplicar(db)
+    if error:
+        return jsonify({"ok": False, "error": error, "cambiadas": cambiadas}), 502
+
+    log_activity(db, session.get("user_name", "sistema"), "notion_sync", "", None, "",
+                 f"{cambiadas} tarea(s) actualizada(s) desde Notion",
+                 user_id=session.get("user_id"))
+    return jsonify({"ok": True, "cambiadas": cambiadas})

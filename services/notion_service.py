@@ -387,7 +387,7 @@ def vincular_pagina(db_path: str, task_id: int, url: str) -> str | None:
     return page_id
 
 
-def traer_y_aplicar(db_path: str) -> int:
+def traer_y_aplicar(db_path: str) -> tuple[int, str | None]:
     """Reconcilia: trae las paginas pareadas y aplica lo que Notion diga.
 
     Un solo request (mas los que haga falta por cursor). No lleva timestamps:
@@ -397,10 +397,17 @@ def traer_y_aplicar(db_path: str) -> int:
 
     Escribe con update_task directo, nunca por el endpoint del CRM: por eso un
     cambio traido de Notion no rebota de vuelta.
+
+    Devuelve `(cambiadas, error)`. `error` es None cuando la consulta funciono,
+    y un mensaje corto cuando fallo o cuando falta configuracion. Los dos datos
+    hacen falta: "cero limpio" y "los cuatro requests dieron 400" no pueden
+    verse iguales desde afuera, porque `POST /api/notion/sync` es el instrumento
+    con el que una persona prueba que la configuracion quedo bien. Si falla en
+    la segunda pagina del cursor, `cambiadas` conserva lo que ya se aplico.
     """
     cfg = _config()
     if not cfg:
-        return 0
+        return 0, "falta NOTION_TOKEN: el sync con Notion esta apagado"
     token, version, db_id = cfg
 
     cuerpo = {
@@ -416,11 +423,11 @@ def traer_y_aplicar(db_path: str) -> int:
                               json=cuerpo, timeout=TIMEOUT)
             if r.status_code >= 300:
                 logger.warning("notion: query fallo con %s: %s", r.status_code, r.text[:300])
-                return cambiadas
+                return cambiadas, f"la consulta a Notion devolvio HTTP {r.status_code}"
             data = r.json()
-        except Exception:
+        except Exception as e:
             logger.warning("notion: query fallo", exc_info=True)
-            return cambiadas
+            return cambiadas, f"la consulta a Notion fallo: {type(e).__name__}"
 
         for pagina in data.get("results", []):
             props = pagina.get("properties", {})
@@ -452,4 +459,4 @@ def traer_y_aplicar(db_path: str) -> int:
             break
         cuerpo["start_cursor"] = cursor
 
-    return cambiadas
+    return cambiadas, None

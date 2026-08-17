@@ -369,7 +369,7 @@ def test_el_pull_aplica_el_estado_de_notion(db, notion_env):
 
     payload = {"results": [_pagina("pagina-1", task_id, "In progress")], "has_more": False}
     with patch("services.notion_service.requests.post", return_value=_Resp(200, payload)):
-        assert ns.traer_y_aplicar(db) == 1
+        assert ns.traer_y_aplicar(db) == (1, None)
 
     t = get_task_by_id(db, task_id)
     assert t["status"] == "in_progress"
@@ -394,7 +394,7 @@ def test_un_movimiento_dentro_del_mismo_grupo_no_cambia_el_estado_del_crm(db, no
 def test_el_pull_ignora_paginas_sin_tarea_en_el_crm(db, notion_env):
     payload = {"results": [_pagina("pagina-huerfana", 9999, "Done")], "has_more": False}
     with patch("services.notion_service.requests.post", return_value=_Resp(200, payload)):
-        assert ns.traer_y_aplicar(db) == 0
+        assert ns.traer_y_aplicar(db) == (0, None)
 
 
 def test_el_pull_pagina_con_cursor(db, notion_env):
@@ -409,7 +409,7 @@ def test_el_pull_pagina_con_cursor(db, notion_env):
         _Resp(200, {"results": [_pagina("p2", t2, "Done")], "has_more": False}),
     ]
     with patch("services.notion_service.requests.post", side_effect=respuestas) as post:
-        assert ns.traer_y_aplicar(db) == 2
+        assert ns.traer_y_aplicar(db) == (2, None)
 
     assert post.call_count == 2
     assert post.call_args_list[1].kwargs["json"]["start_cursor"] == "cursor-2"
@@ -423,7 +423,7 @@ def test_el_pull_corta_si_has_more_viene_sin_cursor(db, notion_env):
 
     payload = {"results": [_pagina("p1", t1, "Done")], "has_more": True}
     with patch("services.notion_service.requests.post", return_value=_Resp(200, payload)) as post:
-        assert ns.traer_y_aplicar(db) == 1
+        assert ns.traer_y_aplicar(db) == (1, None)
 
     post.assert_called_once()
     assert get_task_by_id(db, t1)["status"] == "done"
@@ -441,8 +441,11 @@ def test_el_pull_falla_en_la_segunda_pagina_conserva_lo_aplicado_en_la_primera(d
         RuntimeError("boom"),
     ]
     with patch("services.notion_service.requests.post", side_effect=respuestas):
-        assert ns.traer_y_aplicar(db) == 1
+        cambiadas, error = ns.traer_y_aplicar(db)
 
+    # Lo aplicado en la primera pagina se conserva, y el fallo igual se reporta.
+    assert cambiadas == 1
+    assert error
     assert get_task_by_id(db, t1)["status"] == "done"
     assert get_task_by_id(db, t2)["status"] == "todo"
 
@@ -469,10 +472,32 @@ def test_el_pull_deja_actividad_a_nombre_de_notion(db, notion_env):
 def test_el_pull_sin_token_no_pega_a_notion(db, monkeypatch):
     monkeypatch.delenv("NOTION_TOKEN", raising=False)
     with patch("services.notion_service.requests.post") as post:
-        assert ns.traer_y_aplicar(db) == 0
+        cambiadas, error = ns.traer_y_aplicar(db)
     post.assert_not_called()
+    assert cambiadas == 0
+    # Y se distingue de un sync que anduvo y no encontro nada que cambiar.
+    assert error and "NOTION_TOKEN" in error
 
 
-def test_notion_caido_en_el_pull_no_propaga(db, notion_env):
+def test_notion_caido_en_el_pull_no_propaga_pero_lo_dice(db, notion_env):
     with patch("services.notion_service.requests.post", side_effect=RuntimeError("boom")):
-        assert ns.traer_y_aplicar(db) == 0
+        cambiadas, error = ns.traer_y_aplicar(db)
+    assert cambiadas == 0
+    assert error
+
+
+def test_un_400_en_el_pull_no_se_confunde_con_cero_limpio(db, notion_env):
+    # El default que se shippea (NOTION_VERSION=2025-09-03 sin
+    # NOTION_DATA_SOURCE_ID) manda el pull al endpoint que el split de data
+    # sources reemplazo: falla seguro, sin dañar el tablero, y el unico rastro
+    # era un warning en los logs de Fly.
+    with patch("services.notion_service.requests.post", return_value=_Resp(400, {})):
+        cambiadas, error = ns.traer_y_aplicar(db)
+    assert cambiadas == 0
+    assert error and "400" in error
+
+
+def test_un_pull_que_anduvo_sin_cambios_no_reporta_error(db, notion_env):
+    with patch("services.notion_service.requests.post",
+               return_value=_Resp(200, {"results": [], "has_more": False})):
+        assert ns.traer_y_aplicar(db) == (0, None)

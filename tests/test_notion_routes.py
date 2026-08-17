@@ -60,9 +60,55 @@ def test_una_tarea_que_no_existe_da_404(app, cliente):
 
 
 def test_el_sync_manual_devuelve_cuantas_cambiaron(app, cliente):
-    with patch("routes.notion.traer_y_aplicar", return_value=3):
+    with patch("routes.notion.traer_y_aplicar", return_value=(3, None)):
         r = cliente.post("/api/notion/sync", headers=_AUTH)
+    assert r.status_code == 200
     assert r.get_json() == {"ok": True, "cambiadas": 3}
+
+
+def test_el_sync_manual_que_anduvo_sin_cambios_dice_ok(app, cliente):
+    with patch("routes.notion.traer_y_aplicar", return_value=(0, None)):
+        r = cliente.post("/api/notion/sync", headers=_AUTH)
+    assert r.status_code == 200
+    assert r.get_json() == {"ok": True, "cambiadas": 0}
+
+
+def test_el_sync_manual_no_dice_ok_si_la_consulta_fallo(app, cliente):
+    """Un cero de "fallo todo" no puede verse igual que un cero limpio.
+
+    Esta ruta es el instrumento con el que una persona prueba la configuracion:
+    el default que se shippea manda el pull a un endpoint que puede no existir.
+    """
+    with patch("routes.notion.traer_y_aplicar",
+               return_value=(0, "la consulta a Notion devolvio HTTP 400")):
+        r = cliente.post("/api/notion/sync", headers=_AUTH)
+    assert r.status_code == 502
+    d = r.get_json()
+    assert d["ok"] is False
+    assert "400" in d["error"]
+
+
+def test_el_sync_manual_queda_en_el_log_de_actividad(app, cliente):
+    import sqlite3
+    with patch("routes.notion.traer_y_aplicar", return_value=(2, None)):
+        cliente.post("/api/notion/sync", headers=_AUTH)
+    conn = sqlite3.connect(app.config["DB_PATH"])
+    filas = conn.execute(
+        "SELECT user_name, action, detail FROM activity_log WHERE action='notion_sync'"
+    ).fetchall()
+    conn.close()
+    assert len(filas) == 1
+    assert "2" in filas[0][2]
+
+
+def test_un_sync_que_fallo_no_deja_actividad(app, cliente):
+    import sqlite3
+    with patch("routes.notion.traer_y_aplicar", return_value=(0, "fallo")):
+        cliente.post("/api/notion/sync", headers=_AUTH)
+    conn = sqlite3.connect(app.config["DB_PATH"])
+    filas = conn.execute("SELECT id FROM activity_log WHERE action='notion_sync'").fetchall()
+    conn.close()
+    assert filas == []
 
 
 @pytest.fixture
@@ -140,6 +186,22 @@ def test_el_throttle_del_autosync_evita_pegarle_en_cada_request(monkeypatch):
     dashboard._maybe_sync_notion("x.db")
 
     assert len(llamadas) == 1
+
+
+def test_el_autosync_loguea_el_error_de_la_consulta(monkeypatch, caplog):
+    """El autosync tambien tiene que entender el (cambiadas, error) del service."""
+    monkeypatch.setenv("NOTION_TOKEN", "x")
+    monkeypatch.setattr(
+        dashboard.threading, "Thread",
+        lambda target=None, daemon=None: type("T", (), {"start": lambda s: target()})())
+    dashboard._notion_sync_state["at"] = 0.0
+
+    with patch("services.notion_service.traer_y_aplicar",
+               return_value=(0, "la consulta a Notion devolvio HTTP 400")), \
+            caplog.at_level("WARNING"):
+        dashboard._maybe_sync_notion("x.db")
+
+    assert "HTTP 400" in caplog.text
 
 
 def test_el_panel_de_tareas_tiene_el_boton_y_el_badge_de_notion():
