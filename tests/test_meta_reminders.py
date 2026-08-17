@@ -325,6 +325,31 @@ def test_un_envio_incierto_deja_la_fila_y_el_token_puestos(db, caplog):
     assert esta_dado_de_baja(db, 72) is True
 
 
+@pytest.mark.parametrize("valor, arranca", [
+    (None, False),
+    ("", False),
+    ("off", False),
+    ("cualquier_cosa", False),
+    ("on", True),
+    ("ON", True),
+])
+def test_el_job_solo_arranca_con_la_variable_en_on(monkeypatch, valor, arranca):
+    """Una automatizacion que le escribe a terceros no puede fallar hacia
+    'encendida': Fly reinicia la maquina para aplicar un secret, y el hilo
+    corre 180s despues de cada boot."""
+    from services import meta_reminders
+
+    if valor is None:
+        monkeypatch.delenv("META_RECORDATORIOS", raising=False)
+    else:
+        monkeypatch.setenv("META_RECORDATORIOS", valor)
+
+    with patch("services.meta_reminders.threading.Thread") as hilo:
+        meta_reminders.start_meta_reminders(object())
+
+    assert hilo.called is arranca
+
+
 class _ConexionQueFallaAlBorrar:
     """Envuelve una conexion real de sqlite3 y hace fallar solo el DELETE de
     limpieza de meta_reminders, para simular un "database is locked" en ese

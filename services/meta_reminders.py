@@ -234,9 +234,17 @@ def enviar_recordatorios(db_path: str, base_url: str, dry_run: bool = False) -> 
 
 
 def start_meta_reminders(app) -> None:
-    """Corre una vez por dia. Se apaga con META_RECORDATORIOS=off."""
-    if os.environ.get("META_RECORDATORIOS", "").lower() == "off":
-        logger.info("Recordatorios de Meta apagados por META_RECORDATORIOS=off")
+    """Corre una vez por dia. Arranca SOLO con META_RECORDATORIOS=on.
+
+    El default es apagado a proposito: esto le manda mail a terceros reales, y
+    el hilo corre 180 segundos despues de cada boot. Fly reinicia la maquina
+    para aplicar un secret, asi que un default encendido convierte cualquier
+    deploy en una tanda de mails que nadie pidio.
+    """
+    if os.environ.get("META_RECORDATORIOS", "").strip().lower() != "on":
+        logger.info(
+            "Recordatorios de Meta apagados (hace falta META_RECORDATORIOS=on para arrancarlos)"
+        )
         return
 
     def _loop():
@@ -253,4 +261,7 @@ def start_meta_reminders(app) -> None:
             time.sleep(_CADA_24_HORAS)
 
     threading.Thread(target=_loop, daemon=True, name="meta-reminders").start()
-    logger.info("Recordatorios de Meta activos (una corrida por dia)")
+    logger.info(
+        f"Recordatorios de Meta ACTIVOS por META_RECORDATORIOS=on: una corrida por dia, "
+        f"hasta {_TOPE_DIARIO} mails, la primera 180s despues de este arranque"
+    )
