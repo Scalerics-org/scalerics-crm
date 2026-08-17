@@ -28,8 +28,21 @@ _UUID_SUELTO = re.compile(r"(?<![0-9a-f])([0-9a-f]{32})(?![0-9a-f])", re.I)
 _UUID_CON_GUIONES = re.compile(
     r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})", re.I)
 
-# Grupo del CRM al que pertenece cada estado de Notion. Verificado con
-# scripts/notion_smoke.py; ver docs/puesta-en-produccion-notion.md.
+# Grupo del CRM al que pertenece cada estado de Notion.
+#
+# PENDIENTE DE CONFIRMAR: esta tabla sale de mirar el tablero, no de la API.
+# Nadie corrio todavia scripts/notion_smoke.py con un token real, que es lo que
+# imprime los grupos de verdad de la property Status.
+#
+# Si la salida del smoke difiere de esto, se arregla EDITANDO ESTE DICT: es el
+# unico de los cuatro pendientes del runbook que no se responde por variable de
+# entorno (ver docs/puesta-en-produccion-notion.md, hallazgo 4).
+#
+# Por que importa: si un estado cae en el grupo equivocado, el CRM cree que el
+# grupo cambio cuando no cambio y le baja la tarjeta al equipo. Con "On Hold"
+# mal clasificado en "todo", una tarea del CRM en `todo` pareada a una tarjeta
+# en *On Hold* la manda a *Backlog* en el proximo push. No hay test ni log que
+# distinga eso de un comportamiento correcto.
 GRUPOS = {
     "Backlog": "todo",
     "Up next": "todo",

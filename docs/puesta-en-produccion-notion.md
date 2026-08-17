@@ -68,3 +68,10 @@ hacer esta sesión. Falta completar, después de correrlo, estos cuatro datos:
 4. **Tabla estado → grupo de la property `Status`**, tal como la imprime el
    script (no inventar valores — puede no coincidir con el ejemplo de formato
    de la sección "Smoke test" de arriba): PENDIENTE.
+
+   Este es el **único de los cuatro que no es configuración**: se responde
+   **editando código**, en el dict `GRUPOS` de `services/notion_service.py`.
+   No hay variable de entorno para esto. Lo que está ahí hoy sale de mirar el
+   tablero a ojo; si el smoke imprime otra cosa, hay que corregir el dict,
+   commitear y deployar. Mientras siga mal, el CRM puede mover tarjetas del
+   equipo creyendo que el grupo cambió cuando no cambió.
