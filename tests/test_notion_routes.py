@@ -5,7 +5,7 @@ from unittest.mock import patch
 import pytest
 
 import dashboard
-from database import create_task, get_task_by_id, init_db
+from database import create_task, get_task_by_id, init_db, update_task
 
 
 @pytest.fixture
@@ -31,8 +31,27 @@ def test_crear_la_tarjeta_desde_el_crm(app, cliente):
     with patch("routes.notion.crear_pagina", return_value="pagina-1") as crear:
         r = cliente.post(f"/api/tasks/{task_id}/notion", json={}, headers=_AUTH)
     assert r.status_code == 200
-    assert r.get_json() == {"ok": True, "notion_page_id": "pagina-1"}
+    # notion_status viene de la tarea (aca crear_pagina esta mockeado y no la
+    # escribio, asi que es None); el front lo usa para el title del badge.
+    assert r.get_json() == {"ok": True, "notion_page_id": "pagina-1",
+                            "notion_status": None}
     crear.assert_called_once()
+
+
+def test_la_ruta_devuelve_el_estado_que_quedo_guardado(app, cliente):
+    """El front pinta el title del badge con esto, sin recargar la pagina."""
+    db = app.config["DB_PATH"]
+    task_id = create_task(db, title="Vinculada a una tarjeta de Up next")
+
+    def _falso_vincular(_db, _task_id, _url):
+        update_task(db, task_id, notion_page_id="pagina-9", notion_status="Up next")
+        return "pagina-9"
+
+    with patch("routes.notion.vincular_pagina", side_effect=_falso_vincular):
+        r = cliente.post(f"/api/tasks/{task_id}/notion",
+                         json={"url": "https://www.notion.so/abc"}, headers=_AUTH)
+    assert r.get_json() == {"ok": True, "notion_page_id": "pagina-9",
+                            "notion_status": "Up next"}
 
 
 def test_vincular_cuando_viene_una_url(app, cliente):
@@ -210,3 +229,27 @@ def test_el_panel_de_tareas_tiene_el_boton_y_el_badge_de_notion():
     assert "task-notion-url" in html
     assert "task-notion-badge" in html
     assert "_enviarTareaANotion" in html
+
+
+def _fuente_de(nombre):
+    """El cuerpo de una funcion del JS embebido, para assertear sobre el front.
+
+    La suite de Python no ejecuta el JS; esto es lo unico que evita que el fix
+    del hallazgo 5 se pierda en un refactor del panel.
+    """
+    js = dashboard.DASHBOARD_HTML.split(f"async function {nombre}")[1]
+    return js.split("\nasync function")[0]
+
+
+def test_el_boton_de_notion_anda_desde_el_panel_de_cliente():
+    """El boton `→ N` sale tambien en las filas del panel de cliente.
+
+    Ahi `_allTasks` puede estar vacio (el panel de Tareas nunca se abrio) y hay
+    que repintar el panel de cliente, no el de tareas.
+    """
+    fuente = _fuente_de("_enviarTareaANotion")
+    assert "_cpData.tasks" in fuente
+    assert "_cpSwitchTab('ctasks')" in fuente
+    # Y un 500 de la ruta devuelve HTML: r.json() no puede tirar sin aviso.
+    assert "try { d = await r.json(); }" in fuente
+    assert "alert(" in fuente

@@ -3203,15 +3203,27 @@ async function _setTaskStatus(id) {
 }
 
 async function _enviarTareaANotion(id) {
-  const t = _allTasks.find(t => t.id === id);
-  if (!t || t.notion_page_id) return;
+  // El boton tambien sale en las filas del panel de cliente (_cpRenderTasks
+  // reusa _taskRowHtml), y ahi _allTasks puede estar vacio porque el panel de
+  // Tareas nunca se abrio. Mismo patron que _setTaskStatus y _deleteTask.
+  const t = _allTasks.find(x => x.id === id);
+  const ct = (_cpData.tasks || []).find(x => x.id === id);
+  const tarea = t || ct;
+  if (!tarea || tarea.notion_page_id) return;
   const r = await fetch('/api/tasks/' + id + '/notion', {
     method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}'
   });
-  const d = await r.json();
-  if (!d.ok) { alert('Notion no aceptó la operación. Mirá los logs del CRM.'); return; }
-  t.notion_page_id = d.notion_page_id;
+  let d = null;
+  try { d = await r.json(); } catch (e) { d = null; }  // un 500 devuelve HTML
+  if (!d || !d.ok) { alert('Notion no aceptó la operación. Mirá los logs del CRM.'); return; }
+  [t, ct].forEach(x => {
+    if (!x) return;
+    x.notion_page_id = d.notion_page_id;
+    if ('notion_status' in d) x.notion_status = d.notion_status;
+  });
+  _updateFilterCounts();
   renderTasksList();
+  if (_cpClientId && ct) _cpSwitchTab('ctasks');
 }
 
 async function _deleteTask(id) {
@@ -3389,20 +3401,28 @@ async function submitAddTask() {
       const idx = _allTasks.findIndex(t => t.id === _editingTaskId);
       if (idx !== -1) _allTasks[idx] = {..._allTasks[idx], ...body};
       const notionUrl = (document.getElementById('task-notion-url').value || '').trim();
+      let notionFallo = false;
       if (notionUrl) {
         const rn = await fetch('/api/tasks/' + _editingTaskId + '/notion', {
           method:'POST', headers:{'Content-Type':'application/json'},
           body: JSON.stringify({url: notionUrl})
         });
-        const dn = await rn.json();
-        if (dn.ok) {
+        let dn = null;
+        try { dn = await rn.json(); } catch (e) { dn = null; }  // un 500 devuelve HTML
+        if (dn && dn.ok) {
           const i = _allTasks.findIndex(t => t.id === _editingTaskId);
-          if (i !== -1) _allTasks[i].notion_page_id = dn.notion_page_id;
+          if (i !== -1) {
+            _allTasks[i].notion_page_id = dn.notion_page_id;
+            if ('notion_status' in dn) _allTasks[i].notion_status = dn.notion_status;
+          }
         } else {
-          alert('No se pudo vincular con Notion. Revisá que la URL sea correcta o mirá los logs del CRM.');
+          notionFallo = true;
+          alert('No se pudo vincular con Notion. Revisá que la URL sea correcta o mirá los logs del CRM.\\n\\nLa tarea se guardó igual; el modal queda abierto con la URL para que la corrijas.');
         }
       }
-      document.getElementById('add-task-modal').classList.remove('open');
+      // Si el vinculo fallo el modal no se cierra, asi la URL tipeada no se
+      // pierde y la persona puede corregirla sin volver a copiarla de Notion.
+      if (!notionFallo) document.getElementById('add-task-modal').classList.remove('open');
       _updateFilterCounts();
       renderTasksList();
       if (_cpClientId) {

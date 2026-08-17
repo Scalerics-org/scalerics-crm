@@ -34,7 +34,11 @@ def api_vincular_tarea(task_id):
                  task_id, tarea.get("title", ""),
                  "vinculada a Notion" if url else "enviada a Notion",
                  user_id=session.get("user_id"))
-    return jsonify({"ok": True, "notion_page_id": page_id})
+    # El estado que quedo guardado va en la respuesta para que el front pueda
+    # pintar el title del badge sin recargar. Sale de la tarea, no se inventa.
+    despues = get_task_by_id(db, task_id) or {}
+    return jsonify({"ok": True, "notion_page_id": page_id,
+                    "notion_status": despues.get("notion_status")})
 
 
 @notion_bp.route("/api/notion/sync", methods=["POST"])
