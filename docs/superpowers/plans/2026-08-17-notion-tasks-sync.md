@@ -706,7 +706,9 @@ Expected: FAIL — `AttributeError: ... has no attribute 'page_id_de_url'`.
 ```python
 import re
 
-_UUID_SUELTO = re.compile(r"([0-9a-f]{32})", re.I)
+# Anclada por los dos lados: sin eso, una corrida hex mas larga que 32 daria
+# una ventana truncada en vez de no matchear.
+_UUID_SUELTO = re.compile(r"(?<![0-9a-f])([0-9a-f]{32})(?![0-9a-f])", re.I)
 _UUID_CON_GUIONES = re.compile(
     r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})", re.I)
 
@@ -717,13 +719,19 @@ def page_id_de_url(url: str) -> str | None:
     Las URLs vienen en dos formas: con el id pegado al final del slug del
     titulo, o suelto. La API acepta las dos, pero normalizamos para que el
     pareo contra `notion_page_id` sea siempre el mismo string.
+
+    Ojo con los guiones: NO hay que sacarlos de la URL antes de buscar. En el
+    formato real `Titulo-Con-Slug-<32hex>` el guion es justamente lo que separa
+    al id de la ultima palabra del slug, y muchas palabras terminan en letras
+    que tambien son hex. Sacando los guiones, "Cafe-decade-facade-<id>" se
+    fusiona y devuelve los 32 caracteres equivocados.
     """
     if not url:
         return None
     con_guiones = _UUID_CON_GUIONES.search(url)
     if con_guiones:
         return con_guiones.group(1).lower()
-    suelto = _UUID_SUELTO.search(url.replace("-", ""))
+    suelto = _UUID_SUELTO.search(url)
     if not suelto:
         return None
     h = suelto.group(1).lower()
@@ -745,8 +753,14 @@ def vincular_pagina(db_path: str, task_id: int, url: str) -> str | None:
     page_id = page_id_de_url(url)
     if not page_id:
         return None
-    if not get_task_by_id(db_path, task_id):
+    tarea = get_task_by_id(db_path, task_id)
+    if not tarea:
         return None
+    # Ya apunta a esta misma tarjeta: no hay nada que escribir. Si apuntara a
+    # otra, el PATCH sale igual, porque re-apuntar una tarea a otra tarjeta es
+    # legitimo.
+    if tarea.get("notion_page_id") == page_id:
+        return page_id
 
     try:
         r = requests.patch(
