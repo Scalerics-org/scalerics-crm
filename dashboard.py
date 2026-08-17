@@ -846,6 +846,8 @@ body.light .pill.active{background:#dbeafe;color:#1d4ed8;border-color:#93c5fd}
 body.light .task-status-badge.todo{background:#f1f5f9;color:#64748b}
 body.light .task-status-badge.in_progress{background:#dbeafe;color:#1d4ed8;border-color:#93c5fd}
 body.light .task-status-badge.done{background:#dcfce7;color:#16a34a;border-color:#86efac}
+body.light .task-notion-badge{background:#f1f5f9;color:#64748b;border-color:#e2e8f0}
+body.light .task-notion-badge:hover{color:#0f172a}
 body.light .tasks-summary{color:#94a3b8}
 body.light .mobile-bottom-nav{background:rgba(255,255,255,.92);border-color:rgba(0,0,0,.1)}
 body.light .mbn-icon{stroke:#94a3b8}
@@ -963,6 +965,8 @@ body.light .btn-icon{stroke:currentColor}
 .task-status-badge.todo{background:#1e293b;color:#64748b}
 .task-status-badge.in_progress{background:#0c1f2e;color:#38bdf8;border-color:#0369a133}
 .task-status-badge.done{background:#052e16;color:#4ade80;border-color:#16a34a33}
+.task-notion-badge{font-size:.72rem;color:#94a3b8;background:#1a2234;padding:2px 7px;border-radius:10px;text-decoration:none;border:1px solid #23304a}
+.task-notion-badge:hover{color:#e2e8f0}
 .task-row.in-progress{border-left:3px solid #0369a1}
 .task-row.overdue{border-left:3px solid #f87171}
 .task-edit-btn{background:none;border:1px solid #1e293b;color:#64748b;cursor:pointer;font-size:.78rem;padding:3px 7px;border-radius:6px;transition:all .15s}
@@ -1490,6 +1494,12 @@ body.light .upick-name{color:#0f172a}
         <option value="in_progress">⚡ En progreso</option>
         <option value="done">✓ Hecha</option>
       </select>
+    </div>
+    <div style="margin-top:10px" id="task-notion-block">
+      <label class="modal-label">Notion (opcional)</label>
+      <input type="text" id="task-notion-url" class="modal-input"
+             placeholder="Pegá la URL de la tarjeta para vincularla">
+      <div id="task-notion-linked" style="font-size:.78rem;color:#0088cc;margin-top:4px"></div>
     </div>
     <input type="hidden" id="task-edit-id">
     <div class="modal-btns" style="margin-top:16px">
@@ -3136,6 +3146,10 @@ function _taskRowHtml(t) {
     </div>` : '';
   const assigneeBadge = t.assignee_name ? `<span style="font-size:.72rem;color:#64748b;background:#1a2234;padding:2px 7px;border-radius:10px">→ ${esc(t.assignee_name)}</span>` : '';
   const createdByBadge = t.created_by_name && t.assignee_name ? `<span style="font-size:.72rem;color:#334155">de ${esc(t.created_by_name)}</span>` : '';
+  const notionBadge = t.notion_page_id
+    ? `<a href="https://www.notion.so/${t.notion_page_id.replace(/-/g,'')}" target="_blank" rel="noopener"
+          class="task-notion-badge" title="${esc(t.notion_status||'')}">Notion</a>`
+    : '';
   const rowExtra = inProgress ? ' in-progress' : overdue ? ' overdue' : '';
   return `<div class="task-row${rowExtra}" id="task-row-${t.id}">
     <div class="task-body" style="flex:1;min-width:0">
@@ -3146,11 +3160,12 @@ function _taskRowHtml(t) {
         ${t.priority ? `<span class="task-priority ${t.priority}">${prioLabel}</span>` : ''}
         ${lead ? `<span class="task-client-link" onclick="openClientPanel(${lead.id})">${esc(lead.name||'')}</span>` : ''}
         ${dlStr ? `<span class="task-deadline ${overdue ? 'overdue' : ''}">📅 ${dlStr}${overdue?' (vencida)':''}</span>` : ''}
-        ${assigneeBadge}${createdByBadge}
+        ${assigneeBadge}${createdByBadge}${notionBadge}
       </div>
       ${progressBar}
     </div>
     <div class="task-actions">
+      ${t.notion_page_id ? '' : `<button class="task-edit-btn" onclick="_enviarTareaANotion(${t.id})" title="Mandar a Notion">→ N</button>`}
       <button class="task-edit-btn" onclick="openEditTaskModal(${t.id})" title="Editar">✏️</button>
       <button class="task-del-btn" onclick="_deleteTask(${t.id})" title="Eliminar">🗑</button>
     </div>
@@ -3185,6 +3200,18 @@ async function _setTaskStatus(id) {
     const ct = (_cpData.tasks||[]).find(ct => ct.id === id);
     if (ct) { ct.status = newStatus; _cpSwitchTab('ctasks'); }
   }
+}
+
+async function _enviarTareaANotion(id) {
+  const t = _allTasks.find(t => t.id === id);
+  if (!t || t.notion_page_id) return;
+  const r = await fetch('/api/tasks/' + id + '/notion', {
+    method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}'
+  });
+  const d = await r.json();
+  if (!d.ok) { alert('Notion no aceptó la operación. Mirá los logs del CRM.'); return; }
+  t.notion_page_id = d.notion_page_id;
+  renderTasksList();
 }
 
 async function _deleteTask(id) {
@@ -3257,6 +3284,9 @@ async function openAddTaskModal(clientId, clientName) {
   document.getElementById('task-client-chosen').textContent = clientName ? 'Cliente: ' + clientName : '';
   document.getElementById('task-client-results').style.display = 'none';
   document.getElementById('task-status-input').value = 'todo';
+  document.getElementById('task-notion-url').value = '';
+  document.getElementById('task-notion-url').style.display = '';
+  document.getElementById('task-notion-linked').textContent = '';
   await _loadUsersForTask();
   _upickSelect('modal', '', '', '', '— Sin asignar —');
   const h3 = document.getElementById('add-task-modal').querySelector('h3');
@@ -3279,6 +3309,19 @@ async function openEditTaskModal(taskId) {
   document.getElementById('task-goal-input').value = t.goal || '';
   document.getElementById('task-goal-input').style.display = t.goal_type ? '' : 'none';
   document.getElementById('task-status-input').value = t.status || 'todo';
+  const notionUrlInput = document.getElementById('task-notion-url');
+  const notionLinked = document.getElementById('task-notion-linked');
+  notionUrlInput.value = '';
+  if (t.notion_page_id) {
+    notionUrlInput.style.display = 'none';
+    notionLinked.innerHTML = 'Vinculada a Notion' +
+      (t.notion_status ? ' (' + esc(t.notion_status) + ')' : '') +
+      ' · <a href="https://www.notion.so/' + t.notion_page_id.replace(/-/g,'') +
+      '" target="_blank" rel="noopener" style="color:#0088cc">abrir</a>';
+  } else {
+    notionUrlInput.style.display = '';
+    notionLinked.textContent = '';
+  }
   const clientLead = t.client_id ? _allLeads.find(l => l.id === t.client_id) : null;
   document.getElementById('task-client-search').value = clientLead ? (clientLead.name||'') : '';
   document.getElementById('task-client-id').value = t.client_id || '';
@@ -3345,6 +3388,18 @@ async function submitAddTask() {
       await fetch('/api/tasks/' + _editingTaskId, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
       const idx = _allTasks.findIndex(t => t.id === _editingTaskId);
       if (idx !== -1) _allTasks[idx] = {..._allTasks[idx], ...body};
+      const notionUrl = (document.getElementById('task-notion-url').value || '').trim();
+      if (notionUrl) {
+        const rn = await fetch('/api/tasks/' + _editingTaskId + '/notion', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({url: notionUrl})
+        });
+        const dn = await rn.json();
+        if (dn.ok) {
+          const i = _allTasks.findIndex(t => t.id === _editingTaskId);
+          if (i !== -1) _allTasks[i].notion_page_id = dn.notion_page_id;
+        }
+      }
       document.getElementById('add-task-modal').classList.remove('open');
       _updateFilterCounts();
       renderTasksList();

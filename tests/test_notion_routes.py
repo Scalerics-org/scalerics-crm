@@ -109,3 +109,11 @@ def test_el_throttle_del_autosync_evita_pegarle_en_cada_request(monkeypatch):
     dashboard._maybe_sync_notion("x.db")
 
     assert len(llamadas) == 1
+
+
+def test_el_panel_de_tareas_tiene_el_boton_y_el_badge_de_notion():
+    """Regresión: que nadie borre el front de Notion sin darse cuenta."""
+    html = dashboard.DASHBOARD_HTML
+    assert "task-notion-url" in html
+    assert "task-notion-badge" in html
+    assert "_enviarTareaANotion" in html
