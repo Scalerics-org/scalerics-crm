@@ -88,8 +88,12 @@ def dar_de_baja(db_path: str, token: str) -> bool:
 
 
 def esta_dado_de_baja(db_path: str, business_id: int) -> bool:
-    """Solo lo usan los tests hoy, y esta bien que asi sea: ver la nota de la
-    Task 5 sobre por que la baja ya queda cubierta por la seleccion."""
+    """True si ese lead pidio no recibir mas recordatorios.
+
+    Nada del envio la consulta, y esta bien: `leads_a_recordar` ya deja afuera
+    a cualquiera que tenga fila en meta_reminders, se haya dado de baja o no,
+    porque el recordatorio se manda una sola vez en la vida. Existe para poder
+    verificar la baja desde afuera (los tests, o una consulta a mano)."""
     conn = _conn(db_path)
     try:
         fila = conn.execute(
@@ -211,6 +215,7 @@ def enviar_recordatorios(db_path: str, base_url: str, dry_run: bool = False) -> 
             f"mails de esta tanda van a {override} y ninguno a los leads"
         )
 
+    ya_hubo_intento = False
     for lead in candidatos:
         if dry_run:
             logger.info(f"[dry-run] recordatorio a {lead['email']} (lead {lead['id']})")
@@ -231,6 +236,12 @@ def enviar_recordatorios(db_path: str, base_url: str, dry_run: bool = False) -> 
                 f"(business_id={lead['id']}): {e}. No se le manda nada hoy; sigue elegible."
             )
             continue
+        if ya_hubo_intento:
+            # La pausa es para no pasarse del rate limit de Resend, asi que va
+            # entre dos intentos reales: no despues del ultimo, ni despues de un
+            # lead que se salteo sin llegar a mandar nada.
+            time.sleep(_PAUSA_ENTRE_ENVIOS)
+
         destino = lead["email"]
         if override:
             logger.warning(
@@ -242,6 +253,7 @@ def enviar_recordatorios(db_path: str, base_url: str, dry_run: bool = False) -> 
             destino, lead["name"], lead["negocio"], lead["rubro"],
             f"{base_url.rstrip('/')}/baja/{token}",
         )
+        ya_hubo_intento = True
         if estado == "ok":
             res["enviados"] += 1
         elif estado == "desconocido":
@@ -281,7 +293,6 @@ def enviar_recordatorios(db_path: str, base_url: str, dry_run: bool = False) -> 
             finally:
                 conn.close()
             res["fallidos"] += 1
-        time.sleep(_PAUSA_ENTRE_ENVIOS)
 
     logger.info(f"Recordatorios Meta: {res}")
     return res
