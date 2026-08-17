@@ -217,3 +217,40 @@ def test_vincular_con_una_url_invalida_no_toca_nada(db, notion_env):
         assert ns.vincular_pagina(db, task_id, "no-es-una-url") is None
     patch_req.assert_not_called()
     assert get_task_by_id(db, task_id)["notion_page_id"] is None
+
+
+def test_un_slug_que_termina_en_hex_no_se_come_el_page_id():
+    # "facade" es hex valido (f-a-c-a-d-e). Si se le sacan los guiones a toda
+    # la URL antes de buscar, "facade" se pega al id real y el regex agarra
+    # una ventana de 32 caracteres que arranca en el slug, no en el id.
+    url = "https://www.notion.so/Cafe-decade-facade-3b365d94deec80189624d8f91c06cf0c"
+    assert ns.page_id_de_url(url) == "3b365d94-deec-8018-9624-d8f91c06cf0c"
+
+
+def test_un_hex_mas_largo_que_32_no_matchea_una_ventana_trunca():
+    url = "https://www.notion.so/" + "a" * 40
+    assert ns.page_id_de_url(url) is None
+
+
+def test_vincular_ya_vinculada_a_la_misma_pagina_no_pega_de_nuevo(db, notion_env):
+    task_id = create_task(db, title="Ya vinculada")
+    update_task(db, task_id, notion_page_id="3b365d94-deec-8018-9624-d8f91c06cf0c")
+    with patch("services.notion_service.requests.patch") as patch_req:
+        page_id = ns.vincular_pagina(
+            db, task_id, "https://www.notion.so/3b365d94deec80189624d8f91c06cf0c")
+    assert page_id == "3b365d94-deec-8018-9624-d8f91c06cf0c"
+    patch_req.assert_not_called()
+
+
+def test_vincular_a_otra_pagina_distinta_si_pega(db, notion_env):
+    task_id = create_task(db, title="Se re-vincula", status="todo")
+    update_task(db, task_id, notion_page_id="pagina-vieja")
+    respuesta = {"id": "3b365d94-deec-8018-9624-d8f91c06cf0c",
+                 "properties": {"Status": {"status": {"name": "Done"}}}}
+    with patch("services.notion_service.requests.patch",
+               return_value=_Resp(200, respuesta)) as patch_req:
+        page_id = ns.vincular_pagina(
+            db, task_id, "https://www.notion.so/3b365d94deec80189624d8f91c06cf0c")
+    assert page_id == "3b365d94-deec-8018-9624-d8f91c06cf0c"
+    patch_req.assert_called_once()
+    assert get_task_by_id(db, task_id)["notion_page_id"] == "3b365d94-deec-8018-9624-d8f91c06cf0c"

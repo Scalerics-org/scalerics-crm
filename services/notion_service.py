@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 API = "https://api.notion.com/v1"
 TIMEOUT = 20
 
-_UUID_SUELTO = re.compile(r"([0-9a-f]{32})", re.I)
+_UUID_SUELTO = re.compile(r"(?<![0-9a-f])([0-9a-f]{32})(?![0-9a-f])", re.I)
 _UUID_CON_GUIONES = re.compile(
     r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})", re.I)
 
@@ -215,7 +215,11 @@ def page_id_de_url(url: str) -> str | None:
     con_guiones = _UUID_CON_GUIONES.search(url)
     if con_guiones:
         return con_guiones.group(1).lower()
-    suelto = _UUID_SUELTO.search(url.replace("-", ""))
+    # No se sacan los guiones de la URL antes de buscar: en el formato real
+    # de Notion (Title-Slug-<32hex>) el guion que separa el slug del id es lo
+    # que evita que una palabra del slug que termina en hex (p.ej. "facade")
+    # se pegue al id y corra la ventana de 32 caracteres.
+    suelto = _UUID_SUELTO.search(url)
     if not suelto:
         return None
     h = suelto.group(1).lower()
@@ -237,8 +241,14 @@ def vincular_pagina(db_path: str, task_id: int, url: str) -> str | None:
     page_id = page_id_de_url(url)
     if not page_id:
         return None
-    if not get_task_by_id(db_path, task_id):
+    tarea = get_task_by_id(db_path, task_id)
+    if not tarea:
         return None
+    if tarea.get("notion_page_id") == page_id:
+        # Ya esta vinculada a esta misma pagina: no hay nada que pegar de
+        # nuevo. Re-vincular a una pagina DISTINTA si es valido, y sigue
+        # abajo.
+        return page_id
 
     try:
         r = requests.patch(
