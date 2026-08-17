@@ -16,6 +16,18 @@ def _db() -> str:
     return current_app.config["DB_PATH"]
 
 
+def _sin_campos_notion(data: dict) -> dict:
+    """Saca del payload del cliente cualquier clave `notion_*`.
+
+    El pareo con Notion lo escribe solo `services/notion_service.py`. Si el
+    cliente pudiera setear `notion_page_id`, un PUT cualquiera dejaria al CRM
+    escribiendo Status en una pagina del tablero del equipo que nadie pareo, y
+    la restriccion de no tocar paginas sin `CRM ID` pasaria a estar sostenida
+    por convencion en vez de por codigo. El front nunca manda campos `notion_*`.
+    """
+    return {k: v for k, v in data.items() if not k.startswith("notion_")}
+
+
 @tasks_bp.route("/api/tasks", methods=["GET"])
 def api_list_tasks():
     client_id = request.args.get("client_id", type=int)
@@ -26,7 +38,7 @@ def api_list_tasks():
 
 @tasks_bp.route("/api/tasks", methods=["POST"])
 def api_create_task():
-    data = request.get_json() or {}
+    data = _sin_campos_notion(request.get_json() or {})
     if not data.get("title"):
         return jsonify({"ok": False, "error": "title requerido"}), 400
     data["created_by_id"] = session.get("user_id")
@@ -60,7 +72,7 @@ def api_create_task():
 
 @tasks_bp.route("/api/tasks/<int:task_id>", methods=["PUT"])
 def api_update_task(task_id):
-    data = request.get_json() or {}
+    data = _sin_campos_notion(request.get_json() or {})
     db = _db()
     task = get_task_by_id(db, task_id) or {}
     update_task(db, task_id, **data)

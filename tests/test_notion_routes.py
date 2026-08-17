@@ -5,7 +5,7 @@ from unittest.mock import patch
 import pytest
 
 import dashboard
-from database import create_task, init_db
+from database import create_task, get_task_by_id, init_db
 
 
 @pytest.fixture
@@ -88,6 +88,37 @@ def test_editar_otra_cosa_no_pega_a_notion(app, cliente, hilo_sincronico):
     with patch("routes.tasks.empujar_estado") as empujar:
         cliente.put(f"/api/tasks/{task_id}", json={"title": "Otro titulo"}, headers=_AUTH)
     empujar.assert_not_called()
+
+
+def test_un_put_no_puede_setear_el_pareo_con_notion(app, cliente, hilo_sincronico):
+    """El pareo lo escribe solo el service.
+
+    Si el cliente pudiera setear `notion_page_id`, un PUT de `status` despues
+    dejaria al CRM escribiendo Status en una pagina del tablero del equipo que
+    nadie pareo.
+    """
+    db = app.config["DB_PATH"]
+    task_id = create_task(db, title="Ajena")
+    with patch("routes.tasks.empujar_estado"):
+        r = cliente.put(f"/api/tasks/{task_id}",
+                        json={"title": "Ajena", "notion_page_id": "pagina-de-otra-gente",
+                              "notion_status": "Done"},
+                        headers=_AUTH)
+    assert r.status_code == 200
+    t = get_task_by_id(db, task_id)
+    assert t["notion_page_id"] is None
+    assert t["notion_status"] is None
+    # Lo que si es del cliente se guardo igual.
+    assert t["title"] == "Ajena"
+
+
+def test_un_post_no_puede_setear_el_pareo_con_notion(app, cliente):
+    r = cliente.post("/api/tasks",
+                     json={"title": "Nueva", "notion_page_id": "pagina-de-otra-gente"},
+                     headers=_AUTH)
+    assert r.status_code == 201
+    task_id = r.get_json()["id"]
+    assert get_task_by_id(app.config["DB_PATH"], task_id)["notion_page_id"] is None
 
 
 def test_el_autosync_no_dispara_sin_token(monkeypatch):

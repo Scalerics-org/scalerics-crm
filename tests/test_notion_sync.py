@@ -55,6 +55,16 @@ def test_se_escribe_cuando_el_grupo_cambio_de_verdad():
     assert ns.hay_que_escribir("todo", "In progress") is True
 
 
+def test_un_estado_del_crm_fuera_de_rango_no_escribe():
+    # `status` es un campo legitimo que llega del cliente, asi que puede venir
+    # cualquier string. `grupo_de` nunca devuelve algo afuera de los tres
+    # grupos, asi que sin guard la comparacion da True siempre y cada push
+    # reenvia "Backlog": la escritura idempotente que el spec prohibe.
+    assert ns.hay_que_escribir("archivado", "Backlog") is False
+    assert ns.hay_que_escribir("archivado", None) is False
+    assert ns.hay_que_escribir("", "Up next") is False
+
+
 def test_sin_estado_conocido_en_notion_se_escribe():
     assert ns.hay_que_escribir("todo", None) is True
 
@@ -192,6 +202,17 @@ def test_empujar_escribe_cuando_el_grupo_cambio(db, notion_env):
     cuerpo = patch_req.call_args.kwargs["json"]
     assert cuerpo["properties"]["Status"]["status"]["name"] == "Done"
     assert get_task_by_id(db, task_id)["notion_status"] == "Done"
+
+
+def test_un_status_fuera_de_rango_no_dispara_ningun_patch(db, notion_env):
+    task_id = create_task(db, title="Con un status raro")
+    update_task(db, task_id, status="archivado",
+                notion_page_id="pagina-1", notion_status="Up next")
+    with patch("services.notion_service.requests.patch") as patch_req:
+        assert ns.empujar_estado(db, task_id) is False
+    patch_req.assert_not_called()
+    # Y el estado que vimos en Notion queda como estaba.
+    assert get_task_by_id(db, task_id)["notion_status"] == "Up next"
 
 
 def test_una_tarea_sin_pagina_no_se_empuja(db, notion_env):

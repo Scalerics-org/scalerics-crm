@@ -83,7 +83,17 @@ def hay_que_escribir(estado_crm: str, notion_status: str | None) -> bool:
     CRM en `todo` y la tarjeta en *Up next* devuelve False, porque el grupo de
     *Up next* ya es `todo`, y escribir "Backlog" seria pisarle el orden al
     equipo y ensuciar el historial de la pagina por nada.
+
+    Con un `estado_crm` que no es ninguno de los tres de `DESTINOS` devuelve
+    **False**: `grupo_de` nunca puede devolver algo fuera de esos tres, asi que
+    la comparacion daria True siempre y cada push reenviaria "Backlog" a la
+    tarjeta, que es justo la escritura idempotente que el spec prohibe. Ante un
+    estado que no sabemos mapear, no escribir es lo unico que no hace dano.
     """
+    if estado_crm not in DESTINOS:
+        logger.warning("notion: estado del CRM desconocido (%r), no escribo en el tablero",
+                       estado_crm)
+        return False
     if notion_status is None:
         return True
     return grupo_de(notion_status) != estado_crm
