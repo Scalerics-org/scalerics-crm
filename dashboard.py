@@ -3398,6 +3398,8 @@ async function submitAddTask() {
         if (dn.ok) {
           const i = _allTasks.findIndex(t => t.id === _editingTaskId);
           if (i !== -1) _allTasks[i].notion_page_id = dn.notion_page_id;
+        } else {
+          alert('No se pudo vincular con Notion. Revisá que la URL sea correcta o mirá los logs del CRM.');
         }
       }
       document.getElementById('add-task-modal').classList.remove('open');
