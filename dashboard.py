@@ -5218,7 +5218,7 @@ def create_app(db_path: str) -> Flask:
 </body>
 </html>""")
 
-    @app.route("/baja/<token>")
+    @app.route("/baja/<token>", methods=["GET", "POST"])
     def baja_recordatorios(token):
         from services.meta_reminders import dar_de_baja
         dar_de_baja(app.config["DB_PATH"], token)
@@ -5227,12 +5227,13 @@ def create_app(db_path: str) -> Flask:
         return render_template_string("""<!DOCTYPE html>
 <html lang="es">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
 <title>Baja confirmada — Scalerics</title></head>
 <body style="margin:0;font-family:'Segoe UI',Arial,sans-serif;background:#f1f5f9;color:#1c2b40">
   <div style="max-width:520px;margin:80px auto;background:#fff;border-radius:10px;padding:40px;text-align:center">
     <img src="https://raw.githubusercontent.com/juantomasetti1/scalerics-assets/main/logo_full_alt.png"
          alt="Scalerics" style="height:28px;margin-bottom:24px">
-    <h1 style="font-size:20px;margin:0 0 12px">Listo, no te escribimos mas</h1>
+    <h1 style="font-size:20px;margin:0 0 12px">Listo, no te escribimos más</h1>
     <p style="font-size:15px;color:#64748b;margin:0">
       Te sacamos de la lista de recordatorios. Si algun dia queres retomar, escribinos a
       <a href="mailto:contacto@scalerics.com" style="color:#0088cc">contacto@scalerics.com</a>.

@@ -87,6 +87,41 @@ def test_la_pagina_de_baja_funciona_sin_login(tmp_path):
     assert esta_dado_de_baja(ruta, 99) is True
 
 
+def test_la_baja_en_un_click_de_gmail_llega_por_post(tmp_path):
+    """El boton nativo de Gmail hace POST (RFC 8058). Hoy la ruta era solo GET
+    y habria contestado 405."""
+    from dashboard import create_app
+    from services.meta_reminders import esta_dado_de_baja, registrar_envio
+
+    ruta = str(tmp_path / "baja_post.db")
+    init_db(ruta)
+    app = create_app(ruta)
+    app.config["TESTING"] = True
+    token = registrar_envio(ruta, 98)
+
+    r = app.test_client().post(f"/baja/{token}")
+
+    assert r.status_code == 200
+    assert esta_dado_de_baja(ruta, 98) is True
+
+
+def test_la_pagina_de_baja_no_se_indexa(tmp_path):
+    from dashboard import create_app
+    from services.meta_reminders import registrar_envio
+
+    ruta = str(tmp_path / "baja_noindex.db")
+    init_db(ruta)
+    app = create_app(ruta)
+    app.config["TESTING"] = True
+    token = registrar_envio(ruta, 97)
+
+    cuerpo = app.test_client().get(f"/baja/{token}").get_data(as_text=True)
+
+    assert 'name="robots"' in cuerpo and "noindex" in cuerpo, (
+        "es una URL publica con token adentro"
+    )
+
+
 def test_la_pagina_de_baja_con_token_invalido_no_rompe(tmp_path):
     from dashboard import create_app
 
