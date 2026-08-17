@@ -119,8 +119,10 @@ Qué esperar:
   tareas del CRM cambiaron de estado por lo que decía Notion; `0` con
   `"ok": true` significa que la consulta anduvo y no había nada desalineado.
   Queda además una línea en el log de actividad del CRM a nombre del usuario.
-- **No funcionó**: HTTP 502 y `{"ok": false, "error": "...", "cambiadas": 0}`.
-  El `error` dice qué pasó:
+- **No funcionó**: HTTP 502 y `{"ok": false, "error": "...", "cambiadas": N}`.
+  `cambiadas` es el contador real, no siempre `0`: si la consulta falló recién en
+  una página posterior del cursor, lo que se aplicó antes del fallo ya está
+  guardado y cuenta. El `error` dice qué pasó:
   - `falta NOTION_TOKEN: el sync con Notion esta apagado` → el secret no está
     puesto (paso manual 5).
   - `la consulta a Notion devolvio HTTP 404` → la integración no tiene la
