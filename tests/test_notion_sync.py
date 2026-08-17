@@ -316,6 +316,36 @@ def test_el_pull_pagina_con_cursor(db, notion_env):
     assert get_task_by_id(db, t2)["status"] == "done"
 
 
+def test_el_pull_corta_si_has_more_viene_sin_cursor(db, notion_env):
+    t1 = create_task(db, title="Una", status="todo")
+    update_task(db, t1, notion_page_id="p1", notion_status="Backlog")
+
+    payload = {"results": [_pagina("p1", t1, "Done")], "has_more": True}
+    with patch("services.notion_service.requests.post", return_value=_Resp(200, payload)) as post:
+        assert ns.traer_y_aplicar(db) == 1
+
+    post.assert_called_once()
+    assert get_task_by_id(db, t1)["status"] == "done"
+
+
+def test_el_pull_falla_en_la_segunda_pagina_conserva_lo_aplicado_en_la_primera(db, notion_env):
+    t1 = create_task(db, title="Una", status="todo")
+    t2 = create_task(db, title="Otra", status="todo")
+    update_task(db, t1, notion_page_id="p1", notion_status="Backlog")
+    update_task(db, t2, notion_page_id="p2", notion_status="Backlog")
+
+    respuestas = [
+        _Resp(200, {"results": [_pagina("p1", t1, "Done")],
+                    "has_more": True, "next_cursor": "cursor-2"}),
+        RuntimeError("boom"),
+    ]
+    with patch("services.notion_service.requests.post", side_effect=respuestas):
+        assert ns.traer_y_aplicar(db) == 1
+
+    assert get_task_by_id(db, t1)["status"] == "done"
+    assert get_task_by_id(db, t2)["status"] == "todo"
+
+
 def test_el_pull_deja_actividad_a_nombre_de_notion(db, notion_env):
     import sqlite3
     task_id = create_task(db, title="Auditable", status="todo")

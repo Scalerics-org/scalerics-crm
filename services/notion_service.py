@@ -338,6 +338,10 @@ def traer_y_aplicar(db_path: str) -> int:
 
         if not data.get("has_more"):
             break
-        cuerpo["start_cursor"] = data.get("next_cursor")
+        cursor = data.get("next_cursor")
+        if not cursor:
+            logger.warning("notion: query dijo has_more sin next_cursor, corto la paginacion")
+            break
+        cuerpo["start_cursor"] = cursor
 
     return cambiadas
