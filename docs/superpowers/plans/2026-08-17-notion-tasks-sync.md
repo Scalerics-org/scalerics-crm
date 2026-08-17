@@ -1419,6 +1419,7 @@ En este orden, y con **una sola** tarea de prueba antes de tocar tareas reales:
 5. Abrir el historial de la tarjeta en Notion y contar las ediciones. Tienen que ser exactamente las de los pasos 1 y 4 — ninguna de más.
 6. Borrar la tarea de prueba en el CRM y sincronizar: la tarjeta sigue ahí, intacta, y el sync no tira error.
 7. Vincular una tarea a una tarjeta que ya existe pegando la URL, y confirmar que **no** se creó una tarjeta nueva.
+8. Sobre esa misma tarea, pegar una **segunda** URL, de otra tarjeta distinta. Filtrar la database por `CRM ID` igual al id de la tarea: tiene que quedar **exactamente una** página con ese `CRM ID` (la nueva), y la anterior con el `CRM ID` vacío. Si quedan dos, el pull matchea las dos contra la misma tarea y cada sync le invierte el estado.
 
 ## Notas de despliegue
 
