@@ -982,7 +982,15 @@ def traer_y_aplicar(db_path: str) -> int:
 
         if not data.get("has_more"):
             break
-        cuerpo["start_cursor"] = data.get("next_cursor")
+        # Sin esta guarda el loop no termina: `has_more` sin cursor volveria a
+        # pedir la misma pagina para siempre, y esto corre en un hilo de fondo
+        # de un request vivo del CRM. Cortar no pierde nada: el proximo sync ve
+        # el mismo estado.
+        cursor = data.get("next_cursor")
+        if not cursor:
+            logger.warning("notion: query dijo has_more sin next_cursor, corto la paginacion")
+            break
+        cuerpo["start_cursor"] = cursor
 
     return cambiadas
 ```
