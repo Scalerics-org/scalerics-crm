@@ -1,9 +1,16 @@
+import json
 import sqlite3
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
 from database import init_db
-from services.meta_reminders import dar_de_baja, esta_dado_de_baja, registrar_envio
+from services.meta_reminders import (
+    dar_de_baja,
+    esta_dado_de_baja,
+    leads_a_recordar,
+    registrar_envio,
+)
 
 
 @pytest.fixture
@@ -60,3 +67,73 @@ def test_la_pagina_de_baja_con_token_invalido_no_rompe(tmp_path):
     r = app.test_client().get("/baja/no-existe")
 
     assert r.status_code == 200, "un token viejo o mal copiado muestra una pagina, no un error"
+
+
+def _lead(conn, bid, dias, **kw):
+    campos = {
+        "crm_status": "sin_contactar",
+        "email": f"lead{bid}@ejemplo.com",
+        "source": "meta",
+        "form_data": json.dumps({
+            "¿cómo_se_llama_tu_negocio?": f"Negocio {bid}",
+            "¿que_es_lo_que_buscás_para_tu_negocio?": "una_nueva_página_web",
+        }),
+    }
+    campos.update(kw)
+    cuando = (datetime.now(timezone.utc) - timedelta(days=dias)).strftime("%Y-%m-%d %H:%M:%S")
+    conn.execute(
+        "INSERT INTO businesses (id, name, email, source, crm_status, form_data, scraped_at) "
+        "VALUES (?,?,?,?,?,?,?)",
+        (bid, f"Lead {bid}", campos["email"], campos["source"],
+         campos["crm_status"], campos["form_data"], cuando),
+    )
+
+
+def test_elige_solo_a_los_que_corresponde(db):
+    conn = sqlite3.connect(db)
+    _lead(conn, 1, dias=5)                                  # elegible
+    _lead(conn, 2, dias=1)                                  # muy nuevo
+    _lead(conn, 3, dias=5, crm_status="reunion_hecha")      # ya lo contactaron
+    _lead(conn, 4, dias=5, email=None)                      # sin mail
+    _lead(conn, 5, dias=5, source="google")                 # no es de Meta
+    conn.commit()
+    conn.close()
+
+    elegidos = [x["id"] for x in leads_a_recordar(db)]
+
+    assert elegidos == [1]
+
+
+def test_no_repite_a_quien_ya_recibio(db):
+    conn = sqlite3.connect(db)
+    _lead(conn, 10, dias=5)
+    conn.commit()
+    conn.close()
+
+    assert [x["id"] for x in leads_a_recordar(db)] == [10]
+    registrar_envio(db, 10)
+    assert leads_a_recordar(db) == []
+
+
+def test_respeta_el_limite_y_prioriza_a_los_mas_viejos(db):
+    conn = sqlite3.connect(db)
+    for i, dias in enumerate([5, 40, 20], start=20):
+        _lead(conn, i, dias=dias)
+    conn.commit()
+    conn.close()
+
+    elegidos = [x["id"] for x in leads_a_recordar(db, limite=2)]
+
+    assert elegidos == [21, 22], "primero el de 40 dias, despues el de 20"
+
+
+def test_trae_los_datos_para_personalizar(db):
+    conn = sqlite3.connect(db)
+    _lead(conn, 30, dias=5)
+    conn.commit()
+    conn.close()
+
+    lead = leads_a_recordar(db)[0]
+
+    assert lead["negocio"] == "Negocio 30"
+    assert lead["rubro"] == "una nueva página web", "los guiones bajos se limpian"

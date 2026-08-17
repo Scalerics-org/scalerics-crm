@@ -1,8 +1,12 @@
 """Registro de recordatorios enviados a leads de Meta y su baja de la lista."""
 
+import json
 import secrets
 import sqlite3
 from datetime import datetime, timezone
+
+CLAVE_NEGOCIO = "¿cómo_se_llama_tu_negocio?"
+CLAVE_RUBRO = "¿que_es_lo_que_buscás_para_tu_negocio?"
 
 
 def _conn(db_path: str) -> sqlite3.Connection:
@@ -61,3 +65,54 @@ def esta_dado_de_baja(db_path: str, business_id: int) -> bool:
     finally:
         conn.close()
     return bool(fila and fila[0])
+
+
+def _texto(campos: dict, clave: str) -> str:
+    """Los valores de Meta vienen como 'una_nueva_página_web'."""
+    return (campos.get(clave) or "").replace("_", " ").strip()
+
+
+def leads_a_recordar(db_path: str, dias_minimos: int = 3, limite: int = 15) -> list[dict]:
+    """Leads de Meta que corresponde recordar hoy, del mas viejo al mas nuevo.
+
+    Las guardas viven todas en el WHERE a proposito: que un lead quede fuera
+    no puede depender de que el llamador se acuerde de filtrarlo.
+    """
+    conn = _conn(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        filas = conn.execute(
+            """
+            SELECT b.id, b.name, b.email, b.form_data
+              FROM businesses b
+         LEFT JOIN meta_reminders r ON r.business_id = b.id
+             WHERE b.source = 'meta'
+               AND b.crm_status = 'sin_contactar'
+               AND b.email IS NOT NULL AND LENGTH(TRIM(b.email)) > 3
+               AND r.id IS NULL
+               AND b.scraped_at IS NOT NULL
+               AND b.scraped_at <= datetime('now', ?)
+          ORDER BY b.scraped_at ASC
+             LIMIT ?
+            """,
+            (f"-{int(dias_minimos)} days", int(limite)),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    salida = []
+    for f in filas:
+        try:
+            campos = json.loads(f["form_data"] or "{}")
+        except (ValueError, TypeError):
+            campos = {}
+        if not isinstance(campos, dict):
+            campos = {}
+        salida.append({
+            "id": f["id"],
+            "name": f["name"] or "",
+            "email": f["email"],
+            "negocio": _texto(campos, CLAVE_NEGOCIO),
+            "rubro": _texto(campos, CLAVE_RUBRO),
+        })
+    return salida
