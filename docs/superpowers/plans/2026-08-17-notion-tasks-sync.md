@@ -309,7 +309,13 @@ def hay_que_escribir(estado_crm: str, notion_status: str | None) -> bool:
     Con el CRM en `todo` y la tarjeta en *Up next* devuelve False: el grupo de
     *Up next* ya es `todo`, y escribir "Backlog" seria pisarle el orden al
     equipo y ensuciar el historial de la pagina por nada.
+
+    `None` no es lo mismo que `""`: None significa que nunca sincronizamos y no
+    sabemos que hay en Notion, y ahi lo seguro es escribir. `""` es la columna
+    "Sin Status", cuyo grupo es `todo` como cualquier otra columna pendiente.
     """
+    if notion_status is None:
+        return True
     return grupo_de(notion_status) != estado_crm
 ```
 
