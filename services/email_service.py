@@ -87,21 +87,24 @@ def _muted(text: str) -> str:
 
 # ── Resend sender ───────────────────────────────────────────────────────────────
 
-def _send(to: str, subject: str, html: str) -> bool:
+def _send(to: str, subject: str, html: str, from_email: str | None = None, headers: dict | None = None) -> bool:
     api_key = os.environ.get("RESEND_API_KEY", "")
     if not api_key:
         logger.info(f"[EMAIL STUB] {subject} → {to}")
         return True
     try:
+        cuerpo = {
+            "from": from_email or os.environ.get("RESEND_FROM_EMAIL", "Scalerics CRM <crm@noreply.scalerics.com>"),
+            "to": [to],
+            "subject": subject,
+            "html": html,
+        }
+        if headers:
+            cuerpo["headers"] = headers
         r = requests.post(
             "https://api.resend.com/emails",
             headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json={
-                "from": os.environ.get("RESEND_FROM_EMAIL", "Scalerics CRM <crm@noreply.scalerics.com>"),
-                "to": [to],
-                "subject": subject,
-                "html": html,
-            },
+            json=cuerpo,
             timeout=10,
         )
         r.raise_for_status()
@@ -268,3 +271,56 @@ def send_meta_lead_failure_alert(email: str, lead_id: str, error: str) -> None:
         f"buscando ese id.</p>"
     )
     _send(email, asunto, cuerpo)
+
+
+_REMITENTE_LEADS = "Scalerics <contacto@scalerics.com>"
+_CALENDLY = "https://calendly.com/scalerics/consultoriagratuita"
+_TELEFONO = "+598 97 250 713"
+
+
+def send_meta_lead_reminder(to_email: str, lead_name: str, negocio: str,
+                            rubro: str, unsub_url: str) -> bool:
+    """Invita al lead a agendar una llamada. Sale de contacto@, no de crm@."""
+    # Nombre, negocio y rubro salen del formulario de Meta: los llena cualquiera.
+    nombre_esc  = html.escape((lead_name or "").strip() or "Hola")
+    negocio_esc = html.escape((negocio or "").strip())
+    rubro_esc   = html.escape((rubro or "").strip())
+
+    if negocio_esc and rubro_esc:
+        apertura = (f"Nos dejaste tus datos porque buscabas {rubro_esc} "
+                    f"para {negocio_esc}.")
+    elif rubro_esc:
+        apertura = f"Nos dejaste tus datos porque buscabas {rubro_esc}."
+    else:
+        apertura = "Nos dejaste tus datos para que hablemos de tu proyecto."
+
+    body = (
+        _muted(apertura)
+        + _muted("Si te sigue interesando, agenda una llamada de 30 minutos "
+                 "cuando te quede comodo. Sin compromiso.")
+    )
+    cuerpo_html = _layout(
+        badge="Scalerics",
+        title=f"{nombre_esc}, seguimos disponibles",
+        body=body,
+        cta_url=_CALENDLY,
+        cta_label="Agendar una llamada",
+    )
+    firma = (
+        f'<div style="text-align:center;font-size:12px;color:#94a3b8;'
+        f'padding:0 24px 28px">'
+        f'<img src="{_LOGO}" alt="Scalerics" style="height:22px;margin-bottom:10px"><br>'
+        f'Scalerics &middot; {_TELEFONO} &middot; '
+        f'<a href="https://scalerics.com" style="color:#94a3b8">scalerics.com</a><br>'
+        f'<a href="{unsub_url}" style="color:#94a3b8;text-decoration:underline">'
+        f'No quiero recibir mas estos mails</a>'
+        f'</div>'
+    )
+    cuerpo_html = cuerpo_html.replace("</body>", f"{firma}</body>")
+
+    asunto = f"{(lead_name or 'Hola').replace(chr(10), ' ').replace(chr(13), ' ')}, ¿agendamos una llamada?"
+    return _send(
+        to_email, asunto, cuerpo_html,
+        from_email=_REMITENTE_LEADS,
+        headers={"List-Unsubscribe": f"<{unsub_url}>"},
+    )
