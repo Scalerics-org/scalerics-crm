@@ -368,6 +368,21 @@ def init_db(db_path: str) -> None:
             )
         """)
 
+        # ── meta_reminders ────────────────────────────────────────────────────
+        # Un registro por lead al que se le mando el recordatorio. El UNIQUE en
+        # business_id es lo que garantiza "una sola vez, para siempre": si el
+        # job se corre dos veces, el segundo INSERT falla en vez de mandar otro
+        # mail. Guarda tambien el token de baja, para no necesitar otra tabla.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS meta_reminders (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                business_id     INTEGER NOT NULL UNIQUE,
+                token           TEXT NOT NULL UNIQUE,
+                sent_at         TEXT NOT NULL,
+                unsubscribed_at TEXT
+            )
+        """)
+
         # ── task assignment & goal tracking ────────────────────────────────────
         _add_column(conn, "tasks", "assignee_id",    "INTEGER REFERENCES users(id) ON DELETE SET NULL")
         _add_column(conn, "tasks", "assignee_name",  "TEXT")
