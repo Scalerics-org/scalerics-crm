@@ -3,9 +3,11 @@
 from flask import Blueprint, current_app, jsonify, request, session
 
 import os
+import threading
 from database import (create_task, delete_task, get_task_by_id, get_tasks,
                       log_activity, update_task, get_task_progress_history)
 from services.email_service import send_task_assignment_email
+from services.notion_service import empujar_estado
 
 tasks_bp = Blueprint("tasks", __name__)
 
@@ -36,7 +38,6 @@ def api_create_task():
                  user_id=session.get("user_id"))
     # Send assignment email when task is assigned to someone else
     if data.get("assignee_email") and data.get("assignee_id") != session.get("user_id"):
-        import threading
         import os
         crm_url = os.environ.get("CRM_URL", "")
         threading.Thread(
@@ -67,6 +68,11 @@ def api_update_task(task_id):
     log_activity(db, session.get("user_name", "sistema"), "task_updated",
                  "task", task_id, task.get("title", ""), detail,
                  user_id=session.get("user_id"))
+    # Si la tarea esta vinculada a Notion, el cambio de estado viaja para alla.
+    # En un hilo aparte para no demorar la respuesta, igual que el mail de
+    # asignacion. empujar_estado no hace nada si la tarea no tiene pagina.
+    if "status" in data:
+        threading.Thread(target=empujar_estado, args=(db, task_id), daemon=True).start()
     return jsonify({"ok": True})
 
 

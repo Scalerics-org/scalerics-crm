@@ -19,6 +19,7 @@ from routes.budgets import budgets_bp
 from routes.tokens import tokens_bp
 from routes.meta import meta_bp, start_meta_token_monitor, start_meta_daily_import
 from routes.calendly import calendly_bp
+from routes.notion import notion_bp
 from services.demo_service import demo_job_handler
 from services.job_service import init_worker
 
@@ -5108,6 +5109,38 @@ def _maybe_sync_calendly(db_path: str) -> None:
     threading.Thread(target=_run, daemon=True).start()
 
 
+_notion_sync_state = {"at": 0.0}
+_notion_sync_lock = threading.Lock()
+NOTION_SYNC_EVERY = int(os.environ.get("NOTION_SYNC_EVERY", "600"))
+
+
+def _maybe_sync_notion(db_path: str) -> None:
+    """Trae los cambios de estado del tablero de Notion cuando alguien abre el CRM.
+
+    Mismo motivo que en Calendly: la maquina de Fly se duerme sin trafico, asi
+    que un cron interno no correria. Hilo aparte para no demorar la carga, y
+    throttle para no consultar Notion en cada request.
+    """
+    if not os.environ.get("NOTION_TOKEN"):
+        return
+    now = time.time()
+    with _notion_sync_lock:
+        if now - _notion_sync_state["at"] < NOTION_SYNC_EVERY:
+            return
+        _notion_sync_state["at"] = now
+
+    def _run():
+        try:
+            from services.notion_service import traer_y_aplicar
+            n = traer_y_aplicar(db_path)
+            if n:
+                logging.getLogger(__name__).info("notion sync: %s tareas actualizadas", n)
+        except Exception:
+            logging.getLogger(__name__).warning("notion sync falló", exc_info=True)
+
+    threading.Thread(target=_run, daemon=True).start()
+
+
 def create_app(db_path: str) -> Flask:
     app = Flask(__name__)
     app.secret_key = os.environ.get("SECRET_KEY") or "scalerics-dev-key-change-in-prod"
@@ -5115,7 +5148,7 @@ def create_app(db_path: str) -> Flask:
     app.config["PIPELINE_STATUS"] = _pipeline_status
     app.config["PIPELINE_LOCK"] = _pipeline_lock
 
-    for bp in (leads_bp, demos_bp, calendar_bp, wa_bp, pipeline_bp, tasks_bp, budgets_bp, tokens_bp, meta_bp, calendly_bp):
+    for bp in (leads_bp, demos_bp, calendar_bp, wa_bp, pipeline_bp, tasks_bp, budgets_bp, tokens_bp, meta_bp, calendly_bp, notion_bp):
         app.register_blueprint(bp)
 
     @app.before_request
@@ -5146,6 +5179,7 @@ def create_app(db_path: str) -> Flask:
         # Sesión válida: aprovechamos la visita para traer lo de Calendly.
         if not request.path.startswith(("/api/", "/static/")):
             _maybe_sync_calendly(app.config["DB_PATH"])
+            _maybe_sync_notion(app.config["DB_PATH"])
 
     @app.route("/privacidad")
     def privacidad():
