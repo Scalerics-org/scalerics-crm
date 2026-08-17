@@ -226,6 +226,7 @@ def _fetch_and_store_lead(app, lead_id: str, form_id: str):
             biz_id = insert_business(db, {
                 "name":       name,
                 "phone":      phone or None,
+                "email":      email or None,
                 "city":       city or None,
                 "category":   "Meta Lead Ad",
                 "status":     "scraped",
