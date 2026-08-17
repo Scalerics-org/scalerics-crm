@@ -185,6 +185,62 @@ def test_correr_dos_veces_manda_un_solo_mail(db):
     assert enviar.call_count == 1
 
 
+def _ya_enviado(conn, bid, dias):
+    cuando = (datetime.now(timezone.utc) - timedelta(days=dias)).strftime("%Y-%m-%d %H:%M:%S")
+    conn.execute(
+        "INSERT INTO meta_reminders (business_id, token, sent_at) VALUES (?,?,?)",
+        (bid, f"token-{bid}", cuando),
+    )
+
+
+def test_el_tope_de_15_es_por_dia_no_por_corrida(db):
+    """Sin esto, cada reinicio de la maquina dispara otros 15 mails."""
+    conn = sqlite3.connect(db)
+    _lead(conn, 90, dias=5)
+    for i in range(15):
+        _ya_enviado(conn, 1000 + i, dias=0)
+    conn.commit()
+    conn.close()
+
+    with patch("services.meta_reminders.send_meta_lead_reminder", return_value="ok") as enviar:
+        res = enviar_recordatorios(db, "https://crm")
+
+    assert enviar.called is False, "ya se mandaron 15 en las ultimas 24 horas"
+    assert res["enviados"] == 0
+    assert res["candidatos"] == 0
+
+
+def test_pasado_el_dia_la_cuota_se_renueva(db):
+    conn = sqlite3.connect(db)
+    _lead(conn, 91, dias=5)
+    for i in range(15):
+        _ya_enviado(conn, 1100 + i, dias=3)
+    conn.commit()
+    conn.close()
+
+    with patch("services.meta_reminders.send_meta_lead_reminder", return_value="ok") as enviar:
+        res = enviar_recordatorios(db, "https://crm")
+
+    assert enviar.call_count == 1, "los 15 de hace 3 dias no gastan la cuota de hoy"
+    assert res["enviados"] == 1
+
+
+def test_la_cuota_del_dia_es_lo_que_queda(db):
+    conn = sqlite3.connect(db)
+    for i in range(5):
+        _lead(conn, 200 + i, dias=5 + i)
+    for i in range(13):
+        _ya_enviado(conn, 1200 + i, dias=0)
+    conn.commit()
+    conn.close()
+
+    with patch("services.meta_reminders.send_meta_lead_reminder", return_value="ok") as enviar:
+        res = enviar_recordatorios(db, "https://crm")
+
+    assert enviar.call_count == 2, "quedaban 2 de los 15 del dia"
+    assert res["enviados"] == 2
+
+
 def test_dry_run_no_manda_ni_registra(db):
     conn = sqlite3.connect(db)
     _lead(conn, 60, dias=5)

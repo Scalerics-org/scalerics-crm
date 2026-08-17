@@ -20,6 +20,9 @@ logger = logging.getLogger(__name__)
 # no tiene que depender de que el volumen sea bajo.
 _PAUSA_ENTRE_ENVIOS = 0.6
 _CADA_24_HORAS = 24 * 60 * 60
+# Tope de mails por dia, no por corrida: la maquina se reinicia sola (un secret
+# nuevo en Fly la reinicia) y sin este tope cada reinicio dispara otros 15.
+_TOPE_DIARIO = 15
 
 # El resto de la base guarda las fechas asi (scraped_at, entre otras) y las
 # compara contra datetime('now', ...) de SQLite, que devuelve este mismo
@@ -96,7 +99,23 @@ def _texto(campos: dict, clave: str) -> str:
     return (campos.get(clave) or "").replace("_", " ").strip()
 
 
-def leads_a_recordar(db_path: str, dias_minimos: int = 3, limite: int = 15) -> list[dict]:
+def enviados_ultimas_24h(db_path: str) -> int:
+    """Cuantos recordatorios salieron en el ultimo dia, para no pasarse del tope.
+
+    Compara contra datetime('now','-1 day'), asi que depende de que sent_at se
+    guarde en el formato de la casa (ver _ahora).
+    """
+    conn = _conn(db_path)
+    try:
+        (cuantos,) = conn.execute(
+            "SELECT COUNT(*) FROM meta_reminders WHERE sent_at >= datetime('now','-1 day')"
+        ).fetchone()
+    finally:
+        conn.close()
+    return int(cuantos or 0)
+
+
+def leads_a_recordar(db_path: str, dias_minimos: int = 3, limite: int = _TOPE_DIARIO) -> list[dict]:
     """Leads de Meta que corresponde recordar hoy, del mas viejo al mas nuevo.
 
     Las guardas viven todas en el WHERE a proposito: que un lead quede fuera
@@ -143,7 +162,16 @@ def leads_a_recordar(db_path: str, dias_minimos: int = 3, limite: int = 15) -> l
 
 
 def enviar_recordatorios(db_path: str, base_url: str, dry_run: bool = False) -> dict:
-    candidatos = leads_a_recordar(db_path)
+    ya_enviados = enviados_ultimas_24h(db_path)
+    cupo = max(0, _TOPE_DIARIO - ya_enviados)
+    if cupo == 0:
+        logger.info(
+            f"Recordatorios Meta: no se manda nada, ya salieron {ya_enviados} en las "
+            f"ultimas 24 horas (tope diario {_TOPE_DIARIO})"
+        )
+        return {"candidatos": 0, "enviados": 0, "fallidos": 0, "inciertos": 0}
+
+    candidatos = leads_a_recordar(db_path, limite=cupo)
     res = {"candidatos": len(candidatos), "enviados": 0, "fallidos": 0, "inciertos": 0}
 
     for lead in candidatos:
