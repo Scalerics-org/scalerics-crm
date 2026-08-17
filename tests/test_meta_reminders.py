@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
@@ -41,6 +42,33 @@ def test_la_baja_marca_al_lead(db):
 
 def test_un_token_que_no_existe_no_rompe(db):
     assert dar_de_baja(db, "token-inventado") is False
+
+
+def test_las_fechas_se_guardan_en_el_formato_que_compara(db):
+    """sent_at y unsubscribed_at tienen que usar '%Y-%m-%d %H:%M:%S' UTC, igual
+    que scraped_at: es el formato con el que datetime('now', ...) compara."""
+    token = registrar_envio(db, 500)
+    dar_de_baja(db, token)
+
+    conn = sqlite3.connect(db)
+    try:
+        sent_at, unsub_at = conn.execute(
+            "SELECT sent_at, unsubscribed_at FROM meta_reminders WHERE business_id = 500"
+        ).fetchone()
+        (recientes,) = conn.execute(
+            "SELECT COUNT(*) FROM meta_reminders WHERE sent_at >= datetime('now','-1 day')"
+        ).fetchone()
+        (viejos,) = conn.execute(
+            "SELECT COUNT(*) FROM meta_reminders WHERE sent_at < datetime('now','-1 day')"
+        ).fetchone()
+    finally:
+        conn.close()
+
+    patron = r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}"
+    assert re.fullmatch(patron, sent_at), f"sent_at no compara: {sent_at!r}"
+    assert re.fullmatch(patron, unsub_at), f"unsubscribed_at no compara: {unsub_at!r}"
+    assert recientes == 1, "un envio de recien tiene que caer dentro de las ultimas 24 horas"
+    assert viejos == 0
 
 
 def test_la_pagina_de_baja_funciona_sin_login(tmp_path):

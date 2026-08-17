@@ -21,6 +21,17 @@ logger = logging.getLogger(__name__)
 _PAUSA_ENTRE_ENVIOS = 0.6
 _CADA_24_HORAS = 24 * 60 * 60
 
+# El resto de la base guarda las fechas asi (scraped_at, entre otras) y las
+# compara contra datetime('now', ...) de SQLite, que devuelve este mismo
+# formato. Un isoformat() con 'T' y offset no compara: rompe lexicograficamente
+# en la posicion 10.
+_FORMATO_FECHA = "%Y-%m-%d %H:%M:%S"
+
+
+def _ahora() -> str:
+    """UTC naive en el formato de la casa, comparable con datetime('now')."""
+    return datetime.now(timezone.utc).strftime(_FORMATO_FECHA)
+
 
 def _conn(db_path: str) -> sqlite3.Connection:
     return sqlite3.connect(db_path)
@@ -33,7 +44,7 @@ def registrar_envio(db_path: str, business_id: int) -> str:
     red que impide mandar dos veces, y tiene que fallar ruidosamente.
     """
     token = secrets.token_urlsafe(24)
-    ahora = datetime.now(timezone.utc).isoformat()
+    ahora = _ahora()
     conn = _conn(db_path)
     try:
         conn.execute(
@@ -48,7 +59,7 @@ def registrar_envio(db_path: str, business_id: int) -> str:
 
 def dar_de_baja(db_path: str, token: str) -> bool:
     """Marca la baja. Devuelve False si el token no existe."""
-    ahora = datetime.now(timezone.utc).isoformat()
+    ahora = _ahora()
     conn = _conn(db_path)
     try:
         cur = conn.execute(
