@@ -254,3 +254,94 @@ def test_vincular_a_otra_pagina_distinta_si_pega(db, notion_env):
     assert page_id == "3b365d94-deec-8018-9624-d8f91c06cf0c"
     patch_req.assert_called_once()
     assert get_task_by_id(db, task_id)["notion_page_id"] == "3b365d94-deec-8018-9624-d8f91c06cf0c"
+
+
+def _pagina(page_id, crm_id, estado):
+    return {"id": page_id,
+            "properties": {"CRM ID": {"number": crm_id},
+                           "Status": {"status": {"name": estado}}}}
+
+
+def test_el_pull_aplica_el_estado_de_notion(db, notion_env):
+    task_id = create_task(db, title="Movida en Notion", status="todo")
+    update_task(db, task_id, notion_page_id="pagina-1", notion_status="Backlog")
+
+    payload = {"results": [_pagina("pagina-1", task_id, "In progress")], "has_more": False}
+    with patch("services.notion_service.requests.post", return_value=_Resp(200, payload)):
+        assert ns.traer_y_aplicar(db) == 1
+
+    t = get_task_by_id(db, task_id)
+    assert t["status"] == "in_progress"
+    assert t["notion_status"] == "In progress"
+
+
+def test_un_movimiento_dentro_del_mismo_grupo_no_cambia_el_estado_del_crm(db, notion_env):
+    task_id = create_task(db, title="De Backlog a Up next", status="todo")
+    update_task(db, task_id, notion_page_id="pagina-1", notion_status="Backlog")
+
+    payload = {"results": [_pagina("pagina-1", task_id, "Up next")], "has_more": False}
+    with patch("services.notion_service.requests.post", return_value=_Resp(200, payload)):
+        ns.traer_y_aplicar(db)
+
+    t = get_task_by_id(db, task_id)
+    assert t["status"] == "todo"
+    # Pero si guardamos el estado fino: sin esto el proximo push le pisaria el
+    # "Up next" con un "Backlog".
+    assert t["notion_status"] == "Up next"
+
+
+def test_el_pull_ignora_paginas_sin_tarea_en_el_crm(db, notion_env):
+    payload = {"results": [_pagina("pagina-huerfana", 9999, "Done")], "has_more": False}
+    with patch("services.notion_service.requests.post", return_value=_Resp(200, payload)):
+        assert ns.traer_y_aplicar(db) == 0
+
+
+def test_el_pull_pagina_con_cursor(db, notion_env):
+    t1 = create_task(db, title="Una", status="todo")
+    t2 = create_task(db, title="Otra", status="todo")
+    update_task(db, t1, notion_page_id="p1", notion_status="Backlog")
+    update_task(db, t2, notion_page_id="p2", notion_status="Backlog")
+
+    respuestas = [
+        _Resp(200, {"results": [_pagina("p1", t1, "Done")],
+                    "has_more": True, "next_cursor": "cursor-2"}),
+        _Resp(200, {"results": [_pagina("p2", t2, "Done")], "has_more": False}),
+    ]
+    with patch("services.notion_service.requests.post", side_effect=respuestas) as post:
+        assert ns.traer_y_aplicar(db) == 2
+
+    assert post.call_count == 2
+    assert post.call_args_list[1].kwargs["json"]["start_cursor"] == "cursor-2"
+    assert get_task_by_id(db, t1)["status"] == "done"
+    assert get_task_by_id(db, t2)["status"] == "done"
+
+
+def test_el_pull_deja_actividad_a_nombre_de_notion(db, notion_env):
+    import sqlite3
+    task_id = create_task(db, title="Auditable", status="todo")
+    update_task(db, task_id, notion_page_id="pagina-1", notion_status="Backlog")
+
+    payload = {"results": [_pagina("pagina-1", task_id, "Done")], "has_more": False}
+    with patch("services.notion_service.requests.post", return_value=_Resp(200, payload)):
+        ns.traer_y_aplicar(db)
+
+    conn = sqlite3.connect(db)
+    filas = conn.execute(
+        "SELECT user_name, action, detail FROM activity_log WHERE entity_type='task'"
+    ).fetchall()
+    conn.close()
+    assert filas, "el cambio traido de Notion tiene que quedar en el log"
+    assert filas[0][0] == "notion"
+    assert "done" in filas[0][2]
+
+
+def test_el_pull_sin_token_no_pega_a_notion(db, monkeypatch):
+    monkeypatch.delenv("NOTION_TOKEN", raising=False)
+    with patch("services.notion_service.requests.post") as post:
+        assert ns.traer_y_aplicar(db) == 0
+    post.assert_not_called()
+
+
+def test_notion_caido_en_el_pull_no_propaga(db, notion_env):
+    with patch("services.notion_service.requests.post", side_effect=RuntimeError("boom")):
+        assert ns.traer_y_aplicar(db) == 0

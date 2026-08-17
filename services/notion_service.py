@@ -17,7 +17,7 @@ from datetime import datetime
 
 import requests
 
-from database import get_task_by_id, update_task
+from database import get_task_by_id, log_activity, update_task
 
 logger = logging.getLogger(__name__)
 
@@ -269,3 +269,75 @@ def vincular_pagina(db_path: str, task_id: int, url: str) -> str | None:
     update_task(db_path, task_id, status=grupo_de(estado))
     _marcar(db_path, task_id, estado, page_id=page_id)
     return page_id
+
+
+def _url_de_query(db_id: str) -> str:
+    """URL para consultar la database Tasks, con el mismo criterio que `_parent`."""
+    ds = os.environ.get("NOTION_DATA_SOURCE_ID", "")
+    if ds:
+        return f"{API}/data_sources/{ds}/query"
+    return f"{API}/databases/{db_id}/query"
+
+
+def traer_y_aplicar(db_path: str) -> int:
+    """Reconcilia: trae las paginas pareadas y aplica lo que Notion diga.
+
+    Un solo request (mas los que haga falta por cursor). No lleva timestamps:
+    compara el Status de Notion contra `notion_status`, que es el ultimo valor
+    que los dos lados acordaron. Si un sync se pierde, el siguiente ve el mismo
+    desajuste y lo arregla igual.
+
+    Escribe con update_task directo, nunca por el endpoint del CRM: por eso un
+    cambio traido de Notion no rebota de vuelta.
+    """
+    cfg = _config()
+    if not cfg:
+        return 0
+    token, version, db_id = cfg
+
+    cuerpo = {
+        "filter": {"property": "CRM ID", "number": {"is_not_empty": True}},
+        "page_size": 100,
+    }
+    cambiadas = 0
+    url = _url_de_query(db_id)
+
+    while True:
+        try:
+            r = requests.post(url, headers=_headers(token, version),
+                              json=cuerpo, timeout=TIMEOUT)
+            if r.status_code >= 300:
+                logger.warning("notion: query fallo con %s: %s", r.status_code, r.text[:300])
+                return cambiadas
+            data = r.json()
+        except Exception:
+            logger.warning("notion: query fallo", exc_info=True)
+            return cambiadas
+
+        for pagina in data.get("results", []):
+            props = pagina.get("properties", {})
+            task_id = props.get("CRM ID", {}).get("number")
+            if not task_id:
+                continue
+            tarea = get_task_by_id(db_path, int(task_id))
+            if not tarea:
+                continue  # la tarea se borro en el CRM; la tarjeta queda en paz
+
+            estado_notion = (props.get("Status", {}).get("status") or {}).get("name") or ""
+            if estado_notion == (tarea.get("notion_status") or ""):
+                continue  # nada cambio alla
+
+            nuevo_grupo = grupo_de(estado_notion)
+            if nuevo_grupo != (tarea.get("status") or "todo"):
+                update_task(db_path, int(task_id), status=nuevo_grupo)
+                log_activity(db_path, "notion", "task_updated", "task", int(task_id),
+                             tarea.get("title", ""), f"estado: {nuevo_grupo} (desde Notion)")
+                cambiadas += 1
+            # El estado fino se guarda igual, aunque el grupo no haya cambiado.
+            _marcar(db_path, int(task_id), estado_notion)
+
+        if not data.get("has_more"):
+            break
+        cuerpo["start_cursor"] = data.get("next_cursor")
+
+    return cambiadas
