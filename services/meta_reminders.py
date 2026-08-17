@@ -156,8 +156,22 @@ def enviar_recordatorios(db_path: str, base_url: str, dry_run: bool = False) -> 
             # significaria que ese lead nunca recibe nada.
             conn = _conn(db_path)
             try:
-                conn.execute("DELETE FROM meta_reminders WHERE business_id = ?", (lead["id"],))
-                conn.commit()
+                try:
+                    conn.execute("DELETE FROM meta_reminders WHERE business_id = ?", (lead["id"],))
+                    conn.commit()
+                except Exception:
+                    # Si esto tambien falla (ej. "database is locked"), el lead
+                    # queda registrado como si hubiera recibido el mail sin
+                    # haberlo recibido. No podemos arreglarlo solos: que quede
+                    # gritado en el log, con el id, para desmarcarlo a mano. Y
+                    # sobre todo, que no aborte la tanda de hoy por un lead.
+                    logger.error(
+                        f"Recordatorios Meta: el mail al lead {lead['id']} fallo y ademas "
+                        f"no se pudo limpiar el registro de envio (business_id={lead['id']}). "
+                        f"Va a quedar marcado como contactado sin haber recibido nada: "
+                        f"revisar/borrar manualmente el registro en meta_reminders.",
+                        exc_info=True,
+                    )
             finally:
                 conn.close()
             res["fallidos"] += 1

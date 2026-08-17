@@ -1,4 +1,5 @@
 import json
+import logging
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
@@ -182,3 +183,49 @@ def test_si_el_mail_falla_no_lo_da_por_enviado(db):
     assert res["enviados"] == 0
     assert res["fallidos"] == 1
     assert leads_a_recordar(db), "si no salio, tiene que poder reintentarse manana"
+
+
+class _ConexionQueFallaAlBorrar:
+    """Envuelve una conexion real de sqlite3 y hace fallar solo el DELETE de
+    limpieza de meta_reminders, para simular un "database is locked" en ese
+    paso puntual sin tocar el resto de las consultas. Todo lo demas (incluido
+    row_factory, que leads_a_recordar necesita) se delega a la conexion real."""
+
+    def __init__(self, real):
+        object.__setattr__(self, "_real", real)
+
+    def execute(self, sql, *args, **kwargs):
+        if sql.strip().startswith("DELETE FROM meta_reminders"):
+            raise sqlite3.OperationalError("database is locked")
+        return self._real.execute(sql, *args, **kwargs)
+
+    def __getattr__(self, name):
+        return getattr(self._real, name)
+
+    def __setattr__(self, name, value):
+        setattr(self._real, name, value)
+
+
+def test_si_el_borrado_de_limpieza_tambien_falla_no_aborta_la_tanda(db, caplog):
+    conn = sqlite3.connect(db)
+    _lead(conn, 80, dias=6)
+    _lead(conn, 81, dias=5)
+    conn.commit()
+    conn.close()
+
+    conectar_real = sqlite3.connect
+
+    def _conn_que_falla(db_path):
+        return _ConexionQueFallaAlBorrar(conectar_real(db_path))
+
+    with patch("services.meta_reminders._conn", side_effect=_conn_que_falla), \
+         patch("services.meta_reminders.send_meta_lead_reminder", return_value=False), \
+         caplog.at_level(logging.ERROR, logger="services.meta_reminders"):
+        res = enviar_recordatorios(db, "https://crm")
+
+    assert res["candidatos"] == 2
+    assert res["enviados"] == 0
+    assert res["fallidos"] == 2, "no exploto: proceso a los dos candidatos aunque el borrado fallara"
+    assert "80" in caplog.text and "81" in caplog.text, (
+        "el fallo de limpieza tiene que quedar visible en el log, con el id del lead"
+    )
