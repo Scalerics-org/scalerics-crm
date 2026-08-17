@@ -57,6 +57,15 @@ def test_sin_estado_conocido_en_notion_se_escribe():
     assert ns.hay_que_escribir("todo", None) is True
 
 
+def test_string_vacio_no_es_lo_mismo_que_nunca_sincronizado():
+    # "" es la tarjeta real en la columna "Sin Status" (grupo "todo"): si el
+    # CRM tambien esta en "todo" no hay nada que escribir. None es "todavia
+    # no sincronizamos esta tarea", que siempre escribe. Si alguien "simplifica"
+    # el `estado_notion or ""` de grupo_de, este test tiene que romperse.
+    assert ns.hay_que_escribir("todo", "") is False
+    assert ns.hay_que_escribir("todo", None) is True
+
+
 def test_las_columnas_de_notion_se_pueden_guardar(db):
     task_id = create_task(db, title="Probar Notion")
     update_task(db, task_id, notion_page_id="abc123", notion_status="Up next")
