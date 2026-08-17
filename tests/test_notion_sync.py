@@ -170,3 +170,50 @@ def test_un_500_de_notion_no_marca_el_estado_como_sincronizado(db, notion_env):
     with patch("services.notion_service.requests.patch", return_value=_Resp(500, {})):
         assert ns.empujar_estado(db, task_id) is False
     assert get_task_by_id(db, task_id)["notion_status"] == "Backlog"
+
+
+@pytest.mark.parametrize("url,esperado", [
+    ("https://app.notion.com/p/Implementar-notificaciones-3b365d94deec80189624d8f91c06cf0c",
+     "3b365d94-deec-8018-9624-d8f91c06cf0c"),
+    ("https://www.notion.so/3b365d94deec80189624d8f91c06cf0c?pvs=5",
+     "3b365d94-deec-8018-9624-d8f91c06cf0c"),
+    ("3b365d94-deec-8018-9624-d8f91c06cf0c",
+     "3b365d94-deec-8018-9624-d8f91c06cf0c"),
+])
+def test_se_saca_el_page_id_de_cualquier_forma_de_url(url, esperado):
+    assert ns.page_id_de_url(url) == esperado
+
+
+@pytest.mark.parametrize("basura", ["", "https://app.notion.com/p/sin-id", "cualquier cosa"])
+def test_una_url_sin_page_id_devuelve_none(basura):
+    assert ns.page_id_de_url(basura) is None
+
+
+def test_vincular_escribe_el_crm_id_y_lee_el_estado_actual(db, notion_env):
+    task_id = create_task(db, title="Ya existe en el tablero", status="todo")
+    respuesta = {"id": "3b365d94-deec-8018-9624-d8f91c06cf0c",
+                 "properties": {"Status": {"status": {"name": "On Hold"}}}}
+    with patch("services.notion_service.requests.patch",
+               return_value=_Resp(200, respuesta)) as patch_req:
+        page_id = ns.vincular_pagina(
+            db, task_id, "https://www.notion.so/3b365d94deec80189624d8f91c06cf0c")
+
+    assert page_id == "3b365d94-deec-8018-9624-d8f91c06cf0c"
+    cuerpo = patch_req.call_args.kwargs["json"]
+    # Vincular escribe SOLO el CRM ID. El Status de la tarjeta no se toca:
+    # la tarjeta ya vivia en el tablero y su estado es el que manda.
+    assert cuerpo["properties"] == {"CRM ID": {"number": task_id}}
+
+    t = get_task_by_id(db, task_id)
+    assert t["notion_page_id"] == "3b365d94-deec-8018-9624-d8f91c06cf0c"
+    assert t["notion_status"] == "On Hold"
+    # Y el estado del CRM se alinea con lo que decia Notion.
+    assert t["status"] == "in_progress"
+
+
+def test_vincular_con_una_url_invalida_no_toca_nada(db, notion_env):
+    task_id = create_task(db, title="Con URL mala")
+    with patch("services.notion_service.requests.patch") as patch_req:
+        assert ns.vincular_pagina(db, task_id, "no-es-una-url") is None
+    patch_req.assert_not_called()
+    assert get_task_by_id(db, task_id)["notion_page_id"] is None

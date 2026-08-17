@@ -12,6 +12,7 @@ aplaste un "Up next" del equipo con un "Backlog" que no aporta nada.
 
 import logging
 import os
+import re
 from datetime import datetime
 
 import requests
@@ -22,6 +23,10 @@ logger = logging.getLogger(__name__)
 
 API = "https://api.notion.com/v1"
 TIMEOUT = 20
+
+_UUID_SUELTO = re.compile(r"([0-9a-f]{32})", re.I)
+_UUID_CON_GUIONES = re.compile(
+    r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})", re.I)
 
 # Grupo del CRM al que pertenece cada estado de Notion. Verificado con
 # scripts/notion_smoke.py; ver docs/puesta-en-produccion-notion.md.
@@ -196,3 +201,61 @@ def empujar_estado(db_path: str, task_id: int) -> bool:
 
     _marcar(db_path, task_id, destino)
     return True
+
+
+def page_id_de_url(url: str) -> str | None:
+    """Saca el uuid de una URL de Notion y lo devuelve con guiones.
+
+    Las URLs vienen en dos formas: con el id pegado al final del slug del
+    titulo, o suelto. La API acepta las dos, pero normalizamos para que el
+    pareo contra `notion_page_id` sea siempre el mismo string.
+    """
+    if not url:
+        return None
+    con_guiones = _UUID_CON_GUIONES.search(url)
+    if con_guiones:
+        return con_guiones.group(1).lower()
+    suelto = _UUID_SUELTO.search(url.replace("-", ""))
+    if not suelto:
+        return None
+    h = suelto.group(1).lower()
+    return f"{h[0:8]}-{h[8:12]}-{h[12:16]}-{h[16:20]}-{h[20:32]}"
+
+
+def vincular_pagina(db_path: str, task_id: int, url: str) -> str | None:
+    """Pega una tarea del CRM a una tarjeta que ya existe en el tablero.
+
+    Escribe solo `CRM ID` en la pagina; el `Status` de la tarjeta queda como
+    esta y el CRM se alinea con el. La tarjeta ya vivia ahi, asi que su estado
+    es el que manda.
+    """
+    cfg = _config()
+    if not cfg:
+        return None
+    token, version, _ = cfg
+
+    page_id = page_id_de_url(url)
+    if not page_id:
+        return None
+    if not get_task_by_id(db_path, task_id):
+        return None
+
+    try:
+        r = requests.patch(
+            f"{API}/pages/{page_id}",
+            headers=_headers(token, version),
+            json={"properties": {"CRM ID": {"number": task_id}}},
+            timeout=TIMEOUT,
+        )
+        if r.status_code >= 300:
+            logger.warning("notion: vincular fallo con %s: %s", r.status_code, r.text[:300])
+            return None
+        estado = (r.json().get("properties", {})
+                  .get("Status", {}).get("status") or {}).get("name") or ""
+    except Exception:
+        logger.warning("notion: vincular fallo", exc_info=True)
+        return None
+
+    update_task(db_path, task_id, status=grupo_de(estado))
+    _marcar(db_path, task_id, estado, page_id=page_id)
+    return page_id
