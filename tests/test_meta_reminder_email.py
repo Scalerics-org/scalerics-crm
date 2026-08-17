@@ -1,10 +1,63 @@
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
-from services.email_service import send_meta_lead_reminder
+import pytest
+import requests
+
+from services.email_service import _send, _send_estado, send_meta_lead_reminder
 
 
 def _capturar():
-    return patch("services.email_service._send", return_value=True)
+    return patch("services.email_service._send_estado", return_value="ok")
+
+
+# ── Tri-estado del envio ───────────────────────────────────────────────────────
+
+def _respuesta(status=200):
+    r = MagicMock()
+    if status >= 400:
+        r.raise_for_status.side_effect = requests.exceptions.HTTPError(f"{status}")
+    return r
+
+
+@pytest.mark.parametrize("efecto, esperado", [
+    (None, "ok"),
+    (requests.exceptions.HTTPError("422"), "fallo"),
+    (requests.exceptions.ConnectionError("no hay red"), "fallo"),
+    (requests.exceptions.Timeout("tardo mas de 10s"), "desconocido"),
+    (ValueError("cualquier otra cosa"), "desconocido"),
+])
+def test_el_envio_distingue_fallo_de_no_se(monkeypatch, efecto, esperado):
+    """Un timeout NO es un fallo: Resend pudo haber aceptado el mail igual."""
+    monkeypatch.setenv("RESEND_API_KEY", "re_test")
+    if isinstance(efecto, requests.exceptions.HTTPError):
+        post = MagicMock(return_value=_respuesta(422))
+    elif efecto is None:
+        post = MagicMock(return_value=_respuesta(200))
+    else:
+        post = MagicMock(side_effect=efecto)
+
+    with patch("services.email_service.requests.post", post):
+        assert _send_estado("a@b.com", "asunto", "<p>x</p>") == esperado
+
+
+@pytest.mark.parametrize("efecto, esperado", [
+    (None, True),
+    (requests.exceptions.HTTPError("422"), False),
+    (requests.exceptions.Timeout("tardo"), False),
+])
+def test_send_sigue_devolviendo_bool_para_las_llamadas_de_siempre(monkeypatch, efecto, esperado):
+    monkeypatch.setenv("RESEND_API_KEY", "re_test")
+    if efecto is None:
+        post = MagicMock(return_value=_respuesta(200))
+    elif isinstance(efecto, requests.exceptions.HTTPError):
+        post = MagicMock(return_value=_respuesta(422))
+    else:
+        post = MagicMock(side_effect=efecto)
+
+    with patch("services.email_service.requests.post", post):
+        r = _send("a@b.com", "asunto", "<p>x</p>")
+
+    assert r is esperado, "las 6 llamadas existentes esperan un bool, no el tri-estado"
 
 
 def test_el_mail_sale_de_contacto_y_lleva_baja():

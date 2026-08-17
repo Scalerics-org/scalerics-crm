@@ -176,7 +176,7 @@ def test_correr_dos_veces_manda_un_solo_mail(db):
     conn.commit()
     conn.close()
 
-    with patch("services.meta_reminders.send_meta_lead_reminder", return_value=True) as enviar:
+    with patch("services.meta_reminders.send_meta_lead_reminder", return_value="ok") as enviar:
         primera = enviar_recordatorios(db, "https://crm")
         segunda = enviar_recordatorios(db, "https://crm")
 
@@ -205,12 +205,68 @@ def test_si_el_mail_falla_no_lo_da_por_enviado(db):
     conn.commit()
     conn.close()
 
-    with patch("services.meta_reminders.send_meta_lead_reminder", return_value=False):
+    with patch("services.meta_reminders.send_meta_lead_reminder", return_value="fallo"):
         res = enviar_recordatorios(db, "https://crm")
 
     assert res["enviados"] == 0
     assert res["fallidos"] == 1
     assert leads_a_recordar(db), "si no salio, tiene que poder reintentarse manana"
+
+
+def test_un_fallo_seguro_borra_el_registro_y_manana_se_reintenta(db):
+    """'fallo' es Resend diciendo que no: el mail no salio, se puede reintentar."""
+    conn = sqlite3.connect(db)
+    _lead(conn, 71, dias=5)
+    conn.commit()
+    conn.close()
+
+    with patch("services.meta_reminders.send_meta_lead_reminder", return_value="fallo"):
+        res = enviar_recordatorios(db, "https://crm")
+
+    conn = sqlite3.connect(db)
+    try:
+        (filas,) = conn.execute(
+            "SELECT COUNT(*) FROM meta_reminders WHERE business_id = 71"
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert filas == 0, "un fallo seguro borra el registro"
+    assert res["fallidos"] == 1
+    assert res.get("inciertos", 0) == 0
+    assert [x["id"] for x in leads_a_recordar(db)] == [71], "manana se reintenta"
+
+
+def test_un_envio_incierto_deja_la_fila_y_el_token_puestos(db, caplog):
+    """Un timeout pudo haber mandado el mail igual. Si borramos la fila, manana
+    le llega un segundo mail — y si la persona se dio de baja con el link de ese
+    primer mail, el token ya no existe y la baja no lo protege."""
+    conn = sqlite3.connect(db)
+    _lead(conn, 72, dias=5)
+    conn.commit()
+    conn.close()
+
+    with patch("services.meta_reminders.send_meta_lead_reminder", return_value="desconocido"), \
+         caplog.at_level(logging.ERROR, logger="services.meta_reminders"):
+        res = enviar_recordatorios(db, "https://crm")
+
+    conn = sqlite3.connect(db)
+    try:
+        fila = conn.execute(
+            "SELECT token FROM meta_reminders WHERE business_id = 72"
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert fila, "ante la duda la fila se queda: mandar de menos, no de mas"
+    assert res["enviados"] == 0
+    assert res["fallidos"] == 0, "un incierto no es un fallo"
+    assert res["inciertos"] == 1
+    assert "72" in caplog.text, "el incierto tiene que quedar en el log con el business_id"
+    assert leads_a_recordar(db) == [], "manana NO se le vuelve a escribir"
+
+    assert dar_de_baja(db, fila[0]) is True, "el link de baja de ese mail sigue sirviendo"
+    assert esta_dado_de_baja(db, 72) is True
 
 
 class _ConexionQueFallaAlBorrar:
@@ -247,7 +303,7 @@ def test_si_el_borrado_de_limpieza_tambien_falla_no_aborta_la_tanda(db, caplog):
         return _ConexionQueFallaAlBorrar(conectar_real(db_path))
 
     with patch("services.meta_reminders._conn", side_effect=_conn_que_falla), \
-         patch("services.meta_reminders.send_meta_lead_reminder", return_value=False), \
+         patch("services.meta_reminders.send_meta_lead_reminder", return_value="fallo"), \
          caplog.at_level(logging.ERROR, logger="services.meta_reminders"):
         res = enviar_recordatorios(db, "https://crm")
 

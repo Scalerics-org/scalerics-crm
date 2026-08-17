@@ -144,7 +144,7 @@ def leads_a_recordar(db_path: str, dias_minimos: int = 3, limite: int = 15) -> l
 
 def enviar_recordatorios(db_path: str, base_url: str, dry_run: bool = False) -> dict:
     candidatos = leads_a_recordar(db_path)
-    res = {"candidatos": len(candidatos), "enviados": 0, "fallidos": 0}
+    res = {"candidatos": len(candidatos), "enviados": 0, "fallidos": 0, "inciertos": 0}
 
     for lead in candidatos:
         if dry_run:
@@ -156,12 +156,25 @@ def enviar_recordatorios(db_path: str, base_url: str, dry_run: bool = False) -> 
             # Otra corrida se le adelanto. No es un error: es la guarda haciendo
             # su trabajo.
             continue
-        ok = send_meta_lead_reminder(
+        estado = send_meta_lead_reminder(
             lead["email"], lead["name"], lead["negocio"], lead["rubro"],
             f"{base_url.rstrip('/')}/baja/{token}",
         )
-        if ok:
+        if estado == "ok":
             res["enviados"] += 1
+        elif estado == "desconocido":
+            # No sabemos si el mail salio. Si borramos la fila, manana el lead
+            # vuelve a ser elegible y le llega un segundo mail; y si con el link
+            # del primero se dio de baja, el token se fue con la fila y la baja
+            # no lo protege. Se queda puesta: el silencio se arregla a mano.
+            res["inciertos"] += 1
+            logger.error(
+                f"Recordatorios Meta: envio incierto al lead {lead['id']} "
+                f"(business_id={lead['id']}, {lead['email']}): la peticion a Resend no "
+                f"confirmo ni fallo, pudo haber salido. Se DEJA el registro en "
+                f"meta_reminders para no mandarle dos veces; si se confirma que no "
+                f"llego, borrar la fila a mano para reintentar."
+            )
         else:
             # Se borra el registro para que manana se reintente: dejarlo puesto
             # significaria que ese lead nunca recibe nada.

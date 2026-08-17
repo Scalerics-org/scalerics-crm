@@ -87,11 +87,20 @@ def _muted(text: str) -> str:
 
 # ── Resend sender ───────────────────────────────────────────────────────────────
 
-def _send(to: str, subject: str, html: str, from_email: str | None = None, headers: dict | None = None) -> bool:
+def _send_estado(to: str, subject: str, html: str, from_email: str | None = None,
+                 headers: dict | None = None) -> str:
+    """Manda el mail y devuelve un tri-estado: "ok" / "fallo" / "desconocido".
+
+    La diferencia entre "fallo" y "desconocido" importa: "fallo" es *sabemos que
+    no salio* (Resend contesto un 4xx/5xx, o no llegamos a conectarnos), y por
+    lo tanto se puede reintentar sin riesgo. "desconocido" es un timeout o
+    cualquier otra excepcion: la peticion pudo haber llegado y el mail pudo
+    haber salido igual, asi que reintentar significa mandar dos veces.
+    """
     api_key = os.environ.get("RESEND_API_KEY", "")
     if not api_key:
         logger.info(f"[EMAIL STUB] {subject} → {to}")
-        return True
+        return "ok"
     try:
         cuerpo = {
             "from": from_email or os.environ.get("RESEND_FROM_EMAIL", "Scalerics CRM <crm@noreply.scalerics.com>"),
@@ -108,10 +117,27 @@ def _send(to: str, subject: str, html: str, from_email: str | None = None, heade
             timeout=10,
         )
         r.raise_for_status()
-        return True
-    except Exception as e:
+        return "ok"
+    except requests.exceptions.HTTPError as e:
+        # Resend contesto, y contesto que no. El mail no salio.
         logger.error(f"Failed to send '{subject}' to {to}: {e}")
-        return False
+        return "fallo"
+    except requests.exceptions.ConnectionError as e:
+        # Ni siquiera se establecio la conexion (ConnectTimeout cae aca, y esta
+        # bien: si el timeout fue al conectar, la peticion nunca se mando).
+        logger.error(f"Failed to send '{subject}' to {to}: {e}")
+        return "fallo"
+    except requests.exceptions.Timeout as e:
+        # Se mando y no volvio la respuesta a tiempo. Puede haber salido.
+        logger.error(f"Timeout sending '{subject}' to {to}, no sabemos si salio: {e}")
+        return "desconocido"
+    except Exception as e:
+        logger.error(f"Failed to send '{subject}' to {to}, no sabemos si salio: {e}")
+        return "desconocido"
+
+
+def _send(to: str, subject: str, html: str, from_email: str | None = None, headers: dict | None = None) -> bool:
+    return _send_estado(to, subject, html, from_email=from_email, headers=headers) == "ok"
 
 
 # ── Public functions ────────────────────────────────────────────────────────────
@@ -279,8 +305,14 @@ _TELEFONO = "+598 97 250 713"
 
 
 def send_meta_lead_reminder(to_email: str, lead_name: str, negocio: str,
-                            rubro: str, unsub_url: str) -> bool:
-    """Invita al lead a agendar una llamada. Sale de contacto@, no de crm@."""
+                            rubro: str, unsub_url: str) -> str:
+    """Invita al lead a agendar una llamada. Sale de contacto@, no de crm@.
+
+    Devuelve el tri-estado de `_send_estado` ("ok"/"fallo"/"desconocido"), no un
+    bool: quien lo llama tiene que poder distinguir "no salio" de "no se", que
+    es lo que decide si se reintenta manana o no. Ojo con evaluarlo por
+    verdad — "fallo" es un string y es truthy.
+    """
     # Nombre, negocio y rubro salen del formulario de Meta: los llena cualquiera.
     nombre_esc  = html.escape((lead_name or "").strip() or "Hola")
     negocio_esc = html.escape((negocio or "").strip())
@@ -319,7 +351,7 @@ def send_meta_lead_reminder(to_email: str, lead_name: str, negocio: str,
     cuerpo_html = cuerpo_html.replace("</body>", f"{firma}</body>")
 
     asunto = f"{(lead_name or 'Hola').replace(chr(10), ' ').replace(chr(13), ' ')}, ¿agendamos una llamada?"
-    return _send(
+    return _send_estado(
         to_email, asunto, cuerpo_html,
         from_email=_REMITENTE_LEADS,
         headers={"List-Unsubscribe": f"<{unsub_url}>"},
