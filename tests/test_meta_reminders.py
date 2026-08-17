@@ -31,3 +31,32 @@ def test_la_baja_marca_al_lead(db):
 
 def test_un_token_que_no_existe_no_rompe(db):
     assert dar_de_baja(db, "token-inventado") is False
+
+
+def test_la_pagina_de_baja_funciona_sin_login(tmp_path):
+    from dashboard import create_app
+    from services.meta_reminders import esta_dado_de_baja, registrar_envio
+
+    ruta = str(tmp_path / "baja.db")
+    init_db(ruta)  # create_app NO crea las tablas: eso lo hace server.py aparte
+    app = create_app(ruta)
+    app.config["TESTING"] = True
+    token = registrar_envio(ruta, 99)
+
+    r = app.test_client().get(f"/baja/{token}")
+
+    assert r.status_code == 200, "la pagina de baja no puede exigir login"
+    assert esta_dado_de_baja(ruta, 99) is True
+
+
+def test_la_pagina_de_baja_con_token_invalido_no_rompe(tmp_path):
+    from dashboard import create_app
+
+    ruta = str(tmp_path / "baja2.db")
+    init_db(ruta)
+    app = create_app(ruta)
+    app.config["TESTING"] = True
+
+    r = app.test_client().get("/baja/no-existe")
+
+    assert r.status_code == 200, "un token viejo o mal copiado muestra una pagina, no un error"
