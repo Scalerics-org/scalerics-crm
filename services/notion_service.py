@@ -127,6 +127,14 @@ def _parent(db_id: str) -> dict:
     return {"database_id": db_id}
 
 
+def _url_de_query(db_id: str) -> str:
+    """URL para consultar la database Tasks, con el mismo criterio que `_parent`."""
+    ds = os.environ.get("NOTION_DATA_SOURCE_ID", "")
+    if ds:
+        return f"{API}/data_sources/{ds}/query"
+    return f"{API}/databases/{db_id}/query"
+
+
 def _marcar(db_path: str, task_id: int, estado_notion: str, page_id: str | None = None) -> None:
     """Guarda en la tarea el resultado de una escritura exitosa a Notion."""
     campos = {
@@ -138,12 +146,47 @@ def _marcar(db_path: str, task_id: int, estado_notion: str, page_id: str | None 
     update_task(db_path, task_id, **campos)
 
 
+def _buscar_pagina_por_crm_id(token: str, version: str, db_id: str,
+                              task_id: int) -> dict | None:
+    """Busca en el tablero una pagina que ya tenga este `CRM ID`.
+
+    Es la segunda defensa contra duplicados: si el POST de una creacion
+    anterior se perdio en el camino (timeout de lectura, conexion cortada)
+    despues de que Notion ya creo la pagina, la tarea del CRM quedo sin
+    `notion_page_id` y el proximo click en `-> N` crearia una segunda tarjeta
+    en un tablero que usa el equipo.
+
+    Devuelve None tanto cuando no hay ninguna como cuando la busqueda fallo:
+    el llamador trata los dos casos igual y sigue con la creacion, que era el
+    comportamiento anterior. "No sabemos" no habilita a inventar otra cosa,
+    pero el fallo queda logueado.
+    """
+    try:
+        r = requests.post(
+            _url_de_query(db_id),
+            headers=_headers(token, version),
+            json={"filter": {"property": "CRM ID", "number": {"equals": task_id}},
+                  "page_size": 1},
+            timeout=TIMEOUT,
+        )
+        if r.status_code >= 300:
+            logger.warning("notion: buscar por CRM ID fallo con %s: %s",
+                           r.status_code, r.text[:300])
+            return None
+        resultados = r.json().get("results") or []
+    except Exception:
+        logger.warning("notion: buscar por CRM ID fallo", exc_info=True)
+        return None
+    return resultados[0] if resultados else None
+
+
 def crear_pagina(db_path: str, task_id: int) -> str | None:
     """Crea la tarjeta en Notion para una tarea del CRM.
 
-    Idempotente por diseno: si la tarea ya tiene `notion_page_id` devuelve ese
-    y no toca Notion. Es la primera de las defensas contra duplicados en un
-    tablero que usa el equipo.
+    Dos defensas contra duplicados en un tablero que usa el equipo: si la
+    tarea ya tiene `notion_page_id` devuelve ese y no toca Notion, y si no lo
+    tiene igual busca por `CRM ID` antes de crear, por si una creacion
+    anterior llego a Notion y la respuesta se perdio.
     """
     cfg = _config()
     if not cfg:
@@ -155,6 +198,18 @@ def crear_pagina(db_path: str, task_id: int) -> str | None:
         return None
     if tarea.get("notion_page_id"):
         return tarea["notion_page_id"]
+
+    ya = _buscar_pagina_por_crm_id(token, version, db_id, task_id)
+    if ya and ya.get("id"):
+        # La pagina ya existe con este CRM ID: la pareamos en vez de crear otra.
+        # Su Status manda, igual que en vincular_pagina: la tarjeta ya vive en
+        # el tablero.
+        props = ya.get("properties") or {}
+        estado_previo = ((props.get("Status") or {}).get("status") or {}).get("name") or ""
+        logger.warning("notion: la tarea %s ya tenia la pagina %s con su CRM ID; "
+                       "la pareo en vez de crear otra", task_id, ya["id"])
+        _marcar(db_path, task_id, estado_previo, page_id=ya["id"])
+        return ya["id"]
 
     estado = estado_notion_para(tarea.get("status") or "todo")
     cuerpo = {
@@ -239,12 +294,41 @@ def page_id_de_url(url: str) -> str | None:
     return f"{h[0:8]}-{h[8:12]}-{h[12:16]}-{h[16:20]}-{h[20:32]}"
 
 
+def _limpiar_crm_id(token: str, version: str, page_id: str) -> bool:
+    """Saca el `CRM ID` de la pagina que el CRM deja de tener pareada.
+
+    Es una escritura sobre una pagina que **si** tiene `CRM ID` (justamente la
+    que estaba pareada), asi que no viola la restriccion de no tocar paginas
+    que el CRM no puso ahi.
+    """
+    try:
+        r = requests.patch(
+            f"{API}/pages/{page_id}",
+            headers=_headers(token, version),
+            json={"properties": {"CRM ID": {"number": None}}},
+            timeout=TIMEOUT,
+        )
+        if r.status_code >= 300:
+            logger.warning("notion: soltar el CRM ID de %s fallo con %s: %s",
+                           page_id, r.status_code, r.text[:300])
+            return False
+    except Exception:
+        logger.warning("notion: soltar el CRM ID de %s fallo", page_id, exc_info=True)
+        return False
+    return True
+
+
 def vincular_pagina(db_path: str, task_id: int, url: str) -> str | None:
     """Pega una tarea del CRM a una tarjeta que ya existe en el tablero.
 
     Escribe solo `CRM ID` en la pagina; el `Status` de la tarjeta queda como
     esta y el CRM se alinea con el. La tarjeta ya vivia ahi, asi que su estado
     es el que manda.
+
+    Re-apuntar una tarea a otra tarjeta es valido, pero antes hay que soltar la
+    tarjeta vieja: dos paginas con el mismo `CRM ID` matchean las dos contra la
+    misma tarea en el pull, y cada sync le invierte el estado. Si soltarla
+    falla, no se re-vincula.
     """
     cfg = _config()
     if not cfg:
@@ -257,11 +341,20 @@ def vincular_pagina(db_path: str, task_id: int, url: str) -> str | None:
     tarea = get_task_by_id(db_path, task_id)
     if not tarea:
         return None
-    if tarea.get("notion_page_id") == page_id:
+    anterior = tarea.get("notion_page_id")
+    if anterior == page_id:
         # Ya esta vinculada a esta misma pagina: no hay nada que pegar de
         # nuevo. Re-vincular a una pagina DISTINTA si es valido, y sigue
         # abajo.
         return page_id
+
+    if anterior and not _limpiar_crm_id(token, version, anterior):
+        # Mejor no re-vincular que dejar dos paginas peleando por el mismo id:
+        # con las dos pareadas, cada pull invierte el estado de la tarea y no
+        # converge nunca.
+        logger.warning("notion: no re-vinculo la tarea %s porque no pude soltar "
+                       "la pagina %s", task_id, anterior)
+        return None
 
     try:
         r = requests.patch(
@@ -282,14 +375,6 @@ def vincular_pagina(db_path: str, task_id: int, url: str) -> str | None:
     update_task(db_path, task_id, status=grupo_de(estado))
     _marcar(db_path, task_id, estado, page_id=page_id)
     return page_id
-
-
-def _url_de_query(db_id: str) -> str:
-    """URL para consultar la database Tasks, con el mismo criterio que `_parent`."""
-    ds = os.environ.get("NOTION_DATA_SOURCE_ID", "")
-    if ds:
-        return f"{API}/data_sources/{ds}/query"
-    return f"{API}/databases/{db_id}/query"
 
 
 def traer_y_aplicar(db_path: str) -> int:

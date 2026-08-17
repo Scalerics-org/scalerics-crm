@@ -127,6 +127,53 @@ def test_no_se_crea_una_segunda_pagina_para_la_misma_tarea(db, notion_env):
     post.assert_not_called()
 
 
+def test_crear_no_duplica_si_ya_hay_una_pagina_con_ese_crm_id(db, notion_env):
+    # El POST anterior llego a Notion y la respuesta se perdio: la tarea quedo
+    # sin notion_page_id pero la tarjeta existe. Crear otra deja el tablero del
+    # equipo con dos tarjetas para la misma tarea.
+    task_id = create_task(db, title="El POST se perdio", status="todo")
+    encontrada = {"results": [{"id": "pagina-huerfana",
+                               "properties": {"Status": {"status": {"name": "Up next"}}}}]}
+    with patch("services.notion_service.requests.post",
+               return_value=_Resp(200, encontrada)) as post:
+        assert ns.crear_pagina(db, task_id) == "pagina-huerfana"
+
+    # Un solo request y es la busqueda: nunca se POSTea a /v1/pages.
+    post.assert_called_once()
+    assert post.call_args.args[0].endswith("/query")
+    assert post.call_args.kwargs["json"]["filter"] == {
+        "property": "CRM ID", "number": {"equals": task_id}}
+    t = get_task_by_id(db, task_id)
+    assert t["notion_page_id"] == "pagina-huerfana"
+    # Y el estado que manda es el de la tarjeta que ya estaba en el tablero.
+    assert t["notion_status"] == "Up next"
+
+
+def test_crear_cuando_la_busqueda_no_encuentra_nada(db, notion_env):
+    task_id = create_task(db, title="Nueva de verdad", status="todo")
+    respuestas = [_Resp(200, {"results": []}), _Resp(200, {"id": "pagina-nueva"})]
+    with patch("services.notion_service.requests.post", side_effect=respuestas) as post:
+        assert ns.crear_pagina(db, task_id) == "pagina-nueva"
+
+    assert post.call_count == 2
+    assert post.call_args_list[0].args[0].endswith("/query")
+    assert post.call_args_list[1].args[0].endswith("/pages")
+    assert get_task_by_id(db, task_id)["notion_page_id"] == "pagina-nueva"
+
+
+@pytest.mark.parametrize("fallo", [RuntimeError("timeout"), _Resp(400, {})])
+def test_si_la_busqueda_previa_falla_se_crea_igual(db, notion_env, fallo):
+    # El estado previo era "no sabemos", y crear era el comportamiento anterior:
+    # una busqueda rota no puede bloquear el camino feliz.
+    task_id = create_task(db, title="Busqueda rota", status="todo")
+    with patch("services.notion_service.requests.post",
+               side_effect=[fallo, _Resp(200, {"id": "pagina-nueva"})]) as post:
+        assert ns.crear_pagina(db, task_id) == "pagina-nueva"
+
+    assert post.call_count == 2
+    assert get_task_by_id(db, task_id)["notion_page_id"] == "pagina-nueva"
+
+
 def test_empujar_no_escribe_si_el_grupo_no_cambio(db, notion_env):
     task_id = create_task(db, title="Pendiente", status="todo")
     update_task(db, task_id, notion_page_id="pagina-1", notion_status="Up next")
@@ -242,18 +289,51 @@ def test_vincular_ya_vinculada_a_la_misma_pagina_no_pega_de_nuevo(db, notion_env
     patch_req.assert_not_called()
 
 
-def test_vincular_a_otra_pagina_distinta_si_pega(db, notion_env):
+_NUEVA = "3b365d94-deec-8018-9624-d8f91c06cf0c"
+_URL_NUEVA = "https://www.notion.so/3b365d94deec80189624d8f91c06cf0c"
+
+
+def test_re_vincular_suelta_la_pagina_vieja_antes_de_reclamar_la_nueva(db, notion_env):
+    # Sin soltar la vieja quedan DOS paginas con el mismo CRM ID: el pull
+    # matchea las dos contra la misma tarea y cada sync le invierte el estado.
     task_id = create_task(db, title="Se re-vincula", status="todo")
-    update_task(db, task_id, notion_page_id="pagina-vieja")
-    respuesta = {"id": "3b365d94-deec-8018-9624-d8f91c06cf0c",
-                 "properties": {"Status": {"status": {"name": "Done"}}}}
+    update_task(db, task_id, notion_page_id="pagina-vieja", notion_status="Backlog")
+    respuesta = {"id": _NUEVA, "properties": {"Status": {"status": {"name": "Done"}}}}
     with patch("services.notion_service.requests.patch",
-               return_value=_Resp(200, respuesta)) as patch_req:
-        page_id = ns.vincular_pagina(
-            db, task_id, "https://www.notion.so/3b365d94deec80189624d8f91c06cf0c")
-    assert page_id == "3b365d94-deec-8018-9624-d8f91c06cf0c"
+               side_effect=[_Resp(200, {}), _Resp(200, respuesta)]) as patch_req:
+        page_id = ns.vincular_pagina(db, task_id, _URL_NUEVA)
+
+    assert page_id == _NUEVA
+    assert patch_req.call_count == 2
+    primera, segunda = patch_req.call_args_list
+    # Primero se le saca el CRM ID a la vieja...
+    assert primera.args[0].endswith("pagina-vieja")
+    assert primera.kwargs["json"] == {"properties": {"CRM ID": {"number": None}}}
+    # ...y solo despues se reclama la nueva. Queda exactamente una con el id.
+    assert segunda.args[0].endswith(_NUEVA)
+    assert segunda.kwargs["json"] == {"properties": {"CRM ID": {"number": task_id}}}
+
+    t = get_task_by_id(db, task_id)
+    assert t["notion_page_id"] == _NUEVA
+    assert t["notion_status"] == "Done"
+    assert t["status"] == "done"
+
+
+def test_si_no_se_puede_soltar_la_pagina_vieja_no_se_re_vincula(db, notion_env):
+    task_id = create_task(db, title="No se puede soltar", status="todo")
+    update_task(db, task_id, notion_page_id="pagina-vieja", notion_status="Backlog")
+    respuesta = {"id": _NUEVA, "properties": {"Status": {"status": {"name": "Done"}}}}
+    with patch("services.notion_service.requests.patch",
+               side_effect=[_Resp(400, {}), _Resp(200, respuesta)]) as patch_req:
+        assert ns.vincular_pagina(db, task_id, _URL_NUEVA) is None
+
+    # El unico request fue el intento de soltar la vieja: la pagina nueva no se
+    # toca. Mejor no re-vincular que dejar dos paginas peleando por el mismo id.
     patch_req.assert_called_once()
-    assert get_task_by_id(db, task_id)["notion_page_id"] == "3b365d94-deec-8018-9624-d8f91c06cf0c"
+    assert patch_req.call_args.args[0].endswith("pagina-vieja")
+    t = get_task_by_id(db, task_id)
+    assert t["notion_page_id"] == "pagina-vieja"
+    assert t["notion_status"] == "Backlog"
 
 
 def _pagina(page_id, crm_id, estado):
