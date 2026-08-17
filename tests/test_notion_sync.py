@@ -157,6 +157,28 @@ def test_crear_no_duplica_si_ya_hay_una_pagina_con_ese_crm_id(db, notion_env):
     assert t["notion_page_id"] == "pagina-huerfana"
     # Y el estado que manda es el de la tarjeta que ya estaba en el tablero.
     assert t["notion_status"] == "Up next"
+    assert t["status"] == "todo"  # mismo grupo que Up next: no se mueve
+
+
+def test_al_encontrar_la_pagina_el_crm_se_alinea_con_su_estado(db, notion_env):
+    # Con grupos distintos se ve el problema: si el CRM no se alinea, el pull
+    # saltea esa fila para siempre (estado_notion == notion_status) y el proximo
+    # cambio de estado del CRM le empuja su grupo viejo a la tarjeta del equipo.
+    task_id = create_task(db, title="El CRM la creia pendiente", status="todo")
+    encontrada = {"results": [{"id": "pagina-huerfana",
+                               "properties": {"Status": {"status": {"name": "Done"}}}}]}
+    with patch("services.notion_service.requests.post",
+               return_value=_Resp(200, encontrada)):
+        assert ns.crear_pagina(db, task_id) == "pagina-huerfana"
+
+    t = get_task_by_id(db, task_id)
+    assert t["notion_status"] == "Done"
+    assert t["status"] == "done"
+
+    # Y por lo tanto el push siguiente no le escribe nada a la tarjeta.
+    with patch("services.notion_service.requests.patch") as patch_req:
+        assert ns.empujar_estado(db, task_id) is False
+    patch_req.assert_not_called()
 
 
 def test_crear_cuando_la_busqueda_no_encuentra_nada(db, notion_env):

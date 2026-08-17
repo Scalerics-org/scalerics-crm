@@ -196,7 +196,8 @@ def crear_pagina(db_path: str, task_id: int) -> str | None:
     Dos defensas contra duplicados en un tablero que usa el equipo: si la
     tarea ya tiene `notion_page_id` devuelve ese y no toca Notion, y si no lo
     tiene igual busca por `CRM ID` antes de crear, por si una creacion
-    anterior llego a Notion y la respuesta se perdio.
+    anterior llego a Notion y la respuesta se perdio. Cuando la encuentra, el
+    CRM se alinea con el estado de esa tarjeta, como en `vincular_pagina`.
     """
     cfg = _config()
     if not cfg:
@@ -212,12 +213,15 @@ def crear_pagina(db_path: str, task_id: int) -> str | None:
     ya = _buscar_pagina_por_crm_id(token, version, db_id, task_id)
     if ya and ya.get("id"):
         # La pagina ya existe con este CRM ID: la pareamos en vez de crear otra.
-        # Su Status manda, igual que en vincular_pagina: la tarjeta ya vive en
-        # el tablero.
+        # Su Status manda, igual que en vincular_pagina: la tarjeta ya vive en el
+        # tablero, asi que el CRM se alinea con ella. Sin alinear el status, el
+        # pull saltearia esa fila para siempre (estado_notion == notion_status) y
+        # el proximo cambio de estado del CRM le empujaria su grupo viejo.
         props = ya.get("properties") or {}
         estado_previo = ((props.get("Status") or {}).get("status") or {}).get("name") or ""
         logger.warning("notion: la tarea %s ya tenia la pagina %s con su CRM ID; "
                        "la pareo en vez de crear otra", task_id, ya["id"])
+        update_task(db_path, task_id, status=grupo_de(estado_previo))
         _marcar(db_path, task_id, estado_previo, page_id=ya["id"])
         return ya["id"]
 
