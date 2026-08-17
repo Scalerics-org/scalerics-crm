@@ -379,6 +379,30 @@ def test_si_no_se_puede_soltar_la_pagina_vieja_no_se_re_vincula(db, notion_env):
     assert t["notion_status"] == "Backlog"
 
 
+@pytest.mark.parametrize("reclamo_fallido", [_Resp(404, {}), RuntimeError("timeout")])
+def test_si_se_solto_la_vieja_y_el_reclamo_falla_la_tarea_queda_sin_pareo(
+        db, notion_env, reclamo_fallido):
+    # El peor estado posible seria quedarse apuntando a la pagina vieja, a la que
+    # le acabamos de sacar el CRM ID: el pull deja de matchearla y empujar_estado
+    # seguiria escribiendo Status en una pagina sin CRM ID.
+    task_id = create_task(db, title="Reclamo fallido", status="todo")
+    update_task(db, task_id, notion_page_id="pagina-vieja", notion_status="Backlog")
+    with patch("services.notion_service.requests.patch",
+               side_effect=[_Resp(200, {}), reclamo_fallido]) as patch_req:
+        assert ns.vincular_pagina(db, task_id, _URL_NUEVA) is None
+
+    assert patch_req.call_count == 2
+    t = get_task_by_id(db, task_id)
+    assert t["notion_page_id"] is None
+    assert t["notion_status"] is None
+    assert t["notion_synced_at"] is None
+
+    # Y sin pareo, el push no le escribe a ninguna pagina.
+    with patch("services.notion_service.requests.patch") as p2:
+        assert ns.empujar_estado(db, task_id) is False
+    p2.assert_not_called()
+
+
 def test_vincular_una_tarjeta_sin_status_persiste_string_vacio_y_no_empuja(db, notion_env):
     """El comportamiento load-bearing de toda la distincion None vs "".
 

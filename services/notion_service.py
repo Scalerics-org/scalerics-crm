@@ -332,6 +332,26 @@ def _limpiar_crm_id(token: str, version: str, page_id: str) -> bool:
     return True
 
 
+def _despareja(db_path: str, task_id: int, anterior: str | None) -> None:
+    """Deja la tarea sin pareo cuando se solto la vieja y no se pudo reclamar la nueva.
+
+    Si nos quedaramos con `anterior` en la base, el CRM apuntaria a una pagina a
+    la que le acabamos de sacar el `CRM ID`: el pull dejaria de matchearla y
+    `empujar_estado` seguiria escribiendo `Status` en una pagina sin `CRM ID`,
+    que es justo la invariante que sostiene toda esta rama. Sin pareo, la tarea
+    vuelve a un estado legitimo y la persona puede reintentar con la URL buena.
+
+    Devuelve None siempre, para poder escribir `return _despareja(...)`.
+    """
+    if not anterior:
+        return None
+    update_task(db_path, task_id, notion_page_id=None, notion_status=None,
+                notion_synced_at=None)
+    logger.warning("notion: la tarea %s quedo sin pareo: solte la pagina %s y no "
+                   "pude reclamar la nueva", task_id, anterior)
+    return None
+
+
 def vincular_pagina(db_path: str, task_id: int, url: str) -> str | None:
     """Pega una tarea del CRM a una tarjeta que ya existe en el tablero.
 
@@ -343,6 +363,10 @@ def vincular_pagina(db_path: str, task_id: int, url: str) -> str | None:
     tarjeta vieja: dos paginas con el mismo `CRM ID` matchean las dos contra la
     misma tarea en el pull, y cada sync le invierte el estado. Si soltarla
     falla, no se re-vincula.
+
+    Y si la vieja se solto pero la nueva no se pudo reclamar, la tarea queda
+    **sin pareo** (ver `_despareja`): nunca apuntando a una pagina a la que le
+    sacamos el `CRM ID`.
     """
     cfg = _config()
     if not cfg:
@@ -379,12 +403,12 @@ def vincular_pagina(db_path: str, task_id: int, url: str) -> str | None:
         )
         if r.status_code >= 300:
             logger.warning("notion: vincular fallo con %s: %s", r.status_code, r.text[:300])
-            return None
+            return _despareja(db_path, task_id, anterior)
         estado = (r.json().get("properties", {})
                   .get("Status", {}).get("status") or {}).get("name") or ""
     except Exception:
         logger.warning("notion: vincular fallo", exc_info=True)
-        return None
+        return _despareja(db_path, task_id, anterior)
 
     update_task(db_path, task_id, status=grupo_de(estado))
     _marcar(db_path, task_id, estado, page_id=page_id)
