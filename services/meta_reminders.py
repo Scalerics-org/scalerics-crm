@@ -23,6 +23,10 @@ _CADA_24_HORAS = 24 * 60 * 60
 # Tope de mails por dia, no por corrida: la maquina se reinicia sola (un secret
 # nuevo en Fly la reinicia) y sin este tope cada reinicio dispara otros 15.
 _TOPE_DIARIO = 15
+# Un lead que entro hace entre 3 y 7 dias todavia se acuerda de que dejo sus
+# datos: va primero, aunque haya backlog de meses esperando. Sin esto, el lead
+# mas caliente es el ultimo en recibir el mail.
+_VENTANA_RECIEN_ELEGIBLE_DIAS = 7
 
 # El resto de la base guarda las fechas asi (scraped_at, entre otras) y las
 # compara contra datetime('now', ...) de SQLite, que devuelve este mismo
@@ -116,7 +120,11 @@ def enviados_ultimas_24h(db_path: str) -> int:
 
 
 def leads_a_recordar(db_path: str, dias_minimos: int = 3, limite: int = _TOPE_DIARIO) -> list[dict]:
-    """Leads de Meta que corresponde recordar hoy, del mas viejo al mas nuevo.
+    """Leads de Meta que corresponde recordar hoy.
+
+    Primero los recien elegibles (los que entraron hace entre `dias_minimos` y
+    `_VENTANA_RECIEN_ELEGIBLE_DIAS` dias) y despues se completa el cupo con los
+    mas viejos del backlog.
 
     Las guardas viven todas en el WHERE a proposito: que un lead quede fuera
     no puede depender de que el llamador se acuerde de filtrarlo.
@@ -135,10 +143,12 @@ def leads_a_recordar(db_path: str, dias_minimos: int = 3, limite: int = _TOPE_DI
                AND r.id IS NULL
                AND b.scraped_at IS NOT NULL
                AND b.scraped_at <= datetime('now', ?)
-          ORDER BY b.scraped_at ASC
+          ORDER BY (b.scraped_at >= datetime('now', ?)) DESC, b.scraped_at ASC
              LIMIT ?
             """,
-            (f"-{int(dias_minimos)} days", int(limite)),
+            (f"-{int(dias_minimos)} days",
+             f"-{int(_VENTANA_RECIEN_ELEGIBLE_DIAS)} days",
+             int(limite)),
         ).fetchall()
     finally:
         conn.close()

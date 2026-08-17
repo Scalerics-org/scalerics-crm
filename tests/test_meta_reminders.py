@@ -146,7 +146,7 @@ def test_no_repite_a_quien_ya_recibio(db):
     assert leads_a_recordar(db) == []
 
 
-def test_respeta_el_limite_y_prioriza_a_los_mas_viejos(db):
+def test_respeta_el_limite_y_completa_el_cupo_con_los_mas_viejos(db):
     conn = sqlite3.connect(db)
     for i, dias in enumerate([5, 40, 20], start=20):
         _lead(conn, i, dias=dias)
@@ -155,7 +155,29 @@ def test_respeta_el_limite_y_prioriza_a_los_mas_viejos(db):
 
     elegidos = [x["id"] for x in leads_a_recordar(db, limite=2)]
 
-    assert elegidos == [21, 22], "primero el de 40 dias, despues el de 20"
+    assert elegidos == [20, 21], (
+        "primero el recien elegible (5 dias) y despues el mas viejo del backlog (40)"
+    )
+
+
+def test_un_lead_nuevo_no_espera_a_que_drene_el_backlog(db):
+    """El spec promete que un lead nuevo con mail recibe el recordatorio a los 3
+    dias. Con ORDER BY scraped_at ASC a secas quedaba detras de todo el backlog,
+    o sea a ~12 dias."""
+    conn = sqlite3.connect(db)
+    for i in range(20):
+        _lead(conn, 300 + i, dias=60 + i)
+    _lead(conn, 400, dias=4)
+    conn.commit()
+    conn.close()
+
+    elegidos = [x["id"] for x in leads_a_recordar(db)]
+
+    assert len(elegidos) == 15
+    assert elegidos[0] == 400, "el lead de 4 dias es el mas caliente: va primero"
+    assert elegidos[1:] == [319, 318, 317, 316, 315, 314, 313, 312, 311, 310, 309, 308, 307, 306], (
+        "el resto del cupo lo completan los mas viejos del backlog"
+    )
 
 
 def test_trae_los_datos_para_personalizar(db):
