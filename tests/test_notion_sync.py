@@ -357,6 +357,31 @@ def test_si_no_se_puede_soltar_la_pagina_vieja_no_se_re_vincula(db, notion_env):
     assert t["notion_status"] == "Backlog"
 
 
+def test_vincular_una_tarjeta_sin_status_persiste_string_vacio_y_no_empuja(db, notion_env):
+    """El comportamiento load-bearing de toda la distincion None vs "".
+
+    Una tarjeta en la columna "Sin Status" tiene que quedar guardada como "" y
+    no como NULL: con NULL, `hay_que_escribir` cree que la tarea nunca se
+    sincronizo y el push siguiente le escribe "Backlog" a una tarjeta que el
+    equipo dejo a proposito sin status.
+    """
+    task_id = create_task(db, title="En Sin Status", status="todo")
+    respuesta = {"id": _NUEVA, "properties": {"Status": {"status": None}}}
+    with patch("services.notion_service.requests.patch",
+               return_value=_Resp(200, respuesta)):
+        assert ns.vincular_pagina(db, task_id, _URL_NUEVA) == _NUEVA
+
+    t = get_task_by_id(db, task_id)
+    assert t["notion_status"] == ""
+    assert t["notion_status"] is not None
+    assert t["status"] == "todo"
+
+    # Y por eso el push siguiente no sale.
+    with patch("services.notion_service.requests.patch") as patch_req:
+        assert ns.empujar_estado(db, task_id) is False
+    patch_req.assert_not_called()
+
+
 def _pagina(page_id, crm_id, estado):
     return {"id": page_id,
             "properties": {"CRM ID": {"number": crm_id},

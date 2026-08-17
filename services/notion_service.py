@@ -252,7 +252,7 @@ def empujar_estado(db_path: str, task_id: int) -> bool:
     cfg = _config()
     if not cfg:
         return False
-    token, version, db_id = cfg
+    token, version, _ = cfg
 
     tarea = get_task_by_id(db_path, task_id)
     if not tarea or not tarea.get("notion_page_id"):
