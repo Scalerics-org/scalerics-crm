@@ -307,6 +307,41 @@ def test_dry_run_no_manda_ni_registra(db):
     assert leads_a_recordar(db), "sigue elegible: el dry-run no registro nada"
 
 
+def test_el_override_intercepta_el_destinatario(db, monkeypatch, caplog):
+    """META_NOTIFY_OVERRIDE es la valvula para probar el camino completo contra
+    una casilla propia sin escribirle a un lead real."""
+    conn = sqlite3.connect(db)
+    _lead(conn, 95, dias=5)
+    conn.commit()
+    conn.close()
+
+    monkeypatch.setenv("META_NOTIFY_OVERRIDE", "yo@gmail.com")
+
+    with patch("services.meta_reminders.send_meta_lead_reminder", return_value="ok") as enviar, \
+         caplog.at_level(logging.WARNING, logger="services.meta_reminders"):
+        res = enviar_recordatorios(db, "https://crm")
+
+    assert enviar.call_args.args[0] == "yo@gmail.com", "el mail no puede irle al lead"
+    assert res["enviados"] == 1
+    assert "lead95@ejemplo.com" in caplog.text, "el log tiene que decir a quien le hubiera ido"
+    assert "META_NOTIFY_OVERRIDE" in caplog.text
+    assert leads_a_recordar(db) == [], "el registro se hace igual: es una prueba del camino entero"
+
+
+def test_sin_override_el_mail_le_va_al_lead(db, monkeypatch):
+    conn = sqlite3.connect(db)
+    _lead(conn, 96, dias=5)
+    conn.commit()
+    conn.close()
+
+    monkeypatch.delenv("META_NOTIFY_OVERRIDE", raising=False)
+
+    with patch("services.meta_reminders.send_meta_lead_reminder", return_value="ok") as enviar:
+        enviar_recordatorios(db, "https://crm")
+
+    assert enviar.call_args.args[0] == "lead96@ejemplo.com"
+
+
 def test_si_el_mail_falla_no_lo_da_por_enviado(db):
     conn = sqlite3.connect(db)
     _lead(conn, 70, dias=5)

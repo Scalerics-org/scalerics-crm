@@ -200,6 +200,17 @@ def enviar_recordatorios(db_path: str, base_url: str, dry_run: bool = False) -> 
     candidatos = leads_a_recordar(db_path, limite=cupo)
     res = {"candidatos": len(candidatos), "enviados": 0, "fallidos": 0, "inciertos": 0}
 
+    # Valvula para probar el camino completo contra una casilla propia: si esta
+    # seteada, TODOS los mails van ahi y ninguno al lead. El registro en
+    # meta_reminders se hace igual, que es justamente lo que se quiere probar.
+    # En produccion tiene que quedar vacia.
+    override = os.environ.get("META_NOTIFY_OVERRIDE", "").strip().lower()
+    if override and candidatos and not dry_run:
+        logger.warning(
+            f"Recordatorios Meta: META_NOTIFY_OVERRIDE activo, los {len(candidatos)} "
+            f"mails de esta tanda van a {override} y ninguno a los leads"
+        )
+
     for lead in candidatos:
         if dry_run:
             logger.info(f"[dry-run] recordatorio a {lead['email']} (lead {lead['id']})")
@@ -220,8 +231,15 @@ def enviar_recordatorios(db_path: str, base_url: str, dry_run: bool = False) -> 
                 f"(business_id={lead['id']}): {e}. No se le manda nada hoy; sigue elegible."
             )
             continue
+        destino = lead["email"]
+        if override:
+            logger.warning(
+                f"META_NOTIFY_OVERRIDE activo: el recordatorio del lead {lead['id']} "
+                f"({lead['email']}) se manda a {override} en vez de a esa direccion"
+            )
+            destino = override
         estado = send_meta_lead_reminder(
-            lead["email"], lead["name"], lead["negocio"], lead["rubro"],
+            destino, lead["name"], lead["negocio"], lead["rubro"],
             f"{base_url.rstrip('/')}/baja/{token}",
         )
         if estado == "ok":
@@ -301,3 +319,39 @@ def start_meta_reminders(app) -> None:
         f"Recordatorios de Meta ACTIVOS por META_RECORDATORIOS=on: una corrida por dia, "
         f"hasta {_TOPE_DIARIO} mails, la primera 180s despues de este arranque"
     )
+
+
+_USO = """uso: python -m services.meta_reminders <db_path> [--dry-run]
+
+  --dry-run   lista a quien le tocaria el recordatorio y no manda ni registra nada.
+
+Variables que cambian lo que hace:
+  META_NOTIFY_OVERRIDE   si tiene una direccion, todos los mails van ahi y
+                         ninguno a los leads (el registro se hace igual).
+  CRM_URL                base para armar el link de baja.
+
+Correrlo con `python -m` y no `python services/meta_reminders.py`: el modulo
+importa `services.email_service` y necesita la raiz del repo en el path.
+"""
+
+
+if __name__ == "__main__":
+    import sys
+
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+
+    argumentos = sys.argv[1:]
+    dry_run = "--dry-run" in argumentos
+    rutas = [a for a in argumentos if not a.startswith("-")]
+    desconocidos = [a for a in argumentos if a.startswith("-") and a != "--dry-run"]
+
+    if len(rutas) != 1 or desconocidos:
+        print(_USO)
+        raise SystemExit(2)
+
+    resultado = enviar_recordatorios(
+        rutas[0],
+        os.environ.get("CRM_URL", "https://scalerics-crm.fly.dev"),
+        dry_run=dry_run,
+    )
+    print(resultado)
