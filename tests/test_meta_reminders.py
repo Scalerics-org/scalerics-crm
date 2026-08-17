@@ -423,6 +423,55 @@ class _ConexionQueFallaAlBorrar:
         setattr(self._real, name, value)
 
 
+class _ConexionQueFallaAlRegistrar:
+    """Igual que la anterior, pero hace fallar el INSERT del registro de envio
+    de un business_id puntual, para simular un 'database is locked' ahi."""
+
+    def __init__(self, real, ids_que_fallan):
+        object.__setattr__(self, "_real", real)
+        object.__setattr__(self, "_ids", ids_que_fallan)
+
+    def execute(self, sql, *args, **kwargs):
+        if sql.strip().startswith("INSERT INTO meta_reminders") and args:
+            if args[0][0] in self._ids:
+                raise sqlite3.OperationalError("database is locked")
+        return self._real.execute(sql, *args, **kwargs)
+
+    def __getattr__(self, name):
+        return getattr(self._real, name)
+
+    def __setattr__(self, name, value):
+        setattr(self._real, name, value)
+
+
+def test_un_lock_al_registrar_el_envio_no_aborta_la_tanda(db, caplog):
+    """La app tiene worker, import diario y webhooks escribiendo en la misma
+    base: un OperationalError por lock no puede llevarse puesta la tanda del
+    dia entera. Y sin registro no se manda: mandar de menos."""
+    conn = sqlite3.connect(db)
+    _lead(conn, 82, dias=6)
+    _lead(conn, 83, dias=5)
+    conn.commit()
+    conn.close()
+
+    conectar_real = sqlite3.connect
+
+    def _conn_que_falla(db_path):
+        return _ConexionQueFallaAlRegistrar(conectar_real(db_path), {82})
+
+    with patch("services.meta_reminders._conn", side_effect=_conn_que_falla), \
+         patch("services.meta_reminders.send_meta_lead_reminder", return_value="ok") as enviar, \
+         caplog.at_level(logging.WARNING, logger="services.meta_reminders"):
+        res = enviar_recordatorios(db, "https://crm")
+
+    assert res["candidatos"] == 2
+    assert res["enviados"] == 1, "el lock se llevo solo al lead 82, no a la tanda"
+    assert [c.args[0] for c in enviar.call_args_list] == ["lead83@ejemplo.com"], (
+        "al lead que no se pudo registrar no se le manda nada"
+    )
+    assert "82" in caplog.text
+
+
 def test_si_el_borrado_de_limpieza_tambien_falla_no_aborta_la_tanda(db, caplog):
     conn = sqlite3.connect(db)
     _lead(conn, 80, dias=6)

@@ -41,7 +41,10 @@ def _ahora() -> str:
 
 
 def _conn(db_path: str) -> sqlite3.Connection:
-    return sqlite3.connect(db_path)
+    # timeout=10 como database._connect: worker, import diario y webhooks
+    # escriben en la misma base, y los 5 segundos por defecto se quedan cortos
+    # justo en los caminos que hacen dano (el registro de envio y su limpieza).
+    return sqlite3.connect(db_path, timeout=10)
 
 
 def registrar_envio(db_path: str, business_id: int) -> str:
@@ -206,6 +209,16 @@ def enviar_recordatorios(db_path: str, base_url: str, dry_run: bool = False) -> 
         except sqlite3.IntegrityError:
             # Otra corrida se le adelanto. No es un error: es la guarda haciendo
             # su trabajo.
+            continue
+        except sqlite3.OperationalError as e:
+            # Base bloqueada por otro escritor. Sin registro no se manda (si
+            # mandaramos igual, manana no habria nada que impida el segundo
+            # mail). Se saltea este lead y sigue la tanda: un lock no puede
+            # llevarse puesto el dia entero.
+            logger.warning(
+                f"Recordatorios Meta: no se pudo registrar el envio del lead {lead['id']} "
+                f"(business_id={lead['id']}): {e}. No se le manda nada hoy; sigue elegible."
+            )
             continue
         estado = send_meta_lead_reminder(
             lead["email"], lead["name"], lead["negocio"], lead["rubro"],
