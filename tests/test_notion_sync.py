@@ -1,5 +1,7 @@
 """Sync de estado de tareas entre el CRM y la database Tasks de Notion."""
 
+from unittest.mock import patch
+
 import pytest
 
 from database import create_task, get_task_by_id, init_db, update_task
@@ -72,3 +74,99 @@ def test_las_columnas_de_notion_se_pueden_guardar(db):
     t = get_task_by_id(db, task_id)
     assert t["notion_page_id"] == "abc123"
     assert t["notion_status"] == "Up next"
+
+
+class _Resp:
+    def __init__(self, status_code=200, payload=None):
+        self.status_code = status_code
+        self._payload = payload or {}
+        self.text = str(self._payload)
+
+    def json(self):
+        return self._payload
+
+
+@pytest.fixture
+def notion_env(monkeypatch):
+    monkeypatch.setenv("NOTION_TOKEN", "secret-de-prueba")
+    monkeypatch.setenv("NOTION_DATABASE_ID", "db-1")
+
+
+def test_sin_token_no_se_intenta_nada(db, monkeypatch):
+    monkeypatch.delenv("NOTION_TOKEN", raising=False)
+    task_id = create_task(db, title="Sin token")
+    with patch("services.notion_service.requests") as req:
+        assert ns.crear_pagina(db, task_id) is None
+        assert ns.empujar_estado(db, task_id) is False
+    req.post.assert_not_called()
+    req.patch.assert_not_called()
+
+
+def test_crear_pagina_guarda_el_id_y_el_estado(db, notion_env):
+    task_id = create_task(db, title="Armar el modulo de pagos", status="in_progress")
+    with patch("services.notion_service.requests.post",
+               return_value=_Resp(200, {"id": "pagina-1"})) as post:
+        assert ns.crear_pagina(db, task_id) == "pagina-1"
+
+    cuerpo = post.call_args.kwargs["json"]
+    assert cuerpo["properties"]["Status"]["status"]["name"] == "In progress"
+    assert cuerpo["properties"]["CRM ID"]["number"] == task_id
+    assert cuerpo["properties"]["Name"]["title"][0]["text"]["content"] == "Armar el modulo de pagos"
+
+    t = get_task_by_id(db, task_id)
+    assert t["notion_page_id"] == "pagina-1"
+    assert t["notion_status"] == "In progress"
+    assert t["notion_synced_at"]
+
+
+def test_no_se_crea_una_segunda_pagina_para_la_misma_tarea(db, notion_env):
+    task_id = create_task(db, title="Ya vinculada")
+    update_task(db, task_id, notion_page_id="pagina-vieja")
+    with patch("services.notion_service.requests.post") as post:
+        assert ns.crear_pagina(db, task_id) == "pagina-vieja"
+    post.assert_not_called()
+
+
+def test_empujar_no_escribe_si_el_grupo_no_cambio(db, notion_env):
+    task_id = create_task(db, title="Pendiente", status="todo")
+    update_task(db, task_id, notion_page_id="pagina-1", notion_status="Up next")
+    with patch("services.notion_service.requests.patch") as patch_req:
+        assert ns.empujar_estado(db, task_id) is False
+    patch_req.assert_not_called()
+
+
+def test_empujar_escribe_cuando_el_grupo_cambio(db, notion_env):
+    task_id = create_task(db, title="Se termino", status="done")
+    update_task(db, task_id, notion_page_id="pagina-1", notion_status="Up next")
+    with patch("services.notion_service.requests.patch",
+               return_value=_Resp(200, {"id": "pagina-1"})) as patch_req:
+        assert ns.empujar_estado(db, task_id) is True
+
+    cuerpo = patch_req.call_args.kwargs["json"]
+    assert cuerpo["properties"]["Status"]["status"]["name"] == "Done"
+    assert get_task_by_id(db, task_id)["notion_status"] == "Done"
+
+
+def test_una_tarea_sin_pagina_no_se_empuja(db, notion_env):
+    task_id = create_task(db, title="Nunca vinculada", status="done")
+    with patch("services.notion_service.requests.patch") as patch_req:
+        assert ns.empujar_estado(db, task_id) is False
+    patch_req.assert_not_called()
+
+
+def test_notion_caido_no_propaga_la_excepcion(db, notion_env):
+    task_id = create_task(db, title="Con error", status="done")
+    update_task(db, task_id, notion_page_id="pagina-1", notion_status="Backlog")
+    with patch("services.notion_service.requests.patch",
+               side_effect=RuntimeError("timeout")):
+        assert ns.empujar_estado(db, task_id) is False
+    # El estado guardado no se toca si la escritura fallo.
+    assert get_task_by_id(db, task_id)["notion_status"] == "Backlog"
+
+
+def test_un_500_de_notion_no_marca_el_estado_como_sincronizado(db, notion_env):
+    task_id = create_task(db, title="Con 500", status="done")
+    update_task(db, task_id, notion_page_id="pagina-1", notion_status="Backlog")
+    with patch("services.notion_service.requests.patch", return_value=_Resp(500, {})):
+        assert ns.empujar_estado(db, task_id) is False
+    assert get_task_by_id(db, task_id)["notion_status"] == "Backlog"

@@ -11,8 +11,17 @@ aplaste un "Up next" del equipo con un "Backlog" que no aporta nada.
 """
 
 import logging
+import os
+from datetime import datetime
+
+import requests
+
+from database import get_task_by_id, update_task
 
 logger = logging.getLogger(__name__)
+
+API = "https://api.notion.com/v1"
+TIMEOUT = 20
 
 # Grupo del CRM al que pertenece cada estado de Notion. Verificado con
 # scripts/notion_smoke.py; ver docs/puesta-en-produccion-notion.md.
@@ -60,3 +69,130 @@ def hay_que_escribir(estado_crm: str, notion_status: str | None) -> bool:
     if notion_status is None:
         return True
     return grupo_de(notion_status) != estado_crm
+
+
+def _config() -> tuple[str, str, str] | None:
+    """(token, version, database_id) o None si no hay token.
+
+    Sin NOTION_TOKEN todo el modulo es no-op: el CRM tiene que funcionar igual
+    sin Notion, como funciona hoy sin GMAIL_REFRESH_TOKEN.
+    """
+    token = os.environ.get("NOTION_TOKEN", "")
+    if not token:
+        return None
+    version = os.environ.get("NOTION_VERSION", "2025-09-03")
+    db_id = os.environ.get("NOTION_DATABASE_ID", "3ae65d94-deec-8093-8c48-cfbe77e202d5")
+    return token, version, db_id
+
+
+def _headers(token: str, version: str) -> dict:
+    return {
+        "Authorization": f"Bearer {token}",
+        "Notion-Version": version,
+        "Content-Type": "application/json",
+    }
+
+
+def _parent(db_id: str) -> dict:
+    """Forma del `parent` para crear una pagina.
+
+    `docs/puesta-en-produccion-notion.md` (Task 1) dejo esto PENDIENTE: falta
+    correr scripts/notion_smoke.py con un token real para saber si la
+    database expone `data_sources`. Hasta entonces el default es
+    `{"database_id": ...}`, que es la forma vieja de la API. Si el smoke test
+    confirma `data_source_id`, se define NOTION_DATA_SOURCE_ID por env y esta
+    funcion cambia sola, sin tocar codigo.
+    """
+    ds = os.environ.get("NOTION_DATA_SOURCE_ID", "")
+    if ds:
+        return {"type": "data_source_id", "data_source_id": ds}
+    return {"database_id": db_id}
+
+
+def _marcar(db_path: str, task_id: int, estado_notion: str, page_id: str | None = None) -> None:
+    """Guarda en la tarea el resultado de una escritura exitosa a Notion."""
+    campos = {
+        "notion_status": estado_notion,
+        "notion_synced_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    if page_id:
+        campos["notion_page_id"] = page_id
+    update_task(db_path, task_id, **campos)
+
+
+def crear_pagina(db_path: str, task_id: int) -> str | None:
+    """Crea la tarjeta en Notion para una tarea del CRM.
+
+    Idempotente por diseno: si la tarea ya tiene `notion_page_id` devuelve ese
+    y no toca Notion. Es la primera de las defensas contra duplicados en un
+    tablero que usa el equipo.
+    """
+    cfg = _config()
+    if not cfg:
+        return None
+    token, version, db_id = cfg
+
+    tarea = get_task_by_id(db_path, task_id)
+    if not tarea:
+        return None
+    if tarea.get("notion_page_id"):
+        return tarea["notion_page_id"]
+
+    estado = estado_notion_para(tarea.get("status") or "todo")
+    cuerpo = {
+        "parent": _parent(db_id),
+        "properties": {
+            "Name": {"title": [{"text": {"content": tarea.get("title") or "(sin titulo)"}}]},
+            "Status": {"status": {"name": estado}},
+            "CRM ID": {"number": task_id},
+        },
+    }
+    try:
+        r = requests.post(f"{API}/pages", headers=_headers(token, version),
+                          json=cuerpo, timeout=TIMEOUT)
+        if r.status_code >= 300:
+            logger.warning("notion: crear pagina fallo con %s: %s", r.status_code, r.text[:300])
+            return None
+        page_id = r.json().get("id")
+    except Exception:
+        logger.warning("notion: crear pagina fallo", exc_info=True)
+        return None
+
+    if not page_id:
+        return None
+    _marcar(db_path, task_id, estado, page_id=page_id)
+    return page_id
+
+
+def empujar_estado(db_path: str, task_id: int) -> bool:
+    """Lleva el estado del CRM a la tarjeta, solo si cambio el grupo."""
+    cfg = _config()
+    if not cfg:
+        return False
+    token, version, db_id = cfg
+
+    tarea = get_task_by_id(db_path, task_id)
+    if not tarea or not tarea.get("notion_page_id"):
+        return False
+
+    estado_crm = tarea.get("status") or "todo"
+    if not hay_que_escribir(estado_crm, tarea.get("notion_status")):
+        return False
+
+    destino = estado_notion_para(estado_crm)
+    try:
+        r = requests.patch(
+            f"{API}/pages/{tarea['notion_page_id']}",
+            headers=_headers(token, version),
+            json={"properties": {"Status": {"status": {"name": destino}}}},
+            timeout=TIMEOUT,
+        )
+        if r.status_code >= 300:
+            logger.warning("notion: patch fallo con %s: %s", r.status_code, r.text[:300])
+            return False
+    except Exception:
+        logger.warning("notion: patch fallo", exc_info=True)
+        return False
+
+    _marcar(db_path, task_id, destino)
+    return True
