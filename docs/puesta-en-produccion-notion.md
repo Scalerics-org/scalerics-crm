@@ -121,10 +121,11 @@ Qué esperar:
   Queda además una línea en el log de actividad del CRM a nombre del usuario.
 - **No funcionó**: HTTP 502 y `{"ok": false, "error": "...", "cambiadas": 0}`.
   El `error` dice qué pasó:
-  - `falta NOTION_TOKEN...` → el secret no está puesto (paso manual 5).
-  - `la consulta a Notion devolvió HTTP 404` → la integración no tiene la
+  - `falta NOTION_TOKEN: el sync con Notion esta apagado` → el secret no está
+    puesto (paso manual 5).
+  - `la consulta a Notion devolvio HTTP 404` → la integración no tiene la
     database conectada (paso manual 3), o el `NOTION_DATABASE_ID` está mal.
-  - `la consulta a Notion devolvió HTTP 400` → lo más probable es el par
+  - `la consulta a Notion devolvio HTTP 400` → lo más probable es el par
     versión/endpoint: la combinación por defecto (`2025-09-03` sin
     `NOTION_DATA_SOURCE_ID`) le pega a `POST /v1/databases/{id}/query`, que el
     split de data sources reemplazó. Son los hallazgos 1 y 2.
