@@ -180,6 +180,36 @@ def test_un_lead_nuevo_no_espera_a_que_drene_el_backlog(db):
     )
 
 
+def test_dos_filas_con_el_mismo_mail_reciben_un_solo_recordatorio(db):
+    """La garantia declarada es sobre personas, no sobre filas de businesses:
+    dos envios del formulario con el telefono escrito distinto no fusionan, y
+    la persona recibe dos mails el mismo dia."""
+    conn = sqlite3.connect(db)
+    _lead(conn, 501, dias=10, email="Repetido@Ejemplo.com")
+    _lead(conn, 502, dias=5, email="  repetido@ejemplo.com ")
+    _lead(conn, 503, dias=8, email="otro@ejemplo.com")
+    conn.commit()
+    conn.close()
+
+    elegidos = [x["id"] for x in leads_a_recordar(db)]
+
+    assert sorted(elegidos) == [501, 503], (
+        "una sola fila por direccion, y de las repetidas la mas vieja"
+    )
+
+
+def test_al_dia_siguiente_tampoco_le_llega_a_la_fila_gemela(db):
+    conn = sqlite3.connect(db)
+    _lead(conn, 511, dias=10, email="repetido2@ejemplo.com")
+    _lead(conn, 512, dias=5, email="REPETIDO2@ejemplo.com")
+    conn.commit()
+    conn.close()
+
+    registrar_envio(db, 511)
+
+    assert leads_a_recordar(db) == [], "esa direccion ya recibio su mail"
+
+
 def test_trae_los_datos_para_personalizar(db):
     conn = sqlite3.connect(db)
     _lead(conn, 30, dias=5)

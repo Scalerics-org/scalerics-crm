@@ -126,6 +126,12 @@ def leads_a_recordar(db_path: str, dias_minimos: int = 3, limite: int = _TOPE_DI
     `_VENTANA_RECIEN_ELEGIBLE_DIAS` dias) y despues se completa el cupo con los
     mas viejos del backlog.
 
+    Se deduplica por direccion de mail, no por fila de businesses: dos envios
+    del mismo formulario con el telefono escrito distinto no fusionan, y la
+    garantia de "un solo mail" es sobre la persona. El GROUP BY evita repetirla
+    dentro de la tanda (con MIN(scraped_at) para quedarse con la fila mas
+    vieja, que es la que el orden usa) y el NOT EXISTS, entre tandas.
+
     Las guardas viven todas en el WHERE a proposito: que un lead quede fuera
     no puede depender de que el llamador se acuerde de filtrarlo.
     """
@@ -134,16 +140,23 @@ def leads_a_recordar(db_path: str, dias_minimos: int = 3, limite: int = _TOPE_DI
     try:
         filas = conn.execute(
             """
-            SELECT b.id, b.name, b.email, b.form_data
+            SELECT b.id, b.name, b.email, b.form_data,
+                   MIN(b.scraped_at) AS primero
               FROM businesses b
          LEFT JOIN meta_reminders r ON r.business_id = b.id
              WHERE b.source = 'meta'
                AND b.crm_status = 'sin_contactar'
                AND b.email IS NOT NULL AND LENGTH(TRIM(b.email)) > 3
                AND r.id IS NULL
+               AND NOT EXISTS (
+                     SELECT 1 FROM meta_reminders r2
+                       JOIN businesses b2 ON b2.id = r2.business_id
+                      WHERE LOWER(TRIM(b2.email)) = LOWER(TRIM(b.email))
+                   )
                AND b.scraped_at IS NOT NULL
                AND b.scraped_at <= datetime('now', ?)
-          ORDER BY (b.scraped_at >= datetime('now', ?)) DESC, b.scraped_at ASC
+          GROUP BY LOWER(TRIM(b.email))
+          ORDER BY (primero >= datetime('now', ?)) DESC, primero ASC
              LIMIT ?
             """,
             (f"-{int(dias_minimos)} days",
