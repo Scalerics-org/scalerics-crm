@@ -14,6 +14,17 @@ const booleanoDeEnv = z
 // Falla al arrancar si falta algo, en vez de romper a mitad de un envio.
 const esquema = z.object({
   PORT: z.coerce.number().int().positive().default(8080),
+
+  /**
+   * En que interfaz escucha. Por defecto solo localhost.
+   *
+   * Estaba en 0.0.0.0, que en una laptop no cambia nada pero en un VPS deja el
+   * puerto abierto a internet: cualquiera puede pegarle al /health, ver si hay
+   * algo y probar claves contra /leads. Si el CRM corre en la misma maquina,
+   * localhost alcanza y no hace falta abrir nada. Si corre afuera, va un nginx
+   * con TLS adelante y esto sigue en localhost.
+   */
+  HOST: z.string().default('127.0.0.1'),
   NODE_ENV: z.string().default('development'),
   LOG_LEVEL: z.string().default('info'),
   WA_API_KEY: z.string().min(16, 'WA_API_KEY tiene que tener al menos 16 caracteres'),

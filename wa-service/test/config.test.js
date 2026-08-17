@@ -39,3 +39,12 @@ test('rechaza rangos de delay invertidos', () => {
 test('rechaza un proveedor desconocido', () => {
   assert.throws(() => cargar({ ...MINIMO, WA_PROVIDER: 'twilio' }), /WA_PROVIDER/);
 });
+
+test('por defecto escucha solo en localhost', () => {
+  // Estaba fijo en 0.0.0.0. En una laptop no cambia nada, pero en un VPS deja
+  // el puerto abierto a internet: cualquiera ve el /health y puede probar
+  // claves contra /leads.
+  const { cargar } = require('../src/config');
+  assert.equal(cargar({ WA_API_KEY: 'x'.repeat(20) }).HOST, '127.0.0.1');
+  assert.equal(cargar({ WA_API_KEY: 'x'.repeat(20), HOST: '0.0.0.0' }).HOST, '0.0.0.0');
+});

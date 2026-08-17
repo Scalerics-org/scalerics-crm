@@ -10,7 +10,7 @@ async function main() {
   await proveedor.conectar();
   scheduler.arrancar();
 
-  await app.listen({ port: cfg.PORT, host: '0.0.0.0' });
+  await app.listen({ port: cfg.PORT, host: cfg.HOST });
   logger.info({ puerto: cfg.PORT, proveedor: proveedor.nombre }, 'wa-service arriba');
 
   const apagar = async (senial) => {
