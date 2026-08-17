@@ -147,7 +147,7 @@ def leads_a_recordar(db_path: str, dias_minimos: int = 3, limite: int = _TOPE_DI
     try:
         filas = conn.execute(
             """
-            SELECT b.id, b.name, b.email, b.form_data,
+            SELECT b.id, b.name, TRIM(b.email) AS email, b.form_data,
                    MIN(b.scraped_at) AS primero
               FROM businesses b
          LEFT JOIN meta_reminders r ON r.business_id = b.id
@@ -256,20 +256,12 @@ def enviar_recordatorios(db_path: str, base_url: str, dry_run: bool = False) -> 
         ya_hubo_intento = True
         if estado == "ok":
             res["enviados"] += 1
-        elif estado == "desconocido":
-            # No sabemos si el mail salio. Si borramos la fila, manana el lead
-            # vuelve a ser elegible y le llega un segundo mail; y si con el link
-            # del primero se dio de baja, el token se fue con la fila y la baja
-            # no lo protege. Se queda puesta: el silencio se arregla a mano.
-            res["inciertos"] += 1
-            logger.error(
-                f"Recordatorios Meta: envio incierto al lead {lead['id']} "
-                f"(business_id={lead['id']}, {lead['email']}): la peticion a Resend no "
-                f"confirmo ni fallo, pudo haber salido. Se DEJA el registro en "
-                f"meta_reminders para no mandarle dos veces; si se confirma que no "
-                f"llego, borrar la fila a mano para reintentar."
-            )
-        else:
+        elif estado == "fallo":
+            # Solo aca se borra, y solo porque sabemos que el mail NO salio. La
+            # rama destructiva tiene que ser la explicita: si fuera el `else`,
+            # cualquier valor inesperado (None, un mock sin configurar, un cuarto
+            # estado que alguien agregue) terminaria mandando un segundo mail,
+            # que es justo lo que este bloque existe para evitar.
             # Se borra el registro para que manana se reintente: dejarlo puesto
             # significaria que ese lead nunca recibe nada.
             conn = _conn(db_path)
@@ -293,6 +285,20 @@ def enviar_recordatorios(db_path: str, base_url: str, dry_run: bool = False) -> 
             finally:
                 conn.close()
             res["fallidos"] += 1
+        else:
+            # "desconocido", y tambien cualquier estado que no reconozcamos: ante
+            # la duda no se toca la fila. Si la borraramos, manana el lead vuelve
+            # a ser elegible y le llega un segundo mail; y si con el link del
+            # primero se dio de baja, el token se fue con la fila y la baja no lo
+            # protege. Se queda puesta: el silencio se arregla a mano.
+            res["inciertos"] += 1
+            logger.error(
+                f"Recordatorios Meta: envio incierto al lead {lead['id']} "
+                f"(business_id={lead['id']}, {lead['email']}, estado={estado!r}): la "
+                f"peticion a Resend no confirmo ni fallo, pudo haber salido. Se DEJA el "
+                f"registro en meta_reminders para no mandarle dos veces; si se confirma "
+                f"que no llego, borrar la fila a mano para reintentar."
+            )
 
     logger.info(f"Recordatorios Meta: {res}")
     return res

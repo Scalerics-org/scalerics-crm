@@ -565,3 +565,47 @@ def test_si_el_borrado_de_limpieza_tambien_falla_no_aborta_la_tanda(db, caplog):
     assert "80" in caplog.text and "81" in caplog.text, (
         "el fallo de limpieza tiene que quedar visible en el log, con el id del lead"
     )
+
+
+def test_un_estado_inesperado_no_borra_la_fila(db, caplog):
+    """La rama que borra es la explicita, no el `else`.
+
+    Si el `else` fuera el destructivo, cualquier valor que no sea uno de los
+    tres estados — None, un mock sin configurar, un cuarto estado que alguien
+    agregue mas adelante — le mandaria un segundo mail a una persona real. El
+    default tiene que ser el silencio, que se arregla a mano.
+    """
+    conn = sqlite3.connect(db)
+    _lead(conn, 90, dias=5)
+    conn.commit()
+    conn.close()
+
+    with patch("services.meta_reminders.send_meta_lead_reminder", return_value=None), \
+         caplog.at_level(logging.ERROR, logger="services.meta_reminders"):
+        res = enviar_recordatorios(db, "https://crm")
+
+    conn = sqlite3.connect(db)
+    try:
+        fila = conn.execute(
+            "SELECT token FROM meta_reminders WHERE business_id = 90"
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert fila, "un estado que no reconocemos se trata como incierto: la fila se queda"
+    assert res["fallidos"] == 0
+    assert res["inciertos"] == 1
+    assert "None" in caplog.text, "el log tiene que decir que estado raro llego"
+    assert leads_a_recordar(db) == [], "y manana no se le vuelve a escribir"
+
+
+def test_el_mail_sale_sin_espacios_alrededor(db):
+    """La dedup compara con TRIM, asi que un mail con espacios entra igual al
+    grupo; si despues lo mandamos crudo, Resend lo rechaza, eso cuenta como
+    fallo, se borra la fila y el lead se reintenta todos los dias para siempre."""
+    conn = sqlite3.connect(db)
+    _lead(conn, 91, dias=5, email="  Ana@Ejemplo.com  ")
+    conn.commit()
+    conn.close()
+
+    assert [x["email"] for x in leads_a_recordar(db)] == ["Ana@Ejemplo.com"]
