@@ -1,12 +1,14 @@
 import json
 import sqlite3
 from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
 
 import pytest
 
 from database import init_db
 from services.meta_reminders import (
     dar_de_baja,
+    enviar_recordatorios,
     esta_dado_de_baja,
     leads_a_recordar,
     registrar_envio,
@@ -137,3 +139,46 @@ def test_trae_los_datos_para_personalizar(db):
 
     assert lead["negocio"] == "Negocio 30"
     assert lead["rubro"] == "una nueva página web", "los guiones bajos se limpian"
+
+
+def test_correr_dos_veces_manda_un_solo_mail(db):
+    conn = sqlite3.connect(db)
+    _lead(conn, 50, dias=5)
+    conn.commit()
+    conn.close()
+
+    with patch("services.meta_reminders.send_meta_lead_reminder", return_value=True) as enviar:
+        primera = enviar_recordatorios(db, "https://crm")
+        segunda = enviar_recordatorios(db, "https://crm")
+
+    assert primera["enviados"] == 1
+    assert segunda["enviados"] == 0, "la segunda corrida no le escribe de nuevo"
+    assert enviar.call_count == 1
+
+
+def test_dry_run_no_manda_ni_registra(db):
+    conn = sqlite3.connect(db)
+    _lead(conn, 60, dias=5)
+    conn.commit()
+    conn.close()
+
+    with patch("services.meta_reminders.send_meta_lead_reminder") as enviar:
+        res = enviar_recordatorios(db, "https://crm", dry_run=True)
+
+    assert enviar.called is False
+    assert res["candidatos"] == 1
+    assert leads_a_recordar(db), "sigue elegible: el dry-run no registro nada"
+
+
+def test_si_el_mail_falla_no_lo_da_por_enviado(db):
+    conn = sqlite3.connect(db)
+    _lead(conn, 70, dias=5)
+    conn.commit()
+    conn.close()
+
+    with patch("services.meta_reminders.send_meta_lead_reminder", return_value=False):
+        res = enviar_recordatorios(db, "https://crm")
+
+    assert res["enviados"] == 0
+    assert res["fallidos"] == 1
+    assert leads_a_recordar(db), "si no salio, tiene que poder reintentarse manana"

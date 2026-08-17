@@ -6177,6 +6177,9 @@ loadAll();
         start_meta_token_monitor(app)
         start_meta_daily_import(app)
 
+        from services.meta_reminders import start_meta_reminders
+        start_meta_reminders(app)
+
     try:
         from database import get_all_users
         if not get_all_users(db_path):

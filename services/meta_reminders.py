@@ -1,12 +1,25 @@
 """Registro de recordatorios enviados a leads de Meta y su baja de la lista."""
 
 import json
+import logging
+import os
 import secrets
 import sqlite3
+import threading
+import time
 from datetime import datetime, timezone
+
+from services.email_service import send_meta_lead_reminder
 
 CLAVE_NEGOCIO = "¿cómo_se_llama_tu_negocio?"
 CLAVE_RUBRO = "¿que_es_lo_que_buscás_para_tu_negocio?"
+
+logger = logging.getLogger(__name__)
+
+# Resend free permite 2 envios por segundo. A 15 por dia sobra, pero el codigo
+# no tiene que depender de que el volumen sea bajo.
+_PAUSA_ENTRE_ENVIOS = 0.6
+_CADA_24_HORAS = 24 * 60 * 60
 
 
 def _conn(db_path: str) -> sqlite3.Connection:
@@ -116,3 +129,62 @@ def leads_a_recordar(db_path: str, dias_minimos: int = 3, limite: int = 15) -> l
             "rubro": _texto(campos, CLAVE_RUBRO),
         })
     return salida
+
+
+def enviar_recordatorios(db_path: str, base_url: str, dry_run: bool = False) -> dict:
+    candidatos = leads_a_recordar(db_path)
+    res = {"candidatos": len(candidatos), "enviados": 0, "fallidos": 0}
+
+    for lead in candidatos:
+        if dry_run:
+            logger.info(f"[dry-run] recordatorio a {lead['email']} (lead {lead['id']})")
+            continue
+        try:
+            token = registrar_envio(db_path, lead["id"])
+        except sqlite3.IntegrityError:
+            # Otra corrida se le adelanto. No es un error: es la guarda haciendo
+            # su trabajo.
+            continue
+        ok = send_meta_lead_reminder(
+            lead["email"], lead["name"], lead["negocio"], lead["rubro"],
+            f"{base_url.rstrip('/')}/baja/{token}",
+        )
+        if ok:
+            res["enviados"] += 1
+        else:
+            # Se borra el registro para que manana se reintente: dejarlo puesto
+            # significaria que ese lead nunca recibe nada.
+            conn = _conn(db_path)
+            try:
+                conn.execute("DELETE FROM meta_reminders WHERE business_id = ?", (lead["id"],))
+                conn.commit()
+            finally:
+                conn.close()
+            res["fallidos"] += 1
+        time.sleep(_PAUSA_ENTRE_ENVIOS)
+
+    logger.info(f"Recordatorios Meta: {res}")
+    return res
+
+
+def start_meta_reminders(app) -> None:
+    """Corre una vez por dia. Se apaga con META_RECORDATORIOS=off."""
+    if os.environ.get("META_RECORDATORIOS", "").lower() == "off":
+        logger.info("Recordatorios de Meta apagados por META_RECORDATORIOS=off")
+        return
+
+    def _loop():
+        time.sleep(180)  # dejar que la app termine de levantar
+        while True:
+            try:
+                with app.app_context():
+                    enviar_recordatorios(
+                        app.config["DB_PATH"],
+                        os.environ.get("CRM_URL", "https://scalerics-crm.fly.dev"),
+                    )
+            except Exception as e:
+                logger.warning(f"Recordatorios Meta: {e}")
+            time.sleep(_CADA_24_HORAS)
+
+    threading.Thread(target=_loop, daemon=True, name="meta-reminders").start()
+    logger.info("Recordatorios de Meta activos (una corrida por dia)")
