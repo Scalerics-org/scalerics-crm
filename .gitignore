@@ -25,3 +25,6 @@ bot/backup_scalerics_wa_bot.sql
 
 # hexast-cajas tiene repo propio (Scalerics-org/hexast-cajas)
 hexast-cajas/
+
+# Worktrees de trabajo aislado
+.worktrees/
