@@ -72,16 +72,19 @@ def test_fetch_failure_without_admins_logs_explicitly(app, monkeypatch, caplog):
     ), "tiene que quedar un log explicito de que nadie fue avisado, distinguible del caso normal"
 
 
-def _respuesta_de_graph(nombre: str, telefono: str) -> MagicMock:
+def _respuesta_de_graph(nombre: str, telefono: str, email: str = "") -> MagicMock:
     """Una respuesta de Graph con un lead adentro, como la devuelve la API."""
+    field_data = [
+        {"name": "full_name", "values": [nombre]},
+        {"name": "phone_number", "values": [telefono]},
+        {"name": "ciudad", "values": ["Montevideo"]},
+    ]
+    if email:
+        field_data.append({"name": "email", "values": [email]})
     r = MagicMock()
     r.raise_for_status.return_value = None
     r.json.return_value = {
-        "field_data": [
-            {"name": "full_name", "values": [nombre]},
-            {"name": "phone_number", "values": [telefono]},
-            {"name": "ciudad", "values": ["Montevideo"]},
-        ],
+        "field_data": field_data,
         "created_time": "2026-08-12T10:00:00+0000",
         "ad_name": "Anuncio 1",
         "campaign_name": "Campaña Agosto",
@@ -127,6 +130,66 @@ def test_telefono_repetido_no_descarta_el_lead(app, monkeypatch):
     assert notificar.called, "el equipo se tiene que enterar igual del lead"
     assert notificar.call_args[0][5] == existente_id, \
         "la notificación tiene que apuntar al id del negocio que ya existía"
+
+
+def test_telefono_repetido_sube_el_mail_si_no_tenia(app, monkeypatch):
+    """El camino de fusión (_merge_lead_into_existing) tenía el mismo bug que
+    el webhook: extraía el mail del formulario y nunca lo guardaba, porque
+    update_business no recibía la clave. Un negocio sin mail que llena el
+    formulario de Meta tiene que terminar con el mail del formulario."""
+    from database import get_business, init_db, insert_business
+    from routes import meta
+
+    db = app.config["DB_PATH"]
+    init_db(db)
+    telefono = "+598 99 222 333"
+    existente_id = insert_business(db, {
+        "name": "Ferretería Sur", "phone": telefono,
+        "category": "Ferretería", "source": "google",
+    })
+    assert existente_id, "el negocio previo tiene que haberse creado"
+
+    respuesta = _respuesta_de_graph("Lead Con Mail", telefono, email="lead@ejemplo.com")
+    with patch.object(meta.requests, "get", return_value=respuesta), \
+         patch.object(meta, "_notify_new_meta_lead") as notificar:
+        monkeypatch.setattr(meta, "PAGE_TOKEN", "token-de-prueba")
+        meta._fetch_and_store_lead(app, "LEAD-MAIL-1", "FORM-1")
+        limite = time.time() + 5
+        while not notificar.called and time.time() < limite:
+            time.sleep(0.02)
+
+    fila = get_business(db, existente_id)
+    assert fila["email"] == "lead@ejemplo.com", \
+        "el mail del formulario tiene que quedar en el negocio existente"
+
+
+def test_telefono_repetido_no_pisa_el_mail_que_ya_tenia(app, monkeypatch):
+    """El criterio del merge es el mismo que el de scripts/backfill_meta_emails.py:
+    el mail del formulario solo completa, nunca corrige uno que ya estaba."""
+    from database import get_business, init_db, insert_business
+    from routes import meta
+
+    db = app.config["DB_PATH"]
+    init_db(db)
+    telefono = "+598 99 444 555"
+    existente_id = insert_business(db, {
+        "name": "Panadería Norte", "phone": telefono, "email": "viejo@ejemplo.com",
+        "category": "Panadería", "source": "google",
+    })
+    assert existente_id, "el negocio previo tiene que haberse creado"
+
+    respuesta = _respuesta_de_graph("Lead Con Otro Mail", telefono, email="nuevo@ejemplo.com")
+    with patch.object(meta.requests, "get", return_value=respuesta), \
+         patch.object(meta, "_notify_new_meta_lead") as notificar:
+        monkeypatch.setattr(meta, "PAGE_TOKEN", "token-de-prueba")
+        meta._fetch_and_store_lead(app, "LEAD-MAIL-2", "FORM-1")
+        limite = time.time() + 5
+        while not notificar.called and time.time() < limite:
+            time.sleep(0.02)
+
+    fila = get_business(db, existente_id)
+    assert fila["email"] == "viejo@ejemplo.com", \
+        "un mail que ya estaba cargado no se pisa con el del formulario"
 
 
 def test_telefono_repetido_deja_warning(app, monkeypatch, caplog):

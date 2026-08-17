@@ -12,7 +12,19 @@ _CRM_URL = os.environ.get("CRM_URL", "https://scalerics-crm.fly.dev")
 
 # ── Shared layout ──────────────────────────────────────────────────────────────
 
-def _layout(badge: str, title: str, body: str, cta_url: str = "", cta_label: str = "") -> str:
+_PIE_DE_SISTEMA = "Scalerics CRM &middot; Notificación automática &middot; No responder este mail"
+
+
+def _layout(badge: str, title: str, body: str, cta_url: str = "", cta_label: str = "",
+            footer: str | None = None, mostrar_header: bool = True) -> str:
+    """Arma el mail. Por defecto es el de siempre: header con logo y pie de
+    notificacion automatica.
+
+    `footer=""` saca el pie, y `mostrar_header=False` saca la barra con el
+    logo. Los dos existen para los mails que van a un lead y no a nosotros: ahi
+    "no responder este mail" es exactamente lo contrario de lo que se busca.
+    """
+    pie = _PIE_DE_SISTEMA if footer is None else footer
     cta = (
         f'<a href="{cta_url}" style="display:inline-block;background:#0088cc;color:#ffffff;'
         f'font-size:14px;font-weight:600;padding:12px 28px;border-radius:6px;text-decoration:none">'
@@ -28,11 +40,11 @@ def _layout(badge: str, title: str, body: str, cta_url: str = "", cta_label: str
              style="background:#ffffff;border-radius:10px;overflow:hidden;box-shadow:0 2px 16px rgba(15,31,61,.10)">
 
         <!-- Header -->
-        <tr>
+        {f'''<tr>
           <td style="background:#0f1f3d;padding:28px 40px">
             <img src="{_LOGO}" alt="Scalerics" height="32" style="display:block">
           </td>
-        </tr>
+        </tr>''' if mostrar_header else ""}
 
         <!-- Body -->
         <tr>
@@ -48,13 +60,13 @@ def _layout(badge: str, title: str, body: str, cta_url: str = "", cta_label: str
         </tr>
 
         <!-- Footer -->
-        <tr>
+        {f'''<tr>
           <td style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:16px 40px">
             <p style="margin:0;font-size:11.5px;color:#94a3b8">
-              Scalerics CRM &middot; Notificación automática &middot; No responder este mail
+              {pie}
             </p>
           </td>
-        </tr>
+        </tr>''' if pie else ""}
 
       </table>
     </td></tr>
@@ -87,28 +99,57 @@ def _muted(text: str) -> str:
 
 # ── Resend sender ───────────────────────────────────────────────────────────────
 
-def _send(to: str, subject: str, html: str) -> bool:
+def _send_estado(to: str, subject: str, html: str, from_email: str | None = None,
+                 headers: dict | None = None) -> str:
+    """Manda el mail y devuelve un tri-estado: "ok" / "fallo" / "desconocido".
+
+    La diferencia entre "fallo" y "desconocido" importa: "fallo" es *sabemos que
+    no salio* (Resend contesto un 4xx/5xx, o no llegamos a conectarnos), y por
+    lo tanto se puede reintentar sin riesgo. "desconocido" es un timeout o
+    cualquier otra excepcion: la peticion pudo haber llegado y el mail pudo
+    haber salido igual, asi que reintentar significa mandar dos veces.
+    """
     api_key = os.environ.get("RESEND_API_KEY", "")
     if not api_key:
         logger.info(f"[EMAIL STUB] {subject} → {to}")
-        return True
+        return "ok"
     try:
+        cuerpo = {
+            "from": from_email or os.environ.get("RESEND_FROM_EMAIL", "Scalerics CRM <crm@noreply.scalerics.com>"),
+            "to": [to],
+            "subject": subject,
+            "html": html,
+        }
+        if headers:
+            cuerpo["headers"] = headers
         r = requests.post(
             "https://api.resend.com/emails",
             headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json={
-                "from": os.environ.get("RESEND_FROM_EMAIL", "Scalerics CRM <crm@noreply.scalerics.com>"),
-                "to": [to],
-                "subject": subject,
-                "html": html,
-            },
+            json=cuerpo,
             timeout=10,
         )
         r.raise_for_status()
-        return True
-    except Exception as e:
+        return "ok"
+    except requests.exceptions.HTTPError as e:
+        # Resend contesto, y contesto que no. El mail no salio.
         logger.error(f"Failed to send '{subject}' to {to}: {e}")
-        return False
+        return "fallo"
+    except requests.exceptions.ConnectionError as e:
+        # Ni siquiera se establecio la conexion (ConnectTimeout cae aca, y esta
+        # bien: si el timeout fue al conectar, la peticion nunca se mando).
+        logger.error(f"Failed to send '{subject}' to {to}: {e}")
+        return "fallo"
+    except requests.exceptions.Timeout as e:
+        # Se mando y no volvio la respuesta a tiempo. Puede haber salido.
+        logger.error(f"Timeout sending '{subject}' to {to}, no sabemos si salio: {e}")
+        return "desconocido"
+    except Exception as e:
+        logger.error(f"Failed to send '{subject}' to {to}, no sabemos si salio: {e}")
+        return "desconocido"
+
+
+def _send(to: str, subject: str, html: str, from_email: str | None = None, headers: dict | None = None) -> bool:
+    return _send_estado(to, subject, html, from_email=from_email, headers=headers) == "ok"
 
 
 # ── Public functions ────────────────────────────────────────────────────────────
@@ -268,3 +309,107 @@ def send_meta_lead_failure_alert(email: str, lead_id: str, error: str) -> None:
         f"buscando ese id.</p>"
     )
     _send(email, asunto, cuerpo)
+
+
+_REMITENTE_LEADS = "Scalerics <contacto@scalerics.com>"
+_CALENDLY = "https://calendly.com/scalerics/consultoriagratuita"
+_TELEFONO = "+598 97 250 713"
+
+# Los cuatro valores que ofrece el formulario de Meta. Vienen como
+# 'crear_mi_ecommerce', y a veces ya con los guiones bajos cambiados por
+# espacios (leads_a_recordar los limpia): se normaliza para aceptar los dos.
+# Sin esto, el mas frecuente de la base arma "buscabas crear mi ecommerce para
+# Zsoul", con un "mi" en primera persona dentro de una frase dirigida al lector.
+_FRASES_RUBRO = {
+    "crear_mi_ecommerce":   "querías crear tu ecommerce",
+    "automatizaciones":     "buscabas automatizaciones",
+    "una_nueva_página_web": "buscabas una nueva página web",
+    "un_software_a_medida": "buscabas un software a medida",
+}
+_LARGO_MAX_NOMBRE = 30
+
+
+def _frase_rubro(rubro: str) -> str:
+    """Frase redactada para los rubros conocidos; el texto crudo para el resto."""
+    clave = " ".join(rubro.lower().split()).replace(" ", "_")
+    conocida = _FRASES_RUBRO.get(clave)
+    if conocida:
+        return conocida
+    return f"buscabas {html.escape(rubro.strip())}"
+
+
+def _nombre_corto(lead_name: str) -> str:
+    """El nombre lo llena cualquiera en el formulario, y en la base real hay
+    cosas como 'Petshop | Peluquería canina | Pet Friendly | Mascotas'. Para
+    saludar alcanza con el primer token."""
+    primero = (lead_name or "").strip().split()
+    if not primero:
+        return "Hola"
+    return primero[0][:_LARGO_MAX_NOMBRE]
+
+
+def send_meta_lead_reminder(to_email: str, lead_name: str, negocio: str,
+                            rubro: str, unsub_url: str) -> str:
+    """Invita al lead a agendar una llamada. Sale de contacto@, no de crm@.
+
+    Devuelve el tri-estado de `_send_estado` ("ok"/"fallo"/"desconocido"), no un
+    bool: quien lo llama tiene que poder distinguir "no salio" de "no se", que
+    es lo que decide si se reintenta manana o no. Ojo con evaluarlo por
+    verdad — "fallo" es un string y es truthy.
+    """
+    # Nombre, negocio y rubro salen del formulario de Meta: los llena cualquiera.
+    nombre      = _nombre_corto(lead_name)
+    nombre_esc  = html.escape(nombre)
+    negocio_esc = html.escape((negocio or "").strip())
+    rubro_txt   = (rubro or "").strip()
+
+    if rubro_txt and negocio_esc:
+        apertura = (f"Nos dejaste tus datos porque {_frase_rubro(rubro_txt)} "
+                    f"para {negocio_esc}.")
+    elif rubro_txt:
+        apertura = f"Nos dejaste tus datos porque {_frase_rubro(rubro_txt)}."
+    else:
+        apertura = "Nos dejaste tus datos para que hablemos de tu proyecto."
+
+    body = (
+        _muted(apertura)
+        + _muted("Si te sigue interesando, agendá una llamada de 30 minutos "
+                 "cuando te quede cómodo. Sin compromiso.")
+    )
+    cuerpo_html = _layout(
+        badge="Scalerics",
+        title=f"{nombre_esc}, seguimos disponibles",
+        body=body,
+        cta_url=_CALENDLY,
+        cta_label="Agendar una llamada",
+        # Este mail existe para que la persona conteste o agende: el pie de
+        # "notificación automática / no responder" decia lo contrario, y ademas
+        # es senal de correo masivo para los filtros. El header con el logo
+        # tambien se saca: la firma de abajo ya lo lleva, y con los dos el mail
+        # parecia una notificacion de sistema en vez de un mail de alguien.
+        footer="",
+        mostrar_header=False,
+    )
+    firma = (
+        f'<div style="text-align:center;font-size:12px;color:#94a3b8;'
+        f'padding:0 24px 28px">'
+        f'<img src="{_LOGO}" alt="Scalerics" style="height:22px;margin-bottom:10px"><br>'
+        f'Scalerics &middot; {_TELEFONO} &middot; '
+        f'<a href="https://scalerics.com" style="color:#94a3b8">scalerics.com</a><br>'
+        f'<a href="{unsub_url}" style="color:#94a3b8;text-decoration:underline">'
+        f'No quiero recibir más estos mails</a>'
+        f'</div>'
+    )
+    cuerpo_html = cuerpo_html.replace("</body>", f"{firma}</body>")
+
+    asunto = f"{nombre.replace(chr(10), ' ').replace(chr(13), ' ')}, ¿agendamos una llamada?"
+    return _send_estado(
+        to_email, asunto, cuerpo_html,
+        from_email=_REMITENTE_LEADS,
+        headers={
+            "List-Unsubscribe": f"<{unsub_url}>",
+            # El par que pide RFC 8058: sin el segundo, Gmail no muestra su
+            # boton nativo de baja. La URL tiene que aceptar POST.
+            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+        },
+    )

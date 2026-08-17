@@ -368,6 +368,21 @@ def init_db(db_path: str) -> None:
             )
         """)
 
+        # ── meta_reminders ────────────────────────────────────────────────────
+        # Un registro por lead al que se le mando el recordatorio. El UNIQUE en
+        # business_id es lo que garantiza "una sola vez, para siempre": si el
+        # job se corre dos veces, el segundo INSERT falla en vez de mandar otro
+        # mail. Guarda tambien el token de baja, para no necesitar otra tabla.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS meta_reminders (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                business_id     INTEGER NOT NULL UNIQUE,
+                token           TEXT NOT NULL UNIQUE,
+                sent_at         TEXT NOT NULL,
+                unsubscribed_at TEXT
+            )
+        """)
+
         # ── task assignment & goal tracking ────────────────────────────────────
         _add_column(conn, "tasks", "assignee_id",    "INTEGER REFERENCES users(id) ON DELETE SET NULL")
         _add_column(conn, "tasks", "assignee_name",  "TEXT")
@@ -456,10 +471,10 @@ def insert_business(db_path: str, data: dict) -> Optional[int]:
     try:
         cursor = conn.execute("""
             INSERT OR IGNORE INTO businesses
-            (name, category, address, city, phone, rating, review_count,
+            (name, category, address, city, phone, email, rating, review_count,
              hours, maps_url, facebook_url, instagram_url,
              color_scheme, demo_html_path, demo_url, status, has_whatsapp, score, source, notes, form_data, scraped_at)
-            VALUES (:name, :category, :address, :city, :phone, :rating,
+            VALUES (:name, :category, :address, :city, :phone, :email, :rating,
                     :review_count, :hours, :maps_url, :facebook_url, :instagram_url,
                     :color_scheme, :demo_html_path, :demo_url, 'scraped', :has_whatsapp, :score, :source, :notes, :form_data,
                     COALESCE(:scraped_at, CURRENT_TIMESTAMP))
@@ -469,6 +484,7 @@ def insert_business(db_path: str, data: dict) -> Optional[int]:
             "address": data.get("address"),
             "city": data.get("city"),
             "phone": data.get("phone"),
+            "email": data.get("email"),
             "rating": data.get("rating"),
             "review_count": data.get("review_count"),
             "hours": data.get("hours"),
