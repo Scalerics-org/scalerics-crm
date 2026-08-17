@@ -19,6 +19,7 @@ DB_ID = os.environ.get("NOTION_DATABASE_ID", "3ae65d94-deec-8093-8c48-cfbe77e202
 
 
 def _headers(version: str) -> dict:
+    """Arma las cabeceras de autenticacion para una version de API dada."""
     return {
         "Authorization": f"Bearer {os.environ['NOTION_TOKEN']}",
         "Notion-Version": version,
@@ -27,6 +28,7 @@ def _headers(version: str) -> dict:
 
 
 def main() -> int:
+    """Prueba cada version de API contra la database y reporta lo que encuentra."""
     if not os.environ.get("NOTION_TOKEN"):
         print("Falta NOTION_TOKEN")
         return 1

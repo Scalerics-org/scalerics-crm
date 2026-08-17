@@ -37,6 +37,16 @@ Condiciones de corte:
 - Si las dos versiones dan 404, la integración no tiene la database conectada
   (paso manual 3).
 
+Ejemplo de la **forma** en que el script imprime la tabla estado → grupo (no
+es un resultado real, es solo para ilustrar el formato de salida — el
+resultado real va en la sección de hallazgos):
+
+```
+  grupo To-do: ['Backlog', 'Up next']
+  grupo In progress: ['In progress', 'On Hold']
+  grupo Complete: ['Done']
+```
+
 ---
 
 ## Hallazgos del smoke (PENDIENTE)
@@ -56,13 +66,5 @@ hacer esta sesión. Falta completar, después de correrlo, estos cuatro datos:
    - Sin ellos: `POST /v1/databases/{id}/query` y parent
      `{"database_id": "..."}`.
 4. **Tabla estado → grupo de la property `Status`**, tal como la imprime el
-   script (no inventar valores — puede no coincidir con lo esperado abajo):
-   PENDIENTE.
-
-   Esperado orientativo (a confirmar con la salida real):
-
-   | Grupo | Estados |
-   |---|---|
-   | To-do | Backlog, Up next |
-   | In progress | In progress, On Hold |
-   | Complete | Done |
+   script (no inventar valores — puede no coincidir con el ejemplo de formato
+   de la sección "Smoke test" de arriba): PENDIENTE.
