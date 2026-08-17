@@ -217,6 +217,13 @@ def init_db(db_path: str) -> None:
                 created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        # Pareo con la database Tasks de Notion. `notion_status` guarda el
+        # estado exacto que vimos alla la ultima vez (Backlog, Up next, On
+        # Hold...), que es mas fino que los tres del CRM: es lo que nos permite
+        # no pisarlo cuando el grupo no cambio.
+        _add_column(conn, "tasks", "notion_page_id", "TEXT")
+        _add_column(conn, "tasks", "notion_status", "TEXT")
+        _add_column(conn, "tasks", "notion_synced_at", "TIMESTAMP")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS task_progress_events (
                 id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -920,6 +927,7 @@ _TASK_COLUMNS = {
     "assignee_id", "assignee_name", "assignee_email",
     "created_by_id", "created_by_name",
     "goal", "progress", "goal_type",
+    "notion_page_id", "notion_status", "notion_synced_at",
 }
 
 
