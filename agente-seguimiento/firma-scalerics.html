@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Generador de firmas — Scalerics</title>
+<style>
+  :root{
+    --blue:#0088CC; --green:#10B981;
+    --ink:#111827; --gray:#6B7280;
+    --line:#E5E7EB; --bg:#F9FAFB; --card:#FFFFFF;
+    --ff:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--ff);font-size:15px;line-height:1.5}
+  .wrap{max-width:1080px;margin:0 auto;padding:40px 24px 72px}
+
+  header{border-bottom:1px solid var(--line);padding-bottom:24px;margin-bottom:32px}
+  h1{margin:0 0 6px;font-size:26px;letter-spacing:-.02em}
+  header p{margin:0;color:var(--gray);font-size:14px;max-width:62ch}
+
+  .cols{display:grid;grid-template-columns:minmax(300px,380px) 1fr;gap:32px;align-items:start}
+  @media (max-width:840px){.cols{grid-template-columns:1fr}}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:22px}
+  .card h2{margin:0 0 18px;font-size:12px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--gray)}
+
+  label{display:block;margin-bottom:14px}
+  label span{display:block;font-size:12px;font-weight:600;color:var(--gray);margin-bottom:5px}
+  input{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:6px;font:inherit;font-size:14px;color:var(--ink);background:#fff}
+  input:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(0,136,204,.13)}
+  .hint{font-size:11.5px;color:var(--gray);margin-top:5px;line-height:1.45}
+
+  .preview{background:#fff;border:1px solid var(--line);border-radius:10px;padding:30px;min-height:150px}
+  .bar{display:flex;gap:9px;flex-wrap:wrap;margin-top:16px}
+  button{padding:9px 15px;border:1px solid var(--line);border-radius:6px;background:#fff;font:inherit;font-size:13.5px;font-weight:500;color:var(--ink);cursor:pointer}
+  button:hover{border-color:var(--blue);color:var(--blue)}
+  button.primary{background:var(--blue);border-color:var(--blue);color:#fff}
+  button.primary:hover{background:#0077b5;border-color:#0077b5;color:#fff}
+  button.ok{background:var(--green);border-color:var(--green);color:#fff}
+
+  details{margin-top:22px;border-top:1px solid var(--line);padding-top:18px}
+  summary{cursor:pointer;font-size:13px;font-weight:600;color:var(--gray)}
+  textarea{width:100%;margin-top:12px;height:190px;padding:12px;border:1px solid var(--line);border-radius:6px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11.5px;line-height:1.55;color:var(--ink);background:#fff;resize:vertical}
+
+  .note{margin-top:26px;padding:15px 17px;border-left:3px solid var(--blue);background:rgba(0,136,204,.05);border-radius:0 6px 6px 0;font-size:13px;color:#374151}
+  .note strong{color:var(--ink)}
+  .note ol{margin:9px 0 0;padding-left:19px}
+  .note li{margin-bottom:5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>Generador de firmas</h1>
+    <p>Completá los datos y copiá la firma. Todas las firmas del equipo comparten estructura: solo cambian los datos de la persona.</p>
+  </header>
+
+  <div class="cols">
+
+    <div class="card">
+      <h2>Datos</h2>
+      <label><span>Nombre y apellido</span><input id="f-nombre" value="Juan Pereyra"></label>
+      <label><span>Cargo</span><input id="f-cargo" value="Líder Comercial"></label>
+      <label><span>Teléfono</span><input id="f-tel" value="+598 99 123 456"></label>
+      <label><span>Web</span><input id="f-web" value="scalerics.com"></label>
+      <label><span>Ubicación</span><input id="f-loc" value="Montevideo, Uruguay"></label>
+      <label>
+        <span>URL pública del logo</span>
+        <input id="f-logo" value="https://scalerics.com/logo-firma.png">
+        <div class="hint">La imagen no viaja en el mail: se descarga de tu servidor cada vez que alguien lo abre. Si la movés o la borrás, cada mail ya enviado queda con un cuadrado roto.</div>
+      </label>
+    </div>
+
+    <div>
+      <div class="preview" id="preview"></div>
+
+      <div class="bar">
+        <button class="primary" id="btn-rich">Copiar para pegar en Zoho Mail</button>
+        <button id="btn-html">Copiar HTML crudo</button>
+      </div>
+
+      <details>
+        <summary>Ver el HTML (constante <code>FIRMA_HTML</code> del servicio)</summary>
+        <textarea id="raw" readonly spellcheck="false"></textarea>
+      </details>
+
+      <div class="note">
+        <strong>Cómo se usa cada botón</strong>
+        <ol>
+          <li><strong>Firma del webmail:</strong> primer botón, y pegá directo en Zoho Mail → Configuración → Firmas. Copia la firma ya renderizada. Esto lo hacen los 5.</li>
+          <li><strong>Firma del agente:</strong> segundo botón, y pasá ese HTML para la constante <code>FIRMA_HTML</code> del servicio. <strong>Solo la de Juan</strong> — es el único firmante del agente. El modelo nunca genera la firma: se concatena al pie del cuerpo que redacta, así el teléfono y el cargo están siempre bien.</li>
+        </ol>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const F = ['nombre','cargo','tel','web','loc','logo'];
+const $ = id => document.getElementById(id);
+
+// Escapa lo que el usuario tipea. Sin esto, un & o un < en un cargo rompe el HTML de la firma.
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function build(){
+  const d = {};
+  F.forEach(k => d[k] = esc($('f-'+k).value.trim()));
+
+  const ff = "'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
+  const web = d.web.replace(/^https?:\/\//,'');
+
+  // Tablas + estilos inline: es lo unico que renderiza igual en Gmail, Outlook, Zoho y Apple Mail.
+  return `<table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;font-family:${ff};">
+  <tr>
+    <td style="padding-right:18px;vertical-align:middle;">
+      <img src="${d.logo}" alt="Scalerics" width="246" height="48" style="display:block;border:0;width:246px;height:48px;">
+    </td>
+    <td style="border-left:3px solid #0088CC;padding-left:18px;vertical-align:middle;">
+      <div style="font-family:${ff};font-size:15px;font-weight:600;color:#111827;line-height:1.35;">${d.nombre}</div>
+      <div style="font-family:${ff};font-size:13px;color:#6B7280;line-height:1.5;padding-bottom:6px;">${d.cargo}</div>
+      <div style="font-family:${ff};font-size:13px;color:#6B7280;line-height:1.6;">
+        <a href="tel:${d.tel.replace(/\s/g,'')}" style="color:#6B7280;text-decoration:none;">${d.tel}</a><br>
+        <a href="https://${web}" style="color:#0088CC;text-decoration:none;font-weight:500;">${web}</a><br>
+        ${d.loc}
+      </div>
+    </td>
+  </tr>
+</table>`;
+}
+
+function render(){
+  const html = build();
+  $('preview').innerHTML = html;
+  $('raw').value = html;
+}
+
+async function copy(html, btn, label){
+  try{
+    if (label === 'rich'){
+      await navigator.clipboard.write([new ClipboardItem({
+        'text/html': new Blob([html], {type:'text/html'}),
+        'text/plain': new Blob([html], {type:'text/plain'})
+      })]);
+    } else {
+      await navigator.clipboard.writeText(html);
+    }
+    const t = btn.textContent, c = btn.className;
+    btn.textContent = 'Copiado';
+    btn.className = 'ok';
+    setTimeout(() => { btn.textContent = t; btn.className = c; }, 1600);
+  } catch(e){
+    // Sin permiso de portapapeles: dejamos el HTML a la vista para copiar a mano.
+    $('raw').closest('details').open = true;
+    $('raw').select();
+    alert('No pude usar el portapapeles. Te abrí el HTML abajo, copialo a mano.');
+  }
+}
+
+F.forEach(k => $('f-'+k).addEventListener('input', render));
+$('btn-rich').addEventListener('click', e => copy(build(), e.target, 'rich'));
+$('btn-html').addEventListener('click', e => copy(build(), e.target, 'plain'));
+render();
+</script>
+</body>
+</html>

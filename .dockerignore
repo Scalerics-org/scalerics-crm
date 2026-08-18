@@ -1,0 +1,39 @@
+# El Dockerfile del CRM hace COPY . . — todo lo que no este aca entra en la
+# imagen, y la imagen queda en el registry de Fly.
+#
+# Desde que el bot de WhatsApp vive en este repo, sin este archivo se colaban
+# adentro la sesion de WhatsApp, la clave de OpenAI y los backups con los
+# telefonos de todos los clientes. Nada de eso tiene por que estar en la imagen
+# del CRM.
+
+# ── el bot: tiene su propia imagen, no va en esta ──
+wa-service/
+
+# ── secretos ──
+.env
+*.env
+!.env.example
+
+# ── datos ──
+backups/
+*.db
+*.db-wal
+*.db-shm
+*.sql
+
+# ── ruido ──
+.git/
+.github/
+__pycache__/
+*.pyc
+.pytest_cache/
+node_modules/
+venv/
+.venv/
+*.log
+.claude/
+
+# ── cosas que no corren en el servidor ──
+tests/
+budgets/
+generated_demos/
