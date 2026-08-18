@@ -626,6 +626,90 @@ def test_un_estado_inesperado_no_borra_la_fila(db, caplog):
     assert leads_a_recordar(db) == [], "y manana no se le vuelve a escribir"
 
 
+def _envio(conn, bid, numero, dias_atras):
+    from datetime import datetime, timedelta, timezone
+    cuando = (datetime.now(timezone.utc) - timedelta(days=dias_atras)).strftime("%Y-%m-%d %H:%M:%S")
+    conn.execute("INSERT INTO meta_reminders (business_id, numero, token, sent_at) "
+                 "VALUES (?,?,?,?)", (bid, numero, f"tok-{bid}-{numero}", cuando))
+
+
+def test_el_seguimiento_espera_los_dias_que_corresponden(db):
+    """El contacto 2 va a los 10 dias del primero, no antes."""
+    from services.meta_reminders import leads_a_seguir
+
+    conn = sqlite3.connect(db)
+    _lead(conn, 40, dias=30)
+    _envio(conn, 40, 1, dias_atras=9)
+    _lead(conn, 41, dias=30)
+    _envio(conn, 41, 1, dias_atras=10)
+    conn.commit()
+    conn.close()
+
+    elegidos = leads_a_seguir(db)
+
+    assert [x["id"] for x in elegidos] == [41]
+    assert elegidos[0]["numero"] == 2
+
+
+def test_los_trimestrales_se_cuentan_desde_el_primer_envio(db):
+    """El ancla es el primer contacto, no el anterior: asi el atraso de una
+    tanda no se acumula sobre los siguientes."""
+    from services.meta_reminders import leads_a_seguir
+
+    conn = sqlite3.connect(db)
+    _lead(conn, 42, dias=200)
+    _envio(conn, 42, 1, dias_atras=120)
+    _envio(conn, 42, 2, dias_atras=110)
+    _envio(conn, 42, 3, dias_atras=95)
+    conn.commit()
+    conn.close()
+
+    elegidos = leads_a_seguir(db)
+
+    assert [x["id"] for x in elegidos] == [42], "el 4 va a los 115 dias del primero"
+    assert elegidos[0]["numero"] == 4
+
+
+def test_el_septimo_es_el_ultimo_de_la_vida(db):
+    from services.meta_reminders import leads_a_seguir
+
+    conn = sqlite3.connect(db)
+    _lead(conn, 43, dias=500)
+    for n, dias in ((1, 400), (2, 390), (3, 375), (4, 285), (5, 195), (6, 105), (7, 35)):
+        _envio(conn, 43, n, dias_atras=dias)
+    conn.commit()
+    conn.close()
+
+    assert leads_a_seguir(db) == [], "despues del 7 no vuelve a entrar nunca"
+
+
+def test_el_que_se_dio_de_baja_no_recibe_el_siguiente(db):
+    from services.meta_reminders import leads_a_seguir
+
+    conn = sqlite3.connect(db)
+    _lead(conn, 44, dias=30)
+    _envio(conn, 44, 1, dias_atras=20)
+    conn.execute("UPDATE meta_reminders SET unsubscribed_at = ? WHERE business_id = ?",
+                 ("2026-08-18 10:00:00", 44))
+    conn.commit()
+    conn.close()
+
+    assert leads_a_seguir(db) == []
+
+
+def test_el_que_dejo_de_estar_sin_contactar_no_recibe_el_siguiente(db):
+    """Es la unica senal de corte cuando alguien contesta el mail."""
+    from services.meta_reminders import leads_a_seguir
+
+    conn = sqlite3.connect(db)
+    _lead(conn, 45, dias=30, crm_status="interesado")
+    _envio(conn, 45, 1, dias_atras=20)
+    conn.commit()
+    conn.close()
+
+    assert leads_a_seguir(db) == []
+
+
 def test_el_mail_sale_sin_espacios_alrededor(db):
     """La dedup compara con TRIM, asi que un mail con espacios entra igual al
     grupo; si despues lo mandamos crudo, Resend lo rechaza, eso cuenta como

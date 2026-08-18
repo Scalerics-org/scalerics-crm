@@ -28,6 +28,12 @@ _TOPE_DIARIO = 15
 # mas caliente es el ultimo en recibir el mail.
 _VENTANA_RECIEN_ELEGIBLE_DIAS = 7
 
+# Dias desde el PRIMER envio de cada lead. El ancla es el primer contacto y no
+# el anterior a proposito: asi el atraso de una tanda no se acumula sobre los
+# que siguen. Son 7 y el septimo es el ultimo de la vida de ese lead.
+_DIAS_DE_CADA_CONTACTO = [0, 10, 25, 115, 205, 295, 365]
+_TOTAL_CONTACTOS = len(_DIAS_DE_CADA_CONTACTO)
+
 # El resto de la base guarda las fechas asi (scraped_at, entre otras) y las
 # compara contra datetime('now', ...) de SQLite, que devuelve este mismo
 # formato. Un isoformat() con 'T' y offset no compara: rompe lexicograficamente
@@ -203,6 +209,67 @@ def leads_a_recordar(db_path: str, dias_minimos: int = 3, limite: int = _TOPE_DI
             "email": f["email"],
             "negocio": _texto(campos, CLAVE_NEGOCIO),
             "rubro": _texto(campos, CLAVE_RUBRO),
+        })
+    return salida
+
+
+def leads_a_seguir(db_path: str, limite: int = _TOPE_DIARIO) -> list[dict]:
+    """Leads que ya recibieron algun contacto y a los que hoy les toca el siguiente.
+
+    No hace falta deduplicar por mail como en `leads_a_recordar`: para tener
+    fila, el lead ya paso por ese filtro, asi que hay una sola por direccion.
+
+    El salto que corresponde depende de cuantos contactos lleva, asi que el CASE
+    se arma desde `_DIAS_DE_CADA_CONTACTO` para que la tabla de dias tenga un
+    solo lugar de verdad.
+    """
+    casos = " ".join(
+        f"WHEN {n} THEN {_DIAS_DE_CADA_CONTACTO[n]}"
+        for n in range(1, _TOTAL_CONTACTOS)
+    )
+    conn = _conn(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        filas = conn.execute(
+            f"""
+            SELECT b.id, b.name, TRIM(b.email) AS email, b.form_data,
+                   COUNT(r.id) AS enviados,
+                   MIN(r.sent_at) AS primer_envio
+              FROM businesses b
+              JOIN meta_reminders r ON r.business_id = b.id
+             WHERE b.source = 'meta'
+               AND b.crm_status = 'sin_contactar'
+               AND b.email IS NOT NULL AND LENGTH(TRIM(b.email)) > 3
+               AND NOT EXISTS (
+                     SELECT 1 FROM meta_reminders u
+                      WHERE u.business_id = b.id AND u.unsubscribed_at IS NOT NULL
+                   )
+          GROUP BY b.id
+            HAVING enviados < {_TOTAL_CONTACTOS}
+               AND primer_envio <= datetime('now', '-' || (CASE enviados {casos} END) || ' days')
+          ORDER BY primer_envio ASC
+             LIMIT ?
+            """,
+            (int(limite),),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    salida = []
+    for f in filas:
+        try:
+            campos = json.loads(f["form_data"] or "{}")
+        except (ValueError, TypeError):
+            campos = {}
+        if not isinstance(campos, dict):
+            campos = {}
+        salida.append({
+            "id": f["id"],
+            "name": f["name"] or "",
+            "email": f["email"],
+            "negocio": _texto(campos, CLAVE_NEGOCIO),
+            "rubro": _texto(campos, CLAVE_RUBRO),
+            "numero": int(f["enviados"]) + 1,
         })
     return salida
 
