@@ -12,8 +12,13 @@ Los hace una persona, no el código.
 
 1. Entrar a Notion con la cuenta **Contacto Scalerics** (owner del workspace).
    La cuenta de Juan es invitada y no puede crear integraciones.
-2. Crear una integración interna en `notion.so/my-integrations`, con
-   capacidades de lectura y actualización de contenido. Copiar el token.
+2. Crear una integración interna en `notion.so/my-integrations`, con las **tres**
+   capacidades de contenido: *Leer*, *Actualizar* e ***Insertar***. Las tres se
+   usan: leer para el pull, actualizar para el estado y el `CRM ID`, e insertar
+   para crear la tarjeta con el botón. Sin la de insertar, `crear_pagina`
+   devuelve 403 y el resto anda igual, que es la falla más confusa de las tres.
+   No hace falta ninguna capacidad de información de usuario: el sync no lee
+   personas. Copiar el token (empieza con `ntn_`).
 3. En la database **Tasks**, menú `···` → *Conexiones* → agregar la
    integración.
 4. Agregar a la database una property **`CRM ID`** de tipo *Número*. Ocultarla
