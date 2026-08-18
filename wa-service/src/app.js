@@ -19,7 +19,7 @@ const { crearAgrupador } = require('./inbound/agrupador');
  * Arma el servicio entero y devuelve las piezas.
  * Los tests lo llaman con una config a medida y :memory: como base.
  */
-function construir(cfg, { logger, ahora = () => new Date(), openai: clienteIA = null } = {}) {
+function construir(cfg, { logger, ahora = () => new Date(), openai: clienteIA = null, google = null } = {}) {
   const log = logger || crearLogger({
     level: cfg.LOG_LEVEL,
     produccion: cfg.NODE_ENV === 'production',
@@ -89,7 +89,14 @@ function construir(cfg, { logger, ahora = () => new Date(), openai: clienteIA = 
     'capa de IA'
   );
 
-  const embudo = crearEmbudo({ repo, cola, textos, scorer, logger: log, cfg, crmNotify, agente, redactor });
+  // Agenda contra Google Calendar. Sin credenciales queda inactiva y el cierre
+  // vuelve al camino del link, que es el que existia antes.
+  const agenda = require('./agenda/gcal').crearAgenda({ cfg, logger: log, ...(google ? { fetch: google } : {}) });
+  log.info({ agenda: agenda.activo }, 'agenda');
+
+  const embudo = crearEmbudo({
+    repo, cola, textos, scorer, logger: log, cfg, crmNotify, agente, redactor, agenda, ahora,
+  });
 
   const scheduler = crearScheduler({ repo, cola, cfg, redactor, logger: log, ahora });
   const servicioLeads = crearServicioLeads({

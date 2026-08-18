@@ -11,7 +11,8 @@ const { S } = require('./states');
 const TRANSICIONES = {
   [S.NEW]:               { '*': S.CONVERSANDO },
   [S.CONVERSANDO]:       { '*': S.CONVERSANDO },
-  [S.MEETING_SENT]:      { '*': S.MEETING_LINK_SENT },
+  [S.MEETING_SENT]:      { '*': S.HORARIOS_OFRECIDOS },
+  [S.HORARIOS_OFRECIDOS]: { '*': S.HORARIOS_OFRECIDOS },
   [S.MEETING_INFO]:      { '*': S.MEETING_LINK_SENT },
   [S.MEETING_LINK_SENT]: { '*': S.MEETING_LINK_SENT },
   [S.SCHEDULED]:         { '*': S.SCHEDULED },

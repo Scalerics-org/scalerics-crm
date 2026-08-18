@@ -44,7 +44,7 @@ const FASE_CIERRE = new Set([S.MEETING_SENT, S.MEETING_INFO, S.SCHEDULED]);
  */
 function crearEmbudo({
   repo, cola, textos, scorer, logger, cfg = { amPhones: [] },
-  crmNotify = null, agente = null, redactor = null, ahora = () => new Date(),
+  crmNotify = null, agente = null, redactor = null, agenda = null, ahora = () => new Date(),
 }) {
   const CALENDLY = cfg.CALENDLY_LINK || '';
 
@@ -108,6 +108,80 @@ function crearEmbudo({
     repo.actualizarFunnel(leadId, conNorm);
   }
 
+  /** Los horarios que se le mostraron, tal como quedaron guardados. */
+  function leerHorarios(lead) {
+    try {
+      return JSON.parse(lead.horarios_ofrecidos || '[]').map((s) => new Date(s));
+    } catch (e) {
+      return [];
+    }
+  }
+
+  /**
+   * Los horarios en palabras, para que el modelo los escriba y para que sepa
+   * cuales son los validos. Se le pasan como contexto, no como texto final.
+   */
+  function describirHorarios({ slots }) {
+    const dia = new Intl.DateTimeFormat('es-UY', {
+      timeZone: cfg.TZ, weekday: 'long', day: 'numeric', month: 'long',
+    }).format(slots[0]);
+    const horas = slots.map((d) => new Intl.DateTimeFormat('es-UY', {
+      timeZone: cfg.TZ, hour: '2-digit', minute: '2-digit', hour12: false,
+    }).format(d));
+    return `Horarios libres para el ${dia}: ${horas.join(', ')}. Son los únicos que podés ofrecer.`;
+  }
+
+  /**
+   * Cual de los horarios ofrecidos eligio. Lo interpreta el modelo —entiende
+   * "las 13", "la primera", "a la una y media"— pero solo puede devolver uno de
+   * los que existen: la lista va como enum, asi que no puede inventar una hora.
+   */
+  async function elegirHorario(lead, entrada, ofrecidos) {
+    if (!agente?.activo) return null;
+
+    const opciones = ofrecidos.map((d) => d.toISOString());
+    const etiquetas = ofrecidos.map((d) => new Intl.DateTimeFormat('es-UY', {
+      timeZone: cfg.TZ, hour: '2-digit', minute: '2-digit', hour12: false,
+    }).format(d));
+
+    const elegido = await agente.elegirDeLista({
+      texto: entrada,
+      opciones,
+      etiquetas,
+      instruccion: 'El lead esta eligiendo uno de los horarios que se le ofrecieron. Devolvé cual, o "ninguno" si no se entiende o si contesta otra cosa.',
+    });
+    if (!elegido) return null;
+
+    const i = opciones.indexOf(elegido);
+    return i >= 0 ? ofrecidos[i] : null;
+  }
+
+  /** Deja la reunion registrada: recordatorios, aviso al AM y estado. */
+  function servicioReunion(lead, r) {
+    repo.registrarReunion(lead.id, {
+      meetingTime: r.inicio.toISOString(),
+      meetingUrl: r.meetUrl,
+      ahoraIso: ahora().toISOString(),
+    });
+    repo.actualizarFunnel(lead.id, { meeting_event_id: r.eventId || null });
+
+    for (const am of cfg.amPhones) {
+      cola.encolar({
+        to: am,
+        texto: plantillas.avisoReunionAgendada(repo.leadPorId(lead.id), {
+          cuando: new Intl.DateTimeFormat('es-UY', {
+            timeZone: cfg.TZ, weekday: 'long', day: 'numeric', month: 'long',
+            hour: '2-digit', minute: '2-digit', hour12: false,
+          }).format(r.inicio),
+          link: r.meetUrl,
+        }),
+        kind: 'am_notice',
+        leadId: lead.id,
+      });
+    }
+    logger?.info({ leadId: lead.id, cuando: r.inicio.toISOString() }, 'reunion agendada por el bot');
+  }
+
   /**
    * La IA no pudo escribir y hay alguien esperando. No se disimula con un texto
    * armado: se lo pasa a una persona. Es la unica salida honesta sin el modelo.
@@ -140,9 +214,77 @@ function crearEmbudo({
         return alEntrar(fresco, destino, entrada);
       }
 
-      case S.MEETING_SENT:
+      case S.MEETING_SENT: {
+        // Con agenda conectada se le muestran horarios reales en vez de un
+        // link: elegir entre cinco opciones es mas facil que abrir una pagina,
+        // y el que abre una pagina muchas veces no vuelve.
+        const libres = agenda?.activo ? await agenda.horariosDisponibles(ahora()) : null;
+
+        if (libres?.slots?.length) {
+          const iso = libres.slots.map((d) => d.toISOString());
+          repo.actualizarFunnel(lead.id, { horarios_ofrecidos: JSON.stringify(iso) });
+          if (!await decirIA(lead, 'oferta_con_horarios', describirHorarios(libres))) {
+            return sinIA(lead, 'oferta_con_horarios');
+          }
+          return S.HORARIOS_OFRECIDOS;
+        }
+
+        // Sin agenda —o sin ningun hueco— se ofrece la reunion sin horarios y
+        // se sigue por el camino del link, que es el que ya existia.
         if (!await decirIA(lead, 'oferta_reunion')) return sinIA(lead, 'oferta_reunion');
         return estado;
+      }
+
+      /**
+       * Eligio —o no— uno de los horarios que se le mostraron.
+       *
+       * Cual eligio lo resuelve el modelo, que entiende "las 13" y "la de la
+       * una y media"; que ese horario exista y siga libre lo verifica el
+       * codigo. El modelo interpreta, el codigo confirma.
+       */
+      case S.HORARIOS_OFRECIDOS: {
+        const ofrecidos = leerHorarios(lead);
+        if (!ofrecidos.length) return alEntrar(lead, S.MEETING_SENT, entrada);
+
+        const elegido = await elegirHorario(lead, entrada, ofrecidos);
+        if (!elegido) {
+          // No se entendio cual quiere. Se le vuelve a preguntar con los mismos
+          // horarios: pedirle que elija de nuevo es mejor que agendar el que no era.
+          if (!await decirIA(lead, 'horario_no_entendido', describirHorarios({ slots: ofrecidos })))
+            return sinIA(lead, 'horario_no_entendido');
+          return estado;
+        }
+
+        const r = await agenda.reservar({
+          inicio: elegido,
+          nombre: lead.business_name || lead.nombre,
+          telefono: lead.telefono,
+          resumen: lead.needs || lead.necesidad || '',
+        });
+
+        if (r.motivo === 'ocupado') {
+          // Se lo tomaron entre medio. Se buscan nuevos y se le explica.
+          const nuevos = await agenda.horariosDisponibles(ahora());
+          if (nuevos?.slots?.length) {
+            repo.actualizarFunnel(lead.id, {
+              horarios_ofrecidos: JSON.stringify(nuevos.slots.map((d) => d.toISOString())),
+            });
+            await decirIA(lead, 'horario_ocupado', describirHorarios(nuevos));
+            return estado;
+          }
+          derivar(lead, 'agenda');
+          return alEntrar(lead, S.HUMAN_QUEUED, entrada);
+        }
+
+        if (!r.ok) {
+          // Falló la agenda. No se le promete nada: va a una persona.
+          derivar(lead, 'agenda');
+          return alEntrar(lead, S.HUMAN_QUEUED, entrada);
+        }
+
+        servicioReunion(lead, r);
+        return alEntrar(repo.leadPorId(lead.id), S.SCHEDULED, entrada);
+      }
 
       case S.MEETING_INFO:
         if (!await decirIA(lead, 'mas_info')) return sinIA(lead, 'mas_info');
@@ -182,11 +324,24 @@ function crearEmbudo({
         return estado;
       }
 
-      case S.SCHEDULED:
+      case S.SCHEDULED: {
         // Solo al confirmarse. Repetirlo en cada mensaje posterior es el loop
         // que tenia MEETING_SENT.
-        if (lead.fsm_state !== S.SCHEDULED) await decirIA(lead, 'reunion_confirmada');
+        if (lead.fsm_state === S.SCHEDULED) return estado;
+
+        const cuando = lead.meeting_time
+          ? new Intl.DateTimeFormat('es-UY', {
+            timeZone: cfg.TZ, weekday: 'long', day: 'numeric', month: 'long',
+            hour: '2-digit', minute: '2-digit', hour12: false,
+          }).format(new Date(lead.meeting_time))
+          : '';
+        const extra = cuando
+          ? `Quedó agendada para el ${cuando}. El link de la videollamada es ${lead.meeting_url || '(sin link)'}`
+          : '';
+
+        await decirIA(lead, lead.meeting_event_id ? 'reunion_agendada' : 'reunion_confirmada', extra);
         return estado;
+      }
 
       case S.HUMAN_QUEUED:
         if (!lead.human_requested) {

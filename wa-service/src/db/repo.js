@@ -86,6 +86,7 @@ function crearRepo(db) {
         'colors', 'instagram_web', 'needs', 'rubro', 'rubro_norm',
         'score', 'priority', 'score_reason', 'meeting_url', 'meeting_time',
         'consultas_precio', 'motivo_derivacion',
+        'horarios_ofrecidos', 'meeting_event_id',
       ];
       const set = Object.keys(campos).filter((k) => permitidos.includes(k));
       if (!set.length) return stmt.leadPorId.get(id);

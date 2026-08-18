@@ -203,6 +203,20 @@ Ofrecele la videollamada de 30 minutos, gratis y sin compromiso. Decile en concr
 Enganchá con algo puntual de lo que te contó, para que no suene a plantilla.
 Preguntale si le sirve, sin mandarle el link todavía.`,
 
+    oferta_con_horarios: `Terminaste de entender lo que necesita y encaja con lo que hacemos.
+Ofrecele la videollamada de 30 minutos, gratis y sin compromiso, enganchando con algo puntual de lo que te contó para que no suene a plantilla.
+Y cerrá mostrándole los horarios que te paso más abajo, tal cual, para que elija uno. NO inventes otros ni digas "o el que te quede cómodo": esos son los que hay.
+No mandes ningún link: el horario que elija lo agendás vos.`,
+
+    horario_no_entendido: `Le mostraste horarios y contestó algo que no se entiende cuál es.
+Volvé a listarle los mismos, sin reproches y sin hacerlo sentir tonto. Una línea y la lista.`,
+
+    horario_ocupado: `Eligió un horario que se ocupó justo antes de que contestara.
+Pedile disculpas en media línea —fue nuestro problema, no suyo— y mostrale los que quedan libres ahora.`,
+
+    reunion_agendada: `Le acabás de agendar la reunión. Confirmale el día y la hora, y pasale el link de la videollamada.
+Corto y con ganas: acaba de decir que sí.`,
+
     link_reunion: `Dijo que sí. Pasale el link para que elija horario: ${calendly}
 Decile que cuando reserve le llega la confirmación con el link de la videollamada.`,
 

@@ -14,6 +14,10 @@ const S = {
   // Momento de calificar. Es de paso: nunca queda guardado.
   SCORED: 'SCORED',
   MEETING_SENT: 'MEETING_SENT',
+  // Se le mostraron horarios reales y esta eligiendo uno. Los horarios
+  // ofrecidos quedan guardados: sin eso, cuando conteste "las 13" no habria
+  // contra que validarlo.
+  HORARIOS_OFRECIDOS: 'HORARIOS_OFRECIDOS',
   MEETING_INFO: 'MEETING_INFO',
   // El link de Calendly ya salio. Existe para no volver a mandarlo.
   MEETING_LINK_SENT: 'MEETING_LINK_SENT',

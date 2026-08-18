@@ -240,6 +240,56 @@ function crearAgente({ openai = null, modelo, textos, calendly = '', logger = nu
       return { texto: texto.slice(0, MAX_CARACTERES), datos, precioBloqueado: false };
     },
 
+    /**
+     * Cual de una lista cerrada eligio el lead.
+     *
+     * El modelo interpreta —entiende "las 13", "la primera", "a la una y
+     * media"— pero no puede devolver nada fuera de la lista: las opciones van
+     * como enum en la herramienta. Sin eso podria confirmar un horario que
+     * nunca se ofrecio, y el lead se presentaria a una reunion que no existe.
+     *
+     * @returns {Promise<string|null>} la opcion elegida, o null si no se entiende.
+     */
+    async elegirDeLista({ texto, opciones, etiquetas, instruccion }) {
+      if (!openai || !opciones.length) return null;
+
+      const lista = opciones.map((o, i) => `${o} = ${etiquetas[i]}`).join('\n');
+
+      try {
+        const r = await openai.chat.completions.create({
+          model: modelo,
+          max_tokens: 120,
+          messages: [
+            { role: 'system', content: `${instruccion}
+
+Opciones:
+${lista}` },
+            { role: 'user', content: String(texto || '') },
+          ],
+          tools: [{
+            type: 'function',
+            function: {
+              name: 'elegir',
+              parameters: {
+                type: 'object',
+                properties: {
+                  opcion: { type: 'string', enum: [...opciones, 'ninguno'] },
+                },
+                required: ['opcion'],
+              },
+            },
+          }],
+          tool_choice: { type: 'function', function: { name: 'elegir' } },
+        });
+
+        const args = JSON.parse(r.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments || '{}');
+        return opciones.includes(args.opcion) ? args.opcion : null;
+      } catch (e) {
+        logger?.warn({ err: String(e.message || e) }, 'no se pudo interpretar la eleccion');
+        return null;
+      }
+    },
+
     faltantes,
   };
 }

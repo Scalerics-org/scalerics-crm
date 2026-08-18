@@ -130,6 +130,35 @@ const esquema = z.object({
    */
   HORARIO_ATENCION: z.string().default('Lun a sáb, 9 a 19hs'),
 
+  /**
+   * Agenda contra Google Calendar. El bot muestra horarios reales y reserva
+   * ahi mismo, en vez de mandar un link.
+   *
+   * Es Google y no Calendly porque la API de Calendly no deja reservar en
+   * nombre de otro: se pueden listar horarios, pero la reserva la completa el
+   * lead en la pagina de ellos. Con eso el flujo termina igual en un link, que
+   * es justo lo que se queria evitar.
+   */
+  GCAL_CLIENT_ID: z.string().default(''),
+  GCAL_CLIENT_SECRET: z.string().default(''),
+  GCAL_REFRESH_TOKEN: z.string().default(''),
+  GCAL_CALENDAR_ID: z.string().default('primary'),
+
+  // La franja que se ofrece. Son horas de reunion, no de atencion: el bot
+  // contesta todo el dia, pero solo agenda aca.
+  AGENDA_DESDE: z.string().default('12:00'),
+  AGENDA_HASTA: z.string().default('16:00'),
+  AGENDA_PASO_MIN: z.coerce.number().int().positive().default(30),
+  AGENDA_DURACION_MIN: z.coerce.number().int().positive().default(30),
+  AGENDA_DIAS: z.string().default('mon,tue,wed,thu,fri'),
+  // Cuantos horarios se muestran. Mas de cinco deja de ser una eleccion y pasa
+  // a ser una lista que hay que leer.
+  AGENDA_MAX_OPCIONES: z.coerce.number().int().positive().default(5),
+  AGENDA_DIAS_ADELANTE: z.coerce.number().int().positive().default(10),
+  // No se ofrece nada antes de este plazo: una reunion en veinte minutos no le
+  // sirve a nadie y suena a que no hay nadie del otro lado.
+  AGENDA_AVISO_MIN_HORAS: z.coerce.number().nonnegative().default(3),
+
   CIRCUIT_BREAKER_FAILS: z.coerce.number().int().positive().default(3),
   CIRCUIT_BREAKER_WINDOW_MIN: z.coerce.number().int().positive().default(10),
   CIRCUIT_BREAKER_PAUSE_MIN: z.coerce.number().int().positive().default(30),

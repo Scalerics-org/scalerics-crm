@@ -87,6 +87,9 @@ function cfgTest(extra = {}) {
     FOLLOWUP_JITTER_MINUTES: '0',
     BUSINESS_HOURS: '00:00-23:59',
     BUSINESS_DAYS: 'sun-sat',
+    // Credenciales de agenda de mentira: el fetch se inyecta aparte.
+    GCAL_CLIENT_ID: 'x', GCAL_CLIENT_SECRET: 'y', GCAL_REFRESH_TOKEN: 'z',
+    GCAL_CALENDAR_ID: 'agenda@scalerics',
     // Sin espera: agrupar entrantes tiene sus propios tests.
     AGRUPAR_ENTRANTES_MS: '0',
     ...extra,
@@ -102,10 +105,11 @@ async function montar(extra, reloj) {
   // de la capa de IA. Se separa antes de armar la config.
   // Por defecto va el stub: sin IA el bot deriva todo a una persona, que es
   // el camino degradado y no el que hay que probar.
-  const { openai = stubOpenAI(), sinIA = false, ...cfgExtra } = extra || {};
+  const { openai = stubOpenAI(), sinIA = false, _google = null, ...cfgExtra } = extra || {};
   const s = construir(cfgTest(cfgExtra), {
     logger: null,
     openai: sinIA ? null : openai,
+    google: _google,
     ahora: reloj ? () => reloj : undefined,
   });
   await s.proveedor.conectar();
