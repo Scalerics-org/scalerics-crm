@@ -131,3 +131,134 @@ rato. Es la más simple y la más segura.
 un subdominio apuntando al servidor, nginx adelante con certificado, y el
 `x-api-key` que ya está implementado como autenticación. Es más piezas y más
 superficie expuesta, pero no toca el CRM.
+
+---
+
+# Backup automático
+
+El backup manual no sirve: la copia que había era del 24 de julio, con 421
+negocios, cuando producción tenía 1.752. La diferencia no se notó hasta que
+alguien fue a buscarla.
+
+`respaldar.sh` respalda las dos bases que no se pueden perder —la del bot con la
+sesión de WhatsApp, y la del CRM que vive en el volumen de Fly— y corre por
+systemd todos los días a las 04:30.
+
+## Instalación
+
+```bash
+sudo cp deploy/scalerics-backup.{service,timer} /etc/systemd/system/
+sudo cp deploy/scalerics-backup.env.example /etc/default/scalerics-backup
+sudo chmod 600 /etc/default/scalerics-backup
+```
+
+Editá `/etc/default/scalerics-backup` y completá `FLY_API_TOKEN`. El token se
+saca desde la laptop:
+
+```bash
+fly tokens create readonly --name backup-servidor
+```
+
+**De solo lectura a propósito.** Ese token va a vivir en un archivo del
+servidor; si alguien lo saca, que como mucho pueda leer, no borrar la app.
+
+Después:
+
+```bash
+sudo systemctl enable --now scalerics-backup.timer
+sudo systemctl start scalerics-backup.service   # probarlo ya
+sudo journalctl -u scalerics-backup -n 30 --no-pager
+```
+
+## Lo que hace, y por qué así
+
+**No copia los archivos con `cp`.** Las dos bases están vivas; una copia cruda
+tomada en medio de una escritura sale cortada, y eso no se nota hasta el día que
+hay que restaurarla. Usa la API de backup de SQLite, que toma una foto
+consistente.
+
+**Verifica lo que guardó.** Corre `integrity_check` sobre la copia y confirma
+que tenga tablas. Un archivo que no abre no es un backup.
+
+**Rota recién cuando lo de hoy salió bien.** Si el backup falló y además borra
+los viejos, quedás sin nada.
+
+**Avisa por WhatsApp si algo falla.** Un backup que falla en silencio es igual
+que no tener backup — y el equipo mira WhatsApp, no los logs del servidor. Sale
+por el mismo bot, a `AVISAR_A`.
+
+## Restaurar
+
+```bash
+tar xzf /var/backups/scalerics/bot-2026-08-18.tar.gz -C /tmp
+systemctl stop scalerics-wa
+cp /tmp/wa.db /opt/scalerics-wa/data/wa.db
+cp -r /tmp/auth /opt/scalerics-wa/
+chown -R scalerics:scalerics /opt/scalerics-wa/{data,auth}
+systemctl start scalerics-wa
+```
+
+Conviene probarlo una vez ahora, no el día que haga falta.
+
+---
+
+# Por qué el bot va en el VPS y no en Fly
+
+Fly apaga las máquinas cuando no reciben tráfico. El CRM está configurado así
+—`auto_stop_machines = "stop"`, `min_machines_running = 0`— y para una web está
+perfecto: se despierta con el primer request.
+
+Para el bot es fatal. Baileys mantiene un WebSocket abierto contra WhatsApp; si
+la máquina se detiene, la conexión se cae. Y no hay nada que la despierte,
+porque **un mensaje de WhatsApp no llega como un request HTTP a Fly**: llega por
+esa conexión que ya no existe. El bot quedaría dormido hasta que alguien entre
+al `/health`.
+
+Se puede forzar `min_machines_running = 1`, pero entonces estás pagando una
+máquina prendida 24/7 en Fly, que es más cara que el VPS que ya tenés. Y Fly
+migra máquinas entre hosts por mantenimiento más seguido que un VPS, y cada
+migración es una reconexión.
+
+Un proceso con una conexión persistente y estado en disco es la forma que mejor
+le queda a un VPS y peor le queda a Fly.
+
+## Cómo le pega el CRM al bot, entonces
+
+Sin abrir nada a internet: se mete el VPS en la red privada de Fly con
+WireGuard, que es una función de Fly y no un invento.
+
+En la laptop:
+
+```bash
+fly wireguard create personal gru scalerics-vps
+```
+
+Deja un archivo de configuración. Se copia al servidor:
+
+```bash
+sudo apt install wireguard
+sudo cp scalerics-vps.conf /etc/wireguard/fly.conf
+sudo systemctl enable --now wg-quick@fly
+ping6 -c2 scalerics-crm.internal
+```
+
+A partir de ahí el VPS tiene una dirección `fdaa:...` dentro de la red de Fly, y
+el CRM le puede pegar al bot por ahí. En el `.env` del CRM:
+
+```
+WA_SERVICE_URL=http://[fdaa:tu:direccion]:8080
+WA_API_KEY=<el mismo del bot>
+BOT_API_URL=http://[fdaa:tu:direccion]:8080
+```
+
+Y en el `.env` del bot, para que escuche también en la interfaz de WireGuard:
+
+```
+HOST=::
+```
+
+Con eso el bot sigue sin estar expuesto a internet —el firewall solo deja pasar
+SSH— pero el CRM lo alcanza. Sin dominio, sin certificado, sin nginx.
+
+Recién ahí funcionan las dos cosas que hoy no: que el bot se entere cuando
+alguien agenda en Calendly y deje de insistirle, y el panel de WhatsApp del CRM.
