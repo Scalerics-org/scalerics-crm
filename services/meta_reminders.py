@@ -28,6 +28,16 @@ _TOPE_DIARIO = 15
 # mas caliente es el ultimo en recibir el mail.
 _VENTANA_RECIEN_ELEGIBLE_DIAS = 7
 
+# Un lead de Meta sigue en la secuencia mientras nadie lo haya contactado (el
+# crm_status es la UNICA senal de que alguien contesto el mail) y tenga
+# direccion. Un solo lugar de verdad: si mañana se ajusta aca, vale para
+# leads_a_recordar y leads_a_seguir por igual, no hace falta acordarse de la
+# otra funcion.
+_FILTRO_LEAD_ELEGIBLE = (
+    "b.source = 'meta' AND b.crm_status = 'sin_contactar' "
+    "AND b.email IS NOT NULL AND LENGTH(TRIM(b.email)) > 3"
+)
+
 # Dias desde el PRIMER envio de cada lead. El ancla es el primer contacto y no
 # el anterior a proposito: asi el atraso de una tanda no se acumula sobre los
 # que siguen. Son 7 y el septimo es el ultimo de la vida de ese lead.
@@ -168,14 +178,12 @@ def leads_a_recordar(db_path: str, dias_minimos: int = 3, limite: int = _TOPE_DI
     conn.row_factory = sqlite3.Row
     try:
         filas = conn.execute(
-            """
+            f"""
             SELECT b.id, b.name, TRIM(b.email) AS email, b.form_data,
                    MIN(b.scraped_at) AS primero
               FROM businesses b
          LEFT JOIN meta_reminders r ON r.business_id = b.id
-             WHERE b.source = 'meta'
-               AND b.crm_status = 'sin_contactar'
-               AND b.email IS NOT NULL AND LENGTH(TRIM(b.email)) > 3
+             WHERE {_FILTRO_LEAD_ELEGIBLE}
                AND r.id IS NULL
                AND NOT EXISTS (
                      SELECT 1 FROM meta_reminders r2
@@ -219,6 +227,17 @@ def leads_a_seguir(db_path: str, limite: int = _TOPE_DIARIO) -> list[dict]:
     No hace falta deduplicar por mail como en `leads_a_recordar`: para tener
     fila, el lead ya paso por ese filtro, asi que hay una sola por direccion.
 
+    El salto que corresponde depende de MAX(numero), no de COUNT(*): un
+    borrado manual de una fila intermedia (la forma documentada de reintentar
+    un envio) deja huecos, y contar filas asignaria de nuevo un numero que ya
+    existe. Eso chocaria contra el UNIQUE(business_id, numero) y ese choque,
+    en enviar_recordatorios, se trata como "otra corrida se adelanto": el lead
+    quedaria trabado en ese contacto para siempre, sin rastro en el log. El
+    tope de la secuencia (7) usa la misma logica: importa el numero mas alto
+    ya mandado, no cuantas filas hay, asi que un lead cuyo contacto 7 ya salio
+    no vuelve a entrar aunque le falten filas intermedias por un reintento
+    viejo.
+
     El salto que corresponde depende de cuantos contactos lleva, asi que el CASE
     se arma desde `_DIAS_DE_CADA_CONTACTO` para que la tabla de dias tenga un
     solo lugar de verdad.
@@ -233,20 +252,18 @@ def leads_a_seguir(db_path: str, limite: int = _TOPE_DIARIO) -> list[dict]:
         filas = conn.execute(
             f"""
             SELECT b.id, b.name, TRIM(b.email) AS email, b.form_data,
-                   COUNT(r.id) AS enviados,
+                   MAX(r.numero) AS ultimo_numero,
                    MIN(r.sent_at) AS primer_envio
               FROM businesses b
               JOIN meta_reminders r ON r.business_id = b.id
-             WHERE b.source = 'meta'
-               AND b.crm_status = 'sin_contactar'
-               AND b.email IS NOT NULL AND LENGTH(TRIM(b.email)) > 3
+             WHERE {_FILTRO_LEAD_ELEGIBLE}
                AND NOT EXISTS (
                      SELECT 1 FROM meta_reminders u
                       WHERE u.business_id = b.id AND u.unsubscribed_at IS NOT NULL
                    )
           GROUP BY b.id
-            HAVING enviados < {_TOTAL_CONTACTOS}
-               AND primer_envio <= datetime('now', '-' || (CASE enviados {casos} END) || ' days')
+            HAVING ultimo_numero < {_TOTAL_CONTACTOS}
+               AND primer_envio <= datetime('now', '-' || (CASE ultimo_numero {casos} END) || ' days')
           ORDER BY primer_envio ASC
              LIMIT ?
             """,
@@ -269,7 +286,7 @@ def leads_a_seguir(db_path: str, limite: int = _TOPE_DIARIO) -> list[dict]:
             "email": f["email"],
             "negocio": _texto(campos, CLAVE_NEGOCIO),
             "rubro": _texto(campos, CLAVE_RUBRO),
-            "numero": int(f["enviados"]) + 1,
+            "numero": int(f["ultimo_numero"]) + 1,
         })
     return salida
 

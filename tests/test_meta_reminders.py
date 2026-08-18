@@ -710,6 +710,28 @@ def test_el_que_dejo_de_estar_sin_contactar_no_recibe_el_siguiente(db):
     assert leads_a_seguir(db) == []
 
 
+def test_una_fila_salteada_no_repite_numero(db):
+    """Un borrado manual de la fila del 2 (la forma documentada de reintentar)
+    deja los contactos 1 y 3 sin el 2. El numero que corresponde es el
+    siguiente al MAS ALTO ya mandado (4), no COUNT(*)+1 (3): ese ya existe y
+    choca contra el UNIQUE(business_id, numero), lo que en enviar_recordatorios
+    se confunde con 'otra corrida se adelanto' y deja al lead trabado para
+    siempre sin ningun rastro en el log."""
+    from services.meta_reminders import leads_a_seguir
+
+    conn = sqlite3.connect(db)
+    _lead(conn, 3000, dias=200)
+    _envio(conn, 3000, 1, dias_atras=120)
+    _envio(conn, 3000, 3, dias_atras=50)
+    conn.commit()
+    conn.close()
+
+    elegidos = leads_a_seguir(db)
+
+    assert [x["id"] for x in elegidos] == [3000]
+    assert elegidos[0]["numero"] == 4, "el 3 ya existe; asignarlo de nuevo chocaria contra el UNIQUE"
+
+
 def test_el_mail_sale_sin_espacios_alrededor(db):
     """La dedup compara con TRIM, asi que un mail con espacios entra igual al
     grupo; si despues lo mandamos crudo, Resend lo rechaza, eso cuenta como
