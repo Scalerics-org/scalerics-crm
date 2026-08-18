@@ -253,15 +253,27 @@ def test_el_panel_de_tareas_tiene_el_boton_y_el_badge_de_notion():
     assert "_enviarTareaANotion" in html
 
 
-def test_loadTasks_llena_el_mapa_de_proyectos_sin_pasar_por_el_panel_de_proyectos():
-    """Regresión: el kanban de Tareas tiene que poder mostrar el nombre del
-    proyecto de una tarea aunque el usuario nunca haya abierto el panel de
-    Proyectos en esa carga de página. Si alguien borra la llamada a
-    `_asegurarMapaDeProyectos` desde `loadTasks`, el badge de proyecto pasaría
-    a depender del orden en que se abren los paneles."""
+def test_el_badge_de_proyecto_en_tareas_no_depende_del_panel_de_proyectos():
+    """Chequeo de presencia sobre el JS embebido, no de comportamiento (no hay
+    infraestructura para ejecutar el front en esta suite):
+
+    1. `loadTasks` tiene que llamar a `_asegurarMapaDeProyectos` -- si no, el
+       badge de proyecto vuelve a depender de haber abierto el panel de
+       Proyectos primero en esa carga de página.
+    2. El guard de `_taskCardHtml` tiene que evaluar
+       `_proyectosPorPagina[t.notion_project_page_id]` como condición del
+       ternario, no solo la existencia del mapa -- si no, un proyecto sin
+       nombre para esa tarea (mapa vacío, fetch fallido, proyecto borrado)
+       deja un `<span class="proj-stage">` vacío en la tarjeta, que es
+       exactamente lo que Task 4 declaró inaceptable.
+    """
     html = dashboard.DASHBOARD_HTML
-    cuerpo = re.search(r"async function loadTasks\(\) \{.*?\n\}", html, re.S).group(0)
-    assert "_asegurarMapaDeProyectos" in cuerpo
+
+    load_tasks = re.search(r"async function loadTasks\(\) \{.*?\n\}", html, re.S).group(0)
+    assert "_asegurarMapaDeProyectos" in load_tasks
+
+    task_card = re.search(r"function _taskCardHtml\(t\) \{.*?\n\}", html, re.S).group(0)
+    assert "_proyectosPorPagina[t.notion_project_page_id] ?" in task_card
 
 
 def _fuente_de(nombre):

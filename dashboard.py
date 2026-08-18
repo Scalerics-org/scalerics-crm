@@ -3119,8 +3119,15 @@ async function loadProjects() {
   const cont = document.getElementById('projects-list');
   if (!cont) return;
   cont.innerHTML = '<div class="tasks-empty">Cargando...</div>';
-  const r = await fetch('/api/projects');
-  const proyectos = await r.json();
+  let proyectos;
+  try {
+    const r = await fetch('/api/projects');
+    proyectos = await r.json();
+  } catch {
+    cont.innerHTML = '<div class="tasks-empty">No se pudieron cargar los proyectos.</div>';
+    return;
+  }
+  proyectos = Array.isArray(proyectos) ? proyectos : [];
   _proyectosPorPagina = Object.fromEntries(proyectos.map(p => [p.notion_page_id, p.name]));
   if (!proyectos.length) {
     cont.innerHTML = '<div class="tasks-empty">No hay proyectos en el tablero.</div>';

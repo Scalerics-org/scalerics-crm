@@ -193,6 +193,7 @@ def test_la_ruta_devuelve_los_proyectos_con_sus_tareas(tmp_path, monkeypatch):
     ruta = str(tmp_path / "leads.db")
     init_db(ruta)
     upsert_project(ruta, "p-1", "Desarrollo", stage="In Progress")
+    upsert_project(ruta, "p-2", "Administracion")
     task_id = create_task(ruta, title="Una tarea", status="in_progress")
     update_task(ruta, task_id, notion_project_page_id="p-1")
 
@@ -202,8 +203,12 @@ def test_la_ruta_devuelve_los_proyectos_con_sus_tareas(tmp_path, monkeypatch):
 
     assert r.status_code == 200
     datos = r.get_json()
-    assert len(datos) == 1
-    assert datos[0]["name"] == "Desarrollo"
-    assert datos[0]["stage"] == "In Progress"
-    assert [t["title"] for t in datos[0]["tasks"]] == ["Una tarea"]
-    assert datos[0]["conteo"] == {"todo": 0, "in_progress": 1, "done": 0}
+    assert len(datos) == 2
+    proyectos = {p["name"]: p for p in datos}
+    assert proyectos["Desarrollo"]["stage"] == "In Progress"
+    assert [t["title"] for t in proyectos["Desarrollo"]["tasks"]] == ["Una tarea"]
+    assert proyectos["Desarrollo"]["conteo"] == {"todo": 0, "in_progress": 1, "done": 0}
+    # Un proyecto sin tareas tiene que venir igual, con la lista vacia y los
+    # conteos en cero -- requisito explicito del spec, antes no ejercitado.
+    assert proyectos["Administracion"]["tasks"] == []
+    assert proyectos["Administracion"]["conteo"] == {"todo": 0, "in_progress": 0, "done": 0}
