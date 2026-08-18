@@ -1,7 +1,8 @@
 # Sincronizar tareas del CRM con la database Tasks de Notion
 
-**Fecha:** 2026-08-17
-**Estado:** diseño aprobado, sin implementar
+**Fecha:** 2026-08-17 (ampliado el 18-8-2026)
+**Estado:** implementado, mergeado a `main` y verificado contra la API real
+el 18-8-2026: creación, pull, push y la regla de no reescribir un valor igual.
 
 ## Contexto
 
@@ -26,7 +27,7 @@ Lo que se quiere: poder mover una tarea de estado desde cualquiera de los dos
 lados y que el otro se entere. La restricción que manda sobre todo el diseño es
 que **el tablero de Notion no puede empeorar** — es de un equipo, no del CRM.
 
-## Dos bloqueos que hay que resolver antes
+## Dos bloqueos que había que resolver antes (los dos resueltos el 18-8-2026)
 
 1. **El token.** La cuenta con la que se entra a Notion desde esta máquina es
    *invitada* al workspace ("Contacto Scalerics's…", badge Invitado; la bandeja
@@ -102,10 +103,12 @@ Notion, y cualquier borrado o archivado **en** Notion.
 
 ## El modelo: reconciliación, no eventos
 
-En cada sync el CRM pide a Notion las páginas que tienen `CRM ID` cargado —
-un request, con paginación por cursor si algún día pasan de 100 — compara el
+En cada sync el CRM pide a Notion **todas** las páginas del data source — un
+request, con paginación por cursor si algún día pasan de 100 — compara el
 `Status` que ve contra el `notion_status` que guardó la última vez, y donde
-difieren **gana Notion**.
+difieren **gana Notion**. Las que no reconoce las adopta como tareas nuevas; las
+pareadas que no volvieron en el listado las da por desaparecidas, pero solo si el
+listado vino entero (ver la ampliación del 18-8).
 
 El push CRM → Notion es inmediato y actualiza `notion_status` en el mismo
 momento, así que ese valor guardado es siempre "lo último que los dos lados
@@ -119,7 +122,7 @@ timestamps que llevar ni cola de eventos que se pueda desincronizar.
 | CRM | → Notion | Notion | → CRM |
 |---|---|---|---|
 | `todo` | Backlog | Sin Status, Backlog, Up next | `todo` |
-| `in_progress` | In progress | In progress, On Hold | `in_progress` |
+| `in_progress` | In progress | In progress, On Hold, Waiting To Accept | `in_progress` |
 | `done` | Done | Done | `done` |
 
 La columna de la izquierda **solo se aplica si cambió el grupo**. Si el CRM pasa
@@ -127,9 +130,14 @@ a `todo` y la tarjeta ya está en *Up next*, no sale ningún `PATCH`: el grupo d
 *Up next* ya es `todo`. Esa regla es lo único que impide que el CRM aplaste los
 estados finos del tablero.
 
-A confirmar en el smoke test: en qué grupo de la property `Status` cae *On Hold*
-(el color violeta sugiere el grupo "In progress", pero se lee de la API, no se
-adivina).
+Confirmado por el smoke el 18-8-2026: *On Hold* cae en el grupo "In progress" de
+Notion, como se había asumido. **"Waiting To Accept"** es un estado que el equipo
+agregó ese mismo día; Notion lo agrupa bajo *Complete*, pero acá se mapea a
+`in_progress` a propósito: una tarea esperando aceptación todavía ocupa a alguien,
+y mandarla a `done` la haría desaparecer de los pendientes del CRM.
+
+Un estado que el equipo agregue y que no esté en `GRUPOS` cae en `todo` por
+default: no rompe nada, pero conviene revisarlo.
 
 ## Garantías de no-daño en Notion
 
@@ -138,7 +146,7 @@ adivina).
 | Tarjetas duplicadas | Solo se crea página si `notion_page_id` está vacío. Antes de crear, se busca por `CRM ID`. |
 | Pisar Up next / On Hold / Backlog | Solo se escribe `Status` si cambió el grupo. |
 | Ensuciar el historial y notificar al vacío | El `PATCH` sale solo si el valor nuevo difiere del actual. Cero escrituras idempotentes. |
-| Tocar tarjetas ajenas | Solo se escriben páginas pareadas. Las que ya existen quedan intactas mientras nadie las vincule. |
+| Tocar tarjetas ajenas | Solo se escriben páginas pareadas. A las nacidas en Notion no se les escribe nada, ni siquiera `CRM ID`: el pareo vive del lado del CRM. |
 | Borrar o archivar | El CRM nunca borra ni archiva en Notion. Si se borra la tarea en el CRM, la tarjeta queda y se despareja. |
 | Inundar el tablero | Nada sale automático. El push existe solo para tareas que se vincularon a mano. |
 
