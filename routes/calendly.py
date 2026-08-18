@@ -103,9 +103,20 @@ def calendly_sync():
     """
     db_path = os.environ.get("DB_PATH", "leads.db")
     dry_run = request.args.get("dry") in ("1", "true", "yes")
+    fuente = request.args.get("fuente", "ambas")
     try:
-        from services.calendly_gcal import fetch_and_sync
-        stats = fetch_and_sync(db_path, dry_run=dry_run)
+        stats = {}
+        # Gmail primero porque aporta el mail del invitado, que el calendario
+        # no trae. Y el calendario va segundo a propósito: el mail de
+        # cancelación de Calendly no incluye el id del evento, así que esa vía
+        # no puede detectar bajas. El calendario sí (renombra a "Cancelado:"),
+        # y al pasar último marca la reunión que el mail acaba de crear.
+        if fuente in ("ambas", "gmail"):
+            from services.calendly_gmail import fetch_and_sync_gmail
+            stats["gmail"] = fetch_and_sync_gmail(db_path, dry_run=dry_run)
+        if fuente in ("ambas", "calendario"):
+            from services.calendly_gcal import fetch_and_sync
+            stats["calendario"] = fetch_and_sync(db_path, dry_run=dry_run)
     except Exception as e:
         import logging
         logging.getLogger(__name__).exception("calendly sync falló")

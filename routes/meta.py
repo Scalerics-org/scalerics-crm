@@ -159,7 +159,7 @@ def meta_webhook_receive():
     return "ok", 200
 
 
-def _merge_lead_into_existing(db: str, phone: str, fields: dict) -> int | None:
+def _merge_lead_into_existing(db: str, phone: str, email: str, fields: dict) -> int | None:
     """El INSERT no creó fila: ya hay un negocio con ese teléfono.
 
     `insert_business` usa `INSERT OR IGNORE` sobre `businesses.phone UNIQUE`,
@@ -180,9 +180,18 @@ def _merge_lead_into_existing(db: str, phone: str, fields: dict) -> int | None:
     if not existente:
         return None
     biz_id = existente["id"]
-    update_business(db, biz_id,
-                    source="meta",
-                    form_data=json.dumps(fields, ensure_ascii=False))
+    update_fields = {
+        "source": "meta",
+        "form_data": json.dumps(fields, ensure_ascii=False),
+    }
+    # El mail del formulario nunca pisa uno que ya estaba: mismo criterio que
+    # scripts/backfill_meta_emails.py. Un negocio ya scrapeado puede tener un
+    # mail cargado a mano o de otra fuente; un formulario de Meta posterior
+    # no es más confiable que eso, así que solo completa el campo si estaba
+    # vacío, nunca lo corrige.
+    if email and not (existente.get("email") or "").strip():
+        update_fields["email"] = email
+    update_business(db, biz_id, **update_fields)
     return biz_id
 
 
@@ -226,10 +235,6 @@ def _fetch_and_store_lead(app, lead_id: str, form_id: str):
             biz_id = insert_business(db, {
                 "name":       name,
                 "phone":      phone or None,
-                # El email se extraia del formulario y despues se descartaba: no
-                # se pasaba a insert_business, que ademas tampoco lo guardaba. Sin
-                # el no se le puede escribir al lead, ni invitarlo a una reunion,
-                # ni mandarle un recordatorio.
                 "email":      email or None,
                 "city":       city or None,
                 "category":   "Meta Lead Ad",
@@ -253,7 +258,7 @@ def _fetch_and_store_lead(app, lead_id: str, form_id: str):
                     daemon=True,
                 ).start()
             else:
-                existente_id = _merge_lead_into_existing(db, phone, fields)
+                existente_id = _merge_lead_into_existing(db, phone, email, fields)
                 if existente_id:
                     logger.warning(
                         f"Meta lead sobre un negocio que ya existia: {name} ({phone}) "
@@ -343,6 +348,7 @@ def meta_import_leads():
                              fields.get("name") or "Lead Meta")
                     phone = (fields.get("phone_number") or fields.get("telefono") or
                              fields.get("phone") or fields.get("celular") or "")
+                    email = fields.get("email") or fields.get("correo") or ""
                     city  = fields.get("city") or fields.get("ciudad") or ""
                     campaign = lead.get("campaign_name") or lead.get("ad_name") or form.get("name", "")
                     notes = f"Meta Lead Ad · {campaign}".strip(" ·")
@@ -356,6 +362,7 @@ def meta_import_leads():
                     biz_id = insert_business(db, {
                         "name":       name,
                         "phone":      phone or None,
+                        "email":      email or None,
                         "city":       city or None,
                         "category":   "Meta Lead Ad",
                         "status":     "scraped",
@@ -466,6 +473,7 @@ def meta_import_sync():
                 fields = {f["name"].lower(): (f.get("values") or [""])[0] for f in lead.get("field_data", [])}
                 name  = fields.get("full_name") or fields.get("nombre") or fields.get("name") or "Lead Meta"
                 phone = fields.get("phone_number") or fields.get("telefono") or fields.get("phone") or ""
+                email = fields.get("email") or fields.get("correo") or ""
                 city  = fields.get("city") or fields.get("ciudad") or ""
                 ct = lead.get("created_time", "")
                 if ct:
@@ -475,7 +483,7 @@ def meta_import_sync():
                     except Exception as e2:
                         errors.append(f"date: {e2}"); ct = ""
                 biz_id = insert_business(db, {
-                    "name": name, "phone": phone or None, "city": city or None,
+                    "name": name, "phone": phone or None, "email": email or None, "city": city or None,
                     "category": "Meta Lead Ad", "status": "scraped",
                     "notes": f"Meta Lead Ad · {lead.get('campaign_name') or form.get('name','')}".strip(" ·"),
                     "score": 70, "source": "meta",
@@ -655,6 +663,7 @@ def _run_import_sync(db: str) -> tuple[int, int]:
             fields = {f["name"].lower(): (f.get("values") or [""])[0] for f in lead.get("field_data", [])}
             name  = fields.get("full_name") or fields.get("nombre") or fields.get("name") or "Lead Meta"
             phone = fields.get("phone_number") or fields.get("telefono") or fields.get("phone") or fields.get("celular") or ""
+            email = fields.get("email") or fields.get("correo") or ""
             city  = fields.get("city") or fields.get("ciudad") or ""
             ct = lead.get("created_time", "")
             if ct:
@@ -665,7 +674,7 @@ def _run_import_sync(db: str) -> tuple[int, int]:
                     ct = ""
             campaign = lead.get("campaign_name") or form.get("name", "")
             biz_id = insert_business(db, {
-                "name": name, "phone": phone or None, "city": city or None,
+                "name": name, "phone": phone or None, "email": email or None, "city": city or None,
                 "category": "Meta Lead Ad", "status": "scraped",
                 "notes": f"Meta Lead Ad · {campaign}".strip(" ·"),
                 "score": 70, "source": "meta",

@@ -85,6 +85,25 @@ def test_insert_business_guarda_los_campos_basicos(tmp_path):
     assert get_business(db, biz_id)["name"] == "Negocio Test"
 
 
+def test_insert_business_guarda_el_email(tmp_path):
+    """insert_business arma el INSERT a mano y no mencionaba `email` en
+    ningun lado: pasarlo en el dict se descartaba en silencio aunque la
+    columna existiera y estuviera en ALLOWED_COLUMNS (esa constante solo la
+    usa update_business, no este INSERT)."""
+    from database import init_db, insert_business, get_business
+
+    db = str(tmp_path / "t.db")
+    init_db(db)
+    biz_id = insert_business(db, {
+        "name": "Negocio Con Mail",
+        "phone": "+59899000001",
+        "email": "prueba@ejemplo.com",
+        "source": "meta",
+    })
+    assert biz_id
+    assert get_business(db, biz_id)["email"] == "prueba@ejemplo.com"
+
+
 def test_base_nueva_tiene_las_columnas_de_permisos(tmp_path):
     """init_db agregaba las columnas de users antes de crear la tabla: en una
     base nueva el ALTER fallaba en silencio y quedaban sin existir."""

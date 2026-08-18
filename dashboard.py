@@ -3,6 +3,7 @@ import logging
 import os
 import secrets
 import threading
+import time
 import webbrowser
 from datetime import timedelta
 
@@ -5318,6 +5319,44 @@ async function loadActivity() {
 </html>"""
 
 
+_calendly_sync_state = {"at": 0.0}
+_calendly_sync_lock = threading.Lock()
+CALENDLY_SYNC_EVERY = int(os.environ.get("CALENDLY_SYNC_EVERY", "600"))
+
+
+def _maybe_sync_calendly(db_path: str) -> None:
+    """Trae los leads de Calendly cuando alguien abre el CRM.
+
+    La máquina de Fly se duerme sin tráfico, así que un cron interno no
+    correría. Va en un hilo aparte para no demorar la carga de la página, y
+    con throttle para no pegarle a Google en cada request.
+    """
+    if not os.environ.get("GMAIL_REFRESH_TOKEN"):
+        return
+    now = time.time()
+    with _calendly_sync_lock:
+        if now - _calendly_sync_state["at"] < CALENDLY_SYNC_EVERY:
+            return
+        _calendly_sync_state["at"] = now
+
+    def _run():
+        try:
+            # Gmail primero: aporta el mail del invitado y el calendario, que
+            # es el único que ve las cancelaciones, pasa después.
+            from services.calendly_gcal import fetch_and_sync
+            from services.calendly_gmail import fetch_and_sync_gmail
+            g = fetch_and_sync_gmail(db_path)
+            c = fetch_and_sync(db_path)
+            if g["created"] or c["created"] or c["canceled"]:
+                logging.getLogger(__name__).info(
+                    "calendly sync: %s nuevas por mail, %s por calendario, %s canceladas",
+                    g["created"], c["created"], c["canceled"])
+        except Exception:
+            logging.getLogger(__name__).warning("calendly sync falló", exc_info=True)
+
+    threading.Thread(target=_run, daemon=True).start()
+
+
 def create_app(db_path: str) -> Flask:
     app = Flask(__name__)
     # SECRET_KEY firma la cookie de sesion. El fallback hardcodeado que habia aca
@@ -5431,7 +5470,8 @@ def create_app(db_path: str) -> Flask:
     @app.before_request
     def require_login():
         if request.endpoint in ("login", "logout", "register", "forgot_password",
-                                "reset_password", "static", "privacidad", "health"):
+                                "reset_password", "static", "privacidad",
+                                "baja_recordatorios", "health"):
             return
         if request.path.startswith("/api/meta/webhook"):
             return
@@ -5455,6 +5495,10 @@ def create_app(db_path: str) -> Flask:
             if request.path.startswith("/api/"):
                 return jsonify({"error": "session_expired"}), 401
             return redirect(url_for("login"))
+
+        # Sesión válida: aprovechamos la visita para traer lo de Calendly.
+        if not request.path.startswith(("/api/", "/static/")):
+            _maybe_sync_calendly(app.config["DB_PATH"])
 
     @app.before_request
     def require_panel():
@@ -5485,7 +5529,6 @@ def create_app(db_path: str) -> Flask:
             app.logger.error("Healthcheck fallo al consultar la base: %s", e)
             return jsonify({"status": "error", "db": "unreachable"}), 503
         return jsonify({"status": "ok", "db": "ok"}), 200
-
     @app.route("/privacidad")
     def privacidad():
         return render_template_string("""<!DOCTYPE html>
@@ -5554,6 +5597,30 @@ def create_app(db_path: str) -> Flask:
   <p>Ante cualquier consulta sobre esta política podés escribirnos a <a href="mailto:juantomasetti240@gmail.com">juantomasetti240@gmail.com</a>.</p>
 </main>
 <footer>© 2026 Scalerics · Todos los derechos reservados</footer>
+</body>
+</html>""")
+
+    @app.route("/baja/<token>", methods=["GET", "POST"])
+    def baja_recordatorios(token):
+        from services.meta_reminders import dar_de_baja
+        dar_de_baja(app.config["DB_PATH"], token)
+        # Se responde lo mismo exista o no el token: no tiene sentido decirle a
+        # quien se da de baja que su token no servia, y evita sondear tokens.
+        return render_template_string("""<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Baja confirmada — Scalerics</title></head>
+<body style="margin:0;font-family:'Segoe UI',Arial,sans-serif;background:#f1f5f9;color:#1c2b40">
+  <div style="max-width:520px;margin:80px auto;background:#fff;border-radius:10px;padding:40px;text-align:center">
+    <img src="https://raw.githubusercontent.com/juantomasetti1/scalerics-assets/main/logo_full_alt.png"
+         alt="Scalerics" style="height:28px;margin-bottom:24px">
+    <h1 style="font-size:20px;margin:0 0 12px">Listo, no te escribimos más</h1>
+    <p style="font-size:15px;color:#64748b;margin:0">
+      Te sacamos de la lista de recordatorios. Si algun dia queres retomar, escribinos a
+      <a href="mailto:contacto@scalerics.com" style="color:#0088cc">contacto@scalerics.com</a>.
+    </p>
+  </div>
 </body>
 </html>""")
 
@@ -6524,6 +6591,9 @@ loadAll();
         start_meta_token_monitor(app)
         start_meta_daily_import(app)
         iniciar_scheduler(app)
+
+        from services.meta_reminders import start_meta_reminders
+        start_meta_reminders(app)
 
     try:
         from database import get_all_users
