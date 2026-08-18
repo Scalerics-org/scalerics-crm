@@ -48,6 +48,10 @@ GRUPOS = {
     "Up next": "todo",
     "In progress": "in_progress",
     "On Hold": "in_progress",
+    # El equipo lo agrego el 18-8-2026. Va a in_progress y no a done porque
+    # la tarea sigue ocupando a alguien: el trabajo esta hecho pero todavia
+    # no lo acepto nadie, asi que en el CRM no puede figurar como cerrada.
+    "Waiting To Accept": "in_progress",
     "Done": "done",
 }
 

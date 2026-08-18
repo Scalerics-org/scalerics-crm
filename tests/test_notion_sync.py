@@ -22,6 +22,7 @@ def db(tmp_path):
     ("Up next", "todo"),
     ("In progress", "in_progress"),
     ("On Hold", "in_progress"),
+    ("Waiting To Accept", "in_progress"),
     ("Done", "done"),
 ])
 def test_cada_estado_de_notion_cae_en_un_grupo_del_crm(estado_notion, grupo):
