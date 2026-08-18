@@ -203,6 +203,20 @@ def init_db(db_path: str) -> None:
             )
         """)
 
+        # ── projects ──────────────────────────────────────────────────────────
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS projects (
+                id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                notion_page_id    TEXT UNIQUE,
+                name              TEXT NOT NULL,
+                stage             TEXT,
+                timeline_start    TEXT,
+                timeline_end      TEXT,
+                lead              TEXT,
+                notion_synced_at  TIMESTAMP
+            )
+        """)
+
         # ── tasks ─────────────────────────────────────────────────────────────
         conn.execute("""
             CREATE TABLE IF NOT EXISTS tasks (
@@ -224,6 +238,9 @@ def init_db(db_path: str) -> None:
         _add_column(conn, "tasks", "notion_page_id", "TEXT")
         _add_column(conn, "tasks", "notion_status", "TEXT")
         _add_column(conn, "tasks", "notion_synced_at", "TIMESTAMP")
+        # A que proyecto de Notion pertenece la tarea. Se guarda el page id y no
+        # el nombre: si el equipo renombra un proyecto, el pareo sobrevive.
+        _add_column(conn, "tasks", "notion_project_page_id", "TEXT")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS task_progress_events (
                 id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -928,6 +945,7 @@ _TASK_COLUMNS = {
     "created_by_id", "created_by_name",
     "goal", "progress", "goal_type",
     "notion_page_id", "notion_status", "notion_synced_at",
+    "notion_project_page_id",
 }
 
 
@@ -998,6 +1016,71 @@ def get_tasks_notion(db_path: str) -> list[dict]:
             "SELECT * FROM tasks WHERE notion_page_id IS NOT NULL AND notion_page_id != ''"
         )
         return [dict(row) for row in cursor.fetchall()]
+    finally:
+        conn.close()
+
+
+def upsert_project(db_path: str, notion_page_id: str, name: str,
+                   stage: str | None = None, timeline_start: str | None = None,
+                   timeline_end: str | None = None, lead: str | None = None) -> int:
+    """Da de alta o actualiza un proyecto espejado de Notion.
+
+    La identidad es `notion_page_id`, no el nombre: renombrar un proyecto alla
+    tiene que actualizar la fila, no crear una nueva.
+    """
+    ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    conn = _connect(db_path)
+    try:
+        conn.execute(
+            """INSERT INTO projects
+                   (notion_page_id, name, stage, timeline_start, timeline_end,
+                    lead, notion_synced_at)
+               VALUES (?,?,?,?,?,?,?)
+               ON CONFLICT(notion_page_id) DO UPDATE SET
+                   name = excluded.name,
+                   stage = excluded.stage,
+                   timeline_start = excluded.timeline_start,
+                   timeline_end = excluded.timeline_end,
+                   lead = excluded.lead,
+                   notion_synced_at = excluded.notion_synced_at""",
+            (notion_page_id, name, stage, timeline_start, timeline_end, lead, ahora),
+        )
+        conn.commit()
+        fila = conn.execute("SELECT id FROM projects WHERE notion_page_id = ?",
+                            (notion_page_id,)).fetchone()
+        return fila["id"]
+    finally:
+        conn.close()
+
+
+def get_projects(db_path: str) -> list[dict]:
+    conn = _connect(db_path)
+    try:
+        cursor = conn.execute("SELECT * FROM projects ORDER BY name COLLATE NOCASE")
+        return [dict(row) for row in cursor.fetchall()]
+    finally:
+        conn.close()
+
+
+def borrar_proyectos(db_path: str, page_ids: set) -> int:
+    """Borra proyectos que ya no estan en el tablero y despareja sus tareas.
+
+    Es un espejo: no hay historial propio que perder. Lo que si importa es no
+    dejar tareas apuntando a un proyecto que ya no existe.
+    """
+    if not page_ids:
+        return 0
+    marcas = ",".join("?" for _ in page_ids)
+    valores = list(page_ids)
+    conn = _connect(db_path)
+    try:
+        conn.execute(
+            f"UPDATE tasks SET notion_project_page_id = NULL "
+            f"WHERE notion_project_page_id IN ({marcas})", valores)
+        cursor = conn.execute(
+            f"DELETE FROM projects WHERE notion_page_id IN ({marcas})", valores)
+        conn.commit()
+        return cursor.rowcount
     finally:
         conn.close()
 
