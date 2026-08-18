@@ -17,6 +17,19 @@
  */
 function crearTextos({ horarioAtencion = 'Lun a sáb, 9 a 19hs' } = {}) {
   return {
+    /**
+     * El saludo. Es fijo por decision del negocio: dicho siempre igual, avisa
+     * de entrada que vienen preguntas, y saber eso de antemano baja el abandono
+     * a mitad del cuestionario.
+     *
+     * Efecto lateral que conviene: es el unico mensaje que sale antes de que el
+     * lead diga nada, asi que ser fijo lo hace inmune a que la API este caida.
+     *
+     * Sin link a proposito. Un link en el primer mensaje a alguien que nunca te
+     * escribio es de las seniales de spam mas fuertes que hay.
+     */
+    BIENVENIDA: '¡Buenas! Soy el agente comercial de Scalerics.\n\nLa idea es hacerte unas preguntas introductorias de tu proyecto, para saber cómo podemos ayudarte.',
+
     /** Del superprompt, textual. El bot NUNCA da un numero ni un rango. */
     PRECIO: 'El precio depende del alcance del proyecto, por eso el primer paso es una charla rápida para entenderlo — así te armamos un presupuesto real, no una cifra al aire.\n\n¿Te sirve que coordinemos 15 minutos esta semana?',
 

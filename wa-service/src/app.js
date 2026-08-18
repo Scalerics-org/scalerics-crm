@@ -93,7 +93,7 @@ function construir(cfg, { logger, ahora = () => new Date(), openai: clienteIA = 
 
   const scheduler = crearScheduler({ repo, cola, cfg, redactor, logger: log, ahora });
   const servicioLeads = crearServicioLeads({
-    repo, cola, cfg, logger: log, redactor, embudo, scheduler, ahora,
+    repo, cola, cfg, logger: log, textos, redactor, embudo, scheduler, ahora,
   });
 
   // Todo lo que entra por WhatsApp pasa por aca: marca la respuesta, cancela el

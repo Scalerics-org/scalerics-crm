@@ -8,7 +8,7 @@ const { entre } = require('./outbound/queue');
  * Orquesta el alta de un lead: ficha al AM, bienvenida al lead y follow-up
  * programado. Es el corazon del servicio.
  */
-function crearServicioLeads({ repo, cola, cfg, logger, redactor = null, embudo = null, scheduler = null, ahora = () => new Date() }) {
+function crearServicioLeads({ repo, cola, cfg, logger, textos, redactor = null, embudo = null, scheduler = null, ahora = () => new Date() }) {
 
   function fechaLegible(d) {
     return d.toLocaleString('es-UY', {
@@ -83,23 +83,17 @@ function crearServicioLeads({ repo, cola, cfg, logger, redactor = null, embudo =
         return { lead, yaExistia: false, welcomeEnSegundos: null };
       }
 
-      // La bienvenida la escribe la IA con lo que el lead puso en el
-      // formulario. Si no se puede, no se manda un texto armado: queda
-      // pendiente y el AM —que ya recibio la ficha— lo saluda a mano.
+      // El saludo es fijo por decision del negocio. Todo lo que viene despues
+      // —cada pregunta, cada respuesta— lo sigue escribiendo el modelo.
       const delay = entre(cfg.DELAY_WELCOME_MIN_MS, cfg.DELAY_WELCOME_MAX_MS);
-      const bienvenida = await redactor?.escribir(lead, 'bienvenida');
-      if (bienvenida) {
-        cola.encolar({
-          to: telefono,
-          texto: bienvenida,
-          kind: 'welcome',
-          leadId: lead.id,
-          delayMs: delay,
-        });
-        repo.actualizarLead(lead.id, { status: 'welcomed', welcomed_at: ahora().toISOString() });
-      } else {
-        logger?.error({ leadId: lead.id }, 'sin bienvenida: la IA no pudo escribirla');
-      }
+      cola.encolar({
+        to: telefono,
+        texto: textos.BIENVENIDA,
+        kind: 'welcome',
+        leadId: lead.id,
+        delayMs: delay,
+      });
+      repo.actualizarLead(lead.id, { status: 'welcomed', welcomed_at: ahora().toISOString() });
 
       // Follow-up a las 24h con jitter, para que no salgan todos a la misma hora.
       const jitterMs = entre(-cfg.FOLLOWUP_JITTER_MINUTES, cfg.FOLLOWUP_JITTER_MINUTES) * 60_000;

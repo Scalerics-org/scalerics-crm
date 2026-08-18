@@ -46,14 +46,12 @@ test('manda la ficha al AM y la bienvenida al lead', async () => {
 
   const bienvenida = enviados.find((e) => e.to === '59899123456');
   assert.ok(bienvenida, 'la bienvenida va al lead');
-  assert.equal(bienvenida.texto, '[bienvenida]');
-
-  // El gancho del rubro ya no se verifica en el texto —lo escribe la IA— sino
-  // en que se le haya pasado. Como suena el mensaje se mide en evals/.
-  const { construirRedaccion } = require('../src/ia/prompt');
-  const prompt = construirRedaccion(s.repo.leadPorTelefono('59899123456'), 'bienvenida', 'x');
-  assert.match(prompt, /inmobiliarias/i, 'el prompt lleva el gancho del rubro');
-  assert.match(prompt, /seguimiento de consultas de alquiler/, 'y lo que puso en el formulario');
+  // El saludo es fijo por decision del negocio: el mismo para todos, y avisa
+  // de entrada que vienen preguntas.
+  const { crearTextos } = require('../src/templates/funnel');
+  assert.equal(bienvenida.texto, crearTextos().BIENVENIDA);
+  assert.match(bienvenida.texto, /agente comercial de Scalerics/);
+  assert.ok(!/https?:\/\//.test(bienvenida.texto), 'sin links: es el primer contacto');
 });
 
 test('la ficha al AM sale antes que la bienvenida', async () => {
@@ -156,12 +154,9 @@ test('un rubro desconocido usa la plantilla generica', async () => {
   assert.equal(lead.rubro_norm, 'generico');
 
   const bienvenida = s.proveedor.getEnviados().find((e) => e.to === '59899123456');
-  assert.equal(bienvenida.texto, '[bienvenida]', 'igual se le escribe');
-
-  // Sin rubro conocido no hay gancho, y el prompt no inventa uno.
-  const { construirRedaccion } = require('../src/ia/prompt');
-  const prompt = construirRedaccion(lead, 'bienvenida', 'x');
-  assert.ok(!/Gancho útil/.test(prompt));
+  // El saludo no depende del rubro: es el mismo para todos.
+  const { crearTextos } = require('../src/templates/funnel');
+  assert.equal(bienvenida.texto, crearTextos().BIENVENIDA);
 });
 
 test('sin x-api-key no se entra', async () => {
@@ -195,20 +190,29 @@ test('el link de Calendly va en el follow-up, no en la bienvenida', async () => 
   const { situaciones } = require('../src/ia/prompt');
   const s = situaciones('https://calendly.com/scalerics/diagnostico');
 
-  assert.ok(!s.bienvenida.includes('calendly.com'), 'a la bienvenida no se le da el link');
-  assert.match(s.bienvenida, /No mandes ningún link/);
+  const { crearTextos } = require('../src/templates/funnel');
+  assert.ok(!crearTextos().BIENVENIDA.includes('calendly.com'), 'la bienvenida no lo lleva');
   assert.match(s.followup, /calendly\.com/, 'al follow-up si');
 });
 
-test('el objetivo de la bienvenida no trae una frase copiable', async () => {
-  // Esto paso de verdad: el objetivo daba un ejemplo entre comillas de como
-  // retomar lo que el lead conto, y el modelo se lo mandaba textual a leads que
-  // no habian contado nada. La instruccion que buscaba evitar el invento era la
-  // que lo causaba. Los ejemplos de contenido en un prompt se copian; los de
-  // forma —"tenés" y no "tienes"— no.
+test('ningun objetivo trae una frase de ejemplo copiable', () => {
+  // Esto paso de verdad con la bienvenida: el objetivo daba un ejemplo
+  // entrecomillado de como retomar lo que el lead conto, y el modelo se lo
+  // mandaba textual a leads que no habian contado nada. La instruccion que
+  // buscaba evitar el invento era la que lo causaba.
+  //
+  // La regla que quedo: los ejemplos de FORMA sirven ("tenés" y no "tienes");
+  // los de CONTENIDO se copian. Vale para las 17 situaciones, no solo la que
+  // fallo.
   const { situaciones } = require('../src/ia/prompt');
-  const b = situaciones('https://calendly.com/x').bienvenida;
+  const todas = situaciones('https://calendly.com/x');
 
-  assert.ok(!/"vi que quer|"nos lleg|"me alegra/i.test(b), 'sin frases de ejemplo entrecomilladas');
-  assert.match(b, /SOLO podés mencionar lo que figura arriba/, 'y si con la prohibicion de inventar');
+  for (const [nombre, objetivo] of Object.entries(todas)) {
+    const frases = objetivo.match(/"[^"]{25,}"/g) || [];
+    assert.deepEqual(
+      frases, [],
+      `la situacion "${nombre}" trae una frase entrecomillada larga que el modelo puede copiar: ${frases.join(' | ')}`
+    );
+  }
 });
+
