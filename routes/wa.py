@@ -39,8 +39,26 @@ def _bot_req(method: str, path: str, **kwargs):
         if r.status_code >= 400:
             return None, data.get("error", r.text)
         return data, None
+
+    # Los errores de red se traducen a algo que se pueda leer. El mensaje crudo
+    # de requests es un parrafo de internals de urllib3 —"HTTPSConnectionPool(...)
+    # Max retries exceeded ... NameResolutionError"— que termina en pantalla y no
+    # le dice a nadie que el bot no esta levantado.
+    except http_requests.exceptions.ConnectionError:
+        host = base.split("//")[-1].split("/")[0]
+        return None, (
+            f"No hay conexion con el bot de WhatsApp ({host}). "
+            "Puede estar apagado, o BOT_API_URL apuntando a una direccion que ya no existe."
+        )
+    except http_requests.exceptions.Timeout:
+        return None, "El bot de WhatsApp no respondio a tiempo. Puede estar sobrecargado o reiniciandose."
+    except ValueError:
+        # r.json() sobre algo que no es JSON: casi siempre un proxy o un login
+        # devolviendo HTML donde deberia estar el bot.
+        return None, "El bot de WhatsApp devolvio una respuesta que no se entiende. Revisar BOT_API_URL."
     except Exception as e:
-        return None, str(e)
+        logger.warning(f"Error hablando con el bot: {e}")
+        return None, f"No se pudo consultar el bot de WhatsApp: {type(e).__name__}"
 
 
 def _phone_variants(phone: str) -> list:
