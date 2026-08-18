@@ -166,6 +166,24 @@ function crearServicioLeads({ repo, cola, cfg, logger, textos, redactor = null, 
         provider: 'entrante', status: 'delivered',
       });
 
+      // El saludo salia solo por el camino del formulario. Al que escribe
+      // directo al numero —un QR, un anuncio, el numero en la web— el bot le
+      // arrancaba a preguntar sin presentarse: del otro lado aparece un
+      // desconocido pidiendo datos del negocio.
+      //
+      // Va antes de la respuesta, no en lugar de ella: recibe la presentacion y
+      // ademas lo que vino a preguntar.
+      if (!lead.welcomed_at) {
+        cola.encolar({
+          to: telefono,
+          texto: textos.BIENVENIDA,
+          kind: 'welcome',
+          leadId: lead.id,
+        });
+        repo.actualizarLead(lead.id, { welcomed_at: ahora().toISOString() });
+        lead = repo.leadPorId(lead.id);
+      }
+
       // El aviso al AM sale una sola vez, en la primera respuesta. Despues el
       // lead puede mandar diez mensajes contestando el embudo y no tiene
       // sentido avisar por cada uno.

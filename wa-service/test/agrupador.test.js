@@ -108,8 +108,12 @@ test('el bot contesta una sola vez a una tanda de fragmentos', async () => {
   await s.agrupador.vaciar();
   await s.cola.vacia();
 
-  const alLead = s.proveedor.getEnviados().filter((e) => e.to === '59899123456');
-  assert.equal(alLead.length, 1, 'una respuesta, no tres');
+  // Dos mensajes: la presentacion y UNA respuesta. Lo que se prueba es que la
+  // tanda de tres fragmentos genere una sola respuesta, no tres.
+  const { crearTextos } = require('../src/templates/funnel');
+  const respuestas = s.proveedor.getEnviados()
+    .filter((e) => e.to === '59899123456' && e.texto !== crearTextos().BIENVENIDA);
+  assert.equal(respuestas.length, 1, 'una respuesta a la tanda, no tres');
 
   // Y el turno llego entero, no en pedazos.
   const entrantes = s.repo.mensajesDeLead(s.repo.leadPorTelefono('59899123456').id)

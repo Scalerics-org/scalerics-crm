@@ -124,8 +124,9 @@ test('quien escribe al numero sin pasar por el formulario tambien entra', async 
   assert.equal(lead.fsm_state, 'CONVERSANDO');
 
   const alLead = s.proveedor.getEnviados().filter((e) => e.to === '59891111111');
-  assert.equal(alLead.length, 1, 'le contesta');
-  assert.equal(alLead[0].texto, '[conversacion]');
+  const { crearTextos } = require('../src/templates/funnel');
+  assert.equal(alLead[0].texto, crearTextos().BIENVENIDA, 'primero se presenta');
+  assert.equal(alLead[1].texto, '[conversacion]', 'y despues contesta');
 
   // Al AM le llega un "nuevo contacto", no un "respondió": no respondio nada,
   // escribio de la nada.
@@ -141,8 +142,8 @@ test('sin nombre de perfil igual entra, y el saludo no queda raro', async () => 
   await s.agrupador.vaciar();
   await s.cola.vacia();
 
-  const alLead = s.proveedor.getEnviados().find((e) => e.to === '59891111112');
-  assert.equal(alLead.texto, '[conversacion]', 'igual le contesta');
+  const alLead = s.proveedor.getEnviados().filter((e) => e.to === '59891111112');
+  assert.equal(alLead.at(-1).texto, '[conversacion]', 'igual le contesta');
 
   const alAM = s.proveedor.getEnviados().find((e) => e.to === '59899000111');
   assert.match(alAM.texto, /sin nombre/);

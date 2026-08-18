@@ -216,3 +216,36 @@ test('ningun objetivo trae una frase de ejemplo copiable', () => {
   }
 });
 
+
+test('el que escribe directo al numero tambien recibe la bienvenida', async () => {
+  // Salia solo por el camino del formulario. Al que escribe al numero el bot le
+  // arrancaba a preguntar sin presentarse: del otro lado aparece un desconocido
+  // pidiendo datos del negocio.
+  const s = await montar();
+  const { crearTextos } = require('../src/templates/funnel');
+
+  s.proveedor.simularEntrante({ from: '59891234567', texto: 'Buenas, quiero una pagina web', id: 'w.1' });
+  await s.agrupador.vaciar();
+  await s.cola.vacia();
+
+  const alLead = s.proveedor.getEnviados().filter((e) => e.to === '59891234567').map((e) => e.texto);
+  assert.equal(alLead[0], crearTextos().BIENVENIDA, 'primero se presenta');
+  assert.equal(alLead[1], '[conversacion]', 'y despues contesta lo que preguntó');
+});
+
+test('la bienvenida no se repite en el segundo mensaje', async () => {
+  const s = await montar();
+  const { crearTextos } = require('../src/templates/funnel');
+
+  s.proveedor.simularEntrante({ from: '59891234567', texto: 'hola', id: 'w.1' });
+  await s.agrupador.vaciar();
+  await s.cola.vacia();
+  s.proveedor.limpiar();
+
+  s.proveedor.simularEntrante({ from: '59891234567', texto: 'tengo una panaderia', id: 'w.2' });
+  await s.agrupador.vaciar();
+  await s.cola.vacia();
+
+  const alLead = s.proveedor.getEnviados().filter((e) => e.to === '59891234567').map((e) => e.texto);
+  assert.ok(!alLead.includes(crearTextos().BIENVENIDA), 'ya se presentó');
+});
