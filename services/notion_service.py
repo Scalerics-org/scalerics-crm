@@ -578,6 +578,15 @@ def traer_y_aplicar(db_path: str) -> tuple[int, str | None]:
                 continue
 
             task_id = tarea["id"]
+
+            # El proyecto es un dato independiente del Status: se reconcilia
+            # siempre que la tarea este pareada, sin depender de que el
+            # estado tambien haya cambiado (si no, el "continue" de abajo lo
+            # dejaria sin actualizar cuando alguien solo reasigna el proyecto).
+            proyecto = _proyecto_de(props)
+            if proyecto != tarea.get("notion_project_page_id"):
+                update_task(db_path, task_id, notion_project_page_id=proyecto)
+
             if estado_notion == (tarea.get("notion_status") or ""):
                 continue  # nada cambio alla
 
@@ -587,9 +596,6 @@ def traer_y_aplicar(db_path: str) -> tuple[int, str | None]:
                 log_activity(db_path, "notion", "task_updated", "task", task_id,
                              tarea.get("title", ""), f"estado: {nuevo_grupo} (desde Notion)")
                 cambiadas += 1
-            proyecto = _proyecto_de(props)
-            if proyecto != tarea.get("notion_project_page_id"):
-                update_task(db_path, task_id, notion_project_page_id=proyecto)
             # El estado fino se guarda igual, aunque el grupo no haya cambiado.
             _marcar(db_path, task_id, estado_notion)
 

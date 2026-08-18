@@ -510,6 +510,26 @@ def test_una_tarjeta_sin_proyecto_no_inventa_uno(db, notion_env):
     assert get_tasks(db)[0]["notion_project_page_id"] is None
 
 
+def test_una_tarea_ya_pareada_actualiza_el_proyecto_aunque_el_estado_no_cambie(db, notion_env):
+    # El "continue" de mas arriba corta cuando el Status no cambio (nada que
+    # reconciliar de ese lado), pero el proyecto es un dato independiente: si
+    # el equipo reasigna la tarea a otro proyecto en Notion sin tocarle el
+    # estado, el CRM tiene que enterarse igual.
+    task_id = create_task(db, title="Reasignada de proyecto", status="todo")
+    update_task(db, task_id, notion_page_id="pagina-1", notion_status="Backlog",
+               notion_project_page_id="proyecto-viejo")
+
+    pagina = _pagina("pagina-1", task_id, "Backlog")
+    pagina["properties"]["Project"] = {"type": "relation",
+                                       "relation": [{"id": "proyecto-nuevo"}]}
+    payload = {"results": [pagina], "has_more": False}
+
+    with patch("services.notion_service.requests.post", return_value=_Resp(200, payload)):
+        ns.traer_y_aplicar(db)
+
+    assert get_task_by_id(db, task_id)["notion_project_page_id"] == "proyecto-nuevo"
+
+
 def test_el_pull_no_le_escribe_nada_a_notion(db, notion_env):
     # La restriccion que manda: quien solo usa Notion no tiene que notar la
     # diferencia. Ni filtro por CRM ID (que obligaria a llenarlo), ni PATCH.
