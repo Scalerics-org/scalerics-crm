@@ -420,6 +420,59 @@ def vincular_pagina(db_path: str, task_id: int, url: str) -> str | None:
     return page_id
 
 
+def empujar_estado_exacto(db_path: str, task_id: int,
+                          estado_notion: str) -> tuple[bool, str | None]:
+    """Escribe en la tarjeta el estado exacto que se pidio, no el del grupo.
+
+    Es lo que usa el kanban cuando alguien arrastra una tarjeta. La diferencia
+    con `empujar_estado` es deliberada: aquel solo escribe si cambio el grupo,
+    porque el CRM adivina el destino a partir de sus tres estados y adivinar
+    aplastaria el estado fino del equipo. Un arrastre no es una adivinanza —
+    si soltaste en *Up next*, queres *Up next*.
+
+    Es sincrono a proposito, tambien al reves que el push de fondo: quien
+    arrastra espera respuesta, y si Notion rechaza la tarjeta tiene que volver
+    a su columna en vez de quedar movida solo en el CRM.
+
+    Devuelve `(ok, error)`.
+    """
+    if estado_notion not in GRUPOS:
+        return False, f"'{estado_notion}' no es un estado del tablero"
+
+    cfg = _config()
+    if not cfg:
+        return False, "falta NOTION_TOKEN: el sync con Notion esta apagado"
+    token, version, _ = cfg
+
+    tarea = get_task_by_id(db_path, task_id)
+    if not tarea:
+        return False, "la tarea no existe"
+    if not tarea.get("notion_page_id"):
+        return False, "la tarea no esta vinculada a ninguna tarjeta"
+
+    if (tarea.get("notion_status") or "") == estado_notion:
+        return True, None  # ya estaba ahi: no se manda un PATCH al vacio
+
+    try:
+        r = requests.patch(
+            f"{API}/pages/{tarea['notion_page_id']}",
+            headers=_headers(token, version),
+            json={"properties": {"Status": {"status": {"name": estado_notion}}}},
+            timeout=TIMEOUT,
+        )
+        if r.status_code >= 300:
+            logger.warning("notion: mover a %s fallo con %s: %s", estado_notion,
+                           r.status_code, r.text[:300])
+            return False, f"Notion devolvio HTTP {r.status_code}"
+    except Exception as e:
+        logger.warning("notion: mover a %s fallo", estado_notion, exc_info=True)
+        return False, f"no se pudo hablar con Notion: {type(e).__name__}"
+
+    update_task(db_path, task_id, status=grupo_de(estado_notion))
+    _marcar(db_path, task_id, estado_notion)
+    return True, None
+
+
 def _titulo_de(props: dict) -> str:
     """El titulo de una tarjeta. Notion lo parte en varios fragmentos."""
     partes = (props.get("Name") or {}).get("title") or []

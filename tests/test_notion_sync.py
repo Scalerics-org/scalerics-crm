@@ -635,3 +635,77 @@ def test_un_pull_que_anduvo_sin_cambios_no_reporta_error(db, notion_env):
     with patch("services.notion_service.requests.post",
                return_value=_Resp(200, {"results": [], "has_more": False})):
         assert ns.traer_y_aplicar(db) == (0, None)
+
+
+# ── Arrastrar en el kanban: escribir el estado exacto ────────────────────────
+
+
+def test_arrastrar_escribe_el_estado_exacto_no_el_del_grupo(db, notion_env):
+    # Es lo que el push de fondo no puede hacer: mandar a *Up next* en vez de
+    # aplastar a *Backlog*. Un arrastre es intencion explicita.
+    task_id = create_task(db, title="A Up next", status="todo")
+    update_task(db, task_id, notion_page_id="pagina-1", notion_status="Backlog")
+
+    with patch("services.notion_service.requests.patch",
+               return_value=_Resp(200, {"id": "pagina-1"})) as patch_req:
+        assert ns.empujar_estado_exacto(db, task_id, "Up next") == (True, None)
+
+    cuerpo = patch_req.call_args.kwargs["json"]
+    assert cuerpo["properties"]["Status"]["status"]["name"] == "Up next"
+
+    t = get_task_by_id(db, task_id)
+    assert t["notion_status"] == "Up next"
+    assert t["status"] == "todo", "Up next sigue siendo del grupo todo"
+
+
+def test_arrastrar_a_otro_grupo_mueve_tambien_el_estado_del_crm(db, notion_env):
+    task_id = create_task(db, title="A Done", status="todo")
+    update_task(db, task_id, notion_page_id="pagina-1", notion_status="Backlog")
+
+    with patch("services.notion_service.requests.patch",
+               return_value=_Resp(200, {"id": "pagina-1"})):
+        assert ns.empujar_estado_exacto(db, task_id, "Done") == (True, None)
+
+    assert get_task_by_id(db, task_id)["status"] == "done"
+
+
+def test_arrastrar_a_la_columna_donde_ya_estaba_no_escribe(db, notion_env):
+    task_id = create_task(db, title="Ya estaba", status="todo")
+    update_task(db, task_id, notion_page_id="pagina-1", notion_status="Up next")
+
+    with patch("services.notion_service.requests.patch") as patch_req:
+        assert ns.empujar_estado_exacto(db, task_id, "Up next") == (True, None)
+    patch_req.assert_not_called()
+
+
+def test_arrastrar_una_tarea_sin_tarjeta_no_escribe(db, notion_env):
+    task_id = create_task(db, title="Sin tarjeta", status="todo")
+    with patch("services.notion_service.requests.patch") as patch_req:
+        ok, error = ns.empujar_estado_exacto(db, task_id, "Up next")
+    assert ok is False
+    assert error
+    patch_req.assert_not_called()
+
+
+def test_arrastrar_a_un_estado_que_no_existe_en_el_tablero(db, notion_env):
+    task_id = create_task(db, title="Estado raro", status="todo")
+    update_task(db, task_id, notion_page_id="pagina-1", notion_status="Backlog")
+    with patch("services.notion_service.requests.patch") as patch_req:
+        ok, error = ns.empujar_estado_exacto(db, task_id, "Inventado")
+    assert ok is False
+    assert error
+    patch_req.assert_not_called()
+
+
+def test_si_notion_rechaza_el_arrastre_el_crm_no_se_mueve(db, notion_env):
+    task_id = create_task(db, title="Rechazada", status="todo")
+    update_task(db, task_id, notion_page_id="pagina-1", notion_status="Backlog")
+
+    with patch("services.notion_service.requests.patch", return_value=_Resp(400, {})):
+        ok, error = ns.empujar_estado_exacto(db, task_id, "Done")
+
+    assert ok is False
+    assert error
+    t = get_task_by_id(db, task_id)
+    assert t["status"] == "todo"
+    assert t["notion_status"] == "Backlog"

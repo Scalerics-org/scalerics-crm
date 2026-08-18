@@ -253,3 +253,64 @@ def test_el_boton_de_notion_anda_desde_el_panel_de_cliente():
     # Y un 500 de la ruta devuelve HTML: r.json() no puede tirar sin aviso.
     assert "try { d = await r.json(); }" in fuente
     assert "alert(" in fuente
+
+
+# ── Arrastrar en el kanban ───────────────────────────────────────────────────
+
+
+def test_mover_a_una_columna_devuelve_ok(app, cliente):
+    task_id = create_task(app.config["DB_PATH"], title="Arrastrada")
+    with patch("routes.notion.empujar_estado_exacto", return_value=(True, None)) as mover:
+        r = cliente.post(f"/api/tasks/{task_id}/notion/estado",
+                         json={"estado": "Up next"}, headers=_AUTH)
+    assert r.status_code == 200
+    assert r.get_json()["ok"] is True
+    mover.assert_called_once_with(app.config["DB_PATH"], task_id, "Up next")
+
+
+def test_mover_una_tarea_que_no_existe_da_404(app, cliente):
+    r = cliente.post("/api/tasks/12345/notion/estado",
+                     json={"estado": "Up next"}, headers=_AUTH)
+    assert r.status_code == 404
+
+
+def test_mover_a_una_columna_que_no_existe_da_400(app, cliente):
+    task_id = create_task(app.config["DB_PATH"], title="Columna rara")
+    with patch("routes.notion.empujar_estado_exacto") as mover:
+        r = cliente.post(f"/api/tasks/{task_id}/notion/estado",
+                         json={"estado": "Inventada"}, headers=_AUTH)
+    assert r.status_code == 400
+    mover.assert_not_called()
+
+
+def test_si_notion_rechaza_el_movimiento_la_ruta_da_502(app, cliente):
+    task_id = create_task(app.config["DB_PATH"], title="Rechazada")
+    with patch("routes.notion.empujar_estado_exacto",
+               return_value=(False, "Notion devolvio HTTP 400")):
+        r = cliente.post(f"/api/tasks/{task_id}/notion/estado",
+                         json={"estado": "Done"}, headers=_AUTH)
+    assert r.status_code == 502
+    assert r.get_json()["ok"] is False
+    assert "400" in r.get_json()["error"]
+
+
+def test_las_columnas_del_kanban_coinciden_con_grupos():
+    """El front duplica los estados del tablero; este test es el que avisa.
+
+    `_COLUMNAS_NOTION` vive en el JS embebido de dashboard.py y `GRUPOS` en el
+    servicio. Si el equipo agrega un estado y solo se actualiza uno de los dos,
+    las tareas caerian en una columna que no existe o se escribiria un estado
+    que el tablero no tiene.
+    """
+    import re
+    import dashboard
+    from services.notion_service import GRUPOS
+
+    bloque = re.search(r"const _COLUMNAS_NOTION = \[(.*?)\];",
+                       dashboard.DASHBOARD_HTML, re.S)
+    assert bloque, "no encontre _COLUMNAS_NOTION en el dashboard"
+    enel_front = dict(re.findall(r"estado:'([^']+)',\s*grupo:'([^']+)'", bloque.group(1)))
+
+    assert enel_front == GRUPOS, (
+        "las columnas del kanban y GRUPOS se separaron: "
+        f"front={enel_front} servicio={GRUPOS}")

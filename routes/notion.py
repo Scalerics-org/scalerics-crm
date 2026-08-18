@@ -3,7 +3,8 @@
 from flask import Blueprint, current_app, jsonify, request, session
 
 from database import get_task_by_id, log_activity
-from services.notion_service import crear_pagina, traer_y_aplicar, vincular_pagina
+from services.notion_service import (GRUPOS, crear_pagina, empujar_estado_exacto,
+                                     grupo_de, traer_y_aplicar, vincular_pagina)
 
 notion_bp = Blueprint("notion", __name__)
 
@@ -58,3 +59,29 @@ def api_sync():
                  f"{cambiadas} tarea(s) actualizada(s) desde Notion",
                  user_id=session.get("user_id"))
     return jsonify({"ok": True, "cambiadas": cambiadas})
+
+
+@notion_bp.route("/api/tasks/<int:task_id>/notion/estado", methods=["POST"])
+def api_mover_a_columna(task_id):
+    """Mueve una tarea a una columna del kanban, escribiendo en Notion primero.
+
+    Sincrono a proposito: el front revierte la tarjeta a su columna si esto
+    falla, asi que no puede contestar antes de saber si Notion acepto.
+    """
+    db = _db()
+    tarea = get_task_by_id(db, task_id)
+    if not tarea:
+        return jsonify({"ok": False, "error": "la tarea no existe"}), 404
+
+    estado = ((request.get_json(silent=True) or {}).get("estado") or "").strip()
+    if estado not in GRUPOS:
+        return jsonify({"ok": False, "error": f"'{estado}' no es una columna del tablero"}), 400
+
+    ok, error = empujar_estado_exacto(db, task_id, estado)
+    if not ok:
+        return jsonify({"ok": False, "error": error}), 502
+
+    log_activity(db, session.get("user_name", "sistema"), "task_updated", "task",
+                 task_id, tarea.get("title", ""), f"movida a {estado} en Notion",
+                 user_id=session.get("user_id"))
+    return jsonify({"ok": True, "estado": estado, "status": grupo_de(estado)})

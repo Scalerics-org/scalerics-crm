@@ -847,6 +847,14 @@ body.light .task-status-badge.todo{background:#f1f5f9;color:#64748b}
 body.light .task-status-badge.in_progress{background:#dbeafe;color:#1d4ed8;border-color:#93c5fd}
 body.light .task-status-badge.done{background:#dcfce7;color:#16a34a;border-color:#86efac}
 body.light .task-notion-badge{background:#f1f5f9;color:#64748b;border-color:#e2e8f0}
+body.light .kanban-col{background:#f8fafc;border-color:#e2e8f0}
+body.light .kanban-col.drag-over{border-color:#0088cc;background:#eff6ff}
+body.light .kanban-name{color:#475569}
+body.light .kanban-count{color:#94a3b8}
+body.light .kanban-card{background:#ffffff;border-color:#e2e8f0}
+body.light .kanban-card:hover{border-color:#cbd5e1}
+body.light .kanban-card-title{color:#0f172a}
+body.light .kanban-card-who{color:#64748b}
 body.light .task-notion-badge:hover{color:#0f172a}
 body.light .tasks-summary{color:#94a3b8}
 body.light .mobile-bottom-nav{background:rgba(255,255,255,.92);border-color:rgba(0,0,0,.1)}
@@ -966,6 +974,21 @@ body.light .btn-icon{stroke:currentColor}
 .task-status-badge.in_progress{background:#0c1f2e;color:#38bdf8;border-color:#0369a133}
 .task-status-badge.done{background:#052e16;color:#4ade80;border-color:#16a34a33}
 .task-notion-badge{font-size:.72rem;color:#94a3b8;background:#1a2234;padding:2px 7px;border-radius:10px;text-decoration:none;border:1px solid #23304a}
+/* Kanban de tareas: mismas columnas que el tablero de Notion */
+.tasks-viewswitch{display:flex;gap:6px;margin:10px 0 4px}
+.kanban{display:flex;gap:12px;overflow-x:auto;padding:4px 0 12px;align-items:flex-start}
+.kanban-col{flex:0 0 260px;background:#0d1420;border:1px solid #1e293b;border-radius:10px;padding:8px;min-height:120px}
+.kanban-col.drag-over{border-color:#0088cc;background:#0f1b2b}
+.kanban-head{display:flex;align-items:center;gap:8px;padding:2px 4px 8px}
+.kanban-name{font-size:.78rem;font-weight:600;color:#94a3b8}
+.kanban-count{font-size:.72rem;color:#475569}
+.kanban-cards{display:flex;flex-direction:column;gap:8px}
+.kanban-card{background:#111a28;border:1px solid #1e293b;border-radius:8px;padding:9px 10px;cursor:grab}
+.kanban-card:hover{border-color:#2a3a52}
+.kanban-card.overdue{border-left:2px solid #f97316}
+.kanban-card-title{font-size:.82rem;color:#e2e8f0;line-height:1.35;margin-bottom:6px}
+.kanban-card-meta{display:flex;flex-wrap:wrap;gap:5px;align-items:center}
+.kanban-card-who{font-size:.7rem;color:#64748b}
 .task-notion-badge:hover{color:#e2e8f0}
 .task-row.in-progress{border-left:3px solid #0369a1}
 .task-row.overdue{border-left:3px solid #f87171}
@@ -1278,9 +1301,14 @@ body.light .upick-name{color:#0f172a}
         <button class="pill orange" id="pill-overdue" onclick="filterTasksQuick('overdue',this)">🕐 Vencidas <span class="pill-count" id="pill-count-overdue">0</span></button>
       </div>
     </div>
+    <div class="tasks-viewswitch">
+      <button class="pill active" id="pill-view-board" onclick="cambiarVistaTareas('board',this)">Tablero</button>
+      <button class="pill" id="pill-view-list" onclick="cambiarVistaTareas('list',this)">Lista</button>
+    </div>
     <div id="tasks-summary" class="tasks-summary"></div>
     <button class="mobile-fab" id="mobile-fab-task" onclick="openAddTaskModal()" aria-label="Nueva tarea">+</button>
-    <div id="tasks-list"></div>
+    <div id="tasks-board" class="kanban"></div>
+    <div id="tasks-list" style="display:none"></div>
   </div>
 
   <!-- ======= CALENDAR PANEL ======= -->
@@ -3104,8 +3132,118 @@ function renderTasksList() {
       : 'Hechas';
     summary.textContent = `${tasks.length} tarea${tasks.length !== 1 ? 's' : ''} · ${userLabel} · ${filterLabel}`;
   }
+  const board = document.getElementById('tasks-board');
+  if (_taskView === 'board') {
+    if (board) board.style.display = '';
+    container.style.display = 'none';
+    _renderTasksBoard(tasks);
+    return;
+  }
+  if (board) board.style.display = 'none';
+  container.style.display = '';
   if (!tasks.length) { container.innerHTML = '<div class="tasks-empty">Sin tareas para este filtro.</div>'; return; }
   container.innerHTML = tasks.map(t => _taskRowHtml(t)).join('');
+}
+
+// Las columnas del kanban son los estados del tablero de Notion. La fuente de
+// verdad es GRUPOS en services/notion_service.py; hay un test que falla si las
+// dos listas se separan (test_las_columnas_del_kanban_coinciden_con_grupos).
+const _COLUMNAS_NOTION = [
+  {estado:'Backlog',           grupo:'todo'},
+  {estado:'Up next',           grupo:'todo'},
+  {estado:'On Hold',           grupo:'in_progress'},
+  {estado:'In progress',       grupo:'in_progress'},
+  {estado:'Waiting To Accept', grupo:'in_progress'},
+  {estado:'Done',              grupo:'done'},
+];
+// Donde cae una tarea que no esta en Notion, segun su estado del CRM.
+const _COLUMNA_POR_DEFECTO = {todo:'Backlog', in_progress:'In progress', done:'Done'};
+let _taskView = 'board';
+
+function cambiarVistaTareas(vista, btn) {
+  _taskView = vista;
+  document.querySelectorAll('.tasks-viewswitch .pill').forEach(p => p.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  renderTasksList();
+}
+
+function _renderTasksBoard(tasks) {
+  const board = document.getElementById('tasks-board');
+  if (!board) return;
+  const columnaDe = t => t.notion_status || _COLUMNA_POR_DEFECTO[t.status] || 'Backlog';
+  board.innerHTML = _COLUMNAS_NOTION.map(col => {
+    const dentro = tasks.filter(t => columnaDe(t) === col.estado);
+    return `<div class="kanban-col" data-estado="${esc(col.estado)}"
+                 ondragover="_kanbanOver(event)" ondragleave="_kanbanLeave(event)"
+                 ondrop="_kanbanDrop(event, '${esc(col.estado)}')">
+      <div class="kanban-head"><span class="kanban-name">${esc(col.estado)}</span>
+        <span class="kanban-count">${dentro.length}</span></div>
+      <div class="kanban-cards">${dentro.map(t => _taskCardHtml(t)).join('')}</div>
+    </div>`;
+  }).join('');
+}
+
+function _taskCardHtml(t) {
+  const lead = t.client_id ? _allLeads.find(l => l.id === t.client_id) : null;
+  const dl = t.deadline ? new Date(t.deadline) : null;
+  const overdue = dl && dl < new Date() && t.status !== 'done';
+  const dlStr = dl ? dl.toLocaleDateString('es-UY',{day:'2-digit',month:'2-digit'}) : '';
+  return `<div class="kanban-card${overdue ? ' overdue' : ''}" draggable="true"
+               ondragstart="_kanbanDragStart(event, ${t.id})"
+               ondblclick="openEditTaskModal(${t.id})" title="Doble clic para editar">
+    <div class="kanban-card-title">${esc(t.title)}</div>
+    <div class="kanban-card-meta">
+      ${t.notion_page_id ? '<span class="task-notion-badge">Notion</span>' : ''}
+      ${t.priority === 'high' ? '<span class="task-priority high">Alta</span>' : ''}
+      ${lead ? `<span class="task-client-link" onclick="openClientPanel(${lead.id})">${esc(lead.name||'')}</span>` : ''}
+      ${dlStr ? `<span class="task-deadline ${overdue ? 'overdue' : ''}">${dlStr}</span>` : ''}
+      ${t.assignee_name ? `<span class="kanban-card-who">${esc(t.assignee_name)}</span>` : ''}
+    </div>
+  </div>`;
+}
+
+function _kanbanDragStart(ev, id) {
+  ev.dataTransfer.setData('text/plain', String(id));
+  ev.dataTransfer.effectAllowed = 'move';
+}
+function _kanbanOver(ev) { ev.preventDefault(); ev.currentTarget.classList.add('drag-over'); }
+function _kanbanLeave(ev) { ev.currentTarget.classList.remove('drag-over'); }
+
+async function _kanbanDrop(ev, estado) {
+  ev.preventDefault();
+  ev.currentTarget.classList.remove('drag-over');
+  const id = parseInt(ev.dataTransfer.getData('text/plain'));
+  const t = _allTasks.find(t => t.id === id);
+  if (!t) return;
+  const col = _COLUMNAS_NOTION.find(c => c.estado === estado) || {};
+
+  if (t.notion_page_id) {
+    // Vinculada: manda el estado exacto y espera a que Notion conteste, para
+    // que la tarjeta no quede movida solo de este lado.
+    const r = await fetch('/api/tasks/' + id + '/notion/estado', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({estado})
+    });
+    let d = {};
+    try { d = await r.json(); } catch (e) { d = {}; }
+    if (!d.ok) { alert('No se pudo mover en Notion. ' + (d.error || 'Mirá los logs del CRM.')); return; }
+    t.notion_status = estado;
+    t.status = d.status || col.grupo || t.status;
+  } else {
+    // Sin tarjeta: solo puede caer en las tres columnas que el CRM sabe
+    // expresar. Las otras existen unicamente en Notion.
+    if (!_COLUMNA_POR_DEFECTO[col.grupo] || _COLUMNA_POR_DEFECTO[col.grupo] !== estado) {
+      alert('Esa columna solo existe en Notion.\\n\\nMandá la tarea al tablero con el botón → N y después movela.');
+      return;
+    }
+    await fetch('/api/tasks/' + id, {
+      method:'PUT', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({status: col.grupo})
+    });
+    t.status = col.grupo;
+  }
+  _updateFilterCounts();
+  renderTasksList();
 }
 
 function _taskRowHtml(t) {
