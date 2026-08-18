@@ -245,6 +245,31 @@ def test_el_autosync_sigue_trayendo_tareas_si_fallan_los_proyectos(monkeypatch):
     tareas.assert_called_once()
 
 
+def test_el_autosync_sigue_trayendo_tareas_si_los_proyectos_explotan(monkeypatch):
+    """Mismo constraint que el test de arriba, pero por el otro camino: el de
+    arriba parchea un `(cambiadas, error)` de retorno, que es lo unico que el
+    `try/except` de `traer_proyectos` sabe convertir en ese formato. Una
+    excepcion real -- `sqlite3.OperationalError` por "database is locked"
+    corriendo en un hilo daemon contra el mismo WAL que los requests vivos, o
+    un payload malformado -- hoy escapa `traer_proyectos` sin que nada la
+    atrape antes de `traer_y_aplicar`. Este test tiene que fallar contra el
+    codigo actual: si pasa igual no esta ejercitando la excepcion."""
+    monkeypatch.setenv("NOTION_TOKEN", "x")
+    monkeypatch.setattr(
+        dashboard.threading, "Thread",
+        lambda target=None, daemon=None: type("T", (), {"start": lambda s: target()})())
+    dashboard._notion_sync_state["at"] = 0.0
+
+    with patch("services.notion_service.traer_proyectos",
+               side_effect=RuntimeError("database is locked")) as proyectos, \
+         patch("services.notion_service.traer_y_aplicar",
+               return_value=(1, None)) as tareas:
+        dashboard._maybe_sync_notion("x.db")
+
+    proyectos.assert_called_once()
+    tareas.assert_called_once()
+
+
 def test_el_panel_de_tareas_tiene_el_boton_y_el_badge_de_notion():
     """Regresión: que nadie borre el front de Notion sin darse cuenta."""
     html = dashboard.DASHBOARD_HTML
