@@ -480,6 +480,12 @@ def _titulo_de(props: dict) -> str:
     return titulo or "(sin titulo)"
 
 
+def _proyecto_de(props: dict) -> str | None:
+    """El page id del proyecto de una tarjeta, o None si no tiene."""
+    relacion = (props.get("Project") or {}).get("relation") or []
+    return relacion[0].get("id") if relacion else None
+
+
 def _adoptar(db_path: str, page_id: str, props: dict, estado_notion: str) -> int:
     """Crea en el CRM la tarea de una tarjeta que el tablero ya tenia.
 
@@ -488,7 +494,8 @@ def _adoptar(db_path: str, page_id: str, props: dict, estado_notion: str) -> int
     CRM la esta mirando.
     """
     titulo = _titulo_de(props)
-    task_id = create_task(db_path, title=titulo, status=grupo_de(estado_notion))
+    task_id = create_task(db_path, title=titulo, status=grupo_de(estado_notion),
+                          notion_project_page_id=_proyecto_de(props))
     _marcar(db_path, task_id, estado_notion, page_id=page_id)
     log_activity(db_path, "notion", "task_created", "task", task_id, titulo,
                  "creada desde el tablero de Notion")
@@ -580,6 +587,9 @@ def traer_y_aplicar(db_path: str) -> tuple[int, str | None]:
                 log_activity(db_path, "notion", "task_updated", "task", task_id,
                              tarea.get("title", ""), f"estado: {nuevo_grupo} (desde Notion)")
                 cambiadas += 1
+            proyecto = _proyecto_de(props)
+            if proyecto != tarea.get("notion_project_page_id"):
+                update_task(db_path, task_id, notion_project_page_id=proyecto)
             # El estado fino se guarda igual, aunque el grupo no haya cambiado.
             _marcar(db_path, task_id, estado_notion)
 

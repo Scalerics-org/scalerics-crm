@@ -10,6 +10,8 @@ primary_region = "gru"
   # un id. Desde la version 2025-09-03 de la API el esquema y las queries
   # van contra el data source, no contra la database.
   NOTION_DATA_SOURCE_ID = "3ae65d94-deec-80ba-879d-000b9a303104"
+  # Data source de la database Projects. Espejo de solo lectura.
+  NOTION_PROJECTS_DATA_SOURCE_ID = "3ae65d94-deec-803d-8ea4-000b48070a4e"
 
 [[mounts]]
   source = "leads_data"

@@ -5347,7 +5347,13 @@ def _maybe_sync_notion(db_path: str) -> None:
 
     def _run():
         try:
-            from services.notion_service import traer_y_aplicar
+            from services.notion_service import traer_proyectos, traer_y_aplicar
+            np, error_p = traer_proyectos(db_path)
+            if error_p:
+                logging.getLogger(__name__).warning("notion proyectos: %s", error_p)
+            elif np:
+                logging.getLogger(__name__).info("notion sync: %s proyectos", np)
+
             n, error = traer_y_aplicar(db_path)
             if error:
                 logging.getLogger(__name__).warning("notion sync: %s", error)

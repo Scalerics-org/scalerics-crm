@@ -490,6 +490,26 @@ def test_una_tarjeta_creada_en_notion_no_se_duplica_en_el_siguiente_sync(db, not
     assert len(get_tasks(db)) == 1
 
 
+def test_el_pull_guarda_a_que_proyecto_pertenece_la_tarea(db, notion_env):
+    pagina = _pagina("pagina-nueva", None, "Backlog", titulo="Con proyecto")
+    pagina["properties"]["Project"] = {"type": "relation",
+                                       "relation": [{"id": "proyecto-1"}]}
+    payload = {"results": [pagina], "has_more": False}
+
+    with patch("services.notion_service.requests.post", return_value=_Resp(200, payload)):
+        ns.traer_y_aplicar(db)
+
+    t = get_tasks(db)[0]
+    assert t["notion_project_page_id"] == "proyecto-1"
+
+
+def test_una_tarjeta_sin_proyecto_no_inventa_uno(db, notion_env):
+    payload = {"results": [_pagina("pagina-nueva", None, "Backlog")], "has_more": False}
+    with patch("services.notion_service.requests.post", return_value=_Resp(200, payload)):
+        ns.traer_y_aplicar(db)
+    assert get_tasks(db)[0]["notion_project_page_id"] is None
+
+
 def test_el_pull_no_le_escribe_nada_a_notion(db, notion_env):
     # La restriccion que manda: quien solo usa Notion no tiene que notar la
     # diferencia. Ni filtro por CRM ID (que obligaria a llenarlo), ni PATCH.

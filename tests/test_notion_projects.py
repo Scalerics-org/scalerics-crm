@@ -154,6 +154,22 @@ def test_si_la_consulta_falla_no_se_borra_nada(db, notion_env):
     assert len(get_projects(db)) == 1
 
 
+def test_si_la_paginacion_de_proyectos_se_corta_no_se_borra_nada(db, notion_env):
+    # Mismo caso que el 500: si el listado no vino entero (has_more sin
+    # next_cursor), un proyecto que no aparecio en esta pagina no esta
+    # borrado, simplemente no lo vimos todavia.
+    upsert_project(db, "p-vieja", "Proyecto viejo")
+
+    payload = {"results": [_proyecto("p-1", "Desarrollo")], "has_more": True}
+    with patch("services.notion_service.requests.post",
+               return_value=_Resp(200, payload)) as post:
+        ns.traer_proyectos(db)
+
+    post.assert_called_once()
+    nombres = {p["name"] for p in get_projects(db)}
+    assert "Proyecto viejo" in nombres, "el barrido no tenia que correr"
+
+
 def test_sin_data_source_de_proyectos_es_no_op(db, monkeypatch):
     monkeypatch.setenv("NOTION_TOKEN", "x")
     monkeypatch.delenv("NOTION_PROJECTS_DATA_SOURCE_ID", raising=False)
