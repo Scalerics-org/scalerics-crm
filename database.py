@@ -397,6 +397,16 @@ def init_db(db_path: str) -> None:
         # publicado dentro de mails que la gente ya recibio.
         columnas = [c[1] for c in conn.execute("PRAGMA table_info(meta_reminders)")]
         if "numero" not in columnas:
+            # DROP...IF EXISTS, no CREATE...IF NOT EXISTS: el CREATE de aca abajo
+            # se autocommitea solo (es DDL y todavia no hay ninguna transaccion
+            # abierta), asi que un crash entre el DROP TABLE meta_reminders y el
+            # commit final de mas abajo puede dejar esta tabla persistida y
+            # huerfana. Si fuera IF NOT EXISTS, un reintento la dejaria como esta
+            # y el INSERT...SELECT de abajo podria chocar contra su UNIQUE si esa
+            # huerfana llegara a tener filas (a mano, o por un cambio futuro de
+            # este bloque). Arrancar de cero es lo unico que deja la base sana en
+            # todos los casos, no solo en el crash puntual que se pudo reproducir.
+            conn.execute("DROP TABLE IF EXISTS meta_reminders_nueva")
             conn.execute("""
                 CREATE TABLE meta_reminders_nueva (
                     id              INTEGER PRIMARY KEY AUTOINCREMENT,

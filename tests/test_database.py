@@ -314,3 +314,63 @@ def test_el_mismo_lead_puede_tener_varios_contactos(tmp_path):
                          "VALUES (?,?,?,?)", (10, 2, "t3", "2026-08-12 10:00:00"))
     finally:
         conn.close()
+
+
+def test_migracion_tolera_un_reintento_despues_de_un_crash_a_mitad_de_camino(tmp_path):
+    """`CREATE TABLE meta_reminders_nueva` no esta dentro de una transaccion
+    (es DDL y todavia no hay ningun INSERT/UPDATE/DELETE que la abra), asi que
+    SQLite la autocommitea sola en el momento. Si el proceso muere justo
+    despues del DROP TABLE meta_reminders y antes del commit final, ese DROP
+    se revierte (la tabla vieja sobrevive con sus tokens) pero la
+    `meta_reminders_nueva` ya creada queda huerfana y persistida, vacia. Un
+    reintento de init_db() no puede reventar contra esa huerfana."""
+    import sqlite3
+    from database import init_db
+
+    ruta = str(tmp_path / "crasheada.db")
+    conn = sqlite3.connect(ruta)
+    conn.execute("""
+        CREATE TABLE meta_reminders (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            business_id     INTEGER NOT NULL UNIQUE,
+            token           TEXT NOT NULL UNIQUE,
+            sent_at         TEXT NOT NULL,
+            unsubscribed_at TEXT
+        )""")
+    conn.execute(
+        "INSERT INTO meta_reminders (business_id, token, sent_at, unsubscribed_at) "
+        "VALUES (?,?,?,?)", (650, "tok-uno", "2026-08-18 14:41:18", None))
+    # Lo que deja un crash a mitad de la migracion: la huerfana ya creada,
+    # con el esquema nuevo pero sin filas (el INSERT...SELECT que la iba a
+    # llenar nunca llego a comittear).
+    conn.execute("""
+        CREATE TABLE meta_reminders_nueva (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            business_id     INTEGER NOT NULL,
+            numero          INTEGER NOT NULL DEFAULT 1,
+            token           TEXT NOT NULL UNIQUE,
+            sent_at         TEXT NOT NULL,
+            unsubscribed_at TEXT,
+            UNIQUE (business_id, numero)
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+    init_db(ruta)  # no puede explotar con "table meta_reminders_nueva already exists"
+
+    conn = sqlite3.connect(ruta)
+    try:
+        filas = conn.execute(
+            "SELECT business_id, numero, token, sent_at, unsubscribed_at "
+            "FROM meta_reminders ORDER BY business_id").fetchall()
+        huerfana = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='meta_reminders_nueva'"
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert filas == [(650, 1, "tok-uno", "2026-08-18 14:41:18", None)], (
+        "la fila vieja tiene que terminar migrada con su token intacto"
+    )
+    assert huerfana is None, "la huerfana no puede quedar dando vueltas despues de migrar"
