@@ -192,11 +192,21 @@ por el mismo bot, a `AVISAR_A`.
 ```bash
 tar xzf /var/backups/scalerics/bot-2026-08-18.tar.gz -C /tmp
 systemctl stop scalerics-wa
+
+# Borrar el -wal y el -shm ANTES de poner la base. No es opcional.
+rm -f /opt/scalerics-wa/data/wa.db /opt/scalerics-wa/data/wa.db-wal /opt/scalerics-wa/data/wa.db-shm
 cp /tmp/wa.db /opt/scalerics-wa/data/wa.db
 cp -r /tmp/auth /opt/scalerics-wa/
-chown -R scalerics:scalerics /opt/scalerics-wa/{data,auth}
+chown -R scalerics:scalerics /opt/scalerics-wa/data /opt/scalerics-wa/auth
 systemctl start scalerics-wa
 ```
+
+**Lo del `-wal` es la parte que se olvida y arruina la restauración.** SQLite guarda
+las escrituras recientes en un archivo `wa.db-wal` aparte, y al abrir la base lo
+replaya encima. Si dejás el WAL de la base vieja y ponés una base nueva al lado,
+SQLite le aplica encima las páginas de la vieja y te la vacía. Pasó en la mudanza
+a Fly: la base llegó bien, quedó el WAL de un arranque anterior, y al reiniciar
+el bot tenía cero leads con el archivo correcto en el disco.
 
 Conviene probarlo una vez ahora, no el día que haga falta.
 

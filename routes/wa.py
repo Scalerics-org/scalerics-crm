@@ -21,11 +21,16 @@ _BTYPE = {
 def _bot_req(method: str, path: str, **kwargs):
     """Call the bot's admin API. Returns (response_dict, error_string)."""
     base = os.environ.get("BOT_API_URL", "").rstrip("/")
-    token = os.environ.get("ADMIN_TOKEN", "")
+    # Token propio para hablar con el bot. Antes se reusaba ADMIN_TOKEN, que es
+    # el que protege los endpoints de ENTRADA del CRM —el formulario de la web,
+    # los leads de Meta, las demos—. Compartirlos obliga a que el bot conozca
+    # ese valor, y cambiarlo por cualquier motivo romperia esas integraciones.
+    # Son dos cosas distintas y ahora tienen dos variables.
+    token = os.environ.get("BOT_ADMIN_TOKEN") or os.environ.get("ADMIN_TOKEN", "")
     if not base:
         return None, "BOT_API_URL no configurada en .env"
     if not token:
-        return None, "ADMIN_TOKEN no configurado en .env"
+        return None, "Falta BOT_ADMIN_TOKEN: es la clave con la que el CRM se autentica ante el bot"
     headers = {"x-admin-token": token, "Content-Type": "application/json"}
     try:
         r = http_requests.request(
