@@ -5,13 +5,28 @@ const { construirSystem, faltantes } = require('./prompt');
 const MAX_HISTORIAL = 20;
 const MAX_CARACTERES = 900;
 
+/**
+ * Del idioma del lead al del CRM. El modelo dice lo que escucho —"somos 3",
+ * "una pagina web"— y el mapeo a los codigos 1-4 que guarda la base lo hace
+ * esto, que no se equivoca.
+ */
+const TIPO_PROYECTO = { web: 1, ecommerce: 2, automatizacion: 3, app: 4 };
+const PRESUPUESTO = { menos_500: 1, entre_500_y_3000: 2, mas_3000: 3, no_sabe: 4 };
+
+/** Cuanta gente trabaja -> el tramo que usa el CRM. */
+function tramoDeEquipo(personas) {
+  const n = parseInt(personas, 10);
+  if (!Number.isInteger(n) || n < 1) return null;
+  if (n === 1) return 1;
+  if (n <= 5) return 2;
+  if (n <= 20) return 3;
+  return 4;
+}
+
 /** Campos que el modelo puede escribir, y como se validan antes de guardar. */
 const CAMPOS = {
   business_name: { tipo: 'string' },
   rubro: { tipo: 'string' },
-  business_type: { tipo: 'opcion' },
-  budget: { tipo: 'opcion' },
-  team_size: { tipo: 'opcion' },
   instagram_web: { tipo: 'string' },
   needs: { tipo: 'string' },
 };
@@ -35,29 +50,59 @@ const HERRAMIENTA = {
     parameters: {
       type: 'object',
       properties: {
+        /**
+         * Va PRIMERO y es obligatorio a proposito.
+         *
+         * El modelo llamaba la herramienta pero llenaba solo `mensaje`: el lead
+         * decia "tengo una panaderia, se llama PanesAhora" y guardaba el nombre
+         * ignorando el rubro, o daba el tipo de proyecto en el primer mensaje y
+         * se lo preguntaban tres veces. Obligarlo a enumerar antes lo que
+         * acaban de decirle lo fuerza a mirar el mensaje como fuente de datos
+         * y no solo como algo que hay que contestar.
+         *
+         * No se le manda al lead: es para que el modelo piense antes de
+         * escribir.
+         */
+        lo_que_acaba_de_decir: {
+          type: 'string',
+          description: 'Enumerá TODOS los datos que aporta el último mensaje del lead, aunque no se los hayas preguntado. Ejemplo: "dice que es una panadería (rubro) y que se llama PanesAhora (nombre)". Si no aporta ninguno, poné "nada".',
+        },
         mensaje: {
           type: 'string',
           description: 'Lo que se le manda por WhatsApp. Dos o tres líneas, una sola pregunta.',
         },
         business_name: { type: 'string', description: 'Nombre del negocio, tal como lo dijo' },
         rubro: { type: 'string', description: 'A qué se dedica, en sus palabras (ej: "carnicería de barrio")' },
-        business_type: { type: 'integer', description: 'NÚMERO DE OPCIÓN: 1 página web, 2 e-commerce, 3 automatización, 4 app a medida' },
-        // El modelo confunde la cantidad con la opcion: a "somos 4" le ponia
-        // team_size 4, que en esta escala es "mas de 20 personas". El score no
-        // cambia (cualquiera >= 2 suma igual) pero al AM le llegaba una ficha
-        // que decia otra cosa de la que le dijeron.
-        budget: {
-          type: 'integer',
-          description: 'NÚMERO DE OPCIÓN, no el monto: 1 menos de USD 500, 2 entre 500 y 3.000, 3 más de 3.000, 4 no lo tiene claro. Ejemplo: "unos 1000 dólares" es 2.',
+        /**
+         * Estos tres se piden en el idioma del lead, no en el del CRM.
+         *
+         * Antes se le pedia el numero de opcion directamente y confundia la
+         * cantidad con la escala: a "somos 3" le ponia team_size 3, que
+         * significa "de 6 a 20 personas". Se le puede explicar en la
+         * descripcion —se hizo, con ejemplos— y lo sigue errando, porque le
+         * estamos pidiendo una conversion, no una observacion.
+         *
+         * Ahora informa lo que escucho y el mapeo lo hace el codigo, que no se
+         * equivoca nunca.
+         */
+        business_type: {
+          type: 'string',
+          enum: ['web', 'ecommerce', 'automatizacion', 'app'],
+          description: 'Qué tipo de proyecto necesita',
         },
-        team_size: {
+        budget: {
+          type: 'string',
+          enum: ['menos_500', 'entre_500_y_3000', 'mas_3000', 'no_sabe'],
+          description: 'Presupuesto en dólares. "unos 1000" es entre_500_y_3000. Si dijo que no tiene idea, no_sabe.',
+        },
+        team_size_personas: {
           type: 'integer',
-          description: 'NÚMERO DE OPCIÓN, no la cantidad de gente: 1 solo él, 2 de 2 a 5 personas, 3 de 6 a 20, 4 más de 20. Ejemplos: "somos 4" es 2, "somos 8" es 3, "estoy solo" es 1.',
+          description: 'CUÁNTAS PERSONAS trabajan en el negocio, el número real que dijo. "somos 3" es 3, "estoy solo" es 1, "unos 30" es 30.',
         },
         instagram_web: { type: 'string', description: 'Usuario de Instagram, URL de la web o lo que haya dicho' },
         needs: { type: 'string', description: 'Qué quiere lograr, en sus palabras' },
       },
-      required: ['mensaje'],
+      required: ['lo_que_acaba_de_decir', 'mensaje'],
     },
   },
 };
@@ -89,18 +134,22 @@ function mencionaPlata(texto) {
 /** Deja solo lo que el modelo tiene permitido escribir, con el tipo correcto. */
 function sanearDatos(crudo) {
   const limpio = {};
-  for (const [campo, regla] of Object.entries(CAMPOS)) {
+  for (const campo of Object.keys(CAMPOS)) {
     const v = crudo?.[campo];
     if (v === null || v === undefined || v === '') continue;
-
-    if (regla.tipo === 'opcion') {
-      const n = parseInt(v, 10);
-      if (n >= 1 && n <= 4) limpio[campo] = n;
-      continue;
-    }
     const t = String(v).trim();
     if (t) limpio[campo] = t.slice(0, 500);
   }
+
+  const tipo = TIPO_PROYECTO[crudo?.business_type];
+  if (tipo) limpio.business_type = tipo;
+
+  const presupuesto = PRESUPUESTO[crudo?.budget];
+  if (presupuesto) limpio.budget = presupuesto;
+
+  const equipo = tramoDeEquipo(crudo?.team_size_personas);
+  if (equipo) limpio.team_size = equipo;
+
   return limpio;
 }
 
@@ -195,4 +244,4 @@ function crearAgente({ openai = null, modelo, textos, calendly = '', logger = nu
   };
 }
 
-module.exports = { crearAgente, mencionaPlata, sanearDatos, aMensajes, HERRAMIENTA };
+module.exports = { crearAgente, sanearDatos, aMensajes, tramoDeEquipo, HERRAMIENTA };

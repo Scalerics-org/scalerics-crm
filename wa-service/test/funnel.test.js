@@ -20,7 +20,7 @@ const estado = (s) => s.repo.leadPorTelefono(TEL).fsm_state;
 /** Los siete datos completos: con esto el proximo turno cierra y califica. */
 const COMPLETO = {
   business_name: 'Inmobiliaria Pereyra', rubro: 'inmobiliaria',
-  business_type: 2, budget: 3, team_size: 3,
+  business_type: 'ecommerce', budget: 'mas_3000', team_size_personas: 8,
   instagram_web: '@inmopereyra', needs: 'quiero dejar de perder consultas',
 };
 
@@ -55,8 +55,8 @@ test('con los siete datos cierra el codigo: califica y ofrece la reunion', async
 
 test('un lead flojo no recibe la oferta', async () => {
   const flojo = {
-    business_name: 'Kiosco', rubro: 'no se', business_type: 1,
-    budget: 1, team_size: 1, instagram_web: 'no tengo', needs: 'algo',
+    business_name: 'Kiosco', rubro: 'no se', business_type: 'web',
+    budget: 'menos_500', team_size_personas: 1, instagram_web: 'no tengo', needs: 'algo',
   };
   const s = await conLead({ openai: stubOpenAI({ datos: flojo }) });
   const msgs = await lead(s, 'te cuento');

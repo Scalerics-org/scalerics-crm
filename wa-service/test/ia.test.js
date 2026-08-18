@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const { montar, conLead, CLAVE } = require('./helpers');
-const { crearAgente, sanearDatos, aMensajes } = require('../src/ia/agente');
+const { crearAgente, sanearDatos, aMensajes, tramoDeEquipo } = require('../src/ia/agente');
 const { mencionaPlata } = require('../src/ia/precio');
 const { construirSystem, faltantes } = require('../src/ia/prompt');
 const { crearTextos } = require('../src/templates/funnel');
@@ -106,15 +106,38 @@ test('si la IA se manda un precio, sale el texto fijo en su lugar', async () => 
 test('solo guarda los campos permitidos y con el tipo correcto', () => {
   const limpio = sanearDatos({
     business_name: '  Parrilla El Fogón  ',
-    business_type: '2',
-    budget: 9,              // fuera de rango
-    team_size: 'muchos',    // no es numero
-    score: 10,              // no es suyo
-    fsm_state: 'SCORED',    // menos todavia
+    business_type: 'ecommerce',
+    budget: 'lo que sea',        // fuera del enum
+    team_size_personas: 'muchos', // no es numero
+    score: 10,                   // no es suyo
+    fsm_state: 'SCORED',         // menos todavia
     needs: '',
   });
 
   assert.deepEqual(limpio, { business_name: 'Parrilla El Fogón', business_type: 2 });
+});
+
+test('el tramo de equipo lo calcula el codigo, no el modelo', () => {
+  // El modelo confundia la cantidad con la escala: a "somos 3" le ponia 3, que
+  // significa "de 6 a 20 personas". Se le explico con ejemplos y lo seguia
+  // errando, porque es una conversion y no una observacion. Ahora informa lo
+  // que escucho y el tramo lo arma esto.
+  assert.equal(tramoDeEquipo(1), 1, 'solo el');
+  assert.equal(tramoDeEquipo(3), 2, 'somos 3 -> de 2 a 5');
+  assert.equal(tramoDeEquipo(5), 2);
+  assert.equal(tramoDeEquipo(6), 3);
+  assert.equal(tramoDeEquipo(20), 3);
+  assert.equal(tramoDeEquipo(21), 4);
+  assert.equal(tramoDeEquipo(0), null, 'un numero imposible no se guarda');
+  assert.equal(tramoDeEquipo('tres'), null);
+});
+
+test('el tipo de proyecto y el presupuesto se piden por nombre, no por numero', () => {
+  assert.deepEqual(sanearDatos({ business_type: 'web' }), { business_type: 1 });
+  assert.deepEqual(sanearDatos({ business_type: 'app' }), { business_type: 4 });
+  assert.deepEqual(sanearDatos({ budget: 'mas_3000' }), { budget: 3 });
+  assert.deepEqual(sanearDatos({ budget: 'no_sabe' }), { budget: 4 });
+  assert.deepEqual(sanearDatos({ business_type: 'otra cosa' }), {}, 'fuera del enum no entra');
 });
 
 test('el rubro que extrae la IA queda clasificado, como el del formulario', async () => {
@@ -140,7 +163,7 @@ test('con todos los datos, el cierre lo hace el codigo y no la IA', async () => 
   const s = await conLead({
     openai: openaiFalso(conTexto('Listo, te paso mi Calendly ahora mismo', {
       business_name: 'Inmobiliaria Pereyra', rubro: 'inmobiliaria',
-      business_type: 2, budget: 3, team_size: 3,
+      business_type: 'ecommerce', budget: 'mas_3000', team_size_personas: 8,
       instagram_web: '@inmopereyra', needs: 'quiero dejar de perder consultas',
     })),
   });

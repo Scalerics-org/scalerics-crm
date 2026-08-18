@@ -31,17 +31,17 @@ const DATOS = [
   {
     campo: 'business_type',
     pregunta: 'qué tipo de proyecto necesita',
-    opciones: '1 página web, 2 e-commerce, 3 automatización, 4 app a medida',
+    opciones: 'página web, e-commerce, automatización o app a medida',
   },
   {
     campo: 'budget',
     pregunta: 'qué presupuesto maneja',
-    opciones: '1 menos de USD 500, 2 entre 500 y 3.000, 3 más de 3.000, 4 no lo tiene claro',
+    opciones: 'menos de USD 500, entre 500 y 3.000, más de 3.000, o todavía no lo sabe',
   },
   {
     campo: 'team_size',
     pregunta: 'cuánta gente trabaja en el negocio',
-    opciones: '1 solo él, 2 de 2 a 5, 3 de 6 a 20, 4 más de 20',
+    opciones: 'el número de personas que trabajan, tal cual lo diga',
   },
   {
     campo: 'instagram_web',
@@ -65,7 +65,7 @@ function faltantes(lead) {
 
 function describirFaltante(d) {
   const partes = [`- ${d.pregunta}`];
-  if (d.opciones) partes.push(`  (guardalo como número: ${d.opciones})`);
+  if (d.opciones) partes.push(`  (${d.opciones})`);
   if (d.porque) partes.push(`  (${d.porque})`);
   return partes.join('\n');
 }
@@ -147,7 +147,9 @@ Tu trabajo es conversar con quien escribe, entender su negocio y llegar a que ag
 
 ${ESTILO}
 Si te contestan algo con contexto, engancháte con eso antes de seguir. Nadie quiere hablar con un formulario.
-Si ya hiciste una pregunta y te la esquivaron, no la repitas en el mensaje siguiente. Seguí con otra y volvé a esa más adelante. Repetir la misma pregunta dos veces seguidas hace que la persona deje de contestar.
+Nunca preguntes algo que ya sabés. Antes de escribir la pregunta, fijate si la respuesta ya está en "Este lead" o en el mensaje que acabás de recibir. Preguntar dos veces lo mismo es la forma más rápida de que alguien deje de contestarte: se da cuenta de que no lo estás escuchando.
+Si te la esquivaron, tampoco la repitas en el mensaje siguiente. Seguí con otra y volvé a esa más adelante.
+Y si te reclaman que ya te lo habían dicho, tienen razón: pedí disculpas en media línea, no lo vuelvas a preguntar, y seguí con lo que falta.
 
 ${PROHIBICIONES}
 
@@ -161,8 +163,12 @@ ${pendientes.length
       : 'Nada: ya tenés todo. Cerrá ofreciéndole la videollamada.'}`}
 
 # Cómo guardás
+Antes de escribir nada, releé el último mensaje del lead buscando datos. TODOS los que haya, no solo el que preguntaste.
+
+La gente contesta más de lo que se le pregunta, y se adelanta. "Tengo una panadería, se llama PanesAhora" trae dos datos: el rubro y el nombre. "Busco hacer una página web" trae el tipo de proyecto aunque nadie se lo haya preguntado todavía. Si guardás uno y dejás el otro, dentro de dos mensajes se lo vas a estar preguntando y va a contestar "ya te lo dije" — y con razón.
+
 Guardás en el mismo turno en que contestás. Lo que no guardes se pierde: el equipo lo lee de ahí para preparar la llamada.
-Los campos con opciones numeradas se guardan como número, aunque te lo hayan dicho con palabras ("somos cuatro en el taller" es team_size 2).
+Guardá lo que escuchaste, sin convertir nada: si dice "somos cuatro", el número es 4. Los tramos los arma el sistema.
 El resto se guarda tal como lo dijo, sin corregirle nada.
 
 Solo guardás lo que la persona dijo. Un campo que no te dijo se deja vacío — no lo completes con lo que te parece ni con algo aproximado. Un dato inventado es peor que un dato faltante: el equipo llega a la llamada creyendo cosas que nadie dijo.
