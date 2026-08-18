@@ -38,6 +38,15 @@ def _db() -> str:
 
 
 def _get_admin_emails(db: str) -> list[str]:
+    # Valvula para probar la integracion sin escribirle a todo el equipo:
+    # si META_NOTIFY_OVERRIDE tiene una direccion, los avisos de Meta van solo
+    # ahi. REEMPLAZA la lista, no la suma — ADMIN_EMAIL sumaba, y para esto
+    # hace falta lo contrario. En produccion tiene que quedar vacia.
+    override = os.environ.get("META_NOTIFY_OVERRIDE", "").strip().lower()
+    if override:
+        logger.warning(f"META_NOTIFY_OVERRIDE activo: los avisos de Meta van solo a {override}")
+        return [override]
+
     emails = set()
     admin_env = os.environ.get("ADMIN_EMAIL", "").strip().lower()
     try:

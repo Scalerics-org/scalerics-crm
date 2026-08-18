@@ -361,3 +361,30 @@ def test_token_alert_se_repite_pasado_el_intervalo(app, monkeypatch):
         meta._check_token_once(db)
 
     assert alert.call_count == 2, "pasado el intervalo de re-alerta tiene que volver a mandar el mail"
+
+
+def test_override_reemplaza_los_destinatarios(tmp_path, monkeypatch):
+    """META_NOTIFY_OVERRIDE manda el aviso solo a esa direccion, sin sumar a los admins."""
+    import sqlite3
+
+    from routes import meta
+
+    db = str(tmp_path / "override.db")
+    conn = sqlite3.connect(db)
+    conn.execute("CREATE TABLE roles (id INTEGER PRIMARY KEY, name TEXT)")
+    conn.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT, role_id INTEGER)")
+    conn.execute("INSERT INTO roles (id, name) VALUES (1, 'Admin')")
+    conn.execute("INSERT INTO users (id, email, role_id) VALUES (1, 'jefe@scalerics.com', 1)")
+    conn.commit()
+    conn.close()
+
+    monkeypatch.setenv("ADMIN_EMAIL", "otro-admin@scalerics.com")
+
+    monkeypatch.delenv("META_NOTIFY_OVERRIDE", raising=False)
+    sin_override = set(meta._get_admin_emails(db))
+    assert "jefe@scalerics.com" in sin_override
+    assert "otro-admin@scalerics.com" in sin_override
+
+    monkeypatch.setenv("META_NOTIFY_OVERRIDE", "yo@gmail.com")
+    con_override = meta._get_admin_emails(db)
+    assert con_override == ["yo@gmail.com"], "el override reemplaza, no suma"
