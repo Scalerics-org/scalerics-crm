@@ -223,6 +223,27 @@ def test_el_autosync_loguea_el_error_de_la_consulta(monkeypatch, caplog):
     assert "HTTP 400" in caplog.text
 
 
+def test_el_autosync_sigue_trayendo_tareas_si_fallan_los_proyectos(monkeypatch):
+    """`_maybe_sync_notion` trae primero los proyectos y despues las tareas; un
+    fallo en el pull de proyectos no puede frenar la sync de tareas, que es lo
+    que mas importa mantener al dia. Regresion: que nadie reordene las llamadas
+    ni agregue un `return` temprano entre las dos."""
+    monkeypatch.setenv("NOTION_TOKEN", "x")
+    monkeypatch.setattr(
+        dashboard.threading, "Thread",
+        lambda target=None, daemon=None: type("T", (), {"start": lambda s: target()})())
+    dashboard._notion_sync_state["at"] = 0.0
+
+    with patch("services.notion_service.traer_proyectos",
+               return_value=(0, "fallo a proposito")) as proyectos, \
+         patch("services.notion_service.traer_y_aplicar",
+               return_value=(1, None)) as tareas:
+        dashboard._maybe_sync_notion("x.db")
+
+    proyectos.assert_called_once()
+    tareas.assert_called_once()
+
+
 def test_el_panel_de_tareas_tiene_el_boton_y_el_badge_de_notion():
     """Regresión: que nadie borre el front de Notion sin darse cuenta."""
     html = dashboard.DASHBOARD_HTML

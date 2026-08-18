@@ -185,3 +185,25 @@ def test_sin_token_es_no_op(db, monkeypatch):
     with patch("services.notion_service.requests.post") as post:
         assert ns.traer_proyectos(db)[0] == 0
     post.assert_not_called()
+
+
+def test_la_ruta_devuelve_los_proyectos_con_sus_tareas(tmp_path, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "token-de-test")
+    import dashboard
+    ruta = str(tmp_path / "leads.db")
+    init_db(ruta)
+    upsert_project(ruta, "p-1", "Desarrollo", stage="In Progress")
+    task_id = create_task(ruta, title="Una tarea", status="in_progress")
+    update_task(ruta, task_id, notion_project_page_id="p-1")
+
+    app = dashboard.create_app(ruta)
+    app.config["TESTING"] = True
+    r = app.test_client().get("/api/projects", headers={"x-admin-token": "token-de-test"})
+
+    assert r.status_code == 200
+    datos = r.get_json()
+    assert len(datos) == 1
+    assert datos[0]["name"] == "Desarrollo"
+    assert datos[0]["stage"] == "In Progress"
+    assert [t["title"] for t in datos[0]["tasks"]] == ["Una tarea"]
+    assert datos[0]["conteo"] == {"todo": 0, "in_progress": 1, "done": 0}

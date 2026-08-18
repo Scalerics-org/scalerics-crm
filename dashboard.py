@@ -20,6 +20,7 @@ from routes.tokens import tokens_bp
 from routes.meta import meta_bp, start_meta_token_monitor, start_meta_daily_import
 from routes.calendly import calendly_bp
 from routes.notion import notion_bp
+from routes.projects import projects_bp
 from services.demo_service import demo_job_handler
 from services.job_service import init_worker
 
@@ -847,6 +848,12 @@ body.light .task-status-badge.todo{background:#f1f5f9;color:#64748b}
 body.light .task-status-badge.in_progress{background:#dbeafe;color:#1d4ed8;border-color:#93c5fd}
 body.light .task-status-badge.done{background:#dcfce7;color:#16a34a;border-color:#86efac}
 body.light .task-notion-badge{background:#f1f5f9;color:#64748b;border-color:#e2e8f0}
+body.light .panel-head h1{color:#0f172a}
+body.light .panel-sub{color:#64748b}
+body.light .proj-card{background:#f8fafc;border-color:#e2e8f0}
+body.light .proj-name{color:#0f172a}
+body.light .proj-stage{background:#f1f5f9;color:#64748b}
+body.light .proj-task{color:#334155}
 body.light .kanban-col{background:#f8fafc;border-color:#e2e8f0}
 body.light .kanban-col.drag-over{border-color:#0088cc;background:#eff6ff}
 body.light .kanban-name{color:#475569}
@@ -974,6 +981,19 @@ body.light .btn-icon{stroke:currentColor}
 .task-status-badge.in_progress{background:#0c1f2e;color:#38bdf8;border-color:#0369a133}
 .task-status-badge.done{background:#052e16;color:#4ade80;border-color:#16a34a33}
 .task-notion-badge{font-size:.72rem;color:#94a3b8;background:#1a2234;padding:2px 7px;border-radius:10px;text-decoration:none;border:1px solid #23304a}
+.panel-head{margin-bottom:14px}
+.panel-head h1{font-size:1.4rem;font-weight:800;color:#fff}
+.panel-sub{font-size:.78rem;color:#475569;margin-top:3px}
+.proj-card{background:#0d1420;border:1px solid #1e293b;border-radius:10px;padding:12px 14px;margin-bottom:10px}
+.proj-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.proj-name{font-size:.95rem;font-weight:600;color:#e2e8f0;text-decoration:none}
+.proj-name:hover{color:#0088cc}
+.proj-stage{font-size:.72rem;color:#94a3b8;background:#1a2234;padding:2px 7px;border-radius:10px}
+.proj-counts{font-size:.72rem;color:#64748b;margin-left:auto}
+.proj-meta{font-size:.75rem;color:#64748b;margin-top:4px}
+.proj-tasks{margin-top:8px;display:flex;flex-direction:column;gap:4px}
+.proj-task{font-size:.8rem;color:#cbd5e1;display:flex;align-items:center;gap:7px}
+.proj-vacio{color:#475569;font-style:italic}
 /* Kanban de tareas: mismas columnas que el tablero de Notion */
 .tasks-viewswitch{display:flex;gap:6px;margin:10px 0 4px}
 .kanban{display:flex;gap:12px;overflow-x:auto;padding:4px 0 12px;align-items:flex-start}
@@ -1103,6 +1123,7 @@ body.light .upick-name{color:#0f172a}
   <div class="nav-item" id="nav-clientes" onclick="showPanel('clientes')"><i data-lucide="users" class="nav-icon"></i> Clientes</div>
   <div class="nav-section-label">GESTIÓN</div>
   <div class="nav-item" id="nav-tasks" onclick="showPanel('tasks')"><i data-lucide="check-square" class="nav-icon"></i> Tareas</div>
+  <div class="nav-item" id="nav-projects" onclick="showPanel('projects')"><i data-lucide="target" class="nav-icon"></i> Proyectos</div>
   <div class="nav-item" id="nav-wa" onclick="showPanel('wa')"><i data-lucide="message-circle" class="nav-icon"></i> WhatsApp</div>
   <div class="nav-item" id="nav-cal" onclick="showPanel('cal')"><i data-lucide="calendar" class="nav-icon"></i> Calendario</div>
   <div class="nav-item" id="nav-metrics" onclick="showPanel('metrics')"><i data-lucide="bar-chart-2" class="nav-icon"></i> Métricas</div>
@@ -1309,6 +1330,14 @@ body.light .upick-name{color:#0f172a}
     <button class="mobile-fab" id="mobile-fab-task" onclick="openAddTaskModal()" aria-label="Nueva tarea">+</button>
     <div id="tasks-board" class="kanban"></div>
     <div id="tasks-list" style="display:none"></div>
+  </div>
+
+  <div id="projects-panel" class="panel">
+    <div class="panel-head">
+      <h1>Proyectos</h1>
+      <p class="panel-sub">Espejo del tablero de Notion. Para editarlos, abrilos allá.</p>
+    </div>
+    <div id="projects-list"></div>
   </div>
 
   <!-- ======= CALENDAR PANEL ======= -->
@@ -1705,6 +1734,7 @@ function showPanel(name) {
   if (name === 'wa') loadWaTemplates();
   if (name === 'cal' && !calLoaded) { calLoaded = true; renderCalendar(); }
   if (name === 'tasks') loadTasks();
+  if (name === 'projects') loadProjects();
   if (name === 'metrics') loadMetrics();
   if (name === 'activity') loadActivity();
   if (name === 'sdr') loadSdr();
@@ -3064,6 +3094,39 @@ async function loadTasks() {
   renderTasksList();
 }
 
+async function loadProjects() {
+  const cont = document.getElementById('projects-list');
+  if (!cont) return;
+  cont.innerHTML = '<div class="tasks-empty">Cargando...</div>';
+  const r = await fetch('/api/projects');
+  const proyectos = await r.json();
+  window._proyectosPorPagina = Object.fromEntries(proyectos.map(p => [p.notion_page_id, p.name]));
+  if (!proyectos.length) {
+    cont.innerHTML = '<div class="tasks-empty">No hay proyectos en el tablero.</div>';
+    return;
+  }
+  cont.innerHTML = proyectos.map(p => {
+    const url = 'https://www.notion.so/' + (p.notion_page_id||'').replace(/-/g,'');
+    const rango = p.timeline_start
+      ? p.timeline_start + (p.timeline_end ? ' → ' + p.timeline_end : '') : '';
+    return `<div class="proj-card">
+      <div class="proj-head">
+        <a class="proj-name" href="${url}" target="_blank" rel="noopener">${esc(p.name)}</a>
+        ${p.stage ? `<span class="proj-stage">${esc(p.stage)}</span>` : ''}
+        <span class="proj-counts">${p.conteo.todo} pendientes · ${p.conteo.in_progress} en progreso · ${p.conteo.done} hechas</span>
+      </div>
+      ${p.lead || rango ? `<div class="proj-meta">${p.lead ? esc(p.lead) : ''}${p.lead && rango ? ' · ' : ''}${rango}</div>` : ''}
+      <div class="proj-tasks">${
+        p.tasks.length
+          ? p.tasks.map(t => `<div class="proj-task"><span class="task-status-badge ${t.status||'todo'}">${
+              ({todo:'Pendiente', in_progress:'En progreso', done:'Hecha'})[t.status] || 'Pendiente'
+            }</span> ${esc(t.title)}</div>`).join('')
+          : '<div class="proj-task proj-vacio">Sin tareas</div>'
+      }</div>
+    </div>`;
+  }).join('');
+}
+
 function _populateUserFilter() {
   if (_taskUserFilter) {
     const u = _allUsers.find(u => String(u.id) === String(_taskUserFilter));
@@ -3194,6 +3257,7 @@ function _taskCardHtml(t) {
     <div class="kanban-card-title">${esc(t.title)}</div>
     <div class="kanban-card-meta">
       ${t.notion_page_id ? '<span class="task-notion-badge">Notion</span>' : ''}
+      ${t.notion_project_page_id && window._proyectosPorPagina ? `<span class="proj-stage">${esc(window._proyectosPorPagina[t.notion_project_page_id]||'')}</span>` : ''}
       ${t.priority === 'high' ? '<span class="task-priority high">Alta</span>' : ''}
       ${lead ? `<span class="task-client-link" onclick="openClientPanel(${lead.id})">${esc(lead.name||'')}</span>` : ''}
       ${dlStr ? `<span class="task-deadline ${overdue ? 'overdue' : ''}">${dlStr}</span>` : ''}
@@ -5372,7 +5436,7 @@ def create_app(db_path: str) -> Flask:
     app.config["PIPELINE_STATUS"] = _pipeline_status
     app.config["PIPELINE_LOCK"] = _pipeline_lock
 
-    for bp in (leads_bp, demos_bp, calendar_bp, wa_bp, pipeline_bp, tasks_bp, budgets_bp, tokens_bp, meta_bp, calendly_bp, notion_bp):
+    for bp in (leads_bp, demos_bp, calendar_bp, wa_bp, pipeline_bp, tasks_bp, budgets_bp, tokens_bp, meta_bp, calendly_bp, notion_bp, projects_bp):
         app.register_blueprint(bp)
 
     @app.before_request
