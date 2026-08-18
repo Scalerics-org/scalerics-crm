@@ -336,13 +336,49 @@ _FRASES_RUBRO = {
 }
 
 
+def _clave_rubro(rubro: str) -> str:
+    return " ".join(rubro.lower().split()).replace(" ", "_")
+
+
 def _frase_rubro(rubro: str) -> str:
     """Frase redactada para los rubros conocidos; el texto crudo para el resto."""
-    clave = " ".join(rubro.lower().split()).replace(" ", "_")
-    conocida = _FRASES_RUBRO.get(clave)
+    conocida = _FRASES_RUBRO.get(_clave_rubro(rubro))
     if conocida:
         return conocida
     return f"buscabas {html.escape(rubro.strip())}"
+
+
+# Que dice el mail que hacemos. Va uno por rubro a proposito: mandarle el parrafo
+# de tiendas online a alguien que pidio automatizaciones delata el envio masivo,
+# que es exactamente lo que este mail intenta no parecer.
+_PARRAFOS_VALOR = {
+    "crear_mi_ecommerce":
+        "Hacemos tiendas online que venden de verdad: catálogo propio, cobros con "
+        "Mercado Pago, envíos configurados y un panel para que cargues productos "
+        "vos, sin depender de nadie. En semanas, no en meses.",
+    "automatizaciones":
+        "Automatizamos lo que hoy te come el día: pedidos, stock, respuestas a "
+        "clientes, reportes que armás a mano. Se conecta con lo que ya usás y "
+        "queda andando solo. En semanas, no en meses.",
+    "una_nueva_página_web":
+        "Hacemos sitios que traen consultas, no folletos: rápidos, que se ven bien "
+        "en el celular, que aparecen en Google, y con un panel para que los edites "
+        "vos. En semanas, no en meses.",
+    "un_software_a_medida":
+        "Hacemos software a medida para lo que ningún sistema de estante resuelve: "
+        "tu operativa, tus reglas, tu gente. Arrancamos por lo que más te frena y "
+        "lo ponemos a andar en semanas, no en meses.",
+}
+
+_PARRAFO_VALOR_GENERICO = (
+    "Hacemos páginas web, tiendas online, automatizaciones y software a medida. "
+    "Arrancamos por lo que más te esté frenando y lo ponemos a andar en semanas, "
+    "no en meses."
+)
+
+
+def _parrafo_valor(rubro: str) -> str:
+    return _PARRAFOS_VALOR.get(_clave_rubro(rubro), _PARRAFO_VALOR_GENERICO)
 
 
 def send_meta_lead_reminder(to_email: str, lead_name: str, negocio: str,
@@ -366,42 +402,48 @@ def send_meta_lead_reminder(to_email: str, lead_name: str, negocio: str,
     rubro_txt   = (rubro or "").strip()
 
     if rubro_txt and negocio_txt:
-        apertura_txt = (f"Nos dejaste tus datos porque {_frase_rubro(rubro_txt)} "
-                        f"para {negocio_txt}.")
-        apertura_esc = (f"Nos dejaste tus datos porque {_frase_rubro(rubro_txt)} "
-                        f"para {negocio_esc}.")
+        apertura_txt = (f"Dejaste tus datos porque {_frase_rubro(rubro_txt)} "
+                        f"para {negocio_txt}, y todavía estamos a tiempo de tomarlo.")
+        apertura_esc = (f"Dejaste tus datos porque {_frase_rubro(rubro_txt)} "
+                        f"para {negocio_esc}, y todavía estamos a tiempo de tomarlo.")
     elif rubro_txt:
-        apertura_txt = apertura_esc = f"Nos dejaste tus datos porque {_frase_rubro(rubro_txt)}."
+        apertura_txt = apertura_esc = (
+            f"Dejaste tus datos porque {_frase_rubro(rubro_txt)}, y todavía "
+            f"estamos a tiempo de tomarlo.")
     else:
-        apertura_txt = apertura_esc = "Nos dejaste tus datos para que hablemos de tu proyecto."
+        apertura_txt = apertura_esc = ("Dejaste tus datos para que hablemos de tu "
+                                       "proyecto, y todavía estamos a tiempo de tomarlo.")
 
-    cierre = ("Si no es el momento, respondé este mail y lo dejamos para más "
-              "adelante.")
-    invitacion = "Si te sigue interesando, podemos hablar 30 minutos cuando te quede cómodo:"
+    # Que hacemos, dicho para el rubro que pidio ESTE lead.
+    valor = _parrafo_valor(rubro_txt)
+    invitacion = "Agendá 30 minutos y salís de la llamada con precio y plazo cerrados."
 
-    # Sin tarjeta, sin badge, sin boton de color y sin logo en imagen. Todo eso
-    # es el molde de un mail de marketing, y es lo que hace que Gmail lo mande a
-    # Promociones. Este mail tiene que parecer lo que es: alguien escribiendo.
+    # Membrete arriba y firma en texto abajo: el mail tiene que verse de la
+    # empresa sin caer en la tarjeta con boton de color, que es el molde de una
+    # campana. Un solo logo, arriba: con el de la firma tambien, el nombre y el
+    # telefono se pisaban cuando el cliente no cargaba las imagenes.
     estilo_p = "margin:0 0 16px;font-size:15px;line-height:1.6;color:#1a1a1a"
     cuerpo_html = f"""<!DOCTYPE html>
 <html lang="es">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:24px;background:#ffffff">
+<body style="margin:0;padding:28px;background:#ffffff">
   <div style="max-width:520px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
+    <img src="{_LOGO_FIRMA}" alt="Scalerics" width="130"
+         style="display:block;width:130px;height:auto;margin-bottom:24px">
     <p style="{estilo_p}">Hola,</p>
     <p style="{estilo_p}">{apertura_esc}</p>
+    <p style="{estilo_p}">{valor}</p>
     <p style="{estilo_p}">{invitacion}</p>
     <p style="{estilo_p}">
       <a href="{_CALENDLY}" style="color:#0069a3">Agendar una llamada</a>
     </p>
-    <p style="{estilo_p}">{cierre}</p>
-    <p style="margin:28px 0 0;font-size:14px;line-height:1.6;color:#1a1a1a">
-      <img src="{_LOGO_FIRMA}" alt="Scalerics" width="110"
-           style="display:block;width:110px;height:auto;margin-bottom:8px">
+    <p style="margin:28px 0 0;padding-top:16px;border-top:1px solid #e6e6e6;
+              font-size:14px;line-height:1.7;color:#1a1a1a">
+      <strong>Scalerics</strong><br>
       {_TELEFONO}<br>
       <a href="https://scalerics.com" style="color:#0069a3">scalerics.com</a>
     </p>
-    <p style="margin:24px 0 0;font-size:12px;line-height:1.5;color:#8a8a8a">
+    <p style="margin:20px 0 0;font-size:12px;line-height:1.5;color:#8a8a8a">
       <a href="{unsub_url}" style="color:#8a8a8a">No quiero recibir más estos mails</a>
     </p>
   </div>
@@ -409,7 +451,7 @@ def send_meta_lead_reminder(to_email: str, lead_name: str, negocio: str,
 </html>"""
 
     cuerpo_texto = (
-        f"Hola,\n\n{apertura_txt}\n\n{invitacion}\n{_CALENDLY}\n\n{cierre}\n\n"
+        f"Hola,\n\n{apertura_txt}\n\n{valor}\n\n{invitacion}\n{_CALENDLY}\n\n"
         f"Scalerics\n{_TELEFONO}\nhttps://scalerics.com\n\n"
         f"No quiero recibir más estos mails: {unsub_url}\n"
     )

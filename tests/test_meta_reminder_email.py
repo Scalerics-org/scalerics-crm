@@ -171,11 +171,11 @@ def test_un_rubro_desconocido_cae_en_el_texto_generico():
 def test_el_texto_que_ve_el_lector_lleva_tildes():
     html = _html_del_recordatorio().args[2]
 
-    assert "cómodo" in html
-    assert "respondé" in html
-    assert "más adelante" in html
+    assert "Agendá" in html
+    assert "salís" in html
+    assert "todavía" in html
     assert "No quiero recibir más" in html
-    assert "comodo" not in html.replace("cómodo", "")
+    assert "Agenda " not in html, "sin tilde queda imperativo de otra persona"
 
 
 def test_el_nombre_del_formulario_no_se_usa_en_ningun_lado():
@@ -237,3 +237,36 @@ def test_las_otras_plantillas_siguen_sin_texto_plano():
         e.send_reset_email("a@b.com", "https://crm/reset")
 
     assert "text" not in enviar.call_args.kwargs
+
+
+@pytest.mark.parametrize("rubro,esperado,prohibido", [
+    ("crear_mi_ecommerce",   "Mercado Pago",        "automatizamos"),
+    ("automatizaciones",     "te come el día",      "Mercado Pago"),
+    ("una_nueva_página_web", "aparecen en Google",  "Mercado Pago"),
+    ("un_software_a_medida", "sistema de estante",  "Mercado Pago"),
+])
+def test_cada_rubro_dice_lo_que_hacemos_para_ESE_rubro(rubro, esperado, prohibido):
+    """Mandarle el parrafo de tiendas online a alguien que pidio automatizaciones
+    delata el envio masivo, que es lo que este mail intenta no parecer."""
+    html = _html_del_recordatorio(rubro=rubro).args[2]
+
+    assert esperado in html
+    assert prohibido.lower() not in html.lower()
+
+
+def test_un_rubro_desconocido_no_promete_nada_puntual():
+    html = _html_del_recordatorio(rubro="lo que sea que puso a mano").args[2]
+
+    assert "páginas web, tiendas online, automatizaciones y software a medida" in html
+    assert "Mercado Pago" not in html
+
+
+def test_el_membrete_es_el_unico_logo():
+    """Con el de arriba y el de la firma, el nombre y el telefono se pisaban
+    cuando el cliente no cargaba las imagenes ('Scalerics+598 97 250 713')."""
+    from services.email_service import _LOGO_FIRMA
+
+    html = _html_del_recordatorio().args[2]
+
+    assert html.count(_LOGO_FIRMA) == 1
+    assert "<strong>Scalerics</strong><br>" in html, "la firma de abajo va en texto"
