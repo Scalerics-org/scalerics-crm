@@ -47,24 +47,40 @@ def _conn(db_path: str) -> sqlite3.Connection:
     return sqlite3.connect(db_path, timeout=10)
 
 
-def registrar_envio(db_path: str, business_id: int) -> str:
-    """Deja constancia del envio y devuelve el token de baja.
+def registrar_envio(db_path: str, business_id: int, numero: int) -> str:
+    """Deja constancia del contacto `numero` y devuelve su token de baja.
 
-    Lanza sqlite3.IntegrityError si ese lead ya tenia un recordatorio: es la
-    red que impide mandar dos veces, y tiene que fallar ruidosamente.
+    Lanza sqlite3.IntegrityError si ese lead ya recibio ese contacto: es la red
+    que impide mandar dos veces, y tiene que fallar ruidosamente. Cada contacto
+    lleva su propio token, asi que el link de baja de cada mail funciona por
+    separado.
     """
     token = secrets.token_urlsafe(24)
     ahora = _ahora()
     conn = _conn(db_path)
     try:
         conn.execute(
-            "INSERT INTO meta_reminders (business_id, token, sent_at) VALUES (?, ?, ?)",
-            (business_id, token, ahora),
+            "INSERT INTO meta_reminders (business_id, numero, token, sent_at) "
+            "VALUES (?, ?, ?, ?)",
+            (business_id, int(numero), token, ahora),
         )
         conn.commit()
     finally:
         conn.close()
     return token
+
+
+def contactos_enviados(db_path: str, business_id: int) -> int:
+    """Cuantos contactos de la secuencia ya recibio este lead."""
+    conn = _conn(db_path)
+    try:
+        (cuantos,) = conn.execute(
+            "SELECT COUNT(*) FROM meta_reminders WHERE business_id = ?",
+            (business_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+    return int(cuantos or 0)
 
 
 def dar_de_baja(db_path: str, token: str) -> bool:
@@ -88,21 +104,21 @@ def dar_de_baja(db_path: str, token: str) -> bool:
 
 
 def esta_dado_de_baja(db_path: str, business_id: int) -> bool:
-    """True si ese lead pidio no recibir mas recordatorios.
+    """True si el lead pidio no recibir mas, en CUALQUIER contacto.
 
-    Nada del envio la consulta, y esta bien: `leads_a_recordar` ya deja afuera
-    a cualquiera que tenga fila en meta_reminders, se haya dado de baja o no,
-    porque el recordatorio se manda una sola vez en la vida. Existe para poder
-    verificar la baja desde afuera (los tests, o una consulta a mano)."""
+    La baja es sobre la persona, no sobre el mail que la disparo: quien se da
+    de baja en el contacto 2 no puede recibir el 3 ni ningun trimestral.
+    """
     conn = _conn(db_path)
     try:
         fila = conn.execute(
-            "SELECT unsubscribed_at FROM meta_reminders WHERE business_id = ?",
+            "SELECT 1 FROM meta_reminders "
+            "WHERE business_id = ? AND unsubscribed_at IS NOT NULL LIMIT 1",
             (business_id,),
         ).fetchone()
     finally:
         conn.close()
-    return bool(fila and fila[0])
+    return bool(fila)
 
 
 def _texto(campos: dict, clave: str) -> str:
@@ -221,7 +237,7 @@ def enviar_recordatorios(db_path: str, base_url: str, dry_run: bool = False) -> 
             logger.info(f"[dry-run] recordatorio a {lead['email']} (lead {lead['id']})")
             continue
         try:
-            token = registrar_envio(db_path, lead["id"])
+            token = registrar_envio(db_path, lead["id"], 1)
         except sqlite3.IntegrityError:
             # Otra corrida se le adelanto. No es un error: es la guarda haciendo
             # su trabajo.

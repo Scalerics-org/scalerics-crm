@@ -25,15 +25,42 @@ def db(tmp_path):
 
 
 def test_registrar_envio_es_una_sola_vez(db):
-    token = registrar_envio(db, 42)
+    token = registrar_envio(db, 42, 1)
     assert token, "tiene que devolver un token"
 
     with pytest.raises(sqlite3.IntegrityError):
-        registrar_envio(db, 42)
+        registrar_envio(db, 42, 1)
+
+
+def test_registrar_envio_numera_los_contactos(db):
+    from services.meta_reminders import contactos_enviados
+
+    t1 = registrar_envio(db, 30, 1)
+    t2 = registrar_envio(db, 30, 2)
+
+    assert t1 != t2, "cada contacto lleva su propio token"
+    assert contactos_enviados(db, 30) == 2
+
+
+def test_no_se_puede_mandar_dos_veces_el_mismo_contacto(db):
+    registrar_envio(db, 31, 1)
+
+    with pytest.raises(sqlite3.IntegrityError):
+        registrar_envio(db, 31, 1)
+
+
+def test_la_baja_en_un_contacto_vale_para_toda_la_secuencia(db):
+    registrar_envio(db, 32, 1)
+    token2 = registrar_envio(db, 32, 2)
+
+    assert esta_dado_de_baja(db, 32) is False
+    assert dar_de_baja(db, token2) is True
+    assert esta_dado_de_baja(db, 32) is True, (
+        "se dio de baja en el contacto 2: no puede recibir el 3 ni los trimestrales")
 
 
 def test_la_baja_marca_al_lead(db):
-    token = registrar_envio(db, 7)
+    token = registrar_envio(db, 7, 1)
     assert esta_dado_de_baja(db, 7) is False
 
     assert dar_de_baja(db, token) is True
@@ -47,7 +74,7 @@ def test_un_token_que_no_existe_no_rompe(db):
 def test_las_fechas_se_guardan_en_el_formato_que_compara(db):
     """sent_at y unsubscribed_at tienen que usar '%Y-%m-%d %H:%M:%S' UTC, igual
     que scraped_at: es el formato con el que datetime('now', ...) compara."""
-    token = registrar_envio(db, 500)
+    token = registrar_envio(db, 500, 1)
     dar_de_baja(db, token)
 
     conn = sqlite3.connect(db)
@@ -79,7 +106,7 @@ def test_la_pagina_de_baja_funciona_sin_login(tmp_path):
     init_db(ruta)  # create_app NO crea las tablas: eso lo hace server.py aparte
     app = create_app(ruta)
     app.config["TESTING"] = True
-    token = registrar_envio(ruta, 99)
+    token = registrar_envio(ruta, 99, 1)
 
     r = app.test_client().get(f"/baja/{token}")
 
@@ -97,7 +124,7 @@ def test_la_baja_en_un_click_de_gmail_llega_por_post(tmp_path):
     init_db(ruta)
     app = create_app(ruta)
     app.config["TESTING"] = True
-    token = registrar_envio(ruta, 98)
+    token = registrar_envio(ruta, 98, 1)
 
     r = app.test_client().post(f"/baja/{token}")
 
@@ -113,7 +140,7 @@ def test_la_pagina_de_baja_no_se_indexa(tmp_path):
     init_db(ruta)
     app = create_app(ruta)
     app.config["TESTING"] = True
-    token = registrar_envio(ruta, 97)
+    token = registrar_envio(ruta, 97, 1)
 
     cuerpo = app.test_client().get(f"/baja/{token}").get_data(as_text=True)
 
@@ -177,7 +204,7 @@ def test_no_repite_a_quien_ya_recibio(db):
     conn.close()
 
     assert [x["id"] for x in leads_a_recordar(db)] == [10]
-    registrar_envio(db, 10)
+    registrar_envio(db, 10, 1)
     assert leads_a_recordar(db) == []
 
 
@@ -240,7 +267,7 @@ def test_al_dia_siguiente_tampoco_le_llega_a_la_fila_gemela(db):
     conn.commit()
     conn.close()
 
-    registrar_envio(db, 511)
+    registrar_envio(db, 511, 1)
 
     assert leads_a_recordar(db) == [], "esa direccion ya recibio su mail"
 
