@@ -271,10 +271,16 @@ def send_task_assignment_email(
 def send_meeting_reminder(to_email: str, nombre_cliente: str, titulo: str,
                           cuando: str, meet_link: str = "",
                           horas_antes: int = 24) -> bool:
-    """Recordatorio de reunion al cliente.
+    """Recordatorio de reunión al CLIENTE, 24h y 1h antes.
 
-    El CRM no enviaba ningun aviso previo: los no-shows salian caros y no habia
-    forma de reducirlos. El link de Meet va adentro para que no tengan que buscarlo.
+    Va con las mismas convenciones que send_meta_lead_reminder, porque el
+    destinatario es el mismo tipo: alguien de afuera, no nosotros. Sale de
+    contacto@ y no del crm@noreply, sin la barra de logo y sin el pie de
+    "notificacion automatica".
+
+    Antes usaba el layout por defecto, que es el de los avisos internos: el mail
+    salia de una casilla llamada noreply, con un pie que decia "No responder este
+    mail", y en el cuerpo le pedia al cliente que respondiera para reprogramar.
     """
     from markupsafe import escape
 
@@ -288,7 +294,7 @@ def send_meeting_reminder(to_email: str, nombre_cliente: str, titulo: str,
     body = (
         _muted(f"{saludo} {cuerpo_texto}")
         + _info_card(filas)
-        + (_muted("Si no podés en ese horario, respondé este mail y lo reprogramamos.")
+        + (_muted("Si no podés en ese horario, respondenos este mail y lo reprogramamos.")
            if horas_antes >= 12 else
            _muted("Te esperamos."))
     )
@@ -298,10 +304,24 @@ def send_meeting_reminder(to_email: str, nombre_cliente: str, titulo: str,
         body=body,
         cta_url=meet_link or "",
         cta_label="Entrar a la reunión →" if meet_link else "",
+        footer="",
+        mostrar_header=False,
     )
+    firma = (
+        f'<div style="text-align:center;font-size:12px;color:#94a3b8;'
+        f'padding:0 24px 28px">'
+        f'<img src="{_LOGO}" alt="Scalerics" style="height:22px;margin-bottom:10px"><br>'
+        f'Scalerics &middot; {_TELEFONO} &middot; '
+        f'<a href="https://scalerics.com" style="color:#94a3b8">scalerics.com</a>'
+        f'</div>'
+    )
+    html = html.replace("</body>", f"{firma}</body>")
+
     asunto = ("Recordatorio: reunión mañana con Scalerics" if horas_antes >= 12
               else "Tu reunión con Scalerics es en 1 hora")
-    return _send(to_email, asunto, html)
+    # Sin List-Unsubscribe a proposito: no es un mail de difusion, es el aviso de
+    # una reunion que el cliente acordo. Darlo de baja seria perderse su propia cita.
+    return _send(to_email, asunto, html, from_email=_REMITENTE_LEADS)
 
 
 def send_meta_token_alert(to_email: str, error_detail: str) -> bool:

@@ -27,7 +27,7 @@ from routes.calendly import calendly_bp
 from services.auth import ALL_PANELS, enforce_panel_access, require_admin
 from services.demo_service import demo_job_handler
 from services.job_service import init_worker
-from services.reminder_service import iniciar_scheduler
+from services.avisos_reunion import iniciar_scheduler
 
 load_dotenv()
 

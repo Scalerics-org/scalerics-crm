@@ -1,15 +1,24 @@
-"""Recordatorios de reuniones.
+"""Avisos previos a una reunion agendada.
 
-El CRM no avisaba nada antes de una reunion: ni al cliente ni al equipo. Los
-no-shows son plata directa y no habia forma de reducirlos.
+NO CONFUNDIR con services/meta_reminders.py, que es otra cosa:
 
-Se manda un aviso 24h antes y otro 1h antes. Cada envio se marca en la fila
-(reminder_24h_at / reminder_1h_at), asi que el scheduler puede pasar cuantas veces
-quiera sin repetir el mail.
+    meta_reminders   reactivacion de leads FRIOS de Meta Ads que dejaron sus
+                     datos y nunca fueron contactados. Tope diario, ventana de
+                     prioridad y pagina publica de baja.
+    este modulo      aviso a un cliente que YA tiene reunion agendada, 24h y 1h
+                     antes, con el link de Meet. Es contra los no-shows.
 
-DEPENDE de que la maquina siga viva: con auto_stop_machines y
-min_machines_running=0 este loop casi nunca llegaba a correr. Por eso fly.toml
-pasa a min_machines_running=1.
+Distinto destinatario, distinto disparador, distinta tabla. Comparten el estilo
+de mail: los dos van a alguien de afuera, asi que salen de contacto@ y no del
+crm@noreply, sin el pie de "notificacion automatica".
+
+Aca no hay baja: no es difusion, es el aviso de una cita que el cliente acordo.
+
+Cada envio se marca en la fila (reminder_24h_at / reminder_1h_at), asi que el
+scheduler puede pasar cuantas veces quiera sin repetir el mail.
+
+DEPENDE de que la maquina siga viva: con min_machines_running=0 este loop casi
+nunca llegaba a correr. Por eso fly.toml lo fija en 1.
 """
 
 import datetime
