@@ -1,0 +1,36 @@
+# El Dockerfile hace `COPY . .`, asi que todo lo que no se excluya aca termina
+# adentro de la imagen de produccion. Sin este archivo, un `.env` local se
+# hornea en la imagen: el secreto queda en una capa, visible para cualquiera
+# que pueda bajarla, y deja de rotarse con `flyctl secrets set`.
+
+# Secretos
+.env
+credentials.json
+
+# Historia y andamios de trabajo
+.git
+.gitignore
+.superpowers/
+.worktrees/
+.github/
+
+# Basura de Python
+__pycache__/
+*.pyc
+.pytest_cache/
+pipeline.log
+
+# Datos que no van a la imagen.
+# OJO: `leads_backup.db` SI tiene que viajar — start.sh lo copia al volumen en
+# el primer arranque. Por eso se excluyen los sidecar de SQLite y las copias,
+# no el backup.
+*.db-shm
+*.db-wal
+prod_snapshot*.db
+prod_limpia.db
+leads.db
+backups/
+budgets/
+
+# Node del bot, que es un servicio aparte
+bot/node_modules/
