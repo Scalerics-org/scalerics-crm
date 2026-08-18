@@ -3036,6 +3036,7 @@ function copyAndOpenClaude() {
 
 let _allTasks = [];
 let _allLeads = [];
+let _proyectosPorPagina = null;
 let _taskStatusFilter = 'all';
 let _taskUserFilter = '';
 let _taskSearchQuery = '';
@@ -3088,10 +3089,30 @@ async function loadTasks() {
     _allTasks = Array.isArray(tr) ? tr : [];
     _allLeads = Array.isArray(lr) ? lr : [];
   } catch { _allTasks = []; }
+  await _asegurarMapaDeProyectos();
   await _loadUsersForTask();
   _populateUserFilter();
   _updateFilterCounts();
   renderTasksList();
+}
+
+// El kanban necesita el nombre del proyecto de cada tarea, pero renderTasksList
+// se llama en cada filtro, cada arrastre y cada cambio de estado: pedir
+// /api/projects ahi seria una request por render. Se pide una sola vez por
+// carga de pagina -y la usa quien la necesite primero, Tareas o Proyectos-, y
+// si falla se deja el mapa en null: sin mapa no hay badge de proyecto (nunca
+// uno vacio), y la proxima entrada a Tareas o a Proyectos reintenta.
+async function _asegurarMapaDeProyectos() {
+  if (_proyectosPorPagina) return;
+  try {
+    const r = await fetch('/api/projects');
+    const proyectos = await r.json();
+    _proyectosPorPagina = Object.fromEntries(
+      (Array.isArray(proyectos) ? proyectos : []).map(p => [p.notion_page_id, p.name])
+    );
+  } catch {
+    // sin conexion o respuesta invalida: _proyectosPorPagina queda null
+  }
 }
 
 async function loadProjects() {
@@ -3100,7 +3121,7 @@ async function loadProjects() {
   cont.innerHTML = '<div class="tasks-empty">Cargando...</div>';
   const r = await fetch('/api/projects');
   const proyectos = await r.json();
-  window._proyectosPorPagina = Object.fromEntries(proyectos.map(p => [p.notion_page_id, p.name]));
+  _proyectosPorPagina = Object.fromEntries(proyectos.map(p => [p.notion_page_id, p.name]));
   if (!proyectos.length) {
     cont.innerHTML = '<div class="tasks-empty">No hay proyectos en el tablero.</div>';
     return;
@@ -3257,7 +3278,7 @@ function _taskCardHtml(t) {
     <div class="kanban-card-title">${esc(t.title)}</div>
     <div class="kanban-card-meta">
       ${t.notion_page_id ? '<span class="task-notion-badge">Notion</span>' : ''}
-      ${t.notion_project_page_id && window._proyectosPorPagina ? `<span class="proj-stage">${esc(window._proyectosPorPagina[t.notion_project_page_id]||'')}</span>` : ''}
+      ${t.notion_project_page_id && _proyectosPorPagina && _proyectosPorPagina[t.notion_project_page_id] ? `<span class="proj-stage">${esc(_proyectosPorPagina[t.notion_project_page_id])}</span>` : ''}
       ${t.priority === 'high' ? '<span class="task-priority high">Alta</span>' : ''}
       ${lead ? `<span class="task-client-link" onclick="openClientPanel(${lead.id})">${esc(lead.name||'')}</span>` : ''}
       ${dlStr ? `<span class="task-deadline ${overdue ? 'overdue' : ''}">${dlStr}</span>` : ''}

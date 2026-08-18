@@ -1,5 +1,6 @@
 """Rutas de Notion y el autosync al abrir el CRM."""
 
+import re
 from unittest.mock import patch
 
 import pytest
@@ -250,6 +251,17 @@ def test_el_panel_de_tareas_tiene_el_boton_y_el_badge_de_notion():
     assert "task-notion-url" in html
     assert "task-notion-badge" in html
     assert "_enviarTareaANotion" in html
+
+
+def test_loadTasks_llena_el_mapa_de_proyectos_sin_pasar_por_el_panel_de_proyectos():
+    """Regresión: el kanban de Tareas tiene que poder mostrar el nombre del
+    proyecto de una tarea aunque el usuario nunca haya abierto el panel de
+    Proyectos en esa carga de página. Si alguien borra la llamada a
+    `_asegurarMapaDeProyectos` desde `loadTasks`, el badge de proyecto pasaría
+    a depender del orden en que se abren los paneles."""
+    html = dashboard.DASHBOARD_HTML
+    cuerpo = re.search(r"async function loadTasks\(\) \{.*?\n\}", html, re.S).group(0)
+    assert "_asegurarMapaDeProyectos" in cuerpo
 
 
 def _fuente_de(nombre):
