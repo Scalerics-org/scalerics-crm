@@ -690,6 +690,8 @@ def traer_proyectos(db_path: str) -> tuple[int, str | None]:
 
     if completo:
         conocidos = {p["notion_page_id"] for p in get_projects(db_path)}
-        borrar_proyectos(db_path, conocidos - vistos)
+        borrados = borrar_proyectos(db_path, conocidos - vistos)
+        if borrados:
+            logger.info("notion: %s proyecto(s) borrados del espejo", borrados)
 
     return cambiados, None

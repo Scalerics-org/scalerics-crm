@@ -143,6 +143,35 @@ def test_un_proyecto_que_desaparecio_se_borra(db, notion_env):
     assert get_task_by_id(db, task_id)["notion_project_page_id"] is None
 
 
+def test_un_barrido_que_borra_proyectos_lo_deja_en_el_log(db, notion_env, caplog):
+    """`borrar_proyectos` es la unica operacion destructiva de este modulo y su
+    valor de retorno hoy se descarta sin loguear nada -- a diferencia de
+    `_dar_por_desaparecida`, del lado de tareas, que deja una entrada de
+    actividad por cada una. Si el barrido dispara alguna vez sobre un listado
+    "entero pero vacio" (ej. la conexion pierde acceso y Notion contesta
+    `200 {results: []}`), el espejo se borra entero sin ningun rastro."""
+    upsert_project(db, "p-vieja", "Proyecto viejo")
+    payload = {"results": [], "has_more": False}
+
+    with patch("services.notion_service.requests.post",
+               return_value=_Resp(200, payload)), \
+         caplog.at_level("INFO"):
+        ns.traer_proyectos(db)
+
+    assert get_projects(db) == []
+    assert "1" in caplog.text
+    assert "borrad" in caplog.text.lower()
+
+
+def test_un_barrido_que_no_borra_nada_no_deja_ruido(db, notion_env, caplog):
+    payload = {"results": [_proyecto("p-1", "Desarrollo")], "has_more": False}
+    with patch("services.notion_service.requests.post",
+               return_value=_Resp(200, payload)), \
+         caplog.at_level("INFO"):
+        ns.traer_proyectos(db)
+    assert "borrad" not in caplog.text.lower()
+
+
 def test_si_la_consulta_falla_no_se_borra_nada(db, notion_env):
     upsert_project(db, "p-vieja", "Proyecto viejo")
 
