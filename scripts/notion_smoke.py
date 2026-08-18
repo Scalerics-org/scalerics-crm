@@ -5,7 +5,11 @@ la version de API que el token acepta, el data_source_id de la database,
 que la property CRM ID exista, y a que grupo pertenece cada estado.
 
 Uso:
-    NOTION_TOKEN=... NOTION_DATABASE_ID=... python scripts/notion_smoke.py
+    python scripts/notion_smoke.py
+
+Lee `NOTION_TOKEN` del entorno o del `.env` del proyecto (que esta en
+.gitignore). Asi el token se pega una sola vez en un archivo y no queda en el
+historial del shell ni en una linea de comando.
 """
 
 import json
@@ -13,6 +17,9 @@ import os
 import sys
 
 import requests
+from dotenv import load_dotenv
+
+load_dotenv()
 
 VERSIONES = ["2025-09-03", "2022-06-28"]
 DB_ID = os.environ.get("NOTION_DATABASE_ID", "3ae65d94-deec-8093-8c48-cfbe77e202d5")
@@ -30,7 +37,7 @@ def _headers(version: str) -> dict:
 def main() -> int:
     """Prueba cada version de API contra la database y reporta lo que encuentra."""
     if not os.environ.get("NOTION_TOKEN"):
-        print("Falta NOTION_TOKEN")
+        print("Falta NOTION_TOKEN: ponelo en el .env del proyecto o exportalo.")
         return 1
 
     for version in VERSIONES:
