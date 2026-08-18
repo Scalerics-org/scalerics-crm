@@ -80,17 +80,19 @@ def test_una_tarea_que_no_existe_da_404(app, cliente):
 
 
 def test_el_sync_manual_devuelve_cuantas_cambiaron(app, cliente):
-    with patch("routes.notion.traer_y_aplicar", return_value=(3, None)):
+    with patch("routes.notion.traer_proyectos", return_value=(5, None)), \
+         patch("routes.notion.traer_y_aplicar", return_value=(3, None)):
         r = cliente.post("/api/notion/sync", headers=_AUTH)
     assert r.status_code == 200
-    assert r.get_json() == {"ok": True, "cambiadas": 3}
+    assert r.get_json() == {"ok": True, "cambiadas": 3, "proyectos": 5, "proyectos_error": None}
 
 
 def test_el_sync_manual_que_anduvo_sin_cambios_dice_ok(app, cliente):
-    with patch("routes.notion.traer_y_aplicar", return_value=(0, None)):
+    with patch("routes.notion.traer_proyectos", return_value=(0, None)), \
+         patch("routes.notion.traer_y_aplicar", return_value=(0, None)):
         r = cliente.post("/api/notion/sync", headers=_AUTH)
     assert r.status_code == 200
-    assert r.get_json() == {"ok": True, "cambiadas": 0}
+    assert r.get_json() == {"ok": True, "cambiadas": 0, "proyectos": 0, "proyectos_error": None}
 
 
 def test_el_sync_manual_no_dice_ok_si_la_consulta_fallo(app, cliente):
@@ -99,7 +101,8 @@ def test_el_sync_manual_no_dice_ok_si_la_consulta_fallo(app, cliente):
     Esta ruta es el instrumento con el que una persona prueba la configuracion:
     el default que se shippea manda el pull a un endpoint que puede no existir.
     """
-    with patch("routes.notion.traer_y_aplicar",
+    with patch("routes.notion.traer_proyectos", return_value=(0, None)), \
+         patch("routes.notion.traer_y_aplicar",
                return_value=(0, "la consulta a Notion devolvio HTTP 400")):
         r = cliente.post("/api/notion/sync", headers=_AUTH)
     assert r.status_code == 502
@@ -108,9 +111,39 @@ def test_el_sync_manual_no_dice_ok_si_la_consulta_fallo(app, cliente):
     assert "400" in d["error"]
 
 
+def test_el_sync_manual_tambien_refresca_proyectos(app, cliente):
+    """`/api/notion/sync` es el instrumento con el que una persona prueba a mano
+    que la configuracion de Notion quedo bien, y la verificacion manual del
+    plan arranca confirmando que aparecen los cinco proyectos. Hoy solo
+    refresca tareas: un fallo del lado de proyectos no se puede reintentar a
+    mano, hay que esperar el throttle de 600s del autosync."""
+    with patch("routes.notion.traer_proyectos", return_value=(5, None)) as proyectos, \
+         patch("routes.notion.traer_y_aplicar", return_value=(3, None)):
+        r = cliente.post("/api/notion/sync", headers=_AUTH)
+    proyectos.assert_called_once()
+    assert r.status_code == 200
+    assert r.get_json()["proyectos"] == 5
+
+
+def test_una_excepcion_en_proyectos_no_le_pega_al_sync_manual_de_tareas(app, cliente):
+    """Mismo constraint que el hallazgo 2, pero en el sync manual: si
+    `traer_proyectos` explota, `traer_y_aplicar` tiene que seguir corriendo y
+    la ruta tiene que seguir contestando 200 con las tareas que sí cambiaron."""
+    with patch("routes.notion.traer_proyectos", side_effect=RuntimeError("database is locked")), \
+         patch("routes.notion.traer_y_aplicar", return_value=(3, None)) as tareas:
+        r = cliente.post("/api/notion/sync", headers=_AUTH)
+    tareas.assert_called_once()
+    assert r.status_code == 200
+    d = r.get_json()
+    assert d["ok"] is True
+    assert d["cambiadas"] == 3
+    assert d["proyectos"] == 0
+
+
 def test_el_sync_manual_queda_en_el_log_de_actividad(app, cliente):
     import sqlite3
-    with patch("routes.notion.traer_y_aplicar", return_value=(2, None)):
+    with patch("routes.notion.traer_proyectos", return_value=(1, None)), \
+         patch("routes.notion.traer_y_aplicar", return_value=(2, None)):
         cliente.post("/api/notion/sync", headers=_AUTH)
     conn = sqlite3.connect(app.config["DB_PATH"])
     filas = conn.execute(
@@ -123,7 +156,8 @@ def test_el_sync_manual_queda_en_el_log_de_actividad(app, cliente):
 
 def test_un_sync_que_fallo_no_deja_actividad(app, cliente):
     import sqlite3
-    with patch("routes.notion.traer_y_aplicar", return_value=(0, "fallo")):
+    with patch("routes.notion.traer_proyectos", return_value=(0, None)), \
+         patch("routes.notion.traer_y_aplicar", return_value=(0, "fallo")):
         cliente.post("/api/notion/sync", headers=_AUTH)
     conn = sqlite3.connect(app.config["DB_PATH"])
     filas = conn.execute("SELECT id FROM activity_log WHERE action='notion_sync'").fetchall()
