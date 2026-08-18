@@ -3106,12 +3106,14 @@ async function _asegurarMapaDeProyectos() {
   if (_proyectosPorPagina) return;
   try {
     const r = await fetch('/api/projects');
+    if (!r.ok) throw new Error(r.status);
     const proyectos = await r.json();
     _proyectosPorPagina = Object.fromEntries(
       (Array.isArray(proyectos) ? proyectos : []).map(p => [p.notion_page_id, p.name])
     );
   } catch {
-    // sin conexion o respuesta invalida: _proyectosPorPagina queda null
+    // sin conexion, sesion vencida u otra respuesta invalida: _proyectosPorPagina
+    // queda null (no {}), asi que la proxima carga reintenta.
   }
 }
 
@@ -3122,6 +3124,7 @@ async function loadProjects() {
   let proyectos;
   try {
     const r = await fetch('/api/projects');
+    if (!r.ok) throw new Error(r.status);
     proyectos = await r.json();
   } catch {
     cont.innerHTML = '<div class="tasks-empty">No se pudieron cargar los proyectos.</div>';
@@ -3139,7 +3142,7 @@ async function loadProjects() {
       ? p.timeline_start + (p.timeline_end ? ' → ' + p.timeline_end : '') : '';
     return `<div class="proj-card">
       <div class="proj-head">
-        <a class="proj-name" href="${url}" target="_blank" rel="noopener">${esc(p.name)}</a>
+        <a class="proj-name" href="${esc(url)}" target="_blank" rel="noopener">${esc(p.name)}</a>
         ${p.stage ? `<span class="proj-stage">${esc(p.stage)}</span>` : ''}
         <span class="proj-counts">${p.conteo.todo} pendientes · ${p.conteo.in_progress} en progreso · ${p.conteo.done} hechas</span>
       </div>

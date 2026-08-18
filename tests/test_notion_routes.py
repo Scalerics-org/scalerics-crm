@@ -377,6 +377,27 @@ def test_el_badge_de_proyecto_en_tareas_no_depende_del_panel_de_proyectos():
     assert "_proyectosPorPagina[t.notion_project_page_id] ?" in task_card
 
 
+def test_el_mapa_de_proyectos_reintenta_si_el_fetch_no_fue_ok():
+    """Ni `loadProjects` ni `_asegurarMapaDeProyectos` chequeaban `r.ok`. Un 401
+    `{"error":"session_expired"}` parsea bien como JSON, `Array.isArray` lo
+    colapsa a `[]`, y el cache quedaba en `{}` -- que es *truthy*, asi que
+    `if (_proyectosPorPagina) return;` no reintentaba nunca mas en esa carga
+    de pagina, rompiendo el reintento que el comentario de al lado promete. Y
+    el panel decia "No hay proyectos en el tablero" cuando en realidad fue un
+    error de auth."""
+    html = dashboard.DASHBOARD_HTML
+
+    mapa = re.search(r"async function _asegurarMapaDeProyectos\(\) \{.*?\n\}", html, re.S).group(0)
+    assert "if (!r.ok) throw new Error(r.status)" in mapa
+
+    load = re.search(r"async function loadProjects\(\) \{.*?\n\}", html, re.S).group(0)
+    assert "if (!r.ok) throw new Error(r.status)" in load
+    # Hallazgo 6: el href al link de Notion tambien pasa por esc(), como todas
+    # las interpolaciones vecinas (no explotable -- es un UUID de la API --
+    # pero es consistencia).
+    assert 'href="${esc(url)}"' in load
+
+
 def _fuente_de(nombre):
     """El cuerpo de una funcion del JS embebido, para assertear sobre el front.
 
