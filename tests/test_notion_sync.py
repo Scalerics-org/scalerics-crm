@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 import pytest
 
-from database import create_task, get_task_by_id, init_db, update_task
+from database import create_task, get_task_by_id, get_tasks, init_db, update_task
 from services import notion_service as ns
 
 
@@ -429,9 +429,10 @@ def test_vincular_una_tarjeta_sin_status_persiste_string_vacio_y_no_empuja(db, n
     patch_req.assert_not_called()
 
 
-def _pagina(page_id, crm_id, estado):
+def _pagina(page_id, crm_id, estado, titulo="Tarjeta del tablero"):
     return {"id": page_id,
             "properties": {"CRM ID": {"number": crm_id},
+                           "Name": {"title": [{"plain_text": titulo}]},
                            "Status": {"status": {"name": estado}}}}
 
 
@@ -463,10 +464,71 @@ def test_un_movimiento_dentro_del_mismo_grupo_no_cambia_el_estado_del_crm(db, no
     assert t["notion_status"] == "Up next"
 
 
-def test_el_pull_ignora_paginas_sin_tarea_en_el_crm(db, notion_env):
-    payload = {"results": [_pagina("pagina-huerfana", 9999, "Done")], "has_more": False}
+def test_el_pull_crea_la_tarea_de_una_tarjeta_que_no_conocia(db, notion_env):
+    # El tablero es la fuente de verdad del trabajo de proyecto: una tarjeta que
+    # el CRM nunca vio se convierte en tarea, no se ignora.
+    payload = {"results": [_pagina("pagina-nueva", None, "In progress",
+                                   titulo="Migrar el ERP")], "has_more": False}
     with patch("services.notion_service.requests.post", return_value=_Resp(200, payload)):
-        assert ns.traer_y_aplicar(db) == (0, None)
+        assert ns.traer_y_aplicar(db) == (1, None)
+
+    tareas = get_tasks(db)
+    assert len(tareas) == 1
+    t = tareas[0]
+    assert t["title"] == "Migrar el ERP"
+    assert t["status"] == "in_progress"
+    assert t["notion_page_id"] == "pagina-nueva"
+    assert t["notion_status"] == "In progress"
+
+
+def test_una_tarjeta_creada_en_notion_no_se_duplica_en_el_siguiente_sync(db, notion_env):
+    payload = {"results": [_pagina("pagina-nueva", None, "Backlog")], "has_more": False}
+    with patch("services.notion_service.requests.post", return_value=_Resp(200, payload)):
+        ns.traer_y_aplicar(db)
+        ns.traer_y_aplicar(db)
+
+    assert len(get_tasks(db)) == 1
+
+
+def test_el_pull_no_le_escribe_nada_a_notion(db, notion_env):
+    # La restriccion que manda: quien solo usa Notion no tiene que notar la
+    # diferencia. Ni filtro por CRM ID (que obligaria a llenarlo), ni PATCH.
+    payload = {"results": [_pagina("pagina-nueva", None, "Backlog")], "has_more": False}
+    with patch("services.notion_service.requests.post",
+               return_value=_Resp(200, payload)) as post,          patch("services.notion_service.requests.patch") as patch_req:
+        ns.traer_y_aplicar(db)
+
+    assert "filter" not in post.call_args.kwargs["json"]
+    patch_req.assert_not_called()
+
+
+def test_una_tarjeta_que_desaparecio_del_tablero_marca_la_tarea_como_hecha(db, notion_env):
+    task_id = create_task(db, title="Borrada en Notion", status="todo")
+    update_task(db, task_id, notion_page_id="pagina-borrada", notion_status="Backlog")
+
+    payload = {"results": [], "has_more": False}
+    with patch("services.notion_service.requests.post", return_value=_Resp(200, payload)):
+        assert ns.traer_y_aplicar(db) == (1, None)
+
+    t = get_task_by_id(db, task_id)
+    assert t["status"] == "done"
+    assert t["notion_page_id"] is None, "tiene que quedar desparejada"
+
+
+def test_si_la_consulta_falla_no_marca_nada_como_desaparecido(db, notion_env):
+    # Sin esta guarda, un 500 de Notion marcaria como hechas todas las tareas
+    # pareadas de una sola pasada.
+    task_id = create_task(db, title="Sigue viva", status="todo")
+    update_task(db, task_id, notion_page_id="pagina-1", notion_status="Backlog")
+
+    with patch("services.notion_service.requests.post", return_value=_Resp(500, {})):
+        cambiadas, error = ns.traer_y_aplicar(db)
+
+    assert cambiadas == 0
+    assert error
+    t = get_task_by_id(db, task_id)
+    assert t["status"] == "todo"
+    assert t["notion_page_id"] == "pagina-1"
 
 
 def test_el_pull_pagina_con_cursor(db, notion_env):

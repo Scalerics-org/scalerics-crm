@@ -985,6 +985,23 @@ def get_tasks(db_path: str, client_id: Optional[int] = None, status: Optional[st
         conn.close()
 
 
+def get_tasks_notion(db_path: str) -> list[dict]:
+    """Tareas pareadas con una tarjeta de Notion.
+
+    El pull la usa para dos cosas: encontrar la tarea de cada pagina que vuelve
+    del tablero, y saber cuales de las pareadas ya no volvieron (o sea, que la
+    tarjeta desaparecio de Notion).
+    """
+    conn = _connect(db_path)
+    try:
+        cursor = conn.execute(
+            "SELECT * FROM tasks WHERE notion_page_id IS NOT NULL AND notion_page_id != ''"
+        )
+        return [dict(row) for row in cursor.fetchall()]
+    finally:
+        conn.close()
+
+
 def get_lead_contributor_ids(db_path: str, lead_id: int) -> list[int]:
     """Return unique user_ids from activity_log for a given lead (excludes NULLs)."""
     if not lead_id:

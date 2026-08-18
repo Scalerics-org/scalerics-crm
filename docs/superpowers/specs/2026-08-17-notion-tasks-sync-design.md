@@ -48,16 +48,37 @@ se verifica primero, no cuando algo dejó de andar en silencio.
 
 ## Alcance
 
-- Estado bidireccional, **solo** sobre tareas vinculadas explícitamente.
+- Estado bidireccional entre una tarea del CRM y su tarjeta.
+- CRM → Notion inmediato (en hilo aparte). Notion → CRM cuando alguien abre el CRM.
 - Vinculación manual desde el CRM: crear una tarjeta nueva en Notion, o vincular
   una tarjeta que ya existe pegando su URL.
-- CRM → Notion inmediato (en hilo aparte). Notion → CRM cuando alguien abre el CRM.
+
+### Ampliación del 18-8-2026: el tablero manda sobre el trabajo de proyecto
+
+El diseño original era opt-in puro y las tareas nacían siempre en el CRM. Se
+amplió para que el panel de tareas del CRM refleje también el tablero, sin dejar
+de tener sus tareas operativas propias (las que tienen cliente, meta y
+responsable, que en Notion no tienen equivalente).
+
+- El pull **deja de filtrar**: pide todas las páginas del data source.
+- Una tarjeta que el CRM nunca vio **se convierte en tarea**, con su título y su
+  estado. El import inicial no es un script aparte: es la primera corrida.
+- Una tarjeta que **desaparece del tablero** (borrada o archivada) marca su tarea
+  como `done` y la despareja. No se borra: un borrado en Notion no debería
+  llevarse puesto el historial de progreso del CRM.
+- **El pareo vive solo del lado del CRM**, en `notion_page_id`. A las tarjetas
+  nacidas en Notion no se les escribe **nada**, ni siquiera `CRM ID`. La
+  restricción que manda es que quien trabaja solo en Notion no note ninguna
+  diferencia: ni una columna que se llena sola, ni ediciones de la conexión
+  pisando quién tocó cada tarjeta por última vez.
+- `CRM ID` queda solo para las tarjetas que nacen en el CRM, donde sigue siendo
+  la defensa contra crear duplicados si se pierde la respuesta de un POST.
 
 ### Fuera de alcance
 
 `Assignee` (los usuarios de Notion son del workspace, los del CRM son otra tabla),
-`Descripcion`, los comentarios, `Project`, `Tiempo Estimado`, altas y bajas desde
-Notion, el webhook de Notion, y cualquier borrado o archivado en Notion.
+`Descripcion`, los comentarios, `Project`, `Tiempo Estimado`, el webhook de
+Notion, y cualquier borrado o archivado **en** Notion.
 
 ## Arquitectura
 

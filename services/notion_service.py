@@ -17,7 +17,8 @@ from datetime import datetime
 
 import requests
 
-from database import get_task_by_id, log_activity, update_task
+from database import (create_task, get_task_by_id, get_tasks_notion, log_activity,
+                      update_task)
 
 logger = logging.getLogger(__name__)
 
@@ -419,6 +420,44 @@ def vincular_pagina(db_path: str, task_id: int, url: str) -> str | None:
     return page_id
 
 
+def _titulo_de(props: dict) -> str:
+    """El titulo de una tarjeta. Notion lo parte en varios fragmentos."""
+    partes = (props.get("Name") or {}).get("title") or []
+    titulo = "".join(p.get("plain_text", "") for p in partes).strip()
+    return titulo or "(sin titulo)"
+
+
+def _adoptar(db_path: str, page_id: str, props: dict, estado_notion: str) -> int:
+    """Crea en el CRM la tarea de una tarjeta que el tablero ya tenia.
+
+    El pareo se guarda solo de este lado, en `notion_page_id`. A la tarjeta no
+    se le escribe nada: quien trabaja solo en Notion no tiene que notar que el
+    CRM la esta mirando.
+    """
+    titulo = _titulo_de(props)
+    task_id = create_task(db_path, title=titulo, status=grupo_de(estado_notion))
+    _marcar(db_path, task_id, estado_notion, page_id=page_id)
+    log_activity(db_path, "notion", "task_created", "task", task_id, titulo,
+                 "creada desde el tablero de Notion")
+    return 1
+
+
+def _dar_por_desaparecida(db_path: str, tarea: dict) -> int:
+    """La tarjeta ya no esta en el tablero: la tarea se cierra y se despareja.
+
+    Se marca hecha en vez de borrarla porque un borrado en Notion no deberia
+    llevarse puesto el historial de progreso del CRM, y en vez de dejarla como
+    pendiente porque si no se acumulan fantasmas de trabajo que alla ya no
+    existe.
+    """
+    update_task(db_path, tarea["id"], status="done", notion_page_id=None,
+                notion_status=None, notion_synced_at=None)
+    log_activity(db_path, "notion", "task_updated", "task", tarea["id"],
+                 tarea.get("title", ""),
+                 "la tarjeta ya no esta en el tablero: se marco hecha")
+    return 1
+
+
 def traer_y_aplicar(db_path: str) -> tuple[int, str | None]:
     """Reconcilia: trae las paginas pareadas y aplica lo que Notion diga.
 
@@ -442,12 +481,16 @@ def traer_y_aplicar(db_path: str) -> tuple[int, str | None]:
         return 0, "falta NOTION_TOKEN: el sync con Notion esta apagado"
     token, version, db_id = cfg
 
-    cuerpo = {
-        "filter": {"property": "CRM ID", "number": {"is_not_empty": True}},
-        "page_size": 100,
-    }
+    # Sin filtro a proposito: el tablero entero es la fuente de verdad del
+    # trabajo de proyecto. Filtrar por `CRM ID` obligaria a escribirlo en cada
+    # tarjeta del equipo, y eso se ve en su vista de tabla y en el historial de
+    # cada pagina.
+    cuerpo = {"page_size": 100}
     cambiadas = 0
     url = _url_de_query(db_id)
+    por_page = {t["notion_page_id"]: t for t in get_tasks_notion(db_path)}
+    vistas = set()
+    completo = True
 
     while True:
         try:
@@ -462,33 +505,47 @@ def traer_y_aplicar(db_path: str) -> tuple[int, str | None]:
             return cambiadas, f"la consulta a Notion fallo: {type(e).__name__}"
 
         for pagina in data.get("results", []):
-            props = pagina.get("properties", {})
-            task_id = props.get("CRM ID", {}).get("number")
-            if not task_id:
+            page_id = pagina.get("id")
+            if not page_id:
                 continue
-            tarea = get_task_by_id(db_path, int(task_id))
-            if not tarea:
-                continue  # la tarea se borro en el CRM; la tarjeta queda en paz
-
+            vistas.add(page_id)
+            props = pagina.get("properties", {})
             estado_notion = (props.get("Status", {}).get("status") or {}).get("name") or ""
+
+            tarea = por_page.get(page_id)
+            if not tarea:
+                cambiadas += _adoptar(db_path, page_id, props, estado_notion)
+                continue
+
+            task_id = tarea["id"]
             if estado_notion == (tarea.get("notion_status") or ""):
                 continue  # nada cambio alla
 
             nuevo_grupo = grupo_de(estado_notion)
             if nuevo_grupo != (tarea.get("status") or "todo"):
-                update_task(db_path, int(task_id), status=nuevo_grupo)
-                log_activity(db_path, "notion", "task_updated", "task", int(task_id),
+                update_task(db_path, task_id, status=nuevo_grupo)
+                log_activity(db_path, "notion", "task_updated", "task", task_id,
                              tarea.get("title", ""), f"estado: {nuevo_grupo} (desde Notion)")
                 cambiadas += 1
             # El estado fino se guarda igual, aunque el grupo no haya cambiado.
-            _marcar(db_path, int(task_id), estado_notion)
+            _marcar(db_path, task_id, estado_notion)
 
         if not data.get("has_more"):
             break
         cursor = data.get("next_cursor")
         if not cursor:
             logger.warning("notion: query dijo has_more sin next_cursor, corto la paginacion")
+            completo = False
             break
         cuerpo["start_cursor"] = cursor
+
+    # Barrido de las que ya no estan en el tablero. Solo si el listado vino
+    # entero: si la consulta fallo o la paginacion se corto, las que faltan no
+    # estan borradas, simplemente no las vimos — y marcarlas hechas de una
+    # pasada seria el peor error posible de este sync.
+    if completo:
+        for page_id, tarea in por_page.items():
+            if page_id not in vistas:
+                cambiadas += _dar_por_desaparecida(db_path, tarea)
 
     return cambiadas, None
