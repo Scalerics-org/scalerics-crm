@@ -62,6 +62,58 @@ def _notify_new_meta_lead(db: str, lead_name: str, phone: str, campaign: str, ci
     #     _send_wa_notification(wa_phone, lead_name, phone, campaign)
 
 
+def _arrancar_conversacion_wa(nombre: str, telefono: str, fields: dict, biz_id: int) -> None:
+    """Le pide al bot que arranque la conversacion por WhatsApp.
+
+    Se llama SOLO para leads nuevos: quien lleno el formulario dejo su telefono
+    justamente para que lo contacten, y la diferencia entre contestarle a los
+    dos minutos y al otro dia es la diferencia entre un cliente y un mail sin
+    leer. De los 219 que habia acumulados, 206 quedaron sin contactar.
+
+    Nunca levanta excepcion. Si el bot esta caido el lead ya quedo guardado en
+    el CRM, que es lo que no se puede perder; lo unico que se pierde es la
+    respuesta automatica, y de eso se entera el equipo por el mail de siempre.
+    """
+    base = os.environ.get("WA_SERVICE_URL", "").rstrip("/")
+    clave = os.environ.get("WA_API_KEY", "")
+    if not base or not clave:
+        return
+    if not telefono:
+        logger.info(f"Lead {biz_id} sin telefono: no se le puede escribir")
+        return
+
+    # Lo que escribio en las preguntas del formulario. Es lo que mas sirve para
+    # que el primer mensaje no arranque de cero, asi que se manda entero.
+    ignorar = {"full_name", "nombre", "name", "phone_number", "telefono", "phone",
+               "celular", "email", "correo", "city", "ciudad"}
+    respuestas = [v for k, v in fields.items() if k not in ignorar and v]
+    necesidad = " · ".join(respuestas)[:500]
+
+    try:
+        r = requests.post(
+            f"{base}/leads",
+            json={
+                # Con el mismo id, un reintento del webhook no crea dos leads
+                # ni dispara dos bienvenidas.
+                "external_id": f"meta-{biz_id}",
+                "nombre": nombre,
+                "telefono": telefono,
+                "necesidad": necesidad,
+                "origen": "meta",
+            },
+            headers={"x-api-key": clave, "Content-Type": "application/json"},
+            timeout=8,
+        )
+        r.raise_for_status()
+        d = r.json()
+        if d.get("status") == "ya_existia":
+            logger.info(f"Lead {biz_id} ya estaba en el bot")
+        else:
+            logger.info(f"Lead {biz_id} pasado al bot de WhatsApp: {d.get('status')}")
+    except Exception as e:
+        logger.warning(f"No se pudo pasar el lead {biz_id} al bot: {e}")
+
+
 def _verify_signature(payload: bytes, sig_header: str) -> bool:
     if not APP_SECRET or not sig_header:
         return True  # skip in dev if not configured
@@ -171,6 +223,13 @@ def _fetch_and_store_lead(app, lead_id: str, form_id: str):
                 threading.Thread(
                     target=_notify_new_meta_lead,
                     args=(db, name, phone, campaign_name or ad_name or "", city, biz_id),
+                    daemon=True,
+                ).start()
+                # En hilo aparte, igual que el mail: el webhook de Meta tiene que
+                # contestar rapido o Facebook lo reintenta.
+                threading.Thread(
+                    target=_arrancar_conversacion_wa,
+                    args=(name, phone, fields, biz_id),
                     daemon=True,
                 ).start()
             else:
