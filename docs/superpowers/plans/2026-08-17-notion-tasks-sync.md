@@ -309,7 +309,13 @@ def hay_que_escribir(estado_crm: str, notion_status: str | None) -> bool:
     Con el CRM en `todo` y la tarjeta en *Up next* devuelve False: el grupo de
     *Up next* ya es `todo`, y escribir "Backlog" seria pisarle el orden al
     equipo y ensuciar el historial de la pagina por nada.
+
+    `None` no es lo mismo que `""`: None significa que nunca sincronizamos y no
+    sabemos que hay en Notion, y ahi lo seguro es escribir. `""` es la columna
+    "Sin Status", cuyo grupo es `todo` como cualquier otra columna pendiente.
     """
+    if notion_status is None:
+        return True
     return grupo_de(notion_status) != estado_crm
 ```
 
@@ -700,7 +706,9 @@ Expected: FAIL — `AttributeError: ... has no attribute 'page_id_de_url'`.
 ```python
 import re
 
-_UUID_SUELTO = re.compile(r"([0-9a-f]{32})", re.I)
+# Anclada por los dos lados: sin eso, una corrida hex mas larga que 32 daria
+# una ventana truncada en vez de no matchear.
+_UUID_SUELTO = re.compile(r"(?<![0-9a-f])([0-9a-f]{32})(?![0-9a-f])", re.I)
 _UUID_CON_GUIONES = re.compile(
     r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})", re.I)
 
@@ -711,13 +719,19 @@ def page_id_de_url(url: str) -> str | None:
     Las URLs vienen en dos formas: con el id pegado al final del slug del
     titulo, o suelto. La API acepta las dos, pero normalizamos para que el
     pareo contra `notion_page_id` sea siempre el mismo string.
+
+    Ojo con los guiones: NO hay que sacarlos de la URL antes de buscar. En el
+    formato real `Titulo-Con-Slug-<32hex>` el guion es justamente lo que separa
+    al id de la ultima palabra del slug, y muchas palabras terminan en letras
+    que tambien son hex. Sacando los guiones, "Cafe-decade-facade-<id>" se
+    fusiona y devuelve los 32 caracteres equivocados.
     """
     if not url:
         return None
     con_guiones = _UUID_CON_GUIONES.search(url)
     if con_guiones:
         return con_guiones.group(1).lower()
-    suelto = _UUID_SUELTO.search(url.replace("-", ""))
+    suelto = _UUID_SUELTO.search(url)
     if not suelto:
         return None
     h = suelto.group(1).lower()
@@ -739,8 +753,14 @@ def vincular_pagina(db_path: str, task_id: int, url: str) -> str | None:
     page_id = page_id_de_url(url)
     if not page_id:
         return None
-    if not get_task_by_id(db_path, task_id):
+    tarea = get_task_by_id(db_path, task_id)
+    if not tarea:
         return None
+    # Ya apunta a esta misma tarjeta: no hay nada que escribir. Si apuntara a
+    # otra, el PATCH sale igual, porque re-apuntar una tarea a otra tarjeta es
+    # legitimo.
+    if tarea.get("notion_page_id") == page_id:
+        return page_id
 
     try:
         r = requests.patch(
@@ -962,7 +982,15 @@ def traer_y_aplicar(db_path: str) -> int:
 
         if not data.get("has_more"):
             break
-        cuerpo["start_cursor"] = data.get("next_cursor")
+        # Sin esta guarda el loop no termina: `has_more` sin cursor volveria a
+        # pedir la misma pagina para siempre, y esto corre en un hilo de fondo
+        # de un request vivo del CRM. Cortar no pierde nada: el proximo sync ve
+        # el mismo estado.
+        cursor = data.get("next_cursor")
+        if not cursor:
+            logger.warning("notion: query dijo has_more sin next_cursor, corto la paginacion")
+            break
+        cuerpo["start_cursor"] = cursor
 
     return cambiadas
 ```
@@ -1391,6 +1419,7 @@ En este orden, y con **una sola** tarea de prueba antes de tocar tareas reales:
 5. Abrir el historial de la tarjeta en Notion y contar las ediciones. Tienen que ser exactamente las de los pasos 1 y 4 — ninguna de más.
 6. Borrar la tarea de prueba en el CRM y sincronizar: la tarjeta sigue ahí, intacta, y el sync no tira error.
 7. Vincular una tarea a una tarjeta que ya existe pegando la URL, y confirmar que **no** se creó una tarjeta nueva.
+8. Sobre esa misma tarea, pegar una **segunda** URL, de otra tarjeta distinta. Filtrar la database por `CRM ID` igual al id de la tarea: tiene que quedar **exactamente una** página con ese `CRM ID` (la nueva), y la anterior con el `CRM ID` vacío. Si quedan dos, el pull matchea las dos contra la misma tarea y cada sync le invierte el estado.
 
 ## Notas de despliegue
 

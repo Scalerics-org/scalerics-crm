@@ -3,15 +3,29 @@
 from flask import Blueprint, current_app, jsonify, request, session
 
 import os
+import threading
 from database import (create_task, delete_task, get_task_by_id, get_tasks,
                       log_activity, update_task, get_task_progress_history)
 from services.email_service import send_task_assignment_email
+from services.notion_service import empujar_estado
 
 tasks_bp = Blueprint("tasks", __name__)
 
 
 def _db() -> str:
     return current_app.config["DB_PATH"]
+
+
+def _sin_campos_notion(data: dict) -> dict:
+    """Saca del payload del cliente cualquier clave `notion_*`.
+
+    El pareo con Notion lo escribe solo `services/notion_service.py`. Si el
+    cliente pudiera setear `notion_page_id`, un PUT cualquiera dejaria al CRM
+    escribiendo Status en una pagina del tablero del equipo que nadie pareo, y
+    la restriccion de no tocar paginas sin `CRM ID` pasaria a estar sostenida
+    por convencion en vez de por codigo. El front nunca manda campos `notion_*`.
+    """
+    return {k: v for k, v in data.items() if not k.startswith("notion_")}
 
 
 @tasks_bp.route("/api/tasks", methods=["GET"])
@@ -24,7 +38,7 @@ def api_list_tasks():
 
 @tasks_bp.route("/api/tasks", methods=["POST"])
 def api_create_task():
-    data = request.get_json() or {}
+    data = _sin_campos_notion(request.get_json() or {})
     if not data.get("title"):
         return jsonify({"ok": False, "error": "title requerido"}), 400
     data["created_by_id"] = session.get("user_id")
@@ -36,7 +50,6 @@ def api_create_task():
                  user_id=session.get("user_id"))
     # Send assignment email when task is assigned to someone else
     if data.get("assignee_email") and data.get("assignee_id") != session.get("user_id"):
-        import threading
         import os
         crm_url = os.environ.get("CRM_URL", "")
         threading.Thread(
@@ -59,7 +72,7 @@ def api_create_task():
 
 @tasks_bp.route("/api/tasks/<int:task_id>", methods=["PUT"])
 def api_update_task(task_id):
-    data = request.get_json() or {}
+    data = _sin_campos_notion(request.get_json() or {})
     db = _db()
     task = get_task_by_id(db, task_id) or {}
     update_task(db, task_id, **data)
@@ -67,6 +80,11 @@ def api_update_task(task_id):
     log_activity(db, session.get("user_name", "sistema"), "task_updated",
                  "task", task_id, task.get("title", ""), detail,
                  user_id=session.get("user_id"))
+    # Si la tarea esta vinculada a Notion, el cambio de estado viaja para alla.
+    # En un hilo aparte para no demorar la respuesta, igual que el mail de
+    # asignacion. empujar_estado no hace nada si la tarea no tiene pagina.
+    if "status" in data:
+        threading.Thread(target=empujar_estado, args=(db, task_id), daemon=True).start()
     return jsonify({"ok": True})
 
 

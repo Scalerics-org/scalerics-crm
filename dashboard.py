@@ -19,6 +19,7 @@ from routes.budgets import budgets_bp
 from routes.tokens import tokens_bp
 from routes.meta import meta_bp, start_meta_token_monitor, start_meta_daily_import
 from routes.calendly import calendly_bp
+from routes.notion import notion_bp
 from services.demo_service import demo_job_handler
 from services.job_service import init_worker
 
@@ -845,6 +846,8 @@ body.light .pill.active{background:#dbeafe;color:#1d4ed8;border-color:#93c5fd}
 body.light .task-status-badge.todo{background:#f1f5f9;color:#64748b}
 body.light .task-status-badge.in_progress{background:#dbeafe;color:#1d4ed8;border-color:#93c5fd}
 body.light .task-status-badge.done{background:#dcfce7;color:#16a34a;border-color:#86efac}
+body.light .task-notion-badge{background:#f1f5f9;color:#64748b;border-color:#e2e8f0}
+body.light .task-notion-badge:hover{color:#0f172a}
 body.light .tasks-summary{color:#94a3b8}
 body.light .mobile-bottom-nav{background:rgba(255,255,255,.92);border-color:rgba(0,0,0,.1)}
 body.light .mbn-icon{stroke:#94a3b8}
@@ -962,6 +965,8 @@ body.light .btn-icon{stroke:currentColor}
 .task-status-badge.todo{background:#1e293b;color:#64748b}
 .task-status-badge.in_progress{background:#0c1f2e;color:#38bdf8;border-color:#0369a133}
 .task-status-badge.done{background:#052e16;color:#4ade80;border-color:#16a34a33}
+.task-notion-badge{font-size:.72rem;color:#94a3b8;background:#1a2234;padding:2px 7px;border-radius:10px;text-decoration:none;border:1px solid #23304a}
+.task-notion-badge:hover{color:#e2e8f0}
 .task-row.in-progress{border-left:3px solid #0369a1}
 .task-row.overdue{border-left:3px solid #f87171}
 .task-edit-btn{background:none;border:1px solid #1e293b;color:#64748b;cursor:pointer;font-size:.78rem;padding:3px 7px;border-radius:6px;transition:all .15s}
@@ -1489,6 +1494,12 @@ body.light .upick-name{color:#0f172a}
         <option value="in_progress">⚡ En progreso</option>
         <option value="done">✓ Hecha</option>
       </select>
+    </div>
+    <div style="margin-top:10px" id="task-notion-block">
+      <label class="modal-label">Notion (opcional)</label>
+      <input type="text" id="task-notion-url" class="modal-input"
+             placeholder="Pegá la URL de la tarjeta para vincularla">
+      <div id="task-notion-linked" style="font-size:.78rem;color:#0088cc;margin-top:4px"></div>
     </div>
     <input type="hidden" id="task-edit-id">
     <div class="modal-btns" style="margin-top:16px">
@@ -3135,6 +3146,10 @@ function _taskRowHtml(t) {
     </div>` : '';
   const assigneeBadge = t.assignee_name ? `<span style="font-size:.72rem;color:#64748b;background:#1a2234;padding:2px 7px;border-radius:10px">→ ${esc(t.assignee_name)}</span>` : '';
   const createdByBadge = t.created_by_name && t.assignee_name ? `<span style="font-size:.72rem;color:#334155">de ${esc(t.created_by_name)}</span>` : '';
+  const notionBadge = t.notion_page_id
+    ? `<a href="https://www.notion.so/${t.notion_page_id.replace(/-/g,'')}" target="_blank" rel="noopener"
+          class="task-notion-badge" title="${esc(t.notion_status||'')}">Notion</a>`
+    : '';
   const rowExtra = inProgress ? ' in-progress' : overdue ? ' overdue' : '';
   return `<div class="task-row${rowExtra}" id="task-row-${t.id}">
     <div class="task-body" style="flex:1;min-width:0">
@@ -3145,11 +3160,12 @@ function _taskRowHtml(t) {
         ${t.priority ? `<span class="task-priority ${t.priority}">${prioLabel}</span>` : ''}
         ${lead ? `<span class="task-client-link" onclick="openClientPanel(${lead.id})">${esc(lead.name||'')}</span>` : ''}
         ${dlStr ? `<span class="task-deadline ${overdue ? 'overdue' : ''}">📅 ${dlStr}${overdue?' (vencida)':''}</span>` : ''}
-        ${assigneeBadge}${createdByBadge}
+        ${assigneeBadge}${createdByBadge}${notionBadge}
       </div>
       ${progressBar}
     </div>
     <div class="task-actions">
+      ${t.notion_page_id ? '' : `<button class="task-edit-btn" onclick="_enviarTareaANotion(${t.id})" title="Mandar a Notion">→ N</button>`}
       <button class="task-edit-btn" onclick="openEditTaskModal(${t.id})" title="Editar">✏️</button>
       <button class="task-del-btn" onclick="_deleteTask(${t.id})" title="Eliminar">🗑</button>
     </div>
@@ -3184,6 +3200,30 @@ async function _setTaskStatus(id) {
     const ct = (_cpData.tasks||[]).find(ct => ct.id === id);
     if (ct) { ct.status = newStatus; _cpSwitchTab('ctasks'); }
   }
+}
+
+async function _enviarTareaANotion(id) {
+  // El boton tambien sale en las filas del panel de cliente (_cpRenderTasks
+  // reusa _taskRowHtml), y ahi _allTasks puede estar vacio porque el panel de
+  // Tareas nunca se abrio. Mismo patron que _setTaskStatus y _deleteTask.
+  const t = _allTasks.find(x => x.id === id);
+  const ct = (_cpData.tasks || []).find(x => x.id === id);
+  const tarea = t || ct;
+  if (!tarea || tarea.notion_page_id) return;
+  const r = await fetch('/api/tasks/' + id + '/notion', {
+    method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}'
+  });
+  let d = null;
+  try { d = await r.json(); } catch (e) { d = null; }  // un 500 devuelve HTML
+  if (!d || !d.ok) { alert('Notion no aceptó la operación. Mirá los logs del CRM.'); return; }
+  [t, ct].forEach(x => {
+    if (!x) return;
+    x.notion_page_id = d.notion_page_id;
+    if ('notion_status' in d) x.notion_status = d.notion_status;
+  });
+  _updateFilterCounts();
+  renderTasksList();
+  if (_cpClientId && ct) _cpSwitchTab('ctasks');
 }
 
 async function _deleteTask(id) {
@@ -3256,6 +3296,9 @@ async function openAddTaskModal(clientId, clientName) {
   document.getElementById('task-client-chosen').textContent = clientName ? 'Cliente: ' + clientName : '';
   document.getElementById('task-client-results').style.display = 'none';
   document.getElementById('task-status-input').value = 'todo';
+  document.getElementById('task-notion-url').value = '';
+  document.getElementById('task-notion-url').style.display = '';
+  document.getElementById('task-notion-linked').textContent = '';
   await _loadUsersForTask();
   _upickSelect('modal', '', '', '', '— Sin asignar —');
   const h3 = document.getElementById('add-task-modal').querySelector('h3');
@@ -3278,6 +3321,19 @@ async function openEditTaskModal(taskId) {
   document.getElementById('task-goal-input').value = t.goal || '';
   document.getElementById('task-goal-input').style.display = t.goal_type ? '' : 'none';
   document.getElementById('task-status-input').value = t.status || 'todo';
+  const notionUrlInput = document.getElementById('task-notion-url');
+  const notionLinked = document.getElementById('task-notion-linked');
+  notionUrlInput.value = '';
+  if (t.notion_page_id) {
+    notionUrlInput.style.display = 'none';
+    notionLinked.innerHTML = 'Vinculada a Notion' +
+      (t.notion_status ? ' (' + esc(t.notion_status) + ')' : '') +
+      ' · <a href="https://www.notion.so/' + t.notion_page_id.replace(/-/g,'') +
+      '" target="_blank" rel="noopener" style="color:#0088cc">abrir</a>';
+  } else {
+    notionUrlInput.style.display = '';
+    notionLinked.textContent = '';
+  }
   const clientLead = t.client_id ? _allLeads.find(l => l.id === t.client_id) : null;
   document.getElementById('task-client-search').value = clientLead ? (clientLead.name||'') : '';
   document.getElementById('task-client-id').value = t.client_id || '';
@@ -3344,7 +3400,29 @@ async function submitAddTask() {
       await fetch('/api/tasks/' + _editingTaskId, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
       const idx = _allTasks.findIndex(t => t.id === _editingTaskId);
       if (idx !== -1) _allTasks[idx] = {..._allTasks[idx], ...body};
-      document.getElementById('add-task-modal').classList.remove('open');
+      const notionUrl = (document.getElementById('task-notion-url').value || '').trim();
+      let notionFallo = false;
+      if (notionUrl) {
+        const rn = await fetch('/api/tasks/' + _editingTaskId + '/notion', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({url: notionUrl})
+        });
+        let dn = null;
+        try { dn = await rn.json(); } catch (e) { dn = null; }  // un 500 devuelve HTML
+        if (dn && dn.ok) {
+          const i = _allTasks.findIndex(t => t.id === _editingTaskId);
+          if (i !== -1) {
+            _allTasks[i].notion_page_id = dn.notion_page_id;
+            if ('notion_status' in dn) _allTasks[i].notion_status = dn.notion_status;
+          }
+        } else {
+          notionFallo = true;
+          alert('No se pudo vincular con Notion. Revisá que la URL sea correcta o mirá los logs del CRM.\\n\\nLa tarea se guardó igual; el modal queda abierto con la URL para que la corrijas.');
+        }
+      }
+      // Si el vinculo fallo el modal no se cierra, asi la URL tipeada no se
+      // pierde y la persona puede corregirla sin volver a copiarla de Notion.
+      if (!notionFallo) document.getElementById('add-task-modal').classList.remove('open');
       _updateFilterCounts();
       renderTasksList();
       if (_cpClientId) {
@@ -4742,11 +4820,12 @@ const _actActionLabels = {
   meeting_scheduled: (i) => `agendó reunión${i.entity_name ? ' con '+_actEntityLink(i) : ''}${i.detail ? ': '+esc(i.detail) : ''}`,
   lead_deleted:  (i) => `eliminó lead: <b>${esc(i.entity_name)}</b>`,
   batch_status:  (i) => i.detail || 'actualizó múltiples leads',
+  notion_sync:   (i) => `sincronizó con Notion${i.detail ? ': '+esc(i.detail) : ''}`,
 };
 const _actCrmMap = {sin_contactar:'Sin contactar',contactado:'Contactado',reunion_agendada:'Reunión agendada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Presupuesto enviado',negociacion:'Negociación',cliente_cerrado:'Cliente cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado'};
 function _actCrmLabel(s) { return _actCrmMap[s] || s || ''; }
 function _actCallLabel(s) { return {contestó:'Contestó',no_contestó:'No contestó',buzón:'Buzón'}[s] || s || ''; }
-const _actIcons = {status_change:'🔄',note_updated:'📝',attachment_added:'📎',call_logged:'📞',budget_generated:'💰',budget_sent:'📨',task_created:'✅',task_updated:'✏️',task_deleted:'🗑️',meeting_scheduled:'📅',lead_deleted:'🗑️',batch_status:'🔄'};
+const _actIcons = {status_change:'🔄',note_updated:'📝',attachment_added:'📎',call_logged:'📞',budget_generated:'💰',budget_sent:'📨',task_created:'✅',task_updated:'✏️',task_deleted:'🗑️',meeting_scheduled:'📅',lead_deleted:'🗑️',batch_status:'🔄',notion_sync:'🔄'};
 
 // ── SDR panel ──────────────────────────────────────────────────────────────────
 let _sdrPeriod = 'month';
@@ -5108,6 +5187,40 @@ def _maybe_sync_calendly(db_path: str) -> None:
     threading.Thread(target=_run, daemon=True).start()
 
 
+_notion_sync_state = {"at": 0.0}
+_notion_sync_lock = threading.Lock()
+NOTION_SYNC_EVERY = int(os.environ.get("NOTION_SYNC_EVERY", "600"))
+
+
+def _maybe_sync_notion(db_path: str) -> None:
+    """Trae los cambios de estado del tablero de Notion cuando alguien abre el CRM.
+
+    Mismo motivo que en Calendly: la maquina de Fly se duerme sin trafico, asi
+    que un cron interno no correria. Hilo aparte para no demorar la carga, y
+    throttle para no consultar Notion en cada request.
+    """
+    if not os.environ.get("NOTION_TOKEN"):
+        return
+    now = time.time()
+    with _notion_sync_lock:
+        if now - _notion_sync_state["at"] < NOTION_SYNC_EVERY:
+            return
+        _notion_sync_state["at"] = now
+
+    def _run():
+        try:
+            from services.notion_service import traer_y_aplicar
+            n, error = traer_y_aplicar(db_path)
+            if error:
+                logging.getLogger(__name__).warning("notion sync: %s", error)
+            elif n:
+                logging.getLogger(__name__).info("notion sync: %s tareas actualizadas", n)
+        except Exception:
+            logging.getLogger(__name__).warning("notion sync falló", exc_info=True)
+
+    threading.Thread(target=_run, daemon=True).start()
+
+
 def create_app(db_path: str) -> Flask:
     app = Flask(__name__)
     app.secret_key = os.environ.get("SECRET_KEY") or "scalerics-dev-key-change-in-prod"
@@ -5115,7 +5228,7 @@ def create_app(db_path: str) -> Flask:
     app.config["PIPELINE_STATUS"] = _pipeline_status
     app.config["PIPELINE_LOCK"] = _pipeline_lock
 
-    for bp in (leads_bp, demos_bp, calendar_bp, wa_bp, pipeline_bp, tasks_bp, budgets_bp, tokens_bp, meta_bp, calendly_bp):
+    for bp in (leads_bp, demos_bp, calendar_bp, wa_bp, pipeline_bp, tasks_bp, budgets_bp, tokens_bp, meta_bp, calendly_bp, notion_bp):
         app.register_blueprint(bp)
 
     @app.before_request
@@ -5146,6 +5259,7 @@ def create_app(db_path: str) -> Flask:
         # Sesión válida: aprovechamos la visita para traer lo de Calendly.
         if not request.path.startswith(("/api/", "/static/")):
             _maybe_sync_calendly(app.config["DB_PATH"])
+            _maybe_sync_notion(app.config["DB_PATH"])
 
     @app.route("/privacidad")
     def privacidad():
