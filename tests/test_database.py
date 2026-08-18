@@ -247,3 +247,70 @@ def test_panel_access_en_null_no_rompe(tmp_path):
     valor = conn.execute("SELECT panel_access FROM roles WHERE name = 'Caller'").fetchone()[0]
     conn.close()
     assert valor is None, "un NULL se saltea, no se inventa un array"
+
+
+def test_migracion_de_meta_reminders_conserva_las_filas_viejas(tmp_path):
+    """La tabla vieja tenia UNIQUE(business_id) y una fila por lead. Las 15
+    filas de produccion tienen tokens publicados dentro de mails ya enviados:
+    si se pierden, el link de baja de esos mails deja de funcionar."""
+    import sqlite3
+    from database import init_db
+
+    ruta = str(tmp_path / "viejo.db")
+    conn = sqlite3.connect(ruta)
+    conn.execute("""
+        CREATE TABLE meta_reminders (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            business_id     INTEGER NOT NULL UNIQUE,
+            token           TEXT NOT NULL UNIQUE,
+            sent_at         TEXT NOT NULL,
+            unsubscribed_at TEXT
+        )""")
+    conn.execute(
+        "INSERT INTO meta_reminders (business_id, token, sent_at, unsubscribed_at) "
+        "VALUES (?,?,?,?)", (650, "tok-uno", "2026-08-18 14:41:18", None))
+    conn.execute(
+        "INSERT INTO meta_reminders (business_id, token, sent_at, unsubscribed_at) "
+        "VALUES (?,?,?,?)", (651, "tok-dos", "2026-08-18 14:41:19", "2026-08-18 15:00:00"))
+    conn.commit()
+    conn.close()
+
+    init_db(ruta)
+
+    conn = sqlite3.connect(ruta)
+    try:
+        filas = conn.execute(
+            "SELECT business_id, numero, token, sent_at, unsubscribed_at "
+            "FROM meta_reminders ORDER BY business_id").fetchall()
+        cols = [c[1] for c in conn.execute("PRAGMA table_info(meta_reminders)")]
+    finally:
+        conn.close()
+
+    assert filas == [
+        (650, 1, "tok-uno", "2026-08-18 14:41:18", None),
+        (651, 1, "tok-dos", "2026-08-18 14:41:19", "2026-08-18 15:00:00"),
+    ], "las filas viejas son el contacto 1 y conservan su token"
+    assert "numero" in cols
+
+
+def test_el_mismo_lead_puede_tener_varios_contactos(tmp_path):
+    import sqlite3
+    import pytest
+    from database import init_db
+
+    ruta = str(tmp_path / "nuevo.db")
+    init_db(ruta)
+
+    conn = sqlite3.connect(ruta)
+    try:
+        conn.execute("INSERT INTO meta_reminders (business_id, numero, token, sent_at) "
+                     "VALUES (?,?,?,?)", (10, 1, "t1", "2026-08-01 10:00:00"))
+        conn.execute("INSERT INTO meta_reminders (business_id, numero, token, sent_at) "
+                     "VALUES (?,?,?,?)", (10, 2, "t2", "2026-08-11 10:00:00"))
+        conn.commit()
+
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute("INSERT INTO meta_reminders (business_id, numero, token, sent_at) "
+                         "VALUES (?,?,?,?)", (10, 2, "t3", "2026-08-12 10:00:00"))
+    finally:
+        conn.close()

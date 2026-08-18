@@ -376,19 +376,46 @@ def init_db(db_path: str) -> None:
         """)
 
         # ── meta_reminders ────────────────────────────────────────────────────
-        # Un registro por lead al que se le mando el recordatorio. El UNIQUE en
-        # business_id es lo que garantiza "una sola vez, para siempre": si el
-        # job se corre dos veces, el segundo INSERT falla en vez de mandar otro
-        # mail. Guarda tambien el token de baja, para no necesitar otra tabla.
+        # Una fila por CONTACTO, no por lead. El UNIQUE es (business_id, numero):
+        # sigue siendo la base la que impide mandar dos veces el mismo contacto,
+        # no una condicion en el codigo.
         conn.execute("""
             CREATE TABLE IF NOT EXISTS meta_reminders (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                business_id     INTEGER NOT NULL UNIQUE,
+                business_id     INTEGER NOT NULL,
+                numero          INTEGER NOT NULL DEFAULT 1,
                 token           TEXT NOT NULL UNIQUE,
                 sent_at         TEXT NOT NULL,
-                unsubscribed_at TEXT
+                unsubscribed_at TEXT,
+                UNIQUE (business_id, numero)
             )
         """)
+
+        # Migracion de la tabla vieja, que tenia UNIQUE(business_id) y una sola
+        # fila por lead. SQLite no deja quitar un UNIQUE: hay que reconstruir.
+        # Las filas viejas son el contacto 1 y conservan su token, que esta
+        # publicado dentro de mails que la gente ya recibio.
+        columnas = [c[1] for c in conn.execute("PRAGMA table_info(meta_reminders)")]
+        if "numero" not in columnas:
+            conn.execute("""
+                CREATE TABLE meta_reminders_nueva (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    business_id     INTEGER NOT NULL,
+                    numero          INTEGER NOT NULL DEFAULT 1,
+                    token           TEXT NOT NULL UNIQUE,
+                    sent_at         TEXT NOT NULL,
+                    unsubscribed_at TEXT,
+                    UNIQUE (business_id, numero)
+                )
+            """)
+            conn.execute("""
+                INSERT INTO meta_reminders_nueva
+                       (id, business_id, numero, token, sent_at, unsubscribed_at)
+                SELECT  id, business_id, 1,      token, sent_at, unsubscribed_at
+                  FROM meta_reminders
+            """)
+            conn.execute("DROP TABLE meta_reminders")
+            conn.execute("ALTER TABLE meta_reminders_nueva RENAME TO meta_reminders")
 
         # ── task assignment & goal tracking ────────────────────────────────────
         _add_column(conn, "tasks", "assignee_id",    "INTEGER REFERENCES users(id) ON DELETE SET NULL")
