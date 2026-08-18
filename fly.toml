@@ -6,6 +6,10 @@ primary_region = "gru"
 [env]
   PORT = "8080"
   DB_PATH = "/data/leads.db"
+  # El data source de la database Tasks de Notion. No es un secreto: es
+  # un id. Desde la version 2025-09-03 de la API el esquema y las queries
+  # van contra el data source, no contra la database.
+  NOTION_DATA_SOURCE_ID = "3ae65d94-deec-80ba-879d-000b9a303104"
 
 [[mounts]]
   source = "leads_data"

@@ -56,11 +56,26 @@ def main() -> int:
         fuentes = data.get("data_sources") or []
         print("data_sources:", json.dumps(fuentes))
 
+        # Desde 2025-09-03 el esquema no vive en la database sino en el data
+        # source: `GET /v1/databases/{id}` devuelve properties vacio y hay que
+        # preguntarle a `GET /v1/data_sources/{id}`.
         props = data.get("properties", {})
+        if not props and fuentes:
+            ds_id = fuentes[0]["id"]
+            rds = requests.get(f"https://api.notion.com/v1/data_sources/{ds_id}",
+                               headers=_headers(version), timeout=20)
+            print(f"data source {ds_id} -> HTTP {rds.status_code}")
+            if rds.status_code != 200:
+                print(rds.text[:400])
+                return 1
+            props = rds.json().get("properties", {})
+
         print("properties:", sorted(props))
         print("CRM ID presente:", "CRM ID" in props)
+        print("CRM ID tipo:", props.get("CRM ID", {}).get("type"))
 
         status = props.get("Status", {}).get("status", {})
+        print("estados:", [o["name"] for o in status.get("options", [])])
         for grupo in status.get("groups", []):
             ids = set(grupo.get("option_ids", []))
             nombres = [o["name"] for o in status.get("options", []) if o["id"] in ids]

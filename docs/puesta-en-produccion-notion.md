@@ -54,59 +54,56 @@ resultado real va en la sección de hallazgos):
 
 ---
 
-## Hallazgos del smoke (PENDIENTE)
+## Hallazgos del smoke (confirmados el 18-8-2026)
 
-Todavía no se corrió el script contra la API real — el token solo lo puede
-generar el owner del workspace (paso manual 1-2), y esa parte no la puede
-hacer esta sesión. Falta completar, después de correrlo, estos cuatro datos:
+Corrido con `python scripts/notion_smoke.py` contra la API real, con el token
+de la conexión **CRM Scalerics** ya creada y agregada a la database.
 
-Cada hallazgo dice **dónde va la respuesta**. Los tres primeros son
-configuración; el cuarto es código.
+1. **`Notion-Version`**: **`2025-09-03`** responde 200. Es el default del
+   código, así que **no hace falta definir `NOTION_VERSION`** en ningún lado.
 
-1. **`Notion-Version` que funcionó**: PENDIENTE.
+2. **`data_source_id`**: la database **sí** usa data sources.
+   Es **`3ae65d94-deec-80ba-879d-000b9a303104`**.
 
-   Va en la variable de entorno **`NOTION_VERSION`**. El default que trae el
-   código es `2025-09-03`.
+   Quedó fijado en `fly.toml`, bajo `[env]`, no como secret: es un id, no una
+   credencial, y así viaja versionado con el deploy en vez de ser estado
+   invisible en Fly. En local está en el `.env`.
 
-   ```bash
-   flyctl secrets set NOTION_VERSION=<la que respondió 200> -a scalerics-crm
-   ```
+3. **Forma del `parent`**: se respondió sola al contestar el 2. Con
+   `NOTION_DATA_SOURCE_ID` definido, el código usa
+   `POST /v1/data_sources/{id}/query` para el pull y
+   `{"type": "data_source_id", ...}` como parent al crear.
 
-2. **`data_source_id` de la database** (o la nota de que la versión que
-   respondió 200 no usa `data_sources`, según lo que imprima el campo
-   `data_sources` del script): PENDIENTE.
+4. **Estados y grupos** de la property `Status`:
 
-   Va en la variable de entorno **`NOTION_DATA_SOURCE_ID`**. Si la database
-   **no** expone `data_sources`, se deja **sin definir** (no vacía con un valor
-   raro: sin definir).
+   | Grupo en Notion | Estados |
+   |---|---|
+   | To-do | Backlog, Up next |
+   | In progress | On Hold, In progress |
+   | Complete | Waiting To Accept, Done |
 
-   ```bash
-   flyctl secrets set NOTION_DATA_SOURCE_ID=<el id> -a scalerics-crm
-   # o, si la database no usa data sources, no se define nada
-   ```
+   *On Hold* cae en "In progress", como estaba asumido en `GRUPOS`. **"Waiting
+   To Accept" es un estado que el equipo agregó el 18-8-2026**, después de que
+   se escribiera el mapeo.
 
-3. **Forma del `parent` que acepta `POST /v1/pages`**: **se responde solo al
-   contestar el hallazgo 2.** No hay nada que anotar ni configurar acá.
+   Ojo con este punto: `GRUPOS` en `services/notion_service.py` lo mapea hoy a
+   `in_progress`, mientras que Notion lo agrupa bajo *Complete*. La diferencia
+   es deliberada y está explicada en el comentario del código — una tarea
+   esperando aceptación todavía ocupa a alguien, y mapearla a `done` la haría
+   desaparecer de los pendientes del CRM. Si el criterio del equipo es el
+   contrario, es una línea del dict.
 
-   `NOTION_DATA_SOURCE_ID` decide las dos cosas a la vez, en
-   `services/notion_service.py`: `_parent` (la forma del parent al crear) y
-   `_url_de_query` (el endpoint del pull). Con la variable definida:
-   `POST /v1/data_sources/{id}/query` y parent
-   `{"type": "data_source_id", "data_source_id": "..."}`. Sin definir:
-   `POST /v1/databases/{id}/query` y parent `{"database_id": "..."}`.
+También se confirmó que la property **`CRM ID` existe y es de tipo `number`**,
+que es lo que el código espera.
 
-4. **Tabla estado → grupo de la property `Status`**, tal como la imprime el
-   script (no inventar valores — puede no coincidir con el ejemplo de formato
-   de la sección "Smoke test" de arriba): PENDIENTE.
+### La trampa que encontró el smoke
 
-   Este es el **único de los cuatro que no es configuración**: se responde
-   **editando código**, en el dict `GRUPOS` de `services/notion_service.py`.
-   No hay variable de entorno para esto. Lo que está ahí hoy sale de mirar el
-   tablero a ojo; si el smoke imprime otra cosa, hay que corregir el dict,
-   commitear y deployar. Mientras siga mal, el CRM puede mover tarjetas del
-   equipo creyendo que el grupo cambió cuando no cambió.
-
----
+Con `Notion-Version: 2025-09-03`, `GET /v1/databases/{id}` devuelve
+`properties: []`: el esquema ya **no** vive en la database sino en el data
+source, y hay que pedirlo con `GET /v1/data_sources/{id}`. La primera corrida
+del script reportó "CRM ID presente: False" por eso, con la property creada y
+visible en pantalla. El script ya pregunta donde corresponde; si algún día
+alguien lo lee y ve un `properties: []`, es esto y no una property faltante.
 
 ## Cómo saber que funcionó
 
