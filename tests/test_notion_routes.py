@@ -270,6 +270,48 @@ def test_el_autosync_sigue_trayendo_tareas_si_los_proyectos_explotan(monkeypatch
     tareas.assert_called_once()
 
 
+def test_el_panel_de_proyectos_esta_en_el_sistema_de_permisos():
+    """`ALL_PANELS` maneja el loop que oculta paneles segun el `panel_access`
+    del usuario logueado. Si 'projects' no esta ahi, `nav-projects` nunca se
+    oculta para nadie: un rol como el `Caller` sembrado (sin 'tasks' ni
+    'projects') tiene Tareas oculto pero ve Proyectos, que lista los mismos
+    titulos y estados de tareas agrupados por proyecto -- exactamente el dato
+    que la restriccion de 'tasks' existe para no mostrarle.
+
+    Tambien tiene que estar en los mapas de la nav movil (`NAV_PRIORITY`,
+    `NAV_ICONS`, `NAV_LABELS`), o el panel solo se alcanza por el sidebar y el
+    header movil queda sin titulo mientras esta activo."""
+    html = dashboard.DASHBOARD_HTML
+
+    all_panels = re.search(r"const ALL_PANELS = (\[.*?\]);", html).group(1)
+    assert "'projects'" in all_panels
+
+    nav_priority = re.search(r"const NAV_PRIORITY = (\[.*?\]);", html).group(1)
+    assert "'projects'" in nav_priority
+
+    nav_icons = re.search(r"const NAV_ICONS = \{(.*?)\};", html, re.S).group(1)
+    assert "projects:" in nav_icons
+
+    nav_labels = re.search(r"const NAV_LABELS = \{(.*?)\};", html, re.S).group(1)
+    assert "projects:" in nav_labels
+
+
+def test_el_editor_de_roles_puede_conceder_proyectos():
+    """La segunda `ALL_PANELS` -- la del editor de roles en /admin/users -- arma
+    los checkboxes de paneles desde esa lista. Si no tiene 'projects', un admin
+    no puede conceder ni quitar ese panel a ningun rol. Vive en un template
+    local a la funcion (`ADMIN_PAGE`), no en `DASHBOARD_HTML`, asi que esto lee
+    la fuente del modulo en vez de la constante."""
+    fuente = open(dashboard.__file__, encoding="utf-8").read()
+    ocurrencias = re.findall(r"const ALL_PANELS = (\[.*?\]);", fuente)
+    assert len(ocurrencias) == 2, "se esperaban las dos ALL_PANELS conocidas del panel access"
+    for lista in ocurrencias:
+        assert "'projects'" in lista
+
+    panel_labels = re.search(r"const PANEL_LABELS = (\{.*?\});", fuente).group(1)
+    assert "projects:" in panel_labels
+
+
 def test_el_panel_de_tareas_tiene_el_boton_y_el_badge_de_notion():
     """Regresión: que nadie borre el front de Notion sin darse cuenta."""
     html = dashboard.DASHBOARD_HTML

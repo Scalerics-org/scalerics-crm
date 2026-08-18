@@ -3959,16 +3959,16 @@ function _showScoreBreakdown(event, el) {
 }
 
 // ── Mobile navigation ─────────────────────────────────────────────────────────
-const NAV_PRIORITY = ['cola','seguimientos','meta','cal','tasks','pipeline','clientes','wa','metrics','activity'];
+const NAV_PRIORITY = ['cola','seguimientos','meta','cal','tasks','pipeline','clientes','wa','metrics','activity','projects'];
 const NAV_ICONS = {
   cola:'inbox',seguimientos:'bookmark',meta:'instagram',cal:'calendar',
   tasks:'check-square',pipeline:'trending-up',clientes:'users',
-  wa:'message-circle',metrics:'bar-chart-2',activity:'clock'
+  wa:'message-circle',metrics:'bar-chart-2',activity:'clock',projects:'target'
 };
 const NAV_LABELS = {
   cola:'Cola',seguimientos:'Seguim.',meta:'Meta',cal:'Agenda',
   tasks:'Tareas',pipeline:'Pipeline',clientes:'Clientes',
-  wa:'WA',metrics:'Métricas',activity:'Actividad'
+  wa:'WA',metrics:'Métricas',activity:'Actividad',projects:'Proyectos'
 };
 let _mobileNavOverflow = [];
 
@@ -4048,7 +4048,7 @@ function closeMasSheet() {
 }
 
 // ── Panel access control ──────────────────────────────────────────────────────
-const ALL_PANELS = ['cola','seguimientos','meta','pipeline','clientes','tasks','wa','cal','metrics','activity','sdr'];
+const ALL_PANELS = ['cola','seguimientos','meta','pipeline','clientes','tasks','wa','cal','metrics','activity','sdr','projects'];
 (async () => {
   try {
     const r = await fetch('/api/me');
@@ -6374,8 +6374,8 @@ select:focus{border-color:#0088cc}
 </div>
 
 <script>
-const ALL_PANELS = ['cola','seguimientos','meta','pipeline','clientes','tasks','wa','cal','metrics','activity','sdr'];
-const PANEL_LABELS = {cola:'Cola',seguimientos:'Seguimientos',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Métricas',activity:'Actividad',sdr:'SDR'};
+const ALL_PANELS = ['cola','seguimientos','meta','pipeline','clientes','tasks','wa','cal','metrics','activity','sdr','projects'];
+const PANEL_LABELS = {cola:'Cola',seguimientos:'Seguimientos',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Métricas',activity:'Actividad',sdr:'SDR',projects:'Proyectos'};
 let _roles = [];
 
 function makeChips(containerId, checkedArr, prefix) {
