@@ -121,3 +121,28 @@ test('tambien acepta el token por query, como el bot viejo', async () => {
   const r = await s.app.inject({ method: 'GET', url: `/api/leads?token=${ADMIN}` });
   assert.equal(r.statusCode, 200);
 });
+
+test('POST /leads/:telefono/reiniciar vuelve el lead al principio', async () => {
+  const s = await conLead();
+  await s.servicioLeads.registrarRespuesta('59899123456', 'hola, tengo una inmobiliaria');
+  await s.cola.vacia();
+
+  const r = await s.app.inject({
+    method: 'POST', url: '/leads/099123456/reiniciar', headers: { 'x-api-key': CLAVE },
+  });
+  assert.equal(r.statusCode, 200);
+  assert.equal(r.json().estado, 'NEW');
+
+  const l = s.repo.leadPorTelefono('59899123456');
+  assert.equal(l.fsm_state, 'NEW');
+  assert.ok(l.conversacion_desde, 'queda marcado desde cuando cuenta la charla nueva');
+  assert.ok(s.repo.mensajesDeLead(l.id).length > 0, 'el historial no se toca');
+});
+
+test('reiniciar un telefono que no existe da 404', async () => {
+  const s = await conLead();
+  const r = await s.app.inject({
+    method: 'POST', url: '/leads/099888777/reiniciar', headers: { 'x-api-key': CLAVE },
+  });
+  assert.equal(r.statusCode, 404);
+});

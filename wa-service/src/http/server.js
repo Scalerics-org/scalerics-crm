@@ -145,6 +145,25 @@ function crearServidor({ cfg, repo, cola, proveedor, servicioLeads, scheduler, l
     return { ok: true, telefono: tel, sesiones_borradas: borradas };
   });
 
+  /**
+   * Vuelve un lead al principio. Le borra lo que el embudo averiguo y marca
+   * desde donde cuenta la conversacion nueva: los mensajes viejos siguen
+   * visibles en el panel del CRM, pero la IA ya no los lee — si no, arrancaria
+   * de cero con el estado y retomaria una charla que para el lead ya termino.
+   */
+  app.post('/leads/:telefono/reiniciar', async (req, reply) => {
+    const { normalizar } = require('../telefono');
+    const tel = normalizar(req.params.telefono, cfg.DEFAULT_COUNTRY_CODE);
+    if (!tel) return reply.code(400).send({ ok: false, error: 'telefono invalido' });
+
+    const lead = repo.leadPorTelefono(tel);
+    if (!lead) return reply.code(404).send({ ok: false, error: 'no hay lead con ese telefono' });
+
+    const fresco = repo.reiniciarLead(lead.id, new Date().toISOString());
+    logger?.info({ leadId: lead.id, telefono: tel }, 'lead reiniciado');
+    return { ok: true, lead_id: lead.id, estado: fresco.fsm_state };
+  });
+
   app.get('/session/status', async () => proveedor.estado());
 
   /**

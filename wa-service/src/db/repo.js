@@ -110,10 +110,41 @@ function crearRepo(db) {
 
     mensajesDeLead: (leadId) => stmt.mensajesDeLead.all(leadId),
 
-    /** Ultimos mensajes de la conversacion, para el resumen al humano. */
-    ultimosMensajes: (leadId, n = 6) =>
-      db.prepare('SELECT direction, body FROM messages WHERE lead_id = ? ORDER BY id DESC LIMIT ?')
-        .all(leadId, n).reverse(),
+    /**
+     * Ultimos mensajes de la conversacion.
+     *
+     * `desde` corta lo anterior a un reinicio. Los mensajes viejos no se
+     * borran —el equipo los sigue viendo en el panel— pero la IA no los ve, o
+     * retomaria una conversacion que para el lead ya termino.
+     */
+    ultimosMensajes: (leadId, n = 6, desde = null) => (desde
+      ? db.prepare(
+        'SELECT direction, body FROM messages WHERE lead_id = ? AND created_at > ? ORDER BY id DESC LIMIT ?'
+      ).all(leadId, desde, n).reverse()
+      : db.prepare(
+        'SELECT direction, body FROM messages WHERE lead_id = ? ORDER BY id DESC LIMIT ?'
+      ).all(leadId, n).reverse()),
+
+    /**
+     * Vuelve el lead al principio: se le borra lo que el embudo habia
+     * averiguado y se marca desde donde cuenta la conversacion nueva.
+     */
+    reiniciarLead(id, ahoraIso) {
+      db.prepare(`UPDATE leads SET
+        fsm_state = 'NEW', fsm_retries = 0, opt_out = 0, human_requested = 0,
+        motivo_derivacion = NULL, consultas_precio = 0,
+        business_name = NULL, business_type = NULL, budget = NULL, team_size = NULL,
+        colors = NULL, instagram_web = NULL, needs = NULL,
+        rubro = NULL, rubro_norm = NULL,
+        score = NULL, priority = NULL, score_reason = NULL,
+        status = 'new', replied_at = NULL, followup_sent_at = NULL,
+        conversacion_desde = ?
+      WHERE id = ?`).run(ahoraIso, id);
+      db.prepare(
+        "UPDATE jobs SET status='cancelled', last_error='lead reiniciado' WHERE lead_id = ? AND status='pending'"
+      ).run(id);
+      return stmt.leadPorId.get(id);
+    },
 
     /**
      * Marca la entrega/lectura que reporta el proveedor. Solo avanza: un acuse

@@ -77,7 +77,7 @@ function crearEmbudo({
         to: am,
         texto: plantillas.avisoDerivacion(repo.leadPorId(lead.id), {
           motivo: ETIQUETA[motivo] || motivo,
-          historial: repo.ultimosMensajes(lead.id, 6),
+          historial: repo.ultimosMensajes(lead.id, 6, lead.conversacion_desde),
         }),
         kind: 'am_notice',
         leadId: lead.id,
@@ -282,7 +282,7 @@ function crearEmbudo({
       const califica = FASE_CALIFICACION.has(actual);
 
       if (agente?.activo && (califica || FASE_CIERRE.has(actual))) {
-        const r = await agente.responder(lead, textoCrudo, repo.ultimosMensajes(lead.id, 20), actual);
+        const r = await agente.responder(lead, textoCrudo, repo.ultimosMensajes(lead.id, 20, lead.conversacion_desde), actual);
         if (r) return this._conversar(lead, entrada, r, { actual, puedeCerrar: califica });
         return sinIA(lead, 'conversacion');
       }

@@ -229,3 +229,60 @@ test('el rubro puede inclinar un lead del medio hacia la reunion', () => {
   assert.equal(porReglas(medio).recommended_action, 'nurture');
   assert.equal(porReglas({ ...medio, rubro_norm: 'automotriz' }).recommended_action, 'meeting');
 });
+
+// ── reinicio de un lead ──────────────────────────────────────────────────────
+
+test('reiniciar un lead lo devuelve al principio y la IA se olvida', async () => {
+  // Reiniciar borrando solo el estado dejaba el reinicio a medias: el embudo
+  // arrancaba de cero pero la IA seguia leyendo los mensajes viejos, asi que
+  // retomaba una conversacion que para el lead ya no existia.
+  const s = await conLead({ openai: stubOpenAI({ datos: { rubro: 'inmobiliaria' } }) });
+  await lead(s, 'hola, tengo una inmobiliaria');
+  await lead(s, 'somos 8');
+
+  const antes = s.repo.leadPorTelefono(TEL);
+  assert.equal(antes.fsm_state, S.CONVERSANDO);
+  assert.equal(antes.rubro, 'inmobiliaria');
+  const mensajesAntes = s.repo.mensajesDeLead(antes.id).length;
+  assert.ok(mensajesAntes > 0);
+
+  s.repo.reiniciarLead(antes.id, new Date().toISOString());
+
+  const l = s.repo.leadPorTelefono(TEL);
+  assert.equal(l.fsm_state, 'NEW');
+  assert.equal(l.rubro, null, 'se le borra lo que habia averiguado');
+  assert.equal(l.score, null);
+  assert.equal(l.human_requested, 0);
+
+  // El historial NO se borra: es lo que el equipo ve en el panel del CRM.
+  assert.equal(s.repo.mensajesDeLead(l.id).length, mensajesAntes, 'los mensajes quedan');
+
+  // Pero la IA ya no los ve.
+  assert.equal(
+    s.repo.ultimosMensajes(l.id, 20, l.conversacion_desde).length, 0,
+    'para la IA la conversacion empieza de cero'
+  );
+  assert.ok(s.repo.ultimosMensajes(l.id, 20).length > 0, 'sin frontera se sigue viendo todo');
+});
+
+test('un lead sin reinicios ve todo su historial', async () => {
+  const s = await conLead();
+  await lead(s, 'hola');
+  const l = s.repo.leadPorTelefono(TEL);
+
+  assert.equal(l.conversacion_desde, null);
+  assert.ok(s.repo.ultimosMensajes(l.id, 20, l.conversacion_desde).length > 0);
+});
+
+test('reiniciar cancela los jobs pendientes', async () => {
+  // Un follow-up programado sobre una conversacion que ya no existe llegaria
+  // hablando de algo que el lead no recuerda.
+  const s = await conLead();
+  const l = s.repo.leadPorTelefono(TEL);
+  const pendientes = () => s.repo.db
+    .prepare("SELECT COUNT(*) c FROM jobs WHERE lead_id=? AND status='pending'").get(l.id).c;
+
+  assert.equal(pendientes(), 1, 'el follow-up quedo programado al dar de alta');
+  s.repo.reiniciarLead(l.id, new Date().toISOString());
+  assert.equal(pendientes(), 0);
+});
