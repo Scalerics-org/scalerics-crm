@@ -121,12 +121,15 @@ def test_las_otras_plantillas_conservan_el_pie_de_sistema():
     assert "Notificación automática" in html
 
 
-def test_el_recordatorio_lleva_un_solo_logo():
-    from services.email_service import _LOGO
+def test_la_firma_usa_el_logo_oscuro_y_no_el_claro():
+    """_LOGO es la version clara, para el header navy de _layout. Sobre el fondo
+    blanco de este mail se ve lavada: en Gmail parecia un logo roto."""
+    from services.email_service import _LOGO, _LOGO_FIRMA
 
     html = _html_del_recordatorio().args[2]
 
-    assert html.count(_LOGO) == 1, "el del header y el de la firma se pisaban"
+    assert html.count(_LOGO_FIRMA) == 1
+    assert _LOGO not in html
 
 
 # ── I6: el par de cabeceras que Gmail necesita ─────────────────────────────────
@@ -168,34 +171,69 @@ def test_un_rubro_desconocido_cae_en_el_texto_generico():
 def test_el_texto_que_ve_el_lector_lleva_tildes():
     html = _html_del_recordatorio().args[2]
 
-    assert "agendá" in html
     assert "cómodo" in html
+    assert "respondé" in html
+    assert "más adelante" in html
     assert "No quiero recibir más" in html
     assert "comodo" not in html.replace("cómodo", "")
 
 
-def test_el_asunto_no_arrastra_el_nombre_entero_del_formulario():
-    """En la base real hay nombres como 'Petshop | Peluquería canina | Mascotas'."""
+def test_el_nombre_del_formulario_no_se_usa_en_ningun_lado():
+    """En la base real ese campo trae el nombre del negocio o basura
+    ('Petshop | Peluqueria canina | Mascotas', 'Ji lo lo iwwii8i lo lo lo').
+    Saludar con eso queda peor que no saludar: el asunto y el cuerpo salen del
+    negocio, que si viene limpio."""
     llamada = _html_del_recordatorio(
-        lead_name="Petshop | Peluquería canina | Pet Friendly | Mascotas")
+        lead_name="Petshop | Peluquería canina | Pet Friendly | Mascotas",
+        negocio="Animal Petshop")
 
-    assert llamada.args[1] == "Petshop, ¿agendamos una llamada?"
+    assert llamada.args[1] == "Sobre tu consulta para Animal Petshop"
     assert "Peluquería canina" not in llamada.args[2]
+    assert "Petshop |" not in llamada.args[2]
 
 
-def test_un_nombre_largo_de_un_solo_token_se_corta():
-    llamada = _html_del_recordatorio(lead_name="A" * 60)
+def test_sin_negocio_el_asunto_no_queda_colgado():
+    llamada = _html_del_recordatorio(lead_name="Lo que sea", negocio="")
 
-    assert llamada.args[1] == "A" * 30 + ", ¿agendamos una llamada?"
+    assert llamada.args[1] == "Sobre tu consulta a Scalerics"
 
 
 def test_escapa_la_entrada_del_formulario():
     with _capturar() as enviar:
         send_meta_lead_reminder(
-            "lead@ejemplo.com", '<script>alert(1)</script>', "Neg<ocio>",
+            "lead@ejemplo.com", "Un Nombre", "<script>alert(1)</script>Neg<ocio>",
             "web", "https://crm/baja/x",
         )
 
     html = enviar.call_args.args[2]
-    assert "<script>" not in html, "el nombre lo llena cualquiera en internet"
-    assert "&lt;script&gt;" in html
+    assert "<script>" not in html, "el negocio lo llena cualquiera en internet"
+    assert "&lt;ocio&gt;" in html, "el negocio va escapado en el cuerpo"
+
+
+def test_el_recordatorio_lleva_version_en_texto_plano():
+    """Un mail que va solo en HTML es una de las senales que empujan a
+    Promociones. El primer envio de prueba cayo justo ahi."""
+    with _capturar() as enviar:
+        send_meta_lead_reminder(
+            "lead@ejemplo.com", "Un Nombre", "RP Estudio",
+            "una_nueva_página_web", "https://crm/baja/tok",
+        )
+
+    texto = enviar.call_args.kwargs["text"]
+
+    assert texto, "tiene que ir la parte de texto plano"
+    assert "<" not in texto, "la parte de texto no lleva HTML"
+    assert "RP Estudio" in texto
+    assert "https://calendly.com/scalerics/consultoriagratuita" in texto
+    assert "https://crm/baja/tok" in texto, "la baja tambien tiene que estar en el texto"
+
+
+def test_las_otras_plantillas_siguen_sin_texto_plano():
+    """_send sigue llamando sin `text`: las 6 llamadas de siempre no cambian."""
+    import services.email_service as e
+    from unittest.mock import patch
+
+    with patch.object(e, "_send_estado", return_value="ok") as enviar:
+        e.send_reset_email("a@b.com", "https://crm/reset")
+
+    assert "text" not in enviar.call_args.kwargs

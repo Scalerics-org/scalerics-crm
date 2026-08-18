@@ -100,7 +100,7 @@ def _muted(text: str) -> str:
 # ── Resend sender ───────────────────────────────────────────────────────────────
 
 def _send_estado(to: str, subject: str, html: str, from_email: str | None = None,
-                 headers: dict | None = None) -> str:
+                 headers: dict | None = None, text: str | None = None) -> str:
     """Manda el mail y devuelve un tri-estado: "ok" / "fallo" / "desconocido".
 
     La diferencia entre "fallo" y "desconocido" importa: "fallo" es *sabemos que
@@ -122,6 +122,10 @@ def _send_estado(to: str, subject: str, html: str, from_email: str | None = None
         }
         if headers:
             cuerpo["headers"] = headers
+        if text:
+            # La version en texto plano no es un adorno: un mail que solo trae
+            # HTML es una de las senales que empujan a Promociones y a spam.
+            cuerpo["text"] = text
         r = requests.post(
             "https://api.resend.com/emails",
             headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
@@ -311,6 +315,10 @@ def send_meta_lead_failure_alert(email: str, lead_id: str, error: str) -> None:
     _send(email, asunto, cuerpo)
 
 
+# _LOGO es la version clara, pensada para el header navy de _layout. Sobre el
+# fondo blanco de este mail se ve lavada y casi ilegible, asi que la firma usa
+# la version oscura.
+_LOGO_FIRMA = "https://raw.githubusercontent.com/juantomasetti1/scalerics-assets/main/logo_full.png"
 _REMITENTE_LEADS = "Scalerics <contacto@scalerics.com>"
 _CALENDLY = "https://calendly.com/scalerics/consultoriagratuita"
 _TELEFONO = "+598 97 250 713"
@@ -326,7 +334,6 @@ _FRASES_RUBRO = {
     "una_nueva_página_web": "buscabas una nueva página web",
     "un_software_a_medida": "buscabas un software a medida",
 }
-_LARGO_MAX_NOMBRE = 30
 
 
 def _frase_rubro(rubro: str) -> str:
@@ -338,16 +345,6 @@ def _frase_rubro(rubro: str) -> str:
     return f"buscabas {html.escape(rubro.strip())}"
 
 
-def _nombre_corto(lead_name: str) -> str:
-    """El nombre lo llena cualquiera en el formulario, y en la base real hay
-    cosas como 'Petshop | Peluquería canina | Pet Friendly | Mascotas'. Para
-    saludar alcanza con el primer token."""
-    primero = (lead_name or "").strip().split()
-    if not primero:
-        return "Hola"
-    return primero[0][:_LARGO_MAX_NOMBRE]
-
-
 def send_meta_lead_reminder(to_email: str, lead_name: str, negocio: str,
                             rubro: str, unsub_url: str) -> str:
     """Invita al lead a agendar una llamada. Sale de contacto@, no de crm@.
@@ -357,52 +354,72 @@ def send_meta_lead_reminder(to_email: str, lead_name: str, negocio: str,
     es lo que decide si se reintenta manana o no. Ojo con evaluarlo por
     verdad — "fallo" es un string y es truthy.
     """
-    # Nombre, negocio y rubro salen del formulario de Meta: los llena cualquiera.
-    nombre      = _nombre_corto(lead_name)
-    nombre_esc  = html.escape(nombre)
-    negocio_esc = html.escape((negocio or "").strip())
+    # Negocio y rubro salen del formulario de Meta: los llena cualquiera.
+    #
+    # El campo `name` NO se usa para saludar. En la base real trae el nombre del
+    # negocio o directamente basura ("Petshop | Peluqueria canina | Pet Friendly",
+    # "Ji lo lo iwwii8i lo lo lo es bj thjue"), asi que saludar con eso queda
+    # peor que no saludar con nada. El negocio, que si viene limpio, se usa en el
+    # cuerpo, que es donde suena natural.
+    negocio_txt = (negocio or "").strip()
+    negocio_esc = html.escape(negocio_txt)
     rubro_txt   = (rubro or "").strip()
 
-    if rubro_txt and negocio_esc:
-        apertura = (f"Nos dejaste tus datos porque {_frase_rubro(rubro_txt)} "
-                    f"para {negocio_esc}.")
+    if rubro_txt and negocio_txt:
+        apertura_txt = (f"Nos dejaste tus datos porque {_frase_rubro(rubro_txt)} "
+                        f"para {negocio_txt}.")
+        apertura_esc = (f"Nos dejaste tus datos porque {_frase_rubro(rubro_txt)} "
+                        f"para {negocio_esc}.")
     elif rubro_txt:
-        apertura = f"Nos dejaste tus datos porque {_frase_rubro(rubro_txt)}."
+        apertura_txt = apertura_esc = f"Nos dejaste tus datos porque {_frase_rubro(rubro_txt)}."
     else:
-        apertura = "Nos dejaste tus datos para que hablemos de tu proyecto."
+        apertura_txt = apertura_esc = "Nos dejaste tus datos para que hablemos de tu proyecto."
 
-    body = (
-        _muted(apertura)
-        + _muted("Si te sigue interesando, agendá una llamada de 30 minutos "
-                 "cuando te quede cómodo. Sin compromiso.")
-    )
-    cuerpo_html = _layout(
-        badge="Scalerics",
-        title=f"{nombre_esc}, seguimos disponibles",
-        body=body,
-        cta_url=_CALENDLY,
-        cta_label="Agendar una llamada",
-        # Este mail existe para que la persona conteste o agende: el pie de
-        # "notificación automática / no responder" decia lo contrario, y ademas
-        # es senal de correo masivo para los filtros. El header con el logo
-        # tambien se saca: la firma de abajo ya lo lleva, y con los dos el mail
-        # parecia una notificacion de sistema en vez de un mail de alguien.
-        footer="",
-        mostrar_header=False,
-    )
-    firma = (
-        f'<div style="text-align:center;font-size:12px;color:#94a3b8;'
-        f'padding:0 24px 28px">'
-        f'<img src="{_LOGO}" alt="Scalerics" style="height:22px;margin-bottom:10px"><br>'
-        f'Scalerics &middot; {_TELEFONO} &middot; '
-        f'<a href="https://scalerics.com" style="color:#94a3b8">scalerics.com</a><br>'
-        f'<a href="{unsub_url}" style="color:#94a3b8;text-decoration:underline">'
-        f'No quiero recibir más estos mails</a>'
-        f'</div>'
-    )
-    cuerpo_html = cuerpo_html.replace("</body>", f"{firma}</body>")
+    cierre = ("Si no es el momento, respondé este mail y lo dejamos para más "
+              "adelante.")
+    invitacion = "Si te sigue interesando, podemos hablar 30 minutos cuando te quede cómodo:"
 
-    asunto = f"{nombre.replace(chr(10), ' ').replace(chr(13), ' ')}, ¿agendamos una llamada?"
+    # Sin tarjeta, sin badge, sin boton de color y sin logo en imagen. Todo eso
+    # es el molde de un mail de marketing, y es lo que hace que Gmail lo mande a
+    # Promociones. Este mail tiene que parecer lo que es: alguien escribiendo.
+    estilo_p = "margin:0 0 16px;font-size:15px;line-height:1.6;color:#1a1a1a"
+    cuerpo_html = f"""<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:24px;background:#ffffff">
+  <div style="max-width:520px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
+    <p style="{estilo_p}">Hola,</p>
+    <p style="{estilo_p}">{apertura_esc}</p>
+    <p style="{estilo_p}">{invitacion}</p>
+    <p style="{estilo_p}">
+      <a href="{_CALENDLY}" style="color:#0069a3">Agendar una llamada</a>
+    </p>
+    <p style="{estilo_p}">{cierre}</p>
+    <p style="margin:28px 0 0;font-size:14px;line-height:1.6;color:#1a1a1a">
+      <img src="{_LOGO_FIRMA}" alt="Scalerics" width="110"
+           style="display:block;width:110px;height:auto;margin-bottom:8px">
+      {_TELEFONO}<br>
+      <a href="https://scalerics.com" style="color:#0069a3">scalerics.com</a>
+    </p>
+    <p style="margin:24px 0 0;font-size:12px;line-height:1.5;color:#8a8a8a">
+      <a href="{unsub_url}" style="color:#8a8a8a">No quiero recibir más estos mails</a>
+    </p>
+  </div>
+</body>
+</html>"""
+
+    cuerpo_texto = (
+        f"Hola,\n\n{apertura_txt}\n\n{invitacion}\n{_CALENDLY}\n\n{cierre}\n\n"
+        f"Scalerics\n{_TELEFONO}\nhttps://scalerics.com\n\n"
+        f"No quiero recibir más estos mails: {unsub_url}\n"
+    )
+
+    if negocio_txt:
+        asunto = f"Sobre tu consulta para {negocio_txt}"
+    else:
+        asunto = "Sobre tu consulta a Scalerics"
+    asunto = asunto.replace(chr(10), " ").replace(chr(13), " ")
+
     return _send_estado(
         to_email, asunto, cuerpo_html,
         from_email=_REMITENTE_LEADS,
@@ -412,4 +429,5 @@ def send_meta_lead_reminder(to_email: str, lead_name: str, negocio: str,
             # boton nativo de baja. La URL tiene que aceptar POST.
             "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
         },
+        text=cuerpo_texto,
     )
