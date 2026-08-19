@@ -14,5 +14,10 @@ de tocar los dos archivos.
 # Dias desde el PRIMER envio de cada lead. El ancla es el primer contacto y no
 # el anterior a proposito: asi el atraso de una tanda no se acumula sobre los
 # que siguen. Son 7 y el septimo es el ultimo de la vida de ese lead.
+#
+# Ojo: estos umbrales no son toda la regla. Ademas tienen que haber pasado
+# `_PISO_ENTRE_CONTACTOS_DIAS` (en meta_reminders) desde el ULTIMO envio, o un
+# lead atrasado pasaria todos estos umbrales de golpe y recibiria los contactos
+# 2 a 7 uno atras de otro.
 DIAS_DE_CADA_CONTACTO = [0, 10, 25, 115, 205, 295, 365]
 TOTAL_CONTACTOS = len(DIAS_DE_CADA_CONTACTO)
