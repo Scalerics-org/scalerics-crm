@@ -7,7 +7,9 @@ quemada sin ninguna chance de venta.
 """
 
 import logging
+import random
 import re
+import time
 from urllib.parse import unquote, urljoin, urlsplit, urlunsplit
 
 from database import _connect, update_business
@@ -170,7 +172,9 @@ def procesar_pendientes(db_path: str, abrir, limite: int = 50) -> dict:
              ORDER BY id
              LIMIT ?
             """,
-            (int(limite),),
+            # En SQLite LIMIT -1 significa SIN limite: un `--limite -1` de dedo
+            # gordo procesaria la cohorte entera.
+            (max(0, int(limite)),),
         ).fetchall()
     finally:
         conn.close()
@@ -227,6 +231,10 @@ def procesar_pendientes(db_path: str, abrir, limite: int = 50) -> dict:
 def abrir_con_playwright(page):
     """Arma el `abrir` que usa produccion, contra una page de Playwright."""
     def abrir(url):
+        # Una pausa corta antes de cada goto: un sitio chico puede recibir hasta
+        # nueve pedidos seguidos del mismo cliente, y el scraper ya se toma este
+        # respiro contra Maps.
+        time.sleep(random.uniform(1.0, 2.5))
         try:
             page.goto(url, wait_until="domcontentloaded", timeout=20000)
             return page.content()

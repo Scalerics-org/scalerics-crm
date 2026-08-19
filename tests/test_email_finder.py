@@ -374,3 +374,15 @@ def test_respeta_el_limite(tmp_path):
     ])
 
     assert procesar_pendientes(db, _abrir_falso({}), limite=2)["revisados"] == 2
+
+
+def test_un_limite_negativo_no_procesa_la_cohorte_entera(tmp_path):
+    """En SQLite LIMIT -1 significa SIN limite."""
+    db = _db_con(tmp_path, [
+        {"name": f"Inmo {i}", "phone": f"+598 2900 40{i:02d}",
+         "maps_url": f"https://maps.google.com/?cid=4{i}",
+         "website": f"https://inmo{i}.com.uy", "source": "discovery"}
+        for i in range(3)
+    ])
+
+    assert procesar_pendientes(db, _abrir_falso({}), limite=-1)["revisados"] == 0
