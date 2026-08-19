@@ -989,7 +989,7 @@ body.light .btn-icon{stroke:currentColor}
 .proj-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .proj-name{font-size:.95rem;font-weight:600;color:#e2e8f0;text-decoration:none}
 .proj-name:hover{color:#0088cc}
-.proj-stage{font-size:.72rem;color:#94a3b8;background:#1a2234;padding:2px 7px;border-radius:10px}
+.proj-stage{display:inline-block;font-size:.72rem;line-height:1.35;color:#94a3b8;background:#1a2234;padding:2px 7px;border-radius:10px}
 .proj-counts{font-size:.72rem;color:#64748b;margin-left:auto}
 .proj-meta{font-size:.75rem;color:#64748b;margin-top:4px}
 .proj-tasks{margin-top:8px;display:flex;flex-direction:column;gap:4px}
