@@ -1,13 +1,12 @@
 """Extraccion de direcciones de mail del HTML de un sitio."""
 
-import pytest
-
-from services.email_finder import es_mail_basura, extraer_mails
 import sqlite3
 
+import pytest
+
 from database import init_db, insert_business
-from services.email_finder import (RUTAS_CONTACTO, buscar_mail_del_sitio,
-                                   procesar_pendientes)
+from services.email_finder import (buscar_mail_del_sitio, es_mail_basura,
+                                   extraer_mails, procesar_pendientes)
 
 
 @pytest.mark.parametrize("mail", [
@@ -245,13 +244,22 @@ def test_el_que_no_da_mail_queda_marcado_y_no_se_reintenta(tmp_path):
 
 
 def test_no_toca_a_los_que_no_son_de_discovery(tmp_path):
-    """El padron sin web y los leads de Meta no son asunto de este job."""
+    """El padron sin web y los leads de Meta no son asunto de este job.
+
+    El tercer caso es el que importa: una fila del padron de WhatsApp que si
+    tiene `website` cargado. Lo unico que la deja afuera es el `source`, y
+    tocarle el email o el status a esa cohorte es el error mas caro del
+    proyecto.
+    """
     db = _db_con(tmp_path, [
         {"name": "Sin Web", "phone": "+598 2900 0003",
          "maps_url": "https://maps.google.com/?cid=3"},
         {"name": "Lead Meta", "phone": "+598 2900 0004",
          "maps_url": "https://maps.google.com/?cid=4",
          "website": "https://meta.com.uy", "source": "meta"},
+        {"name": "Sin Source Con Web", "phone": "+598 2900 0009",
+         "maps_url": "https://maps.google.com/?cid=9",
+         "website": "https://padron.com.uy"},
     ])
 
     assert procesar_pendientes(db, _abrir_falso({}))["revisados"] == 0

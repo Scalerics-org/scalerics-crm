@@ -26,7 +26,7 @@ def test_modo_por_defecto_descarta_al_que_tiene_web():
         _negocio(maps_website_url="https://inmobiliaria.com.uy"),
         solo_con_web=False, skip_branded=False)
     assert guardar is False
-    assert "web" in motivo
+    assert "con web" in motivo
 
 
 def test_modo_por_defecto_guarda_al_que_no_tiene_web():
@@ -49,7 +49,7 @@ def test_modo_discovery_descarta_al_que_no_tiene_web():
     guardar, motivo = _debe_guardar(
         _negocio(maps_website_url=None), solo_con_web=True, skip_branded=False)
     assert guardar is False
-    assert "web" in motivo
+    assert "sin web" in motivo
 
 
 def test_franquicia_se_descarta_solo_si_se_pidio():
@@ -62,4 +62,16 @@ def test_franquicia_se_descarta_solo_si_se_pidio():
     assert "franquicia" in motivo
 
     guardar, _ = _debe_guardar(chevrolet, solo_con_web=True, skip_branded=False)
+    assert guardar is True
+
+
+def test_franquicia_se_descarta_solo_si_se_pidio_tambien_en_el_modo_por_defecto():
+    """skip_branded es ortogonal al modo: el padron de WhatsApp lo usa igual."""
+    chevrolet = _negocio(name="Chevrolet Montevideo", maps_website_url=None)
+
+    guardar, motivo = _debe_guardar(chevrolet, solo_con_web=False, skip_branded=True)
+    assert guardar is False
+    assert "franquicia" in motivo
+
+    guardar, _ = _debe_guardar(chevrolet, solo_con_web=False, skip_branded=False)
     assert guardar is True
