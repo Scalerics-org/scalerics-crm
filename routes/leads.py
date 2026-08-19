@@ -80,6 +80,10 @@ def _db() -> str:
 
 
 def _bg_pitch(db_path: str, business_id: int, data: dict) -> None:
+    # Misma guarda que pitch_generator.run: a la cohorte de discovery no se le
+    # arma el pitch de WhatsApp, que le diria que no tiene pagina web.
+    if (data.get("source") or "").strip().lower() == "discovery":
+        return
     try:
         pitch = generate_pitch(data, db_path)
         if pitch:
