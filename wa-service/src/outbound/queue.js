@@ -27,6 +27,9 @@ function crearCola({ proveedor, repo, cfg, logger, limites, ahora = () => new Da
   let esperandoVacio = [];
   let seq = 0;
   let despertador = null;
+  // El mensaje que el worker tiene en la mano. Ya salio de `items`, asi que
+  // descartarPendientesDe no lo encuentra: se lo marca por aca.
+  let enProceso = null;
 
   // Circuit breaker: si el proveedor empieza a fallar, se para en vez de
   // insistir. Reintentar en loop contra WhatsApp acelera el baneo.
@@ -112,6 +115,15 @@ function crearCola({ proveedor, repo, cfg, logger, limites, ahora = () => new Da
 
     await simularEscritura(proveedor, item.to, item.texto, cfg, INTERNO.has(item.kind));
 
+    // Mientras duraba el "escribiendo...", el lead escribio de nuevo y ya hay
+    // una respuesta mejor en camino. Se chequea aca, despues de la espera y
+    // antes de registrar nada: si se mandara igual, llegarian las dos y la
+    // primera hablaria de algo que el lead ya dijo.
+    if (item.cancelado) {
+      logger?.info({ kind: item.kind, leadId: item.leadId }, 'respuesta descartada en el ultimo momento: el lead escribio de nuevo');
+      return;
+    }
+
     const msgId = repo.registrarMensaje({
       lead_id: item.leadId ?? null,
       direction: 'out',
@@ -178,10 +190,13 @@ function crearCola({ proveedor, repo, cfg, logger, limites, ahora = () => new Da
         }
 
         try {
+          enProceso = item;
           await procesar(item);
         } catch {
           // El fallo ya quedo en messages.status='failed', en el log y en el
           // contador del circuit breaker. No se corta la cola por uno.
+        } finally {
+          enProceso = null;
         }
 
         if (items.length) {
@@ -227,6 +242,14 @@ function crearCola({ proveedor, repo, cfg, logger, limites, ahora = () => new Da
       items = items.filter(
         (i) => !(i.leadId === leadId && CONVERSACIONALES.has(i.kind))
       );
+
+      // El que ya esta en el "escribiendo..." no esta en `items` y se escapaba
+      // por ahi. Con las esperas cortas esa ventana es la que mas importa: el
+      // worker agarra la respuesta casi al instante de encolarse.
+      if (enProceso && enProceso.leadId === leadId && CONVERSACIONALES.has(enProceso.kind)) {
+        enProceso.cancelado = true;
+      }
+
       const descartados = antes - items.length;
       if (descartados) {
         logger?.info({ leadId, descartados }, 'respuestas viejas descartadas: el lead escribio de nuevo');

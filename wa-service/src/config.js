@@ -80,12 +80,12 @@ const esquema = z.object({
    * abajo, que se quedan como estan.
    */
   DELAY_AM_MIN_MS: z.coerce.number().nonnegative().default(0),
-  DELAY_AM_MAX_MS: z.coerce.number().nonnegative().default(500),
+  DELAY_AM_MAX_MS: z.coerce.number().nonnegative().default(250),
 
-  DELAY_WELCOME_MIN_MS: z.coerce.number().nonnegative().default(2000),
-  DELAY_WELCOME_MAX_MS: z.coerce.number().nonnegative().default(5000),
-  DELAY_BETWEEN_MIN_MS: z.coerce.number().nonnegative().default(2000),
-  DELAY_BETWEEN_MAX_MS: z.coerce.number().nonnegative().default(5000),
+  DELAY_WELCOME_MIN_MS: z.coerce.number().nonnegative().default(500),
+  DELAY_WELCOME_MAX_MS: z.coerce.number().nonnegative().default(1500),
+  DELAY_BETWEEN_MIN_MS: z.coerce.number().nonnegative().default(800),
+  DELAY_BETWEEN_MAX_MS: z.coerce.number().nonnegative().default(2000),
 
   // "escribiendo..." antes de cada mensaje. Se apaga solo en tests: sacarlo en
   // produccion es justamente lo que hace que el envio parezca de bot. Es,
@@ -97,14 +97,14 @@ const esquema = z.object({
    * Cuanto dura el "escribiendo...".
    *
    * El techo era de 6 segundos, pero el factor aleatorio se aplica DESPUES de
-   * recortar, asi que el maximo real eran 7,8. Con dos segundos el mensaje
-   * sigue apareciendo escrito por alguien y no por una maquina, y se dejan de
-   * regalar cinco segundos en cada respuesta.
+   * recortar, asi que el maximo real eran 7,8: casi ocho segundos de teatro en
+   * cada respuesta. Con estos valores el indicador sigue apareciendo —que es lo
+   * unico que WhatsApp mira— pero dura alrededor de un segundo.
    */
-  TYPING_MS_POR_CARACTER: z.coerce.number().nonnegative().default(30),
-  TYPING_TECHO_MS: z.coerce.number().nonnegative().default(2000),
-  TYPING_PAUSA_MIN_MS: z.coerce.number().nonnegative().default(250),
-  TYPING_PAUSA_MAX_MS: z.coerce.number().nonnegative().default(700),
+  TYPING_MS_POR_CARACTER: z.coerce.number().nonnegative().default(20),
+  TYPING_TECHO_MS: z.coerce.number().nonnegative().default(900),
+  TYPING_PAUSA_MIN_MS: z.coerce.number().nonnegative().default(120),
+  TYPING_PAUSA_MAX_MS: z.coerce.number().nonnegative().default(350),
 
   /**
    * "escribiendo..." en los mensajes internos. Apagado: la ficha al equipo va
@@ -155,15 +155,17 @@ const esquema = z.object({
    * manda "Necesito un" / "ecommerce" / "a medida" en tres mensajes seguidos;
    * sin esta espera el bot contesta tres veces y desordenado.
    *
-   * Cuatro segundos es el piso: por debajo, una tanda de fragmentos escritos a
-   * ritmo normal se parte en dos turnos y el bot contesta dos veces, la segunda
-   * sin haber visto la primera. Y bajar las esperas de la cola le saco fuerza a
-   * la otra defensa —descartarPendientesDe solo puede tirar lo que todavia
-   * espera en la cola, y ahora la cola casi nunca tiene nada esperando—.
+   * Segundo y medio alcanza porque la proteccion real ya no es la espera.
+   * Antes esto tenia que durar mas que el tipeo de la persona, porque una tanda
+   * partida en dos turnos significaba dos respuestas y la segunda escrita sin
+   * ver la primera. Ahora, cuando arranca un turno nuevo se cancela la
+   * respuesta del anterior aunque el worker ya la tenga en la mano, asi que una
+   * tanda partida cuesta una llamada a la API de mas y nada mas.
    *
-   * Es lo mas caro que queda en el camino, y es a proposito.
+   * No baja a cero: sin ninguna espera, "hola" y "necesito una web" escritos
+   * seguidos son dos llamadas al modelo en vez de una, y se paga por las dos.
    */
-  AGRUPAR_ENTRANTES_MS: z.coerce.number().nonnegative().default(4000),
+  AGRUPAR_ENTRANTES_MS: z.coerce.number().nonnegative().default(1500),
 
   /**
    * Lo que se le dice al lead cuando queda esperando a una persona. No se

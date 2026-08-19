@@ -89,6 +89,69 @@ test('un mensaje frenado por el horario queda con reintento armado', async () =>
   assert.ok(s.cola.tieneDespertador(), 'y no quedo dormida esperando que alguien encole otra cosa');
 });
 
+/**
+ * La ultima ventana por donde se escapaba una respuesta vieja.
+ *
+ * descartarPendientesDe filtra `items`, pero el mensaje que el worker ya agarro
+ * salio de esa lista: esta en el "escribiendo...". Con las esperas largas casi
+ * no se notaba, porque un mensaje pasaba mucho tiempo en la cola antes de que
+ * lo tomaran. Con las esperas cortas el worker lo agarra al instante, y esa
+ * ventana pasa a ser la unica que importa.
+ *
+ * Es lo que permite que la espera de fragmentos baje a un segundo y medio: una
+ * tanda partida ya no cuesta dos respuestas, cuesta una llamada de mas.
+ */
+test('una respuesta ya en el "escribiendo..." se cancela si el lead vuelve a escribir', async () => {
+  const s = await montar({ TYPING_ENABLED: 'true', TYPING_TECHO_MS: '50' });
+  const l = s.repo.crearLead({ nombre: 'Juanchi', telefono: LEAD_TEL, origen: 'wa' });
+
+  let avisarQueEmpezo;
+  const empezoATipear = new Promise((r) => { avisarQueEmpezo = r; });
+  let dejarSeguir;
+  const puedeSeguir = new Promise((r) => { dejarSeguir = r; });
+
+  s.proveedor.setPresencia = async (to, estado) => {
+    if (estado !== 'composing') return;
+    avisarQueEmpezo();
+    await puedeSeguir;
+  };
+
+  s.cola.encolar({ to: LEAD_TEL, texto: '¿cómo se llama tu negocio?', kind: 'manual', leadId: l.id });
+  await empezoATipear;
+
+  // Justo acá el lead contesta: lo que se está por mandar quedó viejo.
+  s.cola.descartarPendientesDe(l.id);
+  dejarSeguir();
+  await s.cola.vacia();
+
+  assert.equal(s.proveedor.getEnviados().length, 0, 'la pregunta vieja no llega');
+});
+
+test('pero un aviso al equipo en curso NO se cancela', async () => {
+  const s = await montar({ TYPING_ENABLED: 'true', TYPING_TECHO_MS: '50', TYPING_INTERNO: 'true' });
+  const l = s.repo.crearLead({ nombre: 'Juanchi', telefono: LEAD_TEL, origen: 'wa' });
+
+  let avisarQueEmpezo;
+  const empezoATipear = new Promise((r) => { avisarQueEmpezo = r; });
+  let dejarSeguir;
+  const puedeSeguir = new Promise((r) => { dejarSeguir = r; });
+
+  s.proveedor.setPresencia = async (to, estado) => {
+    if (estado !== 'composing') return;
+    avisarQueEmpezo();
+    await puedeSeguir;
+  };
+
+  s.cola.encolar({ to: AM, texto: 'nuevo contacto', kind: 'am_notice', leadId: l.id });
+  await empezoATipear;
+
+  s.cola.descartarPendientesDe(l.id);
+  dejarSeguir();
+  await s.cola.vacia();
+
+  assert.equal(s.proveedor.getEnviados().length, 1, 'que el lead escriba no invalida el aviso');
+});
+
 test('fuera de horario el mensaje se reprograma, no se pierde', async () => {
   // Domingo 03:00 en Montevideo, con horario lun-sab 09:00-19:00.
   const domingo = new Date('2026-08-09T06:00:00Z');
