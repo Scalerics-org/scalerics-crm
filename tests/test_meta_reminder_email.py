@@ -332,3 +332,36 @@ def test_los_siete_cuerpos_son_todos_distintos():
         cuerpos.append(enviar.call_args.args[2])
 
     assert len(set(cuerpos)) == 7, "dos contactos mandaron exactamente el mismo cuerpo"
+
+
+@pytest.mark.parametrize("negocio,esperados", [
+    ("RP Estudio", {
+        1: "Sobre tu consulta para RP Estudio",
+        2: "Sobre tu consulta para RP Estudio",
+        3: "Sobre tu consulta para RP Estudio",
+        4: "¿Retomamos lo de RP Estudio?",
+        5: "¿Sigue en pie lo de RP Estudio?",
+        6: "Nos queda un mail más para RP Estudio",
+        7: "Último mail para RP Estudio",
+    }),
+    ("", {
+        1: "Sobre tu consulta a Scalerics",
+        2: "Sobre tu consulta a Scalerics",
+        3: "Sobre tu consulta a Scalerics",
+        4: "¿Retomamos tu consulta?",
+        5: "¿Sigue en pie tu consulta?",
+        6: "Nos queda un mail más",
+        7: "Último mail de Scalerics",
+    }),
+])
+def test_los_siete_asuntos_se_leen_bien_con_y_sin_negocio(negocio, esperados):
+    """El asunto es la linea mas visible del mail: "lo para X" es una plantilla
+    mal armada ("donde" pegado donde "para X" no cierra), "lo de X" si cierra.
+    Se recorren los 7 contactos en los dos escenarios (con negocio y sin
+    negocio) para que un "donde" mal pegado en cualquier otro slot no vuelva a
+    pasar sin que un test lo note."""
+    for numero in range(1, 8):
+        with _capturar() as enviar:
+            send_meta_lead_reminder("lead@ejemplo.com", negocio,
+                                    "automatizaciones", "https://crm/baja/x", numero)
+        assert enviar.call_args.args[1] == esperados[numero], f"contacto {numero}"

@@ -414,16 +414,21 @@ def _cuerpo_por_contacto(numero: int, apertura: str, valor: str, negocio: str) -
             f"Si más adelante retomás el tema{donde}, escribinos y lo vemos.",
         ])
     if numero == 4:
-        return (f"¿Retomamos lo{donde}?" if negocio else "¿Retomamos tu consulta?", [
+        # "lo para X" no cierra sintacticamente (el asunto queda como una
+        # plantilla mal armada); "lo de X" si.
+        return (f"¿Retomamos lo de {negocio}?" if negocio else "¿Retomamos tu consulta?", [
             "Hola,",
             f"Pasó un tiempo desde que nos dejaste tus datos{donde}.",
             "Si el tema volvió a estar sobre la mesa, en 30 minutos te decimos qué se "
             "puede hacer, cuánto sale y en cuánto tiempo.",
         ])
     if numero == 5:
-        return (f"¿Sigue en pie lo{donde}?" if negocio else "¿Sigue en pie tu consulta?", [
+        return (f"¿Sigue en pie lo de {negocio}?" if negocio else "¿Sigue en pie tu consulta?", [
             "Hola,",
-            f"Van varios meses desde la última vez que hablamos{donde}.",
+            # El lead nunca hablo con nadie, dejo sus datos en un formulario, y
+            # el contacto 3 ya le dijo "no tuvimos novedades tuyas": este parrafo
+            # no puede afirmar una conversacion previa que no existio.
+            f"Pasaron varios meses desde que nos dejaste tus datos{donde}.",
             "Si en algún momento retomás el tema, seguimos para ayudarte: "
             "respondé este mail o agendá acá abajo.",
         ])
