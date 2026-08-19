@@ -192,6 +192,43 @@ def test_telefono_repetido_no_pisa_el_mail_que_ya_tenia(app, monkeypatch):
         "un mail que ya estaba cargado no se pisa con el del formulario"
 
 
+def test_telefono_repetido_pisa_el_mail_raspado_de_discovery(app, monkeypatch):
+    """La cohorte de discovery tiene `email` poblado con lo que dijera su web,
+    y ese mail lo saco un bot. Si el dueno despues llena el formulario de Meta,
+    el merge le pone source='meta' y la fila entra en la secuencia de
+    recordatorios, que manda correo real. El mail que gana tiene que ser el que
+    el dueno tipeo, no el raspado.
+
+    Es el unico camino por el que esta campana toca el correo real de Meta.
+    """
+    from database import get_business, init_db, insert_business
+    from routes import meta
+
+    db = app.config["DB_PATH"]
+    init_db(db)
+    telefono = "+598 99 666 777"
+    existente_id = insert_business(db, {
+        "name": "Inmobiliaria Con Web", "phone": telefono,
+        "email": "info@raspado.com.uy", "website": "https://raspado.com.uy",
+        "category": "Inmobiliaria", "source": "discovery",
+    })
+    assert existente_id, "el negocio previo tiene que haberse creado"
+
+    respuesta = _respuesta_de_graph("Dueno Real", telefono, email="dueno@gmail.com")
+    with patch.object(meta.requests, "get", return_value=respuesta), \
+         patch.object(meta, "_notify_new_meta_lead") as notificar:
+        monkeypatch.setattr(meta, "PAGE_TOKEN", "token-de-prueba")
+        meta._fetch_and_store_lead(app, "LEAD-MAIL-3", "FORM-1")
+        limite = time.time() + 5
+        while not notificar.called and time.time() < limite:
+            time.sleep(0.02)
+
+    fila = get_business(db, existente_id)
+    assert fila["email"] == "dueno@gmail.com", \
+        "el mail del formulario le gana al raspado de la web"
+    assert fila["source"] == "meta"
+
+
 def test_telefono_repetido_deja_warning(app, monkeypatch, caplog):
     """El caso pasó de logger.info a warning: es una colisión real, no ruido."""
     from database import init_db, insert_business
