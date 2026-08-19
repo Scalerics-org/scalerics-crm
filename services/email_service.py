@@ -413,6 +413,20 @@ def _cuerpo_por_contacto(numero: int, apertura: str, valor: str, negocio: str) -
             "No tuvimos novedades tuyas, así que por ahora lo dejamos acá.",
             f"Si más adelante retomás el tema{donde}, escribinos y lo vemos.",
         ])
+    if numero == 4:
+        return (f"¿Retomamos lo{donde}?" if negocio else "¿Retomamos tu consulta?", [
+            "Hola,",
+            f"Pasó un tiempo desde que nos dejaste tus datos{donde}.",
+            "Si el tema volvió a estar sobre la mesa, en 30 minutos te decimos qué se "
+            "puede hacer, cuánto sale y en cuánto tiempo.",
+        ])
+    if numero == 5:
+        return (f"¿Sigue en pie lo{donde}?" if negocio else "¿Sigue en pie tu consulta?", [
+            "Hola,",
+            f"Van varios meses desde la última vez que hablamos{donde}.",
+            "Si en algún momento retomás el tema, seguimos para ayudarte: "
+            "respondé este mail o agendá acá abajo.",
+        ])
     if numero >= _CONTACTO_FINAL:
         return (f"Último mail{donde}" if negocio else "Último mail de Scalerics", [
             "Hola,",
@@ -422,11 +436,14 @@ def _cuerpo_por_contacto(numero: int, apertura: str, valor: str, negocio: str) -
             f"queda acá abajo y podés escribirnos cuando quieras.",
             "Gracias por el tiempo.",
         ])
-    return (f"¿Retomamos lo{donde}?" if negocio else "¿Retomamos tu consulta?", [
+    # El anteultimo de la vida del lead (numero == 6): mismo tono corto y sin
+    # venta que 4 y 5, pero insinuando que despues de este queda uno solo.
+    return (f"Nos queda un mail más{donde}" if negocio else "Nos queda un mail más", [
         "Hola,",
-        f"Pasó un tiempo desde que nos dejaste tus datos{donde}.",
-        "Si el tema volvió a estar sobre la mesa, en 30 minutos te decimos qué se "
-        "puede hacer, cuánto sale y en cuánto tiempo.",
+        f"Este es el anteúltimo mail que te mandamos{donde}: después de este "
+        f"te queda uno solo.",
+        "Si el tema sigue en pie, es buen momento para retomarlo antes de que "
+        "dejemos de escribirte.",
     ])
 
 

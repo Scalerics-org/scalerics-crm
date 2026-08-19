@@ -274,6 +274,8 @@ def test_el_membrete_es_el_unico_logo():
     (2, "hace unos días"),
     (3, "por ahora lo dejamos acá"),
     (4, "Pasó un tiempo"),
+    (5, "varios meses"),
+    (6, "anteúltimo mail"),
     (7, "el último mail"),
 ])
 def test_cada_contacto_dice_algo_distinto(numero, esperado):
@@ -315,3 +317,18 @@ def test_todos_los_contactos_llevan_baja_y_firma():
         assert "https://crm/baja/tok" in texto, f"contacto {numero} sin baja en el texto"
         assert "+598 97 250 713" in html, f"contacto {numero} sin firma"
         assert enviar.call_args.kwargs["headers"]["List-Unsubscribe-Post"] ==             "List-Unsubscribe=One-Click"
+
+
+def test_los_siete_cuerpos_son_todos_distintos():
+    """La propiedad de fondo, no frase por frase: ningun contacto puede leer
+    igual a otro. Tres mails identicos a la misma persona (aunque sea con
+    meses de diferencia) delatan la maquina peor que repetir un argumento
+    de venta."""
+    cuerpos = []
+    for numero in range(1, 8):
+        with _capturar() as enviar:
+            send_meta_lead_reminder("lead@ejemplo.com", "RP Estudio",
+                                    "automatizaciones", "https://crm/baja/x", numero)
+        cuerpos.append(enviar.call_args.args[2])
+
+    assert len(set(cuerpos)) == 7, "dos contactos mandaron exactamente el mismo cuerpo"
