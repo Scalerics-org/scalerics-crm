@@ -13,12 +13,20 @@ actualiza para el deploy que reemplaza ese mail único por la secuencia de 7
 contactos, hecho en la rama `secuencia-recordatorios`. El interruptor está
 confirmado en `on` en producción (verificado el 19-8-2026, junto con que
 `META_NOTIFY_OVERRIDE` no está seteado), así que este deploy no es un primer
-encendido: el paso 0.c lo apaga temporalmente antes de deployar, para que la
-migración y los pasos de verificación (3b y 4 a 7) corran con la máquina
-quieta, y el paso 8 lo vuelve a prender al final.
+encendido: el paso 2b lo apaga temporalmente — **después** de la guarda del
+paso 1 y del backup del paso 2, nunca antes, para que ningún reinicio caiga
+sobre esas dos protecciones sin haberlas corrido — para que los pasos que
+dependen del cupo (3b, 6 y 7) corran con la máquina quieta; el paso 8 lo
+vuelve a prender al final.
 
 Los pasos van en orden y cada uno tiene una condición de corte. Si alguno no da
-lo esperado, **parar ahí** — ninguno de los siguientes lo arregla.
+lo esperado, **parar ahí** — ninguno de los siguientes lo arregla. Si parás en
+cualquier punto entre el paso 2b y el 8, la automatización queda **apagada**
+en producción de forma silenciosa: no hay ningún aviso más que este párrafo.
+Antes de dejarlo así por hoy, decidí si es intencional; si no lo es, dejá
+anotado en algún lado que hace falta volver a este runbook para terminarlo —
+si no, nadie se entera de que dejó de mandar recordatorios hasta que alguien
+lo note por otro lado.
 
 ---
 
@@ -50,31 +58,7 @@ antes en otro proyecto, no es hipotético— ahí se pierde también la garantí
 de "no repetir contacto", porque cada volumen tiene su propia tabla
 `meta_reminders` sin que la otra se entere.
 
-**c) Apagar el interruptor antes de deployar.**
-
-```bash
-flyctl secrets list -a scalerics-crm | grep META_RECORDATORIOS
-```
-
-Confirmado en producción: desde el 18-8-2026 está en `on`, mandando mails
-reales todos los días (`META_NOTIFY_OVERRIDE` no está seteado). Por eso el
-deploy del paso 3 no se puede hacer con el interruptor prendido: 180
-segundos después de ese boot sale una tanda real con la secuencia nueva,
-antes de que corra un solo paso de verificación (3b, 6, 7), y esos pasos
-necesitan la máquina quieta para funcionar (ver el aviso en cada uno). La
-única mitigación es apagarlo ahora, dejarlo así durante toda la
-verificación, y volver a prenderlo recién en el paso 8:
-
-```bash
-flyctl secrets unset META_RECORDATORIOS -a scalerics-crm
-```
-
-Esto también reinicia la máquina, igual que `secrets set` — nada sale
-mientras quede así. Si el comando de arriba ya mostraba que estaba apagado
-(otro ambiente, o alguien lo bajó a mano), saltear este `unset`: fallaría
-porque no hay nada que sacar.
-
-**d) La secuencia son 7 contactos repartidos en un año, no uno.**
+**c) La secuencia son 7 contactos repartidos en un año, no uno.**
 
 | Contacto | Días desde el primer envío | Nota |
 |----------|-----------------------------|------|
@@ -99,7 +83,7 @@ están en la secuencia) y contactos nuevos, y los seguimientos van primero.
 Un día con backlog de leads nuevos puede terminar sin mandar ningún contacto
 1 si el cupo se lo llevan los seguimientos.
 
-**e) Si un lead contesta y nadie lo mueve de `sin_contactar`, sigue en la
+**d) Si un lead contesta y nadie lo mueve de `sin_contactar`, sigue en la
 secuencia.** El único corte por respuesta es el `crm_status`: mientras siga
 en `sin_contactar` va a seguir recibiendo los 7 contactos aunque haya
 contestado el primero. Es el modo de falla más probable de todo esto y la
@@ -144,6 +128,38 @@ compara en el paso 3b.
 flyctl ssh console -a scalerics-crm -C "python -c \"import sqlite3;c=sqlite3.connect('/data/leads.db');print(c.execute('SELECT COUNT(*) FROM meta_reminders').fetchone()[0])\""
 ```
 
+## 2b. Apagar el interruptor antes de deployar
+
+Recién ahora, con la guarda del paso 1 confirmada y el backup del paso 2 ya
+hecho, es seguro tocar el interruptor. Hacerlo antes reiniciaría la máquina
+sin esas dos protecciones puestas: si `start.sh` fuera a pisar la base (paso
+1) o si algo saliera mal antes de tener el backup (paso 2), un reinicio de
+este paso no puede ser el primero en pasar.
+
+```bash
+flyctl secrets list -a scalerics-crm | grep META_RECORDATORIOS
+```
+
+Confirmado en producción: desde el 18-8-2026 está en `on`, mandando mails
+reales todos los días (`META_NOTIFY_OVERRIDE` no está seteado). El deploy del
+paso 3 no se puede hacer con el interruptor prendido: 180 segundos después de
+ese boot sale una tanda real con la secuencia nueva, antes de que corra un
+solo paso de verificación. De los pasos que siguen, **3b, 6 y 7** necesitan la
+máquina quieta porque dependen del cupo o de que no salga una tanda en
+paralelo; **4 y 5 no** — no mandan mail ni dependen del cupo, así que da igual
+si corren con el interruptor prendido o apagado. La única mitigación para
+3b/6/7 es apagarlo ahora, dejarlo así durante toda la verificación, y volver a
+prenderlo recién en el paso 8:
+
+```bash
+flyctl secrets unset META_RECORDATORIOS -a scalerics-crm
+```
+
+Esto también reinicia la máquina, igual que `secrets set` — nada sale
+mientras quede así. Si el comando de arriba ya mostraba que estaba apagado
+(otro ambiente, o alguien lo bajó a mano), saltear este `unset`: fallaría
+porque no hay nada que sacar.
+
 ## 3. Deploy
 
 ```bash
@@ -157,7 +173,7 @@ en cada fila existente (conservan su `id`, su `token` y su `sent_at`
 originales). No hay forma de correrla a mano ni de saltearla — el deploy la
 dispara sola, una sola vez.
 
-El interruptor quedó apagado en el paso 0.c, así que el job no arranca
+El interruptor quedó apagado en el paso 2b, así que el job no arranca
 todavía — recién lo hace en el paso 8. Comparar la imagen del log propio
 contra `flyctl status`: si no coinciden, otra sesión deployó encima — no
 seguir.
@@ -171,7 +187,7 @@ flyctl ssh console -a scalerics-crm -C "python -c \"import sqlite3;c=sqlite3.con
 ```
 
 Esperado: la misma cantidad de filas que contaste en el paso 2, y todas con
-`numero=1`. Con el interruptor apagado desde el paso 0.c no debería haber
+`numero=1`. Con el interruptor apagado desde el paso 2b no debería haber
 salido ninguna tanda entre el deploy y este chequeo, así que el número tiene
 que cerrar exacto. Si por algún motivo el interruptor seguía encendido en
 este punto, puede haber hasta 15 filas de más —la tanda automática de 180
@@ -182,7 +198,7 @@ Unos días después, con la secuencia ya corriendo, el mismo comando tiene que
 mostrar varios números: el 1 sigue siendo mayoría (es el que reciben los
 leads nuevos, hasta 15 por día) pero van a empezar a aparecer filas con
 `numero=2` a partir del décimo día desde el deploy (contacto 1 + 10 días, ver
-la tabla del paso 0.d). Un número que no debería estar todavía —por ejemplo
+la tabla del paso 0.c). Un número que no debería estar todavía —por ejemplo
 un `numero=2` al día siguiente del deploy, o un `numero=4` antes de que pasen
 115 días desde el primer contacto de ese lead puntual— es señal de un reloj
 desincronizado en la máquina, de una fila migrada con un `sent_at` corrido, o
@@ -242,37 +258,69 @@ Después de verdad, sin `--dry-run`, con la misma lectura de arriba.
 
 ## 6. Dry-run: ver a quién le tocaría hoy
 
-Corré esto con el interruptor todavía apagado (paso 0.c). `enviar_recordatorios`
-calcula el cupo disponible **antes** de mirar `--dry-run`
-(`services/meta_reminders.py:295-302`): si `enviados_ultimas_24h` ya llegó a
-15, devuelve `{'candidatos': 0, ...}` sin listar nada, con o sin dry-run. Con
-el interruptor encendido, la tanda automática que dispara el paso 3 (180
-segundos después del boot) se come ese cupo antes de que este paso llegue a
-correr — por eso hace falta la máquina quieta.
+**Precondición: que haya cupo libre en la ventana de 24 horas — apagar el
+interruptor (paso 2b) no alcanza para garantizarlo.** `enviar_recordatorios`
+calcula `cupo = 15 - enviados_ultimas_24h` y corta con `{'candidatos': 0,
+...}` **antes** de mirar `--dry-run` (`services/meta_reminders.py:295-302`;
+el `if dry_run` recién aparece en `:326`). `enviados_ultimas_24h` cuenta
+filas de `meta_reminders` con `sent_at` en las últimas 24 horas sin importar
+si el interruptor está prendido ahora mismo: la automatización viene
+mandando una tanda real cada 24 horas desde el 18-8-2026, con backlog de
+sobra (unos 144 leads todavía elegibles), así que en la mayor parte del día
+ya hay 15 filas recientes puestas por la tanda anterior y el cupo real es 0.
+
+Para chequearlo (informativo, no hace falta para seguir):
 
 ```bash
-flyctl ssh console -a scalerics-crm -C "cd /app && python -m services.meta_reminders /data/leads.db --dry-run"
+flyctl ssh console -a scalerics-crm -C "python -c \"import sqlite3;c=sqlite3.connect('/data/leads.db');print('ultimas_24h:',c.execute('SELECT COUNT(*) FROM meta_reminders WHERE sent_at >= datetime(?, ?)', ('now','-1 day')).fetchone()[0]);print('ultimo_envio:',c.execute('SELECT MAX(sent_at) FROM meta_reminders').fetchone()[0])\""
 ```
 
-No escribe ni manda nada. Lista los candidatos de hoy (hasta 15), cada uno
-con su `numero` de contacto — los seguimientos van primero, así que puede
-haber alguno con `numero` mayor a 1 mezclado con los contactos nuevos. Mirar
-que sean leads plausibles y que los mails tengan cara de mails.
+Si `ultimas_24h` da 15, el cupo real es 0 y recién se libera unas 24 horas
+después de `ultimo_envio` (cada tanda manda sus hasta 15 mails en unos
+segundos, así que esa hora alcanza como aproximación). Esperar eso no es
+práctico en medio de un deploy, así que el remedio de este paso es correr
+contra una copia con esas filas recientes borradas:
 
-Si aun así imprime `{'candidatos': 0, ...}` con el interruptor apagado, es
-porque ya salió una tanda real más temprano ese mismo día (antes de empezar
-este procedimiento) y la ventana de 24 horas todavía la cuenta — no es una
-falla de este paso, pero sí conviene entender de dónde salió antes de
-seguir.
+```bash
+flyctl ssh console -a scalerics-crm
+cp /data/leads.db /data/prueba-dry.db
+python -c "import sqlite3;c=sqlite3.connect('/data/prueba-dry.db');c.execute('DELETE FROM meta_reminders WHERE sent_at >= datetime(?, ?)', ('now','-1 day'));c.commit()"
+cd /app && python -m services.meta_reminders /data/prueba-dry.db --dry-run
+rm /data/prueba-dry.db
+```
+
+Es legítimo porque `prueba-dry.db` se borra al final y nunca se escribe
+sobre `/data/leads.db`: no libera cupo real, solo el de la copia
+descartable. Pero ojo con lo que estás mirando: al borrar esas filas en la
+copia, algún lead que en la base real ya recibió su contacto más reciente
+hace pocas horas puede reaparecer acá como candidato "nuevo". La lista sirve
+para chequear que la selección y el armado de los mails funcionan (leads
+plausibles, `numero` correcto, mails con cara de mails) — no para predecir
+el resultado exacto de la próxima tanda real.
+
+No escribe ni manda nada. Lista los candidatos (hasta 15), cada uno con su
+`numero` de contacto — los seguimientos van primero, así que puede haber
+alguno con `numero` mayor a 1 mezclado con los contactos nuevos.
+
+**Condición de corte:** si aun con la copia liberada la lista sale vacía, no
+sigas — revisá `_FILTRO_LEAD_ELEGIBLE` (`crm_status`, `email`) contra la base
+real antes de continuar; puede ser que hoy no queden leads elegibles, y ahí
+conviene decidir con Juan si seguir igual.
 
 ## 7. Mail de prueba — **contra una copia, no contra la base viva**
 
-Corré esto también con el interruptor apagado (paso 0.c). No es solo por
-usar una copia de la base: si el interruptor siguiera encendido, la tanda
-automática del paso 3 podría salir en paralelo mientras corrés esto a mano,
-y las dos corridas leen `enviados_ultimas_24h` sin coordinarse entre sí — el
-mismo riesgo de cupo no reservado del paso 0.b, aplicado a este momento
-puntual.
+Corré esto con el interruptor apagado (paso 2b). No es solo por usar una
+copia de la base: si el interruptor siguiera encendido, la tanda automática
+del paso 3 podría salir en paralelo mientras corrés esto a mano, y las dos
+corridas leen `enviados_ultimas_24h` sin coordinarse entre sí — el mismo
+riesgo de cupo no reservado del paso 0.b, aplicado a este momento puntual.
+
+**Además, y aunque el interruptor esté apagado: sin cupo libre no sale
+nada.** Es la misma precondición del paso 6 — la automatización viene
+mandando una tanda real cada 24 horas desde el 18-8-2026, así que buena parte
+del día el cupo real ya está en 0. El remedio es el mismo: liberar el cupo
+**en la copia**, nunca en `/data/leads.db` (ver el paso 6 para la explicación
+completa y el chequeo).
 
 `META_NOTIFY_OVERRIDE` redirige el destinatario, pero **igual registra el
 envío** en `meta_reminders` con su `numero` correspondiente. Si se corre
@@ -283,15 +331,27 @@ particular queda salteado para siempre — el lead va a seguir recibiendo los
 contactos siguientes en la fecha que le toque, contada desde ese envío falso,
 pero nunca el que se probó. Con hasta 15 leads por corrida, son hasta 15
 leads reales con un hueco permanente en su secuencia. Por eso va sobre una
-copia:
+copia, con el cupo de las últimas 24 horas liberado en esa misma copia:
 
 ```bash
 flyctl ssh console -a scalerics-crm
 cp /data/leads.db /data/prueba.db
+python -c "import sqlite3;c=sqlite3.connect('/data/prueba.db');c.execute('DELETE FROM meta_reminders WHERE sent_at >= datetime(?, ?)', ('now','-1 day'));c.commit()"
 cd /app && META_NOTIFY_OVERRIDE=juantomasetti240@gmail.com \
   python -m services.meta_reminders /data/prueba.db
 rm /data/prueba.db
 ```
+
+El `DELETE` es el mismo truco del paso 6: borra, solo en la copia, las filas
+con `sent_at` de las últimas 24 horas, para no depender de cuándo salió la
+última tanda real. Por eso el lead que reciba el mail de prueba puede no ser
+el que le tocaría de verdad hoy — lo que valida esto es que el camino
+completo (selección, armado del mail, registro, envío) funciona, no cuál
+lead puntual sale.
+
+**Condición de corte:** si con el `DELETE` ya aplicado el comando de arriba
+sigue sin mandar nada (revisá el log en la consola), no sigas a la revisión
+de Gmail — no hay nada que revisar.
 
 En Gmail, revisar **en este orden**:
 
@@ -315,10 +375,16 @@ verificado hace días. Si el mail cae en Promociones, es el primer sospechoso.
 flyctl secrets set META_RECORDATORIOS=on -a scalerics-crm
 ```
 
-**Esto reinicia la máquina y la primera tanda de 15 mails reales sale ~3
-minutos después, ya con la secuencia nueva.** Es el punto de no retorno de
-este deploy: hasta acá, con el interruptor apagado desde el paso 0.c, no
-salió nada; a partir de acá vuelve a haber correo saliente a terceros.
+Esto reinicia la máquina, y 180 segundos después arranca el hilo con la
+secuencia nueva. **Si todavía queda cupo en la ventana de 24 horas, manda
+hasta 15 mails reales en ese momento.** Si el cupo ya está en 0 —por ejemplo
+si la última tanda real salió hace pocas horas, antes de empezar este
+procedimiento; chequealo con el comando del paso 6— esa primera corrida no
+manda nada y espera al día siguiente, que es el comportamiento normal, no
+una falla. De cualquier manera, este es el punto de no retorno de este
+deploy: hasta acá, con el interruptor apagado desde el paso 2b, no podía
+salir nada; a partir de acá la automatización vuelve a estar en marcha y
+puede mandar correo real a terceros en cualquier momento.
 
 ## 9. El día que sale una tanda, no tocar nada más
 
@@ -339,7 +405,7 @@ dominio nuevo hace más daño a la reputación que las quejas.
 Con 174 elegibles a 15 por día, el backfill del contacto 1 se drena en unos 12
 días **si nada más compite por el cupo**. En la práctica no va a ser así: a
 partir del décimo día empiezan a aparecer seguimientos (contacto 2), y como
-`leads_a_seguir` va primero (paso 0.d), cada seguimiento le come un lugar al
+`leads_a_seguir` va primero (paso 0.c), cada seguimiento le come un lugar al
 backfill. El backlog real tarda más de 12 días en vaciarse — es esperado, no
 hay que salir a apurarlo subiendo el tope.
 
@@ -367,5 +433,5 @@ se pierden los tokens de baja de los contactos anteriores que ya se
 mandaron de verdad, y esos links quedan rotos en mails que la gente ya tiene
 en su bandeja.
 
-**Un lead que ya contestó sigue recibiendo la secuencia:** ver el paso 0.e —
+**Un lead que ya contestó sigue recibiendo la secuencia:** ver el paso 0.d —
 no es un bug, es que nadie lo movió de `sin_contactar` en el CRM.
