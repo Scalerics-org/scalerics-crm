@@ -199,6 +199,30 @@ function crearRepo(db) {
     reprogramarJob: (id, runAtIso) => stmt.reprogramarJob.run(runAtIso, id),
     cancelarJobs: (leadId, tipo) => stmt.cancelarJobs.run(leadId, tipo),
 
+    /**
+     * Marca un entrante como visto.
+     *
+     * @returns {boolean} true si es la primera vez. Con false hay que
+     *   descartarlo: WhatsApp reenvia lo no confirmado cuando el bot reconecta,
+     *   y contestar dos veces el mismo mensaje se ve del otro lado como dos
+     *   respuestas desordenadas al mismo "hola".
+     *
+     * El INSERT es la operacion atomica que decide: si otra tanda entro primero,
+     * este falla por clave duplicada y devuelve false. Preguntar y despues
+     * insertar dejaria una ventana entre las dos.
+     */
+    entranteEsNuevo(providerMsgId) {
+      if (!providerMsgId) return true;
+      const r = db.prepare('INSERT OR IGNORE INTO inbound_seen (provider_msg_id) VALUES (?)')
+        .run(String(providerMsgId));
+      return r.changes > 0;
+    },
+
+    /** Los ids viejos no sirven para nada: WhatsApp no reenvia de hace dias. */
+    limpiarEntrantesVistos(dias = 3) {
+      return db.prepare(`DELETE FROM inbound_seen WHERE seen_at < datetime('now', '-${Number(dias)} days')`).run().changes;
+    },
+
     registrarEnvio: (tel, esPrimero) => stmt.insertSendLog.run(tel, esPrimero ? 1 : 0),
     enviosDesde: (desdeIso) => stmt.contarEnviosDesde.get(desdeIso).n,
     nuevosDesde: (desdeIso) => stmt.contarNuevosDesde.get(desdeIso).n,

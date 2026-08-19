@@ -140,13 +140,23 @@ function construir(cfg, { logger, ahora = () => new Date(), openai: clienteIA = 
     esperaMs: cfg.AGRUPAR_ENTRANTES_MS,
     logger: log,
   });
-  proveedor.alRecibir((m) => agrupador.recibir(m));
+  proveedor.alRecibir((m) => {
+    // WhatsApp reenvia lo no confirmado cuando el bot reconecta. Sin este
+    // filtro, una caida a mitad de turno hace que el lead reciba dos respuestas
+    // al mismo mensaje, y desordenadas.
+    if (!repo.entranteEsNuevo(m.id)) {
+      log.debug({ from: m.from, id: m.id }, 'entrante repetido, se descarta');
+      return;
+    }
+    agrupador.recibir(m);
+  });
 
   // Audios, fotos y archivos. No se puede leer el contenido, pero contestar
   // algo es mejor que el silencio. Se avisa una vez cada tanto y no en cada
   // mensaje: quien manda cuatro audios seguidos no necesita cuatro disculpas.
   const avisadoSinTexto = new Map();
-  proveedor.alRecibirSinTexto?.(async ({ from, tipo, nombre, segundos, descargar }) => {
+  proveedor.alRecibirSinTexto?.(async ({ from, tipo, nombre, segundos, descargar, id }) => {
+    if (!repo.entranteEsNuevo(id)) return;
     const lead = repo.leadPorTelefono(from);
     // Al que se dio de baja o esta con una persona no se le escribe igual.
     if (lead?.opt_out || lead?.human_requested) return;

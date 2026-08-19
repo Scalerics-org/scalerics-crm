@@ -297,7 +297,9 @@ test('con todos los datos le muestra horarios reales y agenda el que elige', asy
   // contra que validarlo. Que se excluyan los ocupados se prueba arriba, con el
   // reloj fijo: aca el dia que elige depende de la hora real de la corrida.
   const guardados = JSON.parse(s.repo.leadPorTelefono('59899123456').horarios_ofrecidos);
-  assert.ok(guardados.length >= 3, 'se le ofrecieron varios');
+  // Cuantos son depende de la hora de la corrida: a las 15 ya entra uno solo.
+  // El conteo exacto se prueba arriba, con el reloj fijo.
+  assert.ok(guardados.length >= 1, 'se le ofrecio al menos uno');
   assert.ok(guardados.every((x) => !Number.isNaN(Date.parse(x))), 'son fechas validas');
 });
 

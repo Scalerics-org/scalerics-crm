@@ -121,3 +121,58 @@ test('el bot contesta una sola vez a una tanda de fragmentos', async () => {
   assert.equal(entrantes.length, 1);
   assert.match(entrantes[0].body, /hola\nnecesito un ecommerce\npara mi tienda/);
 });
+
+// ── reentregas de WhatsApp ───────────────────────────────────────────────────
+
+test('el mismo mensaje reenviado no se contesta dos veces', async () => {
+  // Paso en produccion: se cayo la conexion a mitad de un turno, WhatsApp
+  // reenvio el "hola" al reconectar, y el lead recibio dos respuestas — con la
+  // segunda llegando despues de la primera, sin sentido en la conversacion.
+  const s = await montar({ AGRUPAR_ENTRANTES_MS: '15' });
+  const { crearTextos } = require('../src/templates/funnel');
+
+  s.proveedor.simularEntrante({ from: '59899123456', texto: 'hola', id: 'wamid.ABC' });
+  await s.agrupador.vaciar();
+  await s.cola.vacia();
+
+  // WhatsApp lo reenvia con el mismo id al reconectar.
+  s.proveedor.simularEntrante({ from: '59899123456', texto: 'hola', id: 'wamid.ABC' });
+  await s.agrupador.vaciar();
+  await s.cola.vacia();
+
+  const respuestas = s.proveedor.getEnviados()
+    .filter((e) => e.to === '59899123456' && e.texto !== crearTextos().BIENVENIDA);
+  assert.equal(respuestas.length, 1, 'una sola respuesta');
+});
+
+test('dos mensajes distintos si se atienden los dos', async () => {
+  const s = await montar({ AGRUPAR_ENTRANTES_MS: '15' });
+  const { crearTextos } = require('../src/templates/funnel');
+
+  s.proveedor.simularEntrante({ from: '59899123456', texto: 'hola', id: 'wamid.A' });
+  await s.agrupador.vaciar();
+  await s.cola.vacia();
+  s.proveedor.simularEntrante({ from: '59899123456', texto: 'tengo una panaderia', id: 'wamid.B' });
+  await s.agrupador.vaciar();
+  await s.cola.vacia();
+
+  const respuestas = s.proveedor.getEnviados()
+    .filter((e) => e.to === '59899123456' && e.texto !== crearTextos().BIENVENIDA);
+  assert.equal(respuestas.length, 2);
+});
+
+test('un entrante sin id no se descarta', async () => {
+  // El mock y algunos tipos de mensaje no traen id. Perderlos seria peor que
+  // arriesgarse a un duplicado.
+  const s = await montar({ AGRUPAR_ENTRANTES_MS: '15' });
+  assert.equal(s.repo.entranteEsNuevo(null), true);
+  assert.equal(s.repo.entranteEsNuevo(''), true);
+});
+
+test('los ids viejos se limpian', async () => {
+  const s = await montar();
+  s.repo.entranteEsNuevo('wamid.viejo');
+  s.repo.db.prepare("UPDATE inbound_seen SET seen_at = datetime('now','-10 days')").run();
+  assert.equal(s.repo.limpiarEntrantesVistos(3), 1);
+  assert.equal(s.repo.entranteEsNuevo('wamid.viejo'), true, 'despues de limpiar vuelve a ser nuevo');
+});
