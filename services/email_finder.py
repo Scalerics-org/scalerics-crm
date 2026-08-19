@@ -8,7 +8,7 @@ quemada sin ninguna chance de venta.
 
 import logging
 import re
-from urllib.parse import unquote
+from urllib.parse import unquote, urljoin, urlsplit, urlunsplit
 
 from database import _connect, update_business
 
@@ -105,7 +105,8 @@ def extraer_mails(html: str) -> list[str]:
 
 # En que paginas buscar, en orden. La home primero porque muchos comercios
 # chicos ponen el mail en el pie de todas las paginas.
-RUTAS_CONTACTO = ["", "/contacto", "/contact", "/contactanos", "/nosotros"]
+RUTAS_CONTACTO = ["", "/contacto", "/contacto.html", "/contactenos", "/contact",
+                  "/contactanos", "/es/contacto", "/nosotros", "/quienes-somos"]
 
 
 def buscar_mail_del_sitio(abrir, website: str) -> str | None:
@@ -118,12 +119,19 @@ def buscar_mail_del_sitio(abrir, website: str) -> str | None:
     if not website:
         return None
     base = website.strip()
-    if not base.startswith("http"):
+    if not re.match(r"^https?://", base, re.I):
         base = "https://" + base
-    base = base.rstrip("/")
+    partes = urlsplit(base)
+    esquema = partes.scheme.lower()
+    # La home se visita tal cual vino, con su query: el campo "sitio web" de
+    # una ficha de Google My Business muy seguido trae ?utm_source=gmb porque
+    # el dueno lo pego asi. Las rutas de contacto cuelgan del origen, no de esa
+    # URL: concatenarlas daba .../?utm_source=gmb/contacto, que es un 404.
+    home = urlunsplit((esquema, partes.netloc, partes.path, partes.query, ""))
+    origen = urlunsplit((esquema, partes.netloc, "", "", ""))
 
     for ruta in RUTAS_CONTACTO:
-        html = abrir(base + ruta)
+        html = abrir(home if ruta == "" else urljoin(origen + "/", ruta.lstrip("/")))
         if not html:
             continue
         mails = extraer_mails(html)

@@ -154,6 +154,27 @@ def test_le_agrega_el_esquema_al_dominio_pelado():
     assert buscar_mail_del_sitio(abrir, "inmo.com.uy") == "info@inmo.com.uy"
 
 
+def test_las_rutas_de_contacto_cuelgan_del_origen_y_no_de_la_query():
+    """El campo "sitio web" de una ficha de Google My Business muy seguido trae
+    ?utm_source=gmb porque el dueno lo pego asi. Concatenar la ruta despues de
+    la query daba un 404 y el job perdia las ocho rutas de contacto."""
+    abrir = _abrir_falso({
+        "https://www.inmo.com.uy/?utm_source=gmb": "<p>Bienvenidos</p>",
+        "https://www.inmo.com.uy/contacto": '<a href="mailto:hola@inmo.com.uy">Mail</a>',
+    })
+    assert buscar_mail_del_sitio(
+        abrir, "https://www.inmo.com.uy/?utm_source=gmb") == "hola@inmo.com.uy"
+
+
+def test_el_esquema_en_mayusculas_no_produce_una_url_imposible():
+    """`HTTPS://Inmo.com.uy` no empieza con "http" en minusculas, asi que se le
+    pegaba otro esquema adelante y la fila no abria nunca."""
+    abrir = _abrir_falso({
+        "https://Inmo.com.uy": '<a href="mailto:info@inmo.com.uy">Mail</a>',
+    })
+    assert buscar_mail_del_sitio(abrir, "HTTPS://Inmo.com.uy") == "info@inmo.com.uy"
+
+
 def test_sitio_que_no_abre_no_revienta():
     """Un dominio caido es lo normal en un padron raspado, no una excepcion."""
     abrir = _abrir_falso({})
