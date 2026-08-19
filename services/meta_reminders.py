@@ -350,8 +350,9 @@ def enviar_recordatorios(db_path: str, base_url: str, dry_run: bool = False) -> 
             )
             destino = override
         estado = send_meta_lead_reminder(
-            destino, lead["name"], lead["negocio"], lead["rubro"],
+            destino, lead["negocio"], lead["rubro"],
             f"{base_url.rstrip('/')}/baja/{token}",
+            lead.get("numero", 1),
         )
         ya_hubo_intento = True
         if estado == "ok":

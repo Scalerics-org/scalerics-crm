@@ -63,7 +63,7 @@ def test_send_sigue_devolviendo_bool_para_las_llamadas_de_siempre(monkeypatch, e
 def test_el_mail_sale_de_contacto_y_lleva_baja():
     with _capturar() as enviar:
         send_meta_lead_reminder(
-            "lead@ejemplo.com", "Romyna", "RP Estudio Juridico",
+            "lead@ejemplo.com", "RP Estudio Juridico",
             "una nueva pagina web", "https://crm/baja/abc123",
         )
 
@@ -81,7 +81,7 @@ def test_el_mail_sale_de_contacto_y_lleva_baja():
 def test_personaliza_con_lo_que_pidio_el_lead():
     with _capturar() as enviar:
         send_meta_lead_reminder(
-            "lead@ejemplo.com", "Romyna", "RP Estudio Juridico",
+            "lead@ejemplo.com", "RP Estudio Juridico",
             "una nueva pagina web", "https://crm/baja/x",
         )
 
@@ -91,7 +91,7 @@ def test_personaliza_con_lo_que_pidio_el_lead():
 
 
 def _html_del_recordatorio(**kw):
-    datos = dict(to_email="lead@ejemplo.com", lead_name="Romyna",
+    datos = dict(to_email="lead@ejemplo.com",
                  negocio="Zsoul", rubro="una nueva pagina web",
                  unsub_url="https://crm/baja/x")
     datos.update(kw)
@@ -178,22 +178,18 @@ def test_el_texto_que_ve_el_lector_lleva_tildes():
     assert "Agenda " not in html, "sin tilde queda imperativo de otra persona"
 
 
-def test_el_nombre_del_formulario_no_se_usa_en_ningun_lado():
-    """En la base real ese campo trae el nombre del negocio o basura
-    ('Petshop | Peluqueria canina | Mascotas', 'Ji lo lo iwwii8i lo lo lo').
-    Saludar con eso queda peor que no saludar: el asunto y el cuerpo salen del
+def test_el_asunto_sale_del_negocio_no_de_un_nombre():
+    """La funcion ya no recibe el campo `name` del formulario: en la base
+    real trae el nombre del negocio o basura ('Petshop | Peluqueria canina |
+    Mascotas', 'Ji lo lo iwwii8i lo lo lo'). El asunto y el cuerpo salen del
     negocio, que si viene limpio."""
-    llamada = _html_del_recordatorio(
-        lead_name="Petshop | Peluquería canina | Pet Friendly | Mascotas",
-        negocio="Animal Petshop")
+    llamada = _html_del_recordatorio(negocio="Animal Petshop")
 
     assert llamada.args[1] == "Sobre tu consulta para Animal Petshop"
-    assert "Peluquería canina" not in llamada.args[2]
-    assert "Petshop |" not in llamada.args[2]
 
 
 def test_sin_negocio_el_asunto_no_queda_colgado():
-    llamada = _html_del_recordatorio(lead_name="Lo que sea", negocio="")
+    llamada = _html_del_recordatorio(negocio="")
 
     assert llamada.args[1] == "Sobre tu consulta a Scalerics"
 
@@ -201,7 +197,7 @@ def test_sin_negocio_el_asunto_no_queda_colgado():
 def test_escapa_la_entrada_del_formulario():
     with _capturar() as enviar:
         send_meta_lead_reminder(
-            "lead@ejemplo.com", "Un Nombre", "<script>alert(1)</script>Neg<ocio>",
+            "lead@ejemplo.com", "<script>alert(1)</script>Neg<ocio>",
             "web", "https://crm/baja/x",
         )
 
@@ -215,7 +211,7 @@ def test_el_recordatorio_lleva_version_en_texto_plano():
     Promociones. El primer envio de prueba cayo justo ahi."""
     with _capturar() as enviar:
         send_meta_lead_reminder(
-            "lead@ejemplo.com", "Un Nombre", "RP Estudio",
+            "lead@ejemplo.com", "RP Estudio",
             "una_nueva_página_web", "https://crm/baja/tok",
         )
 
@@ -270,3 +266,52 @@ def test_el_membrete_es_el_unico_logo():
 
     assert html.count(_LOGO_FIRMA) == 1
     assert "<strong>Scalerics</strong><br>" in html, "la firma de abajo va en texto"
+
+
+# -- Secuencia: un texto por contacto -----------------------------------------
+
+@pytest.mark.parametrize("numero,esperado", [
+    (2, "hace unos días"),
+    (3, "por ahora lo dejamos acá"),
+    (4, "Pasó un tiempo"),
+    (7, "el último mail"),
+])
+def test_cada_contacto_dice_algo_distinto(numero, esperado):
+    with _capturar() as enviar:
+        send_meta_lead_reminder("lead@ejemplo.com", "RP Estudio",
+                                "una_nueva_página_web", "https://crm/baja/x",
+                                numero)
+
+    assert esperado in enviar.call_args.args[2]
+
+
+def test_el_primer_contacto_sigue_siendo_el_comercial():
+    with _capturar() as enviar:
+        send_meta_lead_reminder("lead@ejemplo.com", "RP Estudio",
+                                "crear_mi_ecommerce", "https://crm/baja/x", 1)
+
+    assert "Mercado Pago" in enviar.call_args.args[2]
+
+
+def test_el_septimo_avisa_que_es_el_ultimo():
+    """Tiene que cumplir lo que dice: despues de este el lead no vuelve a entrar."""
+    with _capturar() as enviar:
+        send_meta_lead_reminder("lead@ejemplo.com", "RP Estudio",
+                                "automatizaciones", "https://crm/baja/x", 7)
+
+    html = enviar.call_args.args[2]
+    assert "el último mail" in html
+    assert "no te escribimos más" in html.lower()
+
+
+def test_todos_los_contactos_llevan_baja_y_firma():
+    for numero in range(1, 8):
+        with _capturar() as enviar:
+            send_meta_lead_reminder("lead@ejemplo.com", "RP Estudio",
+                                    "automatizaciones", "https://crm/baja/tok", numero)
+        html = enviar.call_args.args[2]
+        texto = enviar.call_args.kwargs["text"]
+        assert "https://crm/baja/tok" in html, f"contacto {numero} sin link de baja"
+        assert "https://crm/baja/tok" in texto, f"contacto {numero} sin baja en el texto"
+        assert "+598 97 250 713" in html, f"contacto {numero} sin firma"
+        assert enviar.call_args.kwargs["headers"]["List-Unsubscribe-Post"] ==             "List-Unsubscribe=One-Click"

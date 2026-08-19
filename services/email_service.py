@@ -323,6 +323,9 @@ _REMITENTE_LEADS = "Scalerics <contacto@scalerics.com>"
 _CALENDLY = "https://calendly.com/scalerics/consultoriagratuita"
 _TELEFONO = "+598 97 250 713"
 
+# La secuencia tiene 7 contactos; el septimo es el ultimo de la vida del lead.
+_CONTACTO_FINAL = 7
+
 # Los cuatro valores que ofrece el formulario de Meta. Vienen como
 # 'crear_mi_ecommerce', y a veces ya con los guiones bajos cambiados por
 # espacios (leads_a_recordar los limpia): se normaliza para aceptar los dos.
@@ -381,8 +384,54 @@ def _parrafo_valor(rubro: str) -> str:
     return _PARRAFOS_VALOR.get(_clave_rubro(rubro), _PARRAFO_VALOR_GENERICO)
 
 
-def send_meta_lead_reminder(to_email: str, lead_name: str, negocio: str,
-                            rubro: str, unsub_url: str) -> str:
+# Un texto por contacto. Repetir el mismo parrafo comercial cada trimestre es
+# exactamente lo que hace que alguien marque spam, asi que del 2 en adelante los
+# mails son cortos y no vuelven a vender.
+def _cuerpo_por_contacto(numero: int, apertura: str, valor: str, negocio: str) -> tuple[str, list[str]]:
+    """Devuelve (asunto, [parrafos]) para el contacto `numero`.
+
+    `apertura` y `valor` ya vienen escapados por el llamador.
+    """
+    donde = f" para {negocio}" if negocio else ""
+    if numero <= 1:
+        return (f"Sobre tu consulta{donde}" if negocio else "Sobre tu consulta a Scalerics", [
+            "Hola,",
+            apertura,
+            valor,
+            "Agendá 30 minutos y salís de la llamada con precio y plazo cerrados.",
+        ])
+    if numero == 2:
+        return (f"Sobre tu consulta{donde}" if negocio else "Sobre tu consulta a Scalerics", [
+            "Hola,",
+            f"Te escribimos hace unos días{donde}. Te dejo el link de vuelta por si "
+            f"te quedó pendiente.",
+            "Si preferís, respondé este mail y coordinamos por acá.",
+        ])
+    if numero == 3:
+        return (f"Sobre tu consulta{donde}" if negocio else "Sobre tu consulta a Scalerics", [
+            "Hola,",
+            "No tuvimos novedades tuyas, así que por ahora lo dejamos acá.",
+            f"Si más adelante retomás el tema{donde}, escribinos y lo vemos.",
+        ])
+    if numero >= _CONTACTO_FINAL:
+        return (f"Último mail{donde}" if negocio else "Último mail de Scalerics", [
+            "Hola,",
+            "Este es el último mail que te mandamos: a partir de acá no te "
+            "escribimos más.",
+            f"Si en algún momento retomás el tema{donde}, el link para agendar "
+            f"queda acá abajo y podés escribirnos cuando quieras.",
+            "Gracias por el tiempo.",
+        ])
+    return (f"¿Retomamos lo{donde}?" if negocio else "¿Retomamos tu consulta?", [
+        "Hola,",
+        f"Pasó un tiempo desde que nos dejaste tus datos{donde}.",
+        "Si el tema volvió a estar sobre la mesa, en 30 minutos te decimos qué se "
+        "puede hacer, cuánto sale y en cuánto tiempo.",
+    ])
+
+
+def send_meta_lead_reminder(to_email: str, negocio: str, rubro: str,
+                            unsub_url: str, numero: int = 1) -> str:
     """Invita al lead a agendar una llamada. Sale de contacto@, no de crm@.
 
     Devuelve el tri-estado de `_send_estado` ("ok"/"fallo"/"desconocido"), no un
@@ -414,15 +463,27 @@ def send_meta_lead_reminder(to_email: str, lead_name: str, negocio: str,
         apertura_txt = apertura_esc = ("Dejaste tus datos para que hablemos de tu "
                                        "proyecto, y todavía estamos a tiempo de tomarlo.")
 
-    # Que hacemos, dicho para el rubro que pidio ESTE lead.
+    # Que hacemos, dicho para el rubro que pidio ESTE lead. Es fijo (no viene
+    # del formulario), asi que no hace falta escaparlo por separado para cada
+    # version: sirve igual para el HTML y para el texto plano.
     valor = _parrafo_valor(rubro_txt)
-    invitacion = "Agendá 30 minutos y salís de la llamada con precio y plazo cerrados."
+
+    # _cuerpo_por_contacto se llama dos veces: una con los valores escapados
+    # (para el HTML) y otra con los crudos (para el texto plano). El asunto
+    # real del mail sale de la version cruda: escapar negocio_esc metería
+    # entidades como &amp; en el subject, que ahi no tienen sentido.
+    _, parrafos_html = _cuerpo_por_contacto(numero, apertura_esc, valor, negocio_esc)
+    asunto, parrafos_texto = _cuerpo_por_contacto(numero, apertura_txt, valor, negocio_txt)
+    asunto = asunto.replace(chr(10), " ").replace(chr(13), " ")
 
     # Membrete arriba y firma en texto abajo: el mail tiene que verse de la
     # empresa sin caer en la tarjeta con boton de color, que es el molde de una
     # campana. Un solo logo, arriba: con el de la firma tambien, el nombre y el
     # telefono se pisaban cuando el cliente no cargaba las imagenes.
     estilo_p = "margin:0 0 16px;font-size:15px;line-height:1.6;color:#1a1a1a"
+    parrafos_render = "\n".join(
+        f'    <p style="{estilo_p}">{p}</p>' for p in parrafos_html
+    )
     cuerpo_html = f"""<!DOCTYPE html>
 <html lang="es">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
@@ -430,10 +491,7 @@ def send_meta_lead_reminder(to_email: str, lead_name: str, negocio: str,
   <div style="max-width:520px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
     <img src="{_LOGO_FIRMA}" alt="Scalerics" width="130"
          style="display:block;width:130px;height:auto;margin-bottom:24px">
-    <p style="{estilo_p}">Hola,</p>
-    <p style="{estilo_p}">{apertura_esc}</p>
-    <p style="{estilo_p}">{valor}</p>
-    <p style="{estilo_p}">{invitacion}</p>
+{parrafos_render}
     <p style="{estilo_p}">
       <a href="{_CALENDLY}" style="color:#0069a3">Agendar una llamada</a>
     </p>
@@ -451,16 +509,10 @@ def send_meta_lead_reminder(to_email: str, lead_name: str, negocio: str,
 </html>"""
 
     cuerpo_texto = (
-        f"Hola,\n\n{apertura_txt}\n\n{valor}\n\n{invitacion}\n{_CALENDLY}\n\n"
+        "\n\n".join(parrafos_texto) + f"\n{_CALENDLY}\n\n"
         f"Scalerics\n{_TELEFONO}\nhttps://scalerics.com\n\n"
         f"No quiero recibir más estos mails: {unsub_url}\n"
     )
-
-    if negocio_txt:
-        asunto = f"Sobre tu consulta para {negocio_txt}"
-    else:
-        asunto = "Sobre tu consulta a Scalerics"
-    asunto = asunto.replace(chr(10), " ").replace(chr(13), " ")
 
     return _send_estado(
         to_email, asunto, cuerpo_html,
