@@ -26,6 +26,7 @@ function crearCola({ proveedor, repo, cfg, logger, limites, ahora = () => new Da
 
   let esperandoVacio = [];
   let seq = 0;
+  let despertador = null;
 
   // Circuit breaker: si el proveedor empieza a fallar, se para en vez de
   // insistir. Reintentar en loop contra WhatsApp acelera el baneo.
@@ -41,6 +42,45 @@ function crearCola({ proveedor, repo, cfg, logger, limites, ahora = () => new Da
     return items.filter(
       (i) => (!i.noAntesDe || i.noAntesDe <= t) && (!estaPausada() || INTERNO.has(i.kind))
     );
+  }
+
+  /**
+   * Vuelve a arrancar la cola cuando le toque al mensaje reprogramado mas
+   * proximo.
+   *
+   * Sin esto un mensaje frenado —por el tope de envios, por el horario o por el
+   * circuit breaker— se queda quieto indefinidamente: el loop corta al no
+   * quedar nada que pueda salir AHORA y nadie lo vuelve a llamar. Salia recien
+   * cuando alguien encolaba otra cosa, y si no entraba ningun mensaje mas no
+   * salia nunca.
+   *
+   * Estuvo dormido todo este tiempo porque el tope por hora no frenaba nada
+   * —comparaba dos formatos de fecha distintos y contaba cero—, asi que casi
+   * nunca se reprogramaba nada. Al arreglar el contador quedo al descubierto.
+   */
+  function programarDespertar() {
+    if (despertador) {
+      clearTimeout(despertador);
+      despertador = null;
+    }
+    if (corriendo) return;
+
+    const momentos = items.map((i) => i.noAntesDe).filter(Boolean);
+    // Con la cola pausada, lo que no es interno espera a que cierre el breaker.
+    if (estaPausada() && items.some((i) => !INTERNO.has(i.kind))) momentos.push(pausadaHasta);
+    if (!momentos.length) return;
+
+    const cuando = Math.min(...momentos.map((d) => new Date(d).getTime()));
+    // El margen evita despertar justo en el filo y encontrarse con que todavia
+    // falta un milisegundo, que dejaria la cola dormida de nuevo.
+    const enMs = Math.max(cuando - ahora().getTime(), 0) + 250;
+
+    despertador = setTimeout(() => {
+      despertador = null;
+      loop().catch((e) => logger?.error({ err: String(e) }, 'loop de cola'));
+    }, enMs);
+    // Que un mensaje reprogramado no impida apagar el proceso.
+    despertador.unref?.();
   }
 
   function notificarVacio() {
@@ -70,7 +110,7 @@ function crearCola({ proveedor, repo, cfg, logger, limites, ahora = () => new Da
   async function procesar(item) {
     const esPrimerContacto = !repo.yaFueContactado(item.to);
 
-    await simularEscritura(proveedor, item.to, item.texto, cfg);
+    await simularEscritura(proveedor, item.to, item.texto, cfg, INTERNO.has(item.kind));
 
     const msgId = repo.registrarMensaje({
       lead_id: item.leadId ?? null,
@@ -151,6 +191,7 @@ function crearCola({ proveedor, repo, cfg, logger, limites, ahora = () => new Da
     } finally {
       corriendo = false;
       notificarVacio();
+      programarDespertar();
     }
   }
 
@@ -163,12 +204,15 @@ function crearCola({ proveedor, repo, cfg, logger, limites, ahora = () => new Da
     /**
      * Saca de la cola las respuestas a un lead que todavia no salieron.
      *
-     * Entre dos mensajes pasan de 12 a 45 segundos —eso es lo que hace que no
-     * parezca un bot— pero un lead que contesta rapido escribe de nuevo antes
-     * de que salga la respuesta anterior. Ahi la conversacion se desordena: el
-     * bot le pregunta el nombre del negocio despues de que ya se lo dijo,
-     * porque esa pregunta estaba escrita hace treinta segundos y esperando
-     * turno.
+     * Entre dos mensajes hay unos segundos de espera, y un lead que contesta
+     * rapido escribe de nuevo antes de que salga la respuesta anterior. Ahi la
+     * conversacion se desordena: el bot le pregunta el nombre del negocio
+     * despues de que ya se lo dijo, porque esa pregunta se escribio antes y
+     * estaba esperando turno.
+     *
+     * Al acortar las esperas esto protege menos que antes —hay menos cosas
+     * atrapadas en la cola para descartar— y por eso el agrupador de entrantes
+     * no puede bajar mucho mas: es la otra mitad de la misma defensa.
      *
      * La respuesta nueva la escribio el modelo viendo TODO el historial,
      * incluido el ultimo mensaje. La vieja quedo obsoleta en el momento en que
@@ -198,6 +242,8 @@ function crearCola({ proveedor, repo, cfg, logger, limites, ahora = () => new Da
 
     pendientes: () => items.length,
     reprogramados: () => items.filter((i) => i.reprogramado).length,
+    /** Si hay un reintento armado. Sin esto no habria como ver que no quedo dormida. */
+    tieneDespertador: () => Boolean(despertador),
     pausada: () => estaPausada(),
     /** Callback para avisar al AM cuando se abre el breaker. */
     onPausa(fn) { alPausar = fn; },

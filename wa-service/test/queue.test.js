@@ -63,6 +63,30 @@ test('el tope por hora frena, y lo que no sale se reprograma en vez de perderse'
 
   assert.equal(s.proveedor.getEnviados().length, 3, 'para al llegar al tope');
   assert.equal(s.cola.reprogramados(), 3, 'los otros esperan turno, no se descartan');
+  assert.ok(s.cola.tieneDespertador(), 'y alguien los va a despertar');
+});
+
+/**
+ * "Reprogramado" tiene que significar que sale despues, no que no sale.
+ *
+ * El loop corta cuando no queda nada que pueda salir AHORA. Un mensaje frenado
+ * se queda en la lista con `noAntesDe` en el futuro, y sin un reintento armado
+ * nadie lo vuelve a mirar: salia recien cuando alguien encolaba otra cosa, y si
+ * no entraba ningun mensaje mas se quedaba ahi para siempre.
+ *
+ * Paso desapercibido porque el tope por hora no frenaba nada —contaba cero por
+ * comparar dos formatos de fecha—, asi que casi nunca habia algo reprogramado.
+ */
+test('un mensaje frenado por el horario queda con reintento armado', async () => {
+  const domingo = new Date('2026-08-09T06:00:00Z');
+  const s = await montar({ BUSINESS_HOURS: '09:00-19:00', BUSINESS_DAYS: 'mon-sat' }, domingo);
+
+  s.cola.encolar({ to: LEAD_TEL, texto: 'hola de madrugada', kind: 'welcome' });
+  await s.cola.vacia();
+
+  assert.equal(s.proveedor.getEnviados().length, 0);
+  assert.equal(s.cola.pendientes(), 1, 'sigue en la cola');
+  assert.ok(s.cola.tieneDespertador(), 'y no quedo dormida esperando que alguien encole otra cosa');
 });
 
 test('fuera de horario el mensaje se reprograma, no se pierde', async () => {

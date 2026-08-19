@@ -63,18 +63,55 @@ const esquema = z.object({
   REMINDER_DAY_BEFORE_HOURS: z.coerce.number().nonnegative().default(24),
   REMINDER_MINUTES_BEFORE: z.coerce.number().nonnegative().default(30),
 
-  // La ficha al AM es contacto interno: sale casi sin demora.
-  DELAY_AM_MIN_MS: z.coerce.number().nonnegative().default(1000),
-  DELAY_AM_MAX_MS: z.coerce.number().nonnegative().default(3000),
+  /**
+   * Las esperas de la cola de salida.
+   *
+   * Venian calibradas para mandar en frio a listas de gente que no habia
+   * escrito: ahi la lentitud es proteccion. Hoy el bot SOLO contesta a quien
+   * escribe primero, y ese caso es al reves —el que pregunta esta esperando— y
+   * ademas es el que menos se parece a un bot spameando.
+   *
+   * Con los valores viejos, el primer mensaje de un lead tardaba de 30 a 90
+   * segundos en tener respuesta: la ficha al equipo salia adelante y entre
+   * mensaje y mensaje habia de 12 a 45 segundos. Nada de eso es la IA, que
+   * tarda alrededor de un segundo y medio.
+   *
+   * Lo que de verdad frena un baneo son los topes por hora y por dia de mas
+   * abajo, que se quedan como estan.
+   */
+  DELAY_AM_MIN_MS: z.coerce.number().nonnegative().default(0),
+  DELAY_AM_MAX_MS: z.coerce.number().nonnegative().default(500),
 
-  DELAY_WELCOME_MIN_MS: z.coerce.number().nonnegative().default(8000),
-  DELAY_WELCOME_MAX_MS: z.coerce.number().nonnegative().default(25000),
-  DELAY_BETWEEN_MIN_MS: z.coerce.number().nonnegative().default(12000),
-  DELAY_BETWEEN_MAX_MS: z.coerce.number().nonnegative().default(45000),
+  DELAY_WELCOME_MIN_MS: z.coerce.number().nonnegative().default(2000),
+  DELAY_WELCOME_MAX_MS: z.coerce.number().nonnegative().default(5000),
+  DELAY_BETWEEN_MIN_MS: z.coerce.number().nonnegative().default(2000),
+  DELAY_BETWEEN_MAX_MS: z.coerce.number().nonnegative().default(5000),
 
   // "escribiendo..." antes de cada mensaje. Se apaga solo en tests: sacarlo en
-  // produccion es justamente lo que hace que el envio parezca de bot.
+  // produccion es justamente lo que hace que el envio parezca de bot. Es,
+  // ademas, lo unico de todo esto que WhatsApp nombra como senial: le importa
+  // que el indicador exista, no cuanto dure.
   TYPING_ENABLED: booleanoDeEnv.default(true),
+
+  /**
+   * Cuanto dura el "escribiendo...".
+   *
+   * El techo era de 6 segundos, pero el factor aleatorio se aplica DESPUES de
+   * recortar, asi que el maximo real eran 7,8. Con dos segundos el mensaje
+   * sigue apareciendo escrito por alguien y no por una maquina, y se dejan de
+   * regalar cinco segundos en cada respuesta.
+   */
+  TYPING_MS_POR_CARACTER: z.coerce.number().nonnegative().default(30),
+  TYPING_TECHO_MS: z.coerce.number().nonnegative().default(2000),
+  TYPING_PAUSA_MIN_MS: z.coerce.number().nonnegative().default(250),
+  TYPING_PAUSA_MAX_MS: z.coerce.number().nonnegative().default(700),
+
+  /**
+   * "escribiendo..." en los mensajes internos. Apagado: la ficha al equipo va
+   * adelante de la respuesta al lead, y simular que alguien la tipea le suma
+   * segundos a la espera del que si esta mirando el telefono.
+   */
+  TYPING_INTERNO: booleanoDeEnv.default(false),
 
   // ── anti-baneo ──────────────────────────────────────────────────────────
   MAX_MSGS_PER_HOUR: z.coerce.number().int().positive().default(30),
@@ -118,9 +155,15 @@ const esquema = z.object({
    * manda "Necesito un" / "ecommerce" / "a medida" en tres mensajes seguidos;
    * sin esta espera el bot contesta tres veces y desordenado.
    *
-   * Es corto al lado de los delays de la cola de salida, asi que no se nota.
+   * Cuatro segundos es el piso: por debajo, una tanda de fragmentos escritos a
+   * ritmo normal se parte en dos turnos y el bot contesta dos veces, la segunda
+   * sin haber visto la primera. Y bajar las esperas de la cola le saco fuerza a
+   * la otra defensa —descartarPendientesDe solo puede tirar lo que todavia
+   * espera en la cola, y ahora la cola casi nunca tiene nada esperando—.
+   *
+   * Es lo mas caro que queda en el camino, y es a proposito.
    */
-  AGRUPAR_ENTRANTES_MS: z.coerce.number().nonnegative().default(7000),
+  AGRUPAR_ENTRANTES_MS: z.coerce.number().nonnegative().default(4000),
 
   /**
    * Lo que se le dice al lead cuando queda esperando a una persona. No se
