@@ -168,6 +168,11 @@ def procesar_pendientes(db_path: str, abrir, limite: int = 50) -> dict:
     tanda despues de las filas que nunca se miraron. Sin eso, un par de
     dominios caidos con id bajo se come el LIMIT de todas las corridas y las
     filas nuevas no se miran nunca.
+
+    Entre los reintentos el turno lo da la fecha del ultimo intento, no el id:
+    round-robin. Si fuera un booleano, una tanda entera fallida -browser o red
+    caidos desde el primer sitio- marcaria todo por igual y el orden degeneraria
+    otra vez a `id`, con las caidas de id bajo comiendose el LIMIT para siempre.
     """
     conn = _connect(db_path)
     try:
@@ -179,7 +184,7 @@ def procesar_pendientes(db_path: str, abrir, limite: int = 50) -> dict:
                AND (email IS NULL OR TRIM(email) = '')
                AND COALESCE(status, '') NOT IN ('email_found', 'no_email')
              ORDER BY CASE WHEN COALESCE(TRIM(error_message), '') = ''
-                           THEN 0 ELSE 1 END, id
+                           THEN 0 ELSE 1 END, error_message, id
              LIMIT ?
             """,
             # En SQLite LIMIT -1 significa SIN limite: un `--limite -1` de dedo
@@ -227,8 +232,13 @@ def procesar_pendientes(db_path: str, abrir, limite: int = 50) -> dict:
             # asi que en produccion la excepcion casi nunca llega hasta aca. Sin
             # la marca la perdida es invisible y, peor, el ORDER BY de la query
             # no puede mandar el reintento al fondo de la cola.
+            # El sello de fecha adelante es lo que convierte la marca en una
+            # recencia en vez de un booleano: es la clave por la que ordena el
+            # ORDER BY de arriba. Sin el, una tanda entera fallida marca todo y
+            # la cola vuelve a ordenarse por id, que es de donde no se sale.
+            sello = time.strftime("%Y-%m-%d %H:%M:%S")
             update_business(db_path, fila["id"],
-                            error_message=(error or _MARCA_NO_ABRIO)[:500])
+                            error_message=f"{sello} {(error or _MARCA_NO_ABRIO)}"[:500])
             res["no_abrio"] += 1
             sin_abrir_seguidos += 1
             logger.warning(f"[{fila['id']}] {fila['website']} -> no abrio, se reintenta")

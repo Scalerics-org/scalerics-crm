@@ -478,3 +478,79 @@ def test_el_que_no_abrio_deja_marca_aunque_no_haya_excepcion(tmp_path):
     conn.close()
     assert error and "no abrio" in error, "la perdida tiene que dejar rastro"
     assert status != "no_email", "seguir sin quemar la fila"
+
+
+def _padron_mitad_caido(tmp_path, caidos, buenos):
+    """`caidos` filas que no abren nunca, y despues `buenos` que dan mail."""
+    total = caidos + buenos
+    db = _db_con(tmp_path, [
+        {"name": f"Inmo {i}", "phone": f"+598 2900 80{i:03d}",
+         "maps_url": f"https://maps.google.com/?cid=8{i}",
+         "website": f"https://inmo{i}.com.uy", "source": "discovery"}
+        for i in range(total)
+    ])
+    paginas = {f"https://inmo{i}.com.uy":
+               f'<a href="mailto:info@inmo{i}.com.uy">Mail</a>'
+               for i in range(caidos, total)}
+    return db, paginas
+
+
+def _mails_en(db):
+    conn = sqlite3.connect(db)
+    filas = conn.execute(
+        "SELECT email FROM businesses WHERE email IS NOT NULL").fetchall()
+    conn.close()
+    return {f[0] for f in filas}
+
+
+def test_una_tanda_con_el_browser_muerto_no_hunde_a_las_filas_buenas(tmp_path):
+    """Si no abre nada desde el sitio 1, el corte no dispara (`alguna_abrio` en
+    False) y las `limite` filas quedan marcadas todas: las caidas y las buenas.
+    Desde ahi el orden por tier degenera a `id` puro, las caidas de id bajo se
+    acumulan adelante y se comen el LIMIT de todas las corridas siguientes.
+
+    Medido por el revisor sobre 80 filas (60 caidas + 20 buenas): dos corridas
+    con el browser muerto y cinco sanas despues dan 0 de 20 mails, y sin alarma
+    en el log, porque el logger.error del corte justo no dispara en ese camino.
+
+    Es el segundo error caro del proyecto: prospectos perdidos en silencio.
+    """
+    db, paginas = _padron_mitad_caido(tmp_path, caidos=60, buenos=20)
+    esperados = {f"info@inmo{i}.com.uy" for i in range(60, 80)}
+
+    # dos pasadas con el browser muerto: no abre absolutamente nada
+    for _ in range(2):
+        muerta = procesar_pendientes(db, _abrir_falso({}), limite=50)
+        assert muerta["con_mail"] == 0, "el browser esta muerto, no hay mails"
+
+    # y ahora cinco corridas sanas
+    for _ in range(5):
+        procesar_pendientes(db, _abrir_falso(paginas), limite=50)
+
+    assert _mails_en(db) == esperados, \
+        "una tanda muerta no puede esconder para siempre a los 20 que dan mail"
+
+
+def test_el_reintento_se_ordena_por_recencia_y_no_por_id(tmp_path):
+    """Lo que hace que el round-robin funcione: dentro del tier de reintento, el
+    que se intento hace mas tiempo va primero. Con un booleano, el tier se
+    ordena por `id` y las caidas de id bajo no sueltan nunca el frente.
+    """
+    db, paginas = _padron_mitad_caido(tmp_path, caidos=6, buenos=4)
+
+    # primera tanda: solo entran las 5 primeras, todas caidas, y quedan marcadas
+    primera = procesar_pendientes(db, _abrir_falso(paginas), limite=5)
+    assert primera["no_abrio"] == 5
+
+    # segunda: la caida que falta (tier 0) y despues las ya intentadas
+    procesar_pendientes(db, _abrir_falso(paginas), limite=5)
+
+    conn = sqlite3.connect(db)
+    marcas = conn.execute(
+        "SELECT name, error_message FROM businesses "
+        "WHERE error_message IS NOT NULL ORDER BY id").fetchall()
+    conn.close()
+    for nombre, marca in marcas:
+        assert marca.startswith("20"), \
+            f"{nombre}: la marca tiene que arrancar con el sello de fecha, no con el texto"
+        assert "no abrio" in marca
