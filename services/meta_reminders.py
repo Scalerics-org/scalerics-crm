@@ -308,13 +308,18 @@ def leads_a_seguir(db_path: str, limite: int = _TOPE_DIARIO) -> list[dict]:
 
 def enviar_recordatorios(db_path: str, base_url: str, dry_run: bool = False) -> dict:
     ya_enviados = enviados_ultimas_24h(db_path)
-    cupo = max(0, _TOPE_DIARIO - ya_enviados)
+    # El dry-run no manda ni registra nada, asi que no gasta cupo y no tiene por
+    # que respetarlo: si cortara por cupo seria inutilizable justo cuando hace
+    # falta, porque en produccion el cupo esta en 0 la mayor parte del dia. Lista
+    # los que le tocarian a una tanda con el cupo entero.
+    cupo = _TOPE_DIARIO if dry_run else max(0, _TOPE_DIARIO - ya_enviados)
     if cupo == 0:
         logger.info(
             f"Recordatorios Meta: no se manda nada, ya salieron {ya_enviados} en las "
             f"ultimas 24 horas (tope diario {_TOPE_DIARIO})"
         )
-        return {"candidatos": 0, "enviados": 0, "fallidos": 0, "inciertos": 0}
+        return {"candidatos": 0, "enviados": 0, "fallidos": 0, "inciertos": 0,
+                "seguimientos": 0, "nuevos": 0}
 
     # Los seguimientos primero: uno a destiempo pierde sentido, mientras que un
     # primer contacto puede esperar un dia sin costo.
@@ -322,7 +327,11 @@ def enviar_recordatorios(db_path: str, base_url: str, dry_run: bool = False) -> 
     faltan = cupo - len(seguimientos)
     nuevos = leads_a_recordar(db_path, limite=faltan) if faltan > 0 else []
     candidatos = seguimientos + nuevos
-    res = {"candidatos": len(candidatos), "enviados": 0, "fallidos": 0, "inciertos": 0}
+    # El desglose va en el resultado porque el log de Fly es la unica superficie
+    # de diagnostico que hay: sin el no se sabe si el backlog de contactos 1
+    # esta drenando o si los seguimientos se estan comiendo el cupo entero.
+    res = {"candidatos": len(candidatos), "enviados": 0, "fallidos": 0, "inciertos": 0,
+           "seguimientos": len(seguimientos), "nuevos": len(nuevos)}
 
     # Valvula para probar el camino completo contra una casilla propia: si esta
     # seteada, TODOS los mails van ahi y ninguno al lead. El registro en
@@ -341,6 +350,19 @@ def enviar_recordatorios(db_path: str, base_url: str, dry_run: bool = False) -> 
         if dry_run:
             logger.info(f"[dry-run] contacto {numero} a {lead['email']} (lead {lead['id']})")
             continue
+        # El cupo se relee antes de cada envio, no una sola vez al empezar: si
+        # otra corrida arranco en el medio (un reinicio de Fly dispara una tanda
+        # y la anterior puede seguir corriendo), sin esto las dos mandan sus 15
+        # y salen hasta 30 en la ventana de 24 horas. Con esto, la segunda corta
+        # apenas la ventana llega al tope. No arregla el caso de dos volumenes
+        # distintos: ahi cada uno tiene su propia tabla y no hay nada que releer.
+        if enviados_ultimas_24h(db_path) >= _TOPE_DIARIO:
+            logger.warning(
+                f"Recordatorios Meta: se corta la tanda en el lead {lead['id']}, la ventana "
+                f"de 24 horas ya llego al tope de {_TOPE_DIARIO}. Los que faltan siguen "
+                f"elegibles para la proxima tanda."
+            )
+            break
         try:
             token = registrar_envio(db_path, lead["id"], numero)
         except sqlite3.IntegrityError:

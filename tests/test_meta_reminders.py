@@ -356,6 +356,33 @@ def test_la_cuota_del_dia_es_lo_que_queda(db):
     assert res["enviados"] == 2
 
 
+def test_el_cupo_se_relee_antes_de_cada_envio(db, monkeypatch):
+    """Si el cupo se leyera una sola vez al empezar, una corrida que arranca en
+    el medio de otra (cada reinicio de Fly dispara una tanda) manda sus 15
+    completos y salen hasta 30 en la ventana de 24 horas. Releerlo hace que la
+    segunda corte apenas la ventana llega al tope."""
+    import services.meta_reminders as mr
+    monkeypatch.setattr(mr, "_PAUSA_ENTRE_ENVIOS", 0)
+
+    conn = sqlite3.connect(db)
+    for i in range(3):
+        _lead(conn, 250 + i, dias=5 + i)
+    conn.commit()
+    conn.close()
+
+    # La ventana esta vacia al empezar la tanda y llega al tope despues del
+    # primer envio, como si otra corrida hubiera mandado sus mails en el medio.
+    lecturas = iter([0, 0, 15, 15])
+    monkeypatch.setattr(mr, "enviados_ultimas_24h", lambda _: next(lecturas))
+
+    with patch("services.meta_reminders.send_meta_lead_reminder", return_value="ok") as enviar:
+        res = enviar_recordatorios(db, "https://crm")
+
+    assert enviar.call_count == 1, "la tanda corta apenas la ventana llega al tope"
+    assert res["enviados"] == 1
+    assert res["candidatos"] == 3, "los otros dos siguen elegibles para la proxima tanda"
+
+
 def test_dry_run_no_manda_ni_registra(db):
     conn = sqlite3.connect(db)
     _lead(conn, 60, dias=5)
@@ -368,6 +395,66 @@ def test_dry_run_no_manda_ni_registra(db):
     assert enviar.called is False
     assert res["candidatos"] == 1
     assert leads_a_recordar(db), "sigue elegible: el dry-run no registro nada"
+
+
+def test_el_dry_run_lista_igual_con_el_cupo_agotado(db):
+    """El dry-run no manda ni registra nada, asi que no gasta cupo y no tiene
+    por que respetarlo. En produccion el cupo esta en 0 la mayor parte del dia:
+    si cortara por cupo, la herramienta de diagnostico mas segura del sistema
+    seria inutilizable justo cuando hace falta."""
+    conn = sqlite3.connect(db)
+    _lead(conn, 61, dias=5)
+    for i in range(15):
+        _ya_enviado(conn, 1300 + i, dias=0)
+    conn.commit()
+    conn.close()
+
+    with patch("services.meta_reminders.send_meta_lead_reminder") as enviar:
+        res = enviar_recordatorios(db, "https://crm", dry_run=True)
+
+    assert enviar.called is False
+    assert res["candidatos"] == 1, "el cupo agotado no puede vaciar la lista del dry-run"
+
+
+def test_con_el_cupo_agotado_la_tanda_real_sigue_sin_mandar_nada(db):
+    """El espejo del test de arriba: aflojar el cupo en dry-run no puede
+    aflojarlo en el camino que manda mails de verdad."""
+    conn = sqlite3.connect(db)
+    _lead(conn, 62, dias=5)
+    for i in range(15):
+        _ya_enviado(conn, 1400 + i, dias=0)
+    conn.commit()
+    conn.close()
+
+    with patch("services.meta_reminders.send_meta_lead_reminder") as enviar:
+        res = enviar_recordatorios(db, "https://crm")
+
+    assert enviar.called is False
+    assert res["candidatos"] == 0
+    assert res["enviados"] == 0
+
+
+def test_el_log_final_desglosa_seguimientos_y_nuevos(db, monkeypatch):
+    """En Fly el log es la unica superficie de diagnostico: sin el desglose no
+    hay forma de saber si el backlog de contactos 1 esta drenando o si los
+    seguimientos se estan comiendo el cupo."""
+    import services.meta_reminders as mr
+    monkeypatch.setattr(mr, "_PAUSA_ENTRE_ENVIOS", 0)
+
+    conn = sqlite3.connect(db)
+    _lead(conn, 63, dias=60)
+    _envio(conn, 63, 1, dias_atras=20)
+    _lead(conn, 64, dias=5)
+    _lead(conn, 65, dias=6)
+    conn.commit()
+    conn.close()
+
+    with patch("services.meta_reminders.send_meta_lead_reminder", return_value="ok"):
+        res = enviar_recordatorios(db, "https://crm")
+
+    assert res["seguimientos"] == 1
+    assert res["nuevos"] == 2
+    assert res["candidatos"] == 3
 
 
 def test_el_override_intercepta_el_destinatario(db, monkeypatch, caplog):
