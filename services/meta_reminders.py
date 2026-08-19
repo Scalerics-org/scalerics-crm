@@ -390,9 +390,12 @@ def enviar_recordatorios(db_path: str, base_url: str, dry_run: bool = False) -> 
                     # sobre todo, que no aborte la tanda de hoy por un lead.
                     logger.error(
                         f"Recordatorios Meta: el mail al lead {lead['id']} fallo y ademas "
-                        f"no se pudo limpiar el registro de envio (business_id={lead['id']}). "
-                        f"Va a quedar marcado como contactado sin haber recibido nada: "
-                        f"revisar/borrar manualmente el registro en meta_reminders.",
+                        f"no se pudo limpiar el registro de envio (business_id={lead['id']}, "
+                        f"numero={numero}). Va a quedar marcado como contactado sin haber "
+                        f"recibido nada: revisar/borrar manualmente esa fila puntual en "
+                        f"meta_reminders (business_id={lead['id']}, numero={numero}) -- NO borrar "
+                        f"por business_id solo, eso se lleva los tokens de baja de los "
+                        f"contactos anteriores ya publicados en mails reales.",
                         exc_info=True,
                     )
             finally:
@@ -407,10 +410,13 @@ def enviar_recordatorios(db_path: str, base_url: str, dry_run: bool = False) -> 
             res["inciertos"] += 1
             logger.error(
                 f"Recordatorios Meta: envio incierto al lead {lead['id']} "
-                f"(business_id={lead['id']}, {lead['email']}, estado={estado!r}): la "
-                f"peticion a Resend no confirmo ni fallo, pudo haber salido. Se DEJA el "
-                f"registro en meta_reminders para no mandarle dos veces; si se confirma "
-                f"que no llego, borrar la fila a mano para reintentar."
+                f"(business_id={lead['id']}, numero={numero}, {lead['email']}, "
+                f"estado={estado!r}): la peticion a Resend no confirmo ni fallo, pudo haber "
+                f"salido. Se DEJA el registro en meta_reminders para no mandarle dos veces; "
+                f"si se confirma que no llego, borrar esa fila puntual (business_id={lead['id']}, "
+                f"numero={numero}) a mano para reintentar -- no la fila entera del lead, eso se "
+                f"lleva los tokens de baja de los contactos anteriores ya publicados en mails "
+                f"reales."
             )
 
     logger.info(f"Recordatorios Meta: {res}")

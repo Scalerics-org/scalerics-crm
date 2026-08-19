@@ -442,6 +442,34 @@ def test_un_fallo_seguro_borra_el_registro_y_manana_se_reintenta(db):
     assert [x["id"] for x in leads_a_recordar(db)] == [71], "manana se reintenta"
 
 
+def test_un_fallo_en_un_seguimiento_no_borra_los_contactos_anteriores(db):
+    """El DELETE de limpieza tiene que filtrar por numero: un fallo en el
+    contacto 2 no puede llevarse puesto el contacto 1 ya mandado, con su token
+    de baja ya publicado en un mail que la persona recibio de verdad."""
+    conn = sqlite3.connect(db)
+    _lead(conn, 74, dias=60)
+    _envio(conn, 74, 1, dias_atras=20)
+    conn.commit()
+    conn.close()
+
+    with patch("services.meta_reminders.send_meta_lead_reminder", return_value="fallo"):
+        res = enviar_recordatorios(db, "https://crm")
+
+    conn = sqlite3.connect(db)
+    try:
+        filas = conn.execute(
+            "SELECT numero, token FROM meta_reminders WHERE business_id = 74 ORDER BY numero"
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert [f[0] for f in filas] == [1], (
+        "solo tiene que quedar el contacto 1: el 2 (el que fallo) se borra, "
+        "el 1 (ya mandado antes) no")
+    assert filas[0][1] == "tok-74-1", "el token del contacto 1 no se toca"
+    assert res["fallidos"] == 1
+
+
 def test_un_envio_incierto_deja_la_fila_y_el_token_puestos(db, caplog):
     """Un timeout pudo haber mandado el mail igual. Si borramos la fila, manana
     le llega un segundo mail — y si la persona se dio de baja con el link de ese
@@ -765,10 +793,13 @@ def test_los_seguimientos_van_antes_que_los_contactos_nuevos(db):
         res = enviar_recordatorios(db, "https://crm")
 
     assert res["enviados"] == 15
-    assert (f"lead90@ejemplo.com", 2) in mandados, "el seguimiento entra en la tanda"
+    assert ("lead90@ejemplo.com", 2) in mandados, "el seguimiento entra en la tanda"
 
 
 def test_el_tope_diario_cuenta_juntos_seguimientos_y_nuevos(db):
+    """Ademas de sumar 15 entre los dos tipos, los seguimientos tienen que
+    ganarle el cupo a los nuevos: con 20 seguimientos disponibles y cupo 15,
+    los 15 que salen tienen que ser seguimientos (numero > 1), no una mezcla."""
     from services.meta_reminders import enviar_recordatorios
 
     conn = sqlite3.connect(db)
@@ -780,10 +811,20 @@ def test_el_tope_diario_cuenta_juntos_seguimientos_y_nuevos(db):
     conn.commit()
     conn.close()
 
-    with patch("services.meta_reminders.send_meta_lead_reminder", return_value="ok"):
+    mandados = []
+    def fake(to, negocio, rubro, url, numero=1):
+        mandados.append((to, numero))
+        return "ok"
+
+    with patch("services.meta_reminders.send_meta_lead_reminder", side_effect=fake):
         res = enviar_recordatorios(db, "https://crm")
 
     assert res["enviados"] == 15, "15 en total, no 15 de cada tipo"
+    assert len(mandados) == 15
+    assert all(numero > 1 for _, numero in mandados), (
+        "con 20 seguimientos disponibles para un cupo de 15, los 15 que salen "
+        "tienen que ser todos seguimientos: si los nuevos entraran antes, "
+        "saldrian 10 nuevos + 5 seguimientos")
 
 
 def test_el_numero_que_se_registra_es_el_que_se_mando(db):
