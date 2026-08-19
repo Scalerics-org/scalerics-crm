@@ -11,7 +11,7 @@ import re
 # Local part que delata una direccion que nadie lee.
 _LOCALES_BASURA = {
     "noreply", "no-reply", "donotreply", "usuario", "tuemail", "tucorreo",
-    "ejemplo", "example", "email", "correo",
+    "ejemplo", "example",
 }
 
 # Dominios de plantilla y de proveedores, no del comercio.

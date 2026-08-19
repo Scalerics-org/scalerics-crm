@@ -13,6 +13,8 @@ from services.email_finder import es_mail_basura, extraer_mails
     "no-reply@inmobiliaria.com.uy",
     "info@sentry.wixpress.com",
     "logo@2x.png",
+    "donotreply@banco.com.uy",
+    "tucorreo@radio.com.uy",
 ])
 def test_direcciones_basura(mail):
     """Mandarle a una direccion de ejemplo es dano puro a la reputacion.
@@ -29,6 +31,8 @@ def test_direcciones_basura(mail):
     "contacto@diegoalfonso.com.uy",
     "ferraripropiedades@adinet.com.uy",
     "inmobiliaria.uru@gmail.com",
+    "correo@estudio.com.uy",
+    "email@empresa.com.uy",
 ])
 def test_direcciones_buenas(mail):
     """Salidas reales del sondeo: ninguna se puede descartar."""
