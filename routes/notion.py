@@ -1,10 +1,15 @@
 """Rutas del sync con Notion."""
 
+import logging
+
 from flask import Blueprint, current_app, jsonify, request, session
 
 from database import get_task_by_id, log_activity
 from services.notion_service import (GRUPOS, crear_pagina, empujar_estado_exacto,
-                                     grupo_de, traer_y_aplicar, vincular_pagina)
+                                     grupo_de, traer_proyectos, traer_y_aplicar,
+                                     vincular_pagina)
+
+logger = logging.getLogger(__name__)
 
 notion_bp = Blueprint("notion", __name__)
 
@@ -48,17 +53,31 @@ def api_sync():
 
     Es el instrumento con el que una persona prueba que la configuracion de
     Notion quedo bien, asi que una consulta que fallo no puede contestar
-    `ok: true`: el unico rastro seria un warning en los logs de Fly.
+    `ok: true`: el unico rastro seria un warning en los logs de Fly. Tambien
+    trae proyectos -- la verificacion manual del plan arranca justamente por
+    confirmar que aparecen los cinco -- en su propio try, para que un fallo
+    ahi (devuelto o excepcion) no se lleve puesto el pull de tareas, que es lo
+    que importa mantener al dia.
     """
     db = _db()
+    try:
+        proyectos, error_p = traer_proyectos(db)
+    except Exception:
+        proyectos, error_p = 0, "el pull de proyectos fallo inesperadamente"
+        logger.warning("notion proyectos falló", exc_info=True)
+    if error_p:
+        logger.warning("notion proyectos: %s", error_p)
+
     cambiadas, error = traer_y_aplicar(db)
     if error:
-        return jsonify({"ok": False, "error": error, "cambiadas": cambiadas}), 502
+        return jsonify({"ok": False, "error": error, "cambiadas": cambiadas,
+                        "proyectos": proyectos, "proyectos_error": error_p}), 502
 
     log_activity(db, session.get("user_name", "sistema"), "notion_sync", "", None, "",
                  f"{cambiadas} tarea(s) actualizada(s) desde Notion",
                  user_id=session.get("user_id"))
-    return jsonify({"ok": True, "cambiadas": cambiadas})
+    return jsonify({"ok": True, "cambiadas": cambiadas,
+                    "proyectos": proyectos, "proyectos_error": error_p})
 
 
 @notion_bp.route("/api/tasks/<int:task_id>/notion/estado", methods=["POST"])

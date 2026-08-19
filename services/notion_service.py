@@ -17,8 +17,8 @@ from datetime import datetime
 
 import requests
 
-from database import (create_task, get_task_by_id, get_tasks_notion, log_activity,
-                      update_task)
+from database import (borrar_proyectos, create_task, get_projects, get_task_by_id,
+                      get_tasks_notion, log_activity, update_task, upsert_project)
 
 logger = logging.getLogger(__name__)
 
@@ -480,6 +480,12 @@ def _titulo_de(props: dict) -> str:
     return titulo or "(sin titulo)"
 
 
+def _proyecto_de(props: dict) -> str | None:
+    """El page id del proyecto de una tarjeta, o None si no tiene."""
+    relacion = (props.get("Project") or {}).get("relation") or []
+    return relacion[0].get("id") if relacion else None
+
+
 def _adoptar(db_path: str, page_id: str, props: dict, estado_notion: str) -> int:
     """Crea en el CRM la tarea de una tarjeta que el tablero ya tenia.
 
@@ -488,7 +494,8 @@ def _adoptar(db_path: str, page_id: str, props: dict, estado_notion: str) -> int
     CRM la esta mirando.
     """
     titulo = _titulo_de(props)
-    task_id = create_task(db_path, title=titulo, status=grupo_de(estado_notion))
+    task_id = create_task(db_path, title=titulo, status=grupo_de(estado_notion),
+                          notion_project_page_id=_proyecto_de(props))
     _marcar(db_path, task_id, estado_notion, page_id=page_id)
     log_activity(db_path, "notion", "task_created", "task", task_id, titulo,
                  "creada desde el tablero de Notion")
@@ -571,6 +578,15 @@ def traer_y_aplicar(db_path: str) -> tuple[int, str | None]:
                 continue
 
             task_id = tarea["id"]
+
+            # El proyecto es un dato independiente del Status: se reconcilia
+            # siempre que la tarea este pareada, sin depender de que el
+            # estado tambien haya cambiado (si no, el "continue" de abajo lo
+            # dejaria sin actualizar cuando alguien solo reasigna el proyecto).
+            proyecto = _proyecto_de(props)
+            if proyecto != tarea.get("notion_project_page_id"):
+                update_task(db_path, task_id, notion_project_page_id=proyecto)
+
             if estado_notion == (tarea.get("notion_status") or ""):
                 continue  # nada cambio alla
 
@@ -602,3 +618,80 @@ def traer_y_aplicar(db_path: str) -> tuple[int, str | None]:
                 cambiadas += _dar_por_desaparecida(db_path, tarea)
 
     return cambiadas, None
+
+
+def _texto_de_titulo(prop: dict) -> str:
+    """Concatena los fragmentos de una property de tipo `title`."""
+    partes = (prop or {}).get("title") or []
+    return "".join(p.get("plain_text", "") for p in partes).strip()
+
+
+def traer_proyectos(db_path: str) -> tuple[int, str | None]:
+    """Espeja la database Projects en la tabla `projects` del CRM.
+
+    Solo lectura: no se le escribe nada al tablero. Un proyecto que ya no
+    vuelve en el listado se borra y sus tareas quedan sin proyecto, pero el
+    barrido corre unicamente si el listado vino entero — si la consulta fallo,
+    los que faltan no estan borrados, no los vimos.
+    """
+    cfg = _config()
+    if not cfg:
+        return 0, "falta NOTION_TOKEN: el sync con Notion esta apagado"
+    token, version, _ = cfg
+
+    ds = os.environ.get("NOTION_PROJECTS_DATA_SOURCE_ID", "")
+    if not ds:
+        return 0, "falta NOTION_PROJECTS_DATA_SOURCE_ID"
+
+    url = f"{API}/data_sources/{ds}/query"
+    cuerpo = {"page_size": 100}
+    vistos = set()
+    cambiados = 0
+    completo = True
+
+    while True:
+        try:
+            r = requests.post(url, headers=_headers(token, version),
+                              json=cuerpo, timeout=TIMEOUT)
+            if r.status_code >= 300:
+                logger.warning("notion: query de proyectos fallo con %s: %s",
+                               r.status_code, r.text[:300])
+                return cambiados, f"la consulta de proyectos devolvio HTTP {r.status_code}"
+            data = r.json()
+        except Exception as e:
+            logger.warning("notion: query de proyectos fallo", exc_info=True)
+            return cambiados, f"la consulta de proyectos fallo: {type(e).__name__}"
+
+        for pagina in data.get("results", []):
+            page_id = pagina.get("id")
+            if not page_id:
+                continue
+            props = pagina.get("properties", {})
+            nombre = _texto_de_titulo(props.get("Name")) or "(sin nombre)"
+            stage = ((props.get("Stage") or {}).get("select") or {}).get("name")
+            fechas = (props.get("Timeline") or {}).get("date") or {}
+            gente = (props.get("Lead") or {}).get("people") or []
+            lead = ", ".join(p.get("name", "") for p in gente) or None
+
+            upsert_project(db_path, page_id, nombre, stage=stage,
+                           timeline_start=fechas.get("start"),
+                           timeline_end=fechas.get("end"), lead=lead)
+            vistos.add(page_id)
+            cambiados += 1
+
+        if not data.get("has_more"):
+            break
+        cursor = data.get("next_cursor")
+        if not cursor:
+            logger.warning("notion: proyectos dijo has_more sin next_cursor, corto")
+            completo = False
+            break
+        cuerpo["start_cursor"] = cursor
+
+    if completo:
+        conocidos = {p["notion_page_id"] for p in get_projects(db_path)}
+        borrados = borrar_proyectos(db_path, conocidos - vistos)
+        if borrados:
+            logger.info("notion: %s proyecto(s) borrados del espejo", borrados)
+
+    return cambiados, None

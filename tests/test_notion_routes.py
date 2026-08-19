@@ -1,5 +1,6 @@
 """Rutas de Notion y el autosync al abrir el CRM."""
 
+import re
 from unittest.mock import patch
 
 import pytest
@@ -79,17 +80,19 @@ def test_una_tarea_que_no_existe_da_404(app, cliente):
 
 
 def test_el_sync_manual_devuelve_cuantas_cambiaron(app, cliente):
-    with patch("routes.notion.traer_y_aplicar", return_value=(3, None)):
+    with patch("routes.notion.traer_proyectos", return_value=(5, None)), \
+         patch("routes.notion.traer_y_aplicar", return_value=(3, None)):
         r = cliente.post("/api/notion/sync", headers=_AUTH)
     assert r.status_code == 200
-    assert r.get_json() == {"ok": True, "cambiadas": 3}
+    assert r.get_json() == {"ok": True, "cambiadas": 3, "proyectos": 5, "proyectos_error": None}
 
 
 def test_el_sync_manual_que_anduvo_sin_cambios_dice_ok(app, cliente):
-    with patch("routes.notion.traer_y_aplicar", return_value=(0, None)):
+    with patch("routes.notion.traer_proyectos", return_value=(0, None)), \
+         patch("routes.notion.traer_y_aplicar", return_value=(0, None)):
         r = cliente.post("/api/notion/sync", headers=_AUTH)
     assert r.status_code == 200
-    assert r.get_json() == {"ok": True, "cambiadas": 0}
+    assert r.get_json() == {"ok": True, "cambiadas": 0, "proyectos": 0, "proyectos_error": None}
 
 
 def test_el_sync_manual_no_dice_ok_si_la_consulta_fallo(app, cliente):
@@ -98,7 +101,8 @@ def test_el_sync_manual_no_dice_ok_si_la_consulta_fallo(app, cliente):
     Esta ruta es el instrumento con el que una persona prueba la configuracion:
     el default que se shippea manda el pull a un endpoint que puede no existir.
     """
-    with patch("routes.notion.traer_y_aplicar",
+    with patch("routes.notion.traer_proyectos", return_value=(0, None)), \
+         patch("routes.notion.traer_y_aplicar",
                return_value=(0, "la consulta a Notion devolvio HTTP 400")):
         r = cliente.post("/api/notion/sync", headers=_AUTH)
     assert r.status_code == 502
@@ -107,9 +111,39 @@ def test_el_sync_manual_no_dice_ok_si_la_consulta_fallo(app, cliente):
     assert "400" in d["error"]
 
 
+def test_el_sync_manual_tambien_refresca_proyectos(app, cliente):
+    """`/api/notion/sync` es el instrumento con el que una persona prueba a mano
+    que la configuracion de Notion quedo bien, y la verificacion manual del
+    plan arranca confirmando que aparecen los cinco proyectos. Hoy solo
+    refresca tareas: un fallo del lado de proyectos no se puede reintentar a
+    mano, hay que esperar el throttle de 600s del autosync."""
+    with patch("routes.notion.traer_proyectos", return_value=(5, None)) as proyectos, \
+         patch("routes.notion.traer_y_aplicar", return_value=(3, None)):
+        r = cliente.post("/api/notion/sync", headers=_AUTH)
+    proyectos.assert_called_once()
+    assert r.status_code == 200
+    assert r.get_json()["proyectos"] == 5
+
+
+def test_una_excepcion_en_proyectos_no_le_pega_al_sync_manual_de_tareas(app, cliente):
+    """Mismo constraint que el hallazgo 2, pero en el sync manual: si
+    `traer_proyectos` explota, `traer_y_aplicar` tiene que seguir corriendo y
+    la ruta tiene que seguir contestando 200 con las tareas que sí cambiaron."""
+    with patch("routes.notion.traer_proyectos", side_effect=RuntimeError("database is locked")), \
+         patch("routes.notion.traer_y_aplicar", return_value=(3, None)) as tareas:
+        r = cliente.post("/api/notion/sync", headers=_AUTH)
+    tareas.assert_called_once()
+    assert r.status_code == 200
+    d = r.get_json()
+    assert d["ok"] is True
+    assert d["cambiadas"] == 3
+    assert d["proyectos"] == 0
+
+
 def test_el_sync_manual_queda_en_el_log_de_actividad(app, cliente):
     import sqlite3
-    with patch("routes.notion.traer_y_aplicar", return_value=(2, None)):
+    with patch("routes.notion.traer_proyectos", return_value=(1, None)), \
+         patch("routes.notion.traer_y_aplicar", return_value=(2, None)):
         cliente.post("/api/notion/sync", headers=_AUTH)
     conn = sqlite3.connect(app.config["DB_PATH"])
     filas = conn.execute(
@@ -122,7 +156,8 @@ def test_el_sync_manual_queda_en_el_log_de_actividad(app, cliente):
 
 def test_un_sync_que_fallo_no_deja_actividad(app, cliente):
     import sqlite3
-    with patch("routes.notion.traer_y_aplicar", return_value=(0, "fallo")):
+    with patch("routes.notion.traer_proyectos", return_value=(0, None)), \
+         patch("routes.notion.traer_y_aplicar", return_value=(0, "fallo")):
         cliente.post("/api/notion/sync", headers=_AUTH)
     conn = sqlite3.connect(app.config["DB_PATH"])
     filas = conn.execute("SELECT id FROM activity_log WHERE action='notion_sync'").fetchall()
@@ -223,12 +258,144 @@ def test_el_autosync_loguea_el_error_de_la_consulta(monkeypatch, caplog):
     assert "HTTP 400" in caplog.text
 
 
+def test_el_autosync_sigue_trayendo_tareas_si_fallan_los_proyectos(monkeypatch):
+    """`_maybe_sync_notion` trae primero los proyectos y despues las tareas; un
+    fallo en el pull de proyectos no puede frenar la sync de tareas, que es lo
+    que mas importa mantener al dia. Regresion: que nadie reordene las llamadas
+    ni agregue un `return` temprano entre las dos."""
+    monkeypatch.setenv("NOTION_TOKEN", "x")
+    monkeypatch.setattr(
+        dashboard.threading, "Thread",
+        lambda target=None, daemon=None: type("T", (), {"start": lambda s: target()})())
+    dashboard._notion_sync_state["at"] = 0.0
+
+    with patch("services.notion_service.traer_proyectos",
+               return_value=(0, "fallo a proposito")) as proyectos, \
+         patch("services.notion_service.traer_y_aplicar",
+               return_value=(1, None)) as tareas:
+        dashboard._maybe_sync_notion("x.db")
+
+    proyectos.assert_called_once()
+    tareas.assert_called_once()
+
+
+def test_el_autosync_sigue_trayendo_tareas_si_los_proyectos_explotan(monkeypatch):
+    """Mismo constraint que el test de arriba, pero por el otro camino: el de
+    arriba parchea un `(cambiadas, error)` de retorno, que es lo unico que el
+    `try/except` de `traer_proyectos` sabe convertir en ese formato. Una
+    excepcion real -- `sqlite3.OperationalError` por "database is locked"
+    corriendo en un hilo daemon contra el mismo WAL que los requests vivos, o
+    un payload malformado -- hoy escapa `traer_proyectos` sin que nada la
+    atrape antes de `traer_y_aplicar`. Este test tiene que fallar contra el
+    codigo actual: si pasa igual no esta ejercitando la excepcion."""
+    monkeypatch.setenv("NOTION_TOKEN", "x")
+    monkeypatch.setattr(
+        dashboard.threading, "Thread",
+        lambda target=None, daemon=None: type("T", (), {"start": lambda s: target()})())
+    dashboard._notion_sync_state["at"] = 0.0
+
+    with patch("services.notion_service.traer_proyectos",
+               side_effect=RuntimeError("database is locked")) as proyectos, \
+         patch("services.notion_service.traer_y_aplicar",
+               return_value=(1, None)) as tareas:
+        dashboard._maybe_sync_notion("x.db")
+
+    proyectos.assert_called_once()
+    tareas.assert_called_once()
+
+
+def test_el_panel_de_proyectos_esta_en_el_sistema_de_permisos():
+    """`ALL_PANELS` maneja el loop que oculta paneles segun el `panel_access`
+    del usuario logueado. Si 'projects' no esta ahi, `nav-projects` nunca se
+    oculta para nadie: un rol como el `Caller` sembrado (sin 'tasks' ni
+    'projects') tiene Tareas oculto pero ve Proyectos, que lista los mismos
+    titulos y estados de tareas agrupados por proyecto -- exactamente el dato
+    que la restriccion de 'tasks' existe para no mostrarle.
+
+    Tambien tiene que estar en los mapas de la nav movil (`NAV_PRIORITY`,
+    `NAV_ICONS`, `NAV_LABELS`), o el panel solo se alcanza por el sidebar y el
+    header movil queda sin titulo mientras esta activo."""
+    html = dashboard.DASHBOARD_HTML
+
+    all_panels = re.search(r"const ALL_PANELS = (\[.*?\]);", html).group(1)
+    assert "'projects'" in all_panels
+
+    nav_priority = re.search(r"const NAV_PRIORITY = (\[.*?\]);", html).group(1)
+    assert "'projects'" in nav_priority
+
+    nav_icons = re.search(r"const NAV_ICONS = \{(.*?)\};", html, re.S).group(1)
+    assert "projects:" in nav_icons
+
+    nav_labels = re.search(r"const NAV_LABELS = \{(.*?)\};", html, re.S).group(1)
+    assert "projects:" in nav_labels
+
+
+def test_el_editor_de_roles_puede_conceder_proyectos():
+    """La segunda `ALL_PANELS` -- la del editor de roles en /admin/users -- arma
+    los checkboxes de paneles desde esa lista. Si no tiene 'projects', un admin
+    no puede conceder ni quitar ese panel a ningun rol. Vive en un template
+    local a la funcion (`ADMIN_PAGE`), no en `DASHBOARD_HTML`, asi que esto lee
+    la fuente del modulo en vez de la constante."""
+    fuente = open(dashboard.__file__, encoding="utf-8").read()
+    ocurrencias = re.findall(r"const ALL_PANELS = (\[.*?\]);", fuente)
+    assert len(ocurrencias) == 2, "se esperaban las dos ALL_PANELS conocidas del panel access"
+    for lista in ocurrencias:
+        assert "'projects'" in lista
+
+    panel_labels = re.search(r"const PANEL_LABELS = (\{.*?\});", fuente).group(1)
+    assert "projects:" in panel_labels
+
+
 def test_el_panel_de_tareas_tiene_el_boton_y_el_badge_de_notion():
     """Regresión: que nadie borre el front de Notion sin darse cuenta."""
     html = dashboard.DASHBOARD_HTML
     assert "task-notion-url" in html
     assert "task-notion-badge" in html
     assert "_enviarTareaANotion" in html
+
+
+def test_el_badge_de_proyecto_en_tareas_no_depende_del_panel_de_proyectos():
+    """Chequeo de presencia sobre el JS embebido, no de comportamiento (no hay
+    infraestructura para ejecutar el front en esta suite):
+
+    1. `loadTasks` tiene que llamar a `_asegurarMapaDeProyectos` -- si no, el
+       badge de proyecto vuelve a depender de haber abierto el panel de
+       Proyectos primero en esa carga de página.
+    2. El guard de `_taskCardHtml` tiene que evaluar
+       `_proyectosPorPagina[t.notion_project_page_id]` como condición del
+       ternario, no solo la existencia del mapa -- si no, un proyecto sin
+       nombre para esa tarea (mapa vacío, fetch fallido, proyecto borrado)
+       deja un `<span class="proj-stage">` vacío en la tarjeta, que es
+       exactamente lo que Task 4 declaró inaceptable.
+    """
+    html = dashboard.DASHBOARD_HTML
+
+    load_tasks = re.search(r"async function loadTasks\(\) \{.*?\n\}", html, re.S).group(0)
+    assert "_asegurarMapaDeProyectos" in load_tasks
+
+    task_card = re.search(r"function _taskCardHtml\(t\) \{.*?\n\}", html, re.S).group(0)
+    assert "_proyectosPorPagina[t.notion_project_page_id] ?" in task_card
+
+
+def test_el_mapa_de_proyectos_reintenta_si_el_fetch_no_fue_ok():
+    """Ni `loadProjects` ni `_asegurarMapaDeProyectos` chequeaban `r.ok`. Un 401
+    `{"error":"session_expired"}` parsea bien como JSON, `Array.isArray` lo
+    colapsa a `[]`, y el cache quedaba en `{}` -- que es *truthy*, asi que
+    `if (_proyectosPorPagina) return;` no reintentaba nunca mas en esa carga
+    de pagina, rompiendo el reintento que el comentario de al lado promete. Y
+    el panel decia "No hay proyectos en el tablero" cuando en realidad fue un
+    error de auth."""
+    html = dashboard.DASHBOARD_HTML
+
+    mapa = re.search(r"async function _asegurarMapaDeProyectos\(\) \{.*?\n\}", html, re.S).group(0)
+    assert "if (!r.ok) throw new Error(r.status)" in mapa
+
+    load = re.search(r"async function loadProjects\(\) \{.*?\n\}", html, re.S).group(0)
+    assert "if (!r.ok) throw new Error(r.status)" in load
+    # Hallazgo 6: el href al link de Notion tambien pasa por esc(), como todas
+    # las interpolaciones vecinas (no explotable -- es un UUID de la API --
+    # pero es consistencia).
+    assert 'href="${esc(url)}"' in load
 
 
 def _fuente_de(nombre):
