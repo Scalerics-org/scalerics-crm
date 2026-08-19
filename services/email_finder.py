@@ -105,11 +105,11 @@ def extraer_mails(html: str) -> list[str]:
 # browser; esto es lo que los conecta.
 # ---------------------------------------------------------------------------
 
-# En que paginas buscar, en orden. La home primero porque muchos comercios
-# chicos ponen el mail en el pie de todas las paginas.
 # Cuantos sitios seguidos sin abrir hacen falta para dar por muerto el browser.
 _MAX_SIN_ABRIR_SEGUIDOS = 10
 
+# En que paginas buscar, en orden. La home primero porque muchos comercios
+# chicos ponen el mail en el pie de todas las paginas.
 RUTAS_CONTACTO = ["", "/contacto", "/contacto.html", "/contactenos", "/contact",
                   "/contactanos", "/es/contacto", "/nosotros", "/quienes-somos"]
 
@@ -220,7 +220,7 @@ def procesar_pendientes(db_path: str, abrir, limite: int = 50) -> dict:
                 # tanda entera contra un browser muerto.
                 logger.error(
                     f"{sin_abrir_seguidos} sitios seguidos sin abrir: se corta la tanda "
-                    f"(browser caido?). Las filas que faltan quedan sin tocar."
+                    "(browser caido?). Las filas que faltan quedan sin tocar."
                 )
                 break
 
