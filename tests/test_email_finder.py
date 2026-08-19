@@ -337,23 +337,32 @@ def test_la_tanda_se_corta_si_se_murio_el_browser(tmp_path):
     el sitio 12 de 200, todos los goto siguientes fallan y sin este corte la
     corrida quemaria los 188 restantes en unos segundos.
 
+    El sitio 0 abre: eso es lo que prueba que el browser estaba vivo y que lo
+    que vino despues es una caida, no un padron de dominios muertos.
+
     Las filas que no se llegaron a visitar tienen que quedar como estaban.
     """
     db = _db_con(tmp_path, [
         {"name": f"Inmo {i}", "phone": f"+598 2900 20{i:02d}",
          "maps_url": f"https://maps.google.com/?cid=2{i}",
          "website": f"https://inmo{i}.com.uy", "source": "discovery"}
-        for i in range(15)
+        for i in range(16)
     ])
+    vivo = {"https://inmo0.com.uy": '<a href="mailto:info@inmo0.com.uy">Mail</a>'}
 
-    res = procesar_pendientes(db, _abrir_falso({}), limite=15)
+    res = procesar_pendientes(db, _abrir_falso(vivo), limite=16)
 
-    assert res["revisados"] == 10, "se corta a los 10 seguidos sin abrir"
+    assert res["revisados"] == 11, "el sitio bueno mas 10 seguidos sin abrir"
     assert res["no_abrio"] == 10
     conn = sqlite3.connect(db)
-    estados = [f[0] for f in conn.execute("SELECT status FROM businesses").fetchall()]
+    filas = {f[0]: f[1:] for f in conn.execute(
+        "SELECT name, status, error_message FROM businesses").fetchall()}
     conn.close()
-    assert "no_email" not in estados, "ninguna fila se quema por un browser muerto"
+    assert "no_email" not in [v[0] for v in filas.values()], \
+        "ninguna fila se quema por un browser muerto"
+    for i in range(11, 16):
+        assert filas[f"Inmo {i}"][1] is None, \
+            "la fila que no se llego a visitar queda intacta, sin marca"
 
 
 def test_un_sitio_bueno_reinicia_la_cuenta_de_sitios_que_no_abren(tmp_path):
@@ -394,3 +403,78 @@ def test_un_limite_negativo_no_procesa_la_cohorte_entera(tmp_path):
     ])
 
     assert procesar_pendientes(db, _abrir_falso({}), limite=-1)["revisados"] == 0
+
+
+def test_los_sitios_caidos_no_traban_el_job_para_siempre(tmp_path):
+    """El defecto que dejo la primera version del corte: como las filas que no
+    abren no dejan marca y la query es `ORDER BY id`, despues de la primera
+    pasada las unicas pendientes son justo esas. La corrida siguiente arranca
+    con diez seguidas, corta, y nunca llega a una fila nueva.
+
+    Padron del re-revisor: 13 filas, las primeras 10 caidas, las ultimas 3 con
+    mail. Los tres mails buenos se tienen que encontrar.
+    """
+    db = _db_con(tmp_path, [
+        {"name": f"Inmo {i}", "phone": f"+598 2900 50{i:02d}",
+         "maps_url": f"https://maps.google.com/?cid=5{i}",
+         "website": f"https://inmo{i}.com.uy", "source": "discovery"}
+        for i in range(13)
+    ])
+    buenos = {f"https://inmo{i}.com.uy":
+              f'<a href="mailto:info@inmo{i}.com.uy">Mail</a>' for i in range(10, 13)}
+
+    primera = procesar_pendientes(db, _abrir_falso(buenos))
+    segunda = procesar_pendientes(db, _abrir_falso(buenos))
+
+    conn = sqlite3.connect(db)
+    mails = [f[0] for f in conn.execute(
+        "SELECT email FROM businesses WHERE email IS NOT NULL ORDER BY id").fetchall()]
+    conn.close()
+    assert mails == [f"info@inmo{i}.com.uy" for i in range(10, 13)], \
+        "diez dominios caidos al principio no pueden esconder a los que si dan mail"
+    assert primera["revisados"] == 13, \
+        "sin ningun sitio abierto todavia, 10 fallos no son un browser muerto"
+    assert segunda["revisados"] == 10, "solo quedan pendientes los caidos"
+
+
+def test_los_reintentos_van_al_fondo_de_la_cola(tmp_path):
+    """Con `--limite` chico el problema es de hambre: si los caidos entran
+    siempre primero en el LIMIT, las filas nuevas no se miran nunca. Una fila ya
+    intentada va despues de una que no se intento todavia.
+    """
+    db = _db_con(tmp_path, [
+        {"name": f"Inmo {i}", "phone": f"+598 2900 60{i:02d}",
+         "maps_url": f"https://maps.google.com/?cid=6{i}",
+         "website": f"https://inmo{i}.com.uy", "source": "discovery"}
+        for i in range(13)
+    ])
+    buenos = {f"https://inmo{i}.com.uy":
+              f'<a href="mailto:info@inmo{i}.com.uy">Mail</a>' for i in range(10, 13)}
+
+    primera = procesar_pendientes(db, _abrir_falso(buenos), limite=10)
+    assert primera == {"revisados": 10, "con_mail": 0, "sin_mail": 0, "no_abrio": 10}
+
+    segunda = procesar_pendientes(db, _abrir_falso(buenos), limite=10)
+    assert segunda["con_mail"] == 3, \
+        "la segunda corrida tiene que llegar a las filas buenas"
+
+
+def test_el_que_no_abrio_deja_marca_aunque_no_haya_excepcion(tmp_path):
+    """`abrir_con_playwright` se traga todas las excepciones y devuelve None, o
+    sea que en produccion el camino de excepcion casi nunca corre. Sin marca en
+    la base, la perdida es invisible y la cola no se puede ordenar.
+    """
+    db = _db_con(tmp_path, [{
+        "name": "Caido", "phone": "+598 2900 7001",
+        "maps_url": "https://maps.google.com/?cid=71",
+        "website": "https://caido.com.uy", "source": "discovery",
+    }])
+
+    procesar_pendientes(db, _abrir_falso({}))
+
+    conn = sqlite3.connect(db)
+    status, error = conn.execute(
+        "SELECT status, error_message FROM businesses").fetchone()
+    conn.close()
+    assert error and "no abrio" in error, "la perdida tiene que dejar rastro"
+    assert status != "no_email", "seguir sin quemar la fila"

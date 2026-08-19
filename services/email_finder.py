@@ -105,6 +105,10 @@ def extraer_mails(html: str) -> list[str]:
 # browser; esto es lo que los conecta.
 # ---------------------------------------------------------------------------
 
+# La marca que deja una fila que no abrio. Se busca por texto en la base para
+# saber cuantos se estan perdiendo, y es lo que manda el reintento al fondo.
+_MARCA_NO_ABRIO = "no abrio: ninguna pagina del sitio respondio"
+
 # Cuantos sitios seguidos sin abrir hacen falta para dar por muerto el browser.
 _MAX_SIN_ABRIR_SEGUIDOS = 10
 
@@ -159,6 +163,11 @@ def procesar_pendientes(db_path: str, abrir, limite: int = 50) -> dict:
     cambia el resultado. Solo mira `source = 'discovery'`: el padron sin web
     (`source` NULL) y los leads de Meta (`source = 'meta'`) no son asunto de
     este job.
+
+    El que no abrio si se reintenta, pero al fondo de la cola: entra en la
+    tanda despues de las filas que nunca se miraron. Sin eso, un par de
+    dominios caidos con id bajo se come el LIMIT de todas las corridas y las
+    filas nuevas no se miran nunca.
     """
     conn = _connect(db_path)
     try:
@@ -169,7 +178,8 @@ def procesar_pendientes(db_path: str, abrir, limite: int = 50) -> dict:
                AND website IS NOT NULL AND TRIM(website) <> ''
                AND (email IS NULL OR TRIM(email) = '')
                AND COALESCE(status, '') NOT IN ('email_found', 'no_email')
-             ORDER BY id
+             ORDER BY CASE WHEN COALESCE(TRIM(error_message), '') = ''
+                           THEN 0 ELSE 1 END, id
              LIMIT ?
             """,
             # En SQLite LIMIT -1 significa SIN limite: un `--limite -1` de dedo
@@ -181,6 +191,7 @@ def procesar_pendientes(db_path: str, abrir, limite: int = 50) -> dict:
 
     res = {"revisados": 0, "con_mail": 0, "sin_mail": 0, "no_abrio": 0}
     sin_abrir_seguidos = 0
+    alguna_abrio = False
     for fila in filas:
         res["revisados"] += 1
         error = ""
@@ -198,29 +209,44 @@ def procesar_pendientes(db_path: str, abrir, limite: int = 50) -> dict:
             update_business(db_path, fila["id"], email=mail, status="email_found")
             res["con_mail"] += 1
             sin_abrir_seguidos = 0
+            alguna_abrio = True
             logger.info(f"[{fila['id']}] {fila['website']} -> {mail}")
         elif abrio:
             update_business(db_path, fila["id"], status="no_email")
             res["sin_mail"] += 1
             sin_abrir_seguidos = 0
+            alguna_abrio = True
             logger.info(f"[{fila['id']}] {fila['website']} -> sin mail")
         else:
             # No abrio ninguna pagina: el sitio puede estar caido un rato o se
             # puede haber muerto el browser de la tanda. No se marca el status,
-            # asi la fila vuelve a salir en la proxima corrida; el error queda
-            # en la base para que la perdida deje rastro.
-            if error:
-                update_business(db_path, fila["id"], error_message=error[:500])
+            # asi la fila vuelve a salir en la proxima corrida.
+            #
+            # La marca en `error_message` va SIEMPRE, no solo en el camino de
+            # excepcion: `abrir_con_playwright` se traga todo y devuelve None,
+            # asi que en produccion la excepcion casi nunca llega hasta aca. Sin
+            # la marca la perdida es invisible y, peor, el ORDER BY de la query
+            # no puede mandar el reintento al fondo de la cola.
+            update_business(db_path, fila["id"],
+                            error_message=(error or _MARCA_NO_ABRIO)[:500])
             res["no_abrio"] += 1
             sin_abrir_seguidos += 1
             logger.warning(f"[{fila['id']}] {fila['website']} -> no abrio, se reintenta")
-            if sin_abrir_seguidos >= _MAX_SIN_ABRIR_SEGUIDOS:
+            if sin_abrir_seguidos >= _MAX_SIN_ABRIR_SEGUIDOS and alguna_abrio:
                 # Diez seguidos sin abrir no es Uruguay sin internet: es la page
                 # compartida o el browser que se murieron. Seguir solo gasta la
                 # tanda entera contra un browser muerto.
+                #
+                # `alguna_abrio` es lo que separa las dos lecturas: si en esta
+                # tanda todavia no abrio ningun sitio, no hay evidencia de que el
+                # browser haya estado vivo, y lo mas probable es que sean diez
+                # dominios caidos seguidos -que es justo lo que queda pendiente
+                # despues de la primera pasada-. Cortar ahi trababa el job para
+                # siempre y encima logueaba una alarma falsa.
                 logger.error(
-                    f"{sin_abrir_seguidos} sitios seguidos sin abrir: se corta la tanda "
-                    "(browser caido?). Las filas que faltan quedan sin tocar."
+                    f"{sin_abrir_seguidos} sitios seguidos sin abrir despues de uno "
+                    "que si abrio: se corta la tanda (browser caido?). Las filas "
+                    "que faltan quedan sin tocar."
                 )
                 break
 
