@@ -10,6 +10,7 @@ import time
 from datetime import datetime, timezone
 
 from services.email_service import send_meta_lead_reminder
+from services.secuencia_contactos import DIAS_DE_CADA_CONTACTO, TOTAL_CONTACTOS
 
 CLAVE_NEGOCIO = "¿cómo_se_llama_tu_negocio?"
 CLAVE_RUBRO = "¿que_es_lo_que_buscás_para_tu_negocio?"
@@ -38,11 +39,10 @@ _FILTRO_LEAD_ELEGIBLE = (
     "AND b.email IS NOT NULL AND LENGTH(TRIM(b.email)) > 3"
 )
 
-# Dias desde el PRIMER envio de cada lead. El ancla es el primer contacto y no
-# el anterior a proposito: asi el atraso de una tanda no se acumula sobre los
-# que siguen. Son 7 y el septimo es el ultimo de la vida de ese lead.
-_DIAS_DE_CADA_CONTACTO = [0, 10, 25, 115, 205, 295, 365]
-_TOTAL_CONTACTOS = len(_DIAS_DE_CADA_CONTACTO)
+# La tabla de dias (DIAS_DE_CADA_CONTACTO / TOTAL_CONTACTOS) vive en
+# services/secuencia_contactos.py, importada arriba: la comparte con
+# email_service, que escribe el texto de cada contacto y necesita saber cual es
+# el ultimo.
 
 # El resto de la base guarda las fechas asi (scraped_at, entre otras) y las
 # compara contra datetime('now', ...) de SQLite, que devuelve este mismo
@@ -239,12 +239,12 @@ def leads_a_seguir(db_path: str, limite: int = _TOPE_DIARIO) -> list[dict]:
     viejo.
 
     El salto que corresponde depende de cuantos contactos lleva, asi que el CASE
-    se arma desde `_DIAS_DE_CADA_CONTACTO` para que la tabla de dias tenga un
+    se arma desde `DIAS_DE_CADA_CONTACTO` para que la tabla de dias tenga un
     solo lugar de verdad.
     """
     casos = " ".join(
-        f"WHEN {n} THEN {_DIAS_DE_CADA_CONTACTO[n]}"
-        for n in range(1, _TOTAL_CONTACTOS)
+        f"WHEN {n} THEN {DIAS_DE_CADA_CONTACTO[n]}"
+        for n in range(1, TOTAL_CONTACTOS)
     )
     conn = _conn(db_path)
     conn.row_factory = sqlite3.Row
@@ -262,7 +262,7 @@ def leads_a_seguir(db_path: str, limite: int = _TOPE_DIARIO) -> list[dict]:
                       WHERE u.business_id = b.id AND u.unsubscribed_at IS NOT NULL
                    )
           GROUP BY b.id
-            HAVING ultimo_numero < {_TOTAL_CONTACTOS}
+            HAVING ultimo_numero < {TOTAL_CONTACTOS}
                AND primer_envio <= datetime('now', '-' || (CASE ultimo_numero {casos} END) || ' days')
           ORDER BY primer_envio ASC
              LIMIT ?

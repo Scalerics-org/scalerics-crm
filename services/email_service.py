@@ -4,6 +4,8 @@ import os
 
 import requests
 
+from services.secuencia_contactos import TOTAL_CONTACTOS
+
 logger = logging.getLogger(__name__)
 
 _LOGO = "https://raw.githubusercontent.com/juantomasetti1/scalerics-assets/main/logo_full_alt.png"
@@ -323,8 +325,11 @@ _REMITENTE_LEADS = "Scalerics <contacto@scalerics.com>"
 _CALENDLY = "https://calendly.com/scalerics/consultoriagratuita"
 _TELEFONO = "+598 97 250 713"
 
-# La secuencia tiene 7 contactos; el septimo es el ultimo de la vida del lead.
-_CONTACTO_FINAL = 7
+# El ultimo contacto de la vida del lead es el ultimo de la tabla de la
+# secuencia, no un 7 escrito aparte: si se agrega un dia a la tabla, el mail que
+# dice "no te escribimos mas" se corre solo al contacto nuevo. Con dos numeros
+# desacoplados, el 7 seguiria despidiendose y despues saldrian dos mails mas.
+_CONTACTO_FINAL = TOTAL_CONTACTOS
 
 # Los cuatro valores que ofrece el formulario de Meta. Vienen como
 # 'crear_mi_ecommerce', y a veces ya con los guiones bajos cambiados por
