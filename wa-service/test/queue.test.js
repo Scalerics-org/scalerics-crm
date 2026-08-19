@@ -217,3 +217,48 @@ test('se puede recuperar el cuerpo de un saliente por su id del proveedor', asyn
   assert.equal(s.repo.cuerpoPorProviderId(m.id), 'texto a reenviar');
   assert.equal(s.repo.cuerpoPorProviderId('no-existe'), null);
 });
+
+// ── respuestas que quedaron viejas ───────────────────────────────────────────
+
+test('si el lead escribe de nuevo, la respuesta vieja no sale', async () => {
+  // El bug que desordenaba conversaciones enteras: entre dos mensajes pasan de
+  // 12 a 45 segundos, y un lead que contesta rapido escribe antes de que salga
+  // la respuesta anterior. Llegaba "¿cómo se llama tu negocio?" DESPUES de que
+  // ya lo habia dicho.
+  const s = await montar({ DELAY_BETWEEN_MIN_MS: '99999', DELAY_BETWEEN_MAX_MS: '99999' });
+  s.cola.encolar({ to: '598991', texto: 'pregunta vieja', kind: 'manual', leadId: 7 });
+
+  assert.equal(s.cola.descartarPendientesDe(7), 1);
+});
+
+test('la bienvenida no se descarta nunca', async () => {
+  // Es la presentacion: tiene que salir aunque el lead haya escrito tres veces
+  // mientras esperaba.
+  const s = await montar({ DELAY_BETWEEN_MIN_MS: '99999', DELAY_BETWEEN_MAX_MS: '99999' });
+  s.cola.encolar({ to: '598991', texto: 'bienvenida', kind: 'welcome', leadId: 7 });
+  s.cola.encolar({ to: '598991', texto: 'respuesta', kind: 'manual', leadId: 7 });
+
+  assert.equal(s.cola.descartarPendientesDe(7), 1, 'solo la respuesta');
+});
+
+test('los avisos al equipo sobreviven a que el lead escriba', async () => {
+  const s = await montar({ DELAY_BETWEEN_MIN_MS: '99999', DELAY_BETWEEN_MAX_MS: '99999' });
+  s.cola.encolar({ to: '59899000111', texto: 'lead calificado', kind: 'am_notice', leadId: 7 });
+  s.cola.encolar({ to: '598991', texto: 'respuesta', kind: 'manual', leadId: 7 });
+
+  assert.equal(s.cola.descartarPendientesDe(7), 1, 'el aviso interno queda');
+});
+
+test('no toca los pendientes de otros leads', async () => {
+  const s = await montar({ DELAY_BETWEEN_MIN_MS: '99999', DELAY_BETWEEN_MAX_MS: '99999' });
+  s.cola.encolar({ to: '598991', texto: 'a', kind: 'manual', leadId: 7 });
+  s.cola.encolar({ to: '598992', texto: 'b', kind: 'manual', leadId: 8 });
+
+  assert.equal(s.cola.descartarPendientesDe(7), 1);
+});
+
+test('sin leadId no descarta nada', async () => {
+  const s = await montar({ DELAY_BETWEEN_MIN_MS: '99999', DELAY_BETWEEN_MAX_MS: '99999' });
+  s.cola.encolar({ to: '598991', texto: 'x', kind: 'manual', leadId: null });
+  assert.equal(s.cola.descartarPendientesDe(null), 0);
+});

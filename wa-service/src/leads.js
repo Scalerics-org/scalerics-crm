@@ -184,6 +184,12 @@ function crearServicioLeads({ repo, cola, cfg, logger, textos, redactor = null, 
         lead = repo.leadPorId(lead.id);
       }
 
+      // Lo que el bot tenia escrito y sin mandar quedo viejo: el lead acaba de
+      // decir algo nuevo, y la respuesta que sale ahora la escribe el modelo
+      // viendo eso tambien. Sin esto llegan las dos, desordenadas — el bot
+      // pregunta el nombre del negocio despues de que ya se lo dijeron.
+      cola.descartarPendientesDe(lead.id);
+
       // El aviso al AM sale una sola vez, en la primera respuesta. Despues el
       // lead puede mandar diez mensajes contestando el embudo y no tiene
       // sentido avisar por cada uno.

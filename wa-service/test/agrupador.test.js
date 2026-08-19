@@ -176,3 +176,28 @@ test('los ids viejos se limpian', async () => {
   assert.equal(s.repo.limpiarEntrantesVistos(3), 1);
   assert.equal(s.repo.entranteEsNuevo('wamid.viejo'), true, 'despues de limpiar vuelve a ser nuevo');
 });
+
+test('el bot no contesta con una pregunta que el lead ya respondio', async () => {
+  // Reproduce lo que paso en produccion. Con las demoras reales de la cola, la
+  // respuesta a un mensaje sale despues de que el lead contesto el siguiente:
+  // el bot preguntaba "¿cómo se llama tu negocio?" cuando ya se lo habian dicho.
+  const s = await montar({
+    AGRUPAR_ENTRANTES_MS: '5',
+    // Demoras largas: la primera respuesta queda esperando en la cola.
+    DELAY_BETWEEN_MIN_MS: '400', DELAY_BETWEEN_MAX_MS: '400',
+  });
+  await s.servicioLeads.alta({
+    external_id: 'x1', nombre: 'Juanchi', telefono: '099123456', origen: 'form',
+  });
+
+  // Dos turnos seguidos, el segundo antes de que salga la respuesta al primero.
+  await s.servicioLeads.registrarRespuesta('59899123456', 'hola');
+  await s.servicioLeads.registrarRespuesta('59899123456', 'se llama Easy Rider');
+  await s.cola.vacia();
+
+  const { crearTextos } = require('../src/templates/funnel');
+  const respuestas = s.proveedor.getEnviados()
+    .filter((e) => e.to === '59899123456' && e.texto !== crearTextos().BIENVENIDA);
+
+  assert.equal(respuestas.length, 1, 'sale la respuesta al ultimo mensaje, no las dos');
+});

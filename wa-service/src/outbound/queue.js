@@ -15,8 +15,15 @@ const INTERNO = new Set(['am_notice']);
  * reprograma con noAntesDe y se sigue con el resto de la cola.
  */
 function crearCola({ proveedor, repo, cfg, logger, limites, ahora = () => new Date() }) {
-  const items = [];
+  let items = [];
   let corriendo = false;
+  // Lo que queda obsoleto si el lead escribe de nuevo: las respuestas del bot.
+  //
+  // La bienvenida NO entra: es la presentacion y tiene que salir si o si, aunque
+  // el lead haya escrito tres veces mientras esperaba. Los avisos al equipo y
+  // los recordatorios tampoco: que el lead escriba no los invalida.
+  const CONVERSACIONALES = new Set(['manual']);
+
   let esperandoVacio = [];
   let seq = 0;
 
@@ -151,6 +158,36 @@ function crearCola({ proveedor, repo, cfg, logger, limites, ahora = () => new Da
     encolar(item) {
       items.push({ ...item, seq: seq++ });
       queueMicrotask(() => loop().catch((e) => logger?.error({ err: String(e) }, 'loop de cola')));
+    },
+
+    /**
+     * Saca de la cola las respuestas a un lead que todavia no salieron.
+     *
+     * Entre dos mensajes pasan de 12 a 45 segundos —eso es lo que hace que no
+     * parezca un bot— pero un lead que contesta rapido escribe de nuevo antes
+     * de que salga la respuesta anterior. Ahi la conversacion se desordena: el
+     * bot le pregunta el nombre del negocio despues de que ya se lo dijo,
+     * porque esa pregunta estaba escrita hace treinta segundos y esperando
+     * turno.
+     *
+     * La respuesta nueva la escribio el modelo viendo TODO el historial,
+     * incluido el ultimo mensaje. La vieja quedo obsoleta en el momento en que
+     * el lead volvio a escribir, asi que se descarta.
+     *
+     * Solo las conversacionales: los avisos al equipo y los recordatorios no
+     * los invalida que el lead escriba.
+     */
+    descartarPendientesDe(leadId) {
+      if (!leadId) return 0;
+      const antes = items.length;
+      items = items.filter(
+        (i) => !(i.leadId === leadId && CONVERSACIONALES.has(i.kind))
+      );
+      const descartados = antes - items.length;
+      if (descartados) {
+        logger?.info({ leadId, descartados }, 'respuestas viejas descartadas: el lead escribio de nuevo');
+      }
+      return descartados;
     },
 
     /** Resuelve cuando no queda nada que pueda salir ahora. Para tests. */
