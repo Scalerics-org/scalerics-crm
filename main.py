@@ -60,6 +60,10 @@ def create_parser() -> argparse.ArgumentParser:
 
     subparsers.add_parser("dashboard", help="Abrir panel de leads en el browser")
 
+    buscar_p = subparsers.add_parser("buscar-mails",
+                                     help="Buscar el mail de los comercios de discovery en su sitio")
+    buscar_p.add_argument("--limite", type=int, default=50)
+
     return parser
 
 def cmd_scrape(args):
@@ -87,6 +91,20 @@ def cmd_deploy(args):
 def cmd_dashboard(args):
     from dashboard import run
     run(DB_PATH)
+
+def cmd_buscar_mails(args):
+    from playwright.sync_api import sync_playwright
+    from services.email_finder import abrir_con_playwright, procesar_pendientes
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page()
+        page.set_default_timeout(20000)
+        try:
+            res = procesar_pendientes(DB_PATH, abrir_con_playwright(page), limite=args.limite)
+        finally:
+            browser.close()
+    print(res)
 
 _DEPARTAMENTOS = [
     "Montevideo", "Canelones", "Maldonado", "Colonia", "San José",
@@ -156,6 +174,7 @@ def main():
         "deploy": cmd_deploy,
         "run-all": cmd_run_all,
         "dashboard": cmd_dashboard,
+        "buscar-mails": cmd_buscar_mails,
     }
     commands[args.command](args)
 
