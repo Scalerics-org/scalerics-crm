@@ -7,8 +7,20 @@ const { montar, conLead } = require('./helpers');
 const AM = '59899000111';
 const LEAD_TEL = '59899123456';
 
+/**
+ * Lo que se prueba aca es la serializacion: un solo worker, nunca dos envios a
+ * la vez. Los limites se suben para que no se metan en el medio.
+ *
+ * Antes no hacia falta subirlos, pero por la peor razon: los contadores
+ * comparaban una fecha ISO contra el formato de SQLite y daban cero siempre, o
+ * sea que el limite por hora no frenaba nada. Al arreglarlo, este test empezo a
+ * chocar contra un tope de 30 —50 leads son 100 mensajes— y quedaba en rojo.
+ * Que hayan tenido que subirse es la senial de que ahora los limites existen.
+ */
 test('50 leads de golpe se serializan: nunca hay dos envios simultaneos', async () => {
-  const s = await montar();
+  const s = await montar({
+    MAX_MSGS_PER_HOUR: 1000, MAX_MSGS_PER_DAY: 1000, MAX_NEW_CONTACTS_PER_HOUR: 1000,
+  });
   let enVuelo = 0;
   let maxEnVuelo = 0;
 
@@ -31,6 +43,26 @@ test('50 leads de golpe se serializan: nunca hay dos envios simultaneos', async 
 
   assert.equal(maxEnVuelo, 1, 'un solo worker');
   assert.equal(s.proveedor.getEnviados().length, 100, '50 fichas al AM + 50 bienvenidas');
+});
+
+/**
+ * El contrapeso del anterior: que el tope por hora frene DE VERDAD.
+ *
+ * Este guardarrail estuvo muerto sin que nadie se enterara, porque el contador
+ * comparaba formatos de fecha distintos y devolvia cero. limits.test.js no lo
+ * vio: prueba la logica contra un repo de mentira, y la logica estaba bien. El
+ * que mentia era el SQL. Por eso este test va contra la cola y la base reales.
+ */
+test('el tope por hora frena, y lo que no sale se reprograma en vez de perderse', async () => {
+  const s = await montar({ MAX_MSGS_PER_HOUR: 3, MAX_NEW_CONTACTS_PER_HOUR: 100 });
+
+  for (let i = 0; i < 6; i++) {
+    s.cola.encolar({ to: `5989900${String(i).padStart(4, '0')}`, texto: `hola ${i}`, kind: 'welcome' });
+  }
+  await s.cola.vacia();
+
+  assert.equal(s.proveedor.getEnviados().length, 3, 'para al llegar al tope');
+  assert.equal(s.cola.reprogramados(), 3, 'los otros esperan turno, no se descartan');
 });
 
 test('fuera de horario el mensaje se reprograma, no se pierde', async () => {

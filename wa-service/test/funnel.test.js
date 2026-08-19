@@ -277,6 +277,87 @@ test('un lead sin reinicios ve todo su historial', async () => {
   assert.ok(s.repo.ultimosMensajes(l.id, 20, l.conversacion_desde).length > 0);
 });
 
+/**
+ * El corte esconde lo de antes, pero tiene que DEJAR PASAR lo de despues.
+ *
+ * El test de arriba solo miraba que lo viejo se escondiera, y eso pasaba
+ * igual —de hecho pasaba de mas—: `conversacion_desde` se guardaba con
+ * `toISOString()` y `created_at` con el formato de SQLite, que compara texto.
+ * En la posicion 10 el espacio (32) va antes que la T (84), asi que ningun
+ * mensaje del mismo dia pasaba el filtro y la IA recibia cero historial.
+ *
+ * En produccion se vio asi: el lead dijo el nombre de su negocio y el bot se lo
+ * volvio a preguntar con las mismas palabras, porque para el modelo los dos
+ * turnos eran el primero.
+ *
+ * Las fechas de este test son del MISMO DIA a proposito. Con dias distintos la
+ * comparacion de texto acierta de casualidad y el bug queda invisible.
+ */
+test('despues de reiniciar, la IA si ve lo que se hablo desde el reinicio', async () => {
+  const s = await conLead();
+  const l0 = s.repo.leadPorTelefono(TEL);
+
+  // Se parte de cero para que el test no dependa de lo que haya dicho el alta.
+  s.repo.db.prepare('DELETE FROM messages WHERE lead_id = ?').run(l0.id);
+
+  const enFecha = (id, cuando) =>
+    s.repo.db.prepare('UPDATE messages SET created_at = ? WHERE id = ?').run(cuando, id);
+  const guardar = (body) => s.repo.registrarMensaje({
+    lead_id: l0.id, direction: 'in', kind: 'reply', body, provider: 'test',
+  });
+
+  enFecha(guardar('esto es de antes'), '2026-03-05 15:00:00');
+  s.repo.reiniciarLead(l0.id, '2026-03-05T16:00:00.000Z');
+  enFecha(guardar('Easy rider'), '2026-03-05 17:00:00');
+
+  const l = s.repo.leadPorId(l0.id);
+  const visto = s.repo.ultimosMensajes(l.id, 20, l.conversacion_desde);
+
+  assert.deepEqual(
+    visto.map((m) => m.body), ['Easy rider'],
+    've lo de despues del reinicio, y nada de antes'
+  );
+});
+
+/**
+ * El mismo choque de formatos, en el guardarrail anti-baneo.
+ *
+ * `sent_at` se guarda con el formato de SQLite y la ventana llegaba en ISO, asi
+ * que el contador de la ultima hora daba cero SIEMPRE y el limite por hora no
+ * frenaba nunca. Fallaba en silencio: nada rompe, solo deja de proteger.
+ *
+ * limits.test.js no lo agarra porque prueba la logica contra un repo de
+ * mentira. Este va contra el SQL de verdad.
+ */
+test('el limite por hora cuenta los envios de la ultima hora', async () => {
+  const s = await conLead();
+  const haceUnaHora = new Date(Date.now() - 3600_000).toISOString();
+
+  const antes = s.repo.enviosDesde(haceUnaHora);
+  s.repo.registrarEnvio('59899000111', true);
+
+  assert.equal(s.repo.enviosDesde(haceUnaHora), antes + 1, 'sin esto el limite no frena nunca');
+  assert.equal(s.repo.nuevosDesde(haceUnaHora), s.repo.nuevosDesde(haceUnaHora), 'misma ventana');
+});
+
+test('las fechas de JavaScript se guardan en el formato que compara SQLite', () => {
+  const { aFechaSqlite } = require('../src/db/repo');
+
+  assert.equal(aFechaSqlite('2026-08-19T16:52:03.966Z'), '2026-08-19 16:52:03');
+  assert.equal(aFechaSqlite('2026-08-19 16:52:03'), '2026-08-19 16:52:03', 'lo ya convertido no se toca');
+  assert.equal(aFechaSqlite(null), null);
+  assert.equal(aFechaSqlite(''), null);
+  // Lo que no es una fecha pasa tal cual: mejor que la consulta no encuentre
+  // nada y se note, a inventar una fecha y devolver datos de otro momento.
+  assert.equal(aFechaSqlite('cualquier cosa'), 'cualquier cosa');
+
+  // La razon de todo esto, en una linea.
+  assert.ok(
+    '2026-08-19 17:24:03' < '2026-08-19T16:52:03.966Z',
+    'el espacio va antes que la T: por eso hay que normalizar'
+  );
+});
+
 test('reiniciar cancela los jobs pendientes', async () => {
   // Un follow-up programado sobre una conversacion que ya no existe llegaria
   // hablando de algo que el lead no recuerda.

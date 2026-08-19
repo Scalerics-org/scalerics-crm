@@ -1,6 +1,38 @@
 'use strict';
 
 /**
+ * Del formato de JavaScript al de SQLite. TODA fecha que el codigo le pase a
+ * una consulta tiene que pasar por aca.
+ *
+ * Las columnas guardan `datetime('now')` y quedan como "2026-08-19 17:24:03".
+ * El codigo, en cambio, produce fechas con `toISOString()`, que quedan como
+ * "2026-08-19T16:52:03.966Z". SQLite compara las fechas de texto CARACTER POR
+ * CARACTER, y en la posicion 10 una tiene un espacio (32) y la otra una T (84).
+ * El espacio va antes, asi que cualquier comparacion entre dos fechas del mismo
+ * dia da falso, sin error y sin aviso.
+ *
+ * Costo dos cosas en produccion. La conversacion con el lead: el corte de
+ * `conversacion_desde` no dejaba pasar ningun mensaje, la IA recibia cero
+ * historial y contestaba cada mensaje como si fuera el primero —le pregunto el
+ * nombre del negocio dos veces seguidas, palabra por palabra, despues de que se
+ * lo dijeran—. Y el limite de envios por hora, que contaba siempre cero y por
+ * lo tanto nunca frenaba nada.
+ *
+ * Los dos fallaban en silencio, que es lo peor de este bug: no rompe, miente.
+ */
+function aFechaSqlite(v) {
+  if (v === null || v === undefined || v === '') return null;
+  const s = String(v);
+  // Ya viene en formato SQLite: se recorta por si trae fracciones de segundo.
+  if (!s.includes('T')) return s.slice(0, 19);
+  const d = new Date(s);
+  // Algo que no es una fecha se deja pasar tal cual: que falle la consulta y se
+  // vea, en vez de convertirlo en una fecha inventada.
+  if (Number.isNaN(d.getTime())) return s;
+  return d.toISOString().replace('T', ' ').slice(0, 19);
+}
+
+/**
  * Acceso a datos. Todas las consultas viven aca; ningun otro modulo escribe SQL.
  */
 function crearRepo(db) {
@@ -121,7 +153,7 @@ function crearRepo(db) {
     ultimosMensajes: (leadId, n = 6, desde = null) => (desde
       ? db.prepare(
         'SELECT direction, body FROM messages WHERE lead_id = ? AND created_at > ? ORDER BY id DESC LIMIT ?'
-      ).all(leadId, desde, n).reverse()
+      ).all(leadId, aFechaSqlite(desde), n).reverse()
       : db.prepare(
         'SELECT direction, body FROM messages WHERE lead_id = ? ORDER BY id DESC LIMIT ?'
       ).all(leadId, n).reverse()),
@@ -143,7 +175,7 @@ function crearRepo(db) {
         -- reiniciado nunca vuelve a recibir la presentacion.
         welcomed_at = NULL,
         conversacion_desde = ?
-      WHERE id = ?`).run(ahoraIso, id);
+      WHERE id = ?`).run(aFechaSqlite(ahoraIso), id);
       db.prepare(
         "UPDATE jobs SET status='cancelled', last_error='lead reiniciado' WHERE lead_id = ? AND status='pending'"
       ).run(id);
@@ -180,7 +212,7 @@ function crearRepo(db) {
     sinConfirmar(desdeIso) {
       return db.prepare(
         "SELECT COUNT(*) AS n FROM messages WHERE direction = 'out' AND status = 'sent' AND created_at <= ?"
-      ).get(desdeIso).n;
+      ).get(aFechaSqlite(desdeIso)).n;
     },
 
     encolarJob: (leadId, tipo, runAtIso) => stmt.insertJob.run(leadId, tipo, runAtIso),
@@ -227,10 +259,10 @@ function crearRepo(db) {
     },
 
     registrarEnvio: (tel, esPrimero) => stmt.insertSendLog.run(tel, esPrimero ? 1 : 0),
-    enviosDesde: (desdeIso) => stmt.contarEnviosDesde.get(desdeIso).n,
-    nuevosDesde: (desdeIso) => stmt.contarNuevosDesde.get(desdeIso).n,
+    enviosDesde: (desdeIso) => stmt.contarEnviosDesde.get(aFechaSqlite(desdeIso)).n,
+    nuevosDesde: (desdeIso) => stmt.contarNuevosDesde.get(aFechaSqlite(desdeIso)).n,
     yaFueContactado: (tel) => Boolean(stmt.yaContactado.get(tel)),
   };
 }
 
-module.exports = { crearRepo };
+module.exports = { crearRepo, aFechaSqlite };

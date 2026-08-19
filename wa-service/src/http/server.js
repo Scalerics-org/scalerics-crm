@@ -52,7 +52,8 @@ function crearServidor({ cfg, repo, cola, proveedor, servicioLeads, scheduler, l
     // Salientes aceptados por el proveedor hace mas de 5 minutos que siguen sin
     // acuse de entrega. Si esto crece, los mensajes estan quedando en
     // "Esperando este mensaje" del lado del destinatario.
-    const hace5min = new Date(Date.now() - 5 * 60_000).toISOString().replace('T', ' ').slice(0, 19);
+    // El formato lo normaliza el repo: aca se pasa una fecha y ya.
+    const hace5min = new Date(Date.now() - 5 * 60_000).toISOString();
     return {
       ok: true,
       provider: proveedor.nombre,
