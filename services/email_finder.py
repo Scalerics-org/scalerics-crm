@@ -105,19 +105,26 @@ def extraer_mails(html: str) -> list[str]:
 
 # En que paginas buscar, en orden. La home primero porque muchos comercios
 # chicos ponen el mail en el pie de todas las paginas.
+# Cuantos sitios seguidos sin abrir hacen falta para dar por muerto el browser.
+_MAX_SIN_ABRIR_SEGUIDOS = 10
+
 RUTAS_CONTACTO = ["", "/contacto", "/contacto.html", "/contactenos", "/contact",
                   "/contactanos", "/es/contacto", "/nosotros", "/quienes-somos"]
 
 
-def buscar_mail_del_sitio(abrir, website: str) -> str | None:
-    """Primera direccion buena del sitio, o None.
+def buscar_mail_del_sitio(abrir, website: str) -> tuple[str | None, bool]:
+    """Devuelve (primera direccion buena del sitio o None, abrio alguna pagina).
+
+    El segundo valor es lo que separa "el sitio no publica direccion" de "no se
+    pudo mirar": un sitio que no abrio no dio evidencia de nada, y marcarlo como
+    resuelto lo quema para siempre. Quien llama decide que hacer con eso.
 
     `abrir` es una funcion (url) -> html | None. Se pasa por parametro para que
     esto se pueda probar sin browser: en produccion la arma
     `abrir_con_playwright`, en los tests es un diccionario.
     """
     if not website:
-        return None
+        return None, False
     base = website.strip()
     if not re.match(r"^https?://", base, re.I):
         base = "https://" + base
@@ -130,14 +137,16 @@ def buscar_mail_del_sitio(abrir, website: str) -> str | None:
     home = urlunsplit((esquema, partes.netloc, partes.path, partes.query, ""))
     origen = urlunsplit((esquema, partes.netloc, "", "", ""))
 
+    abrio_alguna = False
     for ruta in RUTAS_CONTACTO:
         html = abrir(home if ruta == "" else urljoin(origen + "/", ruta.lstrip("/")))
         if not html:
             continue
+        abrio_alguna = True
         mails = extraer_mails(html)
         if mails:
-            return mails[0]
-    return None
+            return mails[0], True
+    return None, abrio_alguna
 
 
 def procesar_pendientes(db_path: str, abrir, limite: int = 50) -> dict:
@@ -166,25 +175,50 @@ def procesar_pendientes(db_path: str, abrir, limite: int = 50) -> dict:
     finally:
         conn.close()
 
-    res = {"revisados": 0, "con_mail": 0, "sin_mail": 0}
+    res = {"revisados": 0, "con_mail": 0, "sin_mail": 0, "no_abrio": 0}
+    sin_abrir_seguidos = 0
     for fila in filas:
         res["revisados"] += 1
+        error = ""
         try:
-            mail = buscar_mail_del_sitio(abrir, fila["website"])
+            mail, abrio = buscar_mail_del_sitio(abrir, fila["website"])
         except Exception as e:
             # Un padron raspado tiene sitios que hacen cosas raras (redirects
             # rotos, certificados vencidos, etc). Que uno se caiga no puede
-            # cortar la tanda entera.
-            logger.warning(f"[{fila['id']}] {fila['website']} -> excepcion: {type(e).__name__}: {e}")
-            mail = None
+            # cortar la tanda entera, y tampoco cuenta como "no publica mail".
+            error = f"{type(e).__name__}: {e}"
+            logger.warning(f"[{fila['id']}] {fila['website']} -> excepcion: {error}")
+            mail, abrio = None, False
+
         if mail:
             update_business(db_path, fila["id"], email=mail, status="email_found")
             res["con_mail"] += 1
+            sin_abrir_seguidos = 0
             logger.info(f"[{fila['id']}] {fila['website']} -> {mail}")
-        else:
+        elif abrio:
             update_business(db_path, fila["id"], status="no_email")
             res["sin_mail"] += 1
+            sin_abrir_seguidos = 0
             logger.info(f"[{fila['id']}] {fila['website']} -> sin mail")
+        else:
+            # No abrio ninguna pagina: el sitio puede estar caido un rato o se
+            # puede haber muerto el browser de la tanda. No se marca el status,
+            # asi la fila vuelve a salir en la proxima corrida; el error queda
+            # en la base para que la perdida deje rastro.
+            if error:
+                update_business(db_path, fila["id"], error_message=error[:500])
+            res["no_abrio"] += 1
+            sin_abrir_seguidos += 1
+            logger.warning(f"[{fila['id']}] {fila['website']} -> no abrio, se reintenta")
+            if sin_abrir_seguidos >= _MAX_SIN_ABRIR_SEGUIDOS:
+                # Diez seguidos sin abrir no es Uruguay sin internet: es la page
+                # compartida o el browser que se murieron. Seguir solo gasta la
+                # tanda entera contra un browser muerto.
+                logger.error(
+                    f"{sin_abrir_seguidos} sitios seguidos sin abrir: se corta la tanda "
+                    f"(browser caido?). Las filas que faltan quedan sin tocar."
+                )
+                break
 
     logger.info(f"Busqueda de mails: {res}")
     return res

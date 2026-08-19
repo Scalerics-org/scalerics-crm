@@ -136,7 +136,7 @@ def test_encuentra_el_mail_en_la_home():
     abrir = _abrir_falso({
         "https://inmo.com.uy": '<a href="mailto:info@inmo.com.uy">Mail</a>',
     })
-    assert buscar_mail_del_sitio(abrir, "https://inmo.com.uy") == "info@inmo.com.uy"
+    assert buscar_mail_del_sitio(abrir, "https://inmo.com.uy") == ("info@inmo.com.uy", True)
 
 
 def test_sigue_a_la_pagina_de_contacto_si_la_home_no_tiene():
@@ -144,14 +144,14 @@ def test_sigue_a_la_pagina_de_contacto_si_la_home_no_tiene():
         "https://inmo.com.uy": "<p>Bienvenidos</p>",
         "https://inmo.com.uy/contacto": '<a href="mailto:hola@inmo.com.uy">Mail</a>',
     })
-    assert buscar_mail_del_sitio(abrir, "https://inmo.com.uy") == "hola@inmo.com.uy"
+    assert buscar_mail_del_sitio(abrir, "https://inmo.com.uy") == ("hola@inmo.com.uy", True)
 
 
 def test_le_agrega_el_esquema_al_dominio_pelado():
     abrir = _abrir_falso({
         "https://inmo.com.uy": '<a href="mailto:info@inmo.com.uy">Mail</a>',
     })
-    assert buscar_mail_del_sitio(abrir, "inmo.com.uy") == "info@inmo.com.uy"
+    assert buscar_mail_del_sitio(abrir, "inmo.com.uy") == ("info@inmo.com.uy", True)
 
 
 def test_las_rutas_de_contacto_cuelgan_del_origen_y_no_de_la_query():
@@ -163,7 +163,7 @@ def test_las_rutas_de_contacto_cuelgan_del_origen_y_no_de_la_query():
         "https://www.inmo.com.uy/contacto": '<a href="mailto:hola@inmo.com.uy">Mail</a>',
     })
     assert buscar_mail_del_sitio(
-        abrir, "https://www.inmo.com.uy/?utm_source=gmb") == "hola@inmo.com.uy"
+        abrir, "https://www.inmo.com.uy/?utm_source=gmb") == ("hola@inmo.com.uy", True)
 
 
 def test_el_esquema_en_mayusculas_no_produce_una_url_imposible():
@@ -172,13 +172,23 @@ def test_el_esquema_en_mayusculas_no_produce_una_url_imposible():
     abrir = _abrir_falso({
         "https://Inmo.com.uy": '<a href="mailto:info@inmo.com.uy">Mail</a>',
     })
-    assert buscar_mail_del_sitio(abrir, "HTTPS://Inmo.com.uy") == "info@inmo.com.uy"
+    assert buscar_mail_del_sitio(abrir, "HTTPS://Inmo.com.uy") == ("info@inmo.com.uy", True)
 
 
 def test_sitio_que_no_abre_no_revienta():
-    """Un dominio caido es lo normal en un padron raspado, no una excepcion."""
+    """Un dominio caido es lo normal en un padron raspado, no una excepcion.
+
+    El segundo valor es False: no abrio ninguna pagina, o sea que no dio
+    evidencia de que no publique direccion.
+    """
     abrir = _abrir_falso({})
-    assert buscar_mail_del_sitio(abrir, "https://caido.com.uy") is None
+    assert buscar_mail_del_sitio(abrir, "https://caido.com.uy") == (None, False)
+
+
+def test_sitio_que_abrio_y_no_publica_direccion():
+    """Distinto del anterior: este si se pudo mirar, asi que es evidencia."""
+    abrir = _abrir_falso({"https://mudo.com.uy": "<p>Llamanos al 2900 1111</p>"})
+    assert buscar_mail_del_sitio(abrir, "https://mudo.com.uy") == (None, True)
 
 
 def test_corta_apenas_encuentra_una_direccion():
@@ -212,7 +222,7 @@ def test_guarda_el_mail_y_marca_el_negocio(tmp_path):
 
     res = procesar_pendientes(db, abrir)
 
-    assert res == {"revisados": 1, "con_mail": 1, "sin_mail": 0}
+    assert res == {"revisados": 1, "con_mail": 1, "sin_mail": 0, "no_abrio": 0}
     conn = sqlite3.connect(db)
     fila = conn.execute("SELECT email, status FROM businesses").fetchone()
     conn.close()
@@ -228,7 +238,7 @@ def test_el_que_no_da_mail_queda_marcado_y_no_se_reintenta(tmp_path):
     abrir = _abrir_falso({"https://dos.com.uy": "<p>Solo telefono</p>"})
 
     primera = procesar_pendientes(db, abrir)
-    assert primera == {"revisados": 1, "con_mail": 0, "sin_mail": 1}
+    assert primera == {"revisados": 1, "con_mail": 0, "sin_mail": 1, "no_abrio": 0}
 
     segunda = procesar_pendientes(db, abrir)
     assert segunda["revisados"] == 0, "un sitio que no dio mail no se reintenta"
@@ -258,9 +268,14 @@ def test_no_pisa_un_mail_que_ya_estaba(tmp_path):
     assert procesar_pendientes(db, _abrir_falso({}))["revisados"] == 0
 
 
-def test_una_excepcion_de_abrir_no_corta_la_tanda(tmp_path):
+def test_una_excepcion_de_abrir_no_corta_la_tanda_ni_quema_la_fila(tmp_path):
     """Un padron raspado tiene sitios que hacen cosas raras: si `abrir` explota
-    para uno, los demas negocios de la tanda igual se tienen que revisar."""
+    para uno, los demas negocios de la tanda igual se tienen que revisar.
+
+    Y el que exploto NO queda marcado: una excepcion transitoria (DNS, timeout,
+    certificado) es indistinguible de una permanente, asi que se reintenta. El
+    error queda en la base para que la perdida deje rastro.
+    """
     db = _db_con(tmp_path, [
         {"name": "Explota", "phone": "+598 2900 0006",
          "maps_url": "https://maps.google.com/?cid=6",
@@ -277,12 +292,77 @@ def test_una_excepcion_de_abrir_no_corta_la_tanda(tmp_path):
 
     res = procesar_pendientes(db, abrir)
 
-    assert res == {"revisados": 2, "con_mail": 1, "sin_mail": 1}
+    assert res == {"revisados": 2, "con_mail": 1, "sin_mail": 0, "no_abrio": 1}
     conn = sqlite3.connect(db)
-    filas = dict(conn.execute("SELECT name, status FROM businesses").fetchall())
+    filas = {f[0]: f[1:] for f in conn.execute(
+        "SELECT name, status, error_message FROM businesses").fetchall()}
     conn.close()
-    assert filas["Explota"] == "no_email"
-    assert filas["Anda Bien"] == "email_found"
+    assert filas["Explota"][0] != "no_email", "una excepcion no es evidencia de nada"
+    assert "certificado vencido" in (filas["Explota"][1] or "")
+    assert filas["Anda Bien"][0] == "email_found"
+
+
+def test_el_sitio_que_no_abrio_se_reintenta_en_la_proxima_tanda(tmp_path):
+    """El error mas caro del proyecto es perder un prospecto en silencio. Un
+    sitio caido un rato no puede quedar marcado como resuelto para siempre."""
+    db = _db_con(tmp_path, [{
+        "name": "Caido", "phone": "+598 2900 0008",
+         "maps_url": "https://maps.google.com/?cid=8",
+        "website": "https://caido.com.uy", "source": "discovery",
+    }])
+
+    primera = procesar_pendientes(db, _abrir_falso({}))
+    assert primera == {"revisados": 1, "con_mail": 0, "sin_mail": 0, "no_abrio": 1}
+
+    segunda = procesar_pendientes(db, _abrir_falso({
+        "https://caido.com.uy": '<a href="mailto:info@caido.com.uy">Mail</a>',
+    }))
+    assert segunda["con_mail"] == 1
+    conn = sqlite3.connect(db)
+    fila = conn.execute("SELECT email, status FROM businesses").fetchone()
+    conn.close()
+    assert fila == ("info@caido.com.uy", "email_found")
+
+
+def test_la_tanda_se_corta_si_se_murio_el_browser(tmp_path):
+    """`cmd_buscar_mails` usa una sola page para toda la tanda. Si se muere en
+    el sitio 12 de 200, todos los goto siguientes fallan y sin este corte la
+    corrida quemaria los 188 restantes en unos segundos.
+
+    Las filas que no se llegaron a visitar tienen que quedar como estaban.
+    """
+    db = _db_con(tmp_path, [
+        {"name": f"Inmo {i}", "phone": f"+598 2900 20{i:02d}",
+         "maps_url": f"https://maps.google.com/?cid=2{i}",
+         "website": f"https://inmo{i}.com.uy", "source": "discovery"}
+        for i in range(15)
+    ])
+
+    res = procesar_pendientes(db, _abrir_falso({}), limite=15)
+
+    assert res["revisados"] == 10, "se corta a los 10 seguidos sin abrir"
+    assert res["no_abrio"] == 10
+    conn = sqlite3.connect(db)
+    estados = [f[0] for f in conn.execute("SELECT status FROM businesses").fetchall()]
+    conn.close()
+    assert "no_email" not in estados, "ninguna fila se quema por un browser muerto"
+
+
+def test_un_sitio_bueno_reinicia_la_cuenta_de_sitios_que_no_abren(tmp_path):
+    """El corte es por fallos *consecutivos*: un padron con dominios caidos
+    salteados no puede abortar la tanda."""
+    db = _db_con(tmp_path, [
+        {"name": f"Inmo {i}", "phone": f"+598 2900 30{i:02d}",
+         "maps_url": f"https://maps.google.com/?cid=3{i}",
+         "website": f"https://inmo{i}.com.uy", "source": "discovery"}
+        for i in range(12)
+    ])
+    paginas = {"https://inmo5.com.uy": '<a href="mailto:info@inmo5.com.uy">Mail</a>'}
+
+    res = procesar_pendientes(db, _abrir_falso(paginas), limite=12)
+
+    assert res["revisados"] == 12
+    assert res["con_mail"] == 1
 
 
 def test_respeta_el_limite(tmp_path):
