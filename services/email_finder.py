@@ -8,6 +8,7 @@ quemada sin ninguna chance de venta.
 
 import logging
 import re
+from urllib.parse import unquote
 
 from database import _connect, update_business
 
@@ -28,7 +29,9 @@ _DOMINIOS_BASURA = {
 }
 
 _RE_MAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
-_RE_MAILTO = re.compile(r'href\s*=\s*["\']mailto:([^"\'?]+)', re.I)
+# La comilla es opcional a proposito: `href=mailto:info@x.uy` sin comillas es
+# HTML valido y hoy se perdia la prioridad del mailto sobre el texto suelto.
+_RE_MAILTO = re.compile(r'href\s*=\s*["\']?mailto:([^"\'?>]+)', re.I)
 
 # Extensiones de archivo que ningun TLD real usa. El markup de cualquier tema
 # de WordPress o Wix produce nombres con arroba -"hero@3x.avif", "icons@2.woff"-
@@ -74,7 +77,13 @@ def extraer_mails(html: str) -> list[str]:
     del que hizo la web, o cualquier cosa.
     """
     html = html or ""
-    candidatas = [m.strip() for m in _RE_MAILTO.findall(html)]
+    # Lo capturado en un mailto es texto crudo: puede traer varios destinatarios
+    # separados por coma y la arroba escrita como %40. Se normaliza y se valida
+    # contra _RE_MAIL en vez de guardarse tal cual.
+    candidatas: list[str] = []
+    for bruto in _RE_MAILTO.findall(html):
+        for parte in re.split(r"[,;]", unquote(bruto)):
+            candidatas.extend(_RE_MAIL.findall(parte.strip()))
     candidatas += _RE_MAIL.findall(html)
 
     salida: list[str] = []

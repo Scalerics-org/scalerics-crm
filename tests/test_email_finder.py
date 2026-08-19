@@ -102,6 +102,29 @@ def test_ignora_el_query_del_mailto():
     assert extraer_mails(html) == ["info@x.com.uy"]
 
 
+def test_mailto_con_dos_destinatarios_se_parte_en_dos():
+    """Lo del mailto es texto crudo. Guardar la cadena con la coma entera es un
+    `To:` invalido, y ademas pierde la segunda direccion."""
+    html = '<a href="mailto:ventas@x.com.uy,info@x.com.uy">Mail</a>'
+    assert extraer_mails(html) == ["ventas@x.com.uy", "info@x.com.uy"]
+
+
+def test_mailto_sin_comillas_conserva_la_prioridad():
+    """Sin comillas es HTML valido; si solo lo encuentra el regex de texto
+    suelto, el mail del pie de pagina le gana al que el dueno puso para que le
+    escriban."""
+    html = """
+      <p>Web hecha por diseno@agencia.com.uy</p>
+      <a href=mailto:info@inmo.com.uy>Contacto</a>
+    """
+    assert extraer_mails(html)[0] == "info@inmo.com.uy"
+
+
+def test_mailto_con_la_arroba_codificada():
+    html = '<a href="mailto:info%40inmo.com.uy">Mail</a>'
+    assert extraer_mails(html) == ["info@inmo.com.uy"]
+
+
 def _abrir_falso(paginas: dict):
     """Devuelve un `abrir` que sirve HTML de un diccionario url -> html."""
     def abrir(url):
