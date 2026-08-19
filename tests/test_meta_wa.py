@@ -68,3 +68,62 @@ def test_apagado_por_defecto_no_le_escribe_a_nadie():
                      "WA_API_KEY": "clave", "META_WA_AUTO": ""}, clear=False),          patch("routes.meta.requests.post") as post:
         _arrancar_conversacion_wa("Ana", "099123456", {"que_necesitas": "una web"}, 42)
         post.assert_not_called()
+
+
+# ── aviso al equipo (NO al lead) ─────────────────────────────────────────────
+
+from routes.meta import _avisar_por_wa
+
+
+def test_avisa_al_equipo_con_el_lead_a_mano():
+    """Le escribe al EQUIPO, no al lead. Es la distincion que importa."""
+    with patch.dict(os.environ,
+                    {"WA_SERVICE_URL": "http://bot.internal:8080", "WA_API_KEY": "clave",
+                     "AVISAR_LEADS_A": "59894053389,59895330773"}, clear=False), \
+         patch("routes.meta.requests.post") as post:
+        post.return_value = MagicMock(status_code=200, json=lambda: {"ok": True})
+        _avisar_por_wa("Ana Torres", "099123456", "Campaña webs", "Montevideo", 42)
+
+        assert post.call_count == 2, "les llega a los dos del equipo"
+        destinos = [c.kwargs["json"]["telefono"] for c in post.call_args_list]
+        assert destinos == ["59894053389", "59895330773"]
+
+        texto = post.call_args_list[0].kwargs["json"]["text"]
+        assert "Ana Torres" in texto
+        assert "099123456" in texto
+        # El wa.me para poder escribirle de un toque, sin copiar el numero.
+        assert "wa.me/099123456" in texto
+        assert "Campaña webs" in texto
+        assert "lead #42" in texto
+        # Sale sin demora: un aviso interno no necesita parecer humano.
+        assert post.call_args_list[0].kwargs["json"]["skip_delay"] is True
+
+
+def test_el_lead_no_recibe_nada():
+    """El numero del lead nunca es destino: el outbound al lead esta apagado."""
+    with patch.dict(os.environ,
+                    {"WA_SERVICE_URL": "http://bot.internal:8080", "WA_API_KEY": "clave",
+                     "AVISAR_LEADS_A": "59894053389"}, clear=False), \
+         patch("routes.meta.requests.post") as post:
+        post.return_value = MagicMock(status_code=200, json=lambda: {"ok": True})
+        _avisar_por_wa("Ana", "099123456", "", "", 42)
+
+        destinos = [c.kwargs["json"]["telefono"] for c in post.call_args_list]
+        assert "099123456" not in destinos
+
+
+def test_sin_destinos_no_manda_nada():
+    with patch.dict(os.environ,
+                    {"WA_SERVICE_URL": "http://bot.internal:8080", "WA_API_KEY": "clave",
+                     "AVISAR_LEADS_A": ""}, clear=False), \
+         patch("routes.meta.requests.post") as post:
+        _avisar_por_wa("Ana", "099123456", "", "", 42)
+        post.assert_not_called()
+
+
+def test_si_el_bot_no_contesta_el_lead_igual_quedo_guardado():
+    with patch.dict(os.environ,
+                    {"WA_SERVICE_URL": "http://bot.internal:8080", "WA_API_KEY": "clave",
+                     "AVISAR_LEADS_A": "59894053389"}, clear=False), \
+         patch("routes.meta.requests.post", side_effect=Exception("caido")):
+        _avisar_por_wa("Ana", "099123456", "", "", 42)  # no debe levantar

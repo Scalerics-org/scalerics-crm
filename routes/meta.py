@@ -56,10 +56,54 @@ def _notify_new_meta_lead(db: str, lead_name: str, phone: str, campaign: str, ci
             send_new_meta_lead_notification(email, lead_name, phone, campaign, city, lead_id)
         except Exception as e:
             logger.error(f"Failed to notify {email} of new Meta lead: {e}")
-    # WhatsApp — configurar ADMIN_WA_PHONE en .env cuando esté listo
-    # wa_phone = os.environ.get("ADMIN_WA_PHONE", "")
-    # if wa_phone:
-    #     _send_wa_notification(wa_phone, lead_name, phone, campaign)
+    _avisar_por_wa(lead_name, phone, campaign, city, lead_id)
+
+
+def _avisar_por_wa(nombre: str, telefono: str, campania: str, ciudad: str, lead_id: int) -> None:
+    """Aviso al EQUIPO por WhatsApp de que cayo un lead de Meta.
+
+    Ojo con la distincion, que es la que importa: esto NO le escribe al lead.
+    Le escribe al equipo, para que una persona lo llame. El outbound automatico
+    al lead esta apagado a proposito (ver _arrancar_conversacion_wa).
+
+    Existe porque el mail no se lee a tiempo: de 219 leads de Meta, 206 quedaron
+    en "sin_contactar". Un lead que llega el martes y se atiende el jueves es
+    otro lead. El equipo mira WhatsApp.
+    """
+    base = os.environ.get("WA_SERVICE_URL", "").rstrip("/")
+    clave = os.environ.get("WA_API_KEY", "")
+    destinos = [t.strip() for t in os.environ.get("AVISAR_LEADS_A", "").split(",") if t.strip()]
+    if not base or not clave or not destinos:
+        return
+
+    lineas = [
+        "🔔 Lead nuevo de Meta",
+        f"👤 {nombre}",
+    ]
+    if telefono:
+        # El wa.me va aparte del numero: uno se lee, el otro se toca.
+        lineas.append(f"📱 {telefono}")
+        lineas.append(f"https://wa.me/{''.join(c for c in telefono if c.isdigit())}")
+    if ciudad:
+        lineas.append(f"📍 {ciudad}")
+    if campania:
+        lineas.append(f"📣 {campania}")
+    lineas.append(f"CRM: lead #{lead_id}")
+    texto = "\n".join(lineas)
+
+    for destino in destinos:
+        try:
+            r = requests.post(
+                f"{base}/messages/send",
+                json={"telefono": destino, "text": texto, "skip_delay": True},
+                headers={"x-api-key": clave, "Content-Type": "application/json"},
+                timeout=8,
+            )
+            r.raise_for_status()
+            logger.info(f"Lead {lead_id} avisado por WhatsApp a {destino[-4:]}")
+        except Exception as e:
+            # El lead ya quedo guardado y el mail ya salio: esto es un canal mas.
+            logger.warning(f"No se pudo avisar el lead {lead_id} por WhatsApp: {e}")
 
 
 def _arrancar_conversacion_wa(nombre: str, telefono: str, fields: dict, biz_id: int) -> None:
