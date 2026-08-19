@@ -58,3 +58,44 @@ def test_render_html_uses_editorial_template():
                  "address": "", "city": "", "rating": None, "review_count": None, "hours": ""}
     html = render_html(content, business)
     assert "El Bar" in html
+
+
+def test_run_no_le_genera_demo_a_la_cohorte_de_discovery(tmp_path, monkeypatch):
+    """Los comercios de discovery YA tienen sitio web propio: el spec dice que
+    a estos no se les vende una pagina. Generarles demo es una llamada a la API
+    por negocio y despues un deploy que publica en Vercel una copia del sitio
+    real del cliente, que ya paso una vez en este proyecto.
+    """
+    import demo_generator
+    from database import get_business, init_db, insert_business, update_business
+
+    db = str(tmp_path / "demos.db")
+    init_db(db)
+    ids = {}
+    for nombre, source in [("Sin Web", None), ("Con Web", "discovery"),
+                           ("Lead Meta", "meta")]:
+        biz_id = insert_business(db, {
+            "name": nombre, "phone": f"+598 2900 {len(ids):04d}",
+            "maps_url": f"https://maps.google.com/?cid={len(ids)}",
+            "category": "Comercio", "city": "Montevideo", "source": source,
+        })
+        update_business(db, biz_id, status="email_found")
+        ids[nombre] = biz_id
+
+    generados = []
+
+    def _contenido_falso(business, api_key):
+        generados.append(business["name"])
+        return {"tagline": "T", "about": "A", "services": ["a", "b", "c"],
+                "cta_text": "C", "color_scheme": "warm", "template": "modern"}
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(demo_generator, "generate_content", _contenido_falso)
+    monkeypatch.setattr(demo_generator, "render_html", lambda c, b: "<html></html>")
+    monkeypatch.setattr(demo_generator.time, "sleep", lambda s: None)
+
+    demo_generator.run(db, "api-key-de-prueba")
+
+    assert sorted(generados) == ["Lead Meta", "Sin Web"]
+    assert get_business(db, ids["Con Web"])["status"] == "email_found", \
+        "la fila de discovery no se toca"
