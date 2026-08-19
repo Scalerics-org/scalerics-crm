@@ -29,7 +29,20 @@ _DOMINIOS_BASURA = {
 
 _RE_MAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 _RE_MAILTO = re.compile(r'href\s*=\s*["\']mailto:([^"\'?]+)', re.I)
-_RE_IMAGEN = re.compile(r"\.(png|jpe?g|gif|webp|svg)$", re.I)
+
+# Extensiones de archivo que ningun TLD real usa. El markup de cualquier tema
+# de WordPress o Wix produce nombres con arroba -"hero@3x.avif", "icons@2.woff"-
+# porque el convenio retina @2x choca con la sintaxis de mail.
+_EXT_NO_TLD = {
+    "png", "jpg", "jpeg", "gif", "webp", "avif", "svg", "ico", "bmp", "tif",
+    "tiff", "woff", "woff2", "ttf", "otf", "eot", "css", "js", "mjs", "json",
+    "map", "mp4", "webm", "mp3", "pdf", "zip", "min", "html", "htm", "php",
+}
+
+# Primera etiqueta del dominio cuando en realidad es un sufijo de asset:
+# "hero@3x.avif" -> "3x", "app@2.min.css" -> "2". La lista de extensiones no
+# puede ser exhaustiva (jxl, heic, woff3...), asi que este es el corte general.
+_RE_SUFIJO_ASSET = re.compile(r"\d+(\.\d+)*x?\Z")
 
 
 def es_mail_basura(mail: str) -> bool:
@@ -37,11 +50,14 @@ def es_mail_basura(mail: str) -> bool:
     mail = (mail or "").strip().lower()
     if not mail or "@" not in mail:
         return True
-    if _RE_IMAGEN.search(mail):
-        return True
-
     local, _, dominio = mail.partition("@")
     if local in _LOCALES_BASURA:
+        return True
+
+    # Un nombre de archivo, no una direccion: el "TLD" es una extension.
+    if dominio.rsplit(".", 1)[-1] in _EXT_NO_TLD:
+        return True
+    if _RE_SUFIJO_ASSET.match(dominio.split(".", 1)[0]):
         return True
     if dominio in _DOMINIOS_BASURA:
         return True

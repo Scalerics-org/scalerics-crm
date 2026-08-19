@@ -44,6 +44,24 @@ def test_direcciones_buenas(mail):
     assert es_mail_basura(mail) is False
 
 
+@pytest.mark.parametrize("falso", [
+    "icons@2.woff",
+    "hero@3x.avif",
+    "style.css@v1.2.min.css",
+    "logo@2x.png",
+    "sprite@2x.jxl",
+    "bundle@1.0.0.js",
+    "app@2.min.css",
+])
+def test_nombres_de_archivo_no_son_direcciones(falso):
+    """El convenio retina `@2x` de los assets choca de frente con la sintaxis
+    de mail: cualquier tema de WordPress o Wix produce `hero@3x.avif` en el
+    markup. Si eso pasa el filtro, la fila queda con un `To:` invalido y con
+    `status='email_found'`, o sea marcada como resuelta y nunca reintentada.
+    """
+    assert es_mail_basura(falso) is True
+
+
 def test_extrae_del_mailto():
     html = '<a href="mailto:info@inmobiliaria.com.uy">Escribinos</a>'
     assert extraer_mails(html) == ["info@inmobiliaria.com.uy"]
