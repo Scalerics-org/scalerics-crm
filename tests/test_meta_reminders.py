@@ -742,3 +742,67 @@ def test_el_mail_sale_sin_espacios_alrededor(db):
     conn.close()
 
     assert [x["email"] for x in leads_a_recordar(db)] == ["Ana@Ejemplo.com"]
+
+
+def test_los_seguimientos_van_antes_que_los_contactos_nuevos(db):
+    """Un seguimiento a destiempo pierde sentido; un primer contacto aguanta."""
+    from services.meta_reminders import enviar_recordatorios
+
+    conn = sqlite3.connect(db)
+    for i in range(50, 50 + 14):
+        _lead(conn, i, dias=30)
+    _lead(conn, 90, dias=60)
+    _envio(conn, 90, 1, dias_atras=20)
+    conn.commit()
+    conn.close()
+
+    mandados = []
+    def fake(to, negocio, rubro, url, numero=1):
+        mandados.append((to, numero))
+        return "ok"
+
+    with patch("services.meta_reminders.send_meta_lead_reminder", side_effect=fake):
+        res = enviar_recordatorios(db, "https://crm")
+
+    assert res["enviados"] == 15
+    assert (f"lead90@ejemplo.com", 2) in mandados, "el seguimiento entra en la tanda"
+
+
+def test_el_tope_diario_cuenta_juntos_seguimientos_y_nuevos(db):
+    from services.meta_reminders import enviar_recordatorios
+
+    conn = sqlite3.connect(db)
+    for i in range(100, 120):
+        _lead(conn, i, dias=60)
+        _envio(conn, i, 1, dias_atras=20)
+    for i in range(200, 210):
+        _lead(conn, i, dias=30)
+    conn.commit()
+    conn.close()
+
+    with patch("services.meta_reminders.send_meta_lead_reminder", return_value="ok"):
+        res = enviar_recordatorios(db, "https://crm")
+
+    assert res["enviados"] == 15, "15 en total, no 15 de cada tipo"
+
+
+def test_el_numero_que_se_registra_es_el_que_se_mando(db):
+    from services.meta_reminders import enviar_recordatorios
+
+    conn = sqlite3.connect(db)
+    _lead(conn, 300, dias=60)
+    _envio(conn, 300, 1, dias_atras=20)
+    conn.commit()
+    conn.close()
+
+    with patch("services.meta_reminders.send_meta_lead_reminder", return_value="ok"):
+        enviar_recordatorios(db, "https://crm")
+
+    conn = sqlite3.connect(db)
+    try:
+        numeros = [r[0] for r in conn.execute(
+            "SELECT numero FROM meta_reminders WHERE business_id = 300 ORDER BY numero")]
+    finally:
+        conn.close()
+
+    assert numeros == [1, 2]

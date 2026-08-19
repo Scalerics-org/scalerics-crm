@@ -301,7 +301,12 @@ def enviar_recordatorios(db_path: str, base_url: str, dry_run: bool = False) -> 
         )
         return {"candidatos": 0, "enviados": 0, "fallidos": 0, "inciertos": 0}
 
-    candidatos = leads_a_recordar(db_path, limite=cupo)
+    # Los seguimientos primero: uno a destiempo pierde sentido, mientras que un
+    # primer contacto puede esperar un dia sin costo.
+    seguimientos = leads_a_seguir(db_path, limite=cupo)
+    faltan = cupo - len(seguimientos)
+    nuevos = leads_a_recordar(db_path, limite=faltan) if faltan > 0 else []
+    candidatos = seguimientos + nuevos
     res = {"candidatos": len(candidatos), "enviados": 0, "fallidos": 0, "inciertos": 0}
 
     # Valvula para probar el camino completo contra una casilla propia: si esta
@@ -317,11 +322,12 @@ def enviar_recordatorios(db_path: str, base_url: str, dry_run: bool = False) -> 
 
     ya_hubo_intento = False
     for lead in candidatos:
+        numero = lead.get("numero", 1)
         if dry_run:
-            logger.info(f"[dry-run] recordatorio a {lead['email']} (lead {lead['id']})")
+            logger.info(f"[dry-run] contacto {numero} a {lead['email']} (lead {lead['id']})")
             continue
         try:
-            token = registrar_envio(db_path, lead["id"], 1)
+            token = registrar_envio(db_path, lead["id"], numero)
         except sqlite3.IntegrityError:
             # Otra corrida se le adelanto. No es un error: es la guarda haciendo
             # su trabajo.
@@ -352,7 +358,7 @@ def enviar_recordatorios(db_path: str, base_url: str, dry_run: bool = False) -> 
         estado = send_meta_lead_reminder(
             destino, lead["negocio"], lead["rubro"],
             f"{base_url.rstrip('/')}/baja/{token}",
-            lead.get("numero", 1),
+            numero,
         )
         ya_hubo_intento = True
         if estado == "ok":
@@ -364,11 +370,17 @@ def enviar_recordatorios(db_path: str, base_url: str, dry_run: bool = False) -> 
             # estado que alguien agregue) terminaria mandando un segundo mail,
             # que es justo lo que este bloque existe para evitar.
             # Se borra el registro para que manana se reintente: dejarlo puesto
-            # significaria que ese lead nunca recibe nada.
+            # significaria que ese lead nunca recibe nada. Solo ese contacto: un
+            # fallo en el N no puede llevarse puestos los contactos 1..N-1 ya
+            # mandados (perderia sus tokens de baja publicados) ni hacer que el
+            # lead reciba de nuevo el contacto 1.
             conn = _conn(db_path)
             try:
                 try:
-                    conn.execute("DELETE FROM meta_reminders WHERE business_id = ?", (lead["id"],))
+                    conn.execute(
+                        "DELETE FROM meta_reminders WHERE business_id = ? AND numero = ?",
+                        (lead["id"], numero),
+                    )
                     conn.commit()
                 except Exception:
                     # Si esto tambien falla (ej. "database is locked"), el lead
