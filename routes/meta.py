@@ -197,6 +197,14 @@ def _merge_lead_into_existing(db: str, phone: str, email: str, fields: dict) -> 
     mail_previo = (existente.get("email") or "").strip()
     if email and (not mail_previo or existente_source == "discovery"):
         update_fields["email"] = email
+    elif existente_source == "discovery" and mail_previo:
+        # Por el pipeline de Meta solo 63 de 110 leads traen mail. Sin mail de
+        # formulario no alcanza con no pisar el raspado: la fila igual pasa a
+        # source='meta' con crm_status='sin_contactar', que es exactamente el
+        # filtro de services/meta_reminders.py, y la secuencia le escribiria a
+        # la casilla que saco el bot. Se limpia: sin mail tipeado, esta fila no
+        # tiene direccion que darle a la secuencia.
+        update_fields["email"] = None
     update_business(db, biz_id, **update_fields)
     return biz_id
 
