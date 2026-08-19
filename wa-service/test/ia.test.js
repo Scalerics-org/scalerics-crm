@@ -393,3 +393,16 @@ test('una foto no se manda a transcribir', async () => {
   const alLead = s.proveedor.getEnviados().filter((e) => e.to === '59899123456').map((e) => e.texto);
   assert.equal(alLead.at(-1), '[sin_texto_archivo]');
 });
+
+test('agente de IA es una opcion propia, separada de automatizacion', () => {
+  // Decision del negocio: son cinco cosas distintas que vender, y meter el
+  // agente de IA adentro de "automatizacion" escondia justamente el servicio
+  // que mas se quiere ofrecer.
+  assert.deepEqual(sanearDatos({ business_type: 'automatizacion' }), { business_type: 3 });
+  assert.deepEqual(sanearDatos({ business_type: 'agente_ia' }), { business_type: 5 });
+
+  const { HERRAMIENTA } = require('../src/ia/agente');
+  const opciones = HERRAMIENTA.function.parameters.properties.business_type.enum;
+  assert.equal(opciones.length, 5, 'las cinco, ni una mas');
+  assert.ok(opciones.includes('agente_ia'));
+});

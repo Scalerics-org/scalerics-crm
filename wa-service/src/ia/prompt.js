@@ -31,7 +31,7 @@ const DATOS = [
   {
     campo: 'business_type',
     pregunta: 'qué necesita',
-    opciones: 'página web, e-commerce, sistema a medida, o automatización / agente de IA',
+    opciones: 'página web, e-commerce, sistema a medida, automatización, o agente de IA. Son cinco: ofrecelas todas.',
   },
 ];
 

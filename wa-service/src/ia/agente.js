@@ -10,7 +10,7 @@ const MAX_CARACTERES = 900;
  * "una pagina web"— y el mapeo a los codigos 1-4 que guarda la base lo hace
  * esto, que no se equivoca.
  */
-const TIPO_PROYECTO = { web: 1, ecommerce: 2, automatizacion: 3, sistema: 4 };
+const TIPO_PROYECTO = { web: 1, ecommerce: 2, automatizacion: 3, sistema: 4, agente_ia: 5 };
 const PRESUPUESTO = { menos_500: 1, entre_500_y_3000: 2, mas_3000: 3, no_sabe: 4 };
 
 /** Cuanta gente trabaja -> el tramo que usa el CRM. */
@@ -87,8 +87,8 @@ const HERRAMIENTA = {
          */
         business_type: {
           type: 'string',
-          enum: ['web', 'ecommerce', 'sistema', 'automatizacion'],
-          description: 'Qué necesita: web = página web, ecommerce = tienda online, sistema = sistema a medida, automatizacion = automatización o agente de IA',
+          enum: ['web', 'ecommerce', 'sistema', 'automatizacion', 'agente_ia'],
+          description: 'Qué necesita: web = página web, ecommerce = tienda online, sistema = sistema a medida, automatizacion = automatizar procesos internos, agente_ia = un agente de IA que atienda o venda',
         },
         budget: {
           type: 'string',

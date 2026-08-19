@@ -74,6 +74,20 @@ def _arrancar_conversacion_wa(nombre: str, telefono: str, fields: dict, biz_id: 
     el CRM, que es lo que no se puede perder; lo unico que se pierde es la
     respuesta automatica, y de eso se entera el equipo por el mail de siempre.
     """
+    # Apagado por decision del negocio: el bot es para el que escribe al numero,
+    # no para salir a buscar a nadie. Escribirle a alguien que lleno un
+    # formulario hace semanas, aunque haya dejado el telefono, queda poco humano.
+    #
+    # El codigo queda porque funciona y esta probado. Para prenderlo alcanza con
+    # META_WA_AUTO=true, pero es una decision de producto, no de configuracion.
+    #
+    # La llave es propia y no reusa WA_SERVICE_URL: esas variables ya estan
+    # puestas para el panel de WhatsApp y el webhook de Calendly, asi que sin
+    # esta bandera el proximo deploy prenderia el outbound sin que nadie lo
+    # hubiera decidido.
+    if os.environ.get("META_WA_AUTO", "").strip().lower() not in ("1", "true", "yes", "on"):
+        return
+
     base = os.environ.get("WA_SERVICE_URL", "").rstrip("/")
     clave = os.environ.get("WA_API_KEY", "")
     if not base or not clave:

@@ -10,7 +10,7 @@ from routes.meta import _arrancar_conversacion_wa
 
 
 def _entorno(**extra):
-    base = {"WA_SERVICE_URL": "http://bot.internal:8080", "WA_API_KEY": "clave"}
+    base = {"WA_SERVICE_URL": "http://bot.internal:8080", "WA_API_KEY": "clave", "META_WA_AUTO": "true"}
     base.update(extra)
     return patch.dict(os.environ, base, clear=False)
 
@@ -53,3 +53,18 @@ def test_si_el_bot_esta_caido_no_rompe_el_webhook():
     # El lead ya quedo guardado en el CRM, que es lo que no se puede perder.
     with _entorno(), patch("routes.meta.requests.post", side_effect=Exception("connection refused")):
         _arrancar_conversacion_wa("Ana", "099123456", {}, 42)  # no debe levantar
+
+
+def test_apagado_por_defecto_no_le_escribe_a_nadie():
+    """Sin META_WA_AUTO no sale ningun mensaje, aunque el bot este configurado.
+
+    Decision del negocio: el bot atiende al que escribe, no sale a buscar. Y la
+    llave es propia porque WA_SERVICE_URL y WA_API_KEY ya estan puestas para el
+    panel y para Calendly: sin esta bandera, un deploy cualquiera prenderia el
+    outbound sin que nadie lo hubiera decidido.
+    """
+    with patch.dict(os.environ,
+                    {"WA_SERVICE_URL": "http://bot.internal:8080",
+                     "WA_API_KEY": "clave", "META_WA_AUTO": ""}, clear=False),          patch("routes.meta.requests.post") as post:
+        _arrancar_conversacion_wa("Ana", "099123456", {"que_necesitas": "una web"}, 42)
+        post.assert_not_called()

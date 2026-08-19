@@ -166,7 +166,7 @@ def api_bot_lead_qualified():
     if not phone:
         return jsonify({"ok": False, "error": "phone requerido"}), 400
 
-    BTYPE = {1: "Página web", 2: "E-commerce", 3: "Automatización", 4: "App a medida"}
+    BTYPE = {1: "Página web", 2: "E-commerce", 3: "Automatización", 4: "Sistema a medida", 5: "Agente de IA"}
     BUDGET = {1: "Menos de $500 USD", 2: "$500–$3.000 USD", 3: "Más de $3.000 USD", 4: "Sin definir"}
     TEAM = {1: "Solo yo", 2: "2–5 personas", 3: "6–20 personas", 4: "Más de 20"}
     STATE_TO_CRM = {
