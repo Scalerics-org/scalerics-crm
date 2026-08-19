@@ -16,8 +16,8 @@ confirmado en `on` en producción (verificado el 19-8-2026, junto con que
 encendido: el paso 2b lo apaga temporalmente — **después** de la guarda del
 paso 1 y del backup del paso 2, nunca antes, para que ningún reinicio caiga
 sobre esas dos protecciones sin haberlas corrido — para que los pasos que
-dependen del cupo (3b, 6 y 7) corran con la máquina quieta; el paso 8 lo
-vuelve a prender al final.
+necesitan que no salga una tanda en paralelo (3b y 7) corran con la máquina
+quieta; el paso 8 lo vuelve a prender al final.
 
 Los pasos van en orden y cada uno tiene una condición de corte. Si alguno no da
 lo esperado, **parar ahí** — ninguno de los siguientes lo arregla. Si parás en
@@ -46,17 +46,19 @@ flyctl status -a scalerics-crm
 La garantía de "no mandarle el mismo contacto dos veces a la misma persona"
 vive en el `UNIQUE(business_id, numero)` de `meta_reminders`, así que esa
 sobrevive aunque dos corridas se pisen. Lo que **no** cubre ese `UNIQUE` es el
-volumen: el tope de 15 mails por día se calcula una sola vez al arrancar la
-tanda (`enviados_ultimas_24h`, en `services/meta_reminders.py`) y no se
-reserva. Dos corridas solapadas —dos máquinas, o un reinicio de Fly mientras
-la tanda anterior todavía sigue corriendo— pueden calcular 15 de cupo cada
-una y mandar hasta 30 en la ventana de 24 horas, sin que nada lo impida ni lo
-avise. Por eso una sola máquina corriendo **es parte de la garantía del tope
-diario, no un detalle de costos**. Y si dos máquinas llegan a tener dos
-volúmenes distintos —el caso ya conocido: Fly creó una segunda máquina sola
-antes en otro proyecto, no es hipotético— ahí se pierde también la garantía
-de "no repetir contacto", porque cada volumen tiene su propia tabla
-`meta_reminders` sin que la otra se entere.
+volumen. El tope de 15 mails por día se relee antes de cada envío
+(`enviados_ultimas_24h`, en `services/meta_reminders.py`), así que dos
+corridas solapadas —dos máquinas, o un reinicio de Fly mientras la tanda
+anterior todavía sigue corriendo— ya no mandan 15 cada una: la segunda corta
+apenas la ventana de 24 horas llega al tope, y en el log queda la línea "se
+corta la tanda". Lo que puede pasar igual es que se pasen de 15 por un
+puñado, porque el cupo se lee pero no se reserva: dos corridas pueden leer 14
+al mismo tiempo y mandar una cada una. Por eso una sola máquina corriendo
+**sigue siendo parte de la garantía del tope diario, no un detalle de
+costos**. Y si dos máquinas llegan a tener dos volúmenes distintos —el caso ya
+conocido: Fly creó una segunda máquina sola antes en otro proyecto, no es
+hipotético— ahí se pierde también la garantía de "no repetir contacto", porque
+cada volumen tiene su propia tabla `meta_reminders` sin que la otra se entere.
 
 **c) La secuencia son 7 contactos repartidos en un año, no uno.**
 
@@ -72,11 +74,19 @@ de "no repetir contacto", porque cada volumen tiene su propia tabla
 
 Los días se cuentan desde el **primer** envío de cada lead, no desde el
 anterior, para que el atraso de una tanda no se acumule sobre las que siguen
-(`_DIAS_DE_CADA_CONTACTO` en `services/meta_reminders.py`). Cada contacto
-tiene su propio texto (`services/email_service.py`; el 7 dice explícitamente
-que es el último) y su propio token de baja, pero la baja es sobre la
-persona: quien se da de baja en cualquier contacto no recibe ninguno de los
-que faltan.
+(`DIAS_DE_CADA_CONTACTO` en `services/secuencia_contactos.py`). Además tienen
+que haber pasado **7 días desde el último envío** de ese lead
+(`_PISO_ENTRE_CONTACTOS_DIAS`), y eso es lo que hace que un lead atrasado —la
+automatización apagada un tiempo, o backlog que tardó en drenar— no reciba los
+contactos 2 a 7 uno atrás de otro al pasar todos los umbrales de golpe. Para
+un lead al día el piso no cambia nada: sus saltos reales son 10, 15, 90, 90,
+90 y 70 días. Para uno atrasado significa un contacto por semana hasta ponerse
+al día.
+
+Cada contacto tiene su propio texto (`services/email_service.py`; el 7 dice
+explícitamente que es el último) y su propio token de baja, pero la baja es
+sobre la persona: quien se da de baja en cualquier contacto no recibe ninguno
+de los que faltan.
 
 El tope de 15 mails por día es compartido entre seguimientos (leads que ya
 están en la secuencia) y contactos nuevos, y los seguimientos van primero.
@@ -92,6 +102,18 @@ contestado el primero. Es el modo de falla más probable de todo esto y la
 ---
 
 ## 1. Verificar que el arranque no vaya a pisar la base
+
+**Primero mirar si la máquina está corriendo**, porque `flyctl ssh console`
+**la arranca si está detenida** — y ahí `start.sh` corre antes de que llegues a
+leer la respuesta, o sea que el chequeo destruye justo lo que iba a chequear:
+
+```bash
+flyctl status -a scalerics-crm
+```
+
+Si la máquina está `started`, entrar. Si está detenida, **no entrar por SSH**:
+hay que mirar el volumen por otro lado (o asumir lo peor y restaurar del backup
+del paso 2 después del arranque) antes de dejar que ese arranque decida solo.
 
 ```bash
 flyctl ssh console -a scalerics-crm -C "ls -la /data/.prod_imported /data/leads.db"
@@ -144,12 +166,11 @@ Confirmado en producción: desde el 18-8-2026 está en `on`, mandando mails
 reales todos los días (`META_NOTIFY_OVERRIDE` no está seteado). El deploy del
 paso 3 no se puede hacer con el interruptor prendido: 180 segundos después de
 ese boot sale una tanda real con la secuencia nueva, antes de que corra un
-solo paso de verificación. De los pasos que siguen, **3b, 6 y 7** necesitan la
-máquina quieta porque dependen del cupo o de que no salga una tanda en
-paralelo; **4 y 5 no** — no mandan mail ni dependen del cupo, así que da igual
-si corren con el interruptor prendido o apagado. La única mitigación para
-3b/6/7 es apagarlo ahora, dejarlo así durante toda la verificación, y volver a
-prenderlo recién en el paso 8:
+solo paso de verificación. De los pasos que siguen, **3b y 7** necesitan la
+máquina quieta porque dependen de que no salga una tanda en paralelo; **4, 5 y
+6 no** — no mandan mail, así que da igual si corren con el interruptor
+prendido o apagado. La única mitigación para 3b y 7 es apagarlo ahora, dejarlo
+así durante toda la verificación, y volver a prenderlo recién en el paso 8:
 
 ```bash
 flyctl secrets unset META_RECORDATORIOS -a scalerics-crm
@@ -170,8 +191,18 @@ Al arrancar, `init_db` (`database.py`) migra `meta_reminders` sola: agrega la
 columna `numero`, cambia el `UNIQUE` a `(business_id, numero)` y, si la tabla
 vieja no tenía esa columna, reconstruye la tabla completa poniendo `numero=1`
 en cada fila existente (conservan su `id`, su `token` y su `sent_at`
-originales). No hay forma de correrla a mano ni de saltearla — el deploy la
-dispara sola, una sola vez.
+originales). El deploy la dispara solo, sin que haya que acordarse, y es
+idempotente: correrla de nuevo sobre una base ya migrada no hace nada.
+
+Si el arranque fallara antes de llegar a ella, el plan B es correrla a mano
+sobre la base viva:
+
+```bash
+flyctl ssh console -a scalerics-crm -C "cd /app && python -c \"import database; database.init_db('/data/leads.db')\""
+```
+
+(Es el mismo camino que corre el arranque. Con el backup del paso 2 ya hecho,
+que es la condición para tocar esto a mano.)
 
 El interruptor quedó apagado en el paso 2b, así que el job no arranca
 todavía — recién lo hace en el paso 8. Comparar la imagen del log propio
@@ -197,14 +228,25 @@ de seguir, no asumir que la migración duplicó datos.
 Unos días después, con la secuencia ya corriendo, el mismo comando tiene que
 mostrar varios números: el 1 sigue siendo mayoría (es el que reciben los
 leads nuevos, hasta 15 por día) pero van a empezar a aparecer filas con
-`numero=2` a partir del décimo día desde el deploy (contacto 1 + 10 días, ver
-la tabla del paso 0.c). Un número que no debería estar todavía —por ejemplo
-un `numero=2` al día siguiente del deploy, o un `numero=4` antes de que pasen
-115 días desde el primer contacto de ese lead puntual— es señal de un reloj
-desincronizado en la máquina, de una fila migrada con un `sent_at` corrido, o
-de que alguien corrió el backfill o una prueba contra la base viva en vez de
-una copia (paso 7). No se autoarregla: hay que mirar el `sent_at` de esa fila
-puntual y decidir a mano.
+`numero=2`.
+
+**El reloj de cada lead es su propio `sent_at`, no la fecha del deploy.** Las
+filas migradas vienen del 18-8-2026, o sea que son anteriores a este deploy: si
+el deploy pasa diez días o más después de esa fecha, aparecen `numero=2` el
+primer día, y eso es correcto, no una anomalía. El chequeo que sí sirve es por
+fila, con esta consulta, que lista los contactos que salieron antes de lo que
+les tocaba según la tabla del paso 0.c:
+
+```bash
+flyctl ssh console -a scalerics-crm -C "python -c \"import sqlite3;c=sqlite3.connect('/data/leads.db');print(c.execute('SELECT r.business_id, r.numero, f.primero, r.sent_at FROM meta_reminders r JOIN (SELECT business_id, MIN(sent_at) primero FROM meta_reminders GROUP BY business_id) f ON f.business_id = r.business_id WHERE r.numero > 1 AND julianday(r.sent_at) - julianday(f.primero) < CASE r.numero WHEN 2 THEN 10 WHEN 3 THEN 25 WHEN 4 THEN 115 WHEN 5 THEN 205 WHEN 6 THEN 295 WHEN 7 THEN 365 END').fetchall())\""
+```
+
+Tiene que devolver una lista vacía. Si devuelve filas —un contacto que salió
+antes de los días que le correspondían desde el **primer** envío de ese lead—
+es señal de un reloj desincronizado en la máquina, de una fila migrada con un
+`sent_at` corrido, o de que alguien corrió el backfill o una prueba contra la
+base viva en vez de una copia (paso 7). No se autoarregla: hay que mirar el
+`sent_at` de esa fila puntual y decidir a mano.
 
 ## 4. Contar antes del backfill
 
@@ -258,18 +300,25 @@ Después de verdad, sin `--dry-run`, con la misma lectura de arriba.
 
 ## 6. Dry-run: ver a quién le tocaría hoy
 
-**Precondición: que haya cupo libre en la ventana de 24 horas — apagar el
-interruptor (paso 2b) no alcanza para garantizarlo.** `enviar_recordatorios`
-calcula `cupo = 15 - enviados_ultimas_24h` y corta con `{'candidatos': 0,
-...}` **antes** de mirar `--dry-run` (`services/meta_reminders.py:295-302`;
-el `if dry_run` recién aparece en `:326`). `enviados_ultimas_24h` cuenta
-filas de `meta_reminders` con `sent_at` en las últimas 24 horas sin importar
-si el interruptor está prendido ahora mismo: la automatización viene
-mandando una tanda real cada 24 horas desde el 18-8-2026, con backlog de
-sobra (unos 144 leads todavía elegibles), así que en la mayor parte del día
-ya hay 15 filas recientes puestas por la tanda anterior y el cupo real es 0.
+```bash
+flyctl ssh console -a scalerics-crm -C "cd /app && python -m services.meta_reminders /data/leads.db --dry-run"
+```
 
-Para chequearlo (informativo, no hace falta para seguir):
+Va directo contra la base viva y no hace falta liberar nada: el `--dry-run` no
+escribe ni manda, así que no gasta cupo, y por eso tampoco lo respeta — lista
+con el cupo entero aunque la tanda de hace un rato ya se haya llevado los 15.
+(Antes cortaba por cupo antes de mirar el flag, y como en producción el cupo
+está en 0 buena parte del día, este paso obligaba a un `cp` y un `DELETE` a
+mano dentro de la máquina de producción. Ya no.)
+
+Lista los candidatos (hasta 15), cada uno con su `numero` de contacto — los
+seguimientos van primero, así que puede haber alguno con `numero` mayor a 1
+mezclado con los contactos nuevos. Ojo con lo que estás mirando: como ignora
+el cupo, la lista es "a quién le tocaría si arrancara una tanda con los 15
+libres", no el resultado exacto de la próxima tanda real.
+
+Si querés saber cuánto cupo hay de verdad (informativo, no hace falta para
+seguir):
 
 ```bash
 flyctl ssh console -a scalerics-crm -C "python -c \"import sqlite3;c=sqlite3.connect('/data/leads.db');print('ultimas_24h:',c.execute('SELECT COUNT(*) FROM meta_reminders WHERE sent_at >= datetime(?, ?)', ('now','-1 day')).fetchone()[0]);print('ultimo_envio:',c.execute('SELECT MAX(sent_at) FROM meta_reminders').fetchone()[0])\""
@@ -277,35 +326,13 @@ flyctl ssh console -a scalerics-crm -C "python -c \"import sqlite3;c=sqlite3.con
 
 Si `ultimas_24h` da 15, el cupo real es 0 y recién se libera unas 24 horas
 después de `ultimo_envio` (cada tanda manda sus hasta 15 mails en unos
-segundos, así que esa hora alcanza como aproximación). Esperar eso no es
-práctico en medio de un deploy, así que el remedio de este paso es correr
-contra una copia con esas filas recientes borradas:
+segundos, así que esa hora alcanza como aproximación). Importa para el paso 7,
+que sí manda de verdad, y para el paso 8.
 
-```bash
-flyctl ssh console -a scalerics-crm
-cp /data/leads.db /data/prueba-dry.db
-python -c "import sqlite3;c=sqlite3.connect('/data/prueba-dry.db');c.execute('DELETE FROM meta_reminders WHERE sent_at >= datetime(?, ?)', ('now','-1 day'));c.commit()"
-cd /app && python -m services.meta_reminders /data/prueba-dry.db --dry-run
-rm /data/prueba-dry.db
-```
-
-Es legítimo porque `prueba-dry.db` se borra al final y nunca se escribe
-sobre `/data/leads.db`: no libera cupo real, solo el de la copia
-descartable. Pero ojo con lo que estás mirando: al borrar esas filas en la
-copia, algún lead que en la base real ya recibió su contacto más reciente
-hace pocas horas puede reaparecer acá como candidato "nuevo". La lista sirve
-para chequear que la selección y el armado de los mails funcionan (leads
-plausibles, `numero` correcto, mails con cara de mails) — no para predecir
-el resultado exacto de la próxima tanda real.
-
-No escribe ni manda nada. Lista los candidatos (hasta 15), cada uno con su
-`numero` de contacto — los seguimientos van primero, así que puede haber
-alguno con `numero` mayor a 1 mezclado con los contactos nuevos.
-
-**Condición de corte:** si aun con la copia liberada la lista sale vacía, no
-sigas — revisá `_FILTRO_LEAD_ELEGIBLE` (`crm_status`, `email`) contra la base
-real antes de continuar; puede ser que hoy no queden leads elegibles, y ahí
-conviene decidir con Juan si seguir igual.
+**Condición de corte:** si la lista sale vacía, no sigas — revisá
+`_FILTRO_LEAD_ELEGIBLE` (`crm_status`, `email`) contra la base real antes de
+continuar; puede ser que hoy no queden leads elegibles, y ahí conviene decidir
+con Juan si seguir igual.
 
 ## 7. Mail de prueba — **contra una copia, no contra la base viva**
 
@@ -316,11 +343,11 @@ corridas leen `enviados_ultimas_24h` sin coordinarse entre sí — el mismo
 riesgo de cupo no reservado del paso 0.b, aplicado a este momento puntual.
 
 **Además, y aunque el interruptor esté apagado: sin cupo libre no sale
-nada.** Es la misma precondición del paso 6 — la automatización viene
-mandando una tanda real cada 24 horas desde el 18-8-2026, así que buena parte
-del día el cupo real ya está en 0. El remedio es el mismo: liberar el cupo
-**en la copia**, nunca en `/data/leads.db` (ver el paso 6 para la explicación
-completa y el chequeo).
+nada.** A diferencia del paso 6, este paso manda de verdad, así que sí
+respeta el cupo — y la automatización viene mandando una tanda real cada 24
+horas desde el 18-8-2026, con lo cual buena parte del día el cupo ya está en
+0 (chequealo con el segundo comando del paso 6). El remedio es liberarlo **en
+la copia**, nunca en `/data/leads.db`.
 
 `META_NOTIFY_OVERRIDE` redirige el destinatario, pero **igual registra el
 envío** en `meta_reminders` con su `numero` correspondiente. Si se corre
@@ -342,12 +369,13 @@ cd /app && META_NOTIFY_OVERRIDE=juantomasetti240@gmail.com \
 rm /data/prueba.db
 ```
 
-El `DELETE` es el mismo truco del paso 6: borra, solo en la copia, las filas
-con `sent_at` de las últimas 24 horas, para no depender de cuándo salió la
-última tanda real. Por eso el lead que reciba el mail de prueba puede no ser
-el que le tocaría de verdad hoy — lo que valida esto es que el camino
-completo (selección, armado del mail, registro, envío) funciona, no cuál
-lead puntual sale.
+El `DELETE` borra, solo en la copia, las filas con `sent_at` de las últimas 24
+horas, para no depender de cuándo salió la última tanda real. Es legítimo
+porque `prueba.db` se borra al final y nunca se escribe sobre
+`/data/leads.db`: no libera cupo real, solo el de la copia descartable. Por eso
+el lead que reciba el mail de prueba puede no ser el que le tocaría de verdad
+hoy — lo que valida esto es que el camino completo (selección, armado del mail,
+registro, envío) funciona, no cuál lead puntual sale.
 
 **Condición de corte:** si con el `DELETE` ya aplicado el comando de arriba
 sigue sin mandar nada (revisá el log en la consola), no sigas a la revisión
@@ -390,11 +418,11 @@ puede mandar correo real a terceros en cualquier momento.
 
 Cada reinicio dispara una tanda: cada `flyctl deploy`, cada `secrets set/unset`,
 y cada OOM de los 256 MB de RAM. El tope diario se calcula sobre las filas de
-las últimas 24 horas (`enviados_ultimas_24h`), así que dos tandas normales,
-una después de la otra, no se pasan de 15. Lo que **no** está cubierto es un
-reinicio que ocurra mientras la tanda anterior todavía sigue corriendo — el
-riesgo descrito en el paso 0.b. Por eso, además de no tocar nada más, conviene
-mirar `flyctl status` si algo se movió ese día.
+las últimas 24 horas (`enviados_ultimas_24h`) y se relee antes de cada envío,
+así que dos tandas —una después de la otra, o incluso solapadas— no se pasan
+de 15 más que por un puñado: el riesgo del paso 0.b, acotado pero no
+eliminado, porque el cupo se lee y no se reserva. Por eso, además de no tocar
+nada más, conviene mirar `flyctl status` si algo se movió ese día.
 
 ## 10. Mirar rebotes, no solo envíos
 
@@ -402,12 +430,16 @@ En el panel de Resend, después de la primera tanda. Los mails vienen de un
 formulario de Meta de hasta 5 meses de antigüedad: una tasa de rebote alta en un
 dominio nuevo hace más daño a la reputación que las quejas.
 
-Con 174 elegibles a 15 por día, el backfill del contacto 1 se drena en unos 12
-días **si nada más compite por el cupo**. En la práctica no va a ser así: a
-partir del décimo día empiezan a aparecer seguimientos (contacto 2), y como
+Con 174 elegibles a 15 por día, el backlog de contactos 1 se drenaría en unos
+12 días **si nada más compitiera por el cupo**. No es el caso: a partir del
+décimo día empiezan a aparecer seguimientos (contacto 2), y como
 `leads_a_seguir` va primero (paso 0.c), cada seguimiento le come un lugar al
-backfill. El backlog real tarda más de 12 días en vaciarse — es esperado, no
-hay que salir a apurarlo subiendo el tope.
+backlog. **Puede tardar meses, no días.** Simulado sobre un backlog del orden
+del real: con 144 leads y sin leads nuevos entrando, el último contacto 1 sale
+el día 44; con 5 leads nuevos por día, el día 346. Es esperado y no hay que
+salir a apurarlo subiendo el tope: el tope de 15 es lo que protege la
+reputación del dominio, y el orden (seguimientos primero) es deliberado
+porque un seguimiento a destiempo pierde sentido y un primer contacto no.
 
 ---
 
@@ -428,7 +460,10 @@ independiente.
 **Un lead quedó marcado sin haber recibido nada** (aparece en el log como
 "envío incierto" o como fallo de limpieza): borrar esa fila puntual de
 `meta_reminders` (`business_id` + `numero`) a mano y ese contacto vuelve a
-entrar en la selección al otro día. **No borrar todas las filas del lead**:
+entrar en la selección. Si era un seguimiento (`numero` mayor a 1), no
+necesariamente al otro día: con la fila borrada, el piso de 7 días pasa a
+contarse desde el envío anterior que le quede al lead, así que puede tardar
+hasta una semana en reaparecer. **No borrar todas las filas del lead**:
 se pierden los tokens de baja de los contactos anteriores que ya se
 mandaron de verdad, y esos links quedan rotos en mails que la gente ya tiene
 en su bandeja.
