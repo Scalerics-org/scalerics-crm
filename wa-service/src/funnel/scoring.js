@@ -1,7 +1,7 @@
 'use strict';
 
 const ETIQUETAS = {
-  business_type: { 1: 'Página web', 2: 'E-commerce', 3: 'Automatización', 4: 'App a medida' },
+  business_type: { 1: 'Página web', 2: 'E-commerce', 3: 'Automatización / agente de IA', 4: 'Sistema a medida' },
   team_size: { 1: 'Solo yo', 2: '2-5 personas', 3: '6-20 personas', 4: 'Más de 20' },
   budget: { 1: 'Menos de $500 USD', 2: '$500 a $3.000 USD', 3: 'Más de $3.000 USD', 4: 'No lo tiene claro' },
 };

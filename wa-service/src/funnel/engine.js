@@ -196,22 +196,22 @@ function crearEmbudo({
 
   async function alEntrar(lead, estado, entrada) {
     switch (estado) {
+      /**
+       * Ya se sabe quien es, a que se dedica y que necesita. Con eso alcanza:
+       * no hay filtro de score.
+       *
+       * Antes se le pedian siete datos —presupuesto, cuanta gente trabaja,
+       * colores— y un puntaje decidia si merecia una reunion. La calificacion
+       * ahora pasa a la reunion misma, que es literalmente lo que es: un
+       * diagnostico. Filtrar antes con datos que el lead da a desgano —el
+       * presupuesto sobre todo, que casi nadie contesta bien por WhatsApp—
+       * dejaba afuera gente que en una llamada de treinta minutos se resolvia
+       * en dos preguntas.
+       */
       case S.SCORED: {
         const fresco = repo.leadPorId(lead.id);
-        const r = await scorer.calificar(fresco);
-        repo.actualizarFunnel(lead.id, {
-          score: r.score, priority: r.priority, score_reason: r.reason,
-        });
-        logger?.info({ leadId: lead.id, score: r.score, accion: r.recommended_action }, 'lead calificado');
-
-        avisarDesenlace(lead.id, r.recommended_action);
-
-        const destino = {
-          meeting: S.MEETING_SENT,
-          nurture: S.NURTURE,
-        }[r.recommended_action] || S.DISQUALIFIED;
-
-        return alEntrar(fresco, destino, entrada);
+        avisarDesenlace(lead.id, 'meeting');
+        return alEntrar(fresco, S.MEETING_SENT, entrada);
       }
 
       case S.MEETING_SENT: {

@@ -17,11 +17,11 @@ async function lead(s, texto) {
 
 const estado = (s) => s.repo.leadPorTelefono(TEL).fsm_state;
 
-/** Los siete datos completos: con esto el proximo turno cierra y califica. */
+/** Los tres datos que se piden. Con esto ya se le ofrece la reunion. */
 const COMPLETO = {
-  business_name: 'Inmobiliaria Pereyra', rubro: 'inmobiliaria',
-  business_type: 'ecommerce', budget: 'mas_3000', team_size_personas: 8,
-  instagram_web: '@inmopereyra', needs: 'quiero dejar de perder consultas',
+  business_name: 'Inmobiliaria Pereyra',
+  rubro: 'inmobiliaria',
+  business_type: 'ecommerce',
 };
 
 // ── la IA conduce ────────────────────────────────────────────────────────────
@@ -43,26 +43,28 @@ test('lo que la IA extrae queda guardado y clasificado', async () => {
   assert.equal(l.rubro_norm, 'gastronomia', 'el gancho del follow-up sale de aca');
 });
 
-test('con los siete datos cierra el codigo: califica y ofrece la reunion', async () => {
+test('con los tres datos se le ofrece la reunion, sin filtro de score', async () => {
+  // Antes un puntaje decidia si merecia reunion, y con solo tres datos nadie
+  // llegaba al umbral. La calificacion pasa a la reunion misma, que es
+  // literalmente un diagnostico.
   const s = await conLead({ openai: stubOpenAI({ datos: COMPLETO }) });
   const msgs = await lead(s, 'te cuento todo de una');
 
   const l = s.repo.leadPorTelefono(TEL);
   assert.equal(l.fsm_state, S.MEETING_SENT);
-  assert.equal(l.score, 9);
-  assert.equal(msgs.at(-1), '[oferta_reunion]', 'la escribe la IA, pero la dispara el score');
+  assert.equal(msgs.at(-1), '[oferta_reunion]');
 });
 
-test('un lead flojo no recibe la oferta', async () => {
-  const flojo = {
-    business_name: 'Kiosco', rubro: 'no se', business_type: 'web',
-    budget: 'menos_500', team_size_personas: 1, instagram_web: 'no tengo', needs: 'algo',
-  };
-  const s = await conLead({ openai: stubOpenAI({ datos: flojo }) });
+test('un lead chico tambien recibe la oferta', async () => {
+  // Con el filtro de score, un kiosco sin presupuesto declarado quedaba
+  // descartado por WhatsApp. Ahora entra a la reunion igual: si no encaja, se
+  // ve ahi en dos preguntas.
+  const chico = { business_name: 'Kiosco', rubro: 'kiosco de barrio', business_type: 'web' };
+  const s = await conLead({ openai: stubOpenAI({ datos: chico }) });
   const msgs = await lead(s, 'te cuento');
 
-  assert.equal(estado(s), S.DISQUALIFIED);
-  assert.equal(msgs.at(-1), '[descartado]');
+  assert.equal(estado(s), S.MEETING_SENT);
+  assert.equal(msgs.at(-1), '[oferta_reunion]');
 });
 
 // ── despues de la oferta ─────────────────────────────────────────────────────

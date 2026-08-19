@@ -134,7 +134,7 @@ test('el tramo de equipo lo calcula el codigo, no el modelo', () => {
 
 test('el tipo de proyecto y el presupuesto se piden por nombre, no por numero', () => {
   assert.deepEqual(sanearDatos({ business_type: 'web' }), { business_type: 1 });
-  assert.deepEqual(sanearDatos({ business_type: 'app' }), { business_type: 4 });
+  assert.deepEqual(sanearDatos({ business_type: 'sistema' }), { business_type: 4 });
   assert.deepEqual(sanearDatos({ budget: 'mas_3000' }), { budget: 3 });
   assert.deepEqual(sanearDatos({ budget: 'no_sabe' }), { budget: 4 });
   assert.deepEqual(sanearDatos({ business_type: 'otra cosa' }), {}, 'fuera del enum no entra');
@@ -163,8 +163,7 @@ test('con todos los datos, el cierre lo hace el codigo y no la IA', async () => 
   const s = await conLead({
     openai: openaiFalso(conTexto('Listo, te paso mi Calendly ahora mismo', {
       business_name: 'Inmobiliaria Pereyra', rubro: 'inmobiliaria',
-      business_type: 'ecommerce', budget: 'mas_3000', team_size_personas: 8,
-      instagram_web: '@inmopereyra', needs: 'quiero dejar de perder consultas',
+      business_type: 'ecommerce',
     })),
   });
 
@@ -173,7 +172,6 @@ test('con todos los datos, el cierre lo hace el codigo y no la IA', async () => 
 
   const l = s.repo.leadPorTelefono('59899123456');
   assert.equal(l.fsm_state, S.MEETING_SENT);
-  assert.equal(l.score, 9);
 
   const alLead = s.proveedor.getEnviados().filter((e) => e.to === '59899123456').map((e) => e.texto);
   assert.equal(alLead.at(-1), '[oferta_reunion]', 'la dispara el score, no el modelo');
@@ -247,17 +245,16 @@ test('el prompt pide solo lo que falta y no lo que ya se sabe', () => {
   assert.match(sys, /Parrilla El Fogón/);
   assert.match(sys, /pedidos online/, 'incluye el gancho del rubro');
   assert.ok(!/a qué se dedica el negocio/.test(sys), 'no repregunta el rubro');
-  assert.ok(!/qué presupuesto maneja/.test(sys), 'ni el presupuesto');
-  assert.match(sys, /si tiene Instagram, web o redes/, 'si pide lo que falta');
+  assert.ok(!/presupuesto/i.test(sys.split('# Qué te falta averiguar')[1] || ''), 'no pide presupuesto');
+  assert.match(sys, /qué necesita/, 'si pide lo que falta');
   assert.match(sys, /No decís precios/);
 });
 
-test('faltantes se vacia recien cuando estan los siete datos', () => {
-  assert.equal(faltantes({}).length, 7);
-  assert.equal(faltantes({
-    business_name: 'x', rubro: 'y', business_type: 1, budget: 2,
-    team_size: 3, instagram_web: '@z', needs: 'algo',
-  }).length, 0);
+test('faltantes se vacia con los tres datos', () => {
+  // Bajo de siete a tres: nombre, rubro y que necesita. Presupuesto, equipo y
+  // redes salieron del embudo — se ven en la reunion.
+  assert.equal(faltantes({}).length, 3);
+  assert.equal(faltantes({ business_name: 'x', rubro: 'y', business_type: 1 }).length, 0);
 });
 
 test('el historial se arma alternando roles, como pide la API', () => {

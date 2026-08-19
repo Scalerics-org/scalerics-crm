@@ -165,7 +165,7 @@ function avisoReunionAgendada(lead, { cuando, link }) {
 }
 
 const TIPO_PROYECTO = {
-  1: 'Página web', 2: 'E-commerce', 3: 'Automatización', 4: 'App a medida',
+  1: 'Página web', 2: 'E-commerce', 3: 'Automatización / agente de IA', 4: 'Sistema a medida',
 };
 const PRESUPUESTO = {
   1: 'menos de $500', 2: '$500 a $3.000', 3: 'más de $3.000', 4: 'no lo tiene claro',

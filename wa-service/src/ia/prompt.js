@@ -26,34 +26,15 @@ const DATOS = [
   {
     campo: 'rubro',
     pregunta: 'a qué se dedica el negocio',
-    porque: 'sin esto la demo de la llamada sale genérica',
+    porque: 'sin esto el prototipo de la reunión sale genérico',
   },
   {
     campo: 'business_type',
-    pregunta: 'qué tipo de proyecto necesita',
-    opciones: 'página web, e-commerce, automatización o app a medida',
-  },
-  {
-    campo: 'budget',
-    pregunta: 'qué presupuesto maneja',
-    opciones: 'menos de USD 500, entre 500 y 3.000, más de 3.000, o todavía no lo sabe',
-  },
-  {
-    campo: 'team_size',
-    pregunta: 'cuánta gente trabaja en el negocio',
-    opciones: 'el número de personas que trabajan, tal cual lo diga',
-  },
-  {
-    campo: 'instagram_web',
-    pregunta: 'si tiene Instagram, web o redes',
-    porque: 'de ahí salen las fotos y el tono para armarle algo a medida',
-  },
-  {
-    campo: 'needs',
-    pregunta: 'qué le gustaría lograr, en sus palabras',
-    porque: 'casi siempre lo dicen solos al principio, sin que se lo preguntes — cuando lo digan, guardalo ahí mismo',
+    pregunta: 'qué necesita',
+    opciones: 'página web, e-commerce, sistema a medida, o automatización / agente de IA',
   },
 ];
+
 
 /** Los que todavia estan vacios en el lead. */
 function faltantes(lead) {
@@ -143,7 +124,9 @@ function construirSystem(lead, fase = null, calendly = '') {
 
   return `${IDENTIDAD}
 
-Tu trabajo es conversar con quien escribe, entender su negocio y llegar a que agende una videollamada de 30 minutos, gratis y sin compromiso.
+Tu trabajo es corto y concreto: saber cómo se llama el negocio, a qué se dedica y qué necesita, y con eso ofrecerle una videollamada de 30 minutos para hacerle un diagnóstico y prepararle un prototipo.
+
+Tres datos y a la reunión. No pidas presupuesto, ni cuánta gente trabaja, ni colores de marca, ni nada más: eso se ve en la llamada, y preguntarlo por WhatsApp hace que la gente se caiga a mitad de camino.
 
 ${ESTILO}
 Si te contestan algo con contexto, engancháte con eso antes de seguir. Nadie quiere hablar con un formulario.
@@ -203,10 +186,17 @@ Ofrecele la videollamada de 30 minutos, gratis y sin compromiso. Decile en concr
 Enganchá con algo puntual de lo que te contó, para que no suene a plantilla.
 Preguntale si le sirve, sin mandarle el link todavía.`,
 
-    oferta_con_horarios: `Terminaste de entender lo que necesita y encaja con lo que hacemos.
-Ofrecele la videollamada de 30 minutos, gratis y sin compromiso, enganchando con algo puntual de lo que te contó para que no suene a plantilla.
-Y cerrá mostrándole los horarios que te paso más abajo, tal cual, para que elija uno. NO inventes otros ni digas "o el que te quede cómodo": esos son los que hay.
-No mandes ningún link: el horario que elija lo agendás vos.`,
+    oferta_con_horarios: `Ya sabés quién es, a qué se dedica y qué necesita. No le pidas ni un dato más: lo que falta se ve en la reunión.
+
+Explicale cómo sigue, en concreto y en dos líneas:
+→ una videollamada de 30 minutos para hacer un diagnóstico del negocio
+→ con eso el equipo le prepara un prototipo de lo que está buscando
+
+Eso último es lo que vale y conviene que quede claro: no va a una charla a contar lo mismo otra vez, va a ver algo hecho para él.
+
+Enganchá con lo que te contó —su rubro, lo que necesita— para que no suene a plantilla.
+Y cerrá mostrándole los horarios que te paso abajo, tal cual, para que elija uno. NO inventes otros ni agregues "o el que te quede cómodo": esos son los que hay.
+No mandes ningún link. El horario que elija lo agendás vos.`,
 
     horario_no_entendido: `Le mostraste horarios y contestó algo que no se entiende cuál es.
 Volvé a listarle los mismos, sin reproches y sin hacerlo sentir tonto. Una línea y la lista.`,
