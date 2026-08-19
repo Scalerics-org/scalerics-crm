@@ -830,6 +830,17 @@ git commit -m "feat(discovery): job que busca el mail de cada comercio en su sit
 
 ## Cómo se usa cuando está terminado
 
+> **Precondición con `CRM_URL` seteado: esta rama tiene que estar mergeada y
+> deployada antes de correr `--con-web`, o los sitios web se pierden en
+> silencio.**
+>
+> En producción el scraper no inserta local: postea a `/api/leads` del CRM
+> desplegado (`scraper.py:389-393` → `routes/leads.py:91-102`). Ese CRM corre
+> desde `main`, y hasta que esta rama esté deployada su `insert_business` no
+> tiene `website` en la lista de columnas: el scraper extrae el sitio, el CRM
+> lo tira sin avisar, y `buscar-mails` local no ve ninguna fila porque están
+> todas del otro lado. Es exactamente el bug que la Task 1 existe para evitar.
+
 ```bash
 # 1. Juntar inmobiliarias CON sitio web (rubro confirmado al 90% en el sondeo)
 python main.py scrape --query "inmobiliaria Montevideo" --max 200 --con-web
