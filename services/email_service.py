@@ -408,7 +408,7 @@ def _cuerpo_por_contacto(numero: int, apertura: str, valor: str, negocio: str) -
     if numero == 2:
         return (f"Sobre tu consulta{donde}" if negocio else "Sobre tu consulta a Scalerics", [
             "Hola,",
-            f"Te escribimos hace unos días{donde}. Te dejo el link de vuelta por si "
+            f"Te escribimos hace unos días{donde}. Te dejamos el link de vuelta por si "
             f"te quedó pendiente.",
             "Si preferís, respondé este mail y coordinamos por acá.",
         ])
@@ -476,6 +476,11 @@ def send_meta_lead_reminder(to_email: str, negocio: str, rubro: str,
     negocio_txt = (negocio or "").strip()
     negocio_esc = html.escape(negocio_txt)
     rubro_txt   = (rubro or "").strip()
+    # `numero` sale de la columna `numero` de meta_reminders, que es nullable:
+    # un None revienta con TypeError en la primera comparacion (`numero <= 1`) y
+    # el mail no sale. Hoy ningun camino lo manda vacio; si alguno lo hiciera,
+    # que se trate como el contacto 1 y no que se caiga el envio.
+    numero = int(numero or 1)
 
     if rubro_txt and negocio_txt:
         apertura_txt = (f"Dejaste tus datos porque {_frase_rubro(rubro_txt)} "

@@ -340,7 +340,10 @@ def test_pasado_el_dia_la_cuota_se_renueva(db):
     assert res["enviados"] == 1
 
 
-def test_la_cuota_del_dia_es_lo_que_queda(db):
+def test_la_cuota_del_dia_es_lo_que_queda(db, monkeypatch):
+    import services.meta_reminders as mr
+    monkeypatch.setattr(mr, "_PAUSA_ENTRE_ENVIOS", 0)
+
     conn = sqlite3.connect(db)
     for i in range(5):
         _lead(conn, 200 + i, dias=5 + i)
@@ -908,8 +911,16 @@ def test_el_mail_sale_sin_espacios_alrededor(db):
     assert [x["email"] for x in leads_a_recordar(db)] == ["Ana@Ejemplo.com"]
 
 
-def test_los_seguimientos_van_antes_que_los_contactos_nuevos(db):
-    """Un seguimiento a destiempo pierde sentido; un primer contacto aguanta."""
+def test_un_seguimiento_entra_en_la_tanda_con_su_numero(db, monkeypatch):
+    """Con la tanda llena de contactos nuevos, el seguimiento igual entra y lo
+    hace con su `numero` (2), no con el 1 de un contacto nuevo: es el cableado
+    del numero desde `leads_a_seguir` hasta `send_meta_lead_reminder`.
+
+    Este test NO discrimina el orden: 14 nuevos + 1 seguimiento dan 15 tambien
+    con la prioridad invertida. El que prueba la prioridad es su hermano de mas
+    abajo, con 20 seguimientos disponibles para un cupo de 15."""
+    import services.meta_reminders as mr
+    monkeypatch.setattr(mr, "_PAUSA_ENTRE_ENVIOS", 0)
     from services.meta_reminders import enviar_recordatorios
 
     conn = sqlite3.connect(db)
@@ -932,10 +943,12 @@ def test_los_seguimientos_van_antes_que_los_contactos_nuevos(db):
     assert ("lead90@ejemplo.com", 2) in mandados, "el seguimiento entra en la tanda"
 
 
-def test_el_tope_diario_cuenta_juntos_seguimientos_y_nuevos(db):
+def test_el_tope_diario_cuenta_juntos_seguimientos_y_nuevos(db, monkeypatch):
     """Ademas de sumar 15 entre los dos tipos, los seguimientos tienen que
     ganarle el cupo a los nuevos: con 20 seguimientos disponibles y cupo 15,
     los 15 que salen tienen que ser seguimientos (numero > 1), no una mezcla."""
+    import services.meta_reminders as mr
+    monkeypatch.setattr(mr, "_PAUSA_ENTRE_ENVIOS", 0)
     from services.meta_reminders import enviar_recordatorios
 
     conn = sqlite3.connect(db)
