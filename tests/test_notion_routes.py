@@ -81,18 +81,24 @@ def test_una_tarea_que_no_existe_da_404(app, cliente):
 
 def test_el_sync_manual_devuelve_cuantas_cambiaron(app, cliente):
     with patch("routes.notion.traer_proyectos", return_value=(5, None)), \
+         patch("routes.notion.traer_clientes", return_value=(2, None)), \
          patch("routes.notion.traer_y_aplicar", return_value=(3, None)):
         r = cliente.post("/api/notion/sync", headers=_AUTH)
     assert r.status_code == 200
-    assert r.get_json() == {"ok": True, "cambiadas": 3, "proyectos": 5, "proyectos_error": None}
+    assert r.get_json() == {"ok": True, "cambiadas": 3, "proyectos": 5,
+                            "proyectos_error": None, "clientes": 2,
+                            "clientes_error": None}
 
 
 def test_el_sync_manual_que_anduvo_sin_cambios_dice_ok(app, cliente):
     with patch("routes.notion.traer_proyectos", return_value=(0, None)), \
+         patch("routes.notion.traer_clientes", return_value=(0, None)), \
          patch("routes.notion.traer_y_aplicar", return_value=(0, None)):
         r = cliente.post("/api/notion/sync", headers=_AUTH)
     assert r.status_code == 200
-    assert r.get_json() == {"ok": True, "cambiadas": 0, "proyectos": 0, "proyectos_error": None}
+    assert r.get_json() == {"ok": True, "cambiadas": 0, "proyectos": 0,
+                            "proyectos_error": None, "clientes": 0,
+                            "clientes_error": None}
 
 
 def test_el_sync_manual_no_dice_ok_si_la_consulta_fallo(app, cliente):

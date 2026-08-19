@@ -20,6 +20,7 @@ from routes.tokens import tokens_bp
 from routes.meta import meta_bp, start_meta_token_monitor, start_meta_daily_import
 from routes.calendly import calendly_bp
 from routes.notion import notion_bp
+from routes.notion_clients import notion_clients_bp
 from routes.projects import projects_bp
 from services.demo_service import demo_job_handler
 from services.job_service import init_worker
@@ -1124,6 +1125,7 @@ body.light .upick-name{color:#0f172a}
   <div class="nav-section-label">GESTIÓN</div>
   <div class="nav-item" id="nav-tasks" onclick="showPanel('tasks')"><i data-lucide="check-square" class="nav-icon"></i> Tareas</div>
   <div class="nav-item" id="nav-projects" onclick="showPanel('projects')"><i data-lucide="target" class="nav-icon"></i> Proyectos</div>
+  <div class="nav-item" id="nav-notion_clients" onclick="showPanel('notion_clients')"><i data-lucide="handshake" class="nav-icon"></i> Pipeline Notion</div>
   <div class="nav-item" id="nav-wa" onclick="showPanel('wa')"><i data-lucide="message-circle" class="nav-icon"></i> WhatsApp</div>
   <div class="nav-item" id="nav-cal" onclick="showPanel('cal')"><i data-lucide="calendar" class="nav-icon"></i> Calendario</div>
   <div class="nav-item" id="nav-metrics" onclick="showPanel('metrics')"><i data-lucide="bar-chart-2" class="nav-icon"></i> Métricas</div>
@@ -1338,6 +1340,15 @@ body.light .upick-name{color:#0f172a}
       <p class="panel-sub">Espejo del tablero de Notion. Para editarlos, abrilos allá.</p>
     </div>
     <div id="projects-list"></div>
+  </div>
+
+  <!-- ======= PIPELINE NOTION PANEL ======= -->
+  <div id="notion_clients-panel" class="panel">
+    <div class="panel-head">
+      <h1>Pipeline Notion</h1>
+      <p class="panel-sub">Espejo de la database Clientes. Son las fichas que el equipo maneja en Notion, no los leads del CRM. Para moverlas, abrilas allá.</p>
+    </div>
+    <div id="notion-clients-board" class="kanban"></div>
   </div>
 
   <!-- ======= CALENDAR PANEL ======= -->
@@ -1735,6 +1746,7 @@ function showPanel(name) {
   if (name === 'cal' && !calLoaded) { calLoaded = true; renderCalendar(); }
   if (name === 'tasks') loadTasks();
   if (name === 'projects') loadProjects();
+  if (name === 'notion_clients') loadNotionClients();
   if (name === 'metrics') loadMetrics();
   if (name === 'activity') loadActivity();
   if (name === 'sdr') loadSdr();
@@ -3158,6 +3170,60 @@ async function loadProjects() {
   }).join('');
 }
 
+// Las columnas son los grupos con los que Notion agrupa los estados de la
+// database Clientes. `otros` junta lo que el CRM no sabe mapear -- un estado
+// nuevo del tablero cae ahi y se ve, en vez de disfrazarse de pendiente.
+const _COLUMNAS_CLIENTES = [
+  {grupo:'todo',        titulo:'Pendientes'},
+  {grupo:'in_progress', titulo:'En progreso'},
+  {grupo:'done',        titulo:'Cerrados'},
+  {grupo:'otros',       titulo:'Sin clasificar'},
+];
+
+async function loadNotionClients() {
+  const board = document.getElementById('notion-clients-board');
+  if (!board) return;
+  board.innerHTML = '<div class="tasks-empty">Cargando...</div>';
+  let clientes;
+  try {
+    const r = await fetch('/api/notion-clients');
+    if (!r.ok) throw new Error(r.status);
+    clientes = await r.json();
+  } catch {
+    board.innerHTML = '<div class="tasks-empty">No se pudieron cargar los clientes.</div>';
+    return;
+  }
+  clientes = Array.isArray(clientes) ? clientes : [];
+  if (!clientes.length) {
+    board.innerHTML = '<div class="tasks-empty">No hay clientes en el tablero.</div>';
+    return;
+  }
+  board.innerHTML = _COLUMNAS_CLIENTES.map(col => {
+    const dentro = clientes.filter(c => c.grupo === col.grupo);
+    // La columna de los estados sin mapear solo aparece si tiene algo: vacia
+    // seria una columna de ruido permanente.
+    if (col.grupo === 'otros' && !dentro.length) return '';
+    return `<div class="kanban-col">
+      <div class="kanban-head"><span class="kanban-name">${esc(col.titulo)}</span>
+        <span class="kanban-count">${dentro.length}</span></div>
+      <div class="kanban-cards">${dentro.map(c => _notionClientCardHtml(c)).join('')}</div>
+    </div>`;
+  }).join('');
+}
+
+function _notionClientCardHtml(c) {
+  const url = 'https://www.notion.so/' + (c.notion_page_id||'').replace(/-/g,'');
+  return `<div class="kanban-card">
+    <a class="proj-name" href="${esc(url)}" target="_blank" rel="noopener">${esc(c.name)}</a>
+    <div class="kanban-card-meta">
+      ${c.status ? `<span class="proj-stage">${esc(c.status)}</span>` : ''}
+      ${c.project_name ? `<span class="task-notion-badge">${esc(c.project_name)}</span>` : ''}
+      ${c.due_date ? `<span class="task-deadline">${esc(c.due_date)}</span>` : ''}
+    </div>
+    ${c.descripcion ? `<div class="kanban-card-who">${esc(c.descripcion)}</div>` : ''}
+  </div>`;
+}
+
 function _populateUserFilter() {
   if (_taskUserFilter) {
     const u = _allUsers.find(u => String(u.id) === String(_taskUserFilter));
@@ -3962,16 +4028,18 @@ function _showScoreBreakdown(event, el) {
 }
 
 // ── Mobile navigation ─────────────────────────────────────────────────────────
-const NAV_PRIORITY = ['cola','seguimientos','meta','cal','tasks','pipeline','clientes','wa','metrics','activity','projects'];
+const NAV_PRIORITY = ['cola','seguimientos','meta','cal','tasks','pipeline','clientes','wa','metrics','activity','projects','notion_clients'];
 const NAV_ICONS = {
   cola:'inbox',seguimientos:'bookmark',meta:'instagram',cal:'calendar',
   tasks:'check-square',pipeline:'trending-up',clientes:'users',
-  wa:'message-circle',metrics:'bar-chart-2',activity:'clock',projects:'target'
+  wa:'message-circle',metrics:'bar-chart-2',activity:'clock',projects:'target',
+  notion_clients:'handshake'
 };
 const NAV_LABELS = {
   cola:'Cola',seguimientos:'Seguim.',meta:'Meta',cal:'Agenda',
   tasks:'Tareas',pipeline:'Pipeline',clientes:'Clientes',
-  wa:'WA',metrics:'Métricas',activity:'Actividad',projects:'Proyectos'
+  wa:'WA',metrics:'Métricas',activity:'Actividad',projects:'Proyectos',
+  notion_clients:'Pipeline'
 };
 let _mobileNavOverflow = [];
 
@@ -4051,7 +4119,7 @@ function closeMasSheet() {
 }
 
 // ── Panel access control ──────────────────────────────────────────────────────
-const ALL_PANELS = ['cola','seguimientos','meta','pipeline','clientes','tasks','wa','cal','metrics','activity','sdr','projects'];
+const ALL_PANELS = ['cola','seguimientos','meta','pipeline','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients'];
 (async () => {
   try {
     const r = await fetch('/api/me');
@@ -5442,7 +5510,8 @@ def _maybe_sync_notion(db_path: str) -> None:
 
     def _run():
         try:
-            from services.notion_service import traer_proyectos, traer_y_aplicar
+            from services.notion_service import (traer_clientes, traer_proyectos,
+                                                 traer_y_aplicar)
             try:
                 np, error_p = traer_proyectos(db_path)
                 if error_p:
@@ -5451,6 +5520,15 @@ def _maybe_sync_notion(db_path: str) -> None:
                     logging.getLogger(__name__).info("notion sync: %s proyectos", np)
             except Exception:
                 logging.getLogger(__name__).warning("notion proyectos falló", exc_info=True)
+
+            try:
+                nc, error_c = traer_clientes(db_path)
+                if error_c:
+                    logging.getLogger(__name__).warning("notion clientes: %s", error_c)
+                elif nc:
+                    logging.getLogger(__name__).info("notion sync: %s clientes", nc)
+            except Exception:
+                logging.getLogger(__name__).warning("notion clientes falló", exc_info=True)
 
             n, error = traer_y_aplicar(db_path)
             if error:
@@ -5470,7 +5548,8 @@ def create_app(db_path: str) -> Flask:
     app.config["PIPELINE_STATUS"] = _pipeline_status
     app.config["PIPELINE_LOCK"] = _pipeline_lock
 
-    for bp in (leads_bp, demos_bp, calendar_bp, wa_bp, pipeline_bp, tasks_bp, budgets_bp, tokens_bp, meta_bp, calendly_bp, notion_bp, projects_bp):
+    for bp in (leads_bp, demos_bp, calendar_bp, wa_bp, pipeline_bp, tasks_bp, budgets_bp, tokens_bp, meta_bp, calendly_bp, notion_bp, projects_bp,
+                notion_clients_bp):
         app.register_blueprint(bp)
 
     @app.before_request
@@ -6377,8 +6456,8 @@ select:focus{border-color:#0088cc}
 </div>
 
 <script>
-const ALL_PANELS = ['cola','seguimientos','meta','pipeline','clientes','tasks','wa','cal','metrics','activity','sdr','projects'];
-const PANEL_LABELS = {cola:'Cola',seguimientos:'Seguimientos',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Métricas',activity:'Actividad',sdr:'SDR',projects:'Proyectos'};
+const ALL_PANELS = ['cola','seguimientos','meta','pipeline','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients'];
+const PANEL_LABELS = {cola:'Cola',seguimientos:'Seguimientos',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Métricas',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Pipeline Notion'};
 let _roles = [];
 
 function makeChips(containerId, checkedArr, prefix) {

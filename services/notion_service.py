@@ -17,8 +17,10 @@ from datetime import datetime
 
 import requests
 
-from database import (borrar_proyectos, create_task, get_projects, get_task_by_id,
-                      get_tasks_notion, log_activity, update_task, upsert_project)
+from database import (borrar_notion_clients, borrar_proyectos, create_task,
+                      get_notion_clients, get_projects, get_task_by_id,
+                      get_tasks_notion, log_activity, update_task,
+                      upsert_notion_client, upsert_project)
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +57,30 @@ GRUPOS = {
     "Waiting To Accept": "in_progress",
     "Done": "done",
 }
+
+# Los estados de la database Clientes, con el grupo en el que Notion los pone.
+# Salio de mirar el tablero (la property no tiene nombre, ver `_estado_de`), no
+# de la API: si el equipo agrega un estado, hay que sumarlo aca a mano.
+GRUPOS_CLIENTES = {
+    "Demo Agendada": "todo",
+    "Hay que hacer Presupuesto": "in_progress",
+    "Esperando Confirmación Presupuesto": "in_progress",
+    "Perdido": "done",
+    "Presupuesto Rechazado": "done",
+    "Presupuesto Aceptado": "done",
+}
+
+
+def grupo_de_cliente(estado_notion: str | None) -> str:
+    """Grupo de una ficha de Clientes.
+
+    A diferencia de `grupo_de` para tareas, un estado desconocido NO cae en
+    `todo`: va a `otros`. Un estado nuevo mezclado entre los pendientes se ve
+    igual que los demas y nadie se entera de que falta mapearlo; en una columna
+    aparte salta a la vista.
+    """
+    return GRUPOS_CLIENTES.get(estado_notion or "", "otros")
+
 
 # A donde manda el CRM cada estado propio cuando el grupo cambio de verdad.
 DESTINOS = {
@@ -693,5 +719,96 @@ def traer_proyectos(db_path: str) -> tuple[int, str | None]:
         borrados = borrar_proyectos(db_path, conocidos - vistos)
         if borrados:
             logger.info("notion: %s proyecto(s) borrados del espejo", borrados)
+
+    return cambiados, None
+
+
+def _estado_de(props: dict) -> str | None:
+    """El estado de una ficha de Clientes.
+
+    Esa property **no tiene nombre** en el tablero (por eso la columna sale sin
+    encabezado), asi que se la ubica por tipo. Buscarla por "Status" devuelve
+    None y dejaria a todos los clientes sin estado.
+    """
+    for prop in (props or {}).values():
+        if (prop or {}).get("type") == "status":
+            return ((prop.get("status") or {}) or {}).get("name")
+    return None
+
+
+def _texto_de(prop: dict) -> str | None:
+    """Concatena los fragmentos de una property de tipo `rich_text`."""
+    partes = (prop or {}).get("rich_text") or []
+    texto = "".join(p.get("plain_text", "") for p in partes).strip()
+    return texto or None
+
+
+def traer_clientes(db_path: str) -> tuple[int, str | None]:
+    """Espeja la database Clientes en la tabla `notion_clients` del CRM.
+
+    Mismo trato que Projects: solo lectura, y el barrido de los que ya no
+    vuelven corre unicamente si el listado vino entero. No toca `businesses`
+    -- los leads del CRM son otra cosa y no se mezclan con estas fichas.
+    """
+    cfg = _config()
+    if not cfg:
+        return 0, "falta NOTION_TOKEN: el sync con Notion esta apagado"
+    token, version, _ = cfg
+
+    ds = os.environ.get("NOTION_CLIENTS_DATA_SOURCE_ID", "")
+    if not ds:
+        return 0, "falta NOTION_CLIENTS_DATA_SOURCE_ID"
+
+    url = f"{API}/data_sources/{ds}/query"
+    cuerpo = {"page_size": 100}
+    vistos = set()
+    cambiados = 0
+    completo = True
+
+    while True:
+        try:
+            r = requests.post(url, headers=_headers(token, version),
+                              json=cuerpo, timeout=TIMEOUT)
+            if r.status_code >= 300:
+                logger.warning("notion: query de clientes fallo con %s: %s",
+                               r.status_code, r.text[:300])
+                return cambiados, f"la consulta de clientes devolvio HTTP {r.status_code}"
+            data = r.json()
+        except Exception as e:
+            logger.warning("notion: query de clientes fallo", exc_info=True)
+            return cambiados, f"la consulta de clientes fallo: {type(e).__name__}"
+
+        for pagina in data.get("results", []):
+            page_id = pagina.get("id")
+            if not page_id:
+                continue
+            props = pagina.get("properties", {})
+            fecha = (props.get("Due date") or {}).get("date") or {}
+            upsert_notion_client(
+                db_path, page_id,
+                _texto_de_titulo(props.get("Name")) or "(sin nombre)",
+                status=_estado_de(props),
+                descripcion=_texto_de(props.get("Descripcion")),
+                due_date=fecha.get("start"),
+                tiempo_estimado=(props.get("Tiempo Estimado") or {}).get("number"),
+                notion_project_page_id=_proyecto_de(props),
+            )
+            vistos.add(page_id)
+            cambiados += 1
+
+        if not data.get("has_more"):
+            break
+        cursor = data.get("next_cursor")
+        if not cursor:
+            logger.warning("notion: clientes dijo has_more sin next_cursor, corto")
+            completo = False
+            break
+        cuerpo["start_cursor"] = cursor
+
+    if completo:
+        conocidos = {c["notion_page_id"] for c in get_notion_clients(db_path)}
+        borrados = borrar_notion_clients(db_path, conocidos - vistos)
+        if borrados:
+            logger.info("notion: %s cliente(s) borrados del espejo", borrados)
 
     return cambiados, None

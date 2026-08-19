@@ -12,6 +12,9 @@ primary_region = "gru"
   NOTION_DATA_SOURCE_ID = "3ae65d94-deec-80ba-879d-000b9a303104"
   # Data source de la database Projects. Espejo de solo lectura.
   NOTION_PROJECTS_DATA_SOURCE_ID = "3ae65d94-deec-803d-8ea4-000b48070a4e"
+  # Data source de la database Clientes. Espejo de solo lectura tambien: son
+  # las fichas que el equipo mueve a mano en Notion, no los leads del CRM.
+  NOTION_CLIENTS_DATA_SOURCE_ID = "f9265d94-deec-8296-bd14-07ce230e1017"
 
 [[mounts]]
   source = "leads_data"

@@ -6,8 +6,8 @@ from flask import Blueprint, current_app, jsonify, request, session
 
 from database import get_task_by_id, log_activity
 from services.notion_service import (GRUPOS, crear_pagina, empujar_estado_exacto,
-                                     grupo_de, traer_proyectos, traer_y_aplicar,
-                                     vincular_pagina)
+                                     grupo_de, traer_clientes, traer_proyectos,
+                                     traer_y_aplicar, vincular_pagina)
 
 logger = logging.getLogger(__name__)
 
@@ -68,16 +68,26 @@ def api_sync():
     if error_p:
         logger.warning("notion proyectos: %s", error_p)
 
+    try:
+        clientes, error_c = traer_clientes(db)
+    except Exception:
+        clientes, error_c = 0, "el pull de clientes fallo inesperadamente"
+        logger.warning("notion clientes falló", exc_info=True)
+    if error_c:
+        logger.warning("notion clientes: %s", error_c)
+
     cambiadas, error = traer_y_aplicar(db)
     if error:
         return jsonify({"ok": False, "error": error, "cambiadas": cambiadas,
-                        "proyectos": proyectos, "proyectos_error": error_p}), 502
+                        "proyectos": proyectos, "proyectos_error": error_p,
+                        "clientes": clientes, "clientes_error": error_c}), 502
 
     log_activity(db, session.get("user_name", "sistema"), "notion_sync", "", None, "",
                  f"{cambiadas} tarea(s) actualizada(s) desde Notion",
                  user_id=session.get("user_id"))
     return jsonify({"ok": True, "cambiadas": cambiadas,
-                    "proyectos": proyectos, "proyectos_error": error_p})
+                    "proyectos": proyectos, "proyectos_error": error_p,
+                    "clientes": clientes, "clientes_error": error_c})
 
 
 @notion_bp.route("/api/tasks/<int:task_id>/notion/estado", methods=["POST"])

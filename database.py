@@ -217,6 +217,24 @@ def init_db(db_path: str) -> None:
             )
         """)
 
+        # ── notion_clients ────────────────────────────────────────────────────
+        # Espejo de solo lectura de la database Clientes de Notion. Es aparte
+        # de `businesses`: aca viven las fichas que el equipo maneja a mano en
+        # el tablero, no los leads que junta el scraper.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS notion_clients (
+                id                     INTEGER PRIMARY KEY AUTOINCREMENT,
+                notion_page_id         TEXT UNIQUE,
+                name                   TEXT NOT NULL,
+                status                 TEXT,
+                descripcion            TEXT,
+                due_date               TEXT,
+                tiempo_estimado        REAL,
+                notion_project_page_id TEXT,
+                notion_synced_at       TIMESTAMP
+            )
+        """)
+
         # ── tasks ─────────────────────────────────────────────────────────────
         conn.execute("""
             CREATE TABLE IF NOT EXISTS tasks (
@@ -1116,6 +1134,74 @@ def borrar_proyectos(db_path: str, page_ids: set) -> int:
             f"WHERE notion_project_page_id IN ({marcas})", valores)
         cursor = conn.execute(
             f"DELETE FROM projects WHERE notion_page_id IN ({marcas})", valores)
+        conn.commit()
+        return cursor.rowcount
+    finally:
+        conn.close()
+
+
+def upsert_notion_client(db_path: str, notion_page_id: str, name: str,
+                         status: str | None = None, descripcion: str | None = None,
+                         due_date: str | None = None,
+                         tiempo_estimado: float | None = None,
+                         notion_project_page_id: str | None = None) -> int:
+    """Da de alta o actualiza un cliente espejado de Notion.
+
+    La identidad es `notion_page_id`, igual que en `projects`: renombrar la
+    ficha alla actualiza la fila, no crea una nueva.
+    """
+    ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    conn = _connect(db_path)
+    try:
+        conn.execute(
+            """INSERT INTO notion_clients
+                   (notion_page_id, name, status, descripcion, due_date,
+                    tiempo_estimado, notion_project_page_id, notion_synced_at)
+               VALUES (?,?,?,?,?,?,?,?)
+               ON CONFLICT(notion_page_id) DO UPDATE SET
+                   name = excluded.name,
+                   status = excluded.status,
+                   descripcion = excluded.descripcion,
+                   due_date = excluded.due_date,
+                   tiempo_estimado = excluded.tiempo_estimado,
+                   notion_project_page_id = excluded.notion_project_page_id,
+                   notion_synced_at = excluded.notion_synced_at""",
+            (notion_page_id, name, status, descripcion, due_date,
+             tiempo_estimado, notion_project_page_id, ahora),
+        )
+        conn.commit()
+        fila = conn.execute(
+            "SELECT id FROM notion_clients WHERE notion_page_id = ?",
+            (notion_page_id,)).fetchone()
+        return fila["id"]
+    finally:
+        conn.close()
+
+
+def get_notion_clients(db_path: str) -> list[dict]:
+    conn = _connect(db_path)
+    try:
+        cursor = conn.execute(
+            "SELECT * FROM notion_clients ORDER BY name COLLATE NOCASE")
+        return [dict(row) for row in cursor.fetchall()]
+    finally:
+        conn.close()
+
+
+def borrar_notion_clients(db_path: str, page_ids: set) -> int:
+    """Saca del espejo las fichas que ya no estan en el tablero.
+
+    No hay nada colgando de un cliente espejado (las tareas apuntan a
+    proyectos, no a esto), asi que el borrado no despareja nada.
+    """
+    if not page_ids:
+        return 0
+    marcas = ",".join("?" for _ in page_ids)
+    conn = _connect(db_path)
+    try:
+        cursor = conn.execute(
+            f"DELETE FROM notion_clients WHERE notion_page_id IN ({marcas})",
+            list(page_ids))
         conn.commit()
         return cursor.rowcount
     finally:
