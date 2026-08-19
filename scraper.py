@@ -251,7 +251,33 @@ def _remote_insert(data: dict) -> bool:
         return False
 
 
-def scrape_google_maps(query: str, max_results: int, db_path: str, verify_web: bool = False, default_category: str = "", skip_branded: bool = False) -> int:
+def _debe_guardar(data: dict, solo_con_web: bool, skip_branded: bool) -> tuple[bool, str]:
+    """Decide si un negocio se guarda. Devuelve (guardar, motivo_del_descarte).
+
+    Es una funcion aparte y no un if adentro del bucle porque el bucle corre
+    contra Google Maps con Playwright y no se puede probar; esto si.
+
+    `solo_con_web` invierte el criterio: el modo por defecto junta negocios SIN
+    sitio web (a esos se les vende una pagina), y el modo discovery junta los
+    que SI lo tienen (a esos se les vende automatizacion, y su sitio es de
+    donde se saca la direccion de mail).
+    """
+    if not data.get("phone"):
+        return False, "sin teléfono"
+
+    tiene_web = bool(data.get("maps_website_url"))
+    if solo_con_web and not tiene_web:
+        return False, "sin web en Maps"
+    if not solo_con_web and tiene_web:
+        return False, "con web en Maps"
+
+    if skip_branded and _is_brand_franchise(data.get("name", "")):
+        return False, "franquicia de marca"
+
+    return True, ""
+
+
+def scrape_google_maps(query: str, max_results: int, db_path: str, verify_web: bool = False, default_category: str = "", skip_branded: bool = False, solo_con_web: bool = False) -> int:
     inserted = 0
     maps_list_url = f"https://www.google.com/maps/search/{query.replace(' ', '+')}"
 
@@ -336,29 +362,21 @@ def scrape_google_maps(query: str, max_results: int, db_path: str, verify_web: b
 
                         data["score"] = score_lead(data)
 
-                        # No phone → impossible to contact, skip
-                        if not data.get("phone"):
-                            logger.info(f"Saltando (sin teléfono): {data['name']}")
+                        guardar, motivo = _debe_guardar(data, solo_con_web, skip_branded)
+                        if not guardar:
+                            logger.info(f"Saltando ({motivo}): {data['name']}")
                             page.goto(maps_list_url, wait_until="domcontentloaded", timeout=30000)
                             random_delay()
                             break
 
-                        # Maps shows a website link → business already has web, skip
-                        if data.get("maps_website_url"):
-                            logger.info(f"Saltando (web en Maps): {data['name']}")
-                            page.goto(maps_list_url, wait_until="domcontentloaded", timeout=30000)
-                            random_delay()
-                            break
+                        # Discovery mode: the site itself is the source for the email address
+                        if solo_con_web:
+                            data["website"] = data.get("maps_website_url")
+                            data["source"] = "discovery"
 
-                        # Franchise of a known brand → already has parent website, skip
-                        if skip_branded and _is_brand_franchise(data.get("name", "")):
-                            logger.info(f"Saltando (franquicia de marca): {data['name']}")
-                            page.goto(maps_list_url, wait_until="domcontentloaded", timeout=30000)
-                            random_delay()
-                            break
-
-                        # Optional Bing double-check (slow, off by default)
-                        if verify_web:
+                        # Optional Bing double-check (slow, off by default); pointless in
+                        # discovery mode, which wants businesses WITH a website
+                        if verify_web and not solo_con_web:
                             logger.info(f"Verificando con Bing: {data['name']}")
                             no_web = verify_no_website(data["name"], data["city"], page)
                             if not no_web:
@@ -414,6 +432,6 @@ def scrape_google_maps(query: str, max_results: int, db_path: str, verify_web: b
     logger.info(f"Scraping completo. Guardados: {inserted} negocios")
     return inserted
 
-def run(query: str, max_results: int, db_path: str, verify_web: bool = False, default_category: str = "", skip_branded: bool = False) -> int:
+def run(query: str, max_results: int, db_path: str, verify_web: bool = False, default_category: str = "", skip_branded: bool = False, solo_con_web: bool = False) -> int:
     init_db(db_path)
-    return scrape_google_maps(query, max_results, db_path, verify_web=verify_web, default_category=default_category, skip_branded=skip_branded)
+    return scrape_google_maps(query, max_results, db_path, verify_web=verify_web, default_category=default_category, skip_branded=skip_branded, solo_con_web=solo_con_web)

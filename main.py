@@ -38,6 +38,8 @@ def create_parser() -> argparse.ArgumentParser:
     scrape_p.add_argument("--query", required=True, help='Ej: "restaurante Montevideo"')
     scrape_p.add_argument("--max", type=int, default=100, help="Máximo de resultados")
     scrape_p.add_argument("--no-verify-web", action="store_true", help="Desactivar verificación Bing (más rápido, menos preciso)")
+    scrape_p.add_argument("--con-web", action="store_true",
+                          help="Modo discovery: junta los negocios que SI tienen sitio web")
 
     subparsers.add_parser("generate-pitches", help="Generar texto de pitch WhatsApp por negocio")
     subparsers.add_parser("generate-demos", help="Generar páginas demo con IA")
@@ -63,7 +65,9 @@ def create_parser() -> argparse.ArgumentParser:
 def cmd_scrape(args):
     from scraper import run
     default_cat = args.query.split()[0].capitalize()
-    return run(args.query, args.max, DB_PATH, verify_web=not getattr(args, 'no_verify_web', False), default_category=default_cat)
+    return run(args.query, args.max, DB_PATH,
+               verify_web=not getattr(args, 'no_verify_web', False),
+               default_category=default_cat, solo_con_web=args.con_web)
 
 def cmd_generate_pitches(args):
     from pitch_generator import run
