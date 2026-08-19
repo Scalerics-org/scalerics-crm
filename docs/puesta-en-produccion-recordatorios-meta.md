@@ -10,9 +10,12 @@ Este runbook se escribió para el primer encendido, hecho desde la rama
 `recordatorios-meta` (mergeada a `main` el 17-8-2026, encendida en producción
 el 18-8-2026 y mandando mails reales desde entonces). Esta versión lo
 actualiza para el deploy que reemplaza ese mail único por la secuencia de 7
-contactos, hecho en la rama `secuencia-recordatorios`. La mayoría de los pasos
-sirven para los dos casos; donde cambian según si el interruptor ya estaba
-encendido o no, está marcado en el paso correspondiente (0.c y 8).
+contactos, hecho en la rama `secuencia-recordatorios`. El interruptor está
+confirmado en `on` en producción (verificado el 19-8-2026, junto con que
+`META_NOTIFY_OVERRIDE` no está seteado), así que este deploy no es un primer
+encendido: el paso 0.c lo apaga temporalmente antes de deployar, para que la
+migración y los pasos de verificación (3b y 4 a 7) corran con la máquina
+quieta, y el paso 8 lo vuelve a prender al final.
 
 Los pasos van en orden y cada uno tiene una condición de corte. Si alguno no da
 lo esperado, **parar ahí** — ninguno de los siguientes lo arregla.
@@ -47,23 +50,29 @@ antes en otro proyecto, no es hipotético— ahí se pierde también la garantí
 de "no repetir contacto", porque cada volumen tiene su propia tabla
 `meta_reminders` sin que la otra se entere.
 
-**c) El estado del interruptor.**
+**c) Apagar el interruptor antes de deployar.**
 
 ```bash
 flyctl secrets list -a scalerics-crm | grep META_RECORDATORIOS
 ```
 
-Este chequeo era para el primer encendido, cuando no tenía que aparecer nada
-— el job **arranca apagado por diseño**: requiere `META_RECORDATORIOS=on`
-para levantar. **Desde el 18-8-2026 el interruptor está en `on` en producción** y
-la automatización ya manda mails reales todos los días; este deploy no prende
-nada, solo reemplaza la lógica de "un mail" por la secuencia de 7 mientras
-sigue corriendo. Si el comando de arriba muestra `META_RECORDATORIOS=on`,
-**dejalo así**: no lo saques y no hace falta volver a encenderlo en el paso 8,
-que describe el encendido original. Si por algún motivo aparece apagado
-(alguien lo bajó a mano, o es otro ambiente), ahí sí valen las reglas viejas:
-que quede apagado hasta confirmar el paso 7 y recién ahí encenderlo en el
-paso 8.
+Confirmado en producción: desde el 18-8-2026 está en `on`, mandando mails
+reales todos los días (`META_NOTIFY_OVERRIDE` no está seteado). Por eso el
+deploy del paso 3 no se puede hacer con el interruptor prendido: 180
+segundos después de ese boot sale una tanda real con la secuencia nueva,
+antes de que corra un solo paso de verificación (3b, 6, 7), y esos pasos
+necesitan la máquina quieta para funcionar (ver el aviso en cada uno). La
+única mitigación es apagarlo ahora, dejarlo así durante toda la
+verificación, y volver a prenderlo recién en el paso 8:
+
+```bash
+flyctl secrets unset META_RECORDATORIOS -a scalerics-crm
+```
+
+Esto también reinicia la máquina, igual que `secrets set` — nada sale
+mientras quede así. Si el comando de arriba ya mostraba que estaba apagado
+(otro ambiente, o alguien lo bajó a mano), saltear este `unset`: fallaría
+porque no hay nada que sacar.
 
 **d) La secuencia son 7 contactos repartidos en un año, no uno.**
 
@@ -148,11 +157,10 @@ en cada fila existente (conservan su `id`, su `token` y su `sent_at`
 originales). No hay forma de correrla a mano ni de saltearla — el deploy la
 dispara sola, una sola vez.
 
-Si el interruptor está apagado (paso 0.c, primer encendido), el job no
-arranca todavía. Si ya estaba en `on` —el caso normal desde el 18-8-2026—
-arranca solo, 180 segundos después de este boot, ya con el código nuevo.
-Comparar la imagen del log propio contra `flyctl status`: si no coinciden,
-otra sesión deployó encima — no seguir.
+El interruptor quedó apagado en el paso 0.c, así que el job no arranca
+todavía — recién lo hace en el paso 8. Comparar la imagen del log propio
+contra `flyctl status`: si no coinciden, otra sesión deployó encima — no
+seguir.
 
 ## 3b. Verificar que la migración de `meta_reminders` sobrevivió
 
@@ -163,8 +171,12 @@ flyctl ssh console -a scalerics-crm -C "python -c \"import sqlite3;c=sqlite3.con
 ```
 
 Esperado: la misma cantidad de filas que contaste en el paso 2, y todas con
-`numero=1` — todavía no pasó tiempo suficiente para que exista ningún
-seguimiento.
+`numero=1`. Con el interruptor apagado desde el paso 0.c no debería haber
+salido ninguna tanda entre el deploy y este chequeo, así que el número tiene
+que cerrar exacto. Si por algún motivo el interruptor seguía encendido en
+este punto, puede haber hasta 15 filas de más —la tanda automática de 180
+segundos después del boot— y ahí conviene entender de dónde salieron antes
+de seguir, no asumir que la migración duplicó datos.
 
 Unos días después, con la secuencia ya corriendo, el mismo comando tiene que
 mostrar varios números: el 1 sigue siendo mayoría (es el que reciben los
@@ -181,23 +193,31 @@ puntual y decidir a mano.
 ## 4. Contar antes del backfill
 
 ```bash
-flyctl ssh console -a scalerics-crm -C "sqlite3 /data/leads.db \
-  \"SELECT COUNT(*) FROM businesses WHERE source='meta';\""
+flyctl ssh console -a scalerics-crm -C "python -c \"import sqlite3;c=sqlite3.connect('/data/leads.db');print(c.execute('SELECT COUNT(*) FROM businesses WHERE source=?', ('meta',)).fetchone()[0])\""
 ```
 
 Al 14-08 eran **216**. Y los mails repetidos, que es lo que decide si la dedup
 por dirección alcanza:
 
-```sql
-SELECT LOWER(TRIM(email)) e, COUNT(*) n FROM businesses
- WHERE source='meta' AND email IS NOT NULL AND TRIM(email)<>''
- GROUP BY e HAVING n>1;
+```bash
+flyctl ssh console -a scalerics-crm -C "python -c \"import sqlite3;c=sqlite3.connect('/data/leads.db');print(c.execute('SELECT LOWER(TRIM(email)) e, COUNT(*) n FROM businesses WHERE source=? AND email IS NOT NULL AND TRIM(email)<>? GROUP BY e HAVING n>1', ('meta','')).fetchall())\""
 ```
 
 En el snapshot de 110 leads daba 0. Si la base viva devuelve filas, no es
 bloqueante —la dedup por mail las cubre— pero conviene saberlo antes.
 
+(El binario `sqlite3` no está instalado en la imagen — el `apt-get install`
+del `Dockerfile` no lo trae, solo `curl wget gnupg libffi-dev libxml2
+libxslt1.1` — así que estas dos consultas van con `python -c`, igual que las
+del paso 2 y 3b.)
+
 ## 5. Backfill de los mails enterrados
+
+Ya corrió una vez, el 18-8-2026, con la automatización original. Volver a
+correrlo ahora es seguro: es idempotente. `scripts/backfill_meta_emails.py`
+(líneas 36-38) cuenta un lead que ya tiene `email` cargado como `ya_tenian` y
+no lo toca; solo pasa a `actualizados` el que todavía tenía el mail enterrado
+en `form_data`.
 
 Primero en seco:
 
@@ -205,23 +225,54 @@ Primero en seco:
 flyctl ssh console -a scalerics-crm -C "cd /app && python -m scripts.backfill_meta_emails /data/leads.db --dry-run"
 ```
 
-Después de verdad, sin `--dry-run`. Se espera del orden de **174 actualizados y
-42 sin mail** sobre 216 leads. Si el número no da exacto no es necesariamente un
-error: depende de cuántos leads entraron desde entonces. Lo que importa es que
-`actualizados + sin_email` sea igual al total del paso 4.
+**Si es la primera vez:** del orden de **174 actualizados y 42 sin mail**
+sobre 216 leads, con `ya_tenian` en 0.
+
+**Si ya corrió antes** (el caso normal desde el 18-8-2026): `actualizados`
+va a rondar 0 —salvo los leads de Meta que entraron después del último
+backfill y todavía tienen el mail enterrado— y la mayoría cae en
+`ya_tenian`, no en `actualizados`.
+
+En los dos casos la cuenta que tiene que cerrar es
+`actualizados + sin_email + ya_tenian == total del paso 4` (no
+`actualizados + sin_email` solo: esa alcanzaba la primera vez porque
+`ya_tenian` daba 0). Si no cierra, sí es una señal real de error.
+
+Después de verdad, sin `--dry-run`, con la misma lectura de arriba.
 
 ## 6. Dry-run: ver a quién le tocaría hoy
+
+Corré esto con el interruptor todavía apagado (paso 0.c). `enviar_recordatorios`
+calcula el cupo disponible **antes** de mirar `--dry-run`
+(`services/meta_reminders.py:295-302`): si `enviados_ultimas_24h` ya llegó a
+15, devuelve `{'candidatos': 0, ...}` sin listar nada, con o sin dry-run. Con
+el interruptor encendido, la tanda automática que dispara el paso 3 (180
+segundos después del boot) se come ese cupo antes de que este paso llegue a
+correr — por eso hace falta la máquina quieta.
 
 ```bash
 flyctl ssh console -a scalerics-crm -C "cd /app && python -m services.meta_reminders /data/leads.db --dry-run"
 ```
 
-No escribe ni manda nada. Lista los 15 de hoy, cada uno con su `numero` de
-contacto — los seguimientos van primero, así que puede haber alguno con
-`numero` mayor a 1 mezclado con los contactos nuevos. Mirar que sean leads
-plausibles y que los mails tengan cara de mails.
+No escribe ni manda nada. Lista los candidatos de hoy (hasta 15), cada uno
+con su `numero` de contacto — los seguimientos van primero, así que puede
+haber alguno con `numero` mayor a 1 mezclado con los contactos nuevos. Mirar
+que sean leads plausibles y que los mails tengan cara de mails.
+
+Si aun así imprime `{'candidatos': 0, ...}` con el interruptor apagado, es
+porque ya salió una tanda real más temprano ese mismo día (antes de empezar
+este procedimiento) y la ventana de 24 horas todavía la cuenta — no es una
+falla de este paso, pero sí conviene entender de dónde salió antes de
+seguir.
 
 ## 7. Mail de prueba — **contra una copia, no contra la base viva**
+
+Corré esto también con el interruptor apagado (paso 0.c). No es solo por
+usar una copia de la base: si el interruptor siguiera encendido, la tanda
+automática del paso 3 podría salir en paralelo mientras corrés esto a mano,
+y las dos corridas leen `enviados_ultimas_24h` sin coordinarse entre sí — el
+mismo riesgo de cupo no reservado del paso 0.b, aplicado a este momento
+puntual.
 
 `META_NOTIFY_OVERRIDE` redirige el destinatario, pero **igual registra el
 envío** en `meta_reminders` con su `numero` correspondiente. Si se corre
@@ -258,20 +309,16 @@ El link apunta a `scalerics-crm.fly.dev` mientras el remitente es
 `scalerics.com`. Esa disparidad de dominios suma señal de spam en un dominio
 verificado hace días. Si el mail cae en Promociones, es el primer sospechoso.
 
-## 8. Encender (solo si en el paso 0.c estaba apagado)
+## 8. Encender
 
 ```bash
 flyctl secrets set META_RECORDATORIOS=on -a scalerics-crm
 ```
 
-**Esto reinicia la máquina y la primera tanda de 15 mails reales sale ~3 minutos
-después.** Es el punto de no retorno: a partir de acá hay correo saliente a
-terceros.
-
-Si el interruptor ya estaba en `on` —el caso normal desde el 18-8-2026— **no
-ejecutes este paso**: el deploy del paso 3 ya reinició la máquina y la tanda
-con el código nuevo sale sola, 180 segundos después de ese boot. Volver a
-`secrets set` con el mismo valor no hace daño, pero tampoco hace falta.
+**Esto reinicia la máquina y la primera tanda de 15 mails reales sale ~3
+minutos después, ya con la secuencia nueva.** Es el punto de no retorno de
+este deploy: hasta acá, con el interruptor apagado desde el paso 0.c, no
+salió nada; a partir de acá vuelve a haber correo saliente a terceros.
 
 ## 9. El día que sale una tanda, no tocar nada más
 
