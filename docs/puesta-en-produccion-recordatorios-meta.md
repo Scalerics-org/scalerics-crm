@@ -4,7 +4,15 @@
 real a personas reales. Todo lo anterior es reversible; esto no.
 
 App: `scalerics-crm` en Fly. Base: `/data/leads.db` dentro del volumen
-`leads_data`. Rama: `recordatorios-meta`.
+`leads_data`.
+
+Este runbook se escribió para el primer encendido, hecho desde la rama
+`recordatorios-meta` (mergeada a `main` el 17-8-2026, encendida en producción
+el 18-8-2026 y mandando mails reales desde entonces). Esta versión lo
+actualiza para el deploy que reemplaza ese mail único por la secuencia de 7
+contactos, hecho en la rama `secuencia-recordatorios`. La mayoría de los pasos
+sirven para los dos casos; donde cambian según si el interruptor ya estaba
+encendido o no, está marcado en el paso correspondiente (0.c y 8).
 
 Los pasos van en orden y cada uno tiene una condición de corte. Si alguno no da
 lo esperado, **parar ahí** — ninguno de los siguientes lo arregla.
@@ -24,20 +32,69 @@ busca. Si no se lee, agregar un `Reply-To` a una casilla que sí, antes de segui
 flyctl status -a scalerics-crm
 ```
 
-La garantía de "una sola vez" vive en un archivo SQLite dentro del volumen. Dos
-máquinas con dos volúmenes son dos tablas `meta_reminders` distintas, o sea doble
-mail sin que nada lo detecte. Fly ya creó una segunda máquina sola antes en otro
-proyecto; no es hipotético.
+La garantía de "no mandarle el mismo contacto dos veces a la misma persona"
+vive en el `UNIQUE(business_id, numero)` de `meta_reminders`, así que esa
+sobrevive aunque dos corridas se pisen. Lo que **no** cubre ese `UNIQUE` es el
+volumen: el tope de 15 mails por día se calcula una sola vez al arrancar la
+tanda (`enviados_ultimas_24h`, en `services/meta_reminders.py`) y no se
+reserva. Dos corridas solapadas —dos máquinas, o un reinicio de Fly mientras
+la tanda anterior todavía sigue corriendo— pueden calcular 15 de cupo cada
+una y mandar hasta 30 en la ventana de 24 horas, sin que nada lo impida ni lo
+avise. Por eso una sola máquina corriendo **es parte de la garantía del tope
+diario, no un detalle de costos**. Y si dos máquinas llegan a tener dos
+volúmenes distintos —el caso ya conocido: Fly creó una segunda máquina sola
+antes en otro proyecto, no es hipotético— ahí se pierde también la garantía
+de "no repetir contacto", porque cada volumen tiene su propia tabla
+`meta_reminders` sin que la otra se entere.
 
-**c) El interruptor está apagado y tiene que quedar así hasta el paso 7.**
+**c) El estado del interruptor.**
 
 ```bash
 flyctl secrets list -a scalerics-crm | grep META_RECORDATORIOS
 ```
 
-No debería aparecer. El job **arranca apagado por diseño**: requiere
-`META_RECORDATORIOS=on` para levantar. Si aparece con valor `on`, sacarlo antes
-de deployar.
+Este chequeo era para el primer encendido, cuando no tenía que aparecer nada
+— el job **arranca apagado por diseño**: requiere `META_RECORDATORIOS=on`
+para levantar. **Desde el 18-8-2026 el interruptor está en `on` en producción** y
+la automatización ya manda mails reales todos los días; este deploy no prende
+nada, solo reemplaza la lógica de "un mail" por la secuencia de 7 mientras
+sigue corriendo. Si el comando de arriba muestra `META_RECORDATORIOS=on`,
+**dejalo así**: no lo saques y no hace falta volver a encenderlo en el paso 8,
+que describe el encendido original. Si por algún motivo aparece apagado
+(alguien lo bajó a mano, o es otro ambiente), ahí sí valen las reglas viejas:
+que quede apagado hasta confirmar el paso 7 y recién ahí encenderlo en el
+paso 8.
+
+**d) La secuencia son 7 contactos repartidos en un año, no uno.**
+
+| Contacto | Días desde el primer envío | Nota |
+|----------|-----------------------------|------|
+| 1        | 0                           | dispara la cuenta del resto |
+| 2        | 10                          | |
+| 3        | 25                          | |
+| 4        | 115                         | |
+| 5        | 205                         | |
+| 6        | 295                         | |
+| 7        | 365                         | último: después de este el lead no vuelve a entrar nunca, aunque siga `sin_contactar` |
+
+Los días se cuentan desde el **primer** envío de cada lead, no desde el
+anterior, para que el atraso de una tanda no se acumule sobre las que siguen
+(`_DIAS_DE_CADA_CONTACTO` en `services/meta_reminders.py`). Cada contacto
+tiene su propio texto (`services/email_service.py`; el 7 dice explícitamente
+que es el último) y su propio token de baja, pero la baja es sobre la
+persona: quien se da de baja en cualquier contacto no recibe ninguno de los
+que faltan.
+
+El tope de 15 mails por día es compartido entre seguimientos (leads que ya
+están en la secuencia) y contactos nuevos, y los seguimientos van primero.
+Un día con backlog de leads nuevos puede terminar sin mandar ningún contacto
+1 si el cupo se lo llevan los seguimientos.
+
+**e) Si un lead contesta y nadie lo mueve de `sin_contactar`, sigue en la
+secuencia.** El único corte por respuesta es el `crm_status`: mientras siga
+en `sin_contactar` va a seguir recibiendo los 7 contactos aunque haya
+contestado el primero. Es el modo de falla más probable de todo esto y la
+única mitigación es la disciplina de mover el lead en el CRM apenas contesta.
 
 ---
 
@@ -48,9 +105,12 @@ flyctl ssh console -a scalerics-crm -C "ls -la /data/.prod_imported /data/leads.
 ```
 
 **Tiene que existir `/data/.prod_imported`.** Si no está, `start.sh` copia
-`/app/leads_backup.db` —la base congelada del repo, con `meta_reminders` vacía—
-encima de `/data/leads.db` en el próximo arranque. Después del backfill eso
-significa remandarle el mail a todos los que ya lo recibieron.
+`/app/leads_backup.db` —la base congelada del repo, con `meta_reminders`
+vacía— encima de `/data/leads.db` en el próximo arranque. Con la secuencia de
+7 contactos esto es más grave que un simple reenvío: **todos los leads
+vuelven a recibir el contacto 1**, sin importar en qué contacto de la
+secuencia estaban, y los tokens de baja ya publicados en mails reales dejan
+de funcionar (la fila que los tenía se borró junto con el resto de la tabla).
 
 Si alguna vez hay que recrear el volumen: restaurar del backup del paso 2, nunca
 dejar que el arranque haga su copia.
@@ -58,10 +118,22 @@ dejar que el arranque haga su copia.
 ## 2. Backup de la base
 
 ```bash
-flyctl ssh sftp get /data/leads.db ./leads-prod-$(date +%Y%m%d).db -a scalerics-crm
+MSYS_NO_PATHCONV=1 flyctl ssh sftp get /data/leads.db ./leads-prod-$(date +%Y%m%d).db -a scalerics-crm
 ```
 
-Guardarlo fuera del repo. Es la única vuelta atrás real.
+(`MSYS_NO_PATHCONV=1` es para Git Bash: sin eso, `/data/leads.db` se
+interpreta como una ruta de Windows y el comando falla.)
+
+Guardarlo fuera del repo. Es la única vuelta atrás real — también es lo que
+salva si la migración del paso 3b sale mal.
+
+De paso, contá cuántas filas tiene `meta_reminders` antes de deployar (la
+migración corre recién en el próximo arranque): es el número contra el que se
+compara en el paso 3b.
+
+```bash
+flyctl ssh console -a scalerics-crm -C "python -c \"import sqlite3;c=sqlite3.connect('/data/leads.db');print(c.execute('SELECT COUNT(*) FROM meta_reminders').fetchone()[0])\""
+```
 
 ## 3. Deploy
 
@@ -69,8 +141,42 @@ Guardarlo fuera del repo. Es la única vuelta atrás real.
 flyctl deploy -a scalerics-crm
 ```
 
-El job no arranca (paso 0c). Comparar la imagen del log propio contra
-`flyctl status`: si no coinciden, otra sesión deployó encima — no seguir.
+Al arrancar, `init_db` (`database.py`) migra `meta_reminders` sola: agrega la
+columna `numero`, cambia el `UNIQUE` a `(business_id, numero)` y, si la tabla
+vieja no tenía esa columna, reconstruye la tabla completa poniendo `numero=1`
+en cada fila existente (conservan su `id`, su `token` y su `sent_at`
+originales). No hay forma de correrla a mano ni de saltearla — el deploy la
+dispara sola, una sola vez.
+
+Si el interruptor está apagado (paso 0.c, primer encendido), el job no
+arranca todavía. Si ya estaba en `on` —el caso normal desde el 18-8-2026—
+arranca solo, 180 segundos después de este boot, ya con el código nuevo.
+Comparar la imagen del log propio contra `flyctl status`: si no coinciden,
+otra sesión deployó encima — no seguir.
+
+## 3b. Verificar que la migración de `meta_reminders` sobrevivió
+
+El día del deploy:
+
+```bash
+flyctl ssh console -a scalerics-crm -C "python -c \"import sqlite3;c=sqlite3.connect('/data/leads.db');print('filas:',c.execute('SELECT COUNT(*) FROM meta_reminders').fetchone()[0]);print('numeros:',c.execute('SELECT numero,COUNT(*) FROM meta_reminders GROUP BY numero').fetchall())\""
+```
+
+Esperado: la misma cantidad de filas que contaste en el paso 2, y todas con
+`numero=1` — todavía no pasó tiempo suficiente para que exista ningún
+seguimiento.
+
+Unos días después, con la secuencia ya corriendo, el mismo comando tiene que
+mostrar varios números: el 1 sigue siendo mayoría (es el que reciben los
+leads nuevos, hasta 15 por día) pero van a empezar a aparecer filas con
+`numero=2` a partir del décimo día desde el deploy (contacto 1 + 10 días, ver
+la tabla del paso 0.d). Un número que no debería estar todavía —por ejemplo
+un `numero=2` al día siguiente del deploy, o un `numero=4` antes de que pasen
+115 días desde el primer contacto de ese lead puntual— es señal de un reloj
+desincronizado en la máquina, de una fila migrada con un `sent_at` corrido, o
+de que alguien corrió el backfill o una prueba contra la base viva en vez de
+una copia (paso 7). No se autoarregla: hay que mirar el `sent_at` de esa fila
+puntual y decidir a mano.
 
 ## 4. Contar antes del backfill
 
@@ -110,14 +216,22 @@ error: depende de cuántos leads entraron desde entonces. Lo que importa es que
 flyctl ssh console -a scalerics-crm -C "cd /app && python -m services.meta_reminders /data/leads.db --dry-run"
 ```
 
-No escribe ni manda nada. Lista los 15 de hoy. Mirar que sean leads plausibles y
-que los mails tengan cara de mails.
+No escribe ni manda nada. Lista los 15 de hoy, cada uno con su `numero` de
+contacto — los seguimientos van primero, así que puede haber alguno con
+`numero` mayor a 1 mezclado con los contactos nuevos. Mirar que sean leads
+plausibles y que los mails tengan cara de mails.
 
 ## 7. Mail de prueba — **contra una copia, no contra la base viva**
 
-`META_NOTIFY_OVERRIDE` redirige el destinatario, pero **igual registra el envío**.
-Si se corre contra `/data/leads.db`, hasta 15 leads reales quedan marcados como
-recordados para siempre y nunca reciben el mail de verdad. Por eso va sobre una
+`META_NOTIFY_OVERRIDE` redirige el destinatario, pero **igual registra el
+envío** en `meta_reminders` con su `numero` correspondiente. Si se corre
+contra `/data/leads.db`, cada lead de la prueba queda con una fila puesta
+para ese contacto sin haberlo recibido: no vuelve a aparecer en
+`leads_a_recordar` (que solo mira leads sin ninguna fila) y ese contacto en
+particular queda salteado para siempre — el lead va a seguir recibiendo los
+contactos siguientes en la fecha que le toque, contada desde ese envío falso,
+pero nunca el que se probó. Con hasta 15 leads por corrida, son hasta 15
+leads reales con un hueco permanente en su secuencia. Por eso va sobre una
 copia:
 
 ```bash
@@ -144,7 +258,7 @@ El link apunta a `scalerics-crm.fly.dev` mientras el remitente es
 `scalerics.com`. Esa disparidad de dominios suma señal de spam en un dominio
 verificado hace días. Si el mail cae en Promociones, es el primer sospechoso.
 
-## 8. Encender
+## 8. Encender (solo si en el paso 0.c estaba apagado)
 
 ```bash
 flyctl secrets set META_RECORDATORIOS=on -a scalerics-crm
@@ -154,12 +268,20 @@ flyctl secrets set META_RECORDATORIOS=on -a scalerics-crm
 después.** Es el punto de no retorno: a partir de acá hay correo saliente a
 terceros.
 
-## 9. El día que se enciende, no tocar nada más
+Si el interruptor ya estaba en `on` —el caso normal desde el 18-8-2026— **no
+ejecutes este paso**: el deploy del paso 3 ya reinició la máquina y la tanda
+con el código nuevo sale sola, 180 segundos después de ese boot. Volver a
+`secrets set` con el mismo valor no hace daño, pero tampoco hace falta.
+
+## 9. El día que sale una tanda, no tocar nada más
 
 Cada reinicio dispara una tanda: cada `flyctl deploy`, cada `secrets set/unset`,
-y cada OOM de los 256 MB de RAM. El tope diario ahora se calcula sobre las filas
-de las últimas 24 horas, así que **los envíos no pueden pasar de 15 por día ni
-con reinicios** — pero igual conviene no deployar nada más ese día.
+y cada OOM de los 256 MB de RAM. El tope diario se calcula sobre las filas de
+las últimas 24 horas (`enviados_ultimas_24h`), así que dos tandas normales,
+una después de la otra, no se pasan de 15. Lo que **no** está cubierto es un
+reinicio que ocurra mientras la tanda anterior todavía sigue corriendo — el
+riesgo descrito en el paso 0.b. Por eso, además de no tocar nada más, conviene
+mirar `flyctl status` si algo se movió ese día.
 
 ## 10. Mirar rebotes, no solo envíos
 
@@ -167,7 +289,12 @@ En el panel de Resend, después de la primera tanda. Los mails vienen de un
 formulario de Meta de hasta 5 meses de antigüedad: una tasa de rebote alta en un
 dominio nuevo hace más daño a la reputación que las quejas.
 
-Con 174 elegibles a 15 por día, el backlog se drena en unos 12 días.
+Con 174 elegibles a 15 por día, el backfill del contacto 1 se drena en unos 12
+días **si nada más compite por el cupo**. En la práctica no va a ser así: a
+partir del décimo día empiezan a aparecer seguimientos (contacto 2), y como
+`leads_a_seguir` va primero (paso 0.d), cada seguimiento le come un lugar al
+backfill. El backlog real tarda más de 12 días en vaciarse — es esperado, no
+hay que salir a apurarlo subiendo el tope.
 
 ---
 
@@ -179,10 +306,19 @@ Con 174 elegibles a 15 por día, el backlog se drena en unos 12 días.
 flyctl secrets unset META_RECORDATORIOS -a scalerics-crm
 ```
 
-**Alguien recibió el mail y no debía:** no hay forma de retirarlo. Buscar la fila
-en `meta_reminders` por `business_id` y confirmar que sigue puesta — mientras
-esté, no se le vuelve a escribir.
+**Alguien recibió un mail y no debía:** no hay forma de retirarlo. Buscar la
+fila puntual en `meta_reminders` por `business_id` **y `numero`** y confirmar
+que sigue puesta — mientras esté, no se le vuelve a mandar ese mismo
+contacto. No hace falta tocar el resto de sus filas: cada contacto es
+independiente.
 
 **Un lead quedó marcado sin haber recibido nada** (aparece en el log como
-"envío incierto" o como fallo de limpieza): borrar su fila de `meta_reminders` a
-mano y al día siguiente vuelve a entrar en la selección.
+"envío incierto" o como fallo de limpieza): borrar esa fila puntual de
+`meta_reminders` (`business_id` + `numero`) a mano y ese contacto vuelve a
+entrar en la selección al otro día. **No borrar todas las filas del lead**:
+se pierden los tokens de baja de los contactos anteriores que ya se
+mandaron de verdad, y esos links quedan rotos en mails que la gente ya tiene
+en su bandeja.
+
+**Un lead que ya contestó sigue recibiendo la secuencia:** ver el paso 0.e —
+no es un bug, es que nadie lo movió de `sin_contactar` en el CRM.
