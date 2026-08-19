@@ -139,6 +139,9 @@ function crearRepo(db) {
         rubro = NULL, rubro_norm = NULL,
         score = NULL, priority = NULL, score_reason = NULL,
         status = 'new', replied_at = NULL, followup_sent_at = NULL,
+        -- Tambien el saludo: reiniciar es empezar de cero, y sin esto el lead
+        -- reiniciado nunca vuelve a recibir la presentacion.
+        welcomed_at = NULL,
         conversacion_desde = ?
       WHERE id = ?`).run(ahoraIso, id);
       db.prepare(
