@@ -9,6 +9,7 @@ import pytest
 
 from database import init_db
 from services.meta_reminders import (
+    _PISO_ENTRE_CONTACTOS_DIAS,
     dar_de_baja,
     enviar_recordatorios,
     esta_dado_de_baja,
@@ -758,6 +759,54 @@ def test_una_fila_salteada_no_repite_numero(db):
 
     assert [x["id"] for x in elegidos] == [3000]
     assert elegidos[0]["numero"] == 4, "el 3 ya existe; asignarlo de nuevo chocaria contra el UNIQUE"
+
+
+def test_un_lead_atrasado_no_recibe_dos_contactos_seguidos(db):
+    """Contar desde el primer envio hace que un lead atrasado pase TODOS los
+    umbrales de golpe: le tocaria el 2, y apenas sale, tambien el 3, el 4 y
+    hasta el 7. No hace falta esperar a manana — cada reinicio de Fly dispara
+    una tanda, asi que los seis pueden salir dentro de la misma hora, y esa
+    persona recibe "te escribimos hace unos dias" y "no te escribimos mas"
+    seguidos. Ni el UNIQUE(business_id, numero) lo impide (son numeros
+    distintos) ni el tope de 15 (son 6 de 15). El piso entre contactos
+    consecutivos es lo unico que lo frena."""
+    from services.meta_reminders import leads_a_seguir
+
+    conn = sqlite3.connect(db)
+    _lead(conn, 46, dias=420)
+    _envio(conn, 46, 1, dias_atras=400)
+    conn.commit()
+    conn.close()
+
+    elegidos = leads_a_seguir(db)
+    assert [x["numero"] for x in elegidos] == [2], "hoy le toca el 2, que quedo atrasado"
+
+    # Sale el contacto 2 ahora mismo, y se pregunta de nuevo: la tanda
+    # siguiente puede ser dentro de un minuto.
+    conn = sqlite3.connect(db)
+    _envio(conn, 46, 2, dias_atras=0)
+    conn.commit()
+    conn.close()
+
+    assert leads_a_seguir(db) == [], (
+        "el 3 no puede salir pegado al 2 aunque hayan pasado 400 dias del primer envio")
+
+
+def test_pasado_el_piso_el_lead_atrasado_retoma(db):
+    """El piso frena la rafaga, no la secuencia: pasados los dias del piso el
+    lead atrasado sigue avanzando, un contacto por vez."""
+    from services.meta_reminders import leads_a_seguir
+
+    conn = sqlite3.connect(db)
+    _lead(conn, 47, dias=420)
+    _envio(conn, 47, 1, dias_atras=400)
+    _envio(conn, 47, 2, dias_atras=_PISO_ENTRE_CONTACTOS_DIAS)
+    conn.commit()
+    conn.close()
+
+    elegidos = leads_a_seguir(db)
+
+    assert [x["numero"] for x in elegidos] == [3]
 
 
 def test_el_mail_sale_sin_espacios_alrededor(db):

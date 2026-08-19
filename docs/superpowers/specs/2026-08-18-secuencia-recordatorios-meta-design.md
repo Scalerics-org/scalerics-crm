@@ -38,8 +38,19 @@ Un lead entra en la tanda de hoy si:
   secuencia, no al contacto que la disparó);
 - y además:
   - **no recibió nada** y entró hace 3 días o más → le toca el contacto 1;
-  - o **su último envío** fue hace tanto o más que el salto que corresponde al
-    siguiente número, y todavía no llegó a 7.
+  - o todavía no llegó a 7 y cumple **las dos** condiciones a la vez: **su
+    primer envío** fue hace tanto o más que el salto que corresponde al
+    siguiente número, **y su último envío** fue hace 7 días o más.
+
+Son dos reglas y hacen falta las dos. El umbral se cuenta desde el **primer**
+envío para que el atraso de una tanda no se acumule sobre las que siguen. Pero
+eso solo, sin piso, hace que un lead que quedó muy atrás —la automatización
+apagada un tiempo, o un backlog que tardó en drenar— pase todos los umbrales de
+golpe y reciba los contactos 2 a 7 uno atrás de otro, hasta los seis en la
+misma hora si la máquina se reinicia varias veces (cada reinicio dispara una
+tanda). El **piso de 7 días desde el último envío** es lo que lo frena, y no
+cambia nada para un lead al día: sus saltos reales son 10, 15, 90, 90, 90 y 70
+días, todos mayores que el piso.
 
 El tope diario de **15 mails sobre 24 horas rodantes** no cambia, y es sobre el
 total: los contactos nuevos y los de seguimiento compiten por el mismo cupo.

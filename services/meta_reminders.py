@@ -44,6 +44,15 @@ _FILTRO_LEAD_ELEGIBLE = (
 # email_service, que escribe el texto de cada contacto y necesita saber cual es
 # el ultimo.
 
+# Piso de dias entre dos contactos consecutivos. La tabla de arriba sola no
+# alcanza: un lead que quedo atras (la automatizacion apagada un tiempo, o un
+# backlog que tardo en drenar) pasa TODOS los umbrales de golpe y recibiria un
+# contacto por tanda hasta ponerse al dia -- y cada reinicio de Fly dispara una
+# tanda, asi que los seis podrian salir en la misma hora. Con el piso puesto la
+# secuencia de un lead al dia no cambia (sus saltos reales son 10, 15, 90, 90,
+# 90 y 70 dias, todos mayores) y el atrasado avanza de a uno.
+_PISO_ENTRE_CONTACTOS_DIAS = 7
+
 # El resto de la base guarda las fechas asi (scraped_at, entre otras) y las
 # compara contra datetime('now', ...) de SQLite, que devuelve este mismo
 # formato. Un isoformat() con 'T' y offset no compara: rompe lexicograficamente
@@ -238,9 +247,13 @@ def leads_a_seguir(db_path: str, limite: int = _TOPE_DIARIO) -> list[dict]:
     no vuelve a entrar aunque le falten filas intermedias por un reintento
     viejo.
 
-    El salto que corresponde depende de cuantos contactos lleva, asi que el CASE
-    se arma desde `DIAS_DE_CADA_CONTACTO` para que la tabla de dias tenga un
-    solo lugar de verdad.
+    La elegibilidad son dos reglas a la vez, no una: el umbral se mide desde el
+    PRIMER envio (para que el atraso de una tanda no se acumule) y ademas tiene
+    que haber pasado `_PISO_ENTRE_CONTACTOS_DIAS` desde el ULTIMO (para que un
+    lead atrasado, que pasa todos los umbrales de golpe, no reciba los contactos
+    2 a 7 uno atras de otro). El CASE de los umbrales se arma desde
+    `DIAS_DE_CADA_CONTACTO` para que la tabla de dias tenga un solo lugar de
+    verdad.
     """
     casos = " ".join(
         f"WHEN {n} THEN {DIAS_DE_CADA_CONTACTO[n]}"
@@ -253,7 +266,8 @@ def leads_a_seguir(db_path: str, limite: int = _TOPE_DIARIO) -> list[dict]:
             f"""
             SELECT b.id, b.name, TRIM(b.email) AS email, b.form_data,
                    MAX(r.numero) AS ultimo_numero,
-                   MIN(r.sent_at) AS primer_envio
+                   MIN(r.sent_at) AS primer_envio,
+                   MAX(r.sent_at) AS ultimo_envio
               FROM businesses b
               JOIN meta_reminders r ON r.business_id = b.id
              WHERE {_FILTRO_LEAD_ELEGIBLE}
@@ -264,6 +278,7 @@ def leads_a_seguir(db_path: str, limite: int = _TOPE_DIARIO) -> list[dict]:
           GROUP BY b.id
             HAVING ultimo_numero < {TOTAL_CONTACTOS}
                AND primer_envio <= datetime('now', '-' || (CASE ultimo_numero {casos} END) || ' days')
+               AND ultimo_envio <= datetime('now', '-{_PISO_ENTRE_CONTACTOS_DIAS} days')
           ORDER BY primer_envio ASC
              LIMIT ?
             """,
