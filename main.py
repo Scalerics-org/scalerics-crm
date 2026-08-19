@@ -67,7 +67,7 @@ def cmd_scrape(args):
     default_cat = args.query.split()[0].capitalize()
     return run(args.query, args.max, DB_PATH,
                verify_web=not getattr(args, 'no_verify_web', False),
-               default_category=default_cat, solo_con_web=args.con_web)
+               default_category=default_cat, solo_con_web=getattr(args, 'con_web', False))
 
 def cmd_generate_pitches(args):
     from pitch_generator import run
