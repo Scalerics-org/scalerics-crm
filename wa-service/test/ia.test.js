@@ -171,10 +171,10 @@ test('con todos los datos, el cierre lo hace el codigo y no la IA', async () => 
   await s.cola.vacia();
 
   const l = s.repo.leadPorTelefono('59899123456');
-  assert.equal(l.fsm_state, S.MEETING_SENT);
+  assert.equal(l.fsm_state, S.MEETING_LINK_SENT);
 
   const alLead = s.proveedor.getEnviados().filter((e) => e.to === '59899123456').map((e) => e.texto);
-  assert.equal(alLead.at(-1), '[oferta_reunion]', 'la dispara el score, no el modelo');
+  assert.equal(alLead.at(-1), '[link_reunion]', 'lo dispara el embudo, no el modelo');
   assert.ok(!alLead.some((m) => /te paso mi Calendly ahora mismo/.test(m)), 'no sale su texto de cierre');
 });
 

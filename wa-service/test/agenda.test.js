@@ -277,9 +277,12 @@ const COMPLETO = {
 };
 
 test('con todos los datos le muestra horarios reales y agenda el que elige', async () => {
+  // El camino de horarios ya no es el de por defecto —hoy se manda el link de
+  // Calendly— pero se conserva entero y se prende con esta variable.
   const google = googleFalso({ ocupados: ['13:30-14:00'] });
   const s = await conLead({
     openai: stubOpenAI({ datos: COMPLETO }),
+    AGENDA_OFRECE_HORARIOS: 'true',
     _google: google.fetch,
   });
 
@@ -317,13 +320,13 @@ test('el horario que se ofrece nunca sale de la franja configurada', async () =>
 });
 
 test('sin agenda conectada el cierre sigue por el camino del link', async () => {
-  // Es el camino que existia antes: si no hay credenciales de Google, no se
-  // rompe nada, solo no se muestran horarios.
+  // Sin credenciales de Google no se rompe nada: es el mismo camino que se usa
+  // hoy por defecto, el del link.
   const s = await conLead({ openai: stubOpenAI({ datos: COMPLETO }), GCAL_REFRESH_TOKEN: '' });
   await s.servicioLeads.registrarRespuesta('59899123456', 'te cuento todo');
   await s.cola.vacia();
 
   const msgs = s.proveedor.getEnviados().filter((e) => e.to === '59899123456').map((e) => e.texto);
-  assert.equal(msgs.at(-1), '[oferta_reunion]');
-  assert.equal(s.repo.leadPorTelefono('59899123456').fsm_state, S.MEETING_SENT);
+  assert.equal(msgs.at(-1), '[link_reunion]');
+  assert.equal(s.repo.leadPorTelefono('59899123456').fsm_state, S.MEETING_LINK_SENT);
 });

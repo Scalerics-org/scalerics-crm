@@ -198,6 +198,21 @@ const esquema = z.object({
   AGENDA_DIAS: z.string().default('mon,tue,wed,thu,fri'),
   // Cuantos horarios se muestran. Mas de cinco deja de ser una eleccion y pasa
   // a ser una lista que hay que leer.
+  /**
+   * Si el bot ofrece horarios y agenda el, o manda el link de Calendly para
+   * que el cliente se agende solo.
+   *
+   * Apagado: el cliente se agenda solo. Elegir entre cinco horarios es mas
+   * facil que abrir una pagina, pero el formulario de Calendly pregunta cosas
+   * —empresa, que necesita, telefono— que sirven para preparar la reunion, y
+   * ademas manda la confirmacion y los avisos por su cuenta.
+   *
+   * Esto NO apaga la agenda: el bot sigue leyendo el calendario para enterarse
+   * de quien agendo y mandarle los recordatorios. Solo deja de ofrecer y
+   * reservar. Se prende de nuevo sin revertir nada.
+   */
+  AGENDA_OFRECE_HORARIOS: booleanoDeEnv.default(false),
+
   AGENDA_MAX_OPCIONES: z.coerce.number().int().positive().default(5),
   AGENDA_DIAS_ADELANTE: z.coerce.number().int().positive().default(10),
   // No se ofrece nada antes de este plazo: una reunion en veinte minutos no le

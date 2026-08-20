@@ -215,10 +215,16 @@ function crearEmbudo({
       }
 
       case S.MEETING_SENT: {
-        // Con agenda conectada se le muestran horarios reales en vez de un
-        // link: elegir entre cinco opciones es mas facil que abrir una pagina,
-        // y el que abre una pagina muchas veces no vuelve.
-        const libres = agenda?.activo ? await agenda.horariosDisponibles(ahora()) : null;
+        // Con AGENDA_OFRECE_HORARIOS se le muestran horarios reales y el bot
+        // reserva. Apagado —que es como esta— se le manda el link de Calendly y
+        // se agenda solo: el formulario le pregunta empresa, que necesita y
+        // telefono, y esos datos despues sirven para preparar la reunion.
+        //
+        // La agenda sigue conectada igual: se la usa para leer el calendario y
+        // enterarse de quien agendo.
+        const libres = (agenda?.activo && cfg.AGENDA_OFRECE_HORARIOS)
+          ? await agenda.horariosDisponibles(ahora())
+          : null;
 
         if (libres?.slots?.length) {
           const iso = libres.slots.map((d) => d.toISOString());
@@ -229,10 +235,10 @@ function crearEmbudo({
           return S.HORARIOS_OFRECIDOS;
         }
 
-        // Sin agenda —o sin ningun hueco— se ofrece la reunion sin horarios y
-        // se sigue por el camino del link, que es el que ya existia.
-        if (!await decirIA(lead, 'oferta_reunion')) return sinIA(lead, 'oferta_reunion');
-        return estado;
+        // El camino del link. Se va derecho: MEETING_LINK_SENT ya manda el
+        // link al entrar, y su mensaje explica el proceso entero. Preguntarle
+        // antes "¿te sirve?" es un mensaje de mas para llegar a lo mismo.
+        return alEntrar(lead, S.MEETING_LINK_SENT, entrada);
       }
 
       /**

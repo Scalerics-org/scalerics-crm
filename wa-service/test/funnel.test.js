@@ -51,8 +51,8 @@ test('con los tres datos se le ofrece la reunion, sin filtro de score', async ()
   const msgs = await lead(s, 'te cuento todo de una');
 
   const l = s.repo.leadPorTelefono(TEL);
-  assert.equal(l.fsm_state, S.MEETING_SENT);
-  assert.equal(msgs.at(-1), '[oferta_reunion]');
+  assert.equal(l.fsm_state, S.MEETING_LINK_SENT);
+  assert.equal(msgs.at(-1), '[link_reunion]', 'le explica el proceso y le pasa el link, en uno');
 });
 
 test('un lead chico tambien recibe la oferta', async () => {
@@ -63,8 +63,8 @@ test('un lead chico tambien recibe la oferta', async () => {
   const s = await conLead({ openai: stubOpenAI({ datos: chico }) });
   const msgs = await lead(s, 'te cuento');
 
-  assert.equal(estado(s), S.MEETING_SENT);
-  assert.equal(msgs.at(-1), '[oferta_reunion]');
+  assert.equal(estado(s), S.MEETING_LINK_SENT);
+  assert.equal(msgs.at(-1), '[link_reunion]');
 });
 
 // ── despues de la oferta ─────────────────────────────────────────────────────
@@ -72,18 +72,18 @@ test('un lead chico tambien recibe la oferta', async () => {
 /** Deja al lead con el link de Calendly en la mano. */
 const CALENDLY = 'https://calendly.com/scalerics/diagnostico';
 
-/** Un stub que ya tiene los datos y que, al decirle que si, manda el link. */
-const stubQueMandaElLink = () => stubOpenAI({
-  datos: COMPLETO,
-  respuestas: { conversacion: `Genial, agendá acá: ${CALENDLY}` },
-});
+const stubQueMandaElLink = () => stubOpenAI({ datos: COMPLETO });
 
-/** Deja al lead con el link de Calendly en la mano. */
+/**
+ * Deja al lead con el link de Calendly en la mano.
+ *
+ * Antes hacian falta dos turnos: el bot ofrecia la reunion, el lead decia que
+ * si, y recien ahi salia el link. Ahora sale en cuanto el bot sabe que necesita
+ * —el mensaje explica el proceso y termina con el link—, asi que es un turno.
+ */
 async function conLink(s) {
   await lead(s, 'te cuento todo');
-  assert.equal(estado(s), S.MEETING_SENT);
-  await lead(s, 'dale');
-  assert.equal(estado(s), S.MEETING_LINK_SENT, 'el codigo detecta que el link salio');
+  assert.equal(estado(s), S.MEETING_LINK_SENT, 'el link sale sin preguntar antes');
   s.proveedor.limpiar();
 }
 

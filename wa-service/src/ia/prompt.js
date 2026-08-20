@@ -207,8 +207,18 @@ Pedile disculpas en media línea —fue nuestro problema, no suyo— y mostrale 
     reunion_agendada: `Le acabás de agendar la reunión. Confirmale el día y la hora, y pasale el link de la videollamada.
 Corto y con ganas: acaba de decir que sí.`,
 
-    link_reunion: `Dijo que sí. Pasale el link para que elija horario: ${calendly}
-Decile que cuando reserve le llega la confirmación con el link de la videollamada.`,
+    link_reunion: `Ya sabés quién es, a qué se dedica y qué necesita. No le pidas ni un dato más: lo que falta se ve en la reunión.
+
+Explicale cómo sigue, en concreto y en dos líneas:
+→ una videollamada de 30 minutos para hacer un diagnóstico del negocio
+→ con eso el equipo le prepara un prototipo de lo que está buscando
+
+Eso último es lo que vale y conviene que quede claro: no va a una charla a contar lo mismo otra vez, va a ver algo hecho para él.
+
+Enganchá con lo que te contó —su rubro, lo que necesita— para que no suene a plantilla.
+
+Cerrá pasándole este link para que elija el horario que le quede bien: ${calendly}
+El link va tal cual, sin acortar ni cambiar. Decile que cuando reserve le llega la confirmación con el link de la videollamada.`,
 
     mas_info: `Pidió saber más antes de agendar.
 Contale qué es Scalerics y cómo es la llamada, en concreto y sin vender humo. Nada de casos de clientes ni cifras: no tenés ninguna que sea cierta.
