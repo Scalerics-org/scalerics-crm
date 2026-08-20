@@ -564,6 +564,82 @@ def send_meta_lead_reminder(to_email: str, negocio: str, rubro: str,
 # El correo en frio NO puede salir de aca: es el dominio de los clientes.
 _DOMINIO_PRINCIPAL = "scalerics.com"
 
+
+# ─── Discovery: la linea de apertura, una por rubro ─────────────────────────
+
+# La apertura NO puede afirmar nada del negocio del comercio: no miramos su
+# sitio, solo sabemos que existe. Cualquier frase que suene a insight es mentira
+# y se nota. Lo que si sabemos es el RUBRO, asi que cada linea habla de como
+# trabaja ese rubro —siempre en condicional, "si hacés tal cosa"— y nunca de
+# ellos.
+_LINEAS_POR_RUBRO = {
+    "peluqueria":
+        "Si los turnos se agendan por WhatsApp y los recordatorios los manda "
+        "alguien a mano, eso se automatiza.",
+    "gimnasio":
+        "Si las cuotas y los vencimientos los controlás a mano, y los avisos de "
+        "pago salen uno por uno, eso se automatiza.",
+    "veterinaria":
+        "Si los recordatorios de vacunas y los turnos los llevás a mano, y la "
+        "historia de cada paciente está en papel, eso se automatiza.",
+    "odontologia":
+        "Si los turnos se agendan por teléfono y los recordatorios los manda "
+        "alguien a mano, eso se automatiza.",
+    "inmobiliaria":
+        "Si cargás las propiedades a mano en el sitio y en los portales, o "
+        "contestás las mismas consultas todos los días, eso se automatiza.",
+    "repuestos":
+        "Si el catálogo y los precios los actualizás a mano, y las consultas de "
+        "compatibilidad las contestás una por una, eso se automatiza.",
+    "automotora":
+        "Si el stock lo actualizás a mano en el sitio y en los portales, o las "
+        "consultas de financiación las contestás una por una, eso se automatiza.",
+    "ferreteria":
+        "Si la lista de precios la mandás por WhatsApp y los pedidos los pasás a "
+        "mano al sistema, eso se automatiza.",
+}
+
+# El mismo rubro escrito distinto tiene que caer en la misma linea. Solo se
+# mapea lo inequivoco: "Venta" y "Agencia" salen de las queries de autos pero
+# podrian ser cualquier cosa manana, asi que van al generico a proposito.
+_ALIAS_RUBRO = {
+    "hair salon": "peluqueria",
+    "hairdresser": "peluqueria",
+    "barberia": "peluqueria",
+    "concesionaria": "automotora",
+    "compraventa": "automotora",
+    "odontologo": "odontologia",
+    "dentista": "odontologia",
+    "clinica dental": "odontologia",
+    "veterinario": "veterinaria",
+    "tienda de herramientas": "ferreteria",
+    "tienda de materiales para la construccion": "ferreteria",
+    "proveedor de materiales de construccion": "ferreteria",
+    "corralon": "ferreteria",
+    "mayorista": "ferreteria",
+    "proveedor mayorista de alimentos": "ferreteria",
+    "distribuidor de comestibles": "ferreteria",
+}
+
+# El generico se usa tanto como los especificos: de 44 rubros distintos en la
+# base, ocho concentran el volumen y el resto son puñados.
+_LINEA_GENERICA = (
+    "Si hay algo de la operativa que hoy se hace a mano —pedidos, turnos, "
+    "precios, respuestas que se repiten—, eso se automatiza."
+)
+
+
+def _sin_tildes(t: str) -> str:
+    return (t.replace("á", "a").replace("é", "e").replace("í", "i")
+             .replace("ó", "o").replace("ú", "u").replace("ñ", "n"))
+
+
+def _linea_de_rubro(rubro: str) -> str:
+    """La linea de apertura que le corresponde al rubro, o la generica."""
+    clave = _sin_tildes(" ".join((rubro or "").lower().split()))
+    clave = _ALIAS_RUBRO.get(clave, clave)
+    return _LINEAS_POR_RUBRO.get(clave, _LINEA_GENERICA)
+
 def _cuerpo_discovery(numero: int, negocio: str, rubro: str) -> tuple[str, list[str]]:
     """Devuelve (asunto, [parrafos]) para el contacto `numero`.
 
@@ -577,12 +653,15 @@ def _cuerpo_discovery(numero: int, negocio: str, rubro: str) -> tuple[str, list[
     if numero <= 1:
         return (f"Una idea para {negocio}" if negocio else "Una idea para tu negocio", [
             "Hola,",
-            f"Vimos el sitio{de} y nos quedamos pensando en algo.",
+            # La apertura habla del RUBRO, no del comercio: es lo unico concreto
+            # que sabemos sin mentir. Ver _linea_de_rubro.
+            _linea_de_rubro(rubro),
             "Somos Scalerics, una software factory uruguaya. Hacemos p&aacute;ginas y "
             "tiendas online, y tambi&eacute;n automatizamos lo que hoy se hace a mano: "
             "pedidos, seguimientos, reportes que se arman de a uno. Y software a medida "
             "para lo que ning&uacute;n sistema de estante resuelve.",
-            "Si te interesa, respond&eacute; este mail y lo charlamos en 20 minutos.",
+            f"Si algo de eso te sirve{de}, respond&eacute; este mail y lo charlamos "
+            f"en 20 minutos.",
         ])
     return (f"&Uacute;ltimo mail{de}" if negocio else "&Uacute;ltimo mail de Scalerics", [
         "Hola,",
