@@ -44,8 +44,21 @@ const MOTIVO = {
  * De la oferta en adelante la IA sigue conversando pero ya no puede volver a
  * ofrecer: el salto a SCORED solo corre mientras califica. Conversar no es
  * decidir.
+ *
+ * MEETING_LINK_SENT quedaba afuera, y con el link saliendo apenas se sabe que
+ * necesita el lead, ese es el estado donde transcurre casi toda la
+ * conversacion. Al no estar en ninguna fase, la IA no lo miraba: el turno caia
+ * en la tabla de transiciones y de ahi al contador de insistencias.
+ *
+ * Se veia asi en produccion. El lead decia "me interesa pero para el mes que
+ * viene", el bot contestaba "¿pudiste agendar?" —porque nadie habia leido lo
+ * que dijo— y al segundo mensaje lo derivaba a una persona por insistir. Justo
+ * el momento en que mas gente dice que lo ve mas adelante, y justo el que la
+ * pausa venia a resolver.
  */
-const FASE_CIERRE = new Set([S.MEETING_SENT, S.MEETING_INFO, S.SCHEDULED]);
+const FASE_CIERRE = new Set([
+  S.MEETING_SENT, S.MEETING_INFO, S.MEETING_LINK_SENT, S.SCHEDULED,
+]);
 
 /**
  * Motor del embudo.

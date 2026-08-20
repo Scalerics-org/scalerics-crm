@@ -87,44 +87,71 @@ async function conLink(s) {
   s.proveedor.limpiar();
 }
 
-test('el link se manda una sola vez', async () => {
-  // MEETING_SENT contestaba el link a cualquier cosa y se quedaba ahi: un
-  // "hola" devolvia el link, y otro "hola" devolvia el link, sin final.
+/**
+ * Con el link en la mano, la IA sigue conversando.
+ *
+ * Antes este estado quedaba afuera de las dos fases donde el modelo mira lo que
+ * dice el lead: el turno caia en la tabla de transiciones y salia un texto
+ * armado. Y como el link ahora se manda apenas se sabe que necesita, ahi es
+ * donde transcurre casi toda la conversacion.
+ *
+ * Lo que hacian esos textos armados —no reenviar el link, creerle si dice que
+ * agendo, ofrecer una persona si no se puede resolver— esta escrito en las
+ * instrucciones de la etapa, asi que no se pierde nada.
+ */
+test('con el link en la mano, el bot le contesta lo que trae', async () => {
   const s = await conLead({ openai: stubQueMandaElLink() });
   await conLink(s);
 
-  const msgs = await lead(s, 'hola');
-  assert.equal(msgs.at(-1), '[ya_tiene_link]', 'no vuelve a la situacion del link');
+  const msgs = await lead(s, 'una duda antes de reservar');
+  assert.equal(msgs.at(-1), '[conversacion]', 'lo atiende el modelo, no un texto fijo');
+  assert.equal(estado(s), S.MEETING_LINK_SENT, 'y sigue siendo el que tiene el link');
 });
 
-test('si dice que ya agendo, se le cree', async () => {
-  const s = await conLead({ openai: stubQueMandaElLink() });
+/**
+ * El bug que trajo todo esto, visto en produccion:
+ *
+ *   ← Me interesa pero para mas adelante, para el mes que viene
+ *   → ¿Pudiste agendar? Si te queda mas comodo, puedo hacer que alguien te escriba
+ *   ← Para el mes que viene
+ *   → Te pido disculpas por las molestias, un compañero te va a escribir
+ *
+ * Dijo dos veces cuando volvia y terminó derivado por insistente. Es ademas el
+ * momento donde mas gente lo dice: ya vio el link y calcula si es ahora o no.
+ */
+test('el que tiene el link y dice "el mes que viene" queda en pausa', async () => {
+  // El modelo recien avisa el aplazo cuando el lead lo dice, no antes: si
+  // aplazara desde el primer turno nunca llegaria a tener el link.
+  const openai = stubQueMandaElLink();
+  const original = openai.chat.completions.create;
+  let aplaza = false;
+  openai.chat.completions.create = async (args) => {
+    const r = await original(args);
+    const llamada = r.choices?.[0]?.message?.tool_calls?.[0];
+    if (aplaza && llamada) {
+      const a = JSON.parse(llamada.function.arguments);
+      a.aplaza = 'un_mes';
+      a.aplaza_frase = 'para el mes que viene';
+      llamada.function.arguments = JSON.stringify(a);
+    }
+    return r;
+  };
+
+  const s = await conLead({ openai });
   await conLink(s);
 
-  const msgs = await lead(s, 'ya agendé para el jueves');
-  assert.equal(msgs.at(-1), '[ya_agendo]');
-});
+  aplaza = true;
+  await lead(s, 'me interesa pero para el mes que viene');
 
-test('"agendamos?" no se confunde con "ya agendé"', async () => {
-  // El que pregunta todavia NO reservo. Tomarlo como que si seria dejar de
-  // empujar justo al que estaba por convertir.
-  const s = await conLead({ openai: stubQueMandaElLink() });
-  await conLink(s);
+  const l = s.repo.leadPorTelefono(TEL);
+  assert.equal(l.fsm_state, S.NURTURE, 'queda en pausa');
+  assert.notEqual(l.fsm_state, S.HUMAN_QUEUED, 'y no derivado por insistente');
+  assert.match(l.nurture_motivo, /mes que viene/);
 
-  const msgs = await lead(s, 'agendamos entonces?');
-  assert.notEqual(msgs.at(-1), '[ya_agendo]');
-});
-
-test('el que insiste con el link en la mano termina con una persona', async () => {
-  const s = await conLead({ openai: stubQueMandaElLink() });
-  await conLink(s);
-
-  await lead(s, 'hola');
-  const msgs = await lead(s, 'hola?');
-
-  assert.equal(estado(s), S.HUMAN_QUEUED);
-  assert.equal(msgs.at(-1), '[derivacion]');
-  assert.equal(s.repo.leadPorTelefono(TEL).motivo_derivacion, 'post_oferta');
+  const programado = s.repo.db
+    .prepare("SELECT COUNT(*) AS n FROM jobs WHERE lead_id = ? AND type = 'nurture' AND status = 'pending'")
+    .get(l.id).n;
+  assert.equal(programado, 1, 'con la vuelta programada');
 });
 
 // ── lo que NO se le delega al modelo ─────────────────────────────────────────
