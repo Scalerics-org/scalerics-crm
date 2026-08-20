@@ -51,7 +51,7 @@ const esquema = z.object({
 
   // Embudo de calificacion. Sin OPENAI_API_KEY el scoring cae a reglas.
   OPENAI_API_KEY: z.string().default(''),
-  CALENDLY_LINK: z.string().default('https://calendly.com/scalerics/diagnostico'),
+  CALENDLY_LINK: z.string().default('https://calendly.com/scalerics/consultoriagratuita'),
   FUNNEL_ENABLED: booleanoDeEnv.default(true),
 
   // 72h segun el superprompt. Solo sale si el lead NO agendo en Calendly.

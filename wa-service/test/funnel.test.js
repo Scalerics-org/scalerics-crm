@@ -70,7 +70,7 @@ test('un lead chico tambien recibe la oferta', async () => {
 // ── despues de la oferta ─────────────────────────────────────────────────────
 
 /** Deja al lead con el link de Calendly en la mano. */
-const CALENDLY = 'https://calendly.com/scalerics/diagnostico';
+const CALENDLY = 'https://calendly.com/scalerics/consultoriagratuita';
 
 const stubQueMandaElLink = () => stubOpenAI({ datos: COMPLETO });
 

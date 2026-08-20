@@ -306,7 +306,7 @@ function etapa(lead) {
 }
 
 const CAL_LINK = process.env.CALENDLY_LINK || process.env.CAL_LINK
-  || 'https://calendly.com/scalerics/diagnostico';
+  || 'https://calendly.com/scalerics/consultoriagratuita';
 
 module.exports = {
   construirSystem, construirRedaccion, faltantes, DATOS, situaciones, etapa, CAL_LINK,

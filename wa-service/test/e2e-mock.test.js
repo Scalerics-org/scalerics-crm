@@ -193,7 +193,7 @@ test('el link de Calendly va en el follow-up, no en la bienvenida', async () => 
   // instruccion. Un link en el primer mensaje a alguien que nunca te escribio
   // es de las seniales de spam mas fuertes, y esa regla tiene que estar dicha.
   const { situaciones } = require('../src/ia/prompt');
-  const s = situaciones('https://calendly.com/scalerics/diagnostico');
+  const s = situaciones('https://calendly.com/scalerics/consultoriagratuita');
 
   const { crearTextos } = require('../src/templates/funnel');
   assert.ok(!crearTextos().BIENVENIDA.includes('calendly.com'), 'la bienvenida no lo lleva');

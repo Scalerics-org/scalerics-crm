@@ -78,7 +78,7 @@ function cfgTest(extra = {}) {
     LOG_LEVEL: 'silent',
     NODE_ENV: 'test',
     AM_PHONES: '59899000111',
-    CALENDLY_LINK: 'https://calendly.com/scalerics/diagnostico',
+    CALENDLY_LINK: 'https://calendly.com/scalerics/consultoriagratuita',
     // Sin esperas: los delays ya tienen sus propios tests.
     DELAY_AM_MIN_MS: '0', DELAY_AM_MAX_MS: '0',
     DELAY_WELCOME_MIN_MS: '0', DELAY_WELCOME_MAX_MS: '0',

@@ -81,7 +81,7 @@ test('no bloquea las respuestas que SI tiene que poder dar', () => {
   for (const t of [
     'El precio depende del alcance, por eso primero charlamos',
     'La videollamada son 30 minutos y no tiene costo',
-    'Dale, te paso el link: https://calendly.com/scalerics/diagnostico',
+    'Dale, te paso el link: https://calendly.com/scalerics/consultoriagratuita',
     '¿Ustedes son 2 o 3 personas en el local?',
     'Seguime en @local2000 y vemos',
   ]) {
