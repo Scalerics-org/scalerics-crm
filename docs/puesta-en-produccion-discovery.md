@@ -198,6 +198,7 @@ python - <<'EOF'
 import sqlite3
 c = sqlite3.connect('/data/prueba.db')
 c.execute("DELETE FROM businesses WHERE source='discovery'")
+c.execute("DELETE FROM discovery_reminders")   # si no, el tope de 24h deja la prueba en cero
 c.execute("INSERT INTO businesses (name, phone, maps_url, website, email, source, category) "
           "VALUES ('Prueba', '+598 99 000 000', 'https://maps.google.com/?cid=999', "
           "'https://ejemplo.uy', 'TU_CASILLA@gmail.com', 'discovery', 'Inmobiliaria')")

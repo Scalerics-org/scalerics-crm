@@ -332,13 +332,14 @@ def enviar_discovery(db_path: str, base_url: str, dry_run: bool = False) -> dict
                     f"(business_id={comercio['id']}, numero={numero}): {e}. "
                     f"Borrar esa fila puntual a mano o el proximo contacto miente."
                 )
+            else:
+                logger.error(
+                    f"Discovery: fallo el envio del contacto {numero} al comercio "
+                    f"{comercio['id']}. Se borro esa fila puntual "
+                    f"(business_id={comercio['id']}, numero={numero}) para reintentar; "
+                    f"NO borrar por business_id solo, eso se lleva los tokens ya publicados."
+                )
             res["fallidos"] += 1
-            logger.error(
-                f"Discovery: fallo el envio del contacto {numero} al comercio "
-                f"{comercio['id']}. Se borro esa fila puntual "
-                f"(business_id={comercio['id']}, numero={numero}) para reintentar; "
-                f"NO borrar por business_id solo, eso se lleva los tokens ya publicados."
-            )
         else:
             # "desconocido": la peticion pudo haber llegado y el mail pudo haber
             # salido. La fila se queda puesta, porque reintentar significaria
@@ -360,7 +361,7 @@ def enviar_discovery(db_path: str, base_url: str, dry_run: bool = False) -> dict
 def start_discovery_emails(app) -> None:
     """Corre una vez por dia. Arranca SOLO con DISCOVERY_EMAILS=on.
 
-    El default es apagado por la misma razon que en Meta: el hilo corre 180
+    El default es apagado por la misma razon que en Meta: el hilo corre 600
     segundos despues de CADA boot, y Fly reinicia la maquina para aplicar un
     secret, asi que un default encendido convierte cualquier deploy en una
     tanda de correo en frio que nadie pidio.

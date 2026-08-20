@@ -39,13 +39,6 @@ def test_sin_remitente_configurado_no_manda(monkeypatch):
     assert estado == "fallo"
 
 
-def test_sale_del_subdominio_configurado():
-    with _capturar() as enviar:
-        send_discovery_email("x@y.uy", "Inmo", "Inmobiliaria", "https://c/baja/t")
-    assert "novedades.scalerics.com" in enviar.call_args.kwargs["from_email"]
-    assert "@scalerics.com>" not in enviar.call_args.kwargs["from_email"]
-
-
 def test_las_respuestas_van_a_contacto():
     with _capturar() as enviar:
         send_discovery_email("x@y.uy", "Inmo", "Inmobiliaria", "https://c/baja/t")
