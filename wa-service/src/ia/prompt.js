@@ -220,6 +220,11 @@ Enganchá con lo que te contó —su rubro, lo que necesita— para que no suene
 Cerrá pasándole este link para que elija el horario que le quede bien: ${calendly}
 El link va tal cual, sin acortar ni cambiar. Decile que cuando reserve le llega la confirmación con el link de la videollamada.`,
 
+    derivado_por_abandono: `Venías conversando y dejó de contestar hace un rato.
+Decile en dos líneas que le pasás la conversación a alguien del equipo, que lo va a contactar por acá.
+Sin reproches y sin hacerlo sentir mal por no haber contestado: puede haber estado ocupado.
+Nada de "última oportunidad" ni apuro. Amable y corto.`,
+
     mas_info: `Pidió saber más antes de agendar.
 Contale qué es Scalerics y cómo es la llamada, en concreto y sin vender humo. Nada de casos de clientes ni cifras: no tenés ninguna que sea cierta.
 Cerrá preguntándole si quiere agendar.`,

@@ -1,6 +1,7 @@
 'use strict';
 
 const plantillas = require('../templates');
+const { correspondeDerivar } = require('../funnel/abandono');
 
 const INTERVALO_MS = 5 * 60 * 1000; // cada 5 minutos
 
@@ -13,7 +14,7 @@ const INTERVALO_MS = 5 * 60 * 1000; // cada 5 minutos
 // Cuanto se corre un job cuando la IA no pudo escribir el mensaje.
 const REINTENTO_MIN = 30;
 
-function crearScheduler({ repo, cola, cfg, redactor = null, logger, ahora = () => new Date() }) {
+function crearScheduler({ repo, cola, cfg, redactor = null, embudo = null, logger, ahora = () => new Date() }) {
 
   function fechaLegible(iso) {
     const d = new Date(iso);
@@ -45,6 +46,14 @@ function crearScheduler({ repo, cola, cfg, redactor = null, logger, ahora = () =
    * @returns {Promise<boolean>} false si hay que reintentar mas adelante.
    */
   async function ejecutar(job, lead, momento) {
+    // El abandono no manda un mensaje y ya: le escribe al lead, le avisa al
+    // agente comercial con el contexto y deja la conversacion en manos de una
+    // persona. Todo eso vive en el embudo, que es quien sabe derivar.
+    if (job.type === 'abandono') {
+      if (!embudo?.derivarPorAbandono) return true;
+      return embudo.derivarPorAbandono(lead.id);
+    }
+
     const situacion = SITUACION[job.type];
     if (!situacion) return true;
 
@@ -105,6 +114,14 @@ function crearScheduler({ repo, cola, cfg, redactor = null, logger, ahora = () =
       // La reunion pudo haberse cancelado o movido entre medio.
       if (job.type.startsWith('reminder_') && !lead.meeting_time) {
         repo.marcarJob(job.id, 'cancelled', 'la reunion ya no existe');
+        continue;
+      }
+
+      // Entre que se armo el reloj y ahora, el lead pudo agendar, pedir una
+      // persona o darse de baja. En cualquiera de esos casos ya no se fue de
+      // la conversacion: se fue a otro lado, y derivarlo seria ruido.
+      if (job.type === 'abandono' && !correspondeDerivar(lead)) {
+        repo.marcarJob(job.id, 'cancelled', 'ya no corresponde derivar');
         continue;
       }
 

@@ -384,6 +384,31 @@ function crearEmbudo({
 
   return {
     /**
+     * El lead se fue de la conversacion: lo levanta una persona.
+     *
+     * Lo dispara el scheduler, no un mensaje entrante — es justamente la
+     * ausencia de mensaje lo que lo activa—, asi que entra por aca en vez de
+     * por procesar().
+     *
+     * Le avisa al agente comercial con el contexto y los ultimos mensajes, y
+     * al lead le dice que lo van a contactar. Lo segundo importa: sin eso, del
+     * otro lado la conversacion simplemente se corta.
+     *
+     * @returns {Promise<boolean>} false si la IA no pudo escribirle al lead, y
+     *   entonces conviene reintentar mas tarde en vez de dejarlo a medias.
+     */
+    async derivarPorAbandono(leadId) {
+      const lead = repo.leadPorId(leadId);
+      if (!lead) return true;
+
+      if (!await decirIA(lead, 'derivado_por_abandono')) return false;
+
+      derivar(lead, 'abandono');
+      repo.actualizarFunnel(lead.id, { human_requested: 1, fsm_state: S.HUMAN_QUEUED });
+      return true;
+    },
+
+    /**
      * Procesa un mensaje entrante del lead.
      * @returns {string|null} el estado en que quedo, o null si se ignoro.
      */

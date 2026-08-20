@@ -102,7 +102,7 @@ function construir(cfg, { logger, ahora = () => new Date(), openai: clienteIA = 
     repo, cola, textos, scorer, logger: log, cfg, crmNotify, agente, redactor, agenda, ahora,
   });
 
-  const scheduler = crearScheduler({ repo, cola, cfg, redactor, logger: log, ahora });
+  const scheduler = crearScheduler({ repo, cola, cfg, redactor, embudo, logger: log, ahora });
   const servicioLeads = crearServicioLeads({
     repo, cola, cfg, logger: log, textos, redactor, embudo, scheduler, ahora,
   });

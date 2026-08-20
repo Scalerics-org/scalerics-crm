@@ -220,6 +220,19 @@ const esquema = z.object({
    * no lo alcanza. El cruce con el lead se hace por el telefono que Calendly
    * pregunta en el formulario y escribe en el evento.
    */
+  /**
+   * Cuanto silencio del lead se toma como que se fue de la conversacion, en
+   * minutos. Cero lo apaga.
+   *
+   * Una hora es corto para un follow-up y largo para una pausa: el que estaba
+   * contestando y para una hora entera, se fue. No reemplaza al seguimiento de
+   * las 72 horas, que es otra cosa —ese es para el que nunca contesto—.
+   *
+   * Solo se le arma a quien contesto al menos una vez: al que nunca dijo nada
+   * no se lo puede derivar por irse de una conversacion que no tuvo.
+   */
+  ABANDONO_MINUTOS: z.coerce.number().nonnegative().default(60),
+
   RESERVAS_VIGILAR: booleanoDeEnv.default(true),
   RESERVAS_INTERVALO_MIN: z.coerce.number().int().positive().default(5),
   RESERVAS_DIAS_ADELANTE: z.coerce.number().int().positive().default(60),

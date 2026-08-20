@@ -106,12 +106,17 @@ test('si el lead responde se cancela el follow-up y se avisa al AM', async () =>
   assert.match(aviso.texto, /respondió/);
   assert.match(aviso.texto, /Cuánto sale/);
 
-  // Y a las 25h ya no sale nada.
+  // El follow-up de las 72h ya no sale: ese es para el que nunca contesto.
   s.proveedor.limpiar();
   const en73Horas = new Date(Date.now() + 73 * 3600 * 1000);
   await s.scheduler.correrVencidos(en73Horas);
   await s.cola.vacia();
-  assert.equal(s.proveedor.getEnviados().length, 0, 'no se le insiste a quien ya contesto');
+
+  const textos = s.proveedor.getEnviados().map((e) => e.texto);
+  assert.ok(!textos.some((t) => /followup/.test(t)), 'no se le insiste a quien ya contesto');
+  // Pero pregunto una vez y desaparecio: eso es irse de la conversacion, y va
+  // a una persona.
+  assert.ok(textos.some((t) => /derivado_por_abandono/.test(t)), 'lo levanta el agente comercial');
 });
 
 test('el mismo external_id no duplica el lead', async () => {

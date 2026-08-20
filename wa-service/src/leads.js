@@ -3,6 +3,7 @@
 const { normalizar } = require('./telefono');
 const plantillas = require('./templates');
 const { entre } = require('./outbound/queue');
+const { correspondeDerivar } = require('./funnel/abandono');
 
 /**
  * Orquesta el alta de un lead: ficha al AM, bienvenida al lead y follow-up
@@ -15,6 +16,31 @@ function crearServicioLeads({ repo, cola, cfg, logger, textos, redactor = null, 
       day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
       timeZone: cfg.TZ,
     });
+  }
+
+  /**
+   * Arranca de nuevo el reloj del abandono, o lo apaga si ya no corresponde.
+   *
+   * Va al final de cada turno entrante, que es el unico punto por donde pasan
+   * todos los caminos. Que se reinicie en cada mensaje es lo importante: el
+   * reloj mide silencio desde lo ultimo que se hablo, no desde el principio de
+   * la conversacion.
+   *
+   * Solo para quien contesto al menos una vez —esto corre desde
+   * registrarRespuesta—: al que nunca dijo nada no se lo puede derivar por
+   * irse de una conversacion que no tuvo. De ese se ocupa el seguimiento de
+   * las 72 horas.
+   */
+  function armarAbandono(lead) {
+    if (!cfg.ABANDONO_MINUTOS || !lead) return;
+
+    if (!correspondeDerivar(lead)) {
+      repo.cancelarJobs(lead.id, 'abandono');
+      return;
+    }
+
+    const cuando = new Date(ahora().getTime() + cfg.ABANDONO_MINUTOS * 60_000);
+    repo.programarJob(lead.id, 'abandono', cuando.toISOString());
   }
 
   /**
@@ -222,6 +248,7 @@ function crearServicioLeads({ repo, cola, cfg, logger, textos, redactor = null, 
         await embudo.procesar(lead.id, texto);
       }
 
+      armarAbandono(repo.leadPorId(lead.id));
       return repo.leadPorId(lead.id);
     },
   };

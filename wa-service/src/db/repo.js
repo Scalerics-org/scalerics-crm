@@ -218,6 +218,21 @@ function crearRepo(db) {
     encolarJob: (leadId, tipo, runAtIso) => stmt.insertJob.run(leadId, tipo, runAtIso),
 
     /**
+     * Como encolarJob pero corriendo la hora del que ya estaba.
+     *
+     * encolarJob es ON CONFLICT DO NOTHING, que sirve para los jobs que se
+     * agendan una vez. Para el reloj del abandono no: hay que reiniciarlo en
+     * cada turno, y con DO NOTHING quedaria clavado en la hora del primer
+     * mensaje —el lead seguiria conversando y a la hora lo derivarian igual—.
+     */
+    programarJob(leadId, tipo, runAtIso) {
+      const r = db.prepare(
+        "UPDATE jobs SET run_at = ?, attempts = 0 WHERE lead_id = ? AND type = ? AND status = 'pending'"
+      ).run(runAtIso, leadId, tipo);
+      if (!r.changes) stmt.insertJob.run(leadId, tipo, runAtIso);
+    },
+
+    /**
      * Registra que el lead agendo en Calendly. Cancela el follow-up pendiente:
      * el que ya agendo no tiene que recibir un "¿seguís interesado?".
      */
