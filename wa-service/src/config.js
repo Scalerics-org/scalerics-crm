@@ -213,6 +213,17 @@ const esquema = z.object({
    */
   AGENDA_OFRECE_HORARIOS: booleanoDeEnv.default(false),
 
+  /**
+   * Mirar el calendario cada tanto para enterarse de quien agendo en Calendly.
+   *
+   * Es la unica via: el bot no tiene IP publica, asi que el webhook de Calendly
+   * no lo alcanza. El cruce con el lead se hace por el telefono que Calendly
+   * pregunta en el formulario y escribe en el evento.
+   */
+  RESERVAS_VIGILAR: booleanoDeEnv.default(true),
+  RESERVAS_INTERVALO_MIN: z.coerce.number().int().positive().default(5),
+  RESERVAS_DIAS_ADELANTE: z.coerce.number().int().positive().default(60),
+
   AGENDA_MAX_OPCIONES: z.coerce.number().int().positive().default(5),
   AGENDA_DIAS_ADELANTE: z.coerce.number().int().positive().default(10),
   // No se ofrece nada antes de este plazo: una reunion en veinte minutos no le

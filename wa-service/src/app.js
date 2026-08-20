@@ -94,6 +94,10 @@ function construir(cfg, { logger, ahora = () => new Date(), openai: clienteIA = 
   const agenda = require('./agenda/gcal').crearAgenda({ cfg, logger: log, ...(google ? { fetch: google } : {}) });
   log.info({ agenda: agenda.activo }, 'agenda');
 
+  // Se entera de quien agendo en Calendly leyendo el calendario. Necesita
+  // servicioLeads, que se arma abajo, asi que se cablea despues.
+  const { crearVigilanteDeReservas } = require('./agenda/reservas');
+
   const embudo = crearEmbudo({
     repo, cola, textos, scorer, logger: log, cfg, crmNotify, agente, redactor, agenda, ahora,
   });
@@ -194,9 +198,13 @@ function construir(cfg, { logger, ahora = () => new Date(), openai: clienteIA = 
   });
   const app = crearServidor({ cfg, repo, cola, proveedor, servicioLeads, scheduler, logger: log });
 
+  const vigilanteReservas = crearVigilanteDeReservas({
+    agenda, repo, servicioLeads, cfg, logger: log, ahora,
+  });
+
   return {
     cfg, db, repo, proveedor, cola, limites, servicioLeads,
-    scheduler, embudo, scorer, agrupador, app, logger: log,
+    scheduler, embudo, scorer, agrupador, app, vigilanteReservas, logger: log,
   };
 }
 

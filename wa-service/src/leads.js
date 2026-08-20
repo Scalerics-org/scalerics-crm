@@ -133,6 +133,15 @@ function crearServicioLeads({ repo, cola, cfg, logger, textos, redactor = null, 
         });
       }
 
+      // El embudo tiene que saber que ya agendo.
+      //
+      // Sin esto el lead se quedaba en MEETING_LINK_SENT —el estado de "tiene
+      // el link y todavia no reservo"— aunque hubiera reservado. Si volvia a
+      // escribir, el bot le contestaba que ya tenia el link, y al segundo
+      // mensaje lo derivaba a una persona por insistir. Justo al que hizo lo
+      // que se le pidio.
+      repo.actualizarFunnel(leadId, { fsm_state: 'SCHEDULED', fsm_retries: 0 });
+
       logger?.info({ leadId, meeting_time, recordatorios }, 'reunion agendada');
       return { recordatorios, followup_cancelado: true };
     },

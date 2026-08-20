@@ -128,6 +128,27 @@ function crearAgenda({ cfg, logger = null, fetch: _fetch = globalThis.fetch } = 
     activo,
 
     /**
+     * Los eventos del calendario en un rango.
+     *
+     * showDeleted para ver tambien las bajas: una reunion cancelada tiene que
+     * cancelar sus recordatorios, y si no se piden, desaparece sin dejar rastro
+     * y los recordatorios salen igual.
+     */
+    async listarEventos({ desde, hasta, max = 250 }) {
+      if (!activo) return [];
+      const q = new URLSearchParams({
+        timeMin: desde.toISOString(),
+        timeMax: hasta.toISOString(),
+        singleEvents: 'true',
+        showDeleted: 'true',
+        orderBy: 'startTime',
+        maxResults: String(max),
+      });
+      const j = await api(`/calendars/${encodeURIComponent(cfg.GCAL_CALENDAR_ID)}/events?${q}`);
+      return j.items || [];
+    },
+
+    /**
      * Horarios libres del proximo dia habil que tenga alguno.
      *
      * Se ofrece un solo dia y no una lista de varios: cinco horarios de un dia

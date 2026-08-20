@@ -5,10 +5,11 @@ const { construir } = require('./app');
 
 async function main() {
   const cfg = cargar();
-  const { proveedor, scheduler, app, logger } = construir(cfg);
+  const { proveedor, scheduler, vigilanteReservas, app, logger } = construir(cfg);
 
   await proveedor.conectar();
   scheduler.arrancar();
+  vigilanteReservas.arrancar();
 
   await app.listen({ port: cfg.PORT, host: cfg.HOST });
   logger.info({ puerto: cfg.PORT, proveedor: proveedor.nombre }, 'wa-service arriba');
