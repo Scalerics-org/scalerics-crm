@@ -114,6 +114,10 @@ def init_db(db_path: str) -> None:
         # Qué servicio pidió el lead (web/Calendly). Aparte de `category`,
         # que es el rubro del negocio.
         _add_column(conn, "businesses", "interest", "TEXT")
+        # El sitio web que Google Maps muestra para el negocio. Hasta la campana de
+        # discovery el scraper lo extraia solo para descartar al negocio que lo
+        # tenia, y no se guardaba en ningun lado.
+        _add_column(conn, "businesses", "website", "TEXT")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS roles (
                 id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -541,7 +545,7 @@ ALLOWED_COLUMNS = {
     "color_scheme", "demo_html_path", "demo_url", "status", "error_message",
     "scraped_at", "notes", "pitch_text", "crm_status",
     "has_whatsapp", "last_event_at", "score", "callback_date", "source",
-    "interest", "form_data",
+    "interest", "form_data", "website",
 }
 
 
@@ -550,10 +554,10 @@ def insert_business(db_path: str, data: dict) -> Optional[int]:
     try:
         cursor = conn.execute("""
             INSERT OR IGNORE INTO businesses
-            (name, category, address, city, phone, email, rating, review_count,
+            (name, category, address, city, phone, email, website, rating, review_count,
              hours, maps_url, facebook_url, instagram_url,
              color_scheme, demo_html_path, demo_url, status, has_whatsapp, score, source, notes, form_data, scraped_at)
-            VALUES (:name, :category, :address, :city, :phone, :email, :rating,
+            VALUES (:name, :category, :address, :city, :phone, :email, :website, :rating,
                     :review_count, :hours, :maps_url, :facebook_url, :instagram_url,
                     :color_scheme, :demo_html_path, :demo_url, 'scraped', :has_whatsapp, :score, :source, :notes, :form_data,
                     COALESCE(:scraped_at, CURRENT_TIMESTAMP))
@@ -564,6 +568,7 @@ def insert_business(db_path: str, data: dict) -> Optional[int]:
             "city": data.get("city"),
             "phone": data.get("phone"),
             "email": data.get("email"),
+            "website": data.get("website"),
             "rating": data.get("rating"),
             "review_count": data.get("review_count"),
             "hours": data.get("hours"),

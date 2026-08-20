@@ -55,7 +55,11 @@ def generate_pitch(business: dict, db_path: str) -> str:
 
 def run(db_path: str) -> None:
     all_businesses = get_all_businesses(db_path)
-    businesses = [b for b in all_businesses if not b.get("pitch_text")]
+    # La cohorte de discovery queda afuera: todas las plantillas semilla dicen
+    # literalmente "sin sitio web propio", y estos comercios lo tienen. Ademas
+    # aparecen mezclados con el padron de WhatsApp en el listado por defecto.
+    businesses = [b for b in all_businesses if not b.get("pitch_text")
+                  and (b.get("source") or "").strip().lower() != "discovery"]
     logger.info(f"Generando pitches para {len(businesses)} negocios")
 
     for biz in businesses:

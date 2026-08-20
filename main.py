@@ -38,6 +38,8 @@ def create_parser() -> argparse.ArgumentParser:
     scrape_p.add_argument("--query", required=True, help='Ej: "restaurante Montevideo"')
     scrape_p.add_argument("--max", type=int, default=100, help="Máximo de resultados")
     scrape_p.add_argument("--no-verify-web", action="store_true", help="Desactivar verificación Bing (más rápido, menos preciso)")
+    scrape_p.add_argument("--con-web", action="store_true",
+                          help="Modo discovery: junta los negocios que SI tienen sitio web")
 
     subparsers.add_parser("generate-pitches", help="Generar texto de pitch WhatsApp por negocio")
     subparsers.add_parser("generate-demos", help="Generar páginas demo con IA")
@@ -58,12 +60,18 @@ def create_parser() -> argparse.ArgumentParser:
 
     subparsers.add_parser("dashboard", help="Abrir panel de leads en el browser")
 
+    buscar_p = subparsers.add_parser("buscar-mails",
+                                     help="Buscar el mail de los comercios de discovery en su sitio")
+    buscar_p.add_argument("--limite", type=int, default=50)
+
     return parser
 
 def cmd_scrape(args):
     from scraper import run
     default_cat = args.query.split()[0].capitalize()
-    return run(args.query, args.max, DB_PATH, verify_web=not getattr(args, 'no_verify_web', False), default_category=default_cat)
+    return run(args.query, args.max, DB_PATH,
+               verify_web=not getattr(args, 'no_verify_web', False),
+               default_category=default_cat, solo_con_web=getattr(args, 'con_web', False))
 
 def cmd_generate_pitches(args):
     from pitch_generator import run
@@ -83,6 +91,20 @@ def cmd_deploy(args):
 def cmd_dashboard(args):
     from dashboard import run
     run(DB_PATH)
+
+def cmd_buscar_mails(args):
+    from playwright.sync_api import sync_playwright
+    from services.email_finder import abrir_con_playwright, procesar_pendientes
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page()
+        page.set_default_timeout(20000)
+        try:
+            res = procesar_pendientes(DB_PATH, abrir_con_playwright(page), limite=args.limite)
+        finally:
+            browser.close()
+    print(res)
 
 _DEPARTAMENTOS = [
     "Montevideo", "Canelones", "Maldonado", "Colonia", "San José",
@@ -152,6 +174,7 @@ def main():
         "deploy": cmd_deploy,
         "run-all": cmd_run_all,
         "dashboard": cmd_dashboard,
+        "buscar-mails": cmd_buscar_mails,
     }
     commands[args.command](args)
 

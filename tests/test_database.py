@@ -374,3 +374,50 @@ def test_migracion_tolera_un_reintento_despues_de_un_crash_a_mitad_de_camino(tmp
         "la fila vieja tiene que terminar migrada con su token intacto"
     )
     assert huerfana is None, "la huerfana no puede quedar dando vueltas despues de migrar"
+
+
+def test_insert_business_guarda_website(db_path):
+    """El sitio web tiene que sobrevivir al INSERT.
+
+    insert_business arma la lista de columnas a mano: una columna que existe
+    en la tabla pero no en esa lista se pierde sin dar error. Ya paso con
+    `email` y los leads de Meta.
+    """
+    from database import insert_business, get_all_businesses
+
+    insert_business(db_path, {
+        "name": "Inmobiliaria Ejemplo",
+        "phone": "+598 2900 1111",
+        "maps_url": "https://maps.google.com/?cid=1",
+        "website": "https://inmobiliariaejemplo.com.uy",
+        "source": "discovery",
+    })
+
+    negocio = get_all_businesses(db_path)[0]
+    assert negocio["website"] == "https://inmobiliariaejemplo.com.uy"
+    assert negocio["source"] == "discovery"
+
+def test_update_business_puede_setear_website(db_path):
+    """`website` tiene que estar en ALLOWED_COLUMNS o update_business la rechaza."""
+    from database import insert_business, update_business, get_all_businesses
+
+    bid = insert_business(db_path, {
+        "name": "Sin Sitio",
+        "phone": "+598 2900 2222",
+        "maps_url": "https://maps.google.com/?cid=2",
+    })
+
+    update_business(db_path, bid, website="https://aparecio.com.uy")
+
+    assert get_all_businesses(db_path)[0]["website"] == "https://aparecio.com.uy"
+
+def test_website_es_nulo_cuando_no_se_manda(db_path):
+    from database import insert_business, get_all_businesses
+
+    insert_business(db_path, {
+        "name": "Sin Web",
+        "phone": "+598 2900 3333",
+        "maps_url": "https://maps.google.com/?cid=3",
+    })
+
+    assert get_all_businesses(db_path)[0]["website"] is None

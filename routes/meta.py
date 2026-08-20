@@ -189,8 +189,22 @@ def _merge_lead_into_existing(db: str, phone: str, email: str, fields: dict) -> 
     # mail cargado a mano o de otra fuente; un formulario de Meta posterior
     # no es más confiable que eso, así que solo completa el campo si estaba
     # vacío, nunca lo corrige.
-    if email and not (existente.get("email") or "").strip():
+    # La excepcion es la cohorte de discovery: ese mail lo saco un bot del
+    # sitio web del comercio, y el que el dueno tipeo en el formulario de Meta
+    # es de mejor procedencia. Si no se pisara, la secuencia de recordatorios
+    # -correo real- terminaria escribiendole a una casilla que nadie tipeo.
+    existente_source = (existente.get("source") or "").strip().lower()
+    mail_previo = (existente.get("email") or "").strip()
+    if email and (not mail_previo or existente_source == "discovery"):
         update_fields["email"] = email
+    elif existente_source == "discovery" and mail_previo:
+        # Por el pipeline de Meta solo 63 de 110 leads traen mail. Sin mail de
+        # formulario no alcanza con no pisar el raspado: la fila igual pasa a
+        # source='meta' con crm_status='sin_contactar', que es exactamente el
+        # filtro de services/meta_reminders.py, y la secuencia le escribiria a
+        # la casilla que saco el bot. Se limpia: sin mail tipeado, esta fila no
+        # tiene direccion que darle a la secuencia.
+        update_fields["email"] = None
     update_business(db, biz_id, **update_fields)
     return biz_id
 

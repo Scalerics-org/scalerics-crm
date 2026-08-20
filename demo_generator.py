@@ -103,10 +103,14 @@ def generate_content(business: dict, api_key: str) -> dict:
     return parse_claude_response(raw)
 
 def run(db_path: str, api_key: str) -> None:
-    businesses = (
-        get_businesses_by_status(db_path, "email_found") +
-        get_businesses_by_status(db_path, "no_email")
-    )
+    # La cohorte de discovery queda afuera: son comercios que YA tienen sitio
+    # web propio. Generarles una demo es una llamada a la API por negocio y
+    # despues un deploy que publica en Vercel una copia del sitio del cliente.
+    businesses = [
+        b for b in (get_businesses_by_status(db_path, "email_found") +
+                    get_businesses_by_status(db_path, "no_email"))
+        if (b.get("source") or "").strip().lower() != "discovery"
+    ]
     logger.info(f"Generando demos para {len(businesses)} negocios")
     output_dir = Path("generated_demos")
     output_dir.mkdir(exist_ok=True)
