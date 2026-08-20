@@ -660,8 +660,10 @@ def _cuerpo_discovery(numero: int, negocio: str, rubro: str) -> tuple[str, list[
             "tiendas online, y tambi&eacute;n automatizamos lo que hoy se hace a mano: "
             "pedidos, seguimientos, reportes que se arman de a uno. Y software a medida "
             "para lo que ning&uacute;n sistema de estante resuelve.",
-            f"Si algo de eso te sirve{de}, respond&eacute; este mail y lo charlamos "
-            f"en 20 minutos.",
+            (f"Si algo de eso te sirve para {negocio}, respond&eacute; este mail y lo "
+             f"charlamos en 20 minutos." if negocio else
+             "Si algo de eso te sirve, respond&eacute; este mail y lo charlamos en "
+             "20 minutos."),
         ])
     return (f"&Uacute;ltimo mail{de}" if negocio else "&Uacute;ltimo mail de Scalerics", [
         "Hola,",

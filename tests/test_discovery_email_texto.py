@@ -265,3 +265,55 @@ def test_los_alias_apuntan_a_rubros_que_existen():
     from services.email_service import _ALIAS_RUBRO, _LINEAS_POR_RUBRO
     for alias, destino in _ALIAS_RUBRO.items():
         assert destino in _LINEAS_POR_RUBRO, f"{alias!r} apunta a {destino!r}, que no existe"
+
+
+# ─── Donde se pega el nombre del comercio ───────────────────────────────────
+#
+# Es el tercer error del mismo tipo en este archivo: primero el asunto decia
+# "Una idea para de X", despues el cierre decia "te sirve de X". Las dos veces
+# se colaron porque ningun test miraba esas lineas. Este las mira todas.
+
+_NOMBRES = ["Inmobiliaria Mas Aguada", "ACSA", "Von Sanden Propiedades"]
+
+
+def _todo_el_texto(negocio, numero):
+    with _capturar() as enviar:
+        send_discovery_email("x@y.uy", negocio, "Inmobiliaria", "https://c/baja/t", numero)
+    return enviar.call_args.args[1] + " || " + enviar.call_args.kwargs["text"]
+
+
+@pytest.mark.parametrize("negocio", _NOMBRES)
+@pytest.mark.parametrize("numero", [1, 2])
+def test_el_nombre_nunca_queda_con_dos_preposiciones(negocio, numero):
+    texto = _todo_el_texto(negocio, numero)
+    for pegote in (f"para de {negocio}", f"de de {negocio}", f"sirve de {negocio}",
+                   f"para para {negocio}", f"en de {negocio}"):
+        assert pegote not in texto, f"preposiciones pegadas: {pegote!r}"
+
+
+@pytest.mark.parametrize("negocio", _NOMBRES)
+@pytest.mark.parametrize("numero", [1, 2])
+def test_no_quedan_espacios_dobles_ni_espacio_antes_de_coma(negocio, numero):
+    """Sintomas de un slot que se armo vacio o con un espacio de mas."""
+    texto = _todo_el_texto(negocio, numero)
+    assert "  " not in texto, "espacio doble: algun slot quedo vacio"
+    assert " ," not in texto and " ." not in texto
+
+
+@pytest.mark.parametrize("numero", [1, 2])
+def test_sin_nombre_no_quedan_frases_colgadas(numero):
+    """Con negocio vacio, las frases que lo usaban tienen que seguir cerrando."""
+    texto = _todo_el_texto("", numero)
+    assert "  " not in texto
+    for colgado in ("sirve para ,", "sirve para.", "idea para ,", "mail de ,",
+                    "para  ", "de  "):
+        assert colgado not in texto, f"frase colgada: {colgado!r}"
+
+
+def test_el_cierre_del_primero_invita_a_responder():
+    for negocio in _NOMBRES + [""]:
+        with _capturar() as enviar:
+            send_discovery_email("x@y.uy", negocio, "Inmobiliaria", "https://c/baja/t", 1)
+        texto = enviar.call_args.kwargs["text"]
+        assert "respondé este mail" in texto
+        assert "20 minutos" in texto
