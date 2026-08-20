@@ -88,21 +88,15 @@ test('un telefono que no existe da 404', async () => {
 
 // ── el bot: clasifica siempre, decide solo si se lo dejan ────────────────────
 
-test('con la decision apagada, el bot anota pero NO descalifica', async () => {
+/**
+ * Los motivos claros los decide el bot; los que son un juicio, una persona.
+ *
+ * Que alguien mande un CV no admite lectura. En cambio "pide algo que no
+ * hacemos" es una opinion, y el modelo puede errarle —decidir que una app movil
+ * no es lo nuestro— y ahi se pierde un cliente.
+ */
+test('un motivo claro lo descalifica el bot solo', async () => {
   const s = await conLead({ openai: stubQueVe('trabajo') });
-  await s.servicioLeads.registrarRespuesta(TEL, 'hola, les mando mi CV');
-  await s.cola.vacia();
-
-  const l = s.repo.leadPorTelefono(TEL);
-  assert.equal(l.no_cliente_motivo, 'trabajo', 'queda anotado para poder revisarlo');
-  assert.notEqual(l.fsm_state, S.DISQUALIFIED, 'pero la decision es de una persona');
-});
-
-test('con la decision prendida, el bot si descalifica', async () => {
-  const s = await conLead({
-    openai: stubQueVe('trabajo'),
-    DESCALIFICACION_AUTOMATICA: 'true',
-  });
   await s.servicioLeads.registrarRespuesta(TEL, 'hola, les mando mi CV');
   await s.cola.vacia();
 
@@ -111,10 +105,43 @@ test('con la decision prendida, el bot si descalifica', async () => {
   assert.equal(l.no_cliente_motivo, 'trabajo');
 });
 
-test('un cliente normal no se toca, ni con la decision prendida', async () => {
+test('y no le sigue preguntando por su negocio', async () => {
+  const s = await conLead({ openai: stubQueVe('trabajo') });
+  await s.servicioLeads.registrarRespuesta(TEL, 'hola, les mando mi CV');
+  await s.cola.vacia();
+
+  const alLead = s.proveedor.getEnviados().filter((e) => e.to === TEL).map((e) => e.texto);
+  assert.ok(alLead.some((t) => /descartado/.test(t)), 'le contesta a lo que trajo');
+  assert.ok(!alLead.some((t) => /link_reunion|oferta/.test(t)), 'no le ofrece la reunion');
+});
+
+test('un motivo dudoso queda anotado, pero decide una persona', async () => {
+  const s = await conLead({ openai: stubQueVe('algo_que_no_hacemos') });
+  await s.servicioLeads.registrarRespuesta(TEL, 'necesito que me arreglen la computadora');
+  await s.cola.vacia();
+
+  const l = s.repo.leadPorTelefono(TEL);
+  assert.equal(l.no_cliente_motivo, 'algo_que_no_hacemos', 'queda para revisarlo');
+  assert.notEqual(l.fsm_state, S.DISQUALIFIED, 'pero no lo descarta solo');
+});
+
+test('con la lista vacia el bot no descalifica nunca', async () => {
+  const s = await conLead({
+    openai: stubQueVe('trabajo'),
+    DESCALIFICACION_AUTOMATICA: '',
+  });
+  await s.servicioLeads.registrarRespuesta(TEL, 'hola, les mando mi CV');
+  await s.cola.vacia();
+
+  const l = s.repo.leadPorTelefono(TEL);
+  assert.equal(l.no_cliente_motivo, 'trabajo');
+  assert.notEqual(l.fsm_state, S.DISQUALIFIED);
+});
+
+test('un cliente normal no se toca, aunque todos los motivos esten prendidos', async () => {
   const s = await conLead({
     openai: stubQueVe('un_servicio'),
-    DESCALIFICACION_AUTOMATICA: 'true',
+    DESCALIFICACION_AUTOMATICA: 'trabajo,vender_algo,numero_equivocado,algo_que_no_hacemos',
   });
   await s.servicioLeads.registrarRespuesta(TEL, 'tengo una panadería y quiero una web');
   await s.cola.vacia();

@@ -28,6 +28,19 @@ function normalizar(texto) {
 const FASE_CALIFICACION = new Set([S.NEW, S.CONVERSANDO, S.NURTURE, S.DISQUALIFIED]);
 
 /**
+ * Que decirle a cada uno. Va como contexto al redactor: sin esto tendria que
+ * deducir de la conversacion por que lo estan descartando, y ahi se inventa el
+ * motivo — como cuando anuncio que la empresa no estaba buscando gente, que es
+ * una politica que el bot no conoce.
+ */
+const MOTIVO = {
+  trabajo: 'Mandó un CV o busca trabajo. Decile que le pasás el mensaje al equipo. NO digas si estamos buscando gente o no: eso no lo sabés.',
+  vender_algo: 'Te está ofreciendo un producto o servicio a vos. Agradecele y decile que no es por acá.',
+  numero_equivocado: 'Se equivocó de número, el mensaje no era para nosotros. Decíselo en una línea, sin darle importancia.',
+  algo_que_no_hacemos: 'Pide algo que no hacemos. Decile qué sí hacemos —software, webs, tiendas online, automatizaciones— en media línea, sin ofrecerle una reunión.',
+};
+
+/**
  * De la oferta en adelante la IA sigue conversando pero ya no puede volver a
  * ofrecer: el salto a SCORED solo corre mientras califica. Conversar no es
  * decidir.
@@ -559,11 +572,23 @@ function crearEmbudo({
       // acierta antes de dejarlo descalificar solo.
       if (queQuiere) {
         repo.actualizarFunnel(lead.id, { no_cliente_motivo: queQuiere });
-        if (cfg.DESCALIFICACION_AUTOMATICA) {
-          decir(lead, texto);
+
+        if (cfg.descalificaSolo.includes(queQuiere)) {
+          // El mensaje se pide de nuevo con la situacion 'descartado' en vez de
+          // usar el que el modelo ya escribio. Es la unica vez que se paga una
+          // segunda llamada, y vale: el texto que trae lo escribio siguiendo el
+          // objetivo de la etapa, o sea pidiendole el nombre del negocio a
+          // alguien que acaba de mandar un CV.
+          if (!await decirIA(lead, 'descartado', MOTIVO[queQuiere] || '')) {
+            return sinIA(lead, 'descartado');
+          }
           return descartar(repo.leadPorId(lead.id), queQuiere);
         }
-        logger?.info({ leadId: lead.id, queQuiere }, 'el modelo lo ve como no-cliente, pero decide una persona');
+
+        logger?.info(
+          { leadId: lead.id, queQuiere },
+          'el modelo lo ve como no-cliente, pero ese motivo lo decide una persona'
+        );
       }
 
       if (aplaza) {

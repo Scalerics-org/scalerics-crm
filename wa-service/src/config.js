@@ -247,16 +247,21 @@ const esquema = z.object({
   NURTURE_MAX_DIAS: z.coerce.number().positive().default(180),
 
   /**
-   * Que el BOT pueda descalificar solo. Apagado a proposito.
+   * En que motivos el BOT puede descalificar solo. Coma-separado, vacio lo
+   * apaga entero.
    *
-   * La asimetria manda: si se equivoca poniendo a alguien en pausa se pierden
-   * unos dias; si se equivoca descalificando, se pierde el cliente. Con esto
-   * apagado el modelo igual clasifica y lo deja anotado, asi que se puede
-   * mirar contra las conversaciones reales antes de darle la decision.
+   * No es todo o nada porque los cuatro motivos no se parecen. Que alguien
+   * mande un CV o se haya equivocado de numero no admite lectura: es lo que es.
+   * En cambio "me esta ofreciendo algo" y sobre todo "pide algo que no
+   * hacemos" son juicios, y ahi el modelo puede errarle — decidir que una app
+   * movil no es lo nuestro, por ejemplo—.
    *
-   * La via principal es a mano desde el CRM, y esa anda siempre.
+   * La asimetria manda: equivocarse poniendo a alguien en pausa cuesta unos
+   * dias; equivocarse descalificando cuesta el cliente. Asi que el bot decide
+   * en los casos claros y los dudosos quedan anotados para que los mire una
+   * persona.
    */
-  DESCALIFICACION_AUTOMATICA: booleanoDeEnv.default(false),
+  DESCALIFICACION_AUTOMATICA: z.string().default('trabajo,numero_equivocado'),
 
   RESERVAS_VIGILAR: booleanoDeEnv.default(true),
   RESERVAS_INTERVALO_MIN: z.coerce.number().int().positive().default(5),
@@ -291,6 +296,7 @@ function cargar(env = process.env) {
   return Object.freeze({
     ...cfg,
     amPhones: cfg.AM_PHONES.split(',').map((p) => p.trim()).filter(Boolean),
+    descalificaSolo: cfg.DESCALIFICACION_AUTOMATICA.split(',').map((m) => m.trim()).filter(Boolean),
   });
 }
 
