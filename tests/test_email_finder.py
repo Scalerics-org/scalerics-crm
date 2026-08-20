@@ -5,8 +5,9 @@ import sqlite3
 import pytest
 
 from database import init_db, insert_business
-from services.email_finder import (buscar_mail_del_sitio, es_mail_basura,
-                                   extraer_mails, procesar_pendientes)
+from services.email_finder import (_sello_de_intento, buscar_mail_del_sitio,
+                                   es_mail_basura, extraer_mails,
+                                   procesar_pendientes)
 
 
 @pytest.mark.parametrize("mail", [
@@ -554,3 +555,19 @@ def test_el_reintento_se_ordena_por_recencia_y_no_por_id(tmp_path):
         assert marca.startswith("20"), \
             f"{nombre}: la marca tiene que arrancar con el sello de fecha, no con el texto"
         assert "no abrio" in marca
+
+
+def test_el_sello_del_intento_es_estrictamente_creciente():
+    """El sello es la clave de ordenamiento de los reintentos: si dos filas
+    reciben el mismo, el ORDER BY empata y el desempate vuelve a ser `id`, que
+    es el bug que el sello vino a arreglar.
+
+    En un bucle apretado como este no hay pausa ninguna entre llamada y llamada.
+    Con resolucion de segundo, las 500 caen en el mismo sello y esto falla; era
+    justo la version anterior, que andaba solo porque `abrir_con_playwright`
+    duerme entre goto y goto. Este test no depende del reloj de pared.
+    """
+    sellos = [_sello_de_intento() for _ in range(500)]
+
+    assert sellos == sorted(sellos), "los sellos tienen que salir en orden"
+    assert len(set(sellos)) == 500, "y sin repetir ninguno"

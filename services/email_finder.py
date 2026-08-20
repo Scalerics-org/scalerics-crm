@@ -10,6 +10,7 @@ import logging
 import random
 import re
 import time
+from datetime import datetime, timedelta
 from urllib.parse import unquote, urljoin, urlsplit, urlunsplit
 
 from database import _connect, update_business
@@ -108,6 +109,33 @@ def extraer_mails(html: str) -> list[str]:
 # La marca que deja una fila que no abrio. Se busca por texto en la base para
 # saber cuantos se estan perdiendo, y es lo que manda el reintento al fondo.
 _MARCA_NO_ABRIO = "no abrio: ninguna pagina del sitio respondio"
+
+# Ultimo sello entregado por _sello_de_intento, para que el siguiente sea
+# estrictamente mayor aunque el reloj no haya avanzado entre los dos.
+_ultimo_intento: datetime | None = None
+
+
+def _sello_de_intento() -> str:
+    """Fecha del intento, estrictamente creciente llamada tras llamada.
+
+    Este sello es la clave de ordenamiento de los reintentos, no un dato
+    decorativo: si dos filas reciben el mismo, el ORDER BY empata y el desempate
+    vuelve a ser `id`, que es exactamente el bug que el sello vino a arreglar
+    -las caidas de id bajo comiendose el LIMIT de todas las corridas-.
+
+    Por eso la monotonia no puede depender de cuanto tarde cada iteracion. Los
+    microsegundos solos ya alcanzarian casi siempre, pero 'casi siempre' es como
+    entro la version anterior: con resolucion de segundo andaba solo porque
+    `abrir_con_playwright` duerme entre goto y goto, o sea que bajar esa pausa
+    resucitaba el bug en silencio. El bump explicito corta esa dependencia.
+    """
+    global _ultimo_intento
+    ahora = datetime.now()
+    if _ultimo_intento is not None and ahora <= _ultimo_intento:
+        ahora = _ultimo_intento + timedelta(microseconds=1)
+    _ultimo_intento = ahora
+    return ahora.strftime("%Y-%m-%d %H:%M:%S.%f")
+
 
 # Cuantos sitios seguidos sin abrir hacen falta para dar por muerto el browser.
 _MAX_SIN_ABRIR_SEGUIDOS = 10
@@ -236,9 +264,11 @@ def procesar_pendientes(db_path: str, abrir, limite: int = 50) -> dict:
             # recencia en vez de un booleano: es la clave por la que ordena el
             # ORDER BY de arriba. Sin el, una tanda entera fallida marca todo y
             # la cola vuelve a ordenarse por id, que es de donde no se sale.
-            sello = time.strftime("%Y-%m-%d %H:%M:%S")
-            update_business(db_path, fila["id"],
-                            error_message=f"{sello} {(error or _MARCA_NO_ABRIO)}"[:500])
+            # Tiene que ser estrictamente creciente entre filas: dos filas con el
+            # mismo sello empatan y el desempate es `id` otra vez. Ver
+            # _sello_de_intento, que es donde se garantiza.
+            marca = f"{_sello_de_intento()} {error or _MARCA_NO_ABRIO}"
+            update_business(db_path, fila["id"], error_message=marca[:500])
             res["no_abrio"] += 1
             sin_abrir_seguidos += 1
             logger.warning(f"[{fila['id']}] {fila['website']} -> no abrio, se reintenta")
