@@ -11,6 +11,7 @@ from unittest.mock import patch
 import pytest
 
 from database import init_db, insert_business
+from services import discovery_emails
 from services.discovery_emails import (comercios_a_contactar, comercios_a_seguir,
                                        dar_de_baja, enviados_ultimas_24h,
                                        enviar_discovery, esta_dado_de_baja,
@@ -204,12 +205,14 @@ def test_enviados_ultimas_24h_cuenta_solo_la_ventana(db):
 
 # ─── La tanda ────────────────────────────────────────────────────────────────
 
-def test_el_tope_diario_arranca_en_10(db):
-    for i in range(40, 55):
+def test_el_tope_diario_es_de_30(db):
+    """30 y no mas: el subdominio no tiene historial de envio, y lo que quema un
+    dominio nuevo no es la cuota del plan sino el pico del primer dia."""
+    for i in range(40, 85):
         _comercio(db, i)
     with patch("services.discovery_emails.send_discovery_email", return_value="ok"):
         res = enviar_discovery(db, "https://crm")
-    assert res["enviados"] == 10
+    assert res["enviados"] == 30
 
 
 def test_los_seguimientos_van_antes_que_los_nuevos(db):
@@ -245,10 +248,12 @@ def test_el_dry_run_no_escribe_ni_manda(db):
 def test_el_dry_run_lista_igual_con_el_cupo_agotado(db):
     """Es la herramienta de diagnostico mas segura: tiene que servir justo
     cuando el cupo esta en 0, que en produccion es casi todo el dia."""
-    # Diez envios en la ventana: el cupo real queda en 0.
-    for i in range(200, 210):
+    # Un cupo entero en la ventana: el cupo real queda en 0. Se lee del modulo
+    # a proposito, para que subir el tope no vuelva a romper este test.
+    tope = discovery_emails._TOPE_DIARIO
+    for i in range(200, 200 + tope):
         _envio(db, _comercio(db, i), 1, dias_atras=0)
-    assert enviados_ultimas_24h(db) == 10
+    assert enviados_ultimas_24h(db) == tope
 
     # Y un comercio que todavia no recibio nada.
     _comercio(db, 120)

@@ -26,10 +26,11 @@ logger = logging.getLogger(__name__)
 
 _FORMATO_FECHA = "%Y-%m-%d %H:%M:%S"
 
-# Arranca bajo a proposito: el subdominio nace sin reputacion y una tanda
-# grande el primer dia es la peor forma de estrenarlo. Se sube a mano despues
-# de ver entrega limpia, no antes.
-_TOPE_DIARIO = 10
+# El techo no lo pone la cuota del plan —entre esto y los 15 diarios de Meta
+# sobra margen de sobra—, lo pone la reputacion: el subdominio nace sin
+# historial de envio y un pico el primer dia es la peor forma de estrenarlo.
+# 30 vacia la lista de 88 en tres dias sin que ningun dia parezca una descarga.
+_TOPE_DIARIO = 30
 _PAUSA_ENTRE_ENVIOS = 0.6
 _CADA_24_HORAS = 24 * 60 * 60
 
