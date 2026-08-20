@@ -542,7 +542,7 @@ def send_meta_lead_reminder(to_email: str, negocio: str, rubro: str,
 
     cuerpo_texto = (
         "\n\n".join(parrafos_texto) + f"\n{_CALENDLY}\n\n"
-        f"Scalerics\n{_TELEFONO}\nhttps://scalerics.com\n\n"
+             + f"\n\nScalerics · {_TELEFONO}\nhttps://scalerics.com"
         f"No quiero recibir más estos mails: {unsub_url}\n"
     )
 
@@ -649,7 +649,8 @@ def _cuerpo_discovery(numero: int, negocio: str, rubro: str) -> tuple[str, list[
     reputacion: cada marca de spam se paga con entrega, y la entrega es la
     misma que usa el correo con clientes.
     """
-    de = f" de {negocio}" if negocio else ""
+    # "de {negocio}" leia como si el mail fuera DEL comercio; va "para".
+    para = f" para {negocio}" if negocio else ""
     if numero <= 1:
         return (f"Una idea para {negocio}" if negocio else "Una idea para tu negocio", [
             "Hola,",
@@ -665,7 +666,7 @@ def _cuerpo_discovery(numero: int, negocio: str, rubro: str) -> tuple[str, list[
              "Si algo de eso te sirve, respond&eacute; este mail y lo charlamos en "
              "20 minutos."),
         ])
-    return (f"&Uacute;ltimo mail{de}" if negocio else "&Uacute;ltimo mail de Scalerics", [
+    return (f"&Uacute;ltimo mail{para}" if negocio else "&Uacute;ltimo mail de Scalerics", [
         "Hola,",
         "Te escribimos hace una semana y no queremos insistir m&aacute;s de la cuenta, "
         "as&iacute; que este es el &uacute;ltimo: no te escribimos m&aacute;s.",
@@ -719,12 +720,18 @@ def send_discovery_email(to_email: str, negocio: str, rubro: str,
 
     estilo_p = "margin:0 0 14px;font-size:15px;line-height:1.6;color:#1c2b40"
     cuerpo_html = "".join(f'<p style="{estilo_p}">{p}</p>' for p in parrafos)
+    # El <meta charset> no es decorativo: las lineas por rubro traen tildes de
+    # verdad (no entidades) y sin declararlo un cliente de correo lee los bytes
+    # como latin-1 y muestra "cargAs" en vez de "cargas".
     html_mail = f"""<!DOCTYPE html>
-<html lang="es"><body style="margin:0;padding:24px;background:#f1f5f9">
+<html lang="es">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:24px;background:#f1f5f9">
   <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:10px;padding:32px">
     <img src="{_LOGO_FIRMA}" alt="Scalerics" style="height:24px;margin-bottom:20px">
     {cuerpo_html}
-    <p style="{estilo_p};margin-top:24px"><strong>Scalerics</strong><br>{_TELEFONO}</p>
+    <p style="{estilo_p};margin-top:24px"><strong>Scalerics</strong><br>{_TELEFONO}<br>
+      <a href="https://scalerics.com" style="color:#0069a3">scalerics.com</a></p>
     <p style="font-size:12px;color:#94a3b8;margin:24px 0 0">
       Si no quer&eacute;s recibir m&aacute;s, <a href="{unsub_url}" style="color:#94a3b8">dale de baja ac&aacute;</a>.
     </p>
@@ -732,7 +739,7 @@ def send_discovery_email(to_email: str, negocio: str, rubro: str,
 </body></html>"""
 
     texto = ("\n\n".join(parrafos_txt)
-             + f"\n\nScalerics · {_TELEFONO}"
+             + f"\n\nScalerics · {_TELEFONO}\nhttps://scalerics.com"
              + f"\n\nSi no querés recibir más: {unsub_url}")
 
     return _send_estado(

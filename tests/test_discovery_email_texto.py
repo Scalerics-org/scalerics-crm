@@ -153,7 +153,7 @@ def test_el_asunto_del_segundo_esta_bien_escrito():
     with _capturar() as enviar:
         send_discovery_email("x@y.uy", "Inmobiliaria Sur", "Inmobiliaria",
                              "https://c/baja/t", 2)
-    assert enviar.call_args.args[1] == "Último mail de Inmobiliaria Sur"
+    assert enviar.call_args.args[1] == "Último mail para Inmobiliaria Sur"
 
 
 def test_sin_negocio_los_asuntos_siguen_teniendo_sentido():
@@ -317,3 +317,41 @@ def test_el_cierre_del_primero_invita_a_responder():
         texto = enviar.call_args.kwargs["text"]
         assert "respondé este mail" in texto
         assert "20 minutos" in texto
+
+
+def _html_del_mail(numero=1, negocio="Inmobiliaria Mas Aguada",
+                   rubro="Inmobiliaria"):
+    with _capturar() as enviar:
+        send_discovery_email("x@y.uy", negocio, rubro, "https://c/baja/t", numero)
+    return enviar.call_args.args[2]
+
+
+@pytest.mark.parametrize("numero", [1, 2])
+def test_el_html_declara_utf8(numero):
+    """Sin charset declarado, un cliente de correo lee los bytes como latin-1 y
+    las tildes salen rotas ("cargAs"). El cuerpo trae tildes de verdad en las
+    lineas por rubro, asi que la declaracion no es opcional."""
+    doc = _html_del_mail(numero).lower()
+    assert 'charset="utf-8"' in doc or "charset=utf-8" in doc
+
+
+@pytest.mark.parametrize("numero", [1, 2])
+def test_la_firma_enlaza_al_sitio(numero):
+    """El unico link que le sirve al que lee es el nuestro."""
+    doc = _html_del_mail(numero)
+    assert "https://scalerics.com" in doc
+
+
+@pytest.mark.parametrize("numero", [1, 2])
+def test_el_texto_plano_trae_el_sitio(numero):
+    with _capturar() as enviar:
+        send_discovery_email("x@y.uy", "Inmo", "Inmobiliaria", "https://c/baja/t", numero)
+    assert "https://scalerics.com" in enviar.call_args.kwargs["text"]
+
+
+@pytest.mark.parametrize("numero", [1, 2])
+def test_sigue_estando_la_baja(numero):
+    """El link de baja no se saca: es lo que evita que una queja termine en
+    marca de spam, y la marca de spam se paga con entrega."""
+    doc = _html_del_mail(numero)
+    assert "https://c/baja/t" in doc
