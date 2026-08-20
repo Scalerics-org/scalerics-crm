@@ -137,7 +137,18 @@ function crearCola({ proveedor, repo, cfg, logger, limites, ahora = () => new Da
       const res = await proveedor.enviarTexto(item.to, item.texto);
       repo.db.prepare('UPDATE messages SET status = ?, provider_msg_id = ? WHERE id = ?')
         .run('sent', res.id, msgId);
-      repo.registrarEnvio(item.to, esPrimerContacto);
+      // Los avisos al equipo NO cuentan para el cupo anti-baneo.
+      //
+      // Ya salteaban el limite —limits.js los deja pasar siempre— pero igual se
+      // anotaban, asi que gastaban cupo de los mensajes a clientes. Cada
+      // conversacion con un lead consumia doble: su respuesta y la ficha al
+      // equipo. Con 30 por hora eso son ~4 conversaciones nuevas antes de
+      // frenarse, y las que se frenan son las de los clientes.
+      //
+      // El cupo esta para limitar los mensajes a desconocidos. Un mensaje al
+      // numero del propio equipo —un contacto guardado, con conversacion
+      // abierta hace meses— es lo contrario de la senial que se quiere evitar.
+      if (!INTERNO.has(item.kind)) repo.registrarEnvio(item.to, esPrimerContacto);
       logger?.info({ kind: item.kind, to: item.to, leadId: item.leadId }, 'mensaje enviado');
     } catch (e) {
       repo.db.prepare('UPDATE messages SET status = ?, error = ? WHERE id = ?')

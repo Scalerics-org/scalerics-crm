@@ -381,3 +381,32 @@ test('sin leadId no descarta nada', async () => {
   s.cola.encolar({ to: '598991', texto: 'x', kind: 'manual', leadId: null });
   assert.equal(s.cola.descartarPendientesDe(null), 0);
 });
+
+/**
+ * El cupo anti-baneo esta para limitar los mensajes a desconocidos. Un aviso al
+ * numero del propio equipo —un contacto guardado, con conversacion abierta hace
+ * meses— es lo contrario de esa senial.
+ *
+ * Los avisos ya salteaban el limite pero igual se anotaban, asi que gastaban
+ * cupo de los mensajes a clientes: cada conversacion consumia doble, y las que
+ * se frenaban al llegar al tope eran las de los clientes.
+ */
+test('los avisos al equipo no gastan el cupo de los mensajes a clientes', async () => {
+  const s = await montar({ MAX_MSGS_PER_HOUR: 3 });
+
+  for (let i = 0; i < 5; i++) {
+    s.cola.encolar({ to: AM, texto: `ficha ${i}`, kind: 'am_notice' });
+  }
+  await s.cola.vacia();
+  assert.equal(s.proveedor.getEnviados().length, 5, 'los internos salen todos');
+
+  // Y despues de esos cinco, el cupo para clientes sigue entero.
+  s.proveedor.limpiar();
+  for (let i = 0; i < 3; i++) {
+    s.cola.encolar({ to: `5989900${String(i).padStart(4, '0')}`, texto: `hola ${i}`, kind: 'welcome' });
+  }
+  await s.cola.vacia();
+
+  assert.equal(s.proveedor.getEnviados().length, 3, 'los tres del cupo salen igual');
+  assert.equal(s.cola.reprogramados(), 0);
+});

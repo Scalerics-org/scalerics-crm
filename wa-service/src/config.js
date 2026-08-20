@@ -114,10 +114,24 @@ const esquema = z.object({
   TYPING_INTERNO: booleanoDeEnv.default(false),
 
   // ── anti-baneo ──────────────────────────────────────────────────────────
-  MAX_MSGS_PER_HOUR: z.coerce.number().int().positive().default(30),
-  // El que mas pesa: primer mensaje a un numero que nunca escribio.
+  /**
+   * Los dos topes no miden lo mismo, y por eso no se mueven juntos.
+   *
+   * El total por hora son casi todos mensajes DENTRO de conversaciones que
+   * abrio la otra persona: contestarle a alguien que te escribio es el trafico
+   * de menor riesgo que existe. Treinta era demasiado poco —una conversacion
+   * nueva son unos cinco mensajes al cliente, o sea seis conversaciones por
+   * hora— y al pasarse, el lead siete espera quince minutos. Eso tira abajo
+   * todo el trabajo de bajar la respuesta a cuatro segundos.
+   *
+   * El de contactos nuevos NO se toca. Ese si mide lo que a WhatsApp le
+   * importa: el primer mensaje a un numero que nunca escribio. Es el unico de
+   * los tres que vigila algo que se parece a spam, y doce por hora sigue siendo
+   * mas de lo que se usa hoy, que es cero.
+   */
+  MAX_MSGS_PER_HOUR: z.coerce.number().int().positive().default(90),
   MAX_NEW_CONTACTS_PER_HOUR: z.coerce.number().int().positive().default(12),
-  MAX_MSGS_PER_DAY: z.coerce.number().int().positive().default(200),
+  MAX_MSGS_PER_DAY: z.coerce.number().int().positive().default(400),
   // Fecha de alta del numero (YYYY-MM-DD). Vacio = sin rampa de warm-up.
   WARMUP_START_DATE: z.string().default(''),
 
