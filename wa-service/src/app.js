@@ -196,7 +196,7 @@ function construir(cfg, { logger, ahora = () => new Date(), openai: clienteIA = 
     cola.encolar({ to: from, texto, kind: 'manual', leadId: lead?.id ?? null });
     log.info({ from, tipo }, 'entrante sin texto: se le pide que escriba');
   });
-  const app = crearServidor({ cfg, repo, cola, proveedor, servicioLeads, scheduler, logger: log });
+  const app = crearServidor({ cfg, repo, cola, proveedor, servicioLeads, scheduler, embudo, logger: log });
 
   const vigilanteReservas = crearVigilanteDeReservas({
     agenda, repo, servicioLeads, cfg, logger: log, ahora,

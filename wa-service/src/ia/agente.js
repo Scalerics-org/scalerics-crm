@@ -12,6 +12,9 @@ const MAX_CARACTERES = 900;
  * esto, que no se equivoca.
  */
 const TIPO_PROYECTO = { web: 1, ecommerce: 2, automatizacion: 3, sistema: 4, agente_ia: 5 };
+
+/** Lo que, si el modelo lo ve, significa que no es un cliente posible. */
+const NO_CLIENTE = ['trabajo', 'vender_algo', 'numero_equivocado', 'algo_que_no_hacemos'];
 const PRESUPUESTO = { menos_500: 1, entre_500_y_3000: 2, mas_3000: 3, no_sabe: 4 };
 
 /** Cuanta gente trabaja -> el tramo que usa el CRM. */
@@ -118,6 +121,17 @@ const HERRAMIENTA = {
         aplaza_frase: {
           type: 'string',
           description: 'Las palabras con las que lo dijo, tal cual. Solo si aplaza no es "no".',
+        },
+        /**
+         * Clasifica siempre, decida o no. Con DESCALIFICACION_AUTOMATICA
+         * apagado esto solo se anota, y sirve para mirar contra las
+         * conversaciones reales si el modelo acierta antes de darle la
+         * decision.
+         */
+        que_quiere: {
+          type: 'string',
+          enum: ['un_servicio', 'trabajo', 'vender_algo', 'numero_equivocado', 'algo_que_no_hacemos'],
+          description: 'Casi siempre es "un_servicio". trabajo = busca empleo o manda un CV. vender_algo = te esta ofreciendo algo a vos. numero_equivocado = no queria escribirle a esta empresa. algo_que_no_hacemos = pide algo que no es software ni web (arreglar una computadora, diseñar un logo, manejar redes). Trabajar EN un rubro no es buscar trabajo: "tengo una panaderia" es un_servicio.',
         },
       },
       required: ['lo_que_acaba_de_decir', 'mensaje'],
@@ -246,6 +260,7 @@ function crearAgente({ openai = null, modelo, textos, calendly = '', logger = nu
       // sobre la conversacion, y la toma el embudo.
       const aplaza = CAJONES.includes(argumentos.aplaza) ? argumentos.aplaza : null;
       const aplazaFrase = String(argumentos.aplaza_frase || '').trim().slice(0, 200);
+      const queQuiere = NO_CLIENTE.includes(argumentos.que_quiere) ? argumentos.que_quiere : null;
 
       // Que haya guardado datos no sirve de nada si no contesto: el lead esta
       // esperando del otro lado.
@@ -256,11 +271,12 @@ function crearAgente({ openai = null, modelo, textos, calendly = '', logger = nu
 
       if (mencionaPlata(texto)) {
         logger?.warn({ leadId: lead.id, texto }, 'la IA menciono un precio, se reemplaza por el texto fijo');
-        return { texto: textos.PRECIO, datos, aplaza, aplazaFrase, precioBloqueado: true };
+        return { texto: textos.PRECIO, datos, aplaza, aplazaFrase, queQuiere, precioBloqueado: true };
       }
 
       return {
-        texto: texto.slice(0, MAX_CARACTERES), datos, aplaza, aplazaFrase, precioBloqueado: false,
+        texto: texto.slice(0, MAX_CARACTERES),
+        datos, aplaza, aplazaFrase, queQuiere, precioBloqueado: false,
       };
     },
 
@@ -318,4 +334,4 @@ ${lista}` },
   };
 }
 
-module.exports = { crearAgente, sanearDatos, aMensajes, tramoDeEquipo, HERRAMIENTA };
+module.exports = { crearAgente, sanearDatos, aMensajes, tramoDeEquipo, HERRAMIENTA, NO_CLIENTE };

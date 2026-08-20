@@ -184,6 +184,31 @@ function crearEmbudo({
   }
 
   /**
+   * No es un cliente posible: se le agradece y se deja de programarle cosas.
+   *
+   * No se le arma nada nuevo —ni seguimiento, ni pausa, ni derivacion por
+   * abandono, que ya lo excluye—. Descalificar es dejar de hacer, no hacer una
+   * cosa mas.
+   *
+   * Se revierte solo: si vuelve a escribir, el bot lo atiende y sale de aca.
+   * Es a proposito que sea tan facil salir — equivocarse para este lado cuesta
+   * un cliente, y no se puede depender de que alguien mire el CRM.
+   */
+  function descartar(lead, motivo, ahoraIso = ahora().toISOString()) {
+    repo.actualizarFunnel(lead.id, {
+      fsm_state: S.DISQUALIFIED,
+      fsm_retries: 0,
+      no_cliente_motivo: motivo,
+      no_cliente_desde: ahoraIso,
+    });
+    repo.cancelarJobs(lead.id, 'followup');
+    repo.cancelarJobs(lead.id, 'nurture');
+    repo.cancelarJobs(lead.id, 'abandono');
+    logger?.info({ leadId: lead.id, motivo }, 'lead descalificado: no es un cliente posible');
+    return S.DISQUALIFIED;
+  }
+
+  /**
    * El lead dijo que no es el momento: queda en pausa y se le escribe cuando
    * dijo, en vez de insistirle a las 72 horas.
    *
@@ -410,6 +435,13 @@ function crearEmbudo({
   }
 
   return {
+    /** Marcar a mano desde el CRM que no es un cliente posible. */
+    descartar(leadId, motivo) {
+      const lead = repo.leadPorId(leadId);
+      if (!lead) return null;
+      return descartar(lead, motivo || 'a mano');
+    },
+
     /**
      * El lead se fue de la conversacion: lo levanta una persona.
      *
@@ -516,10 +548,22 @@ function crearEmbudo({
      * no falta ningun dato, el cierre lo hace el codigo — ofrecer la reunion
      * sale del score, no de lo que le parezca al modelo.
      */
-    async _conversar(lead, entrada, { texto, datos, aplaza, aplazaFrase }, { actual, califica, puedeCerrar }) {
+    async _conversar(lead, entrada, { texto, datos, aplaza, aplazaFrase, queQuiere }, { actual, califica, puedeCerrar }) {
       if (Object.keys(datos).length) {
         guardarCampos(lead.id, datos);
         logger?.info({ leadId: lead.id, campos: Object.keys(datos) }, 'la IA extrajo datos');
+      }
+
+      // El modelo clasifica siempre; que decida o no lo dice la config. Con la
+      // decision apagada igual queda anotado, y eso es lo que permite mirar si
+      // acierta antes de dejarlo descalificar solo.
+      if (queQuiere) {
+        repo.actualizarFunnel(lead.id, { no_cliente_motivo: queQuiere });
+        if (cfg.DESCALIFICACION_AUTOMATICA) {
+          decir(lead, texto);
+          return descartar(repo.leadPorId(lead.id), queQuiere);
+        }
+        logger?.info({ leadId: lead.id, queQuiere }, 'el modelo lo ve como no-cliente, pero decide una persona');
       }
 
       if (aplaza) {

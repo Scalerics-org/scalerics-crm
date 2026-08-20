@@ -49,7 +49,7 @@ function mensajesAFormatoBot(mensajes) {
   }));
 }
 
-function registrar(app, { cfg, repo, cola, logger }) {
+function registrar(app, { cfg, repo, cola, embudo = null, logger }) {
   const LIMITE_MENSAJES = 120;
 
   function autorizado(req) {
@@ -117,6 +117,40 @@ function registrar(app, { cfg, repo, cola, logger }) {
     // con una persona.
     repo.actualizarFunnel(lead.id, { human_requested: 0, fsm_state: S.CONVERSANDO });
     logger?.info({ leadId: lead.id }, 'lead devuelto al bot desde el CRM');
+    return { ok: true };
+  });
+
+  /**
+   * Marcar que no es un cliente posible.
+   *
+   * Es la via principal para descalificar: el bot lo hace solo unicamente si se
+   * prende DESCALIFICACION_AUTOMATICA, y esta apagada. Equivocarse para este
+   * lado cuesta un cliente, asi que la decision es de una persona.
+   */
+  app.post('/api/leads/phone/:phone/descartar', async (req, reply) => {
+    const tel = normalizar(req.params.phone, cfg.DEFAULT_COUNTRY_CODE);
+    const lead = tel ? repo.leadPorTelefono(tel) : null;
+    if (!lead) return reply.code(404).send({ error: 'Lead no encontrado' });
+
+    const motivo = String(req.body?.motivo || '').trim().slice(0, 120) || 'a mano';
+    embudo.descartar(lead.id, motivo);
+    logger?.info({ leadId: lead.id, motivo }, 'lead descalificado desde el CRM');
+    return { ok: true };
+  });
+
+  /** Deshacer lo anterior: vuelve al embudo como si nada. */
+  app.post('/api/leads/phone/:phone/recuperar', async (req, reply) => {
+    const tel = normalizar(req.params.phone, cfg.DEFAULT_COUNTRY_CODE);
+    const lead = tel ? repo.leadPorTelefono(tel) : null;
+    if (!lead) return reply.code(404).send({ error: 'Lead no encontrado' });
+
+    repo.actualizarFunnel(lead.id, {
+      fsm_state: S.CONVERSANDO,
+      fsm_retries: 0,
+      no_cliente_motivo: null,
+      no_cliente_desde: null,
+    });
+    logger?.info({ leadId: lead.id }, 'lead recuperado desde el CRM');
     return { ok: true };
   });
 }

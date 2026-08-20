@@ -246,6 +246,18 @@ const esquema = z.object({
   NURTURE_MIN_DIAS: z.coerce.number().positive().default(2),
   NURTURE_MAX_DIAS: z.coerce.number().positive().default(180),
 
+  /**
+   * Que el BOT pueda descalificar solo. Apagado a proposito.
+   *
+   * La asimetria manda: si se equivoca poniendo a alguien en pausa se pierden
+   * unos dias; si se equivoca descalificando, se pierde el cliente. Con esto
+   * apagado el modelo igual clasifica y lo deja anotado, asi que se puede
+   * mirar contra las conversaciones reales antes de darle la decision.
+   *
+   * La via principal es a mano desde el CRM, y esa anda siempre.
+   */
+  DESCALIFICACION_AUTOMATICA: booleanoDeEnv.default(false),
+
   RESERVAS_VIGILAR: booleanoDeEnv.default(true),
   RESERVAS_INTERVALO_MIN: z.coerce.number().int().positive().default(5),
   RESERVAS_DIAS_ADELANTE: z.coerce.number().int().positive().default(60),

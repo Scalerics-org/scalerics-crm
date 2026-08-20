@@ -120,6 +120,7 @@ function crearRepo(db) {
         'consultas_precio', 'motivo_derivacion',
         'horarios_ofrecidos', 'meeting_event_id',
         'nurture_desde', 'nurture_motivo',
+        'no_cliente_motivo', 'no_cliente_desde',
       ];
       const set = Object.keys(campos).filter((k) => permitidos.includes(k));
       if (!set.length) return stmt.leadPorId.get(id);
@@ -172,6 +173,7 @@ function crearRepo(db) {
         rubro = NULL, rubro_norm = NULL,
         score = NULL, priority = NULL, score_reason = NULL,
         nurture_desde = NULL, nurture_motivo = NULL,
+        no_cliente_motivo = NULL, no_cliente_desde = NULL,
         status = 'new', replied_at = NULL, followup_sent_at = NULL,
         -- Tambien el saludo: reiniciar es empezar de cero, y sin esto el lead
         -- reiniciado nunca vuelve a recibir la presentacion.
