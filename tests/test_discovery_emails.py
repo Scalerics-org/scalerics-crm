@@ -228,7 +228,7 @@ def test_los_seguimientos_van_antes_que_los_nuevos(db):
         enviar_discovery(db, "https://crm")
 
     assert ("info@inmo90.com.uy", 2) in mandados
-    assert all(n > 1 for _, n in mandados) or len(mandados) > 1
+    assert mandados[0][1] == 2, "el seguimiento tiene que salir primero"
 
 
 def test_el_dry_run_no_escribe_ni_manda(db):
@@ -292,3 +292,55 @@ def test_el_hilo_no_arranca_sin_el_interruptor(monkeypatch, caplog):
     with caplog.at_level(logging.INFO):
         start_discovery_emails(object())
     assert "apagado" in caplog.text.lower()
+
+
+# ─── Lo que la revision encontro abierto ─────────────────────────────────────
+
+def test_el_seguimiento_no_sale_si_el_comercio_se_volvio_lead_de_meta(db):
+    """Entre el contacto 1 y el 2 pasan siete dias, y en esos siete dias el
+    duenio puede llenar el formulario del anuncio. Si eso pasa, esa persona
+    recibe la secuencia de Meta: el segundo mail en frio no puede salir."""
+    bid = _comercio(db, 300, email="duenio@inmo.com.uy")
+    _envio(db, bid, 1, dias_atras=10)
+    assert len(comercios_a_seguir(db, limite=10)) == 1, "sanity: sin Meta, sale"
+
+    _comercio(db, 301, source="meta", email="Duenio@Inmo.com.uy")
+
+    assert comercios_a_seguir(db, limite=10) == []
+
+
+def test_una_baja_en_meta_corta_tambien_el_seguimiento(db):
+    """Quien dijo basta por un link de Meta, dijo basta para todo."""
+    from services.meta_reminders import dar_de_baja as baja_meta
+    from services.meta_reminders import registrar_envio as envio_meta
+
+    bid = _comercio(db, 310, email="basta2@inmo.com.uy")
+    _envio(db, bid, 1, dias_atras=10)
+
+    bid_meta = _comercio(db, 311, source="meta", email="basta2@inmo.com.uy")
+    baja_meta(db, envio_meta(db, bid_meta, 1))
+
+    assert comercios_a_seguir(db, limite=10) == []
+
+
+def test_la_veda_ve_el_mail_que_esta_dentro_de_form_data(db):
+    """En Meta el mail llega en el JSON del formulario y sube a la columna por
+    un backfill manual que no corre solo. Mirar solo la columna deja fuera de
+    la veda a todo lead al que no se le haya corrido."""
+    import json
+    _comercio(db, 320, source="meta", email=None,
+              form_data=json.dumps({"email": "enterrado@inmo.com.uy"}))
+    _comercio(db, 321, email="Enterrado@Inmo.com.uy")
+
+    assert comercios_a_contactar(db, limite=10) == []
+
+
+def test_la_veda_tolera_un_form_data_que_no_es_json(db):
+    """form_data es texto libre: si no es JSON valido, la consulta no puede
+    reventar y dejar la campana sin correr."""
+    _comercio(db, 330, source="meta", email=None, form_data="{roto")
+    _comercio(db, 331, email="sano@inmo.com.uy")
+
+    elegidos = comercios_a_contactar(db, limite=10)
+
+    assert [e["email"] for e in elegidos] == ["sano@inmo.com.uy"]

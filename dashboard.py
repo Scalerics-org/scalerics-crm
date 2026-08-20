@@ -5660,8 +5660,14 @@ def create_app(db_path: str) -> Flask:
         # Los tokens son UUID, o sea unicos entre las dos tablas: llamar a las
         # dos campanas con el mismo token es seguro, y evita publicar una URL
         # nueva por campana.
-        baja_meta(app.config["DB_PATH"], token)
-        baja_discovery(app.config["DB_PATH"], token)
+        # Cada una en su propio try: si una campana falla, la otra tiene que
+        # poder dar de baja igual. Si no, un problema en Meta deja sin salida a
+        # quien recibio el mail en frio.
+        for baja in (baja_meta, baja_discovery):
+            try:
+                baja(app.config["DB_PATH"], token)
+            except Exception as e:
+                logging.getLogger(__name__).error(f"Baja fallida en {baja.__module__}: {e}")
         # Se responde lo mismo exista o no el token: no tiene sentido decirle a
         # quien se da de baja que su token no servia, y evita sondear tokens.
         return render_template_string("""<!DOCTYPE html>

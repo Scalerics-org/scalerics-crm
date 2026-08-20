@@ -119,7 +119,12 @@ _FILTRO_ELEGIBLE = (
 #      Meta, que reciben su propia secuencia con correo real;
 #   2. las de quien se dio de baja en discovery;
 #   3. las de quien se dio de baja en Meta. Quien dijo basta, dijo basta, y no
-#      le importa por cual de nuestras campanas le estabamos escribiendo.
+#      le importa por cual de nuestras campanas le estabamos escribiendo;
+#   4. las que en las otras cohortes viven DENTRO de form_data y no en la
+#      columna. En Meta el mail llega en el JSON del formulario y sube a la
+#      columna por un backfill manual que no corre solo: mirar solo la
+#      columna deja fuera de la veda a todo lead al que no se le haya
+#      corrido. Las claves son las mismas que usa scripts/backfill_meta_emails.py.
 _DIRECCIONES_VEDADAS = """
     SELECT LOWER(TRIM(b2.email)) FROM businesses b2
      WHERE b2.email IS NOT NULL AND COALESCE(b2.source, '') <> 'discovery'
@@ -131,6 +136,16 @@ _DIRECCIONES_VEDADAS = """
     SELECT LOWER(TRIM(b4.email)) FROM businesses b4
       JOIN meta_reminders mr ON mr.business_id = b4.id
      WHERE mr.unsubscribed_at IS NOT NULL AND b4.email IS NOT NULL
+    UNION
+    SELECT LOWER(TRIM(json_extract(b6.form_data, '$.email'))) FROM businesses b6
+     WHERE COALESCE(b6.source, '') <> 'discovery'
+       AND b6.form_data IS NOT NULL AND json_valid(b6.form_data)
+       AND json_extract(b6.form_data, '$.email') IS NOT NULL
+    UNION
+    SELECT LOWER(TRIM(json_extract(b7.form_data, '$.correo'))) FROM businesses b7
+     WHERE COALESCE(b7.source, '') <> 'discovery'
+       AND b7.form_data IS NOT NULL AND json_valid(b7.form_data)
+       AND json_extract(b7.form_data, '$.correo') IS NOT NULL
 """
 
 _CAMPOS = "b.id, b.name, b.city, b.category, TRIM(b.email) AS email, b.website"
@@ -198,7 +213,15 @@ def comercios_a_contactar(db_path: str, limite: int) -> list[dict]:
 
 
 def comercios_a_seguir(db_path: str, limite: int) -> list[dict]:
-    """Los que ya recibieron el contacto 1 y les toca el 2, que es el ultimo."""
+    """Los que ya recibieron el contacto 1 y les toca el 2, que es el ultimo.
+
+    La veda va tambien aca y no solo en `comercios_a_contactar`: entre el
+    contacto 1 y el 2 pasan siete dias, y en esos siete dias el duenio del
+    comercio puede llenar el formulario de Meta. Si la veda faltara, esa persona
+    quedaria recibiendo la secuencia de Meta Y el segundo mail en frio. Lo mismo
+    con una baja: si se da de baja por un link de Meta, tiene que cortar esta
+    campana tambien.
+    """
     dias = DIAS_DE_CADA_CONTACTO[1]
     conn = _conn(db_path)
     try:
@@ -208,6 +231,7 @@ def comercios_a_seguir(db_path: str, limite: int) -> list[dict]:
               FROM businesses b
               JOIN discovery_reminders dr ON dr.business_id = b.id
              WHERE {_FILTRO_ELEGIBLE}
+               AND LOWER(TRIM(b.email)) NOT IN ({_DIRECCIONES_VEDADAS})
                AND NOT EXISTS (
                      SELECT 1 FROM discovery_reminders x
                       WHERE x.business_id = b.id AND x.unsubscribed_at IS NOT NULL
@@ -270,6 +294,13 @@ def enviar_discovery(db_path: str, base_url: str, dry_run: bool = False) -> dict
         except sqlite3.IntegrityError:
             # Otra corrida se adelanto con este mismo contacto.
             continue
+        except sqlite3.OperationalError as e:
+            # Base bloqueada u otro problema puntual: se saltea ESTE comercio,
+            # no se cae la tanda entera. Sin esto, un lock en el segundo de
+            # diez deja a los ocho restantes sin mandar y sin rastro.
+            logger.warning(f"Discovery: no se pudo registrar el comercio "
+                           f"{comercio['id']} contacto {numero}: {e}")
+            continue
 
         estado = send_discovery_email(
             comercio["email"], comercio["name"], comercio["category"],
@@ -282,15 +313,25 @@ def enviar_discovery(db_path: str, base_url: str, dry_run: bool = False) -> dict
             # Sabemos que no salio: se borra SOLO esa fila, para que se
             # reintente. Borrar por business_id se llevaria el contacto 1, cuyo
             # token ya viaja dentro de un mail que alguien recibio.
-            conn = _conn(db_path)
             try:
-                conn.execute(
-                    "DELETE FROM discovery_reminders WHERE business_id = ? AND numero = ?",
-                    (comercio["id"], numero),
+                conn = _conn(db_path)
+                try:
+                    conn.execute(
+                        "DELETE FROM discovery_reminders WHERE business_id = ? AND numero = ?",
+                        (comercio["id"], numero),
+                    )
+                    conn.commit()
+                finally:
+                    conn.close()
+            except sqlite3.Error as e:
+                # Si el borrado falla, la fila queda y el contacto 2 va a salir
+                # a los 7 dias diciendo "te escribimos hace una semana" cuando
+                # el primero nunca llego. Hay que saberlo, no morir en silencio.
+                logger.error(
+                    f"Discovery: fallo el envio Y fallo el borrado de la fila "
+                    f"(business_id={comercio['id']}, numero={numero}): {e}. "
+                    f"Borrar esa fila puntual a mano o el proximo contacto miente."
                 )
-                conn.commit()
-            finally:
-                conn.close()
             res["fallidos"] += 1
             logger.error(
                 f"Discovery: fallo el envio del contacto {numero} al comercio "
@@ -332,7 +373,12 @@ def start_discovery_emails(app) -> None:
         return
 
     def _loop():
-        time.sleep(180)  # dejar que la app termine de levantar
+        # 600 s y no 180 como Meta, a proposito: los dos hilos arrancan en el
+        # mismo boot y los dos pausan 0.6 s entre envios, asi que con el mismo
+        # retraso se pisan y superan el limite de 2 peticiones por segundo de
+        # Resend. Un 429 se lee como "fallo" y saltea un recordatorio de Meta
+        # —correo real, en produccion— sin que nadie se entere.
+        time.sleep(600)
         while True:
             try:
                 with app.app_context():
@@ -347,5 +393,5 @@ def start_discovery_emails(app) -> None:
     threading.Thread(target=_loop, daemon=True, name="discovery-emails").start()
     logger.info(
         f"Discovery ACTIVO por DISCOVERY_EMAILS=on: una corrida por dia, hasta "
-        f"{_TOPE_DIARIO} mails, la primera 180s despues de este arranque"
+        f"{_TOPE_DIARIO} mails, la primera 600s despues de este arranque"
     )

@@ -69,11 +69,18 @@ def test_el_segundo_avisa_que_es_el_ultimo():
 
 
 def test_el_primero_no_ofrece_una_pagina_web():
-    """Estos comercios YA tienen sitio: es el criterio con el que se los eligio."""
+    """Estos comercios YA tienen sitio: es el criterio con el que se los eligio.
+
+    Se compara sobre el texto plano y no sobre el HTML: el HTML escapa las
+    tildes a entidades, asi que buscar "pagina" con tilde ahi nunca puede dar
+    positivo y el test pasaria con cualquier texto.
+    """
     with _capturar() as enviar:
         send_discovery_email("x@y.uy", "Inmo", "Inmobiliaria", "https://c/baja/t", 1)
-    cuerpo = enviar.call_args.args[2].lower()
-    assert "no tenés página" not in cuerpo and "no tenes pagina" not in cuerpo
+    texto = enviar.call_args.kwargs["text"].lower()
+    assert "no tenés página" not in texto
+    assert "no tenes pagina" not in texto
+    assert "página web" not in texto
 
 
 def test_los_dos_llevan_baja_y_cabecera_de_baja():
@@ -119,3 +126,62 @@ def test_numero_none_no_revienta():
     with _capturar() as enviar:
         assert send_discovery_email("x@y.uy", "Inmo", "Inmobiliaria",
                                     "https://c/baja/t", None) == "ok"
+
+
+# ─── Lo que la revision encontro abierto ─────────────────────────────────────
+
+@pytest.mark.parametrize("negocio", ["Inmobiliaria Sur", "ACSA", "Mas Aguada"])
+def test_el_asunto_del_primero_esta_bien_escrito(negocio):
+    """El asunto es la linea mas visible de todo mail en frio. La version vieja
+    armaba "Una idea para de Inmobiliaria Sur", pegando dos preposiciones."""
+    with _capturar() as enviar:
+        send_discovery_email("x@y.uy", negocio, "Inmobiliaria", "https://c/baja/t", 1)
+    asunto = enviar.call_args.args[1]
+    assert asunto == f"Una idea para {negocio}"
+    assert " para de " not in asunto
+    assert "  " not in asunto
+
+
+def test_el_asunto_del_segundo_esta_bien_escrito():
+    with _capturar() as enviar:
+        send_discovery_email("x@y.uy", "Inmobiliaria Sur", "Inmobiliaria",
+                             "https://c/baja/t", 2)
+    assert enviar.call_args.args[1] == "Último mail de Inmobiliaria Sur"
+
+
+def test_sin_negocio_los_asuntos_siguen_teniendo_sentido():
+    for numero, esperado in ((1, "Una idea para tu negocio"), (2, "Último mail de Scalerics")):
+        with _capturar() as enviar:
+            send_discovery_email("x@y.uy", "", "Inmobiliaria", "https://c/baja/t", numero)
+        assert enviar.call_args.args[1] == esperado
+
+
+def test_no_manda_desde_el_dominio_principal(monkeypatch):
+    """Un dedo torcido en el `flyctl secrets set` pondria el correo en frio en
+    el mismo dominio con el que se le escribe a los clientes."""
+    for remitente in ("contacto@scalerics.com",
+                      "Scalerics <crm@scalerics.com>",
+                      "hola@SCALERICS.COM"):
+        monkeypatch.setenv("DISCOVERY_FROM_EMAIL", remitente)
+        with patch("services.email_service._send_estado") as enviar:
+            assert send_discovery_email("x@y.uy", "Inmo", "Inmobiliaria",
+                                        "https://c/baja/t") == "fallo"
+            enviar.assert_not_called()
+
+
+def test_un_subdominio_si_puede_mandar(monkeypatch):
+    """La guarda es sobre el dominio exacto, no sobre la cadena: un subdominio
+    de scalerics.com es justamente lo que la campana tiene que usar."""
+    monkeypatch.setenv("DISCOVERY_FROM_EMAIL", "Scalerics <hola@novedades.scalerics.com>")
+    with patch("services.email_service._send_estado", return_value="ok") as enviar:
+        assert send_discovery_email("x@y.uy", "Inmo", "Inmobiliaria",
+                                    "https://c/baja/t") == "ok"
+        enviar.assert_called_once()
+
+
+def test_un_remitente_sin_arroba_no_manda(monkeypatch):
+    monkeypatch.setenv("DISCOVERY_FROM_EMAIL", "basura sin arroba")
+    with patch("services.email_service._send_estado") as enviar:
+        assert send_discovery_email("x@y.uy", "Inmo", "Inmobiliaria",
+                                    "https://c/baja/t") == "fallo"
+        enviar.assert_not_called()

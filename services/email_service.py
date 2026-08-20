@@ -561,6 +561,9 @@ def send_meta_lead_reminder(to_email: str, negocio: str, rubro: str,
 
 # ─── Discovery: correo en frio a comercios con sitio web ────────────────────
 
+# El correo en frio NO puede salir de aca: es el dominio de los clientes.
+_DOMINIO_PRINCIPAL = "scalerics.com"
+
 def _cuerpo_discovery(numero: int, negocio: str, rubro: str) -> tuple[str, list[str]]:
     """Devuelve (asunto, [parrafos]) para el contacto `numero`.
 
@@ -572,7 +575,7 @@ def _cuerpo_discovery(numero: int, negocio: str, rubro: str) -> tuple[str, list[
     """
     de = f" de {negocio}" if negocio else ""
     if numero <= 1:
-        return (f"Una idea para{de}" if negocio else "Una idea para tu negocio", [
+        return (f"Una idea para {negocio}" if negocio else "Una idea para tu negocio", [
             "Hola,",
             f"Vimos el sitio{de} y nos quedamos pensando en algo.",
             "Somos Scalerics, una software factory uruguaya. No te venimos a ofrecer "
@@ -605,6 +608,21 @@ def send_discovery_email(to_email: str, negocio: str, rubro: str,
     remitente = os.environ.get("DISCOVERY_FROM_EMAIL", "").strip()
     if not remitente:
         logger.warning("DISCOVERY_FROM_EMAIL sin configurar: no se manda nada")
+        return "fallo"
+
+    # El dominio principal esta vedado a proposito. Un dedo torcido en el
+    # `flyctl secrets set` pondria el correo en frio en el mismo dominio con el
+    # que se le escribe a los clientes y por el que salen los recordatorios de
+    # Meta, que es exactamente lo que este modulo existe para evitar.
+    dominio = remitente.rsplit("@", 1)[-1].strip(" <>").lower()
+    if not dominio or "." not in dominio:
+        logger.error(f"DISCOVERY_FROM_EMAIL sin dominio valido ({remitente!r}): no se manda nada")
+        return "fallo"
+    if dominio == _DOMINIO_PRINCIPAL:
+        logger.error(
+            f"DISCOVERY_FROM_EMAIL apunta al dominio principal ({dominio}): no se manda "
+            f"nada. El correo en frio tiene que salir de un subdominio propio."
+        )
         return "fallo"
 
     numero = int(numero or 1)

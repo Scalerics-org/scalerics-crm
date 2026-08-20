@@ -24,8 +24,12 @@ máquina, la misma base, el mismo volumen): `puesta-en-produccion-recordatorios-
 | Discovery | `DISCOVERY_EMAILS` | comercios raspados de Maps | el subdominio, ver paso 1 |
 
 Apagar uno **no** apaga el otro. Y como `flyctl secrets set` reinicia la máquina,
-tocar cualquiera de los dos secrets dispara el hilo de **las dos** campañas 180
-segundos después del arranque. Al operar una, acordate de la otra.
+tocar cualquiera de los dos secrets dispara el hilo de **las dos** campañas. **No
+arrancan juntas a propósito:** Meta a los 180 segundos del boot y discovery a los
+600. Si las dos salieran al mismo tiempo, entre las dos superarían el límite de dos
+peticiones por segundo de Resend, y un rechazo se lee como "no salió" — o sea que
+encender discovery haría que algún recordatorio de Meta se saltee un día en
+silencio. Al operar una, acordate de la otra.
 
 **b. El tope diario es por campaña y por ventana rodante de 24 horas.** Discovery
 arranca en 10; Meta está en 15. Son independientes: no se pisan, se suman. Si las
@@ -154,9 +158,10 @@ direcciones raspadas: **mirá antes de encender.**
 flyctl secrets set DISCOVERY_EMAILS=on -a scalerics-crm
 ```
 
-Reinicia la máquina y 180 segundos después arranca el hilo. **Si hay cupo, manda
-hasta 10 mails reales en ese momento.** Este es el punto de no retorno: hasta acá
-no salía nada de esta campaña.
+Reinicia la máquina y **600 segundos** después arranca el hilo (diez minutos: es el
+desfasaje deliberado respecto de Meta). **Si hay cupo, manda hasta 10 mails reales
+en ese momento.** Este es el punto de no retorno: hasta acá no salía nada de esta
+campaña.
 
 Confirmar en el log:
 
@@ -164,16 +169,51 @@ Confirmar en el log:
 flyctl logs -a scalerics-crm | grep -i "Discovery"
 ```
 
-Esperado: `Discovery ACTIVO por DISCOVERY_EMAILS=on` y, tres minutos después, la
-línea con el resumen: `{'candidatos': N, 'enviados': N, 'fallidos': 0, ...}`.
+Esperado: `Discovery ACTIVO por DISCOVERY_EMAILS=on` en el momento y, **diez
+minutos después**, la línea con el resumen:
+`{'candidatos': N, 'enviados': N, 'fallidos': 0, 'seguimientos': N, 'nuevos': N}`.
+Si a los quince minutos no apareció el resumen, algo pasó: mirá los WARNING y ERROR
+del log.
 
 ---
 
 ## 7. Los primeros días: qué mirar, y en este orden
 
 **a. ¿Cayó en Principal o en Promociones?** Es el dato que no se puede testear con
-código. Mandate uno a vos mismo con `DISCOVERY_FROM_EMAIL` apuntando a una casilla
-tuya antes de la primera tanda real, o revisá con alguien que haya recibido.
+código, y es el más importante de todos.
+
+**Ojo con cómo se prueba.** `DISCOVERY_FROM_EMAIL` es el **remitente**, no el
+destinatario: apuntarlo a tu casilla no te manda el mail a vos, manda el mail a los
+comercios *desde* tu casilla. Y esta campaña **no tiene** un equivalente de
+`META_NOTIFY_OVERRIDE`.
+
+Las dos formas seguras de verlo, sin escribirle a nadie:
+
+1. **Contra una copia de la base**, con un solo comercio tuyo cargado a mano:
+
+```bash
+flyctl ssh console -a scalerics-crm
+cp /data/leads.db /data/prueba.db
+python - <<'EOF'
+import sqlite3
+c = sqlite3.connect('/data/prueba.db')
+c.execute("DELETE FROM businesses WHERE source='discovery'")
+c.execute("INSERT INTO businesses (name, phone, maps_url, website, email, source, category) "
+          "VALUES ('Prueba', '+598 99 000 000', 'https://maps.google.com/?cid=999', "
+          "'https://ejemplo.uy', 'TU_CASILLA@gmail.com', 'discovery', 'Inmobiliaria')")
+c.commit()
+EOF
+cd /app && python -c "from services.discovery_emails import enviar_discovery; print(enviar_discovery('/data/prueba.db','https://scalerics-crm.fly.dev'))"
+rm /data/prueba.db
+```
+
+   La copia se borra al final y **nunca se escribe sobre `/data/leads.db`**, así que
+   ningún comercio real queda marcado.
+
+2. **O revisar con alguien que ya haya recibido**, después de la primera tanda.
+
+Nunca contra la base viva: `registrar_envio` deja la fila igual, así que probar ahí
+marca comercios reales como contactados sin que hayan recibido nada.
 
 **b. Rebotes.** En una lista raspada parte de las direcciones están muertas.
 Insistirle a direcciones muertas es la vía más rápida a que bloqueen el dominio.
