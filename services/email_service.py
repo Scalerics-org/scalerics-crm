@@ -578,10 +578,10 @@ def _cuerpo_discovery(numero: int, negocio: str, rubro: str) -> tuple[str, list[
         return (f"Una idea para {negocio}" if negocio else "Una idea para tu negocio", [
             "Hola,",
             f"Vimos el sitio{de} y nos quedamos pensando en algo.",
-            "Somos Scalerics, una software factory uruguaya. No te venimos a ofrecer "
-            "una p&aacute;gina: lo que hacemos es automatizar lo que hoy se hace a mano "
-            "—pedidos, seguimientos, reportes que se arman de a uno— y software para "
-            "lo que ning&uacute;n sistema de estante resuelve.",
+            "Somos Scalerics, una software factory uruguaya. Hacemos p&aacute;ginas y "
+            "tiendas online, y tambi&eacute;n automatizamos lo que hoy se hace a mano: "
+            "pedidos, seguimientos, reportes que se arman de a uno. Y software a medida "
+            "para lo que ning&uacute;n sistema de estante resuelve.",
             "Si te interesa, respond&eacute; este mail y lo charlamos en 20 minutos.",
         ])
     return (f"&Uacute;ltimo mail{de}" if negocio else "&Uacute;ltimo mail de Scalerics", [

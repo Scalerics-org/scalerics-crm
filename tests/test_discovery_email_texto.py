@@ -61,8 +61,14 @@ def test_el_segundo_avisa_que_es_el_ultimo():
     assert "no te escribimos m" in html.lower()
 
 
-def test_el_primero_no_ofrece_una_pagina_web():
-    """Estos comercios YA tienen sitio: es el criterio con el que se los eligio.
+def test_el_primero_no_afirma_que_el_comercio_no_tiene_web():
+    """Estos comercios YA tienen sitio: es el criterio con el que se los eligio,
+    asi que el mail no puede decir lo contrario.
+
+    OJO con el borde de este test: la version anterior tambien prohibia mencionar
+    paginas web, y eso estaba mal — Scalerics SI vende paginas y tiendas online.
+    Negarlo cerraba una puerta por la que entra plata. Lo unico prohibido es
+    afirmar que este comercio no tiene sitio.
 
     Se compara sobre el texto plano y no sobre el HTML: el HTML escapa las
     tildes a entidades, asi que buscar "pagina" con tilde ahi nunca puede dar
@@ -71,9 +77,17 @@ def test_el_primero_no_ofrece_una_pagina_web():
     with _capturar() as enviar:
         send_discovery_email("x@y.uy", "Inmo", "Inmobiliaria", "https://c/baja/t", 1)
     texto = enviar.call_args.kwargs["text"].lower()
-    assert "no tenés página" not in texto
-    assert "no tenes pagina" not in texto
-    assert "página web" not in texto
+    for prohibido in ("no tenés página", "no tenes pagina", "no tiene página",
+                      "sin página web", "sin sitio web"):
+        assert prohibido not in texto, f"el mail afirma algo falso: {prohibido!r}"
+
+
+def test_el_primero_si_puede_ofrecer_paginas():
+    """Scalerics vende paginas y tiendas online: el mail no tiene por que negarlo."""
+    with _capturar() as enviar:
+        send_discovery_email("x@y.uy", "Inmo", "Inmobiliaria", "https://c/baja/t", 1)
+    texto = enviar.call_args.kwargs["text"].lower()
+    assert "no te venimos a ofrecer" not in texto
 
 
 def test_los_dos_llevan_baja_y_cabecera_de_baja():
