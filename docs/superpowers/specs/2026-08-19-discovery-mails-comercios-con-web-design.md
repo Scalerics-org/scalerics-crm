@@ -194,10 +194,25 @@ Un solo chequeo antes de cada envío. No se le escribe a un negocio que:
 - tiene un `crm_status` distinto de `sin_contactar` — o sea, cualquiera que ya se tocó
 - se dio de baja alguna vez, en esta campaña **o** en la de Meta
 - comparte dirección de mail con un lead de Meta o con un cliente actual
+- **comparte dirección de mail con otro comercio de la propia cohorte de discovery**
 - rebotó antes
 
 La comparación de direcciones es normalizada (minúsculas, sin espacios), igual que
 la deduplicación que ya hace `leads_a_recordar`.
+
+**Sobre la deduplicación dentro de la cohorte, que no es hipotética.** La primera
+corrida real del padrón, el 20-8-2026, trajo 17 inmobiliarias y 13 direcciones, de
+las cuales **12 son únicas**: "Inmobiliaria Mas Aguada" e "Inmobiliaria Mas Rodo"
+son sucursales de la misma firma, con teléfonos y fichas de Google Maps distintas
+—por eso entraron como dos filas, el `UNIQUE` de `phone` y `maps_url` no las
+fusiona— pero con el mismo sitio y el mismo `info@imas.uy`. Sin esta regla, esa
+persona recibe el mismo mail en frío dos veces, que es la forma más rápida de que
+marque spam.
+
+La garantía tiene que vivir en el `WHERE` de la consulta que elige a quién le toca,
+igual que en `leads_a_recordar` (`GROUP BY LOWER(TRIM(email))` más un `NOT EXISTS`
+sobre los ya enviados). No alcanza con deduplicar la lista en memoria después de
+leerla: entre tandas distintas, la segunda sucursal volvería a aparecer.
 
 ## Lo que deliberadamente no lleva
 
@@ -239,6 +254,28 @@ funcione desde el primer mail, y a respetar la baja para siempre.
 peluquerías al 14% son datos; que automotoras u odontología estén arriba es una
 apuesta razonable, no un hecho. Conviene medir cada rubro nuevo con una corrida
 corta antes de dedicarle horas de scraping.
+
+## Lo que confirmó la primera corrida real (20-8-2026)
+
+17 inmobiliarias de Montevideo scrapeadas con `--con-web`, en 4,5 minutos, y después
+`buscar-mails` sobre ellas:
+
+```
+{'revisados': 17, 'con_mail': 13, 'sin_mail': 2, 'no_abrio': 2}
+```
+
+**13 de 17 = 76%**, contra el 78% que había predicho el sondeo. La predicción se
+sostuvo contra sitios reales, y ninguna dirección de plantilla se coló: las que
+salieron son casillas de contacto de verdad (`info@imas.uy`, `hola@acsa.uy`,
+`inmobiliaria@lars.com.uy`, `casacentral@sigaloavarela.com`).
+
+Los tres caminos se comportaron distinto, como se diseñó: los 13 con mail quedaron
+en `email_found`; los 2 que abrieron sin publicar dirección, en `no_email` y no se
+reintentan; los 2 que **no abrieron** quedaron sin marcar, para que la corrida
+siguiente los reintente.
+
+**Detalle cosmético a resolver antes de que el texto del mail use la ciudad:** el
+scraper guarda `city` como "Departamento de Montevideo", no "Montevideo".
 
 ## Orden de construcción
 
