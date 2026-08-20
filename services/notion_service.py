@@ -59,8 +59,15 @@ GRUPOS = {
 }
 
 # Los estados de la database Clientes, con el grupo en el que Notion los pone.
-# Salio de mirar el tablero (la property no tiene nombre, ver `_estado_de`), no
-# de la API: si el equipo agrega un estado, hay que sumarlo aca a mano.
+#
+# Confirmado contra la API el 20-8-2026 (GET /v1/data_sources/{id}): los seis
+# estados, sus grupos y **este orden** son los de la property Status del
+# tablero. La property no tiene nombre, ver `_estado_de`.
+#
+# El orden importa: el kanban del CRM dibuja una columna por estado siguiendo
+# esta lista, asi que reordenar el dict reordena el tablero. Si el equipo
+# agrega un estado en Notion hay que sumarlo aca a mano, en la posicion que
+# ocupa alla; mientras tanto sus fichas caen en la columna "Sin clasificar".
 GRUPOS_CLIENTES = {
     "Demo Agendada": "todo",
     "Hay que hacer Presupuesto": "in_progress",
@@ -69,6 +76,18 @@ GRUPOS_CLIENTES = {
     "Presupuesto Rechazado": "done",
     "Presupuesto Aceptado": "done",
 }
+
+
+def estados_de_clientes() -> list[dict]:
+    """Las columnas del kanban de clientes, en el orden del tablero.
+
+    Van por la ruta y no hardcodeadas en el JS porque una columna existe aunque
+    este vacia: el equipo tiene que ver que "Presupuesto Aceptado" es un estado
+    posible aunque hoy no haya ninguna ficha ahi, y eso no se puede deducir
+    mirando las fichas que llegaron.
+    """
+    return [{"estado": estado, "grupo": grupo}
+            for estado, grupo in GRUPOS_CLIENTES.items()]
 
 
 def grupo_de_cliente(estado_notion: str | None) -> str:

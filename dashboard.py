@@ -1001,6 +1001,8 @@ body.light .btn-icon{stroke:currentColor}
 .kanban-col{flex:0 0 260px;background:#0d1420;border:1px solid #1e293b;border-radius:10px;padding:8px;min-height:120px}
 .kanban-col.drag-over{border-color:#0088cc;background:#0f1b2b}
 .kanban-head{display:flex;align-items:center;gap:8px;padding:2px 4px 8px}
+.kanban-dot{width:7px;height:7px;border-radius:99px;flex-shrink:0}
+.kanban-vacia{font-size:.72rem;color:#334155;padding:6px 4px}
 .kanban-name{font-size:.78rem;font-weight:600;color:#94a3b8}
 .kanban-count{font-size:.72rem;color:#475569}
 .kanban-cards{display:flex;flex-direction:column;gap:8px}
@@ -3170,56 +3172,72 @@ async function loadProjects() {
   }).join('');
 }
 
-// Las columnas son los grupos con los que Notion agrupa los estados de la
-// database Clientes. `otros` junta lo que el CRM no sabe mapear -- un estado
-// nuevo del tablero cae ahi y se ve, en vez de disfrazarse de pendiente.
-const _COLUMNAS_CLIENTES = [
-  {grupo:'todo',        titulo:'Pendientes'},
-  {grupo:'in_progress', titulo:'En progreso'},
-  {grupo:'done',        titulo:'Cerrados'},
-  {grupo:'otros',       titulo:'Sin clasificar'},
-];
+// El punto de color de cada columna: es el grupo con el que Notion junta los
+// estados (To-do / In progress / Complete), lo unico que queda del agrupado
+// viejo. Sirve para leer de un vistazo por donde va cada columna.
+const _COLOR_GRUPO_CLIENTE = {todo:'#94a3b8', in_progress:'#3b82f6', done:'#10b981', otros:'#f59e0b'};
 
 async function loadNotionClients() {
   const board = document.getElementById('notion-clients-board');
   if (!board) return;
   board.innerHTML = '<div class="tasks-empty">Cargando...</div>';
-  let clientes;
+  let datos;
   try {
     const r = await fetch('/api/notion-clients');
     if (!r.ok) throw new Error(r.status);
-    clientes = await r.json();
+    datos = await r.json();
   } catch {
     board.innerHTML = '<div class="tasks-empty">No se pudieron cargar los clientes.</div>';
     return;
   }
-  clientes = Array.isArray(clientes) ? clientes : [];
-  if (!clientes.length) {
-    board.innerHTML = '<div class="tasks-empty">No hay clientes en el tablero.</div>';
+  // Las columnas son los estados del tablero y las manda la ruta: una columna
+  // existe aunque no tenga fichas, asi que no se pueden deducir de los datos.
+  const columnas = Array.isArray(datos && datos.columnas) ? datos.columnas : [];
+  const clientes = Array.isArray(datos && datos.clientes) ? datos.clientes : [];
+  if (!columnas.length) {
+    board.innerHTML = '<div class="tasks-empty">No se pudieron cargar los clientes.</div>';
     return;
   }
-  board.innerHTML = _COLUMNAS_CLIENTES.map(col => {
-    const dentro = clientes.filter(c => c.grupo === col.grupo);
-    // La columna de los estados sin mapear solo aparece si tiene algo: vacia
-    // seria una columna de ruido permanente.
-    if (col.grupo === 'otros' && !dentro.length) return '';
-    return `<div class="kanban-col">
-      <div class="kanban-head"><span class="kanban-name">${esc(col.titulo)}</span>
-        <span class="kanban-count">${dentro.length}</span></div>
-      <div class="kanban-cards">${dentro.map(c => _notionClientCardHtml(c)).join('')}</div>
-    </div>`;
-  }).join('');
+  // Lo que no cae en ningun estado conocido (un estado nuevo en Notion, o una
+  // ficha sin estado) va a una columna aparte, que solo aparece si tiene algo:
+  // vacia seria una columna de ruido permanente.
+  const conocidos = new Set(columnas.map(col => col.estado));
+  const sueltos = clientes.filter(c => !conocidos.has(c.status));
+  board.innerHTML = columnas.map(col =>
+    _notionClientColHtml(col.estado, col.grupo,
+                         clientes.filter(c => c.status === col.estado))
+  ).join('') + (sueltos.length
+    ? _notionClientColHtml('Sin clasificar', 'otros', sueltos)
+    : '');
+}
+
+function _notionClientColHtml(titulo, grupo, dentro) {
+  const color = _COLOR_GRUPO_CLIENTE[grupo] || _COLOR_GRUPO_CLIENTE.otros;
+  return `<div class="kanban-col">
+    <div class="kanban-head">
+      <span class="kanban-dot" style="background:${color}"></span>
+      <span class="kanban-name">${esc(titulo)}</span>
+      <span class="kanban-count">${dentro.length}</span>
+    </div>
+    <div class="kanban-cards">${
+      dentro.length
+        ? dentro.map(c => _notionClientCardHtml(c)).join('')
+        : '<div class="kanban-vacia">Sin fichas</div>'
+    }</div>
+  </div>`;
 }
 
 function _notionClientCardHtml(c) {
   const url = 'https://www.notion.so/' + (c.notion_page_id||'').replace(/-/g,'');
+  // El estado ya lo dice el titulo de la columna, no se repite en la tarjeta.
+  const meta = [
+    c.project_name ? `<span class="task-notion-badge">${esc(c.project_name)}</span>` : '',
+    c.due_date ? `<span class="task-deadline">${esc(c.due_date)}</span>` : '',
+    c.tiempo_estimado ? `<span class="proj-stage">${esc(c.tiempo_estimado)} h</span>` : '',
+  ].filter(Boolean).join('');
   return `<div class="kanban-card">
     <a class="proj-name" href="${esc(url)}" target="_blank" rel="noopener">${esc(c.name)}</a>
-    <div class="kanban-card-meta">
-      ${c.status ? `<span class="proj-stage">${esc(c.status)}</span>` : ''}
-      ${c.project_name ? `<span class="task-notion-badge">${esc(c.project_name)}</span>` : ''}
-      ${c.due_date ? `<span class="task-deadline">${esc(c.due_date)}</span>` : ''}
-    </div>
+    ${meta ? `<div class="kanban-card-meta">${meta}</div>` : ''}
     ${c.descripcion ? `<div class="kanban-card-who">${esc(c.descripcion)}</div>` : ''}
   </div>`;
 }

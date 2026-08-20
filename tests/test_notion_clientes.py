@@ -197,7 +197,7 @@ def test_la_ruta_devuelve_los_clientes_con_el_nombre_de_su_proyecto(app):
     r = app.test_client().get("/api/notion-clients", headers=_AUTH)
 
     assert r.status_code == 200
-    por_nombre = {c["name"]: c for c in r.get_json()}
+    por_nombre = {c["name"]: c for c in r.get_json()["clientes"]}
     assert por_nombre["Milky"]["project_name"] == "Desarrollo"
     assert por_nombre["Garrido"]["project_name"] is None
     assert por_nombre["Garrido"]["status"] == "Perdido"
@@ -270,7 +270,8 @@ def test_la_ruta_agrupa_los_clientes_como_el_tablero(app):
     upsert_notion_client(ruta, "c-3", "Garrido", status="Perdido")
 
     por_nombre = {c["name"]: c for c in
-                  app.test_client().get("/api/notion-clients", headers=_AUTH).get_json()}
+                  app.test_client().get("/api/notion-clients",
+                                        headers=_AUTH).get_json()["clientes"]}
 
     assert por_nombre["Milky"]["grupo"] == "todo"
     assert por_nombre["Easy Rider"]["grupo"] == "in_progress"
@@ -286,7 +287,44 @@ def test_un_estado_nuevo_del_tablero_no_se_disfraza_de_pendiente(app):
     upsert_notion_client(ruta, "c-2", "Sin estado")
 
     por_nombre = {c["name"]: c for c in
-                  app.test_client().get("/api/notion-clients", headers=_AUTH).get_json()}
+                  app.test_client().get("/api/notion-clients",
+                                        headers=_AUTH).get_json()["clientes"]}
 
     assert por_nombre["Nuevo"]["grupo"] == "otros"
     assert por_nombre["Sin estado"]["grupo"] == "otros"
+
+
+def test_la_ruta_manda_una_columna_por_estado_del_tablero(app):
+    """El kanban tiene que mostrar los estados de verdad, no los tres grupos.
+
+    Las columnas salen de la ruta y no del JS porque una columna existe aunque
+    no tenga ninguna ficha: "Presupuesto Aceptado" con cero clientes se tiene
+    que ver igual, y eso no se puede deducir mirando las fichas que llegaron.
+    """
+    ruta = app.config["DB_PATH"]
+    upsert_notion_client(ruta, "c-1", "Milky", status="Demo Agendada")
+
+    datos = app.test_client().get("/api/notion-clients", headers=_AUTH).get_json()
+
+    # El orden es el de las opciones de la property Status del tablero.
+    assert [c["estado"] for c in datos["columnas"]] == [
+        "Demo Agendada",
+        "Hay que hacer Presupuesto",
+        "Esperando Confirmación Presupuesto",
+        "Perdido",
+        "Presupuesto Rechazado",
+        "Presupuesto Aceptado",
+    ]
+    assert [c["grupo"] for c in datos["columnas"]] == [
+        "todo", "in_progress", "in_progress", "done", "done", "done"]
+
+
+def test_el_kanban_no_dibuja_las_columnas_por_grupo(app):
+    """Guard del bug que motivo el cambio: el tablero mostraba tres columnas
+    (Pendientes / En progreso / Cerrados) y los seis estados del equipo
+    quedaban invisibles. Si vuelve a aparecer una lista de columnas fija en el
+    JS, esto lo agarra."""
+    html = dashboard.DASHBOARD_HTML
+
+    assert "_COLUMNAS_CLIENTES" not in html
+    assert "loadNotionClients" in html
