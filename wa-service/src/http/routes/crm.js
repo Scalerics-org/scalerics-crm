@@ -1,5 +1,6 @@
 'use strict';
 
+const { S } = require('../../funnel/states');
 const { normalizar } = require('../../telefono');
 
 /**
@@ -106,8 +107,15 @@ function registrar(app, { cfg, repo, cola, logger }) {
     const tel = normalizar(req.params.phone, cfg.DEFAULT_COUNTRY_CODE);
     const lead = tel ? repo.leadPorTelefono(tel) : null;
     if (!lead) return reply.code(404).send({ error: 'Lead no encontrado' });
-    // Devolver el lead al bot: se libera el flag y vuelve al menu.
-    repo.actualizarFunnel(lead.id, { human_requested: 0, fsm_state: 'MENU' });
+    // Devolver el lead al bot: se libera el flag y vuelve a conversar.
+    //
+    // Estaba puesto 'MENU', que es un estado que ya no existe —se fue con el
+    // embudo de preguntas numeradas—. Como no esta en ninguna de las dos fases
+    // que atiende la IA, el lead devuelto no era de nadie: el bot se comia su
+    // siguiente mensaje sin contestar y recien despues lo dejaba en
+    // CONVERSANDO. Justo el mensaje de alguien que vuelve despues de hablar
+    // con una persona.
+    repo.actualizarFunnel(lead.id, { human_requested: 0, fsm_state: S.CONVERSANDO });
     logger?.info({ leadId: lead.id }, 'lead devuelto al bot desde el CRM');
     return { ok: true };
   });

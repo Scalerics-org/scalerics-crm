@@ -92,7 +92,20 @@ test('POST release devuelve el lead al bot', async () => {
 
   const lead = s.repo.leadPorTelefono('59899123456');
   assert.equal(lead.human_requested, 0);
-  assert.equal(lead.fsm_state, 'MENU');
+
+  // Lo que importa no es el nombre del estado sino que el bot lo atienda. Antes
+  // quedaba en 'MENU', un estado que ya no existe: no estaba en ninguna de las
+  // dos fases que atiende la IA, asi que el bot se comia el siguiente mensaje
+  // sin contestar. Justo el de alguien que vuelve despues de hablar con una
+  // persona.
+  s.proveedor.limpiar();
+  await s.servicioLeads.registrarRespuesta('59899123456', 'hola, sigo interesado');
+  await s.cola.vacia();
+
+  assert.ok(
+    s.proveedor.getEnviados().some((e) => e.to === '59899123456'),
+    'el bot le contesta al lead devuelto'
+  );
 });
 
 test('sin x-admin-token no se entra a /api/', async () => {
