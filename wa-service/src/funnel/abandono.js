@@ -19,10 +19,16 @@ const { S } = require('./states');
  * es ruido en el peor lugar — el que recibe avisos que no sirven deja de
  * mirarlos, y despues no ve los que si.
  *
+ * NURTURE es el mismo error con otra cara: el que dijo "en enero te escribo"
+ * tampoco se fue, aviso cuando volvia. Derivarlo al comercial una hora despues
+ * es pasarle a alguien que ya dijo que no es el momento.
+ *
  * OPT_OUT y DISQUALIFIED se explican solos, y el que ya esta en HUMAN_QUEUED ya
  * lo tiene una persona.
  */
-const CERRADOS = new Set([S.SCHEDULED, S.OPT_OUT, S.DISQUALIFIED, S.HUMAN_QUEUED]);
+const CERRADOS = new Set([
+  S.SCHEDULED, S.NURTURE, S.OPT_OUT, S.DISQUALIFIED, S.HUMAN_QUEUED,
+]);
 
 /**
  * @param {object} lead fila de leads, fresca de la base

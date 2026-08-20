@@ -4,6 +4,7 @@ const { S, palabraGlobal } = require('./states');
 const { TRANSICIONES } = require('./transitions');
 const plantillas = require('../templates');
 const { detectar, ETIQUETA } = require('./derivacion');
+const { cuandoVolver } = require('./nurture');
 
 /**
  * "ya agende", "ya reserve". En primera persona y en pasado a proposito: con
@@ -180,6 +181,32 @@ function crearEmbudo({
       });
     }
     logger?.info({ leadId: lead.id, cuando: r.inicio.toISOString() }, 'reunion agendada por el bot');
+  }
+
+  /**
+   * El lead dijo que no es el momento: queda en pausa y se le escribe cuando
+   * dijo, en vez de insistirle a las 72 horas.
+   *
+   * El mensaje que sale es el que el modelo YA escribio en este turno. No se le
+   * pide otro: seria una segunda llamada en el mismo turno, y la latencia de la
+   * respuesta es justo lo que se acaba de bajar de 15 segundos a 4.
+   */
+  function pausar(lead, texto, aplaza, frase) {
+    decir(lead, texto);
+
+    const cuando = cuandoVolver(aplaza, ahora(), cfg);
+    repo.actualizarFunnel(lead.id, {
+      fsm_state: S.NURTURE,
+      fsm_retries: 0,
+      nurture_desde: ahora().toISOString(),
+      nurture_motivo: frase || aplaza,
+    });
+    repo.programarJob(lead.id, 'nurture', cuando.toISOString());
+    // El seguimiento de las 72 horas ya no corresponde: dijo cuando volver.
+    repo.cancelarJobs(lead.id, 'followup');
+
+    logger?.info({ leadId: lead.id, aplaza, vuelve: cuando.toISOString() }, 'lead en pausa');
+    return S.NURTURE;
   }
 
   /**
@@ -466,10 +493,14 @@ function crearEmbudo({
 
       const actual = lead.fsm_state || S.NEW;
       const califica = FASE_CALIFICACION.has(actual);
+      // Al que esta en pausa se le conversa, pero no se le cierra: sus datos ya
+      // estan completos, asi que sin esto el primer mensaje que mande lo
+      // llevaria derecho a recibir el link de nuevo. Justo al que pidio tiempo.
+      const puedeCerrar = califica && actual !== S.NURTURE && actual !== S.DISQUALIFIED;
 
       if (agente?.activo && (califica || FASE_CIERRE.has(actual))) {
         const r = await agente.responder(lead, textoCrudo, repo.ultimosMensajes(lead.id, 20, lead.conversacion_desde), actual);
-        if (r) return this._conversar(lead, entrada, r, { actual, puedeCerrar: califica });
+        if (r) return this._conversar(lead, entrada, r, { actual, califica, puedeCerrar });
         return sinIA(lead, 'conversacion');
       }
 
@@ -485,11 +516,31 @@ function crearEmbudo({
      * no falta ningun dato, el cierre lo hace el codigo — ofrecer la reunion
      * sale del score, no de lo que le parezca al modelo.
      */
-    async _conversar(lead, entrada, { texto, datos }, { actual, puedeCerrar }) {
+    async _conversar(lead, entrada, { texto, datos, aplaza, aplazaFrase }, { actual, califica, puedeCerrar }) {
       if (Object.keys(datos).length) {
         guardarCampos(lead.id, datos);
         logger?.info({ leadId: lead.id, campos: Object.keys(datos) }, 'la IA extrajo datos');
       }
+
+      if (aplaza) {
+        // Ya tenia reunion agendada: no se pausa, va a una persona.
+        //
+        // Ponerlo en pausa dejaria vivos el evento del calendario y sus dos
+        // recordatorios, y al que acaba de decir que no puede le llegaria
+        // "mañana tenes la videollamada". Mover una reunion de verdad —y
+        // avisarle al que la iba a dar— es de una persona: el bot no tiene con
+        // que cancelarla.
+        if (lead.meeting_booked_at) {
+          decir(lead, texto);
+          derivar(lead, 'reprograma');
+          repo.actualizarFunnel(lead.id, { human_requested: 1, fsm_state: S.HUMAN_QUEUED });
+          return S.HUMAN_QUEUED;
+        }
+        return pausar(lead, texto, aplaza, aplazaFrase);
+      }
+
+      // Volvio por su cuenta antes de tiempo: el mensaje programado ya no va.
+      if (actual === S.NURTURE) repo.cancelarJobs(lead.id, 'nurture');
 
       if (puedeCerrar) {
         const fresco = repo.leadPorId(lead.id);
@@ -503,7 +554,11 @@ function crearEmbudo({
       // Si no, nadie sabe que el lead ya lo tiene y se lo puede volver a
       // mandar indefinidamente, que es justo el loop que habia antes.
       const mandoElLink = CALENDLY && texto.includes(CALENDLY);
-      const destino = mandoElLink ? S.MEETING_LINK_SENT : (puedeCerrar ? S.CONVERSANDO : actual);
+      // Con `califica` y no con `puedeCerrar`: son distintos desde que existe la
+      // pausa. Al que esta en NURTURE no se le cierra —no se le vuelve a
+      // empujar el link— pero si vuelve a escribir sale de la pausa, y con
+      // puedeCerrar se quedaba adentro para siempre.
+      const destino = mandoElLink ? S.MEETING_LINK_SENT : (califica ? S.CONVERSANDO : actual);
       repo.actualizarFunnel(lead.id, { fsm_state: destino, fsm_retries: 0 });
       return destino;
     },

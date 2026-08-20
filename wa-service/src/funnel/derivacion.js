@@ -89,6 +89,7 @@ const ETIQUETA = {
   agenda: 'no se pudo agendar la reunion',
   sin_ia: 'la IA no pudo responder',
   abandono: 'dejo de contestar en el medio',
+  reprograma: 'quiere mover una reunion ya agendada',
 };
 
 module.exports = { detectar, normalizar, ETIQUETA, PRECIO, PRECIO_DE_PRODUCTO, QUEJA, FACTURACION };

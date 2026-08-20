@@ -35,6 +35,7 @@ function crearScheduler({ repo, cola, cfg, redactor = null, embudo = null, logge
     followup: 'followup',
     reminder_24h: 'recordatorio_dia_antes',
     reminder_30m: 'recordatorio_30min',
+    nurture: 'nurture_vuelta',
   };
 
   /**
@@ -77,6 +78,13 @@ function crearScheduler({ repo, cola, cfg, redactor = null, embudo = null, logge
         followup_sent_at: momento.toISOString(),
       });
       avisarAM(lead, plantillas.avisoSinRespuesta(lead, cfg.FOLLOWUP_DELAY_HOURS));
+    }
+
+    // La pausa termino: vuelve al embudo. Si se quedara en NURTURE, su
+    // respuesta llegaria a un estado donde el bot no le cierra nada, y ademas
+    // no se le podria volver a programar otra pausa mas adelante.
+    if (job.type === 'nurture') {
+      repo.actualizarFunnel(lead.id, { fsm_state: 'CONVERSANDO', fsm_retries: 0 });
     }
     return true;
   }
@@ -122,6 +130,14 @@ function crearScheduler({ repo, cola, cfg, redactor = null, embudo = null, logge
       // la conversacion: se fue a otro lado, y derivarlo seria ruido.
       if (job.type === 'abandono' && !correspondeDerivar(lead)) {
         repo.marcarJob(job.id, 'cancelled', 'ya no corresponde derivar');
+        continue;
+      }
+
+      // Entre que se puso en pausa y hoy, el lead pudo volver por su cuenta,
+      // agendar o pasar a una persona. Escribirle "quedamos en que te escribia"
+      // a alguien que ya esta conversando queda pesimo.
+      if (job.type === 'nurture' && lead.fsm_state !== 'NURTURE') {
+        repo.marcarJob(job.id, 'cancelled', 'el lead ya salio de la pausa');
         continue;
       }
 

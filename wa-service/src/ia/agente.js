@@ -1,6 +1,7 @@
 'use strict';
 
 const { construirSystem, faltantes } = require('./prompt');
+const { CAJONES } = require('../funnel/nurture');
 
 const MAX_HISTORIAL = 20;
 const MAX_CARACTERES = 900;
@@ -101,6 +102,23 @@ const HERRAMIENTA = {
         },
         instagram_web: { type: 'string', description: 'Usuario de Instagram, URL de la web o lo que haya dicho' },
         needs: { type: 'string', description: 'Qué quiere lograr, en sus palabras' },
+        /**
+         * Se le pide el cajon, no la fecha: la fecha la calcula el codigo.
+         *
+         * "no" tiene que estar en el enum y ser lo normal. Sin esa opcion, un
+         * campo que solo se llena a veces tienta al modelo a llenarlo siempre,
+         * y cualquier "lo pienso y te digo" terminaria mandando al lead a una
+         * pausa de dos semanas.
+         */
+        aplaza: {
+          type: 'string',
+          enum: ['no', ...CAJONES],
+          description: 'Si el lead dijo que NO es el momento y hay que escribirle mas adelante. Casi siempre es "no". unos_dias = "la semana que viene", unas_semanas = "en un par de semanas", un_mes = "el mes que viene", varios_meses = "a fin de año", sin_fecha = dijo que ahora no pero no dijo cuando. Estar ocupado hoy o tardar en contestar NO es aplazar.',
+        },
+        aplaza_frase: {
+          type: 'string',
+          description: 'Las palabras con las que lo dijo, tal cual. Solo si aplaza no es "no".',
+        },
       },
       required: ['lo_que_acaba_de_decir', 'mensaje'],
     },
@@ -224,6 +242,10 @@ function crearAgente({ openai = null, modelo, textos, calendly = '', logger = nu
 
       const texto = String(argumentos.mensaje || '').trim();
       const datos = sanearDatos(argumentos);
+      // Va aparte de los datos: no es un dato del negocio sino una decision
+      // sobre la conversacion, y la toma el embudo.
+      const aplaza = CAJONES.includes(argumentos.aplaza) ? argumentos.aplaza : null;
+      const aplazaFrase = String(argumentos.aplaza_frase || '').trim().slice(0, 200);
 
       // Que haya guardado datos no sirve de nada si no contesto: el lead esta
       // esperando del otro lado.
@@ -234,10 +256,12 @@ function crearAgente({ openai = null, modelo, textos, calendly = '', logger = nu
 
       if (mencionaPlata(texto)) {
         logger?.warn({ leadId: lead.id, texto }, 'la IA menciono un precio, se reemplaza por el texto fijo');
-        return { texto: textos.PRECIO, datos, precioBloqueado: true };
+        return { texto: textos.PRECIO, datos, aplaza, aplazaFrase, precioBloqueado: true };
       }
 
-      return { texto: texto.slice(0, MAX_CARACTERES), datos, precioBloqueado: false };
+      return {
+        texto: texto.slice(0, MAX_CARACTERES), datos, aplaza, aplazaFrase, precioBloqueado: false,
+      };
     },
 
     /**

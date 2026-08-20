@@ -220,6 +220,11 @@ Enganchá con lo que te contó —su rubro, lo que necesita— para que no suene
 Cerrá pasándole este link para que elija el horario que le quede bien: ${calendly}
 El link va tal cual, sin acortar ni cambiar. Decile que cuando reserve le llega la confirmación con el link de la videollamada.`,
 
+    nurture_vuelta: `Hace un tiempo te dijo que no era el momento y quedaste en escribirle ahora.
+Retomá vos, sin hacerlo sentir en falta y sin dar por hecho que sigue interesado. Preguntale cómo viene el tema.
+Enganchá con lo que te había contado de su negocio, para que se note que te acordás y no es un mensaje automático.
+Corto: dos líneas y una pregunta.`,
+
     derivado_por_abandono: `Venías conversando y dejó de contestar hace un rato.
 Decile en dos líneas que le pasás la conversación a alguien del equipo, que lo va a contactar por acá.
 Sin reproches y sin hacerlo sentir mal por no haber contestado: puede haber estado ocupado.

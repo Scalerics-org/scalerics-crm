@@ -233,6 +233,19 @@ const esquema = z.object({
    */
   ABANDONO_MINUTOS: z.coerce.number().nonnegative().default(60),
 
+  /**
+   * El que dice "mas adelante": cuantos dias despues se le vuelve a escribir
+   * cuando no dio una referencia clara. Cero apaga la pausa entera.
+   *
+   * Catorce y no siete: al que dijo "estoy viendo presupuestos", escribirle a
+   * la semana se lee como no haberlo escuchado. El piso y el techo estan para
+   * que ninguna interpretacion rara del modelo termine en "te escribo mañana"
+   * ni en un job para dentro de dos años.
+   */
+  NURTURE_DEFAULT_DIAS: z.coerce.number().nonnegative().default(14),
+  NURTURE_MIN_DIAS: z.coerce.number().positive().default(2),
+  NURTURE_MAX_DIAS: z.coerce.number().positive().default(180),
+
   RESERVAS_VIGILAR: booleanoDeEnv.default(true),
   RESERVAS_INTERVALO_MIN: z.coerce.number().int().positive().default(5),
   RESERVAS_DIAS_ADELANTE: z.coerce.number().int().positive().default(60),
