@@ -557,3 +557,92 @@ def send_meta_lead_reminder(to_email: str, negocio: str, rubro: str,
         },
         text=cuerpo_texto,
     )
+
+
+# ─── Discovery: correo en frio a comercios con sitio web ────────────────────
+
+def _cuerpo_discovery(numero: int, negocio: str, rubro: str) -> tuple[str, list[str]]:
+    """Devuelve (asunto, [parrafos]) para el contacto `numero`.
+
+    `negocio` y `rubro` ya vienen escapados por el llamador.
+
+    Son dos y el segundo cierra. En frio, el tercer toque rinde poco y cuesta
+    reputacion: cada marca de spam se paga con entrega, y la entrega es la
+    misma que usa el correo con clientes.
+    """
+    de = f" de {negocio}" if negocio else ""
+    if numero <= 1:
+        return (f"Una idea para{de}" if negocio else "Una idea para tu negocio", [
+            "Hola,",
+            f"Vimos el sitio{de} y nos quedamos pensando en algo.",
+            "Somos Scalerics, una software factory uruguaya. No te venimos a ofrecer "
+            "una p&aacute;gina: lo que hacemos es automatizar lo que hoy se hace a mano "
+            "—pedidos, seguimientos, reportes que se arman de a uno— y software para "
+            "lo que ning&uacute;n sistema de estante resuelve.",
+            "Si te interesa, respond&eacute; este mail y lo charlamos en 20 minutos.",
+        ])
+    return (f"&Uacute;ltimo mail{de}" if negocio else "&Uacute;ltimo mail de Scalerics", [
+        "Hola,",
+        "Te escribimos hace una semana y no queremos insistir m&aacute;s de la cuenta, "
+        "as&iacute; que este es el &uacute;ltimo: no te escribimos m&aacute;s.",
+        "Si en alg&uacute;n momento te sirve automatizar algo de la operativa, "
+        "respondenos y lo vemos. Preguntamos una sola vez.",
+        "Gracias por el tiempo.",
+    ])
+
+
+def send_discovery_email(to_email: str, negocio: str, rubro: str,
+                         unsub_url: str, numero: int = 1) -> str:
+    """Mail en frio a un comercio de la cohorte de discovery.
+
+    Sale del subdominio de `DISCOVERY_FROM_EMAIL`, NO del dominio principal: el
+    correo en frio genera quejas por bien hecho que este, y esas quejas no
+    pueden degradar la entrega de los recordatorios de Meta ni la del correo con
+    clientes. Si la variable no esta, no manda y devuelve "fallo": una
+    configuracion a medias no puede terminar mandando en frio desde
+    scalerics.com.
+    """
+    remitente = os.environ.get("DISCOVERY_FROM_EMAIL", "").strip()
+    if not remitente:
+        logger.warning("DISCOVERY_FROM_EMAIL sin configurar: no se manda nada")
+        return "fallo"
+
+    numero = int(numero or 1)
+    # name y category salen de Google Maps: los escribe cualquiera.
+    negocio_txt = (negocio or "").strip()
+    rubro_txt = (rubro or "").strip()
+
+    asunto, parrafos = _cuerpo_discovery(numero, html.escape(negocio_txt),
+                                         html.escape(rubro_txt))
+    asunto_txt, parrafos_txt = _cuerpo_discovery(numero, negocio_txt, rubro_txt)
+    asunto_txt = html.unescape(asunto_txt)
+    parrafos_txt = [html.unescape(p) for p in parrafos_txt]
+
+    estilo_p = "margin:0 0 14px;font-size:15px;line-height:1.6;color:#1c2b40"
+    cuerpo_html = "".join(f'<p style="{estilo_p}">{p}</p>' for p in parrafos)
+    html_mail = f"""<!DOCTYPE html>
+<html lang="es"><body style="margin:0;padding:24px;background:#f1f5f9">
+  <div style="max-width:520px;margin:0 auto;background:#fff;border-radius:10px;padding:32px">
+    <img src="{_LOGO_FIRMA}" alt="Scalerics" style="height:24px;margin-bottom:20px">
+    {cuerpo_html}
+    <p style="{estilo_p};margin-top:24px"><strong>Scalerics</strong><br>{_TELEFONO}</p>
+    <p style="font-size:12px;color:#94a3b8;margin:24px 0 0">
+      Si no quer&eacute;s recibir m&aacute;s, <a href="{unsub_url}" style="color:#94a3b8">dale de baja ac&aacute;</a>.
+    </p>
+  </div>
+</body></html>"""
+
+    texto = ("\n\n".join(parrafos_txt)
+             + f"\n\nScalerics · {_TELEFONO}"
+             + f"\n\nSi no querés recibir más: {unsub_url}")
+
+    return _send_estado(
+        to_email, asunto_txt, html_mail,
+        from_email=remitente,
+        headers={
+            "Reply-To": "contacto@scalerics.com",
+            "List-Unsubscribe": f"<{unsub_url}>",
+            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+        },
+        text=texto,
+    )

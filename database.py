@@ -430,6 +430,21 @@ def init_db(db_path: str) -> None:
             )
         """)
 
+        # La campana de discovery lleva su propia tabla, con la misma forma. No
+        # necesita migracion: nace asi, a diferencia de meta_reminders, que tuvo
+        # que pasar de una fila por lead a una por contacto.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS discovery_reminders (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                business_id     INTEGER NOT NULL,
+                numero          INTEGER NOT NULL DEFAULT 1,
+                token           TEXT NOT NULL UNIQUE,
+                sent_at         TEXT NOT NULL,
+                unsubscribed_at TEXT,
+                UNIQUE (business_id, numero)
+            )
+        """)
+
         # Migracion de la tabla vieja, que tenia UNIQUE(business_id) y una sola
         # fila por lead. SQLite no deja quitar un UNIQUE: hay que reconstruir.
         # Las filas viejas son el contacto 1 y conservan su token, que esta

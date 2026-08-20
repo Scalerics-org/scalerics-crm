@@ -5655,8 +5655,13 @@ def create_app(db_path: str) -> Flask:
 
     @app.route("/baja/<token>", methods=["GET", "POST"])
     def baja_recordatorios(token):
-        from services.meta_reminders import dar_de_baja
-        dar_de_baja(app.config["DB_PATH"], token)
+        from services.discovery_emails import dar_de_baja as baja_discovery
+        from services.meta_reminders import dar_de_baja as baja_meta
+        # Los tokens son UUID, o sea unicos entre las dos tablas: llamar a las
+        # dos campanas con el mismo token es seguro, y evita publicar una URL
+        # nueva por campana.
+        baja_meta(app.config["DB_PATH"], token)
+        baja_discovery(app.config["DB_PATH"], token)
         # Se responde lo mismo exista o no el token: no tiene sentido decirle a
         # quien se da de baja que su token no servia, y evita sondear tokens.
         return render_template_string("""<!DOCTYPE html>
@@ -6615,6 +6620,9 @@ loadAll();
 
         from services.meta_reminders import start_meta_reminders
         start_meta_reminders(app)
+
+        from services.discovery_emails import start_discovery_emails
+        start_discovery_emails(app)
 
     try:
         from database import get_all_users
