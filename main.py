@@ -57,6 +57,7 @@ def create_parser() -> argparse.ArgumentParser:
     multi_p.add_argument("--verify-web", action="store_true", help="Verificar con Bing si el negocio tiene web (lento pero más preciso)")
     multi_p.add_argument("--category", default="", help="Rubro forzado para todos los leads (si no se pone, se deriva de la query)")
     multi_p.add_argument("--skip-branded", action="store_true", help="Saltear concesionarias oficiales de marcas conocidas (Hyundai, Toyota, etc.)")
+    multi_p.add_argument("--con-web", action="store_true", help="Modo discovery: junta los negocios que SI tienen sitio web")
 
     subparsers.add_parser("dashboard", help="Abrir panel de leads en el browser")
 
@@ -125,8 +126,9 @@ def cmd_scrape_multi(args):
     verify_web = getattr(args, "verify_web", False)
     default_cat = getattr(args, "category", "").strip() or base_query.split()[0].capitalize()
     skip_branded = getattr(args, "skip_branded", False)
+    solo_con_web = getattr(args, "con_web", False)
 
-    logger.info(f"scrape-multi: '{base_query}' × {len(_DEPARTAMENTOS)} depts | {workers} workers | máx {max_per}/dept | verify_web={verify_web}")
+    logger.info(f"scrape-multi: '{base_query}' × {len(_DEPARTAMENTOS)} depts | {workers} workers | máx {max_per}/dept | verify_web={verify_web} | con_web={solo_con_web}")
 
     results: dict[str, int] = {}
     errors: dict[str, str] = {}
@@ -134,7 +136,8 @@ def cmd_scrape_multi(args):
     def _scrape_dept(dept: str) -> tuple[str, int]:
         query = f"{base_query} {dept} Uruguay"
         count = run(query, max_per, DB_PATH, verify_web=verify_web,
-                    default_category=default_cat, skip_branded=skip_branded)
+                    default_category=default_cat, skip_branded=skip_branded,
+                    solo_con_web=solo_con_web)
         return dept, count
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
