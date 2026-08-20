@@ -272,6 +272,36 @@ function crearRepo(db) {
       return r.changes > 0;
     },
 
+    /**
+     * Si el mensaje ANTERIOR del lead se quedo sin respuesta del bot.
+     *
+     * Repetir una pregunta no es insistir cuando nadie contesto la primera vez.
+     * Paso en produccion: el lead pregunto el precio, el tope por hora freno la
+     * respuesta, el lead volvio a preguntar a los ocho minutos y el bot lo
+     * derivo a una persona por "insistir con el precio". Desde su lado habia
+     * preguntado una sola vez y nunca le contestaron.
+     *
+     * Se miran solo los salientes que de verdad salieron: uno que quedo
+     * atrapado en la cola no le llego a nadie.
+     */
+    quedoSinRespuesta(leadId) {
+      const entrantes = db.prepare(
+        "SELECT id FROM messages WHERE lead_id = ? AND direction = 'in' ORDER BY id DESC LIMIT 2"
+      ).all(leadId);
+      // Es el primero que manda: no hay nada anterior que pudiera quedar sin responder.
+      if (entrantes.length < 2) return false;
+
+      const anterior = entrantes[1].id;
+      const contestado = db.prepare(`
+        SELECT 1 FROM messages
+        WHERE lead_id = ? AND direction = 'out' AND id > ?
+          AND kind IN ('manual', 'welcome')
+          AND status IN ('sent', 'delivered', 'read')
+        LIMIT 1
+      `).get(leadId, anterior);
+      return !contestado;
+    },
+
     /** Los ids viejos no sirven para nada: WhatsApp no reenvia de hace dias. */
     limpiarEntrantesVistos(dias = 3) {
       return db.prepare(`DELETE FROM inbound_seen WHERE seen_at < datetime('now', '-${Number(dias)} days')`).run().changes;

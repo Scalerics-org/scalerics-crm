@@ -523,10 +523,23 @@ function crearEmbudo({
 
         // Precio: la primera vez se contesta el criterio, sin dar numeros. Si
         // vuelve a preguntar es que no se conformo, y ahi va a un humano.
-        const consultas = (lead.consultas_precio || 0) + 1;
+        //
+        // Salvo que la primera respuesta nunca le haya llegado. Ahi repetir la
+        // pregunta no es insistir: es no haber recibido nada. Paso de verdad
+        // —el tope por hora freno la respuesta y el lead pregunto de nuevo a
+        // los ocho minutos— y el bot lo derivo por insistente cuando desde su
+        // lado habia preguntado una sola vez.
+        const sinContestar = repo.quedoSinRespuesta(lead.id);
+        const consultas = sinContestar
+          ? (lead.consultas_precio || 1)
+          : (lead.consultas_precio || 0) + 1;
         repo.actualizarFunnel(lead.id, { consultas_precio: consultas });
 
-        if (consultas === 1) {
+        if (sinContestar) {
+          logger?.info({ leadId: lead.id }, 'repitio la pregunta del precio porque no le contestamos: no cuenta como insistir');
+        }
+
+        if (consultas === 1 || sinContestar) {
           // Si la IA no puede, sale el texto del superprompt tal cual: es el
           // unico mensaje donde las palabras exactas estan dictadas.
           if (!await decirIA(lead, 'precio')) decir(lead, textos.PRECIO);

@@ -370,3 +370,34 @@ test('reiniciar cancela los jobs pendientes', async () => {
   s.repo.reiniciarLead(l.id, new Date().toISOString());
   assert.equal(pendientes(), 0);
 });
+
+/**
+ * Repetir una pregunta no es insistir cuando nadie contesto la primera vez.
+ *
+ * Paso en produccion: el lead pregunto el precio, el tope por hora freno la
+ * respuesta, volvio a preguntar a los ocho minutos y el bot lo derivo por
+ * "insiste con el precio". Desde su lado habia preguntado una sola vez y nunca
+ * le contestaron.
+ */
+test('si no le contestamos el precio, repetir la pregunta no lo deriva', async () => {
+  const s = await conLead({ MAX_MSGS_PER_HOUR: 1 });
+
+  // El cupo se gasta con la ficha al equipo... no: esa es interna. Se gasta a
+  // mano, para dejar la respuesta del precio frenada.
+  s.repo.registrarEnvio('59899000999', 0);
+
+  await lead(s, '¿cuánto sale una página web?');
+  // El atajo del precio no cambia el estado: contesta y deja al lead donde estaba.
+  assert.notEqual(estado(s), S.HUMAN_QUEUED);
+  assert.ok(
+    !s.proveedor.getEnviados().some((e) => e.to === TEL),
+    'y la respuesta quedo frenada por el cupo, sin llegarle'
+  );
+
+  // Vuelve a preguntar porque no le llego nada.
+  await lead(s, 'hola? cuánto sale?');
+
+  const l = s.repo.leadPorTelefono(TEL);
+  assert.notEqual(l.fsm_state, S.HUMAN_QUEUED, 'no lo derivan por preguntar dos veces sin respuesta');
+  assert.equal(l.consultas_precio, 1, 'sigue contando una sola consulta');
+});
