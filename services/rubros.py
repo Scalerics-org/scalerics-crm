@@ -191,3 +191,90 @@ def todas_las_busquedas(rubros=None, departamentos=None):
 
 def cuantas_busquedas(rubros=None, departamentos=None) -> int:
     return sum(1 for _ in todas_las_busquedas(rubros, departamentos))
+
+
+# Google no guarda la clave canonica: dice "Agencia inmobiliaria", "Agentes
+# inmobiliarios", "Consultor inmobiliario". La busqueda por clave exacta fallaba
+# con todos ellos y el mail salia con la linea generica — los primeros 30 mails
+# de discovery salieron asi.
+#
+# El orden importa: gana el primero que coincide, y por eso lo mas especifico va
+# arriba. "Peluqueria canina" tiene que caer en veterinaria, no en peluqueria.
+_PALABRAS_POR_RUBRO = [
+    (("canin", "mascota", "veterinar"), "veterinaria"),
+    (("dentist", "odontolog", "dental", "ortodon"), "odontologia"),
+    (("peluquer", "barber", "salon de belleza", "estilista"), "peluqueria"),
+    (("gimnasio", "gym", "crossfit", "fitness"), "gimnasio"),
+    (("depilacion", "cosmetolog", "estetica", "manicur", "spa"), "estetica"),
+    (("fisioterap", "kinesiolog", "rehabilitacion"), "fisioterapia"),
+    (("psicolog", "psicoterap"), "psicologia"),
+    (("optica", "oftalmolog"), "optica"),
+    (("policlinica", "centro medico", "consultorio medico"), "policlinica"),
+    (("laboratorio de analisis", "laboratorio clinico"), "laboratorio"),
+    (("escuela de conductores", "autoescuela", "clases de manejo"), "autoescuela"),
+    (("inmobiliar", "inmueble", "propiedad", "bienes raices"), "inmobiliaria"),
+    (("repuesto", "autoparte"), "repuestos"),
+    (("concesionar", "automotora", "venta de auto", "compraventa de auto"), "automotora"),
+    (("gomeria", "neumatico", "cubierta"), "gomeria"),
+    (("ferreter", "corralon", "barraca", "material de construccion",
+      "materiales de construccion", "materiales para la construccion",
+      "herramienta"), "ferreteria"),
+    (("muebler", "fabrica de muebles", "mueble"), "muebleria"),
+    (("vivero", "garden", "jardineria"), "vivero"),
+    (("librer", "papeler", "articulos de oficina"), "libreria"),
+    (("computacion", "computadora", "informatica"), "informatica"),
+    (("electrodomestico",), "electrodomesticos"),
+    (("bicicleter", "bicicleta"), "bicicleteria"),
+    (("farmacia",), "farmacia"),
+    (("tienda de ropa", "boutique", "indumentaria"), "indumentaria"),
+    (("pizzeria", "rotiseria", "delivery de comida"), "pizzeria"),
+    (("panader", "confiter", "pasteler"), "panaderia"),
+    (("catering", "empresa de eventos"), "catering"),
+    (("distribuidora", "mayorista", "deposito mayorista"), "distribuidora"),
+    (("floreria", "venta de flores"), "floreria"),
+    (("restaurante", "parrillada", "cantina", "bar "), "restaurante"),
+    (("escribania", "escribano", "notarial"), "escribania"),
+    (("estudio contable", "contador", "contable"), "contador"),
+    (("estudio juridico", "abogado", "asesoramiento legal"), "abogado"),
+    (("seguro",), "seguros"),
+    (("despachante", "aduana", "comercio exterior"), "despachante"),
+    (("hotel", "hosteria", "posada", "cabana", "apart hotel"), "hotel"),
+    (("agencia de viajes", "turismo"), "agencia_viajes"),
+    (("salon de fiestas", "salon de eventos"), "salon_eventos"),
+    (("colegio", "liceo", "instituto educativo"), "colegio"),
+    (("jardin de infantes", "guarderia"), "jardin"),
+    (("academia", "escuela de musica", "instituto de ingles"), "academia"),
+    (("constructora", "empresa de obras"), "constructora"),
+    (("arquitect",), "arquitectura"),
+    (("imprenta", "grafica", "serigrafia", "carteler"), "imprenta"),
+    (("mudanza", "flete"), "mudanzas"),
+    (("aire acondicionado", "refrigeracion", "climatizacion"), "climatizacion"),
+    (("aberturas", "carpinteria", "herreria"), "aberturas"),
+    (("piscina",), "piscinas"),
+]
+
+_CLAVES = {r.clave for r in RUBROS}
+
+
+def _sin_tildes(t: str) -> str:
+    return (t.replace("á", "a").replace("é", "e").replace("í", "i")
+             .replace("ó", "o").replace("ú", "u").replace("ñ", "n"))
+
+
+def rubro_de_texto(texto: str) -> str:
+    """La clave canonica del rubro que describe `texto`, o "" si no se sabe.
+
+    Adivinar mal es peor que no adivinar: la linea de apertura del rubro
+    equivocado afirma algo falso sobre el negocio y se nota. Lo ambiguo
+    ("Comercio", "Oficinas de empresa") devuelve "" a proposito y termina en la
+    linea generica, que no afirma nada.
+    """
+    t = _sin_tildes(" ".join((texto or "").lower().split()))
+    if not t:
+        return ""
+    if t in _CLAVES:
+        return t
+    for palabras, clave in _PALABRAS_POR_RUBRO:
+        if any(p in t for p in palabras):
+            return clave
+    return ""

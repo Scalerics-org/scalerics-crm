@@ -681,9 +681,18 @@ def _linea_de_rubro(rubro: str) -> str:
 
     En ese orden a proposito: la propia es mas especifica que la de la familia,
     y la generica es solo una red para un rubro que no este en la lista.
+
+    El texto que llega puede ser la clave canonica (lo que pone el scraper) o lo
+    que dijo Google ("Agencia inmobiliaria", "Agentes inmobiliarios"), asi que
+    primero se normaliza con rubro_de_texto. Sin ese paso, las filas viejas
+    caian todas en la generica: los primeros 30 mails salieron asi.
     """
-    clave = _sin_tildes(" ".join((rubro or "").lower().split()))
-    clave = _ALIAS_RUBRO.get(clave, clave)
+    from services.rubros import rubro_de_texto
+
+    crudo = _sin_tildes(" ".join((rubro or "").lower().split()))
+    clave = _ALIAS_RUBRO.get(crudo, crudo)
+    if clave not in _LINEAS_POR_RUBRO:
+        clave = rubro_de_texto(clave) or clave
     if clave in _LINEAS_POR_RUBRO:
         return _LINEAS_POR_RUBRO[clave]
     return _LINEAS_POR_FAMILIA.get(_familia_del_rubro(clave), _LINEA_GENERICA)
