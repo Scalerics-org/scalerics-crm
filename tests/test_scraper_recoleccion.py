@@ -134,3 +134,33 @@ def test_sin_feed_no_explota():
 
     pagina = SinFeed([["https://www.google.com/maps/place/A"]])
     assert recolectar_fichas(pagina, tope=50) == ["https://www.google.com/maps/place/A"]
+
+
+# ─── Deduplicado entre variantes del mismo rubro ──────────────────────────────
+
+def test_las_fichas_ya_vistas_se_descartan():
+    """"odontologia" y "dentista" devuelven casi la misma gente. Sin esto se
+    paga la visita completa (~7s) a cada repetida para que el CRM la rechace
+    despues por duplicada."""
+    pagina = _PaginaFalsa([[
+        "https://www.google.com/maps/place/A",
+        "https://www.google.com/maps/place/B",
+        "https://www.google.com/maps/place/C",
+    ]])
+    ya = {"https://www.google.com/maps/place/A", "https://www.google.com/maps/place/C"}
+    assert recolectar_fichas(pagina, tope=50, ya_vistos=ya) == [
+        "https://www.google.com/maps/place/B"
+    ]
+
+
+def test_las_ya_vistas_no_cuentan_para_el_tope():
+    """Si contaran, una variante muy repetida devolveria una lista vacia
+    habiendo fichas nuevas mas abajo."""
+    pagina = _PaginaFalsa([[f"https://www.google.com/maps/place/{i}" for i in range(20)]])
+    ya = {f"https://www.google.com/maps/place/{i}" for i in range(15)}
+    assert len(recolectar_fichas(pagina, tope=5, ya_vistos=ya)) == 5
+
+
+def test_sin_ya_vistos_se_comporta_igual_que_antes():
+    pagina = _PaginaFalsa([["https://www.google.com/maps/place/A"]])
+    assert recolectar_fichas(pagina, tope=50) == ["https://www.google.com/maps/place/A"]

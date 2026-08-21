@@ -292,7 +292,7 @@ def _scroll_agotado(historial: list[int], quietas: int = 3) -> bool:
     return all(n == ultimas[0] for n in ultimas)
 
 
-def recolectar_fichas(page, tope: int) -> list[str]:
+def recolectar_fichas(page, tope: int, ya_vistos: set[str] | None = None) -> list[str]:
     """Las URLs de las fichas del listado, scrolleando hasta que se agote.
 
     Esta separado de la visita a proposito. El bucle viejo hacia las dos cosas
@@ -301,11 +301,17 @@ def recolectar_fichas(page, tope: int) -> list[str]:
     de las ~10 primeras de las ~100 que Google ofrece. Juntando todas las URLs
     primero no hay que volver al listado nunca mas.
 
+    `ya_vistos` son fichas que otra variante del mismo rubro ya proceso.
+    "odontologia" y "dentista" devuelven casi la misma gente, y sin esto se paga
+    la visita entera a cada repetida para que el CRM la rechace por duplicada
+    despues. No cuentan para el tope: si contaran, una variante muy repetida
+    devolveria una lista vacia habiendo fichas nuevas mas abajo.
+
     `page` solo necesita query_selector_all / query_selector / wait_for_timeout,
     para poder probarlo sin navegador.
     """
     vistas: list[str] = []
-    en_set: set[str] = set()
+    en_set: set[str] = set(ya_vistos or ())
     historial: list[int] = []
 
     for _ in range(60):
@@ -331,7 +337,7 @@ def recolectar_fichas(page, tope: int) -> list[str]:
     return vistas[:tope]
 
 
-def scrape_google_maps(query: str, max_results: int, db_path: str, verify_web: bool = False, default_category: str = "", skip_branded: bool = False, solo_con_web: bool = False) -> int:
+def scrape_google_maps(query: str, max_results: int, db_path: str, verify_web: bool = False, default_category: str = "", skip_branded: bool = False, solo_con_web: bool = False, ya_vistos: set[str] | None = None) -> int:
     inserted = 0
     maps_list_url = f"https://www.google.com/maps/search/{query.replace(' ', '+')}"
 
@@ -376,7 +382,7 @@ def scrape_google_maps(query: str, max_results: int, db_path: str, verify_web: b
         # Fase 1: juntar TODAS las URLs del listado antes de visitar ninguna.
         # Se piden de mas (x3) porque muchas se descartan despues: sin telefono,
         # cerradas, o sin web cuando el modo discovery las exige.
-        fichas = recolectar_fichas(page, tope=max(max_results * 3, 40))
+        fichas = recolectar_fichas(page, tope=max(max_results * 3, 40), ya_vistos=ya_vistos)
         logger.info(f"Fichas recolectadas del listado: {len(fichas)}")
 
         # Fase 2: visitarlas una por una. Ya no hay que volver al listado nunca,
@@ -385,6 +391,10 @@ def scrape_google_maps(query: str, max_results: int, db_path: str, verify_web: b
         for href in fichas:
             if inserted >= max_results:
                 break
+            # Se marca antes de visitar: si la visita falla igual no queremos
+            # que otra variante del rubro vuelva a intentarla.
+            if ya_vistos is not None:
+                ya_vistos.add(href)
 
             for attempt in range(3):
                 try:
@@ -448,6 +458,6 @@ def scrape_google_maps(query: str, max_results: int, db_path: str, verify_web: b
     logger.info(f"Scraping completo. Guardados: {inserted} negocios")
     return inserted
 
-def run(query: str, max_results: int, db_path: str, verify_web: bool = False, default_category: str = "", skip_branded: bool = False, solo_con_web: bool = False) -> int:
+def run(query: str, max_results: int, db_path: str, verify_web: bool = False, default_category: str = "", skip_branded: bool = False, solo_con_web: bool = False, ya_vistos: set[str] | None = None) -> int:
     init_db(db_path)
-    return scrape_google_maps(query, max_results, db_path, verify_web=verify_web, default_category=default_category, skip_branded=skip_branded, solo_con_web=solo_con_web)
+    return scrape_google_maps(query, max_results, db_path, verify_web=verify_web, default_category=default_category, skip_branded=skip_branded, solo_con_web=solo_con_web, ya_vistos=ya_vistos)
