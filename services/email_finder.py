@@ -183,6 +183,53 @@ def buscar_mail_del_sitio(abrir, website: str) -> tuple[str | None, bool]:
     return None, abrio_alguna
 
 
+def seleccionar_pendientes(db_path: str, limite: int = 50) -> list:
+    """Las filas de discovery a las que todavia hay que buscarles el mail.
+
+    Vive en su propia funcion para que el job local y el endpoint que sirve la
+    cola a un buscador remoto usen exactamente la misma consulta. Dos versiones
+    de este ORDER BY es como se vuelve a caer en que las filas caidas de id bajo
+    se coman el LIMIT para siempre.
+    """
+    conn = _connect(db_path)
+    try:
+        return conn.execute(
+            """
+            SELECT id, website FROM businesses
+             WHERE source = 'discovery'
+               AND website IS NOT NULL AND TRIM(website) <> ''
+               AND (email IS NULL OR TRIM(email) = '')
+               AND COALESCE(status, '') NOT IN ('email_found', 'no_email')
+             ORDER BY CASE WHEN COALESCE(TRIM(error_message), '') = ''
+                           THEN 0 ELSE 1 END, error_message, id
+             LIMIT ?
+            """,
+            # En SQLite LIMIT -1 significa SIN limite: un `--limite -1` de dedo
+            # gordo procesaria la cohorte entera.
+            (max(0, int(limite)),),
+        ).fetchall()
+    finally:
+        conn.close()
+
+
+def aplicar_resultado(db_path: str, business_id: int, mail, abrio: bool,
+                      error: str = "") -> str:
+    """Guarda lo que dio un sitio y devuelve en que balde cayo.
+
+    Los tres caminos y por que se marcan distinto estan explicados en
+    procesar_pendientes, que es su unico otro llamador.
+    """
+    if mail:
+        update_business(db_path, business_id, email=mail, status="email_found")
+        return "con_mail"
+    if abrio:
+        update_business(db_path, business_id, status="no_email")
+        return "sin_mail"
+    marca = f"{_sello_de_intento()} {error or _MARCA_NO_ABRIO}"
+    update_business(db_path, business_id, error_message=marca[:500])
+    return "no_abrio"
+
+
 def procesar_pendientes(db_path: str, abrir, limite: int = 50) -> dict:
     """Busca el mail de los negocios de discovery que todavia no lo tienen.
 
@@ -202,25 +249,7 @@ def procesar_pendientes(db_path: str, abrir, limite: int = 50) -> dict:
     caidos desde el primer sitio- marcaria todo por igual y el orden degeneraria
     otra vez a `id`, con las caidas de id bajo comiendose el LIMIT para siempre.
     """
-    conn = _connect(db_path)
-    try:
-        filas = conn.execute(
-            """
-            SELECT id, website FROM businesses
-             WHERE source = 'discovery'
-               AND website IS NOT NULL AND TRIM(website) <> ''
-               AND (email IS NULL OR TRIM(email) = '')
-               AND COALESCE(status, '') NOT IN ('email_found', 'no_email')
-             ORDER BY CASE WHEN COALESCE(TRIM(error_message), '') = ''
-                           THEN 0 ELSE 1 END, error_message, id
-             LIMIT ?
-            """,
-            # En SQLite LIMIT -1 significa SIN limite: un `--limite -1` de dedo
-            # gordo procesaria la cohorte entera.
-            (max(0, int(limite)),),
-        ).fetchall()
-    finally:
-        conn.close()
+    filas = seleccionar_pendientes(db_path, limite)
 
     res = {"revisados": 0, "con_mail": 0, "sin_mail": 0, "no_abrio": 0}
     sin_abrir_seguidos = 0
@@ -238,15 +267,13 @@ def procesar_pendientes(db_path: str, abrir, limite: int = 50) -> dict:
             logger.warning(f"[{fila['id']}] {fila['website']} -> excepcion: {error}")
             mail, abrio = None, False
 
-        if mail:
-            update_business(db_path, fila["id"], email=mail, status="email_found")
-            res["con_mail"] += 1
+        balde = aplicar_resultado(db_path, fila["id"], mail, abrio, error)
+        res[balde] += 1
+        if balde == "con_mail":
             sin_abrir_seguidos = 0
             alguna_abrio = True
             logger.info(f"[{fila['id']}] {fila['website']} -> {mail}")
-        elif abrio:
-            update_business(db_path, fila["id"], status="no_email")
-            res["sin_mail"] += 1
+        elif balde == "sin_mail":
             sin_abrir_seguidos = 0
             alguna_abrio = True
             logger.info(f"[{fila['id']}] {fila['website']} -> sin mail")
@@ -267,9 +294,6 @@ def procesar_pendientes(db_path: str, abrir, limite: int = 50) -> dict:
             # Tiene que ser estrictamente creciente entre filas: dos filas con el
             # mismo sello empatan y el desempate es `id` otra vez. Ver
             # _sello_de_intento, que es donde se garantiza.
-            marca = f"{_sello_de_intento()} {error or _MARCA_NO_ABRIO}"
-            update_business(db_path, fila["id"], error_message=marca[:500])
-            res["no_abrio"] += 1
             sin_abrir_seguidos += 1
             logger.warning(f"[{fila['id']}] {fila['website']} -> no abrio, se reintenta")
             if sin_abrir_seguidos >= _MAX_SIN_ABRIR_SEGUIDOS and alguna_abrio:

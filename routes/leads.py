@@ -1,5 +1,6 @@
 """Lead / business CRUD routes."""
 
+import logging
 import os
 import re
 import threading
@@ -16,6 +17,7 @@ from database import (get_all_businesses, update_business, delete_business, get_
 from database import get_attachment_file, update_attachment_file, get_attachments
 from pitch_generator import generate_pitch
 from services.budget_ai import ai_edit_html, generate_budget_html
+from services.email_finder import aplicar_resultado, seleccionar_pendientes
 
 leads_bp = Blueprint("leads", __name__)
 
@@ -778,3 +780,55 @@ def api_budget_generate(biz_id):
         return jsonify({"ok": True, "attachment_id": attach_id})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
+
+
+# ── Cola de busqueda de mails (discovery) ──────────────────────────────────────
+#
+# El scraper escribe directo a este CRM, pero el buscador de mails necesita un
+# navegador y corre en otra maquina. Estos dos endpoints son el puente: uno
+# entrega la cola, el otro recibe lo que dio cada sitio.
+#
+# Los dos delegan en services.email_finder a proposito. Dos versiones del ORDER
+# BY de la cola es como se vuelve a caer en que los dominios caidos de id bajo
+# se coman el limite de todas las corridas y las filas nuevas no se miren nunca.
+
+_log = logging.getLogger(__name__)
+
+
+def _token_admin_ok() -> bool:
+    esperado = os.environ.get("ADMIN_TOKEN", "")
+    return bool(esperado) and request.headers.get("x-admin-token", "") == esperado
+
+
+@leads_bp.route("/api/discovery/pendientes")
+def api_discovery_pendientes():
+    if not _token_admin_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    try:
+        limite = int(request.args.get("limite", 50))
+    except ValueError:
+        limite = 50
+    filas = seleccionar_pendientes(_db(), limite)
+    return jsonify({"items": [{"id": f["id"], "website": f["website"]} for f in filas]})
+
+
+@leads_bp.route("/api/discovery/mails", methods=["POST"])
+def api_discovery_mails():
+    if not _token_admin_ok():
+        return jsonify({"error": "unauthorized"}), 401
+    resultados = (request.get_json() or {}).get("resultados") or []
+    cuenta = {"con_mail": 0, "sin_mail": 0, "no_abrio": 0}
+    for r in resultados:
+        try:
+            balde = aplicar_resultado(
+                _db(), int(r["id"]), r.get("email"), bool(r.get("abrio")),
+                str(r.get("error") or ""),
+            )
+        except Exception as e:
+            # Una fila borrada entre que se entrego la cola y volvio el
+            # resultado no puede tumbar el resto de la tanda.
+            _log.warning(
+                f"Discovery: no se pudo aplicar el resultado de {r.get('id')}: {e}")
+            continue
+        cuenta[balde] += 1
+    return jsonify({"ok": True, **cuenta})
