@@ -634,11 +634,59 @@ def _sin_tildes(t: str) -> str:
              .replace("ó", "o").replace("ú", "u").replace("ñ", "n"))
 
 
+# Con 48 rubros no se pueden escribir 48 textos sin que se noten hechos a
+# desgano, y la generica no dice nada. La familia es el punto medio: agrupa por
+# QUE SE HACE A MANO ahi, no por industria. A una odontologia y a una
+# veterinaria les duele lo mismo (la agenda); a una ferreteria y a una casa de
+# repuestos tambien (la lista de precios). Ver services/rubros.py.
+_LINEAS_POR_FAMILIA = {
+    "turnos":
+        "Si los turnos se agendan por tel&eacute;fono o WhatsApp y los "
+        "recordatorios los manda alguien a mano, eso se automatiza.",
+    "stock_precios":
+        "Si el cat&aacute;logo y la lista de precios los actualiz&aacute;s a "
+        "mano, y las consultas de stock las contest&aacute;s una por una, eso "
+        "se automatiza.",
+    "pedidos":
+        "Si los pedidos entran por WhatsApp y despu&eacute;s alguien los pasa a "
+        "mano al sistema, eso se automatiza.",
+    "expedientes":
+        "Si cada caso es una carpeta y para saber en qu&eacute; qued&oacute; hay "
+        "que preguntarle a alguien, eso se automatiza.",
+    "reservas":
+        "Si la disponibilidad la llev&aacute;s en una planilla y cada consulta "
+        "se contesta a mano, eso se automatiza.",
+    "cuotas":
+        "Si las cuotas y los vencimientos los control&aacute;s a mano, y los "
+        "avisos de pago salen uno por uno, eso se automatiza.",
+    "presupuestos":
+        "Si cada presupuesto se arma de cero en una planilla y despu&eacute;s "
+        "nadie sabe en qu&eacute; qued&oacute;, eso se automatiza.",
+}
+
+
+def _familia_del_rubro(clave: str) -> str:
+    """La familia de copy del rubro, segun services/rubros.py."""
+    # Import local: rubros.py no depende de nada, pero este modulo se importa
+    # desde media aplicacion y no vale la pena arrastrarlo en cada arranque.
+    from services.rubros import RUBROS
+    for r in RUBROS:
+        if r.clave == clave:
+            return r.familia
+    return ""
+
+
 def _linea_de_rubro(rubro: str) -> str:
-    """La linea de apertura que le corresponde al rubro, o la generica."""
+    """La linea de apertura del rubro: la propia, la de su familia, o la generica.
+
+    En ese orden a proposito: la propia es mas especifica que la de la familia,
+    y la generica es solo una red para un rubro que no este en la lista.
+    """
     clave = _sin_tildes(" ".join((rubro or "").lower().split()))
     clave = _ALIAS_RUBRO.get(clave, clave)
-    return _LINEAS_POR_RUBRO.get(clave, _LINEA_GENERICA)
+    if clave in _LINEAS_POR_RUBRO:
+        return _LINEAS_POR_RUBRO[clave]
+    return _LINEAS_POR_FAMILIA.get(_familia_del_rubro(clave), _LINEA_GENERICA)
 
 def _cuerpo_discovery(numero: int, negocio: str, rubro: str) -> tuple[str, list[str]]:
     """Devuelve (asunto, [parrafos]) para el contacto `numero`.
