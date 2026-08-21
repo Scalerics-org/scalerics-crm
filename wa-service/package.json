@@ -7,6 +7,7 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
+    "chat": "node scripts/chat.js",
     "test": "node --test test/"
   },
   "dependencies": {

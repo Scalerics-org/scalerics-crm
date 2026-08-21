@@ -14,6 +14,7 @@
  *
  *   node scripts/chat.js                  arranca de cero
  *   node scripts/chat.js --tel 099111222  con otro numero
+ *   node scripts/chat.js --nombre Ana     con otro nombre de perfil
  *   node scripts/chat.js --seguir         no borra lo de la corrida anterior
  *
  * Adentro:
@@ -39,6 +40,9 @@ const tomar = (nombre, porDefecto) => {
   return i >= 0 && args[i + 1] ? args[i + 1] : porDefecto;
 };
 const TELEFONO = tomar('--tel', '59899000001');
+// El nombre va al perfil de WhatsApp, y el bot lo usa para saludar. Con un
+// placeholder como "Vos" el saludo sale "Genial, Vos" y arruina la prueba.
+const NOMBRE = tomar('--nombre', 'Gonza');
 const SEGUIR = args.includes('--seguir');
 
 fs.mkdirSync(path.dirname(BASE), { recursive: true });
@@ -140,7 +144,7 @@ async function main() {
 
   console.log('');
   console.log(`${C.negrita('  Chat con el bot')}${C.gris(`  ·  no toca WhatsApp  ·  ${TELEFONO}`)}`);
-  console.log(C.gris('  /estado  /jobs  /reiniciar  /salir'));
+  console.log(C.gris(`  como ${NOMBRE}  ·  /estado  /jobs  /reiniciar  /salir`));
   console.log(C.gris(`  ${'─'.repeat(58)}`));
   console.log('');
 
@@ -179,7 +183,7 @@ async function main() {
       // por un reenvio de WhatsApp y lo tiraria.
       n += 1;
       s.proveedor.simularEntrante({
-        from: TELEFONO, texto, nombre: 'Vos', id: `chat-${Date.now()}-${n}`,
+        from: TELEFONO, texto, nombre: NOMBRE, id: `chat-${Date.now()}-${n}`,
       });
       await s.agrupador.vaciar();
       await s.cola.vacia();
