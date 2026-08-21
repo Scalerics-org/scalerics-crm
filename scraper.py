@@ -277,6 +277,60 @@ def _debe_guardar(data: dict, solo_con_web: bool, skip_branded: bool) -> tuple[b
     return True, ""
 
 
+def _scroll_agotado(historial: list[int], quietas: int = 3) -> bool:
+    """Se dejo de cargar resultados nuevos?
+
+    `historial` es cuantas fichas habia tras cada scroll. Google carga de a
+    tandas y a veces se toma su tiempo, asi que una sola medicion repetida no
+    prueba nada: hacen falta `quietas` seguidas. Y si vuelve a crecer, la
+    cuenta arranca de cero — lo que corta es el estancamiento del final, no
+    uno del medio.
+    """
+    if len(historial) <= quietas:
+        return False
+    ultimas = historial[-(quietas + 1):]
+    return all(n == ultimas[0] for n in ultimas)
+
+
+def recolectar_fichas(page, tope: int) -> list[str]:
+    """Las URLs de las fichas del listado, scrolleando hasta que se agote.
+
+    Esta separado de la visita a proposito. El bucle viejo hacia las dos cosas
+    entreveradas y recargaba el listado despues de cada ficha; recargarlo lo
+    devuelve arriba con solo la primera pantalla cargada, asi que nunca pasaba
+    de las ~10 primeras de las ~100 que Google ofrece. Juntando todas las URLs
+    primero no hay que volver al listado nunca mas.
+
+    `page` solo necesita query_selector_all / query_selector / wait_for_timeout,
+    para poder probarlo sin navegador.
+    """
+    vistas: list[str] = []
+    en_set: set[str] = set()
+    historial: list[int] = []
+
+    for _ in range(60):
+        for el in page.query_selector_all("a[href]"):
+            href = el.get_attribute("href") or ""
+            if "/maps/place/" not in href or href in en_set:
+                continue
+            en_set.add(href)
+            vistas.append(href)
+            if len(vistas) >= tope:
+                return vistas[:tope]
+
+        historial.append(len(vistas))
+        if _scroll_agotado(historial):
+            break
+
+        feed = page.query_selector('div[role="feed"]')
+        if feed is None:
+            break
+        feed.evaluate("el => el.scrollBy(0, 3000)")
+        page.wait_for_timeout(1200)
+
+    return vistas[:tope]
+
+
 def scrape_google_maps(query: str, max_results: int, db_path: str, verify_web: bool = False, default_category: str = "", skip_branded: bool = False, solo_con_web: bool = False) -> int:
     inserted = 0
     maps_list_url = f"https://www.google.com/maps/search/{query.replace(' ', '+')}"
@@ -319,113 +373,75 @@ def scrape_google_maps(query: str, max_results: int, db_path: str, verify_web: b
                        if "/maps/place/" in (el.get_attribute("href") or "")]
         logger.info(f"Total <a>: {len(all_links)} | Links a /maps/place/: {len(place_links)}")
 
-        seen_urls: set[str] = set()
-        prev_result_count = 0
+        # Fase 1: juntar TODAS las URLs del listado antes de visitar ninguna.
+        # Se piden de mas (x3) porque muchas se descartan despues: sin telefono,
+        # cerradas, o sin web cuando el modo discovery las exige.
+        fichas = recolectar_fichas(page, tope=max(max_results * 3, 40))
+        logger.info(f"Fichas recolectadas del listado: {len(fichas)}")
 
-        while inserted < max_results:
-            hrefs = []
-            for el in page.query_selector_all("a[href]"):
-                href = el.get_attribute("href") or ""
-                if "/maps/place/" in href and href not in seen_urls:
-                    hrefs.append(href)
-
-            if not hrefs:
-                logger.warning("No se encontraron resultados en la página")
+        # Fase 2: visitarlas una por una. Ya no hay que volver al listado nunca,
+        # que era justamente lo que reseteaba el scroll y dejaba al scraper
+        # encerrado en la primera pantalla.
+        for href in fichas:
+            if inserted >= max_results:
                 break
 
-            made_progress = False
-            for href in hrefs:
-                if inserted >= max_results:
-                    break
-                if href in seen_urls:
-                    continue
-                seen_urls.add(href)
+            for attempt in range(3):
+                try:
+                    page.goto(href, wait_until="domcontentloaded", timeout=15000)
+                    page.wait_for_selector("h1.DUwDvf", timeout=10000)
+                    random_delay()
 
-                for attempt in range(3):
-                    try:
-                        page.goto(href, wait_until="domcontentloaded", timeout=15000)
-                        page.wait_for_selector("h1.DUwDvf", timeout=10000)
-                        random_delay()
-
-                        # Permanently closed → no point contacting them
-                        if is_permanently_closed(page):
-                            logger.info(f"Saltando (cerrado permanentemente): {extract_text(page, 'h1.DUwDvf')}")
-                            page.goto(maps_list_url, wait_until="domcontentloaded", timeout=30000)
-                            random_delay()
-                            break
-
-                        data = extract_business_data(page)
-
-                        # default_category always wins — whatever Maps says gets replaced
-                        if default_category:
-                            data["category"] = default_category
-
-                        data["score"] = score_lead(data)
-
-                        guardar, motivo = _debe_guardar(data, solo_con_web, skip_branded)
-                        if not guardar:
-                            logger.info(f"Saltando ({motivo}): {data['name']}")
-                            page.goto(maps_list_url, wait_until="domcontentloaded", timeout=30000)
-                            random_delay()
-                            break
-
-                        # Discovery mode: the site itself is the source for the email address
-                        if solo_con_web:
-                            data["website"] = data.get("maps_website_url")
-                            data["source"] = "discovery"
-
-                        # Optional Bing double-check (slow, off by default); pointless in
-                        # discovery mode, which wants businesses WITH a website
-                        if verify_web and not solo_con_web:
-                            logger.info(f"Verificando con Bing: {data['name']}")
-                            no_web = verify_no_website(data["name"], data["city"], page)
-                            if not no_web:
-                                logger.info(f"Saltando (web encontrada en Bing): {data['name']}")
-                                page.goto(maps_list_url, wait_until="domcontentloaded", timeout=30000)
-                                page.wait_for_selector('a[href^="https://www.google.com/maps/place/"]', timeout=10000)
-                                random_delay(2, 4)
-                                break
-
-                        # Insert business — remote Railway CRM or local SQLite
-                        if os.environ.get("CRM_URL"):
-                            saved = _remote_insert(data)
-                        else:
-                            saved = bool(insert_business(db_path, data))
-                        if saved:
-                            inserted += 1
-                            made_progress = True
-                            logger.info(f"[{inserted}/{max_results}] Guardado: {data['name']}")
-                        else:
-                            logger.warning(f"No guardado (duplicado o error CRM remoto): {data['name']}")
-
-                        page.goto(maps_list_url, wait_until="domcontentloaded", timeout=30000)
-                        page.wait_for_selector('a[href^="https://www.google.com/maps/place/"]', timeout=10000)
-                        random_delay()
+                    # Permanently closed → no point contacting them
+                    if is_permanently_closed(page):
+                        logger.info(f"Saltando (cerrado permanentemente): {extract_text(page, 'h1.DUwDvf')}")
                         break
 
-                    except Exception as e:
-                        if attempt < 2:
-                            logger.warning(f"Reintentando resultado (intento {attempt + 1}): {e}")
-                            random_delay(2, 4)
-                        else:
-                            logger.error(f"Saltando resultado tras 3 intentos fallidos: {e}")
-                            try:
-                                page.goto(maps_list_url, wait_until="domcontentloaded", timeout=30000)
-                                page.wait_for_selector('a[href^="https://www.google.com/maps/place/"]', timeout=10000)
-                            except Exception:
-                                pass
-                            random_delay(2, 4)
+                    data = extract_business_data(page)
 
-            scroll_container = page.query_selector('div[role="feed"]')
-            if scroll_container:
-                scroll_container.evaluate("el => el.scrollBy(0, 1000)")
-            random_delay(2, 3)
+                    # default_category always wins — whatever Maps says gets replaced
+                    if default_category:
+                        data["category"] = default_category
 
-            new_results = page.query_selector_all('a[href^="https://www.google.com/maps/place/"]')
-            if len(new_results) <= prev_result_count and not made_progress:
-                logger.info("No hay más resultados para cargar")
-                break
-            prev_result_count = len(new_results)
+                    data["score"] = score_lead(data)
+
+                    guardar, motivo = _debe_guardar(data, solo_con_web, skip_branded)
+                    if not guardar:
+                        logger.info(f"Saltando ({motivo}): {data['name']}")
+                        break
+
+                    # Discovery mode: the site itself is the source for the email address
+                    if solo_con_web:
+                        data["website"] = data.get("maps_website_url")
+                        data["source"] = "discovery"
+
+                    # Optional Bing double-check (slow, off by default); pointless in
+                    # discovery mode, which wants businesses WITH a website
+                    if verify_web and not solo_con_web:
+                        logger.info(f"Verificando con Bing: {data['name']}")
+                        if not verify_no_website(data["name"], data["city"], page):
+                            logger.info(f"Saltando (web encontrada en Bing): {data['name']}")
+                            break
+
+                    # Insert business — remote CRM or local SQLite
+                    if os.environ.get("CRM_URL"):
+                        saved = _remote_insert(data)
+                    else:
+                        saved = bool(insert_business(db_path, data))
+                    if saved:
+                        inserted += 1
+                        logger.info(f"[{inserted}/{max_results}] Guardado: {data['name']}")
+                    else:
+                        logger.info(f"No guardado (duplicado): {data['name']}")
+                    break
+
+                except Exception as e:
+                    if attempt < 2:
+                        logger.warning(f"Reintentando ficha (intento {attempt + 1}): {e}")
+                        random_delay(2, 4)
+                    else:
+                        logger.error(f"Saltando ficha tras 3 intentos: {e}")
+
 
         browser.close()
 
