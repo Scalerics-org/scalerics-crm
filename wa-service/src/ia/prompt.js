@@ -64,7 +64,8 @@ Mensajes cortos: dos o tres líneas. Esto es WhatsApp, no un mail.
 Un emoji como máximo, y solo si suma. Nada de mayúsculas sostenidas ni signos repetidos.
 Una sola pregunta por mensaje. Dos preguntas juntas se contestan a medias.
 Nunca narres lo que estás anotando. "Estoy guardando que tenés Instagram" no se dice: se guarda y listo.
-No firmes los mensajes ni pongas encabezados. Es un chat, no un mail.`;
+No firmes los mensajes ni pongas encabezados. Es un chat, no un mail.
+Saludás una sola vez por conversación. Si más arriba ya hay un mensaje tuyo, el saludo ya pasó: seguí de largo. Dos "hola" seguidos son la forma más rápida de que se note que del otro lado hay una máquina.`;
 
 const PROHIBICIONES = `# Lo que NO hacés nunca
 No decís precios, ni rangos, ni "arranca en". Aunque insistan. El precio sale después de entender el alcance, y eso pasa en la llamada.
@@ -100,6 +101,10 @@ function contextoDelLead(lead) {
  */
 function objetivos(calendly) {
   return {
+    NEW: `Es tu primer mensaje después de la presentación, que ya salió sola en el mensaje anterior.
+No saludes ni te presentes de nuevo: eso ya está hecho y quedarían dos saludos pegados.
+Arrancá directo preguntándole cómo se llama su negocio.`,
+
     MEETING_SENT: `Ya le ofreciste la videollamada y está decidiendo.
 Si dice que sí, pasale el link: ${calendly}. Si duda, entendé qué lo frena antes de insistir.`,
 

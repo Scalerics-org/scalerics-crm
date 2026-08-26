@@ -32,7 +32,6 @@ const readline = require('node:readline');
 // corrida: probar tiene que ser barato, y arrastrar estado de la vez anterior
 // es como se llega a "me anda distinto y no se por que".
 const RAIZ = path.join(__dirname, '..');
-const BASE = path.join(RAIZ, 'data', 'chat-dev.db');
 
 const args = process.argv.slice(2);
 const tomar = (nombre, porDefecto) => {
@@ -40,6 +39,11 @@ const tomar = (nombre, porDefecto) => {
   return i >= 0 && args[i + 1] ? args[i + 1] : porDefecto;
 };
 const TELEFONO = tomar('--tel', '59899000001');
+
+// Una base por numero, no una sola compartida: asi se pueden tener dos chats
+// abiertos a la vez —probar el mismo cambio como dos personas distintas— sin
+// que uno le pise el archivo al otro.
+const BASE = path.join(RAIZ, 'data', `chat-${TELEFONO.replace(/\D/g, '')}.db`);
 // El nombre va al perfil de WhatsApp, y el bot lo usa para saludar. Con un
 // placeholder como "Vos" el saludo sale "Genial, Vos" y arruina la prueba.
 const NOMBRE = tomar('--nombre', 'Gonza');
@@ -47,10 +51,20 @@ const SEGUIR = args.includes('--seguir');
 
 fs.mkdirSync(path.dirname(BASE), { recursive: true });
 if (!SEGUIR) {
-  // El -wal tambien: borrar solo el .db y dejar el journal es como se vacia una
-  // base sin querer.
-  for (const f of [BASE, `${BASE}-wal`, `${BASE}-shm`]) {
-    if (fs.existsSync(f)) fs.unlinkSync(f);
+  try {
+    // El -wal tambien: borrar solo el .db y dejar el journal es como se vacia
+    // una base sin querer.
+    for (const f of [BASE, `${BASE}-wal`, `${BASE}-shm`]) {
+      if (fs.existsSync(f)) fs.unlinkSync(f);
+    }
+  } catch (e) {
+    // En Windows no se puede borrar un archivo que otro proceso tiene abierto.
+    // Antes esto salia como un stack trace de fs.unlinkSync, que no le dice a
+    // nadie que lo unico que pasa es que hay otro chat abierto.
+    console.error(`\n  No se pudo empezar de cero: ${path.basename(BASE)} está en uso.`);
+    console.error('  Cerrá el otro chat, o abrí este con otro número:\n');
+    console.error('    npm run chat -- --tel 099222333\n');
+    process.exit(1);
   }
 }
 
