@@ -571,3 +571,37 @@ def test_el_sello_del_intento_es_estrictamente_creciente():
 
     assert sellos == sorted(sellos), "los sellos tienen que salir en orden"
     assert len(set(sellos)) == 500, "y sin repetir ninguno"
+
+
+# ─── Placeholders reales encontrados en produccion ────────────────────────────
+
+@pytest.mark.parametrize("mail", [
+    # Todos vistos en la cohorte de discovery, cada uno en varios comercios sin
+    # relacion entre si: son plantillas de constructores de sitios, no
+    # direcciones de nadie.
+    "contacto@ejemplo.com",
+    "email@email.com",
+    "your@email.com",
+    "xsaap@emailaddress.fh",
+    "juan@mail.com",
+    # Sentry manda su DSN dentro del markup de todo sitio hecho en Wix.
+    "605a7baede844d278b89dc95ae0a9123@sentry-next.wixpress.com",
+    "abc@sentry.wixpress.com",
+])
+def test_los_placeholders_de_plantilla_son_basura(mail):
+    assert es_mail_basura(mail) is True
+
+
+@pytest.mark.parametrize("mail", [
+    # Direcciones reales de la misma cohorte. Ninguna puede caer por ampliar la
+    # lista: perder un comercio bueno es peor que mandarle a un placeholder.
+    "ventas@casani.com.uy",          # 7 sucursales de una cadena de verdad
+    "info@dentalessence.com.uy",
+    "contacto@odontoplaceuy.com",
+    "centrodentalmvd@gmail.com",
+    "sofiaocariz@hotmail.com",
+    "juan@scalerics.com",            # el local "juan" es un nombre, no basura
+    "info@mailchimp.com",            # "mail" en el dominio no lo hace plantilla
+])
+def test_las_direcciones_de_verdad_no_son_basura(mail):
+    assert es_mail_basura(mail) is False

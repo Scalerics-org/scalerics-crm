@@ -20,15 +20,36 @@ logger = logging.getLogger(__name__)
 # Local part que delata una direccion que nadie lee.
 _LOCALES_BASURA = {
     "noreply", "no-reply", "donotreply", "usuario", "tuemail", "tucorreo",
-    "ejemplo", "example",
+    "ejemplo", "example", "your", "youremail", "tumail", "sucorreo",
 }
 
-# Dominios de plantilla y de proveedores, no del comercio.
+# Dominios de plantilla y de proveedores, no del comercio. Los agregados
+# despues del primer padron salieron de mirar lo que efectivamente se junto,
+# no de imaginar: "ejemplo.com" aparecio en 4 comercios distintos y
+# "emailaddress.fh" en 3.
 _DOMINIOS_BASURA = {
     "dominio.com", "tudominio.com", "midominio.com", "sitio.com", "tusitio.com",
     "example.com", "example.org", "example.net", "dominio.com.uy",
-    "sentry.io", "sentry.wixpress.com", "wix.com", "squarespace.com",
+    "ejemplo.com", "ejemplo.com.uy", "tuempresa.com", "correo.com",
+    "email.com", "emailaddress.fh",
+    "sentry.io", "wix.com", "squarespace.com",
+    # wixpress a secas y no "sentry.wixpress.com": el subdominio cambia
+    # ("sentry-next.wixpress.com") y la regla de sufijo no lo agarraba.
+    "wixpress.com",
     "godaddy.com", "wordpress.com",
+}
+
+# Placeholders que no se pueden vetar por dominio sin llevarse direcciones
+# buenas: "mail.com" es un proveedor real, pero "juan@mail.com" aparecio en 8
+# comercios sin ninguna relacion entre si —odontologia, barberia, nails— o sea
+# que es la plantilla de un constructor de sitios, no la direccion de nadie.
+#
+# El criterio para entrar aca: la MISMA direccion en varios comercios con
+# nombres que no tienen que ver. Una cadena de verdad tambien repite direccion
+# (ventas@casani.com.uy esta en 7 sucursales) pero comparten el nombre, y esa
+# si es buena.
+_DIRECCIONES_PLANTILLA = {
+    "juan@mail.com",
 }
 
 _RE_MAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
@@ -55,6 +76,8 @@ def es_mail_basura(mail: str) -> bool:
     """True si la direccion no sirve para escribirle a un comercio."""
     mail = (mail or "").strip().lower()
     if not mail or "@" not in mail:
+        return True
+    if mail in _DIRECCIONES_PLANTILLA:
         return True
     local, _, dominio = mail.partition("@")
     if local in _LOCALES_BASURA:
