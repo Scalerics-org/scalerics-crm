@@ -248,6 +248,20 @@ const esquema = z.object({
   ABANDONO_MINUTOS: z.coerce.number().nonnegative().default(60),
 
   /**
+   * Cada cuanto, como mucho, se le recuerda al equipo que un lead ya derivado
+   * sigue escribiendo. Cero apaga el aviso.
+   *
+   * Que el bot se calle con quien esta en manos de una persona es correcto: dos
+   * voces contestando lo mismo es peor que una. Lo que no puede pasar es que
+   * ademas nadie se entere. Un lead escribio seis dias despues de que lo
+   * derivaran y del lado de adentro no quedo mas rastro que una linea de log.
+   *
+   * Con tope, porque el que manda cuatro mensajes seguidos no necesita cuatro
+   * avisos.
+   */
+  AVISO_HUMANO_MINUTOS: z.coerce.number().nonnegative().default(60),
+
+  /**
    * El que dice "mas adelante": cuantos dias despues se le vuelve a escribir
    * cuando no dio una referencia clara. Cero apaga la pausa entera.
    *

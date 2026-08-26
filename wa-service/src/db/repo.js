@@ -101,7 +101,7 @@ function crearRepo(db) {
     actualizarLead(id, campos) {
       const permitidos = [
         'status', 'welcomed_at', 'replied_at', 'followup_sent_at',
-        'am_notified_at', 'rubro_norm', 'nombre', 'necesidad',
+        'am_notified_at', 'humano_avisado_at', 'rubro_norm', 'nombre', 'necesidad',
       ];
       const set = Object.keys(campos).filter((k) => permitidos.includes(k));
       if (!set.length) return stmt.leadPorId.get(id);
@@ -174,6 +174,7 @@ function crearRepo(db) {
         score = NULL, priority = NULL, score_reason = NULL,
         nurture_desde = NULL, nurture_motivo = NULL,
         no_cliente_motivo = NULL, no_cliente_desde = NULL,
+        humano_avisado_at = NULL,
         status = 'new', replied_at = NULL, followup_sent_at = NULL,
         -- Tambien el saludo: reiniciar es empezar de cero, y sin esto el lead
         -- reiniciado nunca vuelve a recibir la presentacion.
@@ -300,6 +301,21 @@ function crearRepo(db) {
         LIMIT 1
       `).get(leadId, anterior);
       return !contestado;
+    },
+
+    /**
+     * Cuando fue lo ultimo que el bot le dijo, en formato de SQLite.
+     *
+     * Para un lead que esta con una persona, eso es el mensaje de la
+     * derivacion: aproxima hace cuanto lo estan esperando.
+     */
+    ultimoSalienteAl(leadId) {
+      const f = db.prepare(`
+        SELECT created_at FROM messages
+        WHERE lead_id = ? AND direction = 'out' AND kind IN ('manual', 'welcome')
+        ORDER BY id DESC LIMIT 1
+      `).get(leadId);
+      return f ? f.created_at : null;
     },
 
     /** Los ids viejos no sirven para nada: WhatsApp no reenvia de hace dias. */

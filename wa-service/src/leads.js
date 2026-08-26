@@ -19,6 +19,41 @@ function crearServicioLeads({ repo, cola, cfg, logger, textos, redactor = null, 
   }
 
   /**
+   * El lead esta con una persona y sigue escribiendo: que alguien se entere.
+   *
+   * Que el bot se calle es correcto —dos voces contestando lo mismo es peor que
+   * una— pero callarse Y no avisar convierte el traspaso en un pozo. Paso de
+   * verdad: un lead derivado escribio seis dias despues y del lado de adentro
+   * no quedo mas rastro que una linea de log.
+   *
+   * Con tope: el que manda cuatro mensajes seguidos no necesita cuatro avisos.
+   */
+  function avisarQueSigueEscribiendo(lead, texto) {
+    if (!cfg.AVISO_HUMANO_MINUTOS || !cfg.amPhones.length) return;
+
+    const ultimo = lead.humano_avisado_at ? Date.parse(lead.humano_avisado_at) : 0;
+    if (ahora().getTime() - ultimo < cfg.AVISO_HUMANO_MINUTOS * 60_000) return;
+
+    // created_at viene como 'YYYY-MM-DD HH:MM:SS' y es UTC, pero sin decirlo:
+    // parsearlo tal cual lo toma como hora local y da unas horas de error.
+    const desde = repo.ultimoSalienteAl(lead.id);
+    const horas = desde
+      ? Math.max(0, Math.round((ahora().getTime() - Date.parse(`${desde.replace(' ', 'T')}Z`)) / 3600_000))
+      : 0;
+
+    for (const am of cfg.amPhones) {
+      cola.encolar({
+        to: am,
+        texto: plantillas.avisoSigueEscribiendo(lead, texto, horas),
+        kind: 'am_notice',
+        leadId: lead.id,
+      });
+    }
+    repo.actualizarLead(lead.id, { humano_avisado_at: ahora().toISOString() });
+    logger?.info({ leadId: lead.id, horas }, 'lead derivado que sigue escribiendo: se le avisa al equipo');
+  }
+
+  /**
    * Arranca de nuevo el reloj del abandono, o lo apaga si ya no corresponde.
    *
    * Va al final de cada turno entrante, que es el unico punto por donde pasan
@@ -200,6 +235,13 @@ function crearServicioLeads({ repo, cola, cfg, logger, textos, redactor = null, 
         lead_id: lead.id, direction: 'in', kind: 'reply', body: texto,
         provider: 'entrante', status: 'delivered',
       });
+
+      // Ya lo atiende una persona: el bot no le contesta, pero el que lo tiene
+      // a cargo tiene que saber que le escribio.
+      if (lead.human_requested) {
+        avisarQueSigueEscribiendo(lead, texto);
+        return repo.leadPorId(lead.id);
+      }
 
       // El saludo salia solo por el camino del formulario. Al que escribe
       // directo al numero —un QR, un anuncio, el numero en la web— el bot le

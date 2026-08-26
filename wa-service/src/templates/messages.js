@@ -154,6 +154,26 @@ function avisoDerivacion(lead, { motivo, historial = [] }) {
   return lineas.join('\n');
 }
 
+/**
+ * El lead ya esta con una persona y sigue escribiendo. El bot no le contesta
+ * —seria hablar por encima de quien lo atiende— asi que el unico que puede
+ * hacer algo es el que recibe esto.
+ */
+function avisoSigueEscribiendo(lead, texto, desdeHoras) {
+  const cuando = desdeHoras >= 24
+    ? `hace ${Math.round(desdeHoras / 24)} día(s)`
+    : (desdeHoras >= 1 ? `hace ${desdeHoras}h` : 'recién');
+  return [
+    '💬 Te sigue escribiendo',
+    `👤 ${lead.business_name || lead.nombre || 'sin nombre'}`,
+    `📌 Te lo pasaron ${cuando}${lead.motivo_derivacion ? ` · ${lead.motivo_derivacion}` : ''}`,
+    `💬 "${String(texto).replace(/\s+/g, ' ').slice(0, 140)}"`,
+    '',
+    'El bot no le contesta: la conversación es tuya.',
+    `wa.me/${lead.telefono}`,
+  ].join('\n');
+}
+
 function avisoReunionAgendada(lead, { cuando, link }) {
   return [
     '🗓 Reunión agendada',
@@ -205,6 +225,7 @@ module.exports = {
   avisoSinRespuesta,
   avisoDerivacion,
   avisoReunionAgendada,
+  avisoSigueEscribiendo,
   resumenEmbudo,
   recordatorioDiaAntes,
   recordatorio30Minutos,

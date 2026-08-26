@@ -210,7 +210,10 @@ test('pedir un humano lo congela, y solo el CRM lo devuelve', async () => {
   s.proveedor.limpiar();
 
   await lead(s, 'hola?');
-  assert.equal(s.proveedor.getEnviados().length, 0, 'el bot no se mete');
+  assert.equal(
+    s.proveedor.getEnviados().filter((e) => e.to === TEL).length, 0,
+    'el bot no se mete con el lead'
+  );
 
   await s.app.inject({
     method: 'POST', url: `/api/leads/phone/${TEL}/release`,

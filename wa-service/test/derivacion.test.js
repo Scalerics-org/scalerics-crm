@@ -127,7 +127,43 @@ test('derivado, el bot se calla hasta que el CRM lo devuelva', async () => {
 
   await lead(s, '¿hay alguien?');
   await lead(s, 'dale');
-  assert.equal(s.proveedor.getEnviados().length, 0, 'con una persona a cargo el bot no se mete');
+
+  const alLead = s.proveedor.getEnviados().filter((e) => e.to === LEAD_TEL);
+  assert.equal(alLead.length, 0, 'con una persona a cargo el bot no se mete');
+});
+
+/**
+ * Callarse es correcto; callarse Y no avisar convierte el traspaso en un pozo.
+ *
+ * Paso de verdad: un lead derivado escribio seis dias despues y del lado de
+ * adentro no quedo mas rastro que una linea de log.
+ */
+test('pero el equipo se entera de que le sigue escribiendo', async () => {
+  const s = await conLead();
+  await lead(s, 'hola');
+  await lead(s, 'quiero hacer un reclamo');
+  s.proveedor.limpiar();
+
+  await lead(s, '¿hay alguien?');
+
+  const aviso = s.proveedor.getEnviados().find((e) => e.to === AM);
+  assert.ok(aviso, 'le llega al que lo tiene a cargo');
+  assert.match(aviso.texto, /sigue escribiendo/i);
+  assert.match(aviso.texto, /hay alguien/, 'con lo que dijo');
+});
+
+test('pero uno solo aunque mande cuatro mensajes seguidos', async () => {
+  const s = await conLead();
+  await lead(s, 'hola');
+  await lead(s, 'quiero hacer un reclamo');
+  s.proveedor.limpiar();
+
+  await lead(s, 'hola?');
+  await lead(s, 'hay alguien?');
+  await lead(s, 'necesito una respuesta');
+
+  const avisos = s.proveedor.getEnviados().filter((e) => e.to === AM);
+  assert.equal(avisos.length, 1, 'el que manda cuatro no necesita cuatro avisos');
 });
 
 test('el motivo tambien queda cuando pide un humano o no entiende', async () => {
