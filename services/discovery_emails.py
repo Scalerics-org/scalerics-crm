@@ -20,6 +20,7 @@ import uuid
 from datetime import datetime, timezone
 
 from services.discovery_contactos import DIAS_DE_CADA_CONTACTO, TOTAL_CONTACTOS
+from services.discovery_respuestas import sincronizar_desde_gmail
 from services.email_service import (send_discovery_email,
                                    send_discovery_queue_alert)
 
@@ -385,6 +386,15 @@ def start_discovery_emails(app) -> None:
         while True:
             try:
                 with app.app_context():
+                    # Primero las respuestas y despues los envios, no al reves:
+                    # si alguien contesto ayer y su seguimiento vence hoy, hay
+                    # que frenarlo ANTES de que salga, no despues.
+                    try:
+                        r = sincronizar_desde_gmail(app.config["DB_PATH"])
+                        logger.info(f"Discovery respuestas: {r}")
+                    except Exception as e:
+                        logger.warning(f"Discovery respuestas: {e}")
+
                     enviar_discovery(
                         app.config["DB_PATH"],
                         os.environ.get("CRM_URL", "https://scalerics-crm.fly.dev"),
