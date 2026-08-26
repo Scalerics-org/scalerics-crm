@@ -129,6 +129,8 @@ _FILTRO_ELEGIBLE = (
 #      columna deja fuera de la veda a todo lead al que no se le haya
 #      corrido. Las claves son las mismas que usa scripts/backfill_meta_emails.py.
 _DIRECCIONES_VEDADAS = """
+    SELECT LOWER(TRIM(email)) FROM mails_vedados
+    UNION
     SELECT LOWER(TRIM(b2.email)) FROM businesses b2
      WHERE b2.email IS NOT NULL AND COALESCE(b2.source, '') <> 'discovery'
     UNION

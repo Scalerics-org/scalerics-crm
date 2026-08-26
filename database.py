@@ -434,6 +434,18 @@ def init_db(db_path: str) -> None:
         # necesita migracion: nace asi, a diferencia de meta_reminders, que tuvo
         # que pasar de una fila por lead a una por contacto.
         conn.execute("""
+            CREATE TABLE IF NOT EXISTS mails_vedados (
+                email      TEXT PRIMARY KEY,
+                motivo     TEXT NOT NULL,
+                detalle    TEXT,
+                creado_at  TEXT NOT NULL
+            )
+        """)
+
+        # Direcciones a las que no se les escribe mas: rebotes duros y quejas de
+        # spam. Es UNA lista para las dos campanas: las dos salen de la misma
+        # cuenta de Resend, y lo que rebota en una rebota en la otra.
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS discovery_reminders (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
                 business_id     INTEGER NOT NULL,

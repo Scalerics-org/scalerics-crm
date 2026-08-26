@@ -21,6 +21,7 @@ from routes.meta import meta_bp, start_meta_token_monitor, start_meta_daily_impo
 from routes.calendly import calendly_bp
 from routes.notion import notion_bp
 from routes.notion_clients import notion_clients_bp
+from routes.resend_webhook import resend_bp
 from routes.projects import projects_bp
 from services.demo_service import demo_job_handler
 from services.job_service import init_worker
@@ -5567,7 +5568,7 @@ def create_app(db_path: str) -> Flask:
     app.config["PIPELINE_LOCK"] = _pipeline_lock
 
     for bp in (leads_bp, demos_bp, calendar_bp, wa_bp, pipeline_bp, tasks_bp, budgets_bp, tokens_bp, meta_bp, calendly_bp, notion_bp, projects_bp,
-                notion_clients_bp):
+                notion_clients_bp, resend_bp):
         app.register_blueprint(bp)
 
     @app.before_request
@@ -5577,6 +5578,10 @@ def create_app(db_path: str) -> Flask:
         if request.path.startswith("/api/meta/webhook"):
             return
         if request.path.startswith("/api/calendly/webhook"):
+            return
+        # Su autenticacion es la firma de Svix, verificada dentro del endpoint:
+        # Resend lo llama sin credenciales nuestras.
+        if request.path.startswith("/api/resend/webhook"):
             return
         # Any /api/ request with valid x-admin-token bypasses session auth
         if request.path.startswith("/api/"):

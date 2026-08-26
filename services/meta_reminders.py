@@ -36,7 +36,11 @@ _VENTANA_RECIEN_ELEGIBLE_DIAS = 7
 # otra funcion.
 _FILTRO_LEAD_ELEGIBLE = (
     "b.source = 'meta' AND b.crm_status = 'sin_contactar' "
-    "AND b.email IS NOT NULL AND LENGTH(TRIM(b.email)) > 3"
+    "AND b.email IS NOT NULL AND LENGTH(TRIM(b.email)) > 3 "
+    # Rebotes duros y quejas de spam. La lista es una sola para las dos
+    # campanas: salen de la misma cuenta de Resend, y lo que rebota
+    # escribiendole a un lead de Meta rebota igual en discovery.
+    "AND LOWER(TRIM(b.email)) NOT IN (SELECT LOWER(TRIM(email)) FROM mails_vedados)"
 )
 
 # La tabla de dias (DIAS_DE_CADA_CONTACTO / TOTAL_CONTACTOS) vive en
