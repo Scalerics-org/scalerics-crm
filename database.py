@@ -434,6 +434,16 @@ def init_db(db_path: str) -> None:
         # necesita migracion: nace asi, a diferencia de meta_reminders, que tuvo
         # que pasar de una fila por lead a una por contacto.
         conn.execute("""
+            CREATE TABLE IF NOT EXISTS corridas (
+                nombre TEXT PRIMARY KEY,
+                ultima TEXT NOT NULL
+            )
+        """)
+
+        # Cuando corrio por ultima vez cada job diario. Los hilos arrancan
+        # despues de CADA boot y Fly reinicia en cada deploy: sin esto, cinco
+        # deploys en una tarde son cinco disparos.
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS mails_vedados (
                 email      TEXT PRIMARY KEY,
                 motivo     TEXT NOT NULL,

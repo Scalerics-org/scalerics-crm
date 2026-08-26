@@ -9,6 +9,7 @@ import threading
 import time
 from datetime import datetime, timezone
 
+from services.corridas import marcar_corrida, puede_correr, ultima_corrida
 from services.email_service import send_meta_lead_reminder
 from services.secuencia_contactos import DIAS_DE_CADA_CONTACTO, TOTAL_CONTACTOS
 
@@ -464,6 +465,26 @@ def enviar_recordatorios(db_path: str, base_url: str, dry_run: bool = False) -> 
     return res
 
 
+def tanda_diaria(db_path: str, base_url: str):
+    """La tanda de hoy, o None si ya corrio dentro del plazo.
+
+    Mismo motivo que en discovery: el hilo arranca 180 segundos despues de CADA
+    boot y Fly reinicia en cada deploy. El tope rodante de 24 horas ya evitaba
+    mandar de mas, pero era el unico guard; este es el segundo e independiente.
+
+    La marca se deja ANTES de mandar: si la tanda se muere en el medio, el
+    reinicio siguiente no puede volver a intentarla entera.
+    """
+    if not puede_correr(db_path, "meta"):
+        logger.info(
+            f"Recordatorios Meta: ya corrio el {ultima_corrida(db_path, 'meta')}, "
+            f"se saltea esta tanda (arranque por deploy)"
+        )
+        return None
+    marcar_corrida(db_path, "meta")
+    return enviar_recordatorios(db_path, base_url)
+
+
 def start_meta_reminders(app) -> None:
     """Corre una vez por dia. Arranca SOLO con META_RECORDATORIOS=on.
 
@@ -483,7 +504,7 @@ def start_meta_reminders(app) -> None:
         while True:
             try:
                 with app.app_context():
-                    enviar_recordatorios(
+                    tanda_diaria(
                         app.config["DB_PATH"],
                         os.environ.get("CRM_URL", "https://scalerics-crm.fly.dev"),
                     )

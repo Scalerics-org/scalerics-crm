@@ -20,6 +20,7 @@ import uuid
 from datetime import datetime, timezone
 
 from services.discovery_contactos import DIAS_DE_CADA_CONTACTO, TOTAL_CONTACTOS
+from services.corridas import marcar_corrida, puede_correr, ultima_corrida
 from services.discovery_respuestas import sincronizar_desde_gmail
 from services.email_service import (send_discovery_email,
                                    send_discovery_queue_alert)
@@ -363,6 +364,28 @@ def enviar_discovery(db_path: str, base_url: str, dry_run: bool = False) -> dict
     return res
 
 
+def tanda_diaria(db_path: str, base_url: str):
+    """La tanda de hoy, o None si ya corrio dentro del plazo.
+
+    Es el segundo guard, independiente del tope rodante de 24 horas. El hilo
+    arranca 600 segundos despues de CADA boot y Fly reinicia en cada deploy: el
+    26/8/2026 hubo cinco releases en 42 minutos. Ahi el tope hizo bien su
+    trabajo —la segunda tanda mando 24 en vez de 30 porque descontó lo ya
+    enviado— pero era lo unico que separaba un deploy de una tanda repetida.
+
+    La marca se deja ANTES de mandar, no despues: si la tanda se muere en el
+    medio, el reinicio siguiente no puede volver a intentarla entera.
+    """
+    if not puede_correr(db_path, "discovery"):
+        logger.info(
+            f"Discovery: ya corrio el {ultima_corrida(db_path, 'discovery')}, "
+            f"se saltea esta tanda (arranque por deploy)"
+        )
+        return None
+    marcar_corrida(db_path, "discovery")
+    return enviar_discovery(db_path, base_url)
+
+
 def start_discovery_emails(app) -> None:
     """Corre una vez por dia. Arranca SOLO con DISCOVERY_EMAILS=on.
 
@@ -397,7 +420,7 @@ def start_discovery_emails(app) -> None:
                     except Exception as e:
                         logger.warning(f"Discovery respuestas: {e}")
 
-                    enviar_discovery(
+                    tanda_diaria(
                         app.config["DB_PATH"],
                         os.environ.get("CRM_URL", "https://scalerics-crm.fly.dev"),
                     )
