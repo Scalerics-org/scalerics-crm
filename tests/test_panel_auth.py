@@ -164,3 +164,67 @@ def test_el_token_de_admin_saltea_el_chequeo_de_panel(app, monkeypatch):
 def test_sin_sesion_sigue_dando_401_no_403(app):
     r = app.test_client().get("/api/leads")
     assert r.status_code == 401
+
+
+# ── el rol "Admin" otorga admin de verdad ────────────────────────────────────
+
+def _rol_admin(db):
+    conn = sqlite3.connect(db)
+    try:
+        return conn.execute("SELECT id FROM roles WHERE name='Admin'").fetchone()[0]
+    finally:
+        conn.close()
+
+
+def test_el_rol_admin_otorga_admin(app):
+    """En produccion habia cuatro personas con el rol "Admin" y ninguna podia
+    abrir la seccion de usuarios: eso dependia solo de ADMIN_EMAIL, que admite un
+    unico valor. El rol se veia en pantalla pero no mandaba."""
+    db = app.config["DB_PATH"]
+    uid = _usuario(db, "otro@scalerics.com", _rol_admin(db))
+    from services.auth import is_admin
+    assert is_admin(db, uid) is True
+
+
+def test_el_rol_admin_puede_ver_la_lista_de_usuarios(app):
+    db = app.config["DB_PATH"]
+    c = _cliente(app, _usuario(db, "otro@scalerics.com", _rol_admin(db)))
+    assert c.get("/api/admin/users-data").status_code == 200
+
+
+def test_api_me_le_dice_al_frontend_que_es_admin(app):
+    """Sin esto el backend lo deja entrar pero el nav no le muestra el link."""
+    db = app.config["DB_PATH"]
+    c = _cliente(app, _usuario(db, "otro@scalerics.com", _rol_admin(db)))
+    assert c.get("/api/me").get_json()["is_admin"] is True
+
+
+def test_admin_email_sigue_siendo_admin_sin_rol(app):
+    """La cuenta raiz no depende de tener rol: es la salida de emergencia si
+    alguien rompe los roles."""
+    db = app.config["DB_PATH"]
+    from services.auth import is_admin
+    assert is_admin(db, _usuario(db, "jefe@scalerics.com")) is True
+
+
+def test_un_rol_cualquiera_no_otorga_admin(app):
+    db = app.config["DB_PATH"]
+    rid = _crear_rol(db, "TestVentas", ["cola", "clientes"])
+    from services.auth import is_admin
+    assert is_admin(db, _usuario(db, "ventas@scalerics.com", rid)) is False
+
+
+def test_sin_rol_no_es_admin(app):
+    db = app.config["DB_PATH"]
+    from services.auth import is_admin
+    assert is_admin(db, _usuario(db, "nadie2@scalerics.com")) is False
+
+
+def test_el_id_1_no_es_admin_encubierto_si_hay_admin_email(app):
+    """Con ADMIN_EMAIL configurado, ser el primer usuario no alcanza."""
+    db = app.config["DB_PATH"]
+    rid = _crear_rol(db, "TestNada", [])
+    from services.auth import is_admin
+    primero = _usuario(db, "primero@scalerics.com", rid)
+    assert primero == 1
+    assert is_admin(db, primero) is False

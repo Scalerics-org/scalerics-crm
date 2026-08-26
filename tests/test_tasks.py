@@ -27,16 +27,30 @@ def app(tmp_path, monkeypatch):
 
 
 def _usuario(db, email):
-    """Crea el usuario CON el panel 'tasks' habilitado.
+    """Crea el usuario con el panel 'tasks' habilitado, pero SIN ser admin.
 
-    Sin rol, el enforcement por panel devuelve 403 antes de llegar al chequeo de
-    propiedad, y los tests de propiedad pasarian por el motivo equivocado.
+    Dos razones, y las dos vienen de tests que pasaban por el motivo equivocado:
+
+      - sin rol, el enforcement por panel devuelve 403 antes de llegar al chequeo
+        de propiedad, asi que los tests de propiedad daban verde sin ejercitarla;
+      - con el rol "Admin" el usuario ES admin (services.auth.is_admin lo
+        contempla), y un admin puede tocar la tarea de cualquiera — con lo cual
+        los mismos tests pasarian a fallar por la razon opuesta.
+
+    De ahi el rol propio: da el panel y nada mas.
     """
     uid = create_user(db, name=email.split("@")[0], email=email, phone="099",
                       password_hash=generate_password_hash("x" * 10))
     conn = connect(db)
     try:
-        rid = conn.execute("SELECT id FROM roles WHERE name='Admin'").fetchone()[0]
+        fila = conn.execute("SELECT id FROM roles WHERE name='SoloTareas'").fetchone()
+        if fila:
+            rid = fila[0]
+        else:
+            rid = conn.execute(
+                "INSERT INTO roles (name, panel_access) VALUES (?,?)",
+                ("SoloTareas", '["tasks"]'),
+            ).lastrowid
         conn.execute("UPDATE users SET role_id=? WHERE id=?", (rid, uid))
         conn.commit()
     finally:

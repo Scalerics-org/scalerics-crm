@@ -6,14 +6,17 @@ otros 5 no estaba: /api/admin/roles (GET, POST, PUT, DELETE) y
 podia crear roles, reescribir los permisos de los existentes, borrarlos dejando a
 todo el equipo sin paneles, o cambiarse el rol a si mismo.
 
-La definicion de admin se mantiene identica a la que ya usaban los endpoints que
-si validaban, para no ampliar el acceso sin querer:
-  - si ADMIN_EMAIL esta configurado -> es admin quien tenga ese email
-  - si no lo esta                    -> es admin el usuario id=1
+Es admin quien tenga el email de ADMIN_EMAIL (la cuenta raiz) o el rol llamado
+"Admin". El id=1 solo cuenta si ADMIN_EMAIL no esta configurado.
 
-A proposito NO se considera admin a quien tenga un rol llamado "admin": los roles
-son justamente el recurso que estos endpoints protegen, y hacerlos parte de la
-condicion permitiria escalar privilegios modificando el propio rol.
+El rol se incluye a pedido del equipo. Tiene un costo que conviene tener presente:
+quien tenga el rol Admin puede editar los roles, y por lo tanto darle admin a
+otro. Es la contrapartida de que el rol signifique lo que dice; antes NO contaba,
+y el resultado era que cuatro personas con el rol "Admin" no podian abrir la
+seccion de usuarios porque solo mandaba ADMIN_EMAIL, que admite un unico valor.
+
+ADMIN_EMAIL sigue siendo la salida de emergencia: esa cuenta es admin aunque le
+saquen el rol.
 """
 
 import json
@@ -53,16 +56,44 @@ PANELES_POR_BLUEPRINT = {
 }
 
 
+def es_rol_admin(db_path: str, role_id) -> bool:
+    """El rol se llama "Admin"."""
+    if not role_id:
+        return False
+    conn = _db_connect(db_path)
+    try:
+        fila = conn.execute("SELECT name FROM roles WHERE id = ?", (role_id,)).fetchone()
+    finally:
+        conn.close()
+    return bool(fila) and (fila["name"] or "").strip().lower() == "admin"
+
+
 def is_admin(db_path: str, user_id) -> bool:
+    """Es admin quien cumpla CUALQUIERA de estas:
+
+      1. su email coincide con ADMIN_EMAIL  (la cuenta raiz)
+      2. tiene el rol llamado "Admin"
+      3. es el usuario id=1, solo si ADMIN_EMAIL no esta configurado
+
+    La (2) se sumo porque sin ella el rol "Admin" no daba acceso a usuarios ni a
+    roles: eso dependia unicamente de ADMIN_EMAIL, que admite un solo valor. En
+    produccion habia cuatro personas con el rol Admin y ninguna podia entrar,
+    salvo la que coincidia con esa variable. Dos cosas distintas se llamaban
+    igual, y la que se veia en pantalla no era la que mandaba.
+    """
     if not user_id:
         return False
     current = get_user_by_id(db_path, user_id)
     if not current:
         return False
+
     admin_email = os.environ.get("ADMIN_EMAIL", "").strip()
-    if admin_email:
-        return (current["email"] or "").lower() == admin_email.lower()
-    return current["id"] == 1
+    if admin_email and (current["email"] or "").lower() == admin_email.lower():
+        return True
+    if es_rol_admin(db_path, current.get("role_id")):
+        return True
+    # Solo cuando no hay ADMIN_EMAIL: si no, el id=1 seria admin encubierto.
+    return not admin_email and current["id"] == 1
 
 
 def require_admin(db_path: str):
