@@ -20,7 +20,8 @@ import uuid
 from datetime import datetime, timezone
 
 from services.discovery_contactos import DIAS_DE_CADA_CONTACTO, TOTAL_CONTACTOS
-from services.email_service import send_discovery_email
+from services.email_service import (send_discovery_email,
+                                   send_discovery_queue_alert)
 
 logger = logging.getLogger(__name__)
 
@@ -388,6 +389,9 @@ def start_discovery_emails(app) -> None:
                         app.config["DB_PATH"],
                         os.environ.get("CRM_URL", "https://scalerics-crm.fly.dev"),
                     )
+                    # Despues de mandar, no antes: lo que importa es cuanto
+                    # queda una vez descontada la tanda de hoy.
+                    avisar_si_la_cola_esta_baja(app.config["DB_PATH"])
             except Exception as e:
                 logger.warning(f"Discovery: {e}")
             time.sleep(_CADA_24_HORAS)
@@ -397,3 +401,57 @@ def start_discovery_emails(app) -> None:
         f"Discovery ACTIVO por DISCOVERY_EMAILS=on: una corrida por dia, hasta "
         f"{_TOPE_DIARIO} mails, la primera 600s despues de este arranque"
     )
+
+
+# Cuantos dias puede seguir mandando la campana antes de quedarse sin nadie.
+# No es una metrica decorativa: entre el 23 y el 26 de agosto de 2026 la
+# campana no mando un solo mail porque se le acabo la cola, y nos enteramos
+# tres dias despues mirando el panel de Resend.
+_DIAS_PARA_AVISAR = 7
+
+
+def dias_de_autonomia(db_path: str) -> int:
+    """Dias que la campana puede seguir mandando con lo que tiene en la cola.
+
+    Cuenta con `comercios_a_contactar` y no con una consulta propia: dos
+    definiciones de "elegible" es como la alarma termina diciendo que hay cola
+    cuando el enviador no encuentra a nadie.
+
+    Solo cuentan los que nunca recibieron nada. Los seguimientos no dan
+    autonomia: son finitos y se acaban solos, asi que una cola con doscientos
+    seguimientos pendientes y ningun comercio nuevo tiene autonomia cero, que
+    es exactamente lo que hay que saber.
+
+    Se redondea para abajo: media tanda no es medio dia de tranquilidad, es que
+    manana te quedas sin nada.
+    """
+    # El limite alto es para contar, no para mandar. Con la cohorte entera de
+    # discovery esto son unos pocos miles de filas.
+    pendientes = len(comercios_a_contactar(db_path, 100000))
+    return pendientes // max(1, _TOPE_DIARIO)
+
+
+def avisar_si_la_cola_esta_baja(db_path: str) -> bool:
+    """Manda el aviso si quedan menos de `_DIAS_PARA_AVISAR` dias. Devuelve si aviso.
+
+    Se traga cualquier error a proposito: el aviso es lo menos importante que
+    hace este job, y que reviente no puede impedir que salgan los mails.
+    """
+    destino = os.environ.get("ADMIN_EMAIL", "").strip()
+    if not destino:
+        logger.warning("Discovery: sin ADMIN_EMAIL, no se puede avisar de la cola baja")
+        return False
+
+    dias = dias_de_autonomia(db_path)
+    if dias >= _DIAS_PARA_AVISAR:
+        return False
+
+    pendientes = len(comercios_a_contactar(db_path, 100000))
+    try:
+        send_discovery_queue_alert(destino, dias=dias, pendientes=pendientes,
+                                   tope=_TOPE_DIARIO)
+    except Exception as e:
+        logger.error(f"Discovery: no se pudo mandar el aviso de cola baja: {e}")
+        return False
+    logger.warning(f"Discovery: quedan {dias} dias de cola ({pendientes} sin contactar), avisado a {destino}")
+    return True

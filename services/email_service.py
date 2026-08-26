@@ -300,6 +300,48 @@ def send_meta_token_alert(to_email: str, error_detail: str) -> bool:
     return _send(to_email, "ALERTA: Token Meta Ads inválido — Scalerics CRM", html)
 
 
+def send_discovery_queue_alert(to_email: str, dias: int, pendientes: int,
+                               tope: int) -> bool:
+    """Avisa que la campana de discovery se esta quedando sin a quien escribirle.
+
+    El hueco de agosto de 2026 duro tres dias y se descubrio de casualidad
+    mirando el panel de Resend: el enviador hacia lo correcto (una tanda por
+    dia, cero candidatos) y no habia forma de enterarse. Esto no evita el
+    hueco; hace que se sepa antes de que pase.
+    """
+    cuerpo = (
+        _muted(
+            f"La campana de discovery tiene <b>{pendientes} comercios</b> sin contactar "
+            f"en la cola. A {tope} mails por dia eso es <b>{dias} "
+            f"{'dia' if dias == 1 else 'dias'}</b> de autonomia."
+            if pendientes else
+            "La campana de discovery <b>se quedo sin comercios para contactar</b>. "
+            "La tanda diaria esta corriendo y encontrando cero candidatos."
+        )
+        + _info_card([
+            ("Sin contactar", str(pendientes)),
+            ("Tope diario", str(tope)),
+            ("Autonomia", f"{dias} dias"),
+        ])
+        + _muted(
+            "Para recargar la cola hay dos pasos, en este orden: scrapear mas rubros "
+            "y despues correrles el buscador de mails. Un comercio sin direccion no "
+            "entra en la cola, asi que scrapear solo no alcanza."
+        )
+    )
+    html = _layout(
+        badge="Campana de discovery",
+        title=("Sin comercios para contactar" if not pendientes
+               else f"Quedan {dias} dias de cola"),
+        body=cuerpo,
+        cta_url=_CRM_URL,
+        cta_label="Ir al CRM →",
+    )
+    asunto = ("Discovery: la cola se quedo vacia — Scalerics CRM" if not pendientes
+              else f"Discovery: quedan {dias} dias de cola — Scalerics CRM")
+    return _send(to_email, asunto, html)
+
+
 def send_meta_lead_failure_alert(email: str, lead_id: str, error: str) -> None:
     """Avisa que un lead de Meta llegó pero no se pudo guardar."""
     # `lead_id` viene del payload del webhook y `error` puede arrastrar texto
