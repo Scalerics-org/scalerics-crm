@@ -28,3 +28,8 @@ hexast-cajas/
 
 # Worktrees de trabajo aislado
 .worktrees/
+
+# Cobertura de tests
+.coverage
+coverage.xml
+htmlcov/
