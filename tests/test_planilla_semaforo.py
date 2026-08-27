@@ -219,3 +219,22 @@ def test_el_endpoint_rechaza_un_cuerpo_mal_armado(cliente):
                         json={"filas": "no soy una lista"}).status_code == 400
     assert cliente.post("/api/meta/sync-planilla", headers=AUTH,
                         json={"filas": [{}] * 5001}).status_code == 400
+
+
+def test_el_telefono_guardado_como_numero_no_gana_un_cero():
+    """Google guarda un telefono sin + como numero: sale "59895720157.0".
+
+    Sacar los no-digitos a lo bruto lo convertia en "598957201570" y el lead
+    dejaba de parear sin que nada lo avisara. Paso con dos filas reales.
+    """
+    assert normalizar_telefono("59895720157.0") == "59895720157"
+    assert normalizar_telefono("5493582459263.0") == "5493582459263"
+    # Y lo que ya andaba tiene que seguir andando.
+    assert normalizar_telefono("+598 99 913 326") == "59899913326"
+    assert normalizar_telefono("099913326") == "99913326"
+
+
+def test_el_lead_con_telefono_numerico_ahora_casa(db):
+    _lead(db, 1, "+59895720157")
+    aplicar(db, [{"tel": "59895720157.0", "color": VIOLETA}])
+    assert _estado(db, 1) == "presupuesto_enviado"

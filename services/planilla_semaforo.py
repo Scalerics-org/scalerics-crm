@@ -88,10 +88,20 @@ def estado_de_color(valor: str) -> str:
 
 
 def normalizar_telefono(valor: str) -> str:
-    """Solo digitos, sin ceros a la izquierda. La planilla y el CRM los escriben
-    distinto (con +, con espacios, con parentesis) y no hay forma de pedirle a
-    quien la llena que sea consistente."""
-    return re.sub(r"\D", "", str(valor or "")).lstrip("0")
+    """Solo digitos, sin ceros a la izquierda.
+
+    La planilla y el CRM los escriben distinto (con +, con espacios, con
+    parentesis) y no hay forma de pedirle a quien la llena que sea consistente.
+
+    **La parte decimal se corta antes de sacar los simbolos.** Google guarda un
+    telefono sin + como numero, y sale como "59895720157.0"; sacar los no-digitos
+    a lo bruto lo convierte en "598957201570", con un cero de mas al final, y ese
+    lead deja de parear en silencio. Paso con dos filas reales.
+    """
+    t = str(valor or "").strip()
+    if re.fullmatch(r"[\d\s+().-]*\.\d+", t):
+        t = t.split(".")[0]
+    return re.sub(r"\D", "", t).lstrip("0")
 
 
 def _indice(conn: sqlite3.Connection) -> tuple[dict, dict]:
