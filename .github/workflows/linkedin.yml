@@ -1,0 +1,46 @@
+name: Borradores de LinkedIn
+
+on:
+  schedule:
+    # 11:00 UTC = 08:00 en Montevideo (UTC-3). Martes y viernes.
+    - cron: "0 11 * * 2,5"
+  workflow_dispatch:
+
+jobs:
+  borradores:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Instalar dependencias
+        run: |
+          pip install requests playwright
+          playwright install --with-deps chromium
+
+      - name: Pedirle los borradores al CRM
+        id: generar
+        env:
+          CRM: ${{ secrets.CRM_URL }}
+          TOKEN: ${{ secrets.ADMIN_TOKEN }}
+        run: |
+          set -euo pipefail
+          RESP=$(curl -sS -f -X POST "$CRM/api/linkedin/generar" \
+            -H "x-admin-token: $TOKEN")
+          echo "respuesta: $RESP"
+          JOB_ID=$(echo "$RESP" | python -c "import json,sys; print(json.load(sys.stdin)['job_id'])")
+          echo "job_id=$JOB_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Renderizar imagenes y mandar el mail
+        env:
+          CRM: ${{ secrets.CRM_URL }}
+          TOKEN: ${{ secrets.ADMIN_TOKEN }}
+        run: |
+          python scripts/render_linkedin.py \
+            --crm "$CRM" \
+            --token "$TOKEN" \
+            --job-id "${{ steps.generar.outputs.job_id }}"

@@ -17,12 +17,13 @@ logging.basicConfig(
     stream=sys.stdout,
 )
 
-from database import init_db, seed_pitch_templates
+from database import init_db, seed_linkedin_temas, seed_pitch_templates
 from dashboard import create_app
 
 db_path = os.environ.get("DB_PATH", "leads.db")
 init_db(db_path)
 seed_pitch_templates(db_path)
+seed_linkedin_temas(db_path)
 
 app = create_app(db_path)
 

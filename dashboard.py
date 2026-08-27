@@ -23,8 +23,10 @@ from routes.notion import notion_bp
 from routes.notion_clients import notion_clients_bp
 from routes.resend_webhook import resend_bp
 from routes.projects import projects_bp
+from routes.linkedin import linkedin_bp
 from services.auth import is_admin
 from services.demo_service import demo_job_handler
+from services.linkedin_posts import linkedin_job_handler
 from services.job_service import init_worker
 
 load_dotenv()
@@ -5569,7 +5571,7 @@ def create_app(db_path: str) -> Flask:
     app.config["PIPELINE_LOCK"] = _pipeline_lock
 
     for bp in (leads_bp, demos_bp, calendar_bp, wa_bp, pipeline_bp, tasks_bp, budgets_bp, tokens_bp, meta_bp, calendly_bp, notion_bp, projects_bp,
-                notion_clients_bp, resend_bp):
+                notion_clients_bp, resend_bp, linkedin_bp):
         app.register_blueprint(bp)
 
     @app.before_request
@@ -5583,6 +5585,10 @@ def create_app(db_path: str) -> Flask:
         # Su autenticacion es la firma de Svix, verificada dentro del endpoint:
         # Resend lo llama sin credenciales nuestras.
         if request.path.startswith("/api/resend/webhook"):
+            return
+        # El link "ya lo publique" se abre desde un mail: no puede mandar headers,
+        # asi que lleva su propio token de un solo uso en la query.
+        if request.path.startswith("/api/linkedin/marcar"):
             return
         # Any /api/ request with valid x-admin-token bypasses session auth
         if request.path.startswith("/api/"):
@@ -6617,6 +6623,7 @@ loadAll();
     if os.environ.get("CRM_SIN_PROCESOS_DE_FONDO", "").lower() != "true":
         worker = init_worker(db_path)
         worker.register("demo", demo_job_handler)
+        worker.register("linkedin", linkedin_job_handler)
         worker.start()
 
         start_meta_token_monitor(app)
