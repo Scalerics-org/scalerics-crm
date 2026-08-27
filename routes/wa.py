@@ -18,14 +18,48 @@ _BTYPE = {
 }
 
 
+def _token_del_bot() -> str:
+    """El token con el que el CRM se autentica CONTRA el bot.
+
+    Son dos flujos independientes y cada uno tiene su credencial:
+
+        bot -> CRM   el bot manda su CRM_ADMIN_TOKEN, que el CRM valida contra
+                     su propio ADMIN_TOKEN
+        CRM -> bot   el CRM manda BOT_ADMIN_TOKEN, que el bot valida contra su
+                     propio ADMIN_TOKEN
+
+    Antes esta funcion usaba el ADMIN_TOKEN del CRM, o sea la credencial de
+    ENTRADA, para salir. Eso obligaba a que el ADMIN_TOKEN del bot y el del CRM
+    fueran el mismo valor — un acoplamiento que no esta escrito en ningun lado y
+    que se rompe apenas alguien rota uno de los dos. Es exactamente lo que pasaba:
+    el panel de WhatsApp devolvia "unauthorized" siempre, porque el bot esperaba
+    un token distinto del que el CRM le mandaba.
+
+    Se mantiene el fallback a ADMIN_TOKEN para no romper instalaciones donde hoy
+    coinciden, pero se avisa por log: es una configuracion a corregir, no el
+    camino esperado.
+    """
+    token = os.environ.get("BOT_ADMIN_TOKEN", "").strip()
+    if token:
+        return token
+    heredado = os.environ.get("ADMIN_TOKEN", "").strip()
+    if heredado:
+        logger.warning(
+            "BOT_ADMIN_TOKEN no esta configurado: se usa ADMIN_TOKEN para hablarle "
+            "al bot. Funciona solo si el ADMIN_TOKEN del bot tiene ese mismo valor. "
+            "Configura BOT_ADMIN_TOKEN con el ADMIN_TOKEN del bot."
+        )
+    return heredado
+
+
 def _bot_req(method: str, path: str, **kwargs):
     """Call the bot's admin API. Returns (response_dict, error_string)."""
     base = os.environ.get("BOT_API_URL", "").rstrip("/")
-    token = os.environ.get("ADMIN_TOKEN", "")
+    token = _token_del_bot()
     if not base:
         return None, "BOT_API_URL no configurada en .env"
     if not token:
-        return None, "ADMIN_TOKEN no configurado en .env"
+        return None, "BOT_ADMIN_TOKEN no configurado en .env"
     headers = {"x-admin-token": token, "Content-Type": "application/json"}
     try:
         r = http_requests.request(
@@ -37,6 +71,12 @@ def _bot_req(method: str, path: str, **kwargs):
         )
         data = r.json()
         if r.status_code >= 400:
+            # El 401 del bot es casi siempre el mismo problema, y el mensaje
+            # generico no dice como salir de el.
+            if r.status_code == 401:
+                logger.warning("El bot rechazo el token del CRM (401)")
+                return None, ("El bot rechazó la credencial. El BOT_ADMIN_TOKEN del CRM "
+                              "tiene que valer lo mismo que el ADMIN_TOKEN del bot.")
             return None, data.get("error", r.text)
         return data, None
     except Exception as e:
