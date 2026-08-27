@@ -27,8 +27,33 @@ for _clave in ("RESEND_API_KEY", "RESEND_FROM_EMAIL", "DISCOVERY_FROM_EMAIL",
                "META_PAGE_TOKEN", "NOTION_TOKEN", "ANTHROPIC_API_KEY"):
     os.environ.pop(_clave, None)
 
+# Ojo: esto NO alcanza solo. Ver `_sin_credenciales_reales` mas abajo.
+
 
 import pytest  # noqa: E402
+
+
+_CLAVES_PELIGROSAS = ("RESEND_API_KEY", "RESEND_FROM_EMAIL", "DISCOVERY_FROM_EMAIL",
+                      "GMAIL_CLIENT_ID", "GMAIL_CLIENT_SECRET", "GMAIL_REFRESH_TOKEN",
+                      "META_PAGE_TOKEN", "NOTION_TOKEN", "ANTHROPIC_API_KEY")
+
+
+@pytest.fixture(autouse=True)
+def _sin_credenciales_reales(monkeypatch):
+    """Borra las claves otra vez, ahora por test.
+
+    El pop de arriba corre una sola vez, antes de importar nada. Pero
+    `dashboard.py` y `server.py` llaman a `load_dotenv()` al importarse, y eso
+    vuelve a meter en el entorno todo lo que haya en el `.env` de quien corre
+    los tests. O sea: el pop de arriba solo funcionaba mientras ese archivo
+    estuviera vacio, que es exactamente de lo que este modulo dice que los
+    tests no pueden depender.
+
+    Se noto el 27-8-2026, al consolidar en `crm-limpio/.env` las 24 claves que
+    vivian en el `.env` del repo viejo antes de archivarlo.
+    """
+    for clave in _CLAVES_PELIGROSAS:
+        monkeypatch.delenv(clave, raising=False)
 
 
 @pytest.fixture(autouse=True)
