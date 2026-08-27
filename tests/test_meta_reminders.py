@@ -1166,3 +1166,43 @@ def test_el_texto_del_mail_cambia_segun_el_estado():
     assert asunto_ppto != asunto_llamar
     # Un estado sin secuencia cae al texto del lead frio en vez de reventar.
     assert _cuerpo_por_estado("no_interesa", 1, "Marejada", "") is None
+
+
+def test_el_cupo_lleno_no_gasta_la_corrida_del_dia(db):
+    """Una tanda que no puede mandar nada no puede consumir el dia.
+
+    Paso de verdad el 27-8-2026: una corrida se topo con el cupo del dia
+    anterior, no mando ni un mail, y aun asi empujo la tanda real 24 horas.
+    """
+    from services.corridas import ultima_corrida
+    from services.meta_reminders import tanda_diaria, _TOPE_DIARIO
+
+    conn = sqlite3.connect(db)
+    _lead(conn, 1, dias=30, crm_status="presupuesto_enviado")
+    # El cupo entero gastado hace un rato, por OTROS leads.
+    for i in range(_TOPE_DIARIO):
+        _envio_estado(conn, 900 + i, "sin_contactar", 1, dias_atras=0)
+    conn.commit()
+    conn.close()
+
+    assert tanda_diaria(db, "https://crm") is None
+    assert ultima_corrida(db, "meta") is None, "no se marca una tanda que no arranco"
+
+
+def test_con_cupo_libre_la_corrida_se_marca_y_manda(db):
+    from services.corridas import ultima_corrida
+    from services.meta_reminders import tanda_diaria
+
+    conn = sqlite3.connect(db)
+    _lead(conn, 1, dias=30, crm_status="presupuesto_enviado")
+    conn.commit()
+    conn.close()
+
+    def fake(to, negocio, rubro, url, numero=1, estado="sin_contactar"):
+        return "ok"
+
+    with patch("services.meta_reminders.send_meta_lead_reminder", side_effect=fake):
+        res = tanda_diaria(db, "https://crm")
+
+    assert res["enviados"] == 1
+    assert ultima_corrida(db, "meta") is not None

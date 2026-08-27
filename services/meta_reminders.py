@@ -558,6 +558,22 @@ def tanda_diaria(db_path: str, base_url: str):
             f"se saltea esta tanda (arranque por deploy)"
         )
         return None
+    # El cupo se mira ANTES de marcar. Una tanda que no puede mandar nada
+    # porque el tope rodante esta lleno no llego a intentarse, y marcarla igual
+    # gasta el dia entero: el 27-8-2026 una corrida a las 17:17 se topo con los
+    # 15 mails del dia anterior (17:42), no mando ni uno, y empujo la tanda real
+    # 24 horas para adelante. Sin esta guarda, cualquier deploy que caiga dentro
+    # de la ventana del dia anterior deja la campana muda hasta el otro dia.
+    #
+    # La marca sigue yendo antes del envio, que es lo que protege de la tanda
+    # que se muere en el medio: lo que cambia es que no se marca una tanda que
+    # ni siquiera empezo.
+    if enviados_ultimas_24h(db_path) >= _TOPE_DIARIO:
+        logger.info(
+            f"Recordatorios Meta: no se marca la corrida, el cupo de {_TOPE_DIARIO} "
+            f"en 24 horas ya esta lleno. Se reintenta en el proximo arranque."
+        )
+        return None
     marcar_corrida(db_path, "meta")
     return enviar_recordatorios(db_path, base_url)
 
