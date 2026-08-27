@@ -318,6 +318,22 @@ function crearRepo(db) {
       return f ? f.created_at : null;
     },
 
+    /**
+     * Marca una reserva del calendario como ya registrada.
+     *
+     * @returns {boolean} true si es la primera vez. Con false hay que saltearla:
+     *   registrarla otra vez le avisa al equipo de una reunion que ya conocia.
+     *
+     * La clave lleva la hora de inicio ademas del id: si la reunion se movio,
+     * es una reserva nueva y si hay que avisar.
+     */
+    reservaEsNueva(eventId, inicio) {
+      if (!eventId) return false;
+      const r = db.prepare('INSERT OR IGNORE INTO reservas_vistas (clave) VALUES (?)')
+        .run(`${eventId}|${inicio || ''}`);
+      return r.changes > 0;
+    },
+
     /** Los ids viejos no sirven para nada: WhatsApp no reenvia de hace dias. */
     limpiarEntrantesVistos(dias = 3) {
       return db.prepare(`DELETE FROM inbound_seen WHERE seen_at < datetime('now', '-${Number(dias)} days')`).run().changes;

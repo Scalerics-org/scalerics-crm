@@ -81,6 +81,8 @@ function crearVigilanteDeReservas({
 
     const r = { ...nada, eventos: eventos.length };
 
+    // Primero las bajas, que no dependen de con cual reunion se queda el lead.
+    const activos = [];
     for (const ev of eventos) {
       const tel = telefonoDe(ev, cfg.DEFAULT_COUNTRY_CODE);
       if (!tel) continue;
@@ -100,11 +102,28 @@ function crearVigilanteDeReservas({
       }
 
       const inicio = ev.start?.dateTime;
-      if (!inicio) continue;
+      if (inicio) activos.push({ ev, lead, inicio });
+    }
 
-      // Ya registrada, con la misma hora: no se toca. Sin esto, cada vuelta
-      // volveria a avisarle al equipo y a reprogramar los recordatorios.
-      if (lead.meeting_event_id === ev.id && lead.meeting_time === inicio) continue;
+    /**
+     * De cada lead, la reunion mas proxima y nada mas.
+     *
+     * Un lead puede tener dos reservas —reservo de nuevo sin cancelar la
+     * anterior— y ahi la que importa es la que viene primero. Sin esta parte,
+     * las dos se pisaban: cada una veia el meeting_event_id de la otra, se daba
+     * por no registrada y se registraba de nuevo. En produccion eso fue un
+     * aviso al equipo cada cinco minutos durante horas.
+     */
+    const proxima = new Map();
+    for (const a of activos) {
+      const actual = proxima.get(a.lead.id);
+      if (!actual || a.inicio < actual.inicio) proxima.set(a.lead.id, a);
+    }
+
+    for (const { ev, lead, inicio } of proxima.values()) {
+      // La red de seguridad: aunque la eleccion de arriba fallara, una reserva
+      // ya registrada no se vuelve a registrar nunca.
+      if (!repo.reservaEsNueva(ev.id, inicio)) continue;
 
       servicioLeads.registrarReunion(lead.id, {
         meeting_time: inicio,

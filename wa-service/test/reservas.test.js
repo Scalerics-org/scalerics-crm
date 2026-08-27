@@ -211,3 +211,54 @@ test('si Google falla, se sigue vivo hasta la proxima vuelta', async () => {
   });
   assert.equal((await v.revisar()).agendadas, 0, 'no explota');
 });
+
+/**
+ * El bug que le mando un aviso al equipo cada cinco minutos durante horas.
+ *
+ * Un lead con DOS reuniones agendadas: cada una veia el meeting_event_id de la
+ * otra, se daba por no registrada y se registraba de nuevo. Ping-pong en cada
+ * vuelta del vigilante, con su aviso cada vez.
+ */
+test('un lead con dos reuniones no hace que se pisen entre si', async () => {
+  const s = await conLead();
+  const dos = [
+    reservaDeCalendly({ id: 'ev_lejos', inicio: '2026-09-05T12:00:00-03:00' }),
+    reservaDeCalendly({ id: 'ev_cerca', inicio: '2026-09-01T18:00:00-03:00' }),
+  ];
+  const v = conCalendario(s, dos);
+
+  assert.equal((await v.revisar()).agendadas, 1, 'se registra una sola: la mas proxima');
+  assert.match(s.repo.leadPorTelefono(TEL).meeting_time, /2026-09-01/);
+
+  await s.cola.vacia();
+  s.proveedor.limpiar();
+
+  // Tres vueltas mas del vigilante, como pasaria cada cinco minutos.
+  for (let i = 0; i < 3; i++) assert.equal((await v.revisar()).agendadas, 0);
+
+  await s.cola.vacia();
+  assert.equal(s.proveedor.getEnviados().length, 0, 'y ni un aviso de mas al equipo');
+});
+
+test('una reserva ya registrada no se vuelve a registrar, ni tras reiniciar', async () => {
+  const s = await conLead();
+  await conCalendario(s, [reservaDeCalendly()]).revisar();
+  await s.cola.vacia();
+  s.proveedor.limpiar();
+
+  // Un vigilante nuevo, como despues de un deploy: la memoria esta en la base.
+  const otro = conCalendario(s, [reservaDeCalendly()]);
+  assert.equal((await otro.revisar()).agendadas, 0);
+
+  await s.cola.vacia();
+  assert.equal(s.proveedor.getEnviados().length, 0);
+});
+
+test('pero si mueven la reunion, esa si es nueva', async () => {
+  const s = await conLead();
+  await conCalendario(s, [reservaDeCalendly()]).revisar();
+
+  const movida = reservaDeCalendly({ inicio: '2026-09-09T15:00:00-03:00' });
+  assert.equal((await conCalendario(s, [movida]).revisar()).agendadas, 1);
+  assert.match(s.repo.leadPorTelefono(TEL).meeting_time, /2026-09-09/);
+});
