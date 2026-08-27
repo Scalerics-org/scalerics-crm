@@ -2,6 +2,7 @@
 
 const { construirSystem, faltantes } = require('./prompt');
 const { CAJONES } = require('../funnel/nurture');
+const { corregir: corregirVoseo } = require('./voseo');
 
 const MAX_HISTORIAL = 20;
 const MAX_CARACTERES = 900;
@@ -254,7 +255,13 @@ function crearAgente({ openai = null, modelo, textos, calendly = '', logger = nu
         return null;
       }
 
-      const texto = String(argumentos.mensaje || '').trim();
+      const crudo = String(argumentos.mensaje || '').trim();
+      // El prompt prohibe el tuteo con todas las letras y el modelo se va igual.
+      // Es una conversion mecanica: la hace el codigo, que no se equivoca.
+      const { texto, corregidos } = corregirVoseo(crudo);
+      if (corregidos.length) {
+        logger?.info({ leadId: lead.id, corregidos }, 'se le corrigio el tuteo al modelo');
+      }
       const datos = sanearDatos(argumentos);
       // Va aparte de los datos: no es un dato del negocio sino una decision
       // sobre la conversacion, y la toma el embudo.

@@ -211,7 +211,10 @@ function resumenEmbudo(lead, desenlace) {
   if (lead.team_size) lineas.push(`👥 ${EQUIPO[lead.team_size] || lead.team_size}`);
   if (lead.instagram_web) lineas.push(`🔗 ${lead.instagram_web}`);
   if (lead.needs) lineas.push(`💬 "${String(lead.needs).slice(0, 200)}"`);
-  lineas.push(`⭐ score ${lead.score ?? '?'}`);
+  // El score solo si existe. Dejo de calcularse cuando se saco el filtro que
+  // decidia si un lead merecia reunion, asi que la linea salia como "score ?"
+  // en cada ficha: un campo vacio que no le dice nada a nadie.
+  if (lead.score !== null && lead.score !== undefined) lineas.push(`⭐ score ${lead.score}`);
   lineas.push(`wa.me/${lead.telefono}`);
   return lineas.join('\n');
 }

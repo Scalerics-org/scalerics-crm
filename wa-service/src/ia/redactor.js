@@ -1,5 +1,7 @@
 'use strict';
 
+const { corregir: corregirVoseo } = require('./voseo');
+
 const { construirRedaccion, situaciones } = require('./prompt');
 const { mencionaPlata } = require('./precio');
 
@@ -55,10 +57,17 @@ function crearRedactor({ openai = null, modelo, calendly = '', logger = null } =
         return null;
       }
 
-      const texto = String(r?.choices?.[0]?.message?.content || '').trim()
+      const crudo = String(r?.choices?.[0]?.message?.content || '').trim()
         // A veces devuelve el mensaje entre comillas, como si lo citara.
         .replace(/^["“”']+|["“”']+$/g, '')
         .trim();
+
+      // El tuteo que se le escapa al modelo lo corrige el codigo, igual que en
+      // la conversacion. Un recordatorio con un "tienes" delata lo mismo.
+      const { texto, corregidos } = corregirVoseo(crudo);
+      if (corregidos.length) {
+        logger?.info({ leadId: lead.id, situacion, corregidos }, 'se le corrigio el tuteo al modelo');
+      }
 
       if (!texto) {
         logger?.warn({ leadId: lead.id, situacion }, 'la redaccion vino vacia');
