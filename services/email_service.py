@@ -8,7 +8,7 @@ from services.secuencia_contactos import TOTAL_CONTACTOS
 
 logger = logging.getLogger(__name__)
 
-_LOGO = "https://raw.githubusercontent.com/juantomasetti1/scalerics-assets/main/logo_full_alt.png"
+_LOGO = "https://raw.githubusercontent.com/Scalerics-org/scalerics-assets/main/logo_full_alt.png"
 _CRM_URL = os.environ.get("CRM_URL", "https://scalerics-crm.fly.dev")
 
 
@@ -369,7 +369,7 @@ def send_meta_lead_failure_alert(email: str, lead_id: str, error: str) -> None:
 # _LOGO es la version clara, pensada para el header navy de _layout. Sobre el
 # fondo blanco de este mail se ve lavada y casi ilegible, asi que la firma usa
 # la version oscura.
-_LOGO_FIRMA = "https://raw.githubusercontent.com/juantomasetti1/scalerics-assets/main/logo_full.png"
+_LOGO_FIRMA = "https://raw.githubusercontent.com/Scalerics-org/scalerics-assets/main/logo_full.png"
 _REMITENTE_LEADS = "Scalerics <contacto@scalerics.com>"
 _CALENDLY = "https://calendly.com/scalerics/consultoriagratuita"
 _TELEFONO = "+598 97 250 713"

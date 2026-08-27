@@ -140,7 +140,7 @@ cmd.exe /c start "" "C:/Users/juant/lead-gen-uy/generated_demos/<nombre>.html"
 ## Paso 5: Subir a GitHub
 
 ```python
-# Repo: juantomasetti1/scalerics-assets
+# Repo: Scalerics-org/scalerics-assets
 # Ruta remota: templates/demos/<nombre>.html
 # Usar upload_templates.py como referencia
 ```

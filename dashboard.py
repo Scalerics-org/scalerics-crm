@@ -70,7 +70,7 @@ button:hover{opacity:.9}
 <body>
 <div class="card">
   <div class="logo-wrap">
-    <img src="https://raw.githubusercontent.com/juantomasetti1/scalerics-assets/main/logo_full_alt.png" alt="Scalerics">
+    <img src="https://raw.githubusercontent.com/Scalerics-org/scalerics-assets/main/logo_full_alt.png" alt="Scalerics">
     <span class="logo-sub">CRM interno</span>
   </div>
   {% if error %}<div class="error">{{ error }}</div>{% endif %}
@@ -120,7 +120,7 @@ button:hover{opacity:.9}
 <body>
 <div class="card">
   <div class="logo-wrap">
-    <img src="https://raw.githubusercontent.com/juantomasetti1/scalerics-assets/main/logo_full.png" alt="Scalerics">
+    <img src="https://raw.githubusercontent.com/Scalerics-org/scalerics-assets/main/logo_full.png" alt="Scalerics">
     <span class="logo-sub">Crear cuenta</span>
   </div>
   {% if error %}<div class="error">{{ error }}</div>{% endif %}
@@ -169,7 +169,7 @@ button:hover{opacity:.9}
 <body>
 <div class="card">
   <div class="logo-wrap">
-    <img src="https://raw.githubusercontent.com/juantomasetti1/scalerics-assets/main/logo_full.png" alt="Scalerics">
+    <img src="https://raw.githubusercontent.com/Scalerics-org/scalerics-assets/main/logo_full.png" alt="Scalerics">
   </div>
   {% if message %}<div class="msg">{{ message }}</div>{% endif %}
   {% if not message %}
@@ -210,7 +210,7 @@ button:hover{opacity:.9}
 <body>
 <div class="card">
   <div class="logo-wrap">
-    <img src="https://raw.githubusercontent.com/juantomasetti1/scalerics-assets/main/logo_full.png" alt="Scalerics">
+    <img src="https://raw.githubusercontent.com/Scalerics-org/scalerics-assets/main/logo_full.png" alt="Scalerics">
   </div>
   {% if error %}<div class="error">{{ error }}</div>{% endif %}
   {% if valid %}
@@ -1106,7 +1106,7 @@ body.light .upick-name{color:#0f172a}
 <body>
 <div class="sidebar-backdrop" id="sidebar-backdrop" onclick="closeSidebar()"></div>
 <header class="mobile-header" id="mobile-header">
-  <img id="mobile-header-logo" src="https://raw.githubusercontent.com/juantomasetti1/scalerics-assets/main/logo_full_alt.png" alt="Scalerics">
+  <img id="mobile-header-logo" src="https://raw.githubusercontent.com/Scalerics-org/scalerics-assets/main/logo_full_alt.png" alt="Scalerics">
   <span class="mobile-header-title" id="mobile-header-title"></span>
 </header>
 <nav class="mobile-bottom-nav" id="mobile-bottom-nav"></nav>
@@ -1118,7 +1118,7 @@ body.light .upick-name{color:#0f172a}
 </div>
 <div class="sidebar" id="sidebar">
   <div class="sidebar-logo">
-    <img id="sidebar-logo" src="https://raw.githubusercontent.com/juantomasetti1/scalerics-assets/main/logo_full_alt.png" alt="Scalerics">
+    <img id="sidebar-logo" src="https://raw.githubusercontent.com/Scalerics-org/scalerics-assets/main/logo_full_alt.png" alt="Scalerics">
   </div>
   <div class="nav-scroll">
   <div class="nav-section-label">LLAMADAS</div>
@@ -4212,8 +4212,8 @@ const ALL_PANELS = ['cola','seguimientos','meta','pipeline','clientes','tasks','
 })();
 
 // ── Theme toggle ──────────────────────────────────────────────────────────────
-const LOGO_DARK  = 'https://raw.githubusercontent.com/juantomasetti1/scalerics-assets/main/logo_full_alt.png';
-const LOGO_LIGHT = 'https://raw.githubusercontent.com/juantomasetti1/scalerics-assets/main/logo_full.png';
+const LOGO_DARK  = 'https://raw.githubusercontent.com/Scalerics-org/scalerics-assets/main/logo_full_alt.png';
+const LOGO_LIGHT = 'https://raw.githubusercontent.com/Scalerics-org/scalerics-assets/main/logo_full.png';
 
 function toggleTheme() {
   const isLight = document.body.classList.toggle('light');
@@ -5679,7 +5679,7 @@ def create_app(db_path: str) -> Flask:
 </head>
 <body>
 <header>
-  <img src="https://raw.githubusercontent.com/juantomasetti1/scalerics-assets/main/logo_full_alt.png" alt="Scalerics">
+  <img src="https://raw.githubusercontent.com/Scalerics-org/scalerics-assets/main/logo_full_alt.png" alt="Scalerics">
 </header>
 <main>
   <h1>Política de Privacidad</h1>
@@ -5747,7 +5747,7 @@ def create_app(db_path: str) -> Flask:
 <title>Baja confirmada — Scalerics</title></head>
 <body style="margin:0;font-family:'Segoe UI',Arial,sans-serif;background:#f1f5f9;color:#1c2b40">
   <div style="max-width:520px;margin:80px auto;background:#fff;border-radius:10px;padding:40px;text-align:center">
-    <img src="https://raw.githubusercontent.com/juantomasetti1/scalerics-assets/main/logo_full_alt.png"
+    <img src="https://raw.githubusercontent.com/Scalerics-org/scalerics-assets/main/logo_full_alt.png"
          alt="Scalerics" style="height:28px;margin-bottom:24px">
     <h1 style="font-size:20px;margin:0 0 12px">Listo, no te escribimos más</h1>
     <p style="font-size:15px;color:#64748b;margin:0">

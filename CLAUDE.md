@@ -76,7 +76,7 @@ Siempre usar `templates_demo/pagina-web.html` como referencia estructural. Copia
 
 ### Upload a GitHub
 
-Las demos de clientes van a: `juantomasetti1/scalerics-assets/templates/demos/<nombre>.html`
+Las demos de clientes van a: `Scalerics-org/scalerics-assets/templates/demos/<nombre>.html`
 
 Script de referencia: `upload_templates.py`
 
