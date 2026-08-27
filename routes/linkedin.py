@@ -19,7 +19,7 @@ from database import (
     get_linkedin_posts_by_lote,
     update_linkedin_post,
 )
-from services.email_service import send_linkedin_drafts
+from services.email_service import send_linkedin_drafts, send_linkedin_failure
 from services.job_service import get_worker
 
 linkedin_bp = Blueprint("linkedin", __name__)
@@ -93,6 +93,22 @@ def api_linkedin_enviar():
         update_linkedin_post(_db(), p["id"], estado="enviado")
 
     return jsonify({"ok": ok, "enviados": len(borradores)}), 200
+
+
+@linkedin_bp.route("/api/linkedin/fallo", methods=["POST"])
+def api_linkedin_fallo():
+    """Lo llama el cron cuando se dio por vencido.
+
+    Sin esto, una corrida fallida solo deja el mail de "workflow failed" que
+    manda GitHub, que se pierde entre el resto de las notificaciones del repo.
+    Un fallo del cron tiene que llegar a la misma casilla que los borradores,
+    porque es la que se mira los martes y viernes a la manana.
+    """
+    data = request.get_json(silent=True) or {}
+    motivo = (data.get("motivo") or "").strip() or "el cron no dejo detalle"
+    destino = os.environ.get("LINKEDIN_MAIL_TO", "scalerics@gmail.com")
+    ok = send_linkedin_failure(destino, motivo)
+    return jsonify({"ok": ok}), 200
 
 
 @linkedin_bp.route("/api/linkedin/marcar", methods=["GET"])

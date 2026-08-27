@@ -167,3 +167,28 @@ def test_generar_sin_cuerpo_no_pone_contexto_manual(app_y_db):
         "SELECT payload FROM jobs WHERE id = ?", (r.get_json()["job_id"],)
     ).fetchone()[0])
     assert "contexto_manual" not in payload
+
+
+def test_fallo_manda_el_aviso_a_la_casilla_de_los_borradores(app_y_db):
+    app, _ = app_y_db
+    with patch("routes.linkedin.send_linkedin_failure", return_value=True) as aviso:
+        r = app.test_client().post(
+            "/api/linkedin/fallo",
+            headers={"x-admin-token": "secreto"},
+            json={"motivo": "el job no termino en 900s"},
+        )
+    assert r.status_code == 200
+    aviso.assert_called_once_with("destino@test.com", "el job no termino en 900s")
+
+
+def test_fallo_sin_motivo_no_manda_un_mail_vacio(app_y_db):
+    app, _ = app_y_db
+    with patch("routes.linkedin.send_linkedin_failure", return_value=True) as aviso:
+        app.test_client().post("/api/linkedin/fallo",
+                               headers={"x-admin-token": "secreto"})
+    assert aviso.call_args[0][1] == "el cron no dejo detalle"
+
+
+def test_fallo_sin_token_devuelve_401(app_y_db):
+    app, _ = app_y_db
+    assert app.test_client().post("/api/linkedin/fallo").status_code == 401

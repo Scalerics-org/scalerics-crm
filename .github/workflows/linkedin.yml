@@ -6,10 +6,16 @@ on:
     - cron: "0 11 * * 2,5"
   workflow_dispatch:
 
+# Dos corridas a la vez generarian dos lotes y quemarian cuatro temas en vez de
+# dos. Si el cron se solapa con una corrida a mano, la nueva espera.
+concurrency:
+  group: linkedin-borradores
+  cancel-in-progress: false
+
 jobs:
   borradores:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -18,9 +24,29 @@ jobs:
           python-version: "3.11"
 
       - name: Instalar dependencias
+        # El install de Playwright baja binarios: es el paso que mas se cae por
+        # razones que no tienen nada que ver con el codigo.
         run: |
-          pip install requests playwright
-          playwright install --with-deps chromium
+          set -euo pipefail
+          for intento in 1 2 3; do
+            pip install requests playwright && break
+            echo "pip fallo (intento $intento), reintento en 15s"; sleep 15
+          done
+          for intento in 1 2 3; do
+            playwright install --with-deps chromium && break
+            echo "playwright install fallo (intento $intento), reintento en 20s"; sleep 20
+          done
+
+      - name: Esperar a que el CRM conteste
+        # Un deploy justo a las 8:00, o un reinicio de la maquina de Fly, dejan
+        # una ventana de segundos donde el CRM no contesta. No es un fallo:
+        # es esperar.
+        env:
+          CRM: ${{ secrets.CRM_URL }}
+        run: |
+          set -euo pipefail
+          curl -sS -f --retry 10 --retry-all-errors --retry-delay 15 \
+            --max-time 30 -o /dev/null "$CRM/"
 
       - name: Pedirle los borradores al CRM
         id: generar
@@ -29,7 +55,11 @@ jobs:
           TOKEN: ${{ secrets.ADMIN_TOKEN }}
         run: |
           set -euo pipefail
-          RESP=$(curl -sS -f -X POST "$CRM/api/linkedin/generar" \
+          # --retry-all-errors cubre 5xx y cortes de conexion. Un 4xx no se
+          # reintenta: el token mal o el endpoint que no existe no se arreglan
+          # insistiendo, y ahi si queremos que se vea en rojo.
+          RESP=$(curl -sS -f --retry 5 --retry-all-errors --retry-delay 10 \
+            --max-time 60 -X POST "$CRM/api/linkedin/generar" \
             -H "x-admin-token: $TOKEN")
           echo "respuesta: $RESP"
           JOB_ID=$(echo "$RESP" | python -c "import json,sys; print(json.load(sys.stdin)['job_id'])")
@@ -44,3 +74,20 @@ jobs:
             --crm "$CRM" \
             --token "$TOKEN" \
             --job-id "${{ steps.generar.outputs.job_id }}"
+
+      - name: Avisar por mail si no salio
+        # El mail de "workflow failed" de GitHub se pierde entre las
+        # notificaciones del repo. Este llega a la casilla que se mira los
+        # martes y viernes a la manana, que es la que importa.
+        if: failure()
+        env:
+          CRM: ${{ secrets.CRM_URL }}
+          TOKEN: ${{ secrets.ADMIN_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          curl -sS -f --retry 5 --retry-all-errors --retry-delay 10 \
+            --max-time 60 -X POST "$CRM/api/linkedin/fallo" \
+            -H "x-admin-token: $TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"motivo\": \"la corrida del cron fallo. Log: $RUN_URL\"}" \
+            || echo "tampoco se pudo avisar por mail"

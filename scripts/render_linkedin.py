@@ -63,19 +63,70 @@ def renderizar(borradores: list, plantilla_html: str, page) -> list:
     return salida
 
 
-def esperar_job(crm: str, token: str, job_id: int, timeout_s: int = 300) -> dict:
+def esperar_job(crm: str, token: str, job_id: int, timeout_s: int = 900,
+                espera_s: int = 10) -> dict:
+    """Espera a que el job termine, aguantando cortes en el medio.
+
+    Antes, un solo 502 —el CRM reiniciando, un deploy justo a las 8:00, un
+    hipo de red del runner— mataba la corrida entera aunque el job estuviera
+    andando perfecto del otro lado. Ahora un error de consulta no decide nada:
+    solo lo decide el reloj. Lo unico que corta antes de tiempo es que el
+    propio job diga que fallo, porque eso no mejora esperando.
+    """
     headers = {"x-admin-token": token}
     limite = time.time() + timeout_s
+    ultimo_error = None
     while time.time() < limite:
-        r = requests.get(f"{crm}/api/jobs/{job_id}", headers=headers, timeout=30)
-        r.raise_for_status()
-        job = r.json()
+        try:
+            r = requests.get(f"{crm}/api/jobs/{job_id}", headers=headers, timeout=30)
+            r.raise_for_status()
+            job = r.json()
+        except Exception as e:  # noqa: BLE001 - transitorio hasta que se acabe el plazo
+            ultimo_error = e
+            print(f"consulta al job fallo, reintento: {e}", file=sys.stderr)
+            time.sleep(espera_s)
+            continue
+
         if job.get("status") == "completed":
             return json.loads(job.get("result") or "{}")
         if job.get("status") == "failed":
             raise RuntimeError(f"el job fallo: {job.get('error_message')}")
-        time.sleep(10)
+        time.sleep(espera_s)
+
+    if ultimo_error is not None:
+        raise TimeoutError(
+            f"el job {job_id} no termino en {timeout_s}s; ultimo error: {ultimo_error}")
     raise TimeoutError(f"el job {job_id} no termino en {timeout_s}s")
+
+
+def postear_con_reintentos(url: str, token: str, cuerpo: dict, intentos: int = 4):
+    """POST que reintenta lo transitorio.
+
+    Un 4xx no se reintenta: si el cuerpo esta mal o el token no sirve, insistir
+    solo repite el mismo error mas tarde.
+    """
+    espera = 5
+    for intento in range(1, intentos + 1):
+        try:
+            r = requests.post(url, headers={"x-admin-token": token}, json=cuerpo,
+                              timeout=120)
+            r.raise_for_status()
+            return r
+        except requests.exceptions.HTTPError as e:
+            codigo = e.response.status_code if e.response is not None else 0
+            if 400 <= codigo < 500:
+                raise
+            if intento == intentos:
+                raise
+            print(f"intento {intento} fallo ({codigo}), reintento en {espera}s",
+                  file=sys.stderr)
+        except Exception as e:  # noqa: BLE001 - red, timeout, corte
+            if intento == intentos:
+                raise
+            print(f"intento {intento} fallo ({e}), reintento en {espera}s",
+                  file=sys.stderr)
+        time.sleep(espera)
+        espera *= 2
 
 
 def main() -> int:
@@ -94,26 +145,33 @@ def main() -> int:
     with open(PLANTILLA_PATH, encoding="utf-8") as f:
         plantilla = f.read()
 
-    from playwright.sync_api import sync_playwright
+    # Mismo criterio que `renderizar` pero un nivel mas arriba: si el navegador
+    # ni siquiera arranca (falta un binario, se quedo sin memoria el runner),
+    # el mail sale igual sin imagenes. Un mail sin foto sirve; uno que no llega
+    # porque no habia con que sacar una captura, no.
+    imagenes = []
+    try:
+        from playwright.sync_api import sync_playwright
 
-    with sync_playwright() as p:
-        browser = p.chromium.launch()
-        page = browser.new_page(viewport={"width": ANCHO, "height": ALTO},
-                                device_scale_factor=1)
-        imagenes = renderizar(borradores, plantilla, page)
-        browser.close()
+        with sync_playwright() as p:
+            browser = p.chromium.launch()
+            page = browser.new_page(viewport={"width": ANCHO, "height": ALTO},
+                                    device_scale_factor=1)
+            imagenes = renderizar(borradores, plantilla, page)
+            browser.close()
+    except Exception as e:  # noqa: BLE001 - el mail vale mas que las imagenes
+        print(f"no se pudo abrir el navegador, el mail sale sin imagenes: {e}",
+              file=sys.stderr)
 
-    r = requests.post(
+    r = postear_con_reintentos(
         f"{args.crm}/api/linkedin/enviar",
-        headers={"x-admin-token": args.token},
-        json={
+        args.token,
+        {
             "lote": resultado["lote"],
             "imagenes": imagenes,
             "aviso_cooldown": resultado.get("aviso_cooldown", False),
         },
-        timeout=120,
     )
-    r.raise_for_status()
     print(f"mail enviado: {r.json()}")
     return 0
 

@@ -112,3 +112,122 @@ def test_el_logo_no_se_estira():
     html = _plantilla()
     bloque = html[html.index(".logo {"):html.index("}", html.index(".logo {"))]
     assert "align-self" in bloque
+
+
+# ── Aguante frente a cortes ─────────────────────────────────────────────────────
+
+
+class RespuestaFalsa:
+    def __init__(self, cuerpo, codigo=200):
+        self._cuerpo = cuerpo
+        self.status_code = codigo
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            import requests
+            e = requests.exceptions.HTTPError(f"HTTP {self.status_code}")
+            e.response = self
+            raise e
+
+    def json(self):
+        return self._cuerpo
+
+
+def test_esperar_job_sobrevive_a_un_corte_en_el_medio(monkeypatch):
+    """Un 502 mientras el CRM reinicia no puede matar la corrida."""
+    from scripts import render_linkedin as rl
+
+    respuestas = [
+        ConnectionError("cortado"),
+        RespuestaFalsa({"status": "running"}),
+        RespuestaFalsa({"status": "completed", "result": '{"lote": "abc"}'}),
+    ]
+
+    def falso_get(url, headers=None, timeout=None):
+        r = respuestas.pop(0)
+        if isinstance(r, Exception):
+            raise r
+        return r
+
+    monkeypatch.setattr(rl.requests, "get", falso_get)
+    monkeypatch.setattr(rl.time, "sleep", lambda s: None)
+
+    assert rl.esperar_job("http://crm", "t", 1, espera_s=0)["lote"] == "abc"
+
+
+def test_esperar_job_no_espera_si_el_job_ya_fallo(monkeypatch):
+    """Un job fallado no mejora esperando: eso si corta al toque."""
+    import pytest
+    from scripts import render_linkedin as rl
+
+    monkeypatch.setattr(rl.requests, "get", lambda *a, **k: RespuestaFalsa(
+        {"status": "failed", "error_message": "sin API key"}))
+    monkeypatch.setattr(rl.time, "sleep", lambda s: None)
+
+    with pytest.raises(RuntimeError, match="sin API key"):
+        rl.esperar_job("http://crm", "t", 1, espera_s=0)
+
+
+def test_postear_reintenta_los_5xx_y_termina_mandando(monkeypatch):
+    from scripts import render_linkedin as rl
+
+    intentos = []
+
+    def falso_post(url, headers=None, json=None, timeout=None):
+        intentos.append(1)
+        return RespuestaFalsa({"ok": True}, 500 if len(intentos) < 3 else 200)
+
+    monkeypatch.setattr(rl.requests, "post", falso_post)
+    monkeypatch.setattr(rl.time, "sleep", lambda s: None)
+
+    assert rl.postear_con_reintentos("http://crm/x", "t", {}).json() == {"ok": True}
+    assert len(intentos) == 3
+
+
+def test_postear_no_reintenta_un_400(monkeypatch):
+    """Insistir con un cuerpo mal armado solo repite el mismo error mas tarde."""
+    import pytest
+    import requests
+    from scripts import render_linkedin as rl
+
+    intentos = []
+
+    def falso_post(url, headers=None, json=None, timeout=None):
+        intentos.append(1)
+        return RespuestaFalsa({"error": "lote requerido"}, 400)
+
+    monkeypatch.setattr(rl.requests, "post", falso_post)
+    monkeypatch.setattr(rl.time, "sleep", lambda s: None)
+
+    with pytest.raises(requests.exceptions.HTTPError):
+        rl.postear_con_reintentos("http://crm/x", "t", {})
+    assert len(intentos) == 1
+
+
+def test_si_el_navegador_no_arranca_el_mail_sale_igual(monkeypatch):
+    """Un mail sin foto sirve; uno que no llega porque fallo Playwright, no."""
+    import sys
+    from scripts import render_linkedin as rl
+
+    monkeypatch.setattr(rl, "esperar_job", lambda *a, **k: {
+        "lote": "abc",
+        "borradores": [{"id": 1, "imagen_tipo": "tarjeta",
+                        "imagen_spec": {"frase": "hola"}}],
+    })
+    # Que el `from playwright.sync_api import ...` de adentro de main() explote.
+    monkeypatch.setitem(sys.modules, "playwright.sync_api", None)
+
+    enviado = {}
+
+    def falso_postear(url, token, cuerpo, intentos=4):
+        enviado.update(cuerpo)
+        return RespuestaFalsa({"ok": True})
+
+    monkeypatch.setattr(rl, "postear_con_reintentos", falso_postear)
+    monkeypatch.setattr(sys, "argv",
+                        ["render_linkedin.py", "--crm", "http://crm",
+                         "--token", "t", "--job-id", "1"])
+
+    assert rl.main() == 0
+    assert enviado["lote"] == "abc"
+    assert enviado["imagenes"] == []
