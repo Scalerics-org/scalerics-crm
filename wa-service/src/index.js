@@ -3,14 +3,16 @@
 const { cargar } = require('./config');
 const { construir } = require('./app');
 const { avisarSiEstaRoto } = require('./agenda/calendly');
+const { arrancarBackups } = require('./backup');
 
 async function main() {
   const cfg = cargar();
-  const { proveedor, scheduler, vigilanteReservas, cola, app, logger } = construir(cfg);
+  const { proveedor, scheduler, vigilanteReservas, cola, db, app, logger } = construir(cfg);
 
   await proveedor.conectar();
   scheduler.arrancar();
   vigilanteReservas.arrancar();
+  arrancarBackups({ db, cfg, logger });
 
   // Sin await: que el bot no espere a Calendly para levantarse.
   avisarSiEstaRoto({ cfg, cola, logger })

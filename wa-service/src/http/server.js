@@ -1,5 +1,7 @@
 'use strict';
 
+const { listar: listarBackups, hacerBackup } = require('../backup');
+
 const Fastify = require('fastify');
 const { z } = require('zod');
 const rutasCrm = require('./routes/crm');
@@ -230,6 +232,16 @@ function crearServidor({ cfg, repo, cola, proveedor, servicioLeads, scheduler, e
 
   // Util para operar: dispara los jobs vencidos sin esperar al intervalo.
   app.post('/jobs/run', async () => ({ ok: true, procesados: await scheduler.correrVencidos() }));
+
+  /** Que respaldos hay. Sirve para saber si de verdad se estan haciendo. */
+  app.get('/backups', async () => ({ ok: true, backups: listarBackups(cfg) }));
+
+  /** Uno ahora, sin esperar al que toca. */
+  app.post('/backups', async (req, reply) => {
+    const r = hacerBackup({ db: repo.db, cfg, logger });
+    if (!r) return reply.code(500).send({ ok: false, error: 'no se pudo respaldar' });
+    return { ok: true, archivo: require('node:path').basename(r.archivo), kb: Math.round(r.bytes / 1024) };
+  });
 
   return app;
 }

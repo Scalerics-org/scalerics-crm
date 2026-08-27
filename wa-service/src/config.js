@@ -262,6 +262,20 @@ const esquema = z.object({
   AVISO_HUMANO_MINUTOS: z.coerce.number().nonnegative().default(60),
 
   /**
+   * Copias de la base hechas por SQLite, aparte de los snapshots de Fly.
+   *
+   * Fly saca uno por dia y guarda cinco, lo que cubre que se muera el disco.
+   * Esto cubre lo otro: mas historia que cinco dias, y un archivo consistente
+   * —un snapshot del volumen copia la base abierta, con el journal a medio
+   * escribir, y aca el journal llega a ser mas grande que la base—.
+   *
+   * Vacio en BACKUP_DIR lo apaga.
+   */
+  BACKUP_DIR: z.string().default('/data/backups'),
+  BACKUP_HORAS: z.coerce.number().nonnegative().default(24),
+  BACKUP_GUARDAR: z.coerce.number().int().nonnegative().default(14),
+
+  /**
    * Cuantas horas tiene que pasar para repetir un aviso interno IDENTICO, y
    * cuantos avisos internos como mucho por hora.
    *
