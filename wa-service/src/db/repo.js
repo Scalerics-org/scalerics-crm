@@ -176,6 +176,13 @@ function crearRepo(db) {
         nurture_desde = NULL, nurture_motivo = NULL,
         no_cliente_motivo = NULL, no_cliente_desde = NULL,
         humano_avisado_at = NULL,
+        -- La reunion tambien. Sin esto el lead quedaba en NEW pero con una
+        -- reunion colgada, que es un estado que no significa nada: reiniciado
+        -- en todo menos en lo unico que ya habia conseguido. Y confundia de
+        -- verdad — al probar la derivacion por abandono, el lead reiniciado no
+        -- se derivaba nunca porque seguia figurando como que ya habia agendado.
+        meeting_time = NULL, meeting_url = NULL, meeting_booked_at = NULL,
+        meeting_event_id = NULL,
         status = 'new', replied_at = NULL, followup_sent_at = NULL,
         -- Tambien el saludo: reiniciar es empezar de cero, y sin esto el lead
         -- reiniciado nunca vuelve a recibir la presentacion.

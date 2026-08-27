@@ -286,6 +286,8 @@ test('reiniciar un lead lo devuelve al principio y la IA se olvida', async () =>
   assert.equal(l.score, null);
   assert.equal(l.human_requested, 0);
   assert.equal(l.welcomed_at, null, 'vuelve a recibir la presentacion');
+  assert.equal(l.meeting_time, null, 'y sin la reunion colgada');
+  assert.equal(l.meeting_booked_at, null);
 
   // El historial NO se borra: es lo que el equipo ve en el panel del CRM.
   assert.equal(s.repo.mensajesDeLead(l.id).length, mensajesAntes, 'los mensajes quedan');
