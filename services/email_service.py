@@ -505,7 +505,8 @@ def _cuerpo_por_contacto(numero: int, apertura: str, valor: str, negocio: str) -
             "Si preferís, respondé este mail y coordinamos por acá.",
         ])
     if numero == 3:
-        return (f"Sobre tu consulta{donde}" if negocio else "Sobre tu consulta a Scalerics", [
+        return (f"¿Dejamos lo de {negocio} para más adelante?" if negocio
+                else "¿Lo dejamos para más adelante?", [
             "Hola,",
             "No tuvimos novedades tuyas, así que por ahora lo dejamos acá.",
             f"Si más adelante retomás el tema{donde}, escribinos y lo vemos.",
@@ -530,7 +531,7 @@ def _cuerpo_por_contacto(numero: int, apertura: str, valor: str, negocio: str) -
             "este mail o agendá acá abajo.",
         ])
     if numero >= _CONTACTO_FINAL:
-        return (f"Último mail{donde}" if negocio else "Último mail de Scalerics", [
+        return (f"Cerramos lo de {negocio}" if negocio else "Cerramos tu consulta", [
             "Hola,",
             "Este es el último mail que te enviamos: a partir de acá no te "
             "escribimos más.",
@@ -540,12 +541,12 @@ def _cuerpo_por_contacto(numero: int, apertura: str, valor: str, negocio: str) -
         ])
     # El anteultimo (numero == 6): mismo tono corto y sin venta que 4 y 5, pero
     # avisando que despues de este queda uno solo.
-    return (f"Nos queda un mail más{donde}" if negocio else "Nos queda un mail más", [
+    return (f"¿Cerramos lo de {negocio}?" if negocio else "¿Cerramos tu consulta?", [
         "Hola,",
-        f"Este es el anteúltimo mail que te enviamos{donde}: después de este "
-        f"te queda uno solo.",
-        "Si el tema sigue en pie, es buen momento para retomarlo antes de que "
-        "dejemos de escribirte.",
+        f"Volvemos una vez más por lo{de}: si el tema sigue en pie, es buen "
+        f"momento para retomarlo.",
+        "Si no tenemos novedades, después de este te escribimos una sola vez "
+        "más y cerramos.",
     ])
 
 
@@ -624,20 +625,22 @@ def _cuerpo_por_estado(estado: str, numero: int, negocio: str,
 
     if estado == "presupuesto_enviado":
         if numero <= 1:
-            return (f"{negocio} — el presupuesto que te enviamos" if negocio
-                    else "El presupuesto que te enviamos", [
+            return (f"{negocio} — ¿qué te frenó?" if negocio
+                    else "¿Qué te frenó del presupuesto?", [
                 "Hola,",
-                "Te reenviamos el presupuesto por si quedó perdido entre otros mails.",
-                "Si el número no cierra, decinos y lo revisamos: casi siempre hay una "
-                "versión más acotada que resuelve lo mismo para arrancar, y se puede "
-                "ampliar después.",
-                "Respondé este mail y seguimos por acá, o agendá 30 minutos y lo "
-                "vemos juntos.",
+                "Te pasamos el presupuesto y no tuvimos respuesta. Suele ser una de "
+                "tres: el precio, el momento, o que lo resolviste por otro lado.",
+                "Las tres son respuestas válidas y no insistimos con ninguna. Si es "
+                "el precio, casi siempre hay una versión más acotada que resuelve lo "
+                "mismo para arrancar y se amplía después.",
+                "Respondenos con cuál de las tres es y seguimos desde ahí.",
             ])
-        return (f"¿Seguimos con lo de {negocio}?" if negocio else "¿Seguimos con el presupuesto?", [
+        return (f"¿Damos por cerrado lo de {negocio}?" if negocio else "¿Lo damos por cerrado?", [
             "Hola,",
-            "Te escribimos por última vez por el presupuesto que te enviamos.",
-            "Si no es el momento, respondenos una línea y no te escribimos más.",
+            "Última por el presupuesto. Si la respuesta es que no, decínoslo y lo "
+            "cerramos: no hace falta explicar nada.",
+            "Y si era el momento y no el proyecto, avisanos cuando sea y lo "
+            "retomamos donde quedó.",
         ])
 
     if estado == "reunion_hecha":

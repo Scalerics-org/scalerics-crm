@@ -275,7 +275,7 @@ def test_el_membrete_es_el_unico_logo():
     (3, "por ahora lo dejamos acá"),
     (4, "Pasó un tiempo"),
     (5, "varios meses"),
-    (6, "anteúltimo mail"),
+    (6, "una vez más"),
     (7, "el último mail"),
 ])
 def test_cada_contacto_dice_algo_distinto(numero, esperado):
@@ -338,20 +338,20 @@ def test_los_siete_cuerpos_son_todos_distintos():
     ("RP Estudio", {
         1: "RP Estudio — cómo lo resolveríamos",
         2: "Sobre tu consulta para RP Estudio",
-        3: "Sobre tu consulta para RP Estudio",
+        3: "¿Dejamos lo de RP Estudio para más adelante?",
         4: "¿Retomamos lo de RP Estudio?",
         5: "¿Sigue en pie lo de RP Estudio?",
-        6: "Nos queda un mail más para RP Estudio",
-        7: "Último mail para RP Estudio",
+        6: "¿Cerramos lo de RP Estudio?",
+        7: "Cerramos lo de RP Estudio",
     }),
     ("", {
         1: "Cómo resolveríamos tu consulta",
         2: "Sobre tu consulta a Scalerics",
-        3: "Sobre tu consulta a Scalerics",
+        3: "¿Lo dejamos para más adelante?",
         4: "¿Retomamos tu consulta?",
         5: "¿Sigue en pie tu consulta?",
-        6: "Nos queda un mail más",
-        7: "Último mail de Scalerics",
+        6: "¿Cerramos tu consulta?",
+        7: "Cerramos tu consulta",
     }),
 ])
 def test_los_siete_asuntos_se_leen_bien_con_y_sin_negocio(negocio, esperados):
@@ -438,3 +438,50 @@ def test_sin_negocio_la_frase_igual_cierra(estado):
     texto = asunto + " " + " ".join(parrafos)
     assert "para  " not in texto and not texto.rstrip().endswith("para")
     assert " de ." not in texto
+
+
+# ── Los asuntos por estado, fijados ──────────────────────────────────────────
+# Se rompieron dos veces por lo mismo: pegar " de {negocio}" en una frase donde
+# no cierra. Salieron "¿Seguimos de Casa Garrido?" y "¿Lo damos por cerrado de
+# Casa Garrido?". El asunto es lo unico que el lector ve antes de decidir si
+# abre; una preposicion colgada lo delata como plantilla mal armada.
+
+_ASUNTOS_POR_ESTADO = {
+    ("presupuesto_enviado", 1): ("RP Estudio — ¿qué te frenó?", "¿Qué te frenó del presupuesto?"),
+    ("presupuesto_enviado", 2): ("¿Damos por cerrado lo de RP Estudio?", "¿Lo damos por cerrado?"),
+    ("reunion_hecha", 1): ("RP Estudio — quedó pendiente el presupuesto", "Quedó pendiente tu presupuesto"),
+    ("reunion_hecha", 2): ("RP Estudio — el presupuesto", "El presupuesto de tu proyecto"),
+    ("interesado", 1): ("RP Estudio — cómo lo resolveríamos", "Retomamos tu consulta"),
+    ("llamar_despues", 1): ("RP Estudio — intentamos comunicarnos", "Intentamos comunicarnos con vos"),
+}
+
+
+@pytest.mark.parametrize("clave,esperados", list(_ASUNTOS_POR_ESTADO.items()))
+def test_los_asuntos_por_estado_estan_fijados(clave, esperados):
+    estado, numero = clave
+    con, sin = esperados
+    assert _cuerpo_por_estado(estado, numero, "RP Estudio", "automatizaciones")[0] == con
+    assert _cuerpo_por_estado(estado, numero, "", "")[0] == sin
+
+
+@pytest.mark.parametrize("clave", list(_ASUNTOS_POR_ESTADO))
+def test_ningun_asunto_queda_con_una_preposicion_colgada(clave):
+    estado, numero = clave
+    for negocio in ("RP Estudio", ""):
+        asunto = _cuerpo_por_estado(estado, numero, negocio, "automatizaciones")[0]
+        assert "  " not in asunto, f"{asunto!r} tiene un hueco donde iba el negocio"
+        for suelta in (" de?", " de ?", " para?", " con?", " lo?"):
+            assert suelta not in asunto, f"{asunto!r} corta mal"
+        assert not asunto.rstrip("?¿ ").endswith((" de", " para", " con", " lo"))
+
+
+def test_el_mail_de_presupuesto_no_trata_al_lector_de_distraido():
+    """Quien recibio un precio y no contesto lo vio: decidio.
+
+    "Por si quedo perdido entre otros mails" es la excusa de vendedor que todos
+    reconocen, y a esta altura del embudo ofende. El mail nombra la razon real.
+    """
+    _, parrafos = _cuerpo_por_estado("presupuesto_enviado", 1, "RP Estudio", "automatizaciones")
+    texto = " ".join(parrafos).lower()
+    assert "quedó perdido" not in texto and "quedo perdido" not in texto
+    assert "precio" in texto and "momento" in texto
