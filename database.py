@@ -503,7 +503,43 @@ def init_db(db_path: str) -> None:
             conn.execute("DROP TABLE meta_reminders")
             conn.execute("ALTER TABLE meta_reminders_nueva RENAME TO meta_reminders")
 
- 
+        # Segunda migracion: la secuencia dejo de ser una sola y paso a haber
+        # una por estado del CRM, cada una con su propio contador. Sin la
+        # columna `estado`, un lead que cambia de estado seguiria numerando
+        # desde donde iba y recibiria el contacto 2 de una secuencia que nunca
+        # empezo. Hay que reconstruir igual que arriba: el UNIQUE pasa de
+        # (business_id, numero) a (business_id, estado, numero) y SQLite no deja
+        # cambiarlo en el lugar.
+        #
+        # Las filas viejas se marcan 'sin_contactar' porque ESE era el estado de
+        # esos leads cuando se les mando: hasta hoy el filtro no dejaba pasar
+        # ningun otro. Conservan su token, que esta publicado dentro de mails
+        # que la gente ya recibio y sigue siendo su unico link de baja.
+        columnas = [c[1] for c in conn.execute("PRAGMA table_info(meta_reminders)")]
+        if "estado" not in columnas:
+            conn.execute("DROP TABLE IF EXISTS meta_reminders_estado")
+            conn.execute("""
+                CREATE TABLE meta_reminders_estado (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    business_id     INTEGER NOT NULL,
+                    estado          TEXT NOT NULL DEFAULT 'sin_contactar',
+                    numero          INTEGER NOT NULL DEFAULT 1,
+                    token           TEXT NOT NULL UNIQUE,
+                    sent_at         TEXT NOT NULL,
+                    unsubscribed_at TEXT,
+                    UNIQUE (business_id, estado, numero)
+                )
+            """)
+            conn.execute("""
+                INSERT INTO meta_reminders_estado
+                       (id, business_id, estado,          numero, token, sent_at, unsubscribed_at)
+                SELECT  id, business_id, 'sin_contactar', numero, token, sent_at, unsubscribed_at
+                  FROM meta_reminders
+            """)
+            conn.execute("DROP TABLE meta_reminders")
+            conn.execute("ALTER TABLE meta_reminders_estado RENAME TO meta_reminders")
+
+
         # ── LinkedIn ──────────────────────────────────────────────────────────
         conn.execute("""
             CREATE TABLE IF NOT EXISTS linkedin_posts (

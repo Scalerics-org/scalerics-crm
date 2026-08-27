@@ -1211,6 +1211,10 @@ body.light .upick-name{color:#0f172a}
     </div>
     <div class="filters">
       <input class="search-box" id="meta-search-input" placeholder="🔍 Buscar..." oninput="metaSearch(this.value)">
+      <select class="filter-select" id="meta-month-filter" onchange="metaMonthFilter(this.value)">
+        <option value="">Todos los meses</option>
+      </select>
+      <span id="meta-count" style="color:#64748b;font-size:.8rem;align-self:center;margin-left:auto"></span>
     </div>
     <div class="table-wrap">
       <div class="table-header no-cb" style="grid-template-columns:1.8fr 1fr 1.2fr 1.2fr 0.9fr 0.8fr 1.1fr">
@@ -1847,6 +1851,7 @@ function _reloadActiveCallPanel() {
 
 // ── Meta Ads panel ───────────────────────────────────────────────────────────
 let _metaSearch = '';
+let _metaMonth = '';
 let _metaLeads = [];
 let _metaSortDesc = true;
 let _metaKnownIds = new Set();
@@ -1869,6 +1874,7 @@ function _startMetaPoll() {
         badge.textContent = newOnes.length === 1 ? 'NEW' : `+${newOnes.length}`;
         badge.style.display = '';
         _metaLeads = leads;
+        _fillMetaMonths();
         const activePanel = document.querySelector('.panel.active');
         if (activePanel && activePanel.id === 'meta-panel') {
           renderMetaTable();
@@ -1880,6 +1886,34 @@ function _startMetaPoll() {
   }, 60000);
 }
 function metaSearch(v) { _metaSearch = v.toLowerCase(); renderMetaTable(); }
+function metaMonthFilter(v) { _metaMonth = v; renderMetaTable(); }
+
+// Clave 'YYYY-MM' del lead, o '' si no tiene fecha usable. Es la misma funcion
+// que usan el <select> y el filtro, para que no puedan discrepar: si una arma
+// la clave distinto que la otra, el mes queda en la lista y no filtra nada.
+function _metaMesKey(l) {
+  const d = new Date(l.scraped_at || 0);
+  return isNaN(d) || !l.scraped_at ? '' : `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+}
+
+function _fillMetaMonths() {
+  const sel = document.getElementById('meta-month-filter');
+  if (!sel) return;
+  const cuenta = {};
+  _metaLeads.forEach(l => { const k = _metaMesKey(l); if (k) cuenta[k] = (cuenta[k]||0)+1; });
+  const meses = Object.keys(cuenta).sort().reverse();
+  // Se preserva la seleccion: el poll de 60s repuebla la lista y sin esto el
+  // filtro del usuario se resetearia solo mientras mira la tabla.
+  const previo = _metaMonth;
+  const nombres = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  sel.innerHTML = `<option value="">Todos los meses (${_metaLeads.length})</option>` +
+    meses.map(k => {
+      const [a, m] = k.split('-');
+      return `<option value="${k}">${nombres[parseInt(m,10)-1]} ${a} (${cuenta[k]})</option>`;
+    }).join('');
+  sel.value = meses.includes(previo) ? previo : '';
+  _metaMonth = sel.value;
+}
 function toggleMetaSort() { _metaSortDesc = !_metaSortDesc; document.getElementById('meta-sort-icon').textContent = _metaSortDesc ? '↓' : '↑'; renderMetaTable(); }
 
 async function loadMetaPanel() {
@@ -1890,6 +1924,7 @@ async function loadMetaPanel() {
     const data = await r.json();
     _metaLeads = Array.isArray(data) ? data : (data.items || []);
     _metaLeads.forEach(l => _metaKnownIds.add(l.id));
+    _fillMetaMonths();
     renderMetaTable();
     _startMetaPoll();
   } catch(e) { body.innerHTML = `<div style="color:#f87171;padding:16px">Error: ${e.message}</div>`; }
@@ -1899,7 +1934,12 @@ function renderMetaTable() {
   const body = document.getElementById('meta-body');
   let leads = _metaLeads;
   if (_metaSearch) leads = leads.filter(b => (b.name||'').toLowerCase().includes(_metaSearch) || (b.notes||'').toLowerCase().includes(_metaSearch));
-  if (!leads.length) { body.innerHTML = '<div class="empty-state">No hay leads de Meta Ads todavía</div>'; return; }
+  if (_metaMonth) leads = leads.filter(b => _metaMesKey(b) === _metaMonth);
+  const _cnt = document.getElementById('meta-count');
+  if (_cnt) _cnt.textContent = leads.length === _metaLeads.length
+    ? `${leads.length} leads`
+    : `${leads.length} de ${_metaLeads.length}`;
+  if (!leads.length) { body.innerHTML = '<div class="empty-state">No hay leads que coincidan con el filtro</div>'; return; }
   const crmLabels = {sin_contactar:'Sin contactar',interesado:'Interesado',contactado:'Interesado',reunion_agendada:'Reunión agendada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Ppto enviado',negociacion:'Negociación',cliente_cerrado:'Cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado',llamar_despues:'Llamar después',no_interesa:'No le interesa'};
   const crmColor = {sin_contactar:'#475569',interesado:'#10b981',contactado:'#10b981',reunion_agendada:'#3b82f6',reunion_hecha:'#14b8a6',presupuesto_enviado:'#f97316',negociacion:'#fbbf24',cliente_cerrado:'#10b981',en_desarrollo:'#0088cc',finalizado:'#6ee7b7',llamar_despues:'#f59e0b',no_interesa:'#ef4444'};
   leads.sort((a,b) => {

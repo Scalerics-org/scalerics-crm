@@ -11,7 +11,13 @@ from datetime import datetime, timezone
 
 from services.corridas import marcar_corrida, puede_correr, ultima_corrida
 from services.email_service import send_meta_lead_reminder
-from services.secuencia_contactos import DIAS_DE_CADA_CONTACTO, TOTAL_CONTACTOS
+from services.secuencia_contactos import (
+    DIAS_DE_CADA_CONTACTO,
+    ESTADOS_CON_SECUENCIA,
+    SECUENCIAS_POR_ESTADO,
+    TOTAL_CONTACTOS,
+    total_de,
+)
 
 CLAVE_NEGOCIO = "¿cómo_se_llama_tu_negocio?"
 CLAVE_RUBRO = "¿que_es_lo_que_buscás_para_tu_negocio?"
@@ -30,13 +36,22 @@ _TOPE_DIARIO = 15
 # mas caliente es el ultimo en recibir el mail.
 _VENTANA_RECIEN_ELEGIBLE_DIAS = 7
 
-# Un lead de Meta sigue en la secuencia mientras nadie lo haya contactado (el
-# crm_status es la UNICA senal de que alguien contesto el mail) y tenga
-# direccion. Un solo lugar de verdad: si mañana se ajusta aca, vale para
-# leads_a_recordar y leads_a_seguir por igual, no hace falta acordarse de la
-# otra funcion.
+# Un lead de Meta esta en secuencia si su estado ACTUAL tiene una, y tiene
+# direccion. El estado se lee aca, en la corrida, no cuando se lo encolo: quien
+# compro o se cayo ayer simplemente no aparece hoy.
+#
+# Antes esto exigia crm_status = 'sin_contactar', con el argumento de que el
+# estado era la unica senal de que alguien habia contestado. Era falso en la
+# operacion real: los CEO llamaban a todos y nadie movia el estado, asi que la
+# secuencia le escribia a los mas frios y se callaba justo con los que ya
+# habian visto un presupuesto. Ver services/secuencia_contactos.py para que
+# estado recibe que.
+#
+# Un solo lugar de verdad: si mañana se ajusta aca, vale para leads_a_recordar
+# y leads_a_seguir por igual, no hace falta acordarse de la otra funcion.
+_ESTADOS_EN_SQL = ", ".join("'" + e + "'" for e in ESTADOS_CON_SECUENCIA)
 _FILTRO_LEAD_ELEGIBLE = (
-    "b.source = 'meta' AND b.crm_status = 'sin_contactar' "
+    f"b.source = 'meta' AND b.crm_status IN ({_ESTADOS_EN_SQL}) "
     "AND b.email IS NOT NULL AND LENGTH(TRIM(b.email)) > 3 "
     # Rebotes duros y quejas de spam. La lista es una sola para las dos
     # campanas: salen de la misma cuenta de Resend, y lo que rebota
@@ -77,22 +92,23 @@ def _conn(db_path: str) -> sqlite3.Connection:
     return sqlite3.connect(db_path, timeout=10)
 
 
-def registrar_envio(db_path: str, business_id: int, numero: int) -> str:
-    """Deja constancia del contacto `numero` y devuelve su token de baja.
+def registrar_envio(db_path: str, business_id: int, numero: int,
+                    estado: str = "sin_contactar") -> str:
+    """Deja constancia del contacto `numero` de `estado` y devuelve su token.
 
-    Lanza sqlite3.IntegrityError si ese lead ya recibio ese contacto: es la red
-    que impide mandar dos veces, y tiene que fallar ruidosamente. Cada contacto
-    lleva su propio token, asi que el link de baja de cada mail funciona por
-    separado.
+    Lanza sqlite3.IntegrityError si ese lead ya recibio ese contacto DE ESE
+    ESTADO: es la red que impide mandar dos veces, y tiene que fallar
+    ruidosamente. Cada contacto lleva su propio token, asi que el link de baja
+    de cada mail funciona por separado.
     """
     token = secrets.token_urlsafe(24)
     ahora = _ahora()
     conn = _conn(db_path)
     try:
         conn.execute(
-            "INSERT INTO meta_reminders (business_id, numero, token, sent_at) "
-            "VALUES (?, ?, ?, ?)",
-            (business_id, int(numero), token, ahora),
+            "INSERT INTO meta_reminders (business_id, estado, numero, token, sent_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (business_id, str(estado), int(numero), token, ahora),
         )
         conn.commit()
     finally:
@@ -100,14 +116,25 @@ def registrar_envio(db_path: str, business_id: int, numero: int) -> str:
     return token
 
 
-def contactos_enviados(db_path: str, business_id: int) -> int:
-    """Cuantos contactos de la secuencia ya recibio este lead."""
+def contactos_enviados(db_path: str, business_id: int, estado: str = None) -> int:
+    """Cuantos contactos ya recibio este lead.
+
+    Con `estado`, solo los de la secuencia de ese estado, que es lo que decide
+    el proximo numero. Sin `estado`, todos los de su vida, que es lo que sirve
+    para saber cuanto se le escribio en total.
+    """
     conn = _conn(db_path)
     try:
-        (cuantos,) = conn.execute(
-            "SELECT COUNT(*) FROM meta_reminders WHERE business_id = ?",
-            (business_id,),
-        ).fetchone()
+        if estado is None:
+            (cuantos,) = conn.execute(
+                "SELECT COUNT(*) FROM meta_reminders WHERE business_id = ?",
+                (business_id,),
+            ).fetchone()
+        else:
+            (cuantos,) = conn.execute(
+                "SELECT COUNT(*) FROM meta_reminders WHERE business_id = ? AND estado = ?",
+                (business_id, str(estado)),
+            ).fetchone()
     finally:
         conn.close()
     return int(cuantos or 0)
@@ -194,15 +221,35 @@ def leads_a_recordar(db_path: str, dias_minimos: int = 3, limite: int = _TOPE_DI
         filas = conn.execute(
             f"""
             SELECT b.id, b.name, TRIM(b.email) AS email, b.form_data,
+                   b.crm_status AS estado,
                    MIN(b.scraped_at) AS primero
               FROM businesses b
-         LEFT JOIN meta_reminders r ON r.business_id = b.id
+         LEFT JOIN meta_reminders r
+                ON r.business_id = b.id AND r.estado = b.crm_status
              WHERE {_FILTRO_LEAD_ELEGIBLE}
                AND r.id IS NULL
                AND NOT EXISTS (
                      SELECT 1 FROM meta_reminders r2
                        JOIN businesses b2 ON b2.id = r2.business_id
                       WHERE LOWER(TRIM(b2.email)) = LOWER(TRIM(b.email))
+                        AND r2.estado = b.crm_status
+                   )
+               -- La baja es global, no por estado: quien pidio no recibir mas
+               -- no recibe nada de ninguna secuencia. Antes esta guarda estaba
+               -- implicita en `r.id IS NULL` (sin filas, no habia baja
+               -- posible); con una tabla por estado ya no lo esta, porque la
+               -- baja puede vivir en las filas de OTRO estado.
+               AND NOT EXISTS (
+                     SELECT 1 FROM meta_reminders u
+                      WHERE u.business_id = b.id AND u.unsubscribed_at IS NOT NULL
+                   )
+               -- Piso de dias contado sobre TODOS los estados. Sin esto, mover
+               -- a alguien de estado le dispara el contacto 1 de la secuencia
+               -- nueva al dia siguiente del ultimo mail de la vieja.
+               AND NOT EXISTS (
+                     SELECT 1 FROM meta_reminders p
+                      WHERE p.business_id = b.id
+                        AND p.sent_at > datetime('now', '-{_PISO_ENTRE_CONTACTOS_DIAS} days')
                    )
                AND b.scraped_at IS NOT NULL
                AND b.scraped_at <= datetime('now', ?)
@@ -231,6 +278,8 @@ def leads_a_recordar(db_path: str, dias_minimos: int = 3, limite: int = _TOPE_DI
             "email": f["email"],
             "negocio": _texto(campos, CLAVE_NEGOCIO),
             "rubro": _texto(campos, CLAVE_RUBRO),
+            "estado": f["estado"],
+            "numero": 1,
         })
     return salida
 
@@ -247,7 +296,8 @@ def leads_a_seguir(db_path: str, limite: int = _TOPE_DIARIO) -> list[dict]:
     existe. Eso chocaria contra el UNIQUE(business_id, numero) y ese choque,
     en enviar_recordatorios, se trata como "otra corrida se adelanto": el lead
     quedaria trabado en ese contacto para siempre, sin rastro en el log. El
-    tope de la secuencia (7) usa la misma logica: importa el numero mas alto
+    tope de la secuencia (que ahora depende del estado) usa la misma logica:
+    importa el numero mas alto
     ya mandado, no cuantas filas hay, asi que un lead cuyo contacto 7 ya salio
     no vuelve a entrar aunque le falten filas intermedias por un reintento
     viejo.
@@ -260,30 +310,48 @@ def leads_a_seguir(db_path: str, limite: int = _TOPE_DIARIO) -> list[dict]:
     `DIAS_DE_CADA_CONTACTO` para que la tabla de dias tenga un solo lugar de
     verdad.
     """
-    casos = " ".join(
-        f"WHEN {n} THEN {DIAS_DE_CADA_CONTACTO[n]}"
-        for n in range(1, TOTAL_CONTACTOS)
+    # Dos CASE, uno por pregunta. El tope de la secuencia y los umbrales de dias
+    # ahora dependen del estado, asi que no alcanza con indexar por numero: la
+    # clave es el par (estado, ultimo_numero), que se arma concatenando en SQL.
+    casos_total = " ".join(
+        f"WHEN '{e}' THEN {len(dias)}" for e, dias in SECUENCIAS_POR_ESTADO.items()
     )
+    pares = [
+        (e, n, dias[n])
+        for e, dias in SECUENCIAS_POR_ESTADO.items()
+        for n in range(1, len(dias))
+    ]
+    # Un ELSE altisimo, no NULL: si algun dia hubiera un par sin caso, el lead
+    # queda esperando en vez de recibir el mail antes de tiempo.
+    casos_dias = " ".join(f"WHEN '{e}:{n}' THEN {d}" for e, n, d in pares) or "WHEN '' THEN 0"
     conn = _conn(db_path)
     conn.row_factory = sqlite3.Row
     try:
         filas = conn.execute(
             f"""
             SELECT b.id, b.name, TRIM(b.email) AS email, b.form_data,
+                   b.crm_status AS estado,
                    MAX(r.numero) AS ultimo_numero,
-                   MIN(r.sent_at) AS primer_envio,
-                   MAX(r.sent_at) AS ultimo_envio
+                   MIN(r.sent_at) AS primer_envio
               FROM businesses b
-              JOIN meta_reminders r ON r.business_id = b.id
+              JOIN meta_reminders r
+                ON r.business_id = b.id AND r.estado = b.crm_status
              WHERE {_FILTRO_LEAD_ELEGIBLE}
                AND NOT EXISTS (
                      SELECT 1 FROM meta_reminders u
                       WHERE u.business_id = b.id AND u.unsubscribed_at IS NOT NULL
                    )
           GROUP BY b.id
-            HAVING ultimo_numero < {TOTAL_CONTACTOS}
-               AND primer_envio <= datetime('now', '-' || (CASE ultimo_numero {casos} END) || ' days')
-               AND ultimo_envio <= datetime('now', '-{_PISO_ENTRE_CONTACTOS_DIAS} days')
+            HAVING ultimo_numero < (CASE b.crm_status {casos_total} ELSE 0 END)
+               AND primer_envio <= datetime('now', '-' ||
+                     (CASE b.crm_status || ':' || ultimo_numero {casos_dias} ELSE 999999 END)
+                     || ' days')
+               -- El piso entre contactos se mide sobre TODOS los estados del
+               -- lead, no solo el actual: si no, cambiar de estado le permite
+               -- dos mails el mismo dia, uno por secuencia.
+               AND (SELECT MAX(x.sent_at) FROM meta_reminders x
+                     WHERE x.business_id = b.id)
+                   <= datetime('now', '-{_PISO_ENTRE_CONTACTOS_DIAS} days')
           ORDER BY primer_envio ASC
              LIMIT ?
             """,
@@ -306,6 +374,7 @@ def leads_a_seguir(db_path: str, limite: int = _TOPE_DIARIO) -> list[dict]:
             "email": f["email"],
             "negocio": _texto(campos, CLAVE_NEGOCIO),
             "rubro": _texto(campos, CLAVE_RUBRO),
+            "estado": f["estado"],
             "numero": int(f["ultimo_numero"]) + 1,
         })
     return salida
@@ -352,8 +421,15 @@ def enviar_recordatorios(db_path: str, base_url: str, dry_run: bool = False) -> 
     ya_hubo_intento = False
     for lead in candidatos:
         numero = lead.get("numero", 1)
+        # `estado_crm` y no `estado`: mas abajo `estado` es el resultado del
+        # envio ("ok" / "fallo" / incierto). Son dos cosas distintas y pisarlas
+        # convertiria un fallo de mail en un estado del CRM.
+        estado_crm = lead.get("estado", "sin_contactar")
         if dry_run:
-            logger.info(f"[dry-run] contacto {numero} a {lead['email']} (lead {lead['id']})")
+            logger.info(
+                f"[dry-run] contacto {numero} de '{estado_crm}' a {lead['email']} "
+                f"(lead {lead['id']})"
+            )
             continue
         # El cupo se relee antes de cada envio, no una sola vez al empezar: si
         # otra corrida arranco en el medio (un reinicio de Fly dispara una tanda
@@ -369,7 +445,7 @@ def enviar_recordatorios(db_path: str, base_url: str, dry_run: bool = False) -> 
             )
             break
         try:
-            token = registrar_envio(db_path, lead["id"], numero)
+            token = registrar_envio(db_path, lead["id"], numero, estado_crm)
         except sqlite3.IntegrityError:
             # Otra corrida se le adelanto. No es un error: es la guarda haciendo
             # su trabajo.
@@ -400,7 +476,7 @@ def enviar_recordatorios(db_path: str, base_url: str, dry_run: bool = False) -> 
         estado = send_meta_lead_reminder(
             destino, lead["negocio"], lead["rubro"],
             f"{base_url.rstrip('/')}/baja/{token}",
-            numero,
+            numero, estado_crm,
         )
         ya_hubo_intento = True
         if estado == "ok":
@@ -420,8 +496,9 @@ def enviar_recordatorios(db_path: str, base_url: str, dry_run: bool = False) -> 
             try:
                 try:
                     conn.execute(
-                        "DELETE FROM meta_reminders WHERE business_id = ? AND numero = ?",
-                        (lead["id"], numero),
+                        "DELETE FROM meta_reminders "
+                        "WHERE business_id = ? AND estado = ? AND numero = ?",
+                        (lead["id"], estado_crm, numero),
                     )
                     conn.commit()
                 except Exception:
@@ -433,10 +510,10 @@ def enviar_recordatorios(db_path: str, base_url: str, dry_run: bool = False) -> 
                     logger.error(
                         f"Recordatorios Meta: el mail al lead {lead['id']} fallo y ademas "
                         f"no se pudo limpiar el registro de envio (business_id={lead['id']}, "
-                        f"numero={numero}). Va a quedar marcado como contactado sin haber "
+                        f"estado={estado_crm}, numero={numero}). Va a quedar marcado como contactado sin haber "
                         f"recibido nada: revisar/borrar manualmente esa fila puntual en "
-                        f"meta_reminders (business_id={lead['id']}, numero={numero}) -- NO borrar "
-                        f"por business_id solo, eso se lleva los tokens de baja de los "
+                        f"meta_reminders (business_id={lead['id']}, estado={estado_crm}, numero={numero}) -- NO borrar "
+                        f"por business_id ni por estado solos, eso se lleva los tokens de baja de los "
                         f"contactos anteriores ya publicados en mails reales.",
                         exc_info=True,
                     )

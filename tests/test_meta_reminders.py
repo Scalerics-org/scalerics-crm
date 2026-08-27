@@ -187,9 +187,11 @@ def test_elige_solo_a_los_que_corresponde(db):
     conn = sqlite3.connect(db)
     _lead(conn, 1, dias=5)                                  # elegible
     _lead(conn, 2, dias=1)                                  # muy nuevo
-    _lead(conn, 3, dias=5, crm_status="reunion_hecha")      # ya lo contactaron
+    _lead(conn, 3, dias=5, crm_status="no_interesa")        # dijo que no: no recibe
     _lead(conn, 4, dias=5, email=None)                      # sin mail
     _lead(conn, 5, dias=5, source="google")                 # no es de Meta
+    _lead(conn, 6, dias=5, crm_status="reunion_agendada")   # tiene reunion: no se lo molesta
+    _lead(conn, 7, dias=5, crm_status="finalizado")         # ya es cliente
     conn.commit()
     conn.close()
 
@@ -932,7 +934,7 @@ def test_un_seguimiento_entra_en_la_tanda_con_su_numero(db, monkeypatch):
     conn.close()
 
     mandados = []
-    def fake(to, negocio, rubro, url, numero=1):
+    def fake(to, negocio, rubro, url, numero=1, estado="sin_contactar"):
         mandados.append((to, numero))
         return "ok"
 
@@ -961,7 +963,7 @@ def test_el_tope_diario_cuenta_juntos_seguimientos_y_nuevos(db, monkeypatch):
     conn.close()
 
     mandados = []
-    def fake(to, negocio, rubro, url, numero=1):
+    def fake(to, negocio, rubro, url, numero=1, estado="sin_contactar"):
         mandados.append((to, numero))
         return "ok"
 
@@ -996,3 +998,171 @@ def test_el_numero_que_se_registra_es_el_que_se_mando(db):
         conn.close()
 
     assert numeros == [1, 2]
+
+
+# ── Secuencias por estado ────────────────────────────────────────────────────
+# El contador es por (lead, estado), no por lead: un lead que cambia de estado
+# empieza la secuencia nueva en el contacto 1. Antes de esto habria recibido el
+# contacto 2 de una secuencia que nunca empezo, y con el texto equivocado.
+
+def _envio_estado(conn, bid, estado, numero, dias_atras):
+    """Mete a mano una fila de meta_reminders con fecha, sin pasar por el envio."""
+    cuando = (datetime.now(timezone.utc) - timedelta(days=dias_atras)).strftime("%Y-%m-%d %H:%M:%S")
+    conn.execute(
+        "INSERT INTO meta_reminders (business_id, estado, numero, token, sent_at) "
+        "VALUES (?,?,?,?,?)",
+        (bid, estado, numero, f"tok-{bid}-{estado}-{numero}", cuando),
+    )
+
+
+def test_cada_estado_con_secuencia_entra_y_dice_cual_es(db):
+    conn = sqlite3.connect(db)
+    for i, estado in enumerate(
+        ["sin_contactar", "llamar_despues", "interesado",
+         "reunion_hecha", "presupuesto_enviado"], start=1
+    ):
+        _lead(conn, i, dias=10, crm_status=estado)
+    conn.commit()
+    conn.close()
+
+    elegidos = {x["id"]: x["estado"] for x in leads_a_recordar(db)}
+
+    assert elegidos == {
+        1: "sin_contactar", 2: "llamar_despues", 3: "interesado",
+        4: "reunion_hecha", 5: "presupuesto_enviado",
+    }
+    assert all(x["numero"] == 1 for x in leads_a_recordar(db))
+
+
+def test_cambiar_de_estado_arranca_la_secuencia_nueva_en_uno(db):
+    conn = sqlite3.connect(db)
+    # Recibio dos contactos cuando estaba frio y despues lo llamaron: hoy es
+    # 'presupuesto_enviado' y le toca el contacto 1 de ESA secuencia.
+    _lead(conn, 1, dias=200, crm_status="presupuesto_enviado")
+    _envio_estado(conn, 1, "sin_contactar", 1, dias_atras=100)
+    _envio_estado(conn, 1, "sin_contactar", 2, dias_atras=90)
+    conn.commit()
+    conn.close()
+
+    elegidos = leads_a_recordar(db)
+
+    assert [(x["id"], x["estado"], x["numero"]) for x in elegidos] == \
+           [(1, "presupuesto_enviado", 1)]
+
+
+def test_un_estado_ya_recorrido_no_se_repite(db):
+    from services.meta_reminders import leads_a_seguir
+    conn = sqlite3.connect(db)
+    # 'interesado' tiene un solo contacto y ya lo recibio. Aunque el lead
+    # vuelva a ese estado, no le corresponde nada mas.
+    _lead(conn, 1, dias=200, crm_status="interesado")
+    _envio_estado(conn, 1, "interesado", 1, dias_atras=120)
+    conn.commit()
+    conn.close()
+
+    assert leads_a_recordar(db) == []
+    assert leads_a_seguir(db) == []
+
+
+def test_la_baja_en_un_estado_corta_todos_los_demas(db):
+    conn = sqlite3.connect(db)
+    _lead(conn, 1, dias=200, crm_status="presupuesto_enviado")
+    _envio_estado(conn, 1, "sin_contactar", 1, dias_atras=100)
+    conn.commit()
+    token = conn.execute(
+        "SELECT token FROM meta_reminders WHERE business_id = 1"
+    ).fetchone()[0]
+    conn.close()
+
+    assert leads_a_recordar(db), "antes de la baja, le tocaba"
+    dar_de_baja(db, token)
+    assert leads_a_recordar(db) == [], "la baja es global, no por estado"
+
+
+def test_el_piso_de_dias_se_mide_sobre_todos_los_estados(db):
+    conn = sqlite3.connect(db)
+    # Le mandamos ayer con el estado viejo y hoy cambio de estado: el contacto 1
+    # de la secuencia nueva no puede salir el mismo dia.
+    _lead(conn, 1, dias=200, crm_status="reunion_hecha")
+    _envio_estado(conn, 1, "sin_contactar", 1, dias_atras=1)
+    conn.commit()
+    conn.close()
+
+    assert leads_a_recordar(db) == []
+
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "UPDATE meta_reminders SET sent_at = ? WHERE business_id = 1",
+        ((datetime.now(timezone.utc) - timedelta(days=_PISO_ENTRE_CONTACTOS_DIAS + 1))
+         .strftime("%Y-%m-%d %H:%M:%S"),),
+    )
+    conn.commit()
+    conn.close()
+
+    assert [x["id"] for x in leads_a_recordar(db)] == [1]
+
+
+def test_el_seguimiento_usa_los_dias_de_su_propio_estado(db):
+    from services.meta_reminders import leads_a_seguir
+    from services.secuencia_contactos import SECUENCIAS_POR_ESTADO
+    dia_del_dos = SECUENCIAS_POR_ESTADO["presupuesto_enviado"][1]
+
+    conn = sqlite3.connect(db)
+    _lead(conn, 1, dias=200, crm_status="presupuesto_enviado")
+    _envio_estado(conn, 1, "presupuesto_enviado", 1, dias_atras=dia_del_dos - 1)
+    _lead(conn, 2, dias=200, crm_status="presupuesto_enviado")
+    _envio_estado(conn, 2, "presupuesto_enviado", 1, dias_atras=dia_del_dos + 1)
+    conn.commit()
+    conn.close()
+
+    # Al 1 todavia no le toca; al 2 si, y con el numero 2 de SU secuencia.
+    assert [(x["id"], x["numero"]) for x in leads_a_seguir(db)] == [(2, 2)]
+
+
+def test_la_migracion_marca_las_filas_viejas_como_sin_contactar(tmp_path):
+    """La tabla vieja no tenia estado. Esos mails salieron cuando el filtro solo
+
+    dejaba pasar 'sin_contactar', asi que ese es su estado, y el token tiene que
+    sobrevivir: esta publicado dentro de mails que la gente ya recibio.
+    """
+    ruta = str(tmp_path / "vieja.db")
+    conn = sqlite3.connect(ruta)
+    conn.execute("""
+        CREATE TABLE meta_reminders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            business_id INTEGER NOT NULL,
+            numero INTEGER NOT NULL DEFAULT 1,
+            token TEXT NOT NULL UNIQUE,
+            sent_at TEXT NOT NULL,
+            unsubscribed_at TEXT,
+            UNIQUE (business_id, numero)
+        )
+    """)
+    conn.execute("INSERT INTO meta_reminders (business_id, numero, token, sent_at) "
+                 "VALUES (7, 3, 'token-publicado', '2026-08-01 10:00:00')")
+    conn.commit()
+    conn.close()
+
+    init_db(ruta)
+
+    conn = sqlite3.connect(ruta)
+    fila = conn.execute(
+        "SELECT estado, numero, token FROM meta_reminders WHERE business_id = 7"
+    ).fetchone()
+    conn.close()
+    assert fila == ("sin_contactar", 3, "token-publicado")
+
+
+def test_el_texto_del_mail_cambia_segun_el_estado():
+    from services.email_service import _cuerpo_por_estado
+
+    asunto_ppto, cuerpo_ppto = _cuerpo_por_estado(
+        "presupuesto_enviado", 1, "Marejada", "crear_mi_ecommerce")
+    asunto_llamar, cuerpo_llamar = _cuerpo_por_estado(
+        "llamar_despues", 1, "Marejada", "crear_mi_ecommerce")
+
+    assert "presupuesto" in " ".join(cuerpo_ppto).lower()
+    assert "llamamos" in " ".join(cuerpo_llamar).lower()
+    assert asunto_ppto != asunto_llamar
+    # Un estado sin secuencia cae al texto del lead frio en vez de reventar.
+    assert _cuerpo_por_estado("no_interesa", 1, "Marejada", "") is None

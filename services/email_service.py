@@ -506,8 +506,82 @@ def _cuerpo_por_contacto(numero: int, apertura: str, valor: str, negocio: str) -
     ])
 
 
+# ── Copy por estado del CRM ──────────────────────────────────────────────────
+# Estos cuatro estados no son leads frios: son conversaciones que ya existieron
+# y se cortaron en un punto distinto. El mail que sirve para despertar a un
+# desconocido es exactamente el que ofende a alguien que ya vio un presupuesto,
+# asi que cada estado tiene su propio texto. Las secuencias viven en
+# services/secuencia_contactos.py; aca solo se escribe lo que dicen.
+def _cuerpo_por_estado(estado: str, numero: int, negocio: str,
+                       rubro_txt: str) -> tuple:
+    """Devuelve (asunto, [parrafos]) para el contacto `numero` de `estado`.
+
+    `negocio` llega escapado o crudo segun para que version se lo pida; la
+    frase del rubro es texto fijo nuestro y no necesita escaparse.
+    """
+    de_negocio = f" de {negocio}" if negocio else ""
+    el_negocio = f" para {negocio}" if negocio else ""
+    rubro = _frase_rubro(rubro_txt) if rubro_txt else ""
+
+    if estado == "presupuesto_enviado":
+        if numero <= 1:
+            return (f"El presupuesto{de_negocio}", [
+                "Te paso de nuevo el presupuesto, por si quedó enterrado en el mail.",
+                "Si el número no cierra, decímelo y vemos: casi siempre hay una "
+                "versión más chica que resuelve lo mismo para arrancar.",
+                "Y si ya lo resolviste por otro lado, avisame y no te escribo más.",
+            ])
+        return (f"¿Lo dejamos{de_negocio}?", [
+            "Última por el presupuesto que te pasamos.",
+            "Si es que no, o no es el momento, respondeme una línea y listo: "
+            "no te escribo más.",
+        ])
+
+    if estado == "reunion_hecha":
+        if numero <= 1:
+            arranque = ("Hicimos la demo y no llegamos a seguir."
+                        if not rubro else
+                        f"Hicimos la demo por lo que {rubro}{el_negocio} y no llegamos a seguir.")
+            return (f"Quedó pendiente lo{de_negocio}", [
+                arranque,
+                "¿Te sirve que te pase un número? Es un mail, no una reunión.",
+            ])
+        return (f"Te paso el número{de_negocio}", [
+            "Te escribo una última vez por la demo que hicimos.",
+            "Si querés el presupuesto, respondeme y te lo mando hoy. Si no, "
+            "quedamos así y no te molesto más.",
+        ])
+
+    if estado == "interesado":
+        arranque = ("Hablamos hace un tiempo y no llegamos a agendar nada."
+                    if not rubro else
+                    f"Hablamos hace un tiempo porque {rubro}{el_negocio}, y no "
+                    f"llegamos a agendar nada.")
+        return (f"Lo{de_negocio} que quedó a medias" if negocio else "Lo que quedó a medias", [
+            arranque,
+            "Si querés te muestro en 15 minutos cómo quedaría, o te lo mando "
+            "por escrito y lo mirás cuando puedas. Como te sirva.",
+        ])
+
+    if estado == "llamar_despues":
+        arranque = ("Te llamamos y no te encontramos."
+                    if not rubro else
+                    f"Te llamamos por lo que {rubro}{el_negocio} y no te encontramos.")
+        return (f"Te llamamos{el_negocio}" if negocio else "Te llamamos y no te encontramos", [
+            arranque,
+            "¿Va mejor por acá? Respondeme este mail y seguimos por escrito, "
+            "sin teléfono de por medio.",
+        ])
+
+    # Estado sin copy propia: no deberia llegar (el filtro de meta_reminders
+    # solo deja pasar los que tienen secuencia), pero si llega, que caiga en el
+    # texto del lead frio y no que reviente el envio.
+    return None
+
+
 def send_meta_lead_reminder(to_email: str, negocio: str, rubro: str,
-                            unsub_url: str, numero: int = 1) -> str:
+                            unsub_url: str, numero: int = 1,
+                            estado: str = "sin_contactar") -> str:
     """Invita al lead a agendar una llamada. Sale de contacto@, no de crm@.
 
     Devuelve el tri-estado de `_send_estado` ("ok"/"fallo"/"desconocido"), no un
@@ -553,8 +627,13 @@ def send_meta_lead_reminder(to_email: str, negocio: str, rubro: str,
     # (para el HTML) y otra con los crudos (para el texto plano). El asunto
     # real del mail sale de la version cruda: escapar negocio_esc metería
     # entidades como &amp; en el subject, que ahi no tienen sentido.
-    _, parrafos_html = _cuerpo_por_contacto(numero, apertura_esc, valor, negocio_esc)
-    asunto, parrafos_texto = _cuerpo_por_contacto(numero, apertura_txt, valor, negocio_txt)
+    por_estado_html = _cuerpo_por_estado(estado, numero, negocio_esc, rubro_txt)
+    if por_estado_html is not None:
+        _, parrafos_html = por_estado_html
+        asunto, parrafos_texto = _cuerpo_por_estado(estado, numero, negocio_txt, rubro_txt)
+    else:
+        _, parrafos_html = _cuerpo_por_contacto(numero, apertura_esc, valor, negocio_esc)
+        asunto, parrafos_texto = _cuerpo_por_contacto(numero, apertura_txt, valor, negocio_txt)
     asunto = asunto.replace(chr(10), " ").replace(chr(13), " ")
 
     # Membrete arriba y firma en texto abajo: el mail tiene que verse de la
