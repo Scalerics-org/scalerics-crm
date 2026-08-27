@@ -421,3 +421,83 @@ def test_website_es_nulo_cuando_no_se_manda(db_path):
     })
 
     assert get_all_businesses(db_path)[0]["website"] is None
+
+
+# ── Filtro de cohorte ────────────────────────────────────────────────────────
+# La cohorte se compone con crm_status en vez de reemplazarlo. Importa porque
+# despues de importar los estados reales de la planilla (27-8-2026), la vista de
+# seguimientos paso de ~35 a 128 leads y tres cuartos eran de Meta: sin poder
+# separar cohortes, la lista de a quien llamar deja de ser usable.
+
+def _biz(conn, bid, crm_status, source):
+    conn.execute(
+        "INSERT INTO businesses (id, name, crm_status, source) VALUES (?,?,?,?)",
+        (bid, f"Negocio {bid}", crm_status, source),
+    )
+
+
+def test_la_cohorte_se_compone_con_el_estado(db_path):
+    import sqlite3
+    from database import get_all_businesses, COHORTE_SIN_WEB
+
+    conn = sqlite3.connect(db_path)
+    _biz(conn, 1, "interesado", "meta")
+    _biz(conn, 2, "interesado", None)            # padron sin web
+    _biz(conn, 3, "interesado", "discovery")
+    _biz(conn, 4, "llamar_despues", "meta")      # otro estado, misma cohorte
+    conn.commit()
+    conn.close()
+
+    todos = get_all_businesses(db_path, crm_status="interesado")
+    solo_meta = get_all_businesses(db_path, crm_status="interesado", cohorte="meta")
+    sin_web = get_all_businesses(db_path, crm_status="interesado", cohorte=COHORTE_SIN_WEB)
+    disc = get_all_businesses(db_path, crm_status="interesado", cohorte="discovery")
+
+    assert sorted(b["id"] for b in todos) == [1, 2, 3]
+    assert [b["id"] for b in solo_meta] == [1]
+    assert [b["id"] for b in sin_web] == [2], "sin_web es source IS NULL"
+    assert [b["id"] for b in disc] == [3]
+
+
+def test_sin_cohorte_no_cambia_nada(db_path):
+    import sqlite3
+    from database import get_all_businesses
+
+    conn = sqlite3.connect(db_path)
+    _biz(conn, 1, "interesado", "meta")
+    _biz(conn, 2, "interesado", None)
+    conn.commit()
+    conn.close()
+
+    assert len(get_all_businesses(db_path, crm_status="interesado")) == 2
+    assert len(get_all_businesses(db_path, crm_status="interesado", cohorte=None)) == 2
+
+
+def test_la_cola_fria_sigue_sin_traer_leads_de_meta(db_path):
+    """La exclusion de Meta en sin_contactar es deliberada y no la toca la cohorte."""
+    import sqlite3
+    from database import get_all_businesses
+
+    conn = sqlite3.connect(db_path)
+    _biz(conn, 1, "sin_contactar", "meta")
+    _biz(conn, 2, "sin_contactar", None)
+    conn.commit()
+    conn.close()
+
+    assert [b["id"] for b in get_all_businesses(db_path, crm_status="sin_contactar")] == [2]
+    assert get_all_businesses(db_path, crm_status="sin_contactar", cohorte="meta") == []
+
+
+def test_llamar_despues_conserva_su_orden_de_agenda(db_path):
+    """El refactor saco el return anticipado; el orden por callback tiene que quedar."""
+    import sqlite3
+    from database import get_all_businesses
+
+    conn = sqlite3.connect(db_path)
+    conn.execute("INSERT INTO businesses (id,name,crm_status,source,callback_date) VALUES (1,'sin fecha','llamar_despues','meta',NULL)")
+    conn.execute("INSERT INTO businesses (id,name,crm_status,source,callback_date) VALUES (2,'tarde','llamar_despues','meta','2026-09-10')")
+    conn.execute("INSERT INTO businesses (id,name,crm_status,source,callback_date) VALUES (3,'temprano','llamar_despues','meta','2026-09-01')")
+    conn.commit()
+    conn.close()
+
+    assert [b["id"] for b in get_all_businesses(db_path, crm_status="llamar_despues")] == [3, 2, 1]

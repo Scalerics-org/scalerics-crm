@@ -113,17 +113,20 @@ def api_create_lead():
 def api_leads():
     crm_status = request.args.get("crm_status")
     crm_group  = request.args.get("crm_group")
+    # Filtro de cohorte de la vista: 'meta', 'sin_web' (el padron scrapeado, que
+    # no tiene source) o cualquier otro source. Se compone con crm_status.
+    cohorte = request.args.get("cohorte") or None
     category = request.args.get("category")
     search = (request.args.get("search") or "").lower()
     page_str = request.args.get("page")
     if crm_group == "pipeline":
-        businesses = get_all_businesses(_db(), crm_statuses=_PIPELINE_STATUSES)
+        businesses = get_all_businesses(_db(), crm_statuses=_PIPELINE_STATUSES, cohorte=cohorte)
     elif crm_group == "clientes":
-        businesses = get_all_businesses(_db(), crm_statuses=_CLIENT_STATUSES)
+        businesses = get_all_businesses(_db(), crm_statuses=_CLIENT_STATUSES, cohorte=cohorte)
     elif crm_group == "meta":
         businesses = get_all_businesses(_db(), source="meta")
     else:
-        businesses = get_all_businesses(_db(), crm_status=crm_status)
+        businesses = get_all_businesses(_db(), crm_status=crm_status, cohorte=cohorte)
     if category:
         businesses = [b for b in businesses if _normalize_category(b.get("category") or "") == category]
     if search:

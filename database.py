@@ -723,7 +723,21 @@ def get_businesses_by_status(db_path: str, status: str) -> list[dict]:
         conn.close()
 
 
-def get_all_businesses(db_path: str, crm_status: str | None = None, crm_statuses: list | None = None, source: str | None = None) -> list[dict]:
+# La cohorte que no tiene `source`: el padron scrapeado de comercios sin web.
+# Es un valor de la UI, no de la base, y por eso vale la pena que tenga nombre:
+# "b.source IS NULL" repartido por el codigo se lee como un descuido.
+COHORTE_SIN_WEB = "sin_web"
+
+
+def get_all_businesses(db_path: str, crm_status: str | None = None, crm_statuses: list | None = None,
+                       source: str | None = None, cohorte: str | None = None) -> list[dict]:
+    """Los leads de una vista del CRM.
+
+    `cohorte` **se compone** con el resto en vez de reemplazarlo: es un filtro
+    de la vista (de que origen la quiero ver), no otra vista. `source`, en
+    cambio, sigue siendo la vista entera de un origen, que es lo que usa el
+    panel de Meta Ads.
+    """
     conn = _connect(db_path)
     try:
         count_sql = (
@@ -731,32 +745,43 @@ def get_all_businesses(db_path: str, crm_status: str | None = None, crm_statuses
             "(SELECT COUNT(*) FROM call_logs cl WHERE cl.lead_id = b.id AND cl.outcome = 'no_interesa') as no_interesa_count"
         )
         select = f"SELECT b.*, {count_sql} FROM businesses b"
+        orden = ("ORDER BY CASE WHEN b.score IS NULL THEN 1 ELSE 0 END, "
+                 "b.score DESC, b.scraped_at DESC")
         if source:
-            where = "WHERE b.source = ?"
+            cond = ["b.source = ?"]
             params: list = [source]
         elif crm_statuses:
             placeholders = ",".join("?" * len(crm_statuses))
-            where = f"WHERE b.crm_status IN ({placeholders})"
-            params: list = list(crm_statuses)
+            cond = [f"b.crm_status IN ({placeholders})"]
+            params = list(crm_statuses)
         elif crm_status == "sin_contactar":
-            where = "WHERE (b.crm_status IS NULL OR b.crm_status = ?) AND (b.source IS NULL OR b.source != 'meta')"
+            # Los leads de Meta no entran a la cola de llamadas fria: tienen su
+            # propio panel y su propia secuencia.
+            cond = ["(b.crm_status IS NULL OR b.crm_status = ?)",
+                    "(b.source IS NULL OR b.source != 'meta')"]
             params = ["sin_contactar"]
         elif crm_status == "llamar_despues":
-            cursor = conn.execute(
-                f"{select} WHERE b.crm_status = ? ORDER BY CASE WHEN b.callback_date IS NULL THEN 1 ELSE 0 END, b.callback_date ASC",
-                ["llamar_despues"],
-            )
-            return [dict(row) for row in cursor.fetchall()]
+            # Los que tienen fecha de callback van primero, y los sin fecha al
+            # fondo: es una agenda, no un ranking por score.
+            cond = ["b.crm_status = ?"]
+            params = ["llamar_despues"]
+            orden = ("ORDER BY CASE WHEN b.callback_date IS NULL THEN 1 ELSE 0 END, "
+                     "b.callback_date ASC")
         elif crm_status:
-            where = f"WHERE b.crm_status = ?"
+            cond = ["b.crm_status = ?"]
             params = [crm_status]
         else:
-            where = ""
+            cond = []
             params = []
-        cursor = conn.execute(
-            f"{select} {where} ORDER BY CASE WHEN b.score IS NULL THEN 1 ELSE 0 END, b.score DESC, b.scraped_at DESC",
-            params,
-        )
+
+        if cohorte == COHORTE_SIN_WEB:
+            cond.append("b.source IS NULL")
+        elif cohorte:
+            cond.append("b.source = ?")
+            params.append(cohorte)
+
+        where = ("WHERE " + " AND ".join(cond)) if cond else ""
+        cursor = conn.execute(f"{select} {where} {orden}", params)
         return [dict(row) for row in cursor.fetchall()]
     finally:
         conn.close()

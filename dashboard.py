@@ -1170,7 +1170,15 @@ body.light .upick-name{color:#0f172a}
       <select class="filter-select" id="cola-category-filter">
         <option value="">Todos los rubros</option>
       </select>
+      <select class="filter-select" id="cola-cohorte-filter" onchange="setColaCohorte(this.value)">
+        <option value="">Todas las cohortes</option>
+        <option value="sin_web">Padrón sin web</option>
+        <option value="discovery">Discovery</option>
+        <option value="meta">Meta Ads</option>
+        <option value="calendly_gcal">Calendly</option>
+      </select>
       <input class="search-box" id="cola-search-input" placeholder="🔍 Buscar negocio..." oninput="colaSearch(this.value)">
+      <span id="cola-count" style="color:#64748b;font-size:.8rem;align-self:center;margin-left:auto"></span>
     </div>
     <div style="display:flex;gap:8px;margin-bottom:12px">
       <button id="cola-filter-sin" onclick="setColaFilter('sin_contactar')" style="padding:5px 14px;border-radius:8px;border:1px solid #0088cc;background:#0088cc;color:#fff;font-size:.78rem;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">Sin contactar</button>
@@ -1192,6 +1200,16 @@ body.light .upick-name{color:#0f172a}
         <h1>Seguimientos</h1>
         <div class="page-date">Leads que pidieron que los llamen después</div>
       </div>
+    </div>
+    <div class="filters">
+      <select class="filter-select" id="seg-cohorte-filter" onchange="setSegCohorte(this.value)">
+        <option value="">Todas las cohortes</option>
+        <option value="meta">Meta Ads</option>
+        <option value="sin_web">Padrón sin web</option>
+        <option value="discovery">Discovery</option>
+        <option value="calendly_gcal">Calendly</option>
+      </select>
+      <span id="seg-count" style="color:#64748b;font-size:.8rem;align-self:center;margin-left:auto"></span>
     </div>
     <div class="table-wrap">
       <div class="table-header no-cb">
@@ -2036,8 +2054,16 @@ let _colaSearch = '';
 let _colaCategory = '';
 let _colaLeads = [];
 let _colaFilter = 'sin_contactar';
+let _colaCohorte = '';
+let _colaPage = 1;
+// La cola fria tiene miles de fichas y hasta ahora se dibujaban todas de una.
+// La paginacion es del lado del cliente a proposito: la busqueda y el filtro de
+// rubro operan sobre el conjunto entero, y paginar en el servidor los dejaria
+// buscando solo dentro de la pagina que se esta viendo.
+const _COLA_POR_PAGINA = 50;
 function setColaFilter(f) {
   _colaFilter = f;
+  _colaPage = 1;
   const sinBtn = document.getElementById('cola-filter-sin');
   const noBtn  = document.getElementById('cola-filter-no');
   if (sinBtn) { sinBtn.style.background = f === 'sin_contactar' ? '#0088cc' : 'transparent'; sinBtn.style.borderColor = f === 'sin_contactar' ? '#0088cc' : '#1e293b'; sinBtn.style.color = f === 'sin_contactar' ? '#fff' : '#64748b'; }
@@ -2045,18 +2071,38 @@ function setColaFilter(f) {
   loadCola();
 }
 
-function colaSearch(v) { _colaSearch = v.toLowerCase(); renderCola(); }
+function colaSearch(v) { _colaSearch = v.toLowerCase(); _colaPage = 1; renderCola(); }
+
+// La cohorte va al servidor: cambia que vista se pide, no como se dibuja.
+function setColaCohorte(v) { _colaCohorte = v; _colaPage = 1; loadCola(); }
+function colaPage(n) { _colaPage = n; renderCola(); window.scrollTo({top: 0, behavior: 'smooth'}); }
+
+function renderColaPaginacion(total, paginas) {
+  const nav = document.getElementById('cola-pagination');
+  if (!nav) return;
+  if (paginas <= 1) { nav.style.display = 'none'; return; }
+  nav.style.display = 'flex';
+  const btn = (etiqueta, destino, activo) =>
+    `<button onclick="colaPage(${destino})" ${activo ? '' : 'disabled'} style="padding:4px 12px;border-radius:6px;border:1px solid #1e293b;background:${activo ? 'transparent' : '#0f172a'};color:${activo ? '#94a3b8' : '#334155'};font-size:.8rem;cursor:${activo ? 'pointer' : 'default'};font-family:'Inter',sans-serif">${etiqueta}</button>`;
+  const desde = (_colaPage - 1) * _COLA_POR_PAGINA + 1;
+  const hasta = Math.min(_colaPage * _COLA_POR_PAGINA, total);
+  nav.innerHTML =
+    btn('&larr;', _colaPage - 1, _colaPage > 1) +
+    `<span>${desde}–${hasta} de ${total} &middot; pagina ${_colaPage} de ${paginas}</span>` +
+    btn('&rarr;', _colaPage + 1, _colaPage < paginas);
+}
 
 document.addEventListener('DOMContentLoaded', () => {
   const catSel = document.getElementById('cola-category-filter');
-  if (catSel) catSel.addEventListener('change', () => { _colaCategory = catSel.value; renderCola(); });
+  if (catSel) catSel.addEventListener('change', () => { _colaCategory = catSel.value; _colaPage = 1; renderCola(); });
 });
 
 async function loadCola() {
   const body = document.getElementById('cola-body');
   body.innerHTML = '<div style="color:#475569;padding:16px;font-size:.85rem">Cargando...</div>';
   try {
-    const r = await fetch(`/api/leads?crm_status=${_colaFilter}`);
+    const coh = _colaCohorte ? `&cohorte=${encodeURIComponent(_colaCohorte)}` : '';
+    const r = await fetch(`/api/leads?crm_status=${_colaFilter}${coh}`);
     const data = await r.json();
     _colaLeads = Array.isArray(data) ? data : (data.items || []);
     renderCola();
@@ -2070,8 +2116,18 @@ function renderCola() {
   if (_colaCategory) leads = leads.filter(b => (b.category||'') === _colaCategory);
   if (_colaSearch) leads = leads.filter(b => (b.name||'').toLowerCase().includes(_colaSearch));
   pitchMap = {};
+  // pitchMap se arma sobre el conjunto filtrado ENTERO, no sobre la pagina: lo
+  // consultan acciones que pueden correr despues de cambiar de pagina.
   leads.forEach(b => { if (b.pitch_text) pitchMap[b.id] = b.pitch_text; });
+  const _total = leads.length;
+  const _cnt = document.getElementById('cola-count');
+  if (_cnt) _cnt.textContent = _total === _colaLeads.length
+    ? `${_total} leads` : `${_total} de ${_colaLeads.length}`;
+  const _paginas = Math.max(1, Math.ceil(_total / _COLA_POR_PAGINA));
+  if (_colaPage > _paginas) _colaPage = _paginas;
+  renderColaPaginacion(_total, _paginas);
   if (!leads.length) { body.innerHTML = '<div class="empty-state">No hay leads en la cola</div>'; return; }
+  leads = leads.slice((_colaPage - 1) * _COLA_POR_PAGINA, _colaPage * _COLA_POR_PAGINA);
   body.innerHTML = leads.map(b => `
     <div class="table-row no-cb row-${b.crm_status||'sin_contactar'}">
       <div>
@@ -2118,13 +2174,20 @@ function _renderSdrStats(stats) {
 
 let _sdrLastActor = {};
 
+// Despues de importar los estados reales de la planilla (27-8-2026) este panel
+// paso de ~35 a 128 leads y 93 son de Meta. Sin poder separar cohortes, la
+// lista de a quien llamar deja de ser una lista de trabajo.
+let _segCohorte = '';
+function setSegCohorte(v) { _segCohorte = v; loadSeguimientos(); }
+
 async function loadSeguimientos() {
   const body = document.getElementById('seguimientos-body');
   body.innerHTML = '<div style="color:#475569;padding:16px;font-size:.85rem">Cargando...</div>';
   try {
+    const coh = _segCohorte ? `&cohorte=${encodeURIComponent(_segCohorte)}` : '';
     const [r1, r2] = await Promise.all([
-      fetch('/api/leads?crm_status=llamar_despues'),
-      fetch('/api/leads?crm_status=interesado'),
+      fetch(`/api/leads?crm_status=llamar_despues${coh}`),
+      fetch(`/api/leads?crm_status=interesado${coh}`),
     ]);
     const [d1, d2] = await Promise.all([r1.json(), r2.json()]);
     const leads = [
@@ -2137,6 +2200,8 @@ async function loadSeguimientos() {
       if (a.callback_date && b.callback_date) return a.callback_date.localeCompare(b.callback_date);
       return 0;
     });
+    const segCnt = document.getElementById('seg-count');
+    if (segCnt) segCnt.textContent = `${leads.length} seguimiento${leads.length === 1 ? '' : 's'}`;
     if (!leads.length) { body.innerHTML = '<div class="empty-state">No hay seguimientos pendientes</div>'; return; }
     const today = new Date().toISOString().split('T')[0];
     body.innerHTML = leads.map(b => {
