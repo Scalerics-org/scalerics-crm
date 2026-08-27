@@ -6,6 +6,29 @@ const { correspondeDerivar } = require('../funnel/abandono');
 const INTERVALO_MS = 5 * 60 * 1000; // cada 5 minutos
 
 /**
+ * Cuanto tiene que faltar para que el recordatorio del dia antes siga teniendo
+ * sentido.
+ *
+ * Un recordatorio que sale tarde miente. Si el servicio estuvo caido unas
+ * horas, los dos jobs quedan vencidos y salen juntos: al lead le llegan "mañana
+ * tenemos la videollamada" y "es en 30 minutos" con segundos de diferencia, uno
+ * atras del otro. Pasó exactamente asi en una prueba.
+ *
+ * Con menos de seis horas por delante, el del dia antes ya no aporta nada: el
+ * de media hora cubre el caso y dice la verdad.
+ */
+const RECORDATORIO_DIA_ANTES_MIN_HORAS = 6;
+
+/** "mañana", "en 3 días", "en 5 horas". Para que el modelo no lo adivine. */
+function cuantoFalta(ms) {
+  const horas = ms / 3600_000;
+  if (horas < 1) return `en ${Math.max(1, Math.round(ms / 60_000))} minutos`;
+  if (horas < 20) return `en ${Math.round(horas)} horas`;
+  const dias = Math.round(horas / 24);
+  return dias <= 1 ? 'mañana' : `en ${dias} días`;
+}
+
+/**
  * Reemplaza a BullMQ: los jobs viven en SQLite y esto los levanta.
  *
  * correrVencidos() recibe la fecha por parametro a proposito: los tests
@@ -58,8 +81,14 @@ function crearScheduler({ repo, cola, cfg, redactor = null, embudo = null, logge
     const situacion = SITUACION[job.type];
     if (!situacion) return true;
 
+    // Se le dice cuanto falta ademas de la fecha: si solo ve la fecha, el
+    // modelo completa el resto por su cuenta y dice "mañana" aunque falten tres
+    // dias. La cuenta la hace el codigo, que no se equivoca.
+    const falta = lead.meeting_time
+      ? cuantoFalta(new Date(lead.meeting_time) - momento)
+      : '';
     const extra = lead.meeting_time
-      ? `La reunión es ${fechaLegible(lead.meeting_time)}.${lead.meeting_url ? ` El link para entrar es ${lead.meeting_url}` : ''}`
+      ? `La reunión es ${fechaLegible(lead.meeting_time)}, o sea ${falta}.${lead.meeting_url ? ` El link para entrar es ${lead.meeting_url}` : ''}`
       : '';
 
     const texto = await redactor?.escribir(lead, situacion, extra);
@@ -123,6 +152,21 @@ function crearScheduler({ repo, cola, cfg, redactor = null, embudo = null, logge
       if (job.type.startsWith('reminder_') && !lead.meeting_time) {
         repo.marcarJob(job.id, 'cancelled', 'la reunion ya no existe');
         continue;
+      }
+
+      // Un recordatorio que sale tarde miente, y mejor no mandarlo.
+      if (job.type.startsWith('reminder_')) {
+        const faltanMs = new Date(lead.meeting_time) - momento;
+
+        if (faltanMs <= 0) {
+          repo.marcarJob(job.id, 'cancelled', 'la reunion ya paso');
+          continue;
+        }
+        if (job.type === 'reminder_24h'
+          && faltanMs < RECORDATORIO_DIA_ANTES_MIN_HORAS * 3600_000) {
+          repo.marcarJob(job.id, 'cancelled', 'el del dia antes salio tarde, lo cubre el de 30 min');
+          continue;
+        }
       }
 
       // Entre que se armo el reloj y ahora, el lead pudo agendar, pedir una

@@ -181,7 +181,8 @@ function situaciones(calendly) {
 Retomá lo que te había contado. Sin reproches y sin recordarle que no contestó: quedó en la nada por algo, y echárselo en cara no lo trae de vuelta.
 Cerrá dejándole el link por si le sirve agendar: ${calendly}`,
 
-    recordatorio_dia_antes: `Mañana tiene la videollamada. Recordáselo con el día y la hora, corto y cordial.
+    recordatorio_dia_antes: `Se viene la videollamada. Recordáselo con el día y la hora, corto y cordial.
+Usá la fecha exacta que te paso abajo. NO asumas que es mañana ni inventes cuánto falta: si el mensaje sale con un día equivocado, la persona se presenta cuando no es.
 Si no puede, que avise — mejor reprogramar que faltar.`,
 
     recordatorio_30min: `La videollamada es en media hora. Avisale con el link para entrar.
