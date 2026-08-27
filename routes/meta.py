@@ -315,6 +315,42 @@ def _fetch_and_store_lead(app, lead_id: str, form_id: str):
 # agregarlo.
 
 
+@meta_bp.route("/api/meta/sync-planilla", methods=["POST"])
+def meta_sync_planilla():
+    """Recibe los colores de la planilla de semaforo y los vuelve estados.
+
+    Lo postea un Apps Script pegado a la planilla (`scripts/planilla_semaforo.gs`),
+    no lo tira el CRM: leer el color de una celda pide la API de Sheets y una
+    credencial nueva, y del lado de Google `getBackgrounds()` ya lo da gratis.
+
+    `?dry=1` calcula y no escribe. La logica vive en services/planilla_semaforo.py.
+    """
+    from flask import session
+    token = request.headers.get("x-admin-token", "")
+    expected = os.environ.get("ADMIN_TOKEN", "")
+    if not (session.get("user_id") or (expected and token == expected)):
+        return jsonify({"ok": False, "error": "Unauthorized"}), 401
+
+    data = request.get_json(silent=True) or {}
+    filas = data.get("filas")
+    if not isinstance(filas, list):
+        return jsonify({"ok": False, "error": "Se espera {\"filas\": [...]}"}), 400
+    # Un tope alto pero real: la planilla tiene ~230 filas y el dia que alguien
+    # postee un millon, que sea un 400 y no una maquina de 256 MB muriendose.
+    if len(filas) > 5000:
+        return jsonify({"ok": False, "error": "Demasiadas filas (max 5000)"}), 400
+
+    dry = request.args.get("dry") in ("1", "true", "yes")
+    from services.planilla_semaforo import aplicar
+    resumen = aplicar(_db(), filas, dry_run=dry)
+    logger.info(
+        f"Sync planilla{' (dry)' if dry else ''}: {resumen['actualizados']} actualizados, "
+        f"{resumen['sin_cambio']} sin cambio, {resumen['sin_match']} sin match, "
+        f"{resumen['no_retrocede']} no retroceden, {resumen['color_ignorado']} sin color util"
+    )
+    return jsonify({"ok": True, "dry": dry, **resumen})
+
+
 @meta_bp.route("/api/meta/import-leads", methods=["POST"])
 def meta_import_leads():
     from flask import session
