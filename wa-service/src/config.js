@@ -284,6 +284,19 @@ const esquema = z.object({
   MAX_INTERNOS_PER_HOUR: z.coerce.number().int().nonnegative().default(100),
 
   /**
+   * Cuantos mensajes como mucho a la MISMA persona en un dia.
+   *
+   * Es el unico guardia que habria agarrado el incidente de los 489. Fue un
+   * goteo —24 mensajes por hora durante dos dias— asi que el volumen total
+   * nunca se vio raro; lo raro era que todos iban al mismo telefono.
+   *
+   * Ochenta en un dia a una sola persona no es una conversacion, es algo
+   * trabado. Una charla real del embudo son cinco o seis mensajes, y el dia mas
+   * cargado del equipo no llega ni a la mitad de este numero.
+   */
+  MAX_POR_DESTINATARIO_DIA: z.coerce.number().int().nonnegative().default(80),
+
+  /**
    * El que dice "mas adelante": cuantos dias despues se le vuelve a escribir
    * cuando no dio una referencia clara. Cero apaga la pausa entera.
    *

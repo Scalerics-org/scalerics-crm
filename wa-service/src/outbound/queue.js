@@ -123,7 +123,25 @@ function crearCola({ proveedor, repo, cfg, logger, limites, ahora = () => new Da
    * iguales son el mismo aviso dos veces. El tope por hora ataja el bucle que
    * ademas varie el texto, que el primero no veria.
    */
+  /** Formato de SQLite, que es contra lo que se comparan las fechas guardadas. */
+  const haceMs = (ms) => new Date(ahora().getTime() - ms).toISOString().slice(0, 19).replace('T', ' ');
+
   function avisoQueSobra(item) {
+    /**
+     * El guardia que de verdad hacia falta.
+     *
+     * El incidente de los 489 mensajes fue un goteo: 24 por hora durante dos
+     * dias. Ninguna alarma de volumen lo agarra, porque el volumen total era
+     * normal. Lo anormal era a QUIEN: todos al mismo telefono.
+     *
+     * Vale para todos los mensajes, no solo los internos: ochenta mensajes en
+     * un dia a la misma persona no es una conversacion, es algo trabado.
+     */
+    if (cfg.MAX_POR_DESTINATARIO_DIA
+      && repo.enviadosA(item.to, haceMs(24 * 3600_000)) >= cfg.MAX_POR_DESTINATARIO_DIA) {
+      return 'demasiados mensajes a la misma persona en un dia';
+    }
+
     if (!INTERNO.has(item.kind)) return null;
 
     if (cfg.AVISO_REPETIDO_HORAS
@@ -131,11 +149,9 @@ function crearCola({ proveedor, repo, cfg, logger, limites, ahora = () => new Da
       return 'ya salio uno igual';
     }
 
-    if (cfg.MAX_INTERNOS_PER_HOUR) {
-      const desde = new Date(ahora().getTime() - 3600_000).toISOString().slice(0, 19).replace('T', ' ');
-      if (repo.internosDesde(desde) >= cfg.MAX_INTERNOS_PER_HOUR) {
-        return 'demasiados avisos en una hora';
-      }
+    if (cfg.MAX_INTERNOS_PER_HOUR
+      && repo.internosDesde(haceMs(3600_000)) >= cfg.MAX_INTERNOS_PER_HOUR) {
+      return 'demasiados avisos en una hora';
     }
     return null;
   }
@@ -170,6 +186,7 @@ function crearCola({ proveedor, repo, cfg, logger, limites, ahora = () => new Da
       body: item.texto,
       provider: proveedor.nombre,
       status: 'queued',
+      destino: item.to,
     });
 
     try {

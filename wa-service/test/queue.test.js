@@ -464,3 +464,46 @@ test('el techo no toca los mensajes a clientes', async () => {
   const aClientes = s.proveedor.getEnviados().filter((e) => e.to !== AM);
   assert.equal(aClientes.length, 4, 'los clientes reciben igual');
 });
+
+/**
+ * El guardia que de verdad faltaba.
+ *
+ * El incidente de los 489 mensajes fue un goteo: 24 por hora durante dos dias.
+ * Ninguna alarma de volumen lo agarra, porque el volumen total era normal. Lo
+ * anormal era a QUIEN iban: todos al mismo telefono.
+ */
+test('nadie recibe mas de un dia entero de mensajes seguidos', async () => {
+  const s = await montar({ MAX_POR_DESTINATARIO_DIA: 10, AVISO_REPETIDO_HORAS: '0' });
+
+  for (let i = 0; i < 25; i++) {
+    s.cola.encolar({ to: AM, texto: `aviso ${i}`, kind: 'am_notice' });
+  }
+  await s.cola.vacia();
+
+  assert.equal(s.proveedor.getEnviados().length, 10, 'corta al llegar al tope del dia');
+});
+
+test('y el tope es por persona, no global', async () => {
+  const s = await montar({ MAX_POR_DESTINATARIO_DIA: 3, AVISO_REPETIDO_HORAS: '0' });
+
+  for (let i = 0; i < 6; i++) {
+    s.cola.encolar({ to: AM, texto: `al equipo ${i}`, kind: 'am_notice' });
+  }
+  for (let i = 0; i < 3; i++) {
+    s.cola.encolar({ to: `5989900${String(i).padStart(4, '0')}`, texto: `hola ${i}`, kind: 'welcome' });
+  }
+  await s.cola.vacia();
+
+  const enviados = s.proveedor.getEnviados();
+  assert.equal(enviados.filter((e) => e.to === AM).length, 3, 'al equipo se le corta');
+  assert.equal(enviados.filter((e) => e.to !== AM).length, 3, 'a los clientes no los toca');
+});
+
+test('el destinatario queda guardado, que es lo que permite contarlo', async () => {
+  const s = await montar();
+  s.cola.encolar({ to: LEAD_TEL, texto: 'hola', kind: 'welcome' });
+  await s.cola.vacia();
+
+  const m = s.repo.db.prepare("SELECT destino FROM messages WHERE direction='out' ORDER BY id DESC LIMIT 1").get();
+  assert.equal(m.destino, LEAD_TEL);
+});

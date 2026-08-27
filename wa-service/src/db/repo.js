@@ -48,8 +48,8 @@ function crearRepo(db) {
     buscarPorNombre: db.prepare("SELECT * FROM leads WHERE nombre LIKE ? ORDER BY id DESC LIMIT 20"),
 
     insertMensaje: db.prepare(`
-      INSERT INTO messages (lead_id, direction, kind, body, provider, provider_msg_id, status, error)
-      VALUES (@lead_id, @direction, @kind, @body, @provider, @provider_msg_id, @status, @error)
+      INSERT INTO messages (lead_id, direction, kind, body, provider, provider_msg_id, status, error, destino)
+      VALUES (@lead_id, @direction, @kind, @body, @provider, @provider_msg_id, @status, @error, @destino)
     `),
     mensajesDeLead: db.prepare('SELECT * FROM messages WHERE lead_id = ? ORDER BY id ASC'),
 
@@ -139,6 +139,7 @@ function crearRepo(db) {
         provider_msg_id: m.provider_msg_id ?? null,
         status: m.status ?? 'queued',
         error: m.error ?? null,
+        destino: m.destino ?? null,
       });
       return info.lastInsertRowid;
     },
@@ -348,6 +349,20 @@ function crearRepo(db) {
           AND created_at >= datetime('now', ?)
         LIMIT 1
       `).get(String(texto), `-${Number(horas)} hours`));
+    },
+
+    /**
+     * Cuantos mensajes se le mandaron a UN numero desde tal momento.
+     *
+     * Es la pregunta que delata un bucle lento. El incidente de los 489 avisos
+     * eran 24 mensajes por hora —un goteo que ninguna alarma de volumen
+     * agarra— pero todos al mismo telefono.
+     */
+    enviadosA(destino, desdeIso) {
+      return db.prepare(`
+        SELECT COUNT(*) AS n FROM messages
+        WHERE direction = 'out' AND destino = ? AND created_at >= ?
+      `).get(destino, desdeIso).n;
     },
 
     /** Cuantos avisos internos salieron en la ultima hora. */
