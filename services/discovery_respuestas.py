@@ -47,33 +47,127 @@ _ASUNTOS_AUTO = ("automatic reply", "respuesta automatica", "respuesta automáti
                  "autorespuesta", "ausencia temporal")
 
 
+# Las dos campanas que mandan correo. Se miran las dos: los leads de Meta
+# tambien reciben una secuencia y tambien hay que frenarla si contestan.
+CAMPANAS = {
+    "discovery": {
+        "tabla": "discovery_reminders",
+        "source": "discovery",
+        # Los asuntos que arma email_service. El nombre del negocio va al final.
+        "asuntos": ("Una idea para", "Ultimo mail para", "Último mail para"),
+    },
+    "meta": {
+        "tabla": "meta_reminders",
+        "source": "meta",
+        "asuntos": ("Sobre tu consulta para",),
+    },
+}
+
+# Nuestros propios remitentes. Sin excluirlos, cada mail que mandamos aparece
+# en la busqueda por asunto y se contaria como una respuesta.
+_REMITENTES_PROPIOS = ("scalerics.com", "novedades.scalerics.com")
+
+# Los asuntos que NO llevan nombre de negocio, para no confundir el texto que
+# viene despues con un nombre.
+_ASUNTOS_SIN_NEGOCIO = ("una idea para tu negocio", "ultimo mail de scalerics",
+                        "último mail de scalerics", "sobre tu consulta a scalerics")
+
+_PREFIJOS_RESPUESTA = ("re:", "rv:", "fwd:", "fw:")
+
+
+def negocio_del_asunto(asunto) -> str:
+    """El nombre del negocio que lleva el asunto, en minusculas, o "".
+
+    Es la unica pista cuando el dueno contesta desde otra casilla: la direccion
+    no coincide con ninguna de la cohorte, pero el asunto viaja con la
+    respuesta. Devolver algo dudoso aca haria marcar al comercio equivocado, asi
+    que ante cualquier duda devuelve "".
+    """
+    texto = " ".join((asunto or "").split())
+    bajo = texto.lower()
+    for p in _PREFIJOS_RESPUESTA:
+        while bajo.startswith(p):
+            texto = texto[len(p):].strip()
+            bajo = texto.lower()
+    if bajo in _ASUNTOS_SIN_NEGOCIO:
+        return ""
+    for campana in CAMPANAS.values():
+        for enc in campana["asuntos"]:
+            if bajo.startswith(enc.lower()):
+                return texto[len(enc):].strip().lower()
+    return ""
+
+
+def consultas_por_asunto(days_back: int = _DIAS_ATRAS) -> list:
+    """Las queries que buscan respuestas por ASUNTO, no por remitente.
+
+    `in:anywhere` no es un detalle: las consultas de Gmail excluyen spam y
+    papelera por defecto, y el 27/8/2026 habia un mensaje sin leer justo ahi.
+    Una respuesta de un comercio que cae en spam es exactamente la que no
+    podemos perder.
+    """
+    excluir = " ".join(f"-from:{d}" for d in _REMITENTES_PROPIOS)
+    consultas = []
+    for campana in CAMPANAS.values():
+        for enc in campana["asuntos"]:
+            consultas.append(
+                f'in:anywhere newer_than:{days_back}d subject:"{enc}" {excluir}')
+    return consultas
+
+
 def _conn(db_path: str) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     return conn
 
 
-def direcciones_contactadas(db_path: str) -> dict:
-    """{direccion: business_id} de los que recibieron discovery y siguen sin mover.
+def _contactados(db_path: str) -> list:
+    """Las filas (id, email, nombre) de todo lead que recibio algun mail nuestro.
 
-    Los que ya salieron de 'sin_contactar' no se miran: alguien ya los movio, el
+    Cubre las DOS campanas: los leads de Meta reciben siete contactos y tambien
+    hay que frenarlos si contestan. Antes solo se miraba discovery.
+
+    Los que ya salieron de 'sin_contactar' quedan fuera: alguien ya los movio, el
     seguimiento ya esta frenado y no hay nada que marcar de nuevo.
     """
+    partes = " UNION ".join(
+        f"""
+        SELECT DISTINCT b.id AS id, LOWER(TRIM(b.email)) AS mail,
+               LOWER(TRIM(COALESCE(b.name,''))) AS nombre
+          FROM businesses b
+          JOIN {c['tabla']} r ON r.business_id = b.id
+         WHERE b.source = '{c['source']}'
+           AND b.crm_status = 'sin_contactar'
+           AND b.email IS NOT NULL AND LENGTH(TRIM(b.email)) > 3
+        """
+        for c in CAMPANAS.values()
+    )
     conn = _conn(db_path)
     try:
-        filas = conn.execute(
-            """
-            SELECT DISTINCT LOWER(TRIM(b.email)) AS mail, b.id
-              FROM businesses b
-              JOIN discovery_reminders dr ON dr.business_id = b.id
-             WHERE b.source = 'discovery'
-               AND b.crm_status = 'sin_contactar'
-               AND b.email IS NOT NULL AND LENGTH(TRIM(b.email)) > 3
-            """
-        ).fetchall()
+        return conn.execute(partes).fetchall()
     finally:
         conn.close()
-    return {f["mail"]: f["id"] for f in filas}
+
+
+def direcciones_contactadas(db_path: str) -> dict:
+    """{direccion: business_id} de los leads a vigilar, de las dos campanas."""
+    return {f["mail"]: f["id"] for f in _contactados(db_path)}
+
+
+def negocios_contactados(db_path: str) -> dict:
+    """{nombre en minusculas: business_id}, para casar respuestas por asunto.
+
+    Un nombre repetido entre dos comercios se descarta: marcar al equivocado es
+    peor que no marcar a ninguno, porque le corta el seguimiento a alguien que
+    nunca contesto.
+    """
+    cuenta, salida = {}, {}
+    for f in _contactados(db_path):
+        if not f["nombre"]:
+            continue
+        cuenta[f["nombre"]] = cuenta.get(f["nombre"], 0) + 1
+        salida[f["nombre"]] = f["id"]
+    return {n: i for n, i in salida.items() if cuenta[n] == 1}
 
 
 def es_respuesta_automatica(cabeceras: dict, asunto: str) -> bool:
@@ -121,12 +215,17 @@ def sincronizar_respuestas(db_path: str, buscar, days_back: int = _DIAS_ATRAS,
     "headers".
     """
     contactadas = direcciones_contactadas(db_path)
+    por_nombre = negocios_contactados(db_path)
     res = {"revisados": len(contactadas), "respondieron": 0, "automaticas": 0}
     if not contactadas:
         return res
 
     ya_marcadas = set()
-    for consulta in partir_en_consultas(sorted(contactadas), days_back=days_back):
+    # Dos vias: por remitente (la casilla a la que escribimos) y por asunto (el
+    # dueno contestando desde otra cuenta, o una respuesta que cayo en spam).
+    consultas = (partir_en_consultas(sorted(contactadas), days_back=days_back)
+                 + consultas_por_asunto(days_back=days_back))
+    for consulta in consultas:
         try:
             mensajes = buscar(consulta) or []
         except Exception as e:
@@ -137,17 +236,25 @@ def sincronizar_respuestas(db_path: str, buscar, days_back: int = _DIAS_ATRAS,
 
         for msg in mensajes:
             direccion = (msg.get("from") or "").strip().lower()
-            if direccion not in contactadas or direccion in ya_marcadas:
+            asunto = msg.get("subject")
+
+            # Primero por remitente; si no es de la cohorte, por el nombre del
+            # negocio que viaja en el asunto.
+            bid = contactadas.get(direccion)
+            if bid is None:
+                bid = por_nombre.get(negocio_del_asunto(asunto))
+            if bid is None or bid in ya_marcadas:
                 continue
-            if es_respuesta_automatica(msg.get("headers"), msg.get("subject")):
+
+            if es_respuesta_automatica(msg.get("headers"), asunto):
                 res["automaticas"] += 1
                 continue
 
-            ya_marcadas.add(direccion)
+            ya_marcadas.add(bid)
             res["respondieron"] += 1
             if not dry_run:
-                marcar_respondio(db_path, contactadas[direccion], direccion)
-            logger.info(f"Discovery: {direccion} contesto, se frena su seguimiento")
+                marcar_respondio(db_path, bid, direccion or "(sin remitente)")
+            logger.info(f"Respuesta de {direccion or asunto!r}: se frena su seguimiento")
 
     return res
 
