@@ -1232,6 +1232,9 @@ body.light .upick-name{color:#0f172a}
       <select class="filter-select" id="meta-month-filter" onchange="metaMonthFilter(this.value)">
         <option value="">Todos los meses</option>
       </select>
+      <select class="filter-select" id="meta-estado-filter" onchange="metaEstadoFilter(this.value)">
+        <option value="">Todos los estados</option>
+      </select>
       <span id="meta-count" style="color:#64748b;font-size:.8rem;align-self:center;margin-left:auto"></span>
     </div>
     <div class="table-wrap">
@@ -1870,6 +1873,7 @@ function _reloadActiveCallPanel() {
 // ── Meta Ads panel ───────────────────────────────────────────────────────────
 let _metaSearch = '';
 let _metaMonth = '';
+let _metaEstado = '';
 let _metaLeads = [];
 let _metaSortDesc = true;
 let _metaKnownIds = new Set();
@@ -1893,6 +1897,7 @@ function _startMetaPoll() {
         badge.style.display = '';
         _metaLeads = leads;
         _fillMetaMonths();
+        _fillMetaEstados();
         const activePanel = document.querySelector('.panel.active');
         if (activePanel && activePanel.id === 'meta-panel') {
           renderMetaTable();
@@ -1905,6 +1910,9 @@ function _startMetaPoll() {
 }
 function metaSearch(v) { _metaSearch = v.toLowerCase(); renderMetaTable(); }
 function metaMonthFilter(v) { _metaMonth = v; renderMetaTable(); }
+// La cola fria excluye a los leads de Meta a proposito, asi que este es el
+// unico lugar donde se puede preguntar "a quien de Meta no llamo nadie".
+function metaEstadoFilter(v) { _metaEstado = v; renderMetaTable(); }
 
 // Clave 'YYYY-MM' del lead, o '' si no tiene fecha usable. Es la misma funcion
 // que usan el <select> y el filtro, para que no puedan discrepar: si una arma
@@ -1912,6 +1920,20 @@ function metaMonthFilter(v) { _metaMonth = v; renderMetaTable(); }
 function _metaMesKey(l) {
   const d = new Date(l.scraped_at || 0);
   return isNaN(d) || !l.scraped_at ? '' : `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+}
+
+function _fillMetaEstados() {
+  const sel = document.getElementById('meta-estado-filter');
+  if (!sel) return;
+  const etiquetas = {sin_contactar:'Sin contactar',interesado:'Interesado',contactado:'Interesado',reunion_agendada:'Reunión agendada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Ppto enviado',negociacion:'Negociación',cliente_cerrado:'Cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado',llamar_despues:'Llamar después',no_interesa:'No le interesa'};
+  const cuenta = {};
+  _metaLeads.forEach(l => { const k = l.crm_status || 'sin_contactar'; cuenta[k] = (cuenta[k]||0)+1; });
+  const previo = _metaEstado;
+  const claves = Object.keys(cuenta).sort((a,b) => cuenta[b] - cuenta[a]);
+  sel.innerHTML = `<option value="">Todos los estados (${_metaLeads.length})</option>` +
+    claves.map(k => `<option value="${k}">${etiquetas[k] || k} (${cuenta[k]})</option>`).join('');
+  sel.value = claves.includes(previo) ? previo : '';
+  _metaEstado = sel.value;
 }
 
 function _fillMetaMonths() {
@@ -1943,6 +1965,7 @@ async function loadMetaPanel() {
     _metaLeads = Array.isArray(data) ? data : (data.items || []);
     _metaLeads.forEach(l => _metaKnownIds.add(l.id));
     _fillMetaMonths();
+    _fillMetaEstados();
     renderMetaTable();
     _startMetaPoll();
   } catch(e) { body.innerHTML = `<div style="color:#f87171;padding:16px">Error: ${e.message}</div>`; }
@@ -1953,6 +1976,7 @@ function renderMetaTable() {
   let leads = _metaLeads;
   if (_metaSearch) leads = leads.filter(b => (b.name||'').toLowerCase().includes(_metaSearch) || (b.notes||'').toLowerCase().includes(_metaSearch));
   if (_metaMonth) leads = leads.filter(b => _metaMesKey(b) === _metaMonth);
+  if (_metaEstado) leads = leads.filter(b => (b.crm_status || 'sin_contactar') === _metaEstado);
   const _cnt = document.getElementById('meta-count');
   if (_cnt) _cnt.textContent = leads.length === _metaLeads.length
     ? `${leads.length} leads`
@@ -2185,14 +2209,19 @@ async function loadSeguimientos() {
   body.innerHTML = '<div style="color:#475569;padding:16px;font-size:.85rem">Cargando...</div>';
   try {
     const coh = _segCohorte ? `&cohorte=${encodeURIComponent(_segCohorte)}` : '';
-    const [r1, r2] = await Promise.all([
+    // 'contactado' es un alias viejo de 'interesado': el dashboard lo etiqueta
+    // igual y es un estado valido, pero nadie lo pedia. Hoy tiene 0 leads; el
+    // dia que algo lo escriba, sin esto desaparecen de todas las colas.
+    const [r1, r2, r3] = await Promise.all([
       fetch(`/api/leads?crm_status=llamar_despues${coh}`),
       fetch(`/api/leads?crm_status=interesado${coh}`),
+      fetch(`/api/leads?crm_status=contactado${coh}`),
     ]);
-    const [d1, d2] = await Promise.all([r1.json(), r2.json()]);
+    const [d1, d2, d3] = await Promise.all([r1.json(), r2.json(), r3.json()]);
     const leads = [
       ...(Array.isArray(d1) ? d1 : (d1.items || [])),
       ...(Array.isArray(d2) ? d2 : (d2.items || [])),
+      ...(Array.isArray(d3) ? d3 : (d3.items || [])),
     ].sort((a,b) => {
       // llamar_despues with date first, then contactado
       if (a.callback_date && !b.callback_date) return -1;

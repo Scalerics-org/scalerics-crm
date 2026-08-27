@@ -172,7 +172,7 @@ def test_el_texto_que_ve_el_lector_lleva_tildes():
     html = _html_del_recordatorio().args[2]
 
     assert "Agendá" in html
-    assert "salís" in html
+    assert "respondé" in html and "acá" in html
     assert "todavía" in html
     assert "No quiero recibir más" in html
     assert "Agenda " not in html, "sin tilde queda imperativo de otra persona"
@@ -185,13 +185,13 @@ def test_el_asunto_sale_del_negocio_no_de_un_nombre():
     negocio, que si viene limpio."""
     llamada = _html_del_recordatorio(negocio="Animal Petshop")
 
-    assert llamada.args[1] == "Sobre tu consulta para Animal Petshop"
+    assert llamada.args[1] == "Animal Petshop — cómo lo resolveríamos"
 
 
 def test_sin_negocio_el_asunto_no_queda_colgado():
     llamada = _html_del_recordatorio(negocio="")
 
-    assert llamada.args[1] == "Sobre tu consulta a Scalerics"
+    assert llamada.args[1] == "Cómo resolveríamos tu consulta"
 
 
 def test_escapa_la_entrada_del_formulario():
@@ -336,7 +336,7 @@ def test_los_siete_cuerpos_son_todos_distintos():
 
 @pytest.mark.parametrize("negocio,esperados", [
     ("RP Estudio", {
-        1: "Sobre tu consulta para RP Estudio",
+        1: "RP Estudio — cómo lo resolveríamos",
         2: "Sobre tu consulta para RP Estudio",
         3: "Sobre tu consulta para RP Estudio",
         4: "¿Retomamos lo de RP Estudio?",
@@ -345,7 +345,7 @@ def test_los_siete_cuerpos_son_todos_distintos():
         7: "Último mail para RP Estudio",
     }),
     ("", {
-        1: "Sobre tu consulta a Scalerics",
+        1: "Cómo resolveríamos tu consulta",
         2: "Sobre tu consulta a Scalerics",
         3: "Sobre tu consulta a Scalerics",
         4: "¿Retomamos tu consulta?",
@@ -365,3 +365,76 @@ def test_los_siete_asuntos_se_leen_bien_con_y_sin_negocio(negocio, esperados):
             send_meta_lead_reminder("lead@ejemplo.com", negocio,
                                     "automatizaciones", "https://crm/baja/x", numero)
         assert enviar.call_args.args[1] == esperados[numero], f"contacto {numero}"
+
+
+# ── El nombre del negocio sale de un campo de texto libre ────────────────────
+# Un lead real tenia "Fullprinturuguay@gmail.com" ahi, y el mail salio diciendo
+# "buscabas un software a medida para Fullprinturuguay@gmail.com".
+
+import pytest
+from services.email_service import _negocio_usable, _cuerpo_por_estado
+
+
+@pytest.mark.parametrize("basura", [
+    "Fullprinturuguay@gmail.com",          # una direccion de mail
+    "www.casagarrido.com.uy",              # una URL
+    "https://instagram.com/algo",
+    "+598 093589568",                      # un telefono
+    ".", "h", "A", "Mb",                   # respuestas de relleno
+    "No lo se aun...", "no se", "hola", "Ninguno",
+    "Soy arquitecta",                      # responde otra pregunta
+    "Tengo local", "Gracias , necesito ayuda",
+    "Tengo empresa de logística y necesito un software para registrar el ingreso",
+    "",
+    None,
+])
+def test_el_negocio_que_no_sirve_se_descarta(basura):
+    assert _negocio_usable(basura) == ""
+
+
+@pytest.mark.parametrize("bueno", [
+    "Planarq", "Bicicletería el conde", "RP Estudio Notarial y Jurídico",
+    "ofipaper srl", "MyD HOGAR", "Verduleria Los Pekes",
+])
+def test_el_negocio_de_verdad_se_conserva(bueno):
+    assert _negocio_usable(bueno) == bueno
+
+
+def test_los_espacios_de_mas_se_normalizan():
+    assert _negocio_usable("  Casa   Garrido  ") == "Casa Garrido"
+
+
+# ── La voz de los mails ──────────────────────────────────────────────────────
+# El primer envio mezclaba "te mostramos" con "te muestro" y no saludaba. Es la
+# misma empresa que ya escribia en plural en la secuencia vieja.
+
+_ESTADOS = ["presupuesto_enviado", "reunion_hecha", "interesado", "llamar_despues"]
+_SINGULARES = ["te muestro", "te paso", "te mando", "avisame", "decime",
+               "no te escribo", "te reenvio", "te enviamos hoy mismo yo"]
+
+
+@pytest.mark.parametrize("estado", _ESTADOS)
+@pytest.mark.parametrize("numero", [1, 2])
+def test_ningun_mail_habla_en_primera_persona_del_singular(estado, numero):
+    cuerpo = _cuerpo_por_estado(estado, numero, "Casa Garrido", "un_software_a_medida")
+    assert cuerpo is not None
+    texto = " ".join(cuerpo[1]).lower()
+    for s in _SINGULARES:
+        assert s not in texto, f"{estado}/{numero} escribe en singular: {s!r}"
+
+
+@pytest.mark.parametrize("estado", _ESTADOS)
+@pytest.mark.parametrize("numero", [1, 2])
+def test_todos_los_mails_abren_saludando(estado, numero):
+    asunto, parrafos = _cuerpo_por_estado(estado, numero, "Casa Garrido", "")
+    assert parrafos[0] == "Hola,"
+    assert asunto and "\n" not in asunto
+
+
+@pytest.mark.parametrize("estado", _ESTADOS)
+def test_sin_negocio_la_frase_igual_cierra(estado):
+    """Con negocio vacio ninguna frase puede quedar colgada en 'para '."""
+    asunto, parrafos = _cuerpo_por_estado(estado, 1, "", "")
+    texto = asunto + " " + " ".join(parrafos)
+    assert "para  " not in texto and not texto.rstrip().endswith("para")
+    assert " de ." not in texto

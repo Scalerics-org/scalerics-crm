@@ -438,26 +438,69 @@ def _parrafo_valor(rubro: str) -> str:
     return _PARRAFOS_VALOR.get(_clave_rubro(rubro), _PARRAFO_VALOR_GENERICO)
 
 
+# _FRASES_RUBRO trae la frase con verbo ("buscabas un software a medida"), que
+# sirve para "Dejaste tus datos porque {frase}". Donde la oracion ya tiene su
+# propio verbo hace falta el sustantivo solo, o sale "Te llamamos por lo que
+# buscabas un software a medida", que es un trabalenguas.
+_SUSTANTIVOS_RUBRO = {
+    "crear_mi_ecommerce":   "una tienda online",
+    "automatizaciones":     "automatizaciones",
+    "una_nueva_página_web": "una nueva página web",
+    "un_software_a_medida": "un software a medida",
+}
+
+
+def _sustantivo_rubro(rubro: str) -> str:
+    return _SUSTANTIVOS_RUBRO.get(_clave_rubro(rubro), "")
+
+
+# Como trabajamos. Va SOLO donde el lector todavia no lo vivio: el primer
+# contacto de la secuencia fria, y los de 'interesado' y 'llamar_despues'.
+# A alguien que ya vio la demo y ya recibio un precio, contarle que "te
+# mostramos una demo y recien ahi hablamos de numeros" lo trata de desconocido.
+_COMO_TRABAJAMOS = (
+    "Trabajamos con comercios y empresas en Uruguay: relevamos el proceso, te "
+    "mostramos una demo funcionando, y recién ahí hablamos de números."
+)
+
+# Los dos caminos. Nadie tiene que aceptar una reunion para avanzar: quien no
+# quiere hablar por telefono responde el mail y sigue igual.
+_DOS_CAMINOS = (
+    "Agendá 30 minutos acá abajo, o respondé este mail y te enviamos una "
+    "propuesta por escrito."
+)
+
+
 # Un texto por contacto. Repetir el mismo parrafo comercial cada trimestre es
 # exactamente lo que hace que alguien marque spam, asi que del 2 en adelante los
 # mails son cortos y no vuelven a vender.
 def _cuerpo_por_contacto(numero: int, apertura: str, valor: str, negocio: str) -> tuple[str, list[str]]:
-    """Devuelve (asunto, [parrafos]) para el contacto `numero`.
+    """Devuelve (asunto, [parrafos]) para el contacto `numero` de un lead frio.
 
     `apertura` y `valor` ya vienen escapados por el llamador.
+
+    Del 2 en adelante los mails son cortos y no vuelven a vender: repetir el
+    parrafo comercial cada trimestre es lo que hace que alguien marque spam.
     """
     donde = f" para {negocio}" if negocio else ""
+    de = f" de {negocio}" if negocio else ""
+    por_lo_de = f" por lo de {negocio}" if negocio else ""
     if numero <= 1:
-        return (f"Sobre tu consulta{donde}" if negocio else "Sobre tu consulta a Scalerics", [
+        return (f"{negocio} — cómo lo resolveríamos" if negocio
+                else "Cómo resolveríamos tu consulta", [
             "Hola,",
             apertura,
+            # Un solo bloque de "por que nosotros" por mail. El parrafo por
+            # rubro es mas especifico que _COMO_TRABAJAMOS, asi que en la
+            # secuencia fria gana el, y la linea de proceso queda para los
+            # estados que no tienen parrafo propio.
             valor,
-            "Agendá 30 minutos y salís de la llamada con precio y plazo cerrados.",
+            _DOS_CAMINOS,
         ])
     if numero == 2:
         return (f"Sobre tu consulta{donde}" if negocio else "Sobre tu consulta a Scalerics", [
             "Hola,",
-            f"Te escribimos hace unos días{donde}. Te dejamos el link de vuelta por si "
+            f"Te escribimos hace unos días{por_lo_de}. Te dejamos el link de vuelta por si "
             f"te quedó pendiente.",
             "Si preferís, respondé este mail y coordinamos por acá.",
         ])
@@ -468,13 +511,13 @@ def _cuerpo_por_contacto(numero: int, apertura: str, valor: str, negocio: str) -
             f"Si más adelante retomás el tema{donde}, escribinos y lo vemos.",
         ])
     if numero == 4:
-        # "lo para X" no cierra sintacticamente (el asunto queda como una
-        # plantilla mal armada); "lo de X" si.
+        # "lo para X" no cierra sintacticamente; "lo de X" si.
         return (f"¿Retomamos lo de {negocio}?" if negocio else "¿Retomamos tu consulta?", [
             "Hola,",
             f"Pasó un tiempo desde que nos dejaste tus datos{donde}.",
             "Si el tema volvió a estar sobre la mesa, en 30 minutos te decimos qué se "
             "puede hacer, cuánto sale y en cuánto tiempo.",
+            _DOS_CAMINOS,
         ])
     if numero == 5:
         return (f"¿Sigue en pie lo de {negocio}?" if negocio else "¿Sigue en pie tu consulta?", [
@@ -483,27 +526,75 @@ def _cuerpo_por_contacto(numero: int, apertura: str, valor: str, negocio: str) -
             # el contacto 3 ya le dijo "no tuvimos novedades tuyas": este parrafo
             # no puede afirmar una conversacion previa que no existio.
             f"Pasaron varios meses desde que nos dejaste tus datos{donde}.",
-            "Si en algún momento retomás el tema, seguimos para ayudarte: "
-            "respondé este mail o agendá acá abajo.",
+            "Si en algún momento retomás el tema, seguimos disponibles: respondé "
+            "este mail o agendá acá abajo.",
         ])
     if numero >= _CONTACTO_FINAL:
         return (f"Último mail{donde}" if negocio else "Último mail de Scalerics", [
             "Hola,",
-            "Este es el último mail que te mandamos: a partir de acá no te "
+            "Este es el último mail que te enviamos: a partir de acá no te "
             "escribimos más.",
             f"Si en algún momento retomás el tema{donde}, el link para agendar "
             f"queda acá abajo y podés escribirnos cuando quieras.",
             "Gracias por el tiempo.",
         ])
-    # El anteultimo de la vida del lead (numero == 6): mismo tono corto y sin
-    # venta que 4 y 5, pero insinuando que despues de este queda uno solo.
+    # El anteultimo (numero == 6): mismo tono corto y sin venta que 4 y 5, pero
+    # avisando que despues de este queda uno solo.
     return (f"Nos queda un mail más{donde}" if negocio else "Nos queda un mail más", [
         "Hola,",
-        f"Este es el anteúltimo mail que te mandamos{donde}: después de este "
+        f"Este es el anteúltimo mail que te enviamos{donde}: después de este "
         f"te queda uno solo.",
         "Si el tema sigue en pie, es buen momento para retomarlo antes de que "
         "dejemos de escribirte.",
     ])
+
+
+# El campo "¿cómo se llama tu negocio?" es texto libre de un formulario de Meta
+# y lo llena cualquiera. En la base real hay direcciones de mail
+# ("Fullprinturuguay@gmail.com"), teléfonos, URLs, respuestas de una letra ("h",
+# "."), y párrafos enteros ("Tengo empresa de logística y necesito un software
+# para registrar el ingreso, la salida, etc de la mercadería").
+#
+# Cualquiera de esos metido en "para {negocio}" convierte el mail en algo que
+# ninguna empresa mandaría. Es el mismo motivo por el que `name` no se usa para
+# saludar, unas líneas más arriba: si el dato no sirve, la frase se arma sin él.
+_LARGO_MAXIMO_NEGOCIO = 40
+
+
+def _negocio_usable(texto: str) -> str:
+    """El nombre del negocio si se puede escribir en una frase, o "" si no."""
+    t = " ".join((texto or "").split())
+    if not t or len(t) < 3 or len(t) > _LARGO_MAXIMO_NEGOCIO:
+        return ""
+    bajo = t.lower()
+    if "@" in t or bajo.startswith(("http://", "https://", "www.")):
+        return ""
+    letras = sum(c.isalpha() for c in t)
+    if letras < sum(c.isdigit() for c in t) or letras < 3:
+        return ""
+    # Mucha gente contesta otra cosa en ese campo. Dos formas frecuentes:
+    # el no-nombre ("No lo se aun...", "hola", ".") y la respuesta en primera
+    # persona a una pregunta que nadie hizo ("Soy arquitecta", "Tengo local").
+    # Ninguna de las dos se puede escribir despues de "para".
+    plano = t.rstrip(".!? ").lower()
+    for a, b in (("á","a"),("é","e"),("í","i"),("ó","o"),("ú","u"),("ñ","n")):
+        plano = plano.replace(a, b)
+    if plano in {
+        "no lo se aun", "no lo se", "no se", "aun no lo se", "aun no", "todavia no",
+        "ninguno", "ninguna", "nada", "hola", "si", "no", "sin nombre", "sinnombre",
+        "prueba", "test", "mi negocio", "negocio", "empresa", "a", "x",
+    }:
+        return ""
+    # El verbo en primera persona puede no estar al principio: en la base hay un
+    # "Gracias , necesito ayuda" que como prefijo no se detecta. Se busca la
+    # palabra entera en cualquier posicion. Un nombre de negocio con "tengo" o
+    # "quiero" adentro existe, pero es mucho mas raro que esto, y equivocarse
+    # rechazando solo cuesta una frase sin nombre.
+    verbos = {"soy", "tengo", "necesito", "quiero", "busco", "dedico",
+              "trabajo", "estoy", "hago", "ayuda"}
+    if verbos & set(plano.replace(",", " ").split()):
+        return ""
+    return t
 
 
 # ── Copy por estado del CRM ──────────────────────────────────────────────────
@@ -516,61 +607,85 @@ def _cuerpo_por_estado(estado: str, numero: int, negocio: str,
                        rubro_txt: str) -> tuple:
     """Devuelve (asunto, [parrafos]) para el contacto `numero` de `estado`.
 
-    `negocio` llega escapado o crudo segun para que version se lo pida; la
-    frase del rubro es texto fijo nuestro y no necesita escaparse.
+    Mismo registro que `_cuerpo_por_contacto`: es la misma empresa escribiendo.
+    Plural siempre, "Hola," de apertura, y los dos caminos al cerrar.
+
+    `_COMO_TRABAJAMOS` va solo en 'interesado' y 'llamar_despues': son los dos
+    estados donde el lead todavia no vio una demo. A los de 'reunion_hecha' y
+    'presupuesto_enviado' ya se la mostramos y ya recibieron numeros.
+
+    `negocio` llega escapado o crudo segun para que version se lo pida, y ya
+    filtrado por `_negocio_usable`.
     """
-    de_negocio = f" de {negocio}" if negocio else ""
-    el_negocio = f" para {negocio}" if negocio else ""
+    de = f" de {negocio}" if negocio else ""
+    para = f" para {negocio}" if negocio else ""
     rubro = _frase_rubro(rubro_txt) if rubro_txt else ""
+    sustantivo = _sustantivo_rubro(rubro_txt) if rubro_txt else ""
 
     if estado == "presupuesto_enviado":
         if numero <= 1:
-            return (f"El presupuesto{de_negocio}", [
-                "Te paso de nuevo el presupuesto, por si quedó enterrado en el mail.",
-                "Si el número no cierra, decímelo y vemos: casi siempre hay una "
-                "versión más chica que resuelve lo mismo para arrancar.",
-                "Y si ya lo resolviste por otro lado, avisame y no te escribo más.",
+            return (f"{negocio} — el presupuesto que te enviamos" if negocio
+                    else "El presupuesto que te enviamos", [
+                "Hola,",
+                "Te reenviamos el presupuesto por si quedó perdido entre otros mails.",
+                "Si el número no cierra, decinos y lo revisamos: casi siempre hay una "
+                "versión más acotada que resuelve lo mismo para arrancar, y se puede "
+                "ampliar después.",
+                "Respondé este mail y seguimos por acá, o agendá 30 minutos y lo "
+                "vemos juntos.",
             ])
-        return (f"¿Lo dejamos{de_negocio}?", [
-            "Última por el presupuesto que te pasamos.",
-            "Si es que no, o no es el momento, respondeme una línea y listo: "
-            "no te escribo más.",
+        return (f"¿Seguimos con lo de {negocio}?" if negocio else "¿Seguimos con el presupuesto?", [
+            "Hola,",
+            "Te escribimos por última vez por el presupuesto que te enviamos.",
+            "Si no es el momento, respondenos una línea y no te escribimos más.",
         ])
 
     if estado == "reunion_hecha":
         if numero <= 1:
             arranque = ("Hicimos la demo y no llegamos a seguir."
                         if not rubro else
-                        f"Hicimos la demo por lo que {rubro}{el_negocio} y no llegamos a seguir.")
-            return (f"Quedó pendiente lo{de_negocio}", [
+                        f"Hicimos la demo de lo que buscabas{para} y no llegamos a seguir.")
+            return (f"{negocio} — quedó pendiente el presupuesto" if negocio
+                    else "Quedó pendiente tu presupuesto", [
+                "Hola,",
                 arranque,
-                "¿Te sirve que te pase un número? Es un mail, no una reunión.",
+                "El paso que falta es el presupuesto: alcance, precio y plazo. Te lo "
+                "enviamos por mail, no hace falta otra reunión.",
+                "Respondé este mail y te lo preparamos, o agendá 30 minutos si "
+                "preferís repasarlo en vivo.",
             ])
-        return (f"Te paso el número{de_negocio}", [
-            "Te escribo una última vez por la demo que hicimos.",
-            "Si querés el presupuesto, respondeme y te lo mando hoy. Si no, "
-            "quedamos así y no te molesto más.",
+        return (f"{negocio} — el presupuesto" if negocio else "El presupuesto de tu proyecto", [
+            "Hola,",
+            "Te escribimos por última vez por la demo que hicimos.",
+            "Si querés el presupuesto, respondenos y te lo enviamos hoy mismo. Si no, "
+            "lo dejamos acá y no te molestamos más.",
         ])
 
     if estado == "interesado":
-        arranque = ("Hablamos hace un tiempo y no llegamos a agendar nada."
-                    if not rubro else
-                    f"Hablamos hace un tiempo porque {rubro}{el_negocio}, y no "
-                    f"llegamos a agendar nada.")
-        return (f"Lo{de_negocio} que quedó a medias" if negocio else "Lo que quedó a medias", [
+        arranque = ("Hablamos hace un tiempo y no llegamos a agendar una reunión."
+                    if not sustantivo else
+                    f"Cuando hablamos, buscabas {sustantivo}{para}, y no llegamos a "
+                    f"agendar una reunión.")
+        return (f"{negocio} — cómo lo resolveríamos" if negocio
+                else "Retomamos tu consulta", [
+            "Hola,",
             arranque,
-            "Si querés te muestro en 15 minutos cómo quedaría, o te lo mando "
-            "por escrito y lo mirás cuando puedas. Como te sirva.",
+            _COMO_TRABAJAMOS,
+            _DOS_CAMINOS,
         ])
 
     if estado == "llamar_despues":
-        arranque = ("Te llamamos y no te encontramos."
-                    if not rubro else
-                    f"Te llamamos por lo que {rubro}{el_negocio} y no te encontramos.")
-        return (f"Te llamamos{el_negocio}" if negocio else "Te llamamos y no te encontramos", [
+        arranque = ("Te llamamos por teléfono y no logramos ubicarte."
+                    if not sustantivo else
+                    f"Te llamamos porque buscabas {sustantivo}{para}, y no logramos "
+                    f"ubicarte.")
+        return (f"{negocio} — intentamos comunicarnos" if negocio
+                else "Intentamos comunicarnos con vos", [
+            "Hola,",
             arranque,
-            "¿Va mejor por acá? Respondeme este mail y seguimos por escrito, "
-            "sin teléfono de por medio.",
+            _COMO_TRABAJAMOS,
+            "Si te queda más cómodo por escrito, respondé este mail y seguimos por "
+            "acá. Y si preferís hablar, agendá 30 minutos cuando te sirva.",
         ])
 
     # Estado sin copy propia: no deberia llegar (el filtro de meta_reminders
@@ -596,7 +711,11 @@ def send_meta_lead_reminder(to_email: str, negocio: str, rubro: str,
     # "Ji lo lo iwwii8i lo lo lo es bj thjue"), asi que saludar con eso queda
     # peor que no saludar con nada. El negocio, que si viene limpio, se usa en el
     # cuerpo, que es donde suena natural.
-    negocio_txt = (negocio or "").strip()
+    # Filtrado antes de tocar nada: la misma basura arruinaba las dos secuencias
+    # (la vieja arma "Sobre tu consulta para Fullprinturuguay@gmail.com" igual de
+    # mal que la nueva). Si no sirve queda "", y todas las frases tienen su
+    # version sin negocio.
+    negocio_txt = _negocio_usable(negocio)
     negocio_esc = html.escape(negocio_txt)
     rubro_txt   = (rubro or "").strip()
     # `numero` sale de la columna `numero` de meta_reminders, que es nullable:
