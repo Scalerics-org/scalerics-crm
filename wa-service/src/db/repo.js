@@ -334,6 +334,30 @@ function crearRepo(db) {
       return r.changes > 0;
     },
 
+    /**
+     * Si ya salio un mensaje interno con ESE MISMO texto hace poco.
+     *
+     * Un aviso al equipo se repite palabra por palabra solo cuando algo esta en
+     * bucle: el texto lleva el nombre, la hora y lo que dijo el lead, asi que
+     * dos identicos son el mismo aviso dos veces.
+     */
+    avisoIdenticoReciente(texto, horas) {
+      return Boolean(db.prepare(`
+        SELECT 1 FROM messages
+        WHERE direction = 'out' AND kind = 'am_notice' AND body = ?
+          AND created_at >= datetime('now', ?)
+        LIMIT 1
+      `).get(String(texto), `-${Number(horas)} hours`));
+    },
+
+    /** Cuantos avisos internos salieron en la ultima hora. */
+    internosDesde(desdeIso) {
+      return db.prepare(`
+        SELECT COUNT(*) AS n FROM messages
+        WHERE direction = 'out' AND kind = 'am_notice' AND created_at >= ?
+      `).get(desdeIso).n;
+    },
+
     /** Los ids viejos no sirven para nada: WhatsApp no reenvia de hace dias. */
     limpiarEntrantesVistos(dias = 3) {
       return db.prepare(`DELETE FROM inbound_seen WHERE seen_at < datetime('now', '-${Number(dias)} days')`).run().changes;

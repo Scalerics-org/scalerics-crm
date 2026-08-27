@@ -110,7 +110,46 @@ function crearCola({ proveedor, repo, cfg, logger, limites, ahora = () => new Da
     }
   }
 
+  /**
+   * Un aviso interno que no tiene que salir.
+   *
+   * Los avisos al equipo no pasan por los topes anti-baneo, y eso esta bien
+   * —son contacto interno—, pero los dejaba sin techo de ningun tipo. Un bucle
+   * en el vigilante de reservas mando 489 avisos en dos dias: 5 textos
+   * repetidos 98 veces cada uno, toda la noche, y nada lo freno.
+   *
+   * Dos cortes, y hacen falta los dos. El texto identico ataja el bucle exacto:
+   * un aviso lleva el nombre, la hora y lo que dijo el lead, asi que dos
+   * iguales son el mismo aviso dos veces. El tope por hora ataja el bucle que
+   * ademas varie el texto, que el primero no veria.
+   */
+  function avisoQueSobra(item) {
+    if (!INTERNO.has(item.kind)) return null;
+
+    if (cfg.AVISO_REPETIDO_HORAS
+      && repo.avisoIdenticoReciente(item.texto, cfg.AVISO_REPETIDO_HORAS)) {
+      return 'ya salio uno igual';
+    }
+
+    if (cfg.MAX_INTERNOS_PER_HOUR) {
+      const desde = new Date(ahora().getTime() - 3600_000).toISOString().slice(0, 19).replace('T', ' ');
+      if (repo.internosDesde(desde) >= cfg.MAX_INTERNOS_PER_HOUR) {
+        return 'demasiados avisos en una hora';
+      }
+    }
+    return null;
+  }
+
   async function procesar(item) {
+    const sobra = avisoQueSobra(item);
+    if (sobra) {
+      logger?.warn(
+        { kind: item.kind, leadId: item.leadId, motivo: sobra },
+        'aviso al equipo descartado: algo lo esta repitiendo'
+      );
+      return;
+    }
+
     const esPrimerContacto = !repo.yaFueContactado(item.to);
 
     await simularEscritura(proveedor, item.to, item.texto, cfg, INTERNO.has(item.kind));

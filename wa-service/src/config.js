@@ -262,6 +262,28 @@ const esquema = z.object({
   AVISO_HUMANO_MINUTOS: z.coerce.number().nonnegative().default(60),
 
   /**
+   * Cuantas horas tiene que pasar para repetir un aviso interno IDENTICO, y
+   * cuantos avisos internos como mucho por hora.
+   *
+   * Los avisos al equipo no pasan por los topes anti-baneo —son contacto
+   * interno y no tiene sentido frenarlos— pero eso los dejaba sin techo de
+   * ningun tipo. Un bucle en el vigilante de reservas mando 489 avisos en dos
+   * dias: eran 5 textos repetidos 98 veces cada uno, y nada los freno.
+   *
+   * El corte que importa es el del texto identico: un aviso se repite palabra
+   * por palabra solo cuando algo esta en bucle, porque lleva el nombre, la hora
+   * y lo que dijo el lead. Eso solo habria dejado el incidente en 5 mensajes.
+   *
+   * El tope por hora es la red para un bucle que ademas varie el texto, y va
+   * alto a proposito: cien avisos en una hora es una cifra que el trabajo
+   * normal no alcanza ni en el mejor dia. Un techo que silencia avisos de
+   * verdad es tan malo como no tener techo — el equipo se entera de los leads
+   * por estos mensajes.
+   */
+  AVISO_REPETIDO_HORAS: z.coerce.number().nonnegative().default(24),
+  MAX_INTERNOS_PER_HOUR: z.coerce.number().int().nonnegative().default(100),
+
+  /**
    * El que dice "mas adelante": cuantos dias despues se le vuelve a escribir
    * cuando no dio una referencia clara. Cero apaga la pausa entera.
    *

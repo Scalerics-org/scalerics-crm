@@ -20,6 +20,7 @@ const LEAD_TEL = '59899123456';
 test('50 leads de golpe se serializan: nunca hay dos envios simultaneos', async () => {
   const s = await montar({
     MAX_MSGS_PER_HOUR: 1000, MAX_MSGS_PER_DAY: 1000, MAX_NEW_CONTACTS_PER_HOUR: 1000,
+    MAX_INTERNOS_PER_HOUR: 1000,
   });
   let enVuelo = 0;
   let maxEnVuelo = 0;
@@ -409,4 +410,57 @@ test('los avisos al equipo no gastan el cupo de los mensajes a clientes', async 
 
   assert.equal(s.proveedor.getEnviados().length, 3, 'los tres del cupo salen igual');
   assert.equal(s.cola.reprogramados(), 0);
+});
+
+/**
+ * El techo que faltaba, y que costo 489 mensajes.
+ *
+ * Un bucle en el vigilante de reservas mando 5 avisos repetidos 98 veces cada
+ * uno, durante dos dias. Los avisos internos no pasan por los topes anti-baneo
+ * —correcto, son contacto interno— pero eso los dejaba sin techo de ninguna
+ * clase, y nadie miraba.
+ */
+test('un aviso al equipo identico no sale dos veces', async () => {
+  const s = await montar();
+  const texto = '🗓 Reunión agendada\n👤 Relojero\n🕐 martes, 01/09, 12:00';
+
+  for (let i = 0; i < 20; i++) {
+    s.cola.encolar({ to: AM, texto, kind: 'am_notice' });
+  }
+  await s.cola.vacia();
+
+  assert.equal(s.proveedor.getEnviados().length, 1, 'sale uno, no veinte');
+});
+
+test('pero dos avisos distintos salen los dos', async () => {
+  const s = await montar();
+  s.cola.encolar({ to: AM, texto: 'reunión del viernes', kind: 'am_notice' });
+  s.cola.encolar({ to: AM, texto: 'reunión del martes', kind: 'am_notice' });
+  await s.cola.vacia();
+
+  assert.equal(s.proveedor.getEnviados().length, 2);
+});
+
+test('y hay un techo por hora para el bucle que ademas cambie el texto', async () => {
+  const s = await montar({ MAX_INTERNOS_PER_HOUR: 5, AVISO_REPETIDO_HORAS: '0' });
+
+  for (let i = 0; i < 15; i++) {
+    s.cola.encolar({ to: AM, texto: `aviso distinto ${i}`, kind: 'am_notice' });
+  }
+  await s.cola.vacia();
+
+  assert.equal(s.proveedor.getEnviados().length, 5, 'corta en el tope');
+});
+
+test('el techo no toca los mensajes a clientes', async () => {
+  const s = await montar({ MAX_INTERNOS_PER_HOUR: 1 });
+
+  s.cola.encolar({ to: AM, texto: 'ficha', kind: 'am_notice' });
+  for (let i = 0; i < 4; i++) {
+    s.cola.encolar({ to: `5989900${String(i).padStart(4, '0')}`, texto: `hola ${i}`, kind: 'welcome' });
+  }
+  await s.cola.vacia();
+
+  const aClientes = s.proveedor.getEnviados().filter((e) => e.to !== AM);
+  assert.equal(aClientes.length, 4, 'los clientes reciben igual');
 });
