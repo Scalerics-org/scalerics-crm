@@ -117,7 +117,7 @@ const HERRAMIENTA = {
         aplaza: {
           type: 'string',
           enum: ['no', ...CAJONES],
-          description: 'Si el lead dijo que NO es el momento y hay que escribirle mas adelante. Casi siempre es "no". unos_dias = "la semana que viene", unas_semanas = "en un par de semanas", un_mes = "el mes que viene", varios_meses = "a fin de año", sin_fecha = dijo que ahora no pero no dijo cuando. Estar ocupado hoy o tardar en contestar NO es aplazar.',
+          description: 'CUÁNDO dijo que lo va a ver, si dijo que ahora no. Poné el cajón cada vez que corra la fecha para adelante, aunque suene interesado: "el mes que viene lo veo", "más adelante", "cuando pase la temporada", "estoy viendo presupuestos", "ahora no puedo" son todos aplazos. unos_dias = esta semana o la que viene. unas_semanas = un par de semanas. un_mes = el mes que viene. varios_meses = a fin de año, después del verano. sin_fecha = dijo que ahora no pero no dijo cuándo. Solo poné "no" si NO corrió nada para adelante: estar ocupado hoy o tardar en contestar no es aplazar.',
         },
         aplaza_frase: {
           type: 'string',

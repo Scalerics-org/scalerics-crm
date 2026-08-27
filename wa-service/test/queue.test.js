@@ -507,3 +507,23 @@ test('el destinatario queda guardado, que es lo que permite contarlo', async () 
   const m = s.repo.db.prepare("SELECT destino FROM messages WHERE direction='out' ORDER BY id DESC LIMIT 1").get();
   assert.equal(m.destino, LEAD_TEL);
 });
+
+/**
+ * Al lead SI se le puede repetir un mensaje.
+ *
+ * Se probo cortarlo: el bot habia contestado dos veces palabra por palabra
+ * "Confirmado, Gonza. Nos vemos pronto en la llamada", que queda feo. Pero el
+ * corte deja al lead sin respuesta cuando hay que volver a preguntarle algo, y
+ * el silencio pierde al lead. Feo le gana a mudo.
+ */
+test('a un lead si se le puede repetir un mensaje', async () => {
+  const s = await montar();
+  const texto = '¿Cómo se llama tu negocio?';
+
+  s.cola.encolar({ to: LEAD_TEL, texto, kind: 'manual' });
+  await s.cola.vacia();
+  s.cola.encolar({ to: LEAD_TEL, texto, kind: 'manual' });
+  await s.cola.vacia();
+
+  assert.equal(s.proveedor.getEnviados().length, 2, 'mejor repetirse que quedarse mudo');
+});

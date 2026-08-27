@@ -142,6 +142,16 @@ function crearCola({ proveedor, repo, cfg, logger, limites, ahora = () => new Da
       return 'demasiados mensajes a la misma persona en un dia';
     }
 
+    /**
+     * Al lead SI se le puede repetir un mensaje, y es a proposito.
+     *
+     * Se probo cortarlo —el bot habia contestado dos veces palabra por palabra
+     * "Confirmado, Gonza. Nos vemos pronto en la llamada"— pero el corte deja
+     * al lead sin respuesta, y eso es peor. Si alguien contesta algo que no se
+     * entiende y hay que volver a preguntarle lo mismo, el bot tiene que poder.
+     *
+     * Un mensaje repetido queda feo; el silencio pierde al lead.
+     */
     if (!INTERNO.has(item.kind)) return null;
 
     if (cfg.AVISO_REPETIDO_HORAS

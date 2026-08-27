@@ -365,6 +365,16 @@ function crearRepo(db) {
       `).get(destino, desdeIso).n;
     },
 
+    /** Lo ultimo que se le mando a un numero. Para no repetirselo. */
+    ultimoTextoA(destino) {
+      const f = db.prepare(`
+        SELECT body FROM messages
+        WHERE direction = 'out' AND destino = ?
+        ORDER BY id DESC LIMIT 1
+      `).get(destino);
+      return f ? f.body : null;
+    },
+
     /** Cuantos avisos internos salieron en la ultima hora. */
     internosDesde(desdeIso) {
       return db.prepare(`

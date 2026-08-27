@@ -267,8 +267,8 @@ Una o dos líneas.`,
 
     precio: `Preguntó cuánto sale.
 No des ningún número ni rango: no lo sabés, y una cifra por WhatsApp después la tiene que sostener alguien.
-Explicale que depende del alcance y que por eso el primer paso es una charla corta para entenderlo, así el presupuesto es real y no una cifra al aire.
-Ofrecele coordinar 15 minutos esta semana.`,
+Explicale que depende del alcance y que por eso el primer paso es la videollamada, así el presupuesto sale de algo real y no de una cifra al aire.
+Es la misma videollamada de 30 minutos de siempre: no inventes otra duración ni prometas una fecha.`,
 
     facturacion: `Preguntó algo de facturas, cobros o formas de pago. Eso lo maneja el equipo.
 Decile que le pasás con la persona que lo puede ver con él ahora.`,

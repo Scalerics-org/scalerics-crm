@@ -28,6 +28,12 @@ const PRECIO = [
   'cuanto sale', 'cuanto cuesta', 'cuanto vale', 'precio', 'precios',
   'cotizacion', 'cotizar', 'presupuesto aproximado', 'tarifa',
   'cuanto me sale', 'cuanto seria', 'que valor',
+  // El segundo intento casi nunca repite la palabra "precio": el que ya
+  // escucho "depende del alcance" pide un numero directo. Sin estas, la
+  // insistencia no se detectaba y el bot volvia al embudo como si nada.
+  'tirame un numero', 'tirame un rango', 'dame un numero', 'decime un numero',
+  'algun numero', 'un numero aproximado', 'un rango', 'mas o menos cuanto',
+  'un estimado', 'aunque sea aproximado',
 ];
 
 /**
