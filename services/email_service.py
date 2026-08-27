@@ -102,7 +102,8 @@ def _muted(text: str) -> str:
 # ── Resend sender ───────────────────────────────────────────────────────────────
 
 def _send_estado(to: str, subject: str, html: str, from_email: str | None = None,
-                 headers: dict | None = None, text: str | None = None) -> str:
+                 headers: dict | None = None, text: str | None = None,
+                 attachments: list | None = None) -> str:
     """Manda el mail y devuelve un tri-estado: "ok" / "fallo" / "desconocido".
 
     La diferencia entre "fallo" y "desconocido" importa: "fallo" es *sabemos que
@@ -124,6 +125,10 @@ def _send_estado(to: str, subject: str, html: str, from_email: str | None = None
         }
         if headers:
             cuerpo["headers"] = headers
+        if attachments:
+            # Formato de Resend: [{"filename": ..., "content": <base64>}].
+            # Solo se agrega si viene, asi ningun llamador previo cambia.
+            cuerpo["attachments"] = attachments
         if text:
             # La version en texto plano no es un adorno: un mail que solo trae
             # HTML es una de las senales que empujan a Promociones y a spam.
@@ -154,8 +159,10 @@ def _send_estado(to: str, subject: str, html: str, from_email: str | None = None
         return "desconocido"
 
 
-def _send(to: str, subject: str, html: str, from_email: str | None = None, headers: dict | None = None) -> bool:
-    return _send_estado(to, subject, html, from_email=from_email, headers=headers) == "ok"
+def _send(to: str, subject: str, html: str, from_email: str | None = None, headers: dict | None = None,
+          attachments: list | None = None) -> bool:
+    return _send_estado(to, subject, html, from_email=from_email, headers=headers,
+                        attachments=attachments) == "ok"
 
 
 # ── Public functions ────────────────────────────────────────────────────────────
@@ -851,3 +858,82 @@ def send_discovery_email(to_email: str, negocio: str, rubro: str,
         },
         text=texto,
     )
+
+
+# ── LinkedIn ────────────────────────────────────────────────────────────────────
+
+_DIAS = ["lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo"]
+
+
+def _bloque_borrador(b: dict, base_url: str) -> str:
+    aviso = ""
+    if b.get("aviso"):
+        aviso = (
+            '<div style="background:#fff7ed;border-left:3px solid #f97316;'
+            'padding:10px 14px;margin:0 0 14px;font-size:13px;color:#7c2d12">'
+            f'{b["aviso"]}</div>'
+        )
+
+    texto_html = (b.get("texto") or "").replace("\n", "<br>")
+    marcar = f'{base_url}/api/linkedin/marcar?token={b["marcar_token"]}'
+    etiqueta = "Trabajo propio" if b.get("tipo") == "trabajo" else "Educativo"
+
+    return f"""
+    <div style="border:1px solid #e2e8f0;border-radius:8px;padding:18px;margin:0 0 22px">
+      <div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+                  color:#64748b;margin:0 0 12px">{etiqueta}</div>
+      {aviso}
+      <div style="background:#f8fafc;border-radius:6px;padding:16px;font-family:
+                  ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;
+                  line-height:1.7;color:#0f172a;white-space:pre-wrap">{texto_html}</div>
+      <div style="font-size:12px;color:#64748b;margin:14px 0 0">
+        Datos usados: {b.get('fuente_desc', '')}
+      </div>
+      <div style="margin:14px 0 0">
+        <a href="{marcar}" style="font-size:13px;color:#0088cc;text-decoration:none">
+          Ya publiqué este</a>
+        <span style="font-size:12px;color:#94a3b8"> &middot; no publica nada, solo lo marca</span>
+      </div>
+    </div>"""
+
+
+def send_linkedin_drafts(to: str, borradores: list, base_url: str,
+                         aviso_cooldown: bool = False) -> bool:
+    from datetime import datetime
+
+    hoy = datetime.now()
+    dia = _DIAS[hoy.weekday()]
+    cuantos = len(borradores)
+    palabra = "borrador" if cuantos == 1 else "borradores"
+    subject = f"{cuantos} {palabra} para LinkedIn - {dia} {hoy.day}/{hoy.month}"
+
+    cuerpo = "".join(_bloque_borrador(b, base_url) for b in borradores)
+    if aviso_cooldown:
+        cuerpo += _muted(
+            "Se reuso un tema educativo antes de cumplir los 180 dias porque no "
+            "quedaban temas libres. Conviene sembrar temas nuevos en linkedin_temas."
+        )
+
+    attachments = [
+        {"filename": f"linkedin-{b['id']}.png", "content": b["png_b64"]}
+        for b in borradores if b.get("png_b64")
+    ]
+
+    html = _layout(
+        badge="LinkedIn",
+        title=f"{cuantos} {palabra} listos",
+        body=cuerpo,
+    )
+    return _send(to, subject, html, attachments=attachments)
+
+
+def send_linkedin_failure(to: str, motivo: str) -> bool:
+    html = _layout(
+        badge="LinkedIn",
+        title="No salieron los borradores",
+        body=(
+            '<p style="font-size:14px;color:#334155;line-height:1.6">'
+            f"No se pudo generar ningun borrador esta vez. Motivo: {motivo}.</p>"
+        ),
+    )
+    return _send(to, "No salieron los borradores de LinkedIn", html)

@@ -503,6 +503,38 @@ def init_db(db_path: str) -> None:
             conn.execute("DROP TABLE meta_reminders")
             conn.execute("ALTER TABLE meta_reminders_nueva RENAME TO meta_reminders")
 
+ 
+        # ── LinkedIn ──────────────────────────────────────────────────────────
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS linkedin_posts (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_id          INTEGER,
+                lote            TEXT NOT NULL,
+                tipo            TEXT NOT NULL,
+                texto           TEXT NOT NULL,
+                angulo          TEXT,
+                fuente_tipo     TEXT NOT NULL,
+                fuente_id       INTEGER,
+                imagen_tipo     TEXT NOT NULL DEFAULT 'ninguna',
+                imagen_spec     TEXT,
+                fuente_desc     TEXT,
+                aviso           TEXT,
+                estado          TEXT NOT NULL DEFAULT 'generado',
+                marcar_token    TEXT,
+                creado_en       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                publicado_en    TIMESTAMP
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS linkedin_temas (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                titulo      TEXT NOT NULL UNIQUE,
+                angulo      TEXT NOT NULL,
+                usado_en    TIMESTAMP
+            )
+        """)
+        _add_column(conn, "businesses", "linkedin_ok", "INTEGER DEFAULT 0")
+
         # ── task assignment & goal tracking ────────────────────────────────────
         _add_column(conn, "tasks", "assignee_id",    "INTEGER REFERENCES users(id) ON DELETE SET NULL")
         _add_column(conn, "tasks", "assignee_name",  "TEXT")
@@ -1750,5 +1782,235 @@ def use_reset_token(db_path: str, token: str) -> bool:
         )
         conn.commit()
         return cursor.rowcount > 0
+    finally:
+        conn.close()
+
+
+# ─── LinkedIn ─────────────────────────────────────────────────────────────────
+
+_LINKEDIN_POST_COLUMNS = {
+    "job_id", "lote", "tipo", "texto", "angulo", "fuente_tipo", "fuente_id",
+    "imagen_tipo", "imagen_spec", "fuente_desc", "aviso", "estado",
+    "marcar_token", "publicado_en",
+}
+
+
+def create_linkedin_post(db_path: str, **fields) -> int:
+    invalid = set(fields) - _LINKEDIN_POST_COLUMNS
+    if invalid:
+        raise ValueError(f"Invalid linkedin_posts columns: {invalid}")
+    cols = ", ".join(fields)
+    marks = ", ".join(f":{k}" for k in fields)
+    conn = _connect(db_path)
+    try:
+        cursor = conn.execute(
+            f"INSERT INTO linkedin_posts ({cols}) VALUES ({marks})", fields
+        )
+        conn.commit()
+        return cursor.lastrowid
+    finally:
+        conn.close()
+
+
+def update_linkedin_post(db_path: str, post_id: int, **fields) -> None:
+    invalid = set(fields) - _LINKEDIN_POST_COLUMNS
+    if invalid:
+        raise ValueError(f"Invalid linkedin_posts columns: {invalid}")
+    if not fields:
+        return
+    set_clause = ", ".join(f"{k} = :{k}" for k in fields)
+    fields["id"] = post_id
+    conn = _connect(db_path)
+    try:
+        conn.execute(f"UPDATE linkedin_posts SET {set_clause} WHERE id = :id", fields)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_linkedin_posts_by_job(db_path: str, job_id: int) -> list[dict]:
+    """Accesor de diagnostico: que borradores dejo una corrida del worker.
+
+    El pipeline busca por lote, no por job.
+    """
+    conn = _connect(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT * FROM linkedin_posts WHERE job_id = ? ORDER BY id", (job_id,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_linkedin_posts_by_lote(db_path: str, lote: str) -> list[dict]:
+    """Los borradores de una corrida.
+
+    El lote lo genera el endpoint antes de encolar el job, asi que no hay
+    ventana en la que el worker vea una fila sin identificar.
+    """
+    conn = _connect(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT * FROM linkedin_posts WHERE lote = ? ORDER BY id", (lote,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_linkedin_post_by_token(db_path: str, token: str) -> Optional[dict]:
+    if not token:
+        return None
+    conn = _connect(db_path)
+    try:
+        row = conn.execute(
+            "SELECT * FROM linkedin_posts WHERE marcar_token = ?", (token,)
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def get_fuentes_usadas(db_path: str) -> set:
+    """Pares (fuente_tipo, fuente_id) que ya salieron por mail o se publicaron.
+
+    Un borrador en estado 'generado' todavia no salio a ningun lado y uno
+    'descartado' no lo va a hacer nunca, asi que su fuente sigue libre.
+    """
+    conn = _connect(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT fuente_tipo, fuente_id FROM linkedin_posts "
+            "WHERE estado IN ('enviado', 'publicado')"
+        ).fetchall()
+        return {(r["fuente_tipo"], r["fuente_id"]) for r in rows}
+    finally:
+        conn.close()
+
+
+def get_temas_disponibles(db_path: str, limite_iso: str) -> list[dict]:
+    """Temas nunca usados o usados antes de `limite_iso`, mas viejos primero."""
+    conn = _connect(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT * FROM linkedin_temas "
+            "WHERE usado_en IS NULL OR usado_en < ? "
+            "ORDER BY usado_en IS NOT NULL, usado_en, id",
+            (limite_iso,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def marcar_tema_usado(db_path: str, tema_id: int, cuando_iso: str) -> None:
+    conn = _connect(db_path)
+    try:
+        conn.execute(
+            "UPDATE linkedin_temas SET usado_en = ? WHERE id = ?", (cuando_iso, tema_id)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+_LINKEDIN_TEMAS_SEMILLA = [
+    ("Por qué tu negocio no aparece en Google Maps",
+     "la ficha existe pero está incompleta, y eso decide quién te encuentra"),
+    ("Qué es un CRM y por qué tu Excel no lo es",
+     "el Excel no te avisa, no recuerda y no lo ve tu equipo"),
+    ("Cuánto tarda de verdad una tienda online",
+     "el desarrollo es la parte corta; cargar el catálogo es la larga"),
+    ("El costo de no tener web cuando te buscan por el nombre",
+     "si no aparecés, el cliente asume que cerraste"),
+    ("WhatsApp Business no es lo mismo que WhatsApp",
+     "catálogo, respuestas rápidas y etiquetas cambian el volumen que aguantás"),
+    ("Por qué el pago online sube el ticket promedio",
+     "el que ya pagó no negocia el envío"),
+    ("Qué mirar antes de contratar a alguien que te haga la web",
+     "quién queda como titular del dominio y del hosting"),
+    ("El dominio es tuyo, no de quien te hizo la web",
+     "si está a nombre de otro, tu negocio está prestado"),
+    ("Tres números que deberías saber de tu propio negocio",
+     "cuánto vendés, cuánto te cuesta vender y cuánto vuelve"),
+    ("Automatizar no es reemplazar gente",
+     "es sacarle a la gente lo que hace mejor una máquina"),
+    ("Cuándo conviene una web y cuándo alcanza con Instagram",
+     "el límite lo pone el catálogo y el horario de atención"),
+    ("Por qué los formularios de contacto no reciben nada",
+     "van a una casilla que nadie abre"),
+    ("El stock que no cuadra sale caro dos veces",
+     "vendés lo que no tenés y no vendés lo que tenés"),
+    ("Qué hace un sistema de gestión que no hace una planilla",
+     "el historial, los permisos y que dos personas escriban a la vez"),
+    ("Facturación electrónica en Uruguay sin dolor de cabeza",
+     "quién la emite y cómo se integra con lo que ya usás"),
+    ("Cómo se ve tu negocio desde un celular",
+     "la mitad de las visitas entra desde el teléfono y ve otra cosa"),
+    ("Cuando tu web tarda más de tres segundos ya perdiste visitas",
+     "la velocidad no es estética, es plata"),
+    ("Las reseñas de Google se responden todas",
+     "las malas también, sobre todo las malas"),
+    ("Qué pasa con tus datos si se rompe la computadora del mostrador",
+     "sin backup no hay negocio, hay suerte"),
+    ("Por qué pedir presupuesto por entregable y no por horas",
+     "las horas no te dicen qué te llevás"),
+    ("La diferencia entre una web y un catálogo online",
+     "una informa, la otra vende"),
+    ("Click and collect: vender online y entregar en el local",
+     "sin costo de envío y con el cliente adentro del local"),
+    ("Cuánto cuesta mantener una web al año",
+     "dominio, hosting y las horas de quien la actualiza"),
+    ("El error de tener el teléfono solo en la foto de portada",
+     "nadie transcribe un número de una imagen"),
+    ("Qué datos pedir en un formulario y cuáles sobran",
+     "cada campo de más te cuesta respuestas"),
+    ("Cómo saber si tu publicidad está funcionando",
+     "si no podés decir cuántos clientes trajo, no lo sabés"),
+    ("Integrar el sistema de tu proveedor con el tuyo",
+     "cuando no hay API, el CSV sigue siendo una respuesta"),
+    ("Por qué separar la casilla del negocio de la personal",
+     "el día que te vas de vacaciones tu negocio sigue recibiendo"),
+    ("Un correo con tu dominio cuesta menos de lo que pensás",
+     "y cambia cómo te leen los proveedores"),
+    ("Qué es el SEO local y por qué te importa más que el otro",
+     "competís contra los cinco negocios de tu barrio, no contra el mundo"),
+    ("Digitalizar de a poco también es digitalizar",
+     "el orden importa más que la velocidad"),
+    ("Las tres preguntas antes de comprar cualquier software",
+     "quién lo usa, qué reemplaza y cómo salgo si no me sirve"),
+    ("El sistema que nadie usa es un gasto, no una inversión",
+     "la adopción se diseña, no se pide"),
+    ("Qué mirar en un contrato de desarrollo de software",
+     "entregables, plazos y qué pasa después de la entrega"),
+    ("Por qué tu tienda online no vende aunque tenga visitas",
+     "el problema está entre el carrito y el pago"),
+    ("Los costos de envío decididos tarde matan la venta",
+     "el cliente los quiere ver antes de cargar la tarjeta"),
+    ("Qué información tiene que estar sí o sí en tu web",
+     "qué vendés, dónde estás, cómo te contactan y a qué hora abrís"),
+    ("Cómo se organiza un negocio con dos personas y cien pedidos",
+     "primero el flujo, después la herramienta"),
+    ("Cuándo conviene hacerlo a medida y cuándo comprar hecho",
+     "lo raro de tu negocio se hace a medida, el resto se compra"),
+    ("La transformación digital no empieza por la tecnología",
+     "empieza por escribir cómo trabajás hoy"),
+    ("Por qué el mismo producto tiene tres precios en tres lugares",
+     "una fuente de verdad o ninguna"),
+    ("Qué hacer con los contactos que juntaste y nunca usaste",
+     "una base vieja vale más que una campaña nueva"),
+]
+
+
+def seed_linkedin_temas(db_path: str) -> None:
+    """Inserta los temas educativos que falten. Idempotente por titulo."""
+    conn = _connect(db_path)
+    try:
+        conn.executemany(
+            "INSERT OR IGNORE INTO linkedin_temas (titulo, angulo) VALUES (?, ?)",
+            _LINKEDIN_TEMAS_SEMILLA,
+        )
+        conn.commit()
     finally:
         conn.close()
