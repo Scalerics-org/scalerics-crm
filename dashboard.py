@@ -23,6 +23,7 @@ from routes.notion import notion_bp
 from routes.notion_clients import notion_clients_bp
 from routes.resend_webhook import resend_bp
 from routes.projects import projects_bp
+from services.auth import is_admin
 from services.demo_service import demo_job_handler
 from services.job_service import init_worker
 
@@ -6118,15 +6119,13 @@ def create_app(db_path: str) -> Flask:
         user = get_user_by_id(db_path, user_id) if user_id else None
         if not user:
             return jsonify({"error": "not_logged_in"}), 401
-        admin_email = os.environ.get("ADMIN_EMAIL", "")
-        is_admin = bool(
-            (admin_email and user["email"].lower() == admin_email.lower())
-            or (not admin_email and user["id"] == 1)
-        )
+        # Misma funcion que usan los endpoints: si el backend te deja entrar,
+        # el nav tiene que mostrarte el link.
+        es_admin = is_admin(db_path, user_id)
         # Role-based access: role takes priority over direct panel_access
         import sqlite3 as _sq2, json as _j2
         panel_access = None
-        if not is_admin:
+        if not es_admin:
             role_id = user.get("role_id")
             if role_id:
                 conn3 = _sq2.connect(db_path); conn3.row_factory = _sq2.Row
@@ -6134,7 +6133,7 @@ def create_app(db_path: str) -> Flask:
                     role = conn3.execute("SELECT name, panel_access FROM roles WHERE id=?", (role_id,)).fetchone()
                     if role:
                         if (role["name"] or "").lower() == "admin":
-                            is_admin = True
+                            es_admin = True
                         else:
                             panel_access = role["panel_access"]
                 finally: conn3.close()
@@ -6145,7 +6144,7 @@ def create_app(db_path: str) -> Flask:
             "name": user["name"],
             "email": user["email"],
             "phone": user["phone"],
-            "is_admin": is_admin,
+            "is_admin": es_admin,
             "panel_access": panel_access,
             "role_id": user.get("role_id"),
         })
@@ -6182,9 +6181,7 @@ def create_app(db_path: str) -> Flask:
         import json as _json
         from database import get_user_by_id
         current = get_user_by_id(db_path, session.get("user_id")) or {}
-        admin_email = os.environ.get("ADMIN_EMAIL", "")
-        is_admin = bool((admin_email and current.get("email","").lower() == admin_email.lower()) or (not admin_email and current.get("id") == 1))
-        if not is_admin:
+        if not is_admin(db_path, session.get("user_id")):
             return jsonify({"ok": False, "error": "No autorizado"}), 403
         data = request.get_json() or {}
         panels = data.get("panels")  # None = all access, list = specific panels
@@ -6261,45 +6258,30 @@ def create_app(db_path: str) -> Flask:
 
     @app.route("/api/admin/users-data", methods=["GET"])
     def admin_users_data():
-        admin_email = os.environ.get("ADMIN_EMAIL", "")
-        current_user_id = session.get("user_id")
         from database import get_user_by_id, get_all_users
+        current_user_id = session.get("user_id")
+        if not is_admin(db_path, current_user_id):
+            return jsonify({"error": "No autorizado"}), 403
         current = get_user_by_id(db_path, current_user_id) if current_user_id else None
-        if not current:
-            return jsonify({"error": "No autorizado"}), 403
-        if admin_email and current["email"].lower() != admin_email.lower():
-            return jsonify({"error": "No autorizado"}), 403
-        if not admin_email and current["id"] != 1:
-            return jsonify({"error": "No autorizado"}), 403
         users = get_all_users(db_path)
         return jsonify([dict(u) for u in users])
 
     @app.route("/api/admin/users", methods=["GET"])
     def admin_list_users():
-        admin_email = os.environ.get("ADMIN_EMAIL", "")
-        current_user_id = session.get("user_id")
         from database import get_user_by_id, get_all_users
+        current_user_id = session.get("user_id")
+        if not is_admin(db_path, current_user_id):
+            return jsonify({"error": "No autorizado"}), 403
         current = get_user_by_id(db_path, current_user_id) if current_user_id else None
-        if not current:
-            return jsonify({"error": "No autorizado"}), 403
-        if admin_email and current["email"].lower() != admin_email.lower():
-            return jsonify({"error": "No autorizado"}), 403
-        if not admin_email and current["id"] != 1:
-            return jsonify({"error": "No autorizado"}), 403
         return jsonify(get_all_users(db_path))
 
     @app.route("/api/admin/users/<int:user_id>", methods=["DELETE"])
     def admin_delete_user(user_id):
-        admin_email = os.environ.get("ADMIN_EMAIL", "")
-        current_user_id = session.get("user_id")
         from database import get_user_by_id, delete_user
+        current_user_id = session.get("user_id")
+        if not is_admin(db_path, current_user_id):
+            return jsonify({"error": "No autorizado"}), 403
         current = get_user_by_id(db_path, current_user_id) if current_user_id else None
-        if not current:
-            return jsonify({"error": "No autorizado"}), 403
-        if admin_email and current["email"].lower() != admin_email.lower():
-            return jsonify({"error": "No autorizado"}), 403
-        if not admin_email and current["id"] != 1:
-            return jsonify({"error": "No autorizado"}), 403
         if user_id == current_user_id:
             return jsonify({"error": "No podés eliminar tu propia cuenta"}), 400
         delete_user(db_path, user_id)
@@ -6308,17 +6290,12 @@ def create_app(db_path: str) -> Flask:
     @app.route("/api/admin/users/<int:user_id>/reset-password", methods=["POST"])
     def admin_reset_user_password(user_id):
         import secrets as _secrets
-        admin_email = os.environ.get("ADMIN_EMAIL", "")
-        current_user_id = session.get("user_id")
         from database import get_user_by_id, create_reset_token
         from services.email_service import send_reset_email
+        current_user_id = session.get("user_id")
+        if not is_admin(db_path, current_user_id):
+            return jsonify({"error": "No autorizado"}), 403
         current = get_user_by_id(db_path, current_user_id) if current_user_id else None
-        if not current:
-            return jsonify({"error": "No autorizado"}), 403
-        if admin_email and current["email"].lower() != admin_email.lower():
-            return jsonify({"error": "No autorizado"}), 403
-        if not admin_email and current["id"] != 1:
-            return jsonify({"error": "No autorizado"}), 403
         target = get_user_by_id(db_path, user_id)
         if not target:
             return jsonify({"error": "Usuario no encontrado"}), 404
@@ -6418,14 +6395,13 @@ input:focus{border-color:#0088CC}
 
     @app.route("/admin/users", methods=["GET"])
     def admin_users_page():
-        admin_email = os.environ.get("ADMIN_EMAIL", "")
-        user_id = session.get("user_id")
         from database import get_user_by_id, get_all_users, delete_user
+        user_id = session.get("user_id")
         current = get_user_by_id(db_path, user_id) if user_id else None
         if not current:
             return redirect(url_for("login"))
-        is_admin = (admin_email and current["email"].lower() == admin_email.lower()) or (not admin_email and current["id"] == 1)
-        if not is_admin:
+        es_admin = is_admin(db_path, user_id)
+        if not es_admin:
             return redirect(url_for("index"))
         users = get_all_users(db_path)
         ADMIN_PAGE = """<!DOCTYPE html>
@@ -6615,14 +6591,13 @@ loadAll();
 
     @app.route("/admin/users/<int:user_id>/delete", methods=["POST"])
     def admin_delete_user_page(user_id):
-        admin_email = os.environ.get("ADMIN_EMAIL", "")
-        current_uid = session.get("user_id")
         from database import get_user_by_id, delete_user
+        current_uid = session.get("user_id")
         current = get_user_by_id(db_path, current_uid) if current_uid else None
         if not current:
             return redirect(url_for("login"))
-        is_admin = (admin_email and current["email"].lower() == admin_email.lower()) or (not admin_email and current["id"] == 1)
-        if not is_admin or user_id == current_uid:
+        es_admin = is_admin(db_path, current_uid)
+        if not es_admin or user_id == current_uid:
             return redirect(url_for("index"))
         delete_user(db_path, user_id)
         return redirect(url_for("admin_users_page") + "?deleted=1")
