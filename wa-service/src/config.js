@@ -276,6 +276,22 @@ const esquema = z.object({
   BACKUP_GUARDAR: z.coerce.number().int().nonnegative().default(14),
 
   /**
+   * A donde se copian los respaldos afuera de Fly.
+   *
+   * Los snapshots del volumen y las copias en /data protegen de un disco roto
+   * o de un bug, pero las tres cosas viven en la misma cuenta de Fly: si se
+   * pierde el acceso, se pierde todo junto.
+   *
+   * R2 habla S3, asi que si algun dia se cambia de proveedor el codigo sirve
+   * igual. Sin credenciales queda apagado y no rompe nada.
+   */
+  R2_ACCOUNT_ID: z.string().default(''),
+  R2_BUCKET: z.string().default(''),
+  R2_ACCESS_KEY_ID: z.string().default(''),
+  R2_SECRET_ACCESS_KEY: z.string().default(''),
+  R2_PREFIX: z.string().default('wa-service'),
+
+  /**
    * Cuantas horas tiene que pasar para repetir un aviso interno IDENTICO, y
    * cuantos avisos internos como mucho por hora.
    *

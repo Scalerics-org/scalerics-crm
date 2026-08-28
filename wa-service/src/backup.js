@@ -2,6 +2,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { crearR2 } = require('./r2');
 
 /**
  * Copias de la base, hechas por SQLite y no por el sistema de archivos.
@@ -91,18 +92,28 @@ function listar(cfg) {
  * se reinicia todos los dias a la misma hora, esperar el intervalo completo
  * significaria no respaldar nunca.
  */
-function arrancarBackups({ db, cfg, logger = null }) {
+function arrancarBackups({ db, cfg, logger = null, fetch: _fetch = globalThis.fetch }) {
   if (!cfg.BACKUP_DIR || !cfg.BACKUP_HORAS) return { parar() {} };
 
-  hacerBackup({ db, cfg, logger });
-  const timer = setInterval(
-    () => hacerBackup({ db, cfg, logger }),
-    cfg.BACKUP_HORAS * 3600_000
-  );
+  const r2 = crearR2({ cfg, logger, fetch: _fetch });
+
+  /** El respaldo local y, si hay credenciales, la copia afuera de Fly. */
+  const respaldar = async () => {
+    const r = hacerBackup({ db, cfg, logger });
+    if (!r || !r2.activo) return r;
+    await r2.subir(path.basename(r.archivo), fs.readFileSync(r.archivo));
+    return r;
+  };
+
+  respaldar();
+  const timer = setInterval(respaldar, cfg.BACKUP_HORAS * 3600_000);
   timer.unref?.();
 
-  logger?.info({ dir: cfg.BACKUP_DIR, cadaHoras: cfg.BACKUP_HORAS, guarda: cfg.BACKUP_GUARDAR }, 'respaldos activos');
-  return { parar() { clearInterval(timer); } };
+  logger?.info(
+    { dir: cfg.BACKUP_DIR, cadaHoras: cfg.BACKUP_HORAS, guarda: cfg.BACKUP_GUARDAR, r2: r2.activo },
+    'respaldos activos'
+  );
+  return { parar() { clearInterval(timer); }, respaldar };
 }
 
 module.exports = { hacerBackup, borrarViejos, listar, arrancarBackups, nombreDelDia };
