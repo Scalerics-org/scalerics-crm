@@ -650,6 +650,17 @@ def init_db(db_path: str) -> None:
             conn.execute("CREATE INDEX IF NOT EXISTS idx_businesses_category ON businesses(category)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_prt_user_id ON password_reset_tokens(user_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_activity_log_time ON activity_log(created_at)")
+            # get_all_businesses cuenta llamadas con dos subconsultas
+            # correlacionadas por fila. Sin este indice, cada request de la cola
+            # escaneaba call_logs entero DOS VECES POR LEAD: con 6.199 filas y
+            # 642 llamadas son ~8 millones de lecturas por pedido, en una CPU
+            # compartida. Es lo que trababa el CRM al pasar los 6.000 leads.
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_call_logs_lead ON call_logs(lead_id, outcome)")
+            # Las secuencias y el sync de respuestas entran por business_id.
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_meta_reminders_business ON meta_reminders(business_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_lead_events_lead ON lead_events(lead_id)")
+            # La cola filtra por source ademas de por estado.
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_businesses_source ON businesses(source)")
             conn.commit()
         except Exception as e:
             logger.warning(f"Index creation: {e}")
@@ -736,6 +747,77 @@ def get_businesses_by_status(db_path: str, status: str) -> list[dict]:
         return [dict(row) for row in cursor.fetchall()]
     finally:
         conn.close()
+
+
+# Las columnas que dibujan las listas del CRM. Traer `b.*` para la cola son
+# 28 MB de objetos Python por request con 6.200 leads; estas diez son 10,7 MB,
+# y paginadas de a 50, nada.
+COLUMNAS_LISTA = ("id", "name", "phone", "category", "city", "notes",
+                  "crm_status", "pitch_text", "callback_date", "scraped_at")
+
+
+def listar_leads(db_path: str, crm_status: str | None = None, cohorte: str | None = None,
+                 category: str | None = None, search: str | None = None,
+                 page: int = 1, por_pagina: int = 50) -> dict:
+    """Una pagina de la cola, con TODO resuelto en SQL.
+
+    Nace de un incidente: el 28-8-2026 el CRM empezo a devolver 502 al pasar los
+    6.000 leads. `get_all_businesses` traia las 6.200 filas de la cola con las 32
+    columnas, y recien despues filtraba y paginaba en Python — o sea que el
+    ahorro de paginar no existia del lado del servidor. Con gunicorn ocupando
+    ~100 MB de los 256 de la maquina, dos pedidos a la vez mataban al worker.
+
+    Devuelve {items, total, pages, page} para que la pantalla sepa cuantas
+    paginas hay sin traerselas.
+    """
+    cols = ", ".join(f"b.{c}" for c in COLUMNAS_LISTA)
+    cuenta = (
+        "(SELECT COUNT(*) FROM call_logs cl WHERE cl.lead_id = b.id "
+        "   AND cl.outcome = 'no_contestó') AS no_contesto_count, "
+        "(SELECT COUNT(*) FROM call_logs cl WHERE cl.lead_id = b.id "
+        "   AND cl.outcome = 'no_interesa') AS no_interesa_count"
+    )
+    cond, params = [], []
+    if crm_status == "sin_contactar":
+        # Los leads de Meta no entran a la cola fria: tienen su propio panel.
+        cond.append("(b.crm_status IS NULL OR b.crm_status = ?)")
+        cond.append("(b.source IS NULL OR b.source != 'meta')")
+        params.append("sin_contactar")
+    elif crm_status:
+        cond.append("b.crm_status = ?")
+        params.append(crm_status)
+    if cohorte == COHORTE_SIN_WEB:
+        cond.append("b.source IS NULL")
+    elif cohorte:
+        cond.append("b.source = ?")
+        params.append(cohorte)
+    if category:
+        cond.append("b.category = ?")
+        params.append(category)
+    if search:
+        cond.append("LOWER(b.name) LIKE ?")
+        params.append(f"%{search.lower()}%")
+    where = ("WHERE " + " AND ".join(cond)) if cond else ""
+
+    conn = _connect(db_path)
+    try:
+        (total,) = conn.execute(
+            f"SELECT COUNT(*) FROM businesses b {where}", params).fetchone()
+        por_pagina = max(1, int(por_pagina))
+        pages = max(1, (total + por_pagina - 1) // por_pagina)
+        page = min(max(1, int(page or 1)), pages)
+        orden = ("ORDER BY CASE WHEN b.callback_date IS NULL THEN 1 ELSE 0 END, "
+                 "b.callback_date ASC"
+                 if crm_status == "llamar_despues" else
+                 "ORDER BY CASE WHEN b.score IS NULL THEN 1 ELSE 0 END, "
+                 "b.score DESC, b.scraped_at DESC")
+        filas = conn.execute(
+            f"SELECT {cols}, {cuenta} FROM businesses b {where} {orden} LIMIT ? OFFSET ?",
+            params + [por_pagina, (page - 1) * por_pagina]).fetchall()
+    finally:
+        conn.close()
+    return {"items": [dict(f) for f in filas], "total": total,
+            "pages": pages, "page": page}
 
 
 # La cohorte que no tiene `source`: el padron scrapeado de comercios sin web.

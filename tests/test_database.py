@@ -501,3 +501,90 @@ def test_llamar_despues_conserva_su_orden_de_agenda(db_path):
     conn.close()
 
     assert [b["id"] for b in get_all_businesses(db_path, crm_status="llamar_despues")] == [3, 2, 1]
+
+
+# ── La cola paginada en SQL ──────────────────────────────────────────────────
+# El 28-8-2026 el CRM empezo a devolver 502 al pasar los 6.000 leads:
+# get_all_businesses traia las 6.200 filas de la cola con las 32 columnas y
+# recien despues filtraba y paginaba en Python, asi que paginar no ahorraba
+# nada del lado del servidor. 7,32 MB de JSON por request, 0,67 s, y el worker
+# muerto por memoria. Paginado en SQL son 26 KB y 1 ms.
+
+def _muchos(db_path, n=120, source=None, estado="sin_contactar"):
+    import sqlite3
+    conn = sqlite3.connect(db_path)
+    conn.executemany(
+        "INSERT INTO businesses (id,name,phone,category,crm_status,source) VALUES (?,?,?,?,?,?)",
+        [(i, f"Negocio {i:03d}", f"+5989{i:07d}", "ferreteria", estado, source)
+         for i in range(1, n + 1)])
+    conn.commit()
+    conn.close()
+
+
+def test_pagina_y_dice_cuantas_hay(db_path):
+    from database import listar_leads
+    _muchos(db_path, 120)
+    r = listar_leads(db_path, crm_status="sin_contactar", page=1, por_pagina=50)
+    assert r["total"] == 120 and r["pages"] == 3 and len(r["items"]) == 50
+    assert listar_leads(db_path, crm_status="sin_contactar", page=3,
+                        por_pagina=50)["items"].__len__() == 20
+
+
+def test_solo_trae_las_columnas_de_la_lista(db_path):
+    """Traer b.* eran 28 MB de objetos por request."""
+    from database import listar_leads, COLUMNAS_LISTA
+    _muchos(db_path, 3)
+    item = listar_leads(db_path, crm_status="sin_contactar")["items"][0]
+    assert set(item) == set(COLUMNAS_LISTA) | {"no_contesto_count", "no_interesa_count"}
+    assert "form_data" not in item and "pitch_text" in item
+
+
+def test_una_pagina_fuera_de_rango_no_revienta(db_path):
+    from database import listar_leads
+    _muchos(db_path, 10)
+    r = listar_leads(db_path, crm_status="sin_contactar", page=99, por_pagina=50)
+    assert r["page"] == 1 and len(r["items"]) == 10
+
+
+def test_la_base_vacia_no_revienta(db_path):
+    from database import listar_leads
+    r = listar_leads(db_path, crm_status="sin_contactar")
+    assert r == {"items": [], "total": 0, "pages": 1, "page": 1}
+
+
+def test_filtra_por_busqueda_rubro_y_cohorte_en_sql(db_path):
+    from database import listar_leads, COHORTE_SIN_WEB
+    import sqlite3
+    _muchos(db_path, 5)
+    conn = sqlite3.connect(db_path)
+    conn.execute("UPDATE businesses SET source='discovery' WHERE id <= 2")
+    conn.execute("UPDATE businesses SET category='panaderia' WHERE id = 5")
+    conn.commit(); conn.close()
+
+    assert listar_leads(db_path, crm_status="sin_contactar", search="cio 003")["total"] == 1
+    assert listar_leads(db_path, crm_status="sin_contactar", category="panaderia")["total"] == 1
+    assert listar_leads(db_path, crm_status="sin_contactar", cohorte="discovery")["total"] == 2
+    assert listar_leads(db_path, crm_status="sin_contactar",
+                        cohorte=COHORTE_SIN_WEB)["total"] == 3
+
+
+def test_la_cola_fria_sigue_sin_traer_meta(db_path):
+    from database import listar_leads
+    _muchos(db_path, 4)
+    import sqlite3
+    conn = sqlite3.connect(db_path)
+    conn.execute("UPDATE businesses SET source='meta' WHERE id <= 2")
+    conn.commit(); conn.close()
+    assert listar_leads(db_path, crm_status="sin_contactar")["total"] == 2
+
+
+def test_llamar_despues_conserva_el_orden_de_agenda_tambien_paginado(db_path):
+    import sqlite3
+    from database import listar_leads
+    conn = sqlite3.connect(db_path)
+    for i, fecha in [(1, None), (2, "2026-09-10"), (3, "2026-09-01")]:
+        conn.execute("INSERT INTO businesses (id,name,crm_status,callback_date) "
+                     "VALUES (?,?,'llamar_despues',?)", (i, f"N{i}", fecha))
+    conn.commit(); conn.close()
+    r = listar_leads(db_path, crm_status="llamar_despues")
+    assert [i["id"] for i in r["items"]] == [3, 2, 1]

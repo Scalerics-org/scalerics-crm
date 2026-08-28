@@ -332,6 +332,72 @@ def marcar_respondio(db_path: str, business_id: int, direccion: str) -> None:
         logger.warning(f"Discovery: no se pudo registrar el evento de {business_id}: {e}")
 
 
+# Cada cuanto, como mucho, se avisa que Gmail esta caido. Un token vencido no
+# mejora porque le manden veinte mails.
+_HORAS_ENTRE_AVISOS_GMAIL = 6
+
+
+def _admins(db_path: str) -> list:
+    """Las direcciones de los admins, sin importar una ruta desde un servicio."""
+    conn = _conn(db_path)
+    try:
+        filas = conn.execute(
+            "SELECT u.email FROM users u LEFT JOIN roles r ON u.role_id = r.id "
+            "WHERE LOWER(r.name) = 'admin' AND u.email IS NOT NULL"
+        ).fetchall()
+    except Exception as e:
+        logger.warning(f"No se pudieron leer los admins: {e}")
+        filas = []
+    finally:
+        conn.close()
+    direcciones = {f["email"].strip().lower() for f in filas if f["email"]}
+    extra = os.environ.get("ADMIN_EMAIL", "").strip().lower()
+    if extra:
+        direcciones.add(extra)
+    return sorted(direcciones)
+
+
+def avisar_que_gmail_fallo(db_path: str, detalle: str) -> bool:
+    """Le grita a los admins que la deteccion de respuestas quedo ciega.
+
+    Sin esto el fallo es mudo: la corrida sigue y manda igual —por decision
+    explicita, una tanda demorada para todos es peor que un solapamiento para
+    unos pocos— pero nadie se entera de que salio a ciegas, y los mails le
+    siguen escribiendo encima a quien ya contesto.
+
+    No es un monitor aparte a proposito. El token de Meta tiene un poller cada
+    10 minutos porque no hay otro momento donde se note; este se revisa solo,
+    porque el sync corre justo antes de cada tanda. El aviso donde ya esta el
+    fallo no puede desincronizarse del uso real.
+
+    Devuelve si el aviso salio. Se usa la tabla `corridas`, que ya lleva la
+    cuenta de cuando paso cada cosa, para no repetirlo cada seis horas.
+    """
+    from services.corridas import marcar_corrida, puede_correr
+    if not puede_correr(db_path, "alerta_gmail", cada_horas=_HORAS_ENTRE_AVISOS_GMAIL):
+        logger.info("Gmail sigue caido, aviso silenciado (ya se aviso hace poco)")
+        return False
+    marcar_corrida(db_path, "alerta_gmail")
+
+    from services.email_service import send_meta_token_alert
+    cuerpo = (
+        "La detección de respuestas por Gmail está fallando, así que el CRM no "
+        "se está enterando de quién contesta los mails. Las secuencias siguen "
+        "saliendo igual, o sea que pueden escribirle encima a alguien que ya "
+        "respondió. "
+        f"Detalle: {detalle}"
+    )
+    mandados = 0
+    for direccion in _admins(db_path):
+        try:
+            send_meta_token_alert(direccion, cuerpo)
+            mandados += 1
+        except Exception as e:
+            logger.warning(f"No se pudo avisar a {direccion}: {e}")
+    logger.error(f"Gmail caido, avisados {mandados} admins: {detalle}")
+    return mandados > 0
+
+
 def marcar_baja_pedida(db_path: str, business_id: int, direccion: str,
                        asunto: str) -> None:
     """Ejecuta la baja que la persona pidio, y la deja registrada.
@@ -474,7 +540,25 @@ def buscar_con_gmail(service):
 
 def sincronizar_desde_gmail(db_path: str, days_back: int = _DIAS_ATRAS,
                             dry_run: bool = False) -> dict:
-    """Igual que sincronizar_respuestas pero contra la casilla de verdad."""
+    """Igual que sincronizar_respuestas pero contra la casilla de verdad.
+
+    Si Gmail falla, avisa a los admins ANTES de propagar la excepcion: quien
+    llama la atrapa y manda la tanda igual, asi que este es el unico lugar
+    donde el fallo todavia se puede contar. Sin el aviso, la deteccion de
+    respuestas se apaga en silencio y las secuencias siguen escribiendole
+    encima a gente que ya contesto.
+    """
+    try:
+        return _sincronizar_desde_gmail(db_path, days_back, dry_run)
+    except Exception as e:
+        try:
+            avisar_que_gmail_fallo(db_path, f"{type(e).__name__}: {e}")
+        except Exception as fallo_aviso:
+            logger.error(f"Gmail fallo y ademas no se pudo avisar: {fallo_aviso}")
+        raise
+
+
+def _sincronizar_desde_gmail(db_path: str, days_back: int, dry_run: bool) -> dict:
     from google.oauth2.credentials import Credentials
     from googleapiclient.discovery import build
 

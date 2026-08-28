@@ -597,3 +597,66 @@ def test_la_baja_no_se_cuenta_tambien_como_respuesta(db):
         {"from": "lead@x.com", "subject": "Re: no me escriban",
          "date": "2026-08-21 10:00:00", "headers": {}}]))
     assert r["bajas"] == 1 and r["respondieron"] == 0
+
+
+# ── Que el fallo de Gmail no sea mudo ────────────────────────────────────────
+# El sync corre justo antes de cada tanda y quien lo llama atrapa la excepcion
+# para mandar igual. Sin aviso, la deteccion de respuestas se apaga en silencio
+# y las secuencias siguen escribiendo encima de conversaciones vivas.
+
+def _con_admin(db, mail="admin@scalerics.com"):
+    import sqlite3
+    conn = sqlite3.connect(db)
+    # init_db ya siembra el rol Admin: crearlo de nuevo choca contra el UNIQUE.
+    rid = conn.execute("SELECT id FROM roles WHERE LOWER(name)='admin'").fetchone()[0]
+    conn.execute("INSERT INTO users (name, email, phone, password, role_id, created_at) "
+                 "VALUES ('a', ?, '099', 'x', ?, datetime('now'))", (mail, rid))
+    conn.commit()
+    conn.close()
+
+
+def test_avisa_a_los_admins_cuando_gmail_falla(db, monkeypatch):
+    from services import discovery_respuestas as dr
+    _con_admin(db)
+    avisados = []
+    monkeypatch.setattr("services.email_service.send_meta_token_alert",
+                        lambda to, detalle: avisados.append((to, detalle)) or True)
+    assert dr.avisar_que_gmail_fallo(db, "RefreshError: invalid_grant") is True
+    assert avisados and avisados[0][0] == "admin@scalerics.com"
+    assert "invalid_grant" in avisados[0][1]
+
+
+def test_no_repite_el_aviso_cada_corrida(db, monkeypatch):
+    """Un token vencido no mejora porque le manden veinte mails."""
+    from services import discovery_respuestas as dr
+    _con_admin(db)
+    monkeypatch.setattr("services.email_service.send_meta_token_alert",
+                        lambda to, detalle: True)
+    assert dr.avisar_que_gmail_fallo(db, "x") is True
+    assert dr.avisar_que_gmail_fallo(db, "x") is False, "el segundo tiene que callarse"
+
+
+def test_el_fallo_se_avisa_y_ademas_se_propaga(db, monkeypatch):
+    """Quien llama tiene que poder decidir si manda igual o no."""
+    import pytest as _pytest
+    from services import discovery_respuestas as dr
+    _con_admin(db)
+    llamados = []
+    monkeypatch.setattr(dr, "_sincronizar_desde_gmail",
+                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("sin token")))
+    monkeypatch.setattr(dr, "avisar_que_gmail_fallo",
+                        lambda db_path, detalle: llamados.append(detalle) or True)
+    with _pytest.raises(RuntimeError):
+        dr.sincronizar_desde_gmail(db)
+    assert llamados and "sin token" in llamados[0]
+
+
+def test_si_el_aviso_tambien_falla_igual_se_propaga_el_error_real(db, monkeypatch):
+    import pytest as _pytest
+    from services import discovery_respuestas as dr
+    monkeypatch.setattr(dr, "_sincronizar_desde_gmail",
+                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("sin token")))
+    monkeypatch.setattr(dr, "avisar_que_gmail_fallo",
+                        lambda *a, **k: (_ for _ in ()).throw(OSError("tampoco")))
+    with _pytest.raises(RuntimeError, match="sin token"):
+        dr.sincronizar_desde_gmail(db)

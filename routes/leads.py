@@ -8,7 +8,8 @@ import threading
 from flask import Blueprint, Response, current_app, jsonify, request, session
 from werkzeug.utils import secure_filename
 
-from database import (get_all_businesses, update_business, delete_business, get_business,
+from database import (
+    listar_leads, get_all_businesses, update_business, delete_business, get_business,
                       get_client_info, insert_business, merge_business,
                       add_attachment, get_attachments, get_attachment_file, delete_attachment,
                       add_lead_event, get_lead_events,
@@ -119,6 +120,19 @@ def api_leads():
     category = request.args.get("category")
     search = (request.args.get("search") or "").lower()
     page_str = request.args.get("page")
+    # Camino paginado: resuelve filtro, orden y LIMIT en SQL y trae solo las
+    # columnas que dibuja la lista. El de abajo trae TODO a memoria y despues
+    # filtra en Python — con 6.200 leads en la cola eso mataba al worker por
+    # falta de memoria (502 del 28-8-2026).
+    if page_str is not None and not crm_group:
+        try:
+            page = max(1, int(page_str))
+        except ValueError:
+            page = 1
+        return jsonify(listar_leads(_db(), crm_status=crm_status, cohorte=cohorte,
+                                    category=category, search=search, page=page,
+                                    por_pagina=_PER_PAGE))
+
     if crm_group == "pipeline":
         businesses = get_all_businesses(_db(), crm_statuses=_PIPELINE_STATUSES, cohorte=cohorte)
     elif crm_group == "clientes":

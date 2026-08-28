@@ -2080,11 +2080,11 @@ let _colaLeads = [];
 let _colaFilter = 'sin_contactar';
 let _colaCohorte = '';
 let _colaPage = 1;
-// La cola fria tiene miles de fichas y hasta ahora se dibujaban todas de una.
-// La paginacion es del lado del cliente a proposito: la busqueda y el filtro de
-// rubro operan sobre el conjunto entero, y paginar en el servidor los dejaria
-// buscando solo dentro de la pagina que se esta viendo.
-const _COLA_POR_PAGINA = 50;
+let _colaTotal = 0;
+let _colaPages = 1;
+let _colaBuscarTimer = null;
+// El tamano de pagina lo decide el servidor (_PER_PAGE en routes/leads.py):
+// aca solo se dibuja lo que llega.
 function setColaFilter(f) {
   _colaFilter = f;
   _colaPage = 1;
@@ -2095,11 +2095,18 @@ function setColaFilter(f) {
   loadCola();
 }
 
-function colaSearch(v) { _colaSearch = v.toLowerCase(); _colaPage = 1; renderCola(); }
+// Con la busqueda en el servidor, una tecla por request seria un pedido cada
+// 50 ms. Se espera a que la persona deje de escribir.
+function colaSearch(v) {
+  _colaSearch = v.toLowerCase();
+  _colaPage = 1;
+  clearTimeout(_colaBuscarTimer);
+  _colaBuscarTimer = setTimeout(loadCola, 300);
+}
 
 // La cohorte va al servidor: cambia que vista se pide, no como se dibuja.
 function setColaCohorte(v) { _colaCohorte = v; _colaPage = 1; loadCola(); }
-function colaPage(n) { _colaPage = n; renderCola(); window.scrollTo({top: 0, behavior: 'smooth'}); }
+function colaPage(n) { _colaPage = n; loadCola(); window.scrollTo({top: 0, behavior: 'smooth'}); }
 
 function renderColaPaginacion(total, paginas) {
   const nav = document.getElementById('cola-pagination');
@@ -2108,8 +2115,11 @@ function renderColaPaginacion(total, paginas) {
   nav.style.display = 'flex';
   const btn = (etiqueta, destino, activo) =>
     `<button onclick="colaPage(${destino})" ${activo ? '' : 'disabled'} style="padding:4px 12px;border-radius:6px;border:1px solid #1e293b;background:${activo ? 'transparent' : '#0f172a'};color:${activo ? '#94a3b8' : '#334155'};font-size:.8rem;cursor:${activo ? 'pointer' : 'default'};font-family:'Inter',sans-serif">${etiqueta}</button>`;
-  const desde = (_colaPage - 1) * _COLA_POR_PAGINA + 1;
-  const hasta = Math.min(_colaPage * _COLA_POR_PAGINA, total);
+  // El tamano de pagina sale de lo que mando el servidor, no de una constante
+  // local: si un dia cambia _PER_PAGE, el "1-50 de 6200" tiene que seguir bien.
+  const porPagina = _colaLeads.length || 1;
+  const desde = (_colaPage - 1) * porPagina + 1;
+  const hasta = Math.min(desde + _colaLeads.length - 1, total);
   nav.innerHTML =
     btn('&larr;', _colaPage - 1, _colaPage > 1) +
     `<span>${desde}–${hasta} de ${total} &middot; pagina ${_colaPage} de ${paginas}</span>` +
@@ -2118,17 +2128,25 @@ function renderColaPaginacion(total, paginas) {
 
 document.addEventListener('DOMContentLoaded', () => {
   const catSel = document.getElementById('cola-category-filter');
-  if (catSel) catSel.addEventListener('change', () => { _colaCategory = catSel.value; _colaPage = 1; renderCola(); });
+  if (catSel) catSel.addEventListener('change', () => { _colaCategory = catSel.value; _colaPage = 1; loadCola(); });
 });
 
 async function loadCola() {
   const body = document.getElementById('cola-body');
   body.innerHTML = '<div style="color:#475569;padding:16px;font-size:.85rem">Cargando...</div>';
   try {
-    const coh = _colaCohorte ? `&cohorte=${encodeURIComponent(_colaCohorte)}` : '';
-    const r = await fetch(`/api/leads?crm_status=${_colaFilter}${coh}`);
+    // Todo del lado del servidor: con 6.200 leads en la cola, traerlos para
+    // filtrar y paginar en el navegador mataba al worker por memoria.
+    const p = new URLSearchParams({crm_status: _colaFilter, page: String(_colaPage)});
+    if (_colaCohorte)  p.set('cohorte', _colaCohorte);
+    if (_colaCategory) p.set('category', _colaCategory);
+    if (_colaSearch)   p.set('search', _colaSearch);
+    const r = await fetch(`/api/leads?${p}`);
     const data = await r.json();
-    _colaLeads = Array.isArray(data) ? data : (data.items || []);
+    _colaLeads  = Array.isArray(data) ? data : (data.items || []);
+    _colaTotal  = Array.isArray(data) ? data.length : (data.total || 0);
+    _colaPages  = Array.isArray(data) ? 1 : (data.pages || 1);
+    _colaPage   = Array.isArray(data) ? 1 : (data.page || 1);
     renderCola();
     loadColaStats();
   } catch(e) { body.innerHTML = `<div style="color:#f87171;padding:16px">Error: ${e.message}</div>`; }
@@ -2136,22 +2154,15 @@ async function loadCola() {
 
 function renderCola() {
   const body = document.getElementById('cola-body');
-  let leads = _colaLeads;
-  if (_colaCategory) leads = leads.filter(b => (b.category||'') === _colaCategory);
-  if (_colaSearch) leads = leads.filter(b => (b.name||'').toLowerCase().includes(_colaSearch));
+  const leads = _colaLeads;   // ya viene filtrado y paginado por el servidor
   pitchMap = {};
   // pitchMap se arma sobre el conjunto filtrado ENTERO, no sobre la pagina: lo
   // consultan acciones que pueden correr despues de cambiar de pagina.
   leads.forEach(b => { if (b.pitch_text) pitchMap[b.id] = b.pitch_text; });
-  const _total = leads.length;
   const _cnt = document.getElementById('cola-count');
-  if (_cnt) _cnt.textContent = _total === _colaLeads.length
-    ? `${_total} leads` : `${_total} de ${_colaLeads.length}`;
-  const _paginas = Math.max(1, Math.ceil(_total / _COLA_POR_PAGINA));
-  if (_colaPage > _paginas) _colaPage = _paginas;
-  renderColaPaginacion(_total, _paginas);
+  if (_cnt) _cnt.textContent = `${_colaTotal} lead${_colaTotal === 1 ? '' : 's'}`;
+  renderColaPaginacion(_colaTotal, _colaPages);
   if (!leads.length) { body.innerHTML = '<div class="empty-state">No hay leads en la cola</div>'; return; }
-  leads = leads.slice((_colaPage - 1) * _COLA_POR_PAGINA, _colaPage * _COLA_POR_PAGINA);
   body.innerHTML = leads.map(b => `
     <div class="table-row no-cb row-${b.crm_status||'sin_contactar'}">
       <div>
