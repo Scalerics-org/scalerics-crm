@@ -27,7 +27,7 @@ def _mock_response(text: str):
 
 
 def _edit(original: str, respuesta: str) -> str:
-    with patch("services.budget_ai.anthropic.Anthropic") as MockClient, \
+    with patch("services.budget_ai._cliente") as MockClient, \
          patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}):
         MockClient.return_value.messages.create.return_value = _mock_response(respuesta)
         return ai_edit_html(original, "cambia el precio a $500")
@@ -68,7 +68,7 @@ def test_ai_edit_html_falla_si_ningun_fragmento_existe():
 
 
 def test_generate_budget_html_returns_html():
-    with patch("services.budget_ai.anthropic.Anthropic") as MockClient, \
+    with patch("services.budget_ai._cliente") as MockClient, \
          patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}):
         MockClient.return_value.messages.create.return_value = _mock_response("<html>generado</html>")
         result = generate_budget_html("Plan Arq", "Arquitectura", "Posadas")

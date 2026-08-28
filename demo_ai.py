@@ -4,8 +4,6 @@ import json
 import os
 import re
 import time
-
-import anthropic
 import requests
 
 SCALERICS_LOGO_URL = "https://raw.githubusercontent.com/Scalerics-org/scalerics-assets/main/logo_full_alt.png"
@@ -270,6 +268,7 @@ def generate_and_deploy(
 
     prompt = _content_prompt(business_name, rubro, city, client_color, lead_name, messages, phone)
 
+    import anthropic  # diferido: son 19,6 MB y solo hacen falta acá
     client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
     msg = client.beta.messages.create(
         model="claude-sonnet-4-6",

@@ -3,8 +3,6 @@ import logging
 import re
 import time
 from pathlib import Path
-
-import anthropic
 from dotenv import load_dotenv
 from jinja2 import Environment, FileSystemLoader
 
@@ -92,6 +90,7 @@ def render_html(content: dict, business: dict) -> str:
     )
 
 def generate_content(business: dict, api_key: str) -> dict:
+    import anthropic  # diferido: son 19,6 MB y solo hacen falta acá
     client = anthropic.Anthropic(api_key=api_key)
     message = client.messages.create(
         model="claude-haiku-4-5",

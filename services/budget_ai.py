@@ -2,8 +2,6 @@
 
 import os
 import json
-import anthropic
-
 MODEL = "claude-haiku-4-5-20251001"
 
 _EDIT_SYSTEM = """Sos un asistente que edita documentos HTML de presupuestos profesionales.
@@ -30,6 +28,21 @@ notas y pie de página.
 Devolvé ÚNICAMENTE el HTML completo listo para abrir en el navegador, sin explicaciones ni markdown."""
 
 
+def _cliente():
+    """El cliente de Anthropic, importado acá adentro y no arriba.
+
+    `import anthropic` son 19,6 MB medidos dentro del contenedor, y quedaban
+    cargados desde que arranca el worker para algo que solo se usa al generar
+    un presupuesto. En una máquina de 256 MB eso era casi una cuarta parte del
+    proceso web.
+
+    Que sea una función y no un import suelto en cada uso le da a los tests un
+    solo lugar donde parchear.
+    """
+    import anthropic
+    return anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+
+
 def _strip_markdown(text: str) -> str:
     """Remove markdown code fences (```html ... ```) if the model wrapped its response."""
     text = text.strip()
@@ -46,7 +59,7 @@ def ai_edit_html(original_html: str, instructions: str) -> str:
     The model returns a JSON array of {old, new} pairs instead of the full HTML,
     avoiding token-limit truncation on large documents.
     """
-    client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+    client = _cliente()
     message = client.messages.create(
         model=MODEL,
         max_tokens=2048,
@@ -82,7 +95,7 @@ def ai_edit_html(original_html: str, instructions: str) -> str:
 
 def generate_budget_html(business_name: str, category: str, city: str, instructions: str = "") -> str:
     """Generate a full HTML budget from scratch for the given business."""
-    client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+    client = _cliente()
     prompt = f"Generá un presupuesto HTML para:\n- Negocio: {business_name}\n- Rubro: {category}\n- Ciudad: {city}"
     if instructions:
         prompt += f"\n- Instrucciones adicionales: {instructions}"
