@@ -306,3 +306,28 @@ test('y despues de agendar, si escribe, el bot le contesta', async () => {
 
   assert.ok(s.proveedor.getEnviados().some((e) => e.to === TEL), 'no se queda mudo');
 });
+
+/**
+ * El equipo reserva a nombre del cliente y a veces pone un telefono propio en
+ * el formulario. El bot lo lee como "el que agendo" y le manda a esa persona el
+ * recordatorio del cliente.
+ *
+ * Paso con una reunion de La Vaca Encantada: el formulario tenia el numero del
+ * desarrollador y el recordatorio le llego a el, un dia antes, como si fuera el
+ * cliente.
+ */
+test('una reserva con el telefono de alguien del equipo no se registra', async () => {
+  const s = await conLead({ EQUIPO_TELEFONOS: TEL });
+
+  const r = await conCalendario(s, [reservaDeCalendly()]).revisar();
+
+  assert.equal(r.agendadas, 0, 'no se le programa un recordatorio a alguien del equipo');
+  assert.equal(s.repo.leadPorTelefono(TEL).meeting_time, null);
+});
+
+test('pero la de un cliente sigue registrandose igual', async () => {
+  const s = await conLead({ EQUIPO_TELEFONOS: '59899000111' });
+
+  const r = await conCalendario(s, [reservaDeCalendly()]).revisar();
+  assert.equal(r.agendadas, 1);
+});

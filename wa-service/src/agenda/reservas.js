@@ -88,6 +88,26 @@ function crearVigilanteDeReservas({
       if (!tel) continue;
       r.conTelefono += 1;
 
+      /**
+       * El formulario trae un telefono del equipo, no del cliente.
+       *
+       * Cuando el equipo reserva a nombre de un cliente y pone su propio
+       * numero, el bot lo lee como "el que agendo" y le manda a esa persona el
+       * recordatorio del cliente. Paso con una reunion de La Vaca Encantada: el
+       * formulario tenia el numero de Juan y el recordatorio le llego a el.
+       *
+       * No se puede arreglar solo: no sabemos el telefono del cliente. Lo unico
+       * honesto es no registrarla y decirlo en el log, para que se note que esa
+       * reunion no tiene recordatorio.
+       */
+      if (cfg.equipo?.includes(tel)) {
+        logger?.warn(
+          { tel, evento: ev.summary },
+          'la reserva tiene un telefono del equipo: no se le van a mandar recordatorios a nadie'
+        );
+        continue;
+      }
+
       const lead = repo.leadPorTelefono(tel);
       if (!lead) continue;
 

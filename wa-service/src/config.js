@@ -46,6 +46,20 @@ const esquema = z.object({
 
   // Coma-separado. Puede ser un JID de grupo (...@g.us) cuando el proveedor lo soporte.
   AM_PHONES: z.string().default(''),
+
+  /**
+   * Numeros del equipo. Coma-separado.
+   *
+   * El equipo reserva en Calendly a nombre del cliente y a veces pone un
+   * telefono propio en el formulario. El bot lee ese campo como "el telefono
+   * del que agendo", asi que el recordatorio de la reunion le llega al del
+   * equipo en vez de al cliente. Paso con una reunion de La Vaca Encantada: el
+   * formulario tenia el numero de Juan y el recordatorio le llego a el.
+   *
+   * No es lo mismo que AM_PHONES, que es a quien se le avisa de los leads. Un
+   * numero puede estar en las dos listas o en una sola.
+   */
+  EQUIPO_TELEFONOS: z.string().default(''),
   DEFAULT_COUNTRY_CODE: z.string().default('598'),
   TZ: z.string().default('America/Montevideo'),
 
@@ -389,6 +403,7 @@ function cargar(env = process.env) {
   return Object.freeze({
     ...cfg,
     amPhones: cfg.AM_PHONES.split(',').map((p) => p.trim()).filter(Boolean),
+    equipo: cfg.EQUIPO_TELEFONOS.split(',').map((p) => p.trim()).filter(Boolean),
     descalificaSolo: cfg.DESCALIFICACION_AUTOMATICA.split(',').map((m) => m.trim()).filter(Boolean),
   });
 }
