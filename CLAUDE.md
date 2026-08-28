@@ -1,5 +1,12 @@
 # Guía de trabajo — lead-gen-uy
 
+> **Hay más de una sesión de Claude trabajando en este repo.**
+> Antes de tocar nada, leé [COORDINACION.md](COORDINACION.md) y anotate ahí.
+> Es el único canal entre sesiones: no nos podemos hablar de otra forma.
+> Tiene las reglas de deploy —la principal: `flyctl deploy` sube el árbol de
+> trabajo entero, así que nunca deployes con cambios sin commitear— y el reparto
+> de qué módulo tiene cada una.
+
 ## Demos / pitch deck para clientes
 
 Las demos son presentaciones HTML slide-by-slide que se usan para mostrarle a un cliente potencial cómo quedaría su página web. Viven en `generated_demos/` si son para un cliente específico, o en `templates_demo/` si son plantillas genéricas reutilizables.
