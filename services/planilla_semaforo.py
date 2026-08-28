@@ -19,9 +19,12 @@ Reglas que no se negocian, todas probadas:
   de discovery ni del padron sin web aunque coincida el telefono. Las tres
   cohortes tienen publicos y automatizaciones distintas y esa separacion es lo
   caro de romper.
-- **Nunca retrocede.** Si produccion ya dice `finalizado` y la planilla dice
-  `cliente_cerrado`, gana produccion. La planilla la mantiene gente a mano y va
-  atrasada respecto del trabajo real.
+- **Nunca retrocede, con una excepcion.** Si produccion ya dice `finalizado` y
+  la planilla dice `cliente_cerrado`, gana produccion: la planilla la mantiene
+  gente a mano y va atrasada respecto del trabajo real. La excepcion es
+  `no_interesa`, que la pinta alguien que hablo con el lead y siempre gana —
+  salvo sobre un cliente, donde hay plata y una celda mal pintada no puede
+  borrarla.
 - **Idempotente.** Aplicarla dos veces no escribe nada la segunda.
 - **El blanco no es un estado.** Una celda sin pintar vuelve como `#ffffff`
   desde Apps Script; significa "nadie la marco", no "sin contactar".
@@ -177,11 +180,24 @@ def aplicar(db_path: str, filas: list, dry_run: bool = False) -> dict:
             deseado[ficha["id"]] = (estado, ficha["estado"])
 
     for bid, (estado, actual) in deseado.items():
-        if RANK[estado] <= RANK.get(actual, 0):
-            if estado == actual:
-                resumen["sin_cambio"] += 1
-            else:
-                resumen["no_retrocede"] += 1
+        if estado == actual:
+            resumen["sin_cambio"] += 1
+            continue
+        avanza = RANK[estado] > RANK.get(actual, 0)
+        # 'no_interesa' es la UNICA marca de la planilla que puede ir para
+        # atras. La pinta una persona que hablo con el lead, y eso es mejor
+        # informacion que cualquier estado que haya puesto una automatizacion.
+        # Sin esta excepcion la planilla no podia decir nunca "este murio":
+        # 'no_interesa' es rango 1, asi que solo se aplicaba a quien estaba en
+        # 'sin_contactar', y alguien que dijo que no despues de avanzar se
+        # quedaba en el pipeline recibiendo mails.
+        #
+        # Los clientes quedan afuera: ahi hay plata, y una celda mal pintada no
+        # puede borrarla.
+        baja_deliberada = (estado == "no_interesa"
+                           and RANK.get(actual, 0) < RANK["cliente_cerrado"])
+        if not (avanza or baja_deliberada):
+            resumen["no_retrocede"] += 1
             continue
         resumen["cambios"].append({"id": bid, "de": actual, "a": estado})
         if not dry_run:

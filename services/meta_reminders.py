@@ -574,6 +574,30 @@ def tanda_diaria(db_path: str, base_url: str):
             f"en 24 horas ya esta lleno. Se reintenta en el proximo arranque."
         )
         return None
+    # Las respuestas ANTES de los envios, igual que hace discovery en su bucle:
+    # si alguien contesto ayer y hoy le vence el contacto siguiente, hay que
+    # frenarlo antes de que salga, no despues.
+    #
+    # Hasta el 28-8-2026 esto no pasaba para Meta: el hilo de recordatorios
+    # arranca a los 180 s del boot y el de discovery —que es donde vivia la
+    # unica llamada al sync de respuestas— a los 600. Los mails de Meta salian
+    # siete minutos antes de que nadie mirara si habian contestado. De paso,
+    # ahora las respuestas de Meta ya no dependen de que discovery este
+    # encendido: eran dos campanas compartiendo un interruptor.
+    #
+    # Si Gmail falla se manda igual, con el mismo criterio que discovery: una
+    # tanda demorada para todos es peor que un solapamiento posible para unos
+    # pocos. Queda gritado en el log.
+    try:
+        from services.discovery_respuestas import sincronizar_desde_gmail
+        r = sincronizar_desde_gmail(db_path)
+        logger.info(f"Recordatorios Meta: respuestas antes de mandar: {r}")
+    except Exception as e:
+        logger.warning(
+            f"Recordatorios Meta: no se pudo revisar respuestas antes de mandar ({e}). "
+            f"La tanda sale igual: puede pisarle el mail a alguien que contesto."
+        )
+
     marcar_corrida(db_path, "meta")
     return enviar_recordatorios(db_path, base_url)
 

@@ -238,3 +238,35 @@ def test_el_lead_con_telefono_numerico_ahora_casa(db):
     _lead(db, 1, "+59895720157")
     aplicar(db, [{"tel": "59895720157.0", "color": VIOLETA}])
     assert _estado(db, 1) == "presupuesto_enviado"
+
+
+# ── La planilla tiene que poder decir "este murió" ───────────────────────────
+# 'no_interesa' es rango 1, asi que la regla de no retroceder lo dejaba
+# aplicable solo sobre 'sin_contactar'. Un lead que avanzo y despues dijo que no
+# se quedaba en el pipeline y siguiendo en secuencia.
+
+NEGRO = "#000000"
+
+
+@pytest.mark.parametrize("desde", ["interesado", "llamar_despues", "reunion_hecha",
+                                   "presupuesto_enviado", "negociacion"])
+def test_el_negro_de_la_planilla_siempre_gana(db, desde):
+    _lead(db, 1, "+59899913326", estado=desde)
+    r = aplicar(db, [{"tel": "59899913326", "color": NEGRO}])
+    assert _estado(db, 1) == "no_interesa", f"desde {desde}"
+    assert r["actualizados"] == 1
+
+
+@pytest.mark.parametrize("cliente", ["cliente_cerrado", "en_desarrollo", "finalizado"])
+def test_pero_no_puede_borrar_un_cliente(db, cliente):
+    """Ahi hay plata y una celda mal pintada no puede llevarsela."""
+    _lead(db, 1, "+59899913326", estado=cliente)
+    r = aplicar(db, [{"tel": "59899913326", "color": NEGRO}])
+    assert _estado(db, 1) == cliente
+    assert r["no_retrocede"] == 1
+
+
+def test_el_resto_de_los_colores_sigue_sin_retroceder(db):
+    _lead(db, 1, "+59899913326", estado="presupuesto_enviado")
+    aplicar(db, [{"tel": "59899913326", "color": AMARILLO}])
+    assert _estado(db, 1) == "presupuesto_enviado", "amarillo no puede bajar un ppto"
