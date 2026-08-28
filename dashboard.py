@@ -2050,16 +2050,21 @@ async function loadColaStats() {
     const r = await fetch('/api/stats');
     if (!r.ok) return;
     const d = await r.json();
-    const cola = await fetch('/api/leads?crm_status=sin_contactar');
+    // `page=1` no es cosmetico: sin el, estas cuatro llamadas traen TODAS las
+    // filas solo para contarlas —6.199 en el caso de sin_contactar, 7,3 MB— y
+    // encima corren en paralelo con loadCola. Era la mitad del OOM que tumbaba
+    // al worker el 28-8-2026. Con page=1 vienen 50 filas y el `total`, que es
+    // lo unico que estos contadores usan.
+    const cola = await fetch('/api/leads?crm_status=sin_contactar&page=1');
     const colaData = await cola.json();
     const [segR, conR] = await Promise.all([
-      fetch('/api/leads?crm_status=llamar_despues'),
-      fetch('/api/leads?crm_status=interesado'),
+      fetch('/api/leads?crm_status=llamar_despues&page=1'),
+      fetch('/api/leads?crm_status=interesado&page=1'),
     ]);
     const [segData, conData] = await Promise.all([segR.json(), conR.json()]);
     const segTotal = (Array.isArray(segData) ? segData.length : (segData.total||0)) +
                      (Array.isArray(conData) ? conData.length : (conData.total||0));
-    const noInt = await fetch('/api/leads?crm_status=no_interesa');
+    const noInt = await fetch('/api/leads?crm_status=no_interesa&page=1');
     const noIntData = await noInt.json();
     document.getElementById('stat-cola').textContent = Array.isArray(colaData) ? colaData.length : (colaData.total || 0);
     document.getElementById('stat-seguimientos').textContent = segTotal;
@@ -4533,7 +4538,10 @@ async function _mergeSearch(query, resultsId) {
   if (!query || query.length < 2) { res.innerHTML = ''; return; }
   _mergeSearchTimeout = setTimeout(async () => {
     try {
-      const r = await fetch('/api/leads?search=' + encodeURIComponent(query));
+      // Sin `page`, esto traia los 6.720 negocios enteros para mostrar 5
+      // sugerencias, y corre mientras la persona escribe. Con page=1 el LIKE
+      // va en SQL y vuelven 50 filas de diez columnas.
+      const r = await fetch('/api/leads?page=1&search=' + encodeURIComponent(query));
       const data = await r.json();
       const leads = Array.isArray(data) ? data : (data.items || []);
       const filtered = leads.filter(l => l.id !== _cpClientId).slice(0, 5);
