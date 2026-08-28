@@ -325,3 +325,201 @@ def test_una_respuesta_de_meta_desde_otra_casilla_tambien_se_agarra(db):
          "subject": "Re: Sobre tu consulta para Fullprint", "headers": {}}]))
     assert res["respondieron"] == 1
     assert get_business(db, bid)["crm_status"] != "sin_contactar"
+
+
+# ── Que el lector no se desincronice de lo que mandamos ──────────────────────
+# `_PATRONES_META` es un espejo de los asuntos que arma email_service, en otro
+# archivo. Si alguien cambia un asunto y no toca el patron, nada falla en
+# produccion: el lead que contesta desde otra casilla simplemente no se detecta,
+# y la secuencia le sigue escribiendo encima de una conversacion viva. Ya pasó:
+# el 28-8-2026 se reescribieron los 13 asuntos y solo uno seguia matcheando.
+
+def _todos_los_asuntos(negocio="Casa Garrido", rubro="un_software_a_medida"):
+    from services.email_service import (_cuerpo_por_contacto, _cuerpo_por_estado,
+                                        _frase_rubro, _parrafo_valor)
+    from services.secuencia_contactos import SECUENCIAS_POR_ESTADO, DIAS_DE_CADA_CONTACTO
+    apertura = (f"Dejaste tus datos porque {_frase_rubro(rubro)} para {negocio}, "
+                f"y todavía estamos a tiempo de tomarlo.")
+    fuera = []
+    for n in range(1, len(DIAS_DE_CADA_CONTACTO) + 1):
+        fuera.append(_cuerpo_por_contacto(n, apertura, _parrafo_valor(rubro), negocio)[0])
+    for estado, dias in SECUENCIAS_POR_ESTADO.items():
+        if estado == "sin_contactar":
+            continue
+        for n in range(1, len(dias) + 1):
+            fuera.append(_cuerpo_por_estado(estado, n, negocio, rubro)[0])
+    return fuera
+
+
+def test_todos_los_asuntos_que_mandamos_se_pueden_leer():
+    from services.discovery_respuestas import negocio_del_asunto
+    asuntos = _todos_los_asuntos()
+    assert len(asuntos) == 13, "cambio la cantidad de plantillas"
+    sin_leer = [a for a in asuntos if negocio_del_asunto(a) != "casa garrido"]
+    assert not sin_leer, (
+        "estos asuntos salen de email_service y _PATRONES_META no los entiende: "
+        + repr(sin_leer))
+
+
+def test_tambien_se_leen_cuando_vienen_como_respuesta():
+    from services.discovery_respuestas import negocio_del_asunto
+    for asunto in _todos_los_asuntos():
+        assert negocio_del_asunto("Re: " + asunto) == "casa garrido", asunto
+
+
+# ── Frenar de verdad, y sin retroceder ───────────────────────────────────────
+
+def _lead(db, bid, source, estado, mail="x@y.com"):
+    import sqlite3
+    conn = sqlite3.connect(db)
+    conn.execute("INSERT INTO businesses (id,name,email,crm_status,source) VALUES (?,?,?,?,?)",
+                 (bid, f"Negocio {bid}", mail, estado, source))
+    conn.commit()
+    conn.close()
+
+
+def _estado(db, bid):
+    import sqlite3
+    conn = sqlite3.connect(db)
+    v = conn.execute("SELECT crm_status FROM businesses WHERE id=?", (bid,)).fetchone()[0]
+    conn.close()
+    return v
+
+
+def test_el_que_contesta_un_presupuesto_no_retrocede(db):
+    """Lo mas caliente que hay. Moverlo a 'interesado' seria empujarlo para atras
+    y ademas meterlo en OTRA secuencia de mails."""
+    from services.discovery_respuestas import marcar_respondio
+    _lead(db, 1, "meta", "presupuesto_enviado")
+    marcar_respondio(db, 1, "quien@sea.com")
+    assert _estado(db, 1) == "negociacion"
+
+
+def test_un_lead_frio_de_meta_que_contesta_sale_de_toda_secuencia(db):
+    """'interesado' ya no sirve para frenar: desde que cada estado tiene su
+    secuencia, ese tambien manda un mail."""
+    from services.discovery_respuestas import marcar_respondio
+    from services.secuencia_contactos import SECUENCIAS_POR_ESTADO
+    _lead(db, 1, "meta", "sin_contactar")
+    marcar_respondio(db, 1, "quien@sea.com")
+    assert _estado(db, 1) not in SECUENCIAS_POR_ESTADO, "quedo en un estado que sigue mandando"
+
+
+def test_no_pisa_a_quien_ya_esta_mas_adelante(db):
+    from services.discovery_respuestas import marcar_respondio
+    _lead(db, 1, "meta", "cliente_cerrado")
+    marcar_respondio(db, 1, "quien@sea.com")
+    assert _estado(db, 1) == "cliente_cerrado"
+
+
+def test_igual_deja_el_evento_aunque_no_mueva_el_estado(db):
+    import sqlite3
+    from services.discovery_respuestas import marcar_respondio
+    _lead(db, 1, "meta", "cliente_cerrado")
+    marcar_respondio(db, 1, "quien@sea.com")
+    conn = sqlite3.connect(db)
+    n = conn.execute("SELECT COUNT(*) FROM lead_events WHERE lead_id=1").fetchone()[0]
+    conn.close()
+    assert n == 1, "sin evento, nadie se entera de que contestó"
+
+
+def test_discovery_sigue_yendo_a_interesado(db):
+    from services.discovery_respuestas import marcar_respondio
+    _lead(db, 1, "discovery", "sin_contactar")
+    marcar_respondio(db, 1, "quien@sea.com")
+    assert _estado(db, 1) == "interesado"
+
+
+def test_se_vigilan_los_cinco_estados_de_meta_no_solo_sin_contactar(db):
+    """Mirar solo 'sin_contactar' dejaba sin vigilar a 134 de los 157 en secuencia."""
+    import sqlite3
+    from services.discovery_respuestas import direcciones_contactadas
+    from services.secuencia_contactos import ESTADOS_CON_SECUENCIA
+    conn = sqlite3.connect(db)
+    for i, estado in enumerate(ESTADOS_CON_SECUENCIA, start=1):
+        conn.execute("INSERT INTO businesses (id,name,email,crm_status,source) "
+                     "VALUES (?,?,?,?,'meta')", (i, f"N{i}", f"lead{i}@x.com", estado))
+        conn.execute("INSERT INTO meta_reminders (business_id,estado,numero,token,sent_at) "
+                     "VALUES (?,?,1,?,datetime('now'))", (i, estado, f"tok{i}"))
+    conn.commit()
+    conn.close()
+    vigilados = direcciones_contactadas(db)
+    assert len(vigilados) == len(ESTADOS_CON_SECUENCIA)
+
+
+# ── "Nos escribió" no es "nos respondió" ─────────────────────────────────────
+# La busqueda de Gmail solo acota por `newer_than:30d`. Sin comparar contra
+# nuestro ultimo envio, un mail que el lead nos mando ANTES de entrar a la
+# secuencia se contaba como respuesta: le frenaba el seguimiento y le abria una
+# negociacion que nunca existio.
+
+def _lead_con_envio(db, bid, mail, sent_at, estado="sin_contactar"):
+    import sqlite3
+    conn = sqlite3.connect(db)
+    conn.execute("INSERT INTO businesses (id,name,email,crm_status,source) "
+                 "VALUES (?,?,?,?,'meta')", (bid, f"N{bid}", mail, estado))
+    conn.execute("INSERT INTO meta_reminders (business_id,estado,numero,token,sent_at) "
+                 "VALUES (?,?,1,?,?)", (bid, estado, f"tok{bid}", sent_at))
+    conn.commit()
+    conn.close()
+
+
+def _buscar_fijo(mensajes):
+    return lambda consulta: mensajes
+
+
+def test_un_mail_anterior_a_nuestro_envio_no_es_una_respuesta(db):
+    from services.discovery_respuestas import sincronizar_respuestas
+    _lead_con_envio(db, 1, "lead@x.com", "2026-08-20 10:00:00")
+    r = sincronizar_respuestas(db, _buscar_fijo([
+        {"from": "lead@x.com", "subject": "Consulta suelta",
+         "date": "2026-08-05 09:00:00", "headers": {}}]))
+    assert r["respondieron"] == 0 and r["previas"] == 1
+    assert _estado(db, 1) == "sin_contactar", "no se le frena la secuencia"
+
+
+def test_un_mail_posterior_si_es_una_respuesta(db):
+    from services.discovery_respuestas import sincronizar_respuestas
+    _lead_con_envio(db, 1, "lead@x.com", "2026-08-20 10:00:00")
+    r = sincronizar_respuestas(db, _buscar_fijo([
+        {"from": "lead@x.com", "subject": "Re: Sobre tu consulta para N1",
+         "date": "2026-08-20 10:05:00", "headers": {}}]))
+    assert r["respondieron"] == 1
+    assert _estado(db, 1) == "negociacion"
+
+
+def test_sin_fecha_se_cuenta_como_respuesta(db):
+    """Perder una respuesta real y seguir escribiendole encima es peor que
+    abrir una negociacion de mas, que un humano descarta en diez segundos."""
+    from services.discovery_respuestas import sincronizar_respuestas
+    _lead_con_envio(db, 1, "lead@x.com", "2026-08-20 10:00:00")
+    r = sincronizar_respuestas(db, _buscar_fijo([
+        {"from": "lead@x.com", "subject": "algo", "headers": {}}]))
+    assert r["respondieron"] == 1
+
+
+def test_gmail_convierte_internaldate_al_formato_de_la_casa():
+    """internalDate viene en milisegundos epoch UTC y sent_at es UTC naive."""
+    from datetime import datetime, timezone
+    from services.discovery_respuestas import buscar_con_gmail
+    _ESPERADO = "2026-08-27 18:33:23"
+    _MS = int(datetime(2026, 8, 27, 18, 33, 23, tzinfo=timezone.utc).timestamp() * 1000)
+
+    class _Msgs:
+        def list(self, **kw):
+            return _Ejecuta({"messages": [{"id": "1"}]})
+        def get(self, **kw):
+            return _Ejecuta({"internalDate": str(_MS),
+                             "payload": {"headers": [{"name": "From", "value": "a@b.com"},
+                                                      {"name": "Subject", "value": "hola"}]}})
+    class _Ejecuta:
+        def __init__(self, v): self.v = v
+        def execute(self): return self.v
+    class _Users:
+        def messages(self): return _Msgs()
+    class _Svc:
+        def users(self): return _Users()
+
+    msg = buscar_con_gmail(_Svc())("q")[0]
+    assert msg["date"] == _ESPERADO
+    assert msg["from"] == "a@b.com"

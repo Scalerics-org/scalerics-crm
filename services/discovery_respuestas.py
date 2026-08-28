@@ -20,9 +20,15 @@ sin credenciales ni red.
 
 import logging
 import os
+import re
 import sqlite3
+from datetime import datetime, timezone
 
-from database import add_lead_event, update_business
+from database import add_lead_event, get_business, update_business
+# La tabla de cuan avanzado esta cada estado vive en planilla_semaforo y es
+# una sola en todo el codigo: dos copias se desincronizan.
+from services.planilla_semaforo import RANK
+from services.secuencia_contactos import ESTADOS_CON_SECUENCIA
 
 logger = logging.getLogger(__name__)
 
@@ -31,12 +37,8 @@ logger = logging.getLogger(__name__)
 _POR_CONSULTA = 25
 _DIAS_ATRAS = 30
 
-# El estado al que se mueve. El CRM no tiene un "respondio", y lo unico que se
-# necesita a nivel mecanico es salir de 'sin_contactar' para frenar el
-# seguimiento. Entre los que hay, 'interesado' es el que lo pone adelante de
-# los ojos de Juan para que lo triage: contestar no es lo mismo que estar
-# interesado, pero es lo que mas se le parece en la lista existente.
-_ESTADO_AL_RESPONDER = "interesado"
+# El estado al que se mueve vive en CAMPANAS: no puede ser el mismo para las
+# dos, porque lo que frena una secuencia no frena la otra.
 
 # Marcas de respuesta automatica. Un fuera-de-oficina no es una conversacion:
 # frenar el seguimiento por eso seria perder el unico contacto que quedaba.
@@ -49,17 +51,72 @@ _ASUNTOS_AUTO = ("automatic reply", "respuesta automatica", "respuesta automáti
 
 # Las dos campanas que mandan correo. Se miran las dos: los leads de Meta
 # tambien reciben una secuencia y tambien hay que frenarla si contestan.
+# Los asuntos ya no son prefijos: desde que cada estado de Meta tiene su propio
+# texto, el nombre del negocio aparece al principio ("Casa Garrido — el
+# presupuesto"), al final ("Cerramos lo de Casa Garrido") y en el medio
+# ("¿Dejamos lo de Casa Garrido para más adelante?"). Un patron por forma, con
+# el nombre en el grupo `n`.
+#
+# Esta lista es un espejo de lo que arma email_service y puede quedar vieja sin
+# que nada falle en produccion: el lead que contesta desde otra casilla
+# simplemente no se detecta. Por eso hay un test que renderiza TODOS los asuntos
+# reales y exige que cada uno se pueda leer aca.
+_PATRONES_META = (
+    r"^(?P<n>.+?) — ",                                  # el nombre al principio
+    r"^sobre tu consulta para (?P<n>.+)$",
+    r"^¿dejamos lo de (?P<n>.+) para más adelante\?$",
+    r"^¿retomamos lo de (?P<n>.+)\?$",
+    r"^¿sigue en pie lo de (?P<n>.+)\?$",
+    r"^¿cerramos lo de (?P<n>.+)\?$",
+    r"^cerramos lo de (?P<n>.+)$",
+    r"^¿damos por cerrado lo de (?P<n>.+)\?$",
+    r"^nos queda un mail más para (?P<n>.+)$",
+    r"^último mail para (?P<n>.+)$",
+)
+_PATRONES_DISCOVERY = (
+    r"^una idea para (?P<n>.+)$",
+    r"^[uú]ltimo mail para (?P<n>.+)$",
+)
+
 CAMPANAS = {
     "discovery": {
         "tabla": "discovery_reminders",
         "source": "discovery",
-        # Los asuntos que arma email_service. El nombre del negocio va al final.
-        "asuntos": ("Una idea para", "Ultimo mail para", "Último mail para"),
+        # Discovery tiene una sola secuencia y corta al salir de sin_contactar.
+        "estados": ("sin_contactar",),
+        "patrones": _PATRONES_DISCOVERY,
+        # 'interesado' no tiene secuencia de discovery, asi que frena. Y
+        # contestar no es lo mismo que estar interesado, pero es lo que mas se
+        # le parece entre los estados que hay.
+        "estado_al_responder": "interesado",
+        # Fragmentos literales para la busqueda de Gmail, que no entiende regex.
+        "fragmentos": ("Una idea para", "Ultimo mail para", "Último mail para"),
     },
     "meta": {
         "tabla": "meta_reminders",
         "source": "meta",
-        "asuntos": ("Sobre tu consulta para",),
+        # Meta tiene una secuencia POR ESTADO: mirar solo 'sin_contactar' dejaba
+        # afuera a los 134 que estan en las otras cuatro, incluidos los de
+        # 'presupuesto_enviado', que son los que mas importa frenar.
+        "estados": ESTADOS_CON_SECUENCIA,
+        "patrones": _PATRONES_META,
+        # Para Meta NO sirve 'interesado': desde que cada estado tiene su
+        # secuencia, ese tambien manda un mail, y le diria "no llegamos a
+        # agendar" a alguien que acaba de escribir. 'negociacion' es el unico
+        # estado sin secuencia que describe lo que realmente pasa —hay una
+        # conversacion abierta— y ademas aparece en el panel de Pipeline, que
+        # es donde alguien lo va a ver.
+        "estado_al_responder": "negociacion",
+        # La RED que busca en Gmail, distinta del LECTOR de arriba: no hace
+        # falta que cubra los 13 asuntos, porque el camino principal es el
+        # remitente y este es solo el respaldo para quien contesta desde otra
+        # casilla. Gmail no entiende regex, asi que van literales.
+        "fragmentos": (
+            "Sobre tu consulta para", "cómo lo resolveríamos", "Cerramos lo de",
+            "Dejamos lo de", "Retomamos lo de", "Sigue en pie lo de",
+            "Damos por cerrado lo de", "qué te frenó",
+            "quedó pendiente el presupuesto", "intentamos comunicarnos",
+        ),
     },
 }
 
@@ -92,9 +149,13 @@ def negocio_del_asunto(asunto) -> str:
     if bajo in _ASUNTOS_SIN_NEGOCIO:
         return ""
     for campana in CAMPANAS.values():
-        for enc in campana["asuntos"]:
-            if bajo.startswith(enc.lower()):
-                return texto[len(enc):].strip().lower()
+        for patron in campana["patrones"]:
+            m = re.match(patron, bajo)
+            if m:
+                # El nombre sale del texto original, no del bajo, para no
+                # devolver algo que no coincida con lo que hay en la base.
+                nombre = texto[m.start("n"):m.end("n")].strip()
+                return nombre.lower()
     return ""
 
 
@@ -109,7 +170,7 @@ def consultas_por_asunto(days_back: int = _DIAS_ATRAS) -> list:
     excluir = " ".join(f"-from:{d}" for d in _REMITENTES_PROPIOS)
     consultas = []
     for campana in CAMPANAS.values():
-        for enc in campana["asuntos"]:
+        for enc in campana["fragmentos"]:
             consultas.append(
                 f'in:anywhere newer_than:{days_back}d subject:"{enc}" {excluir}')
     return consultas
@@ -127,19 +188,22 @@ def _contactados(db_path: str) -> list:
     Cubre las DOS campanas: los leads de Meta reciben siete contactos y tambien
     hay que frenarlos si contestan. Antes solo se miraba discovery.
 
-    Los que ya salieron de 'sin_contactar' quedan fuera: alguien ya los movio, el
-    seguimiento ya esta frenado y no hay nada que marcar de nuevo.
+    Cada campana aporta los estados que TIENE en secuencia. Para Meta son
+    cinco desde que cada estado lleva su propio texto: mirar solo
+    'sin_contactar' dejaba sin vigilar a los 134 que estan en los otros cuatro,
+    entre ellos 'presupuesto_enviado', que es justo el que mas duele pisar.
     """
     partes = " UNION ".join(
-        f"""
+        """
         SELECT DISTINCT b.id AS id, LOWER(TRIM(b.email)) AS mail,
                LOWER(TRIM(COALESCE(b.name,''))) AS nombre
           FROM businesses b
-          JOIN {c['tabla']} r ON r.business_id = b.id
-         WHERE b.source = '{c['source']}'
-           AND b.crm_status = 'sin_contactar'
+          JOIN {tabla} r ON r.business_id = b.id
+         WHERE b.source = '{source}'
+           AND b.crm_status IN ({estados})
            AND b.email IS NOT NULL AND LENGTH(TRIM(b.email)) > 3
         """
+        .format(tabla=c["tabla"], source=c["source"], estados=", ".join("'" + e + "'" for e in c["estados"]))
         for c in CAMPANAS.values()
     )
     conn = _conn(db_path)
@@ -147,6 +211,27 @@ def _contactados(db_path: str) -> list:
         return conn.execute(partes).fetchall()
     finally:
         conn.close()
+
+
+def ultimo_envio_por_lead(db_path: str) -> dict:
+    """{business_id: 'YYYY-MM-DD HH:MM:SS' del ultimo mail que le mandamos}.
+
+    Es lo que convierte "nos escribio" en "nos respondio": sin esta fecha, un
+    mail que el lead nos mando ANTES de entrar a la secuencia se cuenta como
+    respuesta, le frena el seguimiento y le abre una negociacion que no existe.
+    """
+    partes = " UNION ALL ".join(
+        "SELECT business_id, sent_at FROM {}".format(c["tabla"])
+        for c in CAMPANAS.values()
+    )
+    conn = _conn(db_path)
+    try:
+        filas = conn.execute(
+            f"SELECT business_id, MAX(sent_at) AS ultimo FROM ({partes}) "
+            f"GROUP BY business_id").fetchall()
+    finally:
+        conn.close()
+    return {f["business_id"]: f["ultimo"] for f in filas}
 
 
 def direcciones_contactadas(db_path: str) -> dict:
@@ -196,11 +281,25 @@ def partir_en_consultas(direcciones, por_consulta: int = _POR_CONSULTA,
 
 
 def marcar_respondio(db_path: str, business_id: int, direccion: str) -> None:
-    """Saca al comercio de 'sin_contactar' y deja la marca en su linea de tiempo."""
-    update_business(db_path, business_id, crm_status=_ESTADO_AL_RESPONDER)
+    """Frena la secuencia del lead y deja la marca en su linea de tiempo.
+
+    **Nunca retrocede.** Alguien en 'presupuesto_enviado' que contesta es lo mas
+    caliente que hay; moverlo a 'interesado' porque escribio seria empujarlo
+    para atras en el embudo y ademas meterlo en otra secuencia de mails.
+    """
+    biz = get_business(db_path, business_id) or {}
+    actual = biz.get("crm_status") or "sin_contactar"
+    campana = CAMPANAS.get("meta" if biz.get("source") == "meta" else "discovery")
+    destino = campana["estado_al_responder"]
+    if RANK.get(destino, 0) <= RANK.get(actual, 0):
+        # Ya esta igual o mas adelante: no se toca el estado. Igual queda el
+        # evento, que es lo que le avisa al humano que hay algo que leer.
+        destino = None
+    if destino:
+        update_business(db_path, business_id, crm_status=destino)
     try:
-        add_lead_event(db_path, business_id, "discovery_respuesta",
-                       f"Contestó el mail de discovery desde {direccion}")
+        add_lead_event(db_path, business_id, destino or actual,
+                       f"Contestó el mail desde {direccion}")
     except Exception as e:
         # El evento es la traza para el humano; que falte no puede deshacer el
         # freno del seguimiento, que es lo que de verdad importa.
@@ -216,11 +315,13 @@ def sincronizar_respuestas(db_path: str, buscar, days_back: int = _DIAS_ATRAS,
     """
     contactadas = direcciones_contactadas(db_path)
     por_nombre = negocios_contactados(db_path)
-    res = {"revisados": len(contactadas), "respondieron": 0, "automaticas": 0}
+    ultimo_envio = ultimo_envio_por_lead(db_path)
+    res = {"revisados": len(contactadas), "respondieron": 0, "automaticas": 0,
+           "previas": 0}
     if not contactadas:
         return res
 
-    ya_marcadas = set()
+    ya_marcadas, autos, previas = set(), set(), set()
     # Dos vias: por remitente (la casilla a la que escribimos) y por asunto (el
     # dueno contestando desde otra cuenta, o una respuesta que cayo en spam).
     consultas = (partir_en_consultas(sorted(contactadas), days_back=days_back)
@@ -247,7 +348,18 @@ def sincronizar_respuestas(db_path: str, buscar, days_back: int = _DIAS_ATRAS,
                 continue
 
             if es_respuesta_automatica(msg.get("headers"), asunto):
-                res["automaticas"] += 1
+                autos.add(bid)
+                continue
+
+            # Que nos haya escrito no quiere decir que nos haya respondido: un
+            # mail suyo ANTERIOR a nuestro ultimo envio es otra conversacion.
+            # Sin fecha se cuenta como respuesta a proposito: perder una
+            # respuesta real y seguir escribiendole encima es peor que abrir una
+            # negociacion de mas, que un humano descarta en diez segundos.
+            enviado = ultimo_envio.get(bid)
+            fecha = (msg.get("date") or "").strip()
+            if enviado and fecha and fecha < enviado:
+                previas.add(bid)
                 continue
 
             ya_marcadas.add(bid)
@@ -256,6 +368,11 @@ def sincronizar_respuestas(db_path: str, buscar, days_back: int = _DIAS_ATRAS,
                 marcar_respondio(db_path, bid, direccion or "(sin remitente)")
             logger.info(f"Respuesta de {direccion or asunto!r}: se frena su seguimiento")
 
+    # Se cuenta por lead, no por mensaje, y solo lo que NO termino marcado: un
+    # lead con un autorespondedor y despues una respuesta de verdad cuenta como
+    # respuesta y nada mas.
+    res["automaticas"] = len(autos - ya_marcadas)
+    res["previas"] = len(previas - ya_marcadas)
     return res
 
 
@@ -279,8 +396,19 @@ def buscar_con_gmail(service):
             crudo = cabeceras.get("From", "")
             # "Nombre <mail@dominio>" -> "mail@dominio"
             direccion = crudo.split("<")[-1].strip(" >") if "<" in crudo else crudo
+            # internalDate viene en milisegundos epoch UTC. Se guarda en el
+            # formato de la casa para poder compararlo con sent_at, que es UTC
+            # naive con ese mismo molde.
+            fecha = ""
+            try:
+                ms = int(det.get("internalDate") or 0)
+                if ms:
+                    fecha = datetime.fromtimestamp(ms / 1000, timezone.utc)                                    .strftime("%Y-%m-%d %H:%M:%S")
+            except (TypeError, ValueError):
+                fecha = ""
             mensajes.append({"from": direccion.strip(),
                              "subject": cabeceras.get("Subject", ""),
+                             "date": fecha,
                              "headers": cabeceras})
         return mensajes
     return buscar
