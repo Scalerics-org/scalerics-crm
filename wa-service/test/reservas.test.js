@@ -262,3 +262,47 @@ test('pero si mueven la reunion, esa si es nueva', async () => {
   assert.equal((await conCalendario(s, [movida]).revisar()).agendadas, 1);
   assert.match(s.repo.leadPorTelefono(TEL).meeting_time, /2026-09-09/);
 });
+
+/**
+ * Paso de verdad: un lead derivado por abandono reservo en Calendly, escribio
+ * "Gracias!" y el bot no le contesto. Seguia marcado como que lo atendia una
+ * persona, aunque el motivo —que habia dejado de contestar— se le habia caido
+ * solo al reservar.
+ */
+test('al que se derivo por abandono y despues agenda, se le devuelve el bot', async () => {
+  const s = await conLead();
+  const l = s.repo.leadPorTelefono(TEL);
+  s.repo.actualizarFunnel(l.id, { human_requested: 1, motivo_derivacion: 'abandono' });
+
+  await conCalendario(s, [reservaDeCalendly()]).revisar();
+
+  const f = s.repo.leadPorTelefono(TEL);
+  assert.equal(f.human_requested, 0, 'vuelve a atenderlo el bot');
+  assert.equal(f.motivo_derivacion, null);
+});
+
+test('pero al que se derivo por una queja, agendar no le resuelve nada', async () => {
+  const s = await conLead();
+  const l = s.repo.leadPorTelefono(TEL);
+  s.repo.actualizarFunnel(l.id, { human_requested: 1, motivo_derivacion: 'queja' });
+
+  await conCalendario(s, [reservaDeCalendly()]).revisar();
+
+  const f = s.repo.leadPorTelefono(TEL);
+  assert.equal(f.human_requested, 1, 'esa conversacion sigue siendo de la persona que la tomo');
+});
+
+test('y despues de agendar, si escribe, el bot le contesta', async () => {
+  const s = await conLead();
+  const l = s.repo.leadPorTelefono(TEL);
+  s.repo.actualizarFunnel(l.id, { human_requested: 1, motivo_derivacion: 'abandono' });
+
+  await conCalendario(s, [reservaDeCalendly()]).revisar();
+  await s.cola.vacia();
+  s.proveedor.limpiar();
+
+  await s.servicioLeads.registrarRespuesta(TEL, 'Gracias!');
+  await s.cola.vacia();
+
+  assert.ok(s.proveedor.getEnviados().some((e) => e.to === TEL), 'no se queda mudo');
+});

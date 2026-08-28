@@ -194,6 +194,22 @@ function crearServicioLeads({ repo, cola, cfg, logger, textos, redactor = null, 
         });
       }
 
+      // Agendar cancela la derivacion por haberse ido.
+      //
+      // Al que se derivo porque dejo de contestar y despues reserva, el motivo
+      // se le cayo solo: volvio, y de la mejor manera. Sin esto el bot se queda
+      // mudo con alguien que acaba de agendar — paso de verdad: reservo,
+      // escribio "Gracias!" y no le contesto nadie.
+      //
+      // Solo ese motivo. Al que se derivo por una queja o por facturacion,
+      // agendar no le resuelve nada: esa conversacion sigue siendo de la
+      // persona que la tomo.
+      const previo = repo.leadPorId(leadId);
+      if (previo?.human_requested && previo.motivo_derivacion === 'abandono') {
+        repo.actualizarFunnel(leadId, { human_requested: 0, motivo_derivacion: null });
+        logger?.info({ leadId }, 'agendo: se le devuelve la conversacion al bot');
+      }
+
       // El embudo tiene que saber que ya agendo.
       //
       // Sin esto el lead se quedaba en MEETING_LINK_SENT —el estado de "tiene
