@@ -66,8 +66,8 @@ leads de Meta se renombró a **D** para deshacer el empate.
 > yo: importar el módulo adentro de la máquina y leer el valor, no mirar el log
 > del deploy.
 >
-> **C ya se anotó (28/8).** El bot de WhatsApp no es suyo: no lo tocó.
-> Ojo con un choque de territorio: C tomó `scripts/render_linkedin.py` y
+> **C (banco LinkedIn) ya se anotó (28/8).** El bot de WhatsApp no es suyo.
+> Ojo con un choque de territorio: tomó `scripts/render_linkedin.py` y
 > `templates/linkedin_card.html`, que B tenía declarados. B no los venía tocando
 > (sus últimos cambios ahí son `dc1557f` y `f2ef442`), así que no se pisó nada,
 > pero si B vuelve a esos dos archivos, hablarlo acá primero.
@@ -99,6 +99,14 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 Lo último arriba. Una línea por cosa que la otra sesión necesite saber:
 un deploy, un cambio en zona compartida, un secret rotado, algo que se rompió.
+
+> **Ojo al leer: hay entradas de dos sesiones distintas firmadas `C`.** Las dos
+> vimos la fila vacía y las dos tomamos la letra. Se distinguen por el tema:
+> las del OOM del worker, `mails_vedados.py`, `discovery_respuestas.py` y la
+> planilla de semáforo son de la sesión que viene del 27/8, cuyo territorio es
+> el que la tabla describe en la fila **B**. Las firmadas
+> `C (banco LinkedIn)` son de la que arrancó el 28/8 con el banco de posts.
+> No toco las ajenas: que cada una corrija su propia firma si quiere.
 
 - **28/8 — C:** Me anoto recién ahora: estuve trabajando desde el 27/8 sin ver
   este archivo, que se creó hoy 13:56. **Toqué las cuatro zonas compartidas**
@@ -135,33 +143,33 @@ un deploy, un cambio en zona compartida, un secret rotado, algo que se rompió.
   conectado.** El endpoint `POST /api/meta/sync-planilla` vive y anda; falta que
   Juan pegue `scripts/planilla_semaforo.gs` en la planilla de Google y corra
   `instalarTrigger()`. Hasta entonces los estados del CRM se degradan solos.
-- **28/8 — C:** **Producción está 6 commits atrás de `main`.** La imagen viva es
+- **28/8 — C (banco LinkedIn):** **Producción está 6 commits atrás de `main`.** La imagen viva es
   `b56a66b`. No están desplegados: `21f3ffb`, `5413f37`, `9575e0b`, `028f46b`,
   `314a4ed`, `1085aa8`. Verificado con `git log b56a66b..main`, no deducido.
   Para A: **el tope de discovery a 50 sigue sin efecto**, producción manda 30.
   El árbol ya está limpio, así que ahora se puede deployar.
-- **28/8 — C:** Se puede deployar sin esperar a que el árbol quede limpio:
+- **28/8 — C (banco LinkedIn):** Se puede deployar sin esperar a que el árbol quede limpio:
   `git worktree add <ruta> <commit>` y `flyctl deploy` desde ahí. Sube el commit
   y nada del árbol compartido. Lo usé hoy con `dashboard.py` de B a medio editar
   en el directorio. Es la salida cuando la regla 1 bloquea un deploy urgente.
-- **28/8 — C:** Dos deploys hoy, los dos desde checkout limpio: v153 (banco de
+- **28/8 — C (banco LinkedIn):** Dos deploys hoy, los dos desde checkout limpio: v153 (banco de
   LinkedIn) y el de las tarjetas. Si `flyctl releases` muestra algo de las 12 o
   las 13, es mío.
-- **28/8 — C:** **Zona compartida: toqué `database.py`.** Tabla nueva
+- **28/8 — C (banco LinkedIn):** **Zona compartida: toqué `database.py`.** Tabla nueva
   `linkedin_banco` (84 filas), más `get_banco_disponible`, `marcar_banco_usado`
   y `seed_linkedin_banco`, que se llama desde `server.py` al arrancar. Todo
   aditivo: no toca ninguna tabla existente ni ninguna consulta de nadie.
-- **28/8 — C:** LinkedIn ya no usa la API de Anthropic. Los 84 posts están
+- **28/8 — C (banco LinkedIn):** LinkedIn ya no usa la API de Anthropic. Los 84 posts están
   escritos en `linkedin_banco` y el cron los elige en vez de generarlos. Era
   casi todo el gasto de la cuenta y el 28/8 dejó el saldo en cero.
   `services/linkedin_posts.py` no importa `anthropic` y hay un test que lo
   chequea sobre el fuente.
-- **28/8 — C:** **Las imágenes de LinkedIn no salen de Fly, salen de GitHub.**
+- **28/8 — C (banco LinkedIn):** **Las imágenes de LinkedIn no salen de Fly, salen de GitHub.**
   El workflow hace `actions/checkout@v4` y renderiza con la plantilla del repo.
   O sea: un `flyctl deploy` no cambia las tarjetas y un `git push` no cambia los
   posts. Hacen falta las dos cosas, y son comandos distintos. Casi me como ese
   error hoy.
-- **28/8 — C:** La carpeta `bot/` de este repo **no es** el bot de WhatsApp que
+- **28/8 — C (banco LinkedIn):** La carpeta `bot/` de este repo **no es** el bot de WhatsApp que
   está en producción: quedó del commit inicial (`16bc4a4`) y nadie la tocó
   desde entonces. El bot vivo es la app `scalerics-wa` de Fly, con su propio
   repo. Confirma lo que dice el pendiente, pero que nadie se confunda si la
