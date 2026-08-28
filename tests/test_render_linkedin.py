@@ -231,3 +231,59 @@ def test_si_el_navegador_no_arranca_el_mail_sale_igual(monkeypatch):
     assert rl.main() == 0
     assert enviado["lote"] == "abc"
     assert enviado["imagenes"] == []
+
+
+# ── Variacion de la tarjeta ────────────────────────────────────────────────
+# Las 84 tarjetas del banco eran identicas salvo la frase: mismo navy, mismos
+# glows, misma composicion. Dos veces por semana durante cinco meses eso se lee
+# como plantilla y la gente aprende a saltearlo. La variacion se siembra con la
+# frase, que es unica por post, asi no hace falta tocar la base ni la firma.
+
+def _plantilla_real():
+    """La plantilla de verdad. `PLANTILLA` de arriba es un stub sin variante."""
+    import io as _io
+    from scripts.render_linkedin import PLANTILLA_PATH
+    return _io.open(PLANTILLA_PATH, encoding="utf-8").read()
+
+
+def _estilo_variante(frase):
+    """El bloque de estilo que la variante inyecta, sin el resto de la plantilla."""
+    import re
+    html = armar_tarjeta(_plantilla_real(), frase)
+    m = re.search(r"/\* variante \*/(.*?)</style>", html, re.S)
+    return m.group(1).strip() if m else ""
+
+
+def test_dos_frases_distintas_dan_tarjetas_distintas():
+    a = _estilo_variante("Nadie adopta un sistema vacio")
+    b = _estilo_variante("La demora la pagan todos")
+
+    assert a and b
+    assert a != b
+
+
+def test_la_misma_frase_da_siempre_la_misma_tarjeta():
+    """Si no fuera determinista, la tarjeta cambiaria entre el mail y el reenvio."""
+    a = _estilo_variante("Ordenar antes de agrandar")
+    b = _estilo_variante("Ordenar antes de agrandar")
+
+    assert a == b
+
+
+def test_el_fondo_sale_siempre_de_la_paleta_de_marca():
+    from services.linkedin_banco_semilla import LINKEDIN_BANCO_SEMILLA
+
+    permitidos = ("#0f2430", "#0b1d35", "#0a1620", "#122c3a")
+    for _tema, _ang, _texto, frase in LINKEDIN_BANCO_SEMILLA:
+        estilo = _estilo_variante(frase)
+        assert any(c in estilo for c in permitidos), frase
+
+
+def test_las_84_tarjetas_del_banco_no_se_repiten():
+    """El punto del cambio: que no salgan dos iguales en cinco meses."""
+    from services.linkedin_banco_semilla import LINKEDIN_BANCO_SEMILLA
+
+    vistos = [_estilo_variante(f) for *_, f in LINKEDIN_BANCO_SEMILLA]
+    repetidos = len(vistos) - len(set(vistos))
+
+    assert repetidos == 0, f"{repetidos} tarjetas comparten el mismo aspecto"

@@ -12,6 +12,7 @@ Uso:
 import argparse
 import base64
 import html as html_mod
+import hashlib
 import json
 import os
 import sys
@@ -27,8 +28,60 @@ PLANTILLA_PATH = os.path.join(
 )
 
 
+# Los cuatro fondos son discretos a proposito: son una decision de marca, no
+# un parametro. Todo lo demas (posicion y tamano de los glows, angulo del
+# filete) se deriva continuo del hash, porque con valores discretos 84 tarjetas
+# en 128 combinaciones colisionan por cumpleanos: la primera version dejaba 21
+# repetidas.
+_FONDOS = (
+    "#0f2430",  # navy de los assets
+    "#0b1d35",  # base del sitio
+    "#0a1620",  # el navy bajado, casi negro
+    "#122c3a",  # el navy subido
+)
+
+
+def _entre(byte, desde, hasta):
+    """Un valor del rango, derivado del byte. Determinista."""
+    return desde + (byte * (hasta - desde)) // 255
+
+
+def variante(frase: str) -> str:
+    """CSS que le da a cada tarjeta su propia atmosfera.
+
+    Las 84 tarjetas del banco eran identicas salvo el texto, y dos veces por
+    semana durante cinco meses eso se lee como plantilla y la gente aprende a
+    saltearlo. La semilla es la frase porque es unica por post, asi no hay que
+    tocar la base ni pasar el tema hasta aca.
+
+    Se hashea con md5 y no con hash(): el hash de Python lleva una sal distinta
+    por proceso, asi que la misma frase daria una tarjeta distinta en cada
+    corrida y el reenvio de un mail no coincidiria con el original.
+
+    Los glows quedan siempre sobre el borde derecho y salidos del lienzo. El
+    texto arranca a 90px del borde izquierdo, y estos degradados son de opacidad
+    muy baja: acompanan el fondo, no compiten con la frase.
+    """
+    h = hashlib.md5(frase.encode("utf-8")).digest()
+    return (
+        "body{background:%s;}"
+        ".glow{top:%dpx; right:%dpx; width:%dpx; height:%dpx;}"
+        ".glow2{bottom:%dpx; right:%dpx; width:%dpx; height:%dpx;}"
+        ".rule{background:linear-gradient(%ddeg,#1796d2 0%%,#7fcc2a 100%%);}"
+    ) % (
+        _FONDOS[h[0] % len(_FONDOS)],
+        _entre(h[1], -340, -80), _entre(h[2], -280, 200),
+        _entre(h[3], 600, 780), _entre(h[3], 600, 780),
+        _entre(h[4], -340, -140), _entre(h[5], -200, 300),
+        _entre(h[6], 440, 660), _entre(h[6], 440, 660),
+        _entre(h[7], 0, 90),
+    )
+
+
 def armar_tarjeta(plantilla_html: str, frase: str) -> str:
-    return plantilla_html.replace("{{FRASE}}", html_mod.escape(frase))
+    return (plantilla_html
+            .replace("{{FRASE}}", html_mod.escape(frase))
+            .replace("{{VARIANTE}}", variante(frase)))
 
 
 def renderizar(borradores: list, plantilla_html: str, page) -> list:
