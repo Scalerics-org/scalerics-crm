@@ -205,14 +205,14 @@ def test_enviados_ultimas_24h_cuenta_solo_la_ventana(db):
 
 # ─── La tanda ────────────────────────────────────────────────────────────────
 
-def test_el_tope_diario_es_de_30(db):
-    """30 y no mas: el subdominio no tiene historial de envio, y lo que quema un
-    dominio nuevo no es la cuota del plan sino el pico del primer dia."""
-    for i in range(40, 85):
+def test_el_tope_diario_es_de_50(db):
+    """El numero sale de la reputacion, no de la cuota: con una semana de envio
+    limpio el subdominio banca 50. Ver el comentario en discovery_emails."""
+    for i in range(40, 110):
         _comercio(db, i)
     with patch("services.discovery_emails.send_discovery_email", return_value="ok"):
         res = enviar_discovery(db, "https://crm")
-    assert res["enviados"] == 30
+    assert res["enviados"] == 50
 
 
 def test_los_seguimientos_van_antes_que_los_nuevos(db):

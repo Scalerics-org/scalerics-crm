@@ -29,11 +29,21 @@ logger = logging.getLogger(__name__)
 
 _FORMATO_FECHA = "%Y-%m-%d %H:%M:%S"
 
-# El techo no lo pone la cuota del plan —entre esto y los 15 diarios de Meta
-# sobra margen de sobra—, lo pone la reputacion: el subdominio nace sin
-# historial de envio y un pico el primer dia es la peor forma de estrenarlo.
-# 30 vacia la lista de 88 en tres dias sin que ningun dia parezca una descarga.
-_TOPE_DIARIO = 30
+# El techo no lo pone la cuota del plan sino la reputacion del subdominio.
+#
+# Arranco en 30 el 20/8, con el subdominio recien estrenado. Al 28/8 tiene una
+# semana de envio limpio: cero quejas de spam y 4 rebotes duros que el webhook
+# saco solo de la cola. Con esa historia, 50 es el siguiente escalon sano.
+#
+# Por que 50 y no 85, que es lo que entra en la cuota (100 diarios de Resend
+# menos los 15 de Meta y las notificaciones del CRM): saltar de 30 a 85 de un
+# dia para el otro es el tipo de escalon que dispara filtros. Con otra semana
+# limpia se vuelve a subir.
+#
+# En plata: 50 + 15 de Meta son 65 diarios, ~1.950 al mes contra un tope de
+# 3.000, y deja ~1.000 de margen para las notificaciones del CRM —que salen de
+# la misma cuota y que un mal dia se comieron 80.
+_TOPE_DIARIO = 50
 _PAUSA_ENTRE_ENVIOS = 0.6
 _CADA_24_HORAS = 24 * 60 * 60
 
