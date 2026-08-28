@@ -387,36 +387,34 @@ Devolvé SOLO un JSON (sin texto extra, sin markdown):
         status="completed",
     )
 
-    budget_generated = False
+    # Despues de una reunion el lead avanza a 'reunion_hecha' solo. Esto NO es
+    # la generacion de presupuesto —esa se saco el 28-8-2026 porque no se usaba,
+    # 3 presupuestos generados contra 151 reuniones— sino el unico lugar donde
+    # el sistema mueve un estado por su cuenta a partir de algo que paso.
+    #
+    # Con la generacion se fue tambien lo unico que ponia 'presupuesto_enviado'
+    # automaticamente. Ese estado, que dispara la secuencia de recuperacion,
+    # ahora depende del color violeta de la planilla
+    # (services/planilla_semaforo.py).
     try:
-        from database import get_meeting as _get_meeting, get_business
-        from routes.budgets import _generate_budget_internal
+        from database import get_meeting as _get_meeting, get_business, update_business
         meeting_record = _get_meeting(_db(), meeting_id)
         if meeting_record and meeting_record.get("client_id"):
             cid = meeting_record["client_id"]
-            # Mark lead as reunion_hecha unless already further along
-            _BEFORE_REUNION = {
+            # No pisa a quien ya esta mas adelante.
+            _ANTES_DE_LA_REUNION = {
                 "sin_contactar", "interesado", "contactado",
                 "reunion_agendada", "llamar_despues",
             }
             biz = get_business(_db(), cid)
-            if biz and biz.get("crm_status") in _BEFORE_REUNION:
-                from database import update_business as _upd
-                _upd(_db(), cid, crm_status="reunion_hecha")
-            auto = _generate_budget_internal(
-                _db(), cid,
-                requirements=result.get("requirements", ""),
-                service_type=result.get("service_type", ""),
-            )
-            if auto:
-                from database import update_business
-                update_business(_db(), cid, crm_status="presupuesto_enviado")
-                budget_generated = True
+            if biz and biz.get("crm_status") in _ANTES_DE_LA_REUNION:
+                update_business(_db(), cid, crm_status="reunion_hecha")
     except Exception as e:
         import logging
-        logging.getLogger(__name__).warning(f"Auto-budget failed for meeting {meeting_id}: {e}")
+        logging.getLogger(__name__).warning(
+            f"No se pudo marcar reunion_hecha para la reunion {meeting_id}: {e}")
 
-    return jsonify({"ok": True, "summary": result, "budget_generated": budget_generated})
+    return jsonify({"ok": True, "summary": result})
 
 
 @calendar_bp.route("/api/calendar/meetings/<int:meeting_id>/recall-transcript", methods=["GET"])

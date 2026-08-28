@@ -107,57 +107,6 @@ Precios en USD, realistas para el mercado uruguayo.
 - Las notas deben ser observaciones concretas para el cliente."""
 
 
-def _generate_budget_internal(
-    db_path: str,
-    client_id: int,
-    requirements: str = "",
-    service_type: str = "",
-) -> Optional[dict]:
-    """Generate and persist a budget via Claude. Returns budget_data or None if budget exists/error."""
-    import anthropic
-
-    if get_budget_for_client(db_path, client_id):
-        return None  # don't overwrite existing budget
-
-    client = get_business(db_path, client_id)
-    if not client:
-        return None
-
-    client_info = get_client_info(db_path, client_id) or {}
-    meetings = get_meetings_for_client(db_path, client_id)
-    meeting_reqs = "\n".join(m["requirements"] for m in meetings if m.get("requirements"))
-    all_reqs = "\n".join(filter(None, [requirements, meeting_reqs])) or "sitio web profesional con diseño moderno"
-
-    svc = service_type or client_info.get("rubro") or client.get("category", "desarrollo web")
-    budget_range = client_info.get("budget_range") or "no especificado"
-    needs = client_info.get("needs") or "no especificado"
-
-    prompt = _build_budget_prompt(client, svc, budget_range, needs, all_reqs)
-
-    try:
-        ai = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
-        msg = ai.messages.create(
-            model="claude-haiku-4-5",
-            max_tokens=2000,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        budget_data = json.loads(_clean_json(msg.content[0].text.strip()))
-    except Exception as e:
-        logger.warning(f"Budget AI generation failed for client {client_id}: {e}")
-        return None
-
-    sections_json = json.dumps(budget_data.get("sections", []), ensure_ascii=False)
-    try:
-        dev_price = float(budget_data.get("dev_price") or 0)
-    except (TypeError, ValueError):
-        dev_price = 0.0
-    meta = {k: v for k, v in budget_data.items() if k != "sections"}
-    notes_json = json.dumps(meta, ensure_ascii=False)
-
-    create_budget(db_path, client_id, items=sections_json, total_amount=dev_price, notes=notes_json)
-    return budget_data
-
-
 @budgets_bp.route("/api/leads/<int:client_id>/budget", methods=["GET"])
 def api_get_budget(client_id):
     budget = get_budget_for_client(_db(), client_id)
@@ -176,61 +125,6 @@ def api_get_budget(client_id):
             logger.error("Error leyendo notas del presupuesto %s: %s", budget.get("id"), e, exc_info=True)
             return jsonify({"ok": False, "error": "Error leyendo datos del presupuesto. Intentá de nuevo."}), 400
     return jsonify(budget)
-
-
-@budgets_bp.route("/api/leads/<int:client_id>/budget/generate", methods=["POST"])
-def api_generate_budget(client_id):
-    import anthropic
-
-    data = request.get_json() or {}
-    client = get_business(_db(), client_id)
-    if not client:
-        return jsonify({"ok": False, "error": "Lead no encontrado"}), 404
-
-    client_info = get_client_info(_db(), client_id) or {}
-    meetings = get_meetings_for_client(_db(), client_id)
-
-    extra_req = (data.get("requirements") or "").strip()
-    meeting_reqs = "\n".join(m["requirements"] for m in meetings if m.get("requirements"))
-    requirements = "\n".join(filter(None, [extra_req, meeting_reqs])) or "sitio web profesional con diseño moderno"
-
-    service_type = client_info.get("rubro") or data.get("service_type") or client.get("category", "desarrollo web")
-    budget_range = client_info.get("budget_range") or data.get("budget_range") or "no especificado"
-    needs = client_info.get("needs") or "no especificado"
-
-    prompt = _build_budget_prompt(client, service_type, budget_range, needs, requirements)
-
-    try:
-        ai = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
-        msg = ai.messages.create(
-            model="claude-haiku-4-5",
-            max_tokens=2000,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        budget_data = json.loads(_clean_json(msg.content[0].text.strip()))
-    except Exception as e:
-        logger.error("Error generando presupuesto cliente %s: %s", client_id, e, exc_info=True)
-        return jsonify({"ok": False, "error": "Error generando presupuesto. Intentá de nuevo."}), 500
-
-    sections_json = json.dumps(budget_data.get("sections", []), ensure_ascii=False)
-    try:
-        dev_price = float(budget_data.get("dev_price") or 0)
-    except (TypeError, ValueError):
-        dev_price = 0.0
-    meta = {k: v for k, v in budget_data.items() if k != "sections"}
-    notes_json = json.dumps(meta, ensure_ascii=False)
-
-    existing = get_budget_for_client(_db(), client_id)
-    if existing:
-        update_budget(_db(), existing["id"], items=sections_json, total_amount=dev_price, notes=notes_json, status="draft")
-        budget_id = existing["id"]
-    else:
-        budget_id = create_budget(_db(), client_id, items=sections_json, total_amount=dev_price, notes=notes_json)
-
-    log_activity(_db(), session.get("user_name", "sistema"), "budget_generated",
-                 "lead", client_id, client.get("name", ""), "",
-                 user_id=session.get("user_id"))
-    return jsonify({"ok": True, "budget_id": budget_id, "data": budget_data})
 
 
 @budgets_bp.route("/api/budgets/<int:budget_id>", methods=["PUT"])

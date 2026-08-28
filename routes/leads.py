@@ -17,7 +17,7 @@ from database import (
                       increment_task_progress, get_lead_contributor_ids, log_activity)
 from database import get_attachment_file, update_attachment_file, get_attachments
 from pitch_generator import generate_pitch
-from services.budget_ai import ai_edit_html, generate_budget_html
+from services.budget_ai import ai_edit_html
 from services.email_finder import aplicar_resultado, seleccionar_pendientes
 
 leads_bp = Blueprint("leads", __name__)
@@ -767,36 +767,6 @@ def api_attachment_pdf(attach_id):
         return resp
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
-
-@leads_bp.route("/api/leads/<int:biz_id>/budget/generate", methods=["POST"])
-def api_budget_generate(biz_id):
-    biz = get_business(_db(), biz_id)
-    if not biz:
-        return jsonify({"ok": False, "error": "Lead no encontrado"}), 404
-    data = request.get_json() or {}
-    instructions = (data.get("instructions") or "").strip()
-    try:
-        html = generate_budget_html(
-            business_name=biz.get("name", ""),
-            category=biz.get("category", ""),
-            city=biz.get("city", ""),
-            instructions=instructions,
-        )
-        file_data = html.encode("utf-8")
-        db = _db()
-        existing = get_attachments(db, biz_id, "budget")
-        html_attachments = [a for a in existing if (a.get("mime_type") or "") == "text/html"]
-        if html_attachments:
-            attach_id = html_attachments[0]["id"]
-            update_attachment_file(db, attach_id, file_data)
-        else:
-            safe_name = re.sub(r"[^a-z0-9]", "-", (biz.get("name") or "cliente").lower()).strip("-")
-            attach_id = add_attachment(db, biz_id, "budget", f"presupuesto-{safe_name}.html",
-                                       file_data=file_data, mime_type="text/html")
-        return jsonify({"ok": True, "attachment_id": attach_id})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 # ── Cola de busqueda de mails (discovery) ──────────────────────────────────────

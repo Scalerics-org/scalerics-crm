@@ -1703,15 +1703,9 @@ body.light .upick-name{color:#0f172a}
       <div id="demo-conv-info" style="display:none;background:#0a1628;border:1px solid #1e3a5f;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:.8rem;color:#94a3b8"></div>
       <div style="display:flex;gap:8px;margin-bottom:6px">
         <button class="btn-cancel" onclick="closeDemoModal()" style="flex:0 0 auto">Cancelar</button>
-        <button id="demo-gen-btn" onclick="startDemoGeneration()" style="flex:1;background:linear-gradient(135deg,#0088cc,#3db648);color:#fff;font-size:.82rem;font-weight:700;padding:10px 12px;border-radius:8px;border:none;cursor:pointer">✨ Generar con API</button>
         <button id="demo-chat-btn" onclick="startDemoChat()" style="flex:1;background:#1e1b4b;border:1px solid #4f46e5;color:#a5b4fc;font-size:.82rem;font-weight:700;padding:10px 12px;border-radius:8px;cursor:pointer">💬 Claude Chat</button>
       </div>
-      <div style="font-size:.7rem;color:#475569;text-align:center">API → deploy automático en Vercel &nbsp;|&nbsp; Chat → gratis, copiás el HTML vos</div>
-    </div>
-    <div id="demo-loading-section" style="display:none;text-align:center;padding:36px 0">
-      <div style="font-size:2.5rem;margin-bottom:16px">🤖</div>
-      <div style="font-weight:700;font-size:1rem;margin-bottom:8px">Generando demo con Claude...</div>
-      <div style="color:#64748b;font-size:.84rem;line-height:1.6">Esto tarda entre 30 y 60 segundos.<br>Por favor esperá sin cerrar la ventana.</div>
+      <div style="font-size:.7rem;color:#475569;text-align:center">Claude.ai se abre con el prompt listo; el HTML lo copiás vos</div>
     </div>
     <div id="demo-chat-section" style="display:none">
       <h3 style="margin-bottom:6px">💬 Demo vía Claude Chat</h3>
@@ -1720,25 +1714,6 @@ body.light .upick-name{color:#0f172a}
       <div class="modal-btns">
         <button class="btn-cancel" onclick="closeDemoModal()">Cerrar</button>
         <button onclick="copyAndOpenClaude()" style="background:#4f46e5;border:none;color:#fff;font-size:.82rem;font-weight:700;padding:10px 18px;border-radius:8px;cursor:pointer">📋 Copiar prompt y abrir Claude.ai</button>
-      </div>
-    </div>
-    <div id="demo-result-section" style="display:none">
-      <h3 style="margin-bottom:16px">✅ Demo lista</h3>
-      <div id="demo-cached-badge" style="display:none;background:#1a2e1a;border:1px solid #2d5a2d;border-radius:6px;padding:8px 12px;font-size:.78rem;color:#4ade80;margin-bottom:12px">♻️ Esta demo ya fue generada antes — se reutilizó la existente.</div>
-      <div style="background:#0a1628;border:1px solid #1e3a5f;border-radius:8px;padding:14px;margin-bottom:16px">
-        <div style="font-size:.7rem;color:#475569;text-transform:uppercase;letter-spacing:.8px;margin-bottom:7px">URL pública</div>
-        <div style="display:flex;align-items:center;gap:8px">
-          <a id="demo-url-link" href="#" target="_blank" style="color:#06B6D4;font-size:.85rem;word-break:break-all;flex:1"></a>
-          <button onclick="copyDemoUrl()" style="background:#1e293b;border:1px solid #334155;border-radius:6px;padding:5px 10px;font-size:.72rem;color:#94a3b8;cursor:pointer;flex-shrink:0">Copiar</button>
-        </div>
-      </div>
-      <div id="demo-q-section" style="display:none">
-        <div style="font-size:.7rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px">Preguntas si acepta el presupuesto</div>
-        <ol id="demo-q-list" style="padding-left:18px;font-size:.82rem;color:#94a3b8;line-height:1.9"></ol>
-      </div>
-      <div class="modal-btns" style="margin-top:20px">
-        <button class="btn-cancel" onclick="closeDemoModal()">Cerrar</button>
-        <button class="btn-confirm" onclick="window.open(document.getElementById('demo-url-link').href,'_blank')">🔗 Abrir Demo</button>
       </div>
     </div>
   </div>
@@ -3017,30 +2992,12 @@ function extractNameFromTitle(title) {
   return m ? m[1].trim() : null;
 }
 
-function openDemoModalFromCRM(b) {
-  _demoPhone = b.phone || '';
-  _demoMessages = [];
-  document.getElementById('demo-modal').classList.add('open');
-  document.getElementById('demo-form-section').style.display = '';
-  document.getElementById('demo-loading-section').style.display = 'none';
-  document.getElementById('demo-result-section').style.display = 'none';
-  document.getElementById('demo-chat-section').style.display = 'none';
-  document.getElementById('demo-phone').value = b.phone || '';
-  document.getElementById('demo-biz').value = b.name || '';
-  document.getElementById('demo-rubro').value = b.category || '';
-  document.getElementById('demo-city').value = b.city || '';
-  document.getElementById('demo-color').value = '';
-  document.getElementById('demo-conv-info').style.display = 'none';
-  document.getElementById('demo-lead-hint').textContent = b.name ? 'Lead: ' + b.name + (b.city ? ' · ' + b.city : '') : '';
-}
 
 function openDemoModal(phone, eventTitle, leadName) {
   _demoPhone = phone || '';
   _demoMessages = [];
   document.getElementById('demo-modal').classList.add('open');
   document.getElementById('demo-form-section').style.display = '';
-  document.getElementById('demo-loading-section').style.display = 'none';
-  document.getElementById('demo-result-section').style.display = 'none';
   document.getElementById('demo-biz').value = '';
   document.getElementById('demo-rubro').value = '';
   document.getElementById('demo-city').value = '';
@@ -3113,53 +3070,10 @@ async function fetchLeadByName(name) {
 function closeDemoModal() {
   document.getElementById('demo-modal').classList.remove('open');
   document.getElementById('demo-form-section').style.display = '';
-  document.getElementById('demo-loading-section').style.display = 'none';
-  document.getElementById('demo-result-section').style.display = 'none';
   document.getElementById('demo-chat-section').style.display = 'none';
 }
 
-async function startDemoGeneration() {
-  const biz = document.getElementById('demo-biz').value.trim();
-  const rubro = document.getElementById('demo-rubro').value.trim();
-  if (!biz || !rubro) { alert('El nombre del negocio y el rubro son obligatorios.'); return; }
-  const city = document.getElementById('demo-city').value.trim();
-  const color = document.getElementById('demo-color').value.trim();
-  const leadHint = document.getElementById('demo-lead-hint').textContent;
-  const leadName = leadHint.includes('Lead:') ? leadHint.split('Lead:')[1].split('·')[0].trim() : '';
 
-  document.getElementById('demo-form-section').style.display = 'none';
-  document.getElementById('demo-loading-section').style.display = '';
-
-  try {
-    const r = await fetch('/api/demo/generate', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({phone: _demoPhone, business_name: biz, rubro, city, client_color: color, lead_name: leadName, messages: _demoMessages})
-    });
-    const d = await r.json();
-    document.getElementById('demo-loading-section').style.display = 'none';
-    if (!d.ok) { document.getElementById('demo-form-section').style.display = ''; alert('Error: '+(d.error||'Error desconocido')); return; }
-    document.getElementById('demo-result-section').style.display = '';
-    const urlEl = document.getElementById('demo-url-link');
-    urlEl.href = d.url; urlEl.textContent = d.url;
-    const cachedBadge = document.getElementById('demo-cached-badge');
-    if (cachedBadge) cachedBadge.style.display = d.cached ? '' : 'none';
-    if (d.questions && d.questions.length) {
-      const qs = document.getElementById('demo-q-section');
-      qs.style.display = '';
-      document.getElementById('demo-q-list').innerHTML = d.questions.map(q=>`<li>${q}</li>`).join('');
-    }
-  } catch(e) {
-    document.getElementById('demo-loading-section').style.display = 'none';
-    document.getElementById('demo-form-section').style.display = '';
-    alert('Error generando demo: ' + e.message);
-  }
-}
-
-function copyDemoUrl() {
-  const url = document.getElementById('demo-url-link').href;
-  navigator.clipboard.writeText(url).then(() => alert('URL copiada ✅')).catch(() => alert(url));
-}
 
 let _chatPromptText = '';
 
@@ -4718,7 +4632,6 @@ function _cpRenderMeetings() {
         <div class="cp-summary-box">${m.summary || ''}</div>
         ${m.requirements ? `<div class="cp-summary-label" style="margin-top:10px">Requerimientos</div>
         <div class="cp-summary-box">${m.requirements}</div>` : ''}
-        <button class="cp-btn cp-btn-primary" style="margin-top:10px" onclick="_cpGenerateBudgetFromMeeting(${m.id})">⚡ Generar presupuesto</button>
       ` : ''}
       <div style="margin-top:10px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
@@ -4828,14 +4741,6 @@ async function _cpSummarize(meetingId) {
       meet.summary = d.summary.summary || '';
       meet.requirements = d.summary.requirements || '';
     }
-    if (d.budget_generated) {
-      const budgetRes = await fetch('/api/leads/' + _cpClientId + '/budget');
-      _cpData.budget = await budgetRes.json();
-      const budgetTab = document.querySelector('[data-tab="budget"]');
-      if (budgetTab && !budgetTab.querySelector('.budget-new-badge')) {
-        budgetTab.insertAdjacentHTML('beforeend', '<span class="budget-new-badge" style="background:#4ade80;color:#000;font-size:.65rem;padding:1px 5px;border-radius:4px;margin-left:4px">Nuevo</span>');
-      }
-    }
     _cpSwitchTab('meet');
   } catch(e) { alert('Error: ' + e); }
   finally { if (spin) spin.style.display = 'none'; }
@@ -4852,13 +4757,6 @@ function _cpOpenNewMeeting() {
   }
 }
 
-function _cpGenerateBudgetFromMeeting(meetingId) {
-  const meet = _cpData.meetings.find(m => m.id === meetingId);
-  _cpSwitchTab('budget');
-  if (meet && meet.requirements) {
-    document.getElementById('cp-extra-req') && (document.getElementById('cp-extra-req').value = meet.requirements);
-  }
-}
 
 function _cpRenderAttachBox(section) {
   const items = section === 'budget' ? (_cpData.attBudget||[]) : (_cpData.attDemo||[]);
@@ -4939,10 +4837,7 @@ function _cpRenderBudget() {
   if (!hasBudget) {
     return `<div class="cp-section">
       <div class="cp-section-title">Presupuesto</div>
-      <div style="color:#475569;font-size:.85rem;margin-bottom:14px">No hay presupuesto para este cliente.</div>
-      <button class="cp-btn cp-btn-primary" onclick="_cpOpenGenBudgetModal()">
-        ⚡ Generar con IA
-      </button>
+      <div style="color:#475569;font-size:.85rem;margin-bottom:14px">No hay presupuesto para este cliente. Se adjunta desde acá abajo.</div>
     </div>
     ${_cpRenderAttachBox('budget')}`;
   }
@@ -4975,26 +4870,6 @@ async function _cpMarkBudgetSent() {
   _cpSwitchTab('budget');
 }
 
-async function _cpRegeneraBudget() {
-  const req = document.getElementById('cp-extra-req');
-  const requirements = req ? req.value.trim() : '';
-  const spin = document.getElementById('budget-spin');
-  const btn = document.getElementById('cp-gen-btn');
-  if (spin) spin.style.display = '';
-  if (btn) btn.disabled = true;
-  try {
-    const r = await fetch('/api/leads/' + _cpClientId + '/budget/generate', {
-      method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({requirements})
-    });
-    const d = await r.json();
-    if (!d.ok) { alert('Error: ' + d.error); return; }
-    const budgetRes = await fetch('/api/leads/' + _cpClientId + '/budget');
-    _cpData.budget = await budgetRes.json();
-    _cpSwitchTab('budget');
-  } catch(e) { alert('Error: ' + e); }
-  finally { if (spin) spin.style.display = 'none'; if (btn) btn.disabled = false; }
-}
 
 function _cpBindBudget() {}
 
@@ -5071,54 +4946,8 @@ async function _cpAiEditSave(attachId) {
   finally { btn.disabled = false; }
 }
 
-function _cpOpenGenBudgetModal() {
-  const existing = document.getElementById('gen-budget-modal');
-  if (existing) existing.remove();
-  const modal = document.createElement('div');
-  modal.id = 'gen-budget-modal';
-  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:center;justify-content:center';
-  modal.innerHTML = `
-    <div style="background:#0f172a;border:1px solid #1e293b;border-radius:10px;padding:24px;width:min(480px,95vw)">
-      <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:700;color:#e2e8f0;margin-bottom:16px">⚡ Generar presupuesto con IA</div>
-      <textarea id="gen-budget-instr" placeholder="Instrucciones adicionales (opcional). Ej: sitio web para arquitecta, precio $370 USD, mantenimiento $25/mes..."
-        style="width:100%;height:80px;background:#0a0f1a;border:1px solid #1e293b;border-radius:6px;color:#e2e8f0;font-size:.85rem;padding:10px;resize:vertical;box-sizing:border-box"></textarea>
-      <div style="display:flex;gap:8px;margin-top:12px">
-        <button class="cp-btn cp-btn-primary" id="gen-budget-btn" onclick="_cpGenBudget()">
-          <span id="gen-budget-spin" class="cp-spinner" style="display:none"></span>
-          Generar
-        </button>
-        <button class="cp-btn cp-btn-ghost" onclick="document.getElementById('gen-budget-modal').remove()">Cancelar</button>
-      </div>
-    </div>`;
-  document.body.appendChild(modal);
-}
 
-async function _cpGenBudget() {
-  const instr = (document.getElementById('gen-budget-instr').value || '').trim();
-  const btn = document.getElementById('gen-budget-btn');
-  const spin = document.getElementById('gen-budget-spin');
-  btn.disabled = true; spin.style.display = 'inline-block';
-  try {
-    const r = await fetch(`/api/leads/${_cpClientId}/budget/generate`, {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({instructions: instr})
-    });
-    const d = await r.json();
-    if (d.ok) {
-      document.getElementById('gen-budget-modal').remove();
-      await _cpReloadAttach('budget');
-      _cpSwitchTab('budget');
-    } else { alert(d.error || 'Error generando presupuesto'); }
-  } catch(e) { alert('Error: ' + e); }
-  finally { btn.disabled = false; spin.style.display = 'none'; }
-}
 
-function _cpOpenDemoModal() {
-  const l = _cpData.lead || {};
-  const b = {id: l.id, name: l.name||'', category: l.category||'', city: l.city||'', phone: l.phone||''};
-  closeClientPanel();
-  openDemoModalFromCRM(b);
-}
 
 function _cpRenderDemo() {
   const d = _cpData.demo;
@@ -5152,10 +4981,7 @@ function _cpRenderDemo() {
   return `<div class="cp-section">
     <div class="cp-section-title">Demo</div>
     ${d && d.error_message ? `<div style="color:#f87171;font-size:.8rem;margin-bottom:8px;background:#0a0f1a;padding:8px;border-radius:6px">Error anterior: ${d.error_message}</div>` : ''}
-    <div style="color:#475569;font-size:.85rem;margin-bottom:12px">Sin demo generada para este cliente.</div>
-    <button class="cp-btn cp-btn-primary" onclick="_cpOpenDemoModal()">
-      📊 Generar demo
-    </button>
+    <div style="color:#475569;font-size:.85rem;margin-bottom:12px">Sin demo para este cliente. Se adjunta desde acá abajo o se registra con /api/demo/set-url.</div>
   </div>
   ${_cpRenderAttachBox('demo')}`;
 }
