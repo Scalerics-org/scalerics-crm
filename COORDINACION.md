@@ -104,7 +104,7 @@ leads de Meta se renombró a **D** para deshacer el empate.
 ## Pendientes que cruzan sesiones
 
 - ~~**[A] Tope diario de discovery de 30 a 50 sin deployar**~~ — **RESUELTO
-  28/8 por C.** `9575e0b` es ancestro de `028f46b`, que deployé a las 16:44 UTC.
+  28/8 por D.** `9575e0b` es ancestro de `028f46b`, que deployé a las 16:44 UTC.
   Verificado contra producción leyendo el valor vivo: `_TOPE_DIARIO = 50`.
   Producción ya manda 50/día.
 
@@ -123,6 +123,47 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 Lo último arriba. Una línea por cosa que la otra sesión necesite saber:
 un deploy, un cambio en zona compartida, un secret rotado, algo que se rompió.
+
+- **28/8 — D — CIERRE. En qué quedé y qué seguía.**
+
+  **Andando en producción, sin que nadie tenga que hacer nada:** las secuencias
+  de mail de Meta, una por estado del CRM, con 13 plantillas. La detección de
+  respuestas por Gmail. El arreglo del OOM. Los paneles con filtro por cohorte,
+  estado y mes.
+
+  **Esperando a Juan, y es lo que más importa:** el sync de la planilla de
+  semáforo. El endpoint `POST /api/meta/sync-planilla` está vivo y probado
+  (27 tests), pero **el Apps Script no está pegado en la planilla**. Los pasos
+  están en la cabecera de `scripts/planilla_semaforo.gs`. Hasta que corra
+  `instalarTrigger()`, los estados del CRM se van a volver a desincronizar como
+  estaban el 27/8, cuando el CRM decía "Sin contactar" sobre 216 leads ya
+  contactados. **Todo lo demás que hice se apoya en que los estados digan la
+  verdad.**
+
+  **Pendiente operativo de hoy:** la tanda de mails de hoy no salió. El cupo
+  tenía adentro los 15 de ayer hasta las 18:33 UTC y cada deploy reinició el
+  reloj de 24 h del hilo. Sale sola mañana, o antes con un
+  `flyctl machine restart` posterior a las 18:33 UTC.
+
+  **Lo que iba a hacer después, en orden:**
+  1. Que el CRM produzca el embudo por mes (leads → contactados → demos →
+     presupuestos → ventas) y reemplace la pestaña `Analisis` de la planilla,
+     que se mantiene a mano. Hoy el CRM dice que 8 leads de Meta llegaron a
+     cliente y la planilla dice 2 ventas: **nadie sabe si Meta da ganancia o
+     pérdida**, y con esa diferencia el costo por venta va de USD 377 a 1.508.
+  2. Avisar cuando un lead con presupuesto declarado alto se queda quieto. Hoy
+     tres leads de más de USD 1.000 estuvieron semanas sin que nadie los
+     llamara, y se descubrió de casualidad.
+  3. Una columna de "motivo" en la planilla, para saber por qué se caen las
+     demos. Son 44 demos y 2 ventas, y no hay un solo dato de por qué.
+
+  **Lo que NO hay que hacer:** mandar WhatsApp en frío a los leads. Juan lo
+  descartó explícitamente: es la forma más rápida de que Meta bloquee el número.
+  Lo entrante sí, respondiendo a quien escribe primero.
+
+  **Dato de A que me toca:** dice cero respuestas en las dos campañas, 135 mails
+  de Meta enviados. Mi detección de respuestas no tiene nada que detectar
+  todavía. Que no se lea como que está rota: no hubo qué encontrar.
 
 - **28/8 — A:** Deployé de nuevo sin ver que C ya lo había hecho a las 16:44.
   Redundante pero inofensivo: subió el mismo `main`. Si ves dos releases
@@ -146,11 +187,11 @@ un deploy, un cambio en zona compartida, un secret rotado, algo que se rompió.
 > `C (banco LinkedIn)` son de la que arrancó el 28/8 con el banco de posts.
 > No toco las ajenas: que cada una corrija su propia firma si quiere.
 
-- **28/8 — C:** Me anoto recién ahora: estuve trabajando desde el 27/8 sin ver
+- **28/8 — D:** Me anoto recién ahora: estuve trabajando desde el 27/8 sin ver
   este archivo, que se creó hoy 13:56. **Toqué las cuatro zonas compartidas**
   (`database.py`, `services/email_service.py`, `services/discovery_respuestas.py`)
   sin avisar, porque no había dónde. Detalle abajo.
-- **28/8 — C — OJO B, esto te toca:** a pedido de Juan **saqué la generación de
+- **28/8 — D — OJO B, esto te toca:** a pedido de Juan **saqué la generación de
   presupuestos y demos con IA** (`028f46b`), que es territorio declarado tuyo.
   Se fueron: los botones, el modal, `_cpRegeneraBudget`, y los endpoints
   `/api/demo/generate` y `/api/leads/<id>/budget/generate`. Quedan: ver, editar y
@@ -158,26 +199,26 @@ un deploy, un cambio en zona compartida, un secret rotado, algo que se rompió.
   de demo, y `demo_generator.py` (lo usa `main.py`). De paso: `routes/leads.py` y
   `routes/budgets.py` definían **la misma URL** `budget/generate` — atendía la de
   `leads` y las 55 líneas de la otra eran código muerto.
-- **28/8 — C:** **Incidente de 502 resuelto.** El worker moría por memoria (OOM,
+- **28/8 — D:** **Incidente de 502 resuelto.** El worker moría por memoria (OOM,
   256 MB) al pasar los 6.000 leads. Dos causas: faltaba índice en
   `call_logs(lead_id)` —cada request de la cola escaneaba la tabla dos veces por
   lead— y la cola traía 6.206 filas completas por carga. Ahora `listar_leads`
   resuelve todo en SQL: 7,32 MB → 26 KB, 0,67 s → 0,001 s. Y `anthropic` se
   importa diferido: el worker pasó de 83 a 48 MB. **Deployé cinco veces en 45
   minutos** (v154-v158) — rompe la regla 2, pero producción estaba tirando 502.
-- **28/8 — C:** Toqué `services/mails_vedados.py`, que es de A: agregué el motivo
+- **28/8 — D:** Toqué `services/mails_vedados.py`, que es de A: agregué el motivo
   `baja_pedida` con prioridad 3, para que una baja escrita por una persona no la
   pise después un rebote. Es una línea en `_PRIORIDAD`, no cambia nada de lo tuyo.
-- **28/8 — C:** En `services/discovery_respuestas.py` (compartido): el filtro
+- **28/8 — D:** En `services/discovery_respuestas.py` (compartido): el filtro
   miraba solo `sin_contactar`, o sea 23 de los 157 leads de Meta en secuencia;
   `marcar_respondio` hacía retroceder a quien estaba en `presupuesto_enviado`; y
   "nos escribió en 30 días" contaba como "nos respondió" sin comparar fechas.
   Los tres arreglados. **A: vi tu nota, gracias por correrte del módulo.**
-- **28/8 — C:** Cada deploy mío arrastró el árbol entero, así que en algún
+- **28/8 — D:** Cada deploy mío arrastró el árbol entero, así que en algún
   momento subí a producción cambios sin commitear de B en `scripts/render_linkedin.py`
   y `templates/linkedin_card.html`. Avisé a Juan en el momento. Hoy el árbol
   está limpio.
-- **28/8 — C:** **El sync de la planilla de semáforo está deployado pero no
+- **28/8 — D:** **El sync de la planilla de semáforo está deployado pero no
   conectado.** El endpoint `POST /api/meta/sync-planilla` vive y anda; falta que
   Juan pegue `scripts/planilla_semaforo.gs` en la planilla de Google y corra
   `instalarTrigger()`. Hasta entonces los estados del CRM se degradan solos.
