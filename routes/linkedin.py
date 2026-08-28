@@ -54,6 +54,9 @@ def api_linkedin_generar():
     if manual:
         payload["contexto_manual"] = manual
         payload["imagen_url"] = (data.get("imagen_url") or "").strip()
+        # La frase de la tarjeta la escribis vos. Si no viene, el handler cae
+        # a la primera linea del post.
+        payload["frase"] = (data.get("frase") or "").strip()
 
     job_id = create_job(db_path, "linkedin", json.dumps(payload))
 

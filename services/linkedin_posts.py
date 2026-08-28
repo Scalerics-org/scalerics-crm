@@ -1,10 +1,19 @@
 """Borradores de post para la pagina de LinkedIn de Scalerics.
 
-Redacta con Claude y valida el texto contra las reglas de voz. No publica
-nada: el resultado se manda por mail para que Juan lo revise.
+Los posts educativos ya estan escritos: viven en
+services/linkedin_banco_semilla.py y se cargan en la tabla `linkedin_banco`.
+Este modulo elige cual sale en cada corrida y arma la fila del borrador. No
+llama a ningun modelo y no publica nada: el resultado se manda por mail para
+que Juan lo revise.
 
-Dos modos: el mail programado, que sale de la tabla de temas educativos, y el
-post pedido a mano sobre trabajo real, que se arma con lo que Juan escriba.
+Hasta agosto de 2026 cada corrida del cron le pedia el texto a un modelo. Eso
+gastaba credito de API dos veces por semana para siempre, y era practicamente
+todo el gasto de la cuenta. Los textos se escribieron una vez y quedaron
+guardados. Si vas a agregar posts nuevos, las reglas que tienen que cumplir
+estan en REGLAS_DE_VOZ mas abajo y las chequea validar_borrador().
+
+Dos modos: el mail programado, que sale del banco, y el post pedido a mano
+sobre trabajo real, que llega ya escrito en el pedido.
 """
 
 import json
@@ -14,12 +23,10 @@ import re
 import secrets
 from datetime import datetime, timedelta
 
-import anthropic
-
 from database import (
     create_linkedin_post,
-    get_temas_disponibles,
-    marcar_tema_usado,
+    get_banco_disponible,
+    marcar_banco_usado,
 )
 from services.email_service import send_linkedin_failure
 
@@ -105,31 +112,39 @@ def validar_borrador(texto: str) -> list[str]:
     return violaciones
 
 
-def elegir_tema(db_path: str, ahora: datetime, excluir_ids: set) -> tuple:
-    """Devuelve (tema, en_cooldown).
 
-    en_cooldown=True significa que no quedaba ningun tema fuera del cooldown
-    y se reuso el mas viejo. El mail lo dice, para que se note que hay que
-    sembrar temas nuevos.
+def elegir_del_banco(db_path: str, ahora: datetime, excluir_temas: set) -> tuple:
+    """Devuelve (fila del banco, en_cooldown).
+
+    Se excluye por tema y no por fila. Cada tema tiene sus dos angulos en el
+    banco, y si se excluyera solo la fila ya usada el segundo borrador de la
+    corrida saldria del mismo tema: el mail llegaria con dos posts sobre lo
+    mismo, que es justo lo que el par concreto/implicancia evita.
+
+    en_cooldown=True significa que no quedaba ningun post fuera del cooldown y
+    se reuso el mas viejo. El mail lo dice, para que se note que hay que
+    escribir posts nuevos en la semilla.
     """
     limite = (ahora - timedelta(days=COOLDOWN_DIAS)).isoformat()
 
-    libres = [t for t in get_temas_disponibles(db_path, limite)
-              if t["id"] not in excluir_ids]
+    libres = [f for f in get_banco_disponible(db_path, limite)
+              if f["tema"] not in excluir_temas]
     if libres:
         return libres[0], False
 
     # Fallback: el mas viejo de todos, aunque no haya cumplido el cooldown.
-    todos = get_temas_disponibles(db_path, ahora.isoformat())
-    todos = [t for t in todos if t["id"] not in excluir_ids]
+    todos = get_banco_disponible(db_path, ahora.isoformat())
+    todos = [f for f in todos if f["tema"] not in excluir_temas]
     if not todos:
-        raise RuntimeError("No hay temas de LinkedIn sembrados")
+        raise RuntimeError("No hay posts en el banco de LinkedIn")
     return todos[0], True
 
 
-MODELO = "claude-opus-5"
-
-SYSTEM_PROMPT = """Escribís posts para la página de empresa de Scalerics en \
+# Las reglas que cumple cada post del banco. Ya no las lee ningun modelo: son
+# la referencia para quien escriba posts nuevos a mano. Las que se pueden
+# chequear con codigo estan en validar_borrador(), y hay un test que corre el
+# validador sobre toda la semilla.
+REGLAS_DE_VOZ = """Escribís posts para la página de empresa de Scalerics en \
 LinkedIn, una software factory uruguaya que construye software a medida, \
 sistemas de gestión, tiendas online y automatizaciones. Los publica la \
 empresa, no una persona: no es el perfil personal de nadie.
@@ -181,167 +196,34 @@ _ANGULOS = {
     ),
 }
 
-
-def contexto_educativo(tema: dict) -> str:
-    return f"""Post educativo para quien toma decisiones en una empresa. No \
-hay un cliente ni un proyecto detrás: es algo que Scalerics ve seguido.
-
-- Tema: {tema['titulo']}
-- Lo que hay que dejar dicho: {tema['angulo']}
-
-Podés usar ejemplos genéricos y verosímiles del mercado uruguayo, y conviene \
-variarlos: una distribuidora, un estudio contable, una empresa de logística, un \
-taller, un comercio. No caigas siempre en el mismo ejemplo ni des por sentado \
-que el lector tiene un negocio chico. No inventes clientes de Scalerics ni \
-cifras de resultados que no tenés."""
-
-
-def contexto_manual(descripcion: str) -> str:
-    """Contexto de un post pedido a mano, sobre trabajo real.
-
-    Lo que se cuenta lo escribe Juan. El CRM no guarda nada de los proyectos
-    entregados, asi que esta es la unica via para un post sobre trabajo propio.
-    """
-    return f"""Post sobre trabajo real de Scalerics. Esto lo escribió Juan a \
-mano y es todo lo que hay:
-
-{descripcion.strip()}
-
-No agregues ningún dato que no esté ahí arriba: ni plazos, ni tecnologías, ni \
-resultados, ni nombres. Si algo no está, no se menciona. Preferí un post corto \
-y concreto antes que uno largo que rellena."""
-
-
-def redactar(contexto: str, angulo: str):
-    """Un post validado, o None si el modelo no logro uno en dos intentos."""
-    instruccion_angulo = _ANGULOS.get(angulo, _ANGULOS["concreto"])
-    mensajes = [{
-        "role": "user",
-        "content": f"{contexto}\n\nAngulo del post: {instruccion_angulo}",
-    }]
-
-    try:
-        client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
-    except KeyError:
-        logger.error("Falta ANTHROPIC_API_KEY; no se puede redactar")
-        return None
-
-    for intento in (1, 2):
-        try:
-            respuesta = client.messages.create(
-                model=MODELO,
-                max_tokens=4000,
-                thinking={"type": "adaptive"},
-                system=SYSTEM_PROMPT,
-                messages=mensajes,
-            )
-        except Exception:
-            logger.exception("Fallo la llamada a Claude (intento %s)", intento)
-            return None
-
-        texto = "".join(
-            b.text for b in respuesta.content if getattr(b, "type", None) == "text"
-        ).strip()
-
-        violaciones = validar_borrador(texto)
-        if not violaciones:
-            return texto
-
-        logger.warning("Borrador rechazado (intento %s): %s", intento, violaciones)
-        if intento == 2:
-            return None
-
-        # El reintento lleva el texto rechazado y la lista de lo que rompio.
-        mensajes = mensajes + [
-            {"role": "assistant", "content": texto},
-            {"role": "user", "content":
-                "Ese texto rompe las reglas. Problemas: "
-                + "; ".join(violaciones)
-                + ". Reescribilo entero corrigiendo eso y respetando todo lo demas."},
-        ]
-
-    return None
-
-
 MAX_FRASE = 70
 
-_PROMPT_FRASE = """Te paso un post de LinkedIn ya escrito. Devolvé la línea que \
-va en la imagen que lo acompaña.
 
-Tiene que ser la frase más fuerte del post: la que hace que alguien pare de \
-scrollear. Entre cuatro y diez palabras. Preferí una frase textual del post; si \
-ninguna funciona sola, escribí uná que diga lo mismo.
+def _borrador_manual(db_path: str, job_id, lote: str, texto: str,
+                     imagen_url: str = "", frase: str = ""):
+    """Un post sobre trabajo real. El texto llega ya escrito en el pedido.
 
-No pongas comillas, ni punto final, ni emojis, ni guiones largos. Devolvé \
-solamente la frase, nada más."""
-
-
-def frase_tarjeta(texto: str):
-    """La línea que va en la imagen, o None si no salió una usable.
-
-    Se pide sobre el post ya validado, así que la frase refleja el texto final
-    y no una versión que después se descartó. Si devuelve None, quien llama
-    cae al título del tema: la tarjeta nunca sale vacía.
+    Antes aca se le pasaba una descripcion a un modelo para que la convirtiera
+    en post. Ahora el post lo escribis vos y esto solo lo guarda: el CRM no
+    tiene nada que agregarle a algo que ya esta escrito, y no hay razon para
+    gastar API en reformatear texto propio.
     """
-    try:
-        client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
-    except KeyError:
-        logger.error("Falta ANTHROPIC_API_KEY; no se puede armar la frase")
+    texto = (texto or "").strip()
+    if not texto:
         return None
 
-    try:
-        respuesta = client.messages.create(
-            model=MODELO,
-            # Opus 5 piensa por defecto: con max_tokens chico el pensamiento se
-            # come el presupuesto y la frase vuelve cortada por la mitad. Esta
-            # tarea no necesita pensar mucho, asi que va con effort bajo y con
-            # aire de sobra.
-            max_tokens=2000,
-            thinking={"type": "adaptive"},
-            output_config={"effort": "low"},
-            system=_PROMPT_FRASE,
-            messages=[{"role": "user", "content": texto}],
-        )
-    except Exception:
-        logger.exception("Fallo la llamada a Claude para la frase de la tarjeta")
-        return None
-
-    if respuesta.stop_reason == "max_tokens":
-        logger.warning("La frase de la tarjeta se corto por max_tokens")
-        return None
-
-    frase = "".join(
-        b.text for b in respuesta.content if getattr(b, "type", None) == "text"
-    ).strip().strip('"').strip("'").rstrip(".").strip()
-
-    if not frase or len(frase) > MAX_FRASE:
-        logger.warning("Frase de tarjeta descartada (%s caracteres)", len(frase))
-        return None
-    if _EMOJI.search(frase) or "—" in frase or "–" in frase:
-        logger.warning("Frase de tarjeta con emoji o guion largo, descartada")
-        return None
-    return frase
-
-
-def _borrador_manual(db_path: str, job_id, lote: str, descripcion: str,
-                     imagen_url: str = ""):
-    """Un post sobre trabajo real, a partir de lo que escribio Juan."""
-    texto = redactar(contexto_manual(descripcion), "concreto")
-    if texto is None:
-        return None
-
-    # Con URL se muestra lo que se hizo; sin URL, la frase del post en la
-    # tarjeta de marca. Un post sin imagen rinde bastante menos en LinkedIn.
+    # Con URL se muestra lo que se hizo; sin URL, una frase en la tarjeta de
+    # marca. Un post sin imagen rinde bastante menos en LinkedIn.
     if imagen_url:
         imagen_tipo = "screenshot"
         imagen_spec = json.dumps({"url": imagen_url})
     else:
-        frase = frase_tarjeta(texto)
+        frase = (frase or "").strip() or _primera_frase(texto)
         imagen_tipo = "tarjeta" if frase else "ninguna"
-        imagen_spec = json.dumps({"frase": frase or ""})
+        imagen_spec = json.dumps({"frase": frase})
 
     token = secrets.token_urlsafe(16)
-    resumen = " ".join(descripcion.split())[:90]
+    resumen = " ".join(texto.split())[:90]
     fuente_desc = f"Pedido a mano: {resumen}"
 
     post_id = create_linkedin_post(
@@ -358,27 +240,35 @@ def _borrador_manual(db_path: str, job_id, lote: str, descripcion: str,
     }
 
 
-def _borrador_educativo(db_path: str, job_id, lote: str, tema: dict, angulo: str):
-    texto = redactar(contexto_educativo(tema), angulo)
-    if texto is None:
-        return None
+def _primera_frase(texto: str) -> str:
+    """La primera oracion, si entra en la tarjeta. Si no entra, cadena vacia.
 
-    # La tarjeta lleva la frase mas fuerte del post, no el titulo del tema: ese
-    # titulo ya esta en el mail y en el texto del post. El titulo queda como
-    # respaldo para que la imagen nunca salga vacia.
-    imagen_spec = json.dumps({"frase": frase_tarjeta(texto) or tema["titulo"]})
+    Respaldo para el post manual sin frase propia: mejor la primera linea del
+    post que una tarjeta vacia. Recortar a la mitad una oracion queda peor que
+    no poner tarjeta, asi que si no entra entera no se usa.
+    """
+    primera = texto.strip().splitlines()[0].split(". ")[0].strip().rstrip(".")
+    return primera if 0 < len(primera) <= MAX_FRASE else ""
+
+
+def _borrador_educativo(db_path: str, job_id, lote: str, fila: dict):
+    """Arma el borrador a partir de una fila del banco.
+
+    El texto y la frase de la tarjeta ya vienen escritos: aca solo se guardan.
+    """
+    imagen_spec = json.dumps({"frase": fila["frase"]})
     token = secrets.token_urlsafe(16)
-    fuente_desc = f"Tema educativo: {tema['titulo']}"
+    fuente_desc = f"Tema educativo: {fila['tema']}"
 
     post_id = create_linkedin_post(
         db_path,
         job_id=job_id,
         lote=lote,
         tipo="educativo",
-        texto=texto,
-        angulo=angulo,
-        fuente_tipo="tema",
-        fuente_id=tema["id"],
+        texto=fila["texto"],
+        angulo=fila["angulo"],
+        fuente_tipo="banco",
+        fuente_id=fila["id"],
         imagen_tipo="tarjeta",
         imagen_spec=imagen_spec,
         fuente_desc=fuente_desc,
@@ -388,22 +278,21 @@ def _borrador_educativo(db_path: str, job_id, lote: str, tema: dict, angulo: str
     return {
         "id": post_id,
         "tipo": "educativo",
-        "texto": texto,
+        "texto": fila["texto"],
         "fuente_desc": fuente_desc,
         "aviso": "",
         "marcar_token": token,
         "imagen_tipo": "tarjeta",
         "imagen_spec": json.loads(imagen_spec),
-        "fuente_id": tema["id"],
+        "fuente_id": fila["id"],
     }
 
 
 def linkedin_job_handler(payload: dict) -> dict:
-    """Handler del JobWorker. Genera los borradores y los guarda.
+    """Handler del JobWorker. Arma los borradores y los guarda.
 
-    Dos modos. Sin `contexto_manual` arma los dos educativos del mail
-    programado. Con `contexto_manual` arma un solo post sobre trabajo real, a
-    partir de lo que escribio Juan.
+    Dos modos. Sin `contexto_manual` saca los dos educativos del banco. Con
+    `contexto_manual` guarda un solo post sobre trabajo real, ya escrito.
 
     No manda el mail: eso pasa en /api/linkedin/enviar, despues de que el
     runner de Actions renderice las imagenes. El `lote` viene armado desde el
@@ -420,25 +309,23 @@ def linkedin_job_handler(payload: dict) -> dict:
 
     if manual:
         b = _borrador_manual(db_path, job_id, lote, manual,
-                             payload.get("imagen_url") or "")
+                             payload.get("imagen_url") or "",
+                             payload.get("frase") or "")
         if b:
             borradores.append(b)
     else:
-        usados_ids = set()
-        for i in range(2):
-            tema, en_cooldown = elegir_tema(db_path, ahora, usados_ids)
+        usados_temas = set()
+        for _ in range(2):
+            fila, en_cooldown = elegir_del_banco(db_path, ahora, usados_temas)
             aviso_cooldown = aviso_cooldown or en_cooldown
-            usados_ids.add(tema["id"])
-            angulo = "concreto" if i == 0 else "implicancia"
-            b = _borrador_educativo(db_path, job_id, lote, tema, angulo)
+            usados_temas.add(fila["tema"])
+            b = _borrador_educativo(db_path, job_id, lote, fila)
             if b:
-                marcar_tema_usado(db_path, tema["id"], ahora.isoformat())
+                marcar_banco_usado(db_path, fila["id"], ahora.isoformat())
                 borradores.append(b)
 
     if not borradores:
         destino = os.environ.get("LINKEDIN_MAIL_TO", "scalerics@gmail.com")
-        send_linkedin_failure(
-            destino, "ningun borrador paso la validacion de las reglas de voz"
-        )
+        send_linkedin_failure(destino, "no se pudo armar ningun borrador")
 
     return {"lote": lote, "borradores": borradores, "aviso_cooldown": aviso_cooldown}

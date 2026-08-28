@@ -569,6 +569,21 @@ def init_db(db_path: str) -> None:
                 usado_en    TIMESTAMP
             )
         """)
+        # Los posts ya escritos. Reemplaza a la generacion por API en el
+        # camino del cron: el texto y la frase de la tarjeta ya estan aca, asi
+        # que la corrida de los martes y viernes no llama a ningun modelo.
+        # UNIQUE(tema, angulo) hace que sembrar dos veces no duplique.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS linkedin_banco (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                tema        TEXT NOT NULL,
+                angulo      TEXT NOT NULL,
+                texto       TEXT NOT NULL,
+                frase       TEXT NOT NULL,
+                usado_en    TIMESTAMP,
+                UNIQUE (tema, angulo)
+            )
+        """)
         _add_column(conn, "businesses", "linkedin_ok", "INTEGER DEFAULT 0")
 
         # ── task assignment & goal tracking ────────────────────────────────────
@@ -1976,6 +1991,48 @@ def marcar_tema_usado(db_path: str, tema_id: int, cuando_iso: str) -> None:
         conn.close()
 
 
+def get_banco_disponible(db_path: str, limite_iso: str) -> list[dict]:
+    """Posts del banco nunca usados o usados antes de `limite_iso`.
+
+    Primero los que nunca salieron, despues los reciclados de mas viejo a mas
+    nuevo. Dentro de los que nunca salieron el orden es por angulo y recien
+    despues por id, y eso no es cosmetico: los dos angulos de un tema son
+    filas contiguas, asi que ordenando solo por id la corrida del viernes
+    agarraba el otro angulo de los mismos temas del martes y la semana quedaba
+    hablando dos veces de lo mismo. Ordenando por angulo se da una vuelta
+    entera al banco en "concreto" (21 semanas) antes de empezar la vuelta en
+    "implicancia", asi que un tema no se repite hasta cinco meses despues y
+    vuelve desde el otro lado.
+    """
+    conn = _connect(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT * FROM linkedin_banco "
+            "WHERE usado_en IS NULL OR usado_en < ? "
+            "ORDER BY usado_en IS NOT NULL, usado_en, angulo, id",
+            (limite_iso,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def marcar_banco_usado(db_path: str, banco_id: int, cuando_iso: str) -> None:
+    conn = _connect(db_path)
+    try:
+        conn.execute(
+            "UPDATE linkedin_banco SET usado_en = ? WHERE id = ?",
+            (cuando_iso, banco_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+# Los 42 temas. Desde que existe el banco de posts ya escritos, esta tabla no
+# la lee nadie en tiempo de ejecucion: quedo como el indice de los temas y,
+# sobre todo, por la segunda columna, que dice que tiene que dejar dicho cada
+# post. Es la referencia para escribir los del banco, no una entrada del cron.
 _LINKEDIN_TEMAS_SEMILLA = [
     ("Por qué tu negocio no aparece en Google Maps",
      "la ficha existe pero está incompleta, y eso decide quién te encuentra"),
@@ -2071,6 +2128,26 @@ def seed_linkedin_temas(db_path: str) -> None:
         conn.executemany(
             "INSERT OR IGNORE INTO linkedin_temas (titulo, angulo) VALUES (?, ?)",
             _LINKEDIN_TEMAS_SEMILLA,
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def seed_linkedin_banco(db_path: str) -> None:
+    """Inserta los posts ya escritos que falten. Idempotente por (tema, angulo).
+
+    La semilla vive en su propio modulo: son 84 textos largos y no tienen nada
+    que hacer en el medio de las queries.
+    """
+    from services.linkedin_banco_semilla import LINKEDIN_BANCO_SEMILLA
+
+    conn = _connect(db_path)
+    try:
+        conn.executemany(
+            "INSERT OR IGNORE INTO linkedin_banco (tema, angulo, texto, frase) "
+            "VALUES (?, ?, ?, ?)",
+            LINKEDIN_BANCO_SEMILLA,
         )
         conn.commit()
     finally:

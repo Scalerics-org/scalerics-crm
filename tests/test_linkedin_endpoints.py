@@ -9,7 +9,7 @@ from database import (
     create_linkedin_post,
     get_linkedin_post_by_token,
     init_db,
-    seed_linkedin_temas,
+    seed_linkedin_banco,
 )
 
 
@@ -19,7 +19,7 @@ def app_y_db(tmp_path, monkeypatch):
     monkeypatch.setenv("LINKEDIN_MAIL_TO", "destino@test.com")
     db = str(tmp_path / "t.db")
     init_db(db)
-    seed_linkedin_temas(db)
+    seed_linkedin_banco(db)
     app = dashboard.create_app(db)
     app.config["TESTING"] = True
     # `conftest` apaga los procesos de fondo en toda la suite, asi que
@@ -40,15 +40,13 @@ def test_generar_sin_token_devuelve_401(app_y_db):
 
 def test_generar_encola_un_job_con_lote(app_y_db):
     app, db = app_y_db
-    # El worker arranca junto con create_app y podria levantar el job durante
-    # el test; con redactar mockeado no sale ninguna llamada a la API.
-    with patch("services.linkedin_posts.redactar", return_value="t" * 400):
-        r = app.test_client().post(
-            "/api/linkedin/generar", headers={"x-admin-token": "secreto"}
-        )
-        assert r.status_code == 202
-        cuerpo = r.get_json()
-
+    # El job lee del banco de posts ya escritos, asi que aunque el
+    # worker lo levante durante el test no sale ninguna llamada a la red.
+    r = app.test_client().post(
+        "/api/linkedin/generar", headers={"x-admin-token": "secreto"}
+    )
+    assert r.status_code == 202
+    cuerpo = r.get_json()
     assert cuerpo["lote"]
 
     conn = sqlite3.connect(db)
@@ -143,13 +141,12 @@ def test_generar_acepta_un_contexto_manual(app_y_db):
     """El post sobre trabajo real se pide a mano: el CRM no guarda nada de los
     proyectos entregados, asi que esa info la escribe Juan."""
     app, db = app_y_db
-    with patch("services.linkedin_posts.redactar", return_value="t" * 400):
-        r = app.test_client().post(
-            "/api/linkedin/generar",
-            headers={"x-admin-token": "secreto"},
-            json={"contexto_manual": "Salio la tienda de Biciconde.",
-                  "imagen_url": "https://biciconde.uy"},
-        )
+    r = app.test_client().post(
+        "/api/linkedin/generar",
+        headers={"x-admin-token": "secreto"},
+        json={"contexto_manual": "Salio la tienda de Biciconde.",
+              "imagen_url": "https://biciconde.uy"},
+    )
     assert r.status_code == 202
     payload = json.loads(sqlite3.connect(db).execute(
         "SELECT payload FROM jobs WHERE id = ?", (r.get_json()["job_id"],)
@@ -160,9 +157,8 @@ def test_generar_acepta_un_contexto_manual(app_y_db):
 
 def test_generar_sin_cuerpo_no_pone_contexto_manual(app_y_db):
     app, db = app_y_db
-    with patch("services.linkedin_posts.redactar", return_value="t" * 400):
-        r = app.test_client().post(
-            "/api/linkedin/generar", headers={"x-admin-token": "secreto"})
+    r = app.test_client().post(
+        "/api/linkedin/generar", headers={"x-admin-token": "secreto"})
     payload = json.loads(sqlite3.connect(db).execute(
         "SELECT payload FROM jobs WHERE id = ?", (r.get_json()["job_id"],)
     ).fetchone()[0])
