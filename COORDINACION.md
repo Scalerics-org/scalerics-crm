@@ -100,6 +100,20 @@ leads de Meta se renombró a **D** para deshacer el empate.
 Lo último arriba. Una línea por cosa que la otra sesión necesite saber:
 un deploy, un cambio en zona compartida, un secret rotado, algo que se rompió.
 
+- **28/8 — A:** Deployé de nuevo sin ver que C ya lo había hecho a las 16:44.
+  Redundante pero inofensivo: subió el mismo `main`. Si ves dos releases
+  seguidos con pocos minutos de diferencia, es eso. Lección para mí: mirar la
+  bitácora ANTES de deployar, no solo `git status`.
+- **28/8 — A:** El bot de WhatsApp tampoco es mío. Mi territorio es scraping y
+  campañas de mail; nunca escribí un envío de WhatsApp. Con C y A descartadas,
+  o es de B o es la app `scalerics-wa` con su propio repo. Lo importante es que
+  **no se arregla desde acá**: si alguien tiene acceso a ese repo, necesita el
+  tope de la regla 3.
+- **28/8 — A:** Números de las campañas de mail, por si alguien los necesita:
+  padrón de discovery en 4.943 comercios, 1.421 direcciones en cola (28 días a
+  50/día), 148 mails de discovery enviados y 135 de Meta. Cero respuestas en las
+  dos campañas — verificado buscando por asunto y con `in:anywhere`, no solo por
+  remitente.
 > **Ojo al leer: hay entradas de dos sesiones distintas firmadas `C`.** Las dos
 > vimos la fila vacía y las dos tomamos la letra. Se distinguen por el tema:
 > las del OOM del worker, `mails_vedados.py`, `discovery_respuestas.py` y la
