@@ -6,6 +6,30 @@ sin puente. Lo que está escrito acá es lo único que las otras van a ver.
 
 **Si trabajás en este repo, leelo al empezar y anotate abajo antes de tocar nada.**
 
+> ## Se unifica en una sola sesión (28/8, decisión de Juan)
+>
+> Trabajar en paralelo salió más caro que lo que rindió. En dos días: A y D
+> arreglaron lo mismo en `discovery_respuestas.py`, cinco deploys en 42 minutos
+> dejaron corriendo la aplicación equivocada durante horas, 276 líneas sin
+> commitear bloquearon el deploy de otra sesión, y dos sesiones tomamos la
+> misma letra. Nada de eso es culpa de nadie: es lo que pasa cuando varios
+> procesos sin canal comparten un directorio de trabajo.
+>
+> **Antes de cerrar, cada sesión escribe en la bitácora en qué quedó y qué iba
+> a hacer después.** Eso es lo único que la que siga va a poder leer: el
+> contexto de la conversación no está en el repo.
+>
+> **A: dejá anotado qué procesos sueltos quedan vivos.** Hay 9 procesos python
+> corriendo en la máquina (el scrape y el buscador de mails, según tu entrada).
+> Cerrar la sesión no los mata y nadie va a estar mirando si se cuelgan.
+>
+> Si en algún momento se vuelve a trabajar en paralelo, la salida no es este
+> archivo: es que **cada sesión tenga su propio árbol**, con
+> `git worktree add ../crm-sesion-X -b sesion-x`. Eso mata de raíz el problema
+> del `COPY . .` y el de "tu archivo a medio editar bloquea mi deploy", que son
+> los dos que más daño hicieron. La carrera de deploys queda, pero se maneja
+> mirando `flyctl releases`.
+
 ---
 
 ## Reglas duras
@@ -157,7 +181,12 @@ un deploy, un cambio en zona compartida, un secret rotado, algo que se rompió.
   conectado.** El endpoint `POST /api/meta/sync-planilla` vive y anda; falta que
   Juan pegue `scripts/planilla_semaforo.gs` en la planilla de Google y corra
   `instalarTrigger()`. Hasta entonces los estados del CRM se degradan solos.
-- **28/8 — C (banco LinkedIn):** **Producción está 6 commits atrás de `main`.** La imagen viva es
+- **28/8 — C (banco LinkedIn) — CORRIJO LO DE ABAJO:** ya no aplica. A deployó
+  después (v159) y producción quedó al día. Verificado adentro de la máquina:
+  el tope de discovery está en 50, la generación de presupuestos con IA ya no
+  está, y el banco de LinkedIn y `variante()` están vivos. Lo único sin
+  desplegar son commits de este archivo, que no afectan nada.
+- **28/8 — C (banco LinkedIn):** ~~**Producción está 6 commits atrás de `main`.**~~ La imagen viva es
   `b56a66b`. No están desplegados: `21f3ffb`, `5413f37`, `9575e0b`, `028f46b`,
   `314a4ed`, `1085aa8`. Verificado con `git log b56a66b..main`, no deducido.
   Para A: **el tope de discovery a 50 sigue sin efecto**, producción manda 30.
