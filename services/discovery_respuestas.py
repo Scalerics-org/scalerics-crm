@@ -131,6 +131,32 @@ _ASUNTOS_SIN_NEGOCIO = ("una idea para tu negocio", "ultimo mail de scalerics",
 
 _PREFIJOS_RESPUESTA = ("re:", "rv:", "fwd:", "fw:")
 
+# Quien contesta pidiendo la baja NO esta negociando: esta pidiendo algo que
+# tenemos que ejecutar. Si cae en 'negociacion' queda como oportunidad abierta
+# en el pipeline, nadie hace lo que pidio, y si mas adelante entra de nuevo por
+# otro formulario vuelve a recibir mails.
+#
+# Se mira SOLO el asunto, que en una respuesta suele arrastrar lo que la
+# persona escribio arriba. El cuerpo no se descarga nunca.
+#
+# Frases largas y sin ambiguedad a proposito: "baja" suelto aparece en
+# "baja de precios" y en nombres de negocio, y equivocarse aca da de baja a
+# alguien que queria comprar.
+_FRASES_BAJA = (
+    "sacame de la lista", "sacar de la lista", "saquenme", "sáquenme",
+    "sacame de aca", "sacame de acá",
+    "no me escriban", "no me escribas", "no me manden", "no me mandes",
+    "no quiero recibir", "no deseo recibir",
+    "dar de baja", "darme de baja", "darse de baja", "baja de la lista",
+    "unsubscribe", "remove me",
+)
+
+
+def pide_la_baja(asunto) -> bool:
+    """Si el asunto de la respuesta pide explicitamente dejar de recibir mails."""
+    bajo = " ".join((asunto or "").split()).lower()
+    return any(f in bajo for f in _FRASES_BAJA)
+
 
 def negocio_del_asunto(asunto) -> str:
     """El nombre del negocio que lleva el asunto, en minusculas, o "".
@@ -306,6 +332,31 @@ def marcar_respondio(db_path: str, business_id: int, direccion: str) -> None:
         logger.warning(f"Discovery: no se pudo registrar el evento de {business_id}: {e}")
 
 
+def marcar_baja_pedida(db_path: str, business_id: int, direccion: str,
+                       asunto: str) -> None:
+    """Ejecuta la baja que la persona pidio, y la deja registrada.
+
+    La direccion va a `mails_vedados`, que es lo que corta el mail en las DOS
+    campanas y sigue valiendo si el mismo mail entra de nuevo por otro
+    formulario. El estado solo se mueve si el lead estaba siendo nutrido: a un
+    cliente que pide no recibir mas mails se le corta el correo, no se lo
+    degrada a 'no_interesa'.
+    """
+    from services.mails_vedados import vedar
+    biz = get_business(db_path, business_id) or {}
+    correo = direccion or (biz.get("email") or "")
+    vedar(db_path, correo, "baja_pedida", (asunto or "")[:200])
+    actual = biz.get("crm_status") or "sin_contactar"
+    if actual in ESTADOS_CON_SECUENCIA:
+        update_business(db_path, business_id, crm_status="no_interesa")
+        actual = "no_interesa"
+    try:
+        add_lead_event(db_path, business_id, actual,
+                       f"Pidió la baja por mail desde {correo or '(sin remitente)'}")
+    except Exception as e:
+        logger.warning(f"No se pudo registrar el evento de baja de {business_id}: {e}")
+
+
 def sincronizar_respuestas(db_path: str, buscar, days_back: int = _DIAS_ATRAS,
                            dry_run: bool = False) -> dict:
     """Busca respuestas de la cohorte y frena el seguimiento de quien contesto.
@@ -317,11 +368,11 @@ def sincronizar_respuestas(db_path: str, buscar, days_back: int = _DIAS_ATRAS,
     por_nombre = negocios_contactados(db_path)
     ultimo_envio = ultimo_envio_por_lead(db_path)
     res = {"revisados": len(contactadas), "respondieron": 0, "automaticas": 0,
-           "previas": 0}
+           "previas": 0, "bajas": 0}
     if not contactadas:
         return res
 
-    ya_marcadas, autos, previas = set(), set(), set()
+    ya_marcadas, autos, previas, bajas = set(), set(), set(), set()
     # Dos vias: por remitente (la casilla a la que escribimos) y por asunto (el
     # dueno contestando desde otra cuenta, o una respuesta que cayo en spam).
     consultas = (partir_en_consultas(sorted(contactadas), days_back=days_back)
@@ -363,6 +414,12 @@ def sincronizar_respuestas(db_path: str, buscar, days_back: int = _DIAS_ATRAS,
                 continue
 
             ya_marcadas.add(bid)
+            if pide_la_baja(asunto):
+                bajas.add(bid)
+                if not dry_run:
+                    marcar_baja_pedida(db_path, bid, direccion, asunto)
+                logger.info(f"Baja pedida a mano por {direccion or asunto!r}")
+                continue
             res["respondieron"] += 1
             if not dry_run:
                 marcar_respondio(db_path, bid, direccion or "(sin remitente)")
@@ -371,6 +428,7 @@ def sincronizar_respuestas(db_path: str, buscar, days_back: int = _DIAS_ATRAS,
     # Se cuenta por lead, no por mensaje, y solo lo que NO termino marcado: un
     # lead con un autorespondedor y despues una respuesta de verdad cuenta como
     # respuesta y nada mas.
+    res["bajas"] = len(bajas)
     res["automaticas"] = len(autos - ya_marcadas)
     res["previas"] = len(previas - ya_marcadas)
     return res

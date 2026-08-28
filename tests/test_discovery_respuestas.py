@@ -523,3 +523,77 @@ def test_gmail_convierte_internaldate_al_formato_de_la_casa():
     msg = buscar_con_gmail(_Svc())("q")[0]
     assert msg["date"] == _ESPERADO
     assert msg["from"] == "a@b.com"
+
+
+# ── La baja pedida a mano ────────────────────────────────────────────────────
+# Quien contesta "sacame de la lista" no esta negociando: pidio algo que hay que
+# ejecutar. Sin esto quedaba como oportunidad abierta en el pipeline, nadie
+# hacia lo que pidio, y si volvia a entrar por otro formulario recibia mails de
+# nuevo.
+
+@pytest.mark.parametrize("asunto", [
+    "Re: sacame de la lista",
+    "RE: Casa Garrido — el presupuesto  no me escriban mas por favor",
+    "dar de baja",
+    "Unsubscribe",
+    "no quiero recibir mas mails",
+])
+def test_reconoce_el_pedido_de_baja(asunto):
+    from services.discovery_respuestas import pide_la_baja
+    assert pide_la_baja(asunto) is True
+
+
+@pytest.mark.parametrize("asunto", [
+    "Re: Cerramos lo de Casa Garrido",
+    "Re: ¿Damos por cerrado lo de Baja Vista?",
+    "Re: Casa Garrido — ¿qué te frenó?",
+    "consulta por la baja de precios",
+    "",
+])
+def test_no_confunde_un_asunto_normal_con_un_pedido_de_baja(asunto):
+    from services.discovery_respuestas import pide_la_baja
+    assert pide_la_baja(asunto) is False
+
+
+def test_la_baja_veda_la_direccion_y_saca_al_lead_de_la_secuencia(db):
+    from services.discovery_respuestas import sincronizar_respuestas
+    from services.mails_vedados import esta_vedado
+    _lead_con_envio(db, 1, "lead@x.com", "2026-08-20 10:00:00")
+    r = sincronizar_respuestas(db, _buscar_fijo([
+        {"from": "lead@x.com", "subject": "Re: sacame de la lista",
+         "date": "2026-08-21 10:00:00", "headers": {}}]))
+    assert r["bajas"] == 1 and r["respondieron"] == 0
+    assert _estado(db, 1) == "no_interesa"
+    assert esta_vedado(db, "lead@x.com"), "la direccion tiene que quedar vedada"
+
+
+def test_a_un_cliente_que_pide_la_baja_no_se_lo_degrada(db):
+    """Pidio no recibir mas mails, no dejar de ser cliente.
+
+    Se prueba la guarda directo: un lead en 'en_desarrollo' no esta en la lista
+    de vigilados —no recibe secuencia, no hay nada que frenar— asi que por el
+    sync no llega. La guarda igual tiene que estar, porque el dia que la lista
+    se ensanche va a ser lo unico que impida degradar a un cliente.
+    """
+    from services.discovery_respuestas import marcar_baja_pedida
+    from services.mails_vedados import esta_vedado
+    _lead(db, 1, "meta", "en_desarrollo", mail="cliente@x.com")
+    marcar_baja_pedida(db, 1, "cliente@x.com", "Re: dar de baja")
+    assert _estado(db, 1) == "en_desarrollo"
+    assert esta_vedado(db, "cliente@x.com"), "igual se le corta el mail"
+
+
+def test_al_lead_en_secuencia_que_pide_la_baja_si_se_lo_mueve(db):
+    from services.discovery_respuestas import marcar_baja_pedida
+    _lead(db, 1, "meta", "presupuesto_enviado", mail="lead@x.com")
+    marcar_baja_pedida(db, 1, "lead@x.com", "Re: sacame de la lista")
+    assert _estado(db, 1) == "no_interesa"
+
+
+def test_la_baja_no_se_cuenta_tambien_como_respuesta(db):
+    from services.discovery_respuestas import sincronizar_respuestas
+    _lead_con_envio(db, 1, "lead@x.com", "2026-08-20 10:00:00")
+    r = sincronizar_respuestas(db, _buscar_fijo([
+        {"from": "lead@x.com", "subject": "Re: no me escriban",
+         "date": "2026-08-21 10:00:00", "headers": {}}]))
+    assert r["bajas"] == 1 and r["respondieron"] == 0

@@ -18,7 +18,9 @@ logger = logging.getLogger(__name__)
 
 # Una queja de spam le gana a un rebote: es la senal mas cara que existe y la
 # que hay que poder contar despues para saber si la campana esta sana.
-_PRIORIDAD = {"queja_spam": 2, "rebote_duro": 1}
+# Una baja pedida a mano es la senal mas fuerte que hay: la escribio una
+# persona. No la puede pisar despues un rebote transitorio del mismo buzon.
+_PRIORIDAD = {"baja_pedida": 3, "queja_spam": 2, "rebote_duro": 1}
 
 
 def _conn(db_path: str) -> sqlite3.Connection:
