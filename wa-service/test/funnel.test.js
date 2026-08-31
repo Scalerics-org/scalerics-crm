@@ -468,3 +468,21 @@ test('y al equipo le llega que todavía no sabe, no un campo vacío', async () =
   });
   assert.match(texto, /Todavía no sabe/);
 });
+
+/**
+ * El CRM dejó de enterarse de los leads calificados y nadie lo notó.
+ *
+ * Avisaba solo si el estado final era MEETING_SENT. Cuando el embudo pasó a
+ * cerrar de un saque —ofrecer y mandar el link en el mismo turno— el final pasó
+ * a ser siempre MEETING_LINK_SENT, y esa condición no se cumplió nunca más.
+ */
+test('el estado en el que termina un lead calificado avisa al CRM', async () => {
+  const { AVISAR_AL_CRM } = require('../src/funnel/engine');
+  const s = await conLead({ openai: stubOpenAI({ datos: COMPLETO }) });
+
+  await lead(s, 'te cuento todo de una');
+  const final = estado(s);
+
+  assert.equal(final, S.MEETING_LINK_SENT, 'ahí termina hoy el que califica');
+  assert.ok(AVISAR_AL_CRM.has(final), 'y ese estado tiene que avisarle al CRM');
+});

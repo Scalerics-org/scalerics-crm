@@ -57,6 +57,18 @@ const MOTIVO = {
  * el momento en que mas gente dice que lo ve mas adelante, y justo el que la
  * pausa venia a resolver.
  */
+/**
+ * Los estados que el CRM tiene que conocer: alguien del equipo tiene algo que
+ * hacer con ese lead.
+ *
+ * MEETING_LINK_SENT esta aca desde que el embudo cierra de un saque. Antes
+ * paraba en MEETING_SENT y recien con un "dale" del lead pasaba al link; ahora
+ * encadena los dos en el mismo turno, asi que el estado final es siempre el del
+ * link. Sin agregarlo, la condicion no se cumplia nunca y el CRM dejo de
+ * enterarse de los leads calificados sin que nadie lo notara.
+ */
+const AVISAR_AL_CRM = new Set([S.MEETING_SENT, S.MEETING_LINK_SENT, S.HUMAN_QUEUED]);
+
 const FASE_CIERRE = new Set([
   S.MEETING_SENT, S.MEETING_INFO, S.MEETING_LINK_SENT, S.SCHEDULED,
 ]);
@@ -617,7 +629,11 @@ function crearEmbudo({
             { leadId: lead.id, promesa, texto },
             'la IA se puso a agendar sola: se descarta y se manda el link'
           );
-          return this._transicionar(lead, entrada, S.MEETING_LINK_SENT);
+          // Por SCORED y no derecho al link: es el unico lugar donde se le
+          // avisa al equipo que hay un lead con reunion ofrecida. Yendo
+          // directo, el lead recibia el link y del lado de adentro no se
+          // enteraba nadie.
+          return this._transicionar(lead, entrada, S.SCORED);
         }
       }
 
@@ -689,7 +705,14 @@ function crearEmbudo({
 
       // El CRM se entera cuando el lead califica o pide un humano — los dos
       // momentos en que alguien del equipo tiene que hacer algo.
-      if (crmNotify && (final === S.MEETING_SENT || final === S.HUMAN_QUEUED)) {
+      //
+      // MEETING_LINK_SENT esta en la lista desde que el embudo cierra de un
+      // saque: antes paraba en MEETING_SENT y despues, con un "dale" del lead,
+      // pasaba al link. Ahora encadena los dos en el mismo turno, asi que el
+      // estado final es siempre el del link y esta condicion no se cumplia
+      // nunca. El CRM dejo de enterarse de los leads calificados sin que nadie
+      // lo notara.
+      if (crmNotify && AVISAR_AL_CRM.has(final)) {
         await crmNotify.leadCalifico(lead.id);
       }
       return final;
@@ -697,4 +720,4 @@ function crearEmbudo({
   };
 }
 
-module.exports = { crearEmbudo, normalizar, FASE_CALIFICACION, FASE_CIERRE };
+module.exports = { crearEmbudo, normalizar, FASE_CALIFICACION, FASE_CIERRE, AVISAR_AL_CRM };

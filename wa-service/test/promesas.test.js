@@ -98,3 +98,23 @@ test('con el bot agendando de verdad, el guardia no se mete', async () => {
   const alLead = s.proveedor.getEnviados().filter((e) => e.to === TEL).map((e) => e.texto);
   assert.ok(alLead.some((t) => /Qué día te viene bien/.test(t)));
 });
+
+/**
+ * La salida lateral del guardia se salteaba el aviso al equipo.
+ *
+ * avisarDesenlace vive solo adentro de case S.SCORED. Yendo derecho a
+ * MEETING_LINK_SENT, el lead recibia el link y del lado de adentro no se
+ * enteraba nadie: ni la ficha al equipo ni el CRM.
+ */
+test('y el equipo igual se entera de que hay un lead con reunión ofrecida', async () => {
+  const s = await conLead({
+    openai: stubOpenAI({ respuestas: { conversacion: '¿Qué día te viene bien?' } }),
+  });
+  s.proveedor.limpiar();
+
+  await s.servicioLeads.registrarRespuesta(TEL, 'quiero ver');
+  await s.cola.vacia();
+
+  const alEquipo = s.proveedor.getEnviados().filter((e) => e.to === '59899000111');
+  assert.ok(alEquipo.some((e) => /calificado/i.test(e.texto)), 'la ficha sale igual');
+});
