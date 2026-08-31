@@ -12,7 +12,16 @@ const MAX_CARACTERES = 900;
  * "una pagina web"— y el mapeo a los codigos 1-4 que guarda la base lo hace
  * esto, que no se equivoca.
  */
-const TIPO_PROYECTO = { web: 1, ecommerce: 2, automatizacion: 3, sistema: 4, agente_ia: 5 };
+/**
+ * El 6 es "todavia no sabe", y no es un caso raro: en el formulario de Calendly
+ * fue la tercera respuesta mas elegida, 5 de 32 reservas reales. Uno de cada
+ * seis que agenda no sabe que necesita — y agenda igual, porque el formulario
+ * se lo permite. El bot no se lo permitia, y eran justo los que mas necesitan
+ * el diagnostico, que es literalmente para lo que sirve la reunion.
+ */
+const TIPO_PROYECTO = {
+  web: 1, ecommerce: 2, automatizacion: 3, sistema: 4, agente_ia: 5, no_sabe: 6,
+};
 
 /** Lo que, si el modelo lo ve, significa que no es un cliente posible. */
 const NO_CLIENTE = ['trabajo', 'vender_algo', 'numero_equivocado', 'algo_que_no_hacemos'];
@@ -92,8 +101,8 @@ const HERRAMIENTA = {
          */
         business_type: {
           type: 'string',
-          enum: ['web', 'ecommerce', 'sistema', 'automatizacion', 'agente_ia'],
-          description: 'Qué necesita: web = página web, ecommerce = tienda online, sistema = sistema a medida, automatizacion = automatizar procesos internos, agente_ia = un agente de IA que atienda o venda',
+          enum: ['web', 'ecommerce', 'sistema', 'automatizacion', 'agente_ia', 'no_sabe'],
+          description: 'Qué necesita: web = página web, ecommerce = tienda online, sistema = sistema a medida, automatizacion = automatizar procesos internos, agente_ia = un agente de IA que atienda o venda. no_sabe = le ofreciste las opciones y no eligió ninguna: dijo "no sé", "quiero ver", "vos decime", "de todo un poco" o cambió de tema. Marcá no_sabe en vez de dejarlo vacío: no saber es una respuesta válida y para eso está la reunión.',
         },
         budget: {
           type: 'string',

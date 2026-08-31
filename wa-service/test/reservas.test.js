@@ -9,6 +9,17 @@ const { S } = require('../src/funnel/states');
 const TEL = '59899123456';
 
 /**
+ * Relativo a hoy y calculado UNA vez.
+ *
+ * Con una fecha fija, al pasar los dias la reunion se acerca sola y un buen dia
+ * queda a menos de 24 horas, que es el umbral del recordatorio del dia antes:
+ * el test empezaba a fallar sin que nadie hubiera tocado nada. Y calculandolo
+ * en cada llamada, dos reservas "iguales" salian con milisegundos distintos y
+ * el vigilante las tomaba por reservas diferentes.
+ */
+const EN_CINCO_DIAS = new Date(Date.now() + 5 * 86_400_000).toISOString();
+
+/**
  * Una reserva de Calendly tal como llega al Google Calendar.
  *
  * El formato no es inventado: se copio de un evento real. Las respuestas del
@@ -18,7 +29,7 @@ const TEL = '59899123456';
 function reservaDeCalendly({
   id = 'ev_1',
   telefono = '+598 99 123 456',
-  inicio = '2026-09-01T13:00:00-03:00',
+  inicio = EN_CINCO_DIAS,
   summary = 'Martin/Scalerics y Contacto Scalerics',
   status = 'confirmed',
 } = {}) {

@@ -403,6 +403,13 @@ test('agente de IA es una opcion propia, separada de automatizacion', () => {
 
   const { HERRAMIENTA } = require('../src/ia/agente');
   const opciones = HERRAMIENTA.function.parameters.properties.business_type.enum;
-  assert.equal(opciones.length, 5, 'las cinco, ni una mas');
+
+  // Cinco servicios, mas "todavia no sabe", que no es un servicio: es la
+  // respuesta de uno de cada seis que agenda, y ahora tambien cierra el embudo.
+  assert.deepEqual(
+    opciones,
+    ['web', 'ecommerce', 'sistema', 'automatizacion', 'agente_ia', 'no_sabe'],
+    'los cinco servicios y el "no sé", ni uno mas'
+  );
   assert.ok(opciones.includes('agente_ia'));
 });

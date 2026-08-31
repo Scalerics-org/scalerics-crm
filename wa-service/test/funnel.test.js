@@ -433,3 +433,38 @@ test('si no le contestamos el precio, repetir la pregunta no lo deriva', async (
   assert.notEqual(l.fsm_state, S.HUMAN_QUEUED, 'no lo derivan por preguntar dos veces sin respuesta');
   assert.equal(l.consultas_precio, 1, 'sigue contando una sola consulta');
 });
+
+/**
+ * El que no sabe qué necesita también llega a la reunión.
+ *
+ * En el formulario de Calendly "Todavía no sé" fue la tercera respuesta más
+ * elegida: 5 de 32 reservas reales. Uno de cada seis que agenda no sabe, y
+ * agenda igual porque el formulario se lo permite. El bot en cambio se lo
+ * exigía, y dejaba afuera justo a los que más necesitan un diagnóstico — que es
+ * literalmente para lo que sirve la reunión.
+ *
+ * Peor todavía: al no poder cerrar, el modelo improvisaba. Así fue como inventó
+ * una reunión inexistente y se la confirmó al lead.
+ */
+test('el que no sabe qué necesita igual recibe el link', async () => {
+  const s = await conLead({
+    openai: stubOpenAI({
+      datos: { business_name: 'McDonald’s', rubro: 'vender hamburguesas', business_type: 'no_sabe' },
+    }),
+  });
+
+  const msgs = await lead(s, 'quiero ver');
+
+  assert.equal(estado(s), S.MEETING_LINK_SENT, 'cierra el embudo igual');
+  assert.equal(msgs.at(-1), '[link_reunion]');
+  assert.equal(s.repo.leadPorTelefono(TEL).business_type, 6);
+});
+
+test('y al equipo le llega que todavía no sabe, no un campo vacío', async () => {
+  const { fichaAM, ...plantillas } = require('../src/templates');
+  const texto = plantillas.resumenEmbudo({
+    business_name: 'McDonald’s', rubro: 'vender hamburguesas',
+    business_type: 6, telefono: TEL,
+  });
+  assert.match(texto, /Todavía no sabe/);
+});

@@ -32,6 +32,15 @@ const DATOS = [
     campo: 'business_type',
     pregunta: 'qué necesita',
     opciones: 'página web, e-commerce, sistema a medida, automatización, o agente de IA. Son cinco: ofrecelas todas.',
+    /**
+     * No saber no puede trabar el embudo.
+     *
+     * En el formulario de Calendly, "Todavía no sé" fue la tercera respuesta
+     * mas elegida: 5 de 32 reservas reales. Uno de cada seis que agenda no sabe
+     * que necesita, y agenda igual. El bot en cambio se lo exigia, y con eso
+     * dejaba afuera justo a los que mas necesitan un diagnostico.
+     */
+    siNoSabe: 'Si no sabe, si dice "quiero ver" o "vos decime", o si contesta cualquier otra cosa: NO se lo vuelvas a preguntar. Que no sepa es una respuesta, y de las buenas — la videollamada es un diagnóstico y existe justamente para eso. Decíselo así y seguí adelante.',
   },
 ];
 
@@ -48,6 +57,7 @@ function describirFaltante(d) {
   const partes = [`- ${d.pregunta}`];
   if (d.opciones) partes.push(`  (${d.opciones})`);
   if (d.porque) partes.push(`  (${d.porque})`);
+  if (d.siNoSabe) partes.push(`  ${d.siNoSabe}`);
   return partes.join('\n');
 }
 
