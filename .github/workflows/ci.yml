@@ -1,0 +1,105 @@
+name: CI
+
+# Hasta ahora el unico workflow era el deploy: no corria tests, ni compilaba, ni
+# miraba si se colaba un secreto. Hay 1082 tests y se ejecutaban solo cuando
+# alguien se acordaba de correrlos a mano en su maquina.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Instalar dependencias
+        run: |
+          pip install -r requirements.txt
+          pip install pytest-cov
+
+      - name: Verificar que todo compila
+        run: python -m compileall -q dashboard.py database.py server.py main.py routes services scripts
+
+      - name: Tests con cobertura
+        # Se mide solo el codigo fuente: incluir tests/ infla el numero porque
+        # cada test se cubre a si mismo al 100%.
+        #
+        # El umbral es un trinquete, no una meta: lo que importa es que NO BAJE.
+        # Se sube cada vez que se escriben tests. Medido el 31/8: 59%. El piso
+        # queda 2 puntos abajo para absorber diferencias entre Windows (donde se
+        # midio) y Linux (donde corre esto).
+        #
+        # Lo mas flojo hoy: routes/tokens (22%), routes/leads (24%),
+        # services/demo_service (24%), routes/pipeline (25%).
+        run: |
+          pytest -q --cov=database --cov=routes --cov=services --cov=dashboard --cov=main \
+                 --cov-report=term-missing --cov-fail-under=57
+
+      # dashboard.py tiene el frontend embebido dentro de strings de Python, asi
+      # que ni compileall ni pytest miran el JavaScript: se puede romper el JS
+      # entero y tener todo en verde con el panel muerto. Paso real que lo
+      # motivo: un escape hexadecimal incompleto hacia que el navegador no
+      # cargara el bloque <script> y el panel quedaba sin funcionar.
+      - name: Validar el JavaScript embebido
+        run: python scripts/check_js.py
+
+  seguridad:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # gitleaks necesita el historial completo
+
+      # Se usa el BINARIO de gitleaks, no gitleaks-action: la action pide licencia
+      # paga para repos de organizacion (Scalerics-org lo es) y falla con
+      # "missing gitleaks license". El binario es MIT y hace lo mismo. Version
+      # pineada a proposito: que un release nuevo no cambie el comportamiento del
+      # CI sin que nadie lo mire.
+      - name: Instalar gitleaks
+        env:
+          GITLEAKS_VERSION: 8.30.1
+        run: |
+          curl -sSfL -o gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          tar -xzf gitleaks.tar.gz gitleaks
+          sudo mv gitleaks /usr/local/bin/
+          gitleaks version
+
+      - name: Buscar secretos filtrados
+        # --no-git escanea los ARCHIVOS como estan, no el historial.
+        #
+        # Es a proposito: el ADMIN_TOKEN que se filtro sigue vivo en commits
+        # viejos, y sacarlo necesita un git-filter-repo coordinado con todos los
+        # que tengan un clon. Escanear el historial dejaria este job en rojo
+        # permanente hasta que eso pase, y un gate que siempre falla se termina
+        # ignorando o apagando.
+        #
+        # Lo que este paso SI garantiza: que no entre un secreto nuevo. La purga
+        # del historial es una tarea aparte, sigue pendiente.
+        #
+        # --redact para no reimprimir el secreto en el log del build.
+        run: gitleaks detect --source . --no-git --redact --verbose --exit-code 1
+
+      - name: Bloquear bases de datos versionadas
+        # .gitignore tiene *.db desde siempre, pero leads_backup.db y test.db
+        # estaban trackeados igual: se habian agregado con -f, y el ignore no
+        # aplica a lo que ya esta en el indice. Este paso evita que vuelva a pasar.
+        run: |
+          if git ls-files | grep -E '\.db$'; then
+            echo "::error::Hay archivos .db versionados. Sacalos con git rm --cached."
+            exit 1
+          fi
+          echo "OK: no hay bases versionadas"
