@@ -5,6 +5,7 @@ const { TRANSICIONES } = require('./transitions');
 const plantillas = require('../templates');
 const { detectar, ETIQUETA } = require('./derivacion');
 const { cuandoVolver } = require('./nurture');
+const { prometeAgendar } = require('../ia/promesas');
 
 /**
  * "ya agende", "ya reserve". En primera persona y en pasado a proposito: con
@@ -596,6 +597,30 @@ function crearEmbudo({
       // El modelo clasifica siempre; que decida o no lo dice la config. Con la
       // decision apagada igual queda anotado, y eso es lo que permite mirar si
       // acierta antes de dejarlo descalificar solo.
+      /**
+       * El modelo se puso a agendar por su cuenta. No puede.
+       *
+       * La reserva la hace el lead en Calendly; el bot no tiene con que tomar
+       * un horario. Cuando el embudo no cierra —porque falta un dato y el lead
+       * lo esquiva— el modelo improvisa y termina prometiendo una reunion que
+       * no existe. Paso: le pidio dia y hora, dijo "agendo la videollamada para
+       * el martes a las 10 de la noche" y despues se lo confirmo. No habia
+       * nada, y esa persona iba a esperar sola.
+       *
+       * Se tira lo que escribio y se le manda el link, que es lo unico que de
+       * verdad lleva a una reunion.
+       */
+      if (!cfg.AGENDA_OFRECE_HORARIOS && !lead.meeting_booked_at) {
+        const promesa = prometeAgendar(texto);
+        if (promesa) {
+          logger?.warn(
+            { leadId: lead.id, promesa, texto },
+            'la IA se puso a agendar sola: se descarta y se manda el link'
+          );
+          return this._transicionar(lead, entrada, S.MEETING_LINK_SENT);
+        }
+      }
+
       if (queQuiere) {
         repo.actualizarFunnel(lead.id, { no_cliente_motivo: queQuiere });
 
