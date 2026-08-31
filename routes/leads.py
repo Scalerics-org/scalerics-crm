@@ -15,6 +15,7 @@ from database import (
                       add_lead_event, get_lead_events,
                       add_call_log, get_call_logs,
                       increment_task_progress, get_lead_contributor_ids, log_activity)
+from database import ETAPAS_CLIENTE, ETAPAS_PRECLIENTE
 from database import get_attachment_file, update_attachment_file, get_attachments
 from pitch_generator import generate_pitch
 from services.budget_ai import ai_edit_html
@@ -61,18 +62,32 @@ def _normalize_category(raw: str) -> str | None:
     return raw.strip()
 
 
-# Full set of valid CRM states
-_VALID_CRM_STATES = {
-    "sin_contactar", "interesado", "contactado", "reunion_agendada",
-    "reunion_hecha", "presupuesto_enviado", "negociacion",
-    "cliente_cerrado", "en_desarrollo", "finalizado",
-    "llamar_despues", "no_interesa",
-    # legacy aliases kept for backwards compat
+# Estados validos. Se dividen en tres momentos del embudo:
+#
+#   contacto      la Cola y Seguimientos: todavia no hay demo
+#   pre-cliente   se esta vendiendo, el eje son las demos (ETAPAS_PRECLIENTE)
+#   cliente       ya cerro (ETAPAS_CLIENTE)
+#
+# Las etapas de pre-cliente y cliente viven en database.py para que el tablero,
+# los selectores y la validacion no puedan divergir.
+_ESTADOS_CONTACTO = {
+    "sin_contactar", "interesado", "contactado", "llamar_despues", "no_interesa",
+}
+
+# Los viejos del pipeline se siguen aceptando: database._migrar_estados_preclientes
+# los traduce al arrancar, pero un cliente con la pagina abierta desde antes del
+# deploy podria mandar uno.
+_ESTADOS_LEGACY = {
+    "reunion_agendada", "reunion_hecha", "negociacion", "cliente_cerrado",
     "agendo", "firmo",
 }
 
-_PIPELINE_STATUSES = ["reunion_agendada", "reunion_hecha", "presupuesto_enviado", "negociacion"]
-_CLIENT_STATUSES   = ["cliente_cerrado", "en_desarrollo", "finalizado"]
+_VALID_CRM_STATES = (
+    _ESTADOS_CONTACTO | set(ETAPAS_PRECLIENTE) | set(ETAPAS_CLIENTE) | _ESTADOS_LEGACY
+)
+
+_PIPELINE_STATUSES = list(ETAPAS_PRECLIENTE)
+_CLIENT_STATUSES   = list(ETAPAS_CLIENTE)
 
 _PER_PAGE = 50
 _VALID_OUTCOMES = {"contestó", "no_contestó", "buzón", "no_interesa", "llamar_despues", "interesado", "reunion"}
