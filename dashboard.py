@@ -488,6 +488,12 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .wa-release-btn{background:#1a2e1e;border:none;color:#4ade80;font-size:.72rem;font-weight:700;padding:5px 10px;border-radius:6px;cursor:pointer;font-family:'Inter',sans-serif;white-space:nowrap;flex-shrink:0}
 .wa-release-btn:hover{background:#14532d}
 .wa-human-badge{font-size:.68rem;font-weight:700;color:#fbbf24;background:#292116;padding:3px 8px;border-radius:999px;flex-shrink:0}
+.wa-bot-switch{display:inline-flex;align-items:center;gap:6px;background:#0f1a12;border:1px solid #1f3d28;color:#4ade80;font-size:.72rem;font-weight:700;padding:5px 10px;border-radius:999px;cursor:pointer;font-family:'Inter',sans-serif;white-space:nowrap;flex-shrink:0}
+.wa-bot-switch:hover{border-color:#4ade80}
+.wa-bot-dot{width:7px;height:7px;border-radius:50%;background:#4ade80;flex-shrink:0}
+.wa-bot-switch.off{background:#1a1113;border-color:#3d1f24;color:#94a3b8}
+.wa-bot-switch.off .wa-bot-dot{background:#64748b}
+.wa-pausa-badge{font-size:.68rem;font-weight:700;color:#93c5fd;background:#16213a;padding:3px 8px;border-radius:999px;flex-shrink:0}
 .wa-messages{flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:8px;min-height:0}
 .wa-bubble{max-width:68%;padding:9px 13px;border-radius:12px;font-size:.84rem;line-height:1.5;white-space:pre-wrap;word-break:break-word}
 .wa-bubble-in{background:#1e293b;color:#e2e8f0;align-self:flex-start;border-bottom-left-radius:3px}
@@ -1301,6 +1307,10 @@ body.light .upick-name{color:#0f172a}
               <div class="wa-chat-name" id="wa-chat-name"></div>
               <div class="wa-chat-phone" id="wa-chat-phone"></div>
             </div>
+            <span class="wa-pausa-badge" id="wa-pausa-badge" style="display:none"></span>
+            <button class="wa-bot-switch" id="wa-bot-switch" onclick="toggleBot()" title="Prender o apagar el bot para este lead">
+              <span class="wa-bot-dot"></span><span id="wa-bot-label">Bot</span>
+            </button>
             <span class="wa-human-badge" id="wa-human-badge" style="display:none">👤 Humano activo</span>
             <button class="wa-release-btn" id="wa-release-btn" style="display:none" onclick="releaseToBot()">🤖 Devolver al bot</button>
           </div>
@@ -2784,10 +2794,59 @@ async function selectWaLead(phone, name) {
   const isHuman = lead && (lead.state === 'HUMAN_QUEUED');
   document.getElementById('wa-human-badge').style.display = isHuman ? 'inline-flex' : 'none';
   document.getElementById('wa-release-btn').style.display = isHuman ? 'inline-flex' : 'none';
+  pintarSwitchBot(lead);
 
   await loadWaMessages(phone);
   if (waPolling) clearInterval(waPolling);
   waPolling = setInterval(() => { if (selectedPhone === phone) loadWaMessages(phone); }, 5000);
+}
+
+// El interruptor del bot, por lead. Son dos cosas distintas y las dos se
+// dibujan acá:
+//   bot_enabled       lo apagaste vos a propósito, queda así hasta que lo prendas
+//   bot_paused_until  el bot se calló solo porque escribiste desde el celular,
+//                     y vuelve cuando vence
+// Sin mostrar la segunda, el switch diría "Bot ✓" mientras el lead no recibe
+// ninguna respuesta y no habría forma de entender por qué.
+function pintarSwitchBot(lead) {
+  const btn = document.getElementById('wa-bot-switch');
+  const label = document.getElementById('wa-bot-label');
+  const pausa = document.getElementById('wa-pausa-badge');
+  if (!btn) return;
+
+  const prendido = !lead || lead.bot_enabled !== false;
+  btn.classList.toggle('off', !prendido);
+  label.textContent = prendido ? 'Bot' : 'Bot apagado';
+
+  const hasta = lead && lead.bot_paused_until ? new Date(lead.bot_paused_until) : null;
+  const pausado = prendido && hasta && hasta > new Date();
+  pausa.style.display = pausado ? 'inline-flex' : 'none';
+  if (pausado) {
+    pausa.textContent = '⏸ en pausa hasta ' + hasta.toLocaleString('es-UY', {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+    pausa.title = 'Se pausó solo porque escribiste vos. Vuelve a contestar cuando venza.';
+  }
+}
+
+async function toggleBot() {
+  if (!selectedPhone) return;
+  const lead = waLeads.find(l => l.phone === selectedPhone);
+  const activo = !(lead && lead.bot_enabled !== false);
+
+  const r = await fetch('/api/wa/leads/' + encodeURIComponent(selectedPhone) + '/bot', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({activo}),
+  });
+  const d = await r.json();
+  if (!d.ok) { alert(d.error || 'No se pudo cambiar el bot'); return; }
+
+  if (lead) {
+    lead.bot_enabled = activo;
+    // Prenderlo levanta la pausa, igual que del lado del bot. Si no, el panel
+    // seguiría mostrando "en pausa" sobre algo que ya no lo está.
+    if (activo) lead.bot_paused_until = null;
+  }
+  pintarSwitchBot(lead);
 }
 
 async function releaseToBot() {

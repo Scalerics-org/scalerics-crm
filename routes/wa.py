@@ -129,6 +129,24 @@ def api_wa_release(phone):
     return jsonify({"ok": True})
 
 
+@wa_bp.route("/api/wa/leads/<path:phone>/bot", methods=["POST"])
+def api_wa_bot(phone):
+    """Prender o apagar el bot para un lead.
+
+    Es el respaldo, no el mecanismo principal: el bot ya se pausa solo por 12
+    horas cuando escribis vos desde el telefono, y esa pausa vence sola. Este
+    interruptor es para apagarlo a proposito y por tiempo indefinido.
+
+    Prenderlo tambien levanta la pausa automatica, del lado del bot.
+    """
+    body = request.get_json() or {}
+    activo = bool(body.get("activo", True))
+    data, err = _bot_req("POST", f"leads/phone/{phone}/bot", json={"activo": activo})
+    if err:
+        return jsonify({"ok": False, "error": err})
+    return jsonify({"ok": True, "activo": activo})
+
+
 @wa_bp.route("/api/wa/send", methods=["POST"])
 def api_wa_send():
     body = request.get_json() or {}
