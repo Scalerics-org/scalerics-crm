@@ -159,3 +159,40 @@ test('reiniciar un telefono que no existe da 404', async () => {
   });
   assert.equal(r.statusCode, 404);
 });
+
+/**
+ * El boton de on/off del panel. Es el mismo que tiene el CRM de la bloquera y
+ * manda sobre la pausa automatica: apagado es apagado.
+ */
+test('POST bot apaga y prende el bot para ese lead', async () => {
+  const s = await conLead();
+
+  const off = await comoElCrm(s, 'POST', '/api/leads/phone/59899123456/bot', { activo: false });
+  assert.equal(off.statusCode, 200);
+  assert.equal(s.repo.leadPorTelefono('59899123456').bot_enabled, 0);
+
+  const on = await comoElCrm(s, 'POST', '/api/leads/phone/59899123456/bot', { activo: true });
+  assert.equal(on.statusCode, 200);
+  const lead = s.repo.leadPorTelefono('59899123456');
+  assert.equal(lead.bot_enabled, 1);
+  // Prenderlo a mano tambien levanta la pausa: si no, decis que si y el bot
+  // sigue mudo unas horas mas sin ninguna explicacion.
+  assert.equal(lead.bot_pausado_hasta, null);
+});
+
+test('POST bot sobre un telefono que no existe da 404', async () => {
+  const s = await conLead();
+  const r = await comoElCrm(s, 'POST', '/api/leads/phone/59899000000/bot', { activo: false });
+  assert.equal(r.statusCode, 404);
+});
+
+test('la lista de leads dice si el bot esta prendido para cada uno', async () => {
+  // El panel necesita saber en que posicion dibujar el interruptor, y si hay
+  // una pausa corriendo, para poder decir por que esta callado.
+  const s = await conLead();
+  const r = await comoElCrm(s, 'GET', '/api/leads');
+  const lead = r.json().leads[0];
+
+  assert.equal(lead.bot_enabled, true, 'por defecto contesta');
+  assert.equal(lead.bot_paused_until, null);
+});

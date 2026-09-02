@@ -1,6 +1,7 @@
 'use strict';
 
 const { normalizar } = require('./telefono');
+const { botActivo, pausarHasta, HORAS_PAUSA } = require('./funnel/pausa');
 const plantillas = require('./templates');
 const { entre } = require('./outbound/queue');
 const { correspondeDerivar } = require('./funnel/abandono');
@@ -224,6 +225,34 @@ function crearServicioLeads({ repo, cola, cfg, logger, textos, redactor = null, 
     },
 
     /**
+     * Escribiste vos al lead desde el telefono, no el bot.
+     *
+     * Dos cosas: se guarda el mensaje —si no, en el CRM la conversacion queda
+     * con agujeros— y el bot se calla en ese chat por unas horas. La pausa
+     * vence sola: el pedido era "que pare cuando yo entro, y que si el cliente
+     * vuelve a escribir a los dias le conteste".
+     *
+     * El eco de lo que manda el propio bot llega marcado igual que esto, asi
+     * que el que llama tiene que filtrarlo antes (ver app.js). Si no, el bot se
+     * callaria solo cada vez que contesta.
+     */
+    registrarSalienteManual({ telefono, texto, id = null }) {
+      const tel = normalizar(telefono, cfg.DEFAULT_COUNTRY_CODE) || telefono;
+      const lead = repo.leadPorTelefono(tel);
+      // No creamos un lead desde un saliente: si le escribiste a alguien que no
+      // esta en la base, no es un lead del embudo.
+      if (!lead) return null;
+
+      repo.registrarMensaje({
+        lead_id: lead.id, direction: 'out', kind: 'manual', body: texto || '',
+        provider: 'mano', provider_msg_id: id, status: 'sent', destino: tel,
+      });
+      repo.actualizarFunnel(lead.id, { bot_pausado_hasta: pausarHasta(ahora()) });
+      logger?.info({ leadId: lead.id, horas: HORAS_PAUSA }, 'escribiste vos, el bot se pausa');
+      return repo.leadPorId(lead.id);
+    },
+
+    /**
      * El lead contesto, o alguien escribio al numero por primera vez: se cancela
      * el follow-up, se avisa al AM y la conversacion sigue en el embudo.
      *
@@ -251,6 +280,14 @@ function crearServicioLeads({ repo, cola, cfg, logger, textos, redactor = null, 
         lead_id: lead.id, direction: 'in', kind: 'reply', body: texto,
         provider: 'entrante', status: 'delivered',
       });
+
+      // Apagado desde el panel, o pausado porque entraste vos al chat desde el
+      // telefono. Igual que con human_requested: el bot se calla pero el que
+      // esta atendiendo tiene que enterarse de que le escribieron.
+      if (!botActivo(lead, ahora())) {
+        avisarQueSigueEscribiendo(lead, texto);
+        return repo.leadPorId(lead.id);
+      }
 
       // Ya lo atiende una persona: el bot no le contesta, pero el que lo tiene
       // a cargo tiene que saber que le escribio.

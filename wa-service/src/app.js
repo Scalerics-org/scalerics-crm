@@ -180,6 +180,25 @@ function construir(cfg, {
   // algo es mejor que el silencio. Se avisa una vez cada tanto y no en cada
   // mensaje: quien manda cuatro audios seguidos no necesita cuatro disculpas.
   const avisadoSinTexto = new Map();
+  /**
+   * Un mensaje que sale de nuestro numero pero que no mando el bot: sos vos
+   * escribiendole al lead desde el telefono. El bot se calla en ese chat unas
+   * horas y despues vuelve solo.
+   *
+   * WhatsApp entrega tambien el eco de lo que mandamos nosotros, con la misma
+   * marca de "propio". Ese hay que reconocerlo y dejarlo pasar: si no, el bot
+   * se callaria a si mismo cada vez que contesta. Se reconoce por el id, que ya
+   * quedo guardado al enviarlo.
+   */
+  proveedor.alSalienteManual?.(async ({ to, texto, id }) => {
+    if (id && repo.cuerpoPorProviderId(id) !== null) return;
+    try {
+      servicioLeads.registrarSalienteManual({ telefono: to, texto, id });
+    } catch (e) {
+      log.warn({ to, err: String(e.message || e) }, 'no se pudo registrar el saliente manual');
+    }
+  });
+
   proveedor.alRecibirSinTexto?.(async ({ from, tipo, nombre, segundos, descargar, id }) => {
     if (!repo.entranteEsNuevo(id)) return;
     const lead = repo.leadPorTelefono(from);

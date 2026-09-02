@@ -10,6 +10,7 @@ function crear({ logger } = {}) {
   const presencias = [];
   let handler = null;
   let handlerSinTexto = null;
+  let handlerSaliente = null;
   let conectado = false;
   let contador = 0;
 
@@ -46,6 +47,10 @@ function crear({ logger } = {}) {
       handler = fn;
     },
 
+    alSalienteManual(fn) {
+      handlerSaliente = fn;
+    },
+
     alRecibirSinTexto(fn) {
       handlerSinTexto = fn;
     },
@@ -58,6 +63,10 @@ function crear({ logger } = {}) {
     simularEntrante: (m) => handler && handler(m),
     /** Simula un audio, una foto o cualquier cosa sin texto. */
     simularSinTexto: (m) => handlerSinTexto && handlerSinTexto(m),
+    // Un mensaje que sale del mismo numero pero no lo mando el bot: el dueño
+    // escribiendo desde su telefono. WhatsApp lo entrega igual que el eco de
+    // lo que mandamos nosotros, y por eso hay uno solo para los dos casos.
+    simularSaliente: (m) => handlerSaliente && handlerSaliente(m),
   };
 }
 

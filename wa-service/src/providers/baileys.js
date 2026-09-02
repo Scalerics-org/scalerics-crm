@@ -115,6 +115,7 @@ function crear(cfg, { logger, buscarMensaje = null } = {}) {
   let desdeCuando = null;
   let handler = null;
   let handlerSinTexto = null;
+  let handlerSaliente = null;
   let alActualizarEstado = null;
   let alPerderConexion = null;
   let intentos = 0;
@@ -280,7 +281,18 @@ function crear(cfg, { logger, buscarMensaje = null } = {}) {
         const jid = msg.key?.remoteJid;
 
         if (msg.key?.fromMe) {
-          logger?.debug({ jid }, 'entrante ignorado: es propio');
+          // Sale de nuestro numero: o es el eco de lo que mando el bot, o sos
+          // vos escribiendole al lead desde el telefono. Los dos llegan igual,
+          // asi que la diferencia la hace el que escucha, mirando si el id ya
+          // esta guardado como saliente nuestro.
+          const paraQuien = telefonoDelMensaje(msg.key);
+          if (handlerSaliente && paraQuien && !jid?.endsWith('@g.us')) {
+            handlerSaliente({
+              to: paraQuien,
+              texto: textoDeMensaje(msg) || '',
+              id: msg.key?.id || null,
+            });
+          }
           continue;
         }
         // Los grupos no son leads: el embudo es uno a uno.
@@ -432,6 +444,10 @@ function crear(cfg, { logger, buscarMensaje = null } = {}) {
     },
 
     /** Audios, fotos y demas que no traen texto. Se llama con {from, tipo}. */
+    alSalienteManual(fn) {
+      handlerSaliente = fn;
+    },
+
     alRecibirSinTexto(fn) {
       handlerSinTexto = fn;
     },

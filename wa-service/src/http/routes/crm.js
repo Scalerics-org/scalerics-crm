@@ -38,6 +38,12 @@ function aFormatoBot(lead, ultimoMensajeAt = null) {
     needs: lead.needs ?? null,
     created_at: lead.created_at,
     last_message_at: ultimoMensajeAt,
+    // Para el interruptor del panel. Van los dos porque significan cosas
+    // distintas: enabled es la decision de una persona, paused_until es la
+    // pausa que se puso sola y vence sola. Con solo el primero, el panel diria
+    // que el bot esta prendido mientras el lead no recibe respuesta.
+    bot_enabled: lead.bot_enabled !== 0,
+    bot_paused_until: lead.bot_pausado_hasta ?? null,
   };
 }
 
@@ -118,6 +124,30 @@ function registrar(app, { cfg, repo, cola, embudo = null, logger }) {
     repo.actualizarFunnel(lead.id, { human_requested: 0, fsm_state: S.CONVERSANDO });
     logger?.info({ leadId: lead.id }, 'lead devuelto al bot desde el CRM');
     return { ok: true };
+  });
+
+  /**
+   * El boton de on/off del panel, por lead.
+   *
+   * Es el respaldo, no el mecanismo principal: el bot ya se pausa solo cuando
+   * escribis vos desde el telefono, y esa pausa vence sola. Este es para
+   * apagarlo a proposito y por tiempo indefinido.
+   *
+   * Prenderlo tambien levanta la pausa automatica que hubiera corriendo. Si no,
+   * decis que si y el bot sigue mudo unas horas mas sin ninguna explicacion.
+   */
+  app.post('/api/leads/phone/:phone/bot', async (req, reply) => {
+    const tel = normalizar(req.params.phone, cfg.DEFAULT_COUNTRY_CODE);
+    const lead = tel ? repo.leadPorTelefono(tel) : null;
+    if (!lead) return reply.code(404).send({ error: 'Lead no encontrado' });
+
+    const activo = req.body?.activo !== false;
+    repo.actualizarFunnel(lead.id, {
+      bot_enabled: activo ? 1 : 0,
+      bot_pausado_hasta: activo ? null : lead.bot_pausado_hasta,
+    });
+    logger?.info({ leadId: lead.id, activo }, 'el bot se prendio o apago desde el CRM');
+    return { ok: true, activo };
   });
 
   /**
