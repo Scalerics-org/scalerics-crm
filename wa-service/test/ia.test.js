@@ -502,3 +502,64 @@ test('con las dos claves puestas no molesta a nadie', () => {
   assert.deepEqual(faltan, []);
   assert.equal(encolados.length, 0);
 });
+
+// ── respuestas cortadas y esperas largas ─────────────────────────────────────
+
+const { recortarEnOracion, clienteAnthropic } = require('../src/ia/modelo');
+
+test('un texto cortado a la mitad se recorta en la última oración completa', () => {
+  assert.equal(
+    recortarEnOracion('Buenas, Ana. Contame un poco del proyecto. Y también quería pregunt'),
+    'Buenas, Ana. Contame un poco del proyecto.'
+  );
+  assert.equal(
+    recortarEnOracion('¿Cómo se llama el negocio? Así lo anoto y despu'),
+    '¿Cómo se llama el negocio?'
+  );
+});
+
+test('si no hay dónde cortar, se devuelve lo que vino', () => {
+  // Cortar en la nada deja algo peor que el original: media palabra es feo,
+  // pero un mensaje vacío es un lead sin respuesta.
+  assert.equal(recortarEnOracion('Dale, te paso el'), 'Dale, te paso el');
+  assert.equal(recortarEnOracion(''), '');
+  assert.equal(recortarEnOracion(null), '');
+});
+
+test('la capa avisa cuando la respuesta llegó al tope de tokens', async () => {
+  const cliente = {
+    messages: {
+      create: async () => ({
+        stop_reason: 'max_tokens',
+        content: [{ type: 'text', text: 'Hacemos webs y sistemas a medida. También automatiza' }],
+      }),
+    },
+  };
+
+  const r = await crearModelo({ cliente }).pedir({ system: 'x', mensajes: [] });
+  assert.equal(r.truncado, true);
+  assert.equal(r.texto, 'Hacemos webs y sistemas a medida.', 'el texto suelto lo recorta la capa');
+});
+
+test('el mensaje al lead también se recorta, aunque venga por la herramienta', async () => {
+  // Es el caso que importa: nuestro mensaje no viaja en el texto suelto sino
+  // adentro de la herramienta. Recortar solo el texto seria copiar la forma
+  // del arreglo sin arreglar nada.
+  const largo = 'Buenas, Ana. Contame un poco de qué se trata el proyecto. Y también quería pregunt';
+  const agente = crearAgente({
+    modelo: modeloFalso({ texto: null, argumentos: { mensaje: largo }, truncado: true }),
+    textos,
+  });
+
+  const r = await agente.responder({ id: 1, nombre: 'Ana' }, 'hola', []);
+  assert.equal(r.texto, 'Buenas, Ana. Contame un poco de qué se trata el proyecto.');
+  assert.ok(!/pregunt$/.test(r.texto), 'no le llega una palabra por la mitad');
+});
+
+test('el cliente no espera diez minutos por una respuesta', async () => {
+  // El default del SDK son 10 minutos y 2 reintentos: media hora colgado en un
+  // solo mensaje, con los mensajes siguientes del lead encolados detrás.
+  const c = clienteAnthropic('sk-ant-de-mentira');
+  assert.ok(c.timeout <= 30_000, `esperaba menos de 30s, hay ${c.timeout}ms`);
+  assert.ok(c.maxRetries <= 1, 'y como mucho un reintento');
+});

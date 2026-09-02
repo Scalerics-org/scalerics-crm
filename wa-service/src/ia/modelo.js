@@ -26,6 +26,45 @@
 const MODELO_POR_DEFECTO = 'claude-haiku-4-5-20251001';
 
 /**
+ * Cuanto se espera una respuesta antes de darla por perdida.
+ *
+ * El SDK viene con 10 minutos y 2 reintentos: hasta media hora colgado en un
+ * solo mensaje. Para un chat de WhatsApp eso es peor que fallar rapido — el
+ * lead espera una eternidad, sus mensajes siguientes quedan encolados detras, y
+ * si la respuesta llega a los diez minutos ya no sirve para nada.
+ *
+ * Con estos valores el peor caso es medio minuto, y despues de eso el embudo
+ * hace lo que sabe hacer: derivar a una persona. Un lead atendido por alguien
+ * del equipo a los treinta segundos es mucho mejor que uno esperando solo.
+ */
+const TIMEOUT_MS = 25_000;
+const REINTENTOS = 1;
+
+/**
+ * Recorta un texto en la ultima oracion completa.
+ *
+ * Para cuando el modelo llego al tope de tokens: el ultimo renglon queda
+ * cortado a la mitad y al lead le llega una frase sin terminar. Es mejor
+ * mandar menos y que se entienda.
+ *
+ * Si no hay ningun corte razonable —una respuesta corta sin puntuacion— se
+ * devuelve tal cual: cortar en la nada dejaria algo peor que el original.
+ *
+ * El minimo son veinte caracteres y no mas, porque los mensajes de este bot son
+ * preguntas de un renglon: "¿Cómo se llama el negocio?" son veinticinco y es un
+ * mensaje entero y perfecto. Un umbral pensado para respuestas largas —listas
+ * de productos con precios— lo dejaria pasar sin recortar.
+ */
+const MIN_ORACION = 20;
+
+function recortarEnOracion(texto) {
+  const t = String(texto || '');
+  const corte = Math.max(t.lastIndexOf('. '), t.lastIndexOf('.\n'), t.lastIndexOf('?'), t.lastIndexOf('!'));
+  if (corte < MIN_ORACION) return t;
+  return t.slice(0, corte + 1).trim();
+}
+
+/**
  * @param {object} deps.cliente  ya construido, o null para quedar inactivo.
  *   En los tests entra uno de mentira con la misma forma.
  */
@@ -77,16 +116,25 @@ function crearModelo({ cliente = null, modelo = MODELO_POR_DEFECTO, logger = nul
       // La respuesta viene como una lista de bloques: los de texto y los de uso
       // de herramienta llegan mezclados y en cualquier orden.
       const bloques = Array.isArray(r?.content) ? r.content : [];
-      const texto = bloques
+      const crudo = bloques
         .filter((b) => b.type === 'text')
         .map((b) => b.text)
         .join('\n')
         .trim();
       const usoHerramienta = bloques.find((b) => b.type === 'tool_use');
 
+      // Llego al tope de tokens: lo que vino esta cortado a la mitad. El texto
+      // suelto se recorta aca, que es el unico lugar que sabe que paso. Lo que
+      // viene por la herramienta no —esta capa no conoce los nombres de los
+      // campos de nadie— asi que se avisa y lo resuelve el que llamo.
+      const truncado = r?.stop_reason === 'max_tokens';
+      if (truncado) logger?.warn({ modelo }, 'la respuesta llego al tope de tokens');
+      const texto = truncado ? recortarEnOracion(crudo) : crudo;
+
       return {
         texto: texto || null,
         argumentos: usoHerramienta ? usoHerramienta.input : null,
+        truncado,
       };
     },
   };
@@ -97,7 +145,7 @@ function clienteAnthropic(apiKey) {
   if (!apiKey) return null;
   const Anthropic = require('@anthropic-ai/sdk');
   const Constructor = Anthropic.default || Anthropic;
-  return new Constructor({ apiKey });
+  return new Constructor({ apiKey, timeout: TIMEOUT_MS, maxRetries: REINTENTOS });
 }
 
 /**
@@ -132,4 +180,10 @@ function avisarSiFaltaClave({ cfg, cola, ia, logger = null }) {
   return faltantes;
 }
 
-module.exports = { crearModelo, clienteAnthropic, avisarSiFaltaClave, MODELO_POR_DEFECTO };
+module.exports = {
+  crearModelo,
+  clienteAnthropic,
+  avisarSiFaltaClave,
+  recortarEnOracion,
+  MODELO_POR_DEFECTO,
+};

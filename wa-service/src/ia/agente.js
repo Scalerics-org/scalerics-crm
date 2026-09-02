@@ -3,6 +3,7 @@
 const { construirSystem, faltantes } = require('./prompt');
 const { CAJONES } = require('../funnel/nurture');
 const { corregir: corregirVoseo } = require('./voseo');
+const { recortarEnOracion } = require('./modelo');
 
 const MAX_HISTORIAL = 20;
 const MAX_CARACTERES = 900;
@@ -254,7 +255,12 @@ function crearAgente({ modelo = null, textos, calendly = '', logger = null } = {
         return null;
       }
 
-      const crudo = String(argumentos.mensaje || '').trim();
+      // El mensaje al lead viaja adentro de la herramienta, asi que si la
+      // respuesta se corto por tokens el que queda a medias es este y no el
+      // texto suelto. Se recorta en la ultima oracion completa: media frase
+      // colgada se lee como que el bot se rompio.
+      const entero = String(argumentos.mensaje || '').trim();
+      const crudo = r.truncado ? recortarEnOracion(entero) : entero;
       // El prompt prohibe el tuteo con todas las letras y el modelo se va igual.
       // Es una conversion mecanica: la hace el codigo, que no se equivoca.
       const { texto, corregidos } = corregirVoseo(crudo);
