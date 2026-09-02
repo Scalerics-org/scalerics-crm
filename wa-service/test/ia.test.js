@@ -739,3 +739,16 @@ test('si el mensaje entrante vino por audio, el prompt lo avisa', () => {
   const escrito = construirSystem({ nombre: 'Juan' }, null, '', { porAudio: false });
   assert.ok(!/nota de voz/i.test(escrito));
 });
+
+/**
+ * "Lindo. ¿A qué se dedican?" — el turno siguiente a decidir que NO puede decir
+ * el nombre porque no esta seguro de haberlo entendido. Opina sobre algo que no
+ * puede nombrar.
+ *
+ * El nombre de un negocio no se elogia ni se comenta: no aporta nada y cuando
+ * salio de un audio queda ridiculo.
+ */
+test('el prompt le prohibe opinar sobre el nombre del negocio', () => {
+  const sys = construirSystem({ nombre: 'Juan' }, null, '', { porAudio: true });
+  assert.match(sys, /no opines sobre el nombre/i);
+});
