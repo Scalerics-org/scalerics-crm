@@ -1,7 +1,8 @@
 'use strict';
 
 const { S, palabraGlobal } = require('./states');
-const { eligioEsaHora } = require('../agenda/eleccion');
+const { eligioEsaHora, revisarFranja } = require('../agenda/eleccion');
+const { enZona, instanteLocal } = require('../agenda/gcal');
 const { TRANSICIONES } = require('./transitions');
 const plantillas = require('../templates');
 const { detectar, ETIQUETA } = require('./derivacion');
@@ -69,6 +70,18 @@ const MOTIVO = {
  * enterarse de los leads calificados sin que nadie lo notara.
  */
 const AVISAR_AL_CRM = new Set([S.MEETING_SENT, S.MEETING_LINK_SENT, S.HUMAN_QUEUED]);
+
+/**
+ * Por que no se puede dar el horario que pidio. Va como contexto al redactor:
+ * repetir la lista sin decir el motivo se lee como que el bot no escucha, que
+ * es lo que paso el 2-9 con "las 5 de la mañana" y despues "las 8:30".
+ */
+const MOTIVO_FRANJA = {
+  fuera_de_franja: (cfg) => `Pidió una hora fuera del horario en que agendamos, que es de ${cfg.AGENDA_DESDE} a ${cfg.AGENDA_HASTA}. Decíselo en una línea, sin pedir disculpas de más.`,
+  dia_no_habil: () => 'Pidió un día que no es hábil: solo agendamos de lunes a viernes. Decíselo en una línea.',
+  muy_pronto: (cfg) => `Pidió algo demasiado pronto: hace falta al menos ${cfg.AGENDA_AVISO_MIN_HORAS} horas de aviso. Decíselo sin sonar burocrático.`,
+  muy_lejos: (cfg) => `Pidió una fecha demasiado lejana: agendamos hasta ${cfg.AGENDA_DIAS_ADELANTE} días adelante. Decíselo y ofrecele lo que hay.`,
+};
 
 const FASE_CIERRE = new Set([
   S.MEETING_SENT, S.MEETING_INFO, S.MEETING_LINK_SENT, S.SCHEDULED,
@@ -235,6 +248,66 @@ function crearEmbudo({
     return ofrecidos[i];
   }
 
+  /**
+   * El lead pidio un horario que no estaba en la lista. Se lo interpreta, se
+   * verifica contra la franja y contra el calendario, y se le contesta lo que
+   * corresponda.
+   *
+   * @returns {Promise<{decidido: boolean, estado?: string, inicio?: Date}>}
+   *   decidido = ya se le contesto y no hay nada que agendar.
+   */
+  async function pedirOtroHorario(lead, entrada, ofrecidos) {
+    const repetirLista = async () => {
+      if (!await decirIA(lead, 'horario_no_entendido', describirHorarios({ slots: ofrecidos }))) {
+        return { decidido: true, estado: sinIA(lead, 'horario_no_entendido') };
+      }
+      return { decidido: true, estado: S.HORARIOS_OFRECIDOS };
+    };
+
+    if (!agente?.activo || !agenda?.activo) return repetirLista();
+
+    const hoy = enZona(ahora(), cfg.TZ).dia;
+    const pedido = await agente.proponerMomento({ texto: entrada, hoy, tz: cfg.TZ });
+    // No estaba pidiendo una hora: pregunto otra cosa, o dudo.
+    if (!pedido) return repetirLista();
+
+    const inicio = instanteLocal(pedido.dia, pedido.hora, pedido.minuto, cfg.TZ);
+
+    const franja = revisarFranja(inicio, cfg, ahora());
+    if (!franja.ok) {
+      logger?.info({ leadId: lead.id, pidio: inicio.toISOString(), motivo: franja.motivo },
+        'pidio un horario que no se puede dar');
+      const explicacion = MOTIVO_FRANJA[franja.motivo](cfg);
+      if (!await decirIA(lead, 'horario_fuera_de_franja',
+        `${explicacion}
+
+${describirHorarios({ slots: ofrecidos })}`)) {
+        return { decidido: true, estado: sinIA(lead, 'horario_fuera_de_franja') };
+      }
+      return { decidido: true, estado: S.HORARIOS_OFRECIDOS };
+    }
+
+    const libre = await agenda.libreEn(inicio);
+    // null es "no se pudo preguntar": ni se agenda a ciegas ni se le dice que
+    // no a algo que capaz estaba libre. Se le repite la lista, que si se sabe.
+    if (libre === null) return repetirLista();
+    if (libre === false) {
+      const nuevos = await agenda.horariosDisponibles(ahora());
+      if (nuevos?.slots?.length) {
+        repo.actualizarFunnel(lead.id, {
+          horarios_ofrecidos: JSON.stringify(nuevos.slots.map((d) => d.toISOString())),
+        });
+        await decirIA(lead, 'horario_ocupado', describirHorarios(nuevos));
+        return { decidido: true, estado: S.HORARIOS_OFRECIDOS };
+      }
+      return repetirLista();
+    }
+
+    logger?.info({ leadId: lead.id, pidio: inicio.toISOString() },
+      'pidio un horario libre que no estaba en la lista');
+    return { decidido: false, inicio };
+  }
+
   /** Deja la reunion registrada: recordatorios, aviso al AM y estado. */
   function servicioReunion(lead, r) {
     repo.registrarReunion(lead.id, {
@@ -382,13 +455,25 @@ function crearEmbudo({
         const ofrecidos = leerHorarios(lead);
         if (!ofrecidos.length) return alEntrar(lead, S.MEETING_SENT, entrada);
 
-        const elegido = await elegirHorario(lead, entrada, ofrecidos);
+        let elegido = await elegirHorario(lead, entrada, ofrecidos);
+
+        /**
+         * No eligio ninguno de la lista. Antes se le repetia la lista y listo,
+         * y eso estaba mal por dos motivos.
+         *
+         * Los cinco horarios son sugerencias repartidas en dias, no todo lo que
+         * hay: en una franja de 12 a 16 cada media hora entran ocho por dia. Si
+         * pide las 15:00 y estan libres, hay que darselas — decirle que no a un
+         * horario que existe es perder la reunion por nada.
+         *
+         * Y cuando de verdad no se puede, hay que decir POR QUE. El 2-9 pidio
+         * las 5 de la mañana y despues las 8:30 y recibio la misma lista dos
+         * veces sin una palabra: eso se lee como que el bot no escucha.
+         */
         if (!elegido) {
-          // No se entendio cual quiere. Se le vuelve a preguntar con los mismos
-          // horarios: pedirle que elija de nuevo es mejor que agendar el que no era.
-          if (!await decirIA(lead, 'horario_no_entendido', describirHorarios({ slots: ofrecidos })))
-            return sinIA(lead, 'horario_no_entendido');
-          return estado;
+          const pedido = await pedirOtroHorario(lead, entrada, ofrecidos);
+          if (pedido.decidido) return pedido.estado;
+          elegido = pedido.inicio;
         }
 
         const r = await agenda.reservar({

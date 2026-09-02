@@ -2,6 +2,7 @@
 
 const { S } = require('../../funnel/states');
 const { normalizar } = require('../../telefono');
+const { pausarHasta } = require('../../funnel/pausa');
 
 /**
  * Endpoints que consume el panel WA del CRM (routes/wa.py).
@@ -169,6 +170,21 @@ function registrar(app, { cfg, repo, cola, embudo = null, media = null, logger }
     }
     const lead = repo.leadPorTelefono(tel);
     cola.encolar({ to: tel, texto: String(text).trim(), kind: 'manual', leadId: lead ? lead.id : null });
+
+    /**
+     * Escribirle desde el panel tambien pausa al bot en ese chat.
+     *
+     * La pausa automatica se disparaba solo cuando la persona escribia desde su
+     * celular, porque se detecta por el eco de Baileys — y esto sale por la cola
+     * del propio bot, asi que el eco se reconoce como propio y se descarta.
+     * Resultado: escribias desde el CRM y el bot te seguia contestando por
+     * arriba, en el mismo chat.
+     *
+     * Es la misma decision en los dos casos: si entro una persona, el bot se
+     * corre. Y vence sola, igual que la otra.
+     */
+    if (lead) repo.actualizarFunnel(lead.id, { bot_pausado_hasta: pausarHasta() });
+
     return { ok: true };
   });
 

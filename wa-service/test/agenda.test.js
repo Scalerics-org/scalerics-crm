@@ -460,3 +460,90 @@ test('el contexto que recibe el modelo dice el dia de cada horario', async () =>
     assert.ok(linea, `${hora} tiene que aparecer junto a su dia (${numeroDeDia})`);
   }
 });
+
+test('libreEn dice si un hueco puntual esta libre', () => {
+  return (async () => {
+    const g = googleFalso({ ocupados: ['13:00-13:30'] });
+    const a = crearAgenda({ cfg: CFG, fetch: g.fetch });
+
+    assert.equal(await a.libreEn(instanteLocal('2026-08-19', 13, 0, TZ)), false);
+    assert.equal(await a.libreEn(instanteLocal('2026-08-19', 15, 0, TZ)), true);
+  })();
+});
+
+test('si Google no contesta, libreEn dice null y no inventa', () => {
+  return (async () => {
+    // Devolver true agendaria encima de algo; devolver false perderia una
+    // reunion que si se podia. Null deja que el que llama decida.
+    const g = googleFalso({ fallaFreeBusy: true });
+    const a = crearAgenda({ cfg: CFG, fetch: g.fetch });
+    assert.equal(await a.libreEn(instanteLocal('2026-08-19', 15, 0, TZ)), null);
+  })();
+});
+
+/**
+ * Lo que paso el 2-9 despues de arreglar lo anterior:
+ *
+ *   → Te dejo los horarios: jue 12:00, jue 12:30, vie 12:00, vie 12:30, lun 12:00
+ *   ← Jueves a las 5 de la mañana
+ *   → [la misma lista]
+ *   ← No tienen disponible jueves 8:30?
+ *   → [la misma lista otra vez]
+ *
+ * Dos cosas mal. La lista son cinco sugerencias repartidas en dias, pero en una
+ * franja de 12 a 16 cada media hora entran OCHO por dia: pedir las 13:00 —que
+ * estan libres— se contestaba con la misma lista. Y cuando la hora de verdad no
+ * se puede, repetir la lista sin decir por que se lee como que el bot no
+ * escucha.
+ */
+function conHoraPedida(hhmm, extra = {}) {
+  const [h, m] = hhmm.split(':').map(Number);
+  const modelo = stubModelo({ datos: COMPLETO });
+  const original = modelo.pedir.bind(modelo);
+  modelo.pedir = async (args) => {
+    if (args.herramienta?.nombre === 'elegir') return { texto: null, argumentos: { opcion: 'ninguno' } };
+    if (args.herramienta?.nombre === 'momento') {
+      return { texto: null, argumentos: { dia: extra.dia || '2026-09-03', hora: h, minuto: m } };
+    }
+    return original(args);
+  };
+  return modelo;
+}
+
+test('una hora libre que no estaba en la lista igual se agenda', async () => {
+  const google = googleFalso();
+  const s = await conLead({
+    modelo: conHoraPedida('15:00'),
+    AGENDA_OFRECE_HORARIOS: 'true',
+    _google: google.fetch,
+    ahora: instanteLocal('2026-09-03', 9, 0, TZ),
+  });
+
+  await s.servicioLeads.registrarRespuesta('59899123456', DIJO_TODO);
+  await s.cola.vacia();
+  await s.servicioLeads.registrarRespuesta('59899123456', 'las 15:00 me sirve más');
+  await s.cola.vacia();
+
+  const l = s.repo.leadPorTelefono('59899123456');
+  assert.ok(l.meeting_time, 'agendo');
+  assert.equal(enZona(new Date(l.meeting_time), TZ).hora, 15, 'la hora que pidio');
+});
+
+test('una hora fuera de la franja se rechaza diciendo por que', async () => {
+  const google = googleFalso();
+  const s = await conLead({
+    modelo: conHoraPedida('05:00'),
+    AGENDA_OFRECE_HORARIOS: 'true',
+    _google: google.fetch,
+    ahora: instanteLocal('2026-09-03', 9, 0, TZ),
+  });
+
+  await s.servicioLeads.registrarRespuesta('59899123456', DIJO_TODO);
+  await s.cola.vacia();
+  await s.servicioLeads.registrarRespuesta('59899123456', 'jueves a las 5 de la mañana');
+  await s.cola.vacia();
+
+  const msgs = s.proveedor.getEnviados().filter((e) => e.to === '59899123456').map((e) => e.texto);
+  assert.equal(s.repo.leadPorTelefono('59899123456').meeting_time, null, 'no agendo nada');
+  assert.equal(msgs.at(-1), '[horario_fuera_de_franja]', 'le explica, no repite la lista');
+});

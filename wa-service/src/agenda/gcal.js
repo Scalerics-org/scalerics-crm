@@ -235,6 +235,27 @@ function crearAgenda({ cfg, logger = null, fetch: _fetch = globalThis.fetch } = 
      *
      * @returns {Promise<{ok: true, inicio: Date, meetUrl: string}|{ok: false, motivo: 'ocupado'|'error'}>}
      */
+    /**
+     * Si un hueco puntual esta libre. Para las horas que propone el lead y que
+     * no estaban en la lista: los cinco horarios que se le muestran son
+     * sugerencias repartidas en dias, no todo lo que hay.
+     *
+     * @returns {Promise<boolean|null>} null si no se pudo preguntar. Ni true ni
+     *   false: devolver true agendaria encima de algo y false perderia una
+     *   reunion que si se podia. El que llama decide que hacer con la duda.
+     */
+    async libreEn(inicio) {
+      if (!activo) return null;
+      const fin = new Date(inicio.getTime() + cfg.AGENDA_DURACION_MIN * 60_000);
+      try {
+        const ocupados = await ocupado(inicio, fin);
+        return !ocupados.some((o) => inicio < o.hasta && fin > o.desde);
+      } catch (e) {
+        logger?.warn({ err: String(e.message || e) }, 'no se pudo consultar un horario puntual');
+        return null;
+      }
+    },
+
     async reservar({ inicio, nombre, telefono, resumen }) {
       if (!activo) return { ok: false, motivo: 'error' };
 

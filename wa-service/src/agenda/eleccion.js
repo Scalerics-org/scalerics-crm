@@ -118,4 +118,47 @@ function eligioEsaHora(texto, elegido, tz = 'America/Montevideo') {
   return nombroEseDia(texto, elegido, tz);
 }
 
-module.exports = { horasQueDijo, diasQueNombro, eligioEsaHora };
+/**
+ * Si una hora que el lead propone —una que no estaba en la lista— es agendable.
+ *
+ * La lista que se le muestra son unas pocas sugerencias repartidas en dias, no
+ * todo lo que hay libre: en una franja de 12 a 16 cada media hora entran ocho
+ * por dia. Decirle que no a un horario que existe es perder la reunion por
+ * nada, y fue exactamente lo que paso el 2-9: pidio las 15:00, que estaban
+ * libres, y el bot le contesto con la misma lista tres veces seguidas.
+ *
+ * Esto decide lo que se puede decidir sin mirar el calendario. Que el hueco
+ * este libre lo verifica la agenda despues: son dos preguntas distintas y los
+ * motivos que se le explican al lead tambien.
+ *
+ * @returns {{ok: boolean, motivo?: string}}
+ */
+function revisarFranja(inicio, cfg, ahora = new Date()) {
+  const tz = cfg.TZ || 'America/Montevideo';
+  const { hora, minuto, diaSemana } = enZona(inicio, tz);
+
+  const habiles = new Set(String(cfg.AGENDA_DIAS).split(',').map((d) => d.trim()));
+  if (!habiles.has(diaSemana)) return { ok: false, motivo: 'dia_no_habil' };
+
+  const [hIni, mIni] = String(cfg.AGENDA_DESDE).split(':').map(Number);
+  const [hFin, mFin] = String(cfg.AGENDA_HASTA).split(':').map(Number);
+  const enMinutos = hora * 60 + minuto;
+  const desde = hIni * 60 + mIni;
+  const hasta = hFin * 60 + mFin;
+
+  if (enMinutos < desde) return { ok: false, motivo: 'fuera_de_franja' };
+  // La reunion tiene que TERMINAR dentro de la franja, no solo empezar.
+  if (enMinutos + cfg.AGENDA_DURACION_MIN > hasta) return { ok: false, motivo: 'fuera_de_franja' };
+  // Y caer en la grilla: media hora corrida deja huecos que despues no encajan.
+  if ((enMinutos - desde) % cfg.AGENDA_PASO_MIN !== 0) return { ok: false, motivo: 'fuera_de_franja' };
+
+  const piso = ahora.getTime() + cfg.AGENDA_AVISO_MIN_HORAS * 3600_000;
+  if (inicio.getTime() < piso) return { ok: false, motivo: 'muy_pronto' };
+
+  const techo = ahora.getTime() + cfg.AGENDA_DIAS_ADELANTE * 86400_000;
+  if (inicio.getTime() > techo) return { ok: false, motivo: 'muy_lejos' };
+
+  return { ok: true };
+}
+
+module.exports = { horasQueDijo, diasQueNombro, eligioEsaHora, revisarFranja };

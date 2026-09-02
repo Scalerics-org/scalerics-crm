@@ -231,11 +231,17 @@ Explicale cómo sigue, en concreto y en dos líneas:
 Eso último es lo que vale y conviene que quede claro: no va a una charla a contar lo mismo otra vez, va a ver algo hecho para él.
 
 Enganchá con lo que te contó —su rubro, lo que necesita— para que no suene a plantilla.
-Y cerrá mostrándole los horarios que te paso abajo, tal cual, para que elija uno. NO inventes otros ni agregues "o el que te quede cómodo": esos son los que hay.
+Y cerrá mostrándole los horarios que te paso abajo, tal cual, para que elija uno. NO inventes otros: esos son los que hay a mano.
+Agregá que si ninguno le sirve, te diga qué día y hora le queda bien y lo mirás. Es cierto: la lista son sugerencias, no todo lo que hay libre, y sin decírselo el lead cree que esas cinco son las únicas opciones.
 No mandes ningún link. El horario que elija lo agendás vos.`,
 
     horario_no_entendido: `Le mostraste horarios y contestó algo que no se entiende cuál es.
-Volvé a listarle los mismos, sin reproches y sin hacerlo sentir tonto. Una línea y la lista.`,
+Volvé a listarle los mismos, sin reproches y sin hacerlo sentir tonto. Una línea y la lista.
+Y decile que si ninguno le sirve, te diga qué día y hora le queda bien: la lista son sugerencias, no todo lo que hay libre.`,
+
+    horario_fuera_de_franja: `Pidió un horario que no le podemos dar, y abajo te digo por qué.
+Decíselo en una línea, con el motivo, y mostrale los que sí hay para que elija.
+Sin repetir la lista a secas: si no le explicás por qué, parece que no lo escuchaste.`,
 
     horario_ocupado: `Eligió un horario que se ocupó justo antes de que contestara.
 Pedile disculpas en media línea —fue nuestro problema, no suyo— y mostrale los que quedan libres ahora.`,

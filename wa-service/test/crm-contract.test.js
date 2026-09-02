@@ -256,3 +256,36 @@ test('pedir un audio que no existe da 404, y no se puede salir del directorio', 
   const s = await conLead();
   assert.equal((await comoElCrm(s, 'GET', '/api/messages/9999/media/0')).statusCode, 404);
 });
+
+/**
+ * Escribirle al lead desde el panel tambien pausa al bot.
+ *
+ * La pausa automatica se disparaba solo cuando Juan escribia desde el celular,
+ * porque se detecta por el eco de Baileys — y un mensaje mandado desde el panel
+ * sale por la cola del propio bot, asi que se reconoce como propio y se
+ * descarta. Escribias desde el CRM y el bot te seguia contestando por arriba:
+ *
+ *   20:22  →  "hola"          (Juan, desde el panel)
+ *   20:23  ←  "Hila"          (el lead)
+ *   20:23  →  "Anotá cuál..." (el bot, encima)
+ *
+ * Es la misma decision en los dos casos: si entro una persona, el bot se corre.
+ */
+test('mandar desde el panel pausa al bot en ese chat', async () => {
+  const s = await conLead();
+  const antes = s.repo.leadPorTelefono('59899123456');
+  assert.equal(antes.bot_pausado_hasta, null);
+
+  const r = await comoElCrm(s, 'POST', '/api/send', { phone: '59899123456', text: 'te escribo yo' });
+  assert.equal(r.statusCode, 200);
+
+  const l = s.repo.leadPorTelefono('59899123456');
+  assert.ok(l.bot_pausado_hasta, 'quedo pausado');
+  assert.ok(new Date(l.bot_pausado_hasta) > new Date(), 'y la pausa esta corriendo');
+});
+
+test('mandar a un telefono que no es un lead no rompe', async () => {
+  const s = await conLead();
+  const r = await comoElCrm(s, 'POST', '/api/send', { phone: '59899000000', text: 'hola' });
+  assert.equal(r.statusCode, 200);
+});

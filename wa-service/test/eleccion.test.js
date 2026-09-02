@@ -103,3 +103,55 @@ test('con dia y hora, los dos tienen que coincidir', () => {
   assert.equal(eligioEsaHora('el viernes 12:30', viernes4alas1230, TZ), true);
   assert.equal(eligioEsaHora('el jueves 12:30', viernes4alas1230, TZ), false);
 });
+
+// ── una hora que el lead propone, fuera de la lista ──────────────────────────
+
+const { revisarFranja } = require('../src/agenda/eleccion');
+
+const CFG = {
+  TZ, AGENDA_DESDE: '12:00', AGENDA_HASTA: '16:00',
+  AGENDA_PASO_MIN: 30, AGENDA_DURACION_MIN: 30,
+  AGENDA_DIAS: 'mon,tue,wed,thu,fri',
+  AGENDA_DIAS_ADELANTE: 10, AGENDA_AVISO_MIN_HORAS: 3,
+};
+
+/** Miercoles 2 de setiembre de 2026, 09:00 en Montevideo. */
+const AHORA = new Date(Date.UTC(2026, 8, 2, 12));
+
+/**
+ * La lista que se le muestra son unas pocas sugerencias repartidas en dias, no
+ * todo lo que hay libre: en una franja de 12 a 16 cada media hora entran 8 por
+ * dia. Si el lead pide otra hora que esta libre, hay que darsela — decirle que
+ * no a un horario que existe es perder la reunion por nada.
+ */
+test('una hora de la franja, aunque no se haya listado, es aceptable', () => {
+  assert.deepEqual(revisarFranja(alas(15), CFG, AHORA), { ok: true });
+  assert.deepEqual(revisarFranja(alas(13, 30), CFG, AHORA), { ok: true });
+});
+
+test('fuera de la franja se rechaza, y se dice por que', () => {
+  assert.equal(revisarFranja(alas(5), CFG, AHORA).ok, false);
+  assert.equal(revisarFranja(alas(5), CFG, AHORA).motivo, 'fuera_de_franja');
+  assert.equal(revisarFranja(alas(20), CFG, AHORA).motivo, 'fuera_de_franja');
+  // 15:30 entra: arranca antes de las 16 y la reunion dura 30.
+  assert.equal(revisarFranja(alas(15, 30), CFG, AHORA).ok, true);
+  // 15:45 no: no esta en la grilla de media hora.
+  assert.equal(revisarFranja(alas(15, 45), CFG, AHORA).motivo, 'fuera_de_franja');
+});
+
+test('un dia no habil se rechaza', () => {
+  // Sabado 5 de setiembre.
+  const sabado = new Date(Date.UTC(2026, 8, 5, 15));
+  assert.equal(revisarFranja(sabado, CFG, AHORA).motivo, 'dia_no_habil');
+});
+
+test('algo demasiado pronto o demasiado lejos tambien', () => {
+  // A las 9:00 en punto, las 12:00 caen justo en el piso de 3 horas y valen.
+  assert.equal(revisarFranja(new Date(Date.UTC(2026, 8, 2, 15)), CFG, AHORA).ok, true);
+  // Media hora mas tarde ya no llegan.
+  const nueveYMedia = new Date(Date.UTC(2026, 8, 2, 12, 30));
+  assert.equal(revisarFranja(new Date(Date.UTC(2026, 8, 2, 15)), CFG, nueveYMedia).motivo, 'muy_pronto');
+  // Mas de 10 dias adelante.
+  const lejos = new Date(Date.UTC(2026, 9, 15, 15));
+  assert.equal(revisarFranja(lejos, CFG, AHORA).motivo, 'muy_lejos');
+});

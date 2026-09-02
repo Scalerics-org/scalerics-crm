@@ -400,6 +400,48 @@ ${lista}`,
       return opciones.includes(r.argumentos.opcion) ? r.argumentos.opcion : null;
     },
 
+    /**
+     * Que dia y hora esta pidiendo el lead, cuando pide uno que no estaba en la
+     * lista. Interpreta el modelo —entiende "el jueves a las 5 de la mañana",
+     * "mañana temprano", "el viernes 15:30"— y el codigo verifica despues que
+     * eso caiga en la franja y este libre.
+     *
+     * Es distinto de elegirDeLista: alli el modelo elige entre opciones
+     * cerradas, aca traduce a una fecha. Devuelve null si no hay ninguna.
+     */
+    async proponerMomento({ texto, hoy, tz }) {
+      if (!modelo?.activo) return null;
+
+      const r = await modelo.pedir({
+        system: `Hoy es ${hoy} y la zona horaria es ${tz}. El lead esta pidiendo un dia y una hora para una reunion. Devolve cual, en fecha concreta. Si no esta pidiendo ninguno —pregunta otra cosa, duda, dice "cualquiera"— devolve pide: false.`,
+        mensajes: [{ role: 'user', content: String(texto || '') }],
+        herramienta: {
+          nombre: 'momento',
+          descripcion: 'El dia y la hora que pide el lead.',
+          parametros: {
+            type: 'object',
+            properties: {
+              pide: { type: 'boolean', description: 'Si esta pidiendo un dia y hora concretos.' },
+              dia: { type: 'string', description: 'AAAA-MM-DD. La fecha que corresponde a lo que dijo, contando desde hoy.' },
+              hora: { type: 'integer', description: 'Hora en reloj de 24. "5 de la tarde" es 17.' },
+              minuto: { type: 'integer', description: '0 o 30, normalmente. "y media" es 30.' },
+            },
+            required: ['pide'],
+          },
+        },
+        maxTokens: 120,
+      });
+
+      const a = r?.argumentos;
+      if (!a || a.pide === false) return null;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(a.dia || ''))) return null;
+      const hora = Number(a.hora);
+      const minuto = Number(a.minuto || 0);
+      if (!Number.isInteger(hora) || hora < 0 || hora > 23) return null;
+      if (!Number.isInteger(minuto) || minuto < 0 || minuto > 59) return null;
+      return { dia: a.dia, hora, minuto };
+    },
+
     faltantes,
   };
 }
