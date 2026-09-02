@@ -201,6 +201,31 @@ function crearEmbudo({
    * Los horarios en palabras, para que el modelo los escriba y para que sepa
    * cuales son los validos. Se le pasan como contexto, no como texto final.
    */
+  /**
+   * Lo que hay libre, en tramos. Es lo que se le dice al lead.
+   *
+   * En una franja de 07 a 20 cada media hora hay 25 huecos por dia. Listar tres
+   * hace parecer que no hay lugar —el lead compara con la pagina de Calendly y
+   * ve el dia entero abierto— y listar los 25 es ilegible por WhatsApp. En
+   * tramos se dice como lo diria una persona.
+   */
+  function describirTramos(bloques) {
+    if (!bloques?.length) return '';
+    const porDia = new Map();
+    for (const b of bloques) {
+      const dia = new Intl.DateTimeFormat('es-UY', {
+        timeZone: cfg.TZ, weekday: 'long', day: 'numeric', month: 'long',
+      }).format(b.desde);
+      const hora = (d) => new Intl.DateTimeFormat('es-UY', {
+        timeZone: cfg.TZ, hour: '2-digit', minute: '2-digit', hour12: false,
+      }).format(d);
+      if (!porDia.has(dia)) porDia.set(dia, []);
+      porDia.get(dia).push(`de ${hora(b.desde)} a ${hora(b.hasta)}`);
+    }
+    const lineas = [...porDia].map(([dia, rangos]) => `- ${dia}: ${rangos.join(' y ')}`);
+    return `Lo que hay libre:\n${lineas.join('\n')}`;
+  }
+
   function describirHorarios({ slots }) {
     // Cada uno con su dia. Antes se nombraba el dia una sola vez —el del
     // primero— y se listaban las horas sueltas, porque los horarios salian
@@ -457,7 +482,9 @@ ${describirHorarios({ slots: ofrecidos })}`)) {
         if (libres?.slots?.length) {
           const iso = libres.slots.map((d) => d.toISOString());
           repo.actualizarFunnel(lead.id, { horarios_ofrecidos: JSON.stringify(iso) });
-          if (!await decirIA(lead, 'oferta_con_horarios', describirHorarios(libres))) {
+          const contexto = [describirTramos(libres.bloques), describirHorarios(libres)]
+            .filter(Boolean).join(String.fromCharCode(10, 10));
+          if (!await decirIA(lead, 'oferta_con_horarios', contexto)) {
             return sinIA(lead, 'oferta_con_horarios');
           }
           return S.HORARIOS_OFRECIDOS;

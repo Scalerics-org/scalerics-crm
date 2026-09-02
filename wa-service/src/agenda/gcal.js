@@ -61,6 +61,38 @@ function instanteLocal(dia, hora, minuto, tz) {
 const DIAS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 
 /**
+ * Junta huecos consecutivos en tramos.
+ *
+ * En una franja de 07 a 20 cada media hora hay 25 huecos por dia. Mostrar tres
+ * hace parecer que no hay lugar; listar los 25 es ilegible por WhatsApp. En
+ * tramos se dice como lo diria una persona: "de 7 a 14 y de 14:30 a 20".
+ *
+ * `hasta` es el FIN de la reunion del ultimo hueco, no su comienzo: un tramo
+ * que termina "a las 15:30" cuando la ultima reunion va de 15:30 a 16:00 se
+ * lee como que a las 15:30 ya no se puede.
+ *
+ * @returns {{desde: Date, hasta: Date}[]}
+ */
+function enTramos(slots, pasoMin, duracionMin) {
+  const tramos = [];
+  for (const inicio of slots) {
+    const ultimo = tramos[tramos.length - 1];
+    // Pegado al anterior: sigue el mismo tramo.
+    if (ultimo && inicio.getTime() - ultimo.ultimoInicio.getTime() === pasoMin * 60_000) {
+      ultimo.ultimoInicio = inicio;
+      ultimo.hasta = new Date(inicio.getTime() + duracionMin * 60_000);
+      continue;
+    }
+    tramos.push({
+      desde: inicio,
+      hasta: new Date(inicio.getTime() + duracionMin * 60_000),
+      ultimoInicio: inicio,
+    });
+  }
+  return tramos.map(({ desde, hasta }) => ({ desde, hasta }));
+}
+
+/**
  * Elige `cuantos` de una lista, repartidos de punta a punta.
  *
  * Siempre entran el primero y el ultimo: son los que le dicen al lead entre que
@@ -214,6 +246,9 @@ function crearAgenda({ cfg, logger = null, fetch: _fetch = globalThis.fetch } = 
        * cinco se las come el primer dia igual que antes.
        */
       const elegidos = [];
+      // Todo lo que hay libre, agrupado en tramos. Es lo que se le dice al
+      // lead; `elegidos` son las pocas sugerencias concretas que se le listan.
+      const tramos = [];
       const primerDia = { dia: null };
 
       for (let d = 0; d <= cfg.AGENDA_DIAS_ADELANTE; d++) {
@@ -239,6 +274,7 @@ function crearAgenda({ cfg, logger = null, fetch: _fetch = globalThis.fetch } = 
         // los dos primeros, el lead ve "12:00 o 12:30" y entiende que a la
         // tarde no atendemos —aunque las 15:00 esten libres y se las podamos
         // agendar si las pide—. Repartidas, la sugerencia deja ver el rango.
+        tramos.push(...enTramos(delDia, paso, duracion));
         const sugeridos = repartir(delDia, cfg.AGENDA_MAX_POR_DIA);
         delDia.length = 0;
         delDia.push(...sugeridos);
@@ -249,7 +285,7 @@ function crearAgenda({ cfg, logger = null, fetch: _fetch = globalThis.fetch } = 
       if (!elegidos.length) return null;
       // `dia` queda por compatibilidad: es el del primer horario. Lo que se le
       // muestra al lead sale de los slots, que ya traen su fecha cada uno.
-      return { dia: primerDia.dia, slots: elegidos };
+      return { dia: primerDia.dia, slots: elegidos, bloques: tramos };
     },
 
     /**

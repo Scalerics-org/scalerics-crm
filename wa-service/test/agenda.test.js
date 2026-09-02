@@ -621,3 +621,40 @@ test('no repite el aviso en cada lead', async () => {
     .filter((e) => e.to !== '59899123456' && /agenda/i.test(e.texto));
   assert.equal(avisos.length, 1, 'uno solo, no uno por conversacion');
 });
+
+/**
+ * En una franja de 07 a 20 cada media hora hay 25 huecos por dia. Mostrar tres
+ * hace parecer que no hay lugar; listar los 25 es ilegible por WhatsApp.
+ *
+ * Se dicen en tramos, como lo diria una persona: "de 7 a 14 y de 14:30 a 20".
+ */
+test('los horarios libres se agrupan en tramos', () => {
+  return (async () => {
+    const g = googleFalso({ ocupados: ['14:00-14:30'] });
+    const a = crearAgenda({
+      cfg: { ...CFG, AGENDA_DESDE: '12:00', AGENDA_HASTA: '16:00' },
+      fetch: g.fetch,
+    });
+    const r = await a.horariosDisponibles(MIERCOLES_9AM);
+
+    // 12:00 a 14:00 (la de 13:30 termina 14:00) y despues 14:30 a 16:00.
+    assert.equal(r.bloques.length, 2);
+    assert.equal(horas([r.bloques[0].desde])[0], '12:00');
+    assert.equal(horas([r.bloques[0].hasta])[0], '14:00');
+    assert.equal(horas([r.bloques[1].desde])[0], '14:30');
+    assert.equal(horas([r.bloques[1].hasta])[0], '16:00');
+  })();
+});
+
+test('un dia entero libre es un solo tramo', () => {
+  return (async () => {
+    const g = googleFalso();
+    const a = crearAgenda({ cfg: { ...CFG, AGENDA_DESDE: '12:00', AGENDA_HASTA: '16:00' }, fetch: g.fetch });
+    const r = await a.horariosDisponibles(MIERCOLES_9AM);
+
+    const delMiercoles = r.bloques.filter((b) => enZona(b.desde, TZ).dia === '2026-08-19');
+    assert.equal(delMiercoles.length, 1);
+    assert.equal(horas([delMiercoles[0].desde])[0], '12:00');
+    assert.equal(horas([delMiercoles[0].hasta])[0], '16:00');
+  })();
+});
