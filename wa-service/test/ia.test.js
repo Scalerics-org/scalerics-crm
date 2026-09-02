@@ -518,6 +518,15 @@ test('un texto cortado a la mitad se recorta en la última oración completa', (
   );
 });
 
+test('sin un solo punto, corta en el último renglón entero', () => {
+  // Apareció probando contra la API de verdad: devolvió títulos y viñetas,
+  // donde no hay puntuación que cortar, y lo que sobraba era media palabra.
+  assert.equal(
+    recortarEnOracion('Servicios que ofrecemos\nDesarrollamos estrategias de marketing integ'),
+    'Servicios que ofrecemos'
+  );
+});
+
 test('si no hay dónde cortar, se devuelve lo que vino', () => {
   // Cortar en la nada deja algo peor que el original: media palabra es feo,
   // pero un mensaje vacío es un lead sin respuesta.

@@ -59,9 +59,19 @@ const MIN_ORACION = 20;
 
 function recortarEnOracion(texto) {
   const t = String(texto || '');
-  const corte = Math.max(t.lastIndexOf('. '), t.lastIndexOf('.\n'), t.lastIndexOf('?'), t.lastIndexOf('!'));
-  if (corte < MIN_ORACION) return t;
-  return t.slice(0, corte + 1).trim();
+
+  const oracion = Math.max(t.lastIndexOf('. '), t.lastIndexOf('.\n'), t.lastIndexOf('?'), t.lastIndexOf('!'));
+  if (oracion >= MIN_ORACION) return t.slice(0, oracion + 1).trim();
+
+  // Sin un solo punto en todo el texto, un renglon entero es el mejor limite
+  // que queda. Aparecio probando contra la API de verdad: el modelo devolvio
+  // titulos y viñetas, donde no hay puntuacion que cortar, y lo que sobraba era
+  // media palabra. El prompt del bot prohibe ese formato, pero el peor caso
+  // igual tiene que ser legible.
+  const renglon = t.lastIndexOf('\n');
+  if (renglon >= MIN_ORACION) return t.slice(0, renglon).trim();
+
+  return t;
 }
 
 /**
