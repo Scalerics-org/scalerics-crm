@@ -29,7 +29,7 @@ const envioSchema = z.object({
   skip_delay: z.boolean().optional().default(false),
 });
 
-function crearServidor({ cfg, repo, cola, proveedor, servicioLeads, scheduler, embudo = null, logger }) {
+function crearServidor({ cfg, repo, cola, proveedor, servicioLeads, scheduler, embudo = null, media = null, logger }) {
   const app = Fastify({ logger: false });
 
   // x-api-key en todo menos /health y /api/*. El servicio no se expone a
@@ -48,7 +48,7 @@ function crearServidor({ cfg, repo, cola, proveedor, servicioLeads, scheduler, e
     }
   });
 
-  rutasCrm.registrar(app, { cfg, repo, cola, embudo, logger });
+  rutasCrm.registrar(app, { cfg, repo, cola, embudo, media, logger });
 
   app.get('/health', async () => {
     // Salientes aceptados por el proveedor hace mas de 5 minutos que siguen sin

@@ -47,15 +47,38 @@ function aFormatoBot(lead, ultimoMensajeAt = null) {
   };
 }
 
+/**
+ * Los archivos que vinieron con el mensaje, cada uno con la URL para bajarlo.
+ *
+ * El bot no tiene IP publica, asi que el navegador no puede pedirle el audio:
+ * el CRM hace de intermediario. Por eso se devuelve una ruta de la API y no una
+ * ruta de archivo.
+ */
+function mediosAFormatoBot(m) {
+  let lista;
+  try {
+    lista = JSON.parse(m.media || '[]');
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(lista)) return [];
+  return lista.map((x, i) => ({
+    tipo: x.tipo || 'archivo',
+    segundos: x.segundos || 0,
+    url: `/api/messages/${m.id}/media/${i}`,
+  }));
+}
+
 function mensajesAFormatoBot(mensajes) {
   return mensajes.map((m) => ({
     direction: m.direction,
     content: m.body,
     sent_at: m.created_at,
+    media: mediosAFormatoBot(m),
   }));
 }
 
-function registrar(app, { cfg, repo, cola, embudo = null, logger }) {
+function registrar(app, { cfg, repo, cola, embudo = null, media = null, logger }) {
   const LIMITE_MENSAJES = 120;
 
   function autorizado(req) {
@@ -89,6 +112,36 @@ function registrar(app, { cfg, repo, cola, embudo = null, logger }) {
     let leads = repo.listarLeads(limite);
     if (req.query.state) leads = leads.filter((l) => l.fsm_state === req.query.state);
     return { leads: leads.map((l) => aFormatoBot(l)), count: leads.length };
+  });
+
+  /**
+   * El archivo que vino con un mensaje: hoy, la nota de voz.
+   *
+   * Lo pide el CRM y lo reenvia al navegador, porque el bot vive solo en la red
+   * privada. El indice existe porque un turno puede traer mas de un audio: el
+   * agrupador junta los mensajes que llegan seguidos.
+   */
+  app.get('/api/messages/:id/media/:idx', async (req, reply) => {
+    if (!media) return reply.code(404).send({ error: 'sin almacenamiento de archivos' });
+
+    const fila = repo.mensajePorId(Number(req.params.id));
+    if (!fila) return reply.code(404).send({ error: 'no existe ese mensaje' });
+
+    let lista;
+    try {
+      lista = JSON.parse(fila.media || '[]');
+    } catch {
+      lista = [];
+    }
+    const item = lista[Number(req.params.idx)];
+    if (!item) return reply.code(404).send({ error: 'ese mensaje no tiene ese archivo' });
+
+    // El nombre sale de la base, no de la URL: el que pide elige el indice, no
+    // el archivo. Igual media.leer() no deja salir del directorio.
+    const cuerpo = media.leer(item.archivo);
+    if (!cuerpo) return reply.code(404).send({ error: 'el archivo ya no esta' });
+
+    return reply.type(media.contentType(item.archivo)).send(cuerpo);
   });
 
   app.get('/api/leads/phone/:phone', async (req, reply) => {

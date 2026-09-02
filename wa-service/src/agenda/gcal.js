@@ -184,24 +184,47 @@ function crearAgenda({ cfg, logger = null, fetch: _fetch = globalThis.fetch } = 
         return !ocupados.some((o) => inicio < o.hasta && fin > o.desde);
       };
 
+      /**
+       * Se juntan de varios dias, con un tope por dia.
+       *
+       * Antes se devolvia el PRIMER dia con hueco y se cortaba ahi: el lead
+       * veia cinco horarios de un mismo dia y ninguna forma de pedir otro. Si
+       * mañana no le sirve —que es lo normal cuando alguien tiene un negocio—
+       * no tiene nada que elegir, y el mensaje da a entender que no se puede
+       * agendar mas adelante.
+       *
+       * El tope por dia es lo que hace que las opciones abarquen. Sin el, las
+       * cinco se las come el primer dia igual que antes.
+       */
+      const elegidos = [];
+      const primerDia = { dia: null };
+      const finDelDia = hFin * 60 + mFin;
+
       for (let d = 0; d <= cfg.AGENDA_DIAS_ADELANTE; d++) {
+        if (elegidos.length >= cfg.AGENDA_MAX_OPCIONES) break;
+
         const ref = new Date(ahora.getTime() + d * 86400_000);
         const { dia } = enZona(ref, tz);
         const { diaSemana } = enZona(instanteLocal(dia, 12, 0, tz), tz);
         if (!habiles.has(diaSemana)) continue;
 
-        const slots = [];
-        const finDelDia = hFin * 60 + mFin;
+        const delDia = [];
         for (let min = hIni * 60 + mIni; min + duracion <= finDelDia; min += paso) {
+          if (delDia.length >= cfg.AGENDA_MAX_POR_DIA) break;
           const inicio = instanteLocal(dia, Math.floor(min / 60), min % 60, tz);
           if (inicio < piso) continue;
-          if (libre(inicio)) slots.push(inicio);
+          if (libre(inicio)) delDia.push(inicio);
         }
 
-        if (slots.length) return { dia, slots: slots.slice(0, cfg.AGENDA_MAX_OPCIONES) };
+        if (!delDia.length) continue;
+        if (!primerDia.dia) primerDia.dia = dia;
+        elegidos.push(...delDia.slice(0, cfg.AGENDA_MAX_OPCIONES - elegidos.length));
       }
 
-      return null;
+      if (!elegidos.length) return null;
+      // `dia` queda por compatibilidad: es el del primer horario. Lo que se le
+      // muestra al lead sale de los slots, que ya traen su fecha cada uno.
+      return { dia: primerDia.dia, slots: elegidos };
     },
 
     /**

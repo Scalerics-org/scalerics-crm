@@ -259,7 +259,7 @@ function crearServicioLeads({ repo, cola, cfg, logger, textos, redactor = null, 
      * @param {string} [nombreWa] nombre de perfil de WhatsApp, para los que
      *   escriben al numero sin haber pasado por el formulario.
      */
-    async registrarRespuesta(telefono, texto, nombreWa = '') {
+    async registrarRespuesta(telefono, texto, nombreWa = '', medios = []) {
       let lead = repo.leadPorTelefono(telefono);
 
       // Nadie con ese telefono: escribio al numero directo, sin formulario de
@@ -279,6 +279,10 @@ function crearServicioLeads({ repo, cola, cfg, logger, textos, redactor = null, 
       repo.registrarMensaje({
         lead_id: lead.id, direction: 'in', kind: 'reply', body: texto,
         provider: 'entrante', status: 'delivered',
+        // La nota de voz de la que salio este texto. Va en la MISMA fila que la
+        // transcripcion: guardada aparte, en el panel el audio y su texto
+        // quedarian como dos cosas sin relacion.
+        media: medios,
       });
 
       // Apagado desde el panel, o pausado porque entraste vos al chat desde el

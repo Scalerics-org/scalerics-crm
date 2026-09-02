@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
-const { CLAVE, ADMIN, conLead } = require('./helpers');
+const { CLAVE, ADMIN, conLead, stubTranscriptor } = require('./helpers');
 
 /** Igual que lo hace routes/wa.py del CRM. */
 const comoElCrm = (s, method, url, payload) =>
@@ -223,4 +223,36 @@ test('la conversacion del panel no trae los avisos al equipo', async () => {
   assert.ok(!cuerpos.some((c) => c.includes('Nuevo contacto por WhatsApp')),
     'el aviso al equipo no va en el hilo del lead');
   assert.ok(cuerpos.includes('hola, tengo una panadería'), 'lo que el lead escribio si');
+});
+
+/**
+ * El audio del que salio la transcripcion. El bot no tiene IP publica, asi que
+ * el navegador no puede pedirselo: va navegador -> CRM -> bot -> archivo.
+ */
+test('la nota de voz se puede bajar desde el CRM', async () => {
+  const s = await conLead({ openai: stubTranscriptor({ respuestas: { transcripcion: 'tengo una panadería' } }) });
+
+  await s.proveedor.simularSinTexto({
+    from: '59899123456', tipo: 'audio', segundos: 7,
+    descargar: async () => Buffer.from('ogg-de-prueba'),
+  });
+  await s.agrupador.vaciar();
+  await s.cola.vacia();
+
+  const conv = await comoElCrm(s, 'GET', '/api/leads/phone/59899123456');
+  const conAudio = conv.json().messages.find((m) => m.media && m.media.length);
+  assert.ok(conAudio, 'el mensaje viene con su audio');
+  assert.equal(conAudio.content, 'tengo una panadería');
+  assert.equal(conAudio.media[0].tipo, 'audio');
+  assert.equal(conAudio.media[0].segundos, 7);
+
+  const r = await comoElCrm(s, 'GET', conAudio.media[0].url);
+  assert.equal(r.statusCode, 200);
+  assert.equal(r.headers['content-type'], 'audio/ogg');
+  assert.equal(r.body, 'ogg-de-prueba');
+});
+
+test('pedir un audio que no existe da 404, y no se puede salir del directorio', async () => {
+  const s = await conLead();
+  assert.equal((await comoElCrm(s, 'GET', '/api/messages/9999/media/0')).statusCode, 404);
 });

@@ -14,6 +14,12 @@ const CFG = {
   AGENDA_PASO_MIN: 30, AGENDA_DURACION_MIN: 30,
   AGENDA_DIAS: 'mon,tue,wed,thu,fri',
   AGENDA_MAX_OPCIONES: 5, AGENDA_DIAS_ADELANTE: 10, AGENDA_AVISO_MIN_HORAS: 3,
+  // En produccion son 2, para que las opciones abarquen varios dias. Aca va
+  // alto a proposito: los tests de abajo miden que se ELIGE dentro de un dia
+  // —que no se ofrezca lo ocupado, lo que se solapa, lo que cae antes del piso—
+  // y con el tope de produccion se cortarian antes de llegar al caso. El
+  // reparto entre dias tiene su propio test, que baja el tope a 2.
+  AGENDA_MAX_POR_DIA: 10,
 };
 
 /**
@@ -124,9 +130,14 @@ test('no ofrece nada dentro de las proximas horas', () => {
     // Son las 12:30: con 3 horas de aviso, lo antes posible es 15:30.
     const g = googleFalso();
     const a = crearAgenda({ cfg: CFG, fetch: g.fetch });
-    const r = await a.horariosDisponibles(instanteLocal('2026-08-19', 12, 30, TZ));
+    const ahora = instanteLocal('2026-08-19', 12, 30, TZ);
+    const r = await a.horariosDisponibles(ahora);
 
-    assert.deepEqual(horas(r.slots), ['15:30']);
+    assert.equal(horas(r.slots)[0], '15:30', 'lo antes posible es 15:30');
+    // Los que siguen son de otros dias —desde que las opciones abarcan— pero
+    // ninguno puede caer antes del piso de aviso.
+    const piso = new Date(ahora.getTime() + CFG.AGENDA_AVISO_MIN_HORAS * 3600_000);
+    for (const s of r.slots) assert.ok(s >= piso, `${s.toISOString()} cae antes del piso`);
   })();
 });
 
@@ -336,4 +347,116 @@ test('sin agenda conectada el cierre sigue por el camino del link', async () => 
   const msgs = s.proveedor.getEnviados().filter((e) => e.to === '59899123456').map((e) => e.texto);
   assert.equal(msgs.at(-1), '[link_reunion]');
   assert.equal(s.repo.leadPorTelefono('59899123456').fsm_state, S.MEETING_LINK_SENT);
+});
+
+/**
+ * El bug del 2-9, tal cual paso probando el bot:
+ *
+ *   → Tenemos estos horarios: 12:00, 12:30, 13:00, 13:30, 14:30. ¿Cuál te viene bien?
+ *   ← 15:00
+ *   → Perfecto. Jueves 3 a las 12:00. Te paso el link...
+ *
+ * Pidio una hora que no estaba en la lista y el bot le agendo otra, y se la
+ * confirmo como si fuera la que pidio. Con un cliente real, eso es alguien
+ * conectandose a una hora y nosotros a otra.
+ *
+ * El modelo elige de un enum cerrado con los horarios ofrecidos, asi que cuando
+ * el que el lead quiere no esta no puede decir "ninguno": devuelve el que menos
+ * le disgusta. Ahora el codigo lo verifica.
+ */
+test('si pide una hora que no se le ofrecio, no se le agenda otra', async () => {
+  const google = googleFalso();
+  // El modelo elige de un enum cerrado con los horarios ofrecidos: cuando el
+  // que el lead quiere no esta, en vez de "ninguno" devuelve el primero. Eso es
+  // exactamente lo que hizo el 2-9, asi que el stub lo imita.
+  const modelo = stubModelo({ datos: COMPLETO });
+  const original = modelo.pedir.bind(modelo);
+  modelo.pedir = async (args) => {
+    if (args.herramienta?.nombre === 'elegir') {
+      const opciones = args.herramienta.parametros.properties.opcion.enum;
+      return { texto: null, argumentos: { opcion: opciones[0] } };
+    }
+    return original(args);
+  };
+
+  const s = await conLead({
+    modelo,
+    AGENDA_OFRECE_HORARIOS: 'true',
+    _google: google.fetch,
+  });
+
+  const responder = async (t) => {
+    await s.servicioLeads.registrarRespuesta('59899123456', t);
+    await s.cola.vacia();
+    return s.proveedor.getEnviados().filter((e) => e.to === '59899123456').map((e) => e.texto);
+  };
+
+  await responder(DIJO_TODO);
+  assert.equal(s.repo.leadPorTelefono('59899123456').fsm_state, S.HORARIOS_OFRECIDOS);
+
+  // La franja es 12 a 16, asi que las 23 no se ofrecieron nunca.
+  const msgs = await responder('23:00');
+
+  const l = s.repo.leadPorTelefono('59899123456');
+  assert.equal(l.meeting_time, null, 'no agendo nada');
+  assert.equal(l.fsm_state, S.HORARIOS_OFRECIDOS, 'sigue esperando que elija');
+  assert.equal(msgs.at(-1), '[horario_no_entendido]', 'le vuelve a mostrar los que hay');
+  assert.ok(!google.llamadas.some((c) => c.url.includes('/events?')), 'y no toco el calendario');
+});
+
+/**
+ * Antes se devolvia el PRIMER dia con hueco y se cortaba ahi, asi que el lead
+ * veia cinco horarios de un solo dia y ninguna forma de pedir otro. Si mañana
+ * no le sirve —que es lo normal cuando alguien tiene un negocio— no tiene nada
+ * que elegir, y el bot le da a entender que no se puede agendar mas adelante.
+ */
+test('los horarios ofrecidos abarcan varios dias, no solo el primero', async () => {
+  const google = googleFalso();
+  const a = crearAgenda({ cfg: { ...CFG, AGENDA_MAX_OPCIONES: 6, AGENDA_MAX_POR_DIA: 2 }, fetch: google.fetch });
+
+  const r = await a.horariosDisponibles(new Date('2026-09-03T09:00:00Z'));
+
+  const dias = new Set(r.slots.map((d) => enZona(d, TZ).dia));
+  assert.ok(dias.size >= 2, `esperaba varios dias, vinieron ${[...dias].join(', ')}`);
+  assert.ok(r.slots.length <= 6);
+  for (const dia of dias) {
+    const enEseDia = r.slots.filter((d) => enZona(d, TZ).dia === dia);
+    assert.ok(enEseDia.length <= 2, `${dia} trajo ${enEseDia.length}, el tope es 2`);
+  }
+  // Ordenados: el lead los lee como una lista de "lo mas pronto primero".
+  const ordenados = [...r.slots].sort((x, y) => x - y);
+  assert.deepEqual(r.slots.map(Number), ordenados.map(Number));
+});
+
+/**
+ * Los horarios ahora vienen de varios dias, asi que decir "libres para el
+ * jueves" y listar horas sueltas seria mentira: el lead elegiria "13:00"
+ * creyendo que es el jueves cuando es el viernes.
+ */
+test('el contexto que recibe el modelo dice el dia de cada horario', async () => {
+  const google = googleFalso();
+  const modelo = stubModelo({ datos: COMPLETO });
+  const s = await conLead({ modelo, AGENDA_OFRECE_HORARIOS: 'true', _google: google.fetch });
+
+  await s.servicioLeads.registrarRespuesta('59899123456', DIJO_TODO);
+  await s.cola.vacia();
+
+  const prompt = modelo.llamadas
+    .map((a) => a.mensajes?.[0]?.content || '')
+    .find((c) => c.includes('oferta_con_horarios'));
+  assert.ok(prompt, 'se le pidio el mensaje de oferta');
+
+  const ofrecidos = JSON.parse(s.repo.leadPorTelefono('59899123456').horarios_ofrecidos);
+  const dias = new Set(ofrecidos.map((iso) => enZona(new Date(iso), TZ).dia));
+  assert.ok(dias.size >= 2, 'la prueba necesita horarios de varios dias');
+
+  for (const iso of ofrecidos) {
+    const d = new Date(iso);
+    const hora = new Intl.DateTimeFormat('es-UY', {
+      timeZone: TZ, hour: '2-digit', minute: '2-digit', hour12: false,
+    }).format(d);
+    const numeroDeDia = String(Number(enZona(d, TZ).dia.slice(8)));
+    const linea = prompt.split('\n').find((l) => l.includes(hora) && l.includes(numeroDeDia));
+    assert.ok(linea, `${hora} tiene que aparecer junto a su dia (${numeroDeDia})`);
+  }
 });

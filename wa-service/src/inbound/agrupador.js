@@ -30,11 +30,11 @@ function crearAgrupador({ procesar, esperaMs = 7000, logger = null }) {
   // telefono -> promesa del turno en curso, para no atender dos a la vez
   const enCurso = new Map();
 
-  function encolarTurno(telefono, texto, nombre) {
+  function encolarTurno(telefono, texto, nombre, medios) {
     const anterior = enCurso.get(telefono) || Promise.resolve();
     const turno = anterior
       .catch(() => {})
-      .then(() => procesar(telefono, texto, nombre))
+      .then(() => procesar(telefono, texto, nombre, medios))
       .catch((e) => {
         logger?.error({ telefono, err: String(e.message || e) }, 'fallo procesando un entrante');
       })
@@ -56,17 +56,25 @@ function crearAgrupador({ procesar, esperaMs = 7000, logger = null }) {
     if (p.partes.length > 1) {
       logger?.info({ telefono, partes: p.partes.length }, 'mensajes agrupados en un turno');
     }
-    encolarTurno(telefono, p.partes.join('\n'), p.nombre);
+    encolarTurno(telefono, p.partes.join('\n'), p.nombre, p.medios);
   }
 
   return {
-    /** Un mensaje entrante. No se procesa ya: se acumula. */
-    recibir({ from, texto, nombre }) {
+    /**
+     * Un mensaje entrante. No se procesa ya: se acumula.
+     *
+     * `media` es el archivo que vino con el —hoy, la nota de voz de la que
+     * salio ese texto—. Viaja con el turno para poder colgarlo de la misma fila
+     * que la transcripcion: si se guardara aparte, en el panel el audio y su
+     * texto quedarian como dos cosas sin relacion.
+     */
+    recibir({ from, texto, nombre, media = null }) {
       const limpio = String(texto || '').trim();
       if (!limpio) return;
 
-      const p = pendientes.get(from) || { partes: [], timer: null, nombre: '' };
+      const p = pendientes.get(from) || { partes: [], timer: null, nombre: '', medios: [] };
       p.partes.push(limpio);
+      if (media) p.medios.push(media);
       // El pushName del ultimo gana: es el mas fresco.
       if (nombre) p.nombre = nombre;
 

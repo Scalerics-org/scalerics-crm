@@ -183,6 +183,11 @@ const esquema = z.object({
    */
   IA_TRANSCRIPCION: booleanoDeEnv.default(true),
   IA_MODELO_AUDIO: z.string().default('whisper-1'),
+
+  // Cuanto se guardan las notas de voz. La transcripcion queda para siempre; el
+  // audio no: guardar la voz de gente sin necesidad no aporta nada y el volumen
+  // no es infinito.
+  MEDIA_DIAS_RETENCION: z.coerce.number().int().positive().default(90),
   MAX_AUDIO_SEGUNDOS: z.coerce.number().positive().default(300),
 
   // Cada cuanto, como mucho, se le pide a alguien que escriba en vez de mandar
@@ -386,6 +391,9 @@ const esquema = z.object({
   RESERVAS_DIAS_ADELANTE: z.coerce.number().int().positive().default(60),
 
   AGENDA_MAX_OPCIONES: z.coerce.number().int().positive().default(5),
+  // Tope por dia, para que las opciones abarquen varios. Sin esto las cinco se
+  // las come el primer dia con hueco y el lead no puede pedir otro.
+  AGENDA_MAX_POR_DIA: z.coerce.number().int().positive().default(2),
   AGENDA_DIAS_ADELANTE: z.coerce.number().int().positive().default(10),
   // No se ofrece nada antes de este plazo: una reunion en veinte minutos no le
   // sirve a nadie y suena a que no hay nadie del otro lado.

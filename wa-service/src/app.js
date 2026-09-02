@@ -94,6 +94,15 @@ function construir(cfg, {
     calendly: cfg.CALENDLY_LINK,
     logger: log,
   });
+  // Los archivos que manda el lead viven al lado de la base, en el volumen. Es
+  // lo mismo que hace el bot de la bloquera con su carpeta de uploads: una nota
+  // de voz pesa unos 20KB y el volumen tiene 1GB.
+  const media = require('./media').crearMedia({
+    dir: require('path').join(require('path').dirname(cfg.DB_PATH), 'media'),
+    diasRetencion: cfg.MEDIA_DIAS_RETENCION,
+    logger: log,
+  });
+
   const transcriptor = require('./ia/transcripcion').crearTranscriptor({
     openai: cfg.IA_TRANSCRIPCION ? openai : null,
     modelo: cfg.IA_MODELO_AUDIO,
@@ -161,7 +170,7 @@ function construir(cfg, {
   // Los entrantes no van directo al embudo: pasan por el agrupador, que junta
   // los fragmentos de una misma tanda y los atiende de a uno.
   const agrupador = crearAgrupador({
-    procesar: (from, texto, nombre) => servicioLeads.registrarRespuesta(from, texto, nombre),
+    procesar: (from, texto, nombre, medios) => servicioLeads.registrarRespuesta(from, texto, nombre, medios),
     esperaMs: cfg.AGRUPAR_ENTRANTES_MS,
     logger: log,
   });
@@ -210,10 +219,27 @@ function construir(cfg, {
     // WhatsApp son audios.
     if (tipo === 'audio' && transcriptor.activo && descargar) {
       try {
-        const texto = await transcriptor.transcribir(await descargar(), segundos);
+        const audio = await descargar();
+        const texto = await transcriptor.transcribir(audio, segundos);
         if (texto) {
           log.info({ from, segundos, largo: texto.length }, 'audio transcripto');
-          agrupador.recibir({ from, texto, nombre });
+          // El .ogg se guarda ademas de transcribirse. Antes se tiraba, y en el
+          // panel quedaba el texto y nada mas: no se podia escuchar el original
+          // ni se notaba que habia sido un audio. Cuando la transcripcion sale
+          // mal —pasa, con audio corto y acento rioplatense— eso es la
+          // diferencia entre entender al lead y no.
+          let archivo = null;
+          try {
+            archivo = media.guardar(audio, 'ogg');
+          } catch (e) {
+            // Que no se pueda guardar el archivo no puede costar el mensaje: la
+            // transcripcion sigue de largo igual.
+            log.warn({ from, err: String(e.message || e) }, 'no se pudo guardar la nota de voz');
+          }
+          agrupador.recibir({
+            from, texto, nombre,
+            media: archivo ? { archivo, tipo: 'audio', segundos: segundos || 0 } : null,
+          });
           return;
         }
       } catch (e) {
@@ -236,14 +262,21 @@ function construir(cfg, {
     cola.encolar({ to: from, texto, kind: 'manual', leadId: lead?.id ?? null });
     log.info({ from, tipo }, 'entrante sin texto: se le pide que escriba');
   });
-  const app = crearServidor({ cfg, repo, cola, proveedor, servicioLeads, scheduler, embudo, logger: log });
+  // Los audios viejos se borran solos. La transcripcion queda para siempre; el
+  // archivo no: guardar voz de gente sin necesidad no aporta nada y el volumen
+  // no es infinito. Una vez al arrancar y despues una vez por dia.
+  media.limpiar();
+  const limpiezaMedia = setInterval(() => media.limpiar(), 24 * 3600_000);
+  limpiezaMedia.unref?.();
+
+  const app = crearServidor({ cfg, repo, cola, proveedor, servicioLeads, scheduler, embudo, media, logger: log });
 
   const vigilanteReservas = crearVigilanteDeReservas({
     agenda, repo, servicioLeads, cfg, logger: log, ahora,
   });
 
   return {
-    cfg, db, repo, proveedor, cola, limites, servicioLeads,
+    cfg, db, repo, proveedor, cola, limites, servicioLeads, media,
     scheduler, embudo, scorer, agrupador, app, vigilanteReservas, logger: log,
     ia: { conversacion: agente.activo, transcripcion: transcriptor.activo },
   };

@@ -48,8 +48,8 @@ function crearRepo(db) {
     buscarPorNombre: db.prepare("SELECT * FROM leads WHERE nombre LIKE ? ORDER BY id DESC LIMIT 20"),
 
     insertMensaje: db.prepare(`
-      INSERT INTO messages (lead_id, direction, kind, body, provider, provider_msg_id, status, error, destino)
-      VALUES (@lead_id, @direction, @kind, @body, @provider, @provider_msg_id, @status, @error, @destino)
+      INSERT INTO messages (lead_id, direction, kind, body, provider, provider_msg_id, status, error, destino, media)
+      VALUES (@lead_id, @direction, @kind, @body, @provider, @provider_msg_id, @status, @error, @destino, @media)
     `),
     mensajesDeLead: db.prepare('SELECT * FROM messages WHERE lead_id = ? ORDER BY id ASC'),
 
@@ -141,11 +141,16 @@ function crearRepo(db) {
         status: m.status ?? 'queued',
         error: m.error ?? null,
         destino: m.destino ?? null,
+        // Lista, no archivo suelto: el agrupador junta los mensajes que llegan
+        // seguidos, asi que dos notas de voz de corrido son un solo turno y por
+        // lo tanto una sola fila con los dos audios.
+        media: m.media && m.media.length ? JSON.stringify(m.media) : null,
       });
       return info.lastInsertRowid;
     },
 
     mensajesDeLead: (leadId) => stmt.mensajesDeLead.all(leadId),
+    mensajePorId: (id) => db.prepare('SELECT * FROM messages WHERE id = ?').get(id),
 
     /**
      * Ultimos mensajes de la conversacion.

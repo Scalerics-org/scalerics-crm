@@ -1,6 +1,7 @@
 'use strict';
 
 const { S, palabraGlobal } = require('./states');
+const { eligioEsaHora } = require('../agenda/eleccion');
 const { TRANSICIONES } = require('./transitions');
 const plantillas = require('../templates');
 const { detectar, ETIQUETA } = require('./derivacion');
@@ -162,13 +163,21 @@ function crearEmbudo({
    * cuales son los validos. Se le pasan como contexto, no como texto final.
    */
   function describirHorarios({ slots }) {
-    const dia = new Intl.DateTimeFormat('es-UY', {
-      timeZone: cfg.TZ, weekday: 'long', day: 'numeric', month: 'long',
-    }).format(slots[0]);
-    const horas = slots.map((d) => new Intl.DateTimeFormat('es-UY', {
-      timeZone: cfg.TZ, hour: '2-digit', minute: '2-digit', hour12: false,
-    }).format(d));
-    return `Horarios libres para el ${dia}: ${horas.join(', ')}. Son los únicos que podés ofrecer.`;
+    // Cada uno con su dia. Antes se nombraba el dia una sola vez —el del
+    // primero— y se listaban las horas sueltas, porque los horarios salian
+    // todos del mismo dia. Ahora abarcan varios, asi que esa forma seria
+    // mentira: el lead elegiria "13:00" creyendo que es el jueves cuando es el
+    // viernes.
+    const lineas = slots.map((d) => {
+      const dia = new Intl.DateTimeFormat('es-UY', {
+        timeZone: cfg.TZ, weekday: 'long', day: 'numeric', month: 'long',
+      }).format(d);
+      const hora = new Intl.DateTimeFormat('es-UY', {
+        timeZone: cfg.TZ, hour: '2-digit', minute: '2-digit', hour12: false,
+      }).format(d);
+      return `- ${dia} a las ${hora}`;
+    });
+    return `Horarios libres:\n${lineas.join('\n')}\n\nSon los únicos que podés ofrecer. Mostráselos con el día, no solo la hora: son de días distintos y sin el día no sabe cuál está eligiendo.`;
   }
 
   /**
@@ -193,7 +202,30 @@ function crearEmbudo({
     if (!elegido) return null;
 
     const i = opciones.indexOf(elegido);
-    return i >= 0 ? ofrecidos[i] : null;
+    if (i < 0) return null;
+
+    /**
+     * El modelo elige de un enum cerrado con los horarios ofrecidos, asi que
+     * cuando el que el lead quiere NO esta en la lista no puede contestar
+     * "ninguno": devuelve el que menos le disgusta.
+     *
+     * Paso el 2-9: se le ofrecio 12:00 a 14:30, pidio las 15:00 y le agendo las
+     * 12:00 confirmandoselas como si fueran las que pidio. El codigo verificaba
+     * que el horario existiera y siguiera libre —las dos cosas eran ciertas—
+     * pero no que fuera el que el lead pidio.
+     *
+     * Si el lead no escribio ninguna hora ("la primera", "dale esa") no hay
+     * nada que verificar y manda el modelo, que para eso esta.
+     */
+    if (!eligioEsaHora(entrada, ofrecidos[i], cfg.TZ)) {
+      logger?.info(
+        { leadId: lead.id, entrada, eligio: opciones[i] },
+        'el modelo eligio un horario que no es el que pidio el lead'
+      );
+      return null;
+    }
+
+    return ofrecidos[i];
   }
 
   /** Deja la reunion registrada: recordatorios, aviso al AM y estado. */
