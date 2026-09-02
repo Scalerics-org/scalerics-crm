@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
-const { conLead, stubOpenAI } = require('./helpers');
+const { conLead, stubModelo } = require('./helpers');
 const { S } = require('../src/funnel/states');
 const { cuandoVolver, CAJONES } = require('../src/funnel/nurture');
 
@@ -15,7 +15,7 @@ const COMPLETO = {
 
 /** Un lead que en su proximo mensaje dice que no es el momento. */
 const stubQueAplaza = (aplaza = 'un_mes', frase = 'el mes que viene lo vemos') =>
-  stubOpenAI({ datos: { ...COMPLETO, aplaza, aplaza_frase: frase } });
+  stubModelo({ datos: { ...COMPLETO, aplaza, aplaza_frase: frase } });
 
 const jobs = (s, leadId, tipo) => s.repo.db
   .prepare("SELECT run_at FROM jobs WHERE lead_id = ? AND type = ? AND status = 'pending'")
@@ -24,7 +24,7 @@ const jobs = (s, leadId, tipo) => s.repo.db
 const enDias = (n) => new Date(Date.now() + n * 86_400_000);
 
 test('el que dice "mas adelante" queda en pausa, no se le empuja mas', async () => {
-  const s = await conLead({ openai: stubQueAplaza() });
+  const s = await conLead({ modelo: stubQueAplaza() });
   await s.servicioLeads.registrarRespuesta(TEL, 'me interesa pero el mes que viene lo vemos');
   await s.cola.vacia();
 
@@ -35,7 +35,7 @@ test('el que dice "mas adelante" queda en pausa, no se le empuja mas', async () 
 });
 
 test('se le programa la vuelta para cuando dijo', async () => {
-  const s = await conLead({ openai: stubQueAplaza('un_mes') });
+  const s = await conLead({ modelo: stubQueAplaza('un_mes') });
   await s.servicioLeads.registrarRespuesta(TEL, 'el mes que viene');
   await s.cola.vacia();
 
@@ -53,7 +53,7 @@ test('se le programa la vuelta para cuando dijo', async () => {
  * comercial como si se hubiera ido.
  */
 test('no se le insiste con el seguimiento de 72 horas', async () => {
-  const s = await conLead({ openai: stubQueAplaza() });
+  const s = await conLead({ modelo: stubQueAplaza() });
   await s.servicioLeads.registrarRespuesta(TEL, 'el mes que viene');
   await s.cola.vacia();
 
@@ -62,7 +62,7 @@ test('no se le insiste con el seguimiento de 72 horas', async () => {
 });
 
 test('y no lo derivan al comercial por dejar de escribir', async () => {
-  const s = await conLead({ openai: stubQueAplaza() });
+  const s = await conLead({ modelo: stubQueAplaza() });
   await s.servicioLeads.registrarRespuesta(TEL, 'el mes que viene');
   await s.cola.vacia();
   s.proveedor.limpiar();
@@ -79,7 +79,7 @@ test('y no lo derivan al comercial por dejar de escribir', async () => {
 });
 
 test('estando en pausa no se le vuelve a mandar el link', async () => {
-  const s = await conLead({ openai: stubQueAplaza() });
+  const s = await conLead({ modelo: stubQueAplaza() });
   await s.servicioLeads.registrarRespuesta(TEL, 'el mes que viene');
   await s.cola.vacia();
   s.proveedor.limpiar();
@@ -96,23 +96,18 @@ test('estando en pausa no se le vuelve a mandar el link', async () => {
 test('si vuelve por su cuenta, se cancela el mensaje programado', async () => {
   // Aplaza en el primer turno y despues no: si aplazara siempre, el segundo
   // mensaje volveria a pausarlo y el test no probaria nada.
-  const openai = stubQueAplaza();
-  const original = openai.chat.completions.create;
+  const modelo = stubQueAplaza();
+  const original = modelo.pedir.bind(modelo);
   let turnos = 0;
-  openai.chat.completions.create = async (args) => {
+  modelo.pedir = async (args) => {
     const r = await original(args);
     turnos += 1;
-    const llamada = r.choices?.[0]?.message?.tool_calls?.[0];
-    if (turnos > 1 && llamada) {
-      const a = JSON.parse(llamada.function.arguments);
-      delete a.aplaza;
-      delete a.aplaza_frase;
-      llamada.function.arguments = JSON.stringify(a);
-    }
-    return r;
+    if (turnos === 1 || !r?.argumentos) return r;
+    const { aplaza: _a, aplaza_frase: _f, ...resto } = r.argumentos;
+    return { ...r, argumentos: resto };
   };
 
-  const s = await conLead({ openai });
+  const s = await conLead({ modelo });
   await s.servicioLeads.registrarRespuesta(TEL, 'el mes que viene');
   await s.cola.vacia();
 
@@ -132,7 +127,7 @@ test('si vuelve por su cuenta, se cancela el mensaje programado', async () => {
  * la videollamada". Mover una reunion de verdad es de una persona.
  */
 test('al que ya agendo y dice que no puede, lo levanta una persona', async () => {
-  const s = await conLead({ openai: stubQueAplaza() });
+  const s = await conLead({ modelo: stubQueAplaza() });
   await s.servicioLeads.registrarRespuesta(TEL, 'hola');
   await s.cola.vacia();
 
@@ -153,7 +148,7 @@ test('al que ya agendo y dice que no puede, lo levanta una persona', async () =>
 });
 
 test('cuando vence la pausa se le escribe y vuelve al embudo', async () => {
-  const s = await conLead({ openai: stubQueAplaza() });
+  const s = await conLead({ modelo: stubQueAplaza() });
   await s.servicioLeads.registrarRespuesta(TEL, 'el mes que viene');
   await s.cola.vacia();
   s.proveedor.limpiar();
@@ -168,7 +163,7 @@ test('cuando vence la pausa se le escribe y vuelve al embudo', async () => {
 });
 
 test('si ya habia vuelto, el mensaje programado no sale', async () => {
-  const s = await conLead({ openai: stubQueAplaza() });
+  const s = await conLead({ modelo: stubQueAplaza() });
   await s.servicioLeads.registrarRespuesta(TEL, 'el mes que viene');
   await s.cola.vacia();
 
@@ -184,7 +179,7 @@ test('si ya habia vuelto, el mensaje programado no sale', async () => {
 });
 
 test('estar ocupado hoy no es aplazar: el modelo dice "no" y sigue normal', async () => {
-  const s = await conLead({ openai: stubOpenAI({ datos: { ...COMPLETO, aplaza: 'no' } }) });
+  const s = await conLead({ modelo: stubModelo({ datos: { ...COMPLETO, aplaza: 'no' } }) });
   await s.servicioLeads.registrarRespuesta(TEL, 'ando corriendo pero contame');
   await s.cola.vacia();
 
@@ -224,7 +219,7 @@ test('el piso y el techo se aplican siempre', () => {
 
 test('los cajones del codigo son los que se le ofrecen al modelo', () => {
   const { HERRAMIENTA } = require('../src/ia/agente');
-  const enEnum = HERRAMIENTA.function.parameters.properties.aplaza.enum;
+  const enEnum = HERRAMIENTA.parametros.properties.aplaza.enum;
 
   assert.deepEqual(enEnum, ['no', ...CAJONES], 'si se agrega uno, el enum lo tiene que tener');
 });

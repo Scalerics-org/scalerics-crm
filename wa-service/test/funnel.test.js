@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
-const { conLead, stubOpenAI, ADMIN } = require('./helpers');
+const { conLead, stubModelo, ADMIN } = require('./helpers');
 const { S } = require('../src/funnel/states');
 const { porReglas } = require('../src/funnel/scoring');
 
@@ -35,7 +35,7 @@ test('el primer mensaje del lead lo contesta la IA, no un menu', async () => {
 });
 
 test('lo que la IA extrae queda guardado y clasificado', async () => {
-  const s = await conLead({ openai: stubOpenAI({ datos: { rubro: 'parrilla con delivery' } }) });
+  const s = await conLead({ modelo: stubModelo({ datos: { rubro: 'parrilla con delivery' } }) });
   await lead(s, 'tenemos una parrilla');
 
   const l = s.repo.leadPorTelefono(TEL);
@@ -47,7 +47,7 @@ test('con los tres datos se le ofrece la reunion, sin filtro de score', async ()
   // Antes un puntaje decidia si merecia reunion, y con solo tres datos nadie
   // llegaba al umbral. La calificacion pasa a la reunion misma, que es
   // literalmente un diagnostico.
-  const s = await conLead({ openai: stubOpenAI({ datos: COMPLETO }) });
+  const s = await conLead({ modelo: stubModelo({ datos: COMPLETO }) });
   const msgs = await lead(s, 'te cuento todo de una');
 
   const l = s.repo.leadPorTelefono(TEL);
@@ -60,7 +60,7 @@ test('un lead chico tambien recibe la oferta', async () => {
   // descartado por WhatsApp. Ahora entra a la reunion igual: si no encaja, se
   // ve ahi en dos preguntas.
   const chico = { business_name: 'Kiosco', rubro: 'kiosco de barrio', business_type: 'web' };
-  const s = await conLead({ openai: stubOpenAI({ datos: chico }) });
+  const s = await conLead({ modelo: stubModelo({ datos: chico }) });
   const msgs = await lead(s, 'te cuento');
 
   assert.equal(estado(s), S.MEETING_LINK_SENT);
@@ -72,7 +72,7 @@ test('un lead chico tambien recibe la oferta', async () => {
 /** Deja al lead con el link de Calendly en la mano. */
 const CALENDLY = 'https://calendly.com/scalerics/consultoriagratuita';
 
-const stubQueMandaElLink = () => stubOpenAI({ datos: COMPLETO });
+const stubQueMandaElLink = () => stubModelo({ datos: COMPLETO });
 
 /**
  * Deja al lead con el link de Calendly en la mano.
@@ -100,7 +100,7 @@ async function conLink(s) {
  * instrucciones de la etapa, asi que no se pierde nada.
  */
 test('con el link en la mano, el bot le contesta lo que trae', async () => {
-  const s = await conLead({ openai: stubQueMandaElLink() });
+  const s = await conLead({ modelo: stubQueMandaElLink() });
   await conLink(s);
 
   const msgs = await lead(s, 'una duda antes de reservar');
@@ -122,22 +122,16 @@ test('con el link en la mano, el bot le contesta lo que trae', async () => {
 test('el que tiene el link y dice "el mes que viene" queda en pausa', async () => {
   // El modelo recien avisa el aplazo cuando el lead lo dice, no antes: si
   // aplazara desde el primer turno nunca llegaria a tener el link.
-  const openai = stubQueMandaElLink();
-  const original = openai.chat.completions.create;
+  const modelo = stubQueMandaElLink();
+  const original = modelo.pedir.bind(modelo);
   let aplaza = false;
-  openai.chat.completions.create = async (args) => {
+  modelo.pedir = async (args) => {
     const r = await original(args);
-    const llamada = r.choices?.[0]?.message?.tool_calls?.[0];
-    if (aplaza && llamada) {
-      const a = JSON.parse(llamada.function.arguments);
-      a.aplaza = 'un_mes';
-      a.aplaza_frase = 'para el mes que viene';
-      llamada.function.arguments = JSON.stringify(a);
-    }
-    return r;
+    if (!aplaza || !r?.argumentos) return r;
+    return { ...r, argumentos: { ...r.argumentos, aplaza: 'un_mes', aplaza_frase: 'para el mes que viene' } };
   };
 
-  const s = await conLead({ openai });
+  const s = await conLead({ modelo });
   await conLink(s);
 
   aplaza = true;
@@ -159,15 +153,15 @@ test('el que tiene el link y dice "el mes que viene" queda en pausa', async () =
 test('la baja es texto fijo y no pasa por la IA', async () => {
   // Tiene que salir aunque la API este caida, y no se le da al modelo la
   // oportunidad de intentar retener a alguien que pidio que no le escriban.
-  const openai = stubOpenAI();
-  const s = await conLead({ openai });
+  const modelo = stubModelo();
+  const s = await conLead({ modelo });
   await lead(s, 'hola');
-  const antes = openai.llamadas.length;
+  const antes = modelo.llamadas.length;
 
   const msgs = await lead(s, 'baja');
   assert.equal(estado(s), S.OPT_OUT);
   assert.match(msgs.at(-1), /no te escribo más/);
-  assert.equal(openai.llamadas.length, antes, 'ni se le pregunta al modelo');
+  assert.equal(modelo.llamadas.length, antes, 'ni se le pregunta al modelo');
 
   const l = s.repo.leadPorTelefono(TEL);
   assert.equal(l.opt_out, 1);
@@ -179,7 +173,7 @@ test('la baja es texto fijo y no pasa por la IA', async () => {
 });
 
 test('la baja sale aunque la IA este caida', async () => {
-  const s = await conLead({ openai: stubOpenAI({ falla: '500' }) });
+  const s = await conLead({ modelo: stubModelo({ falla: '500' }) });
   const msgs = await lead(s, 'sacame de la lista');
   assert.match(msgs.at(-1), /no te escribo más/);
 });
@@ -187,7 +181,7 @@ test('la baja sale aunque la IA este caida', async () => {
 test('sin IA nadie queda sin respuesta: va a una persona', async () => {
   // Sacados los textos fijos no hay embudo que atienda. Contestar con algo
   // armado seria fingir; lo honesto es pasarlo con alguien.
-  const s = await conLead({ openai: stubOpenAI({ falla: '529 overloaded' }) });
+  const s = await conLead({ modelo: stubModelo({ falla: '529 overloaded' }) });
   const msgs = await lead(s, 'hola, necesito una web');
 
   assert.equal(estado(s), S.HUMAN_QUEUED);
@@ -268,7 +262,7 @@ test('reiniciar un lead lo devuelve al principio y la IA se olvida', async () =>
   // Reiniciar borrando solo el estado dejaba el reinicio a medias: el embudo
   // arrancaba de cero pero la IA seguia leyendo los mensajes viejos, asi que
   // retomaba una conversacion que para el lead ya no existia.
-  const s = await conLead({ openai: stubOpenAI({ datos: { rubro: 'inmobiliaria' } }) });
+  const s = await conLead({ modelo: stubModelo({ datos: { rubro: 'inmobiliaria' } }) });
   await lead(s, 'hola, tengo una inmobiliaria');
   await lead(s, 'somos 8');
 
@@ -448,7 +442,7 @@ test('si no le contestamos el precio, repetir la pregunta no lo deriva', async (
  */
 test('el que no sabe qué necesita igual recibe el link', async () => {
   const s = await conLead({
-    openai: stubOpenAI({
+    modelo: stubModelo({
       datos: { business_name: 'McDonald’s', rubro: 'vender hamburguesas', business_type: 'no_sabe' },
     }),
   });
@@ -478,7 +472,7 @@ test('y al equipo le llega que todavía no sabe, no un campo vacío', async () =
  */
 test('el estado en el que termina un lead calificado avisa al CRM', async () => {
   const { AVISAR_AL_CRM } = require('../src/funnel/engine');
-  const s = await conLead({ openai: stubOpenAI({ datos: COMPLETO }) });
+  const s = await conLead({ modelo: stubModelo({ datos: COMPLETO }) });
 
   await lead(s, 'te cuento todo de una');
   const final = estado(s);

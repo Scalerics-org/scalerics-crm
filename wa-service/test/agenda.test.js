@@ -267,7 +267,7 @@ test('el token se pide una sola vez y se reusa', () => {
 
 // ── el flujo completo, del score a la reunion agendada ───────────────────────
 
-const { conLead, stubOpenAI } = require('./helpers');
+const { conLead, stubModelo } = require('./helpers');
 const { S } = require('../src/funnel/states');
 
 const COMPLETO = {
@@ -281,7 +281,7 @@ test('con todos los datos le muestra horarios reales y agenda el que elige', asy
   // Calendly— pero se conserva entero y se prende con esta variable.
   const google = googleFalso({ ocupados: ['13:30-14:00'] });
   const s = await conLead({
-    openai: stubOpenAI({ datos: COMPLETO }),
+    modelo: stubModelo({ datos: COMPLETO }),
     AGENDA_OFRECE_HORARIOS: 'true',
     _google: google.fetch,
   });
@@ -308,7 +308,7 @@ test('con todos los datos le muestra horarios reales y agenda el que elige', asy
 
 test('el horario que se ofrece nunca sale de la franja configurada', async () => {
   const google = googleFalso();
-  const s = await conLead({ openai: stubOpenAI({ datos: COMPLETO }), _google: google.fetch });
+  const s = await conLead({ modelo: stubModelo({ datos: COMPLETO }), _google: google.fetch });
   await s.servicioLeads.registrarRespuesta('59899123456', 'dale');
   await s.cola.vacia();
 
@@ -322,7 +322,7 @@ test('el horario que se ofrece nunca sale de la franja configurada', async () =>
 test('sin agenda conectada el cierre sigue por el camino del link', async () => {
   // Sin credenciales de Google no se rompe nada: es el mismo camino que se usa
   // hoy por defecto, el del link.
-  const s = await conLead({ openai: stubOpenAI({ datos: COMPLETO }), GCAL_REFRESH_TOKEN: '' });
+  const s = await conLead({ modelo: stubModelo({ datos: COMPLETO }), GCAL_REFRESH_TOKEN: '' });
   await s.servicioLeads.registrarRespuesta('59899123456', 'te cuento todo');
   await s.cola.vacia();
 

@@ -63,7 +63,18 @@ const esquema = z.object({
   DEFAULT_COUNTRY_CODE: z.string().default('598'),
   TZ: z.string().default('America/Montevideo'),
 
-  // Embudo de calificacion. Sin OPENAI_API_KEY el scoring cae a reglas.
+  /**
+   * Dos proveedores, cada uno en lo suyo.
+   *
+   * Anthropic conversa: la charla con el lead, los mensajes sueltos, elegir de
+   * una lista, el puntaje. OpenAI queda solo para transcribir las notas de voz,
+   * porque Anthropic no hace audio.
+   *
+   * Sin ANTHROPIC_API_KEY el bot no conversa y el embudo deriva a una persona.
+   * Sin OPENAI_API_KEY no se transcriben audios y se le pide al lead que
+   * escriba. Son independientes: falta una y lo otro sigue andando.
+   */
+  ANTHROPIC_API_KEY: z.string().default(''),
   OPENAI_API_KEY: z.string().default(''),
   CALENDLY_LINK: z.string().default('https://calendly.com/scalerics/consultoriagratuita'),
   FUNNEL_ENABLED: booleanoDeEnv.default(true),
@@ -154,14 +165,14 @@ const esquema = z.object({
 
   /**
    * Con IA_CONVERSACION la parte de averiguar la conduce el modelo en vez del
-   * embudo de preguntas fijas. Requiere OPENAI_API_KEY: sin clave se ignora y
-   * sigue el embudo, no rompe nada.
+   * embudo de preguntas fijas. Requiere ANTHROPIC_API_KEY: sin clave se ignora
+   * y cada lead se deriva a una persona.
    *
-   * gpt-4o-mini alcanza para esto y sale una fraccion de los modelos grandes.
-   * Si las respuestas quedan cortas de calidad, se cambia el modelo aca.
+   * Haiku alcanza para esto y sale una fraccion de los modelos grandes. Si las
+   * respuestas quedan cortas de calidad, se cambia el modelo aca.
    */
   IA_CONVERSACION: booleanoDeEnv.default(true),
-  IA_MODELO: z.string().default('gpt-4o-mini'),
+  IA_MODELO: z.string().default('claude-haiku-4-5-20251001'),
 
   /**
    * Notas de voz a texto. Las de WhatsApp vienen en OGG/Opus, que la API acepta

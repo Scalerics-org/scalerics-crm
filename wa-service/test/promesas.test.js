@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const { prometeAgendar } = require('../src/ia/promesas');
-const { conLead, stubOpenAI } = require('./helpers');
+const { conLead, stubModelo } = require('./helpers');
 const { S } = require('../src/funnel/states');
 
 const TEL = '59899123456';
@@ -51,7 +51,7 @@ test('no toca los mensajes legítimos', () => {
 
 test('si el modelo se pone a agendar, sale el link en vez de la promesa', async () => {
   const s = await conLead({
-    openai: stubOpenAI({ respuestas: { conversacion: 'Perfecto, agendo la videollamada para el martes a las 10' } }),
+    modelo: stubModelo({ respuestas: { conversacion: 'Perfecto, agendo la videollamada para el martes a las 10' } }),
   });
 
   await s.servicioLeads.registrarRespuesta(TEL, 'quiero ver');
@@ -65,7 +65,7 @@ test('si el modelo se pone a agendar, sale el link en vez de la promesa', async 
 
 test('pero si YA tiene reunión, confirmarla es la verdad', async () => {
   const s = await conLead({
-    openai: stubOpenAI({ respuestas: { conversacion: 'Sí, quedó agendada. Nos vemos.' } }),
+    modelo: stubModelo({ respuestas: { conversacion: 'Sí, quedó agendada. Nos vemos.' } }),
   });
   const l = s.repo.leadPorTelefono(TEL);
   s.repo.registrarReunion(l.id, {
@@ -88,7 +88,7 @@ test('pero si YA tiene reunión, confirmarla es la verdad', async () => {
  */
 test('con el bot agendando de verdad, el guardia no se mete', async () => {
   const s = await conLead({
-    openai: stubOpenAI({ respuestas: { conversacion: '¿Qué día te viene bien?' } }),
+    modelo: stubModelo({ respuestas: { conversacion: '¿Qué día te viene bien?' } }),
     AGENDA_OFRECE_HORARIOS: 'true',
   });
 
@@ -108,7 +108,7 @@ test('con el bot agendando de verdad, el guardia no se mete', async () => {
  */
 test('y el equipo igual se entera de que hay un lead con reunión ofrecida', async () => {
   const s = await conLead({
-    openai: stubOpenAI({ respuestas: { conversacion: '¿Qué día te viene bien?' } }),
+    modelo: stubModelo({ respuestas: { conversacion: '¿Qué día te viene bien?' } }),
   });
   s.proveedor.limpiar();
 

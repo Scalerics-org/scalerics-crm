@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const { corregir } = require('../src/ia/voseo');
-const { conLead, stubOpenAI } = require('./helpers');
+const { conLead, stubModelo } = require('./helpers');
 
 const TEL = '59899123456';
 
@@ -63,7 +63,7 @@ test('dice qué corrigió, para poder ver si el modelo se va seguido', () => {
 
 test('lo que le llega al lead sale en voseo aunque el modelo tutee', async () => {
   const s = await conLead({
-    openai: stubOpenAI({ respuestas: { conversacion: '¿Qué necesitas? Si tienes dudas, dime.' } }),
+    modelo: stubModelo({ respuestas: { conversacion: '¿Qué necesitas? Si tienes dudas, dime.' } }),
   });
   await s.servicioLeads.registrarRespuesta(TEL, 'hola');
   await s.cola.vacia();

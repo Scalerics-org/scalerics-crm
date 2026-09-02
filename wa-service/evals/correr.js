@@ -21,7 +21,7 @@ const PROMPT_PATH = process.env.PROMPT_PATH || '../src/ia/prompt';
 const { construirSystem, etapa, DATOS, CAL_LINK } = require(PROMPT_PATH);
 const { revisarMensaje, normalizarPregunta } = require('./reglas');
 const { CASOS } = require('./casos');
-const { crearModeloOpenAI } = require('./modelo');
+const { crearModeloAnthropic } = require('./modelo');
 
 const args = process.argv.slice(2);
 const flag = (n, def) => {
@@ -218,8 +218,8 @@ function reporte(resultados, modeloNombre) {
 async function main() {
   const modelo = usarStub
     ? require('./stub').crearModeloStub()
-    : crearModeloOpenAI({
-      modelo: process.env.EVAL_MODEL || process.env.IA_MODELO || 'gpt-4o-mini',
+    : crearModeloAnthropic({
+      modelo: process.env.EVAL_MODEL || process.env.IA_MODELO,
       modeloLead: process.env.EVAL_MODEL_LEAD,
       calLink: CAL_LINK,
     });

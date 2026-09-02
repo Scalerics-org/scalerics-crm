@@ -11,32 +11,44 @@ const { S } = require('../src/funnel/states');
 
 const textos = crearTextos();
 
-/** Cliente falso: devuelve lo que se le diga, y anota como lo llamaron. */
-function openaiFalso(respuestas, { falla = null } = {}) {
+/**
+ * Modelo falso: devuelve lo que se le diga, y anota como lo llamaron.
+ *
+ * Habla la interfaz de src/ia/modelo.js y no la de ningun SDK. Con una lista
+ * va contestando de a una, que es como se guionan las conversaciones de varios
+ * turnos.
+ */
+function modeloFalso(respuestas) {
   const pila = Array.isArray(respuestas) ? respuestas.slice() : [respuestas];
   const llamadas = [];
+  return {
+    activo: true,
+    modelo: 'falso',
+    llamadas,
+
+    async pedir(args) {
+      // Sin herramienta es el redactor pidiendo un mensaje suelto. Se contesta
+      // con el marcador de la situacion, igual que el stub compartido: los
+      // guiones de estos tests son para la conversacion.
+      if (!args.herramienta) {
+        const m = args.mensajes[0].content.match(/situación: (\w+)/);
+        return { texto: `[${m ? m[1] : 'desconocida'}]`, argumentos: null };
+      }
+      llamadas.push(args);
+      const r = pila.length > 1 ? pila.shift() : pila[0];
+      // La capa neutral no propaga excepciones: un fallo es un null.
+      if (r instanceof Error) return null;
+      return r;
+    },
+  };
+}
+
+/** El de OpenAI, que ahora solo transcribe. Ese si es el SDK crudo. */
+function transcriptorFalso(respuestas) {
+  const pila = Array.isArray(respuestas) ? respuestas.slice() : [respuestas];
   const transcripciones = [];
   return {
-    llamadas,
     transcripciones,
-    chat: {
-      completions: {
-        create: async (args) => {
-          // Sin tools es el redactor pidiendo un mensaje suelto. Se contesta
-          // con el marcador de la situacion, igual que el stub compartido: los
-          // guiones de estos tests son para la conversacion.
-          if (!args.tools) {
-            if (falla) throw new Error(falla);
-            const m = args.messages[0].content.match(/situación: (\w+)/);
-            return { choices: [{ message: { content: `[${m ? m[1] : 'desconocida'}]` } }] };
-          }
-          llamadas.push(args);
-          const r = pila.length > 1 ? pila.shift() : pila[0];
-          if (r instanceof Error) throw r;
-          return r;
-        },
-      },
-    },
     audio: {
       transcriptions: {
         create: async (args) => {
@@ -52,15 +64,8 @@ function openaiFalso(respuestas, { falla = null } = {}) {
 
 /** La respuesta viene toda por la herramienta, mensaje incluido. */
 const conTexto = (mensaje, datos = {}) => ({
-  choices: [{
-    message: {
-      content: null,
-      tool_calls: [{
-        type: 'function',
-        function: { name: 'responder', arguments: JSON.stringify({ mensaje, ...datos }) },
-      }],
-    },
-  }],
+  texto: null,
+  argumentos: { mensaje, ...datos },
 });
 
 // ── el guard de precios ──────────────────────────────────────────────────────
@@ -91,8 +96,8 @@ test('no bloquea las respuestas que SI tiene que poder dar', () => {
 
 test('si la IA se manda un precio, sale el texto fijo en su lugar', async () => {
   const agente = crearAgente({
-    openai: openaiFalso(conTexto('Una web te sale unos USD 900 más IVA')),
-    modelo: 'x', textos,
+    modelo: modeloFalso(conTexto('Una web te sale unos USD 900 más IVA')),
+    textos,
   });
   const r = await agente.responder({ id: 1, nombre: 'Ana' }, 'cuanto sale?', []);
 
@@ -142,7 +147,7 @@ test('el tipo de proyecto y el presupuesto se piden por nombre, no por numero', 
 
 test('el rubro que extrae la IA queda clasificado, como el del formulario', async () => {
   const s = await conLead({
-    openai: openaiFalso(conTexto('¡Buenísimo! ¿Y qué te gustaría lograr?', {
+    modelo: modeloFalso(conTexto('¡Buenísimo! ¿Y qué te gustaría lograr?', {
       rubro: 'parrilla y delivery',
     })),
   });
@@ -161,7 +166,7 @@ test('con todos los datos, el cierre lo hace el codigo y no la IA', async () => 
   // La IA podria decidir ofrecer la reunion cuando le parezca. La oferta sale
   // del score, asi que su texto de cierre se descarta.
   const s = await conLead({
-    openai: openaiFalso(conTexto('Listo, te paso mi Calendly ahora mismo', {
+    modelo: modeloFalso(conTexto('Listo, te paso mi Calendly ahora mismo', {
       business_name: 'Inmobiliaria Pereyra', rubro: 'inmobiliaria',
       business_type: 'ecommerce',
     })),
@@ -179,25 +184,25 @@ test('con todos los datos, el cierre lo hace el codigo y no la IA', async () => 
 });
 
 test('una queja se deriva por codigo, sin pasar por la IA', async () => {
-  const openai = openaiFalso(conTexto('Uy, contame qué pasó'));
-  const s = await conLead({ openai });
+  const modelo = modeloFalso(conTexto('Uy, contame qué pasó'));
+  const s = await conLead({ modelo });
 
   await s.servicioLeads.registrarRespuesta('59899123456', 'esto es una estafa');
   await s.cola.vacia();
 
   assert.equal(s.repo.leadPorTelefono('59899123456').fsm_state, S.HUMAN_QUEUED);
-  assert.equal(openai.llamadas.length, 0, 'ni se le pregunta al modelo');
+  assert.equal(modelo.llamadas.length, 0, 'ni se le pregunta al modelo');
 });
 
 test('la baja se respeta por codigo, sin pasar por la IA', async () => {
-  const openai = openaiFalso(conTexto('¡No te vayas!'));
-  const s = await conLead({ openai });
+  const modelo = modeloFalso(conTexto('¡No te vayas!'));
+  const s = await conLead({ modelo });
 
   await s.servicioLeads.registrarRespuesta('59899123456', 'baja');
   await s.cola.vacia();
 
   assert.equal(s.repo.leadPorTelefono('59899123456').opt_out, 1);
-  assert.equal(openai.llamadas.length, 0);
+  assert.equal(modelo.llamadas.length, 0);
 });
 
 // ── que pasa cuando la IA no esta ────────────────────────────────────────────
@@ -213,7 +218,7 @@ test('sin clave el agente queda inactivo y el lead va a una persona', async () =
 });
 
 test('si la API falla, el lead no se queda sin respuesta', async () => {
-  const s = await conLead({ openai: openaiFalso(new Error('529 overloaded')) });
+  const s = await conLead({ modelo: modeloFalso(new Error('529 overloaded')) });
 
   await s.servicioLeads.registrarRespuesta('59899123456', 'hola');
   await s.cola.vacia();
@@ -225,7 +230,7 @@ test('si la API falla, el lead no se queda sin respuesta', async () => {
 
 test('si la IA guarda datos pero no contesta, tampoco se queda mudo', async () => {
   const s = await conLead({
-    openai: openaiFalso({ content: [{ type: 'tool_use', name: 'guardar_datos', input: { rubro: 'x' } }] }),
+    modelo: modeloFalso({ texto: null, argumentos: { rubro: 'x' } }),
   });
 
   await s.servicioLeads.registrarRespuesta('59899123456', 'hola');
@@ -258,6 +263,9 @@ test('faltantes se vacia con los tres datos', () => {
 });
 
 test('el historial se arma alternando roles, como pide la API', () => {
+  // Con OpenAI esto era prolijidad; con Anthropic es obligatorio. Si la
+  // conversacion arranca con el bot —y arranca, porque la bienvenida sale
+  // primero— la API rechaza el pedido y el lead termina derivado a una persona.
   const msgs = aMensajes([
     { direction: 'out', body: 'Hola, soy Scalerics' },
     { direction: 'in', body: 'hola' },
@@ -310,7 +318,7 @@ test('al que se dio de baja no se le contesta el audio', async () => {
 const { crearTranscriptor } = require('../src/ia/transcripcion');
 
 test('manda el audio tal cual: WhatsApp usa OGG y la API lo acepta', async () => {
-  const openai = openaiFalso({ text: '  Hola, tengo una parrilla en Pocitos  ' });
+  const openai = transcriptorFalso({ text: '  Hola, tengo una parrilla en Pocitos  ' });
   const t = crearTranscriptor({ openai, modelo: 'whisper-1' });
 
   const texto = await t.transcribir(Buffer.from('audio-falso'), 12);
@@ -321,7 +329,7 @@ test('manda el audio tal cual: WhatsApp usa OGG y la API lo acepta', async () =>
 });
 
 test('un audio larguisimo no se transcribe', async () => {
-  const openai = openaiFalso({ text: 'lo que sea' });
+  const openai = transcriptorFalso({ text: 'lo que sea' });
   const t = crearTranscriptor({ openai, modelo: 'whisper-1', maxSegundos: 300 });
 
   assert.equal(await t.transcribir(Buffer.from('x'), 900), null);
@@ -335,7 +343,7 @@ test('sin clave no transcribe y no rompe', async () => {
 });
 
 test('si la transcripcion falla devuelve null en vez de tirar', async () => {
-  const t = crearTranscriptor({ openai: openaiFalso(new Error('429')), modelo: 'whisper-1' });
+  const t = crearTranscriptor({ openai: transcriptorFalso(new Error('429')), modelo: 'whisper-1' });
   assert.equal(await t.transcribir(Buffer.from('x'), 5), null);
 });
 
@@ -343,10 +351,10 @@ test('una nota de voz entra al embudo como si la hubieran escrito', async () => 
   // Es el punto de todo esto: el audio no se contesta con "escribime", se
   // escucha y sigue el mismo camino que el texto.
   const s = await conLead({
-    openai: openaiFalso([
-      { text: 'Hola, tenemos una parrilla con delivery en Pocitos' },
-      conTexto('¡Buenísimo! ¿Y qué te gustaría lograr?', { rubro: 'parrilla con delivery' }),
-    ]),
+    openai: transcriptorFalso({ text: 'Hola, tenemos una parrilla con delivery en Pocitos' }),
+    modelo: modeloFalso(conTexto('¡Buenísimo! ¿Y qué te gustaría lograr?', {
+      rubro: 'parrilla con delivery',
+    })),
   });
 
   await s.proveedor.simularSinTexto({
@@ -366,7 +374,7 @@ test('una nota de voz entra al embudo como si la hubieran escrito', async () => 
 });
 
 test('si no se puede transcribir, le pide que escriba', async () => {
-  const s = await conLead({ openai: openaiFalso(new Error('sin credito')) });
+  const s = await conLead({ openai: transcriptorFalso(new Error('sin credito')) });
 
   await s.proveedor.simularSinTexto({
     from: '59899123456', tipo: 'audio', segundos: 9,
@@ -379,7 +387,7 @@ test('si no se puede transcribir, le pide que escriba', async () => {
 });
 
 test('una foto no se manda a transcribir', async () => {
-  const openai = openaiFalso({ text: 'no deberia llamarse' });
+  const openai = transcriptorFalso({ text: 'no deberia llamarse' });
   const s = await conLead({ openai });
   s.proveedor.limpiar();
 
@@ -402,7 +410,7 @@ test('agente de IA es una opcion propia, separada de automatizacion', () => {
   assert.deepEqual(sanearDatos({ business_type: 'agente_ia' }), { business_type: 5 });
 
   const { HERRAMIENTA } = require('../src/ia/agente');
-  const opciones = HERRAMIENTA.function.parameters.properties.business_type.enum;
+  const opciones = HERRAMIENTA.parametros.properties.business_type.enum;
 
   // Cinco servicios, mas "todavia no sabe", que no es un servicio: es la
   // respuesta de uno de cada seis que agenda, y ahora tambien cierra el embudo.
@@ -412,4 +420,85 @@ test('agente de IA es una opcion propia, separada de automatizacion', () => {
     'los cinco servicios y el "no sé", ni uno mas'
   );
   assert.ok(opciones.includes('agente_ia'));
+});
+
+// ── dos proveedores, dos claves ──────────────────────────────────────────────
+
+const { crearModelo, avisarSiFaltaClave } = require('../src/ia/modelo');
+
+test('la capa del modelo traduce la respuesta cruda a texto y argumentos', async () => {
+  // Es el unico lugar del bot que conoce la forma del SDK. Si esto se
+  // equivoca, todo lo de arriba recibe null y cada lead termina derivado.
+  const pedidos = [];
+  const cliente = {
+    messages: {
+      create: async (p) => {
+        pedidos.push(p);
+        return {
+          content: [
+            { type: 'text', text: 'pensando en voz alta' },
+            { type: 'tool_use', name: 'responder', input: { mensaje: 'hola', rubro: 'parrilla' } },
+          ],
+        };
+      },
+    },
+  };
+
+  const m = crearModelo({ cliente, modelo: 'claude-x' });
+  const r = await m.pedir({
+    system: 'sos un bot',
+    mensajes: [{ role: 'user', content: 'hola' }],
+    herramienta: { nombre: 'responder', descripcion: 'contesta', parametros: { type: 'object' } },
+  });
+
+  assert.deepEqual(r.argumentos, { mensaje: 'hola', rubro: 'parrilla' });
+  assert.equal(r.texto, 'pensando en voz alta');
+
+  const p = pedidos[0];
+  assert.equal(p.model, 'claude-x');
+  assert.equal(p.system, 'sos un bot', 'el system va aparte de los mensajes, no adentro');
+  assert.ok(p.max_tokens > 0, 'siempre lleva max_tokens: la API lo exige');
+  assert.deepEqual(
+    p.tool_choice,
+    { type: 'tool', name: 'responder', disable_parallel_tool_use: true },
+    'la herramienta va forzada, y una sola vez'
+  );
+});
+
+test('si la API tira, la capa devuelve null en vez de propagar', async () => {
+  const cliente = { messages: { create: async () => { throw new Error('529 overloaded'); } } };
+  const m = crearModelo({ cliente });
+  assert.equal(await m.pedir({ system: 'x', mensajes: [] }), null);
+});
+
+test('sin cliente queda inactivo y no inventa respuestas', async () => {
+  const m = crearModelo({ cliente: null });
+  assert.equal(m.activo, false);
+  assert.equal(await m.pedir({ system: 'x', mensajes: [] }), null);
+});
+
+test('arrancar sin una clave se avisa: en silencio se ve igual que andar bien', () => {
+  // Faltar la clave no rompe el arranque, y por eso hay que gritarlo: el bot
+  // levanta, contesta, y deriva a una persona cada lead que escribe.
+  const encolados = [];
+  const cfg = { IA_CONVERSACION: true, IA_TRANSCRIPCION: true, amPhones: ['59899000111'] };
+  const cola = { encolar: (m) => encolados.push(m) };
+
+  const faltan = avisarSiFaltaClave({ cfg, cola, ia: { conversacion: false, transcripcion: true } });
+  assert.equal(faltan.length, 1);
+  assert.match(faltan[0], /ANTHROPIC_API_KEY/);
+  assert.equal(encolados.length, 1, 'le llega al equipo, no solo al log');
+  assert.match(encolados[0].texto, /ANTHROPIC_API_KEY/);
+  assert.ok(!/OPENAI/.test(encolados[0].texto), 'y no se queja de la que si esta');
+});
+
+test('con las dos claves puestas no molesta a nadie', () => {
+  const encolados = [];
+  const faltan = avisarSiFaltaClave({
+    cfg: { IA_CONVERSACION: true, IA_TRANSCRIPCION: true, amPhones: ['59899000111'] },
+    cola: { encolar: (m) => encolados.push(m) },
+    ia: { conversacion: true, transcripcion: true },
+  });
+  assert.deepEqual(faltan, []);
+  assert.equal(encolados.length, 0);
 });

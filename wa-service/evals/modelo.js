@@ -10,25 +10,35 @@
  *
  * `.lead()` si usa el modelo suelto: ahi el que actua es la persona del otro
  * lado, no nuestro sistema.
+ *
+ * Los dos pasan por src/ia/modelo.js, la misma puerta que usa el bot. Es lo que
+ * hace que la nota del eval sea la nota del bot: si aca se hablara con el SDK
+ * por separado, el arnes podria seguir en verde con el bot ya roto.
  */
 
 const { crearAgente } = require('../src/ia/agente');
 const { crearTextos } = require('../src/templates/funnel');
+const { crearModelo, clienteAnthropic, MODELO_POR_DEFECTO } = require('../src/ia/modelo');
 
-function crearModeloOpenAI({ modelo, modeloLead, calLink, apiKey } = {}) {
-  const OpenAI = require('openai');
-  const openai = new OpenAI({ apiKey: apiKey || process.env.OPENAI_API_KEY });
+function crearModeloAnthropic({ modelo, modeloLead, calLink, apiKey } = {}) {
+  const cliente = clienteAnthropic(apiKey || process.env.ANTHROPIC_API_KEY);
+  if (!cliente) throw new Error('Falta ANTHROPIC_API_KEY');
+
+  const nombreModelo = modelo || MODELO_POR_DEFECTO;
+  const ia = crearModelo({ cliente, modelo: nombreModelo });
+  // La persona simulada puede correr con otro modelo: sirve para que el lead
+  // no sea el mismo modelo evaluandose a si mismo.
+  const iaLead = modeloLead ? crearModelo({ cliente, modelo: modeloLead }) : ia;
 
   const agente = crearAgente({
-    openai,
-    modelo,
+    modelo: ia,
     textos: crearTextos(),
     calendly: calLink,
     logger: null,
   });
 
   return {
-    nombre: `openai:${modelo}`,
+    nombre: `anthropic:${nombreModelo}`,
 
     /**
      * Un turno del bot. El arnes le pasa el historial completo; el agente lo
@@ -60,14 +70,10 @@ function crearModeloOpenAI({ modelo, modeloLead, calLink, apiKey } = {}) {
       if (!mensajes.length) {
         mensajes.push({ role: 'user', content: '(escribile el primer mensaje a la agencia)' });
       }
-      const r = await openai.chat.completions.create({
-        model: modeloLead || modelo,
-        max_tokens: 200,
-        messages: [{ role: 'system', content: persona }, ...mensajes],
-      });
-      return String(r.choices?.[0]?.message?.content || '').trim();
+      const r = await iaLead.pedir({ system: persona, mensajes, maxTokens: 200 });
+      return String(r?.texto || '').trim();
     },
   };
 }
 
-module.exports = { crearModeloOpenAI };
+module.exports = { crearModeloAnthropic };

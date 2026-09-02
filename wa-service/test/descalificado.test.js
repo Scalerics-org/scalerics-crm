@@ -2,13 +2,13 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
-const { conLead, stubOpenAI, ADMIN } = require('./helpers');
+const { conLead, stubModelo, ADMIN } = require('./helpers');
 const { S } = require('../src/funnel/states');
 const { NO_CLIENTE, HERRAMIENTA } = require('../src/ia/agente');
 
 const TEL = '59899123456';
 
-const stubQueVe = (queQuiere) => stubOpenAI({ datos: { que_quiere: queQuiere } });
+const stubQueVe = (queQuiere) => stubModelo({ datos: { que_quiere: queQuiere } });
 
 const jobs = (s, leadId) => s.repo.db
   .prepare("SELECT type FROM jobs WHERE lead_id = ? AND status = 'pending'")
@@ -96,7 +96,7 @@ test('un telefono que no existe da 404', async () => {
  * no es lo nuestro— y ahi se pierde un cliente.
  */
 test('un motivo claro lo descalifica el bot solo', async () => {
-  const s = await conLead({ openai: stubQueVe('trabajo') });
+  const s = await conLead({ modelo: stubQueVe('trabajo') });
   await s.servicioLeads.registrarRespuesta(TEL, 'hola, les mando mi CV');
   await s.cola.vacia();
 
@@ -106,7 +106,7 @@ test('un motivo claro lo descalifica el bot solo', async () => {
 });
 
 test('y no le sigue preguntando por su negocio', async () => {
-  const s = await conLead({ openai: stubQueVe('trabajo') });
+  const s = await conLead({ modelo: stubQueVe('trabajo') });
   await s.servicioLeads.registrarRespuesta(TEL, 'hola, les mando mi CV');
   await s.cola.vacia();
 
@@ -116,7 +116,7 @@ test('y no le sigue preguntando por su negocio', async () => {
 });
 
 test('un motivo dudoso queda anotado, pero decide una persona', async () => {
-  const s = await conLead({ openai: stubQueVe('algo_que_no_hacemos') });
+  const s = await conLead({ modelo: stubQueVe('algo_que_no_hacemos') });
   await s.servicioLeads.registrarRespuesta(TEL, 'necesito que me arreglen la computadora');
   await s.cola.vacia();
 
@@ -127,7 +127,7 @@ test('un motivo dudoso queda anotado, pero decide una persona', async () => {
 
 test('con la lista vacia el bot no descalifica nunca', async () => {
   const s = await conLead({
-    openai: stubQueVe('trabajo'),
+    modelo: stubQueVe('trabajo'),
     DESCALIFICACION_AUTOMATICA: '',
   });
   await s.servicioLeads.registrarRespuesta(TEL, 'hola, les mando mi CV');
@@ -140,7 +140,7 @@ test('con la lista vacia el bot no descalifica nunca', async () => {
 
 test('un cliente normal no se toca, aunque todos los motivos esten prendidos', async () => {
   const s = await conLead({
-    openai: stubQueVe('un_servicio'),
+    modelo: stubQueVe('un_servicio'),
     DESCALIFICACION_AUTOMATICA: 'trabajo,vender_algo,numero_equivocado,algo_que_no_hacemos',
   });
   await s.servicioLeads.registrarRespuesta(TEL, 'tengo una panadería y quiero una web');
@@ -152,7 +152,7 @@ test('un cliente normal no se toca, aunque todos los motivos esten prendidos', a
 });
 
 test('los motivos del codigo son los que se le ofrecen al modelo', () => {
-  const enEnum = HERRAMIENTA.function.parameters.properties.que_quiere.enum;
+  const enEnum = HERRAMIENTA.parametros.properties.que_quiere.enum;
   assert.deepEqual(enEnum, ['un_servicio', ...NO_CLIENTE]);
   assert.ok(!NO_CLIENTE.includes('un_servicio'), 'el caso normal nunca descalifica');
 });

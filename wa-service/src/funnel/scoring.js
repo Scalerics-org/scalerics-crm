@@ -36,7 +36,7 @@ const UMBRAL_REUNION = 5;
 const UMBRAL_NURTURE = 3;
 
 /**
- * Scoring por reglas. Es el camino que corre cuando no hay OPENAI_API_KEY.
+ * Scoring por reglas. Es el camino que corre cuando no hay ANTHROPIC_API_KEY.
  *
  * Difiere del original de bot/src/services/ai.js a proposito: aquel sumaba
  * hasta 3 puntos por `lead.urgency` y pedia score >= 7 para ofrecer reunion.
@@ -64,7 +64,7 @@ function porReglas(lead) {
 
   // Un brief escrito con contenido real es de las mejores seniales que da el
   // embudo, y las reglas eran ciegas a el. Aproxima pobremente lo que el
-  // scoring con IA hace bien: sin OPENAI_API_KEY es lo unico que hay.
+  // scoring con IA hace bien: sin ANTHROPIC_API_KEY es lo unico que hay.
   if (String(lead.needs || '').trim().length >= 25) score += 1;
 
   // El rubro, cuando se pudo clasificar. rubro_norm lo escriben las dos vias:
@@ -105,21 +105,38 @@ Sobre el rubro: Scalerics tiene propuesta armada para gastronomía, salud, comer
 }
 
 /**
- * @param {object} deps.openai cliente ya construido, o null para ir por reglas.
+ * @param {object} deps.modelo ya construido, o null para ir por reglas.
  */
-function crearScorer({ openai = null, modelo = 'gpt-4o-mini', logger = null } = {}) {
+function crearScorer({ modelo = null, logger = null } = {}) {
   return {
     async calificar(lead) {
-      if (!openai) return porReglas(lead);
+      if (!modelo?.activo) return porReglas(lead);
 
       try {
-        const r = await openai.chat.completions.create({
-          model: modelo,
-          max_tokens: 150,
-          response_format: { type: 'json_object' },
-          messages: [{ role: 'user', content: construirPrompt(lead) }],
+        // Por herramienta y no pidiendo JSON en el texto: forzarla es lo unico
+        // que garantiza la forma. Un modelo al que se le pide "devolveme JSON"
+        // a veces lo envuelve en explicaciones y hay que parsear a mano.
+        const r = await modelo.pedir({
+          system: 'Calificás leads para una agencia de desarrollo uruguaya.',
+          mensajes: [{ role: 'user', content: construirPrompt(lead) }],
+          herramienta: {
+            nombre: 'calificar',
+            descripcion: 'El puntaje del lead y qué conviene hacer con él.',
+            parametros: {
+              type: 'object',
+              properties: {
+                score: { type: 'integer', description: 'del 1 al 10' },
+                priority: { type: 'string', enum: ['high', 'medium', 'low'] },
+                recommended_action: { type: 'string', enum: ['meeting', 'nurture', 'disqualify'] },
+                reason: { type: 'string', description: 'una línea' },
+              },
+              required: ['score', 'priority', 'recommended_action'],
+            },
+          },
+          maxTokens: 150,
         });
-        const json = JSON.parse((r.choices?.[0]?.message?.content || '').trim());
+        const json = r?.argumentos;
+        if (!json) return porReglas(lead);
 
         return {
           score: Math.min(Math.max(parseInt(json.score, 10) || 0, 1), 10),

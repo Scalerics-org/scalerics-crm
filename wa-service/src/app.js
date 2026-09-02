@@ -19,7 +19,10 @@ const { crearAgrupador } = require('./inbound/agrupador');
  * Arma el servicio entero y devuelve las piezas.
  * Los tests lo llaman con una config a medida y :memory: como base.
  */
-function construir(cfg, { logger, ahora = () => new Date(), openai: clienteIA = null, google = null } = {}) {
+function construir(cfg, {
+  logger, ahora = () => new Date(), openai: clienteIA = null,
+  modelo: clienteModelo = null, google = null,
+} = {}) {
   const log = logger || crearLogger({
     level: cfg.LOG_LEVEL,
     produccion: cfg.NODE_ENV === 'production',
@@ -47,29 +50,47 @@ function construir(cfg, { logger, ahora = () => new Date(), openai: clienteIA = 
     }
   });
 
-  // Sin OPENAI_API_KEY el scoring cae a reglas, no se rompe. Los tests inyectan
-  // un cliente falso por deps.
+  /**
+   * Dos proveedores, cada uno en lo suyo: Anthropic conversa, OpenAI
+   * transcribe. Anthropic no hace audio, y Whisper es lo unico que se le pide
+   * a OpenAI. Falta una clave y lo otro sigue andando.
+   *
+   * Sin ANTHROPIC_API_KEY el bot no conversa y el embudo deriva a una persona.
+   * Sin OPENAI_API_KEY no se transcriben audios y se le pide al lead que
+   * escriba. Ninguna de las dos rompe el arranque.
+   */
   let openai = clienteIA;
   if (!openai && cfg.OPENAI_API_KEY) {
     const OpenAI = require('openai');
     openai = new OpenAI({ apiKey: cfg.OPENAI_API_KEY });
   }
-  const scorer = crearScorer({ openai, modelo: cfg.IA_MODELO, logger: log });
+
+  // `deps.modelo` entra ya armado —es lo que inyectan los tests— y solo si no
+  // viene se construye uno contra la API de verdad. Los tests hablan con la
+  // capa neutral y no con el SDK de ningun proveedor: esa es toda la diferencia
+  // entre cambiar de proveedor tocando un archivo o tocando la suite entera.
+  const { crearModelo, clienteAnthropic } = require('./ia/modelo');
+  const modeloIA =
+    clienteModelo ||
+    crearModelo({
+      cliente: clienteAnthropic(cfg.ANTHROPIC_API_KEY),
+      modelo: cfg.IA_MODELO,
+      logger: log,
+    });
+  const scorer = crearScorer({ modelo: cfg.IA_CONVERSACION ? modeloIA : null, logger: log });
   const textos = crearTextos({ horarioAtencion: cfg.HORARIO_ATENCION });
   const crmNotify = crearNotificadorCRM({ cfg, repo, logger: log });
 
   // Sin clave el agente queda inactivo y el embudo de preguntas fijas atiende
   // igual. Es a proposito: el dia que se cargue la clave se enciende solo.
   const agente = require('./ia/agente').crearAgente({
-    openai: cfg.IA_CONVERSACION ? openai : null,
-    modelo: cfg.IA_MODELO,
+    modelo: cfg.IA_CONVERSACION ? modeloIA : null,
     textos,
     calendly: cfg.CALENDLY_LINK,
     logger: log,
   });
   const redactor = require('./ia/redactor').crearRedactor({
-    openai: cfg.IA_CONVERSACION ? openai : null,
-    modelo: cfg.IA_MODELO,
+    modelo: cfg.IA_CONVERSACION ? modeloIA : null,
     calendly: cfg.CALENDLY_LINK,
     logger: log,
   });
@@ -205,6 +226,7 @@ function construir(cfg, { logger, ahora = () => new Date(), openai: clienteIA = 
   return {
     cfg, db, repo, proveedor, cola, limites, servicioLeads,
     scheduler, embudo, scorer, agrupador, app, vigilanteReservas, logger: log,
+    ia: { conversacion: agente.activo, transcripcion: transcriptor.activo },
   };
 }
 

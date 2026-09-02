@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
-const { conLead, stubOpenAI } = require('./helpers');
+const { conLead, stubModelo } = require('./helpers');
 const { detectar } = require('../src/funnel/derivacion');
 const { S } = require('../src/funnel/states');
 
@@ -175,7 +175,7 @@ test('el motivo tambien queda cuando pide un humano o no entiende', async () => 
   // El motivo 'invalidos' se fue con el embudo numerado: sin opciones que
   // entender mal, no hay respuesta invalida. Ahora el equivalente es que la IA
   // no pueda contestar, y ese motivo es 'sin_ia'.
-  const s2 = await conLead({ openai: stubOpenAI({ falla: '500' }) });
+  const s2 = await conLead({ modelo: stubModelo({ falla: '500' }) });
   await lead(s2, 'hola');
   assert.equal(s2.repo.leadPorTelefono(LEAD_TEL).motivo_derivacion, 'sin_ia');
 });

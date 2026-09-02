@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
-const { conLead, stubOpenAI } = require('./helpers');
+const { conLead, stubModelo } = require('./helpers');
 
 const TEL = '59899123456';
 
@@ -83,14 +83,14 @@ test('a una reunion que ya paso no se le recuerda nada', async () => {
  * hace el codigo y se la pasa hecha.
  */
 test('al redactor se le dice cuánto falta, no solo la fecha', async () => {
-  const openai = stubOpenAI();
-  const s = await conLead({ openai });
+  const modelo = stubModelo();
+  const s = await conLead({ modelo });
   await conReunionEn(s, 25);
 
   await s.scheduler.correrVencidos();
   await s.cola.vacia();
 
-  const pedido = JSON.stringify(openai.llamadas);
+  const pedido = JSON.stringify(modelo.llamadas);
   assert.match(pedido, /o sea/, 'el contexto lleva cuánto falta, ya calculado');
   assert.match(pedido, /mañana/, 'y para 25 horas dice mañana');
 });

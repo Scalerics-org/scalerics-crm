@@ -20,9 +20,9 @@ const MAX_CARACTERES = 900;
  * —reprogramar el job, derivar a una persona— pero nunca manda un texto fijo
  * como si nada: si el modelo no esta, el lead se merece una persona.
  */
-function crearRedactor({ openai = null, modelo, calendly = '', logger = null } = {}) {
+function crearRedactor({ modelo = null, calendly = '', logger = null } = {}) {
   return {
-    activo: Boolean(openai),
+    activo: Boolean(modelo?.activo),
 
     /** Las situaciones que sabe escribir. Util para no pedirle uña inexistente. */
     conoce: (situacion) => Boolean(situaciones(calendly)[situacion]),
@@ -34,7 +34,7 @@ function crearRedactor({ openai = null, modelo, calendly = '', logger = null } =
      * @returns {Promise<string|null>}
      */
     async escribir(lead, situacion, extra = '') {
-      if (!openai) return null;
+      if (!modelo?.activo) return null;
 
       const prompt = construirRedaccion(lead, situacion, calendly, extra);
       if (!prompt) {
@@ -42,22 +42,18 @@ function crearRedactor({ openai = null, modelo, calendly = '', logger = null } =
         return null;
       }
 
-      let r;
-      try {
-        r = await openai.chat.completions.create({
-          model: modelo,
-          max_tokens: 400,
-          messages: [{ role: 'user', content: prompt }],
-        });
-      } catch (e) {
-        logger?.warn(
-          { leadId: lead.id, situacion, err: String(e.message || e) },
-          'no se pudo redactar el mensaje'
-        );
+      const r = await modelo.pedir({
+        system: 'Escribís mensajes de WhatsApp para una agencia uruguaya. Devolvés solo el mensaje, sin comillas ni explicaciones.',
+        mensajes: [{ role: 'user', content: prompt }],
+        maxTokens: 400,
+      });
+
+      if (!r) {
+        logger?.warn({ leadId: lead.id, situacion }, 'no se pudo redactar el mensaje');
         return null;
       }
 
-      const crudo = String(r?.choices?.[0]?.message?.content || '').trim()
+      const crudo = String(r.texto || '').trim()
         // A veces devuelve el mensaje entre comillas, como si lo citara.
         .replace(/^["“”']+|["“”']+$/g, '')
         .trim();

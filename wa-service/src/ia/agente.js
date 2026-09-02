@@ -48,20 +48,18 @@ const CAMPOS = {
 /**
  * Una sola herramienta que devuelve TODO: el mensaje y los datos.
  *
- * Podria pedirsele el texto por content y los datos por tool call, que es lo
- * natural, pero los modelos de OpenAI suelen mandar content vacio cuando llaman
- * una herramienta. Ahi habria que hacer una segunda llamada para conseguir la
+ * Podria pedirsele el texto suelto y los datos por la herramienta, que es lo
+ * natural, pero un modelo que llama una herramienta forzada suele no escribir
+ * nada de texto. Ahi habria que hacer una segunda llamada para conseguir la
  * respuesta —el doble de latencia y de costo en cada turno donde extrae algo—
  * o arriesgarse a que el lead no reciba nada. Metiendo el mensaje adentro de la
  * herramienta y forzandola con tool_choice, siempre viene todo en una llamada y
  * con forma conocida.
  */
 const HERRAMIENTA = {
-  type: 'function',
-  function: {
-    name: 'responder',
-    description: 'Contesta al lead y guarda lo que hayas averiguado de él.',
-    parameters: {
+  nombre: 'responder',
+  descripcion: 'Contesta al lead y guarda lo que hayas averiguado de él.',
+  parametros: {
       type: 'object',
       properties: {
         /**
@@ -144,8 +142,7 @@ const HERRAMIENTA = {
           description: 'Casi siempre es "un_servicio". trabajo = busca empleo o manda un CV. vender_algo = te esta ofreciendo algo a vos. numero_equivocado = no queria escribirle a esta empresa. algo_que_no_hacemos = pide algo que no es software ni web (arreglar una computadora, diseñar un logo, manejar redes). Trabajar EN un rubro no es buscar trabajo: "tengo una panaderia" es un_servicio.',
         },
       },
-      required: ['lo_que_acaba_de_decir', 'mensaje'],
-    },
+    required: ['lo_que_acaba_de_decir', 'mensaje'],
   },
 };
 
@@ -229,38 +226,31 @@ function aMensajes(historial, entrante) {
  * pasa los controles. El que llama cae al embudo de siempre con ese null: el
  * FSM sigue existiendo justamente para eso.
  */
-function crearAgente({ openai = null, modelo, textos, calendly = '', logger = null } = {}) {
+function crearAgente({ modelo = null, textos, calendly = '', logger = null } = {}) {
   return {
-    activo: Boolean(openai),
+    activo: Boolean(modelo?.activo),
 
     async responder(lead, entrante, historial = [], fase = null) {
-      if (!openai) return null;
+      if (!modelo?.activo) return null;
 
       const conversacion = aMensajes(historial, entrante);
       if (!conversacion.length) return null;
 
-      let respuesta;
-      try {
-        respuesta = await openai.chat.completions.create({
-          model: modelo,
-          max_tokens: 500,
-          messages: [{ role: 'system', content: construirSystem(lead, fase, calendly) }, ...conversacion],
-          tools: [HERRAMIENTA],
-          // Forzada: sin esto el modelo a veces contesta por content y a veces
-          // por la herramienta, y hay que manejar los dos caminos.
-          tool_choice: { type: 'function', function: { name: 'responder' } },
-        });
-      } catch (e) {
-        logger?.warn({ leadId: lead.id, err: String(e.message || e) }, 'la IA fallo, se usa el embudo fijo');
+      const r = await modelo.pedir({
+        system: construirSystem(lead, fase, calendly),
+        mensajes: conversacion,
+        herramienta: HERRAMIENTA,
+        maxTokens: 500,
+      });
+
+      if (!r) {
+        logger?.warn({ leadId: lead.id }, 'la IA fallo, se usa el embudo fijo');
         return null;
       }
 
-      const llamada = respuesta?.choices?.[0]?.message?.tool_calls?.[0];
-      let argumentos;
-      try {
-        argumentos = JSON.parse(llamada?.function?.arguments || '{}');
-      } catch (e) {
-        logger?.warn({ leadId: lead.id }, 'la IA devolvio argumentos que no son JSON');
+      const argumentos = r.argumentos;
+      if (!argumentos) {
+        logger?.warn({ leadId: lead.id }, 'la IA no uso la herramienta');
         return null;
       }
 
@@ -307,43 +297,35 @@ function crearAgente({ openai = null, modelo, textos, calendly = '', logger = nu
      * @returns {Promise<string|null>} la opcion elegida, o null si no se entiende.
      */
     async elegirDeLista({ texto, opciones, etiquetas, instruccion }) {
-      if (!openai || !opciones.length) return null;
+      if (!modelo?.activo || !opciones.length) return null;
 
       const lista = opciones.map((o, i) => `${o} = ${etiquetas[i]}`).join('\n');
 
-      try {
-        const r = await openai.chat.completions.create({
-          model: modelo,
-          max_tokens: 120,
-          messages: [
-            { role: 'system', content: `${instruccion}
+      const r = await modelo.pedir({
+        system: `${instruccion}
 
 Opciones:
-${lista}` },
-            { role: 'user', content: String(texto || '') },
-          ],
-          tools: [{
-            type: 'function',
-            function: {
-              name: 'elegir',
-              parameters: {
-                type: 'object',
-                properties: {
-                  opcion: { type: 'string', enum: [...opciones, 'ninguno'] },
-                },
-                required: ['opcion'],
-              },
+${lista}`,
+        mensajes: [{ role: 'user', content: String(texto || '') }],
+        herramienta: {
+          nombre: 'elegir',
+          descripcion: 'Cuál de las opciones eligió.',
+          parametros: {
+            type: 'object',
+            properties: {
+              opcion: { type: 'string', enum: [...opciones, 'ninguno'] },
             },
-          }],
-          tool_choice: { type: 'function', function: { name: 'elegir' } },
-        });
+            required: ['opcion'],
+          },
+        },
+        maxTokens: 120,
+      });
 
-        const args = JSON.parse(r.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments || '{}');
-        return opciones.includes(args.opcion) ? args.opcion : null;
-      } catch (e) {
-        logger?.warn({ err: String(e.message || e) }, 'no se pudo interpretar la eleccion');
+      if (!r?.argumentos) {
+        logger?.warn('no se pudo interpretar la eleccion');
         return null;
       }
+      return opciones.includes(r.argumentos.opcion) ? r.argumentos.opcion : null;
     },
 
     faltantes,

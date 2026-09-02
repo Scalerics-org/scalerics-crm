@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
-const { conLead, stubOpenAI } = require('./helpers');
+const { conLead, stubModelo } = require('./helpers');
 const { S } = require('../src/funnel/states');
 const { correspondeDerivar } = require('../src/funnel/abandono');
 

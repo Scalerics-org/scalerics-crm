@@ -215,8 +215,9 @@ async function main() {
 
 main().catch((e) => {
   console.error('\n  No se pudo arrancar:', e.message);
-  if (/OPENAI/i.test(e.message)) {
-    console.error('  Falta OPENAI_API_KEY en wa-service/.env\n');
+  if (/ANTHROPIC|OPENAI/i.test(e.message)) {
+    console.error('  Falta ANTHROPIC_API_KEY en wa-service/.env');
+    console.error('  (OPENAI_API_KEY es aparte, y solo hace falta para los audios)\n');
   }
   process.exit(1);
 });

@@ -4,7 +4,7 @@ const { cargar } = require('../src/config');
 const { construir } = require('../src/app');
 
 /**
- * Cliente de OpenAI falso y deterministico.
+ * Modelo falso y deterministico, con la forma de src/ia/modelo.js.
  *
  * Los tests verifican CABLEADO —que situacion se dispara, en que estado queda
  * el lead, que datos se guardan— y no redaccion. Por eso devuelve marcadores
@@ -12,42 +12,39 @@ const { construir } = require('../src/app');
  * palabras exactas, cambiar una coma del prompt lo romperia.
  *
  * La calidad de la redaccion se mide aparte, en evals/, contra la API de verdad.
+ *
+ * Imita la capa neutral y no el SDK de ningun proveedor. Cuando el bot paso de
+ * OpenAI a Anthropic, esa fue la diferencia entre tocar un archivo y tocar los
+ * cuarenta y seis tests que dependian de la forma de `choices` y `tool_calls`.
  */
-function stubOpenAI({ respuestas = {}, datos = {}, falla = null } = {}) {
+function stubModelo({ respuestas = {}, datos = {}, falla = null } = {}) {
   const llamadas = [];
   return {
+    activo: true,
+    modelo: 'stub',
     llamadas,
-    chat: {
-      completions: {
-        create: async (args) => {
-          llamadas.push(args);
-          if (falla) throw new Error(falla);
 
-          // Con tools es la conversacion; sin tools, un mensaje suelto.
-          if (args.tools) {
-            const mensaje = respuestas.conversacion || '[conversacion]';
-            return {
-              choices: [{
-                message: {
-                  content: null,
-                  tool_calls: [{
-                    type: 'function',
-                    function: { name: 'responder', arguments: JSON.stringify({ mensaje, ...datos }) },
-                  }],
-                },
-              }],
-            };
-          }
+    async pedir(args) {
+      llamadas.push(args);
+      if (falla) return null;
 
-          const prompt = args.messages[0].content;
-          const m = prompt.match(/situación: (\w+)/);
-          const situacion = m ? m[1] : 'desconocida';
-          return {
-            choices: [{ message: { content: respuestas[situacion] || `[${situacion}]` } }],
-          };
-        },
-      },
+      // Con herramienta es la conversacion; sin herramienta, un mensaje suelto.
+      if (args.herramienta) {
+        const mensaje = respuestas.conversacion || '[conversacion]';
+        return { texto: null, argumentos: { mensaje, ...datos } };
+      }
+
+      const prompt = args.mensajes[0].content;
+      const m = prompt.match(/situación: (\w+)/);
+      const situacion = m ? m[1] : 'desconocida';
+      return { texto: respuestas[situacion] || `[${situacion}]`, argumentos: null };
     },
+  };
+}
+
+/** El de OpenAI, que ahora solo transcribe audios. */
+function stubTranscriptor({ respuestas = {}, falla = null } = {}) {
+  return {
     audio: {
       transcriptions: {
         create: async () => {
@@ -101,13 +98,24 @@ function cfgTest(extra = {}) {
  * @param {Date} [reloj] congela el tiempo, para probar horario comercial.
  */
 async function montar(extra, reloj) {
-  // `openai` no es una clave de config: es el cliente falso que usan los tests
-  // de la capa de IA. Se separa antes de armar la config.
-  // Por defecto va el stub: sin IA el bot deriva todo a una persona, que es
+  // `modelo` y `openai` no son claves de config: son los clientes falsos que
+  // usan los tests de la capa de IA. Se separan antes de armar la config.
+  // Por defecto van los stubs: sin IA el bot deriva todo a una persona, que es
   // el camino degradado y no el que hay que probar.
-  const { openai = stubOpenAI(), sinIA = false, _google = null, ...cfgExtra } = extra || {};
+  //
+  // Son dos porque el bot habla con dos proveedores: Anthropic conversa,
+  // OpenAI transcribe. `sinIA` apaga los dos, que es lo que probaban los tests
+  // de degradado cuando habia uno solo.
+  const {
+    modelo = stubModelo(),
+    openai = stubTranscriptor(),
+    sinIA = false,
+    _google = null,
+    ...cfgExtra
+  } = extra || {};
   const s = construir(cfgTest(cfgExtra), {
     logger: null,
+    modelo: sinIA ? null : modelo,
     openai: sinIA ? null : openai,
     google: _google,
     ahora: reloj ? () => reloj : undefined,
@@ -134,4 +142,4 @@ async function conLead(extra, datos = LEAD) {
   return s;
 }
 
-module.exports = { CLAVE, ADMIN, LEAD, cfgTest, montar, conLead, stubOpenAI };
+module.exports = { CLAVE, ADMIN, LEAD, cfgTest, montar, conLead, stubModelo, stubTranscriptor };
