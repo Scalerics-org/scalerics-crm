@@ -142,10 +142,17 @@ function crearEmbudo({
    * Persiste lo que extrajo la IA. El rubro se clasifica al guardarlo, igual
    * que cuando llega del formulario: rubro_norm es lo que elige el gancho.
    */
-  function guardarCampos(leadId, campos) {
+  function guardarCampos(leadId, campos, { porAudio = false } = {}) {
     const conNorm = campos.rubro
       ? { ...campos, rubro_norm: plantillas.clasificar(campos.rubro) }
       : campos;
+    // Un nombre propio dicho por voz no se puede transcribir bien: no es una
+    // palabra que exista. Se guarda igual —el equipo lo lee y ademas tiene el
+    // audio— pero queda marcado para que el bot no lo escriba en sus mensajes.
+    // Se limpia solo en cuanto el lead lo escribe.
+    if (campos.business_name !== undefined) {
+      conNorm.business_name_por_audio = porAudio ? 1 : 0;
+    }
     repo.actualizarFunnel(leadId, conNorm);
   }
 
@@ -542,7 +549,7 @@ function crearEmbudo({
      * Procesa un mensaje entrante del lead.
      * @returns {string|null} el estado en que quedo, o null si se ignoro.
      */
-    async procesar(leadId, textoCrudo) {
+    async procesar(leadId, textoCrudo, { porAudio = false } = {}) {
       const lead = repo.leadPorId(leadId);
       if (!lead) return null;
 
@@ -616,7 +623,7 @@ function crearEmbudo({
 
       if (agente?.activo && (califica || FASE_CIERRE.has(actual))) {
         const r = await agente.responder(lead, textoCrudo, repo.ultimosMensajes(lead.id, 20, lead.conversacion_desde), actual);
-        if (r) return this._conversar(lead, entrada, r, { actual, califica, puedeCerrar });
+        if (r) return this._conversar(lead, entrada, r, { actual, califica, puedeCerrar, porAudio });
         return sinIA(lead, 'conversacion');
       }
 
@@ -632,9 +639,9 @@ function crearEmbudo({
      * no falta ningun dato, el cierre lo hace el codigo — ofrecer la reunion
      * sale del score, no de lo que le parezca al modelo.
      */
-    async _conversar(lead, entrada, { texto, datos, aplaza, aplazaFrase, queQuiere }, { actual, califica, puedeCerrar }) {
+    async _conversar(lead, entrada, { texto, datos, aplaza, aplazaFrase, queQuiere }, { actual, califica, puedeCerrar, porAudio = false }) {
       if (Object.keys(datos).length) {
-        guardarCampos(lead.id, datos);
+        guardarCampos(lead.id, datos, { porAudio });
         logger?.info({ leadId: lead.id, campos: Object.keys(datos) }, 'la IA extrajo datos');
       }
 

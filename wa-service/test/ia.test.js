@@ -706,3 +706,16 @@ test('el cliente no espera diez minutos por una respuesta', async () => {
   assert.ok(c.timeout <= 30_000, `esperaba menos de 30s, hay ${c.timeout}ms`);
   assert.ok(c.maxRetries <= 1, 'y como mucho un reintento');
 });
+
+test('el prompt no le deja escribir un nombre que vino por audio', () => {
+  const porAudio = construirSystem({
+    nombre: 'Juan', business_name: 'Larganada', business_name_por_audio: 1,
+  });
+  assert.match(porAudio, /NO escribas ese nombre/);
+  assert.match(porAudio, /a qué se dedican/);
+
+  // Escrito por el lead, se usa normal: es el caso de siempre.
+  const escrito = construirSystem({ nombre: 'Juan', business_name: 'Larganada' });
+  assert.match(escrito, /Su negocio es Larganada/);
+  assert.ok(!/NO escribas ese nombre/.test(escrito));
+});

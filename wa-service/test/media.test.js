@@ -103,3 +103,43 @@ test('la nota de voz queda guardada y colgada del mensaje transcripto', async ()
   assert.equal(s.media.leer(medios[0].archivo).toString(), 'ogg-de-prueba',
     'y el original se puede escuchar');
 });
+
+/**
+ * Un nombre propio dicho por voz no se puede transcribir bien: no es una
+ * palabra que exista. Paso probando el 2-9 —"Larganada"— y el bot lo repitio en
+ * el mensaje siguiente como si estuviera seguro.
+ *
+ * Se sigue guardando: el equipo lo lee para preparar la reunion y ademas tiene
+ * el audio en el panel. Lo que cambia es que el bot no lo escribe: en vez de
+ * "¿a qué se dedica Larganada?" pregunta "¿a qué se dedican?".
+ */
+test('un nombre que vino por audio queda marcado como dudoso', async () => {
+  const s = await conLead({
+    modelo: stubModelo({ datos: { business_name: 'Larganada' } }),
+    openai: stubTranscriptor({ respuestas: { transcripcion: 'Mi negocio se llama Larganada' } }),
+  });
+
+  await s.proveedor.simularSinTexto({
+    from: TEL, tipo: 'audio', segundos: 2,
+    descargar: async () => Buffer.from('ogg'),
+  });
+  await s.agrupador.vaciar();
+  await s.cola.vacia();
+
+  const l = s.repo.leadPorTelefono(TEL);
+  assert.equal(l.business_name, 'Larganada', 'se guarda igual');
+  assert.equal(l.business_name_por_audio, 1, 'pero marcado');
+});
+
+test('si despues lo escribe, deja de ser dudoso', async () => {
+  const s = await conLead({ modelo: stubModelo({ datos: { business_name: 'La Ganada' } }) });
+  const id = s.repo.leadPorTelefono(TEL).id;
+  s.repo.actualizarFunnel(id, { business_name: 'Larganada', business_name_por_audio: 1 });
+
+  await s.servicioLeads.registrarRespuesta(TEL, 'se llama La Ganada');
+  await s.cola.vacia();
+
+  const l = s.repo.leadPorId(id);
+  assert.equal(l.business_name, 'La Ganada');
+  assert.equal(l.business_name_por_audio, 0, 'escrito, ya no hay duda');
+});

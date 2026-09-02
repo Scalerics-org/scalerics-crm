@@ -344,7 +344,7 @@ function crearServicioLeads({ repo, cola, cfg, logger, textos, redactor = null, 
       }
 
       if (embudo && cfg.FUNNEL_ENABLED) {
-        await embudo.procesar(lead.id, texto);
+        await embudo.procesar(lead.id, texto, { porAudio: medios.some((m) => m.tipo === 'audio') });
       }
 
       armarAbandono(repo.leadPorId(lead.id));

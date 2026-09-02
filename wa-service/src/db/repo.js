@@ -115,7 +115,7 @@ function crearRepo(db) {
       const permitidos = [
         'fsm_state', 'fsm_retries', 'opt_out', 'human_requested',
         'bot_enabled', 'bot_pausado_hasta',
-        'business_name', 'business_type', 'budget', 'team_size',
+        'business_name', 'business_name_por_audio', 'business_type', 'budget', 'team_size',
         'colors', 'instagram_web', 'needs', 'rubro', 'rubro_norm',
         'score', 'priority', 'score_reason', 'meeting_url', 'meeting_time',
         'consultas_precio', 'motivo_derivacion',
@@ -179,7 +179,8 @@ function crearRepo(db) {
         -- esto un lead que reiniciaste justo despues de escribirle desde el
         -- telefono queda en NEW pero mudo unas horas, sin nada que lo explique.
         bot_enabled = 1, bot_pausado_hasta = NULL,
-        business_name = NULL, business_type = NULL, budget = NULL, team_size = NULL,
+        business_name = NULL, business_name_por_audio = 0,
+        business_type = NULL, budget = NULL, team_size = NULL,
         colors = NULL, instagram_web = NULL, needs = NULL,
         rubro = NULL, rubro_norm = NULL,
         score = NULL, priority = NULL, score_reason = NULL,

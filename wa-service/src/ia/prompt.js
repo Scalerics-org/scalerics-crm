@@ -91,7 +91,21 @@ No hablás de si la empresa está buscando gente, ni de vacantes, ni de puestos.
 function contextoDelLead(lead) {
   const l = [];
   if (lead.nombre) l.push(`Se llama ${lead.nombre}.`);
-  if (lead.business_name) l.push(`Su negocio es ${lead.business_name}.`);
+  /**
+   * Un nombre propio dicho por voz no se transcribe bien: no es una palabra que
+   * exista, asi que el modelo de audio no tiene con que adivinarla. "La Ganada"
+   * salio "Larganada" y el bot lo repitio en el mensaje siguiente como si
+   * estuviera seguro.
+   *
+   * El dato se guarda igual —el equipo lo lee y ademas tiene el audio en el
+   * panel— pero el bot deja de escribirlo. Decir mal el nombre del negocio de
+   * alguien es peor que no decirlo.
+   */
+  if (lead.business_name && lead.business_name_por_audio) {
+    l.push(`Su negocio se llama algo parecido a "${lead.business_name}", pero lo dijo por audio y la transcripción puede estar mal. NO escribas ese nombre en tus mensajes: hablá de "tu negocio" o "ustedes". En vez de "¿a qué se dedica ${lead.business_name}?", preguntá "¿a qué se dedican?".`);
+  } else if (lead.business_name) {
+    l.push(`Su negocio es ${lead.business_name}.`);
+  }
   if (lead.rubro) l.push(`Rubro: ${lead.rubro}.`);
   if (lead.business_type) l.push(`Tipo de proyecto: ${lead.business_type}.`);
   if (lead.budget) l.push(`Presupuesto: opción ${lead.budget}.`);
