@@ -4,7 +4,7 @@ import logging
 import os
 
 import requests as http_requests
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, current_app, jsonify, make_response, request
 
 logger = logging.getLogger(__name__)
 wa_bp = Blueprint("wa", __name__)
@@ -119,6 +119,44 @@ def api_wa_messages(phone):
     if err:
         return jsonify({"error": err})
     return jsonify(data.get("messages", []))
+
+
+@wa_bp.route("/api/wa/media/<int:msg_id>/<int:idx>")
+def api_wa_media(msg_id, idx):
+    """El archivo que vino con un mensaje: hoy, la nota de voz.
+
+    El bot no tiene IP publica —vive solo en la red privada de Fly, a
+    proposito— asi que el navegador no puede pedirle el archivo. El camino es
+    navegador -> CRM -> bot -> archivo, y esto es el del medio.
+
+    No usa _bot_req porque eso devuelve JSON parseado y aca lo que viaja son
+    bytes: pasarlos por json() los rompe.
+    """
+    base = os.environ.get("BOT_API_URL", "").rstrip("/")
+    token = _token_del_bot()
+    if not base or not token:
+        return jsonify({"error": "el bot no esta configurado"}), 502
+
+    try:
+        r = http_requests.request(
+            "GET",
+            f"{base}/api/messages/{msg_id}/media/{idx}",
+            headers={"x-admin-token": token},
+            timeout=20,
+        )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 502
+
+    if r.status_code >= 400:
+        # 404 y no 200 vacio: si no, el panel dibuja un reproductor que no suena
+        # y no hay forma de saber que el audio ya se borro.
+        return jsonify({"error": "audio no disponible"}), r.status_code
+
+    resp = make_response(r.content)
+    resp.headers["Content-Type"] = r.headers.get("Content-Type", "application/octet-stream")
+    # Los audios no cambian nunca: el mismo id siempre es el mismo archivo.
+    resp.headers["Cache-Control"] = "private, max-age=86400"
+    return resp
 
 
 @wa_bp.route("/api/wa/leads/<path:phone>/release", methods=["POST"])

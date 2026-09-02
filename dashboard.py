@@ -493,6 +493,10 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .wa-bot-dot{width:7px;height:7px;border-radius:50%;background:#4ade80;flex-shrink:0}
 .wa-bot-switch.off{background:#1a1113;border-color:#3d1f24;color:#94a3b8}
 .wa-bot-switch.off .wa-bot-dot{background:#64748b}
+.wa-audio{margin:0 0 6px}
+.wa-audio audio{width:230px;height:32px;display:block}
+.wa-audio-label{font-size:.62rem;color:#64748b;margin-top:3px}
+.wa-audio-dur{color:#94a3b8}
 .wa-pausa-badge{font-size:.68rem;font-weight:700;color:#93c5fd;background:#16213a;padding:3px 8px;border-radius:999px;flex-shrink:0}
 .wa-messages{flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:8px;min-height:0}
 .wa-bubble{max-width:68%;padding:9px 13px;border-radius:12px;font-size:.84rem;line-height:1.5;white-space:pre-wrap;word-break:break-word}
@@ -2860,6 +2864,28 @@ async function releaseToBot() {
   }
 }
 
+// La nota de voz de la que salió el texto de abajo.
+//
+// El bot transcribe y sigue con el texto, pero la transcripción a veces sale
+// mal —audio corto, acento rioplatense— y ahí escuchar el original es la
+// diferencia entre entender al lead y no. El archivo lo sirve el CRM: el bot no
+// tiene IP pública, así que el navegador no puede pedírselo directo.
+function audioDeMensaje(m) {
+  if (!m.media || !m.media.length) return '';
+  return m.media.map(a => {
+    if (a.tipo !== 'audio') return '';
+    const dur = a.segundos ? ` <span class="wa-audio-dur">${a.segundos}s</span>` : '';
+    // La URL que manda el bot es de SU api (/api/messages/<id>/media/<i>). Acá
+    // se traduce a la del CRM, que es la que el navegador puede pedir.
+    const ids = String(a.url || '').match(/\/api\/messages\/(\d+)\/media\/(\d+)/);
+    if (!ids) return '';
+    return `<div class="wa-audio">
+      <audio controls preload="none" src="/api/wa/media/${ids[1]}/${ids[2]}"></audio>
+      <div class="wa-audio-label">🎤 nota de voz${dur} · abajo, transcripta</div>
+    </div>`;
+  }).join('');
+}
+
 async function loadWaMessages(phone) {
   const r = await fetch('/api/wa/leads/' + encodeURIComponent(phone) + '/messages');
   const d = await r.json();
@@ -2869,9 +2895,9 @@ async function loadWaMessages(phone) {
   }
   const el = document.getElementById('wa-messages');
   if (!d.length) { el.innerHTML = '<div style="color:#334155;text-align:center;padding:20px">Sin mensajes</div>'; return; }
-  el.innerHTML = d.map(m => `
+  el.innerHTML = d.map((m, i) => `
     <div style="display:flex;flex-direction:column;align-items:${m.direction==='out'?'flex-end':'flex-start'}">
-      <div class="wa-bubble ${m.direction==='out'?'wa-bubble-out':'wa-bubble-in'}">${esc(m.content||'')}</div>
+      <div class="wa-bubble ${m.direction==='out'?'wa-bubble-out':'wa-bubble-in'}">${audioDeMensaje(m)}${esc(m.content||'')}</div>
       <div class="wa-bubble-time">${fmtWaTime(m.created_at)}</div>
     </div>`).join('');
   setTimeout(() => { el.scrollTop = el.scrollHeight; }, 50);
