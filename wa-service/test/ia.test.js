@@ -752,3 +752,21 @@ test('el prompt le prohibe opinar sobre el nombre del negocio', () => {
   const sys = construirSystem({ nombre: 'Juan' }, null, '', { porAudio: true });
   assert.match(sys, /no opines sobre el nombre/i);
 });
+
+/**
+ * Audio de un segundo diciendo "La Vaca Encantada", transcripto como "Claro,
+ * encantada." El bot hizo lo correcto —no invento un nombre— pero volvio a
+ * preguntar lo mismo como si nada:
+ *
+ *   → ¿Cómo se llama tu negocio?
+ *   ← [audio] "Claro, encantada."
+ *   → Dale. ¿Cómo se llama tu negocio?
+ *
+ * Del lado del lead eso es "ya te lo dije". Si el audio no se entendio, hay que
+ * decirlo: el lead no tiene forma de saber que lo que dijo no llego.
+ */
+test('si del audio no sale lo que se pregunto, el prompt pide que lo escriban', () => {
+  const sys = construirSystem({ nombre: 'Juan' }, null, '', { porAudio: true });
+  assert.match(sys, /no lo entendiste|no se entendio|no llegaste a entender/i);
+  assert.match(sys, /escrib/i);
+});
