@@ -131,3 +131,21 @@ test('reiniciar un lead tambien le devuelve el bot', async () => {
   // Reiniciar tambien borra welcomed_at, asi que primero sale la bienvenida.
   assert.equal((await escribe(s, 'hola de nuevo')).at(-1), '[conversacion]', 'y contesta');
 });
+
+/**
+ * Reiniciar es empezar de cero, y los horarios que se le habian mostrado son
+ * parte de lo que hay que olvidar: si quedan, el lead reiniciado arrastra una
+ * lista de otra conversacion —y peor, de antes de que se cambiara la franja de
+ * atencion—. Es el mismo olvido que ya habia pasado con la reunion colgada.
+ */
+test('reiniciar tambien borra los horarios que se le habian ofrecido', async () => {
+  const s = await conLead({ modelo: stubModelo() });
+  const id = s.repo.leadPorTelefono(TEL).id;
+  s.repo.actualizarFunnel(id, {
+    horarios_ofrecidos: JSON.stringify(['2026-09-03T15:00:00.000Z']),
+  });
+
+  s.repo.reiniciarLead(id, new Date().toISOString());
+
+  assert.equal(s.repo.leadPorId(id).horarios_ofrecidos, null);
+});

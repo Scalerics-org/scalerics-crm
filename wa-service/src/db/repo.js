@@ -194,6 +194,11 @@ function crearRepo(db) {
         -- se derivaba nunca porque seguia figurando como que ya habia agendado.
         meeting_time = NULL, meeting_url = NULL, meeting_booked_at = NULL,
         meeting_event_id = NULL,
+        -- Y los horarios que se le habian mostrado. Sin esto el lead reiniciado
+        -- arrastra la lista de otra conversacion, que ademas puede ser de antes
+        -- de que se cambiara la franja de atencion: elegiria "las 12" de una
+        -- lista que ya no existe. Mismo olvido que la reunion colgada de arriba.
+        horarios_ofrecidos = NULL,
         status = 'new', replied_at = NULL, followup_sent_at = NULL,
         -- Tambien el saludo: reiniciar es empezar de cero, y sin esto el lead
         -- reiniciado nunca vuelve a recibir la presentacion.
