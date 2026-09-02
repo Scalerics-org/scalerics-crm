@@ -547,3 +547,29 @@ test('una hora fuera de la franja se rechaza diciendo por que', async () => {
   assert.equal(s.repo.leadPorTelefono('59899123456').meeting_time, null, 'no agendo nada');
   assert.equal(msgs.at(-1), '[horario_fuera_de_franja]', 'le explica, no repite la lista');
 });
+
+/**
+ * Los horarios que se muestran se reparten a lo largo del dia, no son los
+ * primeros de la fila.
+ *
+ * Con la franja de 12 a 16 cada media hora hay ocho huecos por dia. Mostrando
+ * los dos primeros, el lead ve "12:00 o 12:30" y entiende que a la tarde no
+ * atendemos — aunque las 15:00 esten libres y ahora se las podamos agendar si
+ * las pide. La sugerencia tiene que dejar ver el rango.
+ */
+test('las sugerencias de un dia se reparten a lo largo de la franja', () => {
+  return (async () => {
+    const g = googleFalso();
+    const a = crearAgenda({
+      cfg: { ...CFG, AGENDA_MAX_OPCIONES: 3, AGENDA_MAX_POR_DIA: 3 },
+      fetch: g.fetch,
+    });
+    const r = await a.horariosDisponibles(MIERCOLES_9AM);
+
+    const hs = horas(r.slots);
+    assert.equal(hs.length, 3);
+    assert.equal(hs[0], '12:00', 'la primera es la mas temprana');
+    assert.equal(hs.at(-1), '15:30', 'la ultima es la mas tardia');
+    assert.ok(!hs.includes('12:30'), 'no son las tres primeras pegadas');
+  })();
+});

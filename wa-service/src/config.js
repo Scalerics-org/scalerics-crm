@@ -393,7 +393,7 @@ const esquema = z.object({
   AGENDA_MAX_OPCIONES: z.coerce.number().int().positive().default(5),
   // Tope por dia, para que las opciones abarquen varios. Sin esto las cinco se
   // las come el primer dia con hueco y el lead no puede pedir otro.
-  AGENDA_MAX_POR_DIA: z.coerce.number().int().positive().default(2),
+  AGENDA_MAX_POR_DIA: z.coerce.number().int().positive().default(3),
   AGENDA_DIAS_ADELANTE: z.coerce.number().int().positive().default(10),
   // No se ofrece nada antes de este plazo: una reunion en veinte minutos no le
   // sirve a nadie y suena a que no hay nadie del otro lado.

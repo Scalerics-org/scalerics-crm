@@ -61,6 +61,22 @@ function instanteLocal(dia, hora, minuto, tz) {
 const DIAS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 
 /**
+ * Elige `cuantos` de una lista, repartidos de punta a punta.
+ *
+ * Siempre entran el primero y el ultimo: son los que le dicen al lead entre que
+ * horas se puede. Los del medio se toman a paso parejo.
+ */
+function repartir(lista, cuantos) {
+  if (cuantos >= lista.length) return lista.slice();
+  if (cuantos <= 1) return lista.slice(0, cuantos);
+  const salida = [];
+  for (let i = 0; i < cuantos; i++) {
+    salida.push(lista[Math.round((i * (lista.length - 1)) / (cuantos - 1))]);
+  }
+  return salida;
+}
+
+/**
  * @param {object} cfg  GCAL_*, TZ, y la ventana de atencion
  * @param {object} deps.fetch  para poder probarlo sin salir a internet
  */
@@ -210,13 +226,21 @@ function crearAgenda({ cfg, logger = null, fetch: _fetch = globalThis.fetch } = 
 
         const delDia = [];
         for (let min = hIni * 60 + mIni; min + duracion <= finDelDia; min += paso) {
-          if (delDia.length >= cfg.AGENDA_MAX_POR_DIA) break;
           const inicio = instanteLocal(dia, Math.floor(min / 60), min % 60, tz);
           if (inicio < piso) continue;
           if (libre(inicio)) delDia.push(inicio);
         }
 
         if (!delDia.length) continue;
+        // Se reparten a lo largo del dia en vez de tomar los primeros.
+        //
+        // Con la franja de 12 a 16 cada media hora hay ocho huecos. Mostrando
+        // los dos primeros, el lead ve "12:00 o 12:30" y entiende que a la
+        // tarde no atendemos —aunque las 15:00 esten libres y se las podamos
+        // agendar si las pide—. Repartidas, la sugerencia deja ver el rango.
+        const sugeridos = repartir(delDia, cfg.AGENDA_MAX_POR_DIA);
+        delDia.length = 0;
+        delDia.push(...sugeridos);
         if (!primerDia.dia) primerDia.dia = dia;
         elegidos.push(...delDia.slice(0, cfg.AGENDA_MAX_OPCIONES - elegidos.length));
       }
