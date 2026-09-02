@@ -63,8 +63,18 @@ function registrar(app, { cfg, repo, cola, embudo = null, logger }) {
     return Boolean(cfg.ADMIN_TOKEN) && token === cfg.ADMIN_TOKEN;
   }
 
+  /**
+   * La conversacion con el lead, sin los avisos al equipo.
+   *
+   * Un am_notice se guarda con el lead_id del lead del que HABLA, pero se manda
+   * a otro numero. Mientras iban en el hilo, el panel no permitia saber que vio
+   * el lead y que no: la mitad de lo que parecia que le escribiste nunca le
+   * llego, y encima el "ultimo mensaje" de la lista podia ser un aviso interno.
+   */
   function conMensajes(lead) {
-    const mensajes = repo.mensajesDeLead(lead.id).slice(-LIMITE_MENSAJES);
+    const mensajes = repo.mensajesDeLead(lead.id)
+      .filter((m) => m.kind !== 'am_notice')
+      .slice(-LIMITE_MENSAJES);
     const ultimo = mensajes.length ? mensajes[mensajes.length - 1].created_at : null;
     return { lead: aFormatoBot(lead, ultimo), messages: mensajesAFormatoBot(mensajes) };
   }

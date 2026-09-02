@@ -196,3 +196,31 @@ test('la lista de leads dice si el bot esta prendido para cada uno', async () =>
   assert.equal(lead.bot_enabled, true, 'por defecto contesta');
   assert.equal(lead.bot_paused_until, null);
 });
+
+/**
+ * Los avisos al equipo no son parte de la conversacion con el lead.
+ *
+ * Se guardan con el lead_id del lead del que HABLAN, pero se mandan a otro
+ * numero. El panel los dibujaba en el medio del hilo, asi que mirandolo no
+ * habia forma de saber que vio el lead y que no: la mitad de lo que parecia
+ * que le escribiste nunca le llego.
+ */
+test('la conversacion del panel no trae los avisos al equipo', async () => {
+  const s = await conLead();
+  await s.servicioLeads.registrarRespuesta('59899123456', 'hola, tengo una panadería');
+  await s.cola.vacia();
+
+  const lead = s.repo.leadPorTelefono('59899123456');
+  s.repo.registrarMensaje({
+    lead_id: lead.id, direction: 'out', kind: 'am_notice',
+    body: '🔔 Nuevo contacto por WhatsApp', provider: 'baileys',
+    status: 'sent', destino: '59894053389',
+  });
+
+  const r = await comoElCrm(s, 'GET', '/api/leads/phone/59899123456');
+  const cuerpos = r.json().messages.map((m) => m.content);
+
+  assert.ok(!cuerpos.some((c) => c.includes('Nuevo contacto por WhatsApp')),
+    'el aviso al equipo no va en el hilo del lead');
+  assert.ok(cuerpos.includes('hola, tengo una panadería'), 'lo que el lead escribio si');
+});
