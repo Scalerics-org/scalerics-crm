@@ -220,7 +220,28 @@ function resumenEmbudo(lead, desenlace) {
   return lineas.join('\n');
 }
 
+/**
+ * Google dejo de contestar. Va al equipo, no al lead.
+ *
+ * El lead no se entera de nada: el embudo cae al camino del link de Calendly y
+ * puede agendar igual. Pero el bot deja de ofrecer horarios y de reservar, que
+ * es lo que lo diferencia, y sin este aviso eso pasa en silencio hasta que
+ * alguien mira los logs.
+ *
+ * La causa mas probable es el token de Google: si se revoca o vence, todo el
+ * camino de la agenda se apaga sin romper nada visible.
+ */
+const AVISO_AGENDA_CAIDA = [
+  '⚠️ La agenda de Google no responde',
+  '',
+  'El bot dejo de ofrecer horarios y esta mandando el link de Calendly.',
+  'Los leads pueden agendar igual, pero por el camino largo.',
+  '',
+  'Lo mas probable es el token de Google (GCAL_REFRESH_TOKEN).',
+].join(String.fromCharCode(10));
+
 module.exports = {
+  AVISO_AGENDA_CAIDA,
   PLANTILLAS,
   GANCHOS,
   fichaAM,

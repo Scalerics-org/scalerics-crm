@@ -252,6 +252,9 @@ const esquema = z.object({
    * calendario no da. Un dia que no figura en la lista no se atiende.
    */
   AGENDA_HORARIOS: z.string().default(''),
+
+  // Cada cuanto se puede repetir el aviso de que la agenda no contesta.
+  AGENDA_AVISO_CAIDA_HORAS: z.coerce.number().positive().default(6),
   // Cuantos horarios se muestran. Mas de cinco deja de ser una eleccion y pasa
   // a ser una lista que hay que leer.
   /**

@@ -124,6 +124,24 @@ function construir(cfg, {
   const agenda = require('./agenda/gcal').crearAgenda({ cfg, logger: log, ...(google ? { fetch: google } : {}) });
   log.info({ agenda: agenda.activo }, 'agenda');
 
+  /**
+   * Se le pregunta a Google apenas arranca, para no enterarse por un lead.
+   *
+   * El token de Google es lo unico que sostiene todo el camino de la agenda, y
+   * cuando se cae no rompe nada visible: el embudo vuelve al link de Calendly y
+   * sigue funcionando. Sin este chequeo, la primera señal seria alguien mirando
+   * los logs o notando que hace dias que el bot no agenda solo.
+   */
+  if (agenda.activo) {
+    agenda.horariosDisponibles(ahora())
+      .then((r) => {
+        if (r?.slots?.length) log.info({ proximo: r.slots[0].toISOString() }, 'agenda de Google responde');
+        else log.error('la agenda de Google NO responde o no tiene ningun hueco: revisar GCAL_REFRESH_TOKEN');
+      })
+      .catch((e) => log.error({ err: String(e.message || e) }, 'la agenda de Google no responde'));
+  }
+
+
   // Se entera de quien agendo en Calendly leyendo el calendario. Necesita
   // servicioLeads, que se arma abajo, asi que se cablea despues.
   const { crearVigilanteDeReservas } = require('./agenda/reservas');

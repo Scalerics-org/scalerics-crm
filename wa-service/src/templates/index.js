@@ -67,4 +67,5 @@ module.exports = {
   avisoReunionAgendada: M.avisoReunionAgendada,
   avisoSigueEscribiendo: M.avisoSigueEscribiendo,
   resumenEmbudo: M.resumenEmbudo,
+  AVISO_AGENDA_CAIDA: M.AVISO_AGENDA_CAIDA,
 };

@@ -140,6 +140,25 @@ function crearEmbudo({
     logger?.info({ leadId: lead.id, motivo }, 'conversacion derivada a un humano');
   }
 
+  /**
+   * Avisa una sola vez cada tantas horas: si se aviso por cada lead, el equipo
+   * recibiria una rafaga justo cuando algo ya esta roto.
+   */
+  function avisarAgendaCaida() {
+    const desde = new Date(ahora().getTime() - cfg.AGENDA_AVISO_CAIDA_HORAS * 3600_000).toISOString();
+    if (repo.huboAvisoDeAgenda(desde)) return;
+
+    logger?.error('la agenda no contesta: se cae al camino del link de Calendly');
+    for (const am of cfg.amPhones) {
+      cola.encolar({
+        to: am,
+        texto: plantillas.AVISO_AGENDA_CAIDA,
+        kind: 'am_notice',
+        leadId: null,
+      });
+    }
+  }
+
   /** El AM se entera de como termino el embudo, gane o pierda. */
   function avisarDesenlace(leadId, desenlace) {
     const fresco = repo.leadPorId(leadId);
@@ -425,9 +444,15 @@ ${describirHorarios({ slots: ofrecidos })}`)) {
         //
         // La agenda sigue conectada igual: se la usa para leer el calendario y
         // enterarse de quien agendo.
-        const libres = (agenda?.activo && cfg.AGENDA_OFRECE_HORARIOS)
-          ? await agenda.horariosDisponibles(ahora())
-          : null;
+        const conAgenda = Boolean(agenda?.activo && cfg.AGENDA_OFRECE_HORARIOS);
+        const libres = conAgenda ? await agenda.horariosDisponibles(ahora()) : null;
+
+        // Que Google deje de contestar no puede pasar en silencio. El lead
+        // igual puede agendar —cae al camino del link— pero el bot deja de
+        // hacer lo unico que lo diferencia, y sin este aviso nadie se entera
+        // hasta que alguien mira los logs. El token de Google es lo que
+        // sostiene todo esto: si se revoca o vence, esto es lo que lo delata.
+        if (conAgenda && !libres) avisarAgendaCaida();
 
         if (libres?.slots?.length) {
           const iso = libres.slots.map((d) => d.toISOString());

@@ -573,3 +573,51 @@ test('las sugerencias de un dia se reparten a lo largo de la franja', () => {
     assert.ok(!hs.includes('12:30'), 'no son las tres primeras pegadas');
   })();
 });
+
+/**
+ * Que Google deje de contestar no puede pasar en silencio.
+ *
+ * Hoy `horariosDisponibles` devuelve null, queda un warn en el log y el embudo
+ * cae al camino del link de Calendly. Funciona —el lead igual puede agendar—
+ * pero nadie se entera de que la agenda se cayo, y el bot deja de hacer lo
+ * unico que lo diferencia. El token de Google es el que sostiene todo esto: si
+ * se revoca o vence, esto es lo unico que lo va a delatar.
+ */
+test('si la agenda falla, el equipo se entera', async () => {
+  const google = googleFalso({ fallaFreeBusy: true });
+  const s = await conLead({
+    modelo: stubModelo({ datos: COMPLETO }),
+    AGENDA_OFRECE_HORARIOS: 'true',
+    _google: google.fetch,
+  });
+
+  await s.servicioLeads.registrarRespuesta('59899123456', DIJO_TODO);
+  await s.cola.vacia();
+
+  const alEquipo = s.proveedor.getEnviados()
+    .filter((e) => e.to !== '59899123456')
+    .map((e) => e.texto);
+  assert.ok(alEquipo.some((t) => /agenda/i.test(t)), `no hubo aviso: ${JSON.stringify(alEquipo)}`);
+
+  // Y el lead no se queda sin respuesta: sigue por el camino del link.
+  const alLead = s.proveedor.getEnviados().filter((e) => e.to === '59899123456').map((e) => e.texto);
+  assert.equal(alLead.at(-1), '[link_reunion]');
+});
+
+test('no repite el aviso en cada lead', async () => {
+  const google = googleFalso({ fallaFreeBusy: true });
+  const s = await conLead({
+    modelo: stubModelo({ datos: COMPLETO }),
+    AGENDA_OFRECE_HORARIOS: 'true',
+    _google: google.fetch,
+  });
+
+  await s.servicioLeads.registrarRespuesta('59899123456', DIJO_TODO);
+  await s.cola.vacia();
+  await s.servicioLeads.registrarRespuesta('59899123456', DIJO_TODO);
+  await s.cola.vacia();
+
+  const avisos = s.proveedor.getEnviados()
+    .filter((e) => e.to !== '59899123456' && /agenda/i.test(e.texto));
+  assert.equal(avisos.length, 1, 'uno solo, no uno por conversacion');
+});

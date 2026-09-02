@@ -393,6 +393,17 @@ function crearRepo(db) {
       return f ? f.body : null;
     },
 
+    /** Si ya se aviso de la agenda caida desde esa fecha. Para no repetirlo. */
+    huboAvisoDeAgenda(desdeIso) {
+      const f = db.prepare(`
+        SELECT 1 FROM messages
+        WHERE direction = 'out' AND kind = 'am_notice'
+          AND body LIKE '%agenda de Google no responde%' AND created_at >= ?
+        LIMIT 1
+      `).get(aFechaSqlite(desdeIso));
+      return Boolean(f);
+    },
+
     /** Cuantos avisos internos salieron en la ultima hora. */
     internosDesde(desdeIso) {
       return db.prepare(`
