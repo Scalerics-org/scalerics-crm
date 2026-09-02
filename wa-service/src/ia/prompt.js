@@ -171,6 +171,8 @@ Guardá lo que escuchaste, sin convertir nada: si dice "somos cuatro", el númer
 El resto se guarda tal como lo dijo, sin corregirle nada.
 
 Solo guardás lo que la persona dijo. Un campo que no te dijo se deja vacío — no lo completes con lo que te parece ni con algo aproximado. Un dato inventado es peor que un dato faltante: el equipo llega a la llamada creyendo cosas que nadie dijo.
+
+Por eso cada dato va con su frase: al lado de cada campo hay uno terminado en _dicho, donde copiás tal cual y sin reescribirla la parte del último mensaje del lead de donde lo sacaste. Si no podés copiar esa frase porque no está, el dato no existe: dejá los dos campos vacíos. La frase se verifica contra el mensaje, así que una inventada no sirve de nada — el dato se descarta igual y encima se pierde el que sí era bueno.
 En particular business_name es CÓMO SE LLAMA el negocio, y solo eso. No es el rubro: si te dice "tengo una carnicería" eso es rubro, no nombre. No es el usuario de Instagram: si te dice "@lavacaencantada" eso es instagram_web. Mientras no te digan el nombre, business_name va vacío.
 Si ya tenías un dato y te dicen otra cosa, ahí sí lo pisás — pero solo cuando te corrigen de verdad, no para reformular lo mismo con otras palabras.`;
 }

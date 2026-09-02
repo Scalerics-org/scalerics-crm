@@ -24,6 +24,17 @@ const COMPLETO = {
   business_type: 'ecommerce',
 };
 
+/**
+ * El mensaje del lead que respalda a COMPLETO.
+ *
+ * Tiene que decir de verdad lo que el modelo despues guarda: desde el 2-9 el
+ * codigo descarta el dato cuya cita no esta en el mensaje del lead. Un
+ * "te cuento todo de una" pelado no alcanza, y eso esta bien — es exactamente
+ * el invento que se quiso cortar.
+ */
+const DIJO_TODO = 'te cuento todo de una: es la Inmobiliaria Pereyra, '
+  + 'una inmobiliaria, y queremos vender online';
+
 // ── la IA conduce ────────────────────────────────────────────────────────────
 
 test('el primer mensaje del lead lo contesta la IA, no un menu', async () => {
@@ -36,7 +47,7 @@ test('el primer mensaje del lead lo contesta la IA, no un menu', async () => {
 
 test('lo que la IA extrae queda guardado y clasificado', async () => {
   const s = await conLead({ modelo: stubModelo({ datos: { rubro: 'parrilla con delivery' } }) });
-  await lead(s, 'tenemos una parrilla');
+  await lead(s, 'tenemos una parrilla con delivery');
 
   const l = s.repo.leadPorTelefono(TEL);
   assert.equal(l.rubro, 'parrilla con delivery');
@@ -48,7 +59,7 @@ test('con los tres datos se le ofrece la reunion, sin filtro de score', async ()
   // llegaba al umbral. La calificacion pasa a la reunion misma, que es
   // literalmente un diagnostico.
   const s = await conLead({ modelo: stubModelo({ datos: COMPLETO }) });
-  const msgs = await lead(s, 'te cuento todo de una');
+  const msgs = await lead(s, DIJO_TODO);
 
   const l = s.repo.leadPorTelefono(TEL);
   assert.equal(l.fsm_state, S.MEETING_LINK_SENT);
@@ -61,10 +72,49 @@ test('un lead chico tambien recibe la oferta', async () => {
   // ve ahi en dos preguntas.
   const chico = { business_name: 'Kiosco', rubro: 'kiosco de barrio', business_type: 'web' };
   const s = await conLead({ modelo: stubModelo({ datos: chico }) });
-  const msgs = await lead(s, 'te cuento');
+  const msgs = await lead(s, 'te cuento: tengo un Kiosco, un kiosco de barrio, quiero una web');
 
   assert.equal(estado(s), S.MEETING_LINK_SENT);
   assert.equal(msgs.at(-1), '[link_reunion]');
+});
+
+/**
+ * La conversacion del 2-9, tal cual paso.
+ *
+ *   → ¿Cómo se llama tu negocio?
+ *   ← Se llama... Loa que canta... ¿Rosés?
+ *   → Genial, Loa que canta... ¿Rosés? ¿A qué se dedican?
+ *   ← no no se llama la vaca encantada si conocías
+ *   → [le ofrece la reunion]  ← con rubro "nada" y tipo "todavia no sabe"
+ *
+ * De ese ultimo mensaje el modelo saco los dos datos que faltaban sin que nadie
+ * los dijera: rubro = "nada" —que es la palabra que la herramienta sugiere para
+ * OTRO campo cuando el mensaje no aporta nada— y business_type = no_sabe. Con
+ * los tres campos llenos el embudo dio por terminado el descubrimiento y
+ * ofrecio la reunion habiendo aprendido nada del negocio.
+ */
+test('un invento del modelo no le da por terminado el descubrimiento', async () => {
+  const s = await conLead({
+    modelo: stubModelo({
+      datos: {
+        business_name: 'Loa que canta... ¿Rosés?',
+        business_name_dicho: 'Se llama... Loa que canta... ¿Rosés?',
+        rubro: 'nada',
+        rubro_dicho: 'nada',
+        business_type: 'no_sabe',
+      },
+    }),
+  // Entra por WhatsApp y no por formulario, como el del 2-9: sin rubro previo.
+  // El lead de formulario ya trae uno y ahi el invento no se notaria.
+  }, { external_id: 'wa1', nombre: 'Juan', telefono: '099123456', origen: 'wa' });
+
+  await lead(s, 'Se llama... Loa que canta... ¿Rosés?');
+  const msgs = await lead(s, 'no no se llama la vaca encantada si conocías');
+
+  const l = s.repo.leadPorTelefono(TEL);
+  assert.equal(l.rubro, null, 'el rubro que nadie dijo no se guarda');
+  assert.equal(estado(s), S.CONVERSANDO, 'sigue averiguando');
+  assert.equal(msgs.at(-1), '[conversacion]', 'y no le ofrece la reunion todavia');
 });
 
 // ── despues de la oferta ─────────────────────────────────────────────────────
@@ -82,7 +132,7 @@ const stubQueMandaElLink = () => stubModelo({ datos: COMPLETO });
  * —el mensaje explica el proceso y termina con el link—, asi que es un turno.
  */
 async function conLink(s) {
-  await lead(s, 'te cuento todo');
+  await lead(s, DIJO_TODO);
   assert.equal(estado(s), S.MEETING_LINK_SENT, 'el link sale sin preguntar antes');
   s.proveedor.limpiar();
 }
@@ -447,7 +497,9 @@ test('el que no sabe qué necesita igual recibe el link', async () => {
     }),
   });
 
-  const msgs = await lead(s, 'quiero ver');
+  // Dice quien es en el mismo mensaje: desde el 2-9 la cita de cada dato tiene
+  // que estar en el mensaje del lead, y "quiero ver" a secas no respalda nada.
+  const msgs = await lead(s, 'es McDonald’s, vender hamburguesas, y qué necesito no sé — quiero ver');
 
   assert.equal(estado(s), S.MEETING_LINK_SENT, 'cierra el embudo igual');
   assert.equal(msgs.at(-1), '[link_reunion]');
@@ -474,7 +526,7 @@ test('el estado en el que termina un lead calificado avisa al CRM', async () => 
   const { AVISAR_AL_CRM } = require('../src/funnel/engine');
   const s = await conLead({ modelo: stubModelo({ datos: COMPLETO }) });
 
-  await lead(s, 'te cuento todo de una');
+  await lead(s, DIJO_TODO);
   const final = estado(s);
 
   assert.equal(final, S.MEETING_LINK_SENT, 'ahí termina hoy el que califica');

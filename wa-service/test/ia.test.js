@@ -111,15 +111,80 @@ test('si la IA se manda un precio, sale el texto fijo en su lugar', async () => 
 test('solo guarda los campos permitidos y con el tipo correcto', () => {
   const limpio = sanearDatos({
     business_name: '  Parrilla El Fogón  ',
+    business_name_dicho: 'se llama Parrilla El Fogón',
     business_type: 'ecommerce',
     budget: 'lo que sea',        // fuera del enum
     team_size_personas: 'muchos', // no es numero
     score: 10,                   // no es suyo
     fsm_state: 'SCORED',         // menos todavia
     needs: '',
-  });
+  }, { entrante: 'se llama Parrilla El Fogón, queremos vender online' });
 
   assert.deepEqual(limpio, { business_name: 'Parrilla El Fogón', business_type: 2 });
+});
+
+/**
+ * El 2-9, probando el bot, el lead escribio "no no se llama la vaca encantada
+ * si conocias" y el modelo guardo rubro = "nada" — que es literalmente la
+ * palabra que la herramienta le sugiere poner en OTRO campo cuando el mensaje
+ * no aporta datos. Con eso quedaban llenos los tres campos que el embudo mira
+ * para dar por terminado el descubrimiento, y salto a ofrecer la reunion
+ * habiendo aprendido nada.
+ *
+ * El prompt ya dice "un campo que no te dijo se deja vacio". No alcanzo, como
+ * no alcanzo con el tuteo ni con los precios: ahora cada dato de texto viene
+ * con la frase del lead que lo respalda, y el codigo tira el dato si esa frase
+ * no esta en el mensaje. Inventar deja de ser posible, no solo prohibido.
+ */
+test('un dato que no tiene respaldo en lo que dijo el lead no se guarda', () => {
+  const limpio = sanearDatos({
+    business_name: 'La Vaca Encantada',
+    business_name_dicho: 'se llama la vaca encantada',
+    rubro: 'nada',
+    rubro_dicho: 'nada',
+  }, { entrante: 'no no se llama la vaca encantada si conocías' });
+
+  assert.deepEqual(limpio, { business_name: 'La Vaca Encantada' });
+});
+
+test('el dato se guarda limpio; la que tiene que estar textual es la cita', () => {
+  // El modelo normaliza —"tengo una panaderia" se guarda como "panaderia"— y
+  // eso esta bien. Lo que se verifica es la cita, no el valor.
+  const limpio = sanearDatos({
+    rubro: 'panadería',
+    rubro_dicho: 'tengo una panadería',
+  }, { entrante: 'Hola! Tengo una panadería en el Cerro' });
+
+  assert.deepEqual(limpio, { rubro: 'panadería' });
+});
+
+test('la cita se compara sin acentos ni mayusculas', () => {
+  const limpio = sanearDatos({
+    business_name: 'Panes Ahora',
+    business_name_dicho: 'SE LLAMA PANES AHORA',
+  }, { entrante: 'se llama Panes Ahorá' });
+
+  assert.deepEqual(limpio, { business_name: 'Panes Ahora' });
+});
+
+/**
+ * La cita se busca por palabra entera y no como pedazo de texto. Si no, una
+ * cita corta entra de casualidad adentro de otra palabra y el respaldo deja de
+ * respaldar nada.
+ */
+test('la cita tiene que coincidir por palabra, no como pedazo de otra', () => {
+  const limpio = sanearDatos({
+    business_type: 'web',
+    needs: 'web',
+    needs_dicho: 'web',
+  }, { entrante: 'se me rompió la webcam, me la arreglan?' });
+
+  assert.equal(limpio.needs, undefined, '"web" adentro de "webcam" no es una cita');
+});
+
+test('un dato sin cita tampoco entra', () => {
+  const limpio = sanearDatos({ rubro: 'carnicería' }, { entrante: 'hola' });
+  assert.deepEqual(limpio, {});
 });
 
 test('el tramo de equipo lo calcula el codigo, no el modelo', () => {
@@ -149,6 +214,7 @@ test('el rubro que extrae la IA queda clasificado, como el del formulario', asyn
   const s = await conLead({
     modelo: modeloFalso(conTexto('¡Buenísimo! ¿Y qué te gustaría lograr?', {
       rubro: 'parrilla y delivery',
+      rubro_dicho: 'tenemos una parrilla con delivery',
     })),
   });
 
@@ -168,11 +234,14 @@ test('con todos los datos, el cierre lo hace el codigo y no la IA', async () => 
   const s = await conLead({
     modelo: modeloFalso(conTexto('Listo, te paso mi Calendly ahora mismo', {
       business_name: 'Inmobiliaria Pereyra', rubro: 'inmobiliaria',
+      business_name_dicho: 'la Inmobiliaria Pereyra',
+      rubro_dicho: 'vendemos casas',
       business_type: 'ecommerce',
     })),
   });
 
-  await s.servicioLeads.registrarRespuesta('59899123456', 'te cuento todo de una');
+  await s.servicioLeads.registrarRespuesta('59899123456',
+    'te cuento todo de una: es la Inmobiliaria Pereyra, vendemos casas y queremos vender online');
   await s.cola.vacia();
 
   const l = s.repo.leadPorTelefono('59899123456');
@@ -354,6 +423,8 @@ test('una nota de voz entra al embudo como si la hubieran escrito', async () => 
     openai: transcriptorFalso({ text: 'Hola, tenemos una parrilla con delivery en Pocitos' }),
     modelo: modeloFalso(conTexto('¡Buenísimo! ¿Y qué te gustaría lograr?', {
       rubro: 'parrilla con delivery',
+      // La cita se verifica contra lo transcripto, igual que si lo hubiera escrito.
+      rubro_dicho: 'tenemos una parrilla con delivery',
     })),
   });
 

@@ -85,7 +85,9 @@ const HERRAMIENTA = {
           description: 'Lo que se le manda por WhatsApp. Dos o tres líneas, una sola pregunta.',
         },
         business_name: { type: 'string', description: 'Nombre del negocio, tal como lo dijo' },
+        business_name_dicho: { type: 'string', description: 'La frase EXACTA del último mensaje del lead de donde sacaste el nombre, copiada tal cual, sin reescribirla. Ejemplo: "se llama PanesAhora". Si el dato no está en ese mensaje, dejá los dos campos vacíos: sin esta frase el dato se descarta.' },
         rubro: { type: 'string', description: 'A qué se dedica, en sus palabras (ej: "carnicería de barrio")' },
+        rubro_dicho: { type: 'string', description: 'La frase EXACTA del último mensaje del lead de donde sacaste el rubro, copiada tal cual, sin reescribirla. Ejemplo: "tengo una panadería". Si el dato no está en ese mensaje, dejá los dos campos vacíos: sin esta frase el dato se descarta.' },
         /**
          * Estos tres se piden en el idioma del lead, no en el del CRM.
          *
@@ -113,7 +115,9 @@ const HERRAMIENTA = {
           description: 'CUÁNTAS PERSONAS trabajan en el negocio, el número real que dijo. "somos 3" es 3, "estoy solo" es 1, "unos 30" es 30.',
         },
         instagram_web: { type: 'string', description: 'Usuario de Instagram, URL de la web o lo que haya dicho' },
+        instagram_web_dicho: { type: 'string', description: 'La frase EXACTA del último mensaje del lead de donde sacaste las redes, copiada tal cual, sin reescribirla. Ejemplo: "estamos en @lavaca". Si el dato no está en ese mensaje, dejá los dos campos vacíos: sin esta frase el dato se descarta.' },
         needs: { type: 'string', description: 'Qué quiere lograr, en sus palabras' },
+        needs_dicho: { type: 'string', description: 'La frase EXACTA del último mensaje del lead de donde sacaste lo que busca, copiada tal cual, sin reescribirla. Ejemplo: "quiero vender online". Si el dato no está en ese mensaje, dejá los dos campos vacíos: sin esta frase el dato se descarta.' },
         /**
          * Se le pide el cajon, no la fecha: la fecha la calcula el codigo.
          *
@@ -171,14 +175,66 @@ function mencionaPlata(texto) {
   return /\b\d[\d.,]{2,}\b/.test(limpio);
 }
 
-/** Deja solo lo que el modelo tiene permitido escribir, con el tipo correcto. */
-function sanearDatos(crudo) {
+/** minusculas, sin acentos, espacios colapsados. */
+function normalizarCita(texto) {
+  return String(texto || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function escaparRegex(texto) {
+  return texto.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Si la cita esta de verdad en el mensaje del lead, como palabras enteras.
+ *
+ * Por palabra y no como pedazo de texto: una cita corta entra de casualidad
+ * adentro de otra palabra —"web" adentro de "webcam"— y ahi el respaldo deja de
+ * respaldar nada.
+ */
+function citaEnMensaje(cita, mensaje) {
+  const c = normalizarCita(cita);
+  if (!c) return false;
+  const re = new RegExp(`(?<![\\p{L}\\p{N}])${escaparRegex(c)}(?![\\p{L}\\p{N}])`, 'u');
+  return re.test(normalizarCita(mensaje));
+}
+
+/**
+ * Deja solo lo que el modelo tiene permitido escribir, con el tipo correcto, y
+ * solo si el lead lo dijo de verdad.
+ *
+ * Lo segundo se agrego el 2-9. Probando el bot, el lead escribio "no no se
+ * llama la vaca encantada si conocias" y el modelo guardo rubro = "nada" —que
+ * es la palabra que la herramienta le sugiere poner en OTRO campo cuando el
+ * mensaje no aporta datos— y business_type = "no sabe". Con esos dos inventos
+ * quedaban llenos los tres campos que el embudo mira para dar por terminado el
+ * descubrimiento, y el bot ofrecio la reunion habiendo aprendido nada.
+ *
+ * El prompt ya decia "un campo que no te dijo se deja vacio". No alcanzo, igual
+ * que no alcanzo con el tuteo ni con los precios. Ahora cada dato de texto
+ * viene con la frase del lead que lo respalda y el codigo tira el dato si esa
+ * frase no esta en el mensaje: inventar deja de ser posible en vez de estar
+ * prohibido.
+ *
+ * Se verifica la cita, no el valor: el modelo normaliza —"tengo una panaderia"
+ * se guarda como "panaderia"— y eso es justamente lo que queremos que haga.
+ *
+ * Sin `entrante` no sobrevive ningun dato de texto. Es a proposito: un campo
+ * que se pierde se nota, y uno que se cuela sin respaldo no.
+ */
+function sanearDatos(crudo, { entrante = '' } = {}) {
   const limpio = {};
   for (const campo of Object.keys(CAMPOS)) {
     const v = crudo?.[campo];
     if (v === null || v === undefined || v === '') continue;
     const t = String(v).trim();
-    if (t) limpio[campo] = t.slice(0, 500);
+    if (!t) continue;
+    if (!citaEnMensaje(crudo?.[`${campo}_dicho`], entrante)) continue;
+    limpio[campo] = t.slice(0, 500);
   }
 
   const tipo = TIPO_PROYECTO[crudo?.business_type];
@@ -267,7 +323,7 @@ function crearAgente({ modelo = null, textos, calendly = '', logger = null } = {
       if (corregidos.length) {
         logger?.info({ leadId: lead.id, corregidos }, 'se le corrigio el tuteo al modelo');
       }
-      const datos = sanearDatos(argumentos);
+      const datos = sanearDatos(argumentos, { entrante });
       // Va aparte de los datos: no es un dato del negocio sino una decision
       // sobre la conversacion, y la toma el embudo.
       const aplaza = CAJONES.includes(argumentos.aplaza) ? argumentos.aplaza : null;

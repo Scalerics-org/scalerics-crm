@@ -17,6 +17,30 @@ const { construir } = require('../src/app');
  * OpenAI a Anthropic, esa fue la diferencia entre tocar un archivo y tocar los
  * cuarenta y seis tests que dependian de la forma de `choices` y `tool_calls`.
  */
+/** Campos de texto que el codigo solo guarda si vienen con la frase del lead. */
+const CON_CITA = ['business_name', 'rubro', 'instagram_web', 'needs'];
+
+/**
+ * Le pone a cada dato de texto su `_dicho`, usando el valor como cita.
+ *
+ * Ahorra escribirlo en cada test, pero no desactiva el control: la cita se
+ * sigue verificando contra el mensaje del lead, asi que un test que le hace
+ * decir al modelo algo que el lead nunca dijo sigue fallando. Que es justo lo
+ * que tiene que pasar.
+ *
+ * Un `_dicho` puesto a mano gana, para poder probar el caso de la cita que no
+ * coincide.
+ */
+function conCitas(datos) {
+  const salida = { ...datos };
+  for (const campo of CON_CITA) {
+    if (salida[campo] && salida[`${campo}_dicho`] === undefined) {
+      salida[`${campo}_dicho`] = salida[campo];
+    }
+  }
+  return salida;
+}
+
 function stubModelo({ respuestas = {}, datos = {}, falla = null } = {}) {
   const llamadas = [];
   return {
@@ -31,7 +55,7 @@ function stubModelo({ respuestas = {}, datos = {}, falla = null } = {}) {
       // Con herramienta es la conversacion; sin herramienta, un mensaje suelto.
       if (args.herramienta) {
         const mensaje = respuestas.conversacion || '[conversacion]';
-        return { texto: null, argumentos: { mensaje, ...datos } };
+        return { texto: null, argumentos: { mensaje, ...conCitas(datos) } };
       }
 
       const prompt = args.mensajes[0].content;

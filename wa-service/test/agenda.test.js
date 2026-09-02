@@ -276,6 +276,13 @@ const COMPLETO = {
   instagram_web: '@panesahora', needs: 'quiero vender online',
 };
 
+/**
+ * El mensaje del lead que respalda a COMPLETO: desde el 2-9 el codigo descarta
+ * el dato cuya cita no esta en lo que el lead escribio.
+ */
+const DIJO_TODO = 'te cuento todo: es la Panadería PanesAhora, una panadería, '
+  + 'estamos en @panesahora y quiero vender online';
+
 test('con todos los datos le muestra horarios reales y agenda el que elige', async () => {
   // El camino de horarios ya no es el de por defecto —hoy se manda el link de
   // Calendly— pero se conserva entero y se prende con esta variable.
@@ -292,7 +299,7 @@ test('con todos los datos le muestra horarios reales y agenda el que elige', asy
     return s.proveedor.getEnviados().filter((e) => e.to === '59899123456').map((e) => e.texto);
   };
 
-  const ofrece = await responder('te cuento todo');
+  const ofrece = await responder(DIJO_TODO);
   assert.equal(s.repo.leadPorTelefono('59899123456').fsm_state, S.HORARIOS_OFRECIDOS);
   assert.equal(ofrece.at(-1), '[oferta_con_horarios]');
 
@@ -323,7 +330,7 @@ test('sin agenda conectada el cierre sigue por el camino del link', async () => 
   // Sin credenciales de Google no se rompe nada: es el mismo camino que se usa
   // hoy por defecto, el del link.
   const s = await conLead({ modelo: stubModelo({ datos: COMPLETO }), GCAL_REFRESH_TOKEN: '' });
-  await s.servicioLeads.registrarRespuesta('59899123456', 'te cuento todo');
+  await s.servicioLeads.registrarRespuesta('59899123456', DIJO_TODO);
   await s.cola.vacia();
 
   const msgs = s.proveedor.getEnviados().filter((e) => e.to === '59899123456').map((e) => e.texto);
