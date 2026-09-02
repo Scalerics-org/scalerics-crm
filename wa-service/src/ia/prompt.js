@@ -294,6 +294,23 @@ Pedile que te cuente por escrito de qué se trata.`,
   };
 }
 
+/**
+ * Las situaciones donde el mensaje rompe un silencio de días: ahí saludar es lo
+ * natural. Todas las demás caen en medio de una conversación que ya viene.
+ *
+ * Hace falta decirlo porque el redactor no recibe el historial —ve el lead y la
+ * situación, nada más—, así que no tiene con qué darse cuenta de que el saludo
+ * ya pasó. El 2-9 la oferta salió con "Hola Juan," arriba de siete mensajes.
+ */
+const ROMPEN_EL_SILENCIO = new Set([
+  'followup', 'nurture_vuelta', 'recordatorio_dia_antes', 'recordatorio_30min',
+]);
+
+const EN_MEDIO = `# Dónde cae este mensaje
+En medio de una conversación que ya viene: el lead ya te escribió y vos ya le contestaste.
+No saludes ni te presentes — el saludo ya pasó y "Hola" de nuevo se lee como que arrancaste de cero.
+Tampoco lo abras con su nombre y coma, ni lo cierres con una firma: es un mensaje de WhatsApp, no un mail. Entrá directo a lo que le tenés que decir.`;
+
 /** Prompt para redactar un mensaje suelto. Sin herramientas: devuelve texto. */
 function construirRedaccion(lead, situacion, calendly = '', extra = '') {
   const objetivo = situaciones(calendly)[situacion];
@@ -306,7 +323,7 @@ ${ESTILO}
 ${PROHIBICIONES}
 
 ${contextoDelLead(lead)}
-
+${ROMPEN_EL_SILENCIO.has(situacion) ? '' : `\n${EN_MEDIO}\n`}
 # El mensaje que tenés que escribir (situación: ${situacion})
 ${objetivo}${extra ? `\n\n${extra}` : ''}
 

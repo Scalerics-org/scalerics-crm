@@ -21,13 +21,16 @@ const TUTEO = [
   /\bcuéntame\b/i,
   /\bcuentame\b/i,
   /\bdime\b/i,
-  /\btu negocio\b/i,
   /\bcontigo\b/i,
   /\bte gustaría saber\b/i,
   /\bmanejas\b/i,
   /\bnecesitas\b/i,
   /\btrabajas\b/i,
-  /\btu\s+(empresa|local|web|página)\b/i,
+  // El pronombre, no el posesivo. "tu negocio" es voseo correcto —el posesivo
+  // de vos ES "tu"— y estaba marcado como falla: cada corrida reportaba un
+  // tuteo que no existia, en el mensaje mas comun del bot. Un arnes que da
+  // falsos positivos en lo normal enseña a ignorar el reporte.
+  /\btú\b/i,
 ];
 
 const PRECIO = [

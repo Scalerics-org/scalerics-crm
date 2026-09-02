@@ -89,6 +89,18 @@ const CASOS = [
   },
 
   {
+    id: 'me-corrige-el-nombre',
+    porque: 'paso el 2-9: le dicto mal el nombre, se lo corrigio en el mensaje siguiente y el bot siguio llamandolo por el nombre viejo dos mensajes despues',
+    libreto: [
+      'hola, vi el folleto',
+      'Se llama... Loa que canta... ¿Rosés?',
+      'no no se llama la vaca encantada si conocías',
+      'vendemos quesos artesanales',
+    ],
+    espera: { business_name: /vaca encantada/i, rubro: /queso/i },
+  },
+
+  {
     id: 'instagram-no-es-nombre',
     porque: 'cuando le preguntás el nombre del negocio muchos contestan con el @ de Instagram',
     libreto: [

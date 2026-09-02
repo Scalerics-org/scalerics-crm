@@ -5,7 +5,7 @@ const assert = require('node:assert');
 const { montar, conLead, CLAVE } = require('./helpers');
 const { crearAgente, sanearDatos, aMensajes, tramoDeEquipo } = require('../src/ia/agente');
 const { mencionaPlata } = require('../src/ia/precio');
-const { construirSystem, faltantes } = require('../src/ia/prompt');
+const { construirSystem, construirRedaccion, faltantes } = require('../src/ia/prompt');
 const { crearTextos } = require('../src/templates/funnel');
 const { S } = require('../src/funnel/states');
 
@@ -352,6 +352,35 @@ test('el prompt pide solo lo que falta y no lo que ya se sabe', () => {
   assert.ok(!/presupuesto/i.test(sys.split('# Qué te falta averiguar')[1] || ''), 'no pide presupuesto');
   assert.match(sys, /qué necesita/, 'si pide lo que falta');
   assert.match(sys, /No decís precios/);
+});
+
+/**
+ * El mensaje de oferta del 2-9 salio asi:
+ *
+ *   Hola Juan,
+ *
+ *   Vamos a hacer una videollamada de 30 minutos...
+ *
+ * Un saludo cuando ya habia siete mensajes arriba, y con forma de mail. El
+ * estilo lo prohibe —"saludás una sola vez por conversación"— pero el redactor
+ * no recibe la conversacion: ve el lead y la situacion y nada mas, asi que no
+ * tiene con que saber que el saludo ya paso. Se lo decimos.
+ *
+ * No en todas: el follow-up, el nurture y los recordatorios salen despues de
+ * dias de silencio, y ahi saludar es lo natural.
+ */
+test('en medio de la conversacion, el redactor tiene prohibido saludar', () => {
+  for (const situacion of ['link_reunion', 'oferta_con_horarios', 'oferta_reunion', 'precio', 'reunion_agendada']) {
+    const p = construirRedaccion({ nombre: 'Juan' }, situacion, 'https://cal');
+    assert.match(p, /no saludes/i, situacion);
+  }
+});
+
+test('el mensaje que rompe el silencio si puede saludar', () => {
+  for (const situacion of ['followup', 'nurture_vuelta', 'recordatorio_dia_antes']) {
+    const p = construirRedaccion({ nombre: 'Juan' }, situacion, 'https://cal');
+    assert.ok(!/no saludes/i.test(p), situacion);
+  }
 });
 
 test('faltantes se vacia con los tres datos', () => {
