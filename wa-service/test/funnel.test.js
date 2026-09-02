@@ -493,7 +493,12 @@ test('si no le contestamos el precio, repetir la pregunta no lo deriva', async (
 test('el que no sabe qué necesita igual recibe el link', async () => {
   const s = await conLead({
     modelo: stubModelo({
-      datos: { business_name: 'McDonald’s', rubro: 'vender hamburguesas', business_type: 'no_sabe' },
+      datos: {
+        business_name: 'McDonald’s',
+        rubro: 'vender hamburguesas',
+        business_type: 'no_sabe',
+        business_type_dicho: 'qué necesito no sé',
+      },
     }),
   });
 

@@ -105,6 +105,7 @@ const HERRAMIENTA = {
           enum: ['web', 'ecommerce', 'sistema', 'automatizacion', 'agente_ia', 'no_sabe'],
           description: 'Qué necesita: web = página web, ecommerce = tienda online, sistema = sistema a medida, automatizacion = automatizar procesos internos, agente_ia = un agente de IA que atienda o venda. no_sabe = le ofreciste las opciones y no eligió ninguna: dijo "no sé", "quiero ver", "vos decime", "de todo un poco" o cambió de tema. Marcá no_sabe en vez de dejarlo vacío: no saber es una respuesta válida y para eso está la reunión.',
         },
+        business_type_dicho: { type: 'string', description: 'Solo cuando pongas no_sabe: la frase EXACTA del último mensaje del lead donde dice que no sabe o que quiere ver opciones, copiada tal cual. Si no dijo nada de eso, no pongas no_sabe — dejá el campo vacío.' },
         budget: {
           type: 'string',
           enum: ['menos_500', 'entre_500_y_3000', 'mas_3000', 'no_sabe'],
@@ -238,7 +239,16 @@ function sanearDatos(crudo, { entrante = '' } = {}) {
   }
 
   const tipo = TIPO_PROYECTO[crudo?.business_type];
-  if (tipo) limpio.business_type = tipo;
+  // De los seis valores, no_sabe es el unico que no describe lo que el lead
+  // pidio sino lo que dijo que NO sabe: o sea, algo que tuvo que decir. Y es
+  // ademas el unico que su propia descripcion empuja a llenar siempre ("marcá
+  // no_sabe en vez de dejarlo vacío"), que es lo que lo volvio el relleno por
+  // defecto — el 2-9 salio de un mensaje donde el lead hablaba de otra cosa.
+  // Por eso este pide cita; los otros cinco ya estan acotados por el enum.
+  const pideCita = crudo?.business_type === 'no_sabe';
+  if (tipo && (!pideCita || citaEnMensaje(crudo?.business_type_dicho, entrante))) {
+    limpio.business_type = tipo;
+  }
 
   const presupuesto = PRESUPUESTO[crudo?.budget];
   if (presupuesto) limpio.budget = presupuesto;

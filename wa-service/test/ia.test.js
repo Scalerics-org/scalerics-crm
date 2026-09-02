@@ -187,6 +187,36 @@ test('un dato sin cita tampoco entra', () => {
   assert.deepEqual(limpio, {});
 });
 
+/**
+ * El otro invento del 2-9: business_type = no_sabe salido de un mensaje donde
+ * el lead hablaba de otra cosa.
+ *
+ * De los seis valores, no_sabe es el unico que no describe lo que el lead pidio
+ * sino lo que el lead dijo que NO sabe — o sea, algo que tuvo que decir. Y es
+ * ademas el unico que su propia descripcion empuja a llenar siempre ("marcá
+ * no_sabe en vez de dejarlo vacío"), que es justo lo que lo volvio el relleno
+ * por defecto. Asi que este pide cita y los otros cinco no.
+ */
+test('"todavía no sabe" tiene que salir de algo que el lead dijo', () => {
+  const inventado = sanearDatos(
+    { business_type: 'no_sabe' },
+    { entrante: 'no no se llama la vaca encantada si conocías' },
+  );
+  assert.deepEqual(inventado, {}, 'nadie dijo que no sabia');
+
+  const dicho = sanearDatos(
+    { business_type: 'no_sabe', business_type_dicho: 'todavía no sé, quiero ver' },
+    { entrante: 'todavía no sé, quiero ver opciones' },
+  );
+  assert.deepEqual(dicho, { business_type: 6 }, 'lo dijo el, se guarda');
+});
+
+test('los otros cinco tipos de proyecto no piden cita', () => {
+  // Describen lo que el lead pidio y ya estan acotados por el enum: no hay
+  // margen para inventar algo que no sea una de las cinco cosas que hacemos.
+  assert.deepEqual(sanearDatos({ business_type: 'web' }, { entrante: 'hola' }), { business_type: 1 });
+});
+
 test('el tramo de equipo lo calcula el codigo, no el modelo', () => {
   // El modelo confundia la cantidad con la escala: a "somos 3" le ponia 3, que
   // significa "de 6 a 20 personas". Se le explico con ejemplos y lo seguia
