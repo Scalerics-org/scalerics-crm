@@ -454,6 +454,10 @@ test('manda el audio tal cual: WhatsApp usa OGG y la API lo acepta', async () =>
   assert.equal(texto, 'Hola, tengo una parrilla en Pocitos', 'devuelve el texto sin espacios sobrantes');
   assert.equal(openai.transcripciones[0].model, 'whisper-1');
   assert.equal(openai.transcripciones[0].language, 'es', 'le dice que es español');
+  // Sin vocabulario del rubro, Whisper escribe los terminos como quiere:
+  // "ecommerce" sale "e-commers", "landing" sale "landin". Es el mismo
+  // truco que usa el bot de la bloquera con "monoblock" y "puesto en obra".
+  assert.match(openai.transcripciones[0].prompt, /e-commerce/i, 'le pasa el vocabulario del rubro');
 });
 
 test('un audio larguisimo no se transcribe', async () => {

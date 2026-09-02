@@ -12,6 +12,22 @@ const { toFile } = require('openai');
  * que es lo que hacia antes de existir este modulo.
  */
 
+/**
+ * Vocabulario del rubro, para que Whisper no escriba los términos como quiera.
+ *
+ * Sin esto "e-commerce" sale "e-commers" y "landing" sale "landin": el modelo
+ * no tiene por qué saber que del otro lado se habla de software, y una nota de
+ * voz corta le da poco contexto para adivinarlo. Con la lista los reconoce.
+ *
+ * Es el mismo truco que usa el bot de la bloquera con "monoblock" y "puesto en
+ * obra", donde ya se vio que funciona.
+ */
+const VOCABULARIO = 'Consulta de un cliente a Scalerics, una agencia uruguaya de '
+  + 'desarrollo de software. Vocabulario habitual: página web, landing, e-commerce, '
+  + 'tienda online, WordPress, Shopify, hosting, dominio, SEO, CRM, sistema a medida, '
+  + 'automatización, agente de IA, chatbot, Instagram, WhatsApp, Mercado Pago, '
+  + 'catálogo, presupuesto, prototipo, videollamada.';
+
 /** Un audio largo no es un lead contando su negocio: es otra cosa. */
 function crearTranscriptor({ openai = null, modelo, maxSegundos = 300, logger = null } = {}) {
   return {
@@ -41,6 +57,7 @@ function crearTranscriptor({ openai = null, modelo, maxSegundos = 300, logger = 
           file: await toFile(audio, 'nota.ogg', { type: 'audio/ogg' }),
           model: modelo,
           language: 'es',
+          prompt: VOCABULARIO,
         });
         const texto = String(r?.text || '').trim();
         if (!texto) {
