@@ -69,6 +69,27 @@ const JERGA = [
   'ta +(?:todo +)?bien',
 ].map(palabraSuelta);
 
+/**
+ * Saludos. Solo cuentan al ARRANCAR el mensaje: 'hola' en el medio de una
+ * frase no es un saludo.
+ *
+ * El estilo ya dice 'saludas una sola vez por conversacion', y salio igual:
+ *
+ *   <- ola
+ *   -> Todo bien? Tenemos la reunion agendada para el jueves 3...
+ *
+ * Dos saludos seguidos son la forma mas rapida de que se note que del otro
+ * lado hay una maquina.
+ */
+const SALUDO = new RegExp(
+  '^[!¡¿?]*(?:'   // el texto llega con trim(), asi que no hacen falta espacios
+  + ['hola', 'holaa+', 'buenas', 'buenos d[ií]as', 'buenas tardes',
+     'qu[eé] tal', 'todo bien', 'c[oó]mo and[aá]s', 'c[oó]mo est[aá]s',
+     'qu[eé] onda'].join('|')
+  + ')',
+  'i'
+);
+
 const PRECIO = [
   /(\$|usd|u\$s|dólares|dolares|pesos)\s*\.?\s*\d/i,
   /\d[\d.,]*\s*(dólares|dolares|pesos|usd|u\$s|lucas|mil)\b/i,
@@ -219,6 +240,13 @@ const REGLAS = [
     gravedad: 'leve',
     revisar: (t, ctx) => (ctx.etapa === 'descubrimiento' && !t.includes('?')
       ? 'en descubrimiento y sin preguntar nada: el turno no avanza'
+      : null),
+  },
+  {
+    id: 'saludo_repetido',
+    gravedad: 'leve',
+    revisar: (t, ctx) => (!ctx.primerTurno && SALUDO.test(t.trim())
+      ? 'saludo de nuevo con la conversacion ya empezada'
       : null),
   },
   {

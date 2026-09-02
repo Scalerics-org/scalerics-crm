@@ -52,3 +52,34 @@ test('despues de la oferta no hace falta preguntar en cada mensaje', () => {
   assert.ok(!fallas('Listo, quedó agendado. Nos vemos.', { etapa: 'post_link' })
     .includes('turno_perdido'));
 });
+
+/**
+ * Otro mensaje del 2-9, ya en una conversacion con siete mensajes arriba:
+ *
+ *   ← ola
+ *   → ¿Todo bien? Tenemos la reunión agendada para el jueves 3...
+ *
+ * "¿Todo bien?" no es jerga, pero es un segundo saludo. El estilo lo prohibe
+ * con todas las letras —"saludás una sola vez por conversación"— porque dos
+ * saludos seguidos son la forma mas rapida de que se note que del otro lado hay
+ * una maquina.
+ */
+test('marca el saludo cuando la conversacion ya venia', () => {
+  const ctx = { etapa: 'cierre', primerTurno: false };
+  for (const t of ['¿Todo bien? Ya está agendada.', '¡Hola! Ya está agendada.', '¿Cómo andás? Ya está agendada.']) {
+    assert.ok(revisarMensaje(t, ctx).map((f) => f.id).includes('saludo_repetido'), t);
+  }
+});
+
+test('en el primer turno saludar esta bien', () => {
+  const ctx = { etapa: 'descubrimiento', primerTurno: true };
+  assert.ok(!revisarMensaje('¡Buenas! ¿Cómo se llama tu negocio?', ctx)
+    .map((f) => f.id).includes('saludo_repetido'));
+});
+
+test('un mensaje que no arranca saludando no se marca', () => {
+  const ctx = { etapa: 'cierre', primerTurno: false };
+  for (const t of ['Ya está agendada para el jueves.', 'Dale, te espero.']) {
+    assert.ok(!revisarMensaje(t, ctx).map((f) => f.id).includes('saludo_repetido'), t);
+  }
+});

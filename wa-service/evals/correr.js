@@ -88,6 +88,8 @@ async function correrCaso(caso, modelo) {
       calLink: CAL_LINK,
       preguntaAnterior,
       linkYaEnviado,
+      // Saludar en el primer mensaje esta bien; en el septimo, no.
+      primerTurno: i === 0,
     })) {
       fallas.push({ ...f, turno: i + 1 });
     }
