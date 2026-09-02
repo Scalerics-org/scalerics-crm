@@ -61,6 +61,43 @@ const CAMBIOS = [
   ['tú', 'vos'],
 ];
 
+/**
+ * Imperativos. Van aparte porque no se pueden reemplazar en cualquier lado: en
+ * español el imperativo de tú y la tercera persona del singular se escriben
+ * igual. "Escribe" es las dos cosas, y una de ellas —"alguien del equipo te
+ * escribe"— es una frase que este bot manda cada vez que deriva a una persona.
+ *
+ * Por eso solo se corrigen cuando arrancan la frase, que es donde no pueden ser
+ * otra cosa: una tercera persona ahí necesitaría un sujeto delante.
+ *
+ * Aparecieron por "Elige el horario que te quede bien", que salió el 2-9 en el
+ * mensaje de oferta. La lista de arriba tenía "eliges" pero no "elige", y el
+ * imperativo es justo la forma que usa el bot cada vez que pide algo.
+ *
+ * Misma regla que la otra lista: ante la duda, no entra. "Toma", "cuenta" y
+ * "prueba" quedan afuera porque también son sustantivos.
+ */
+const IMPERATIVOS = [
+  ['elige', 'elegí'],
+  ['escribe', 'escribí'],
+  ['espera', 'esperá'],
+  ['avisa', 'avisá'],
+  ['confirma', 'confirmá'],
+  ['contesta', 'contestá'],
+  ['responde', 'respondé'],
+  ['mira', 'mirá'],
+  ['manda', 'mandá'],
+  ['envía', 'enviá'],
+  ['envia', 'enviá'],
+];
+
+/**
+ * Arranque de frase: el principio del texto, o lo que sigue a un punto, un
+ * signo, dos puntos o un salto de línea. Los espacios y la apertura de
+ * exclamación cuentan como parte del arranque.
+ */
+const INICIO_DE_FRASE = '(?<=^|[.!?:\\n][\\s¡¿]*)';
+
 /** Le devuelve a una palabra corregida la mayúscula que tenía la original. */
 function conMayusculaDe(original, reemplazo) {
   if (!original || original[0] !== original[0].toUpperCase()) return reemplazo;
@@ -87,7 +124,15 @@ function corregir(texto) {
     });
   }
 
+  for (const [tuteo, voseoForma] of IMPERATIVOS) {
+    const re = new RegExp(`${INICIO_DE_FRASE}${tuteo}(?![\\p{L}\\p{N}])`, 'giu');
+    salida = salida.replace(re, (encontrado) => {
+      corregidos.push(encontrado);
+      return conMayusculaDe(encontrado, voseoForma);
+    });
+  }
+
   return { texto: salida, corregidos };
 }
 
-module.exports = { corregir, CAMBIOS };
+module.exports = { corregir, CAMBIOS, IMPERATIVOS };
