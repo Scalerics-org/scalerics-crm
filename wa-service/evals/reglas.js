@@ -33,6 +33,42 @@ const TUTEO = [
   /\btú\b/i,
 ];
 
+/**
+ * Jerga. El estilo pide "calido y directo" y "como un uruguayo, no como un
+ * bot", y el modelo lo leyo como permiso para escribir como un amigo:
+ *
+ *   ← Ola
+ *   → ¿Qué onda?
+ *
+ * Escribe en nombre de una agencia a alguien que no lo conoce. Cordial no es lo
+ * mismo que confianzudo, y del otro lado eso no se lee como cercania: se lee
+ * como que no lo estan tomando en serio.
+ *
+ * La lista es corta a proposito, igual que la del tuteo: solo entra lo que no
+ * puede ser otra cosa. "Dale" y "buenisimo" quedan afuera —son parte de como se
+ * habla en Uruguay y el bot los tiene que poder usar.
+ */
+const LETRA = '[a-záéíóúüñ]';
+
+/**
+ * Palabra entera y nada mas. Sin esto "bo" entra adentro de "bonito" y "loco"
+ * adentro de "local", que es una palabra que este bot escribe todo el tiempo.
+ */
+function palabraSuelta(expresion) {
+  return new RegExp('(?<!' + LETRA + ')(?:' + expresion + ')(?!' + LETRA + ')', 'i');
+}
+
+const JERGA = [
+  'qu[eé] +onda',
+  'loco',
+  'bo',
+  'posta',
+  'capo',
+  'genio',
+  'manya',
+  'ta +(?:todo +)?bien',
+].map(palabraSuelta);
+
 const PRECIO = [
   /(\$|usd|u\$s|dólares|dolares|pesos)\s*\.?\s*\d/i,
   /\d[\d.,]*\s*(dólares|dolares|pesos|usd|u\$s|lucas|mil)\b/i,
@@ -163,6 +199,27 @@ const REGLAS = [
       }
       return null;
     },
+  },
+  {
+    id: 'jerga',
+    gravedad: 'leve',
+    revisar: (t) => {
+      const hit = JERGA.find((re) => re.test(t));
+      return hit ? `escribio como un amigo, no como la agencia: ${JSON.stringify(t.match(hit)[0])}` : null;
+    },
+  },
+  {
+    /**
+     * En descubrimiento el objetivo es sacar tres datos. Un mensaje sin
+     * pregunta gasta el turno en un saludo y la conversacion no avanza — que
+     * es lo que paso con "¿Qué onda?": contesto y no pregunto nada, teniendo
+     * los tres datos vacios.
+     */
+    id: 'turno_perdido',
+    gravedad: 'leve',
+    revisar: (t, ctx) => (ctx.etapa === 'descubrimiento' && !t.includes('?')
+      ? 'en descubrimiento y sin preguntar nada: el turno no avanza'
+      : null),
   },
   {
     id: 'narra_guardado',
