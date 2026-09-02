@@ -109,3 +109,25 @@ test('el eco de lo que mando el bot no lo pausa', async () => {
 
   assert.equal(s.repo.leadPorTelefono(TEL).bot_pausado_hasta, null, 'no se pausa a si mismo');
 });
+
+/**
+ * Reiniciar es empezar de cero, y eso incluye los dos frenos. Sin esto, un lead
+ * que reiniciaste justo despues de escribirle desde el telefono queda en NEW
+ * pero mudo unas horas, sin nada en el panel que lo explique.
+ */
+test('reiniciar un lead tambien le devuelve el bot', async () => {
+  const s = await conLead({ modelo: stubModelo() });
+  const id = s.repo.leadPorTelefono(TEL).id;
+  s.repo.actualizarFunnel(id, {
+    bot_enabled: 0,
+    bot_pausado_hasta: new Date(Date.now() + 3600_000).toISOString(),
+  });
+
+  s.repo.reiniciarLead(id, new Date().toISOString());
+
+  const l = s.repo.leadPorId(id);
+  assert.equal(l.bot_enabled, 1);
+  assert.equal(l.bot_pausado_hasta, null);
+  // Reiniciar tambien borra welcomed_at, asi que primero sale la bienvenida.
+  assert.equal((await escribe(s, 'hola de nuevo')).at(-1), '[conversacion]', 'y contesta');
+});

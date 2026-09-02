@@ -170,6 +170,10 @@ function crearRepo(db) {
       db.prepare(`UPDATE leads SET
         fsm_state = 'NEW', fsm_retries = 0, opt_out = 0, human_requested = 0,
         motivo_derivacion = NULL, consultas_precio = 0,
+        -- Los dos frenos del bot tambien. Reiniciar es empezar de cero, y sin
+        -- esto un lead que reiniciaste justo despues de escribirle desde el
+        -- telefono queda en NEW pero mudo unas horas, sin nada que lo explique.
+        bot_enabled = 1, bot_pausado_hasta = NULL,
         business_name = NULL, business_type = NULL, budget = NULL, team_size = NULL,
         colors = NULL, instagram_web = NULL, needs = NULL,
         rubro = NULL, rubro_norm = NULL,
