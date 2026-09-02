@@ -240,6 +240,18 @@ const esquema = z.object({
   AGENDA_PASO_MIN: z.coerce.number().int().positive().default(30),
   AGENDA_DURACION_MIN: z.coerce.number().int().positive().default(30),
   AGENDA_DIAS: z.string().default('mon,tue,wed,thu,fri'),
+
+  /**
+   * Horarios por dia, cuando no son todos iguales:
+   *   "mon:08:00-20:00,tue:08:00-20:00,wed:10:00-20:00,thu:07:00-20:00,fri:08:00-20:00"
+   *
+   * Manda sobre AGENDA_DESDE/HASTA/DIAS, que quedan como respaldo. La
+   * disponibilidad real de Scalerics en Calendly cambia segun el dia, y con una
+   * sola franja no habia forma de que el bot coincidiera: con la mas angosta
+   * perdia las mañanas de cuatro dias, y con la mas ancha ofrecia horas que el
+   * calendario no da. Un dia que no figura en la lista no se atiende.
+   */
+  AGENDA_HORARIOS: z.string().default(''),
   // Cuantos horarios se muestran. Mas de cinco deja de ser una eleccion y pasa
   // a ser una lista que hay que leer.
   /**

@@ -118,6 +118,48 @@ function eligioEsaHora(texto, elegido, tz = 'America/Montevideo') {
   return nombroEseDia(texto, elegido, tz);
 }
 
+/** "08:00" -> 480. */
+function aMinutos(hhmm) {
+  const [h, m] = String(hhmm).split(':').map(Number);
+  return h * 60 + (m || 0);
+}
+
+/**
+ * La franja de atencion de un dia de la semana, en minutos desde medianoche.
+ *
+ * La disponibilidad real no es la misma todos los dias. La de Scalerics en
+ * Calendly, por ejemplo:
+ *
+ *   lun 08-20 · mar 08-20 · mie 10-20 · jue 07-20 · vie 08-20
+ *
+ * Con una sola franja para todos no habia forma de que el bot coincidiera: con
+ * la mas angosta perdia las mañanas de cuatro dias, y con la mas ancha ofrecia
+ * horas que el calendario no da.
+ *
+ * @param {string} horarios "mon:08:00-20:00,wed:10:00-20:00,..."
+ * @param {object} unica    la franja de siempre, para cuando no hay lista
+ * @returns {{desde: number, hasta: number}|null} null si ese dia no se atiende.
+ */
+function franjaDelDia(diaSemana, horarios, unica = {}) {
+  const lista = String(horarios || '').trim();
+
+  if (!lista) {
+    const dias = new Set(String(unica.dias || '').split(',').map((d) => d.trim()));
+    if (!dias.has(diaSemana)) return null;
+    return { desde: aMinutos(unica.desde), hasta: aMinutos(unica.hasta) };
+  }
+
+  for (const trozo of lista.split(',')) {
+    // No se puede partir por ":" porque el rango tambien los tiene.
+    const m = trozo.trim().match(/^([a-z]{3})\s*:\s*(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})$/i);
+    if (!m || m[1].toLowerCase() !== diaSemana) continue;
+    return { desde: aMinutos(m[2]), hasta: aMinutos(m[3]) };
+  }
+  // Un dia que no figura en la lista no se atiende. Es lo que hace que
+  // sabados y domingos queden afuera sin necesitar otra variable.
+  return null;
+}
+
 /**
  * Si una hora que el lead propone —una que no estaba en la lista— es agendable.
  *
@@ -137,14 +179,13 @@ function revisarFranja(inicio, cfg, ahora = new Date()) {
   const tz = cfg.TZ || 'America/Montevideo';
   const { hora, minuto, diaSemana } = enZona(inicio, tz);
 
-  const habiles = new Set(String(cfg.AGENDA_DIAS).split(',').map((d) => d.trim()));
-  if (!habiles.has(diaSemana)) return { ok: false, motivo: 'dia_no_habil' };
+  const franja = franjaDelDia(diaSemana, cfg.AGENDA_HORARIOS, {
+    desde: cfg.AGENDA_DESDE, hasta: cfg.AGENDA_HASTA, dias: cfg.AGENDA_DIAS,
+  });
+  if (!franja) return { ok: false, motivo: 'dia_no_habil' };
 
-  const [hIni, mIni] = String(cfg.AGENDA_DESDE).split(':').map(Number);
-  const [hFin, mFin] = String(cfg.AGENDA_HASTA).split(':').map(Number);
   const enMinutos = hora * 60 + minuto;
-  const desde = hIni * 60 + mIni;
-  const hasta = hFin * 60 + mFin;
+  const { desde, hasta } = franja;
 
   if (enMinutos < desde) return { ok: false, motivo: 'fuera_de_franja' };
   // La reunion tiene que TERMINAR dentro de la franja, no solo empezar.
@@ -161,4 +202,4 @@ function revisarFranja(inicio, cfg, ahora = new Date()) {
   return { ok: true };
 }
 
-module.exports = { horasQueDijo, diasQueNombro, eligioEsaHora, revisarFranja };
+module.exports = { horasQueDijo, diasQueNombro, eligioEsaHora, revisarFranja, franjaDelDia };

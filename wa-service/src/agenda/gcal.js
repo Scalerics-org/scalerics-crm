@@ -176,11 +176,12 @@ function crearAgenda({ cfg, logger = null, fetch: _fetch = globalThis.fetch } = 
     async horariosDisponibles(ahora = new Date()) {
       if (!activo) return null;
 
-      const [hIni, mIni] = String(cfg.AGENDA_DESDE).split(':').map(Number);
-      const [hFin, mFin] = String(cfg.AGENDA_HASTA).split(':').map(Number);
       const paso = cfg.AGENDA_PASO_MIN;
       const duracion = cfg.AGENDA_DURACION_MIN;
-      const habiles = new Set(String(cfg.AGENDA_DIAS).split(',').map((d) => d.trim()));
+      // La franja sale de franjaDelDia y no de AGENDA_DESDE/HASTA: la
+      // disponibilidad real no es la misma todos los dias.
+      const { franjaDelDia } = require('./eleccion');
+      const unica = { desde: cfg.AGENDA_DESDE, hasta: cfg.AGENDA_HASTA, dias: cfg.AGENDA_DIAS };
 
       // No se ofrece nada demasiado pronto: a nadie le sirve una reunion en
       // veinte minutos, y aceptarla suena a que no hay nadie del otro lado.
@@ -214,7 +215,6 @@ function crearAgenda({ cfg, logger = null, fetch: _fetch = globalThis.fetch } = 
        */
       const elegidos = [];
       const primerDia = { dia: null };
-      const finDelDia = hFin * 60 + mFin;
 
       for (let d = 0; d <= cfg.AGENDA_DIAS_ADELANTE; d++) {
         if (elegidos.length >= cfg.AGENDA_MAX_OPCIONES) break;
@@ -222,10 +222,11 @@ function crearAgenda({ cfg, logger = null, fetch: _fetch = globalThis.fetch } = 
         const ref = new Date(ahora.getTime() + d * 86400_000);
         const { dia } = enZona(ref, tz);
         const { diaSemana } = enZona(instanteLocal(dia, 12, 0, tz), tz);
-        if (!habiles.has(diaSemana)) continue;
+        const franja = franjaDelDia(diaSemana, cfg.AGENDA_HORARIOS, unica);
+        if (!franja) continue;
 
         const delDia = [];
-        for (let min = hIni * 60 + mIni; min + duracion <= finDelDia; min += paso) {
+        for (let min = franja.desde; min + duracion <= franja.hasta; min += paso) {
           const inicio = instanteLocal(dia, Math.floor(min / 60), min % 60, tz);
           if (inicio < piso) continue;
           if (libre(inicio)) delDia.push(inicio);

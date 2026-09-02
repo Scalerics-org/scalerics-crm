@@ -155,3 +155,47 @@ test('algo demasiado pronto o demasiado lejos tambien', () => {
   const lejos = new Date(Date.UTC(2026, 9, 15, 15));
   assert.equal(revisarFranja(lejos, CFG, AHORA).motivo, 'muy_lejos');
 });
+
+// ── horarios distintos por dia ───────────────────────────────────────────────
+
+const { franjaDelDia } = require('../src/agenda/eleccion');
+
+/**
+ * La disponibilidad real de Scalerics en Calendly cambia segun el dia:
+ *
+ *   lun 08-20 · mar 08-20 · mie 10-20 · jue 07-20 · vie 08-20
+ *
+ * El bot tenia una sola franja para todos, asi que no habia forma de que
+ * coincidiera: con la mas angosta perdia las mañanas de cuatro dias, y con la
+ * mas ancha ofrecia horas que Calendly no da.
+ */
+const HORARIOS = 'mon:08:00-20:00,tue:08:00-20:00,wed:10:00-20:00,thu:07:00-20:00,fri:08:00-20:00';
+
+test('cada dia tiene su franja', () => {
+  assert.deepEqual(franjaDelDia('mon', HORARIOS), { desde: 480, hasta: 1200 });
+  assert.deepEqual(franjaDelDia('wed', HORARIOS), { desde: 600, hasta: 1200 });
+  assert.deepEqual(franjaDelDia('thu', HORARIOS), { desde: 420, hasta: 1200 });
+});
+
+test('un dia que no esta en la lista no se atiende', () => {
+  assert.equal(franjaDelDia('sat', HORARIOS), null);
+  assert.equal(franjaDelDia('sun', HORARIOS), null);
+});
+
+test('sin la lista, cae a la franja unica de siempre', () => {
+  // Para no romper una instalacion que solo tenga AGENDA_DESDE/HASTA.
+  assert.deepEqual(franjaDelDia('mon', '', { desde: '12:00', hasta: '16:00', dias: 'mon,tue' }),
+    { desde: 720, hasta: 960 });
+  assert.equal(franjaDelDia('wed', '', { desde: '12:00', hasta: '16:00', dias: 'mon,tue' }), null);
+});
+
+test('revisarFranja respeta el horario del dia que toca', () => {
+  const cfg = { ...CFG, AGENDA_HORARIOS: HORARIOS };
+  // Miercoles 2 de setiembre: abre 10:00, asi que las 09:00 no.
+  const mie9 = new Date(Date.UTC(2026, 8, 2, 12));
+  const ahoraTemprano = new Date(Date.UTC(2026, 8, 2, 5));
+  assert.equal(revisarFranja(mie9, cfg, ahoraTemprano).motivo, 'fuera_de_franja');
+  // Jueves 3 a las 08:00 si, porque el jueves abre 07:00.
+  const jue8 = new Date(Date.UTC(2026, 8, 3, 11));
+  assert.equal(revisarFranja(jue8, cfg, ahoraTemprano).ok, true);
+});
