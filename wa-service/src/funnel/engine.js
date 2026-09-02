@@ -759,7 +759,12 @@ ${describirHorarios({ slots: ofrecidos })}`)) {
       const puedeCerrar = califica && actual !== S.NURTURE && actual !== S.DISQUALIFIED;
 
       if (agente?.activo && (califica || FASE_CIERRE.has(actual))) {
-        const r = await agente.responder(lead, textoCrudo, repo.ultimosMensajes(lead.id, 20, lead.conversacion_desde), actual);
+        const r = await agente.responder(
+          lead, textoCrudo,
+          repo.ultimosMensajes(lead.id, 20, lead.conversacion_desde),
+          actual,
+          { porAudio },
+        );
         if (r) return this._conversar(lead, entrada, r, { actual, califica, puedeCerrar, porAudio });
         return sinIA(lead, 'conversacion');
       }

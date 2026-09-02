@@ -719,3 +719,23 @@ test('el prompt no le deja escribir un nombre que vino por audio', () => {
   assert.match(escrito, /Su negocio es Larganada/);
   assert.ok(!/NO escribas ese nombre/.test(escrito));
 });
+
+/**
+ * El turno en que llega el nombre por audio es el que lo repite.
+ *
+ *   ← [audio] "Se llama León Gandar."
+ *   → "¿A qué se dedica León Gandar?"
+ *
+ * Marcar el lead despues de guardarlo no alcanza: el modelo escribe el mensaje
+ * y extrae el dato en la MISMA llamada, asi que cuando redacta esa frase el
+ * nombre todavia no esta en el lead y el aviso no existe. Tiene que saber que
+ * el mensaje que esta leyendo vino por voz.
+ */
+test('si el mensaje entrante vino por audio, el prompt lo avisa', () => {
+  const sys = construirSystem({ nombre: 'Juan' }, null, '', { porAudio: true });
+  assert.match(sys, /nota de voz/i);
+  assert.match(sys, /no repitas/i);
+
+  const escrito = construirSystem({ nombre: 'Juan' }, null, '', { porAudio: false });
+  assert.ok(!/nota de voz/i.test(escrito));
+});

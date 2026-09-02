@@ -297,14 +297,14 @@ function crearAgente({ modelo = null, textos, calendly = '', logger = null } = {
   return {
     activo: Boolean(modelo?.activo),
 
-    async responder(lead, entrante, historial = [], fase = null) {
+    async responder(lead, entrante, historial = [], fase = null, { porAudio = false } = {}) {
       if (!modelo?.activo) return null;
 
       const conversacion = aMensajes(historial, entrante);
       if (!conversacion.length) return null;
 
       const r = await modelo.pedir({
-        system: construirSystem(lead, fase, calendly),
+        system: construirSystem(lead, fase, calendly, { porAudio }),
         mensajes: conversacion,
         herramienta: HERRAMIENTA,
         maxTokens: 500,

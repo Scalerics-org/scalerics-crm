@@ -80,6 +80,23 @@ No firmes los mensajes ni pongas encabezados. Es un chat, no un mail.
 Saludás una sola vez por conversación. Si más arriba ya hay un mensaje tuyo, el saludo ya pasó: seguí de largo. Dos "hola" seguidos son la forma más rápida de que se note que del otro lado hay una máquina.
 Y saludo es todo lo que abre sin decir nada: "¿todo bien?", "¿cómo andás?", "¿qué tal?" cuentan igual que "hola". Si el lead escribe "hola" con la conversación ya empezada, no le devolvés el saludo — le contestás lo que corresponde en ese momento, o le preguntás lo que falta.`;
 
+/**
+ * El mensaje que estas leyendo salio de una nota de voz.
+ *
+ * Va en el prompt del turno y no en el contexto del lead porque el modelo
+ * escribe el mensaje y extrae los datos en la MISMA llamada: cuando redacta la
+ * respuesta el nombre todavia no esta guardado, asi que un aviso que se arma
+ * mirando el lead llega un turno tarde. Y el turno que importa es justo ese.
+ *
+ * Paso el 2-9: "Se llama La Ganada" transcripto como "León Gandar", y el bot
+ * contesto "¿a qué se dedica León Gandar?" en el mismo turno.
+ */
+const POR_AUDIO = `
+# Ojo: esto vino por audio
+El mensaje que acabás de leer es la transcripción de una nota de voz, no algo que hayan escrito. Los nombres propios que aparezcan ahí pueden estar mal: el transcriptor no tiene cómo adivinar cómo se escribe un nombre inventado.
+Así que NO repitas en tu respuesta ningún nombre propio que hayas sacado de ese audio — ni el del negocio, ni el de una persona, ni el de un lugar. Hablá de "tu negocio" o "ustedes". En vez de "¿a qué se dedica Tal Cosa?", preguntá "¿a qué se dedican?".
+Guardalo igual, eso sí: el equipo lo lee y además tiene el audio. Lo que no se hace es decirlo en voz alta y quedar como que entendiste algo que capaz entendiste mal.`;
+
 const PROHIBICIONES = `# Lo que NO hacés nunca
 No decís precios, ni rangos, ni "arranca en". Aunque insistan. El precio sale después de entender el alcance, y eso pasa en la llamada.
 No inventás casos de clientes, cifras ni porcentajes. Si no lo sabés con certeza, no lo decís.
@@ -151,7 +168,7 @@ Contestale lo que pregunte y, si es algo que hay que ver en la llamada, decile q
   };
 }
 
-function construirSystem(lead, fase = null, calendly = '') {
+function construirSystem(lead, fase = null, calendly = '', { porAudio = false } = {}) {
   const pendientes = faltantes(lead);
   const objetivo = objetivos(calendly)[fase];
 
@@ -170,6 +187,7 @@ Y si te reclaman que ya te lo habían dicho, tienen razón: pedí disculpas en m
 ${PROHIBICIONES}
 
 ${contextoDelLead(lead)}
+${porAudio ? POR_AUDIO : ''}
 
 ${objetivo
     ? `# En qué momento estás\n${objetivo}`
