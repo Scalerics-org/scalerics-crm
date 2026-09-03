@@ -313,10 +313,19 @@ function crearEmbudo({
    *   decidido = ya se le contesto y no hay nada que agendar.
    */
   async function pedirOtroHorario(lead, entrada, ofrecidos) {
-    // Los tramos, igual que en la oferta. Con la lista suelta el lead veia
-    // cinco horas despues de que le dijeran "de 10 a 19", que es la
-    // contradiccion que ya noto una vez.
-    const conLoQueHay = async () => {
+    /**
+     * Lo que hay libre, en tramos.
+     *
+     * Si el lead nombro un dia, se le muestra ESE dia. El 3-9 pidio cinco veces
+     * las 9:30 del 11 y las cinco recibio los dias cercanos —el 4 y el 7—
+     * hasta que escribio "el 11 tiene que ser, dejá de insistir con esos días".
+     * El rechazo era correcto; lo que ofrecia despues, no.
+     */
+    const conLoQueHay = async (diaPedido = null) => {
+      if (diaPedido && agenda?.activo) {
+        const delDia = await agenda.tramosDelDia(diaPedido, ahora());
+        if (delDia.length) return describirTramos(delDia);
+      }
       const nuevos = await agenda?.horariosDisponibles(ahora());
       return describirTramos(nuevos?.bloques) || describirHorarios({ slots: ofrecidos });
     };
@@ -377,7 +386,7 @@ ${await conLoQueHay()}`)) {
       if (!await decirIA(lead, 'horario_fuera_de_franja',
         `${explicacion}
 
-${await conLoQueHay()}`)) {
+${await conLoQueHay(inicio)}`)) {
         return { decidido: true, estado: sinIA(lead, 'horario_fuera_de_franja') };
       }
       return { decidido: true, estado: S.HORARIOS_OFRECIDOS };

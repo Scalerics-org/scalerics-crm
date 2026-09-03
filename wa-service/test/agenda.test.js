@@ -732,3 +732,46 @@ test('una pregunta con dia y hora no agenda nada', async () => {
   assert.ok(!google.llamadas.some((c) => c.url.includes('/events?')), 'ni toco el calendario');
   assert.equal(msgs.at(-1), '[disponibilidad_del_dia]', 'le contesta que hay ese dia');
 });
+
+/**
+ * El 3-9, cinco vueltas sobre lo mismo:
+ *
+ *   ← 9:30 del 11
+ *   → Ese horario está fuera de nuestra disponibilidad ese día.
+ *     Tenemos libres viernes 4... o lunes 7...
+ *   ← El 11 tiene que ser, dejá de insistir con esos días
+ *   → [otra vez el 4 y el 7]
+ *
+ * El rechazo era correcto —9:30 esta fuera de la franja— pero lo que ofrecia
+ * despues eran los dias CERCANOS, no el dia del que hablaba el lead. Cuando
+ * alguien te nombra un dia, lo que hay que mostrarle es ese dia.
+ */
+test('al rechazar una hora, se muestra lo libre de ESE dia', async () => {
+  const google = googleFalso();
+  const modelo = stubModelo({ datos: COMPLETO });
+  const original = modelo.pedir.bind(modelo);
+  modelo.pedir = async (args) => {
+    if (args.herramienta?.nombre === 'elegir') return { texto: null, argumentos: { opcion: 'ninguno' } };
+    if (args.herramienta?.nombre === 'momento') {
+      // 09:30 del viernes 18: fuera de la franja de ese dia.
+      return { texto: null, argumentos: { pide: true, dia: '2026-09-18', hora: 9, minuto: 30 } };
+    }
+    return original(args);
+  };
+
+  const s = await conLead({
+    modelo, AGENDA_OFRECE_HORARIOS: 'true', _google: google.fetch,
+  }, undefined, instanteLocal('2026-09-03', 9, 0, TZ));
+
+  await s.servicioLeads.registrarRespuesta('59899123456', DIJO_TODO);
+  await s.cola.vacia();
+  await s.servicioLeads.registrarRespuesta('59899123456', '9:30 del 11');
+  await s.cola.vacia();
+
+  const prompt = modelo.llamadas
+    .map((a) => a.mensajes?.[0]?.content || '')
+    .find((c) => c.includes('horario_fuera_de_franja'));
+  assert.ok(prompt, 'se le pidio el mensaje de rechazo');
+  assert.match(prompt, /viernes, 18 de septiembre|viernes, 18 de setiembre/,
+    `esperaba el dia que pidio, no los cercanos:\n${prompt.slice(-400)}`);
+});
