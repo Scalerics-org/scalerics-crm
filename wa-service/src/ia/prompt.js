@@ -143,6 +143,21 @@ function contextoDelLead(lead) {
   if (lead.needs) l.push(`Lo que busca: "${lead.needs}".`);
   if (lead.necesidad && !lead.needs) l.push(`En el formulario puso: "${lead.necesidad}".`);
 
+  /**
+   * La reunion que ya tiene. Sin esto el modelo sabe que NO debe agendar —el
+   * objetivo de SCHEDULED se lo dice— pero no sabe que ya hay una, asi que no
+   * puede mencionarla y llena el turno con preguntas de descubrimiento. Paso el
+   * 3-9 con un lead que tenia reunion para el lunes 7.
+   */
+  if (lead.meeting_time) {
+    const cuando = new Intl.DateTimeFormat('es-UY', {
+      timeZone: 'America/Montevideo',
+      weekday: 'long', day: 'numeric', month: 'long',
+      hour: '2-digit', minute: '2-digit', hour12: false,
+    }).format(new Date(lead.meeting_time));
+    l.push(`YA TIENE una videollamada agendada: ${cuando}.`);
+  }
+
   const gancho = GANCHOS[lead.rubro_norm];
   const base = l.length ? l.join(' ') : 'Todavía no sabemos nada de él.';
   return `# Este lead\n${base}${gancho ? `\n\nGancho útil para su rubro: ${gancho}` : ''}`;
@@ -187,7 +202,8 @@ NO se lo vuelvas a mandar salvo que te lo pida. Si escribe teniéndolo es porque
 Si dice que ya reservó, dale, confirmale y listo — no le pidas que lo haga de nuevo.
 Si tiene una duda que no podés resolver, ofrecele que le escriba alguien del equipo.`,
 
-    SCHEDULED: `Ya tiene la reunión agendada. No le ofrezcas agendar nada.
+    SCHEDULED: `Ya tiene la reunión agendada —arriba está el día y la hora— y no le ofrecés agendar nada.
+Tampoco le hagas preguntas de descubrimiento: lo que falte saber se ve en la llamada, que para eso está. Si escribe algo suelto, recordale cuándo es y quedate ahí.
 Contestale lo que pregunte y, si es algo que hay que ver en la llamada, decile que lo hablan ahí.`,
 
     NURTURE: `Le dijiste que quedaba anotado y volvió a escribir. Retomá donde quedaron.`,

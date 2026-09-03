@@ -794,3 +794,28 @@ test('con el link como camino, el prompt lo sigue usando', () => {
   const sys = construirSystem({ nombre: 'Juan' }, 'MEETING_SENT', 'https://calendly.com/x');
   assert.ok(sys.includes('calendly.com'), 'sigue estando cuando ES el camino');
 });
+
+/**
+ * El 3-9 un lead con reunion agendada para el lunes 7 recibio preguntas de
+ * descubrimiento —"¿cómo se llama y a qué se dedica?"— en vez de que le
+ * recordaran la reunion que ya tenia.
+ *
+ * El objetivo de SCHEDULED decia "no le ofrezcas agendar nada", pero el modelo
+ * no tenia forma de mencionar la reunion: contextoDelLead no la incluia. Sabia
+ * que no debia agendar y no sabia que ya habia una.
+ */
+test('el prompt le dice cuando es la reunion que el lead ya tiene', () => {
+  const sys = construirSystem({
+    nombre: 'Juanchi',
+    business_name: 'Easy Bikes',
+    meeting_time: '2026-09-07T14:00:00.000Z',
+  }, 'SCHEDULED');
+
+  assert.match(sys, /lunes/i, 'con el día');
+  assert.match(sys, /11:00/, 'y la hora, en hora de Montevideo');
+});
+
+test('sin reunion agendada no se inventa ninguna', () => {
+  const sys = construirSystem({ nombre: 'Juanchi' }, 'CONVERSANDO');
+  assert.ok(!/reunión el/i.test(sys));
+});

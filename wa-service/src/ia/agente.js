@@ -3,6 +3,7 @@
 const { construirSystem, faltantes } = require('./prompt');
 const { CAJONES } = require('../funnel/nurture');
 const { corregir: corregirVoseo } = require('./voseo');
+const { quitar: quitarJerga } = require('./jerga');
 const { recortarEnOracion } = require('./modelo');
 
 const MAX_HISTORIAL = 20;
@@ -334,7 +335,13 @@ function crearAgente({ modelo = null, textos, calendly = '', agendaPropia = fals
       const crudo = r.truncado ? recortarEnOracion(entero) : entero;
       // El prompt prohibe el tuteo con todas las letras y el modelo se va igual.
       // Es una conversion mecanica: la hace el codigo, que no se equivoca.
-      const { texto, corregidos } = corregirVoseo(crudo);
+      // El registro tambien lo arregla el codigo. El prompt lo prohibe y el
+      // modelo escribio "¿Qué onda?" igual, con la regla ya medida en los evals.
+      const sinJerga = quitarJerga(crudo);
+      if (sinJerga.sacados.length) {
+        logger?.info({ leadId: lead.id, sacados: sinJerga.sacados }, 'se le saco la jerga al modelo');
+      }
+      const { texto, corregidos } = corregirVoseo(sinJerga.texto);
       if (corregidos.length) {
         logger?.info({ leadId: lead.id, corregidos }, 'se le corrigio el tuteo al modelo');
       }

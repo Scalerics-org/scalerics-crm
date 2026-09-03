@@ -1,6 +1,7 @@
 'use strict';
 
 const { corregir: corregirVoseo } = require('./voseo');
+const { quitar: quitarJerga } = require('./jerga');
 
 const { construirRedaccion, situaciones } = require('./prompt');
 const { mencionaPlata } = require('./precio');
@@ -60,7 +61,11 @@ function crearRedactor({ modelo = null, calendly = '', logger = null } = {}) {
 
       // El tuteo que se le escapa al modelo lo corrige el codigo, igual que en
       // la conversacion. Un recordatorio con un "tienes" delata lo mismo.
-      const { texto, corregidos } = corregirVoseo(crudo);
+      const sinJerga = quitarJerga(crudo);
+      if (sinJerga.sacados.length) {
+        logger?.info({ leadId: lead.id, situacion, sacados: sinJerga.sacados }, 'se le saco la jerga al modelo');
+      }
+      const { texto, corregidos } = corregirVoseo(sinJerga.texto);
       if (corregidos.length) {
         logger?.info({ leadId: lead.id, situacion, corregidos }, 'se le corrigio el tuteo al modelo');
       }
