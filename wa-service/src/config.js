@@ -428,7 +428,14 @@ const esquema = z.object({
   // Tope por dia, para que las opciones abarquen varios. Sin esto las cinco se
   // las come el primer dia con hueco y el lead no puede pedir otro.
   AGENDA_MAX_POR_DIA: z.coerce.number().int().positive().default(3),
-  AGENDA_DIAS_ADELANTE: z.coerce.number().int().positive().default(10),
+  /**
+   * Hasta cuando se puede agendar. Estaba en 10 sin ninguna razon escrita, y
+   * era incoherente con el propio bot: RESERVAS_DIAS_ADELANTE mira 60 dias de
+   * calendario para enterarse de quien reservo por Calendly, pero el bot se
+   * negaba a agendar mas alla de diez. Un lead que queria reunirse en tres
+   * semanas recibia un no, y por el link de Calendly lo podia hacer igual.
+   */
+  AGENDA_DIAS_ADELANTE: z.coerce.number().int().positive().default(60),
   // No se ofrece nada antes de este plazo: una reunion en veinte minutos no le
   // sirve a nadie y suena a que no hay nadie del otro lado.
   AGENDA_AVISO_MIN_HORAS: z.coerce.number().nonnegative().default(3),
