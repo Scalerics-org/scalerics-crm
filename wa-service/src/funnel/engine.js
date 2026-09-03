@@ -111,6 +111,13 @@ const FASE_CIERRE = new Set([
 function crearEmbudo({
   repo, cola, textos, scorer, logger, cfg = { amPhones: [] },
   crmNotify = null, agente = null, redactor = null, agenda = null, ahora = () => new Date(),
+  /**
+   * Programa los recordatorios de una reunion. Llega como funcion y no como el
+   * scheduler entero porque el scheduler se arma DESPUES del embudo —lo tiene
+   * como dependencia— asi que aca solo puede haber algo que se resuelva cuando
+   * se llama.
+   */
+  recordatorios = null,
 }) {
   const CALENDLY = cfg.CALENDLY_LINK || '';
 
@@ -417,6 +424,15 @@ ${await loQueHay()}`
       ahoraIso: ahora().toISOString(),
     });
     repo.actualizarFunnel(lead.id, { meeting_event_id: r.eventId || null });
+
+    /**
+     * Los recordatorios los programaba solo servicioLeads.registrarReunion, que
+     * es por donde entran las de Calendly y las que carga el CRM. Cuando el bot
+     * agenda por su cuenta pasa por repo.registrarReunion —el de abajo— y
+     * quedaban sin programar: el 3-9 en produccion, Juanchi tenia sus dos jobs
+     * esperando y el lead que agendo el bot no tenia ninguno.
+     */
+    recordatorios?.(repo.leadPorId(lead.id));
 
     for (const am of cfg.amPhones) {
       cola.encolar({

@@ -868,3 +868,39 @@ test('una hora sin día es del día del que se viene hablando', async () => {
   assert.equal(enZona(new Date(l.meeting_time), TZ).dia, '2026-09-11', 'el día del que se venía hablando');
   assert.equal(enZona(new Date(l.meeting_time), TZ).hora, 15);
 });
+
+/**
+ * Una reunion que agenda el bot tiene que traer sus recordatorios.
+ *
+ * Los programa servicioLeads.registrarReunion, que es por donde entran las de
+ * Calendly y las que carga el CRM. Cuando el bot agenda por su cuenta pasa por
+ * repo.registrarReunion —el de abajo— y ahi no los programaba nadie.
+ *
+ * En produccion se veia claro el 3-9: Juanchi, que habia agendado por Calendly,
+ * tenia sus dos jobs esperando; el lead que agendo el bot, ninguno. Nadie se
+ * iba a acordar de esa reunion.
+ */
+test('la reunión que agenda el bot programa sus recordatorios', async () => {
+  const google = googleFalso();
+  const s = await conLead({
+    modelo: conHoraPedida('15:00', { dia: '2026-09-11' }),
+    AGENDA_OFRECE_HORARIOS: 'true',
+    AGENDA_DIAS_ADELANTE: '60',
+    _google: google.fetch,
+  }, undefined, instanteLocal('2026-09-03', 9, 0, TZ));
+
+  await s.servicioLeads.registrarRespuesta('59899123456', DIJO_TODO);
+  await s.cola.vacia();
+  await s.servicioLeads.registrarRespuesta('59899123456', 'el viernes 11 a las 15');
+  await s.cola.vacia();
+
+  const l = s.repo.leadPorTelefono('59899123456');
+  assert.ok(l.meeting_time, 'agendó');
+
+  const jobs = s.repo.db
+    .prepare("SELECT type, status FROM jobs WHERE lead_id = ? AND type LIKE 'reminder%'")
+    .all(l.id);
+  const tipos = Object.fromEntries(jobs.map((j) => [j.type, j.status]));
+  assert.equal(tipos.reminder_24h, 'pending', 'el del día antes');
+  assert.equal(tipos.reminder_30m, 'pending', 'el de los 30 minutos');
+});

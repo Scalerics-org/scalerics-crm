@@ -151,6 +151,9 @@ function construir(cfg, {
 
   const embudo = crearEmbudo({
     repo, cola, textos, scorer, logger: log, cfg, crmNotify, agente, redactor, agenda, ahora,
+    // El scheduler se arma abajo —tiene al embudo como dependencia— asi que se
+    // resuelve cuando se llama y no ahora.
+    recordatorios: (lead) => scheduler.programarRecordatorios(lead, ahora()),
   });
 
   const scheduler = crearScheduler({ repo, cola, cfg, redactor, embudo, logger: log, ahora });
