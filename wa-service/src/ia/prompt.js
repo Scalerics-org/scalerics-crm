@@ -298,8 +298,9 @@ Cerrá pidiéndole que te diga la hora que le viene bien.`,
 Decíselo en una línea, con el motivo, y mostrale los que sí hay para que elija.
 Sin repetir la lista a secas: si no le explicás por qué, parece que no lo escuchaste.`,
 
-    horario_ocupado: `Eligió un horario que se ocupó justo antes de que contestara.
-Pedile disculpas en media línea —fue nuestro problema, no suyo— y mostrale los que quedan libres ahora.`,
+    horario_ocupado: `Eligió un horario que no está libre.
+Decíselo sin dramatizar y mostrale lo que sí queda de ESE día, que es abajo.
+No digas que "se ocupó recién" ni que fue justo antes: no lo sabés, y casi siempre no es cierto — el 3-9 dijo eso de un horario que nunca había estado libre. Alcanza con que no está.`,
 
     reunion_agendada: `Le acabás de agendar la reunión. Confirmale el día y la hora, y pasale el link de la videollamada.
 Corto y con ganas: acaba de decir que sí.`,

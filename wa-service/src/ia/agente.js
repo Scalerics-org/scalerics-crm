@@ -421,6 +421,7 @@ ${lista}`,
         system: `Hoy es ${hoy} y la zona horaria es ${tz}. Mirá el último mensaje del lead y decidí qué está haciendo con la agenda.
 
 PEDIR es elegir: "el viernes a las 14", "dale, las 10", "me sirve el lunes 15:30". Ahí va pide: true.
+Aceptar un TRAMO entero también es elegir: si le ofreciste "de 10:30 a 18:00" y contesta eso mismo, o "dale, ese", está eligiendo — poné pide: true con la hora de INICIO del tramo. No le vuelvas a preguntar lo que acaba de contestar.
 PREGUNTAR no es elegir: "¿qué hora tenés libre el viernes 18?", "¿el jueves se puede?", "¿a las 14 no puedo entonces?" son preguntas sobre disponibilidad, aunque nombren un día y una hora. Ahí va pide: false y consulta: true, con el día por el que pregunta.
 Una pregunta NUNCA es pedir, por más que traiga día y hora. Agendarle a alguien algo que estaba preguntando es peor que no entenderle.
 Si no está hablando de fechas, los dos van en false.`,

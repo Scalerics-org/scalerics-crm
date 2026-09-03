@@ -330,19 +330,29 @@ function crearEmbudo({
       return describirTramos(nuevos?.bloques) || describirHorarios({ slots: ofrecidos });
     };
 
-    const repetirLista = async () => {
-      if (!await decirIA(lead, 'horario_no_entendido', await conLoQueHay())) {
+    const repetirLista = async (diaPedido = null) => {
+      if (!await decirIA(lead, 'horario_no_entendido', await conLoQueHay(diaPedido))) {
         return { decidido: true, estado: sinIA(lead, 'horario_no_entendido') };
       }
       return { decidido: true, estado: S.HORARIOS_OFRECIDOS };
     };
 
-    if (!agente?.activo || !agenda?.activo) return repetirLista();
+    /**
+     * El dia del que venia hablando el lead, aunque este turno no se entienda.
+     *
+     * Sale de los horarios que se le mostraron recien: si el ultimo mensaje del
+     * bot fue sobre el viernes 11, contestarle con el 4 y el 7 es cambiarle de
+     * tema. El 3-9 eligio un tramo que el bot le habia ofrecido —"de 10:30 a
+     * 18:00"— y recibio los dias cercanos como si no hubiera dicho nada.
+     */
+    const enFoco = ofrecidos.length ? ofrecidos[0] : null;
+
+    if (!agente?.activo || !agenda?.activo) return repetirLista(enFoco);
 
     const hoy = enZona(ahora(), cfg.TZ).dia;
     const pedido = await agente.proponerMomento({ texto: entrada, hoy, tz: cfg.TZ });
     // No estaba pidiendo una hora: pregunto otra cosa, o dudo.
-    if (!pedido) return repetirLista();
+    if (!pedido) return repetirLista(enFoco);
 
     /**
      * Pregunto por un dia en vez de elegir uno. Se le contesta lo de ESE dia.
@@ -395,17 +405,24 @@ ${await conLoQueHay(inicio)}`)) {
     const libre = await agenda.libreEn(inicio);
     // null es "no se pudo preguntar": ni se agenda a ciegas ni se le dice que
     // no a algo que capaz estaba libre. Se le repite la lista, que si se sabe.
-    if (libre === null) return repetirLista();
+    if (libre === null) return repetirLista(inicio);
     if (libre === false) {
+      // Lo que queda libre ESE dia, no los dias cercanos: el lead esta
+      // hablando del 11, no del 4.
+      const delDia = await agenda.tramosDelDia(inicio, ahora());
+      if (delDia.length) {
+        await decirIA(lead, 'horario_ocupado', describirTramos(delDia));
+        return { decidido: true, estado: S.HORARIOS_OFRECIDOS };
+      }
       const nuevos = await agenda.horariosDisponibles(ahora());
       if (nuevos?.slots?.length) {
         repo.actualizarFunnel(lead.id, {
           horarios_ofrecidos: JSON.stringify(nuevos.slots.map((d) => d.toISOString())),
         });
-        await decirIA(lead, 'horario_ocupado', describirHorarios(nuevos));
+        await decirIA(lead, 'horario_ocupado', describirTramos(nuevos.bloques));
         return { decidido: true, estado: S.HORARIOS_OFRECIDOS };
       }
-      return repetirLista();
+      return repetirLista(inicio);
     }
 
     logger?.info({ leadId: lead.id, pidio: inicio.toISOString() },
