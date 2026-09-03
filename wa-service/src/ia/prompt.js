@@ -270,6 +270,10 @@ No mandes ningún link. El horario que elija lo agendás vos.`,
 Volvé a listarle los mismos, sin reproches y sin hacerlo sentir tonto. Una línea y la lista.
 Y decile que si ninguno le sirve, te diga qué día y hora le queda bien: la lista son sugerencias, no todo lo que hay libre.`,
 
+    disponibilidad_del_dia: `Te preguntó qué tenés libre un día puntual, y abajo te paso lo que hay ESE día.
+Contestale eso y nada más: el día que preguntó, con sus tramos. No le repitas los otros días — te preguntó por uno.
+Cerrá pidiéndole que te diga la hora que le viene bien.`,
+
     horario_fuera_de_franja: `Pidió un horario que no le podemos dar, y abajo te digo por qué.
 Decíselo en una línea, con el motivo, y mostrale los que sí hay para que elija.
 Sin repetir la lista a secas: si no le explicás por qué, parece que no lo escuchaste.`,

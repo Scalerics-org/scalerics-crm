@@ -335,6 +335,38 @@ function crearEmbudo({
     // No estaba pidiendo una hora: pregunto otra cosa, o dudo.
     if (!pedido) return repetirLista();
 
+    /**
+     * Pregunto por un dia en vez de elegir uno. Se le contesta lo de ESE dia.
+     *
+     * El 3-9 pregunto dos veces "¿qué hora tenés libre el viernes 18?" y las dos
+     * recibio la lista de los dias cercanos, porque el bot solo sabia mostrar
+     * los proximos huecos. Y a la tercera, cuando escribio "viernes 18 a las 14
+     * no puedo entonces?", se lo agendo: seguia sin poder contestar, y lo unico
+     * que sabia hacer con un dia y una hora era reservar.
+     */
+    if (pedido.consulta) {
+      const dia = instanteLocal(pedido.dia, 12, 0, cfg.TZ);
+      const tramos = await agenda.tramosDelDia(dia, ahora());
+      if (tramos.length) {
+        if (!await decirIA(lead, 'disponibilidad_del_dia', describirTramos(tramos))) {
+          return { decidido: true, estado: sinIA(lead, 'disponibilidad_del_dia') };
+        }
+        return { decidido: true, estado: S.HORARIOS_OFRECIDOS };
+      }
+      // Ese dia no tiene nada: se le dice y se le muestra lo que si hay.
+      const franja = revisarFranja(instanteLocal(pedido.dia, 12, 0, cfg.TZ), cfg, ahora());
+      const motivo = franja.ok
+        ? 'Ese día está completo.'
+        : MOTIVO_FRANJA[franja.motivo](cfg, dia);
+      if (!await decirIA(lead, 'horario_fuera_de_franja',
+        `${motivo}
+
+${await conLoQueHay()}`)) {
+        return { decidido: true, estado: sinIA(lead, 'horario_fuera_de_franja') };
+      }
+      return { decidido: true, estado: S.HORARIOS_OFRECIDOS };
+    }
+
     const inicio = instanteLocal(pedido.dia, pedido.hora, pedido.minuto, cfg.TZ);
 
     const franja = revisarFranja(inicio, cfg, ahora());

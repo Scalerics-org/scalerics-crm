@@ -418,7 +418,12 @@ ${lista}`,
       if (!modelo?.activo) return null;
 
       const r = await modelo.pedir({
-        system: `Hoy es ${hoy} y la zona horaria es ${tz}. El lead esta pidiendo un dia y una hora para una reunion. Devolve cual, en fecha concreta. Si no esta pidiendo ninguno —pregunta otra cosa, duda, dice "cualquiera"— devolve pide: false.`,
+        system: `Hoy es ${hoy} y la zona horaria es ${tz}. Mirá el último mensaje del lead y decidí qué está haciendo con la agenda.
+
+PEDIR es elegir: "el viernes a las 14", "dale, las 10", "me sirve el lunes 15:30". Ahí va pide: true.
+PREGUNTAR no es elegir: "¿qué hora tenés libre el viernes 18?", "¿el jueves se puede?", "¿a las 14 no puedo entonces?" son preguntas sobre disponibilidad, aunque nombren un día y una hora. Ahí va pide: false y consulta: true, con el día por el que pregunta.
+Una pregunta NUNCA es pedir, por más que traiga día y hora. Agendarle a alguien algo que estaba preguntando es peor que no entenderle.
+Si no está hablando de fechas, los dos van en false.`,
         mensajes: [{ role: 'user', content: String(texto || '') }],
         herramienta: {
           nombre: 'momento',
@@ -426,7 +431,8 @@ ${lista}`,
           parametros: {
             type: 'object',
             properties: {
-              pide: { type: 'boolean', description: 'Si esta pidiendo un dia y hora concretos.' },
+              pide: { type: 'boolean', description: 'Está ELIGIENDO ese momento para la reunión.' },
+              consulta: { type: 'boolean', description: 'Está PREGUNTANDO qué hay libre, no eligiendo. Una pregunta con día y hora adentro sigue siendo una pregunta.' },
               dia: { type: 'string', description: 'AAAA-MM-DD. La fecha que corresponde a lo que dijo, contando desde hoy.' },
               hora: { type: 'integer', description: 'Hora en reloj de 24. "5 de la tarde" es 17.' },
               minuto: { type: 'integer', description: '0 o 30, normalmente. "y media" es 30.' },
@@ -438,8 +444,17 @@ ${lista}`,
       });
 
       const a = r?.argumentos;
-      if (!a || a.pide === false) return null;
+      if (!a) return null;
       if (!/^\d{4}-\d{2}-\d{2}$/.test(String(a.dia || ''))) return null;
+
+      // Preguntar no es elegir. El 3-9 el lead escribio "viernes 18 a las 14 no
+      // puedo entonces?" y se le agendo: trae dia y hora, pero es una pregunta.
+      // Agendarle algo a alguien que estaba preguntando es peor que no
+      // entenderle, asi que la duda se resuelve para el lado de contestar.
+      if (a.consulta === true || a.pide !== true) {
+        return { dia: a.dia, consulta: true };
+      }
+
       const hora = Number(a.hora);
       const minuto = Number(a.minuto || 0);
       if (!Number.isInteger(hora) || hora < 0 || hora > 23) return null;

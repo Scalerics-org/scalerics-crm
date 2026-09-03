@@ -502,7 +502,9 @@ function conHoraPedida(hhmm, extra = {}) {
   modelo.pedir = async (args) => {
     if (args.herramienta?.nombre === 'elegir') return { texto: null, argumentos: { opcion: 'ninguno' } };
     if (args.herramienta?.nombre === 'momento') {
-      return { texto: null, argumentos: { dia: extra.dia || '2026-09-03', hora: h, minuto: m } };
+      // `pide: true` = esta ELIGIENDO ese momento. Sin eso ahora se toma como
+      // una pregunta sobre disponibilidad, que es lo que arreglo el agendar una.
+      return { texto: null, argumentos: { pide: true, dia: extra.dia || '2026-09-03', hora: h, minuto: m } };
     }
     return original(args);
   };
@@ -656,4 +658,77 @@ test('un dia entero libre es un solo tramo', () => {
     assert.equal(horas([delMiercoles[0].desde])[0], '12:00');
     assert.equal(horas([delMiercoles[0].hasta])[0], '16:00');
   })();
+});
+
+/**
+ * "¿Qué hora tenés libre el viernes 18?" El bot solo sabia mostrar los dias mas
+ * cercanos, asi que repitio la misma lista dos veces sin contestar la pregunta.
+ */
+test('tramosDelDia contesta por un dia puntual, aunque este lejos', () => {
+  return (async () => {
+    const g = googleFalso({ ocupados: ['13:00-14:00'] });
+    const a = crearAgenda({ cfg: { ...CFG, AGENDA_DESDE: '10:00', AGENDA_HASTA: '19:00' }, fetch: g.fetch });
+
+    const r = await a.tramosDelDia(instanteLocal('2026-09-18', 12, 0, TZ), MIERCOLES_9AM);
+
+    assert.equal(r.length, 2, 'parte en dos por la reunion del medio');
+    assert.equal(horas([r[0].desde])[0], '10:00');
+    assert.equal(horas([r[0].hasta])[0], '13:00');
+    assert.equal(horas([r[1].desde])[0], '14:00');
+    assert.equal(horas([r[1].hasta])[0], '19:00');
+  })();
+});
+
+test('un dia sin atencion no tiene tramos', () => {
+  return (async () => {
+    const g = googleFalso();
+    const a = crearAgenda({ cfg: CFG, fetch: g.fetch });
+    // Domingo 20 de setiembre.
+    const r = await a.tramosDelDia(instanteLocal('2026-09-20', 12, 0, TZ), MIERCOLES_9AM);
+    assert.deepEqual(r, []);
+  })();
+});
+
+/**
+ * El 3-9, lo peor que hizo el bot en todo el dia:
+ *
+ *   ← Mmm el viernes 18 qué hora tenes libre
+ *   → [los tramos del 4 y el 7]
+ *   ← Pero te estoy preguntando qué hora tenes libre el viernes 18
+ *   → [la misma lista otra vez]
+ *   ← Viernes 18 a las 14 no puedo entonces?
+ *   → Perfecto, quedó agendada para el viernes 18 a las 14:00
+ *
+ * Le agendo una pregunta. Los dos problemas son el mismo: no sabia contestar
+ * por un dia puntual, y lo unico que sabia hacer con un dia y una hora era
+ * reservar.
+ */
+test('una pregunta con dia y hora no agenda nada', async () => {
+  const google = googleFalso();
+  const modelo = stubModelo({ datos: COMPLETO });
+  const original = modelo.pedir.bind(modelo);
+  modelo.pedir = async (args) => {
+    if (args.herramienta?.nombre === 'elegir') return { texto: null, argumentos: { opcion: 'ninguno' } };
+    if (args.herramienta?.nombre === 'momento') {
+      // Trae dia y hora, pero es una pregunta.
+      return { texto: null, argumentos: { pide: false, consulta: true, dia: '2026-09-18', hora: 14, minuto: 0 } };
+    }
+    return original(args);
+  };
+
+  const s = await conLead({
+    modelo, AGENDA_OFRECE_HORARIOS: 'true', _google: google.fetch,
+  }, undefined, instanteLocal('2026-09-03', 9, 0, TZ));
+
+  await s.servicioLeads.registrarRespuesta('59899123456', DIJO_TODO);
+  await s.cola.vacia();
+  const msgs = await (async () => {
+    await s.servicioLeads.registrarRespuesta('59899123456', 'viernes 18 a las 14 no puedo entonces?');
+    await s.cola.vacia();
+    return s.proveedor.getEnviados().filter((e) => e.to === '59899123456').map((e) => e.texto);
+  })();
+
+  assert.equal(s.repo.leadPorTelefono('59899123456').meeting_time, null, 'NO agendo');
+  assert.ok(!google.llamadas.some((c) => c.url.includes('/events?')), 'ni toco el calendario');
+  assert.equal(msgs.at(-1), '[disponibilidad_del_dia]', 'le contesta que hay ese dia');
 });

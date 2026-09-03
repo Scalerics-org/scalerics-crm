@@ -317,6 +317,50 @@ function crearAgenda({ cfg, logger = null, fetch: _fetch = globalThis.fetch } = 
       }
     },
 
+    /**
+     * Lo libre de UN dia concreto, en tramos.
+     *
+     * horariosDisponibles busca los proximos dias con hueco; esto contesta por
+     * el dia que el lead nombro, este cerca o lejos. El 3-9 pregunto "¿que hora
+     * tenes libre el viernes 18?" dos veces y las dos recibio la lista de los
+     * dias cercanos: el bot no tenia forma de mirar un dia puntual.
+     *
+     * @returns {Promise<{desde: Date, hasta: Date}[]>} vacio si ese dia no se
+     *   atiende, ya paso, o esta lleno.
+     */
+    async tramosDelDia(fecha, ahora = new Date()) {
+      if (!activo) return [];
+
+      const { franjaDelDia } = require('./eleccion');
+      const { dia, diaSemana } = enZona(fecha, tz);
+      const franja = franjaDelDia(diaSemana, cfg.AGENDA_HORARIOS, {
+        desde: cfg.AGENDA_DESDE, hasta: cfg.AGENDA_HASTA, dias: cfg.AGENDA_DIAS,
+      });
+      if (!franja) return [];
+
+      const duracion = cfg.AGENDA_DURACION_MIN;
+      const piso = new Date(ahora.getTime() + cfg.AGENDA_AVISO_MIN_HORAS * 3600_000);
+      const arranque = instanteLocal(dia, Math.floor(franja.desde / 60), franja.desde % 60, tz);
+      const cierre = instanteLocal(dia, Math.floor(franja.hasta / 60), franja.hasta % 60, tz);
+
+      let ocupados;
+      try {
+        ocupados = await ocupado(arranque, cierre);
+      } catch (e) {
+        logger?.warn({ err: String(e.message || e) }, 'no se pudo leer la agenda de un dia');
+        return [];
+      }
+
+      const libres = [];
+      for (let min = franja.desde; min + duracion <= franja.hasta; min += cfg.AGENDA_PASO_MIN) {
+        const inicio = instanteLocal(dia, Math.floor(min / 60), min % 60, tz);
+        if (inicio < piso) continue;
+        const fin = new Date(inicio.getTime() + duracion * 60_000);
+        if (!ocupados.some((o) => inicio < o.hasta && fin > o.desde)) libres.push(inicio);
+      }
+      return enTramos(libres, cfg.AGENDA_PASO_MIN, duracion);
+    },
+
     async reservar({ inicio, nombre, telefono, resumen }) {
       if (!activo) return { ok: false, motivo: 'error' };
 
