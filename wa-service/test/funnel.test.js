@@ -586,3 +586,27 @@ test('el que todavia no le puso nombre al negocio igual avanza', async () => {
   assert.equal(estado(s), S.MEETING_LINK_SENT, 'el embudo cierra igual');
   assert.equal(msgs.at(-1), '[link_reunion]');
 });
+
+/**
+ * Cuando el turno completa los tres datos, lo que el modelo escribio se
+ * DESCARTA y sale la oferta.
+ *
+ * El eval del 3-9 mostraba al bot repreguntando "¿qué querés lograr con la
+ * página?" con los tres datos ya completos, y parecia una pregunta de mas. Pero
+ * el arnes de evals llama al agente directo, sin el motor: en produccion ese
+ * mensaje no sale. El cierre va ANTES del decir().
+ */
+test('el mensaje del modelo no sale si ese turno cierra el embudo', async () => {
+  const s = await conLead({
+    modelo: stubModelo({
+      datos: COMPLETO,
+      respuestas: { conversacion: '¿Y qué querés lograr con la página?' },
+    }),
+  });
+
+  const msgs = await lead(s, DIJO_TODO);
+
+  assert.ok(!msgs.some((m) => /qué querés lograr/.test(m)),
+    `la repregunta no tiene que salir: ${JSON.stringify(msgs)}`);
+  assert.equal(msgs.at(-1), '[link_reunion]');
+});
