@@ -70,6 +70,25 @@ const JERGA = [
 ].map(palabraSuelta);
 
 /**
+ * El bot hablando de si mismo como una maquina, y encima rota:
+ *
+ *   -> Ahora te muestra el sistema los horarios disponibles
+ *   -> El sistema deberia haberte mandado los horarios. Revisa si llego un mensaje
+ *
+ * Le prometio algo que no controla y lo mando a buscar un mensaje que nunca
+ * existio. Del otro lado hay alguien que cree estar hablando con una persona de
+ * la agencia; enterarse de que adentro hay un sistema que 'deberia haber' hecho
+ * algo es peor que el error original.
+ */
+const NARRA_EL_SISTEMA = [
+  /el sistema/i,
+  /(deber[ií]a|tendr[ií]a que) haberte/i,
+  /revis[aá] si (te )?lleg[oó]/i,
+  /(se te|te lo) (va a |)envi[aá]/i,
+  /autom[aá]ticamente/i,
+];
+
+/**
  * Saludos. Solo cuentan al ARRANCAR el mensaje: 'hola' en el medio de una
  * frase no es un saludo.
  *
@@ -248,6 +267,14 @@ const REGLAS = [
     revisar: (t, ctx) => (!ctx.primerTurno && SALUDO.test(t.trim())
       ? 'saludo de nuevo con la conversacion ya empezada'
       : null),
+  },
+  {
+    id: 'narra_el_sistema',
+    gravedad: 'grave',
+    revisar: (t) => {
+      const hit = NARRA_EL_SISTEMA.find((re) => re.test(t));
+      return hit ? `hablo del sistema en vez de hablar el: ${JSON.stringify(t.match(hit)[0])}` : null;
+    },
   },
   {
     id: 'narra_guardado',

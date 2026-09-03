@@ -83,3 +83,38 @@ test('un mensaje que no arranca saludando no se marca', () => {
     assert.ok(!revisarMensaje(t, ctx).map((f) => f.id).includes('saludo_repetido'), t);
   }
 });
+
+/**
+ * El 3-9 el bot hablo de si mismo como una maquina, y encima rota:
+ *
+ *   → Ahora te muestra el sistema los horarios disponibles
+ *   → El sistema debería haberte mandado los horarios. Revisá si llegó un
+ *     mensaje de WhatsApp con el calendario
+ *
+ * Le prometio algo que no controla y lo mando a buscar un mensaje que nunca
+ * existio. Del otro lado hay una persona hablando con lo que cree que es
+ * alguien de la agencia: enterarse de que adentro hay "un sistema" que "debería
+ * haber" hecho algo es peor que cualquier error.
+ */
+test('marca cuando el bot habla del sistema en tercera persona', () => {
+  const ctx = { etapa: 'cierre', primerTurno: false };
+  for (const t of [
+    'Ahora te muestra el sistema los horarios disponibles.',
+    'El sistema debería haberte mandado los horarios.',
+    'Revisá si te llegó un mensaje con el calendario.',
+    'Se te va a enviar automáticamente.',
+  ]) {
+    assert.ok(revisarMensaje(t, ctx).map((f) => f.id).includes('narra_el_sistema'), t);
+  }
+});
+
+test('hablar del equipo o de la reunion no es narrar el sistema', () => {
+  const ctx = { etapa: 'cierre', primerTurno: false };
+  for (const t of [
+    'Alguien del equipo te escribe en breve.',
+    'Te paso el link de la videollamada.',
+    'Quedó agendada para el viernes.',
+  ]) {
+    assert.ok(!revisarMensaje(t, ctx).map((f) => f.id).includes('narra_el_sistema'), t);
+  }
+});

@@ -45,6 +45,13 @@ const PRECIO_DE_PRODUCTO = [
   'lista de precios', 'listas de precios', 'cargar precios', 'actualizar precios',
   'gestionar precios', 'catalogo de precios', 'mostrar precios', 'poner precios',
   'subir precios', 'con precios',
+  // Como habla de lo suyo el que vende algo. "Vendemos contenido a buen precio"
+  // disparaba la respuesta de precios el 3-9: el lead estaba describiendo su
+  // negocio y el bot le contesto que el presupuesto depende del alcance.
+  'buen precio', 'buenos precios', 'mejor precio', 'mejores precios',
+  'precio accesible', 'precios accesibles', 'a precio de', 'precio justo',
+  'precio bajo', 'precios bajos', 'precio mas bajo', 'precios mas bajos',
+  'precio de costo',
 ];
 
 const QUEJA = [

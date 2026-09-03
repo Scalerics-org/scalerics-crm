@@ -199,3 +199,36 @@ test('"lista de precios" es un requerimiento, no una consulta comercial', () => 
   // Pero preguntar el precio sigue disparando.
   assert.equal(detectar('decime un precio aproximado').motivo, 'precio');
 });
+
+/**
+ * El 3-9: "Vendemos contenido a buen precio de chicas" disparo la respuesta de
+ * precios. El lead estaba describiendo SU negocio, no preguntando cuanto
+ * cobramos nosotros.
+ *
+ * La palabra "precio" suelta es demasiado ancha: cualquiera que venda algo la
+ * usa para hablar de lo suyo. Ya habia una lista de excepciones para esto
+ * —PRECIO_DE_PRODUCTO, con "lista de precios" y "cargar precios"— y le faltaban
+ * las formas en que la gente habla de lo barato que vende.
+ */
+test('hablar de los precios PROPIOS no es preguntar los nuestros', () => {
+  for (const t of [
+    'Vendemos contenido a buen precio de chicas',
+    'tenemos los mejores precios de la zona',
+    'vendo a precio de costo',
+    'manejamos precios accesibles',
+    'somos los de precio mas bajo',
+  ]) {
+    assert.equal(detectar(t), null, t);
+  }
+});
+
+test('y preguntar el nuestro se sigue detectando', () => {
+  for (const t of [
+    'cuanto sale una pagina web',
+    'que precio tiene?',
+    'me pasas el precio',
+    'tirame un numero aunque sea aproximado',
+  ]) {
+    assert.equal(detectar(t)?.motivo, 'precio', t);
+  }
+});
