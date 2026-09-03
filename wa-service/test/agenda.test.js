@@ -433,7 +433,7 @@ test('los horarios ofrecidos abarcan varios dias, no solo el primero', async () 
  * jueves" y listar horas sueltas seria mentira: el lead elegiria "13:00"
  * creyendo que es el jueves cuando es el viernes.
  */
-test('el contexto que recibe el modelo dice el dia de cada horario', async () => {
+test('el contexto que recibe el modelo dice el dia de cada tramo', async () => {
   const google = googleFalso();
   const modelo = stubModelo({ datos: COMPLETO });
   const s = await conLead({ modelo, AGENDA_OFRECE_HORARIOS: 'true', _google: google.fetch });
@@ -446,20 +446,19 @@ test('el contexto que recibe el modelo dice el dia de cada horario', async () =>
     .find((c) => c.includes('oferta_con_horarios'));
   assert.ok(prompt, 'se le pidio el mensaje de oferta');
 
-  const ofrecidos = JSON.parse(s.repo.leadPorTelefono('59899123456').horarios_ofrecidos);
-  const dias = new Set(ofrecidos.map((iso) => enZona(new Date(iso), TZ).dia));
-  assert.ok(dias.size >= 2, 'la prueba necesita horarios de varios dias');
-
-  for (const iso of ofrecidos) {
-    const d = new Date(iso);
-    const hora = new Intl.DateTimeFormat('es-UY', {
-      timeZone: TZ, hour: '2-digit', minute: '2-digit', hour12: false,
-    }).format(d);
-    const numeroDeDia = String(Number(enZona(d, TZ).dia.slice(8)));
-    const linea = prompt.split('\n').find((l) => l.includes(hora) && l.includes(numeroDeDia));
-    assert.ok(linea, `${hora} tiene que aparecer junto a su dia (${numeroDeDia})`);
+  // Cada tramo con su dia y sus dos puntas. Sin el dia, "de 10:00 a 19:00"
+  // no dice de cuando, y con horarios de varios dias eso es una mentira.
+  const lineas = prompt.split(String.fromCharCode(10))
+    .filter((l) => /^- .+: de \d{2}:\d{2} a \d{2}:\d{2}/.test(l));
+  assert.ok(lineas.length >= 1, `esperaba tramos con dia: ${prompt.slice(0, 400)}`);
+  for (const l of lineas) {
+    assert.match(l, /lunes|martes|miércoles|jueves|viernes/, l);
   }
+
+  // Y NO la lista de horas sueltas: dandole las dos, el modelo elegia esa.
+  assert.ok(!prompt.includes('Son los únicos que podés ofrecer'), 'sin la lista discreta');
 });
+
 
 test('libreEn dice si un hueco puntual esta libre', () => {
   return (async () => {

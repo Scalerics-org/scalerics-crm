@@ -482,8 +482,12 @@ ${describirHorarios({ slots: ofrecidos })}`)) {
         if (libres?.slots?.length) {
           const iso = libres.slots.map((d) => d.toISOString());
           repo.actualizarFunnel(lead.id, { horarios_ofrecidos: JSON.stringify(iso) });
-          const contexto = [describirTramos(libres.bloques), describirHorarios(libres)]
-            .filter(Boolean).join(String.fromCharCode(10, 10));
+          // Solo los tramos. Dandole ademas la lista de horas sueltas, el
+          // modelo elegia esa y volvia a mostrar cinco horarios como si fueran
+          // los unicos: justo lo que los tramos venian a arreglar. Que el lead
+          // pida una hora que no este listada ya no es problema — se verifica
+          // contra el calendario y se agenda.
+          const contexto = describirTramos(libres.bloques) || describirHorarios(libres);
           if (!await decirIA(lead, 'oferta_con_horarios', contexto)) {
             return sinIA(lead, 'oferta_con_horarios');
           }

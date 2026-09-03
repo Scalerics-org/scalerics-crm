@@ -254,8 +254,8 @@ Explicale cómo sigue, en concreto y en dos líneas:
 Eso último es lo que vale y conviene que quede claro: no va a una charla a contar lo mismo otra vez, va a ver algo hecho para él.
 
 Enganchá con lo que te contó —su rubro, lo que necesita— para que no suene a plantilla.
-Y cerrá mostrándole los horarios que te paso abajo, tal cual, para que elija uno. NO inventes otros: esos son los que hay a mano.
-Agregá que si ninguno le sirve, te diga qué día y hora le queda bien y lo mirás. Es cierto: la lista son sugerencias, no todo lo que hay libre, y sin decírselo el lead cree que esas cinco son las únicas opciones.
+Y cerrá diciéndole cuándo tenés libre, con los tramos que te paso abajo: "el viernes de 10 a 19" se lee de un vistazo y le muestra todo lo que hay. NO los conviertas en una lista de horarios sueltos ni inventes otros días.
+Pedile que te diga qué día y hora le viene bien dentro de eso. Si querés proponerle una hora concreta para que le resulte más fácil decidir, dale — pero una, no cinco.
 No mandes ningún link. El horario que elija lo agendás vos.`,
 
     horario_no_entendido: `Le mostraste horarios y contestó algo que no se entiende cuál es.
