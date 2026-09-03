@@ -376,6 +376,10 @@ test('si pide una hora que no se le ofrecio, no se le agenda otra', async () => 
       const opciones = args.herramienta.parametros.properties.opcion.enum;
       return { texto: null, argumentos: { opcion: opciones[0] } };
     }
+    // Las 23:00 de hoy: el lead las pidio, y estan fuera de la franja.
+    if (args.herramienta?.nombre === 'momento') {
+      return { texto: null, argumentos: { pide: true, dia: '2026-08-19', hora: 23, minuto: 0 } };
+    }
     return original(args);
   };
 
@@ -400,7 +404,7 @@ test('si pide una hora que no se le ofrecio, no se le agenda otra', async () => 
   const l = s.repo.leadPorTelefono('59899123456');
   assert.equal(l.meeting_time, null, 'no agendo nada');
   assert.equal(l.fsm_state, S.HORARIOS_OFRECIDOS, 'sigue esperando que elija');
-  assert.equal(msgs.at(-1), '[horario_no_entendido]', 'le vuelve a mostrar los que hay');
+  assert.equal(msgs.at(-1), '[horario_fuera_de_franja]', 'le dice por que no y le muestra lo que hay');
   assert.ok(!google.llamadas.some((c) => c.url.includes('/events?')), 'y no toco el calendario');
 });
 
@@ -774,4 +778,38 @@ test('al rechazar una hora, se muestra lo libre de ESE dia', async () => {
   assert.ok(prompt, 'se le pidio el mensaje de rechazo');
   assert.match(prompt, /viernes, 18 de septiembre|viernes, 18 de setiembre/,
     `esperaba el dia que pidio, no los cercanos:\n${prompt.slice(-400)}`);
+});
+
+/**
+ * El 3-9, mientras elegia horario:
+ *
+ *   ← Pero quiero página web no ecommerce
+ *   → [la lista de horarios]
+ *
+ * Una vez que el bot entraba en "mostrando horarios", TODO lo que el lead
+ * escribiera se interpretaba como algo sobre horarios; lo que no lo fuera
+ * recibia la lista de vuelta. La correccion se perdio y el dato quedo mal.
+ */
+test('lo que no habla de horarios lo atiende la conversacion', async () => {
+  const google = googleFalso();
+  const modelo = stubModelo({ datos: COMPLETO });
+  const original = modelo.pedir.bind(modelo);
+  modelo.pedir = async (args) => {
+    if (args.herramienta?.nombre === 'elegir') return { texto: null, argumentos: { opcion: 'ninguno' } };
+    // El modelo no ve ninguna fecha en el mensaje.
+    if (args.herramienta?.nombre === 'momento') return { texto: null, argumentos: { pide: false } };
+    return original(args);
+  };
+
+  const s = await conLead({ modelo, AGENDA_OFRECE_HORARIOS: 'true', _google: google.fetch });
+
+  await s.servicioLeads.registrarRespuesta('59899123456', DIJO_TODO);
+  await s.cola.vacia();
+  await s.servicioLeads.registrarRespuesta('59899123456', 'pero quiero página web no ecommerce');
+  await s.cola.vacia();
+
+  const msgs = s.proveedor.getEnviados().filter((e) => e.to === '59899123456').map((e) => e.texto);
+  assert.equal(msgs.at(-1), '[conversacion]', 'lo contesta el modelo, no la lista');
+  assert.equal(s.repo.leadPorTelefono('59899123456').fsm_state, S.HORARIOS_OFRECIDOS,
+    'y sigue eligiendo horario');
 });

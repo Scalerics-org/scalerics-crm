@@ -305,129 +305,92 @@ function crearEmbudo({
   }
 
   /**
-   * El lead pidio un horario que no estaba en la lista. Se lo interpreta, se
-   * verifica contra la franja y contra el calendario, y se le contesta lo que
-   * corresponda.
-   *
-   * @returns {Promise<{decidido: boolean, estado?: string, inicio?: Date}>}
-   *   decidido = ya se le contesto y no hay nada que agendar.
+   * Sentinela: este turno no habla de horarios y lo tiene que atender la
+   * conversacion normal. Sin esto, cualquier cosa que el lead escriba mientras
+   * elige horario recibe la lista de vuelta — el 3-9 corrigio "quiero página
+   * web no ecommerce" y le contestaron con los horarios.
    */
-  async function pedirOtroHorario(lead, entrada, ofrecidos) {
-    /**
-     * Lo que hay libre, en tramos.
-     *
-     * Si el lead nombro un dia, se le muestra ESE dia. El 3-9 pidio cinco veces
-     * las 9:30 del 11 y las cinco recibio los dias cercanos —el 4 y el 7—
-     * hasta que escribio "el 11 tiene que ser, dejá de insistir con esos días".
-     * El rechazo era correcto; lo que ofrecia despues, no.
-     */
-    const conLoQueHay = async (diaPedido = null) => {
-      if (diaPedido && agenda?.activo) {
-        const delDia = await agenda.tramosDelDia(diaPedido, ahora());
-        if (delDia.length) return describirTramos(delDia);
-      }
-      const nuevos = await agenda?.horariosDisponibles(ahora());
-      return describirTramos(nuevos?.bloques) || describirHorarios({ slots: ofrecidos });
-    };
+  const CONVERSAR = '__conversar__';
 
-    const repetirLista = async (diaPedido = null) => {
-      if (!await decirIA(lead, 'horario_no_entendido', await conLoQueHay(diaPedido))) {
-        return { decidido: true, estado: sinIA(lead, 'horario_no_entendido') };
-      }
-      return { decidido: true, estado: S.HORARIOS_OFRECIDOS };
-    };
+  /**
+   * QUE hacer con lo que el lead dijo sobre horarios. Una sola funcion decide.
+   *
+   * Antes esto estaba repartido en cuatro ramas y cada una elegia por su cuenta
+   * que horarios mostrar despues. Por eso arreglar una no arreglaba las otras:
+   * en un mismo dia hubo que tocar tres veces lo mismo, y cada vez quedaba una
+   * salida sin cubrir que volvia a ofrecer los dias cercanos cuando el lead
+   * estaba hablando de otro.
+   *
+   * Ahora esto decide y `responderHorarios` responde. El dia en foco se elige
+   * UNA vez, no una por rama.
+   */
+  async function decidirSobreHorarios(lead, entrada, ofrecidos) {
+    const elegido = await elegirHorario(lead, entrada, ofrecidos);
+    if (elegido) return { accion: 'agendar', inicio: elegido };
 
-    /**
-     * El dia del que venia hablando el lead, aunque este turno no se entienda.
-     *
-     * Sale de los horarios que se le mostraron recien: si el ultimo mensaje del
-     * bot fue sobre el viernes 11, contestarle con el 4 y el 7 es cambiarle de
-     * tema. El 3-9 eligio un tramo que el bot le habia ofrecido —"de 10:30 a
-     * 18:00"— y recibio los dias cercanos como si no hubiera dicho nada.
-     */
-    const enFoco = ofrecidos.length ? ofrecidos[0] : null;
-
-    if (!agente?.activo || !agenda?.activo) return repetirLista(enFoco);
+    if (!agente?.activo || !agenda?.activo) return { accion: 'no_entendi' };
 
     const hoy = enZona(ahora(), cfg.TZ).dia;
     const pedido = await agente.proponerMomento({ texto: entrada, hoy, tz: cfg.TZ });
-    // No estaba pidiendo una hora: pregunto otra cosa, o dudo.
-    if (!pedido) return repetirLista(enFoco);
+    // No hablo de fechas: lo atiende la conversacion, no la lista.
+    if (!pedido) return { accion: 'no_es_de_horarios' };
 
-    /**
-     * Pregunto por un dia en vez de elegir uno. Se le contesta lo de ESE dia.
-     *
-     * El 3-9 pregunto dos veces "¿qué hora tenés libre el viernes 18?" y las dos
-     * recibio la lista de los dias cercanos, porque el bot solo sabia mostrar
-     * los proximos huecos. Y a la tercera, cuando escribio "viernes 18 a las 14
-     * no puedo entonces?", se lo agendo: seguia sin poder contestar, y lo unico
-     * que sabia hacer con un dia y una hora era reservar.
-     */
-    if (pedido.consulta) {
-      const dia = instanteLocal(pedido.dia, 12, 0, cfg.TZ);
-      const tramos = await agenda.tramosDelDia(dia, ahora());
-      if (tramos.length) {
-        if (!await decirIA(lead, 'disponibilidad_del_dia', describirTramos(tramos))) {
-          return { decidido: true, estado: sinIA(lead, 'disponibilidad_del_dia') };
-        }
-        return { decidido: true, estado: S.HORARIOS_OFRECIDOS };
-      }
-      // Ese dia no tiene nada: se le dice y se le muestra lo que si hay.
-      const franja = revisarFranja(instanteLocal(pedido.dia, 12, 0, cfg.TZ), cfg, ahora());
-      const motivo = franja.ok
-        ? 'Ese día está completo.'
-        : MOTIVO_FRANJA[franja.motivo](cfg, dia);
-      if (!await decirIA(lead, 'horario_fuera_de_franja',
-        `${motivo}
-
-${await conLoQueHay()}`)) {
-        return { decidido: true, estado: sinIA(lead, 'horario_fuera_de_franja') };
-      }
-      return { decidido: true, estado: S.HORARIOS_OFRECIDOS };
-    }
+    const dia = instanteLocal(pedido.dia, 12, 0, cfg.TZ);
+    if (pedido.consulta) return { accion: 'mostrar_dia', dia };
 
     const inicio = instanteLocal(pedido.dia, pedido.hora, pedido.minuto, cfg.TZ);
 
     const franja = revisarFranja(inicio, cfg, ahora());
-    if (!franja.ok) {
-      logger?.info({ leadId: lead.id, pidio: inicio.toISOString(), motivo: franja.motivo },
-        'pidio un horario que no se puede dar');
-      const explicacion = MOTIVO_FRANJA[franja.motivo](cfg, inicio);
-      if (!await decirIA(lead, 'horario_fuera_de_franja',
-        `${explicacion}
-
-${await conLoQueHay(inicio)}`)) {
-        return { decidido: true, estado: sinIA(lead, 'horario_fuera_de_franja') };
-      }
-      return { decidido: true, estado: S.HORARIOS_OFRECIDOS };
-    }
+    if (!franja.ok) return { accion: 'rechazar', motivo: franja.motivo, inicio, dia: inicio };
 
     const libre = await agenda.libreEn(inicio);
     // null es "no se pudo preguntar": ni se agenda a ciegas ni se le dice que
-    // no a algo que capaz estaba libre. Se le repite la lista, que si se sabe.
-    if (libre === null) return repetirLista(inicio);
-    if (libre === false) {
-      // Lo que queda libre ESE dia, no los dias cercanos: el lead esta
-      // hablando del 11, no del 4.
-      const delDia = await agenda.tramosDelDia(inicio, ahora());
-      if (delDia.length) {
-        await decirIA(lead, 'horario_ocupado', describirTramos(delDia));
-        return { decidido: true, estado: S.HORARIOS_OFRECIDOS };
+    // no a algo que capaz estaba libre.
+    if (libre === null) return { accion: 'no_entendi', dia: inicio };
+    if (libre === false) return { accion: 'ocupado', dia: inicio };
+
+    return { accion: 'agendar', inicio };
+  }
+
+  /**
+   * Lo que se le dice. Un solo lugar, y el dia que se le muestra sale de un
+   * solo lado: el que el lead nombro, y si no nombro ninguno, el de los
+   * horarios que ya tenia a la vista.
+   */
+  async function responderHorarios(lead, decision, ofrecidos) {
+    const enFoco = decision.dia || (ofrecidos.length ? ofrecidos[0] : null);
+
+    const loQueHay = async () => {
+      if (enFoco && agenda?.activo) {
+        const delDia = await agenda.tramosDelDia(enFoco, ahora());
+        if (delDia.length) return describirTramos(delDia);
       }
-      const nuevos = await agenda.horariosDisponibles(ahora());
+      const nuevos = await agenda?.horariosDisponibles(ahora());
       if (nuevos?.slots?.length) {
         repo.actualizarFunnel(lead.id, {
           horarios_ofrecidos: JSON.stringify(nuevos.slots.map((d) => d.toISOString())),
         });
-        await decirIA(lead, 'horario_ocupado', describirTramos(nuevos.bloques));
-        return { decidido: true, estado: S.HORARIOS_OFRECIDOS };
+        return describirTramos(nuevos.bloques);
       }
-      return repetirLista(inicio);
-    }
+      return describirHorarios({ slots: ofrecidos });
+    };
 
-    logger?.info({ leadId: lead.id, pidio: inicio.toISOString() },
-      'pidio un horario libre que no estaba en la lista');
-    return { decidido: false, inicio };
+    const SITUACION = {
+      mostrar_dia: 'disponibilidad_del_dia',
+      rechazar: 'horario_fuera_de_franja',
+      ocupado: 'horario_ocupado',
+      no_entendi: 'horario_no_entendido',
+    };
+    const situacion = SITUACION[decision.accion];
+
+    const extra = decision.accion === 'rechazar'
+      ? `${MOTIVO_FRANJA[decision.motivo](cfg, decision.inicio)}
+
+${await loQueHay()}`
+      : await loQueHay();
+
+    if (!await decirIA(lead, situacion, extra)) return sinIA(lead, situacion);
+    return S.HORARIOS_OFRECIDOS;
   }
 
   /** Deja la reunion registrada: recordatorios, aviso al AM y estado. */
@@ -589,26 +552,18 @@ ${await conLoQueHay(inicio)}`)) {
         const ofrecidos = leerHorarios(lead);
         if (!ofrecidos.length) return alEntrar(lead, S.MEETING_SENT, entrada);
 
-        let elegido = await elegirHorario(lead, entrada, ofrecidos);
+        const decision = await decidirSobreHorarios(lead, entrada, ofrecidos);
 
-        /**
-         * No eligio ninguno de la lista. Antes se le repetia la lista y listo,
-         * y eso estaba mal por dos motivos.
-         *
-         * Los cinco horarios son sugerencias repartidas en dias, no todo lo que
-         * hay: en una franja de 12 a 16 cada media hora entran ocho por dia. Si
-         * pide las 15:00 y estan libres, hay que darselas — decirle que no a un
-         * horario que existe es perder la reunion por nada.
-         *
-         * Y cuando de verdad no se puede, hay que decir POR QUE. El 2-9 pidio
-         * las 5 de la mañana y despues las 8:30 y recibio la misma lista dos
-         * veces sin una palabra: eso se lee como que el bot no escucha.
-         */
-        if (!elegido) {
-          const pedido = await pedirOtroHorario(lead, entrada, ofrecidos);
-          if (pedido.decidido) return pedido.estado;
-          elegido = pedido.inicio;
+        // No habla de horarios: lo atiende la conversacion. El 3-9 el lead
+        // corrigio "quiero página web no ecommerce" mientras elegia horario y
+        // recibio la lista de horarios, con la correccion perdida.
+        if (decision.accion === 'no_es_de_horarios') return CONVERSAR;
+
+        if (decision.accion !== 'agendar') {
+          return responderHorarios(lead, decision, ofrecidos);
         }
+
+        const elegido = decision.inicio;
 
         const r = await agenda.reservar({
           inicio: elegido,
@@ -855,7 +810,32 @@ ${await conLoQueHay(inicio)}`)) {
       if (!agente?.activo) return sinIA(lead, 'sin_clave');
 
       const mapa = TRANSICIONES[actual] || {};
-      return this._transicionar(lead, entrada, mapa['*'] || S.CONVERSANDO);
+      const destino = await this._transicionar(lead, entrada, mapa['*'] || S.CONVERSANDO);
+
+      /**
+       * El turno no era de horarios. Lo atiende la conversacion, como
+       * cualquier otro: el lead sigue eligiendo horario, pero lo que dijo
+       * ahora es otra cosa —una correccion, una duda, un dato— y merece que se
+       * lo escuche en vez de recibir la lista de nuevo.
+       */
+      if (destino === CONVERSAR) {
+        if (!agente?.activo) return sinIA(lead, 'sin_clave');
+        const r = await agente.responder(
+          lead, textoCrudo,
+          repo.ultimosMensajes(lead.id, 20, lead.conversacion_desde),
+          actual,
+          { porAudio },
+        );
+        if (!r) return sinIA(lead, 'conversacion');
+        await this._conversar(lead, entrada, r, {
+          actual, califica: false, puedeCerrar: false, porAudio,
+        });
+        // Sigue eligiendo horario: la conversacion no lo saca de ahi.
+        repo.actualizarFunnel(lead.id, { fsm_state: S.HORARIOS_OFRECIDOS });
+        return S.HORARIOS_OFRECIDOS;
+      }
+
+      return destino;
     },
 
     /**
@@ -978,6 +958,9 @@ ${await conLoQueHay(inicio)}`)) {
 
     async _transicionar(lead, entrada, destino) {
       const final = await alEntrar(repo.leadPorId(lead.id), destino, entrada);
+      // El sentinela no es un estado: dice que el turno lo atiende la
+      // conversacion. Guardarlo dejaria al lead en un fsm_state inexistente.
+      if (final === CONVERSAR) return CONVERSAR;
       repo.actualizarFunnel(lead.id, { fsm_state: final });
 
       // El CRM se entera cuando el lead califica o pide un humano — los dos
