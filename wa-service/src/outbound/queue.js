@@ -258,6 +258,31 @@ function crearCola({ proveedor, repo, cfg, logger, limites, ahora = () => new Da
 
         if (!veredicto.ok) {
           const demoraMin = Math.round((veredicto.reintentarEn - ahora()) / 60_000);
+
+          /**
+           * Hay mensajes que solo sirven en el momento.
+           *
+           * "No te entendi el archivo" contestado trece horas despues es ruido:
+           * el lead no tiene forma de saber a que se refiere. Paso el 2-9 con
+           * un sticker que llego 22:36, fuera del horario de envio: la cola lo
+           * reprogramo para la manana siguiente, como hace con todo.
+           *
+           * La regla de horario esta bien —no se le escribe a nadie a las 3am—
+           * pero un mensaje reactivo que no sale a tiempo no hay que guardarlo:
+           * hay que tirarlo.
+           */
+          if (item.venceEnMin) {
+            const nacido = item.encoladoEn ? new Date(item.encoladoEn) : ahora();
+            const vence = nacido.getTime() + item.venceEnMin * 60_000;
+            if (veredicto.reintentarEn.getTime() > vence) {
+              logger?.info(
+                { kind: item.kind, motivo: veredicto.motivo, demoraMin },
+                'mensaje descartado: ya no sirve tan tarde'
+              );
+              continue;
+            }
+          }
+
           logger?.warn(
             { kind: item.kind, motivo: veredicto.motivo, demoraMin },
             'mensaje reprogramado, no descartado'

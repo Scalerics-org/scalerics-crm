@@ -149,3 +149,28 @@ test('reiniciar tambien borra los horarios que se le habian ofrecido', async () 
 
   assert.equal(s.repo.leadPorId(id).horarios_ofrecidos, null);
 });
+
+/**
+ * Un sticker o una foto tampoco despiertan al bot si esta pausado.
+ *
+ * El camino de los mensajes sin texto miraba opt_out y human_requested pero no
+ * la pausa, asi que el bot contestaba "no me abre el archivo" en un chat donde
+ * una persona acababa de entrar.
+ */
+test('con el bot pausado, un mensaje sin texto no recibe respuesta', async () => {
+  const s = await conLead({ modelo: stubModelo() });
+  const id = s.repo.leadPorTelefono(TEL).id;
+  s.repo.actualizarFunnel(id, {
+    bot_pausado_hasta: new Date(Date.now() + 3600_000).toISOString(),
+  });
+
+  await s.proveedor.simularSinTexto({ from: TEL, tipo: 'sticker' });
+  await s.agrupador.vaciar();
+  await s.cola.vacia();
+
+  assert.deepEqual(
+    s.proveedor.getEnviados().filter((e) => e.to === TEL).map((e) => e.texto),
+    [],
+    'el bot se queda callado',
+  );
+});

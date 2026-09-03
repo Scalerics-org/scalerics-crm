@@ -194,6 +194,10 @@ const esquema = z.object({
   // audios. Quien manda cuatro seguidos no necesita cuatro disculpas.
   AVISO_SIN_TEXTO_MINUTOS: z.coerce.number().nonnegative().default(30),
 
+  // Cuanto vale ese aviso. Pasado ese rato no se manda: contestar "no te
+  // entendi el archivo" al otro dia es ruido, el lead ya no sabe de que hablas.
+  AVISO_SIN_TEXTO_VENCE_MIN: z.coerce.number().int().positive().default(60),
+
   /**
    * Cuanto se espera antes de contestar, por si siguen escribiendo. La gente
    * manda "Necesito un" / "ecommerce" / "a medida" en tres mensajes seguidos;

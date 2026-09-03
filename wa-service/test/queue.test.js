@@ -527,3 +527,28 @@ test('a un lead si se le puede repetir un mensaje', async () => {
 
   assert.equal(s.proveedor.getEnviados().length, 2, 'mejor repetirse que quedarse mudo');
 });
+
+/**
+ * Un "no te entendi el archivo" solo sirve en el momento.
+ *
+ * Paso el 2-9: llego un sticker a las 22:36, fuera del horario de envio, y la
+ * cola lo reprogramo para la manana siguiente como hace con todo. El lead
+ * recibio "No me abre el archivo. ¿Contame de qué se trata?" trece horas y
+ * media despues, sin ninguna forma de saber a que se referia.
+ *
+ * La regla de horario esta bien —no se le escribe a nadie a las 3am— pero un
+ * mensaje reactivo que no sale a tiempo no hay que guardarlo: hay que tirarlo.
+ */
+test('un mensaje con vencimiento se descarta en vez de salir tarde', async () => {
+  // Las 22:00 de Montevideo: fuera del horario de envio.
+  const anoche = new Date('2026-09-02T01:00:00Z');
+  const s = await montar({ BUSINESS_HOURS: '09:00-19:00' }, anoche);
+  s.cola.encolar({
+    to: '59899123456', texto: 'No me abre el archivo', kind: 'manual',
+    leadId: null, venceEnMin: 60, encoladoEn: anoche,
+  });
+  await s.cola.vacia();
+
+  assert.deepEqual(s.proveedor.getEnviados(), [], 'no salio');
+  assert.equal(s.cola.pendientes(), 0, 'y no quedo esperando a manana');
+});

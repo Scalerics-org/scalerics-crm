@@ -158,8 +158,8 @@ const LEAD = {
 };
 
 /** Servicio con un lead ya dado de alta y la cola limpia. */
-async function conLead(extra, datos = LEAD) {
-  const s = await montar(extra);
+async function conLead(extra, datos = LEAD, reloj) {
+  const s = await montar(extra, reloj);
   await s.servicioLeads.alta(datos);
   await s.cola.vacia();
   s.proveedor.limpiar();

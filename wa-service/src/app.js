@@ -231,6 +231,10 @@ function construir(cfg, {
     const lead = repo.leadPorTelefono(from);
     // Al que se dio de baja o esta con una persona no se le escribe igual.
     if (lead?.opt_out || lead?.human_requested) return;
+    // Ni cuando el bot esta apagado o pausado: un sticker no lo despierta. Sin
+    // esto contestaba "no me abre el archivo" en un chat donde una persona
+    // acababa de entrar a escribir.
+    if (lead && !require('./funnel/pausa').botActivo(lead, ahora())) return;
 
     // Una nota de voz se transcribe y sigue el mismo camino que si la hubieran
     // escrito. Es lo que mas cambia en Uruguay, donde media conversacion de
@@ -277,7 +281,15 @@ function construir(cfg, {
       log.warn({ from, tipo }, 'no se pudo redactar el aviso de entrante sin texto');
       return;
     }
-    cola.encolar({ to: from, texto, kind: 'manual', leadId: lead?.id ?? null });
+    cola.encolar({
+      to: from, texto, kind: 'manual', leadId: lead?.id ?? null,
+      // Solo sirve en el momento. Si cae fuera del horario de envio y habria
+      // que mandarlo a la manana siguiente, mejor no mandarlo: "no te entendi
+      // el archivo" trece horas despues es ruido, el lead no tiene forma de
+      // saber a que se refiere. Paso el 2-9 con un sticker de las 22:36.
+      venceEnMin: cfg.AVISO_SIN_TEXTO_VENCE_MIN,
+      encoladoEn: ahora(),
+    });
     log.info({ from, tipo }, 'entrante sin texto: se le pide que escriba');
   });
   // Los audios viejos se borran solos. La transcripcion queda para siempre; el

@@ -512,12 +512,13 @@ function conHoraPedida(hhmm, extra = {}) {
 
 test('una hora libre que no estaba en la lista igual se agenda', async () => {
   const google = googleFalso();
+  // Reloj fijo: sin esto el test se rompe solo cuando cambia el dia, porque la
+  // fecha que pide el lead esta escrita a mano.
   const s = await conLead({
     modelo: conHoraPedida('15:00'),
     AGENDA_OFRECE_HORARIOS: 'true',
     _google: google.fetch,
-    ahora: instanteLocal('2026-09-03', 9, 0, TZ),
-  });
+  }, undefined, instanteLocal('2026-09-03', 9, 0, TZ));
 
   await s.servicioLeads.registrarRespuesta('59899123456', DIJO_TODO);
   await s.cola.vacia();
@@ -535,8 +536,7 @@ test('una hora fuera de la franja se rechaza diciendo por que', async () => {
     modelo: conHoraPedida('05:00'),
     AGENDA_OFRECE_HORARIOS: 'true',
     _google: google.fetch,
-    ahora: instanteLocal('2026-09-03', 9, 0, TZ),
-  });
+  }, undefined, instanteLocal('2026-09-03', 9, 0, TZ));
 
   await s.servicioLeads.registrarRespuesta('59899123456', DIJO_TODO);
   await s.cola.vacia();
