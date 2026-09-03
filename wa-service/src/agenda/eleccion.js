@@ -202,4 +202,32 @@ function revisarFranja(inicio, cfg, ahora = new Date()) {
   return { ok: true };
 }
 
-module.exports = { horasQueDijo, diasQueNombro, eligioEsaHora, revisarFranja, franjaDelDia };
+/** 480 -> "08:00". */
+function aHora(minutos) {
+  const h = Math.floor(minutos / 60);
+  const m = minutos % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+/**
+ * La franja de atencion del dia que pidio, en palabras, para decirsela al lead.
+ *
+ * Sale de la config real y no de AGENDA_DESDE/AGENDA_HASTA. El 3-9 el bot se
+ * contradijo en dos mensajes seguidos —ofrecio "de 10:00 a 19:00" y al rechazar
+ * un horario dijo "manejamos entre las 12 y las 16"— porque el mensaje de
+ * rechazo leia esas dos variables, que habian quedado en los valores viejos
+ * cuando la config paso a horarios por dia. El lead lo noto enseguida.
+ *
+ * @returns {string|null} null si ese dia no se atiende.
+ */
+function textoDeFranja(fecha, cfg) {
+  const tz = cfg.TZ || 'America/Montevideo';
+  const { diaSemana } = enZona(fecha, tz);
+  const franja = franjaDelDia(diaSemana, cfg.AGENDA_HORARIOS, {
+    desde: cfg.AGENDA_DESDE, hasta: cfg.AGENDA_HASTA, dias: cfg.AGENDA_DIAS,
+  });
+  if (!franja) return null;
+  return `${aHora(franja.desde)} a ${aHora(franja.hasta)}`;
+}
+
+module.exports = { horasQueDijo, diasQueNombro, eligioEsaHora, revisarFranja, franjaDelDia, textoDeFranja };

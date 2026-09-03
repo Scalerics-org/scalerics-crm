@@ -1,7 +1,7 @@
 'use strict';
 
 const { S, palabraGlobal } = require('./states');
-const { eligioEsaHora, revisarFranja } = require('../agenda/eleccion');
+const { eligioEsaHora, revisarFranja, textoDeFranja } = require('../agenda/eleccion');
 const { enZona, instanteLocal } = require('../agenda/gcal');
 const { TRANSICIONES } = require('./transitions');
 const plantillas = require('../templates');
@@ -77,7 +77,19 @@ const AVISAR_AL_CRM = new Set([S.MEETING_SENT, S.MEETING_LINK_SENT, S.HUMAN_QUEU
  * es lo que paso el 2-9 con "las 5 de la mañana" y despues "las 8:30".
  */
 const MOTIVO_FRANJA = {
-  fuera_de_franja: (cfg) => `Pidió una hora fuera del horario en que agendamos, que es de ${cfg.AGENDA_DESDE} a ${cfg.AGENDA_HASTA}. Decíselo en una línea, sin pedir disculpas de más.`,
+  /**
+   * La franja sale de la config real del dia que pidio, no de
+   * AGENDA_DESDE/AGENDA_HASTA. El 3-9 el bot ofrecio "de 10:00 a 19:00" y dos
+   * mensajes despues dijo "manejamos entre las 12 y las 16": esas dos
+   * variables habian quedado en los valores viejos cuando la config paso a
+   * horarios por dia, y el rechazo las citaba. El lead lo noto enseguida.
+   */
+  fuera_de_franja: (cfg, inicio) => {
+    const franja = textoDeFranja(inicio, cfg);
+    return franja
+      ? `Pidió una hora fuera del horario en que agendamos ese día, que es de ${franja}. Decíselo en una línea, sin pedir disculpas de más.`
+      : 'Pidió una hora en la que no agendamos. Decíselo en una línea, sin pedir disculpas de más.';
+  },
   dia_no_habil: () => 'Pidió un día que no es hábil: solo agendamos de lunes a viernes. Decíselo en una línea.',
   muy_pronto: (cfg) => `Pidió algo demasiado pronto: hace falta al menos ${cfg.AGENDA_AVISO_MIN_HORAS} horas de aviso. Decíselo sin sonar burocrático.`,
   muy_lejos: (cfg) => `Pidió una fecha demasiado lejana: agendamos hasta ${cfg.AGENDA_DIAS_ADELANTE} días adelante. Decíselo y ofrecele lo que hay.`,
@@ -301,8 +313,16 @@ function crearEmbudo({
    *   decidido = ya se le contesto y no hay nada que agendar.
    */
   async function pedirOtroHorario(lead, entrada, ofrecidos) {
+    // Los tramos, igual que en la oferta. Con la lista suelta el lead veia
+    // cinco horas despues de que le dijeran "de 10 a 19", que es la
+    // contradiccion que ya noto una vez.
+    const conLoQueHay = async () => {
+      const nuevos = await agenda?.horariosDisponibles(ahora());
+      return describirTramos(nuevos?.bloques) || describirHorarios({ slots: ofrecidos });
+    };
+
     const repetirLista = async () => {
-      if (!await decirIA(lead, 'horario_no_entendido', describirHorarios({ slots: ofrecidos }))) {
+      if (!await decirIA(lead, 'horario_no_entendido', await conLoQueHay())) {
         return { decidido: true, estado: sinIA(lead, 'horario_no_entendido') };
       }
       return { decidido: true, estado: S.HORARIOS_OFRECIDOS };
@@ -321,11 +341,11 @@ function crearEmbudo({
     if (!franja.ok) {
       logger?.info({ leadId: lead.id, pidio: inicio.toISOString(), motivo: franja.motivo },
         'pidio un horario que no se puede dar');
-      const explicacion = MOTIVO_FRANJA[franja.motivo](cfg);
+      const explicacion = MOTIVO_FRANJA[franja.motivo](cfg, inicio);
       if (!await decirIA(lead, 'horario_fuera_de_franja',
         `${explicacion}
 
-${describirHorarios({ slots: ofrecidos })}`)) {
+${await conLoQueHay()}`)) {
         return { decidido: true, estado: sinIA(lead, 'horario_fuera_de_franja') };
       }
       return { decidido: true, estado: S.HORARIOS_OFRECIDOS };

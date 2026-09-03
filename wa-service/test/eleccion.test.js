@@ -199,3 +199,35 @@ test('revisarFranja respeta el horario del dia que toca', () => {
   const jue8 = new Date(Date.UTC(2026, 8, 3, 11));
   assert.equal(revisarFranja(jue8, cfg, ahoraTemprano).ok, true);
 });
+
+// ── como se le explica al lead que ese horario no se puede ───────────────────
+
+const { textoDeFranja } = require('../src/agenda/eleccion');
+
+/**
+ * El 3-9 el bot se contradijo en dos mensajes seguidos:
+ *
+ *   → Tengo libre viernes 4 de 10:00 a 19:00
+ *   ← Y el 17 a las 8?
+ *   → Los horarios que manejamos son entre las 12 y las 16hs
+ *   ← Pero si dijiste que era de 10 a 19
+ *
+ * El mensaje de "fuera de franja" leia AGENDA_DESDE/AGENDA_HASTA, que quedaron
+ * en los valores viejos cuando la config paso a horarios por dia. Citaba una
+ * variable muerta.
+ */
+test('la franja que se le dice al lead sale del dia que pidio', () => {
+  const cfg = {
+    TZ, AGENDA_DESDE: '12:00', AGENDA_HASTA: '16:00',
+    AGENDA_HORARIOS: 'mon:10:00-19:00,tue:10:00-19:00,wed:10:00-19:00,thu:10:00-19:00,fri:10:00-19:00',
+  };
+  // Viernes 4, cualquier hora: la franja de ese dia es 10 a 19.
+  const viernes = new Date(Date.UTC(2026, 8, 4, 11));
+  assert.equal(textoDeFranja(viernes, cfg), '10:00 a 19:00');
+  assert.ok(!textoDeFranja(viernes, cfg).includes('12:00'), 'no repite la config vieja');
+});
+
+test('sin horarios por dia, cae a la franja unica', () => {
+  const cfg = { TZ, AGENDA_DESDE: '12:00', AGENDA_HASTA: '16:00', AGENDA_DIAS: 'mon,tue,wed,thu,fri' };
+  assert.equal(textoDeFranja(new Date(Date.UTC(2026, 8, 4, 15)), cfg), '12:00 a 16:00');
+});
