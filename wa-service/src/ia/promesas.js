@@ -22,12 +22,23 @@
  */
 
 /** Dice que ya lo agendo. Es mentira mientras el lead no tenga reunion. */
+/** Borde de palabra sin depender de escapes. */
+const NADA = '(?<![a-zaeiouun])';
+
 const DICE_QUE_AGENDO = [
   /\b(qued[oó]|queda|quedamos)\s+(agendad|confirmad|reservad)/i,
   /\b(te|lo|la)\s+agend(o|é|e|amos)\b/i,
   /\bagend(o|é|amos)\s+(la|tu|una)\s+(videollamada|reuni[oó]n|llamada)/i,
   /\bya\s+est[aá]\s+(agendad|confirmad|reservad)/i,
   /\breserv(é|e|amos)\s+(la|tu)\b/i,
+  // "Perfecto, lunes a las 12 de la noche anotado." El 3-9 el modelo encontro
+  // esta forma, que ninguna de las de arriba agarra. Una lista de frases
+  // siempre va a tener agujeros; lo que no cambia es que confirma un momento.
+  new RegExp(NADA + 'anotad[oa]' + NADA, 'i'),
+  /nos vemos +(el|la|ese|este)/i,
+  /te espero +(el|la|ese|este)/i,
+  /(dale|listo|perfecto|buen[ií]simo)[,.]? +(el +)?(lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo)/i,
+  /qued(a|amos) +(para +)?(el +)?(lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo)/i,
 ];
 
 /**

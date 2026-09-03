@@ -807,7 +807,21 @@ ${describirHorarios({ slots: ofrecidos })}`)) {
        * Se tira lo que escribio y se le manda el link, que es lo unico que de
        * verdad lleva a una reunion.
        */
-      if (!cfg.AGENDA_OFRECE_HORARIOS && !lead.meeting_booked_at) {
+      /**
+       * Corre SIEMPRE, tenga o no prendidos los horarios reales.
+       *
+       * Estaba detras de `!cfg.AGENDA_OFRECE_HORARIOS`, con el razonamiento de
+       * que con los horarios prendidos el embudo agenda bien y esto sobra. Vale
+       * solo si el lead LLEGA a la etapa de horarios. El 3-9 no llego —dijo que
+       * su negocio no tenia nombre todavia, business_name quedo vacio y el
+       * descubrimiento no cerro nunca— y el modelo se puso a negociar fechas
+       * por su cuenta: "lunes a las 12 de la noche anotado", fuera de la franja
+       * y sin nada en el calendario.
+       *
+       * Prender los horarios reales habia apagado la unica proteccion contra
+       * exactamente eso.
+       */
+      if (!lead.meeting_booked_at) {
         const promesa = prometeAgendar(texto);
         if (promesa) {
           logger?.warn(

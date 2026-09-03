@@ -83,10 +83,25 @@ test('pero si YA tiene reunión, confirmarla es la verdad', async () => {
 });
 
 /**
- * Con AGENDA_OFRECE_HORARIOS el bot SI reserva, asi que ahi pedir un horario y
- * confirmarlo es su trabajo, no una mentira.
+ * El guardia corre SIEMPRE, tambien con los horarios reales prendidos.
+ *
+ * Este test afirmaba lo contrario: que con AGENDA_OFRECE_HORARIOS el embudo
+ * agenda bien y el guardia sobra. El razonamiento tenia un agujero, y el 3-9 lo
+ * encontro: vale solo si el lead LLEGA a la etapa de horarios. Ese dijo que su
+ * negocio no tenia nombre todavia, business_name quedo vacio, el descubrimiento
+ * no cerro nunca, y el modelo se puso a negociar fechas por su cuenta:
+ *
+ *   → Escribime cualquier día y hora que te venga bien entre hoy y el viernes
+ *   ← Lunes a las 12 de la noche
+ *   → Perfecto, lunes a las 12 de la noche anotado.
+ *
+ * Medianoche, fuera de la franja de atencion, sin nada en el calendario.
+ * Prender los horarios reales habia apagado la unica proteccion contra eso.
+ *
+ * Lo que el embudo SI hace bien —mostrar horarios y agendar— sale por el
+ * redactor, no por esta parte de la conversacion, asi que el guardia no lo toca.
  */
-test('con el bot agendando de verdad, el guardia no se mete', async () => {
+test('el guardia corre aunque los horarios reales esten prendidos', async () => {
   const s = await conLead({
     modelo: stubModelo({ respuestas: { conversacion: '¿Qué día te viene bien?' } }),
     AGENDA_OFRECE_HORARIOS: 'true',
@@ -96,7 +111,8 @@ test('con el bot agendando de verdad, el guardia no se mete', async () => {
   await s.cola.vacia();
 
   const alLead = s.proveedor.getEnviados().filter((e) => e.to === TEL).map((e) => e.texto);
-  assert.ok(alLead.some((t) => /Qué día te viene bien/.test(t)));
+  assert.ok(!alLead.some((t) => /Qué día te viene bien/.test(t)),
+    'no sale: el bot no coordina horarios por su cuenta');
 });
 
 /**

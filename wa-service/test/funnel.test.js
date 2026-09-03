@@ -537,3 +537,52 @@ test('el estado en el que termina un lead calificado avisa al CRM', async () => 
   assert.equal(final, S.MEETING_LINK_SENT, 'ahí termina hoy el que califica');
   assert.ok(AVISAR_AL_CRM.has(final), 'y ese estado tiene que avisarle al CRM');
 });
+
+/**
+ * El guard de promesas tiene que correr SIEMPRE, no solo con los horarios
+ * reales apagados.
+ *
+ * Estaba detras de `!cfg.AGENDA_OFRECE_HORARIOS`, con el razonamiento de que
+ * con los horarios prendidos el embudo agenda bien y el guard sobra. Eso vale
+ * solo si el lead LLEGA a la etapa de horarios. El 3-9 no llego —dijo que su
+ * negocio no tenia nombre todavia, business_name quedo vacio y el
+ * descubrimiento no cerro nunca— y el modelo se puso a negociar fechas solo:
+ *
+ *   → Escribime cualquier día y hora que te venga bien entre hoy y el viernes
+ *   ← Lunes a las 12 de la noche
+ *   → Perfecto, lunes a las 12 de la noche anotado.
+ *
+ * Medianoche, fuera de la franja, sin nada en el calendario.
+ */
+test('con los horarios prendidos, el guard de promesas sigue corriendo', async () => {
+  const s = await conLead({
+    modelo: stubModelo({
+      respuestas: { conversacion: 'Perfecto, lunes a las 12 de la noche anotado.' },
+    }),
+    AGENDA_OFRECE_HORARIOS: 'true',
+  });
+
+  const msgs = await lead(s, 'lunes a las 12 de la noche');
+
+  assert.ok(!msgs.some((m) => /12 de la noche/.test(m)), 'no sale lo que improviso');
+  assert.equal(s.repo.leadPorTelefono(TEL).meeting_time, null, 'y no agendo nada');
+});
+
+/**
+ * Un negocio sin nombre todavia es una respuesta valida, no un agujero.
+ *
+ * Sin esto el descubrimiento no cierra nunca: el bot pregunta el nombre, el
+ * lead dice que no tiene, business_name queda vacio y faltantes() lo sigue
+ * pidiendo para siempre. Ahi es donde el modelo empieza a improvisar.
+ */
+test('el que todavia no le puso nombre al negocio igual avanza', async () => {
+  const s = await conLead({
+    modelo: stubModelo({ datos: { sin_nombre: true, rubro: 'venta de software', business_type: 'sistema' } }),
+  }, { external_id: 'wa9', nombre: 'Juan', telefono: '099123456', origen: 'wa' });
+
+  const msgs = await lead(s, 'todavía no tiene nombre, nos dedicamos a la venta de software, queremos un sistema');
+
+  assert.equal(s.repo.leadPorTelefono(TEL).sin_nombre, 1);
+  assert.equal(estado(s), S.MEETING_LINK_SENT, 'el embudo cierra igual');
+  assert.equal(msgs.at(-1), '[link_reunion]');
+});

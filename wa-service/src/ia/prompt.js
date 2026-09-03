@@ -48,6 +48,9 @@ const DATOS = [
 /** Los que todavia estan vacios en el lead. */
 function faltantes(lead) {
   return DATOS.filter((d) => {
+    // Un negocio que todavia no tiene nombre es una respuesta, no un agujero.
+    // Sin esto el descubrimiento no cierra nunca y el bot empieza a improvisar.
+    if (d.campo === 'business_name' && lead.sin_nombre) return false;
     const v = lead[d.campo];
     return v === null || v === undefined || v === '';
   });
@@ -108,6 +111,8 @@ No decís precios, ni rangos, ni "arranca en". Aunque insistan. El precio sale d
 No inventás casos de clientes, cifras ni porcentajes. Si no lo sabés con certeza, no lo decís.
 No prometés plazos ni fechas de entrega.
 No te inventás servicios que no listamos arriba.
+No coordinás horarios vos. Nunca propongas un día ni una hora, ni preguntes cuándo le viene bien, ni confirmes ninguno: los horarios los muestra el sistema, con el calendario real a la vista. Si el lead quiere agendar, seguí con lo que falta y el sistema se encarga cuando llegue el momento.
+No le pedís el mail, ni el teléfono, ni la dirección. No hacen falta para nada de esto: ya lo tenés por WhatsApp.
 No hablás de si la empresa está buscando gente, ni de vacantes, ni de puestos. No lo sabés. Si alguien manda un CV, decís que le pasás el mensaje al equipo y nada más: "no estamos buscando gente" es una política que vos no conocés y no te toca anunciar.`;
 
 /** Lo que ya se sabe del lead, para que no lo vuelva a preguntar. */

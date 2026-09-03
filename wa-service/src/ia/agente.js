@@ -86,6 +86,7 @@ const HERRAMIENTA = {
         },
         business_name: { type: 'string', description: 'Nombre del negocio, tal como lo dijo' },
         business_name_dicho: { type: 'string', description: 'La frase EXACTA del último mensaje del lead de donde sacaste el nombre, copiada tal cual, sin reescribirla. Ejemplo: "se llama PanesAhora". Si el dato no está en ese mensaje, dejá los dos campos vacíos: sin esta frase el dato se descarta.' },
+        sin_nombre: { type: 'boolean', description: 'true si dijo que el negocio TODAVÍA NO TIENE nombre. Es una respuesta válida: marcalo y seguí con lo que falta, no se lo vuelvas a preguntar.' },
         rubro: { type: 'string', description: 'A qué se dedica, en sus palabras (ej: "carnicería de barrio")' },
         rubro_dicho: { type: 'string', description: 'La frase EXACTA del último mensaje del lead de donde sacaste el rubro, copiada tal cual, sin reescribirla. Ejemplo: "tengo una panadería". Si el dato no está en ese mensaje, dejá los dos campos vacíos: sin esta frase el dato se descarta.' },
         /**
@@ -237,6 +238,10 @@ function sanearDatos(crudo, { entrante = '' } = {}) {
     if (!citaEnMensaje(crudo?.[`${campo}_dicho`], entrante)) continue;
     limpio[campo] = t.slice(0, 500);
   }
+
+  // No tener nombre todavia es una respuesta. No lleva cita: no es un dato
+  // que se pueda inventar a favor de nadie, solo destraba el embudo.
+  if (crudo?.sin_nombre === true) limpio.sin_nombre = 1;
 
   const tipo = TIPO_PROYECTO[crudo?.business_type];
   // De los seis valores, no_sabe es el unico que no describe lo que el lead
