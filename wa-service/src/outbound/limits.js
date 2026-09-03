@@ -102,11 +102,23 @@ function crearLimites({ repo, cfg, logger }) {
     /**
      * @returns {{ok: true} | {ok: false, motivo: string, reintentarEn: Date}}
      */
-    permitido({ esPrimerContacto, esInterno, ahora = new Date() }) {
+    permitido({ esPrimerContacto, esInterno, esRespuesta = false, ahora = new Date() }) {
       // Los avisos al AM son contacto interno: sin limites ni horario.
       if (esInterno) return { ok: true };
 
-      if (!enHorario(ahora)) {
+      /**
+       * La ventana frena lo que el bot INICIA, no lo que contesta.
+       *
+       * Es la misma distincion que hace el limite de contactos nuevos, dos
+       * comentarios mas abajo: contestarle a alguien que te escribio es el
+       * trafico de menor riesgo que existe, y encima la decision de estar
+       * despierto a las 23:00 la tomo el lead, no nosotros. Frenarlo hasta las
+       * 9 de la manana era perder el momento por nada.
+       *
+       * Un follow-up, un nurture o un recordatorio si esperan: esos aparecen
+       * sin que nadie los haya pedido, y ahi la hora importa.
+       */
+      if (!esRespuesta && !enHorario(ahora)) {
         return { ok: false, motivo: 'fuera de horario', reintentarEn: proximaApertura(ahora) };
       }
 

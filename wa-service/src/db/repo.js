@@ -153,6 +153,22 @@ function crearRepo(db) {
     mensajePorId: (id) => db.prepare('SELECT * FROM messages WHERE id = ?').get(id),
 
     /**
+     * Si el lead escribio hace poco. Lo usa la cola para decidir si un saliente
+     * es una RESPUESTA —y entonces no espera al horario de envio— o algo que
+     * arranca el bot, que si espera.
+     */
+    escribioHaceMenos(leadId, minutos, ahora = new Date()) {
+      if (!leadId) return false;
+      const desde = new Date(ahora.getTime() - minutos * 60_000).toISOString();
+      const f = db.prepare(`
+        SELECT 1 FROM messages
+        WHERE lead_id = ? AND direction = 'in' AND created_at >= ?
+        LIMIT 1
+      `).get(leadId, aFechaSqlite(desde));
+      return Boolean(f);
+    },
+
+    /**
      * Ultimos mensajes de la conversacion.
      *
      * `desde` corta lo anterior a un reinicio. Los mensajes viejos no se

@@ -253,6 +253,11 @@ function crearCola({ proveedor, repo, cfg, logger, limites, ahora = () => new Da
         const veredicto = limites.permitido({
           esPrimerContacto: !repo.yaFueContactado(item.to),
           esInterno: INTERNO.has(item.kind),
+          // Es una respuesta si el lead escribio recien. No hace falta que
+          // nadie lo marque al encolar: se mira la conversacion, que es lo que
+          // define si esto contesta algo o aparece de la nada.
+          esRespuesta: CONVERSACIONALES.has(item.kind)
+            && repo.escribioHaceMenos(item.leadId, cfg.RESPUESTA_VENTANA_MIN, ahora()),
           ahora: ahora(),
         });
 

@@ -160,8 +160,23 @@ const esquema = z.object({
   // Fecha de alta del numero (YYYY-MM-DD). Vacio = sin rampa de warm-up.
   WARMUP_START_DATE: z.string().default(''),
 
+  /**
+   * La ventana en que el bot puede MANDAR. Frena lo que arranca el —follow-ups,
+   * nurture, recordatorios—: esos aparecen sin que nadie los haya pedido y a
+   * las 4 de la mañana quedan pesimo, ademas de ser el trafico que WhatsApp
+   * mira para decidir si un numero hace spam.
+   *
+   * Contestarle a alguien que acaba de escribir NO espera: es el trafico de
+   * menor riesgo que existe —lo dice el comentario de los topes de arriba— y la
+   * decision de estar despierto a las 23:00 la tomo el lead. Frenarlo hasta las
+   * 9 era perder el momento por nada.
+   */
   BUSINESS_HOURS: z.string().default('09:00-19:00'),
   BUSINESS_DAYS: z.string().default('mon-sat'),
+
+  // Cuanto vale como "acaba de escribir". Pasado eso, un saliente ya no es
+  // una respuesta sino algo que el bot arranca, y vuelve a esperar el horario.
+  RESPUESTA_VENTANA_MIN: z.coerce.number().int().positive().default(120),
 
   /**
    * Con IA_CONVERSACION la parte de averiguar la conduce el modelo en vez del

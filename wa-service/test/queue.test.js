@@ -552,3 +552,39 @@ test('un mensaje con vencimiento se descarta en vez de salir tarde', async () =>
   assert.deepEqual(s.proveedor.getEnviados(), [], 'no salio');
   assert.equal(s.cola.pendientes(), 0, 'y no quedo esperando a manana');
 });
+
+/**
+ * Contestarle a alguien que acaba de escribir no espera al horario.
+ *
+ * La ventana de envio existe para el trafico que el bot INICIA —follow-ups,
+ * nurture, recordatorios—: ahi tiene sentido no aparecer a las 4 de la manana.
+ * Pero el propio codigo de limites dice que "contestarle a alguien que te
+ * escribio es el trafico de menor riesgo que existe", y aun asi los frenaba a
+ * los dos igual. El lead que escribia 23:00 quedaba sin respuesta hasta las 9.
+ */
+test('una respuesta a un lead que acaba de escribir sale fuera de horario', async () => {
+  const anoche = new Date('2026-09-02T02:00:00Z'); // 23:00 en Montevideo
+  const s = await conLead({ BUSINESS_HOURS: '09:00-19:00' }, undefined, anoche);
+  const lead = s.repo.leadPorTelefono('59899123456');
+
+  s.repo.registrarMensaje({
+    lead_id: lead.id, direction: 'in', kind: 'reply', body: 'hola, consulta',
+    provider: 'entrante', status: 'delivered',
+  });
+
+  s.cola.encolar({ to: '59899123456', texto: 'te contesto', kind: 'manual', leadId: lead.id });
+  await s.cola.vacia();
+
+  assert.equal(s.proveedor.getEnviados().length, 1, 'salio igual');
+});
+
+test('lo que el bot inicia si espera al horario', async () => {
+  const anoche = new Date('2026-09-02T02:00:00Z');
+  const s = await conLead({ BUSINESS_HOURS: '09:00-19:00' }, undefined, anoche);
+  const lead = s.repo.leadPorTelefono('59899123456');
+  // Sin entrante reciente: es un follow-up, no una respuesta.
+  s.cola.encolar({ to: '59899123456', texto: 'te escribo yo', kind: 'followup', leadId: lead.id });
+  await s.cola.vacia();
+
+  assert.deepEqual(s.proveedor.getEnviados(), [], 'espera a las 9');
+});
