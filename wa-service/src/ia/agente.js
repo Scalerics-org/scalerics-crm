@@ -185,6 +185,11 @@ function normalizarCita(texto) {
     .toLowerCase()
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
+    // El guion no puede tirar el dato. El 3-9 el lead contesto "Ecommerce" y el
+    // modelo cito "E-commerce": la cita decia exactamente lo que el lead habia
+    // dicho, pero no coincidia y needs se descarto. La cita esta para verificar
+    // que el dato salio del mensaje, no la ortografia.
+    .replace(/[-_.'’´`]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
 }

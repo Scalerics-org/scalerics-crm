@@ -182,6 +182,34 @@ test('la cita tiene que coincidir por palabra, no como pedazo de otra', () => {
   assert.equal(limpio.needs, undefined, '"web" adentro de "webcam" no es una cita');
 });
 
+/**
+ * El guion no puede tirar el dato.
+ *
+ * El 3-9 el lead contesto "Ecommerce" y el modelo cito "E-commerce". La cita
+ * decia exactamente lo que el lead habia dicho, pero el guion no coincidia y
+ * needs se descarto: el lead quedo con la necesidad vacia despues de haberla
+ * contestado, que es justo lo que hace que el bot vuelva a preguntar.
+ *
+ * La cita esta para verificar que el dato salio del mensaje, no la ortografia.
+ */
+test('la cita se compara sin guiones ni puntuación', () => {
+  const limpio = sanearDatos({
+    needs: 'E-commerce',
+    needs_dicho: 'E-commerce',
+  }, { entrante: 'Ecommerce' });
+
+  assert.deepEqual(limpio, { needs: 'E-commerce' });
+});
+
+test('y al revés también', () => {
+  const limpio = sanearDatos({
+    needs: 'e-commerce',
+    needs_dicho: 'ecommerce',
+  }, { entrante: 'quiero un E-commerce' });
+
+  assert.deepEqual(limpio, { needs: 'e-commerce' });
+});
+
 test('un dato sin cita tampoco entra', () => {
   const limpio = sanearDatos({ rubro: 'carnicería' }, { entrante: 'hola' });
   assert.deepEqual(limpio, {});
