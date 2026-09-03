@@ -819,3 +819,17 @@ test('sin reunion agendada no se inventa ninguna', () => {
   const sys = construirSystem({ nombre: 'Juanchi' }, 'CONVERSANDO');
   assert.ok(!/reunión el/i.test(sys));
 });
+
+/**
+ * El 3-9: business_type ya estaba contestado —"vender más"— y el bot
+ * repregunto para afinarlo: "¿pensás en llegar a más clientes online, o mejorar
+ * la forma en que atienden los que ya llaman?".
+ *
+ * El prompt le prohibia pedir OTROS datos —presupuesto, cuanta gente trabaja—
+ * pero no le prohibia seguir cavando sobre uno que ya tenia. Una pregunta de
+ * mas por conversacion, en el momento en que el lead ya dijo lo que queria.
+ */
+test('el prompt le prohibe repreguntar un dato que ya tiene', () => {
+  const sys = construirSystem({ nombre: 'Juan', business_name: 'Pepe', rubro: 'neumáticos' });
+  assert.match(sys, /no la vuelvas a preguntar para afinarla|no lo afines|una respuesta vaga sigue siendo una respuesta/i);
+});
