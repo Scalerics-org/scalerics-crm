@@ -25,6 +25,12 @@
 /** Borde de palabra sin depender de escapes. */
 const NADA = '(?<![a-zaeiouun])';
 
+/**
+ * "a las 10", "a las 14:30", "a la una". Es lo que convierte una frase amable
+ * en una cita: sin hora no hay nada que esperar.
+ */
+const A_LAS = 'a +las? +([0-9]{1,2}|una)';
+
 const DICE_QUE_AGENDO = [
   /\b(qued[oó]|queda|quedamos)\s+(agendad|confirmad|reservad)/i,
   /\b(te|lo|la)\s+agend(o|é|e|amos)\b/i,
@@ -37,8 +43,33 @@ const DICE_QUE_AGENDO = [
   new RegExp(NADA + 'anotad[oa]' + NADA, 'i'),
   /nos vemos +(el|la|ese|este)/i,
   /te espero +(el|la|ese|este)/i,
-  /(dale|listo|perfecto|buen[ií]simo)[,.]? +(el +)?(lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo)/i,
+  // "Perfecto, quedás agendado para el viernes 11 a las 10:00." Las de arriba
+  // estan escritas sobre "quedó/queda/quedamos" y ninguna agarra "quedás", que
+  // es la forma que el modelo eligio el 3-9, dos veces seguidas y sin que
+  // hubiera nada en el calendario.
+  /qued[aá]s\s+(agendad|confirmad|reservad|anotad)/i,
+  new RegExp('qued[aá]s +(con|para) +[^?]{0,80}?' + A_LAS, 'i'),
+];
+
+/**
+ * Formas que confirman un momento solo si el mensaje no pregunta nada.
+ *
+ * "Dale, el viernes a las 10." fija la reunion. "Dale. El viernes tenemos de
+ * 10:00 a 19:00, ¿que hora te viene bien?" la ofrece, que es lo que tiene que
+ * pasar. La diferencia no esta en las palabras sino en si le deja la decision
+ * al lead, asi que se mira eso.
+ *
+ * Una lista de frases siempre va a tener agujeros —"anotado" fue uno, "quedás"
+ * otro—. Por eso ademas de las frases se mira la forma: arranca confirmando y
+ * fija una hora, sin preguntar.
+ */
+const CONFIRMA_SIN_PREGUNTAR = [
+  // Un dia suelto no fija nada: "dale, el viernes tenemos de 10 a 19" es
+  // una oferta. Lo que la convierte en cita es la hora.
+  new RegExp('(dale|listo|perfecto|buen[ií]simo)[,.]? +(el +)?(lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo)[^?]{0,40}?' + A_LAS, 'i'),
   /qued(a|amos) +(para +)?(el +)?(lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo)/i,
+  new RegExp('^[^?]{0,20}?(dale|listo|perfecto|buen[ií]simo|genial)[^?]{0,120}?' + A_LAS, 'i'),
+  new RegExp('(te espero|nos vemos|coordinamos)[^?]{0,60}?' + A_LAS, 'i'),
 ];
 
 /**
@@ -61,8 +92,12 @@ const PIDE_HORARIO = [
 function prometeAgendar(texto) {
   const t = String(texto || '');
   if (DICE_QUE_AGENDO.some((re) => re.test(t))) return 'dijo que ya lo agendo';
+  // Preguntar es ofrecer. Solo se toma como confirmacion lo que no le deja la
+  // decision al lead.
+  const pregunta = t.includes('?');
+  if (!pregunta && CONFIRMA_SIN_PREGUNTAR.some((re) => re.test(t))) return 'confirmo un momento';
   if (PIDE_HORARIO.some((re) => re.test(t))) return 'le pidio un horario';
   return null;
 }
 
-module.exports = { prometeAgendar, DICE_QUE_AGENDO, PIDE_HORARIO };
+module.exports = { prometeAgendar, DICE_QUE_AGENDO, CONFIRMA_SIN_PREGUNTAR, PIDE_HORARIO };

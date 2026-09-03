@@ -120,7 +120,7 @@ function crearRepo(db) {
         'colors', 'instagram_web', 'needs', 'rubro', 'rubro_norm',
         'score', 'priority', 'score_reason', 'meeting_url', 'meeting_time',
         'consultas_precio', 'motivo_derivacion',
-        'horarios_ofrecidos', 'meeting_event_id',
+        'horarios_ofrecidos', 'meeting_event_id', 'dia_en_foco',
         'nurture_desde', 'nurture_motivo',
         'no_cliente_motivo', 'no_cliente_desde',
       ];
@@ -215,7 +215,7 @@ function crearRepo(db) {
         -- arrastra la lista de otra conversacion, que ademas puede ser de antes
         -- de que se cambiara la franja de atencion: elegiria "las 12" de una
         -- lista que ya no existe. Mismo olvido que la reunion colgada de arriba.
-        horarios_ofrecidos = NULL,
+        horarios_ofrecidos = NULL, dia_en_foco = NULL,
         status = 'new', replied_at = NULL, followup_sent_at = NULL,
         -- Tambien el saludo: reiniciar es empezar de cero, y sin esto el lead
         -- reiniciado nunca vuelve a recibir la presentacion.

@@ -190,8 +190,11 @@ function revisarFranja(inicio, cfg, ahora = new Date()) {
   if (enMinutos < desde) return { ok: false, motivo: 'fuera_de_franja' };
   // La reunion tiene que TERMINAR dentro de la franja, no solo empezar.
   if (enMinutos + cfg.AGENDA_DURACION_MIN > hasta) return { ok: false, motivo: 'fuera_de_franja' };
-  // Y caer en la grilla: media hora corrida deja huecos que despues no encajan.
-  if ((enMinutos - desde) % cfg.AGENDA_PASO_MIN !== 0) return { ok: false, motivo: 'fuera_de_franja' };
+  // La grilla de media hora NO se exige. Es una comodidad nuestra para armar la
+  // lista de sugerencias, no un limite del negocio: una reunion a las 10:23 se
+  // puede tener igual. El 3-9 el bot rechazo esa hora diciendo que no entraba
+  // en la franja de 10:00 a 19:00 —y el lead le contesto "pero 10:23 entra en
+  // la franja"—. Ademas de perder la reunion, el motivo era falso.
 
   const piso = ahora.getTime() + cfg.AGENDA_AVISO_MIN_HORAS * 3600_000;
   if (inicio.getTime() < piso) return { ok: false, motivo: 'muy_pronto' };
@@ -230,4 +233,37 @@ function textoDeFranja(fecha, cfg) {
   return `${aHora(franja.desde)} a ${aHora(franja.hasta)}`;
 }
 
-module.exports = { horasQueDijo, diasQueNombro, eligioEsaHora, revisarFranja, franjaDelDia, textoDeFranja };
+
+/**
+ * Si el lead nombro algun dia, de cualquier forma.
+ *
+ * Al modelo que interpreta el momento se le pasa un solo dia de referencia
+ * —hoy— asi que una hora suelta la resuelve contra hoy. El 3-9 el lead venia
+ * preguntando por el viernes 11, escribio "a las 10:23", y eso cayo en el
+ * jueves que ya estaba empezado: el bot lo rechazo con un motivo falso y volvio
+ * a ofrecer los dias de la lista, tres veces seguidas.
+ *
+ * Quien nombra un dia y quien no se sabe leyendo el mensaje. Cuando no nombra
+ * ninguno, el dia es el que se viene hablando.
+ *
+ * "el 11" es un dia; "las 10" y "10:23" son una hora. Por eso mira el articulo
+ * y no el numero suelto.
+ */
+const RE_NOMBRA_DIA = new RegExp(
+  '(lunes|martes|miercoles|jueves|viernes|sabado|domingo'
+  + '|hoy|manana|pasado'
+  + '|el [0-9]{1,2}([^0-9:]|$)'
+  + '|[0-9]{1,2} de (enero|febrero|marzo|abril|mayo|junio|julio|agosto|setiembre|septiembre|octubre|noviembre|diciembre))',
+  'i',
+);
+
+function nombroAlgunDia(texto) {
+  // sinAcentos no toca la enie: "manana" se normaliza aparte.
+  const t = sinAcentos(texto).split('ñ').join('n');
+  return RE_NOMBRA_DIA.test(t);
+}
+
+module.exports = {
+  horasQueDijo, diasQueNombro, eligioEsaHora, revisarFranja,
+  franjaDelDia, textoDeFranja, nombroAlgunDia,
+};

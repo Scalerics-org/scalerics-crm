@@ -813,3 +813,58 @@ test('lo que no habla de horarios lo atiende la conversacion', async () => {
   assert.equal(s.repo.leadPorTelefono('59899123456').fsm_state, S.HORARIOS_OFRECIDOS,
     'y sigue eligiendo horario');
 });
+
+/**
+ * Una hora suelta es del dia del que se viene hablando, no de hoy.
+ *
+ * El 3-9, con el lead preguntando por el viernes 11:
+ *
+ *   ← A las 9:59
+ *   → Ese horario no entra en nuestra franja de atención. Tenemos libres el
+ *     viernes 4 desde las 10 hasta las 19, o el lunes 7...
+ *   ← A las 10:23
+ *   → Ese horario no entra en nuestra franja de 10:00 a 19:00.
+ *   ← Pero 10:23 entra en la franja
+ *
+ * Tenia razon. Al modelo que interpreta el momento se le pasa un solo dia de
+ * referencia —hoy— asi que ubicaba esas horas en el jueves que ya estaba
+ * empezado. De ahi salian las dos cosas que el lead vio: un motivo falso y la
+ * vuelta a los dias de la lista en vez de seguir en el que estaba mirando.
+ */
+test('una hora sin día es del día del que se viene hablando', async () => {
+  const google = googleFalso();
+  const momentos = [
+    // "¿el viernes 11 qué hora tenés?" — pregunta por un dia, no elige.
+    { consulta: true, pide: false, dia: '2026-09-11' },
+    // "a las 15" — el modelo, que solo conoce hoy, la ubica hoy.
+    { pide: true, dia: '2026-09-03', hora: 15, minuto: 0 },
+  ];
+  const modelo = stubModelo({ datos: COMPLETO });
+  const original = modelo.pedir.bind(modelo);
+  modelo.pedir = async (args) => {
+    if (args.herramienta?.nombre === 'elegir') return { texto: null, argumentos: { opcion: 'ninguno' } };
+    if (args.herramienta?.nombre === 'momento') {
+      return { texto: null, argumentos: momentos.shift() || { pide: false } };
+    }
+    return original(args);
+  };
+
+  const s = await conLead({
+    modelo,
+    AGENDA_OFRECE_HORARIOS: 'true',
+    AGENDA_DIAS_ADELANTE: '60',
+    _google: google.fetch,
+  }, undefined, instanteLocal('2026-09-03', 9, 0, TZ));
+
+  await s.servicioLeads.registrarRespuesta('59899123456', DIJO_TODO);
+  await s.cola.vacia();
+  await s.servicioLeads.registrarRespuesta('59899123456', 'el viernes 11 qué hora tenés libre?');
+  await s.cola.vacia();
+  await s.servicioLeads.registrarRespuesta('59899123456', 'a las 15');
+  await s.cola.vacia();
+
+  const l = s.repo.leadPorTelefono('59899123456');
+  assert.ok(l.meeting_time, 'agendó');
+  assert.equal(enZona(new Date(l.meeting_time), TZ).dia, '2026-09-11', 'el día del que se venía hablando');
+  assert.equal(enZona(new Date(l.meeting_time), TZ).hora, 15);
+});

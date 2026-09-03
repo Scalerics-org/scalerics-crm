@@ -135,8 +135,23 @@ test('fuera de la franja se rechaza, y se dice por que', () => {
   assert.equal(revisarFranja(alas(20), CFG, AHORA).motivo, 'fuera_de_franja');
   // 15:30 entra: arranca antes de las 16 y la reunion dura 30.
   assert.equal(revisarFranja(alas(15, 30), CFG, AHORA).ok, true);
-  // 15:45 no: no esta en la grilla de media hora.
+  // 15:45 no: la reunion terminaria 16:15, despues de que cerramos.
   assert.equal(revisarFranja(alas(15, 45), CFG, AHORA).motivo, 'fuera_de_franja');
+});
+
+/**
+ * El 3-9 el lead pidio las 10:23 dentro de una franja de 10:00 a 19:00 y el bot
+ * le contesto "ese horario no entra en nuestra franja de 10:00 a 19:00". Se lo
+ * marco enseguida: "pero 10:23 entra en la franja". Tenia razon.
+ *
+ * El motivo verdadero era la grilla de media hora, que es una comodidad nuestra
+ * para armar la lista de sugerencias, no un limite del negocio. Una reunion a
+ * las 10:23 se puede tener igual, y sostener que no —con un motivo que ademas
+ * es falso— es perder la reunion discutiendo.
+ */
+test('una hora corrida, fuera de la grilla, se puede agendar igual', () => {
+  assert.deepEqual(revisarFranja(alas(14, 23), CFG, AHORA), { ok: true });
+  assert.deepEqual(revisarFranja(alas(12, 15), CFG, AHORA), { ok: true });
 });
 
 test('un dia no habil se rechaza', () => {
@@ -230,4 +245,39 @@ test('la franja que se le dice al lead sale del dia que pidio', () => {
 test('sin horarios por dia, cae a la franja unica', () => {
   const cfg = { TZ, AGENDA_DESDE: '12:00', AGENDA_HASTA: '16:00', AGENDA_DIAS: 'mon,tue,wed,thu,fri' };
   assert.equal(textoDeFranja(new Date(Date.UTC(2026, 8, 4, 15)), cfg), '12:00 a 16:00');
+});
+
+// ── el dia del que se viene hablando ─────────────────────────────────────────
+
+const { nombroAlgunDia } = require('../src/agenda/eleccion');
+
+/**
+ * El 3-9, con el lead preguntando por el viernes 11:
+ *
+ *   ← A las 9:59
+ *   → Ese horario no entra en nuestra franja de atención. Tenemos libres el
+ *     viernes 4 desde las 10 hasta las 19, o el lunes 7...
+ *   ← A las 10:23
+ *   → Ese horario no entra en nuestra franja de 10:00 a 19:00.
+ *
+ * La hora suelta se resolvia contra HOY, porque es el unico dia que se le pasa
+ * al modelo. Asi "10:23" caia en un jueves que ya habia pasado y el rechazo
+ * salia con un motivo inventado, ademas de volver a los dias de la lista en vez
+ * de seguir en el que el lead estaba mirando.
+ *
+ * Quien nombra un dia se sabe leyendo el mensaje, asi que lo mira el codigo.
+ */
+test('una hora suelta no nombra ningún día', () => {
+  assert.equal(nombroAlgunDia('A las 10:23'), false);
+  assert.equal(nombroAlgunDia('10:15'), false);
+  assert.equal(nombroAlgunDia('9:30 daleee'), false);
+  assert.equal(nombroAlgunDia('a las 14'), false);
+});
+
+test('pero un día nombrado sí, por nombre o por número', () => {
+  assert.equal(nombroAlgunDia('El 11 a las 10'), true);
+  assert.equal(nombroAlgunDia('el viernes 18 a las 14'), true);
+  assert.equal(nombroAlgunDia('mañana a las 10'), true);
+  assert.equal(nombroAlgunDia('hoy si se puede?'), true);
+  assert.equal(nombroAlgunDia('11 de setiembre'), true);
 });

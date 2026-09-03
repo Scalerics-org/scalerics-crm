@@ -134,3 +134,43 @@ test('y el equipo igual se entera de que hay un lead con reunión ofrecida', asy
   const alEquipo = s.proveedor.getEnviados().filter((e) => e.to === '59899000111');
   assert.ok(alEquipo.some((e) => /calificado/i.test(e.texto)), 'la ficha sale igual');
 });
+
+/**
+ * Dos veces seguidas el 3-9, con los horarios reales prendidos:
+ *
+ *   ← Bueno dale
+ *   → Perfecto, quedás agendado para el viernes 11 de setiembre a las 10:00.
+ *     Te mando el link de la videollamada 15 minutos antes.
+ *
+ *   ← 10:15
+ *   → Perfecto, quedás con el equipo el viernes 4 de setiembre a las 10:15.
+ *     Te llega el link de la videollamada 15 minutos antes.
+ *
+ * En la base no habia ninguna reunion: meeting_time en null, el lead en
+ * HORARIOS_OFRECIDOS y el equipo sin enterarse. Dos personas esperando.
+ *
+ * Ninguna de las formas que la lista ya tenia agarra "quedás": estan todas
+ * escritas sobre "quedó/queda/quedamos". Una lista de frases siempre va a tener
+ * agujeros, asi que ademas se mira la forma: arranca confirmando y fija una
+ * hora, sin preguntar nada.
+ */
+test('agarra el "quedás agendado" que se le escapó dos veces', () => {
+  assert.ok(prometeAgendar('Perfecto, quedás agendado para el viernes 11 de setiembre a las 10:00. Te mando el link de la videollamada 15 minutos antes.'));
+  assert.ok(prometeAgendar('Perfecto, quedás con el equipo el viernes 4 de setiembre a las 10:15. Te llega el link de la videollamada 15 minutos antes.'));
+});
+
+test('y cualquier otro arranque que confirme una hora sin preguntar nada', () => {
+  assert.ok(prometeAgendar('Listo, entonces el lunes 7 a las 14:30. Te paso el link.'));
+  assert.ok(prometeAgendar('Dale, te espero el jueves a las 11.'));
+});
+
+/**
+ * Ofrecer no es confirmar. Un mensaje que termina preguntando le deja al lead
+ * la decision, que es exactamente lo que tiene que pasar.
+ */
+test('ofrecer horarios y preguntar cuál sigue estando bien', () => {
+  assert.equal(prometeAgendar('Perfecto. Tengo libre el viernes 4 a las 10:00, a las 14:30 o a las 18:30. ¿Cuál te sirve?'), null);
+  // Pedir la hora sigue estando prohibido y lo agarra PIDE_HORARIO: el que
+  // toma horarios es el embudo, no esta parte de la conversacion.
+  assert.equal(prometeAgendar('Dale. El viernes 11 tenemos libre de 10:00 a 19:00, decime si te sirve alguno.'), null);
+});

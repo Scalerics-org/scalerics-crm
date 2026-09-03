@@ -5,6 +5,7 @@ const { CAJONES } = require('../funnel/nurture');
 const { corregir: corregirVoseo } = require('./voseo');
 const { quitar: quitarJerga } = require('./jerga');
 const { recortarEnOracion } = require('./modelo');
+const { nombroAlgunDia } = require('../agenda/eleccion');
 
 const MAX_HISTORIAL = 20;
 const MAX_CARACTERES = 900;
@@ -421,7 +422,7 @@ ${lista}`,
      * Es distinto de elegirDeLista: alli el modelo elige entre opciones
      * cerradas, aca traduce a una fecha. Devuelve null si no hay ninguna.
      */
-    async proponerMomento({ texto, hoy, tz }) {
+    async proponerMomento({ texto, hoy, tz, enFoco = null }) {
       if (!modelo?.activo) return null;
 
       const r = await modelo.pedir({
@@ -455,19 +456,33 @@ Si no está hablando de fechas, los dos van en false.`,
       if (!a) return null;
       if (!/^\d{4}-\d{2}-\d{2}$/.test(String(a.dia || ''))) return null;
 
+      /**
+       * Una hora suelta es del dia del que se viene hablando, no de hoy.
+       *
+       * Al modelo se le pasa un solo dia de referencia, asi que "a las 10:23"
+       * lo resuelve contra hoy. El 3-9 el lead venia preguntando por el viernes
+       * 11, escribio esa hora, y cayo en el jueves que ya estaba empezado: el
+       * bot la rechazo con un motivo falso —"no entra en nuestra franja de
+       * 10:00 a 19:00"— y volvio a ofrecer los dias de la lista.
+       *
+       * Quien nombra un dia y quien no se lee del mensaje, asi que lo decide el
+       * codigo y no una instruccion mas en el prompt.
+       */
+      const dia = (enFoco && !nombroAlgunDia(texto)) ? enFoco : a.dia;
+
       // Preguntar no es elegir. El 3-9 el lead escribio "viernes 18 a las 14 no
       // puedo entonces?" y se le agendo: trae dia y hora, pero es una pregunta.
       // Agendarle algo a alguien que estaba preguntando es peor que no
       // entenderle, asi que la duda se resuelve para el lado de contestar.
       if (a.consulta === true || a.pide !== true) {
-        return { dia: a.dia, consulta: true };
+        return { dia, consulta: true };
       }
 
       const hora = Number(a.hora);
       const minuto = Number(a.minuto || 0);
       if (!Number.isInteger(hora) || hora < 0 || hora > 23) return null;
       if (!Number.isInteger(minuto) || minuto < 0 || minuto > 59) return null;
-      return { dia: a.dia, hora, minuto };
+      return { dia, hora, minuto };
     },
 
     faltantes,

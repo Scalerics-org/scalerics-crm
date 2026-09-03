@@ -331,9 +331,25 @@ function crearEmbudo({
     if (!agente?.activo || !agenda?.activo) return { accion: 'no_entendi' };
 
     const hoy = enZona(ahora(), cfg.TZ).dia;
-    const pedido = await agente.proponerMomento({ texto: entrada, hoy, tz: cfg.TZ });
+    /**
+     * El dia del que se viene hablando. Una hora suelta es de ese dia.
+     *
+     * Si el lead todavia no nombro ninguno, es el del primer horario que tiene
+     * a la vista: acaba de ver esa lista y contesta sobre ella.
+     */
+    const enFoco = lead.dia_en_foco
+      || (ofrecidos.length ? enZona(ofrecidos[0], cfg.TZ).dia : null);
+
+    const pedido = await agente.proponerMomento({ texto: entrada, hoy, tz: cfg.TZ, enFoco });
     // No hablo de fechas: lo atiende la conversacion, no la lista.
     if (!pedido) return { accion: 'no_es_de_horarios' };
+
+    // Queda como foco para el turno que viene: si despues tira una hora sola,
+    // es de este dia. El 3-9 el lead pregunto por el viernes 11, dijo "a las
+    // 10:23", y el bot le contesto sobre el jueves y volvio a la lista.
+    if (pedido.dia !== lead.dia_en_foco) {
+      repo.actualizarFunnel(lead.id, { dia_en_foco: pedido.dia });
+    }
 
     const dia = instanteLocal(pedido.dia, 12, 0, cfg.TZ);
     if (pedido.consulta) return { accion: 'mostrar_dia', dia };

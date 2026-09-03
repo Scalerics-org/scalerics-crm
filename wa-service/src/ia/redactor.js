@@ -5,6 +5,7 @@ const { quitar: quitarJerga } = require('./jerga');
 
 const { construirRedaccion, situaciones } = require('./prompt');
 const { mencionaPlata } = require('./precio');
+const { cambiaLaNecesidad } = require('./necesidad');
 
 const MAX_CARACTERES = 900;
 
@@ -43,21 +44,47 @@ function crearRedactor({ modelo = null, calendly = '', logger = null } = {}) {
         return null;
       }
 
-      const r = await modelo.pedir({
-        system: 'Escribís mensajes de WhatsApp para una agencia uruguaya. Devolvés solo el mensaje, sin comillas ni explicaciones.',
-        mensajes: [{ role: 'user', content: prompt }],
-        maxTokens: 400,
-      });
+      const pedir = async (extraInstruccion = '') => {
+        const r = await modelo.pedir({
+          system: 'Escribís mensajes de WhatsApp para una agencia uruguaya. Devolvés solo el mensaje, sin comillas ni explicaciones.',
+          mensajes: [{ role: 'user', content: prompt + extraInstruccion }],
+          maxTokens: 400,
+        });
+        if (!r) return null;
+        return String(r.texto || '').trim()
+          // A veces devuelve el mensaje entre comillas, como si lo citara.
+          .replace(/^["“”']+|["“”']+$/g, '')
+          .trim();
+      };
 
-      if (!r) {
+      let crudo = await pedir();
+
+      if (crudo === null) {
         logger?.warn({ leadId: lead.id, situacion }, 'no se pudo redactar el mensaje');
         return null;
       }
 
-      const crudo = String(r.texto || '').trim()
-        // A veces devuelve el mensaje entre comillas, como si lo citara.
-        .replace(/^["“”']+|["“”']+$/g, '')
-        .trim();
+      /**
+       * No le cambies al lead lo que pidio.
+       *
+       * El 3-9 pidio "una pagina" y el mensaje le vendio un e-commerce. El dato
+       * estaba bien guardado; lo que fallo es el mensaje, que es donde el
+       * modelo mejora la idea del lead por su cuenta.
+       *
+       * Esto no se arregla tachando una palabra —hay que escribirlo de nuevo—
+       * asi que se le pide otra vez, ahora diciendoselo. Si insiste, sale igual:
+       * un mensaje con la solucion equivocada es malo, pero no contestar es
+       * peor, y del otro lado hay alguien esperando.
+       */
+      if (cambiaLaNecesidad(lead.needs, crudo)) {
+        logger?.warn({ leadId: lead.id, situacion, needs: lead.needs, crudo },
+          'el mensaje le cambiaba lo que pidio: se reescribe');
+        const salto = String.fromCharCode(10);
+        const otra = await pedir(
+          salto + salto + `OJO: el lead pidió ${lead.needs}. Hablale de eso y no de otra cosa.`,
+        );
+        if (otra) crudo = otra;
+      }
 
       // El tuteo que se le escapa al modelo lo corrige el codigo, igual que en
       // la conversacion. Un recordatorio con un "tienes" delata lo mismo.
