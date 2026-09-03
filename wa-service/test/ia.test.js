@@ -770,3 +770,27 @@ test('si del audio no sale lo que se pregunto, el prompt pide que lo escriban', 
   assert.match(sys, /no lo entendiste|no se entendio|no llegaste a entender/i);
   assert.match(sys, /escrib/i);
 });
+
+/**
+ * El 3-9: "Perfecto, te va a llegar un link para elegir día y hora."
+ *
+ * No hay ningun link. Con AGENDA_OFRECE_HORARIOS el bot muestra los horarios el
+ * mismo y agenda el. Pero el prompt seguia describiendo el flujo viejo —el de
+ * mandar el link de Calendly— porque el bot tiene dos modos y solo se habia
+ * cambiado el codigo, no las instrucciones. El modelo leia eso y lo prometia.
+ *
+ * Es el mismo daño que "el sistema debería haberte mandado los horarios": el
+ * lead se queda esperando algo que no va a llegar.
+ */
+test('agendando el mismo, el prompt no habla de ningun link', () => {
+  const sys = construirSystem({ nombre: 'Juan' }, 'MEETING_SENT', 'https://calendly.com/x',
+    { agendaPropia: true });
+
+  assert.ok(!sys.includes('calendly.com'), 'el link no aparece');
+  assert.match(sys, /no.{0,30}link/i, 'y le dice explícitamente que no hay');
+});
+
+test('con el link como camino, el prompt lo sigue usando', () => {
+  const sys = construirSystem({ nombre: 'Juan' }, 'MEETING_SENT', 'https://calendly.com/x');
+  assert.ok(sys.includes('calendly.com'), 'sigue estando cuando ES el camino');
+});

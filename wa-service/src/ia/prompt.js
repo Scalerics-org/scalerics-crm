@@ -155,16 +155,31 @@ function contextoDelLead(lead) {
  * ya no es averiguar sino que reserve, y sobre todo NO volver a mandar el link
  * que ya tiene.
  */
-function objetivos(calendly) {
+/**
+ * El bot tiene dos caminos para la reunion y los objetivos hablan de uno solo.
+ *
+ * Con AGENDA_OFRECE_HORARIOS el bot muestra los horarios el mismo y agenda el:
+ * no hay ningun link. Pero el prompt seguia describiendo el flujo viejo —"pasale
+ * el link de Calendly"— porque al prender esa variable se cambio el codigo y no
+ * las instrucciones. El 3-9 el modelo leyo eso y prometio "te va a llegar un
+ * link para elegir día y hora", que nunca llego.
+ */
+function objetivos(calendly, agendaPropia = false) {
   return {
     NEW: `Es tu primer mensaje después de la presentación, que ya salió sola en el mensaje anterior.
 No saludes ni te presentes de nuevo: eso ya está hecho y quedarían dos saludos pegados.
 Arrancá directo preguntándole cómo se llama su negocio.`,
 
-    MEETING_SENT: `Ya le ofreciste la videollamada y está decidiendo.
+    MEETING_SENT: agendaPropia
+      ? `Ya le ofreciste la videollamada y está decidiendo.
+Si dice que sí, mostrale los horarios que tenés libres para que elija uno. Si duda, entendé qué lo frena antes de insistir.`
+      : `Ya le ofreciste la videollamada y está decidiendo.
 Si dice que sí, pasale el link: ${calendly}. Si duda, entendé qué lo frena antes de insistir.`,
 
-    MEETING_INFO: `Le contaste de qué se trata y está decidiendo.
+    MEETING_INFO: agendaPropia
+      ? `Le contaste de qué se trata y está decidiendo.
+Si se copa, mostrale los horarios libres para que elija. Si dice que todavía no, dejalo ahí sin presionar — no pasa nada.`
+      : `Le contaste de qué se trata y está decidiendo.
 Si se copa, pasale el link: ${calendly}. Si dice que todavía no, dejalo ahí sin presionar — no pasa nada.`,
 
     MEETING_LINK_SENT: `Ya tiene el link de Calendly, se lo mandaste antes.
@@ -180,9 +195,14 @@ Contestale lo que pregunte y, si es algo que hay que ver en la llamada, decile q
   };
 }
 
-function construirSystem(lead, fase = null, calendly = '', { porAudio = false } = {}) {
+const SIN_LINK = `
+# No hay ningún link
+La reunión la agendás vos acá mismo: mostrás los horarios libres, el lead elige uno y queda reservado en el momento.
+NO existe ningún link para elegir día y hora. Nunca digas que le va a llegar uno, que se lo mandás, ni que revise si le llegó. El único link que sale es el de la videollamada, y ese se lo pasás recién cuando la reunión ya quedó agendada.`;
+
+function construirSystem(lead, fase = null, calendly = '', { porAudio = false, agendaPropia = false } = {}) {
   const pendientes = faltantes(lead);
-  const objetivo = objetivos(calendly)[fase];
+  const objetivo = objetivos(calendly, agendaPropia)[fase];
 
   return `${IDENTIDAD}
 
@@ -202,7 +222,7 @@ Y si te reclaman que ya te lo habían dicho, tienen razón: pedí disculpas en m
 ${PROHIBICIONES}
 
 ${contextoDelLead(lead)}
-${porAudio ? POR_AUDIO : ''}
+${porAudio ? POR_AUDIO : ''}${agendaPropia ? SIN_LINK : ''}
 
 ${objetivo
     ? `# En qué momento estás\n${objetivo}`

@@ -298,7 +298,7 @@ function aMensajes(historial, entrante) {
  * pasa los controles. El que llama cae al embudo de siempre con ese null: el
  * FSM sigue existiendo justamente para eso.
  */
-function crearAgente({ modelo = null, textos, calendly = '', logger = null } = {}) {
+function crearAgente({ modelo = null, textos, calendly = '', agendaPropia = false, logger = null } = {}) {
   return {
     activo: Boolean(modelo?.activo),
 
@@ -309,7 +309,7 @@ function crearAgente({ modelo = null, textos, calendly = '', logger = null } = {
       if (!conversacion.length) return null;
 
       const r = await modelo.pedir({
-        system: construirSystem(lead, fase, calendly, { porAudio }),
+        system: construirSystem(lead, fase, calendly, { porAudio, agendaPropia }),
         mensajes: conversacion,
         herramienta: HERRAMIENTA,
         maxTokens: 500,

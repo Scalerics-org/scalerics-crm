@@ -87,6 +87,9 @@ function construir(cfg, {
     modelo: cfg.IA_CONVERSACION ? modeloIA : null,
     textos,
     calendly: cfg.CALENDLY_LINK,
+    // Con esto prendido el bot agenda el mismo y NO hay ningun link: el prompt
+    // tiene que saberlo o promete uno que nunca llega.
+    agendaPropia: cfg.AGENDA_OFRECE_HORARIOS,
     logger: log,
   });
   const redactor = require('./ia/redactor').crearRedactor({
