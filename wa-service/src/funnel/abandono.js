@@ -31,15 +31,36 @@ const CERRADOS = new Set([
 ]);
 
 /**
+ * Cuanto tiene que haber dicho el lead para que valga derivarlo.
+ *
+ * El 6-9 entro un numero que escribio "T". El bot le pregunto el nombre del
+ * negocio, no contesto, y a la hora salio la ficha al equipo por una letra;
+ * una hora despues escribio "Y" y salio la segunda.
+ *
+ * Derivar es pedirle tiempo a una persona. Si la mitad de las fichas son de
+ * alguien que escribio una letra, el equipo deja de mirarlas y despues no ve
+ * las que si.
+ *
+ * Se mide por contenido y no por cantidad de mensajes. Un "Sí, me interesa,
+ * ¿cuánto sale?" y despues silencio es UN mensaje y es de los mejores leads que
+ * hay: contando mensajes ese se perdia. "T" y "Y" son DOS y no dicen nada.
+ */
+const MIN_CARACTERES = 12;
+
+/**
  * @param {object} lead fila de leads, fresca de la base
+ * @param {number} [caracteresDelLead] cuanto escribio el, en total. Sin el dato
+ *   se decide como siempre: que un llamador se olvide no puede apagar la
+ *   derivacion entera.
  * @returns {boolean} si corresponde derivarlo por haberse ido
  */
-function correspondeDerivar(lead) {
+function correspondeDerivar(lead, caracteresDelLead = Infinity) {
   if (!lead) return false;
   if (lead.opt_out || lead.human_requested) return false;
   // Agendo: no se fue, hizo justo lo que se le pidio.
   if (lead.meeting_booked_at) return false;
+  if (caracteresDelLead < MIN_CARACTERES) return false;
   return !CERRADOS.has(lead.fsm_state || S.NEW);
 }
 
-module.exports = { correspondeDerivar, CERRADOS };
+module.exports = { correspondeDerivar, CERRADOS, MIN_CARACTERES };

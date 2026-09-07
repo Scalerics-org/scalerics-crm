@@ -1,5 +1,11 @@
 app = "scalerics-wa"
-primary_region = "gru"
+primary_region = "iad"
+
+# 256mb alcanza: el bot usa ~150MB en regimen. Pero sin swap queda al filo y
+# Baileys puede morir por OOM en el pico de reconectar contra WhatsApp. El swap
+# va aca y no por "fly machine update --swap-size": puesto por comando se
+# pierde en el siguiente deploy, porque la maquina se recrea desde este archivo.
+swap_size_mb = 512
 
 [build]
 
@@ -18,7 +24,7 @@ primary_region = "gru"
 
 [[vm]]
   size = "shared-cpu-1x"
-  memory = "512mb"
+  memory = "256mb"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Lo mas importante de este archivo es lo que NO esta.

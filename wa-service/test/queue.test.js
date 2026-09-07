@@ -588,3 +588,70 @@ test('lo que el bot inicia si espera al horario', async () => {
 
   assert.deepEqual(s.proveedor.getEnviados(), [], 'espera a las 9');
 });
+
+// ── lo que espera al horario no puede vivir solo en memoria ─────────────────
+
+const { crearCola } = require('../src/outbound/queue');
+const { crearLimites } = require('../src/outbound/limits');
+const { instanteLocal } = require('../src/agenda/gcal');
+const TZ = 'America/Montevideo';
+
+/**
+ * El 6-9 entraron dos leads un domingo de madrugada y ninguno de los dos vio
+ * nunca la bienvenida.
+ *
+ * La bienvenida espera al horario comercial, y eso esta bien: es un mensaje que
+ * arranca el bot. Pero la cola vive en memoria. Ese mensaje quedo esperando
+ * desde el domingo 2:33 hasta el lunes 9:00, la maquina se reciclo en el medio,
+ * y se perdio sin dejar rastro. Los dos leads recibieron "¿Cómo se llama tu
+ * negocio?" en frio, sin saber quien les escribia.
+ *
+ * Treinta horas de ventana para perder el mensaje mas importante de la
+ * conversacion, y ninguna forma de enterarse.
+ */
+test('un mensaje que espera al horario sobrevive a que se reinicie el servicio', async () => {
+  // Domingo 6 de setiembre, 02:33 en Montevideo: fuera de hora y fuera de dia.
+  const madrugada = instanteLocal('2026-09-06', 2, 33, TZ);
+  const s = await conLead(
+    { BUSINESS_HOURS: '09:00-19:00', BUSINESS_DAYS: 'mon-fri' },
+    undefined,
+    madrugada,
+  );
+  s.proveedor.limpiar();
+
+  s.cola.encolar({
+    to: LEAD_TEL, texto: 'la bienvenida', kind: 'welcome',
+    leadId: s.repo.leadPorTelefono(LEAD_TEL).id,
+  });
+  await s.cola.vacia();
+  assert.equal(s.proveedor.getEnviados().length, 0, 'de madrugada no sale');
+
+  // Se recicla la maquina: cola nueva, misma base.
+  const lunes = instanteLocal('2026-09-07', 9, 30, TZ);
+  const limites = crearLimites({ repo: s.repo, cfg: s.cfg });
+  const otra = crearCola({
+    proveedor: s.proveedor, repo: s.repo, cfg: s.cfg, limites, ahora: () => lunes,
+  });
+  await otra.vacia();
+
+  const textos = s.proveedor.getEnviados().map((e) => e.texto);
+  assert.ok(textos.includes('la bienvenida'), 'la cola nueva la encuentra y la manda');
+});
+
+test('y una vez que salió no se manda de nuevo al reiniciar', async () => {
+  const s = await conLead({ BUSINESS_HOURS: '00:00-23:59', BUSINESS_DAYS: 'mon-sun' });
+  s.proveedor.limpiar();
+
+  s.cola.encolar({
+    to: LEAD_TEL, texto: 'sale al toque', kind: 'welcome',
+    leadId: s.repo.leadPorTelefono(LEAD_TEL).id,
+  });
+  await s.cola.vacia();
+
+  const limites = crearLimites({ repo: s.repo, cfg: s.cfg });
+  const otra = crearCola({ proveedor: s.proveedor, repo: s.repo, cfg: s.cfg, limites });
+  await otra.vacia();
+
+  const cuantas = s.proveedor.getEnviados().filter((e) => e.texto === 'sale al toque').length;
+  assert.equal(cuantas, 1, 'una sola vez');
+});

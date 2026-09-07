@@ -156,7 +156,7 @@ function construir(cfg, {
     recordatorios: (lead) => scheduler.programarRecordatorios(lead, ahora()),
   });
 
-  const scheduler = crearScheduler({ repo, cola, cfg, redactor, embudo, logger: log, ahora });
+  const scheduler = crearScheduler({ repo, cola, cfg, redactor, embudo, limites, logger: log, ahora });
   const servicioLeads = crearServicioLeads({
     repo, cola, cfg, logger: log, textos, redactor, embudo, scheduler, ahora,
   });

@@ -326,6 +326,65 @@ function crearRepo(db) {
      * Se miran solo los salientes que de verdad salieron: uno que quedo
      * atrapado en la cola no le llego a nadie.
      */
+    /**
+     * Cuanto escribio el lead en la conversacion de ahora, en caracteres.
+     *
+     * Desde el reinicio si lo hubo: lo que dijo en una conversacion anterior no
+     * cuenta para decidir si esta se abandono.
+     */
+    /**
+     * Los mensajes que quedaron esperando turno, para que un reinicio no se los
+     * lleve. Solo se guarda lo que espera: lo que sale de una no toca la base.
+     */
+    guardarSaliente(item) {
+      const r = db.prepare(`
+        INSERT INTO salientes (telefono, texto, kind, lead_id, no_antes_de, encolado_en, vence_en_min)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        item.to, item.texto, item.kind, item.leadId ?? null,
+        new Date(item.noAntesDe).toISOString(),
+        item.encoladoEn ? new Date(item.encoladoEn).toISOString() : null,
+        item.venceEnMin ?? null,
+      );
+      return r.lastInsertRowid;
+    },
+
+    correrSaliente(id, noAntesDe) {
+      db.prepare('UPDATE salientes SET no_antes_de = ? WHERE id = ?')
+        .run(new Date(noAntesDe).toISOString(), id);
+    },
+
+    borrarSaliente(id) {
+      db.prepare('DELETE FROM salientes WHERE id = ?').run(id);
+    },
+
+    salientesPendientes() {
+      return db.prepare('SELECT * FROM salientes ORDER BY id ASC').all().map((f) => ({
+        salienteId: f.id,
+        to: f.telefono,
+        texto: f.texto,
+        kind: f.kind,
+        leadId: f.lead_id,
+        noAntesDe: new Date(f.no_antes_de),
+        encoladoEn: f.encolado_en ? new Date(f.encolado_en) : null,
+        venceEnMin: f.vence_en_min ?? undefined,
+        reprogramado: true,
+      }));
+    },
+
+    caracteresDelLead(leadId) {
+      const l = stmt.leadPorId.get(leadId);
+      if (!l) return 0;
+      const filas = l.conversacion_desde
+        ? db.prepare(
+          "SELECT body FROM messages WHERE lead_id = ? AND direction = 'in' AND created_at >= ?"
+        ).all(leadId, l.conversacion_desde)
+        : db.prepare(
+          "SELECT body FROM messages WHERE lead_id = ? AND direction = 'in'"
+        ).all(leadId);
+      return filas.reduce((n, f) => n + String(f.body || '').trim().length, 0);
+    },
+
     quedoSinRespuesta(leadId) {
       const entrantes = db.prepare(
         "SELECT id FROM messages WHERE lead_id = ? AND direction = 'in' ORDER BY id DESC LIMIT 2"

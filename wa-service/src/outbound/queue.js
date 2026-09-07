@@ -234,6 +234,36 @@ function crearCola({ proveedor, repo, cfg, logger, limites, ahora = () => new Da
     return elegido;
   }
 
+  /**
+   * Guarda un mensaje que quedo esperando, o corre la hora del que ya estaba.
+   * @returns {number|null} el id con el que quedo guardado
+   */
+  function persistir(item) {
+    if (!repo?.guardarSaliente) return item.salienteId ?? null;
+    try {
+      if (item.salienteId) {
+        repo.correrSaliente(item.salienteId, item.noAntesDe);
+        return item.salienteId;
+      }
+      return repo.guardarSaliente(item);
+    } catch (e) {
+      // Que no se pueda guardar no puede tumbar el envio: en el peor caso se
+      // comporta como antes, que es perderlo si el servicio se reinicia.
+      logger?.error({ err: String(e.message || e) }, 'no se pudo guardar el saliente que espera');
+      return item.salienteId ?? null;
+    }
+  }
+
+  /** Ya no espera mas: salio, se descarto, o dejo de tener sentido. */
+  function olvidar(item) {
+    if (!item?.salienteId || !repo?.borrarSaliente) return;
+    try {
+      repo.borrarSaliente(item.salienteId);
+    } catch (e) {
+      logger?.error({ err: String(e.message || e) }, 'no se pudo borrar el saliente ya enviado');
+    }
+  }
+
   async function loop() {
     if (corriendo) return;
     corriendo = true;
@@ -284,6 +314,7 @@ function crearCola({ proveedor, repo, cfg, logger, limites, ahora = () => new Da
                 { kind: item.kind, motivo: veredicto.motivo, demoraMin },
                 'mensaje descartado: ya no sirve tan tarde'
               );
+              olvidar(item);
               continue;
             }
           }
@@ -292,7 +323,15 @@ function crearCola({ proveedor, repo, cfg, logger, limites, ahora = () => new Da
             { kind: item.kind, motivo: veredicto.motivo, demoraMin },
             'mensaje reprogramado, no descartado'
           );
-          items.push({ ...item, delayMs: 0, noAntesDe: veredicto.reintentarEn, reprogramado: true });
+          // Y se guarda, porque a partir de aca puede tener que esperar horas.
+          // El 6-9 dos bienvenidas esperaron desde el domingo de madrugada hasta
+          // el lunes a las 9, la maquina se reciclo en el medio, y las dos se
+          // perdieron sin dejar rastro.
+          const guardado = persistir({ ...item, noAntesDe: veredicto.reintentarEn });
+          items.push({
+            ...item, delayMs: 0, noAntesDe: veredicto.reintentarEn,
+            reprogramado: true, salienteId: guardado,
+          });
           continue;
         }
 
@@ -304,6 +343,9 @@ function crearCola({ proveedor, repo, cfg, logger, limites, ahora = () => new Da
           // contador del circuit breaker. No se corta la cola por uno.
         } finally {
           enProceso = null;
+          // Salio, o fallo y quedo registrado como fallido. En los dos casos ya
+          // no espera nada: si sigue guardado, el proximo arranque lo repite.
+          olvidar(item);
         }
 
         if (items.length) {
@@ -314,6 +356,25 @@ function crearCola({ proveedor, repo, cfg, logger, limites, ahora = () => new Da
       corriendo = false;
       notificarVacio();
       programarDespertar();
+    }
+  }
+
+  /**
+   * Lo que quedo esperando en la corrida anterior.
+   *
+   * La cola vive en memoria y eso alcanza para lo que sale en segundos. Lo que
+   * espera al horario comercial puede esperar treinta horas, y en el medio la
+   * maquina se recicla. Ver la migracion 019.
+   */
+  if (repo?.salientesPendientes) {
+    try {
+      for (const guardado of repo.salientesPendientes()) items.push({ ...guardado, seq: seq++ });
+      if (items.length) {
+        logger?.info({ cuantos: items.length }, 'se retoman los mensajes que quedaron esperando');
+        queueMicrotask(() => loop().catch((e) => logger?.error({ err: String(e) }, 'loop de cola')));
+      }
+    } catch (e) {
+      logger?.error({ err: String(e.message || e) }, 'no se pudieron leer los mensajes que esperaban');
     }
   }
 
@@ -346,9 +407,11 @@ function crearCola({ proveedor, repo, cfg, logger, limites, ahora = () => new Da
     descartarPendientesDe(leadId) {
       if (!leadId) return 0;
       const antes = items.length;
-      items = items.filter(
-        (i) => !(i.leadId === leadId && CONVERSACIONALES.has(i.kind))
-      );
+      const sobra = (i) => i.leadId === leadId && CONVERSACIONALES.has(i.kind);
+      // Los que estaban guardados por haber quedado esperando se borran tambien:
+      // si no, el proximo arranque los revive despues de haberlos descartado.
+      for (const i of items) if (sobra(i)) olvidar(i);
+      items = items.filter((i) => !sobra(i));
 
       // El que ya esta en el "escribiendo..." no esta en `items` y se escapaba
       // por ahi. Con las esperas cortas esa ventana es la que mas importa: el

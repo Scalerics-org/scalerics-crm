@@ -37,7 +37,7 @@ function cuantoFalta(ms) {
 // Cuanto se corre un job cuando la IA no pudo escribir el mensaje.
 const REINTENTO_MIN = 30;
 
-function crearScheduler({ repo, cola, cfg, redactor = null, embudo = null, logger, ahora = () => new Date() }) {
+function crearScheduler({ repo, cola, cfg, redactor = null, embudo = null, limites = null, logger, ahora = () => new Date() }) {
 
   function fechaLegible(iso) {
     const d = new Date(iso);
@@ -172,7 +172,36 @@ function crearScheduler({ repo, cola, cfg, redactor = null, embudo = null, logge
       // Entre que se armo el reloj y ahora, el lead pudo agendar, pedir una
       // persona o darse de baja. En cualquiera de esos casos ya no se fue de
       // la conversacion: se fue a otro lado, y derivarlo seria ruido.
-      if (job.type === 'abandono' && !correspondeDerivar(lead)) {
+      /**
+       * De madrugada no se deriva a nadie.
+       *
+       * El 6-9 un lead escribio tres veces a las dos y media de la mañana de un
+       * domingo, se durmio en la pregunta del menu, y a las 3:37 el bot le dijo
+       * que le pasaba el caso al equipo. La ficha al comercial salio a la misma
+       * hora, cuando no habia nadie para leerla.
+       *
+       * La ventana de horario no lo frenaba porque el mensaje de derivacion
+       * viaja como `manual`, y `manual` cuenta como respuesta si el lead
+       * escribio en las ultimas RESPUESTA_VENTANA_MIN. El abandono salta a los
+       * ABANDONO_MINUTOS, que es la mitad: siempre caia adentro de esa ventana
+       * y siempre la esquivaba. No fue mala suerte.
+       *
+       * Y una hora de silencio a las dos de la mañana no es abandono: se
+       * durmio. Asi que a la apertura se le escribe para retomar. Si ya se le
+       * insistio una vez y volvio a callarse, ahi si se deriva — pero en hora.
+       */
+      if (job.type === 'abandono' && limites && !limites.enHorario(momento)) {
+        const apertura = limites.proximaApertura(momento);
+        if (!lead.followup_sent_at) {
+          repo.programarJob(lead.id, 'followup', apertura.toISOString());
+          repo.marcarJob(job.id, 'cancelled', 'se callo fuera de hora: se retoma a la apertura');
+        } else {
+          repo.reprogramarJob(job.id, apertura.toISOString());
+        }
+        continue;
+      }
+
+      if (job.type === 'abandono' && !correspondeDerivar(lead, repo.caracteresDelLead(lead.id))) {
         repo.marcarJob(job.id, 'cancelled', 'ya no corresponde derivar');
         continue;
       }
