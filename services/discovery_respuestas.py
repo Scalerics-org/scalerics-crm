@@ -106,7 +106,7 @@ CAMPANAS = {
         # estado sin secuencia que describe lo que realmente pasa —hay una
         # conversacion abierta— y ademas aparece en el panel de Pipeline, que
         # es donde alguien lo va a ver.
-        "estado_al_responder": "negociacion",
+        "estado_al_responder": "follow_up_1",
         # La RED que busca en Gmail, distinta del LECTOR de arriba: no hace
         # falta que cubra los 13 asuntos, porque el camino principal es el
         # remitente y este es solo el respaldo para quien contesta desde otra

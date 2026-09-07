@@ -45,29 +45,47 @@ COLOR_A_ESTADO = {
     "f4cccc": "llamar_despues",       # el mismo rojo desteñido
     "ffff00": "interesado",           # atendio, sin reunion agendada
     "fff2cc": "interesado",           # el mismo amarillo desteñido
-    "00ff00": "reunion_agendada",     # atendio y se agendo demo
-    "00ffff": "reunion_hecha",        # demo realizada
+    "00ff00": "demo_agendada",        # atendio y se agendo demo
+    "00ffff": "demo_1",               # demo realizada
     "ff00ff": "presupuesto_enviado",  # hubo demo y no cerro
-    "274e13": "cliente_cerrado",      # venta concretada
-    "38761d": "cliente_cerrado",      # venta concretada (el otro tono)
+    "274e13": "cerrado",              # venta concretada
+    "38761d": "cerrado",              # venta concretada (el otro tono)
 }
 
 # Cuan avanzado esta cada estado. Decide dos cosas: cual gana cuando un mismo
 # telefono aparece en varios meses, y si lo que dice la planilla es un avance
 # respecto de lo que ya sabe produccion.
+#
+# Tiene que conocer TODAS las etapas, viejas y nuevas. Un estado que no esta
+# entra como `RANK.get(actual, 0)` = 0, o sea al fondo, y entonces cualquier
+# color de la planilla cuenta como avance: un lead en 'demo_1' se lo lleva
+# puesto un amarillo y vuelve a 'interesado'. Eso paso de verdad cuando se
+# renombraron las etapas y este mapa quedo con los nombres viejos.
 RANK = {
     "sin_contactar": 0,
     "no_interesa": 1,
     "llamar_despues": 2,
     "contactado": 3,
     "interesado": 3,
-    "reunion_agendada": 4,
-    "reunion_hecha": 5,
+    "demo_agendada": 4,
+    "demo_1": 5,
+    "demo_2": 5,
+    "demo_3": 5,
     "presupuesto_enviado": 6,
-    "negociacion": 7,
-    "cliente_cerrado": 8,
+    "follow_up_1": 7,
+    "follow_up_2": 7,
+    "en_espera": 7,
+    "rechazo": 7,
+    "acepto": 8,
+    "cerrado": 8,
     "en_desarrollo": 9,
     "finalizado": 10,
+    # Los nombres viejos siguen mapeados: quedan leads con estos estados en
+    # cualquier base que no haya arrancado con la migracion todavia.
+    "reunion_agendada": 4,
+    "reunion_hecha": 5,
+    "negociacion": 7,
+    "cliente_cerrado": 8,
 }
 
 NOTA_EVENTO = "sync planilla semaforo"

@@ -7,6 +7,8 @@ import pytz
 from flask import Blueprint, current_app, jsonify, request, session
 
 from database import (
+    ETAPA_DEMO_AGENDADA,
+    ETAPA_DEMO_DADA,
     create_meeting,
     delete_meeting,
     get_business,
@@ -24,14 +26,21 @@ MVD = pytz.timezone("America/Montevideo")
 
 
 def _maybe_revert_lead_status(db_path: str, client_id: int) -> None:
-    """Revert lead CRM status to 'contactado' if they have no remaining meetings."""
+    """Revert lead CRM status to 'contactado' if they have no remaining meetings.
+
+    Se aceptan los dos nombres de la etapa a proposito: los leads que crean
+    routes/calendly.py y services/calendly_gcal.py con un INSERT directo siguen
+    naciendo con el nombre viejo, sin pasar por `update_business`. Comparar solo
+    contra el nuevo dejaria a esos leads en "demo agendada" para siempre despues
+    de borrarles la unica reunion.
+    """
     if not client_id:
         return
     from database import get_business, update_business
     biz = get_business(db_path, client_id)
     if not biz:
         return
-    if biz.get("crm_status") != "reunion_agendada":
+    if biz.get("crm_status") not in (ETAPA_DEMO_AGENDADA, "reunion_agendada"):
         return
     remaining = get_meetings_for_client(db_path, client_id)
     if not remaining:
@@ -210,7 +219,7 @@ def _sync_gcal_to_db(db: str, start: str, end: str) -> None:
                 name = invitee_name or invitee_email or summary
                 cur = conn.execute(
                     "INSERT INTO businesses (name, email, crm_status, source) VALUES (?,?,?,?)",
-                    (name, invitee_email or None, "reunion_agendada", "calendly_gcal"),
+                    (name, invitee_email or None, ETAPA_DEMO_AGENDADA, "calendly_gcal"),
                 )
                 client_id = cur.lastrowid
 
@@ -298,7 +307,7 @@ def api_calendar_events():
             status="scheduled",
         )
         from database import update_business
-        update_business(db, int(client_id), crm_status="reunion_agendada")
+        update_business(db, int(client_id), crm_status=ETAPA_DEMO_AGENDADA)
         client = get_business(db, int(client_id)) or {}
         log_activity(db, session.get("user_name", "sistema"), "meeting_scheduled",
                      "lead", int(client_id), client.get("name", ""), title,
@@ -387,7 +396,7 @@ Devolvé SOLO un JSON (sin texto extra, sin markdown):
         status="completed",
     )
 
-    # Despues de una reunion el lead avanza a 'reunion_hecha' solo. Esto NO es
+    # Despues de una reunion el lead avanza a la primera demo solo. Esto NO es
     # la generacion de presupuesto —esa se saco el 28-8-2026 porque no se usaba,
     # 3 presupuestos generados contra 151 reuniones— sino el unico lugar donde
     # el sistema mueve un estado por su cuenta a partir de algo que paso.
@@ -401,18 +410,20 @@ Devolvé SOLO un JSON (sin texto extra, sin markdown):
         meeting_record = _get_meeting(_db(), meeting_id)
         if meeting_record and meeting_record.get("client_id"):
             cid = meeting_record["client_id"]
-            # No pisa a quien ya esta mas adelante.
+            # No pisa a quien ya esta mas adelante. Se acepta tambien el nombre
+            # viejo de la etapa por los leads que crean routes/calendly.py y
+            # services/calendly_gcal.py con un INSERT directo.
             _ANTES_DE_LA_REUNION = {
-                "sin_contactar", "interesado", "contactado",
-                "reunion_agendada", "llamar_despues",
+                "sin_contactar", "interesado", "contactado", "llamar_despues",
+                ETAPA_DEMO_AGENDADA, "reunion_agendada",
             }
             biz = get_business(_db(), cid)
             if biz and biz.get("crm_status") in _ANTES_DE_LA_REUNION:
-                update_business(_db(), cid, crm_status="reunion_hecha")
+                update_business(_db(), cid, crm_status=ETAPA_DEMO_DADA)
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning(
-            f"No se pudo marcar reunion_hecha para la reunion {meeting_id}: {e}")
+            f"No se pudo avanzar la etapa de la reunion {meeting_id}: {e}")
 
     return jsonify({"ok": True, "summary": result})
 

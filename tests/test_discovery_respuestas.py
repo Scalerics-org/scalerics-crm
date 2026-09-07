@@ -392,7 +392,7 @@ def test_el_que_contesta_un_presupuesto_no_retrocede(db):
     from services.discovery_respuestas import marcar_respondio
     _lead(db, 1, "meta", "presupuesto_enviado")
     marcar_respondio(db, 1, "quien@sea.com")
-    assert _estado(db, 1) == "negociacion"
+    assert _estado(db, 1) == "follow_up_1"
 
 
 def test_un_lead_frio_de_meta_que_contesta_sale_de_toda_secuencia(db):
@@ -485,7 +485,7 @@ def test_un_mail_posterior_si_es_una_respuesta(db):
         {"from": "lead@x.com", "subject": "Re: Sobre tu consulta para N1",
          "date": "2026-08-20 10:05:00", "headers": {}}]))
     assert r["respondieron"] == 1
-    assert _estado(db, 1) == "negociacion"
+    assert _estado(db, 1) == "follow_up_1"
 
 
 def test_sin_fecha_se_cuenta_como_respuesta(db):

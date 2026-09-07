@@ -153,7 +153,7 @@ def test_sync_crea_lead_y_reunion(db):
     assert lead["name"] == "Ferretería El Sol"
     assert lead["interest"] == "E-commerce / tienda online"
     assert lead["phone"] == "+59899123456"
-    assert lead["crm_status"] == "reunion_agendada"
+    assert lead["crm_status"] == "demo_agendada"
     assert "Contacto: Juan Pérez" in lead["notes"]
     assert len(_meetings(db)) == 1
 
@@ -321,11 +321,11 @@ def test_reunion_pasada_no_retrocede_el_estado_del_lead(db):
         lead = dict(conn.execute("SELECT * FROM businesses").fetchone())
     finally:
         conn.close()
-    assert lead["crm_status"] == "cliente"      # no vuelve a reunion_agendada
+    assert lead["crm_status"] == "cliente"      # no vuelve a demo_agendada
     assert len(_meetings(db)) == 1              # la reunión igual queda cargada
 
 
-def test_reunion_futura_si_marca_reunion_agendada(db):
+def test_reunion_futura_si_marca_la_demo_agendada(db):
     from database import update_business
     bid = insert_business(db, {
         "name": "Ferretería El Sol",
@@ -342,4 +342,4 @@ def test_reunion_futura_si_marca_reunion_agendada(db):
         lead = dict(conn.execute("SELECT * FROM businesses").fetchone())
     finally:
         conn.close()
-    assert lead["crm_status"] == "reunion_agendada"
+    assert lead["crm_status"] == "demo_agendada"

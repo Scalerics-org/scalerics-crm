@@ -23,9 +23,9 @@ from services.planilla_semaforo import (
 
 AMARILLO = "#ffff00"      # interesado
 ROJO = "#ff0000"          # llamar_despues
-CELESTE = "#00ffff"       # reunion_hecha
+CELESTE = "#00ffff"       # demo_1 (demo realizada)
 VIOLETA = "#ff00ff"       # presupuesto_enviado
-VERDE_OSC = "#274e13"     # cliente_cerrado
+VERDE_OSC = "#274e13"     # cerrado
 BLANCO = "#ffffff"        # sin pintar
 
 
@@ -67,11 +67,11 @@ def test_los_tres_formatos_de_color_son_el_mismo():
     ("#000000", "no_interesa"),
     (ROJO, "llamar_despues"),
     (AMARILLO, "interesado"),
-    ("#00ff00", "reunion_agendada"),
-    (CELESTE, "reunion_hecha"),
+    ("#00ff00", "demo_agendada"),
+    (CELESTE, "demo_1"),
     (VIOLETA, "presupuesto_enviado"),
-    ("#274e13", "cliente_cerrado"),
-    ("#38761d", "cliente_cerrado"),
+    ("#274e13", "cerrado"),
+    ("#38761d", "cerrado"),
 ])
 def test_la_leyenda_del_semaforo(color, estado):
     assert estado_de_color(color) == estado
@@ -123,7 +123,7 @@ def test_es_idempotente(db):
     assert aplicar(db, filas)["actualizados"] == 1
     segunda = aplicar(db, filas)
     assert segunda["actualizados"] == 0 and segunda["sin_cambio"] == 1
-    assert _estado(db, 1) == "reunion_hecha"
+    assert _estado(db, 1) == "demo_1"
 
 
 def test_el_mismo_telefono_en_varios_meses_gana_el_mas_avanzado(db):

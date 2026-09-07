@@ -33,6 +33,7 @@ import re
 import sqlite3
 
 from database import (
+    ETAPA_DEMO_AGENDADA,
     create_meeting,
     get_all_businesses,
     get_business_by_phone,
@@ -292,7 +293,7 @@ def sync_parsed(db_path: str, datas: list, dry_run: bool = False,
                      _normalize_phone(data["phone"]) or None,
                      data["service"] or None,
                      booking_note or None,
-                     "reunion_agendada",
+                     ETAPA_DEMO_AGENDADA,
                      "calendly_unmatched"),
                 )
                 conn.commit()
@@ -305,7 +306,7 @@ def sync_parsed(db_path: str, datas: list, dry_run: bool = False,
             # Una reunión que ya pasó no dice nada sobre dónde está hoy el
             # lead: pisarle el estado lo haría retroceder desde "cliente".
             if data["start_at"] and data["start_at"] > now:
-                updates["crm_status"] = "reunion_agendada"
+                updates["crm_status"] = ETAPA_DEMO_AGENDADA
             if data["service"] and not (client.get("interest") or "").strip():
                 updates["interest"] = data["service"]
             if data["email"] and not (client.get("email") or "").strip():
