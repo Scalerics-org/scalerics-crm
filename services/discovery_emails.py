@@ -122,10 +122,33 @@ def esta_dado_de_baja(db_path: str, business_id: int) -> bool:
 
 # Las guardas viven en el WHERE a proposito: que un comercio quede fuera no
 # puede depender de que el llamador se acuerde de filtrarlo.
+# Rubros frenados por su tasa de baja, medida sobre envios reales al 7/9/2026:
+#
+#     fisioterapia   34 envios   5 bajas  14.7%
+#     estetica       36 envios   3 bajas   8.3%
+#     ---- promedio de la campana: 3.7% ----
+#     odontologia   108 envios   1 baja    0.9%
+#     veterinaria    21 envios   0 bajas   0.0%
+#
+# La pista de por que: odontologia, veterinaria, peluqueria e inmobiliaria
+# tienen linea de apertura escrita a mano; fisioterapia y estetica caen en la
+# generica de la familia "turnos" —"si los turnos se agendan por telefono y los
+# recordatorios los manda alguien a mano"— que a un fisioterapeuta le suena a
+# que no sabemos como trabaja.
+#
+# La muestra es chica (34 y 36 envios) y no alcanza para estar seguro, pero
+# 14.7% contra 3.7% es demasiado grande para seguir mandando: cada baja ensucia
+# la reputacion del subdominio, que es la misma que usa el correo con clientes.
+#
+# Se sacan de aca en cuanto tengan linea propia, no antes.
+_RUBROS_PAUSADOS = {"fisioterapia", "estetica"}
+
 _FILTRO_ELEGIBLE = (
     "b.source = 'discovery' "
     "AND b.crm_status = 'sin_contactar' "
-    "AND b.email IS NOT NULL AND LENGTH(TRIM(b.email)) > 3"
+    "AND b.email IS NOT NULL AND LENGTH(TRIM(b.email)) > 3 "
+    "AND LOWER(TRIM(COALESCE(b.category, ''))) NOT IN ("
+    + ", ".join(f"'{r}'" for r in sorted(_RUBROS_PAUSADOS)) + ")"
 )
 
 # Direcciones que no pueden recibir NADA de esta campana:

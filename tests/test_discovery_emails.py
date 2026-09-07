@@ -349,3 +349,46 @@ def test_la_veda_tolera_un_form_data_que_no_es_json(db):
     elegidos = comercios_a_contactar(db, limite=10)
 
     assert [e["email"] for e in elegidos] == ["sano@inmo.com.uy"]
+
+
+# ─── Rubros pausados ──────────────────────────────────────────────────────────
+
+def test_un_rubro_pausado_no_recibe_el_primer_contacto(db):
+    """Fisioterapia daba 14,7% de bajas contra 3,7% de promedio, y estetica
+    8,3%. Cada baja ensucia la reputacion del subdominio, asi que se frenan
+    hasta escribirles una linea de apertura propia: las dos caen hoy en la
+    generica de la familia 'turnos', que a un fisioterapeuta le suena a que no
+    sabemos como trabaja."""
+    from services.discovery_emails import _RUBROS_PAUSADOS
+    assert "fisioterapia" in _RUBROS_PAUSADOS
+
+    _comercio(db, 500, category="odontologia")
+    _comercio(db, 501, category="fisioterapia")
+    claves = {c["category"] for c in comercios_a_contactar(db, 10)}
+    assert claves == {"odontologia"}
+
+
+def test_un_rubro_pausado_tampoco_recibe_el_seguimiento(db):
+    """Lo que importa: al que ya recibio el primero no se le manda el segundo.
+    Si no, la pausa no frena nada de lo que ya esta en vuelo."""
+    import sqlite3
+
+    bid = _comercio(db, 502, category="estetica")
+    registrar_envio(db, bid, 1)
+    conn = sqlite3.connect(db)
+    conn.execute("UPDATE discovery_reminders SET sent_at = datetime('now','-30 days')")
+    conn.commit()
+    conn.close()
+    assert comercios_a_seguir(db, 10) == []
+
+
+def test_la_pausa_no_distingue_mayusculas(db):
+    _comercio(db, 503, category="Fisioterapia")
+    _comercio(db, 504, category="  ESTETICA ")
+    assert comercios_a_contactar(db, 10) == []
+
+
+def test_los_demas_rubros_siguen_saliendo(db):
+    for i, cat in enumerate(("peluqueria", "veterinaria", "inmobiliaria", "hotel")):
+        _comercio(db, 510 + i, category=cat)
+    assert len(comercios_a_contactar(db, 10)) == 4
