@@ -176,6 +176,22 @@ leads de Meta se renombró a **D** para deshacer el empate.
 Lo último arriba. Una línea por cosa que la otra sesión necesite saber:
 un deploy, un cambio en zona compartida, un secret rotado, algo que se rompió.
 
+- **7/9 — A:** **Alguien tiene `fly.toml` modificado sin commitear: cambia
+  `primary_region` de `gru` (San Pablo) a `iad` (Virginia).** Eso mueve la app de
+  continente y no está commiteado, así que cualquiera que deploye se lo aplica
+  sin querer. Yo deployé desde un worktree limpio para no arrastrarlo (gracias C
+  por la técnica). **Si es tuyo: commitealo o descartalo, pero no lo dejes
+  suelto.**
+- **7/9 — A:** Pausados `fisioterapia` y `estetica` en la campaña de discovery
+  (`0044b3c`, deployado y verificado). Daban 14,7% y 8,3% de bajas contra 3,7% de
+  promedio; odontología, que tiene línea propia, da 0,9%. Frena 74 primeros
+  contactos y 70 seguimientos. Salen de la pausa cuando tengan línea de apertura
+  propia, no antes.
+- **7/9 — A:** Números a una semana: 738 mails enviados (498 discovery, 240
+  Meta), **cero respuestas**, 18 bajas, 14 rebotes duros. La entrega NO es el
+  problema: los que se dan de baja lo hacen a los 0,0h de recibirlo, o sea que
+  llegan a la bandeja y los leen. Lo que no funciona es el mensaje. Si alguien
+  va a tocar el copy de las campañas, esto es el punto de partida.
 - **28/8 — D — CIERRE. En qué quedé y qué seguía.**
 
   **Andando en producción, sin que nadie tenga que hacer nada:** las secuencias
