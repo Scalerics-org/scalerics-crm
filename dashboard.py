@@ -23,6 +23,7 @@ from routes.notion import notion_bp
 from routes.notion_clients import notion_clients_bp
 from routes.resend_webhook import resend_bp
 from routes.projects import projects_bp
+from routes.preclientes import preclientes_bp
 from routes.linkedin import linkedin_bp
 from services.auth import is_admin
 from services.demo_service import demo_job_handler
@@ -274,7 +275,7 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
   .filters{gap:6px}
   .search-box{width:100%;margin-left:0}
   .table-wrap{overflow-x:auto}
-  .table-header span:nth-child(3),.table-row>div:nth-child(3){display:none}
+  .table-header:not(.tbl-cli) span:nth-child(3),.table-row:not(.tbl-cli)>div:nth-child(3){display:none}
   .table-header,.table-row{grid-template-columns:2fr 1.1fr 1.4fr}
   .wa-container{grid-template-columns:1fr;height:auto}
   .wa-list{max-height:240px;border-right:none;border-bottom:1px solid #1e293b}
@@ -315,12 +316,16 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
   .table-row.no-cb>div:last-child:not(:nth-child(1)):not(:nth-child(2)):not(:nth-child(3)){order:10;display:flex!important;gap:8px;flex-wrap:wrap;margin-top:4px}
   .table-row.no-cb>div:last-child button,.table-row.no-cb>div:last-child a{min-height:40px!important;flex:1}
   /* con checkbox: col1=checkbox(ocultar), col2=nombre, col3=fuente(ocultar), col4=estado, last=acciones */
-  .table-row:not(.no-cb)>div:nth-child(1){display:none!important}
-  .table-row:not(.no-cb)>div:nth-child(2){order:1}
-  .table-row:not(.no-cb)>div:nth-child(3){display:none!important}
-  .table-row:not(.no-cb)>div:nth-child(4){order:2;display:flex!important;align-items:center;gap:8px;flex-wrap:wrap}
-  .table-row:not(.no-cb)>div:last-child{order:10;display:flex!important;gap:8px;flex-wrap:wrap;margin-top:4px}
-  .table-row:not(.no-cb)>div:last-child button{min-height:40px!important;flex:1}
+  .table-row:not(.no-cb):not(.tbl-cli)>div:nth-child(1){display:none!important}
+  .table-row:not(.no-cb):not(.tbl-cli)>div:nth-child(2){order:1}
+  .table-row:not(.no-cb):not(.tbl-cli)>div:nth-child(3){display:none!important}
+  .table-row:not(.no-cb):not(.tbl-cli)>div:nth-child(4){order:2;display:flex!important;align-items:center;gap:8px;flex-wrap:wrap}
+  .table-row:not(.no-cb):not(.tbl-cli)>div:last-child{order:10;display:flex!important;gap:8px;flex-wrap:wrap;margin-top:4px}
+  .table-row:not(.no-cb):not(.tbl-cli)>div:last-child button{min-height:40px!important;flex:1}
+  /* Clientes activos: en columna, cada select con su rol arriba. Sin la
+     etiqueta son tres desplegables identicos y no se sabe cual es cual. */
+  .table-row.tbl-cli>div[data-rol]::before{content:attr(data-rol);display:block;font-size:.65rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.6px;margin-bottom:3px}
+  .table-row.tbl-cli>div:last-child button{min-height:40px!important;width:100%}
   /* Meta panel: 7 cols — ocultar 5 y 6 que son metadata extra */
   #meta-panel .table-row.no-cb>div:nth-child(5),
   #meta-panel .table-row.no-cb>div:nth-child(6){display:none!important}
@@ -417,6 +422,50 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .cb{width:15px;height:15px;accent-color:#0088cc;cursor:pointer}
 .table-header{display:grid;grid-template-columns:36px 2fr 1.2fr 1.8fr 1.5fr;padding:12px 20px;background:#0f1117;border-bottom:1px solid #1e293b}
 .table-row{display:grid;grid-template-columns:36px 2fr 1.2fr 1.8fr 1.5fr;padding:13px 20px;border-bottom:1px solid #1a2234;align-items:center;transition:background .1s}
+/* Tablero de pre-clientes: una columna por etapa. La tabla plana anterior
+   obligaba a leer fila por fila para saber cuantos habia en cada etapa. */
+.pre-board{display:flex;gap:12px;overflow-x:auto;padding-bottom:12px;align-items:flex-start}
+.pre-col{background:#111827;border:1px solid #1e293b;border-radius:12px;min-width:230px;width:230px;flex-shrink:0;display:flex;flex-direction:column;max-height:calc(100vh - 250px)}
+.pre-col-head{padding:11px 13px 9px;border-bottom:1px solid #1e293b;display:flex;align-items:center;justify-content:space-between;gap:6px;flex-shrink:0}
+.pre-col-title{font-size:.72rem;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.4px}
+.pre-count{background:#1e293b;color:#94a3b8;border-radius:999px;padding:1px 8px;font-size:.7rem;font-weight:700;flex-shrink:0}
+.pre-cards{padding:9px;overflow-y:auto;display:flex;flex-direction:column;gap:7px}
+.pre-card{background:#0a0f1a;border:1px solid #1e293b;border-radius:8px;padding:9px 11px;cursor:pointer;transition:border-color .1s}
+.pre-card:hover{border-color:#0088cc}
+.pre-card-name{font-size:.84rem;font-weight:600;color:#e2e8f0;margin-bottom:2px;line-height:1.3}
+.pre-card-meta{font-size:.71rem;color:#64748b}
+.pre-card-demo{font-size:.7rem;color:#34d399;margin-top:5px}
+.pre-empty{color:#475569;font-size:.74rem;text-align:center;padding:12px 0}
+body.light .pre-col{background:#f8fafc;border-color:#e2e8f0}
+body.light .pre-card{background:#fff;border-color:#e2e8f0}
+body.light .pre-card-name{color:#0f172a}
+
+/* Registro de demos */
+.demo-row{background:#111827;border:1px solid #1e293b;border-radius:10px;padding:13px 17px;margin-bottom:9px}
+.demo-row-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px}
+.demo-num{background:#0088cc;color:#fff;border-radius:999px;padding:1px 9px;font-size:.71rem;font-weight:700}
+.demo-cliente{font-weight:650;color:#e2e8f0;cursor:pointer}
+.demo-cliente:hover{color:#33aadd}
+.demo-meta{font-size:.74rem;color:#64748b;margin-left:auto}
+.demo-texto{font-size:.85rem;color:#94a3b8;line-height:1.5;white-space:pre-wrap}
+.demo-del{background:none;border:none;color:#475569;cursor:pointer;font-size:.9rem;padding:0 4px}
+.demo-del:hover{color:#f87171}
+body.light .demo-row{background:#fff;border-color:#e2e8f0}
+body.light .demo-cliente{color:#0f172a}
+
+/* Tabla de clientes activos: grilla propia, no reusa .no-cb, porque sus reglas
+   mobile esconden la 4a columna — que aca es Mantenimiento, no Notas. */
+.table-header.tbl-cli,.table-row.tbl-cli{grid-template-columns:2fr 1.1fr 1.15fr 1.15fr 1.15fr 1fr}
+.resp-sel{background:#0f172a;border:1px solid #1e293b;color:#e2e8f0;border-radius:6px;padding:4px 6px;font-size:.76rem;font-family:inherit;width:100%;max-width:150px;cursor:pointer}
+.resp-sel:hover{border-color:#334155}
+.resp-sel.vacante{color:#64748b}
+body.light .resp-sel{background:#fff;border-color:#e2e8f0;color:#0f172a}
+@media (max-width:768px){
+  .table-header.tbl-cli{display:none}
+  .table-row.tbl-cli{display:flex;flex-direction:column;align-items:stretch;gap:7px;grid-template-columns:none}
+  .resp-sel{max-width:none}
+  .pre-col{max-height:none}
+}
 .table-header.no-cb{grid-template-columns:2fr 1.1fr 1fr 1.8fr 1.2fr}
 .table-row.no-cb{grid-template-columns:2fr 1.1fr 1fr 1.8fr 1.2fr}
 .batch-bar{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1e293b;border:1px solid #334155;border-radius:12px;padding:10px 18px;display:none;align-items:center;gap:12px;z-index:500;box-shadow:0 4px 24px rgba(0,0,0,.5)}
@@ -796,7 +845,7 @@ body.light .delete-btn{color:#94a3b8}
 body.light .delete-btn:hover{color:#ef4444}
 body.light .export-btn{background:#f1f5f9;border-color:#e2e8f0;color:#475569}
 body.light .modal-overlay .modal{background:#fff;border-color:#e2e8f0;color:#0f172a}
-body.light .modal h3,.modal-title{color:#0f172a}
+body.light .modal h3,body.light .modal-title{color:#0f172a}
 body.light .modal label{color:#64748b}
 body.light .modal input,body.light .modal textarea,body.light .modal select,body.light .modal-input{background:#f8fafc;border-color:#e2e8f0;color:#0f172a}
 body.light .modal input[type=datetime-local]::-webkit-calendar-picker-indicator{filter:none;opacity:.6}
@@ -1136,7 +1185,8 @@ body.light .upick-name{color:#0f172a}
   <div class="nav-item" id="nav-seguimientos" onclick="showPanel('seguimientos')"><i data-lucide="bookmark" class="nav-icon"></i> Seguimientos</div>
   <div class="nav-item" id="nav-meta" onclick="showPanel('meta');clearMetaBadge()"><i data-lucide="instagram" class="nav-icon"></i> Meta Ads <span id="meta-badge" style="display:none;background:#e1306c;color:#fff;font-size:.65rem;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:4px">NEW</span></div>
   <div class="nav-section-label">VENTAS</div>
-  <div class="nav-item" id="nav-pipeline" onclick="showPanel('pipeline')"><i data-lucide="trending-up" class="nav-icon"></i> Proceso de venta</div>
+  <div class="nav-item" id="nav-pipeline" onclick="showPanel('pipeline')"><i data-lucide="trending-up" class="nav-icon"></i> Pre-clientes</div>
+  <div class="nav-item" id="nav-demos" onclick="showPanel('demos')"><i data-lucide="monitor-play" class="nav-icon"></i> Demos</div>
   <div class="nav-item" id="nav-clientes" onclick="showPanel('clientes')"><i data-lucide="users" class="nav-icon"></i> Clientes</div>
   <div class="nav-section-label">GESTIÓN</div>
   <div class="nav-item" id="nav-tasks" onclick="showPanel('tasks')"><i data-lucide="check-square" class="nav-icon"></i> Tareas</div>
@@ -1259,19 +1309,30 @@ body.light .upick-name{color:#0f172a}
   <div id="pipeline-panel" class="panel">
     <div class="page-header">
       <div>
-        <h1>Proceso de venta</h1>
-        <div class="page-date">Leads en proceso de venta activo</div>
+        <h1>Pre-clientes</h1>
+        <div class="page-date">En qué etapa está cada venta en curso</div>
       </div>
+      <div id="pre-total" style="color:#64748b;font-size:.85rem"></div>
     </div>
     <div class="filters">
       <input class="search-box" id="pipeline-search-input" placeholder="🔍 Buscar..." oninput="pipelineSearch(this.value)">
     </div>
-    <div class="table-wrap">
-      <div class="table-header no-cb">
-        <span>Negocio</span><span>Estado</span><span>Teléfono</span><span>Notas</span><span>Acciones</span>
+    <div id="pre-board" class="pre-board"></div>
+  </div>
+
+  <!-- ======= DEMOS PANEL ======= -->
+  <div id="demos-panel" class="panel">
+    <div class="page-header">
+      <div>
+        <h1>Registro de demos</h1>
+        <div class="page-date">Cada demo dada, quién la tuvo y cómo viene</div>
       </div>
-      <div id="pipeline-body"></div>
+      <button class="export-btn" onclick="abrirNuevaDemo()">+ Registrar demo</button>
     </div>
+    <div class="filters">
+      <input class="search-box" id="demos-search" placeholder="🔍 Buscar por cliente..." oninput="filtrarDemos(this.value)">
+    </div>
+    <div id="demos-body"></div>
   </div>
 
   <!-- ======= CLIENTES PANEL ======= -->
@@ -1279,12 +1340,12 @@ body.light .upick-name{color:#0f172a}
     <div class="page-header">
       <div>
         <h1>Clientes</h1>
-        <div class="page-date">Deals cerrados y proyectos en curso</div>
+        <div class="page-date">Quién se ocupa de cada cliente activo</div>
       </div>
     </div>
     <div class="table-wrap">
-      <div class="table-header no-cb">
-        <span>Negocio</span><span>Estado</span><span>Teléfono</span><span>Notas</span><span>Acciones</span>
+      <div class="table-header tbl-cli">
+        <span>Negocio</span><span>Estado</span><span>Día a día</span><span>Mantenimiento</span><span>Cobros</span><span>Acciones</span>
       </div>
       <div id="clientes-body"></div>
     </div>
@@ -1758,7 +1819,8 @@ function showPanel(name) {
   closeSidebar();
   if (name === 'cola') loadCola();
   if (name === 'seguimientos') loadSeguimientos();
-  if (name === 'pipeline') loadPipelinePanel();
+  if (name === 'pipeline') cargarPreclientes();
+  if (name === 'demos') cargarDemos();
   if (name === 'clientes') loadClientesPanel();
   if (name === 'meta') loadMetaPanel();
   if (name === 'wa' && !waLoaded) loadWaLeads();
@@ -2269,46 +2331,234 @@ async function loadSeguimientos() {
   } catch(e) { body.innerHTML = `<div style="color:#f87171;padding:16px">Error: ${e.message}</div>`; }
 }
 
-// ── Pipeline ──────────────────────────────────────────────────────────────────
-let _pipelineSearch = '';
-let _pipelineLeads = [];
-function pipelineSearch(v) { _pipelineSearch = v.toLowerCase(); renderPipelineTable(); }
+// == Pre-clientes ==============================================================
+// Las etapas y sus etiquetas las manda el backend (/api/preclientes). Antes
+// estaban hardcodeadas aca y al renombrar los estados el tablero mostraba el
+// valor crudo de la base.
+let _preEtapas = [];
+let _preFiltro = '';
+let _usuariosCache = null;
 
-async function loadPipelinePanel() {
-  const body = document.getElementById('pipeline-body');
-  body.innerHTML = '<div style="color:#475569;padding:16px;font-size:.85rem">Cargando...</div>';
+async function _usuarios() {
+  if (_usuariosCache) return _usuariosCache;
   try {
-    const r = await fetch('/api/leads?crm_group=pipeline');
-    const data = await r.json();
-    _pipelineLeads = Array.isArray(data) ? data : (data.items || []);
-    renderPipelineTable();
-  } catch(e) { body.innerHTML = `<div style="color:#f87171;padding:16px">Error: ${e.message}</div>`; }
+    const r = await fetch('/api/users');
+    _usuariosCache = r.ok ? await r.json() : [];
+  } catch (e) { _usuariosCache = []; }
+  return _usuariosCache;
 }
 
-function renderPipelineTable() {
-  const body = document.getElementById('pipeline-body');
-  const crmLabels = {reunion_agendada:'Reunión agendada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Presupuesto enviado',negociacion:'Negociación'};
-  const crmColor = {reunion_agendada:'#60a5fa',reunion_hecha:'#34d399',presupuesto_enviado:'#fbbf24',negociacion:'#fb923c'};
-  let leads = _pipelineLeads;
-  if (_pipelineSearch) leads = leads.filter(b => (b.name||'').toLowerCase().includes(_pipelineSearch));
-  if (!leads.length) { body.innerHTML = '<div class="empty-state">No hay leads en el pipeline</div>'; return; }
-  body.innerHTML = leads.map(b => {
-    const crm = b.crm_status || '';
-    const color = crmColor[crm] || '#475569';
-    return `
-    <div class="table-row no-cb row-${crm}">
-      <div>
-        <div class="biz-name"><span style="cursor:pointer;text-decoration:underline;text-decoration-color:#334155" onclick="openClientPanel(${b.id})">${esc(b.name||'')}</span>${_calendlyBadge(b)}</div>
-        <div class="biz-sub">${esc(b.category||'')}${b.city ? ' · '+esc(b.city) : ''}</div>
+async function cargarPreclientes() {
+  const board = document.getElementById('pre-board');
+  board.innerHTML = '<div style="color:#475569;padding:16px;font-size:.85rem">Cargando...</div>';
+  try {
+    const r = await fetch('/api/preclientes');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    _preEtapas = d.etapas || [];
+    document.getElementById('pre-total').textContent =
+      d.total === 1 ? '1 pre-cliente' : d.total + ' pre-clientes';
+    renderPreclientes();
+  } catch (e) {
+    board.innerHTML = '<div style="color:#f87171;padding:16px">No se pudo cargar el tablero: ' + esc(e.message) + '</div>';
+  }
+}
+
+function renderPreclientes() {
+  const board = document.getElementById('pre-board');
+  board.innerHTML = _preEtapas.map(et => {
+    const leads = _preFiltro
+      ? (et.leads || []).filter(l => (l.name || '').toLowerCase().includes(_preFiltro))
+      : (et.leads || []);
+    const cards = leads.length
+      ? leads.map(l => {
+          const sub = [l.city, l.category].filter(Boolean).join(' · ');
+          const quien = l.ultima_demo_por ? ' · ' + esc(l.ultima_demo_por) : '';
+          const demos = l.demos_dadas
+            ? '<div class="pre-card-demo">' + l.demos_dadas + ' demo' +
+              (l.demos_dadas > 1 ? 's' : '') + quien + '</div>'
+            : '';
+          return `<div class="pre-card" onclick="openClientPanel(${l.id})">
+            <div class="pre-card-name">${esc(l.name || 'Sin nombre')}</div>
+            <div class="pre-card-meta">${esc(sub)}</div>
+            ${demos}
+          </div>`;
+        }).join('')
+      : '<div class="pre-empty">Vacío</div>';
+    return `<div class="pre-col">
+      <div class="pre-col-head">
+        <span class="pre-col-title">${esc(et.label)}</span>
+        <span class="pre-count">${leads.length}</span>
       </div>
-      <div><span style="font-size:.72rem;font-weight:600;color:${color};background:${color}18;padding:3px 8px;border-radius:99px">${crmLabels[crm]||crm}</span></div>
-      <div>${b.phone ? (hasWhatsApp(b.phone) ? `<a class="phone-val" href="https://wa.me/${waNum(b.phone)}${b.pitch_text ? '?text='+encodeURIComponent(b.pitch_text) : ''}" target="_blank" title="Abrir WhatsApp">${esc(b.phone)}</a>` : `<span class="phone-plain">${esc(b.phone)}</span>`) : '<span class="no-val">—</span>'}</div>
-      <div><textarea class="notes-inline" data-id="${b.id}" data-notes="${esc(b.notes||'')}" placeholder="Agregar nota..." rows="1" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea></div>
-      <div class="actions">
-        <button class="pitch-btn" onclick="openClientPanel(${b.id})">Ver ficha</button>
+      <div class="pre-cards">${cards}</div>
+    </div>`;
+  }).join('');
+}
+
+function pipelineSearch(v) {
+  _preFiltro = (v || '').toLowerCase();
+  renderPreclientes();
+}
+
+// == Registro de demos =========================================================
+// El tablero dice donde esta cada uno HOY; esto guarda como llego hasta ahi.
+let _demos = [];
+let _demosFiltro = '';
+
+async function cargarDemos() {
+  const body = document.getElementById('demos-body');
+  body.innerHTML = '<div style="color:#475569;padding:16px;font-size:.85rem">Cargando...</div>';
+  try {
+    const r = await fetch('/api/demos-realizadas');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    _demos = (await r.json()).demos || [];
+    renderDemos();
+  } catch (e) {
+    body.innerHTML = '<div style="color:#f87171;padding:16px">No se pudieron cargar las demos: ' + esc(e.message) + '</div>';
+  }
+}
+
+function filtrarDemos(v) { _demosFiltro = (v || '').toLowerCase(); renderDemos(); }
+
+function renderDemos() {
+  const body = document.getElementById('demos-body');
+  const lista = _demosFiltro
+    ? _demos.filter(d => (d.cliente_nombre || '').toLowerCase().includes(_demosFiltro))
+    : _demos;
+  if (!lista.length) {
+    body.innerHTML = '<div class="empty-state">' +
+      (_demosFiltro ? 'Ningún cliente coincide' : 'Todavía no hay demos registradas') + '</div>';
+    return;
+  }
+  body.innerHTML = lista.map(d => {
+    const nombre = d.cliente_nombre || 'Cliente borrado';
+    const abrir = d.client_id ? ` onclick="openClientPanel(${d.client_id})"` : '';
+    return `<div class="demo-row">
+      <div class="demo-row-head">
+        <span class="demo-num">Demo ${d.numero || '?'}</span>
+        <span class="demo-cliente"${abrir}>${esc(nombre)}</span>
+        <span class="demo-meta">${esc(d.realizada_por_nombre || 'sin asignar')} · ${esc(_fechaCorta(d.fecha))}</span>
+        <button class="demo-del" onclick="borrarDemo(${d.id})" title="Borrar">&times;</button>
       </div>
-    </div>`; }).join('');
-  _populateNotes(body);
+      <div class="demo-texto">${esc(d.actualizacion || 'Sin notas')}</div>
+    </div>`;
+  }).join('');
+}
+
+function _fechaCorta(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d)) return String(iso).slice(0, 10);
+  return d.toLocaleDateString('es-UY', {day: '2-digit', month: '2-digit', year: 'numeric'});
+}
+
+let _regdemoModal = null;
+
+async function abrirNuevaDemo() {
+  const usuarios = await _usuarios();
+  const opciones = usuarios.map(u =>
+    `<option value="${u.id}">${esc(u.name)}</option>`).join('');
+  const m = document.createElement('div');
+  m.className = 'modal-overlay';
+  m.id = 'regdemo-modal';
+  m.classList.add('open');
+  m.innerHTML = `<div class="modal">
+    <h3>Registrar demo</h3>
+    <label class="modal-label">Cliente</label>
+    <input id="regdemo-cliente" class="modal-input" placeholder="Escribí el nombre del negocio..." autocomplete="off">
+    <div id="regdemo-res"></div>
+    <input type="hidden" id="regdemo-cliente-id">
+    <label class="modal-label">La dio</label>
+    <select id="regdemo-quien" class="modal-input"><option value="">Yo</option>${opciones}</select>
+    <label class="modal-label">Cómo viene</label>
+    <textarea id="regdemo-nota" class="modal-input" style="min-height:82px;resize:vertical"
+              placeholder="Qué se mostró, qué dijo el cliente, próximo paso..."></textarea>
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="cerrarNuevaDemo()">Cancelar</button>
+      <button class="btn-confirm" id="regdemo-guardar" onclick="guardarDemo()">Guardar</button>
+    </div>
+  </div>`;
+  document.body.appendChild(m);
+  _regdemoModal = m;
+  const input = document.getElementById('regdemo-cliente');
+  input.oninput = e => _buscarClienteDemo(e.target.value);
+  input.focus();
+}
+
+function cerrarNuevaDemo() {
+  if (_regdemoModal) { _regdemoModal.remove(); _regdemoModal = null; }
+}
+
+async function _buscarClienteDemo(q) {
+  const cont = document.getElementById('regdemo-res');
+  document.getElementById('regdemo-cliente-id').value = '';
+  if (!q || q.trim().length < 2) { cont.innerHTML = ''; return; }
+  try {
+    const r = await fetch('/api/leads?page=1&search=' + encodeURIComponent(q.trim()));
+    const d = await r.json();
+    const items = (Array.isArray(d) ? d : (d.items || [])).slice(0, 6);
+    cont.innerHTML = items.length
+      ? items.map(b => `<div class="upick-option" onclick="_elegirClienteDemo(${b.id}, ${escJs(b.name || '')})">${esc(b.name || '')}</div>`).join('')
+      : '<div class="upick-option" style="color:#64748b;cursor:default">Sin resultados</div>';
+  } catch (e) { cont.innerHTML = ''; }
+}
+
+function _elegirClienteDemo(id, nombre) {
+  document.getElementById('regdemo-cliente-id').value = id;
+  document.getElementById('regdemo-cliente').value = nombre;
+  document.getElementById('regdemo-res').innerHTML = '';
+}
+
+async function guardarDemo() {
+  const id = document.getElementById('regdemo-cliente-id').value;
+  if (!id) { alert('Elegí un cliente de la lista de sugerencias.'); return; }
+  const btn = document.getElementById('regdemo-guardar');
+  btn.disabled = true;
+  try {
+    const r = await fetch('/api/demos-realizadas', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        client_id: parseInt(id, 10),
+        realizada_por: document.getElementById('regdemo-quien').value || null,
+        actualizacion: document.getElementById('regdemo-nota').value.trim(),
+      }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!d.ok) { alert(d.error || 'No se pudo guardar la demo.'); return; }
+    cerrarNuevaDemo();
+    cargarDemos();
+  } finally { btn.disabled = false; }
+}
+
+async function borrarDemo(id) {
+  if (!confirm('Borrar esta demo del registro?')) return;
+  const r = await fetch('/api/demos-realizadas/' + id, {method: 'DELETE'});
+  const d = await r.json().catch(() => ({}));
+  if (!d.ok) { alert(d.error || 'No se pudo borrar.'); return; }
+  cargarDemos();
+}
+
+// == Responsables del cliente ==================================================
+
+async function guardarResponsable(clientId, campo, valor, sel) {
+  const previo = sel.dataset.previo || '';
+  sel.disabled = true;
+  try {
+    const r = await fetch('/api/clientes-activos/' + clientId + '/responsables', {
+      method: 'PUT', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({[campo]: valor || null}),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!d.ok) {
+      // Se vuelve al valor anterior: dejarlo mostrando algo que no se guardo es
+      // peor que no guardar, porque nadie se entera.
+      sel.value = previo;
+      alert(d.error || 'No se pudo guardar el responsable.');
+      return;
+    }
+    sel.dataset.previo = valor || '';
+    sel.classList.toggle('vacante', !valor);
+  } finally { sel.disabled = false; }
 }
 
 // ── Clientes ──────────────────────────────────────────────────────────────────
@@ -2316,29 +2566,44 @@ async function loadClientesPanel() {
   const body = document.getElementById('clientes-body');
   body.innerHTML = '<div style="color:#475569;padding:16px;font-size:.85rem">Cargando...</div>';
   try {
-    const r = await fetch('/api/leads?crm_group=clientes');
-    const data = await r.json();
-    const leads = Array.isArray(data) ? data : (data.items || []);
-    if (!leads.length) { body.innerHTML = '<div class="empty-state">No hay clientes todavía</div>'; return; }
-    const crmLabels = {cliente_cerrado:'Cliente cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado'};
-    const crmColor = {cliente_cerrado:'#4ade80',en_desarrollo:'#0088cc',finalizado:'#a78bfa'};
-    body.innerHTML = leads.map(b => {
+    const [r, usuarios] = await Promise.all([fetch('/api/clientes-activos'), _usuarios()]);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const clientes = (await r.json()).clientes || [];
+    if (!clientes.length) { body.innerHTML = '<div class="empty-state">No hay clientes todavía</div>'; return; }
+    const crmLabels = {cerrado:'Cerrado', en_desarrollo:'En desarrollo', finalizado:'Finalizado'};
+    const crmColor  = {cerrado:'#4ade80', en_desarrollo:'#0088cc', finalizado:'#a78bfa'};
+
+    // Un select por rol. El valor vacio es un puesto vacante de verdad, no un
+    // "todavia no cargue los usuarios".
+    const selector = (b, campo) => {
+      const actual = b[campo];
+      const opts = usuarios.map(u =>
+        `<option value="${u.id}"${u.id === actual ? ' selected' : ''}>${esc(u.name)}</option>`).join('');
+      return `<select class="resp-sel${actual ? '' : ' vacante'}" data-previo="${actual || ''}"
+        onchange="guardarResponsable(${b.id}, '${campo}', this.value, this)">
+        <option value="">— sin asignar —</option>${opts}</select>`;
+    };
+
+    body.innerHTML = clientes.map(b => {
       const crm = b.crm_status || '';
       const color = crmColor[crm] || '#475569';
+      const tel = b.phone ? '<div class="biz-sub">' + esc(b.phone) + '</div>' : '';
       return `
-      <div class="table-row no-cb row-${crm}">
+      <div class="table-row tbl-cli row-${crm}">
         <div>
-          <div class="biz-name"><span style="cursor:pointer;text-decoration:underline;text-decoration-color:#334155" onclick="openClientPanel(${b.id})">${esc(b.name||'')}</span>${_calendlyBadge(b)}</div>
-          <div class="biz-sub">${esc(b.category||'')}${b.city ? ' · '+esc(b.city) : ''}</div>
+          <div class="biz-name"><span style="cursor:pointer;text-decoration:underline;text-decoration-color:#334155" onclick="openClientPanel(${b.id})">${esc(b.name||'')}</span></div>
+          <div class="biz-sub">${esc(b.city||'')}</div>
+          ${tel}
         </div>
         <div><span style="font-size:.72rem;font-weight:600;color:${color};background:${color}18;padding:3px 8px;border-radius:99px">${crmLabels[crm]||crm}</span></div>
-        <div>${b.phone ? (hasWhatsApp(b.phone) ? `<a class="phone-val" href="https://wa.me/${waNum(b.phone)}${b.pitch_text ? '?text='+encodeURIComponent(b.pitch_text) : ''}" target="_blank" title="Abrir WhatsApp">${esc(b.phone)}</a>` : `<span class="phone-plain">${esc(b.phone)}</span>`) : '<span class="no-val">—</span>'}</div>
-        <div><textarea class="notes-inline" data-id="${b.id}" data-notes="${esc(b.notes||'')}" placeholder="Agregar nota..." rows="1" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea></div>
+        <div data-rol="Día a día">${selector(b, 'encargado_id')}</div>
+        <div data-rol="Mantenimiento">${selector(b, 'mantenimiento_id')}</div>
+        <div data-rol="Cobros">${selector(b, 'cobros_id')}</div>
         <div class="actions">
           <button class="pitch-btn" onclick="openClientPanel(${b.id})">Ver ficha</button>
         </div>
       </div>`; }).join('');
-    _populateNotes(body);
+    if (typeof lucide !== 'undefined') lucide.createIcons();
   } catch(e) { body.innerHTML = `<div style="color:#f87171;padding:16px">Error: ${e.message}</div>`; }
 }
 
@@ -5634,7 +5899,7 @@ def create_app(db_path: str) -> Flask:
     app.config["PIPELINE_STATUS"] = _pipeline_status
     app.config["PIPELINE_LOCK"] = _pipeline_lock
 
-    for bp in (leads_bp, demos_bp, calendar_bp, wa_bp, pipeline_bp, tasks_bp, budgets_bp, tokens_bp, meta_bp, calendly_bp, notion_bp, projects_bp,
+    for bp in (leads_bp, demos_bp, calendar_bp, wa_bp, pipeline_bp, tasks_bp, budgets_bp, tokens_bp, meta_bp, calendly_bp, notion_bp, projects_bp, preclientes_bp,
                 notion_clients_bp, resend_bp, linkedin_bp):
         app.register_blueprint(bp)
 
