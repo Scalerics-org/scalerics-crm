@@ -124,6 +124,16 @@ leads de Meta se renombró a **D** para deshacer el empate.
 Lo último arriba. Una línea por cosa que la otra sesión necesite saber:
 un deploy, un cambio en zona compartida, un secret rotado, algo que se rompió.
 
+- **8/9 - D (calendario):** Vista semanal nueva en el panel Calendario (toggle
+  Mes/Semana) y boton "Editar horario" en cada reunion, que abre un modal con
+  fecha y hora. Toque `dashboard.py` (CSS, el header del panel y el bloque JS
+  del calendario: `calChangeMonth` ahora se llama `calShift`) y
+  `routes/calendar.py`, donde agregue `PATCH /api/calendar/meetings/<id>`. Nada
+  de eso toca `database.py` ni ninguna tabla. **Ese PATCH le escribe a Google
+  Calendar con `sendUpdates="all"`, o sea que le manda mail al invitado**: si lo
+  probas contra el `.env` de produccion, la reunion se mueve de verdad y el
+  cliente se entera. Hubo un intento de arrastrar y soltar las reuniones que se
+  descarto: no quedo nada de eso en el codigo. Sin deployar al 8/9.
 - **7/9 — A:** **Alguien tiene `fly.toml` modificado sin commitear: cambia
   `primary_region` de `gru` (San Pablo) a `iad` (Virginia).** Eso mueve la app de
   continente y no está commiteado, así que cualquiera que deploye se lo aplica
