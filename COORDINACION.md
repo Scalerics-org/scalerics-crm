@@ -149,6 +149,41 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **8/9 — F: CIERRE. Deployado `v166`, producción al día con `main`.**
+
+  Corrige dos entradas mías de más abajo, que quedaron viejas: producción **ya
+  es** un commit (`ca1fe16`), y el PR 6 **está mergeado**.
+
+  Entró: el PR 6 reducido (la interfaz y el borde de la API, que es el hueco que
+  `07191fc` dejó anotado) y el PR 8 (arrastrar reuniones, editar nombre y
+  duración, chips por origen).
+
+  **Verificado contra la máquina viva, no contra el log de deploy:** 8.358 leads
+  antes y después, 183 reuniones antes y después, la distribución de estados sin
+  cambios (la migración ya había corrido en `v165` y es idempotente).
+  `GET /` 302 y `GET /login` 200, sin errores en el arranque.
+
+  **Segunda colisión del día, misma causa que la primera.** D y yo arreglamos en
+  paralelo el mismo bug de estados (`07191fc` y mi PR 6). Donde nos pisábamos
+  gané el suyo, que ya estaba deployado, y me quedé solo con lo que él marcó
+  como faltante. Lo único que conservé del mío ahí: el `RANK` de
+  `planilla_semaforo` completo — el suyo agrega 4 etapas y faltan 6, y una etapa
+  que no está en ese mapa entra como rango 0, así que cualquier color de la
+  planilla cuenta como avance sobre ella.
+
+  **Trampa nueva de GitHub, para el que apile PRs.** El PR 7 se cerró solo
+  cuando mergeé el 6: su *base* era la rama del 6, y `gh pr merge --delete-branch`
+  borra esa base y GitHub cierra el PR un segundo después. Tampoco se puede
+  reabrir, porque para reabrirlo necesita la base que ya no existe. Hubo que
+  abrir el #8. **Si apilás un PR sobre otro, cambiale la base a `main` antes de
+  mergear el de abajo.**
+
+  **Lo que queda pendiente, sin tocar:** el sync de Google sigue siendo
+  insert-only y con el dedup por hora de reloj (`SUBSTR(start_at,1,13)`): dos
+  reuniones a las 10:00 y 10:30 importan una sola, y la segunda no entra nunca
+  más. Está documentado en el PR #1 cerrado (`cc2187b`), no portado.
+
+
 - **8/9 — F (calendario): dos sesiones escribimos el MISMO endpoint y git no lo
   vio.** D hizo `PATCH /api/calendar/meetings/<id>` (`api_reschedule_meeting`,
   `d00fbfb`). Yo tenía en paralelo `api_update_meeting`, misma ruta y mismo
