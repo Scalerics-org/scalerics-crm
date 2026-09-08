@@ -176,6 +176,41 @@ leads de Meta se renombró a **D** para deshacer el empate.
 Lo último arriba. Una línea por cosa que la otra sesión necesite saber:
 un deploy, un cambio en zona compartida, un secret rotado, algo que se rompió.
 
+- **8/9 — E (lead magnet web): la migracion de estados dejo roto `services/` y
+  parte de `routes/`. Arreglado lo que rompia en silencio; falta la interfaz.**
+
+  Al migrar `crm_status` se actualizaron `routes/leads.py` y `dashboard.py`,
+  pero **el codigo que corre solo quedo con el vocabulario viejo**, y como los
+  valores viejos ya no existen en la base, no fallaba: no encontraba nada.
+
+  **Lo que estaba roto y arregle:**
+  - `services/secuencia_contactos.py`: la secuencia `reunion_hecha` dejo de
+    alcanzar a nadie. Son los 22 leads que ahora son `demo_1` — los que vieron
+    la demo y desaparecieron, el cohorte mas caliente.
+  - `routes/calendar.py`: despues de una reunion el lead avanza solo, pero la
+    lista de estados que lo habilitan tenia `reunion_agendada`. **Los 70 leads
+    en `demo_agendada` no iban a avanzar.**
+  - `routes/calendly.py` y `services/calendly_gcal.py`: escribian
+    `reunion_agendada` de nuevo en cada reserva.
+  - `services/planilla_semaforo.py` (mapa de colores y RANK),
+    `services/discovery_respuestas.py` y `services/email_service.py`.
+  - Los tests que fijaban el vocabulario viejo, en 6 archivos.
+
+  **LO QUE NO TOQUE, y queda para quien hizo la migracion:** unas 50 apariciones
+  en `dashboard.py` (etiquetas, colores, los `<option>` de los desplegables, el
+  orden del embudo y varias consultas SQL de los paneles), `routes/leads.py`
+  (contadores, `funnel_order`, `_meeting_st`, `_closed_st`, y el POST de
+  `reunion_agendada` en la linea 680) y `routes/wa.py` (el mapeo del bot).
+  **Los desplegables todavia ofrecen los estados viejos**, asi que un humano
+  puede volver a escribirlos a mano; `_ESTADOS_LEGACY` los sigue aceptando y la
+  migracion los barre en el proximo arranque, pero mientras tanto ese lead no
+  aparece en el tablero de pre-clientes.
+
+  `routes/leads.py:80` (`_ESTADOS_LEGACY`) lo deje intacto a proposito: ahi los
+  nombres viejos son compatibilidad de entrada, no una omision.
+
+  Suite en 1170 y `check_js.py` OK.
+
 - **8/9 — E (lead magnet web) — DEPLOYADO. Leer esto antes de deployar.**
 
   **Produccion es `9b34891`, o sea que las tres cosas que estaban separadas ya

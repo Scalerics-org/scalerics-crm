@@ -70,7 +70,7 @@ def test_new_lead_stores_company_service_and_phone(app):
     assert lead["phone"] == "+59899123456"
     assert "Contacto: Juan Pérez" in lead["notes"]
     assert "Interés: E-commerce / tienda online" in lead["notes"]
-    assert lead["crm_status"] == "reunion_agendada"
+    assert lead["crm_status"] == "demo_agendada"
 
 
 def test_falls_back_to_person_name_when_no_company(app):
@@ -112,5 +112,5 @@ def test_existing_lead_is_enriched_without_losing_data(app):
     assert lead["interest"] == "E-commerce / tienda online"  # el servicio va aparte
     assert "Lo scrapeamos en junio" in lead["notes"]     # la nota vieja sobrevive
     assert "Interés: E-commerce / tienda online" in lead["notes"]
-    assert lead["crm_status"] == "reunion_agendada"
+    assert lead["crm_status"] == "demo_agendada"
     assert lead["source"] != "calendly_unmatched"        # matcheó, no es lead huérfano

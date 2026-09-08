@@ -102,11 +102,11 @@ CAMPANAS = {
         "patrones": _PATRONES_META,
         # Para Meta NO sirve 'interesado': desde que cada estado tiene su
         # secuencia, ese tambien manda un mail, y le diria "no llegamos a
-        # agendar" a alguien que acaba de escribir. 'negociacion' es el unico
+        # agendar" a alguien que acaba de escribir. 'follow_up_1' es el unico
         # estado sin secuencia que describe lo que realmente pasa —hay una
         # conversacion abierta— y ademas aparece en el panel de Pipeline, que
         # es donde alguien lo va a ver.
-        "estado_al_responder": "negociacion",
+        "estado_al_responder": "follow_up_1",
         # La RED que busca en Gmail, distinta del LECTOR de arriba: no hace
         # falta que cubra los 13 asuntos, porque el camino principal es el
         # remitente y este es solo el respaldo para quien contesta desde otra
@@ -132,7 +132,7 @@ _ASUNTOS_SIN_NEGOCIO = ("una idea para tu negocio", "ultimo mail de scalerics",
 _PREFIJOS_RESPUESTA = ("re:", "rv:", "fwd:", "fw:")
 
 # Quien contesta pidiendo la baja NO esta negociando: esta pidiendo algo que
-# tenemos que ejecutar. Si cae en 'negociacion' queda como oportunidad abierta
+# tenemos que ejecutar. Si cae en 'follow_up_1' queda como oportunidad abierta
 # en el pipeline, nadie hace lo que pidio, y si mas adelante entra de nuevo por
 # otro formulario vuelve a recibir mails.
 #
