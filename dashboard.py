@@ -6103,9 +6103,15 @@ function _finUsd(n) {
 }
 
 function _finAttr(obj) {
-  // El JSON va dentro de un atributo entre comillas simples: un apóstrofo en
-  // el concepto partiría el atributo y rompería el botón.
-  return JSON.stringify(obj).replace(/'/g, '&#39;');
+  // El JSON va dentro de un atributo entre comillas simples (ver escJs() y su
+  // comentario más arriba para el porqué del orden). El navegador decodifica
+  // las entidades del atributo ANTES de compilarlo como JS, así que un valor
+  // con el texto literal "&quot;" (seis caracteres, no una comilla de
+  // verdad) decodificaría a una comilla real y rompería el JSON.stringify
+  // que lo envuelve — por eso & se escapa primero, antes de que < > ' generen
+  // entidades nuevas que ese primer paso volvería a tocar.
+  return JSON.stringify(obj).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/'/g, '&#39;');
 }
 
 function _finRango() {

@@ -6,8 +6,13 @@ _grant_panel_to_existing_roles en database.py no lo ve nadie en producción,
 donde la tabla `roles` ya tiene filas. Es exactamente lo que pasó con `meta`.
 """
 
+import json
 import re
+import shutil
+import subprocess
 from pathlib import Path
+
+import pytest
 
 import dashboard
 
@@ -94,6 +99,38 @@ def test_el_json_de_los_onclick_va_escapado():
     assert "function _finAttr(" in HTML
     assert "abrirMovimiento(${_finAttr(m)})" in HTML
     assert "abrirMovimiento(${JSON.stringify(m)})" not in HTML
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node no esta instalado")
+def test_finattr_escapa_lo_que_el_html_decodificaria_como_comilla(tmp_path):
+    """Que exista `function _finAttr(` no prueba que escape nada: ese era el
+    test viejo, y por eso sobrevivió el bug. El HTML decodifica las entidades
+    del atributo ANTES de compilarlo como JS, así que un nombre de negocio con
+    el texto literal `&quot;` (seis caracteres, no una comilla real) decodifica
+    a una comilla real y rompe el JSON.stringify que _finAttr arma — mismo
+    ataque con `&#92;` para una barra invertida. Esto corre el cuerpo real de
+    _finAttr en node y lo prueba contra ese payload."""
+    m = re.search(r"function _finAttr\(obj\) \{.*?\n\}", HTML, re.S)
+    assert m, "no encontré _finAttr en el HTML"
+
+    payload = "a&quot;});alert(1);//" + "'" + "<x>" + "\\"
+    script = m.group(0) + "\nconsole.log(_finAttr({clientName: %s}));" % json.dumps(payload)
+    archivo = tmp_path / "_finAttr.js"
+    archivo.write_text(script, encoding="utf-8")
+    r = subprocess.run(["node", str(archivo)], capture_output=True, text=True)
+    assert r.returncode == 0, f"_finAttr no corrió en node:\n{r.stderr}"
+    salida = r.stdout
+
+    # "&quot;" crudo en el atributo decodifica a una comilla real antes de
+    # que el navegador compile el JS: tiene que sobrevivir solo como
+    # "&amp;quot;" (que decodifica de vuelta al texto "&quot;", no a una
+    # comilla). Ninguna "&quot;" cruda puede quedar en la salida.
+    assert "&amp;quot;" in salida
+    assert "&quot;" not in salida.replace("&amp;quot;", "")
+    # Comillas simples y angulares tampoco pueden viajar crudas.
+    assert "'" not in salida.replace("&#39;", "")
+    assert "<" not in salida
+    assert ">" not in salida
 
 
 def test_el_modal_muestra_el_monto_en_dolares_antes_de_guardar():
