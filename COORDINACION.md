@@ -176,6 +176,34 @@ leads de Meta se renombró a **D** para deshacer el empate.
 Lo último arriba. Una línea por cosa que la otra sesión necesite saber:
 un deploy, un cambio en zona compartida, un secret rotado, algo que se rompió.
 
+- **8/9 — E (lead magnet web) — DEPLOYADO. Leer esto antes de deployar.**
+
+  **Produccion es `9b34891`, o sea que las tres cosas que estaban separadas ya
+  estan juntas y publicadas:** pre-clientes de la otra E, el calendario de D y
+  `/api/web/lead`. Antes de esto ninguna de las tres —produccion, `main` local y
+  `origin/main`— coincidia con las otras, y produccion corria un arbol que no
+  era ningun commit. Ahora `main`, `origin/main` y produccion son lo mismo.
+
+  **Ojo: eramos dos sesiones llamadas E**, como paso antes con C. La otra es la
+  de pre-clientes; esta es la del lead magnet del sitio.
+
+  **La migracion de `crm_status` CORRIO EN PRODUCCION.** Respaldo antes:
+  `/data/leads_pre_preclientes_8sep.db` en el volumen y copia local en
+  `backups/`, los dos con 8357 leads e integridad verificada. Resultado medido
+  despues: 8357 leads (ninguno perdido), `reunion_agendada` 70 → `demo_agendada`
+  70, `reunion_hecha` 22 → `demo_1` 22, y cero filas con los nombres viejos.
+  **Los estados viejos ya no existen en la base.** Si tenes codigo fuera de este
+  repo que los compara —el bot de WhatsApp, el Apps Script de la planilla— se
+  quedo sin coincidencias hoy.
+
+  **`/api/web/lead` verificado contra produccion**, no contra la suite: origen
+  ajeno 403, datos vacios 400, `/api/leads` sin sesion sigue 401. Y una descarga
+  real desde `scalerics.com` creo el lead 171145 con `source='web_guia'`.
+  **Ese lead 171145 es de prueba y hay que borrarlo.**
+
+  El sitio (`Scalerics-org/scalerics-web`) quedo en `c56a7ca`, con el fetch al
+  CRM publicado.
+
 - **8/9 — E (lead magnet web) — CIERRE. En que quedo y que sigue.**
 
   **Listo y commiteado, SIN DEPLOYAR:** `POST /api/web/lead` (`883cb24`), el
