@@ -256,6 +256,52 @@ def test_editar_un_movimiento_con_client_id_null_lo_desatribuye(cli):
     assert mov["client_id"] is None
 
 
+def test_mover_de_mes_un_movimiento_generado_por_un_fijo_da_400(cli):
+    """Mover la fecha de un movimiento de fijo a otro mes o revienta el
+    índice único (si el mes destino ya tiene su fila) o libera el par
+    (recurrente_id, periodo) del mes de origen -la próxima materialización
+    lo regenera ahí y el gasto queda contado dos veces sin que nada falle."""
+    cli.post("/api/finanzas/recurrentes", json={
+        "tipo": "egreso", "concepto": "Fly", "categoria": "infraestructura",
+        "monto": 4.18, "moneda": "USD", "dia_del_mes": 1, "desde": "2026-09"})
+    cli.get("/api/finanzas/resumen")  # materializa el mes actual
+    mov = cli.get("/api/finanzas/movimientos", query_string={
+        "desde": "2026-01", "hasta": "2026-12"}).get_json()[0]
+    assert mov["recurrente_id"] is not None
+
+    r = cli.put(f"/api/finanzas/movimientos/{mov['id']}", json={
+        "tipo": mov["tipo"], "fecha": "2026-10-15", "concepto": mov["concepto"],
+        "categoria": mov["categoria"], "monto": mov["monto"], "moneda": mov["moneda"]})
+    assert r.status_code == 400
+    assert "otro mes" in r.get_json()["error"]
+
+    # No se movió ni se tocó.
+    lista = cli.get("/api/finanzas/movimientos", query_string={
+        "desde": "2026-01", "hasta": "2026-12"}).get_json()
+    intacto = [m for m in lista if m["id"] == mov["id"]][0]
+    assert intacto["periodo"] == mov["periodo"]
+    assert intacto["fecha"] == mov["fecha"]
+
+
+def test_editar_el_monto_de_un_movimiento_de_fijo_sin_cambiar_el_mes_funciona(cli):
+    cli.post("/api/finanzas/recurrentes", json={
+        "tipo": "egreso", "concepto": "Fly", "categoria": "infraestructura",
+        "monto": 4.18, "moneda": "USD", "dia_del_mes": 1, "desde": "2026-09"})
+    cli.get("/api/finanzas/resumen")
+    mov = cli.get("/api/finanzas/movimientos", query_string={
+        "desde": "2026-01", "hasta": "2026-12"}).get_json()[0]
+
+    r = cli.put(f"/api/finanzas/movimientos/{mov['id']}", json={
+        "tipo": mov["tipo"], "fecha": mov["fecha"], "concepto": mov["concepto"],
+        "categoria": mov["categoria"], "monto": 9.99, "moneda": mov["moneda"]})
+    assert r.status_code == 200
+
+    editado = [m for m in cli.get("/api/finanzas/movimientos", query_string={
+        "desde": "2026-01", "hasta": "2026-12"}).get_json() if m["id"] == mov["id"]][0]
+    assert editado["monto"] == 9.99
+    assert editado["periodo"] == mov["periodo"]
+
+
 def test_un_fijo_en_pesos_sin_tipo_de_cambio_viene_con_monto_usd_null(cli, app):
     """El panel no convierte: sin un tipo de cambio usable, se marca, no se
     inventa una cuenta a 1 peso por dólar."""

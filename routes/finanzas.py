@@ -145,11 +145,24 @@ def api_crear_movimiento():
 @finanzas_bp.route("/api/finanzas/movimientos/<int:mov_id>", methods=["PUT"])
 def api_actualizar_movimiento(mov_id):
     db = _db()
-    if not get_movimiento(db, mov_id):
+    mov = get_movimiento(db, mov_id)
+    if not mov:
         return jsonify({"ok": False, "error": "no existe"}), 404
     campos, error = _validar_movimiento(request.get_json() or {})
     if error:
         return jsonify({"ok": False, "error": error}), 400
+    if mov["recurrente_id"] and campos["periodo"] != mov["periodo"]:
+        # Mover la fecha a otro mes de un movimiento generado por un fijo:
+        # si el mes destino ya tiene la fila de ese fijo, el UPDATE viola
+        # idx_finanzas_recurrente_periodo y esto 500ea sin este chequeo; si
+        # el mes destino está libre, el UPDATE pasa pero libera el par
+        # (recurrente_id, periodo) del mes de origen, y la próxima
+        # materialización lo regenera ahí: el gasto queda contado dos veces
+        # sin que nada falle. El pencil se ve igual para un fijo que para
+        # uno a mano, así que esto es uso normal, no un caso raro.
+        return jsonify({"ok": False, "error":
+                        "un movimiento generado por un gasto fijo no se puede "
+                        "mover a otro mes"}), 400
     actualizar_movimiento(db, mov_id, **campos)
     uid, nombre = _quien()
     log_activity(db, nombre, "finanzas_movimiento_editado", "finanzas", mov_id,
