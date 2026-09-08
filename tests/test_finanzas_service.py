@@ -5,10 +5,16 @@ cree. Un total de egresos equivocado en un panel financiero es peor que un
 bug de UI.
 """
 
+from datetime import date
+
 import pytest
 
-from services.finanzas import (CATEGORIAS, a_usd, meses_entre, periodo_anterior,
-                               periodo_de)
+from database import (actualizar_movimiento, borrar_recurrente, crear_recurrente,
+                      init_db, listar_movimientos)
+from services.finanzas import (CATEGORIAS, a_usd, materializar_recurrentes,
+                               meses_entre, periodo_anterior, periodo_de)
+
+_HOY = date(2026, 9, 8)
 
 
 def test_un_movimiento_en_dolares_no_se_convierte():
@@ -67,3 +73,98 @@ def test_las_categorias_no_se_pisan_entre_tipos():
     assert "infraestructura" in CATEGORIAS["egreso"]
     assert "desarrollo_web" in CATEGORIAS["ingreso"]
     assert "infraestructura" not in CATEGORIAS["ingreso"]
+
+
+@pytest.fixture
+def db(tmp_path):
+    ruta = str(tmp_path / "f.db")
+    init_db(ruta)
+    return ruta
+
+
+def _fijo(db, **extra):
+    campos = dict(tipo="egreso", concepto="Fly", categoria="infraestructura",
+                  monto=4.18, moneda="USD", dia_del_mes=20, desde="2026-07")
+    campos.update(extra)
+    return crear_recurrente(db, **campos)
+
+
+def test_materializa_un_movimiento_por_mes_desde_el_inicio(db):
+    _fijo(db)  # desde julio, hoy es septiembre
+    assert materializar_recurrentes(db, hoy=_HOY) == 3
+    periodos = sorted(m["periodo"] for m in listar_movimientos(db))
+    assert periodos == ["2026-07", "2026-08", "2026-09"]
+
+
+def test_el_mes_en_curso_se_genera_aunque_el_dia_no_haya_llegado(db):
+    # Hoy es 8 de septiembre y el fijo cae el 20: se genera igual, para que el
+    # mes muestre su costo fijo completo.
+    _fijo(db, desde="2026-09")
+    materializar_recurrentes(db, hoy=_HOY)
+    assert listar_movimientos(db)[0]["fecha"] == "2026-09-20"
+
+
+def test_correrlo_dos_veces_no_duplica(db):
+    """El caso del deploy. Cada deploy reinicia la máquina."""
+    _fijo(db)
+    materializar_recurrentes(db, hoy=_HOY)
+    assert materializar_recurrentes(db, hoy=_HOY) == 0
+    assert len(listar_movimientos(db)) == 3
+
+
+def test_no_genera_periodos_futuros(db):
+    _fijo(db, desde="2026-07", hasta="2027-12")
+    materializar_recurrentes(db, hoy=_HOY)
+    assert max(m["periodo"] for m in listar_movimientos(db)) == "2026-09"
+
+
+def test_respeta_hasta(db):
+    _fijo(db, desde="2026-07", hasta="2026-08")
+    assert materializar_recurrentes(db, hoy=_HOY) == 2
+
+
+def test_un_fijo_apagado_no_genera_nada(db):
+    _fijo(db, activo=0)
+    assert materializar_recurrentes(db, hoy=_HOY) == 0
+
+
+def test_un_fijo_en_pesos_usa_su_tipo_de_cambio(db):
+    _fijo(db, desde="2026-09", monto=40000, moneda="UYU", tipo_cambio=40.0)
+    materializar_recurrentes(db, hoy=_HOY)
+    assert listar_movimientos(db)[0]["monto_usd"] == 1000.0
+
+
+def test_un_fijo_en_pesos_sin_tipo_de_cambio_se_saltea_sin_romper(db):
+    """Un fijo mal cargado no puede tumbar la materialización de los demás."""
+    _fijo(db, concepto="Roto", desde="2026-09", moneda="UYU", tipo_cambio=None)
+    _fijo(db, concepto="Fly", desde="2026-09")
+    assert materializar_recurrentes(db, hoy=_HOY) == 1
+    assert listar_movimientos(db)[0]["concepto"] == "Fly"
+
+
+def test_editar_un_movimiento_generado_sobrevive_a_rematerializar(db):
+    _fijo(db, desde="2026-09")
+    materializar_recurrentes(db, hoy=_HOY)
+    mid = listar_movimientos(db)[0]["id"]
+    actualizar_movimiento(db, mid, monto=9.99, monto_usd=9.99)
+    materializar_recurrentes(db, hoy=_HOY)
+    assert listar_movimientos(db)[0]["monto_usd"] == 9.99
+
+
+def test_borrar_un_fijo_deja_vivos_los_movimientos_que_ya_genero(db):
+    """Son plata que se gastó. Borrar la definición no borra la historia."""
+    rid = _fijo(db)  # desde julio
+    materializar_recurrentes(db, hoy=_HOY)
+    assert len(listar_movimientos(db)) == 3
+    borrar_recurrente(db, rid)
+    assert len(listar_movimientos(db)) == 3
+
+
+def test_un_movimiento_generado_y_anulado_no_reaparece(db):
+    """Si se borrara de verdad, el fijo lo regeneraría y el gasto volvería solo."""
+    _fijo(db, desde="2026-09")
+    materializar_recurrentes(db, hoy=_HOY)
+    mid = listar_movimientos(db)[0]["id"]
+    actualizar_movimiento(db, mid, anulado=1)
+    assert materializar_recurrentes(db, hoy=_HOY) == 0
+    assert listar_movimientos(db) == []
