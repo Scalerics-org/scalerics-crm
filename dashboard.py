@@ -25,6 +25,7 @@ from routes.resend_webhook import resend_bp
 from routes.projects import projects_bp
 from routes.preclientes import preclientes_bp
 from routes.linkedin import linkedin_bp
+from routes.web import web_bp
 from services.auth import is_admin
 from services.demo_service import demo_job_handler
 from services.linkedin_posts import linkedin_job_handler
@@ -296,6 +297,9 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
   .cal-cell{min-height:44px!important;padding:3px 2px!important}
   .cal-event-chip{font-size:0!important;width:7px!important;height:7px!important;border-radius:50%!important;padding:0!important;min-width:0!important;display:inline-block!important;margin:1px!important}
   #cal-day-events-mobile{display:block}
+  /* La vista semanal se arrastra con el mouse: en touch el drag de HTML5 no
+     dispara, asi que en el celular solo queda el mes. */
+  .cal-view-toggle{display:none!important}
   /* ── Lead cards ── */
   .table-wrap{background:transparent!important;border:none!important;border-radius:0!important;overflow:visible!important}
   .table-header{display:none!important}
@@ -577,16 +581,37 @@ body.light .resp-sel{background:#fff;border-color:#e2e8f0;color:#0f172a}
 .cal-event-chip{font-size:.62rem;padding:2px 5px;border-radius:3px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.5;cursor:default}
 .cal-event-chip.regular{background:#172036;color:#60a5fa}
 .cal-event-chip.meet{background:#1a2e1e;color:#4ade80}
-.cal-demo-btn{display:block;width:100%;text-align:left;background:rgba(6,182,212,.12);border:1px solid rgba(6,182,212,.25);color:#06B6D4;border-radius:3px;padding:1px 5px;font-size:.5rem;font-weight:700;letter-spacing:.03em;cursor:pointer;margin-top:2px;line-height:1.6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.cal-demo-btn:hover{background:rgba(6,182,212,.25)}
 .cal-del-btn{display:block;width:100%;text-align:left;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.2);color:#f87171;border-radius:3px;padding:1px 5px;font-size:.5rem;font-weight:700;letter-spacing:.03em;cursor:pointer;margin-top:2px;line-height:1.6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cal-del-btn:hover{background:rgba(239,68,68,.25)}
 .cal-join-btn{display:block;width:100%;text-align:left;background:rgba(74,222,128,.1);border:1px solid rgba(74,222,128,.25);color:#4ade80;border-radius:3px;padding:1px 5px;font-size:.5rem;font-weight:700;letter-spacing:.03em;cursor:pointer;margin-top:2px;line-height:1.6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-decoration:none}
 .cal-join-btn:hover{background:rgba(74,222,128,.25)}
-.cal-event-chip .cal-demo-btn,.cal-event-chip .cal-del-btn,.cal-event-chip .cal-join-btn{display:none}
-.cal-event-chip:hover .cal-demo-btn,.cal-event-chip:hover .cal-del-btn,.cal-event-chip:hover .cal-join-btn{display:block}
+.cal-hora-btn{display:block;width:100%;text-align:left;background:rgba(0,136,204,.12);border:1px solid rgba(0,136,204,.28);color:#38bdf8;border-radius:3px;padding:1px 5px;font-size:.5rem;font-weight:700;letter-spacing:.03em;cursor:pointer;margin-top:2px;line-height:1.6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cal-hora-btn:hover{background:rgba(0,136,204,.25)}
+.cal-event-chip .cal-del-btn,.cal-event-chip .cal-join-btn,.cal-event-chip .cal-hora-btn{display:none}
+.cal-event-chip:hover .cal-del-btn,.cal-event-chip:hover .cal-join-btn,.cal-event-chip:hover .cal-hora-btn{display:block}
 .cal-loading{padding:40px;text-align:center;color:#334155;font-size:.9rem}
 .cal-error{padding:16px;background:#2a1515;border:1px solid #7f1d1d;border-radius:8px;color:#f87171;font-size:.82rem;margin-bottom:16px}
+/* ---- Vista semanal (la que permite arrastrar reuniones) ---- */
+.cal-view-toggle{display:flex;background:#1e293b;border-radius:8px;padding:2px;gap:2px}
+.cal-view-btn{background:transparent;border:none;color:#94a3b8;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:.78rem;font-weight:600;font-family:'Inter',sans-serif}
+.cal-view-btn:hover{color:#e2e8f0}
+.cal-view-btn.active{background:#0088cc;color:#fff}
+.calw-grid{display:grid;grid-template-columns:52px repeat(7,1fr);gap:1px;background:#1e293b;border-radius:12px;overflow:hidden}
+.calw-head{background:#0f1117;padding:8px 4px;text-align:center;font-size:.62rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.5px}
+.calw-head span{display:block;font-size:.9rem;color:#94a3b8;margin-top:2px}
+.calw-head.today,.calw-head.today span{color:#0088cc}
+.calw-hour{background:#0f1117;color:#475569;font-size:.58rem;text-align:right;padding:2px 6px;font-weight:600}
+.calw-cell{background:#161b27;display:flex;flex-direction:column;min-height:46px}
+.calw-cell.today{background:#0d1f33}
+.calw-slot{flex:1;min-height:23px;padding:1px 3px}
+.calw-slot+.calw-slot{border-top:1px dashed rgba(255,255,255,.04)}
+.calw-chip{font-size:.6rem;padding:2px 5px;border-radius:4px;line-height:1.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.calw-chip.regular{background:#172036;color:#60a5fa}
+.calw-chip.meet{background:#1a2e1e;color:#4ade80}
+.calw-chip:hover{position:relative;z-index:5;white-space:normal;overflow:visible}
+.calw-chip .cal-del-btn,.calw-chip .cal-join-btn,.calw-chip .cal-hora-btn{display:none}
+.calw-chip:hover .cal-del-btn,.calw-chip:hover .cal-join-btn,.calw-chip:hover .cal-hora-btn{display:block}
+.calw-hint{font-size:.7rem;color:#475569;margin-bottom:10px}
 
 /* ---- Shared modals ---- */
 .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;align-items:center;justify-content:center}
@@ -740,8 +765,19 @@ body.light .cal-cell-day{color:#64748b}
 body.light .cal-cell.today .cal-cell-day{color:#fff;background:#0088cc}
 body.light .cal-event-chip.regular{background:#dbeafe;color:#1d4ed8}
 body.light .cal-event-chip.meet{background:#dcfce7;color:#15803d}
-body.light .cal-demo-btn{background:rgba(6,182,212,.08);color:#0e7490;border-color:rgba(6,182,212,.2)}
+body.light .cal-view-toggle{background:#f1f5f9;border:1px solid #e2e8f0}
+body.light .cal-view-btn{color:#64748b}
+body.light .cal-view-btn.active{background:#0088cc;color:#fff}
+body.light .calw-grid{background:#e2e8f0}
+body.light .calw-head,body.light .calw-hour{background:#f8fafc;color:#94a3b8}
+body.light .calw-head span{color:#475569}
+body.light .calw-cell{background:#fff}
+body.light .calw-cell.today{background:#eff6ff}
+body.light .calw-slot+.calw-slot{border-top-color:#f1f5f9}
+body.light .calw-chip.regular{background:#dbeafe;color:#1d4ed8}
+body.light .calw-chip.meet{background:#dcfce7;color:#15803d}
 body.light .cal-del-btn{background:rgba(239,68,68,.07);color:#dc2626;border-color:rgba(239,68,68,.18)}
+body.light .cal-hora-btn{background:rgba(0,136,204,.08);color:#0369a1;border-color:rgba(0,136,204,.2)}
 body.light .cal-join-btn{background:rgba(22,163,74,.08);color:#15803d;border-color:rgba(22,163,74,.2)}
 body.light .cal-loading{color:#94a3b8}
 /* ── Metrics light mode ───────────────────────────────────────────────────── */
@@ -1462,8 +1498,12 @@ body.light .upick-name{color:#0f172a}
     <div class="cal-header">
       <h1 id="cal-week-label">Calendario</h1>
       <div style="display:flex;gap:8px;align-items:center;flex-shrink:0">
-        <button class="cal-nav-btn" onclick="calChangeMonth(-1)">←</button>
-        <button class="cal-nav-btn" onclick="calChangeMonth(1)">→</button>
+        <div class="cal-view-toggle">
+          <button id="cal-view-mes" class="cal-view-btn active" onclick="calSetView('mes')">Mes</button>
+          <button id="cal-view-semana" class="cal-view-btn" onclick="calSetView('semana')">Semana</button>
+        </div>
+        <button class="cal-nav-btn" onclick="calShift(-1)">←</button>
+        <button class="cal-nav-btn" onclick="calShift(1)">→</button>
         <a href="https://calendly.com/scalerics/consultoriagratuita" target="_blank" class="cal-new-btn" style="background:#0f2a1a;border:1px solid #10b981;color:#10b981;text-decoration:none">+ Calendly</a>
       </div>
     </div>
@@ -1716,6 +1756,29 @@ body.light .upick-name{color:#0f172a}
 </div>
 
 <!-- Modal: Nueva reunión -->
+<div class="modal-overlay" id="reprog-modal">
+  <div class="modal" style="width:400px;max-width:95vw">
+    <h3>Cambiar el horario</h3>
+    <p style="margin-bottom:16px" id="reprog-title"></p>
+    <div class="modal-row">
+      <div>
+        <label class="modal-label">Fecha</label>
+        <input type="date" id="reprog-date">
+      </div>
+      <div>
+        <label class="modal-label">Hora</label>
+        <input type="time" id="reprog-time">
+      </div>
+    </div>
+    <p style="font-size:.72rem;color:#64748b;margin:10px 0 0">Si la reunión está en Google Calendar, se mueve ahí también y al invitado le llega el aviso por mail.</p>
+    <div class="cal-error" id="reprog-error" style="display:none;margin:12px 0 0"></div>
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="_calCerrarEditor()">Cancelar</button>
+      <button class="btn-confirm" id="reprog-save-btn" onclick="_calGuardarHorario()">Guardar</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="event-modal">
   <div class="modal" style="width:460px;max-width:95vw">
     <h3>Nueva reunión</h3>
@@ -3183,9 +3246,26 @@ async function sendWaMessage() {
 // ========== Calendar panel ==========
 let calLoaded = false;
 let calMonthOffset = 0;
+let calWeekOffset = 0;
+let calView = 'mes';   // 'mes' | 'semana'
 
-function calChangeMonth(delta) {
-  calMonthOffset += delta;
+const CAL_MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const CAL_MESES_CORTOS = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+const CAL_DIAS = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
+
+// Las flechas mueven de mes o de semana segun la vista que estes mirando.
+function calShift(delta) {
+  if (calView === 'semana') calWeekOffset += delta;
+  else calMonthOffset += delta;
+  renderCalendar();
+}
+
+function calSetView(vista) {
+  calView = vista;
+  const bm = document.getElementById('cal-view-mes');
+  const bs = document.getElementById('cal-view-semana');
+  if (bm) bm.classList.toggle('active', vista === 'mes');
+  if (bs) bs.classList.toggle('active', vista === 'semana');
   renderCalendar();
 }
 
@@ -3193,7 +3273,54 @@ function isoDate(d) {
   return d.toISOString().split('T')[0];
 }
 
+// Igual que isoDate pero sin pasar por UTC: toISOString() de una fecha local
+// de la noche devuelve el dia siguiente, y en la grilla semanal eso mandaria
+// la reunion a la columna equivocada.
+function _calIsoLocal(d) {
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return d.getFullYear() + '-' + mm + '-' + dd;
+}
+
+// El lunes de la semana de `ref`, corrida `offsetSemanas`.
+function _calWeekStart(ref, offsetSemanas) {
+  const d = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate());
+  let dia = d.getDay() - 1;      // lunes = 0
+  if (dia < 0) dia = 6;          // el domingo cierra la semana, no la abre
+  d.setDate(d.getDate() - dia + (offsetSemanas || 0) * 7);
+  return d;
+}
+
+// Franja de horas que dibuja la grilla: 8 a 20 por defecto, estirada para que
+// ninguna reunion de la semana quede sin celda donde caer. `to` es exclusivo.
+function _calHourRange(events) {
+  let desde = 8, hasta = 20;
+  (events || []).forEach(ev => {
+    const h = parseInt(((ev && ev.time) || '').split(':')[0], 10);
+    if (isNaN(h)) return;
+    if (h < desde) desde = h;
+    if (h + 1 > hasta) hasta = h + 1;
+  });
+  return {from: desde, to: hasta};
+}
+
+function _calHoraLabel(h, m) {
+  return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+}
+
+// La hora que propone el modal: la que la reunion ya tiene. Las importadas
+// de dia entero no traen ninguna, y van a las 10 — la hora por defecto del
+// formulario de reunion.
+function _calHoraDeLaReunion(reunion) {
+  const partes = String((reunion && reunion.time) || '').split(':');
+  const h = parseInt(partes[0], 10);
+  if (isNaN(h)) return '10:00';
+  return _calHoraLabel(h, parseInt(partes[1], 10) || 0);
+}
+
+
 async function renderCalendar() {
+  if (calView === 'semana' && window.innerWidth > 768) return renderCalWeek();
   const now = new Date();
   const target = new Date(now.getFullYear(), now.getMonth() + calMonthOffset, 1);
   const year = target.getFullYear();
@@ -3251,12 +3378,10 @@ async function renderCalendar() {
       : `<div class="cal-cell${c.isToday?' today':''}" data-date="${c.ds}" onclick="_calCellClick(this,'${c.ds}')">
           <div class="cal-cell-day">${c.dayNum}</div>
           ${c.events.map(ev => {
-            const ph = extractPhoneFromText((ev.title||'')+' '+(ev.description||''));
-            const nm = extractNameFromTitle(ev.title||'');
             return `<div class="cal-event-chip ${ev.meeting_url?'meet':'regular'}" title="${esc((ev.time?ev.time+' ':'')+ev.title)}">
               ${ev.time?esc(ev.time)+' ':''}${ev.meeting_url?'🎥 ':''}${esc(ev.title||'')}
               ${ev.meeting_url?`<a class="cal-join-btn" href="${esc(ev.meeting_url)}" target="_blank" onclick="event.stopPropagation()">▶ Unirse</a>`:''}
-              <button class="cal-demo-btn" onclick="event.stopPropagation();openDemoModal(${escJs(ph||'')},${escJs(ev.title||'')},${escJs(nm||'')})">📊 Generar Demo</button>
+              <button class="cal-hora-btn" onclick="event.stopPropagation();_calAbrirEditor(${escJs(ev.id)},${escJs(ev.title||'')},${escJs(ev.date||'')},${escJs(ev.time||'')})">🕐 Editar horario</button>
               <button class="cal-del-btn" onclick="event.stopPropagation();deleteCalEvent(${escJs(ev.id)},${escJs(ev.title||'')})">🗑 Borrar</button>
             </div>`;
           }).join('')}
@@ -3264,6 +3389,167 @@ async function renderCalendar() {
     ).join('')}
   </div>`;
 }
+
+// ── Vista semanal ───────────────────────────────────────────────────────────
+// Es la unica con arrastre: la mensual no tiene franjas horarias, asi que ahi
+// no habria donde soltar para cambiar la hora.
+
+function _calWeekChip(ev) {
+  return `<div class="calw-chip ${ev.meeting_url?'meet':'regular'}"
+      title="${esc((ev.time?ev.time+' ':'')+(ev.title||''))}">
+      ${ev.time?esc(ev.time)+' ':''}${ev.meeting_url?'🎥 ':''}${esc(ev.title||'')}
+      ${ev.meeting_url?`<a class="cal-join-btn" href="${esc(ev.meeting_url)}" target="_blank" onclick="event.stopPropagation()">▶ Unirse</a>`:''}
+      <button class="cal-hora-btn" onclick="event.stopPropagation();_calAbrirEditor(${escJs(ev.id)},${escJs(ev.title||'')},${escJs(ev.date||'')},${escJs(ev.time||'')})">🕐 Editar horario</button>
+      <button class="cal-del-btn" onclick="event.stopPropagation();deleteCalEvent(${escJs(ev.id)},${escJs(ev.title||'')})">🗑 Borrar</button>
+    </div>`;
+}
+
+async function renderCalWeek() {
+  const lunes = _calWeekStart(new Date(), calWeekOffset);
+  const domingo = new Date(lunes);
+  domingo.setDate(domingo.getDate() + 6);
+
+  document.getElementById('cal-week-label').textContent =
+    (lunes.getMonth() === domingo.getMonth())
+      ? lunes.getDate() + ' – ' + domingo.getDate() + ' de ' + CAL_MESES[domingo.getMonth()] + ' ' + domingo.getFullYear()
+      : lunes.getDate() + ' ' + CAL_MESES_CORTOS[lunes.getMonth()] + ' – ' + domingo.getDate() + ' ' + CAL_MESES_CORTOS[domingo.getMonth()] + ' ' + domingo.getFullYear();
+
+  const daysEl = document.getElementById('cal-days');
+  daysEl.innerHTML = '<div class="cal-loading">Cargando...</div>';
+  document.getElementById('cal-error').style.display = 'none';
+
+  const r = await fetch('/api/calendar/events?start='+_calIsoLocal(lunes)+'&end='+_calIsoLocal(domingo));
+  const d = await r.json();
+  if (d.error) {
+    document.getElementById('cal-error').textContent = d.error;
+    document.getElementById('cal-error').style.display = 'block';
+    daysEl.innerHTML = '';
+    return;
+  }
+
+  const eventos = d.events || [];
+  window._calEventMap = {};
+  eventos.forEach(ev => {
+    if (!window._calEventMap[ev.date]) window._calEventMap[ev.date] = [];
+    window._calEventMap[ev.date].push(ev);
+  });
+
+  // Cada reunion cae en la media hora que la contiene: 15:20 va al slot 15:00.
+  // Las que no tienen hora (importadas de dia entero) van a la primera fila.
+  const porSlot = {};
+  eventos.forEach(ev => {
+    const partes = (ev.time || '').split(':');
+    const h = parseInt(partes[0], 10);
+    const min = parseInt(partes[1], 10) || 0;
+    const clave = isNaN(h) ? ev.date + ' sin-hora'
+                           : ev.date + ' ' + _calHoraLabel(h, min < 30 ? 0 : 30);
+    (porSlot[clave] = porSlot[clave] || []).push(ev);
+  });
+
+  const rango = _calHourRange(eventos);
+  const hoy = _calIsoLocal(new Date());
+  const dias = [];
+  for (let i = 0; i < 7; i++) {
+    const dd = new Date(lunes);
+    dd.setDate(dd.getDate() + i);
+    dias.push({iso: _calIsoLocal(dd), num: dd.getDate(), nombre: CAL_DIAS[i]});
+  }
+
+  let html = '<div class="calw-grid"><div class="calw-head"></div>';
+  dias.forEach(dia => {
+    html += `<div class="calw-head${dia.iso===hoy?' today':''}">${dia.nombre}<span>${dia.num}</span></div>`;
+  });
+  for (let h = rango.from; h < rango.to; h++) {
+    html += `<div class="calw-hour">${_calHoraLabel(h,0)}</div>`;
+    dias.forEach(dia => {
+      html += `<div class="calw-cell${dia.iso===hoy?' today':''}">`;
+      [0, 30].forEach(min => {
+        const hora = _calHoraLabel(h, min);
+        let chips = (porSlot[dia.iso + ' ' + hora] || []).map(_calWeekChip).join('');
+        if (h === rango.from && min === 0) {
+          chips = (porSlot[dia.iso + ' sin-hora'] || []).map(_calWeekChip).join('') + chips;
+        }
+        html += `<div class="calw-slot" data-date="${dia.iso}" data-time="${hora}">${chips}</div>`;
+      });
+      html += '</div>';
+    });
+  }
+  html += '</div>';
+
+  daysEl.innerHTML = html;
+}
+
+// ── Cambiar el horario de una reunión ───────────────────────────────────────
+// El botón del chip abre este modal; guardar pega un PATCH que mueve también
+// el evento de Google Calendar y le avisa al invitado.
+
+let _calEditando = null;
+
+// Guardar sin haber cambiado nada no es reprogramar: sin esta guarda, abrir el
+// modal y darle a Guardar le manda un mail de "reunión movida" al cliente.
+function _calDestinoValido(reunion, date, time) {
+  if (!reunion || !date || !time) return false;
+  return !(date === reunion.date && time === reunion.time);
+}
+
+function _calAbrirEditor(id, title, date, time) {
+  _calEditando = {id: id, title: title, date: date, time: time};
+  document.getElementById('reprog-title').textContent = title || 'Reunión';
+  document.getElementById('reprog-date').value = date || _calIsoLocal(new Date());
+  document.getElementById('reprog-time').value = _calHoraDeLaReunion(_calEditando);
+  const err = document.getElementById('reprog-error');
+  err.style.display = 'none';
+  err.textContent = '';
+  document.getElementById('reprog-modal').classList.add('open');
+}
+
+function _calCerrarEditor() {
+  document.getElementById('reprog-modal').classList.remove('open');
+  _calEditando = null;
+}
+
+async function _calGuardarHorario() {
+  const reunion = _calEditando;
+  if (!reunion) return;
+  const date = document.getElementById('reprog-date').value;
+  const time = document.getElementById('reprog-time').value;
+  const err = document.getElementById('reprog-error');
+
+  if (!date || !time) {
+    err.textContent = 'Poné la fecha y la hora.';
+    err.style.display = 'block';
+    return;
+  }
+  // Sin cambios: cerramos y no molestamos a nadie.
+  if (!_calDestinoValido(reunion, date, time)) { _calCerrarEditor(); return; }
+
+  const btn = document.getElementById('reprog-save-btn');
+  btn.disabled = true; btn.textContent = 'Guardando...';
+  let j;
+  try {
+    const r = await fetch('/api/calendar/meetings/' + encodeURIComponent(reunion.id), {
+      method: 'PATCH',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({date: date, time: time}),
+    });
+    j = await r.json();
+  } catch (e) {
+    j = {ok: false, error: 'no se pudo hablar con el servidor'};
+  }
+  btn.disabled = false; btn.textContent = 'Guardar';
+
+  if (!j || !j.ok) {
+    err.textContent = 'No se movió: ' + ((j && j.error) || 'error desconocido');
+    err.style.display = 'block';
+    return;
+  }
+  _calCerrarEditor();
+  renderCalendar();
+}
+
+document.getElementById('reprog-modal').addEventListener('click', e => {
+  if (e.target === e.currentTarget) _calCerrarEditor();
+});
 
 function _calCellClick(cell, dateStr) {
   if (window.innerWidth > 768) return;
@@ -5900,7 +6186,7 @@ def create_app(db_path: str) -> Flask:
     app.config["PIPELINE_LOCK"] = _pipeline_lock
 
     for bp in (leads_bp, demos_bp, calendar_bp, wa_bp, pipeline_bp, tasks_bp, budgets_bp, tokens_bp, meta_bp, calendly_bp, notion_bp, projects_bp, preclientes_bp,
-                notion_clients_bp, resend_bp, linkedin_bp):
+                notion_clients_bp, resend_bp, linkedin_bp, web_bp):
         app.register_blueprint(bp)
 
     @app.before_request
@@ -5914,6 +6200,11 @@ def create_app(db_path: str) -> Flask:
         # Su autenticacion es la firma de Svix, verificada dentro del endpoint:
         # Resend lo llama sin credenciales nuestras.
         if request.path.startswith("/api/resend/webhook"):
+            return
+        # La llama el navegador de cualquiera que descargue la guia de precios
+        # del sitio: no puede llevar x-admin-token. Se valida sola por Origin
+        # y tope por IP (ver routes/web.py).
+        if request.path.startswith("/api/web/"):
             return
         # El link "ya lo publique" se abre desde un mail: no puede mandar headers,
         # asi que lleva su propio token de un solo uso en la query.

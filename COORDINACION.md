@@ -176,6 +176,66 @@ leads de Meta se renombró a **D** para deshacer el empate.
 Lo último arriba. Una línea por cosa que la otra sesión necesite saber:
 un deploy, un cambio en zona compartida, un secret rotado, algo que se rompió.
 
+- **8/9 — E (lead magnet web) — CIERRE. En que quedo y que sigue.**
+
+  **Listo y commiteado, SIN DEPLOYAR:** `POST /api/web/lead` (`883cb24`), el
+  endpoint publico que mete en el CRM las descargas de la guia de precios de
+  `scalerics.com`. 24 tests nuevos en `tests/test_web_lead.py`; la suite entera
+  (1144) en verde. Toque `dashboard.py` en tres lineas: el import, el registro
+  del blueprint y la exencion de `/api/web/` en el `before_request`.
+
+  **Por que no deploye, en orden de peso:**
+  1. **Regla 2.** `v163` salio 14:45 UTC desde `scalerics@gmail.com` y no fue
+     mio. Hay alguien trabajando ahora. No piso sin preguntar.
+  2. **Mi commit esta encima del calendario de D (`d00fbfb`), que sigue sin
+     release.** No hay forma de deployar lo mio sin soltar lo suyo, y sacarlo
+     dejaria produccion en un arbol que no es ningun commit. Ese release es
+     decision de D, no mia.
+
+  Verificado que todavia no esta vivo: `POST /api/web/lead` contra produccion
+  devuelve 401, o sea que la exencion no salio.
+
+  **`fly.toml` RESUELTO (`c32e72a`).** Era el pendiente que A marco el 7/9.
+  Antes de tocarlo verifique con `flyctl status`: la unica maquina corre en
+  `iad`. El archivo decia `gru`, asi que estaba mintiendo en las dos
+  direcciones — quien deployaba del directorio movia de continente sin querer,
+  y quien deployaba de un worktree limpio publicaba una region falsa. Ahora
+  dice la verdad. **Si alguien lo tenia asi a proposito para otra cosa, avise.**
+
+  **Lo que falta, en orden:**
+  1. Deployar `883cb24` cuando D suelte su calendario o diga que se puede.
+  2. Mergear `guia-al-crm` en el repo del sitio (`Scalerics-org/scalerics-web`,
+     commit `c56a7ca`): es el fetch de la pagina al endpoint. **Esta a
+     proposito sin mergear** — hoy le pegaria a un 401. Primero el CRM.
+  3. Probar de punta a punta: descargar la guia desde el sitio y ver que
+     aparece el lead con `source='web_guia'`.
+
+  **Ojo con las filas nuevas:** entran con `source='web_guia'` y eso las deja
+  fuera de `meta_reminders` (filtra `'meta'`) y de `discovery_emails` (filtra
+  `'discovery'`). Es deliberado y hay un test que lo fija. Si alguien alguna vez
+  quiere escribirles, que sea una decision explicita: la pagina les prometio
+  "un mail con la guia y nada mas".
+
+- **8/9 — E (lead magnet web):** Me anoto ahora. Vengo del repo del sitio:
+  hoy se publico `scalerics.com/cuanto-cuesta-una-pagina-web/`, una guia de
+  precios en PDF a cambio del mail. Hoy esa descarga termina en un mail a
+  `contacto@` y no entra al CRM. Voy a agregar `POST /api/web/lead`, publico
+  (Web3Forms solo reenvia por webhook en el plan PRO, verificado), con el mismo
+  patron que `/api/meta/webhook`: exento del `before_request` y validandose solo.
+  **Toco `dashboard.py` en una sola linea, la lista de rutas exentas** — D lo
+  edito hoy, aviso por si hay cruce. El resto es archivo nuevo.
+  **No pienso deployar:** `main` tiene el calendario de D commiteado y sin
+  release (`d00fbfb`), y soltarlo no es mi decision.
+- **8/9 - D (calendario):** Vista semanal nueva en el panel Calendario (toggle
+  Mes/Semana) y boton "Editar horario" en cada reunion, que abre un modal con
+  fecha y hora. Toque `dashboard.py` (CSS, el header del panel y el bloque JS
+  del calendario: `calChangeMonth` ahora se llama `calShift`) y
+  `routes/calendar.py`, donde agregue `PATCH /api/calendar/meetings/<id>`. Nada
+  de eso toca `database.py` ni ninguna tabla. **Ese PATCH le escribe a Google
+  Calendar con `sendUpdates="all"`, o sea que le manda mail al invitado**: si lo
+  probas contra el `.env` de produccion, la reunion se mueve de verdad y el
+  cliente se entera. Hubo un intento de arrastrar y soltar las reuniones que se
+  descarto: no quedo nada de eso en el codigo. Sin deployar al 8/9.
 - **7/9 — A:** **Alguien tiene `fly.toml` modificado sin commitear: cambia
   `primary_region` de `gru` (San Pablo) a `iad` (Virginia).** Eso mueve la app de
   continente y no está commiteado, así que cualquiera que deploye se lo aplica
