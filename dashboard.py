@@ -295,7 +295,10 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
   .task-row{padding:12px 14px;border-radius:12px}
   /* ── Calendario compacto ── */
   .cal-cell{min-height:44px!important;padding:3px 2px!important}
-  .cal-event-chip{font-size:0!important;width:7px!important;height:7px!important;border-radius:50%!important;padding:0!important;min-width:0!important;display:inline-block!important;margin:1px!important}
+  .cal-event-chip{font-size:0!important;width:8px!important;height:8px!important;border-radius:50%!important;padding:0!important;min-width:0!important;display:inline-block!important;margin:1px!important;border:none!important;background:#0088cc!important}
+  .cal-event-chip.origen-google{background:#10b981!important}
+  .cal-event-chip.origen-calendly{background:#f59e0b!important}
+  .cal-chip-acts{display:none!important}
   #cal-day-events-mobile{display:block}
   /* La vista semanal se arrastra con el mouse: en touch el drag de HTML5 no
      dispara, asi que en el celular solo queda el mes. */
@@ -612,6 +615,42 @@ body.light .resp-sel{background:#fff;border-color:#e2e8f0;color:#0f172a}
 .calw-chip .cal-del-btn,.calw-chip .cal-join-btn,.calw-chip .cal-hora-btn{display:none}
 .calw-chip:hover .cal-del-btn,.calw-chip:hover .cal-join-btn,.calw-chip:hover .cal-hora-btn{display:block}
 .calw-hint{font-size:.7rem;color:#475569;margin-bottom:10px}
+.cal-count{font-size:.66rem;font-weight:700;color:#64748b;background:#161b27;border:1px solid #1e293b;padding:4px 10px;border-radius:999px;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap}
+.cal-today-btn{background:#161b27;border:1px solid #1e293b;color:#94a3b8;padding:7px 14px;border-radius:8px;cursor:pointer;font-size:.76rem;font-weight:700;font-family:'Inter',sans-serif;line-height:1;transition:background .15s,color .15s,border-color .15s}
+.cal-today-btn:hover{background:rgba(0,136,204,.12);border-color:rgba(0,136,204,.4);color:#33aadd}
+.cal-leyenda{display:flex;gap:14px;align-items:center;margin-bottom:10px;font-size:.64rem;color:#475569;flex-wrap:wrap}
+.cal-leyenda span{display:flex;align-items:center;gap:5px}
+.cal-leyenda i{width:8px;height:8px;border-radius:2px;display:inline-block}
+.cal-grid{border:1px solid #1e293b;border-radius:14px}
+.cal-cell{min-height:112px;transition:background .12s,box-shadow .12s}
+.cal-cell.weekend{background:#12161f}
+.cal-cell.today{box-shadow:inset 0 0 0 1px rgba(0,136,204,.45)}
+.cal-cell.drag-over,.calw-slot.drag-over{background:rgba(0,136,204,.16);box-shadow:inset 0 0 0 2px #0088cc}
+.cal-cell-day{color:#64748b;width:22px;height:22px}
+.cal-cell.today .cal-cell-day{box-shadow:0 0 0 3px rgba(0,136,204,.18)}
+.cal-event-chip,.calw-chip{background:#1a2130;border:1px solid #232c3d;border-left:3px solid #0088cc;border-radius:5px;padding:4px 6px 4px 7px;margin-bottom:3px;font-size:.63rem;line-height:1.35;cursor:grab;white-space:normal;transition:background .12s,border-color .12s,transform .12s}
+.cal-event-chip:hover,.calw-chip:hover{background:#212a3b;border-color:#334155;transform:translateY(-1px)}
+.cal-event-chip.dragging,.calw-chip.dragging{opacity:.35;cursor:grabbing}
+.cal-event-chip.origen-google,.calw-chip.origen-google{border-left-color:#10b981}
+.cal-event-chip.origen-calendly,.calw-chip.origen-calendly{border-left-color:#f59e0b;cursor:default}
+.cal-chip-time{font-weight:800;color:#e2e8f0;font-variant-numeric:tabular-nums;margin-right:4px}
+.cal-chip-title{color:#94a3b8;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cal-chip-acts{display:none;gap:4px;margin-top:5px;padding-top:5px;border-top:1px solid #232c3d}
+.cal-event-chip:hover .cal-chip-acts,.calw-chip:hover .cal-chip-acts{display:flex}
+.cal-chip-act{flex:1;text-align:center;border-radius:4px;padding:3px 2px;font-size:.58rem;font-weight:700;cursor:pointer;border:1px solid transparent;text-decoration:none;font-family:'Inter',sans-serif;line-height:1.4;white-space:nowrap}
+.cal-act-edit{background:rgba(0,136,204,.12);border-color:rgba(0,136,204,.3);color:#33aadd}
+.cal-act-edit:hover{background:rgba(0,136,204,.26)}
+.cal-act-join{background:rgba(16,185,129,.12);border-color:rgba(16,185,129,.3);color:#34d399}
+.cal-act-join:hover{background:rgba(16,185,129,.26)}
+.cal-act-del{background:rgba(239,68,68,.1);border-color:rgba(239,68,68,.24);color:#f87171}
+.cal-act-del:hover{background:rgba(239,68,68,.24)}
+.cal-mob-card{background:#111827;border:1px solid #1e293b;border-left:3px solid #0088cc;border-radius:10px;padding:11px 12px;margin-bottom:8px}
+.cal-mob-card.origen-google{border-left-color:#10b981}
+.cal-mob-card.origen-calendly{border-left-color:#f59e0b}
+.cal-mob-title{font-size:.82rem;font-weight:600;color:#f1f5f9}
+.cal-mob-meta{font-size:.72rem;color:#0088cc;margin-top:3px;font-variant-numeric:tabular-nums}
+.cal-mob-acts{display:flex;gap:6px;margin-top:9px}
+.cal-mob-vacio{color:#475569;font-size:.78rem;padding:8px 0}
 
 /* ---- Shared modals ---- */
 .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;align-items:center;justify-content:center}
@@ -780,6 +819,26 @@ body.light .cal-del-btn{background:rgba(239,68,68,.07);color:#dc2626;border-colo
 body.light .cal-hora-btn{background:rgba(0,136,204,.08);color:#0369a1;border-color:rgba(0,136,204,.2)}
 body.light .cal-join-btn{background:rgba(22,163,74,.08);color:#15803d;border-color:rgba(22,163,74,.2)}
 body.light .cal-loading{color:#94a3b8}
+body.light .cal-count{background:#f1f5f9;border-color:#e2e8f0;color:#64748b}
+body.light .cal-today-btn{background:#f1f5f9;border:1px solid #e2e8f0;color:#475569}
+body.light .cal-today-btn:hover{background:#eff6ff;border-color:#bfdbfe;color:#0369a1}
+body.light .cal-leyenda{color:#94a3b8}
+body.light .cal-grid{border-color:#e2e8f0}
+body.light .cal-cell.weekend{background:#fafbfc}
+body.light .cal-cell.today{box-shadow:inset 0 0 0 1px rgba(0,136,204,.35)}
+body.light .cal-cell.drag-over,body.light .calw-slot.drag-over{background:#e0f2fe;box-shadow:inset 0 0 0 2px #0088cc}
+body.light .cal-cell.today .cal-cell-day{box-shadow:0 0 0 3px rgba(0,136,204,.14)}
+body.light .cal-event-chip,body.light .calw-chip{background:#f8fafc;border-color:#e2e8f0;border-left-color:#0088cc}
+body.light .cal-event-chip:hover,body.light .calw-chip:hover{background:#f1f5f9;border-color:#cbd5e1}
+body.light .cal-chip-time{color:#0f172a}
+body.light .cal-chip-title{color:#64748b}
+body.light .cal-chip-acts{border-top-color:#e2e8f0}
+body.light .cal-act-edit{background:rgba(0,136,204,.08);color:#0369a1;border-color:rgba(0,136,204,.2)}
+body.light .cal-act-join{background:rgba(22,163,74,.08);color:#15803d;border-color:rgba(22,163,74,.2)}
+body.light .cal-act-del{background:rgba(239,68,68,.07);color:#dc2626;border-color:rgba(239,68,68,.18)}
+body.light .cal-mob-card{background:#fff;border-color:#e2e8f0}
+body.light .cal-mob-title{color:#0f172a}
+body.light .cal-mob-vacio{color:#94a3b8}
 /* ── Metrics light mode ───────────────────────────────────────────────────── */
 body.light .metrics-card{background:#fff;border-color:#e2e8f0}
 body.light .metrics-card-title{color:#64748b !important}
@@ -1497,15 +1556,23 @@ body.light .upick-name{color:#0f172a}
   <div id="cal-panel" class="panel">
     <div class="cal-header">
       <h1 id="cal-week-label">Calendario</h1>
-      <div style="display:flex;gap:8px;align-items:center;flex-shrink:0">
+      <span class="cal-count" id="cal-count"></span>
+      <div style="display:flex;gap:8px;align-items:center;flex-shrink:0;margin-left:auto">
         <div class="cal-view-toggle">
           <button id="cal-view-mes" class="cal-view-btn active" onclick="calSetView('mes')">Mes</button>
           <button id="cal-view-semana" class="cal-view-btn" onclick="calSetView('semana')">Semana</button>
         </div>
         <button class="cal-nav-btn" onclick="calShift(-1)">←</button>
+        <button class="cal-today-btn" onclick="calHoy()">Hoy</button>
         <button class="cal-nav-btn" onclick="calShift(1)">→</button>
         <a href="https://calendly.com/scalerics/consultoriagratuita" target="_blank" class="cal-new-btn" style="background:#0f2a1a;border:1px solid #10b981;color:#10b981;text-decoration:none">+ Calendly</a>
       </div>
+    </div>
+    <div class="cal-leyenda">
+      <span><i style="background:#0088cc"></i> Del CRM</span>
+      <span><i style="background:#10b981"></i> De Google</span>
+      <span><i style="background:#f59e0b"></i> De Calendly &mdash; se reprograma allá</span>
+      <span style="margin-left:auto">Arrastrá una reunión para moverla</span>
     </div>
     <div id="cal-error" class="cal-error" style="display:none"></div>
     <div id="cal-days" class="cal-days"><div class="cal-loading">Cargando calendario...</div></div>
@@ -1758,8 +1825,10 @@ body.light .upick-name{color:#0f172a}
 <!-- Modal: Nueva reunión -->
 <div class="modal-overlay" id="reprog-modal">
   <div class="modal" style="width:400px;max-width:95vw">
-    <h3>Cambiar el horario</h3>
+    <h3>Editar reunión</h3>
     <p style="margin-bottom:16px" id="reprog-title"></p>
+    <label class="modal-label">Título</label>
+    <input type="text" id="reprog-nombre" placeholder="Ej: Demo con El Fogón" style="margin-bottom:12px">
     <div class="modal-row">
       <div>
         <label class="modal-label">Fecha</label>
@@ -1768,6 +1837,12 @@ body.light .upick-name{color:#0f172a}
       <div>
         <label class="modal-label">Hora</label>
         <input type="time" id="reprog-time">
+      </div>
+    </div>
+    <div class="modal-row">
+      <div>
+        <label class="modal-label">Duración (min)</label>
+        <input type="number" id="reprog-duracion" min="5" max="480" step="5">
       </div>
     </div>
     <p style="font-size:.72rem;color:#64748b;margin:10px 0 0">Si la reunión está en Google Calendar, se mueve ahí también y al invitado le llega el aviso por mail.</p>
@@ -3354,6 +3429,8 @@ async function renderCalendar() {
     eventMap[ev.date].push(ev);
   });
   window._calEventMap = eventMap;
+  _calEventos = d.events || [];
+  _calPintarContador();
 
   let firstWeekday = monthStart.getDay() - 1;
   if (firstWeekday < 0) firstWeekday = 6;
@@ -3367,7 +3444,8 @@ async function renderCalendar() {
       cells.push({ empty: true });
     } else {
       const ds = isoDate(new Date(year, month, dayNum));
-      cells.push({ dayNum, ds, isToday: ds === todayStr, events: (eventMap[ds] || []).sort((a,b) => (a.time||'').localeCompare(b.time||'')) });
+      cells.push({ dayNum, ds, isToday: ds === todayStr, weekend: (i % 7) >= 5,
+                   events: (eventMap[ds] || []).sort((a,b) => (a.time||'').localeCompare(b.time||'')) });
     }
   }
 
@@ -3375,16 +3453,13 @@ async function renderCalendar() {
     ${dayNames.map(n => `<div class="cal-grid-header">${n}</div>`).join('')}
     ${cells.map(c => c.empty
       ? `<div class="cal-cell other-month"></div>`
-      : `<div class="cal-cell${c.isToday?' today':''}" data-date="${c.ds}" onclick="_calCellClick(this,'${c.ds}')">
+      : `<div class="cal-cell${c.isToday?' today':''}${c.weekend?' weekend':''}" data-date="${c.ds}"
+             onclick="_calCellClick(this,'${c.ds}')"
+             ondragover="event.preventDefault();this.classList.add('drag-over')"
+             ondragleave="this.classList.remove('drag-over')"
+             ondrop="_calDropDia(event,'${c.ds}')">
           <div class="cal-cell-day">${c.dayNum}</div>
-          ${c.events.map(ev => {
-            return `<div class="cal-event-chip ${ev.meeting_url?'meet':'regular'}" title="${esc((ev.time?ev.time+' ':'')+ev.title)}">
-              ${ev.time?esc(ev.time)+' ':''}${ev.meeting_url?'🎥 ':''}${esc(ev.title||'')}
-              ${ev.meeting_url?`<a class="cal-join-btn" href="${esc(ev.meeting_url)}" target="_blank" onclick="event.stopPropagation()">▶ Unirse</a>`:''}
-              <button class="cal-hora-btn" onclick="event.stopPropagation();_calAbrirEditor(${escJs(ev.id)},${escJs(ev.title||'')},${escJs(ev.date||'')},${escJs(ev.time||'')})">🕐 Editar horario</button>
-              <button class="cal-del-btn" onclick="event.stopPropagation();deleteCalEvent(${escJs(ev.id)},${escJs(ev.title||'')})">🗑 Borrar</button>
-            </div>`;
-          }).join('')}
+          ${c.events.map(_calChip).join('')}
         </div>`
     ).join('')}
   </div>`;
@@ -3395,13 +3470,111 @@ async function renderCalendar() {
 // no habria donde soltar para cambiar la hora.
 
 function _calWeekChip(ev) {
-  return `<div class="calw-chip ${ev.meeting_url?'meet':'regular'}"
-      title="${esc((ev.time?ev.time+' ':'')+(ev.title||''))}">
-      ${ev.time?esc(ev.time)+' ':''}${ev.meeting_url?'🎥 ':''}${esc(ev.title||'')}
-      ${ev.meeting_url?`<a class="cal-join-btn" href="${esc(ev.meeting_url)}" target="_blank" onclick="event.stopPropagation()">▶ Unirse</a>`:''}
-      <button class="cal-hora-btn" onclick="event.stopPropagation();_calAbrirEditor(${escJs(ev.id)},${escJs(ev.title||'')},${escJs(ev.date||'')},${escJs(ev.time||'')})">🕐 Editar horario</button>
-      <button class="cal-del-btn" onclick="event.stopPropagation();deleteCalEvent(${escJs(ev.id)},${escJs(ev.title||'')})">🗑 Borrar</button>
-    </div>`;
+  return _calChipHtml(ev, 'calw-chip');
+}
+
+// El listado plano de lo que hay dibujado. El arrastre y el editor lo miran en
+// vez de recibir media reunion por los atributos onclick.
+let _calEventos = [];
+
+function _calEvento(id) {
+  return _calEventos.find(e => String(e.id) === String(id));
+}
+
+function _calPintarContador() {
+  const el = document.getElementById('cal-count');
+  if (!el) return;
+  const n = _calEventos.length;
+  el.textContent = n === 1 ? '1 reunión' : n + ' reuniones';
+}
+
+function _calChip(ev) {
+  return _calChipHtml(ev, 'cal-event-chip');
+}
+
+// Un solo chip para las dos vistas: si divergen, arreglar un bug en una deja
+// la otra rota, que es como se perdieron ya varias cosas en este archivo.
+function _calChipHtml(ev, clase) {
+  const origen = ev.origen || 'crm';
+  const deCalendly = origen === 'calendly';
+  const titulo = (ev.time ? ev.time + ' ' : '') + (ev.title || '');
+  const aviso = deCalendly ? ' (de Calendly: se reprograma allá)' : '';
+  const editar = deCalendly
+    ? ''
+    : '<button class="cal-chip-act cal-act-edit" draggable="false" onclick="event.stopPropagation();_calAbrirEditor(' + escJs(ev.id) + ')">Editar</button>';
+  const unirse = ev.meeting_url
+    ? '<a class="cal-chip-act cal-act-join" draggable="false" href="' + esc(ev.meeting_url) + '" target="_blank" onclick="event.stopPropagation()">Unirse</a>'
+    : '';
+  return '<div class="' + clase + ' origen-' + origen + '" draggable="' + (deCalendly ? 'false' : 'true') + '"'
+       + ' title="' + esc(titulo + aviso) + '"'
+       + ' ondragstart="_calDragStart(event,' + escJs(ev.id) + ',' + escJs(origen) + ')"'
+       + ' ondragend="_calDragEnd(event)">'
+       + (ev.time ? '<span class="cal-chip-time">' + esc(ev.time) + '</span>' : '')
+       + '<span class="cal-chip-title">' + esc(ev.title || '') + '</span>'
+       + '<div class="cal-chip-acts">' + editar + unirse
+       + '<button class="cal-chip-act cal-act-del" draggable="false" onclick="event.stopPropagation();deleteCalEvent(' + escJs(ev.id) + ',' + escJs(ev.title || '') + ')">Borrar</button>'
+       + '</div></div>';
+}
+
+// ── arrastrar ────────────────────────────────────────────────────────────────
+// En el mes se suelta sobre un dia y la hora se conserva; en la semana se
+// suelta sobre una franja y cambian las dos cosas. Las de Calendly no se
+// arrastran: su reunion vive alla.
+
+let _calArrastrando = null;
+
+function _calDragStart(e, id, origen) {
+  if (origen === 'calendly') { e.preventDefault(); return; }
+  _calArrastrando = String(id);
+  e.currentTarget.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+}
+
+function _calDragEnd(e) {
+  e.currentTarget.classList.remove('dragging');
+  document.querySelectorAll('.drag-over').forEach(c => c.classList.remove('drag-over'));
+  _calArrastrando = null;
+}
+
+function _calDropDia(e, fecha) {
+  const ev = _calSoltar(e);
+  if (!ev) return;
+  // El backend pide fecha y hora juntas, asi que se le manda la que ya tenia.
+  _calMover(ev, fecha, ev.time || '10:00');
+}
+
+function _calDropFranja(e, fecha, hora) {
+  const ev = _calSoltar(e);
+  if (!ev) return;
+  _calMover(ev, fecha, hora);
+}
+
+function _calSoltar(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  e.currentTarget.classList.remove('drag-over');
+  const id = _calArrastrando;
+  _calArrastrando = null;
+  return id ? _calEvento(id) : null;
+}
+
+async function _calMover(ev, fecha, hora) {
+  if (ev.date === fecha && ev.time === hora) return;
+  let j;
+  try {
+    const r = await fetch('/api/calendar/meetings/' + encodeURIComponent(ev.id), {
+      method: 'PATCH',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({date: fecha, time: hora}),
+    });
+    j = await r.json();
+  } catch (err) {
+    j = {ok: false, error: 'no se pudo hablar con el servidor'};
+  }
+  if (!j || !j.ok) {
+    alert('No se movió la reunión: ' + ((j && j.error) || 'error desconocido'));
+  }
+  renderCalendar();
 }
 
 async function renderCalWeek() {
@@ -3428,6 +3601,8 @@ async function renderCalWeek() {
   }
 
   const eventos = d.events || [];
+  _calEventos = eventos;
+  _calPintarContador();
   window._calEventMap = {};
   eventos.forEach(ev => {
     if (!window._calEventMap[ev.date]) window._calEventMap[ev.date] = [];
@@ -3469,7 +3644,10 @@ async function renderCalWeek() {
         if (h === rango.from && min === 0) {
           chips = (porSlot[dia.iso + ' sin-hora'] || []).map(_calWeekChip).join('') + chips;
         }
-        html += `<div class="calw-slot" data-date="${dia.iso}" data-time="${hora}">${chips}</div>`;
+        html += `<div class="calw-slot" data-date="${dia.iso}" data-time="${hora}"
+             ondragover="event.preventDefault();this.classList.add('drag-over')"
+             ondragleave="this.classList.remove('drag-over')"
+             ondrop="_calDropFranja(event,'${dia.iso}','${hora}')">${chips}</div>`;
       });
       html += '</div>';
     });
@@ -3487,15 +3665,26 @@ let _calEditando = null;
 
 // Guardar sin haber cambiado nada no es reprogramar: sin esta guarda, abrir el
 // modal y darle a Guardar le manda un mail de "reunión movida" al cliente.
+function calHoy() {
+  calMonthOffset = 0;
+  calWeekOffset = 0;
+  renderCalendar();
+}
+
 function _calDestinoValido(reunion, date, time) {
   if (!reunion || !date || !time) return false;
   return !(date === reunion.date && time === reunion.time);
 }
 
-function _calAbrirEditor(id, title, date, time) {
-  _calEditando = {id: id, title: title, date: date, time: time};
-  document.getElementById('reprog-title').textContent = title || 'Reunión';
-  document.getElementById('reprog-date').value = date || _calIsoLocal(new Date());
+function _calAbrirEditor(id) {
+  const ev = _calEvento(id);
+  if (!ev) return;
+  _calEditando = {id: ev.id, title: ev.title, date: ev.date, time: ev.time,
+                  duration_min: ev.duration_min || 60};
+  document.getElementById('reprog-title').textContent = ev.client_name || '';
+  document.getElementById('reprog-nombre').value = ev.title || '';
+  document.getElementById('reprog-duracion').value = _calEditando.duration_min;
+  document.getElementById('reprog-date').value = ev.date || _calIsoLocal(new Date());
   document.getElementById('reprog-time').value = _calHoraDeLaReunion(_calEditando);
   const err = document.getElementById('reprog-error');
   err.style.display = 'none';
@@ -3513,6 +3702,8 @@ async function _calGuardarHorario() {
   if (!reunion) return;
   const date = document.getElementById('reprog-date').value;
   const time = document.getElementById('reprog-time').value;
+  const nombre = document.getElementById('reprog-nombre').value.trim();
+  const duracion = parseInt(document.getElementById('reprog-duracion').value, 10);
   const err = document.getElementById('reprog-error');
 
   if (!date || !time) {
@@ -3520,8 +3711,19 @@ async function _calGuardarHorario() {
     err.style.display = 'block';
     return;
   }
-  // Sin cambios: cerramos y no molestamos a nadie.
-  if (!_calDestinoValido(reunion, date, time)) { _calCerrarEditor(); return; }
+  if (!duracion || duracion < 1) {
+    err.textContent = 'La duración tiene que ser un número de minutos.';
+    err.style.display = 'block';
+    return;
+  }
+  // Sin cambios: cerramos y no molestamos a nadie. El horario lo decide
+  // _calDestinoValido; el nombre y la duración se miran acá.
+  const cambioNombre = nombre && nombre !== (reunion.title || '');
+  const cambioDuracion = duracion !== (reunion.duration_min || 60);
+  if (!_calDestinoValido(reunion, date, time) && !cambioNombre && !cambioDuracion) {
+    _calCerrarEditor();
+    return;
+  }
 
   const btn = document.getElementById('reprog-save-btn');
   btn.disabled = true; btn.textContent = 'Guardando...';
@@ -3530,7 +3732,8 @@ async function _calGuardarHorario() {
     const r = await fetch('/api/calendar/meetings/' + encodeURIComponent(reunion.id), {
       method: 'PATCH',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({date: date, time: time}),
+      body: JSON.stringify({date: date, time: time, title: nombre,
+                            duration_min: duracion}),
     });
     j = await r.json();
   } catch (e) {
@@ -3539,7 +3742,7 @@ async function _calGuardarHorario() {
   btn.disabled = false; btn.textContent = 'Guardar';
 
   if (!j || !j.ok) {
-    err.textContent = 'No se movió: ' + ((j && j.error) || 'error desconocido');
+    err.textContent = 'No se guardó: ' + ((j && j.error) || 'error desconocido');
     err.style.display = 'block';
     return;
   }
