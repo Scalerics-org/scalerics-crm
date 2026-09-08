@@ -186,7 +186,7 @@ def calendly_webhook():
                 cur = conn.execute(
                     "INSERT INTO businesses (name, email, phone, interest, notes, crm_status, source) VALUES (?,?,?,?,?,?,?)",
                     (company or name or email, email or None, _normalize_phone(phone_raw) or None,
-                     service or None, booking_note or None, "reunion_agendada", "calendly_unmatched")
+                     service or None, booking_note or None, "demo_agendada", "calendly_unmatched")
                 )
                 conn.commit()
                 client_id = cur.lastrowid
@@ -194,7 +194,7 @@ def calendly_webhook():
                 conn.close()
         else:
             client_id = client["id"]
-            updates = {"crm_status": "reunion_agendada"}
+            updates = {"crm_status": "demo_agendada"}
             # Only fill in what we don't already know — never overwrite existing data
             if service and not (client.get("interest") or "").strip():
                 updates["interest"] = service

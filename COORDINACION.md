@@ -76,10 +76,12 @@ leads de Meta se renombró a **D** para deshacer el empate.
 | B (CRM/LinkedIn) | LinkedIn, demos, presupuestos, rutas del CRM | `dashboard.py`, `routes/leads.py`, `routes/demos.py`, `routes/budgets.py`, `routes/calendar.py`, `scripts/render_linkedin.py`, `templates/linkedin_card.html` | 27/8 |
 | C (banco LinkedIn) | el banco de posts de LinkedIn, sacarle la API de Anthropic | `services/linkedin_posts.py`, `services/linkedin_banco_semilla.py`, `routes/linkedin.py`, `scripts/render_linkedin.py`, `templates/linkedin_card.html`, `tests/test_linkedin_*` | 28/8 |
 | D (leads de Meta) | secuencias de mail por estado, estados del CRM, sync con la planilla de semáforo, detección de respuestas, rendimiento del CRM | `services/meta_reminders.py`, `services/secuencia_contactos.py`, `services/planilla_semaforo.py`, `scripts/planilla_semaforo.gs`, `routes/meta.py` | 27/8 |
-| E (finanzas) | la sección financiera del CRM | `services/finanzas.py`, `routes/finanzas.py`, `database.py` (tablas de finanzas), `dashboard.py` (panel Finanzas) | 8/9 |
+| E (pre-clientes/demos) | pipeline por etapas, responsables del cliente, registro de demos | `routes/preclientes.py`, `tests/test_preclientes.py`, `scripts/check_js.py`, y **zona compartida**: `database.py`, `dashboard.py`, `routes/leads.py` | 31/8 |
 
-> **E (finanzas) acá (8/9).** Trabajé en un worktree aparte sobre la rama
-> `feat/finanzas`. **Esto no está en `main` ni deployado.** Agrega dos tablas
+| F (finanzas) | la sección financiera del CRM | `services/finanzas.py`, `routes/finanzas.py`, `database.py` (tablas de finanzas), `dashboard.py` (panel Finanzas) | 8/9 |
+
+> **F (finanzas) acá (8/9).** Trabajé en un worktree aparte sobre la rama
+> `feat/finanzas`. Me habia anotado como E, pero E ya estaba tomada por pre-clientes/demos, que llego primero y ya deployo: me corri a **F**. Agrega dos tablas
 > nuevas, `finanzas_movimientos` y `finanzas_recurrentes`, más
 > `services/finanzas.py` (la lógica: conversión USD/UYU, materialización de
 > gastos fijos), `routes/finanzas.py` (once endpoints detrás de un lock por
@@ -100,6 +102,21 @@ leads de Meta se renombró a **D** para deshacer el empate.
 > medido el 31/8). Falta mergear a `main`, deployar, verificar contra
 > producción y cargar los fijos reales (Fly, Vercel, Zoho, Resend, la API de
 > Anthropic) — queda para después del merge, con Juan mirando.
+>
+> **Mergeado a `main` el 8/9, despues de esto.** Traje `main` a la rama antes
+> de mergear, con conflictos en `database.py`, `dashboard.py` y este archivo.
+> Los tres eran aditivos y se conservaron los dos lados: en `dashboard.py`
+> quedaron registrados `web_bp`, `preclientes_bp` y `finanzas_bp`.
+>
+> **Ojo con esto, es lo que casi se rompe en silencio.** La migracion de
+> estados de E renombro el vocabulario (`reunion_agendada` -> `demo_agendada`,
+> `reunion_hecha` -> `demo_1`, `cliente_cerrado` -> `cerrado`) y reescribe
+> `businesses.crm_status`, pero **no toca `lead_events`**. El analisis de pauta
+> lee el historial de `lead_events` para saber a que etapa llego cada lead, asi
+> que tiene que entender los dos vocabularios: los nombres viejos siguen vivos
+> en los eventos anteriores a la migracion, que son justo los de marzo a agosto.
+> Si alguien toca `FUNNEL` en `services/finanzas.py`, eso es lo que hay que
+> respetar.
 
 > **D acá (28/8, 17:10 UTC).** Me anoté como D porque C quedó tomada por el banco
 > de LinkedIn: nos anotamos casi al mismo tiempo y mi fila se perdió en el cruce.
@@ -119,6 +136,33 @@ leads de Meta se renombró a **D** para deshacer el empate.
 > `templates/linkedin_card.html`, que B tenía declarados. B no los venía tocando
 > (sus últimos cambios ahí son `dc1557f` y `f2ef442`), así que no se pisó nada,
 > pero si B vuelve a esos dos archivos, hablarlo acá primero.
+
+> **E acá (31/8).** Trabajo en la rama `feat/preclientes-clientes-demos`, no en
+> `main`. Nada deployado.
+>
+> **Toqué zona compartida, esto es el aviso.** En `database.py` agregué las
+> constantes `ETAPAS_PRECLIENTE` y `ETAPAS_CLIENTE`, tres columnas nuevas en
+> `businesses` (`encargado_id`, `mantenimiento_id`, `cobros_id`), la tabla
+> `demos_realizadas`, y una migración de estados que corre al arrancar. Todo
+> aditivo salvo la migración, que **sí reescribe `crm_status`**:
+> `reunion_agendada` → `demo_agendada`, `reunion_hecha` → `demo_1`,
+> `negociacion` → `follow_up_1`, `cliente_cerrado` → `cerrado`. Es idempotente y
+> no toca los estados de la cola (`sin_contactar`, `interesado`,
+> `llamar_despues`, `no_interesa`).
+>
+> **Si tenés código que compara `crm_status` con los nombres viejos, se va a
+> quedar sin coincidencias después de que esto se mergee.** Busqué y arreglé los
+> que están en el repo (`routes/leads.py`, `dashboard.py`), pero si alguien tiene
+> algo a medio hacer sin commitear, revisalo. Los nombres viejos siguen aceptados
+> como entrada por compatibilidad; lo que cambia es lo que hay guardado.
+>
+> **B (CRM/LinkedIn): `dashboard.py` y `routes/leads.py` son tuyos.** Los toqué
+> porque las tres secciones nuevas viven ahí y no hay forma de hacerlo aparte.
+> Está todo en una rama, sin mergear, para que lo puedas mirar antes.
+>
+> **Verificado contra una copia de la base de producción**, no contra un fixture:
+> 70 `reunion_agendada` + 22 `reunion_hecha` + 1 `cliente_cerrado` migrados,
+> 8350 leads antes y 8350 después.
 
 **Zona compartida, avisar antes de tocar:** `services/discovery_respuestas.py`,
 `services/email_service.py`, `database.py`, `tests/conftest.py`.
@@ -145,9 +189,156 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **31/8 — E (pre-clientes/demos):** Rama `feat/preclientes-clientes-demos`,
+  commit `b153983`, sin deployar y sin mergear. Tres secciones nuevas:
+  pre-clientes (tablero por etapa), responsables del cliente (día a día,
+  mantenimiento, cobro) y registro de demos. Suite completa en 1108 pasando.
+- **31/8 — E (pre-clientes/demos):** **Agregué un gate que faltaba:
+  `scripts/check_js.py`.** `python -m py_compile dashboard.py` pasa aunque el
+  JavaScript embebido esté roto, porque el frontend vive dentro de strings de
+  Python normales: un backslash mal puesto lo consume Python como escape y al
+  navegador le llega código inválido, con el panel entero muerto y la suite en
+  verde. El gate corre los bloques `<script>` por `node --check`. Corrélo antes
+  de deployar cualquier cambio a `dashboard.py`; en este mismo cambio atajó dos.
+- **31/8 — E (pre-clientes/demos):** Dos bugs latentes de `main` que salieron al
+  probar en el navegador, los dos arreglados acá: (1) en
+  `body.light .modal h3,.modal-title` la coma corta el selector, así que
+  `.modal-title` quedaba azul oscuro sobre modal oscuro en cualquier tema —
+  estaba dormido porque los otros modales usan `<h3 id="modal-title">`, con id y
+  no con clase; (2) las reglas mobile de tablas asumen que toda fila es `.no-cb`
+  o la variante con checkbox, y cualquier tabla con otra estructura pierde
+  columnas sin avisar.
+- **31/8 — E (pre-clientes/demos):** Probado en el navegador contra una copia de
+  la base de producción, no solo con tests: los tres paneles, en claro y oscuro,
+  en escritorio y en mobile. Los tests no renderizan el frontend — no alcanza con
+  que estén verdes.
+
 Lo último arriba. Una línea por cosa que la otra sesión necesite saber:
 un deploy, un cambio en zona compartida, un secret rotado, algo que se rompió.
 
+- **8/9 — E (lead magnet web): la migracion de estados dejo roto `services/` y
+  parte de `routes/`. Arreglado lo que rompia en silencio; falta la interfaz.**
+
+  Al migrar `crm_status` se actualizaron `routes/leads.py` y `dashboard.py`,
+  pero **el codigo que corre solo quedo con el vocabulario viejo**, y como los
+  valores viejos ya no existen en la base, no fallaba: no encontraba nada.
+
+  **Lo que estaba roto y arregle:**
+  - `services/secuencia_contactos.py`: la secuencia `reunion_hecha` dejo de
+    alcanzar a nadie. Son los 22 leads que ahora son `demo_1` — los que vieron
+    la demo y desaparecieron, el cohorte mas caliente.
+  - `routes/calendar.py`: despues de una reunion el lead avanza solo, pero la
+    lista de estados que lo habilitan tenia `reunion_agendada`. **Los 70 leads
+    en `demo_agendada` no iban a avanzar.**
+  - `routes/calendly.py` y `services/calendly_gcal.py`: escribian
+    `reunion_agendada` de nuevo en cada reserva.
+  - `services/planilla_semaforo.py` (mapa de colores y RANK),
+    `services/discovery_respuestas.py` y `services/email_service.py`.
+  - Los tests que fijaban el vocabulario viejo, en 6 archivos.
+
+  **LO QUE NO TOQUE, y queda para quien hizo la migracion:** unas 50 apariciones
+  en `dashboard.py` (etiquetas, colores, los `<option>` de los desplegables, el
+  orden del embudo y varias consultas SQL de los paneles), `routes/leads.py`
+  (contadores, `funnel_order`, `_meeting_st`, `_closed_st`, y el POST de
+  `reunion_agendada` en la linea 680) y `routes/wa.py` (el mapeo del bot).
+  **Los desplegables todavia ofrecen los estados viejos**, asi que un humano
+  puede volver a escribirlos a mano; `_ESTADOS_LEGACY` los sigue aceptando y la
+  migracion los barre en el proximo arranque, pero mientras tanto ese lead no
+  aparece en el tablero de pre-clientes.
+
+  `routes/leads.py:80` (`_ESTADOS_LEGACY`) lo deje intacto a proposito: ahi los
+  nombres viejos son compatibilidad de entrada, no una omision.
+
+  Suite en 1170 y `check_js.py` OK.
+
+- **8/9 — E (lead magnet web) — DEPLOYADO. Leer esto antes de deployar.**
+
+  **Produccion es `9b34891`, o sea que las tres cosas que estaban separadas ya
+  estan juntas y publicadas:** pre-clientes de la otra E, el calendario de D y
+  `/api/web/lead`. Antes de esto ninguna de las tres —produccion, `main` local y
+  `origin/main`— coincidia con las otras, y produccion corria un arbol que no
+  era ningun commit. Ahora `main`, `origin/main` y produccion son lo mismo.
+
+  **Ojo: eramos dos sesiones llamadas E**, como paso antes con C. La otra es la
+  de pre-clientes; esta es la del lead magnet del sitio.
+
+  **La migracion de `crm_status` CORRIO EN PRODUCCION.** Respaldo antes:
+  `/data/leads_pre_preclientes_8sep.db` en el volumen y copia local en
+  `backups/`, los dos con 8357 leads e integridad verificada. Resultado medido
+  despues: 8357 leads (ninguno perdido), `reunion_agendada` 70 → `demo_agendada`
+  70, `reunion_hecha` 22 → `demo_1` 22, y cero filas con los nombres viejos.
+  **Los estados viejos ya no existen en la base.** Si tenes codigo fuera de este
+  repo que los compara —el bot de WhatsApp, el Apps Script de la planilla— se
+  quedo sin coincidencias hoy.
+
+  **`/api/web/lead` verificado contra produccion**, no contra la suite: origen
+  ajeno 403, datos vacios 400, `/api/leads` sin sesion sigue 401. Y una descarga
+  real desde `scalerics.com` creo el lead 171145 con `source='web_guia'`.
+  **Ese lead 171145 es de prueba y hay que borrarlo.**
+
+  El sitio (`Scalerics-org/scalerics-web`) quedo en `c56a7ca`, con el fetch al
+  CRM publicado.
+
+- **8/9 — E (lead magnet web) — CIERRE. En que quedo y que sigue.**
+
+  **Listo y commiteado, SIN DEPLOYAR:** `POST /api/web/lead` (`883cb24`), el
+  endpoint publico que mete en el CRM las descargas de la guia de precios de
+  `scalerics.com`. 24 tests nuevos en `tests/test_web_lead.py`; la suite entera
+  (1144) en verde. Toque `dashboard.py` en tres lineas: el import, el registro
+  del blueprint y la exencion de `/api/web/` en el `before_request`.
+
+  **Por que no deploye, en orden de peso:**
+  1. **Regla 2.** `v163` salio 14:45 UTC desde `scalerics@gmail.com` y no fue
+     mio. Hay alguien trabajando ahora. No piso sin preguntar.
+  2. **Mi commit esta encima del calendario de D (`d00fbfb`), que sigue sin
+     release.** No hay forma de deployar lo mio sin soltar lo suyo, y sacarlo
+     dejaria produccion en un arbol que no es ningun commit. Ese release es
+     decision de D, no mia.
+
+  Verificado que todavia no esta vivo: `POST /api/web/lead` contra produccion
+  devuelve 401, o sea que la exencion no salio.
+
+  **`fly.toml` RESUELTO (`c32e72a`).** Era el pendiente que A marco el 7/9.
+  Antes de tocarlo verifique con `flyctl status`: la unica maquina corre en
+  `iad`. El archivo decia `gru`, asi que estaba mintiendo en las dos
+  direcciones — quien deployaba del directorio movia de continente sin querer,
+  y quien deployaba de un worktree limpio publicaba una region falsa. Ahora
+  dice la verdad. **Si alguien lo tenia asi a proposito para otra cosa, avise.**
+
+  **Lo que falta, en orden:**
+  1. Deployar `883cb24` cuando D suelte su calendario o diga que se puede.
+  2. Mergear `guia-al-crm` en el repo del sitio (`Scalerics-org/scalerics-web`,
+     commit `c56a7ca`): es el fetch de la pagina al endpoint. **Esta a
+     proposito sin mergear** — hoy le pegaria a un 401. Primero el CRM.
+  3. Probar de punta a punta: descargar la guia desde el sitio y ver que
+     aparece el lead con `source='web_guia'`.
+
+  **Ojo con las filas nuevas:** entran con `source='web_guia'` y eso las deja
+  fuera de `meta_reminders` (filtra `'meta'`) y de `discovery_emails` (filtra
+  `'discovery'`). Es deliberado y hay un test que lo fija. Si alguien alguna vez
+  quiere escribirles, que sea una decision explicita: la pagina les prometio
+  "un mail con la guia y nada mas".
+
+- **8/9 — E (lead magnet web):** Me anoto ahora. Vengo del repo del sitio:
+  hoy se publico `scalerics.com/cuanto-cuesta-una-pagina-web/`, una guia de
+  precios en PDF a cambio del mail. Hoy esa descarga termina en un mail a
+  `contacto@` y no entra al CRM. Voy a agregar `POST /api/web/lead`, publico
+  (Web3Forms solo reenvia por webhook en el plan PRO, verificado), con el mismo
+  patron que `/api/meta/webhook`: exento del `before_request` y validandose solo.
+  **Toco `dashboard.py` en una sola linea, la lista de rutas exentas** — D lo
+  edito hoy, aviso por si hay cruce. El resto es archivo nuevo.
+  **No pienso deployar:** `main` tiene el calendario de D commiteado y sin
+  release (`d00fbfb`), y soltarlo no es mi decision.
+- **8/9 - D (calendario):** Vista semanal nueva en el panel Calendario (toggle
+  Mes/Semana) y boton "Editar horario" en cada reunion, que abre un modal con
+  fecha y hora. Toque `dashboard.py` (CSS, el header del panel y el bloque JS
+  del calendario: `calChangeMonth` ahora se llama `calShift`) y
+  `routes/calendar.py`, donde agregue `PATCH /api/calendar/meetings/<id>`. Nada
+  de eso toca `database.py` ni ninguna tabla. **Ese PATCH le escribe a Google
+  Calendar con `sendUpdates="all"`, o sea que le manda mail al invitado**: si lo
+  probas contra el `.env` de produccion, la reunion se mueve de verdad y el
+  cliente se entera. Hubo un intento de arrastrar y soltar las reuniones que se
+  descarto: no quedo nada de eso en el codigo. Sin deployar al 8/9.
 - **7/9 — A:** **Alguien tiene `fly.toml` modificado sin commitear: cambia
   `primary_region` de `gru` (San Pablo) a `iad` (Virginia).** Eso mueve la app de
   continente y no está commiteado, así que cualquiera que deploye se lo aplica
