@@ -113,3 +113,8 @@ def test_el_json_del_fijo_tambien_va_escapado():
 
 def test_borrar_un_fijo_aclara_que_los_movimientos_quedan():
     assert "son plata que se gastó" in HTML
+
+
+def test_loadfijos_no_convierte_moneda_en_el_navegador():
+    """La cuenta se va al servidor: el panel solo suma el monto_usd que vino."""
+    assert "f.tipo_cambio || 1" not in HTML

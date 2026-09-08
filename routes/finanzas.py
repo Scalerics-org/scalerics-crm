@@ -231,7 +231,20 @@ def _validar_recurrente(data: dict) -> tuple[dict | None, str | None]:
 
 @finanzas_bp.route("/api/finanzas/recurrentes", methods=["GET"])
 def api_listar_recurrentes():
-    return jsonify(listar_recurrentes(_db()))
+    """Los fijos, cada uno con su equivalente en USD ya calculado.
+
+    El panel no convierte monedas. Si un fijo esta en pesos sin un tipo de
+    cambio usable viene con `monto_usd = None`, y el panel lo deja afuera del
+    total y lo marca, en vez de mostrarlo como si fuera un peso por dolar.
+    """
+    salida = []
+    for r in listar_recurrentes(_db()):
+        try:
+            usd = a_usd(r["monto"], r["moneda"], r["tipo_cambio"])
+        except (TypeError, ValueError):
+            usd = None
+        salida.append({**r, "monto_usd": usd})
+    return jsonify(salida)
 
 
 @finanzas_bp.route("/api/finanzas/recurrentes", methods=["POST"])

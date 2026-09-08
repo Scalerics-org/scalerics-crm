@@ -12,7 +12,7 @@ import pytest
 from werkzeug.security import generate_password_hash
 
 import dashboard
-from database import create_user, init_db
+from database import create_user, crear_recurrente, init_db
 
 
 @pytest.fixture
@@ -254,3 +254,23 @@ def test_editar_un_movimiento_con_client_id_null_lo_desatribuye(cli):
         "client_id": None})
     mov = cli.get("/api/finanzas/movimientos").get_json()[0]
     assert mov["client_id"] is None
+
+
+def test_un_fijo_en_pesos_sin_tipo_de_cambio_viene_con_monto_usd_null(cli, app):
+    """El panel no convierte: sin un tipo de cambio usable, se marca, no se
+    inventa una cuenta a 1 peso por dólar."""
+    db = app.config["_DB"]
+    crear_recurrente(db, tipo="egreso", concepto="Alquiler",
+                      categoria="servicios", monto=40000, moneda="UYU",
+                      tipo_cambio=None, dia_del_mes=1, desde="2026-09")
+    fijo = cli.get("/api/finanzas/recurrentes").get_json()[0]
+    assert fijo["monto_usd"] is None
+
+
+def test_un_fijo_en_pesos_con_tipo_de_cambio_trae_el_monto_usd_correcto(cli, app):
+    db = app.config["_DB"]
+    crear_recurrente(db, tipo="egreso", concepto="Alquiler",
+                      categoria="servicios", monto=40000, moneda="UYU",
+                      tipo_cambio=40, dia_del_mes=1, desde="2026-09")
+    fijo = cli.get("/api/finanzas/recurrentes").get_json()[0]
+    assert fijo["monto_usd"] == 1000.0

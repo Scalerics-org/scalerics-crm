@@ -1139,6 +1139,7 @@ body.light .fin-kpi,body.light .fin-card{background:#fff;border-color:#e2e8f0}
 body.light .fin-hbar-pista{background:#e2e8f0}
 body.light .fin-hbar-monto{color:#1e293b}
 body.light .fin-hbar-nombre{color:#475569}
+body.light .fin-kpi-label,body.light .fin-kpi-var,body.light .fin-card-title,body.light .fin-serie-label{color:#475569}
 </style>
 </head>
 <body>
@@ -5618,9 +5619,12 @@ async function loadFijos() {
   const cuerpo = document.getElementById('fin-fijos');
   const fijos = await (await fetch('/api/finanzas/recurrentes')).json();
 
-  const mensual = fijos
-    .filter(f => f.activo && f.tipo === 'egreso')
-    .reduce((suma, f) => suma + (f.moneda === 'USD' ? f.monto : f.monto / (f.tipo_cambio || 1)), 0);
+  // El total sale del monto_usd que ya calculó el servidor: el panel no
+  // convierte. Un fijo en pesos sin tipo de cambio usable llega con
+  // monto_usd null y queda afuera del total, no adentro a un valor inventado.
+  const activos = fijos.filter(f => f.activo && f.tipo === 'egreso');
+  const sinCotizar = activos.filter(f => f.monto_usd === null || f.monto_usd === undefined).length;
+  const mensual = activos.reduce((suma, f) => suma + (f.monto_usd || 0), 0);
 
   const encabezado = `
     <div class="fin-toolbar">
@@ -5628,6 +5632,8 @@ async function loadFijos() {
       <button class="btn-primary" style="margin-left:auto" onclick="abrirFijo()">
         <i data-lucide="plus" class="nav-icon"></i> Fijo
       </button>
+      ${sinCotizar > 0 ? `<div class="fin-rojo" style="width:100%;font-size:.75rem">
+        ${sinCotizar} fijo${sinCotizar > 1 ? 's' : ''} en pesos sin tipo de cambio cargado, afuera de este total</div>` : ''}
     </div>`;
 
   if (!fijos.length) {
@@ -5636,7 +5642,10 @@ async function loadFijos() {
     return;
   }
 
-  cuerpo.innerHTML = encabezado + fijos.map(f => `
+  cuerpo.innerHTML = encabezado + fijos.map(f => {
+    const enUsd = f.moneda === 'UYU'
+      ? `<div class="fin-kpi-var">${f.monto_usd == null ? '—' : _finUsd(f.monto_usd)}</div>` : '';
+    return `
     <div class="table-row no-cb" style="${f.activo ? '' : 'opacity:.5'}">
       <div style="flex:1">
         <div class="biz-name">${esc(f.concepto)}</div>
@@ -5645,6 +5654,7 @@ async function loadFijos() {
       <div style="flex:0 0 150px;text-align:right"
            class="${f.tipo === 'ingreso' ? 'fin-verde' : 'fin-rojo'}">
         ${f.moneda} ${f.monto.toLocaleString('es-UY')}
+        ${enUsd}
       </div>
       <div style="flex:0 0 76px;text-align:right">
         <button class="btn-ghost" onclick='abrirFijo(${_finAttr(f)})'
@@ -5652,7 +5662,8 @@ async function loadFijos() {
         <button class="btn-ghost" onclick="borrarFijoUI(${f.id})"
                 title="Borrar"><i data-lucide="trash-2" class="nav-icon"></i></button>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
   if (window.lucide) lucide.createIcons();
 }
 
