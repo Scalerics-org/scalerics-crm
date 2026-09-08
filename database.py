@@ -729,7 +729,15 @@ def init_db(db_path: str) -> None:
                 created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        _grant_panel_to_existing_roles(conn, "finanzas")
+        # A propósito, sin la migración que suma este panel al panel_access
+        # de los roles que ya existen (Ruling R20): todos los demás paneles
+        # nuevos se la aplican porque esconder un ítem del menú no es un
+        # permiso real. Finanzas es la excepción: es el único panel que
+        # muestra la plata de la empresa, así que arranca sin nadie asignado
+        # en vez de con todos los roles adentro -Caller incluido. Un admin lo
+        # ve igual, por el bypass de is_admin en tiene_panel(); el resto se
+        # lo asigna Juan a mano desde el editor de roles, que es justamente
+        # lo que eligió al marcar "panel normal, se asigna por rol".
 
         # ── Pre-clientes y clientes activos ───────────────────────────────────
         # Los tres responsables de un cliente activo. Apuntan a users para poder

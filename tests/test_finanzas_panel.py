@@ -1,9 +1,13 @@
-"""El panel Finanzas tiene que estar registrado en los siete lugares.
+"""El panel Finanzas tiene que estar registrado en los seis lugares.
 
-Dos de los siete fallan en silencio si se olvidan: sin la entrada en el
-ALL_PANELS del editor de roles no se le puede asignar a nadie, y sin el
-_grant_panel_to_existing_roles en database.py no lo ve nadie en producción,
-donde la tabla `roles` ya tiene filas. Es exactamente lo que pasó con `meta`.
+Uno falla en silencio si se olvida: sin la entrada en el ALL_PANELS del
+editor de roles no se le puede asignar a nadie. Para el resto de los paneles
+hay un séptimo lugar, `_grant_panel_to_existing_roles` en database.py, que
+sin él tampoco lo ve nadie en producción -donde la tabla `roles` ya tiene
+filas- y es exactamente lo que pasó con `meta`. Finanzas es la excepción a
+propósito (Ruling R20): es el único panel que muestra la plata de la
+empresa, así que arranca sin nadie asignado y Juan lo reparte a mano desde
+el editor de roles, en vez de dárselo a todos los roles que ya existan.
 """
 
 import json
@@ -64,9 +68,14 @@ def test_esta_en_la_navegacion_mobile():
     assert "finanzas:'Finanzas'" in etiquetas.replace(" ", "")
 
 
-def test_database_le_da_el_panel_a_los_roles_existentes():
+def test_database_no_le_da_el_panel_a_los_roles_existentes():
+    """A propósito (Ruling R20): a diferencia de los demás paneles nuevos,
+    Finanzas no se auto-otorga a los roles que ya existen en producción. Es
+    la única sección que muestra la plata de la empresa: arranca sin nadie
+    asignado -un admin la ve igual por el bypass de is_admin- y se reparte a
+    mano desde el editor de roles."""
     fuente = Path(__file__).resolve().parents[1] / "database.py"
-    assert '_grant_panel_to_existing_roles(conn, "finanzas")' in \
+    assert '_grant_panel_to_existing_roles(conn, "finanzas")' not in \
         fuente.read_text(encoding="utf-8")
 
 

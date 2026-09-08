@@ -84,8 +84,13 @@ def test_listar_recurrentes_solo_activos(db):
     assert len(listar_recurrentes(db, solo_activos=True)) == 1
 
 
-def test_el_panel_finanzas_le_llega_a_los_roles_que_ya_existian(tmp_path):
-    """Reproduce producción: la tabla `roles` ya tiene filas cuando llega el panel."""
+def test_el_panel_finanzas_no_le_llega_solo_a_los_roles_que_ya_existian(tmp_path):
+    """Ruling R20, a propósito: a diferencia de todos los demás paneles
+    nuevos, Finanzas NO usa _grant_panel_to_existing_roles. Es el único panel
+    que muestra la plata de la empresa, así que arranca sin nadie asignado
+    -ni siquiera un rol que ya tenía otros paneles- en vez de dárselo a todos
+    los roles de producción, Caller incluido. Un admin lo ve igual por el
+    bypass de is_admin en tiene_panel(); el resto lo asigna Juan a mano."""
     ruta = str(tmp_path / "vieja.db")
     init_db(ruta)  # siembra Admin/Caller/Ventas
     conn = sqlite3.connect(ruta)
@@ -94,12 +99,12 @@ def test_el_panel_finanzas_le_llega_a_los_roles_que_ya_existian(tmp_path):
     conn.commit()
     conn.close()
 
-    init_db(ruta)  # segundo arranque: acá tiene que entrar el grant
+    init_db(ruta)  # segundo arranque: acá NO tiene que entrar ningún grant
 
     conn = sqlite3.connect(ruta)
     fila = conn.execute("SELECT panel_access FROM roles WHERE name='Ventas'").fetchone()
     conn.close()
-    assert "finanzas" in fila[0]
+    assert "finanzas" not in fila[0]
 
 
 def test_crear_movimiento_con_campo_mal_escrito_levanta_valueerror(db):
