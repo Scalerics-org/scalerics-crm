@@ -76,6 +76,30 @@ leads de Meta se renombró a **D** para deshacer el empate.
 | B (CRM/LinkedIn) | LinkedIn, demos, presupuestos, rutas del CRM | `dashboard.py`, `routes/leads.py`, `routes/demos.py`, `routes/budgets.py`, `routes/calendar.py`, `scripts/render_linkedin.py`, `templates/linkedin_card.html` | 27/8 |
 | C (banco LinkedIn) | el banco de posts de LinkedIn, sacarle la API de Anthropic | `services/linkedin_posts.py`, `services/linkedin_banco_semilla.py`, `routes/linkedin.py`, `scripts/render_linkedin.py`, `templates/linkedin_card.html`, `tests/test_linkedin_*` | 28/8 |
 | D (leads de Meta) | secuencias de mail por estado, estados del CRM, sync con la planilla de semáforo, detección de respuestas, rendimiento del CRM | `services/meta_reminders.py`, `services/secuencia_contactos.py`, `services/planilla_semaforo.py`, `scripts/planilla_semaforo.gs`, `routes/meta.py` | 27/8 |
+| E (finanzas) | la sección financiera del CRM | `services/finanzas.py`, `routes/finanzas.py`, `database.py` (tablas de finanzas), `dashboard.py` (panel Finanzas) | 8/9 |
+
+> **E (finanzas) acá (8/9).** Trabajé en un worktree aparte sobre la rama
+> `feat/finanzas`. **Esto no está en `main` ni deployado.** Agrega dos tablas
+> nuevas, `finanzas_movimientos` y `finanzas_recurrentes`, más
+> `services/finanzas.py` (la lógica: conversión USD/UYU, materialización de
+> gastos fijos), `routes/finanzas.py` (once endpoints detrás de un lock por
+> panel) y un panel **Finanzas** nuevo en `dashboard.py`.
+>
+> **Cruce de territorio, para que quede explícito: `dashboard.py` es de B y
+> `database.py` es zona compartida.** Lo que toqué en cada uno:
+> - `dashboard.py`: un ítem nuevo en el nav bajo GESTIÓN, y un panel entero
+>   nuevo (HTML + CSS + JS, todo bajo el prefijo `fin-`). No toqué ninguna
+>   ruta, función ni panel que ya existiera ahí.
+> - `database.py`: dos tablas nuevas (`finanzas_movimientos`,
+>   `finanzas_recurrentes`) más sus índices, agregadas al final de `init_db`.
+>   Aditivo: ninguna tabla, columna ni consulta existente se tocó.
+>
+> Nada de esto arranca solo al boot ni manda mail: las reglas 3 y 4 quedan
+> intactas. Verificación local (suite completa con cobertura, como el CI):
+> 1213 tests, cobertura 61,47% (piso del CI en 57%, subió desde el 59%
+> medido el 31/8). Falta mergear a `main`, deployar, verificar contra
+> producción y cargar los fijos reales (Fly, Vercel, Zoho, Resend, la API de
+> Anthropic) — queda para después del merge, con Juan mirando.
 
 > **D acá (28/8, 17:10 UTC).** Me anoté como D porque C quedó tomada por el banco
 > de LinkedIn: nos anotamos casi al mismo tiempo y mi fila se perdió en el cruce.
