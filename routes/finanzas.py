@@ -14,7 +14,8 @@ from database import (actualizar_movimiento, actualizar_recurrente,
                       listar_movimientos, listar_recurrentes, log_activity)
 from services.auth import require_panel
 from services.finanzas import (CATEGORIAS, MONEDAS, a_usd,
-                               materializar_recurrentes, periodo_de, resumen)
+                               materializar_recurrentes, periodo_de,
+                               rendimiento_pauta, resumen)
 
 finanzas_bp = Blueprint("finanzas", __name__)
 
@@ -307,6 +308,19 @@ def api_resumen():
         return jsonify({"ok": False, "error": "desde tiene que ser <= hasta"}), 400
     materializar_recurrentes(db, hoy=hoy)
     return jsonify(resumen(db, desde, hasta))
+
+
+@finanzas_bp.route("/api/finanzas/pauta")
+def api_pauta():
+    """Rendimiento de la pauta: qué compró cada dólar invertido."""
+    db = _db()
+    hoy = date.today()
+    mes_actual = f"{hoy.year:04d}-{hoy.month:02d}"
+    desde = request.args.get("desde") or mes_actual
+    hasta = request.args.get("hasta") or mes_actual
+    if desde > hasta:
+        return jsonify({"ok": False, "error": "desde tiene que ser <= hasta"}), 400
+    return jsonify(rendimiento_pauta(db, desde, hasta))
 
 
 @finanzas_bp.route("/api/finanzas/categorias")
