@@ -127,12 +127,32 @@ def test_los_costos_dividen_la_inversion_del_mes(db):
 
 
 def test_sin_ventas_el_costo_por_venta_es_none_no_cero(db):
-    """La planilla mostraba #DIV/0! en esos meses. Cero sería mentira."""
+    """La planilla mostraba #DIV/0! en esos meses. Cero sería mentira.
+
+    El ROI es distinto: hubo inversión, así que 0.0 es un resultado medido
+    (se gastó y no volvió nada todavía), no un dato faltante.
+    """
     _pauta(db, "2026-03", 300.0)
     _lead(db, "2026-03")
     m = rendimiento_pauta(db, "2026-03", "2026-03")["meses"][0]
     assert m["costo_venta"] is None
-    assert m["roi"] is None
+    assert m["roi"] == 0.0
+
+
+def test_gastar_sin_recuperar_da_roi_cero_no_none(db):
+    """Un mes que gasto y no devolvio nada tiene ROI 0, que es un resultado.
+
+    Es distinto de un mes sin inversion, donde el ROI no existe. Mostrar «—»
+    en el primer caso escondería justo el mes que hay que mirar.
+    """
+    _pauta(db, "2026-03", 500.0)
+    _lead(db, "2026-03")
+    assert rendimiento_pauta(db, "2026-03", "2026-03")["meses"][0]["roi"] == 0.0
+
+
+def test_un_mes_sin_inversion_no_tiene_roi(db):
+    _lead(db, "2026-03")
+    assert rendimiento_pauta(db, "2026-03", "2026-03")["meses"][0]["roi"] is None
 
 
 def test_sin_inversion_los_costos_son_none(db):
@@ -165,7 +185,7 @@ def test_un_ingreso_anulado_no_cuenta_en_el_roi(db):
     actualizar_movimiento(db, mid, anulado=1)
     m = rendimiento_pauta(db, "2026-03", "2026-03")["meses"][0]
     assert m["ingresos_usd"] == 0.0
-    assert m["roi"] is None
+    assert m["roi"] == 0.0
 
 
 def test_solo_cuenta_la_publicidad_no_los_demas_egresos(db):

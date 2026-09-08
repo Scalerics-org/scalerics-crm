@@ -236,18 +236,23 @@ def alcanzo(eventos: set, etapa: str) -> bool:
 
 
 def _dividir(numerador: float, denominador: float):
-    """El costo (o ROI) unitario, o None si no hay de qué dividir.
-
-    Ninguno de los dos lados vale como "no hay dato" si es cero: sin
-    denominador la división no está definida (un mes sin ventas no tiene un
-    costo por venta de cero, no tiene costo por venta — la planilla mostraba
-    #DIV/0! y esa era la lectura correcta), y sin numerador tampoco hay nada
-    que repartir (sin inversión no hay "costo por lead $0", no hubo campaña
-    que costear; sin ingresos atribuidos el ROI no es 0, todavía no se sabe).
-    """
-    if not numerador or not denominador:
+    """División simple, o None si el denominador es cero."""
+    if not denominador:
         return None
     return round(numerador / denominador, 2)
+
+
+def _costo(inversion: float, cantidad: float):
+    """Costo unitario, o None si no hay de qué dividir.
+
+    Sin `cantidad` la división no está definida: un mes sin ventas no tiene un
+    costo por venta de cero, no tiene costo por venta — la planilla mostraba
+    #DIV/0! y esa era la lectura correcta. Sin `inversión` tampoco: no hubo
+    campaña que costear, así que no es un costo de cero.
+    """
+    if not inversion:
+        return None
+    return _dividir(inversion, cantidad)
 
 
 def _fila_pauta(periodo, inversion, leads, calificados, demos, ventas, ingresos):
@@ -257,10 +262,13 @@ def _fila_pauta(periodo, inversion, leads, calificados, demos, ventas, ingresos)
         "leads": leads, "calificados": calificados,
         "demos": demos, "ventas": ventas,
         "ingresos_usd": round(ingresos, 2),
-        "cpl": _dividir(inversion, leads),
-        "costo_calificado": _dividir(inversion, calificados),
-        "costo_demo": _dividir(inversion, demos),
-        "costo_venta": _dividir(inversion, ventas),
+        "cpl": _costo(inversion, leads),
+        "costo_calificado": _costo(inversion, calificados),
+        "costo_demo": _costo(inversion, demos),
+        "costo_venta": _costo(inversion, ventas),
+        # El ROI es distinto: con inversión y sin ingresos, 0.0 es un
+        # resultado medido (se gastó y no volvió nada todavía), no un dato
+        # faltante. Solo sin inversión el ROI no está definido.
         "roi": _dividir(ingresos, inversion),
     }
 
