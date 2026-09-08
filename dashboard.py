@@ -1619,7 +1619,7 @@ body.light .fin-kpi-label,body.light .fin-kpi-var,body.light .fin-card-title,bod
   <!-- ======= FINANZAS PANEL ======= -->
   <div id="finanzas-panel" class="panel">
     <div class="fin-toolbar">
-      <select id="fin-rango" onchange="loadFinanzas()">
+      <select id="fin-rango" onchange="_finRangoCambio()">
         <option value="mes">Mes actual</option>
         <option value="3">Últimos 3 meses</option>
         <option value="12" selected>Últimos 12 meses</option>
@@ -6082,6 +6082,16 @@ function _funnelBars(items, stateLabels, stateColors) {
 
 // ========== Finanzas panel ==========
 const FIN_VISTAS = ['movimientos', 'fijos', 'pauta'];
+
+function _finRangoCambio() {
+  // El selector de rango es compartido por las tres vistas, pero loadFinanzas
+  // solo recarga Movimientos. Sin este handler, cambiar a "Este año" con
+  // Pauta abierta deja el rótulo del selector diciendo una cosa y la tabla
+  // mostrando los doce meses de siempre, sin recarga y sin ningún aviso.
+  // Fijos no depende del rango, no necesita nada acá.
+  loadFinanzas();
+  if (document.getElementById('fin-vista-pauta').style.display !== 'none') loadPauta();
+}
 
 function finVista(cual) {
   FIN_VISTAS.forEach(v => {

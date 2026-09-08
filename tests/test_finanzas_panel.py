@@ -181,6 +181,18 @@ def test_el_panel_tiene_la_vista_de_pauta():
     assert "function loadPauta(" in HTML
 
 
+def test_cambiar_el_rango_tambien_refresca_pauta_si_esta_abierta():
+    """El selector de rango es compartido por las tres vistas. Si el onchange
+    llama directo a loadFinanzas(), Pauta se queda mostrando los números de
+    un período distinto al que dice el selector, sin recarga y sin aviso."""
+    assert 'onchange="loadFinanzas()"' not in HTML
+    assert 'onchange="_finRangoCambio()"' in HTML
+    assert "function _finRangoCambio(" in HTML
+    cuerpo = re.search(r"function _finRangoCambio\(\) \{.*?\n\}", HTML, re.S).group(0)
+    assert "loadFinanzas()" in cuerpo
+    assert "loadPauta()" in cuerpo
+
+
 def test_un_costo_sin_denominador_se_muestra_como_guion():
     """La planilla mostraba #DIV/0!. Un cero ahí sería mentira."""
     assert "function _finNum(" in HTML
