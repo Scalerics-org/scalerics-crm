@@ -99,14 +99,19 @@ leads de Meta se renombró a **D** para deshacer el empate.
 > Nada de esto arranca solo al boot ni manda mail: las reglas 3 y 4 quedan
 > intactas. Verificación local (suite completa con cobertura, como el CI):
 > 1213 tests, cobertura 61,47% (piso del CI en 57%, subió desde el 59%
-> medido el 31/8). Falta mergear a `main`, deployar, verificar contra
-> producción y cargar los fijos reales (Fly, Vercel, Zoho, Resend, la API de
-> Anthropic) — queda para después del merge, con Juan mirando.
+> medido el 31/8). Después de esto va el merge a `main`, el deploy y la carga
+> de los fijos reales (Fly, Vercel, Zoho, Resend, la API de Anthropic), todo
+> con Juan mirando.
 >
-> **Mergeado a `main` el 8/9, despues de esto.** Traje `main` a la rama antes
-> de mergear, con conflictos en `database.py`, `dashboard.py` y este archivo.
-> Los tres eran aditivos y se conservaron los dos lados: en `dashboard.py`
-> quedaron registrados `web_bp`, `preclientes_bp` y `finanzas_bp`.
+> **Dos merges de `main` a la rama antes de integrar.** El primero trajo hasta
+> `07191fc`, con conflictos en `database.py`, `dashboard.py` y este archivo;
+> los tres eran aditivos y se conservaron los dos lados. `database.py` no se
+> resolvio hunk por hunk: git alineaba las funciones por lineas comunes
+> (`conn = _connect(db_path)`, `try:`) y las partia a la mitad, asi que se
+> reconstruyo injertando los bloques de finanzas enteros sobre la version de
+> `main`. El segundo merge trajo `origin/main` hasta `d7b9cbd` —el calendario
+> arrastrable y el fix de los nueve writers de etapas— y entro limpio. En
+> `dashboard.py` quedan registrados `web_bp`, `preclientes_bp` y `finanzas_bp`.
 >
 > **Ojo con esto, es lo que casi se rompe en silencio.** La migracion de
 > estados de E renombro el vocabulario (`reunion_agendada` -> `demo_agendada`,
@@ -188,6 +193,100 @@ leads de Meta se renombró a **D** para deshacer el empate.
 ---
 
 ## Bitácora
+
+- **8/9 — F: CIERRE. Deployado `v166`, producción al día con `main`.**
+
+  Corrige dos entradas mías de más abajo, que quedaron viejas: producción **ya
+  es** un commit (`ca1fe16`), y el PR 6 **está mergeado**.
+
+  Entró: el PR 6 reducido (la interfaz y el borde de la API, que es el hueco que
+  `07191fc` dejó anotado) y el PR 8 (arrastrar reuniones, editar nombre y
+  duración, chips por origen).
+
+  **Verificado contra la máquina viva, no contra el log de deploy:** 8.358 leads
+  antes y después, 183 reuniones antes y después, la distribución de estados sin
+  cambios (la migración ya había corrido en `v165` y es idempotente).
+  `GET /` 302 y `GET /login` 200, sin errores en el arranque.
+
+  **Segunda colisión del día, misma causa que la primera.** D y yo arreglamos en
+  paralelo el mismo bug de estados (`07191fc` y mi PR 6). Donde nos pisábamos
+  gané el suyo, que ya estaba deployado, y me quedé solo con lo que él marcó
+  como faltante. Lo único que conservé del mío ahí: el `RANK` de
+  `planilla_semaforo` completo — el suyo agrega 4 etapas y faltan 6, y una etapa
+  que no está en ese mapa entra como rango 0, así que cualquier color de la
+  planilla cuenta como avance sobre ella.
+
+  **Trampa nueva de GitHub, para el que apile PRs.** El PR 7 se cerró solo
+  cuando mergeé el 6: su *base* era la rama del 6, y `gh pr merge --delete-branch`
+  borra esa base y GitHub cierra el PR un segundo después. Tampoco se puede
+  reabrir, porque para reabrirlo necesita la base que ya no existe. Hubo que
+  abrir el #8. **Si apilás un PR sobre otro, cambiale la base a `main` antes de
+  mergear el de abajo.**
+
+  **Lo que queda pendiente, sin tocar:** el sync de Google sigue siendo
+  insert-only y con el dedup por hora de reloj (`SUBSTR(start_at,1,13)`): dos
+  reuniones a las 10:00 y 10:30 importan una sola, y la segunda no entra nunca
+  más. Está documentado en el PR #1 cerrado (`cc2187b`), no portado.
+
+
+- **8/9 — F (calendario): dos sesiones escribimos el MISMO endpoint y git no lo
+  vio.** D hizo `PATCH /api/calendar/meetings/<id>` (`api_reschedule_meeting`,
+  `d00fbfb`). Yo tenía en paralelo `api_update_meeting`, misma ruta y mismo
+  método, en otro lugar del archivo. **Git las mergea sin conflicto y Flask no
+  da error:** registra las dos reglas y gana la primera, en silencio. Lo probé:
+
+  ```
+  reglas registradas:
+     /api/calendar/meetings/<int:mid> api_update_meeting     ['PATCH']
+     /api/calendar/meetings/<int:mid> api_reschedule_meeting ['PATCH']
+  respuesta: mia
+  ```
+
+  Una de las dos implementaciones habría quedado muerta sin que nada avisara.
+  Rehice lo mío entero encima del suyo: el PR 7 ahora **extiende**
+  `api_reschedule_meeting` (nombre, duración, guarda de Calendly) y agrega el
+  arrastre, que no existía en ninguna de las dos vistas. Sus tests quedaron
+  intactos, incluido `test_sin_hora_no_toca_nada`: el arrastre del mes le manda
+  la hora que la reunión ya tenía en vez de cambiarle el contrato.
+
+  **Si vas a agregar una ruta, buscá el path antes.** `grep '"/api/...'` sobre
+  `routes/`. No alcanza con que el CI esté verde ni con que git no marque
+  conflicto.
+
+- **8/9 — F: producción NO es ningún commit.** Lo verifiqué leyendo la máquina,
+  no el log. Hasheé `dashboard.py`, `database.py`, `routes/calendar.py` y
+  `routes/wa.py` de `/app` contra `main`, las 6 ramas del remoto y mis commits:
+  no coincide con nada. `v163` salió de un árbol de trabajo **anterior al PR
+  #5**, más el calendario. O sea que hoy producción **no tiene pre-clientes,
+  clientes activos ni registro de demos**, aunque estén mergeados desde el 7/9;
+  `routes/preclientes.py` no existe en `/app` y `COORDINACION.md` allá todavía
+  tiene la fila de E.
+
+  Consecuencia para el que deploye: **el próximo release de `main` trae de golpe
+  el PR #5, el calendario y el lead magnet de web.** El PR #5 dispara la
+  migración de estados al arrancar. Los números de producción medidos el 7/9,
+  para verificar después: 70 `reunion_agendada` → `demo_agendada`, 22
+  `reunion_hecha` → `demo_1`, 8.357 leads antes y después. Si el total cambia,
+  algo salió mal.
+
+- **8/9 — F: PR 6 (`fix/estados-viejos-calendario`), CI verde, listo para
+  mergear.** El rename de etapas del PR #5 arregló las lecturas y no las
+  escrituras: nueve lugares seguían escribiendo `reunion_agendada` y compañía.
+  Como el tablero filtra por `crm_status IN (etapas)`, agendar una reunión
+  **borraba al lead del tablero**, sin error y sin log. Aparecieron dos cosas
+  más: `_maybe_revert_lead_status` comparaba contra el nombre viejo y no
+  matcheaba nunca, y el `RANK` de `services/planilla_semaforo.py` tenía los
+  nombres viejos — un estado que no está en ese mapa entra como rango 0, así que
+  cualquier color de la planilla contaba como avance y un lead en `demo_1`
+  volvía a `interesado` con un amarillo. Eso ya está pasando en producción con
+  los 92 leads que migró el PR #5.
+
+  **La traducción quedó en el BORDE, no en `update_business`.** Ponerla en la
+  escritura fue el primer intento y rompe a cualquiera que haga
+  leer-comparar-escribir: la planilla pedía `negociacion`, leía de vuelta
+  `follow_up_1`, no coincidían, y volvía a escribir en cada corrida. Hay un test
+  que fija esa decisión para que no se "arregle" de nuevo así.
+
 
 - **31/8 — E (pre-clientes/demos):** Rama `feat/preclientes-clientes-demos`,
   commit `b153983`, sin deployar y sin mergear. Tres secciones nuevas:

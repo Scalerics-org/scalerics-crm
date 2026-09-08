@@ -224,6 +224,7 @@ def api_lead_by_phone(phone):
 def api_bot_lead_qualified():
     """Receives a push from the bot when a lead qualifies (MEETING_SENT / HUMAN_QUEUED)."""
     from database import (
+        ETAPA_DEMO_AGENDADA,
         get_business_by_phone, insert_business, update_business, upsert_client_info,
     )
 
@@ -243,8 +244,8 @@ def api_bot_lead_qualified():
     BUDGET = {1: "Menos de $500 USD", 2: "$500–$3.000 USD", 3: "Más de $3.000 USD", 4: "Sin definir"}
     TEAM = {1: "Solo yo", 2: "2–5 personas", 3: "6–20 personas", 4: "Más de 20"}
     STATE_TO_CRM = {
-        "MEETING_SENT": "reunion_agendada",
-        "SCHEDULED": "reunion_agendada",
+        "MEETING_SENT": ETAPA_DEMO_AGENDADA,
+        "SCHEDULED": ETAPA_DEMO_AGENDADA,
         "HUMAN_QUEUED": "contactado",
     }
 

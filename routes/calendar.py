@@ -241,7 +241,7 @@ def api_calendar_events():
         try:
             rows = conn.execute("""
                 SELECT m.id, m.title, m.start_at, m.end_at, m.meet_link, m.status,
-                       b.name as client_name, m.client_id
+                       m.calendar_event_id, b.name as client_name, m.client_id
                 FROM meetings m
                 LEFT JOIN businesses b ON m.client_id = b.id
                 WHERE m.status != 'canceled'
@@ -262,6 +262,12 @@ def api_calendar_events():
                     "meeting_url": r["meet_link"] or "",
                     "client_id": r["client_id"],
                     "client_name": r["client_name"] or "",
+                    # De donde vino decide si se puede reprogramar desde aca y
+                    # de que color va la barra del chip.
+                    "origen": _origen(r["calendar_event_id"]),
+                    "duration_min": int(
+                        _meeting_duration({"start_at": r["start_at"],
+                                           "end_at": r["end_at"]}).total_seconds() // 60),
                 })
             return jsonify({"events": events})
         finally:
@@ -634,6 +640,28 @@ def api_delete_meeting(meeting_id):
     return jsonify({"ok": True})
 
 
+def _es_uri_de_calendly(event_id) -> bool:
+    """routes/calendly.py guarda la URI de Calendly en `calendar_event_id`.
+
+    Comparte columna con el eventId de Google pero no es lo mismo, y pedirle a
+    Google un patch con una URI falla siempre. Sin este chequeo el usuario ve
+    "Google Calendar rechazó el cambio", que no le dice que lo que tiene que
+    hacer es reprogramarla en Calendly.
+    """
+    return str(event_id or "").startswith("http")
+
+
+def _origen(event_id) -> str:
+    """De donde vino la reunion: 'crm', 'google' o 'calendly'.
+
+    Las tres se reprograman distinto, asi que la vista necesita distinguirlas
+    para no ofrecer un boton que va a fallar.
+    """
+    if not event_id:
+        return "crm"
+    return "calendly" if _es_uri_de_calendly(event_id) else "google"
+
+
 def _meeting_duration(meeting: dict) -> datetime.timedelta:
     """Cuanto dura la reunion, para conservarlo al moverla.
 
@@ -671,9 +699,35 @@ def api_reschedule_meeting(meeting_id):
     except ValueError:
         return jsonify({"ok": False, "error": "Fecha u hora inválidas"}), 400
 
-    end_dt = start_dt + _meeting_duration(meeting)
+    # Cambiar cuanto dura es opcional: si no viene, se conserva la que tenia.
+    duracion = data.get("duration_min")
+    if duracion in (None, ""):
+        largo = _meeting_duration(meeting)
+    else:
+        try:
+            minutos = int(duracion)
+        except (TypeError, ValueError):
+            return jsonify({"ok": False, "error": "Duración inválida"}), 400
+        if minutos < 1:
+            return jsonify({"ok": False, "error": "Duración inválida"}), 400
+        largo = datetime.timedelta(minutes=minutos)
+
+    end_dt = start_dt + largo
+
+    # Renombrar tambien es opcional. Un titulo en blanco NO borra el que estaba:
+    # el modal manda el campo siempre, y vaciarlo sin querer dejaria la reunion
+    # sin nombre en el calendario del invitado.
+    titulo_nuevo = (data.get("title") or "").strip()
+    titulo = titulo_nuevo or (meeting.get("title") or "")
 
     cal_event_id = meeting.get("calendar_event_id")
+    if _es_uri_de_calendly(cal_event_id):
+        return jsonify({
+            "ok": False,
+            "error": "Esta reunión la creó Calendly. Reprogramala desde Calendly "
+                     "y el cambio baja solo en el próximo sync.",
+        }), 409
+
     if cal_event_id:
         service, err = _get_calendar_service()
         if err or not service:
@@ -686,6 +740,7 @@ def api_reschedule_meeting(meeting_id):
                 calendarId="primary",
                 eventId=cal_event_id,
                 body={
+                    "summary": titulo,
                     "start": {"dateTime": start_dt.isoformat(), "timeZone": MVD.zone},
                     "end": {"dateTime": end_dt.isoformat(), "timeZone": MVD.zone},
                 },
@@ -700,16 +755,17 @@ def api_reschedule_meeting(meeting_id):
                 "error": f"Google Calendar rechazó el cambio: {e}",
             }), 502
 
-    update_meeting(db, meeting_id,
+    update_meeting(db, meeting_id, title=titulo,
                    start_at=start_dt.isoformat(), end_at=end_dt.isoformat())
 
     client_id = meeting.get("client_id")
     client = get_business(db, int(client_id)) if client_id else {}
     log_activity(db, session.get("user_name", "sistema"), "meeting_rescheduled",
                  "lead", client_id, (client or {}).get("name", ""),
-                 f"{meeting.get('title') or 'Reunión'} → {date} {time}",
+                 f"{titulo or 'Reunión'} → {date} {time}",
                  user_id=session.get("user_id"))
 
     return jsonify({"ok": True,
+                    "title": titulo,
                     "start_at": start_dt.isoformat(),
                     "end_at": end_dt.isoformat()})
