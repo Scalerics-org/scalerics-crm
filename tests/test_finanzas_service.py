@@ -11,10 +11,10 @@ from datetime import date
 import pytest
 
 import database
-from database import (actualizar_movimiento, borrar_recurrente, crear_recurrente,
-                      init_db, listar_movimientos)
+from database import (actualizar_movimiento, borrar_recurrente, crear_movimiento,
+                      crear_recurrente, init_db, listar_movimientos)
 from services.finanzas import (CATEGORIAS, a_usd, materializar_recurrentes,
-                               meses_entre, periodo_anterior, periodo_de)
+                               meses_entre, periodo_anterior, periodo_de, resumen)
 
 _HOY = date(2026, 9, 8)
 
@@ -214,3 +214,60 @@ def test_dia_del_mes_se_clampea_entre_1_y_28(db, monkeypatch):
     assert fechas["Sin dia"] == "2026-09-01"
     assert fechas["Dia cero"] == "2026-09-01"
     assert fechas["Dia treinta y uno"] == "2026-09-28"
+
+
+def _cargar(db, tipo, periodo, monto_usd, categoria="otros", client_id=None):
+    return crear_movimiento(db, tipo=tipo, fecha=f"{periodo}-15", periodo=periodo,
+                            concepto="x", categoria=categoria, monto=monto_usd,
+                            moneda="USD", monto_usd=monto_usd, client_id=client_id)
+
+
+def test_los_kpis_suman_el_periodo_pedido(db):
+    _cargar(db, "ingreso", "2026-09", 800)
+    _cargar(db, "egreso", "2026-09", 100)
+    _cargar(db, "ingreso", "2026-06", 5000)  # fuera del rango
+    r = resumen(db, "2026-09", "2026-09")
+    assert r["kpis"]["ingresos_usd"] == 800
+    assert r["kpis"]["egresos_usd"] == 100
+    assert r["kpis"]["neto_usd"] == 700
+
+
+def test_los_kpis_traen_el_periodo_anterior_para_la_variacion(db):
+    _cargar(db, "ingreso", "2026-09", 800)
+    _cargar(db, "ingreso", "2026-08", 500)
+    r = resumen(db, "2026-09", "2026-09")
+    assert r["kpis"]["ingresos_previos_usd"] == 500
+
+
+def test_mezcla_monedas_convirtiendo_a_dolares(db):
+    crear_movimiento(db, tipo="ingreso", fecha="2026-09-01", periodo="2026-09",
+                     concepto="cobro en pesos", categoria="desarrollo_web",
+                     monto=40000, moneda="UYU", tipo_cambio=40.0, monto_usd=1000.0)
+    crear_movimiento(db, tipo="ingreso", fecha="2026-09-02", periodo="2026-09",
+                     concepto="cobro en dolares", categoria="desarrollo_web",
+                     monto=500, moneda="USD", monto_usd=500.0)
+    assert resumen(db, "2026-09", "2026-09")["kpis"]["ingresos_usd"] == 1500.0
+
+
+def test_la_serie_trae_todos_los_meses_incluso_los_vacios(db):
+    _cargar(db, "egreso", "2026-09", 100)
+    serie = resumen(db, "2026-07", "2026-09")["serie"]
+    assert [p["periodo"] for p in serie] == ["2026-07", "2026-08", "2026-09"]
+    assert serie[0]["egresos_usd"] == 0.0
+
+
+def test_el_desglose_por_categoria_agrupa(db):
+    _cargar(db, "egreso", "2026-09", 10, categoria="infraestructura")
+    _cargar(db, "egreso", "2026-09", 5, categoria="infraestructura")
+    _cargar(db, "egreso", "2026-09", 20, categoria="herramientas")
+    por_cat = resumen(db, "2026-09", "2026-09")["por_categoria"]
+    infra = [c for c in por_cat if c["categoria"] == "infraestructura"][0]
+    assert infra["total_usd"] == 15
+
+
+def test_los_anulados_no_cuentan_en_ningun_agregado(db):
+    mid = _cargar(db, "egreso", "2026-09", 100)
+    actualizar_movimiento(db, mid, anulado=1)
+    r = resumen(db, "2026-09", "2026-09")
+    assert r["kpis"]["egresos_usd"] == 0
+    assert r["por_categoria"] == []

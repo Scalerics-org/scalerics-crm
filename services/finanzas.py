@@ -127,3 +127,88 @@ def materializar_recurrentes(db_path: str, hoy: date | None = None) -> int:
                 # todas las corridas después de la primera pasan por acá.
 
     return creados
+
+
+def _totales(movimientos: list[dict]) -> tuple[float, float]:
+    ingresos = sum(m["monto_usd"] for m in movimientos if m["tipo"] == "ingreso")
+    egresos = sum(m["monto_usd"] for m in movimientos if m["tipo"] == "egreso")
+    return round(ingresos, 2), round(egresos, 2)
+
+
+def resumen(db_path: str, desde: str, hasta: str) -> dict:
+    """KPIs, serie mensual y desgloses del período. `desde`/`hasta` inclusive.
+
+    No materializa: eso lo hace la ruta antes de llamar acá, para que el
+    servicio se pueda testear sin efectos.
+    """
+    from database import listar_movimientos
+
+    movs = listar_movimientos(db_path, desde=desde, hasta=hasta)
+    ingresos, egresos = _totales(movs)
+
+    prev_desde, prev_hasta = periodo_anterior(desde, hasta)
+    prev = listar_movimientos(db_path, desde=prev_desde, hasta=prev_hasta)
+    ingresos_prev, egresos_prev = _totales(prev)
+
+    por_periodo: dict[str, list[dict]] = {p: [] for p in meses_entre(desde, hasta)}
+    for m in movs:
+        por_periodo.setdefault(m["periodo"], []).append(m)
+
+    serie = []
+    for periodo in meses_entre(desde, hasta):
+        i, e = _totales(por_periodo.get(periodo, []))
+        serie.append({"periodo": periodo, "ingresos_usd": i,
+                      "egresos_usd": e, "neto_usd": round(i - e, 2)})
+
+    cat: dict[tuple[str, str], float] = {}
+    for m in movs:
+        clave = (m["tipo"], m["categoria"])
+        cat[clave] = cat.get(clave, 0.0) + m["monto_usd"]
+    por_categoria = [{"tipo": t, "categoria": c, "total_usd": round(v, 2)}
+                     for (t, c), v in cat.items()]
+    por_categoria.sort(key=lambda x: x["total_usd"], reverse=True)
+
+    por_cliente = _ingresos_por_cliente(db_path, movs)
+
+    return {
+        "desde": desde, "hasta": hasta,
+        "kpis": {
+            "ingresos_usd": ingresos,
+            "egresos_usd": egresos,
+            "neto_usd": round(ingresos - egresos, 2),
+            "ingresos_previos_usd": ingresos_prev,
+            "egresos_previos_usd": egresos_prev,
+            "neto_previo_usd": round(ingresos_prev - egresos_prev, 2),
+        },
+        "serie": serie,
+        "por_categoria": por_categoria,
+        "por_cliente": por_cliente,
+    }
+
+
+def _ingresos_por_cliente(db_path: str, movs: list[dict]) -> list[dict]:
+    """Ingresos agrupados por cliente. Los sin atribuir no aparecen."""
+    from database import _connect
+
+    totales: dict[int, float] = {}
+    for m in movs:
+        if m["tipo"] != "ingreso" or not m["client_id"]:
+            continue
+        totales[m["client_id"]] = totales.get(m["client_id"], 0.0) + m["monto_usd"]
+    if not totales:
+        return []
+
+    marcas = ", ".join("?" for _ in totales)
+    conn = _connect(db_path)
+    try:
+        filas = conn.execute(
+            f"SELECT id, name FROM businesses WHERE id IN ({marcas})",
+            list(totales)).fetchall()
+    finally:
+        conn.close()
+    nombres = {f["id"]: f["name"] for f in filas}
+
+    salida = [{"client_id": cid, "nombre": nombres.get(cid, f"#{cid}"),
+               "total_usd": round(v, 2)} for cid, v in totales.items()]
+    salida.sort(key=lambda x: x["total_usd"], reverse=True)
+    return salida
