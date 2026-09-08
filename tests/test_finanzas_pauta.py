@@ -16,8 +16,9 @@ import pytest
 from werkzeug.security import generate_password_hash
 
 import dashboard
-from database import create_user, crear_movimiento, init_db
-from services.finanzas import alcanzo, rendimiento_pauta
+from database import (ETAPAS_CLIENTE, ETAPAS_PRECLIENTE, create_user,
+                      crear_movimiento, init_db)
+from services.finanzas import EXCLUIDOS_DEL_FUNNEL, FUNNEL, alcanzo, rendimiento_pauta
 
 
 @pytest.fixture
@@ -52,32 +53,113 @@ def _pauta(db, periodo, monto):
                             moneda="USD", monto_usd=monto)
 
 
-# ── alcanzo ───────────────────────────────────────────────────────────────────
+# ── alcanzo (vocabulario nuevo) ─────────────────────────────────────────────
 
 def test_alcanzo_es_verdadero_en_la_etapa_exacta():
-    assert alcanzo({"reunion_agendada"}, "reunion_agendada") is True
+    assert alcanzo({"demo_agendada"}, "demo_agendada") is True
 
 
 def test_alcanzo_es_verdadero_si_paso_de_largo():
-    assert alcanzo({"cliente_cerrado"}, "reunion_agendada") is True
+    assert alcanzo({"cerrado"}, "demo_agendada") is True
 
 
 def test_alcanzo_es_falso_si_no_llego():
-    assert alcanzo({"interesado"}, "reunion_agendada") is False
+    assert alcanzo({"interesado"}, "demo_agendada") is False
 
 
 def test_no_interesa_no_cuenta_como_etapa():
     """Es una salida del embudo, no un avance."""
-    assert alcanzo({"no_interesa"}, "reunion_agendada") is False
+    assert alcanzo({"no_interesa"}, "demo_agendada") is False
 
 
 def test_un_lead_que_llego_y_despues_se_cayo_sigue_contando():
     """El caso que rompía contar por crm_status actual."""
-    assert alcanzo({"reunion_hecha", "no_interesa"}, "reunion_hecha") is True
+    assert alcanzo({"demo_1", "no_interesa"}, "demo_1") is True
 
 
 def test_un_lead_sin_eventos_no_alcanzo_nada():
-    assert alcanzo(set(), "reunion_agendada") is False
+    assert alcanzo(set(), "demo_agendada") is False
+
+
+def test_rechazo_no_cuenta_como_haber_llegado_mas_lejos():
+    """rechazo es una salida tras haber avanzado, no una etapa en sí.
+
+    Un lead que llegó a presupuesto_enviado y después fue rechazado sigue
+    figurando como que llegó a presupuesto_enviado (por el evento anterior),
+    pero `rechazo` en sí no cuenta como haber alcanzado una etapa posterior.
+    """
+    eventos = {"presupuesto_enviado", "rechazo"}
+    assert alcanzo(eventos, "presupuesto_enviado") is True
+    assert alcanzo(eventos, "acepto") is False
+
+
+def test_en_espera_no_cuenta_como_haber_llegado_mas_lejos():
+    """en_espera es una pausa del cliente, no un avance."""
+    eventos = {"demo_1", "en_espera"}
+    assert alcanzo(eventos, "demo_1") is True
+    assert alcanzo(eventos, "presupuesto_enviado") is False
+
+
+# ── alcanzo (vocabulario viejo, historial pre-migración) ────────────────────
+#
+# `lead_events` no se migra: `_migrar_estados_preclientes` reescribe
+# `businesses.crm_status` pero deja el historial de eventos con los nombres
+# de la época en que se generaron. El análisis de marzo-agosto 2026 es
+# enteramente de antes de la migración, así que estos nombres tienen que
+# seguir funcionando.
+
+def test_alcanzo_reconoce_el_nombre_viejo_de_la_etapa():
+    assert alcanzo({"reunion_agendada"}, "demo_agendada") is True
+
+
+def test_alcanzo_con_nombre_viejo_pasa_de_largo():
+    assert alcanzo({"cliente_cerrado"}, "demo_agendada") is True
+
+
+def test_alcanzo_con_nombre_viejo_es_falso_si_no_llego():
+    assert alcanzo({"interesado"}, "demo_agendada") is False
+
+
+def test_un_lead_viejo_que_llego_y_se_cayo_sigue_contando():
+    assert alcanzo({"reunion_hecha", "no_interesa"}, "demo_1") is True
+
+
+def test_alcanzo_reconoce_los_alias_agendo_y_firmo():
+    """Alias que quedaron de una versión anterior a la vieja."""
+    assert alcanzo({"agendo"}, "demo_agendada") is True
+    assert alcanzo({"firmo"}, "cerrado") is True
+
+
+def test_alcanzo_mezcla_nombres_viejos_y_nuevos_en_el_mismo_lead():
+    """Un lead que arrancó antes de la migración y siguió avanzando después.
+
+    Es el caso real: el evento viejo lo califica, el evento nuevo lo cuenta
+    como demo. Ninguno de los dos vocabularios puede faltar.
+    """
+    eventos = {"reunion_agendada", "demo_1"}
+    assert alcanzo(eventos, "demo_agendada") is True
+    assert alcanzo(eventos, "demo_1") is True
+    assert alcanzo(eventos, "cerrado") is False
+
+
+# ── drift guard ──────────────────────────────────────────────────────────────
+
+def test_toda_etapa_de_precliente_o_cliente_esta_en_funnel_o_excluida():
+    """Si alguien agrega una etapa nueva en database.py y no toca FUNNEL, esto
+    tiene que fallar. Es la garantía de que este bug (etapas nuevas que
+    `alcanzo` ignora en silencio) no vuelve a pasar.
+
+    Las únicas etapas que pueden faltar en FUNNEL son las de
+    EXCLUIDOS_DEL_FUNNEL, y solo si están ahí documentadas con el motivo.
+    """
+    todas = set(ETAPAS_PRECLIENTE) | set(ETAPAS_CLIENTE)
+    en_funnel = set(FUNNEL)
+    faltantes = todas - en_funnel
+    assert faltantes == set(EXCLUIDOS_DEL_FUNNEL), (
+        f"Etapas nuevas sin decisión tomada: {faltantes - set(EXCLUIDOS_DEL_FUNNEL)}. "
+        "Agregalas a FUNNEL (si son progreso) o a EXCLUIDOS_DEL_FUNNEL "
+        "(si son una salida o una pausa, con el motivo documentado)."
+    )
 
 
 # ── rendimiento ───────────────────────────────────────────────────────────────
@@ -98,7 +180,26 @@ def test_los_leads_scrapeados_no_cuentan(db):
     assert rendimiento_pauta(db, "2026-03", "2026-03")["meses"][0]["leads"] == 1
 
 
-def test_califica_desde_reunion_agendada(db):
+def test_califica_desde_demo_agendada(db):
+    _lead(db, "2026-03", estados=("interesado",))
+    _lead(db, "2026-03", estados=("interesado", "demo_agendada"))
+    _lead(db, "2026-03", estados=("demo_1",))
+    m = rendimiento_pauta(db, "2026-03", "2026-03")["meses"][0]
+    assert m["calificados"] == 2
+    assert m["demos"] == 1
+
+
+def test_la_venta_cuenta_desde_cerrado(db):
+    _lead(db, "2026-03", estados=("follow_up_1",))
+    _lead(db, "2026-03", estados=("cerrado",))
+    _lead(db, "2026-03", estados=("finalizado",))
+    assert rendimiento_pauta(db, "2026-03", "2026-03")["meses"][0]["ventas"] == 2
+
+
+def test_califica_desde_reunion_agendada_nombre_viejo(db):
+    """El historial de marzo-agosto 2026 es enteramente de antes de la
+    migración de nombres: tiene que seguir contando igual.
+    """
     _lead(db, "2026-03", estados=("interesado",))
     _lead(db, "2026-03", estados=("interesado", "reunion_agendada"))
     _lead(db, "2026-03", estados=("reunion_hecha",))
@@ -107,11 +208,28 @@ def test_califica_desde_reunion_agendada(db):
     assert m["demos"] == 1
 
 
-def test_la_venta_cuenta_desde_cliente_cerrado(db):
+def test_la_venta_cuenta_desde_cliente_cerrado_nombre_viejo(db):
     _lead(db, "2026-03", estados=("negociacion",))
     _lead(db, "2026-03", estados=("cliente_cerrado",))
     _lead(db, "2026-03", estados=("finalizado",))
     assert rendimiento_pauta(db, "2026-03", "2026-03")["meses"][0]["ventas"] == 2
+
+
+def test_rechazo_no_infla_calificados_ni_ventas(db):
+    """Un lead rechazado tras avanzar no debe leerse como más avanzado de lo
+    que realmente llegó a estar.
+    """
+    _lead(db, "2026-03", estados=("presupuesto_enviado", "rechazo"))
+    m = rendimiento_pauta(db, "2026-03", "2026-03")["meses"][0]
+    assert m["calificados"] == 1  # llegó a demo_agendada por el camino
+    assert m["ventas"] == 0
+
+
+def test_en_espera_no_cuenta_como_venta(db):
+    _lead(db, "2026-03", estados=("demo_1", "en_espera"))
+    m = rendimiento_pauta(db, "2026-03", "2026-03")["meses"][0]
+    assert m["demos"] == 1
+    assert m["ventas"] == 0
 
 
 def test_los_costos_dividen_la_inversion_del_mes(db):

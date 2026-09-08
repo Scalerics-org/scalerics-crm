@@ -216,23 +216,57 @@ def _ingresos_por_cliente(db_path: str, movs: list[dict]) -> list[dict]:
 
 # ─── Rendimiento de la pauta ─────────────────────────────────────────────────
 
-# El embudo en orden, tal como lo define routes/leads.py. `no_interesa` NO está:
-# es una salida, no una etapa, y un lead que se cayó ahí igual pasó por lo que
-# haya pasado antes.
-FUNNEL = ["sin_contactar", "interesado", "contactado", "reunion_agendada",
-          "reunion_hecha", "presupuesto_enviado", "negociacion",
-          "cliente_cerrado", "en_desarrollo", "finalizado"]
+# El embudo en orden, con el vocabulario nuevo de ETAPAS_PRECLIENTE /
+# ETAPAS_CLIENTE (database.py). `no_interesa`, `en_espera` y `rechazo` NO
+# están: son salidas o pausas, no etapas.
+#
+# `no_interesa` es "nunca enganchó". `en_espera` es "frenado por el cliente,
+# sin cerrar" y `rechazo` es "dijo que no después de haber avanzado" — ninguno
+# de los dos dice hasta dónde llegó el lead, eso ya lo dicen sus eventos
+# anteriores. Meterlos en la lista ordenada haría que un lead rechazado
+# figurara más avanzado que uno en `presupuesto_enviado`, que es al revés de
+# lo que pasó: un lead que se cayó ahí igual pasó por lo que haya pasado antes.
+FUNNEL = ["sin_contactar", "interesado", "contactado",
+          "demo_agendada", "demo_1", "demo_2", "demo_3",
+          "presupuesto_enviado", "follow_up_1", "follow_up_2", "acepto",
+          "cerrado", "en_desarrollo", "finalizado"]
+
+# Exclusiones explícitas y documentadas: por qué cada una no entra a FUNNEL
+# aunque forme parte de ETAPAS_PRECLIENTE / ETAPAS_CLIENTE.
+EXCLUIDOS_DEL_FUNNEL = {
+    "en_espera": "pausa del cliente, no un avance",
+    "rechazo": "salida tras haber avanzado, no una etapa",
+}
+
+
+def _normalizar_estado(estado: str) -> str:
+    """Traduce un `crm_status` viejo al vocabulario nuevo, si corresponde.
+
+    `lead_events` mezcla las dos épocas: la migración de `database.py`
+    reescribe `businesses.crm_status` pero no toca el historial de eventos,
+    así que todo lo de antes de la migración quedó con los nombres viejos
+    (`reunion_agendada`, `reunion_hecha`, `negociacion`, `cliente_cerrado`, y
+    los alias `agendo`/`firmo`) y todo lo de después ya nace con los nuevos.
+    Sin esto, `alcanzo` dejaría de contar cualquier lead viejo.
+    """
+    from database import _MAPA_ESTADOS_VIEJOS
+
+    return _MAPA_ESTADOS_VIEJOS.get(estado, estado)
 
 
 def alcanzo(eventos: set, etapa: str) -> bool:
     """Si el lead pasó por `etapa` o por cualquiera posterior, alguna vez.
 
     Se mira contra el historial de `lead_events`, no contra el `crm_status` de
-    hoy: un lead que llegó a reunión y después se cayó a `no_interesa` figura
-    hoy como `no_interesa`, y contarlo por el estado actual lo perdería.
+    hoy: un lead que llegó a demo y después se cayó a `no_interesa` figura hoy
+    como `no_interesa`, y contarlo por el estado actual lo perdería.
+
+    Los eventos se normalizan antes de comparar (ver `_normalizar_estado`),
+    porque el historial trae nombres viejos y nuevos mezclados.
     """
     objetivo = FUNNEL.index(etapa)
-    return any(e in FUNNEL and FUNNEL.index(e) >= objetivo for e in eventos)
+    normalizados = {_normalizar_estado(e) for e in eventos}
+    return any(e in FUNNEL and FUNNEL.index(e) >= objetivo for e in normalizados)
 
 
 def _dividir(numerador: float, denominador: float):
@@ -327,11 +361,11 @@ def rendimiento_pauta(db_path: str, desde: str, hasta: str) -> dict:
         c = conteo[periodo]
         c["leads"] += 1
         c["ingresos"] += ingresos_por_lead.get(lead["id"], 0.0)
-        if alcanzo(suyos, "reunion_agendada"):
+        if alcanzo(suyos, "demo_agendada"):
             c["calificados"] += 1
-        if alcanzo(suyos, "reunion_hecha"):
+        if alcanzo(suyos, "demo_1"):
             c["demos"] += 1
-        if alcanzo(suyos, "cliente_cerrado"):
+        if alcanzo(suyos, "cerrado"):
             c["ventas"] += 1
 
     meses = [_fila_pauta(p, inversion.get(p, 0.0), conteo[p]["leads"],
