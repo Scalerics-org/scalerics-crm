@@ -6276,7 +6276,9 @@ let _finTipo = 'egreso';
 
 async function _finCargarCategorias() {
   if (!_finCategorias) {
-    _finCategorias = await (await fetch('/api/finanzas/categorias')).json();
+    const r = await fetch('/api/finanzas/categorias');
+    if (!r.ok) throw new Error('no se pudieron cargar las categorías');
+    _finCategorias = await r.json();
   }
   return _finCategorias;
 }
@@ -6392,6 +6394,13 @@ async function guardarMovimiento() {
 async function loadMovimientos(desde, hasta) {
   const cuerpo = document.getElementById('fin-tabla');
   const r = await fetch(`/api/finanzas/movimientos?desde=${desde}&hasta=${hasta}`);
+  if (!r.ok) {
+    // Un 403 o un 500 deserializan a un objeto: movs.length da undefined y
+    // "No hay movimientos en el período" es peor mentira que mostrar el
+    // error -una lista vacía de verdad es indistinguible de una que no cargó.
+    cuerpo.innerHTML = '<div style="color:#f87171;padding:16px">No se pudieron cargar los movimientos</div>';
+    return;
+  }
   const movs = await r.json();
   if (!movs.length) {
     cuerpo.innerHTML = '<div class="empty-state">No hay movimientos en el período</div>';
@@ -6503,7 +6512,12 @@ async function guardarFijo() {
 
 async function loadFijos() {
   const cuerpo = document.getElementById('fin-fijos');
-  const fijos = await (await fetch('/api/finanzas/recurrentes')).json();
+  const r = await fetch('/api/finanzas/recurrentes');
+  if (!r.ok) {
+    cuerpo.innerHTML = '<div style="color:#f87171;padding:16px">No se pudieron cargar los fijos</div>';
+    return;
+  }
+  const fijos = await r.json();
 
   // El total sale del monto_usd que ya calculó el servidor: el panel no
   // convierte. Un fijo en pesos sin tipo de cambio usable llega con

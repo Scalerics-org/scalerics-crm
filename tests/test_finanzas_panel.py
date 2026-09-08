@@ -166,6 +166,23 @@ def test_loadfijos_no_convierte_moneda_en_el_navegador():
     assert "f.tipo_cambio || 1" not in HTML
 
 
+def test_un_fetch_fallido_no_se_muestra_como_lista_vacia():
+    """Un 403 o un 500 deserializan a un objeto: sin chequear r.ok, movs.length
+    da undefined y el panel muestra "No hay movimientos en el período" -una
+    lista vacía de verdad es indistinguible de una que no cargó, y esa mentira
+    es peor que mostrar el error. Mismo patrón en loadFijos y en
+    _finCargarCategorias, que no tiene su propio contenedor y por eso tira la
+    falla para arriba en vez de pintar un mensaje."""
+    movs = re.search(r"async function loadMovimientos\(.*?\n\}", HTML, re.S).group(0)
+    assert "if (!r.ok)" in movs
+
+    fijos = re.search(r"async function loadFijos\(.*?\n  const fijos = ", HTML, re.S).group(0)
+    assert "if (!r.ok)" in fijos
+
+    categorias = re.search(r"async function _finCargarCategorias\(.*?\n\}", HTML, re.S).group(0)
+    assert "if (!r.ok)" in categorias
+
+
 def test_el_atajo_desde_presupuesto_precarga_el_movimiento():
     """El botón de la ficha del presupuesto abre el modal ya cargado.
 
