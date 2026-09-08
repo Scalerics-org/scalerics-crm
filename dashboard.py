@@ -5102,8 +5102,22 @@ function _cpRenderBudget() {
       </div>
     </div>`).join('');
 
+  // El atajo solo tiene sentido si hay un registro de presupuesto real
+  // (id + total) del que copiar los datos al movimiento.
+  const budget = _cpData.budget;
+  const cobroBtnHtml = budget ? `
+    <button class="cp-btn cp-btn-ghost" style="margin-bottom:10px" onclick='registrarCobro(${_finAttr({
+      clientId: _cpClientId,
+      clientName: (_cpData.lead || {}).name || '',
+      budgetId: budget.id,
+      total: budget.total_amount,
+    })})'>
+      <i data-lucide="wallet" class="nav-icon"></i> Registrar cobro
+    </button>` : '';
+
   return `<div class="cp-section">
     <div class="cp-section-title">Presupuesto</div>
+    ${cobroBtnHtml}
     ${listHtml}
   </div>
   ${_cpRenderAttachBox('budget')}`;
@@ -5121,7 +5135,22 @@ async function _cpMarkBudgetSent() {
 }
 
 
-function _cpBindBudget() {}
+function _cpBindBudget() { if (window.lucide) lucide.createIcons(); }
+
+function registrarCobro(cobro) {
+  // Un presupuesto aprobado no es plata: es una expectativa. El atajo precarga
+  // los campos, pero registrar el cobro sigue siendo un acto explícito.
+  showPanel('finanzas');
+  abrirMovimiento({
+    tipo: 'ingreso',
+    concepto: `Cobro ${cobro.clientName}`,
+    categoria: 'desarrollo_web',
+    monto: cobro.total,
+    moneda: 'USD',
+    client_id: cobro.clientId,
+    budget_id: cobro.budgetId,
+  });
+}
 
 function _cpOpenAiEditModal(attachId, attachName) {
   const existing = document.getElementById('ai-edit-modal');

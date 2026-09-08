@@ -118,3 +118,22 @@ def test_borrar_un_fijo_aclara_que_los_movimientos_quedan():
 def test_loadfijos_no_convierte_moneda_en_el_navegador():
     """La cuenta se va al servidor: el panel solo suma el monto_usd que vino."""
     assert "f.tipo_cambio || 1" not in HTML
+
+
+def test_el_atajo_desde_presupuesto_precarga_el_movimiento():
+    """El botón de la ficha del presupuesto abre el modal ya cargado.
+
+    Un presupuesto aprobado no es plata, es una expectativa: el atajo ahorra
+    tipeo pero no dispara nada solo, sigue siendo abrirMovimiento del medio.
+    """
+    assert "function registrarCobro(" in HTML
+    assert "tipo: 'ingreso'" in HTML
+    assert "budget_id: cobro.budgetId" in HTML
+    assert "showPanel('finanzas')" in HTML
+    assert "abrirMovimiento({" in HTML
+
+
+def test_el_atajo_del_presupuesto_tambien_escapa_el_apostrofo():
+    """El nombre del cliente viaja dentro de un onclick con comillas simples:
+    un "Bar O'Higgins" sin escapar rompería el atributo."""
+    assert "onclick='registrarCobro(${_finAttr(" in HTML
