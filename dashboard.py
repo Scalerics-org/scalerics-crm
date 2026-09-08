@@ -5915,6 +5915,7 @@ function registrarCobro(cobro) {
     monto: cobro.total,
     moneda: 'USD',
     client_id: cobro.clientId,
+    client_name: cobro.clientName,
     budget_id: cobro.budgetId,
   });
 }
@@ -6320,7 +6321,7 @@ async function abrirMovimiento(prefill) {
 
   finSetTipo(p.tipo || 'egreso');
   if (p.categoria) document.getElementById('fin-mov-categoria').value = p.categoria;
-  await _finCargarClientes(p.client_id);
+  await _finCargarClientes(p.client_id, p.client_name);
   _finRecalcularUsd();
   document.getElementById('fin-modal').classList.add('open');
 }
@@ -6329,7 +6330,7 @@ function cerrarMovimiento() {
   document.getElementById('fin-modal').classList.remove('open');
 }
 
-async function _finCargarClientes(seleccionado) {
+async function _finCargarClientes(seleccionado, nombre) {
   const sel = document.getElementById('fin-mov-cliente');
   if (sel.dataset.cargado !== '1') {
     const r = await fetch('/api/leads?crm_group=clientes');
@@ -6338,6 +6339,22 @@ async function _finCargarClientes(seleccionado) {
     sel.innerHTML = '<option value="">Sin atribuir</option>' +
       leads.map(b => `<option value="${b.id}">${esc(b.name)}</option>`).join('');
     sel.dataset.cargado = '1';
+  }
+  // Un negocio atribuido puede no estar en esta lista: crm_group=clientes
+  // solo trae cerrado/en_desarrollo/finalizado, y esto se abre también para
+  // un pre-cliente en presupuesto_enviado/acepto (el atajo "Registrar cobro")
+  // o para un movimiento viejo cuyo cliente ya cambió de estado. Sin su
+  // <option>, asignarle el value a mano deja el <select> en '', y
+  // guardarMovimiento manda client_id: null — desatribuye la plata en
+  // silencio. Se limpia cualquier sintética de una apertura anterior y, si
+  // hace falta, se agrega una nueva con el nombre que trajo el prefill.
+  sel.querySelectorAll('option[data-fin-sintetico]').forEach(o => o.remove());
+  if (seleccionado && !sel.querySelector(`option[value="${seleccionado}"]`)) {
+    const opt = document.createElement('option');
+    opt.value = seleccionado;
+    opt.dataset.finSintetico = '1';
+    opt.textContent = nombre || `Cliente #${seleccionado}`;
+    sel.appendChild(opt);
   }
   sel.value = seleccionado || '';
 }

@@ -176,6 +176,31 @@ def test_el_atajo_del_presupuesto_tambien_escapa_el_apostrofo():
     assert "onclick='registrarCobro(${_finAttr(" in HTML
 
 
+def test_el_select_de_cliente_no_desatribuye_en_silencio():
+    """crm_group=clientes solo trae cerrado/en_desarrollo/finalizado. Un
+    pre-cliente (el atajo de cobro dispara justo en presupuesto_enviado o
+    acepto) o un cliente que ya cambió de estado no tienen <option> en esa
+    lista: asignarle el value a mano dejaba el <select> en '', y
+    guardarMovimiento mandaba client_id: null, borrando la atribución de la
+    plata sin que nadie lo pidiera."""
+    cuerpo = re.search(r"async function _finCargarClientes\(.*?\n\}", HTML, re.S).group(0)
+    assert "function _finCargarClientes(seleccionado, nombre)" in cuerpo
+    # Tiene que chequear si falta la <option> ANTES de pisar sel.value, y
+    # agregar una sintética con el nombre del prefill en vez de dejar
+    # sel.value en '' (que es "Sin atribuir" para guardarMovimiento).
+    assert "!sel.querySelector(`option[value=\"${seleccionado}\"]`)" in cuerpo
+    assert "createElement('option')" in cuerpo
+    assert "finSintetico" in cuerpo
+    assert cuerpo.index("createElement('option')") < cuerpo.rindex("sel.value = seleccionado")
+
+
+def test_el_atajo_de_cobro_manda_el_nombre_del_cliente_al_modal():
+    """Sin el nombre en el prefill, el <select> no tiene con qué armar la
+    <option> sintética del pre-cliente y cae al placeholder genérico."""
+    assert "client_name: cobro.clientName" in HTML
+    assert "_finCargarClientes(p.client_id, p.client_name)" in HTML
+
+
 def test_el_panel_tiene_la_vista_de_pauta():
     assert 'id="fin-vista-pauta"' in HTML
     assert "function loadPauta(" in HTML
