@@ -611,10 +611,11 @@ def init_db(db_path: str) -> None:
                 created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        # Esta es LA guarda del módulo. Materializar los fijos usa
-        # INSERT OR IGNORE contra este índice, así que correrlo mil veces
-        # produce exactamente un movimiento por fijo y por mes. Sin él, cada
-        # deploy duplicaría los gastos: reiniciar la máquina vuelve a
+        # Esta es LA guarda del módulo. Materializar los fijos hace un INSERT
+        # normal y atrapa el IntegrityError de violar este índice (descartando
+        # solo ese caso puntual, no cualquier IntegrityError), así que correrlo
+        # mil veces produce exactamente un movimiento por fijo y por mes. Sin
+        # él, cada deploy duplicaría los gastos: reiniciar la máquina vuelve a
         # materializar.
         conn.execute("""
             CREATE UNIQUE INDEX IF NOT EXISTS idx_finanzas_recurrente_periodo

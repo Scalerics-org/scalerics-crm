@@ -5,10 +5,12 @@ cree. Un total de egresos equivocado en un panel financiero es peor que un
 bug de UI.
 """
 
+import sqlite3
 from datetime import date
 
 import pytest
 
+import database
 from database import (actualizar_movimiento, borrar_recurrente, crear_recurrente,
                       init_db, listar_movimientos)
 from services.finanzas import (CATEGORIAS, a_usd, materializar_recurrentes,
@@ -168,3 +170,47 @@ def test_un_movimiento_generado_y_anulado_no_reaparece(db):
     actualizar_movimiento(db, mid, anulado=1)
     assert materializar_recurrentes(db, hoy=_HOY) == 0
     assert listar_movimientos(db) == []
+
+
+def test_un_integrity_error_que_no_es_duplicado_se_propaga(db, monkeypatch):
+    """Si `crear_movimiento` falla por otro motivo (NOT NULL, CHECK...), tiene
+    que hacer ruido: no es el duplicado esperado del índice único y no se
+    puede tragar en silencio."""
+    def _explota(*args, **kwargs):
+        raise sqlite3.IntegrityError(
+            "NOT NULL constraint failed: finanzas_movimientos.concepto")
+
+    monkeypatch.setattr(database, "crear_movimiento", _explota)
+    _fijo(db, desde="2026-09")
+    with pytest.raises(sqlite3.IntegrityError):
+        materializar_recurrentes(db, hoy=_HOY)
+
+
+def test_un_fijo_con_hasta_anterior_a_desde_no_genera_nada(db):
+    _fijo(db, desde="2026-09", hasta="2026-07")
+    assert materializar_recurrentes(db, hoy=_HOY) == 0
+    assert listar_movimientos(db) == []
+
+
+def test_dia_del_mes_se_clampea_entre_1_y_28(db, monkeypatch):
+    """None o 0 caen en el día 1; cualquier valor mayor a 28 cae en 28.
+
+    No hay forma de guardar `dia_del_mes` NULL o 0 pasando por
+    `crear_recurrente` (la columna tiene NOT NULL DEFAULT 1 y 0 no es un caso
+    de negocio real), así que se arman los fijos a mano y se parchea
+    `listar_recurrentes` para devolverlos, sin tocar el esquema.
+    """
+    base = dict(tipo="egreso", categoria="infraestructura", monto=1.0,
+               moneda="USD", tipo_cambio=None, desde="2026-09", hasta=None,
+               client_id=None)
+    fijos = [
+        dict(base, id=1, concepto="Sin dia", dia_del_mes=None),
+        dict(base, id=2, concepto="Dia cero", dia_del_mes=0),
+        dict(base, id=3, concepto="Dia treinta y uno", dia_del_mes=31),
+    ]
+    monkeypatch.setattr(database, "listar_recurrentes", lambda *a, **k: fijos)
+    materializar_recurrentes(db, hoy=_HOY)
+    fechas = {m["concepto"]: m["fecha"] for m in listar_movimientos(db)}
+    assert fechas["Sin dia"] == "2026-09-01"
+    assert fechas["Dia cero"] == "2026-09-01"
+    assert fechas["Dia treinta y uno"] == "2026-09-28"

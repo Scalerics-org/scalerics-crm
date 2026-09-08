@@ -113,9 +113,17 @@ def materializar_recurrentes(db_path: str, hoy: date | None = None) -> int:
                     created_by_name="fijo",
                 )
                 creados += 1
-            except sqlite3.IntegrityError:
+            except sqlite3.IntegrityError as e:
+                es_duplicado = (
+                    getattr(e, "sqlite_errorname", "") == "SQLITE_CONSTRAINT_UNIQUE"
+                    or "UNIQUE constraint failed" in str(e)
+                )
+                if not es_duplicado:
+                    # Cualquier otra violación (NOT NULL, CHECK, ...) es un bug
+                    # real: tiene que hacer ruido, no desaparecer como si fuera
+                    # el duplicado esperado.
+                    raise
                 # Ya existía ese (recurrente_id, periodo). Es el camino normal:
                 # todas las corridas después de la primera pasan por acá.
-                pass
 
     return creados
