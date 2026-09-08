@@ -1123,6 +1123,12 @@ body.light .upick-name{color:#0f172a}
 .fin-rojo{color:#f87171}
 .fin-card{background:#0f172a;border:1px solid #1e293b;border-radius:10px;padding:18px;margin-bottom:18px}
 .fin-card-title{font-size:.75rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.8px;margin-bottom:14px}
+.fin-tabla{width:100%;border-collapse:collapse;font-size:.8rem}
+.fin-tabla th{text-align:left;padding:8px 10px;color:#64748b;font-size:.68rem;
+              text-transform:uppercase;letter-spacing:.6px;white-space:nowrap}
+.fin-tabla td{padding:8px 10px;color:#e2e8f0;white-space:nowrap;
+              border-top:1px solid #1e293b}
+body.light .fin-tabla td{color:#1e293b;border-top-color:#e2e8f0}
 .fin-split{display:grid;grid-template-columns:1fr 1fr;gap:18px}
 .fin-mes{display:flex;align-items:flex-end;gap:3px;height:90px}
 .fin-serie{display:flex;gap:10px;align-items:flex-end;overflow-x:auto;padding-bottom:6px}
@@ -1453,6 +1459,7 @@ body.light .fin-kpi-label,body.light .fin-kpi-var,body.light .fin-card-title,bod
       <div class="fin-toggle">
         <button class="pill active" id="fin-tab-movs" onclick="finVista('movimientos')">Movimientos</button>
         <button class="pill" id="fin-tab-fijos" onclick="finVista('fijos')">Fijos</button>
+        <button class="pill" id="fin-tab-pauta" onclick="finVista('pauta')">Pauta</button>
       </div>
       <button class="btn-primary" onclick="abrirMovimiento()">
         <i data-lucide="plus" class="nav-icon"></i> Movimiento
@@ -1476,6 +1483,11 @@ body.light .fin-kpi-label,body.light .fin-kpi-var,body.light .fin-card-title,bod
     <div id="fin-vista-fijos" style="display:none">
       <div class="fin-card"><div class="fin-card-title">Gastos e ingresos fijos</div>
         <div id="fin-fijos"></div></div>
+    </div>
+
+    <div id="fin-vista-pauta" style="display:none">
+      <div class="fin-card"><div class="fin-card-title">Qué compró la pauta</div>
+        <div id="fin-pauta"></div></div>
     </div>
   </div>
 
@@ -5314,13 +5326,17 @@ function _funnelBars(items, stateLabels, stateColors) {
 }
 
 // ========== Finanzas panel ==========
+const FIN_VISTAS = ['movimientos', 'fijos', 'pauta'];
+
 function finVista(cual) {
-  const esMovs = cual === 'movimientos';
-  document.getElementById('fin-vista-movimientos').style.display = esMovs ? '' : 'none';
-  document.getElementById('fin-vista-fijos').style.display = esMovs ? 'none' : '';
-  document.getElementById('fin-tab-movs').classList.toggle('active', esMovs);
-  document.getElementById('fin-tab-fijos').classList.toggle('active', !esMovs);
-  if (!esMovs) loadFijos();
+  FIN_VISTAS.forEach(v => {
+    document.getElementById(`fin-vista-${v}`).style.display = v === cual ? '' : 'none';
+  });
+  document.getElementById('fin-tab-movs').classList.toggle('active', cual === 'movimientos');
+  document.getElementById('fin-tab-fijos').classList.toggle('active', cual === 'fijos');
+  document.getElementById('fin-tab-pauta').classList.toggle('active', cual === 'pauta');
+  if (cual === 'fijos') loadFijos();
+  if (cual === 'pauta') loadPauta();
 }
 
 const FIN_VERDE = '#10b981';
@@ -5346,6 +5362,54 @@ function _finRango() {
   if (cual === 'anio') return {desde: `${hoy.getFullYear()}-01`, hasta};
   const atras = new Date(hoy.getFullYear(), hoy.getMonth() - (parseInt(cual, 10) - 1), 1);
   return {desde: mes(atras), hasta};
+}
+
+function _finNum(v, prefijo) {
+  // Un guión, no un cero: un mes sin ventas no tiene un costo por venta de
+  // cero, no tiene costo por venta.
+  if (v === null || v === undefined) return '—';
+  return (prefijo || '') + v.toLocaleString('es-UY', {minimumFractionDigits: 2,
+                                                      maximumFractionDigits: 2});
+}
+
+async function loadPauta() {
+  const cuerpo = document.getElementById('fin-pauta');
+  const {desde, hasta} = _finRango();
+  cuerpo.innerHTML = '<div style="color:#475569;padding:16px;font-size:.85rem">Cargando...</div>';
+  try {
+    const r = await fetch(`/api/finanzas/pauta?desde=${desde}&hasta=${hasta}`);
+    if (!r.ok) throw new Error('no se pudo cargar el rendimiento');
+    const data = await r.json();
+
+    const fila = (m, esTotal) => `
+      <tr style="${esTotal ? 'font-weight:700;border-top:2px solid #1e293b' : ''}">
+        <td>${esTotal ? 'Total' : m.periodo}</td>
+        <td class="fin-rojo">${_finNum(m.inversion_usd, 'USD ')}</td>
+        <td>${m.leads}</td>
+        <td>${_finNum(m.cpl, 'USD ')}</td>
+        <td>${m.calificados}</td>
+        <td>${_finNum(m.costo_calificado, 'USD ')}</td>
+        <td>${m.demos}</td>
+        <td>${_finNum(m.costo_demo, 'USD ')}</td>
+        <td>${m.ventas}</td>
+        <td>${_finNum(m.costo_venta, 'USD ')}</td>
+        <td class="fin-verde">${_finNum(m.ingresos_usd, 'USD ')}</td>
+        <td>${m.roi === null ? '—' : m.roi.toFixed(2) + '×'}</td>
+      </tr>`;
+
+    cuerpo.innerHTML = `
+      <div style="overflow-x:auto">
+      <table class="fin-tabla">
+        <thead><tr>
+          <th>Mes</th><th>Inversión</th><th>Leads</th><th>CPL</th>
+          <th>Calificados</th><th>Costo</th><th>Demos</th><th>Costo</th>
+          <th>Ventas</th><th>Costo</th><th>Ingresos</th><th>ROI</th>
+        </tr></thead>
+        <tbody>${data.meses.map(m => fila(m, false)).join('')}${fila(data.total, true)}</tbody>
+      </table></div>`;
+  } catch (e) {
+    cuerpo.innerHTML = `<div style="color:#f87171;padding:16px">Error: ${esc(e.message)}</div>`;
+  }
 }
 
 function _finVariacion(actual, previo) {

@@ -137,3 +137,14 @@ def test_el_atajo_del_presupuesto_tambien_escapa_el_apostrofo():
     """El nombre del cliente viaja dentro de un onclick con comillas simples:
     un "Bar O'Higgins" sin escapar rompería el atributo."""
     assert "onclick='registrarCobro(${_finAttr(" in HTML
+
+
+def test_el_panel_tiene_la_vista_de_pauta():
+    assert 'id="fin-vista-pauta"' in HTML
+    assert "function loadPauta(" in HTML
+
+
+def test_un_costo_sin_denominador_se_muestra_como_guion():
+    """La planilla mostraba #DIV/0!. Un cero ahí sería mentira."""
+    assert "function _finNum(" in HTML
+    assert "return '—'" in HTML
