@@ -283,3 +283,19 @@ def test_la_ruta_de_pauta_pide_el_panel(app):
 def test_la_ruta_de_pauta_rechaza_el_rango_al_reves(cli):
     r = cli.get("/api/finanzas/pauta?desde=2026-09&hasta=2026-08")
     assert r.status_code == 400
+
+
+def test_la_ruta_de_pauta_materializa_los_fijos_de_publicidad(cli):
+    """Ruling R19: si mañana la pauta se carga como fijo, tiene que verse acá.
+
+    Sin la llamada a `materializar_recurrentes`, este mes no tendría el
+    movimiento todavía y `inversion_usd` daría 0.0 — dos vistas del mismo
+    dato mostrando números distintos.
+    """
+    r = cli.post("/api/finanzas/recurrentes", json={
+        "tipo": "egreso", "categoria": "publicidad", "concepto": "Meta Ads fijo",
+        "monto": 100, "moneda": "USD", "dia_del_mes": 1, "desde": "2020-01"})
+    assert r.status_code == 201
+
+    data = cli.get("/api/finanzas/pauta").get_json()
+    assert data["meses"][0]["inversion_usd"] == 100.0

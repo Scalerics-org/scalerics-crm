@@ -312,7 +312,14 @@ def api_resumen():
 
 @finanzas_bp.route("/api/finanzas/pauta")
 def api_pauta():
-    """Rendimiento de la pauta: qué compró cada dólar invertido."""
+    """Rendimiento de la pauta: qué compró cada dólar invertido.
+
+    Materializa antes de calcular, igual que `api_resumen`: hoy la pauta se
+    carga mes a mes con el monto real, pero nada impide que mañana alguien
+    cargue un gasto de publicidad como fijo, y ahí esta vista y el resumen
+    tienen que coincidir. Materializar es idempotente, así que llamarlo de
+    más no cuesta nada (Ruling R19).
+    """
     db = _db()
     hoy = date.today()
     mes_actual = f"{hoy.year:04d}-{hoy.month:02d}"
@@ -320,6 +327,7 @@ def api_pauta():
     hasta = request.args.get("hasta") or mes_actual
     if desde > hasta:
         return jsonify({"ok": False, "error": "desde tiene que ser <= hasta"}), 400
+    materializar_recurrentes(db, hoy=hoy)
     return jsonify(rendimiento_pauta(db, desde, hasta))
 
 
