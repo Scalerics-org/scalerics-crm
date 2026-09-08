@@ -76,7 +76,6 @@ leads de Meta se renombró a **D** para deshacer el empate.
 | B (CRM/LinkedIn) | LinkedIn, demos, presupuestos, rutas del CRM | `dashboard.py`, `routes/leads.py`, `routes/demos.py`, `routes/budgets.py`, `routes/calendar.py`, `scripts/render_linkedin.py`, `templates/linkedin_card.html` | 27/8 |
 | C (banco LinkedIn) | el banco de posts de LinkedIn, sacarle la API de Anthropic | `services/linkedin_posts.py`, `services/linkedin_banco_semilla.py`, `routes/linkedin.py`, `scripts/render_linkedin.py`, `templates/linkedin_card.html`, `tests/test_linkedin_*` | 28/8 |
 | D (leads de Meta) | secuencias de mail por estado, estados del CRM, sync con la planilla de semáforo, detección de respuestas, rendimiento del CRM | `services/meta_reminders.py`, `services/secuencia_contactos.py`, `services/planilla_semaforo.py`, `scripts/planilla_semaforo.gs`, `routes/meta.py` | 27/8 |
-| E (lead magnet web) | el endpoint publico que mete en el CRM las descargas de la guia de scalerics.com | `routes/web.py` (nuevo), una linea en el `before_request` de `dashboard.py`, `tests/test_web_lead.py` (nuevo) | 8/9 |
 
 > **D acá (28/8, 17:10 UTC).** Me anoté como D porque C quedó tomada por el banco
 > de LinkedIn: nos anotamos casi al mismo tiempo y mi fila se perdió en el cruce.
@@ -124,6 +123,46 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 Lo último arriba. Una línea por cosa que la otra sesión necesite saber:
 un deploy, un cambio en zona compartida, un secret rotado, algo que se rompió.
+
+- **8/9 — E (lead magnet web) — CIERRE. En que quedo y que sigue.**
+
+  **Listo y commiteado, SIN DEPLOYAR:** `POST /api/web/lead` (`883cb24`), el
+  endpoint publico que mete en el CRM las descargas de la guia de precios de
+  `scalerics.com`. 24 tests nuevos en `tests/test_web_lead.py`; la suite entera
+  (1144) en verde. Toque `dashboard.py` en tres lineas: el import, el registro
+  del blueprint y la exencion de `/api/web/` en el `before_request`.
+
+  **Por que no deploye, en orden de peso:**
+  1. **Regla 2.** `v163` salio 14:45 UTC desde `scalerics@gmail.com` y no fue
+     mio. Hay alguien trabajando ahora. No piso sin preguntar.
+  2. **Mi commit esta encima del calendario de D (`d00fbfb`), que sigue sin
+     release.** No hay forma de deployar lo mio sin soltar lo suyo, y sacarlo
+     dejaria produccion en un arbol que no es ningun commit. Ese release es
+     decision de D, no mia.
+
+  Verificado que todavia no esta vivo: `POST /api/web/lead` contra produccion
+  devuelve 401, o sea que la exencion no salio.
+
+  **`fly.toml` RESUELTO (`c32e72a`).** Era el pendiente que A marco el 7/9.
+  Antes de tocarlo verifique con `flyctl status`: la unica maquina corre en
+  `iad`. El archivo decia `gru`, asi que estaba mintiendo en las dos
+  direcciones — quien deployaba del directorio movia de continente sin querer,
+  y quien deployaba de un worktree limpio publicaba una region falsa. Ahora
+  dice la verdad. **Si alguien lo tenia asi a proposito para otra cosa, avise.**
+
+  **Lo que falta, en orden:**
+  1. Deployar `883cb24` cuando D suelte su calendario o diga que se puede.
+  2. Mergear `guia-al-crm` en el repo del sitio (`Scalerics-org/scalerics-web`,
+     commit `c56a7ca`): es el fetch de la pagina al endpoint. **Esta a
+     proposito sin mergear** — hoy le pegaria a un 401. Primero el CRM.
+  3. Probar de punta a punta: descargar la guia desde el sitio y ver que
+     aparece el lead con `source='web_guia'`.
+
+  **Ojo con las filas nuevas:** entran con `source='web_guia'` y eso las deja
+  fuera de `meta_reminders` (filtra `'meta'`) y de `discovery_emails` (filtra
+  `'discovery'`). Es deliberado y hay un test que lo fija. Si alguien alguna vez
+  quiere escribirles, que sea una decision explicita: la pagina les prometio
+  "un mail con la guia y nada mas".
 
 - **8/9 — E (lead magnet web):** Me anoto ahora. Vengo del repo del sitio:
   hoy se publico `scalerics.com/cuanto-cuesta-una-pagina-web/`, una guia de
