@@ -1145,6 +1145,7 @@ body.light .upick-name{color:#0f172a}
   <div class="nav-item" id="nav-notion_clients" onclick="showPanel('notion_clients')"><i data-lucide="handshake" class="nav-icon"></i> Pipeline Notion</div>
   <div class="nav-item" id="nav-wa" onclick="showPanel('wa')"><i data-lucide="message-circle" class="nav-icon"></i> WhatsApp</div>
   <div class="nav-item" id="nav-cal" onclick="showPanel('cal')"><i data-lucide="calendar" class="nav-icon"></i> Calendario</div>
+  <div class="nav-item" id="nav-finanzas" onclick="showPanel('finanzas')"><i data-lucide="wallet" class="nav-icon"></i> Finanzas</div>
   <div class="nav-item" id="nav-metrics" onclick="showPanel('metrics')"><i data-lucide="bar-chart-2" class="nav-icon"></i> Métricas</div>
   <div class="nav-item" id="nav-activity" onclick="showPanel('activity')"><i data-lucide="clock" class="nav-icon"></i> Actividad</div>
   <div class="nav-item" id="nav-sdr" onclick="showPanel('sdr')"><i data-lucide="phone-call" class="nav-icon"></i> SDR</div>
@@ -1410,6 +1411,44 @@ body.light .upick-name{color:#0f172a}
     <div id="cal-error" class="cal-error" style="display:none"></div>
     <div id="cal-days" class="cal-days"><div class="cal-loading">Cargando calendario...</div></div>
     <div id="cal-day-events-mobile" style="display:none;margin-top:12px;padding:0 4px"></div>
+  </div>
+
+  <!-- ======= FINANZAS PANEL ======= -->
+  <div class="panel" id="finanzas-panel">
+    <div class="fin-toolbar">
+      <select id="fin-rango" onchange="loadFinanzas()">
+        <option value="mes">Mes actual</option>
+        <option value="3">Últimos 3 meses</option>
+        <option value="12" selected>Últimos 12 meses</option>
+        <option value="anio">Este año</option>
+      </select>
+      <div class="fin-toggle">
+        <button class="pill active" id="fin-tab-movs" onclick="finVista('movimientos')">Movimientos</button>
+        <button class="pill" id="fin-tab-fijos" onclick="finVista('fijos')">Fijos</button>
+      </div>
+      <button class="btn-primary" onclick="abrirMovimiento()">
+        <i data-lucide="plus" class="nav-icon"></i> Movimiento
+      </button>
+    </div>
+
+    <div id="fin-vista-movimientos">
+      <div class="fin-kpis" id="fin-kpis"></div>
+      <div class="fin-card"><div class="fin-card-title">Ingresos y egresos por mes</div>
+        <div id="fin-serie"></div></div>
+      <div class="fin-split">
+        <div class="fin-card"><div class="fin-card-title">Egresos por categoría</div>
+          <div id="fin-por-categoria"></div></div>
+        <div class="fin-card"><div class="fin-card-title">Ingresos por cliente</div>
+          <div id="fin-por-cliente"></div></div>
+      </div>
+      <div class="fin-card"><div class="fin-card-title">Movimientos</div>
+        <div id="fin-tabla"></div></div>
+    </div>
+
+    <div id="fin-vista-fijos" style="display:none">
+      <div class="fin-card"><div class="fin-card-title">Gastos e ingresos fijos</div>
+        <div id="fin-fijos"></div></div>
+    </div>
   </div>
 
   <!-- ======= METRICS PANEL ======= -->
@@ -1768,6 +1807,7 @@ function showPanel(name) {
   if (name === 'tasks') loadTasks();
   if (name === 'projects') loadProjects();
   if (name === 'notion_clients') loadNotionClients();
+  if (name === 'finanzas') loadFinanzas();
   if (name === 'metrics') loadMetrics();
   if (name === 'activity') loadActivity();
   if (name === 'sdr') loadSdr();
@@ -4200,18 +4240,18 @@ function _showScoreBreakdown(event, el) {
 }
 
 // ── Mobile navigation ─────────────────────────────────────────────────────────
-const NAV_PRIORITY = ['cola','seguimientos','meta','cal','tasks','pipeline','clientes','wa','metrics','activity','projects','notion_clients'];
+const NAV_PRIORITY = ['cola','seguimientos','meta','cal','tasks','pipeline','clientes','wa','metrics','activity','projects','notion_clients','finanzas'];
 const NAV_ICONS = {
   cola:'inbox',seguimientos:'bookmark',meta:'instagram',cal:'calendar',
   tasks:'check-square',pipeline:'trending-up',clientes:'users',
   wa:'message-circle',metrics:'bar-chart-2',activity:'clock',projects:'target',
-  notion_clients:'handshake'
+  notion_clients:'handshake',finanzas:'wallet'
 };
 const NAV_LABELS = {
   cola:'Cola',seguimientos:'Seguim.',meta:'Meta',cal:'Agenda',
   tasks:'Tareas',pipeline:'Pipeline',clientes:'Clientes',
   wa:'WA',metrics:'Métricas',activity:'Actividad',projects:'Proyectos',
-  notion_clients:'Pipeline'
+  notion_clients:'Pipeline',finanzas:'Finanzas'
 };
 let _mobileNavOverflow = [];
 
@@ -4291,7 +4331,7 @@ function closeMasSheet() {
 }
 
 // ── Panel access control ──────────────────────────────────────────────────────
-const ALL_PANELS = ['cola','seguimientos','meta','pipeline','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients'];
+const ALL_PANELS = ['cola','seguimientos','meta','pipeline','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas'];
 (async () => {
   try {
     const r = await fetch('/api/me');
@@ -5119,6 +5159,20 @@ function _funnelBars(items, stateLabels, stateColors) {
     return `<div class="funnel-row"><div class="funnel-label">${esc(stateLabels[f.status] || f.status)}</div><div class="bar-track" style="flex:1"><div class="bar-fill" style="width:${pct}%;background:${col}"></div></div><div class="bar-val">${f.count}</div></div>`;
   }).join('') || '<div style="color:#475569;font-size:.8rem">Sin datos</div>';
 }
+
+// ========== Finanzas panel ==========
+function finVista(cual) {
+  const esMovs = cual === 'movimientos';
+  document.getElementById('fin-vista-movimientos').style.display = esMovs ? '' : 'none';
+  document.getElementById('fin-vista-fijos').style.display = esMovs ? 'none' : '';
+  document.getElementById('fin-tab-movs').classList.toggle('active', esMovs);
+  document.getElementById('fin-tab-fijos').classList.toggle('active', !esMovs);
+  if (!esMovs) loadFijos();
+}
+
+async function loadFinanzas() {}
+async function loadFijos() {}
+function abrirMovimiento() {}
 
 async function loadMetrics() {
   const stateLabels = {sin_contactar:'Sin contactar',interesado:'Interesado',contactado:'Interesado',reunion_agendada:'Reunión agendada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Presupuesto enviado',negociacion:'Negociación',cliente_cerrado:'Cliente cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado'};
@@ -6537,8 +6591,8 @@ select:focus{border-color:#0088cc}
 </div>
 
 <script>
-const ALL_PANELS = ['cola','seguimientos','meta','pipeline','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients'];
-const PANEL_LABELS = {cola:'Cola',seguimientos:'Seguimientos',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Métricas',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Pipeline Notion'};
+const ALL_PANELS = ['cola','seguimientos','meta','pipeline','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas'];
+const PANEL_LABELS = {cola:'Cola',seguimientos:'Seguimientos',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Métricas',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Pipeline Notion',finanzas:'Finanzas'};
 let _roles = [];
 
 function makeChips(containerId, checkedArr, prefix) {
