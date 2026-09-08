@@ -76,6 +76,7 @@ leads de Meta se renombró a **D** para deshacer el empate.
 | B (CRM/LinkedIn) | LinkedIn, demos, presupuestos, rutas del CRM | `dashboard.py`, `routes/leads.py`, `routes/demos.py`, `routes/budgets.py`, `routes/calendar.py`, `scripts/render_linkedin.py`, `templates/linkedin_card.html` | 27/8 |
 | C (banco LinkedIn) | el banco de posts de LinkedIn, sacarle la API de Anthropic | `services/linkedin_posts.py`, `services/linkedin_banco_semilla.py`, `routes/linkedin.py`, `scripts/render_linkedin.py`, `templates/linkedin_card.html`, `tests/test_linkedin_*` | 28/8 |
 | D (leads de Meta) | secuencias de mail por estado, estados del CRM, sync con la planilla de semáforo, detección de respuestas, rendimiento del CRM | `services/meta_reminders.py`, `services/secuencia_contactos.py`, `services/planilla_semaforo.py`, `scripts/planilla_semaforo.gs`, `routes/meta.py` | 27/8 |
+| E (pre-clientes/demos) | pipeline por etapas, responsables del cliente, registro de demos | `routes/preclientes.py`, `tests/test_preclientes.py`, `scripts/check_js.py`, y **zona compartida**: `database.py`, `dashboard.py`, `routes/leads.py` | 31/8 |
 
 > **D acá (28/8, 17:10 UTC).** Me anoté como D porque C quedó tomada por el banco
 > de LinkedIn: nos anotamos casi al mismo tiempo y mi fila se perdió en el cruce.
@@ -95,6 +96,33 @@ leads de Meta se renombró a **D** para deshacer el empate.
 > `templates/linkedin_card.html`, que B tenía declarados. B no los venía tocando
 > (sus últimos cambios ahí son `dc1557f` y `f2ef442`), así que no se pisó nada,
 > pero si B vuelve a esos dos archivos, hablarlo acá primero.
+
+> **E acá (31/8).** Trabajo en la rama `feat/preclientes-clientes-demos`, no en
+> `main`. Nada deployado.
+>
+> **Toqué zona compartida, esto es el aviso.** En `database.py` agregué las
+> constantes `ETAPAS_PRECLIENTE` y `ETAPAS_CLIENTE`, tres columnas nuevas en
+> `businesses` (`encargado_id`, `mantenimiento_id`, `cobros_id`), la tabla
+> `demos_realizadas`, y una migración de estados que corre al arrancar. Todo
+> aditivo salvo la migración, que **sí reescribe `crm_status`**:
+> `reunion_agendada` → `demo_agendada`, `reunion_hecha` → `demo_1`,
+> `negociacion` → `follow_up_1`, `cliente_cerrado` → `cerrado`. Es idempotente y
+> no toca los estados de la cola (`sin_contactar`, `interesado`,
+> `llamar_despues`, `no_interesa`).
+>
+> **Si tenés código que compara `crm_status` con los nombres viejos, se va a
+> quedar sin coincidencias después de que esto se mergee.** Busqué y arreglé los
+> que están en el repo (`routes/leads.py`, `dashboard.py`), pero si alguien tiene
+> algo a medio hacer sin commitear, revisalo. Los nombres viejos siguen aceptados
+> como entrada por compatibilidad; lo que cambia es lo que hay guardado.
+>
+> **B (CRM/LinkedIn): `dashboard.py` y `routes/leads.py` son tuyos.** Los toqué
+> porque las tres secciones nuevas viven ahí y no hay forma de hacerlo aparte.
+> Está todo en una rama, sin mergear, para que lo puedas mirar antes.
+>
+> **Verificado contra una copia de la base de producción**, no contra un fixture:
+> 70 `reunion_agendada` + 22 `reunion_hecha` + 1 `cliente_cerrado` migrados,
+> 8350 leads antes y 8350 después.
 
 **Zona compartida, avisar antes de tocar:** `services/discovery_respuestas.py`,
 `services/email_service.py`, `database.py`, `tests/conftest.py`.
@@ -120,6 +148,30 @@ leads de Meta se renombró a **D** para deshacer el empate.
 ---
 
 ## Bitácora
+
+- **31/8 — E (pre-clientes/demos):** Rama `feat/preclientes-clientes-demos`,
+  commit `b153983`, sin deployar y sin mergear. Tres secciones nuevas:
+  pre-clientes (tablero por etapa), responsables del cliente (día a día,
+  mantenimiento, cobro) y registro de demos. Suite completa en 1108 pasando.
+- **31/8 — E (pre-clientes/demos):** **Agregué un gate que faltaba:
+  `scripts/check_js.py`.** `python -m py_compile dashboard.py` pasa aunque el
+  JavaScript embebido esté roto, porque el frontend vive dentro de strings de
+  Python normales: un backslash mal puesto lo consume Python como escape y al
+  navegador le llega código inválido, con el panel entero muerto y la suite en
+  verde. El gate corre los bloques `<script>` por `node --check`. Corrélo antes
+  de deployar cualquier cambio a `dashboard.py`; en este mismo cambio atajó dos.
+- **31/8 — E (pre-clientes/demos):** Dos bugs latentes de `main` que salieron al
+  probar en el navegador, los dos arreglados acá: (1) en
+  `body.light .modal h3,.modal-title` la coma corta el selector, así que
+  `.modal-title` quedaba azul oscuro sobre modal oscuro en cualquier tema —
+  estaba dormido porque los otros modales usan `<h3 id="modal-title">`, con id y
+  no con clase; (2) las reglas mobile de tablas asumen que toda fila es `.no-cb`
+  o la variante con checkbox, y cualquier tabla con otra estructura pierde
+  columnas sin avisar.
+- **31/8 — E (pre-clientes/demos):** Probado en el navegador contra una copia de
+  la base de producción, no solo con tests: los tres paneles, en claro y oscuro,
+  en escritorio y en mobile. Los tests no renderizan el frontend — no alcanza con
+  que estén verdes.
 
 Lo último arriba. Una línea por cosa que la otra sesión necesite saber:
 un deploy, un cambio en zona compartida, un secret rotado, algo que se rompió.

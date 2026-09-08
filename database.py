@@ -66,6 +66,64 @@ def _grant_panel_to_existing_roles(conn: sqlite3.Connection, panel: str) -> int:
     return tocadas
 
 
+# Etapas del pipeline de PRE-CLIENTES, en el orden en que avanza una venta.
+# Reemplazan a las genericas de antes (reunion_agendada / reunion_hecha /
+# negociacion), que no describian como se vende aca: el eje real son las demos.
+ETAPAS_PRECLIENTE = (
+    "demo_agendada",        # pactada, todavia no se dio
+    "demo_1",
+    "demo_2",
+    "demo_3",
+    "presupuesto_enviado",
+    "follow_up_1",
+    "follow_up_2",
+    "acepto",               # dijo que si, falta firma o pago
+    "en_espera",            # frenado por el cliente, sin cerrar
+    "rechazo",              # dijo que no despues de haber avanzado
+)
+
+# Estados de un CLIENTE ACTIVO. 'cerrado' es la puerta de entrada: el acuerdo se
+# concreto y el lead deja el pipeline de pre-clientes.
+ETAPAS_CLIENTE = ("cerrado", "en_desarrollo", "finalizado")
+
+# Como se traduce cada estado viejo. Solo se migran los del pipeline: los de la
+# Cola y Seguimientos (sin_contactar, interesado, contactado, llamar_despues,
+# no_interesa) se dejan intactos, porque son de otra etapa del embudo.
+#
+# 'no_interesa' NO pasa a 'rechazo' a proposito: uno es "nunca engancho" y el otro
+# es "avanzo y despues dijo que no". Mezclarlos borraria esa diferencia.
+_MAPA_ESTADOS_VIEJOS = {
+    "reunion_agendada": "demo_agendada",
+    "reunion_hecha":    "demo_1",
+    "negociacion":      "follow_up_1",
+    "cliente_cerrado":  "cerrado",
+    # alias que quedaron de una version anterior
+    "agendo":           "demo_agendada",
+    "firmo":            "cerrado",
+}
+
+
+def _migrar_estados_preclientes(conn: sqlite3.Connection) -> None:
+    """Traduce los estados viejos del pipeline a las etapas de pre-clientes.
+
+    Idempotente: los estados nuevos no estan en el mapa, asi que una segunda
+    corrida no toca nada. Se registra cuantas filas movio cada regla, porque es
+    una migracion de datos productivos y tiene que quedar rastro.
+    """
+    for viejo, nuevo in _MAPA_ESTADOS_VIEJOS.items():
+        try:
+            cur = conn.execute(
+                "UPDATE businesses SET crm_status = ? WHERE crm_status = ?",
+                (nuevo, viejo),
+            )
+            if cur.rowcount:
+                logger.info("Migracion de etapas: %s -> %s (%s leads)",
+                            viejo, nuevo, cur.rowcount)
+        except sqlite3.Error as e:
+            logger.error("No se pudo migrar %s -> %s: %s", viejo, nuevo, e)
+    conn.commit()
+
+
 def _connect(db_path: str) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path, timeout=10)
     conn.execute("PRAGMA journal_mode=WAL")  # better concurrency
@@ -586,6 +644,39 @@ def init_db(db_path: str) -> None:
         """)
         _add_column(conn, "businesses", "linkedin_ok", "INTEGER DEFAULT 0")
 
+        # ── Pre-clientes y clientes activos ───────────────────────────────────
+        # Los tres responsables de un cliente activo. Apuntan a users para poder
+        # filtrar "mis clientes"; si alguien se va, el vinculo queda en NULL en vez
+        # de un nombre huerfano que nadie sabe a quien pertenecia.
+        _add_column(conn, "businesses", "encargado_id",
+                    "INTEGER REFERENCES users(id) ON DELETE SET NULL")
+        _add_column(conn, "businesses", "mantenimiento_id",
+                    "INTEGER REFERENCES users(id) ON DELETE SET NULL")
+        _add_column(conn, "businesses", "cobros_id",
+                    "INTEGER REFERENCES users(id) ON DELETE SET NULL")
+
+        # Registro historico de demos dadas. NO es la tabla `demos`, que guarda la
+        # pagina que genera la IA: esto es el evento comercial de haber mostrado
+        # una demo, con quien la dio y como viene. Por eso admite varias por
+        # cliente, mientras que `demos` tiene UNIQUE(client_id).
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS demos_realizadas (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_id       INTEGER NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+                numero          INTEGER,
+                realizada_por   INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                fecha           TIMESTAMP,
+                actualizacion   TEXT,
+                created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                created_by      INTEGER REFERENCES users(id) ON DELETE SET NULL
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_demos_realizadas_client "
+                     "ON demos_realizadas(client_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_demos_realizadas_fecha "
+                     "ON demos_realizadas(fecha)")
+        _migrar_estados_preclientes(conn)
+
         # ── task assignment & goal tracking ────────────────────────────────────
         _add_column(conn, "tasks", "assignee_id",    "INTEGER REFERENCES users(id) ON DELETE SET NULL")
         _add_column(conn, "tasks", "assignee_name",  "TEXT")
@@ -677,6 +768,8 @@ ALLOWED_COLUMNS = {
     "scraped_at", "notes", "pitch_text", "crm_status",
     "has_whatsapp", "last_event_at", "score", "callback_date", "source",
     "interest", "form_data", "website",
+    # Responsables de un cliente activo: dia a dia, mantenimiento y cobro.
+    "encargado_id", "mantenimiento_id", "cobros_id",
 }
 
 
@@ -913,6 +1006,11 @@ def get_business_by_phone(db_path: str, phone: str) -> Optional[dict]:
 def delete_business(db_path: str, business_id: int) -> None:
     conn = _connect(db_path)
     try:
+        # El ON DELETE CASCADE del esquema NO alcanza: SQLite trae las foreign
+        # keys apagadas y hay que activarlas por conexion, cosa que _connect no
+        # hace. Sin este borrado explicito quedarian demos huerfanas con las notas
+        # comerciales de un cliente que ya no existe.
+        conn.execute("DELETE FROM demos_realizadas WHERE client_id = ?", (business_id,))
         conn.execute("DELETE FROM businesses WHERE id = ?", (business_id,))
         conn.commit()
     finally:
@@ -2232,5 +2330,101 @@ def seed_linkedin_banco(db_path: str) -> None:
             LINKEDIN_BANCO_SEMILLA,
         )
         conn.commit()
+    finally:
+        conn.close()
+
+
+# ── Demos realizadas (registro comercial) ────────────────────────────────────
+# Distinto de la tabla `demos`, que guarda la pagina que genera la IA. Aca queda
+# el historial de cada demo que se dio: quien la tuvo y como viene.
+
+_COLUMNAS_DEMO_REALIZADA = {"numero", "realizada_por", "fecha", "actualizacion"}
+
+
+def crear_demo_realizada(db_path: str, client_id: int, **campos) -> int:
+    """Registra una demo dada. Si no se pasa `numero`, se calcula como la
+    siguiente del cliente, para que el equipo no tenga que llevar la cuenta."""
+    datos = {k: v for k, v in campos.items() if k in _COLUMNAS_DEMO_REALIZADA}
+    conn = _connect(db_path)
+    try:
+        if not datos.get("numero"):
+            previas = conn.execute(
+                "SELECT COALESCE(MAX(numero), 0) FROM demos_realizadas WHERE client_id = ?",
+                (client_id,),
+            ).fetchone()[0]
+            datos["numero"] = previas + 1
+        if not datos.get("fecha"):
+            datos["fecha"] = datetime.now().isoformat(timespec="seconds")
+        cols = ["client_id", "created_by"] + list(datos)
+        vals = [client_id, campos.get("created_by")] + list(datos.values())
+        cur = conn.execute(
+            f"INSERT INTO demos_realizadas ({', '.join(cols)}) "
+            f"VALUES ({', '.join('?' for _ in vals)})",
+            vals,
+        )
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def listar_demos_realizadas(db_path: str, client_id: int | None = None,
+                            limite: int | None = None) -> list[dict]:
+    """Las demos dadas, de la mas reciente a la mas vieja.
+
+    Trae el nombre de quien la dio y del negocio en el mismo query: la vista los
+    muestra siempre juntos, y resolverlos aparte seria un N+1.
+    """
+    where, params = "", []
+    if client_id is not None:
+        where = "WHERE d.client_id = ?"
+        params.append(client_id)
+    sql = f"""
+        SELECT d.*, u.name AS realizada_por_nombre, b.name AS cliente_nombre
+        FROM demos_realizadas d
+        LEFT JOIN users u ON d.realizada_por = u.id
+        LEFT JOIN businesses b ON d.client_id = b.id
+        {where}
+        ORDER BY COALESCE(d.fecha, d.created_at) DESC, d.id DESC
+    """
+    if limite is not None:
+        sql += " LIMIT ?"
+        params.append(int(limite))
+    conn = _connect(db_path)
+    try:
+        return [dict(r) for r in conn.execute(sql, params)]
+    finally:
+        conn.close()
+
+
+def actualizar_demo_realizada(db_path: str, demo_id: int, **campos) -> None:
+    datos = {k: v for k, v in campos.items() if k in _COLUMNAS_DEMO_REALIZADA}
+    if not datos:
+        return
+    conn = _connect(db_path)
+    try:
+        conn.execute(
+            f"UPDATE demos_realizadas SET {', '.join(f'{k} = ?' for k in datos)} WHERE id = ?",
+            [*datos.values(), demo_id],
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def borrar_demo_realizada(db_path: str, demo_id: int) -> None:
+    conn = _connect(db_path)
+    try:
+        conn.execute("DELETE FROM demos_realizadas WHERE id = ?", (demo_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def obtener_demo_realizada(db_path: str, demo_id: int) -> Optional[dict]:
+    conn = _connect(db_path)
+    try:
+        fila = conn.execute("SELECT * FROM demos_realizadas WHERE id = ?", (demo_id,)).fetchone()
+        return dict(fila) if fila else None
     finally:
         conn.close()
