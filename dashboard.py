@@ -5397,8 +5397,8 @@ async function _cpLogCall() {
 function _cpRenderHistory() {
   const events = _cpData.events || [];
   if (!events.length) return '';
-  const crmLabels = {sin_contactar:'Sin contactar',contactado:'Contactado',reunion_agendada:'Reunión agendada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Presupuesto enviado',negociacion:'Negociación',cliente_cerrado:'Cliente cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado',llamar_despues:'Llamar después',no_interesa:'No le interesa',agendo:'Agendó',firmo:'Firmó',nota_actualizada:'Nota actualizada',adjunto_agregado:'Adjunto agregado'};
-  const crmDot = {sin_contactar:'#475569',contactado:'#60a5fa',reunion_agendada:'#3b82f6',reunion_hecha:'#14b8a6',presupuesto_enviado:'#f97316',negociacion:'#fbbf24',cliente_cerrado:'#10b981',en_desarrollo:'#0088cc',finalizado:'#6ee7b7',llamar_despues:'#f59e0b',no_interesa:'#ef4444',nota_actualizada:'#64748b',adjunto_agregado:'#64748b'};
+  const crmLabels = {demo_agendada:'Demo agendada',demo_1:'Demo 1',demo_2:'Demo 2',demo_3:'Demo 3',follow_up_1:'Follow up 1',follow_up_2:'Follow up 2',acepto:'Aceptó',en_espera:'En espera',rechazo:'Rechazo',cerrado:'Cerrado',sin_contactar:'Sin contactar',contactado:'Contactado',reunion_agendada:'Reunión agendada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Presupuesto enviado',negociacion:'Negociación',cliente_cerrado:'Cliente cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado',llamar_despues:'Llamar después',no_interesa:'No le interesa',agendo:'Agendó',firmo:'Firmó',nota_actualizada:'Nota actualizada',adjunto_agregado:'Adjunto agregado'};
+  const crmDot = {demo_agendada:'#3b82f6',demo_1:'#14b8a6',demo_2:'#2dd4bf',demo_3:'#5eead4',follow_up_1:'#fbbf24',follow_up_2:'#fcd34d',acepto:'#10b981',en_espera:'#94a3b8',rechazo:'#ef4444',cerrado:'#10b981',sin_contactar:'#475569',contactado:'#60a5fa',reunion_agendada:'#3b82f6',reunion_hecha:'#14b8a6',presupuesto_enviado:'#f97316',negociacion:'#fbbf24',cliente_cerrado:'#10b981',en_desarrollo:'#0088cc',finalizado:'#6ee7b7',llamar_despues:'#f59e0b',no_interesa:'#ef4444',nota_actualizada:'#64748b',adjunto_agregado:'#64748b'};
   const items = events.map(e => {
     const label = crmLabels[e.new_status] || e.new_status;
     const dot = crmDot[e.new_status] || '#0088cc';
@@ -6761,7 +6761,7 @@ def create_app(db_path: str) -> Flask:
                   COUNT(DISTINCT CASE WHEN action='call_logged'
                     OR action='meeting_scheduled'
                     OR action='callback_set'
-                    OR (action='status_change' AND detail='reunion_agendada')
+                    OR (action='status_change' AND detail IN ('demo_agendada','reunion_agendada'))
                     THEN entity_id END) as calls,
                   COUNT(DISTINCT entity_id) as leads_touched
                 FROM activity_log
@@ -6841,7 +6841,7 @@ def create_app(db_path: str) -> Flask:
                           AND user_name IN ({placeholders})
                           AND created_at >= date('now','-13 days')
                     )
-                    WHERE rn = 1 AND detail='reunion_agendada'
+                    WHERE rn = 1 AND detail IN ('demo_agendada','reunion_agendada')
                 )
                 GROUP BY user_name, DATE(created_at)
             """, sdr_names + sdr_names).fetchall()
@@ -6867,7 +6867,7 @@ def create_app(db_path: str) -> Flask:
                           AND user_name IN ({placeholders})
                           AND DATE(created_at) >= ?
                     )
-                    WHERE rn = 1 AND detail='reunion_agendada'
+                    WHERE rn = 1 AND detail IN ('demo_agendada','reunion_agendada')
                 )
                 GROUP BY user_name
             """, sdr_names + [date_from] + sdr_names + [date_from]).fetchall()
@@ -6906,7 +6906,7 @@ def create_app(db_path: str) -> Flask:
                 rows = conn5.execute(
                     "SELECT entity_id, entity_name, detail, created_at FROM activity_log "
                     "WHERE (action='meeting_scheduled' OR (action='call_logged' AND detail='reunion') "
-                    "       OR (action='status_change' AND detail='reunion_agendada')) "
+                    "       OR (action='status_change' AND detail IN ('demo_agendada','reunion_agendada'))) "
                     "AND user_name=? AND DATE(created_at)=? ORDER BY created_at",
                     (user, day)
                 ).fetchall()

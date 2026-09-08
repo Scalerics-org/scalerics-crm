@@ -408,7 +408,7 @@ def test_los_espacios_de_mas_se_normalizan():
 # El primer envio mezclaba "te mostramos" con "te muestro" y no saludaba. Es la
 # misma empresa que ya escribia en plural en la secuencia vieja.
 
-_ESTADOS = ["presupuesto_enviado", "reunion_hecha", "interesado", "llamar_despues"]
+_ESTADOS = ["presupuesto_enviado", "demo_1", "interesado", "llamar_despues"]
 _SINGULARES = ["te muestro", "te paso", "te mando", "avisame", "decime",
                "no te escribo", "te reenvio", "te enviamos hoy mismo yo"]
 
@@ -449,8 +449,8 @@ def test_sin_negocio_la_frase_igual_cierra(estado):
 _ASUNTOS_POR_ESTADO = {
     ("presupuesto_enviado", 1): ("RP Estudio — ¿qué te frenó?", "¿Qué te frenó del presupuesto?"),
     ("presupuesto_enviado", 2): ("¿Damos por cerrado lo de RP Estudio?", "¿Lo damos por cerrado?"),
-    ("reunion_hecha", 1): ("RP Estudio — quedó pendiente el presupuesto", "Quedó pendiente tu presupuesto"),
-    ("reunion_hecha", 2): ("RP Estudio — el presupuesto", "El presupuesto de tu proyecto"),
+    ("demo_1", 1): ("RP Estudio — quedó pendiente el presupuesto", "Quedó pendiente tu presupuesto"),
+    ("demo_1", 2): ("RP Estudio — el presupuesto", "El presupuesto de tu proyecto"),
     ("interesado", 1): ("RP Estudio — cómo lo resolveríamos", "Retomamos tu consulta"),
     ("llamar_despues", 1): ("RP Estudio — intentamos comunicarnos", "Intentamos comunicarnos con vos"),
 }

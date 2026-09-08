@@ -61,7 +61,7 @@ def test_no_mira_a_los_que_ya_salieron_de_sin_contactar(db):
     marcar de nuevo."""
     bid = _contactado(db, 3)
     from database import update_business
-    update_business(db, bid, crm_status="reunion_agendada")
+    update_business(db, bid, crm_status="demo_agendada")
     assert direcciones_contactadas(db) == {}
 
 
@@ -392,7 +392,7 @@ def test_el_que_contesta_un_presupuesto_no_retrocede(db):
     from services.discovery_respuestas import marcar_respondio
     _lead(db, 1, "meta", "presupuesto_enviado")
     marcar_respondio(db, 1, "quien@sea.com")
-    assert _estado(db, 1) == "negociacion"
+    assert _estado(db, 1) == "follow_up_1"
 
 
 def test_un_lead_frio_de_meta_que_contesta_sale_de_toda_secuencia(db):
@@ -407,15 +407,15 @@ def test_un_lead_frio_de_meta_que_contesta_sale_de_toda_secuencia(db):
 
 def test_no_pisa_a_quien_ya_esta_mas_adelante(db):
     from services.discovery_respuestas import marcar_respondio
-    _lead(db, 1, "meta", "cliente_cerrado")
+    _lead(db, 1, "meta", "cerrado")
     marcar_respondio(db, 1, "quien@sea.com")
-    assert _estado(db, 1) == "cliente_cerrado"
+    assert _estado(db, 1) == "cerrado"
 
 
 def test_igual_deja_el_evento_aunque_no_mueva_el_estado(db):
     import sqlite3
     from services.discovery_respuestas import marcar_respondio
-    _lead(db, 1, "meta", "cliente_cerrado")
+    _lead(db, 1, "meta", "cerrado")
     marcar_respondio(db, 1, "quien@sea.com")
     conn = sqlite3.connect(db)
     n = conn.execute("SELECT COUNT(*) FROM lead_events WHERE lead_id=1").fetchone()[0]
@@ -451,7 +451,7 @@ def test_se_vigilan_los_cinco_estados_de_meta_no_solo_sin_contactar(db):
 # La busqueda de Gmail solo acota por `newer_than:30d`. Sin comparar contra
 # nuestro ultimo envio, un mail que el lead nos mando ANTES de entrar a la
 # secuencia se contaba como respuesta: le frenaba el seguimiento y le abria una
-# negociacion que nunca existio.
+# follow_up_1 que nunca existio.
 
 def _lead_con_envio(db, bid, mail, sent_at, estado="sin_contactar"):
     import sqlite3
@@ -485,12 +485,12 @@ def test_un_mail_posterior_si_es_una_respuesta(db):
         {"from": "lead@x.com", "subject": "Re: Sobre tu consulta para N1",
          "date": "2026-08-20 10:05:00", "headers": {}}]))
     assert r["respondieron"] == 1
-    assert _estado(db, 1) == "negociacion"
+    assert _estado(db, 1) == "follow_up_1"
 
 
 def test_sin_fecha_se_cuenta_como_respuesta(db):
     """Perder una respuesta real y seguir escribiendole encima es peor que
-    abrir una negociacion de mas, que un humano descarta en diez segundos."""
+    abrir una follow_up_1 de mas, que un humano descarta en diez segundos."""
     from services.discovery_respuestas import sincronizar_respuestas
     _lead_con_envio(db, 1, "lead@x.com", "2026-08-20 10:00:00")
     r = sincronizar_respuestas(db, _buscar_fijo([

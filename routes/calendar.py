@@ -31,7 +31,7 @@ def _maybe_revert_lead_status(db_path: str, client_id: int) -> None:
     biz = get_business(db_path, client_id)
     if not biz:
         return
-    if biz.get("crm_status") != "reunion_agendada":
+    if biz.get("crm_status") != "demo_agendada":
         return
     remaining = get_meetings_for_client(db_path, client_id)
     if not remaining:
@@ -210,7 +210,7 @@ def _sync_gcal_to_db(db: str, start: str, end: str) -> None:
                 name = invitee_name or invitee_email or summary
                 cur = conn.execute(
                     "INSERT INTO businesses (name, email, crm_status, source) VALUES (?,?,?,?)",
-                    (name, invitee_email or None, "reunion_agendada", "calendly_gcal"),
+                    (name, invitee_email or None, "demo_agendada", "calendly_gcal"),
                 )
                 client_id = cur.lastrowid
 
@@ -304,7 +304,7 @@ def api_calendar_events():
             status="scheduled",
         )
         from database import update_business
-        update_business(db, int(client_id), crm_status="reunion_agendada")
+        update_business(db, int(client_id), crm_status="demo_agendada")
         client = get_business(db, int(client_id)) or {}
         log_activity(db, session.get("user_name", "sistema"), "meeting_scheduled",
                      "lead", int(client_id), client.get("name", ""), title,
@@ -393,7 +393,7 @@ Devolvé SOLO un JSON (sin texto extra, sin markdown):
         status="completed",
     )
 
-    # Despues de una reunion el lead avanza a 'reunion_hecha' solo. Esto NO es
+    # Despues de una reunion el lead avanza a 'demo_1' solo. Esto NO es
     # la generacion de presupuesto —esa se saco el 28-8-2026 porque no se usaba,
     # 3 presupuestos generados contra 151 reuniones— sino el unico lugar donde
     # el sistema mueve un estado por su cuenta a partir de algo que paso.
@@ -410,15 +410,15 @@ Devolvé SOLO un JSON (sin texto extra, sin markdown):
             # No pisa a quien ya esta mas adelante.
             _ANTES_DE_LA_REUNION = {
                 "sin_contactar", "interesado", "contactado",
-                "reunion_agendada", "llamar_despues",
+                "demo_agendada", "llamar_despues",
             }
             biz = get_business(_db(), cid)
             if biz and biz.get("crm_status") in _ANTES_DE_LA_REUNION:
-                update_business(_db(), cid, crm_status="reunion_hecha")
+                update_business(_db(), cid, crm_status="demo_1")
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning(
-            f"No se pudo marcar reunion_hecha para la reunion {meeting_id}: {e}")
+            f"No se pudo marcar demo_1 para la reunion {meeting_id}: {e}")
 
     return jsonify({"ok": True, "summary": result})
 

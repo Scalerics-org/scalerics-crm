@@ -15,7 +15,8 @@ from database import (
                       add_lead_event, get_lead_events,
                       add_call_log, get_call_logs,
                       increment_task_progress, get_lead_contributor_ids, log_activity)
-from database import ETAPAS_CLIENTE, ETAPAS_PRECLIENTE
+from database import (ETAPA_DEMO_AGENDADA, ETAPA_DEMO_DADA, ETAPAS_CLIENTE,
+                      ETAPAS_PRECLIENTE, normalizar_crm_status)
 from database import get_attachment_file, update_attachment_file, get_attachments
 from pitch_generator import generate_pitch
 from services.budget_ai import ai_edit_html
@@ -188,6 +189,10 @@ def api_crm_status(biz_id):
     crm_status = data.get("crm_status", "sin_contactar")
     if crm_status not in _VALID_CRM_STATES:
         return jsonify({"ok": False, "error": f"Estado inválido: {crm_status}"}), 400
+    # Se sigue ACEPTANDO el nombre viejo (una pestaña abierta desde antes del
+    # deploy lo manda) pero no se GUARDA: guardado tal cual, el lead queda en un
+    # estado que ya no es etapa y se cae del tablero de pre-clientes.
+    crm_status = normalizar_crm_status(crm_status)
     db = _db()
     biz = get_business(db, biz_id) or {}
     user_name = session.get("user_name", "sistema")
@@ -195,10 +200,12 @@ def api_crm_status(biz_id):
     add_lead_event(db, biz_id, crm_status, created_by=user_name)
     log_activity(db, user_name, "status_change", "lead", biz_id, biz.get("name", ""), crm_status,
                  user_id=session.get("user_id"))
+    # Las claves son las etapas NUEVAS: arriba ya se normalizo, asi que con los
+    # nombres viejos este mapa no matcheaba nunca y la meta no se movia.
     _STATUS_TO_GOAL = {
-        "interesado":      "leads_contactados",
-        "reunion_hecha":   "reuniones_hechas",
-        "cliente_cerrado": "clientes_cerrados",
+        "interesado":    "leads_contactados",
+        ETAPA_DEMO_DADA: "reuniones_hechas",
+        "cerrado":       "clientes_cerrados",
     }
     if crm_status in _STATUS_TO_GOAL:
         uids = _contributors(db, biz_id, session.get("user_id"))
@@ -232,6 +239,7 @@ def api_batch_status():
     crm_status = data.get("crm_status", "")
     if not ids or crm_status not in _VALID_CRM_STATES:
         return jsonify({"ok": False, "error": "ids o estado inválido"}), 400
+    crm_status = normalizar_crm_status(crm_status)   # ver api_crm_status
     db = _db()
     user_name = session.get("user_name", "sistema")
     for biz_id in ids:
@@ -241,9 +249,9 @@ def api_batch_status():
     log_activity(db, user_name, "batch_status", "", None, "",
                  f"{len(ids)} leads → {crm_status}", user_id=session.get("user_id"))
     _STATUS_TO_GOAL_BATCH = {
-        "interesado":      "leads_contactados",
-        "reunion_hecha":   "reuniones_hechas",
-        "cliente_cerrado": "clientes_cerrados",
+        "interesado":    "leads_contactados",
+        ETAPA_DEMO_DADA: "reuniones_hechas",
+        "cerrado":       "clientes_cerrados",
     }
     if crm_status in _STATUS_TO_GOAL_BATCH:
         goal = _STATUS_TO_GOAL_BATCH[crm_status]
@@ -676,11 +684,11 @@ def api_add_call(biz_id):
         increment_task_progress(db, uids, "llamadas_contestadas",
                                 lead_id=biz_id, lead_name=biz.get("name", ""))
     if outcome == "reunion":
-        from database import update_business, add_lead_event
-        update_business(db, biz_id, crm_status="reunion_agendada")
-        add_lead_event(db, biz_id, "reunion_agendada", created_by=created_by)
+        from database import ETAPA_DEMO_AGENDADA, update_business, add_lead_event
+        update_business(db, biz_id, crm_status=ETAPA_DEMO_AGENDADA)
+        add_lead_event(db, biz_id, ETAPA_DEMO_AGENDADA, created_by=created_by)
         log_activity(db, created_by, "status_change", "lead", biz_id, biz.get("name", ""),
-                     "reunion_agendada", user_id=session.get("user_id"))
+                     ETAPA_DEMO_AGENDADA, user_id=session.get("user_id"))
         increment_task_progress(db, uids, "reuniones_agendadas",
                                 lead_id=biz_id, lead_name=biz.get("name", ""))
     return jsonify({"ok": True}), 201

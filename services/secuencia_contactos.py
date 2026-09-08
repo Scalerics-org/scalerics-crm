@@ -43,7 +43,7 @@ SECUENCIAS_POR_ESTADO = {
     # sabe quien sos, cuanto sale y que le vas a entregar.
     "presupuesto_enviado": [0, 7],
     # Hubo demo y no siguio. Falta el numero.
-    "reunion_hecha": [0, 7],
+    "demo_1": [0, 7],
     # Atendio el telefono pero no se llego a agendar nada.
     "interesado": [0],
     # No atiende el telefono y se le dejo mensaje. El mail es el canal alterno.
@@ -51,8 +51,8 @@ SECUENCIAS_POR_ESTADO = {
 }
 
 # Los estados que NO estan en el dict no reciben nada, y es deliberado:
-# `no_interesa` (ya dijo que no), `reunion_agendada` (tiene reunion coordinada y
-# un mail automatico solo puede confundirlo), y `cliente_cerrado`,
+# `no_interesa` (ya dijo que no), `demo_agendada` (tiene reunion coordinada y
+# un mail automatico solo puede confundirlo), y `cerrado`,
 # `en_desarrollo` y `finalizado`, que ya son clientes.
 ESTADOS_CON_SECUENCIA = tuple(SECUENCIAS_POR_ESTADO)
 

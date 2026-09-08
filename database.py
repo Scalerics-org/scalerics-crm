@@ -82,6 +82,12 @@ ETAPAS_PRECLIENTE = (
     "rechazo",              # dijo que no despues de haber avanzado
 )
 
+# Las dos etapas que el sistema escribe solo, al agendar una reunion y al
+# cerrarla. Tienen nombre propio porque se escriben desde routes/calendar.py y
+# routes/leads.py, y ahi el string suelto ya se desincronizo una vez.
+ETAPA_DEMO_AGENDADA = "demo_agendada"
+ETAPA_DEMO_DADA = "demo_1"
+
 # Estados de un CLIENTE ACTIVO. 'cerrado' es la puerta de entrada: el acuerdo se
 # concreto y el lead deja el pipeline de pre-clientes.
 ETAPAS_CLIENTE = ("cerrado", "en_desarrollo", "finalizado")
@@ -101,6 +107,26 @@ _MAPA_ESTADOS_VIEJOS = {
     "agendo":           "demo_agendada",
     "firmo":            "cerrado",
 }
+
+
+def normalizar_crm_status(estado):
+    """Traduce un estado viejo del pipeline al que lo reemplaza.
+
+    Es para el BORDE: lo que llega de afuera (el navegador de alguien que tiene
+    la pagina abierta desde antes del deploy, un webhook) puede traer un nombre
+    viejo, y guardarlo tal cual deja al lead en un estado que ya no es etapa.
+    Como el tablero filtra por `crm_status IN (etapas)`, ese lead existe en la
+    base y no aparece en ninguna columna: desaparece de la vista sin error.
+
+    **No se llama desde `update_business`, a proposito.** Traducir en la
+    escritura parece la solucion obvia y rompe a cualquiera que haga
+    leer-comparar-escribir: `services/planilla_semaforo.py` pide 'negociacion',
+    lee de vuelta 'follow_up_1', no coinciden, y vuelve a escribir en cada
+    corrida —un evento espurio por dia, para siempre. Se probo y se saco.
+
+    Idempotente: las etapas nuevas no estan en el mapa.
+    """
+    return _MAPA_ESTADOS_VIEJOS.get(estado, estado)
 
 
 def _migrar_estados_preclientes(conn: sqlite3.Connection) -> None:
