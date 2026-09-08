@@ -77,3 +77,13 @@ def test_no_hay_emojis_en_lo_que_agrega_finanzas():
     assert propias, "no encontre ninguna linea de la seccion"
     con_emoji = [l for l in propias if re.search(r"[\U0001F300-\U0001FAFF]", l)]
     assert not con_emoji, f"emojis en: {con_emoji[:3]}"
+
+
+def test_los_montos_se_muestran_en_dolares():
+    """El panel nunca inventa una conversión: muestra el monto_usd que vino."""
+    assert "'USD '" in HTML
+    assert "_finUsd" in HTML
+
+
+def test_el_panel_tiene_reglas_para_modo_claro():
+    assert "body.light .fin-card" in HTML

@@ -1112,6 +1112,33 @@ body.light .upick-option:hover{background:#f8fafc}
 body.light .upick-option.upick-sel{background:#eff6ff}
 body.light .upick-label{color:#0f172a}
 body.light .upick-name{color:#0f172a}
+.fin-toolbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:18px}
+.fin-toggle{display:flex;gap:6px;margin-left:auto}
+.fin-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:18px}
+.fin-kpi{background:#0f172a;border:1px solid #1e293b;border-radius:10px;padding:16px 18px}
+.fin-kpi-label{font-size:.7rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.8px}
+.fin-kpi-valor{font-size:1.6rem;font-weight:700;margin-top:6px}
+.fin-kpi-var{font-size:.75rem;color:#64748b;margin-top:4px}
+.fin-verde{color:#10b981}
+.fin-rojo{color:#f87171}
+.fin-card{background:#0f172a;border:1px solid #1e293b;border-radius:10px;padding:18px;margin-bottom:18px}
+.fin-card-title{font-size:.75rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.8px;margin-bottom:14px}
+.fin-split{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.fin-mes{display:flex;align-items:flex-end;gap:3px;height:90px}
+.fin-serie{display:flex;gap:10px;align-items:flex-end;overflow-x:auto;padding-bottom:6px}
+.fin-serie-col{display:flex;flex-direction:column;align-items:center;gap:6px;min-width:44px}
+.fin-serie-label{font-size:.65rem;color:#64748b;white-space:nowrap}
+.fin-barra{width:14px;border-radius:3px 3px 0 0;min-height:2px}
+.fin-hbar-fila{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.fin-hbar-nombre{font-size:.78rem;color:#94a3b8;width:130px;flex-shrink:0}
+.fin-hbar-pista{flex:1;background:#1e293b;border-radius:3px;height:8px;overflow:hidden}
+.fin-hbar-relleno{height:100%;border-radius:3px}
+.fin-hbar-monto{font-size:.75rem;color:#e2e8f0;width:74px;text-align:right;flex-shrink:0}
+@media (max-width:760px){.fin-split{grid-template-columns:1fr}}
+body.light .fin-kpi,body.light .fin-card{background:#fff;border-color:#e2e8f0}
+body.light .fin-hbar-pista{background:#e2e8f0}
+body.light .fin-hbar-monto{color:#1e293b}
+body.light .fin-hbar-nombre{color:#475569}
 </style>
 </head>
 <body>
@@ -5170,7 +5197,108 @@ function finVista(cual) {
   if (!esMovs) loadFijos();
 }
 
-async function loadFinanzas() {}
+const FIN_VERDE = '#10b981';
+const FIN_ROJO  = '#f87171';
+
+function _finUsd(n) {
+  return 'USD ' + (n || 0).toLocaleString('es-UY', {minimumFractionDigits: 2,
+                                                    maximumFractionDigits: 2});
+}
+
+function _finRango() {
+  const hoy = new Date();
+  const mes = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  const cual = document.getElementById('fin-rango').value;
+  const hasta = mes(hoy);
+  if (cual === 'mes')  return {desde: hasta, hasta};
+  if (cual === 'anio') return {desde: `${hoy.getFullYear()}-01`, hasta};
+  const atras = new Date(hoy.getFullYear(), hoy.getMonth() - (parseInt(cual, 10) - 1), 1);
+  return {desde: mes(atras), hasta};
+}
+
+function _finVariacion(actual, previo) {
+  if (!previo) return '';
+  const pct = Math.round(((actual - previo) / Math.abs(previo)) * 100);
+  const signo = pct > 0 ? '+' : '';
+  return `${signo}${pct}% vs. período anterior`;
+}
+
+function _finKpis(k) {
+  const neto = k.neto_usd;
+  return `
+    <div class="fin-kpi">
+      <div class="fin-kpi-label">Ingresos</div>
+      <div class="fin-kpi-valor fin-verde">${_finUsd(k.ingresos_usd)}</div>
+      <div class="fin-kpi-var">${_finVariacion(k.ingresos_usd, k.ingresos_previos_usd)}</div>
+    </div>
+    <div class="fin-kpi">
+      <div class="fin-kpi-label">Egresos</div>
+      <div class="fin-kpi-valor fin-rojo">${_finUsd(k.egresos_usd)}</div>
+      <div class="fin-kpi-var">${_finVariacion(k.egresos_usd, k.egresos_previos_usd)}</div>
+    </div>
+    <div class="fin-kpi">
+      <div class="fin-kpi-label">Resultado</div>
+      <div class="fin-kpi-valor ${neto >= 0 ? 'fin-verde' : 'fin-rojo'}">${_finUsd(neto)}</div>
+      <div class="fin-kpi-var">${_finVariacion(neto, k.neto_previo_usd)}</div>
+    </div>`;
+}
+
+function _finSerie(serie) {
+  if (!serie.length) return '<div class="empty-state">Sin movimientos en el período</div>';
+  const tope = Math.max(...serie.map(p => Math.max(p.ingresos_usd, p.egresos_usd)), 1);
+  const alto = v => Math.max(Math.round((v / tope) * 80), v > 0 ? 3 : 1);
+  return '<div class="fin-serie">' + serie.map(p => `
+    <div class="fin-serie-col" title="${p.periodo}: ingresos ${_finUsd(p.ingresos_usd)}, egresos ${_finUsd(p.egresos_usd)}">
+      <div class="fin-mes">
+        <div class="fin-barra" style="height:${alto(p.ingresos_usd)}px;background:${FIN_VERDE}"></div>
+        <div class="fin-barra" style="height:${alto(p.egresos_usd)}px;background:${FIN_ROJO}"></div>
+      </div>
+      <div class="fin-serie-label">${p.periodo.slice(5)}/${p.periodo.slice(2, 4)}</div>
+    </div>`).join('') + '</div>';
+}
+
+function _finBarras(filas, color) {
+  if (!filas.length) return '<div class="empty-state">Sin datos</div>';
+  const tope = Math.max(...filas.map(f => f.total_usd), 1);
+  return filas.map(f => `
+    <div class="fin-hbar-fila">
+      <div class="fin-hbar-nombre">${esc(f.nombre)}</div>
+      <div class="fin-hbar-pista">
+        <div class="fin-hbar-relleno" style="width:${(f.total_usd / tope) * 100}%;background:${color}"></div>
+      </div>
+      <div class="fin-hbar-monto">${_finUsd(f.total_usd)}</div>
+    </div>`).join('');
+}
+
+let _finResumen = null;
+
+async function loadFinanzas() {
+  const {desde, hasta} = _finRango();
+  const kpisEl = document.getElementById('fin-kpis');
+  kpisEl.innerHTML = '<div style="color:#475569;padding:16px;font-size:.85rem">Cargando...</div>';
+  try {
+    const r = await fetch(`/api/finanzas/resumen?desde=${desde}&hasta=${hasta}`);
+    if (!r.ok) throw new Error('no se pudo cargar el resumen');
+    const data = await r.json();
+    _finResumen = data;
+
+    kpisEl.innerHTML = _finKpis(data.kpis);
+    document.getElementById('fin-serie').innerHTML = _finSerie(data.serie);
+
+    const egresos = data.por_categoria
+      .filter(c => c.tipo === 'egreso')
+      .map(c => ({nombre: c.categoria.replace(/_/g, ' '), total_usd: c.total_usd}));
+    document.getElementById('fin-por-categoria').innerHTML = _finBarras(egresos, FIN_ROJO);
+    document.getElementById('fin-por-cliente').innerHTML = _finBarras(data.por_cliente, FIN_VERDE);
+
+    await loadMovimientos(desde, hasta);
+    if (window.lucide) lucide.createIcons();
+  } catch (e) {
+    kpisEl.innerHTML = `<div style="color:#f87171;padding:16px">Error: ${esc(e.message)}</div>`;
+  }
+}
+
+async function loadMovimientos() {}
 async function loadFijos() {}
 function abrirMovimiento() {}
 
