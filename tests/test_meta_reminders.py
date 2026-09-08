@@ -190,7 +190,7 @@ def test_elige_solo_a_los_que_corresponde(db):
     _lead(conn, 3, dias=5, crm_status="no_interesa")        # dijo que no: no recibe
     _lead(conn, 4, dias=5, email=None)                      # sin mail
     _lead(conn, 5, dias=5, source="google")                 # no es de Meta
-    _lead(conn, 6, dias=5, crm_status="reunion_agendada")   # tiene reunion: no se lo molesta
+    _lead(conn, 6, dias=5, crm_status="demo_agendada")   # tiene reunion: no se lo molesta
     _lead(conn, 7, dias=5, crm_status="finalizado")         # ya es cliente
     conn.commit()
     conn.close()
@@ -1019,7 +1019,7 @@ def test_cada_estado_con_secuencia_entra_y_dice_cual_es(db):
     conn = sqlite3.connect(db)
     for i, estado in enumerate(
         ["sin_contactar", "llamar_despues", "interesado",
-         "reunion_hecha", "presupuesto_enviado"], start=1
+         "demo_1", "presupuesto_enviado"], start=1
     ):
         _lead(conn, i, dias=10, crm_status=estado)
     conn.commit()
@@ -1029,7 +1029,7 @@ def test_cada_estado_con_secuencia_entra_y_dice_cual_es(db):
 
     assert elegidos == {
         1: "sin_contactar", 2: "llamar_despues", 3: "interesado",
-        4: "reunion_hecha", 5: "presupuesto_enviado",
+        4: "demo_1", 5: "presupuesto_enviado",
     }
     assert all(x["numero"] == 1 for x in leads_a_recordar(db))
 
@@ -1083,7 +1083,7 @@ def test_el_piso_de_dias_se_mide_sobre_todos_los_estados(db):
     conn = sqlite3.connect(db)
     # Le mandamos ayer con el estado viejo y hoy cambio de estado: el contacto 1
     # de la secuencia nueva no puede salir el mismo dia.
-    _lead(conn, 1, dias=200, crm_status="reunion_hecha")
+    _lead(conn, 1, dias=200, crm_status="demo_1")
     _envio_estado(conn, 1, "sin_contactar", 1, dias_atras=1)
     conn.commit()
     conn.close()

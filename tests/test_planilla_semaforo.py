@@ -23,7 +23,7 @@ from services.planilla_semaforo import (
 
 AMARILLO = "#ffff00"      # interesado
 ROJO = "#ff0000"          # llamar_despues
-CELESTE = "#00ffff"       # demo_1 (demo realizada)
+CELESTE = "#00ffff"       # demo_1
 VIOLETA = "#ff00ff"       # presupuesto_enviado
 VERDE_OSC = "#274e13"     # cerrado
 BLANCO = "#ffffff"        # sin pintar
@@ -248,8 +248,8 @@ def test_el_lead_con_telefono_numerico_ahora_casa(db):
 NEGRO = "#000000"
 
 
-@pytest.mark.parametrize("desde", ["interesado", "llamar_despues", "reunion_hecha",
-                                   "presupuesto_enviado", "negociacion"])
+@pytest.mark.parametrize("desde", ["interesado", "llamar_despues", "demo_1",
+                                   "presupuesto_enviado", "follow_up_1"])
 def test_el_negro_de_la_planilla_siempre_gana(db, desde):
     _lead(db, 1, "+59899913326", estado=desde)
     r = aplicar(db, [{"tel": "59899913326", "color": NEGRO}])
@@ -257,7 +257,7 @@ def test_el_negro_de_la_planilla_siempre_gana(db, desde):
     assert r["actualizados"] == 1
 
 
-@pytest.mark.parametrize("cliente", ["cliente_cerrado", "en_desarrollo", "finalizado"])
+@pytest.mark.parametrize("cliente", ["cerrado", "en_desarrollo", "finalizado"])
 def test_pero_no_puede_borrar_un_cliente(db, cliente):
     """Ahi hay plata y una celda mal pintada no puede llevarsela."""
     _lead(db, 1, "+59899913326", estado=cliente)

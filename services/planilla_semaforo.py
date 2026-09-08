@@ -20,7 +20,7 @@ Reglas que no se negocian, todas probadas:
   cohortes tienen publicos y automatizaciones distintas y esa separacion es lo
   caro de romper.
 - **Nunca retrocede, con una excepcion.** Si produccion ya dice `finalizado` y
-  la planilla dice `cliente_cerrado`, gana produccion: la planilla la mantiene
+  la planilla dice `cerrado`, gana produccion: la planilla la mantiene
   gente a mano y va atrasada respecto del trabajo real. La excepcion es
   `no_interesa`, que la pinta alguien que hablo con el lead y siempre gana —
   salvo sobre un cliente, donde hay plata y una celda mal pintada no puede
@@ -213,7 +213,7 @@ def aplicar(db_path: str, filas: list, dry_run: bool = False) -> dict:
         # Los clientes quedan afuera: ahi hay plata, y una celda mal pintada no
         # puede borrarla.
         baja_deliberada = (estado == "no_interesa"
-                           and RANK.get(actual, 0) < RANK["cliente_cerrado"])
+                           and RANK.get(actual, 0) < RANK["cerrado"])
         if not (avanza or baja_deliberada):
             resumen["no_retrocede"] += 1
             continue

@@ -325,7 +325,7 @@ def test_reunion_pasada_no_retrocede_el_estado_del_lead(db):
     assert len(_meetings(db)) == 1              # la reunión igual queda cargada
 
 
-def test_reunion_futura_si_marca_la_demo_agendada(db):
+def test_reunion_futura_si_marca_demo_agendada(db):
     from database import update_business
     bid = insert_business(db, {
         "name": "Ferretería El Sol",

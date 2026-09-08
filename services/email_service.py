@@ -612,7 +612,7 @@ def _cuerpo_por_estado(estado: str, numero: int, negocio: str,
     Plural siempre, "Hola," de apertura, y los dos caminos al cerrar.
 
     `_COMO_TRABAJAMOS` va solo en 'interesado' y 'llamar_despues': son los dos
-    estados donde el lead todavia no vio una demo. A los de 'reunion_hecha' y
+    estados donde el lead todavia no vio una demo. A los de 'demo_1' y
     'presupuesto_enviado' ya se la mostramos y ya recibieron numeros.
 
     `negocio` llega escapado o crudo segun para que version se lo pida, y ya
@@ -643,7 +643,7 @@ def _cuerpo_por_estado(estado: str, numero: int, negocio: str,
             "retomamos donde quedó.",
         ])
 
-    if estado == "reunion_hecha":
+    if estado == "demo_1":
         if numero <= 1:
             arranque = ("Hicimos la demo y no llegamos a seguir."
                         if not rubro else
