@@ -24,6 +24,7 @@ from routes.notion_clients import notion_clients_bp
 from routes.resend_webhook import resend_bp
 from routes.projects import projects_bp
 from routes.linkedin import linkedin_bp
+from routes.web import web_bp
 from services.auth import is_admin
 from services.demo_service import demo_job_handler
 from services.linkedin_posts import linkedin_job_handler
@@ -5920,7 +5921,7 @@ def create_app(db_path: str) -> Flask:
     app.config["PIPELINE_LOCK"] = _pipeline_lock
 
     for bp in (leads_bp, demos_bp, calendar_bp, wa_bp, pipeline_bp, tasks_bp, budgets_bp, tokens_bp, meta_bp, calendly_bp, notion_bp, projects_bp,
-                notion_clients_bp, resend_bp, linkedin_bp):
+                notion_clients_bp, resend_bp, linkedin_bp, web_bp):
         app.register_blueprint(bp)
 
     @app.before_request
@@ -5934,6 +5935,11 @@ def create_app(db_path: str) -> Flask:
         # Su autenticacion es la firma de Svix, verificada dentro del endpoint:
         # Resend lo llama sin credenciales nuestras.
         if request.path.startswith("/api/resend/webhook"):
+            return
+        # La llama el navegador de cualquiera que descargue la guia de precios
+        # del sitio: no puede llevar x-admin-token. Se valida sola por Origin
+        # y tope por IP (ver routes/web.py).
+        if request.path.startswith("/api/web/"):
             return
         # El link "ya lo publique" se abre desde un mail: no puede mandar headers,
         # asi que lleva su propio token de un solo uso en la query.

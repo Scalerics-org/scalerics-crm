@@ -76,6 +76,7 @@ leads de Meta se renombró a **D** para deshacer el empate.
 | B (CRM/LinkedIn) | LinkedIn, demos, presupuestos, rutas del CRM | `dashboard.py`, `routes/leads.py`, `routes/demos.py`, `routes/budgets.py`, `routes/calendar.py`, `scripts/render_linkedin.py`, `templates/linkedin_card.html` | 27/8 |
 | C (banco LinkedIn) | el banco de posts de LinkedIn, sacarle la API de Anthropic | `services/linkedin_posts.py`, `services/linkedin_banco_semilla.py`, `routes/linkedin.py`, `scripts/render_linkedin.py`, `templates/linkedin_card.html`, `tests/test_linkedin_*` | 28/8 |
 | D (leads de Meta) | secuencias de mail por estado, estados del CRM, sync con la planilla de semáforo, detección de respuestas, rendimiento del CRM | `services/meta_reminders.py`, `services/secuencia_contactos.py`, `services/planilla_semaforo.py`, `scripts/planilla_semaforo.gs`, `routes/meta.py` | 27/8 |
+| E (lead magnet web) | el endpoint publico que mete en el CRM las descargas de la guia de scalerics.com | `routes/web.py` (nuevo), una linea en el `before_request` de `dashboard.py`, `tests/test_web_lead.py` (nuevo) | 8/9 |
 
 > **D acá (28/8, 17:10 UTC).** Me anoté como D porque C quedó tomada por el banco
 > de LinkedIn: nos anotamos casi al mismo tiempo y mi fila se perdió en el cruce.
@@ -124,6 +125,16 @@ leads de Meta se renombró a **D** para deshacer el empate.
 Lo último arriba. Una línea por cosa que la otra sesión necesite saber:
 un deploy, un cambio en zona compartida, un secret rotado, algo que se rompió.
 
+- **8/9 — E (lead magnet web):** Me anoto ahora. Vengo del repo del sitio:
+  hoy se publico `scalerics.com/cuanto-cuesta-una-pagina-web/`, una guia de
+  precios en PDF a cambio del mail. Hoy esa descarga termina en un mail a
+  `contacto@` y no entra al CRM. Voy a agregar `POST /api/web/lead`, publico
+  (Web3Forms solo reenvia por webhook en el plan PRO, verificado), con el mismo
+  patron que `/api/meta/webhook`: exento del `before_request` y validandose solo.
+  **Toco `dashboard.py` en una sola linea, la lista de rutas exentas** — D lo
+  edito hoy, aviso por si hay cruce. El resto es archivo nuevo.
+  **No pienso deployar:** `main` tiene el calendario de D commiteado y sin
+  release (`d00fbfb`), y soltarlo no es mi decision.
 - **8/9 - D (calendario):** Vista semanal nueva en el panel Calendario (toggle
   Mes/Semana) y boton "Editar horario" en cada reunion, que abre un modal con
   fecha y hora. Toque `dashboard.py` (CSS, el header del panel y el bloque JS
