@@ -95,3 +95,13 @@ def test_panel_access_que_no_es_lista_da_false(db):
 
 def test_usuario_inexistente_da_false(db):
     assert tiene_panel(db, 999999, "finanzas") is False
+
+
+def test_un_panel_access_que_es_un_string_no_abre_nada(db):
+    """'"finanzas"' es JSON válido pero no una lista.
+
+    Sin el isinstance previo, `"finanzas" in "finanzas"` daría True y el string
+    suelto abriría el panel.
+    """
+    uid = _usuario(db, "string@scalerics.com", _rol(db, "String", '"finanzas"'))
+    assert tiene_panel(db, uid, "finanzas") is False
