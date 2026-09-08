@@ -2643,6 +2643,749 @@ git commit -m "docs(coordinacion): sesion de finanzas anotada"
 
 ---
 
+# Ampliación: el rendimiento de la pauta (Tasks 13 y 14)
+
+> **Agregado el 8/9/2026, decisión de Juan, con la ejecución del plan ya
+> empezada.** Existe `Downloads\Scalerics - Leads - 2026.xlsx` con dos hojas
+> financieras que se llevaban a mano:
+>
+> - **Análisis** — marzo a agosto 2026, por mes: inversión en pauta, leads, CPL,
+>   leads de calidad, demos, ventas. Totales: USD 3.017,15 invertidos, 227
+>   leads, 64 de calidad, 44 demos, 2 ventas.
+> - **Cuenta Corriente** — transferencias contra pauta gastada (2.200 contra
+>   1.648,53). **Fuera de alcance**: Juan eligió no traerla.
+>
+> El CRM ya sabe cuántos leads, demos y ventas hay. Lo único que no sabía es
+> cuánto se gastó. Con la inversión cargada como egresos de categoría
+> `publicidad`, todo lo que la planilla calcula a mano sale solo.
+>
+> **Un error de la planilla que no se replica:** la hoja Análisis tiene 11
+> encabezados y 10 columnas de datos. La columna rotulada «ROI» trae en realidad
+> el *costo por venta* — 3.017,15 ÷ 2 = 1.508,575, que es el total que muestra.
+> ROI de verdad nunca se pudo calcular ahí porque la planilla no tiene los
+> ingresos. Acá sí, y va como columna aparte.
+
+## Definiciones (fijadas por Juan, no son interpretables)
+
+| Concepto | En términos del CRM |
+|---|---|
+| **Lead** | `businesses` con `source = 'meta'`. La pauta compra estos, no los scrapeados |
+| **Mes del lead** | el mes en que entró (`scraped_at`), no el mes en que convirtió |
+| **Lead de calidad** | llegó **al menos a `reunion_agendada`** en algún momento |
+| **Demo** | llegó **al menos a `reunion_hecha`** en algún momento |
+| **Venta** | llegó **al menos a `cliente_cerrado`** en algún momento |
+| **Inversión** | egresos con `categoria = 'publicidad'` de ese período |
+
+«En algún momento» es literal y se lee de `lead_events`, que guarda cada cambio
+de estado con su fecha. **No** del `crm_status` actual: un lead que llegó a
+reunión y después se cayó a `no_interesa` hoy figura como `no_interesa`, y
+contarlo por el estado actual lo perdería.
+
+`no_interesa` queda fuera del orden del embudo a propósito: es una salida, no
+una etapa.
+
+## Riesgo conocido, a verificar contra producción
+
+**No está verificado que `lead_events` cubra marzo a agosto de 2026.** La base
+local de desarrollo está vacía, así que no se pudo comprobar. Si la tabla no
+llega tan atrás, o si en esos meses los estados se cambiaron sin dejar evento,
+los meses históricos van a dar **por debajo** de la planilla.
+
+Por eso la Task 14 no da los números por buenos: los compara contra el Excel mes
+por mes y **reporta la diferencia**. Si coinciden, el CRM reemplaza la planilla.
+Si no, sabemos que la historia no está completa y ahí se decide — pero se decide
+viendo el número, no suponiéndolo.
+
+---
+
+### Task 13: El rendimiento de la pauta — servicio y ruta
+
+**Files:**
+- Modify: `services/finanzas.py` (al final)
+- Modify: `routes/finanzas.py` (una ruta más)
+- Test: `tests/test_finanzas_pauta.py`
+
+**Interfaces:**
+- Consumes: `database.listar_movimientos` y `database._connect` (Task 1); `meses_entre` (Task 2); el blueprint `finanzas_bp` con su `before_request` (Task 6).
+- Produces:
+  - `FUNNEL: list[str]`
+  - `alcanzo(eventos: set, etapa: str) -> bool`
+  - `rendimiento_pauta(db_path: str, desde: str, hasta: str) -> dict`
+
+Forma exacta del dict, que el panel de la Task 14 consume tal cual:
+
+```python
+{
+  "desde": "2026-03", "hasta": "2026-08",
+  "meses": [
+    {"periodo": "2026-03",
+     "inversion_usd": 368.98,
+     "leads": 59, "calificados": 4, "demos": 3, "ventas": 0,
+     "ingresos_usd": 0.0,
+     "cpl": 6.25, "costo_calificado": 92.25, "costo_demo": 122.99,
+     "costo_venta": None,          # None, no 0: dividir por cero no es cero
+     "roi": None},
+  ],
+  "total": {"periodo": "total", "...las mismas claves, sobre todo el rango": 0},
+}
+```
+
+- [ ] **Step 1: Escribir el test que falla**
+
+Crear `tests/test_finanzas_pauta.py`:
+
+```python
+"""Rendimiento de la pauta: cuánto costó cada lead, cada demo y cada venta.
+
+Lo que la planilla `Scalerics - Leads - 2026.xlsx` calculaba a mano cada mes.
+El CRM ya tenía los leads, las demos y las ventas; lo único que le faltaba era
+cuánta plata se gastó en traerlos.
+
+Las etapas se leen de `lead_events`, no del `crm_status` actual: un lead que
+llegó a reunión y después se cayó hoy figura como `no_interesa`, y contarlo por
+el estado de hoy lo perdería.
+"""
+
+import sqlite3
+
+import pytest
+
+from database import crear_movimiento, init_db
+from services.finanzas import alcanzo, rendimiento_pauta
+
+
+@pytest.fixture
+def db(tmp_path):
+    ruta = str(tmp_path / "p.db")
+    init_db(ruta)
+    return ruta
+
+
+def _lead(db, periodo, source="meta", estados=()):
+    """Crea un lead dado de alta en `periodo` que pasó por `estados`."""
+    conn = sqlite3.connect(db)
+    try:
+        cur = conn.execute(
+            "INSERT INTO businesses (name, source, scraped_at) VALUES (?,?,?)",
+            (f"lead {periodo}", source, f"{periodo}-15 10:00:00"))
+        lid = cur.lastrowid
+        for estado in estados:
+            conn.execute(
+                "INSERT INTO lead_events (lead_id, new_status, created_at) "
+                "VALUES (?,?,?)", (lid, estado, f"{periodo}-20 10:00:00"))
+        conn.commit()
+        return lid
+    finally:
+        conn.close()
+
+
+def _pauta(db, periodo, monto):
+    return crear_movimiento(db, tipo="egreso", fecha=f"{periodo}-05",
+                            periodo=periodo, concepto="Meta Ads",
+                            categoria="publicidad", monto=monto,
+                            moneda="USD", monto_usd=monto)
+
+
+# ── alcanzo ───────────────────────────────────────────────────────────────────
+
+def test_alcanzo_es_verdadero_en_la_etapa_exacta():
+    assert alcanzo({"reunion_agendada"}, "reunion_agendada") is True
+
+
+def test_alcanzo_es_verdadero_si_paso_de_largo():
+    assert alcanzo({"cliente_cerrado"}, "reunion_agendada") is True
+
+
+def test_alcanzo_es_falso_si_no_llego():
+    assert alcanzo({"interesado"}, "reunion_agendada") is False
+
+
+def test_no_interesa_no_cuenta_como_etapa():
+    """Es una salida del embudo, no un avance."""
+    assert alcanzo({"no_interesa"}, "reunion_agendada") is False
+
+
+def test_un_lead_que_llego_y_despues_se_cayo_sigue_contando():
+    """El caso que rompía contar por crm_status actual."""
+    assert alcanzo({"reunion_hecha", "no_interesa"}, "reunion_hecha") is True
+
+
+def test_un_lead_sin_eventos_no_alcanzo_nada():
+    assert alcanzo(set(), "reunion_agendada") is False
+
+
+# ── rendimiento ───────────────────────────────────────────────────────────────
+
+def test_cuenta_los_leads_del_mes_en_que_entraron(db):
+    _lead(db, "2026-03")
+    _lead(db, "2026-03")
+    _lead(db, "2026-04")
+    r = rendimiento_pauta(db, "2026-03", "2026-04")
+    assert [m["leads"] for m in r["meses"]] == [2, 1]
+
+
+def test_los_leads_scrapeados_no_cuentan(db):
+    """La pauta compra leads de Meta, no el padrón scrapeado."""
+    _lead(db, "2026-03", source="meta")
+    _lead(db, "2026-03", source=None)
+    _lead(db, "2026-03", source="calendly")
+    assert rendimiento_pauta(db, "2026-03", "2026-03")["meses"][0]["leads"] == 1
+
+
+def test_califica_desde_reunion_agendada(db):
+    _lead(db, "2026-03", estados=("interesado",))
+    _lead(db, "2026-03", estados=("interesado", "reunion_agendada"))
+    _lead(db, "2026-03", estados=("reunion_hecha",))
+    m = rendimiento_pauta(db, "2026-03", "2026-03")["meses"][0]
+    assert m["calificados"] == 2
+    assert m["demos"] == 1
+
+
+def test_la_venta_cuenta_desde_cliente_cerrado(db):
+    _lead(db, "2026-03", estados=("negociacion",))
+    _lead(db, "2026-03", estados=("cliente_cerrado",))
+    _lead(db, "2026-03", estados=("finalizado",))
+    assert rendimiento_pauta(db, "2026-03", "2026-03")["meses"][0]["ventas"] == 2
+
+
+def test_los_costos_dividen_la_inversion_del_mes(db):
+    _pauta(db, "2026-03", 300.0)
+    for _ in range(3):
+        _lead(db, "2026-03")
+    _lead(db, "2026-03", estados=("reunion_hecha",))
+    m = rendimiento_pauta(db, "2026-03", "2026-03")["meses"][0]
+    assert m["inversion_usd"] == 300.0
+    assert m["leads"] == 4
+    assert m["cpl"] == 75.0
+    assert m["costo_demo"] == 300.0
+
+
+def test_sin_ventas_el_costo_por_venta_es_none_no_cero(db):
+    """La planilla mostraba #DIV/0! en esos meses. Cero sería mentira."""
+    _pauta(db, "2026-03", 300.0)
+    _lead(db, "2026-03")
+    m = rendimiento_pauta(db, "2026-03", "2026-03")["meses"][0]
+    assert m["costo_venta"] is None
+    assert m["roi"] is None
+
+
+def test_sin_inversion_los_costos_son_none(db):
+    _lead(db, "2026-03")
+    m = rendimiento_pauta(db, "2026-03", "2026-03")["meses"][0]
+    assert m["inversion_usd"] == 0.0
+    assert m["cpl"] is None
+
+
+def test_el_roi_usa_los_ingresos_atribuidos_a_esos_leads(db):
+    """Lo que la planilla nunca pudo calcular: no tenía los ingresos."""
+    _pauta(db, "2026-03", 500.0)
+    lid = _lead(db, "2026-03", estados=("cliente_cerrado",))
+    crear_movimiento(db, tipo="ingreso", fecha="2026-04-10", periodo="2026-04",
+                     concepto="Cobro", categoria="desarrollo_web", monto=1500,
+                     moneda="USD", monto_usd=1500.0, client_id=lid)
+    m = rendimiento_pauta(db, "2026-03", "2026-03")["meses"][0]
+    assert m["ingresos_usd"] == 1500.0
+    assert m["roi"] == 3.0
+
+
+def test_un_ingreso_anulado_no_cuenta_en_el_roi(db):
+    from database import actualizar_movimiento
+    _pauta(db, "2026-03", 500.0)
+    lid = _lead(db, "2026-03", estados=("cliente_cerrado",))
+    mid = crear_movimiento(db, tipo="ingreso", fecha="2026-04-10",
+                           periodo="2026-04", concepto="Cobro",
+                           categoria="desarrollo_web", monto=1500,
+                           moneda="USD", monto_usd=1500.0, client_id=lid)
+    actualizar_movimiento(db, mid, anulado=1)
+    m = rendimiento_pauta(db, "2026-03", "2026-03")["meses"][0]
+    assert m["ingresos_usd"] == 0.0
+    assert m["roi"] is None
+
+
+def test_solo_cuenta_la_publicidad_no_los_demas_egresos(db):
+    _pauta(db, "2026-03", 300.0)
+    crear_movimiento(db, tipo="egreso", fecha="2026-03-01", periodo="2026-03",
+                     concepto="Fly", categoria="infraestructura", monto=4.18,
+                     moneda="USD", monto_usd=4.18)
+    m = rendimiento_pauta(db, "2026-03", "2026-03")["meses"][0]
+    assert m["inversion_usd"] == 300.0
+
+
+def test_el_total_agrega_todo_el_rango(db):
+    _pauta(db, "2026-03", 300.0)
+    _pauta(db, "2026-04", 200.0)
+    _lead(db, "2026-03")
+    _lead(db, "2026-04")
+    t = rendimiento_pauta(db, "2026-03", "2026-04")["total"]
+    assert t["inversion_usd"] == 500.0
+    assert t["leads"] == 2
+    assert t["cpl"] == 250.0
+
+
+def test_un_mes_sin_nada_aparece_igual(db):
+    _pauta(db, "2026-03", 300.0)
+    r = rendimiento_pauta(db, "2026-03", "2026-05")
+    assert [m["periodo"] for m in r["meses"]] == ["2026-03", "2026-04", "2026-05"]
+    assert r["meses"][2]["leads"] == 0
+```
+
+- [ ] **Step 2: Correr el test para verificar que falla**
+
+Run: `python -m pytest tests/test_finanzas_pauta.py -v`
+Expected: FAIL con `ImportError: cannot import name 'alcanzo' from 'services.finanzas'`
+
+- [ ] **Step 3: Escribir la implementación**
+
+Al final de `services/finanzas.py`:
+
+```python
+# ─── Rendimiento de la pauta ─────────────────────────────────────────────────
+
+# El embudo en orden, tal como lo define routes/leads.py. `no_interesa` NO está:
+# es una salida, no una etapa, y un lead que se cayó ahí igual pasó por lo que
+# haya pasado antes.
+FUNNEL = ["sin_contactar", "interesado", "contactado", "reunion_agendada",
+          "reunion_hecha", "presupuesto_enviado", "negociacion",
+          "cliente_cerrado", "en_desarrollo", "finalizado"]
+
+
+def alcanzo(eventos: set, etapa: str) -> bool:
+    """Si el lead pasó por `etapa` o por cualquiera posterior, alguna vez.
+
+    Se mira contra el historial de `lead_events`, no contra el `crm_status` de
+    hoy: un lead que llegó a reunión y después se cayó a `no_interesa` figura
+    hoy como `no_interesa`, y contarlo por el estado actual lo perdería.
+    """
+    objetivo = FUNNEL.index(etapa)
+    return any(e in FUNNEL and FUNNEL.index(e) >= objetivo for e in eventos)
+
+
+def _dividir(numerador: float, denominador: float):
+    """El costo unitario, o None si no hay de qué dividir.
+
+    Devuelve None y no 0.0 a propósito: un mes sin ventas no tiene un costo por
+    venta de cero, no tiene costo por venta. La planilla mostraba #DIV/0! y esa
+    era la lectura correcta.
+    """
+    if not denominador:
+        return None
+    return round(numerador / denominador, 2)
+
+
+def _fila_pauta(periodo, inversion, leads, calificados, demos, ventas, ingresos):
+    return {
+        "periodo": periodo,
+        "inversion_usd": round(inversion, 2),
+        "leads": leads, "calificados": calificados,
+        "demos": demos, "ventas": ventas,
+        "ingresos_usd": round(ingresos, 2),
+        "cpl": _dividir(inversion, leads),
+        "costo_calificado": _dividir(inversion, calificados),
+        "costo_demo": _dividir(inversion, demos),
+        "costo_venta": _dividir(inversion, ventas),
+        "roi": _dividir(ingresos, inversion),
+    }
+
+
+def rendimiento_pauta(db_path: str, desde: str, hasta: str) -> dict:
+    """Qué compró la plata de pauta, mes a mes.
+
+    Reemplaza la hoja «Análisis» de `Scalerics - Leads - 2026.xlsx`, que se
+    llevaba a mano. Los leads se cuentan por el mes en que entraron, no por el
+    mes en que convirtieron: la pauta de marzo compró los leads de marzo, aunque
+    uno cierre en julio. Por lo mismo, el ingreso se atribuye al lead que lo
+    generó y no al mes del cobro.
+    """
+    from database import _connect, listar_movimientos
+
+    periodos = meses_entre(desde, hasta)
+    if not periodos:
+        return {"desde": desde, "hasta": hasta, "meses": [],
+                "total": _fila_pauta("total", 0, 0, 0, 0, 0, 0)}
+
+    inversion = {p: 0.0 for p in periodos}
+    for m in listar_movimientos(db_path, desde=desde, hasta=hasta,
+                                tipo="egreso", categoria="publicidad"):
+        inversion[m["periodo"]] = inversion.get(m["periodo"], 0.0) + m["monto_usd"]
+
+    conn = _connect(db_path)
+    try:
+        leads = conn.execute(
+            "SELECT id, substr(scraped_at, 1, 7) AS periodo "
+            "FROM businesses WHERE source = 'meta'").fetchall()
+        eventos_filas = conn.execute(
+            "SELECT lead_id, new_status FROM lead_events").fetchall()
+        ingresos_filas = conn.execute(
+            "SELECT client_id, monto_usd FROM finanzas_movimientos "
+            "WHERE tipo = 'ingreso' AND anulado = 0 AND client_id IS NOT NULL"
+        ).fetchall()
+    finally:
+        conn.close()
+
+    eventos: dict = {}
+    for fila in eventos_filas:
+        eventos.setdefault(fila["lead_id"], set()).add(fila["new_status"])
+
+    ingresos_por_lead: dict = {}
+    for fila in ingresos_filas:
+        ingresos_por_lead[fila["client_id"]] = (
+            ingresos_por_lead.get(fila["client_id"], 0.0) + fila["monto_usd"])
+
+    conteo = {p: {"leads": 0, "calificados": 0, "demos": 0, "ventas": 0,
+                  "ingresos": 0.0} for p in periodos}
+    for lead in leads:
+        periodo = lead["periodo"]
+        if periodo not in conteo:
+            continue
+        suyos = eventos.get(lead["id"], set())
+        c = conteo[periodo]
+        c["leads"] += 1
+        c["ingresos"] += ingresos_por_lead.get(lead["id"], 0.0)
+        if alcanzo(suyos, "reunion_agendada"):
+            c["calificados"] += 1
+        if alcanzo(suyos, "reunion_hecha"):
+            c["demos"] += 1
+        if alcanzo(suyos, "cliente_cerrado"):
+            c["ventas"] += 1
+
+    meses = [_fila_pauta(p, inversion.get(p, 0.0), conteo[p]["leads"],
+                         conteo[p]["calificados"], conteo[p]["demos"],
+                         conteo[p]["ventas"], conteo[p]["ingresos"])
+             for p in periodos]
+
+    total = _fila_pauta("total",
+                        sum(inversion.get(p, 0.0) for p in periodos),
+                        sum(c["leads"] for c in conteo.values()),
+                        sum(c["calificados"] for c in conteo.values()),
+                        sum(c["demos"] for c in conteo.values()),
+                        sum(c["ventas"] for c in conteo.values()),
+                        sum(c["ingresos"] for c in conteo.values()))
+
+    return {"desde": desde, "hasta": hasta, "meses": meses, "total": total}
+```
+
+- [ ] **Step 4: Agregar la ruta**
+
+En `routes/finanzas.py`, junto a `api_resumen`, agregando `rendimiento_pauta` al
+import de `services.finanzas`:
+
+```python
+@finanzas_bp.route("/api/finanzas/pauta")
+def api_pauta():
+    """Rendimiento de la pauta: qué compró cada dólar invertido."""
+    db = _db()
+    hoy = date.today()
+    mes_actual = f"{hoy.year:04d}-{hoy.month:02d}"
+    desde = request.args.get("desde") or mes_actual
+    hasta = request.args.get("hasta") or mes_actual
+    if desde > hasta:
+        return jsonify({"ok": False, "error": "desde tiene que ser <= hasta"}), 400
+    return jsonify(rendimiento_pauta(db, desde, hasta))
+```
+
+Sumar a `tests/test_finanzas_pauta.py` dos tests de la ruta. Para las fixtures,
+copiar el patrón de `app` / `_rol` / `_usuario` / `_cli` de
+`tests/test_finanzas_rutas.py`:
+
+```python
+def test_la_ruta_de_pauta_pide_el_panel(app):
+    """Mismo candado que el resto del blueprint."""
+    db = app.config["_DB"]
+    uid = _usuario(db, "caller@scalerics.com", _rol(db, "Caller", ["cola"]))
+    assert _cli(app, uid).get("/api/finanzas/pauta").status_code == 403
+
+
+def test_la_ruta_de_pauta_rechaza_el_rango_al_reves(cli):
+    r = cli.get("/api/finanzas/pauta?desde=2026-09&hasta=2026-08")
+    assert r.status_code == 400
+```
+
+- [ ] **Step 5: Correr los tests**
+
+Run: `python -m pytest tests/test_finanzas_pauta.py -v`
+Expected: PASS, 19 tests
+
+- [ ] **Step 6: Correr la suite entera**
+
+Run: `python -m pytest -q`
+Expected: PASS
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add services/finanzas.py routes/finanzas.py tests/test_finanzas_pauta.py
+git commit -m "feat(finanzas): rendimiento de la pauta por mes"
+```
+
+---
+
+### Task 14: La vista de pauta y la carga histórica
+
+**Files:**
+- Modify: `dashboard.py` (un toggle más, la tabla de pauta y su CSS)
+- Create: `scripts/cargar_pauta_historica.py`
+- Test: `tests/test_finanzas_panel.py` (dos casos más)
+
+**Interfaces:**
+- Consumes: `GET /api/finanzas/pauta` (Task 13); `_finUsd`, `_finRango`, `finVista`, `esc` (Tasks 7-10).
+- Produces: `loadPauta()`, `_finNum(v, prefijo)`, y `scripts/cargar_pauta_historica.py`.
+
+- [ ] **Step 1: Agregar el tercer toggle y el contenedor**
+
+En el `.fin-toolbar` del panel, junto a los dos botones que ya están:
+
+```html
+      <button class="pill" id="fin-tab-pauta" onclick="finVista('pauta')">Pauta</button>
+```
+
+Y el contenedor, junto a las otras dos vistas:
+
+```html
+  <div id="fin-vista-pauta" style="display:none">
+    <div class="fin-card"><div class="fin-card-title">Qué compró la pauta</div>
+      <div id="fin-pauta"></div></div>
+  </div>
+```
+
+`finVista` hoy asume dos vistas (un booleano `esMovs`). Reescribirla para tres:
+
+```javascript
+const FIN_VISTAS = ['movimientos', 'fijos', 'pauta'];
+
+function finVista(cual) {
+  FIN_VISTAS.forEach(v => {
+    document.getElementById(`fin-vista-${v}`).style.display = v === cual ? '' : 'none';
+  });
+  document.getElementById('fin-tab-movs').classList.toggle('active', cual === 'movimientos');
+  document.getElementById('fin-tab-fijos').classList.toggle('active', cual === 'fijos');
+  document.getElementById('fin-tab-pauta').classList.toggle('active', cual === 'pauta');
+  if (cual === 'fijos') loadFijos();
+  if (cual === 'pauta') loadPauta();
+}
+```
+
+- [ ] **Step 2: Escribir el render**
+
+```javascript
+function _finNum(v, prefijo) {
+  // Un guión, no un cero: un mes sin ventas no tiene un costo por venta de
+  // cero, no tiene costo por venta.
+  if (v === null || v === undefined) return '—';
+  return (prefijo || '') + v.toLocaleString('es-UY', {minimumFractionDigits: 2,
+                                                      maximumFractionDigits: 2});
+}
+
+async function loadPauta() {
+  const cuerpo = document.getElementById('fin-pauta');
+  const {desde, hasta} = _finRango();
+  cuerpo.innerHTML = '<div style="color:#475569;padding:16px;font-size:.85rem">Cargando...</div>';
+  try {
+    const r = await fetch(`/api/finanzas/pauta?desde=${desde}&hasta=${hasta}`);
+    if (!r.ok) throw new Error('no se pudo cargar el rendimiento');
+    const data = await r.json();
+
+    const fila = (m, esTotal) => `
+      <tr style="${esTotal ? 'font-weight:700;border-top:2px solid #1e293b' : ''}">
+        <td>${esTotal ? 'Total' : m.periodo}</td>
+        <td class="fin-rojo">${_finNum(m.inversion_usd, 'USD ')}</td>
+        <td>${m.leads}</td>
+        <td>${_finNum(m.cpl, 'USD ')}</td>
+        <td>${m.calificados}</td>
+        <td>${_finNum(m.costo_calificado, 'USD ')}</td>
+        <td>${m.demos}</td>
+        <td>${_finNum(m.costo_demo, 'USD ')}</td>
+        <td>${m.ventas}</td>
+        <td>${_finNum(m.costo_venta, 'USD ')}</td>
+        <td class="fin-verde">${_finNum(m.ingresos_usd, 'USD ')}</td>
+        <td>${m.roi === null ? '—' : m.roi.toFixed(2) + '×'}</td>
+      </tr>`;
+
+    cuerpo.innerHTML = `
+      <div style="overflow-x:auto">
+      <table class="fin-tabla">
+        <thead><tr>
+          <th>Mes</th><th>Inversión</th><th>Leads</th><th>CPL</th>
+          <th>Calificados</th><th>Costo</th><th>Demos</th><th>Costo</th>
+          <th>Ventas</th><th>Costo</th><th>Ingresos</th><th>ROI</th>
+        </tr></thead>
+        <tbody>${data.meses.map(m => fila(m, false)).join('')}${fila(data.total, true)}</tbody>
+      </table></div>`;
+  } catch (e) {
+    cuerpo.innerHTML = `<div style="color:#f87171;padding:16px">Error: ${esc(e.message)}</div>`;
+  }
+}
+```
+
+Y el CSS, junto al resto del bloque `.fin-*`:
+
+```css
+.fin-tabla{width:100%;border-collapse:collapse;font-size:.8rem}
+.fin-tabla th{text-align:left;padding:8px 10px;color:#64748b;font-size:.68rem;
+              text-transform:uppercase;letter-spacing:.6px;white-space:nowrap}
+.fin-tabla td{padding:8px 10px;color:#e2e8f0;white-space:nowrap;
+              border-top:1px solid #1e293b}
+body.light .fin-tabla td{color:#1e293b;border-top-color:#e2e8f0}
+```
+
+- [ ] **Step 3: Escribir el script de carga histórica**
+
+Crear `scripts/cargar_pauta_historica.py`:
+
+```python
+"""Carga los seis meses de pauta de `Scalerics - Leads - 2026.xlsx` y contrasta.
+
+Hace dos cosas, en este orden:
+
+1. Inserta la inversión de marzo a agosto de 2026 como egresos de categoría
+   `publicidad`, para que la sección financiera no arranque vacía.
+2. Compara los leads, calificados, demos y ventas que el CRM calcula contra los
+   que la planilla trae a mano, mes por mes, y muestra la diferencia.
+
+El paso 2 es el que importa. No está verificado que `lead_events` cubra esos
+seis meses: si no llega tan atrás, los números del CRM van a dar por debajo de
+los de la planilla. Este script no arregla eso — lo muestra, para que la
+decisión se tome viendo el número y no suponiéndolo.
+
+Es idempotente: si ya cargó un mes, no lo duplica.
+
+Uso:  python scripts/cargar_pauta_historica.py [--db leads.db] [--aplicar]
+Sin `--aplicar` no escribe nada: solo muestra qué haría y el contraste.
+"""
+
+import argparse
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from database import crear_movimiento, listar_movimientos  # noqa: E402
+from services.finanzas import rendimiento_pauta  # noqa: E402
+
+# Copiado a mano de la hoja «Análisis». La columna rotulada «ROI» en la planilla
+# es en realidad el costo por venta (3017.15 / 2 = 1508.575), así que no se
+# transcribe: el ROI de verdad lo calcula el CRM con los ingresos.
+PLANILLA = [
+    # periodo,  inversion, leads, calificados, demos, ventas
+    ("2026-03", 368.98, 59, 4, 3, 0),
+    ("2026-04", 528.52, 25, 6, 5, 1),
+    ("2026-05", 452.18, 28, 7, 8, 0),
+    ("2026-06", 608.01, 49, 19, 12, 1),
+    ("2026-07", 610.48, 40, 17, 11, 0),
+    ("2026-08", 448.98, 26, 11, 5, 0),
+]
+
+
+def cargar(db_path: str, aplicar: bool) -> int:
+    ya = {m["periodo"] for m in listar_movimientos(db_path, categoria="publicidad")}
+    creados = 0
+    for periodo, inversion, *_ in PLANILLA:
+        if periodo in ya:
+            print(f"  {periodo}  ya estaba, no se toca")
+            continue
+        print(f"  {periodo}  USD {inversion:>7.2f}  "
+              f"{'CARGANDO' if aplicar else '(simulacro)'}")
+        if aplicar:
+            crear_movimiento(db_path, tipo="egreso", fecha=f"{periodo}-01",
+                             periodo=periodo, concepto="Meta Ads",
+                             categoria="publicidad", monto=inversion,
+                             moneda="USD", monto_usd=inversion,
+                             notas="Importado de Scalerics - Leads - 2026.xlsx",
+                             created_by_name="carga histórica")
+            creados += 1
+    return creados
+
+
+def contrastar(db_path: str) -> bool:
+    r = rendimiento_pauta(db_path, PLANILLA[0][0], PLANILLA[-1][0])
+    por_periodo = {m["periodo"]: m for m in r["meses"]}
+    print(f"\n{'Mes':<9} {'concepto':<13} {'planilla':>9} {'CRM':>7} {'dif':>7}")
+    print("-" * 50)
+    coincide = True
+    for periodo, _, leads, calificados, demos, ventas in PLANILLA:
+        m = por_periodo.get(periodo, {})
+        for etiqueta, esperado, clave in (("leads", leads, "leads"),
+                                          ("calificados", calificados, "calificados"),
+                                          ("demos", demos, "demos"),
+                                          ("ventas", ventas, "ventas")):
+            real = m.get(clave, 0)
+            dif = real - esperado
+            if dif:
+                coincide = False
+            marca = "" if not dif else ("  <<<" if abs(dif) > 2 else "  <")
+            print(f"{periodo:<9} {etiqueta:<13} {esperado:>9} {real:>7} {dif:>+7}{marca}")
+    return coincide
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument("--db", default=os.environ.get("DB_PATH", "leads.db"))
+    p.add_argument("--aplicar", action="store_true",
+                   help="escribir de verdad (sin esto es un simulacro)")
+    args = p.parse_args()
+
+    print(f"Base: {args.db}\n\nInversión en pauta:")
+    creados = cargar(args.db, args.aplicar)
+    print(f"\n{creados} movimiento(s) creado(s).")
+
+    print("\nContraste contra la planilla:")
+    if contrastar(args.db):
+        print("\nTodo coincide. El CRM reemplaza la hoja «Análisis».")
+    else:
+        print("\nHay diferencias. Lo mas probable es que `lead_events` no cubra")
+        print("todos esos meses, asi que la historia vieja esta incompleta y el")
+        print("CRM cuenta de menos. No lo decidas sin mirar estos numeros.")
+
+
+if __name__ == "__main__":
+    main()
+```
+
+- [ ] **Step 4: Agregar los tests del panel**
+
+En `tests/test_finanzas_panel.py`:
+
+```python
+def test_el_panel_tiene_la_vista_de_pauta():
+    assert 'id="fin-vista-pauta"' in HTML
+    assert "function loadPauta(" in HTML
+
+
+def test_un_costo_sin_denominador_se_muestra_como_guion():
+    """La planilla mostraba #DIV/0!. Un cero ahí sería mentira."""
+    assert "function _finNum(" in HTML
+    assert "return '—'" in HTML
+```
+
+- [ ] **Step 5: Correr los tests y el validador de JS**
+
+Run: `python -m pytest tests/test_finanzas_panel.py -v && python scripts/check_js.py`
+Expected: PASS
+
+- [ ] **Step 6: Correr el script en simulacro**
+
+Run: `python scripts/cargar_pauta_historica.py --db leads.db`
+
+Expected: corre sin romperse y muestra el contraste. Contra la base de
+desarrollo, que está vacía, el CRM va a dar 0 en todo y la diferencia va a ser
+el total de la planilla — eso confirma que el script funciona, no que los
+números estén mal. Si `leads.db` no existe en el worktree, crearla con
+`python -c "from database import init_db; init_db('leads.db')"` primero.
+
+- [ ] **Step 7: Correr la suite entera**
+
+Run: `python -m pytest -q`
+Expected: PASS
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add dashboard.py scripts/cargar_pauta_historica.py tests/test_finanzas_panel.py
+git commit -m "feat(finanzas): vista de pauta y carga historica de la planilla"
+```
+
+
+---
+
 ## Notas para quien ejecute
 
 **El test que más importa de todo el plan** es `test_correrlo_dos_veces_no_duplica` (Task 3). Sin el índice único, cada deploy —que reinicia la máquina, que vuelve a materializar— duplicaría los gastos del mes, y el panel mostraría el doble de egresos sin que nada falle ruidosamente.
