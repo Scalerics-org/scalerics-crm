@@ -87,3 +87,20 @@ def test_los_montos_se_muestran_en_dolares():
 
 def test_el_panel_tiene_reglas_para_modo_claro():
     assert "body.light .fin-card" in HTML
+
+
+def test_el_json_de_los_onclick_va_escapado():
+    """Un concepto con apóstrofo partiría el atributo y mataría el botón."""
+    assert "function _finAttr(" in HTML
+    assert "abrirMovimiento(${_finAttr(m)})" in HTML
+    assert "abrirMovimiento(${JSON.stringify(m)})" not in HTML
+
+
+def test_el_modal_muestra_el_monto_en_dolares_antes_de_guardar():
+    """Ver el número congelado antes de congelarlo es el punto del modal."""
+    assert "Se va a guardar como" in HTML
+    assert 'id="fin-tc-preview"' in HTML
+
+
+def test_borrar_un_movimiento_de_un_fijo_avisa_que_el_fijo_sigue():
+    assert "el fijo sigue activo" in HTML

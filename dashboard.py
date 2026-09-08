@@ -1441,7 +1441,7 @@ body.light .fin-hbar-nombre{color:#475569}
   </div>
 
   <!-- ======= FINANZAS PANEL ======= -->
-  <div class="panel" id="finanzas-panel">
+  <div id="finanzas-panel" class="panel">
     <div class="fin-toolbar">
       <select id="fin-rango" onchange="loadFinanzas()">
         <option value="mes">Mes actual</option>
@@ -1796,6 +1796,55 @@ body.light .fin-hbar-nombre{color:#475569}
         <button class="btn-cancel" onclick="closeDemoModal()">Cerrar</button>
         <button onclick="copyAndOpenClaude()" style="background:#4f46e5;border:none;color:#fff;font-size:.82rem;font-weight:700;padding:10px 18px;border-radius:8px;cursor:pointer">📋 Copiar prompt y abrir Claude.ai</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="fin-modal" onclick="if(event.target===this)cerrarMovimiento()">
+  <div class="modal" style="width:480px">
+    <h3 id="fin-modal-title">Nuevo movimiento</h3>
+    <input type="hidden" id="fin-mov-id">
+    <input type="hidden" id="fin-mov-budget">
+
+    <div class="fin-toggle" style="margin-bottom:14px">
+      <button class="pill active" id="fin-tipo-egreso" onclick="finSetTipo('egreso')">Egreso</button>
+      <button class="pill" id="fin-tipo-ingreso" onclick="finSetTipo('ingreso')">Ingreso</button>
+    </div>
+
+    <label class="modal-label">Fecha</label>
+    <input type="date" id="fin-mov-fecha" class="modal-input">
+
+    <label class="modal-label">Concepto</label>
+    <input type="text" id="fin-mov-concepto" class="modal-input" placeholder="Fly.io, cobro Bloquera, ...">
+
+    <label class="modal-label">Categoría</label>
+    <select id="fin-mov-categoria"></select>
+
+    <label class="modal-label">Monto</label>
+    <div style="display:flex;gap:8px">
+      <input type="number" step="0.01" min="0" id="fin-mov-monto" class="modal-input" oninput="_finRecalcularUsd()">
+      <select id="fin-mov-moneda" onchange="_finRecalcularUsd()">
+        <option value="USD">USD</option>
+        <option value="UYU">UYU</option>
+      </select>
+    </div>
+
+    <div id="fin-tc-row" style="display:none">
+      <label class="modal-label">Tipo de cambio (pesos por dólar)</label>
+      <input type="number" step="0.01" min="0" id="fin-mov-tc" class="modal-input" oninput="_finRecalcularUsd()">
+      <div id="fin-tc-preview" class="fin-kpi-var"></div>
+    </div>
+
+    <label class="modal-label">Cliente (opcional)</label>
+    <select id="fin-mov-cliente"><option value="">Sin atribuir</option></select>
+
+    <label class="modal-label">Notas</label>
+    <textarea id="fin-mov-notas" rows="2"></textarea>
+
+    <div id="fin-modal-error" class="fin-rojo" style="font-size:.8rem;margin-top:10px"></div>
+    <div class="modal-btns">
+      <button class="btn-ghost" onclick="cerrarMovimiento()">Cancelar</button>
+      <button class="btn-primary" onclick="guardarMovimiento()">Guardar</button>
     </div>
   </div>
 </div>
@@ -5205,6 +5254,12 @@ function _finUsd(n) {
                                                     maximumFractionDigits: 2});
 }
 
+function _finAttr(obj) {
+  // El JSON va dentro de un atributo entre comillas simples: un apóstrofo en
+  // el concepto partiría el atributo y rompería el botón.
+  return JSON.stringify(obj).replace(/'/g, '&#39;');
+}
+
 function _finRango() {
   const hoy = new Date();
   const mes = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -5298,9 +5353,153 @@ async function loadFinanzas() {
   }
 }
 
-async function loadMovimientos() {}
+let _finCategorias = null;
+let _finTipo = 'egreso';
+
+async function _finCargarCategorias() {
+  if (!_finCategorias) {
+    _finCategorias = await (await fetch('/api/finanzas/categorias')).json();
+  }
+  return _finCategorias;
+}
+
+function finSetTipo(tipo) {
+  _finTipo = tipo;
+  document.getElementById('fin-tipo-egreso').classList.toggle('active', tipo === 'egreso');
+  document.getElementById('fin-tipo-ingreso').classList.toggle('active', tipo === 'ingreso');
+  const sel = document.getElementById('fin-mov-categoria');
+  sel.innerHTML = (_finCategorias[tipo] || [])
+    .map(c => `<option value="${c}">${c.replace(/_/g, ' ')}</option>`).join('');
+}
+
+function _finRecalcularUsd() {
+  // El número congelado se ve ANTES de congelarlo, no después.
+  const esPesos = document.getElementById('fin-mov-moneda').value === 'UYU';
+  document.getElementById('fin-tc-row').style.display = esPesos ? '' : 'none';
+  if (!esPesos) return;
+  const monto = parseFloat(document.getElementById('fin-mov-monto').value);
+  const tc = parseFloat(document.getElementById('fin-mov-tc').value);
+  const box = document.getElementById('fin-tc-preview');
+  box.textContent = (monto > 0 && tc > 0)
+    ? `Se va a guardar como ${_finUsd(monto / tc)}`
+    : 'Falta el tipo de cambio para poder guardarlo';
+}
+
+async function abrirMovimiento(prefill) {
+  await _finCargarCategorias();
+  const p = prefill || {};
+  document.getElementById('fin-modal-title').textContent =
+    p.id ? 'Editar movimiento' : 'Nuevo movimiento';
+  document.getElementById('fin-mov-id').value = p.id || '';
+  document.getElementById('fin-mov-budget').value = p.budget_id || '';
+  document.getElementById('fin-mov-fecha').value =
+    p.fecha || new Date().toISOString().slice(0, 10);
+  document.getElementById('fin-mov-concepto').value = p.concepto || '';
+  document.getElementById('fin-mov-monto').value = p.monto || '';
+  document.getElementById('fin-mov-moneda').value = p.moneda || 'USD';
+  document.getElementById('fin-mov-tc').value = p.tipo_cambio || '';
+  document.getElementById('fin-mov-notas').value = p.notas || '';
+  document.getElementById('fin-modal-error').textContent = '';
+
+  finSetTipo(p.tipo || 'egreso');
+  if (p.categoria) document.getElementById('fin-mov-categoria').value = p.categoria;
+  await _finCargarClientes(p.client_id);
+  _finRecalcularUsd();
+  document.getElementById('fin-modal').classList.add('open');
+}
+
+function cerrarMovimiento() {
+  document.getElementById('fin-modal').classList.remove('open');
+}
+
+async function _finCargarClientes(seleccionado) {
+  const sel = document.getElementById('fin-mov-cliente');
+  if (sel.dataset.cargado !== '1') {
+    const r = await fetch('/api/leads?crm_group=clientes');
+    const data = await r.json();
+    const leads = Array.isArray(data) ? data : (data.items || []);
+    sel.innerHTML = '<option value="">Sin atribuir</option>' +
+      leads.map(b => `<option value="${b.id}">${esc(b.name)}</option>`).join('');
+    sel.dataset.cargado = '1';
+  }
+  sel.value = seleccionado || '';
+}
+
+async function guardarMovimiento() {
+  const id = document.getElementById('fin-mov-id').value;
+  const moneda = document.getElementById('fin-mov-moneda').value;
+  const cuerpo = {
+    tipo: _finTipo,
+    fecha: document.getElementById('fin-mov-fecha').value,
+    concepto: document.getElementById('fin-mov-concepto').value,
+    categoria: document.getElementById('fin-mov-categoria').value,
+    monto: parseFloat(document.getElementById('fin-mov-monto').value),
+    moneda,
+    tipo_cambio: moneda === 'UYU'
+      ? parseFloat(document.getElementById('fin-mov-tc').value) : null,
+    client_id: document.getElementById('fin-mov-cliente').value || null,
+    budget_id: document.getElementById('fin-mov-budget').value || null,
+    notas: document.getElementById('fin-mov-notas').value,
+  };
+  const r = await fetch(id ? `/api/finanzas/movimientos/${id}` : '/api/finanzas/movimientos',
+                        {method: id ? 'PUT' : 'POST',
+                         headers: {'Content-Type': 'application/json'},
+                         body: JSON.stringify(cuerpo)});
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    document.getElementById('fin-modal-error').textContent =
+      err.error || 'No se pudo guardar';
+    return;
+  }
+  cerrarMovimiento();
+  loadFinanzas();
+}
+
+async function loadMovimientos(desde, hasta) {
+  const cuerpo = document.getElementById('fin-tabla');
+  const r = await fetch(`/api/finanzas/movimientos?desde=${desde}&hasta=${hasta}`);
+  const movs = await r.json();
+  if (!movs.length) {
+    cuerpo.innerHTML = '<div class="empty-state">No hay movimientos en el período</div>';
+    return;
+  }
+  cuerpo.innerHTML = movs.map(m => {
+    const esIngreso = m.tipo === 'ingreso';
+    const original = m.moneda === 'UYU'
+      ? ` <span class="fin-kpi-var">($ ${m.monto.toLocaleString('es-UY')} @ ${m.tipo_cambio})</span>`
+      : '';
+    return `
+    <div class="table-row no-cb">
+      <div style="flex:0 0 92px" class="fin-kpi-var">${m.fecha}</div>
+      <div style="flex:1">
+        <div class="biz-name">${esc(m.concepto)}</div>
+        <div class="fin-kpi-var">${esc(m.categoria.replace(/_/g, ' '))}${m.recurrente_id ? ' · fijo' : ''}</div>
+      </div>
+      <div style="flex:0 0 170px;text-align:right"
+           class="${esIngreso ? 'fin-verde' : 'fin-rojo'}">
+        ${esIngreso ? '+' : '−'}${_finUsd(m.monto_usd)}${original}
+      </div>
+      <div style="flex:0 0 76px;text-align:right">
+        <button class="btn-ghost" onclick='abrirMovimiento(${_finAttr(m)})'
+                title="Editar"><i data-lucide="pencil" class="nav-icon"></i></button>
+        <button class="btn-ghost" onclick="borrarMovimientoUI(${m.id}, ${m.recurrente_id ? 1 : 0})"
+                title="Borrar"><i data-lucide="trash-2" class="nav-icon"></i></button>
+      </div>
+    </div>`;
+  }).join('');
+  if (window.lucide) lucide.createIcons();
+}
+
+async function borrarMovimientoUI(id, esDeUnFijo) {
+  const aviso = esDeUnFijo
+    ? 'Este movimiento lo generó un gasto fijo. Se va a sacar de los totales de este mes, pero el fijo sigue activo para los meses que vienen. ¿Seguro?'
+    : '¿Borrar el movimiento?';
+  if (!confirm(aviso)) return;
+  await fetch(`/api/finanzas/movimientos/${id}`, {method: 'DELETE'});
+  loadFinanzas();
+}
+
 async function loadFijos() {}
-function abrirMovimiento() {}
 
 async function loadMetrics() {
   const stateLabels = {sin_contactar:'Sin contactar',interesado:'Interesado',contactado:'Interesado',reunion_agendada:'Reunión agendada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Presupuesto enviado',negociacion:'Negociación',cliente_cerrado:'Cliente cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado'};
