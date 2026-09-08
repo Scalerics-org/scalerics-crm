@@ -1129,6 +1129,7 @@ body.light .upick-name{color:#0f172a}
 .fin-tabla td{padding:8px 10px;color:#e2e8f0;white-space:nowrap;
               border-top:1px solid #1e293b}
 body.light .fin-tabla td{color:#1e293b;border-top-color:#e2e8f0}
+body.light .fin-tabla th{color:#475569}
 .fin-split{display:grid;grid-template-columns:1fr 1fr;gap:18px}
 .fin-mes{display:flex;align-items:flex-end;gap:3px;height:90px}
 .fin-serie{display:flex;gap:10px;align-items:flex-end;overflow-x:auto;padding-bottom:6px}
@@ -5396,6 +5397,11 @@ async function loadPauta() {
         <td class="fin-verde">${_finNum(m.ingresos_usd, 'USD ')}</td>
         <td>${m.roi === null ? '—' : m.roi.toFixed(2) + '×'}</td>
       </tr>`;
+
+    if (!data.meses.length) {
+      cuerpo.innerHTML = '<div class="empty-state">No hay datos de pauta en el período</div>';
+      return;
+    }
 
     cuerpo.innerHTML = `
       <div style="overflow-x:auto">
