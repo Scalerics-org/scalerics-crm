@@ -104,3 +104,12 @@ def test_el_modal_muestra_el_monto_en_dolares_antes_de_guardar():
 
 def test_borrar_un_movimiento_de_un_fijo_avisa_que_el_fijo_sigue():
     assert "el fijo sigue activo" in HTML
+
+
+def test_el_json_del_fijo_tambien_va_escapado():
+    assert "abrirFijo(${_finAttr(f)})" in HTML
+    assert "abrirFijo(${JSON.stringify(f)})" not in HTML
+
+
+def test_borrar_un_fijo_aclara_que_los_movimientos_quedan():
+    assert "son plata que se gastó" in HTML

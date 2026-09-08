@@ -548,7 +548,7 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .modal p{font-size:.82rem;color:#64748b;margin-bottom:18px}
 .modal textarea{width:100%;background:#0f1117;border:1px solid #1e293b;border-radius:8px;padding:10px 14px;font-size:.85rem;color:#e2e8f0;font-family:'Inter',sans-serif;resize:vertical;min-height:80px;outline:none;margin-bottom:16px}
 .modal textarea::placeholder{color:#334155}
-.modal input[type=text],.modal input[type=date],.modal input[type=time],.modal input[type=number],.modal input[type=email],.modal input[type=datetime-local],.modal-input{width:100%;background:#0f1117;border:1px solid #1e293b;border-radius:8px;padding:10px 14px;font-size:.85rem;color:#e2e8f0;font-family:'Inter',sans-serif;outline:none;margin-bottom:12px;box-sizing:border-box}
+.modal input[type=text],.modal input[type=date],.modal input[type=month],.modal input[type=time],.modal input[type=number],.modal input[type=email],.modal input[type=datetime-local],.modal-input{width:100%;background:#0f1117;border:1px solid #1e293b;border-radius:8px;padding:10px 14px;font-size:.85rem;color:#e2e8f0;font-family:'Inter',sans-serif;outline:none;margin-bottom:12px;box-sizing:border-box}
 .modal select,.modal-input select{width:100%;background:#0f1117;border:1px solid #1e293b;border-radius:8px;padding:10px 14px;font-size:.85rem;color:#e2e8f0;font-family:'Inter',sans-serif;outline:none;margin-bottom:12px;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:36px;cursor:pointer}
 .modal input[type=datetime-local]::-webkit-calendar-picker-indicator{filter:invert(1);opacity:.4;cursor:pointer}
 .modal input::placeholder{color:#334155}
@@ -1845,6 +1845,53 @@ body.light .fin-hbar-nombre{color:#475569}
     <div class="modal-btns">
       <button class="btn-ghost" onclick="cerrarMovimiento()">Cancelar</button>
       <button class="btn-primary" onclick="guardarMovimiento()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="fin-fijo-modal" onclick="if(event.target===this)cerrarFijo()">
+  <div class="modal" style="width:480px">
+    <h3 id="fin-fijo-title">Nuevo fijo</h3>
+    <input type="hidden" id="fin-fijo-id">
+
+    <div class="fin-toggle" style="margin-bottom:14px">
+      <button class="pill active" id="fin-fijo-tipo-egreso" onclick="finFijoSetTipo('egreso')">Egreso</button>
+      <button class="pill" id="fin-fijo-tipo-ingreso" onclick="finFijoSetTipo('ingreso')">Ingreso</button>
+    </div>
+
+    <label class="modal-label">Concepto</label>
+    <input type="text" id="fin-fijo-concepto" class="modal-input" placeholder="Fly.io, Vercel, Zoho, ...">
+
+    <label class="modal-label">Categoría</label>
+    <select id="fin-fijo-categoria"></select>
+
+    <label class="modal-label">Monto</label>
+    <div style="display:flex;gap:8px">
+      <input type="number" step="0.01" min="0" id="fin-fijo-monto" class="modal-input">
+      <select id="fin-fijo-moneda" onchange="_finFijoTc()">
+        <option value="USD">USD</option>
+        <option value="UYU">UYU</option>
+      </select>
+    </div>
+
+    <div id="fin-fijo-tc-row" style="display:none">
+      <label class="modal-label">Tipo de cambio (pesos por dólar)</label>
+      <input type="number" step="0.01" min="0" id="fin-fijo-tc" class="modal-input">
+    </div>
+
+    <label class="modal-label">Día del mes (1 al 28)</label>
+    <input type="number" min="1" max="28" id="fin-fijo-dia" class="modal-input" value="1">
+
+    <label class="modal-label">Desde</label>
+    <input type="month" id="fin-fijo-desde" class="modal-input">
+
+    <label class="modal-label">Hasta (vacío = sigue vivo)</label>
+    <input type="month" id="fin-fijo-hasta" class="modal-input">
+
+    <div id="fin-fijo-error" class="fin-rojo" style="font-size:.8rem;margin-top:10px"></div>
+    <div class="modal-btns">
+      <button class="btn-ghost" onclick="cerrarFijo()">Cancelar</button>
+      <button class="btn-primary" onclick="guardarFijo()">Guardar</button>
     </div>
   </div>
 </div>
@@ -5499,7 +5546,121 @@ async function borrarMovimientoUI(id, esDeUnFijo) {
   loadFinanzas();
 }
 
-async function loadFijos() {}
+let _finFijoTipo = 'egreso';
+
+function _finFijoTc() {
+  const esPesos = document.getElementById('fin-fijo-moneda').value === 'UYU';
+  document.getElementById('fin-fijo-tc-row').style.display = esPesos ? '' : 'none';
+}
+
+function finFijoSetTipo(tipo) {
+  _finFijoTipo = tipo;
+  document.getElementById('fin-fijo-tipo-egreso').classList.toggle('active', tipo === 'egreso');
+  document.getElementById('fin-fijo-tipo-ingreso').classList.toggle('active', tipo === 'ingreso');
+  document.getElementById('fin-fijo-categoria').innerHTML =
+    (_finCategorias[tipo] || []).map(c =>
+      `<option value="${c}">${c.replace(/_/g, ' ')}</option>`).join('');
+}
+
+async function abrirFijo(fijo) {
+  await _finCargarCategorias();
+  const f = fijo || {};
+  document.getElementById('fin-fijo-title').textContent = f.id ? 'Editar fijo' : 'Nuevo fijo';
+  document.getElementById('fin-fijo-id').value = f.id || '';
+  document.getElementById('fin-fijo-concepto').value = f.concepto || '';
+  document.getElementById('fin-fijo-monto').value = f.monto || '';
+  document.getElementById('fin-fijo-moneda').value = f.moneda || 'USD';
+  document.getElementById('fin-fijo-tc').value = f.tipo_cambio || '';
+  document.getElementById('fin-fijo-dia').value = f.dia_del_mes || 1;
+  document.getElementById('fin-fijo-desde').value =
+    f.desde || new Date().toISOString().slice(0, 7);
+  document.getElementById('fin-fijo-hasta').value = f.hasta || '';
+  document.getElementById('fin-fijo-error').textContent = '';
+  finFijoSetTipo(f.tipo || 'egreso');
+  if (f.categoria) document.getElementById('fin-fijo-categoria').value = f.categoria;
+  _finFijoTc();
+  document.getElementById('fin-fijo-modal').classList.add('open');
+}
+
+function cerrarFijo() {
+  document.getElementById('fin-fijo-modal').classList.remove('open');
+}
+
+async function guardarFijo() {
+  const id = document.getElementById('fin-fijo-id').value;
+  const moneda = document.getElementById('fin-fijo-moneda').value;
+  const cuerpo = {
+    tipo: _finFijoTipo,
+    concepto: document.getElementById('fin-fijo-concepto').value,
+    categoria: document.getElementById('fin-fijo-categoria').value,
+    monto: parseFloat(document.getElementById('fin-fijo-monto').value),
+    moneda,
+    tipo_cambio: moneda === 'UYU'
+      ? parseFloat(document.getElementById('fin-fijo-tc').value) : null,
+    dia_del_mes: parseInt(document.getElementById('fin-fijo-dia').value, 10),
+    desde: document.getElementById('fin-fijo-desde').value,
+    hasta: document.getElementById('fin-fijo-hasta').value || null,
+  };
+  const r = await fetch(id ? `/api/finanzas/recurrentes/${id}` : '/api/finanzas/recurrentes',
+                        {method: id ? 'PUT' : 'POST',
+                         headers: {'Content-Type': 'application/json'},
+                         body: JSON.stringify(cuerpo)});
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    document.getElementById('fin-fijo-error').textContent = err.error || 'No se pudo guardar';
+    return;
+  }
+  cerrarFijo();
+  loadFijos();
+}
+
+async function loadFijos() {
+  const cuerpo = document.getElementById('fin-fijos');
+  const fijos = await (await fetch('/api/finanzas/recurrentes')).json();
+
+  const mensual = fijos
+    .filter(f => f.activo && f.tipo === 'egreso')
+    .reduce((suma, f) => suma + (f.moneda === 'USD' ? f.monto : f.monto / (f.tipo_cambio || 1)), 0);
+
+  const encabezado = `
+    <div class="fin-toolbar">
+      <div class="fin-kpi-var">Egresos fijos activos: <strong>${_finUsd(mensual)}</strong> por mes</div>
+      <button class="btn-primary" style="margin-left:auto" onclick="abrirFijo()">
+        <i data-lucide="plus" class="nav-icon"></i> Fijo
+      </button>
+    </div>`;
+
+  if (!fijos.length) {
+    cuerpo.innerHTML = encabezado + '<div class="empty-state">No hay fijos cargados</div>';
+    if (window.lucide) lucide.createIcons();
+    return;
+  }
+
+  cuerpo.innerHTML = encabezado + fijos.map(f => `
+    <div class="table-row no-cb" style="${f.activo ? '' : 'opacity:.5'}">
+      <div style="flex:1">
+        <div class="biz-name">${esc(f.concepto)}</div>
+        <div class="fin-kpi-var">${esc(f.categoria.replace(/_/g, ' '))} · día ${f.dia_del_mes} · desde ${f.desde}${f.hasta ? ' hasta ' + f.hasta : ''}${f.activo ? '' : ' · apagado'}</div>
+      </div>
+      <div style="flex:0 0 150px;text-align:right"
+           class="${f.tipo === 'ingreso' ? 'fin-verde' : 'fin-rojo'}">
+        ${f.moneda} ${f.monto.toLocaleString('es-UY')}
+      </div>
+      <div style="flex:0 0 76px;text-align:right">
+        <button class="btn-ghost" onclick='abrirFijo(${_finAttr(f)})'
+                title="Editar"><i data-lucide="pencil" class="nav-icon"></i></button>
+        <button class="btn-ghost" onclick="borrarFijoUI(${f.id})"
+                title="Borrar"><i data-lucide="trash-2" class="nav-icon"></i></button>
+      </div>
+    </div>`).join('');
+  if (window.lucide) lucide.createIcons();
+}
+
+async function borrarFijoUI(id) {
+  if (!confirm('Se borra la definición del fijo. Los movimientos que ya generó quedan: son plata que se gastó. ¿Seguro?')) return;
+  await fetch(`/api/finanzas/recurrentes/${id}`, {method: 'DELETE'});
+  loadFijos();
+}
 
 async function loadMetrics() {
   const stateLabels = {sin_contactar:'Sin contactar',interesado:'Interesado',contactado:'Interesado',reunion_agendada:'Reunión agendada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Presupuesto enviado',negociacion:'Negociación',cliente_cerrado:'Cliente cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado'};
