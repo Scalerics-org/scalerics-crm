@@ -37,8 +37,14 @@ def _quien() -> tuple[int | None, str]:
     return session.get("user_id"), session.get("user_name", "sistema")
 
 
-def _validar_movimiento(data: dict) -> tuple[dict | None, str | None]:
-    """Devuelve (campos listos para guardar, None) o (None, mensaje de error)."""
+def _validar_comunes(data: dict):
+    """Tipo, categoría, moneda y monto: los cuatro campos que movimientos y
+    fijos validan igual. Devuelve ((tipo, categoria, moneda, monto,
+    tipo_cambio, monto_usd), None) o (None, mensaje de error).
+
+    `monto_usd` sale ya congelado con `a_usd`; quien no lo necesite (los
+    fijos no lo guardan, se recalcula en cada materialización) lo descarta.
+    """
     tipo = data.get("tipo")
     if tipo not in CATEGORIAS:
         return None, "tipo tiene que ser 'ingreso' o 'egreso'"
@@ -46,14 +52,6 @@ def _validar_movimiento(data: dict) -> tuple[dict | None, str | None]:
     categoria = data.get("categoria")
     if categoria not in CATEGORIAS[tipo]:
         return None, f"categoría inválida para un {tipo}: {categoria!r}"
-
-    fecha = (data.get("fecha") or "").strip()
-    if len(fecha) != 10 or fecha[4] != "-" or fecha[7] != "-":
-        return None, "fecha tiene que ser 'YYYY-MM-DD'"
-
-    concepto = (data.get("concepto") or "").strip()
-    if not concepto:
-        return None, "concepto es obligatorio"
 
     moneda = data.get("moneda")
     if moneda not in MONEDAS:
@@ -69,19 +67,47 @@ def _validar_movimiento(data: dict) -> tuple[dict | None, str | None]:
     tipo_cambio = data.get("tipo_cambio")
     try:
         monto_usd = a_usd(monto, moneda, tipo_cambio)
-    except ValueError as e:
-        return None, str(e)
+    except (TypeError, ValueError) as e:
+        # TypeError además de ValueError: un tipo_cambio que llega como lista
+        # u objeto rompe el `float(tipo_cambio)` de adentro con TypeError, no
+        # con ValueError, y sin este catch escapaba como 500.
+        return None, "tipo_cambio inválido" if isinstance(e, TypeError) else str(e)
 
-    return {
+    tipo_cambio = float(tipo_cambio) if moneda == "UYU" else None
+    return (tipo, categoria, moneda, monto, tipo_cambio, monto_usd), None
+
+
+def _validar_movimiento(data: dict) -> tuple[dict | None, str | None]:
+    """Devuelve (campos listos para guardar, None) o (None, mensaje de error).
+
+    Los campos opcionales (`client_id`, `budget_id`, `notas`) solo entran al
+    resultado si la clave vino en el cuerpo: en un PUT, omitirla deja la
+    columna como estaba, y mandarla en `null` la limpia a propósito.
+    """
+    comunes, error = _validar_comunes(data)
+    if error:
+        return None, error
+    tipo, categoria, moneda, monto, tipo_cambio, monto_usd = comunes
+
+    fecha = (data.get("fecha") or "").strip()
+    if len(fecha) != 10 or fecha[4] != "-" or fecha[7] != "-":
+        return None, "fecha tiene que ser 'YYYY-MM-DD'"
+
+    concepto = (data.get("concepto") or "").strip()
+    if not concepto:
+        return None, "concepto es obligatorio"
+
+    campos = {
         "tipo": tipo, "fecha": fecha, "periodo": periodo_de(fecha),
         "concepto": concepto, "categoria": categoria, "monto": monto,
-        "moneda": moneda,
-        "tipo_cambio": float(tipo_cambio) if moneda == "UYU" else None,
-        "monto_usd": monto_usd,
-        "client_id": data.get("client_id") or None,
-        "budget_id": data.get("budget_id") or None,
-        "notas": (data.get("notas") or "").strip() or None,
-    }, None
+        "moneda": moneda, "tipo_cambio": tipo_cambio, "monto_usd": monto_usd,
+    }
+    for campo in ("client_id", "budget_id"):
+        if campo in data:
+            campos[campo] = data[campo] or None
+    if "notas" in data:
+        campos["notas"] = (data["notas"] or "").strip() or None
+    return campos, None
 
 
 # ── movimientos ───────────────────────────────────────────────────────────────
@@ -151,27 +177,24 @@ def api_borrar_movimiento(mov_id):
 # ── fijos ─────────────────────────────────────────────────────────────────────
 
 def _validar_recurrente(data: dict) -> tuple[dict | None, str | None]:
-    tipo = data.get("tipo")
-    if tipo not in CATEGORIAS:
-        return None, "tipo tiene que ser 'ingreso' o 'egreso'"
-    if data.get("categoria") not in CATEGORIAS[tipo]:
-        return None, f"categoría inválida para un {tipo}"
+    """Devuelve (campos listos para guardar, None) o (None, mensaje de error).
+
+    `activo`, `hasta`, `client_id` y `notas` solo entran al resultado si la
+    clave vino en el cuerpo. Importa sobre todo para `activo`: un PUT que
+    solo cambia el monto y omite `activo` no puede reencender un fijo que
+    estaba apagado a propósito — eso empezaría a generar plata sola en la
+    próxima materialización perezosa de `GET /resumen`.
+    """
+    comunes, error = _validar_comunes(data)
+    if error:
+        return None, error
+    tipo, categoria, moneda, monto, tipo_cambio, _monto_usd = comunes
+    # Los fijos no guardan monto_usd: se recalcula en cada materialización
+    # porque el tipo de cambio del mes puede ser otro.
+
     concepto = (data.get("concepto") or "").strip()
     if not concepto:
         return None, "concepto es obligatorio"
-    moneda = data.get("moneda")
-    if moneda not in MONEDAS:
-        return None, f"moneda tiene que ser una de {MONEDAS}"
-    try:
-        monto = float(data.get("monto"))
-    except (TypeError, ValueError):
-        return None, "monto tiene que ser un número"
-    if monto <= 0:
-        return None, "monto tiene que ser mayor que cero"
-    try:
-        a_usd(monto, moneda, data.get("tipo_cambio"))
-    except ValueError as e:
-        return None, str(e)
 
     dia = data.get("dia_del_mes", 1)
     try:
@@ -186,19 +209,24 @@ def _validar_recurrente(data: dict) -> tuple[dict | None, str | None]:
     desde = (data.get("desde") or "").strip()
     if len(desde) != 7 or desde[4] != "-":
         return None, "desde tiene que ser 'YYYY-MM'"
-    hasta = (data.get("hasta") or "").strip() or None
-    if hasta and (len(hasta) != 7 or hasta[4] != "-"):
-        return None, "hasta tiene que ser 'YYYY-MM'"
 
-    return {
-        "tipo": tipo, "concepto": concepto, "categoria": data["categoria"],
-        "monto": monto, "moneda": moneda,
-        "tipo_cambio": float(data["tipo_cambio"]) if moneda == "UYU" else None,
-        "dia_del_mes": dia, "desde": desde, "hasta": hasta,
-        "activo": 1 if data.get("activo", 1) else 0,
-        "client_id": data.get("client_id") or None,
-        "notas": (data.get("notas") or "").strip() or None,
-    }, None
+    campos = {
+        "tipo": tipo, "concepto": concepto, "categoria": categoria,
+        "monto": monto, "moneda": moneda, "tipo_cambio": tipo_cambio,
+        "dia_del_mes": dia, "desde": desde,
+    }
+    if "hasta" in data:
+        hasta = (data["hasta"] or "").strip() or None
+        if hasta and (len(hasta) != 7 or hasta[4] != "-"):
+            return None, "hasta tiene que ser 'YYYY-MM'"
+        campos["hasta"] = hasta
+    if "activo" in data:
+        campos["activo"] = 1 if data["activo"] else 0
+    if "client_id" in data:
+        campos["client_id"] = data["client_id"] or None
+    if "notas" in data:
+        campos["notas"] = (data["notas"] or "").strip() or None
+    return campos, None
 
 
 @finanzas_bp.route("/api/finanzas/recurrentes", methods=["GET"])

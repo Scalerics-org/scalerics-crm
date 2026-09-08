@@ -180,3 +180,77 @@ def test_un_dia_del_mes_mayor_a_28_da_400(cli):
 def test_el_resumen_rechaza_el_rango_al_reves(cli):
     r = cli.get("/api/finanzas/resumen?desde=2026-09&hasta=2026-08")
     assert r.status_code == 400
+
+
+def test_un_tipo_de_cambio_que_no_es_un_numero_da_400_en_movimiento(cli):
+    r = cli.post("/api/finanzas/movimientos", json={
+        "tipo": "ingreso", "fecha": "2026-09-01", "concepto": "Cobro",
+        "categoria": "desarrollo_web", "monto": 40000, "moneda": "UYU",
+        "tipo_cambio": [40, 41]})
+    assert r.status_code == 400
+
+
+def test_un_tipo_de_cambio_que_no_es_un_numero_da_400_en_fijo(cli):
+    r = cli.post("/api/finanzas/recurrentes", json={
+        "tipo": "egreso", "concepto": "x", "categoria": "servicios",
+        "monto": 10, "moneda": "UYU", "tipo_cambio": [40, 41],
+        "dia_del_mes": 1, "desde": "2026-09"})
+    assert r.status_code == 400
+
+
+def test_editar_un_fijo_apagado_sin_tocar_activo_lo_deja_apagado(cli):
+    r = cli.post("/api/finanzas/recurrentes", json={
+        "tipo": "egreso", "concepto": "Fly", "categoria": "infraestructura",
+        "monto": 4.18, "moneda": "USD", "dia_del_mes": 1, "desde": "2026-09",
+        "activo": False})
+    rid = r.get_json()["id"]
+    cli.put(f"/api/finanzas/recurrentes/{rid}", json={
+        "tipo": "egreso", "concepto": "Fly", "categoria": "infraestructura",
+        "monto": 5.0, "moneda": "USD", "dia_del_mes": 1, "desde": "2026-09"})
+    fijo = [f for f in cli.get("/api/finanzas/recurrentes").get_json()
+            if f["id"] == rid][0]
+    assert fijo["activo"] == 0
+    assert fijo["monto"] == 5.0
+
+
+def test_editar_un_fijo_con_activo_true_explicito_lo_enciende(cli):
+    r = cli.post("/api/finanzas/recurrentes", json={
+        "tipo": "egreso", "concepto": "Fly", "categoria": "infraestructura",
+        "monto": 4.18, "moneda": "USD", "dia_del_mes": 1, "desde": "2026-09",
+        "activo": False})
+    rid = r.get_json()["id"]
+    cli.put(f"/api/finanzas/recurrentes/{rid}", json={
+        "tipo": "egreso", "concepto": "Fly", "categoria": "infraestructura",
+        "monto": 4.18, "moneda": "USD", "dia_del_mes": 1, "desde": "2026-09",
+        "activo": True})
+    fijo = [f for f in cli.get("/api/finanzas/recurrentes").get_json()
+            if f["id"] == rid][0]
+    assert fijo["activo"] == 1
+
+
+def test_editar_un_movimiento_sin_mandar_client_id_conserva_el_que_tenia(cli):
+    r = cli.post("/api/finanzas/movimientos", json={
+        "tipo": "ingreso", "fecha": "2026-09-01", "concepto": "Cobro",
+        "categoria": "desarrollo_web", "monto": 100, "moneda": "USD",
+        "client_id": 7})
+    mid = r.get_json()["id"]
+    cli.put(f"/api/finanzas/movimientos/{mid}", json={
+        "tipo": "ingreso", "fecha": "2026-09-01", "concepto": "Cobro editado",
+        "categoria": "desarrollo_web", "monto": 100, "moneda": "USD"})
+    mov = cli.get("/api/finanzas/movimientos").get_json()[0]
+    assert mov["client_id"] == 7
+    assert mov["concepto"] == "Cobro editado"
+
+
+def test_editar_un_movimiento_con_client_id_null_lo_desatribuye(cli):
+    r = cli.post("/api/finanzas/movimientos", json={
+        "tipo": "ingreso", "fecha": "2026-09-01", "concepto": "Cobro",
+        "categoria": "desarrollo_web", "monto": 100, "moneda": "USD",
+        "client_id": 7})
+    mid = r.get_json()["id"]
+    cli.put(f"/api/finanzas/movimientos/{mid}", json={
+        "tipo": "ingreso", "fecha": "2026-09-01", "concepto": "Cobro",
+        "categoria": "desarrollo_web", "monto": 100, "moneda": "USD",
+        "client_id": None})
+    mov = cli.get("/api/finanzas/movimientos").get_json()[0]
+    assert mov["client_id"] is None
