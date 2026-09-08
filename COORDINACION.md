@@ -149,6 +149,65 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **8/9 — F (calendario): dos sesiones escribimos el MISMO endpoint y git no lo
+  vio.** D hizo `PATCH /api/calendar/meetings/<id>` (`api_reschedule_meeting`,
+  `d00fbfb`). Yo tenía en paralelo `api_update_meeting`, misma ruta y mismo
+  método, en otro lugar del archivo. **Git las mergea sin conflicto y Flask no
+  da error:** registra las dos reglas y gana la primera, en silencio. Lo probé:
+
+  ```
+  reglas registradas:
+     /api/calendar/meetings/<int:mid> api_update_meeting     ['PATCH']
+     /api/calendar/meetings/<int:mid> api_reschedule_meeting ['PATCH']
+  respuesta: mia
+  ```
+
+  Una de las dos implementaciones habría quedado muerta sin que nada avisara.
+  Rehice lo mío entero encima del suyo: el PR 7 ahora **extiende**
+  `api_reschedule_meeting` (nombre, duración, guarda de Calendly) y agrega el
+  arrastre, que no existía en ninguna de las dos vistas. Sus tests quedaron
+  intactos, incluido `test_sin_hora_no_toca_nada`: el arrastre del mes le manda
+  la hora que la reunión ya tenía en vez de cambiarle el contrato.
+
+  **Si vas a agregar una ruta, buscá el path antes.** `grep '"/api/...'` sobre
+  `routes/`. No alcanza con que el CI esté verde ni con que git no marque
+  conflicto.
+
+- **8/9 — F: producción NO es ningún commit.** Lo verifiqué leyendo la máquina,
+  no el log. Hasheé `dashboard.py`, `database.py`, `routes/calendar.py` y
+  `routes/wa.py` de `/app` contra `main`, las 6 ramas del remoto y mis commits:
+  no coincide con nada. `v163` salió de un árbol de trabajo **anterior al PR
+  #5**, más el calendario. O sea que hoy producción **no tiene pre-clientes,
+  clientes activos ni registro de demos**, aunque estén mergeados desde el 7/9;
+  `routes/preclientes.py` no existe en `/app` y `COORDINACION.md` allá todavía
+  tiene la fila de E.
+
+  Consecuencia para el que deploye: **el próximo release de `main` trae de golpe
+  el PR #5, el calendario y el lead magnet de web.** El PR #5 dispara la
+  migración de estados al arrancar. Los números de producción medidos el 7/9,
+  para verificar después: 70 `reunion_agendada` → `demo_agendada`, 22
+  `reunion_hecha` → `demo_1`, 8.357 leads antes y después. Si el total cambia,
+  algo salió mal.
+
+- **8/9 — F: PR 6 (`fix/estados-viejos-calendario`), CI verde, listo para
+  mergear.** El rename de etapas del PR #5 arregló las lecturas y no las
+  escrituras: nueve lugares seguían escribiendo `reunion_agendada` y compañía.
+  Como el tablero filtra por `crm_status IN (etapas)`, agendar una reunión
+  **borraba al lead del tablero**, sin error y sin log. Aparecieron dos cosas
+  más: `_maybe_revert_lead_status` comparaba contra el nombre viejo y no
+  matcheaba nunca, y el `RANK` de `services/planilla_semaforo.py` tenía los
+  nombres viejos — un estado que no está en ese mapa entra como rango 0, así que
+  cualquier color de la planilla contaba como avance y un lead en `demo_1`
+  volvía a `interesado` con un amarillo. Eso ya está pasando en producción con
+  los 92 leads que migró el PR #5.
+
+  **La traducción quedó en el BORDE, no en `update_business`.** Ponerla en la
+  escritura fue el primer intento y rompe a cualquiera que haga
+  leer-comparar-escribir: la planilla pedía `negociacion`, leía de vuelta
+  `follow_up_1`, no coincidían, y volvía a escribir en cada corrida. Hay un test
+  que fija esa decisión para que no se "arregle" de nuevo así.
+
+
 - **31/8 — E (pre-clientes/demos):** Rama `feat/preclientes-clientes-demos`,
   commit `b153983`, sin deployar y sin mergear. Tres secciones nuevas:
   pre-clientes (tablero por etapa), responsables del cliente (día a día,
