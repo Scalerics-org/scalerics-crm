@@ -2312,12 +2312,18 @@ _RECURRENTE_COLUMNS = {
 
 def _insert(db_path: str, tabla: str, columnas: set, fields: dict,
             obligatorias: tuple) -> int:
-    permitidos = {k: v for k, v in fields.items() if k in columnas}
-    faltan = [c for c in obligatorias if c not in permitidos]
+    # Primero las claves desconocidas: si un campo obligatorio viene mal
+    # escrito, este mensaje señala el nombre exacto que está mal. Si
+    # chequeáramos "faltan obligatorios" primero, un typo en "concepto"
+    # se reportaría como "falta concepto" y escondería la causa real.
+    invalidos = set(fields) - columnas
+    if invalidos:
+        raise ValueError(f"{tabla}: columnas inválidas {invalidos}")
+    faltan = [c for c in obligatorias if c not in fields]
     if faltan:
         raise ValueError(f"{tabla}: faltan campos obligatorios {faltan}")
-    cols = list(permitidos)
-    vals = list(permitidos.values())
+    cols = list(fields)
+    vals = list(fields.values())
     marcas = ", ".join("?" for _ in vals)
     conn = _connect(db_path)
     try:

@@ -100,3 +100,29 @@ def test_el_panel_finanzas_le_llega_a_los_roles_que_ya_existian(tmp_path):
     fila = conn.execute("SELECT panel_access FROM roles WHERE name='Ventas'").fetchone()
     conn.close()
     assert "finanzas" in fila[0]
+
+
+def test_crear_movimiento_con_campo_mal_escrito_levanta_valueerror(db):
+    # "nota" en vez de "notas": antes se ignoraba en silencio.
+    with pytest.raises(ValueError):
+        _mov(db, nota="tipeo")
+
+
+def test_crear_recurrente_con_campo_inexistente_levanta_valueerror(db):
+    with pytest.raises(ValueError):
+        crear_recurrente(db, tipo="egreso", concepto="Fly",
+                         categoria="infraestructura", monto=4.18,
+                         moneda="USD", desde="2026-09", cliente_id=1)
+
+
+def test_crear_solo_con_obligatorios_no_levanta_nada(db):
+    mid = crear_movimiento(db, tipo="egreso", fecha="2026-09-20",
+                           periodo="2026-09", concepto="Fly",
+                           categoria="infraestructura", monto=4.18,
+                           moneda="USD", monto_usd=4.18)
+    assert get_movimiento(db, mid) is not None
+
+    rid = crear_recurrente(db, tipo="egreso", concepto="Fly",
+                           categoria="infraestructura", monto=4.18,
+                           moneda="USD", desde="2026-09")
+    assert get_recurrente(db, rid) is not None
