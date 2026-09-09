@@ -9,13 +9,16 @@ from datetime import date
 from flask import Blueprint, current_app, jsonify, request, session
 
 from database import (actualizar_movimiento, actualizar_recurrente,
-                      borrar_movimiento, borrar_recurrente, crear_movimiento,
-                      crear_recurrente, get_movimiento, get_recurrente,
-                      listar_movimientos, listar_recurrentes, log_activity)
+                      borrar_movimiento, borrar_por_cobrar, borrar_recurrente,
+                      crear_movimiento, crear_por_cobrar, crear_recurrente,
+                      get_movimiento, get_por_cobrar, get_recurrente,
+                      listar_movimientos, listar_por_cobrar,
+                      listar_recurrentes, log_activity)
 from services.auth import require_panel
 from services.finanzas import (CATEGORIAS, MONEDAS, a_usd, desglosar_iva,
-                               materializar_recurrentes, periodo_de,
-                               rendimiento_pauta, resumen, resumen_iva)
+                               estado_de_cobro, materializar_recurrentes,
+                               periodo_de, rendimiento_pauta, resumen,
+                               resumen_iva, saldar_por_cobrar)
 
 finanzas_bp = Blueprint("finanzas", __name__)
 
@@ -132,9 +135,41 @@ def api_listar_movimientos():
     ))
 
 
+def _validar_cobro_parcial(data: dict, campos: dict):
+    """Cuánto queda por cobrar después de este movimiento, o None si nada.
+
+    Devuelve (pendiente_usd, None) o (None, error). El pendiente sale del
+    TOTAL ACORDADO menos lo que se está cobrando: se pide el total y no el
+    resto porque el total es el número que está en el presupuesto, y restar
+    es más difícil de equivocar que acordarse de cuánto se cobró antes.
+    """
+    if data.get("total_acordado") in (None, ""):
+        return None, None
+    # Un egreso no deja nada por cobrar: lo que se paga, se pagó.
+    if campos["tipo"] != "ingreso":
+        return None, None
+    try:
+        total = float(data["total_acordado"])
+    except (TypeError, ValueError):
+        return None, "total_acordado tiene que ser un número"
+    if total <= 0:
+        return None, "total_acordado tiene que ser mayor que cero"
+
+    pendiente = total - campos["monto_usd"]
+    if pendiente < -0.005:
+        return None, ("el total acordado no puede ser menor que lo que se "
+                      "está cobrando")
+    # Cobrar el total entero es válido: simplemente no deja pendiente.
+    return (pendiente if pendiente > 0.005 else None), None
+
+
 @finanzas_bp.route("/api/finanzas/movimientos", methods=["POST"])
 def api_crear_movimiento():
-    campos, error = _validar_movimiento(request.get_json() or {})
+    data = request.get_json() or {}
+    campos, error = _validar_movimiento(data)
+    if error:
+        return jsonify({"ok": False, "error": error}), 400
+    pendiente, error = _validar_cobro_parcial(data, campos)
     if error:
         return jsonify({"ok": False, "error": error}), 400
     uid, nombre = _quien()
@@ -142,6 +177,15 @@ def api_crear_movimiento():
     campos["created_by_name"] = nombre
     db = _db()
     mid = crear_movimiento(db, **campos)
+    if pendiente:
+        # "Saldo de ..." y no el concepto tal cual: el pendiente no es el cobro
+        # que se acaba de hacer, es lo que falta. Heredarlo verbatim dejaba dos
+        # movimientos llamados "50% inicial" cuando el segundo era el resto.
+        crear_por_cobrar(db, client_id=campos.get("client_id"),
+                         concepto=f"Saldo de {campos['concepto']}",
+                         monto_usd=pendiente,
+                         vence=(data.get("vence_resto") or "").strip() or None,
+                         origen_movimiento_id=mid)
     log_activity(db, nombre, "finanzas_movimiento_creado", "finanzas", mid,
                  campos["concepto"],
                  f"{campos['tipo']} {campos['moneda']} {campos['monto']}",
@@ -349,6 +393,57 @@ def api_pauta():
         return jsonify({"ok": False, "error": "desde tiene que ser <= hasta"}), 400
     materializar_recurrentes(db, hoy=hoy)
     return jsonify(rendimiento_pauta(db, desde, hasta))
+
+
+@finanzas_bp.route("/api/finanzas/por-cobrar")
+def api_por_cobrar():
+    """Lo que falta cobrar, con el estado de vencimiento ya resuelto.
+
+    El estado se calcula acá y no en el navegador: "vencido hace 3 días"
+    depende de qué día es hoy, y el reloj del servidor es el mismo para todos.
+    """
+    pendientes = []
+    for p in listar_por_cobrar(_db()):
+        estado = estado_de_cobro(p.get("vence"))
+        pendientes.append({**p, **estado})
+    return jsonify({
+        "pendientes": pendientes,
+        "total_usd": sum(p["monto_usd"] or 0 for p in pendientes),
+    })
+
+
+@finanzas_bp.route("/api/finanzas/por-cobrar/<int:pc_id>/cobrar", methods=["POST"])
+def api_cobrar_pendiente(pc_id):
+    """Cobra el pendiente: crea el ingreso y lo saca del listado."""
+    data = request.get_json() or {}
+    fecha = (data.get("fecha") or "").strip()
+    if len(fecha) != 10 or fecha[4] != "-" or fecha[7] != "-":
+        return jsonify({"ok": False, "error": "fecha tiene que ser 'YYYY-MM-DD'"}), 400
+    uid, nombre = _quien()
+    db = _db()
+    try:
+        mid = saldar_por_cobrar(db, pc_id, fecha=fecha,
+                                facturado=bool(data.get("facturado")),
+                                created_by_id=uid, created_by_name=nombre)
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    log_activity(db, nombre, "finanzas_cobro_registrado", "finanzas", mid,
+                 "", "", user_id=uid)
+    return jsonify({"ok": True, "movimiento_id": mid}), 201
+
+
+@finanzas_bp.route("/api/finanzas/por-cobrar/<int:pc_id>", methods=["DELETE"])
+def api_borrar_pendiente(pc_id):
+    """Saca un pendiente mal cargado. No toca el movimiento que lo generó: esa
+    plata entró de verdad."""
+    db = _db()
+    if not get_por_cobrar(db, pc_id):
+        return jsonify({"ok": False, "error": "no existe"}), 404
+    borrar_por_cobrar(db, pc_id)
+    uid, nombre = _quien()
+    log_activity(db, nombre, "finanzas_pendiente_borrado", "finanzas", pc_id,
+                 "", "", user_id=uid)
+    return jsonify({"ok": True})
 
 
 @finanzas_bp.route("/api/finanzas/iva")

@@ -1265,6 +1265,11 @@ body.light .upick-name{color:#0f172a}
 .fin-kpi-var{font-size:.75rem;color:#64748b;margin-top:4px}
 .fin-verde{color:#10b981}
 .fin-rojo{color:#f87171}
+/* `.fin-tabla td` fija el color con especificidad (0,1,1) y le gana a `.fin-rojo`
+   (0,1,0): sin estas dos reglas, un "vencido hace 3 dias" dentro de una tabla
+   sale del color normal y el aviso no se ve. Los tests no lo agarran. */
+.fin-tabla td.fin-rojo{color:#f87171}
+.fin-tabla td.fin-verde{color:#10b981}
 .fin-card{background:#0f172a;border:1px solid #1e293b;border-radius:10px;padding:18px;margin-bottom:18px}
 .fin-card-title{font-size:.75rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.8px;margin-bottom:14px}
 .fin-tabla{width:100%;border-collapse:collapse;font-size:.8rem}
@@ -1273,6 +1278,8 @@ body.light .upick-name{color:#0f172a}
 .fin-tabla td{padding:8px 10px;color:#e2e8f0;white-space:nowrap;
               border-top:1px solid #1e293b}
 body.light .fin-tabla td{color:#1e293b;border-top-color:#e2e8f0}
+body.light .fin-tabla td.fin-rojo{color:#dc2626}
+body.light .fin-tabla td.fin-verde{color:#059669}
 body.light .fin-tabla th{color:#475569}
 .fin-split{display:grid;grid-template-columns:1fr 1fr;gap:18px}
 .fin-mes{display:flex;align-items:flex-end;gap:3px;height:90px}
@@ -1627,6 +1634,7 @@ body.light .fin-kpi-label,body.light .fin-kpi-var,body.light .fin-card-title,bod
       </select>
       <div class="fin-toggle">
         <button class="pill active" id="fin-tab-movs" onclick="finVista('movimientos')">Movimientos</button>
+        <button class="pill" id="fin-tab-cobrar" onclick="finVista('cobrar')">Por cobrar</button>
         <button class="pill" id="fin-tab-fijos" onclick="finVista('fijos')">Fijos</button>
         <button class="pill" id="fin-tab-iva" onclick="finVista('iva')">IVA</button>
         <button class="pill" id="fin-tab-pauta" onclick="finVista('pauta')">Pauta</button>
@@ -1648,6 +1656,11 @@ body.light .fin-kpi-label,body.light .fin-kpi-var,body.light .fin-card-title,bod
       </div>
       <div class="fin-card"><div class="fin-card-title">Movimientos</div>
         <div id="fin-tabla"></div></div>
+    </div>
+
+    <div id="fin-vista-cobrar" style="display:none">
+      <div class="fin-card"><div class="fin-card-title">Lo que falta cobrar</div>
+        <div id="fin-cobrar"></div></div>
     </div>
 
     <div id="fin-vista-fijos" style="display:none">
@@ -2042,7 +2055,7 @@ body.light .fin-kpi-label,body.light .fin-kpi-var,body.light .fin-card-title,bod
 
     <label class="modal-label">Monto</label>
     <div style="display:flex;gap:8px">
-      <input type="number" step="0.01" min="0" id="fin-mov-monto" class="modal-input" oninput="_finRecalcularUsd();_finPreviewIva()">
+      <input type="number" step="0.01" min="0" id="fin-mov-monto" class="modal-input" oninput="_finRecalcularUsd();_finPreviewIva();_finPreviewPendiente()">
       <select id="fin-mov-moneda" onchange="_finRecalcularUsd();_finPreviewIva()">
         <option value="USD">USD</option>
         <option value="UYU">UYU</option>
@@ -2051,8 +2064,29 @@ body.light .fin-kpi-label,body.light .fin-kpi-var,body.light .fin-card-title,bod
 
     <div id="fin-tc-row" style="display:none">
       <label class="modal-label">Tipo de cambio (pesos por dólar)</label>
-      <input type="number" step="0.01" min="0" id="fin-mov-tc" class="modal-input" oninput="_finRecalcularUsd();_finPreviewIva()">
+      <input type="number" step="0.01" min="0" id="fin-mov-tc" class="modal-input" oninput="_finRecalcularUsd();_finPreviewIva();_finPreviewPendiente()">
       <div id="fin-tc-preview" class="fin-kpi-var"></div>
+    </div>
+
+    <div id="fin-parcial-row">
+      <label class="modal-label">¿Es un cobro parcial?</label>
+      <div class="fin-toggle" style="margin-bottom:6px">
+        <button class="pill" id="fin-parcial-si" onclick="finSetParcial(true)">Sí</button>
+        <button class="pill active" id="fin-parcial-no" onclick="finSetParcial(false)">No</button>
+      </div>
+      <div id="fin-parcial-campos" style="display:none">
+        <div class="modal-row">
+          <div>
+            <label class="modal-label">Total acordado (USD)</label>
+            <input type="number" step="0.01" min="0" id="fin-mov-total" class="modal-input" oninput="_finPreviewPendiente()">
+          </div>
+          <div>
+            <label class="modal-label">Se cobra el resto</label>
+            <input type="date" id="fin-mov-vence" class="modal-input">
+          </div>
+        </div>
+        <div id="fin-pendiente-preview" class="fin-kpi-var" style="margin-bottom:10px"></div>
+      </div>
     </div>
 
     <label class="modal-label">¿Se factura?</label>
@@ -6096,7 +6130,7 @@ function _funnelBars(items, stateLabels, stateColors) {
 }
 
 // ========== Finanzas panel ==========
-const FIN_VISTAS = ['movimientos', 'fijos', 'iva', 'pauta'];
+const FIN_VISTAS = ['movimientos', 'cobrar', 'fijos', 'iva', 'pauta'];
 
 function _finRangoCambio() {
   // El selector de rango es compartido por las tres vistas, pero loadFinanzas
@@ -6113,6 +6147,7 @@ function finVista(cual) {
     document.getElementById(`fin-vista-${v}`).style.display = v === cual ? '' : 'none';
   });
   document.getElementById('fin-tab-movs').classList.toggle('active', cual === 'movimientos');
+  document.getElementById('fin-tab-cobrar').classList.toggle('active', cual === 'cobrar');
   document.getElementById('fin-tab-fijos').classList.toggle('active', cual === 'fijos');
   document.getElementById('fin-tab-iva').classList.toggle('active', cual === 'iva');
   document.getElementById('fin-tab-pauta').classList.toggle('active', cual === 'pauta');
@@ -6120,7 +6155,11 @@ function finVista(cual) {
   // significa nada. En vez de dejar el selector de rango diciendo una cosa y
   // la tabla otra -el problema que _finRangoCambio arregla para Pauta-, aca
   // el selector no aplica y se esconde. El mes va en el titulo de la tarjeta.
-  document.getElementById('fin-rango').style.display = cual === 'iva' ? 'none' : '';
+  // Ni el IVA ni lo que falta cobrar dependen del rango: el IVA se liquida por
+  // mes y un pendiente esta o no esta, no pertenece a ningun periodo.
+  document.getElementById('fin-rango').style.display =
+    (cual === 'iva' || cual === 'cobrar') ? 'none' : '';
+  if (cual === 'cobrar') loadPorCobrar();
   if (cual === 'fijos') loadFijos();
   if (cual === 'iva') loadIva();
   if (cual === 'pauta') loadPauta();
@@ -6237,6 +6276,26 @@ function _finKpis(k) {
     </div>`;
 }
 
+async function _finCardPorCobrar(kpisEl) {
+  let d;
+  try {
+    const r = await fetch('/api/finanzas/por-cobrar');
+    if (!r.ok) return;
+    d = await r.json();
+  } catch (e) { return; }
+  if (!d.pendientes.length) return;
+  const vencidos = d.pendientes.filter(p => p.vencido).length;
+  const caja = document.createElement('div');
+  caja.className = 'fin-kpi';
+  caja.innerHTML = '<div class="fin-kpi-label">Por cobrar</div>'
+    + '<div class="fin-kpi-valor" style="color:#38bdf8">' + _finUsd(d.total_usd) + '</div>'
+    + '<div class="fin-kpi-var' + (vencidos ? ' fin-rojo' : '') + '">'
+    + d.pendientes.length + (d.pendientes.length === 1 ? ' pendiente' : ' pendientes')
+    + (vencidos ? ' · ' + vencidos + ' vencido' + (vencidos === 1 ? '' : 's') : '')
+    + '</div>';
+  kpisEl.appendChild(caja);
+}
+
 async function _finCardIva(kpisEl) {
   let d;
   try {
@@ -6244,14 +6303,19 @@ async function _finCardIva(kpisEl) {
     if (!r.ok) return;
     d = await r.json();
   } catch (e) { return; }
+  // Cero no es ni a favor ni a pagar: sin este caso la card decia
+  // "-USD 0,00 a pagar", que es un numero raro y una etiqueta falsa.
+  const cero = Math.abs(d.saldo) < 0.005;
   const aFavor = d.saldo < 0;
+  const clase = cero ? '' : (aFavor ? 'fin-verde' : 'fin-rojo');
+  const signo = cero ? '' : (aFavor ? '+' : '-');
   const caja = document.createElement('div');
   caja.className = 'fin-kpi';
   caja.innerHTML = '<div class="fin-kpi-label">Saldo IVA</div>'
-    + '<div class="fin-kpi-valor ' + (aFavor ? 'fin-verde' : 'fin-rojo') + '">'
-    + (aFavor ? '+' : '-') + _finUsd(Math.abs(d.saldo)).replace('USD ', 'USD ') + '</div>'
+    + '<div class="fin-kpi-valor ' + clase + '">'
+    + signo + _finUsd(Math.abs(d.saldo)) + '</div>'
     + '<div class="fin-kpi-var">' + _finNombreMes(d.periodo) + ' · '
-    + (aFavor ? 'a favor' : 'a pagar') + '</div>';
+    + (cero ? 'sin saldo' : (aFavor ? 'a favor' : 'a pagar')) + '</div>';
   kpisEl.appendChild(caja);
 }
 
@@ -6295,6 +6359,7 @@ async function loadFinanzas() {
     _finResumen = data;
 
     kpisEl.innerHTML = _finKpis(data.kpis);
+    _finCardPorCobrar(kpisEl);
     _finCardIva(kpisEl);
     document.getElementById('fin-serie').innerHTML = _finSerie(data.serie);
 
@@ -6330,6 +6395,111 @@ function finSetTipo(tipo) {
   const sel = document.getElementById('fin-mov-categoria');
   sel.innerHTML = (_finCategorias[tipo] || [])
     .map(c => `<option value="${c}">${c.replace(/_/g, ' ')}</option>`).join('');
+  if (document.getElementById('fin-parcial-row')) _finParcialAplica();
+}
+
+// Un pendiente nace de un cobro parcial: se pide el TOTAL acordado y de ahi
+// sale el resto. Se pide el total y no el resto a proposito -el total es el
+// numero que esta en el presupuesto, y restar es mas dificil de equivocar que
+// acordarse de cuanto se cobro antes.
+let _finParcial = false;
+
+function finSetParcial(valor) {
+  _finParcial = !!valor;
+  document.getElementById('fin-parcial-si').classList.toggle('active', _finParcial);
+  document.getElementById('fin-parcial-no').classList.toggle('active', !_finParcial);
+  document.getElementById('fin-parcial-campos').style.display = _finParcial ? '' : 'none';
+  _finPreviewPendiente();
+}
+
+// Cuanto vale el movimiento en dolares. Un solo lugar: el desglose del IVA y
+// el del pendiente tienen que dar lo mismo que el backend, que cuenta en USD.
+function _finMontoUsd() {
+  const monto = parseFloat(document.getElementById('fin-mov-monto').value);
+  if (!monto || monto <= 0) return 0;
+  if (document.getElementById('fin-mov-moneda').value !== 'UYU') return monto;
+  const tc = parseFloat(document.getElementById('fin-mov-tc').value);
+  return tc > 0 ? monto / tc : 0;
+}
+
+function _finPreviewPendiente() {
+  const caja = document.getElementById('fin-pendiente-preview');
+  if (!_finParcial) { caja.textContent = ''; return; }
+  const total = parseFloat(document.getElementById('fin-mov-total').value);
+  // En USD, igual que el backend: el total acordado se pide en dolares y el
+  // movimiento puede estar en pesos. Restar el monto crudo daria un numero
+  // distinto del que se va a guardar.
+  const cobra = _finMontoUsd();
+  if (!total || !cobra) { caja.textContent = 'Poné el total y lo que se cobra ahora.'; return; }
+  const resto = total - cobra;
+  if (resto < 0) {
+    caja.textContent = 'El total no puede ser menor que lo que se cobra ahora.';
+    return;
+  }
+  caja.textContent = resto > 0
+    ? 'Queda por cobrar ' + _finUsd(resto)
+    : 'Se cobra entero: no queda pendiente.';
+}
+
+// Un pendiente solo tiene sentido sobre un ingreso: lo que se paga, se pago.
+function _finParcialAplica() {
+  document.getElementById('fin-parcial-row').style.display =
+    _finTipo === 'ingreso' ? '' : 'none';
+  if (_finTipo !== 'ingreso') finSetParcial(false);
+}
+
+async function loadPorCobrar() {
+  const caja = document.getElementById('fin-cobrar');
+  caja.innerHTML = '<div style="color:#475569;padding:16px;font-size:.85rem">Cargando...</div>';
+  let d;
+  try {
+    const r = await fetch('/api/finanzas/por-cobrar');
+    if (!r.ok) throw new Error('no se pudo cargar');
+    d = await r.json();
+  } catch (e) {
+    caja.innerHTML = '<div style="color:#f87171;padding:16px">Error: ' + esc(e.message) + '</div>';
+    return;
+  }
+  if (!d.pendientes.length) {
+    caja.innerHTML = '<div class="empty-state">No hay nada pendiente de cobro.</div>';
+    return;
+  }
+  caja.innerHTML = '<table class="fin-tabla"><thead><tr>'
+    + '<th>Cliente</th><th>Concepto</th><th>Vencimiento</th>'
+    + '<th style="text-align:right">Pendiente</th><th></th>'
+    + '</tr></thead><tbody>'
+    + d.pendientes.map(p =>
+        '<tr><td>' + esc(p.client_name || 'Sin atribuir') + '</td>'
+        + '<td>' + esc(p.concepto || '') + '</td>'
+        + '<td class="' + (p.vencido ? 'fin-rojo' : '') + '">' + esc(p.texto) + '</td>'
+        + '<td style="text-align:right">' + _finUsd(p.monto_usd) + '</td>'
+        + '<td style="text-align:right;white-space:nowrap">'
+        + '<button class="btn-ghost" onclick="cobrarPendiente(' + p.id + ')">Cobrar</button> '
+        + '<button class="btn-ghost" onclick="borrarPendiente(' + p.id + ')">Borrar</button>'
+        + '</td></tr>').join('')
+    + '</tbody></table>';
+}
+
+async function cobrarPendiente(id) {
+  const hoy = new Date().toISOString().slice(0, 10);
+  const facturado = confirm('¿Se factura este cobro? Aceptar = sí, Cancelar = no.');
+  const r = await fetch('/api/finanzas/por-cobrar/' + id + '/cobrar', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({fecha: hoy, facturado})
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!j.ok) { alert('No se pudo cobrar: ' + (j.error || 'error desconocido')); return; }
+  loadPorCobrar();
+  loadFinanzas();
+}
+
+async function borrarPendiente(id) {
+  if (!confirm('¿Sacar este pendiente? El movimiento que lo generó no se toca.')) return;
+  const r = await fetch('/api/finanzas/por-cobrar/' + id, {method: 'DELETE'});
+  const j = await r.json().catch(() => ({}));
+  if (!j.ok) { alert('No se pudo borrar: ' + (j.error || 'error desconocido')); return; }
+  loadPorCobrar();
+  loadFinanzas();
 }
 
 // El IVA se factura o no se factura: no hay medias tintas por movimiento. Un
@@ -6350,9 +6520,7 @@ function _finPreviewIva() {
   if (!_finFacturado) { caja.textContent = 'No suma al cálculo de IVA.'; return; }
   const monto = parseFloat(document.getElementById('fin-mov-monto').value);
   if (!monto || monto <= 0) { caja.textContent = 'Se calcula sobre el total con IVA (22%).'; return; }
-  const moneda = document.getElementById('fin-mov-moneda').value;
-  const tc = parseFloat(document.getElementById('fin-mov-tc').value);
-  const usd = moneda === 'UYU' ? (tc > 0 ? monto / tc : 0) : monto;
+  const usd = _finMontoUsd();
   if (!usd) { caja.textContent = 'Poné el tipo de cambio para ver el desglose.'; return; }
   const neto = usd / 1.22;
   caja.textContent = 'Neto ' + _finUsd(neto) + '  ·  IVA (22%) ' + _finUsd(usd - neto);
@@ -6375,6 +6543,7 @@ async function loadIva() {
   }
 
   document.getElementById('fin-iva-titulo').textContent = 'IVA — ' + _finNombreMes(mes);
+  const cero = Math.abs(d.saldo) < 0.005;
   const aFavor = d.saldo < 0;
   kpis.innerHTML =
     '<div class="fin-kpi"><div class="fin-kpi-label">IVA cobrado</div>'
@@ -6382,9 +6551,9 @@ async function loadIva() {
     + '<div class="fin-kpi"><div class="fin-kpi-label">IVA pagado</div>'
     + '<div class="fin-kpi-valor fin-rojo">' + _finUsd(d.iva_pagado) + '</div></div>'
     + '<div class="fin-kpi"><div class="fin-kpi-label">Saldo</div>'
-    + '<div class="fin-kpi-valor ' + (aFavor ? 'fin-verde' : 'fin-rojo') + '">'
+    + '<div class="fin-kpi-valor ' + (cero ? '' : (aFavor ? 'fin-verde' : 'fin-rojo')) + '">'
     + _finUsd(Math.abs(d.saldo)) + '</div>'
-    + '<div class="fin-kpi-var">' + (aFavor ? 'a favor' : 'a pagar')
+    + '<div class="fin-kpi-var">' + (cero ? 'sin saldo' : (aFavor ? 'a favor' : 'a pagar'))
     + (d.arrastre ? ' · viene ' + _finUsd(Math.abs(d.arrastre)) + ' del mes anterior' : '')
     + '</div></div>';
 
@@ -6451,6 +6620,10 @@ async function abrirMovimiento(prefill) {
 
   finSetTipo(p.tipo || 'egreso');
   finSetFacturado(!!p.facturado);
+  document.getElementById('fin-mov-total').value = '';
+  document.getElementById('fin-mov-vence').value = '';
+  finSetParcial(false);
+  _finParcialAplica();
   if (p.categoria) document.getElementById('fin-mov-categoria').value = p.categoria;
   await _finCargarClientes(p.client_id, p.client_name);
   _finRecalcularUsd();
@@ -6507,6 +6680,10 @@ async function guardarMovimiento() {
     facturado: _finFacturado,
     notas: document.getElementById('fin-mov-notas').value,
   };
+  if (_finParcial && _finTipo === 'ingreso') {
+    cuerpo.total_acordado = parseFloat(document.getElementById('fin-mov-total').value);
+    cuerpo.vence_resto = document.getElementById('fin-mov-vence').value || null;
+  }
   const r = await fetch(id ? `/api/finanzas/movimientos/${id}` : '/api/finanzas/movimientos',
                         {method: id ? 'PUT' : 'POST',
                          headers: {'Content-Type': 'application/json'},
