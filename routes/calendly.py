@@ -7,7 +7,8 @@ import re
 
 from flask import Blueprint, request, jsonify
 
-from database import create_meeting, get_business_by_phone, get_all_businesses, log_activity, update_business
+from database import (create_meeting, get_business_by_email, get_business_by_phone,
+                      log_activity, update_business)
 
 logger = logging.getLogger(__name__)
 
@@ -60,11 +61,12 @@ def _find_client(db_path: str, email: str, phone: str, name: str):
                 return biz
 
     # 2. Try email match
+    # Resuelto en SQL con indice: antes traia los 8.358 negocios a memoria para
+    # comparar un mail. Ver database.get_business_by_email.
     if email:
-        all_biz = get_all_businesses(db_path)
-        for b in all_biz:
-            if (b.get("email") or "").lower() == email.lower():
-                return b
+        b = get_business_by_email(db_path, email)
+        if b:
+            return b
 
     return None
 

@@ -39,7 +39,7 @@ from collections import defaultdict
 
 from flask import Blueprint, make_response, request, jsonify
 
-from database import get_all_businesses, insert_business, log_activity
+from database import get_business_by_email, insert_business, log_activity
 
 logger = logging.getLogger(__name__)
 
@@ -109,15 +109,12 @@ def _paso_el_tope(ip: str) -> bool:
 def _buscar_por_mail(db_path: str, mail: str) -> dict | None:
     """El negocio que ya tenga ese mail, sin distinguir mayusculas.
 
-    Recorre la tabla igual que `routes/calendly.py`: `businesses` tiene UNIQUE
-    en `phone`, no en `email`, y no hay helper por mail en `database.py`, que
-    es zona compartida y no se toca por esto.
+    Antes recorria la tabla entera con `get_all_businesses`: 8.358 negocios,
+    ~38 MB de objetos por request, colgando de un endpoint publico. Ahora lo
+    resuelve `database.get_business_by_email` en SQL, con indice. Elige el mismo
+    negocio que antes cuando el mail esta repetido.
     """
-    objetivo = mail.strip().lower()
-    for negocio in get_all_businesses(db_path):
-        if (negocio.get("email") or "").strip().lower() == objetivo:
-            return negocio
-    return None
+    return get_business_by_email(db_path, mail)
 
 
 @web_bp.route("/api/web/lead", methods=["OPTIONS"])

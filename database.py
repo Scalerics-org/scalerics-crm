@@ -847,6 +847,11 @@ def init_db(db_path: str) -> None:
             conn.execute("CREATE INDEX IF NOT EXISTS idx_lead_events_lead ON lead_events(lead_id)")
             # La cola filtra por source ademas de por estado.
             conn.execute("CREATE INDEX IF NOT EXISTS idx_businesses_source ON businesses(source)")
+            # Indice por EXPRESION: tiene que decir `lower(trim(email))` igual
+            # que get_business_by_email, o SQLite no lo usa y el SELECT vuelve a
+            # ser un scan. Parcial para no indexar los 4.929 negocios sin mail.
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_businesses_email_lower "
+                         "ON businesses(lower(trim(email))) WHERE email IS NOT NULL")
             conn.commit()
         except Exception as e:
             logger.warning(f"Index creation: {e}")
@@ -1077,6 +1082,48 @@ def get_business(db_path: str, business_id: int) -> Optional[dict]:
     try:
         cursor = conn.execute("SELECT * FROM businesses WHERE id = ?", (business_id,))
         row = cursor.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+# El `email IS NOT NULL` no es decorativo: sin el, SQLite no puede probar que la
+# consulta cumple la condicion del indice PARCIAL y vuelve a hacer un SCAN. Vive
+# en una constante para que el test del plan mire esta consulta y no una copia
+# que se desincronice.
+_SQL_NEGOCIO_POR_MAIL = (
+    "SELECT * FROM businesses "
+    "WHERE email IS NOT NULL AND lower(trim(email)) = ? "
+    "ORDER BY CASE WHEN score IS NULL THEN 1 ELSE 0 END, "
+    "         score DESC, scraped_at DESC "
+    "LIMIT 1"
+)
+
+
+def get_business_by_email(db_path: str, email) -> Optional[dict]:
+    """El negocio que tenga ese mail, sin distinguir mayusculas ni espacios.
+
+    Existe porque `routes/web.py` y `routes/calendly.py` hacian lo mismo a mano:
+    traian la tabla entera con `get_all_businesses` y la recorrian en Python.
+    Son 3.429 filas con mail sobre 8.358 negocios, ~38 MB de objetos por
+    request, y en `web.py` eso cuelga de `/api/web/lead`, que es publico. El
+    9-9-2026 el OOM killer se llevo un worker con la maquina en 12 MB libres.
+
+    `businesses` tiene UNIQUE en `phone` pero no en `email`, y hay mails
+    repetidos —seis en produccion, uno catorce veces—. Se ordena igual que
+    `get_all_businesses` para devolver el mismo de siempre: primero los que
+    tienen score, despues score DESC, despues scraped_at DESC. Cambiar ese
+    orden cambiaria a que negocio se le atribuye una descarga de la guia.
+
+    Un mail vacio o None devuelve None en vez de parear contra las filas que
+    tienen `email` NULL.
+    """
+    objetivo = (email or "").strip().lower()
+    if not objetivo:
+        return None
+    conn = _connect(db_path)
+    try:
+        row = conn.execute(_SQL_NEGOCIO_POR_MAIL, (objetivo,)).fetchone()
         return dict(row) if row else None
     finally:
         conn.close()
