@@ -24,9 +24,27 @@ CATEGORIAS = {
 }
 
 
+# Tasa basica de Uruguay. Se guarda el IVA calculado en cada movimiento en vez
+# de recalcularlo al leer: si esto alguna vez cambia, lo ya facturado tiene que
+# seguir mostrando el impuesto que de verdad se cobro.
+IVA_TASA = 0.22
+
+
 def periodo_de(fecha: str) -> str:
     """'2026-09-20' -> '2026-09'."""
     return fecha[:7]
+
+
+def desglosar_iva(total: float) -> tuple[float, float]:
+    """(neto, iva) a partir del TOTAL, con el impuesto ya adentro.
+
+    El monto que se carga es el de la factura: 500 son 409,84 propios mas 90,16
+    de impuesto. Al reves —500 mas 22%— daria 610 y ese numero no existe en
+    ningun papel.
+    """
+    total = float(total or 0)
+    neto = total / (1 + IVA_TASA)
+    return neto, total - neto
 
 
 def a_usd(monto: float, moneda: str, tipo_cambio: float | None) -> float:
@@ -133,6 +151,61 @@ def _totales(movimientos: list[dict]) -> tuple[float, float]:
     ingresos = sum(m["monto_usd"] for m in movimientos if m["tipo"] == "ingreso")
     egresos = sum(m["monto_usd"] for m in movimientos if m["tipo"] == "egreso")
     return round(ingresos, 2), round(egresos, 2)
+
+
+def resumen_iva(db_path: str, periodo: str) -> dict:
+    """Lo facturado del mes, y cuánto IVA queda a pagar o a favor.
+
+    El saldo a favor se arrastra al mes siguiente porque en Uruguay el crédito
+    de IVA no vence. El saldo a pagar NO se arrastra: se paga y el mes queda en
+    cero. Por eso el arrastre que entra es siempre <= 0.
+
+    El arrastre obliga a recorrer los meses desde el primero con movimientos
+    facturados: el saldo de septiembre depende de agosto, que depende de julio.
+    Un mes vacío en el medio no corta la cadena, solo la deja pasar.
+    """
+    from database import listar_movimientos
+
+    facturados = [m for m in listar_movimientos(db_path)
+                  if m.get("facturado")]
+
+    arrastre = 0.0
+    if facturados:
+        primero = min(m["periodo"] for m in facturados)
+        for mes in meses_entre(primero, periodo):
+            if mes == periodo:
+                break
+            cobrado, pagado = _iva_del_mes(facturados, mes)
+            # Lo que se debe se paga; solo el crédito sigue viaje.
+            arrastre = min(0.0, cobrado - pagado + arrastre)
+
+    cobrado, pagado = _iva_del_mes(facturados, periodo)
+    del_mes = [m for m in facturados if m["periodo"] == periodo]
+
+    return {
+        "periodo": periodo,
+        "iva_cobrado": cobrado,
+        "iva_pagado": pagado,
+        "arrastre": arrastre,
+        "saldo": cobrado - pagado + arrastre,
+        "movimientos": [{
+            "id": m["id"],
+            "concepto": m["concepto"],
+            "tipo": m["tipo"],
+            "neto": (m["monto_usd"] or 0) - (m["iva_usd"] or 0),
+            "iva": m["iva_usd"] or 0,
+            "total": m["monto_usd"] or 0,
+        } for m in del_mes],
+    }
+
+
+def _iva_del_mes(facturados: list[dict], periodo: str) -> tuple[float, float]:
+    """(iva cobrado, iva pagado) de ese mes."""
+    cobrado = sum(m["iva_usd"] or 0 for m in facturados
+                  if m["periodo"] == periodo and m["tipo"] == "ingreso")
+    pagado = sum(m["iva_usd"] or 0 for m in facturados
+                 if m["periodo"] == periodo and m["tipo"] == "egreso")
+    return cobrado, pagado
 
 
 def resumen(db_path: str, desde: str, hasta: str) -> dict:

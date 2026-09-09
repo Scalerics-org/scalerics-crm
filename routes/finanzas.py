@@ -13,9 +13,9 @@ from database import (actualizar_movimiento, actualizar_recurrente,
                       crear_recurrente, get_movimiento, get_recurrente,
                       listar_movimientos, listar_recurrentes, log_activity)
 from services.auth import require_panel
-from services.finanzas import (CATEGORIAS, MONEDAS, a_usd,
+from services.finanzas import (CATEGORIAS, MONEDAS, a_usd, desglosar_iva,
                                materializar_recurrentes, periodo_de,
-                               rendimiento_pauta, resumen)
+                               rendimiento_pauta, resumen, resumen_iva)
 
 finanzas_bp = Blueprint("finanzas", __name__)
 
@@ -98,10 +98,17 @@ def _validar_movimiento(data: dict) -> tuple[dict | None, str | None]:
     if not concepto:
         return None, "concepto es obligatorio"
 
+    # El IVA se calcula acá y se guarda, no se deriva al leer: si la tasa
+    # cambia, lo ya facturado tiene que seguir mostrando lo que se cobró.
+    # Se calcula sobre `monto_usd` porque todo el módulo cuenta en dólares.
+    facturado = 1 if data.get("facturado") else 0
+    iva_usd = desglosar_iva(monto_usd)[1] if facturado else 0.0
+
     campos = {
         "tipo": tipo, "fecha": fecha, "periodo": periodo_de(fecha),
         "concepto": concepto, "categoria": categoria, "monto": monto,
         "moneda": moneda, "tipo_cambio": tipo_cambio, "monto_usd": monto_usd,
+        "facturado": facturado, "iva_usd": iva_usd,
     }
     for campo in ("client_id", "budget_id"):
         if campo in data:
@@ -342,6 +349,23 @@ def api_pauta():
         return jsonify({"ok": False, "error": "desde tiene que ser <= hasta"}), 400
     materializar_recurrentes(db, hoy=hoy)
     return jsonify(rendimiento_pauta(db, desde, hasta))
+
+
+@finanzas_bp.route("/api/finanzas/iva")
+def api_iva():
+    """Lo facturado del mes y el saldo de IVA, con el arrastre a favor.
+
+    Es de UN mes, no de un rango: el IVA se liquida mensualmente y un saldo de
+    "los últimos 12 meses" no significa nada. Materializa antes, igual que el
+    resumen, para que un fijo facturado del mes ya esté contado.
+    """
+    db = _db()
+    hoy = date.today()
+    periodo = request.args.get("periodo") or f"{hoy.year:04d}-{hoy.month:02d}"
+    if len(periodo) != 7 or periodo[4] != "-":
+        return jsonify({"ok": False, "error": "periodo tiene que ser 'YYYY-MM'"}), 400
+    materializar_recurrentes(db, hoy=hoy)
+    return jsonify(resumen_iva(db, periodo))
 
 
 @finanzas_bp.route("/api/finanzas/categorias")

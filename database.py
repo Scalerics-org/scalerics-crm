@@ -711,6 +711,17 @@ def init_db(db_path: str) -> None:
                 ON finanzas_movimientos (periodo)
         """)
 
+        # IVA. `facturado` dice si el movimiento lleva factura: un gasto que
+        # pago alguien del equipo de su bolsillo no descuenta IVA. `iva_usd`
+        # guarda el impuesto en vez de calcularlo al leer, para que un cambio
+        # de tasa no reescriba lo que ya se facturo.
+        #
+        # Los movimientos que ya existian arrancan en facturado=0: no se sabe
+        # cuales llevaban factura, y suponer que si inventaria un IVA que nunca
+        # se cobro. La pestania arranca vacia y se llena con lo que se cargue.
+        _add_column(conn, "finanzas_movimientos", "facturado", "INTEGER NOT NULL DEFAULT 0")
+        _add_column(conn, "finanzas_movimientos", "iva_usd", "REAL NOT NULL DEFAULT 0")
+
         conn.execute("""
             CREATE TABLE IF NOT EXISTS finanzas_recurrentes (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2578,6 +2589,7 @@ _MOVIMIENTO_COLUMNS = {
     "tipo", "fecha", "periodo", "concepto", "categoria", "monto", "moneda",
     "tipo_cambio", "monto_usd", "client_id", "budget_id", "recurrente_id",
     "anulado", "notas", "created_by_id", "created_by_name",
+    "facturado", "iva_usd",
 }
 
 _RECURRENTE_COLUMNS = {
