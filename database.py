@@ -722,6 +722,36 @@ def init_db(db_path: str) -> None:
         _add_column(conn, "finanzas_movimientos", "facturado", "INTEGER NOT NULL DEFAULT 0")
         _add_column(conn, "finanzas_movimientos", "iva_usd", "REAL NOT NULL DEFAULT 0")
 
+        # Lo que falta cobrar. El caso real es el 50% final de un desarrollo:
+        # se cobra la mitad al empezar y el resto queda pendiente con una fecha
+        # estimada.
+        #
+        # `cobrado_movimiento_id` NULL es "todavia se debe"; cuando se cobra
+        # apunta al ingreso que lo salda. No hay un booleano `cobrado` aparte
+        # porque serian dos fuentes de verdad para el mismo hecho, y la que
+        # importa es cual movimiento entro la plata.
+        #
+        # `origen_movimiento_id` es el cobro parcial que lo genero. Puede ser
+        # NULL: un pendiente cargado a mano no viene de ningun movimiento.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS finanzas_por_cobrar (
+                id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_id             INTEGER REFERENCES businesses(id),
+                concepto              TEXT NOT NULL,
+                monto_usd             REAL NOT NULL,
+                vence                 TEXT,
+                origen_movimiento_id  INTEGER REFERENCES finanzas_movimientos(id),
+                cobrado_movimiento_id INTEGER REFERENCES finanzas_movimientos(id),
+                notas                 TEXT,
+                created_at            TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_por_cobrar_pendientes
+                ON finanzas_por_cobrar (vence)
+                WHERE cobrado_movimiento_id IS NULL
+        """)
+
         conn.execute("""
             CREATE TABLE IF NOT EXISTS finanzas_recurrentes (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2713,6 +2743,51 @@ def listar_movimientos(db_path: str, desde: Optional[str] = None,
         cur = conn.execute(
             f"SELECT * FROM finanzas_movimientos {where} "
             "ORDER BY fecha DESC, id DESC", params)
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+_POR_COBRAR_COLUMNS = {
+    "client_id", "concepto", "monto_usd", "vence", "origen_movimiento_id",
+    "cobrado_movimiento_id", "notas",
+}
+
+
+def crear_por_cobrar(db_path: str, **fields) -> int:
+    return _insert(db_path, "finanzas_por_cobrar", _POR_COBRAR_COLUMNS, fields,
+                   ("concepto", "monto_usd"))
+
+
+def actualizar_por_cobrar(db_path: str, pc_id: int, **fields) -> None:
+    _update(db_path, "finanzas_por_cobrar", _POR_COBRAR_COLUMNS, pc_id, fields)
+
+
+def borrar_por_cobrar(db_path: str, pc_id: int) -> None:
+    _delete(db_path, "finanzas_por_cobrar", pc_id)
+
+
+def get_por_cobrar(db_path: str, pc_id: int) -> Optional[dict]:
+    return _get_one(db_path, "finanzas_por_cobrar", pc_id)
+
+
+def listar_por_cobrar(db_path: str, incluir_cobrados: bool = False) -> list[dict]:
+    """Lo que falta cobrar, lo mas urgente primero.
+
+    Los que no tienen fecha van al final, pero no se descartan: sin
+    vencimiento no significa "no urgente", significa que nadie lo puso.
+    """
+    where = "" if incluir_cobrados else "WHERE p.cobrado_movimiento_id IS NULL"
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute(f"""
+            SELECT p.*, b.name AS client_name
+            FROM finanzas_por_cobrar p
+            LEFT JOIN businesses b ON p.client_id = b.id
+            {where}
+            ORDER BY CASE WHEN p.vence IS NULL OR p.vence = '' THEN 1 ELSE 0 END,
+                     p.vence ASC, p.id ASC
+        """)
         return [dict(r) for r in cur.fetchall()]
     finally:
         conn.close()

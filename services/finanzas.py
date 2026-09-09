@@ -153,6 +153,64 @@ def _totales(movimientos: list[dict]) -> tuple[float, float]:
     return round(ingresos, 2), round(egresos, 2)
 
 
+def estado_de_cobro(vence, hoy: str | None = None) -> dict:
+    """Si ese pendiente esta vencido y como se lee eso en la pantalla.
+
+    `hoy` se puede pasar para poder testearlo sin congelar el reloj.
+
+    Una fecha ilegible se trata como "sin fecha" en vez de reventar: esto
+    dibuja una pestania entera y un dato mal cargado no puede dejarla en
+    blanco.
+    """
+    hoy = hoy or date.today().isoformat()
+    try:
+        d_vence = date.fromisoformat(str(vence))
+        d_hoy = date.fromisoformat(hoy)
+    except (TypeError, ValueError):
+        return {"vencido": False, "dias": None, "texto": "sin fecha"}
+
+    dias = (d_hoy - d_vence).days
+    if dias > 0:
+        plural = "día" if dias == 1 else "días"
+        return {"vencido": True, "dias": dias,
+                "texto": f"vencido hace {dias} {plural}"}
+    if dias == 0:
+        return {"vencido": False, "dias": 0, "texto": "vence hoy"}
+    return {"vencido": False, "dias": -dias,
+            "texto": f"vence {d_vence.strftime('%d/%m')}"}
+
+
+def saldar_por_cobrar(db_path: str, pc_id: int, fecha: str,
+                      facturado: bool = False, categoria: str = "otros",
+                      created_by_id=None, created_by_name=None) -> int:
+    """Cobra el pendiente: crea el ingreso y lo deja marcado. Devuelve el id.
+
+    Saldar tiene que mover la caja. Si solo marcara el pendiente, la pestania
+    diria que cobraste y los KPIs que no, y ese desacuerdo se descubre cuando
+    alguien cierra el mes.
+    """
+    from database import (actualizar_por_cobrar, crear_movimiento,
+                          get_por_cobrar)
+
+    pendiente = get_por_cobrar(db_path, pc_id)
+    if not pendiente:
+        raise ValueError("ese pendiente no existe")
+    if pendiente["cobrado_movimiento_id"]:
+        raise ValueError("ese pendiente ya se cobró")
+
+    monto = pendiente["monto_usd"]
+    iva = desglosar_iva(monto)[1] if facturado else 0.0
+    mid = crear_movimiento(
+        db_path, tipo="ingreso", fecha=fecha, periodo=periodo_de(fecha),
+        concepto=pendiente["concepto"], categoria=categoria,
+        monto=monto, moneda="USD", monto_usd=monto,
+        client_id=pendiente["client_id"],
+        facturado=1 if facturado else 0, iva_usd=iva,
+        created_by_id=created_by_id, created_by_name=created_by_name)
+    actualizar_por_cobrar(db_path, pc_id, cobrado_movimiento_id=mid)
+    return mid
+
+
 def resumen_iva(db_path: str, periodo: str) -> dict:
     """Lo facturado del mes, y cuánto IVA queda a pagar o a favor.
 
