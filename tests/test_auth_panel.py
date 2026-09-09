@@ -15,6 +15,24 @@ from database import create_user, init_db
 from services.auth import tiene_panel
 
 
+@pytest.fixture(autouse=True)
+def _admin_email_definido(monkeypatch):
+    """Fija ADMIN_EMAIL para que el respaldo de arranque no tape lo que se prueba.
+
+    `is_admin` termina con `return not admin_email and current["id"] == 1`: sin
+    ADMIN_EMAIL, el PRIMER usuario de la base es admin, y un admin ve todos los
+    paneles. Como cada test crea su usuario en una base limpia, ese usuario es
+    siempre el id 1 — asi que sin esta fijacion los siete casos que esperan
+    False daban True y el test decia "puede ver finanzas" cuando lo que pasaba
+    era "es el admin de arranque".
+
+    Peor: pasaban o fallaban segun si quien corria la suite tenia ADMIN_EMAIL en
+    su ambiente. En una maquina con `.env` cargado pasaban; en CI no. Se fija un
+    mail que no es el de ningun usuario de estos tests.
+    """
+    monkeypatch.setenv("ADMIN_EMAIL", "nadie@scalerics.invalid")
+
+
 @pytest.fixture
 def db(tmp_path):
     ruta = str(tmp_path / "a.db")
