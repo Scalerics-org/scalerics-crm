@@ -78,6 +78,51 @@ leads de Meta se renombró a **D** para deshacer el empate.
 | D (leads de Meta) | secuencias de mail por estado, estados del CRM, sync con la planilla de semáforo, detección de respuestas, rendimiento del CRM | `services/meta_reminders.py`, `services/secuencia_contactos.py`, `services/planilla_semaforo.py`, `scripts/planilla_semaforo.gs`, `routes/meta.py` | 27/8 |
 | E (pre-clientes/demos) | pipeline por etapas, responsables del cliente, registro de demos | `routes/preclientes.py`, `tests/test_preclientes.py`, `scripts/check_js.py`, y **zona compartida**: `database.py`, `dashboard.py`, `routes/leads.py` | 31/8 |
 
+| F (finanzas) | la sección financiera del CRM | `services/finanzas.py`, `routes/finanzas.py`, `database.py` (tablas de finanzas), `dashboard.py` (panel Finanzas) | 8/9 |
+
+> **F (finanzas) acá (8/9).** Trabajé en un worktree aparte sobre la rama
+> `feat/finanzas`. Me habia anotado como E, pero E ya estaba tomada por pre-clientes/demos, que llego primero y ya deployo: me corri a **F**. Agrega dos tablas
+> nuevas, `finanzas_movimientos` y `finanzas_recurrentes`, más
+> `services/finanzas.py` (la lógica: conversión USD/UYU, materialización de
+> gastos fijos), `routes/finanzas.py` (once endpoints detrás de un lock por
+> panel) y un panel **Finanzas** nuevo en `dashboard.py`.
+>
+> **Cruce de territorio, para que quede explícito: `dashboard.py` es de B y
+> `database.py` es zona compartida.** Lo que toqué en cada uno:
+> - `dashboard.py`: un ítem nuevo en el nav bajo GESTIÓN, y un panel entero
+>   nuevo (HTML + CSS + JS, todo bajo el prefijo `fin-`). No toqué ninguna
+>   ruta, función ni panel que ya existiera ahí.
+> - `database.py`: dos tablas nuevas (`finanzas_movimientos`,
+>   `finanzas_recurrentes`) más sus índices, agregadas al final de `init_db`.
+>   Aditivo: ninguna tabla, columna ni consulta existente se tocó.
+>
+> Nada de esto arranca solo al boot ni manda mail: las reglas 3 y 4 quedan
+> intactas. Verificación local (suite completa con cobertura, como el CI):
+> 1213 tests, cobertura 61,47% (piso del CI en 57%, subió desde el 59%
+> medido el 31/8). Después de esto va el merge a `main`, el deploy y la carga
+> de los fijos reales (Fly, Vercel, Zoho, Resend, la API de Anthropic), todo
+> con Juan mirando.
+>
+> **Dos merges de `main` a la rama antes de integrar.** El primero trajo hasta
+> `07191fc`, con conflictos en `database.py`, `dashboard.py` y este archivo;
+> los tres eran aditivos y se conservaron los dos lados. `database.py` no se
+> resolvio hunk por hunk: git alineaba las funciones por lineas comunes
+> (`conn = _connect(db_path)`, `try:`) y las partia a la mitad, asi que se
+> reconstruyo injertando los bloques de finanzas enteros sobre la version de
+> `main`. El segundo merge trajo `origin/main` hasta `d7b9cbd` —el calendario
+> arrastrable y el fix de los nueve writers de etapas— y entro limpio. En
+> `dashboard.py` quedan registrados `web_bp`, `preclientes_bp` y `finanzas_bp`.
+>
+> **Ojo con esto, es lo que casi se rompe en silencio.** La migracion de
+> estados de E renombro el vocabulario (`reunion_agendada` -> `demo_agendada`,
+> `reunion_hecha` -> `demo_1`, `cliente_cerrado` -> `cerrado`) y reescribe
+> `businesses.crm_status`, pero **no toca `lead_events`**. El analisis de pauta
+> lee el historial de `lead_events` para saber a que etapa llego cada lead, asi
+> que tiene que entender los dos vocabularios: los nombres viejos siguen vivos
+> en los eventos anteriores a la migracion, que son justo los de marzo a agosto.
+> Si alguien toca `FUNNEL` en `services/finanzas.py`, eso es lo que hay que
+> respetar.
+
 > **D acá (28/8, 17:10 UTC).** Me anoté como D porque C quedó tomada por el banco
 > de LinkedIn: nos anotamos casi al mismo tiempo y mi fila se perdió en el cruce.
 >

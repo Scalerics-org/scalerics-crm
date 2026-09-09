@@ -21,6 +21,7 @@ duplicacion es justamente por que el rol no contaba: habia que acordarse de
 mirarlo en ocho lugares.
 """
 
+import json
 import os
 
 from flask import jsonify, session
@@ -66,5 +67,43 @@ def require_admin(db_path: str):
             return err
     """
     if not is_admin(db_path, session.get("user_id")):
+        return jsonify({"ok": False, "error": "No autorizado"}), 403
+    return None
+
+
+def tiene_panel(db_path: str, user_id, panel: str) -> bool:
+    """Si el usuario puede ver ese panel. Un admin ve todos."""
+    if is_admin(db_path, user_id):
+        return True
+    if not user_id:
+        return False
+    conn = _db_connect(db_path)
+    try:
+        fila = conn.execute(
+            "SELECT r.panel_access FROM users u "
+            "LEFT JOIN roles r ON u.role_id = r.id WHERE u.id = ?",
+            (user_id,)).fetchone()
+    finally:
+        conn.close()
+    if not fila or not fila["panel_access"]:
+        return False
+    try:
+        paneles = json.loads(fila["panel_access"])
+    except (ValueError, TypeError):
+        return False
+    return isinstance(paneles, list) and panel in paneles
+
+
+def require_panel(db_path: str, panel: str):
+    """403 si el usuario de la sesion no tiene ese panel; None si puede seguir.
+
+    Existe porque `panel_access` solo escondia el item del menu: nada frenaba
+    un fetch directo a la API. Uso:
+
+        @finanzas_bp.before_request
+        def _candado():
+            return require_panel(current_app.config["DB_PATH"], "finanzas")
+    """
+    if not tiene_panel(db_path, session.get("user_id"), panel):
         return jsonify({"ok": False, "error": "No autorizado"}), 403
     return None

@@ -670,6 +670,75 @@ def init_db(db_path: str) -> None:
         """)
         _add_column(conn, "businesses", "linkedin_ok", "INTEGER DEFAULT 0")
 
+        # ── finanzas ──────────────────────────────────────────────────────────
+        # El libro de ingresos y egresos de Scalerics. Un solo libro con una
+        # columna `tipo`: un cobro y un gasto tienen los mismos campos.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS finanzas_movimientos (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                tipo            TEXT NOT NULL,
+                fecha           TEXT NOT NULL,
+                periodo         TEXT NOT NULL,
+                concepto        TEXT NOT NULL,
+                categoria       TEXT NOT NULL,
+                monto           REAL NOT NULL,
+                moneda          TEXT NOT NULL,
+                tipo_cambio     REAL,
+                monto_usd       REAL NOT NULL,
+                client_id       INTEGER REFERENCES businesses(id),
+                budget_id       INTEGER REFERENCES budgets(id),
+                recurrente_id   INTEGER REFERENCES finanzas_recurrentes(id),
+                anulado         INTEGER NOT NULL DEFAULT 0,
+                notas           TEXT,
+                created_by_id   INTEGER,
+                created_by_name TEXT,
+                created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        # Esta es LA guarda del módulo. Materializar los fijos hace un INSERT
+        # normal y atrapa el IntegrityError de violar este índice (descartando
+        # solo ese caso puntual, no cualquier IntegrityError), así que correrlo
+        # mil veces produce exactamente un movimiento por fijo y por mes. Sin
+        # él, cada deploy duplicaría los gastos: reiniciar la máquina vuelve a
+        # materializar.
+        conn.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_finanzas_recurrente_periodo
+                ON finanzas_movimientos (recurrente_id, periodo)
+                WHERE recurrente_id IS NOT NULL
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_finanzas_periodo
+                ON finanzas_movimientos (periodo)
+        """)
+
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS finanzas_recurrentes (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                tipo        TEXT NOT NULL,
+                concepto    TEXT NOT NULL,
+                categoria   TEXT NOT NULL,
+                monto       REAL NOT NULL,
+                moneda      TEXT NOT NULL,
+                tipo_cambio REAL,
+                dia_del_mes INTEGER NOT NULL DEFAULT 1,
+                desde       TEXT NOT NULL,
+                hasta       TEXT,
+                activo      INTEGER NOT NULL DEFAULT 1,
+                client_id   INTEGER REFERENCES businesses(id),
+                notas       TEXT,
+                created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        # A propósito, sin la migración que suma este panel al panel_access
+        # de los roles que ya existen (Ruling R20): todos los demás paneles
+        # nuevos se la aplican porque esconder un ítem del menú no es un
+        # permiso real. Finanzas es la excepción: es el único panel que
+        # muestra la plata de la empresa, así que arranca sin nadie asignado
+        # en vez de con todos los roles adentro -Caller incluido. Un admin lo
+        # ve igual, por el bypass de is_admin en tiene_panel(); el resto se
+        # lo asigna Juan a mano desde el editor de roles, que es justamente
+        # lo que eligió al marcar "panel normal, se asigna por rol".
+
         # ── Pre-clientes y clientes activos ───────────────────────────────────
         # Los tres responsables de un cliente activo. Apuntan a users para poder
         # filtrar "mis clientes"; si alguien se va, el vinculo queda en NULL en vez
@@ -2452,5 +2521,172 @@ def obtener_demo_realizada(db_path: str, demo_id: int) -> Optional[dict]:
     try:
         fila = conn.execute("SELECT * FROM demos_realizadas WHERE id = ?", (demo_id,)).fetchone()
         return dict(fila) if fila else None
+    finally:
+        conn.close()
+
+
+# ─── Finanzas ────────────────────────────────────────────────────────────────
+
+_MOVIMIENTO_COLUMNS = {
+    "tipo", "fecha", "periodo", "concepto", "categoria", "monto", "moneda",
+    "tipo_cambio", "monto_usd", "client_id", "budget_id", "recurrente_id",
+    "anulado", "notas", "created_by_id", "created_by_name",
+}
+
+_RECURRENTE_COLUMNS = {
+    "tipo", "concepto", "categoria", "monto", "moneda", "tipo_cambio",
+    "dia_del_mes", "desde", "hasta", "activo", "client_id", "notas",
+}
+
+
+def _insert(db_path: str, tabla: str, columnas: set, fields: dict,
+            obligatorias: tuple) -> int:
+    # Primero las claves desconocidas: si un campo obligatorio viene mal
+    # escrito, este mensaje señala el nombre exacto que está mal. Si
+    # chequeáramos "faltan obligatorios" primero, un typo en "concepto"
+    # se reportaría como "falta concepto" y escondería la causa real.
+    invalidos = set(fields) - columnas
+    if invalidos:
+        raise ValueError(f"{tabla}: columnas inválidas {invalidos}")
+    faltan = [c for c in obligatorias if c not in fields]
+    if faltan:
+        raise ValueError(f"{tabla}: faltan campos obligatorios {faltan}")
+    cols = list(fields)
+    vals = list(fields.values())
+    marcas = ", ".join("?" for _ in vals)
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute(
+            f"INSERT INTO {tabla} ({', '.join(cols)}) VALUES ({marcas})", vals)
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def _update(db_path: str, tabla: str, columnas: set, fila_id: int,
+            fields: dict) -> None:
+    invalidos = set(fields) - columnas
+    if invalidos:
+        raise ValueError(f"{tabla}: columnas inválidas {invalidos}")
+    if not fields:
+        return
+    set_clause = ", ".join(f"{k} = :{k}" for k in fields)
+    fields = {**fields, "id": fila_id}
+    conn = _connect(db_path)
+    try:
+        conn.execute(f"UPDATE {tabla} SET {set_clause} WHERE id = :id", fields)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _delete(db_path: str, tabla: str, fila_id: int) -> None:
+    conn = _connect(db_path)
+    try:
+        conn.execute(f"DELETE FROM {tabla} WHERE id = ?", (fila_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _get_one(db_path: str, tabla: str, fila_id: int) -> Optional[dict]:
+    conn = _connect(db_path)
+    try:
+        fila = conn.execute(f"SELECT * FROM {tabla} WHERE id = ?",
+                            (fila_id,)).fetchone()
+        return dict(fila) if fila else None
+    finally:
+        conn.close()
+
+
+def crear_movimiento(db_path: str, **fields) -> int:
+    return _insert(db_path, "finanzas_movimientos", _MOVIMIENTO_COLUMNS, fields,
+                   ("tipo", "fecha", "periodo", "concepto", "categoria",
+                    "monto", "moneda", "monto_usd"))
+
+
+def actualizar_movimiento(db_path: str, mov_id: int, **fields) -> None:
+    _update(db_path, "finanzas_movimientos", _MOVIMIENTO_COLUMNS, mov_id, fields)
+
+
+def borrar_movimiento(db_path: str, mov_id: int) -> None:
+    _delete(db_path, "finanzas_movimientos", mov_id)
+
+
+def get_movimiento(db_path: str, mov_id: int) -> Optional[dict]:
+    return _get_one(db_path, "finanzas_movimientos", mov_id)
+
+
+def listar_movimientos(db_path: str, desde: Optional[str] = None,
+                       hasta: Optional[str] = None, tipo: Optional[str] = None,
+                       categoria: Optional[str] = None,
+                       client_id: Optional[int] = None,
+                       incluir_anulados: bool = False) -> list[dict]:
+    """Movimientos ordenados por fecha descendente.
+
+    `desde` y `hasta` son períodos 'YYYY-MM', ambos inclusive. Por defecto no
+    devuelve los anulados: un movimiento anulado es un fijo que se borró y que
+    solo sigue en la tabla para que la materialización no lo regenere.
+    """
+    partes: list[str] = []
+    params: list = []
+    if not incluir_anulados:
+        partes.append("anulado = 0")
+    if desde is not None:
+        partes.append("periodo >= ?")
+        params.append(desde)
+    if hasta is not None:
+        partes.append("periodo <= ?")
+        params.append(hasta)
+    if tipo is not None:
+        partes.append("tipo = ?")
+        params.append(tipo)
+    if categoria is not None:
+        partes.append("categoria = ?")
+        params.append(categoria)
+    if client_id is not None:
+        partes.append("client_id = ?")
+        params.append(client_id)
+    where = f"WHERE {' AND '.join(partes)}" if partes else ""
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute(
+            f"SELECT * FROM finanzas_movimientos {where} "
+            "ORDER BY fecha DESC, id DESC", params)
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def crear_recurrente(db_path: str, **fields) -> int:
+    return _insert(db_path, "finanzas_recurrentes", _RECURRENTE_COLUMNS, fields,
+                   ("tipo", "concepto", "categoria", "monto", "moneda", "desde"))
+
+
+def actualizar_recurrente(db_path: str, rec_id: int, **fields) -> None:
+    _update(db_path, "finanzas_recurrentes", _RECURRENTE_COLUMNS, rec_id, fields)
+
+
+def borrar_recurrente(db_path: str, rec_id: int) -> None:
+    """Borra la definición del fijo.
+
+    Los movimientos que ya generó quedan vivos: son plata que se gastó. Para
+    dejar de generar hacia adelante sin borrar nada está `activo = 0`.
+    """
+    _delete(db_path, "finanzas_recurrentes", rec_id)
+
+
+def get_recurrente(db_path: str, rec_id: int) -> Optional[dict]:
+    return _get_one(db_path, "finanzas_recurrentes", rec_id)
+
+
+def listar_recurrentes(db_path: str, solo_activos: bool = False) -> list[dict]:
+    where = "WHERE activo = 1" if solo_activos else ""
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute(
+            f"SELECT * FROM finanzas_recurrentes {where} ORDER BY concepto")
+        return [dict(r) for r in cur.fetchall()]
     finally:
         conn.close()
