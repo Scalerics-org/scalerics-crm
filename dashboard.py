@@ -1628,6 +1628,7 @@ body.light .fin-kpi-label,body.light .fin-kpi-var,body.light .fin-card-title,bod
       <div class="fin-toggle">
         <button class="pill active" id="fin-tab-movs" onclick="finVista('movimientos')">Movimientos</button>
         <button class="pill" id="fin-tab-fijos" onclick="finVista('fijos')">Fijos</button>
+        <button class="pill" id="fin-tab-iva" onclick="finVista('iva')">IVA</button>
         <button class="pill" id="fin-tab-pauta" onclick="finVista('pauta')">Pauta</button>
       </div>
       <button class="btn-primary" onclick="abrirMovimiento()">
@@ -1652,6 +1653,12 @@ body.light .fin-kpi-label,body.light .fin-kpi-var,body.light .fin-card-title,bod
     <div id="fin-vista-fijos" style="display:none">
       <div class="fin-card"><div class="fin-card-title">Gastos e ingresos fijos</div>
         <div id="fin-fijos"></div></div>
+    </div>
+
+    <div id="fin-vista-iva" style="display:none">
+      <div class="fin-kpis" id="fin-iva-kpis"></div>
+      <div class="fin-card"><div class="fin-card-title" id="fin-iva-titulo">IVA</div>
+        <div id="fin-iva-tabla"></div></div>
     </div>
 
     <div id="fin-vista-pauta" style="display:none">
@@ -2035,8 +2042,8 @@ body.light .fin-kpi-label,body.light .fin-kpi-var,body.light .fin-card-title,bod
 
     <label class="modal-label">Monto</label>
     <div style="display:flex;gap:8px">
-      <input type="number" step="0.01" min="0" id="fin-mov-monto" class="modal-input" oninput="_finRecalcularUsd()">
-      <select id="fin-mov-moneda" onchange="_finRecalcularUsd()">
+      <input type="number" step="0.01" min="0" id="fin-mov-monto" class="modal-input" oninput="_finRecalcularUsd();_finPreviewIva()">
+      <select id="fin-mov-moneda" onchange="_finRecalcularUsd();_finPreviewIva()">
         <option value="USD">USD</option>
         <option value="UYU">UYU</option>
       </select>
@@ -2044,9 +2051,16 @@ body.light .fin-kpi-label,body.light .fin-kpi-var,body.light .fin-card-title,bod
 
     <div id="fin-tc-row" style="display:none">
       <label class="modal-label">Tipo de cambio (pesos por dólar)</label>
-      <input type="number" step="0.01" min="0" id="fin-mov-tc" class="modal-input" oninput="_finRecalcularUsd()">
+      <input type="number" step="0.01" min="0" id="fin-mov-tc" class="modal-input" oninput="_finRecalcularUsd();_finPreviewIva()">
       <div id="fin-tc-preview" class="fin-kpi-var"></div>
     </div>
+
+    <label class="modal-label">¿Se factura?</label>
+    <div class="fin-toggle" style="margin-bottom:6px">
+      <button class="pill" id="fin-fact-si" onclick="finSetFacturado(true)">Sí</button>
+      <button class="pill active" id="fin-fact-no" onclick="finSetFacturado(false)">No</button>
+    </div>
+    <div id="fin-iva-preview" class="fin-kpi-var" style="margin-bottom:12px"></div>
 
     <label class="modal-label">Cliente (opcional)</label>
     <select id="fin-mov-cliente"><option value="">Sin atribuir</option></select>
@@ -6082,7 +6096,7 @@ function _funnelBars(items, stateLabels, stateColors) {
 }
 
 // ========== Finanzas panel ==========
-const FIN_VISTAS = ['movimientos', 'fijos', 'pauta'];
+const FIN_VISTAS = ['movimientos', 'fijos', 'iva', 'pauta'];
 
 function _finRangoCambio() {
   // El selector de rango es compartido por las tres vistas, pero loadFinanzas
@@ -6100,8 +6114,15 @@ function finVista(cual) {
   });
   document.getElementById('fin-tab-movs').classList.toggle('active', cual === 'movimientos');
   document.getElementById('fin-tab-fijos').classList.toggle('active', cual === 'fijos');
+  document.getElementById('fin-tab-iva').classList.toggle('active', cual === 'iva');
   document.getElementById('fin-tab-pauta').classList.toggle('active', cual === 'pauta');
+  // El IVA se liquida por MES: un saldo de "los ultimos 12 meses" no
+  // significa nada. En vez de dejar el selector de rango diciendo una cosa y
+  // la tabla otra -el problema que _finRangoCambio arregla para Pauta-, aca
+  // el selector no aplica y se esconde. El mes va en el titulo de la tarjeta.
+  document.getElementById('fin-rango').style.display = cual === 'iva' ? 'none' : '';
   if (cual === 'fijos') loadFijos();
+  if (cual === 'iva') loadIva();
   if (cual === 'pauta') loadPauta();
 }
 
@@ -6216,6 +6237,24 @@ function _finKpis(k) {
     </div>`;
 }
 
+async function _finCardIva(kpisEl) {
+  let d;
+  try {
+    const r = await fetch('/api/finanzas/iva?periodo=' + _finMesActual());
+    if (!r.ok) return;
+    d = await r.json();
+  } catch (e) { return; }
+  const aFavor = d.saldo < 0;
+  const caja = document.createElement('div');
+  caja.className = 'fin-kpi';
+  caja.innerHTML = '<div class="fin-kpi-label">Saldo IVA</div>'
+    + '<div class="fin-kpi-valor ' + (aFavor ? 'fin-verde' : 'fin-rojo') + '">'
+    + (aFavor ? '+' : '-') + _finUsd(Math.abs(d.saldo)).replace('USD ', 'USD ') + '</div>'
+    + '<div class="fin-kpi-var">' + _finNombreMes(d.periodo) + ' · '
+    + (aFavor ? 'a favor' : 'a pagar') + '</div>';
+  kpisEl.appendChild(caja);
+}
+
 function _finSerie(serie) {
   if (!serie.length) return '<div class="empty-state">Sin movimientos en el período</div>';
   const tope = Math.max(...serie.map(p => Math.max(p.ingresos_usd, p.egresos_usd)), 1);
@@ -6256,6 +6295,7 @@ async function loadFinanzas() {
     _finResumen = data;
 
     kpisEl.innerHTML = _finKpis(data.kpis);
+    _finCardIva(kpisEl);
     document.getElementById('fin-serie').innerHTML = _finSerie(data.serie);
 
     const egresos = data.por_categoria
@@ -6292,6 +6332,94 @@ function finSetTipo(tipo) {
     .map(c => `<option value="${c}">${c.replace(/_/g, ' ')}</option>`).join('');
 }
 
+// El IVA se factura o no se factura: no hay medias tintas por movimiento. Un
+// gasto que pago alguien del equipo de su bolsillo no descuenta nada.
+let _finFacturado = false;
+
+function finSetFacturado(valor) {
+  _finFacturado = !!valor;
+  document.getElementById('fin-fact-si').classList.toggle('active', _finFacturado);
+  document.getElementById('fin-fact-no').classList.toggle('active', !_finFacturado);
+  _finPreviewIva();
+}
+
+// El desglose se ve ANTES de guardar, igual que el monto en dolares: el numero
+// que se carga es el TOTAL y de ahi salen el neto y el impuesto hacia atras.
+function _finPreviewIva() {
+  const caja = document.getElementById('fin-iva-preview');
+  if (!_finFacturado) { caja.textContent = 'No suma al cálculo de IVA.'; return; }
+  const monto = parseFloat(document.getElementById('fin-mov-monto').value);
+  if (!monto || monto <= 0) { caja.textContent = 'Se calcula sobre el total con IVA (22%).'; return; }
+  const moneda = document.getElementById('fin-mov-moneda').value;
+  const tc = parseFloat(document.getElementById('fin-mov-tc').value);
+  const usd = moneda === 'UYU' ? (tc > 0 ? monto / tc : 0) : monto;
+  if (!usd) { caja.textContent = 'Poné el tipo de cambio para ver el desglose.'; return; }
+  const neto = usd / 1.22;
+  caja.textContent = 'Neto ' + _finUsd(neto) + '  ·  IVA (22%) ' + _finUsd(usd - neto);
+}
+
+async function loadIva() {
+  const kpis = document.getElementById('fin-iva-kpis');
+  const tabla = document.getElementById('fin-iva-tabla');
+  const mes = _finMesActual();
+  kpis.innerHTML = '<div style="color:#475569;padding:16px;font-size:.85rem">Cargando...</div>';
+  let d;
+  try {
+    const r = await fetch('/api/finanzas/iva?periodo=' + mes);
+    if (!r.ok) throw new Error('no se pudo cargar el IVA');
+    d = await r.json();
+  } catch (e) {
+    kpis.innerHTML = '<div style="color:#f87171;padding:16px">Error: ' + esc(e.message) + '</div>';
+    tabla.innerHTML = '';
+    return;
+  }
+
+  document.getElementById('fin-iva-titulo').textContent = 'IVA — ' + _finNombreMes(mes);
+  const aFavor = d.saldo < 0;
+  kpis.innerHTML =
+    '<div class="fin-kpi"><div class="fin-kpi-label">IVA cobrado</div>'
+    + '<div class="fin-kpi-valor fin-verde">' + _finUsd(d.iva_cobrado) + '</div></div>'
+    + '<div class="fin-kpi"><div class="fin-kpi-label">IVA pagado</div>'
+    + '<div class="fin-kpi-valor fin-rojo">' + _finUsd(d.iva_pagado) + '</div></div>'
+    + '<div class="fin-kpi"><div class="fin-kpi-label">Saldo</div>'
+    + '<div class="fin-kpi-valor ' + (aFavor ? 'fin-verde' : 'fin-rojo') + '">'
+    + _finUsd(Math.abs(d.saldo)) + '</div>'
+    + '<div class="fin-kpi-var">' + (aFavor ? 'a favor' : 'a pagar')
+    + (d.arrastre ? ' · viene ' + _finUsd(Math.abs(d.arrastre)) + ' del mes anterior' : '')
+    + '</div></div>';
+
+  if (!d.movimientos.length) {
+    tabla.innerHTML = '<div class="empty-state">Ningún movimiento facturado este mes.</div>';
+    return;
+  }
+  tabla.innerHTML = '<table class="fin-tabla"><thead><tr>'
+    + '<th>Concepto</th><th style="text-align:right">Neto</th>'
+    + '<th style="text-align:right">IVA</th><th style="text-align:right">Total</th>'
+    + '</tr></thead><tbody>'
+    + d.movimientos.map(m =>
+        '<tr><td>' + esc(m.concepto)
+        + ' <span class="' + (m.tipo === 'ingreso' ? 'fin-verde' : 'fin-rojo')
+        + '" style="font-size:.7rem">' + (m.tipo === 'ingreso' ? 'cobrado' : 'pagado') + '</span></td>'
+        + '<td style="text-align:right">' + _finUsd(m.neto) + '</td>'
+        + '<td style="text-align:right">' + _finUsd(m.iva) + '</td>'
+        + '<td style="text-align:right">' + _finUsd(m.total) + '</td></tr>').join('')
+    + '</tbody></table>';
+}
+
+function _finMesActual() {
+  const h = new Date();
+  return h.getFullYear() + '-' + String(h.getMonth() + 1).padStart(2, '0');
+}
+
+const _FIN_MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio',
+                    'Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+function _finNombreMes(periodo) {
+  const partes = (periodo || '').split('-');
+  const i = parseInt(partes[1], 10) - 1;
+  return (_FIN_MESES[i] || periodo) + ' ' + partes[0];
+}
+
 function _finRecalcularUsd() {
   // El número congelado se ve ANTES de congelarlo, no después.
   const esPesos = document.getElementById('fin-mov-moneda').value === 'UYU';
@@ -6322,6 +6450,7 @@ async function abrirMovimiento(prefill) {
   document.getElementById('fin-modal-error').textContent = '';
 
   finSetTipo(p.tipo || 'egreso');
+  finSetFacturado(!!p.facturado);
   if (p.categoria) document.getElementById('fin-mov-categoria').value = p.categoria;
   await _finCargarClientes(p.client_id, p.client_name);
   _finRecalcularUsd();
@@ -6375,6 +6504,7 @@ async function guardarMovimiento() {
       ? parseFloat(document.getElementById('fin-mov-tc').value) : null,
     client_id: document.getElementById('fin-mov-cliente').value || null,
     budget_id: document.getElementById('fin-mov-budget').value || null,
+    facturado: _finFacturado,
     notas: document.getElementById('fin-mov-notas').value,
   };
   const r = await fetch(id ? `/api/finanzas/movimientos/${id}` : '/api/finanzas/movimientos',
