@@ -1272,6 +1272,34 @@ body.light .sc-tabla th,body.light .sc-tabla td{border-color:#e2e8f0}
 body.light .sc-tabla td{color:#0f172a}
 @media(max-width:1200px){.sc-tiles{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:560px){.sc-tiles{grid-template-columns:1fr}}
+.sc-informe{background:linear-gradient(180deg,rgba(0,136,204,.07),rgba(0,136,204,.02));border:1px solid rgba(0,136,204,.24);border-radius:14px;padding:20px 22px;margin-bottom:18px}
+body.light .sc-informe{background:linear-gradient(180deg,#f0f9ff,#fff);border-color:#bae6fd}
+.sc-informe-cab{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.sc-informe-cab h3{font-size:.92rem;font-weight:700;color:#e2e8f0;margin:0}
+body.light .sc-informe-cab h3{color:#0f172a}
+.sc-informe-meta{font-size:.7rem;color:#64748b}
+.sc-resumen{font-size:.92rem;line-height:1.65;color:#e2e8f0;margin-bottom:18px}
+body.light .sc-resumen{color:#0f172a}
+.sc-hallazgo{border-left:3px solid #64748b;padding:2px 0 2px 14px;margin-bottom:16px}
+.sc-hallazgo[data-tipo="oportunidad"]{border-left-color:#22c55e}
+.sc-hallazgo[data-tipo="riesgo"]{border-left-color:#f87171}
+.sc-hallazgo[data-tipo="anomalia"]{border-left-color:#f59e0b}
+.sc-hallazgo[data-tipo="contexto"]{border-left-color:#0088cc}
+.sc-hallazgo-tit{font-size:.85rem;font-weight:700;color:#e2e8f0;margin-bottom:5px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+body.light .sc-hallazgo-tit{color:#0f172a}
+.sc-chip{font-size:.63rem;font-weight:700;letter-spacing:.03em;text-transform:uppercase;padding:2px 7px;border-radius:5px;background:#1e293b;color:#94a3b8}
+body.light .sc-chip{background:#f1f5f9;color:#475569}
+.sc-chip-ojo{background:rgba(245,158,11,.14);color:#fbbf24}
+body.light .sc-chip-ojo{background:#fef3c7;color:#92400e}
+.sc-hallazgo-cuerpo{font-size:.82rem;line-height:1.6;color:#cbd5e1;margin-bottom:7px}
+body.light .sc-hallazgo-cuerpo{color:#334155}
+.sc-hallazgo-rec{font-size:.82rem;line-height:1.6;color:#e2e8f0;margin-bottom:7px}
+body.light .sc-hallazgo-rec{color:#0f172a}
+.sc-citas{font-size:.66rem;color:#475569;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-all}
+.sc-cambios{border-top:1px solid #1e293b;margin-top:14px;padding-top:12px}
+body.light .sc-cambios{border-color:#e2e8f0}
+.sc-cambios li{font-size:.8rem;color:#cbd5e1;line-height:1.6;margin-bottom:3px}
+body.light .sc-cambios li{color:#334155}
 .mobile-fab{display:none;position:fixed;bottom:88px;right:20px;width:52px;height:52px;border-radius:50%;background:#0088cc;border:none;color:#fff;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(0,136,204,.4);cursor:pointer;z-index:250;font-size:1.4rem;font-weight:300;line-height:1}
 @media(max-width:768px){
   .mobile-bottom-nav{display:flex;position:fixed;bottom:16px;left:16px;right:16px;background:rgba(17,24,39,.92);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.08);border-radius:20px;padding:8px 6px;z-index:300;justify-content:space-around;box-shadow:0 8px 32px rgba(0,0,0,.5)}
@@ -1823,6 +1851,7 @@ body.light .fin-kpi-label,body.light .fin-kpi-var,body.light .fin-card-title,bod
 
     <div id="mk-cuerpo" style="display:none">
       <div id="mk-avisos"></div>
+      <div id="mk-informe"></div>
       <div id="mk-tiles"></div>
 
       <div class="sc-bloque">
@@ -7317,6 +7346,8 @@ async function loadMarketing() {
   estado.style.display = 'none';
   cuerpo.style.display = '';
   _mkPintar();
+  // Sin await: si el informe tarda o falla, los graficos ya estan en pantalla.
+  _mkInforme();
 }
 
 function _mkAvisos() {
@@ -7357,6 +7388,90 @@ function _mkAvisos() {
 
   document.getElementById('mk-avisos').innerHTML =
     avisos.map(a => `<div class="sc-aviso">${a}</div>`).join('');
+}
+
+// La reflexion de la IA. Se pide aparte del dossier porque tiene su propio
+// ciclo: el dossier se recalcula cada vez que se abre el panel, el informe
+// solo cuando corre la radiografia.
+async function _mkInforme() {
+  const caja = document.getElementById('mk-informe');
+  let d;
+  try {
+    const r = await fetch('/api/marketing/radiografia');
+    if (!r.ok) { caja.innerHTML = ''; return; }
+    d = await r.json();
+  } catch (e) { caja.innerHTML = ''; return; }
+
+  const cab = (extra) => `<div class="sc-informe"><div class="sc-informe-cab">` +
+    `<h3>La lectura</h3><span class="sc-informe-meta">${extra}</span></div>`;
+
+  // Los tres estados sin informe se ven distintos a proposito: apagado no es
+  // lo mismo que fallido, y ninguno de los dos es "no corrio nunca".
+  if (!d.status) {
+    caja.innerHTML = cab('') +
+      '<div class="sc-vacio">Todavía no se generó ninguna radiografía. ' +
+      'Los gráficos de abajo no dependen de esto.</div></div>';
+    return;
+  }
+  if (d.status === 'sin_ia') {
+    caja.innerHTML = cab(esc(d.generado || '')) +
+      '<div class="sc-vacio">El análisis con IA está apagado ' +
+      '(<code>RADIOGRAFIA_IA_ACTIVA</code>). Los números de abajo son los de la ' +
+      'última corrida y no dependen de la IA.</div></div>';
+    return;
+  }
+  if (d.status === 'error_validacion') {
+    caja.innerHTML = cab(esc(d.generado || '')) +
+      '<div class="sc-aviso"><div><b>El informe se rechazó y no se publicó.</b> ' +
+      'El validador encontró que no se sostenía en el dossier: ' +
+      `<code>${esc(d.error || '')}</code>. ` +
+      'Es a propósito: antes de mostrar un número que no existe, no se muestra ' +
+      'nada.</div></div></div>';
+    return;
+  }
+  if (d.status === 'error_ia' || !d.informe) {
+    caja.innerHTML = cab(esc(d.generado || '')) +
+      '<div class="sc-vacio">La corrida no pudo pedir el análisis' +
+      (d.error ? `: ${esc(d.error)}` : '.') + '</div></div>';
+    return;
+  }
+
+  const inf = d.informe;
+  const tok = d.tokens || {};
+  const meta = [
+    d.generado ? d.generado.slice(0, 16) : '',
+    d.modelo || '',
+    (tok.entrada ? `${SC.fmt(tok.entrada, 'numero')} tokens` : ''),
+  ].filter(Boolean).join(' · ');
+
+  const hallazgos = (inf.hallazgos || []).map(h => {
+    const chips = [`<span class="sc-chip">${esc(h.tipo || '')}</span>`,
+                   `<span class="sc-chip">confianza ${esc(h.confianza || '')}</span>`];
+    if (h.advertencia_muestra) {
+      chips.push('<span class="sc-chip sc-chip-ojo">muestra chica</span>');
+    }
+    // Las metricas citadas se muestran siempre: son lo que deja ir a la tabla
+    // de abajo y comprobar cada afirmacion.
+    const citas = (h.metricas_citadas || []).map(esc).join(' · ');
+    return `<div class="sc-hallazgo" data-tipo="${esc(h.tipo || '')}">` +
+           `<div class="sc-hallazgo-tit">${esc(h.titulo || '')}${chips.join('')}</div>` +
+           `<div class="sc-hallazgo-cuerpo">${esc(h.cuerpo || '')}</div>` +
+           (h.recomendacion
+             ? `<div class="sc-hallazgo-rec"><b>Qué haría:</b> ${esc(h.recomendacion)}</div>`
+             : '') +
+           (citas ? `<div class="sc-citas">se sostiene en: ${citas}</div>` : '') +
+           `</div>`;
+  }).join('');
+
+  const cambios = (inf.cambios_desde_la_ultima || []).length
+    ? '<div class="sc-cambios"><div class="sc-titulo">Contra la corrida anterior</div><ul>' +
+      inf.cambios_desde_la_ultima.map(c => `<li>${esc(c)}</li>`).join('') +
+      '</ul></div>'
+    : '';
+
+  caja.innerHTML = cab(esc(meta)) +
+    `<div class="sc-resumen">${esc(inf.resumen || '')}</div>` +
+    hallazgos + cambios + '</div>';
 }
 
 function _mkPintar() {

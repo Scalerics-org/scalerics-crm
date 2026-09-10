@@ -119,6 +119,56 @@ def api_generar():
     })
 
 
+@marketing_bp.route("/api/marketing/radiografia")
+def api_radiografia():
+    """El informe de la ultima corrida, si lo hay.
+
+    Contesta 200 con `informe: null` cuando todavia no corrio nunca, cuando la
+    IA esta apagada, o cuando el informe no paso el validador. Ninguno de esos
+    tres es un error: son estados que el panel tiene que poder pintar. Lo que
+    los distingue es `status`.
+
+    Un informe rechazado no se devuelve —nunca se publica algo sin validar—
+    pero el motivo si, para poder mirar despues por que se rechazo.
+    """
+    import json as _json
+
+    from database import _connect
+
+    conn = _connect(_db())
+    try:
+        fila = conn.execute(
+            "SELECT id, generated_at, period_start, period_end, report_json, "
+            "       model, tokens_in, tokens_out, status, error_message "
+            "FROM radiografias ORDER BY id DESC LIMIT 1").fetchone()
+    finally:
+        conn.close()
+
+    if not fila:
+        return jsonify({"id": None, "informe": None, "status": None,
+                        "error": None, "generado": None, "periodo": None,
+                        "modelo": None, "tokens": {"entrada": None,
+                                                   "salida": None}})
+
+    informe = None
+    if fila["report_json"]:
+        try:
+            informe = _json.loads(fila["report_json"])
+        except (ValueError, TypeError):
+            logger.warning(f"radiografia {fila['id']}: report_json ilegible")
+
+    return jsonify({
+        "id": fila["id"],
+        "generado": fila["generated_at"],
+        "periodo": {"desde": fila["period_start"], "hasta": fila["period_end"]},
+        "status": fila["status"],
+        "error": fila["error_message"],
+        "modelo": fila["model"],
+        "tokens": {"entrada": fila["tokens_in"], "salida": fila["tokens_out"]},
+        "informe": informe,
+    })
+
+
 @marketing_bp.route("/api/marketing/sync-insights", methods=["POST"])
 def api_sync_insights():
     """Trae el gasto de Meta. Sin credenciales contesta 200 y avisa."""

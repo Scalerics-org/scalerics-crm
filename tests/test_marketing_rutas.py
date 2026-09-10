@@ -158,3 +158,64 @@ def test_el_workflow_del_cron_nace_con_el_schedule_comentado():
     assert "workflow_dispatch" in y
     activos = [l.strip() for l in y.splitlines() if l.strip().startswith("- cron:")]
     assert not activos, f"el schedule esta activo: {activos}"
+
+
+# ── El informe de la IA ──────────────────────────────────────────────────────
+
+def _snapshot(app, status="ok", informe=None, error=None):
+    import json
+    conn = _connect(app.config["DB_PATH"])
+    try:
+        conn.execute(
+            "INSERT INTO radiografias (period_start, period_end, dossier_json, "
+            "report_json, model, tokens_in, tokens_out, status, error_message) "
+            "VALUES ('2026-03-01','2026-09-30','{}',?,?,?,?,?,?)",
+            (json.dumps(informe, ensure_ascii=False) if informe else None,
+             "claude-opus-5", 31000, 6000, status, error))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def test_sin_ninguna_corrida_contesta_vacio_y_no_404(app, cliente):
+    """El panel tiene que poder pintar 'todavia no corrio' sin tratar eso como
+    un error."""
+    r = cliente.get("/api/marketing/radiografia", headers=_AUTH)
+    assert r.status_code == 200
+    assert r.get_json()["informe"] is None
+    assert r.get_json()["status"] is None
+
+
+def test_devuelve_el_informe_de_la_ultima_corrida(app, cliente):
+    _snapshot(app, informe={"resumen": "Viejo", "hallazgos": [],
+                            "cambios_desde_la_ultima": []})
+    _snapshot(app, informe={"resumen": "Nuevo", "hallazgos": [],
+                            "cambios_desde_la_ultima": []})
+    d = cliente.get("/api/marketing/radiografia", headers=_AUTH).get_json()
+    assert d["informe"]["resumen"] == "Nuevo"
+    assert d["status"] == "ok"
+    assert d["tokens"]["entrada"] == 31000
+    assert d["periodo"] == {"desde": "2026-03-01", "hasta": "2026-09-30"}
+
+
+def test_una_corrida_sin_ia_se_reporta_como_tal(app, cliente):
+    """Y no como un error: la IA apagada es un estado esperado."""
+    _snapshot(app, status="sin_ia")
+    d = cliente.get("/api/marketing/radiografia", headers=_AUTH).get_json()
+    assert d["status"] == "sin_ia"
+    assert d["informe"] is None
+
+
+def test_un_informe_rechazado_no_se_devuelve_pero_si_el_motivo(app, cliente):
+    """Nunca se publica un informe sin validar, pero el motivo se puede mirar."""
+    _snapshot(app, status="error_validacion",
+              error="el número 47,20 no existe en el dossier")
+    d = cliente.get("/api/marketing/radiografia", headers=_AUTH).get_json()
+    assert d["informe"] is None
+    assert d["status"] == "error_validacion"
+    assert "47" in d["error"]
+
+
+def test_el_informe_no_se_puede_ver_sin_credenciales(cliente):
+    r = cliente.get("/api/marketing/radiografia")
+    assert r.status_code in (302, 401, 403)

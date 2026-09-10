@@ -64,3 +64,28 @@ def test_el_javascript_del_dashboard_sigue_compilando(tmp_path):
     r = subprocess.run(["node", "--check", str(archivo)],
                        capture_output=True, text=True, encoding="utf-8")
     assert r.returncode == 0, r.stderr
+
+
+def test_el_panel_tiene_donde_mostrar_el_informe():
+    """El motor de IA existia pero el panel no tenia donde pintar la lectura:
+    aunque se prendiera, la reflexion no se veia en ningun lado."""
+    assert 'id="mk-informe"' in dashboard.DASHBOARD_HTML
+    assert "_mkInforme" in dashboard.DASHBOARD_HTML
+    assert "/api/marketing/radiografia" in dashboard.DASHBOARD_HTML
+
+
+def test_los_estados_sin_informe_se_distinguen():
+    """Apagado no es lo mismo que fallido, y ninguno es 'no corrio nunca'."""
+    for estado in ("sin_ia", "error_validacion", "error_ia"):
+        assert f"'{estado}'" in dashboard.DASHBOARD_HTML, estado
+
+
+def test_el_informe_muestra_las_metricas_citadas():
+    """Son lo que deja bajar a la tabla y comprobar cada afirmacion."""
+    assert "metricas_citadas" in dashboard.DASHBOARD_HTML
+    assert "se sostiene en" in dashboard.DASHBOARD_HTML
+
+
+def test_el_informe_tiene_sus_dos_temas():
+    for regla in (".sc-informe", ".sc-hallazgo-tit", ".sc-chip"):
+        assert f"body.light {regla}" in dashboard.DASHBOARD_HTML, regla
