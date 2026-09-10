@@ -35,16 +35,21 @@ def periodo_de(fecha: str) -> str:
     return fecha[:7]
 
 
-def desglosar_iva(total: float) -> tuple[float, float]:
-    """(neto, iva) a partir del TOTAL, con el impuesto ya adentro.
+def iva_sobre(neto) -> float:
+    """El IVA que se SUMA a ese monto. 100 -> 22, y el total es 122.
 
-    El monto que se carga es el de la factura: 500 son 409,84 propios mas 90,16
-    de impuesto. Al reves —500 mas 22%— daria 610 y ese numero no existe en
-    ningun papel.
+    El monto que se carga es el LIQUIDO, no el total: es como se acuerda un
+    precio y como se cargan los gastos acá. La primera version hacia lo
+    contrario —tomaba el monto como total y sacaba el impuesto de adentro, 100
+    -> 81,97 + 18,03— y estaba mal: nadie escribe el numero con el IVA ya
+    metido.
+
+    Se llama `iva_sobre` y no `desglosar_iva` a proposito: la funcion vieja
+    devolvia una tupla con el sentido invertido, y un renombre hace que
+    cualquier llamador que haya quedado sin actualizar reviente en vez de
+    seguir calculando mal en silencio.
     """
-    total = float(total or 0)
-    neto = total / (1 + IVA_TASA)
-    return neto, total - neto
+    return float(neto or 0) * IVA_TASA
 
 
 def a_usd(monto: float, moneda: str, tipo_cambio: float | None) -> float:
@@ -153,6 +158,19 @@ def _totales(movimientos: list[dict]) -> tuple[float, float]:
     return round(ingresos, 2), round(egresos, 2)
 
 
+def _totales_con_iva(movimientos: list[dict]) -> tuple[float, float]:
+    """Lo mismo pero con el impuesto sumado: es la plata que se mueve de verdad.
+
+    Los KPIs muestran el liquido en grande —que es lo que se escribe y lo que
+    de verdad es tuyo— y esto abajo en chico, para poder cuadrar contra el
+    banco sin tener que hacer la cuenta a mano.
+    """
+    def _con(tipo):
+        return sum((m["monto_usd"] or 0) + (m["iva_usd"] or 0)
+                   for m in movimientos if m["tipo"] == tipo)
+    return round(_con("ingreso"), 2), round(_con("egreso"), 2)
+
+
 def mes_editable(db_path: str, periodo, hoy: str | None = None) -> bool:
     """Si ese mes se puede tocar.
 
@@ -236,7 +254,7 @@ def saldar_por_cobrar(db_path: str, pc_id: int, fecha: str,
         raise ValueError("ese pendiente ya se cobró")
 
     monto = pendiente["monto_usd"]
-    iva = desglosar_iva(monto)[1] if facturado else 0.0
+    iva = iva_sobre(monto) if facturado else 0.0
     mid = crear_movimiento(
         db_path, tipo="ingreso", fecha=fecha, periodo=periodo_de(fecha),
         concepto=pendiente["concepto"], categoria=categoria,
@@ -283,13 +301,15 @@ def resumen_iva(db_path: str, periodo: str) -> dict:
         "iva_pagado": pagado,
         "arrastre": arrastre,
         "saldo": cobrado - pagado + arrastre,
+        # El monto cargado es el LIQUIDO: el total lo suma el impuesto, no lo
+        # contiene. Al reves —que era como estaba— 100 daba 81,97 + 18,03.
         "movimientos": [{
             "id": m["id"],
             "concepto": m["concepto"],
             "tipo": m["tipo"],
-            "neto": (m["monto_usd"] or 0) - (m["iva_usd"] or 0),
+            "neto": m["monto_usd"] or 0,
             "iva": m["iva_usd"] or 0,
-            "total": m["monto_usd"] or 0,
+            "total": (m["monto_usd"] or 0) + (m["iva_usd"] or 0),
         } for m in del_mes],
     }
 
@@ -313,6 +333,7 @@ def resumen(db_path: str, desde: str, hasta: str) -> dict:
 
     movs = listar_movimientos(db_path, desde=desde, hasta=hasta)
     ingresos, egresos = _totales(movs)
+    ingresos_con_iva, egresos_con_iva = _totales_con_iva(movs)
 
     prev_desde, prev_hasta = periodo_anterior(desde, hasta)
     prev = listar_movimientos(db_path, desde=prev_desde, hasta=prev_hasta)
@@ -347,6 +368,12 @@ def resumen(db_path: str, desde: str, hasta: str) -> dict:
             "ingresos_previos_usd": ingresos_prev,
             "egresos_previos_usd": egresos_prev,
             "neto_previo_usd": round(ingresos_prev - egresos_prev, 2),
+            # Con el IVA sumado: la plata que de verdad se movió, para cuadrar
+            # contra el banco. Los movimientos sin factura suman igual acá,
+            # porque su total ES su líquido.
+            "ingresos_con_iva_usd": ingresos_con_iva,
+            "egresos_con_iva_usd": egresos_con_iva,
+            "neto_con_iva_usd": round(ingresos_con_iva - egresos_con_iva, 2),
         },
         "serie": serie,
         "por_categoria": por_categoria,

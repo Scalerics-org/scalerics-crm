@@ -90,7 +90,7 @@ def test_marcar_que_se_factura_guarda_el_iva(app, cli):
     assert r.status_code == 201
     mov = get_movimiento(app.config["_DB"], r.get_json()["id"])
     assert mov["facturado"] == 1
-    assert round(mov["iva_usd"], 2) == 90.16
+    assert round(mov["iva_usd"], 2) == 110.0
 
 
 def test_sin_factura_no_guarda_iva(app, cli):
@@ -134,7 +134,7 @@ def test_editar_el_monto_recalcula_el_iva(app, cli):
                   "categoria": "otros", "monto": 1000, "moneda": "USD",
                   "facturado": True})
 
-    assert round(get_movimiento(app.config["_DB"], mid)["iva_usd"], 2) == 180.33
+    assert round(get_movimiento(app.config["_DB"], mid)["iva_usd"], 2) == 220.0
 
 
 # ── el endpoint ──────────────────────────────────────────────────────────────
@@ -145,9 +145,9 @@ def test_devuelve_el_saldo_del_mes(app, cli):
 
     d = cli.get(f"/api/finanzas/iva?periodo={_mes()}").get_json()
 
-    assert round(d["iva_cobrado"], 2) == 90.16
-    assert round(d["iva_pagado"], 2) == 45.08
-    assert round(d["saldo"], 2) == 45.08
+    assert round(d["iva_cobrado"], 2) == 110.0
+    assert round(d["iva_pagado"], 2) == 55.0
+    assert round(d["saldo"], 2) == 55.0
     assert len(d["movimientos"]) == 2
 
 

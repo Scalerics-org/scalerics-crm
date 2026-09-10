@@ -616,6 +616,8 @@ body.light .resp-sel{background:#fff;border-color:#e2e8f0;color:#0f172a}
 .calw-chip .cal-del-btn,.calw-chip .cal-join-btn,.calw-chip .cal-hora-btn{display:none}
 .calw-chip:hover .cal-del-btn,.calw-chip:hover .cal-join-btn,.calw-chip:hover .cal-hora-btn{display:block}
 .calw-hint{font-size:.7rem;color:#475569;margin-bottom:10px}
+.fin-kpi-iva{font-size:.66rem;color:#64748b;margin-top:2px}
+body.light .fin-kpi-iva{color:#94a3b8}
 .fin-nav-mes{display:flex;align-items:center;gap:6px}
 .fin-nav-mes span{font-size:.82rem;font-weight:700;color:#e2e8f0;min-width:130px;text-align:center}
 .fin-cerrado{display:flex;align-items:center;gap:8px;font-size:.7rem;font-weight:700;color:#f59e0b;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);padding:4px 10px;border-radius:999px;text-transform:uppercase;letter-spacing:.04em}
@@ -1642,9 +1644,9 @@ body.light .fin-kpi-label,body.light .fin-kpi-var,body.light .fin-card-title,bod
         <button class="cal-today-btn" onclick="finReabrirMes()">Reabrir mes</button>
       </span>
       <select id="fin-rango" onchange="_finRangoCambio()">
-        <option value="mes">Mes actual</option>
+        <option value="mes" selected>Mes actual</option>
         <option value="3">Últimos 3 meses</option>
-        <option value="12" selected>Últimos 12 meses</option>
+        <option value="12">Últimos 12 meses</option>
         <option value="anio">Este año</option>
       </select>
       <div class="fin-toggle">
@@ -1674,7 +1676,11 @@ body.light .fin-kpi-label,body.light .fin-kpi-var,body.light .fin-card-title,bod
     </div>
 
     <div id="fin-vista-cobrar" style="display:none">
-      <div class="fin-card"><div class="fin-card-title">Lo que falta cobrar</div>
+      <div class="fin-card">
+        <div class="fin-card-title" style="display:flex;align-items:center;gap:10px">
+          Lo que falta cobrar
+          <button class="cal-today-btn" onclick="abrirPendiente()">+ Agregar</button>
+        </div>
         <div id="fin-cobrar"></div></div>
     </div>
 
@@ -2068,7 +2074,7 @@ body.light .fin-kpi-label,body.light .fin-kpi-var,body.light .fin-card-title,bod
     <label class="modal-label">Categoría</label>
     <select id="fin-mov-categoria"></select>
 
-    <label class="modal-label">Monto</label>
+    <label class="modal-label">Monto (líquido, sin IVA)</label>
     <div style="display:flex;gap:8px">
       <input type="number" step="0.01" min="0" id="fin-mov-monto" class="modal-input" oninput="_finRecalcularUsd();_finPreviewIva();_finPreviewPendiente()">
       <select id="fin-mov-moneda" onchange="_finRecalcularUsd();_finPreviewIva()">
@@ -2121,6 +2127,39 @@ body.light .fin-kpi-label,body.light .fin-kpi-var,body.light .fin-card-title,bod
     <div class="modal-btns">
       <button class="btn-ghost" onclick="cerrarMovimiento()">Cancelar</button>
       <button class="btn-primary" onclick="guardarMovimiento()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="fin-pendiente-modal" onclick="if(event.target===this)cerrarPendiente()">
+  <div class="modal" style="width:440px;max-width:95vw">
+    <h3>Agregar algo por cobrar</h3>
+    <p style="margin-bottom:16px;font-size:.78rem;color:#64748b">
+      Para lo que ya se acordó y todavía no entró. Si estás cargando un cobro
+      parcial, conviene hacerlo desde el movimiento: el pendiente sale solo.
+    </p>
+
+    <label class="modal-label">Concepto</label>
+    <input type="text" id="fin-pc-concepto" class="modal-input" placeholder="50% final La Vaca Encantada">
+
+    <div class="modal-row">
+      <div>
+        <label class="modal-label">Monto (líquido, USD)</label>
+        <input type="number" step="0.01" min="0" id="fin-pc-monto" class="modal-input">
+      </div>
+      <div>
+        <label class="modal-label">Vence (opcional)</label>
+        <input type="date" id="fin-pc-vence" class="modal-input">
+      </div>
+    </div>
+
+    <label class="modal-label">Cliente (opcional)</label>
+    <select id="fin-pc-cliente"><option value="">Sin atribuir</option></select>
+
+    <div id="fin-pc-error" class="fin-rojo" style="font-size:.8rem;margin-top:10px"></div>
+    <div class="modal-btns">
+      <button class="btn-ghost" onclick="cerrarPendiente()">Cancelar</button>
+      <button class="btn-primary" id="fin-pc-btn" onclick="guardarPendiente()">Guardar</button>
     </div>
   </div>
 </div>
@@ -6333,20 +6372,28 @@ function _finVariacion(actual, previo) {
 
 function _finKpis(k) {
   const neto = k.neto_usd;
+  // El numero grande es el LIQUIDO -lo que se escribe y lo que de verdad es
+  // tuyo- y abajo va el mismo con el IVA sumado, que es la plata que se movio
+  // en el banco. Sin el segundo hay que hacer la cuenta a mano para conciliar.
+  const conIva = (v, w) => Math.abs((w || 0) - (v || 0)) < 0.005
+    ? '' : `<div class="fin-kpi-iva">con IVA ${_finUsd(w)}</div>`;
   return `
     <div class="fin-kpi">
       <div class="fin-kpi-label">Ingresos</div>
       <div class="fin-kpi-valor fin-verde">${_finUsd(k.ingresos_usd)}</div>
+      ${conIva(k.ingresos_usd, k.ingresos_con_iva_usd)}
       <div class="fin-kpi-var">${_finVariacion(k.ingresos_usd, k.ingresos_previos_usd)}</div>
     </div>
     <div class="fin-kpi">
       <div class="fin-kpi-label">Egresos</div>
       <div class="fin-kpi-valor fin-rojo">${_finUsd(k.egresos_usd)}</div>
+      ${conIva(k.egresos_usd, k.egresos_con_iva_usd)}
       <div class="fin-kpi-var">${_finVariacion(k.egresos_usd, k.egresos_previos_usd)}</div>
     </div>
     <div class="fin-kpi">
       <div class="fin-kpi-label">Resultado</div>
       <div class="fin-kpi-valor ${neto >= 0 ? 'fin-verde' : 'fin-rojo'}">${_finUsd(neto)}</div>
+      ${conIva(neto, k.neto_con_iva_usd)}
       <div class="fin-kpi-var">${_finVariacion(neto, k.neto_previo_usd)}</div>
     </div>`;
 }
@@ -6526,6 +6573,63 @@ function _finParcialAplica() {
   if (_finTipo !== 'ingreso') finSetParcial(false);
 }
 
+async function abrirPendiente() {
+  document.getElementById('fin-pc-concepto').value = '';
+  document.getElementById('fin-pc-monto').value = '';
+  document.getElementById('fin-pc-vence').value = '';
+  document.getElementById('fin-pc-error').textContent = '';
+  // Reusa el mismo cargador de clientes que el movimiento, para que las dos
+  // listas no puedan divergir.
+  const sel = document.getElementById('fin-pc-cliente');
+  if (sel.dataset.cargado !== '1') {
+    try {
+      const r = await fetch('/api/leads?crm_group=clientes');
+      const data = await r.json();
+      const leads = Array.isArray(data) ? data : (data.items || []);
+      sel.innerHTML = '<option value="">Sin atribuir</option>'
+        + leads.map(b => '<option value="' + b.id + '">' + esc(b.name) + '</option>').join('');
+      sel.dataset.cargado = '1';
+    } catch (e) { /* se puede guardar sin cliente */ }
+  }
+  sel.value = '';
+  document.getElementById('fin-pendiente-modal').classList.add('open');
+}
+
+function cerrarPendiente() {
+  document.getElementById('fin-pendiente-modal').classList.remove('open');
+}
+
+async function guardarPendiente() {
+  const err = document.getElementById('fin-pc-error');
+  const concepto = document.getElementById('fin-pc-concepto').value.trim();
+  const monto = parseFloat(document.getElementById('fin-pc-monto').value);
+  if (!concepto) { err.textContent = 'Poné un concepto.'; return; }
+  if (!monto || monto <= 0) { err.textContent = 'El monto tiene que ser mayor que cero.'; return; }
+
+  const btn = document.getElementById('fin-pc-btn');
+  btn.disabled = true; btn.textContent = '...';
+  let j;
+  try {
+    const r = await fetch('/api/finanzas/por-cobrar', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        concepto,
+        monto_usd: monto,
+        vence: document.getElementById('fin-pc-vence').value || null,
+        client_id: document.getElementById('fin-pc-cliente').value || null,
+      })
+    });
+    j = await r.json();
+  } catch (e) {
+    j = {ok: false, error: 'no se pudo hablar con el servidor'};
+  }
+  btn.disabled = false; btn.textContent = 'Guardar';
+  if (!j || !j.ok) { err.textContent = (j && j.error) || 'No se pudo guardar'; return; }
+  cerrarPendiente();
+  loadPorCobrar();
+  loadFinanzas();
+}
+
 async function loadPorCobrar() {
   const caja = document.getElementById('fin-cobrar');
   caja.innerHTML = '<div style="color:#475569;padding:16px;font-size:.85rem">Cargando...</div>';
@@ -6597,11 +6701,15 @@ function _finPreviewIva() {
   const caja = document.getElementById('fin-iva-preview');
   if (!_finFacturado) { caja.textContent = 'No suma al cálculo de IVA.'; return; }
   const monto = parseFloat(document.getElementById('fin-mov-monto').value);
-  if (!monto || monto <= 0) { caja.textContent = 'Se calcula sobre el total con IVA (22%).'; return; }
+  if (!monto || monto <= 0) { caja.textContent = 'El IVA (22%) se suma al monto.'; return; }
   const usd = _finMontoUsd();
   if (!usd) { caja.textContent = 'Poné el tipo de cambio para ver el desglose.'; return; }
-  const neto = usd / 1.22;
-  caja.textContent = 'Neto ' + _finUsd(neto) + '  ·  IVA (22%) ' + _finUsd(usd - neto);
+  // El monto que se escribe es el LIQUIDO y el impuesto se SUMA: 100 -> 122.
+  // Antes lo tomaba como total y sacaba el IVA de adentro (100 -> 81,97 +
+  // 18,03), que no es como se carga un gasto ni como se acuerda un precio.
+  const iva = usd * 0.22;
+  caja.textContent = 'Líquido ' + _finUsd(usd) + '  +  IVA (22%) ' + _finUsd(iva)
+    + '  =  ' + _finUsd(usd + iva);
 }
 
 async function loadIva() {

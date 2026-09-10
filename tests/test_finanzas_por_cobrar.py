@@ -178,7 +178,7 @@ def test_saldar_uno_que_no_existe_avisa(db):
 
 def test_saldar_facturado_guarda_el_iva(db):
     """Cobrar el 50% final se factura como cualquier otro ingreso."""
-    _, pid = _pendiente(db, monto=1220)
+    _, pid = _pendiente(db, monto=1000)
 
     mid = saldar_por_cobrar(db, pid, fecha="2026-09-20", facturado=True)
 
