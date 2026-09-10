@@ -154,11 +154,26 @@ números. Va entero, con el prefijo: `META_AD_ACCOUNT_ID=act_123456789`.
 
 ## 6. Cargarlos en Fly
 
+Lo más simple, y lo que evita que el token quede escrito en el historial del
+shell:
+
 ```bash
-flyctl secrets set META_ADS_TOKEN="..." META_AD_ACCOUNT_ID="act_..." -a scalerics-crm
+python scripts/cargar_token_meta.py
 ```
 
-Los secrets no van al `.env` del repo ni a ningún archivo versionado.
+Pide el token con `getpass` —no se ve mientras se pega, no va al historial—, lo
+valida, lo carga con el id de la cuenta ya puesto, y te dice qué correr después.
+
+A mano es lo mismo:
+
+```bash
+flyctl secrets set META_ADS_TOKEN="..." META_AD_ACCOUNT_ID="act_1165635198430883" -a scalerics-crm
+```
+
+Los secrets no van al `.env` del repo ni a ningún archivo versionado. Y un token
+de usuario del sistema sin vencimiento tampoco va pegado en un chat ni en una
+tarea de Notion: si ya pasó por algún lado así, conviene revocarlo desde
+**Revocar identificadores** y generar otro.
 
 > **Ojo:** `flyctl secrets set` reinicia la máquina, y cada reinicio dispara los
 > jobs de fondo (regla 3 de `COORDINACION.md`). El sync de Insights tiene su
