@@ -236,6 +236,75 @@ button:hover{opacity:.9}
 # Main dashboard HTML
 # ---------------------------------------------------------------------------
 
+# Dos pedazos del JS del panel viven afuera del string grande para poder
+# probarlos: son funciones puras (mensaje -> HTML) y se corren con node desde
+# los tests. Se pegan mas abajo, donde estan sus marcadores.
+
+ESC_JS = r"""function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }"""
+
+# Lo que el lead manda y no es texto: la nota de voz, la foto del local, el
+# sticker, el presupuesto en PDF.
+#
+# Antes esto solo sabia dibujar un <audio> y descartaba todo lo demas con un
+# `if (a.tipo !== 'audio') return ''`. La foto llegaba al CRM y no se veia en
+# ningun lado, asi que la conversacion del panel quedaba con un hueco.
+WA_MEDIOS_JS = r"""
+function mediosDeMensaje(m) {
+  if (!m.media || !m.media.length) return '';
+  return m.media.map(a => {
+    // La URL que manda el bot es de SU api (/api/messages/<id>/media/<i>). Acá
+    // se traduce a la del CRM, que es la que el navegador puede pedir: el bot
+    // no tiene IP pública y vive solo en la red privada de Fly.
+    const ids = String(a.url || '').match(/\/api\/messages\/(\d+)\/media\/(\d+)/);
+    const src = ids ? `/api/wa/media/${ids[1]}/${ids[2]}` : null;
+
+    // Llegó pero no lo tenemos: pesaba demasiado, falló la descarga, o ya se
+    // borró por antigüedad. Dibujar un <img> vacío deja un roto en la pantalla
+    // sin explicar nada; lo honesto es decir qué mandaron.
+    if (!a.archivo || !src) {
+      return `<div class="wa-medio-ausente">${esc(NOMBRE_MEDIO[a.tipo] || 'un archivo')} · no se pudo guardar</div>`;
+    }
+
+    if (a.tipo === 'audio') {
+      const dur = a.segundos ? ` <span class="wa-audio-dur">${a.segundos}s</span>` : '';
+      return `<div class="wa-audio">
+        <audio controls preload="none" src="${src}"></audio>
+        <div class="wa-audio-label">nota de voz${dur} · abajo, transcripta</div>
+      </div>`;
+    }
+
+    // El sticker va sin marco y más chico: es un gesto, no una foto que haya
+    // que mirar de cerca.
+    if (a.tipo === 'imagen' || a.tipo === 'sticker') {
+      return `<a href="${src}" target="_blank" rel="noopener" class="wa-medio-img ${a.tipo === 'sticker' ? 'wa-sticker' : ''}">
+        <img src="${src}" alt="${esc(NOMBRE_MEDIO[a.tipo] || 'archivo')} del lead" loading="lazy">
+      </a>`;
+    }
+
+    if (a.tipo === 'video') {
+      return `<video class="wa-medio-video" controls preload="metadata" src="${src}"></video>`;
+    }
+
+    // Un documento sin su nombre es un link que no dice nada: "presupuesto.pdf"
+    // y "IMG-4032.pdf" son cosas muy distintas para el que atiende. El nombre
+    // lo eligió el lead, así que va escapado.
+    const nombre = a.nombre || 'archivo';
+    return `<a href="${src}" target="_blank" rel="noopener" download class="wa-medio-doc">${esc(nombre)}</a>`;
+  }).join('');
+}
+
+/** Cómo se nombra cada medio cuando hay que hablar de él y no mostrarlo. */
+const NOMBRE_MEDIO = {
+  audio: 'una nota de voz',
+  imagen: 'una foto',
+  sticker: 'un sticker',
+  video: 'un video',
+  documento: 'un archivo',
+  ubicacion: 'una ubicación',
+  contacto: 'un contacto',
+};
+"""
+
 DASHBOARD_HTML = """<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -606,6 +675,21 @@ body.light .resp-sel{background:#fff;border-color:#e2e8f0;color:#0f172a}
 .wa-audio audio{width:230px;height:32px;display:block}
 .wa-audio-label{font-size:.62rem;color:#64748b;margin-top:3px}
 .wa-audio-dur{color:#94a3b8}
+/* La foto, el sticker, el video y el archivo que manda el lead. El tope de
+   ancho es el de la burbuja: una foto vertical de celular, sin esto, estira la
+   conversación entera. */
+.wa-medio-img{display:block;margin:0 0 6px;max-width:230px}
+.wa-medio-img img{display:block;width:100%;height:auto;border-radius:8px}
+/* El sticker es un gesto, no una foto que haya que mirar de cerca. */
+.wa-sticker{max-width:120px}
+.wa-sticker img{border-radius:0}
+.wa-medio-video{display:block;margin:0 0 6px;max-width:230px;border-radius:8px}
+.wa-medio-doc{display:inline-block;margin:0 0 6px;padding:6px 10px;border-radius:8px;
+  background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.09);
+  color:#e2e8f0;font-size:.72rem;text-decoration:none;word-break:break-all}
+.wa-medio-doc:hover{background:rgba(255,255,255,.1)}
+/* Llegó pero no lo tenemos. Se dice, en vez de dejar un roto sin explicación. */
+.wa-medio-ausente{margin:0 0 6px;font-size:.66rem;color:#64748b;font-style:italic}
 .wa-pausa-badge{font-size:.68rem;font-weight:700;color:#93c5fd;background:#16213a;padding:3px 8px;border-radius:999px;flex-shrink:0}
 .wa-messages{flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:8px;min-height:0}
 .wa-bubble{max-width:68%;padding:9px 13px;border-radius:12px;font-size:.84rem;line-height:1.5;white-space:pre-wrap;word-break:break-word}
@@ -3255,7 +3339,7 @@ function exportCSV() {
   URL.revokeObjectURL(url);
 }
 
-function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+/*ESC_JS*/
 // Literal de JS seguro para meter dentro de un onclick="..." inline.
 // esc() sola no alcanza ahi: el navegador decodifica las entidades HTML
 // (&#39; -> ') ANTES de parsear el atributo como JS, asi que una comilla
@@ -3596,27 +3680,7 @@ async function releaseToBot() {
   }
 }
 
-// La nota de voz de la que salió el texto de abajo.
-//
-// El bot transcribe y sigue con el texto, pero la transcripción a veces sale
-// mal —audio corto, acento rioplatense— y ahí escuchar el original es la
-// diferencia entre entender al lead y no. El archivo lo sirve el CRM: el bot no
-// tiene IP pública, así que el navegador no puede pedírselo directo.
-function audioDeMensaje(m) {
-  if (!m.media || !m.media.length) return '';
-  return m.media.map(a => {
-    if (a.tipo !== 'audio') return '';
-    const dur = a.segundos ? ` <span class="wa-audio-dur">${a.segundos}s</span>` : '';
-    // La URL que manda el bot es de SU api (/api/messages/<id>/media/<i>). Acá
-    // se traduce a la del CRM, que es la que el navegador puede pedir.
-    const ids = String(a.url || '').match(/\/api\/messages\/(\d+)\/media\/(\d+)/);
-    if (!ids) return '';
-    return `<div class="wa-audio">
-      <audio controls preload="none" src="/api/wa/media/${ids[1]}/${ids[2]}"></audio>
-      <div class="wa-audio-label">🎤 nota de voz${dur} · abajo, transcripta</div>
-    </div>`;
-  }).join('');
-}
+/*WA_MEDIOS_JS*/
 
 async function loadWaMessages(phone) {
   const r = await fetch('/api/wa/leads/' + encodeURIComponent(phone) + '/messages');
@@ -3629,7 +3693,7 @@ async function loadWaMessages(phone) {
   if (!d.length) { el.innerHTML = '<div style="color:#334155;text-align:center;padding:20px">Sin mensajes</div>'; return; }
   el.innerHTML = d.map((m, i) => `
     <div style="display:flex;flex-direction:column;align-items:${m.direction==='out'?'flex-end':'flex-start'}">
-      <div class="wa-bubble ${m.direction==='out'?'wa-bubble-out':'wa-bubble-in'}">${audioDeMensaje(m)}${esc(m.content||'')}</div>
+      <div class="wa-bubble ${m.direction==='out'?'wa-bubble-out':'wa-bubble-in'}">${mediosDeMensaje(m)}${esc(m.content||'')}</div>
       <div class="wa-bubble-time">${fmtWaTime(m.created_at)}</div>
     </div>`).join('');
   setTimeout(() => { el.scrollTop = el.scrollHeight; }, 50);
@@ -7569,6 +7633,11 @@ async function loadActivity() {
 </div>
 </body>
 </html>"""
+
+# Los pedazos de JS que viven afuera para poder probarse se pegan aca.
+DASHBOARD_HTML = DASHBOARD_HTML.replace("/*ESC_JS*/", ESC_JS).replace(
+    "/*WA_MEDIOS_JS*/", WA_MEDIOS_JS
+)
 
 
 _calendly_sync_state = {"at": 0.0}

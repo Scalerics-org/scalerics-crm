@@ -248,6 +248,31 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 - **10/9 — G (memoria del worker): CIERRE. La fuga que causó el OOM del 9/9
   está tapada y deployada en `v173`. PR 18 mergeado (`8c8e5ca`).**
+- **10/9 — H (medios de WhatsApp en el panel): trabajo en mi propio árbol.**
+
+  Worktree `../crm-wa-panel`, rama `feat/wa-medios-panel`. Toco **solo** el
+  render de medios del panel WhatsApp (`dashboard.py`) y el texto del proxy de
+  archivos (`routes/wa.py`). No toco nada de marketing, discovery ni LinkedIn.
+
+  **Por qué:** si el lead mandaba una foto, un sticker o un PDF, no se veía en
+  el CRM. El bot solo bajaba las notas de voz y descartaba el resto sin ni
+  siquiera registrar el mensaje, así que la conversación del panel quedaba con
+  un hueco. La otra mitad del arreglo está en `scalerics-wa`, en la rama
+  `feat/wa-service-baileys` — son **dos deploys distintos**.
+
+  **Un cambio estructural chico que conviene saber:** el JS que dibuja los
+  medios y la función `esc` salieron del string gigante `DASHBOARD_HTML` a dos
+  constantes (`ESC_JS`, `WA_MEDIOS_JS`) que se pegan por marcador
+  (`/*ESC_JS*/`, `/*WA_MEDIOS_JS*/`) justo después del string. Se hizo para
+  poder probarlas: `tests/test_wa_medios_panel.py` las corre con node de verdad
+  y mide el HTML que sale. **Si movés o borrás uno de esos marcadores el panel
+  entero muere en silencio** —es un solo `<script>`, un ReferenceError mata
+  todo lo de abajo y la pantalla queda en blanco sin error en el servidor—.
+  Hay un test que lo agarra.
+
+  **Sin deployar todavía.**
+
+- **10/9 — G (marketing/Meta Ads): abro modulo nuevo, todavia sin codigo.**
 
   **Verificado contra la máquina viva, no contra el log del deploy.** El sync
   de Calendar leyó 30 eventos reales y el de Gmail 5 mensajes, los dos en
