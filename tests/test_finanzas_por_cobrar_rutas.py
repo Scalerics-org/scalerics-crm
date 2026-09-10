@@ -2,6 +2,7 @@
 
 import json
 import sqlite3
+from datetime import date
 
 import pytest
 from werkzeug.security import generate_password_hash
@@ -9,6 +10,19 @@ from werkzeug.security import generate_password_hash
 import dashboard
 from database import (create_user, get_movimiento, init_db, insert_business,
                       listar_por_cobrar)
+
+
+def _mes(offset: int = 0) -> str:
+    """El período actual desplazado `offset` meses, como 'YYYY-MM'.
+
+    Estas fechas estaban fijas en 2026-09. Desde que un mes pasado queda
+    cerrado, una fecha fija pasa mientras el calendario no la deje atrás y
+    empieza a fallar el día 1 del mes siguiente. Calcularla al vuelo hace que
+    el test siga probando lo mismo en cualquier momento del año.
+    """
+    hoy = date.today()
+    m = hoy.month + offset
+    return f"{hoy.year + (m - 1) // 12:04d}-{(m - 1) % 12 + 1:02d}"
 
 
 @pytest.fixture
@@ -76,7 +90,7 @@ def test_un_cobro_parcial_genera_el_pendiente(app, cli):
     cid = _cliente(db, "La Vaca Encantada")
 
     r = cli.post("/api/finanzas/movimientos", json={
-        "tipo": "ingreso", "fecha": "2026-09-09", "concepto": "50% inicial",
+        "tipo": "ingreso", "fecha": f"{_mes()}-09", "concepto": "50% inicial",
         "categoria": "desarrollo_web", "monto": 500, "moneda": "USD",
         "client_id": cid,
         "total_acordado": 1000, "vence_resto": "2026-10-18",
@@ -99,7 +113,7 @@ def test_sin_total_acordado_no_genera_nada(app, cli):
     """Un cobro normal no deja un pendiente fantasma."""
     db = app.config["_DB"]
     cli.post("/api/finanzas/movimientos", json={
-        "tipo": "ingreso", "fecha": "2026-09-09", "concepto": "Cobro entero",
+        "tipo": "ingreso", "fecha": f"{_mes()}-09", "concepto": "Cobro entero",
         "categoria": "otros", "monto": 500, "moneda": "USD"})
 
     assert listar_por_cobrar(db) == []
@@ -108,7 +122,7 @@ def test_sin_total_acordado_no_genera_nada(app, cli):
 def test_si_el_total_es_igual_a_lo_cobrado_no_queda_pendiente(app, cli):
     db = app.config["_DB"]
     cli.post("/api/finanzas/movimientos", json={
-        "tipo": "ingreso", "fecha": "2026-09-09", "concepto": "Cobro entero",
+        "tipo": "ingreso", "fecha": f"{_mes()}-09", "concepto": "Cobro entero",
         "categoria": "otros", "monto": 1000, "moneda": "USD",
         "total_acordado": 1000, "vence_resto": "2026-10-18"})
 
@@ -119,7 +133,7 @@ def test_un_total_menor_a_lo_cobrado_es_un_error(app, cli):
     """Cobrar 500 de un total de 300 no tiene sentido: es un dato mal puesto."""
     db = app.config["_DB"]
     r = cli.post("/api/finanzas/movimientos", json={
-        "tipo": "ingreso", "fecha": "2026-09-09", "concepto": "Cobro",
+        "tipo": "ingreso", "fecha": f"{_mes()}-09", "concepto": "Cobro",
         "categoria": "otros", "monto": 500, "moneda": "USD",
         "total_acordado": 300, "vence_resto": "2026-10-18"})
 
@@ -131,7 +145,7 @@ def test_un_egreso_no_genera_un_pendiente_de_cobro(app, cli):
     """Lo que se paga no queda por cobrar."""
     db = app.config["_DB"]
     cli.post("/api/finanzas/movimientos", json={
-        "tipo": "egreso", "fecha": "2026-09-09", "concepto": "Hosting",
+        "tipo": "egreso", "fecha": f"{_mes()}-09", "concepto": "Hosting",
         "categoria": "infraestructura", "monto": 100, "moneda": "USD",
         "total_acordado": 500, "vence_resto": "2026-10-18"})
 
@@ -144,7 +158,7 @@ def test_el_listado_trae_el_estado_de_vencimiento(app, cli):
     db = app.config["_DB"]
     cid = _cliente(db, "La Vaca Encantada")
     cli.post("/api/finanzas/movimientos", json={
-        "tipo": "ingreso", "fecha": "2026-09-09", "concepto": "50% inicial",
+        "tipo": "ingreso", "fecha": f"{_mes()}-09", "concepto": "50% inicial",
         "categoria": "otros", "monto": 500, "moneda": "USD", "client_id": cid,
         "total_acordado": 1000, "vence_resto": "2030-01-15"})
 
@@ -162,7 +176,7 @@ def test_el_total_es_lo_que_va_en_la_card(app, cli):
     for monto in (500, 300):
         cid = _cliente(db, f"Cliente {monto}")
         cli.post("/api/finanzas/movimientos", json={
-            "tipo": "ingreso", "fecha": "2026-09-09", "concepto": "50%",
+            "tipo": "ingreso", "fecha": f"{_mes()}-09", "concepto": "50%",
             "categoria": "otros", "monto": monto, "moneda": "USD",
             "client_id": cid, "total_acordado": monto * 2,
             "vence_resto": "2030-01-15"})
@@ -176,7 +190,7 @@ def _un_pendiente(app, cli, monto=500):
     db = app.config["_DB"]
     cid = _cliente(db, "La Vaca Encantada")
     cli.post("/api/finanzas/movimientos", json={
-        "tipo": "ingreso", "fecha": "2026-09-09", "concepto": "50% inicial",
+        "tipo": "ingreso", "fecha": f"{_mes()}-09", "concepto": "50% inicial",
         "categoria": "otros", "monto": monto, "moneda": "USD", "client_id": cid,
         "total_acordado": monto * 2, "vence_resto": "2030-01-15"})
     return listar_por_cobrar(db)[0]["id"]
@@ -187,7 +201,7 @@ def test_cobrar_crea_el_ingreso_y_lo_saca_del_listado(app, cli):
     pid = _un_pendiente(app, cli, monto=500)
 
     r = cli.post(f"/api/finanzas/por-cobrar/{pid}/cobrar",
-                 json={"fecha": "2026-09-20"})
+                 json={"fecha": f"{_mes()}-20"})
 
     assert r.status_code == 201
     mov = get_movimiento(db, r.get_json()["movimiento_id"])
@@ -200,7 +214,7 @@ def test_cobrar_facturado_guarda_el_iva(app, cli):
     pid = _un_pendiente(app, cli, monto=1220)
 
     r = cli.post(f"/api/finanzas/por-cobrar/{pid}/cobrar",
-                 json={"fecha": "2026-09-20", "facturado": True})
+                 json={"fecha": f"{_mes()}-20", "facturado": True})
 
     mov = get_movimiento(db, r.get_json()["movimiento_id"])
     assert round(mov["iva_usd"], 2) == 220.0
@@ -208,15 +222,15 @@ def test_cobrar_facturado_guarda_el_iva(app, cli):
 
 def test_cobrar_dos_veces_da_400(app, cli):
     pid = _un_pendiente(app, cli)
-    cli.post(f"/api/finanzas/por-cobrar/{pid}/cobrar", json={"fecha": "2026-09-20"})
+    cli.post(f"/api/finanzas/por-cobrar/{pid}/cobrar", json={"fecha": f"{_mes()}-20"})
 
-    r = cli.post(f"/api/finanzas/por-cobrar/{pid}/cobrar", json={"fecha": "2026-09-21"})
+    r = cli.post(f"/api/finanzas/por-cobrar/{pid}/cobrar", json={"fecha": f"{_mes()}-21"})
 
     assert r.status_code == 400
 
 
 def test_cobrar_uno_que_no_existe_da_400(app, cli):
-    r = cli.post("/api/finanzas/por-cobrar/9999/cobrar", json={"fecha": "2026-09-20"})
+    r = cli.post("/api/finanzas/por-cobrar/9999/cobrar", json={"fecha": f"{_mes()}-20"})
     assert r.status_code == 400
 
 
