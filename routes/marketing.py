@@ -84,13 +84,18 @@ def api_dossier():
 
 @marketing_bp.route("/api/marketing/generar", methods=["POST"])
 def api_generar():
-    """Calcula el dossier del periodo y lo guarda como snapshot.
+    """Calcula el dossier del periodo, le pide el informe a la IA y guarda todo.
 
-    En esta fase termina aca: no hay informe. Cuando exista el motor de IA se
-    encadena despues de guardar.
+    Con `RADIOGRAFIA_IA_ACTIVA` apagada —que es como nace— `redactar` no llama a
+    nadie y devuelve status 'sin_ia': el dossier se guarda igual y el panel
+    funciona igual, porque los graficos siempre salieron del dossier.
+
+    Un informe que no paso el validador NO se guarda. Queda el status del error
+    y el motivo.
     """
     from services.radiografia import (aplicar_deltas, construir_dossier,
                                       guardar_snapshot, ultimo_snapshot)
+    from services.radiografia_ia import MODELO, redactar
 
     desde, hasta = _periodo()
     if not desde:
@@ -98,7 +103,20 @@ def api_generar():
 
     dossier = aplicar_deltas(construir_dossier(_db(), desde, hasta),
                              ultimo_snapshot(_db()))
-    return jsonify({"id": guardar_snapshot(_db(), dossier), "status": "sin_ia"})
+
+    # Con la IA apagada esto no llama a nadie y devuelve status 'sin_ia'.
+    resultado = redactar(dossier)
+    if resultado.get("informe"):
+        resultado["model"] = MODELO
+
+    return jsonify({
+        "id": guardar_snapshot(_db(), dossier, resultado),
+        "status": resultado.get("status"),
+        "error": resultado.get("error"),
+        "avisos": resultado.get("avisos") or [],
+        "tokens": {"entrada": resultado.get("tokens_in"),
+                   "salida": resultado.get("tokens_out")},
+    })
 
 
 @marketing_bp.route("/api/marketing/sync-insights", methods=["POST"])

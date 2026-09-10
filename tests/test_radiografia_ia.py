@@ -183,3 +183,76 @@ def test_un_informe_sin_hallazgos_se_rechaza():
     informe = _informe()
     informe["hallazgos"] = []
     assert validar(informe, _dossier())
+
+
+# ── La llamada, con reintento ────────────────────────────────────────────────
+
+from services.radiografia_ia import redactar  # noqa: E402
+
+
+def test_sin_la_bandera_no_llama(monkeypatch):
+    monkeypatch.delenv("RADIOGRAFIA_IA_ACTIVA", raising=False)
+    llamadas = []
+    r = redactar(_dossier(), llamar=lambda *a, **k: llamadas.append(1))
+    assert llamadas == []
+    assert r["status"] == "sin_ia"
+    assert r["informe"] is None
+
+
+def test_un_informe_valido_se_devuelve(monkeypatch):
+    monkeypatch.setenv("RADIOGRAFIA_IA_ACTIVA", "true")
+    r = redactar(_dossier(),
+                 llamar=lambda *a, **k: (_informe(cuerpo="CPL 9,38."), 100, 50))
+    assert r["status"] == "ok"
+    assert r["informe"]["hallazgos"]
+    assert r["tokens_in"] == 100
+    assert r["tokens_out"] == 50
+
+
+def test_un_numero_inventado_dispara_un_reintento(monkeypatch):
+    """Y el reintento recibe el error concreto, no un 'proba de nuevo'."""
+    monkeypatch.setenv("RADIOGRAFIA_IA_ACTIVA", "true")
+    intentos = []
+
+    def _llamar(dossier, correccion=None):
+        intentos.append(correccion)
+        if len(intentos) == 1:
+            return (_informe(cuerpo="CPL 47,20."), 10, 10)
+        return (_informe(cuerpo="CPL 9,38."), 10, 10)
+
+    r = redactar(_dossier(), llamar=_llamar)
+    assert len(intentos) == 2
+    assert intentos[0] is None
+    assert "47" in (intentos[1] or ""), "el reintento tiene que decir que fallo"
+    assert r["status"] == "ok"
+
+
+def test_dos_fallos_seguidos_no_publican_nada(monkeypatch):
+    """Nunca se publica un informe sin validar."""
+    monkeypatch.setenv("RADIOGRAFIA_IA_ACTIVA", "true")
+    r = redactar(_dossier(),
+                 llamar=lambda *a, **k: (_informe(cuerpo="CPL 47,20."), 10, 10))
+    assert r["status"] == "error_validacion"
+    assert r["informe"] is None
+    assert "47" in r["error"]
+
+
+def test_un_aviso_de_causalidad_no_impide_publicar(monkeypatch):
+    """Es la unica regla blanda de las cuatro."""
+    monkeypatch.setenv("RADIOGRAFIA_IA_ACTIVA", "true")
+    r = redactar(_dossier(), llamar=lambda *a, **k: (
+        _informe(cuerpo="El CPL bajo porque cambiamos el creativo."), 10, 10))
+    assert r["status"] == "ok"
+    assert r["avisos"]
+
+
+def test_un_error_de_la_api_no_tumba_la_corrida(monkeypatch):
+    monkeypatch.setenv("RADIOGRAFIA_IA_ACTIVA", "true")
+
+    def _explota(*a, **k):
+        raise RuntimeError("503 del proveedor")
+
+    r = redactar(_dossier(), llamar=_explota)
+    assert r["status"] == "error_ia"
+    assert r["informe"] is None
+    assert "503" in r["error"]

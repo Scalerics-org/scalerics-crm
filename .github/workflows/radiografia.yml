@@ -1,0 +1,105 @@
+name: Radiografía de marketing
+
+# ─────────────────────────────────────────────────────────────────────────────
+# EL SCHEDULE ESTÁ COMENTADO A PROPÓSITO.
+#
+# Cada corrida le pide un informe a Opus 5 y cuesta plata: el dossier son unos
+# 31.000 tokens de entrada, o sea ~USD 0,31 por vez, ~USD 1,30 al mes. Además
+# el motor nace apagado detrás de RADIOGRAFIA_IA_ACTIVA, así que aunque esto
+# corriera hoy no llamaría a nadie.
+#
+# Para prenderlo, en este orden:
+#   1. Que haya presupuesto de API.
+#   2. flyctl secrets set RADIOGRAFIA_IA_ACTIVA=true -a scalerics-crm
+#   3. Descomentar el schedule de abajo.
+#
+# Mientras tanto se puede correr a mano desde la pestaña Actions, que sirve para
+# regenerar el dossier sin gastar un token.
+# ─────────────────────────────────────────────────────────────────────────────
+
+on:
+  # schedule:
+  #   # 11:00 UTC = 08:00 en Montevideo (UTC-3). Lunes.
+  #   - cron: "0 11 * * 1"
+  workflow_dispatch:
+
+# Dos corridas a la vez generarían dos snapshots del mismo período y pagarían el
+# informe dos veces. Si el cron se solapa con una corrida a mano, la nueva espera.
+concurrency:
+  group: radiografia-marketing
+  cancel-in-progress: false
+
+jobs:
+  radiografia:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Esperar a que el CRM conteste
+        # Un deploy justo a las 8:00, o un reinicio de la máquina de Fly, dejan
+        # una ventana de segundos donde el CRM no contesta. No es un fallo: es
+        # esperar.
+        env:
+          CRM: ${{ secrets.CRM_URL }}
+        run: |
+          set -euo pipefail
+          curl -sS -f --retry 10 --retry-all-errors --retry-delay 15 \
+            --max-time 30 -o /dev/null "$CRM/"
+
+      - name: Sincronizar el gasto de Meta
+        # Sin META_ADS_TOKEN esto contesta 200 y avisa que se salteó, así que no
+        # rompe la corrida: el resto del dossier no depende del gasto.
+        env:
+          CRM: ${{ secrets.CRM_URL }}
+          TOKEN: ${{ secrets.ADMIN_TOKEN }}
+        run: |
+          set -euo pipefail
+          RESP=$(curl -sS -f --retry 5 --retry-all-errors --retry-delay 10 \
+            --max-time 120 -X POST "$CRM/api/marketing/sync-insights" \
+            -H "x-admin-token: $TOKEN")
+          echo "sync: $RESP"
+
+      - name: Generar la radiografía
+        id: generar
+        env:
+          CRM: ${{ secrets.CRM_URL }}
+          TOKEN: ${{ secrets.ADMIN_TOKEN }}
+        run: |
+          set -euo pipefail
+          # --retry-all-errors cubre 5xx y cortes de conexión. Un 4xx no se
+          # reintenta: el token mal o el endpoint que no existe no se arreglan
+          # insistiendo, y ahí sí queremos que se vea en rojo.
+          RESP=$(curl -sS -f --retry 5 --retry-all-errors --retry-delay 10 \
+            --max-time 600 -X POST "$CRM/api/marketing/generar" \
+            -H "x-admin-token: $TOKEN")
+          echo "respuesta: $RESP"
+          echo "$RESP" | python -c "
+          import json, sys
+          d = json.load(sys.stdin)
+          print('status:', d.get('status'))
+          # Un informe que no validó no se publica, y eso tiene que verse en
+          # rojo: es la garantía de que la IA no inventa números.
+          if d.get('status') == 'error_validacion':
+              print('el informe no paso el validador:', d.get('error'))
+              sys.exit(1)
+          if d.get('status') == 'error_ia':
+              print('la API fallo:', d.get('error'))
+              sys.exit(1)
+          for aviso in d.get('avisos') or []:
+              print('aviso:', aviso)
+          "
+
+      - name: Avisar por mail si no salió
+        # El mail de "workflow failed" de GitHub se pierde entre las
+        # notificaciones del repo.
+        if: failure()
+        env:
+          CRM: ${{ secrets.CRM_URL }}
+          TOKEN: ${{ secrets.ADMIN_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          curl -sS -f --retry 5 --retry-all-errors --retry-delay 10 \
+            --max-time 60 -X POST "$CRM/api/linkedin/fallo" \
+            -H "x-admin-token: $TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"motivo\": \"la radiografia de marketing fallo. Log: $RUN_URL\"}" \
+            || echo "tampoco se pudo avisar por mail"

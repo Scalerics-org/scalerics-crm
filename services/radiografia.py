@@ -69,15 +69,30 @@ def aplicar_deltas(dossier: dict, anterior) -> dict:
     return dossier
 
 
-def guardar_snapshot(db_path: str, dossier: dict) -> int:
-    """Guarda el dossier. Sin informe: en esta fase no hay IA."""
+def guardar_snapshot(db_path: str, dossier: dict, resultado=None) -> int:
+    """Guarda el dossier, con el informe si lo hay.
+
+    `resultado` es lo que devuelve `services.radiografia_ia.redactar`. Sin él
+    —o con la IA apagada— el snapshot queda con `status='sin_ia'` y
+    `report_json` en NULL, y el panel funciona igual: los graficos siempre
+    salieron del dossier y no del informe.
+
+    Un informe que no valido NO se guarda. Queda el status del error y el
+    motivo, para poder mirar despues por que se rechazo.
+    """
+    r = resultado or {}
+    informe = r.get("informe")
     conn = _connect(db_path)
     try:
         cur = conn.execute(
             "INSERT INTO radiografias (period_start, period_end, dossier_json, "
-            "report_json, status) VALUES (?,?,?,NULL,'sin_ia')",
+            "report_json, model, tokens_in, tokens_out, status, error_message) "
+            "VALUES (?,?,?,?,?,?,?,?,?)",
             (dossier["periodo"]["desde"], dossier["periodo"]["hasta"],
-             json.dumps(dossier, ensure_ascii=False)))
+             json.dumps(dossier, ensure_ascii=False),
+             json.dumps(informe, ensure_ascii=False) if informe else None,
+             r.get("model"), r.get("tokens_in"), r.get("tokens_out"),
+             r.get("status") or "sin_ia", r.get("error")))
         conn.commit()
         return cur.lastrowid
     finally:

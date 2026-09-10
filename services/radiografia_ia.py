@@ -253,3 +253,151 @@ def validar(informe: dict, dossier: dict) -> list:
 def bloqueantes(problemas: list) -> list:
     """Los problemas que impiden publicar. Los avisos no cuentan."""
     return [p for p in problemas if not p.startswith("aviso:")]
+
+
+# ── La llamada ────────────────────────────────────────────────────────────────
+
+_INSTRUCCIONES = """Sos un analista comercial. Te doy un dossier de métricas ya
+calculadas sobre las campañas de Meta Ads de una software factory chica de
+Uruguay, y escribís un informe corto para el equipo comercial.
+
+Reglas que no se negocian:
+
+1. **No inventes ningún número.** Todo número que escribas tiene que estar en el
+   dossier. No estimes, no proyectes, no redondees hacia un número "lindo". Si
+   necesitás un dato que no está, decí que falta.
+2. **Citá los ids.** Cada hallazgo lista en `metricas_citadas` los ids exactos
+   de las métricas que lo sostienen.
+3. **Si la muestra es chica, decilo.** Toda métrica con `muestra_chica: true`
+   obliga a poner `advertencia_muestra: true` en ese hallazgo. Una diferencia
+   sobre 5 leads no es una diferencia.
+4. **No afirmes causalidad.** El dossier muestra asociación. Escribí "los leads
+   que declararon más presupuesto llegaron a demo menos seguido", no "declarar
+   más presupuesto hace que lleguen menos".
+5. **Mirá los intervalos.** Si los `ic95` de dos grupos se superponen, la
+   diferencia entre ellos no significa nada y no es un hallazgo.
+6. "No hay evidencia de X" es una conclusión válida y a veces la más honesta.
+   No fuerces hallazgos donde los datos no dan.
+
+Escribí en español rioplatense, directo, sin fórmulas de consultoría. El equipo
+son tres personas que van a leer esto un lunes a la mañana."""
+
+_ESQUEMA = {
+    "type": "object",
+    "properties": {
+        "resumen": {"type": "string"},
+        "hallazgos": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "titulo": {"type": "string"},
+                    "tipo": {"type": "string",
+                             "enum": ["oportunidad", "riesgo", "anomalia",
+                                      "contexto"]},
+                    "cuerpo": {"type": "string"},
+                    "metricas_citadas": {"type": "array",
+                                         "items": {"type": "string"}},
+                    "confianza": {"type": "string",
+                                  "enum": ["alta", "media", "baja"]},
+                    "recomendacion": {"type": "string"},
+                    "advertencia_muestra": {"type": "boolean"},
+                },
+                "required": ["titulo", "tipo", "cuerpo", "metricas_citadas",
+                             "confianza", "recomendacion",
+                             "advertencia_muestra"],
+                "additionalProperties": False,
+            },
+        },
+        "cambios_desde_la_ultima": {"type": "array",
+                                    "items": {"type": "string"}},
+    },
+    "required": ["resumen", "hallazgos", "cambios_desde_la_ultima"],
+    "additionalProperties": False,
+}
+
+
+def _llamar_a_la_api(dossier: dict, correccion=None):
+    """Le pide el informe al modelo. Devuelve (informe, tokens_in, tokens_out).
+
+    El import va acá adentro: `anthropic` son 19,6 MB medidos dentro del
+    contenedor y la máquina de Fly tiene 256 MB. Mismo criterio que
+    services/budget_ai.py.
+    """
+    import json
+
+    import anthropic
+
+    cliente = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+
+    mensaje = ("Este es el dossier:\n\n"
+               + json.dumps(dossier, ensure_ascii=False, indent=1))
+    if correccion:
+        mensaje += ("\n\nTu respuesta anterior fue rechazada por el validador:\n"
+                    + correccion
+                    + "\n\nCorregí eso. Los números tienen que salir del "
+                      "dossier de arriba, tal como están.")
+
+    r = cliente.messages.create(
+        model=MODELO,
+        max_tokens=16000,
+        thinking={"type": "adaptive"},
+        system=_INSTRUCCIONES,
+        output_config={"format": {"type": "json_schema", "schema": _ESQUEMA}},
+        messages=[{"role": "user", "content": mensaje}],
+    )
+    texto = next((b.text for b in r.content if b.type == "text"), "{}")
+    return (json.loads(texto), r.usage.input_tokens, r.usage.output_tokens)
+
+
+def redactar(dossier: dict, llamar=None) -> dict:
+    """El informe sobre el dossier, ya validado.
+
+    Devuelve siempre un dict con `status`. Nunca levanta: una corrida semanal
+    que explota deja al panel sin nada, y el panel tiene que seguir andando
+    aunque la IA falle.
+
+    `llamar` existe para los tests: recibe (dossier_preparado, correccion) y
+    devuelve (informe, tokens_in, tokens_out).
+    """
+    vacio = {"informe": None, "status": "sin_ia", "error": None,
+             "avisos": [], "tokens_in": 0, "tokens_out": 0}
+
+    if not ia_activa():
+        logger.info("radiografía: la IA está apagada (RADIOGRAFIA_IA_ACTIVA)")
+        return vacio
+
+    if llamar is None:
+        llamar = _llamar_a_la_api
+
+    preparado = preparar(dossier)
+    correccion, tin, tout, ultimo_error = None, 0, 0, None
+
+    for intento in range(REINTENTOS + 1):
+        try:
+            informe, i, o = llamar(preparado, correccion)
+        except Exception as e:
+            logger.error(f"radiografía: la API falló ({e})")
+            return {**vacio, "status": "error_ia", "error": str(e),
+                    "tokens_in": tin, "tokens_out": tout}
+
+        tin += i or 0
+        tout += o or 0
+
+        problemas = validar(informe, dossier)
+        duros = bloqueantes(problemas)
+        if not duros:
+            avisos = [p for p in problemas if p.startswith("aviso:")]
+            if avisos:
+                logger.warning(f"radiografía: {len(avisos)} aviso(s): {avisos}")
+            return {"informe": informe, "status": "ok", "error": None,
+                    "avisos": avisos, "tokens_in": tin, "tokens_out": tout}
+
+        ultimo_error = " · ".join(duros)
+        logger.warning(f"radiografía: intento {intento + 1} rechazado: "
+                       f"{ultimo_error}")
+        correccion = ultimo_error
+
+    # Nunca se publica un informe sin validar.
+    return {**vacio, "status": "error_validacion", "error": ultimo_error,
+            "tokens_in": tin, "tokens_out": tout}

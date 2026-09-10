@@ -129,3 +129,32 @@ def test_el_dossier_es_json_serializable(app, cliente):
     r = cliente.get("/api/marketing/dossier", headers=_AUTH)
     assert r.status_code == 200
     assert r.is_json
+
+
+def test_generar_sin_ia_sigue_guardando_el_dossier(app, cliente, monkeypatch):
+    """El panel nunca dependio del informe: los graficos salen del dossier."""
+    monkeypatch.delenv("RADIOGRAFIA_IA_ACTIVA", raising=False)
+    _lead(app, "a")
+    r = cliente.post("/api/marketing/generar", headers=_AUTH)
+    assert r.status_code == 200
+    d = r.get_json()
+    assert d["status"] == "sin_ia"
+
+    conn = _connect(app.config["DB_PATH"])
+    try:
+        fila = conn.execute("SELECT dossier_json, report_json FROM radiografias"
+                            ).fetchone()
+    finally:
+        conn.close()
+    assert fila["dossier_json"]
+    assert fila["report_json"] is None
+
+
+def test_el_workflow_del_cron_nace_con_el_schedule_comentado():
+    """No se prende solo: cada corrida cuesta plata. Se descomenta el dia que
+    se decida gastar."""
+    import io
+    y = io.open(".github/workflows/radiografia.yml", encoding="utf-8").read()
+    assert "workflow_dispatch" in y
+    activos = [l.strip() for l in y.splitlines() if l.strip().startswith("- cron:")]
+    assert not activos, f"el schedule esta activo: {activos}"
