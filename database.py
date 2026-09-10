@@ -225,6 +225,60 @@ def init_db(db_path: str) -> None:
         _add_column(conn, "client_info", "meeting_time", "TEXT")
         _add_column(conn, "client_info", "meeting_url", "TEXT")
 
+        # ── Marketing / Meta Ads ──────────────────────────────────────────────
+        # La campaña del lead vivía embebida en `notes` como
+        # "Meta Lead Ad · <campaña>". Un LIKE sobre notes no agrupa ni escala, y
+        # el nombre de una campaña puede cambiar en Meta mientras el id no.
+        _add_column(conn, "businesses", "meta_campaign_id", "TEXT")
+        _add_column(conn, "businesses", "meta_campaign_name", "TEXT")
+        _add_column(conn, "businesses", "meta_adset_id", "TEXT")
+        _add_column(conn, "businesses", "meta_ad_id", "TEXT")
+        _add_column(conn, "businesses", "meta_ad_name", "TEXT")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_biz_meta_campaign "
+                     "ON businesses(meta_campaign_id)")
+
+        # Gasto y performance que devuelve la Marketing API, al grano de
+        # campaña × día. Solo métricas crudas y contables: CPM, CPC, CTR y CPL
+        # se derivan al calcular. Una tasa guardada se desincroniza de sus
+        # componentes y después nadie sabe cuál manda.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS meta_insights (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                date          TEXT NOT NULL,
+                campaign_id   TEXT NOT NULL,
+                campaign_name TEXT,
+                spend         REAL DEFAULT 0,
+                currency      TEXT,
+                impressions   INTEGER DEFAULT 0,
+                clicks        INTEGER DEFAULT 0,
+                reach         INTEGER DEFAULT 0,
+                leads         INTEGER DEFAULT 0,
+                synced_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(date, campaign_id)
+            )
+        """)
+
+        # Cada corrida guarda el dossier entero, no solo el informe: es lo que
+        # permite auditar después por qué se dijo lo que se dijo, y comparar
+        # contra el período anterior sin recalcular el pasado.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS radiografias (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                generated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                period_start  TEXT NOT NULL,
+                period_end    TEXT NOT NULL,
+                dossier_json  TEXT NOT NULL,
+                report_json   TEXT,
+                model         TEXT,
+                tokens_in     INTEGER,
+                tokens_out    INTEGER,
+                status        TEXT DEFAULT 'ok',
+                error_message TEXT
+            )
+        """)
+
+        _grant_panel_to_existing_roles(conn, "marketing")
+
         # ── demos ─────────────────────────────────────────────────────────────
         conn.execute("""
             CREATE TABLE IF NOT EXISTS demos (

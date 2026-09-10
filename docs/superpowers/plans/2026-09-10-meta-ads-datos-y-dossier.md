@@ -728,15 +728,23 @@ Expected: PASS, 11 tests
 
 Nunca contra producción. Copiar el backup y correrlo:
 
+> **Ojo con `/tmp`.** En Git Bash `/tmp` es `%LOCALAPPDATA%\Temp`, pero Python en
+> Windows lee `/tmp/x.db` como `C:\tmp\x.db`. Copiar con `cp` a `/tmp` y abrir esa
+> ruta desde Python crea una base vacia en otro lado, y el paso "verificar contra
+> datos reales" pasa en verde sin haber leido nada. Usar una ruta absoluta de
+> Windows, o el scratchpad de la sesion, en `$SCRATCH`.
+
 ```bash
-cp backups/leads_pre_preclientes_8sep.db /tmp/backfill_prueba.db
+SCRATCH="C:/Users/juant/AppData/Local/Temp"
+cp backups/leads_pre_preclientes_8sep.db "$SCRATCH/backfill_prueba.db"
 python -c "
 from database import init_db
 from services.meta_campanas import backfill_campanas
-init_db('/tmp/backfill_prueba.db')
-print(backfill_campanas('/tmp/backfill_prueba.db'))
 import sqlite3
-c = sqlite3.connect('/tmp/backfill_prueba.db')
+db = r'$SCRATCH/backfill_prueba.db'
+init_db(db)
+print(backfill_campanas(db))
+c = sqlite3.connect(db)
 for r in c.execute('SELECT meta_campaign_name, COUNT(*) FROM businesses '
                    \"WHERE source='meta' GROUP BY 1 ORDER BY 2 DESC\"):
     print(r)
@@ -1836,8 +1844,9 @@ Dos métricas con el mismo id romperían la citación del informe en la Fase 3.
 python -c "
 from database import init_db
 from services.dossier import por_campana
-init_db('/tmp/ids.db')
-ids = [m['id'] for b in por_campana('/tmp/ids.db','2026-01-01','2026-12-31') for m in b['metricas']]
+db = r'C:/Users/juant/AppData/Local/Temp/ids.db'
+init_db(db)
+ids = [m['id'] for b in por_campana(db,'2026-01-01','2026-12-31') for m in b['metricas']]
 assert len(ids) == len(set(ids)), [i for i in ids if ids.count(i) > 1]
 print('ok, ids unicos')
 "
@@ -1847,15 +1856,23 @@ Expected: `ok, ids unicos`
 
 - [ ] **Step 6: Correr el dossier contra el backup real**
 
+> **Ojo con `/tmp`.** En Git Bash `/tmp` es `%LOCALAPPDATA%\Temp`, pero Python en
+> Windows lee `/tmp/x.db` como `C:\tmp\x.db`. Copiar con `cp` a `/tmp` y abrir esa
+> ruta desde Python crea una base vacia en otro lado, y el paso "verificar contra
+> datos reales" pasa en verde sin haber leido nada. Usar una ruta absoluta de
+> Windows, o el scratchpad de la sesion, en `$SCRATCH`.
+
 ```bash
-cp backups/leads_pre_preclientes_8sep.db /tmp/dossier_prueba.db
+SCRATCH="C:/Users/juant/AppData/Local/Temp"
+cp backups/leads_pre_preclientes_8sep.db "$SCRATCH/dossier_prueba.db"
 python -c "
 from database import init_db
 from services.meta_campanas import backfill_campanas
 from services.dossier import por_campana
-init_db('/tmp/dossier_prueba.db')
-backfill_campanas('/tmp/dossier_prueba.db')
-for b in por_campana('/tmp/dossier_prueba.db','2026-03-01','2026-09-30'):
+db = r'$SCRATCH/dossier_prueba.db'
+init_db(db)
+backfill_campanas(db)
+for b in por_campana(db,'2026-03-01','2026-09-30'):
     leads = [m for m in b['metricas'] if m['id'].endswith('.leads_crm')][0]['valor']
     demos = [m for m in b['metricas'] if m['id'].endswith('.demos')][0]['valor']
     print(f\"{b['campana']:28s} leads={leads:4d} demos={demos:3d}\")
@@ -2168,7 +2185,8 @@ Este paso es el que confirma que la normalización agarra las claves de verdad.
 ```bash
 python -c "
 from services.dossier import por_segmento
-for b in por_segmento('/tmp/dossier_prueba.db','2026-03-01','2026-09-30'):
+db = r'C:/Users/juant/AppData/Local/Temp/dossier_prueba.db'
+for b in por_segmento(db,'2026-03-01','2026-09-30'):
     print(f\"{b['etiqueta']} (n={b['n']})\")
     for v in b['valores'][:5]:
         print(f\"   {v['n']:4d}  {v['valor_declarado']}\")
