@@ -77,7 +77,7 @@ leads de Meta se renombró a **D** para deshacer el empate.
 | C (banco LinkedIn) | el banco de posts de LinkedIn, sacarle la API de Anthropic | `services/linkedin_posts.py`, `services/linkedin_banco_semilla.py`, `routes/linkedin.py`, `scripts/render_linkedin.py`, `templates/linkedin_card.html`, `tests/test_linkedin_*` | 28/8 |
 | D (leads de Meta) | secuencias de mail por estado, estados del CRM, sync con la planilla de semáforo, detección de respuestas, rendimiento del CRM | `services/meta_reminders.py`, `services/secuencia_contactos.py`, `services/planilla_semaforo.py`, `scripts/planilla_semaforo.gs`, `routes/meta.py` | 27/8 |
 | E (pre-clientes/demos) | pipeline por etapas, responsables del cliente, registro de demos | `routes/preclientes.py`, `tests/test_preclientes.py`, `scripts/check_js.py`, y **zona compartida**: `database.py`, `dashboard.py`, `routes/leads.py` | 31/8 |
-| G (marketing/Meta Ads) | inteligencia comercial sobre Meta Ads. **Fase 1 hecha en `feat/marketing-meta`, sin mergear ni deployar** | `services/embudo.py`, `services/dossier.py`, `services/meta_insights.py`, `services/meta_campanas.py`, `services/radiografia.py`, `routes/marketing.py`, y **zona compartida**: `database.py`, `dashboard.py`, `routes/meta.py`, `services/finanzas.py`, `tests/conftest.py` | 10/9 |
+| G (marketing/Meta Ads) | inteligencia comercial sobre Meta Ads. **Fases 1 y 2 hechas en `feat/marketing-meta` (PR #22), sin mergear ni deployar** | `services/embudo.py`, `services/dossier.py`, `services/meta_insights.py`, `services/meta_campanas.py`, `services/radiografia.py`, `routes/marketing.py`, `static/charts.js`, y **zona compartida**: `database.py`, `dashboard.py`, `routes/meta.py`, `services/finanzas.py`, `tests/conftest.py` | 10/9 |
 
 | F (finanzas) | la sección financiera del CRM | `services/finanzas.py`, `routes/finanzas.py`, `database.py` (tablas de finanzas), `dashboard.py` (panel Finanzas) | 8/9 |
 
@@ -194,6 +194,51 @@ leads de Meta se renombró a **D** para deshacer el empate.
 ---
 
 ## Bitácora
+
+- **10/9 — G (marketing/Meta Ads): fase 2 hecha, el panel. Sigue sin mergear ni deployar.**
+
+  Panel `Marketing` en `dashboard.py` + `static/charts.js`, un módulo de gráficos
+  SVG propio de ~560 líneas, **sin ninguna dependencia nueva**. Todo en la misma
+  rama `feat/marketing-meta`, que ya tiene el PR #22 abierto.
+
+  **`static/charts.js` es la primera pieza de frontend del CRM que vive fuera de
+  `dashboard.py`.** Se verifica con `node --check` desde pytest —el mismo patrón
+  de `test_dashboard_js.py`— más 33 aserciones sobre sus funciones puras
+  corriendo en node. `scripts/check_js.py` no lo cubre porque solo mira bloques
+  `<script>` sin `src`; ese hueco lo tapa `tests/test_charts_js.py`.
+
+  **La paleta salió de correr un validador, no de elegir colores a ojo.** Está
+  fijada y hay un test que falla si alguien la cambia sin volver a validarla. Dos
+  cosas de ahí: el índigo lleva un paso distinto por tema (`#4F46E5` sobre
+  `#111827` da 2,82:1, abajo del piso de 3:1), y queda un aviso de daltonismo
+  entre el azul y el violeta que obliga a las etiquetas directas — no son
+  decorativas, si se sacan el gráfico deja de ser legible para un deuterano.
+
+  **Cinco bugs que los tests no podían ver y aparecieron al abrirlo**, por si
+  alguien duda de si vale la pena el paso de mirar:
+
+  1. **El embudo era ilegible.** Con 1.032.881 impresiones contra 238 leads, una
+     escala lineal única aplastaba las seis etapas del CRM a una línea de 2px: el
+     gráfico que justifica el módulo entero no se leía. Ahora cada bloque se
+     escala contra su propio máximo y la línea punteada avisa del corte.
+  2. El rótulo del corte pisaba el valor de la etapa.
+  3. `n=?` en las métricas de costo: un costo por lead no tiene muestra.
+  4. Los SVG usaban la mitad del ancho —`width:100%` con `height` fijo conserva
+     la proporción y encajona el gráfico.
+  5. El viewBox angosto se escalaba 1,9x y hacía ver todo ampliado, y la nota
+     `n=5 · muestra chica` se cortaba contra el borde.
+
+  **Para revisarlo:** copiar el backup a un lado, correr `backfill_campanas`,
+  levantar `server.py` con `DB_PATH` apuntando a la copia. **Nunca contra
+  producción.** Ojo con `/tmp`: en Git Bash es `%LOCALAPPDATA%\Temp` y para
+  Python en Windows es `C:\tmp`, así que `cp` escribe en un lado y Python crea
+  una base vacía en otro — el paso de «verificar contra datos reales» pasa en
+  verde sin haber leído nada.
+
+  **Sigue sin deployar por lo mismo que la fase 1:** faltan `META_ADS_TOKEN` y
+  `META_AD_ACCOUNT_ID` en Fly, y verificar qué `action_type` usa la cuenta para
+  reportar un lead. El panel funciona sin eso: muestra un aviso arriba y los
+  bloques de costo dicen «sin datos» en vez de ceros.
 
 - **10/9 — G (marketing/Meta Ads): fase 1 hecha en la rama `feat/marketing-meta`, sin deployar.**
 
