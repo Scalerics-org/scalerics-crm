@@ -183,6 +183,33 @@ informe levanta cuando la diferencia supera el 10%.
 
 Este módulo **no escribe nunca en `finanzas_movimientos`.**
 
+#### La planilla es una tercera fuente, y sirve de control
+
+La pestaña `Analisis` de `Scalerics - Leads - 2026` lleva **a mano** inversión,
+leads, demos y ventas por mes. No entra al dossier —es un registro manual, no un
+dato de sistema— pero conviene tenerla presente porque **es la única fuente que
+cruza plata con resultados sin pasar por el CRM**, y por lo tanto la única que
+puede desmentirlo desde afuera.
+
+Cruzada contra el CRM el 10-9-2026, coincide:
+
+| | planilla | CRM |
+|---|---:|---:|
+| Leads mar–set | 241 | 238 |
+| Demos | 54 | 49 |
+| Ventas / cierres | 8 | 9 |
+
+Que coincida es el resultado importante: **descarta que el CRM esté perdiendo
+leads en la ingesta**, que era la sospecha con la que se abrió el módulo. Las
+diferencias que quedan son de borde de mes y de criterio (la planilla cuenta la
+venta cuando se cobra; el CRM cuando el lead llega a `cerrado`).
+
+Sobre el total: la planilla dice **USD 3.330,17** de marzo a setiembre y el
+Administrador de anuncios da **3.437,10** sobre las tres campañas que lista hoy.
+Ninguno de los dos está mal — miden cosas distintas y hay campañas que el
+Administrador ya no lista. Es exactamente el riesgo R1 pasando de verdad, y por
+eso el panel muestra la brecha en vez de elegir un número.
+
 ### 5.3 Qué aporta este módulo que Finanzas no tiene
 
 Para que el recorte quede claro: Finanzas responde «cuánto costó y cuánto
