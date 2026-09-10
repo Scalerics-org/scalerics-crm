@@ -24,7 +24,15 @@ os.environ.setdefault("CRM_SIN_PROCESOS_DE_FONDO", "true")
 # los corre este vacio.
 for _clave in ("RESEND_API_KEY", "RESEND_FROM_EMAIL", "DISCOVERY_FROM_EMAIL",
                "GMAIL_CLIENT_ID", "GMAIL_CLIENT_SECRET", "GMAIL_REFRESH_TOKEN",
-               "META_PAGE_TOKEN", "NOTION_TOKEN", "ANTHROPIC_API_KEY"):
+               "META_PAGE_TOKEN", "NOTION_TOKEN", "ANTHROPIC_API_KEY",
+               # Faltaban, y no era teorico: el 10/9/2026 la suite corrida
+               # desde un worktree adentro de crm-limpio leia la agenda real
+               # de Scalerics. `load_dotenv()` sube por el arbol hasta
+               # encontrar el .env de produccion, asi que un worktree sin .env
+               # propio igual queda con las credenciales de verdad. Los tests
+               # del calendario devolvian 16 eventos reales en vez de la unica
+               # reunion del fixture, y parecia un bug del codigo bajo prueba.
+               "GCAL_CLIENT_ID", "GCAL_CLIENT_SECRET", "GCAL_REFRESH_TOKEN"):
     os.environ.pop(_clave, None)
 
 # Ojo: esto NO alcanza solo. Ver `_sin_credenciales_reales` mas abajo.
@@ -35,7 +43,8 @@ import pytest  # noqa: E402
 
 _CLAVES_PELIGROSAS = ("RESEND_API_KEY", "RESEND_FROM_EMAIL", "DISCOVERY_FROM_EMAIL",
                       "GMAIL_CLIENT_ID", "GMAIL_CLIENT_SECRET", "GMAIL_REFRESH_TOKEN",
-                      "META_PAGE_TOKEN", "NOTION_TOKEN", "ANTHROPIC_API_KEY")
+                      "META_PAGE_TOKEN", "NOTION_TOKEN", "ANTHROPIC_API_KEY",
+                      "GCAL_CLIENT_ID", "GCAL_CLIENT_SECRET", "GCAL_REFRESH_TOKEN")
 
 
 @pytest.fixture(autouse=True)
