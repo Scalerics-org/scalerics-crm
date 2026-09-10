@@ -2,10 +2,17 @@
  * Manda los colores del semáforo de la planilla al CRM.
  *
  * Vive pegado a `Scalerics - Leads - 2026` (Extensiones → Apps Script) y corre
- * solo cada 6 horas. El CRM no puede tirar de esto por su cuenta: leer el color
- * de fondo de una celda exige la API de Sheets y una credencial nueva de
+ * solo cada 30 minutos. El CRM no puede tirar de esto por su cuenta: leer el
+ * color de fondo de una celda exige la API de Sheets y una credencial nueva de
  * Google, mientras que acá adentro `getBackgrounds()` lo da gratis y el script
  * corre como el dueño de la planilla.
+ *
+ * POR QUÉ CONSULTA EN VEZ DE REACCIONAR
+ *   Lo natural sería que pintar una fila dispare el sync al instante, con un
+ *   trigger `onEdit`. No se puede: Google documenta que `onEdit` corre «cuando
+ *   un usuario cambia el VALOR de una celda», y el color de fondo no es un
+ *   valor. Pintar no dispara nada. Por eso se consulta cada tanto, y ese «cada
+ *   tanto» se hizo corto.
  *
  * Del otro lado atiende POST /api/meta/sync-planilla, que traduce color a
  * estado, no retrocede sobre lo que el CRM ya sabe y es idempotente. La lógica
@@ -20,6 +27,13 @@
  */
 
 var CRM = 'https://scalerics-crm.fly.dev';
+
+// Cada cuánto se consulta la planilla. Apps Script admite 1, 5, 10, 15 o 30
+// minutos, o multiplos de una hora. A 30 minutos son 48 corridas por dia, que
+// contra la cuota diaria de Apps Script no es nada: cada corrida lee unas pocas
+// pestañas y postea una vez. El endpoint del CRM es idempotente, asi que
+// consultar de mas no escribe de mas.
+var CADA_MINUTOS = 30;
 
 // Las pestañas que no son meses. Todo lo demás se lee, así que un mes nuevo
 // entra solo sin tocar el script.
@@ -113,11 +127,12 @@ function probar() {
 }
 
 
-/** Deja el sync corriendo cada 6 horas. Borra el trigger anterior si existía. */
+/** Deja el sync corriendo. Borra el trigger anterior si existía. */
 function instalarTrigger() {
   ScriptApp.getProjectTriggers().forEach(function (t) {
     if (t.getHandlerFunction() === 'sincronizar') ScriptApp.deleteTrigger(t);
   });
-  ScriptApp.newTrigger('sincronizar').timeBased().everyHours(6).create();
-  Logger.log('Trigger instalado: sincronizar() cada 6 horas');
+  ScriptApp.newTrigger('sincronizar').timeBased()
+    .everyMinutes(CADA_MINUTOS).create();
+  Logger.log('Trigger instalado: sincronizar() cada ' + CADA_MINUTOS + ' minutos');
 }

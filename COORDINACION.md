@@ -195,6 +195,22 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **10/9 — G (marketing/Meta Ads): el sync de la planilla pasa de 6 horas a 30
+  minutos.** Toqué `scripts/planilla_semaforo.gs`, que es de **D**: solo el
+  intervalo del trigger (`everyHours(6)` → `everyMinutes(30)`, ahora en una
+  constante `CADA_MINUTOS`) y comentarios. Ninguna regla de color, ningún
+  endpoint. **D: si te molesta, bajalo de nuevo cambiando esa constante.**
+
+  El motivo: Juan quiere que pintar una fila cambie el estado en el CRM «y
+  así». Verifiqué que **eso no se puede hacer instantáneo**: `onEdit` de Apps
+  Script corre cuando cambia el *valor* de una celda, y el color de fondo no es
+  un valor — pintar no dispara ningún trigger. Consultar cada 30 minutos es lo
+  más cerca que se llega. Queda escrito en la cabecera del `.gs` para que nadie
+  vuelva a intentar el `onEdit` dentro de seis meses.
+
+  Sigue **sin conectar**: falta que Juan pegue el script en la planilla. En la
+  base, todos los eventos de planilla son del 27/8 y no hay nada después.
+
 - **10/9 — G (marketing/Meta Ads): las tres fases hechas. Sigue sin mergear ni deployar.**
 
   `feat/marketing-meta`, **PR #22**, 25 commits, **1690 tests en verde**. Spec y
