@@ -154,7 +154,7 @@ def fetch_and_sync_gmail(db_path: str, days_back: int = 30,
                          dry_run: bool = False, max_messages: int = 100) -> dict:
     """Lee los mails de Calendly de la casilla del host y los sincroniza."""
     from google.oauth2.credentials import Credentials
-    from googleapiclient.discovery import build
+    from services.google_api import get_service
 
     client_id = os.environ.get("GMAIL_CLIENT_ID", "")
     client_secret = os.environ.get("GMAIL_CLIENT_SECRET", "")
@@ -168,7 +168,7 @@ def fetch_and_sync_gmail(db_path: str, days_back: int = 30,
         token_uri="https://oauth2.googleapis.com/token",
         client_id=client_id, client_secret=client_secret,
     )
-    service = build("gmail", "v1", credentials=creds)
+    service = get_service("gmail", "v1", creds, account="gmail")
 
     query = f"from:calendly.com newer_than:{days_back}d"
     ids, page_token = [], None

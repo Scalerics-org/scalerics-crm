@@ -347,7 +347,7 @@ def fetch_and_sync(db_path: str, days_back: int = 30, days_ahead: int = 90,
     import datetime
 
     from google.oauth2.credentials import Credentials
-    from googleapiclient.discovery import build
+    from services.google_api import get_service
 
     client_id = os.environ.get("GCAL_CLIENT_ID", "")
     client_secret = os.environ.get("GCAL_CLIENT_SECRET", "")
@@ -362,7 +362,7 @@ def fetch_and_sync(db_path: str, days_back: int = 30, days_ahead: int = 90,
         client_id=client_id,
         client_secret=client_secret,
     )
-    service = build("calendar", "v3", credentials=creds)
+    service = get_service("calendar", "v3", creds, account="gcal")
 
     now = datetime.datetime.now(datetime.timezone.utc)
     time_min = (now - datetime.timedelta(days=days_back)).isoformat()

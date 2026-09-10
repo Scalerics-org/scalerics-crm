@@ -560,7 +560,7 @@ def sincronizar_desde_gmail(db_path: str, days_back: int = _DIAS_ATRAS,
 
 def _sincronizar_desde_gmail(db_path: str, days_back: int, dry_run: bool) -> dict:
     from google.oauth2.credentials import Credentials
-    from googleapiclient.discovery import build
+    from services.google_api import get_service
 
     client_id = os.environ.get("GMAIL_CLIENT_ID", "")
     client_secret = os.environ.get("GMAIL_CLIENT_SECRET", "")
@@ -574,6 +574,6 @@ def _sincronizar_desde_gmail(db_path: str, days_back: int, dry_run: bool) -> dic
         token_uri="https://oauth2.googleapis.com/token",
         client_id=client_id, client_secret=client_secret,
     )
-    service = build("gmail", "v1", credentials=creds)
+    service = get_service("gmail", "v1", creds, account="gmail")
     return sincronizar_respuestas(db_path, buscar_con_gmail(service),
                                   days_back=days_back, dry_run=dry_run)
