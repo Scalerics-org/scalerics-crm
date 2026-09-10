@@ -38,7 +38,15 @@ def render(mensaje):
 
 
 def medio(**campos):
-    return {"id": 42, "media": [{"archivo": "x.jpg", **campos}]}
+    """Un mensaje con un medio, EXACTAMENTE como lo entrega la API del bot.
+
+    Ojo con esto: la API manda `{tipo, segundos, nombre, url}` y NO manda
+    `archivo` —el nombre en disco es interno y no sale—. La primera versión de
+    estos tests inventaba un `archivo` que no existe, los tests pasaban, y en
+    producción no se veía ninguna foto. Si cambia el shape, el que manda es
+    `mediosAFormatoBot` de wa-service/src/http/routes/crm.js.
+    """
+    return {"id": 42, "media": [{"url": "/api/messages/42/media/0", **campos}]}
 
 
 # ── lo que antes no se dibujaba ─────────────────────────────────────────────
@@ -46,7 +54,7 @@ def medio(**campos):
 
 @node
 def test_una_foto_se_ve_en_el_panel():
-    html = render(medio(tipo="imagen", url="/api/messages/42/media/0"))
+    html = render(medio(tipo="imagen"))
 
     assert "<img" in html
     # La URL del bot se traduce a la del CRM: el bot no tiene IP publica, asi
@@ -56,13 +64,13 @@ def test_una_foto_se_ve_en_el_panel():
 
 @node
 def test_un_sticker_tambien_se_dibuja():
-    html = render(medio(tipo="sticker", url="/api/messages/42/media/0"))
+    html = render(medio(tipo="sticker"))
     assert "<img" in html
 
 
 @node
 def test_un_video_sale_con_reproductor():
-    html = render(medio(tipo="video", url="/api/messages/42/media/0"))
+    html = render(medio(tipo="video"))
     assert "<video" in html
     assert "/api/wa/media/42/0" in html
 
@@ -70,7 +78,7 @@ def test_un_video_sale_con_reproductor():
 @node
 def test_un_documento_sale_como_link_con_su_nombre():
     html = render(
-        medio(tipo="documento", nombre="presupuesto obra.pdf", url="/api/messages/42/media/0")
+        medio(tipo="documento", nombre="presupuesto obra.pdf")
     )
     assert "presupuesto obra.pdf" in html
     assert "/api/wa/media/42/0" in html
@@ -81,7 +89,7 @@ def test_un_documento_sale_como_link_con_su_nombre():
 
 @node
 def test_la_nota_de_voz_sigue_saliendo_con_su_duracion():
-    html = render(medio(tipo="audio", segundos=7, url="/api/messages/42/media/0"))
+    html = render(medio(tipo="audio", segundos=7))
     assert "<audio" in html
     assert "7s" in html
 
@@ -102,7 +110,7 @@ def test_sin_archivo_dice_que_mandaron_y_no_finge_un_reproductor():
     Dibujar un <img> vacio deja un roto en la pantalla sin explicar nada. Lo
     honesto es decir que mandaron una foto y que no la tenemos.
     """
-    html = render({"id": 42, "media": [{"tipo": "imagen", "archivo": None}]})
+    html = render({"id": 42, "media": [{"tipo": "imagen", "url": None}]})
 
     assert "foto" in html.lower()
     assert "<img" not in html
@@ -116,7 +124,6 @@ def test_el_nombre_del_archivo_va_escapado():
         medio(
             tipo="documento",
             nombre='<img src=x onerror="alert(1)">.pdf',
-            url="/api/messages/42/media/0",
         )
     )
 
@@ -126,7 +133,7 @@ def test_el_nombre_del_archivo_va_escapado():
 
 @node
 def test_un_tipo_que_no_conocemos_no_rompe_la_conversacion():
-    html = render(medio(tipo="ubicacion", url="/api/messages/42/media/0"))
+    html = render(medio(tipo="ubicacion"))
     assert "<script" not in html
 
 

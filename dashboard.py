@@ -255,13 +255,18 @@ function mediosDeMensaje(m) {
     // La URL que manda el bot es de SU api (/api/messages/<id>/media/<i>). Acá
     // se traduce a la del CRM, que es la que el navegador puede pedir: el bot
     // no tiene IP pública y vive solo en la red privada de Fly.
+    //
+    // `url` es la única señal de si el archivo está: viene en null cuando no
+    // está. El bot NO manda el nombre en disco —es interno— así que decidir
+    // por él dejaba todos los medios como si faltaran, que es lo que pasó con
+    // la primera foto real el 10-9.
     const ids = String(a.url || '').match(/\/api\/messages\/(\d+)\/media\/(\d+)/);
     const src = ids ? `/api/wa/media/${ids[1]}/${ids[2]}` : null;
 
     // Llegó pero no lo tenemos: pesaba demasiado, falló la descarga, o ya se
     // borró por antigüedad. Dibujar un <img> vacío deja un roto en la pantalla
     // sin explicar nada; lo honesto es decir qué mandaron.
-    if (!a.archivo || !src) {
+    if (!src) {
       return `<div class="wa-medio-ausente">${esc(NOMBRE_MEDIO[a.tipo] || 'un archivo')} · no se pudo guardar</div>`;
     }
 
