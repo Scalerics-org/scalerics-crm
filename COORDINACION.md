@@ -194,6 +194,61 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **10/9 — G (memoria del worker): la fuga que causó el OOM del 9/9 está
+  tapada, en la rama `fix/google-api-cache`. Sin deployar.**
+
+  El CRM se cayó de nuevo y el síntoma fue el de siempre: la máquina viva,
+  los jobs de fondo logueando normal, y todas las requests colgadas. Verificado
+  desde adentro de la máquina, no deducido: el TCP conectaba y `recv` no
+  devolvía nada a los 20s, así que no era el proxy de Fly. Las cuatro threads
+  de request de gunicorn estaban las cuatro en `wait_woken`, bloqueadas en I/O.
+
+  **Causa raíz:** `googleapiclient.discovery.build()` deja ~0,45 MB que no
+  vuelven al heap, y lo llamábamos en cada corrida de sync — cada 10 minutos.
+  Son ~65 MB por día de crecimiento. El worker arranca en ~75 MB; Gonzalo lo
+  midió en 124 y el OOM killer se llevó uno de 141. Esa diferencia es, casi
+  exacta, un día de esta fuga. Por eso reventaba de madrugada y no al mediodía.
+
+  Medido adentro de la máquina, no sacado de la documentación: build dinámico
+  +2,6 MB, build estático +0,7 MB, y +0,45 MB por cada build repetido.
+
+  **Qué cambia:** `services/google_api.py` (nuevo) cachea el service por
+  (api, versión, cuenta) y usa `static_discovery=True`, que además evita un GET
+  a googleapis.com cada 10 minutos y apaga el warning de `discovery_cache` que
+  ensucia los logs. Los cinco `build()` sueltos pasan a usarlo.
+
+  **Cruce de territorio, explícito:** toqué `routes/calendar.py`, que es de B,
+  y `services/discovery_respuestas.py`, que A le cedió a B el 28/8. En los dos
+  el cambio es de dos líneas y no toca la lógica: solo de dónde sale el
+  cliente. `services/calendly_gcal.py` y `services/calendly_gmail.py` no
+  figuran asignados a nadie.
+
+  La cuenta (`account="gcal"` / `"gmail"`) es parte de la clave del cache a
+  propósito: el CRM se autentica con dos juegos de credenciales distintos y
+  compartir el cliente entre ellos le daría a uno los permisos del otro.
+
+  Hay un test que vigila sobre el fuente que ningún módulo vuelva a llamar
+  `build()` por su cuenta — mismo criterio que el que cuida que
+  `linkedin_posts.py` no importe `anthropic`. Sin eso, la fuga vuelve a
+  abrirse sin que nos enteremos hasta el próximo OOM.
+
+  1473 tests en verde. **No deployé**: la rama está para revisar.
+
+  **Lo que queda, y es de Juan decidir:** producción corre con 512 MB desde el
+  PR 10 de Gonzalo. Eso deja la factura de Fly en ~$5,43 y el umbral bajo el
+  cual no cobran son USD 5, así que se paga entera. Con la fuga tapada el
+  worker debería quedarse estable en ~130 MB y volver a entrar en 256 MB, que
+  son $1,94 y dejan el total en $4,18. **El orden importa: primero verificar
+  que el worker dejó de crecer, y recién después bajar la máquina.** Al revés
+  es poner swap para tapar un desperdicio. Hay margen: la máquina puede estar
+  en 512 hasta ~19 días de septiembre y el mes igual cierra abajo de $5.
+
+  Ojo con una que casi me como: mover `scalerics-wa` a la otra org personal
+  parece que resuelve el costo (cada cuenta tiene su propio umbral de $5), pero
+  **rompe el CRM**. Las redes 6PN de Fly son por organización y el bot no tiene
+  IP pública: el CRM lo alcanza solo por `.internal`. Separarlos obliga a
+  exponer a internet un servicio con la sesión de Baileys adentro.
+
 - **8/9 — F: CIERRE. Deployado `v166`, producción al día con `main`.**
 
   Corrige dos entradas mías de más abajo, que quedaron viejas: producción **ya
