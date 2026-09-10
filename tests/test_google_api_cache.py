@@ -141,3 +141,48 @@ def test_ningun_modulo_llama_a_build_por_su_cuenta(ruta):
     sueltos = re.findall(r"(?<![\w.])build\(", fuente)
 
     assert sueltos == [], f"{ruta} llama a build() directo: usa services.google_api"
+
+
+# --- Un cliente por thread ---
+
+
+def test_dos_threads_no_comparten_el_mismo_cliente(builds):
+    # googleapiclient arrastra un httplib2.Http, y la doc de Google dice
+    # textual que "The httplib2.Http() objects are not thread-safe": tiene un
+    # pool de conexiones en un dict comun. Antes de cachear, cada llamada
+    # construia el suyo y quedaban aislados; si ahora compartimos uno solo
+    # entre las 4 threads de gunicorn y las de los jobs, aparecen respuestas
+    # mezcladas y errores intermitentes.
+    import threading
+
+    obtenidos = {}
+
+    def pedir(nombre):
+        obtenidos[nombre] = google_api.get_service(
+            "gmail", "v1", "creds", account="gmail")
+
+    hilos = [threading.Thread(target=pedir, args=(f"h{i}",)) for i in range(3)]
+    for h in hilos:
+        h.start()
+    for h in hilos:
+        h.join()
+
+    distintos = {id(s) for s in obtenidos.values()}
+    assert len(distintos) == 3, "las tres threads recibieron el mismo cliente"
+    assert len(builds) == 3
+
+
+def test_dentro_de_una_thread_se_sigue_construyendo_una_sola_vez(builds):
+    # Que sea por thread no puede reabrir la fuga: el thread de fondo del
+    # sync es largo y hace una corrida cada 10 minutos durante dias.
+    import threading
+
+    def muchas_corridas():
+        for _ in range(144):
+            google_api.get_service("gmail", "v1", "creds", account="gmail")
+
+    h = threading.Thread(target=muchas_corridas)
+    h.start()
+    h.join()
+
+    assert len(builds) == 1
