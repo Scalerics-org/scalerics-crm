@@ -89,3 +89,19 @@ def test_el_informe_muestra_las_metricas_citadas():
 def test_el_informe_tiene_sus_dos_temas():
     for regla in (".sc-informe", ".sc-hallazgo-tit", ".sc-chip"):
         assert f"body.light {regla}" in dashboard.DASHBOARD_HTML, regla
+
+
+def test_el_panel_compara_costo_por_lead_contra_costo_por_demo():
+    """El hallazgo mas util del modulo requeria comparar dos graficos de barras
+    a ojo. En la misma tabla, el punto se ve solo."""
+    assert 'id="mk-ranking"' in dashboard.DASHBOARD_HTML
+    assert "Qué campaña rinde de verdad" in dashboard.DASHBOARD_HTML
+    # El aviso esta partido en dos literales por el ancho de linea, asi que se
+    # busca la clase que lo marca y no el texto entero.
+    assert "sc-rank-invertido" in dashboard.DASHBOARD_HTML
+    assert "costo_demo" in dashboard.DASHBOARD_HTML or ".costo_demo" in dashboard.DASHBOARD_HTML
+
+
+def test_el_ranking_necesita_al_menos_dos_campanas_con_gasto():
+    """Con una sola campana no hay nada que rankear."""
+    assert "conGasto.length < 2" in dashboard.DASHBOARD_HTML

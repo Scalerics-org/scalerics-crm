@@ -175,3 +175,26 @@ def test_los_ids_de_metrica_son_unicos(db):
 def test_sin_leads_devuelve_solo_el_total(db):
     bloques = por_campana(db, "2026-03-01", "2026-03-31")
     assert [b["campana"] for b in bloques] == ["todas"]
+
+
+def test_sin_clics_sincronizados_el_ctr_no_dice_cero(db):
+    """Cero clics sobre 200.000 impresiones no es un CTR de 0%: es que los
+    clics no se sincronizaron. Mostrar 0,0% inventa una precision que no hay."""
+    _lead(db, "a", "Leads - UY - 2026")
+    _gasto(db, "2026-03-05", 100.0, impresiones=200000, clicks=0)
+    entrada = por_campana(db, "2026-03-01", "2026-03-31")[0]
+    ctr = _buscar(entrada, ".ctr")
+    assert ctr["valor"] is None
+
+
+def test_con_clics_el_ctr_se_calcula(db):
+    _lead(db, "a", "Leads - UY - 2026")
+    _gasto(db, "2026-03-05", 100.0, impresiones=1000, clicks=15)
+    ctr = _buscar(por_campana(db, "2026-03-01", "2026-03-31")[0], ".ctr")
+    assert ctr["valor"] == 0.015
+
+
+def test_sin_impresiones_el_ctr_tampoco_es_cero(db):
+    _lead(db, "a", "Leads - UY - 2026")
+    entrada = por_campana(db, "2026-03-01", "2026-03-31")[0]
+    assert _buscar(entrada, ".ctr")["valor"] is None

@@ -1300,6 +1300,10 @@ body.light .sc-hallazgo-rec{color:#0f172a}
 body.light .sc-cambios{border-color:#e2e8f0}
 .sc-cambios li{font-size:.8rem;color:#cbd5e1;line-height:1.6;margin-bottom:3px}
 body.light .sc-cambios li{color:#334155}
+.sc-rank-invertido{color:#fbbf24;font-weight:700}
+body.light .sc-rank-invertido{color:#92400e}
+.sc-rank-pos{display:inline-block;min-width:18px;font-variant-numeric:tabular-nums;color:#64748b}
+.sc-nota{font-size:.74rem;color:#64748b;line-height:1.55;margin-top:10px}
 .mobile-fab{display:none;position:fixed;bottom:88px;right:20px;width:52px;height:52px;border-radius:50%;background:#0088cc;border:none;color:#fff;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(0,136,204,.4);cursor:pointer;z-index:250;font-size:1.4rem;font-weight:300;line-height:1}
 @media(max-width:768px){
   .mobile-bottom-nav{display:flex;position:fixed;bottom:16px;left:16px;right:16px;background:rgba(17,24,39,.92);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.08);border-radius:20px;padding:8px 6px;z-index:300;justify-content:space-around;box-shadow:0 8px 32px rgba(0,0,0,.5)}
@@ -1866,6 +1870,12 @@ body.light .fin-kpi-label,body.light .fin-kpi-var,body.light .fin-card-title,bod
         <h3>Semana a semana</h3>
         <div class="sc-sub">Grano semanal a propósito: con poco más de un lead por día, un gráfico diario son picos y ceros.</div>
         <div id="mk-series"></div>
+      </div>
+
+      <div class="sc-bloque">
+        <h3>Qué campaña rinde de verdad</h3>
+        <div class="sc-sub">El costo por lead es lo que muestra el Administrador de anuncios. El costo por demo es lo que te cuesta una reunión de verdad, y no siempre ordenan igual.</div>
+        <div id="mk-ranking"></div>
       </div>
 
       <div class="sc-bloque">
@@ -7542,6 +7552,88 @@ function _mkPintar() {
 
   // ── Por campaña ────────────────────────────────────────────────────────
   const campanas = (_mkDossier.campanas || []).filter(b => b.campana !== 'todas');
+
+  // Va DESPUES de `const campanas`: leerlo antes tira ReferenceError por
+  // la zona muerta temporal del const. node --check no lo agarra —es
+  // sintacticamente valido— y solo revienta al abrir el panel.
+  // ── Qué campaña rinde de verdad ────────────────────────────────────────
+  //
+  // Existe porque el hallazgo mas util del modulo requeria comparar dos
+  // graficos de barras a ojo: la campana con el costo por lead mas bajo puede
+  // ser la que mas caro te sale cada demo. Poniendolos en la misma tabla, y
+  // marcando cuando el orden se da vuelta, el punto se ve solo.
+  const conGasto = campanas.filter(b => {
+    const g = _mkMetrica(b, '.gasto');
+    return g && g.valor;
+  });
+
+  if (conGasto.length < 2) {
+    document.getElementById('mk-ranking').innerHTML =
+      '<div class="sc-vacio">Hace falta gasto sincronizado en al menos dos ' +
+      'campañas para poder compararlas.</div>';
+  } else {
+    const datos = conGasto.map(b => ({
+      campana: b.campana,
+      gasto: _mkMetrica(b, '.gasto'),
+      leads: _mkMetrica(b, '.leads_crm'),
+      cpl: _mkMetrica(b, '.cpl'),
+      demos: _mkMetrica(b, '.demos'),
+      costoDemo: _mkMetrica(b, '.costo_demo'),
+    }));
+
+    // Dos rankings, mas barato primero. Un null va al final: no se puede
+    // rankear lo que no se sabe.
+    const rank = (clave) => {
+      const orden = datos.slice().sort((a, b) => {
+        const x = a[clave] && a[clave].valor, y = b[clave] && b[clave].valor;
+        if (x === null || x === undefined) return 1;
+        if (y === null || y === undefined) return -1;
+        return x - y;
+      });
+      const m = new Map();
+      orden.forEach((d, i) => m.set(d.campana, i + 1));
+      return m;
+    };
+    const rCpl = rank('cpl'), rDemo = rank('costoDemo');
+
+    const filas = datos.slice()
+      .sort((a, b) => (a.costoDemo?.valor ?? Infinity) - (b.costoDemo?.valor ?? Infinity))
+      .map(d => {
+        const pc = rCpl.get(d.campana), pd = rDemo.get(d.campana);
+        // Se marca cuando la campana cambia de mitad de tabla al pasar de una
+        // metrica a la otra: ahi es donde la lectura ingenua se equivoca.
+        const invertido = pc !== pd && (pc <= 2) !== (pd <= 2);
+        const cls = invertido ? ' class="sc-rank-invertido"' : '';
+        return `<tr><td>${esc(d.campana)}</td>` +
+               `<td>${esc(SC.fmt(d.gasto.valor, 'moneda'))}</td>` +
+               `<td>${esc(SC.fmt(d.leads?.valor, 'numero'))}</td>` +
+               `<td${cls}><span class="sc-rank-pos">${pc}.</span> ` +
+               `${esc(SC.fmt(d.cpl?.valor, 'moneda'))}</td>` +
+               `<td>${esc(SC.fmt(d.demos?.valor, 'numero'))}</td>` +
+               `<td${cls}><span class="sc-rank-pos">${pd}.</span> ` +
+               `${esc(SC.fmt(d.costoDemo?.valor, 'moneda'))}</td></tr>`;
+      }).join('');
+
+    const seDaVuelta = datos.some(d => {
+      const pc = rCpl.get(d.campana), pd = rDemo.get(d.campana);
+      return pc !== pd && (pc <= 2) !== (pd <= 2);
+    });
+
+    document.getElementById('mk-ranking').innerHTML =
+      '<div class="sc-tabla-wrap"><table class="sc-tabla"><thead><tr>' +
+      '<th>Campaña</th><th>Gasto</th><th>Leads</th><th>Costo por lead</th>' +
+      '<th>Demos</th><th>Costo por demo</th></tr></thead><tbody>' + filas +
+      '</tbody></table></div>' +
+      (seDaVuelta
+        ? '<div class="sc-nota"><b class="sc-rank-invertido">El orden se da ' +
+          'vuelta.</b> Las campañas marcadas cambian de lado según qué mires: ' +
+          'la que trae los leads más baratos no es la que consigue las reuniones ' +
+          'más baratas. El Administrador de anuncios solo muestra la primera ' +
+          'columna.</div>'
+        : '<div class="sc-nota">Los dos rankings coinciden: la que trae leads ' +
+          'más baratos también consigue demos más baratas.</div>');
+  }
+
   const porCampana = (suf, titulo) => {
     const filas = campanas.map(b => ({
       etiqueta: b.campana, campana: b.campana, metrica: _mkMetrica(b, suf)

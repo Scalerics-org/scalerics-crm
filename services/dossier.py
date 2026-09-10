@@ -197,8 +197,13 @@ def por_campana(db_path: str, desde: str, hasta: str) -> list:
                     f"Costo por presupuesto — {campana}",
                     costo(g["spend"], conteo["presupuestos"]), "derivada",
                     formato="moneda"),
+            # Cero clics sobre doscientas mil impresiones no es un CTR de 0%:
+            # es que los clics no se sincronizaron. Mostrar 0,0% inventa una
+            # precision que no existe, y con Insights sin configurar es
+            # exactamente lo que pasa. Sin clics, el CTR no esta definido.
             proporcion(f"{pref}.ctr", f"CTR — {campana}",
-                       int(g["clicks"]), int(g["impr"]), "derivada"),
+                       int(g["clicks"]), int(g["impr"]) if g["clicks"] else 0,
+                       "derivada"),
         ]
         for clave, _etapa, etiqueta in _ETAPAS:
             ms.append(metrica(f"{pref}.{clave}", f"{etiqueta} — {campana}",
