@@ -77,7 +77,7 @@ leads de Meta se renombró a **D** para deshacer el empate.
 | C (banco LinkedIn) | el banco de posts de LinkedIn, sacarle la API de Anthropic | `services/linkedin_posts.py`, `services/linkedin_banco_semilla.py`, `routes/linkedin.py`, `scripts/render_linkedin.py`, `templates/linkedin_card.html`, `tests/test_linkedin_*` | 28/8 |
 | D (leads de Meta) | secuencias de mail por estado, estados del CRM, sync con la planilla de semáforo, detección de respuestas, rendimiento del CRM | `services/meta_reminders.py`, `services/secuencia_contactos.py`, `services/planilla_semaforo.py`, `scripts/planilla_semaforo.gs`, `routes/meta.py` | 27/8 |
 | E (pre-clientes/demos) | pipeline por etapas, responsables del cliente, registro de demos | `routes/preclientes.py`, `tests/test_preclientes.py`, `scripts/check_js.py`, y **zona compartida**: `database.py`, `dashboard.py`, `routes/leads.py` | 31/8 |
-| G (marketing/Meta Ads) | modulo nuevo de inteligencia comercial sobre Meta Ads: sync de Insights, dossier de metricas, radiografia con IA, panel con graficos | `services/meta_insights.py`, `services/radiografia.py`, `services/radiografia_ia.py`, `routes/marketing.py`, `static/charts.js`, `tests/test_radiografia*`, y **zona compartida**: `database.py`, `dashboard.py`, `routes/meta.py` | 10/9 |
+| G (marketing/Meta Ads) | inteligencia comercial sobre Meta Ads. **Fase 1 hecha en `feat/marketing-meta`, sin mergear ni deployar** | `services/embudo.py`, `services/dossier.py`, `services/meta_insights.py`, `services/meta_campanas.py`, `services/radiografia.py`, `routes/marketing.py`, y **zona compartida**: `database.py`, `dashboard.py`, `routes/meta.py`, `services/finanzas.py`, `tests/conftest.py` | 10/9 |
 
 | F (finanzas) | la sección financiera del CRM | `services/finanzas.py`, `routes/finanzas.py`, `database.py` (tablas de finanzas), `dashboard.py` (panel Finanzas) | 8/9 |
 
@@ -194,6 +194,70 @@ leads de Meta se renombró a **D** para deshacer el empate.
 ---
 
 ## Bitácora
+
+- **10/9 — G (marketing/Meta Ads): fase 1 hecha en la rama `feat/marketing-meta`, sin deployar.**
+
+  Doce tasks, todas con tests. La rama sale de `48b1784` y **no está mergeada**.
+  Spec y plan en `docs/superpowers/`. No hay UI todavía y **no se gasta un token
+  de IA**: hay tests que verifican sobre el fuente que ningún módulo de la fase
+  importa `anthropic`.
+
+  **Dos cosas que les tocan a ustedes, aunque no toquen marketing:**
+
+  1. **`services/finanzas.py` ahora importa el embudo de `services/embudo.py`.**
+     Se movieron `FUNNEL`, `EXCLUIDOS_DEL_FUNNEL`, `alcanzo`, `_dividir`,
+     `_costo` y `_normalizar_estado` sin cambiar comportamiento; finanzas
+     conserva los alias privados y sus **238 tests pasan idénticos** antes y
+     después. Si tocás el embudo, ahora se toca en un solo lugar.
+
+  2. **`tests/conftest.py` no borraba las credenciales de Google Calendar.**
+     Corriendo la suite desde un worktree adentro de `crm-limpio`,
+     `test_calendario_editar` fallaba con **16 eventos reales** en vez de la
+     única reunión del fixture: estaba leyendo la agenda de verdad de Scalerics.
+     La causa es que `load_dotenv()` sube por el árbol hasta encontrar un `.env`,
+     así que un worktree sin `.env` propio igual termina con las credenciales de
+     producción. Es la misma clase de incidente que la regla 4. Arreglado en
+     `dd9ab0b`; **si ves esos cuatro tests en rojo, traete ese commit.**
+
+  **Zona compartida que toqué, todo aditivo:**
+  - `database.py`: tablas `meta_insights` y `radiografias`, cinco columnas
+    `meta_*` en `businesses`, y el panel `marketing` sumado a los roles.
+  - `routes/meta.py` (**territorio de D**): la ingesta ahora escribe la campaña
+    y el anuncio en columnas propias además de dejarlo en `notes`, y los
+    `fields` del Graph piden `campaign_id`, `adset_id` y `ad_id`. **D: no toqué
+    nada de tu lógica de deduplicación ni de notificación.** El UPDATE usa
+    `COALESCE` para que una segunda pasada sin datos no borre lo que ya se sabía.
+  - `dashboard.py`: solo el import y el registro del blueprint nuevo.
+
+  **Tres hallazgos sobre los datos que valen para cualquiera que mire números
+  del CRM:**
+
+  - **Los cierres no tienen campaña.** De los 9 leads de Meta que llegaron a
+    `cerrado` o más, **8 caen en el bucket `(sin campaña)`**. `notes` era el
+    único lugar donde vivía la campaña y, cuando el lead avanzaba, el vendedor
+    le escribía el monto encima (`490 E commerce`, `1400 software a medida`).
+    Los leads que más se trabajaron son los que perdieron la atribución. El
+    costo por cierre por campaña **no se puede reconstruir**.
+  - **`lead_events` no sirve para medir tiempos tal cual está.** 195 de los 242
+    eventos de la cohorte de Meta se escribieron el mismo día —27/8, el import
+    de la planilla— para leads que entraron en marzo. La mediana de días hasta
+    el primer contacto daba **79 días**, que es lo que tardó el import, no lo
+    que tarda el equipo. El estado de esos eventos es real; la fecha no. En el
+    dossier se excluyen de toda métrica temporal y se conservan para el embudo.
+  - **La secuencia de recordatorios no muestra efecto medible.** 0 de 231
+    envíos fueron seguidos de un cambio de estado registrado en 7 días. Ojo con
+    la lectura: mide movimiento *registrado*, y en esta cohorte el contacto se
+    anota pintando la planilla, no en el CRM.
+
+  **Lo que falta antes de deployar**, y por eso no deployé: hacen falta
+  `META_ADS_TOKEN` y `META_AD_ACCOUNT_ID` en los secrets de Fly (el
+  `META_PAGE_TOKEN` no sirve para Insights, pide `ads_read`), y falta verificar
+  contra una respuesta real cuál `action_type` usa la cuenta para reportar un
+  lead. Sin eso la columna `leads` de `meta_insights` queda en cero y todos los
+  CPL dan `None`: parecería un bug y sería un dato que falta.
+
+  **Lo que sigue:** fase 2 el panel con gráficos SVG, fase 3 el motor de IA
+  cuando Juan diga que se puede volver a gastar.
 
 - **10/9 — G (marketing/Meta Ads): abro modulo nuevo, todavia sin codigo.**
 
