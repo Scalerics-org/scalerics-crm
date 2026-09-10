@@ -609,8 +609,29 @@ costo se marca `cobertura_parcial: true`**, el informe lo levanta como anomalía
 el panel muestra el aviso sobre los tiles de costo. Un CPL calculado sobre gasto
 completo y leads incompletos miente hacia abajo, que es la dirección peligrosa.
 
-**R2 — 13 leads sin campaña.** Van a un bucket `(sin campaña)` explícito, nunca
-repartidos ni escondidos.
+**R2 — Los 13 leads sin campaña son justamente los que cerraron.** Medido al
+ejecutar el plan, no previsto al diseñarlo. De los 9 leads que alcanzaron
+`cerrado` o más, **8 están en el bucket `(sin campaña)`**. La causa: `notes` era
+el único lugar donde vivía la campaña, y cuando el lead avanzaba el vendedor le
+escribía el monto encima (`490 E commerce`, `1400 software a medida`,
+`900 E commerce y 100 web`) o la dejaba vacía. Los leads que más se trabajaron
+son los que perdieron la atribución.
+
+Consecuencias, y son grandes:
+
+- **El costo por cierre por campaña no se puede calcular sobre la historia.** No
+  por renombres, sino porque el dato se destruyó. Ninguna reconstrucción lo
+  recupera.
+- Una lectura ingenua de la tabla por campaña concluiría que `Leads - UY - 2026`
+  es la única campaña que cerró algo (1 cierre). Es falso: hay 8 cierres de
+  origen desconocido. **El informe tiene prohibido comparar cierres por campaña
+  mientras el bucket `(sin campaña)` concentre la mayoría**, y el panel muestra
+  el aviso al lado de esa columna.
+- Confirma que sacar la campaña de `notes` a su columna era urgente, no cosmético:
+  la columna no se pisa cuando alguien edita las notas, y la ingesta la escribe
+  con `COALESCE` para que una segunda pasada sin datos tampoco la borre.
+- El bucket nunca se reparte ni se esconde. Es la métrica que dice cuánta
+  historia se perdió.
 
 **R3 — Moneda.** Insights devuelve el gasto en la moneda de la cuenta. Se guarda
 `currency` y se muestra tal cual. **No se convierte a dólares**: una conversión
