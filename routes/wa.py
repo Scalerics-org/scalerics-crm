@@ -123,7 +123,7 @@ def api_wa_messages(phone):
 
 @wa_bp.route("/api/wa/media/<int:msg_id>/<int:idx>")
 def api_wa_media(msg_id, idx):
-    """El archivo que vino con un mensaje: hoy, la nota de voz.
+    """El archivo que vino con un mensaje: la nota de voz, la foto, el PDF.
 
     El bot no tiene IP publica —vive solo en la red privada de Fly, a
     proposito— asi que el navegador no puede pedirle el archivo. El camino es
@@ -149,12 +149,12 @@ def api_wa_media(msg_id, idx):
 
     if r.status_code >= 400:
         # 404 y no 200 vacio: si no, el panel dibuja un reproductor que no suena
-        # y no hay forma de saber que el audio ya se borro.
-        return jsonify({"error": "audio no disponible"}), r.status_code
+        # —o una imagen rota— y no hay forma de saber que el archivo ya se borro.
+        return jsonify({"error": "archivo no disponible"}), r.status_code
 
     resp = make_response(r.content)
     resp.headers["Content-Type"] = r.headers.get("Content-Type", "application/octet-stream")
-    # Los audios no cambian nunca: el mismo id siempre es el mismo archivo.
+    # Los archivos no cambian nunca: el mismo id siempre es el mismo archivo.
     resp.headers["Cache-Control"] = "private, max-age=86400"
     return resp
 
