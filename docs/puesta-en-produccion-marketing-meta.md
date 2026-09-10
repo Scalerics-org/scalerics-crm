@@ -236,3 +236,54 @@ encima. Ese dato no se puede reconstruir de ningún lado.
 De acá en adelante sí, porque la campaña ahora va en columna propia y la ingesta
 la escribe con `COALESCE` para que una segunda pasada sin datos tampoco la borre.
 Pero para marzo-septiembre de 2026, no.
+
+
+---
+
+## Puesto en producción el 10/9/2026 — lo que dio de verdad
+
+Token cargado, historia traída, todo verificado adentro de la máquina.
+
+**El `action_type` de esta cuenta.** `act_1165635198430883` devuelve **`lead` y
+`onsite_conversion.lead_grouped` a la vez**, y los dos están en la lista que el
+módulo reconoce. `_leads_de` corta en la primera coincidencia, así que cuál gana
+lo decide el orden del array de Meta. Comprobado sobre las 275 filas de marzo a
+setiembre: **coinciden en todas** (252 contra 252), así que hoy da igual. Si
+algún día aparece una cuenta donde difieran, hay que elegir explícitamente.
+
+**Los números reales**, del 11/3 al 10/9:
+
+| | |
+|---|---:|
+| Gasto | USD 3.515,80 |
+| Impresiones | 525.457 |
+| Clics | 7.909 |
+| Leads según Meta | 252 |
+| Leads en el CRM | 242 |
+| Demos | 49 |
+
+**Aparecieron dos campañas que no estaban en ningún lado**: `Leads - Set26 -
+Winners` (52,77 y cero leads) y `Leads - Test Creativo` (25,17 y un lead).
+
+**El ranking se da vuelta, con datos reales:**
+
+| campaña | gasto | CPL | costo/demo | CTR |
+|---|---:|---:|---:|---:|
+| Form - 2026 | 981,31 | **11,54** (1º) | **140,19** (3º) | 1,92% |
+| ARG - CH - 2026 | 870,83 | 17,08 | 96,76 | 1,04% |
+| UY - 2026 | 1.585,72 | **18,44** (3º) | **83,46** (1º) | 1,21% |
+
+La campaña que trae los leads más baratos consigue las reuniones más caras.
+
+**Y la conciliación encontró algo el primer día.** Finanzas tiene cargados
+**3.900** contra los **3.515,80** que Meta cobró de verdad — 384,20 de más — pero
+el total esconde lo importante, que es mes a mes:
+
+| mes | Meta | Finanzas | brecha |
+|---|---:|---:|---:|
+| 2026-06 | 608,01 | **0,00** | -608,01 |
+| 2026-09 | 262,59 | **900,00** | +637,41 |
+
+Junio no está cargado y setiembre está cargado de más. El resto son gastos fijos
+de 600 contra un cobro que nunca fue 600. Eso es de Finanzas, no de este módulo:
+acá solo se muestra la brecha.

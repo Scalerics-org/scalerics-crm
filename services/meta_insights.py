@@ -30,11 +30,19 @@ logger = logging.getLogger(__name__)
 DIAS_A_RESINCRONIZAR = 7
 
 # Los action_type con los que Meta reporta un lead de formulario. Son varios
-# porque el nombre cambio entre versiones y conviven en cuentas viejas. Cual usa
-# la cuenta de Scalerics NO esta verificado todavia: hace falta una corrida real
-# con credenciales. Si el que aparece no esta en esta tupla, la columna `leads`
-# queda en cero y todos los CPL dan None — no seria un bug del codigo, seria un
-# nombre que falta aca.
+# porque el nombre cambio entre versiones y conviven en cuentas viejas. Si el que
+# usa la cuenta no esta en esta tupla, la columna `leads` queda en cero y todos
+# los CPL dan None — no seria un bug del codigo, seria un nombre que falta aca.
+#
+# VERIFICADO contra la cuenta de Scalerics el 10/9/2026 (act_1165635198430883):
+# devuelve `lead` y `onsite_conversion.lead_grouped`, los dos a la vez.
+#
+# Ojo con eso, porque `_leads_de` corta en la primera coincidencia y cual llega
+# primero lo decide el orden del array que manda Meta. Si los dos valores
+# difirieran, el numero cambiaria sin motivo visible. Comprobado sobre las 275
+# filas de marzo a setiembre: **coinciden en todas**, 252 contra 252. Mientras
+# siga asi da igual cual gane; si algun dia aparece una cuenta donde difieran,
+# hay que decidir explicitamente cual manda en vez de dejarlo al azar.
 _ACCIONES_DE_LEAD = ("lead", "leadgen_grouped", "onsite_conversion.lead_grouped")
 
 
