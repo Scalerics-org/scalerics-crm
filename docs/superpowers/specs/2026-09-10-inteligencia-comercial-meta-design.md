@@ -96,6 +96,15 @@ el 11/3/2026 y el 4/9/2026.
 `presupuesto_enviado`, 4 `en_desarrollo`, 4 `finalizado`. El 89% se trabajó de
 verdad.
 
+> **Ojo: esos son los nombres viejos.** El backup es anterior a la migración de
+> estados, que ya corrió en producción. Hoy el vocabulario es
+> `demo_agendada`, `demo_1`, `follow_up_1`, `cerrado`; el mapa vive en
+> `database._MAPA_ESTADOS_VIEJOS`. **`lead_events` mezcla las dos épocas**
+> —la migración reescribió `businesses.crm_status` pero no el historial— así
+> que cualquier lectura de eventos tiene que normalizar antes de comparar.
+> El módulo nunca escribe nombres de estado a mano: usa el orden y las
+> funciones de §5.1.
+
 **Actividad asociada:** 242 filas en `lead_events`, 46 en `meetings`, 255 en
 `meta_reminders`. Cero filas en `call_logs` para esta cohorte —las llamadas a
 leads de Meta se registran pintando la planilla de semáforo, no en el CRM.
@@ -118,7 +127,81 @@ importa los estados reales que los CEO pintan a mano en Google Sheets. Ese es el
 "Excel" del pedido original y entra al dossier a través de `crm_status`, sin
 integración nueva.
 
-## 5. Arquitectura
+## 5. Convivencia con el módulo de Finanzas
+
+**Descubierto el 10/9, con el spec ya escrito:** mientras se diseñaba esto, otra
+sesión mergeó `services/finanzas.py` a `main`. Trae una vista «Pauta» que se
+superpone con parte de lo especificado acá.
+
+Lo que Finanzas **ya calcula** (`rendimiento_pauta`, `services/finanzas.py:505`),
+mes a mes y sobre el total: inversión en pauta, leads, leads calificados, demos,
+ventas, ingresos, CPL, costo por calificado, costo por demo, costo por venta y
+ROI.
+
+Esto obliga a dos correcciones del diseño, y las dos son innegociables.
+
+### 5.1 El embudo se define en un solo lugar
+
+Finanzas cuenta las etapas leyendo **`lead_events` acumulado**: un lead
+«alcanzó» una etapa si pasó por ella *o por cualquiera posterior*, alguna vez,
+aunque hoy figure en `no_interesa`. El borrador de este spec contaba desde
+`crm_status`, que es el estado de hoy.
+
+Son dos respuestas distintas a la misma pregunta, en dos paneles del mismo CRM.
+**Eso es peor que no tener el módulo**: nadie sabría a cuál creerle.
+
+Resolución: se extrae la lógica de etapas de `services/finanzas.py` a
+**`services/embudo.py`**, y los dos módulos la importan de ahí. Se mueven tal
+cual, sin cambiar comportamiento:
+
+| Nombre | Qué es |
+|---|---|
+| `FUNNEL` | la lista ordenada de 14 etapas |
+| `EXCLUIDOS_DEL_FUNNEL` | `en_espera` y `rechazo`, que no son avances |
+| `normalizar_estado(estado)` | traduce un nombre viejo al nuevo |
+| `alcanzo(eventos, etapa)` | si el lead pasó por esa etapa o una posterior |
+| `dividir(num, den)` | división, o `None` si el denominador es cero |
+| `costo(inversion, cantidad)` | costo unitario, o `None` — un mes sin ventas **no** tiene costo por venta de cero |
+
+`services/finanzas.py` queda importando desde ahí y conserva alias privados
+(`_dividir = dividir`) para no tocar sus llamadas internas ni sus tests.
+**Es territorio de otra sesión: va anotado en `COORDINACION.md` y el criterio es
+no cambiarle ni un comportamiento.** Los tests de Finanzas tienen que pasar
+idénticos antes y después.
+
+### 5.2 El gasto tiene dos fuentes y se concilian
+
+Finanzas toma la inversión de movimientos cargados **a mano** (egresos con
+`categoria = 'publicidad'`, mensuales, en USD). Este módulo la trae de la
+**Marketing API** (diaria, por campaña, en la moneda de la cuenta).
+
+No se unifican y no se pisan. Cada uno guarda lo suyo y el módulo expone la
+**brecha**: `conciliacion.gasto_meta` contra `conciliacion.gasto_cargado`, por
+mes. Esa comparación vale por sí sola —dice si se está registrando en la
+contabilidad todo lo que Meta efectivamente cobró— y es un hallazgo que el
+informe levanta cuando la diferencia supera el 10%.
+
+Este módulo **no escribe nunca en `finanzas_movimientos`.**
+
+### 5.3 Qué aporta este módulo que Finanzas no tiene
+
+Para que el recorte quede claro: Finanzas responde «cuánto costó y cuánto
+volvió», mensual y global. Este módulo responde «de dónde vino y a quién
+apuntarle», y lo hace con lo que Finanzas no mira:
+
+- Grano por **campaña** y por **día** (Finanzas es mensual y global).
+- Las métricas del anuncio: impresiones, clics, alcance, CTR, CPM, CPC.
+- La segmentación por lo que el lead **declaró en el formulario**.
+- Los intervalos de confianza, para no decidir sobre ruido.
+- La lectura con IA.
+
+**Corrección al borrador:** este spec decía que los tiles de «valor del lead»
+eran imposibles por falta de plata asignada. Es falso desde que existe Finanzas:
+`finanzas_movimientos` tiene ingresos por cliente, y de ahí salen ROI y costo por
+venta reales. El módulo no los recalcula —los toma de `rendimiento_pauta`— y los
+muestra como contexto junto a sus propias métricas.
+
+## 6. Arquitectura
 
 ```
 Meta Marketing API (Insights)          CRM (SQLite en el volumen de Fly)
@@ -153,11 +236,11 @@ Todo corre en la máquina de Fly. Ninguna pieza corre en la computadora de nadie
 dossier. El dossier pesa lo mismo con 238 leads que con 20.000, así que el costo
 por corrida no crece con la base.
 
-## 6. Modelo de datos
+## 7. Modelo de datos
 
 Todo aditivo. Ninguna migración altera una tabla o consulta existente.
 
-### 6.1 Columnas nuevas en `businesses`
+### 7.1 Columnas nuevas en `businesses`
 
 ```sql
 ALTER TABLE businesses ADD COLUMN meta_campaign_id   TEXT;
@@ -182,7 +265,7 @@ Graph. Hay que agregar `campaign_id,adset_id,ad_id` a los `fields` de las cuatro
 llamadas que traen leads y escribir las columnas nuevas. `notes` se sigue
 escribiendo igual que hoy — nada que ya lea `notes` se rompe.
 
-### 6.2 Tabla `meta_insights`
+### 7.2 Tabla `meta_insights`
 
 ```sql
 CREATE TABLE IF NOT EXISTS meta_insights (
@@ -209,7 +292,7 @@ Solo se guardan métricas crudas y contables. **CPM, CPC, CTR y CPL no se
 guardan: se derivan al calcular.** Una tasa guardada se desincroniza de sus
 componentes y después nadie sabe cuál manda.
 
-### 6.3 Tabla `radiografias`
+### 7.3 Tabla `radiografias`
 
 ```sql
 CREATE TABLE IF NOT EXISTS radiografias (
@@ -231,7 +314,7 @@ Guardar el dossier íntegro, y no solo el informe, es lo que permite auditar
 después por qué el modelo dijo lo que dijo, y comparar contra la semana anterior
 sin recalcular el pasado.
 
-## 7. Sincronización de Insights
+## 8. Sincronización de Insights
 
 `services/meta_insights.py`.
 
@@ -260,12 +343,12 @@ completa hacia atrás solo lo que falte. La regla 3 de `COORDINACION.md` aplica:
 **el sync nace con su propio tope rodante** en la tabla `corridas`, para que un
 deploy —que reinicia la máquina— no dispare una tanda de llamadas a la API.
 
-## 8. El dossier
+## 9. El dossier
 
 `services/radiografia.py`. Es la pieza central: todo el cálculo es determinista y
 testeable, y es lo único que el modelo llega a ver.
 
-### 8.1 Forma de cada métrica
+### 9.1 Forma de cada métrica
 
 ```json
 {
@@ -290,17 +373,23 @@ El intervalo se calcula con **Wilson**, que se comporta bien con muestras chicas
 y proporciones cerca de 0 o 1 —justo el caso acá— y no necesita ninguna
 dependencia nueva. Toda métrica con `n < 30` se marca `muestra_chica: true`.
 
-### 8.2 Qué se calcula
+### 9.2 Qué se calcula
 
 **Por campaña** (y el total como una campaña más, `id` = `todas`):
 
 - De Insights: gasto, impresiones, clics, alcance, leads.
 - Derivadas: CPM, CPC, CTR, CPL.
-- Del CRM: leads registrados, contactados, interesados, reunión agendada,
-  reunión hecha, presupuesto enviado, en desarrollo, finalizado.
+- Del CRM, **contadas con `alcanzo()` sobre `lead_events`, nunca con
+  `crm_status`** (§5.1): leads registrados, y cuántos alcanzaron `contactado`,
+  `interesado`, `demo_agendada`, `demo_1`, `presupuesto_enviado` y `cerrado`.
+  Un lead que llegó a demo y hoy figura en `no_interesa` cuenta como demo,
+  porque la demo pasó.
 - Tasas entre etapas consecutivas, cada una con su IC.
-- **Costo por reunión** = gasto ÷ reuniones hechas.
-- **Costo por presupuesto enviado** = gasto ÷ presupuestos enviados.
+- Conciliación de gasto: lo que dice Meta contra lo cargado en Finanzas (§5.2).
+- **Costo por demo** = gasto ÷ leads que alcanzaron `demo_1`.
+- **Costo por presupuesto** = gasto ÷ leads que alcanzaron
+  `presupuesto_enviado`. Las dos usan `costo()` de §5.1, así que sin gasto o
+  sin cantidad devuelven `None` y no un cero engañoso.
 - **Discrepancia de leads**: leads según Insights vs. leads en el CRM. Si no
   cuadran, algo se está perdiendo en la ingesta, y eso vale como hallazgo propio.
 
@@ -328,7 +417,7 @@ nuestro.
 **Deltas**: cada métrica trae su valor del período anterior, leído del último
 snapshot en `radiografias`, no recalculado.
 
-### 8.3 Normalizaciones obligatorias
+### 9.3 Normalizaciones obligatorias
 
 Dos trampas reales medidas en los datos:
 
@@ -348,9 +437,24 @@ Lo mismo aplica a `category`, donde ya conviven `Peluqueria`, `peluqueria` y
 `Odontología` con encoding roto. Reusar `_normalize_category` de
 `routes/leads.py` en vez de escribir otra.
 
-## 9. El motor de IA
+## 10. El motor de IA
 
 `services/radiografia_ia.py`.
+
+> **Restricción vigente (10/9, decisión de Juan): nada de esto llama a la API
+> todavía.** El 28/8 el cron de LinkedIn dejó el saldo de la cuenta en cero, y
+> hasta nueva orden ninguna corrida gasta tokens. Consecuencias concretas:
+>
+> - El módulo se escribe completo y se testea **solo contra respuestas
+>   simuladas**. Ningún test, ni ningún paso del desarrollo, toca la API.
+> - Nace apagado detrás de `RADIOGRAFIA_IA_ACTIVA` (default `false`). Con la
+>   bandera apagada, `POST /api/marketing/generar` calcula y guarda el dossier,
+>   y deja `report_json` en `NULL` con `status='sin_ia'`.
+> - **El panel funciona igual sin IA.** Los gráficos y los KPIs salen del
+>   dossier, no del informe; lo único que falta es el texto de los hallazgos.
+>   Esto no es una degradación de emergencia: es el orden en que se construye.
+> - El workflow semanal se crea con `schedule` comentado. Se descomenta el día
+>   que se prenda la bandera, y no antes.
 
 **Modelo:** `claude-opus-5`, con `thinking: {"type": "adaptive"}`. El trabajo es
 razonamiento analítico y corre una vez por semana; ahorrar centavos degradando el
@@ -382,7 +486,7 @@ datos personales de 238 personas a un servicio externo.
 }
 ```
 
-### 9.1 El contrato anti-invención
+### 10.1 El contrato anti-invención
 
 Cuatro reglas, y las cuatro son verificables por código —no promesas del prompt:
 
@@ -403,14 +507,14 @@ vuelve a fallar, la radiografía se guarda con `status='error_validacion'` y el
 panel muestra los gráficos con un aviso de que el análisis no pasó la
 validación. **Nunca se publica un informe sin validar.**
 
-### 9.2 Lo que el modelo tiene prohibido saber
+### 10.2 Lo que el modelo tiene prohibido saber
 
 No recibe nombres de campañas de la competencia, ni precios de Scalerics, ni
 supuestos de negocio. Si una recomendación necesita un dato que no está en el
 dossier, la instrucción es decir que falta ese dato. "No sé" es una respuesta
 válida y esperada.
 
-## 10. El panel
+## 11. El panel
 
 `routes/marketing.py` + `static/charts.js` + un panel `marketing` en
 `dashboard.py`, al lado de "Métricas". No se toca el panel de Métricas existente.
@@ -421,7 +525,7 @@ tiene ninguna librería de gráficos: todo son barras de CSS (`_barList`,
 no sumar dependencia externa, respetar el tema oscuro/claro que ya existe
 (`body.light`) y la paleta Scalerics, y no engordar los 574 KB de `dashboard.py`.
 
-### 10.1 Inventario
+### 11.1 Inventario
 
 | Bloque | Forma | Fuente |
 |---|---|---|
@@ -444,13 +548,13 @@ El embudo de 9 pasos es el módulo entero en una imagen, y es lo que ninguna
 herramienta comprada puede mostrar: las tres primeras etapas las tiene cualquier
 reporte de ads, las seis siguientes solo las tiene el CRM.
 
-### 10.2 Reglas de los gráficos
+### 11.2 Reglas de los gráficos
 
 - **Ningún gráfico de doble eje.** Superponer dos escalas deja elegir dónde se
   cruzan las líneas, o sea que se puede fabricar cualquier correlación moviendo
   un eje. Dos medidas de escalas distintas van como dos gráficos apilados que
   comparten el eje de tiempo.
-- **Grano semanal** en toda serie temporal, por el motivo de §8.2.
+- **Grano semanal** en toda serie temporal, por el motivo de §9.2.
 - **La incertidumbre se dibuja.** Toda barra de tasa con `n < 30` lleva su
   intervalo y una marca visible. Con 51 leads en la campaña de ARG, cinco puntos
   de diferencia contra UY no significan nada, y el gráfico tiene que decirlo en
@@ -462,7 +566,7 @@ reporte de ads, las seis siguientes solo las tiene el CRM.
 - Hover con tooltip en toda serie y toda barra; leyenda siempre que haya dos o
   más series.
 
-### 10.3 Endpoints
+### 11.3 Endpoints
 
 | Método y ruta | Qué hace |
 |---|---|
@@ -476,7 +580,7 @@ Los dos `POST` van protegidos por `x-admin-token`, igual que
 `/api/linkedin/generar`. Los `GET` requieren sesión y rol admin: el panel muestra
 gasto publicitario.
 
-## 11. Cron y costo
+## 12. Cron y costo
 
 Workflow nuevo `.github/workflows/radiografia.yml`, copiando el patrón probado de
 `linkedin.yml`: `schedule` los lunes a las 11:00 UTC (8:00 en Montevideo),
@@ -492,7 +596,7 @@ unos 6.000 de salida contando el razonamiento. Con Opus 5 a USD 5/USD 25 por
 millón, son **~USD 0,18 por corrida, ~USD 0,75 por mes**. El CRM en Fly cuesta
 USD 4,18 mensuales, así que es ruido. Y no crece con la base.
 
-## 12. Riesgos
+## 13. Riesgos
 
 **R1 — Emparejar leads con campañas por nombre.** Los 238 leads históricos no
 tienen `campaign_id` recuperable, así que se emparejan por
@@ -525,7 +629,7 @@ prueba que la campaña sea mejor: pueden diferir el público, el momento y quié
 los llamó. El módulo reporta asociación y lo dice; la regla 4 del validador
 existe por esto.
 
-## 13. Testing
+## 14. Testing
 
 Sobre una copia del backup, nunca contra producción, y nunca con el `.env` de
 producción (regla 4 de `COORDINACION.md`).
@@ -547,7 +651,7 @@ producción (regla 4 de `COORDINACION.md`).
 - **Import diferido:** un test sobre el fuente verifica que el módulo no importe
   `anthropic` a nivel de archivo, igual que `test_linkedin_sin_api.py`.
 
-## 14. Lo que viene después
+## 15. Lo que viene después
 
 En orden de valor, no de facilidad:
 
