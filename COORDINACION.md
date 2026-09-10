@@ -194,6 +194,23 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **10/9 — G: borrada la carpeta `bot/`.** Era el bot viejo de mayo
+  (`scalerics-wa-bot`, entrypoint `src/app.js`), del commit inicial `16bc4a4`
+  y sin tocar desde entonces. Ya estaba anotado abajo por C el 28/8 que no es
+  el bot de produccion; el vivo es la app `scalerics-wa` con su propio fuente
+  en `wa-service/`, rama `feat/wa-service-baileys`.
+
+  Se va porque no era inofensiva: **las 15 alertas de dependabot del repo (2
+  altas: axios y form-data) estaban todas en `bot/package-lock.json`**, y como
+  el `.dockerignore` no la excluia y el Dockerfile hace `COPY . .`, la carpeta
+  viajaba adentro de la imagen de produccion. Tambien saca de en medio la
+  trampa de deployar desde ahi por error.
+
+  Verificado antes de borrar: ningun `.py`, `.toml`, `.sh` ni el Dockerfile la
+  referencian, ningun test la toca, y los 24 archivos estaban versionados, asi
+  que vuelve con `git revert` si hiciera falta.
+
+
 - **10/9 — G (memoria del worker): CIERRE. La fuga que causó el OOM del 9/9
   está tapada y deployada en `v173`. PR 18 mergeado (`8c8e5ca`).**
 
