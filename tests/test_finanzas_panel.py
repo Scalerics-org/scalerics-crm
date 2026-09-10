@@ -99,8 +99,16 @@ def test_los_montos_se_muestran_en_dolares():
     assert "_finUsd" in HTML
 
 
-def test_el_panel_tiene_reglas_para_modo_claro():
-    assert "body.light .fin-card" in HTML
+def test_el_panel_se_adapta_al_modo_claro():
+    """Antes esto miraba que existiera `body.light .fin-card`.
+
+    Ahora la sección usa tokens: `.fin-card` toma `var(--superficie-honda)` y el
+    bloque `body.light` redefine ese token. Las once reglas `body.light .fin-*`
+    escritas a mano se borraron porque los tokens las cubren — que es la
+    ganancia del cambio, no una pérdida de cobertura.
+    """
+    assert ".fin-card{background:var(--superficie-honda)" in HTML
+    assert "--superficie-honda:#fff" in HTML, "el tema claro tiene que redefinirlo"
 
 
 def test_el_json_de_los_onclick_va_escapado():
