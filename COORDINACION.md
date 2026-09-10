@@ -123,6 +123,41 @@ leads de Meta se renombró a **D** para deshacer el empate.
 > Si alguien toca `FUNNEL` en `services/finanzas.py`, eso es lo que hay que
 > respetar.
 
+> **F (finanzas) de nuevo (10/9).** Segunda tanda sobre el mismo panel, toda
+> pedida por Juan y Gonza. Lo que hay en `main` a hoy: IVA por movimiento,
+> "Por cobrar", navegador de mes con meses cerrados, y la capa de tokens CSS
+> (`:root` / `body.light`) que por ahora consume solo la seccion Finanzas.
+>
+> **Tres cosas que conviene saber antes de tocar esto:**
+>
+> 1. **El monto que se carga es el LIQUIDO, el IVA se SUMA.** 100 -> 122. La
+>    primera version hacia lo contrario (sacaba el impuesto de adentro) y estaba
+>    mal. Por eso la funcion se llama `iva_sobre` y no `desglosar_iva`: el
+>    renombre revienta a cualquier llamador viejo en vez de dejarlo calculando
+>    al reves en silencio.
+>
+> 2. **`materializar_recurrentes` solo INSERTA, nunca actualiza.** Cambiarle el
+>    monto o prenderle el IVA a un fijo no reescribe los meses ya generados: el
+>    INSERT choca con el indice unico `(recurrente_id, periodo)` y se descarta.
+>    Es deliberado —reescribir hacia atras tocaria meses cerrados, que es lo que
+>    el candado existe para impedir— y el modal lo dice en pantalla. Si alguien
+>    "arregla" esto convirtiendolo en UPSERT, tambien pisa los movimientos
+>    editados a mano.
+>
+> 3. **La rampa de grises se INVIERTE entre temas** (#475569 <-> #94a3b8,
+>    medido). Los tokens hay que reemplazarlos POR ROL, nunca por hex: un
+>    buscar-y-reemplazar ciego rompe el tema claro sin que falle ningun test.
+>    De las 832 declaraciones con color de las reglas oscuras, 595 no tienen
+>    contraparte clara, asi que la migracion va de a una superficie y se
+>    verifica en el navegador. `tests/test_tokens_css.py` ataja el olvido.
+>
+> **Cruce de territorio:** `dashboard.py` sigue siendo de B y `database.py`
+> zona compartida. Todo lo mio es aditivo: columnas nuevas (`facturado`,
+> `iva_usd` en movimientos y recurrentes), tablas nuevas
+> (`finanzas_por_cobrar`, `finanzas_meses_abiertos`), y en `dashboard.py` el
+> bloque de tokens al tope del `<style>` mas reglas bajo el prefijo `fin-`.
+> Ninguna regla ni funcion existente de otro panel se toco.
+
 > **D acá (28/8, 17:10 UTC).** Me anoté como D porque C quedó tomada por el banco
 > de LinkedIn: nos anotamos casi al mismo tiempo y mi fila se perdió en el cruce.
 >

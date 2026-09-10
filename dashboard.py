@@ -2223,7 +2223,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 
     <label class="modal-label">Monto</label>
     <div style="display:flex;gap:8px">
-      <input type="number" step="0.01" min="0" id="fin-fijo-monto" class="modal-input">
+      <input type="number" step="0.01" min="0" id="fin-fijo-monto" class="modal-input" oninput="_finFijoPreviewIva()">
       <select id="fin-fijo-moneda" onchange="_finFijoTc()">
         <option value="USD">USD</option>
         <option value="UYU">UYU</option>
@@ -2232,8 +2232,16 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 
     <div id="fin-fijo-tc-row" style="display:none">
       <label class="modal-label">Tipo de cambio (pesos por dólar)</label>
-      <input type="number" step="0.01" min="0" id="fin-fijo-tc" class="modal-input">
+      <input type="number" step="0.01" min="0" id="fin-fijo-tc" class="modal-input" oninput="_finFijoPreviewIva()">
     </div>
+
+    <label class="modal-label">¿Lleva IVA (22%)?</label>
+    <div class="fin-toggle" style="margin-bottom:6px">
+      <button class="pill" id="fin-fijo-fact-si" onclick="finFijoSetFacturado(true)">Sí</button>
+      <button class="pill active" id="fin-fijo-fact-no" onclick="finFijoSetFacturado(false)">No</button>
+    </div>
+    <div id="fin-fijo-iva-preview" class="fin-kpi-var"></div>
+    <div id="fin-fijo-iva-nota" class="fin-kpi-var" style="margin:6px 0 12px;line-height:1.45;font-style:italic"></div>
 
     <label class="modal-label">Día del mes (1 al 28)</label>
     <input type="number" min="1" max="28" id="fin-fijo-dia" class="modal-input" value="1">
@@ -6981,6 +6989,38 @@ let _finFijoTipo = 'egreso';
 function _finFijoTc() {
   const esPesos = document.getElementById('fin-fijo-moneda').value === 'UYU';
   document.getElementById('fin-fijo-tc-row').style.display = esPesos ? '' : 'none';
+  _finFijoPreviewIva();
+}
+
+// El hosting, las herramientas y el contador vienen con factura todos los
+// meses; Netflix o un gasto que pagó alguien de su bolsillo, no. Por eso es
+// una marca del fijo y no algo que se decida cada vez.
+let _finFijoFacturado = false;
+
+function finFijoSetFacturado(valor) {
+  _finFijoFacturado = !!valor;
+  document.getElementById('fin-fijo-fact-si').classList.toggle('active', _finFijoFacturado);
+  document.getElementById('fin-fijo-fact-no').classList.toggle('active', !_finFijoFacturado);
+  _finFijoPreviewIva();
+}
+
+// El monto que se escribe es el LÍQUIDO y el impuesto se SUMA: 100 -> 122.
+// Igual que en el alta de movimientos, el desglose se ve antes de guardar.
+function _finFijoPreviewIva() {
+  const caja = document.getElementById('fin-fijo-iva-preview');
+  if (!caja) return;
+  if (!_finFijoFacturado) { caja.textContent = 'Sin IVA: no suma ni descuenta nada.'; return; }
+  const monto = parseFloat(document.getElementById('fin-fijo-monto').value);
+  if (!monto || monto <= 0) { caja.textContent = 'El IVA (22%) se suma al monto de cada mes.'; return; }
+  let usd = monto;
+  if (document.getElementById('fin-fijo-moneda').value === 'UYU') {
+    const tc = parseFloat(document.getElementById('fin-fijo-tc').value);
+    if (!tc || tc <= 0) { caja.textContent = 'Poné el tipo de cambio para ver el desglose.'; return; }
+    usd = monto / tc;
+  }
+  const iva = usd * 0.22;
+  caja.textContent = 'Líquido ' + _finUsd(usd) + '  +  IVA (22%) ' + _finUsd(iva)
+    + '  =  ' + _finUsd(usd + iva) + ' por mes';
 }
 
 function finFijoSetTipo(tipo) {
@@ -7007,6 +7047,12 @@ async function abrirFijo(fijo) {
   document.getElementById('fin-fijo-hasta').value = f.hasta || '';
   document.getElementById('fin-fijo-error').textContent = '';
   finFijoSetTipo(f.tipo || 'egreso');
+  finFijoSetFacturado(!!f.facturado);
+  // Sin esto, prenderle el IVA a un fijo que ya corre parece no hacer nada:
+  // el movimiento del mes ya existe y materializar no lo reescribe.
+  document.getElementById('fin-fijo-iva-nota').textContent = f.id
+    ? 'Aplica a los meses que se generen de acá en adelante. Para el mes en curso, editá el movimiento desde Movimientos.'
+    : '';
   if (f.categoria) document.getElementById('fin-fijo-categoria').value = f.categoria;
   _finFijoTc();
   document.getElementById('fin-fijo-modal').classList.add('open');
@@ -7030,6 +7076,7 @@ async function guardarFijo() {
     dia_del_mes: parseInt(document.getElementById('fin-fijo-dia').value, 10),
     desde: document.getElementById('fin-fijo-desde').value,
     hasta: document.getElementById('fin-fijo-hasta').value || null,
+    facturado: _finFijoFacturado,
   };
   const r = await fetch(id ? `/api/finanzas/recurrentes/${id}` : '/api/finanzas/recurrentes',
                         {method: id ? 'PUT' : 'POST',
@@ -7083,7 +7130,7 @@ async function loadFijos() {
     <div class="table-row no-cb" style="${f.activo ? '' : 'opacity:.5'}">
       <div style="flex:1">
         <div class="biz-name">${esc(f.concepto)}</div>
-        <div class="fin-kpi-var">${esc(f.categoria.replace(/_/g, ' '))} · día ${f.dia_del_mes} · desde ${f.desde}${f.hasta ? ' hasta ' + f.hasta : ''}${f.activo ? '' : ' · apagado'}</div>
+        <div class="fin-kpi-var">${esc(f.categoria.replace(/_/g, ' '))} · día ${f.dia_del_mes} · desde ${f.desde}${f.hasta ? ' hasta ' + f.hasta : ''}${f.facturado ? ' · con IVA' : ''}${f.activo ? '' : ' · apagado'}</div>
       </div>
       <div style="flex:0 0 150px;text-align:right"
            class="${f.tipo === 'ingreso' ? 'fin-verde' : 'fin-rojo'}">

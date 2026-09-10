@@ -780,9 +780,22 @@ def init_db(db_path: str) -> None:
                 activo      INTEGER NOT NULL DEFAULT 1,
                 client_id   INTEGER REFERENCES businesses(id),
                 notas       TEXT,
+                facturado   INTEGER NOT NULL DEFAULT 0,
                 created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        # El hosting, las herramientas y el contador vienen con factura todos
+        # los meses, así que el fijo también lleva `facturado` y su IVA se
+        # calcula al materializar. No hay `iva_usd` acá: el impuesto se congela
+        # en el movimiento generado, no en la plantilla, para que un cambio de
+        # tasa no reescriba los meses que ya se facturaron.
+        #
+        # Los fijos que ya existían arrancan en 0, por el mismo motivo que los
+        # movimientos: suponer que llevaban factura inventaría un IVA que nunca
+        # se descontó.
+        _add_column(conn, "finanzas_recurrentes", "facturado",
+                    "INTEGER NOT NULL DEFAULT 0")
+
         # A propósito, sin la migración que suma este panel al panel_access
         # de los roles que ya existen (Ruling R20): todos los demás paneles
         # nuevos se la aplican porque esconder un ítem del menú no es un
@@ -2638,6 +2651,7 @@ _MOVIMIENTO_COLUMNS = {
 _RECURRENTE_COLUMNS = {
     "tipo", "concepto", "categoria", "monto", "moneda", "tipo_cambio",
     "dia_del_mes", "desde", "hasta", "activo", "client_id", "notas",
+    "facturado",
 }
 
 
