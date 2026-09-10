@@ -1,7 +1,27 @@
 # Puesta en producción del módulo de Marketing
 
 Qué falta para que el panel deje de decir «sin datos» en los bloques de costo.
-Son dos cosas, y ninguna la puede hacer el código solo.
+Nada de esto lo puede hacer el código solo: son cambios en la cuenta de Meta.
+
+## Estado al 10/9/2026
+
+Los pasos 1 a 3 **ya están hechos**. Lo que falta es del 4 en adelante.
+
+| | |
+|---|---|
+| Producto Marketing API en la app | hecho |
+| Usuario del sistema `crm-insights` (id `61594435974111`) | hecho, rol Employee |
+| Cuenta publicitaria asignada | hecho, **Ver rendimiento** (solo lectura) |
+| App asignada al usuario del sistema | hecho, **Desarrollar la aplicación** |
+| Webhook de leads | verificado intacto antes y después |
+| **Generar el token** | **pendiente** |
+| **Cargar los secrets en Fly** | **pendiente** |
+| **Verificar el `action_type`** | **pendiente** |
+
+Pendiente además, sin urgencia: probar si el permiso de la app se puede bajar de
+«Desarrollar la aplicación» a «Ver insights» ahora que el caso de uso existe.
+Cuando se activó «Desarrollar», Meta prendió solas «Ver estadísticas» y «Probar
+app», que tampoco se pidieron.
 
 ## Por qué no alcanza el token que ya tenemos
 
@@ -17,7 +37,53 @@ interés, de demo y de presupuesto salen completas. Lo único que no hay es plat
 
 ---
 
-## 1. El token
+## 1. Antes que nada: la app necesita el producto Marketing API
+
+**Este es el paso que hace fallar todo lo demás, y Meta lo esconde.** Se hizo
+el 10/9/2026 y quedó documentado acá porque costó tres intentos encontrarlo.
+
+La app `Scalerics CRM` (id `1306976674838718`, la del `META_APP_ID`) se creó para
+el webhook de leads. Tenía solo *Inicio de sesión con Facebook*. **Sin el producto
+de Marketing API, el permiso `ads_read` no existe para esa app**, así que el
+asistente que genera el token no tiene nada que ofrecer.
+
+Y lo que muestra cuando eso pasa manda al lugar equivocado:
+
+> **No hay permisos disponibles.** Asigna un rol de aplicación al usuario del
+> sistema o selecciona otra aplicación para continuar.
+
+Ese mensaje hace pensar que falta un permiso del usuario del sistema. **No es
+eso.** Se le puede dar hasta «Desarrollar la aplicación» y sigue igual, porque el
+problema está dos pantallas más allá, en la configuración de la app.
+
+Cómo se arregla, en
+[developers.facebook.com](https://developers.facebook.com/apps/1306976674838718/dashboard/):
+
+1. En el panel de la app, **Añadir casos de uso** (arriba a la derecha).
+2. Marcar **«Crea y administra anuncios con la API de marketing»**, y nada más.
+3. Guardar.
+
+**Verificar el webhook antes y después.** Esta es la app que recibe los leads, y
+ya hubo un incidente donde Meta dejó de entregar en silencio. Agregar un caso de
+uso no debería tocar la suscripción, pero «no debería» no alcanza:
+
+```bash
+python -c "
+import os, requests
+from dotenv import load_dotenv
+load_dotenv()
+from meta_config import GRAPH
+pt = os.environ['META_PAGE_TOKEN']; pid = os.environ['META_PAGE_ID']
+d = requests.get(f'{GRAPH}/{pid}/subscribed_apps', params={'access_token': pt}).json()
+for app in d.get('data', []):
+    print(app.get('name'), sorted(app.get('subscribed_fields', [])))
+"
+```
+
+Tiene que decir `Scalerics CRM ['leadgen']` **antes y después**. El 10/9 se
+verificó y no cambió.
+
+## 2. El usuario del sistema
 
 Va un **usuario del sistema**, no un token de usuario normal. El motivo es
 concreto: al generar el token de un usuario del sistema se elige la preferencia
@@ -26,29 +92,67 @@ de larga duración **muere a los 60 días**. Con un cron semanal, eso significa 
 dos meses después de configurarlo el panel empieza a mostrar «sin datos» y nadie
 se entera hasta que alguien lo mira.
 
-Requisito previo: hay que ser dueño de una app asociada al portafolio comercial.
-Ya la tenemos —es la del `META_APP_ID` que está en los secrets.
+Ojo: el asistente propone **60 días** por defecto. Hay que cambiarlo a **Nunca**
+a mano, y lo vuelve a proponer cada vez que se reinicia el asistente.
 
-Pasos, en [business.facebook.com](https://business.facebook.com/):
+En [business.facebook.com](https://business.facebook.com/), portafolio
+**Scalerics** (el que tiene la cuenta publicitaria; el otro, *Scalerics
+Programacion*, no tiene ninguna):
 
 1. **Configuración del negocio** → **Usuarios** → **Usuarios del sistema**.
-2. **Agregar**, ponerle un nombre que se entienda dentro de seis meses
-   (`crm-insights`, no `test1`). El rol de **empleado** alcanza: solo tiene que
-   leer.
-3. Con el usuario ya creado, **Agregar activos** → **Cuentas publicitarias** →
-   elegir la cuenta de Scalerics y darle **ver rendimiento**. Sin este paso el
-   token existe pero no ve nada, y la API contesta con una lista vacía en vez de
-   un error — que es peor, porque parece que no gastaste.
-4. **Generar nuevo token** → elegir la app → marcar **`ads_read`** → elegir la
-   preferencia de expiración **sin vencimiento**.
-5. **Copiarlo ahí mismo.** Se muestra una sola vez.
+2. **Añadir**, nombre que se entienda dentro de seis meses (`crm-insights`, no
+   `test1`). Rol **Empleado**: solo tiene que leer.
+3. La primera vez, Meta pide **aceptar su política de no discriminación
+   publicitaria en nombre de todos los usuarios del sistema**. Es un compromiso
+   legal del negocio: lo acepta una persona, no una herramienta.
 
-## 2. El id de la cuenta publicitaria
+## 3. Asignarle los DOS activos
+
+Los dos, y este es el segundo error fácil: con la cuenta publicitaria sola no
+alcanza.
+
+**a) La cuenta publicitaria.** Con el usuario ya creado, **Asignar activos** →
+**Cuentas publicitarias** → la cuenta de Scalerics → **Ver rendimiento**.
+
+Dejar apagados «Administrar campañas», «Administrar modelos de Creative Hub» y
+«Administrar cuentas publicitarias»: el token solo tiene que leer.
+
+Sin este paso el token existe pero no ve nada, y **la API contesta con una lista
+vacía en vez de un error** — que es peor, porque parece que no gastaste.
+
+**b) La app.** El mismo diálogo → **Aplicaciones** → **Scalerics CRM** →
+**Desarrollar la aplicación**.
+
+> **Este permiso es más ancho de lo que uno querría:** deja cambiar la
+> configuración de la app. Se probó primero con «Ver insights», que es lo mínimo,
+> y **no alcanza**: el asistente sigue diciendo que no hay permisos. Meta no
+> ofrece un punto intermedio. Además, al activar «Desarrollar» se prenden solos
+> «Ver estadísticas» y «Probar app».
+>
+> Queda pendiente probar si, ahora que el caso de uso de Marketing API existe,
+> se puede bajar a «Ver insights». No se probó todavía.
+
+**Verificar recargando la página.** El diálogo dice «se ha asignado un activo»
+pero la vista de atrás puede seguir mostrando «No se han asignado activos». Sin
+recargar no se sabe cuál de las dos dice la verdad.
+
+## 4. Generar el token
+
+**Generar identificador** → app **Scalerics CRM** → caducidad **Nunca** →
+permisos: **solo `ads_read`**.
+
+`ads_management` aparece en la lista y **no se marca**: permite modificar
+campañas, y este token solo tiene que leer.
+
+Se muestra una sola vez. De la pantalla a la terminal, sin escalas y sin pegarlo
+en ningún chat ni archivo.
+
+## 5. El id de la cuenta publicitaria
 
 Está en el Administrador de anuncios, arriba, con el formato `act_` seguido de
 números. Va entero, con el prefijo: `META_AD_ACCOUNT_ID=act_123456789`.
 
-## 3. Cargarlos en Fly
+## 6. Cargarlos en Fly
 
 ```bash
 flyctl secrets set META_ADS_TOKEN="..." META_AD_ACCOUNT_ID="act_..." -a scalerics-crm
@@ -61,7 +165,7 @@ Los secrets no van al `.env` del repo ni a ningún archivo versionado.
 > propio tope rodante, así que no pasa nada, pero conviene no hacerlo en el
 > minuto en que sale la tanda de recordatorios.
 
-## 4. Verificar el `action_type` — este paso no es opcional
+## 7. Verificar el `action_type` — este paso no es opcional
 
 Meta no devuelve los leads como un campo: hay que buscarlos entre las acciones,
 y **el nombre de esa acción cambió entre versiones de la API**. En
@@ -82,7 +186,7 @@ El script pide una semana de Insights y muestra qué `action_type` viene. Si el
 que aparece no está en `_ACCIONES_DE_LEAD`, agregarlo ahí y anotar en el
 docstring cuál usa la cuenta.
 
-## 5. Traer la historia
+## 8. Traer la historia
 
 El sync trae por defecto los últimos 7 días. Para llenar desde marzo, una vez:
 
@@ -94,7 +198,7 @@ curl -X POST -H "x-admin-token: $ADMIN_TOKEN" \
 Después el cron semanal alcanza: resincroniza los últimos 7 días siempre, porque
 Meta corrige cifras hacia atrás.
 
-## 6. Qué mirar cuando esté
+## 9. Qué mirar cuando esté
 
 Abrir el panel y comparar tres números contra el Administrador de anuncios:
 
