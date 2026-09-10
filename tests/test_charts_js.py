@@ -399,3 +399,26 @@ def test_la_barra_toma_el_color_de_su_campana(tmp_path):
         " {}, 'claro')));", tmp_path)
     assert "#A855F7" in r, "ARG conserva su color aunque quede primera"
     assert "#0088CC" in r
+
+
+@sin_node
+def test_una_etiqueta_larguisima_se_recorta(tmp_path):
+    """Las respuestas de texto libre del formulario llegan a 86 caracteres y en
+    SVG no hay text-overflow: sin recortar se montan sobre la barra."""
+    r = _correr(
+        "const svg = SC.barrasConIC([{etiqueta:'a'.repeat(90),"
+        " metrica:{valor:0.5,n:10,ic95:[0.2,0.8],muestra_chica:true,"
+        " formato:'porcentaje'}}], {}, 'oscuro');"
+        "const m = svg.match(/<text x=\"0\"[^>]*>([^<]*)</);"
+        "console.log(JSON.stringify({texto: m[1], title: svg.includes('<title>')}));",
+        tmp_path)
+    assert len(r["texto"]) < 90
+    assert r["texto"].endswith("…")
+    assert r["title"], "el valor completo tiene que quedar en el tooltip"
+
+
+@sin_node
+def test_una_etiqueta_corta_no_se_toca(tmp_path):
+    r = _correr("console.log(JSON.stringify(SC.recortar('Montevideo', 30)));",
+                tmp_path)
+    assert r == "Montevideo"

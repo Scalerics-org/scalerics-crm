@@ -1835,7 +1835,8 @@ body.light .fin-kpi-label,body.light .fin-kpi-var,body.light .fin-card-title,bod
         <h1>Marketing</h1>
         <div class="page-date" id="mk-fecha"></div>
       </div>
-      <button class="export-btn" onclick="loadMarketing()">&#8635; Actualizar</button>
+      <button class="export-btn" onclick="loadMarketing()">
+        <span aria-hidden="true">&#8635;</span> Actualizar</button>
     </div>
 
     <div class="sc-filtros">
@@ -1847,7 +1848,8 @@ body.light .fin-kpi-label,body.light .fin-kpi-var,body.light .fin-card-title,bod
         <select id="mk-campana" onchange="_mkPintar()"><option value="">Todas</option></select></div>
     </div>
 
-    <div id="mk-estado" class="sc-vacio">Cargando…</div>
+    <!-- Cambia solo (cargando / error / sin acceso): tiene que anunciarse. -->
+    <div id="mk-estado" class="sc-vacio" role="status" aria-live="polite">Cargando…</div>
 
     <div id="mk-cuerpo" style="display:none">
       <div id="mk-avisos"></div>

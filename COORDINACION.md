@@ -77,7 +77,7 @@ leads de Meta se renombró a **D** para deshacer el empate.
 | C (banco LinkedIn) | el banco de posts de LinkedIn, sacarle la API de Anthropic | `services/linkedin_posts.py`, `services/linkedin_banco_semilla.py`, `routes/linkedin.py`, `scripts/render_linkedin.py`, `templates/linkedin_card.html`, `tests/test_linkedin_*` | 28/8 |
 | D (leads de Meta) | secuencias de mail por estado, estados del CRM, sync con la planilla de semáforo, detección de respuestas, rendimiento del CRM | `services/meta_reminders.py`, `services/secuencia_contactos.py`, `services/planilla_semaforo.py`, `scripts/planilla_semaforo.gs`, `routes/meta.py` | 27/8 |
 | E (pre-clientes/demos) | pipeline por etapas, responsables del cliente, registro de demos | `routes/preclientes.py`, `tests/test_preclientes.py`, `scripts/check_js.py`, y **zona compartida**: `database.py`, `dashboard.py`, `routes/leads.py` | 31/8 |
-| G (marketing/Meta Ads) | inteligencia comercial sobre Meta Ads. **Fases 1 y 2 hechas en `feat/marketing-meta` (PR #22), sin mergear ni deployar** | `services/embudo.py`, `services/dossier.py`, `services/meta_insights.py`, `services/meta_campanas.py`, `services/radiografia.py`, `routes/marketing.py`, `static/charts.js`, y **zona compartida**: `database.py`, `dashboard.py`, `routes/meta.py`, `services/finanzas.py`, `tests/conftest.py` | 10/9 |
+| G (marketing/Meta Ads) | inteligencia comercial sobre Meta Ads. **Las tres fases hechas en `feat/marketing-meta` (PR #22), sin mergear ni deployar. La IA nace apagada.** | `services/embudo.py`, `services/dossier.py`, `services/meta_insights.py`, `services/meta_campanas.py`, `services/radiografia.py`, `services/radiografia_ia.py`, `routes/marketing.py`, `static/charts.js`, `.github/workflows/radiografia.yml`, y **zona compartida**: `database.py`, `dashboard.py`, `routes/meta.py`, `services/finanzas.py`, `tests/conftest.py` | 10/9 |
 
 | F (finanzas) | la sección financiera del CRM | `services/finanzas.py`, `routes/finanzas.py`, `database.py` (tablas de finanzas), `dashboard.py` (panel Finanzas) | 8/9 |
 
@@ -194,6 +194,64 @@ leads de Meta se renombró a **D** para deshacer el empate.
 ---
 
 ## Bitácora
+
+- **10/9 — G (marketing/Meta Ads): las tres fases hechas. Sigue sin mergear ni deployar.**
+
+  `feat/marketing-meta`, **PR #22**, 25 commits, **1690 tests en verde**. Spec y
+  los tres planes en `docs/superpowers/`.
+
+  **La fase 3 nace apagada y eso es a propósito.** `RADIOGRAFIA_IA_ACTIVA` en
+  `false` y el `schedule` del workflow comentado. Con la bandera apagada,
+  `POST /api/marketing/generar` calcula y guarda el dossier sin llamar a nadie:
+  probado contra un servidor real, devuelve `sin_ia` con **0 tokens**. Para
+  prenderlo hacen falta tres cosas en orden: presupuesto de API,
+  `flyctl secrets set RADIOGRAFIA_IA_ACTIVA=true`, y descomentar el schedule.
+
+  **Lo que hace que el informe no pueda inventar números**, por si alguien toca
+  esto después: el modelo solo ve el dossier —métricas ya calculadas, sin filas,
+  sin nombres ni teléfonos— y un validador rechaza la respuesta si aparece un
+  número que no está ahí, si cita un id inexistente, o si habla de una muestra
+  chica sin advertirlo. Si falla, se reintenta **diciéndole qué número inventó**;
+  si vuelve a fallar, no se publica nada y el panel muestra los gráficos igual.
+  Son 22 tests y ninguno toca la API.
+
+  **Zona compartida que quedó tocada** (todo aditivo, ya estaba anotado):
+  `database.py`, `dashboard.py`, `routes/meta.py`, `services/finanzas.py`,
+  `tests/conftest.py`. Se suma `static/charts.js`, que es **la primera pieza de
+  frontend del CRM fuera de `dashboard.py`** — `scripts/check_js.py` no la cubre
+  porque solo mira bloques `<script>` sin `src`, y ese hueco lo tapa
+  `tests/test_charts_js.py` con `node --check` más 35 aserciones.
+
+  **Setup de Meta: los pasos 1 a 3 están hechos en el Business Manager.** Usuario
+  del sistema `crm-insights` (id `61594435974111`, rol Employee), cuenta
+  publicitaria asignada con **Ver rendimiento** (solo lectura) y la app con el
+  producto Marketing API agregado. **Falta generar el token.** El webhook de
+  leadgen se verificó antes y después de tocar la app: `['leadgen']`, sin cambios.
+
+  Lo que costó tres intentos y no está en ninguna doc de Meta: la app no tenía el
+  producto Marketing API, así que `ads_read` no existía entre sus permisos, y el
+  asistente decía *"asigna un rol de aplicación al usuario del sistema"* — que
+  manda al lugar equivocado. Todo anotado en
+  `docs/puesta-en-produccion-marketing-meta.md`.
+
+  **Dato para cualquiera que mire plata en el CRM:** `finanzas_movimientos` no
+  tiene **un solo** egreso de categoría `publicidad`. O sea que hoy el CRM no
+  sabe cuánto se gastó en pauta, y no lo va a saber hasta que se cargue a mano o
+  se genere el token de Insights.
+
+  **Tres trampas del entorno que van a morder a quien siga:**
+  1. **`/tmp` no es `/tmp`.** En Git Bash es `%LOCALAPPDATA%\Temp`; para Python
+     en Windows es `C:\tmp`. `cp` escribe en un lado y Python crea una base
+     vacía en otro, así que el paso «verificar contra datos reales» pasa en verde
+     sin haber leído nada.
+  2. **`load_dotenv()` sube por el árbol.** Un worktree adentro de `crm-limpio`
+     termina con el `.env` de producción.
+  3. **`subprocess(text=True)` en Windows** decodifica con la codepage del
+     sistema y rompe los acentos de la salida de node. Va `encoding="utf-8"`.
+
+  **Lo que queda por hacer, todo del lado de Juan:** generar el token de Meta,
+  cargar los secrets en Fly, correr `scripts/verificar_meta_insights.py`, y
+  decidir cuándo se prende la IA.
 
 - **10/9 — G (marketing/Meta Ads): fase 2 hecha, el panel. Sigue sin mergear ni deployar.**
 

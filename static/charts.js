@@ -471,8 +471,13 @@
         ? SC.colorDeCampana(f.campana, i, tema)
         : (SC.PALETA[tema][0]);
 
+      // El tope sale del ancho de la columna de etiquetas a font-size 12:
+      // ~7px por caracter.
+      var etiqueta = SC.recortar(f.etiqueta, Math.floor(anchoEtiqueta / 7));
       var out = '<text x="0" y="' + (y + 19) + '" font-size="12" fill="' +
-                tinta + '">' + SC.esc(f.etiqueta) + '</text>';
+                tinta + '">' + SC.esc(etiqueta) + '</text>' +
+                (etiqueta !== f.etiqueta
+                  ? '<title>' + SC.esc(f.etiqueta) + '</title>' : '');
 
       if (m.valor === null || m.valor === undefined) {
         out += '<text x="' + (anchoEtiqueta + 4) + '" y="' + (y + 19) +
@@ -522,6 +527,14 @@
            '" style="width:100%;height:auto" role="img" aria-label="' +
            SC.esc(opciones.etiqueta || 'Comparación') + '">' + piezas +
            '</svg>';
+  };
+
+  // Las respuestas de texto libre del formulario pueden ser larguisimas y en
+  // SVG no hay `text-overflow`: una etiqueta de 86 caracteres se sale del area
+  // y se monta sobre la barra. Se corta a mano, con elipsis de verdad (…).
+  SC.recortar = function (texto, tope) {
+    var t = String(texto === null || texto === undefined ? '' : texto);
+    return t.length <= tope ? t : t.slice(0, tope - 1).trimEnd() + '…';
   };
 
   SC.esc = function (t) {
