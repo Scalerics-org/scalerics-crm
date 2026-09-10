@@ -68,14 +68,14 @@ def _build_creds():
 
 
 def _get_calendar_service():
-    try:
-        from googleapiclient.discovery import build
-    except ImportError:
-        return None, "google-api-python-client no instalado"
+    from services.google_api import get_service
     creds, err = _build_creds()
     if err:
         return None, err
-    return build("calendar", "v3", credentials=creds), None
+    try:
+        return get_service("calendar", "v3", creds, account="gcal"), None
+    except ImportError:
+        return None, "google-api-python-client no instalado"
 
 
 def _create_recall_bot(meet_url: str) -> str | None:
@@ -99,14 +99,14 @@ def _create_recall_bot(meet_url: str) -> str | None:
 
 
 def _get_drive_service():
-    try:
-        from googleapiclient.discovery import build
-    except ImportError:
-        return None, "google-api-python-client no instalado"
+    from services.google_api import get_service
     creds, err = _build_creds()
     if err:
         return None, err
-    return build("drive", "v3", credentials=creds), None
+    try:
+        return get_service("drive", "v3", creds, account="gcal"), None
+    except ImportError:
+        return None, "google-api-python-client no instalado"
 
 
 def _db() -> str:
