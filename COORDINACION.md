@@ -194,8 +194,28 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
-- **10/9 — G (memoria del worker): la fuga que causó el OOM del 9/9 está
-  tapada, en la rama `fix/google-api-cache`. Sin deployar.**
+- **10/9 — G (memoria del worker): CIERRE. La fuga que causó el OOM del 9/9
+  está tapada y deployada en `v173`. PR 18 mergeado (`8c8e5ca`).**
+
+  **Verificado contra la máquina viva, no contra el log del deploy.** El sync
+  de Calendar leyó 30 eventos reales y el de Gmail 5 mensajes, los dos en
+  `dry_run` para no escribir nada. Y la prueba de que la fuga se fue: 20
+  builds seguidos en la misma thread dan **+0,00 MB**, donde antes eran ~+9 MB.
+
+  El deploy no disparó ninguna tanda de mails: los recordatorios de Meta se
+  saltearon solos por la guarda de arranque (regla 3), y el import diario
+  corrió limpio (`0 new, 111 dup`).
+
+  **Ojo con esto si alguien toca `services/google_api.py`:** el cache es por
+  thread, con `threading.local()`, y tiene que seguir siéndolo. El service
+  arrastra un `httplib2.Http` y la doc de Google dice textual que "The
+  httplib2.Http() objects are not thread-safe": tiene el pool de conexiones en
+  un dict común. `("calendar","v3","gcal")` lo usan a la vez los handlers de
+  `routes/calendar.py` y el thread de fondo de `calendly_gcal.fetch_and_sync`.
+  Un cache único compartido da respuestas mezcladas y errores intermitentes.
+  La primera versión del PR lo tenía compartido; se corrigió en `b7bba0e`.
+
+  Lo de abajo era el estado anterior de esta misma entrada.
 
   El CRM se cayó de nuevo y el síntoma fue el de siempre: la máquina viva,
   los jobs de fondo logueando normal, y todas las requests colgadas. Verificado
