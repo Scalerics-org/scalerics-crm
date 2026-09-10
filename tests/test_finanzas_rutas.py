@@ -7,12 +7,26 @@ la plata no.
 
 import json
 import sqlite3
+from datetime import date
 
 import pytest
 from werkzeug.security import generate_password_hash
 
 import dashboard
 from database import create_user, crear_recurrente, init_db
+
+
+def _mes(offset: int = 0) -> str:
+    """El período actual desplazado `offset` meses, como 'YYYY-MM'.
+
+    Estas fechas estaban fijas en 2026-09. Desde que un mes pasado queda
+    cerrado, una fecha fija pasa mientras el calendario no la deje atrás y
+    empieza a fallar el día 1 del mes siguiente. Calcularla al vuelo hace que
+    el test siga probando lo mismo en cualquier momento del año.
+    """
+    hoy = date.today()
+    m = hoy.month + offset
+    return f"{hoy.year + (m - 1) // 12:04d}-{(m - 1) % 12 + 1:02d}"
 
 
 @pytest.fixture
@@ -97,7 +111,7 @@ def cli(app):
 
 def test_crear_un_movimiento_en_dolares(cli):
     r = cli.post("/api/finanzas/movimientos", json={
-        "tipo": "egreso", "fecha": "2026-09-20", "concepto": "Fly",
+        "tipo": "egreso", "fecha": f"{_mes()}-20", "concepto": "Fly",
         "categoria": "infraestructura", "monto": 4.18, "moneda": "USD"})
     assert r.status_code == 201
     assert r.get_json()["ok"] is True
@@ -109,7 +123,7 @@ def test_crear_un_movimiento_en_dolares(cli):
 
 def test_crear_en_pesos_congela_el_monto_en_dolares(cli):
     cli.post("/api/finanzas/movimientos", json={
-        "tipo": "ingreso", "fecha": "2026-09-01", "concepto": "Cobro",
+        "tipo": "ingreso", "fecha": f"{_mes()}-01", "concepto": "Cobro",
         "categoria": "desarrollo_web", "monto": 40000, "moneda": "UYU",
         "tipo_cambio": 40})
     assert cli.get("/api/finanzas/movimientos").get_json()[0]["monto_usd"] == 1000.0
@@ -117,28 +131,28 @@ def test_crear_en_pesos_congela_el_monto_en_dolares(cli):
 
 def test_pesos_sin_tipo_de_cambio_da_400(cli):
     r = cli.post("/api/finanzas/movimientos", json={
-        "tipo": "ingreso", "fecha": "2026-09-01", "concepto": "Cobro",
+        "tipo": "ingreso", "fecha": f"{_mes()}-01", "concepto": "Cobro",
         "categoria": "desarrollo_web", "monto": 40000, "moneda": "UYU"})
     assert r.status_code == 400
 
 
 def test_una_categoria_que_no_existe_da_400(cli):
     r = cli.post("/api/finanzas/movimientos", json={
-        "tipo": "egreso", "fecha": "2026-09-01", "concepto": "x",
+        "tipo": "egreso", "fecha": f"{_mes()}-01", "concepto": "x",
         "categoria": "inventada", "monto": 10, "moneda": "USD"})
     assert r.status_code == 400
 
 
 def test_una_categoria_de_ingreso_en_un_egreso_da_400(cli):
     r = cli.post("/api/finanzas/movimientos", json={
-        "tipo": "egreso", "fecha": "2026-09-01", "concepto": "x",
+        "tipo": "egreso", "fecha": f"{_mes()}-01", "concepto": "x",
         "categoria": "desarrollo_web", "monto": 10, "moneda": "USD"})
     assert r.status_code == 400
 
 
 def test_borrar_un_movimiento_a_mano_lo_borra(cli):
     cli.post("/api/finanzas/movimientos", json={
-        "tipo": "egreso", "fecha": "2026-09-20", "concepto": "Dominio",
+        "tipo": "egreso", "fecha": f"{_mes()}-20", "concepto": "Dominio",
         "categoria": "servicios", "monto": 15, "moneda": "USD"})
     mid = cli.get("/api/finanzas/movimientos").get_json()[0]["id"]
     assert cli.delete(f"/api/finanzas/movimientos/{mid}").status_code == 200
@@ -148,7 +162,7 @@ def test_borrar_un_movimiento_a_mano_lo_borra(cli):
 def test_borrar_un_movimiento_de_un_fijo_lo_anula_y_no_reaparece(cli):
     cli.post("/api/finanzas/recurrentes", json={
         "tipo": "egreso", "concepto": "Fly", "categoria": "infraestructura",
-        "monto": 4.18, "moneda": "USD", "dia_del_mes": 20, "desde": "2026-09"})
+        "monto": 4.18, "moneda": "USD", "dia_del_mes": 20, "desde": _mes()})
     cli.get("/api/finanzas/resumen")  # materializa
     mid = cli.get("/api/finanzas/movimientos").get_json()[0]["id"]
     cli.delete(f"/api/finanzas/movimientos/{mid}")
@@ -159,7 +173,7 @@ def test_borrar_un_movimiento_de_un_fijo_lo_anula_y_no_reaparece(cli):
 def test_el_resumen_materializa_los_fijos(cli):
     cli.post("/api/finanzas/recurrentes", json={
         "tipo": "egreso", "concepto": "Fly", "categoria": "infraestructura",
-        "monto": 4.18, "moneda": "USD", "dia_del_mes": 1, "desde": "2026-09"})
+        "monto": 4.18, "moneda": "USD", "dia_del_mes": 1, "desde": _mes()})
     assert cli.get("/api/finanzas/resumen").status_code == 200
     assert cli.get("/api/finanzas/movimientos").get_json() != []
 
@@ -173,7 +187,7 @@ def test_las_categorias_se_sirven_al_front(cli):
 def test_un_dia_del_mes_mayor_a_28_da_400(cli):
     r = cli.post("/api/finanzas/recurrentes", json={
         "tipo": "egreso", "concepto": "x", "categoria": "servicios",
-        "monto": 10, "moneda": "USD", "dia_del_mes": 31, "desde": "2026-09"})
+        "monto": 10, "moneda": "USD", "dia_del_mes": 31, "desde": _mes()})
     assert r.status_code == 400
 
 
@@ -184,7 +198,7 @@ def test_el_resumen_rechaza_el_rango_al_reves(cli):
 
 def test_un_tipo_de_cambio_que_no_es_un_numero_da_400_en_movimiento(cli):
     r = cli.post("/api/finanzas/movimientos", json={
-        "tipo": "ingreso", "fecha": "2026-09-01", "concepto": "Cobro",
+        "tipo": "ingreso", "fecha": f"{_mes()}-01", "concepto": "Cobro",
         "categoria": "desarrollo_web", "monto": 40000, "moneda": "UYU",
         "tipo_cambio": [40, 41]})
     assert r.status_code == 400
@@ -194,19 +208,19 @@ def test_un_tipo_de_cambio_que_no_es_un_numero_da_400_en_fijo(cli):
     r = cli.post("/api/finanzas/recurrentes", json={
         "tipo": "egreso", "concepto": "x", "categoria": "servicios",
         "monto": 10, "moneda": "UYU", "tipo_cambio": [40, 41],
-        "dia_del_mes": 1, "desde": "2026-09"})
+        "dia_del_mes": 1, "desde": _mes()})
     assert r.status_code == 400
 
 
 def test_editar_un_fijo_apagado_sin_tocar_activo_lo_deja_apagado(cli):
     r = cli.post("/api/finanzas/recurrentes", json={
         "tipo": "egreso", "concepto": "Fly", "categoria": "infraestructura",
-        "monto": 4.18, "moneda": "USD", "dia_del_mes": 1, "desde": "2026-09",
+        "monto": 4.18, "moneda": "USD", "dia_del_mes": 1, "desde": _mes(),
         "activo": False})
     rid = r.get_json()["id"]
     cli.put(f"/api/finanzas/recurrentes/{rid}", json={
         "tipo": "egreso", "concepto": "Fly", "categoria": "infraestructura",
-        "monto": 5.0, "moneda": "USD", "dia_del_mes": 1, "desde": "2026-09"})
+        "monto": 5.0, "moneda": "USD", "dia_del_mes": 1, "desde": _mes()})
     fijo = [f for f in cli.get("/api/finanzas/recurrentes").get_json()
             if f["id"] == rid][0]
     assert fijo["activo"] == 0
@@ -216,12 +230,12 @@ def test_editar_un_fijo_apagado_sin_tocar_activo_lo_deja_apagado(cli):
 def test_editar_un_fijo_con_activo_true_explicito_lo_enciende(cli):
     r = cli.post("/api/finanzas/recurrentes", json={
         "tipo": "egreso", "concepto": "Fly", "categoria": "infraestructura",
-        "monto": 4.18, "moneda": "USD", "dia_del_mes": 1, "desde": "2026-09",
+        "monto": 4.18, "moneda": "USD", "dia_del_mes": 1, "desde": _mes(),
         "activo": False})
     rid = r.get_json()["id"]
     cli.put(f"/api/finanzas/recurrentes/{rid}", json={
         "tipo": "egreso", "concepto": "Fly", "categoria": "infraestructura",
-        "monto": 4.18, "moneda": "USD", "dia_del_mes": 1, "desde": "2026-09",
+        "monto": 4.18, "moneda": "USD", "dia_del_mes": 1, "desde": _mes(),
         "activo": True})
     fijo = [f for f in cli.get("/api/finanzas/recurrentes").get_json()
             if f["id"] == rid][0]
@@ -230,12 +244,12 @@ def test_editar_un_fijo_con_activo_true_explicito_lo_enciende(cli):
 
 def test_editar_un_movimiento_sin_mandar_client_id_conserva_el_que_tenia(cli):
     r = cli.post("/api/finanzas/movimientos", json={
-        "tipo": "ingreso", "fecha": "2026-09-01", "concepto": "Cobro",
+        "tipo": "ingreso", "fecha": f"{_mes()}-01", "concepto": "Cobro",
         "categoria": "desarrollo_web", "monto": 100, "moneda": "USD",
         "client_id": 7})
     mid = r.get_json()["id"]
     cli.put(f"/api/finanzas/movimientos/{mid}", json={
-        "tipo": "ingreso", "fecha": "2026-09-01", "concepto": "Cobro editado",
+        "tipo": "ingreso", "fecha": f"{_mes()}-01", "concepto": "Cobro editado",
         "categoria": "desarrollo_web", "monto": 100, "moneda": "USD"})
     mov = cli.get("/api/finanzas/movimientos").get_json()[0]
     assert mov["client_id"] == 7
@@ -244,12 +258,12 @@ def test_editar_un_movimiento_sin_mandar_client_id_conserva_el_que_tenia(cli):
 
 def test_editar_un_movimiento_con_client_id_null_lo_desatribuye(cli):
     r = cli.post("/api/finanzas/movimientos", json={
-        "tipo": "ingreso", "fecha": "2026-09-01", "concepto": "Cobro",
+        "tipo": "ingreso", "fecha": f"{_mes()}-01", "concepto": "Cobro",
         "categoria": "desarrollo_web", "monto": 100, "moneda": "USD",
         "client_id": 7})
     mid = r.get_json()["id"]
     cli.put(f"/api/finanzas/movimientos/{mid}", json={
-        "tipo": "ingreso", "fecha": "2026-09-01", "concepto": "Cobro",
+        "tipo": "ingreso", "fecha": f"{_mes()}-01", "concepto": "Cobro",
         "categoria": "desarrollo_web", "monto": 100, "moneda": "USD",
         "client_id": None})
     mov = cli.get("/api/finanzas/movimientos").get_json()[0]
@@ -263,14 +277,14 @@ def test_mover_de_mes_un_movimiento_generado_por_un_fijo_da_400(cli):
     lo regenera ahí y el gasto queda contado dos veces sin que nada falle."""
     cli.post("/api/finanzas/recurrentes", json={
         "tipo": "egreso", "concepto": "Fly", "categoria": "infraestructura",
-        "monto": 4.18, "moneda": "USD", "dia_del_mes": 1, "desde": "2026-09"})
+        "monto": 4.18, "moneda": "USD", "dia_del_mes": 1, "desde": _mes()})
     cli.get("/api/finanzas/resumen")  # materializa el mes actual
     mov = cli.get("/api/finanzas/movimientos", query_string={
         "desde": "2026-01", "hasta": "2026-12"}).get_json()[0]
     assert mov["recurrente_id"] is not None
 
     r = cli.put(f"/api/finanzas/movimientos/{mov['id']}", json={
-        "tipo": mov["tipo"], "fecha": "2026-10-15", "concepto": mov["concepto"],
+        "tipo": mov["tipo"], "fecha": f"{_mes(1)}-15", "concepto": mov["concepto"],
         "categoria": mov["categoria"], "monto": mov["monto"], "moneda": mov["moneda"]})
     assert r.status_code == 400
     assert "otro mes" in r.get_json()["error"]
@@ -286,7 +300,7 @@ def test_mover_de_mes_un_movimiento_generado_por_un_fijo_da_400(cli):
 def test_editar_el_monto_de_un_movimiento_de_fijo_sin_cambiar_el_mes_funciona(cli):
     cli.post("/api/finanzas/recurrentes", json={
         "tipo": "egreso", "concepto": "Fly", "categoria": "infraestructura",
-        "monto": 4.18, "moneda": "USD", "dia_del_mes": 1, "desde": "2026-09"})
+        "monto": 4.18, "moneda": "USD", "dia_del_mes": 1, "desde": _mes()})
     cli.get("/api/finanzas/resumen")
     mov = cli.get("/api/finanzas/movimientos", query_string={
         "desde": "2026-01", "hasta": "2026-12"}).get_json()[0]

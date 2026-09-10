@@ -153,6 +153,43 @@ def _totales(movimientos: list[dict]) -> tuple[float, float]:
     return round(ingresos, 2), round(egresos, 2)
 
 
+def mes_editable(db_path: str, periodo, hoy: str | None = None) -> bool:
+    """Si ese mes se puede tocar.
+
+    El mes en curso y los futuros, siempre. Los pasados solo si alguien los
+    reabrio a proposito: la idea es que cerrar un mes no requiera que nadie se
+    acuerde de cerrarlo.
+
+    Un periodo mal formado devuelve False. Ante la duda no se toca: un dato
+    ilegible no puede abrir la puerta a editar cualquier cosa.
+    """
+    from database import listar_meses_abiertos
+
+    texto = str(periodo or "")
+    if len(texto) != 7 or texto[4] != "-":
+        return False
+    try:
+        int(texto[:4]), int(texto[5:])
+    except ValueError:
+        return False
+
+    hoy = hoy or date.today().isoformat()
+    if texto >= hoy[:7]:
+        return True
+    return any(m["periodo"] == texto for m in listar_meses_abiertos(db_path))
+
+
+def meses_con_datos(db_path: str) -> list[str]:
+    """Los periodos que tienen algun movimiento, del mas viejo al mas nuevo.
+
+    Es lo que el navegador usa para saber hasta donde puede ir para atras.
+    """
+    from database import listar_movimientos
+
+    return sorted({m["periodo"] for m in listar_movimientos(db_path)
+                   if m.get("periodo")})
+
+
 def estado_de_cobro(vence, hoy: str | None = None) -> dict:
     """Si ese pendiente esta vencido y como se lee eso en la pantalla.
 

@@ -12,13 +12,15 @@ from database import (actualizar_movimiento, actualizar_recurrente,
                       borrar_movimiento, borrar_por_cobrar, borrar_recurrente,
                       crear_movimiento, crear_por_cobrar, crear_recurrente,
                       get_movimiento, get_por_cobrar, get_recurrente,
-                      listar_movimientos, listar_por_cobrar,
-                      listar_recurrentes, log_activity)
+                      listar_meses_abiertos, listar_movimientos,
+                      listar_por_cobrar, listar_recurrentes, log_activity,
+                      marcar_mes_abierto, marcar_mes_cerrado)
 from services.auth import require_panel
 from services.finanzas import (CATEGORIAS, MONEDAS, a_usd, desglosar_iva,
                                estado_de_cobro, materializar_recurrentes,
-                               periodo_de, rendimiento_pauta, resumen,
-                               resumen_iva, saldar_por_cobrar)
+                               mes_editable, meses_con_datos, periodo_de,
+                               rendimiento_pauta, resumen, resumen_iva,
+                               saldar_por_cobrar)
 
 finanzas_bp = Blueprint("finanzas", __name__)
 
@@ -172,6 +174,9 @@ def api_crear_movimiento():
     pendiente, error = _validar_cobro_parcial(data, campos)
     if error:
         return jsonify({"ok": False, "error": error}), 400
+    trabado = _mes_trabado(campos["periodo"])
+    if trabado:
+        return jsonify({"ok": False, "error": trabado}), 400
     uid, nombre = _quien()
     campos["created_by_id"] = uid
     campos["created_by_name"] = nombre
@@ -202,6 +207,10 @@ def api_actualizar_movimiento(mov_id):
     campos, error = _validar_movimiento(request.get_json() or {})
     if error:
         return jsonify({"ok": False, "error": error}), 400
+    for periodo in {mov["periodo"], campos["periodo"]}:
+        trabado = _mes_trabado(periodo)
+        if trabado:
+            return jsonify({"ok": False, "error": trabado}), 400
     if mov["recurrente_id"] and campos["periodo"] != mov["periodo"]:
         # Mover la fecha a otro mes de un movimiento generado por un fijo:
         # si el mes destino ya tiene la fila de ese fijo, el UPDATE viola
@@ -227,6 +236,9 @@ def api_borrar_movimiento(mov_id):
     mov = get_movimiento(db, mov_id)
     if not mov:
         return jsonify({"ok": False, "error": "no existe"}), 404
+    trabado = _mes_trabado(mov["periodo"])
+    if trabado:
+        return jsonify({"ok": False, "error": trabado}), 400
     uid, nombre = _quien()
     if mov["recurrente_id"]:
         # Un DELETE liberaría el par (recurrente_id, periodo) y el fijo lo
@@ -395,6 +407,61 @@ def api_pauta():
     return jsonify(rendimiento_pauta(db, desde, hasta))
 
 
+def _mes_trabado(periodo) -> str | None:
+    """El mensaje de error si ese mes está cerrado, o None si se puede tocar."""
+    if mes_editable(_db(), periodo):
+        return None
+    return (f"{periodo} es un mes cerrado. Reabrilo desde el navegador de meses "
+            f"si de verdad hay que corregirlo.")
+
+
+@finanzas_bp.route("/api/finanzas/meses")
+def api_meses():
+    """Qué mes es hoy, cuáles tienen datos y cuáles están reabiertos.
+
+    Es lo que el navegador necesita para saber hasta dónde ir para atrás y
+    cuándo mostrar el cartel de "mes cerrado".
+    """
+    hoy = date.today()
+    return jsonify({
+        "mes_actual": f"{hoy.year:04d}-{hoy.month:02d}",
+        "con_datos": meses_con_datos(_db()),
+        "abiertos": [m["periodo"] for m in listar_meses_abiertos(_db())],
+    })
+
+
+def _periodo_valido(periodo: str) -> bool:
+    if len(periodo) != 7 or periodo[4] != "-":
+        return False
+    try:
+        anio, mes = int(periodo[:4]), int(periodo[5:])
+    except ValueError:
+        return False
+    return 1 <= mes <= 12 and anio > 1900
+
+
+@finanzas_bp.route("/api/finanzas/meses/<periodo>/reabrir", methods=["POST"])
+def api_reabrir_mes(periodo):
+    if not _periodo_valido(periodo):
+        return jsonify({"ok": False, "error": "periodo tiene que ser 'YYYY-MM'"}), 400
+    uid, nombre = _quien()
+    marcar_mes_abierto(_db(), periodo, quien=nombre)
+    log_activity(_db(), nombre, "finanzas_mes_reabierto", "finanzas", None,
+                 periodo, "", user_id=uid)
+    return jsonify({"ok": True})
+
+
+@finanzas_bp.route("/api/finanzas/meses/<periodo>/cerrar", methods=["POST"])
+def api_cerrar_mes(periodo):
+    if not _periodo_valido(periodo):
+        return jsonify({"ok": False, "error": "periodo tiene que ser 'YYYY-MM'"}), 400
+    uid, nombre = _quien()
+    marcar_mes_cerrado(_db(), periodo)
+    log_activity(_db(), nombre, "finanzas_mes_cerrado", "finanzas", None,
+                 periodo, "", user_id=uid)
+    return jsonify({"ok": True})
+
+
 @finanzas_bp.route("/api/finanzas/por-cobrar")
 def api_por_cobrar():
     """Lo que falta cobrar, con el estado de vencimiento ya resuelto.
@@ -419,6 +486,11 @@ def api_cobrar_pendiente(pc_id):
     fecha = (data.get("fecha") or "").strip()
     if len(fecha) != 10 or fecha[4] != "-" or fecha[7] != "-":
         return jsonify({"ok": False, "error": "fecha tiene que ser 'YYYY-MM-DD'"}), 400
+    # Cobrar crea un ingreso: si el mes esta cerrado, no entra por esta puerta
+    # tampoco.
+    trabado = _mes_trabado(periodo_de(fecha))
+    if trabado:
+        return jsonify({"ok": False, "error": trabado}), 400
     uid, nombre = _quien()
     db = _db()
     try:

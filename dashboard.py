@@ -616,6 +616,11 @@ body.light .resp-sel{background:#fff;border-color:#e2e8f0;color:#0f172a}
 .calw-chip .cal-del-btn,.calw-chip .cal-join-btn,.calw-chip .cal-hora-btn{display:none}
 .calw-chip:hover .cal-del-btn,.calw-chip:hover .cal-join-btn,.calw-chip:hover .cal-hora-btn{display:block}
 .calw-hint{font-size:.7rem;color:#475569;margin-bottom:10px}
+.fin-nav-mes{display:flex;align-items:center;gap:6px}
+.fin-nav-mes span{font-size:.82rem;font-weight:700;color:#e2e8f0;min-width:130px;text-align:center}
+.fin-cerrado{display:flex;align-items:center;gap:8px;font-size:.7rem;font-weight:700;color:#f59e0b;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);padding:4px 10px;border-radius:999px;text-transform:uppercase;letter-spacing:.04em}
+body.light .fin-nav-mes span{color:#0f172a}
+body.light .fin-cerrado{color:#b45309;background:rgba(245,158,11,.09);border-color:rgba(245,158,11,.28)}
 .cal-count{font-size:.66rem;font-weight:700;color:#64748b;background:#161b27;border:1px solid #1e293b;padding:4px 10px;border-radius:999px;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap}
 .cal-today-btn{background:#161b27;border:1px solid #1e293b;color:#94a3b8;padding:7px 14px;border-radius:8px;cursor:pointer;font-size:.76rem;font-weight:700;font-family:'Inter',sans-serif;line-height:1;transition:background .15s,color .15s,border-color .15s}
 .cal-today-btn:hover{background:rgba(0,136,204,.12);border-color:rgba(0,136,204,.4);color:#33aadd}
@@ -1626,6 +1631,16 @@ body.light .fin-kpi-label,body.light .fin-kpi-var,body.light .fin-card-title,bod
   <!-- ======= FINANZAS PANEL ======= -->
   <div id="finanzas-panel" class="panel">
     <div class="fin-toolbar">
+      <div class="fin-nav-mes" id="fin-nav-mes">
+        <button class="cal-nav-btn" onclick="finMes(-1)" title="Mes anterior">&larr;</button>
+        <span id="fin-mes-label"></span>
+        <button class="cal-nav-btn" onclick="finMes(1)" title="Mes siguiente">&rarr;</button>
+        <button class="cal-today-btn" onclick="finMesHoy()">Hoy</button>
+      </div>
+      <span class="fin-cerrado" id="fin-cerrado" style="display:none">
+        Mes cerrado
+        <button class="cal-today-btn" onclick="finReabrirMes()">Reabrir mes</button>
+      </span>
       <select id="fin-rango" onchange="_finRangoCambio()">
         <option value="mes">Mes actual</option>
         <option value="3">Últimos 3 meses</option>
@@ -6138,6 +6153,7 @@ function _finRangoCambio() {
   // Pauta abierta deja el rótulo del selector diciendo una cosa y la tabla
   // mostrando los doce meses de siempre, sin recarga y sin ningún aviso.
   // Fijos no depende del rango, no necesita nada acá.
+  _finMesOffset = 0;   // cambiar el ancho vuelve al mes en curso
   loadFinanzas();
   if (document.getElementById('fin-vista-pauta').style.display !== 'none') loadPauta();
 }
@@ -6185,12 +6201,71 @@ function _finAttr(obj) {
     .replace(/>/g, '&gt;').replace(/'/g, '&#39;');
 }
 
+// Cuantos meses para atras esta parado el panel. 0 es el mes en curso.
+// Vive aparte del selector de rango: ese elige el ANCHO de la ventana (un mes,
+// tres, doce) y este elige DONDE esta la ventana.
+let _finMesOffset = 0;
+let _finMeses = {mes_actual: '', con_datos: [], abiertos: []};
+
+function _finPeriodoVisible() {
+  const partes = (_finMeses.mes_actual || _finMesActual()).split('-');
+  const total = parseInt(partes[0], 10) * 12 + (parseInt(partes[1], 10) - 1) + _finMesOffset;
+  return Math.floor(total / 12) + '-' + String(total % 12 + 1).padStart(2, '0');
+}
+
+function finMes(delta) {
+  _finMesOffset += delta;
+  if (_finMesOffset > 0) _finMesOffset = 0;   // el futuro no tiene datos
+  loadFinanzas();
+}
+
+function finMesHoy() {
+  _finMesOffset = 0;
+  loadFinanzas();
+}
+
+async function finReabrirMes() {
+  const periodo = _finPeriodoVisible();
+  if (!confirm('Reabrir ' + _finNombreMes(periodo) + ' para poder editarlo?')) return;
+  const r = await fetch('/api/finanzas/meses/' + periodo + '/reabrir', {method: 'POST'});
+  const j = await r.json().catch(() => ({}));
+  if (!j.ok) { alert('No se pudo reabrir: ' + (j.error || 'error desconocido')); return; }
+  await _finCargarMeses();
+  loadFinanzas();
+}
+
+async function _finCargarMeses() {
+  try {
+    const r = await fetch('/api/finanzas/meses');
+    if (r.ok) _finMeses = await r.json();
+  } catch (e) { /* el navegador se dibuja igual, solo sin saber que hay cerrado */ }
+}
+
+// El cartel de "mes cerrado" solo aparece cuando se esta mirando UN mes: con
+// "ultimos 12 meses" la ventana pisa meses abiertos y cerrados a la vez y la
+// etiqueta no significaria nada.
+function _finPintarNavegador() {
+  const mirandoUnMes = document.getElementById('fin-rango').value === 'mes';
+  const nav = document.getElementById('fin-nav-mes');
+  const cartel = document.getElementById('fin-cerrado');
+  nav.style.display = mirandoUnMes ? '' : 'none';
+  if (!mirandoUnMes) { cartel.style.display = 'none'; return; }
+
+  const periodo = _finPeriodoVisible();
+  document.getElementById('fin-mes-label').textContent = _finNombreMes(periodo);
+  const esElActual = periodo >= (_finMeses.mes_actual || '');
+  const reabierto = (_finMeses.abiertos || []).indexOf(periodo) >= 0;
+  cartel.style.display = (esElActual || reabierto) ? 'none' : 'flex';
+}
+
 function _finRango() {
   const hoy = new Date();
   const mes = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   const cual = document.getElementById('fin-rango').value;
   const hasta = mes(hoy);
-  if (cual === 'mes')  return {desde: hasta, hasta};
+  // Mirando un mes puntual, el navegador manda: es lo que hace que elegir un
+  // mes anterior filtre TODO el panel y no solo el rotulo.
+  if (cual === 'mes')  return {desde: _finPeriodoVisible(), hasta: _finPeriodoVisible()};
   if (cual === 'anio') return {desde: `${hoy.getFullYear()}-01`, hasta};
   const atras = new Date(hoy.getFullYear(), hoy.getMonth() - (parseInt(cual, 10) - 1), 1);
   return {desde: mes(atras), hasta};
@@ -6299,7 +6374,7 @@ async function _finCardPorCobrar(kpisEl) {
 async function _finCardIva(kpisEl) {
   let d;
   try {
-    const r = await fetch('/api/finanzas/iva?periodo=' + _finMesActual());
+    const r = await fetch('/api/finanzas/iva?periodo=' + _finPeriodoVisible());
     if (!r.ok) return;
     d = await r.json();
   } catch (e) { return; }
@@ -6308,12 +6383,13 @@ async function _finCardIva(kpisEl) {
   const cero = Math.abs(d.saldo) < 0.005;
   const aFavor = d.saldo < 0;
   const clase = cero ? '' : (aFavor ? 'fin-verde' : 'fin-rojo');
-  const signo = cero ? '' : (aFavor ? '+' : '-');
+  // Sin signo: la etiqueta ya dice "a favor" o "a pagar", y un "-USD 54,10 a
+  // pagar" se lee al reves -como si te debieran a vos-. El color acompania.
   const caja = document.createElement('div');
   caja.className = 'fin-kpi';
   caja.innerHTML = '<div class="fin-kpi-label">Saldo IVA</div>'
     + '<div class="fin-kpi-valor ' + clase + '">'
-    + signo + _finUsd(Math.abs(d.saldo)) + '</div>'
+    + _finUsd(Math.abs(d.saldo)) + '</div>'
     + '<div class="fin-kpi-var">' + _finNombreMes(d.periodo) + ' · '
     + (cero ? 'sin saldo' : (aFavor ? 'a favor' : 'a pagar')) + '</div>';
   kpisEl.appendChild(caja);
@@ -6349,6 +6425,8 @@ function _finBarras(filas, color) {
 let _finResumen = null;
 
 async function loadFinanzas() {
+  await _finCargarMeses();
+  _finPintarNavegador();
   const {desde, hasta} = _finRango();
   const kpisEl = document.getElementById('fin-kpis');
   kpisEl.innerHTML = '<div style="color:#475569;padding:16px;font-size:.85rem">Cargando...</div>';
@@ -6529,7 +6607,7 @@ function _finPreviewIva() {
 async function loadIva() {
   const kpis = document.getElementById('fin-iva-kpis');
   const tabla = document.getElementById('fin-iva-tabla');
-  const mes = _finMesActual();
+  const mes = _finPeriodoVisible();
   kpis.innerHTML = '<div style="color:#475569;padding:16px;font-size:.85rem">Cargando...</div>';
   let d;
   try {

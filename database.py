@@ -752,6 +752,19 @@ def init_db(db_path: str) -> None:
                 WHERE cobrado_movimiento_id IS NULL
         """)
 
+        # Meses REABIERTOS, no cerrados. Un mes pasado esta cerrado por
+        # default: si se guardaran los cerrados habria que acordarse de cerrar
+        # cada mes, y el que nadie cierre quedaria editable para siempre.
+        # Cerrar es la regla, abrir es la excepcion, y la excepcion es la que
+        # se anota.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS finanzas_meses_abiertos (
+                periodo     TEXT PRIMARY KEY,
+                abierto_por TEXT,
+                abierto_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
         conn.execute("""
             CREATE TABLE IF NOT EXISTS finanzas_recurrentes (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2743,6 +2756,41 @@ def listar_movimientos(db_path: str, desde: Optional[str] = None,
         cur = conn.execute(
             f"SELECT * FROM finanzas_movimientos {where} "
             "ORDER BY fecha DESC, id DESC", params)
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def marcar_mes_abierto(db_path: str, periodo: str, quien: str = "sistema") -> None:
+    """Reabre un mes cerrado. Idempotente: reabrir dos veces no duplica."""
+    conn = _connect(db_path)
+    try:
+        conn.execute(
+            "INSERT INTO finanzas_meses_abiertos (periodo, abierto_por) "
+            "VALUES (?, ?) ON CONFLICT(periodo) DO UPDATE SET abierto_por = ?",
+            (periodo, quien, quien))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def marcar_mes_cerrado(db_path: str, periodo: str) -> None:
+    """Vuelve a cerrar un mes reabierto. Cerrar uno que nunca se abrio no hace
+    nada, que es lo correcto: ya estaba cerrado."""
+    conn = _connect(db_path)
+    try:
+        conn.execute("DELETE FROM finanzas_meses_abiertos WHERE periodo = ?",
+                     (periodo,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def listar_meses_abiertos(db_path: str) -> list[dict]:
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute(
+            "SELECT * FROM finanzas_meses_abiertos ORDER BY periodo DESC")
         return [dict(r) for r in cur.fetchall()]
     finally:
         conn.close()

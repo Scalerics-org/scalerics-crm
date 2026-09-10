@@ -2,12 +2,26 @@
 
 import json
 import sqlite3
+from datetime import date
 
 import pytest
 from werkzeug.security import generate_password_hash
 
 import dashboard
 from database import create_user, get_movimiento, init_db
+
+
+def _mes(offset: int = 0) -> str:
+    """El período actual desplazado `offset` meses, como 'YYYY-MM'.
+
+    Estas fechas estaban fijas en 2026-09. Desde que un mes pasado queda
+    cerrado, una fecha fija pasa mientras el calendario no la deje atrás y
+    empieza a fallar el día 1 del mes siguiente. Calcularla al vuelo hace que
+    el test siga probando lo mismo en cualquier momento del año.
+    """
+    hoy = date.today()
+    m = hoy.month + offset
+    return f"{hoy.year + (m - 1) // 12:04d}-{(m - 1) % 12 + 1:02d}"
 
 
 @pytest.fixture
@@ -58,7 +72,8 @@ def cli(app):
     return c
 
 
-def _crear(cli, concepto, monto, tipo="ingreso", facturado=None, fecha="2026-09-15"):
+def _crear(cli, concepto, monto, tipo="ingreso", facturado=None, fecha=None):
+    fecha = fecha or f"{_mes()}-15"
     cuerpo = {"tipo": tipo, "fecha": fecha, "concepto": concepto,
               "categoria": "otros" if tipo == "egreso" else "otros",
               "monto": monto, "moneda": "USD"}
@@ -101,7 +116,7 @@ def test_editar_puede_apagar_la_factura(app, cli):
     mid = r.get_json()["id"]
 
     cli.put(f"/api/finanzas/movimientos/{mid}",
-            json={"tipo": "ingreso", "fecha": "2026-09-15", "concepto": "Cobro",
+            json={"tipo": "ingreso", "fecha": f"{_mes()}-15", "concepto": "Cobro",
                   "categoria": "otros", "monto": 500, "moneda": "USD",
                   "facturado": False})
 
@@ -115,7 +130,7 @@ def test_editar_el_monto_recalcula_el_iva(app, cli):
     mid = r.get_json()["id"]
 
     cli.put(f"/api/finanzas/movimientos/{mid}",
-            json={"tipo": "ingreso", "fecha": "2026-09-15", "concepto": "Cobro",
+            json={"tipo": "ingreso", "fecha": f"{_mes()}-15", "concepto": "Cobro",
                   "categoria": "otros", "monto": 1000, "moneda": "USD",
                   "facturado": True})
 
@@ -128,7 +143,7 @@ def test_devuelve_el_saldo_del_mes(app, cli):
     _crear(cli, "Cobro", 500, facturado=True)
     _crear(cli, "Hosting", 250, tipo="egreso", facturado=True)
 
-    d = cli.get("/api/finanzas/iva?periodo=2026-09").get_json()
+    d = cli.get(f"/api/finanzas/iva?periodo={_mes()}").get_json()
 
     assert round(d["iva_cobrado"], 2) == 90.16
     assert round(d["iva_pagado"], 2) == 45.08
