@@ -358,3 +358,268 @@ def por_segmento(db_path: str, desde: str, hasta: str) -> list:
             "valores": valores,
         })
     return bloques
+
+
+def _lunes_de(iso_fecha: str) -> str:
+    """El lunes de la semana a la que pertenece esa fecha."""
+    from datetime import date, timedelta
+
+    y, m, d = (int(x) for x in iso_fecha[:10].split("-"))
+    dia = date(y, m, d)
+    return (dia - timedelta(days=dia.weekday())).isoformat()
+
+
+def serie_semanal(db_path: str, desde: str, hasta: str) -> list:
+    """Gasto, alcance y leads por semana.
+
+    Semanal y no diaria a proposito: 238 leads en 178 dias son 1,3 por dia. En
+    grano diario el grafico son picos y ceros; la senal aparece por semana.
+    """
+    from datetime import date as _date
+
+    from services.embudo import costo
+
+    conn = _connect(db_path)
+    try:
+        gasto_filas = conn.execute(
+            "SELECT date, spend, impressions, clicks, leads FROM meta_insights "
+            "WHERE date BETWEEN ? AND ?", (desde, hasta)).fetchall()
+        lead_filas = conn.execute(
+            "SELECT scraped_at FROM businesses WHERE source = 'meta' "
+            "AND substr(scraped_at, 1, 10) BETWEEN ? AND ?",
+            (desde, hasta)).fetchall()
+    finally:
+        conn.close()
+
+    semanas = {}
+
+    def _slot(inicio):
+        return semanas.setdefault(inicio, {
+            "semana": None, "inicio": inicio, "gasto": 0.0, "impresiones": 0,
+            "clics": 0, "leads_meta": 0, "leads_crm": 0, "cpl": None})
+
+    for fila in gasto_filas:
+        s = _slot(_lunes_de(fila["date"]))
+        s["gasto"] += float(fila["spend"] or 0)
+        s["impresiones"] += int(fila["impressions"] or 0)
+        s["clics"] += int(fila["clicks"] or 0)
+        s["leads_meta"] += int(fila["leads"] or 0)
+
+    for fila in lead_filas:
+        _slot(_lunes_de(fila["scraped_at"]))["leads_crm"] += 1
+
+    salida = []
+    for inicio in sorted(semanas):
+        s = semanas[inicio]
+        s["gasto"] = round(s["gasto"], 2)
+        s["cpl"] = costo(s["gasto"], s["leads_crm"])
+        y, m, d = (int(x) for x in inicio.split("-"))
+        s["semana"] = "%d-W%02d" % _date(y, m, d).isocalendar()[:2]
+        salida.append(s)
+    return salida
+
+
+def conciliacion(db_path: str, desde: str, hasta: str) -> list:
+    """Lo que Meta cobro contra lo que se cargo a mano en Finanzas.
+
+    No se unifican y no se pisan: cada uno guarda lo suyo y aca se muestra la
+    brecha. Vale por si sola — dice si se esta registrando en la contabilidad
+    todo lo que Meta efectivamente cobro.
+
+    Este modulo nunca escribe en finanzas_movimientos.
+    """
+    import sqlite3
+
+    conn = _connect(db_path)
+    try:
+        meta_filas = conn.execute(
+            "SELECT substr(date, 1, 7) AS periodo, SUM(spend) AS total "
+            "FROM meta_insights WHERE date BETWEEN ? AND ? GROUP BY periodo",
+            (desde, hasta)).fetchall()
+        try:
+            # `periodo` es una columna propia de finanzas_movimientos, no hay
+            # que recortarla de la fecha: Finanzas la escribe al crear el
+            # movimiento y es la que usa para sus propios cortes.
+            cargado_filas = conn.execute(
+                "SELECT periodo, SUM(monto_usd) AS total "
+                "FROM finanzas_movimientos WHERE tipo = 'egreso' "
+                "AND categoria = 'publicidad' AND anulado = 0 "
+                "AND fecha BETWEEN ? AND ? GROUP BY periodo",
+                (desde, hasta)).fetchall()
+        except sqlite3.Error:
+            # Finanzas es de otra sesion. Si su tabla no esta, la conciliacion
+            # se degrada a "todo es brecha" en vez de tumbar el dossier entero.
+            logger.warning("conciliacion: no se pudo leer finanzas_movimientos")
+            cargado_filas = []
+    finally:
+        conn.close()
+
+    meta = {f["periodo"]: float(f["total"] or 0) for f in meta_filas}
+    cargado = {f["periodo"]: float(f["total"] or 0) for f in cargado_filas}
+
+    ms = []
+    for periodo in sorted(set(meta) | set(cargado)):
+        suf = periodo.replace("-", "_")
+        m_val = round(meta.get(periodo, 0.0), 2)
+        c_val = round(cargado.get(periodo, 0.0), 2)
+        ms.append(metrica(f"conciliacion.gasto_meta.{suf}",
+                          f"Gasto según Meta — {periodo}", m_val,
+                          "meta_insights", formato="moneda"))
+        ms.append(metrica(f"conciliacion.gasto_cargado.{suf}",
+                          f"Gasto cargado en Finanzas — {periodo}", c_val,
+                          "crm", formato="moneda"))
+        ms.append(metrica(f"conciliacion.brecha.{suf}",
+                          f"Gasto de Meta sin registrar — {periodo}",
+                          round(m_val - c_val, 2), "derivada", formato="moneda"))
+    return ms
+
+
+# Cuantos dias despues de un recordatorio se le puede atribuir un cambio de
+# estado. Mas alla de eso, el mail no fue lo que lo movio.
+VENTANA_RECORDATORIO_DIAS = 7
+
+# Eventos cuyo `created_at` es la fecha en que el CRM se entero, no la fecha en
+# que la cosa paso. El 27/8/2026 se importaron de una sola vez 195 estados que
+# los CEO venian pintando a mano en la planilla de semaforo: son 195 de los 242
+# eventos de la cohorte de Meta, todos con la misma fecha.
+#
+# El ESTADO de esos eventos es real y se usa para contar el embudo. La FECHA no
+# lo es. Sin excluirlos, la mediana de dias hasta el primer contacto daba 79
+# —que es cuanto tardo el import, no cuanto tarda el equipo en llamar— y un
+# informe habria escrito que el equipo tarda 79 dias en atender un lead.
+_MARCA_IMPORT_MASIVO = "%planilla%"
+
+
+def _dias_entre(desde_iso, hasta_iso):
+    """Dias enteros entre dos timestamps de SQLite, o None si no se puede."""
+    from datetime import datetime
+
+    def _parse(v):
+        v = (v or "").strip().replace("T", " ")
+        if not v:
+            return None
+        for formato in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+            try:
+                return datetime.strptime(v[:19] if len(v) >= 19 else v, formato)
+            except ValueError:
+                continue
+        return None
+
+    a, b = _parse(desde_iso), _parse(hasta_iso)
+    if not a or not b:
+        return None
+    return (b - a).days
+
+
+def _mediana(valores):
+    if not valores:
+        return None
+    ordenados = sorted(valores)
+    mitad = len(ordenados) // 2
+    if len(ordenados) % 2:
+        return float(ordenados[mitad])
+    return round((ordenados[mitad - 1] + ordenados[mitad]) / 2, 2)
+
+
+def tiempos(db_path: str, desde: str, hasta: str) -> list:
+    """Cuanto se tarda en reaccionarle a un lead.
+
+    La mediana y no el promedio: un lead contactado a los 60 dias arrastra el
+    promedio y hace parecer lento a un equipo que contesta el mismo dia.
+
+    Un lead sin ningun evento no entra en la cuenta. "Nunca contactado" no es
+    "tardo mucho": es que el dato no esta, y meterlo como un numero grande
+    seria inventarlo.
+
+    Los eventos del import masivo de la planilla quedan afuera: ver
+    `_MARCA_IMPORT_MASIVO`. Su fecha es la del import, no la del contacto.
+    """
+    from services.embudo import normalizar_estado
+
+    conn = _connect(db_path)
+    try:
+        leads = conn.execute(
+            "SELECT id, scraped_at FROM businesses WHERE source = 'meta' "
+            "AND substr(scraped_at, 1, 10) BETWEEN ? AND ?",
+            (desde, hasta)).fetchall()
+        eventos = conn.execute(
+            "SELECT lead_id, new_status, created_at FROM lead_events "
+            "WHERE created_by IS NULL OR created_by NOT LIKE ? "
+            "ORDER BY created_at", (_MARCA_IMPORT_MASIVO,)).fetchall()
+    finally:
+        conn.close()
+
+    primero, primera_demo = {}, {}
+    for e in eventos:
+        primero.setdefault(e["lead_id"], e["created_at"])
+        if normalizar_estado(e["new_status"]) == "demo_1":
+            primera_demo.setdefault(e["lead_id"], e["created_at"])
+
+    a_contacto, a_demo = [], []
+    for lead in leads:
+        d = _dias_entre(lead["scraped_at"], primero.get(lead["id"]))
+        if d is not None and d >= 0:
+            a_contacto.append(d)
+        d = _dias_entre(lead["scraped_at"], primera_demo.get(lead["id"]))
+        if d is not None and d >= 0:
+            a_demo.append(d)
+
+    return [
+        metrica("tiempos.dias_a_primer_contacto",
+                "Días hasta el primer contacto (mediana)",
+                _mediana(a_contacto), "crm", denominador=len(a_contacto)),
+        metrica("tiempos.dias_a_demo", "Días hasta la demo (mediana)",
+                _mediana(a_demo), "crm", denominador=len(a_demo)),
+    ]
+
+
+def recordatorios(db_path: str, desde: str, hasta: str) -> list:
+    """Si cada mail de la secuencia movio el estado del lead.
+
+    Atribucion por ventana, no causalidad: se cuenta si hubo un cambio de
+    estado dentro de los 7 dias siguientes al envio. Pudo haber pasado otra
+    cosa en el medio —una llamada, por ejemplo— y el informe tiene prohibido
+    decir que el mail fue la causa.
+
+    **Mide movimiento REGISTRADO, no movimiento.** En la cohorte de Meta los
+    contactos se anotan pintando la planilla de semaforo, no como evento del
+    CRM: sacando el import masivo quedan 47 eventos genuinos en seis meses.
+    Sobre los datos del 8/9/2026 esto da 0 de 231, o sea que ningun recordatorio
+    fue seguido de un cambio registrado en una semana. La lectura correcta es
+    "no hay evidencia de que muevan", no "esta probado que no sirven": lo
+    primero que habria que arreglar es donde se anota el contacto.
+    """
+    conn = _connect(db_path)
+    try:
+        envios = conn.execute(
+            "SELECT business_id, numero, sent_at FROM meta_reminders "
+            "WHERE substr(sent_at, 1, 10) BETWEEN ? AND ?",
+            (desde, hasta)).fetchall()
+        eventos = conn.execute(
+            "SELECT lead_id, created_at FROM lead_events "
+            "WHERE created_by IS NULL OR created_by NOT LIKE ?",
+            (_MARCA_IMPORT_MASIVO,)).fetchall()
+    finally:
+        conn.close()
+
+    por_lead = {}
+    for e in eventos:
+        por_lead.setdefault(e["lead_id"], []).append(e["created_at"])
+
+    conteo = {}
+    for envio in envios:
+        slot = conteo.setdefault(envio["numero"], {"enviados": 0, "movio": 0})
+        slot["enviados"] += 1
+        for cuando in por_lead.get(envio["business_id"], []):
+            dias = _dias_entre(envio["sent_at"], cuando)
+            if dias is not None and 0 <= dias <= VENTANA_RECORDATORIO_DIAS:
+                slot["movio"] += 1
+                break     # el lead se movio; no se cuenta dos veces
+
+    return [
+        proporcion(
+            f"recordatorios.tasa_movio_{n}",
+            f"Recordatorio {n}: movió el estado en {VENTANA_RECORDATORIO_DIAS} días",
+            conteo[n]["movio"], conteo[n]["enviados"], "crm")
+        for n in sorted(conteo)
+    ]
