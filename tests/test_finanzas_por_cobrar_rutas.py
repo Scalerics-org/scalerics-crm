@@ -211,7 +211,7 @@ def test_cobrar_crea_el_ingreso_y_lo_saca_del_listado(app, cli):
 
 def test_cobrar_facturado_guarda_el_iva(app, cli):
     db = app.config["_DB"]
-    pid = _un_pendiente(app, cli, monto=1220)
+    pid = _un_pendiente(app, cli, monto=1000)
 
     r = cli.post(f"/api/finanzas/por-cobrar/{pid}/cobrar",
                  json={"fecha": f"{_mes()}-20", "facturado": True})
@@ -263,3 +263,56 @@ def test_todo_esta_detras_del_permiso_del_panel(app, metodo, ruta):
     """La plata no se mira ni se mueve sin el panel."""
     c = _con_panel(app, "caller@scalerics.com", ["cola"])
     assert getattr(c, metodo)(ruta, json={}).status_code == 403
+
+
+# ── agregar uno a mano ───────────────────────────────────────────────────────
+
+def test_se_puede_agregar_un_pendiente_a_mano(app, cli):
+    """El cobro parcial es el camino principal, pero lo ya acordado que todavía
+    no tuvo ningún movimiento no se podía registrar en ningún lado."""
+    db = app.config["_DB"]
+    cid = _cliente(db, "Bloquera del Este")
+
+    r = cli.post("/api/finanzas/por-cobrar", json={
+        "concepto": "Segunda etapa", "monto_usd": 1200,
+        "vence": "2030-01-15", "client_id": cid})
+
+    assert r.status_code == 201
+    p = listar_por_cobrar(db)[0]
+    assert p["concepto"] == "Segunda etapa"
+    assert p["monto_usd"] == 1200
+    assert p["vence"] == "2030-01-15"
+    assert p["client_id"] == cid
+    assert p["origen_movimiento_id"] is None, "no nació de ningún movimiento"
+
+
+def test_el_cliente_y_el_vencimiento_son_opcionales(app, cli):
+    db = app.config["_DB"]
+
+    r = cli.post("/api/finanzas/por-cobrar",
+                 json={"concepto": "Algo suelto", "monto_usd": 300})
+
+    assert r.status_code == 201
+    p = listar_por_cobrar(db)[0]
+    assert p["vence"] is None and p["client_id"] is None
+
+
+@pytest.mark.parametrize("cuerpo", [
+    {"monto_usd": 100},                          # sin concepto
+    {"concepto": "   ", "monto_usd": 100},       # concepto en blanco
+    {"concepto": "x"},                           # sin monto
+    {"concepto": "x", "monto_usd": 0},           # monto cero
+    {"concepto": "x", "monto_usd": -5},          # monto negativo
+    {"concepto": "x", "monto_usd": "mucho"},     # monto que no es numero
+    {"concepto": "x", "monto_usd": 100, "vence": "el martes"},
+])
+def test_un_pendiente_mal_cargado_da_400(app, cli, cuerpo):
+    db = app.config["_DB"]
+
+    assert cli.post("/api/finanzas/por-cobrar", json=cuerpo).status_code == 400
+    assert listar_por_cobrar(db) == []
+
+
+def test_agregar_tambien_esta_detras_del_permiso(app):
+    c = _con_panel(app, "caller@scalerics.com", ["cola"])
+    assert c.post("/api/finanzas/por-cobrar", json={}).status_code == 403

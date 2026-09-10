@@ -1,14 +1,13 @@
-"""IVA: cuánto de lo que entra y sale es impuesto, y cuánto es plata de verdad.
+"""IVA: cuánto se le suma a lo que se carga, y cuánto queda a pagar o a favor.
 
-Hasta ahora un movimiento de USD 500 contaba como USD 500 de ingreso, cuando en
-realidad son USD 410 propios y USD 90 que hay que devolverle a la DGI. Eso ya
-generó errores de caja reales.
+**El monto que se escribe es el LÍQUIDO, no el total.** Es como se acuerda un
+precio y como llegan los gastos acá: se escribe 100 y el IVA son 22 aparte, con
+un total de 122.
 
-Dos decisiones que estos tests fijan:
-
-**El monto que se carga es el TOTAL, con IVA adentro.** Es como llega la
-factura y como se cobra. Neto e IVA se derivan hacia atrás: 500 → 410 + 90, no
-500 → 500 + 110.
+La primera versión hacía lo contrario —tomaba el monto como total y sacaba el
+impuesto de adentro, 100 → 81,97 + 18,03— y estaba mal. Salió probándolo con un
+gasto real: nadie escribe el número con el IVA ya metido. Estos tests fijan el
+sentido correcto para que no se vuelva a dar vuelta.
 
 **El IVA se GUARDA, no se recalcula al leer.** Si algún día cambia la tasa, los
 movimientos viejos tienen que seguir mostrando el impuesto que de verdad se
@@ -20,8 +19,8 @@ saldo a pagar no se arrastra: se paga y queda en cero.
 
 import pytest
 
-from database import (crear_movimiento, get_movimiento, init_db)
-from services.finanzas import IVA_TASA, desglosar_iva, resumen_iva
+from database import crear_movimiento, get_movimiento, init_db
+from services.finanzas import IVA_TASA, iva_sobre, resumen_iva
 
 
 @pytest.fixture
@@ -32,32 +31,36 @@ def db(tmp_path):
 
 
 def _mov(db, tipo, concepto, monto, periodo="2026-09", facturado=True):
-    neto, iva = desglosar_iva(monto) if facturado else (monto, 0.0)
     return crear_movimiento(
         db, tipo=tipo, fecha=f"{periodo}-15", periodo=periodo, concepto=concepto,
         categoria="servicios", monto=monto, moneda="USD", monto_usd=monto,
-        facturado=1 if facturado else 0, iva_usd=iva)
+        facturado=1 if facturado else 0,
+        iva_usd=iva_sobre(monto) if facturado else 0.0)
 
 
-# ── el desglose ──────────────────────────────────────────────────────────────
+# ── el impuesto se suma, no se saca de adentro ───────────────────────────────
 
-def test_el_monto_cargado_es_el_total_con_iva_adentro(db):
-    """500 son 410 propios + 90 de impuesto, no 500 + 110."""
-    neto, iva = desglosar_iva(500)
+def test_el_iva_se_suma_al_monto_cargado(db):
+    """100 son 100 propios más 22 de impuesto: total 122, no 81,97 + 18,03."""
+    assert iva_sobre(100) == 22.0
 
-    assert round(neto + iva, 2) == 500.0
-    assert round(neto, 2) == 409.84
-    assert round(iva, 2) == 90.16
+
+@pytest.mark.parametrize("liquido,iva", [
+    (100, 22.0), (250, 55.0), (500, 110.0), (1000, 220.0),
+])
+def test_los_numeros_dan_redondos(db, liquido, iva):
+    """Que den redondo no es casualidad: es la señal de que el monto que se
+    escribe es el que la gente tiene en la cabeza."""
+    assert round(iva_sobre(liquido), 2) == iva
 
 
 def test_la_tasa_es_la_basica_de_uruguay(db):
     assert IVA_TASA == 0.22
 
 
-@pytest.mark.parametrize("total", [0, 1, 123.45, 999999.99])
-def test_neto_mas_iva_siempre_da_el_total(db, total):
-    neto, iva = desglosar_iva(total)
-    assert round(neto + iva, 2) == round(total, 2)
+def test_un_monto_vacio_no_explota(db):
+    assert iva_sobre(0) == 0
+    assert iva_sobre(None) == 0
 
 
 def test_un_movimiento_sin_factura_no_tiene_iva(db):
@@ -76,32 +79,30 @@ def test_el_iva_queda_guardado_en_la_fila(db):
     mid = _mov(db, "ingreso", "Cobro 50% La Vaca Encantada", 500)
 
     mov = get_movimiento(db, mid)
-    assert round(mov["iva_usd"], 2) == 90.16
+    assert round(mov["iva_usd"], 2) == 110.0
     assert mov["facturado"] == 1
 
 
-# ── el saldo del mes ─────────────────────────────────────────────────────────
+# ── lo que dibuja la pestaña ─────────────────────────────────────────────────
 
-def test_el_saldo_es_lo_cobrado_menos_lo_pagado(db):
-    _mov(db, "ingreso", "Cobro", 500)      # iva 90.16
-    _mov(db, "egreso", "Hosting", 250)     # iva 45.08
+def test_el_desglose_va_liquido_iva_y_total(db):
+    """Concepto / Neto / IVA / Total, con el total sumando los dos."""
+    _mov(db, "ingreso", "Cobro 50% La Vaca Encantada", 500)
 
-    r = resumen_iva(db, "2026-09")
+    fila = resumen_iva(db, "2026-09")["movimientos"][0]
 
-    assert round(r["iva_cobrado"], 2) == 90.16
-    assert round(r["iva_pagado"], 2) == 45.08
-    assert round(r["saldo"], 2) == 45.08
+    assert fila["neto"] == 500
+    assert round(fila["iva"], 2) == 110.0
+    assert round(fila["total"], 2) == 610.0
 
 
-def test_los_no_facturados_no_entran_al_saldo(db):
-    _mov(db, "ingreso", "Cobro con factura", 500)
-    _mov(db, "ingreso", "Cobro sin factura", 500, facturado=False)
-    _mov(db, "egreso", "Gasto sin factura", 300, facturado=False)
+def test_un_movimiento_sin_factura_no_aparece(db):
+    _mov(db, "ingreso", "Con factura", 500)
+    _mov(db, "egreso", "Sin factura", 999, facturado=False)
 
-    r = resumen_iva(db, "2026-09")
+    filas = resumen_iva(db, "2026-09")["movimientos"]
 
-    assert round(r["iva_cobrado"], 2) == 90.16
-    assert r["iva_pagado"] == 0
+    assert [f["concepto"] for f in filas] == ["Con factura"]
 
 
 def test_un_mes_sin_nada_da_cero_y_no_explota(db):
@@ -113,78 +114,28 @@ def test_un_mes_sin_nada_da_cero_y_no_explota(db):
     assert r["movimientos"] == []
 
 
-def test_lista_los_movimientos_facturados_con_su_desglose(db):
-    """Es lo que dibuja la pestaña: Concepto / Neto / IVA / Total."""
-    _mov(db, "ingreso", "Cobro 50% La Vaca Encantada", 500)
-    _mov(db, "egreso", "Gastos SAS", 250)
-    _mov(db, "egreso", "Sin factura", 999, facturado=False)
+# ── el saldo del mes ─────────────────────────────────────────────────────────
 
-    filas = resumen_iva(db, "2026-09")["movimientos"]
+def test_el_saldo_es_lo_cobrado_menos_lo_pagado(db):
+    _mov(db, "ingreso", "Cobro", 500)      # iva 110
+    _mov(db, "egreso", "Hosting", 250)     # iva 55
 
-    assert len(filas) == 2
-    por_concepto = {f["concepto"]: f for f in filas}
-    vaca = por_concepto["Cobro 50% La Vaca Encantada"]
-    assert round(vaca["neto"], 2) == 409.84
-    assert round(vaca["iva"], 2) == 90.16
-    assert round(vaca["total"], 2) == 500.0
-    assert vaca["tipo"] == "ingreso"
+    r = resumen_iva(db, "2026-09")
+
+    assert round(r["iva_cobrado"], 2) == 110.0
+    assert round(r["iva_pagado"], 2) == 55.0
+    assert round(r["saldo"], 2) == 55.0
 
 
-# ── el arrastre del saldo a favor ────────────────────────────────────────────
+def test_los_no_facturados_no_entran_al_saldo(db):
+    _mov(db, "ingreso", "Cobro con factura", 500)
+    _mov(db, "ingreso", "Cobro sin factura", 500, facturado=False)
+    _mov(db, "egreso", "Gasto sin factura", 300, facturado=False)
 
-def test_un_saldo_a_favor_se_arrastra_al_mes_siguiente(db):
-    """En Uruguay el crédito de IVA no vence."""
-    _mov(db, "egreso", "Compra grande", 1000, periodo="2026-08")   # iva 180.33 pagado
-    _mov(db, "ingreso", "Cobro chico", 200, periodo="2026-09")     # iva 36.07 cobrado
+    r = resumen_iva(db, "2026-09")
 
-    agosto = resumen_iva(db, "2026-08")
-    septiembre = resumen_iva(db, "2026-09")
-
-    assert round(agosto["saldo"], 2) == -180.33, "agosto queda a favor"
-    assert round(septiembre["arrastre"], 2) == -180.33
-    assert round(septiembre["saldo"], 2) == -144.26, "36.07 - 180.33"
-
-
-def test_un_saldo_a_pagar_no_se_arrastra(db):
-    """Lo que se debe se paga: no queda colgando al mes siguiente."""
-    _mov(db, "ingreso", "Cobro grande", 1000, periodo="2026-08")
-    _mov(db, "ingreso", "Cobro chico", 200, periodo="2026-09")
-
-    assert round(resumen_iva(db, "2026-08")["saldo"], 2) == 180.33
-    septiembre = resumen_iva(db, "2026-09")
-    assert septiembre["arrastre"] == 0
-    assert round(septiembre["saldo"], 2) == 36.07
-
-
-def test_el_arrastre_a_favor_se_acumula_por_varios_meses(db):
-    _mov(db, "egreso", "Compra 1", 1000, periodo="2026-07")   # -180.33
-    _mov(db, "egreso", "Compra 2", 1000, periodo="2026-08")   # -180.33 mas arrastre
-    _mov(db, "ingreso", "Cobro", 100, periodo="2026-09")      # +18.03
-
-    assert round(resumen_iva(db, "2026-07")["saldo"], 2) == -180.33
-    assert round(resumen_iva(db, "2026-08")["saldo"], 2) == -360.66
-    assert round(resumen_iva(db, "2026-09")["saldo"], 2) == -342.62
-
-
-def test_un_saldo_a_favor_se_consume_y_no_queda_negativo_de_mas(db):
-    """Si el crédito alcanza para tapar el mes, el saldo queda a favor por la
-    diferencia; si sobra deuda, se paga."""
-    _mov(db, "egreso", "Compra", 500, periodo="2026-08")      # -90.16 a favor
-    _mov(db, "ingreso", "Cobro grande", 1000, periodo="2026-09")  # +180.33
-
-    septiembre = resumen_iva(db, "2026-09")
-
-    assert round(septiembre["arrastre"], 2) == -90.16
-    assert round(septiembre["saldo"], 2) == 90.16, "180.328 - 90.164, queda a pagar"
-
-
-def test_un_mes_sin_movimientos_en_el_medio_no_corta_el_arrastre(db):
-    _mov(db, "egreso", "Compra", 1000, periodo="2026-07")
-    # agosto vacio a proposito
-    _mov(db, "ingreso", "Cobro", 100, periodo="2026-09")
-
-    assert round(resumen_iva(db, "2026-08")["saldo"], 2) == -180.33
-    assert round(resumen_iva(db, "2026-09")["arrastre"], 2) == -180.33
+    assert round(r["iva_cobrado"], 2) == 110.0
+    assert r["iva_pagado"] == 0
 
 
 def test_los_movimientos_anulados_no_cuentan(db):
@@ -195,5 +146,58 @@ def test_los_movimientos_anulados_no_cuentan(db):
 
     r = resumen_iva(db, "2026-09")
 
-    assert round(r["iva_cobrado"], 2) == 36.07
+    assert round(r["iva_cobrado"], 2) == 44.0
     assert len(r["movimientos"]) == 1
+
+
+# ── el arrastre del saldo a favor ────────────────────────────────────────────
+
+def test_un_saldo_a_favor_se_arrastra_al_mes_siguiente(db):
+    """En Uruguay el crédito de IVA no vence."""
+    _mov(db, "egreso", "Compra grande", 1000, periodo="2026-08")   # paga 220
+    _mov(db, "ingreso", "Cobro chico", 200, periodo="2026-09")     # cobra 44
+
+    assert round(resumen_iva(db, "2026-08")["saldo"], 2) == -220.0
+    septiembre = resumen_iva(db, "2026-09")
+    assert round(septiembre["arrastre"], 2) == -220.0
+    assert round(septiembre["saldo"], 2) == -176.0, "44 - 220"
+
+
+def test_un_saldo_a_pagar_no_se_arrastra(db):
+    """Lo que se debe se paga: no queda colgando al mes siguiente."""
+    _mov(db, "ingreso", "Cobro grande", 1000, periodo="2026-08")
+    _mov(db, "ingreso", "Cobro chico", 200, periodo="2026-09")
+
+    assert round(resumen_iva(db, "2026-08")["saldo"], 2) == 220.0
+    septiembre = resumen_iva(db, "2026-09")
+    assert septiembre["arrastre"] == 0
+    assert round(septiembre["saldo"], 2) == 44.0
+
+
+def test_el_arrastre_a_favor_se_acumula_por_varios_meses(db):
+    _mov(db, "egreso", "Compra 1", 1000, periodo="2026-07")   # -220
+    _mov(db, "egreso", "Compra 2", 1000, periodo="2026-08")   # -220 mas arrastre
+    _mov(db, "ingreso", "Cobro", 100, periodo="2026-09")      # +22
+
+    assert round(resumen_iva(db, "2026-07")["saldo"], 2) == -220.0
+    assert round(resumen_iva(db, "2026-08")["saldo"], 2) == -440.0
+    assert round(resumen_iva(db, "2026-09")["saldo"], 2) == -418.0
+
+
+def test_un_saldo_a_favor_se_consume_y_deja_lo_que_sobra_a_pagar(db):
+    _mov(db, "egreso", "Compra", 500, periodo="2026-08")           # -110 a favor
+    _mov(db, "ingreso", "Cobro grande", 1000, periodo="2026-09")   # +220
+
+    septiembre = resumen_iva(db, "2026-09")
+
+    assert round(septiembre["arrastre"], 2) == -110.0
+    assert round(septiembre["saldo"], 2) == 110.0, "220 - 110, queda a pagar"
+
+
+def test_un_mes_sin_movimientos_en_el_medio_no_corta_el_arrastre(db):
+    _mov(db, "egreso", "Compra", 1000, periodo="2026-07")
+    # agosto vacio a proposito
+    _mov(db, "ingreso", "Cobro", 100, periodo="2026-09")
+
+    assert round(resumen_iva(db, "2026-08")["saldo"], 2) == -220.0
+    assert round(resumen_iva(db, "2026-09")["arrastre"], 2) == -220.0

@@ -16,8 +16,8 @@ from database import (actualizar_movimiento, actualizar_recurrente,
                       listar_por_cobrar, listar_recurrentes, log_activity,
                       marcar_mes_abierto, marcar_mes_cerrado)
 from services.auth import require_panel
-from services.finanzas import (CATEGORIAS, MONEDAS, a_usd, desglosar_iva,
-                               estado_de_cobro, materializar_recurrentes,
+from services.finanzas import (CATEGORIAS, MONEDAS, a_usd, estado_de_cobro,
+                               iva_sobre, materializar_recurrentes,
                                mes_editable, meses_con_datos, periodo_de,
                                rendimiento_pauta, resumen, resumen_iva,
                                saldar_por_cobrar)
@@ -103,11 +103,12 @@ def _validar_movimiento(data: dict) -> tuple[dict | None, str | None]:
     if not concepto:
         return None, "concepto es obligatorio"
 
-    # El IVA se calcula acá y se guarda, no se deriva al leer: si la tasa
-    # cambia, lo ya facturado tiene que seguir mostrando lo que se cobró.
-    # Se calcula sobre `monto_usd` porque todo el módulo cuenta en dólares.
+    # El IVA se SUMA al monto cargado: se escribe el líquido, no el total.
+    # Se calcula acá y se guarda, no se deriva al leer: si la tasa cambia, lo
+    # ya facturado tiene que seguir mostrando lo que se cobró. Sobre
+    # `monto_usd` porque todo el módulo cuenta en dólares.
     facturado = 1 if data.get("facturado") else 0
-    iva_usd = desglosar_iva(monto_usd)[1] if facturado else 0.0
+    iva_usd = iva_sobre(monto_usd) if facturado else 0.0
 
     campos = {
         "tipo": tipo, "fecha": fecha, "periodo": periodo_de(fecha),
@@ -477,6 +478,43 @@ def api_por_cobrar():
         "pendientes": pendientes,
         "total_usd": sum(p["monto_usd"] or 0 for p in pendientes),
     })
+
+
+@finanzas_bp.route("/api/finanzas/por-cobrar", methods=["POST"])
+def api_crear_pendiente():
+    """Carga a mano algo que falta cobrar.
+
+    El camino principal sigue siendo el cobro parcial, que lo genera solo. Esto
+    es para lo que ya se acordó y todavía no tuvo ningún movimiento: sin esta
+    puerta, un saldo que no nació de un cobro no se puede registrar en ningún
+    lado.
+
+    No lleva candado de mes cerrado: un pendiente no pertenece a un período,
+    es algo que se debe hasta que se cobre. El candado está donde entra la
+    plata, que es al cobrarlo.
+    """
+    data = request.get_json() or {}
+    concepto = (data.get("concepto") or "").strip()
+    if not concepto:
+        return jsonify({"ok": False, "error": "concepto es obligatorio"}), 400
+    try:
+        monto = float(data.get("monto_usd"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "monto tiene que ser un número"}), 400
+    if monto <= 0:
+        return jsonify({"ok": False, "error": "monto tiene que ser mayor que cero"}), 400
+
+    vence = (data.get("vence") or "").strip() or None
+    if vence and (len(vence) != 10 or vence[4] != "-" or vence[7] != "-"):
+        return jsonify({"ok": False, "error": "vence tiene que ser 'YYYY-MM-DD'"}), 400
+
+    uid, nombre = _quien()
+    db = _db()
+    pid = crear_por_cobrar(db, concepto=concepto, monto_usd=monto, vence=vence,
+                           client_id=data.get("client_id") or None)
+    log_activity(db, nombre, "finanzas_pendiente_creado", "finanzas", pid,
+                 concepto, f"USD {monto}", user_id=uid)
+    return jsonify({"ok": True, "id": pid}), 201
 
 
 @finanzas_bp.route("/api/finanzas/por-cobrar/<int:pc_id>/cobrar", methods=["POST"])
