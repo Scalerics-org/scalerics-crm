@@ -278,8 +278,12 @@ leads de Meta se renombró a **D** para deshacer el empate.
   no verse y lo descubrí probándolo a mano. No es culpa de nadie: es lo que
   pasa cuando producción corre `main + N` y el que deploya después sale de
   `main` limpio. **Si tu rama no está mergeada, tu deploy dura hasta el próximo
-  deploy ajeno.** Rebasé sobre `main` y volví a subir, pero la salida de verdad
-  es mergear.
+  deploy ajeno.** Rebasé sobre `main` y volví a subir.
+
+  **Cerrado: mergeado en `main` por el PR #24**, con CI en verde. Producción
+  (v176) corre exactamente lo que hay en `main` —verificado comparando el hash
+  del bloque de JS contra la máquina viva— así que ya no hace falta cuidar
+  nada: un deploy desde `main` incluye esto.
 
 - **10/9 — G (marketing/Meta Ads): abro modulo nuevo, todavia sin codigo.**
 
