@@ -2110,7 +2110,7 @@ body.light .fin-kpi-label,body.light .fin-kpi-var,body.light .fin-card-title,bod
       </div>
     </div>
 
-    <label class="modal-label">¿Se factura?</label>
+    <label class="modal-label">¿Lleva IVA (22%)?</label>
     <div class="fin-toggle" style="margin-bottom:6px">
       <button class="pill" id="fin-fact-si" onclick="finSetFacturado(true)">Sí</button>
       <button class="pill active" id="fin-fact-no" onclick="finSetFacturado(false)">No</button>
@@ -6664,7 +6664,7 @@ async function loadPorCobrar() {
 
 async function cobrarPendiente(id) {
   const hoy = new Date().toISOString().slice(0, 10);
-  const facturado = confirm('¿Se factura este cobro? Aceptar = sí, Cancelar = no.');
+  const facturado = confirm('¿Este cobro lleva IVA (22%)? Aceptar = sí, Cancelar = no.');
   const r = await fetch('/api/finanzas/por-cobrar/' + id + '/cobrar', {
     method: 'POST', headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({fecha: hoy, facturado})
@@ -6699,7 +6699,7 @@ function finSetFacturado(valor) {
 // que se carga es el TOTAL y de ahi salen el neto y el impuesto hacia atras.
 function _finPreviewIva() {
   const caja = document.getElementById('fin-iva-preview');
-  if (!_finFacturado) { caja.textContent = 'No suma al cálculo de IVA.'; return; }
+  if (!_finFacturado) { caja.textContent = 'Sin IVA: no suma ni descuenta nada.'; return; }
   const monto = parseFloat(document.getElementById('fin-mov-monto').value);
   if (!monto || monto <= 0) { caja.textContent = 'El IVA (22%) se suma al monto.'; return; }
   const usd = _finMontoUsd();
@@ -6744,7 +6744,7 @@ async function loadIva() {
     + '</div></div>';
 
   if (!d.movimientos.length) {
-    tabla.innerHTML = '<div class="empty-state">Ningún movimiento facturado este mes.</div>';
+    tabla.innerHTML = '<div class="empty-state">Ningún movimiento con IVA este mes.</div>';
     return;
   }
   tabla.innerHTML = '<table class="fin-tabla"><thead><tr>'
