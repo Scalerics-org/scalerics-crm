@@ -139,6 +139,159 @@
     };
   };
 
+  // ── Iconos ────────────────────────────────────────────────────────────────
+  //
+  // SVG inline, nunca emojis: es la regla del CRM. Y el delta lleva flecha
+  // ademas de color porque un signo que solo se distingue por color no se
+  // distingue.
+
+  var _FLECHAS = {
+    sube: '<path d="M8 3.5 L8 12.5 M8 3.5 L4.5 7 M8 3.5 L11.5 7"/>',
+    baja: '<path d="M8 12.5 L8 3.5 M8 12.5 L4.5 9 M8 12.5 L11.5 9"/>',
+    igual: '<path d="M3.5 8 L12.5 8"/>'
+  };
+
+  function _icono(signo) {
+    if (!_FLECHAS[signo]) return '';
+    return '<svg viewBox="0 0 16 16" width="12" height="12" fill="none" ' +
+           'stroke="currentColor" stroke-width="1.6" stroke-linecap="round" ' +
+           'stroke-linejoin="round" aria-hidden="true">' +
+           _FLECHAS[signo] + '</svg>';
+  }
+
+  // ── Tiles ─────────────────────────────────────────────────────────────────
+  //
+  // Sin grafico: son numeros. La guia de visualizacion es explicita en que a
+  // veces la respuesta correcta no es un grafico.
+  //
+  // `mejor` dice para que lado es bueno. No se puede adivinar del signo: en
+  // `cpl`, `costo_demo` y `costo_presupuesto` subir es una mala noticia, y en
+  // `leads` es una buena. Sin ese dato, el color mentiria la mitad de las veces.
+
+  SC.tiles = function (metricas, tema) {
+    if (!metricas || !metricas.length) {
+      return '<div class="sc-vacio">Sin datos en el período</div>';
+    }
+    var tinta = SC.PALETA.tinta[tema];
+    var mudo = SC.PALETA.mudo[tema];
+
+    return '<div class="sc-tiles">' + metricas.map(function (m) {
+      var d = SC.fmtDelta(m.delta_periodo_anterior, m.formato);
+      var animo = 'neutro';
+      if (d.signo === 'sube') animo = m.mejor === 'bajo' ? 'malo' : 'bueno';
+      if (d.signo === 'baja') animo = m.mejor === 'bajo' ? 'bueno' : 'malo';
+      if (!m.mejor || d.signo === 'igual' || d.signo === 'sin_comparacion') {
+        animo = 'neutro';
+      }
+
+      var pie = d.signo === 'sin_comparacion'
+        ? '<span class="sc-tile-delta" data-signo="sin_comparacion" ' +
+          'data-animo="neutro" style="color:' + mudo + '">' +
+          SC.esc(d.texto) + '</span>'
+        : '<span class="sc-tile-delta" data-signo="' + d.signo + '" ' +
+          'data-animo="' + animo + '">' + _icono(d.signo) + ' ' +
+          SC.esc(d.texto) + '</span>';
+
+      return '<div class="sc-tile" data-id="' + SC.esc(m.id) + '">' +
+             '<div class="sc-tile-label" style="color:' + mudo + '">' +
+             SC.esc(m.etiqueta) + '</div>' +
+             '<div class="sc-tile-valor" style="color:' + tinta + '">' +
+             SC.esc(SC.fmt(m.valor, m.formato)) + '</div>' + pie + '</div>';
+    }).join('') + '</div>';
+  };
+
+  // ── Embudo ────────────────────────────────────────────────────────────────
+  //
+  // El grafico que justifica el modulo. Las etapas de `meta_insights` las tiene
+  // cualquier reporte de ads y ahi se termina; las de `crm` son lo que solo
+  // tenemos nosotros, porque sabemos que paso despues del clic. El corte entre
+  // unas y otras se dibuja.
+
+  var _ALTO_FILA = 34;
+  var _GAP = 2;               // el spacer de 2px que pide la guia
+  var _ANCHO_ETIQUETA = 150;
+  var _ANCHO_VALOR = 92;
+
+  SC.embudo = function (etapas, tema) {
+    if (!etapas || !etapas.length) {
+      return '<div class="sc-vacio">Sin datos para el embudo</div>';
+    }
+    var tinta = SC.PALETA.tinta[tema];
+    var mudo = SC.PALETA.mudo[tema];
+    var azul = SC.PALETA[tema][0];
+    var gris = SC.PALETA.neutro[tema];
+
+    var conValor = etapas.filter(function (e) {
+      return e.valor !== null && e.valor !== undefined;
+    });
+    var max = conValor.length
+      ? Math.max.apply(null, conValor.map(function (e) { return e.valor; }))
+      : 0;
+
+    var anchoBarra = 420;
+    var ancho = _ANCHO_ETIQUETA + anchoBarra + _ANCHO_VALOR;
+    var alto = etapas.length * (_ALTO_FILA + _GAP) + 24;
+
+    var piezas = [], corteDibujado = false, anterior = null;
+
+    etapas.forEach(function (e, i) {
+      var y = i * (_ALTO_FILA + _GAP) + 12;
+      var esMeta = e.fuente === 'meta_insights';
+      var color = esMeta ? azul : SC.PALETA[tema][2];
+
+      // El corte: hasta aca llega cualquier reporte de ads.
+      if (!corteDibujado && anterior && anterior.fuente === 'meta_insights'
+          && !esMeta) {
+        piezas.push(
+          '<line x1="0" y1="' + (y - _GAP - 3) + '" x2="' + ancho +
+          '" y2="' + (y - _GAP - 3) + '" stroke="' + gris +
+          '" stroke-width="1" stroke-dasharray="3 3"/>' +
+          '<text x="' + ancho + '" y="' + (y - _GAP - 7) +
+          '" text-anchor="end" font-size="10" fill="' + mudo + '">' +
+          'hasta acá llega un reporte de ads</text>');
+        corteDibujado = true;
+      }
+
+      piezas.push('<text x="0" y="' + (y + 21) + '" font-size="12" fill="' +
+                  tinta + '">' + SC.esc(e.etiqueta) + '</text>');
+
+      if (e.valor === null || e.valor === undefined) {
+        // Sin credenciales de Insights no hay impresiones. Eso no es cero
+        // impresiones: es que no lo sabemos, y son cosas distintas.
+        piezas.push('<text x="' + (_ANCHO_ETIQUETA + 4) + '" y="' + (y + 21) +
+                    '" font-size="11" fill="' + mudo + '">sin datos</text>');
+      } else {
+        var w = max > 0 ? Math.max(2, e.valor / max * anchoBarra) : 2;
+        piezas.push(
+          '<rect data-fuente="' + SC.esc(e.fuente) + '" data-clave="' +
+          SC.esc(e.clave) + '" x="' + _ANCHO_ETIQUETA + '" y="' + y +
+          '" width="' + w.toFixed(1) + '" height="' + _ALTO_FILA +
+          '" rx="4" fill="' + color + '"><title>' + SC.esc(e.etiqueta) +
+          ': ' + SC.esc(SC.fmt(e.valor, 'numero')) + '</title></rect>' +
+          '<text x="' + (_ANCHO_ETIQUETA + anchoBarra + 8) + '" y="' +
+          (y + 21) + '" font-size="12" fill="' + tinta + '">' +
+          SC.esc(SC.fmt(e.valor, 'numero')) + '</text>');
+
+        // La caida contra la etapa anterior que si tenia valor.
+        if (anterior && anterior.valor) {
+          var pct = e.valor / anterior.valor;
+          piezas.push(
+            '<text x="' + (_ANCHO_ETIQUETA - 8) + '" y="' + (y + 6) +
+            '" text-anchor="end" font-size="10" fill="' + mudo + '">' +
+            SC.esc(SC.fmt(pct, 'porcentaje')) + '</text>');
+        }
+      }
+
+      if (e.valor !== null && e.valor !== undefined) anterior = e;
+      else if (!anterior) anterior = null;
+    });
+
+    return '<svg class="sc-embudo" viewBox="0 0 ' + ancho + ' ' + alto +
+           '" width="100%" height="' + alto + '" role="img" ' +
+           'aria-label="Embudo de campañas de Meta">' +
+           piezas.join('') + '</svg>';
+  };
+
   SC.esc = function (t) {
     return String(t === null || t === undefined ? '' : t)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')

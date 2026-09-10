@@ -27,7 +27,10 @@ def _correr(js: str, tmp_path):
         + CHARTS.read_text(encoding="utf-8")
         + "\nconst SC = globalThis.SC;\n"
         + js + "\n", encoding="utf-8")
-    r = subprocess.run(["node", str(archivo)], capture_output=True, text=True)
+    # encoding utf-8 explicito: con text=True a secas, Windows decodifica la
+    # salida de node con la codepage del sistema (cp1252) y rompe los acentos.
+    r = subprocess.run(["node", str(archivo)], capture_output=True,
+                       text=True, encoding="utf-8")
     assert r.returncode == 0, r.stderr
     return json.loads(r.stdout)
 
@@ -35,7 +38,7 @@ def _correr(js: str, tmp_path):
 @sin_node
 def test_el_modulo_compila():
     r = subprocess.run(["node", "--check", str(CHARTS)],
-                       capture_output=True, text=True)
+                       capture_output=True, text=True, encoding="utf-8")
     assert r.returncode == 0, f"charts.js no compila:\n{r.stderr}"
 
 
@@ -166,3 +169,129 @@ def test_el_delta_trae_su_signo(tmp_path):
     assert r[2]["signo"] == "igual"
     assert r[3]["signo"] == "sin_comparacion"
     assert "-" not in r[1]["texto"], "el signo va aparte, no pegado al numero"
+
+
+# ── Tiles ────────────────────────────────────────────────────────────────────
+
+@sin_node
+def test_un_tile_sin_periodo_anterior_no_finge_un_delta(tmp_path):
+    """La primera corrida no tiene contra que comparar. Eso no es 0%."""
+    r = _correr(
+        "console.log(JSON.stringify(SC.tiles([{id:'x', etiqueta:'Gasto',"
+        " valor:100, formato:'moneda', delta_periodo_anterior:null}],"
+        " 'oscuro')));", tmp_path)
+    assert "sin período anterior" in r
+    assert "0,00" not in r.split("delta")[-1]
+
+
+@sin_node
+def test_un_tile_sin_valor_dice_sin_datos(tmp_path):
+    r = _correr(
+        "console.log(JSON.stringify(SC.tiles([{id:'x', etiqueta:'CPL',"
+        " valor:null, formato:'moneda', delta_periodo_anterior:null}],"
+        " 'oscuro')));", tmp_path)
+    assert "sin datos" in r
+
+
+@sin_node
+def test_el_tile_escapa_la_etiqueta(tmp_path):
+    r = _correr(
+        "console.log(JSON.stringify(SC.tiles([{id:'x',"
+        " etiqueta:'<script>alert(1)</script>', valor:1, formato:'numero',"
+        " delta_periodo_anterior:null}], 'oscuro')));", tmp_path)
+    assert "<script>" not in r
+
+
+@sin_node
+def test_en_un_costo_subir_es_malo(tmp_path):
+    """En cpl y costo_demo, subir no es una buena noticia. El sentido lo trae
+    el tile, no se adivina del signo."""
+    r = _correr(
+        "const sube = {valor:10, formato:'moneda', delta_periodo_anterior:2};"
+        "console.log(JSON.stringify(["
+        "  SC.tiles([Object.assign({id:'cpl', etiqueta:'CPL', mejor:'bajo'},"
+        "    sube)], 'oscuro'),"
+        "  SC.tiles([Object.assign({id:'leads', etiqueta:'Leads', mejor:'alto'},"
+        "    sube)], 'oscuro')]));", tmp_path)
+    assert 'data-animo="malo"' in r[0]
+    assert 'data-animo="bueno"' in r[1]
+
+
+@sin_node
+def test_el_delta_no_depende_solo_del_color(tmp_path):
+    """Un signo que solo se distingue por color no se distingue."""
+    r = _correr(
+        "console.log(JSON.stringify(SC.tiles([{id:'x', etiqueta:'Gasto',"
+        " valor:100, formato:'moneda', delta_periodo_anterior:5,"
+        " mejor:'alto'}], 'oscuro')));", tmp_path)
+    assert "<svg" in r, "falta el icono de flecha"
+    assert 'data-signo="sube"' in r
+
+
+# ── Embudo ───────────────────────────────────────────────────────────────────
+
+@sin_node
+def test_el_embudo_dibuja_una_fila_por_etapa(tmp_path):
+    r = _correr(
+        "console.log(JSON.stringify(SC.embudo(["
+        " {clave:'impresiones', etiqueta:'Impresiones', valor:44900,"
+        "  fuente:'meta_insights'},"
+        " {clave:'clics', etiqueta:'Clics', valor:2000, fuente:'meta_insights'},"
+        " {clave:'leads', etiqueta:'Leads', valor:338, fuente:'crm'}],"
+        " 'oscuro')));", tmp_path)
+    assert r.count("<rect") >= 3
+    assert "44.900" in r and "2.000" in r and "338" in r
+
+
+@sin_node
+def test_el_embudo_muestra_la_caida_entre_etapas(tmp_path):
+    r = _correr(
+        "console.log(JSON.stringify(SC.embudo(["
+        " {clave:'a', etiqueta:'A', valor:100, fuente:'crm'},"
+        " {clave:'b', etiqueta:'B', valor:25, fuente:'crm'}], 'oscuro')));",
+        tmp_path)
+    assert "25,0%" in r
+
+
+@sin_node
+def test_el_embudo_distingue_meta_del_crm(tmp_path):
+    """Las tres primeras etapas las tiene cualquier reporte de ads. Las seis
+    siguientes son lo que solo tenemos nosotros, y eso se ve."""
+    r = _correr(
+        "console.log(JSON.stringify(SC.embudo(["
+        " {clave:'a', etiqueta:'A', valor:10, fuente:'meta_insights'},"
+        " {clave:'b', etiqueta:'B', valor:5, fuente:'crm'}], 'oscuro')));",
+        tmp_path)
+    assert 'data-fuente="meta_insights"' in r
+    assert 'data-fuente="crm"' in r
+    assert "hasta acá llega" in r, "falta el rotulo del corte"
+
+
+@sin_node
+def test_una_etapa_en_cero_no_rompe_el_embudo(tmp_path):
+    r = _correr(
+        "console.log(JSON.stringify(SC.embudo(["
+        " {clave:'a', etiqueta:'A', valor:0, fuente:'crm'},"
+        " {clave:'b', etiqueta:'B', valor:0, fuente:'crm'}], 'oscuro')));",
+        tmp_path)
+    assert "NaN" not in r and "Infinity" not in r
+
+
+@sin_node
+def test_el_embudo_vacio_no_rompe(tmp_path):
+    r = _correr("console.log(JSON.stringify(SC.embudo([], 'oscuro')));",
+                tmp_path)
+    assert "Sin datos" in r
+
+
+@sin_node
+def test_una_etapa_sin_valor_no_se_dibuja_como_cero(tmp_path):
+    """Sin credenciales de Insights no hay impresiones. Eso no es cero
+    impresiones: es que no lo sabemos."""
+    r = _correr(
+        "console.log(JSON.stringify(SC.embudo(["
+        " {clave:'impresiones', etiqueta:'Impresiones', valor:null,"
+        "  fuente:'meta_insights'},"
+        " {clave:'leads', etiqueta:'Leads', valor:10, fuente:'crm'}],"
+        " 'oscuro')));", tmp_path)
+    assert "sin datos" in r
