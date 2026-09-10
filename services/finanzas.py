@@ -9,6 +9,14 @@ import logging
 import sqlite3
 from datetime import date
 
+from services.embudo import (EXCLUIDOS_DEL_FUNNEL, FUNNEL,  # noqa: F401
+                             alcanzo)
+# Alias privados: mantienen intactas las llamadas internas de este archivo
+# y sus tests. El movimiento no cambia ningun comportamiento.
+from services.embudo import costo as _costo
+from services.embudo import dividir as _dividir
+from services.embudo import normalizar_estado as _normalizar_estado  # noqa: F401
+
 logger = logging.getLogger(__name__)
 
 MONEDAS = ("USD", "UYU")
@@ -411,77 +419,10 @@ def _ingresos_por_cliente(db_path: str, movs: list[dict]) -> list[dict]:
 
 # ─── Rendimiento de la pauta ─────────────────────────────────────────────────
 
-# El embudo en orden, con el vocabulario nuevo de ETAPAS_PRECLIENTE /
-# ETAPAS_CLIENTE (database.py). `no_interesa`, `en_espera` y `rechazo` NO
-# están: son salidas o pausas, no etapas.
-#
-# `no_interesa` es "nunca enganchó". `en_espera` es "frenado por el cliente,
-# sin cerrar" y `rechazo` es "dijo que no después de haber avanzado" — ninguno
-# de los dos dice hasta dónde llegó el lead, eso ya lo dicen sus eventos
-# anteriores. Meterlos en la lista ordenada haría que un lead rechazado
-# figurara más avanzado que uno en `presupuesto_enviado`, que es al revés de
-# lo que pasó: un lead que se cayó ahí igual pasó por lo que haya pasado antes.
-FUNNEL = ["sin_contactar", "interesado", "contactado",
-          "demo_agendada", "demo_1", "demo_2", "demo_3",
-          "presupuesto_enviado", "follow_up_1", "follow_up_2", "acepto",
-          "cerrado", "en_desarrollo", "finalizado"]
-
-# Exclusiones explícitas y documentadas: por qué cada una no entra a FUNNEL
-# aunque forme parte de ETAPAS_PRECLIENTE / ETAPAS_CLIENTE.
-EXCLUIDOS_DEL_FUNNEL = {
-    "en_espera": "pausa del cliente, no un avance",
-    "rechazo": "salida tras haber avanzado, no una etapa",
-}
-
-
-def _normalizar_estado(estado: str) -> str:
-    """Traduce un `crm_status` viejo al vocabulario nuevo, si corresponde.
-
-    `lead_events` mezcla las dos épocas: la migración de `database.py`
-    reescribe `businesses.crm_status` pero no toca el historial de eventos,
-    así que todo lo de antes de la migración quedó con los nombres viejos
-    (`reunion_agendada`, `reunion_hecha`, `negociacion`, `cliente_cerrado`, y
-    los alias `agendo`/`firmo`) y todo lo de después ya nace con los nuevos.
-    Sin esto, `alcanzo` dejaría de contar cualquier lead viejo.
-    """
-    from database import _MAPA_ESTADOS_VIEJOS
-
-    return _MAPA_ESTADOS_VIEJOS.get(estado, estado)
-
-
-def alcanzo(eventos: set, etapa: str) -> bool:
-    """Si el lead pasó por `etapa` o por cualquiera posterior, alguna vez.
-
-    Se mira contra el historial de `lead_events`, no contra el `crm_status` de
-    hoy: un lead que llegó a demo y después se cayó a `no_interesa` figura hoy
-    como `no_interesa`, y contarlo por el estado actual lo perdería.
-
-    Los eventos se normalizan antes de comparar (ver `_normalizar_estado`),
-    porque el historial trae nombres viejos y nuevos mezclados.
-    """
-    objetivo = FUNNEL.index(etapa)
-    normalizados = {_normalizar_estado(e) for e in eventos}
-    return any(e in FUNNEL and FUNNEL.index(e) >= objetivo for e in normalizados)
-
-
-def _dividir(numerador: float, denominador: float):
-    """División simple, o None si el denominador es cero."""
-    if not denominador:
-        return None
-    return round(numerador / denominador, 2)
-
-
-def _costo(inversion: float, cantidad: float):
-    """Costo unitario, o None si no hay de qué dividir.
-
-    Sin `cantidad` la división no está definida: un mes sin ventas no tiene un
-    costo por venta de cero, no tiene costo por venta — la planilla mostraba
-    #DIV/0! y esa era la lectura correcta. Sin `inversión` tampoco: no hubo
-    campaña que costear, así que no es un costo de cero.
-    """
-    if not inversion:
-        return None
-    return _dividir(inversion, cantidad)
+# El embudo (FUNNEL, alcanzo, _dividir, _costo) se mudo a
+# services/embudo.py el 10/9/2026: el modulo de marketing cuenta las mismas
+# etapas y dos definiciones darian dos numeros distintos para la misma
+# pregunta en dos paneles del mismo CRM. Se importa arriba.
 
 
 def _fila_pauta(periodo, inversion, leads, calificados, demos, ventas, ingresos):
