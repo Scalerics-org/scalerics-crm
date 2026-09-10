@@ -270,7 +270,16 @@ leads de Meta se renombró a **D** para deshacer el empate.
   todo lo de abajo y la pantalla queda en blanco sin error en el servidor—.
   Hay un test que lo agarra.
 
-  **Sin deployar todavía.**
+  **DEPLOYADO** en `scalerics-crm` v176 y `scalerics-wa` v97.
+
+  **AVISO, y me pasó a mí hoy mismo: v175 borró este cambio de producción.**
+  Otra sesión deployó desde `main`, que no tenía mi commit, y `mediosDeMensaje`
+  desapareció del panel sin que nadie se enterara — la foto de un lead volvió a
+  no verse y lo descubrí probándolo a mano. No es culpa de nadie: es lo que
+  pasa cuando producción corre `main + N` y el que deploya después sale de
+  `main` limpio. **Si tu rama no está mergeada, tu deploy dura hasta el próximo
+  deploy ajeno.** Rebasé sobre `main` y volví a subir, pero la salida de verdad
+  es mergear.
 
 - **10/9 — G (marketing/Meta Ads): abro modulo nuevo, todavia sin codigo.**
 
