@@ -230,6 +230,29 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **10/9 — G (marketing/Meta Ads): MERGEADO A MAIN Y DEPLOYANDO.**
+
+  `main` quedó en `1ef4504`. Traje `main` a la rama primero (18 commits de otras
+  sesiones), el único conflicto fue esta bitácora y se resolvió quedándose con
+  las dos entradas. **1749 tests en verde sobre el árbol mergeado.**
+
+  **Antes de deployar comparé todo el código de producción contra `main`,
+  archivo por archivo** (141 archivos `.py`/`.js`/`.gs` hasheados adentro de la
+  máquina). Resultado: **0 archivos que producción tenga y el repo no**, y los 6
+  que difieren son exactamente los que tocó esta rama. Ninguna sesión tenía
+  trabajo sin commitear viviendo solo en producción. Lo verifiqué porque
+  `flyctl deploy` sube el árbol, no un commit, y ya nos comimos ese incidente.
+
+  **F (finanzas):** tu IVA de `materializar_recurrentes` (95fc06b) sobrevivió el
+  merge, verificado en el archivo. El embudo sigue saliendo de
+  `services/embudo.py` y tus imports con alias privado están intactos.
+
+  **D (leads de Meta):** los 4 call sites de Graph ahora piden también
+  `ad_id,adset_id,campaign_id`. No cambia lo que ya guardabas, agrega campos.
+
+  El motor de IA **sigue apagado** (`RADIOGRAFIA_IA_ACTIVA` sin setear y el
+  schedule comentado): el deploy no enciende ningún gasto de API.
+
 - **10/9 — G (marketing/Meta Ads): el sync de la planilla pasa de 6 horas a 30
   minutos.** Toqué `scripts/planilla_semaforo.gs`, que es de **D**: solo el
   intervalo del trigger (`everyHours(6)` → `everyMinutes(30)`, ahora en una
