@@ -1,4 +1,4 @@
-"""Conversión de moneda y aritmética de períodos.
+﻿"""Conversión de moneda y aritmética de períodos.
 
 Nada de esto toca la base ni Flask: es la parte que, si da un número mal, se
 cree. Un total de egresos equivocado en un panel financiero es peor que un
@@ -202,7 +202,7 @@ def test_dia_del_mes_se_clampea_entre_1_y_28(db, monkeypatch):
     """
     base = dict(tipo="egreso", categoria="infraestructura", monto=1.0,
                moneda="USD", tipo_cambio=None, desde="2026-09", hasta=None,
-               client_id=None)
+               client_id=None, facturado=0)
     fijos = [
         dict(base, id=1, concepto="Sin dia", dia_del_mes=None),
         dict(base, id=2, concepto="Dia cero", dia_del_mes=0),

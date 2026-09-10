@@ -256,3 +256,19 @@ def test_un_costo_sin_denominador_se_muestra_como_guion():
     """La planilla mostraba #DIV/0!. Un cero ahí sería mentira."""
     assert "function _finNum(" in HTML
     assert "return '—'" in HTML
+
+
+def test_el_modal_del_fijo_tiene_el_toggle_de_iva():
+    """El hosting y las herramientas vienen con factura todos los meses. Sin
+    el toggle, ese IVA —el más previsible que hay— no se descontaba nunca."""
+    assert 'id="fin-fijo-fact-si"' in HTML
+    assert 'id="fin-fijo-fact-no"' in HTML
+    assert "facturado: _finFijoFacturado" in HTML
+
+
+def test_el_modal_avisa_que_el_iva_del_fijo_aplica_hacia_adelante():
+    """Materializar solo inserta: prenderle el IVA a un fijo que ya corre no
+    reescribe el movimiento del mes, que ya existe. Sin este aviso el cambio
+    parece no hacer nada y alguien lo vuelve a tocar buscando el error."""
+    assert 'id="fin-fijo-iva-nota"' in HTML
+    assert "Aplica a los meses que se generen de acá en adelante" in HTML
