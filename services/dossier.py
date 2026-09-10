@@ -8,9 +8,12 @@ Cada metrica trae numerador, denominador, n e intervalo. Sin eso, un 5% sobre 20
 leads y un 5% sobre 2000 se leen igual en un grafico, y no son lo mismo.
 """
 
+import logging
 import math
 
 from database import _connect
+
+logger = logging.getLogger(__name__)
 
 # Debajo de esto, una diferencia entre dos grupos es ruido. Con 51 leads en la
 # campana de ARG, cinco puntos contra la de UY no significan nada.
@@ -206,4 +209,152 @@ def por_campana(db_path: str, desde: str, hasta: str) -> list:
 
         bloques.append({"campana": campana, "campaign_id": campaign_id,
                         "moneda": moneda, "metricas": ms})
+    return bloques
+
+
+# Las preguntas del formulario de Meta que sirven para segmentar, con su clave
+# ya normalizada. Verificadas contra los 238 leads de produccion el 10/9/2026:
+# las 191 respuestas del formulario vigente y las 47 del anterior.
+#
+# Hay DOS versiones del formulario conviviendo. Las preguntas equivalentes se
+# unifican; las que no tienen equivalente van por separado con su propio `n`.
+# Dos preguntas distintas nunca van bajo la misma etiqueta: seria sumar peras
+# con manzanas y no se notaria en el grafico.
+#
+# `full_name`, `phone_number`, `email` y el nombre del negocio quedan afuera a
+# proposito: son datos personales y ademas tienen un valor distinto por lead,
+# asi que no segmentan nada.
+PREGUNTAS = {
+    "que_busca":   ("que_es_lo_que_buscas_para_tu_negocio",
+                    "Qué busca para su negocio"),
+    "presupuesto": ("contas_con_un_presupuesto_para_este_proyecto",
+                    "Presupuesto declarado"),
+    "objetivo":    ("cual_es_tu_objetivo_para_este_ano",
+                    "Objetivo del año"),
+    "objetivo_v2": ("cual_es_el_objetivo_que_tenes_en_este_2026",
+                    "Objetivo del año (formulario anterior)"),
+    "establecido": ("tenes_una_marca_negocio_establecido_o_es_un_proyecto_a_lanzar",
+                    "Negocio establecido o a lanzar"),
+    "ciudad":      ("city", "Ciudad"),
+}
+
+_POR_CLAVE = {clave: pregunta for pregunta, (clave, _) in PREGUNTAS.items()}
+
+# La herramienta de prueba de formularios de Meta manda respuestas con este
+# prefijo. Hay varias en la base de produccion y aparecian como un valor
+# declarado mas en cada segmento, con n=1 — ruido que ensucia el panel y que la
+# IA podria levantar como si fuera un hallazgo.
+_PREFIJO_LEAD_DE_PRUEBA = "<test lead:"
+
+
+def normalizar_clave(clave: str) -> str:
+    """Una clave de form_data comparable.
+
+    Se baja a minusculas, se sacan los acentos y se colapsa todo lo que no sea
+    alfanumerico. Asi `¿Qué es lo que buscás para tu negocio?` y cualquier
+    variante de puntuacion caen en la misma clave.
+    """
+    import re
+    import unicodedata
+
+    limpio = unicodedata.normalize("NFKD", (clave or "").lower())
+    limpio = "".join(c for c in limpio if not unicodedata.combining(c))
+    return re.sub(r"[^a-z0-9]+", "_", limpio).strip("_")
+
+
+def _leer_formularios(db_path: str, desde: str, hasta: str):
+    """(lead_id, {clave normalizada: valor}) de cada lead del periodo."""
+    import json as _json
+
+    conn = _connect(db_path)
+    try:
+        filas = conn.execute(
+            "SELECT id, form_data FROM businesses WHERE source = 'meta' "
+            "AND substr(scraped_at, 1, 10) BETWEEN ? AND ? "
+            "AND form_data IS NOT NULL AND form_data != ''",
+            (desde, hasta)).fetchall()
+    finally:
+        conn.close()
+
+    for fila in filas:
+        try:
+            datos = _json.loads(fila["form_data"])
+        except (ValueError, TypeError):
+            continue          # un form_data roto no puede tumbar el dossier
+        if isinstance(datos, dict):
+            yield fila["id"], {normalizar_clave(k): v for k, v in datos.items()}
+
+
+def claves_no_mapeadas(db_path: str, desde: str, hasta: str) -> dict:
+    """Claves del formulario que no estan en PREGUNTAS, con cuantas veces salen.
+
+    Existe porque si Meta cambia la redaccion de una pregunta, su segmento se
+    caeria a cero y el panel simplemente no lo mostraria: un dato que
+    desaparece sin ruido es peor que un error. Esto deja registro.
+    """
+    _IGNORADAS = {"full_name", "phone_number", "email", "como_se_llama_tu_negocio",
+                  "perfil_de_instagram_o_sitio_web_del_mismo_si_corresponde"}
+    sueltas = {}
+    for _lead_id, datos in _leer_formularios(db_path, desde, hasta):
+        for clave in datos:
+            if clave in _POR_CLAVE or clave in _IGNORADAS:
+                continue
+            sueltas[clave] = sueltas.get(clave, 0) + 1
+    if sueltas:
+        logger.warning(f"form_data: claves sin mapear en PREGUNTAS: {sueltas}")
+    return sueltas
+
+
+def por_segmento(db_path: str, desde: str, hasta: str) -> list:
+    """Tasas de avance por lo que el lead declaro en el formulario.
+
+    Contesta la pregunta que ningun reporte contesta hoy: los que declararon
+    mas de USD 1.000, ¿avanzan mas que los que dijeron "aun no lo se"?
+    """
+    from services.embudo import alcanzo
+
+    conn = _connect(db_path)
+    try:
+        eventos_filas = conn.execute(
+            "SELECT lead_id, new_status FROM lead_events").fetchall()
+    finally:
+        conn.close()
+
+    eventos = {}
+    for fila in eventos_filas:
+        eventos.setdefault(fila["lead_id"], set()).add(fila["new_status"])
+
+    # {pregunta: {valor declarado: [lead_id, ...]}}
+    grupos = {}
+    for lead_id, datos in _leer_formularios(db_path, desde, hasta):
+        for clave, valor in datos.items():
+            pregunta = _POR_CLAVE.get(clave)
+            if not pregunta:
+                continue
+            valor = str(valor).strip()
+            if not valor or valor.startswith(_PREFIJO_LEAD_DE_PRUEBA):
+                continue
+            grupos.setdefault(pregunta, {}).setdefault(valor, []).append(lead_id)
+
+    bloques = []
+    for pregunta in sorted(grupos):
+        valores = []
+        for declarado, ids in sorted(grupos[pregunta].items(),
+                                     key=lambda kv: (-len(kv[1]), kv[0])):
+            n = len(ids)
+            pref = f"segmento.{pregunta}.{_slug(declarado)}"
+            ms = []
+            for clave, etapa, etiqueta in _ETAPAS:
+                exitos = sum(1 for i in ids if alcanzo(eventos.get(i, set()), etapa))
+                ms.append(proporcion(
+                    f"{pref}.{_SUFIJO_TASA[clave]}",
+                    f"Tasa de {etiqueta.lower()} — {declarado}",
+                    exitos, n, "crm"))
+            valores.append({"valor_declarado": declarado, "n": n, "metricas": ms})
+        bloques.append({
+            "pregunta": pregunta,
+            "etiqueta": PREGUNTAS[pregunta][1],
+            "n": sum(v["n"] for v in valores),
+            "valores": valores,
+        })
     return bloques
