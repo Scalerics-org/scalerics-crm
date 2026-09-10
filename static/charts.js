@@ -292,6 +292,213 @@
            piezas.join('') + '</svg>';
   };
 
+  // ── Series temporales ─────────────────────────────────────────────────────
+  //
+  // Un solo eje Y, siempre. Superponer dos escalas deja elegir donde se cruzan
+  // las lineas, o sea que se puede fabricar cualquier correlacion moviendo un
+  // eje. Dos medidas de escalas distintas van como dos paneles apilados que
+  // comparten el eje de tiempo: se lee igual de rapido y no engana.
+
+  var _M = { arriba: 26, derecha: 12, abajo: 26, izquierda: 52 };
+
+  SC.serie = function (puntos, opciones, tema) {
+    opciones = opciones || {};
+    if (!puntos || !puntos.length) {
+      return '<div class="sc-vacio">Sin datos para «' +
+             SC.esc(opciones.etiqueta || '') + '»</div>';
+    }
+    var tinta = SC.PALETA.tinta[tema];
+    var mudo = SC.PALETA.mudo[tema];
+    var grilla = SC.PALETA.grilla[tema];
+    var color = opciones.color || SC.PALETA[tema][0];
+    var fondo = SC.PALETA.fondo[tema];
+
+    var ancho = opciones.ancho || 640;
+    var alto = opciones.alto || 190;
+    var x0 = _M.izquierda, x1 = ancho - _M.derecha;
+    var y0 = _M.arriba, y1 = alto - _M.abajo;
+
+    var valores = puntos.filter(function (p) {
+      return p.y !== null && p.y !== undefined;
+    }).map(function (p) { return p.y; });
+
+    var max = valores.length ? Math.max.apply(null, valores) : 0;
+    var cortes = SC.ticks(0, max || 1, 4);
+    var ey = SC.escalaLineal([0, cortes[cortes.length - 1]], [y1, y0]);
+    var paso = puntos.length > 1 ? (x1 - x0) / (puntos.length - 1) : 0;
+    var ex = function (i) { return puntos.length > 1 ? x0 + i * paso : (x0 + x1) / 2; };
+
+    var piezas = [];
+
+    // Grilla y eje Y: recesivos. Un solo eje, y el test lo verifica.
+    piezas.push('<g class="sc-eje-y">' + cortes.map(function (t) {
+      var y = ey(t);
+      return '<line x1="' + x0 + '" y1="' + y.toFixed(1) + '" x2="' + x1 +
+             '" y2="' + y.toFixed(1) + '" stroke="' + grilla +
+             '" stroke-width="1"/>' +
+             '<text x="' + (x0 - 8) + '" y="' + (y + 4).toFixed(1) +
+             '" text-anchor="end" font-size="10" fill="' + mudo + '">' +
+             SC.esc(SC.fmt(t, opciones.formato)) + '</text>';
+    }).join('') + '</g>');
+
+    // Eje X: no todas las etiquetas, o se amontonan.
+    var cada = Math.max(1, Math.ceil(puntos.length / 8));
+    piezas.push('<g class="sc-eje-x">' + puntos.map(function (p, i) {
+      if (i % cada) return '';
+      return '<text x="' + ex(i).toFixed(1) + '" y="' + (alto - 8) +
+             '" text-anchor="middle" font-size="10" fill="' + mudo + '">' +
+             SC.esc(p.x) + '</text>';
+    }).join('') + '</g>');
+
+    // La linea, cortada en cada hueco. Unir por arriba de un null inventaria
+    // un dato que no hay.
+    var tramo = [];
+    function cerrar() {
+      if (tramo.length > 1) {
+        piezas.push('<path class="sc-linea" d="M' + tramo.join(' L') +
+                    '" fill="none" stroke="' + color +
+                    '" stroke-width="2" stroke-linecap="round" ' +
+                    'stroke-linejoin="round"/>');
+      } else if (tramo.length === 1) {
+        // Un punto suelto entre dos huecos: igual se ve.
+        piezas.push('<path class="sc-linea" d="M' + tramo[0] + ' L' +
+                    tramo[0] + '" fill="none" stroke="' + color +
+                    '" stroke-width="2" stroke-linecap="round"/>');
+      }
+      tramo = [];
+    }
+    puntos.forEach(function (p, i) {
+      if (p.y === null || p.y === undefined) { cerrar(); return; }
+      tramo.push(ex(i).toFixed(1) + ',' + ey(p.y).toFixed(1));
+    });
+    cerrar();
+
+    // Marcadores y franja de captura: el area sensible es toda la columna, no
+    // el punto, porque un marcador de 8px es imposible de apuntar.
+    puntos.forEach(function (p, i) {
+      if (p.y === null || p.y === undefined) return;
+      var cx = ex(i), cy = ey(p.y);
+      piezas.push('<circle cx="' + cx.toFixed(1) + '" cy="' + cy.toFixed(1) +
+                  '" r="4" fill="' + color + '" stroke="' + fondo +
+                  '" stroke-width="2"/>');
+    });
+    puntos.forEach(function (p, i) {
+      var cx = ex(i);
+      var w = paso || (x1 - x0);
+      piezas.push('<rect class="sc-hit" x="' + (cx - w / 2).toFixed(1) +
+                  '" y="' + y0 + '" width="' + w.toFixed(1) + '" height="' +
+                  (y1 - y0) + '" fill="transparent"><title>' + SC.esc(p.x) +
+                  ' · ' + SC.esc(SC.fmt(p.y, opciones.formato)) +
+                  '</title></rect>');
+    });
+
+    return '<div class="sc-panel-serie">' +
+           '<div class="sc-titulo" style="color:' + tinta + '">' +
+           SC.esc(opciones.etiqueta || '') + '</div>' +
+           '<svg viewBox="0 0 ' + ancho + ' ' + alto + '" width="100%" ' +
+           'height="' + alto + '" role="img" aria-label="' +
+           SC.esc(opciones.etiqueta || '') + '">' + piezas.join('') +
+           '</svg></div>';
+  };
+
+  SC.parApilado = function (a, b, tema) {
+    return '<div class="sc-par">' +
+           SC.serie(a.puntos, a, tema) +
+           SC.serie(b.puntos, b, tema) + '</div>';
+  };
+
+  // ── Barras con intervalo de confianza ─────────────────────────────────────
+  //
+  // El grafico que impide decidir sobre ruido. El `n` va SIEMPRE como etiqueta
+  // directa, no solo cuando la muestra es chica: es lo que deja comparar dos
+  // barras sin que el largo mienta.
+
+  SC.barrasConIC = function (filas, opciones, tema) {
+    opciones = opciones || {};
+    if (!filas || !filas.length) {
+      return '<div class="sc-vacio">Sin datos</div>';
+    }
+    var tinta = SC.PALETA.tinta[tema];
+    var mudo = SC.PALETA.mudo[tema];
+    var fondo = SC.PALETA.fondo[tema];
+
+    var conValor = filas.filter(function (f) {
+      return f.metrica && f.metrica.valor !== null &&
+             f.metrica.valor !== undefined;
+    });
+    var max = conValor.length ? Math.max.apply(null, conValor.map(function (f) {
+      // El tope contempla el extremo del intervalo, no solo el valor: si no,
+      // el bigote se sale del area.
+      var ic = f.metrica.ic95 || [];
+      return Math.max(f.metrica.valor, ic[1] || 0);
+    })) : 1;
+
+    var anchoEtiqueta = opciones.anchoEtiqueta || 190;
+    var anchoBarra = 300;
+    var anchoValor = 150;
+    var ancho = anchoEtiqueta + anchoBarra + anchoValor;
+    var altoFila = 30, gap = 2;
+    var alto = filas.length * (altoFila + gap) + 8;
+    var ex = SC.escalaLineal([0, max], [0, anchoBarra]);
+
+    var piezas = filas.map(function (f, i) {
+      var y = i * (altoFila + gap) + 4;
+      var m = f.metrica || {};
+      var color = f.campana
+        ? SC.colorDeCampana(f.campana, i, tema)
+        : (SC.PALETA[tema][0]);
+
+      var out = '<text x="0" y="' + (y + 19) + '" font-size="12" fill="' +
+                tinta + '">' + SC.esc(f.etiqueta) + '</text>';
+
+      if (m.valor === null || m.valor === undefined) {
+        out += '<text x="' + (anchoEtiqueta + 4) + '" y="' + (y + 19) +
+               '" font-size="11" fill="' + mudo + '">sin datos</text>';
+        return out;
+      }
+
+      var w = Math.max(2, ex(m.valor));
+      out += '<rect x="' + anchoEtiqueta + '" y="' + (y + 6) + '" width="' +
+             w.toFixed(1) + '" height="' + (altoFila - 12) +
+             '" rx="4" fill="' + color + '"><title>' + SC.esc(f.etiqueta) +
+             ': ' + SC.esc(SC.fmt(m.valor, m.formato)) + '</title></rect>';
+
+      // El intervalo, con anillo del color de la superficie para que se lea
+      // por encima de la barra.
+      if (m.ic95 && m.ic95.length === 2) {
+        var xa = anchoEtiqueta + ex(m.ic95[0]);
+        var xb = anchoEtiqueta + ex(m.ic95[1]);
+        var cy = y + altoFila / 2;
+        out += '<g class="sc-ic" stroke="' + tinta + '" stroke-width="1.5" ' +
+               'opacity="0.75">' +
+               '<line x1="' + xa.toFixed(1) + '" y1="' + cy + '" x2="' +
+               xb.toFixed(1) + '" y2="' + cy + '" stroke="' + fondo +
+               '" stroke-width="4"/>' +
+               '<line x1="' + xa.toFixed(1) + '" y1="' + cy + '" x2="' +
+               xb.toFixed(1) + '" y2="' + cy + '"/>' +
+               '<line x1="' + xa.toFixed(1) + '" y1="' + (cy - 4) + '" x2="' +
+               xa.toFixed(1) + '" y2="' + (cy + 4) + '"/>' +
+               '<line x1="' + xb.toFixed(1) + '" y1="' + (cy - 4) + '" x2="' +
+               xb.toFixed(1) + '" y2="' + (cy + 4) + '"/></g>';
+      }
+
+      var nota = 'n=' + (m.n === null || m.n === undefined ? '?' : m.n);
+      if (m.muestra_chica) nota += ' · muestra chica';
+      out += '<text x="' + (anchoEtiqueta + anchoBarra + 8) + '" y="' +
+             (y + 19) + '" font-size="12" fill="' + tinta + '">' +
+             SC.esc(SC.fmt(m.valor, m.formato)) + '</text>' +
+             '<text x="' + (anchoEtiqueta + anchoBarra + 74) + '" y="' +
+             (y + 19) + '" font-size="10" fill="' + mudo + '">' +
+             SC.esc(nota) + '</text>';
+      return out;
+    }).join('');
+
+    return '<svg class="sc-barras" viewBox="0 0 ' + ancho + ' ' + alto +
+           '" width="100%" height="' + alto + '" role="img" aria-label="' +
+           SC.esc(opciones.etiqueta || 'Comparación') + '">' + piezas +
+           '</svg>';
+  };
+
   SC.esc = function (t) {
     return String(t === null || t === undefined ? '' : t)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
