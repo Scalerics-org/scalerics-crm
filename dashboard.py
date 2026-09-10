@@ -245,6 +245,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 <title>Scalerics — CRM</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/lucide@0.511.0/dist/umd/lucide.min.js"></script>
+<script src="/static/charts.js"></script>
 <style>
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:100vh;display:flex}
@@ -1234,6 +1235,43 @@ body.light .mobile-header-title{color:#0f172a}
 .mas-sheet-icon{width:22px;height:22px;stroke:#64748b;stroke-width:1.8;fill:none;flex-shrink:0}
 .mas-sheet-label{font-size:.82rem;font-weight:600;color:#e2e8f0}
 /* Mobile FAB */
+/* ── Panel de Marketing ─────────────────────────────────────────────────── */
+.sc-filtros{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:22px}
+.sc-filtro{display:flex;flex-direction:column;gap:4px}
+.sc-filtro label{font-size:.7rem;color:#64748b;font-weight:600;letter-spacing:.02em}
+.sc-filtro input,.sc-filtro select{background:#0f1117;border:1px solid #1e293b;border-radius:8px;padding:7px 10px;color:#e2e8f0;font-size:.82rem;font-family:'Inter',sans-serif}
+body.light .sc-filtro input,body.light .sc-filtro select{background:#fff;border-color:#e2e8f0;color:#0f172a}
+.sc-tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:26px}
+.sc-tile{background:#111827;border:1px solid #1e293b;border-radius:12px;padding:14px 16px}
+body.light .sc-tile{background:#fff;border-color:#e2e8f0}
+.sc-tile-label{font-size:.7rem;font-weight:600;letter-spacing:.02em;margin-bottom:6px}
+.sc-tile-valor{font-size:1.5rem;font-weight:700;line-height:1.1;font-variant-numeric:tabular-nums}
+.sc-tile-delta{display:inline-flex;align-items:center;gap:4px;font-size:.72rem;margin-top:6px;color:#64748b}
+.sc-tile-delta[data-animo="bueno"]{color:#22c55e}
+.sc-tile-delta[data-animo="malo"]{color:#f87171}
+body.light .sc-tile-delta[data-animo="bueno"]{color:#15803d}
+body.light .sc-tile-delta[data-animo="malo"]{color:#b91c1c}
+.sc-bloque{background:#111827;border:1px solid #1e293b;border-radius:14px;padding:18px 20px;margin-bottom:18px}
+body.light .sc-bloque{background:#fff;border-color:#e2e8f0}
+.sc-bloque>h3{font-size:.92rem;font-weight:700;color:#e2e8f0;margin:0 0 4px}
+body.light .sc-bloque>h3{color:#0f172a}
+.sc-bloque>.sc-sub{font-size:.74rem;color:#64748b;margin-bottom:14px;line-height:1.5}
+.sc-par{display:grid;grid-template-columns:1fr;gap:6px}
+.sc-titulo{font-size:.78rem;font-weight:600;margin-bottom:2px}
+.sc-vacio{color:#475569;font-size:.8rem;padding:14px 0}
+.sc-aviso{display:flex;gap:9px;align-items:flex-start;background:rgba(245,158,11,.09);border:1px solid rgba(245,158,11,.28);border-radius:10px;padding:11px 13px;font-size:.76rem;color:#fbbf24;line-height:1.55;margin-bottom:14px}
+body.light .sc-aviso{background:#fffbeb;border-color:#fcd34d;color:#92400e}
+.sc-aviso svg{flex-shrink:0;margin-top:1px}
+.sc-hit{cursor:crosshair}
+.sc-tabla-wrap{overflow-x:auto}
+.sc-tabla{width:100%;border-collapse:collapse;font-size:.76rem}
+.sc-tabla th,.sc-tabla td{text-align:left;padding:6px 10px;border-bottom:1px solid #1e293b;white-space:nowrap}
+body.light .sc-tabla th,body.light .sc-tabla td{border-color:#e2e8f0}
+.sc-tabla th{color:#64748b;font-weight:600}
+.sc-tabla td{color:#e2e8f0;font-variant-numeric:tabular-nums}
+body.light .sc-tabla td{color:#0f172a}
+@media(max-width:1200px){.sc-tiles{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:560px){.sc-tiles{grid-template-columns:1fr}}
 .mobile-fab{display:none;position:fixed;bottom:88px;right:20px;width:52px;height:52px;border-radius:50%;background:#0088cc;border:none;color:#fff;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(0,136,204,.4);cursor:pointer;z-index:250;font-size:1.4rem;font-weight:300;line-height:1}
 @media(max-width:768px){
   .mobile-bottom-nav{display:flex;position:fixed;bottom:16px;left:16px;right:16px;background:rgba(17,24,39,.92);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.08);border-radius:20px;padding:8px 6px;z-index:300;justify-content:space-around;box-shadow:0 8px 32px rgba(0,0,0,.5)}
@@ -1342,6 +1380,7 @@ body.light .fin-kpi-label,body.light .fin-kpi-var,body.light .fin-card-title,bod
   <div class="nav-item" id="nav-cal" onclick="showPanel('cal')"><i data-lucide="calendar" class="nav-icon"></i> Calendario</div>
   <div class="nav-item" id="nav-finanzas" onclick="showPanel('finanzas')"><i data-lucide="wallet" class="nav-icon"></i> Finanzas</div>
   <div class="nav-item" id="nav-metrics" onclick="showPanel('metrics')"><i data-lucide="bar-chart-2" class="nav-icon"></i> Métricas</div>
+  <div class="nav-item" id="nav-marketing" onclick="showPanel('marketing')"><i data-lucide="target" class="nav-icon"></i> Marketing</div>
   <div class="nav-item" id="nav-activity" onclick="showPanel('activity')"><i data-lucide="clock" class="nav-icon"></i> Actividad</div>
   <div class="nav-item" id="nav-sdr" onclick="showPanel('sdr')"><i data-lucide="phone-call" class="nav-icon"></i> SDR</div>
   </div>
@@ -1762,6 +1801,69 @@ body.light .fin-kpi-label,body.light .fin-kpi-var,body.light .fin-card-title,bod
       </div>
     </div>
   </div>
+  <div id="marketing-panel" class="panel">
+    <div class="page-header">
+      <div>
+        <h1>Marketing</h1>
+        <div class="page-date" id="mk-fecha"></div>
+      </div>
+      <button class="export-btn" onclick="loadMarketing()">&#8635; Actualizar</button>
+    </div>
+
+    <div class="sc-filtros">
+      <div class="sc-filtro"><label for="mk-desde">Desde</label>
+        <input type="date" id="mk-desde" onchange="loadMarketing()"></div>
+      <div class="sc-filtro"><label for="mk-hasta">Hasta</label>
+        <input type="date" id="mk-hasta" onchange="loadMarketing()"></div>
+      <div class="sc-filtro"><label for="mk-campana">Campaña</label>
+        <select id="mk-campana" onchange="_mkPintar()"><option value="">Todas</option></select></div>
+    </div>
+
+    <div id="mk-estado" class="sc-vacio">Cargando…</div>
+
+    <div id="mk-cuerpo" style="display:none">
+      <div id="mk-avisos"></div>
+      <div id="mk-tiles"></div>
+
+      <div class="sc-bloque">
+        <h3>Embudo</h3>
+        <div class="sc-sub">De la impresión al cierre. Las tres primeras etapas las tiene cualquier reporte de ads; las que siguen salen del CRM.</div>
+        <div id="mk-embudo"></div>
+      </div>
+
+      <div class="sc-bloque">
+        <h3>Semana a semana</h3>
+        <div class="sc-sub">Grano semanal a propósito: con poco más de un lead por día, un gráfico diario son picos y ceros.</div>
+        <div id="mk-series"></div>
+      </div>
+
+      <div class="sc-bloque">
+        <h3>Por campaña</h3>
+        <div class="sc-sub">La línea sobre cada barra es el intervalo de confianza. Cuando dos se superponen, la diferencia entre esas campañas no significa nada.</div>
+        <div id="mk-campanas"></div>
+      </div>
+
+      <div class="sc-bloque">
+        <h3>Por lo que el lead declaró</h3>
+        <div class="sc-sub">Respuestas del propio formulario de Meta: qué busca, cuánto presupuesto dice tener y cuál es su objetivo.</div>
+        <div id="mk-segmentos"></div>
+      </div>
+
+      <div class="sc-bloque">
+        <h3>Secuencia de recordatorios</h3>
+        <div class="sc-sub">Cuántos envíos fueron seguidos de un cambio de estado dentro de los 7 días. Es atribución, no causalidad: mide movimiento registrado en el CRM.</div>
+        <div id="mk-recordatorios"></div>
+      </div>
+
+      <div class="sc-bloque">
+        <h3>Los números crudos</h3>
+        <div class="sc-sub">Cada métrica del dossier con su numerador, denominador y muestra. Es lo que permite auditar cualquier número de arriba.</div>
+        <details><summary style="cursor:pointer;color:#0088cc;font-size:.8rem">Ver la tabla</summary>
+          <div class="sc-tabla-wrap" id="mk-tabla" style="margin-top:12px"></div></details>
+      </div>
+    </div>
+  </div>
+
   <div id="sdr-panel" class="panel">
     <div class="page-header">
       <div>
@@ -2241,6 +2343,7 @@ function showPanel(name) {
   if (name === 'demos') cargarDemos();
   if (name === 'clientes') loadClientesPanel();
   if (name === 'meta') loadMetaPanel();
+  if (name === 'marketing') loadMarketing();
   if (name === 'wa' && !waLoaded) loadWaLeads();
   if (name === 'wa') loadWaTemplates();
   if (name === 'cal' && !calLoaded) { calLoaded = true; renderCalendar(); }
@@ -7133,6 +7236,246 @@ async function loadMetrics() {
     const p = document.getElementById('metrics-panel');
     if (p) p.insertAdjacentHTML('afterbegin','<p style="color:#f87171;margin-bottom:16px">Error cargando métricas.</p>');
   }
+}
+
+// ========== Panel de Marketing ==========
+//
+// Solo pide, elige y pinta. Ningun numero se calcula aca: todos vienen del
+// dossier, que ya trae numerador, denominador, n e intervalo. Si algo hay que
+// recalcular, se recalcula en services/dossier.py y no en el navegador.
+
+let _mkDossier = null;
+
+function _mkTema() {
+  return document.body.classList.contains('light') ? 'claro' : 'oscuro';
+}
+
+function _mkMetrica(bloque, sufijo) {
+  if (!bloque || !bloque.metricas) return null;
+  for (const m of bloque.metricas) {
+    if (m.id.endsWith(sufijo)) return m;
+  }
+  return null;
+}
+
+function _mkBloque(campana) {
+  if (!_mkDossier) return null;
+  return (_mkDossier.campanas || []).find(b => b.campana === campana) || null;
+}
+
+async function loadMarketing() {
+  const estado = document.getElementById('mk-estado');
+  const cuerpo = document.getElementById('mk-cuerpo');
+  estado.style.display = '';
+  estado.textContent = 'Cargando…';
+  cuerpo.style.display = 'none';
+
+  const desde = document.getElementById('mk-desde').value;
+  const hasta = document.getElementById('mk-hasta').value;
+  const q = [];
+  if (desde) q.push('desde=' + desde);
+  if (hasta) q.push('hasta=' + hasta);
+
+  try {
+    const r = await fetch('/api/marketing/dossier' + (q.length ? '?' + q.join('&') : ''));
+    if (!r.ok) {
+      estado.textContent = r.status === 403
+        ? 'No tenés acceso al panel de Marketing. Pediselo a un admin.'
+        : 'No se pudo cargar el dossier (error ' + r.status + ').';
+      return;
+    }
+    _mkDossier = await r.json();
+  } catch (e) {
+    estado.textContent = 'No se pudo cargar el dossier: ' + e.message;
+    return;
+  }
+
+  // Las fechas del filtro reflejan lo que el backend resolvio, asi que la
+  // primera carga (sin parametros) deja ver cual fue el periodo por defecto.
+  const p = _mkDossier.periodo || {};
+  if (!desde && p.desde) document.getElementById('mk-desde').value = p.desde;
+  if (!hasta && p.hasta) document.getElementById('mk-hasta').value = p.hasta;
+  document.getElementById('mk-fecha').textContent =
+    'Del ' + (p.desde || '?') + ' al ' + (p.hasta || '?');
+
+  // El selector de campanas se arma con lo que vino, no con una lista fija.
+  const sel = document.getElementById('mk-campana');
+  const elegida = sel.value;
+  sel.innerHTML = '<option value="">Todas</option>' +
+    (_mkDossier.campanas || [])
+      .filter(b => b.campana !== 'todas')
+      .map(b => `<option value="${esc(b.campana)}">${esc(b.campana)}</option>`)
+      .join('');
+  sel.value = elegida;
+
+  estado.style.display = 'none';
+  cuerpo.style.display = '';
+  _mkPintar();
+}
+
+function _mkAvisos() {
+  const avisos = [];
+  const todas = _mkBloque('todas');
+  const sinCampana = _mkBloque(SC.SIN_CAMPANA);
+
+  const icono = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" ' +
+    'stroke="currentColor" stroke-width="1.6" stroke-linecap="round" ' +
+    'aria-hidden="true"><path d="M8 1.5 L15 14 L1 14 Z"/><path d="M8 6 L8 9.5"/>' +
+    '<path d="M8 11.6 L8 11.7"/></svg>';
+
+  // Sin gasto sincronizado, los bloques de costo estan vacios. Decirlo, no
+  // dejar tiles en blanco que parecen un bug.
+  const gasto = _mkMetrica(todas, '.gasto');
+  if (!gasto || !gasto.valor) {
+    avisos.push(icono + '<div><b>Todavía no hay gasto de Meta sincronizado.</b> ' +
+      'Los costos —CPL, costo por demo, costo por presupuesto— van a decir «sin datos» ' +
+      'hasta que se configuren <code>META_ADS_TOKEN</code> y <code>META_AD_ACCOUNT_ID</code>. ' +
+      'Todo lo demás del panel funciona igual.</div>');
+  }
+
+  // El aviso que impide leer mal la tabla por campana: si la mayoria de los
+  // cierres cayo en (sin campana), comparar cierres entre campanas es invalido.
+  if (sinCampana && todas) {
+    const cierresSin = _mkMetrica(sinCampana, '.cierres');
+    const cierresTot = _mkMetrica(todas, '.cierres');
+    if (cierresSin && cierresTot && cierresTot.valor > 0 &&
+        cierresSin.valor / cierresTot.valor >= 0.5) {
+      avisos.push(icono + '<div><b>' + cierresSin.valor + ' de los ' +
+        cierresTot.valor + ' cierres no tienen campaña atribuida.</b> ' +
+        'La campaña vivía dentro de las notas del lead y se perdió cuando alguien ' +
+        'las editó. <b>Comparar cierres entre campañas con estos datos da una ' +
+        'conclusión falsa</b>: los leads que más se trabajaron son justamente los ' +
+        'que perdieron el origen. Las tasas de interés y de demo sí se pueden comparar.</div>');
+    }
+  }
+
+  document.getElementById('mk-avisos').innerHTML =
+    avisos.map(a => `<div class="sc-aviso">${a}</div>`).join('');
+}
+
+function _mkPintar() {
+  if (!_mkDossier) return;
+  const tema = _mkTema();
+  const elegida = document.getElementById('mk-campana').value;
+  const foco = _mkBloque(elegida || 'todas') || _mkBloque('todas');
+
+  _mkAvisos();
+
+  // ── Los ocho KPIs ──────────────────────────────────────────────────────
+  // `mejor` dice para que lado es bueno: en los costos, subir es mala noticia.
+  const kpis = [
+    ['.gasto',              'Gasto',                 'moneda',     'alto'],
+    ['.impresiones',        'Impresiones',           'numero',     'alto'],
+    ['.clics',              'Clics',                 'numero',     'alto'],
+    ['.ctr',                'CTR',                   'porcentaje', 'alto'],
+    ['.leads_crm',          'Leads',                 'numero',     'alto'],
+    ['.cpl',                'Costo por lead',        'moneda',     'bajo'],
+    ['.costo_demo',         'Costo por demo',        'moneda',     'bajo'],
+    ['.costo_presupuesto',  'Costo por presupuesto', 'moneda',     'bajo']
+  ].map(([suf, etiqueta, formato, mejor]) => {
+    const m = _mkMetrica(foco, suf) || {};
+    return { id: m.id || suf, etiqueta, formato, mejor,
+             valor: m.valor === undefined ? null : m.valor,
+             delta_periodo_anterior: m.delta_periodo_anterior };
+  });
+  document.getElementById('mk-tiles').innerHTML = SC.tiles(kpis, tema);
+
+  // ── Embudo ─────────────────────────────────────────────────────────────
+  const etapas = [
+    ['.impresiones',       'Impresiones',           'meta_insights'],
+    ['.clics',             'Clics',                 'meta_insights'],
+    ['.leads_meta',        'Leads según Meta',      'meta_insights'],
+    ['.leads_crm',         'Leads en el CRM',       'crm'],
+    ['.interesados',       'Interesados',           'crm'],
+    ['.agendadas',         'Demos agendadas',       'crm'],
+    ['.demos',             'Demos hechas',          'crm'],
+    ['.presupuestos',      'Presupuestos enviados', 'crm'],
+    ['.cierres',           'Cierres',               'crm']
+  ].map(([suf, etiqueta, fuente]) => {
+    const m = _mkMetrica(foco, suf);
+    let valor = m ? m.valor : null;
+    // Sin Insights, las tres primeras etapas valen 0 pero no sabemos nada:
+    // eso es "sin datos", no "cero impresiones".
+    if (fuente === 'meta_insights' && !valor) valor = null;
+    return { clave: suf.slice(1), etiqueta, valor, fuente };
+  });
+  document.getElementById('mk-embudo').innerHTML = SC.embudo(etapas, tema);
+
+  // ── Series semanales ───────────────────────────────────────────────────
+  const semanas = _mkDossier.serie_semanal || [];
+  const pares = [
+    [['leads_crm', 'Leads por semana', 'numero'], ['gasto', 'Gasto por semana', 'moneda']],
+    [['impresiones', 'Impresiones por semana', 'numero'], ['clics', 'Clics por semana', 'numero']],
+    [['cpl', 'Costo por lead, por semana', 'moneda'], null]
+  ];
+  document.getElementById('mk-series').innerHTML = pares.map(([a, b]) => {
+    const arma = ([clave, etiqueta, formato]) => ({
+      etiqueta, formato,
+      puntos: semanas.map(s => ({ x: s.semana, y: s[clave] === undefined ? null : s[clave] }))
+    });
+    return b ? SC.parApilado(arma(a), arma(b), tema)
+             : SC.serie(arma(a).puntos, arma(a), tema);
+  }).join('');
+
+  // ── Por campaña ────────────────────────────────────────────────────────
+  const campanas = (_mkDossier.campanas || []).filter(b => b.campana !== 'todas');
+  const porCampana = (suf, titulo) => {
+    const filas = campanas.map(b => ({
+      etiqueta: b.campana, campana: b.campana, metrica: _mkMetrica(b, suf)
+    })).filter(f => f.metrica)
+       .sort((x, y) => (y.metrica.valor || 0) - (x.metrica.valor || 0));
+    return `<div class="sc-titulo">${esc(titulo)}</div>` +
+           SC.barrasConIC(filas, { etiqueta: titulo }, tema);
+  };
+  document.getElementById('mk-campanas').innerHTML =
+    porCampana('.tasa_interes', 'Tasa de interés') +
+    porCampana('.tasa_demo', 'Tasa de demo') +
+    porCampana('.cpl', 'Costo por lead') +
+    porCampana('.costo_demo', 'Costo por demo');
+
+  // ── Segmentos declarados ───────────────────────────────────────────────
+  document.getElementById('mk-segmentos').innerHTML =
+    (_mkDossier.segmentos || []).map(b => {
+      const filas = b.valores.map(v => ({
+        etiqueta: v.valor_declarado,
+        metrica: v.metricas.find(m => m.id.endsWith('.tasa_demo'))
+      })).filter(f => f.metrica);
+      const cola = b.valores_distintos > b.valores.length
+        ? ` · ${b.valores_distintos} respuestas distintas` : '';
+      return `<div class="sc-titulo">${esc(b.etiqueta)} ` +
+             `<span style="font-weight:400;color:#64748b">(n=${b.n}${cola})</span></div>` +
+             SC.barrasConIC(filas, { etiqueta: b.etiqueta, anchoEtiqueta: 230 }, tema);
+    }).join('') || '<div class="sc-vacio">Sin respuestas de formulario en el período</div>';
+
+  // ── Recordatorios ──────────────────────────────────────────────────────
+  const recs = (_mkDossier.recordatorios || []).map(m => ({
+    etiqueta: 'Recordatorio ' + m.id.split('_').pop(), metrica: m
+  }));
+  document.getElementById('mk-recordatorios').innerHTML = recs.length
+    ? SC.barrasConIC(recs, { etiqueta: 'Recordatorios' }, tema)
+    : '<div class="sc-vacio">No se enviaron recordatorios en el período</div>';
+
+  // ── Tabla cruda ────────────────────────────────────────────────────────
+  const todasLasMetricas = [];
+  (_mkDossier.campanas || []).forEach(b => todasLasMetricas.push(...(b.metricas || [])));
+  (_mkDossier.segmentos || []).forEach(b => (b.valores || []).forEach(
+    v => todasLasMetricas.push(...(v.metricas || []))));
+  ['conciliacion', 'tiempos', 'recordatorios'].forEach(
+    k => todasLasMetricas.push(...(_mkDossier[k] || [])));
+
+  document.getElementById('mk-tabla').innerHTML =
+    '<table class="sc-tabla"><thead><tr><th>Métrica</th><th>Valor</th>' +
+    '<th>Numerador</th><th>Denominador</th><th>n</th><th>Fuente</th>' +
+    '<th>Contra el período anterior</th></tr></thead><tbody>' +
+    todasLasMetricas.map(m => {
+      const d = SC.fmtDelta(m.delta_periodo_anterior, m.formato);
+      return `<tr><td>${esc(m.etiqueta)}</td>` +
+             `<td>${esc(SC.fmt(m.valor, m.formato))}</td>` +
+             `<td>${m.numerador === null || m.numerador === undefined ? '—' : m.numerador}</td>` +
+             `<td>${m.denominador === null || m.denominador === undefined ? '—' : m.denominador}</td>` +
+             `<td>${m.n === null || m.n === undefined ? '—' : m.n}${m.muestra_chica ? ' ⚠' : ''}</td>` +
+             `<td>${esc(m.fuente)}</td><td>${esc(d.texto)}</td></tr>`;
+    }).join('') + '</tbody></table>';
 }
 
 // ========== Activity feed ==========

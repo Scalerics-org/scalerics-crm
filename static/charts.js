@@ -208,9 +208,10 @@
   // unas y otras se dibuja.
 
   var _ALTO_FILA = 34;
+  var _AIRE_CORTE = 16;   // el rotulo del corte necesita su propia franja
   var _GAP = 2;               // el spacer de 2px que pide la guia
-  var _ANCHO_ETIQUETA = 150;
-  var _ANCHO_VALOR = 92;
+  var _ANCHO_ETIQUETA = 210;
+  var _ANCHO_VALOR = 130;
 
   SC.embudo = function (etapas, tema) {
     if (!etapas || !etapas.length) {
@@ -221,21 +222,40 @@
     var azul = SC.PALETA[tema][0];
     var gris = SC.PALETA.neutro[tema];
 
-    var conValor = etapas.filter(function (e) {
-      return e.valor !== null && e.valor !== undefined;
-    });
-    var max = conValor.length
-      ? Math.max.apply(null, conValor.map(function (e) { return e.valor; }))
-      : 0;
+    // Cada bloque —lo que reporta Meta y lo que sabe el CRM— se escala contra
+    // su propio maximo. Con una sola escala lineal, 1.032.881 impresiones
+    // contra 238 leads aplastan las seis etapas del CRM a una linea de 2px: el
+    // grafico que justifica el modulo quedaba ilegible.
+    //
+    // El costo de esto es que el largo NO se puede comparar cruzando la linea
+    // punteada. Por eso el numero absoluto va escrito al lado de cada barra y
+    // el porcentaje de caida se calcula siempre contra la etapa anterior real,
+    // no contra el maximo del bloque.
+    function _maxDe(fuente) {
+      var vs = etapas.filter(function (e) {
+        return e.fuente === fuente && e.valor !== null && e.valor !== undefined;
+      }).map(function (e) { return e.valor; });
+      return vs.length ? Math.max.apply(null, vs) : 0;
+    }
+    var maxPorFuente = { meta_insights: _maxDe('meta_insights'), crm: _maxDe('crm') };
 
-    var anchoBarra = 420;
+    var anchoBarra = 640;
     var ancho = _ANCHO_ETIQUETA + anchoBarra + _ANCHO_VALOR;
     var alto = etapas.length * (_ALTO_FILA + _GAP) + 24;
 
     var piezas = [], corteDibujado = false, anterior = null;
 
+    // Donde cae el corte, para reservarle su franja y que nada se monte.
+    var iCorte = -1;
     etapas.forEach(function (e, i) {
-      var y = i * (_ALTO_FILA + _GAP) + 12;
+      if (iCorte < 0 && i > 0 && etapas[i - 1].fuente === 'meta_insights'
+          && e.fuente !== 'meta_insights') iCorte = i;
+    });
+    alto += iCorte >= 0 ? _AIRE_CORTE : 0;
+
+    etapas.forEach(function (e, i) {
+      var y = i * (_ALTO_FILA + _GAP) + 12 +
+              (iCorte >= 0 && i >= iCorte ? _AIRE_CORTE : 0);
       var esMeta = e.fuente === 'meta_insights';
       var color = esMeta ? azul : SC.PALETA[tema][2];
 
@@ -246,9 +266,9 @@
           '<line x1="0" y1="' + (y - _GAP - 3) + '" x2="' + ancho +
           '" y2="' + (y - _GAP - 3) + '" stroke="' + gris +
           '" stroke-width="1" stroke-dasharray="3 3"/>' +
-          '<text x="' + ancho + '" y="' + (y - _GAP - 7) +
-          '" text-anchor="end" font-size="10" fill="' + mudo + '">' +
-          'hasta acá llega un reporte de ads</text>');
+          '<text x="' + _ANCHO_ETIQUETA + '" y="' + (y - _GAP - 7) +
+          '" font-size="10" fill="' + mudo + '">' +
+          'hasta acá llega un reporte de ads · abajo, otra escala</text>');
         corteDibujado = true;
       }
 
@@ -261,7 +281,8 @@
         piezas.push('<text x="' + (_ANCHO_ETIQUETA + 4) + '" y="' + (y + 21) +
                     '" font-size="11" fill="' + mudo + '">sin datos</text>');
       } else {
-        var w = max > 0 ? Math.max(2, e.valor / max * anchoBarra) : 2;
+        var maxBloque = maxPorFuente[e.fuente] || 0;
+        var w = maxBloque > 0 ? Math.max(3, e.valor / maxBloque * anchoBarra) : 3;
         piezas.push(
           '<rect data-fuente="' + SC.esc(e.fuente) + '" data-clave="' +
           SC.esc(e.clave) + '" x="' + _ANCHO_ETIQUETA + '" y="' + y +
@@ -287,7 +308,7 @@
     });
 
     return '<svg class="sc-embudo" viewBox="0 0 ' + ancho + ' ' + alto +
-           '" width="100%" height="' + alto + '" role="img" ' +
+           '" style="width:100%;height:auto" role="img" ' +
            'aria-label="Embudo de campañas de Meta">' +
            piezas.join('') + '</svg>';
   };
@@ -313,7 +334,7 @@
     var color = opciones.color || SC.PALETA[tema][0];
     var fondo = SC.PALETA.fondo[tema];
 
-    var ancho = opciones.ancho || 640;
+    var ancho = opciones.ancho || 980;
     var alto = opciones.alto || 190;
     var x0 = _M.izquierda, x1 = ancho - _M.derecha;
     var y0 = _M.arriba, y1 = alto - _M.abajo;
@@ -395,8 +416,8 @@
     return '<div class="sc-panel-serie">' +
            '<div class="sc-titulo" style="color:' + tinta + '">' +
            SC.esc(opciones.etiqueta || '') + '</div>' +
-           '<svg viewBox="0 0 ' + ancho + ' ' + alto + '" width="100%" ' +
-           'height="' + alto + '" role="img" aria-label="' +
+           '<svg viewBox="0 0 ' + ancho + ' ' + alto +
+           '" style="width:100%;height:auto" role="img" aria-label="' +
            SC.esc(opciones.etiqueta || '') + '">' + piezas.join('') +
            '</svg></div>';
   };
@@ -433,9 +454,11 @@
       return Math.max(f.metrica.valor, ic[1] || 0);
     })) : 1;
 
-    var anchoEtiqueta = opciones.anchoEtiqueta || 190;
-    var anchoBarra = 300;
-    var anchoValor = 150;
+    var anchoEtiqueta = opciones.anchoEtiqueta || 250;
+    var anchoBarra = 520;
+    // El ancho de la derecha tiene que dar para el valor MAS la nota
+    // 'n=5 · muestra chica', que antes se cortaba contra el borde del viewBox.
+    var anchoValor = 260;
     var ancho = anchoEtiqueta + anchoBarra + anchoValor;
     var altoFila = 30, gap = 2;
     var alto = filas.length * (altoFila + gap) + 8;
@@ -482,19 +505,21 @@
                xb.toFixed(1) + '" y2="' + (cy + 4) + '"/></g>';
       }
 
-      var nota = 'n=' + (m.n === null || m.n === undefined ? '?' : m.n);
-      if (m.muestra_chica) nota += ' · muestra chica';
+      // Un costo no tiene `n`: su denominador es plata, no una muestra. Poner
+      // "n=?" ahi no informa nada y ensucia toda la columna.
+      var nota = (m.n === null || m.n === undefined) ? '' : 'n=' + m.n;
+      if (m.muestra_chica && m.n) nota += ' · muestra chica';
       out += '<text x="' + (anchoEtiqueta + anchoBarra + 8) + '" y="' +
              (y + 19) + '" font-size="12" fill="' + tinta + '">' +
              SC.esc(SC.fmt(m.valor, m.formato)) + '</text>' +
-             '<text x="' + (anchoEtiqueta + anchoBarra + 74) + '" y="' +
+             (nota ? '<text x="' + (anchoEtiqueta + anchoBarra + 88) + '" y="' +
              (y + 19) + '" font-size="10" fill="' + mudo + '">' +
-             SC.esc(nota) + '</text>';
+             SC.esc(nota) + '</text>' : '');
       return out;
     }).join('');
 
     return '<svg class="sc-barras" viewBox="0 0 ' + ancho + ' ' + alto +
-           '" width="100%" height="' + alto + '" role="img" aria-label="' +
+           '" style="width:100%;height:auto" role="img" aria-label="' +
            SC.esc(opciones.etiqueta || 'Comparación') + '">' + piezas +
            '</svg>';
   };
