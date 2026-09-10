@@ -1850,6 +1850,12 @@ body.light .fin-kpi-label,body.light .fin-kpi-var,body.light .fin-card-title,bod
       </div>
 
       <div class="sc-bloque">
+        <h3>La plata</h3>
+        <div class="sc-sub">Lo que Meta dice que cobró contra lo que está cargado en Finanzas. La brecha dice si la contabilidad está viendo todo el gasto de pauta.</div>
+        <div id="mk-conciliacion"></div>
+      </div>
+
+      <div class="sc-bloque">
         <h3>Secuencia de recordatorios</h3>
         <div class="sc-sub">Cuántos envíos fueron seguidos de un cambio de estado dentro de los 7 días. Es atribución, no causalidad: mide movimiento registrado en el CRM.</div>
         <div id="mk-recordatorios"></div>
@@ -7446,6 +7452,43 @@ function _mkPintar() {
              `<span style="font-weight:400;color:#64748b">(n=${b.n}${cola})</span></div>` +
              SC.barrasConIC(filas, { etiqueta: b.etiqueta, anchoEtiqueta: 230 }, tema);
     }).join('') || '<div class="sc-vacio">Sin respuestas de formulario en el período</div>';
+
+  // ── La plata: Meta contra Finanzas ─────────────────────────────────────
+  const conc = _mkDossier.conciliacion || [];
+  if (!conc.length) {
+    document.getElementById('mk-conciliacion').innerHTML =
+      '<div class="sc-vacio">Sin gasto en el período: ni sincronizado de Meta ni cargado en Finanzas.</div>';
+  } else {
+    // Los tres valores del mes vienen como métricas sueltas; se agrupan por el
+    // sufijo del id, que es el período.
+    const meses = {};
+    conc.forEach(m => {
+      const p = m.id.split('.').pop();
+      const que = m.id.split('.')[1];
+      (meses[p] = meses[p] || {})[que] = m.valor;
+    });
+    const filas = Object.keys(meses).sort().map(p => {
+      const x = meses[p];
+      const pct = x.gasto_meta ? x.brecha / x.gasto_meta : null;
+      const alerta = pct !== null && pct > 0.1;
+      return `<tr><td>${esc(p.replace('_','-'))}</td>` +
+             `<td>${esc(SC.fmt(x.gasto_meta, 'moneda'))}</td>` +
+             `<td>${esc(SC.fmt(x.gasto_cargado, 'moneda'))}</td>` +
+             `<td style="${alerta ? 'color:#f87171;font-weight:600' : ''}">` +
+             `${esc(SC.fmt(x.brecha, 'moneda'))}</td></tr>`;
+    }).join('');
+    const suma = k => conc.filter(m => m.id.split('.')[1] === k)
+                          .reduce((a, m) => a + (m.valor || 0), 0);
+    document.getElementById('mk-conciliacion').innerHTML =
+      '<div class="sc-tabla-wrap"><table class="sc-tabla"><thead><tr>' +
+      '<th>Mes</th><th>Según Meta</th><th>Cargado en Finanzas</th>' +
+      '<th>Sin registrar</th></tr></thead><tbody>' + filas +
+      `<tr style="font-weight:700"><td>Total</td>` +
+      `<td>${esc(SC.fmt(suma('gasto_meta'), 'moneda'))}</td>` +
+      `<td>${esc(SC.fmt(suma('gasto_cargado'), 'moneda'))}</td>` +
+      `<td>${esc(SC.fmt(suma('brecha'), 'moneda'))}</td></tr>` +
+      '</tbody></table></div>';
+  }
 
   // ── Recordatorios ──────────────────────────────────────────────────────
   const recs = (_mkDossier.recordatorios || []).map(m => ({
