@@ -77,6 +77,7 @@ leads de Meta se renombró a **D** para deshacer el empate.
 | C (banco LinkedIn) | el banco de posts de LinkedIn, sacarle la API de Anthropic | `services/linkedin_posts.py`, `services/linkedin_banco_semilla.py`, `routes/linkedin.py`, `scripts/render_linkedin.py`, `templates/linkedin_card.html`, `tests/test_linkedin_*` | 28/8 |
 | D (leads de Meta) | secuencias de mail por estado, estados del CRM, sync con la planilla de semáforo, detección de respuestas, rendimiento del CRM | `services/meta_reminders.py`, `services/secuencia_contactos.py`, `services/planilla_semaforo.py`, `scripts/planilla_semaforo.gs`, `routes/meta.py` | 27/8 |
 | E (pre-clientes/demos) | pipeline por etapas, responsables del cliente, registro de demos | `routes/preclientes.py`, `tests/test_preclientes.py`, `scripts/check_js.py`, y **zona compartida**: `database.py`, `dashboard.py`, `routes/leads.py` | 31/8 |
+| G (marketing/Meta Ads) | modulo nuevo de inteligencia comercial sobre Meta Ads: sync de Insights, dossier de metricas, radiografia con IA, panel con graficos | `services/meta_insights.py`, `services/radiografia.py`, `services/radiografia_ia.py`, `routes/marketing.py`, `static/charts.js`, `tests/test_radiografia*`, y **zona compartida**: `database.py`, `dashboard.py`, `routes/meta.py` | 10/9 |
 
 | F (finanzas) | la sección financiera del CRM | `services/finanzas.py`, `routes/finanzas.py`, `database.py` (tablas de finanzas), `dashboard.py` (panel Finanzas) | 8/9 |
 
@@ -193,6 +194,33 @@ leads de Meta se renombró a **D** para deshacer el empate.
 ---
 
 ## Bitácora
+
+- **10/9 — G (marketing/Meta Ads): abro modulo nuevo, todavia sin codigo.**
+
+  Diseñando con Juan un modulo de inteligencia comercial centrado en **Meta Ads**.
+  Spec en `docs/superpowers/specs/2026-09-10-inteligencia-comercial-meta-design.md`.
+  Hoy solo lei el repo y medi datos; **no toque ningun archivo de codigo**.
+
+  **Lo que medi, por si le sirve a alguien mas** (backup `leads_pre_preclientes_8sep.db`):
+  de 8.357 leads, los 4 `finalizado` y las 3 filas de `budgets` son **todos de
+  Meta**. Discovery aporta 6.575 leads y cero cierres. La cohorte de Meta son 238
+  leads en 6 campañas, marzo a septiembre, con solo 27 sin contactar. Cero
+  transcripciones de reunion y 43 notas en `call_logs`.
+
+  **Zona compartida que voy a tocar cuando empiece, avisen si molesta:**
+  - `database.py`: dos tablas nuevas (`meta_insights`, `radiografias`) y cinco
+    columnas nuevas en `businesses` (`meta_campaign_id`, `meta_campaign_name`,
+    `meta_adset_id`, `meta_ad_id`, `meta_ad_name`). Todo aditivo: no toca ninguna
+    tabla ni consulta existente.
+  - `routes/meta.py` (**territorio de D**): al ingerir un lead hay que escribir la
+    campaña en columna propia ademas de dejarla en `notes`. Es agregar, no
+    cambiar lo que ya escribe. D: si preferis hacerlo vos, decime y lo saco.
+  - `dashboard.py` (**zona caliente de B y E**): un panel nuevo `marketing`, aparte.
+
+  **Regla 3 me aplica de lleno:** el sync de Insights es un automatismo nuevo, asi
+  que nace con su propio tope rodante, igual que las campañas. El disparador
+  semanal va a ser un workflow de GitHub Actions contra un endpoint del CRM,
+  copiando el patron de `linkedin.yml`, no un hilo que arranque en el boot.
 
 - **8/9 — F: CIERRE. Deployado `v166`, producción al día con `main`.**
 
