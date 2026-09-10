@@ -67,6 +67,41 @@ def _get_admin_emails(db: str) -> list[str]:
     return list(emails)
 
 
+def _guardar_campana_del_lead(db: str, lead_id: int, lead_data: dict) -> None:
+    """Escribe la campana y el anuncio del lead en sus columnas propias.
+
+    Aditivo: `notes` se sigue escribiendo igual en el llamador. Esto existe
+    para poder agrupar y para juntar el lead con el gasto de su campana, que
+    con la campana metida adentro de un texto no se puede.
+
+    **Un dato ausente no pisa uno conocido.** Meta no siempre manda los cinco
+    campos, y la importacion diaria vuelve a pasar por leads que ya estaban:
+    sin el COALESCE, una segunda pasada sin `campaign_id` le borraria al lead
+    la campana que ya se sabia.
+    """
+    from database import _connect
+
+    conn = _connect(db)
+    try:
+        conn.execute(
+            "UPDATE businesses SET "
+            "  meta_campaign_id   = COALESCE(?, meta_campaign_id), "
+            "  meta_campaign_name = COALESCE(?, meta_campaign_name), "
+            "  meta_adset_id      = COALESCE(?, meta_adset_id), "
+            "  meta_ad_id         = COALESCE(?, meta_ad_id), "
+            "  meta_ad_name       = COALESCE(?, meta_ad_name) "
+            "WHERE id = ?",
+            (lead_data.get("campaign_id") or None,
+             lead_data.get("campaign_name") or None,
+             lead_data.get("adset_id") or None,
+             lead_data.get("ad_id") or None,
+             lead_data.get("ad_name") or None,
+             lead_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def _notify_new_meta_lead(db: str, lead_name: str, phone: str, campaign: str, city: str, lead_id: int):
     for email in _get_admin_emails(db):
         try:
@@ -220,7 +255,7 @@ def _fetch_and_store_lead(app, lead_id: str, form_id: str):
 
             r = requests.get(
                 f"{GRAPH}/{lead_id}",
-                params={"access_token": page_token, "fields": "field_data,created_time,ad_name,campaign_name,form_id"},
+                params={"access_token": page_token, "fields": "field_data,created_time,ad_name,ad_id,adset_id,campaign_name,campaign_id,form_id"},
                 timeout=10,
             )
             r.raise_for_status()
@@ -261,6 +296,7 @@ def _fetch_and_store_lead(app, lead_id: str, form_id: str):
             })
 
             if biz_id:
+                _guardar_campana_del_lead(db, biz_id, lead_data)
                 log_activity(db, "meta_webhook", "lead_created", "lead", biz_id, name,
                              f"Fuente: Meta Lead Ad · {campaign_name or ad_name}", user_id=None)
                 logger.info(f"Meta lead stored: {name} ({phone}) → id {biz_id}")
@@ -272,6 +308,7 @@ def _fetch_and_store_lead(app, lead_id: str, form_id: str):
             else:
                 existente_id = _merge_lead_into_existing(db, phone, email, fields)
                 if existente_id:
+                    _guardar_campana_del_lead(db, existente_id, lead_data)
                     logger.warning(
                         f"Meta lead sobre un negocio que ya existia: {name} ({phone}) "
                         f"→ id {existente_id}; se le devolvio source='meta' y se guardo el form_data"
@@ -387,7 +424,7 @@ def meta_import_leads():
             for form in forms:
                 leads = get_all(
                     f"{GRAPH}/{form['id']}/leads",
-                    {"access_token": pt, "fields": "id,created_time,field_data,ad_name,campaign_name"}
+                    {"access_token": pt, "fields": "id,created_time,field_data,ad_name,ad_id,adset_id,campaign_name,campaign_id"}
                 )
                 for lead in leads:
                     fields = {f["name"].lower(): f["values"][0] if f.get("values") else ""
@@ -516,7 +553,7 @@ def meta_import_sync():
                     {"access_token": pt, "fields": "id,name,leads_count"})
         for form in forms:
             leads = _ga(f"{GRAPH}/{form['id']}/leads",
-                        {"access_token": pt, "fields": "id,created_time,field_data,ad_name,campaign_name"})
+                        {"access_token": pt, "fields": "id,created_time,field_data,ad_name,ad_id,adset_id,campaign_name,campaign_id"})
             for lead in leads:
                 fields = {f["name"].lower(): (f.get("values") or [""])[0] for f in lead.get("field_data", [])}
                 name  = fields.get("full_name") or fields.get("nombre") or fields.get("name") or "Lead Meta"
@@ -705,7 +742,7 @@ def _run_import_sync(db: str) -> tuple[int, int]:
     for form in forms:
         leads = _ga(
             f"{GRAPH}/{form['id']}/leads",
-            {"access_token": pt, "fields": "id,created_time,field_data,ad_name,campaign_name"},
+            {"access_token": pt, "fields": "id,created_time,field_data,ad_name,ad_id,adset_id,campaign_name,campaign_id"},
         )
         for lead in leads:
             fields = {f["name"].lower(): (f.get("values") or [""])[0] for f in lead.get("field_data", [])}
