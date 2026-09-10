@@ -126,6 +126,18 @@ def materializar_recurrentes(db_path: str, hoy: date | None = None) -> int:
             continue
 
         dia = min(max(int(fijo["dia_del_mes"] or 1), 1), 28)
+        # El IVA se calcula acá y no al leer: queda congelado en cada
+        # movimiento, igual que los que se cargan a mano.
+        #
+        # Ojo con lo que esto NO hace: prenderle el IVA a un fijo ya
+        # materializado no toca los meses generados, porque el INSERT de abajo
+        # choca con el índice único y se descarta. Es la misma regla que ya
+        # regía para el monto —cambiarle el precio a un fijo no reescribe el
+        # pasado— y es deliberada: reescribir hacia atrás tocaría meses
+        # cerrados, que es justo lo que el candado existe para impedir. El mes
+        # en curso se corrige editando el movimiento, que está abierto.
+        facturado = 1 if fijo["facturado"] else 0
+        iva_usd = iva_sobre(monto_usd) if facturado else 0.0
         for periodo in meses_entre(fijo["desde"], fin):
             try:
                 crear_movimiento(
@@ -141,6 +153,8 @@ def materializar_recurrentes(db_path: str, hoy: date | None = None) -> int:
                     monto_usd=monto_usd,
                     client_id=fijo["client_id"],
                     recurrente_id=fijo["id"],
+                    facturado=facturado,
+                    iva_usd=iva_usd,
                     created_by_name="fijo",
                 )
                 creados += 1

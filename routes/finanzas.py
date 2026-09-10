@@ -257,11 +257,11 @@ def api_borrar_movimiento(mov_id):
 def _validar_recurrente(data: dict) -> tuple[dict | None, str | None]:
     """Devuelve (campos listos para guardar, None) o (None, mensaje de error).
 
-    `activo`, `hasta`, `client_id` y `notas` solo entran al resultado si la
-    clave vino en el cuerpo. Importa sobre todo para `activo`: un PUT que
-    solo cambia el monto y omite `activo` no puede reencender un fijo que
-    estaba apagado a propósito — eso empezaría a generar plata sola en la
-    próxima materialización perezosa de `GET /resumen`.
+    `activo`, `facturado`, `hasta`, `client_id` y `notas` solo entran al
+    resultado si la clave vino en el cuerpo. Importa sobre todo para `activo`:
+    un PUT que solo cambia el monto y omite `activo` no puede reencender un
+    fijo que estaba apagado a propósito — eso empezaría a generar plata sola
+    en la próxima materialización perezosa de `GET /resumen`.
     """
     comunes, error = _validar_comunes(data)
     if error:
@@ -300,6 +300,12 @@ def _validar_recurrente(data: dict) -> tuple[dict | None, str | None]:
         campos["hasta"] = hasta
     if "activo" in data:
         campos["activo"] = 1 if data["activo"] else 0
+    if "facturado" in data:
+        # Condicional por el mismo motivo que `activo`: un PUT parcial que
+        # omite la clave no puede apagarle el IVA a un fijo facturado. El
+        # error no se vería al guardar sino un mes después, cuando se
+        # materializa sin impuesto.
+        campos["facturado"] = 1 if data["facturado"] else 0
     if "client_id" in data:
         campos["client_id"] = data["client_id"] or None
     if "notas" in data:

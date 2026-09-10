@@ -124,6 +124,41 @@ leads de Meta se renombró a **D** para deshacer el empate.
 > Si alguien toca `FUNNEL` en `services/finanzas.py`, eso es lo que hay que
 > respetar.
 
+> **F (finanzas) de nuevo (10/9).** Segunda tanda sobre el mismo panel, toda
+> pedida por Juan y Gonza. Lo que hay en `main` a hoy: IVA por movimiento,
+> "Por cobrar", navegador de mes con meses cerrados, y la capa de tokens CSS
+> (`:root` / `body.light`) que por ahora consume solo la seccion Finanzas.
+>
+> **Tres cosas que conviene saber antes de tocar esto:**
+>
+> 1. **El monto que se carga es el LIQUIDO, el IVA se SUMA.** 100 -> 122. La
+>    primera version hacia lo contrario (sacaba el impuesto de adentro) y estaba
+>    mal. Por eso la funcion se llama `iva_sobre` y no `desglosar_iva`: el
+>    renombre revienta a cualquier llamador viejo en vez de dejarlo calculando
+>    al reves en silencio.
+>
+> 2. **`materializar_recurrentes` solo INSERTA, nunca actualiza.** Cambiarle el
+>    monto o prenderle el IVA a un fijo no reescribe los meses ya generados: el
+>    INSERT choca con el indice unico `(recurrente_id, periodo)` y se descarta.
+>    Es deliberado —reescribir hacia atras tocaria meses cerrados, que es lo que
+>    el candado existe para impedir— y el modal lo dice en pantalla. Si alguien
+>    "arregla" esto convirtiendolo en UPSERT, tambien pisa los movimientos
+>    editados a mano.
+>
+> 3. **La rampa de grises se INVIERTE entre temas** (#475569 <-> #94a3b8,
+>    medido). Los tokens hay que reemplazarlos POR ROL, nunca por hex: un
+>    buscar-y-reemplazar ciego rompe el tema claro sin que falle ningun test.
+>    De las 832 declaraciones con color de las reglas oscuras, 595 no tienen
+>    contraparte clara, asi que la migracion va de a una superficie y se
+>    verifica en el navegador. `tests/test_tokens_css.py` ataja el olvido.
+>
+> **Cruce de territorio:** `dashboard.py` sigue siendo de B y `database.py`
+> zona compartida. Todo lo mio es aditivo: columnas nuevas (`facturado`,
+> `iva_usd` en movimientos y recurrentes), tablas nuevas
+> (`finanzas_por_cobrar`, `finanzas_meses_abiertos`), y en `dashboard.py` el
+> bloque de tokens al tope del `<style>` mas reglas bajo el prefijo `fin-`.
+> Ninguna regla ni funcion existente de otro panel se toco.
+
 > **D acá (28/8, 17:10 UTC).** Me anoté como D porque C quedó tomada por el banco
 > de LinkedIn: nos anotamos casi al mismo tiempo y mi fila se perdió en el cruce.
 >
@@ -404,6 +439,135 @@ leads de Meta se renombró a **D** para deshacer el empate.
   que nace con su propio tope rodante, igual que las campañas. El disparador
   semanal va a ser un workflow de GitHub Actions contra un endpoint del CRM,
   copiando el patron de `linkedin.yml`, no un hilo que arranque en el boot.
+- **10/9 — G: borrada la carpeta `bot/`.** Era el bot viejo de mayo
+  (`scalerics-wa-bot`, entrypoint `src/app.js`), del commit inicial `16bc4a4`
+  y sin tocar desde entonces. Ya estaba anotado abajo por C el 28/8 que no es
+  el bot de produccion; el vivo es la app `scalerics-wa` con su propio fuente
+  en `wa-service/`, rama `feat/wa-service-baileys`.
+
+  Se va porque no era inofensiva: **las 15 alertas de dependabot del repo (2
+  altas: axios y form-data) estaban todas en `bot/package-lock.json`**, y como
+  el `.dockerignore` no la excluia y el Dockerfile hace `COPY . .`, la carpeta
+  viajaba adentro de la imagen de produccion. Tambien saca de en medio la
+  trampa de deployar desde ahi por error.
+
+  Verificado antes de borrar: ningun `.py`, `.toml`, `.sh` ni el Dockerfile la
+  referencian, ningun test la toca, y los 24 archivos estaban versionados, asi
+  que vuelve con `git revert` si hiciera falta.
+
+
+- **10/9 — G (memoria del worker): CIERRE. La fuga que causó el OOM del 9/9
+  está tapada y deployada en `v173`. PR 18 mergeado (`8c8e5ca`).**
+- **10/9 — H (medios de WhatsApp en el panel): trabajo en mi propio árbol.**
+
+  Worktree `../crm-wa-panel`, rama `feat/wa-medios-panel`. Toco **solo** el
+  render de medios del panel WhatsApp (`dashboard.py`) y el texto del proxy de
+  archivos (`routes/wa.py`). No toco nada de marketing, discovery ni LinkedIn.
+
+  **Por qué:** si el lead mandaba una foto, un sticker o un PDF, no se veía en
+  el CRM. El bot solo bajaba las notas de voz y descartaba el resto sin ni
+  siquiera registrar el mensaje, así que la conversación del panel quedaba con
+  un hueco. La otra mitad del arreglo está en `scalerics-wa`, en la rama
+  `feat/wa-service-baileys` — son **dos deploys distintos**.
+
+  **Un cambio estructural chico que conviene saber:** el JS que dibuja los
+  medios y la función `esc` salieron del string gigante `DASHBOARD_HTML` a dos
+  constantes (`ESC_JS`, `WA_MEDIOS_JS`) que se pegan por marcador
+  (`/*ESC_JS*/`, `/*WA_MEDIOS_JS*/`) justo después del string. Se hizo para
+  poder probarlas: `tests/test_wa_medios_panel.py` las corre con node de verdad
+  y mide el HTML que sale. **Si movés o borrás uno de esos marcadores el panel
+  entero muere en silencio** —es un solo `<script>`, un ReferenceError mata
+  todo lo de abajo y la pantalla queda en blanco sin error en el servidor—.
+  Hay un test que lo agarra.
+
+  **DEPLOYADO** en `scalerics-crm` v176 y `scalerics-wa` v97.
+
+  **AVISO, y me pasó a mí hoy mismo: v175 borró este cambio de producción.**
+  Otra sesión deployó desde `main`, que no tenía mi commit, y `mediosDeMensaje`
+  desapareció del panel sin que nadie se enterara — la foto de un lead volvió a
+  no verse y lo descubrí probándolo a mano. No es culpa de nadie: es lo que
+  pasa cuando producción corre `main + N` y el que deploya después sale de
+  `main` limpio. **Si tu rama no está mergeada, tu deploy dura hasta el próximo
+  deploy ajeno.** Rebasé sobre `main` y volví a subir.
+
+  **Cerrado: mergeado en `main` por el PR #24**, con CI en verde. Producción
+  (v176) corre exactamente lo que hay en `main` —verificado comparando el hash
+  del bloque de JS contra la máquina viva— así que ya no hace falta cuidar
+  nada: un deploy desde `main` incluye esto.
+
+- **10/9 — G (marketing/Meta Ads): abro modulo nuevo, todavia sin codigo.**
+
+  **Verificado contra la máquina viva, no contra el log del deploy.** El sync
+  de Calendar leyó 30 eventos reales y el de Gmail 5 mensajes, los dos en
+  `dry_run` para no escribir nada. Y la prueba de que la fuga se fue: 20
+  builds seguidos en la misma thread dan **+0,00 MB**, donde antes eran ~+9 MB.
+
+  El deploy no disparó ninguna tanda de mails: los recordatorios de Meta se
+  saltearon solos por la guarda de arranque (regla 3), y el import diario
+  corrió limpio (`0 new, 111 dup`).
+
+  **Ojo con esto si alguien toca `services/google_api.py`:** el cache es por
+  thread, con `threading.local()`, y tiene que seguir siéndolo. El service
+  arrastra un `httplib2.Http` y la doc de Google dice textual que "The
+  httplib2.Http() objects are not thread-safe": tiene el pool de conexiones en
+  un dict común. `("calendar","v3","gcal")` lo usan a la vez los handlers de
+  `routes/calendar.py` y el thread de fondo de `calendly_gcal.fetch_and_sync`.
+  Un cache único compartido da respuestas mezcladas y errores intermitentes.
+  La primera versión del PR lo tenía compartido; se corrigió en `b7bba0e`.
+
+  Lo de abajo era el estado anterior de esta misma entrada.
+
+  El CRM se cayó de nuevo y el síntoma fue el de siempre: la máquina viva,
+  los jobs de fondo logueando normal, y todas las requests colgadas. Verificado
+  desde adentro de la máquina, no deducido: el TCP conectaba y `recv` no
+  devolvía nada a los 20s, así que no era el proxy de Fly. Las cuatro threads
+  de request de gunicorn estaban las cuatro en `wait_woken`, bloqueadas en I/O.
+
+  **Causa raíz:** `googleapiclient.discovery.build()` deja ~0,45 MB que no
+  vuelven al heap, y lo llamábamos en cada corrida de sync — cada 10 minutos.
+  Son ~65 MB por día de crecimiento. El worker arranca en ~75 MB; Gonzalo lo
+  midió en 124 y el OOM killer se llevó uno de 141. Esa diferencia es, casi
+  exacta, un día de esta fuga. Por eso reventaba de madrugada y no al mediodía.
+
+  Medido adentro de la máquina, no sacado de la documentación: build dinámico
+  +2,6 MB, build estático +0,7 MB, y +0,45 MB por cada build repetido.
+
+  **Qué cambia:** `services/google_api.py` (nuevo) cachea el service por
+  (api, versión, cuenta) y usa `static_discovery=True`, que además evita un GET
+  a googleapis.com cada 10 minutos y apaga el warning de `discovery_cache` que
+  ensucia los logs. Los cinco `build()` sueltos pasan a usarlo.
+
+  **Cruce de territorio, explícito:** toqué `routes/calendar.py`, que es de B,
+  y `services/discovery_respuestas.py`, que A le cedió a B el 28/8. En los dos
+  el cambio es de dos líneas y no toca la lógica: solo de dónde sale el
+  cliente. `services/calendly_gcal.py` y `services/calendly_gmail.py` no
+  figuran asignados a nadie.
+
+  La cuenta (`account="gcal"` / `"gmail"`) es parte de la clave del cache a
+  propósito: el CRM se autentica con dos juegos de credenciales distintos y
+  compartir el cliente entre ellos le daría a uno los permisos del otro.
+
+  Hay un test que vigila sobre el fuente que ningún módulo vuelva a llamar
+  `build()` por su cuenta — mismo criterio que el que cuida que
+  `linkedin_posts.py` no importe `anthropic`. Sin eso, la fuga vuelve a
+  abrirse sin que nos enteremos hasta el próximo OOM.
+
+  1473 tests en verde. **No deployé**: la rama está para revisar.
+
+  **Lo que queda, y es de Juan decidir:** producción corre con 512 MB desde el
+  PR 10 de Gonzalo. Eso deja la factura de Fly en ~$5,43 y el umbral bajo el
+  cual no cobran son USD 5, así que se paga entera. Con la fuga tapada el
+  worker debería quedarse estable en ~130 MB y volver a entrar en 256 MB, que
+  son $1,94 y dejan el total en $4,18. **El orden importa: primero verificar
+  que el worker dejó de crecer, y recién después bajar la máquina.** Al revés
+  es poner swap para tapar un desperdicio. Hay margen: la máquina puede estar
+  en 512 hasta ~19 días de septiembre y el mes igual cierra abajo de $5.
+
+  Ojo con una que casi me como: mover `scalerics-wa` a la otra org personal
+  parece que resuelve el costo (cada cuenta tiene su propio umbral de $5), pero
+  **rompe el CRM**. Las redes 6PN de Fly son por organización y el bot no tiene
+  IP pública: el CRM lo alcanza solo por `.internal`. Separarlos obliga a
+  exponer a internet un servicio con la sesión de Baileys adentro.
 
 - **8/9 — F: CIERRE. Deployado `v166`, producción al día con `main`.**
 

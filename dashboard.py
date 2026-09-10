@@ -237,6 +237,80 @@ button:hover{opacity:.9}
 # Main dashboard HTML
 # ---------------------------------------------------------------------------
 
+# Dos pedazos del JS del panel viven afuera del string grande para poder
+# probarlos: son funciones puras (mensaje -> HTML) y se corren con node desde
+# los tests. Se pegan mas abajo, donde estan sus marcadores.
+
+ESC_JS = r"""function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }"""
+
+# Lo que el lead manda y no es texto: la nota de voz, la foto del local, el
+# sticker, el presupuesto en PDF.
+#
+# Antes esto solo sabia dibujar un <audio> y descartaba todo lo demas con un
+# `if (a.tipo !== 'audio') return ''`. La foto llegaba al CRM y no se veia en
+# ningun lado, asi que la conversacion del panel quedaba con un hueco.
+WA_MEDIOS_JS = r"""
+function mediosDeMensaje(m) {
+  if (!m.media || !m.media.length) return '';
+  return m.media.map(a => {
+    // La URL que manda el bot es de SU api (/api/messages/<id>/media/<i>). Acá
+    // se traduce a la del CRM, que es la que el navegador puede pedir: el bot
+    // no tiene IP pública y vive solo en la red privada de Fly.
+    //
+    // `url` es la única señal de si el archivo está: viene en null cuando no
+    // está. El bot NO manda el nombre en disco —es interno— así que decidir
+    // por él dejaba todos los medios como si faltaran, que es lo que pasó con
+    // la primera foto real el 10-9.
+    const ids = String(a.url || '').match(/\/api\/messages\/(\d+)\/media\/(\d+)/);
+    const src = ids ? `/api/wa/media/${ids[1]}/${ids[2]}` : null;
+
+    // Llegó pero no lo tenemos: pesaba demasiado, falló la descarga, o ya se
+    // borró por antigüedad. Dibujar un <img> vacío deja un roto en la pantalla
+    // sin explicar nada; lo honesto es decir qué mandaron.
+    if (!src) {
+      return `<div class="wa-medio-ausente">${esc(NOMBRE_MEDIO[a.tipo] || 'un archivo')} · no se pudo guardar</div>`;
+    }
+
+    if (a.tipo === 'audio') {
+      const dur = a.segundos ? ` <span class="wa-audio-dur">${a.segundos}s</span>` : '';
+      return `<div class="wa-audio">
+        <audio controls preload="none" src="${src}"></audio>
+        <div class="wa-audio-label">nota de voz${dur} · abajo, transcripta</div>
+      </div>`;
+    }
+
+    // El sticker va sin marco y más chico: es un gesto, no una foto que haya
+    // que mirar de cerca.
+    if (a.tipo === 'imagen' || a.tipo === 'sticker') {
+      return `<a href="${src}" target="_blank" rel="noopener" class="wa-medio-img ${a.tipo === 'sticker' ? 'wa-sticker' : ''}">
+        <img src="${src}" alt="${esc(NOMBRE_MEDIO[a.tipo] || 'archivo')} del lead" loading="lazy">
+      </a>`;
+    }
+
+    if (a.tipo === 'video') {
+      return `<video class="wa-medio-video" controls preload="metadata" src="${src}"></video>`;
+    }
+
+    // Un documento sin su nombre es un link que no dice nada: "presupuesto.pdf"
+    // y "IMG-4032.pdf" son cosas muy distintas para el que atiende. El nombre
+    // lo eligió el lead, así que va escapado.
+    const nombre = a.nombre || 'archivo';
+    return `<a href="${src}" target="_blank" rel="noopener" download class="wa-medio-doc">${esc(nombre)}</a>`;
+  }).join('');
+}
+
+/** Cómo se nombra cada medio cuando hay que hablar de él y no mostrarlo. */
+const NOMBRE_MEDIO = {
+  audio: 'una nota de voz',
+  imagen: 'una foto',
+  sticker: 'un sticker',
+  video: 'un video',
+  documento: 'un archivo',
+  ubicacion: 'una ubicación',
+  contacto: 'un contacto',
+};
+"""
+
 DASHBOARD_HTML = """<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -247,6 +321,58 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 <script src="https://unpkg.com/lucide@0.511.0/dist/umd/lucide.min.js"></script>
 <script src="/static/charts.js"></script>
 <style>
+/* ── Tokens ──────────────────────────────────────────────────────────────────
+   Cada valor sale de emparejar las reglas oscuras con sus `body.light` y mirar
+   en que se convierte el color: son los roles que el CSS ya usaba sin nombre.
+
+   **La rampa de grises se INVIERTE entre temas.** Medido, no supuesto:
+   #475569 -> #94a3b8 (x10) y #94a3b8 -> #475569 (x8). Se cruzan. Por eso hay
+   que reemplazar POR ROL y nunca por hex: un buscar-y-reemplazar ciego rompe
+   el tema claro en silencio.
+
+   Hoy los consume solo la seccion Finanzas. El resto sigue con los colores
+   escritos a mano y se migra de a una superficie, verificando en el navegador:
+   de las 832 declaraciones con color de las reglas oscuras, 595 no tienen
+   contraparte clara, asi que tokenizarlas de golpe cambiaria el aspecto de 595
+   lugares sin que nadie los mire. */
+:root{
+  --fondo:#0a0f1a;
+  --fondo-hundido:#0f1117;
+  --superficie:#161b27;
+  --superficie-alta:#1a2130;
+  --superficie-honda:#0f172a;
+  --borde:#1e293b;
+  --borde-fuerte:#334155;
+  --texto:#e2e8f0;
+  --texto-tenue:#94a3b8;
+  --texto-debil:#64748b;
+  --texto-apenas:#475569;
+  --rotulo:#64748b;
+  --azul:#0088cc;
+  --azul-claro:#38bdf8;
+  --verde:#10b981;
+  --rojo:#f87171;
+  --ambar:#f59e0b;
+}
+body.light{
+  --fondo:#f8fafc;
+  --fondo-hundido:#f1f5f9;
+  --superficie:#fff;
+  --superficie-alta:#f8fafc;
+  --superficie-honda:#fff;
+  --borde:#e2e8f0;
+  --borde-fuerte:#cbd5e1;
+  --texto:#0f172a;
+  --texto-tenue:#475569;
+  --texto-debil:#64748b;
+  --texto-apenas:#94a3b8;
+  --rotulo:#475569;
+  --azul:#0088cc;
+  --azul-claro:#0369a1;
+  --verde:#059669;
+  --rojo:#dc2626;
+  --ambar:#b45309;
+}
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:100vh;display:flex}
 .sidebar{width:228px;min-height:100vh;background:#111827;border-right:1px solid #1a2d3d;display:flex;flex-direction:column;padding:20px 0;flex-shrink:0;position:fixed;top:0;bottom:0;left:0;z-index:200;transition:transform .25s ease}
@@ -556,6 +682,21 @@ body.light .resp-sel{background:#fff;border-color:#e2e8f0;color:#0f172a}
 .wa-audio audio{width:230px;height:32px;display:block}
 .wa-audio-label{font-size:.62rem;color:#64748b;margin-top:3px}
 .wa-audio-dur{color:#94a3b8}
+/* La foto, el sticker, el video y el archivo que manda el lead. El tope de
+   ancho es el de la burbuja: una foto vertical de celular, sin esto, estira la
+   conversación entera. */
+.wa-medio-img{display:block;margin:0 0 6px;max-width:230px}
+.wa-medio-img img{display:block;width:100%;height:auto;border-radius:8px}
+/* El sticker es un gesto, no una foto que haya que mirar de cerca. */
+.wa-sticker{max-width:120px}
+.wa-sticker img{border-radius:0}
+.wa-medio-video{display:block;margin:0 0 6px;max-width:230px;border-radius:8px}
+.wa-medio-doc{display:inline-block;margin:0 0 6px;padding:6px 10px;border-radius:8px;
+  background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.09);
+  color:#e2e8f0;font-size:.72rem;text-decoration:none;word-break:break-all}
+.wa-medio-doc:hover{background:rgba(255,255,255,.1)}
+/* Llegó pero no lo tenemos. Se dice, en vez de dejar un roto sin explicación. */
+.wa-medio-ausente{margin:0 0 6px;font-size:.66rem;color:#64748b;font-style:italic}
 .wa-pausa-badge{font-size:.68rem;font-weight:700;color:#93c5fd;background:#16213a;padding:3px 8px;border-radius:999px;flex-shrink:0}
 .wa-messages{flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:8px;min-height:0}
 .wa-bubble{max-width:68%;padding:9px 13px;border-radius:12px;font-size:.84rem;line-height:1.5;white-space:pre-wrap;word-break:break-word}
@@ -618,13 +759,10 @@ body.light .resp-sel{background:#fff;border-color:#e2e8f0;color:#0f172a}
 .calw-chip .cal-del-btn,.calw-chip .cal-join-btn,.calw-chip .cal-hora-btn{display:none}
 .calw-chip:hover .cal-del-btn,.calw-chip:hover .cal-join-btn,.calw-chip:hover .cal-hora-btn{display:block}
 .calw-hint{font-size:.7rem;color:#475569;margin-bottom:10px}
-.fin-kpi-iva{font-size:.66rem;color:#64748b;margin-top:2px}
-body.light .fin-kpi-iva{color:#94a3b8}
+.fin-kpi-iva{font-size:.66rem;color:var(--texto-apenas);margin-top:2px}
 .fin-nav-mes{display:flex;align-items:center;gap:6px}
-.fin-nav-mes span{font-size:.82rem;font-weight:700;color:#e2e8f0;min-width:130px;text-align:center}
-.fin-cerrado{display:flex;align-items:center;gap:8px;font-size:.7rem;font-weight:700;color:#f59e0b;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);padding:4px 10px;border-radius:999px;text-transform:uppercase;letter-spacing:.04em}
-body.light .fin-nav-mes span{color:#0f172a}
-body.light .fin-cerrado{color:#b45309;background:rgba(245,158,11,.09);border-color:rgba(245,158,11,.28)}
+.fin-nav-mes span{font-size:.82rem;font-weight:700;color:var(--texto);min-width:130px;text-align:center}
+.fin-cerrado{display:flex;align-items:center;gap:8px;font-size:.7rem;font-weight:700;color:var(--ambar);background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);padding:4px 10px;border-radius:999px;text-transform:uppercase;letter-spacing:.04em}
 .cal-count{font-size:.66rem;font-weight:700;color:#64748b;background:#161b27;border:1px solid #1e293b;padding:4px 10px;border-radius:999px;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap}
 .cal-today-btn{background:#161b27;border:1px solid #1e293b;color:#94a3b8;padding:7px 14px;border-radius:8px;cursor:pointer;font-size:.76rem;font-weight:700;font-family:'Inter',sans-serif;line-height:1;transition:background .15s,color .15s,border-color .15s}
 .cal-today-btn:hover{background:rgba(0,136,204,.12);border-color:rgba(0,136,204,.4);color:#33aadd}
@@ -1337,45 +1475,37 @@ body.light .upick-name{color:#0f172a}
 .fin-toolbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:18px}
 .fin-toggle{display:flex;gap:6px;margin-left:auto}
 .fin-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:18px}
-.fin-kpi{background:#0f172a;border:1px solid #1e293b;border-radius:10px;padding:16px 18px}
-.fin-kpi-label{font-size:.7rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.8px}
+.fin-kpi{background:var(--superficie-honda);border:1px solid var(--borde);border-radius:10px;padding:16px 18px}
+.fin-kpi-label{font-size:.7rem;font-weight:700;color:var(--rotulo);text-transform:uppercase;letter-spacing:.8px}
 .fin-kpi-valor{font-size:1.6rem;font-weight:700;margin-top:6px}
-.fin-kpi-var{font-size:.75rem;color:#64748b;margin-top:4px}
-.fin-verde{color:#10b981}
-.fin-rojo{color:#f87171}
+.fin-kpi-var{font-size:.75rem;color:var(--rotulo);margin-top:4px}
+.fin-verde{color:var(--verde)}
+.fin-rojo{color:var(--rojo)}
 /* `.fin-tabla td` fija el color con especificidad (0,1,1) y le gana a `.fin-rojo`
    (0,1,0): sin estas dos reglas, un "vencido hace 3 dias" dentro de una tabla
    sale del color normal y el aviso no se ve. Los tests no lo agarran. */
-.fin-tabla td.fin-rojo{color:#f87171}
-.fin-tabla td.fin-verde{color:#10b981}
-.fin-card{background:#0f172a;border:1px solid #1e293b;border-radius:10px;padding:18px;margin-bottom:18px}
-.fin-card-title{font-size:.75rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.8px;margin-bottom:14px}
+.fin-tabla td.fin-rojo{color:var(--rojo)}
+.fin-tabla td.fin-verde{color:var(--verde)}
+.fin-card{background:var(--superficie-honda);border:1px solid var(--borde);border-radius:10px;padding:18px;margin-bottom:18px}
+.fin-card-title{font-size:.75rem;font-weight:700;color:var(--rotulo);text-transform:uppercase;letter-spacing:.8px;margin-bottom:14px}
 .fin-tabla{width:100%;border-collapse:collapse;font-size:.8rem}
-.fin-tabla th{text-align:left;padding:8px 10px;color:#64748b;font-size:.68rem;
+.fin-tabla th{text-align:left;padding:8px 10px;color:var(--rotulo);font-size:.68rem;
               text-transform:uppercase;letter-spacing:.6px;white-space:nowrap}
-.fin-tabla td{padding:8px 10px;color:#e2e8f0;white-space:nowrap;
+.fin-tabla td{padding:8px 10px;color:var(--texto);white-space:nowrap;
               border-top:1px solid #1e293b}
-body.light .fin-tabla td{color:#1e293b;border-top-color:#e2e8f0}
-body.light .fin-tabla td.fin-rojo{color:#dc2626}
-body.light .fin-tabla td.fin-verde{color:#059669}
-body.light .fin-tabla th{color:#475569}
+body.light .fin-tabla td{border-top-color:var(--borde)}
 .fin-split{display:grid;grid-template-columns:1fr 1fr;gap:18px}
 .fin-mes{display:flex;align-items:flex-end;gap:3px;height:90px}
 .fin-serie{display:flex;gap:10px;align-items:flex-end;overflow-x:auto;padding-bottom:6px}
 .fin-serie-col{display:flex;flex-direction:column;align-items:center;gap:6px;min-width:44px}
-.fin-serie-label{font-size:.65rem;color:#64748b;white-space:nowrap}
+.fin-serie-label{font-size:.65rem;color:var(--rotulo);white-space:nowrap}
 .fin-barra{width:14px;border-radius:3px 3px 0 0;min-height:2px}
 .fin-hbar-fila{display:flex;align-items:center;gap:10px;margin-bottom:8px}
-.fin-hbar-nombre{font-size:.78rem;color:#94a3b8;width:130px;flex-shrink:0}
-.fin-hbar-pista{flex:1;background:#1e293b;border-radius:3px;height:8px;overflow:hidden}
+.fin-hbar-nombre{font-size:.78rem;color:var(--texto-tenue);width:130px;flex-shrink:0}
+.fin-hbar-pista{flex:1;background:var(--borde);border-radius:3px;height:8px;overflow:hidden}
 .fin-hbar-relleno{height:100%;border-radius:3px}
-.fin-hbar-monto{font-size:.75rem;color:#e2e8f0;width:74px;text-align:right;flex-shrink:0}
+.fin-hbar-monto{font-size:.75rem;color:var(--texto);width:74px;text-align:right;flex-shrink:0}
 @media (max-width:760px){.fin-split{grid-template-columns:1fr}}
-body.light .fin-kpi,body.light .fin-card{background:#fff;border-color:#e2e8f0}
-body.light .fin-hbar-pista{background:#e2e8f0}
-body.light .fin-hbar-monto{color:#1e293b}
-body.light .fin-hbar-nombre{color:#475569}
-body.light .fin-kpi-label,body.light .fin-kpi-var,body.light .fin-card-title,body.light .fin-serie-label{color:#475569}
 </style>
 </head>
 <body>
@@ -2332,7 +2462,7 @@ body.light .fin-kpi-label,body.light .fin-kpi-var,body.light .fin-card-title,bod
 
     <label class="modal-label">Monto</label>
     <div style="display:flex;gap:8px">
-      <input type="number" step="0.01" min="0" id="fin-fijo-monto" class="modal-input">
+      <input type="number" step="0.01" min="0" id="fin-fijo-monto" class="modal-input" oninput="_finFijoPreviewIva()">
       <select id="fin-fijo-moneda" onchange="_finFijoTc()">
         <option value="USD">USD</option>
         <option value="UYU">UYU</option>
@@ -2341,8 +2471,16 @@ body.light .fin-kpi-label,body.light .fin-kpi-var,body.light .fin-card-title,bod
 
     <div id="fin-fijo-tc-row" style="display:none">
       <label class="modal-label">Tipo de cambio (pesos por dólar)</label>
-      <input type="number" step="0.01" min="0" id="fin-fijo-tc" class="modal-input">
+      <input type="number" step="0.01" min="0" id="fin-fijo-tc" class="modal-input" oninput="_finFijoPreviewIva()">
     </div>
+
+    <label class="modal-label">¿Lleva IVA (22%)?</label>
+    <div class="fin-toggle" style="margin-bottom:6px">
+      <button class="pill" id="fin-fijo-fact-si" onclick="finFijoSetFacturado(true)">Sí</button>
+      <button class="pill active" id="fin-fijo-fact-no" onclick="finFijoSetFacturado(false)">No</button>
+    </div>
+    <div id="fin-fijo-iva-preview" class="fin-kpi-var"></div>
+    <div id="fin-fijo-iva-nota" class="fin-kpi-var" style="margin:6px 0 12px;line-height:1.45;font-style:italic"></div>
 
     <label class="modal-label">Día del mes (1 al 28)</label>
     <input type="number" min="1" max="28" id="fin-fijo-dia" class="modal-input" value="1">
@@ -3357,7 +3495,7 @@ function exportCSV() {
   URL.revokeObjectURL(url);
 }
 
-function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+/*ESC_JS*/
 // Literal de JS seguro para meter dentro de un onclick="..." inline.
 // esc() sola no alcanza ahi: el navegador decodifica las entidades HTML
 // (&#39; -> ') ANTES de parsear el atributo como JS, asi que una comilla
@@ -3698,27 +3836,7 @@ async function releaseToBot() {
   }
 }
 
-// La nota de voz de la que salió el texto de abajo.
-//
-// El bot transcribe y sigue con el texto, pero la transcripción a veces sale
-// mal —audio corto, acento rioplatense— y ahí escuchar el original es la
-// diferencia entre entender al lead y no. El archivo lo sirve el CRM: el bot no
-// tiene IP pública, así que el navegador no puede pedírselo directo.
-function audioDeMensaje(m) {
-  if (!m.media || !m.media.length) return '';
-  return m.media.map(a => {
-    if (a.tipo !== 'audio') return '';
-    const dur = a.segundos ? ` <span class="wa-audio-dur">${a.segundos}s</span>` : '';
-    // La URL que manda el bot es de SU api (/api/messages/<id>/media/<i>). Acá
-    // se traduce a la del CRM, que es la que el navegador puede pedir.
-    const ids = String(a.url || '').match(/\/api\/messages\/(\d+)\/media\/(\d+)/);
-    if (!ids) return '';
-    return `<div class="wa-audio">
-      <audio controls preload="none" src="/api/wa/media/${ids[1]}/${ids[2]}"></audio>
-      <div class="wa-audio-label">🎤 nota de voz${dur} · abajo, transcripta</div>
-    </div>`;
-  }).join('');
-}
+/*WA_MEDIOS_JS*/
 
 async function loadWaMessages(phone) {
   const r = await fetch('/api/wa/leads/' + encodeURIComponent(phone) + '/messages');
@@ -3731,7 +3849,7 @@ async function loadWaMessages(phone) {
   if (!d.length) { el.innerHTML = '<div style="color:#334155;text-align:center;padding:20px">Sin mensajes</div>'; return; }
   el.innerHTML = d.map((m, i) => `
     <div style="display:flex;flex-direction:column;align-items:${m.direction==='out'?'flex-end':'flex-start'}">
-      <div class="wa-bubble ${m.direction==='out'?'wa-bubble-out':'wa-bubble-in'}">${audioDeMensaje(m)}${esc(m.content||'')}</div>
+      <div class="wa-bubble ${m.direction==='out'?'wa-bubble-out':'wa-bubble-in'}">${mediosDeMensaje(m)}${esc(m.content||'')}</div>
       <div class="wa-bubble-time">${fmtWaTime(m.created_at)}</div>
     </div>`).join('');
   setTimeout(() => { el.scrollTop = el.scrollHeight; }, 50);
@@ -7091,6 +7209,38 @@ let _finFijoTipo = 'egreso';
 function _finFijoTc() {
   const esPesos = document.getElementById('fin-fijo-moneda').value === 'UYU';
   document.getElementById('fin-fijo-tc-row').style.display = esPesos ? '' : 'none';
+  _finFijoPreviewIva();
+}
+
+// El hosting, las herramientas y el contador vienen con factura todos los
+// meses; Netflix o un gasto que pagó alguien de su bolsillo, no. Por eso es
+// una marca del fijo y no algo que se decida cada vez.
+let _finFijoFacturado = false;
+
+function finFijoSetFacturado(valor) {
+  _finFijoFacturado = !!valor;
+  document.getElementById('fin-fijo-fact-si').classList.toggle('active', _finFijoFacturado);
+  document.getElementById('fin-fijo-fact-no').classList.toggle('active', !_finFijoFacturado);
+  _finFijoPreviewIva();
+}
+
+// El monto que se escribe es el LÍQUIDO y el impuesto se SUMA: 100 -> 122.
+// Igual que en el alta de movimientos, el desglose se ve antes de guardar.
+function _finFijoPreviewIva() {
+  const caja = document.getElementById('fin-fijo-iva-preview');
+  if (!caja) return;
+  if (!_finFijoFacturado) { caja.textContent = 'Sin IVA: no suma ni descuenta nada.'; return; }
+  const monto = parseFloat(document.getElementById('fin-fijo-monto').value);
+  if (!monto || monto <= 0) { caja.textContent = 'El IVA (22%) se suma al monto de cada mes.'; return; }
+  let usd = monto;
+  if (document.getElementById('fin-fijo-moneda').value === 'UYU') {
+    const tc = parseFloat(document.getElementById('fin-fijo-tc').value);
+    if (!tc || tc <= 0) { caja.textContent = 'Poné el tipo de cambio para ver el desglose.'; return; }
+    usd = monto / tc;
+  }
+  const iva = usd * 0.22;
+  caja.textContent = 'Líquido ' + _finUsd(usd) + '  +  IVA (22%) ' + _finUsd(iva)
+    + '  =  ' + _finUsd(usd + iva) + ' por mes';
 }
 
 function finFijoSetTipo(tipo) {
@@ -7117,6 +7267,12 @@ async function abrirFijo(fijo) {
   document.getElementById('fin-fijo-hasta').value = f.hasta || '';
   document.getElementById('fin-fijo-error').textContent = '';
   finFijoSetTipo(f.tipo || 'egreso');
+  finFijoSetFacturado(!!f.facturado);
+  // Sin esto, prenderle el IVA a un fijo que ya corre parece no hacer nada:
+  // el movimiento del mes ya existe y materializar no lo reescribe.
+  document.getElementById('fin-fijo-iva-nota').textContent = f.id
+    ? 'Aplica a los meses que se generen de acá en adelante. Para el mes en curso, editá el movimiento desde Movimientos.'
+    : '';
   if (f.categoria) document.getElementById('fin-fijo-categoria').value = f.categoria;
   _finFijoTc();
   document.getElementById('fin-fijo-modal').classList.add('open');
@@ -7140,6 +7296,7 @@ async function guardarFijo() {
     dia_del_mes: parseInt(document.getElementById('fin-fijo-dia').value, 10),
     desde: document.getElementById('fin-fijo-desde').value,
     hasta: document.getElementById('fin-fijo-hasta').value || null,
+    facturado: _finFijoFacturado,
   };
   const r = await fetch(id ? `/api/finanzas/recurrentes/${id}` : '/api/finanzas/recurrentes',
                         {method: id ? 'PUT' : 'POST',
@@ -7193,7 +7350,7 @@ async function loadFijos() {
     <div class="table-row no-cb" style="${f.activo ? '' : 'opacity:.5'}">
       <div style="flex:1">
         <div class="biz-name">${esc(f.concepto)}</div>
-        <div class="fin-kpi-var">${esc(f.categoria.replace(/_/g, ' '))} · día ${f.dia_del_mes} · desde ${f.desde}${f.hasta ? ' hasta ' + f.hasta : ''}${f.activo ? '' : ' · apagado'}</div>
+        <div class="fin-kpi-var">${esc(f.categoria.replace(/_/g, ' '))} · día ${f.dia_del_mes} · desde ${f.desde}${f.hasta ? ' hasta ' + f.hasta : ''}${f.facturado ? ' · con IVA' : ''}${f.activo ? '' : ' · apagado'}</div>
       </div>
       <div style="flex:0 0 150px;text-align:right"
            class="${f.tipo === 'ingreso' ? 'fin-verde' : 'fin-rojo'}">
@@ -8077,6 +8234,11 @@ async function loadActivity() {
 </div>
 </body>
 </html>"""
+
+# Los pedazos de JS que viven afuera para poder probarse se pegan aca.
+DASHBOARD_HTML = DASHBOARD_HTML.replace("/*ESC_JS*/", ESC_JS).replace(
+    "/*WA_MEDIOS_JS*/", WA_MEDIOS_JS
+)
 
 
 _calendly_sync_state = {"at": 0.0}
