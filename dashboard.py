@@ -27,6 +27,7 @@ from routes.preclientes import preclientes_bp
 from routes.linkedin import linkedin_bp
 from routes.finanzas import finanzas_bp
 from routes.web import web_bp
+from routes.marketing import marketing_bp
 from services.auth import is_admin
 from services.demo_service import demo_job_handler
 from services.linkedin_posts import linkedin_job_handler
@@ -7582,7 +7583,7 @@ def create_app(db_path: str) -> Flask:
     app.config["PIPELINE_LOCK"] = _pipeline_lock
 
     for bp in (leads_bp, demos_bp, calendar_bp, wa_bp, pipeline_bp, tasks_bp, budgets_bp, tokens_bp, meta_bp, calendly_bp, notion_bp, projects_bp, preclientes_bp,
-                notion_clients_bp, resend_bp, linkedin_bp, web_bp, finanzas_bp):
+                notion_clients_bp, resend_bp, linkedin_bp, web_bp, finanzas_bp, marketing_bp):
         app.register_blueprint(bp)
 
     @app.before_request
