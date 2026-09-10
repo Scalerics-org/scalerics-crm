@@ -149,3 +149,52 @@ def test_los_leads_de_prueba_de_meta_no_son_un_segmento(db):
     _lead(db, "prueba", {"city": "<test lead: dummy data for city>"})
     valores = {v["valor_declarado"] for v in _bloques(db)["ciudad"]["valores"]}
     assert valores == {"Montevideo"}
+
+
+def test_dos_grafias_de_la_misma_ciudad_son_un_solo_segmento(db):
+    """La ciudad es texto libre. "Maldonado" y "maldonado" son la misma ciudad,
+    y ademas producian el mismo id de metrica: dos metricas con el mismo id
+    rompen la citacion del informe y hacen que el delta compare contra el
+    gemelo equivocado."""
+    _lead(db, "a", {"city": "Maldonado"})
+    _lead(db, "b", {"city": "maldonado"})
+    _lead(db, "c", {"city": " Maldonado "})
+    valores = _bloques(db)["ciudad"]["valores"]
+    assert len(valores) == 1
+    assert valores[0]["n"] == 3
+
+
+def test_se_muestra_la_grafia_mas_frecuente(db):
+    _lead(db, "a", {"city": "Montevideo"})
+    _lead(db, "b", {"city": "Montevideo"})
+    _lead(db, "c", {"city": "montevideo"})
+    assert _bloques(db)["ciudad"]["valores"][0]["valor_declarado"] == "Montevideo"
+
+
+def test_ningun_id_de_metrica_se_repite(db):
+    _lead(db, "a", {"city": "Maldonado"})
+    _lead(db, "b", {"city": "maldonado"})
+    _lead(db, "c", {"city": "Córdoba"})
+    _lead(db, "d", {"city": "cordoba"})
+    ids = [m["id"] for b in por_segmento(db, "2026-03-01", "2026-03-31")
+           for v in b["valores"] for m in v["metricas"]]
+    assert len(ids) == len(set(ids))
+
+
+def test_la_cola_larga_se_junta_en_otros(db):
+    """El objetivo del formulario viejo es texto libre y tiene una cola de
+    respuestas con n=1. Sin tope, el dossier daba 352 KB."""
+    from services.dossier import TOPE_VALORES_POR_PREGUNTA
+
+    for i in range(TOPE_VALORES_POR_PREGUNTA + 5):
+        _lead(db, f"l{i}", {"city": f"Pueblo {i}"})
+    bloque = _bloques(db)["ciudad"]
+    assert len(bloque["valores"]) == TOPE_VALORES_POR_PREGUNTA + 1
+    assert bloque["valores"][-1]["valor_declarado"].startswith("otros (")
+    assert bloque["valores"][-1]["n"] == 5
+    assert bloque["valores_distintos"] == TOPE_VALORES_POR_PREGUNTA + 5
+
+
+def test_sin_cola_no_hay_bucket_otros(db):
+    _lead(db, "a", {"city": "Montevideo"})
+    assert len(_bloques(db)["ciudad"]["valores"]) == 1

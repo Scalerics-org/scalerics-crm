@@ -591,10 +591,22 @@ mail si falla. GitHub solo golpea la puerta; todo el trabajo lo hace Fly.
 Secuencia de la corrida: sync de Insights → dossier → IA → validación →
 snapshot.
 
-**Costo por corrida:** el dossier ronda los 5.000 tokens de entrada y el informe
-unos 6.000 de salida contando el razonamiento. Con Opus 5 a USD 5/USD 25 por
-millón, son **~USD 0,18 por corrida, ~USD 0,75 por mes**. El CRM en Fly cuesta
-USD 4,18 mensuales, así que es ruido. Y no crece con la base.
+**Costo por corrida, medido y no estimado.** La estimación original de este spec
+decía 5.000 tokens de entrada. **Es falsa**: construido contra los datos reales
+del 8/9/2026 el dossier da 399 métricas, 122 KB, **~31.000 tokens**.
+
+La primera versión daba 1.179 métricas y 90.000 tokens, casi todas ruido: 1.003
+eran muestras de una sola persona, la cola de respuestas de texto libre de
+ciudad y objetivo. Se acotó a 12 valores por pregunta más un bucket `otros`.
+
+| Modelo | Por corrida | Por mes (semanal) |
+|---|---|---|
+| **Opus 5** ($5 / $25 por millón) | ~USD 0,31 | **~USD 1,30** |
+| Sonnet 5 ($2 / $10) | ~USD 0,12 | ~USD 0,52 |
+
+Sigue siendo ruido frente a los USD 4,18 mensuales que cuesta el CRM en Fly, y
+sigue sin crecer con la base: el dossier mide lo mismo con 238 leads que con
+20.000, porque el tope por pregunta no depende del volumen.
 
 ## 13. Riesgos
 

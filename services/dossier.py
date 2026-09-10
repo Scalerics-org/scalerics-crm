@@ -246,6 +246,14 @@ _POR_CLAVE = {clave: pregunta for pregunta, (clave, _) in PREGUNTAS.items()}
 # IA podria levantar como si fuera un hallazgo.
 _PREFIJO_LEAD_DE_PRUEBA = "<test lead:"
 
+# Cuantos valores distintos se reportan por pregunta antes de mandar el resto a
+# un bucket "otros". Las preguntas de texto libre —ciudad, y el objetivo del
+# formulario viejo— tienen una cola larguisima de respuestas con n=1: sobre los
+# datos del 8/9/2026 el dossier daba 1.179 metricas y 352 KB, de las cuales
+# 1.003 eran muestras de una sola persona. Eso no es informacion, es ruido caro:
+# el dossier entero es lo que se le manda al modelo.
+TOPE_VALORES_POR_PREGUNTA = 12
+
 
 def normalizar_clave(clave: str) -> str:
     """Una clave de form_data comparable.
@@ -324,37 +332,64 @@ def por_segmento(db_path: str, desde: str, hasta: str) -> list:
     for fila in eventos_filas:
         eventos.setdefault(fila["lead_id"], set()).add(fila["new_status"])
 
-    # {pregunta: {valor declarado: [lead_id, ...]}}
+    # {pregunta: {clave normalizada: {"etiquetas": Counter, "ids": [...]}}}
+    #
+    # Se agrupa por el valor NORMALIZADO y no por el literal. La ciudad y el
+    # objetivo del formulario viejo son texto libre: "Maldonado" y "maldonado"
+    # son la misma ciudad, y ademas producian el mismo id de metrica —dos
+    # metricas con el mismo id rompen la citacion del informe y hacen que el
+    # delta se compare contra el gemelo equivocado.
     grupos = {}
     for lead_id, datos in _leer_formularios(db_path, desde, hasta):
         for clave, valor in datos.items():
             pregunta = _POR_CLAVE.get(clave)
             if not pregunta:
                 continue
-            valor = str(valor).strip()
+            valor = " ".join(str(valor).split())
             if not valor or valor.startswith(_PREFIJO_LEAD_DE_PRUEBA):
                 continue
-            grupos.setdefault(pregunta, {}).setdefault(valor, []).append(lead_id)
+            slot = grupos.setdefault(pregunta, {}).setdefault(
+                _slug(valor), {"etiquetas": {}, "ids": []})
+            slot["etiquetas"][valor] = slot["etiquetas"].get(valor, 0) + 1
+            slot["ids"].append(lead_id)
+
+    def _metricas_de(pregunta, slug, declarado, ids):
+        pref = f"segmento.{pregunta}.{slug}"
+        total = len(ids)
+        ms = []
+        for clave, etapa, etiqueta in _ETAPAS:
+            exitos = sum(1 for i in ids if alcanzo(eventos.get(i, set()), etapa))
+            ms.append(proporcion(
+                f"{pref}.{_SUFIJO_TASA[clave]}",
+                f"Tasa de {etiqueta.lower()} — {declarado}",
+                exitos, total, "crm"))
+        return {"valor_declarado": declarado, "n": total, "metricas": ms}
 
     bloques = []
     for pregunta in sorted(grupos):
+        # De mayor a menor volumen; el slug desempata para que el orden sea
+        # estable entre corridas y los deltas comparen lo mismo con lo mismo.
+        ordenados = sorted(grupos[pregunta].items(),
+                           key=lambda kv: (-len(kv[1]["ids"]), kv[0]))
+
         valores = []
-        for declarado, ids in sorted(grupos[pregunta].items(),
-                                     key=lambda kv: (-len(kv[1]), kv[0])):
-            n = len(ids)
-            pref = f"segmento.{pregunta}.{_slug(declarado)}"
-            ms = []
-            for clave, etapa, etiqueta in _ETAPAS:
-                exitos = sum(1 for i in ids if alcanzo(eventos.get(i, set()), etapa))
-                ms.append(proporcion(
-                    f"{pref}.{_SUFIJO_TASA[clave]}",
-                    f"Tasa de {etiqueta.lower()} — {declarado}",
-                    exitos, n, "crm"))
-            valores.append({"valor_declarado": declarado, "n": n, "metricas": ms})
+        for slug, slot in ordenados[:TOPE_VALORES_POR_PREGUNTA]:
+            # La grafia mas frecuente es la que se muestra: si 40 escribieron
+            # "Montevideo" y 2 "montevideo", la etiqueta es "Montevideo".
+            declarado = max(slot["etiquetas"].items(), key=lambda kv: (kv[1], kv[0]))[0]
+            valores.append(_metricas_de(pregunta, slug, declarado, slot["ids"]))
+
+        cola = ordenados[TOPE_VALORES_POR_PREGUNTA:]
+        if cola:
+            ids_cola = [i for _slug_, slot in cola for i in slot["ids"]]
+            etiqueta = f"otros ({len(cola)} respuestas distintas)"
+            valores.append(_metricas_de(pregunta, "otros", etiqueta, ids_cola))
+
         bloques.append({
             "pregunta": pregunta,
             "etiqueta": PREGUNTAS[pregunta][1],
             "n": sum(v["n"] for v in valores),
+            "valores_distintos": len(ordenados),
             "valores": valores,
         })
     return bloques
