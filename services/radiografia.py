@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 def construir_dossier(db_path: str, desde: str, hasta: str) -> dict:
     """Todo lo que se puede medir del periodo, en un solo objeto."""
-    return {
+    d = {
         "periodo": {"desde": desde, "hasta": hasta},
         "campanas": por_campana(db_path, desde, hasta),
         "embudo_campanas": embudo_por_campana(db_path, desde, hasta),
@@ -34,6 +34,11 @@ def construir_dossier(db_path: str, desde: str, hasta: str) -> dict:
         "tiempos": tiempos(db_path, desde, hasta),
         "recordatorios": recordatorios(db_path, desde, hasta),
     }
+    # Va al final porque lee los otros bloques, no la base: los hallazgos son
+    # una lectura del dossier, no una consulta mas.
+    from services.hallazgos import buscar
+    d["hallazgos"] = buscar(d)
+    return d
 
 
 def _todas_las_metricas(dossier: dict):

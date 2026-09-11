@@ -112,6 +112,8 @@ def test_el_rotulo_ya_alcanza_para_texto():
                  ".sc-bloque>.sc-sub", ".sc-chip",
                  # Los tres de los bloques por campana. Son rotulos: el
                  # subtitulo de cada tarjeta, la tasa de caida y la leyenda.
-                 ".sc-embudo-sub", ".sc-etapa-tasa", ".sc-leyenda-item"}
+                 ".sc-embudo-sub", ".sc-etapa-tasa", ".sc-leyenda-item",
+                 # El numero de orden del hallazgo y su borde izquierdo.
+                 ".sc-hall-n", ".sc-hall-uno"}
     assert con_rotulo == esperados, (
         f"--rotulo esta en {sorted(con_rotulo)} y se esperaba {sorted(esperados)}")

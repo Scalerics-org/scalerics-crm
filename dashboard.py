@@ -1325,6 +1325,12 @@ body.light .mobile-header-title{color:#0f172a}
 /* Mobile FAB */
 /* ── Panel de Marketing ─────────────────────────────────────────────────── */
 .sc-filtros{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:22px}
+.sc-hall{display:grid;gap:10px}
+.sc-hall-uno{display:grid;grid-template-columns:auto 1fr;gap:12px;align-items:start;background:var(--fondo-hundido);border:1px solid var(--borde);border-left:3px solid var(--rotulo);border-radius:10px;padding:12px 14px}
+.sc-hall-uno[data-sev="alta"]{border-left-color:var(--ambar)}
+.sc-hall-n{font-size:.8rem;font-weight:700;color:var(--rotulo);font-variant-numeric:tabular-nums;min-width:18px}
+.sc-hall-tit{font-size:.84rem;font-weight:700;color:var(--texto);margin-bottom:4px}
+.sc-hall-cuerpo{font-size:.79rem;line-height:1.55;color:var(--texto-tenue)}
 .sc-leyenda{display:flex;flex-wrap:wrap;gap:14px;margin-top:8px;padding-left:52px}
 .sc-leyenda-item{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;color:var(--rotulo)}
 .sc-leyenda-punto{width:10px;height:10px;border-radius:3px;flex-shrink:0}
@@ -1953,6 +1959,12 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     <div id="mk-cuerpo" style="display:none">
       <div id="mk-avisos"></div>
       <div id="mk-informe"></div>
+      <div class="sc-bloque" id="mk-hall-bloque">
+        <h3>Lo que salta a la vista</h3>
+        <div class="sc-sub">Calculado, no escrito por IA: son reglas sobre los mismos números que están más abajo. Cada uno cita las métricas que lo sostienen, así que se puede ir a la tabla y comprobarlo.</div>
+        <div id="mk-hallazgos"></div>
+      </div>
+
       <div id="mk-tiles"></div>
 
       <div class="sc-bloque">
@@ -7788,6 +7800,22 @@ function _mkPintar() {
   // Va DESPUES de `const campanas`: leerlo antes tira ReferenceError por
   // la zona muerta temporal del const. node --check no lo agarra —es
   // sintacticamente valido— y solo revienta al abrir el panel.
+  // ── Lo que salta a la vista ────────────────────────────────────────────
+  //
+  // Los hallazgos son deterministas: los calcula `services/hallazgos.py` a
+  // partir del mismo dossier que alimenta los graficos. No hay nada que
+  // validar —a diferencia del informe de IA— porque los numeros se leen, no se
+  // generan.
+  const hall = _mkDossier.hallazgos || [];
+  document.getElementById('mk-hall-bloque').style.display = hall.length ? '' : 'none';
+  document.getElementById('mk-hallazgos').innerHTML =
+    '<div class="sc-hall">' + hall.map((h, i) =>
+      '<div class="sc-hall-uno" data-sev="' + esc(h.severidad || '') + '">' +
+      '<span class="sc-hall-n">' + (i + 1) + '</span>' +
+      '<span><span class="sc-hall-tit">' + esc(h.titulo || '') + '</span>' +
+      '<span class="sc-hall-cuerpo">' + esc(h.cuerpo || '') + '</span></span>' +
+      '</div>').join('') + '</div>';
+
   // ── Dónde se cae cada campaña ──────────────────────────────────────────
   //
   // El embudo global contesta "cómo venimos"; este contesta "dónde se tranca
