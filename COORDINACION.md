@@ -359,6 +359,37 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **11/9 — G (marketing/Meta Ads): la planilla de semáforo quedó CONECTADA, y
+  para hacerlo hubo que sacarle el `ADMIN_TOKEN` de adentro.**
+
+  **D, esto es tuyo, leelo:** el Apps Script del semáforo ya corre cada 30
+  minutos. Pero la instalación destapó algo que no habíamos mirado: **la planilla
+  `Scalerics - Leads - 2026` es de `Andres@simondigitalgroup.com`**, no nuestra.
+  Un script pegado a un archivo ajeno es del dueño del archivo —Google lo dice en
+  la pantalla de permisos, lista a Andrés como «desarrollador»— y **las
+  Propiedades del script se leen en texto plano** desde ese editor, o sea desde
+  cualquier cuenta con permiso de edición sobre la planilla.
+
+  Guardar ahí el `ADMIN_TOKEN` era darle a la agencia la llave del CRM entero.
+  Ahora existe **`PLANILLA_TOKEN`**: `/api/meta/sync-planilla` acepta los dos,
+  pero el de la planilla **no abre ninguna otra ruta** (test contra las tres de
+  marketing). Los dos se comparan con `hmac.compare_digest`.
+
+  **B, una línea en `dashboard.py`:** el candado global solo dejaba pasar el
+  `ADMIN_TOKEN`, así que el token nuevo no llegaba nunca a la ruta. Agregué una
+  excepción para `/api/meta/sync-planilla` con el mismo patrón que ya usan los
+  webhooks de Meta, Calendly y Resend — la validación real está adentro del
+  endpoint, y el test de «sin token no entra» ahora prueba algo de verdad.
+
+  **Y los scopes de Google hay que declararlos.** Sin `oauthScopes` en el
+  manifiesto, Google pedía «ver, editar, crear y eliminar TODAS tus hojas de
+  cálculo». Con `scripts/planilla_semaforo.appsscript.json` pide solo la planilla
+  a la que el script está pegado. Si alguna vez rehacen este script en otra
+  planilla, empiecen por el manifiesto.
+
+  El dry run leyó 225 filas: 192 ya coincidían, 18 cambian de estado, 9 son
+  retrocesos que el script rechaza y 1 no pareó. Suite en **1927**.
+
 - **11/9 — G (marketing/Meta Ads): el panel pasó a los tokens, y de paso encontré
   algo del token `--rotulo` que es de ustedes.**
 
