@@ -7751,6 +7751,12 @@ function _mkPintar() {
 
   _mkAvisos();
 
+  const nombreSemana = _mkSemanas([
+    ...(_mkDossier.serie_semanal || []).map(s => s.inicio),
+    ...(_mkDossier.serie_campanas || []).flatMap(s => (s.puntos || []).map(p => p.inicio)),
+  ]);
+
+
   // ── Los ocho KPIs ──────────────────────────────────────────────────────
   // `mejor` dice para que lado es bueno: en los costos, subir es mala noticia.
   const kpis = [
@@ -7849,11 +7855,6 @@ function _mkPintar() {
   //
   // La caída más grande va marcada porque es la única etapa sobre la que tiene
   // sentido hacer algo: mejorar donde ya se pasa el 90% no mueve el total.
-  const nombreSemana = _mkSemanas([
-    ...(_mkDossier.serie_semanal || []).map(s => s.inicio),
-    ...(_mkDossier.serie_campanas || []).flatMap(s => (s.puntos || []).map(p => p.inicio)),
-  ]);
-
   const embudos = _mkDossier.embudo_campanas || [];
   document.getElementById('mk-embudos').innerHTML = !embudos.length
     ? '<div class="sc-vacio">Sin leads en el período.</div>'
