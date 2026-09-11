@@ -38,7 +38,14 @@
     tinta:  { claro: '#0f172a', oscuro: '#e2e8f0' },
     mudo:   { claro: '#64748b', oscuro: '#64748b' },
     grilla: { claro: '#e2e8f0', oscuro: '#1e293b' },
-    fondo:  { claro: '#ffffff', oscuro: '#111827' },
+    // El fondo NO es decorativo: es la superficie contra la que se
+    // validan los contrastes. Tiene que ser el mismo color que la
+    // tarjeta que contiene al grafico (`--superficie`), o el panel se
+    // ve con un recuadro mas oscuro adentro de cada bloque.
+    // Revalidado el 11/9/2026 al pasar el panel a tokens: la paleta
+    // oscura pasa las cinco pruebas contra #161b27 igual que contra el
+    // #111827 anterior, los cinco tonos siguen arriba de 3:1.
+    fondo:  { claro: '#ffffff', oscuro: '#161b27' },
     // Estado, reservados: nunca se usan como "serie 4".
     bien:   { claro: '#15803d', oscuro: '#22c55e' },
     mal:    { claro: '#b91c1c', oscuro: '#f87171' }

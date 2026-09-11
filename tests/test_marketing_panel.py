@@ -1,5 +1,6 @@
 """El panel de Marketing esta armado y su JS compila."""
 
+import pathlib
 import re
 import shutil
 import subprocess
@@ -42,11 +43,41 @@ def test_no_hay_emojis_en_el_panel():
     assert not encontrados, f"emojis en el panel: {encontrados}"
 
 
-def test_el_panel_tiene_sus_dos_temas():
-    """El CRM tiene body.light. Nada de invertir colores automaticamente."""
-    for regla in (".sc-tile", ".sc-bloque", ".sc-aviso", ".sc-tabla"):
-        assert f"body.light {regla}" in dashboard.DASHBOARD_HTML, \
-            f"{regla} no tiene su version clara"
+# Las reglas del panel que hasta el 11/9/2026 tenian una gemela `body.light`
+# escrita a mano. Ahora el tema claro sale de los tokens del CRM, asi que la
+# gemela sobra: su presencia es el sintoma de que alguien volvio a escribir el
+# mismo cambio dos veces.
+_REGLAS_DEL_PANEL = (".sc-tile", ".sc-bloque", ".sc-aviso", ".sc-tabla",
+                     ".sc-informe", ".sc-hallazgo-tit", ".sc-chip")
+
+
+def _cuerpos(selector):
+    """Los cuerpos de toda regla que arranque con `selector`."""
+    return re.findall(r"^" + re.escape(selector) + r"[^{]*\{([^}]*)\}",
+                      dashboard.DASHBOARD_HTML, re.M)
+
+
+@pytest.mark.parametrize("selector", _REGLAS_DEL_PANEL)
+def test_el_panel_no_escribe_colores_a_mano(selector):
+    """El panel se pinta con los tokens del CRM, no con hex propios.
+
+    Antes este test pedia lo contrario —que hubiera una regla `body.light` por
+    cada una— porque el panel nacio antes de que el resto del dashboard tuviera
+    tokens. Con los tokens puestos, un hex suelto aca es el panel despegandose
+    del tema claro sin que nadie lo note.
+    """
+    cuerpos = _cuerpos(selector)
+    assert cuerpos, f"no encontre ninguna regla {selector}"
+    for cuerpo in cuerpos:
+        sueltos = re.findall(r"#[0-9a-fA-F]{3,8}\b", cuerpo)
+        assert not sueltos, f"{selector} tiene colores a mano: {sueltos}"
+
+
+@pytest.mark.parametrize("selector", _REGLAS_DEL_PANEL)
+def test_el_panel_no_tiene_reglas_claras_propias(selector):
+    patron = r"^body\.light " + re.escape(selector) + r"[^{]*\{"
+    assert not re.search(patron, dashboard.DASHBOARD_HTML, re.M), (
+        f"sobra `body.light {selector}`: los tokens ya lo cubren")
 
 
 def test_la_tabla_de_datos_existe():
@@ -86,9 +117,19 @@ def test_el_informe_muestra_las_metricas_citadas():
     assert "se sostiene en" in dashboard.DASHBOARD_HTML
 
 
-def test_el_informe_tiene_sus_dos_temas():
-    for regla in (".sc-informe", ".sc-hallazgo-tit", ".sc-chip"):
-        assert f"body.light {regla}" in dashboard.DASHBOARD_HTML, regla
+def test_el_fondo_de_los_graficos_es_la_superficie_de_la_tarjeta():
+    """El fondo del SVG no es decorativo.
+
+    Es la superficie contra la que se validan los contrastes de la paleta, y
+    ademas tiene que ser el mismo color que la tarjeta que lo contiene: si se
+    despegan, cada grafico se ve como un recuadro mas oscuro adentro del bloque.
+    Este test los ata, para que mover `--superficie` no deje los graficos atras.
+    """
+    js = (pathlib.Path(dashboard.__file__).parent / "static" / "charts.js")
+    raiz = re.search(r":root\{([^}]*)\}", dashboard.DASHBOARD_HTML).group(1)
+    superficie = re.search(r"--superficie:\s*([^;]+);", raiz).group(1).strip()
+    assert f"oscuro: '{superficie}'" in js.read_text(encoding="utf-8"), (
+        f"el fondo oscuro de charts.js no es --superficie ({superficie})")
 
 
 def test_el_panel_compara_costo_por_lead_contra_costo_por_demo():
