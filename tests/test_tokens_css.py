@@ -81,13 +81,16 @@ def test_la_rampa_de_grises_se_invierte(oscuro, claro):
 
 
 def test_los_dos_temas_son_de_verdad_distintos(oscuro, claro):
-    """Con dos excepciones deliberadas.
+    """Con una excepción deliberada.
 
-    `--azul` es el azul de marca y no cambia entre temas. `--texto-debil` es el
-    PIVOTE de la rampa de grises: el único que se lee bien sobre los dos fondos,
-    y el dato lo confirma (#64748b -> #64748b, x7 en las reglas reales).
+    `--azul` es el azul de marca y no cambia entre temas.
+
+    `--texto-debil` fue la otra hasta el 11/9: valía #64748b en los dos temas,
+    el "pivote" de la rampa que parecía leerse bien sobre los dos fondos. Medido
+    no era así: en oscuro daba 3,62:1 sobre la superficie, abajo del 4,5 del
+    texto chico. Ahora vale #8190a6 en oscuro y deja de ser igual en los dos.
     """
-    esperadas = {"--azul", "--texto-debil"}
+    esperadas = {"--azul"}
     iguales = {k for k in oscuro if oscuro[k].strip() == claro.get(k, "").strip()}
 
     assert iguales == esperadas, (
@@ -459,3 +462,53 @@ def test_el_relleno_se_distingue_de_la_superficie(oscuro, claro):
     burbujas no tienen por qué cambiar. Tiene que verse sobre el panel."""
     for valores in (oscuro, claro):
         assert _delta_e(valores["--relleno"], valores["--superficie"]) >= 4
+
+
+# ── contraste del texto ──────────────────────────────────────────────────────
+# WCAG AA pide 4,5:1 para texto de tamaño normal, y casi todo el texto
+# secundario del CRM es chico (0,65 a 0,8rem). Lo señaló la sesión de
+# marketing con `--rotulo`; el problema era el mismo en `--texto-debil`.
+
+def _luminancia(hexa: str) -> float:
+    h = hexa.strip().lstrip("#")
+    h = "".join(c * 2 for c in h) if len(h) == 3 else h
+
+    def lin(c):
+        c /= 255
+        return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+
+    r, g, b = (lin(int(h[i:i + 2], 16)) for i in (0, 2, 4))
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def _contraste(a: str, b: str) -> float:
+    x, y = sorted((_luminancia(a), _luminancia(b)), reverse=True)
+    return (x + 0.05) / (y + 0.05)
+
+
+TEXTO = ["--texto-fuerte", "--texto", "--texto-tenue", "--texto-debil", "--rotulo"]
+
+
+@pytest.mark.parametrize("token", TEXTO)
+def test_el_texto_llega_a_4_5_en_oscuro_sobre_todas_las_superficies(oscuro, token):
+    """`--texto-debil` y `--rotulo` valían #64748b: 3,62:1 sobre la superficie y
+    3,07:1 sobre el relleno de chips. #8190a6 es el gris más oscuro de la misma
+    familia que llega a 4,5 sobre las cuatro.
+
+    `--texto-apenas` NO está en la lista a propósito: da 2,27:1 en oscuro y
+    2,56:1 en claro. Es el de los rótulos en mayúscula (encabezados de tabla,
+    "GESTIÓN" del sidebar); queda pendiente de decisión.
+    """
+    for superficie in ("--superficie", "--fondo", "--fondo-hundido", "--relleno"):
+        c = _contraste(oscuro[token], oscuro[superficie])
+        assert c >= 4.5, f"{token} sobre {superficie} en oscuro: {c:.2f}:1"
+
+
+@pytest.mark.parametrize("token", TEXTO)
+def test_el_texto_llega_a_4_5_en_claro(claro, token):
+    """En claro se mide contra la superficie y el fondo, donde vive el texto.
+    Sobre los tintes grises (#f1f5f9), `--texto-debil` da 4,34: anotado, no
+    se tocó el tema claro en este cambio."""
+    for superficie in ("--superficie", "--fondo"):
+        c = _contraste(claro[token], claro[superficie])
+        assert c >= 4.5, f"{token} sobre {superficie} en claro: {c:.2f}:1"

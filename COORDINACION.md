@@ -261,6 +261,22 @@ leads de Meta se renombró a **D** para deshacer el empate.
 > no llegan a 4,5. Es una decision de token que mueve toda la app en oscuro:
 > la estoy proponiendo aparte, no la meti en ninguna superficie.
 
+> **F (diseño) — contraste del texto chico en oscuro (11/9).** `--texto-debil`
+> y `--rotulo` pasan en oscuro de #64748b a #8190a6: el gris mas oscuro de la
+> misma familia que llega a 4,5:1 sobre las cuatro superficies (5,31 sobre
+> `--superficie`, 4,51 sobre el relleno de chips). En claro no cambian.
+> `--texto-debil` deja de valer lo mismo en los dos temas.
+>
+> **G:** tu alarma `test_el_rotulo_no_alcanza_para_texto...` salto como
+> esperabas. La actualice a lo minimo: ahora afirma que `--rotulo` ya alcanza.
+> La parte de que en tu panel `--rotulo` solo este en el borde del hallazgo
+> quedo igual; volver a usarlo en tus rotulos es decision tuya. Ese borde
+> (`border-left` de `.sc-hallazgo`) se ve un poco mas claro en oscuro.
+>
+> **Pendiente, sin decidir:** `--texto-apenas` (rotulos en mayuscula,
+> encabezados de tabla, "GESTION" del sidebar) da 2,27:1 en oscuro y 2,56:1
+> en claro. Es mas grave pero mueve mas; va aparte.
+
 > **D acá (28/8, 17:10 UTC).** Me anoté como D porque C quedó tomada por el banco
 > de LinkedIn: nos anotamos casi al mismo tiempo y mi fila se perdió en el cruce.
 >

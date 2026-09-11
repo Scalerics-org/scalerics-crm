@@ -79,18 +79,21 @@ def test_el_panel_se_lee(tema, etiqueta, tinta, fondo, piso):
         f"y el piso es {piso}:1")
 
 
-def test_el_rotulo_no_alcanza_para_texto_y_por_eso_no_se_usa_para_texto():
-    """El motivo por el que el panel usa `--texto-tenue` y no `--rotulo`.
+def test_el_rotulo_ya_alcanza_para_texto():
+    """La alarma que dejo G, y que salto como estaba previsto.
 
-    `--rotulo` vale #64748b en oscuro, que sobre la superficie da 3,62:1: pasa
-    el piso de componente pero no el de texto. Si alguna vez sube, este test se
-    cae y se puede volver a usar para rotulos, que es lo que su nombre sugiere.
-    Mientras tanto, el unico `--rotulo` del panel es un borde.
+    Decia: `--rotulo` vale #64748b en oscuro, que sobre la superficie da 3,62:1,
+    y "si alguna vez sube, este test se cae y se puede volver a usar para
+    rotulos". Subio el 11/9: ahora vale #8190a6 en oscuro (5,31:1), junto con
+    `--texto-debil`, que tenia el mismo problema.
+
+    Por eso el panel usaba `--texto-tenue` en los rotulos. Volver a `--rotulo`
+    queda a criterio de G: la segunda parte de este test (que en el panel solo
+    este en el borde del hallazgo) sigue como estaba.
     """
     c = contraste(TEMAS["oscuro"]["--rotulo"], TEMAS["oscuro"]["--superficie"])
-    assert c < PISO_TEXTO, (
-        f"--rotulo ahora da {c:.2f}:1 en oscuro y ya sirve para texto: "
-        "se puede simplificar el panel volviendo a usarlo en los rotulos")
+    assert c >= PISO_TEXTO, (
+        f"--rotulo da {c:.2f}:1 en oscuro: volvio a no alcanzar para texto")
 
     reglas = re.findall(r"^(\.sc-[^{]*)\{([^}]*)\}", dashboard.DASHBOARD_HTML, re.M)
     con_rotulo = [sel.strip() for sel, cuerpo in reglas if "--rotulo" in cuerpo]
