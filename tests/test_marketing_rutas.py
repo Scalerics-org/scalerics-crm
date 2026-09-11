@@ -4,6 +4,8 @@ Los GET piden el panel `marketing` porque muestran gasto publicitario. Los POST
 van por x-admin-token, igual que /api/linkedin/generar, porque los llama el cron.
 """
 
+import re
+
 import pytest
 
 from dashboard import create_app
@@ -150,14 +152,92 @@ def test_generar_sin_ia_sigue_guardando_el_dossier(app, cliente, monkeypatch):
     assert fila["report_json"] is None
 
 
-def test_el_workflow_del_cron_nace_con_el_schedule_comentado():
-    """No se prende solo: cada corrida cuesta plata. Se descomenta el dia que
-    se decida gastar."""
+# El workflow se lee a mano en vez de con PyYAML a proposito: pyyaml no esta en
+# requirements.txt y agregarlo cargaria una dependencia a la imagen de
+# produccion —una maquina de 256 MB— para satisfacer a tres tests. El archivo es
+# nuestro y su forma es predecible; si alguien la cambia, estos tests fallan
+# ruidosamente en vez de pasar de largo, que es lo que se quiere.
+
+def _texto_del_workflow() -> str:
     import io
-    y = io.open(".github/workflows/radiografia.yml", encoding="utf-8").read()
-    assert "workflow_dispatch" in y
-    activos = [l.strip() for l in y.splitlines() if l.strip().startswith("- cron:")]
-    assert not activos, f"el schedule esta activo: {activos}"
+    return io.open(".github/workflows/radiografia.yml", encoding="utf-8").read()
+
+
+def _crones() -> list:
+    """Los crons activos. Una linea comentada no cuenta: es el estado anterior."""
+    return [l.split("cron:", 1)[1].strip().strip('"\'')
+            for l in _texto_del_workflow().splitlines()
+            if l.strip().startswith("- cron:")]
+
+
+def _paso(marca: str) -> str:
+    """El bloque de texto de un paso, buscado por algo que aparezca en su `name`
+    o en su `id`. Va desde su `- name:` hasta el siguiente."""
+    bloques = re.split(r"^      - name: ", _texto_del_workflow(), flags=re.M)[1:]
+    encontrados = [b for b in bloques if marca.lower() in b.lower().split("\n")[0]
+                   or f"id: {marca}" in b]
+    assert encontrados, f"no encontre ningun paso que matchee {marca!r}"
+    return encontrados[0]
+
+
+def _condicion(bloque: str) -> str:
+    """El `if:` de un paso, aplanado. Soporta el bloque plegado `>-`."""
+    m = re.search(r"^        if:(.*?)^        [a-z]", bloque + "\n        z",
+                  re.M | re.S)
+    return " ".join(m.group(1).replace(">-", " ").split()) if m else ""
+
+
+def _dias_del_cron(expr: str) -> set:
+    """Los dias de la semana que cubre un cron, como enteros 0..6."""
+    campo = expr.split()[4]
+    dias = set()
+    for parte in campo.split(","):
+        if "-" in parte:
+            a, b = (int(x) for x in parte.split("-"))
+            dias |= set(range(a, b + 1))
+        else:
+            dias.add(int(parte))
+    return dias
+
+
+def test_el_gasto_se_trae_todos_los_dias_y_el_informe_solo_los_lunes():
+    """Las dos cadencias no son un capricho: la diferencia es plata.
+
+    Traer el gasto es gratis y envejece a diario —Meta cobra todos los dias y
+    ademas corrige los ultimos hacia atras—. El informe le pide ~21.000 tokens
+    a Opus 5. Con una sola cadencia, o el gasto queda viejo seis dias o el
+    informe cuesta siete veces mas sin decir nada nuevo.
+    """
+    crones = _crones()
+    assert len(crones) == 2, f"deberian ser dos crons y hay {len(crones)}: {crones}"
+
+    semanal = "0 11 * * 1"
+    assert semanal in crones, "falta el cron de los lunes"
+    diario = [c for c in crones if c != semanal][0]
+
+    lunes, resto = _dias_del_cron(semanal), _dias_del_cron(diario)
+    assert lunes == {1}
+    assert not (lunes & resto), (
+        f"el cron diario ({diario}) pisa al lunes: los dos dispararian y habria "
+        "una sincronizacion al pedo")
+    assert lunes | resto == set(range(7)), (
+        f"entre los dos crons no se cubren los 7 dias: falta "
+        f"{sorted(set(range(7)) - (lunes | resto))}")
+
+
+def test_el_paso_del_informe_esta_atado_al_cron_semanal():
+    """Si alguien saca este `if`, el informe pasa a correr todos los dias y la
+    factura se multiplica por siete sin que nadie lo note."""
+    condicion = _condicion(_paso("Generar la radiografía"))
+    assert "github.event.schedule == '0 11 * * 1'" in condicion, condicion
+    assert "workflow_dispatch" in condicion, condicion
+
+
+def test_el_paso_que_trae_el_gasto_no_esta_condicionado():
+    """Es el que tiene que correr todos los dias; una condicion aca lo apagaria
+    sin que se vea."""
+    condicion = _condicion(_paso("Sincronizar el gasto"))
+    assert not condicion, f"el paso del gasto tiene condicion: {condicion}"
 
 
 # ── El informe de la IA ──────────────────────────────────────────────────────
