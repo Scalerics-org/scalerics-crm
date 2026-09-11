@@ -1329,6 +1329,20 @@ body.light .mobile-header-title{color:#0f172a}
 /* Mobile FAB */
 /* ── Panel de Marketing ─────────────────────────────────────────────────── */
 .sc-filtros{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:22px}
+.sc-leyenda{display:flex;flex-wrap:wrap;gap:14px;margin-top:8px;padding-left:52px}
+.sc-leyenda-item{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;color:var(--rotulo)}
+.sc-leyenda-punto{width:10px;height:10px;border-radius:3px;flex-shrink:0}
+.sc-embudos{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px}
+.sc-embudo-uno{background:var(--fondo-hundido);border:1px solid var(--borde);border-radius:12px;padding:14px 16px}
+.sc-embudo-tit{font-size:.78rem;font-weight:700;color:var(--texto);margin-bottom:2px;display:flex;align-items:center;gap:7px}
+.sc-embudo-sub{font-size:.68rem;color:var(--rotulo);margin-bottom:10px}
+.sc-etapa{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;margin-bottom:7px}
+.sc-etapa-nom{font-size:.72rem;color:var(--texto-tenue)}
+.sc-etapa-n{font-size:.74rem;font-weight:700;color:var(--texto);font-variant-numeric:tabular-nums}
+.sc-etapa-barra{grid-column:1/-1;height:7px;border-radius:4px;background:var(--borde);overflow:hidden}
+.sc-etapa-lleno{height:100%;border-radius:4px}
+.sc-etapa-tasa{font-size:.66rem;color:var(--rotulo);font-variant-numeric:tabular-nums}
+.sc-caida{color:var(--ambar);font-weight:700}
 .sc-nav-mes{display:flex;align-items:center;gap:6px}
 .sc-nav-mes span{font-size:.82rem;font-weight:700;color:var(--texto);min-width:132px;text-align:center}
 .sc-filtro{display:flex;flex-direction:column;gap:4px}
@@ -1955,6 +1969,24 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
         <h3>Semana a semana</h3>
         <div class="sc-sub">Grano semanal a propósito: con poco más de un lead por día, un gráfico diario son picos y ceros.</div>
         <div id="mk-series"></div>
+      </div>
+
+      <div class="sc-bloque">
+        <h3>Dónde se cae cada campaña</h3>
+        <div class="sc-sub">El mismo embudo de arriba, pero abierto por campaña. Cada porcentaje es contra la etapa anterior, no contra el total: así se ve el escalón. En ámbar, la caída más grande de cada una.</div>
+        <div id="mk-embudos"></div>
+      </div>
+
+      <div class="sc-bloque">
+        <h3>Cómo evoluciona cada campaña</h3>
+        <div class="sc-sub">Una campaña que se pone cara queda tapada en el promedio si otra mejora al mismo tiempo. Acá cada una va por su lado, sobre el mismo eje.</div>
+        <div id="mk-evolucion"></div>
+      </div>
+
+      <div class="sc-bloque">
+        <h3>Cuánto costó llegar hasta acá</h3>
+        <div class="sc-sub">Gasto y leads acumulados desde el inicio del período. Son dos escalas distintas, así que van en dos gráficos y no en dos ejes: un eje doble hace que cualquier par de curvas parezca que se cruza donde uno quiera.</div>
+        <div id="mk-acumulado"></div>
       </div>
 
       <div class="sc-bloque">
@@ -7760,6 +7792,80 @@ function _mkPintar() {
   // Va DESPUES de `const campanas`: leerlo antes tira ReferenceError por
   // la zona muerta temporal del const. node --check no lo agarra —es
   // sintacticamente valido— y solo revienta al abrir el panel.
+  // ── Dónde se cae cada campaña ──────────────────────────────────────────
+  //
+  // El embudo global contesta "cómo venimos"; este contesta "dónde se tranca
+  // cada una", que es lo accionable. Dos campañas con el mismo costo por lead
+  // pueden perder la gente en etapas distintas.
+  //
+  // La caída más grande va marcada porque es la única etapa sobre la que tiene
+  // sentido hacer algo: mejorar donde ya se pasa el 90% no mueve el total.
+  const embudos = _mkDossier.embudo_campanas || [];
+  document.getElementById('mk-embudos').innerHTML = !embudos.length
+    ? '<div class="sc-vacio">Sin leads en el período.</div>'
+    : '<div class="sc-embudos">' + embudos.map((b, i) => {
+        const color = SC.colorDeCampana(b.campana, i, tema);
+        const tope = b.etapas[0].n || 1;
+        // La peor caída: la tasa más baja entre las etapas que tienen tasa.
+        const conTasa = b.etapas.filter(e => e.tasa !== null && e.tasa !== undefined);
+        const peor = conTasa.length
+          ? conTasa.reduce((a, e) => (e.tasa < a.tasa ? e : a)).clave : null;
+        const filas = b.etapas.map(e => {
+          const pct = tope ? (e.n / tope) * 100 : 0;
+          const tasa = (e.tasa === null || e.tasa === undefined) ? ''
+            : '<span class="sc-etapa-tasa' + (e.clave === peor ? ' sc-caida' : '') +
+              '">' + SC.fmt(e.tasa, 'porcentaje') + '</span>';
+          return '<div class="sc-etapa">' +
+                 '<span class="sc-etapa-nom">' + esc(e.etiqueta) + ' ' + tasa + '</span>' +
+                 '<span class="sc-etapa-n">' + esc(SC.fmt(e.n, 'numero')) + '</span>' +
+                 '<span class="sc-etapa-barra"><span class="sc-etapa-lleno" style="width:' +
+                 pct.toFixed(1) + '%;background:' + color + '"></span></span>' +
+                 '</div>';
+        }).join('');
+        const cierres = b.etapas[b.etapas.length - 1].n;
+        return '<div class="sc-embudo-uno">' +
+               '<div class="sc-embudo-tit">' +
+               '<span class="sc-leyenda-punto" style="background:' + color + '"></span>' +
+               esc(b.campana) + '</div>' +
+               '<div class="sc-embudo-sub">' + esc(SC.fmt(b.etapas[0].n, 'numero')) +
+               ' leads · ' + esc(SC.fmt(cierres, 'numero')) + ' cierres</div>' +
+               filas + '</div>';
+      }).join('') + '</div>';
+
+  // ── Cómo evoluciona cada campaña ───────────────────────────────────────
+  const porSemana = _mkDossier.serie_campanas || [];
+  // Las campañas sin gasto no dicen nada en un gráfico de costos: serían una
+  // línea vacía con su color ocupando lugar en la leyenda.
+  const conGastoSem = porSemana.filter(s =>
+    (s.puntos || []).some(p => p.gasto > 0));
+
+  const evolucion = [
+    ['costo_demo', 'Costo por demo, semana a semana', 'moneda'],
+    ['cpl', 'Costo por lead, semana a semana', 'moneda'],
+    ['gasto', 'Gasto por semana', 'moneda'],
+  ].map(([campo, titulo, formato]) => SC.serieMulti(
+    conGastoSem.map(s => ({
+      campana: s.campana,
+      puntos: (s.puntos || []).map(p => ({ x: p.semana, y: p[campo] })),
+    })), { etiqueta: titulo, formato }, tema)).join('');
+  document.getElementById('mk-evolucion').innerHTML = conGastoSem.length
+    ? evolucion
+    : '<div class="sc-vacio">Hace falta gasto sincronizado para ver la evolución.</div>';
+
+  // ── Cuánto costó llegar hasta acá ──────────────────────────────────────
+  //
+  // Dos gráficos y no dos ejes: con un eje doble las dos curvas se cruzan
+  // donde uno elija la escala, y el cruce parece significar algo cuando no
+  // significa nada.
+  document.getElementById('mk-acumulado').innerHTML = conGastoSem.length
+    ? [['gasto_acum', 'Gasto acumulado', 'moneda'],
+       ['leads_acum', 'Leads acumulados', 'numero']].map(([campo, titulo, formato]) =>
+        SC.serieMulti(conGastoSem.map(s => ({
+          campana: s.campana,
+          puntos: (s.puntos || []).map(p => ({ x: p.semana, y: p[campo] })),
+        })), { etiqueta: titulo, formato }, tema)).join('')
+    : '<div class="sc-vacio">Hace falta gasto sincronizado.</div>';
+
   // ── Qué campaña rinde de verdad ────────────────────────────────────────
   //
   // Existe porque el hallazgo mas util del modulo requeria comparar dos

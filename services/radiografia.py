@@ -14,8 +14,9 @@ import json
 import logging
 
 from database import _connect
-from services.dossier import (conciliacion, por_campana, por_segmento,
-                              recordatorios, serie_semanal, tiempos)
+from services.dossier import (conciliacion, embudo_por_campana, por_campana,
+                              por_segmento, recordatorios, serie_por_campana,
+                              serie_semanal, tiempos)
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,8 @@ def construir_dossier(db_path: str, desde: str, hasta: str) -> dict:
     return {
         "periodo": {"desde": desde, "hasta": hasta},
         "campanas": por_campana(db_path, desde, hasta),
+        "embudo_campanas": embudo_por_campana(db_path, desde, hasta),
+        "serie_campanas": serie_por_campana(db_path, desde, hasta),
         "segmentos": por_segmento(db_path, desde, hasta),
         "serie_semanal": serie_semanal(db_path, desde, hasta),
         "conciliacion": conciliacion(db_path, desde, hasta),

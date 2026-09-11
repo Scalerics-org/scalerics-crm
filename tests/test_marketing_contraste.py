@@ -66,6 +66,13 @@ PARES = [
     ("delta malo", "--rojo", "--superficie", PISO_COMPONENTE),
     ("borde del hallazgo, que no es texto", "--rotulo", "--superficie",
      PISO_COMPONENTE),
+    # Los embudos por campana viven en una tarjeta hundida adentro del bloque,
+    # asi que su fondo NO es --superficie y hay que medirlos aparte: un par que
+    # pasa sobre la superficie puede no pasar sobre el hundido.
+    ("nombre de etapa en la tarjeta", "--texto-tenue", "--fondo-hundido",
+     PISO_TEXTO),
+    ("numero de etapa", "--texto", "--fondo-hundido", PISO_TEXTO),
+    ("tasa de caida y subtitulo", "--rotulo", "--fondo-hundido", PISO_TEXTO),
 ]
 
 
@@ -102,6 +109,9 @@ def test_el_rotulo_ya_alcanza_para_texto():
     reglas = re.findall(r"^(\.sc-[^{]*)\{([^}]*)\}", dashboard.DASHBOARD_HTML, re.M)
     con_rotulo = {sel.strip() for sel, cuerpo in reglas if "--rotulo" in cuerpo}
     esperados = {".sc-hallazgo", ".sc-filtro label", ".sc-tabla th",
-                 ".sc-bloque>.sc-sub", ".sc-chip"}
+                 ".sc-bloque>.sc-sub", ".sc-chip",
+                 # Los tres de los bloques por campana. Son rotulos: el
+                 # subtitulo de cada tarjeta, la tasa de caida y la leyenda.
+                 ".sc-embudo-sub", ".sc-etapa-tasa", ".sc-leyenda-item"}
     assert con_rotulo == esperados, (
         f"--rotulo esta en {sorted(con_rotulo)} y se esperaba {sorted(esperados)}")

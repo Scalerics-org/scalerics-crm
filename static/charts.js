@@ -429,6 +429,143 @@
            '</svg></div>';
   };
 
+
+  // Varias campanas en el mismo eje. `SC.serie` dibuja una sola linea, asi que
+  // comparar campanas obligaba a mirar graficos separados y adivinar la escala.
+  //
+  // Un solo eje Y, siempre: dos medidas de escalas distintas van en dos
+  // graficos, nunca en dos ejes. Acá todas las series son la MISMA medida
+  // (costo por demo, o CPL) en campanas distintas, que es el caso donde
+  // compartir eje es lo correcto.
+  //
+  // El color lo da `SC.colorDeCampana`, o sea que sigue a la campana y no a su
+  // posicion: filtrar una campana no repinta a las que quedan.
+  SC.serieMulti = function (series, opciones, tema) {
+    opciones = opciones || {};
+    var conDatos = (series || []).filter(function (s) {
+      return (s.puntos || []).some(function (p) {
+        return p.y !== null && p.y !== undefined;
+      });
+    });
+    if (!conDatos.length) {
+      return '<div class="sc-vacio">Sin datos para «' +
+             SC.esc(opciones.etiqueta || '') + '»</div>';
+    }
+
+    var tinta = SC.PALETA.tinta[tema];
+    var mudo = SC.PALETA.mudo[tema];
+    var grilla = SC.PALETA.grilla[tema];
+    var fondo = SC.PALETA.fondo[tema];
+
+    var ancho = opciones.ancho || 980;
+    var alto = opciones.alto || 230;
+    var x0 = _M.izquierda, x1 = ancho - _M.derecha;
+    var y0 = _M.arriba, y1 = alto - _M.abajo;
+
+    // El eje X son todas las semanas que aparecen en cualquier serie, en orden.
+    // Si cada serie usara su propio eje, dos campanas con semanas distintas
+    // quedarian desalineadas y la comparacion mentiria.
+    var equis = [];
+    conDatos.forEach(function (s) {
+      (s.puntos || []).forEach(function (p) {
+        if (equis.indexOf(p.x) === -1) equis.push(p.x);
+      });
+    });
+    equis.sort();
+
+    var valores = [];
+    conDatos.forEach(function (s) {
+      (s.puntos || []).forEach(function (p) {
+        if (p.y !== null && p.y !== undefined) valores.push(p.y);
+      });
+    });
+    var max = valores.length ? Math.max.apply(null, valores) : 0;
+    var cortes = SC.ticks(0, max || 1, 4);
+    var ey = SC.escalaLineal([0, cortes[cortes.length - 1]], [y1, y0]);
+    var paso = equis.length > 1 ? (x1 - x0) / (equis.length - 1) : 0;
+    var ex = function (i) {
+      return equis.length > 1 ? x0 + i * paso : (x0 + x1) / 2;
+    };
+
+    var piezas = [];
+
+    piezas.push('<g class="sc-eje-y">' + cortes.map(function (t) {
+      var y = ey(t);
+      return '<line x1="' + x0 + '" y1="' + y.toFixed(1) + '" x2="' + x1 +
+             '" y2="' + y.toFixed(1) + '" stroke="' + grilla +
+             '" stroke-width="1"/>' +
+             '<text x="' + (x0 - 8) + '" y="' + (y + 4).toFixed(1) +
+             '" text-anchor="end" font-size="10" fill="' + mudo + '">' +
+             SC.esc(SC.fmt(t, opciones.formato)) + '</text>';
+    }).join('') + '</g>');
+
+    var cada = Math.max(1, Math.ceil(equis.length / 8));
+    piezas.push('<g class="sc-eje-x">' + equis.map(function (x, i) {
+      if (i % cada) return '';
+      return '<text x="' + ex(i).toFixed(1) + '" y="' + (alto - 8) +
+             '" text-anchor="middle" font-size="10" fill="' + mudo + '">' +
+             SC.esc(x) + '</text>';
+    }).join('') + '</g>');
+
+    conDatos.forEach(function (s, indice) {
+      var color = SC.colorDeCampana(s.campana, indice, tema);
+      var porX = {};
+      (s.puntos || []).forEach(function (p) { porX[p.x] = p.y; });
+
+      // Cada hueco corta la linea. Unir por arriba de una semana sin dato
+      // inventa una tendencia que nadie midio.
+      var tramo = [];
+      function cerrar() {
+        if (tramo.length > 1) {
+          piezas.push('<path class="sc-linea" d="M' + tramo.join(' L') +
+                      '" fill="none" stroke="' + color +
+                      '" stroke-width="2" stroke-linecap="round" ' +
+                      'stroke-linejoin="round"/>');
+        } else if (tramo.length === 1) {
+          piezas.push('<path class="sc-linea" d="M' + tramo[0] + ' L' +
+                      tramo[0] + '" fill="none" stroke="' + color +
+                      '" stroke-width="2" stroke-linecap="round"/>');
+        }
+        tramo = [];
+      }
+      equis.forEach(function (x, i) {
+        var y = porX[x];
+        if (y === null || y === undefined) { cerrar(); return; }
+        tramo.push(ex(i).toFixed(1) + ',' + ey(y).toFixed(1));
+      });
+      cerrar();
+
+      equis.forEach(function (x, i) {
+        var y = porX[x];
+        if (y === null || y === undefined) return;
+        piezas.push('<circle cx="' + ex(i).toFixed(1) + '" cy="' +
+                    ey(y).toFixed(1) + '" r="3.5" fill="' + color +
+                    '" stroke="' + fondo + '" stroke-width="2"><title>' +
+                    SC.esc(s.campana) + ' · ' + SC.esc(x) + ' · ' +
+                    SC.esc(SC.fmt(y, opciones.formato)) +
+                    '</title></circle>');
+      });
+    });
+
+    // Leyenda: con dos series o mas, la identidad no puede depender solo del
+    // color. El cuadrito lleva el color y el texto va en tinta, nunca coloreado.
+    var leyenda = conDatos.map(function (s, indice) {
+      return '<span class="sc-leyenda-item">' +
+             '<span class="sc-leyenda-punto" style="background:' +
+             SC.colorDeCampana(s.campana, indice, tema) + '"></span>' +
+             SC.esc(SC.recortar(s.campana, 26)) + '</span>';
+    }).join('');
+
+    return '<div class="sc-panel-serie">' +
+           '<div class="sc-titulo" style="color:' + tinta + '">' +
+           SC.esc(opciones.etiqueta || '') + '</div>' +
+           '<svg viewBox="0 0 ' + ancho + ' ' + alto +
+           '" style="width:100%;height:auto" role="img" aria-label="' +
+           SC.esc(opciones.etiqueta || '') + '">' + piezas.join('') +
+           '</svg>' +
+           '<div class="sc-leyenda">' + leyenda + '</div></div>';
+  };
+
   SC.parApilado = function (a, b, tema) {
     return '<div class="sc-par">' +
            SC.serie(a.puntos, a, tema) +

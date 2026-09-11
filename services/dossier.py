@@ -459,6 +459,132 @@ def serie_semanal(db_path: str, desde: str, hasta: str) -> list:
     return salida
 
 
+def embudo_por_campana(db_path: str, desde: str, hasta: str) -> list:
+    """El embudo de cada campana, con la tasa de cada etapa contra la anterior.
+
+    El panel ya tenia un embudo, pero uno solo y global. Global contesta "como
+    venimos"; por campana contesta "donde se tranca cada una", que es lo que
+    permite hacer algo. Dos campanas pueden tener el mismo costo por lead y
+    perder la gente en etapas distintas: una no engancha, la otra no cierra.
+
+    La tasa va contra la etapa ANTERIOR, no contra el total. Sobre el total
+    todas las etapas parecen caer suavemente; contra la anterior se ve el
+    escalon, que es donde esta el problema.
+
+    Las etapas se cuentan con `alcanzo` sobre lead_events, igual que
+    `por_campana`: dos definiciones darian dos numeros para la misma pregunta.
+    """
+    from services.embudo import alcanzo
+
+    conn = _connect(db_path)
+    try:
+        leads = conn.execute(
+            "SELECT id, meta_campaign_name FROM businesses WHERE source = 'meta' "
+            "AND substr(scraped_at, 1, 10) BETWEEN ? AND ?",
+            (desde, hasta)).fetchall()
+        eventos_filas = conn.execute(
+            "SELECT lead_id, new_status FROM lead_events").fetchall()
+    finally:
+        conn.close()
+
+    eventos = {}
+    for fila in eventos_filas:
+        eventos.setdefault(fila["lead_id"], set()).add(fila["new_status"])
+
+    grupos = {}
+    for lead in leads:
+        grupos.setdefault(lead["meta_campaign_name"] or SIN_CAMPANA, []).append(lead)
+
+    bloques = []
+    # De la que mas trae a la que menos: es el orden en que se mira.
+    for campana in sorted(grupos, key=lambda c: (-len(grupos[c]), c)):
+        del_grupo = grupos[campana]
+        etapas = [{"clave": "leads", "etiqueta": "Leads",
+                   "n": len(del_grupo), "tasa": None}]
+        for clave, etapa, etiqueta in _ETAPAS:
+            n = sum(1 for l in del_grupo
+                    if alcanzo(eventos.get(l["id"], set()), etapa))
+            previo = etapas[-1]["n"]
+            etapas.append({
+                "clave": clave, "etiqueta": etiqueta, "n": n,
+                # Cero sobre cero no es 0%: es que no hay nada que medir.
+                "tasa": (n / previo) if previo else None,
+            })
+        bloques.append({"campana": campana, "etapas": etapas})
+    return bloques
+
+
+def serie_por_campana(db_path: str, desde: str, hasta: str) -> list:
+    """Semana a semana de cada campana: gasto, leads, demos y sus costos.
+
+    `serie_semanal` suma todas las campanas, asi que contesta "como viene el
+    mes" pero no "cual se esta poniendo cara". Una campana que empeora queda
+    tapada por otra que mejora, y el total no se mueve.
+
+    Cada punto trae tambien el acumulado, que responde otra pregunta: no cuanto
+    costo esta semana sino cuanto costo llegar hasta aca.
+    """
+    from datetime import date as _date
+
+    from services.embudo import alcanzo, costo
+
+    conn = _connect(db_path)
+    try:
+        gasto_filas = conn.execute(
+            "SELECT date, campaign_name, spend FROM meta_insights "
+            "WHERE date BETWEEN ? AND ?", (desde, hasta)).fetchall()
+        leads = conn.execute(
+            "SELECT id, scraped_at, meta_campaign_name FROM businesses "
+            "WHERE source = 'meta' AND substr(scraped_at, 1, 10) BETWEEN ? AND ?",
+            (desde, hasta)).fetchall()
+        eventos_filas = conn.execute(
+            "SELECT lead_id, new_status FROM lead_events").fetchall()
+    finally:
+        conn.close()
+
+    eventos = {}
+    for fila in eventos_filas:
+        eventos.setdefault(fila["lead_id"], set()).add(fila["new_status"])
+
+    # {campana: {lunes: {...}}}
+    porc = {}
+
+    def _slot(campana, inicio):
+        semanas = porc.setdefault(campana, {})
+        return semanas.setdefault(inicio, {
+            "inicio": inicio, "semana": None, "gasto": 0.0,
+            "leads": 0, "demos": 0, "cpl": None, "costo_demo": None,
+            "gasto_acum": 0.0, "leads_acum": 0})
+
+    for fila in gasto_filas:
+        s = _slot(fila["campaign_name"] or SIN_CAMPANA, _lunes_de(fila["date"]))
+        s["gasto"] += float(fila["spend"] or 0)
+
+    for lead in leads:
+        s = _slot(lead["meta_campaign_name"] or SIN_CAMPANA,
+                  _lunes_de(lead["scraped_at"]))
+        s["leads"] += 1
+        if alcanzo(eventos.get(lead["id"], set()), "demo_1"):
+            s["demos"] += 1
+
+    salida = []
+    for campana in sorted(porc):
+        puntos, acum_gasto, acum_leads = [], 0.0, 0
+        for inicio in sorted(porc[campana]):
+            p = porc[campana][inicio]
+            p["gasto"] = round(p["gasto"], 2)
+            acum_gasto = round(acum_gasto + p["gasto"], 2)
+            acum_leads += p["leads"]
+            p["gasto_acum"], p["leads_acum"] = acum_gasto, acum_leads
+            p["cpl"] = costo(p["gasto"], p["leads"])
+            p["costo_demo"] = costo(p["gasto"], p["demos"])
+            y, m, d = (int(x) for x in inicio.split("-"))
+            p["semana"] = "%d-W%02d" % _date(y, m, d).isocalendar()[:2]
+            puntos.append(p)
+        salida.append({"campana": campana, "puntos": puntos})
+    return salida
+
+
 def conciliacion(db_path: str, desde: str, hasta: str) -> list:
     """Lo que Meta cobro contra lo que se cargo a mano en Finanzas.
 
