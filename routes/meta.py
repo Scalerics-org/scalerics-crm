@@ -361,11 +361,31 @@ def meta_sync_planilla():
     credencial nueva, y del lado de Google `getBackgrounds()` ya lo da gratis.
 
     `?dry=1` calcula y no escribe. La logica vive en services/planilla_semaforo.py.
+
+    POR QUE ACEPTA UN TOKEN PROPIO Y NO SOLO EL DE ADMIN
+        El Apps Script que postea aca vive pegado a `Scalerics - Leads - 2026`,
+        que **no es de Scalerics**: la planilla es de la agencia y a nosotros nos
+        la compartieron. Un script pegado a un archivo ajeno es, a efectos
+        practicos, de su dueno: cualquiera con permiso de edicion sobre la
+        planilla puede abrir Apps Script y leer sus Propiedades del script.
+
+        Guardar ahi el `ADMIN_TOKEN` significaba darle a un tercero la llave de
+        **todo** el CRM para que pudiera mandar colores. `PLANILLA_TOKEN` existe
+        para que el peor caso —que se filtre— sea que alguien puede postear
+        colores a este endpoint y nada mas.
+
+        `ADMIN_TOKEN` se sigue aceptando: lo usan las corridas a mano y los
+        scripts internos, que no viven en un archivo ajeno.
     """
     from flask import session
     token = request.headers.get("x-admin-token", "")
-    expected = os.environ.get("ADMIN_TOKEN", "")
-    if not (session.get("user_id") or (expected and token == expected)):
+    validos = [os.environ.get(n, "") for n in ("PLANILLA_TOKEN", "ADMIN_TOKEN")]
+    # `secrets.compare_digest` en vez de `==`: comparar tokens con el operador
+    # normal corta en el primer caracter distinto y filtra, por tiempo, cuanto
+    # del token acerto quien prueba.
+    autorizado = any(
+        esperado and hmac.compare_digest(token, esperado) for esperado in validos)
+    if not (session.get("user_id") or autorizado):
         return jsonify({"ok": False, "error": "Unauthorized"}), 401
 
     data = request.get_json(silent=True) or {}

@@ -198,6 +198,49 @@ def test_sin_token_no_entra(cliente):
     assert r.status_code == 401
 
 
+def test_un_token_cualquiera_tampoco_entra(cliente):
+    r = cliente.post("/api/meta/sync-planilla", json={"filas": []},
+                     headers={"x-admin-token": "no soy el token"})
+    assert r.status_code == 401
+
+
+def test_el_token_propio_de_la_planilla_alcanza(cliente, db, monkeypatch):
+    """Existe para no tener que guardar el ADMIN_TOKEN en un archivo ajeno.
+
+    El Apps Script vive pegado a una planilla que es de la agencia, y cualquiera
+    con permiso de edicion sobre ella puede leer sus Propiedades del script. Con
+    el ADMIN_TOKEN ahi adentro, compartir la planilla era compartir el CRM.
+    """
+    monkeypatch.setenv("PLANILLA_TOKEN", "token-solo-de-la-planilla")
+    _lead(db, 1, "+59899913326")
+    r = cliente.post("/api/meta/sync-planilla",
+                     headers={"x-admin-token": "token-solo-de-la-planilla"},
+                     json={"filas": [{"tel": "59899913326", "color": VIOLETA}]})
+    assert r.status_code == 200 and r.get_json()["actualizados"] == 1
+
+
+def test_el_token_de_la_planilla_no_abre_otra_cosa(cliente, monkeypatch):
+    """El punto entero: si se filtra, lo peor que puede hacer es mandar colores.
+
+    Si algun dia este test falla, es que `PLANILLA_TOKEN` dejo de estar acotado
+    y volvimos a tener una llave de admin viviendo en un archivo de un tercero.
+    """
+    monkeypatch.setenv("PLANILLA_TOKEN", "token-solo-de-la-planilla")
+    solo_planilla = {"x-admin-token": "token-solo-de-la-planilla"}
+    for ruta in ("/api/marketing/sync-insights", "/api/marketing/generar",
+                 "/api/marketing/backfill-campanas"):
+        r = cliente.post(ruta, headers=solo_planilla)
+        assert r.status_code in (401, 403), f"{ruta} lo dejo pasar ({r.status_code})"
+
+
+def test_el_admin_token_sigue_sirviendo(cliente, db):
+    """Las corridas a mano y los scripts internos no viven en un archivo ajeno."""
+    _lead(db, 1, "+59899913326")
+    r = cliente.post("/api/meta/sync-planilla", headers=AUTH,
+                     json={"filas": [{"tel": "59899913326", "color": VIOLETA}]})
+    assert r.status_code == 200
+
+
 def test_el_endpoint_aplica(cliente, db):
     _lead(db, 1, "+59899913326")
     r = cliente.post("/api/meta/sync-planilla", headers=AUTH,

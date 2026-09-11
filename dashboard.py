@@ -8423,6 +8423,14 @@ def create_app(db_path: str) -> Flask:
         # asi que lleva su propio token de un solo uso en la query.
         if request.path.startswith("/api/linkedin/marcar"):
             return
+        # El Apps Script del semaforo no puede llevar el ADMIN_TOKEN: vive pegado
+        # a una planilla que es de la agencia, y cualquiera con permiso de
+        # edicion sobre ella puede leer las Propiedades del script. Lleva
+        # PLANILLA_TOKEN, que solo abre esta ruta. La validacion real —los dos
+        # tokens, con compare_digest— esta adentro del endpoint, igual que en los
+        # webhooks de arriba.
+        if request.path.startswith("/api/meta/sync-planilla"):
+            return
         # Any /api/ request with valid x-admin-token bypasses session auth
         if request.path.startswith("/api/"):
             token = request.headers.get("x-admin-token", "")
