@@ -7,6 +7,8 @@ escribio entera sin gastar un token.
 import io
 import json
 
+import pytest
+
 from services.radiografia_ia import (MODELO, ia_activa, indice_de_metricas,
                                      preparar)
 
@@ -177,6 +179,25 @@ def test_la_causalidad_avisa_pero_no_rechaza():
         _dossier())
     assert any(p.startswith("aviso:") for p in problemas)
     assert not [p for p in problemas if not p.startswith("aviso:")]
+
+
+@pytest.mark.parametrize("frase", [
+    "El CPL bajo gracias al cambio de creativo.",
+    "Subio debido al aumento de puja.",
+    "El costo por demo se debe al publico elegido.",
+    "Mejoro a raiz del nuevo formulario.",
+    "El cambio de creativo hizo que bajara el CPL.",
+    "El presupuesto mas alto llevo a mas leads.",
+])
+def test_la_causalidad_tambien_avisa_con_las_formas_contraidas(frase):
+    """`gracias a` con \b no matchea `gracias al`, que es como se escribe.
+
+    El patron pedia que despues de la preposicion viniera un limite de palabra,
+    asi que las contracciones —al, del— se le escapaban enteras. En castellano
+    esas son las formas normales: nadie escribe "gracias a el cambio".
+    """
+    problemas = validar(_informe(cuerpo=frase), _dossier())
+    assert any(p.startswith("aviso:") for p in problemas), frase
 
 
 def test_un_informe_sin_hallazgos_se_rechaza():

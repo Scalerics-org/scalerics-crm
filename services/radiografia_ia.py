@@ -123,9 +123,29 @@ _NUMERO = re.compile(r"\d{1,3}(?:\.\d{3})+(?:,\d+)?|\d+(?:[,.]\d+)?")
 # Frases que afirman causalidad entre métricas. Correlación no es causa, y con
 # 238 leads menos todavía. Es aviso y no rechazo: a veces la causa la sabe el
 # equipo y el modelo la está repitiendo, no inventando.
+#
+# Ojo con las contracciones. La version anterior pedia `gracias a` con un
+# limite de palabra detras, y como `al` es una sola palabra, "gracias al
+# cambio de creativo" no matcheaba — justo la forma en que se escribe de
+# verdad: nadie pone "gracias a el". Lo mismo con "debido al", "se debe al"
+# y "a raiz del". De ahi el `(?:l)?` explicito. Encontrado probando el
+# validador contra el dossier real de produccion, no con fixtures.
+#
+# Los acentos van opcionales por el mismo motivo: el texto lo escribe un
+# modelo y no hay garantia de que acentue siempre.
 _CAUSALIDAD = re.compile(
-    r"\b(porque|se debe a|debido a|causa(?:do)?|provoc[óo]|genera(?:ron)? que"
-    r"|a raíz de|gracias a)\b", re.I)
+    r"\b(porque\b"
+    r"|se debe al?\b"
+    r"|debido al?\b"
+    r"|causa(?:do)?\b"
+    r"|provoc[óo]"
+    r"|genera(?:ron)? que\b"
+    r"|hizo que\b"
+    r"|llev[óo] a\b"
+    r"|a ra[íi]z del?\b"
+    r"|gracias al?\b"
+    r"|por culpa del?\b"
+    r")", re.I)
 
 
 def _a_float(texto: str):
