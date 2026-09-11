@@ -1351,6 +1351,8 @@ body.light .mobile-header-title{color:#0f172a}
 /* Mobile FAB */
 /* ── Panel de Marketing ─────────────────────────────────────────────────── */
 .sc-filtros{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:22px}
+.sc-nav-mes{display:flex;align-items:center;gap:6px}
+.sc-nav-mes span{font-size:.82rem;font-weight:700;color:var(--texto);min-width:132px;text-align:center}
 .sc-filtro{display:flex;flex-direction:column;gap:4px}
 .sc-filtro label{font-size:.7rem;color:var(--texto-tenue);font-weight:600;letter-spacing:.02em}
 .sc-filtro input,.sc-filtro select{background:var(--fondo-hundido);border:1px solid var(--borde);border-radius:8px;padding:7px 10px;color:var(--texto);font-size:.82rem;font-family:'Inter',sans-serif}
@@ -1930,9 +1932,28 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     </div>
 
     <div class="sc-filtros">
-      <div class="sc-filtro"><label for="mk-desde">Desde</label>
+      <div class="sc-filtro"><label for="mk-rango">Período</label>
+        <select id="mk-rango" onchange="_mkRangoCambio()">
+          <option value="mes">Un mes</option>
+          <option value="90" selected>Últimos 90 días</option>
+          <option value="anio">Este año</option>
+          <option value="todo">Toda la historia</option>
+          <option value="libre">Personalizado</option>
+        </select></div>
+      <!-- Solo con "Un mes": con una ventana de 90 dias el navegador no
+           significaria nada, igual que en Finanzas. -->
+      <div class="sc-filtro" id="mk-nav-mes" style="display:none">
+        <label for="mk-mes-label">Mes</label>
+        <div class="sc-nav-mes">
+          <button class="cal-nav-btn" onclick="mkMes(-1)" title="Mes anterior">&larr;</button>
+          <span id="mk-mes-label"></span>
+          <button class="cal-nav-btn" onclick="mkMes(1)" title="Mes siguiente">&rarr;</button>
+          <button class="cal-today-btn" onclick="mkMesHoy()">Hoy</button>
+        </div>
+      </div>
+      <div class="sc-filtro" id="mk-libre-desde"><label for="mk-desde">Desde</label>
         <input type="date" id="mk-desde" onchange="loadMarketing()"></div>
-      <div class="sc-filtro"><label for="mk-hasta">Hasta</label>
+      <div class="sc-filtro" id="mk-libre-hasta"><label for="mk-hasta">Hasta</label>
         <input type="date" id="mk-hasta" onchange="loadMarketing()"></div>
       <div class="sc-filtro"><label for="mk-campana">Campaña</label>
         <select id="mk-campana" onchange="_mkPintar()"><option value="">Todas</option></select></div>
@@ -7423,6 +7444,97 @@ function _mkBloque(campana) {
   return (_mkDossier.campanas || []).find(b => b.campana === campana) || null;
 }
 
+// ── El período ─────────────────────────────────────────────────────────────
+//
+// Mismo patron que Finanzas a proposito: un select de rango, y un navegador
+// `← mes →` que solo aparece cuando se esta mirando UN mes. Con una ventana de
+// 90 dias el navegador no significaria nada.
+//
+// Los campos Desde/Hasta siguen existiendo pero solo se ven en "Personalizado".
+// Con un rango elegido los maneja el codigo, y dejarlos editables al lado seria
+// dar dos mandos para lo mismo.
+var _mkMesOffset = 0;
+
+// Antes de marzo de 2026 no hay un solo dato: ni un lead de Meta ni una fila de
+// insights. Es un piso, no una fecha significativa; sirve para que "toda la
+// historia" no tenga que preguntarle a nadie donde empieza.
+var _MK_PISO = '2026-01-01';
+
+function _mkISO(d) {
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')
+    + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+function _mkMesVisible() {
+  const hoy = new Date();
+  return new Date(hoy.getFullYear(), hoy.getMonth() + _mkMesOffset, 1);
+}
+
+function mkMes(delta) {
+  _mkMesOffset += delta;
+  if (_mkMesOffset > 0) _mkMesOffset = 0;   // el futuro no tiene datos
+  loadMarketing();
+}
+
+function mkMesHoy() {
+  _mkMesOffset = 0;
+  loadMarketing();
+}
+
+function _mkRangoCambio() {
+  _mkMesOffset = 0;
+  loadMarketing();
+}
+
+// Devuelve [desde, hasta] segun el rango elegido, o null si manda el usuario.
+function _mkRango() {
+  const hoy = new Date();
+  const cual = document.getElementById('mk-rango').value;
+
+  if (cual === 'libre') return null;
+  if (cual === 'mes') {
+    const ini = _mkMesVisible();
+    // Dia 0 del mes siguiente es el ultimo del actual, sin tener que saber
+    // cuantos dias tiene febrero.
+    const fin = new Date(ini.getFullYear(), ini.getMonth() + 1, 0);
+    // Un mes en curso se corta hoy: pedir hasta el 30 cuando estamos a 11 no
+    // agrega datos y hace que el rotulo mienta sobre lo que se esta midiendo.
+    return [_mkISO(ini), _mkISO(fin > hoy ? hoy : fin)];
+  }
+  if (cual === 'anio') {
+    return [_mkISO(new Date(hoy.getFullYear(), 0, 1)), _mkISO(hoy)];
+  }
+  if (cual === 'todo') return [_MK_PISO, _mkISO(hoy)];
+
+  const dias = parseInt(cual, 10);
+  const desde = new Date(hoy);
+  desde.setDate(desde.getDate() - (dias - 1));
+  return [_mkISO(desde), _mkISO(hoy)];
+}
+
+function _mkPintarPeriodo() {
+  const cual = document.getElementById('mk-rango').value;
+  const esMes = cual === 'mes';
+  const esLibre = cual === 'libre';
+  document.getElementById('mk-nav-mes').style.display = esMes ? '' : 'none';
+  document.getElementById('mk-libre-desde').style.display = esLibre ? '' : 'none';
+  document.getElementById('mk-libre-hasta').style.display = esLibre ? '' : 'none';
+
+  if (esMes) {
+    const d = _mkMesVisible();
+    const nombre = (typeof _FIN_MESES !== 'undefined' && _FIN_MESES[d.getMonth()])
+      || (d.getMonth() + 1);
+    document.getElementById('mk-mes-label').textContent =
+      nombre + ' ' + d.getFullYear();
+  }
+
+  const rango = _mkRango();
+  if (rango) {
+    document.getElementById('mk-desde').value = rango[0];
+    document.getElementById('mk-hasta').value = rango[1];
+  }
+}
+
 async function loadMarketing() {
   const estado = document.getElementById('mk-estado');
   const cuerpo = document.getElementById('mk-cuerpo');
@@ -7430,6 +7542,7 @@ async function loadMarketing() {
   estado.textContent = 'Cargando…';
   cuerpo.style.display = 'none';
 
+  _mkPintarPeriodo();
   const desde = document.getElementById('mk-desde').value;
   const hasta = document.getElementById('mk-hasta').value;
   const q = [];

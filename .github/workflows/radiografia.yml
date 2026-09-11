@@ -1,26 +1,37 @@
 name: Radiografía de marketing
 
 # ─────────────────────────────────────────────────────────────────────────────
-# EL SCHEDULE ESTÁ COMENTADO A PROPÓSITO.
+# DOS CADENCIAS, Y LA DIFERENCIA ES PLATA.
 #
-# Cada corrida le pide un informe a Opus 5 y cuesta plata: el dossier son unos
-# 31.000 tokens de entrada, o sea ~USD 0,31 por vez, ~USD 1,30 al mes. Además
-# el motor nace apagado detrás de RADIOGRAFIA_IA_ACTIVA, así que aunque esto
-# corriera hoy no llamaría a nadie.
+# El gasto de Meta y el informe de IA no necesitan el mismo ritmo:
 #
-# Para prenderlo, en este orden:
+#   * Traer el gasto es gratis —es una llamada al Graph— y envejece todos los
+#     días: Meta cobra a diario y además corrige los últimos días hacia atrás.
+#     Va DIARIO.
+#   * El informe le pide a Opus 5 que lea el dossier: ~21.000 tokens medidos,
+#     del orden de USD 1–2 al mes si corre semanal. Va SEMANAL, los lunes.
+#
+# Por eso hay dos crons y el paso del informe tiene un `if`. Si corrieran los
+# dos con la misma cadencia, o el gasto quedaría viejo seis días o el informe
+# costaría siete veces más sin decir nada nuevo.
+#
+# Los días del cron diario excluyen el lunes a propósito (`0,2-6`): si no, el
+# lunes dispararían los dos y habría una sincronización al pedo.
+#
+# EL INFORME SIGUE APAGADO. `RADIOGRAFIA_IA_ACTIVA` no está seteado, así que el
+# paso de abajo devuelve `sin_ia` y no llama a nadie: el cron de los lunes hoy
+# cuesta cero. Para prenderlo de verdad hacen falta dos cosas, en orden:
 #   1. Que haya presupuesto de API.
 #   2. flyctl secrets set RADIOGRAFIA_IA_ACTIVA=true -a scalerics-crm
-#   3. Descomentar el schedule de abajo.
-#
-# Mientras tanto se puede correr a mano desde la pestaña Actions, que sirve para
-# regenerar el dossier sin gastar un token.
 # ─────────────────────────────────────────────────────────────────────────────
 
 on:
-  # schedule:
-  #   # 11:00 UTC = 08:00 en Montevideo (UTC-3). Lunes.
-  #   - cron: "0 11 * * 1"
+  schedule:
+    # 11:00 UTC = 08:00 en Montevideo (UTC-3).
+    # Martes a domingo: solo el gasto.
+    - cron: "0 11 * * 0,2-6"
+    # Lunes: el gasto y, cuando se prenda, el informe.
+    - cron: "0 11 * * 1"
   workflow_dispatch:
 
 # Dos corridas a la vez generarían dos snapshots del mismo período y pagarían el
@@ -60,6 +71,12 @@ jobs:
 
       - name: Generar la radiografía
         id: generar
+        # Solo los lunes y a mano. El cron diario existe para traer el gasto, no
+        # para pagar un informe por día. `github.event.schedule` trae el cron que
+        # disparó la corrida, que es la única forma de distinguirlos.
+        if: >-
+          github.event_name == 'workflow_dispatch' ||
+          github.event.schedule == '0 11 * * 1'
         env:
           CRM: ${{ secrets.CRM_URL }}
           TOKEN: ${{ secrets.ADMIN_TOKEN }}
