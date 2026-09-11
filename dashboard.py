@@ -616,19 +616,19 @@ body.light .resp-sel{background:#fff;border-color:#e2e8f0;color:#0f172a}
 .metrics-grid-2{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-bottom:24px}
 @media(max-width:768px){.metrics-grid{grid-template-columns:1fr 1fr}.metrics-grid-2{grid-template-columns:1fr}}
 @media(max-width:480px){.metrics-grid{grid-template-columns:1fr}}
-.m-card{background:#161b27;border:1px solid #1e293b;border-radius:14px;padding:20px 22px}
-.m-card-title{font-size:.7rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:1px;margin-bottom:16px}
+.m-card{background:var(--superficie);border:1px solid var(--borde);border-radius:14px;padding:20px 22px}
+.m-card-title{font-size:.7rem;font-weight:700;color:var(--texto-debil);text-transform:uppercase;letter-spacing:1px;margin-bottom:16px}
 .bar-row{display:flex;align-items:center;gap:10px;margin-bottom:8px}
-.bar-label{font-size:.75rem;color:#94a3b8;width:140px;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.bar-track{flex:1;background:#1e293b;border-radius:4px;height:8px;overflow:hidden}
+.bar-label{font-size:.75rem;color:var(--texto-tenue);width:140px;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bar-track{flex:1;background:var(--borde);border-radius:4px;height:8px;overflow:hidden}
 .bar-fill{height:100%;border-radius:4px;background:linear-gradient(90deg,#0088cc,#3db648);transition:width .4s}
-.bar-val{font-size:.72rem;color:#64748b;width:28px;text-align:right;flex-shrink:0}
+.bar-val{font-size:.72rem;color:var(--rotulo);width:28px;text-align:right;flex-shrink:0}
 .funnel-row{display:flex;align-items:center;gap:10px;margin-bottom:6px}
-.funnel-label{font-size:.75rem;color:#94a3b8;width:150px;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.funnel-label{font-size:.75rem;color:var(--texto-tenue);width:150px;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .month-bars{display:flex;align-items:flex-end;gap:4px;height:80px;margin-top:8px}
 .month-col{display:flex;flex-direction:column;align-items:center;flex:1;gap:3px}
 .month-bar{width:100%;border-radius:3px 3px 0 0;background:linear-gradient(180deg,#0088cc,#3db648);min-height:2px}
-.month-tick{font-size:.55rem;color:#334155;white-space:nowrap}
+.month-tick{font-size:.55rem;color:var(--texto-debil);white-space:nowrap}
 .conv-big{font-size:2.6rem;font-weight:800;color:#4ade80;line-height:1}
 .conv-sub{font-size:.75rem;color:#475569;margin-top:6px}
 .delete-btn:hover{background:#7f1d1d;color:#fff}
@@ -990,15 +990,6 @@ body.light .cal-mob-card{background:#fff;border-color:#e2e8f0}
 body.light .cal-mob-title{color:#0f172a}
 body.light .cal-mob-vacio{color:#94a3b8}
 /* ── Metrics light mode ───────────────────────────────────────────────────── */
-body.light .metrics-card{background:#fff;border-color:#e2e8f0}
-body.light .metrics-card-title{color:#64748b !important}
-body.light .metrics-card-val{color:#0f172a !important}
-body.light .bar-label{color:#475569 !important}
-body.light .bar-val{color:#475569 !important}
-body.light .bar-track{background:#f1f5f9}
-body.light .funnel-label{color:#475569 !important}
-body.light .funnel-val,.bar-val{color:#475569}
-body.light .metrics-section-title{color:#64748b !important}
 #nav-meta .nav-icon{stroke:#e1306c}
 body.light #nav-meta .nav-icon{stroke:#c13584}
 /* ── Nav icon colors ──────────────────────────────────────────────────────── */
@@ -1107,7 +1098,6 @@ body.light .attach-item{background:#f8fafc;border-color:#e2e8f0}
 body.light .attach-item-name{color:#0f172a !important}
 body.light .batch-count{color:#0f172a}
 body.light .empty-state{color:#94a3b8}
-body.light .bar-label,.body.light .funnel-label{color:#475569}
 body.light .wa-lead-name{color:#0f172a !important}
 body.light .wa-lead-phone{color:#64748b}
 body.light .wa-chat-name{color:#0f172a}
@@ -6380,7 +6370,7 @@ function switchMetricsTab(tab) {
 }
 
 function _barList(items, maxVal) {
-  if (!items || !items.length) return '<div style="color:#475569;font-size:.8rem">Sin datos</div>';
+  if (!items || !items.length) return '<div style="color:var(--texto-debil);font-size:.8rem">Sin datos</div>';
   const max = maxVal || Math.max(...items.map(i => i.count), 1);
   return items.map(i => {
     const pct = Math.round(i.count / max * 100);
@@ -6389,23 +6379,23 @@ function _barList(items, maxVal) {
 }
 
 function _monthBars(items) {
-  if (!items || !items.length) return '<div style="color:#475569;font-size:.8rem">Sin datos</div>';
+  if (!items || !items.length) return '<div style="color:var(--texto-debil);font-size:.8rem">Sin datos</div>';
   const max = Math.max(...items.map(b => b.count), 1);
   return '<div class="month-bars">' + items.map(b => {
     const h = Math.max(4, Math.round(b.count / max * 60));
     const short = b.month.length >= 7 ? b.month.slice(5) : b.month;
-    return `<div class="month-col"><div style="font-size:.6rem;color:#64748b;line-height:1;margin-bottom:2px">${b.count}</div><div class="month-bar" style="height:${h}px"></div><div class="month-tick">${short}</div></div>`;
+    return `<div class="month-col"><div style="font-size:.6rem;color:var(--texto-debil);line-height:1;margin-bottom:2px">${b.count}</div><div class="month-bar" style="height:${h}px"></div><div class="month-tick">${short}</div></div>`;
   }).join('') + '</div>';
 }
 
 function _funnelBars(items, stateLabels, stateColors) {
-  if (!items || !items.length) return '<div style="color:#475569;font-size:.8rem">Sin datos</div>';
+  if (!items || !items.length) return '<div style="color:var(--texto-debil);font-size:.8rem">Sin datos</div>';
   const max = Math.max(...items.map(f => f.count), 1);
   return items.filter(f => f.count > 0).map(f => {
     const pct = Math.round(f.count / max * 100);
     const col = (stateColors && stateColors[f.status]) || '#64748b';
     return `<div class="funnel-row"><div class="funnel-label">${esc(stateLabels[f.status] || f.status)}</div><div class="bar-track" style="flex:1"><div class="bar-fill" style="width:${pct}%;background:${col}"></div></div><div class="bar-val">${f.count}</div></div>`;
-  }).join('') || '<div style="color:#475569;font-size:.8rem">Sin datos</div>';
+  }).join('') || '<div style="color:var(--texto-debil);font-size:.8rem">Sin datos</div>';
 }
 
 // ========== Finanzas panel ==========
@@ -7366,7 +7356,7 @@ async function loadMetrics() {
           return `<div class="bar-row"><div class="bar-label">${i.name}</div><div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${i.color}"></div></div><div class="bar-val">${i.count}</div></div>`;
         }).join('');
       } else {
-        el('m-calls').innerHTML = '<div style="color:#475569;font-size:.8rem">Sin llamadas registradas</div>';
+        el('m-calls').innerHTML = '<div style="color:var(--texto-debil);font-size:.8rem">Sin llamadas registradas</div>';
       }
     }
 
