@@ -258,3 +258,159 @@ console.log(JSON.stringify({
 }));
 """, tmp_path)
     assert json.loads(salida)["distintos"]
+
+
+# ── Dispersión ───────────────────────────────────────────────────────────────
+
+_NUBE = """
+var puntos = [
+  {etiqueta:'UY',  x:18.6, y:0.27, peso:1600},
+  {etiqueta:'ARG', x:16.8, y:0.13, peso:870},
+  {etiqueta:'Form',x:11.5, y:0.08, peso:980}
+];
+"""
+
+
+@sin_node
+def test_la_dispersion_dibuja_una_burbuja_por_punto(tmp_path):
+    salida = _correr(_NUBE + """
+SC._resetColores();
+var h = SC.dispersion(puntos, {etiqueta:'x'}, 'oscuro');
+console.log((h.match(/<circle/g) || []).length);
+""", tmp_path)
+    assert salida.strip() == "3"
+
+
+@sin_node
+def test_el_area_de_la_burbuja_es_proporcional_al_peso(tmp_path):
+    """Con el RADIO proporcional, el doble de gasto se ve cuatro veces mas
+    grande y la lectura miente. Va la raiz cuadrada."""
+    salida = _correr("""
+SC._resetColores();
+var h = SC.dispersion([
+  {etiqueta:'a', x:1, y:1, peso:100},
+  {etiqueta:'b', x:2, y:2, peso:400}
+], {etiqueta:'x'}, 'oscuro');
+var rs = [...h.matchAll(/<circle[^>]*r="([\d.]+)"/g)].map(m => +m[1]);
+// El peso se cuadruplica: el radio tiene que crecer bastante menos del doble
+// por encima del piso.
+var sobrePiso = rs.map(r => r - 6);
+console.log(JSON.stringify({razon: +(sobrePiso[1] / sobrePiso[0]).toFixed(2)}));
+""", tmp_path)
+    # 400/100 = 4 -> sqrt = 2. Con el radio proporcional daria 4.
+    assert abs(json.loads(salida)["razon"] - 2.0) < 0.01
+
+
+@sin_node
+def test_la_dispersion_nombra_los_dos_ejes(tmp_path):
+    """Sin los nombres, una dispersion es un dibujo de puntos."""
+    salida = _correr(_NUBE + """
+SC._resetColores();
+var h = SC.dispersion(puntos, {etiqueta:'x', nombreX:'Costo por lead',
+                               nombreY:'Tasa de demo'}, 'oscuro');
+console.log(JSON.stringify({
+  x: h.indexOf('Costo por lead') >= 0, y: h.indexOf('Tasa de demo') >= 0}));
+""", tmp_path)
+    d = json.loads(salida)
+    assert d["x"] and d["y"]
+
+
+@sin_node
+def test_la_dispersion_etiqueta_cada_burbuja(tmp_path):
+    """Con pocas marcas, la etiqueta directa gana a la leyenda: no obliga a ir
+    y volver."""
+    salida = _correr(_NUBE + """
+SC._resetColores();
+var h = SC.dispersion(puntos, {etiqueta:'x'}, 'oscuro');
+console.log(JSON.stringify(['UY','ARG','Form'].map(n => h.indexOf(n) >= 0)));
+""", tmp_path)
+    assert all(json.loads(salida))
+
+
+# ── Barras divergentes ───────────────────────────────────────────────────────
+
+@sin_node
+def test_las_divergentes_separan_los_signos_a_cada_lado(tmp_path):
+    salida = _correr("""
+var h = SC.barrasDivergentes([
+  {etiqueta:'2026-06', valor: 600},
+  {etiqueta:'2026-09', valor: -636}
+], {etiqueta:'x', formato:'moneda'}, 'oscuro');
+// El eje central es la unica linea vertical del dibujo.
+var cx = +h.match(/<line x1="([\d.]+)"/)[1];
+var xs = [...h.matchAll(/<rect x="([\d.]+)"[^>]*width="([\d.]+)"/g)]
+  .map(m => ({x: +m[1], w: +m[2]}));
+console.log(JSON.stringify({
+  positiva_arranca_en_el_cero: Math.abs(xs[0].x - cx) < 0.5,
+  negativa_termina_en_el_cero: Math.abs(xs[1].x + xs[1].w - cx) < 0.5
+}));
+""", tmp_path)
+    d = json.loads(salida)
+    assert d["positiva_arranca_en_el_cero"] and d["negativa_termina_en_el_cero"]
+
+
+@sin_node
+def test_las_divergentes_usan_solo_dos_colores(tmp_path):
+    """Dos tonos y nada mas. Un tercer color inventaria una tercera categoria
+    donde solo hay 'de un lado o del otro'."""
+    salida = _correr("""
+var h = SC.barrasDivergentes([
+  {etiqueta:'a', valor: 10}, {etiqueta:'b', valor: -5},
+  {etiqueta:'c', valor: 3}, {etiqueta:'d', valor: -8}
+], {etiqueta:'x'}, 'oscuro');
+var cols = [...h.matchAll(/<rect[^>]*fill="(#[0-9a-fA-F]{6})"/g)].map(m => m[1]);
+console.log(new Set(cols).size);
+""", tmp_path)
+    assert salida.strip() == "2"
+
+
+# ── Mapa de calor ────────────────────────────────────────────────────────────
+
+@sin_node
+def test_la_matriz_dibuja_toda_la_grilla(tmp_path):
+    """El cero es informacion: una celda vacia dice 'ahi no entra nadie'."""
+    salida = _correr("""
+var celdas = [];
+for (var d = 0; d < 3; d++) for (var f = 0; f < 4; f++)
+  celdas.push({fila: d, columna: f, n: (d === 0 ? 0 : d * f)});
+var h = SC.matriz(celdas, {
+  etiqueta:'x',
+  filas: [0,1,2].map(i => ({clave:i, etiqueta:'d'+i})),
+  columnas: [0,1,2,3].map(i => ({clave:i, etiqueta:'c'+i})),
+  maximo: 6
+}, 'oscuro');
+console.log((h.match(/<rect/g) || []).length);
+""", tmp_path)
+    assert salida.strip() == "12"
+
+
+@sin_node
+def test_el_cero_de_la_matriz_no_es_el_paso_mas_claro(tmp_path):
+    """"No entro nadie" y "entro poca gente" son cosas distintas y el mapa
+    tiene que dejar verlas distinto."""
+    salida = _correr("""
+var h = SC.matriz([
+  {fila:0, columna:0, n:0}, {fila:0, columna:1, n:1}
+], {etiqueta:'x', filas:[{clave:0,etiqueta:'d'}],
+    columnas:[{clave:0,etiqueta:'a'},{clave:1,etiqueta:'b'}], maximo: 10}, 'oscuro');
+var ops = [...h.matchAll(/fill-opacity="([\d.]+)"/g)].map(m => +m[1]);
+console.log(JSON.stringify({cero: ops[0], uno: ops[1]}));
+""", tmp_path)
+    d = json.loads(salida)
+    assert d["cero"] == 0.0
+    assert d["uno"] > 0.0
+
+
+@sin_node
+def test_la_matriz_usa_un_solo_tono(tmp_path):
+    """Una rampa de un tono, nunca un arcoiris: en un arcoiris el orden de los
+    colores no es el orden de los numeros."""
+    salida = _correr("""
+var celdas = [];
+for (var f = 0; f < 5; f++) celdas.push({fila: 0, columna: f, n: f});
+var h = SC.matriz(celdas, {etiqueta:'x', filas:[{clave:0,etiqueta:'d'}],
+  columnas:[0,1,2,3,4].map(i => ({clave:i, etiqueta:''+i})), maximo: 4}, 'oscuro');
+var cols = [...h.matchAll(/<rect[^>]*fill="(#[0-9a-fA-F]{6})"/g)].map(m => m[1]);
+console.log(new Set(cols).size);
+""", tmp_path)
+    assert salida.strip() == "1"

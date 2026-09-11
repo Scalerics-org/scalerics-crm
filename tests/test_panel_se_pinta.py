@@ -33,7 +33,8 @@ sin_node = pytest.mark.skipif(shutil.which("node") is None,
 # reventó antes de llegar o se lo está dibujando en un id que no existe.
 _CONTENEDORES = ["mk-tiles", "mk-embudo", "mk-series", "mk-embudos",
                  "mk-evolucion", "mk-acumulado", "mk-ranking", "mk-campanas",
-                 "mk-segmentos", "mk-tabla"]
+                 "mk-segmentos", "mk-dispersion", "mk-llegada",
+                 "mk-conciliacion", "mk-tabla"]
 
 
 def _dossier_de_prueba():
@@ -106,6 +107,11 @@ def _dossier_de_prueba():
                          m("conciliacion.brecha.2026_06", 600.0, "moneda")],
         "tiempos": [m("tiempos.dias_hasta_demo", 3.5)],
         "recordatorios": [],
+        "llegada": {
+            "celdas": [{"dia": d, "franja": f, "n": (d + f) % 4}
+                       for d in range(7) for f in range(0, 24, 3)],
+            "total": 40, "maximo": 3, "sin_hora": 2, "horas_por_franja": 3,
+        },
         "hallazgos": [{"tipo": "sin_cierres", "severidad": "alta",
                        "titulo": "t", "cuerpo": "c",
                        "metricas_citadas": ["campana.uy.gasto"]}],

@@ -585,6 +585,90 @@ def serie_por_campana(db_path: str, desde: str, hasta: str) -> list:
     return salida
 
 
+# Franjas de tres horas. Con ~1,4 leads por dia, 24 columnas por 7 filas son 168
+# casilleros casi todos en cero: el patron no aparece, solo el ruido.
+HORAS_POR_FRANJA = 3
+_FRANJAS = list(range(0, 24, HORAS_POR_FRANJA))
+
+# `scraped_at` de un lead de Meta guarda el `created_time` de la API, que viene
+# en UTC (`+0000`) y se escribe tal cual, sin convertir. Ver routes/meta.py.
+#
+# Sin corregirlo, el mapa dice que el pico de leads es entre medianoche y las
+# seis de la manana, que no es lo que hace la gente: es de noche, UTC-3. Y el
+# consejo que sale de ahi —a que hora conviene estar disponible— saldria movido
+# tres horas.
+#
+# Uruguay no cambia la hora desde 2015, asi que un desplazamiento fijo alcanza y
+# evita depender de una base de husos horarios.
+HORAS_UTC_A_MONTEVIDEO = -3
+
+
+def llegada_de_leads(db_path: str, desde: str, hasta: str) -> dict:
+    """Cuando entran los leads: dia de la semana por franja horaria.
+
+    El panel sabia cuantos leads entran y de donde, pero no cuando. Y el cuando
+    se acciona directo: si la mitad llega el sabado a la noche y nadie contesta
+    hasta el lunes, eso no se arregla poniendo mas plata en pauta.
+
+    La grilla sale COMPLETA, con los ceros incluidos. Un mapa de calor con
+    huecos no es un mapa de calor: el cero es informacion —ahi no entra nadie— y
+    sin el no se puede comparar una celda contra su vecina.
+    """
+    conn = _connect(db_path)
+    try:
+        filas = conn.execute(
+            "SELECT scraped_at FROM businesses WHERE source = 'meta' "
+            "AND substr(scraped_at, 1, 10) BETWEEN ? AND ?",
+            (desde, hasta)).fetchall()
+    finally:
+        conn.close()
+
+    from datetime import date as _date
+
+    conteo = {}
+    sin_hora = 0
+    for fila in filas:
+        crudo = str(fila["scraped_at"] or "")
+        # Los leads viejos pueden tener solo la fecha. Contarlos a medianoche
+        # inventaria un pico a las 00:00 que nunca paso: quedan aparte.
+        if len(crudo) < 13 or ":" not in crudo:
+            sin_hora += 1
+            continue
+        try:
+            y, m, d = (int(x) for x in crudo[:10].split("-"))
+            hora = int(crudo[11:13])
+        except ValueError:
+            sin_hora += 1
+            continue
+        # De UTC a hora local. El corrimiento puede cruzar la medianoche hacia
+        # atras —01:00 UTC del jueves son las 22:00 del miercoles— asi que el
+        # dia se ajusta junto con la hora o el lead cae en el dia equivocado.
+        hora_local = hora + HORAS_UTC_A_MONTEVIDEO
+        dias_atras = 0
+        while hora_local < 0:
+            hora_local += 24
+            dias_atras += 1
+        while hora_local >= 24:
+            hora_local -= 24
+            dias_atras -= 1
+        dia = (_date(y, m, d).weekday() - dias_atras) % 7   # 0 = lunes
+        franja = (hora_local // HORAS_POR_FRANJA) * HORAS_POR_FRANJA
+        conteo[(dia, franja)] = conteo.get((dia, franja), 0) + 1
+
+    celdas = [{"dia": dia, "franja": franja, "n": conteo.get((dia, franja), 0)}
+              for dia in range(7) for franja in _FRANJAS]
+    total = sum(c["n"] for c in celdas)
+    return {
+        "celdas": celdas,
+        "total": total,
+        # Sin leads no hay un maximo de cero: no hay maximo. El panel tiene que
+        # poder distinguir "no llego ninguno" de "todos en cero".
+        "maximo": max((c["n"] for c in celdas), default=0) if total else None,
+        "sin_hora": sin_hora,
+        "horas_por_franja": HORAS_POR_FRANJA,
+    }
+
+
 def conciliacion(db_path: str, desde: str, hasta: str) -> list:
     """Lo que Meta cobro contra lo que se cargo a mano en Finanzas.
 

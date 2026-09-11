@@ -2020,6 +2020,18 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       </div>
 
       <div class="sc-bloque">
+        <h3>¿Pagar más por lead trae mejores leads?</h3>
+        <div class="sc-sub">Cada burbuja es una campaña: a la derecha paga más por lead, arriba convierte más a demo. El tamaño es cuánto se gastó. Si la nube sube hacia la derecha, pagar más rinde; si baja, no.</div>
+        <div id="mk-dispersion"></div>
+      </div>
+
+      <div class="sc-bloque">
+        <h3>Cuándo llegan los leads</h3>
+        <div class="sc-sub">Hora de Montevideo. Los leads de Meta se guardan en UTC, así que esto ya viene corregido: sin eso, el mapa diría que el pico es de madrugada y estaría movido tres horas.</div>
+        <div id="mk-llegada"></div>
+      </div>
+
+      <div class="sc-bloque">
         <h3>La plata</h3>
         <div class="sc-sub">Lo que Meta dice que cobró contra lo que está cargado en Finanzas. La brecha dice si la contabilidad está viendo todo el gasto de pauta.</div>
         <div id="mk-conciliacion"></div>
@@ -8029,12 +8041,28 @@ function _mkPintar() {
       return `<tr><td>${esc(p.replace('_','-'))}</td>` +
              `<td>${esc(SC.fmt(x.gasto_meta, 'moneda'))}</td>` +
              `<td>${esc(SC.fmt(x.gasto_cargado, 'moneda'))}</td>` +
-             `<td style="${alerta ? 'color:#f87171;font-weight:600' : ''}">` +
+             `<td style="${alerta ? 'color:var(--rojo);font-weight:600' : ''}">` +
              `${esc(SC.fmt(x.brecha, 'moneda'))}</td></tr>`;
     }).join('');
     const suma = k => conc.filter(m => m.id.split('.')[1] === k)
                           .reduce((a, m) => a + (m.valor || 0), 0);
+    // El grafico primero y la tabla despues: el grafico se lee de un vistazo
+    // —de que lado del cero esta cada mes— y la tabla es lo que permite
+    // auditarlo. Barras divergentes y no comunes: en una barra comun el signo
+    // hay que leerlo en el numero; aca el lado ya lo dice.
+    const divergentes = Object.keys(meses).sort().map(p => ({
+      etiqueta: p.replace('_', '-'),
+      valor: meses[p].brecha,
+    }));
     document.getElementById('mk-conciliacion').innerHTML =
+      SC.barrasDivergentes(divergentes, {
+        etiqueta: 'Gasto de Meta sin registrar en Finanzas, por mes',
+        formato: 'moneda',
+        cero: 'coinciden',
+      }, tema) +
+      '<div class="sc-nota">A la derecha del cero, Meta cobró más de lo que ' +
+      'está cargado: falta registrar. A la izquierda, sobra cargado y el mes ' +
+      'se ve peor de lo que fue.</div>' +
       '<div class="sc-tabla-wrap"><table class="sc-tabla"><thead><tr>' +
       '<th>Mes</th><th>Según Meta</th><th>Cargado en Finanzas</th>' +
       '<th>Sin registrar</th></tr></thead><tbody>' + filas +
@@ -8044,6 +8072,54 @@ function _mkPintar() {
       `<td>${esc(SC.fmt(suma('brecha'), 'moneda'))}</td></tr>` +
       '</tbody></table></div>';
   }
+
+  // ── ¿Pagar más por lead trae mejores leads? ────────────────────────────
+  //
+  // Una dispersion y no dos barras: la pregunta es sobre la RELACION entre dos
+  // medidas, y eso necesita los dos ejes. Dos graficos de barras al lado
+  // obligan a cruzarlos a ojo, que es justo lo que sale mal.
+  const paraNube = campanas
+    .filter(b => b.campana !== 'todas' && b.campana !== '(sin campaña)')
+    .map(b => ({
+      etiqueta: b.campana,
+      x: (_mkMetrica(b, '.cpl') || {}).valor,
+      y: (_mkMetrica(b, '.tasa_demo') || {}).valor,
+      peso: (_mkMetrica(b, '.gasto') || {}).valor,
+    }))
+    .filter(p => p.x !== null && p.x !== undefined && p.y !== null && p.y !== undefined);
+  document.getElementById('mk-dispersion').innerHTML = paraNube.length >= 2
+    ? SC.dispersion(paraNube, {
+        etiqueta: 'Costo por lead contra tasa de demo',
+        nombreX: 'Costo por lead', formatoX: 'moneda',
+        nombreY: 'Tasa de demo', formatoY: 'porcentaje',
+        nombrePeso: 'Gasto', formatoPeso: 'moneda',
+      }, tema)
+    : '<div class="sc-vacio">Hacen falta al menos dos campañas con gasto.</div>';
+
+  // ── Cuándo llegan los leads ────────────────────────────────────────────
+  const lleg = _mkDossier.llegada || {};
+  const DIAS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+  document.getElementById('mk-llegada').innerHTML = (lleg.total || 0)
+    ? SC.matriz(
+        (lleg.celdas || []).map(c => ({
+          fila: c.dia, columna: c.franja, n: c.n,
+          titulo: DIAS[c.dia] + ' ' + String(c.franja).padStart(2, '0') + 'h',
+        })),
+        {
+          etiqueta: 'Leads por día y franja horaria',
+          filas: DIAS.map((d, i) => ({ clave: i, etiqueta: d })),
+          columnas: (lleg.celdas || []).slice(0, 8).map(c => ({
+            clave: c.franja,
+            etiqueta: String(c.franja).padStart(2, '0'),
+          })),
+          maximo: lleg.maximo,
+        }, tema)
+      + (lleg.sin_hora
+         ? '<div class="sc-nota">' + esc(SC.fmt(lleg.sin_hora, 'numero')) +
+           ' leads no tienen hora guardada y quedan fuera del mapa. Contarlos a ' +
+           'medianoche inventaría un pico que no pasó.</div>'
+         : '')
+    : '<div class="sc-vacio">Sin leads en el período.</div>';
 
   // ── Tabla cruda ────────────────────────────────────────────────────────
   const todasLasMetricas = [];

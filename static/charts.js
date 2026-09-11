@@ -775,6 +775,257 @@
   // Las respuestas de texto libre del formulario pueden ser larguisimas y en
   // SVG no hay `text-overflow`: una etiqueta de 86 caracteres se sale del area
   // y se monta sobre la barra. Se corta a mano, con elipsis de verdad (…).
+
+  // ── Dispersión ───────────────────────────────────────────────────────────
+  //
+  // Dos medidas contra dos medidas es el unico caso donde una dispersion es la
+  // forma correcta: una barra compara magnitudes, una linea muestra el tiempo,
+  // pero la RELACION entre dos cosas necesita los dos ejes.
+  //
+  // El tamano de la burbuja lleva una tercera medida —el gasto— porque el area
+  // se compara mal pero alcanza para "esta pesa mas que aquella", que es todo
+  // lo que hace falta. El numero exacto va en el tooltip.
+  SC.dispersion = function (puntos, opciones, tema) {
+    opciones = opciones || {};
+    var vivos = (puntos || []).filter(function (p) {
+      return p.x !== null && p.x !== undefined && p.y !== null && p.y !== undefined;
+    });
+    if (!vivos.length) {
+      return '<div class="sc-vacio">Sin datos para «' +
+             SC.esc(opciones.etiqueta || '') + '»</div>';
+    }
+
+    var tinta = SC.PALETA.tinta[tema];
+    var mudo = SC.PALETA.mudo[tema];
+    var grilla = SC.PALETA.grilla[tema];
+    var fondo = SC.PALETA.fondo[tema];
+
+    var ancho = opciones.ancho || 980;
+    var alto = opciones.alto || 300;
+    var x0 = _M.izquierda, x1 = ancho - _M.derecha - 120;
+    var y0 = _M.arriba, y1 = alto - _M.abajo - 10;
+
+    var maxX = Math.max.apply(null, vivos.map(function (p) { return p.x; }));
+    var maxY = Math.max.apply(null, vivos.map(function (p) { return p.y; }));
+    var cortesX = SC.ticks(0, maxX || 1, 4);
+    var cortesY = SC.ticks(0, maxY || 1, 4);
+    var ex = SC.escalaLineal([0, cortesX[cortesX.length - 1]], [x0, x1]);
+    var ey = SC.escalaLineal([0, cortesY[cortesY.length - 1]], [y1, y0]);
+
+    var maxPeso = Math.max.apply(null, vivos.map(function (p) { return p.peso || 0; }));
+    function radio(peso) {
+      if (!maxPeso || !peso) return 6;
+      // Raiz cuadrada: el AREA tiene que ser proporcional al valor, no el radio.
+      // Con el radio proporcional, el doble de gasto se ve cuatro veces mas
+      // grande y la lectura miente.
+      return 6 + Math.sqrt(peso / maxPeso) * 16;
+    }
+
+    var piezas = [];
+
+    piezas.push('<g class="sc-eje-y">' + cortesY.map(function (t) {
+      var y = ey(t);
+      return '<line x1="' + x0 + '" y1="' + y.toFixed(1) + '" x2="' + x1 +
+             '" y2="' + y.toFixed(1) + '" stroke="' + grilla + '" stroke-width="1"/>' +
+             '<text x="' + (x0 - 8) + '" y="' + (y + 4).toFixed(1) +
+             '" text-anchor="end" font-size="10" fill="' + mudo + '">' +
+             SC.esc(SC.fmt(t, opciones.formatoY)) + '</text>';
+    }).join('') + '</g>');
+
+    piezas.push('<g class="sc-eje-x">' + cortesX.map(function (t) {
+      return '<text x="' + ex(t).toFixed(1) + '" y="' + (alto - 14) +
+             '" text-anchor="middle" font-size="10" fill="' + mudo + '">' +
+             SC.esc(SC.fmt(t, opciones.formatoX)) + '</text>';
+    }).join('') + '</g>');
+
+    // Los nombres de los ejes: sin ellos una dispersion es un dibujo de puntos.
+    piezas.push('<text x="' + ((x0 + x1) / 2) + '" y="' + (alto - 1) +
+                '" text-anchor="middle" font-size="10" fill="' + mudo + '">' +
+                SC.esc(opciones.nombreX || '') + '</text>');
+    piezas.push('<text x="12" y="' + ((y0 + y1) / 2) +
+                '" text-anchor="middle" font-size="10" fill="' + mudo +
+                '" transform="rotate(-90 12 ' + ((y0 + y1) / 2) + ')">' +
+                SC.esc(opciones.nombreY || '') + '</text>');
+
+    vivos.forEach(function (p, i) {
+      var color = SC.colorDeCampana(p.etiqueta, i, tema);
+      var cx = ex(p.x), cy = ey(p.y), r = radio(p.peso);
+      piezas.push('<circle cx="' + cx.toFixed(1) + '" cy="' + cy.toFixed(1) +
+                  '" r="' + r.toFixed(1) + '" fill="' + color +
+                  '" fill-opacity="0.75" stroke="' + fondo + '" stroke-width="2">' +
+                  '<title>' + SC.esc(p.etiqueta) + ' · ' +
+                  SC.esc(opciones.nombreX || 'x') + ': ' +
+                  SC.esc(SC.fmt(p.x, opciones.formatoX)) + ' · ' +
+                  SC.esc(opciones.nombreY || 'y') + ': ' +
+                  SC.esc(SC.fmt(p.y, opciones.formatoY)) +
+                  (p.peso ? ' · ' + SC.esc(opciones.nombrePeso || 'peso') + ': ' +
+                   SC.esc(SC.fmt(p.peso, opciones.formatoPeso)) : '') +
+                  '</title></circle>');
+      // Etiqueta directa al lado de cada burbuja: con pocas marcas es mejor que
+      // una leyenda, porque no obliga a ir y volver.
+      piezas.push('<text x="' + (cx + r + 6).toFixed(1) + '" y="' + (cy + 4).toFixed(1) +
+                  '" font-size="10" fill="' + tinta + '">' +
+                  SC.esc(SC.recortar(p.etiqueta, 20)) + '</text>');
+    });
+
+    return '<div class="sc-panel-serie">' +
+           '<div class="sc-titulo" style="color:' + tinta + '">' +
+           SC.esc(opciones.etiqueta || '') + '</div>' +
+           '<svg viewBox="0 0 ' + ancho + ' ' + alto +
+           '" style="width:100%;height:auto" role="img" aria-label="' +
+           SC.esc(opciones.etiqueta || '') + '">' + piezas.join('') + '</svg></div>';
+  };
+
+  // ── Barras divergentes ───────────────────────────────────────────────────
+  //
+  // Para polaridad: falta o sobra, desde un cero central. Una barra comun
+  // obliga a leer el signo en el numero; aca el lado del cero ya lo dice.
+  //
+  // Dos tonos y nada mas, nunca un arcoiris: el ojo lee "de un lado o del
+  // otro", y un tercer color inventaria una tercera categoria.
+  SC.barrasDivergentes = function (filas, opciones, tema) {
+    opciones = opciones || {};
+    var vivas = (filas || []).filter(function (f) {
+      return f.valor !== null && f.valor !== undefined;
+    });
+    if (!vivas.length) {
+      return '<div class="sc-vacio">Sin datos para «' +
+             SC.esc(opciones.etiqueta || '') + '»</div>';
+    }
+
+    var tinta = SC.PALETA.tinta[tema];
+    var mudo = SC.PALETA.mudo[tema];
+    var grilla = SC.PALETA.grilla[tema];
+    // Los colores de estado, que estan reservados justo para esto y nunca se
+    // usan como "serie 4".
+    var positivo = SC.PALETA.mal[tema];     // falta plata: es la mala noticia
+    var negativo = SC.PALETA.bien[tema];
+
+    var anchoEtiqueta = 92;
+    var anchoValor = 96;
+    var ancho = opciones.ancho || 900;
+    var altoFila = 30;
+    var alto = vivas.length * altoFila + 26;
+    var x0 = anchoEtiqueta, x1 = ancho - anchoValor;
+    var cx = (x0 + x1) / 2;
+
+    var tope = Math.max.apply(null, vivas.map(function (f) {
+      return Math.abs(f.valor);
+    })) || 1;
+    var media = (x1 - x0) / 2;
+
+    var piezas = ['<line x1="' + cx + '" y1="6" x2="' + cx + '" y2="' +
+                  (alto - 18) + '" stroke="' + grilla + '" stroke-width="1"/>'];
+
+    vivas.forEach(function (f, i) {
+      var y = 10 + i * altoFila;
+      var largo = (Math.abs(f.valor) / tope) * media;
+      var esPos = f.valor >= 0;
+      var x = esPos ? cx : cx - largo;
+      piezas.push('<rect x="' + x.toFixed(1) + '" y="' + y + '" width="' +
+                  Math.max(2, largo).toFixed(1) + '" height="' + (altoFila - 12) +
+                  '" rx="4" fill="' + (esPos ? positivo : negativo) + '">' +
+                  '<title>' + SC.esc(f.etiqueta) + ': ' +
+                  SC.esc(SC.fmt(f.valor, opciones.formato)) + '</title></rect>');
+      piezas.push('<text x="' + (anchoEtiqueta - 10) + '" y="' + (y + 13) +
+                  '" text-anchor="end" font-size="11" fill="' + tinta + '">' +
+                  SC.esc(f.etiqueta) + '</text>');
+      piezas.push('<text x="' + (x1 + 10) + '" y="' + (y + 13) +
+                  '" font-size="11" fill="' + mudo + '">' +
+                  SC.esc(SC.fmt(f.valor, opciones.formato)) + '</text>');
+    });
+
+    piezas.push('<text x="' + cx + '" y="' + (alto - 4) +
+                '" text-anchor="middle" font-size="10" fill="' + mudo + '">' +
+                SC.esc(opciones.cero || '0') + '</text>');
+
+    return '<div class="sc-panel-serie">' +
+           '<div class="sc-titulo" style="color:' + tinta + '">' +
+           SC.esc(opciones.etiqueta || '') + '</div>' +
+           '<svg viewBox="0 0 ' + ancho + ' ' + alto +
+           '" style="width:100%;height:auto" role="img" aria-label="' +
+           SC.esc(opciones.etiqueta || '') + '">' + piezas.join('') + '</svg></div>';
+  };
+
+  // ── Mapa de calor ────────────────────────────────────────────────────────
+  //
+  // Una sola rampa de un solo tono, de transparente a lleno. Nunca un arcoiris:
+  // en un arcoiris el orden de los colores no es el orden de los numeros, asi
+  // que hay que ir a la referencia por cada celda.
+  SC.matriz = function (celdas, opciones, tema) {
+    opciones = opciones || {};
+    var filas = opciones.filas || [];
+    var columnas = opciones.columnas || [];
+    if (!celdas || !celdas.length || !filas.length || !columnas.length) {
+      return '<div class="sc-vacio">Sin datos para «' +
+             SC.esc(opciones.etiqueta || '') + '»</div>';
+    }
+
+    var tinta = SC.PALETA.tinta[tema];
+    var mudo = SC.PALETA.mudo[tema];
+    var grilla = SC.PALETA.grilla[tema];
+    var base = SC.PALETA[tema][0];          // el azul de marca, como unico tono
+
+    var anchoEtiqueta = 46;
+    var lado = opciones.lado || 36;
+    var ancho = anchoEtiqueta + columnas.length * lado + 8;
+    var alto = 24 + filas.length * lado + 8;
+    var tope = opciones.maximo;
+
+    var piezas = [];
+
+    columnas.forEach(function (c, j) {
+      piezas.push('<text x="' + (anchoEtiqueta + j * lado + lado / 2) +
+                  '" y="14" text-anchor="middle" font-size="9" fill="' + mudo +
+                  '">' + SC.esc(c.etiqueta) + '</text>');
+    });
+
+    filas.forEach(function (f, i) {
+      piezas.push('<text x="' + (anchoEtiqueta - 8) + '" y="' +
+                  (24 + i * lado + lado / 2 + 4) + '" text-anchor="end" ' +
+                  'font-size="10" fill="' + mudo + '">' +
+                  SC.esc(f.etiqueta) + '</text>');
+    });
+
+    function indice(lista, clave) {
+      for (var k = 0; k < lista.length; k++) {
+        if (lista[k].clave === clave) return k;
+      }
+      return -1;
+    }
+
+    celdas.forEach(function (celda) {
+      var i = indice(filas, celda.fila);
+      var j = indice(columnas, celda.columna);
+      if (i < 0 || j < 0) return;
+      var x = anchoEtiqueta + j * lado;
+      var y = 24 + i * lado;
+      // El cero queda sin relleno, no como el paso mas claro de la rampa: "no
+      // entro nadie" y "entro poca gente" son cosas distintas y el mapa tiene
+      // que dejar verlas distinto.
+      var intensidad = (!tope || !celda.n) ? 0 : Math.max(0.14, celda.n / tope);
+      piezas.push('<rect x="' + (x + 2) + '" y="' + (y + 2) + '" width="' +
+                  (lado - 4) + '" height="' + (lado - 4) + '" rx="4" fill="' +
+                  base + '" fill-opacity="' + intensidad.toFixed(2) +
+                  '" stroke="' + grilla + '" stroke-width="1">' +
+                  '<title>' + SC.esc(celda.titulo || '') + ': ' + celda.n +
+                  '</title></rect>');
+      if (celda.n) {
+        piezas.push('<text x="' + (x + lado / 2) + '" y="' + (y + lado / 2 + 4) +
+                    '" text-anchor="middle" font-size="10" fill="' + tinta +
+                    '">' + celda.n + '</text>');
+      }
+    });
+
+    return '<div class="sc-panel-serie">' +
+           '<div class="sc-titulo" style="color:' + tinta + '">' +
+           SC.esc(opciones.etiqueta || '') + '</div>' +
+           '<svg viewBox="0 0 ' + ancho + ' ' + alto +
+           '" style="width:100%;height:auto;max-width:' + ancho + 'px" ' +
+           'role="img" aria-label="' + SC.esc(opciones.etiqueta || '') + '">' +
+           piezas.join('') + '</svg></div>';
+  };
+
   SC.recortar = function (texto, tope) {
     var t = String(texto === null || texto === undefined ? '' : texto);
     return t.length <= tope ? t : t.slice(0, tope - 1).trimEnd() + '…';
