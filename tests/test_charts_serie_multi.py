@@ -164,3 +164,97 @@ console.log(JSON.stringify({
 """, tmp_path)
     d = json.loads(salida)
     assert d["w10"] and d["w12"]
+
+
+# ── El embudo con forma de embudo ────────────────────────────────────────────
+
+_ETAPAS = """
+var etapas = [
+  {clave:'leads', etiqueta:'Leads', n:100},
+  {clave:'interesados', etiqueta:'Interesados', n:50},
+  {clave:'agendadas', etiqueta:'Demos agendadas', n:30},
+  {clave:'demos', etiqueta:'Demos hechas', n:20},
+  {clave:'presupuestos', etiqueta:'Presupuestos', n:8},
+  {clave:'cierres', etiqueta:'Cierres', n:1}
+];
+"""
+
+
+@sin_node
+def test_el_embudo_se_va_angostando(tmp_path):
+    """Que la bajada se VEA, en vez de tener que compararla leyendo numeros."""
+    salida = _correr(_ETAPAS + """
+var h = SC.embudoReal(etapas, {}, 'oscuro');
+// El ancho de cada tramo sale de sus dos primeros puntos.
+var anchos = [...h.matchAll(/points="([\d.]+),\d+ ([\d.]+),/g)]
+  .map(m => +m[2] - +m[1]);
+console.log(JSON.stringify({
+  tramos: anchos.length,
+  decrece: anchos.every((w, i) => i === 0 || w <= anchos[i-1] + 0.01)
+}));
+""", tmp_path)
+    d = json.loads(salida)
+    assert d["tramos"] == 6
+    assert d["decrece"], "el embudo no se angosta"
+
+
+@sin_node
+def test_cada_etapa_lleva_el_color_del_semaforo(tmp_path):
+    """El equipo pinta la planilla con esos colores: que la etapa se reconozca
+    por el mismo color en los dos lados."""
+    salida = _correr(_ETAPAS + """
+var h = SC.embudoReal(etapas, {}, 'oscuro');
+// Solo el fill de los poligonos: los <text> tambien tienen fill y no son
+// colores de etapa.
+var colores = [...h.matchAll(/<polygon[^>]*fill="(#[0-9a-fA-F]{6})"/g)]
+  .map(m => m[1].toLowerCase());
+console.log(JSON.stringify({
+  distintos: new Set(colores).size,
+  amarillo: colores.includes(SC.colorDeEtapa('interesados','oscuro').toLowerCase()),
+  cyan: colores.includes(SC.colorDeEtapa('demos','oscuro').toLowerCase())
+}));
+""", tmp_path)
+    d = json.loads(salida)
+    assert d["distintos"] == 6, "dos etapas comparten color"
+    assert d["amarillo"] and d["cyan"]
+
+
+@sin_node
+def test_el_embudo_no_escribe_porcentajes(tmp_path):
+    """El ancho ya dice la proporcion: para eso es un embudo. Un porcentaje en
+    cada tramo lo convierte en una tabla con forma rara."""
+    salida = _correr(_ETAPAS + """
+var h = SC.embudoReal(etapas, {}, 'oscuro');
+// El `width:100%` del svg es dimensionado, no un dato: se mira el TEXTO que se
+// dibuja, que es lo que el usuario lee.
+var textos = [...h.matchAll(/<text[^>]*>([^<]*)</g)].map(m => m[1]);
+var titulos = [...h.matchAll(/<title>([^<]*)</g)].map(m => m[1]);
+console.log(textos.concat(titulos).filter(t => t.indexOf('%') >= 0).length);
+""", tmp_path)
+    assert salida.strip() == "0"
+
+
+@sin_node
+def test_una_etapa_chiquita_sigue_siendo_visible(tmp_path):
+    """1 sobre 10.000 sin piso de ancho es una linea de 0px, y justo las etapas
+    del fondo son las que importan."""
+    salida = _correr("""
+var etapas = [{clave:'leads',etiqueta:'Leads',n:10000},
+              {clave:'cierres',etiqueta:'Cierres',n:1}];
+var h = SC.embudoReal(etapas, {}, 'oscuro');
+var anchos = [...h.matchAll(/points="([\d.]+),\d+ ([\d.]+),/g)].map(m => +m[2]-+m[1]);
+console.log(Math.min.apply(null, anchos) >= 20);
+""", tmp_path)
+    assert salida.strip() == "true"
+
+
+@sin_node
+def test_los_colores_del_semaforo_cambian_por_tema(tmp_path):
+    """El amarillo puro del Excel es ilegible sobre el panel claro; se conserva
+    el tono y se elige el paso que se lee en cada tema."""
+    salida = _correr("""
+console.log(JSON.stringify({
+  distintos: SC.colorDeEtapa('interesados','oscuro') !== SC.colorDeEtapa('interesados','claro')
+}));
+""", tmp_path)
+    assert json.loads(salida)["distintos"]

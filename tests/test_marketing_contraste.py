@@ -114,6 +114,9 @@ def test_el_rotulo_ya_alcanza_para_texto():
                  # subtitulo de cada tarjeta, la tasa de caida y la leyenda.
                  ".sc-embudo-sub", ".sc-etapa-tasa", ".sc-leyenda-item",
                  # El numero de orden del hallazgo y su borde izquierdo.
-                 ".sc-hall-n", ".sc-hall-uno"}
+                 ".sc-hall-n", ".sc-hall-uno",
+                 # La nota de "hasta aca llega un reporte de ads", arriba del
+                 # embudo.
+                 ".sc-antes-nota"}
     assert con_rotulo == esperados, (
         f"--rotulo esta en {sorted(con_rotulo)} y se esperaba {sorted(esperados)}")

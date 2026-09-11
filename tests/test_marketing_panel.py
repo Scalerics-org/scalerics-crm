@@ -31,7 +31,10 @@ def test_estan_los_contenedores_que_el_js_llena():
     """Si el JS escribe en un id que no existe, el panel queda mudo y no se
     entera nadie: innerHTML sobre null tira una excepcion silenciosa."""
     for ident in ("mk-estado", "mk-cuerpo", "mk-avisos", "mk-tiles", "mk-embudo",
-                  "mk-series", "mk-campanas", "mk-segmentos", "mk-recordatorios",
+                  "mk-series", "mk-campanas", "mk-segmentos",
+                  # mk-hallazgos, mk-embudos, mk-evolucion y mk-acumulado son
+                  # los bloques nuevos; mk-recordatorios se saco del panel.
+                  "mk-hallazgos", "mk-embudos", "mk-evolucion", "mk-acumulado",
                   "mk-tabla", "mk-desde", "mk-hasta", "mk-campana", "mk-fecha"):
         assert f'id="{ident}"' in dashboard.DASHBOARD_HTML, f"falta #{ident}"
 

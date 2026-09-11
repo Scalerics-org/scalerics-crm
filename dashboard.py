@@ -1325,6 +1325,10 @@ body.light .mobile-header-title{color:#0f172a}
 /* Mobile FAB */
 /* ── Panel de Marketing ─────────────────────────────────────────────────── */
 .sc-filtros{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:22px}
+.sc-antes{display:flex;flex-wrap:wrap;gap:18px;align-items:baseline;padding-bottom:12px;margin-bottom:12px;border-bottom:1px dashed var(--borde)}
+.sc-antes-uno{font-size:.78rem;color:var(--texto-tenue)}
+.sc-antes-uno b{font-size:.92rem;color:var(--texto);font-variant-numeric:tabular-nums}
+.sc-antes-nota{font-size:.68rem;color:var(--rotulo);font-style:italic}
 .sc-hall{display:grid;gap:10px}
 .sc-hall-uno{display:grid;grid-template-columns:auto 1fr;gap:12px;align-items:start;background:var(--fondo-hundido);border:1px solid var(--borde);border-left:3px solid var(--rotulo);border-radius:10px;padding:12px 14px}
 .sc-hall-uno[data-sev="alta"]{border-left-color:var(--ambar)}
@@ -2019,12 +2023,6 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
         <h3>La plata</h3>
         <div class="sc-sub">Lo que Meta dice que cobró contra lo que está cargado en Finanzas. La brecha dice si la contabilidad está viendo todo el gasto de pauta.</div>
         <div id="mk-conciliacion"></div>
-      </div>
-
-      <div class="sc-bloque">
-        <h3>Secuencia de recordatorios</h3>
-        <div class="sc-sub">Cuántos envíos fueron seguidos de un cambio de estado dentro de los 7 días. Es atribución, no causalidad: mide movimiento registrado en el CRM.</div>
-        <div id="mk-recordatorios"></div>
       </div>
 
       <div class="sc-bloque">
@@ -7730,6 +7728,21 @@ async function _mkInforme() {
     hallazgos + cambios + '</div>';
 }
 
+  // ── Las semanas, numeradas desde el inicio del período ─────────────────
+  //
+  // "W31" es el numero de semana ISO del ano: no le dice nada a nadie, y menos
+  // cuando el periodo arranca a mitad de mes. "Semana 3" se entiende sin
+  // pensar, y es lo que importa: cuanto hace que arranco esto.
+  //
+  // El numero sale del ORDEN dentro del periodo, no de la semana ISO, asi que
+  // al cambiar el rango se renumera solo.
+  function _mkSemanas(listaDeInicios) {
+    const orden = [...new Set(listaDeInicios)].sort();
+    const mapa = {};
+    orden.forEach((inicio, i) => { mapa[inicio] = 'Semana ' + (i + 1); });
+    return mapa;
+  }
+
 function _mkPintar() {
   if (!_mkDossier) return;
   const tema = _mkTema();
@@ -7776,7 +7789,19 @@ function _mkPintar() {
     if (fuente === 'meta_insights' && !valor) valor = null;
     return { clave: suf.slice(1), etiqueta, valor, fuente };
   });
-  document.getElementById('mk-embudo').innerHTML = SC.embudo(etapas, tema);
+  // Las tres primeras son de Meta y estan en otra escala —un millon de
+  // impresiones contra 240 leads—, asi que no pueden compartir el dibujo: irian
+  // aplastadas a una linea. Van como cifras arriba, y el embudo de verdad
+  // arranca donde arranca el CRM.
+  const antes = etapas.filter(e => e.fuente === 'meta_insights');
+  const delCrm = etapas.filter(e => e.fuente === 'crm');
+  document.getElementById('mk-embudo').innerHTML =
+    '<div class="sc-antes">' + antes.map(e =>
+      '<span class="sc-antes-uno"><b>' + esc(SC.fmt(e.valor, 'numero')) +
+      '</b> ' + esc(e.etiqueta) + '</span>').join('') +
+    '<span class="sc-antes-nota">hasta acá llega un reporte de ads</span></div>' +
+    SC.embudoReal(delCrm.map(e => ({ clave: e.clave, etiqueta: e.etiqueta, n: e.valor })),
+                  { etiqueta: 'Embudo', ancho: 620, altoEtapa: 52 }, tema);
 
   // ── Series semanales ───────────────────────────────────────────────────
   const semanas = _mkDossier.serie_semanal || [];
@@ -7788,7 +7813,7 @@ function _mkPintar() {
   document.getElementById('mk-series').innerHTML = pares.map(([a, b]) => {
     const arma = ([clave, etiqueta, formato]) => ({
       etiqueta, formato,
-      puntos: semanas.map(s => ({ x: s.semana, y: s[clave] === undefined ? null : s[clave] }))
+      puntos: semanas.map(s => ({ x: nombreSemana[s.inicio] || s.semana, y: s[clave] === undefined ? null : s[clave] }))
     });
     return b ? SC.parApilado(arma(a), arma(b), tema)
              : SC.serie(arma(a).puntos, arma(a), tema);
@@ -7824,36 +7849,22 @@ function _mkPintar() {
   //
   // La caída más grande va marcada porque es la única etapa sobre la que tiene
   // sentido hacer algo: mejorar donde ya se pasa el 90% no mueve el total.
+  const nombreSemana = _mkSemanas([
+    ...(_mkDossier.serie_semanal || []).map(s => s.inicio),
+    ...(_mkDossier.serie_campanas || []).flatMap(s => (s.puntos || []).map(p => p.inicio)),
+  ]);
+
   const embudos = _mkDossier.embudo_campanas || [];
   document.getElementById('mk-embudos').innerHTML = !embudos.length
     ? '<div class="sc-vacio">Sin leads en el período.</div>'
-    : '<div class="sc-embudos">' + embudos.map((b, i) => {
-        const color = SC.colorDeCampana(b.campana, i, tema);
-        const tope = b.etapas[0].n || 1;
-        // La peor caída: la tasa más baja entre las etapas que tienen tasa.
-        const conTasa = b.etapas.filter(e => e.tasa !== null && e.tasa !== undefined);
-        const peor = conTasa.length
-          ? conTasa.reduce((a, e) => (e.tasa < a.tasa ? e : a)).clave : null;
-        const filas = b.etapas.map(e => {
-          const pct = tope ? (e.n / tope) * 100 : 0;
-          const tasa = (e.tasa === null || e.tasa === undefined) ? ''
-            : '<span class="sc-etapa-tasa' + (e.clave === peor ? ' sc-caida' : '') +
-              '">' + SC.fmt(e.tasa, 'porcentaje') + '</span>';
-          return '<div class="sc-etapa">' +
-                 '<span class="sc-etapa-nom">' + esc(e.etiqueta) + ' ' + tasa + '</span>' +
-                 '<span class="sc-etapa-n">' + esc(SC.fmt(e.n, 'numero')) + '</span>' +
-                 '<span class="sc-etapa-barra"><span class="sc-etapa-lleno" style="width:' +
-                 pct.toFixed(1) + '%;background:' + color + '"></span></span>' +
-                 '</div>';
-        }).join('');
+    : '<div class="sc-embudos">' + embudos.map(b => {
         const cierres = b.etapas[b.etapas.length - 1].n;
         return '<div class="sc-embudo-uno">' +
-               '<div class="sc-embudo-tit">' +
-               '<span class="sc-leyenda-punto" style="background:' + color + '"></span>' +
-               esc(b.campana) + '</div>' +
+               '<div class="sc-embudo-tit">' + esc(b.campana) + '</div>' +
                '<div class="sc-embudo-sub">' + esc(SC.fmt(b.etapas[0].n, 'numero')) +
                ' leads · ' + esc(SC.fmt(cierres, 'numero')) + ' cierres</div>' +
-               filas + '</div>';
+               SC.embudoReal(b.etapas, { etiqueta: b.campana, ancho: 460 }, tema) +
+               '</div>';
       }).join('') + '</div>';
 
   // ── Cómo evoluciona cada campaña ───────────────────────────────────────
@@ -7870,7 +7881,7 @@ function _mkPintar() {
   ].map(([campo, titulo, formato]) => SC.serieMulti(
     conGastoSem.map(s => ({
       campana: s.campana,
-      puntos: (s.puntos || []).map(p => ({ x: p.semana, y: p[campo] })),
+      puntos: (s.puntos || []).map(p => ({ x: nombreSemana[p.inicio] || p.semana, y: p[campo] })),
     })), { etiqueta: titulo, formato }, tema)).join('');
   document.getElementById('mk-evolucion').innerHTML = conGastoSem.length
     ? evolucion
@@ -7886,7 +7897,7 @@ function _mkPintar() {
        ['leads_acum', 'Leads acumulados', 'numero']].map(([campo, titulo, formato]) =>
         SC.serieMulti(conGastoSem.map(s => ({
           campana: s.campana,
-          puntos: (s.puntos || []).map(p => ({ x: p.semana, y: p[campo] })),
+          puntos: (s.puntos || []).map(p => ({ x: nombreSemana[p.inicio] || p.semana, y: p[campo] })),
         })), { etiqueta: titulo, formato }, tema)).join('')
     : '<div class="sc-vacio">Hace falta gasto sincronizado.</div>';
 
@@ -8032,14 +8043,6 @@ function _mkPintar() {
       `<td>${esc(SC.fmt(suma('brecha'), 'moneda'))}</td></tr>` +
       '</tbody></table></div>';
   }
-
-  // ── Recordatorios ──────────────────────────────────────────────────────
-  const recs = (_mkDossier.recordatorios || []).map(m => ({
-    etiqueta: 'Recordatorio ' + m.id.split('_').pop(), metrica: m
-  }));
-  document.getElementById('mk-recordatorios').innerHTML = recs.length
-    ? SC.barrasConIC(recs, { etiqueta: 'Recordatorios' }, tema)
-    : '<div class="sc-vacio">No se enviaron recordatorios en el período</div>';
 
   // ── Tabla cruda ────────────────────────────────────────────────────────
   const todasLasMetricas = [];

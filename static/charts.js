@@ -440,6 +440,105 @@
   //
   // El color lo da `SC.colorDeCampana`, o sea que sigue a la campana y no a su
   // posicion: filtrar una campana no repinta a las que quedan.
+
+  // Los colores del semaforo de la planilla, que es donde el equipo los pinta.
+  // La idea es que la etapa se reconozca por el mismo color en los dos lados.
+  //
+  // NO son los hex crudos del Excel: `#ffff00` y `#00ff00` puros son ilegibles
+  // sobre el panel oscuro y chillones sobre el claro. Se conserva el TONO —que
+  // es lo que se reconoce— y se elige el paso que se lee en cada tema. Los seis
+  // pasan 3:1 contra la superficie hundida, calculado, no estimado.
+  //
+  // Los dos verdes son a proposito: en la planilla "demo agendada" es verde
+  // claro y "cerrado" verde oscuro, y quedan separados en el embudo por el cyan
+  // y el magenta, asi que no se confunden.
+  SC.COLOR_ETAPA = {
+    leads:        { oscuro: '#64748b', claro: '#475569' },
+    interesados:  { oscuro: '#eab308', claro: '#a16207' },
+    agendadas:    { oscuro: '#22c55e', claro: '#15803d' },
+    demos:        { oscuro: '#22d3ee', claro: '#0e7490' },
+    presupuestos: { oscuro: '#e879f9', claro: '#a21caf' },
+    cierres:      { oscuro: '#4ade80', claro: '#14532d' }
+  };
+
+  SC.colorDeEtapa = function (clave, tema) {
+    var c = SC.COLOR_ETAPA[clave];
+    return c ? (c[tema] || c.oscuro) : SC.PALETA.neutro[tema];
+  };
+
+  // Un embudo dibujado como un embudo: cada etapa mas angosta que la anterior,
+  // y los lados en diagonal para que la bajada se VEA en vez de tener que
+  // compararla leyendo numeros.
+  //
+  // Sin porcentajes adentro. El ancho ya dice la proporcion —para eso es un
+  // embudo— y el numero absoluto esta al lado. Un porcentaje sobre cada tramo
+  // convierte el dibujo en una tabla con forma rara.
+  SC.embudoReal = function (etapas, opciones, tema) {
+    opciones = opciones || {};
+    var vivas = (etapas || []).filter(function (e) {
+      return e.n !== null && e.n !== undefined;
+    });
+    if (!vivas.length) {
+      return '<div class="sc-vacio">Sin datos para el embudo</div>';
+    }
+
+    var tinta = SC.PALETA.tinta[tema];
+    var mudo = SC.PALETA.mudo[tema];
+    var fondo = SC.PALETA.fondo[tema];
+
+    var ancho = opciones.ancho || 560;
+    var altoEtapa = opciones.altoEtapa || 46;
+    var alto = vivas.length * altoEtapa + 12;
+    var cx = ancho * 0.40;              // el embudo a la izquierda, textos a la derecha
+    var maxAncho = ancho * 0.62;
+    var tope = vivas[0].n || 1;
+
+    // Un piso de ancho para que una etapa en 1 sobre 100 siga siendo visible y
+    // clickeable. Sin esto, las etapas del fondo desaparecen justo cuando son
+    // las que importan.
+    var MINIMO = 26;
+    function anchoDe(n) {
+      if (!tope) return MINIMO;
+      return Math.max(MINIMO, (n / tope) * maxAncho);
+    }
+
+    var piezas = [];
+    vivas.forEach(function (e, i) {
+      var y = 6 + i * altoEtapa;
+      var w0 = anchoDe(e.n);
+      // El ultimo tramo no se angosta contra nada: baja recto.
+      var sig = (i + 1 < vivas.length) ? vivas[i + 1] : e;
+      var w1 = anchoDe(sig.n);
+      var h = altoEtapa - 6;
+      var color = SC.colorDeEtapa(e.clave, tema);
+
+      piezas.push(
+        '<polygon points="' +
+        [(cx - w0 / 2).toFixed(1) + ',' + y,
+         (cx + w0 / 2).toFixed(1) + ',' + y,
+         (cx + w1 / 2).toFixed(1) + ',' + (y + h),
+         (cx - w1 / 2).toFixed(1) + ',' + (y + h)].join(' ') +
+        '" fill="' + color + '" stroke="' + fondo + '" stroke-width="2">' +
+        '<title>' + SC.esc(e.etiqueta) + ': ' +
+        SC.esc(SC.fmt(e.n, 'numero')) + '</title></polygon>');
+
+      // El numero y el nombre van afuera, a la derecha: adentro no entran
+      // cuando el tramo se angosta, que es justo donde mas se quiere leerlos.
+      piezas.push(
+        '<text x="' + (cx + maxAncho / 2 + 16) + '" y="' + (y + h / 2 - 2) +
+        '" font-size="12" font-weight="700" fill="' + tinta + '">' +
+        SC.esc(SC.fmt(e.n, 'numero')) + '</text>' +
+        '<text x="' + (cx + maxAncho / 2 + 16) + '" y="' + (y + h / 2 + 12) +
+        '" font-size="10" fill="' + mudo + '">' +
+        SC.esc(e.etiqueta) + '</text>');
+    });
+
+    return '<svg viewBox="0 0 ' + ancho + ' ' + alto +
+           '" style="width:100%;height:auto" role="img" aria-label="' +
+           SC.esc(opciones.etiqueta || 'Embudo') + '">' +
+           piezas.join('') + '</svg>';
+  };
+
   SC.serieMulti = function (series, opciones, tema) {
     opciones = opciones || {};
     var conDatos = (series || []).filter(function (s) {
