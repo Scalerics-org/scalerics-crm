@@ -818,21 +818,29 @@ body.light .resp-sel{background:#fff;border-color:#e2e8f0;color:#0f172a}
 /* ---- Shared modals ---- */
 .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;align-items:center;justify-content:center}
 .modal-overlay.open{display:flex}
-.modal{background:#161b27;border:1px solid #1e293b;border-radius:16px;padding:28px;width:420px;max-width:90vw}
-.modal h3{font-size:1rem;font-weight:700;color:#fff;margin-bottom:6px}
-.modal p{font-size:.82rem;color:#64748b;margin-bottom:18px}
-.modal textarea{width:100%;background:#0f1117;border:1px solid #1e293b;border-radius:8px;padding:10px 14px;font-size:.85rem;color:#e2e8f0;font-family:'Inter',sans-serif;resize:vertical;min-height:80px;outline:none;margin-bottom:16px}
-.modal textarea::placeholder{color:#334155}
-.modal input[type=text],.modal input[type=date],.modal input[type=month],.modal input[type=time],.modal input[type=number],.modal input[type=email],.modal input[type=datetime-local],.modal-input{width:100%;background:#0f1117;border:1px solid #1e293b;border-radius:8px;padding:10px 14px;font-size:.85rem;color:#e2e8f0;font-family:'Inter',sans-serif;outline:none;margin-bottom:12px;box-sizing:border-box}
-.modal select,.modal-input select{width:100%;background:#0f1117;border:1px solid #1e293b;border-radius:8px;padding:10px 14px;font-size:.85rem;color:#e2e8f0;font-family:'Inter',sans-serif;outline:none;margin-bottom:12px;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:36px;cursor:pointer}
+.modal{background:var(--superficie);border:1px solid var(--borde);color:var(--texto);border-radius:16px;padding:28px;width:420px;max-width:90vw}
+.modal h3{font-size:1rem;font-weight:700;color:var(--texto-fuerte);margin-bottom:6px}
+.modal p{font-size:.82rem;color:var(--rotulo);margin-bottom:18px}
+.modal textarea{width:100%;background:var(--fondo);border:1px solid var(--borde);border-radius:8px;padding:10px 14px;font-size:.85rem;color:var(--texto);font-family:'Inter',sans-serif;resize:vertical;min-height:80px;outline:none;margin-bottom:16px}
+.modal textarea::placeholder{color:var(--texto-debil)}
+.modal input[type=text],.modal input[type=date],.modal input[type=month],.modal input[type=time],.modal input[type=number],.modal input[type=email],.modal input[type=datetime-local],.modal-input{width:100%;background:var(--fondo);border:1px solid var(--borde);border-radius:8px;padding:10px 14px;font-size:.85rem;color:var(--texto);font-family:'Inter',sans-serif;outline:none;margin-bottom:12px;box-sizing:border-box}
+.modal select,.modal-input select{width:100%;background:var(--fondo);border:1px solid var(--borde);border-radius:8px;padding:10px 14px;font-size:.85rem;color:var(--texto);font-family:'Inter',sans-serif;outline:none;margin-bottom:12px;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:36px;cursor:pointer}
 .modal input[type=datetime-local]::-webkit-calendar-picker-indicator{filter:invert(1);opacity:.4;cursor:pointer}
-.modal input::placeholder{color:#334155}
-.modal input:focus,.modal textarea:focus,.modal select:focus{border-color:#0088cc;outline:none}
-.modal-label{font-size:.7rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.7px;display:block;margin-bottom:5px}
+.modal input::placeholder{color:var(--texto-debil)}
+.modal input:focus,.modal textarea:focus,.modal select:focus{border-color:var(--azul);outline:none}
+.modal-label{font-size:.7rem;font-weight:700;color:var(--texto-debil);text-transform:uppercase;letter-spacing:.7px;display:block;margin-bottom:5px}
 .modal-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .modal-btns{display:flex;gap:10px;justify-content:flex-end}
-.btn-cancel{background:#1e293b;border:none;color:#64748b;padding:9px 18px;border-radius:8px;cursor:pointer;font-size:.82rem;font-weight:600;font-family:'Inter',sans-serif}
-.btn-confirm{background:#0088cc;border:none;color:#fff;padding:9px 18px;border-radius:8px;cursor:pointer;font-size:.82rem;font-weight:700;font-family:'Inter',sans-serif;display:inline-flex;align-items:center;gap:6px}
+.btn-cancel{background:var(--relleno);border:none;color:var(--texto-debil);padding:9px 18px;border-radius:8px;cursor:pointer;font-size:.82rem;font-weight:600;font-family:'Inter',sans-serif}
+.btn-confirm{background:var(--azul);border:none;color:#fff;padding:9px 18px;border-radius:8px;cursor:pointer;font-size:.82rem;font-weight:700;font-family:'Inter',sans-serif;display:inline-flex;align-items:center;gap:6px}
+.btn-primary,.btn-ghost{border:none;padding:9px 18px;border-radius:8px;cursor:pointer;font-size:.82rem;font-weight:600;font-family:'Inter',sans-serif;display:inline-flex;align-items:center;justify-content:center;gap:6px;line-height:1.2;transition:filter .15s,color .15s}
+.btn-primary{background:var(--azul);color:#fff;font-weight:700}
+.btn-primary:hover{filter:brightness(1.1)}
+.btn-ghost{background:var(--relleno);color:var(--texto-tenue)}
+.btn-ghost:hover{color:var(--texto)}
+.btn-primary:disabled,.btn-ghost:disabled{opacity:.5;cursor:default}
+/* Los de solo icono (lapiz, tacho) viven en columnas angostas de las listas. */
+.btn-icono{padding:6px 8px}
 .btn-confirm:disabled{opacity:.5;cursor:not-allowed}
 
 /* ── Client Panel ─────────────────────────────────────────────────────────── */
@@ -1069,10 +1077,6 @@ body.light .pitch-btn:hover{background:#0088cc;color:#fff}
 body.light .delete-btn{color:#94a3b8}
 body.light .delete-btn:hover{color:#ef4444}
 body.light .export-btn{background:#f1f5f9;border-color:#e2e8f0;color:#475569}
-body.light .modal-overlay .modal{background:#fff;border-color:#e2e8f0;color:#0f172a}
-body.light .modal h3,body.light .modal-title{color:#0f172a}
-body.light .modal label{color:#64748b}
-body.light .modal input,body.light .modal textarea,body.light .modal select,body.light .modal-input{background:#f8fafc;border-color:#e2e8f0;color:#0f172a}
 body.light .modal input[type=datetime-local]::-webkit-calendar-picker-indicator{filter:none;opacity:.6}
 body.light .outcome-btn{background:#f8fafc;border-color:#e2e8f0;color:#0f172a}
 body.light .outcome-btn:hover{background:#f1f5f9}
@@ -1148,10 +1152,6 @@ body.light .mas-sheet-item{background:#f8fafc;border-color:#e2e8f0}
 body.light .mas-sheet-icon{stroke:#475569}
 body.light .mas-sheet-label{color:#0f172a}
 body.light .mas-sheet-backdrop{background:rgba(0,0,0,.3)}
-body.light .modal h3,body.light .modal-title{color:#0f172a !important}
-body.light .modal label{color:#475569}
-body.light .modal p{color:#475569}
-body.light .modal input,body.light .modal textarea,body.light .modal select{background:#f8fafc;border-color:#e2e8f0;color:#0f172a}
 body.light .token-card{background:#f8fafc;border-color:#e2e8f0}
 body.light .token-card-name{color:#64748b !important}
 .act-row{border-bottom-color:#f1f5f9}
@@ -7140,9 +7140,9 @@ async function loadMovimientos(desde, hasta) {
         ${esIngreso ? '+' : '−'}${_finUsd(m.monto_usd)}${original}
       </div>
       <div style="flex:0 0 76px;text-align:right">
-        <button class="btn-ghost" onclick='abrirMovimiento(${_finAttr(m)})'
+        <button class="btn-ghost btn-icono" onclick='abrirMovimiento(${_finAttr(m)})'
                 title="Editar"><i data-lucide="pencil" class="nav-icon"></i></button>
-        <button class="btn-ghost" onclick="borrarMovimientoUI(${m.id}, ${m.recurrente_id ? 1 : 0})"
+        <button class="btn-ghost btn-icono" onclick="borrarMovimientoUI(${m.id}, ${m.recurrente_id ? 1 : 0})"
                 title="Borrar"><i data-lucide="trash-2" class="nav-icon"></i></button>
       </div>
     </div>`;
@@ -7313,9 +7313,9 @@ async function loadFijos() {
         ${enUsd}
       </div>
       <div style="flex:0 0 76px;text-align:right">
-        <button class="btn-ghost" onclick='abrirFijo(${_finAttr(f)})'
+        <button class="btn-ghost btn-icono" onclick='abrirFijo(${_finAttr(f)})'
                 title="Editar"><i data-lucide="pencil" class="nav-icon"></i></button>
-        <button class="btn-ghost" onclick="borrarFijoUI(${f.id})"
+        <button class="btn-ghost btn-icono" onclick="borrarFijoUI(${f.id})"
                 title="Borrar"><i data-lucide="trash-2" class="nav-icon"></i></button>
       </div>
     </div>`;
