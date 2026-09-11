@@ -12,6 +12,7 @@ oscuro en el tema claro tres semanas después.
 """
 
 import re
+from html.parser import HTMLParser
 
 import pytest
 
@@ -527,3 +528,207 @@ def test_texto_apenas_se_fundio_en_texto_debil(oscuro, claro):
     assert "--texto-apenas" not in oscuro and "--texto-apenas" not in claro
     assert "var(--texto-apenas)" not in dashboard.DASHBOARD_HTML
     assert claro["--texto-debil"] == "#627188"
+
+
+# ── modales y botones ────────────────────────────────────────────────────────
+# Sexta superficie. `.btn-primary` y `.btn-ghost` solo existían en el HTML de la
+# página de administración (adentro de create_app): en el dashboard los botones
+# de Finanzas se dibujaban como botones del sistema — gris, borde outset, sin
+# radio ni padding — en los dos temas.
+
+MODAL = [".modal", ".modal h3", ".modal p", ".modal textarea",
+         ".modal textarea::placeholder", ".modal input[type=text]", ".modal select",
+         ".modal input::placeholder", ".modal input:focus", ".modal-label",
+         ".btn-cancel"]
+
+
+@pytest.mark.parametrize("selector", MODAL)
+def test_los_modales_usan_los_tokens(selector):
+    cuerpo = _regla(selector)
+    sueltos = re.findall("#[0-9a-fA-F]{3,8}(?![0-9a-zA-Z])", cuerpo)
+
+    assert not sueltos, f"{selector} tiene colores a mano: {sueltos}"
+    assert "var(--" in cuerpo, f"{selector} no usa ningún token"
+
+
+def _css_del_dashboard() -> str:
+    return chr(10).join(re.findall(r"<style[^>]*>(.*?)</style>",
+                                   dashboard.DASHBOARD_HTML, re.S))
+
+
+def test_el_dashboard_define_sus_propios_botones():
+    """El bug de fondo: las clases se usaban en el dashboard pero solo estaban
+    definidas en otro documento HTML. Si se borran de acá, los botones vuelven
+    a ser los del sistema y ningún otro test lo ve."""
+    css = _css_del_dashboard()
+    assert ".btn-primary{background:var(--azul);color:#fff" in css
+    assert ".btn-ghost{background:var(--relleno);color:var(--texto-tenue)}" in css
+    compartida = re.search(r"^\.btn-primary,\.btn-ghost\{([^}]*)\}", css, re.M)
+    assert compartida, "falta la regla de tamaño compartida"
+    assert "padding:9px 18px" in compartida.group(1)
+    assert "border-radius:8px" in compartida.group(1)
+
+
+def test_el_texto_del_boton_primario_es_blanco_en_los_dos_temas():
+    """Va sobre el azul de marca. `--texto-fuerte` sería azul marino en claro,
+    sobre azul: ilegible."""
+    for regla in (".btn-primary{background:var(--azul);color:#fff",
+                  ".btn-confirm{background:var(--azul);border:none;color:#fff"):
+        assert regla in _css_del_dashboard(), regla
+
+
+def test_los_botones_de_solo_icono_son_compactos():
+    """El lápiz y el tacho de las listas de Finanzas viven en columnas de 76px:
+    con el padding de un botón de texto se desbordaban."""
+    html = dashboard.DASHBOARD_HTML
+    iconos = re.findall(
+        r'<button class="(btn-(?:ghost|primary)[^"]*)"[^>]*>\s*<i data-lucide="[^"]*"[^>]*></i>\s*</button>',
+        html)
+    assert iconos, "no encontré botones de solo ícono"
+    sin_compacto = [c for c in iconos if "btn-icono" not in c]
+    assert not sin_compacto, f"botones de solo ícono sin btn-icono: {sin_compacto}"
+
+
+def test_no_quedan_reglas_claras_duplicadas_en_los_modales():
+    """Había cuatro pares repetidos, uno con `!important`, y `.modal label` dos
+    veces con valores distintos. Queda solo el filtro del ícono nativo del
+    selector de fecha, que es propio de cada tema y no un color."""
+    claras = re.findall(r"^(body[.]light [.]modal[^{]*)[{]", dashboard.DASHBOARD_HTML, re.M)
+    assert claras == ["body.light .modal input[type=datetime-local]::-webkit-calendar-picker-indicator"], claras
+
+
+# ── selects fuera de los modales ─────────────────────────────────────────────
+# Séptima superficie. El selector de período de Finanzas ("Mes actual") no tenía
+# clase ni contenedor que lo estilizara: se dibujaba como el select del sistema
+# —blanco, borde gris— en los dos temas. Y la barra de acciones en lote no tenía
+# versión clara: quedaba oscura, con "N seleccionados" en azul marino encima.
+
+SELECTS = [".filter-select", ".filter-select option", ".filter-select:hover",
+           ".resp-sel", ".resp-sel:hover", ".resp-sel.vacante",
+           ".batch-bar", ".batch-count", ".batch-sel",
+           ".batch-cancel", ".batch-cancel:hover"]
+
+
+@pytest.mark.parametrize("selector", SELECTS)
+def test_los_selects_usan_los_tokens(selector):
+    cuerpo = _regla(selector)
+    sueltos = re.findall("#[0-9a-fA-F]{3,8}(?![0-9a-zA-Z])", cuerpo)
+
+    assert not sueltos, f"{selector} tiene colores a mano: {sueltos}"
+    assert "var(--" in cuerpo, f"{selector} no usa ningún token"
+
+
+@pytest.mark.parametrize("selector", SELECTS)
+def test_los_selects_no_tienen_regla_clara_propia(selector):
+    patron = r"^body\.light " + re.escape(selector) + r"\{"
+    assert not re.search(patron, dashboard.DASHBOARD_HTML, re.M), (
+        f"sobra `body.light {selector}`: los tokens ya lo cubren")
+
+
+_VACIOS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link",
+           "meta", "source", "track", "wbr"}
+
+
+class _Selects(HTMLParser):
+    """Cada <select> del documento, con las clases de sus ancestros. El JS de
+    los <script> no se parsea como HTML: los selects que arman las plantillas
+    (`.resp-sel`) no entran, y esos llevan clase siempre."""
+
+    def __init__(self):
+        super().__init__()
+        self.pila, self.selects = [], []
+
+    def handle_starttag(self, tag, attrs):
+        a = dict(attrs)
+        clases = (a.get("class") or "").split()
+        if tag == "select":
+            ancestros = {c for _, cs in self.pila for c in cs}
+            self.selects.append((a.get("id") or "?", set(clases),
+                                 a.get("style") or "", ancestros))
+        if tag not in _VACIOS:
+            self.pila.append((tag, clases))
+
+    def handle_endtag(self, tag):
+        for i in range(len(self.pila) - 1, -1, -1):
+            if self.pila[i][0] == tag:
+                del self.pila[i:]
+                return
+
+
+def test_ningun_select_queda_con_el_estilo_del_sistema():
+    """Un select está cubierto si alguna de sus clases tiene regla, si su
+    estilo inline usa tokens, o si vive adentro de un contenedor con regla
+    `.contenedor select` (los modales, los filtros de marketing). Si no, el
+    navegador lo dibuja blanco con borde gris en los dos temas, como pasaba
+    con el de período de Finanzas."""
+    css = _css_del_dashboard()
+    selectores = " ".join(re.findall(r"([^{}]+)[{]", css))
+    con_regla = set(re.findall(r"[.]([a-zA-Z][\w-]*)", selectores))
+    contenedores = set(re.findall(r"[.]([a-zA-Z][\w-]*) select(?![\w-])", selectores))
+
+    p = _Selects()
+    p.feed(dashboard.DASHBOARD_HTML)
+
+    assert len(p.selects) >= 10, f"el parser vio pocos selects: {len(p.selects)}"
+    sueltos = [ident for ident, clases, estilo, ancestros in p.selects
+               if not clases & con_regla
+               and "var(--" not in estilo
+               and not ancestros & contenedores]
+    assert not sueltos, f"selects con el estilo del sistema: {sueltos}"
+
+
+def _token_de(selector: str, propiedad: str) -> str:
+    m = re.search("(?:^|;)" + propiedad + "[:]var[(](--[a-z-]+)[)]", _regla(selector))
+    assert m, f"{selector} no toma `{propiedad}` de un token"
+    return m.group(1)
+
+
+@pytest.mark.parametrize("tema", ["oscuro", "claro"])
+def test_la_barra_de_lote_se_lee_en_los_dos_temas(oscuro, claro, tema):
+    """En claro la barra quedaba oscura (#1e293b) con "N seleccionados" en
+    #0f172a encima: 1,22:1. "Cancelar" (#475569) daba 1,93:1 en los dos."""
+    t = oscuro if tema == "oscuro" else claro
+    barra = t[_token_de(".batch-bar", "background")]
+    for selector in (".batch-count", ".batch-cancel"):
+        c = _contraste(t[_token_de(selector, "color")], barra)
+        assert c >= 4.5, f"{selector} sobre la barra en {tema}: {c:.2f}:1"
+    campo = t[_token_de(".batch-sel", "background")]
+    assert _delta_e(campo, barra) >= 4, f"el select no se despega de la barra en {tema}"
+
+
+def test_el_responsable_vacante_se_distingue_en_los_dos_temas(oscuro, claro):
+    """En claro, `body.light .resp-sel` (0,2,1) le ganaba a `.resp-sel.vacante`
+    (0,2,0): un cliente sin responsable se veía igual que uno asignado. En
+    oscuro, #64748b daba 3,75:1."""
+    lleno = _token_de(".resp-sel", "color")
+    vacante = _token_de(".resp-sel.vacante", "color")
+    fondo = _token_de(".resp-sel", "background")
+
+    assert vacante != lleno
+    for t in (oscuro, claro):
+        assert _contraste(t[vacante], t[fondo]) >= 4.5
+
+
+def test_los_selects_sin_contorno_tienen_foco():
+    """`outline:none` sin un `:focus` propio deja al que navega con teclado sin
+    saber dónde está parado. Les pasaba a `.filter-select` y a `.batch-sel`."""
+    css = _css_del_dashboard()
+    sin_contorno = re.findall(r"^[.]([\w-]*-sel(?:ect)?)[{][^}]*outline:none", css, re.M)
+
+    assert sin_contorno, "no encontré selects con outline:none"
+    for clase in sin_contorno:
+        assert re.search("[.]" + clase + "[:]focus(?![\\w-])", css), (
+            f".{clase} tiene outline:none y ningún :focus")
+
+
+def test_no_quedan_clases_de_select_sin_uso():
+    """`.status-sel` y `.user-select` no las usaba nadie: reglas con colores a
+    mano que cualquiera migrando por hex iba a tocar de gusto."""
+    css = _css_del_dashboard()
+    resto = re.sub(r"<style[^>]*>.*?</style>", "", dashboard.DASHBOARD_HTML, flags=re.S)
+    clases = set(re.findall(r"[.]([a-z][\w-]*-sel(?:ect)?)(?![\w-])", css))
+
+    assert clases, "no encontré clases de select en el CSS"
+    sin_uso = sorted(c for c in clases
+                     if not re.search("(?<![\\w-])" + c + "(?![\\w:-])", resto))
+    assert not sin_uso, f"clases de select sin uso: {sin_uso}"
