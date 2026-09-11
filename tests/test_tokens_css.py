@@ -324,3 +324,74 @@ def test_el_verde_y_el_azul_siguen_teniendo_su_version_clara():
     html = dashboard.DASHBOARD_HTML
     assert html.count("body.light .stat-val.green{color:#16a34a}") == 1
     assert html.count("body.light .stat-val.blue{color:#0088cc}") == 1
+
+
+# ── Métricas: las tarjetas y lo que tienen adentro ───────────────────────────
+# Cuarta superficie. Las .m-card eran oscuras en tema claro desde siempre, y no
+# porque faltara la regla clara: estaba escrita para `.metrics-card`, una clase
+# que no existe. Nunca matcheó.
+
+METRICAS = [".m-card", ".m-card-title", ".bar-label", ".bar-track",
+            ".bar-val", ".funnel-label", ".month-tick"]
+
+
+@pytest.mark.parametrize("selector", METRICAS)
+def test_metricas_usa_los_tokens(selector):
+    cuerpo = _regla(selector)
+    sueltos = re.findall("#[0-9a-fA-F]{3,8}(?![0-9a-zA-Z])", cuerpo)
+
+    assert not sueltos, f"{selector} tiene colores a mano: {sueltos}"
+    assert "var(--" in cuerpo, f"{selector} no usa ningún token"
+
+
+@pytest.mark.parametrize("selector", METRICAS)
+def test_metricas_no_tiene_regla_clara_propia(selector):
+    patron = "^body[.]light " + re.escape(selector) + "[{]"
+    assert not re.search(patron, dashboard.DASHBOARD_HTML, re.M), (
+        f"sobra `body.light {selector}`: los tokens ya lo cubren")
+
+
+def test_no_quedan_reglas_claras_para_clases_que_no_existen():
+    """Las cinco clases de estas reglas claras no las usaba nadie: el markup
+    dice `.m-card` y `.m-card-title`. Una regla que no matchea no da error,
+    simplemente no hace nada — por eso esto estuvo roto sin que nadie lo viera."""
+    html = dashboard.DASHBOARD_HTML
+    for muerta in ("metrics-card", "metrics-section-title", "funnel-val"):
+        assert muerta not in html, f"volvió .{muerta}"
+
+
+def test_los_mensajes_vacios_de_metricas_usan_token():
+    html = dashboard.DASHBOARD_HTML
+    assert 'style="color:#475569;font-size:.8rem"' not in html
+    assert html.count('style="color:var(--texto-debil);font-size:.8rem"') == 5
+
+
+def test_no_hay_comas_nuevas_que_corten_el_body_light():
+    """`body.light .a,.b{...}` no es "estas dos, en claro": la coma corta el
+    selector y `.b` queda sin scope, aplicado en los dos temas.
+
+    Así estaba `body.light .funnel-val,.bar-val{color:#475569}`: en oscuro,
+    los números de las barras salían en #475569 en vez del #64748b de su
+    regla, porque esta venía después. Y `.body.light` (con punto) es una
+    clase que no existe: esa parte no matchea nunca.
+
+    Las de CONOCIDAS son de otras superficies y quedan anotadas para que se
+    borren de acá cuando se migren. Una nueva rompe el build.
+    """
+    CONOCIDAS = {
+        "body.light .biz-name,.biz-name",
+        "body.light .biz-name a,.biz-name a",
+        "body.light .wa-lead-item:hover,.body.light .wa-lead-item.active",
+    }
+    css = chr(10).join(re.findall(r"<style[^>]*>(.*?)</style>",
+                                  dashboard.DASHBOARD_HTML, re.S))
+    cortadas = set()
+    for crudo in re.findall("([^{}]+)[{]", css):
+        sel = " ".join(crudo.split()).split("*/")[-1].strip()
+        partes = [x.strip() for x in sel.split(",")]
+        if (len(partes) > 1 and partes[0].startswith("body.light")
+                and any(not x.startswith("body.light") for x in partes[1:])):
+            cortadas.add(sel)
+
+    nuevas = cortadas - CONOCIDAS
+    assert not nuevas, f"comas que cortan el body.light: {sorted(nuevas)}"

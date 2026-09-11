@@ -225,6 +225,24 @@ leads de Meta se renombró a **D** para deshacer el empate.
 > arregla con solo la tarjeta, porque adentro hay barras y graficos pensados
 > para fondo oscuro: es la proxima superficie.
 
+> **F (diseño) — tarjetas de Metricas a tokens (11/9).** Cuarta superficie.
+> Resuelve el pendiente de arriba: las `.m-card` ya son claras en tema claro.
+> En produccion, v182 tiene el #26 y el #27 junto con el arreglo de Juan en
+> la radiografia. v181 habia salido de `feat/marketing-meta` sin el #26 y lo
+> revirtio: **antes de deployar, `git pull origin main`.**
+>
+> **Por que estaban oscuras:** la regla clara existia, pero para
+> `.metrics-card`, una clase que no usa nadie (el markup dice `.m-card`). Una
+> regla que no matchea no da error: no hace nada. Habia cinco asi
+> (`.metrics-card`, `-title`, `-val`, `.metrics-section-title`, `.funnel-val`).
+>
+> **La coma que corta el `body.light`, otra vez:** `body.light
+> .funnel-val,.bar-val{...}` dejaba `.bar-val` sin scope, y en oscuro los
+> numeros de las barras salian en #475569 en vez del #64748b de su regla. Hay
+> un test que rompe si aparece una coma nueva asi en todo el archivo; las 3
+> que quedan (dos de `.biz-name`, una de WhatsApp con `.body.light`) estan
+> anotadas en el test como pendientes.
+
 > **D acá (28/8, 17:10 UTC).** Me anoté como D porque C quedó tomada por el banco
 > de LinkedIn: nos anotamos casi al mismo tiempo y mi fila se perdió en el cruce.
 >
