@@ -338,7 +338,13 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 
    --hover no es el token mas PARECIDO al hover de antes sino el que mas se
    distingue de la superficie que tiene abajo (dE 7,8 oscuro / 4,4 claro). El
-   mas parecido, --superficie-alta, lo dejaba invisible en claro (2,2). */
+   mas parecido, --superficie-alta, lo dejaba invisible en claro (2,2).
+
+   --texto-debil y --rotulo valian #64748b en oscuro: 3,62:1 sobre
+   --superficie, abajo del 4,5 que pide el texto chico. #8190a6 es el gris
+   mas oscuro de la misma familia que llega a 4,5 sobre las cuatro
+   superficies (5,31 / 5,91 / 5,82 / 4,51 en el relleno). En claro no
+   cambian. --texto-apenas sigue abajo en los dos temas: pendiente. */
 :root{
   --fondo:#0a0f1a;
   --fondo-hundido:#0f1117;
@@ -352,9 +358,9 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   --texto-fuerte:#fff;
   --texto:#e2e8f0;
   --texto-tenue:#94a3b8;
-  --texto-debil:#64748b;
+  --texto-debil:#8190a6;
   --texto-apenas:#475569;
-  --rotulo:#64748b;
+  --rotulo:#8190a6;
   --azul:#0088cc;
   --azul-claro:#38bdf8;
   --verde:#10b981;
