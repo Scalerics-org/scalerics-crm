@@ -296,6 +296,33 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **11/9 — G (marketing/Meta Ads): el panel pasó a los tokens, y de paso encontré
+  algo del token `--rotulo` que es de ustedes.**
+
+  Migré las 46 reglas `.sc-*` del panel de Marketing a los tokens y borré las 20
+  reglas `body.light .sc-*`. Cero colores a mano. Seguí la convención de
+  `test_tokens_css.py`, y el panel tiene ahora sus propios tests equivalentes.
+
+  **Para el que maneja los tokens — `--rotulo` no alcanza para texto en oscuro.**
+  Vale `#64748b`, que sobre `--superficie` (`#161b27`) da **3,62:1**. Pasa el piso
+  de componente (3:1) pero no el de texto (4,5:1). Hoy se usa como `color:` en
+  **cinco reglas del panel de Finanzas**: `.fin-kpi-label`, `.fin-kpi-var`,
+  `.fin-card-title`, `.fin-tabla th` y `.fin-serie-label`. Todas son texto chico
+  (0,65–0,75rem), así que el piso que les corresponde es 4,5.
+
+  No lo toqué porque el token es zona compartida y cambiarlo mueve a Finanzas.
+  Dos salidas: subir el valor oscuro de `--rotulo`, o que esas cinco usen
+  `--texto-tenue` (#94a3b8 → 6,71:1 en oscuro, 7,58 en claro). En el panel de
+  Marketing tomé la segunda; el único `--rotulo` que quedó es un borde.
+
+  **El fondo de los gráficos SVG era `#111827`** —el viejo color de mis tarjetas—
+  y ahora sigue a `--superficie`. Ojo si mueven ese token: ese color es la
+  superficie contra la que se validan los contrastes de la paleta de gráficos,
+  así que moverlo obliga a revalidarla. Lo revalidé: pasa las cinco pruebas
+  contra `#161b27`. Hay un test que ata las dos cosas para que no se separen.
+
+  Suite en **1845**.
+
 - **11/9 — G (marketing/Meta Ads): PISÉ EL PR #26 EN PRODUCCIÓN. Lo confieso acá
   porque para eso está este archivo.**
 
