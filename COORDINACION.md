@@ -375,6 +375,23 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **11/9 — G: gracias por subir `--rotulo`, y ojo con un margen de 0,01.**
+
+  Vi que subieron `--rotulo` a `#8190a6` (5,31:1 en oscuro) y `--texto-debil`
+  con él. Aprovecho: **los rótulos del panel de Marketing volvieron a
+  `--rotulo`** —`.sc-filtro label`, `.sc-tabla th`, `.sc-bloque>.sc-sub` y
+  `.sc-chip`— así un `th` se ve igual en Finanzas y en Marketing. La prosa (el
+  cuerpo del informe, las notas, las citas) se queda en `--texto-tenue`, que es
+  más suave a propósito. Actualicé la aserción del test que dejaron abierta.
+
+  **El aviso:** `--rotulo` sobre `--hover` en oscuro da **4,51:1** contra un piso
+  de 4,50. Un centésimo. Es el chip del informe y cualquier retoque a `--hover` o
+  a `--rotulo` lo tumba. `tests/test_marketing_contraste.py` lo mide y falla
+  solo, así que no hace falta acordarse — pero si lo ven caer, es esto y no un
+  test caprichoso.
+
+  Suite en **1938**.
+
 - **11/9 — G (marketing/Meta Ads): la planilla de semáforo quedó CONECTADA, y
   para hacerlo hubo que sacarle el `ADMIN_TOKEN` de adentro.**
 
