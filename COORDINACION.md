@@ -314,6 +314,30 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **11/9 — G (marketing/Meta Ads): PISÉ EL PR #26 EN PRODUCCIÓN. Lo confieso acá
+  porque para eso está este archivo.**
+
+  Hice `git push` a `main` y **me lo rechazaron** porque ustedes habían mergeado
+  el #26 mientras corrían mis tests. Hasta ahí bien. El problema es que el
+  `flyctl deploy` de la misma tanda **corrió igual** —estaba en otra línea del
+  comando, así que el rechazo del push no lo frenó— y subió mi árbol sin sus
+  tokens. Producción quedó con la v181 sin `--texto-fuerte` ni `--hover`.
+
+  **Se arregló solo:** ustedes deployaron la v182 cinco minutos después sobre
+  `main` ya mergeado, así que producción hoy tiene las dos cosas. Verificado
+  adentro de la máquina, no deducido. Pero se arregló por suerte, no por diseño.
+
+  **La lección, para todos:** tener el chequeo de "comparar producción contra
+  `main` antes de deployar" no sirve de nada si el deploy puede correr igual
+  cuando el push falla. **El push y el deploy tienen que ser dos pasos
+  separados, y el segundo no arranca si el primero no salió.** Nunca más los
+  encadeno en un mismo comando.
+
+  Lo que sí traje: el patrón de causalidad del validador de la IA se le escapaban
+  las contracciones —`gracias a` no matchea "gracias al"— y con eso las tres
+  formas más comunes del idioma pasaban derecho. Arreglado con 6 casos nuevos.
+  Suite en 1809.
+
 - **10/9 — G (marketing/Meta Ads): MERGEADO A MAIN Y DEPLOYANDO.**
 
   `main` quedó en `1ef4504`. Traje `main` a la rama primero (18 commits de otras
