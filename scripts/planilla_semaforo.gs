@@ -21,8 +21,22 @@
  * INSTALACIÓN (una vez)
  *   1. Planilla → Extensiones → Apps Script, y pegar este archivo.
  *   2. Configuración del proyecto → Propiedades del script → agregar
- *      ADMIN_TOKEN con el mismo valor que tiene el secret en Fly.
- *   3. Ejecutar `probar()` una vez: pide permisos, no escribe nada en el CRM y
+ *      PLANILLA_TOKEN con el mismo valor que tiene el secret en Fly.
+ *
+ *      NO va el ADMIN_TOKEN del CRM. Esta planilla es de la agencia, y
+ *      cualquiera con permiso de edición sobre ella puede abrir este editor y
+ *      leer estas propiedades. PLANILLA_TOKEN solo abre /api/meta/sync-planilla:
+ *      si se filtra, lo peor que se puede hacer con él es mandar colores.
+ *   3. Configuración del proyecto → tildar «Mostrar el archivo de manifiesto
+ *      appsscript.json en el editor», y pegar `planilla_semaforo.appsscript.json`
+ *      (está al lado de este archivo) encima del que aparezca.
+ *
+ *      Sin ese paso Google pide «ver, editar, crear y eliminar TODAS tus hojas
+ *      de cálculo», porque sin scopes declarados cae al permiso más amplio que
+ *      pueda necesitar. Con el manifiesto pide solo la planilla a la que este
+ *      script está pegado.
+ *
+ *   4. Ejecutar `probar()` una vez: pide permisos, no escribe nada en el CRM y
  *      deja en el log lo que haría. Si se ve bien, ejecutar `instalarTrigger()`.
  */
 
@@ -88,8 +102,8 @@ function leerFilas() {
 
 
 function _postear(filas, dry) {
-  var token = PropertiesService.getScriptProperties().getProperty('ADMIN_TOKEN');
-  if (!token) throw new Error('Falta ADMIN_TOKEN en las propiedades del script');
+  var token = PropertiesService.getScriptProperties().getProperty('PLANILLA_TOKEN');
+  if (!token) throw new Error('Falta PLANILLA_TOKEN en las propiedades del script');
 
   var res = UrlFetchApp.fetch(CRM + '/api/meta/sync-planilla' + (dry ? '?dry=1' : ''), {
     method: 'post',
