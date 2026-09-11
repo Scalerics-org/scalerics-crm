@@ -528,8 +528,9 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .filter-btn{padding:6px 14px;border-radius:8px;font-size:.78rem;font-weight:600;border:1px solid #1e293b;background:#161b27;color:#64748b;cursor:pointer;transition:all .15s}
 .filter-btn:hover{color:#e2e8f0}
 .filter-btn.active{background:#0088cc;border-color:#0088cc;color:#fff}
-.filter-select{background:#161b27;border:1px solid #1e293b;border-radius:8px;padding:6px 12px;font-size:.78rem;color:#94a3b8;font-family:'Inter',sans-serif;cursor:pointer;outline:none}
-.filter-select option{background:#161b27}
+.filter-select{background:var(--superficie);border:1px solid var(--borde);border-radius:8px;padding:6px 12px;font-size:.78rem;color:var(--texto-tenue);font-family:'Inter',sans-serif;cursor:pointer;outline:none}
+.filter-select option{background:var(--superficie);color:var(--texto)}
+.filter-select:hover{border-color:var(--borde-fuerte)}
 .search-box{margin-left:auto;background:#161b27;border:1px solid #1e293b;border-radius:8px;padding:7px 14px;font-size:.82rem;color:#e2e8f0;width:200px;outline:none;font-family:'Inter',sans-serif}
 .search-box::placeholder{color:#334155}
 .table-wrap{background:var(--superficie);border:1px solid var(--borde);border-radius:14px;overflow:hidden}
@@ -564,8 +565,6 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .empty-state{padding:40px;text-align:center;color:#334155;font-size:.9rem}
 .row-contactado{background:#0d1f33}
 .row-contactado:hover{background:#112438}
-.status-sel{background:#0f1117;border:1px solid #1e293b;border-radius:6px;padding:4px 6px;font-size:.7rem;color:#94a3b8;font-family:'Inter',sans-serif;cursor:pointer;outline:none;max-width:110px}
-.status-sel:focus{border-color:#0088cc}
 .delete-btn{background:#2a1515;border:none;color:#f87171;padding:5px 8px;border-radius:6px;font-size:.7rem;cursor:pointer;font-family:'Inter',sans-serif}
 .export-btn{background:#1a2d1e;border:1px solid #166534;color:#4ade80;padding:7px 14px;border-radius:8px;font-size:.78rem;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif}
 .export-btn:hover{background:#166534;color:#fff}
@@ -607,10 +606,9 @@ body.light .demo-cliente{color:#0f172a}
 /* Tabla de clientes activos: grilla propia, no reusa .no-cb, porque sus reglas
    mobile esconden la 4a columna — que aca es Mantenimiento, no Notas. */
 .table-header.tbl-cli,.table-row.tbl-cli{grid-template-columns:2fr 1.1fr 1.15fr 1.15fr 1.15fr 1fr}
-.resp-sel{background:#0f172a;border:1px solid #1e293b;color:#e2e8f0;border-radius:6px;padding:4px 6px;font-size:.76rem;font-family:inherit;width:100%;max-width:150px;cursor:pointer}
-.resp-sel:hover{border-color:#334155}
-.resp-sel.vacante{color:#64748b}
-body.light .resp-sel{background:#fff;border-color:#e2e8f0;color:#0f172a}
+.resp-sel{background:var(--superficie-honda);border:1px solid var(--borde);color:var(--texto);border-radius:6px;padding:4px 6px;font-size:.76rem;font-family:inherit;width:100%;max-width:150px;cursor:pointer}
+.resp-sel:hover{border-color:var(--borde-fuerte)}
+.resp-sel.vacante{color:var(--texto-debil)}
 @media (max-width:768px){
   .table-header.tbl-cli{display:none}
   .table-row.tbl-cli{display:flex;flex-direction:column;align-items:stretch;gap:7px;grid-template-columns:none}
@@ -619,12 +617,15 @@ body.light .resp-sel{background:#fff;border-color:#e2e8f0;color:#0f172a}
 }
 .table-header.no-cb{grid-template-columns:2fr 1.1fr 1fr 1.8fr 1.2fr}
 .table-row.no-cb{grid-template-columns:2fr 1.1fr 1fr 1.8fr 1.2fr}
-.batch-bar{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1e293b;border:1px solid #334155;border-radius:12px;padding:10px 18px;display:none;align-items:center;gap:12px;z-index:500;box-shadow:0 4px 24px rgba(0,0,0,.5)}
+.batch-bar{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--relleno);border:1px solid var(--borde-fuerte);border-radius:12px;padding:10px 18px;display:none;align-items:center;gap:12px;z-index:500;box-shadow:0 4px 24px rgba(0,0,0,.5)}
 .batch-bar.open{display:flex}
-.batch-count{font-size:.82rem;color:#94a3b8;white-space:nowrap}
-.batch-sel{background:#0f1117;border:1px solid #1e293b;border-radius:8px;padding:6px 10px;font-size:.78rem;color:#e2e8f0;font-family:'Inter',sans-serif;outline:none;cursor:pointer}
+.batch-count{font-size:.82rem;color:var(--texto-tenue);white-space:nowrap}
+.batch-sel{background:var(--superficie-honda);border:1px solid var(--borde);border-radius:8px;padding:6px 10px;font-size:.78rem;color:var(--texto);font-family:'Inter',sans-serif;outline:none;cursor:pointer}
+/* outline:none sin :focus dejaba al teclado sin saber donde estaba parado. */
+.filter-select:focus,.batch-sel:focus,.resp-sel:focus{border-color:var(--azul)}
 .batch-apply{background:linear-gradient(135deg,#0088cc,#3db648);color:#fff;border:none;padding:7px 16px;border-radius:8px;font-size:.78rem;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif}
-.batch-cancel{background:transparent;border:none;color:#475569;font-size:.78rem;cursor:pointer;font-family:'Inter',sans-serif}
+.batch-cancel{background:transparent;border:none;color:var(--texto-tenue);font-size:.78rem;cursor:pointer;font-family:'Inter',sans-serif}
+.batch-cancel:hover{color:var(--texto)}
 .metrics-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px}
 .metrics-grid-2{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-bottom:24px}
 @media(max-width:768px){.metrics-grid{grid-template-columns:1fr 1fr}.metrics-grid-2{grid-template-columns:1fr}}
@@ -1057,8 +1058,6 @@ body.light .stat-val.green{color:#16a34a}
 body.light .filters{background:transparent}
 body.light .filter-btn{background:#fff;border-color:#e2e8f0;color:#475569}
 body.light .filter-btn:hover,body.light .filter-btn.active{background:#0088cc;color:#fff;border-color:#0088cc}
-body.light .filter-select{background:#fff;border-color:#e2e8f0;color:#0f172a}
-body.light .filter-select option{background:#fff;color:#0f172a}
 body.light .search-box{background:#fff;border-color:#e2e8f0;color:#0f172a}
 body.light .search-box::placeholder{color:#94a3b8}
 body.light .biz-name,.biz-name{font-weight:600}
@@ -1098,7 +1097,6 @@ body.light .budget-table{border-color:#e2e8f0}
 body.light .budget-table th{color:#64748b !important;background:#f8fafc}
 body.light .attach-item{background:#f8fafc;border-color:#e2e8f0}
 body.light .attach-item-name{color:#0f172a !important}
-body.light .batch-count{color:#0f172a}
 body.light .empty-state{color:#94a3b8}
 body.light .wa-lead-name{color:#0f172a !important}
 body.light .wa-lead-phone{color:#64748b}
@@ -1116,7 +1114,6 @@ body.light .task-meta{color:#64748b}
 body.light .task-check{border-color:#94a3b8}
 body.light .search-input{background:#fff;border-color:#e2e8f0;color:#0f172a}
 body.light .search-input::placeholder{color:#94a3b8}
-body.light .user-select{background:#fff;border-color:#e2e8f0;color:#0f172a}
 body.light .pill{background:#f8fafc;border-color:#e2e8f0;color:#475569}
 body.light .pill:hover{color:#0f172a}
 body.light .pill.active{background:#dbeafe;color:#1d4ed8;border-color:#93c5fd}
@@ -1226,7 +1223,6 @@ body.light .btn-icon{stroke:currentColor}
 .filter-row-2{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .search-input{flex:1;background:#111827;border:1px solid #1e293b;color:#e2e8f0;border-radius:8px;padding:7px 12px;font-size:.82rem}
 .search-input::placeholder{color:#334155}
-.user-select{background:#111827;border:1px solid #1e293b;color:#e2e8f0;border-radius:8px;padding:7px 12px;font-size:.82rem;min-width:150px}
 .pill{padding:4px 12px;border-radius:99px;font-size:.72rem;font-weight:600;cursor:pointer;border:1px solid #1e293b;background:#111827;color:#64748b;transition:all .15s;white-space:nowrap}
 .pill:hover{color:#e2e8f0}
 .pill.active{background:#0088cc22;color:#38bdf8;border-color:#0088cc44}
@@ -1781,7 +1777,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
         Mes cerrado
         <button class="cal-today-btn" onclick="finReabrirMes()">Reabrir mes</button>
       </span>
-      <select id="fin-rango" onchange="_finRangoCambio()">
+      <select id="fin-rango" class="filter-select" onchange="_finRangoCambio()">
         <option value="mes" selected>Mes actual</option>
         <option value="3">Últimos 3 meses</option>
         <option value="12">Últimos 12 meses</option>

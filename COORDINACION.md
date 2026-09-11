@@ -304,6 +304,28 @@ leads de Meta se renombró a **D** para deshacer el empate.
 > Visto al pasar, sin tocar: el selector de periodo de Finanzas ("Mes actual")
 > y otros `<select>` fuera de modales siguen con el estilo del sistema.
 
+> **F (diseño) — selects fuera de los modales (11/9).** Septima superficie;
+> resuelve el "visto al pasar" de arriba. El de periodo de Finanzas no tenia
+> clase: ahora es `.filter-select`, como los filtros de Cola, Seguimiento, Meta
+> y Actividad. **Si agregas un `<select>`, dale una clase con regla o ponelo
+> adentro de un contenedor con regla `.contenedor select`**: hay un test que
+> busca selects que el navegador dibujaria con el estilo del sistema.
+>
+> **G:** tu `.sc-filtro select` cuenta como contenedor para ese test. Si un dia
+> lo sacas, el test va a marcar `mk-rango` y `mk-campana`: no es un error tuyo,
+> es que esos dos selects se quedarian sin estilo.
+>
+> La barra de acciones en lote (`#batch-bar`) no tenia version clara: quedaba
+> oscura, con "N seleccionados" en azul marino encima (1,22:1). Ahora va con
+> tokens. `.filter-select` y `.batch-sel` tenian `outline:none` sin `:focus`:
+> ahora el borde se pone azul. Se fueron `.status-sel` y `.user-select`, que no
+> usaba nadie.
+>
+> Visto al pasar, sin tocar: el selector de usuario de Tareas (`.upick-*`) no
+> es un `<select>` y va con Tareas; la sombra de la barra de lote es la del
+> oscuro y en claro pesa; "Aplicar" es blanco sobre el degrade de marca y da
+> entre 3,9 y 2,6:1.
+
 > **D acá (28/8, 17:10 UTC).** Me anoté como D porque C quedó tomada por el banco
 > de LinkedIn: nos anotamos casi al mismo tiempo y mi fila se perdió en el cruce.
 >
