@@ -502,14 +502,14 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 
 /* ---- Leads panel ---- */
 .page-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px}
-.page-header h1{font-size:1.4rem;font-weight:800;color:#fff}
-.page-date{font-size:.78rem;color:#475569;margin-top:3px}
+.page-header h1{font-size:1.4rem;font-weight:800;color:var(--texto-fuerte)}
+.page-date{font-size:.78rem;color:var(--texto-debil);margin-top:3px}
 .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px}
-.stat-card{background:#161b27;border:1px solid #1e293b;border-top:2px solid #1a2d3d;border-radius:12px;padding:18px 20px;transition:border-top-color .2s}
-.stat-label{font-size:.68rem;color:#475569;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px}
-.stat-val{font-size:1.8rem;font-weight:800;color:#fff}
+.stat-card{background:var(--superficie);border:1px solid var(--borde);border-top:2px solid var(--borde);border-radius:12px;padding:18px 20px;transition:border-top-color .2s}
+.stat-label{font-size:.68rem;color:var(--texto-debil);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px}
+.stat-val{font-size:1.8rem;font-weight:800;color:var(--texto-fuerte)}
 .stat-val.green{color:#4ade80}
-.stat-val.yellow{color:#fbbf24}
+.stat-val.yellow{color:var(--ambar)}
 .stat-val.blue{color:#60a5fa}
 .filters{display:flex;gap:8px;margin-bottom:16px;align-items:center;flex-wrap:wrap}
 .filter-btn{padding:6px 14px;border-radius:8px;font-size:.78rem;font-weight:600;border:1px solid #1e293b;background:#161b27;color:#64748b;cursor:pointer;transition:all .15s}
@@ -1044,11 +1044,6 @@ body.light #nav-activity .nav-icon{stroke:#475569}
 body.light{background:#f1f5f9;color:#0f172a}
 body.light .nav-item.active{background:linear-gradient(90deg,rgba(0,136,204,.1),rgba(0,136,204,.02))}
 body.light .topbar{background:#fff;border-bottom-color:#e2e8f0}
-body.light .page-header h1{color:#0f172a}
-body.light .page-date{color:#64748b}
-body.light .stat-card{background:#fff;border-color:#e2e8f0}
-body.light .stat-label{color:#64748b}
-body.light .stat-val{color:#0f172a}
 body.light .stat-val.blue{color:#0088cc}
 body.light .stat-val.green{color:#16a34a}
 body.light .filters{background:transparent}
@@ -1088,11 +1083,6 @@ body.light .cb-overdue{background:#fef2f2;border-color:#fca5a5 !important}
 body.light .cb-today{background:#fefce8;border-color:#fde047 !important}
 body.light ::-webkit-scrollbar-thumb{background:#e2e8f0}
 body.light ::-webkit-scrollbar-thumb:hover{background:#94a3b8}
-body.light .page-header h1{color:#0f172a !important}
-body.light .stat-val{color:#0f172a !important}
-body.light .stat-val.green{color:#16a34a !important}
-body.light .stat-val.blue{color:#0088cc !important}
-body.light .stat-val.yellow{color:#b45309 !important}
 body.light .biz-name{color:#0f172a !important}
 body.light .biz-sub{color:#64748b !important}
 body.light .score-badge{color:#475569 !important}
@@ -1142,7 +1132,6 @@ body.light .task-status-badge.todo{background:#f1f5f9;color:#64748b}
 body.light .task-status-badge.in_progress{background:#dbeafe;color:#1d4ed8;border-color:#93c5fd}
 body.light .task-status-badge.done{background:#dcfce7;color:#16a34a;border-color:#86efac}
 body.light .task-notion-badge{background:#f1f5f9;color:#64748b;border-color:#e2e8f0}
-body.light .panel-head h1{color:#0f172a}
 body.light .panel-sub{color:#64748b}
 body.light .proj-card{background:#f8fafc;border-color:#e2e8f0}
 body.light .proj-name{color:#0f172a}
@@ -1276,7 +1265,7 @@ body.light .btn-icon{stroke:currentColor}
 .task-status-badge.done{background:#052e16;color:#4ade80;border-color:#16a34a33}
 .task-notion-badge{font-size:.72rem;color:#94a3b8;background:#1a2234;padding:2px 7px;border-radius:10px;text-decoration:none;border:1px solid #23304a}
 .panel-head{margin-bottom:14px}
-.panel-head h1{font-size:1.4rem;font-weight:800;color:#fff}
+.panel-head h1{font-size:1.4rem;font-weight:800;color:var(--texto-fuerte)}
 .panel-sub{font-size:.78rem;color:#475569;margin-top:3px}
 .proj-card{background:#0d1420;border:1px solid #1e293b;border-radius:10px;padding:12px 14px;margin-bottom:10px}
 .proj-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
@@ -1908,12 +1897,12 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       <div class="metrics-grid" style="grid-template-columns:repeat(4,1fr)">
         <div class="stat-card"><div class="stat-label">Total leads SDR</div><div class="stat-val" id="m-total">—</div></div>
         <div class="stat-card"><div class="stat-label">Contactados</div><div class="stat-val blue" id="m-contacted">—</div></div>
-        <div class="stat-card"><div class="stat-label">Reuniones agendadas</div><div class="stat-val" style="color:#f59e0b" id="m-meetings">—</div></div>
+        <div class="stat-card"><div class="stat-label">Reuniones agendadas</div><div class="stat-val yellow" id="m-meetings">—</div></div>
         <div class="stat-card"><div class="stat-label">Clientes cerrados</div><div class="stat-val green" id="m-closed">—</div></div>
       </div>
       <div class="metrics-grid" style="grid-template-columns:repeat(3,1fr)">
         <div class="stat-card"><div class="stat-label">Tasa de contacto</div><div class="stat-val blue" id="m-contact-rate">—</div></div>
-        <div class="stat-card"><div class="stat-label">Tasa de reunión</div><div class="stat-val" style="color:#f59e0b" id="m-meeting-rate">—</div></div>
+        <div class="stat-card"><div class="stat-label">Tasa de reunión</div><div class="stat-val yellow" id="m-meeting-rate">—</div></div>
         <div class="stat-card"><div class="stat-label">Tasa de conversión</div><div class="stat-val green" id="m-conv">—</div></div>
       </div>
       <div class="metrics-grid-2">
@@ -1933,7 +1922,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       <div class="metrics-grid" style="grid-template-columns:repeat(4,1fr)">
         <div class="stat-card"><div class="stat-label">Total leads Meta</div><div class="stat-val" id="mm-total">—</div></div>
         <div class="stat-card"><div class="stat-label">Este mes</div><div class="stat-val blue" id="mm-month">—</div></div>
-        <div class="stat-card"><div class="stat-label">Esta semana</div><div class="stat-val" style="color:#f59e0b" id="mm-week">—</div></div>
+        <div class="stat-card"><div class="stat-label">Esta semana</div><div class="stat-val yellow" id="mm-week">—</div></div>
         <div class="stat-card"><div class="stat-label">Conversión Meta</div><div class="stat-val green" id="mm-conv">—</div></div>
       </div>
       <div class="metrics-grid-2">

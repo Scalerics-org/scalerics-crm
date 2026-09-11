@@ -268,3 +268,59 @@ def test_las_tablas_del_celular_tambien_usan_tokens():
 
     assert ".table-row" in bloque, "no encontré las reglas de tabla del celular"
     assert not fijos, f"reglas de tabla del celular con color fijo: {fijos}"
+
+
+# ── cabecera de página y tarjetas de KPI ─────────────────────────────────────
+# Tercera superficie. Igual que el sidebar, está en todas las pantallas.
+
+CABECERA = [".page-header h1", ".panel-head h1", ".page-date",
+            ".stat-card", ".stat-label", ".stat-val", ".stat-val.yellow"]
+
+
+@pytest.mark.parametrize("selector", CABECERA)
+def test_la_cabecera_usa_los_tokens(selector):
+    cuerpo = _regla(selector)
+    sueltos = re.findall("#[0-9a-fA-F]{3,8}(?![0-9a-zA-Z])", cuerpo)
+
+    assert not sueltos, f"{selector} tiene colores a mano: {sueltos}"
+    assert "var(--" in cuerpo, f"{selector} no usa ningún token"
+
+
+@pytest.mark.parametrize("selector", CABECERA)
+def test_la_cabecera_no_tiene_regla_clara_propia(selector):
+    patron = "^body[.]light " + re.escape(selector) + "[{]"
+    assert not re.search(patron, dashboard.DASHBOARD_HTML, re.M), (
+        f"sobra `body.light {selector}`: los tokens ya lo cubren")
+
+
+def test_no_quedan_important_en_la_cabecera():
+    """La escalada que venía del rediseño de mayo.
+
+    Tres KPIs de Métricas tenían `style="color:#f59e0b"`. El inline le gana a
+    cualquier regla clara, y el ámbar sobre blanco da 2,15:1, ilegible. Para
+    taparlo alguien forzó `body.light .stat-val{color:#0f172a !important}`; y
+    como ese `!important` le ganaba también al verde y al azul, esos tuvieron
+    que llevar el suyo. Resultado: en claro los tres KPIs perdían el ámbar.
+
+    Con la clase `.yellow` y `--ambar` (#b45309 en claro, 5,02:1) no hace falta
+    ningún `!important`. Si vuelve uno, es que volvió un inline.
+    """
+    importantes = re.findall(
+        "body[.]light [^{]*(?:page-header|panel-head|page-date|stat-)[^{]*[{][^}]*!important",
+        dashboard.DASHBOARD_HTML)
+    assert not importantes, f"volvieron los !important: {importantes}"
+
+
+def test_los_kpis_ambar_de_metricas_usan_la_clase():
+    html = dashboard.DASHBOARD_HTML
+    for id_ in ("m-meetings", "m-meeting-rate", "mm-week"):
+        assert f'class="stat-val yellow" id="{id_}"' in html, id_
+    assert 'style="color:#f59e0b"' not in html, "volvió el ámbar inline"
+
+
+def test_el_verde_y_el_azul_siguen_teniendo_su_version_clara():
+    """Son colores semánticos, no de la rampa de grises: no van a tokens en
+    esta pasada. Pierden el `!important` pero no su regla clara."""
+    html = dashboard.DASHBOARD_HTML
+    assert html.count("body.light .stat-val.green{color:#16a34a}") == 1
+    assert html.count("body.light .stat-val.blue{color:#0088cc}") == 1
