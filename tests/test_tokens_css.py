@@ -527,3 +527,70 @@ def test_texto_apenas_se_fundio_en_texto_debil(oscuro, claro):
     assert "--texto-apenas" not in oscuro and "--texto-apenas" not in claro
     assert "var(--texto-apenas)" not in dashboard.DASHBOARD_HTML
     assert claro["--texto-debil"] == "#627188"
+
+
+# ── modales y botones ────────────────────────────────────────────────────────
+# Sexta superficie. `.btn-primary` y `.btn-ghost` solo existían en el HTML de la
+# página de administración (adentro de create_app): en el dashboard los botones
+# de Finanzas se dibujaban como botones del sistema — gris, borde outset, sin
+# radio ni padding — en los dos temas.
+
+MODAL = [".modal", ".modal h3", ".modal p", ".modal textarea",
+         ".modal textarea::placeholder", ".modal input[type=text]", ".modal select",
+         ".modal input::placeholder", ".modal input:focus", ".modal-label",
+         ".btn-cancel"]
+
+
+@pytest.mark.parametrize("selector", MODAL)
+def test_los_modales_usan_los_tokens(selector):
+    cuerpo = _regla(selector)
+    sueltos = re.findall("#[0-9a-fA-F]{3,8}(?![0-9a-zA-Z])", cuerpo)
+
+    assert not sueltos, f"{selector} tiene colores a mano: {sueltos}"
+    assert "var(--" in cuerpo, f"{selector} no usa ningún token"
+
+
+def _css_del_dashboard() -> str:
+    return chr(10).join(re.findall(r"<style[^>]*>(.*?)</style>",
+                                   dashboard.DASHBOARD_HTML, re.S))
+
+
+def test_el_dashboard_define_sus_propios_botones():
+    """El bug de fondo: las clases se usaban en el dashboard pero solo estaban
+    definidas en otro documento HTML. Si se borran de acá, los botones vuelven
+    a ser los del sistema y ningún otro test lo ve."""
+    css = _css_del_dashboard()
+    assert ".btn-primary{background:var(--azul);color:#fff" in css
+    assert ".btn-ghost{background:var(--relleno);color:var(--texto-tenue)}" in css
+    compartida = re.search(r"^\.btn-primary,\.btn-ghost\{([^}]*)\}", css, re.M)
+    assert compartida, "falta la regla de tamaño compartida"
+    assert "padding:9px 18px" in compartida.group(1)
+    assert "border-radius:8px" in compartida.group(1)
+
+
+def test_el_texto_del_boton_primario_es_blanco_en_los_dos_temas():
+    """Va sobre el azul de marca. `--texto-fuerte` sería azul marino en claro,
+    sobre azul: ilegible."""
+    for regla in (".btn-primary{background:var(--azul);color:#fff",
+                  ".btn-confirm{background:var(--azul);border:none;color:#fff"):
+        assert regla in _css_del_dashboard(), regla
+
+
+def test_los_botones_de_solo_icono_son_compactos():
+    """El lápiz y el tacho de las listas de Finanzas viven en columnas de 76px:
+    con el padding de un botón de texto se desbordaban."""
+    html = dashboard.DASHBOARD_HTML
+    iconos = re.findall(
+        r'<button class="(btn-(?:ghost|primary)[^"]*)"[^>]*>\s*<i data-lucide="[^"]*"[^>]*></i>\s*</button>',
+        html)
+    assert iconos, "no encontré botones de solo ícono"
+    sin_compacto = [c for c in iconos if "btn-icono" not in c]
+    assert not sin_compacto, f"botones de solo ícono sin btn-icono: {sin_compacto}"
+
+
+def test_no_quedan_reglas_claras_duplicadas_en_los_modales():
+    """Había cuatro pares repetidos, uno con `!important`, y `.modal label` dos
+    veces con valores distintos. Queda solo el filtro del ícono nativo del
+    selector de fecha, que es propio de cada tema y no un color."""
+    claras = re.findall(r"^(body[.]light [.]modal[^{]*)[{]", dashboard.DASHBOARD_HTML, re.M)
+    assert claras == ["body.light .modal input[type=datetime-local]::-webkit-calendar-picker-indicator"], claras

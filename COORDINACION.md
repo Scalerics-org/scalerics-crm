@@ -288,6 +288,22 @@ leads de Meta se renombró a **D** para deshacer el empate.
 > El claro de `--texto-debil` paso de #64748b a #627188 (no se nota, dE 1,2)
 > para pasar tambien sobre #f1f5f9.
 
+> **F (diseño) — modales y botones (11/9).** Sexta superficie. `.btn-primary` y
+> `.btn-ghost` no existian en el dashboard: solo en el HTML de la pagina de
+> administracion (adentro de `create_app`). Los botones de Finanzas —"Guardar",
+> "Cancelar", "+ Movimiento", "+ Fijo", el lapiz y el tacho— se dibujaban como
+> botones del sistema en los dos temas. Ahora estan definidos en el dashboard,
+> con el mismo tamano que `.btn-cancel` / `.btn-confirm`. **Si usas
+> `btn-primary` / `btn-ghost` en el dashboard ya tienen estilo; para un boton
+> de solo icono, sumale `btn-icono`.** Hay un test que rompe si se borran.
+>
+> Modales: placeholders y rotulos a `--texto-debil` (el placeholder daba ~1,8:1
+> en oscuro). Se fueron 8 reglas claras de modal, varias duplicadas: una con
+> `!important`, y `.modal label` dos veces con valores distintos.
+>
+> Visto al pasar, sin tocar: el selector de periodo de Finanzas ("Mes actual")
+> y otros `<select>` fuera de modales siguen con el estilo del sistema.
+
 > **D acá (28/8, 17:10 UTC).** Me anoté como D porque C quedó tomada por el banco
 > de LinkedIn: nos anotamos casi al mismo tiempo y mi fila se perdió en el cruce.
 >
