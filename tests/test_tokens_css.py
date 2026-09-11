@@ -395,3 +395,67 @@ def test_no_hay_comas_nuevas_que_corten_el_body_light():
 
     nuevas = cortadas - CONOCIDAS
     assert not nuevas, f"comas que cortan el body.light: {sorted(nuevas)}"
+
+
+# ── panel de cliente ─────────────────────────────────────────────────────────
+# Quinta superficie, la más rota: 51 propiedades con color sin par claro. En
+# tema claro, el selector de estado y el área de notas eran cajas negras y el
+# borde de la cabecera seguía oscuro.
+
+PANEL = [".client-panel", ".cp-header", ".cp-title", ".cp-sub", ".cp-status-sel",
+         ".cp-tabs", ".cp-tab", ".cp-tab.active", ".cp-close", ".cp-section-title",
+         ".cp-field-label", ".cp-field-val", ".cp-meeting-card", ".cp-meeting-title",
+         ".cp-meeting-meta", ".cp-summary-box", ".cp-transcript-area", ".cp-req-area",
+         ".cp-event-label", ".cp-event-meta", ".cp-event-note", ".cp-wa-msg.in",
+         ".cp-btn-ghost"]
+
+
+@pytest.mark.parametrize("selector", PANEL)
+def test_el_panel_de_cliente_usa_los_tokens(selector):
+    cuerpo = _regla(selector)
+    sueltos = re.findall("#[0-9a-fA-F]{3,8}(?![0-9a-zA-Z])", cuerpo)
+
+    assert not sueltos, f"{selector} tiene colores a mano: {sueltos}"
+    assert "var(--" in cuerpo, f"{selector} no usa ningún token"
+
+
+@pytest.mark.parametrize("selector", PANEL)
+def test_el_panel_de_cliente_no_tiene_regla_clara_propia(selector):
+    patron = "^body[.]light " + re.escape(selector) + "[{]"
+    assert not re.search(patron, dashboard.DASHBOARD_HTML, re.M), (
+        f"sobra `body.light {selector}`: los tokens ya lo cubren")
+
+
+def test_el_bloque_de_eventos_no_esta_pegado_dos_veces():
+    """La segunda copia empezaba con la regla de layout de `.cp-event-row`
+    prefijada con `body.light`: el copy-paste le había puesto el tema claro a
+    una regla que es de los dos."""
+    html = dashboard.DASHBOARD_HTML
+    assert html.count(".cp-event-label{") == 1
+    assert "body.light .cp-event-row{display:flex" not in html
+
+
+def test_el_js_del_panel_no_pinta_fondos_oscuros_inline():
+    """El CSS no alcanza si el JS arma el panel con `style="background:#0a0f1a"`:
+    el inline le gana a cualquier regla y no cambia con el tema. Eran 43
+    líneas con colores escritos, entre ellas un modal entero."""
+    oscuros = ("#111827", "#0a0f1a", "#0f172a", "color:#e2e8f0")
+    dentro, culpables, nombre = False, [], ""
+    for linea in dashboard.DASHBOARD_HTML.split(chr(10)):
+        m = re.match("(async )?function ([A-Za-z_]+)[(]", linea)
+        if m:
+            nombre = m.group(2)
+            dentro = nombre.startswith("_cp") or nombre == "openClientPanel"
+        if dentro and 'style="' in linea:
+            for attr in re.findall('style="[^"]*"', linea):
+                if any(o in attr for o in oscuros):
+                    culpables.append(f"{nombre}: {attr[:60]}")
+    assert not culpables, f"colores oscuros inline en el panel: {culpables}"
+
+
+def test_el_relleno_se_distingue_de_la_superficie(oscuro, claro):
+    """`--relleno` vale lo mismo que `--hover` pero es otro rol: chips, botones
+    fantasma, la burbuja entrante de WhatsApp. Si mañana cambia el hover, las
+    burbujas no tienen por qué cambiar. Tiene que verse sobre el panel."""
+    for valores in (oscuro, claro):
+        assert _delta_e(valores["--relleno"], valores["--superficie"]) >= 4
