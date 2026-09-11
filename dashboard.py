@@ -346,6 +346,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   --superficie-alta:#1a2130;
   --superficie-honda:#0f172a;
   --hover:#1e293b;
+  --relleno:#1e293b;
   --borde:#1e293b;
   --borde-fuerte:#334155;
   --texto-fuerte:#fff;
@@ -367,6 +368,7 @@ body.light{
   --superficie-alta:#f8fafc;
   --superficie-honda:#fff;
   --hover:#f1f5f9;
+  --relleno:#f1f5f9;
   --borde:#e2e8f0;
   --borde-fuerte:#cbd5e1;
   --texto-fuerte:#0f172a;
@@ -825,33 +827,33 @@ body.light .resp-sel{background:#fff;border-color:#e2e8f0;color:#0f172a}
 /* ── Client Panel ─────────────────────────────────────────────────────────── */
 .cp-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:400}
 .cp-backdrop.open{display:block}
-.client-panel{position:fixed;top:0;right:0;bottom:0;width:580px;max-width:100vw;background:#111827;border-left:1px solid #1e293b;z-index:401;display:flex;flex-direction:column;transform:translateX(100%);transition:transform .25s ease}
+.client-panel{position:fixed;top:0;right:0;bottom:0;width:580px;max-width:100vw;background:var(--superficie);border-left:1px solid var(--borde);z-index:401;display:flex;flex-direction:column;transform:translateX(100%);transition:transform .25s ease}
 .client-panel.open{transform:translateX(0)}
-.cp-header{padding:18px 20px 0;border-bottom:1px solid #1e293b;flex-shrink:0}
-.cp-title{font-size:1.1rem;font-weight:700;color:#f1f5f9;margin:0 0 4px}
-.cp-sub{font-size:.78rem;color:#475569;margin-bottom:12px;display:flex;align-items:center;gap:8px}
-.cp-status-sel{background:#0a0f1a;border:1px solid #1e293b;color:#94a3b8;border-radius:6px;padding:3px 8px;font-size:.75rem;font-family:'Inter',sans-serif;cursor:pointer}
-.cp-tabs{display:flex;gap:0;border-bottom:1px solid #1e293b;margin-top:4px}
-.cp-tab{padding:10px 16px;font-size:.8rem;font-weight:600;color:#475569;cursor:pointer;border-bottom:2px solid transparent;transition:all .15s;white-space:nowrap}
-.cp-tab.active{color:#fff;border-bottom-color:#0088cc}
-.cp-tab:hover:not(.active){color:#94a3b8}
+.cp-header{padding:18px 20px 0;border-bottom:1px solid var(--borde);flex-shrink:0}
+.cp-title{font-size:1.1rem;font-weight:700;color:var(--texto-fuerte);margin:0 0 4px}
+.cp-sub{font-size:.78rem;color:var(--texto-debil);margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.cp-status-sel{background:var(--fondo);border:1px solid var(--borde);color:var(--texto-tenue);border-radius:6px;padding:3px 8px;font-size:.75rem;font-family:'Inter',sans-serif;cursor:pointer}
+.cp-tabs{display:flex;gap:0;border-bottom:1px solid var(--borde);margin-top:4px}
+.cp-tab{padding:10px 16px;font-size:.8rem;font-weight:600;color:var(--texto-debil);cursor:pointer;border-bottom:2px solid transparent;transition:all .15s;white-space:nowrap}
+.cp-tab.active{color:var(--texto-fuerte);border-bottom-color:var(--azul)}
+.cp-tab:hover:not(.active){color:var(--texto-tenue)}
 .cp-body{flex:1;overflow-y:auto;padding:20px}
-.cp-close{position:absolute;top:14px;right:16px;background:none;border:none;color:#475569;font-size:1.3rem;cursor:pointer;line-height:1;padding:4px 6px}
-.cp-close:hover{color:#e2e8f0}
+.cp-close{position:absolute;top:14px;right:16px;background:none;border:none;color:var(--texto-apenas);font-size:1.3rem;cursor:pointer;line-height:1;padding:4px 6px}
+.cp-close:hover{color:var(--texto)}
 .cp-section{margin-bottom:22px}
-.cp-section-title{font-size:.7rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.7px;margin-bottom:10px}
+.cp-section-title{font-size:.7rem;font-weight:700;color:var(--texto-apenas);text-transform:uppercase;letter-spacing:.7px;margin-bottom:10px}
 .cp-field{display:flex;align-items:flex-start;gap:8px;margin-bottom:8px;font-size:.85rem}
-.cp-field-label{color:#64748b;min-width:80px;flex-shrink:0}
-.cp-field-val{color:#e2e8f0;word-break:break-word}
-.cp-meeting-card{background:#0a0f1a;border:1px solid #1e293b;border-radius:10px;padding:14px;margin-bottom:10px}
-.cp-meeting-title{font-size:.88rem;font-weight:600;color:#f1f5f9;margin-bottom:4px}
-.cp-meeting-meta{font-size:.75rem;color:#475569;margin-bottom:10px}
-.cp-meeting-link{font-size:.75rem;color:#0088cc;text-decoration:none;display:inline-block;margin-bottom:10px}
+.cp-field-label{color:var(--texto-debil);min-width:80px;flex-shrink:0}
+.cp-field-val{color:var(--texto);word-break:break-word}
+.cp-meeting-card{background:var(--fondo);border:1px solid var(--borde);border-radius:10px;padding:14px;margin-bottom:10px}
+.cp-meeting-title{font-size:.88rem;font-weight:600;color:var(--texto-fuerte);margin-bottom:4px}
+.cp-meeting-meta{font-size:.75rem;color:var(--texto-debil);margin-bottom:10px}
+.cp-meeting-link{font-size:.75rem;color:var(--azul);text-decoration:none;display:inline-block;margin-bottom:10px}
 .cp-meeting-link:hover{text-decoration:underline}
-.cp-summary-box{background:#1e293b;border-radius:8px;padding:12px;margin-top:10px;font-size:.8rem;color:#94a3b8;line-height:1.6;white-space:pre-wrap}
-.cp-summary-label{font-size:.68rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px}
-.cp-transcript-area{width:100%;background:#0a0f1a;border:1px solid #1e293b;border-radius:8px;color:#e2e8f0;font-size:.8rem;padding:10px;font-family:'Inter',sans-serif;resize:vertical;min-height:100px;margin-bottom:8px}
-.cp-transcript-area:focus{outline:none;border-color:#0088cc}
+.cp-summary-box{background:var(--relleno);border-radius:8px;padding:12px;margin-top:10px;font-size:.8rem;color:var(--texto-tenue);line-height:1.6;white-space:pre-wrap}
+.cp-summary-label{font-size:.68rem;font-weight:700;color:var(--texto-apenas);text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px}
+.cp-transcript-area{width:100%;background:var(--fondo);border:1px solid var(--borde);border-radius:8px;color:var(--texto);font-size:.8rem;padding:10px;font-family:'Inter',sans-serif;resize:vertical;min-height:100px;margin-bottom:8px}
+.cp-transcript-area:focus{outline:none;border-color:var(--azul)}
 .budget-table{width:100%;border-collapse:collapse;font-size:.82rem;margin:12px 0}
 .budget-table th{color:#475569;font-size:.68rem;text-transform:uppercase;letter-spacing:.6px;padding:6px 8px;text-align:left;border-bottom:1px solid #1e293b}
 .budget-table td{padding:8px;border-bottom:1px solid #1e293b15;color:#e2e8f0;vertical-align:top}
@@ -861,11 +863,11 @@ body.light .resp-sel{background:#fff;border-color:#e2e8f0;color:#0f172a}
 .cp-btn{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:8px;border:none;font-size:.8rem;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;transition:opacity .15s}
 .cp-btn:hover{opacity:.85}
 .cp-btn:disabled{opacity:.4;cursor:not-allowed}
-.cp-btn-primary{background:#0088cc;color:#fff}
+.cp-btn-primary{background:var(--azul);color:#fff}
 .cp-btn-success{background:#16a34a;color:#fff}
-.cp-btn-ghost{background:#1e293b;color:#94a3b8}
+.cp-btn-ghost{background:var(--relleno);color:var(--texto-tenue)}
 .cp-badge{display:inline-block;padding:2px 8px;border-radius:99px;font-size:.7rem;font-weight:600}
-.cp-badge-draft{background:#1e293b;color:#94a3b8}
+.cp-badge-draft{background:var(--relleno);color:var(--texto-tenue)}
 .cp-badge-sent{background:#064e3b;color:#34d399}
 .cp-badge-pending{background:#1e3a5f;color:#60a5fa}
 .cp-badge-completed{background:#14532d;color:#4ade80}
@@ -873,12 +875,12 @@ body.light .resp-sel{background:#fff;border-color:#e2e8f0;color:#0f172a}
 .cp-badge-failed{background:#450a0a;color:#f87171}
 .cp-wa-msg{padding:8px 12px;border-radius:10px;font-size:.8rem;margin-bottom:6px;max-width:88%;line-height:1.5}
 .cp-wa-msg.out{background:#1e3a5f;color:#bfdbfe;align-self:flex-end;margin-left:auto}
-.cp-wa-msg.in{background:#1e293b;color:#e2e8f0}
-.cp-wa-msgs{display:flex;flex-direction:column;gap:2px;max-height:260px;overflow-y:auto;padding:8px;background:#0a0f1a;border-radius:8px;border:1px solid #1e293b}
-.cp-spinner{display:inline-block;width:14px;height:14px;border:2px solid #334155;border-top-color:#0088cc;border-radius:50%;animation:spin .7s linear infinite}
+.cp-wa-msg.in{background:var(--relleno);color:var(--texto)}
+.cp-wa-msgs{display:flex;flex-direction:column;gap:2px;max-height:260px;overflow-y:auto;padding:8px;background:var(--fondo);border-radius:8px;border:1px solid var(--borde)}
+.cp-spinner{display:inline-block;width:14px;height:14px;border:2px solid var(--borde-fuerte);border-top-color:var(--azul);border-radius:50%;animation:spin .7s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
-.cp-req-area{width:100%;background:#0a0f1a;border:1px solid #1e293b;border-radius:8px;color:#e2e8f0;font-size:.82rem;padding:10px;font-family:'Inter',sans-serif;resize:vertical;min-height:70px;margin-bottom:8px}
-.cp-req-area:focus{outline:none;border-color:#0088cc}
+.cp-req-area{width:100%;background:var(--fondo);border:1px solid var(--borde);border-radius:8px;color:var(--texto);font-size:.82rem;padding:10px;font-family:'Inter',sans-serif;resize:vertical;min-height:70px;margin-bottom:8px}
+.cp-req-area:focus{outline:none;border-color:var(--azul)}
 .attach-drop{border:1.5px dashed #1e293b;border-radius:8px;padding:18px;text-align:center;color:#475569;font-size:.8rem;cursor:pointer;transition:border-color .15s,background .15s;margin-bottom:8px}
 .attach-drop.dragover{border-color:#0088cc;background:#0a1628}
 .attach-drop:hover{border-color:#334155}
@@ -890,16 +892,12 @@ body.light .resp-sel{background:#fff;border-color:#e2e8f0;color:#0f172a}
 .attach-del{background:none;border:none;color:#475569;cursor:pointer;font-size:.85rem;padding:0 2px;flex-shrink:0}
 .attach-del:hover{color:#f87171}
 
-.cp-event-row{display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-bottom:1px solid #1a2234}
+.cp-event-row{display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-bottom:1px solid var(--borde)}
 .cp-event-dot{width:8px;height:8px;border-radius:50%;margin-top:5px;flex-shrink:0}
 .cp-event-body{flex:1;min-width:0}
-.cp-event-label{font-size:.8rem;color:#e2e8f0;font-weight:600}
-.cp-event-meta{font-size:.72rem;color:#475569;margin-left:8px}
-.cp-event-note{font-size:.72rem;color:#64748b;margin-top:2px}
-body.light .cp-event-row{border-bottom-color:#f1f5f9}
-body.light .cp-event-label{color:#0f172a !important}
-body.light .cp-event-meta{color:#94a3b8 !important}
-body.light .cp-event-note{color:#64748b !important}
+.cp-event-label{font-size:.8rem;color:var(--texto);font-weight:600}
+.cp-event-meta{font-size:.72rem;color:var(--texto-apenas);margin-left:8px}
+.cp-event-note{font-size:.72rem;color:var(--texto-debil);margin-top:2px}
 .act-row{display:flex;gap:14px;align-items:flex-start;padding:13px 0;border-bottom:1px solid #1e293b}
 .act-avatar{width:34px;height:34px;border-radius:50%;background:#1a2234;display:flex;align-items:center;justify-content:center;font-size:.95rem;flex-shrink:0}
 .act-body{flex:1;min-width:0}
@@ -1067,9 +1065,6 @@ body.light .modal input,body.light .modal textarea,body.light .modal select,body
 body.light .modal input[type=datetime-local]::-webkit-calendar-picker-indicator{filter:none;opacity:.6}
 body.light .outcome-btn{background:#f8fafc;border-color:#e2e8f0;color:#0f172a}
 body.light .outcome-btn:hover{background:#f1f5f9}
-body.light .client-panel{background:#fff;border-left-color:#e2e8f0}
-body.light .cp-tab{color:#64748b;border-bottom-color:transparent}
-body.light .cp-tab.active{color:#0088cc;border-bottom-color:#0088cc}
 body.light .cb-overdue{background:#fef2f2;border-color:#fca5a5 !important}
 body.light .cb-today{background:#fefce8;border-color:#fde047 !important}
 body.light ::-webkit-scrollbar-thumb{background:#e2e8f0}
@@ -1082,14 +1077,6 @@ body.light .phone-plain{color:#475569 !important}
 body.light .no-val{color:#94a3b8 !important}
 body.light .actions .pitch-btn{background:#e0f2fe;color:#0369a1;border-color:#bae6fd}
 body.light .actions .pitch-btn:hover{background:#0088cc;color:#fff}
-body.light .cp-title{color:#0f172a !important}
-body.light .cp-field-label{color:#64748b !important}
-body.light .cp-field-val{color:#0f172a !important}
-body.light .cp-meeting-title{color:#0f172a !important}
-body.light .cp-close{color:#94a3b8}
-body.light .cp-close:hover{color:#0f172a}
-body.light .cp-tab{color:#64748b}
-body.light .cp-tab.active{color:#0088cc;border-bottom-color:#0088cc}
 body.light .budget-table td{color:#0f172a !important}
 body.light .budget-total-row td{color:#0f172a !important}
 body.light .budget-table{border-color:#e2e8f0}
@@ -1156,16 +1143,6 @@ body.light .modal p{color:#475569}
 body.light .modal input,body.light .modal textarea,body.light .modal select{background:#f8fafc;border-color:#e2e8f0;color:#0f172a}
 body.light .token-card{background:#f8fafc;border-color:#e2e8f0}
 body.light .token-card-name{color:#64748b !important}
-body.light .cp-event-row{display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-bottom:1px solid #1a2234}
-.cp-event-dot{width:8px;height:8px;border-radius:50%;margin-top:5px;flex-shrink:0}
-.cp-event-body{flex:1;min-width:0}
-.cp-event-label{font-size:.8rem;color:#e2e8f0;font-weight:600}
-.cp-event-meta{font-size:.72rem;color:#475569;margin-left:8px}
-.cp-event-note{font-size:.72rem;color:#64748b;margin-top:2px}
-body.light .cp-event-row{border-bottom-color:#f1f5f9}
-body.light .cp-event-label{color:#0f172a !important}
-body.light .cp-event-meta{color:#94a3b8 !important}
-body.light .cp-event-note{color:#64748b !important}
 .act-row{border-bottom-color:#f1f5f9}
 body.light .act-avatar{background:#f1f5f9;color:#475569}
 body.light .act-user{color:#0f172a !important}
@@ -1393,9 +1370,9 @@ body.light .mobile-header-title{color:#0f172a}
   .mobile-bottom-nav{display:flex;position:fixed;bottom:16px;left:16px;right:16px;background:rgba(17,24,39,.92);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.08);border-radius:20px;padding:8px 6px;z-index:300;justify-content:space-around;box-shadow:0 8px 32px rgba(0,0,0,.5)}
   .mobile-fab{display:flex}
   /* Client panel como bottom sheet */
-  .client-panel{width:100%!important;height:92vh;top:auto!important;border-radius:20px 20px 0 0;border-left:none!important;border-top:1px solid #1e293b;transform:translateY(100%)!important;transition:transform .3s cubic-bezier(.32,.72,0,1)!important}
+  .client-panel{width:100%!important;height:92vh;top:auto!important;border-radius:20px 20px 0 0;border-left:none!important;border-top:1px solid var(--borde);transform:translateY(100%)!important;transition:transform .3s cubic-bezier(.32,.72,0,1)!important}
   .client-panel.open{transform:translateY(0)!important}
-  .cp-header::before{content:'';display:block;width:40px;height:4px;background:#334155;border-radius:4px;margin:0 auto 12px}
+  .cp-header::before{content:'';display:block;width:40px;height:4px;background:var(--borde-fuerte);border-radius:4px;margin:0 auto 12px}
 }
 /* Custom user picker */
 .upick-wrap{position:relative}
@@ -5702,12 +5679,12 @@ function _cpRenderInfo() {
   const unmatchedBanner = l.source === 'calendly_unmatched' ? `
     <div id="unmatched-banner" style="background:rgba(251,146,60,.1);border:1px solid rgba(251,146,60,.35);border-radius:10px;padding:14px 16px;margin-bottom:18px">
       <div style="font-size:.78rem;font-weight:700;color:#fb923c;margin-bottom:6px">⚠️ Agendó por Calendly — sin match automático</div>
-      <div style="font-size:.75rem;color:#94a3b8;margin-bottom:12px">Este cliente puede ya estar en el CRM. Buscalo abajo para fusionar, o confirmá que es nuevo.</div>
+      <div style="font-size:.75rem;color:var(--texto-tenue);margin-bottom:12px">Este cliente puede ya estar en el CRM. Buscalo abajo para fusionar, o confirmá que es nuevo.</div>
       <input id="banner-merge-search" type="text" placeholder="Buscar cliente existente..."
-        style="width:100%;background:#0a0f1a;border:1px solid #1e293b;border-radius:6px;padding:8px 10px;font-size:.8rem;color:#e2e8f0;font-family:inherit;outline:none;margin-bottom:8px"
+        style="width:100%;background:var(--fondo);border:1px solid var(--borde);border-radius:6px;padding:8px 10px;font-size:.8rem;color:var(--texto);font-family:inherit;outline:none;margin-bottom:8px"
         oninput="_mergeSearch(this.value, 'banner-merge-results')">
       <div id="banner-merge-results" style="margin-bottom:10px"></div>
-      <button onclick="_confirmNewLead()" style="background:#1e293b;border:1px solid #334155;color:#94a3b8;font-size:.75rem;font-weight:600;padding:6px 12px;border-radius:6px;cursor:pointer;font-family:inherit">
+      <button onclick="_confirmNewLead()" style="background:#1e293b;border:1px solid #334155;color:var(--texto-tenue);font-size:.75rem;font-weight:600;padding:6px 12px;border-radius:6px;cursor:pointer;font-family:inherit">
         ✓ Es un cliente nuevo
       </button>
     </div>` : '';
@@ -5720,11 +5697,11 @@ function _cpRenderInfo() {
     ${l.address ? `<div class="cp-field"><span class="cp-field-label">Dirección</span><span class="cp-field-val">${l.address}</span></div>` : ''}
     ${l.maps_url ? `<div class="cp-field"><span class="cp-field-label">Google Maps</span><span class="cp-field-val"><a href="${l.maps_url}" target="_blank" style="color:#3b82f6">Ver en Maps →</a></span></div>` : ''}
     ${stars ? `<div class="cp-field"><span class="cp-field-label">Rating</span><span class="cp-field-val">${stars}</span></div>` : ''}
-    ${l.instagram_url ? `<div class="cp-field"><span class="cp-field-label">Instagram</span><span class="cp-field-val"><a href="${esc(l.instagram_url)}" target="_blank" style="display:inline-flex;align-items:center;gap:7px;color:#e2e8f0;text-decoration:none"><span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:linear-gradient(135deg,#f09433,#dc2743,#bc1888);color:#fff;font-size:.6rem;font-weight:800;flex-shrink:0">IG</span>Ver perfil →</a></span></div>` : ''}
-    ${l.facebook_url ? `<div class="cp-field"><span class="cp-field-label">Facebook</span><span class="cp-field-val"><a href="${esc(l.facebook_url)}" target="_blank" style="display:inline-flex;align-items:center;gap:7px;color:#e2e8f0;text-decoration:none"><span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:#1877f2;color:#fff;font-size:.6rem;font-weight:800;flex-shrink:0">FB</span>Ver perfil →</a></span></div>` : ''}
+    ${l.instagram_url ? `<div class="cp-field"><span class="cp-field-label">Instagram</span><span class="cp-field-val"><a href="${esc(l.instagram_url)}" target="_blank" style="display:inline-flex;align-items:center;gap:7px;color:var(--texto);text-decoration:none"><span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:linear-gradient(135deg,#f09433,#dc2743,#bc1888);color:#fff;font-size:.6rem;font-weight:800;flex-shrink:0">IG</span>Ver perfil →</a></span></div>` : ''}
+    ${l.facebook_url ? `<div class="cp-field"><span class="cp-field-label">Facebook</span><span class="cp-field-val"><a href="${esc(l.facebook_url)}" target="_blank" style="display:inline-flex;align-items:center;gap:7px;color:var(--texto);text-decoration:none"><span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:#1877f2;color:#fff;font-size:.6rem;font-weight:800;flex-shrink:0">FB</span>Ver perfil →</a></span></div>` : ''}
   </div>
   ${hasBotData ? `<div class="cp-section">
-    <div class="cp-section-title">Datos del bot <span style="font-size:.7rem;color:#475569;font-weight:400">(calificación WA)</span></div>
+    <div class="cp-section-title">Datos del bot <span style="font-size:.7rem;color:var(--texto-debil);font-weight:400">(calificación WA)</span></div>
     ${ci.lead_name ? `<div class="cp-field"><span class="cp-field-label">Contacto</span><span class="cp-field-val">${ci.lead_name}</span></div>` : ''}
     ${ci.budget_range ? `<div class="cp-field"><span class="cp-field-label">Presupuesto</span><span class="cp-field-val">${ci.budget_range}</span></div>` : ''}
     ${ci.colors ? `<div class="cp-field"><span class="cp-field-label">Colores de marca</span><span class="cp-field-val">${ci.colors}</span></div>` : ''}
@@ -5734,10 +5711,10 @@ function _cpRenderInfo() {
   ${l.phone ? `<div class="cp-section">
     <div class="cp-section-title">Enviar por WhatsApp</div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-      <select id="cp-wa-tmpl-sel" style="background:#111827;border:1px solid #1e293b;color:#94a3b8;padding:5px 10px;border-radius:6px;font-size:.78rem;flex:1">
+      <select id="cp-wa-tmpl-sel" style="background:var(--fondo);border:1px solid var(--borde);color:var(--texto-tenue);padding:5px 10px;border-radius:6px;font-size:.78rem;flex:1">
         <option value="">Elegir plantilla...</option>
       </select>
-      <button onclick="_cpUseWaTemplate()" style="background:#0088cc;border:none;color:#fff;padding:5px 14px;border-radius:6px;font-size:.78rem;cursor:pointer;white-space:nowrap">Abrir WA →</button>
+      <button onclick="_cpUseWaTemplate()" style="background:var(--azul);border:none;color:#fff;padding:5px 14px;border-radius:6px;font-size:.78rem;cursor:pointer;white-space:nowrap">Abrir WA →</button>
     </div>
   </div>` : ''}
   ${l.pitch_text ? `<div class="cp-section">
@@ -5745,7 +5722,7 @@ function _cpRenderInfo() {
       <span>Pitch WhatsApp</span>
       <button class="cp-btn cp-btn-ghost" style="padding:3px 10px;font-size:.72rem" onclick="navigator.clipboard.writeText(_cpData.lead.pitch_text||'');this.textContent='✓ Copiado';setTimeout(()=>this.textContent='Copiar',1500)">Copiar</button>
     </div>
-    <div style="font-size:.82rem;color:#94a3b8;white-space:pre-wrap;line-height:1.5;background:#0a0f1a;border:1px solid #1e293b;border-radius:8px;padding:12px">${esc(l.pitch_text||'')}</div>
+    <div style="font-size:.82rem;color:var(--texto-tenue);white-space:pre-wrap;line-height:1.5;background:var(--fondo);border:1px solid var(--borde);border-radius:8px;padding:12px">${esc(l.pitch_text||'')}</div>
   </div>` : ''}
   <div class="cp-section">
     <div class="cp-section-title">Notas internas</div>
@@ -5755,14 +5732,14 @@ function _cpRenderInfo() {
   <div class="cp-section">
     <div class="cp-section-title" style="display:flex;align-items:center;justify-content:space-between">
       <span>Fusionar con otro cliente</span>
-      <button onclick="_toggleMergeSection(this)" style="background:none;border:none;color:#475569;font-size:.72rem;cursor:pointer;font-family:inherit">Mostrar</button>
+      <button onclick="_toggleMergeSection(this)" style="background:none;border:none;color:var(--texto-debil);font-size:.72rem;cursor:pointer;font-family:inherit">Mostrar</button>
     </div>
     <div id="merge-section" style="display:none;margin-top:8px">
       <input id="merge-search" type="text" placeholder="Buscar cliente existente..."
-        style="width:100%;background:#0a0f1a;border:1px solid #1e293b;border-radius:6px;padding:8px 10px;font-size:.8rem;color:#e2e8f0;font-family:inherit;outline:none;margin-bottom:8px"
+        style="width:100%;background:var(--fondo);border:1px solid var(--borde);border-radius:6px;padding:8px 10px;font-size:.8rem;color:var(--texto);font-family:inherit;outline:none;margin-bottom:8px"
         oninput="_mergeSearch(this.value)">
       <div id="merge-results"></div>
-      <div style="font-size:.72rem;color:#475569;margin-top:6px">⚠️ Esto transfiere las reuniones, adjuntos y eventos al cliente destino y elimina este registro.</div>
+      <div style="font-size:.72rem;color:var(--texto-debil);margin-top:6px">⚠️ Esto transfiere las reuniones, adjuntos y eventos al cliente destino y elimina este registro.</div>
     </div>
   </div>
   ${_cpRenderHistory()}`;
@@ -5857,23 +5834,23 @@ function _cpRenderCalls() {
     ${calls.map(c => `<div style="display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-bottom:1px solid #1a2234">
       <div style="width:8px;height:8px;border-radius:50%;background:${outcomeColor[c.outcome]||'#475569'};margin-top:5px;flex-shrink:0"></div>
       <div style="flex:1">
-        <span style="font-size:.8rem;color:#e2e8f0;font-weight:600">${outcomeLabel[c.outcome]||c.outcome}</span>
-        <span style="font-size:.72rem;color:#475569;margin-left:8px">${timeAgo(c.called_at)}${c.created_by && c.created_by !== 'sistema' ? ' · por ' + esc(c.created_by) : ''}</span>
-        ${c.notes ? `<div style="font-size:.72rem;color:#64748b;margin-top:2px">${esc(c.notes)}</div>` : ''}
+        <span style="font-size:.8rem;color:var(--texto);font-weight:600">${outcomeLabel[c.outcome]||c.outcome}</span>
+        <span style="font-size:.72rem;color:var(--texto-debil);margin-left:8px">${timeAgo(c.called_at)}${c.created_by && c.created_by !== 'sistema' ? ' · por ' + esc(c.created_by) : ''}</span>
+        ${c.notes ? `<div style="font-size:.72rem;color:var(--texto-debil);margin-top:2px">${esc(c.notes)}</div>` : ''}
       </div>
     </div>`).join('')}
-  </div>` : '<div style="padding:12px 0;font-size:.82rem;color:#475569">Sin llamadas registradas</div>';
+  </div>` : '<div style="padding:12px 0;font-size:.82rem;color:var(--texto-debil)">Sin llamadas registradas</div>';
   return `<div class="cp-section">
     <div class="cp-section-title">Registrar llamada</div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-      <select id="call-outcome" style="background:#111827;border:1px solid #1e293b;color:#e2e8f0;padding:6px 10px;border-radius:6px;font-size:.8rem">
+      <select id="call-outcome" style="background:var(--fondo);border:1px solid var(--borde);color:var(--texto);padding:6px 10px;border-radius:6px;font-size:.8rem">
         <option value="">Resultado...</option>
         <option value="contestó">Contestó</option>
         <option value="no_contestó">No contestó</option>
         <option value="buzón">Buzón</option>
       </select>
-      <input id="call-notes" placeholder="Notas (opcional)" style="flex:1;min-width:120px;background:#111827;border:1px solid #1e293b;color:#e2e8f0;padding:6px 10px;border-radius:6px;font-size:.8rem">
-      <button onclick="_cpLogCall()" style="background:#0088cc;border:none;color:#fff;padding:6px 14px;border-radius:6px;font-size:.8rem;cursor:pointer">Registrar</button>
+      <input id="call-notes" placeholder="Notas (opcional)" style="flex:1;min-width:120px;background:var(--fondo);border:1px solid var(--borde);color:var(--texto);padding:6px 10px;border-radius:6px;font-size:.8rem">
+      <button onclick="_cpLogCall()" style="background:var(--azul);border:none;color:#fff;padding:6px 14px;border-radius:6px;font-size:.8rem;cursor:pointer">Registrar</button>
     </div>
   </div>
   ${history}`;
@@ -5928,7 +5905,7 @@ async function _cpSaveNotes() {
 
 function _cpRenderConv() {
   const msgs = _cpData.waMessages || [];
-  if (!msgs.length) return `<div style="color:#475569;font-size:.85rem;padding:20px 0">Sin conversación registrada en el bot de WhatsApp.</div>`;
+  if (!msgs.length) return `<div style="color:var(--texto-debil);font-size:.85rem;padding:20px 0">Sin conversación registrada en el bot de WhatsApp.</div>`;
   return `<div class="cp-wa-msgs">` + msgs.map(m => {
     const dir = m.direction === 'outbound' ? 'out' : 'in';
     return `<div class="cp-wa-msg ${dir}">${m.content || m.body || ''}</div>`;
@@ -5940,24 +5917,24 @@ function _cpRenderMeetings() {
   let html = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
     <div class="cp-section-title" style="margin:0">Reuniones</div>
     <div style="display:flex;gap:8px">
-      <a href="https://calendly.com/scalerics/consultoriagratuita" target="_blank" class="cp-btn cp-btn-ghost" style="color:#10b981;border-color:#10b981;text-decoration:none;font-size:.75rem" title="Abrir Calendly">Calendly</a>
+      <a href="https://calendly.com/scalerics/consultoriagratuita" target="_blank" class="cp-btn cp-btn-ghost" style="color:var(--verde);border-color:var(--verde);text-decoration:none;font-size:.75rem" title="Abrir Calendly">Calendly</a>
       <button class="cp-btn cp-btn-ghost" onclick="_cpOpenNewMeeting()">+ Nueva reunión</button>
     </div>
   </div>`;
-  if (!meets.length) html += `<div style="color:#475569;font-size:.85rem">No hay reuniones registradas.</div>`;
+  if (!meets.length) html += `<div style="color:var(--texto-debil);font-size:.85rem">No hay reuniones registradas.</div>`;
   meets.forEach(m => {
     const hasSummary = m.summary || m.requirements;
     html += `<div class="cp-meeting-card" id="meet-card-${m.id}">
       <div style="display:flex;justify-content:space-between;align-items:flex-start">
         <div class="cp-meeting-title">${m.title || 'Reunión'}</div>
-        <button class="cp-btn cp-btn-ghost" style="color:#ef4444;font-size:.8rem;padding:2px 8px" onclick="_cpDeleteMeeting(${m.id})">Borrar</button>
+        <button class="cp-btn cp-btn-ghost" style="color:var(--rojo);font-size:.8rem;padding:2px 8px" onclick="_cpDeleteMeeting(${m.id})">Borrar</button>
       </div>
       <div class="cp-meeting-meta">${m.start_at ? new Date(m.start_at).toLocaleString('es-UY',{timeZone:'America/Montevideo',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : ''} · ${_cpMeetStatus(m.status)}</div>
       ${m.meet_link ? `<div style="margin-bottom:8px"><a class="cp-meeting-link" href="${m.meet_link}" target="_blank" style="margin:0">▶ Unirse a la reunión</a></div>` : ''}
       ${m.calendar_event_id ? `<div style="margin-bottom:8px">
         <button class="cp-btn cp-btn-ghost" style="font-size:.75rem;padding:2px 8px" onclick="_cpToggleAddEmail(${m.id})">+ Agregar email</button>
         <div id="add-email-form-${m.id}" style="display:none;margin-top:6px;gap:6px;align-items:center;flex-wrap:wrap">
-          <input type="email" id="add-email-input-${m.id}" placeholder="email@ejemplo.com" style="font-size:.8rem;padding:4px 8px;background:#0f172a;border:1px solid #1e293b;border-radius:6px;color:#f1f5f9;width:220px">
+          <input type="email" id="add-email-input-${m.id}" placeholder="email@ejemplo.com" style="font-size:.8rem;padding:4px 8px;background:var(--fondo);border:1px solid var(--borde);border-radius:6px;color:#f1f5f9;width:220px">
           <button class="cp-btn cp-btn-primary" style="font-size:.75rem;padding:4px 10px;margin-top:4px" onclick="_cpAddEmailToMeeting(${m.id},'${m.calendar_event_id}')">Agregar</button>
         </div>
       </div>` : ''}
@@ -6113,7 +6090,7 @@ function _cpRenderAttachBox(section) {
     <input type="file" id="attach-file-${section}" style="display:none" onchange="_cpUploadFile(this,'${section}')">
     <div style="display:flex;gap:6px;margin-bottom:4px">
       <input type="text" id="attach-link-${section}" placeholder="Pegar link (GitHub, Google Drive, etc.)"
-             style="flex:1;background:#0a0f1a;border:1px solid #1e293b;border-radius:6px;color:#e2e8f0;font-size:.8rem;padding:6px 10px">
+             style="flex:1;background:var(--fondo);border:1px solid var(--borde);border-radius:6px;color:var(--texto);font-size:.8rem;padding:6px 10px">
       <button class="cp-btn cp-btn-ghost" style="white-space:nowrap" onclick="_cpSaveLink('${section}')">Guardar link</button>
     </div>
     ${listHtml}
@@ -6171,14 +6148,14 @@ function _cpRenderBudget() {
   if (!hasBudget) {
     return `<div class="cp-section">
       <div class="cp-section-title">Presupuesto</div>
-      <div style="color:#475569;font-size:.85rem;margin-bottom:14px">No hay presupuesto para este cliente. Se adjunta desde acá abajo.</div>
+      <div style="color:var(--texto-debil);font-size:.85rem;margin-bottom:14px">No hay presupuesto para este cliente. Se adjunta desde acá abajo.</div>
     </div>
     ${_cpRenderAttachBox('budget')}`;
   }
 
   const listHtml = items.map(a => `
-    <div class="attach-item" style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:#0a0f1a;border-radius:6px;margin-bottom:6px">
-      <a href="/api/attachments/${a.id}/file" target="_blank" style="color:#33aadd;font-size:.85rem;text-decoration:none">📄 ${esc(a.name)}</a>
+    <div class="attach-item" style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:var(--fondo);border-radius:6px;margin-bottom:6px">
+      <a href="/api/attachments/${a.id}/file" target="_blank" style="color:var(--azul-claro);font-size:.85rem;text-decoration:none">📄 ${esc(a.name)}</a>
       <div style="display:flex;gap:6px">
         <a class="cp-btn cp-btn-ghost" style="font-size:.75rem;padding:3px 10px;text-decoration:none" href="/api/attachments/${a.id}/print" target="_blank">🖨️ PDF</a>
         <button class="cp-btn cp-btn-ghost" style="font-size:.75rem;padding:3px 10px" onclick="_cpOpenAiEditModal(${a.id},${escJs(a.name)})">✏️ Editar con IA</button>
@@ -6244,10 +6221,10 @@ function _cpOpenAiEditModal(attachId, attachName) {
   modal.id = 'ai-edit-modal';
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:center;justify-content:center';
   modal.innerHTML = `
-    <div style="background:#0f172a;border:1px solid #1e293b;border-radius:10px;padding:24px;width:min(680px,95vw);max-height:90vh;overflow:auto">
-      <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:700;color:#e2e8f0;margin-bottom:16px">✏️ Editar con IA — ${esc(attachName)}</div>
+    <div style="background:var(--superficie);border:1px solid var(--borde);border-radius:10px;padding:24px;width:min(680px,95vw);max-height:90vh;overflow:auto">
+      <div style="font-family:Sora,sans-serif;font-size:1rem;font-weight:700;color:var(--texto);margin-bottom:16px">✏️ Editar con IA — ${esc(attachName)}</div>
       <textarea id="ai-edit-instr" placeholder="Ej: cambia el precio a $500 USD, agrega mantenimiento mensual de $30..."
-        style="width:100%;height:80px;background:#0a0f1a;border:1px solid #1e293b;border-radius:6px;color:#e2e8f0;font-size:.85rem;padding:10px;resize:vertical;box-sizing:border-box"></textarea>
+        style="width:100%;height:80px;background:var(--fondo);border:1px solid var(--borde);border-radius:6px;color:var(--texto);font-size:.85rem;padding:10px;resize:vertical;box-sizing:border-box"></textarea>
       <div style="display:flex;gap:8px;margin-top:10px">
         <button class="cp-btn cp-btn-primary" id="ai-edit-preview-btn" onclick="_cpAiEditPreview(${attachId})">
           <span id="ai-edit-spin" class="cp-spinner" style="display:none"></span>
@@ -6256,8 +6233,8 @@ function _cpOpenAiEditModal(attachId, attachName) {
         <button class="cp-btn cp-btn-ghost" onclick="document.getElementById('ai-edit-modal').remove()">Cancelar</button>
       </div>
       <div id="ai-edit-preview-wrap" style="display:none;margin-top:16px">
-        <div style="font-size:.75rem;color:#475569;margin-bottom:6px">Preview:</div>
-        <iframe id="ai-edit-iframe" style="width:100%;height:400px;border:1px solid #1e293b;border-radius:6px;background:#fff"></iframe>
+        <div style="font-size:.75rem;color:var(--texto-debil);margin-bottom:6px">Preview:</div>
+        <iframe id="ai-edit-iframe" style="width:100%;height:400px;border:1px solid var(--borde);border-radius:6px;background:#fff"></iframe>
         <div style="display:flex;gap:8px;margin-top:10px">
           <button class="cp-btn cp-btn-success" id="ai-edit-save-btn" onclick="_cpAiEditSave(${attachId})">✅ Guardar</button>
           <button class="cp-btn cp-btn-ghost" onclick="document.getElementById('ai-edit-modal').remove()">Cancelar</button>
@@ -6328,24 +6305,24 @@ function _cpRenderDemo() {
         <a class="cp-btn cp-btn-primary" href="${d.url}" target="_blank">🔗 Ver demo</a>
         <button class="cp-btn cp-btn-ghost" onclick="navigator.clipboard.writeText('${d.url}').then(()=>alert('Link copiado'))">📋 Copiar link</button>
       </div>
-      <div style="margin-top:10px;font-size:.75rem;color:#475569">La demo ya fue generada. Para regenerar contactá al administrador.</div>
+      <div style="margin-top:10px;font-size:.75rem;color:var(--texto-debil)">La demo ya fue generada. Para regenerar contactá al administrador.</div>
     </div>
     ${_cpRenderAttachBox('demo')}`;
   }
   if (isGenerating) {
     return `<div class="cp-section">
       <div class="cp-section-title">Demo <span class="cp-badge cp-badge-generating">Generando...</span></div>
-      <div style="display:flex;align-items:center;gap:8px;color:#94a3b8;font-size:.85rem">
+      <div style="display:flex;align-items:center;gap:8px;color:var(--texto-tenue);font-size:.85rem">
         <span class="cp-spinner"></span> Generando demo con IA...
       </div>
-      <div style="font-size:.75rem;color:#475569;margin-top:6px">Puede tomar 1-2 minutos. Actualizá la página para ver el estado.</div>
+      <div style="font-size:.75rem;color:var(--texto-debil);margin-top:6px">Puede tomar 1-2 minutos. Actualizá la página para ver el estado.</div>
     </div>
     ${_cpRenderAttachBox('demo')}`;
   }
   return `<div class="cp-section">
     <div class="cp-section-title">Demo</div>
-    ${d && d.error_message ? `<div style="color:#f87171;font-size:.8rem;margin-bottom:8px;background:#0a0f1a;padding:8px;border-radius:6px">Error anterior: ${d.error_message}</div>` : ''}
-    <div style="color:#475569;font-size:.85rem;margin-bottom:12px">Sin demo para este cliente. Se adjunta desde acá abajo o se registra con /api/demo/set-url.</div>
+    ${d && d.error_message ? `<div style="color:var(--rojo);font-size:.8rem;margin-bottom:8px;background:var(--fondo);padding:8px;border-radius:6px">Error anterior: ${d.error_message}</div>` : ''}
+    <div style="color:var(--texto-debil);font-size:.85rem;margin-bottom:12px">Sin demo para este cliente. Se adjunta desde acá abajo o se registra con /api/demo/set-url.</div>
   </div>
   ${_cpRenderAttachBox('demo')}`;
 }

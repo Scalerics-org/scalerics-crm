@@ -243,6 +243,24 @@ leads de Meta se renombró a **D** para deshacer el empate.
 > que quedan (dos de `.biz-name`, una de WhatsApp con `.body.light`) estan
 > anotadas en el test como pendientes.
 
+> **F (diseño) — panel de cliente a tokens (11/9).** Quinta superficie, la
+> mas rota: 51 propiedades con color sin par claro. En tema claro, el
+> selector de estado y el area de notas eran cajas negras y el borde de la
+> cabecera seguia oscuro. Ademas del CSS, el JS que arma el panel pintaba
+> inline (`style="background:#0a0f1a"`): se reescribieron 38 atributos en
+> 8 funciones `_cp*`. Hay un test que avisa si vuelve un fondo oscuro inline.
+>
+> Token nuevo, `--relleno` (#1e293b / #f1f5f9): chips, botones fantasma, la
+> burbuja entrante de WhatsApp. Vale lo mismo que `--hover` pero es otro rol.
+> Tambien se fue un bloque de reglas de eventos pegado dos veces, con la
+> regla de layout de `.cp-event-row` prefijada con `body.light` por error.
+>
+> **G, tenias razon con `--rotulo`, y es mas grande:** `--texto-debil` vale
+> lo mismo en oscuro (#64748b, 3,62:1 sobre `--superficie`) y lo use para
+> rotulos chicos en estos PRs. Mejoraron contra lo que habia (2,27:1) pero
+> no llegan a 4,5. Es una decision de token que mueve toda la app en oscuro:
+> la estoy proponiendo aparte, no la meti en ninguna superficie.
+
 > **D acá (28/8, 17:10 UTC).** Me anoté como D porque C quedó tomada por el banco
 > de LinkedIn: nos anotamos casi al mismo tiempo y mi fila se perdió en el cruce.
 >
