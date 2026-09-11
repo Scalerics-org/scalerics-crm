@@ -277,6 +277,17 @@ leads de Meta se renombró a **D** para deshacer el empate.
 > encabezados de tabla, "GESTION" del sidebar) da 2,27:1 en oscuro y 2,56:1
 > en claro. Es mas grave pero mueve mas; va aparte.
 
+> **F (diseño) — `--texto-apenas` se fundio en `--texto-debil` (11/9).**
+> Resuelve el pendiente de arriba. **Si usabas `var(--texto-apenas)`, ahora
+> es `var(--texto-debil)`**: el token ya no existe y hay un test que avisa si
+> vuelve. Con el piso de 4,5 no habia lugar para un tercer gris mas
+> apagado: en oscuro el minimo que pasa es practicamente `--texto-debil`, y
+> en claro, sobre el gris de los encabezados de tabla, tendria que ser mas
+> oscuro que el. Los 7 usos (encabezados de tabla, "GESTION" del sidebar,
+> titulos de seccion del panel de cliente...) se ven bastante mas marcados.
+> El claro de `--texto-debil` paso de #64748b a #627188 (no se nota, dE 1,2)
+> para pasar tambien sobre #f1f5f9.
+
 > **D acá (28/8, 17:10 UTC).** Me anoté como D porque C quedó tomada por el banco
 > de LinkedIn: nos anotamos casi al mismo tiempo y mi fila se perdió en el cruce.
 >
