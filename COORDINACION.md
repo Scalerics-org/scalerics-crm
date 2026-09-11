@@ -200,6 +200,31 @@ leads de Meta se renombró a **D** para deshacer el empate.
 > (`.row-*` que siguen vivos) no se tocaron: son colores semanticos por estado,
 > otra superficie.
 
+> **F (diseño) — cabecera y tarjetas de KPI a tokens (11/9).** Tercera
+> superficie sobre la capa de tokens: el h1 de cada pagina, su subtitulo y
+> las tarjetas de KPI (Cola, Metricas y el resto de los paneles que las usan).
+> Sidebar y tablas (#26) quedaron deployados en v180 el 11/9.
+>
+> **Si tocas los KPIs:** los tres de Metricas en ambar ("Reuniones
+> agendadas", "Tasa de reunion", "Esta semana") tenian
+> `style="color:#f59e0b"` inline. Para taparlo en claro —ambar sobre blanco
+> da 2,15:1— alguien forzo `body.light .stat-val{...!important}`, y como ese
+> `!important` le ganaba al verde y al azul, esos llevaron el suyo. En claro
+> los tres perdian el ambar. Ahora usan la clase `.stat-val.yellow` con
+> `--ambar` (#b45309 en claro, 5,02:1) y no queda ningun `!important` en la
+> cabecera; hay un test que avisa si vuelve. **Si un KPI necesita color, que
+> sea con clase, no inline.**
+>
+> El verde y el azul de `.stat-val` siguen con sus colores escritos: son
+> semanticos, como los tintes de estado de las filas, y van en otra pasada.
+>
+> **Pendiente conocido, no es una regresion:** en Metricas, las cuatro
+> `.m-card` (Funnel CRM, Llamadas, Leads por mes, Top rubros) son oscuras en
+> tema claro. `.m-card` nunca tuvo version clara: sus reglas son identicas
+> antes y despues de los tokens, y produccion ya estaba asi en v179. No se
+> arregla con solo la tarjeta, porque adentro hay barras y graficos pensados
+> para fondo oscuro: es la proxima superficie.
+
 > **D acá (28/8, 17:10 UTC).** Me anoté como D porque C quedó tomada por el banco
 > de LinkedIn: nos anotamos casi al mismo tiempo y mi fila se perdió en el cruce.
 >
