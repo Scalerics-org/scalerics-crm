@@ -159,6 +159,47 @@ leads de Meta se renombró a **D** para deshacer el empate.
 > bloque de tokens al tope del `<style>` mas reglas bajo el prefijo `fin-`.
 > Ninguna regla ni funcion existente de otro panel se toco.
 
+> **F (diseño) — sidebar y tablas a tokens (10/9).** Segunda superficie sobre
+> la capa de tokens, despues de Finanzas. Es la que se ve en todas las
+> pantallas: el sidebar esta siempre y `.table-row` la usan Cola,
+> Seguimientos, Clientes, Meta Ads y Finanzas. Contra `HEAD`: reglas con
+> tokens 18 -> 34, con color a mano 527 -> 505, `body.light` 281 -> 266.
+>
+> **Si vas a migrar otra superficie, tres cosas que aprendi aca:**
+>
+> 1. **No todas las reglas `body.light` son por el color.** `body.light
+>    .table-row:hover` estaba para ganar especificidad: en claro, los tintes de
+>    estado (`body.light .row-contactado`, 0,2,1) le ganan a un
+>    `.table-row:hover` pelado (0,2,0). Borrarla "porque el token ya da el
+>    color" hacia desaparecer el hover justo en las filas de color. Quedo como
+>    selector combinado, y hay un test que lo fija.
+> 2. **El token mas PARECIDO no siempre es el correcto.** Para el hover, el
+>    mas parecido (`--superficie-alta`) lo dejaba invisible en claro (dE 2,2).
+>    Lo que importa es cuanto se distingue de lo que tiene abajo. Nuevo token
+>    `--hover`, y un test que exige dE >= 4 contra `--superficie`.
+> 3. **Un estilo inline le gana a cualquier `body.light`.** "Usuarios" y "Mi
+>    perfil" son `<a>` con `border:1px solid #1e293b` inline, y en claro tenian
+>    el borde oscuro desde siempre. Un `var(--borde)` inline si cambia con el
+>    tema.
+> 4. **Un `!important` tambien le gana.** En el celular las filas de tabla
+>    son tarjetas con `background:#111827!important`, y un `!important` le
+>    gana a cualquier `body.light` que no lo sea: en claro, las tarjetas eran
+>    oscuras sobre la pagina clara, desde antes de esta migracion. Antes de
+>    borrar una regla clara, buscar tambien adentro de los `@media`: ahi
+>    estaban las 5 que faltaban, y ninguna aparecia buscando reglas al
+>    principio de linea.
+>
+> Tokens nuevos: `--hover` y `--texto-fuerte` (#fff / #0f172a, el par aparece 7
+> veces: nav activo, los h1 de pagina y de panel, `.stat-val`, el nombre del
+> chat de WhatsApp y el hover del calendario). Se borraron 6 reglas muertas:
+> `.row-sin-contactar`, `.row-agendo`, `.row-firmo` y sus `:hover` — nadie las
+> arma, las filas usan `row-${crm}` con guion bajo.
+>
+> **Cruce de territorio:** `dashboard.py` es de B. Solo CSS del sidebar y de
+> las tablas, mas dos estilos inline en `.sidebar-bottom`. Los tintes de estado
+> (`.row-*` que siguen vivos) no se tocaron: son colores semanticos por estado,
+> otra superficie.
+
 > **D acá (28/8, 17:10 UTC).** Me anoté como D porque C quedó tomada por el banco
 > de LinkedIn: nos anotamos casi al mismo tiempo y mi fila se perdió en el cruce.
 >

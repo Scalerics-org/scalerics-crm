@@ -330,19 +330,25 @@ DASHBOARD_HTML = """<!DOCTYPE html>
    que reemplazar POR ROL y nunca por hex: un buscar-y-reemplazar ciego rompe
    el tema claro en silencio.
 
-   Hoy los consume solo la seccion Finanzas. El resto sigue con los colores
+   Los consumen Finanzas, el sidebar y las tablas. El resto sigue con los colores
    escritos a mano y se migra de a una superficie, verificando en el navegador:
    de las 832 declaraciones con color de las reglas oscuras, 595 no tienen
    contraparte clara, asi que tokenizarlas de golpe cambiaria el aspecto de 595
-   lugares sin que nadie los mire. */
+   lugares sin que nadie los mire.
+
+   --hover no es el token mas PARECIDO al hover de antes sino el que mas se
+   distingue de la superficie que tiene abajo (dE 7,8 oscuro / 4,4 claro). El
+   mas parecido, --superficie-alta, lo dejaba invisible en claro (2,2). */
 :root{
   --fondo:#0a0f1a;
   --fondo-hundido:#0f1117;
   --superficie:#161b27;
   --superficie-alta:#1a2130;
   --superficie-honda:#0f172a;
+  --hover:#1e293b;
   --borde:#1e293b;
   --borde-fuerte:#334155;
+  --texto-fuerte:#fff;
   --texto:#e2e8f0;
   --texto-tenue:#94a3b8;
   --texto-debil:#64748b;
@@ -360,8 +366,10 @@ body.light{
   --superficie:#fff;
   --superficie-alta:#f8fafc;
   --superficie-honda:#fff;
+  --hover:#f1f5f9;
   --borde:#e2e8f0;
   --borde-fuerte:#cbd5e1;
+  --texto-fuerte:#0f172a;
   --texto:#0f172a;
   --texto-tenue:#475569;
   --texto-debil:#64748b;
@@ -375,17 +383,17 @@ body.light{
 }
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:100vh;display:flex}
-.sidebar{width:228px;min-height:100vh;background:#111827;border-right:1px solid #1a2d3d;display:flex;flex-direction:column;padding:20px 0;flex-shrink:0;position:fixed;top:0;bottom:0;left:0;z-index:200;transition:transform .25s ease}
-.sidebar-logo{padding:16px 20px 20px;border-bottom:1px solid #1a2d3d;margin-bottom:14px}
+.sidebar{width:228px;min-height:100vh;background:var(--superficie);border-right:1px solid var(--borde);display:flex;flex-direction:column;padding:20px 0;flex-shrink:0;position:fixed;top:0;bottom:0;left:0;z-index:200;transition:transform .25s ease}
+.sidebar-logo{padding:16px 20px 20px;border-bottom:1px solid var(--borde);margin-bottom:14px}
 .sidebar-logo img{height:38px;object-fit:contain;max-width:170px;filter:drop-shadow(0 0 6px rgba(0,136,204,.18))}
-.nav-item{display:flex;align-items:center;gap:10px;padding:10px 20px;font-size:.85rem;font-weight:500;color:#64748b;cursor:pointer;border-left:3px solid transparent;transition:all .15s}
-.nav-item:hover{color:#e2e8f0;background:#1a2d3d}
-.nav-item.active{color:#fff;background:linear-gradient(90deg,rgba(0,136,204,.12),rgba(0,136,204,.03));border-left-color:#0088cc}
+.nav-item{display:flex;align-items:center;gap:10px;padding:10px 20px;font-size:.85rem;font-weight:500;color:var(--texto-debil);cursor:pointer;border-left:3px solid transparent;transition:all .15s}
+.nav-item:hover{color:var(--texto);background:var(--hover)}
+.nav-item.active{color:var(--texto-fuerte);background:linear-gradient(90deg,rgba(0,136,204,.12),rgba(0,136,204,.03));border-left-color:var(--azul)}
 .nav-scroll{flex:1;overflow-y:auto;min-height:0}
-.sidebar-bottom{margin-top:auto;padding:16px 20px;border-top:1px solid #1a2d3d;display:flex;flex-direction:column;gap:8px}
+.sidebar-bottom{margin-top:auto;padding:16px 20px;border-top:1px solid var(--borde);display:flex;flex-direction:column;gap:8px}
 .run-btn{width:100%;background:linear-gradient(135deg,#0088cc,#3db648);color:#fff;font-size:.82rem;font-weight:700;padding:10px;border-radius:8px;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px}
-.logout-btn{width:100%;background:transparent;border:1px solid #1a2d3d;color:#475569;font-size:.78rem;font-weight:500;padding:8px;border-radius:8px;cursor:pointer;font-family:'Inter',sans-serif}
-.logout-btn:hover{color:#e2e8f0;border-color:#334155}
+.logout-btn{width:100%;background:transparent;border:1px solid var(--borde);color:var(--texto-debil);font-size:.78rem;font-weight:500;padding:8px;border-radius:8px;cursor:pointer;font-family:'Inter',sans-serif}
+.logout-btn:hover{color:var(--texto);border-color:var(--borde-fuerte)}
 .sidebar-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:199}
 .topbar{display:none;align-items:center;gap:12px;padding:12px 16px;background:#111827;border-bottom:1px solid #1a2d3d;position:sticky;top:0;z-index:100}
 .topbar img{height:24px;object-fit:contain}
@@ -437,16 +445,16 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
   .table-header{display:none!important}
   .table-row,.table-row.no-cb{
     display:flex!important;flex-direction:column!important;gap:6px;
-    padding:14px 16px!important;background:#111827!important;
-    border:1px solid #1e293b!important;border-radius:14px!important;
+    padding:14px 16px!important;background:var(--superficie)!important;
+    border:1px solid var(--borde)!important;border-radius:14px!important;
     margin-bottom:10px;grid-template-columns:none!important;
     align-items:stretch!important;
   }
-  .table-row:last-child{border-bottom:1px solid #1e293b!important}
-  .table-row:hover{background:#141d2e!important}
+  .table-row:last-child{border-bottom:1px solid var(--borde)!important}
+  .table-row:hover{background:var(--hover)!important}
   /* no-cb: col1=nombre, col2=fuente, col3=estado, col4+=ocultar, last=acciones */
   .table-row.no-cb>div:nth-child(1){order:1}
-  .table-row.no-cb>div:nth-child(2){order:3;font-size:.72rem!important;color:#64748b!important}
+  .table-row.no-cb>div:nth-child(2){order:3;font-size:.72rem!important;color:var(--texto-debil)!important}
   .table-row.no-cb>div:nth-child(3){order:2;display:flex!important;align-items:center;gap:8px;flex-wrap:wrap}
   .table-row.no-cb>div:nth-child(4){display:none!important}
   .table-row.no-cb>div:last-child:not(:nth-child(1)):not(:nth-child(2)):not(:nth-child(3)){order:10;display:flex!important;gap:8px;flex-wrap:wrap;margin-top:4px}
@@ -460,7 +468,7 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
   .table-row:not(.no-cb):not(.tbl-cli)>div:last-child button{min-height:40px!important;flex:1}
   /* Clientes activos: en columna, cada select con su rol arriba. Sin la
      etiqueta son tres desplegables identicos y no se sabe cual es cual. */
-  .table-row.tbl-cli>div[data-rol]::before{content:attr(data-rol);display:block;font-size:.65rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.6px;margin-bottom:3px}
+  .table-row.tbl-cli>div[data-rol]::before{content:attr(data-rol);display:block;font-size:.65rem;font-weight:700;color:var(--texto-debil);text-transform:uppercase;letter-spacing:.6px;margin-bottom:3px}
   .table-row.tbl-cli>div:last-child button{min-height:40px!important;width:100%}
   /* Meta panel: 7 cols — ocultar 5 y 6 que son metadata extra */
   #meta-panel .table-row.no-cb>div:nth-child(5),
@@ -511,11 +519,11 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .filter-select option{background:#161b27}
 .search-box{margin-left:auto;background:#161b27;border:1px solid #1e293b;border-radius:8px;padding:7px 14px;font-size:.82rem;color:#e2e8f0;width:200px;outline:none;font-family:'Inter',sans-serif}
 .search-box::placeholder{color:#334155}
-.table-wrap{background:#161b27;border:1px solid #1e293b;border-radius:14px;overflow:hidden}
+.table-wrap{background:var(--superficie);border:1px solid var(--borde);border-radius:14px;overflow:hidden}
 
-.table-header span{font-size:.65rem;font-weight:700;color:#334155;text-transform:uppercase;letter-spacing:1px}
+.table-header span{font-size:.65rem;font-weight:700;color:var(--texto-apenas);text-transform:uppercase;letter-spacing:1px}
 
-.table-row:hover{background:#1a2234}
+.table-row:hover,body.light .table-row:hover{background:var(--hover)}
 .table-row:last-child{border-bottom:none}
 .biz-name{font-weight:600;font-size:.88rem;color:#e2e8f0;display:flex;align-items:center;gap:7px}
 .biz-sub{font-size:.7rem;color:#475569;margin-top:2px}
@@ -541,14 +549,8 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .contacted-tag{font-size:.72rem;color:#a5b4fc;font-weight:600}
 .no-pitch{font-size:.72rem;color:#1e293b}
 .empty-state{padding:40px;text-align:center;color:#334155;font-size:.9rem}
-.row-sin-contactar{background:#161b27}
 .row-contactado{background:#0d1f33}
-.row-agendo{background:#1f1a0d}
-.row-firmo{background:#0d1f12}
-.row-sin-contactar:hover{background:#1a2234}
 .row-contactado:hover{background:#112438}
-.row-agendo:hover{background:#251f0f}
-.row-firmo:hover{background:#0f2416}
 .status-sel{background:#0f1117;border:1px solid #1e293b;border-radius:6px;padding:4px 6px;font-size:.7rem;color:#94a3b8;font-family:'Inter',sans-serif;cursor:pointer;outline:none;max-width:110px}
 .status-sel:focus{border-color:#0088cc}
 .delete-btn{background:#2a1515;border:none;color:#f87171;padding:5px 8px;border-radius:6px;font-size:.7rem;cursor:pointer;font-family:'Inter',sans-serif}
@@ -556,8 +558,8 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .export-btn:hover{background:#166534;color:#fff}
 .cb-col{width:36px;display:flex;align-items:center;justify-content:center}
 .cb{width:15px;height:15px;accent-color:#0088cc;cursor:pointer}
-.table-header{display:grid;grid-template-columns:36px 2fr 1.2fr 1.8fr 1.5fr;padding:12px 20px;background:#0f1117;border-bottom:1px solid #1e293b}
-.table-row{display:grid;grid-template-columns:36px 2fr 1.2fr 1.8fr 1.5fr;padding:13px 20px;border-bottom:1px solid #1a2234;align-items:center;transition:background .1s}
+.table-header{display:grid;grid-template-columns:36px 2fr 1.2fr 1.8fr 1.5fr;padding:12px 20px;background:var(--fondo-hundido);border-bottom:1px solid var(--borde)}
+.table-row{display:grid;grid-template-columns:36px 2fr 1.2fr 1.8fr 1.5fr;padding:13px 20px;border-bottom:1px solid var(--borde);align-items:center;transition:background .1s}
 /* Tablero de pre-clientes: una columna por etapa. La tabla plana anterior
    obligaba a leer fila por fila para saber cuantos habia en cada etapa. */
 .pre-board{display:flex;gap:12px;overflow-x:auto;padding-bottom:12px;align-items:flex-start}
@@ -1036,21 +1038,11 @@ body.light #nav-activity .nav-icon{stroke:#475569}
 .btn-icon{width:14px;height:14px;stroke-width:2;vertical-align:middle}
 .outcome-icon{width:22px;height:22px;stroke-width:1.8;display:block;margin:0 auto 4px}
 /* ── Theme toggle ─────────────────────────────────────────────────────────── */
-.theme-btn{width:100%;background:transparent;border:1px solid #1a2d3d;color:#475569;font-size:.78rem;font-weight:500;padding:8px 12px;border-radius:8px;cursor:pointer;font-family:'Inter',sans-serif;display:flex;align-items:center;gap:8px;transition:all .15s}
-.theme-btn:hover{color:#e2e8f0;border-color:#334155}
+.theme-btn{width:100%;background:transparent;border:1px solid var(--borde);color:var(--texto-debil);font-size:.78rem;font-weight:500;padding:8px 12px;border-radius:8px;cursor:pointer;font-family:'Inter',sans-serif;display:flex;align-items:center;gap:8px;transition:all .15s}
+.theme-btn:hover{color:var(--texto);border-color:var(--borde-fuerte)}
 /* ── Light mode ────────────────────────────────────────────────────────────── */
 body.light{background:#f1f5f9;color:#0f172a}
-body.light .sidebar{background:#fff;border-right-color:#e2e8f0}
-body.light .sidebar-logo{border-bottom-color:#e2e8f0}
-body.light .nav-section-label{color:#94a3b8}
-body.light .nav-item{color:#64748b}
-body.light .nav-item:hover{color:#0f172a;background:#f1f5f9}
-body.light .nav-item.active{color:#0f172a;background:linear-gradient(90deg,rgba(0,136,204,.1),rgba(0,136,204,.02))}
-body.light .sidebar-bottom{border-top-color:#e2e8f0}
-body.light .theme-btn{border-color:#e2e8f0;color:#64748b}
-body.light .theme-btn:hover{color:#0f172a;border-color:#94a3b8}
-body.light .logout-btn{border-color:#e2e8f0;color:#64748b}
-body.light .logout-btn:hover{color:#0f172a;border-color:#94a3b8}
+body.light .nav-item.active{background:linear-gradient(90deg,rgba(0,136,204,.1),rgba(0,136,204,.02))}
 body.light .topbar{background:#fff;border-bottom-color:#e2e8f0}
 body.light .page-header h1{color:#0f172a}
 body.light .page-date{color:#64748b}
@@ -1066,11 +1058,6 @@ body.light .filter-select{background:#fff;border-color:#e2e8f0;color:#0f172a}
 body.light .filter-select option{background:#fff;color:#0f172a}
 body.light .search-box{background:#fff;border-color:#e2e8f0;color:#0f172a}
 body.light .search-box::placeholder{color:#94a3b8}
-body.light .table-wrap{background:#fff;border-color:#e2e8f0}
-body.light .table-header{background:#f8fafc;border-bottom-color:#e2e8f0}
-body.light .table-header span{color:#94a3b8}
-body.light .table-row{border-bottom-color:#f1f5f9}
-body.light .table-row:hover{background:#f8fafc}
 body.light .biz-name,.biz-name{font-weight:600}
 body.light .biz-name a,.biz-name a{color:#0f172a}
 body.light .biz-sub{color:#64748b}
@@ -1207,7 +1194,7 @@ body.light .act-sep{color:#94a3b8}
 body.light .act-desc{color:#475569 !important}
 body.light .act-when{color:#94a3b8 !important}
 body.light .nav-icon{stroke:#64748b}
-body.light .nav-item.active .nav-icon{stroke:#0088cc}
+body.light .nav-item.active .nav-icon{stroke:var(--azul)}
 body.light .btn-icon{stroke:currentColor}
 /* ── Scrollbars ───────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar{width:5px;height:5px}
@@ -1215,7 +1202,7 @@ body.light .btn-icon{stroke:currentColor}
 ::-webkit-scrollbar-thumb{background:#1e293b;border-radius:99px}
 ::-webkit-scrollbar-thumb:hover{background:#334155}
 /* ── Nav section labels ───────────────────────────────────────────────────── */
-.nav-section-label{padding:14px 20px 4px;font-size:.65rem;font-weight:700;color:#334155;text-transform:uppercase;letter-spacing:1px}
+.nav-section-label{padding:14px 20px 4px;font-size:.65rem;font-weight:700;color:var(--texto-apenas);text-transform:uppercase;letter-spacing:1px}
 /* ── Notes inline ─────────────────────────────────────────────────────────── */
 .notes-inline{width:100%;background:transparent;border:none;border-bottom:1px solid transparent;color:#94a3b8;font-size:.78rem;font-family:'Inter',sans-serif;resize:none;outline:none;min-height:22px;line-height:1.4;padding:2px 4px;border-radius:4px;transition:all .15s}
 .notes-inline:hover{background:#0d1525;border-bottom-color:#1e293b}
@@ -1547,8 +1534,8 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div class="nav-item" id="nav-sdr" onclick="showPanel('sdr')"><i data-lucide="phone-call" class="nav-icon"></i> SDR</div>
   </div>
   <div class="sidebar-bottom">
-    <a id="admin-link" href="/admin/users" style="display:none;background:none;border:1px solid #1e293b;border-radius:8px;padding:6px 12px;font-size:.75rem;color:#64748b;cursor:pointer;width:100%;text-align:left;text-decoration:none;box-sizing:border-box">&#9881; Usuarios</a>
-    <a href="/profile" style="background:none;border:1px solid #1e293b;border-radius:8px;padding:6px 12px;font-size:.75rem;color:#64748b;cursor:pointer;width:100%;text-align:left;text-decoration:none;box-sizing:border-box;display:block">&#128100; Mi perfil</a>
+    <a id="admin-link" href="/admin/users" style="display:none;background:none;border:1px solid var(--borde);border-radius:8px;padding:6px 12px;font-size:.75rem;color:var(--texto-debil);cursor:pointer;width:100%;text-align:left;text-decoration:none;box-sizing:border-box">&#9881; Usuarios</a>
+    <a href="/profile" style="background:none;border:1px solid var(--borde);border-radius:8px;padding:6px 12px;font-size:.75rem;color:var(--texto-debil);cursor:pointer;width:100%;text-align:left;text-decoration:none;box-sizing:border-box;display:block">&#128100; Mi perfil</a>
     <button class="theme-btn" id="theme-btn" onclick="toggleTheme()"><i data-lucide="sun" class="btn-icon" id="theme-icon"></i> <span id="theme-label">Modo claro</span></button>
     <button class="logout-btn" onclick="window.location.href='/logout'"><i data-lucide="log-out" class="btn-icon"></i> Cerrar sesión</button>
   </div>
