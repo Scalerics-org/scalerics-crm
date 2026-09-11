@@ -344,7 +344,14 @@ DASHBOARD_HTML = """<!DOCTYPE html>
    --superficie, abajo del 4,5 que pide el texto chico. #8190a6 es el gris
    mas oscuro de la misma familia que llega a 4,5 sobre las cuatro
    superficies (5,31 / 5,91 / 5,82 / 4,51 en el relleno). En claro no
-   cambian. --texto-apenas sigue abajo en los dos temas: pendiente. */
+   cambian.
+
+   --texto-apenas ya no existe: se fundio en --texto-debil el 11/9. Daba
+   2,27:1 en oscuro y 2,56:1 en claro, y con el piso de 4,5 no hay lugar
+   para un tercer gris mas apagado donde se usaba. Los rotulos en
+   mayuscula se distinguen por la tipografia, no por un color que no se
+   lee. El claro de --texto-debil paso de #64748b a #627188 (dE 1,2) para
+   pasar tambien sobre #f1f5f9, donde van los encabezados de tabla. */
 :root{
   --fondo:#0a0f1a;
   --fondo-hundido:#0f1117;
@@ -359,7 +366,6 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   --texto:#e2e8f0;
   --texto-tenue:#94a3b8;
   --texto-debil:#8190a6;
-  --texto-apenas:#475569;
   --rotulo:#8190a6;
   --azul:#0088cc;
   --azul-claro:#38bdf8;
@@ -380,8 +386,7 @@ body.light{
   --texto-fuerte:#0f172a;
   --texto:#0f172a;
   --texto-tenue:#475569;
-  --texto-debil:#64748b;
-  --texto-apenas:#94a3b8;
+  --texto-debil:#627188;
   --rotulo:#475569;
   --azul:#0088cc;
   --azul-claro:#0369a1;
@@ -529,7 +534,7 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .search-box::placeholder{color:#334155}
 .table-wrap{background:var(--superficie);border:1px solid var(--borde);border-radius:14px;overflow:hidden}
 
-.table-header span{font-size:.65rem;font-weight:700;color:var(--texto-apenas);text-transform:uppercase;letter-spacing:1px}
+.table-header span{font-size:.65rem;font-weight:700;color:var(--texto-debil);text-transform:uppercase;letter-spacing:1px}
 
 .table-row:hover,body.light .table-row:hover{background:var(--hover)}
 .table-row:last-child{border-bottom:none}
@@ -769,7 +774,7 @@ body.light .resp-sel{background:#fff;border-color:#e2e8f0;color:#0f172a}
 .calw-chip .cal-del-btn,.calw-chip .cal-join-btn,.calw-chip .cal-hora-btn{display:none}
 .calw-chip:hover .cal-del-btn,.calw-chip:hover .cal-join-btn,.calw-chip:hover .cal-hora-btn{display:block}
 .calw-hint{font-size:.7rem;color:#475569;margin-bottom:10px}
-.fin-kpi-iva{font-size:.66rem;color:var(--texto-apenas);margin-top:2px}
+.fin-kpi-iva{font-size:.66rem;color:var(--texto-debil);margin-top:2px}
 .fin-nav-mes{display:flex;align-items:center;gap:6px}
 .fin-nav-mes span{font-size:.82rem;font-weight:700;color:var(--texto);min-width:130px;text-align:center}
 .fin-cerrado{display:flex;align-items:center;gap:8px;font-size:.7rem;font-weight:700;color:var(--ambar);background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);padding:4px 10px;border-radius:999px;text-transform:uppercase;letter-spacing:.04em}
@@ -844,10 +849,10 @@ body.light .resp-sel{background:#fff;border-color:#e2e8f0;color:#0f172a}
 .cp-tab.active{color:var(--texto-fuerte);border-bottom-color:var(--azul)}
 .cp-tab:hover:not(.active){color:var(--texto-tenue)}
 .cp-body{flex:1;overflow-y:auto;padding:20px}
-.cp-close{position:absolute;top:14px;right:16px;background:none;border:none;color:var(--texto-apenas);font-size:1.3rem;cursor:pointer;line-height:1;padding:4px 6px}
+.cp-close{position:absolute;top:14px;right:16px;background:none;border:none;color:var(--texto-debil);font-size:1.3rem;cursor:pointer;line-height:1;padding:4px 6px}
 .cp-close:hover{color:var(--texto)}
 .cp-section{margin-bottom:22px}
-.cp-section-title{font-size:.7rem;font-weight:700;color:var(--texto-apenas);text-transform:uppercase;letter-spacing:.7px;margin-bottom:10px}
+.cp-section-title{font-size:.7rem;font-weight:700;color:var(--texto-debil);text-transform:uppercase;letter-spacing:.7px;margin-bottom:10px}
 .cp-field{display:flex;align-items:flex-start;gap:8px;margin-bottom:8px;font-size:.85rem}
 .cp-field-label{color:var(--texto-debil);min-width:80px;flex-shrink:0}
 .cp-field-val{color:var(--texto);word-break:break-word}
@@ -857,7 +862,7 @@ body.light .resp-sel{background:#fff;border-color:#e2e8f0;color:#0f172a}
 .cp-meeting-link{font-size:.75rem;color:var(--azul);text-decoration:none;display:inline-block;margin-bottom:10px}
 .cp-meeting-link:hover{text-decoration:underline}
 .cp-summary-box{background:var(--relleno);border-radius:8px;padding:12px;margin-top:10px;font-size:.8rem;color:var(--texto-tenue);line-height:1.6;white-space:pre-wrap}
-.cp-summary-label{font-size:.68rem;font-weight:700;color:var(--texto-apenas);text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px}
+.cp-summary-label{font-size:.68rem;font-weight:700;color:var(--texto-debil);text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px}
 .cp-transcript-area{width:100%;background:var(--fondo);border:1px solid var(--borde);border-radius:8px;color:var(--texto);font-size:.8rem;padding:10px;font-family:'Inter',sans-serif;resize:vertical;min-height:100px;margin-bottom:8px}
 .cp-transcript-area:focus{outline:none;border-color:var(--azul)}
 .budget-table{width:100%;border-collapse:collapse;font-size:.82rem;margin:12px 0}
@@ -902,7 +907,7 @@ body.light .resp-sel{background:#fff;border-color:#e2e8f0;color:#0f172a}
 .cp-event-dot{width:8px;height:8px;border-radius:50%;margin-top:5px;flex-shrink:0}
 .cp-event-body{flex:1;min-width:0}
 .cp-event-label{font-size:.8rem;color:var(--texto);font-weight:600}
-.cp-event-meta{font-size:.72rem;color:var(--texto-apenas);margin-left:8px}
+.cp-event-meta{font-size:.72rem;color:var(--texto-debil);margin-left:8px}
 .cp-event-note{font-size:.72rem;color:var(--texto-debil);margin-top:2px}
 .act-row{display:flex;gap:14px;align-items:flex-start;padding:13px 0;border-bottom:1px solid #1e293b}
 .act-avatar{width:34px;height:34px;border-radius:50%;background:#1a2234;display:flex;align-items:center;justify-content:center;font-size:.95rem;flex-shrink:0}
@@ -1164,7 +1169,7 @@ body.light .btn-icon{stroke:currentColor}
 ::-webkit-scrollbar-thumb{background:#1e293b;border-radius:99px}
 ::-webkit-scrollbar-thumb:hover{background:#334155}
 /* ── Nav section labels ───────────────────────────────────────────────────── */
-.nav-section-label{padding:14px 20px 4px;font-size:.65rem;font-weight:700;color:var(--texto-apenas);text-transform:uppercase;letter-spacing:1px}
+.nav-section-label{padding:14px 20px 4px;font-size:.65rem;font-weight:700;color:var(--texto-debil);text-transform:uppercase;letter-spacing:1px}
 /* ── Notes inline ─────────────────────────────────────────────────────────── */
 .notes-inline{width:100%;background:transparent;border:none;border-bottom:1px solid transparent;color:#94a3b8;font-size:.78rem;font-family:'Inter',sans-serif;resize:none;outline:none;min-height:22px;line-height:1.4;padding:2px 4px;border-radius:4px;transition:all .15s}
 .notes-inline:hover{background:#0d1525;border-bottom-color:#1e293b}

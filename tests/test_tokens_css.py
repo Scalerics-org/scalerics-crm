@@ -73,11 +73,13 @@ def test_la_rampa_de_grises_se_invierte(oscuro, claro):
     en #475569 — se cruzan. Si alguien "simplifica" los tokens igualando estos
     dos valores, el tema claro pierde la jerarquía entre texto tenue y texto
     apenas visible, y no lo nota ningún otro test.
+
+    La otra mitad del cruce era `--texto-apenas` (#475569 -> #94a3b8), que se
+    fundió en `--texto-debil` el 11/9. El cruce sigue estando en los pares de
+    las reglas viejas: por eso migrar por hex sigue siendo peligroso.
     """
     assert oscuro["--texto-tenue"] == "#94a3b8"
     assert claro["--texto-tenue"] == "#475569"
-    assert oscuro["--texto-apenas"] == "#475569"
-    assert claro["--texto-apenas"] == "#94a3b8"
 
 
 def test_los_dos_temas_son_de_verdad_distintos(oscuro, claro):
@@ -495,9 +497,8 @@ def test_el_texto_llega_a_4_5_en_oscuro_sobre_todas_las_superficies(oscuro, toke
     3,07:1 sobre el relleno de chips. #8190a6 es el gris más oscuro de la misma
     familia que llega a 4,5 sobre las cuatro.
 
-    `--texto-apenas` NO está en la lista a propósito: da 2,27:1 en oscuro y
-    2,56:1 en claro. Es el de los rótulos en mayúscula (encabezados de tabla,
-    "GESTIÓN" del sidebar); queda pendiente de decisión.
+    `--texto-apenas` ya no existe: daba 2,27:1 en oscuro y 2,56:1 en claro, y
+    se fundió en `--texto-debil` el 11/9 (ver el test de abajo).
     """
     for superficie in ("--superficie", "--fondo", "--fondo-hundido", "--relleno"):
         c = _contraste(oscuro[token], oscuro[superficie])
@@ -506,9 +507,23 @@ def test_el_texto_llega_a_4_5_en_oscuro_sobre_todas_las_superficies(oscuro, toke
 
 @pytest.mark.parametrize("token", TEXTO)
 def test_el_texto_llega_a_4_5_en_claro(claro, token):
-    """En claro se mide contra la superficie y el fondo, donde vive el texto.
-    Sobre los tintes grises (#f1f5f9), `--texto-debil` da 4,34: anotado, no
-    se tocó el tema claro en este cambio."""
-    for superficie in ("--superficie", "--fondo"):
+    """En claro, sobre las cuatro superficies. `--texto-debil` daba 4,34 sobre
+    los tintes grises (#f1f5f9, donde van los encabezados de tabla): pasó de
+    #64748b a #627188 (ΔE 1,2, no se nota) y ahora da 4,52."""
+    for superficie in ("--superficie", "--fondo", "--fondo-hundido", "--relleno"):
         c = _contraste(claro[token], claro[superficie])
         assert c >= 4.5, f"{token} sobre {superficie} en claro: {c:.2f}:1"
+
+
+def test_texto_apenas_se_fundio_en_texto_debil(oscuro, claro):
+    """Un tercer gris "más apagado que el débil" no puede pasar 4,5:1 donde se
+    usaba: en oscuro el mínimo es prácticamente `--texto-debil`, y en claro,
+    sobre el gris de los encabezados de tabla, tendría que ser MÁS oscuro que
+    él — la jerarquía quedaba al revés. Los rótulos en mayúscula ya se
+    distinguen por tipografía (mayúscula, negrita, espaciado, tamaño).
+
+    Si vuelve `--texto-apenas`, vuelve un texto que no se lee.
+    """
+    assert "--texto-apenas" not in oscuro and "--texto-apenas" not in claro
+    assert "var(--texto-apenas)" not in dashboard.DASHBOARD_HTML
+    assert claro["--texto-debil"] == "#627188"
