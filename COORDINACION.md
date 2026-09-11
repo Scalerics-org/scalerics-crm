@@ -181,6 +181,13 @@ leads de Meta se renombró a **D** para deshacer el empate.
 >    perfil" son `<a>` con `border:1px solid #1e293b` inline, y en claro tenian
 >    el borde oscuro desde siempre. Un `var(--borde)` inline si cambia con el
 >    tema.
+> 4. **Un `!important` tambien le gana.** En el celular las filas de tabla
+>    son tarjetas con `background:#111827!important`, y un `!important` le
+>    gana a cualquier `body.light` que no lo sea: en claro, las tarjetas eran
+>    oscuras sobre la pagina clara, desde antes de esta migracion. Antes de
+>    borrar una regla clara, buscar tambien adentro de los `@media`: ahi
+>    estaban las 5 que faltaban, y ninguna aparecia buscando reglas al
+>    principio de linea.
 >
 > Tokens nuevos: `--hover` y `--texto-fuerte` (#fff / #0f172a, el par aparece 7
 > veces: nav activo, los h1 de pagina y de panel, `.stat-val`, el nombre del

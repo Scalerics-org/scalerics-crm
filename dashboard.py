@@ -445,16 +445,16 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
   .table-header{display:none!important}
   .table-row,.table-row.no-cb{
     display:flex!important;flex-direction:column!important;gap:6px;
-    padding:14px 16px!important;background:#111827!important;
-    border:1px solid #1e293b!important;border-radius:14px!important;
+    padding:14px 16px!important;background:var(--superficie)!important;
+    border:1px solid var(--borde)!important;border-radius:14px!important;
     margin-bottom:10px;grid-template-columns:none!important;
     align-items:stretch!important;
   }
-  .table-row:last-child{border-bottom:1px solid #1e293b!important}
-  .table-row:hover{background:#141d2e!important}
+  .table-row:last-child{border-bottom:1px solid var(--borde)!important}
+  .table-row:hover{background:var(--hover)!important}
   /* no-cb: col1=nombre, col2=fuente, col3=estado, col4+=ocultar, last=acciones */
   .table-row.no-cb>div:nth-child(1){order:1}
-  .table-row.no-cb>div:nth-child(2){order:3;font-size:.72rem!important;color:#64748b!important}
+  .table-row.no-cb>div:nth-child(2){order:3;font-size:.72rem!important;color:var(--texto-debil)!important}
   .table-row.no-cb>div:nth-child(3){order:2;display:flex!important;align-items:center;gap:8px;flex-wrap:wrap}
   .table-row.no-cb>div:nth-child(4){display:none!important}
   .table-row.no-cb>div:last-child:not(:nth-child(1)):not(:nth-child(2)):not(:nth-child(3)){order:10;display:flex!important;gap:8px;flex-wrap:wrap;margin-top:4px}
@@ -468,7 +468,7 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
   .table-row:not(.no-cb):not(.tbl-cli)>div:last-child button{min-height:40px!important;flex:1}
   /* Clientes activos: en columna, cada select con su rol arriba. Sin la
      etiqueta son tres desplegables identicos y no se sabe cual es cual. */
-  .table-row.tbl-cli>div[data-rol]::before{content:attr(data-rol);display:block;font-size:.65rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.6px;margin-bottom:3px}
+  .table-row.tbl-cli>div[data-rol]::before{content:attr(data-rol);display:block;font-size:.65rem;font-weight:700;color:var(--texto-debil);text-transform:uppercase;letter-spacing:.6px;margin-bottom:3px}
   .table-row.tbl-cli>div:last-child button{min-height:40px!important;width:100%}
   /* Meta panel: 7 cols — ocultar 5 y 6 que son metadata extra */
   #meta-panel .table-row.no-cb>div:nth-child(5),

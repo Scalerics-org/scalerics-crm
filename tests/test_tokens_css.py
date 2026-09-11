@@ -232,3 +232,39 @@ def test_el_hover_de_fila_le_gana_a_los_tintes_de_estado_en_claro():
     assert re.search(
         r"^\.table-row:hover,body\.light \.table-row:hover\{background:var\(--hover\)\}",
         dashboard.DASHBOARD_HTML, re.M)
+
+
+def test_las_tablas_del_celular_tambien_usan_tokens():
+    """El bug que el sidebar no tenía y las tablas sí.
+
+    Adentro de `@media(max-width:768px)` las filas se vuelven tarjetas con
+    colores fijos y `!important`: `background:#111827!important`. Un
+    `!important` le gana a cualquier `body.light` que no lo sea, así que en el
+    celular, en tema claro, las tarjetas eran oscuras sobre la página clara.
+    No lo había roto ninguna migración: estaba así desde antes.
+
+    El `!important` se queda (sirve para pisar el layout de escritorio); lo
+    que no puede ir es un color fijo adentro, porque ese no cambia con el tema.
+
+    Los regex van sin barras invertidas a propósito: una `\b` escrita desde
+    un script llegó una vez como un carácter de retroceso, y el test pasaba
+    sin probar nada.
+    """
+    css = chr(10).join(re.findall(r"<style[^>]*>(.*?)</style>",
+                                  dashboard.DASHBOARD_HTML, re.S))
+    inicio = css.index("@media(max-width:768px){")
+    prof, i = 0, inicio
+    while True:
+        prof += {"{": 1, "}": -1}.get(css[i], 0)
+        i += 1
+        if prof == 0 and css[i - 1] == "}":
+            break
+    bloque = css[inicio:i]
+
+    hex_fijo = "#[0-9a-fA-F]{3,8}(?![0-9a-zA-Z])"
+    fijos = [sel.strip()[:60]
+             for sel, cuerpo in re.findall("([^{}]+)[{]([^{}]*)[}]", bloque)
+             if ".table-row" in sel and re.search(hex_fijo, cuerpo)]
+
+    assert ".table-row" in bloque, "no encontré las reglas de tabla del celular"
+    assert not fijos, f"reglas de tabla del celular con color fijo: {fijos}"
