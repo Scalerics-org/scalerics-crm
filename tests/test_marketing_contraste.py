@@ -56,10 +56,10 @@ def contraste(a, b):
 PARES = [
     ("texto de tabla sobre la tarjeta", "--texto", "--superficie", PISO_TEXTO),
     ("cuerpo del informe", "--texto-tenue", "--superficie", PISO_TEXTO),
-    ("encabezado de tabla y rotulos", "--texto-tenue", "--superficie", PISO_TEXTO),
+    ("encabezado de tabla y rotulos", "--rotulo", "--superficie", PISO_TEXTO),
     ("mensaje de vacio", "--texto-tenue", "--superficie", PISO_TEXTO),
     ("citas de metricas", "--texto-tenue", "--superficie", PISO_TEXTO),
-    ("chip sobre su fondo", "--texto-tenue", "--hover", PISO_TEXTO),
+    ("chip sobre su fondo", "--rotulo", "--hover", PISO_TEXTO),
     ("input del filtro", "--texto", "--fondo-hundido", PISO_TEXTO),
     ("aviso ambar", "--ambar", "--superficie", PISO_COMPONENTE),
     ("delta bueno", "--verde", "--superficie", PISO_COMPONENTE),
@@ -95,8 +95,13 @@ def test_el_rotulo_ya_alcanza_para_texto():
     assert c >= PISO_TEXTO, (
         f"--rotulo da {c:.2f}:1 en oscuro: volvio a no alcanzar para texto")
 
+    # Con --rotulo ya legible, los rotulos de verdad volvieron a usarlo: es su
+    # token por nombre y el que usa Finanzas para lo mismo, asi que un `th` se ve
+    # igual en los dos paneles. La prosa —el cuerpo del informe, las notas, las
+    # citas— se queda en --texto-tenue, que es mas suave a proposito.
     reglas = re.findall(r"^(\.sc-[^{]*)\{([^}]*)\}", dashboard.DASHBOARD_HTML, re.M)
-    con_rotulo = [sel.strip() for sel, cuerpo in reglas if "--rotulo" in cuerpo]
-    assert con_rotulo == [".sc-hallazgo"], (
-        f"--rotulo aparece en {con_rotulo}; solo puede estar en el borde del "
-        "hallazgo, que no es texto")
+    con_rotulo = {sel.strip() for sel, cuerpo in reglas if "--rotulo" in cuerpo}
+    esperados = {".sc-hallazgo", ".sc-filtro label", ".sc-tabla th",
+                 ".sc-bloque>.sc-sub", ".sc-chip"}
+    assert con_rotulo == esperados, (
+        f"--rotulo esta en {sorted(con_rotulo)} y se esperaba {sorted(esperados)}")
