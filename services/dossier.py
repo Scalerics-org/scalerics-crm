@@ -669,6 +669,88 @@ def llegada_de_leads(db_path: str, desde: str, hasta: str) -> dict:
     }
 
 
+_MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio",
+          "Agosto", "Setiembre", "Octubre", "Noviembre", "Diciembre"]
+
+
+def serie_mensual(db_path: str, desde: str, hasta: str) -> list:
+    """Mes a mes: leads, demos, ventas y gasto, para verlos uno al lado del otro.
+
+    La serie semanal contesta "como viene esta semana". Con un periodo corto son
+    dos o tres puntos, y una linea de tres puntos no se lee: parece que falta
+    algo. La pregunta que se hace mirando el panel casi siempre es mensual.
+
+    Los meses del medio salen aunque esten vacios. Un mes sin leads entre dos
+    con leads es justo lo que hay que ver; saltearlo hace que el grafico mienta
+    sobre el ritmo.
+
+    `ventas` son los cierres, y se llaman asi porque es como los llama el equipo
+    y como figuran en la planilla.
+    """
+    from services.embudo import alcanzo, costo
+
+    conn = _connect(db_path)
+    try:
+        leads = conn.execute(
+            "SELECT id, scraped_at FROM businesses WHERE source = 'meta' "
+            "AND substr(scraped_at, 1, 10) BETWEEN ? AND ?",
+            (desde, hasta)).fetchall()
+        eventos_filas = conn.execute(
+            "SELECT lead_id, new_status FROM lead_events").fetchall()
+        gasto_filas = conn.execute(
+            "SELECT substr(date, 1, 7) AS periodo, SUM(spend) AS gasto "
+            "FROM meta_insights WHERE date BETWEEN ? AND ? GROUP BY 1",
+            (desde, hasta)).fetchall()
+    finally:
+        conn.close()
+
+    eventos = {}
+    for fila in eventos_filas:
+        eventos.setdefault(fila["lead_id"], set()).add(fila["new_status"])
+
+    meses = {}
+
+    def _slot(periodo):
+        return meses.setdefault(periodo, {
+            "periodo": periodo, "nombre": None, "leads": 0, "demos": 0,
+            "ventas": 0, "gasto": 0.0, "cpl": None, "costo_demo": None,
+            "costo_venta": None})
+
+    for lead in leads:
+        s = _slot(str(lead["scraped_at"])[:7])
+        s["leads"] += 1
+        ev = eventos.get(lead["id"], set())
+        if alcanzo(ev, "demo_1"):
+            s["demos"] += 1
+        if alcanzo(ev, "cerrado"):
+            s["ventas"] += 1
+
+    for fila in gasto_filas:
+        _slot(fila["periodo"])["gasto"] += float(fila["gasto"] or 0)
+
+    if not meses:
+        return []
+
+    # Rellenar los huecos: de la primera a la ultima, mes por mes.
+    orden = sorted(meses)
+    y0, m0 = (int(x) for x in orden[0].split("-"))
+    y1, m1 = (int(x) for x in orden[-1].split("-"))
+    salida = []
+    y, m = y0, m0
+    while (y, m) <= (y1, m1):
+        s = _slot("%04d-%02d" % (y, m))
+        s["gasto"] = round(s["gasto"], 2)
+        s["nombre"] = _MESES[m - 1]
+        s["cpl"] = costo(s["gasto"], s["leads"])
+        s["costo_demo"] = costo(s["gasto"], s["demos"])
+        s["costo_venta"] = costo(s["gasto"], s["ventas"])
+        salida.append(s)
+        m += 1
+        if m > 12:
+            y, m = y + 1, 1
+    return salida
+
+
 def conciliacion(db_path: str, desde: str, hasta: str) -> list:
     """Lo que Meta cobro contra lo que se cargo a mano en Finanzas.
 

@@ -1335,6 +1335,17 @@ body.light .mobile-header-title{color:#0f172a}
 .sc-hall-n{font-size:.8rem;font-weight:700;color:var(--rotulo);font-variant-numeric:tabular-nums;min-width:18px}
 .sc-hall-tit{font-size:.84rem;font-weight:700;color:var(--texto);margin-bottom:4px}
 .sc-hall-cuerpo{font-size:.79rem;line-height:1.55;color:var(--texto-tenue)}
+.sc-barras{display:grid;gap:7px;margin-top:8px}
+.sc-barras-ayuda{font-size:.72rem;line-height:1.5;margin:2px 0 4px;max-width:74ch}
+/* Varios graficos seguidos dentro del mismo bloque: sin esto se pegan y se
+   leen como uno solo con el titulo en el medio. */
+.sc-panel-serie+.sc-panel-serie{margin-top:24px;padding-top:20px;border-top:1px solid var(--borde)}
+.sc-barra-fila{display:grid;grid-template-columns:minmax(120px,1.1fr) 3fr auto;gap:10px;align-items:center}
+.sc-barra-nom{font-size:.76rem;color:var(--texto-tenue);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sc-barra-pista{height:12px;border-radius:6px;overflow:hidden;display:block}
+.sc-barra-lleno{display:block;height:100%;border-radius:6px}
+.sc-barra-val{font-size:.78rem;font-weight:700;color:var(--texto);font-variant-numeric:tabular-nums;white-space:nowrap}
+.sc-barra-nota{font-size:.66rem;font-weight:400;color:var(--rotulo);margin-left:6px}
 .sc-leyenda{display:flex;flex-wrap:wrap;gap:14px;margin-top:8px;padding-left:52px}
 .sc-leyenda-item{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;color:var(--rotulo)}
 .sc-leyenda-punto{width:10px;height:10px;border-radius:3px;flex-shrink:0}
@@ -1395,6 +1406,41 @@ body.light .mobile-header-title{color:#0f172a}
 .sc-citas{font-size:.66rem;color:var(--texto-tenue);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-all}
 .sc-cambios{border-top:1px solid var(--borde);margin-top:14px;padding-top:12px}
 .sc-cambios li{font-size:.8rem;color:var(--texto-tenue);line-height:1.6;margin-bottom:3px}
+/* Los numeros crudos: densos a proposito, pero por grupos y con filtro.
+   Antes eran ~70 filas seguidas con la etiqueta "Gasto" repetida una vez por
+   campana y nada que dijera a cual pertenecia cada una. */
+.sc-crudos-abrir{cursor:pointer;color:var(--azul);font-size:.8rem;font-weight:600;padding:4px 0}
+.sc-crudos-barra{margin:12px 0 6px}
+.sc-crudos-buscar{width:100%;max-width:340px;background:var(--fondo-hundido);border:1px solid var(--borde);border-radius:8px;padding:7px 10px;color:var(--texto);font-size:.8rem;font-family:'Inter',sans-serif}
+.sc-crudo-grupo{margin-top:18px}
+.sc-crudo-cab{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;padding-bottom:6px;margin-bottom:2px;border-bottom:1px solid var(--borde)}
+.sc-crudo-rotulo{font-size:.62rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--rotulo);background:var(--hover);padding:2px 7px;border-radius:5px}
+.sc-crudo-tit{font-size:.86rem;font-weight:700;color:var(--texto)}
+.sc-crudo-n{font-size:.68rem;color:var(--rotulo);margin-left:auto}
+.sc-crudo-grupo .sc-tabla tbody tr:nth-child(odd){background:var(--fondo-hundido)}
+/* Ancho fijo: con `auto` cada grupo calcula sus columnas por su contenido y
+   la columna "Valor" queda en una x distinta en cada tabla. Al recorrerlas
+   una abajo de la otra eso se lee como desprolijidad. */
+.sc-crudo-grupo .sc-tabla{table-layout:fixed}
+.sc-crudo-grupo .sc-tabla th:nth-child(1),.sc-crudo-grupo .sc-tabla td:nth-child(1){width:30%;overflow:hidden;text-overflow:ellipsis}
+.sc-crudo-grupo .sc-tabla th:nth-child(2){width:11%}
+.sc-crudo-grupo .sc-tabla th:nth-child(3){width:19%}
+.sc-crudo-grupo .sc-tabla th:nth-child(4){width:12%}
+.sc-crudo-grupo .sc-tabla th:nth-child(5){width:10%}
+.sc-crudo-val{font-weight:700}
+.sc-crudo-fuente{font-size:.64rem;letter-spacing:.03em;text-transform:uppercase;color:var(--rotulo)}
+.sc-crudo-chip{font-size:.62rem;color:var(--ambar);background:rgba(245,158,11,.13);padding:1px 6px;border-radius:4px;margin-left:6px}
+/* El delta va sin color a proposito: subir es bueno en `leads` y malo en
+   `cpl`, y aca la metrica no trae para que lado es mejor. Pintarlo de verde
+   por subir mentiria en la mitad de las filas. El signo alcanza. */
+.sc-crudo-delta[data-signo="sin_comparacion"]{color:var(--rotulo);font-size:.7rem}
+/* La plata: primero la respuesta, despues como se llego a ella. */
+.sc-plata-resumen{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:12px}
+.sc-plata-resumen .sc-tile{background:var(--fondo-hundido)}
+.sc-plata-resumen .sc-tile[data-estado="alerta"] .sc-tile-valor{color:var(--rojo)}
+.sc-plata-resumen .sc-tile[data-estado="ok"] .sc-tile-valor{color:var(--verde)}
+.sc-plata-veredicto{font-size:.82rem;line-height:1.6;color:var(--texto-tenue);border-left:3px solid var(--verde);padding-left:12px;margin-bottom:18px}
+.sc-plata-veredicto[data-estado="alerta"]{border-left-color:var(--rojo);color:var(--texto)}
 .sc-rank-invertido{color:var(--ambar);font-weight:700}
 .sc-rank-pos{display:inline-block;min-width:18px;font-variant-numeric:tabular-nums;color:var(--texto-tenue)}
 .sc-nota{font-size:.74rem;color:var(--texto-tenue);line-height:1.55;margin-top:10px}
@@ -1978,8 +2024,14 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       </div>
 
       <div class="sc-bloque">
+        <h3>Mes a mes</h3>
+        <div class="sc-sub">Leads, demos y ventas de cada mes, uno al lado del otro. Los meses vacíos también aparecen: un mes sin nada entre dos con actividad es justo lo que hay que ver.</div>
+        <div id="mk-mensual"></div>
+      </div>
+
+      <div class="sc-bloque">
         <h3>Semana a semana</h3>
-        <div class="sc-sub">Grano semanal a propósito: con poco más de un lead por día, un gráfico diario son picos y ceros.</div>
+        <div class="sc-sub">El detalle fino, para ver dentro del mes. Barras y no líneas: con pocas semanas una línea parece que le falta algo.</div>
         <div id="mk-series"></div>
       </div>
 
@@ -1991,13 +2043,13 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 
       <div class="sc-bloque">
         <h3>Cómo evoluciona cada campaña</h3>
-        <div class="sc-sub">Una campaña que se pone cara queda tapada en el promedio si otra mejora al mismo tiempo. Acá cada una va por su lado, sobre el mismo eje.</div>
+        <div class="sc-sub">Una campaña que se pone cara queda tapada en el promedio si otra mejora al mismo tiempo. Acá cada semana tiene una barra por campaña, todas sobre el mismo eje. Las semanas sin barra son semanas en las que esa campaña no gastó.</div>
         <div id="mk-evolucion"></div>
       </div>
 
       <div class="sc-bloque">
         <h3>Cuánto costó llegar hasta acá</h3>
-        <div class="sc-sub">Gasto y leads acumulados desde el inicio del período. Son dos escalas distintas, así que van en dos gráficos y no en dos ejes: un eje doble hace que cualquier par de curvas parezca que se cruza donde uno quiera.</div>
+        <div class="sc-sub">Cada barra es el total corrido hasta esa semana, no lo de la semana: por eso nunca bajan. Gasto y leads van en dos gráficos y no en dos ejes, porque un eje doble hace que cualquier par de series parezca cruzarse donde uno quiera.</div>
         <div id="mk-acumulado"></div>
       </div>
 
@@ -2009,7 +2061,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 
       <div class="sc-bloque">
         <h3>Por campaña</h3>
-        <div class="sc-sub">La línea sobre cada barra es el intervalo de confianza. Cuando dos se superponen, la diferencia entre esas campañas no significa nada.</div>
+        <div class="sc-sub">Cuatro preguntas, una barra por campaña en cada una. Al lado del número dice sobre cuántos leads se calculó: cuando dice «muestra chica» la diferencia con la de al lado puede ser casualidad.</div>
         <div id="mk-campanas"></div>
       </div>
 
@@ -2033,15 +2085,22 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 
       <div class="sc-bloque">
         <h3>La plata</h3>
-        <div class="sc-sub">Lo que Meta dice que cobró contra lo que está cargado en Finanzas. La brecha dice si la contabilidad está viendo todo el gasto de pauta.</div>
+        <div class="sc-sub">Lo que Meta dice que cobró contra lo que está cargado en Finanzas. Si Finanzas no ve toda la pauta, el costo de cada venta se calcula sobre menos plata de la que se gastó y sale más barato de lo que fue.</div>
         <div id="mk-conciliacion"></div>
       </div>
 
       <div class="sc-bloque">
         <h3>Los números crudos</h3>
-        <div class="sc-sub">Cada métrica del dossier con su numerador, denominador y muestra. Es lo que permite auditar cualquier número de arriba.</div>
-        <details><summary style="cursor:pointer;color:#0088cc;font-size:.8rem">Ver la tabla</summary>
-          <div class="sc-tabla-wrap" id="mk-tabla" style="margin-top:12px"></div></details>
+        <div class="sc-sub">Cada métrica del dossier con su numerador, denominador y muestra, agrupada por de dónde sale. Es lo que permite ir a cualquier número de arriba y comprobarlo.</div>
+        <details><summary class="sc-crudos-abrir">Ver todas las métricas</summary>
+          <div class="sc-crudos-barra">
+            <input type="search" id="mk-tabla-buscar" class="sc-crudos-buscar"
+                   placeholder="Filtrar por nombre de métrica…"
+                   oninput="_mkFiltrarCrudos()" autocomplete="off">
+          </div>
+          <div id="mk-tabla"></div>
+          <div id="mk-tabla-nada" class="sc-vacio" style="display:none">Ninguna métrica coincide con el filtro.</div>
+        </details>
       </div>
     </div>
   </div>
@@ -7821,21 +7880,65 @@ function _mkPintar() {
     SC.embudoReal(delCrm.map(e => ({ clave: e.clave, etiqueta: e.etiqueta, n: e.valor })),
                   { etiqueta: 'Embudo', ancho: 620, altoEtapa: 52 }, tema);
 
-  // ── Series semanales ───────────────────────────────────────────────────
+  // ── Mes a mes ──────────────────────────────────────────────────────────
+  //
+  // Barras agrupadas y no líneas: lo que se compara son magnitudes en
+  // categorías discretas —doce meses, no un continuo— y además se quiere
+  // comparar las tres series entre sí dentro de cada mes.
+  //
+  // Leads, demos y ventas comparten eje porque son la misma naturaleza: cuentas
+  // de personas. El gasto va aparte, abajo: meter dólares y personas en la
+  // misma escala haría que una de las dos sea invisible.
+  const meses = _mkDossier.serie_mensual || [];
+  const periodosMes = meses.map(m => ({ clave: m.periodo, etiqueta: m.nombre }));
+  const valoresDe = clave => Object.fromEntries(meses.map(m => [m.periodo, m[clave]]));
+  document.getElementById('mk-mensual').innerHTML = meses.length
+    ? SC.barrasAgrupadas(periodosMes, [
+        { etiqueta: 'Leads',  valores: valoresDe('leads'),
+          color: SC.colorDeEtapa('leads', tema) },
+        { etiqueta: 'Demos',  valores: valoresDe('demos'),
+          color: SC.colorDeEtapa('demos', tema) },
+        { etiqueta: 'Ventas', valores: valoresDe('ventas'),
+          color: SC.colorDeEtapa('cierres', tema) },
+      ], { etiqueta: 'Leads, demos y ventas por mes', formato: 'numero' }, tema)
+      + SC.barrasAgrupadas(periodosMes, [
+        { etiqueta: 'Gasto', valores: valoresDe('gasto'),
+          color: SC.PALETA[tema][0] },
+      ], { etiqueta: 'Gasto por mes', formato: 'moneda' }, tema)
+    : '<div class="sc-vacio">Sin actividad en el período.</div>';
+
+  // ── Semana a semana ────────────────────────────────────────────────────
   const semanas = _mkDossier.serie_semanal || [];
-  const pares = [
-    [['leads_crm', 'Leads por semana', 'numero'], ['gasto', 'Gasto por semana', 'moneda']],
-    [['impresiones', 'Impresiones por semana', 'numero'], ['clics', 'Clics por semana', 'numero']],
-    [['cpl', 'Costo por lead, por semana', 'moneda'], null]
-  ];
-  document.getElementById('mk-series').innerHTML = pares.map(([a, b]) => {
-    const arma = ([clave, etiqueta, formato]) => ({
-      etiqueta, formato,
-      puntos: semanas.map(s => ({ x: nombreSemana[s.inicio] || s.semana, y: s[clave] === undefined ? null : s[clave] }))
-    });
-    return b ? SC.parApilado(arma(a), arma(b), tema)
-             : SC.serie(arma(a).puntos, arma(a), tema);
-  }).join('');
+  const periodosSem = semanas.map(s => ({
+    // "Semana 1" entero y no "S1": abreviarlo lo devuelve al problema que
+    // tenia "W36", que era justamente que hay que traducirlo.
+    clave: s.inicio, etiqueta: nombreSemana[s.inicio] || s.semana,
+  }));
+  const porSem = clave => Object.fromEntries(
+    semanas.map(s => [s.inicio, s[clave] === undefined ? null : s[clave]]));
+  document.getElementById('mk-series').innerHTML = semanas.length
+    ? SC.barrasAgrupadas(periodosSem, [
+        { etiqueta: 'Leads', valores: porSem('leads_crm'),
+          color: SC.colorDeEtapa('leads', tema) },
+      ], { etiqueta: 'Leads por semana', formato: 'numero' }, tema)
+      + SC.barrasAgrupadas(periodosSem, [
+        { etiqueta: 'Gasto', valores: porSem('gasto'), color: SC.PALETA[tema][0] },
+      ], { etiqueta: 'Gasto por semana', formato: 'moneda' }, tema)
+      + SC.barrasAgrupadas(periodosSem, [
+        { etiqueta: 'Costo por lead', valores: porSem('cpl'),
+          color: SC.PALETA[tema][1] },
+      ], { etiqueta: 'Costo por lead, por semana', formato: 'moneda' }, tema)
+      // Clics e impresiones van en gráficos separados y no en uno: son 5.000
+      // contra 150, y sobre el mismo eje la barra de clics desaparece. Y un
+      // eje doble haría que se cruzaran donde uno elija la escala.
+      + SC.barrasAgrupadas(periodosSem, [
+        { etiqueta: 'Clics', valores: porSem('clics'), color: SC.PALETA[tema][2] },
+      ], { etiqueta: 'Clics por semana', formato: 'numero' }, tema)
+      + SC.barrasAgrupadas(periodosSem, [
+        { etiqueta: 'Impresiones', valores: porSem('impresiones'),
+          color: SC.PALETA[tema][3] },
+      ], { etiqueta: 'Impresiones por semana', formato: 'numero' }, tema)
+    : '<div class="sc-vacio">Sin semanas con datos en el período.</div>';
 
   // ── Por campaña ────────────────────────────────────────────────────────
   const campanas = (_mkDossier.campanas || []).filter(b => b.campana !== 'todas');
@@ -7887,17 +7990,42 @@ function _mkPintar() {
   const conGastoSem = porSemana.filter(s =>
     (s.puntos || []).some(p => p.gasto > 0));
 
-  const evolucion = [
-    ['costo_demo', 'Costo por demo, semana a semana', 'moneda'],
-    ['cpl', 'Costo por lead, semana a semana', 'moneda'],
-    ['gasto', 'Gasto por semana', 'moneda'],
-  ].map(([campo, titulo, formato]) => SC.serieMulti(
-    conGastoSem.map(s => ({
-      campana: s.campana,
-      puntos: (s.puntos || []).map(p => ({ x: nombreSemana[p.inicio] || p.semana, y: p[campo] })),
-    })), { etiqueta: titulo, formato }, tema)).join('');
+  // Barras agrupadas y no líneas. Un mes arranca con dos semanas cerradas: una
+  // línea de dos puntos es un segmento, y un segmento no muestra tendencia,
+  // muestra que faltan datos. Una barra se lee sola aunque sea la única.
+  //
+  // Las semanas salen de la unión de todas las campañas y no de la primera:
+  // una campaña que arrancó tarde no tiene que recortar el eje de las demás.
+  const semanasDe = (series) => {
+    const vistas = new Map();
+    series.forEach(s => (s.puntos || []).forEach(p => {
+      if (!vistas.has(p.inicio)) {
+        vistas.set(p.inicio, { clave: p.inicio,
+                               etiqueta: nombreSemana[p.inicio] || p.semana });
+      }
+    }));
+    return [...vistas.values()].sort((a, b) => a.clave < b.clave ? -1 : 1);
+  };
+
+  const seriesDe = (series, campo) => series.map(s => {
+    const valores = {};
+    (s.puntos || []).forEach(p => {
+      if (p[campo] !== null && p[campo] !== undefined) valores[p.inicio] = p[campo];
+    });
+    return { etiqueta: s.campana, color: SC.colorDeCampana(s.campana, 0, tema),
+             valores };
+  });
+
+  const porSemanaAgrupado = (campo, titulo, formato) => SC.barrasAgrupadas(
+    semanasDe(conGastoSem), seriesDe(conGastoSem, campo),
+    // Con más de dos campañas las barras quedan finas y el número arriba se
+    // pisa con el de al lado; ahí gana el tooltip.
+    { etiqueta: titulo, formato, numeros: conGastoSem.length <= 2 }, tema);
+
   document.getElementById('mk-evolucion').innerHTML = conGastoSem.length
-    ? evolucion
+    ? porSemanaAgrupado('costo_demo', 'Costo por demo, semana a semana', 'moneda') +
+      porSemanaAgrupado('cpl', 'Costo por lead, semana a semana', 'moneda') +
+      porSemanaAgrupado('gasto', 'Gasto por semana', 'moneda')
     : '<div class="sc-vacio">Hace falta gasto sincronizado para ver la evolución.</div>';
 
   // ── Cuánto costó llegar hasta acá ──────────────────────────────────────
@@ -7906,12 +8034,8 @@ function _mkPintar() {
   // donde uno elija la escala, y el cruce parece significar algo cuando no
   // significa nada.
   document.getElementById('mk-acumulado').innerHTML = conGastoSem.length
-    ? [['gasto_acum', 'Gasto acumulado', 'moneda'],
-       ['leads_acum', 'Leads acumulados', 'numero']].map(([campo, titulo, formato]) =>
-        SC.serieMulti(conGastoSem.map(s => ({
-          campana: s.campana,
-          puntos: (s.puntos || []).map(p => ({ x: nombreSemana[p.inicio] || p.semana, y: p[campo] })),
-        })), { etiqueta: titulo, formato }, tema)).join('')
+    ? porSemanaAgrupado('gasto_acum', 'Gasto acumulado', 'moneda') +
+      porSemanaAgrupado('leads_acum', 'Leads acumulados', 'numero')
     : '<div class="sc-vacio">Hace falta gasto sincronizado.</div>';
 
   // ── Qué campaña rinde de verdad ────────────────────────────────────────
@@ -7992,32 +8116,64 @@ function _mkPintar() {
           'más baratos también consigue demos más baratas.</div>');
   }
 
-  const porCampana = (suf, titulo) => {
-    const filas = campanas.map(b => ({
-      etiqueta: b.campana, campana: b.campana, metrica: _mkMetrica(b, suf)
-    })).filter(f => f.metrica)
-       .sort((x, y) => (y.metrica.valor || 0) - (x.metrica.valor || 0));
-    return `<div class="sc-titulo">${esc(titulo)}</div>` +
-           SC.barrasConIC(filas, { etiqueta: titulo }, tema);
+  // Cada metrica es una barra por campana, ordenada de mayor a menor.
+  //
+  // Antes iba con intervalos de confianza: el bigote era correcto y era
+  // ilegible. La incertidumbre no se tira, se dice con palabras al lado del
+  // numero —"sobre 12 leads"— que es lo que hace falta para saber si el numero
+  // se puede creer.
+  const porCampana = (suf, titulo, ayuda) => {
+    let fmt = 'numero';
+    const filas = campanas.map(b => {
+      const m = _mkMetrica(b, suf);
+      if (!m || m.valor === null || m.valor === undefined) return null;
+      fmt = m.formato || fmt;
+      return {
+        etiqueta: b.campana,
+        valor: m.valor,
+        color: SC.colorDeCampana(b.campana, 0, tema),
+        nota: m.n ? (m.muestra_chica
+                      ? `sobre ${m.n} · muestra chica`
+                      : `sobre ${m.n}`) : ''
+      };
+    }).filter(Boolean);
+    return SC.barrasSimples(
+      filas, { etiqueta: titulo, ayuda: ayuda, formato: fmt }, tema);
   };
   document.getElementById('mk-campanas').innerHTML =
-    porCampana('.tasa_interes', 'Tasa de interés') +
-    porCampana('.tasa_demo', 'Tasa de demo') +
-    porCampana('.cpl', 'Costo por lead') +
-    porCampana('.costo_demo', 'Costo por demo');
+    porCampana('.tasa_demo', 'Tasa de demo',
+               'De cada 100 leads que trajo la campaña, cuántos llegaron a una ' +
+               'reunión. Es la medida de si el lead sirve.') +
+    porCampana('.costo_demo', 'Costo por demo',
+               'Cuántos dólares de pauta costó cada reunión conseguida.') +
+    porCampana('.cpl', 'Costo por lead',
+               'Cuántos dólares costó cada contacto. Barato acá no significa ' +
+               'bueno: mirarlo contra la tasa de demo de arriba.') +
+    porCampana('.tasa_interes', 'Tasa de interés',
+               'Cuántos contestaron algo, aunque no hayan llegado a reunión.');
 
   // ── Segmentos declarados ───────────────────────────────────────────────
   document.getElementById('mk-segmentos').innerHTML =
     (_mkDossier.segmentos || []).map(b => {
-      const filas = b.valores.map(v => ({
-        etiqueta: v.valor_declarado,
-        metrica: v.metricas.find(m => m.id.endsWith('.tasa_demo'))
-      })).filter(f => f.metrica);
+      const filas = b.valores.map(v => {
+        const m = v.metricas.find(m => m.id.endsWith('.tasa_demo'));
+        if (!m || m.valor === null || m.valor === undefined) return null;
+        return {
+          etiqueta: v.valor_declarado,
+          valor: m.valor,
+          nota: m.n ? (m.muestra_chica
+                        ? `sobre ${m.n} · muestra chica`
+                        : `sobre ${m.n}`) : ''
+        };
+      }).filter(Boolean);
       const cola = b.valores_distintos > b.valores.length
         ? ` · ${b.valores_distintos} respuestas distintas` : '';
-      return `<div class="sc-titulo">${esc(b.etiqueta)} ` +
-             `<span style="font-weight:400;color:#64748b">(n=${b.n}${cola})</span></div>` +
-             SC.barrasConIC(filas, { etiqueta: b.etiqueta, anchoEtiqueta: 230 }, tema);
+      return SC.barrasSimples(filas, {
+        etiqueta: b.etiqueta,
+        ayuda: `Qué porcentaje de cada respuesta llegó a una reunión. ` +
+               `${b.n} respuestas${cola}.`,
+        formato: 'porcentaje'
+      }, tema);
     }).join('') || '<div class="sc-vacio">Sin respuestas de formulario en el período</div>';
 
   // ── La plata: Meta contra Finanzas ─────────────────────────────────────
@@ -8034,29 +8190,77 @@ function _mkPintar() {
       const que = m.id.split('.')[1];
       (meses[p] = meses[p] || {})[que] = m.valor;
     });
+    // Los ids traen el periodo como `2026_09`. Se muestra con el nombre del
+    // mes: "Setiembre 2026" se ubica de un vistazo y "2026_09" hay que
+    // traducirlo mentalmente cada vez. Se reusa el helper de Finanzas en vez
+    // de copiar la lista de meses por quinta vez en este archivo.
+    const nombreMes = p => _finNombreMes(p.replace('_', '-'));
+
     const filas = Object.keys(meses).sort().map(p => {
       const x = meses[p];
       const pct = x.gasto_meta ? x.brecha / x.gasto_meta : null;
       const alerta = pct !== null && pct > 0.1;
-      return `<tr><td>${esc(p.replace('_','-'))}</td>` +
+      return `<tr><td>${esc(nombreMes(p))}</td>` +
              `<td>${esc(SC.fmt(x.gasto_meta, 'moneda'))}</td>` +
              `<td>${esc(SC.fmt(x.gasto_cargado, 'moneda'))}</td>` +
              `<td style="${alerta ? 'color:var(--rojo);font-weight:600' : ''}">` +
-             `${esc(SC.fmt(x.brecha, 'moneda'))}</td></tr>`;
+             `${esc(SC.fmt(x.brecha, 'moneda'))}` +
+             (pct === null ? '' :
+              `<span class="sc-barra-nota">${esc(SC.fmt(pct, 'porcentaje'))}` +
+              ` del mes</span>`) +
+             `</td></tr>`;
     }).join('');
     const suma = k => conc.filter(m => m.id.split('.')[1] === k)
                           .reduce((a, m) => a + (m.valor || 0), 0);
-    // El grafico primero y la tabla despues: el grafico se lee de un vistazo
+
+    // Primero la respuesta, despues como se llego. Antes habia que sumar la
+    // columna de la tabla para saber cuanta plata falta registrar; ahora el
+    // numero esta arriba y la tabla queda para auditarlo.
+    const totMeta = suma('gasto_meta');
+    const totCargado = suma('gasto_cargado');
+    const totBrecha = suma('brecha');
+    const pctBrecha = totMeta ? totBrecha / totMeta : null;
+    // 10% es el mismo umbral con el que se pinta cada fila: por debajo de eso
+    // la diferencia es redondeo y tipo de cambio, no plata sin registrar.
+    const sano = pctBrecha === null || Math.abs(pctBrecha) <= 0.1;
+    const veredicto = sano
+      ? 'Finanzas está viendo prácticamente todo el gasto de pauta. ' +
+        'La diferencia entra en el redondeo.'
+      : (totBrecha > 0
+          ? `Faltan ${SC.fmt(totBrecha, 'moneda')} de pauta por cargar en ` +
+            'Finanzas. Mientras no estén, el costo real de cada venta se ve ' +
+            'más barato de lo que es.'
+          : `Hay ${SC.fmt(-totBrecha, 'moneda')} cargados de más en ` +
+            'Finanzas. Puede ser gasto de pauta de otra cuenta, o una carga ' +
+            'duplicada.');
+
+    const tile = (rotulo, valor) =>
+      `<div class="sc-tile"><div class="sc-tile-label">${esc(rotulo)}</div>` +
+      `<div class="sc-tile-valor">${esc(SC.fmt(valor, 'moneda'))}</div></div>`;
+
+    // El grafico despues del resumen y antes de la tabla: se lee de un vistazo
     // —de que lado del cero esta cada mes— y la tabla es lo que permite
     // auditarlo. Barras divergentes y no comunes: en una barra comun el signo
     // hay que leerlo en el numero; aca el lado ya lo dice.
     const divergentes = Object.keys(meses).sort().map(p => ({
-      etiqueta: p.replace('_', '-'),
+      etiqueta: nombreMes(p),
       valor: meses[p].brecha,
     }));
     document.getElementById('mk-conciliacion').innerHTML =
+      '<div class="sc-plata-resumen">' +
+      tile('Meta cobró', totMeta) +
+      tile('Cargado en Finanzas', totCargado) +
+      `<div class="sc-tile" data-estado="${sano ? 'ok' : 'alerta'}">` +
+      '<div class="sc-tile-label">Sin registrar</div>' +
+      `<div class="sc-tile-valor">${esc(SC.fmt(totBrecha, 'moneda'))}</div>` +
+      (pctBrecha === null ? '' :
+       `<div class="sc-tile-delta">${esc(SC.fmt(pctBrecha, 'porcentaje'))}` +
+       ' del gasto de Meta</div>') +
+      '</div></div>' +
+      `<div class="sc-plata-veredicto" data-estado="${sano ? 'ok' : 'alerta'}">` +
+      `${esc(veredicto)}</div>` +
       SC.barrasDivergentes(divergentes, {
-        etiqueta: 'Gasto de Meta sin registrar en Finanzas, por mes',
+        etiqueta: 'Mes a mes: qué parte del gasto no está registrada',
         formato: 'moneda',
         cero: 'coinciden',
       }, tema) +
@@ -8067,9 +8271,9 @@ function _mkPintar() {
       '<th>Mes</th><th>Según Meta</th><th>Cargado en Finanzas</th>' +
       '<th>Sin registrar</th></tr></thead><tbody>' + filas +
       `<tr style="font-weight:700"><td>Total</td>` +
-      `<td>${esc(SC.fmt(suma('gasto_meta'), 'moneda'))}</td>` +
-      `<td>${esc(SC.fmt(suma('gasto_cargado'), 'moneda'))}</td>` +
-      `<td>${esc(SC.fmt(suma('brecha'), 'moneda'))}</td></tr>` +
+      `<td>${esc(SC.fmt(totMeta, 'moneda'))}</td>` +
+      `<td>${esc(SC.fmt(totCargado, 'moneda'))}</td>` +
+      `<td>${esc(SC.fmt(totBrecha, 'moneda'))}</td></tr>` +
       '</tbody></table></div>';
   }
 
@@ -8122,26 +8326,95 @@ function _mkPintar() {
     : '<div class="sc-vacio">Sin leads en el período.</div>';
 
   // ── Tabla cruda ────────────────────────────────────────────────────────
-  const todasLasMetricas = [];
-  (_mkDossier.campanas || []).forEach(b => todasLasMetricas.push(...(b.metricas || [])));
-  (_mkDossier.segmentos || []).forEach(b => (b.valores || []).forEach(
-    v => todasLasMetricas.push(...(v.metricas || []))));
-  ['conciliacion', 'tiempos', 'recordatorios'].forEach(
-    k => todasLasMetricas.push(...(_mkDossier[k] || [])));
+  //
+  // Eran ~70 filas en una sola lista, con la etiqueta "Gasto" repetida una vez
+  // por campaña y sin nada que dijera a cuál pertenecía cada una. La densidad
+  // es a propósito —es la tabla que permite auditar cualquier número de
+  // arriba— pero la densidad sin orden no se puede leer.
+  //
+  // Los grupos salen de la estructura del dossier y no de parsear los ids: el
+  // id es un detalle de implementación y el día que cambie el formato esto
+  // seguiría "funcionando" con los títulos equivocados.
+  const grupos = [];
+  (_mkDossier.campanas || []).forEach(b => grupos.push({
+    rotulo: 'Campaña', titulo: b.campana, metricas: b.metricas || [],
+  }));
+  (_mkDossier.segmentos || []).forEach(b => {
+    const ms = [];
+    (b.valores || []).forEach(v => ms.push(...(v.metricas || [])));
+    if (ms.length) grupos.push({
+      rotulo: 'Declaró en el formulario', titulo: b.etiqueta, metricas: ms });
+  });
+  [['conciliacion', 'La plata', 'Meta contra Finanzas'],
+   ['tiempos', 'Tiempos', 'Cuánto tarda cada paso'],
+   ['recordatorios', 'Recordatorios', 'La secuencia automática'],
+  ].forEach(([clave, rotulo, titulo]) => {
+    const ms = _mkDossier[clave] || [];
+    if (ms.length) grupos.push({ rotulo, titulo, metricas: ms });
+  });
 
-  document.getElementById('mk-tabla').innerHTML =
-    '<table class="sc-tabla"><thead><tr><th>Métrica</th><th>Valor</th>' +
-    '<th>Numerador</th><th>Denominador</th><th>n</th><th>Fuente</th>' +
-    '<th>Contra el período anterior</th></tr></thead><tbody>' +
-    todasLasMetricas.map(m => {
-      const d = SC.fmtDelta(m.delta_periodo_anterior, m.formato);
-      return `<tr><td>${esc(m.etiqueta)}</td>` +
-             `<td>${esc(SC.fmt(m.valor, m.formato))}</td>` +
-             `<td>${m.numerador === null || m.numerador === undefined ? '—' : m.numerador}</td>` +
-             `<td>${m.denominador === null || m.denominador === undefined ? '—' : m.denominador}</td>` +
-             `<td>${m.n === null || m.n === undefined ? '—' : m.n}${m.muestra_chica ? ' ⚠' : ''}</td>` +
-             `<td>${esc(m.fuente)}</td><td>${esc(d.texto)}</td></tr>`;
-    }).join('') + '</tbody></table>';
+  const filaCruda = (m) => {
+    const d = SC.fmtDelta(m.delta_periodo_anterior, m.formato);
+    // El texto por el que filtra el buscador va en un data-attribute y no se
+    // lee del DOM: leerlo obligaría a recorrer celdas en cada tecla.
+    const busca = ((m.etiqueta || '') + ' ' + (m.id || '')).toLowerCase();
+    return `<tr data-busca="${esc(busca)}">` +
+           `<td>${esc(m.etiqueta)}</td>` +
+           `<td class="sc-crudo-val">${esc(SC.fmt(m.valor, m.formato))}</td>` +
+           `<td>${m.numerador === null || m.numerador === undefined ? '—' : m.numerador}` +
+           `${m.denominador === null || m.denominador === undefined
+               ? '' : ' / ' + m.denominador}</td>` +
+           `<td>${m.n === null || m.n === undefined ? '—' : m.n}` +
+           `${m.muestra_chica
+               ? '<span class="sc-crudo-chip">muestra chica</span>' : ''}</td>` +
+           `<td><span class="sc-crudo-fuente">${esc(m.fuente)}</span></td>` +
+           // `fmtDelta` devuelve el valor absoluto y el sentido por separado.
+           // Sin el signo delante, "12" no dice si subió o bajó, que es lo
+           // único que se le pide a esta columna.
+           `<td class="sc-crudo-delta" data-signo="${esc(d.signo || '')}">` +
+           `${d.signo === 'sube' ? '+' : d.signo === 'baja' ? '−' : ''}` +
+           `${esc(d.texto)}</td></tr>`;
+  };
+
+  document.getElementById('mk-tabla').innerHTML = !grupos.length
+    ? '<div class="sc-vacio">Sin métricas en el período.</div>'
+    : grupos.map(g =>
+        '<section class="sc-crudo-grupo">' +
+        '<div class="sc-crudo-cab">' +
+        `<span class="sc-crudo-rotulo">${esc(g.rotulo)}</span>` +
+        `<span class="sc-crudo-tit">${esc(g.titulo)}</span>` +
+        `<span class="sc-crudo-n">${g.metricas.length} métricas</span></div>` +
+        '<div class="sc-tabla-wrap"><table class="sc-tabla"><thead><tr>' +
+        '<th>Métrica</th><th>Valor</th><th>Numerador / denominador</th>' +
+        '<th>Muestra</th><th>Fuente</th><th>Contra el período anterior</th>' +
+        '</tr></thead><tbody>' + g.metricas.map(filaCruda).join('') +
+        '</tbody></table></div></section>').join('');
+
+  _mkFiltrarCrudos();
+}
+
+// El filtro de la tabla cruda. Esconde filas, no las borra: al vaciar la caja
+// vuelven todas sin tener que repintar el panel entero.
+function _mkFiltrarCrudos() {
+  const caja = document.getElementById('mk-tabla-buscar');
+  const q = ((caja && caja.value) || '').trim().toLowerCase();
+  const raiz = document.getElementById('mk-tabla');
+  if (!raiz) return;
+  let visibles = 0;
+  raiz.querySelectorAll('.sc-crudo-grupo').forEach(g => {
+    let vivos = 0;
+    g.querySelectorAll('tbody tr').forEach(tr => {
+      const pasa = !q || (tr.dataset.busca || '').indexOf(q) >= 0;
+      tr.style.display = pasa ? '' : 'none';
+      if (pasa) vivos++;
+    });
+    // Un grupo sin ninguna fila que pase es ruido: el título solo no dice
+    // nada y empuja hacia abajo a los que sí tienen algo.
+    g.style.display = vivos ? '' : 'none';
+    visibles += vivos;
+  });
+  const aviso = document.getElementById('mk-tabla-nada');
+  if (aviso) aviso.style.display = (q && !visibles) ? '' : 'none';
 }
 
 // ========== Activity feed ==========

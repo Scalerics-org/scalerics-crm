@@ -676,6 +676,13 @@
   // El grafico que impide decidir sobre ruido. El `n` va SIEMPRE como etiqueta
   // directa, no solo cuando la muestra es chica: es lo que deja comparar dos
   // barras sin que el largo mienta.
+  //
+  // YA NO SE USA EN EL PANEL. El bigote es correcto y resulto ilegible para
+  // quien no trabaja con intervalos todos los dias —"no los estoy logrando
+  // interpretar"— y un grafico que no se entiende no informa. El panel usa
+  // `barrasSimples`, que dice la incertidumbre con palabras: "sobre 12 ·
+  // muestra chica". Queda disponible para un informe tecnico; si vuelve al
+  // panel, vuelve el mismo problema.
 
   SC.barrasConIC = function (filas, opciones, tema) {
     opciones = opciones || {};
@@ -1024,6 +1031,177 @@
            '" style="width:100%;height:auto;max-width:' + ancho + 'px" ' +
            'role="img" aria-label="' + SC.esc(opciones.etiqueta || '') + '">' +
            piezas.join('') + '</svg></div>';
+  };
+
+
+  // ── Barras agrupadas ─────────────────────────────────────────────────────
+  //
+  // Varias medidas para cada periodo, una al lado de la otra. Es la forma
+  // correcta cuando lo que se compara son MAGNITUDES en categorias discretas
+  // —doce meses, no un continuo— y ademas se quiere comparar las series entre
+  // si dentro de cada periodo.
+  //
+  // Una linea serviria para la tendencia, pero con tres o cuatro puntos una
+  // linea se lee como si faltara algo. Barras, en cambio, se leen bien desde
+  // una sola barra.
+  //
+  // Un solo eje Y, y por eso las series tienen que ser de la misma naturaleza:
+  // leads, demos y ventas son todas cuentas de personas. Meterle el gasto acá
+  // seria mezclar dolares con personas en la misma escala.
+  SC.barrasAgrupadas = function (periodos, series, opciones, tema) {
+    opciones = opciones || {};
+    if (!periodos || !periodos.length || !series || !series.length) {
+      return '<div class="sc-vacio">Sin datos para «' +
+             SC.esc(opciones.etiqueta || '') + '»</div>';
+    }
+
+    var tinta = SC.PALETA.tinta[tema];
+    var mudo = SC.PALETA.mudo[tema];
+    var grilla = SC.PALETA.grilla[tema];
+    var fondo = SC.PALETA.fondo[tema];
+
+    var ancho = opciones.ancho || 980;
+    var alto = opciones.alto || 300;
+    var y0 = _M.arriba, y1 = alto - _M.abajo - 6;
+
+    var todos = [];
+    series.forEach(function (s) {
+      periodos.forEach(function (p) {
+        var v = s.valores[p.clave];
+        if (v !== null && v !== undefined) todos.push(v);
+      });
+    });
+    var max = todos.length ? Math.max.apply(null, todos) : 0;
+    var cortes = SC.ticks(0, max || 1, 4);
+
+    // El margen izquierdo sale de la etiqueta mas larga del eje y no de una
+    // constante: con un margen fijo, "1.234,56" se sale del viewBox por la
+    // izquierda y el numero aparece cortado.
+    var largoY = Math.max.apply(null, cortes.map(function (t) {
+      return SC.fmt(t, opciones.formato).length;
+    }));
+    var x0 = Math.max(_M.izquierda, largoY * 6 + 14);
+    var x1 = ancho - _M.derecha;
+    var ey = SC.escalaLineal([0, cortes[cortes.length - 1]], [y1, y0]);
+
+    var anchoGrupo = (x1 - x0) / periodos.length;
+    // Un respiro de 2px entre barras vecinas: pegadas se leen como una sola
+    // barra de otro color.
+    var GAP = 2;
+    // Y un tope: con una sola serie y tres periodos, el 78% del grupo son
+    // barras de 250px de ancho. Una barra asi no se lee como un dato, se lee
+    // como un bloque de color. La guia de visualizacion pide marcas finas.
+    var TOPE = opciones.anchoBarra || 46;
+    var anchoBarra = Math.min(TOPE, Math.max(
+      3, (anchoGrupo * 0.78 - GAP * (series.length - 1)) / series.length));
+
+    var piezas = [];
+
+    piezas.push('<g class="sc-eje-y">' + cortes.map(function (t) {
+      var y = ey(t);
+      return '<line x1="' + x0 + '" y1="' + y.toFixed(1) + '" x2="' + x1 +
+             '" y2="' + y.toFixed(1) + '" stroke="' + grilla + '" stroke-width="1"/>' +
+             '<text x="' + (x0 - 8) + '" y="' + (y + 4).toFixed(1) +
+             '" text-anchor="end" font-size="10" fill="' + mudo + '">' +
+             SC.esc(SC.fmt(t, opciones.formato)) + '</text>';
+    }).join('') + '</g>');
+
+    periodos.forEach(function (p, i) {
+      var centro = x0 + anchoGrupo * (i + 0.5);
+      var anchoTotal = anchoBarra * series.length + GAP * (series.length - 1);
+      var inicio = centro - anchoTotal / 2;
+
+      series.forEach(function (s, j) {
+        var v = s.valores[p.clave];
+        if (v === null || v === undefined) return;
+        var y = ey(v);
+        var x = inicio + j * (anchoBarra + GAP);
+        var h = Math.max(0, y1 - y);
+        piezas.push('<rect x="' + x.toFixed(1) + '" y="' + y.toFixed(1) +
+                    '" width="' + anchoBarra.toFixed(1) + '" height="' +
+                    h.toFixed(1) + '" rx="3" fill="' + s.color +
+                    '" stroke="' + fondo + '" stroke-width="1"><title>' +
+                    SC.esc(p.etiqueta) + ' · ' + SC.esc(s.etiqueta) + ': ' +
+                    SC.esc(SC.fmt(v, opciones.formato)) + '</title></rect>');
+        // El numero arriba de la barra: con pocas barras entra y evita tener
+        // que estimar contra la grilla.
+        if (opciones.numeros !== false && anchoBarra >= 14 && v) {
+          piezas.push('<text x="' + (x + anchoBarra / 2).toFixed(1) + '" y="' +
+                      (y - 4).toFixed(1) + '" text-anchor="middle" ' +
+                      'font-size="9" fill="' + mudo + '">' +
+                      SC.esc(SC.fmt(v, opciones.formato)) + '</text>');
+        }
+      });
+
+      piezas.push('<text x="' + centro.toFixed(1) + '" y="' + (alto - 10) +
+                  '" text-anchor="middle" font-size="10" fill="' + mudo + '">' +
+                  SC.esc(p.etiqueta) + '</text>');
+    });
+
+    // Una sola serie no lleva leyenda: el titulo ya la nombra, y un recuadro
+    // con un solo item repite el titulo y se lee como si faltaran los demas.
+    var leyenda = series.length < 2 ? '' : series.map(function (s) {
+      return '<span class="sc-leyenda-item">' +
+             '<span class="sc-leyenda-punto" style="background:' + s.color +
+             '"></span>' + SC.esc(s.etiqueta) + '</span>';
+    }).join('');
+
+    return '<div class="sc-panel-serie">' +
+           '<div class="sc-titulo" style="color:' + tinta + '">' +
+           SC.esc(opciones.etiqueta || '') + '</div>' +
+           '<svg viewBox="0 0 ' + ancho + ' ' + alto +
+           '" style="width:100%;height:auto" role="img" aria-label="' +
+           SC.esc(opciones.etiqueta || '') + '">' + piezas.join('') + '</svg>' +
+           (leyenda ? '<div class="sc-leyenda">' + leyenda + '</div>' : '') +
+           '</div>';
+  };
+
+  // Barras simples de una sola serie, ordenadas de mayor a menor.
+  //
+  // Reemplaza a `barrasConIC` en el panel: el intervalo de confianza es
+  // correcto y es ilegible para quien no lo usa todos los dias, y un grafico
+  // que no se entiende no informa. La incertidumbre no se tira: se dice con
+  // palabras —"n=12, muestra chica"— al lado del numero.
+  SC.barrasSimples = function (filas, opciones, tema) {
+    opciones = opciones || {};
+    var vivas = (filas || []).filter(function (f) {
+      return f.valor !== null && f.valor !== undefined;
+    });
+    if (!vivas.length) {
+      return '<div class="sc-vacio">Sin datos para «' +
+             SC.esc(opciones.etiqueta || '') + '»</div>';
+    }
+    vivas = vivas.slice().sort(function (a, b) { return b.valor - a.valor; });
+
+    var tinta = SC.PALETA.tinta[tema];
+    var mudo = SC.PALETA.mudo[tema];
+    var pista = SC.PALETA.grilla[tema];
+
+    var tope = Math.max.apply(null, vivas.map(function (f) { return f.valor; })) || 1;
+
+    return '<div class="sc-panel-serie">' +
+           '<div class="sc-titulo" style="color:' + tinta + '">' +
+           SC.esc(opciones.etiqueta || '') + '</div>' +
+           // La ayuda va DEBAJO del titulo: primero que grafico es, despues
+           // como leerlo. Al reves se lee la explicacion de algo que todavia
+           // no tiene nombre.
+           (opciones.ayuda
+             ? '<div class="sc-barras-ayuda" style="color:' + mudo + '">' +
+               SC.esc(opciones.ayuda) + '</div>'
+             : '') +
+           '<div class="sc-barras">' + vivas.map(function (f, i) {
+             var pct = (f.valor / tope) * 100;
+             var color = f.color || SC.colorDeCampana(f.etiqueta, i, tema);
+             return '<div class="sc-barra-fila">' +
+                    '<span class="sc-barra-nom">' + SC.esc(f.etiqueta) + '</span>' +
+                    '<span class="sc-barra-pista" style="background:' + pista + '">' +
+                    '<span class="sc-barra-lleno" style="width:' + pct.toFixed(1) +
+                    '%;background:' + color + '"></span></span>' +
+                    '<span class="sc-barra-val">' +
+                    SC.esc(SC.fmt(f.valor, opciones.formato)) +
+                    (f.nota ? '<span class="sc-barra-nota">' + SC.esc(f.nota) +
+                     '</span>' : '') + '</span></div>';
+           }).join('') + '</div></div>';
   };
 
   SC.recortar = function (texto, tope) {

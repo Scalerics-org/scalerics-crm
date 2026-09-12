@@ -31,9 +31,9 @@ sin_node = pytest.mark.skipif(shutil.which("node") is None,
 
 # Los contenedores que el pintado tiene que llenar. Si alguno queda vacío, o
 # reventó antes de llegar o se lo está dibujando en un id que no existe.
-_CONTENEDORES = ["mk-tiles", "mk-embudo", "mk-series", "mk-embudos",
-                 "mk-evolucion", "mk-acumulado", "mk-ranking", "mk-campanas",
-                 "mk-segmentos", "mk-dispersion", "mk-llegada",
+_CONTENEDORES = ["mk-tiles", "mk-embudo", "mk-mensual", "mk-series",
+                 "mk-embudos", "mk-evolucion", "mk-acumulado", "mk-ranking",
+                 "mk-campanas", "mk-segmentos", "mk-dispersion", "mk-llegada",
                  "mk-conciliacion", "mk-tabla"]
 
 
@@ -89,6 +89,17 @@ def _dossier_de_prueba():
              "leads": 5, "demos": 2, "cpl": 20.0, "costo_demo": 50.0,
              "gasto_acum": 100.0 * (i + 1), "leads_acum": 5 * (i + 1)}
             for i, s in enumerate(semanas)]}],
+        "serie_mensual": [
+            {"periodo": "2026-07", "nombre": "Julio", "leads": 59, "demos": 8,
+             "ventas": 2, "gasto": 368.98, "cpl": 6.25, "costo_demo": 46.1,
+             "costo_venta": 184.5},
+            {"periodo": "2026-08", "nombre": "Agosto", "leads": 0, "demos": 0,
+             "ventas": 0, "gasto": 0.0, "cpl": None, "costo_demo": None,
+             "costo_venta": None},
+            {"periodo": "2026-09", "nombre": "Setiembre", "leads": 6,
+             "demos": 3, "ventas": 0, "gasto": 293.86, "cpl": 48.98,
+             "costo_demo": 97.95, "costo_venta": None},
+        ],
         "serie_semanal": [
             {"inicio": s, "semana": f"2026-W2{i}", "gasto": 100.0,
              "impresiones": 5000, "clics": 150, "leads_crm": 5,
