@@ -464,6 +464,18 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **14/9 — I: DEPLOYADOS `v212` (Simulador financiero, `feat/simulador-financiero`) y `v213` (Métricas pasa a llamarse Outbound, `feat/metricas-outbound`).**
+
+  - **Simulador:** panel nuevo bajo GESTIÓN. Tabla `simulador_escenarios`,
+    `routes/simulador.py` y `services/simulador.py`. Lee Fijos y Por cobrar de
+    Finanzas y **nunca escribe en Finanzas**. El cálculo es la función pura
+    `simCalcular`, testeada en node.
+  - **Outbound:** se fue la pestaña Meta Ads del panel (se mira en Marketing). **El
+    panel sigue siendo `metrics` por dentro**, porque así están guardados los
+    permisos de cada rol; solo cambia el nombre que se ve. `/api/metrics/meta`
+    queda sin uso desde la interfaz.
+  - v212 con 2586 tests y v213 con 2591; los dos arrancaron limpios (22:58 y 23:13 UTC).
+
 - **14/9 — I: DEPLOYADO `v210`: arrastre en Pipeline Notion, y SE SACÓ PRE-CLIENTES DE LA VISTA. Leer si tocás Clientes o Notion.**
 
   Ramas `feat/notion-clientes-arrastre` (`429cce0`) y `feat/sacar-preclientes` (`687c52e`).
