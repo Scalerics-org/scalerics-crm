@@ -936,6 +936,15 @@ def init_db(db_path: str) -> None:
                      "ON demos_realizadas(client_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_demos_realizadas_fecha "
                      "ON demos_realizadas(fecha)")
+        # El presupuesto que se mando despues de una demo cuelga de la demo con
+        # una columna propia y no codificado en `section` ("demo:123"): asi se
+        # puede indexar y cruzar con un JOIN, y `section` sigue siendo 'budget',
+        # con lo que el mismo archivo aparece tambien en la ficha del cliente.
+        # El indice importa por el BLOB: buscar por demo_id sin leer la fila
+        # evita recorrer las paginas de overflow de file_data.
+        _add_column(conn, "lead_attachments", "demo_id", "INTEGER")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_lead_attachments_demo "
+                     "ON lead_attachments(demo_id)")
         _migrar_estados_preclientes(conn)
 
         # ── task assignment & goal tracking ────────────────────────────────────
@@ -1318,6 +1327,10 @@ def delete_business(db_path: str, business_id: int) -> None:
         # keys apagadas y hay que activarlas por conexion, cosa que _connect no
         # hace. Sin este borrado explicito quedarian demos huerfanas con las notas
         # comerciales de un cliente que ya no existe.
+        # Primero los presupuestos de esas demos: son BLOBs de hasta 10 MB que
+        # nadie podria volver a ver ni borrar.
+        conn.execute("DELETE FROM lead_attachments WHERE demo_id IN "
+                     "(SELECT id FROM demos_realizadas WHERE client_id = ?)", (business_id,))
         conn.execute("DELETE FROM demos_realizadas WHERE client_id = ?", (business_id,))
         conn.execute("DELETE FROM businesses WHERE id = ?", (business_id,))
         conn.commit()
@@ -2682,13 +2695,23 @@ def listar_demos_realizadas(db_path: str, client_id: int | None = None,
 
     Trae el nombre de quien la dio y del negocio en el mismo query: la vista los
     muestra siempre juntos, y resolverlos aparte seria un N+1.
+
+    Del presupuesto adjunto trae solo el id y el nombre, NUNCA `file_data`: la
+    maquina tiene 512 MB y un listado con los PDFs adentro son decenas de MB por
+    pedido. El BLOB se lee unicamente al descargar uno (obtener_presupuesto_demo).
+    Tampoco se pide `mime_type`: esta despues de `file_data` en la fila, y
+    leerlo obliga a SQLite a recorrer las paginas del BLOB.
     """
     where, params = "", []
     if client_id is not None:
         where = "WHERE d.client_id = ?"
         params.append(client_id)
     sql = f"""
-        SELECT d.*, u.name AS realizada_por_nombre, b.name AS cliente_nombre
+        SELECT d.*, u.name AS realizada_por_nombre, b.name AS cliente_nombre,
+               (SELECT a.id FROM lead_attachments a WHERE a.demo_id = d.id
+                 ORDER BY a.id DESC LIMIT 1) AS presupuesto_id,
+               (SELECT a.name FROM lead_attachments a WHERE a.demo_id = d.id
+                 ORDER BY a.id DESC LIMIT 1) AS presupuesto_nombre
         FROM demos_realizadas d
         LEFT JOIN users u ON d.realizada_por = u.id
         LEFT JOIN businesses b ON d.client_id = b.id
@@ -2723,8 +2746,53 @@ def actualizar_demo_realizada(db_path: str, demo_id: int, **campos) -> None:
 def borrar_demo_realizada(db_path: str, demo_id: int) -> None:
     conn = _connect(db_path)
     try:
+        # Las foreign keys estan apagadas (ver delete_business): sin esto el PDF
+        # quedaria ocupando el volumen sin ninguna pantalla que lo muestre.
+        conn.execute("DELETE FROM lead_attachments WHERE demo_id = ?", (demo_id,))
         conn.execute("DELETE FROM demos_realizadas WHERE id = ?", (demo_id,))
         conn.commit()
+    finally:
+        conn.close()
+
+
+def guardar_presupuesto_demo(db_path: str, demo_id: int, lead_id: int, nombre: str,
+                             file_data: bytes, mime_type: str) -> int:
+    """Adjunta el presupuesto de una demo. Hay uno por demo: subir otro
+    reemplaza al anterior en la misma transaccion, para no acumular BLOBs."""
+    conn = _connect(db_path)
+    try:
+        conn.execute("DELETE FROM lead_attachments WHERE demo_id = ?", (demo_id,))
+        cur = conn.execute(
+            "INSERT INTO lead_attachments (lead_id, section, name, file_data, mime_type, demo_id) "
+            "VALUES (?, 'budget', ?, ?, ?, ?)",
+            (lead_id, nombre, file_data, mime_type, demo_id),
+        )
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def obtener_presupuesto_demo(db_path: str, demo_id: int) -> Optional[dict]:
+    """El presupuesto de una demo CON el archivo. Es la unica lectura del BLOB:
+    usarla solo para descargar uno, nunca para armar un listado."""
+    conn = _connect(db_path)
+    try:
+        fila = conn.execute(
+            "SELECT id, name, file_data, mime_type FROM lead_attachments "
+            "WHERE demo_id = ? ORDER BY id DESC LIMIT 1", (demo_id,)
+        ).fetchone()
+        return dict(fila) if fila else None
+    finally:
+        conn.close()
+
+
+def borrar_presupuesto_demo(db_path: str, demo_id: int) -> int:
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute("DELETE FROM lead_attachments WHERE demo_id = ?", (demo_id,))
+        conn.commit()
+        return cur.rowcount
     finally:
         conn.close()
 

@@ -620,18 +620,40 @@ body.light .pre-col{background:#f8fafc;border-color:#e2e8f0}
 body.light .pre-card{background:#fff;border-color:#e2e8f0}
 body.light .pre-card-name{color:#0f172a}
 
-/* Registro de demos */
-.demo-row{background:#111827;border:1px solid #1e293b;border-radius:10px;padding:13px 17px;margin-bottom:9px}
+/* Registro de demos: agrupado por mes, con el presupuesto de cada una.
+   Solo tokens: el tema claro sale solo, sin reglas body.light al lado. */
+.demo-filtros{flex-wrap:wrap}
+.demo-mes{margin-bottom:22px}
+.demo-mes-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;padding:0 2px 8px;margin-bottom:10px;border-bottom:1px solid var(--borde)}
+.demo-mes-titulo{font-size:1rem;font-weight:700;color:var(--texto-fuerte);margin:0}
+.demo-mes-cuenta{background:var(--azul-tinte);color:var(--azul-claro);border-radius:999px;padding:1px 9px;font-size:.72rem;font-weight:700}
+.demo-mes-presu{font-size:.74rem;color:var(--texto-debil);margin-left:auto}
+.demo-row{background:var(--superficie);border:1px solid var(--borde);border-radius:10px;padding:13px 17px;margin-bottom:9px}
+.demo-row-sin{border-left:3px solid var(--ambar)}
 .demo-row-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px}
-.demo-num{background:#0088cc;color:#fff;border-radius:999px;padding:1px 9px;font-size:.71rem;font-weight:700}
-.demo-cliente{font-weight:650;color:#e2e8f0;cursor:pointer}
-.demo-cliente:hover{color:#33aadd}
-.demo-meta{font-size:.74rem;color:#64748b;margin-left:auto}
-.demo-texto{font-size:.85rem;color:#94a3b8;line-height:1.5;white-space:pre-wrap}
-.demo-del{background:none;border:none;color:#475569;cursor:pointer;font-size:.9rem;padding:0 4px}
-.demo-del:hover{color:#f87171}
-body.light .demo-row{background:#fff;border-color:#e2e8f0}
-body.light .demo-cliente{color:#0f172a}
+.demo-num{background:var(--azul-tinte);color:var(--azul-claro);border-radius:999px;padding:1px 9px;font-size:.71rem;font-weight:700}
+.demo-cliente{font-weight:650;color:var(--texto-fuerte);cursor:pointer}
+.demo-cliente:hover{color:var(--azul-claro)}
+.demo-meta{font-size:.74rem;color:var(--texto-debil);margin-left:auto}
+.demo-texto{font-size:.85rem;color:var(--texto-tenue);line-height:1.5;white-space:pre-wrap}
+.demo-del{background:none;border:none;color:var(--texto-debil);cursor:pointer;font-size:.9rem;padding:0 4px}
+.demo-del:hover{color:var(--rojo-texto)}
+.demo-presu-fila{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px}
+.demo-presu{display:inline-block;border-radius:999px;padding:3px 10px;font-size:.75rem;font-weight:600;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-decoration:none;box-sizing:border-box}
+.demo-presu-si{background:var(--verde-tinte);color:var(--verde-texto)}
+.demo-presu-si:hover{text-decoration:underline}
+.demo-presu-no{background:var(--ambar-tinte);color:var(--ambar)}
+.demo-presu-accion{background:var(--relleno);border:1px solid var(--borde);color:var(--texto-tenue);border-radius:6px;padding:3px 10px;font-size:.74rem;font-family:inherit;cursor:pointer}
+.demo-presu-accion:hover{color:var(--texto);border-color:var(--azul)}
+.demo-presu-adjuntar{color:var(--azul-claro)}
+.demo-presu-input{display:none}
+.demo-aviso{padding:32px 16px;text-align:center;color:var(--texto-debil);font-size:.88rem}
+.demo-aviso-error{color:var(--rojo-texto)}
+@media (max-width:768px){
+  .demo-row{padding:12px 13px}
+  .demo-meta{margin-left:0;width:100%}
+  .demo-mes-presu{margin-left:0}
+}
 
 /* Tabla de clientes activos: grilla propia, no reusa .no-cb, porque sus reglas
    mobile esconden la 4a columna — que aca es Mantenimiento, no Notas. */
@@ -1690,12 +1712,17 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     <div class="page-header">
       <div>
         <h1>Registro de demos</h1>
-        <div class="page-date">Cada demo dada, quién la tuvo y cómo viene</div>
+        <div class="page-date">Las demos dadas mes a mes, con el presupuesto que se envió en cada una</div>
       </div>
       <button class="export-btn" onclick="abrirNuevaDemo()">+ Registrar demo</button>
     </div>
-    <div class="filters">
+    <div class="filters demo-filtros">
       <input class="search-box" id="demos-search" placeholder="🔍 Buscar por cliente..." oninput="filtrarDemos(this.value)">
+      <select class="filter-select" id="demos-presu-filtro" onchange="demosFiltrarPresupuesto(this.value)">
+        <option value="">Todas</option>
+        <option value="con">Con presupuesto</option>
+        <option value="sin">Sin presupuesto</option>
+      </select>
     </div>
     <div id="demos-body"></div>
   </div>
@@ -3180,55 +3207,146 @@ function pipelineSearch(v) {
 }
 
 // == Registro de demos =========================================================
+// Todas las demos dadas, de todos los clientes, agrupadas por mes (del mas
+// reciente al mas viejo), cada una con el presupuesto que se le mando.
 // El tablero dice donde esta cada uno HOY; esto guarda como llego hasta ahi.
 let _demos = [];
 let _demosFiltro = '';
+let _demosFiltroPresu = '';
+const _DEMOS_MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio',
+                      'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+const _DEMOS_MAX_BYTES = 10 * 1024 * 1024;
 
 async function cargarDemos() {
   const body = document.getElementById('demos-body');
-  body.innerHTML = '<div style="color:#475569;padding:16px;font-size:.85rem">Cargando...</div>';
+  body.innerHTML = '<div class="demo-aviso">Cargando...</div>';
   try {
-    const r = await fetch('/api/demos-realizadas');
+    // El listado no trae los archivos (solo id y nombre del presupuesto), asi
+    // que pedir todas pesa poco: ~50 demos por año.
+    const r = await fetch('/api/demos-realizadas?limite=5000');
     if (!r.ok) throw new Error('HTTP ' + r.status);
     _demos = (await r.json()).demos || [];
     renderDemos();
   } catch (e) {
-    body.innerHTML = '<div style="color:#f87171;padding:16px">No se pudieron cargar las demos: ' + esc(e.message) + '</div>';
+    body.innerHTML = '<div class="demo-aviso demo-aviso-error">No se pudieron cargar las demos: ' + esc(e.message) + '</div>';
   }
 }
 
 function filtrarDemos(v) { _demosFiltro = (v || '').toLowerCase(); renderDemos(); }
 
-function renderDemos() {
-  const body = document.getElementById('demos-body');
-  const lista = _demosFiltro
-    ? _demos.filter(d => (d.cliente_nombre || '').toLowerCase().includes(_demosFiltro))
-    : _demos;
-  if (!lista.length) {
-    body.innerHTML = '<div class="empty-state">' +
-      (_demosFiltro ? 'Ningún cliente coincide' : 'Todavía no hay demos registradas') + '</div>';
-    return;
-  }
-  body.innerHTML = lista.map(d => {
-    const nombre = d.cliente_nombre || 'Cliente borrado';
-    const abrir = d.client_id ? ` onclick="openClientPanel(${d.client_id})"` : '';
-    return `<div class="demo-row">
-      <div class="demo-row-head">
-        <span class="demo-num">Demo ${d.numero || '?'}</span>
-        <span class="demo-cliente"${abrir}>${esc(nombre)}</span>
-        <span class="demo-meta">${esc(d.realizada_por_nombre || 'sin asignar')} · ${esc(_fechaCorta(d.fecha))}</span>
-        <button class="demo-del" onclick="borrarDemo(${d.id})" title="Borrar">&times;</button>
-      </div>
-      <div class="demo-texto">${esc(d.actualizacion || 'Sin notas')}</div>
-    </div>`;
-  }).join('');
+function demosFiltrarPresupuesto(v) { _demosFiltroPresu = v || ''; renderDemos(); }
+
+function _demosMesDe(d) {
+  // Por texto y no con new Date(): '2026-09-01' se lee como UTC y en Uruguay
+  // caeria en agosto.
+  const iso = String(d.fecha || d.created_at || '');
+  return /^[0-9]{4}-[0-9]{2}/.test(iso) ? iso.slice(0, 7) : 'sin-fecha';
 }
 
-function _fechaCorta(iso) {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (isNaN(d)) return String(iso).slice(0, 10);
-  return d.toLocaleDateString('es-UY', {day: '2-digit', month: '2-digit', year: 'numeric'});
+function _demosEtiquetaMes(clave) {
+  if (clave === 'sin-fecha') return 'Sin fecha';
+  const partes = clave.split('-');
+  const mes = _DEMOS_MESES[parseInt(partes[1], 10) - 1];
+  return mes ? mes.charAt(0).toUpperCase() + mes.slice(1) + ' ' + partes[0] : clave;
+}
+
+function _demosAgruparPorMes(lista) {
+  const grupos = new Map();
+  lista.forEach(d => {
+    const clave = _demosMesDe(d);
+    if (!grupos.has(clave)) grupos.set(clave, []);
+    grupos.get(clave).push(d);
+  });
+  const orden = (a, b) => a === b ? 0 : a === 'sin-fecha' ? 1 : b === 'sin-fecha' ? -1 : (a < b ? 1 : -1);
+  return Array.from(grupos.keys()).sort(orden).map(clave => {
+    const demos = grupos.get(clave);
+    return {clave: clave, etiqueta: _demosEtiquetaMes(clave), demos: demos,
+            conPresupuesto: demos.filter(d => d.presupuesto_id).length};
+  });
+}
+
+function _demosFecha(iso) {
+  const s = String(iso || '');
+  if (!/^[0-9]{4}-[0-9]{2}-[0-9]{2}/.test(s)) return s.slice(0, 10);
+  return s.slice(8, 10) + '/' + s.slice(5, 7) + '/' + s.slice(0, 4);
+}
+
+function _demosFilaHtml(d) {
+  const nombre = d.cliente_nombre || 'Cliente borrado';
+  const abrir = d.client_id ? ` onclick="openClientPanel(${d.client_id})"` : '';
+  const subir = `<input type="file" class="demo-presu-input" accept="application/pdf,image/*" onchange="demosSubirPresupuesto(${d.id}, this)">`;
+  const presu = d.presupuesto_id
+    ? `<a class="demo-presu demo-presu-si" href="/api/demos-realizadas/${d.id}/presupuesto" title="Descargar presupuesto">📄 ${esc(d.presupuesto_nombre || 'Presupuesto')}</a>
+       <label class="demo-presu-accion" title="Reemplazar por otro archivo">Cambiar${subir}</label>
+       <button class="demo-presu-accion" onclick="demosQuitarPresupuesto(${d.id})">Quitar</button>`
+    : `<span class="demo-presu demo-presu-no">Sin presupuesto</span>
+       <label class="demo-presu-accion demo-presu-adjuntar">+ Adjuntar presupuesto${subir}</label>`;
+  return `<div class="demo-row${d.presupuesto_id ? '' : ' demo-row-sin'}">
+    <div class="demo-row-head">
+      <span class="demo-num">Demo ${d.numero || '?'}</span>
+      <span class="demo-cliente"${abrir}>${esc(nombre)}</span>
+      <span class="demo-meta">${esc(d.realizada_por_nombre || 'sin asignar')} · ${esc(_demosFecha(d.fecha || d.created_at))}</span>
+      <button class="demo-del" onclick="borrarDemo(${d.id})" title="Borrar">&times;</button>
+    </div>
+    <div class="demo-texto">${esc(d.actualizacion || 'Sin notas')}</div>
+    <div class="demo-presu-fila">${presu}</div>
+  </div>`;
+}
+
+function renderDemos() {
+  const body = document.getElementById('demos-body');
+  let lista = _demos;
+  if (_demosFiltro) lista = lista.filter(d => (d.cliente_nombre || '').toLowerCase().includes(_demosFiltro));
+  if (_demosFiltroPresu === 'con') lista = lista.filter(d => d.presupuesto_id);
+  if (_demosFiltroPresu === 'sin') lista = lista.filter(d => !d.presupuesto_id);
+  if (!lista.length) {
+    body.innerHTML = '<div class="demo-aviso">' + (_demos.length
+      ? 'Ninguna demo coincide con el filtro'
+      : 'Todavía no hay demos registradas. Cargá la primera con «+ Registrar demo».') + '</div>';
+    return;
+  }
+  body.innerHTML = _demosAgruparPorMes(lista).map(g => `<section class="demo-mes">
+    <div class="demo-mes-head">
+      <h2 class="demo-mes-titulo">${esc(g.etiqueta)}</h2>
+      <span class="demo-mes-cuenta">${g.demos.length} ${g.demos.length === 1 ? 'demo' : 'demos'}</span>
+      <span class="demo-mes-presu">${g.conPresupuesto} de ${g.demos.length} con presupuesto</span>
+    </div>
+    ${g.demos.map(_demosFilaHtml).join('')}
+  </section>`).join('');
+}
+
+function _demosValidarArchivo(file) {
+  if (file.size > _DEMOS_MAX_BYTES) return 'El archivo pesa más de 10 MB.';
+  const tipo = file.type || '';
+  // Sin tipo (pasa en algunos celulares) decide el servidor mirando el archivo.
+  if (tipo && tipo !== 'application/pdf' && tipo.indexOf('image/') !== 0) return 'Solo se aceptan PDF o imágenes.';
+  return '';
+}
+
+async function _demosEnviarPresupuesto(demoId, file) {
+  const fd = new FormData();
+  fd.append('file', file);
+  const r = await fetch('/api/demos-realizadas/' + demoId + '/presupuesto', {method: 'POST', body: fd});
+  const d = await r.json().catch(() => ({}));
+  return d.ok ? '' : (d.error || ('No se pudo adjuntar el presupuesto (HTTP ' + r.status + ')'));
+}
+
+async function demosSubirPresupuesto(demoId, input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  try {
+    const error = _demosValidarArchivo(file) || await _demosEnviarPresupuesto(demoId, file);
+    if (error) { alert(error); return; }
+    cargarDemos();
+  } finally { input.value = ''; }
+}
+
+async function demosQuitarPresupuesto(demoId) {
+  if (!confirm('Quitar el presupuesto de esta demo?')) return;
+  const r = await fetch('/api/demos-realizadas/' + demoId + '/presupuesto', {method: 'DELETE'});
+  const d = await r.json().catch(() => ({}));
+  if (!d.ok) { alert(d.error || 'No se pudo quitar.'); return; }
+  cargarDemos();
 }
 
 let _regdemoModal = null;
@@ -3249,6 +3367,10 @@ async function abrirNuevaDemo() {
     <input type="hidden" id="regdemo-cliente-id">
     <label class="modal-label">La dio</label>
     <select id="regdemo-quien" class="modal-input"><option value="">Yo</option>${opciones}</select>
+    <label class="modal-label">Fecha de la demo</label>
+    <input type="date" id="regdemo-fecha" class="modal-input" value="${_demosHoy()}">
+    <label class="modal-label">Presupuesto enviado (opcional: PDF o imagen, hasta 10 MB)</label>
+    <input type="file" id="regdemo-archivo" class="modal-input" accept="application/pdf,image/*">
     <label class="modal-label">Cómo viene</label>
     <textarea id="regdemo-nota" class="modal-input" style="min-height:82px;resize:vertical"
               placeholder="Qué se mostró, qué dijo el cliente, próximo paso..."></textarea>
@@ -3288,9 +3410,20 @@ function _elegirClienteDemo(id, nombre) {
   document.getElementById('regdemo-res').innerHTML = '';
 }
 
+function _demosHoy() {
+  const h = new Date();
+  return h.getFullYear() + '-' + String(h.getMonth() + 1).padStart(2, '0') + '-' + String(h.getDate()).padStart(2, '0');
+}
+
 async function guardarDemo() {
   const id = document.getElementById('regdemo-cliente-id').value;
   if (!id) { alert('Elegí un cliente de la lista de sugerencias.'); return; }
+  const archivo = (document.getElementById('regdemo-archivo').files || [])[0];
+  const errorArchivo = archivo ? _demosValidarArchivo(archivo) : '';
+  if (errorArchivo) { alert(errorArchivo); return; }
+  // Hoy va sin fecha para que el servidor ponga tambien la hora; un dia
+  // anterior sirve para cargar demos viejas en el mes que corresponde.
+  const fecha = document.getElementById('regdemo-fecha').value;
   const btn = document.getElementById('regdemo-guardar');
   btn.disabled = true;
   try {
@@ -3299,11 +3432,16 @@ async function guardarDemo() {
       body: JSON.stringify({
         client_id: parseInt(id, 10),
         realizada_por: document.getElementById('regdemo-quien').value || null,
+        fecha: fecha && fecha !== _demosHoy() ? fecha : null,
         actualizacion: document.getElementById('regdemo-nota').value.trim(),
       }),
     });
     const d = await r.json().catch(() => ({}));
     if (!d.ok) { alert(d.error || 'No se pudo guardar la demo.'); return; }
+    if (archivo) {
+      const error = await _demosEnviarPresupuesto(d.id, archivo);
+      if (error) alert('La demo se guardó, pero el presupuesto no: ' + error);
+    }
     cerrarNuevaDemo();
     cargarDemos();
   } finally { btn.disabled = false; }
