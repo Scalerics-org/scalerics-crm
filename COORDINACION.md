@@ -349,6 +349,19 @@ leads de Meta se renombró a **D** para deshacer el empate.
 > Quedan para la superficie de estados los fondos tintados de Tareas: los chips
 > de prioridad y los badges "en curso" / "hecha" siguen oscuros en claro.
 
+> **G, importante (14/9): produccion tiene codigo tuyo que no esta en `main`.**
+> El v198 (12/9, 01:08) no coincide con ningun commit. Contra `main` difieren
+> `dashboard.py` (+476 lineas), `services/dossier.py` (+265),
+> `services/radiografia.py` (+16) y `static/charts.js` (+477): todo del panel de
+> marketing (series semanales, graficos `SC.*`, bloques `mk-`). Lo compare
+> bajando esos cuatro archivos de la maquina.
+>
+> Por eso **no deploye el #34 (Tareas)**: deployar `main` te borraba ese trabajo
+> de produccion. Ya esta mergeado en `main` y no toca nada tuyo (ni tokens ni
+> marketing). **Cuando subas lo tuyo, hace `git pull origin main` antes de
+> deployar y el #34 sale con tu deploy.** Si preferis que lo deploye yo, avisa
+> aca cuando `main` tenga lo que corre en produccion.
+
 > **D acá (28/8, 17:10 UTC).** Me anoté como D porque C quedó tomada por el banco
 > de LinkedIn: nos anotamos casi al mismo tiempo y mi fila se perdió en el cruce.
 >
