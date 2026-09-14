@@ -9760,7 +9760,6 @@ function _mkNotaSemanasIncompletas(semanas, p, nombres) {
 // período de arriba no la mueve y cambiar de mes no recalcula el panel.
 
 var _mkPiezasMesActual = null;   // 'YYYY-MM'; null es el mes de hoy
-var _mkPiezasUltimo = null;      // la última respuesta: sabe hasta dónde retroceder
 
 // Corre un mes 'YYYY-MM' tantos meses como diga delta, cruzando el año.
 function _mkMesCorrido(mes, delta) {
@@ -9773,14 +9772,15 @@ function _mkMesDeHoy() {
   return hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0');
 }
 
+// La flecha lleva EXACTAMENTE al mes pedido, nunca a otro. Antes, retroceder
+// más allá del primer mes con datos te dejaba en ese primer mes sin avisar:
+// Juan creía estar en mayo y miraba agosto. Si el mes no tiene datos por pieza,
+// el panel lo dice. Al futuro no se va: el botón está apagado.
 function mkPiezasMes(delta) {
   const hoy = _mkMesDeHoy();
   const ahora = _mkPiezasMesActual || hoy;
-  let mes = _mkMesCorrido(ahora, delta);
-  if (mes > hoy) mes = hoy;                       // el futuro no tiene piezas
-  const piso = _mkPiezasUltimo && _mkPiezasUltimo.primer_mes;
-  if (piso && mes < piso) mes = piso;             // antes de la primera, tampoco
-  if (mes === ahora) return;
+  const mes = _mkMesCorrido(ahora, delta);
+  if (mes > hoy || mes === ahora) return;
   _mkPiezasMesActual = mes === hoy ? null : mes;
   _mkCargarPiezas();
 }
@@ -9815,26 +9815,40 @@ async function _mkCargarPiezas() {
 }
 
 function _mkPintarPiezas(d) {
-  _mkPiezasUltimo = d;
   const nombre = d.nombre || _mkNombreMes(d.mes);
   document.getElementById('mk-piezas-mes').textContent = nombre;
-  // En los bordes el botón no hace nada, así que se ve apagado.
+  // Al futuro no se va. Hacia atrás sí, siempre: si el mes no tiene datos por
+  // pieza, se dice abajo en vez de frenar la flecha en otro mes.
   document.getElementById('mk-piezas-sig').disabled = d.mes >= (d.mes_actual || _mkMesDeHoy());
-  document.getElementById('mk-piezas-ant').disabled = !!d.primer_mes && d.mes <= d.primer_mes;
+  document.getElementById('mk-piezas-ant').disabled = false;
 
   const caja = document.getElementById('mk-piezas');
   const activas = d.activas || [], inactivas = d.inactivas || [];
   const t = d.totales || {};
+  const estado = d.estado_datos ||
+    (!d.primer_mes ? 'nada_sincronizado'
+      : (activas.length || inactivas.length) ? 'con_piezas' : 'sin_pauta');
+  // '2026-06-01' -> '01/06/2026'
+  const fecha = (iso) => _mkDiaMes(iso) + '/' + String(iso || '').slice(0, 4);
 
-  if (!d.primer_mes) {
+  if (estado === 'nada_sincronizado') {
     caja.innerHTML = '<div class="sc-vacio">Todavía no hay piezas sincronizadas. ' +
       'Aparecen solas cuando corre el sync de anuncios de Meta, que necesita el ' +
       'token configurado. El resto del panel funciona igual.</div>';
     return;
   }
-  if (!activas.length && !inactivas.length) {
-    caja.innerHTML = `<div class="sc-vacio">En ${esc(nombre)} no hubo ninguna pieza ` +
-      'con gasto ni impresiones.</div>';
+  if (estado === 'sin_datos_por_pieza') {
+    const porque = d.primer_dia && d.hasta && d.hasta < d.primer_dia
+      ? ` Los datos pieza por pieza empiezan el ${fecha(d.primer_dia)}.`
+      : ' Meta registra gasto de pauta en ese mes, pero pieza por pieza no se trajo.';
+    caja.innerHTML = `<div class="sc-vacio">No hay datos por pieza de Meta guardados ` +
+      `para ${esc(nombre)}.${esc(porque)} No quiere decir que no se haya pautado: ` +
+      'falta traer ese mes desde Meta.</div>';
+    return;
+  }
+  if (estado === 'sin_pauta' || (!activas.length && !inactivas.length)) {
+    caja.innerHTML = `<div class="sc-vacio">En ${esc(nombre)} no se pautó ninguna ` +
+      'pieza: ningún anuncio tuvo gasto ni impresiones.</div>';
     return;
   }
 
@@ -9846,14 +9860,25 @@ function _mkPintarPiezas(d) {
     tile('Piezas con actividad', SC.fmt(t.piezas, 'numero'),
          `${SC.fmt(t.activas, 'numero')} activas hoy · ${SC.fmt(t.inactivas, 'numero')} ya no`) +
     tile('Gasto del mes', SC.fmt(t.gasto, 'moneda'), t.moneda || '') +
-    tile('Leads del mes', SC.fmt(t.leads, 'numero'),
+    tile('Leads del mes según Meta', SC.fmt(t.leads, 'numero'),
          t.cpl ? `${SC.fmt(t.cpl, 'moneda')} cada uno` : 'sin leads no hay costo por lead') +
+    (t.leads_crm === undefined || t.leads_crm === null ? '' :
+      tile('Leads del mes en el CRM', SC.fmt(t.leads_crm, 'numero'),
+           t.leads_crm_sin_pieza
+             ? `${SC.fmt(t.leads_crm_sin_pieza, 'numero')} sin pieza identificada`
+             : 'todos con su pieza')) +
     tile('Impresiones', SC.fmt(t.impresiones, 'numero'),
          `${SC.fmt(t.clics, 'numero')} clics`) +
     '</div>';
 
-  let aviso = 'Los leads de esta sección son los que Meta le atribuye a cada ' +
-    'pieza: pueden no coincidir con los leads del CRM de más arriba.';
+  let aviso = `Todos los números son de ${nombre} y nada más. «Leads según Meta» ` +
+    'son los que Meta le atribuye a cada pieza en los días del mes; con ellos se ' +
+    'calcula el costo por lead. «Leads en el CRM» son las personas que entraron ' +
+    'al CRM ese mes por esa pieza. Son dos cuentas distintas y no se suman.';
+  if (d.datos_desde) {
+    aviso = `Ojo: los datos por pieza de ${nombre} empiezan el ` +
+      `${fecha(d.datos_desde)}; lo de los días anteriores no está. ` + aviso;
+  }
   const g = d.gasto_pauta;
   if (g !== null && g !== undefined && Math.abs(g - (t.gasto || 0)) > Math.max(1, g * 0.01)) {
     aviso += ` Ojo: mirado por campaña, Meta dice que en ${nombre} se gastaron ` +
@@ -9861,13 +9886,8 @@ function _mkPintarPiezas(d) {
       'La diferencia es gasto de anuncios que no se llegó a sincronizar pieza por pieza.';
   }
 
-  // El estado va con palabra Y con color, nunca con color solo.
-  const ACCION = {
-    apagar: 'Apagalo', ajustar: 'Está caro', renovar: 'Se está gastando',
-    subir: 'Subile el presupuesto', esperar: 'Todavía no se sabe',
-    dejar: 'Va bien', revivir: 'Lo apagaste y rendía',
-  };
-
+  // Sin recomendación en la tarjeta: la que había miraba toda la vida de la
+  // pieza y se leía como si fuera del mes (pedido de Juan, 14/9).
   const tarjeta = (a) => {
     const foto = a.tiene_imagen
       ? `<img class="sc-anun-foto" loading="lazy" alt="Pieza ${esc(a.nombre || '')}" ` +
@@ -9884,42 +9904,35 @@ function _mkPintarPiezas(d) {
       : a.primer_dia === a.ultimo_dia
         ? `Con actividad el ${_mkDiaMes(a.primer_dia)}`
         : `Con actividad del ${_mkDiaMes(a.primer_dia)} al ${_mkDiaMes(a.ultimo_dia)}`;
-    const r = a.recomendacion;
+    const conCrm = a.leads_crm !== null && a.leads_crm !== undefined;
     return `<article class="sc-anun" data-corriendo="${a.corriendo ? 'true' : 'false'}">` +
       foto + '<div class="sc-anun-cuerpo">' +
       `<div class="sc-anun-nom">${esc(a.nombre || '(sin nombre)')}</div>` +
       (fechas ? `<div class="sc-anun-fechas">${esc(fechas)}</div>` : '') +
       '<div class="sc-anun-datos">' +
       dato('Gasto', a.gasto, 'moneda') +
-      dato('Leads', a.leads, 'numero') +
+      dato('Leads según Meta', a.leads, 'numero') +
       dato('Costo por lead', a.cpl, 'moneda') +
+      (conCrm ? dato('Leads en el CRM', a.leads_crm, 'numero') : '') +
       dato('Impresiones', a.impresiones, 'numero') +
       dato('Clics', a.clics, 'numero') +
       dato('CTR', a.ctr, 'porcentaje') +
       '</div>' +
-      (r ? `<div class="sc-anun-reco" data-accion="${esc(r.accion || '')}">` +
-           `<b>${esc(ACCION[r.accion] || 'Qué haría')}.</b> ${esc(r.texto || '')}</div>`
-         : '') +
       '</div></article>';
   };
 
-  const grupo = (titulo, lista, vacio, nota) =>
+  const grupo = (titulo, lista, vacio) =>
     `<h4 class="sc-piezas-grupo">${esc(titulo)} <span>(${lista.length})</span></h4>` +
     (lista.length
-      ? (nota ? `<div class="sc-piezas-aviso">${esc(nota)}</div>` : '') +
-        '<div class="sc-anuncios">' + lista.map(tarjeta).join('') + '</div>'
+      ? '<div class="sc-anuncios">' + lista.map(tarjeta).join('') + '</div>'
       : `<div class="sc-vacio">${esc(vacio)}</div>`);
 
   caja.innerHTML = cab +
     `<div class="sc-piezas-aviso">${esc(aviso)}</div>` +
     grupo('Activas hoy', activas,
-          `Ninguna de las piezas de ${nombre} sigue activa hoy.`,
-          activas.some(a => a.recomendacion)
-            ? 'La recomendación de cada una es sobre qué hacer hoy: mira todo lo ' +
-              'que lleva la pieza desde que arrancó, no solo este mes.'
-            : '') +
+          `Ninguna de las piezas de ${nombre} sigue activa hoy.`) +
     grupo('Ya no están activas', inactivas,
-          `Todas las piezas de ${nombre} siguen activas hoy.`, '');
+          `Todas las piezas de ${nombre} siguen activas hoy.`);
 }
 
 // ========== Activity feed ==========

@@ -216,6 +216,31 @@ def api_sync_anuncios():
 _MES = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
 
 
+@marketing_bp.route("/api/marketing/rellenar-anuncios", methods=["POST"])
+def api_rellenar_anuncios():
+    """Trae los insights por pieza de UN mes viejo. Se corre a mano, una vez.
+
+    El cron diario de `sync-anuncios` trae solo los ultimos 7 dias, asi que los
+    meses anteriores al primer sync no tienen datos por pieza. Esto los rellena
+    de a un mes por llamada, con su propio tope (ver `rellenar_mes`). Protegido
+    igual que el sync: candado del blueprint, x-admin-token o panel marketing.
+
+    429 si no paso la pausa minima desde la llamada anterior: no se reintenta
+    solo, se espera.
+    """
+    from services.meta_anuncios import ReintentarMasTarde, rellenar_mes
+
+    mes = request.args.get("mes") or ""
+    if not _MES.match(mes):
+        return jsonify({"error": "mes invalido: se espera YYYY-MM"}), 400
+    try:
+        return jsonify(rellenar_mes(_db(), mes))
+    except ReintentarMasTarde as e:
+        return jsonify({"error": str(e)}), 429
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+
 @marketing_bp.route("/api/marketing/piezas")
 def api_piezas():
     """Las piezas de la pauta de UN mes, partidas en activas hoy y ya no.
