@@ -43,6 +43,22 @@ _CAMPOS_INSIGHT = (
 )
 
 
+class _ErrorDeMeta(RuntimeError):
+    """La API contesto mal. Existe para que el sync no confunda "fallo" con
+    "no habia nada": las dos cosas devolvian cero filas y la segunda es
+    normal."""
+
+
+def _motivo(respuesta) -> str:
+    """Lo que dijo Meta, recortado. Un 403 puede ser falta de permiso o exceso
+    de llamadas, y sin el mensaje hay que salir a averiguar cual."""
+    try:
+        e = respuesta.json().get("error") or {}
+        return f"code={e.get('code')} {e.get('message') or ''}"[:200]
+    except Exception:
+        return (respuesta.text or "")[:200]
+
+
 def _dir_creativos(db_path: str) -> str:
     """Al lado de la base: en produccion es el volumen, en los tests el tmp."""
     return os.path.join(os.path.dirname(os.path.abspath(db_path)), "creativos")
@@ -60,12 +76,16 @@ def _traer_ads() -> list:
     while url:
         r = requests.get(url, params=params, timeout=40)
         if not r.ok:
-            logger.error(f"Anuncios: la API contesto {r.status_code}")
-            break
+            # El cuerpo va al log: un 403 puede ser "no tenes permiso" o "te
+            # pasaste de llamadas", y son dos problemas completamente
+            # distintos. Con el numero solo hay que salir a averiguarlo.
+            logger.error(f"Anuncios: la API contesto {r.status_code}: "
+                         f"{_motivo(r)}")
+            raise _ErrorDeMeta(f"ads {r.status_code}: {_motivo(r)}")
         d = r.json()
         if "error" in d:
             logger.error(f"Anuncios: {d['error']}")
-            break
+            raise _ErrorDeMeta(f"ads: {d['error']}")
         filas.extend(d.get("data", []))
         url = d.get("paging", {}).get("next")
         params = {}
@@ -92,12 +112,13 @@ def _traer_insights(desde: str, hasta: str) -> list:
     while url:
         r = requests.get(url, params=params, timeout=60)
         if not r.ok:
-            logger.error(f"Insights por anuncio: la API contesto {r.status_code}")
-            break
+            logger.error(f"Insights por anuncio: la API contesto "
+                         f"{r.status_code}: {_motivo(r)}")
+            raise _ErrorDeMeta(f"insights {r.status_code}: {_motivo(r)}")
         d = r.json()
         if "error" in d:
             logger.error(f"Insights por anuncio: {d['error']}")
-            break
+            raise _ErrorDeMeta(f"insights: {d['error']}")
         filas.extend(d.get("data", []))
         url = d.get("paging", {}).get("next")
         params = {}
@@ -209,8 +230,17 @@ def sincronizar_anuncios(db_path: str, desde: str, hasta: str,
             ))
             anuncios += 1
 
-        filas = 0
-        for f in traer_insights(desde, hasta):
+        filas, fallo = 0, None
+        try:
+            crudas = traer_insights(desde, hasta)
+        except _ErrorDeMeta as e:
+            # Los anuncios ya se guardaron y eso no se tira. Pero el resultado
+            # tiene que decir que el gasto NO se trajo: "filas: 0" a secas se
+            # lee como "no hubo gasto", que es lo contrario de lo que paso.
+            logger.error(f"Anuncios: el gasto no se pudo traer: {e}")
+            crudas, fallo = [], str(e)
+
+        for f in crudas:
             ad_id = f.get("ad_id")
             if not ad_id:
                 continue
@@ -244,4 +274,7 @@ def sincronizar_anuncios(db_path: str, desde: str, hasta: str,
 
     logger.info(f"Anuncios: {anuncios} anuncios, {filas} filas de gasto, "
                 f"{imagenes} imagenes nuevas")
-    return {"anuncios": anuncios, "filas": filas, "imagenes": imagenes}
+    salida = {"anuncios": anuncios, "filas": filas, "imagenes": imagenes}
+    if fallo:
+        salida["error_gasto"] = fallo
+    return salida

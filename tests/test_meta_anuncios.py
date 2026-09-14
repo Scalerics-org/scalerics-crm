@@ -250,3 +250,76 @@ def test_sin_credenciales_avisa_y_no_revienta(db):
     finally:
         os.environ.clear()
         os.environ.update(guardado)
+
+
+# ── Cuando Meta contesta mal ───────────────────────────────────────────────
+#
+# Paso de verdad en la primera corrida contra la cuenta real: los anuncios se
+# guardaron y los insights dieron 403 por exceso de llamadas. El sync devolvio
+# {"anuncios": 140, "filas": 0} y eso se lee como "no hubo gasto", que es lo
+# contrario de lo que habia pasado.
+
+def test_si_el_gasto_no_se_puede_traer_el_resultado_lo_dice(db):
+    """"filas: 0" a secas se lee como "no hubo gasto". Hay que poder
+    distinguir "fallo" de "no habia nada"."""
+    from services.meta_anuncios import _ErrorDeMeta
+
+    def romper(desde, hasta):
+        raise _ErrorDeMeta("insights 403: code=17 User request limit reached")
+
+    r = sincronizar_anuncios(
+        db, "2026-09-01", "2026-09-30",
+        traer_ads=lambda: list(_ADS),
+        traer_insights=romper,
+        bajar=lambda u, d: False)
+    assert "error_gasto" in r
+    assert "403" in r["error_gasto"]
+    assert r["filas"] == 0
+
+
+def test_aunque_falle_el_gasto_los_anuncios_quedan_guardados(db):
+    """Lo que ya se trajo no se tira: la proxima corrida solo tiene que
+    reintentar el gasto, no volver a bajar 67 imagenes."""
+    from services.meta_anuncios import _ErrorDeMeta
+
+    def romper(desde, hasta):
+        raise _ErrorDeMeta("insights 403")
+
+    sincronizar_anuncios(db, "2026-09-01", "2026-09-30",
+                         traer_ads=lambda: list(_ADS),
+                         traer_insights=romper,
+                         bajar=lambda u, d: False)
+    assert _fila(db, "120253602403650249") is not None
+
+
+def test_una_corrida_sana_no_trae_error_gasto(db):
+    """Para que el campo signifique algo tiene que estar ausente cuando todo
+    salio bien."""
+    assert "error_gasto" not in _correr(db)
+
+
+def test_el_motivo_recorta_lo_que_dijo_meta(db):
+    """Un 403 puede ser falta de permiso o exceso de llamadas, y son dos
+    problemas distintos. Con el numero solo hay que salir a averiguarlo."""
+    from services.meta_anuncios import _motivo
+
+    class _Falsa:
+        def json(self):
+            return {"error": {"code": 17, "message": "User request limit reached"}}
+
+    assert "code=17" in _motivo(_Falsa())
+    assert "limit reached" in _motivo(_Falsa())
+
+
+def test_si_la_respuesta_no_es_json_el_motivo_no_revienta(db):
+    """Un 502 del proxy de Meta devuelve HTML. Si `_motivo` reventara ahi, el
+    error que se estaba reportando se perderia detras de otro error."""
+    from services.meta_anuncios import _motivo
+
+    class _Html:
+        text = "<html>502 Bad Gateway</html>"
+
+        def json(self):
+            raise ValueError("no es json")
+
+    assert "502" in _motivo(_Html())
