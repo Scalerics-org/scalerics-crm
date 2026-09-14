@@ -911,6 +911,29 @@ def init_db(db_path: str) -> None:
         # lo asigna Juan a mano desde el editor de roles, que es justamente
         # lo que eligió al marcar "panel normal, se asigna por rol".
 
+        # ── simulador financiero ──────────────────────────────────────────────
+        # Escenarios guardados del simulador. Tabla propia y aparte de las de
+        # finanzas a propósito: el simulador LEE Finanzas para precargar, pero
+        # trabaja sobre su copia y nunca escribe ahí. `datos` es el escenario
+        # entero en JSON (equipo, listas, palancas, supuestos): su forma la
+        # define el panel y lleva `version`, para poder migrarla sin tocar la
+        # tabla cuando lleguen la comparación y la proyección a 12 meses.
+        #
+        # Igual que Finanzas (Ruling R20), sin `_grant_panel_to_existing_roles`:
+        # el simulador muestra sueldos y lo que se debe cobrar, así que arranca
+        # sin nadie asignado y Juan lo reparte desde el editor de roles.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS simulador_escenarios (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                nombre          TEXT NOT NULL,
+                datos           TEXT NOT NULL,
+                created_by_id   INTEGER,
+                created_by_name TEXT,
+                created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
         # ── Pre-clientes y clientes activos ───────────────────────────────────
         # Los tres responsables de un cliente activo. Apuntan a users para poder
         # filtrar "mis clientes"; si alguien se va, el vinculo queda en NULL en vez
@@ -3122,6 +3145,72 @@ def listar_recurrentes(db_path: str, solo_activos: bool = False) -> list[dict]:
     try:
         cur = conn.execute(
             f"SELECT * FROM finanzas_recurrentes {where} ORDER BY concepto")
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+# ─── Simulador financiero ────────────────────────────────────────────────────
+
+def listar_clientes_activos(db_path: str) -> list[dict]:
+    """Los clientes de verdad: los que están en una etapa de ETAPAS_CLIENTE.
+
+    Es la lista con la que el simulador precarga los mantenimientos.
+    """
+    marcas = ", ".join("?" for _ in ETAPAS_CLIENTE)
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute(
+            f"SELECT id, name, crm_status FROM businesses "
+            f"WHERE crm_status IN ({marcas}) ORDER BY name COLLATE NOCASE, id",
+            list(ETAPAS_CLIENTE))
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def crear_escenario(db_path: str, nombre: str, datos: str,
+                    created_by_id=None, created_by_name=None) -> int:
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute(
+            "INSERT INTO simulador_escenarios "
+            "(nombre, datos, created_by_id, created_by_name) VALUES (?, ?, ?, ?)",
+            (nombre, datos, created_by_id, created_by_name))
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def actualizar_escenario(db_path: str, escenario_id: int, nombre: str,
+                         datos: str) -> None:
+    conn = _connect(db_path)
+    try:
+        conn.execute(
+            "UPDATE simulador_escenarios SET nombre = ?, datos = ?, "
+            "updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (nombre, datos, escenario_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def borrar_escenario(db_path: str, escenario_id: int) -> None:
+    _delete(db_path, "simulador_escenarios", escenario_id)
+
+
+def get_escenario(db_path: str, escenario_id: int) -> Optional[dict]:
+    return _get_one(db_path, "simulador_escenarios", escenario_id)
+
+
+def listar_escenarios(db_path: str) -> list[dict]:
+    """Sin `datos`: la lista es para elegir, el escenario entero se pide aparte."""
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute(
+            "SELECT id, nombre, created_by_name, created_at, updated_at "
+            "FROM simulador_escenarios ORDER BY updated_at DESC, id DESC")
         return [dict(r) for r in cur.fetchall()]
     finally:
         conn.close()
