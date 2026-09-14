@@ -429,10 +429,33 @@ def piezas_del_mes(db_path: str, mes: str, hoy=None) -> dict:
     cobrar (pasa con los primeros dias de un anuncio) igual estuvo al aire. Una
     pieza sin nada en el mes no aparece en ese mes, este prendida hoy o no.
 
-    **Todos los numeros son del mes y nada mas.** Nada de "desde que arranco":
-    mezclar la vida entera del anuncio con el mes es lo que hacia la seccion
-    ilegible. La unica excepcion es la recomendacion de las que siguen al aire,
-    que es sobre que hacer HOY con el anuncio y lo dice en su rotulo.
+    **Todos los numeros son del mes y nada mas, sin excepciones.** Hasta el
+    14/9 cada tarjeta activa traia la recomendacion de `anuncios_en_curso`, que
+    mira toda la vida del anuncio y el CTR de los ultimos 7 dias contados desde
+    HOY. Juan, entrando a mayo: "me aparece la pauta de agosto [...] que cuando
+    entre a mayo me muestre lo que fue su costo por lead en mayo, no en
+    setiembre". El rotulo que lo aclaraba no alcanzo: un numero en la tarjeta se
+    lee como del mes. Se saco la recomendacion de la seccion. No se la
+    recalculo con el mes porque sus umbrales estan calibrados contra la vida
+    del anuncio en la cuenta real, y reglas nuevas sin correrlas contra
+    produccion son justo el error que G ya pago una vez. Sigue en el dossier.
+
+    **Dos leads, rotulados aparte y nunca sumados.** `leads` es lo que Meta le
+    atribuye a la pieza en los dias del mes (con eso se calcula el costo por
+    lead: la plata tambien es de Meta). `leads_crm` son las personas que
+    entraron al CRM en el mes con el `meta_ad_id` de la pieza. Hacen falta los
+    dos: Meta cuenta el lead el dia de la impresion y puede contar formularios
+    que nunca llegaron; el CRM cuenta gente de verdad pero solo sabe la pieza
+    de los leads que Meta mando con `ad_id`. Si ningun lead del mes trae la
+    pieza (los viejos no la tienen), `leads_crm` es None y no 0: un cero diria
+    "no trajo a nadie" cuando lo que falta es el dato. La fecha del CRM es el
+    dia UTC de `scraped_at`, igual que el resto del panel.
+
+    **Un mes sin piezas dice por que.** `estado_datos` separa "no se pauto"
+    (`sin_pauta`) de "no hay datos por pieza guardados" (`sin_datos_por_pieza`):
+    el mes es anterior al primer dia sincronizado, o Meta registra gasto por
+    campana en ese mes y por pieza no hay nada. Confundirlos le dice a Juan que
+    un mes con pauta no tuvo pauta.
 
     **Se parte en dos por el estado de HOY**, no por si estaba prendida en ese
     mes: Meta no guarda la historia del estado, solo el actual. "Activas hoy" y
@@ -475,15 +498,20 @@ def piezas_del_mes(db_path: str, mes: str, hoy=None) -> dict:
         extremos = conn.execute(
             "SELECT MIN(date) AS primero FROM meta_ad_insights "
             "WHERE spend > 0 OR impressions > 0").fetchone()
+        # Los leads de Meta que entraron al CRM en el mes, con la pieza que
+        # dijo Meta. `meta_ad_id` vacio es "no se sabe", no "ninguna".
+        crm = conn.execute(
+            "SELECT NULLIF(meta_ad_id, '') AS ad_id, COUNT(*) AS n "
+            "FROM businesses WHERE source = 'meta' "
+            "AND substr(scraped_at, 1, 10) BETWEEN ? AND ? "
+            "GROUP BY NULLIF(meta_ad_id, '')", (desde, hasta)).fetchall()
     finally:
         conn.close()
 
-    # La recomendacion ya existe y esta calibrada contra la cuenta real: se
-    # reusa tal cual, no se escribe otra. Solo se pide si hay algo que mostrar.
-    recos = {}
-    if filas:
-        recos = {a["ad_id"]: a["recomendacion"]
-                 for a in anuncios_en_curso(db_path, desde, hasta, hoy=hoy)}
+    crm_por_pieza = {c["ad_id"]: int(c["n"]) for c in crm if c["ad_id"]}
+    leads_crm_mes = sum(int(c["n"]) for c in crm)
+    # Sin un solo lead del mes con pieza, contar 0 por tarjeta seria mentir.
+    hay_pieza_en_crm = bool(crm_por_pieza)
 
     activas, inactivas = [], []
     for f in filas:
@@ -492,12 +520,6 @@ def piezas_del_mes(db_path: str, mes: str, hoy=None) -> dict:
         impresiones = int(f["impresiones"] or 0)
         clics = int(f["clics"] or 0)
         corriendo = f["effective_status"] == ESTADO_EN_CURSO
-        reco = recos.get(f["ad_id"])
-        # A una que ya no esta activa no se le dice nada, salvo que valga la
-        # pena prenderla de nuevo: es la unica lectura accionable de una pieza
-        # apagada.
-        if not corriendo and (not reco or reco.get("accion") != "revivir"):
-            reco = None
         pieza = {
             "ad_id": f["ad_id"],
             "nombre": f["ad_name"],
@@ -514,7 +536,9 @@ def piezas_del_mes(db_path: str, mes: str, hoy=None) -> dict:
             "ctr": _tasa(clics, impresiones),
             "primer_dia": f["primer_dia"],
             "ultimo_dia": f["ultimo_dia"],
-            "recomendacion": reco,
+            # Personas que entraron al CRM en el mes por esta pieza.
+            "leads_crm": (crm_por_pieza.get(f["ad_id"], 0)
+                          if hay_pieza_en_crm else None),
         }
         (activas if corriendo else inactivas).append(pieza)
 
@@ -523,6 +547,20 @@ def piezas_del_mes(db_path: str, mes: str, hoy=None) -> dict:
     leads = sum(p["leads"] for p in todas)
     impresiones = sum(p["impresiones"] for p in todas)
     clics = sum(p["clics"] for p in todas)
+    en_tarjetas = sum(p["leads_crm"] or 0 for p in todas)
+    gasto_pauta = (round(float(cuenta["gasto"] or 0), 2)
+                   if cuenta["n"] else None)
+    primero = extremos["primero"]
+
+    if not primero:
+        estado = "nada_sincronizado"
+    elif todas:
+        estado = "con_piezas"
+    elif hasta < primero or (gasto_pauta or 0) > 0:
+        estado = "sin_datos_por_pieza"
+    else:
+        estado = "sin_pauta"
+
     y, m = (int(x) for x in mes.split("-"))
     return {
         "mes": mes,
@@ -530,9 +568,13 @@ def piezas_del_mes(db_path: str, mes: str, hoy=None) -> dict:
         "desde": desde,
         "hasta": hasta,
         "mes_actual": hoy[:7],
-        # El primer mes con alguna pieza: para no dejar retroceder hacia meses
-        # donde seguro no hay nada. None si todavia no se sincronizo nada.
-        "primer_mes": extremos["primero"][:7] if extremos["primero"] else None,
+        # Desde cuando hay datos por pieza. Ya NO frena la flecha: el panel
+        # va al mes pedido y, si es anterior, lo dice.
+        "primer_mes": primero[:7] if primero else None,
+        "primer_dia": primero,
+        "estado_datos": estado,
+        # El mes arranca antes del primer dia guardado: lo de antes falta.
+        "datos_desde": primero if primero and desde < primero <= hasta else None,
         "activas": activas,
         "inactivas": inactivas,
         "totales": {
@@ -546,13 +588,17 @@ def piezas_del_mes(db_path: str, mes: str, hoy=None) -> dict:
             "cpl": _costo(gasto, leads),
             "ctr": _tasa(clics, impresiones),
             "moneda": todas[0]["moneda"] if todas else None,
+            # Del CRM, aparte. `leads_crm_sin_pieza` son los del mes que no se
+            # pueden poner en ninguna tarjeta: sin `ad_id`, o de una pieza que
+            # en el mes no tuvo actividad.
+            "leads_crm": leads_crm_mes,
+            "leads_crm_sin_pieza": leads_crm_mes - en_tarjetas,
         },
         # Lo que Meta dice que se gasto en el mes mirado por campana. Si no
         # cuadra con la suma de las piezas, falta sincronizar algun anuncio y
         # el panel lo avisa en vez de mostrar dos numeros distintos sin decir
         # por que. None cuando esa tabla no tiene nada del mes.
-        "gasto_pauta": (round(float(cuenta["gasto"] or 0), 2)
-                        if cuenta["n"] else None),
+        "gasto_pauta": gasto_pauta,
     }
 
 

@@ -92,13 +92,23 @@ def _traer_ads() -> list:
     return filas
 
 
-def _traer_insights(desde: str, hasta: str) -> list:
+def _traer_insights(desde: str, hasta: str, pausa: float = 0,
+                    max_paginas=None, dormir=None) -> list:
+    """Los insights por anuncio y por dia, pagina por pagina.
+
+    `pausa` y `max_paginas` son para el relleno hacia atras: cada pagina es una
+    llamada, y cuatro o cinco llamadas en un minuto ya disparan el rate limit
+    (code 17). El sync diario los deja en cero porque trae una semana, que
+    entra en una o dos paginas.
+    """
     import json
+    import time
 
     import requests
 
     from meta_config import GRAPH
 
+    dormir = dormir or time.sleep
     cuenta = os.environ["META_AD_ACCOUNT_ID"]
     params = {
         "access_token": os.environ["META_ADS_TOKEN"],
@@ -108,8 +118,14 @@ def _traer_insights(desde: str, hasta: str) -> list:
         "time_range": json.dumps({"since": desde, "until": hasta}),
         "limit": 500,
     }
-    filas, url = [], f"{GRAPH}/{cuenta}/insights"
+    filas, url, paginas = [], f"{GRAPH}/{cuenta}/insights", 0
     while url:
+        if max_paginas is not None and paginas >= max_paginas:
+            raise _ErrorDeMeta(f"insights: se corto en el tope de {max_paginas} "
+                               "paginas; lo traido no se guardo")
+        if paginas and pausa:
+            dormir(pausa)
+        paginas += 1
         r = requests.get(url, params=params, timeout=60)
         if not r.ok:
             logger.error(f"Insights por anuncio: la API contesto "
@@ -122,6 +138,40 @@ def _traer_insights(desde: str, hasta: str) -> list:
         filas.extend(d.get("data", []))
         url = d.get("paging", {}).get("next")
         params = {}
+    return filas
+
+
+def _guardar_insights(conn, crudas) -> int:
+    """Upsert por (date, ad_id): correrlo dos veces sobre el mismo dia lo
+    actualiza, no lo duplica. Devuelve cuantas filas guardo."""
+    filas = 0
+    for f in crudas:
+        ad_id = f.get("ad_id")
+        if not ad_id:
+            continue
+        filas += 1
+        conn.execute("""
+            INSERT INTO meta_ad_insights
+                (date, ad_id, spend, currency, impressions, clicks, reach,
+                 leads, synced_at)
+            VALUES (?,?,?,?,?,?,?,?, CURRENT_TIMESTAMP)
+            ON CONFLICT(date, ad_id) DO UPDATE SET
+                spend       = excluded.spend,
+                currency    = excluded.currency,
+                impressions = excluded.impressions,
+                clicks      = excluded.clicks,
+                reach       = excluded.reach,
+                leads       = excluded.leads,
+                synced_at   = CURRENT_TIMESTAMP
+        """, (
+            f.get("date_start"), ad_id,
+            float(f.get("spend") or 0),
+            f.get("account_currency"),
+            _entero(f.get("impressions")),
+            _entero(f.get("clicks")),
+            _entero(f.get("reach")),
+            _leads_de(f),
+        ))
     return filas
 
 
@@ -240,33 +290,7 @@ def sincronizar_anuncios(db_path: str, desde: str, hasta: str,
             logger.error(f"Anuncios: el gasto no se pudo traer: {e}")
             crudas, fallo = [], str(e)
 
-        for f in crudas:
-            ad_id = f.get("ad_id")
-            if not ad_id:
-                continue
-            filas += 1
-            conn.execute("""
-                INSERT INTO meta_ad_insights
-                    (date, ad_id, spend, currency, impressions, clicks, reach,
-                     leads, synced_at)
-                VALUES (?,?,?,?,?,?,?,?, CURRENT_TIMESTAMP)
-                ON CONFLICT(date, ad_id) DO UPDATE SET
-                    spend       = excluded.spend,
-                    currency    = excluded.currency,
-                    impressions = excluded.impressions,
-                    clicks      = excluded.clicks,
-                    reach       = excluded.reach,
-                    leads       = excluded.leads,
-                    synced_at   = CURRENT_TIMESTAMP
-            """, (
-                f.get("date_start"), ad_id,
-                float(f.get("spend") or 0),
-                f.get("account_currency"),
-                _entero(f.get("impressions")),
-                _entero(f.get("clicks")),
-                _entero(f.get("reach")),
-                _leads_de(f),
-            ))
+        filas = _guardar_insights(conn, crudas)
 
         conn.commit()
     finally:
@@ -278,3 +302,102 @@ def sincronizar_anuncios(db_path: str, desde: str, hasta: str,
     if fallo:
         salida["error_gasto"] = fallo
     return salida
+
+
+# ── Relleno hacia atras ─────────────────────────────────────────────────────
+#
+# El cron llama a `sync-anuncios` sin `dias`, o sea los ultimos 7. Todo mes
+# anterior al primer sync queda sin datos por pieza, y el panel no puede
+# mostrar que se pauto en mayo. Esto lo rellena, un mes por llamada.
+#
+# LOS TOPES, porque habla con Meta y cuatro o cinco llamadas en un minuto ya
+# disparan el rate limit (code 17):
+#   * Una llamada cada `MINUTOS_ENTRE_RELLENOS`, marcada en `corridas` ANTES de
+#     llamar: si Meta falla, igual cuenta, y reintentar enseguida no martilla.
+#   * Un mes por llamada: una sola consulta de insights, sin bajar anuncios ni
+#     imagenes (eso ya lo hace el sync diario).
+#   * `PAGINAS_MAXIMAS` por mes, con `PAUSA_ENTRE_PAGINAS` segundos entre una y
+#     otra. Si se llega al tope no se guarda nada y se avisa.
+#   * No arranca solo nunca: ni en el boot ni en el cron. Se corre a mano.
+#
+# Idempotente por el ON CONFLICT(date, ad_id): correr dos veces el mismo mes
+# actualiza los mismos renglones.
+
+MINUTOS_ENTRE_RELLENOS = 3
+PAGINAS_MAXIMAS = 10
+PAUSA_ENTRE_PAGINAS = 20
+# Meta guarda los insights 37 meses. Mas atras contesta error.
+MESES_DE_HISTORIA = 37
+_NOMBRE_CORRIDA = "relleno_anuncios"
+
+
+class ReintentarMasTarde(RuntimeError):
+    """Todavia no paso la pausa minima desde el relleno anterior."""
+
+
+def rellenar_mes(db_path: str, mes: str, hoy=None, traer_insights=None,
+                 dormir=None) -> dict:
+    """Trae y guarda los insights por pieza de un mes 'YYYY-MM'.
+
+    Solo insights: la ficha de cada anuncio la trae el sync diario. Si una
+    pieza vieja ya no aparece en esa lista (archivada o borrada), se le crea
+    una ficha minima con el nombre que viene en el insight, para que el panel
+    no la muestre "(sin nombre)". Nunca pisa una ficha existente.
+    """
+    from datetime import date
+
+    from services.anuncios import limites_del_mes
+    from services.corridas import marcar_corrida, puede_correr
+
+    hoy = hoy or date.today().isoformat()
+    desde, hasta = limites_del_mes(mes)
+    if desde > hoy:
+        raise ValueError("ese mes todavia no empezo")
+    y, m = int(hoy[:4]), int(hoy[5:7])
+    piso_y, piso_m = divmod(y * 12 + (m - 1) - MESES_DE_HISTORIA, 12)
+    if mes < f"{piso_y:04d}-{piso_m + 1:02d}":
+        raise ValueError(f"Meta guarda {MESES_DE_HISTORIA} meses de insights; "
+                         "ese mes ya no lo tiene")
+    hasta = min(hasta, hoy)
+
+    if traer_insights is None:
+        if not hay_credenciales():
+            logger.warning("Relleno: sin META_ADS_TOKEN o META_AD_ACCOUNT_ID")
+            return {"mes": mes, "filas": 0, "salteado": "sin_credenciales"}
+
+        def traer_insights(d, h):
+            return _traer_insights(d, h, pausa=PAUSA_ENTRE_PAGINAS,
+                                   max_paginas=PAGINAS_MAXIMAS, dormir=dormir)
+
+    if not puede_correr(db_path, _NOMBRE_CORRIDA,
+                        cada_horas=MINUTOS_ENTRE_RELLENOS / 60):
+        raise ReintentarMasTarde(
+            f"hay que esperar {MINUTOS_ENTRE_RELLENOS} minutos entre un relleno "
+            "y el siguiente, para no pasarse del limite de llamadas de Meta")
+    marcar_corrida(db_path, _NOMBRE_CORRIDA)
+
+    try:
+        crudas = traer_insights(desde, hasta)
+    except _ErrorDeMeta as e:
+        logger.error(f"Relleno {mes}: {e}")
+        return {"mes": mes, "desde": desde, "hasta": hasta, "filas": 0,
+                "error_gasto": str(e)}
+
+    conn = _connect(db_path)
+    try:
+        filas = _guardar_insights(conn, crudas)
+        fichas = 0
+        for ad_id, nombre in {f.get("ad_id"): f.get("ad_name")
+                              for f in crudas if f.get("ad_id")}.items():
+            cur = conn.execute(
+                "INSERT INTO meta_ads (ad_id, ad_name, synced_at) "
+                "VALUES (?, ?, CURRENT_TIMESTAMP) "
+                "ON CONFLICT(ad_id) DO NOTHING", (ad_id, nombre))
+            fichas += cur.rowcount
+        conn.commit()
+    finally:
+        conn.close()
+
+    logger.info(f"Relleno {mes}: {filas} filas, {fichas} fichas nuevas")
+    return {"mes": mes, "desde": desde, "hasta": hasta, "filas": filas,
+            "fichas_nuevas": fichas}

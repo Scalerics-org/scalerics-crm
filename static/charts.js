@@ -352,6 +352,7 @@
 
     var max = valores.length ? Math.max.apply(null, valores) : 0;
     var cortes = SC.ticks(0, max || 1, 4);
+    x0 = SC.margenEjeY(cortes, opciones.formato);
     var ey = SC.escalaLineal([0, cortes[cortes.length - 1]], [y1, y0]);
     var paso = puntos.length > 1 ? (x1 - x0) / (puntos.length - 1) : 0;
     var ex = function (i) { return puntos.length > 1 ? x0 + i * paso : (x0 + x1) / 2; };
@@ -373,7 +374,8 @@
     var cada = Math.max(1, Math.ceil(puntos.length / 8));
     piezas.push('<g class="sc-eje-x">' + puntos.map(function (p, i) {
       if (i % cada) return '';
-      return '<text x="' + ex(i).toFixed(1) + '" y="' + (alto - 8) +
+      return '<text x="' + SC.centroQueEntra(ex(i), p.x, 10, ancho).toFixed(1) +
+             '" y="' + (alto - 8) +
              '" text-anchor="middle" font-size="10" fill="' + mudo + '">' +
              SC.esc(p.x) + '</text>';
     }).join('') + '</g>');
@@ -605,6 +607,7 @@
 
     var max = valores.length ? Math.max.apply(null, valores) : 0;
     var cortes = SC.ticks(0, max || 1, 4);
+    x0 = SC.margenEjeY(cortes, opciones.formato);
     var ey = SC.escalaLineal([0, cortes[cortes.length - 1]], [y1, y0]);
     var paso = equis.length > 1 ? (x1 - x0) / (equis.length - 1) : 0;
     var ex = function (i) {
@@ -626,7 +629,8 @@
     var cada = Math.max(1, Math.ceil(equis.length / 8));
     piezas.push('<g class="sc-eje-x">' + equis.map(function (x, i) {
       if (i % cada) return '';
-      return '<text x="' + ex(i).toFixed(1) + '" y="' + (alto - 8) +
+      return '<text x="' + SC.centroQueEntra(ex(i), x, 10, ancho).toFixed(1) +
+             '" y="' + (alto - 8) +
              '" text-anchor="middle" font-size="10" fill="' + mudo + '">' +
              SC.esc(x) + '</text>';
     }).join('') + '</g>');
@@ -948,8 +952,16 @@
     var positivo = SC.PALETA.mal[tema];     // falta plata: es la mala noticia
     var negativo = SC.PALETA.bien[tema];
 
-    var anchoEtiqueta = 92;
-    var anchoValor = 96;
+    // Los dos margenes salen del texto mas largo y no de una constante. Con 92
+    // fijos, "Septiembre 2026" se salia del viewBox por la izquierda y Juan
+    // leia "eptiembre 2026". El piso es el ancho de antes: con nombres cortos
+    // el grafico queda igual.
+    var anchoEtiqueta = Math.max(92, Math.ceil(Math.max.apply(null,
+      vivas.map(function (f) { return SC.anchoTexto(f.etiqueta, 11); }))) + 18);
+    var anchoValor = Math.max(96, Math.ceil(Math.max.apply(null,
+      vivas.map(function (f) {
+        return SC.anchoTexto(SC.fmt(f.valor, opciones.formato), 11);
+      }))) + 18);
     var ancho = opciones.ancho || 900;
     var altoFila = 30;
     var alto = vivas.length * altoFila + 26;
@@ -1013,7 +1025,9 @@
     var grilla = SC.PALETA.grilla[tema];
     var base = SC.PALETA[tema][0];          // el azul de marca, como unico tono
 
-    var anchoEtiqueta = 46;
+    // Del rotulo de fila mas largo, con el ancho de antes como piso.
+    var anchoEtiqueta = Math.max(46, Math.ceil(Math.max.apply(null,
+      filas.map(function (f) { return SC.anchoTexto(f.etiqueta, 10); }))) + 12);
     var lado = opciones.lado || 36;
     var ancho = anchoEtiqueta + columnas.length * lado + 8;
     var alto = 24 + filas.length * lado + 8;
@@ -1125,10 +1139,7 @@
     // El margen izquierdo sale de la etiqueta mas larga del eje y no de una
     // constante: con un margen fijo, "1.234,56" se sale del viewBox por la
     // izquierda y el numero aparece cortado.
-    var largoY = Math.max.apply(null, cortes.map(function (t) {
-      return SC.fmt(t, opciones.formato).length;
-    }));
-    var x0 = Math.max(_M.izquierda, largoY * 6 + 14);
+    var x0 = SC.margenEjeY(cortes, opciones.formato);
     var x1 = ancho - _M.derecha;
     var ey = SC.escalaLineal([0, cortes[cortes.length - 1]], [y1, y0]);
 
@@ -1197,7 +1208,8 @@
       });
 
       if (i % cadaCuantos === 0) {
-        piezas.push('<text x="' + centro.toFixed(1) + '" y="' + (alto - 10) +
+        var xRotulo = SC.centroQueEntra(centro, p.etiqueta, 10, ancho);
+        piezas.push('<text x="' + xRotulo.toFixed(1) + '" y="' + (alto - 10) +
                     '" text-anchor="middle" font-size="10" fill="' + mudo + '">' +
                     SC.esc(p.etiqueta) + '</text>');
       }
@@ -1290,6 +1302,33 @@
                     (f.nota ? '<span class="sc-barra-nota">' + SC.esc(f.nota) +
                      '</span>' : '') + '</span></div>';
            }).join('') + '</div></div>';
+  };
+
+  // Cuanto mide un texto en el SVG, estimado. No hay DOM para medirlo, asi que
+  // va por caracteres: 0,62 del tamano de letra por caracter cubre las
+  // mayusculas y los numeros de Inter con margen. Estimar de mas deja un poco
+  // de aire; estimar de menos corta el texto, que es el bug que esto evita.
+  SC.anchoTexto = function (texto, tamano) {
+    var t = String(texto === null || texto === undefined ? '' : texto);
+    return t.length * tamano * 0.62;
+  };
+
+  // El centro de un rotulo con text-anchor="middle", corrido lo justo para que
+  // no se salga del viewBox. Sin esto el ultimo mes de un eje X largo se corta
+  // por la derecha.
+  SC.centroQueEntra = function (centro, texto, tamano, ancho) {
+    var mitad = SC.anchoTexto(texto, tamano) / 2;
+    if (mitad * 2 >= ancho) return ancho / 2;
+    return Math.min(Math.max(centro, mitad), ancho - mitad);
+  };
+
+  // El margen izquierdo de un eje Y, a partir del rotulo mas largo. Con un
+  // margen fijo, "12.345,00" se sale por la izquierda.
+  SC.margenEjeY = function (cortes, formato) {
+    var largo = Math.max.apply(null, cortes.map(function (t) {
+      return SC.anchoTexto(SC.fmt(t, formato), 10);
+    }));
+    return Math.max(_M.izquierda, Math.ceil(largo) + 14);
   };
 
   SC.recortar = function (texto, tope) {

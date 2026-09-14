@@ -167,14 +167,111 @@ def test_las_piezas_no_traen_la_campana(db):
     assert "Leads UY" not in json.dumps(p)
 
 
-def test_la_recomendacion_solo_va_en_las_activas_o_si_vale_revivirla(db):
-    _anuncio(db, "vivo")
-    _dia(db, "vivo", "2026-09-03", 10.0, leads=1)
-    _anuncio(db, "apagado", estado="PAUSED")
-    _dia(db, "apagado", "2026-09-03", 300.0, leads=0)
-    r = piezas_del_mes(db, "2026-09", hoy=HOY)
-    assert r["activas"][0]["recomendacion"]["accion"]
-    assert r["inactivas"][0]["recomendacion"] is None
+def test_ningun_numero_de_otro_mes_llega_a_mayo(db):
+    """Juan: "si 'tu web te hace ganar clientes' se pauto en mayo y setiembre,
+    que cuando entre a mayo me muestre lo que fue su costo por lead en mayo".
+
+    Antes la tarjeta activa traia la recomendacion, armada con toda la vida de
+    la pieza: el 999 de junio y el 3333 de setiembre llegaban a mayo por ahi.
+    Los dias pegados al borde (30/4, 1/5, 31/5, 1/6) delatan el filtro.
+    """
+    _anuncio(db, "web", nombre="Tu web te hace ganar clientes")
+    _dia(db, "web", "2026-04-30", 777.0, leads=77)
+    _dia(db, "web", "2026-05-01", 10.0, leads=1)
+    _dia(db, "web", "2026-05-31", 40.0, leads=4)
+    _dia(db, "web", "2026-06-01", 999.0, leads=99)
+    _dia(db, "web", "2026-09-10", 3333.0, leads=33)
+    _anuncio(db, "solo_set")
+    _dia(db, "solo_set", "2026-06-01", 55.0, leads=5)
+    _dia(db, "solo_set", "2026-09-02", 66.0, leads=6)
+
+    r = piezas_del_mes(db, "2026-05", hoy=HOY)
+    assert _ids(r["activas"]) == ["web"], "la de setiembre no va en mayo"
+    p = r["activas"][0]
+    assert (p["gasto"], p["leads"], p["cpl"]) == (50.0, 5, 10.0)
+    assert "recomendacion" not in p
+    texto = json.dumps(r)
+    for ajeno in ("777", "999", "3333", "55.0", "66.0", "77", "99", "33"):
+        assert ajeno not in texto, f"{ajeno} es de otro mes y llego a mayo"
+    # Y en setiembre, lo de setiembre.
+    s = {x["ad_id"]: x for x in piezas_del_mes(db, "2026-09", hoy=HOY)["activas"]}
+    assert (s["web"]["gasto"], s["web"]["cpl"]) == (3333.0, 101.0)
+
+
+# ── Por que un mes no tiene piezas ─────────────────────────────────────────
+
+def test_un_mes_anterior_al_primer_dia_guardado_no_dice_que_no_se_pauto(db):
+    _anuncio(db, "1")
+    _dia(db, "1", "2026-06-01", 5.0)
+    r = piezas_del_mes(db, "2026-05", hoy=HOY)
+    assert r["mes"] == "2026-05" and r["nombre"] == "Mayo 2026"
+    assert r["estado_datos"] == "sin_datos_por_pieza"
+    assert r["primer_dia"] == "2026-06-01"
+    assert r["activas"] == [] and r["inactivas"] == []
+
+
+def test_un_hueco_con_gasto_por_campana_es_falta_de_datos(db):
+    _anuncio(db, "1")
+    _dia(db, "1", "2026-05-31", 5.0)
+    _dia(db, "1", "2026-08-01", 5.0)
+    _campana_dia(db, "2026-07-15", 80.0)
+    assert piezas_del_mes(db, "2026-07", hoy=HOY)["estado_datos"] == "sin_datos_por_pieza"
+    assert piezas_del_mes(db, "2026-06", hoy=HOY)["estado_datos"] == "sin_pauta"
+    assert piezas_del_mes(db, "2026-05", hoy=HOY)["estado_datos"] == "con_piezas"
+
+
+def test_avisa_si_el_mes_arranca_antes_del_primer_dia_guardado(db):
+    _anuncio(db, "1")
+    _dia(db, "1", "2026-08-31", 5.0)
+    _dia(db, "1", "2026-09-01", 5.0)
+    assert piezas_del_mes(db, "2026-08", hoy=HOY)["datos_desde"] == "2026-08-31"
+    assert piezas_del_mes(db, "2026-09", hoy=HOY)["datos_desde"] is None
+
+
+def test_sin_nada_guardado_el_estado_lo_dice(db):
+    assert piezas_del_mes(db, "2026-05", hoy=HOY)["estado_datos"] == "nada_sincronizado"
+
+
+# ── Los leads del CRM, aparte de los de Meta ───────────────────────────────
+
+def _lead(db, scraped_at, ad_id=None, source="meta"):
+    conn = _connect(db)
+    try:
+        conn.execute("INSERT INTO businesses (name, source, scraped_at, meta_ad_id) "
+                     "VALUES (?,?,?,?)", ("Lead", source, scraped_at, ad_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def test_los_leads_del_crm_son_los_del_mes_y_van_aparte(db):
+    _anuncio(db, "web")
+    _dia(db, "web", "2026-05-10", 30.0, leads=7)
+    _anuncio(db, "otra")
+    _dia(db, "otra", "2026-04-30", 30.0, leads=1)
+    _lead(db, "2026-05-31T23:30:00+0000", "web")          # mayo
+    _lead(db, "2026-05-01T00:05:00+0000", "web")          # mayo
+    _lead(db, "2026-06-01T00:10:00+0000", "web")          # junio: no
+    _lead(db, "2026-04-30T22:00:00+0000", "web")          # abril: no
+    _lead(db, "2026-05-15T12:00:00+0000", None)           # sin pieza
+    _lead(db, "2026-05-16T12:00:00+0000", "otra")         # pieza sin actividad en mayo
+    _lead(db, "2026-05-17T12:00:00+0000", "web", source="scraper")  # no es de Meta
+    r = piezas_del_mes(db, "2026-05", hoy=HOY)
+    p = r["activas"][0]
+    assert p["leads"] == 7, "el de Meta no se toca"
+    assert p["leads_crm"] == 2
+    assert r["totales"]["leads_crm"] == 4
+    assert r["totales"]["leads_crm_sin_pieza"] == 2
+    assert r["totales"]["leads"] == 7, "no se suman"
+
+
+def test_si_ningun_lead_del_mes_trae_la_pieza_no_se_inventa_un_cero(db):
+    _anuncio(db, "web")
+    _dia(db, "web", "2026-05-10", 30.0, leads=7)
+    _lead(db, "2026-05-15T12:00:00+0000", None)
+    r = piezas_del_mes(db, "2026-05", hoy=HOY)
+    assert r["activas"][0]["leads_crm"] is None
+    assert r["totales"]["leads_crm"] == 1
 
 
 def test_avisa_con_que_comparar_el_gasto_del_mes(db):
@@ -244,6 +341,55 @@ def test_un_mes_invalido_da_400(cliente, mes):
 def test_las_piezas_no_se_ven_sin_permiso(cliente):
     _, c = cliente
     assert c.get("/api/marketing/piezas?mes=2026-09").status_code in (302, 401, 403)
+
+
+def test_la_ruta_de_piezas_no_corre_el_mes_al_primero_con_datos(cliente):
+    app, c = cliente
+    _anuncio(app.config["DB_PATH"], "1")
+    _dia(app.config["DB_PATH"], "1", "2026-08-01", 12.5)
+    datos = c.get("/api/marketing/piezas?mes=2026-05", headers=_AUTH).get_json()
+    assert datos["mes"] == "2026-05"
+    assert datos["estado_datos"] == "sin_datos_por_pieza"
+
+
+def test_el_relleno_no_corre_sin_permiso(cliente):
+    _, c = cliente
+    r = c.post("/api/marketing/rellenar-anuncios?mes=2026-05")
+    assert r.status_code in (302, 401, 403)
+
+
+@pytest.mark.parametrize("mes", ["", "2026-5", "mayo", "2026-05-01"])
+def test_el_relleno_con_mes_invalido_da_400(cliente, mes):
+    _, c = cliente
+    r = c.post(f"/api/marketing/rellenar-anuncios?mes={mes}", headers=_AUTH)
+    assert r.status_code == 400
+
+
+def test_el_relleno_de_un_mes_futuro_da_400(cliente):
+    _, c = cliente
+    r = c.post("/api/marketing/rellenar-anuncios?mes=2999-01", headers=_AUTH)
+    assert r.status_code == 400
+
+
+def test_el_relleno_sin_credenciales_avisa_y_no_llama(cliente, monkeypatch):
+    monkeypatch.delenv("META_ADS_TOKEN", raising=False)
+    monkeypatch.delenv("META_AD_ACCOUNT_ID", raising=False)
+    _, c = cliente
+    r = c.post("/api/marketing/rellenar-anuncios?mes=2026-05", headers=_AUTH)
+    assert r.status_code == 200
+    assert r.get_json()["salteado"] == "sin_credenciales"
+
+
+def test_el_relleno_pedido_dos_veces_seguidas_da_429(cliente, monkeypatch):
+    import services.meta_anuncios as m
+
+    monkeypatch.setattr(m, "hay_credenciales", lambda: True)
+    monkeypatch.setattr(m, "_traer_insights", lambda *a, **k: [])
+    _, c = cliente
+    assert c.post("/api/marketing/rellenar-anuncios?mes=2026-05",
+                  headers=_AUTH).status_code == 200
+    assert c.post("/api/marketing/rellenar-anuncios?mes=2026-06",
+                  headers=_AUTH).status_code == 429
 
 
 # ── Las semanas vacias del medio ───────────────────────────────────────────

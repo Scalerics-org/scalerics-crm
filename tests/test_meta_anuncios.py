@@ -311,6 +311,154 @@ def test_el_motivo_recorta_lo_que_dijo_meta(db):
     assert "limit reached" in _motivo(_Falsa())
 
 
+# ── El relleno hacia atras ─────────────────────────────────────────────────
+#
+# El cron trae 7 dias. Los meses viejos se rellenan a mano, de a uno, con
+# tope propio. Ninguno de estos tests sale a la red.
+
+def _borrar_marca(db):
+    conn = _connect(db)
+    try:
+        conn.execute("DELETE FROM corridas")
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _insights_de_mayo(pedidos):
+    def traer(desde, hasta):
+        pedidos.append((desde, hasta))
+        return [
+            {"date_start": "2026-05-01", "ad_id": "120243368449890249",
+             "ad_name": "12/03 - Hiciste lo más difícil", "spend": "4.00",
+             "account_currency": "USD", "impressions": "300", "clicks": "5",
+             "reach": "250", "actions": [{"action_type": "lead", "value": "1"}]},
+            {"date_start": "2026-05-31", "ad_id": "999", "ad_name": "Vieja archivada",
+             "spend": "6.00", "account_currency": "USD", "impressions": "400",
+             "clicks": "7", "reach": "300", "actions": []},
+        ]
+    return traer
+
+
+def _contar(db, tabla):
+    conn = _connect(db)
+    try:
+        return conn.execute(f"SELECT COUNT(*) c FROM {tabla}").fetchone()["c"]
+    finally:
+        conn.close()
+
+
+def test_el_relleno_trae_el_mes_entero_y_es_idempotente(db):
+    from services.meta_anuncios import rellenar_mes
+
+    pedidos = []
+    r = rellenar_mes(db, "2026-05", hoy="2026-09-14",
+                     traer_insights=_insights_de_mayo(pedidos))
+    assert pedidos == [("2026-05-01", "2026-05-31")]
+    assert r["filas"] == 2
+    _borrar_marca(db)
+    rellenar_mes(db, "2026-05", hoy="2026-09-14",
+                 traer_insights=_insights_de_mayo(pedidos))
+    assert _contar(db, "meta_ad_insights") == 2
+
+
+def test_el_relleno_del_mes_en_curso_pide_hasta_hoy(db):
+    from services.meta_anuncios import rellenar_mes
+
+    pedidos = []
+    rellenar_mes(db, "2026-09", hoy="2026-09-14",
+                 traer_insights=_insights_de_mayo(pedidos))
+    assert pedidos == [("2026-09-01", "2026-09-14")]
+
+
+@pytest.mark.parametrize("mes", ["2026-10", "2023-07"])
+def test_el_relleno_no_pide_el_futuro_ni_lo_que_meta_ya_no_tiene(db, mes):
+    from services.meta_anuncios import rellenar_mes
+
+    pedidos = []
+    with pytest.raises(ValueError):
+        rellenar_mes(db, mes, hoy="2026-09-14",
+                     traer_insights=_insights_de_mayo(pedidos))
+    assert pedidos == []
+
+
+def test_el_relleno_respeta_la_pausa_entre_llamadas(db):
+    from services.meta_anuncios import ReintentarMasTarde, rellenar_mes
+
+    pedidos = []
+    rellenar_mes(db, "2026-05", hoy="2026-09-14",
+                 traer_insights=_insights_de_mayo(pedidos))
+    with pytest.raises(ReintentarMasTarde):
+        rellenar_mes(db, "2026-06", hoy="2026-09-14",
+                     traer_insights=_insights_de_mayo(pedidos))
+    assert len(pedidos) == 1, "la segunda no llego a Meta"
+
+
+def test_si_meta_falla_la_pausa_cuenta_igual(db):
+    """Reintentar enseguida despues de un code 17 es justo lo que lo empeora."""
+    from services.meta_anuncios import (ReintentarMasTarde, _ErrorDeMeta,
+                                        rellenar_mes)
+
+    def romper(desde, hasta):
+        raise _ErrorDeMeta("insights 403: code=17 User request limit reached")
+
+    r = rellenar_mes(db, "2026-05", hoy="2026-09-14", traer_insights=romper)
+    assert "code=17" in r["error_gasto"] and r["filas"] == 0
+    with pytest.raises(ReintentarMasTarde):
+        rellenar_mes(db, "2026-05", hoy="2026-09-14", traer_insights=romper)
+
+
+def test_el_relleno_crea_la_ficha_que_falta_sin_pisar_la_que_hay(db):
+    from services.meta_anuncios import rellenar_mes
+
+    _correr(db)                        # la ficha real de 120243368449890249
+    rellenar_mes(db, "2026-05", hoy="2026-09-14",
+                 traer_insights=_insights_de_mayo([]))
+    real = _fila(db, "120243368449890249")
+    assert real["effective_status"] == "PAUSED"
+    assert real["imagen_archivo"] is not None
+    assert _fila(db, "999")["ad_name"] == "Vieja archivada"
+
+
+def test_el_relleno_sin_credenciales_no_marca_la_pausa(db, monkeypatch):
+    from services.meta_anuncios import rellenar_mes
+
+    monkeypatch.delenv("META_ADS_TOKEN", raising=False)
+    monkeypatch.delenv("META_AD_ACCOUNT_ID", raising=False)
+    assert rellenar_mes(db, "2026-05", hoy="2026-09-14")["salteado"] == "sin_credenciales"
+    assert _contar(db, "corridas") == 0
+
+
+def test_las_paginas_van_con_pausa_y_con_tope(monkeypatch):
+    """Cada pagina es una llamada. Una respuesta que pagina sin fin no puede
+    convertirse en cien llamadas seguidas."""
+    import requests
+
+    import services.meta_anuncios as m
+
+    monkeypatch.setenv("META_ADS_TOKEN", "t")
+    monkeypatch.setenv("META_AD_ACCOUNT_ID", "act_1")
+    llamadas, pausas = [], []
+
+    class _Pagina:
+        ok = True
+        status_code = 200
+
+        def json(self):
+            return {"data": [{"ad_id": "1"}], "paging": {"next": "https://siguiente"}}
+
+    def get(url, params=None, timeout=None):
+        llamadas.append(url)
+        return _Pagina()
+
+    monkeypatch.setattr(requests, "get", get)
+    with pytest.raises(m._ErrorDeMeta):
+        m._traer_insights("2026-05-01", "2026-05-31", pausa=20, max_paginas=3,
+                          dormir=pausas.append)
+    assert len(llamadas) == 3
+    assert pausas == [20, 20]
+
+
 def test_si_la_respuesta_no_es_json_el_motivo_no_revienta(db):
     """Un 502 del proxy de Meta devuelve HTML. Si `_motivo` reventara ahi, el
     error que se estaba reportando se perderia detras de otro error."""

@@ -140,31 +140,31 @@ def _dossier_de_prueba():
     }
 
 
-def _pieza(ad_id, nombre, corriendo, gasto, leads, imagen=True, reco=None):
+def _pieza(ad_id, nombre, corriendo, gasto, leads, imagen=True, leads_crm=None):
     return {"ad_id": ad_id, "nombre": nombre, "tipo": "SHARE" if imagen else "VIDEO",
             "titulo": None, "tiene_imagen": imagen, "corriendo": corriendo,
             "moneda": "USD", "gasto": gasto, "impresiones": 12000, "clics": 240,
             "leads": leads, "cpl": round(gasto / leads, 2) if leads else None,
             "ctr": 0.02, "primer_dia": "2026-09-02", "ultimo_dia": "2026-09-13",
-            "recomendacion": reco}
+            "leads_crm": leads_crm}
 
 
 _PIEZAS = {
     "mes": "2026-09", "nombre": "Setiembre 2026", "desde": "2026-09-01",
     "hasta": "2026-09-30", "mes_actual": "2026-09", "primer_mes": "2026-03",
+    "primer_dia": "2026-03-04", "estado_datos": "con_piezas", "datos_desde": None,
     "activas": [
         _pieza("120253602403650249", "Web hace ganar", True, 369.17, 33,
-               reco={"accion": "subir", "texto": "Es de los que mejor rinden.",
-                     "metricas_citadas": []}),
+               leads_crm=28),
         _pieza("120253602403650250", "UGC - 2", True, 120.0, 6, imagen=False,
-               reco={"accion": "ajustar", "texto": "Cada lead te sale caro.",
-                     "metricas_citadas": []}),
+               leads_crm=4),
     ],
     "inactivas": [_pieza("120243368449890249", "Hiciste lo mas dificil", False,
-                         85.0, 0)],
+                         85.0, 0, leads_crm=0)],
     "totales": {"piezas": 3, "activas": 2, "inactivas": 1, "gasto": 574.17,
                 "leads": 39, "impresiones": 36000, "clics": 720, "cpl": 14.72,
-                "ctr": 0.02, "moneda": "USD"},
+                "ctr": 0.02, "moneda": "USD", "leads_crm": 35,
+                "leads_crm_sin_pieza": 3},
     "gasto_pauta": 700.0,
 }
 
@@ -260,24 +260,105 @@ def test_las_piezas_se_pintan_en_dos_grupos_y_legibles(tmp_path):
     assert "Brand" not in caja
     # Las dos fuentes no cuadran (574,17 contra 700): el panel lo avisa.
     assert "700,00" in caja
+    # Los dos leads, cada uno con su nombre, y ninguno sumado al otro.
+    assert "Leads según Meta" in caja and "Leads en el CRM" in caja
+    assert "3 sin pieza identificada" in caja
+    # Nada que no sea del mes: se fue la recomendación de toda la vida.
+    assert "sc-anun-reco" not in caja
+    assert "desde que arrancó" not in caja
 
 
 @sin_node
 def test_un_mes_sin_piezas_lo_dice(tmp_path):
     vacio = dict(_PIEZAS, activas=[], inactivas=[], gasto_pauta=None,
+                 estado_datos="sin_pauta",
                  totales=dict(_PIEZAS["totales"], piezas=0, activas=0,
                               inactivas=0, gasto=0.0, leads=0))
     html = _correr(tmp_path, f"_mkPintarPiezas({json.dumps(vacio)});\n" + _VOLCAR)
-    assert "no hubo ninguna pieza" in html["mk-piezas"]
+    assert "no se pautó ninguna pieza" in html["mk-piezas"]
+    assert "No hay datos por pieza" not in html["mk-piezas"]
     assert "<article" not in html["mk-piezas"]
+
+
+@sin_node
+def test_un_mes_sin_datos_por_pieza_no_dice_que_no_se_pauto(tmp_path):
+    """Mayo, anterior al primer dia guardado: falta el dato, no la pauta."""
+    mayo = dict(_PIEZAS, mes="2026-05", nombre="Mayo 2026", desde="2026-05-01",
+                hasta="2026-05-31", primer_mes="2026-06", primer_dia="2026-06-01",
+                estado_datos="sin_datos_por_pieza", activas=[], inactivas=[],
+                gasto_pauta=None)
+    html = _correr(tmp_path, f"_mkPintarPiezas({json.dumps(mayo)});\n" + _VOLCAR)
+    caja = html["mk-piezas"]
+    assert "No hay datos por pieza de Meta guardados para Mayo 2026" in caja
+    assert "01/06/2026" in caja
+    assert "no se pautó" not in caja
+
+
+@sin_node
+def test_un_hueco_con_gasto_por_campana_dice_que_falta_traerlo(tmp_path):
+    julio = dict(_PIEZAS, mes="2026-07", nombre="Julio 2026", desde="2026-07-01",
+                 hasta="2026-07-31", estado_datos="sin_datos_por_pieza",
+                 activas=[], inactivas=[], gasto_pauta=80.0)
+    html = _correr(tmp_path, f"_mkPintarPiezas({json.dumps(julio)});\n" + _VOLCAR)
+    assert "Meta registra gasto de pauta en ese mes" in html["mk-piezas"]
+
+
+@sin_node
+def test_avisa_si_el_mes_tiene_datos_desde_la_mitad(tmp_path):
+    parcial = dict(_PIEZAS, datos_desde="2026-09-08")
+    html = _correr(tmp_path, f"_mkPintarPiezas({json.dumps(parcial)});\n" + _VOLCAR)
+    assert "empiezan el 08/09/2026" in html["mk-piezas"]
 
 
 @sin_node
 def test_sin_datos_de_meta_no_rompe(tmp_path):
     nada = dict(_PIEZAS, activas=[], inactivas=[], gasto_pauta=None,
-                primer_mes=None, totales=dict(_PIEZAS["totales"], piezas=0))
+                primer_mes=None, primer_dia=None, estado_datos="nada_sincronizado",
+                totales=dict(_PIEZAS["totales"], piezas=0))
     html = _correr(tmp_path, f"_mkPintarPiezas({json.dumps(nada)});\n" + _VOLCAR)
     assert "Todavía no hay piezas sincronizadas" in html["mk-piezas"]
+
+
+@sin_node
+def test_la_flecha_lleva_exactamente_al_mes_pedido(tmp_path):
+    """EL BUG: retroceder antes del primer mes con datos te dejaba en ese
+    primer mes sin avisar. Juan creia estar en mayo y miraba agosto."""
+    base = dict(_PIEZAS, activas=[], inactivas=[], gasto_pauta=None,
+                primer_mes="2026-08", primer_dia="2026-08-10")
+    cola = f"""
+const _BASE = {json.dumps(base, ensure_ascii=False)};
+_mkMesDeHoy = function () {{ return '2026-09'; }};
+const _pedidos = [];
+const _fetchDelArnes = globalThis.fetch;
+globalThis.fetch = (url) => {{
+  // Otros bloques del panel también piden cosas: solo cuentan las piezas.
+  if (String(url).indexOf('/api/marketing/piezas') === -1) return _fetchDelArnes(url);
+  _pedidos.push(url);
+  const mes = decodeURIComponent(url.split('mes=')[1]);
+  const d = Object.assign({{}}, _BASE, {{
+    mes: mes, nombre: _mkNombreMes(mes), hasta: mes + '-31',
+    estado_datos: mes < '2026-08' ? 'sin_datos_por_pieza' : 'sin_pauta' }});
+  return Promise.resolve({{ ok: true, status: 200, json: () => Promise.resolve(d) }});
+}};
+_mkPiezasMesActual = null;
+mkPiezasMes(1);                       // al futuro no va
+const _alFuturo = _pedidos.length;
+_mkPintarPiezas(Object.assign({{}}, _BASE, {{ mes: '2026-08', nombre: 'Agosto 2026' }}));
+_mkPiezasMesActual = '2026-08';
+mkPiezasMes(-1); mkPiezasMes(-1); mkPiezasMes(-1);
+setTimeout(() => console.log(JSON.stringify({{
+  alFuturo: _alFuturo, pedidos: _pedidos, actual: _mkPiezasMesActual,
+  rotulo: _els['mk-piezas-mes'].textContent, ant: _els['mk-piezas-ant'].disabled,
+  caja: _els['mk-piezas'].innerHTML }})), 50);
+"""
+    r = _correr(tmp_path, cola)
+    assert r["alFuturo"] == 0
+    assert [p.split("mes=")[1] for p in r["pedidos"]] == ["2026-07", "2026-06", "2026-05"]
+    assert r["actual"] == "2026-05"
+    assert r["rotulo"] == "Mayo 2026"
+    assert r["ant"] is False, "la flecha hacia atras no se apaga en el primer mes con datos"
+    assert "No hay datos por pieza de Meta guardados para Mayo 2026" in r["caja"]
+    assert "Agosto" not in r["caja"]
 
 
 # Hubo aquí un segundo test que buscaba el mismo bug leyendo el texto: por cada
