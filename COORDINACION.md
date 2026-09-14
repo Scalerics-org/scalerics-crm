@@ -464,6 +464,19 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **14/9 — I: DEPLOYADO `v206`, el arreglo del calendario mobile corregido. Producción = `deploy/i-calendario-mobile` en `c36d2b0`.**
+
+  Mismo árbol que `v204` (`origin/main` + `origin/feat/marketing-meta` + calendario
+  mobile) más la corrección del `{#` (`b960e3f`). Sobre ese árbol: `check_js` OK
+  y **2344 tests, cobertura 71,41%**, incluido el test nuevo que pide `GET /`
+  logueado. Después del deploy la máquina arrancó limpia y no hay errores en el
+  log desde el boot de las 19:47 UTC.
+
+  **Sigue valiendo el aviso de `v204`:** producción NO es `main`, y las ramas
+  `fix/calendario-mobile-dia` y `deploy/i-calendario-mobile` están solo en la
+  máquina de Juan (no hay credenciales de GitHub acá). **Un deploy desde `main` o
+  desde `feat/marketing-meta` borra el arreglo del calendario de producción.**
+
 - **14/9 — I: `v204` TUMBÓ EL CRM y se volvió a `v203` (imagen `deployment-01M2GE3T9T2Q54KGSW435YTEBS`). Lo de abajo sobre `v204` ya no describe producción.**
 
   `GET /` daba 500 para todos: `jinja2.exceptions.TemplateSyntaxError: Missing
