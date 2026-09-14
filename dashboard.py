@@ -1337,6 +1337,48 @@ body.light .mobile-header-title{color:#0f172a}
 .sc-hall-n{font-size:.8rem;font-weight:700;color:var(--rotulo);font-variant-numeric:tabular-nums;min-width:18px}
 .sc-hall-tit{font-size:.84rem;font-weight:700;color:var(--texto);margin-bottom:4px}
 .sc-hall-cuerpo{font-size:.79rem;line-height:1.55;color:var(--texto-tenue)}
+/* Lo que esta corriendo ahora: una tarjeta por anuncio con su pieza.
+   auto-fill y no auto-fit: con un solo anuncio prendido, auto-fit estira esa
+   tarjeta a todo el ancho y la foto queda gigante. */
+.sc-anuncios{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:14px}
+.sc-anun{display:flex;flex-direction:column;background:var(--fondo-hundido);border:1px solid var(--borde);border-radius:12px;overflow:hidden}
+/* Alto fijo y `cover`: las piezas vienen 1080x1350 y 1080x1920 mezcladas, y
+   sin esto cada tarjeta mide distinto y la grilla queda en escalera. */
+.sc-anun-foto{width:100%;height:200px;object-fit:cover;object-position:top;display:block;background:var(--hover)}
+.sc-anun-sinfoto{height:200px;display:flex;align-items:center;justify-content:center;text-align:center;font-size:.72rem;line-height:1.5;color:var(--rotulo);background:var(--hover);padding:0 18px}
+.sc-anun-cuerpo{padding:12px 14px 14px;display:flex;flex-direction:column;gap:8px;flex:1}
+.sc-anun-nom{font-size:.82rem;font-weight:700;color:var(--texto);line-height:1.35}
+.sc-anun-campana{font-size:.68rem;color:var(--rotulo)}
+.sc-anun-datos{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:9px 0;border-top:1px solid var(--borde);border-bottom:1px solid var(--borde)}
+.sc-anun-dato{display:flex;flex-direction:column;gap:2px}
+.sc-anun-dato span{font-size:.62rem;letter-spacing:.03em;text-transform:uppercase;color:var(--rotulo)}
+.sc-anun-dato b{font-size:.92rem;color:var(--texto);font-variant-numeric:tabular-nums}
+.sc-anun-extra{font-size:.68rem;line-height:1.5;color:var(--rotulo)}
+.sc-anun-vida{font-size:.7rem;line-height:1.5;color:var(--texto-tenue)}
+/* La tarjeta apagada se distingue por la palabra Y por el tono: solo con
+   opacidad se leeria igual que una al aire. */
+.sc-anun[data-corriendo="false"] .sc-anun-foto,.sc-anun[data-corriendo="false"] .sc-anun-sinfoto{filter:grayscale(1);opacity:.55}
+.sc-anun-apagado{font-size:.62rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--rotulo);background:var(--hover);padding:4px 14px;border-bottom:1px solid var(--borde)}
+.sc-anun-vida b{color:var(--texto);font-variant-numeric:tabular-nums}
+/* El estado va con palabra Y con color. El borde solo seria color solo, que es
+   justo lo que no puede distinguir quien no ve bien los colores. */
+.sc-anun-reco{font-size:.75rem;line-height:1.55;color:var(--texto-tenue);border-left:3px solid var(--rotulo);padding-left:10px;margin-top:auto}
+.sc-anun-reco b{color:var(--texto)}
+.sc-anun-reco[data-accion="apagar"]{border-left-color:var(--rojo)}
+.sc-anun-reco[data-accion="ajustar"],.sc-anun-reco[data-accion="renovar"]{border-left-color:var(--ambar)}
+.sc-anun-reco[data-accion="subir"]{border-left-color:var(--verde)}
+.sc-comparacion{display:grid;gap:5px;font-size:.8rem;line-height:1.55;color:var(--texto);background:var(--fondo-hundido);border:1px solid var(--borde);border-radius:10px;padding:11px 14px;margin-bottom:16px}
+.sc-barras{display:grid;gap:7px;margin-top:8px}
+.sc-barras-ayuda{font-size:.72rem;line-height:1.5;margin:2px 0 4px;max-width:74ch}
+/* Varios graficos seguidos dentro del mismo bloque: sin esto se pegan y se
+   leen como uno solo con el titulo en el medio. */
+.sc-panel-serie+.sc-panel-serie{margin-top:24px;padding-top:20px;border-top:1px solid var(--borde)}
+.sc-barra-fila{display:grid;grid-template-columns:minmax(120px,1.1fr) 3fr auto;gap:10px;align-items:center}
+.sc-barra-nom{font-size:.76rem;color:var(--texto-tenue);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sc-barra-pista{height:12px;border-radius:6px;overflow:hidden;display:block}
+.sc-barra-lleno{display:block;height:100%;border-radius:6px}
+.sc-barra-val{font-size:.78rem;font-weight:700;color:var(--texto);font-variant-numeric:tabular-nums;white-space:nowrap}
+.sc-barra-nota{font-size:.66rem;font-weight:400;color:var(--rotulo);margin-left:6px}
 .sc-leyenda{display:flex;flex-wrap:wrap;gap:14px;margin-top:8px;padding-left:52px}
 .sc-leyenda-item{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;color:var(--rotulo)}
 .sc-leyenda-punto{width:10px;height:10px;border-radius:3px;flex-shrink:0}
@@ -1397,6 +1439,13 @@ body.light .mobile-header-title{color:#0f172a}
 .sc-citas{font-size:.66rem;color:var(--texto-tenue);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-all}
 .sc-cambios{border-top:1px solid var(--borde);margin-top:14px;padding-top:12px}
 .sc-cambios li{font-size:.8rem;color:var(--texto-tenue);line-height:1.6;margin-bottom:3px}
+/* La plata: primero la respuesta, despues como se llego a ella. */
+.sc-plata-resumen{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:12px}
+.sc-plata-resumen .sc-tile{background:var(--fondo-hundido)}
+.sc-plata-resumen .sc-tile[data-estado="alerta"] .sc-tile-valor{color:var(--rojo)}
+.sc-plata-resumen .sc-tile[data-estado="ok"] .sc-tile-valor{color:var(--verde)}
+.sc-plata-veredicto{font-size:.82rem;line-height:1.6;color:var(--texto-tenue);border-left:3px solid var(--verde);padding-left:12px;margin-bottom:18px}
+.sc-plata-veredicto[data-estado="alerta"]{border-left-color:var(--rojo);color:var(--texto)}
 .sc-rank-invertido{color:var(--ambar);font-weight:700}
 .sc-rank-pos{display:inline-block;min-width:18px;font-variant-numeric:tabular-nums;color:var(--texto-tenue)}
 .sc-nota{font-size:.74rem;color:var(--texto-tenue);line-height:1.55;margin-top:10px}
@@ -1974,8 +2023,14 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       </div>
 
       <div class="sc-bloque">
+        <h3>Mes a mes</h3>
+        <div class="sc-sub">Leads, demos y ventas de cada mes, uno al lado del otro. Los meses vacíos también aparecen: un mes sin nada entre dos con actividad es justo lo que hay que ver.</div>
+        <div id="mk-mensual"></div>
+      </div>
+
+      <div class="sc-bloque">
         <h3>Semana a semana</h3>
-        <div class="sc-sub">Grano semanal a propósito: con poco más de un lead por día, un gráfico diario son picos y ceros.</div>
+        <div class="sc-sub">El detalle fino, para ver dentro del mes. La línea punteada de cada gráfico es el promedio histórico —todo lo anterior a este período, no incluye el período — así se ve de una si la semana viene arriba o abajo de lo normal.</div>
         <div id="mk-series"></div>
       </div>
 
@@ -1987,13 +2042,13 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 
       <div class="sc-bloque">
         <h3>Cómo evoluciona cada campaña</h3>
-        <div class="sc-sub">Una campaña que se pone cara queda tapada en el promedio si otra mejora al mismo tiempo. Acá cada una va por su lado, sobre el mismo eje.</div>
+        <div class="sc-sub">Una campaña que se pone cara queda tapada en el promedio si otra mejora al mismo tiempo. Acá cada una va por su lado, todas sobre el mismo eje. La línea punteada es el histórico de la cuenta: lo que quede por encima está saliendo más caro que lo de siempre. Un corte en la línea es una semana sin gasto de esa campaña, no un cero.</div>
         <div id="mk-evolucion"></div>
       </div>
 
       <div class="sc-bloque">
         <h3>Cuánto costó llegar hasta acá</h3>
-        <div class="sc-sub">Gasto y leads acumulados desde el inicio del período. Son dos escalas distintas, así que van en dos gráficos y no en dos ejes: un eje doble hace que cualquier par de curvas parezca que se cruza donde uno quiera.</div>
+        <div class="sc-sub">Cada punto es el total corrido hasta esa semana, no lo de la semana: por eso nunca bajan. Gasto y leads van en dos gráficos y no en dos ejes, porque un eje doble hace que cualquier par de curvas parezca cruzarse donde uno quiera. Acá no va la línea del histórico: una curva que siempre sube cruza una horizontal una sola vez y después queda abajo para siempre, sin que eso signifique nada.</div>
         <div id="mk-acumulado"></div>
       </div>
 
@@ -2005,7 +2060,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 
       <div class="sc-bloque">
         <h3>Por campaña</h3>
-        <div class="sc-sub">La línea sobre cada barra es el intervalo de confianza. Cuando dos se superponen, la diferencia entre esas campañas no significa nada.</div>
+        <div class="sc-sub">Cuatro preguntas, una barra por campaña en cada una. Al lado del número dice sobre cuántos leads se calculó: cuando dice «muestra chica» la diferencia con la de al lado puede ser casualidad.</div>
         <div id="mk-campanas"></div>
       </div>
 
@@ -2016,17 +2071,29 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       </div>
 
       <div class="sc-bloque">
+        <h3>¿Pagar más por lead trae mejores leads?</h3>
+        <div class="sc-sub">Cada burbuja es una campaña: a la derecha paga más por lead, arriba convierte más a demo. El tamaño es cuánto se gastó. Si la nube sube hacia la derecha, pagar más rinde; si baja, no.</div>
+        <div id="mk-dispersion"></div>
+      </div>
+
+      <div class="sc-bloque">
+        <h3>Cuándo llegan los leads</h3>
+        <div class="sc-sub">Hora de Montevideo. Los leads de Meta se guardan en UTC, así que esto ya viene corregido: sin eso, el mapa diría que el pico es de madrugada y estaría movido tres horas.</div>
+        <div id="mk-llegada"></div>
+      </div>
+
+      <div class="sc-bloque">
         <h3>La plata</h3>
-        <div class="sc-sub">Lo que Meta dice que cobró contra lo que está cargado en Finanzas. La brecha dice si la contabilidad está viendo todo el gasto de pauta.</div>
+        <div class="sc-sub">Lo que Meta dice que cobró contra lo que está cargado en Finanzas. Si Finanzas no ve toda la pauta, el costo de cada venta se calcula sobre menos plata de la que se gastó y sale más barato de lo que fue.</div>
         <div id="mk-conciliacion"></div>
       </div>
 
       <div class="sc-bloque">
-        <h3>Los números crudos</h3>
-        <div class="sc-sub">Cada métrica del dossier con su numerador, denominador y muestra. Es lo que permite auditar cualquier número de arriba.</div>
-        <details><summary style="cursor:pointer;color:#0088cc;font-size:.8rem">Ver la tabla</summary>
-          <div class="sc-tabla-wrap" id="mk-tabla" style="margin-top:12px"></div></details>
+        <h3>Las piezas de la pauta</h3>
+        <div class="sc-sub">Los anuncios que gastaron en el período que tenés elegido arriba, con la pieza que ve la gente. Los que siguen al aire van primero; los apagados quedan abajo y sirven para darte cuenta si apagaste alguno que rendía. Es el grano sobre el que se decide: adentro de una campaña conviven varios anuncios y uno se puede llevar la mitad de la plata sin traer a nadie. La recomendación la calculan reglas sobre estos mismos números, no una IA.</div>
+        <div id="mk-anuncios"></div>
       </div>
+
     </div>
   </div>
 
@@ -7805,21 +7872,122 @@ function _mkPintar() {
     SC.embudoReal(delCrm.map(e => ({ clave: e.clave, etiqueta: e.etiqueta, n: e.valor })),
                   { etiqueta: 'Embudo', ancho: 620, altoEtapa: 52 }, tema);
 
-  // ── Series semanales ───────────────────────────────────────────────────
+  // ── Mes a mes ──────────────────────────────────────────────────────────
+  //
+  // Barras agrupadas y no líneas: lo que se compara son magnitudes en
+  // categorías discretas —doce meses, no un continuo— y además se quiere
+  // comparar las tres series entre sí dentro de cada mes.
+  //
+  // Leads, demos y ventas comparten eje porque son la misma naturaleza: cuentas
+  // de personas. El gasto va aparte, abajo: meter dólares y personas en la
+  // misma escala haría que una de las dos sea invisible.
+  const meses = _mkDossier.serie_mensual || [];
+  const periodosMes = meses.map(m => ({ clave: m.periodo, etiqueta: m.nombre }));
+  const valoresDe = clave => Object.fromEntries(meses.map(m => [m.periodo, m[clave]]));
+  document.getElementById('mk-mensual').innerHTML = meses.length
+    ? SC.barrasAgrupadas(periodosMes, [
+        { etiqueta: 'Leads',  valores: valoresDe('leads'),
+          color: SC.colorDeEtapa('leads', tema) },
+        { etiqueta: 'Demos',  valores: valoresDe('demos'),
+          color: SC.colorDeEtapa('demos', tema) },
+        { etiqueta: 'Ventas', valores: valoresDe('ventas'),
+          color: SC.colorDeEtapa('cierres', tema) },
+      ], { etiqueta: 'Leads, demos y ventas por mes', formato: 'numero' }, tema)
+      + SC.barrasAgrupadas(periodosMes, [
+        { etiqueta: 'Gasto', valores: valoresDe('gasto'),
+          color: SC.PALETA[tema][0] },
+      ], { etiqueta: 'Gasto por mes', formato: 'moneda' }, tema)
+    : '<div class="sc-vacio">Sin actividad en el período.</div>';
+
+  // ── Semana a semana ────────────────────────────────────────────────────
   const semanas = _mkDossier.serie_semanal || [];
-  const pares = [
-    [['leads_crm', 'Leads por semana', 'numero'], ['gasto', 'Gasto por semana', 'moneda']],
-    [['impresiones', 'Impresiones por semana', 'numero'], ['clics', 'Clics por semana', 'numero']],
-    [['cpl', 'Costo por lead, por semana', 'moneda'], null]
-  ];
-  document.getElementById('mk-series').innerHTML = pares.map(([a, b]) => {
-    const arma = ([clave, etiqueta, formato]) => ({
-      etiqueta, formato,
-      puntos: semanas.map(s => ({ x: nombreSemana[s.inicio] || s.semana, y: s[clave] === undefined ? null : s[clave] }))
-    });
-    return b ? SC.parApilado(arma(a), arma(b), tema)
-             : SC.serie(arma(a).puntos, arma(a), tema);
-  }).join('');
+  const periodosSem = semanas.map(s => ({
+    // "Semana 1" entero y no "S1": abreviarlo lo devuelve al problema que
+    // tenia "W36", que era justamente que hay que traducirlo.
+    clave: s.inicio, etiqueta: nombreSemana[s.inicio] || s.semana,
+  }));
+  const porSem = clave => Object.fromEntries(
+    semanas.map(s => [s.inicio, s[clave] === undefined ? null : s[clave]]));
+
+  // La vara contra la que se lee cada barra: todo lo anterior al período.
+  //
+  // `hist.hay` es false cuando estás mirando el primer mes con datos. Ahí no
+  // se dibuja nada: una línea en cero parece un dato y no lo es.
+  const hist = _mkDossier.historico || { hay: false };
+  const _hastaCorto = (hist.hasta || '').slice(0, 10).split('-').reverse()
+    .slice(0, 2).join('/');
+  const ref = (clave) => hist.hay
+    ? { valor: hist[clave], etiqueta: `histórico hasta el ${_hastaCorto}:` }
+    : null;
+
+  // Y el mismo dato en palabras, arriba del bloque. La línea deja ver que
+  // estamos arriba o abajo; esto dice cuánto, que es lo que se repite en una
+  // reunión.
+  //
+  // Sin color: entrar más leads es bueno y pagar más por lead es malo, así que
+  // pintar "arriba" de verde mentiría en la mitad de las frases.
+  const _comparar = (ahora, antes, masEsMejor, nombre, formato) => {
+    if (!hist.hay || ahora === null || !antes) return null;
+    const dif = (ahora - antes) / antes;
+    if (Math.abs(dif) < 0.05) {
+      return `${nombre} viene igual que el histórico ` +
+             `(${esc(SC.fmt(ahora, formato))}).`;
+    }
+    const cuanto = SC.fmt(Math.abs(dif), 'porcentaje');
+    const lado = dif > 0 ? 'por encima' : 'por debajo';
+    const juicio = (dif > 0) === masEsMejor ? 'Mejor' : 'Peor';
+    return `${nombre}: ${esc(SC.fmt(ahora, formato))} contra ` +
+           `${esc(SC.fmt(antes, formato))} del histórico, ` +
+           `${esc(cuanto)} ${lado}. ${juicio} que antes.`;
+  };
+
+  const _nSem = semanas.length || 1;
+  const _sumSem = (c) => semanas.reduce((a, s) => a + (s[c] || 0), 0);
+  const _frases = [
+    _comparar(_sumSem('leads_crm') / _nSem, hist.leads_semana, true,
+              'Entran por semana', 'numero'),
+    // El CPL del período es plata sobre leads, no el promedio de los CPL
+    // semanales: es el mismo ratio con el que se calcula el histórico.
+    _comparar(_sumSem('leads_crm')
+                ? _sumSem('gasto') / _sumSem('leads_crm') : null,
+              hist.cpl, false, 'Cada lead cuesta', 'moneda'),
+  ].filter(Boolean);
+
+  document.getElementById('mk-series').innerHTML = semanas.length
+    ? (_frases.length
+        ? '<div class="sc-comparacion">' +
+          _frases.map(f => '<div>' + f + '</div>').join('') + '</div>'
+        : '')
+      + SC.barrasAgrupadas(periodosSem, [
+        { etiqueta: 'Leads', valores: porSem('leads_crm'),
+          color: SC.colorDeEtapa('leads', tema) },
+      ], { etiqueta: 'Leads por semana', formato: 'numero',
+           referencia: ref('leads_semana') }, tema)
+      + SC.barrasAgrupadas(periodosSem, [
+        { etiqueta: 'Gasto', valores: porSem('gasto'), color: SC.PALETA[tema][0] },
+      ], { etiqueta: 'Gasto por semana', formato: 'moneda',
+           referencia: ref('gasto_semana') }, tema)
+      + SC.barrasAgrupadas(periodosSem, [
+        { etiqueta: 'Costo por lead', valores: porSem('cpl'),
+          color: SC.PALETA[tema][1] },
+      ], { etiqueta: 'Costo por lead, por semana', formato: 'moneda',
+           // El CPL histórico es plata total sobre leads totales, no el
+           // promedio de los CPL semanales: promediar ratios le daría el mismo
+           // peso a una semana de 2 leads que a una de 30.
+           referencia: ref('cpl') }, tema)
+      // Clics e impresiones van en gráficos separados y no en uno: son 5.000
+      // contra 150, y sobre el mismo eje la barra de clics desaparece. Y un
+      // eje doble haría que se cruzaran donde uno elija la escala.
+      + SC.barrasAgrupadas(periodosSem, [
+        { etiqueta: 'Clics', valores: porSem('clics'), color: SC.PALETA[tema][2] },
+      ], { etiqueta: 'Clics por semana', formato: 'numero',
+           referencia: ref('clics_semana') }, tema)
+      + SC.barrasAgrupadas(periodosSem, [
+        { etiqueta: 'Impresiones', valores: porSem('impresiones'),
+          color: SC.PALETA[tema][3] },
+      ], { etiqueta: 'Impresiones por semana', formato: 'numero',
+           referencia: ref('impresiones_semana') }, tema)
+    : '<div class="sc-vacio">Sin semanas con datos en el período.</div>';
 
   // ── Por campaña ────────────────────────────────────────────────────────
   const campanas = (_mkDossier.campanas || []).filter(b => b.campana !== 'todas');
@@ -7871,17 +8039,30 @@ function _mkPintar() {
   const conGastoSem = porSemana.filter(s =>
     (s.puntos || []).some(p => p.gasto > 0));
 
-  const evolucion = [
-    ['costo_demo', 'Costo por demo, semana a semana', 'moneda'],
-    ['cpl', 'Costo por lead, semana a semana', 'moneda'],
-    ['gasto', 'Gasto por semana', 'moneda'],
-  ].map(([campo, titulo, formato]) => SC.serieMulti(
+  // Líneas y no barras. Acá lo que se compara son campañas ENTRE SÍ a lo largo
+  // del tiempo, y para eso la línea gana: se sigue el recorrido de una campaña
+  // sin tener que buscar su color barra por barra dentro de cada grupo.
+  //
+  // Es el caso opuesto al de "Semana a semana", que dibuja una sola serie y ahí
+  // la barra se lee mejor.
+  const porCampanaEnEl = (campo, titulo, formato, refClave) => SC.serieMulti(
     conGastoSem.map(s => ({
       campana: s.campana,
-      puntos: (s.puntos || []).map(p => ({ x: nombreSemana[p.inicio] || p.semana, y: p[campo] })),
-    })), { etiqueta: titulo, formato }, tema)).join('');
+      puntos: (s.puntos || []).map(p => ({
+        x: nombreSemana[p.inicio] || p.semana, y: p[campo],
+      })),
+    })),
+    { etiqueta: titulo, formato,
+      referencia: refClave ? ref(refClave) : null }, tema);
+
   document.getElementById('mk-evolucion').innerHTML = conGastoSem.length
-    ? evolucion
+    ? porCampanaEnEl('costo_demo', 'Costo por demo, semana a semana', 'moneda',
+                     'costo_demo') +
+      porCampanaEnEl('cpl', 'Costo por lead, semana a semana', 'moneda', 'cpl') +
+      // El gasto va sin línea: el histórico es el de la cuenta entera y acá
+      // cada curva es una campaña sola. Comparar una campaña contra el total
+      // de la cuenta no dice nada.
+      porCampanaEnEl('gasto', 'Gasto por semana', 'moneda', null)
     : '<div class="sc-vacio">Hace falta gasto sincronizado para ver la evolución.</div>';
 
   // ── Cuánto costó llegar hasta acá ──────────────────────────────────────
@@ -7889,13 +8070,13 @@ function _mkPintar() {
   // Dos gráficos y no dos ejes: con un eje doble las dos curvas se cruzan
   // donde uno elija la escala, y el cruce parece significar algo cuando no
   // significa nada.
+  //
+  // Sin línea de histórico: una curva acumulada siempre sube, así que una línea
+  // horizontal la cruza una vez y de ahí en más queda abajo para siempre. El
+  // cruce no significaría nada más que "ya pasó tanto tiempo".
   document.getElementById('mk-acumulado').innerHTML = conGastoSem.length
-    ? [['gasto_acum', 'Gasto acumulado', 'moneda'],
-       ['leads_acum', 'Leads acumulados', 'numero']].map(([campo, titulo, formato]) =>
-        SC.serieMulti(conGastoSem.map(s => ({
-          campana: s.campana,
-          puntos: (s.puntos || []).map(p => ({ x: nombreSemana[p.inicio] || p.semana, y: p[campo] })),
-        })), { etiqueta: titulo, formato }, tema)).join('')
+    ? porCampanaEnEl('gasto_acum', 'Gasto acumulado', 'moneda', null) +
+      porCampanaEnEl('leads_acum', 'Leads acumulados', 'numero', null)
     : '<div class="sc-vacio">Hace falta gasto sincronizado.</div>';
 
   // ── Qué campaña rinde de verdad ────────────────────────────────────────
@@ -7976,32 +8157,64 @@ function _mkPintar() {
           'más baratos también consigue demos más baratas.</div>');
   }
 
-  const porCampana = (suf, titulo) => {
-    const filas = campanas.map(b => ({
-      etiqueta: b.campana, campana: b.campana, metrica: _mkMetrica(b, suf)
-    })).filter(f => f.metrica)
-       .sort((x, y) => (y.metrica.valor || 0) - (x.metrica.valor || 0));
-    return `<div class="sc-titulo">${esc(titulo)}</div>` +
-           SC.barrasConIC(filas, { etiqueta: titulo }, tema);
+  // Cada metrica es una barra por campana, ordenada de mayor a menor.
+  //
+  // Antes iba con intervalos de confianza: el bigote era correcto y era
+  // ilegible. La incertidumbre no se tira, se dice con palabras al lado del
+  // numero —"sobre 12 leads"— que es lo que hace falta para saber si el numero
+  // se puede creer.
+  const porCampana = (suf, titulo, ayuda) => {
+    let fmt = 'numero';
+    const filas = campanas.map(b => {
+      const m = _mkMetrica(b, suf);
+      if (!m || m.valor === null || m.valor === undefined) return null;
+      fmt = m.formato || fmt;
+      return {
+        etiqueta: b.campana,
+        valor: m.valor,
+        color: SC.colorDeCampana(b.campana, 0, tema),
+        nota: m.n ? (m.muestra_chica
+                      ? `sobre ${m.n} · muestra chica`
+                      : `sobre ${m.n}`) : ''
+      };
+    }).filter(Boolean);
+    return SC.barrasSimples(
+      filas, { etiqueta: titulo, ayuda: ayuda, formato: fmt }, tema);
   };
   document.getElementById('mk-campanas').innerHTML =
-    porCampana('.tasa_interes', 'Tasa de interés') +
-    porCampana('.tasa_demo', 'Tasa de demo') +
-    porCampana('.cpl', 'Costo por lead') +
-    porCampana('.costo_demo', 'Costo por demo');
+    porCampana('.tasa_demo', 'Tasa de demo',
+               'De cada 100 leads que trajo la campaña, cuántos llegaron a una ' +
+               'reunión. Es la medida de si el lead sirve.') +
+    porCampana('.costo_demo', 'Costo por demo',
+               'Cuántos dólares de pauta costó cada reunión conseguida.') +
+    porCampana('.cpl', 'Costo por lead',
+               'Cuántos dólares costó cada contacto. Barato acá no significa ' +
+               'bueno: mirarlo contra la tasa de demo de arriba.') +
+    porCampana('.tasa_interes', 'Tasa de interés',
+               'Cuántos contestaron algo, aunque no hayan llegado a reunión.');
 
   // ── Segmentos declarados ───────────────────────────────────────────────
   document.getElementById('mk-segmentos').innerHTML =
     (_mkDossier.segmentos || []).map(b => {
-      const filas = b.valores.map(v => ({
-        etiqueta: v.valor_declarado,
-        metrica: v.metricas.find(m => m.id.endsWith('.tasa_demo'))
-      })).filter(f => f.metrica);
+      const filas = b.valores.map(v => {
+        const m = v.metricas.find(m => m.id.endsWith('.tasa_demo'));
+        if (!m || m.valor === null || m.valor === undefined) return null;
+        return {
+          etiqueta: v.valor_declarado,
+          valor: m.valor,
+          nota: m.n ? (m.muestra_chica
+                        ? `sobre ${m.n} · muestra chica`
+                        : `sobre ${m.n}`) : ''
+        };
+      }).filter(Boolean);
       const cola = b.valores_distintos > b.valores.length
         ? ` · ${b.valores_distintos} respuestas distintas` : '';
-      return `<div class="sc-titulo">${esc(b.etiqueta)} ` +
-             `<span style="font-weight:400;color:#64748b">(n=${b.n}${cola})</span></div>` +
-             SC.barrasConIC(filas, { etiqueta: b.etiqueta, anchoEtiqueta: 230 }, tema);
+      return SC.barrasSimples(filas, {
+        etiqueta: b.etiqueta,
+        ayuda: `Qué porcentaje de cada respuesta llegó a una reunión. ` +
+               `${b.n} respuestas${cola}.`,
+        formato: 'porcentaje'
+      }, tema);
     }).join('') || '<div class="sc-vacio">Sin respuestas de formulario en el período</div>';
 
   // ── La plata: Meta contra Finanzas ─────────────────────────────────────
@@ -8018,50 +8231,269 @@ function _mkPintar() {
       const que = m.id.split('.')[1];
       (meses[p] = meses[p] || {})[que] = m.valor;
     });
+    // Los ids traen el periodo como `2026_09`. Se muestra con el nombre del
+    // mes: "Setiembre 2026" se ubica de un vistazo y "2026_09" hay que
+    // traducirlo mentalmente cada vez. Se reusa el helper de Finanzas en vez
+    // de copiar la lista de meses por quinta vez en este archivo.
+    const nombreMes = p => _finNombreMes(p.replace('_', '-'));
+
     const filas = Object.keys(meses).sort().map(p => {
       const x = meses[p];
       const pct = x.gasto_meta ? x.brecha / x.gasto_meta : null;
       const alerta = pct !== null && pct > 0.1;
-      return `<tr><td>${esc(p.replace('_','-'))}</td>` +
+      return `<tr><td>${esc(nombreMes(p))}</td>` +
              `<td>${esc(SC.fmt(x.gasto_meta, 'moneda'))}</td>` +
              `<td>${esc(SC.fmt(x.gasto_cargado, 'moneda'))}</td>` +
-             `<td style="${alerta ? 'color:#f87171;font-weight:600' : ''}">` +
-             `${esc(SC.fmt(x.brecha, 'moneda'))}</td></tr>`;
+             `<td style="${alerta ? 'color:var(--rojo);font-weight:600' : ''}">` +
+             `${esc(SC.fmt(x.brecha, 'moneda'))}` +
+             (pct === null ? '' :
+              `<span class="sc-barra-nota">${esc(SC.fmt(pct, 'porcentaje'))}` +
+              ` del mes</span>`) +
+             `</td></tr>`;
     }).join('');
     const suma = k => conc.filter(m => m.id.split('.')[1] === k)
                           .reduce((a, m) => a + (m.valor || 0), 0);
+
+    // Primero la respuesta, despues como se llego. Antes habia que sumar la
+    // columna de la tabla para saber cuanta plata falta registrar; ahora el
+    // numero esta arriba y la tabla queda para auditarlo.
+    const totMeta = suma('gasto_meta');
+    const totCargado = suma('gasto_cargado');
+    const totBrecha = suma('brecha');
+    const pctBrecha = totMeta ? totBrecha / totMeta : null;
+    // 10% es el mismo umbral con el que se pinta cada fila: por debajo de eso
+    // la diferencia es redondeo y tipo de cambio, no plata sin registrar.
+    const sano = pctBrecha === null || Math.abs(pctBrecha) <= 0.1;
+    const veredicto = sano
+      ? 'Finanzas está viendo prácticamente todo el gasto de pauta. ' +
+        'La diferencia entra en el redondeo.'
+      : (totBrecha > 0
+          ? `Faltan ${SC.fmt(totBrecha, 'moneda')} de pauta por cargar en ` +
+            'Finanzas. Mientras no estén, el costo real de cada venta se ve ' +
+            'más barato de lo que es.'
+          : `Hay ${SC.fmt(-totBrecha, 'moneda')} cargados de más en ` +
+            'Finanzas. Puede ser gasto de pauta de otra cuenta, o una carga ' +
+            'duplicada.');
+
+    const tile = (rotulo, valor) =>
+      `<div class="sc-tile"><div class="sc-tile-label">${esc(rotulo)}</div>` +
+      `<div class="sc-tile-valor">${esc(SC.fmt(valor, 'moneda'))}</div></div>`;
+
+    // El grafico despues del resumen y antes de la tabla: se lee de un vistazo
+    // —de que lado del cero esta cada mes— y la tabla es lo que permite
+    // auditarlo. Barras divergentes y no comunes: en una barra comun el signo
+    // hay que leerlo en el numero; aca el lado ya lo dice.
+    const divergentes = Object.keys(meses).sort().map(p => ({
+      etiqueta: nombreMes(p),
+      valor: meses[p].brecha,
+    }));
     document.getElementById('mk-conciliacion').innerHTML =
+      '<div class="sc-plata-resumen">' +
+      tile('Meta cobró', totMeta) +
+      tile('Cargado en Finanzas', totCargado) +
+      `<div class="sc-tile" data-estado="${sano ? 'ok' : 'alerta'}">` +
+      '<div class="sc-tile-label">Sin registrar</div>' +
+      `<div class="sc-tile-valor">${esc(SC.fmt(totBrecha, 'moneda'))}</div>` +
+      (pctBrecha === null ? '' :
+       `<div class="sc-tile-delta">${esc(SC.fmt(pctBrecha, 'porcentaje'))}` +
+       ' del gasto de Meta</div>') +
+      '</div></div>' +
+      `<div class="sc-plata-veredicto" data-estado="${sano ? 'ok' : 'alerta'}">` +
+      `${esc(veredicto)}</div>` +
+      SC.barrasDivergentes(divergentes, {
+        etiqueta: 'Mes a mes: qué parte del gasto no está registrada',
+        formato: 'moneda',
+        cero: 'coinciden',
+      }, tema) +
+      '<div class="sc-nota">A la derecha del cero, Meta cobró más de lo que ' +
+      'está cargado: falta registrar. A la izquierda, sobra cargado y el mes ' +
+      'se ve peor de lo que fue.</div>' +
       '<div class="sc-tabla-wrap"><table class="sc-tabla"><thead><tr>' +
       '<th>Mes</th><th>Según Meta</th><th>Cargado en Finanzas</th>' +
       '<th>Sin registrar</th></tr></thead><tbody>' + filas +
       `<tr style="font-weight:700"><td>Total</td>` +
-      `<td>${esc(SC.fmt(suma('gasto_meta'), 'moneda'))}</td>` +
-      `<td>${esc(SC.fmt(suma('gasto_cargado'), 'moneda'))}</td>` +
-      `<td>${esc(SC.fmt(suma('brecha'), 'moneda'))}</td></tr>` +
+      `<td>${esc(SC.fmt(totMeta, 'moneda'))}</td>` +
+      `<td>${esc(SC.fmt(totCargado, 'moneda'))}</td>` +
+      `<td>${esc(SC.fmt(totBrecha, 'moneda'))}</td></tr>` +
       '</tbody></table></div>';
   }
 
-  // ── Tabla cruda ────────────────────────────────────────────────────────
-  const todasLasMetricas = [];
-  (_mkDossier.campanas || []).forEach(b => todasLasMetricas.push(...(b.metricas || [])));
-  (_mkDossier.segmentos || []).forEach(b => (b.valores || []).forEach(
-    v => todasLasMetricas.push(...(v.metricas || []))));
-  ['conciliacion', 'tiempos', 'recordatorios'].forEach(
-    k => todasLasMetricas.push(...(_mkDossier[k] || [])));
+  // ── Lo que está corriendo ahora ────────────────────────────────────────
+  //
+  // Una tarjeta por anuncio prendido, con la pieza que ve la gente. La campaña
+  // no es la unidad sobre la que se decide: adentro de una campaña conviven
+  // varios anuncios y uno se puede llevar la mitad de la plata sin traer a
+  // nadie.
+  //
+  // La recomendación la calculan reglas en `services/anuncios.py`, no un
+  // modelo: la IA está apagada, y además una regla se puede discutir porque
+  // cita los números que la sostienen.
+  const anuncios = _mkDossier.anuncios || [];
+  const resAnun = _mkDossier.anuncios_resumen || {};
 
-  document.getElementById('mk-tabla').innerHTML =
-    '<table class="sc-tabla"><thead><tr><th>Métrica</th><th>Valor</th>' +
-    '<th>Numerador</th><th>Denominador</th><th>n</th><th>Fuente</th>' +
-    '<th>Contra el período anterior</th></tr></thead><tbody>' +
-    todasLasMetricas.map(m => {
-      const d = SC.fmtDelta(m.delta_periodo_anterior, m.formato);
-      return `<tr><td>${esc(m.etiqueta)}</td>` +
-             `<td>${esc(SC.fmt(m.valor, m.formato))}</td>` +
-             `<td>${m.numerador === null || m.numerador === undefined ? '—' : m.numerador}</td>` +
-             `<td>${m.denominador === null || m.denominador === undefined ? '—' : m.denominador}</td>` +
-             `<td>${m.n === null || m.n === undefined ? '—' : m.n}${m.muestra_chica ? ' ⚠' : ''}</td>` +
-             `<td>${esc(m.fuente)}</td><td>${esc(d.texto)}</td></tr>`;
-    }).join('') + '</tbody></table>';
+  const _fechaCorta = (iso) => {
+    if (!iso) return '';
+    const p = String(iso).slice(0, 10).split('-');
+    return `${p[2]}/${p[1]}`;
+  };
+
+  if (!anuncios.length) {
+    document.getElementById('mk-anuncios').innerHTML =
+      '<div class="sc-vacio">Ningún anuncio gastó en este período. ' +
+      'Si sabés que había pauta corriendo en estas fechas, falta sincronizar: ' +
+      'corre solo todas las mañanas.</div>';
+  } else {
+    // Las dos cuentas van SEPARADAS y cada una dice de qué habla.
+    //
+    // Antes estaban mezcladas: el número era del período y la fecha era el
+    // borde de la ventana, así que "683,18 desde el 16/06" no era cierto en
+    // ninguna de las dos lecturas. Mirando setiembre decía "desde el 3/09" de
+    // anuncios que venían corriendo desde junio.
+    const cab =
+      '<div class="sc-plata-resumen">' +
+      `<div class="sc-tile"><div class="sc-tile-label">Anuncios</div>` +
+      `<div class="sc-tile-valor">${esc(SC.fmt(resAnun.anuncios, 'numero'))}</div>` +
+      `<div class="sc-tile-delta">${esc(SC.fmt(resAnun.corriendo, 'numero'))}` +
+      ` sigue${resAnun.corriendo === 1 ? '' : 'n'} al aire` +
+      (resAnun.apagados
+        ? ` · ${esc(SC.fmt(resAnun.apagados, 'numero'))} apagado` +
+          `${resAnun.apagados === 1 ? '' : 's'}`
+        : '') + '</div></div>' +
+      `<div class="sc-tile"><div class="sc-tile-label">En este período</div>` +
+      `<div class="sc-tile-valor">${esc(SC.fmt(resAnun.gasto, 'moneda'))}</div>` +
+      `<div class="sc-tile-delta">${esc(SC.fmt(resAnun.leads, 'numero'))} leads` +
+      (resAnun.cpl ? ` · ${esc(SC.fmt(resAnun.cpl, 'moneda'))} cada uno` : '') +
+      '</div></div>' +
+      `<div class="sc-tile"><div class="sc-tile-label">Desde que arrancaron</div>` +
+      `<div class="sc-tile-valor">${esc(SC.fmt(resAnun.gasto_total, 'moneda'))}</div>` +
+      `<div class="sc-tile-delta">el más viejo, desde el ` +
+      `${esc(_fechaCorta(resAnun.desde))}</div></div>` +
+      `<div class="sc-tile"><div class="sc-tile-label">Cada lead</div>` +
+      `<div class="sc-tile-valor">${esc(SC.fmt(resAnun.cpl_total, 'moneda'))}</div>` +
+      (hist.hay && hist.cpl
+        ? `<div class="sc-tile-delta">la cuenta viene de ` +
+          `${esc(SC.fmt(hist.cpl, 'moneda'))}</div>`
+        : '') +
+      '</div></div>';
+
+    // El estado va con palabra Y con color, nunca con color solo: es la regla
+    // de la guía de visualización para los colores de estado.
+    const _ACCION = {
+      apagar:  'Apagalo',
+      ajustar: 'Está caro',
+      renovar: 'Se está gastando',
+      subir:   'Subile el presupuesto',
+      esperar: 'Todavía no se sabe',
+      dejar:   'Va bien',
+      apagado: 'Apagado',
+      revivir: 'Lo apagaste y rendía',
+    };
+
+    const tarjetas = anuncios.map(a => {
+      const r = a.recomendacion || {};
+      const foto = a.imagen_archivo
+        ? `<img class="sc-anun-foto" loading="lazy" alt="Pieza del anuncio ${esc(a.nombre || '')}" ` +
+          `src="/api/marketing/creativo/${encodeURIComponent(a.ad_id)}">`
+        // Los de video no tienen foto: Meta no da el still con los permisos que
+        // tiene la app. Se dice por qué en vez de dejar un hueco gris.
+        : '<div class="sc-anun-sinfoto">' +
+          (a.tipo === 'VIDEO' ? 'Es un video.<br>Meta no deja bajar la portada.'
+                              : 'Sin imagen') + '</div>';
+
+      const dato = (rot, val, fmt) =>
+        '<div class="sc-anun-dato"><span>' + esc(rot) + '</span><b>' +
+        esc(SC.fmt(val, fmt)) + '</b></div>';
+
+      return `<article class="sc-anun" data-corriendo="${a.corriendo}">` +
+        foto +
+        (a.corriendo ? ''
+          // Marcado con palabra, no solo con opacidad o color: si fuera solo
+          // visual, una tarjeta apagada se leeria igual que una al aire.
+          : '<div class="sc-anun-apagado">Apagado</div>') +
+        '<div class="sc-anun-cuerpo">' +
+        `<div class="sc-anun-nom">${esc(a.nombre || '(sin nombre)')}</div>` +
+        `<div class="sc-anun-campana">${esc(a.campana || '')}` +
+        (a.conjunto ? ` · ${esc(a.conjunto)}` : '') + '</div>' +
+        '<div class="sc-anun-datos">' +
+        dato('Gasto del período', a.gasto, 'moneda') +
+        dato('Leads', a.leads, 'numero') +
+        dato('Por lead', a.cpl, 'moneda') +
+        '</div>' +
+        '<div class="sc-anun-extra">' +
+        `CTR ${esc(SC.fmt(a.ctr, 'porcentaje'))}` +
+        (a.tasa_lead !== null && a.tasa_lead !== undefined
+          ? ` · dejan datos ${esc(SC.fmt(a.tasa_lead, 'porcentaje'))} de los que entran`
+          : '') +
+        '</div>' +
+        // La vida entera del anuncio, que es sobre lo que opina la
+        // recomendación de abajo. Va escrita para que se pueda comprobar: si
+        // la reco cita 374,74 y acá dice otra cosa, algo está mal.
+        (a.desde
+          ? '<div class="sc-anun-vida">Desde el ' +
+            `${esc(_fechaCorta(a.desde))} lleva ` +
+            `<b>${esc(SC.fmt(a.gasto_total, 'moneda'))}</b> y ` +
+            `<b>${esc(SC.fmt(a.leads_total, 'numero'))}</b> lead` +
+            `${a.leads_total === 1 ? '' : 's'}` +
+            (a.cpl_total ? `, a ${esc(SC.fmt(a.cpl_total, 'moneda'))} cada uno`
+                         : '') + '.</div>'
+          : '') +
+        `<div class="sc-anun-reco" data-accion="${esc(r.accion || '')}">` +
+        `<b>${esc(_ACCION[r.accion] || '')}.</b> ${esc(r.texto || '')}</div>` +
+        '</div></article>';
+    }).join('');
+
+    document.getElementById('mk-anuncios').innerHTML =
+      cab + '<div class="sc-anuncios">' + tarjetas + '</div>';
+  }
+
+  // ── ¿Pagar más por lead trae mejores leads? ────────────────────────────
+  //
+  // Una dispersion y no dos barras: la pregunta es sobre la RELACION entre dos
+  // medidas, y eso necesita los dos ejes. Dos graficos de barras al lado
+  // obligan a cruzarlos a ojo, que es justo lo que sale mal.
+  const paraNube = campanas
+    .filter(b => b.campana !== 'todas' && b.campana !== '(sin campaña)')
+    .map(b => ({
+      etiqueta: b.campana,
+      x: (_mkMetrica(b, '.cpl') || {}).valor,
+      y: (_mkMetrica(b, '.tasa_demo') || {}).valor,
+      peso: (_mkMetrica(b, '.gasto') || {}).valor,
+    }))
+    .filter(p => p.x !== null && p.x !== undefined && p.y !== null && p.y !== undefined);
+  document.getElementById('mk-dispersion').innerHTML = paraNube.length >= 2
+    ? SC.dispersion(paraNube, {
+        etiqueta: 'Costo por lead contra tasa de demo',
+        nombreX: 'Costo por lead', formatoX: 'moneda',
+        nombreY: 'Tasa de demo', formatoY: 'porcentaje',
+        nombrePeso: 'Gasto', formatoPeso: 'moneda',
+      }, tema)
+    : '<div class="sc-vacio">Hacen falta al menos dos campañas con gasto.</div>';
+
+  // ── Cuándo llegan los leads ────────────────────────────────────────────
+  const lleg = _mkDossier.llegada || {};
+  const DIAS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+  document.getElementById('mk-llegada').innerHTML = (lleg.total || 0)
+    ? SC.matriz(
+        (lleg.celdas || []).map(c => ({
+          fila: c.dia, columna: c.franja, n: c.n,
+          titulo: DIAS[c.dia] + ' ' + String(c.franja).padStart(2, '0') + 'h',
+        })),
+        {
+          etiqueta: 'Leads por día y franja horaria',
+          filas: DIAS.map((d, i) => ({ clave: i, etiqueta: d })),
+          columnas: (lleg.celdas || []).slice(0, 8).map(c => ({
+            clave: c.franja,
+            etiqueta: String(c.franja).padStart(2, '0'),
+          })),
+          maximo: lleg.maximo,
+        }, tema)
+      + (lleg.sin_hora
+         ? '<div class="sc-nota">' + esc(SC.fmt(lleg.sin_hora, 'numero')) +
+           ' leads no tienen hora guardada y quedan fuera del mapa. Contarlos a ' +
+           'medianoche inventaría un pico que no pasó.</div>'
+         : '')
+    : '<div class="sc-vacio">Sin leads en el período.</div>';
+
 }
 
 // ========== Activity feed ==========

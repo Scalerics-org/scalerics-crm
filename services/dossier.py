@@ -585,6 +585,271 @@ def serie_por_campana(db_path: str, desde: str, hasta: str) -> list:
     return salida
 
 
+# Franjas de tres horas. Con ~1,4 leads por dia, 24 columnas por 7 filas son 168
+# casilleros casi todos en cero: el patron no aparece, solo el ruido.
+HORAS_POR_FRANJA = 3
+_FRANJAS = list(range(0, 24, HORAS_POR_FRANJA))
+
+# `scraped_at` de un lead de Meta guarda el `created_time` de la API, que viene
+# en UTC (`+0000`) y se escribe tal cual, sin convertir. Ver routes/meta.py.
+#
+# Sin corregirlo, el mapa dice que el pico de leads es entre medianoche y las
+# seis de la manana, que no es lo que hace la gente: es de noche, UTC-3. Y el
+# consejo que sale de ahi —a que hora conviene estar disponible— saldria movido
+# tres horas.
+#
+# Uruguay no cambia la hora desde 2015, asi que un desplazamiento fijo alcanza y
+# evita depender de una base de husos horarios.
+HORAS_UTC_A_MONTEVIDEO = -3
+
+
+def llegada_de_leads(db_path: str, desde: str, hasta: str) -> dict:
+    """Cuando entran los leads: dia de la semana por franja horaria.
+
+    El panel sabia cuantos leads entran y de donde, pero no cuando. Y el cuando
+    se acciona directo: si la mitad llega el sabado a la noche y nadie contesta
+    hasta el lunes, eso no se arregla poniendo mas plata en pauta.
+
+    La grilla sale COMPLETA, con los ceros incluidos. Un mapa de calor con
+    huecos no es un mapa de calor: el cero es informacion —ahi no entra nadie— y
+    sin el no se puede comparar una celda contra su vecina.
+    """
+    conn = _connect(db_path)
+    try:
+        filas = conn.execute(
+            "SELECT scraped_at FROM businesses WHERE source = 'meta' "
+            "AND substr(scraped_at, 1, 10) BETWEEN ? AND ?",
+            (desde, hasta)).fetchall()
+    finally:
+        conn.close()
+
+    from datetime import date as _date
+
+    conteo = {}
+    sin_hora = 0
+    for fila in filas:
+        crudo = str(fila["scraped_at"] or "")
+        # Los leads viejos pueden tener solo la fecha. Contarlos a medianoche
+        # inventaria un pico a las 00:00 que nunca paso: quedan aparte.
+        if len(crudo) < 13 or ":" not in crudo:
+            sin_hora += 1
+            continue
+        try:
+            y, m, d = (int(x) for x in crudo[:10].split("-"))
+            hora = int(crudo[11:13])
+        except ValueError:
+            sin_hora += 1
+            continue
+        # De UTC a hora local. El corrimiento puede cruzar la medianoche hacia
+        # atras —01:00 UTC del jueves son las 22:00 del miercoles— asi que el
+        # dia se ajusta junto con la hora o el lead cae en el dia equivocado.
+        hora_local = hora + HORAS_UTC_A_MONTEVIDEO
+        dias_atras = 0
+        while hora_local < 0:
+            hora_local += 24
+            dias_atras += 1
+        while hora_local >= 24:
+            hora_local -= 24
+            dias_atras -= 1
+        dia = (_date(y, m, d).weekday() - dias_atras) % 7   # 0 = lunes
+        franja = (hora_local // HORAS_POR_FRANJA) * HORAS_POR_FRANJA
+        conteo[(dia, franja)] = conteo.get((dia, franja), 0) + 1
+
+    celdas = [{"dia": dia, "franja": franja, "n": conteo.get((dia, franja), 0)}
+              for dia in range(7) for franja in _FRANJAS]
+    total = sum(c["n"] for c in celdas)
+    return {
+        "celdas": celdas,
+        "total": total,
+        # Sin leads no hay un maximo de cero: no hay maximo. El panel tiene que
+        # poder distinguir "no llego ninguno" de "todos en cero".
+        "maximo": max((c["n"] for c in celdas), default=0) if total else None,
+        "sin_hora": sin_hora,
+        "horas_por_franja": HORAS_POR_FRANJA,
+    }
+
+
+_MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio",
+          "Agosto", "Setiembre", "Octubre", "Noviembre", "Diciembre"]
+
+
+def serie_mensual(db_path: str, desde: str, hasta: str) -> list:
+    """Mes a mes: leads, demos, ventas y gasto, para verlos uno al lado del otro.
+
+    La serie semanal contesta "como viene esta semana". Con un periodo corto son
+    dos o tres puntos, y una linea de tres puntos no se lee: parece que falta
+    algo. La pregunta que se hace mirando el panel casi siempre es mensual.
+
+    Los meses del medio salen aunque esten vacios. Un mes sin leads entre dos
+    con leads es justo lo que hay que ver; saltearlo hace que el grafico mienta
+    sobre el ritmo.
+
+    `ventas` son los cierres, y se llaman asi porque es como los llama el equipo
+    y como figuran en la planilla.
+    """
+    from services.embudo import alcanzo, costo
+
+    conn = _connect(db_path)
+    try:
+        leads = conn.execute(
+            "SELECT id, scraped_at FROM businesses WHERE source = 'meta' "
+            "AND substr(scraped_at, 1, 10) BETWEEN ? AND ?",
+            (desde, hasta)).fetchall()
+        eventos_filas = conn.execute(
+            "SELECT lead_id, new_status FROM lead_events").fetchall()
+        gasto_filas = conn.execute(
+            "SELECT substr(date, 1, 7) AS periodo, SUM(spend) AS gasto "
+            "FROM meta_insights WHERE date BETWEEN ? AND ? GROUP BY 1",
+            (desde, hasta)).fetchall()
+    finally:
+        conn.close()
+
+    eventos = {}
+    for fila in eventos_filas:
+        eventos.setdefault(fila["lead_id"], set()).add(fila["new_status"])
+
+    meses = {}
+
+    def _slot(periodo):
+        return meses.setdefault(periodo, {
+            "periodo": periodo, "nombre": None, "leads": 0, "demos": 0,
+            "ventas": 0, "gasto": 0.0, "cpl": None, "costo_demo": None,
+            "costo_venta": None})
+
+    for lead in leads:
+        s = _slot(str(lead["scraped_at"])[:7])
+        s["leads"] += 1
+        ev = eventos.get(lead["id"], set())
+        if alcanzo(ev, "demo_1"):
+            s["demos"] += 1
+        if alcanzo(ev, "cerrado"):
+            s["ventas"] += 1
+
+    for fila in gasto_filas:
+        _slot(fila["periodo"])["gasto"] += float(fila["gasto"] or 0)
+
+    if not meses:
+        return []
+
+    # Rellenar los huecos: de la primera a la ultima, mes por mes.
+    orden = sorted(meses)
+    y0, m0 = (int(x) for x in orden[0].split("-"))
+    y1, m1 = (int(x) for x in orden[-1].split("-"))
+    salida = []
+    y, m = y0, m0
+    while (y, m) <= (y1, m1):
+        s = _slot("%04d-%02d" % (y, m))
+        s["gasto"] = round(s["gasto"], 2)
+        s["nombre"] = _MESES[m - 1]
+        s["cpl"] = costo(s["gasto"], s["leads"])
+        s["costo_demo"] = costo(s["gasto"], s["demos"])
+        s["costo_venta"] = costo(s["gasto"], s["ventas"])
+        salida.append(s)
+        m += 1
+        if m > 12:
+            y, m = y + 1, 1
+    return salida
+
+
+def historico(db_path: str, desde: str) -> dict:
+    """Todo lo anterior a `desde`, para tener contra que comparar el periodo.
+
+    Una barra sola no dice nada: 18 dolares por lead esta bien o mal segun
+    contra que. Esto es la linea de referencia que se dibuja sobre los graficos
+    semanales.
+
+    **El corte es estricto y excluye el periodo que se esta mirando.** Si
+    mirando setiembre el promedio incluyera setiembre, el periodo se compararia
+    contra si mismo y la diferencia se achicaria sola — cuanto mas pesa el
+    periodo dentro de la historia, mas se achica. En el limite, mirar "todo"
+    daria diferencia cero siempre, que es exactamente el grafico que no sirve.
+
+    **Los costos son ratios, no promedios de ratios.** El CPL historico es
+    plata total sobre leads totales. Promediar los CPL de cada semana le daria
+    el mismo peso a una semana de 2 leads que a una de 30, que es el mismo
+    error que promediar dos porcentajes con denominadores distintos.
+
+    **Los promedios por semana dividen por semanas con actividad**, no por
+    semanas del calendario. Una semana en la que no corrio nada no es una
+    semana floja: no existe para esta comparacion, y meterla bajaria el
+    promedio hasta hacer parecer que cualquier semana activa esta bien.
+    """
+    from services.embudo import alcanzo, costo
+
+    vacio = {
+        "hay": False, "desde": None, "hasta": None, "semanas": 0,
+        "leads": 0, "demos": 0, "gasto": 0.0, "clics": 0, "impresiones": 0,
+        "cpl": None, "costo_demo": None, "leads_semana": None,
+        "gasto_semana": None, "clics_semana": None, "impresiones_semana": None,
+    }
+
+    conn = _connect(db_path)
+    try:
+        gasto_filas = conn.execute(
+            "SELECT date, spend, impressions, clicks FROM meta_insights "
+            "WHERE date < ?", (desde,)).fetchall()
+        lead_filas = conn.execute(
+            "SELECT id, scraped_at FROM businesses WHERE source = 'meta' "
+            "AND substr(scraped_at, 1, 10) < ?", (desde,)).fetchall()
+        eventos_filas = conn.execute(
+            "SELECT lead_id, new_status FROM lead_events").fetchall()
+    finally:
+        conn.close()
+
+    if not gasto_filas and not lead_filas:
+        return vacio
+
+    eventos = {}
+    for fila in eventos_filas:
+        eventos.setdefault(fila["lead_id"], set()).add(fila["new_status"])
+
+    gasto = sum(float(f["spend"] or 0) for f in gasto_filas)
+    clics = sum(int(f["clicks"] or 0) for f in gasto_filas)
+    impresiones = sum(int(f["impressions"] or 0) for f in gasto_filas)
+    leads = len(lead_filas)
+    demos = sum(1 for f in lead_filas
+                if alcanzo(eventos.get(f["id"], set()), "demo_1"))
+
+    # Una semana cuenta si tuvo gasto O leads: un lead que entro sin pauta esa
+    # semana igual paso.
+    activas = {_lunes_de(f["date"]) for f in gasto_filas}
+    activas |= {_lunes_de(f["scraped_at"]) for f in lead_filas}
+    semanas = len(activas)
+
+    fechas = [f["date"][:10] for f in gasto_filas]
+    fechas += [str(f["scraped_at"])[:10] for f in lead_filas]
+
+    def _por_semana(total):
+        return round(total / semanas, 2) if semanas else None
+
+    return {
+        "hay": True,
+        "desde": min(fechas),
+        # El ultimo dia de la historia es el anterior al periodo, aunque ese dia
+        # no haya pasado nada: es hasta donde se miro.
+        "hasta": _dia_anterior(desde),
+        "semanas": semanas,
+        "leads": leads,
+        "demos": demos,
+        "gasto": round(gasto, 2),
+        "clics": clics,
+        "impresiones": impresiones,
+        "cpl": costo(gasto, leads),
+        "costo_demo": costo(gasto, demos),
+        "leads_semana": _por_semana(leads),
+        "gasto_semana": _por_semana(gasto),
+        "clics_semana": _por_semana(clics),
+        "impresiones_semana": _por_semana(impresiones),
+    }
+
+
+def _dia_anterior(iso_fecha: str) -> str:
+    from datetime import date, timedelta
+
+    y, m, d = (int(x) for x in iso_fecha[:10].split("-"))
+    return (date(y, m, d) - timedelta(days=1)).isoformat()
+
+
 def conciliacion(db_path: str, desde: str, hasta: str) -> list:
     """Lo que Meta cobro contra lo que se cargo a mano en Finanzas.
 

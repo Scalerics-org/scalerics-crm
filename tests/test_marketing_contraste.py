@@ -73,6 +73,22 @@ PARES = [
      PISO_TEXTO),
     ("numero de etapa", "--texto", "--fondo-hundido", PISO_TEXTO),
     ("tasa de caida y subtitulo", "--rotulo", "--fondo-hundido", PISO_TEXTO),
+    # Las tarjetas de anuncio. La tarjeta es --fondo-hundido y el hueco donde
+    # iria la foto es --hover, que en oscuro es mas claro: un par que pasa
+    # sobre uno puede no pasar sobre el otro, asi que van los dos.
+    ("rotulos de la tarjeta de anuncio", "--rotulo", "--fondo-hundido",
+     PISO_TEXTO),
+    ("texto del hueco sin foto", "--rotulo", "--hover", PISO_TEXTO),
+    ("numero de la tarjeta de anuncio", "--texto", "--fondo-hundido",
+     PISO_TEXTO),
+    ("recomendacion del anuncio", "--texto-tenue", "--fondo-hundido",
+     PISO_TEXTO),
+    # El borde de color de la recomendacion no es texto, pero tiene que
+    # distinguirse de la tarjeta para que el codigo de estado se vea.
+    ("borde rojo de 'apagalo'", "--rojo", "--fondo-hundido", PISO_COMPONENTE),
+    ("borde ambar de 'esta caro'", "--ambar", "--fondo-hundido",
+     PISO_COMPONENTE),
+    ("borde verde de 'subile'", "--verde", "--fondo-hundido", PISO_COMPONENTE),
 ]
 
 
@@ -117,6 +133,16 @@ def test_el_rotulo_ya_alcanza_para_texto():
                  ".sc-hall-n", ".sc-hall-uno",
                  # La nota de "hasta aca llega un reporte de ads", arriba del
                  # embudo.
-                 ".sc-antes-nota"}
+                 ".sc-antes-nota",
+                 # "sobre 96" al lado del valor en las barras simples: es lo
+                 # que reemplazo al intervalo de confianza.
+                 ".sc-barra-nota",
+                 # Los rotulos de las tarjetas de anuncio. Van sobre
+                 # --fondo-hundido y sobre --hover, no sobre --superficie:
+                 # medidos aparte en PARES.
+                 ".sc-anun-campana", ".sc-anun-dato span", ".sc-anun-extra",
+                 ".sc-anun-sinfoto", ".sc-anun-reco",
+                 # El marbete de "Apagado" arriba de la tarjeta.
+                 ".sc-anun-apagado"}
     assert con_rotulo == esperados, (
         f"--rotulo esta en {sorted(con_rotulo)} y se esperaba {sorted(esperados)}")

@@ -31,9 +31,10 @@ sin_node = pytest.mark.skipif(shutil.which("node") is None,
 
 # Los contenedores que el pintado tiene que llenar. Si alguno queda vacío, o
 # reventó antes de llegar o se lo está dibujando en un id que no existe.
-_CONTENEDORES = ["mk-tiles", "mk-embudo", "mk-series", "mk-embudos",
-                 "mk-evolucion", "mk-acumulado", "mk-ranking", "mk-campanas",
-                 "mk-segmentos", "mk-tabla"]
+_CONTENEDORES = ["mk-tiles", "mk-embudo", "mk-mensual", "mk-series",
+                 "mk-embudos", "mk-evolucion", "mk-acumulado", "mk-ranking",
+                 "mk-campanas", "mk-segmentos", "mk-dispersion", "mk-llegada",
+                 "mk-conciliacion", "mk-anuncios"]
 
 
 def _dossier_de_prueba():
@@ -88,6 +89,17 @@ def _dossier_de_prueba():
              "leads": 5, "demos": 2, "cpl": 20.0, "costo_demo": 50.0,
              "gasto_acum": 100.0 * (i + 1), "leads_acum": 5 * (i + 1)}
             for i, s in enumerate(semanas)]}],
+        "serie_mensual": [
+            {"periodo": "2026-07", "nombre": "Julio", "leads": 59, "demos": 8,
+             "ventas": 2, "gasto": 368.98, "cpl": 6.25, "costo_demo": 46.1,
+             "costo_venta": 184.5},
+            {"periodo": "2026-08", "nombre": "Agosto", "leads": 0, "demos": 0,
+             "ventas": 0, "gasto": 0.0, "cpl": None, "costo_demo": None,
+             "costo_venta": None},
+            {"periodo": "2026-09", "nombre": "Setiembre", "leads": 6,
+             "demos": 3, "ventas": 0, "gasto": 293.86, "cpl": 48.98,
+             "costo_demo": 97.95, "costo_venta": None},
+        ],
         "serie_semanal": [
             {"inicio": s, "semana": f"2026-W2{i}", "gasto": 100.0,
              "impresiones": 5000, "clics": 150, "leads_crm": 5,
@@ -106,6 +118,65 @@ def _dossier_de_prueba():
                          m("conciliacion.brecha.2026_06", 600.0, "moneda")],
         "tiempos": [m("tiempos.dias_hasta_demo", 3.5)],
         "recordatorios": [],
+        "llegada": {
+            "celdas": [{"dia": d, "franja": f, "n": (d + f) % 4}
+                       for d in range(7) for f in range(0, 24, 3)],
+            "total": 40, "maximo": 3, "sin_hora": 2, "horas_por_franja": 3,
+        },
+        # Tres anuncios corriendo: uno con foto, uno de video sin foto y uno
+        # que gasto sin traer nada. Con bloques vacios el pintado toma los
+        # caminos de "sin datos" y el test pasaria con la seccion rota.
+        "anuncios": [
+            {"ad_id": "120253602403650249", "nombre": "Web hace ganar - RMKTG",
+             "campana": "Brand - Set26", "conjunto": "RMKTG", "tipo": "SHARE",
+             "corriendo": True, "estado": "ACTIVE",
+             "titulo": "Agencia de desarrollo web", "cuerpo": "Un cuerpo",
+             "imagen_archivo": "/data/creativos/120253602403650249.jpg",
+             "moneda": "USD", "gasto": 369.17, "leads": 33, "impresiones": 40000,
+             "clics": 900, "cpl": 11.19, "ctr": 0.0225, "tasa_lead": 0.0367,
+             "desde": "2026-06-14", "gasto_total": 512.40, "leads_total": 40,
+             "cpl_total": 12.81, "ctr_total": 0.021,
+             "mediana_cpl": 14.0, "oportunidad": 36.6,
+             "recomendacion": {"accion": "subir", "texto": "Es de los que mejor rinden.",
+                               "metricas_citadas": ["anuncio.120253602403650249.cpl"]}},
+            {"ad_id": "120253602403650250", "nombre": "UGC - 2",
+             "campana": "Brand - Set26", "conjunto": "UGC", "tipo": "VIDEO",
+             "corriendo": True, "estado": "ACTIVE",
+             "titulo": None, "cuerpo": "Mira como lo hacemos",
+             "imagen_archivo": None,
+             "moneda": "USD", "gasto": 120.0, "leads": 6, "impresiones": 15000,
+             "clics": 200, "cpl": 20.0, "ctr": 0.0133, "tasa_lead": 0.03,
+             "desde": "2026-08-01", "gasto_total": 150.0, "leads_total": 7,
+             "cpl_total": 21.43, "ctr_total": 0.013,
+             "mediana_cpl": 14.0, "oportunidad": 10.7,
+             "recomendacion": {"accion": "ajustar", "texto": "Cada lead te sale caro.",
+                               "metricas_citadas": ["anuncio.120253602403650250.cpl"]}},
+            {"ad_id": "120243368449890249", "nombre": "12/03 - Hiciste lo mas dificil",
+             "campana": "Leads - Marzo", "conjunto": "Amplio", "tipo": "SHARE",
+             "corriendo": False, "estado": "PAUSED",
+             "titulo": "Hiciste lo mas dificil", "cuerpo": "Otro cuerpo",
+             "imagen_archivo": "/data/creativos/120243368449890249.jpg",
+             "moneda": "USD", "gasto": 85.0, "leads": 0, "impresiones": 9000,
+             "clics": 120, "cpl": None, "ctr": 0.0133, "tasa_lead": 0.0,
+             "desde": "2026-09-01", "gasto_total": 85.0, "leads_total": 0,
+             "cpl_total": None, "ctr_total": 0.0133,
+             "mediana_cpl": 14.0, "oportunidad": 6.07,
+             "recomendacion": {"accion": "apagado", "texto": "Está apagado.",
+                               "metricas_citadas": ["anuncio.120243368449890249.gasto"]}},
+        ],
+        "anuncios_resumen": {"anuncios": 3, "corriendo": 2, "apagados": 1,
+                             "gasto": 574.17, "leads": 39,
+                             "cpl": 14.72, "gasto_total": 747.40,
+                             "leads_total": 47, "cpl_total": 15.90,
+                             "desde": "2026-06-14", "moneda": "USD"},
+        "historico": {
+            "hay": True, "desde": "2026-03-11", "hasta": "2026-06-12",
+            "semanas": 13, "leads": 120, "demos": 24, "gasto": 1500.0,
+            "clics": 3800, "impresiones": 250000,
+            "cpl": 12.5, "costo_demo": 62.5, "leads_semana": 9.23,
+            "gasto_semana": 115.38, "clics_semana": 292.31,
+            "impresiones_semana": 19230.77,
+        },
         "hallazgos": [{"tipo": "sin_cierres", "severidad": "alta",
                        "titulo": "t", "cuerpo": "c",
                        "metricas_citadas": ["campana.uy.gasto"]}],

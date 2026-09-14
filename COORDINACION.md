@@ -462,6 +462,96 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **14/9 — G (marketing): hay una sección nueva con las piezas de la pauta, y
+  una tabla nueva en la base.**
+
+  Lo que toca a quien pase por acá:
+
+  - **Dos tablas nuevas**: `meta_ads` (un renglón por anuncio, estado de hoy) y
+    `meta_ad_insights` (fecha × anuncio). Son el espejo al grano del anuncio de
+    lo que `meta_insights` hace al grano de campaña. **No las sumen juntas**:
+    un anuncio pertenece a una campaña, así que sumar las dos cuenta el gasto
+    dos veces.
+  - **Hay archivos en el volumen.** `/data/creativos/` tiene 67 imágenes, 18 MB.
+    Las URLs que da Meta vienen firmadas y caducan, así que se bajan una vez y
+    se sirven desde `/api/marketing/creativo/<ad_id>`. Si alguna vez hay que
+    mover el volumen, eso va también.
+  - **Un paso nuevo en el cron** de `radiografia.yml`, entre el gasto y el
+    informe. El día pesado es el primero (baja las imágenes); después encuentra
+    los archivos y no los vuelve a pedir.
+  - `SC.barrasAgrupadas` y `SC.serieMulti` aceptan `opciones.referencia`
+    (`{valor, etiqueta}`) para la línea punteada del histórico. **La referencia
+    entra al máximo de la escala**: sin eso, un histórico más alto que todas las
+    barras se dibuja fuera del área y el gráfico dice "estamos igual" justo
+    cuando más distinto está.
+  - Se fue el bloque "Los números crudos" (pedido de Juan, dos veces).
+
+  **Lo que me costó y les puede costar:** un 403 de Meta puede ser "no tenés
+  permiso" o "te pasaste de llamadas" (code 17), y son dos problemas
+  completamente distintos. El log de los sync ahora incluye el mensaje, no solo
+  el número; averiguarlo a mano costó una vuelta entera. Y ojo con sondear la
+  API seguido: cuatro o cinco llamadas en un minuto ya te ganan el rate limit.
+
+  **Y el error que vale la pena no repetir:** la recomendación por anuncio se
+  calibró primero en leads ("menos de 5, no opino") y contra la cuenta real
+  dejó 17 de 19 anuncios sin opinión, incluido uno de 26 centavos al que le
+  pedía 5 leads. Se arregló midiendo la evidencia en plata relativa al costo de
+  la cuenta. **Correr las reglas contra los datos de producción antes de darlas
+  por buenas**: con fixtures pasaban todas.
+
+  Suite en **2188**.
+
+  **Corregido el mismo dia, sobre dos preguntas de Juan usando el panel.** Las
+  dos eran errores de semantica, no de calculo, y por eso los tests pasaban:
+
+  - El `desde` de cada anuncio salia de un `MIN` acotado por el periodo, asi que
+    devolvia el borde de la ventana. La misma pantalla contestaba distinto segun
+    el rango elegido. Ahora hay dos juegos de numeros separados —los del periodo
+    y los de toda la vida del anuncio— y cada uno dice de que habla.
+  - La seccion filtraba por `effective_status = ACTIVE`. Combinado con el
+    selector de periodo daba un hibrido: eligiendo mayo mostraba "lo que corre
+    hoy y ademas gasto en mayo". Ahora entran los que gastaron en el periodo,
+    con los que siguen al aire primero.
+
+  **La leccion, por si les sirve:** los dos tests que cubrian esas funciones
+  pasaban porque sus fechas caian adentro del periodo. Un test de recorte por
+  fechas tiene que mirar desde una ventana que NO contenga todos los datos.
+
+
+- **11/9 — G (marketing): el panel dejó de tener gráficos que nadie sabe leer.**
+
+  Juan revisó el panel y la mitad de lo que señaló era lo mismo: el gráfico era
+  correcto y no se entendía. Los cambios, por si tocan `static/charts.js`:
+
+  - **`SC.barrasConIC` ya no se usa en el panel.** El intervalo de confianza es
+    correcto y resultó ilegible —"no los estoy logrando interpretar"—. Lo
+    reemplaza `SC.barrasSimples`, que dice la incertidumbre con palabras al lado
+    del número: "sobre 12 · muestra chica". La función queda en el archivo con
+    un cartel arriba; si vuelve al panel, vuelve el problema.
+  - **Tres funciones nuevas:** `barrasAgrupadas` (varias medidas por período,
+    un solo eje), `barrasSimples` y la opción `ayuda` en esta última.
+    `barrasAgrupadas` calcula su margen izquierdo a partir de la etiqueta más
+    larga del eje —con un margen fijo, "1.234,56" se sale del viewBox— y topea
+    el ancho de barra en 46px.
+  - **`serieMulti` y `serie` quedaron sin llamadas en Marketing.** Con dos o
+    tres semanas una línea se lee como si faltaran datos. No las saqué: son
+    tipos de gráfico válidos, solo que este panel ya no los pide.
+  - **`--rotulo` sumó cuatro selectores** (`.sc-barra-nota`, `.sc-crudo-rotulo`,
+    `.sc-crudo-n`, `.sc-crudo-fuente`). Actualicé la aserción de
+    `test_marketing_contraste.py`. Todos miden ≥4,51:1 en los dos temas.
+
+  Del lado de los datos: `serie_mensual()` en `services/dossier.py` (leads,
+  demos, ventas y gasto por mes, con los meses vacíos del medio incluidos).
+
+  **Un agujero que encontré y tapé:** `test_panel_se_pinta.py` no tenía
+  `mk-mensual` en su lista de contenedores y su dossier de prueba no traía
+  `serie_mensual`, así que el bloque "Mes a mes" tomaba el camino de "sin
+  datos" y el test pasaba con el gráfico roto. Si agregan un bloque al panel,
+  agréguenlo también a `_CONTENEDORES` y denle datos al fixture.
+
+  Suite en **2091** antes de esta tanda.
+
+
 - **11/9 — G: gracias por subir `--rotulo`, y ojo con un margen de 0,01.**
 
   Vi que subieron `--rotulo` a `#8190a6` (5,31:1 en oscuro) y `--texto-debil`

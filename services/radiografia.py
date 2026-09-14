@@ -14,9 +14,11 @@ import json
 import logging
 
 from database import _connect
-from services.dossier import (conciliacion, embudo_por_campana, por_campana,
-                              por_segmento, recordatorios, serie_por_campana,
-                              serie_semanal, tiempos)
+from services.anuncios import anuncios_en_curso, resumen_en_curso
+from services.dossier import (conciliacion, embudo_por_campana, historico,
+                              llegada_de_leads, por_campana, por_segmento,
+                              recordatorios, serie_mensual,
+                              serie_por_campana, serie_semanal, tiempos)
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +35,17 @@ def construir_dossier(db_path: str, desde: str, hasta: str) -> dict:
         "conciliacion": conciliacion(db_path, desde, hasta),
         "tiempos": tiempos(db_path, desde, hasta),
         "recordatorios": recordatorios(db_path, desde, hasta),
+        "serie_mensual": serie_mensual(db_path, desde, hasta),
+        # Todo lo ANTERIOR a `desde`: es la vara contra la que se lee el
+        # periodo. No lleva `hasta` a proposito — mira hacia atras.
+        "historico": historico(db_path, desde),
+        # Los anuncios que estan corriendo HOY, con la foto y que hacer
+        # con cada uno. Es el grano sobre el que se decide: adentro de una
+        # campana conviven varios y uno se puede llevar la mitad de la
+        # plata sin traer a nadie.
+        "anuncios": anuncios_en_curso(db_path, desde, hasta),
+        "anuncios_resumen": resumen_en_curso(db_path, desde, hasta),
+        "llegada": llegada_de_leads(db_path, desde, hasta),
     }
     # Va al final porque lee los otros bloques, no la base: los hallazgos son
     # una lectura del dossier, no una consulta mas.
