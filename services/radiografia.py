@@ -14,7 +14,7 @@ import json
 import logging
 
 from database import _connect
-from services.dossier import (conciliacion, embudo_por_campana,
+from services.dossier import (conciliacion, embudo_por_campana, historico,
                               llegada_de_leads, por_campana, por_segmento,
                               recordatorios, serie_mensual,
                               serie_por_campana, serie_semanal, tiempos)
@@ -35,6 +35,9 @@ def construir_dossier(db_path: str, desde: str, hasta: str) -> dict:
         "tiempos": tiempos(db_path, desde, hasta),
         "recordatorios": recordatorios(db_path, desde, hasta),
         "serie_mensual": serie_mensual(db_path, desde, hasta),
+        # Todo lo ANTERIOR a `desde`: es la vara contra la que se lee el
+        # periodo. No lleva `hasta` a proposito — mira hacia atras.
+        "historico": historico(db_path, desde),
         "llegada": llegada_de_leads(db_path, desde, hasta),
     }
     # Va al final porque lee los otros bloques, no la base: los hallazgos son

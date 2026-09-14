@@ -120,11 +120,6 @@ def test_el_rotulo_ya_alcanza_para_texto():
                  ".sc-antes-nota",
                  # "sobre 96" al lado del valor en las barras simples: es lo
                  # que reemplazo al intervalo de confianza.
-                 ".sc-barra-nota",
-                 # Los tres de la tabla cruda: el chip del grupo, el "16
-                 # metricas" del encabezado y la fuente de cada fila.
-                 ".sc-crudo-rotulo", ".sc-crudo-n", ".sc-crudo-fuente",
-                 # "sin periodo anterior" en la columna de delta.
-                 '.sc-crudo-delta[data-signo="sin_comparacion"]'}
+                 ".sc-barra-nota"}
     assert con_rotulo == esperados, (
         f"--rotulo esta en {sorted(con_rotulo)} y se esperaba {sorted(esperados)}")

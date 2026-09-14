@@ -34,7 +34,7 @@ sin_node = pytest.mark.skipif(shutil.which("node") is None,
 _CONTENEDORES = ["mk-tiles", "mk-embudo", "mk-mensual", "mk-series",
                  "mk-embudos", "mk-evolucion", "mk-acumulado", "mk-ranking",
                  "mk-campanas", "mk-segmentos", "mk-dispersion", "mk-llegada",
-                 "mk-conciliacion", "mk-tabla"]
+                 "mk-conciliacion"]
 
 
 def _dossier_de_prueba():
@@ -122,6 +122,14 @@ def _dossier_de_prueba():
             "celdas": [{"dia": d, "franja": f, "n": (d + f) % 4}
                        for d in range(7) for f in range(0, 24, 3)],
             "total": 40, "maximo": 3, "sin_hora": 2, "horas_por_franja": 3,
+        },
+        "historico": {
+            "hay": True, "desde": "2026-03-11", "hasta": "2026-06-12",
+            "semanas": 13, "leads": 120, "demos": 24, "gasto": 1500.0,
+            "clics": 3800, "impresiones": 250000,
+            "cpl": 12.5, "costo_demo": 62.5, "leads_semana": 9.23,
+            "gasto_semana": 115.38, "clics_semana": 292.31,
+            "impresiones_semana": 19230.77,
         },
         "hallazgos": [{"tipo": "sin_cierres", "severidad": "alta",
                        "titulo": "t", "cuerpo": "c",

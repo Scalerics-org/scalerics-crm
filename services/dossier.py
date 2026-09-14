@@ -751,6 +751,105 @@ def serie_mensual(db_path: str, desde: str, hasta: str) -> list:
     return salida
 
 
+def historico(db_path: str, desde: str) -> dict:
+    """Todo lo anterior a `desde`, para tener contra que comparar el periodo.
+
+    Una barra sola no dice nada: 18 dolares por lead esta bien o mal segun
+    contra que. Esto es la linea de referencia que se dibuja sobre los graficos
+    semanales.
+
+    **El corte es estricto y excluye el periodo que se esta mirando.** Si
+    mirando setiembre el promedio incluyera setiembre, el periodo se compararia
+    contra si mismo y la diferencia se achicaria sola — cuanto mas pesa el
+    periodo dentro de la historia, mas se achica. En el limite, mirar "todo"
+    daria diferencia cero siempre, que es exactamente el grafico que no sirve.
+
+    **Los costos son ratios, no promedios de ratios.** El CPL historico es
+    plata total sobre leads totales. Promediar los CPL de cada semana le daria
+    el mismo peso a una semana de 2 leads que a una de 30, que es el mismo
+    error que promediar dos porcentajes con denominadores distintos.
+
+    **Los promedios por semana dividen por semanas con actividad**, no por
+    semanas del calendario. Una semana en la que no corrio nada no es una
+    semana floja: no existe para esta comparacion, y meterla bajaria el
+    promedio hasta hacer parecer que cualquier semana activa esta bien.
+    """
+    from services.embudo import alcanzo, costo
+
+    vacio = {
+        "hay": False, "desde": None, "hasta": None, "semanas": 0,
+        "leads": 0, "demos": 0, "gasto": 0.0, "clics": 0, "impresiones": 0,
+        "cpl": None, "costo_demo": None, "leads_semana": None,
+        "gasto_semana": None, "clics_semana": None, "impresiones_semana": None,
+    }
+
+    conn = _connect(db_path)
+    try:
+        gasto_filas = conn.execute(
+            "SELECT date, spend, impressions, clicks FROM meta_insights "
+            "WHERE date < ?", (desde,)).fetchall()
+        lead_filas = conn.execute(
+            "SELECT id, scraped_at FROM businesses WHERE source = 'meta' "
+            "AND substr(scraped_at, 1, 10) < ?", (desde,)).fetchall()
+        eventos_filas = conn.execute(
+            "SELECT lead_id, new_status FROM lead_events").fetchall()
+    finally:
+        conn.close()
+
+    if not gasto_filas and not lead_filas:
+        return vacio
+
+    eventos = {}
+    for fila in eventos_filas:
+        eventos.setdefault(fila["lead_id"], set()).add(fila["new_status"])
+
+    gasto = sum(float(f["spend"] or 0) for f in gasto_filas)
+    clics = sum(int(f["clicks"] or 0) for f in gasto_filas)
+    impresiones = sum(int(f["impressions"] or 0) for f in gasto_filas)
+    leads = len(lead_filas)
+    demos = sum(1 for f in lead_filas
+                if alcanzo(eventos.get(f["id"], set()), "demo_1"))
+
+    # Una semana cuenta si tuvo gasto O leads: un lead que entro sin pauta esa
+    # semana igual paso.
+    activas = {_lunes_de(f["date"]) for f in gasto_filas}
+    activas |= {_lunes_de(f["scraped_at"]) for f in lead_filas}
+    semanas = len(activas)
+
+    fechas = [f["date"][:10] for f in gasto_filas]
+    fechas += [str(f["scraped_at"])[:10] for f in lead_filas]
+
+    def _por_semana(total):
+        return round(total / semanas, 2) if semanas else None
+
+    return {
+        "hay": True,
+        "desde": min(fechas),
+        # El ultimo dia de la historia es el anterior al periodo, aunque ese dia
+        # no haya pasado nada: es hasta donde se miro.
+        "hasta": _dia_anterior(desde),
+        "semanas": semanas,
+        "leads": leads,
+        "demos": demos,
+        "gasto": round(gasto, 2),
+        "clics": clics,
+        "impresiones": impresiones,
+        "cpl": costo(gasto, leads),
+        "costo_demo": costo(gasto, demos),
+        "leads_semana": _por_semana(leads),
+        "gasto_semana": _por_semana(gasto),
+        "clics_semana": _por_semana(clics),
+        "impresiones_semana": _por_semana(impresiones),
+    }
+
+
+def _dia_anterior(iso_fecha: str) -> str:
+    from datetime import date, timedelta
+
+    y, m, d = (int(x) for x in iso_fecha[:10].split("-"))
+    return (date(y, m, d) - timedelta(days=1)).isoformat()
+
+
 def conciliacion(db_path: str, desde: str, hasta: str) -> list:
     """Lo que Meta cobro contra lo que se cargo a mano en Finanzas.
 

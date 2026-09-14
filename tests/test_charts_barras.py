@@ -278,3 +278,106 @@ var h = SC.barrasSimples([{etiqueta:'<img onerror=x>', valor:1, nota:'<b>'}],
 console.log(h.indexOf('<img') >= 0, h.indexOf('<b>') >= 0);
 """, tmp_path)
     assert salida.strip() == "false false"
+
+
+# ── La linea del historico ─────────────────────────────────────────────────
+#
+# Juan: "quiero que las graficas se comparen con el historico, para saber si
+# estamos mas arriba/abajo". Una barra sola no dice si 18 dolares por lead esta
+# bien; contra un historico de 12 dice que empeoro.
+
+@sin_node
+def test_dibuja_la_linea_del_historico(tmp_path):
+    salida = _correr(_MESES + """
+var h = SC.barrasAgrupadas(periodos, [series[0]],
+  {etiqueta:'Leads', referencia:{valor:20, etiqueta:'histórico'}}, 'oscuro');
+console.log((h.match(/stroke-dasharray="6 4"/g) || []).length);
+""", tmp_path)
+    assert salida.strip() == "1"
+
+
+@sin_node
+def test_la_linea_dice_su_valor(tmp_path):
+    """Una linea punteada sin numero obliga a estimarla contra la grilla, que
+    es justo lo que se queria evitar."""
+    salida = _correr(_MESES + """
+var h = SC.barrasAgrupadas(periodos, [series[0]],
+  {etiqueta:'Leads', referencia:{valor:20, etiqueta:'histórico'}}, 'oscuro');
+console.log(h.indexOf('histórico 20') >= 0);
+""", tmp_path)
+    assert salida.strip() == "true"
+
+
+@sin_node
+def test_un_historico_mas_alto_que_todo_igual_se_ve(tmp_path):
+    """El caso que rompe el grafico: si la referencia no entra al maximo, la
+    linea se dibuja fuera del area visible y el grafico dice "estamos igual"
+    justo cuando mas distinto esta.
+
+    Se comprueba por la geometria, no por la presencia de la linea: la `y` de
+    la referencia tiene que caer DENTRO del area de dibujo.
+    """
+    salida = _correr(r"""
+var h = SC.barrasAgrupadas(
+  [{clave:'a', etiqueta:'A'}],
+  [{etiqueta:'Leads', color:'#60a5fa', valores:{a:5}}],
+  {etiqueta:'Leads', alto:300, referencia:{valor:500, etiqueta:'histórico'}},
+  'oscuro');
+var m = h.match(/stroke-dasharray="6 4"[^>]*/);
+var y = parseFloat(/y1="([\d.]+)"/.exec(
+  /<line[^>]*stroke-dasharray="6 4"[^>]*>/.exec(h)[0])[1]);
+console.log(y > 0 && y < 300);
+""", tmp_path)
+    assert salida.strip() == "true"
+
+
+@sin_node
+def test_sin_referencia_no_dibuja_ninguna_linea(tmp_path):
+    """Mirando el primer mes con datos no hay historico. Una linea en cero
+    parece un dato y no lo es."""
+    salida = _correr(_MESES + """
+var h = SC.barrasAgrupadas(periodos, [series[0]], {etiqueta:'Leads'}, 'oscuro');
+console.log(h.indexOf('stroke-dasharray') >= 0);
+""", tmp_path)
+    assert salida.strip() == "false"
+
+
+@sin_node
+def test_una_referencia_nula_tampoco_dibuja(tmp_path):
+    """Sin leads historicos no hay CPL historico: `valor` viene en null y no es
+    un historico de cero."""
+    salida = _correr(_MESES + """
+var h = SC.barrasAgrupadas(periodos, [series[0]],
+  {etiqueta:'x', referencia:{valor:null, etiqueta:'histórico'}}, 'oscuro');
+console.log(h.indexOf('stroke-dasharray') >= 0);
+""", tmp_path)
+    assert salida.strip() == "false"
+
+
+@sin_node
+def test_la_linea_no_va_pintada_de_verde_ni_de_rojo(tmp_path):
+    """Estar arriba es bueno en leads y malo en costo por lead, y el grafico no
+    sabe cual de los dos esta dibujando. Un color mentiria en la mitad."""
+    salida = _correr(_MESES + """
+var h = SC.barrasAgrupadas(periodos, [series[0]],
+  {etiqueta:'x', referencia:{valor:20}}, 'oscuro');
+var linea = /<line[^>]*stroke-dasharray[^>]*>/.exec(h)[0];
+console.log(linea.indexOf(SC.PALETA.mudo.oscuro) >= 0);
+""", tmp_path)
+    assert salida.strip() == "true"
+
+
+@sin_node
+def test_el_grafico_de_lineas_tambien_lleva_el_historico(tmp_path):
+    """Los dos de campanas volvieron a ser lineas y necesitan la misma vara."""
+    salida = _correr(r"""
+SC._resetColores();
+var h = SC.serieMulti(
+  [{campana:'UY', puntos:[{x:'Semana 1',y:10},{x:'Semana 2',y:14}]}],
+  {etiqueta:'Costo por demo', referencia:{valor:64, etiqueta:'histórico'}},
+  'oscuro');
+var y = parseFloat(/y1="([\d.]+)"/.exec(
+  /<line[^>]*stroke-dasharray="6 4"[^>]*>/.exec(h)[0])[1]);
+console.log(h.indexOf('histórico 64') >= 0, y > 0 && y < 300);
+""", tmp_path)
+    assert salida.strip() == "true true"

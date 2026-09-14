@@ -1335,6 +1335,7 @@ body.light .mobile-header-title{color:#0f172a}
 .sc-hall-n{font-size:.8rem;font-weight:700;color:var(--rotulo);font-variant-numeric:tabular-nums;min-width:18px}
 .sc-hall-tit{font-size:.84rem;font-weight:700;color:var(--texto);margin-bottom:4px}
 .sc-hall-cuerpo{font-size:.79rem;line-height:1.55;color:var(--texto-tenue)}
+.sc-comparacion{display:grid;gap:5px;font-size:.8rem;line-height:1.55;color:var(--texto);background:var(--fondo-hundido);border:1px solid var(--borde);border-radius:10px;padding:11px 14px;margin-bottom:16px}
 .sc-barras{display:grid;gap:7px;margin-top:8px}
 .sc-barras-ayuda{font-size:.72rem;line-height:1.5;margin:2px 0 4px;max-width:74ch}
 /* Varios graficos seguidos dentro del mismo bloque: sin esto se pegan y se
@@ -1406,34 +1407,6 @@ body.light .mobile-header-title{color:#0f172a}
 .sc-citas{font-size:.66rem;color:var(--texto-tenue);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-all}
 .sc-cambios{border-top:1px solid var(--borde);margin-top:14px;padding-top:12px}
 .sc-cambios li{font-size:.8rem;color:var(--texto-tenue);line-height:1.6;margin-bottom:3px}
-/* Los numeros crudos: densos a proposito, pero por grupos y con filtro.
-   Antes eran ~70 filas seguidas con la etiqueta "Gasto" repetida una vez por
-   campana y nada que dijera a cual pertenecia cada una. */
-.sc-crudos-abrir{cursor:pointer;color:var(--azul);font-size:.8rem;font-weight:600;padding:4px 0}
-.sc-crudos-barra{margin:12px 0 6px}
-.sc-crudos-buscar{width:100%;max-width:340px;background:var(--fondo-hundido);border:1px solid var(--borde);border-radius:8px;padding:7px 10px;color:var(--texto);font-size:.8rem;font-family:'Inter',sans-serif}
-.sc-crudo-grupo{margin-top:18px}
-.sc-crudo-cab{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;padding-bottom:6px;margin-bottom:2px;border-bottom:1px solid var(--borde)}
-.sc-crudo-rotulo{font-size:.62rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--rotulo);background:var(--hover);padding:2px 7px;border-radius:5px}
-.sc-crudo-tit{font-size:.86rem;font-weight:700;color:var(--texto)}
-.sc-crudo-n{font-size:.68rem;color:var(--rotulo);margin-left:auto}
-.sc-crudo-grupo .sc-tabla tbody tr:nth-child(odd){background:var(--fondo-hundido)}
-/* Ancho fijo: con `auto` cada grupo calcula sus columnas por su contenido y
-   la columna "Valor" queda en una x distinta en cada tabla. Al recorrerlas
-   una abajo de la otra eso se lee como desprolijidad. */
-.sc-crudo-grupo .sc-tabla{table-layout:fixed}
-.sc-crudo-grupo .sc-tabla th:nth-child(1),.sc-crudo-grupo .sc-tabla td:nth-child(1){width:30%;overflow:hidden;text-overflow:ellipsis}
-.sc-crudo-grupo .sc-tabla th:nth-child(2){width:11%}
-.sc-crudo-grupo .sc-tabla th:nth-child(3){width:19%}
-.sc-crudo-grupo .sc-tabla th:nth-child(4){width:12%}
-.sc-crudo-grupo .sc-tabla th:nth-child(5){width:10%}
-.sc-crudo-val{font-weight:700}
-.sc-crudo-fuente{font-size:.64rem;letter-spacing:.03em;text-transform:uppercase;color:var(--rotulo)}
-.sc-crudo-chip{font-size:.62rem;color:var(--ambar);background:rgba(245,158,11,.13);padding:1px 6px;border-radius:4px;margin-left:6px}
-/* El delta va sin color a proposito: subir es bueno en `leads` y malo en
-   `cpl`, y aca la metrica no trae para que lado es mejor. Pintarlo de verde
-   por subir mentiria en la mitad de las filas. El signo alcanza. */
-.sc-crudo-delta[data-signo="sin_comparacion"]{color:var(--rotulo);font-size:.7rem}
 /* La plata: primero la respuesta, despues como se llego a ella. */
 .sc-plata-resumen{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:12px}
 .sc-plata-resumen .sc-tile{background:var(--fondo-hundido)}
@@ -2031,7 +2004,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 
       <div class="sc-bloque">
         <h3>Semana a semana</h3>
-        <div class="sc-sub">El detalle fino, para ver dentro del mes. Barras y no líneas: con pocas semanas una línea parece que le falta algo.</div>
+        <div class="sc-sub">El detalle fino, para ver dentro del mes. La línea punteada de cada gráfico es el promedio histórico —todo lo anterior a este período, no incluye el período — así se ve de una si la semana viene arriba o abajo de lo normal.</div>
         <div id="mk-series"></div>
       </div>
 
@@ -2043,13 +2016,13 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 
       <div class="sc-bloque">
         <h3>Cómo evoluciona cada campaña</h3>
-        <div class="sc-sub">Una campaña que se pone cara queda tapada en el promedio si otra mejora al mismo tiempo. Acá cada semana tiene una barra por campaña, todas sobre el mismo eje. Las semanas sin barra son semanas en las que esa campaña no gastó.</div>
+        <div class="sc-sub">Una campaña que se pone cara queda tapada en el promedio si otra mejora al mismo tiempo. Acá cada una va por su lado, todas sobre el mismo eje. La línea punteada es el histórico de la cuenta: lo que quede por encima está saliendo más caro que lo de siempre. Un corte en la línea es una semana sin gasto de esa campaña, no un cero.</div>
         <div id="mk-evolucion"></div>
       </div>
 
       <div class="sc-bloque">
         <h3>Cuánto costó llegar hasta acá</h3>
-        <div class="sc-sub">Cada barra es el total corrido hasta esa semana, no lo de la semana: por eso nunca bajan. Gasto y leads van en dos gráficos y no en dos ejes, porque un eje doble hace que cualquier par de series parezca cruzarse donde uno quiera.</div>
+        <div class="sc-sub">Cada punto es el total corrido hasta esa semana, no lo de la semana: por eso nunca bajan. Gasto y leads van en dos gráficos y no en dos ejes, porque un eje doble hace que cualquier par de curvas parezca cruzarse donde uno quiera. Acá no va la línea del histórico: una curva que siempre sube cruza una horizontal una sola vez y después queda abajo para siempre, sin que eso signifique nada.</div>
         <div id="mk-acumulado"></div>
       </div>
 
@@ -2089,19 +2062,6 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
         <div id="mk-conciliacion"></div>
       </div>
 
-      <div class="sc-bloque">
-        <h3>Los números crudos</h3>
-        <div class="sc-sub">Cada métrica del dossier con su numerador, denominador y muestra, agrupada por de dónde sale. Es lo que permite ir a cualquier número de arriba y comprobarlo.</div>
-        <details><summary class="sc-crudos-abrir">Ver todas las métricas</summary>
-          <div class="sc-crudos-barra">
-            <input type="search" id="mk-tabla-buscar" class="sc-crudos-buscar"
-                   placeholder="Filtrar por nombre de métrica…"
-                   oninput="_mkFiltrarCrudos()" autocomplete="off">
-          </div>
-          <div id="mk-tabla"></div>
-          <div id="mk-tabla-nada" class="sc-vacio" style="display:none">Ninguna métrica coincide con el filtro.</div>
-        </details>
-      </div>
     </div>
   </div>
 
@@ -7916,28 +7876,85 @@ function _mkPintar() {
   }));
   const porSem = clave => Object.fromEntries(
     semanas.map(s => [s.inicio, s[clave] === undefined ? null : s[clave]]));
+
+  // La vara contra la que se lee cada barra: todo lo anterior al período.
+  //
+  // `hist.hay` es false cuando estás mirando el primer mes con datos. Ahí no
+  // se dibuja nada: una línea en cero parece un dato y no lo es.
+  const hist = _mkDossier.historico || { hay: false };
+  const _hastaCorto = (hist.hasta || '').slice(0, 10).split('-').reverse()
+    .slice(0, 2).join('/');
+  const ref = (clave) => hist.hay
+    ? { valor: hist[clave], etiqueta: `histórico hasta el ${_hastaCorto}:` }
+    : null;
+
+  // Y el mismo dato en palabras, arriba del bloque. La línea deja ver que
+  // estamos arriba o abajo; esto dice cuánto, que es lo que se repite en una
+  // reunión.
+  //
+  // Sin color: entrar más leads es bueno y pagar más por lead es malo, así que
+  // pintar "arriba" de verde mentiría en la mitad de las frases.
+  const _comparar = (ahora, antes, masEsMejor, nombre, formato) => {
+    if (!hist.hay || ahora === null || !antes) return null;
+    const dif = (ahora - antes) / antes;
+    if (Math.abs(dif) < 0.05) {
+      return `${nombre} viene igual que el histórico ` +
+             `(${esc(SC.fmt(ahora, formato))}).`;
+    }
+    const cuanto = SC.fmt(Math.abs(dif), 'porcentaje');
+    const lado = dif > 0 ? 'por encima' : 'por debajo';
+    const juicio = (dif > 0) === masEsMejor ? 'Mejor' : 'Peor';
+    return `${nombre}: ${esc(SC.fmt(ahora, formato))} contra ` +
+           `${esc(SC.fmt(antes, formato))} del histórico, ` +
+           `${esc(cuanto)} ${lado}. ${juicio} que antes.`;
+  };
+
+  const _nSem = semanas.length || 1;
+  const _sumSem = (c) => semanas.reduce((a, s) => a + (s[c] || 0), 0);
+  const _frases = [
+    _comparar(_sumSem('leads_crm') / _nSem, hist.leads_semana, true,
+              'Entran por semana', 'numero'),
+    // El CPL del período es plata sobre leads, no el promedio de los CPL
+    // semanales: es el mismo ratio con el que se calcula el histórico.
+    _comparar(_sumSem('leads_crm')
+                ? _sumSem('gasto') / _sumSem('leads_crm') : null,
+              hist.cpl, false, 'Cada lead cuesta', 'moneda'),
+  ].filter(Boolean);
+
   document.getElementById('mk-series').innerHTML = semanas.length
-    ? SC.barrasAgrupadas(periodosSem, [
+    ? (_frases.length
+        ? '<div class="sc-comparacion">' +
+          _frases.map(f => '<div>' + f + '</div>').join('') + '</div>'
+        : '')
+      + SC.barrasAgrupadas(periodosSem, [
         { etiqueta: 'Leads', valores: porSem('leads_crm'),
           color: SC.colorDeEtapa('leads', tema) },
-      ], { etiqueta: 'Leads por semana', formato: 'numero' }, tema)
+      ], { etiqueta: 'Leads por semana', formato: 'numero',
+           referencia: ref('leads_semana') }, tema)
       + SC.barrasAgrupadas(periodosSem, [
         { etiqueta: 'Gasto', valores: porSem('gasto'), color: SC.PALETA[tema][0] },
-      ], { etiqueta: 'Gasto por semana', formato: 'moneda' }, tema)
+      ], { etiqueta: 'Gasto por semana', formato: 'moneda',
+           referencia: ref('gasto_semana') }, tema)
       + SC.barrasAgrupadas(periodosSem, [
         { etiqueta: 'Costo por lead', valores: porSem('cpl'),
           color: SC.PALETA[tema][1] },
-      ], { etiqueta: 'Costo por lead, por semana', formato: 'moneda' }, tema)
+      ], { etiqueta: 'Costo por lead, por semana', formato: 'moneda',
+           // El CPL histórico es plata total sobre leads totales, no el
+           // promedio de los CPL semanales: promediar ratios le daría el mismo
+           // peso a una semana de 2 leads que a una de 30.
+           referencia: ref('cpl') }, tema)
       // Clics e impresiones van en gráficos separados y no en uno: son 5.000
       // contra 150, y sobre el mismo eje la barra de clics desaparece. Y un
       // eje doble haría que se cruzaran donde uno elija la escala.
       + SC.barrasAgrupadas(periodosSem, [
         { etiqueta: 'Clics', valores: porSem('clics'), color: SC.PALETA[tema][2] },
-      ], { etiqueta: 'Clics por semana', formato: 'numero' }, tema)
+      ], { etiqueta: 'Clics por semana', formato: 'numero',
+           referencia: ref('clics_semana') }, tema)
       + SC.barrasAgrupadas(periodosSem, [
         { etiqueta: 'Impresiones', valores: porSem('impresiones'),
           color: SC.PALETA[tema][3] },
-      ], { etiqueta: 'Impresiones por semana', formato: 'numero' }, tema)
+      ], { etiqueta: 'Impresiones por semana', formato: 'numero',
+           referencia: ref('impresiones_semana') }, tema)
     : '<div class="sc-vacio">Sin semanas con datos en el período.</div>';
 
   // ── Por campaña ────────────────────────────────────────────────────────
@@ -7990,42 +8007,30 @@ function _mkPintar() {
   const conGastoSem = porSemana.filter(s =>
     (s.puntos || []).some(p => p.gasto > 0));
 
-  // Barras agrupadas y no líneas. Un mes arranca con dos semanas cerradas: una
-  // línea de dos puntos es un segmento, y un segmento no muestra tendencia,
-  // muestra que faltan datos. Una barra se lee sola aunque sea la única.
+  // Líneas y no barras. Acá lo que se compara son campañas ENTRE SÍ a lo largo
+  // del tiempo, y para eso la línea gana: se sigue el recorrido de una campaña
+  // sin tener que buscar su color barra por barra dentro de cada grupo.
   //
-  // Las semanas salen de la unión de todas las campañas y no de la primera:
-  // una campaña que arrancó tarde no tiene que recortar el eje de las demás.
-  const semanasDe = (series) => {
-    const vistas = new Map();
-    series.forEach(s => (s.puntos || []).forEach(p => {
-      if (!vistas.has(p.inicio)) {
-        vistas.set(p.inicio, { clave: p.inicio,
-                               etiqueta: nombreSemana[p.inicio] || p.semana });
-      }
-    }));
-    return [...vistas.values()].sort((a, b) => a.clave < b.clave ? -1 : 1);
-  };
-
-  const seriesDe = (series, campo) => series.map(s => {
-    const valores = {};
-    (s.puntos || []).forEach(p => {
-      if (p[campo] !== null && p[campo] !== undefined) valores[p.inicio] = p[campo];
-    });
-    return { etiqueta: s.campana, color: SC.colorDeCampana(s.campana, 0, tema),
-             valores };
-  });
-
-  const porSemanaAgrupado = (campo, titulo, formato) => SC.barrasAgrupadas(
-    semanasDe(conGastoSem), seriesDe(conGastoSem, campo),
-    // Con más de dos campañas las barras quedan finas y el número arriba se
-    // pisa con el de al lado; ahí gana el tooltip.
-    { etiqueta: titulo, formato, numeros: conGastoSem.length <= 2 }, tema);
+  // Es el caso opuesto al de "Semana a semana", que dibuja una sola serie y ahí
+  // la barra se lee mejor.
+  const porCampanaEnEl = (campo, titulo, formato, refClave) => SC.serieMulti(
+    conGastoSem.map(s => ({
+      campana: s.campana,
+      puntos: (s.puntos || []).map(p => ({
+        x: nombreSemana[p.inicio] || p.semana, y: p[campo],
+      })),
+    })),
+    { etiqueta: titulo, formato,
+      referencia: refClave ? ref(refClave) : null }, tema);
 
   document.getElementById('mk-evolucion').innerHTML = conGastoSem.length
-    ? porSemanaAgrupado('costo_demo', 'Costo por demo, semana a semana', 'moneda') +
-      porSemanaAgrupado('cpl', 'Costo por lead, semana a semana', 'moneda') +
-      porSemanaAgrupado('gasto', 'Gasto por semana', 'moneda')
+    ? porCampanaEnEl('costo_demo', 'Costo por demo, semana a semana', 'moneda',
+                     'costo_demo') +
+      porCampanaEnEl('cpl', 'Costo por lead, semana a semana', 'moneda', 'cpl') +
+      // El gasto va sin línea: el histórico es el de la cuenta entera y acá
+      // cada curva es una campaña sola. Comparar una campaña contra el total
+      // de la cuenta no dice nada.
+      porCampanaEnEl('gasto', 'Gasto por semana', 'moneda', null)
     : '<div class="sc-vacio">Hace falta gasto sincronizado para ver la evolución.</div>';
 
   // ── Cuánto costó llegar hasta acá ──────────────────────────────────────
@@ -8033,9 +8038,13 @@ function _mkPintar() {
   // Dos gráficos y no dos ejes: con un eje doble las dos curvas se cruzan
   // donde uno elija la escala, y el cruce parece significar algo cuando no
   // significa nada.
+  //
+  // Sin línea de histórico: una curva acumulada siempre sube, así que una línea
+  // horizontal la cruza una vez y de ahí en más queda abajo para siempre. El
+  // cruce no significaría nada más que "ya pasó tanto tiempo".
   document.getElementById('mk-acumulado').innerHTML = conGastoSem.length
-    ? porSemanaAgrupado('gasto_acum', 'Gasto acumulado', 'moneda') +
-      porSemanaAgrupado('leads_acum', 'Leads acumulados', 'numero')
+    ? porCampanaEnEl('gasto_acum', 'Gasto acumulado', 'moneda', null) +
+      porCampanaEnEl('leads_acum', 'Leads acumulados', 'numero', null)
     : '<div class="sc-vacio">Hace falta gasto sincronizado.</div>';
 
   // ── Qué campaña rinde de verdad ────────────────────────────────────────
@@ -8325,96 +8334,6 @@ function _mkPintar() {
          : '')
     : '<div class="sc-vacio">Sin leads en el período.</div>';
 
-  // ── Tabla cruda ────────────────────────────────────────────────────────
-  //
-  // Eran ~70 filas en una sola lista, con la etiqueta "Gasto" repetida una vez
-  // por campaña y sin nada que dijera a cuál pertenecía cada una. La densidad
-  // es a propósito —es la tabla que permite auditar cualquier número de
-  // arriba— pero la densidad sin orden no se puede leer.
-  //
-  // Los grupos salen de la estructura del dossier y no de parsear los ids: el
-  // id es un detalle de implementación y el día que cambie el formato esto
-  // seguiría "funcionando" con los títulos equivocados.
-  const grupos = [];
-  (_mkDossier.campanas || []).forEach(b => grupos.push({
-    rotulo: 'Campaña', titulo: b.campana, metricas: b.metricas || [],
-  }));
-  (_mkDossier.segmentos || []).forEach(b => {
-    const ms = [];
-    (b.valores || []).forEach(v => ms.push(...(v.metricas || [])));
-    if (ms.length) grupos.push({
-      rotulo: 'Declaró en el formulario', titulo: b.etiqueta, metricas: ms });
-  });
-  [['conciliacion', 'La plata', 'Meta contra Finanzas'],
-   ['tiempos', 'Tiempos', 'Cuánto tarda cada paso'],
-   ['recordatorios', 'Recordatorios', 'La secuencia automática'],
-  ].forEach(([clave, rotulo, titulo]) => {
-    const ms = _mkDossier[clave] || [];
-    if (ms.length) grupos.push({ rotulo, titulo, metricas: ms });
-  });
-
-  const filaCruda = (m) => {
-    const d = SC.fmtDelta(m.delta_periodo_anterior, m.formato);
-    // El texto por el que filtra el buscador va en un data-attribute y no se
-    // lee del DOM: leerlo obligaría a recorrer celdas en cada tecla.
-    const busca = ((m.etiqueta || '') + ' ' + (m.id || '')).toLowerCase();
-    return `<tr data-busca="${esc(busca)}">` +
-           `<td>${esc(m.etiqueta)}</td>` +
-           `<td class="sc-crudo-val">${esc(SC.fmt(m.valor, m.formato))}</td>` +
-           `<td>${m.numerador === null || m.numerador === undefined ? '—' : m.numerador}` +
-           `${m.denominador === null || m.denominador === undefined
-               ? '' : ' / ' + m.denominador}</td>` +
-           `<td>${m.n === null || m.n === undefined ? '—' : m.n}` +
-           `${m.muestra_chica
-               ? '<span class="sc-crudo-chip">muestra chica</span>' : ''}</td>` +
-           `<td><span class="sc-crudo-fuente">${esc(m.fuente)}</span></td>` +
-           // `fmtDelta` devuelve el valor absoluto y el sentido por separado.
-           // Sin el signo delante, "12" no dice si subió o bajó, que es lo
-           // único que se le pide a esta columna.
-           `<td class="sc-crudo-delta" data-signo="${esc(d.signo || '')}">` +
-           `${d.signo === 'sube' ? '+' : d.signo === 'baja' ? '−' : ''}` +
-           `${esc(d.texto)}</td></tr>`;
-  };
-
-  document.getElementById('mk-tabla').innerHTML = !grupos.length
-    ? '<div class="sc-vacio">Sin métricas en el período.</div>'
-    : grupos.map(g =>
-        '<section class="sc-crudo-grupo">' +
-        '<div class="sc-crudo-cab">' +
-        `<span class="sc-crudo-rotulo">${esc(g.rotulo)}</span>` +
-        `<span class="sc-crudo-tit">${esc(g.titulo)}</span>` +
-        `<span class="sc-crudo-n">${g.metricas.length} métricas</span></div>` +
-        '<div class="sc-tabla-wrap"><table class="sc-tabla"><thead><tr>' +
-        '<th>Métrica</th><th>Valor</th><th>Numerador / denominador</th>' +
-        '<th>Muestra</th><th>Fuente</th><th>Contra el período anterior</th>' +
-        '</tr></thead><tbody>' + g.metricas.map(filaCruda).join('') +
-        '</tbody></table></div></section>').join('');
-
-  _mkFiltrarCrudos();
-}
-
-// El filtro de la tabla cruda. Esconde filas, no las borra: al vaciar la caja
-// vuelven todas sin tener que repintar el panel entero.
-function _mkFiltrarCrudos() {
-  const caja = document.getElementById('mk-tabla-buscar');
-  const q = ((caja && caja.value) || '').trim().toLowerCase();
-  const raiz = document.getElementById('mk-tabla');
-  if (!raiz) return;
-  let visibles = 0;
-  raiz.querySelectorAll('.sc-crudo-grupo').forEach(g => {
-    let vivos = 0;
-    g.querySelectorAll('tbody tr').forEach(tr => {
-      const pasa = !q || (tr.dataset.busca || '').indexOf(q) >= 0;
-      tr.style.display = pasa ? '' : 'none';
-      if (pasa) vivos++;
-    });
-    // Un grupo sin ninguna fila que pase es ruido: el título solo no dice
-    // nada y empuja hacia abajo a los que sí tienen algo.
-    g.style.display = vivos ? '' : 'none';
-    visibles += vivos;
-  });
-  const aviso = document.getElementById('mk-tabla-nada');
-  if (aviso) aviso.style.display = (q && !visibles) ? '' : 'none';
 }
 
 // ========== Activity feed ==========

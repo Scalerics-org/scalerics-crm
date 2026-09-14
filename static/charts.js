@@ -578,6 +578,14 @@
         if (p.y !== null && p.y !== undefined) valores.push(p.y);
       });
     });
+    // La referencia entra al maximo: si el historico queda por encima de todas
+    // las curvas y no se lo contempla, la linea se dibuja fuera del area y el
+    // grafico dice "estamos igual" justo cuando mas distinto esta.
+    var ref = opciones.referencia;
+    var refValor = ref && ref.valor !== null && ref.valor !== undefined
+      ? ref.valor : null;
+    if (refValor !== null) valores.push(refValor);
+
     var max = valores.length ? Math.max.apply(null, valores) : 0;
     var cortes = SC.ticks(0, max || 1, 4);
     var ey = SC.escalaLineal([0, cortes[cortes.length - 1]], [y1, y0]);
@@ -605,6 +613,18 @@
              '" text-anchor="middle" font-size="10" fill="' + mudo + '">' +
              SC.esc(x) + '</text>';
     }).join('') + '</g>');
+
+    if (refValor !== null) {
+      var yRef = ey(refValor);
+      piezas.push(
+        '<line x1="' + x0 + '" y1="' + yRef.toFixed(1) + '" x2="' + x1 +
+        '" y2="' + yRef.toFixed(1) + '" stroke="' + mudo +
+        '" stroke-width="1.5" stroke-dasharray="6 4"/>' +
+        '<text x="' + x1 + '" y="' + (yRef - 5).toFixed(1) +
+        '" text-anchor="end" font-size="9.5" font-weight="600" fill="' + mudo +
+        '">' + SC.esc(ref.etiqueta || 'histórico') + ' ' +
+        SC.esc(SC.fmt(refValor, opciones.formato)) + '</text>');
+    }
 
     conDatos.forEach(function (s, indice) {
       var color = SC.colorDeCampana(s.campana, indice, tema);
@@ -1071,6 +1091,14 @@
         if (v !== null && v !== undefined) todos.push(v);
       });
     });
+    // La referencia entra al maximo. Si el historico queda por encima de todas
+    // las barras y no se lo contempla, la linea se dibuja fuera del area y el
+    // grafico dice "estamos igual" justo cuando mas distinto esta.
+    var ref = opciones.referencia;
+    var refValor = ref && ref.valor !== null && ref.valor !== undefined
+      ? ref.valor : null;
+    if (refValor !== null) todos.push(refValor);
+
     var max = todos.length ? Math.max.apply(null, todos) : 0;
     var cortes = SC.ticks(0, max || 1, 4);
 
@@ -1137,6 +1165,26 @@
                   '" text-anchor="middle" font-size="10" fill="' + mudo + '">' +
                   SC.esc(p.etiqueta) + '</text>');
     });
+
+    // La linea del historico, arriba de las barras para que no quede tapada.
+    //
+    // Punteada y en tinta muda a proposito: es la vara contra la que se mide,
+    // no un dato mas. Si fuera una linea llena de color competiria con las
+    // barras y el ojo la leeria como otra serie.
+    //
+    // Sin color de "bueno" o "malo": estar arriba es bueno en leads y malo en
+    // costo por lead, y la funcion no sabe cual de los dos esta dibujando.
+    if (refValor !== null) {
+      var yRef = ey(refValor);
+      piezas.push(
+        '<line x1="' + x0 + '" y1="' + yRef.toFixed(1) + '" x2="' + x1 +
+        '" y2="' + yRef.toFixed(1) + '" stroke="' + mudo +
+        '" stroke-width="1.5" stroke-dasharray="6 4"/>' +
+        '<text x="' + x1 + '" y="' + (yRef - 5).toFixed(1) +
+        '" text-anchor="end" font-size="9.5" font-weight="600" fill="' + mudo +
+        '">' + SC.esc(ref.etiqueta || 'histórico') + ' ' +
+        SC.esc(SC.fmt(refValor, opciones.formato)) + '</text>');
+    }
 
     // Una sola serie no lleva leyenda: el titulo ya la nombra, y un recuadro
     // con un solo item repite el titulo y se lee como si faltaran los demas.

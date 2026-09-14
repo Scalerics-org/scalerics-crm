@@ -35,7 +35,7 @@ def test_estan_los_contenedores_que_el_js_llena():
                   # mk-hallazgos, mk-embudos, mk-evolucion y mk-acumulado son
                   # los bloques nuevos; mk-recordatorios se saco del panel.
                   "mk-hallazgos", "mk-embudos", "mk-evolucion", "mk-acumulado",
-                  "mk-tabla", "mk-desde", "mk-hasta", "mk-campana", "mk-fecha"):
+                  "mk-desde", "mk-hasta", "mk-campana", "mk-fecha"):
         assert f'id="{ident}"' in dashboard.DASHBOARD_HTML, f"falta #{ident}"
 
 
@@ -83,10 +83,23 @@ def test_el_panel_no_tiene_reglas_claras_propias(selector):
         f"sobra `body.light {selector}`: los tokens ya lo cubren")
 
 
-def test_la_tabla_de_datos_existe():
-    """La guia de visualizacion la pide como salida accesible, y ademas es lo
-    que permite auditar cualquier numero del panel."""
-    assert "Los números crudos" in dashboard.DASHBOARD_HTML
+def test_los_numeros_siguen_teniendo_una_vista_en_tabla():
+    """La guia de visualizacion pide una salida en tabla, y no solo por
+    accesibilidad: es lo que deja auditar un numero sin estimarlo contra una
+    grilla.
+
+    Habia un bloque "Los numeros crudos" con TODAS las metricas del dossier.
+    Se saco el 14/9 a pedido de Juan, dos veces: "los numeros crudos siguen sin
+    entenderse", "saca lo de los datos crudos". Estaba bien calculado y no se
+    leia, y un bloque que no se lee no audita nada — solo ocupa lugar.
+
+    Lo que queda en tabla son las dos que sostienen decisiones: el ranking de
+    campanas (donde se ve que el orden se da vuelta segun que mires) y la
+    conciliacion contra Finanzas. El resto de los numeros sigue estando en los
+    graficos, cada uno con su valor escrito al lado de la marca.
+    """
+    assert "Los números crudos" not in dashboard.DASHBOARD_HTML
+    assert dashboard.DASHBOARD_HTML.count('class="sc-tabla"') >= 2
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node no esta instalado")
