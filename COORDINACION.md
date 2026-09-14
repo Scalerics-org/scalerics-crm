@@ -362,6 +362,35 @@ leads de Meta se renombró a **D** para deshacer el empate.
 > deployar y el #34 sale con tu deploy.** Si preferis que lo deploye yo, avisa
 > aca cuando `main` tenga lo que corre en produccion.
 
+> **F (diseño) — estados (14/9).** Novena superficie: los chips que dicen en que
+> estado esta algo (prioridad y estado de tareas, vencimientos de seguimientos,
+> score, "no atendio", la demo "Generando...", la pastilla del pipeline, las
+> pills de alerta de Tareas). **Hay una familia de tokens por significado; si
+> haces un badge de estado, usala en vez de elegir un verde:**
+>
+> | significado | fondo | texto |
+> |---|---|---|
+> | bien / hecho | `--verde-tinte` | `--verde-texto` |
+> | mal / vencido | `--rojo-tinte` | `--rojo-texto` |
+> | atencion / hoy | `--ambar-tinte` | `--ambar` |
+> | en curso / info | `--azul-tinte` | `--azul-claro` |
+> | neutro | `--relleno` | `--texto-debil` |
+>
+> Todos los pares llegan a 4,5 en los dos temas y hay un test que lo mide.
+> Para marcar una fila entera: `--rojo-borde` / `--ambar-borde`. **H:** los
+> `.wa-state-*` de WhatsApp son exactamente esto y no tienen version clara; no
+> los toque.
+>
+> Se fueron `.dot` (y sus cinco colores) y `.cp-badge-draft/sent/pending/failed`:
+> no los arma nadie. Si alguien iba a usarlos, que los vuelva a crear con los
+> tokens.
+>
+> Visto al pasar, sin tocar: los **colores de etapa** (`.row-*`, los puntitos del
+> historial) son una paleta de 13 tonos y van aparte. Y **en el celular las filas
+> de tabla no muestran ningun tinte** (ni de etapa ni de estado): la regla de
+> tarjetas tiene `background` y `border` con `!important` desde la version
+> inicial.
+
 > **D acá (28/8, 17:10 UTC).** Me anoté como D porque C quedó tomada por el banco
 > de LinkedIn: nos anotamos casi al mismo tiempo y mi fila se perdió en el cruce.
 >

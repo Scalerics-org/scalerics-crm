@@ -490,7 +490,7 @@ def _contraste(a: str, b: str) -> float:
 
 
 TEXTO = ["--texto-fuerte", "--texto", "--texto-tenue", "--texto-debil", "--rotulo",
-         "--verde-texto"]
+         "--verde-texto", "--rojo-texto"]
 
 
 @pytest.mark.parametrize("token", TEXTO)
@@ -914,3 +914,125 @@ def test_el_panel_y_el_modal_de_tareas_no_pintan_colores_a_mano():
     for nombre, html in (("panel", panel), ("modal", modal)):
         a_mano = re.findall(_INLINE_A_MANO, html)
         assert not a_mano, f"colores inline a mano en el {nombre} de tareas: {a_mano}"
+
+
+# ── estados ──────────────────────────────────────────────────────────────────
+# Novena superficie: los chips que dicen en qué estado está algo. Antes cada uno
+# elegía su propio verde, su propio rojo y su propio fondo tintado: 21 reglas con
+# 18 colores distintos para cuatro significados. Ahora hay una familia por
+# significado —verde, rojo, ámbar, azul— con su tinte de fondo y su texto.
+#
+# Los colores de etapa del CRM (`.row-*`, los puntitos del historial) NO son esto:
+# son una paleta categórica de 13 tonos y van en su propia superficie.
+
+# (selector, token de fondo, token de texto)
+ESTADOS = [
+    (".task-status-badge.in_progress", "--azul-tinte", "--azul-claro"),
+    (".task-status-badge.done", "--verde-tinte", "--verde-texto"),
+    (".task-priority.high", "--rojo-tinte", "--rojo-texto"),
+    (".task-priority.medium", "--ambar-tinte", "--ambar"),
+    (".task-priority.low", "--verde-tinte", "--verde-texto"),
+    (".cb-date-overdue", "--rojo-tinte", "--rojo-texto"),
+    (".cb-date-today", "--ambar-tinte", "--ambar"),
+    (".cb-date-future", "--azul-tinte", "--azul-claro"),
+    (".score-hot", "--verde-tinte", "--verde-texto"),
+    (".score-mid", "--azul-tinte", "--azul-claro"),
+    (".score-low", "--relleno", "--texto-debil"),
+    (".no-answer-badge", "--rojo-tinte", "--rojo-texto"),
+    (".no-interest-badge", "--ambar-tinte", "--ambar"),
+    (".cp-badge-completed", "--verde-tinte", "--verde-texto"),
+    (".cp-badge-generating", "--ambar-tinte", "--ambar"),
+    (".status-pill.idle", "--relleno", "--texto-debil"),
+    (".status-pill.running", "--verde-tinte", "--verde-texto"),
+    (".status-pill.done", "--verde-tinte", "--verde-texto"),
+    (".status-pill.error", "--rojo-tinte", "--rojo-texto"),
+    (".pill.warn.active", "--rojo-tinte", "--rojo-texto"),
+    (".pill.orange.active", "--ambar-tinte", "--ambar"),
+]
+
+TINTES = ["--verde-tinte", "--rojo-tinte", "--ambar-tinte", "--azul-tinte"]
+
+
+@pytest.mark.parametrize("selector,fondo,texto", ESTADOS)
+def test_cada_estado_usa_su_familia(selector, fondo, texto):
+    """Un chip de estado se pinta con el tinte y el texto de su significado, no
+    con el verde que tenía a mano el que lo escribió."""
+    cuerpo = ";".join(_reglas(selector))
+    sueltos = re.findall("#[0-9a-fA-F]{3,8}(?![0-9a-zA-Z])|rgba?[(]", cuerpo)
+
+    assert not sueltos, f"{selector} tiene colores a mano: {sueltos}"
+    assert _token_en(selector, "background") == fondo
+    assert _token_en(selector, "color") == texto
+
+
+@pytest.mark.parametrize("tema", ["oscuro", "claro"])
+def test_el_texto_del_estado_se_lee_sobre_su_tinte(oscuro, claro, tema):
+    """El caso que lo pedía: "Alta" era #f87171 sobre #450a0a, y en claro no
+    tenía versión: rojo claro sobre rojo casi negro, 2,4:1."""
+    t = oscuro if tema == "oscuro" else claro
+    for selector, fondo, texto in ESTADOS:
+        c = _contraste(t[texto], t[fondo])
+        assert c >= 4.5, f"{selector} ({texto} sobre {fondo}) en {tema}: {c:.2f}:1"
+
+
+@pytest.mark.parametrize("tema", ["oscuro", "claro"])
+def test_los_tintes_se_despegan_de_la_superficie(oscuro, claro, tema):
+    """Un tinte que no se distingue de la tarjeta no dice nada."""
+    t = oscuro if tema == "oscuro" else claro
+    for tinte in TINTES:
+        d = _delta_e(t[tinte], t["--superficie"])
+        assert d >= 4, f"{tinte} contra la superficie en {tema}: ΔE {d:.1f}"
+
+
+def test_los_tintes_de_estado_le_ganan_al_color_de_etapa_en_claro():
+    """La fila de un seguimiento vencido lleva las dos clases: el color de
+    etapa (`row-llamar_despues`, ámbar) y el estado (`cb-overdue`, rojo). En
+    claro, `body.light .row-llamar_despues` (0,2,1) le gana a un `.cb-overdue`
+    pelado (0,1,0): la fila vencida perdería el rojo y nadie lo notaría.
+
+    Por eso el estado va como un solo selector combinado, con el valor escrito
+    una sola vez, igual que el hover de fila.
+    """
+    for clase, tinte, borde in ((".cb-overdue", "--rojo-tinte", "--rojo-borde"),
+                                (".cb-today", "--ambar-tinte", "--ambar-borde")):
+        patron = (r"^" + re.escape(clase) + r",body\.light " + re.escape(clase)
+                  + r"\{background:var\(" + tinte + r"\);border-color:var\(" + borde + r"\)")
+        assert re.search(patron, dashboard.DASHBOARD_HTML, re.M), (
+            f"{clase} tiene que ir combinada con su `body.light`")
+
+
+def test_las_pills_de_alerta_le_ganan_a_la_pill_activa_en_claro():
+    """Mismo problema con las pills de Tareas: `body.light .pill.active` (0,3,1)
+    le ganaba a `.pill.warn.active` (0,3,0), así que en claro la pill de "Alta
+    prioridad" encendida se veía azul, como cualquier otra."""
+    for clase in (".pill.warn", ".pill.warn.active", ".pill.orange", ".pill.orange.active"):
+        patron = r"^" + re.escape(clase) + r",body\.light " + re.escape(clase) + r"\{"
+        assert re.search(patron, dashboard.DASHBOARD_HTML, re.M), (
+            f"{clase} tiene que ir combinada con su `body.light`")
+
+
+def test_el_score_ya_no_se_aplana_en_claro():
+    """`body.light .score-badge{color:#475569 !important}` pisaba los tres
+    colores: en claro un lead caliente, uno tibio y uno frío se veían iguales.
+    Había además un `filter:brightness(.9)` sobre el mismo elemento."""
+    assert not re.search(r"^body[.]light [.]score-badge", dashboard.DASHBOARD_HTML, re.M)
+
+
+@pytest.mark.parametrize("selector", [s for s, _, _ in ESTADOS])
+def test_los_estados_no_tienen_regla_clara_propia(selector):
+    patron = r"^body\.light " + re.escape(selector) + r"\{"
+    assert not re.search(patron, dashboard.DASHBOARD_HTML, re.M), (
+        f"sobra `body.light {selector}`: los tokens ya lo cubren")
+
+
+def test_no_quedan_clases_de_estado_sin_uso():
+    """`.dot` y sus cinco colores, y cuatro `.cp-badge-*`: nadie las arma."""
+    css = _css_del_dashboard()
+    resto = re.sub(r"<style[^>]*>.*?</style>", "", dashboard.DASHBOARD_HTML, flags=re.S)
+    clases = set(re.findall(r"[.]((?:cp-badge|score|status-pill|cb-date|dot|task-priority)[\w-]*)"
+                            r"(?![\w-])", css))
+
+    assert len(clases) > 10, f"el parser vio pocas clases: {len(clases)}"
+    sin_uso = sorted(c for c in clases
+                     if not re.search("(?<![\\w-])" + c + "(?![\\w:-])", resto))
+    assert not sin_uso, f"clases de estado sin uso: {sin_uso}"
