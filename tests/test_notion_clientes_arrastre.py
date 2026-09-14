@@ -260,7 +260,10 @@ def test_la_ruta_mueve_y_contesta_el_grupo(app):
                                    headers=_AUTH)
     assert r.status_code == 200
     assert r.get_json() == {"ok": True, "estado": "Hay que hacer Presupuesto",
-                            "grupo": "in_progress"}
+                            "grupo": "in_progress",
+                            # Sin conectar y a una columna que no es la de
+                            # aceptado: ni pasa a Clientes ni hay nada que avisar.
+                            "paso_a_clientes": False, "sin_conectar": False}
     mover.assert_called_once_with(db, cid, "Hay que hacer Presupuesto")
 
 
@@ -379,8 +382,8 @@ def _correr(cuerpo: str, tmp_path) -> str:
     fuente = "\n".join([
         dashboard.ESC_JS, colores,
         *(_funcion(n) for n in ("_ncPuedeArrastrar", "_ncDibujar", "_notionClientColHtml",
-                                "_notionClientCardHtml", "_ncDragStart", "_ncOver",
-                                "_ncDrop", "_ncMover")),
+                                "_notionClientCardHtml", "_ncVinculoHtml", "_ncDragStart",
+                                "_ncOver", "_ncDrop", "_ncMover")),
         """
         function assert(cond, msg) { if (!cond) { throw new Error(msg); } }
         let _ncArrastrando = null, _ncGuardando = false;

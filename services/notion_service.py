@@ -17,6 +17,8 @@ from datetime import datetime
 
 import requests
 
+from database import (ETAPAS_CLIENTE, add_lead_event, get_business,
+                      get_notion_client_by_page, log_activity, update_business)
 from database import (borrar_notion_clients, borrar_proyectos, create_task,
                       get_notion_client_by_id, get_notion_clients, get_projects,
                       get_task_by_id, get_tasks_notion, log_activity,
@@ -77,6 +79,10 @@ GRUPOS_CLIENTES = {
     "Presupuesto Rechazado": "done",
     "Presupuesto Aceptado": "done",
 }
+
+# La columna que convierte a un negocio en cliente. Desde el 14/9 no hay otro
+# camino en la interfaz: el tablero de Pre-clientes se saco de la vista.
+ESTADO_ACEPTADO = "Presupuesto Aceptado"
 
 
 def estados_de_clientes() -> list[dict]:
@@ -793,6 +799,45 @@ def cliente_cambio_de_estado(db_path: str, notion_page_id: str,
     """
     set_notion_client_status(db_path, notion_page_id, nuevo)
     logger.info("notion: la ficha %s paso de %r a %r", notion_page_id, anterior, nuevo)
+    if nuevo == ESTADO_ACEPTADO:
+        # Un error aca no puede cortar el sync ni devolver la ficha a su
+        # columna: Notion ya tiene el cambio. Se loguea y sigue.
+        try:
+            pasar_a_cliente(db_path, get_notion_client_by_page(db_path, notion_page_id))
+        except Exception:
+            logger.warning("notion: no se pudo pasar a Clientes el negocio de la ficha %s",
+                           notion_page_id, exc_info=True)
+
+
+def pasar_a_cliente(db_path: str, ficha: dict | None,
+                    quien: str = "Pipeline Notion") -> bool:
+    """Pasa a Clientes al negocio conectado a una ficha en "Presupuesto Aceptado".
+
+    Devuelve True solo si lo movio. No hace nada si la ficha no esta conectada,
+    si no esta en esa columna, o si el negocio ya es cliente: un negocio en
+    `en_desarrollo` o `finalizado` no vuelve a `cerrado` porque alguien
+    reacomodo el tablero.
+
+    Deja el mismo rastro que el cambio de estado a mano
+    (`POST /api/leads/<id>/crm-status`): el estado, el evento del historial y la
+    actividad.
+    """
+    if not ficha or ficha.get("status") != ESTADO_ACEPTADO:
+        return False
+    business_id = ficha.get("business_id")
+    if not business_id:
+        return False
+    negocio = get_business(db_path, business_id)
+    if not negocio or (negocio.get("crm_status") or "") in ETAPAS_CLIENTE:
+        return False
+    update_business(db_path, business_id, crm_status="cerrado")
+    add_lead_event(db_path, business_id, "cerrado",
+                   note="Presupuesto Aceptado en Pipeline Notion", created_by=quien)
+    log_activity(db_path, quien, "status_change", "lead", business_id,
+                 negocio.get("name", ""), "cerrado")
+    logger.info("notion: %s paso a Clientes por la ficha %s",
+                negocio.get("name"), ficha.get("notion_page_id"))
+    return True
 
 
 def mover_cliente(db_path: str, cliente_id: int,

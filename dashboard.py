@@ -599,23 +599,6 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .cb{width:15px;height:15px;accent-color:#0088cc;cursor:pointer}
 .table-header{display:grid;grid-template-columns:36px 2fr 1.2fr 1.8fr 1.5fr;padding:12px 20px;background:var(--fondo-hundido);border-bottom:1px solid var(--borde)}
 .table-row{display:grid;grid-template-columns:36px 2fr 1.2fr 1.8fr 1.5fr;padding:13px 20px;border-bottom:1px solid var(--borde);align-items:center;transition:background .1s}
-/* Tablero de pre-clientes: una columna por etapa. La tabla plana anterior
-   obligaba a leer fila por fila para saber cuantos habia en cada etapa. */
-.pre-board{display:flex;gap:12px;overflow-x:auto;padding-bottom:12px;align-items:flex-start}
-.pre-col{background:#111827;border:1px solid #1e293b;border-radius:12px;min-width:230px;width:230px;flex-shrink:0;display:flex;flex-direction:column;max-height:calc(100vh - 250px)}
-.pre-col-head{padding:11px 13px 9px;border-bottom:1px solid #1e293b;display:flex;align-items:center;justify-content:space-between;gap:6px;flex-shrink:0}
-.pre-col-title{font-size:.72rem;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.4px}
-.pre-count{background:#1e293b;color:#94a3b8;border-radius:999px;padding:1px 8px;font-size:.7rem;font-weight:700;flex-shrink:0}
-.pre-cards{padding:9px;overflow-y:auto;display:flex;flex-direction:column;gap:7px}
-.pre-card{background:#0a0f1a;border:1px solid #1e293b;border-radius:8px;padding:9px 11px;cursor:pointer;transition:border-color .1s}
-.pre-card:hover{border-color:#0088cc}
-.pre-card-name{font-size:.84rem;font-weight:600;color:#e2e8f0;margin-bottom:2px;line-height:1.3}
-.pre-card-meta{font-size:.71rem;color:#64748b}
-.pre-card-demo{font-size:.7rem;color:#34d399;margin-top:5px}
-.pre-empty{color:#475569;font-size:.74rem;text-align:center;padding:12px 0}
-body.light .pre-col{background:#f8fafc;border-color:#e2e8f0}
-body.light .pre-card{background:#fff;border-color:#e2e8f0}
-body.light .pre-card-name{color:#0f172a}
 
 /* Registro de demos */
 .demo-row{background:#111827;border:1px solid #1e293b;border-radius:10px;padding:13px 17px;margin-bottom:9px}
@@ -640,7 +623,6 @@ body.light .demo-cliente{color:#0f172a}
   .table-header.tbl-cli{display:none}
   .table-row.tbl-cli{display:flex;flex-direction:column;align-items:stretch;gap:7px;grid-template-columns:none}
   .resp-sel{max-width:none}
-  .pre-col{max-height:none}
 }
 .table-header.no-cb{grid-template-columns:2fr 1.1fr 1fr 1.8fr 1.2fr}
 .table-row.no-cb{grid-template-columns:2fr 1.1fr 1fr 1.8fr 1.2fr}
@@ -823,6 +805,19 @@ body.light .demo-cliente{color:#0f172a}
 .cal-mobile-ev-titulo{font-size:.82rem;font-weight:600;color:var(--texto-fuerte)}
 .cal-mobile-ev-hora{font-size:.72rem;color:var(--azul-claro);margin-top:3px}
 .cal-mobile-ev-aviso{font-size:.7rem;color:var(--texto-debil);margin-top:3px}
+/* Pipeline Notion: con quien del CRM esta conectada cada ficha */
+.nc-vinculo{display:inline-flex;align-items:center;gap:4px;margin-top:8px;max-width:100%;padding:4px 10px;border-radius:999px;border:1px solid var(--borde);background:var(--relleno);color:var(--texto);font-size:.72rem;font-family:inherit;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nc-vinculo-falta{background:var(--ambar-tinte);color:var(--ambar);border-color:var(--ambar-borde)}
+.nc-vinculo-buscar{width:100%;margin-bottom:10px}
+.nc-vinculo-resultados{display:flex;flex-direction:column;gap:6px;max-height:280px;overflow-y:auto}
+.nc-vinculo-opcion{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;min-height:44px;padding:8px 12px;border-radius:8px;border:1px solid var(--borde);background:var(--relleno);color:var(--texto-fuerte);font-family:inherit;text-align:left;cursor:pointer}
+.nc-vinculo-opcion:hover{background:var(--hover)}
+.nc-vinculo-nombre{font-size:.84rem;font-weight:600}
+.nc-vinculo-sub{font-size:.72rem;color:var(--texto-debil)}
+.nc-vinculo-vacio{font-size:.78rem;color:var(--texto-debil);padding:6px 2px}
+.nc-vinculo-error{font-size:.78rem;color:var(--rojo-texto);min-height:1em;margin-top:8px}
+.nc-vinculo-acciones{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}
+.nc-vinculo-acciones [hidden]{display:none}
 .cal-mobile-acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
 .cal-mobile-act{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 16px;border-radius:10px;border:1px solid var(--borde);background:var(--relleno);color:var(--texto-fuerte);font-size:.78rem;font-weight:600;font-family:inherit;text-decoration:none;cursor:pointer}
 .cal-mobile-act-unirse{color:var(--verde-texto)}
@@ -1051,7 +1046,6 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 /* ── Nav icon colors ──────────────────────────────────────────────────────── */
 #nav-cola .nav-icon{stroke:#60a5fa}
 #nav-seguimientos .nav-icon{stroke:#f59e0b}
-#nav-pipeline .nav-icon{stroke:#10b981}
 #nav-clientes .nav-icon{stroke:#a78bfa}
 #nav-tasks .nav-icon{stroke:#14b8a6}
 #nav-wa .nav-icon{stroke:#25d366}
@@ -1063,7 +1057,6 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 /* active item keeps its color but brighter */
 #nav-cola.active .nav-icon{stroke:#93c5fd}
 #nav-seguimientos.active .nav-icon{stroke:#fcd34d}
-#nav-pipeline.active .nav-icon{stroke:#34d399}
 #nav-clientes.active .nav-icon{stroke:#c4b5fd}
 #nav-tasks.active .nav-icon{stroke:#2dd4bf}
 #nav-wa.active .nav-icon{stroke:#4ade80}
@@ -1073,7 +1066,6 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 /* light mode — slightly darker tones */
 body.light #nav-cola .nav-icon{stroke:#2563eb}
 body.light #nav-seguimientos .nav-icon{stroke:#d97706}
-body.light #nav-pipeline .nav-icon{stroke:#059669}
 body.light #nav-clientes .nav-icon{stroke:#7c3aed}
 body.light #nav-tasks .nav-icon{stroke:#0d9488}
 body.light #nav-wa .nav-icon{stroke:#16a34a}
@@ -1545,7 +1537,6 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div class="nav-item" id="nav-seguimientos" onclick="showPanel('seguimientos')"><i data-lucide="bookmark" class="nav-icon"></i> Seguimientos</div>
   <div class="nav-item" id="nav-meta" onclick="showPanel('meta');clearMetaBadge()"><i data-lucide="instagram" class="nav-icon"></i> Meta Ads <span id="meta-badge" style="display:none;background:#e1306c;color:#fff;font-size:.65rem;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:4px">NEW</span></div>
   <div class="nav-section-label">VENTAS</div>
-  <div class="nav-item" id="nav-pipeline" onclick="showPanel('pipeline')"><i data-lucide="trending-up" class="nav-icon"></i> Pre-clientes</div>
   <div class="nav-item" id="nav-demos" onclick="showPanel('demos')"><i data-lucide="monitor-play" class="nav-icon"></i> Demos</div>
   <div class="nav-item" id="nav-clientes" onclick="showPanel('clientes')"><i data-lucide="users" class="nav-icon"></i> Clientes</div>
   <div class="nav-section-label">GESTIÓN</div>
@@ -1665,21 +1656,6 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       </div>
       <div id="meta-body"></div>
     </div>
-  </div>
-
-  <!-- ======= PIPELINE PANEL ======= -->
-  <div id="pipeline-panel" class="panel">
-    <div class="page-header">
-      <div>
-        <h1>Pre-clientes</h1>
-        <div class="page-date">En qué etapa está cada venta en curso</div>
-      </div>
-      <div id="pre-total" style="color:#64748b;font-size:.85rem"></div>
-    </div>
-    <div class="filters">
-      <input class="search-box" id="pipeline-search-input" placeholder="🔍 Buscar..." oninput="pipelineSearch(this.value)">
-    </div>
-    <div id="pre-board" class="pre-board"></div>
   </div>
 
   <!-- ======= DEMOS PANEL ======= -->
@@ -1814,9 +1790,22 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div id="notion_clients-panel" class="panel">
     <div class="panel-head">
       <h1>Pipeline Notion</h1>
-      <p class="panel-sub">Espejo de la database Clientes. Son las fichas que el equipo maneja en Notion, no los leads del CRM. <span class="nc-ayuda-mouse">Arrastrá una ficha a otra columna para cambiarle el estado: se guarda en Notion.</span><span class="nc-ayuda-touch">Desde el celular no se pueden arrastrar: movelas desde la compu o abrilas en Notion.</span></p>
+      <p class="panel-sub">Espejo de la database Clientes. Son las fichas que el equipo maneja en Notion, no los leads del CRM. Conectá cada ficha con su persona del CRM: cuando llega a Presupuesto Aceptado, esa persona pasa a Clientes. <span class="nc-ayuda-mouse">Arrastrá una ficha a otra columna para cambiarle el estado: se guarda en Notion.</span><span class="nc-ayuda-touch">Desde el celular no se pueden arrastrar: movelas desde la compu o abrilas en Notion.</span></p>
     </div>
     <div id="notion-clients-board" class="kanban"></div>
+    <div class="modal-overlay" id="nc-vinculo-modal" onclick="if(event.target===this)_ncCerrarVinculo()">
+      <div class="modal">
+        <h3>Conectar con el CRM</h3>
+        <p><strong id="nc-vinculo-ficha"></strong>: <span id="nc-vinculo-actual"></span> Cuando la ficha llegue a Presupuesto Aceptado, esa persona pasa a Clientes.</p>
+        <input id="nc-vinculo-buscar" class="search-box nc-vinculo-buscar" placeholder="Buscar por nombre" oninput="_ncBuscarPersonaTecla(this.value)" autocomplete="off">
+        <div id="nc-vinculo-resultados" class="nc-vinculo-resultados"></div>
+        <div id="nc-vinculo-error" class="nc-vinculo-error"></div>
+        <div class="nc-vinculo-acciones">
+          <button id="nc-vinculo-quitar" class="btn-ghost" onclick="_ncGuardarVinculo(null)">Desconectar</button>
+          <button class="btn-ghost" onclick="_ncCerrarVinculo()">Cerrar</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- ======= CALENDAR PANEL ======= -->
@@ -2593,7 +2582,6 @@ function showPanel(name) {
   closeSidebar();
   if (name === 'cola') loadCola();
   if (name === 'seguimientos') loadSeguimientos();
-  if (name === 'pipeline') cargarPreclientes();
   if (name === 'demos') cargarDemos();
   if (name === 'clientes') loadClientesPanel();
   if (name === 'meta') loadMetaPanel();
@@ -3107,12 +3095,11 @@ async function loadSeguimientos() {
   } catch(e) { body.innerHTML = `<div style="color:#f87171;padding:16px">Error: ${e.message}</div>`; }
 }
 
-// == Pre-clientes ==============================================================
-// Las etapas y sus etiquetas las manda el backend (/api/preclientes). Antes
-// estaban hardcodeadas aca y al renombrar los estados el tablero mostraba el
-// valor crudo de la base.
-let _preEtapas = [];
-let _preFiltro = '';
+// == Usuarios del equipo =======================================================
+// Los selectores de responsables de Clientes y de "quien dio la demo" los
+// comparten. Vivian con el tablero de Pre-clientes, que se saco de la vista el
+// 14/9: un negocio pasa a Clientes cuando su ficha de Pipeline Notion llega a
+// "Presupuesto Aceptado" (ver cliente_cambio_de_estado en notion_service).
 let _usuariosCache = null;
 
 async function _usuarios() {
@@ -3122,58 +3109,6 @@ async function _usuarios() {
     _usuariosCache = r.ok ? await r.json() : [];
   } catch (e) { _usuariosCache = []; }
   return _usuariosCache;
-}
-
-async function cargarPreclientes() {
-  const board = document.getElementById('pre-board');
-  board.innerHTML = '<div style="color:#475569;padding:16px;font-size:.85rem">Cargando...</div>';
-  try {
-    const r = await fetch('/api/preclientes');
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    const d = await r.json();
-    _preEtapas = d.etapas || [];
-    document.getElementById('pre-total').textContent =
-      d.total === 1 ? '1 pre-cliente' : d.total + ' pre-clientes';
-    renderPreclientes();
-  } catch (e) {
-    board.innerHTML = '<div style="color:#f87171;padding:16px">No se pudo cargar el tablero: ' + esc(e.message) + '</div>';
-  }
-}
-
-function renderPreclientes() {
-  const board = document.getElementById('pre-board');
-  board.innerHTML = _preEtapas.map(et => {
-    const leads = _preFiltro
-      ? (et.leads || []).filter(l => (l.name || '').toLowerCase().includes(_preFiltro))
-      : (et.leads || []);
-    const cards = leads.length
-      ? leads.map(l => {
-          const sub = [l.city, l.category].filter(Boolean).join(' · ');
-          const quien = l.ultima_demo_por ? ' · ' + esc(l.ultima_demo_por) : '';
-          const demos = l.demos_dadas
-            ? '<div class="pre-card-demo">' + l.demos_dadas + ' demo' +
-              (l.demos_dadas > 1 ? 's' : '') + quien + '</div>'
-            : '';
-          return `<div class="pre-card" onclick="openClientPanel(${l.id})">
-            <div class="pre-card-name">${esc(l.name || 'Sin nombre')}</div>
-            <div class="pre-card-meta">${esc(sub)}</div>
-            ${demos}
-          </div>`;
-        }).join('')
-      : '<div class="pre-empty">Vacío</div>';
-    return `<div class="pre-col">
-      <div class="pre-col-head">
-        <span class="pre-col-title">${esc(et.label)}</span>
-        <span class="pre-count">${leads.length}</span>
-      </div>
-      <div class="pre-cards">${cards}</div>
-    </div>`;
-  }).join('');
-}
-
-function pipelineSearch(v) {
-  _preFiltro = (v || '').toLowerCase();
-  renderPreclientes();
 }
 
 // == Registro de demos =========================================================
@@ -4847,7 +4782,105 @@ function _notionClientCardHtml(c, arrastrable) {
     <a class="proj-name" href="${esc(url)}" target="_blank" rel="noopener" draggable="false">${esc(c.name)}</a>
     ${meta ? `<div class="kanban-card-meta">${meta}</div>` : ''}
     ${c.descripcion ? `<div class="kanban-card-who">${esc(c.descripcion)}</div>` : ''}
+    ${_ncVinculoHtml(c)}
   </div>`;
+}
+
+// ── Conectar una ficha con su persona del CRM ────────────────────────────────
+// Las fichas de Notion no traen ningun id del CRM, solo el nombre. Se conectan
+// una vez, a mano, y con eso la ficha que llega a "Presupuesto Aceptado" pasa
+// sola a Clientes (lo hace el backend, venga el cambio del arrastre o del sync).
+let _ncVinculando = null;   // la ficha cuyo buscador esta abierto
+let _ncBusquedaTimer = null;
+
+function _ncVinculoHtml(c) {
+  const accion = 'event.stopPropagation();_ncAbrirVinculo(' + Number(c.id) + ')';
+  return c.business_id
+    ? '<button class="nc-vinculo" draggable="false" onclick="' + accion + '" title="Cambiar con quién está conectada">👤 ' + esc(c.business_name || 'Persona del CRM') + '</button>'
+    : '<button class="nc-vinculo nc-vinculo-falta" draggable="false" onclick="' + accion + '">Conectar con el CRM</button>';
+}
+
+function _ncAbrirVinculo(id) {
+  const c = _ncClientes.find(x => Number(x.id) === Number(id));
+  if (!c) return;
+  _ncVinculando = c;
+  document.getElementById('nc-vinculo-ficha').textContent = c.name || '';
+  document.getElementById('nc-vinculo-actual').textContent = c.business_id
+    ? 'conectada con ' + (c.business_name || 'una persona del CRM') + '.'
+    : 'todavía no está conectada.';
+  document.getElementById('nc-vinculo-quitar').hidden = !c.business_id;
+  document.getElementById('nc-vinculo-error').textContent = '';
+  const input = document.getElementById('nc-vinculo-buscar');
+  input.value = c.business_id ? '' : (c.name || '');
+  document.getElementById('nc-vinculo-modal').classList.add('open');
+  _ncBuscarPersona(input.value);
+  input.focus();
+}
+
+function _ncCerrarVinculo() {
+  document.getElementById('nc-vinculo-modal').classList.remove('open');
+  _ncVinculando = null;
+}
+
+function _ncBuscarPersonaTecla(v) {
+  clearTimeout(_ncBusquedaTimer);
+  _ncBusquedaTimer = setTimeout(() => _ncBuscarPersona(v), 250);
+}
+
+async function _ncBuscarPersona(texto) {
+  const lista = document.getElementById('nc-vinculo-resultados');
+  const q = (texto || '').trim();
+  if (q.length < 2) {
+    lista.innerHTML = '<div class="nc-vinculo-vacio">Escribí al menos 2 letras del nombre.</div>';
+    return;
+  }
+  lista.innerHTML = '<div class="nc-vinculo-vacio">Buscando...</div>';
+  let items = [];
+  try {
+    // Con `page` la busqueda se resuelve en SQL con LIMIT. Sin `page` la ruta
+    // trae todos los leads a memoria, que es el 502 del 28/8.
+    const r = await fetch('/api/leads?page=1&search=' + encodeURIComponent(q));
+    if (!r.ok) throw new Error(r.status);
+    items = ((await r.json()) || {}).items || [];
+  } catch (e) {
+    lista.innerHTML = '<div class="nc-vinculo-vacio">No se pudo buscar. Probá de nuevo.</div>';
+    return;
+  }
+  lista.innerHTML = items.length
+    ? items.map(p => '<button class="nc-vinculo-opcion" onclick="_ncGuardarVinculo(' + Number(p.id) + ')">'
+        + '<span class="nc-vinculo-nombre">' + esc(p.name || 'Sin nombre') + '</span>'
+        + '<span class="nc-vinculo-sub">' + esc([p.city, p.phone].filter(Boolean).join(' · ')) + '</span>'
+        + '</button>').join('')
+    : '<div class="nc-vinculo-vacio">No hay nadie en el CRM con ese nombre.</div>';
+}
+
+async function _ncGuardarVinculo(businessId) {
+  const c = _ncVinculando;
+  if (!c) return;
+  const err = document.getElementById('nc-vinculo-error');
+  err.textContent = '';
+  let d = {};
+  try {
+    const r = await fetch('/api/notion-clients/' + Number(c.id) + '/cliente-crm', {
+      method: 'PUT', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({business_id: businessId})
+    });
+    try { d = await r.json(); } catch (e) { d = {}; }
+    if (!r.ok) d.ok = false;
+  } catch (e) {
+    d = {ok: false, error: 'no hubo respuesta del CRM'};
+  }
+  if (!d.ok) {
+    err.textContent = 'No se guardó: ' + (d.error || 'error desconocido');
+    return;
+  }
+  c.business_id = d.business_id;
+  c.business_name = d.business_name;
+  _ncCerrarVinculo();
+  _ncDibujar();
+  if (d.paso_a_clientes) {
+    alert((d.business_name || 'La persona') + ' pasó a Clientes, porque su ficha ya está en Presupuesto Aceptado.');
+  }
 }
 
 function _ncDragStart(ev) {
@@ -4921,6 +4954,12 @@ async function _ncMover(c, estado) {
   if (!d.ok) {
     alert('No se pudo mover ' + (c.name || 'la ficha') + ' en Notion, así que volvió a su columna. '
           + (d.error || 'Mirá los logs del CRM.'));
+  } else if (d.paso_a_clientes) {
+    alert((c.business_name || c.name || 'La persona') + ' pasó a Clientes.');
+  } else if (d.sin_conectar) {
+    if (confirm((c.name || 'Esta ficha') + ' no está conectada con nadie del CRM, así que no pasó a Clientes. ¿La conectás ahora?')) {
+      _ncAbrirVinculo(c.id);
+    }
   }
 }
 
@@ -5641,7 +5680,7 @@ function _showScoreBreakdown(event, el) {
 }
 
 // ── Mobile navigation ─────────────────────────────────────────────────────────
-const NAV_PRIORITY = ['cola','seguimientos','meta','cal','tasks','pipeline','clientes','wa','metrics','activity','projects','notion_clients','finanzas'];
+const NAV_PRIORITY = ['cola','seguimientos','meta','cal','tasks','clientes','wa','metrics','activity','projects','notion_clients','finanzas'];
 const NAV_ICONS = {
   cola:'inbox',seguimientos:'bookmark',meta:'instagram',cal:'calendar',
   tasks:'check-square',pipeline:'trending-up',clientes:'users',
@@ -5732,7 +5771,7 @@ function closeMasSheet() {
 }
 
 // ── Panel access control ──────────────────────────────────────────────────────
-const ALL_PANELS = ['cola','seguimientos','meta','pipeline','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas'];
+const ALL_PANELS = ['cola','seguimientos','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas'];
 (async () => {
   try {
     const r = await fetch('/api/me');
@@ -9947,7 +9986,7 @@ select:focus{border-color:#0088cc}
 </div>
 
 <script>
-const ALL_PANELS = ['cola','seguimientos','meta','pipeline','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas'];
+const ALL_PANELS = ['cola','seguimientos','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas'];
 const PANEL_LABELS = {cola:'Cola',seguimientos:'Seguimientos',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Métricas',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Pipeline Notion',finanzas:'Finanzas'};
 let _roles = [];
 

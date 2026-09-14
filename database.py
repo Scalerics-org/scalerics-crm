@@ -421,6 +421,12 @@ def init_db(db_path: str) -> None:
                 notion_synced_at       TIMESTAMP
             )
         """)
+        # Con que negocio del CRM se corresponde la ficha. Notion no trae ningun
+        # id del CRM (solo el nombre), asi que se conecta a mano una vez. Con eso,
+        # llegar a "Presupuesto Aceptado" pasa al negocio a Clientes: desde el
+        # 14/9 es el unico camino, porque se saco el tablero de Pre-clientes.
+        # El upsert del sync no lista esta columna, asi que no la pisa.
+        _add_column(conn, "notion_clients", "business_id", "INTEGER")
 
         # ── tasks ─────────────────────────────────────────────────────────────
         conn.execute("""
@@ -1817,11 +1823,38 @@ def upsert_notion_client(db_path: str, notion_page_id: str, name: str,
 
 
 def get_notion_clients(db_path: str) -> list[dict]:
+    """Las fichas del espejo, con el nombre del negocio del CRM al que estan
+    conectadas (`business_name`, None si no hay conexion o el negocio ya no
+    existe)."""
     conn = _connect(db_path)
     try:
         cursor = conn.execute(
-            "SELECT * FROM notion_clients ORDER BY name COLLATE NOCASE")
+            "SELECT nc.*, b.name AS business_name "
+            "FROM notion_clients nc LEFT JOIN businesses b ON b.id = nc.business_id "
+            "ORDER BY nc.name COLLATE NOCASE")
         return [dict(row) for row in cursor.fetchall()]
+    finally:
+        conn.close()
+
+
+def get_notion_client_by_page(db_path: str, notion_page_id: str) -> dict | None:
+    conn = _connect(db_path)
+    try:
+        fila = conn.execute("SELECT * FROM notion_clients WHERE notion_page_id = ?",
+                            (notion_page_id,)).fetchone()
+        return dict(fila) if fila else None
+    finally:
+        conn.close()
+
+
+def vincular_notion_client(db_path: str, cliente_id: int,
+                           business_id: int | None) -> None:
+    """Conecta una ficha con su negocio del CRM, o la desconecta con None."""
+    conn = _connect(db_path)
+    try:
+        conn.execute("UPDATE notion_clients SET business_id = ? WHERE id = ?",
+                     (business_id, cliente_id))
+        conn.commit()
     finally:
         conn.close()
 
