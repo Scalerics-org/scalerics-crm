@@ -464,6 +464,21 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **14/9 — I: DEPLOYADO `v207`: editar y borrar reuniones desde el celular. Producción = `deploy/i-calendario-mobile` en `2ac63bc`.**
+
+  Rama `feat/calendario-mobile-acciones` (`1c12e5d`, sale de
+  `fix/calendario-mobile-dia`). En el celular no hay hover, así que
+  `.cal-chip-acts` nunca se veía: cada reunión de la lista del día tiene ahora
+  Editar / Unirse / Borrar, que llaman a **las mismas** `_calAbrirEditor` y
+  `deleteCalEvent` que el chip de escritorio (hay un test que lo exige). Calendly
+  sin Editar, igual que en escritorio. Guardar desde el celular mueve la lista
+  al día nuevo de la reunión. Sobre el árbol de deploy: `check_js` OK, **2350
+  tests**, cobertura 71,41%; boot limpio a las 20:08 UTC, sin errores en el log.
+
+  **Sigue valiendo:** producción NO es `main` y estas ramas están solo en la
+  máquina de Juan. Un deploy desde `main` o `feat/marketing-meta` borra el
+  calendario mobile de producción.
+
 - **14/9 — I: DEPLOYADO `v206`, el arreglo del calendario mobile corregido. Producción = `deploy/i-calendario-mobile` en `c36d2b0`.**
 
   Mismo árbol que `v204` (`origin/main` + `origin/feat/marketing-meta` + calendario
