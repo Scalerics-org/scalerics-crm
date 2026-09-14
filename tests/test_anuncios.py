@@ -17,7 +17,7 @@ porque se comparaba contra una campana de un solo lead.
 import pytest
 
 from database import _connect, init_db
-from services.anuncios import (GASTO_MINIMO_PARA_OPINAR, LEADS_MINIMOS,
+from services.anuncios import (LEADS_MINIMOS, OPORTUNIDAD_PARA_JUZGAR,
                                anuncios_en_curso)
 
 
@@ -155,58 +155,101 @@ def test_trae_la_foto_y_el_texto(db):
 
 
 # ── Las recomendaciones ────────────────────────────────────────────────────
+#
+# LA CALIBRACION ES EL TODO, Y SE COMPROBO CONTRA LA CUENTA REAL.
+#
+# La primera version media la evidencia en leads: "menos de 5 leads, no opino".
+# Corrida contra los 19 anuncios que estaban corriendo dejo 17 en "todavia no
+# alcanza para opinar", y a uno que habia gastado 26 centavos le decia que
+# "faltan unos 5 leads". Una seccion que no opina de nada no sirve para nada.
+#
+# Ahora la evidencia se mide en `oportunidad`: cuantos leads deberia haber
+# comprado lo que gasto, al costo habitual de la cuenta. Los tests de abajo
+# fijan los dos extremos —el que gasto casi nada y el que gasto de sobra— que
+# son los que la version anterior confundia.
 
 def _reco(db, ad_id, **kw):
     return _uno(db, ad_id, **kw)["recomendacion"]
 
 
+def _mercado(db, cuantos=3, gasto=100.0, leads=10):
+    """Tres anuncios normales, para que exista una mediana contra la que medir.
+
+    Sin esto no hay referencia y las reglas de precio no se pueden disparar:
+    cualquier test de "esta caro" pasaria o fallaria por el motivo equivocado.
+    """
+    for i in range(1, cuantos + 1):
+        _anuncio(db, f"m{i}")
+        _gasto(db, f"m{i}", "2026-09-01", gasto, leads=leads)
+
+
 def test_gasto_de_sobra_y_ningun_lead_se_apaga(db):
-    _anuncio(db, "1")
-    _gasto(db, "1", "2026-09-01", GASTO_MINIMO_PARA_OPINAR + 50, leads=0)
-    r = _reco(db, "1")
+    _mercado(db)                       # mediana de CPL = 10
+    _anuncio(db, "x")
+    _gasto(db, "x", "2026-09-01", 10 * OPORTUNIDAD_PARA_JUZGAR + 5, leads=0)
+    r = _reco(db, "x")
     assert r["accion"] == "apagar"
     assert r["metricas_citadas"], "una recomendacion sin numeros no se audita"
 
 
-def test_poco_gasto_y_ningun_lead_todavia_no_se_opina(db):
-    """El error de calibracion clasico: con 10 dolares gastados, cero leads no
-    dice nada. Apagarlo por eso seria apagar un anuncio que no se probo."""
-    _anuncio(db, "1")
-    _gasto(db, "1", "2026-09-01", 5.0, leads=0)
-    assert _reco(db, "1")["accion"] == "esperar"
+def test_el_que_casi_no_gasto_no_recibe_un_sermon(db):
+    """El caso que rompio la version anterior. Con 26 centavos gastados y la
+    cuenta a 16 dolares el lead, decir "faltan 5 leads" es ruido con tono de
+    autoridad: todavia no gasto ni lo que cuesta un lead."""
+    _mercado(db)                       # mediana = 10
+    _anuncio(db, "x")
+    _gasto(db, "x", "2026-09-01", 0.26, leads=0)
+    r = _reco(db, "x")
+    assert r["accion"] == "esperar"
+    assert "arranca" in r["texto"].lower()
+    assert "5 leads" not in r["texto"]
+
+
+def test_entre_medio_dice_que_todavia_no_alcanza_pero_sin_inventar(db):
+    """Gasto mas de un lead y menos de tres: no se puede juzgar, pero tampoco
+    es "recien arranca"."""
+    _mercado(db)                       # mediana = 10
+    _anuncio(db, "x")
+    _gasto(db, "x", "2026-09-01", 18.0, leads=0)   # oportunidad 1,8
+    r = _reco(db, "x")
+    assert r["accion"] == "esperar"
+    assert "arranca" not in r["texto"].lower()
 
 
 def test_el_mas_caro_contra_la_mediana_se_ajusta(db):
-    """Tres baratos y uno que sale el triple. Se compara contra la mediana de
-    los que estan corriendo, no contra un numero fijo: lo que es caro depende
-    de la cuenta."""
-    for i in (1, 2, 3):
-        _anuncio(db, str(i))
-        _gasto(db, str(i), "2026-09-01", 100.0, leads=10)   # CPL 10
-    _anuncio(db, "4")
-    _gasto(db, "4", "2026-09-01", 300.0, leads=10)          # CPL 30
-    assert _reco(db, "4")["accion"] == "ajustar"
+    """Se compara contra la mediana de los que estan corriendo, no contra un
+    numero fijo: lo que es caro depende de la cuenta."""
+    _mercado(db)                       # mediana = 10
+    _anuncio(db, "x")
+    _gasto(db, "x", "2026-09-01", 300.0, leads=10)   # CPL 30
+    assert _reco(db, "x")["accion"] == "ajustar"
 
 
-def test_el_mas_barato_se_le_sube_el_presupuesto(db):
-    for i in (1, 2, 3):
-        _anuncio(db, str(i))
-        _gasto(db, str(i), "2026-09-01", 200.0, leads=10)   # CPL 20
-    _anuncio(db, "4")
-    _gasto(db, "4", "2026-09-01", 100.0, leads=20)          # CPL 5
-    assert _reco(db, "4")["accion"] == "subir"
+def test_se_puede_decir_que_esta_caro_con_pocos_leads_si_gasto_mucho(db):
+    """El otro caso que la version anterior tapaba: 1 lead a 44 dolares con la
+    mediana en 10 es informacion, no ruido — la plata gastada ya alcanzaba para
+    cuatro leads. Antes quedaba mudo porque miraba solo la cantidad de leads."""
+    _mercado(db)                       # mediana = 10
+    _anuncio(db, "x")
+    _gasto(db, "x", "2026-09-01", 44.0, leads=1)
+    assert _uno(db, "x")["leads"] < LEADS_MINIMOS
+    assert _reco(db, "x")["accion"] == "ajustar"
 
 
-def test_con_pocos_leads_no_se_opina_aunque_el_cpl_pinte_mal(db):
-    """Un anuncio con 1 lead a 40 dolares puede ser mala suerte. Recomendar
-    sobre eso es recomendar sobre ruido."""
-    for i in (1, 2, 3):
-        _anuncio(db, str(i))
-        _gasto(db, str(i), "2026-09-01", 100.0, leads=10)
-    _anuncio(db, "4")
-    _gasto(db, "4", "2026-09-01", 40.0, leads=1)
-    assert _uno(db, "4")["leads"] < LEADS_MINIMOS
-    assert _reco(db, "4")["accion"] == "esperar"
+def test_para_subir_el_presupuesto_si_se_piden_leads_de_verdad(db):
+    """Asimetrico a proposito: recomendar poner MAS plata sobre poca evidencia
+    es el mas caro de los dos errores."""
+    _mercado(db, gasto=200.0, leads=10)              # mediana = 20
+    _anuncio(db, "x")
+    _gasto(db, "x", "2026-09-01", 8.0, leads=2)      # CPL 4, pero solo 2 leads
+    assert _reco(db, "x")["accion"] != "subir"
+
+
+def test_el_mas_barato_con_muestra_se_le_sube_el_presupuesto(db):
+    _mercado(db, gasto=200.0, leads=10)              # mediana = 20
+    _anuncio(db, "x")
+    _gasto(db, "x", "2026-09-01", 100.0, leads=20)   # CPL 5
+    assert _reco(db, "x")["accion"] == "subir"
 
 
 def test_un_anuncio_que_dejo_de_enganchar_se_marca_como_quemado(db):
@@ -216,43 +259,60 @@ def test_un_anuncio_que_dejo_de_enganchar_se_marca_como_quemado(db):
     interesar. Se compara contra si mismo y no contra los demas, porque un
     anuncio de video y uno de imagen tienen CTR distintos por naturaleza.
     """
-    _anuncio(db, "1")
+    _mercado(db)
+    _anuncio(db, "x")
     for d in range(1, 21):                       # 20 dias buenos
-        _gasto(db, "1", f"2026-08-{d:02d}", 10.0, leads=1,
+        _gasto(db, "x", f"2026-08-{d:02d}", 10.0, leads=1,
                impresiones=1000, clics=50)       # CTR 5%
     for d in range(7, 14):                       # la ultima semana, mucho peor
-        _gasto(db, "1", f"2026-09-{d:02d}", 10.0, leads=1,
+        _gasto(db, "x", f"2026-09-{d:02d}", 10.0, leads=1,
                impresiones=1000, clics=10)       # CTR 1%
-    r = _uno(db, "1", hoy="2026-09-13")["recomendacion"]
-    assert r["accion"] == "renovar"
+    assert _uno(db, "x", hoy="2026-09-13")["recomendacion"]["accion"] == "renovar"
 
 
 def test_uno_que_anda_bien_se_deja(db):
-    for i in (1, 2, 3):
-        _anuncio(db, str(i))
-        _gasto(db, str(i), "2026-09-01", 100.0, leads=10)
-    assert _reco(db, "2")["accion"] == "dejar"
-
-
-def test_toda_recomendacion_trae_texto_y_numeros(db):
-    _anuncio(db, "1")
-    _gasto(db, "1", "2026-09-01", 100.0, leads=8)
-    r = _reco(db, "1")
-    assert r["texto"] and isinstance(r["texto"], str)
-    assert r["accion"] in ("apagar", "ajustar", "subir", "renovar", "esperar",
-                           "dejar")
+    _mercado(db)
+    assert _reco(db, "m2")["accion"] == "dejar"
 
 
 def test_apagar_gana_sobre_las_demas(db):
     """Un anuncio que gasto de sobra y no trajo a nadie no necesita que le
     ajusten el presupuesto: necesita que lo apaguen. Si dos reglas aplican,
     manda la mas grave."""
-    for i in (1, 2, 3):
-        _anuncio(db, str(i))
-        _gasto(db, str(i), "2026-09-01", 100.0, leads=10)
-    _anuncio(db, "4")
-    _gasto(db, "4", "2026-09-01", GASTO_MINIMO_PARA_OPINAR + 200, leads=0)
-    assert _reco(db, "4")["accion"] == "apagar"
+    _mercado(db)
+    _anuncio(db, "x")
+    _gasto(db, "x", "2026-09-01", 500.0, leads=0)
+    assert _reco(db, "x")["accion"] == "apagar"
+
+
+def test_toda_recomendacion_trae_texto_y_una_accion_conocida(db):
+    _mercado(db)
+    for a in anuncios_en_curso(db, "2026-03-01", "2026-12-31"):
+        r = a["recomendacion"]
+        assert r["texto"] and isinstance(r["texto"], str)
+        assert r["accion"] in ("apagar", "ajustar", "subir", "renovar",
+                               "esperar", "dejar")
+
+
+def test_sin_ningun_lead_en_toda_la_cuenta_igual_se_opina(db):
+    """Si ninguno llego a la muestra minima no hay mediana, y sin referencia
+    todas las reglas se caerian a "dejar" — justo cuando la cuenta viene floja,
+    que es cuando mas falta hace opinar. El respaldo es el CPL del conjunto."""
+    _anuncio(db, "a")
+    _gasto(db, "a", "2026-09-01", 100.0, leads=2)    # CPL 50
+    _anuncio(db, "b")
+    _gasto(db, "b", "2026-09-01", 300.0, leads=0)
+    # El conjunto da 400/2 = 200 por lead. `b` gasto 300: oportunidad 1,5.
+    assert _uno(db, "b")["mediana_cpl"] == 200.0
+    assert _reco(db, "b")["accion"] == "esperar"
+
+
+def test_la_oportunidad_viaja_al_panel(db):
+    """Es el numero que sostiene la recomendacion: tiene que poder mirarse."""
+    _mercado(db)                       # mediana = 10
+    _anuncio(db, "x")
+    _gasto(db, "x", "2026-09-01", 55.0, leads=0)
+    assert _uno(db, "x")["oportunidad"] == 5.5
 
 
 # ── El total de la seccion ─────────────────────────────────────────────────
@@ -279,3 +339,17 @@ def test_sin_anuncios_corriendo_el_resumen_no_inventa(db):
     assert r["anuncios"] == 0
     assert r["cpl"] is None
     assert r["desde"] is None
+
+
+def test_con_pocos_leads_no_se_dice_que_va_bien(db):
+    """Visto contra la cuenta real: un anuncio con 1 lead a 44,41 con la
+    mediana en 16,30 recibia "Por ahora va bien". Un lead que salio el triple
+    no va bien — y tampoco va mal, porque con uno solo no se sabe. El texto
+    tiene que no opinar, no opinar al reves."""
+    _mercado(db)                                     # mediana = 10
+    _anuncio(db, "x")
+    _gasto(db, "x", "2026-09-01", 27.0, leads=1)     # CPL 27, oportunidad 2,7
+    r = _reco(db, "x")
+    assert r["accion"] == "esperar"
+    assert "va bien" not in r["texto"].lower()
+    assert "suerte" in r["texto"].lower()

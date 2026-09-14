@@ -9,11 +9,17 @@ Esto baja al grano del anuncio, que es donde esta la palanca.
 pedido de Juan, y ademas una regla se puede discutir: cada una cita los numeros
 que la sostienen y se puede ir a comprobarlos. Un parrafo generado no.
 
-**Los umbrales son el todo.** Una recomendacion que se dispara con dos leads no
-es una recomendacion, es ruido con tono de autoridad. Ya paso en `hallazgos.py`,
-donde "se traba en cierres" salia siempre porque se comparaba contra una campana
-de un solo lead. Por eso `LEADS_MINIMOS` y `GASTO_MINIMO_PARA_OPINAR`: por
-debajo de ahi la respuesta honesta es "todavia no se sabe".
+**Los umbrales son el todo, y la evidencia se mide en plata.** Una
+recomendacion que se dispara con dos leads es ruido con tono de autoridad; una
+que nunca se dispara tampoco sirve. La primera version media la evidencia en
+leads y, contra la cuenta real, dejo 17 de 19 anuncios en "todavia no alcanza
+para opinar" — incluido uno que habia gastado 26 centavos, al que le decia que
+"faltan unos 5 leads".
+
+Se mide en `oportunidad`: cuantos leads DEBERIA haber comprado lo que gasto el
+anuncio, al costo habitual de la cuenta. Con eso, "gasto poco" y "gasto de
+sobra y no trajo nada" se separan solos, sin un umbral en dolares que haya que
+recalibrar cada vez que cambia el rubro.
 
 **Lo caro es relativo a la cuenta.** El corte no es un CPL fijo sino la mediana
 de lo que esta corriendo: 20 dolares por lead es carisimo en un rubro y regalado
@@ -31,12 +37,30 @@ logger = logging.getLogger(__name__)
 # significan apagado por algun lado, y no son decisiones de hoy.
 ESTADO_EN_CURSO = "ACTIVE"
 
-# Por debajo de esto no hay opinion. Son ~2 CPL historicos de la cuenta: con
-# menos plata gastada, cero leads entra comodo dentro de la mala suerte.
-GASTO_MINIMO_PARA_OPINAR = 30.0
+# CUANTA EVIDENCIA HACE FALTA PARA OPINAR.
+#
+# La primera version media esto en leads: "menos de 5 leads, no opino". Corrida
+# contra la cuenta real dio 17 de 19 anuncios en "todavia no alcanza", y a uno
+# que habia gastado 26 centavos le decia "faltan unos 5 leads". Inutil: a 16
+# dolares el lead, con 26 centavos no se compra ni la centesima parte de uno.
+#
+# El error era medir la evidencia en leads. Se mide en plata, y en plata
+# relativa al costo de la cuenta: `oportunidad` es cuantos leads DEBERIA haber
+# comprado lo que gasto este anuncio, al costo habitual. Eso sirve igual en una
+# cuenta de 5 dolares el lead que en una de 50, y responde la pregunta de
+# verdad: "¿ya gasto lo suficiente como para que la ausencia de leads
+# signifique algo?".
+#
+# Por debajo de 1, el anuncio no gasto ni lo que cuesta un lead: no hay nada
+# que decir, y decir "faltan 5 leads" es ruido con tono de autoridad.
+OPORTUNIDAD_PARA_ARRANCAR = 1.0
 
-# Y por debajo de esta cantidad de leads, el CPL del anuncio es un numero con
-# demasiado ruido para compararlo contra nadie.
+# Con 3 leads de oportunidad desperdiciados, cero leads ya no es mala suerte.
+OPORTUNIDAD_PARA_JUZGAR = 3.0
+
+# Para comparar CPL contra CPL sigue haciendo falta un minimo de leads: con 1
+# lead el CPL del anuncio es un numero con demasiado ruido. Pero ahora esto NO
+# bloquea las otras reglas, solo las que comparan costos.
 LEADS_MINIMOS = 5
 
 # Cuanto tiene que alejarse de la mediana para que valga la pena decir algo.
@@ -130,33 +154,48 @@ def _ctr_reciente(db_path: str, ad_id: str, hoy: str) -> tuple:
     )
 
 
-def _recomendar(a: dict, mediana_cpl, ctr_rec, ctr_viejo) -> dict:
+def _recomendar(a: dict, referencia_cpl, ctr_rec, ctr_viejo) -> dict:
     """Que hacer con este anuncio. La primera regla que aplica, manda.
 
     El orden es por gravedad, no por elegancia: un anuncio que gasto de sobra y
     no trajo a nadie no necesita que le ajusten el presupuesto, necesita que lo
     apaguen.
+
+    `referencia_cpl` es contra que se mide lo caro: la mediana de lo que esta
+    corriendo, no un numero fijo. 20 dolares por lead es carisimo en un rubro y
+    regalado en otro, y el panel no tiene por que saber en cual esta.
     """
     cita = [f"anuncio.{a['ad_id']}.gasto", f"anuncio.{a['ad_id']}.leads"]
+    plata = f"{a['gasto']:.2f}"
 
-    if a["gasto"] >= GASTO_MINIMO_PARA_OPINAR and not a["leads"]:
+    # Cuantos leads deberia haber comprado esta plata al costo habitual de la
+    # cuenta. Es la medida de cuanta evidencia hay, y no depende de la escala.
+    oportunidad = (a["gasto"] / referencia_cpl) if referencia_cpl else None
+
+    if oportunidad is not None and oportunidad < OPORTUNIDAD_PARA_ARRANCAR:
         return {
-            "accion": "apagar",
-            "texto": (f"Se llevó {a['gasto']:.2f} y no trajo un solo lead. "
-                      "Es plata que no está comprando nada: apagalo y pasá "
-                      "ese presupuesto a otro."),
+            "accion": "esperar",
+            "texto": (f"Recién arranca: lleva {plata} gastados y al costo "
+                      "habitual de la cuenta eso todavía no alcanza ni para "
+                      "un lead. Dejalo correr antes de mirarlo."),
             "metricas_citadas": cita,
         }
 
-    if a["leads"] < LEADS_MINIMOS:
-        falta = LEADS_MINIMOS - a["leads"]
+    if not a["leads"]:
+        if oportunidad is not None and oportunidad >= OPORTUNIDAD_PARA_JUZGAR:
+            return {
+                "accion": "apagar",
+                "texto": (f"Se llevó {plata} y no trajo un solo lead. Al costo "
+                          "habitual eso ya tendría que haber traído "
+                          f"{oportunidad:.0f}. Es plata que no está comprando "
+                          "nada: apagalo y pasá ese presupuesto a otro."),
+                "metricas_citadas": cita,
+            }
         return {
             "accion": "esperar",
-            "texto": (f"Todavía no alcanza para opinar: {a['leads']} "
-                      f"lead{'s' if a['leads'] != 1 else ''} "
-                      f"{'son' if a['leads'] != 1 else 'es'} muy poco para "
-                      f"saber si el costo es real o suerte. Faltan unos "
-                      f"{falta} para poder compararlo."),
+            "texto": (f"Todavía no trajo ninguno, pero con {plata} gastados "
+                      "tampoco alcanza para decir que no funciona. Miralo de "
+                      "nuevo cuando haya gastado el doble."),
             "metricas_citadas": cita,
         }
 
@@ -175,24 +214,44 @@ def _recomendar(a: dict, mediana_cpl, ctr_rec, ctr_viejo) -> dict:
             "metricas_citadas": cita + [f"anuncio.{a['ad_id']}.ctr"],
         }
 
-    if mediana_cpl and a["cpl"]:
-        if a["cpl"] >= mediana_cpl * _CARO:
+    if referencia_cpl and a["cpl"]:
+        # Para decir "esta caro" alcanza con UNA de las dos: o ya trajo
+        # suficientes leads como para que su CPL sea confiable, o gasto
+        # suficiente como para que la diferencia no sea casualidad.
+        hay_con_que = (a["leads"] >= LEADS_MINIMOS
+                       or (oportunidad or 0) >= OPORTUNIDAD_PARA_JUZGAR)
+        if hay_con_que and a["cpl"] >= referencia_cpl * _CARO:
             return {
                 "accion": "ajustar",
                 "texto": (f"Cada lead te sale {a['cpl']:.2f} y la mitad de los "
-                          f"que están corriendo salen {mediana_cpl:.2f} o "
+                          f"que están corriendo salen {referencia_cpl:.2f} o "
                           "menos. Bajale el presupuesto y miralo una semana, "
                           "o cambiale el público."),
                 "metricas_citadas": cita + [f"anuncio.{a['ad_id']}.cpl"],
             }
-        if a["cpl"] <= mediana_cpl * _BARATO:
+        # Para "subile" se piden las DOS condiciones: recomendar poner mas
+        # plata sobre poca evidencia es el mas caro de los dos errores.
+        if a["leads"] >= LEADS_MINIMOS and a["cpl"] <= referencia_cpl * _BARATO:
             return {
                 "accion": "subir",
                 "texto": (f"Es de los que mejor rinden: {a['cpl']:.2f} por "
-                          f"lead contra {mediana_cpl:.2f} de la mediana. "
+                          f"lead contra {referencia_cpl:.2f} de la mediana. "
                           "Subile el presupuesto."),
                 "metricas_citadas": cita + [f"anuncio.{a['ad_id']}.cpl"],
             }
+
+    if a["leads"] < LEADS_MINIMOS:
+        # Sin juicio de valor: con 1 lead, tanto un costo bueno como uno malo
+        # pueden ser suerte. Decir "va bien" de un lead que salio el triple de
+        # la mediana seria peor que no decir nada.
+        return {
+            "accion": "esperar",
+            "texto": (f"Todavía no alcanza para compararlo: {a['leads']} "
+                      f"lead{'s' if a['leads'] != 1 else ''} a "
+                      f"{a['cpl']:.2f} puede ser suerte para cualquiera de los "
+                      "dos lados. Dejalo correr."),
+            "metricas_citadas": cita,
+        }
 
     return {
         "accion": "dejar",
@@ -246,10 +305,22 @@ def anuncios_en_curso(db_path: str, desde: str, hasta: str, hoy=None) -> list:
     mediana_cpl = _mediana([a["cpl"] for a in salida
                             if a["leads"] >= LEADS_MINIMOS])
 
+    # Si ninguno llego a esa cantidad de leads no hay mediana, y sin referencia
+    # todas las reglas se caen a "dejar" — justo cuando la cuenta viene floja,
+    # que es cuando mas falta hace opinar. El respaldo es el CPL del conjunto:
+    # toda la plata de lo que esta corriendo sobre todos sus leads.
+    if mediana_cpl is None:
+        mediana_cpl = _costo(sum(a["gasto"] for a in salida),
+                             sum(a["leads"] for a in salida))
+
     for a in salida:
         rec, viejo = _ctr_reciente(db_path, a["ad_id"], hoy)
         a["recomendacion"] = _recomendar(a, mediana_cpl, rec, viejo)
         a["mediana_cpl"] = mediana_cpl
+        # Cuantos leads deberia haber comprado lo que gasto, al costo habitual.
+        # Va al dossier porque es el numero que sostiene la recomendacion.
+        a["oportunidad"] = (round(a["gasto"] / mediana_cpl, 2)
+                            if mediana_cpl else None)
     return salida
 
 
