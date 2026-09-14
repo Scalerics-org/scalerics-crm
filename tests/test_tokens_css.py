@@ -845,8 +845,9 @@ def test_el_texto_verde_de_tareas_usa_el_verde_de_texto():
     assert "background:${pct>=100?'var(--verde)'" in js, "la barra sigue con --verde"
 
 
-# Del tablero de leads viejo, que ya no tiene HTML: tiene su propia limpieza.
-MUERTAS_CONOCIDAS = {"kanban-card-rating"}
+# El tablero de leads viejo se borro entero (JS y CSS) el 14/9: ya no queda
+# ninguna clase muerta conocida. Si aparece otra, va aca con su motivo.
+MUERTAS_CONOCIDAS: set = set()
 
 
 def test_no_quedan_clases_de_tareas_sin_uso():

@@ -1826,6 +1826,34 @@ def get_notion_clients(db_path: str) -> list[dict]:
         conn.close()
 
 
+def get_notion_client_by_id(db_path: str, cliente_id: int) -> dict | None:
+    conn = _connect(db_path)
+    try:
+        fila = conn.execute("SELECT * FROM notion_clients WHERE id = ?",
+                            (cliente_id,)).fetchone()
+        return dict(fila) if fila else None
+    finally:
+        conn.close()
+
+
+def set_notion_client_status(db_path: str, notion_page_id: str, status: str) -> None:
+    """Deja en el espejo el estado que Notion acaba de aceptar.
+
+    Solo se llama despues de un PATCH que salio bien: si no, el tablero del CRM
+    mostraria la ficha en la columna vieja hasta el proximo sync, y eso se ve
+    como un "rebote" de lo que la persona acaba de arrastrar.
+    """
+    ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    conn = _connect(db_path)
+    try:
+        conn.execute(
+            "UPDATE notion_clients SET status = ?, notion_synced_at = ? "
+            "WHERE notion_page_id = ?", (status, ahora, notion_page_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def borrar_notion_clients(db_path: str, page_ids: set) -> int:
     """Saca del espejo las fichas que ya no estan en el tablero.
 
