@@ -936,6 +936,20 @@ def init_db(db_path: str) -> None:
                      "ON demos_realizadas(client_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_demos_realizadas_fecha "
                      "ON demos_realizadas(fecha)")
+        # Demos que llegan solas desde la planilla de semaforo (ver
+        # services/planilla_semaforo.sincronizar_demos). `origen` NULL es una
+        # demo cargada a mano: el sync no las toca nunca. `estado_planilla` es
+        # la clave estable del color (agendada, realizada, no_cerro, venta) y
+        # `mes_planilla` ('AAAA-MM') la pestaña de donde salio.
+        _add_column(conn, "demos_realizadas", "origen", "TEXT")
+        _add_column(conn, "demos_realizadas", "estado_planilla", "TEXT")
+        _add_column(conn, "demos_realizadas", "mes_planilla", "TEXT")
+        # Una demo de planilla por cliente y mes: es lo que hace idempotente al
+        # sync aunque dos corridas se pisen. Parcial para no limitar las
+        # cargadas a mano, que pueden ser varias en el mismo mes.
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_demos_planilla_cliente_mes "
+                     "ON demos_realizadas(client_id, mes_planilla) "
+                     "WHERE origen = 'planilla'")
         # El presupuesto que se mando despues de una demo cuelga de la demo con
         # una columna propia y no codificado en `section` ("demo:123"): asi se
         # puede indexar y cruzar con un JOIN, y `section` sigue siendo 'budget',

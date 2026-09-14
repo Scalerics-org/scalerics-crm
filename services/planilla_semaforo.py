@@ -33,6 +33,8 @@ Reglas que no se negocian, todas probadas:
 import json
 import re
 import sqlite3
+import unicodedata
+from datetime import date, datetime, timedelta, timezone
 
 from database import add_lead_event, get_business, update_business
 
@@ -224,3 +226,178 @@ def aplicar(db_path: str, filas: list, dry_run: bool = False) -> dict:
                            created_by="sistema (planilla)")
         resumen["actualizados"] += 1
     return resumen
+
+
+# ── Registro de demos desde la planilla ──────────────────────────────────────
+# Pedido de Juan (14/9): que el Registro de demos se llene solo con los colores
+# del semaforo, mes por mes. Las reglas, todas probadas en
+# tests/test_demos_planilla.py:
+#
+# - Entran los cuatro colores de demo. Negro, rojos y amarillos no son demos.
+# - El mes de la demo es la PESTANA de la planilla: la planilla no tiene la
+#   fecha de la demo, solo el mes en que entro el lead.
+# - Una demo de planilla por cliente y mes (indice unico parcial en la base).
+#   Si el color cambia, se actualiza la misma fila; no se duplica.
+# - La demo refleja la planilla tal cual, sin la regla de "no retroceder" de
+#   `aplicar`: aca no hay automatizaciones que proteger, y si alguien corrige
+#   un violeta a celeste, el registro tiene que decir celeste.
+# - Si la fila pasa a un color que no es demo, la demo de planilla se borra,
+#   salvo que ya tenga un presupuesto adjunto: ese archivo lo subio una persona.
+#   Una fila que deja de venir (pintada de blanco, borrada, una pestana que no
+#   se pudo leer) NO borra nada: la ausencia no es una marca.
+# - Las demos cargadas a mano (`origen` NULL) no se tocan nunca.
+
+ORIGEN_PLANILLA = "planilla"
+
+# Estado del CRM (el que ya sale de COLOR_A_ESTADO) -> clave estable de la demo.
+ESTADO_A_DEMO = {
+    "demo_agendada": "agendada",
+    "demo_1": "realizada",
+    "presupuesto_enviado": "no_cerro",
+    "cerrado": "venta",
+}
+
+_MESES = {
+    "enero": 1, "febrero": 2, "marzo": 3, "abril": 4, "mayo": 5, "junio": 6,
+    "julio": 7, "agosto": 8, "setiembre": 9, "septiembre": 9, "octubre": 10,
+    "noviembre": 11, "diciembre": 12,
+}
+
+
+def _hoy_uruguay() -> date:
+    # Uruguay no tiene horario de verano desde 2015: UTC-3 fijo. La maquina
+    # corre en UTC, y el 1 del mes a las 22 h de aca alla ya es el mes siguiente.
+    return (datetime.now(timezone.utc) - timedelta(hours=3)).date()
+
+
+def mes_de_pestana(nombre, hoy: date | None = None) -> str | None:
+    """'Agosto' -> '2026-08'. None si la pestana no es un mes.
+
+    La planilla es del ano en curso y no dice el ano en el nombre: un mes
+    posterior al actual solo puede ser del ano anterior (en febrero, la
+    pestana 'Diciembre' es la del diciembre pasado). Acepta 'Setiembre' y
+    'Septiembre', con o sin tilde y en cualquier mayuscula, y un ano explicito
+    ('Agosto 2026') si algun dia lo agregan.
+    """
+    texto = unicodedata.normalize("NFKD", str(nombre or ""))
+    texto = "".join(c for c in texto if not unicodedata.combining(c))
+    partes = texto.lower().split()
+    if not partes or partes[0] not in _MESES or len(partes) > 2:
+        return None
+    mes = _MESES[partes[0]]
+    if len(partes) == 2:
+        if not re.fullmatch(r"\d{4}", partes[1]):
+            return None
+        anio = int(partes[1])
+    else:
+        hoy = hoy or _hoy_uruguay()
+        anio = hoy.year if mes <= hoy.month else hoy.year - 1
+    return f"{anio:04d}-{mes:02d}"
+
+
+def sincronizar_demos(db_path: str, filas: list, dry_run: bool = False,
+                      hoy: date | None = None) -> dict:
+    """Lleva los colores de demo de la planilla al Registro de demos.
+
+    Corre despues de `aplicar` y no depende de lo que `aplicar` haya escrito:
+    solo usa el mismo match de leads. `filas` son los dicts del Apps Script con
+    `tel`, `mail`, `color` y `mes` (el nombre de la pestana).
+    """
+    resumen = {
+        "creadas": 0,
+        "actualizadas": 0,
+        "borradas": 0,
+        "sin_cambio": 0,
+        "sin_match": 0,
+        "mes_ignorado": 0,
+        "con_presupuesto_no_se_borra": 0,
+    }
+    conn = sqlite3.connect(db_path, timeout=10)
+    try:
+        por_tel, por_mail = _indice(conn)
+
+        # Primero se resuelve cada (lead, mes) con el color mas avanzado, igual
+        # que en `aplicar`: si el mismo telefono esta dos veces en la pestana,
+        # el orden de las filas no puede decidir.
+        ganador: dict = {}
+        for fila in filas:
+            if not isinstance(fila, dict):
+                continue
+            estado = estado_de_color(fila.get("color"))
+            if not estado:
+                continue
+            mes = mes_de_pestana(fila.get("mes"), hoy)
+            if not mes:
+                if estado in ESTADO_A_DEMO:
+                    resumen["mes_ignorado"] += 1
+                continue
+            ficha = _buscar(fila, por_tel, por_mail)
+            if not ficha:
+                if estado in ESTADO_A_DEMO:
+                    resumen["sin_match"] += 1
+                continue
+            clave = (ficha["id"], mes)
+            previo = ganador.get(clave)
+            if previo is None or RANK[estado] > RANK[previo]:
+                ganador[clave] = estado
+
+        # Solo las de planilla. El EXISTS usa el indice de demo_id y no lee el
+        # BLOB del presupuesto.
+        existentes = {
+            (cid, mes): (did, est, bool(presu))
+            for did, cid, mes, est, presu in conn.execute(
+                "SELECT d.id, d.client_id, d.mes_planilla, d.estado_planilla, "
+                "       EXISTS (SELECT 1 FROM lead_attachments a WHERE a.demo_id = d.id) "
+                "FROM demos_realizadas d WHERE d.origen = ?", (ORIGEN_PLANILLA,))
+        }
+
+        crear, actualizar, borrar = [], [], []
+        # Ordenado por cliente y mes para que el numero de demo siga el orden
+        # de los meses cuando un cliente entra con varias de una vez.
+        for (cid, mes), estado in sorted(ganador.items()):
+            demo = ESTADO_A_DEMO.get(estado)
+            previa = existentes.get((cid, mes))
+            if demo:
+                if previa is None:
+                    crear.append((cid, mes, demo))
+                elif previa[1] != demo:
+                    actualizar.append((previa[0], demo))
+                else:
+                    resumen["sin_cambio"] += 1
+            elif previa is not None:
+                if previa[2]:
+                    resumen["con_presupuesto_no_se_borra"] += 1
+                else:
+                    borrar.append(previa[0])
+
+        resumen["creadas"] = len(crear)
+        resumen["actualizadas"] = len(actualizar)
+        resumen["borradas"] = len(borrar)
+        if dry_run or not (crear or actualizar or borrar):
+            return resumen
+
+        with conn:  # una sola transaccion: o entra todo o nada
+            for cid, mes, demo in crear:
+                # OR IGNORE: si otra corrida la creo recien, el indice unico
+                # la frena y no se duplica.
+                conn.execute(
+                    "INSERT OR IGNORE INTO demos_realizadas "
+                    "  (client_id, numero, fecha, origen, estado_planilla, mes_planilla) "
+                    "SELECT ?, COALESCE(MAX(numero), 0) + 1, ?, ?, ?, ? "
+                    "FROM demos_realizadas WHERE client_id = ?",
+                    (cid, f"{mes}-01", ORIGEN_PLANILLA, demo, mes, cid))
+            for did, demo in actualizar:
+                conn.execute(
+                    "UPDATE demos_realizadas SET estado_planilla = ? "
+                    "WHERE id = ? AND origen = ?", (demo, did, ORIGEN_PLANILLA))
+            for did in borrar:
+                # Las dos guardas otra vez en el SQL, por si algo cambio entre
+                # la lectura y la escritura: nunca una a mano, nunca una con
+                # presupuesto.
+                conn.execute(
+                    "DELETE FROM demos_realizadas WHERE id = ? AND origen = ? "
+                    "AND NOT EXISTS (SELECT 1 FROM lead_attachments a WHERE a.demo_id = ?)",
+                    (did, ORIGEN_PLANILLA, did))
+        return resumen
+    finally:
+        conn.close()
