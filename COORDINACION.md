@@ -464,6 +464,16 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **14/9 — I: DEPLOYADO `v209`: Registro de demos por mes, con el presupuesto adjunto. Producción = `deploy/i-calendario-mobile` en `4cd011f`.**
+
+  Rama `feat/demos-por-mes-presupuesto`. `lead_attachments.demo_id` (índice
+  propio; `section` sigue en `budget`), subida con tope de 10 MB y solo
+  PDF/imagen por firma de bytes, y **ningún listado lee `file_data`** (hay un
+  test con el authorizer de SQLite). El panel estaba vacío porque nada crea
+  filas en `demos_realizadas` salvo el modal manual. Siguiente paso, en curso:
+  llenarlo desde la planilla semáforo (`feat/demos-desde-planilla`).
+  2408 tests; boot limpio a las 22:17 UTC.
+
 - **14/9 — I: DEPLOYADO `v208`: Clientes muestra cuánto pagó cada uno. Producción = `deploy/i-calendario-mobile` en `db73c32`.**
 
   Rama `feat/clientes-monto-pagado`. Columnas `businesses.monto_pagado` (REAL) y
