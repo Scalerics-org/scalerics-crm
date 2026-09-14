@@ -1087,7 +1087,6 @@ body.light .cal-mob-vacio{color:#94a3b8}
 body.light #nav-meta .nav-icon{stroke:#c13584}
 /* ── Nav icon colors ──────────────────────────────────────────────────────── */
 #nav-cola .nav-icon{stroke:#60a5fa}
-#nav-seguimientos .nav-icon{stroke:#f59e0b}
 #nav-clientes .nav-icon{stroke:#a78bfa}
 #nav-tasks .nav-icon{stroke:#14b8a6}
 #nav-wa .nav-icon{stroke:#25d366}
@@ -1098,7 +1097,6 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 .nav-item.active .nav-icon{opacity:1}
 /* active item keeps its color but brighter */
 #nav-cola.active .nav-icon{stroke:#93c5fd}
-#nav-seguimientos.active .nav-icon{stroke:#fcd34d}
 #nav-clientes.active .nav-icon{stroke:#c4b5fd}
 #nav-tasks.active .nav-icon{stroke:#2dd4bf}
 #nav-wa.active .nav-icon{stroke:#4ade80}
@@ -1107,7 +1105,6 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-activity.active .nav-icon{stroke:#94a3b8}
 /* light mode — slightly darker tones */
 body.light #nav-cola .nav-icon{stroke:#2563eb}
-body.light #nav-seguimientos .nav-icon{stroke:#d97706}
 body.light #nav-clientes .nav-icon{stroke:#7c3aed}
 body.light #nav-tasks .nav-icon{stroke:#0d9488}
 body.light #nav-wa .nav-icon{stroke:#16a34a}
@@ -1230,13 +1227,6 @@ body.light .btn-icon{stroke:currentColor}
 .outcome-interested:hover{background:#0f2a1a;border-color:#4ade80;color:#4ade80}
 .outcome-meeting:hover{background:#0d1f35;border-color:#3b82f6;color:#60a5fa}
 .outcome-contacted:hover{background:#1a2d3d;border-color:#0088cc;color:#0088cc}
-/* ── Callback urgency ─────────────────────────────────────────────────────── */
-.cb-overdue,body.light .cb-overdue{background:var(--rojo-tinte);border-color:var(--rojo-borde) !important}
-.cb-today,body.light .cb-today{background:var(--ambar-tinte);border-color:var(--ambar-borde) !important}
-.cb-date-pill{display:inline-block;padding:2px 8px;border-radius:99px;font-size:.72rem;font-weight:600}
-.cb-date-overdue{background:var(--rojo-tinte);color:var(--rojo-texto)}
-.cb-date-today{background:var(--ambar-tinte);color:var(--ambar)}
-.cb-date-future{background:var(--azul-tinte);color:var(--azul-claro)}
 /* ── Kanban ───────────────────────────────────────────────────────────────── */
 /* Base del tablero, del viejo tablero de leads (su HTML y su JS ya no existen).
    .kanban-col, .kanban-card y .kanban-count los redefine el bloque de Tareas
@@ -1661,7 +1651,6 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div class="nav-scroll">
   <div class="nav-section-label">LLAMADAS</div>
   <div class="nav-item active" id="nav-cola" onclick="showPanel('cola')"><i data-lucide="inbox" class="nav-icon"></i> Cola</div>
-  <div class="nav-item" id="nav-seguimientos" onclick="showPanel('seguimientos')"><i data-lucide="bookmark" class="nav-icon"></i> Seguimientos</div>
   <div class="nav-item" id="nav-meta" onclick="showPanel('meta');clearMetaBadge()"><i data-lucide="instagram" class="nav-icon"></i> Meta Ads <span id="meta-badge" style="display:none;background:#e1306c;color:#fff;font-size:.65rem;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:4px">NEW</span></div>
   <div class="nav-section-label">VENTAS</div>
   <div class="nav-item" id="nav-demos" onclick="showPanel('demos')"><i data-lucide="monitor-play" class="nav-icon"></i> Demos</div>
@@ -1704,7 +1693,6 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     </div>
     <div class="stats">
       <div class="stat-card"><div class="stat-label">Sin contactar</div><div class="stat-val" id="stat-cola">—</div></div>
-      <div class="stat-card"><div class="stat-label">Seguimientos</div><div class="stat-val blue" id="stat-seguimientos">—</div></div>
       <div class="stat-card"><div class="stat-label">No le interesa</div><div class="stat-val" id="stat-no-interesa">—</div></div>
     </div>
     <div class="filters">
@@ -1735,30 +1723,6 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   </div>
 
   <!-- ======= SEGUIMIENTOS PANEL ======= -->
-  <div id="seguimientos-panel" class="panel">
-    <div class="page-header">
-      <div>
-        <h1>Seguimientos</h1>
-        <div class="page-date">Leads que pidieron que los llamen después</div>
-      </div>
-    </div>
-    <div class="filters">
-      <select class="filter-select" id="seg-cohorte-filter" onchange="setSegCohorte(this.value)">
-        <option value="">Todas las cohortes</option>
-        <option value="meta">Meta Ads</option>
-        <option value="sin_web">Padrón sin web</option>
-        <option value="discovery">Discovery</option>
-        <option value="calendly_gcal">Calendly</option>
-      </select>
-      <span id="seg-count" style="color:#64748b;font-size:.8rem;align-self:center;margin-left:auto"></span>
-    </div>
-    <div class="table-wrap">
-      <div class="table-header no-cb">
-        <span>Negocio</span><span>Teléfono</span><span>Callback</span><span>Notas</span><span>Acciones</span>
-      </div>
-      <div id="seguimientos-body"></div>
-    </div>
-  </div>
 
   <!-- ======= META ADS PANEL ======= -->
   <div id="meta-panel" class="panel">
@@ -2877,7 +2841,6 @@ function showPanel(name) {
   _syncMobileNav(name);
   closeSidebar();
   if (name === 'cola') loadCola();
-  if (name === 'seguimientos') loadSeguimientos();
   if (name === 'demos') cargarDemos();
   if (name === 'clientes') loadClientesPanel();
   if (name === 'meta') loadMetaPanel();
@@ -2978,7 +2941,6 @@ async function confirmCallback() {
 }
 function _reloadActiveCallPanel() {
   if (_callActivePanel === 'cola') loadCola();
-  else if (_callActivePanel === 'seguimientos') loadSeguimientos();
   loadColaStats();
 }
 
@@ -3169,17 +3131,9 @@ async function loadColaStats() {
     // lo unico que estos contadores usan.
     const cola = await fetch('/api/leads?crm_status=sin_contactar&page=1');
     const colaData = await cola.json();
-    const [segR, conR] = await Promise.all([
-      fetch('/api/leads?crm_status=llamar_despues&page=1'),
-      fetch('/api/leads?crm_status=interesado&page=1'),
-    ]);
-    const [segData, conData] = await Promise.all([segR.json(), conR.json()]);
-    const segTotal = (Array.isArray(segData) ? segData.length : (segData.total||0)) +
-                     (Array.isArray(conData) ? conData.length : (conData.total||0));
     const noInt = await fetch('/api/leads?crm_status=no_interesa&page=1');
     const noIntData = await noInt.json();
     document.getElementById('stat-cola').textContent = Array.isArray(colaData) ? colaData.length : (colaData.total || 0);
-    document.getElementById('stat-seguimientos').textContent = segTotal;
     document.getElementById('stat-no-interesa').textContent = Array.isArray(noIntData) ? noIntData.length : (noIntData.total || 0);
     const sel = document.getElementById('cola-category-filter');
     const prev = sel.value;
@@ -3298,7 +3252,9 @@ function renderCola() {
 }
 
 
-// ── Seguimientos (llamar_despues) ─────────────────────────────────────────────
+// ── SDR: colores y actividad del dia por persona ─────────────────────────────
+// Vivian bajo el titulo de Seguimientos, que se saco de la vista el 14/9. Los
+// usa el panel SDR.
 function _sdrNameColor(name) {
   const colors = ['#0369a1','#7e22ce','#065f46','#9a3412','#be185d','#0f766e','#1d4ed8','#a16207'];
   let h = 0; for (let i = 0; i < (name||'').length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xff;
@@ -3326,71 +3282,6 @@ function _renderSdrStats(stats) {
 
 let _sdrLastActor = {};
 
-// Despues de importar los estados reales de la planilla (27-8-2026) este panel
-// paso de ~35 a 128 leads y 93 son de Meta. Sin poder separar cohortes, la
-// lista de a quien llamar deja de ser una lista de trabajo.
-let _segCohorte = '';
-function setSegCohorte(v) { _segCohorte = v; loadSeguimientos(); }
-
-async function loadSeguimientos() {
-  const body = document.getElementById('seguimientos-body');
-  body.innerHTML = '<div style="color:#475569;padding:16px;font-size:.85rem">Cargando...</div>';
-  try {
-    const coh = _segCohorte ? `&cohorte=${encodeURIComponent(_segCohorte)}` : '';
-    // 'contactado' es un alias viejo de 'interesado': el dashboard lo etiqueta
-    // igual y es un estado valido, pero nadie lo pedia. Hoy tiene 0 leads; el
-    // dia que algo lo escriba, sin esto desaparecen de todas las colas.
-    const [r1, r2, r3] = await Promise.all([
-      fetch(`/api/leads?crm_status=llamar_despues${coh}`),
-      fetch(`/api/leads?crm_status=interesado${coh}`),
-      fetch(`/api/leads?crm_status=contactado${coh}`),
-    ]);
-    const [d1, d2, d3] = await Promise.all([r1.json(), r2.json(), r3.json()]);
-    const leads = [
-      ...(Array.isArray(d1) ? d1 : (d1.items || [])),
-      ...(Array.isArray(d2) ? d2 : (d2.items || [])),
-      ...(Array.isArray(d3) ? d3 : (d3.items || [])),
-    ].sort((a,b) => {
-      // llamar_despues with date first, then contactado
-      if (a.callback_date && !b.callback_date) return -1;
-      if (!a.callback_date && b.callback_date) return 1;
-      if (a.callback_date && b.callback_date) return a.callback_date.localeCompare(b.callback_date);
-      return 0;
-    });
-    const segCnt = document.getElementById('seg-count');
-    if (segCnt) segCnt.textContent = `${leads.length} seguimiento${leads.length === 1 ? '' : 's'}`;
-    if (!leads.length) { body.innerHTML = '<div class="empty-state">No hay seguimientos pendientes</div>'; return; }
-    const today = new Date().toISOString().split('T')[0];
-    body.innerHTML = leads.map(b => {
-      const cd = b.callback_date || '';
-      const isContactado = b.crm_status === 'interesado';
-      let urgencyClass = '', pillClass = 'cb-date-future', pillLabel = 'Sin fecha';
-      if (isContactado && !cd) {
-        pillClass = 'cb-date-future'; pillLabel = 'Interesado';
-      } else if (cd) {
-        const cdDate = cd.split('T')[0];
-        pillLabel = cd.replace('T',' ').replace(/:\d{2}$/,'');
-        if (cdDate < today) { urgencyClass = 'cb-overdue'; pillClass = 'cb-date-overdue'; pillLabel = '⚠ ' + pillLabel; }
-        else if (cdDate === today) { urgencyClass = 'cb-today'; pillClass = 'cb-date-today'; pillLabel = '📅 Hoy ' + cd.split('T')[1]?.replace(/:\d{2}$/,''); }
-      }
-      return `
-      <div class="table-row no-cb row-llamar_despues ${urgencyClass}">
-        <div>
-          <div class="biz-name"><span style="cursor:pointer;text-decoration:underline;text-decoration-color:#334155" onclick="openClientPanel(${b.id})">${esc(b.name||'')}</span>${_calendlyBadge(b)}</div>
-          <div class="biz-sub">${esc(b.category||'')}${b.city ? ' · '+esc(b.city) : ''}</div>
-        </div>
-        <div style="display:flex;align-items:center;gap:6px">${b.phone ? (hasWhatsApp(b.phone) ? `<a class="phone-val" href="https://wa.me/${waNum(b.phone)}${b.pitch_text ? '?text='+encodeURIComponent(b.pitch_text) : ''}" target="_blank" title="Abrir WhatsApp">${esc(b.phone)}</a>` : `<span class="phone-plain">${esc(b.phone)}</span>`) : '<span class="no-val">—</span>'}</div>
-        <div><span class="cb-date-pill ${pillClass}">${pillLabel}</span></div>
-        <div><textarea class="notes-inline" data-id="${b.id}" data-notes="${esc(b.notes||'')}" placeholder="Agregar nota..." rows="1" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea></div>
-        <div class="actions">
-          <a class="pitch-btn" href="tel:${b.phone||''}" style="text-decoration:none"><i data-lucide=\"phone\" class=\"btn-icon\"></i> Llamar</a>
-          <button class="pitch-btn" onclick="openCallModal(${b.id},${escJs(b.name||'')},${escJs(b.phone||'')},'seguimientos')" style="background:#1e293b"><i data-lucide=\"clipboard-list\" class=\"btn-icon\"></i> Resultado</button>
-          <button class="delete-btn" onclick="deleteLead(${b.id},${escJs(b.name||'')})" title="Borrar"><i data-lucide=\"trash-2\" class=\"btn-icon\"></i></button>
-        </div>
-      </div>`; }).join('');
-    _populateNotes(body);
-  } catch(e) { body.innerHTML = `<div style="color:#f87171;padding:16px">Error: ${e.message}</div>`; }
-}
 
 // == Usuarios del equipo =======================================================
 // Los selectores de responsables de Clientes y de "quien dio la demo" los
@@ -4171,7 +4062,6 @@ async function markContacted(id) {
 
 function _refreshActivePanel() {
   if (activePanel === 'cola') loadCola();
-  else if (activePanel === 'seguimientos') loadSeguimientos();
   else if (activePanel === 'clientes') loadClientesPanel();
 }
 
@@ -6266,15 +6156,15 @@ function _showScoreBreakdown(event, el) {
 }
 
 // ── Mobile navigation ─────────────────────────────────────────────────────────
-const NAV_PRIORITY = ['cola','seguimientos','meta','cal','tasks','clientes','wa','metrics','activity','projects','notion_clients','finanzas','simulador'];
+const NAV_PRIORITY = ['cola','meta','cal','tasks','clientes','wa','metrics','activity','projects','notion_clients','finanzas','simulador'];
 const NAV_ICONS = {
-  cola:'inbox',seguimientos:'bookmark',meta:'instagram',cal:'calendar',
+  cola:'inbox',meta:'instagram',cal:'calendar',
   tasks:'check-square',pipeline:'trending-up',clientes:'users',
   wa:'message-circle',metrics:'bar-chart-2',activity:'clock',projects:'target',
   notion_clients:'handshake',finanzas:'wallet',simulador:'calculator'
 };
 const NAV_LABELS = {
-  cola:'Cola',seguimientos:'Seguim.',meta:'Meta',cal:'Agenda',
+  cola:'Cola',meta:'Meta',cal:'Agenda',
   tasks:'Tareas',pipeline:'Pipeline',clientes:'Clientes',
   wa:'WA',metrics:'Outbound',activity:'Actividad',projects:'Proyectos',
   notion_clients:'Pipeline',finanzas:'Finanzas',simulador:'Simulador'
@@ -6357,7 +6247,7 @@ function closeMasSheet() {
 }
 
 // ── Panel access control ──────────────────────────────────────────────────────
-const ALL_PANELS = ['cola','seguimientos','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador'];
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador'];
 (async () => {
   try {
     const r = await fetch('/api/me');
@@ -11229,8 +11119,8 @@ select:focus{border-color:#0088cc}
 </div>
 
 <script>
-const ALL_PANELS = ['cola','seguimientos','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador'];
-const PANEL_LABELS = {cola:'Cola',seguimientos:'Seguimientos',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Outbound',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Pipeline Notion',finanzas:'Finanzas',simulador:'Simulador financiero'};
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador'];
+const PANEL_LABELS = {cola:'Cola',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Outbound',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Pipeline Notion',finanzas:'Finanzas',simulador:'Simulador financiero'};
 let _roles = [];
 
 function makeChips(containerId, checkedArr, prefix) {
