@@ -34,7 +34,7 @@ sin_node = pytest.mark.skipif(shutil.which("node") is None,
 _CONTENEDORES = ["mk-tiles", "mk-embudo", "mk-mensual", "mk-series",
                  "mk-embudos", "mk-evolucion", "mk-acumulado", "mk-ranking",
                  "mk-campanas", "mk-segmentos", "mk-dispersion", "mk-llegada",
-                 "mk-conciliacion"]
+                 "mk-conciliacion", "mk-anuncios"]
 
 
 def _dossier_de_prueba():
@@ -123,6 +123,41 @@ def _dossier_de_prueba():
                        for d in range(7) for f in range(0, 24, 3)],
             "total": 40, "maximo": 3, "sin_hora": 2, "horas_por_franja": 3,
         },
+        # Tres anuncios corriendo: uno con foto, uno de video sin foto y uno
+        # que gasto sin traer nada. Con bloques vacios el pintado toma los
+        # caminos de "sin datos" y el test pasaria con la seccion rota.
+        "anuncios": [
+            {"ad_id": "120253602403650249", "nombre": "Web hace ganar - RMKTG",
+             "campana": "Brand - Set26", "conjunto": "RMKTG", "tipo": "SHARE",
+             "titulo": "Agencia de desarrollo web", "cuerpo": "Un cuerpo",
+             "imagen_archivo": "/data/creativos/120253602403650249.jpg",
+             "moneda": "USD", "gasto": 369.17, "leads": 33, "impresiones": 40000,
+             "clics": 900, "cpl": 11.19, "ctr": 0.0225, "tasa_lead": 0.0367,
+             "desde": "2026-06-14", "hasta": "2026-09-12", "mediana_cpl": 14.0,
+             "recomendacion": {"accion": "subir", "texto": "Es de los que mejor rinden.",
+                               "metricas_citadas": ["anuncio.120253602403650249.cpl"]}},
+            {"ad_id": "120253602403650250", "nombre": "UGC - 2",
+             "campana": "Brand - Set26", "conjunto": "UGC", "tipo": "VIDEO",
+             "titulo": None, "cuerpo": "Mira como lo hacemos",
+             "imagen_archivo": None,
+             "moneda": "USD", "gasto": 120.0, "leads": 6, "impresiones": 15000,
+             "clics": 200, "cpl": 20.0, "ctr": 0.0133, "tasa_lead": 0.03,
+             "desde": "2026-08-01", "hasta": "2026-09-12", "mediana_cpl": 14.0,
+             "recomendacion": {"accion": "ajustar", "texto": "Cada lead te sale caro.",
+                               "metricas_citadas": ["anuncio.120253602403650250.cpl"]}},
+            {"ad_id": "120243368449890249", "nombre": "12/03 - Hiciste lo mas dificil",
+             "campana": "Leads - Marzo", "conjunto": "Amplio", "tipo": "SHARE",
+             "titulo": "Hiciste lo mas dificil", "cuerpo": "Otro cuerpo",
+             "imagen_archivo": "/data/creativos/120243368449890249.jpg",
+             "moneda": "USD", "gasto": 85.0, "leads": 0, "impresiones": 9000,
+             "clics": 120, "cpl": None, "ctr": 0.0133, "tasa_lead": 0.0,
+             "desde": "2026-09-01", "hasta": "2026-09-12", "mediana_cpl": 14.0,
+             "recomendacion": {"accion": "apagar", "texto": "No trajo un solo lead.",
+                               "metricas_citadas": ["anuncio.120243368449890249.gasto"]}},
+        ],
+        "anuncios_resumen": {"anuncios": 3, "gasto": 574.17, "leads": 39,
+                             "cpl": 14.72, "desde": "2026-06-14",
+                             "moneda": "USD"},
         "historico": {
             "hay": True, "desde": "2026-03-11", "hasta": "2026-06-12",
             "semanas": 13, "leads": 120, "demos": 24, "gasto": 1500.0,

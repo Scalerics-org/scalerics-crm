@@ -1335,6 +1335,30 @@ body.light .mobile-header-title{color:#0f172a}
 .sc-hall-n{font-size:.8rem;font-weight:700;color:var(--rotulo);font-variant-numeric:tabular-nums;min-width:18px}
 .sc-hall-tit{font-size:.84rem;font-weight:700;color:var(--texto);margin-bottom:4px}
 .sc-hall-cuerpo{font-size:.79rem;line-height:1.55;color:var(--texto-tenue)}
+/* Lo que esta corriendo ahora: una tarjeta por anuncio con su pieza.
+   auto-fill y no auto-fit: con un solo anuncio prendido, auto-fit estira esa
+   tarjeta a todo el ancho y la foto queda gigante. */
+.sc-anuncios{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:14px}
+.sc-anun{display:flex;flex-direction:column;background:var(--fondo-hundido);border:1px solid var(--borde);border-radius:12px;overflow:hidden}
+/* Alto fijo y `cover`: las piezas vienen 1080x1350 y 1080x1920 mezcladas, y
+   sin esto cada tarjeta mide distinto y la grilla queda en escalera. */
+.sc-anun-foto{width:100%;height:200px;object-fit:cover;object-position:top;display:block;background:var(--hover)}
+.sc-anun-sinfoto{height:200px;display:flex;align-items:center;justify-content:center;text-align:center;font-size:.72rem;line-height:1.5;color:var(--rotulo);background:var(--hover);padding:0 18px}
+.sc-anun-cuerpo{padding:12px 14px 14px;display:flex;flex-direction:column;gap:8px;flex:1}
+.sc-anun-nom{font-size:.82rem;font-weight:700;color:var(--texto);line-height:1.35}
+.sc-anun-campana{font-size:.68rem;color:var(--rotulo)}
+.sc-anun-datos{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:9px 0;border-top:1px solid var(--borde);border-bottom:1px solid var(--borde)}
+.sc-anun-dato{display:flex;flex-direction:column;gap:2px}
+.sc-anun-dato span{font-size:.62rem;letter-spacing:.03em;text-transform:uppercase;color:var(--rotulo)}
+.sc-anun-dato b{font-size:.92rem;color:var(--texto);font-variant-numeric:tabular-nums}
+.sc-anun-extra{font-size:.68rem;line-height:1.5;color:var(--rotulo)}
+/* El estado va con palabra Y con color. El borde solo seria color solo, que es
+   justo lo que no puede distinguir quien no ve bien los colores. */
+.sc-anun-reco{font-size:.75rem;line-height:1.55;color:var(--texto-tenue);border-left:3px solid var(--rotulo);padding-left:10px;margin-top:auto}
+.sc-anun-reco b{color:var(--texto)}
+.sc-anun-reco[data-accion="apagar"]{border-left-color:var(--rojo)}
+.sc-anun-reco[data-accion="ajustar"],.sc-anun-reco[data-accion="renovar"]{border-left-color:var(--ambar)}
+.sc-anun-reco[data-accion="subir"]{border-left-color:var(--verde)}
 .sc-comparacion{display:grid;gap:5px;font-size:.8rem;line-height:1.55;color:var(--texto);background:var(--fondo-hundido);border:1px solid var(--borde);border-radius:10px;padding:11px 14px;margin-bottom:16px}
 .sc-barras{display:grid;gap:7px;margin-top:8px}
 .sc-barras-ayuda{font-size:.72rem;line-height:1.5;margin:2px 0 4px;max-width:74ch}
@@ -2060,6 +2084,12 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
         <h3>La plata</h3>
         <div class="sc-sub">Lo que Meta dice que cobró contra lo que está cargado en Finanzas. Si Finanzas no ve toda la pauta, el costo de cada venta se calcula sobre menos plata de la que se gastó y sale más barato de lo que fue.</div>
         <div id="mk-conciliacion"></div>
+      </div>
+
+      <div class="sc-bloque">
+        <h3>Lo que está corriendo ahora</h3>
+        <div class="sc-sub">Los anuncios prendidos hoy, con la pieza que ve la gente y lo que está costando cada uno. Es el grano sobre el que se decide: adentro de una campaña conviven varios anuncios y uno se puede llevar la mitad de la plata sin traer a nadie. La recomendación la calculan reglas sobre estos mismos números, no una IA.</div>
+        <div id="mk-anuncios"></div>
       </div>
 
     </div>
@@ -8284,6 +8314,102 @@ function _mkPintar() {
       `<td>${esc(SC.fmt(totCargado, 'moneda'))}</td>` +
       `<td>${esc(SC.fmt(totBrecha, 'moneda'))}</td></tr>` +
       '</tbody></table></div>';
+  }
+
+  // ── Lo que está corriendo ahora ────────────────────────────────────────
+  //
+  // Una tarjeta por anuncio prendido, con la pieza que ve la gente. La campaña
+  // no es la unidad sobre la que se decide: adentro de una campaña conviven
+  // varios anuncios y uno se puede llevar la mitad de la plata sin traer a
+  // nadie.
+  //
+  // La recomendación la calculan reglas en `services/anuncios.py`, no un
+  // modelo: la IA está apagada, y además una regla se puede discutir porque
+  // cita los números que la sostienen.
+  const anuncios = _mkDossier.anuncios || [];
+  const resAnun = _mkDossier.anuncios_resumen || {};
+
+  const _fechaCorta = (iso) => {
+    if (!iso) return '';
+    const p = String(iso).slice(0, 10).split('-');
+    return `${p[2]}/${p[1]}`;
+  };
+
+  if (!anuncios.length) {
+    document.getElementById('mk-anuncios').innerHTML =
+      '<div class="sc-vacio">No hay anuncios corriendo en este período. ' +
+      'Si sabés que hay pauta activa, falta sincronizar: el botón está en ' +
+      'Ajustes, o corre solo todas las mañanas.</div>';
+  } else {
+    const cab =
+      '<div class="sc-plata-resumen">' +
+      `<div class="sc-tile"><div class="sc-tile-label">Corriendo</div>` +
+      `<div class="sc-tile-valor">${esc(SC.fmt(resAnun.anuncios, 'numero'))}</div>` +
+      `<div class="sc-tile-delta">anuncios prendidos</div></div>` +
+      `<div class="sc-tile"><div class="sc-tile-label">Se lleva puesto</div>` +
+      `<div class="sc-tile-valor">${esc(SC.fmt(resAnun.gasto, 'moneda'))}</div>` +
+      `<div class="sc-tile-delta">desde el ${esc(_fechaCorta(resAnun.desde))}</div></div>` +
+      `<div class="sc-tile"><div class="sc-tile-label">Trajo</div>` +
+      `<div class="sc-tile-valor">${esc(SC.fmt(resAnun.leads, 'numero'))}</div>` +
+      `<div class="sc-tile-delta">leads</div></div>` +
+      `<div class="sc-tile"><div class="sc-tile-label">Cada lead</div>` +
+      `<div class="sc-tile-valor">${esc(SC.fmt(resAnun.cpl, 'moneda'))}</div>` +
+      (hist.hay && hist.cpl
+        ? `<div class="sc-tile-delta">histórico ${esc(SC.fmt(hist.cpl, 'moneda'))}</div>`
+        : '') +
+      '</div></div>';
+
+    // El estado va con palabra Y con color, nunca con color solo: es la regla
+    // de la guía de visualización para los colores de estado.
+    const _ACCION = {
+      apagar:  'Apagalo',
+      ajustar: 'Está caro',
+      renovar: 'Se está gastando',
+      subir:   'Subile el presupuesto',
+      esperar: 'Todavía no se sabe',
+      dejar:   'Va bien',
+    };
+
+    const tarjetas = anuncios.map(a => {
+      const r = a.recomendacion || {};
+      const foto = a.imagen_archivo
+        ? `<img class="sc-anun-foto" loading="lazy" alt="Pieza del anuncio ${esc(a.nombre || '')}" ` +
+          `src="/api/marketing/creativo/${encodeURIComponent(a.ad_id)}">`
+        // Los de video no tienen foto: Meta no da el still con los permisos que
+        // tiene la app. Se dice por qué en vez de dejar un hueco gris.
+        : '<div class="sc-anun-sinfoto">' +
+          (a.tipo === 'VIDEO' ? 'Es un video.<br>Meta no deja bajar la portada.'
+                              : 'Sin imagen') + '</div>';
+
+      const dato = (rot, val, fmt) =>
+        '<div class="sc-anun-dato"><span>' + esc(rot) + '</span><b>' +
+        esc(SC.fmt(val, fmt)) + '</b></div>';
+
+      return '<article class="sc-anun">' +
+        foto +
+        '<div class="sc-anun-cuerpo">' +
+        `<div class="sc-anun-nom">${esc(a.nombre || '(sin nombre)')}</div>` +
+        `<div class="sc-anun-campana">${esc(a.campana || '')}` +
+        (a.conjunto ? ` · ${esc(a.conjunto)}` : '') + '</div>' +
+        '<div class="sc-anun-datos">' +
+        dato('Gasto', a.gasto, 'moneda') +
+        dato('Leads', a.leads, 'numero') +
+        dato('Por lead', a.cpl, 'moneda') +
+        '</div>' +
+        '<div class="sc-anun-extra">' +
+        `CTR ${esc(SC.fmt(a.ctr, 'porcentaje'))}` +
+        (a.tasa_lead !== null && a.tasa_lead !== undefined
+          ? ` · dejan datos ${esc(SC.fmt(a.tasa_lead, 'porcentaje'))} de los que entran`
+          : '') +
+        (a.desde ? ` · desde el ${esc(_fechaCorta(a.desde))}` : '') +
+        '</div>' +
+        `<div class="sc-anun-reco" data-accion="${esc(r.accion || '')}">` +
+        `<b>${esc(_ACCION[r.accion] || '')}.</b> ${esc(r.texto || '')}</div>` +
+        '</div></article>';
+    }).join('');
+
+    document.getElementById('mk-anuncios').innerHTML =
+      cab + '<div class="sc-anuncios">' + tarjetas + '</div>';
   }
 
   // ── ¿Pagar más por lead trae mejores leads? ────────────────────────────

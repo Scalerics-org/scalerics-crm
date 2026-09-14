@@ -258,6 +258,51 @@ def init_db(db_path: str) -> None:
             )
         """)
 
+        # Un renglon por anuncio: el estado de HOY, no una serie. Lo que
+        # cambia en el tiempo (gasto, leads) vive en `meta_ad_insights`.
+        #
+        # `imagen_url` es la que devuelve Meta: viene firmada y caduca, asi que
+        # no sirve para guardar en el panel. Por eso se baja el archivo una vez
+        # a `imagen_archivo` y de ahi en mas se sirve el nuestro.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS meta_ads (
+                ad_id            TEXT PRIMARY KEY,
+                ad_name          TEXT,
+                campaign_id      TEXT,
+                campaign_name    TEXT,
+                adset_name       TEXT,
+                effective_status TEXT,
+                creative_id      TEXT,
+                object_type      TEXT,
+                titulo           TEXT,
+                cuerpo           TEXT,
+                imagen_url       TEXT,
+                imagen_archivo   TEXT,
+                synced_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # El mismo grano que `meta_insights` pero por anuncio. Existe aparte y
+        # no como columna de aquella porque un anuncio pertenece a una campana:
+        # mezclarlos haria que sumar la tabla contara el gasto dos veces.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS meta_ad_insights (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                date        TEXT NOT NULL,
+                ad_id       TEXT NOT NULL,
+                spend       REAL DEFAULT 0,
+                currency    TEXT,
+                impressions INTEGER DEFAULT 0,
+                clicks      INTEGER DEFAULT 0,
+                reach       INTEGER DEFAULT 0,
+                leads       INTEGER DEFAULT 0,
+                synced_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(date, ad_id)
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_ad_insights_fecha "
+                     "ON meta_ad_insights(date)")
+
         # Cada corrida guarda el dossier entero, no solo el informe: es lo que
         # permite auditar después por qué se dijo lo que se dijo, y comparar
         # contra el período anterior sin recalcular el pasado.
