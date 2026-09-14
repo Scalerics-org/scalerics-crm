@@ -1651,9 +1651,9 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div class="nav-scroll">
   <!-- Orden y grupos definidos por Juan el 14/9. Al entrar igual se abre Meta Ads. -->
   <div class="nav-section-label">CALENDARIO</div>
-  <div class="nav-item" id="nav-cal" onclick="showPanel('cal')"><i data-lucide="calendar" class="nav-icon"></i> Calendario</div>
+  <div class="nav-item active" id="nav-cal" onclick="showPanel('cal')"><i data-lucide="calendar" class="nav-icon"></i> Calendario</div>
   <div class="nav-section-label">MARKETING</div>
-  <div class="nav-item active" id="nav-meta" onclick="showPanel('meta');clearMetaBadge()"><i data-lucide="instagram" class="nav-icon"></i> Meta Ads <span id="meta-badge" style="display:none;background:#e1306c;color:#fff;font-size:.65rem;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:4px">NEW</span></div>
+  <div class="nav-item" id="nav-meta" onclick="showPanel('meta');clearMetaBadge()"><i data-lucide="instagram" class="nav-icon"></i> Meta Ads <span id="meta-badge" style="display:none;background:#e1306c;color:#fff;font-size:.65rem;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:4px">NEW</span></div>
   <div class="nav-item" id="nav-marketing" onclick="showPanel('marketing')"><i data-lucide="target" class="nav-icon"></i> Inteligencia marketing</div>
   <div class="nav-section-label">FINANZAS</div>
   <div class="nav-item" id="nav-finanzas" onclick="showPanel('finanzas')"><i data-lucide="wallet" class="nav-icon"></i> Finanzas</div>
@@ -1729,7 +1729,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <!-- ======= SEGUIMIENTOS PANEL ======= -->
 
   <!-- ======= META ADS PANEL ======= -->
-  <div id="meta-panel" class="panel active">
+  <div id="meta-panel" class="panel">
     <div class="page-header">
       <div>
         <h1>Meta Ads</h1>
@@ -1911,7 +1911,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   </div>
 
   <!-- ======= CALENDAR PANEL ======= -->
-  <div id="cal-panel" class="panel">
+  <div id="cal-panel" class="panel active">
     <div class="cal-header">
       <h1 id="cal-week-label">Calendario</h1>
       <span class="cal-count" id="cal-count"></span>
@@ -2834,7 +2834,7 @@ function closeSidebar() {
 }
 
 // ========== Panel switching ==========
-let activePanel = 'meta';
+let activePanel = 'cal';
 function showPanel(name) {
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
@@ -6097,17 +6097,20 @@ async function _cpBindTasks() {
   }
 }
 
-// Initial load. Lo primero del CRM es Meta Ads, no la Cola (pedido de Juan,
-// 14/9): es donde entran los leads que se trabajan. El panel y su item de menu
-// ya arrancan activos en el HTML; aca solo se cargan los datos. Si el rol no
-// tiene Meta, el control de acceso de abajo lo manda al primer panel que si.
+// Initial load. Lo primero del CRM es el Calendario, en su propio grupo arriba
+// de todo (pedido de Juan, 14/9; antes de eso habia pedido Meta Ads). El panel
+// y su item de menu ya arrancan activos en el HTML; aca solo se dibuja. Si el
+// rol no tiene el calendario, el control de acceso de abajo lo manda al primer
+// panel que si tenga.
 //
 // OJO: aca NO va showPanel. Esta linea corre antes de que se declaren
 // NAV_LABELS y compania (mas abajo, con const): showPanel -> _syncMobileNav las
 // lee y tira "Cannot access 'NAV_LABELS' before initialization", que corta el
 // resto del <script> -- permisos, barra del celular, tema -- en el navegador.
-// loadMetaPanel solo toca #meta-body antes de su primer await.
-loadMetaPanel();
+// renderCalendar, antes de su primer await, solo usa calView, calMonthOffset y
+// el DOM, que ya estan declarados aca. calLoaded evita que showPanel('cal') lo
+// vuelva a pedir.
+calLoaded = true; renderCalendar();
 
 // ── Score badge + social icons ────────────────────────────────────────────────
 

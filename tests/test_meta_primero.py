@@ -1,12 +1,12 @@
-"""El menu en el orden que definio Juan, y Meta Ads como panel de entrada (14/9).
+"""El menu en el orden que definio Juan, con el Calendario primero (14/9).
 
 Menu, por grupo: CALENDARIO (Calendario) · MARKETING (Meta Ads, Marketing) ·
 FINANZAS (Finanzas, Simulador financiero) · VENTAS (WhatsApp, Proceso de venta,
 Demos, SDR) · OPERACION (Clientes, Proyectos, Tareas, Actividad) · CAPTACION
-(Outbound, Cola). La barra del celular sigue el mismo orden.
+(Inteligencia comercial, Outbound). La barra del celular sigue el mismo orden.
 
-Aunque Calendario va arriba en el menu, al entrar se abre Meta Ads, que es donde
-entran los leads que se trabajan. Un rol que no tiene Meta no puede quedar
+Al entrar se abre el Calendario (Juan lo pidio despues de haber pedido Meta
+Ads: gana el ultimo pedido). Un rol que no tiene el calendario no puede quedar
 mirando un panel que no le corresponde, ni uno que ya no existe.
 """
 
@@ -51,21 +51,29 @@ def test_el_menu_tiene_los_grupos_y_el_orden_de_juan():
     assert _menu() == ORDEN
 
 
+def test_el_calendario_va_solo_en_su_grupo_arriba_de_todo():
+    grupo, paneles = _menu()[0]
+    assert grupo == "CALENDARIO" and paneles == ["cal"]
+
+
 def test_la_barra_del_celular_sigue_el_mismo_orden():
     orden = re.findall(r"'(\w+)'", re.search(r"const NAV_PRIORITY = \[([^\]]*)\]", HTML).group(1))
     del_menu = [p for _, paneles in ORDEN for p in paneles]
-    # La barra solo lista los paneles que ya tenian icono y nombre corto; los
-    # que lista van en el mismo orden relativo que el menu.
+    assert orden[0] == "cal"
     assert orden == [p for p in del_menu if p in orden], orden
     assert len(orden) >= 10
 
 
-def test_meta_arranca_marcado_y_la_cola_no():
-    assert '<div class="nav-item active" id="nav-meta"' in HTML
+def test_el_calendario_arranca_marcado_y_los_demas_no():
+    assert '<div class="nav-item active" id="nav-cal"' in HTML
+    assert '<div class="nav-item" id="nav-meta"' in HTML
     assert '<div class="nav-item" id="nav-cola"' in HTML
-    assert '<div id="meta-panel" class="panel active">' in HTML
+    assert '<div id="cal-panel" class="panel active">' in HTML
+    assert '<div id="meta-panel" class="panel">' in HTML
     assert '<div id="cola-panel" class="panel">' in HTML
-    assert "let activePanel = 'meta';" in HTML
+    assert HTML.count('class="nav-item active"') == 1
+    assert len(re.findall(r'id="[\w]+-panel" class="panel active"', HTML)) == 1
+    assert "let activePanel = 'cal';" in HTML
 
 
 def _carga_inicial() -> str:
@@ -74,10 +82,10 @@ def _carga_inicial() -> str:
     return m.group(1)
 
 
-def test_al_entrar_se_carga_meta_y_no_la_cola():
+def test_al_entrar_se_dibuja_el_calendario():
     llamada = _carga_inicial()
-    assert llamada == "loadMetaPanel();", llamada
-    assert "loadCola" not in llamada
+    assert llamada == "calLoaded = true; renderCalendar();", llamada
+    assert "loadCola" not in llamada and "loadMetaPanel" not in llamada
 
 
 def test_la_carga_inicial_no_usa_showpanel():
@@ -86,11 +94,15 @@ def test_la_carga_inicial_no_usa_showpanel():
     corta el resto del <script> en el navegador: permisos, barra del celular,
     tema. Paso con esta misma rama antes de publicarse."""
     assert "showPanel" not in _carga_inicial()
-    assert HTML.index("// Initial load") < HTML.index("const NAV_LABELS")
+    inicio = HTML.index("// Initial load")
+    assert inicio < HTML.index("const NAV_LABELS")
+    # Lo que renderCalendar usa antes de su primer await ya esta declarado.
+    for decl in ("let calLoaded", "let calMonthOffset", "let calView"):
+        assert HTML.index(decl) < inicio, decl
 
 
 def _primer_panel(access, existentes):
-    """Arma en node la eleccion real del primer panel para un rol sin Meta."""
+    """Arma en node la eleccion real del primer panel para un rol sin calendario."""
     nav = re.search(r"const NAV_PRIORITY = \[[^\]]*\];", HTML).group(0)
     todos = re.search(r"const ALL_PANELS = \[[^\]]*\];", HTML).group(0)
     m = re.search(r"const first = (NAV_PRIORITY\.concat\(ALL_PANELS\)\.find\(.*?\));", HTML, re.S)
@@ -108,10 +120,10 @@ def _primer_panel(access, existentes):
 @sin_node
 @pytest.mark.parametrize("access,esperado", [
     (["seguimientos", "cola", "wa"], "wa"),              # 'seguimientos' ya no existe
-    (["pipeline", "clientes", "cal"], "cal"),             # cal va primero en el menu
+    (["pipeline", "clientes", "meta"], "meta"),           # meta va antes que clientes
     (["cola", "tasks"], "tasks"),
 ])
-def test_un_rol_sin_meta_arranca_en_un_panel_que_existe(tmp_path, access, esperado):
+def test_un_rol_sin_calendario_arranca_en_un_panel_que_existe(tmp_path, access, esperado):
     existentes = ["meta", "cola", "cal", "tasks", "clientes", "wa", "metrics",
                   "activity", "sdr", "projects", "notion_clients", "finanzas", "simulador"]
     archivo = tmp_path / "primero.js"
@@ -124,7 +136,7 @@ def test_un_rol_sin_meta_arranca_en_un_panel_que_existe(tmp_path, access, espera
 def test_la_pagina_abre(tmp_path, monkeypatch):
     monkeypatch.setenv("SECRET_KEY", "test")
     monkeypatch.setenv("ADMIN_EMAIL", "jefe@test.com")
-    db = str(tmp_path / "meta.db")
+    db = str(tmp_path / "cal.db")
     init_db(db)
     app = dashboard.create_app(db)
     uid = create_user(db, name="Jefe", email="jefe@test.com", phone="099",
