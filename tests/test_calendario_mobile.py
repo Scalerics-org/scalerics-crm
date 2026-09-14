@@ -35,6 +35,13 @@ def _funcion(nombre: str) -> str:
     return m.group(0)
 
 
+def _escjs() -> str:
+    """`escJs` esta escrita en una sola linea: `_funcion` no la puede recortar."""
+    m = re.search(r"^function escJs\(.*$", HTML, re.M)
+    assert m, "no encontre escJs en el dashboard"
+    return m.group(0)
+
+
 # ─── la visibilidad la manda el CSS ───────────────────────────────────────────
 
 def test_el_contenedor_no_tiene_estilo_inline():
@@ -60,7 +67,7 @@ def test_el_js_no_toca_la_visibilidad_ni_pinta_colores():
     """Un `style.display` desde JS es un inline: sobrevive a agrandar la ventana
     y deja la lista del celular abierta en escritorio. Los colores van por
     clase, que cambia con el tema; el viejo `#111827` inline era oscuro en claro."""
-    for nombre in ("_calCellClick", "_calSeleccionarDiaMobile"):
+    for nombre in ("_calCellClick", "_calSeleccionarDiaMobile", "_calItemMobile"):
         js = _funcion(nombre)
         assert "style.display" not in js, nombre
         assert "style=" not in js, nombre
@@ -113,10 +120,12 @@ def _correr(cuerpo: str, tmp_path) -> str:
         _funcion("_calDiaMobile"),
         _funcion("_calSeleccionarDiaMobile"),
         _funcion("_calCellClick"),
+        _funcion("_calItemMobile"),
+        dashboard.ESC_JS,
+        _escjs(),
         """
         let calDiaMobile = null;
         const window = {innerWidth: 390, _calEventMap: {}};
-        function esc(s) { return String(s); }
         function assert(cond, msg) { if (!cond) { throw new Error(msg); } }
         function celda(ds) {
           const clases = new Set();
@@ -224,4 +233,102 @@ def test_otro_mes_sin_nada_elegido_invita_a_tocar_un_dia(tmp_path):
       _calSeleccionarDiaMobile();
       assert(elegidas().length === 0, 'elegidas=' + elegidas());
       assert(lista.innerHTML.includes('Tocá un día'), lista.innerHTML);
+    """, tmp_path)
+
+
+# ─── editar y borrar desde el celular ─────────────────────────────────────────
+
+def test_el_celular_usa_las_mismas_acciones_que_la_computadora():
+    """Si el celular tuviera su propio editar/borrar, arreglar uno dejaria el
+    otro roto. Los dos llaman a las mismas funciones."""
+    escritorio = _funcion("_calChipHtml")
+    movil = _funcion("_calItemMobile")
+    for accion in ("_calAbrirEditor(", "deleteCalEvent("):
+        assert accion in escritorio, accion
+        assert accion in movil, accion
+
+
+def test_guardar_en_el_celular_sigue_a_la_reunion_a_su_dia():
+    """Si la reunion se mueve a otro dia, la lista muestra ese dia y no uno
+    donde la reunion ya no esta, que parece un borrado."""
+    js = _funcion("_calGuardarHorario")
+    assert "calDiaMobile = date" in js
+    assert js.index("calDiaMobile = date") < js.rindex("renderCalendar()")
+
+
+def _correr_item(cuerpo: str, tmp_path) -> str:
+    fuente = "\n".join([
+        dashboard.ESC_JS,
+        _escjs(),
+        _funcion("_calItemMobile"),
+        """
+        function assert(cond, msg) { if (!cond) { throw new Error(msg); } }
+        const llamadas = [];
+        function _calAbrirEditor(id) { llamadas.push(['editar', id]); }
+        function deleteCalEvent(id, titulo) { llamadas.push(['borrar', id, titulo]); }
+        // Lo que hace el navegador al tocar: desescapar el atributo y correrlo.
+        function tocar(html, clase) {
+          const m = html.match(new RegExp('class="[^"]*' + clase + '[^"]*"[^>]*onclick="([^"]*)"'));
+          if (!m) return false;
+          const js = m[1].replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+                         .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+          eval(js);
+          return true;
+        }
+        """,
+        cuerpo,
+    ])
+    archivo = tmp_path / "item.js"
+    archivo.write_text(fuente, encoding="utf-8")
+    r = subprocess.run(["node", str(archivo)], capture_output=True,
+                       text=True, encoding="utf-8")
+    assert r.returncode == 0, r.stderr
+    return r.stdout
+
+
+@node
+def test_una_reunion_del_crm_se_edita_y_se_borra_desde_el_celular(tmp_path):
+    _correr_item("""
+      const html = _calItemMobile({id: 42, title: 'Demo Optica Luz', time: '15:00',
+                                   origen: 'crm', meeting_url: 'https://meet.google.com/x'});
+      assert(tocar(html, 'cal-mobile-act-editar'), 'falta Editar');
+      assert(tocar(html, 'cal-mobile-act-borrar'), 'falta Borrar');
+      assert(JSON.stringify(llamadas) ===
+             JSON.stringify([['editar', '42'], ['borrar', '42', 'Demo Optica Luz']]),
+             JSON.stringify(llamadas));
+      assert(html.includes('href="https://meet.google.com/x"'), 'falta Unirse');
+    """, tmp_path)
+
+
+@node
+def test_una_de_google_tambien_se_edita(tmp_path):
+    """En escritorio solo las de Calendly pierden el Editar."""
+    _correr_item("""
+      const html = _calItemMobile({id: 'g-9', title: 'Llamada', origen: 'google'});
+      assert(tocar(html, 'cal-mobile-act-editar'), 'falta Editar');
+      assert(llamadas[0][1] === 'g-9', JSON.stringify(llamadas));
+    """, tmp_path)
+
+
+@node
+def test_una_de_calendly_no_se_edita_desde_aca_pero_se_borra(tmp_path):
+    """Igual que en escritorio: la reunion de Calendly se reprograma alla."""
+    _correr_item("""
+      const html = _calItemMobile({id: 7, title: 'Consultoria', origen: 'calendly'});
+      assert(!tocar(html, 'cal-mobile-act-editar'), 'Calendly no se edita desde el CRM');
+      assert(html.includes('se reprograma allá'), 'falta el aviso');
+      assert(tocar(html, 'cal-mobile-act-borrar'), 'falta Borrar');
+    """, tmp_path)
+
+
+@node
+def test_un_titulo_con_comillas_no_rompe_los_botones(tmp_path):
+    """El titulo viaja adentro de un onclick: una comilla sin escapar corta el
+    atributo y el boton deja de andar, o mete HTML en la pagina."""
+    _correr_item("""
+      const titulo = 'Demo "Bar" O\\'Neill <b>';
+      const html = _calItemMobile({id: 'g-1', title: titulo, origen: 'google'});
+      assert(!html.includes('<b>'), 'el titulo entro como HTML');
+      assert(tocar(html, 'cal-mobile-act-borrar'), 'falta Borrar');
+      assert(llamadas[0][2] === titulo, JSON.stringify(llamadas));
     """, tmp_path)
