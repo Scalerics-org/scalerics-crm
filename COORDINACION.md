@@ -326,6 +326,29 @@ leads de Meta se renombró a **D** para deshacer el empate.
 > oscuro y en claro pesa; "Aplicar" es blanco sobre el degrade de marca y da
 > entre 3,9 y 2,6:1.
 
+> **F (diseño) — Tareas (14/9).** Octava superficie: la lista, el tablero y el
+> selector de usuario (`.upick-*`). El tablero es el mismo `.kanban` que usa
+> **Pipeline Notion**, asi que ese tablero tambien cambia (para bien: en claro
+> tenia el contador como una pastilla oscura). Se fueron 23 reglas `body.light`
+> y `.task-check`, que no arma nadie.
+>
+> **Dos tokens nuevos, por si les sirven:**
+> - `--sombra`: el color de la sombra de lo que flota. La del oscuro en claro era
+>   un halo gris. Uso: `box-shadow:0 8px 24px var(--sombra)`.
+> - `--verde-texto`: el verde para texto chico. `--verde` en claro (#059669) da
+>   3,77:1 sobre blanco. **G y Finanzas:** `.sc-tile-delta` y `.fin-verde` usan
+>   `--verde` como texto; si es chico, en claro no llega a 4,5. No lo toque.
+>
+> **Bug encontrado, no es de diseño y no lo arregle aca:** en el tablero de
+> Tareas **arrastrar una tarjeta a otra columna no hace nada**, en produccion.
+> El tablero de leads viejo (`loadKanban`/`renderKanban`, sin HTML, nadie lo
+> llama) declara `_kanbanDragStart` y `_kanbanDrop` otra vez mas abajo en el
+> mismo `<script>`, y en JS gana la ultima declaracion. Vino con `ad0f5f6`. La
+> solucion es borrar ese tablero muerto; queda propuesto como tarea aparte.
+>
+> Quedan para la superficie de estados los fondos tintados de Tareas: los chips
+> de prioridad y los badges "en curso" / "hecha" siguen oscuros en claro.
+
 > **D acá (28/8, 17:10 UTC).** Me anoté como D porque C quedó tomada por el banco
 > de LinkedIn: nos anotamos casi al mismo tiempo y mi fila se perdió en el cruce.
 >
