@@ -1650,8 +1650,8 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   </div>
   <div class="nav-scroll">
   <div class="nav-section-label">LLAMADAS</div>
-  <div class="nav-item active" id="nav-cola" onclick="showPanel('cola')"><i data-lucide="inbox" class="nav-icon"></i> Cola</div>
-  <div class="nav-item" id="nav-meta" onclick="showPanel('meta');clearMetaBadge()"><i data-lucide="instagram" class="nav-icon"></i> Meta Ads <span id="meta-badge" style="display:none;background:#e1306c;color:#fff;font-size:.65rem;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:4px">NEW</span></div>
+  <div class="nav-item active" id="nav-meta" onclick="showPanel('meta');clearMetaBadge()"><i data-lucide="instagram" class="nav-icon"></i> Meta Ads <span id="meta-badge" style="display:none;background:#e1306c;color:#fff;font-size:.65rem;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:4px">NEW</span></div>
+  <div class="nav-item" id="nav-cola" onclick="showPanel('cola')"><i data-lucide="inbox" class="nav-icon"></i> Cola</div>
   <div class="nav-section-label">VENTAS</div>
   <div class="nav-item" id="nav-demos" onclick="showPanel('demos')"><i data-lucide="monitor-play" class="nav-icon"></i> Demos</div>
   <div class="nav-item" id="nav-clientes" onclick="showPanel('clientes')"><i data-lucide="users" class="nav-icon"></i> Clientes</div>
@@ -1683,7 +1683,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 
 <div class="main">
   <!-- ======= COLA PANEL ======= -->
-  <div id="cola-panel" class="panel active">
+  <div id="cola-panel" class="panel">
     <div class="page-header">
       <div>
         <h1>Cola de llamadas</h1>
@@ -1725,7 +1725,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <!-- ======= SEGUIMIENTOS PANEL ======= -->
 
   <!-- ======= META ADS PANEL ======= -->
-  <div id="meta-panel" class="panel">
+  <div id="meta-panel" class="panel active">
     <div class="page-header">
       <div>
         <h1>Meta Ads</h1>
@@ -2830,7 +2830,7 @@ function closeSidebar() {
 }
 
 // ========== Panel switching ==========
-let activePanel = 'cola';
+let activePanel = 'meta';
 function showPanel(name) {
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
@@ -6093,8 +6093,11 @@ async function _cpBindTasks() {
   }
 }
 
-// Initial load
-loadCola();
+// Initial load. Lo primero del CRM es Meta Ads, no la Cola (pedido de Juan,
+// 14/9): es donde entran los leads que se trabajan. showPanel carga el panel y
+// marca el menu; si el rol no tiene Meta, el control de acceso de abajo lo
+// manda al primer panel que si tenga.
+showPanel('meta');
 
 // ── Score badge + social icons ────────────────────────────────────────────────
 
@@ -6156,7 +6159,7 @@ function _showScoreBreakdown(event, el) {
 }
 
 // ── Mobile navigation ─────────────────────────────────────────────────────────
-const NAV_PRIORITY = ['cola','meta','cal','tasks','clientes','wa','metrics','activity','projects','notion_clients','finanzas','simulador'];
+const NAV_PRIORITY = ['meta','cola','cal','tasks','clientes','wa','metrics','activity','projects','notion_clients','finanzas','simulador'];
 const NAV_ICONS = {
   cola:'inbox',meta:'instagram',cal:'calendar',
   tasks:'check-square',pipeline:'trending-up',clientes:'users',
@@ -6268,7 +6271,13 @@ const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activ
         }
       });
       if (!access.includes(activePanel)) {
-        const first = access[0];
+        // El primero en el orden del menu que el rol tenga Y que exista. Los
+        // permisos guardados pueden traer paneles que ya no estan en la
+        // interfaz (seguimientos, pipeline): con access[0] a ciegas, un rol que
+        // arrancaba en 'seguimientos' abria un panel inexistente, showPanel
+        // tiraba y la barra del celular no se armaba.
+        const first = NAV_PRIORITY.concat(ALL_PANELS).find(p =>
+          access.includes(p) && document.getElementById(p + '-panel'));
         if (first) showPanel(first);
       }
     }
