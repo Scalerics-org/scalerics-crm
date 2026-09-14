@@ -825,7 +825,11 @@ body.light .demo-cliente{color:#0f172a}
 .cal-mobile-ev{background:var(--superficie);border:1px solid var(--borde);border-radius:10px;padding:12px;margin-bottom:8px}
 .cal-mobile-ev-titulo{font-size:.82rem;font-weight:600;color:var(--texto-fuerte)}
 .cal-mobile-ev-hora{font-size:.72rem;color:var(--azul-claro);margin-top:3px}
-.cal-mobile-ev-link{display:inline-flex;align-items:center;gap:4px;margin-top:6px;font-size:.72rem;color:var(--verde-texto);text-decoration:none}
+.cal-mobile-ev-aviso{font-size:.7rem;color:var(--texto-debil);margin-top:3px}
+.cal-mobile-acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.cal-mobile-act{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 16px;border-radius:10px;border:1px solid var(--borde);background:var(--relleno);color:var(--texto-fuerte);font-size:.78rem;font-weight:600;font-family:inherit;text-decoration:none;cursor:pointer}
+.cal-mobile-act-unirse{color:var(--verde-texto)}
+.cal-mobile-act-borrar{color:var(--rojo-texto)}
 .cal-leyenda span{display:flex;align-items:center;gap:5px}
 .cal-leyenda i{width:8px;height:8px;border-radius:2px;display:inline-block}
 .cal-grid{border:1px solid #1e293b;border-radius:14px}
@@ -4365,6 +4369,9 @@ async function _calGuardarHorario() {
     return;
   }
   _calCerrarEditor();
+  // En el celular la lista sigue a la reunion a su dia nuevo: si no, queda
+  // mostrando un dia donde la reunion ya no esta y parece que se borro.
+  if (window.innerWidth <= 768) calDiaMobile = date;
   renderCalendar();
 }
 
@@ -4399,6 +4406,28 @@ function _calSeleccionarDiaMobile() {
   mobileList.innerHTML = '<div class="cal-mobile-vacio">Tocá un día para ver sus reuniones.</div>';
 }
 
+// Una reunion en la lista del celular. En el celular no hay hover, asi que las
+// acciones del chip de escritorio (.cal-chip-acts) no se ven: van aca como
+// botones. Llaman a las MISMAS funciones que el chip —editar abre el mismo
+// modal y borrar pide la misma confirmacion— para que no diverjan. Las de
+// Calendly no se editan desde aca, igual que en escritorio.
+function _calItemMobile(ev) {
+  const deCalendly = (ev.origen || 'crm') === 'calendly';
+  const editar = deCalendly
+    ? ''
+    : '<button class="cal-mobile-act cal-mobile-act-editar" onclick="_calAbrirEditor(' + escJs(ev.id) + ')">Editar</button>';
+  const unirse = ev.meeting_url
+    ? '<a class="cal-mobile-act cal-mobile-act-unirse" href="' + esc(ev.meeting_url) + '" target="_blank" rel="noopener">Unirse</a>'
+    : '';
+  const borrar = '<button class="cal-mobile-act cal-mobile-act-borrar" onclick="deleteCalEvent(' + escJs(ev.id) + ',' + escJs(ev.title || '') + ')">Borrar</button>';
+  return '<div class="cal-mobile-ev">'
+       + '<div class="cal-mobile-ev-titulo">' + esc(ev.title || '') + '</div>'
+       + (ev.time ? '<div class="cal-mobile-ev-hora">🕐 ' + esc(ev.time) + '</div>' : '')
+       + (deCalendly ? '<div class="cal-mobile-ev-aviso">De Calendly: se reprograma allá</div>' : '')
+       + '<div class="cal-mobile-acts">' + editar + unirse + borrar + '</div>'
+       + '</div>';
+}
+
 function _calCellClick(cell, dateStr, desplazar) {
   if (window.innerWidth > 768) return;
   const mobileList = document.getElementById('cal-day-events-mobile');
@@ -4410,13 +4439,7 @@ function _calCellClick(cell, dateStr, desplazar) {
   if (!events.length) {
     mobileList.innerHTML = '<div class="cal-mobile-vacio">Sin reuniones este día.</div>';
   } else {
-    mobileList.innerHTML = events.map(ev => `
-      <div class="cal-mobile-ev">
-        <div class="cal-mobile-ev-titulo">${esc(ev.title||'')}</div>
-        ${ev.time ? `<div class="cal-mobile-ev-hora">🕐 ${esc(ev.time)}</div>` : ''}
-        ${ev.meeting_url ? `<a class="cal-mobile-ev-link" href="${esc(ev.meeting_url)}" target="_blank" rel="noopener">▶ Unirse a reunión</a>` : ''}
-      </div>
-    `).join('');
+    mobileList.innerHTML = events.map(_calItemMobile).join('');
   }
   if (desplazar !== false) mobileList.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
