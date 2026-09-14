@@ -1993,8 +1993,8 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     <div class="sc-filtros">
       <div class="sc-filtro"><label for="mk-rango">Período</label>
         <select id="mk-rango" onchange="_mkRangoCambio()">
-          <option value="mes">Un mes</option>
-          <option value="90" selected>Últimos 90 días</option>
+          <option value="mes" selected>Un mes</option>
+          <option value="90">Últimos 90 días</option>
           <option value="anio">Este año</option>
           <option value="todo">Toda la historia</option>
           <option value="libre">Personalizado</option>
