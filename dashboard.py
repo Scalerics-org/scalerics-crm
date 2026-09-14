@@ -351,7 +351,15 @@ DASHBOARD_HTML = """<!DOCTYPE html>
    para un tercer gris mas apagado donde se usaba. Los rotulos en
    mayuscula se distinguen por la tipografia, no por un color que no se
    lee. El claro de --texto-debil paso de #64748b a #627188 (dE 1,2) para
-   pasar tambien sobre #f1f5f9, donde van los encabezados de tabla. */
+   pasar tambien sobre #f1f5f9, donde van los encabezados de tabla.
+
+   --sombra es el color de la sombra de lo que flota (menus, la barra de
+   lote). La del oscuro, negro al 40%, en claro era un halo gris alrededor
+   de un menu blanco. La geometria de cada sombra sigue en su regla.
+
+   --verde-texto es el verde para texto chico. --verde en claro (#059669)
+   da 3,77:1 sobre blanco: alcanza para rellenos y numeros grandes, no
+   para un rotulo de .7rem. #047857 da 5,48:1. En oscuro son el mismo. */
 :root{
   --fondo:#0a0f1a;
   --fondo-hundido:#0f1117;
@@ -370,8 +378,10 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   --azul:#0088cc;
   --azul-claro:#38bdf8;
   --verde:#10b981;
+  --verde-texto:#10b981;
   --rojo:#f87171;
   --ambar:#f59e0b;
+  --sombra:rgba(0,0,0,.4);
 }
 body.light{
   --fondo:#f8fafc;
@@ -391,8 +401,10 @@ body.light{
   --azul:#0088cc;
   --azul-claro:#0369a1;
   --verde:#059669;
+  --verde-texto:#047857;
   --rojo:#dc2626;
   --ambar:#b45309;
+  --sombra:rgba(0,0,0,.12);
 }
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:100vh;display:flex}
@@ -617,7 +629,7 @@ body.light .demo-cliente{color:#0f172a}
 }
 .table-header.no-cb{grid-template-columns:2fr 1.1fr 1fr 1.8fr 1.2fr}
 .table-row.no-cb{grid-template-columns:2fr 1.1fr 1fr 1.8fr 1.2fr}
-.batch-bar{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--relleno);border:1px solid var(--borde-fuerte);border-radius:12px;padding:10px 18px;display:none;align-items:center;gap:12px;z-index:500;box-shadow:0 4px 24px rgba(0,0,0,.5)}
+.batch-bar{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--relleno);border:1px solid var(--borde-fuerte);border-radius:12px;padding:10px 18px;display:none;align-items:center;gap:12px;z-index:500;box-shadow:0 4px 24px var(--sombra)}
 .batch-bar.open{display:flex}
 .batch-count{font-size:.82rem;color:var(--texto-tenue);white-space:nowrap}
 .batch-sel{background:var(--superficie-honda);border:1px solid var(--borde);border-radius:8px;padding:6px 10px;font-size:.78rem;color:var(--texto);font-family:'Inter',sans-serif;outline:none;cursor:pointer}
@@ -1107,35 +1119,18 @@ body.light .wa-list-header{color:#64748b;border-bottom-color:#e2e8f0}
 body.light .wa-lead-item{border-bottom-color:#f1f5f9}
 body.light .wa-lead-item:hover,.body.light .wa-lead-item.active{background:#f1f5f9}
 body.light .wa-chat{background:#fff}
-body.light .task-row{background:#fff;border-color:#e2e8f0}
-body.light .task-row:hover{border-color:#94a3b8}
-body.light .task-title{color:#0f172a !important}
-body.light .task-meta{color:#64748b}
-body.light .task-check{border-color:#94a3b8}
 body.light .search-input{background:#fff;border-color:#e2e8f0;color:#0f172a}
 body.light .search-input::placeholder{color:#94a3b8}
 body.light .pill{background:#f8fafc;border-color:#e2e8f0;color:#475569}
 body.light .pill:hover{color:#0f172a}
 body.light .pill.active{background:#dbeafe;color:#1d4ed8;border-color:#93c5fd}
-body.light .task-status-badge.todo{background:#f1f5f9;color:#64748b}
 body.light .task-status-badge.in_progress{background:#dbeafe;color:#1d4ed8;border-color:#93c5fd}
 body.light .task-status-badge.done{background:#dcfce7;color:#16a34a;border-color:#86efac}
-body.light .task-notion-badge{background:#f1f5f9;color:#64748b;border-color:#e2e8f0}
 body.light .panel-sub{color:#64748b}
 body.light .proj-card{background:#f8fafc;border-color:#e2e8f0}
 body.light .proj-name{color:#0f172a}
 body.light .proj-stage{background:#f1f5f9;color:#64748b}
 body.light .proj-task{color:#334155}
-body.light .kanban-col{background:#f8fafc;border-color:#e2e8f0}
-body.light .kanban-col.drag-over{border-color:#0088cc;background:#eff6ff}
-body.light .kanban-name{color:#475569}
-body.light .kanban-count{color:#94a3b8}
-body.light .kanban-card{background:#ffffff;border-color:#e2e8f0}
-body.light .kanban-card:hover{border-color:#cbd5e1}
-body.light .kanban-card-title{color:#0f172a}
-body.light .kanban-card-who{color:#64748b}
-body.light .task-notion-badge:hover{color:#0f172a}
-body.light .tasks-summary{color:#94a3b8}
 body.light .mobile-bottom-nav{background:rgba(255,255,255,.92);border-color:rgba(0,0,0,.1)}
 body.light .mbn-icon{stroke:#94a3b8}
 body.light .mbn-label{color:#94a3b8}
@@ -1189,18 +1184,21 @@ body.light .btn-icon{stroke:currentColor}
 .cb-date-today{background:#1a1a0f;color:#fbbf24}
 .cb-date-future{background:#0f1f35;color:#60a5fa}
 /* ── Kanban ───────────────────────────────────────────────────────────────── */
+/* Tablero de leads: su HTML (#kanban-board) ya no existe, pero .kanban-col,
+   .kanban-card y .kanban-count los redefine el tablero de Tareas mas abajo, y
+   lo que ese no pisa sigue valiendo. Los colores van iguales en los dos. */
 .kanban-board{display:flex;gap:14px;overflow-x:auto;padding-bottom:20px;align-items:flex-start;min-height:calc(100vh - 180px)}
-.kanban-col{background:#111827;border:1px solid #1e293b;border-radius:12px;min-width:220px;width:220px;flex-shrink:0;display:flex;flex-direction:column;max-height:calc(100vh - 200px)}
+.kanban-col{background:var(--fondo);border:1px solid var(--borde);border-radius:12px;min-width:220px;width:220px;flex-shrink:0;display:flex;flex-direction:column;max-height:calc(100vh - 200px)}
 .kanban-col-header{padding:12px 14px 10px;border-bottom:1px solid #1e293b;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
 .kanban-col-title{font-size:.78rem;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.6px}
-.kanban-count{background:#1e293b;color:#475569;font-size:.68rem;font-weight:700;padding:2px 7px;border-radius:99px}
+.kanban-count{background:var(--relleno);color:var(--texto-debil);font-size:.68rem;font-weight:700;padding:2px 7px;border-radius:99px}
 .kanban-cards{padding:8px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:8px}
-.kanban-col.drag-over{background:#1a2d3d;border-color:#0088cc}
-.kanban-card{background:#0a0f1a;border:1px solid #1e293b;border-radius:10px;padding:12px;cursor:pointer;transition:border-color .15s,transform .1s}
-.kanban-card:hover{border-color:#334155;transform:translateY(-1px)}
+.kanban-col.drag-over{background:var(--hover);border-color:var(--azul)}
+.kanban-card{background:var(--superficie);border:1px solid var(--borde);border-radius:10px;padding:12px;cursor:pointer;transition:border-color .15s,transform .1s}
+.kanban-card:hover{border-color:var(--borde-fuerte);transform:translateY(-1px)}
 .kanban-card.dragging{opacity:.4;transform:rotate(1deg)}
 .kanban-card-name{font-size:.85rem;font-weight:600;color:#f1f5f9;margin-bottom:4px}
-.kanban-card-meta{font-size:.72rem;color:#475569;margin-bottom:6px}
+.kanban-card-meta{font-size:.72rem;color:var(--texto-debil);margin-bottom:6px}
 .kanban-card-phone{font-size:.72rem;color:#0088cc}
 .kanban-card-rating{font-size:.68rem;color:#fbbf24}
 .kanban-empty{color:#334155;font-size:.78rem;text-align:center;padding:20px 10px}
@@ -1232,12 +1230,12 @@ body.light .btn-icon{stroke:currentColor}
 .pill.orange.active{background:#431407;color:#fb923c;border-color:#9a3412}
 .pill-count{font-weight:400;color:#334155;margin-left:3px;font-size:.68rem}
 .pill.active .pill-count{color:#0088cc99}
-.tasks-summary{font-size:.75rem;color:#475569;margin-bottom:10px}
+.tasks-summary{font-size:.75rem;color:var(--texto-debil);margin-bottom:10px}
 .task-status-badge{padding:3px 9px;border-radius:99px;font-size:.68rem;font-weight:700;cursor:pointer;transition:all .15s;border:1px solid transparent;user-select:none}
-.task-status-badge.todo{background:#1e293b;color:#64748b}
+.task-status-badge.todo{background:var(--relleno);color:var(--texto-debil)}
 .task-status-badge.in_progress{background:#0c1f2e;color:#38bdf8;border-color:#0369a133}
 .task-status-badge.done{background:#052e16;color:#4ade80;border-color:#16a34a33}
-.task-notion-badge{font-size:.72rem;color:#94a3b8;background:#1a2234;padding:2px 7px;border-radius:10px;text-decoration:none;border:1px solid #23304a}
+.task-notion-badge{font-size:.72rem;color:var(--texto-tenue);background:var(--relleno);padding:2px 7px;border-radius:10px;text-decoration:none;border:1px solid var(--borde)}
 .panel-head{margin-bottom:14px}
 .panel-head h1{font-size:1.4rem;font-weight:800;color:var(--texto-fuerte)}
 .panel-sub{font-size:.78rem;color:#475569;margin-top:3px}
@@ -1254,46 +1252,43 @@ body.light .btn-icon{stroke:currentColor}
 /* Kanban de tareas: mismas columnas que el tablero de Notion */
 .tasks-viewswitch{display:flex;gap:6px;margin:10px 0 4px}
 .kanban{display:flex;gap:12px;overflow-x:auto;padding:4px 0 12px;align-items:flex-start}
-.kanban-col{flex:0 0 260px;background:#0d1420;border:1px solid #1e293b;border-radius:10px;padding:8px;min-height:120px}
-.kanban-col.drag-over{border-color:#0088cc;background:#0f1b2b}
+.kanban-col{flex:0 0 260px;background:var(--fondo);border:1px solid var(--borde);border-radius:10px;padding:8px;min-height:120px}
+.kanban-col.drag-over{border-color:var(--azul);background:var(--hover)}
 .kanban-head{display:flex;align-items:center;gap:8px;padding:2px 4px 8px}
 .kanban-dot{width:7px;height:7px;border-radius:99px;flex-shrink:0}
-.kanban-vacia{font-size:.72rem;color:#334155;padding:6px 4px}
-.kanban-name{font-size:.78rem;font-weight:600;color:#94a3b8}
-.kanban-count{font-size:.72rem;color:#475569}
+.kanban-vacia{font-size:.72rem;color:var(--texto-debil);padding:6px 4px}
+.kanban-name{font-size:.78rem;font-weight:600;color:var(--texto-tenue)}
+.kanban-count{font-size:.72rem;color:var(--texto-debil)}
 .kanban-cards{display:flex;flex-direction:column;gap:8px}
-.kanban-card{background:#111a28;border:1px solid #1e293b;border-radius:8px;padding:9px 10px;cursor:grab}
-.kanban-card:hover{border-color:#2a3a52}
-.kanban-card.overdue{border-left:2px solid #f97316}
-.kanban-card-title{font-size:.82rem;color:#e2e8f0;line-height:1.35;margin-bottom:6px}
+.kanban-card{background:var(--superficie);border:1px solid var(--borde);border-radius:8px;padding:9px 10px;cursor:grab}
+.kanban-card:hover{border-color:var(--borde-fuerte)}
+.kanban-card.overdue{border-left:2px solid var(--rojo)}
+.kanban-card-title{font-size:.82rem;color:var(--texto);line-height:1.35;margin-bottom:6px}
 .kanban-card-meta{display:flex;flex-wrap:wrap;gap:5px;align-items:center}
-.kanban-card-who{font-size:.7rem;color:#64748b}
-.task-notion-badge:hover{color:#e2e8f0}
-.task-row.in-progress{border-left:3px solid #0369a1}
-.task-row.overdue{border-left:3px solid #f87171}
-.task-edit-btn{background:none;border:1px solid #1e293b;color:#64748b;cursor:pointer;font-size:.78rem;padding:3px 7px;border-radius:6px;transition:all .15s}
-.task-edit-btn:hover{border-color:#334155;color:#94a3b8}
-.task-row{background:#111827;border:1px solid #1e293b;border-radius:10px;padding:14px 16px;margin-bottom:8px;display:flex;align-items:flex-start;gap:12px;transition:border-color .15s}
-.task-row:hover{border-color:#334155}
-.task-check{width:18px;height:18px;border:2px solid #334155;border-radius:4px;cursor:pointer;flex-shrink:0;margin-top:2px;display:flex;align-items:center;justify-content:center;transition:all .15s}
-.task-check.done{background:#16a34a;border-color:#16a34a;color:#fff;font-size:.7rem}
-.task-check:hover:not(.done){border-color:#0088cc}
+.kanban-card-who{font-size:.7rem;color:var(--texto-debil)}
+.task-notion-badge:hover{color:var(--texto)}
+.task-row.in-progress{border-left:3px solid var(--azul)}
+.task-row.overdue{border-left:3px solid var(--rojo)}
+.task-edit-btn{background:none;border:1px solid var(--borde);color:var(--texto-debil);cursor:pointer;font-size:.78rem;padding:3px 7px;border-radius:6px;transition:all .15s}
+.task-edit-btn:hover{border-color:var(--borde-fuerte);color:var(--texto-tenue)}
+.task-row{background:var(--superficie);border:1px solid var(--borde);border-radius:10px;padding:14px 16px;margin-bottom:8px;display:flex;align-items:flex-start;gap:12px;transition:border-color .15s}
+.task-row:hover{border-color:var(--borde-fuerte)}
 .task-body{flex:1;min-width:0}
-.task-title{font-size:.88rem;font-weight:600;color:#f1f5f9;margin-bottom:3px}
-.task-title.done-text{text-decoration:line-through;color:#475569}
-.task-meta{font-size:.72rem;color:#475569;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-.task-client-link{color:#0088cc;cursor:pointer}
+.task-title{font-size:.88rem;font-weight:600;color:var(--texto-fuerte);margin-bottom:3px}
+.task-title.done-text{text-decoration:line-through;color:var(--texto-debil)}
+.task-meta{font-size:.72rem;color:var(--texto-debil);display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.task-client-link{color:var(--azul-claro);cursor:pointer}
 .task-client-link:hover{text-decoration:underline}
 .task-priority{padding:2px 7px;border-radius:99px;font-size:.65rem;font-weight:700}
 .task-priority.high{background:#450a0a;color:#f87171}
 .task-priority.medium{background:#1c1917;color:#fb923c}
 .task-priority.low{background:#0c1a0c;color:#86efac}
-.task-deadline{color:#fbbf24}
-.task-deadline.overdue{color:#f87171}
+.task-deadline{color:var(--ambar)}
+.task-deadline.overdue{color:var(--rojo)}
 .task-actions{display:flex;gap:6px;flex-shrink:0}
-.task-del-btn{background:none;border:none;color:#334155;cursor:pointer;font-size:.9rem;padding:2px 4px}
-.task-del-btn:hover{color:#f87171}
-.tasks-empty{text-align:center;color:#334155;padding:40px;font-size:.88rem}
+.task-del-btn{background:none;border:none;color:var(--texto-debil);cursor:pointer;font-size:.9rem;padding:2px 4px}
+.task-del-btn:hover{color:var(--rojo)}
+.tasks-empty{text-align:center;color:var(--texto-debil);padding:40px;font-size:.88rem}
 /* Mobile header */
 .mobile-header{display:none;position:fixed;top:0;left:0;right:0;height:52px;background:rgba(17,24,39,.95);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid rgba(255,255,255,.07);z-index:250;align-items:center;padding:0 16px;gap:12px}
 .mobile-header img{height:24px;object-fit:contain}
@@ -1409,25 +1404,19 @@ body.light .mobile-header-title{color:#0f172a}
 }
 /* Custom user picker */
 .upick-wrap{position:relative}
-.upick-trigger{display:flex;align-items:center;gap:8px;background:#0a0f1a;border:1px solid #334155;border-radius:8px;padding:8px 12px;cursor:pointer;transition:border-color .15s;user-select:none}
-.upick-trigger:hover{border-color:#0088cc55}
-.upick-trigger.open{border-color:#0088cc}
-.upick-label{flex:1;font-size:.82rem;color:#e2e8f0}
-.upick-chevron{color:#475569;font-size:.7rem;transition:transform .15s}
+.upick-trigger{display:flex;align-items:center;gap:8px;background:var(--fondo);border:1px solid var(--borde);border-radius:8px;padding:8px 12px;cursor:pointer;transition:border-color .15s;user-select:none}
+.upick-trigger:hover{border-color:var(--borde-fuerte)}
+.upick-trigger.open{border-color:var(--azul)}
+.upick-label{flex:1;font-size:.82rem;color:var(--texto)}
+.upick-chevron{color:var(--texto-debil);font-size:.7rem;transition:transform .15s}
 .upick-trigger.open .upick-chevron{transform:rotate(180deg)}
-.upick-dropdown{position:absolute;top:calc(100% + 6px);left:0;right:0;background:#111827;border:1px solid #334155;border-radius:10px;overflow:hidden;z-index:200;box-shadow:0 8px 24px rgba(0,0,0,.4)}
+.upick-dropdown{position:absolute;top:calc(100% + 6px);left:0;right:0;background:var(--superficie);border:1px solid var(--borde-fuerte);border-radius:10px;overflow:hidden;z-index:200;box-shadow:0 8px 24px var(--sombra)}
 .upick-option{display:flex;align-items:center;gap:10px;padding:9px 12px;cursor:pointer;transition:background .12s}
-.upick-option:hover{background:#1a2234}
-.upick-option.upick-sel{background:#0c1a2e}
+.upick-option:hover{background:var(--hover)}
+.upick-option.upick-sel{background:var(--hover)}
 .upick-av{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.65rem;font-weight:800;flex-shrink:0;color:#fff}
-.upick-name{font-size:.82rem;color:#e2e8f0;font-weight:500;flex:1}
-.upick-check{color:#0088cc;font-size:.8rem;font-weight:700}
-body.light .upick-trigger{background:#fff;border-color:#e2e8f0}
-body.light .upick-dropdown{background:#fff;border-color:#e2e8f0;box-shadow:0 8px 24px rgba(0,0,0,.12)}
-body.light .upick-option:hover{background:#f8fafc}
-body.light .upick-option.upick-sel{background:#eff6ff}
-body.light .upick-label{color:#0f172a}
-body.light .upick-name{color:#0f172a}
+.upick-name{font-size:.82rem;color:var(--texto);font-weight:500;flex:1}
+.upick-check{color:var(--azul);font-size:.8rem;font-weight:700}
 .fin-toolbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:18px}
 .fin-toggle{display:flex;gap:6px;margin-left:auto}
 .fin-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:18px}
@@ -1717,7 +1706,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
         <input type="text" id="task-search" class="search-input" placeholder="🔍 Buscar tarea..." oninput="_onTaskSearch(this.value)">
         <div class="upick-wrap">
           <div class="upick-trigger" id="upick-filter-trigger" onclick="_upickToggle('filter')">
-            <div class="upick-av" id="upick-filter-av" style="background:#1e293b;color:#475569;font-size:.8rem">👤</div>
+            <div class="upick-av" id="upick-filter-av" style="background:var(--relleno);color:var(--texto-debil);font-size:.8rem">👤</div>
             <span class="upick-label" id="upick-filter-label">Todos los usuarios</span>
             <span class="upick-chevron">▾</span>
           </div>
@@ -1729,7 +1718,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
         <button class="pill" id="pill-todo" onclick="filterTasks('todo',this)">Pendientes <span class="pill-count" id="pill-count-todo">0</span></button>
         <button class="pill" id="pill-inprogress" onclick="filterTasks('in_progress',this)">En progreso <span class="pill-count" id="pill-count-inprogress">0</span></button>
         <button class="pill" id="pill-done" onclick="filterTasks('done',this)">Hechas <span class="pill-count" id="pill-count-done">0</span></button>
-        <div style="width:1px;height:20px;background:#1e293b;margin:0 2px;flex-shrink:0"></div>
+        <div style="width:1px;height:20px;background:var(--borde);margin:0 2px;flex-shrink:0"></div>
         <button class="pill warn" id="pill-high" onclick="filterTasksQuick('high',this)">⚠ Alta prioridad <span class="pill-count" id="pill-count-high">0</span></button>
         <button class="pill orange" id="pill-overdue" onclick="filterTasksQuick('overdue',this)">🕐 Vencidas <span class="pill-count" id="pill-count-overdue">0</span></button>
       </div>
@@ -2131,7 +2120,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       <label class="modal-label">Asignar a</label>
       <div class="upick-wrap">
         <div class="upick-trigger" id="upick-modal-trigger" onclick="_upickToggle('modal')">
-          <div class="upick-av" id="upick-modal-av" style="background:#1e293b;color:#475569;font-size:.9rem">—</div>
+          <div class="upick-av" id="upick-modal-av" style="background:var(--relleno);color:var(--texto-debil);font-size:.9rem">—</div>
           <span class="upick-label" id="upick-modal-label">— Sin asignar —</span>
           <span class="upick-chevron">▾</span>
         </div>
@@ -2159,9 +2148,9 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     <div style="margin-top:10px">
       <label class="modal-label">Cliente (opcional)</label>
       <input type="text" id="task-client-search" class="modal-input" placeholder="Buscar negocio..." oninput="_taskClientSearch(this.value)">
-      <div id="task-client-results" style="background:#0a0f1a;border:1px solid #1e293b;border-radius:6px;margin-top:4px;display:none;max-height:140px;overflow-y:auto"></div>
+      <div id="task-client-results" style="background:var(--fondo);border:1px solid var(--borde);border-radius:6px;margin-top:4px;display:none;max-height:140px;overflow-y:auto"></div>
       <input type="hidden" id="task-client-id">
-      <div id="task-client-chosen" style="font-size:.78rem;color:#0088cc;margin-top:4px"></div>
+      <div id="task-client-chosen" style="font-size:.78rem;color:var(--azul-claro);margin-top:4px"></div>
     </div>
     <div style="margin-top:10px">
       <label class="modal-label">Estado</label>
@@ -2175,7 +2164,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       <label class="modal-label">Notion (opcional)</label>
       <input type="text" id="task-notion-url" class="modal-input"
              placeholder="Pegá la URL de la tarjeta para vincularla">
-      <div id="task-notion-linked" style="font-size:.78rem;color:#0088cc;margin-top:4px"></div>
+      <div id="task-notion-linked" style="font-size:.78rem;color:var(--azul-claro);margin-top:4px"></div>
     </div>
     <input type="hidden" id="task-edit-id">
     <div class="modal-btns" style="margin-top:16px">
@@ -3199,7 +3188,7 @@ async function _buscarClienteDemo(q) {
     const items = (Array.isArray(d) ? d : (d.items || [])).slice(0, 6);
     cont.innerHTML = items.length
       ? items.map(b => `<div class="upick-option" onclick="_elegirClienteDemo(${b.id}, ${escJs(b.name || '')})">${esc(b.name || '')}</div>`).join('')
-      : '<div class="upick-option" style="color:#64748b;cursor:default">Sin resultados</div>';
+      : '<div class="upick-option" style="color:var(--texto-debil);cursor:default">Sin resultados</div>';
   } catch (e) { cont.innerHTML = ''; }
 }
 
@@ -4900,18 +4889,18 @@ function _taskRowHtml(t) {
   const progressBar = t.goal ? `
     <div style="margin-top:6px">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;cursor:pointer" onclick="_toggleTaskHistory(${t.id})">
-        <span style="font-size:.72rem;color:#64748b">${goalTypeLabel[t.goal_type]||t.goal_type}: </span>
-        <span style="font-size:.72rem;font-weight:600;color:${done||pct>=100?'#10b981':'#e2e8f0'}">${progress}/${t.goal}</span>
-        ${pct >= 100 ? '<span style="font-size:.68rem;color:#10b981">✓ Meta alcanzada</span>' : ''}
-        <span style="font-size:.68rem;color:#334155">▾ historial</span>
+        <span style="font-size:.72rem;color:var(--texto-debil)">${goalTypeLabel[t.goal_type]||t.goal_type}: </span>
+        <span style="font-size:.72rem;font-weight:600;color:${done||pct>=100?'var(--verde-texto)':'var(--texto)'}">${progress}/${t.goal}</span>
+        ${pct >= 100 ? '<span style="font-size:.68rem;color:var(--verde-texto)">✓ Meta alcanzada</span>' : ''}
+        <span style="font-size:.68rem;color:var(--texto-debil)">▾ historial</span>
       </div>
-      <div style="height:4px;background:#1e293b;border-radius:2px;overflow:hidden;max-width:240px">
-        <div style="height:100%;width:${pct}%;background:${pct>=100?'#10b981':'#0088cc'};transition:width .3s"></div>
+      <div style="height:4px;background:var(--relleno);border-radius:2px;overflow:hidden;max-width:240px">
+        <div style="height:100%;width:${pct}%;background:${pct>=100?'var(--verde)':'var(--azul)'};transition:width .3s"></div>
       </div>
-      <div id="task-history-${t.id}" style="display:none;margin-top:6px;padding:6px 0;border-top:1px solid #1e293b"></div>
+      <div id="task-history-${t.id}" style="display:none;margin-top:6px;padding:6px 0;border-top:1px solid var(--borde)"></div>
     </div>` : '';
-  const assigneeBadge = t.assignee_name ? `<span style="font-size:.72rem;color:#64748b;background:#1a2234;padding:2px 7px;border-radius:10px">→ ${esc(t.assignee_name)}</span>` : '';
-  const createdByBadge = t.created_by_name && t.assignee_name ? `<span style="font-size:.72rem;color:#334155">de ${esc(t.created_by_name)}</span>` : '';
+  const assigneeBadge = t.assignee_name ? `<span style="font-size:.72rem;color:var(--texto-debil);background:var(--relleno);padding:2px 7px;border-radius:10px">→ ${esc(t.assignee_name)}</span>` : '';
+  const createdByBadge = t.created_by_name && t.assignee_name ? `<span style="font-size:.72rem;color:var(--texto-debil)">de ${esc(t.created_by_name)}</span>` : '';
   const notionBadge = t.notion_page_id
     ? `<a href="https://www.notion.so/${t.notion_page_id.replace(/-/g,'')}" target="_blank" rel="noopener"
           class="task-notion-badge" title="${esc(t.notion_status||'')}">Notion</a>`
@@ -4920,7 +4909,7 @@ function _taskRowHtml(t) {
   return `<div class="task-row${rowExtra}" id="task-row-${t.id}">
     <div class="task-body" style="flex:1;min-width:0">
       <div class="task-title ${done ? 'done-text' : ''}">${esc(t.title)}</div>
-      ${t.description ? `<div style="font-size:.75rem;color:#64748b;margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.description)}</div>` : ''}
+      ${t.description ? `<div style="font-size:.75rem;color:var(--texto-debil);margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.description)}</div>` : ''}
       <div class="task-meta">
         <span class="task-status-badge ${statusClass}" onclick="_setTaskStatus(${t.id})" title="Click para cambiar estado">${statusLabel}</span>
         ${t.priority ? `<span class="task-priority ${t.priority}">${prioLabel}</span>` : ''}
@@ -5019,13 +5008,13 @@ async function _toggleTaskHistory(taskId) {
   const el = document.getElementById(`task-history-${taskId}`);
   if (!el) return;
   if (el.style.display !== 'none') { el.style.display = 'none'; return; }
-  el.innerHTML = '<div style="font-size:.72rem;color:#475569;padding:2px 0">Cargando...</div>';
+  el.innerHTML = '<div style="font-size:.72rem;color:var(--texto-debil);padding:2px 0">Cargando...</div>';
   el.style.display = '';
   try {
     const r = await fetch(`/api/tasks/${taskId}/progress-history`);
     const items = await r.json();
     if (!Array.isArray(items) || !items.length) {
-      el.innerHTML = '<div style="font-size:.72rem;color:#475569;padding:2px 0">Sin historial aún</div>';
+      el.innerHTML = '<div style="font-size:.72rem;color:var(--texto-debil);padding:2px 0">Sin historial aún</div>';
       return;
     }
     el.innerHTML = items.slice(0, 50).map(i => {
@@ -5033,13 +5022,13 @@ async function _toggleTaskHistory(taskId) {
       const dStr = d.toLocaleDateString('es-UY',{day:'2-digit',month:'2-digit'})
                  + ' ' + d.toLocaleTimeString('es-UY',{hour:'2-digit',minute:'2-digit'});
       return `<div style="display:flex;gap:8px;align-items:baseline;padding:2px 0;font-size:.72rem">
-        <span style="color:#10b981;font-weight:700;min-width:20px">+1</span>
-        <span style="color:#94a3b8;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${i.lead_name ? esc(i.lead_name) : '—'}</span>
-        <span style="color:#475569;white-space:nowrap">${dStr}</span>
+        <span style="color:var(--verde-texto);font-weight:700;min-width:20px">+1</span>
+        <span style="color:var(--texto-tenue);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${i.lead_name ? esc(i.lead_name) : '—'}</span>
+        <span style="color:var(--texto-debil);white-space:nowrap">${dStr}</span>
       </div>`;
     }).join('');
   } catch(e) {
-    el.innerHTML = '<div style="font-size:.72rem;color:#f87171;padding:2px 0">Error cargando historial</div>';
+    el.innerHTML = '<div style="font-size:.72rem;color:var(--rojo);padding:2px 0">Error cargando historial</div>';
   }
 }
 
@@ -5095,7 +5084,7 @@ async function openEditTaskModal(taskId) {
     notionLinked.innerHTML = 'Vinculada a Notion' +
       (t.notion_status ? ' (' + esc(t.notion_status) + ')' : '') +
       ' · <a href="https://www.notion.so/' + t.notion_page_id.replace(/-/g,'') +
-      '" target="_blank" rel="noopener" style="color:#0088cc">abrir</a>';
+      '" target="_blank" rel="noopener" style="color:var(--azul-claro)">abrir</a>';
   } else {
     notionUrlInput.style.display = '';
     notionLinked.textContent = '';
@@ -5121,7 +5110,7 @@ function _taskClientSearch(q) {
   const matches = _allLeads.filter(l => l.name && l.name.toLowerCase().includes(q.toLowerCase())).slice(0,6);
   if (!matches.length) { res.style.display = 'none'; return; }
   res.style.display = '';
-  res.innerHTML = matches.map(l => `<div style="padding:8px 12px;cursor:pointer;font-size:.82rem;color:#e2e8f0;border-bottom:1px solid #1e293b" onmousedown="_pickTaskClient(${l.id},${escJs(l.name||'')})">${esc(l.name||'')}</div>`).join('');
+  res.innerHTML = matches.map(l => `<div style="padding:8px 12px;cursor:pointer;font-size:.82rem;color:var(--texto);border-bottom:1px solid var(--borde)" onmousedown="_pickTaskClient(${l.id},${escJs(l.name||'')})">${esc(l.name||'')}</div>`).join('');
 }
 
 function _pickTaskClient(id, name) {
@@ -5248,12 +5237,12 @@ function _upickRenderDropdown(id) {
   const noneLabel = isFilter ? 'Todos los usuarios' : '— Sin asignar —';
   const noneAv = isFilter ? '👤' : '—';
   const noneAvStyle = isFilter
-    ? 'background:#1e293b;color:#475569;font-size:.8rem'
-    : 'background:#1e293b;color:#475569;font-size:.9rem';
+    ? 'background:var(--relleno);color:var(--texto-debil);font-size:.8rem'
+    : 'background:var(--relleno);color:var(--texto-debil);font-size:.9rem';
   const noneSel = !selectedId;
   let html = `<div class="upick-option ${noneSel?'upick-sel':''}" data-uid="" data-name="" data-email="" data-label="${noneLabel}">
     <div class="upick-av" style="${noneAvStyle}">${noneAv}</div>
-    <span class="upick-name" style="color:#64748b">${noneLabel}</span>
+    <span class="upick-name" style="color:var(--texto-debil)">${noneLabel}</span>
     ${noneSel?'<span class="upick-check">✓</span>':''}
   </div>`;
   html += _allUsers.map(u => {
@@ -5282,7 +5271,7 @@ function _upickSelect(id, userId, userName, userEmail, label) {
     if (lbl) lbl.textContent = userName;
   } else {
     const isFilter = id === 'filter';
-    if (av) { av.style.cssText = `background:#1e293b;color:#475569;font-size:${isFilter?'.8rem':'.9rem'}`; av.textContent = isFilter ? '👤' : '—'; }
+    if (av) { av.style.cssText = `background:var(--relleno);color:var(--texto-debil);font-size:${isFilter?'.8rem':'.9rem'}`; av.textContent = isFilter ? '👤' : '—'; }
     if (lbl) lbl.textContent = label;
   }
   const dd = document.getElementById('upick-'+id+'-dropdown');
