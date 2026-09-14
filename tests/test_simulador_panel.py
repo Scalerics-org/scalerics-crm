@@ -38,12 +38,15 @@ CSS_FUENTE = _entre(SRC, "/* ── Simulador financiero", "</style>")
 
 # ── registrado en todos los lugares ──────────────────────────────────────────
 
-def test_el_item_del_menu_esta_bajo_gestion_al_lado_de_finanzas():
-    gestion = _entre(HTML, '<div class="nav-section-label">GESTIÓN</div>', "</div>\n  </div>")
-    finanzas = gestion.index('id="nav-finanzas"')
-    simulador = gestion.index('id="nav-simulador"')
+def test_el_item_del_menu_esta_en_finanzas_despues_de_finanzas():
+    # El menu se reordeno el 14/9 por grupos (pedido de Juan): el simulador vive
+    # en FINANZAS, justo debajo de Finanzas, y el grupo termina antes de VENTAS.
+    grupo = _entre(HTML, '<div class="nav-section-label">FINANZAS</div>',
+                   '<div class="nav-section-label">VENTAS</div>')
+    finanzas = grupo.index('id="nav-finanzas"')
+    simulador = grupo.index('id="nav-simulador"')
     assert simulador > finanzas
-    assert "Simulador financiero</div>" in gestion[simulador:simulador + 200]
+    assert "Simulador financiero</div>" in grupo[simulador:simulador + 200]
     assert "showPanel('simulador')" in HTML
 
 
