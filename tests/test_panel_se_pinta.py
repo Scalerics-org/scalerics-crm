@@ -12,6 +12,11 @@ La primera vez fue `campanas` en el bloque del ranking. La segunda,
 
 Esto no reemplaza a los tests de cada gráfico: verifica que la orquestación
 corra de punta a punta y que cada contenedor termine con algo adentro.
+
+El 14/9 el panel pasó a mostrar la pauta como una sola (se fueron los bloques
+por campaña) y las piezas a ir mes por mes, con su propio pedido a
+`/api/marketing/piezas`. Por eso las piezas se pintan aparte, con su propio
+fixture.
 """
 
 import json
@@ -32,9 +37,8 @@ sin_node = pytest.mark.skipif(shutil.which("node") is None,
 # Los contenedores que el pintado tiene que llenar. Si alguno queda vacío, o
 # reventó antes de llegar o se lo está dibujando en un id que no existe.
 _CONTENEDORES = ["mk-tiles", "mk-embudo", "mk-mensual", "mk-series",
-                 "mk-embudos", "mk-evolucion", "mk-acumulado", "mk-ranking",
-                 "mk-campanas", "mk-segmentos", "mk-dispersion", "mk-llegada",
-                 "mk-conciliacion", "mk-anuncios"]
+                 "mk-acumulado", "mk-segmentos", "mk-llegada",
+                 "mk-conciliacion", "mk-hallazgos"]
 
 
 def _dossier_de_prueba():
@@ -67,44 +71,37 @@ def _dossier_de_prueba():
             m(f"campana.{slug}.tasa_interes", 0.5, "porcentaje"),
         ]}
 
-    def etapas():
-        pares = [("leads", 40), ("interesados", 20), ("agendadas", 12),
-                 ("demos", 8), ("presupuestos", 3), ("cierres", 1)]
-        salida, previo = [], None
-        for clave, n in pares:
-            salida.append({"clave": clave, "etiqueta": clave, "n": n,
-                           "tasa": (n / previo) if previo else None})
-            previo = n
-        return salida
-
-    semanas = ["2026-06-15", "2026-06-22", "2026-06-29"]
+    # Tres semanas con actividad y una vacía en el medio, como devuelve ahora
+    # `serie_semanal`: el hueco tiene que pintarse sin romper nada.
+    semanas = [("2026-06-15", True), ("2026-06-22", False),
+               ("2026-06-29", True), ("2026-07-06", True)]
     return {
-        "periodo": {"desde": "2026-06-13", "hasta": "2026-09-11"},
+        "periodo": {"desde": "2026-06-17", "hasta": "2026-07-08"},
+        # Los bloques por campaña siguen viniendo en el dossier (el informe los
+        # usa): el panel tiene que ignorarlos, no romperse con ellos.
         "campanas": [campana("UY", "uy"), campana("ARG", "arg"),
                      campana("todas", "todas")],
-        "embudo_campanas": [{"campana": "UY", "etapas": etapas()},
-                            {"campana": "ARG", "etapas": etapas()}],
-        "serie_campanas": [{"campana": "UY", "puntos": [
-            {"inicio": s, "semana": f"2026-W2{i}", "gasto": 100.0 + i,
-             "leads": 5, "demos": 2, "cpl": 20.0, "costo_demo": 50.0,
-             "gasto_acum": 100.0 * (i + 1), "leads_acum": 5 * (i + 1)}
-            for i, s in enumerate(semanas)]}],
+        "embudo_campanas": [],
+        "serie_campanas": [],
         "serie_mensual": [
-            {"periodo": "2026-07", "nombre": "Julio", "leads": 59, "demos": 8,
+            {"periodo": "2026-06", "nombre": "Junio", "leads": 59, "demos": 8,
              "ventas": 2, "gasto": 368.98, "cpl": 6.25, "costo_demo": 46.1,
              "costo_venta": 184.5},
-            {"periodo": "2026-08", "nombre": "Agosto", "leads": 0, "demos": 0,
-             "ventas": 0, "gasto": 0.0, "cpl": None, "costo_demo": None,
-             "costo_venta": None},
-            {"periodo": "2026-09", "nombre": "Setiembre", "leads": 6,
+            {"periodo": "2026-07", "nombre": "Julio", "leads": 6,
              "demos": 3, "ventas": 0, "gasto": 293.86, "cpl": 48.98,
              "costo_demo": 97.95, "costo_venta": None},
         ],
         "serie_semanal": [
-            {"inicio": s, "semana": f"2026-W2{i}", "gasto": 100.0,
-             "impresiones": 5000, "clics": 150, "leads_crm": 5,
-             "leads_meta": 5, "cpl": 20.0}
-            for i, s in enumerate(semanas)],
+            {"inicio": s, "semana": f"2026-W2{i}",
+             "gasto": 100.0 if activa else 0.0,
+             "impresiones": 5000 if activa else 0,
+             "clics": 150 if activa else 0,
+             "leads_crm": 5 if activa else 0,
+             "leads_meta": 5 if activa else 0,
+             "cpl": 20.0 if activa else None,
+             "con_actividad": activa,
+             "gasto_acum": 100.0 * (i + 1), "leads_acum": 5 * (i + 1)}
+            for i, (s, activa) in enumerate(semanas)],
         "segmentos": [{"pregunta": "presupuesto", "etiqueta": "Presupuesto",
                        "n": 40, "valores_distintos": 2, "valores": [
                            {"valor_declarado": "menos_de_500", "n": 25,
@@ -123,64 +120,53 @@ def _dossier_de_prueba():
                        for d in range(7) for f in range(0, 24, 3)],
             "total": 40, "maximo": 3, "sin_hora": 2, "horas_por_franja": 3,
         },
-        # Tres anuncios corriendo: uno con foto, uno de video sin foto y uno
-        # que gasto sin traer nada. Con bloques vacios el pintado toma los
-        # caminos de "sin datos" y el test pasaria con la seccion rota.
-        "anuncios": [
-            {"ad_id": "120253602403650249", "nombre": "Web hace ganar - RMKTG",
-             "campana": "Brand - Set26", "conjunto": "RMKTG", "tipo": "SHARE",
-             "corriendo": True, "estado": "ACTIVE",
-             "titulo": "Agencia de desarrollo web", "cuerpo": "Un cuerpo",
-             "imagen_archivo": "/data/creativos/120253602403650249.jpg",
-             "moneda": "USD", "gasto": 369.17, "leads": 33, "impresiones": 40000,
-             "clics": 900, "cpl": 11.19, "ctr": 0.0225, "tasa_lead": 0.0367,
-             "desde": "2026-06-14", "gasto_total": 512.40, "leads_total": 40,
-             "cpl_total": 12.81, "ctr_total": 0.021,
-             "mediana_cpl": 14.0, "oportunidad": 36.6,
-             "recomendacion": {"accion": "subir", "texto": "Es de los que mejor rinden.",
-                               "metricas_citadas": ["anuncio.120253602403650249.cpl"]}},
-            {"ad_id": "120253602403650250", "nombre": "UGC - 2",
-             "campana": "Brand - Set26", "conjunto": "UGC", "tipo": "VIDEO",
-             "corriendo": True, "estado": "ACTIVE",
-             "titulo": None, "cuerpo": "Mira como lo hacemos",
-             "imagen_archivo": None,
-             "moneda": "USD", "gasto": 120.0, "leads": 6, "impresiones": 15000,
-             "clics": 200, "cpl": 20.0, "ctr": 0.0133, "tasa_lead": 0.03,
-             "desde": "2026-08-01", "gasto_total": 150.0, "leads_total": 7,
-             "cpl_total": 21.43, "ctr_total": 0.013,
-             "mediana_cpl": 14.0, "oportunidad": 10.7,
-             "recomendacion": {"accion": "ajustar", "texto": "Cada lead te sale caro.",
-                               "metricas_citadas": ["anuncio.120253602403650250.cpl"]}},
-            {"ad_id": "120243368449890249", "nombre": "12/03 - Hiciste lo mas dificil",
-             "campana": "Leads - Marzo", "conjunto": "Amplio", "tipo": "SHARE",
-             "corriendo": False, "estado": "PAUSED",
-             "titulo": "Hiciste lo mas dificil", "cuerpo": "Otro cuerpo",
-             "imagen_archivo": "/data/creativos/120243368449890249.jpg",
-             "moneda": "USD", "gasto": 85.0, "leads": 0, "impresiones": 9000,
-             "clics": 120, "cpl": None, "ctr": 0.0133, "tasa_lead": 0.0,
-             "desde": "2026-09-01", "gasto_total": 85.0, "leads_total": 0,
-             "cpl_total": None, "ctr_total": 0.0133,
-             "mediana_cpl": 14.0, "oportunidad": 6.07,
-             "recomendacion": {"accion": "apagado", "texto": "Está apagado.",
-                               "metricas_citadas": ["anuncio.120243368449890249.gasto"]}},
-        ],
-        "anuncios_resumen": {"anuncios": 3, "corriendo": 2, "apagados": 1,
-                             "gasto": 574.17, "leads": 39,
-                             "cpl": 14.72, "gasto_total": 747.40,
-                             "leads_total": 47, "cpl_total": 15.90,
-                             "desde": "2026-06-14", "moneda": "USD"},
+        "anuncios": [],
+        "anuncios_resumen": {},
         "historico": {
-            "hay": True, "desde": "2026-03-11", "hasta": "2026-06-12",
+            "hay": True, "desde": "2026-03-11", "hasta": "2026-06-16",
             "semanas": 13, "leads": 120, "demos": 24, "gasto": 1500.0,
             "clics": 3800, "impresiones": 250000,
             "cpl": 12.5, "costo_demo": 62.5, "leads_semana": 9.23,
             "gasto_semana": 115.38, "clics_semana": 292.31,
             "impresiones_semana": 19230.77,
         },
+        # Los de campaña no se tienen que ver: el panel lee `hallazgos_pauta`.
         "hallazgos": [{"tipo": "sin_cierres", "severidad": "alta",
-                       "titulo": "t", "cuerpo": "c",
-                       "metricas_citadas": ["campana.uy.gasto"]}],
+                       "titulo": "UY gastó y todavía no cerró a nadie",
+                       "cuerpo": "c", "metricas_citadas": ["campana.uy.gasto"]}],
+        "hallazgos_pauta": [{"tipo": "pauta_sin_cierres", "severidad": "alta",
+                             "titulo": "La pauta gastó y no cerró", "cuerpo": "c",
+                             "metricas_citadas": ["campana.todas.gasto"]}],
     }
+
+
+def _pieza(ad_id, nombre, corriendo, gasto, leads, imagen=True, reco=None):
+    return {"ad_id": ad_id, "nombre": nombre, "tipo": "SHARE" if imagen else "VIDEO",
+            "titulo": None, "tiene_imagen": imagen, "corriendo": corriendo,
+            "moneda": "USD", "gasto": gasto, "impresiones": 12000, "clics": 240,
+            "leads": leads, "cpl": round(gasto / leads, 2) if leads else None,
+            "ctr": 0.02, "primer_dia": "2026-09-02", "ultimo_dia": "2026-09-13",
+            "recomendacion": reco}
+
+
+_PIEZAS = {
+    "mes": "2026-09", "nombre": "Setiembre 2026", "desde": "2026-09-01",
+    "hasta": "2026-09-30", "mes_actual": "2026-09", "primer_mes": "2026-03",
+    "activas": [
+        _pieza("120253602403650249", "Web hace ganar", True, 369.17, 33,
+               reco={"accion": "subir", "texto": "Es de los que mejor rinden.",
+                     "metricas_citadas": []}),
+        _pieza("120253602403650250", "UGC - 2", True, 120.0, 6, imagen=False,
+               reco={"accion": "ajustar", "texto": "Cada lead te sale caro.",
+                     "metricas_citadas": []}),
+    ],
+    "inactivas": [_pieza("120243368449890249", "Hiciste lo mas dificil", False,
+                         85.0, 0)],
+    "totales": {"piezas": 3, "activas": 2, "inactivas": 1, "gasto": 574.17,
+                "leads": 39, "impresiones": 36000, "clics": 720, "cpl": 14.72,
+                "ctr": 0.02, "moneda": "USD"},
+    "gasto_pauta": 700.0,
+}
 
 
 _ARNES = r"""
@@ -189,7 +175,7 @@ _ARNES = r"""
 const _els = {};
 function _el(id) {
   if (!_els[id]) {
-    _els[id] = { id, innerHTML: '', textContent: '', value: '',
+    _els[id] = { id, innerHTML: '', textContent: '', value: '', disabled: false,
                  style: {}, dataset: {},
                  classList: { add(){}, remove(){}, toggle(){} },
                  querySelectorAll: () => [], querySelector: () => null,
@@ -214,6 +200,22 @@ globalThis.confirm = () => true;
 """
 
 
+def _correr(tmp_path, cola):
+    bloques = re.findall(r"<script>(.*?)</script>", dashboard.DASHBOARD_HTML, re.S)
+    charts = (RAIZ / "static" / "charts.js").read_text(encoding="utf-8")
+    archivo = tmp_path / "pintar.js"
+    archivo.write_text(_ARNES + charts + "\n" + "\n".join(bloques) + "\n" + cola,
+                       encoding="utf-8")
+    r = subprocess.run(["node", str(archivo)], capture_output=True,
+                       text=True, encoding="utf-8")
+    assert r.returncode == 0, "el pintado del panel reventó:\n" + (r.stderr or "")[:2000]
+    return json.loads(r.stdout.strip().splitlines()[-1])
+
+
+_VOLCAR = ("console.log(JSON.stringify(Object.fromEntries("
+           "Object.entries(_els).map(([k, v]) => [k, v.innerHTML || '']))));\n")
+
+
 @sin_node
 def test_el_panel_se_pinta_entero_sin_reventar(tmp_path):
     """El test que `node --check` no puede hacer: ejecutar.
@@ -221,33 +223,61 @@ def test_el_panel_se_pinta_entero_sin_reventar(tmp_path):
     Si el pintado tira una excepción, los contenedores de después quedan vacíos
     y el panel se ve "raro" en vez de roto. Acá eso es un fallo con nombre.
     """
-    bloques = re.findall(r"<script>(.*?)</script>", dashboard.DASHBOARD_HTML, re.S)
-    charts = (RAIZ / "static" / "charts.js").read_text(encoding="utf-8")
     dossier = json.dumps(_dossier_de_prueba(), ensure_ascii=False)
-
-    archivo = tmp_path / "pintar.js"
-    archivo.write_text(
-        _ARNES
-        + charts + "\n"
-        + "\n".join(bloques) + "\n"
-        + f"_mkDossier = {dossier};\n"
-        # El selector de campaña y el de tema existen como elementos del arnés y
-        # devuelven '' , que es "todas" y tema oscuro: el camino por defecto.
-        + "_mkPintar();\n"
-        + "console.log(JSON.stringify(Object.fromEntries("
-          "Object.entries(_els).map(([k, v]) => [k, (v.innerHTML || '').length]))));\n",
-        encoding="utf-8")
-
-    r = subprocess.run(["node", str(archivo)], capture_output=True,
-                       text=True, encoding="utf-8")
-    assert r.returncode == 0, (
-        "el pintado del panel reventó:\n" + (r.stderr or "")[:2000])
-
-    largos = json.loads(r.stdout.strip().splitlines()[-1])
-    vacios = [c for c in _CONTENEDORES if largos.get(c, 0) == 0]
+    html = _correr(tmp_path, f"_mkDossier = {dossier};\n_mkPintar();\n" + _VOLCAR)
+    vacios = [c for c in _CONTENEDORES if not html.get(c)]
     assert not vacios, (
         f"estos contenedores quedaron vacíos: {vacios}. O el pintado cortó "
         "antes de llegar, o se está escribiendo en un id que no existe.")
+
+    # Una sola pauta: ningún nombre de campaña llega a la pantalla.
+    todo = "".join(html.values())
+    assert "UY gastó" not in todo, "se pintó un hallazgo por campaña"
+    assert "La pauta gastó" in html["mk-hallazgos"]
+    # El mes a mes tiene su tabla, y la semana vacía del medio se dibuja.
+    assert 'class="sc-tabla"' in html["mk-mensual"]
+    assert html["mk-series"].count("Semana ") >= 4
+    assert "Semana 2 · Leads: 0" in html["mk-series"]
+
+
+@sin_node
+def test_las_piezas_se_pintan_en_dos_grupos_y_legibles(tmp_path):
+    piezas = json.dumps(_PIEZAS, ensure_ascii=False)
+    html = _correr(tmp_path, f"_mkPintarPiezas({piezas});\n" + _VOLCAR)
+    caja = html["mk-piezas"]
+    assert "Activas hoy" in caja and "Ya no están activas" in caja
+    assert caja.count('<article class="sc-anun"') == 3
+    # Las activas van antes que las que ya no.
+    assert caja.index("Web hace ganar") < caja.index("Hiciste lo mas dificil")
+    assert caja.index("Activas hoy") < caja.index("Ya no están activas")
+    # Nada en gris ni transparente, tampoco inline.
+    assert "opacity" not in caja and "grayscale" not in caja
+    # Las métricas del mes, todas.
+    for rotulo in ("Gasto", "Impresiones", "Clics", "Leads", "Costo por lead"):
+        assert rotulo in caja, rotulo
+    assert "369,17" in caja and "574,17" in caja
+    # Las piezas no dicen de qué campaña son.
+    assert "Brand" not in caja
+    # Las dos fuentes no cuadran (574,17 contra 700): el panel lo avisa.
+    assert "700,00" in caja
+
+
+@sin_node
+def test_un_mes_sin_piezas_lo_dice(tmp_path):
+    vacio = dict(_PIEZAS, activas=[], inactivas=[], gasto_pauta=None,
+                 totales=dict(_PIEZAS["totales"], piezas=0, activas=0,
+                              inactivas=0, gasto=0.0, leads=0))
+    html = _correr(tmp_path, f"_mkPintarPiezas({json.dumps(vacio)});\n" + _VOLCAR)
+    assert "no hubo ninguna pieza" in html["mk-piezas"]
+    assert "<article" not in html["mk-piezas"]
+
+
+@sin_node
+def test_sin_datos_de_meta_no_rompe(tmp_path):
+    nada = dict(_PIEZAS, activas=[], inactivas=[], gasto_pauta=None,
+                primer_mes=None, totales=dict(_PIEZAS["totales"], piezas=0))
+    html = _correr(tmp_path, f"_mkPintarPiezas({json.dumps(nada)});\n" + _VOLCAR)
+    assert "Todavía no hay piezas sincronizadas" in html["mk-piezas"]
 
 
 # Hubo aquí un segundo test que buscaba el mismo bug leyendo el texto: por cada

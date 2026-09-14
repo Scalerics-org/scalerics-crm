@@ -404,6 +404,158 @@ def anuncios_en_curso(db_path: str, desde: str, hasta: str, hoy=None) -> list:
     return salida
 
 
+_NOMBRES_MES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio",
+                "Agosto", "Setiembre", "Octubre", "Noviembre", "Diciembre"]
+
+
+def limites_del_mes(mes: str) -> tuple:
+    """('2026-02-01', '2026-02-28') para '2026-02'. Sin saber cuantos dias tiene."""
+    import calendar
+
+    y, m = (int(x) for x in mes.split("-"))
+    return (f"{y:04d}-{m:02d}-01",
+            f"{y:04d}-{m:02d}-{calendar.monthrange(y, m)[1]:02d}")
+
+
+def piezas_del_mes(db_path: str, mes: str, hoy=None) -> dict:
+    """Las piezas que tuvieron actividad en UN mes, con los numeros de ESE mes.
+
+    Pedido de Juan, textual: "quiero ir mes por mes, y que en cada mes me
+    aparezcan las que estuvieron activas, que metricas dieron, y las que no
+    estan mas activas y que metricas tuvieron, pero solo de ese mes, sino me
+    aparecen 300 y no se entiende nada".
+
+    **Actividad es gasto O impresiones en el mes.** Una pieza que se mostro sin
+    cobrar (pasa con los primeros dias de un anuncio) igual estuvo al aire. Una
+    pieza sin nada en el mes no aparece en ese mes, este prendida hoy o no.
+
+    **Todos los numeros son del mes y nada mas.** Nada de "desde que arranco":
+    mezclar la vida entera del anuncio con el mes es lo que hacia la seccion
+    ilegible. La unica excepcion es la recomendacion de las que siguen al aire,
+    que es sobre que hacer HOY con el anuncio y lo dice en su rotulo.
+
+    **Se parte en dos por el estado de HOY**, no por si estaba prendida en ese
+    mes: Meta no guarda la historia del estado, solo el actual. "Activas hoy" y
+    "Ya no estan activas" es lo que se puede afirmar sin inventar.
+
+    Sale de `meta_ad_insights` con LEFT JOIN a `meta_ads`: si un anuncio tiene
+    gasto pero su ficha no se pudo traer, su plata igual cuenta en el mes. Y no
+    se suma con `meta_insights` (es la misma plata vista por campana): solo se
+    lee aparte, para avisar si las dos no cuadran.
+    """
+    from datetime import date
+
+    hoy = hoy or date.today().isoformat()
+    desde, hasta = limites_del_mes(mes)
+
+    conn = _connect(db_path)
+    try:
+        filas = conn.execute("""
+            SELECT i.ad_id, a.ad_name, a.object_type, a.titulo,
+                   a.imagen_archivo, a.effective_status,
+                   SUM(i.spend)       AS gasto,
+                   SUM(i.impressions) AS impresiones,
+                   SUM(i.clicks)      AS clics,
+                   SUM(i.leads)       AS leads,
+                   MAX(i.currency)    AS moneda,
+                   MIN(CASE WHEN i.spend > 0 OR i.impressions > 0
+                            THEN i.date END) AS primer_dia,
+                   MAX(CASE WHEN i.spend > 0 OR i.impressions > 0
+                            THEN i.date END) AS ultimo_dia
+              FROM meta_ad_insights i
+              LEFT JOIN meta_ads a ON a.ad_id = i.ad_id
+             WHERE i.date BETWEEN ? AND ?
+             GROUP BY i.ad_id
+            HAVING SUM(i.spend) > 0 OR SUM(i.impressions) > 0
+             ORDER BY SUM(i.spend) DESC, SUM(i.impressions) DESC
+        """, (desde, hasta)).fetchall()
+        cuenta = conn.execute(
+            "SELECT COUNT(*) AS n, SUM(spend) AS gasto FROM meta_insights "
+            "WHERE date BETWEEN ? AND ?", (desde, hasta)).fetchone()
+        extremos = conn.execute(
+            "SELECT MIN(date) AS primero FROM meta_ad_insights "
+            "WHERE spend > 0 OR impressions > 0").fetchone()
+    finally:
+        conn.close()
+
+    # La recomendacion ya existe y esta calibrada contra la cuenta real: se
+    # reusa tal cual, no se escribe otra. Solo se pide si hay algo que mostrar.
+    recos = {}
+    if filas:
+        recos = {a["ad_id"]: a["recomendacion"]
+                 for a in anuncios_en_curso(db_path, desde, hasta, hoy=hoy)}
+
+    activas, inactivas = [], []
+    for f in filas:
+        gasto = round(float(f["gasto"] or 0), 2)
+        leads = int(f["leads"] or 0)
+        impresiones = int(f["impresiones"] or 0)
+        clics = int(f["clics"] or 0)
+        corriendo = f["effective_status"] == ESTADO_EN_CURSO
+        reco = recos.get(f["ad_id"])
+        # A una que ya no esta activa no se le dice nada, salvo que valga la
+        # pena prenderla de nuevo: es la unica lectura accionable de una pieza
+        # apagada.
+        if not corriendo and (not reco or reco.get("accion") != "revivir"):
+            reco = None
+        pieza = {
+            "ad_id": f["ad_id"],
+            "nombre": f["ad_name"],
+            "tipo": f["object_type"],
+            "titulo": f["titulo"],
+            "tiene_imagen": bool(f["imagen_archivo"]),
+            "corriendo": corriendo,
+            "moneda": f["moneda"],
+            "gasto": gasto,
+            "impresiones": impresiones,
+            "clics": clics,
+            "leads": leads,
+            "cpl": _costo(gasto, leads),
+            "ctr": _tasa(clics, impresiones),
+            "primer_dia": f["primer_dia"],
+            "ultimo_dia": f["ultimo_dia"],
+            "recomendacion": reco,
+        }
+        (activas if corriendo else inactivas).append(pieza)
+
+    todas = activas + inactivas
+    gasto = round(sum(p["gasto"] for p in todas), 2)
+    leads = sum(p["leads"] for p in todas)
+    impresiones = sum(p["impresiones"] for p in todas)
+    clics = sum(p["clics"] for p in todas)
+    y, m = (int(x) for x in mes.split("-"))
+    return {
+        "mes": mes,
+        "nombre": f"{_NOMBRES_MES[m - 1]} {y}",
+        "desde": desde,
+        "hasta": hasta,
+        "mes_actual": hoy[:7],
+        # El primer mes con alguna pieza: para no dejar retroceder hacia meses
+        # donde seguro no hay nada. None si todavia no se sincronizo nada.
+        "primer_mes": extremos["primero"][:7] if extremos["primero"] else None,
+        "activas": activas,
+        "inactivas": inactivas,
+        "totales": {
+            "piezas": len(todas),
+            "activas": len(activas),
+            "inactivas": len(inactivas),
+            "gasto": gasto,
+            "leads": leads,
+            "impresiones": impresiones,
+            "clics": clics,
+            "cpl": _costo(gasto, leads),
+            "ctr": _tasa(clics, impresiones),
+            "moneda": todas[0]["moneda"] if todas else None,
+        },
+        # Lo que Meta dice que se gasto en el mes mirado por campana. Si no
+        # cuadra con la suma de las piezas, falta sincronizar algun anuncio y
+        # el panel lo avisa en vez de mostrar dos numeros distintos sin decir
+        # por que. None cuando esa tabla no tiene nada del mes.
+        "gasto_pauta": (round(float(cuenta["gasto"] or 0), 2)
+                        if cuenta["n"] else None),
+    }
+
+
 def resumen_en_curso(db_path: str, desde: str, hasta: str) -> dict:
     """El encabezado de la seccion, con las cuentas separadas.
 

@@ -213,6 +213,25 @@ def api_sync_anuncios():
                                         hasta.isoformat()))
 
 
+_MES = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
+
+
+@marketing_bp.route("/api/marketing/piezas")
+def api_piezas():
+    """Las piezas de la pauta de UN mes, partidas en activas hoy y ya no.
+
+    Va aparte del dossier y no depende del periodo de arriba: la seccion tiene
+    su propio navegador de mes, y cambiar de mes no tiene por que recalcular
+    el panel entero. Sin token de Meta contesta igual, con las listas vacias.
+    """
+    from services.anuncios import piezas_del_mes
+
+    mes = request.args.get("mes") or date.today().isoformat()[:7]
+    if not _MES.match(mes):
+        return jsonify({"error": "mes invalido: se espera YYYY-MM"}), 400
+    return jsonify(piezas_del_mes(_db(), mes))
+
+
 # Un id de anuncio de Meta es un numero largo. Se valida con esto y no con
 # `secure_filename` porque lo que importa no es que el nombre sea prolijo sino
 # que NO pueda salirse de la carpeta: sin esta guarda, un ad_id con `..`

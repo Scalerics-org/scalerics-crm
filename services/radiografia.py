@@ -51,6 +51,10 @@ def construir_dossier(db_path: str, desde: str, hasta: str) -> dict:
     # una lectura del dossier, no una consulta mas.
     from services.hallazgos import buscar
     d["hallazgos"] = buscar(d)
+    # Los mismos hallazgos, pero de la pauta como un todo: es lo que muestra el
+    # panel. Juan: "yo quiero ver todo en una sola en terminos generales". Los
+    # de arriba, que comparan campanas, se siguen guardando para el informe.
+    d["hallazgos_pauta"] = buscar(d, por_campana=False)
     return d
 
 
