@@ -79,6 +79,8 @@ leads de Meta se renombró a **D** para deshacer el empate.
 | E (pre-clientes/demos) | pipeline por etapas, responsables del cliente, registro de demos | `routes/preclientes.py`, `tests/test_preclientes.py`, `scripts/check_js.py`, y **zona compartida**: `database.py`, `dashboard.py`, `routes/leads.py` | 31/8 |
 | G (marketing/Meta Ads) | inteligencia comercial sobre Meta Ads. **Las tres fases hechas en `feat/marketing-meta` (PR #22), sin mergear ni deployar. La IA nace apagada.** | `services/embudo.py`, `services/dossier.py`, `services/meta_insights.py`, `services/meta_campanas.py`, `services/radiografia.py`, `services/radiografia_ia.py`, `routes/marketing.py`, `static/charts.js`, `.github/workflows/radiografia.yml`, y **zona compartida**: `database.py`, `dashboard.py`, `routes/meta.py`, `services/finanzas.py`, `tests/conftest.py` | 10/9 |
 
+| I (mejoras CRM, pedido de Juan 14/9) | seis tareas en serie, una rama por tarea, parando a mostrar cada una: (3) reuniones del día en mobile, (4) monto pagado por cliente, (1) registro de demos + adjunto de presupuesto, (5) arrastre del pipeline de Notion, (2) campañas históricas y creatividades de Meta, (6) sacar Pre-clientes | hoy `fix/calendario-mobile-dia`: `dashboard.py` (calendario). Después, en su momento: `database.py`, `routes/preclientes.py`, `routes/notion_clients.py`, `services/notion_service.py`, `services/meta_insights.py`. **No deployo nada sin que Juan lo pida.** | 14/9 |
+
 | F (finanzas) | la sección financiera del CRM | `services/finanzas.py`, `routes/finanzas.py`, `database.py` (tablas de finanzas), `dashboard.py` (panel Finanzas) | 8/9 |
 
 > **F (finanzas) acá (8/9).** Trabajé en un worktree aparte sobre la rama
@@ -461,6 +463,32 @@ leads de Meta se renombró a **D** para deshacer el empate.
 ---
 
 ## Bitácora
+
+- **14/9 — I (mejoras CRM): en el celular no se veían las reuniones del día.
+  Rama `fix/calendario-mobile-dia`, sin deployar.**
+
+  `#cal-day-events-mobile` tenía `style="display:none"` inline y la regla de
+  mobile lo mostraba sin `!important`: el inline gana siempre, así que la lista
+  estuvo oculta desde junio. **La visibilidad ahora la manda el CSS**: oculto de
+  base y visible en `@media(max-width:768px)`, las dos reglas juntas al lado de
+  `.cal-leyenda`. **Si movés la de base abajo del @media, el celular vuelve a no
+  ver nada** (misma especificidad, gana la última); hay un test que mide el orden.
+  Se descartó `style.display='block'` desde JS: es un inline que sobrevive a
+  agrandar la ventana y deja la lista abierta en escritorio.
+
+  Además, al dibujar el mes en el celular se elige hoy solo
+  (`_calSeleccionarDiaMobile`), sin desplazar la pantalla, y el día tocado
+  sobrevive a los redibujos. Las tarjetas del día pasaron a clases con tokens
+  (tenían `#111827` inline, oscuras en claro). Tests en
+  `tests/test_calendario_mobile.py`, corren el JS en node contra un DOM falso.
+
+  **Visto al pasar, sin tocar:** `renderCalendar` marca `.today` con `isoDate`,
+  que pasa por UTC: de 21 a 24 en Montevideo resalta el día siguiente, también
+  en escritorio.
+
+  **Entorno Windows sin admin:** Python 3.11 de python.org por winget (pide UAC
+  igual con `--scope user`) y Node con `pip install "nodejs-wheel-binaries==22.*"`
+  — deja `node.exe` en `site-packages\nodejs_wheel`, hay que sumarlo al PATH.
 
 - **11/9 — G: gracias por subir `--rotulo`, y ojo con un margen de 0,01.**
 
