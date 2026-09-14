@@ -6094,10 +6094,16 @@ async function _cpBindTasks() {
 }
 
 // Initial load. Lo primero del CRM es Meta Ads, no la Cola (pedido de Juan,
-// 14/9): es donde entran los leads que se trabajan. showPanel carga el panel y
-// marca el menu; si el rol no tiene Meta, el control de acceso de abajo lo
-// manda al primer panel que si tenga.
-showPanel('meta');
+// 14/9): es donde entran los leads que se trabajan. El panel y su item de menu
+// ya arrancan activos en el HTML; aca solo se cargan los datos. Si el rol no
+// tiene Meta, el control de acceso de abajo lo manda al primer panel que si.
+//
+// OJO: aca NO va showPanel. Esta linea corre antes de que se declaren
+// NAV_LABELS y compania (mas abajo, con const): showPanel -> _syncMobileNav las
+// lee y tira "Cannot access 'NAV_LABELS' before initialization", que corta el
+// resto del <script> -- permisos, barra del celular, tema -- en el navegador.
+// loadMetaPanel solo toca #meta-body antes de su primer await.
+loadMetaPanel();
 
 // ── Score badge + social icons ────────────────────────────────────────────────
 

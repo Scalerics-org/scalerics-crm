@@ -36,11 +36,28 @@ def test_meta_arranca_marcado_y_la_cola_no():
     assert "let activePanel = 'meta';" in HTML
 
 
-def test_al_entrar_se_abre_meta_y_no_se_carga_la_cola():
-    m = re.search(r"// Initial load.*?\n(\S.*?)\n\n", HTML, re.S)
+def _carga_inicial() -> str:
+    m = re.search(r"// Initial load.*?\n([^/\s].*?)\n", HTML, re.S)
     assert m, "no encontre la carga inicial"
-    assert "showPanel('meta');" in m.group(0)
-    assert "loadCola();" not in m.group(0)
+    return m.group(1)
+
+
+def test_al_entrar_se_carga_meta_y_no_la_cola():
+    llamada = _carga_inicial()
+    assert llamada == "loadMetaPanel();", llamada
+    assert "loadCola" not in llamada
+
+
+def test_la_carga_inicial_no_usa_showpanel():
+    """La carga inicial corre antes de que se declaren NAV_LABELS y compania con
+    const. showPanel -> _syncMobileNav las lee y tira un ReferenceError que
+    corta el resto del <script> en el navegador: permisos, barra del celular,
+    tema. Paso con esta misma rama antes de publicarse."""
+    assert "showPanel" not in _carga_inicial()
+    inicio = HTML.index("// Initial load")
+    assert inicio < HTML.index("const NAV_LABELS"), (
+        "si la carga inicial pasa abajo de NAV_LABELS este test ya no hace falta, "
+        "pero entonces revisá que no quede antes de ALL_PANELS")
 
 
 def test_en_el_celular_meta_va_primero():
