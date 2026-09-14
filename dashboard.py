@@ -2184,6 +2184,11 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
             <span class="sim-control"><input type="number" id="sim-demo-venta" class="sim-in sim-in-corto" data-sim="embudo.conversionDemoVenta" min="0" max="100" step="any" inputmode="decimal"><span class="sim-unidad">%</span></span>
           </div>
         </section>
+
+        <div class="sim-agregar sim-cargar">
+          <button class="btn-primary" type="button" id="sim-cargar" onclick="simCargar()">Cargar</button>
+          <span class="sim-guardado" id="sim-cargar-nota" role="status"></span>
+        </div>
       </div>
 
       <div class="sim-resultados">
@@ -8460,6 +8465,23 @@ function simRecalcular() {
   if (!simEstado) return null;
   const r = simCalcular(simEstado);
   simPintarResultados(r);
+  return r;
+}
+
+// Pedido de Juan: un boton "Cargar" al final de los datos que calcule y lleve a
+// los resultados. El recalculo en vivo sigue igual: el boton no cambia ningun
+// numero, recalcula y lleva la vista a las tarjetas, que en el celular quedan
+// abajo de todo lo cargado y en la compu pueden quedar fuera de la pantalla.
+function simCargar() {
+  const nota = document.getElementById('sim-cargar-nota');
+  const r = simRecalcular();
+  if (!r) {
+    if (nota) nota.textContent = 'Todavía se están trayendo los datos de Finanzas. Probá en unos segundos.';
+    return null;
+  }
+  if (nota) nota.textContent = 'Listo: resultados actualizados.';
+  const destino = document.getElementById('sim-tarjetas');
+  if (destino && destino.scrollIntoView) destino.scrollIntoView({behavior: 'smooth', block: 'start'});
   return r;
 }
 
