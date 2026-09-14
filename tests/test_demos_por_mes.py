@@ -322,15 +322,23 @@ def _funcion(nombre):
 def _correr(cuerpo, tmp_path):
     meses = re.search(r"const _DEMOS_MESES = \[.*?\];", HTML, re.S)
     assert meses, "no encontré _DEMOS_MESES"
+    estados = re.search(r"const _DEMOS_ESTADOS = \[.*?\];", HTML, re.S)
+    assert estados, "no encontré _DEMOS_ESTADOS"
     fuente = "\n".join([
-        dashboard.ESC_JS, meses.group(0),
-        *(_funcion(n) for n in ("_demosMesDe", "_demosEtiquetaMes", "_demosAgruparPorMes",
-                                "_demosFecha", "_demosFilaHtml", "renderDemos")),
+        dashboard.ESC_JS, meses.group(0), estados.group(0),
+        *(_funcion(n) for n in ("_demosMesDe", "_demosEtiquetaMes", "_demosMesClave",
+                                "_demosMesSumar", "_demosMesMasViejo", "_demosMesMover",
+                                "_demosDelMes", "_demosMesVisible", "_demosPintarNavegador",
+                                "_demosResumenHtml", "_demosFecha", "_demosEstadoDe",
+                                "_demosEstadoHtml", "_demosConteoEstados", "_demosFilaHtml",
+                                "renderDemos")),
         """
         function assert(c, m) { if (!c) { throw new Error(m); } }
         const body = {innerHTML: ''};
-        const document = {getElementById: () => body};
-        let _demosFiltro = '', _demosFiltroPresu = '';
+        const els = {};
+        const document = {getElementById: id => id === 'demos-body' ? body : (els[id] = els[id] || {id: id})};
+        let _demosFiltro = '', _demosFiltroPresu = '', _demosFiltroEstado = '';
+        let _demosMesVista = '2026-09';
         let _demos = [
           {id: 1, numero: 1, client_id: 10, cliente_nombre: 'Optica Luz', fecha: '2026-08-20T15:00:00',
            presupuesto_id: 7, presupuesto_nombre: 'presu-optica.pdf', realizada_por_nombre: 'thomy'},
@@ -352,13 +360,14 @@ def _correr(cuerpo, tmp_path):
 
 
 @node
-def test_agrupa_por_mes_del_mas_reciente_al_mas_viejo(tmp_path):
+def test_recorta_por_mes(tmp_path):
+    """Desde el 14/9 el panel muestra un mes por vez (pedido de Juan)."""
     _correr("""
-      const g = _demosAgruparPorMes(_demos);
-      assert(g.map(x => x.etiqueta).join('|') === 'Septiembre 2026|Agosto 2026|Enero 2025',
-             g.map(x => x.etiqueta).join('|'));
-      assert(g[0].demos.length === 2, 'septiembre tiene 2');
-      assert(g[0].conPresupuesto === 1, 'una con presupuesto');
+      const ids = m => _demosDelMes(_demos, m).map(d => d.id).join(',');
+      assert(ids('2026-09') === '2,3', ids('2026-09'));
+      assert(ids('2026-08') === '1', 'agosto');
+      assert(ids('2025-01') === '4', 'enero del año pasado');
+      assert(ids('2026-07') === '', 'mes vacio');
       assert(_demosMesDe({fecha: '2026-09-01'}) === '2026-09', 'el 1 no se corre a agosto');
       assert(_demosMesDe({}) === 'sin-fecha', 'sin fecha');
       assert(_demosFecha('2026-09-01') === '01/09/2026', _demosFecha('2026-09-01'));
@@ -366,17 +375,20 @@ def test_agrupa_por_mes_del_mas_reciente_al_mas_viejo(tmp_path):
 
 
 @node
-def test_la_pantalla_muestra_meses_cantidades_y_presupuestos(tmp_path):
+def test_la_pantalla_muestra_el_mes_cantidades_y_presupuestos(tmp_path):
     _correr("""
       renderDemos();
-      assert(pos('Septiembre 2026') !== -1 && pos('Septiembre 2026') < pos('Agosto 2026'), 'orden');
-      assert(pos('Agosto 2026') < pos('Enero 2025'), 'orden viejo');
+      assert(pos('Septiembre 2026') !== -1 && pos('Agosto 2026') === -1, 'solo el mes mirado');
       assert(pos('2 demos') !== -1, 'cantidad del mes');
-      assert(pos('1 demo<') !== -1, 'singular');
-      assert(pos('href="/api/demos-realizadas/1/presupuesto"') !== -1, 'link de descarga');
-      assert(pos('presu-optica.pdf') !== -1, 'nombre del archivo');
+      assert(pos('1 de 2 con presupuesto') !== -1, 'presupuestos del mes');
+      assert(pos('href="/api/demos-realizadas/3/presupuesto"') !== -1, 'link de descarga');
       assert(pos('Sin presupuesto') !== -1, 'marca la que no tiene');
       assert(pos('demosSubirPresupuesto(2, this)') !== -1, 'se puede adjuntar');
+      assert(els['demos-mes-label'].textContent === 'Septiembre 2026', 'el navegador dice el mes');
+      _demosMesVista = '2026-08'; renderDemos();
+      assert(pos('1 demo<') !== -1, 'singular');
+      assert(pos('presu-optica.pdf') !== -1, 'nombre del archivo');
+      assert(pos('Vinoteca Sur') === -1, 'la de septiembre no aparece en agosto');
     """, tmp_path)
 
 
@@ -384,7 +396,7 @@ def test_la_pantalla_muestra_meses_cantidades_y_presupuestos(tmp_path):
 def test_filtrar_por_presupuesto_y_vacio(tmp_path):
     _correr("""
       _demosFiltroPresu = 'sin'; renderDemos();
-      assert(pos('Vinoteca Sur') !== -1 && pos('Optica Luz') === -1, 'solo sin presupuesto');
+      assert(pos('Vinoteca Sur') !== -1 && pos('Taller Norte') === -1, 'solo sin presupuesto');
       _demosFiltroPresu = ''; _demosFiltro = 'nadie'; renderDemos();
       assert(pos('Ninguna demo coincide') !== -1, body.innerHTML);
       _demosFiltro = ''; _demos = []; renderDemos();

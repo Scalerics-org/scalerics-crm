@@ -93,7 +93,12 @@ def test_los_dos_temas_son_de_verdad_distintos(oscuro, claro):
     no era así: en oscuro daba 3,62:1 sobre la superficie, abajo del 4,5 del
     texto chico. Ahora vale #8190a6 en oscuro y deja de ser igual en los dos.
     """
-    esperadas = {"--azul"}
+    # Los `--semaforo-*` son los colores literales de la planilla de leads
+    # (verde, celeste, violeta, verde oscuro): el puntito del Registro de demos
+    # tiene que ser el mismo color que la gente pinta, en cualquier tema. Solo
+    # se usan de fondo de un puntito con aro; el texto va en tokens normales.
+    esperadas = {"--azul", "--semaforo-verde", "--semaforo-celeste",
+                 "--semaforo-violeta", "--semaforo-venta"}
     iguales = {k for k in oscuro if oscuro[k].strip() == claro.get(k, "").strip()}
 
     assert iguales == esperadas, (

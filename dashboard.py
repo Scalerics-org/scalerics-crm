@@ -397,6 +397,10 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   --ambar-borde:#ca8a04;
   --azul-tinte:#0f1f35;
   --sombra:rgba(0,0,0,.4);
+  --semaforo-verde:#00ff00;
+  --semaforo-celeste:#00ffff;
+  --semaforo-violeta:#ff00ff;
+  --semaforo-venta:#38761d;
 }
 body.light{
   --fondo:#f8fafc;
@@ -427,6 +431,10 @@ body.light{
   --ambar-borde:#fde047;
   --azul-tinte:#e0f2fe;
   --sombra:rgba(0,0,0,.12);
+  --semaforo-verde:#00ff00;
+  --semaforo-celeste:#00ffff;
+  --semaforo-violeta:#ff00ff;
+  --semaforo-venta:#38761d;
 }
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:100vh;display:flex}
@@ -630,6 +638,19 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .demo-presu-input{display:none}
 .demo-aviso{padding:32px 16px;text-align:center;color:var(--texto-debil);font-size:.88rem}
 .demo-aviso-error{color:var(--rojo-texto)}
+.demo-nav-mes{display:flex;align-items:center;gap:6px}
+.demo-nav-mes span{font-size:.82rem;font-weight:700;color:var(--texto);min-width:130px;text-align:center}
+.demo-nav-mes .cal-nav-btn:disabled{opacity:.4;cursor:default;pointer-events:none}
+.demo-resumen-estados{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;font-size:.78rem;color:var(--texto-tenue);margin:-2px 2px 14px}
+.demo-resumen-estado{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.demo-resumen-sep{color:var(--texto-debil)}
+.demo-estado{display:inline-flex;align-items:center;gap:6px;background:var(--relleno);color:var(--texto);border:1px solid var(--borde);border-radius:999px;padding:1px 9px 1px 7px;font-size:.72rem;font-weight:600;white-space:nowrap}
+.demo-estado-mano{color:var(--texto-tenue);padding-left:9px}
+.demo-punto{width:9px;height:9px;border-radius:50%;flex:none;box-shadow:0 0 0 1px var(--borde-fuerte)}
+.demo-punto-agendada{background:var(--semaforo-verde)}
+.demo-punto-realizada{background:var(--semaforo-celeste)}
+.demo-punto-no_cerro{background:var(--semaforo-violeta)}
+.demo-punto-venta{background:var(--semaforo-venta)}
 @media (max-width:768px){
   .demo-row{padding:12px 13px}
   .demo-meta{margin-left:0;width:100%}
@@ -1791,12 +1812,26 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     <div class="page-header">
       <div>
         <h1>Registro de demos</h1>
-        <div class="page-date">Las demos dadas mes a mes, con el presupuesto que se envió en cada una</div>
+        <div class="page-date">Las demos mes a mes, con el presupuesto que se envió en cada una. Las de la planilla de leads entran solas, con su color.</div>
       </div>
       <button class="export-btn" onclick="abrirNuevaDemo()">+ Registrar demo</button>
     </div>
     <div class="filters demo-filtros">
+      <div class="demo-nav-mes" id="demos-nav-mes">
+        <button class="cal-nav-btn" id="demos-mes-ant" onclick="demosMes(-1)" title="Mes anterior">&larr;</button>
+        <span id="demos-mes-label"></span>
+        <button class="cal-nav-btn" id="demos-mes-sig" onclick="demosMes(1)" title="Mes siguiente">&rarr;</button>
+        <button class="cal-today-btn" onclick="demosMesHoy()">Hoy</button>
+      </div>
       <input class="search-box" id="demos-search" placeholder="🔍 Buscar por cliente..." oninput="filtrarDemos(this.value)">
+      <select class="filter-select" id="demos-estado-filtro" onchange="demosFiltrarEstado(this.value)">
+        <option value="">Todos los estados</option>
+        <option value="agendada">Demo agendada</option>
+        <option value="realizada">Demo realizada</option>
+        <option value="no_cerro">Hubo demo y no cerró</option>
+        <option value="venta">Venta concretada</option>
+        <option value="mano">Cargada a mano</option>
+      </select>
       <select class="filter-select" id="demos-presu-filtro" onchange="demosFiltrarPresupuesto(this.value)">
         <option value="">Todas</option>
         <option value="con">Con presupuesto</option>
@@ -3420,6 +3455,19 @@ async function _usuarios() {
 let _demos = [];
 let _demosFiltro = '';
 let _demosFiltroPresu = '';
+let _demosFiltroEstado = '';
+// El mes que se esta mirando ('AAAA-MM'). Vacio = el mes actual, asi el panel
+// arranca siempre en hoy aunque la pestaña quede abierta de un mes a otro.
+let _demosMesVista = '';
+// Los cuatro colores del semaforo que son demos, en el orden del encabezado del
+// mes. `clave` es el estado_planilla que guarda el sync; el puntito sale de los
+// tokens --semaforo-*. Una demo sin origen de planilla es "Cargada a mano".
+const _DEMOS_ESTADOS = [
+  {clave: 'realizada', etiqueta: 'Demo realizada', uno: 'realizada', varios: 'realizadas'},
+  {clave: 'no_cerro', etiqueta: 'Hubo demo y no cerró', uno: 'no cerró', varios: 'no cerraron'},
+  {clave: 'venta', etiqueta: 'Venta concretada', uno: 'venta', varios: 'ventas'},
+  {clave: 'agendada', etiqueta: 'Demo agendada', uno: 'agendada', varios: 'agendadas'},
+];
 const _DEMOS_MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio',
                       'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 const _DEMOS_MAX_BYTES = 10 * 1024 * 1024;
@@ -3443,6 +3491,29 @@ function filtrarDemos(v) { _demosFiltro = (v || '').toLowerCase(); renderDemos()
 
 function demosFiltrarPresupuesto(v) { _demosFiltroPresu = v || ''; renderDemos(); }
 
+function demosFiltrarEstado(v) { _demosFiltroEstado = v || ''; renderDemos(); }
+
+function _demosEstadoDe(d) {
+  return d.origen === 'planilla' ? String(d.estado_planilla || '') : 'mano';
+}
+
+function _demosEstadoHtml(d) {
+  const clave = _demosEstadoDe(d);
+  const e = _DEMOS_ESTADOS.find(x => x.clave === clave);
+  if (!e) return '<span class="demo-estado demo-estado-mano">' + (clave === 'mano' ? 'Cargada a mano' : 'De la planilla') + '</span>';
+  return `<span class="demo-estado" title="Color de la planilla de leads"><span class="demo-punto demo-punto-${e.clave}"></span>${esc(e.etiqueta)}</span>`;
+}
+
+function _demosConteoEstados(demos) {
+  const partes = _DEMOS_ESTADOS.map(e => {
+    const n = demos.filter(d => _demosEstadoDe(d) === e.clave).length;
+    return n ? n + ' ' + (n === 1 ? e.uno : e.varios) : '';
+  }).filter(Boolean);
+  const aMano = demos.filter(d => _demosEstadoDe(d) === 'mano').length;
+  if (aMano) partes.push(aMano + ' a mano');
+  return partes.join(' · ');
+}
+
 function _demosMesDe(d) {
   // Por texto y no con new Date(): '2026-09-01' se lee como UTC y en Uruguay
   // caeria en agosto.
@@ -3457,19 +3528,80 @@ function _demosEtiquetaMes(clave) {
   return mes ? mes.charAt(0).toUpperCase() + mes.slice(1) + ' ' + partes[0] : clave;
 }
 
-function _demosAgruparPorMes(lista) {
-  const grupos = new Map();
+// -- Navegador de mes (mismo patron que Finanzas, con nombres propios) --------
+// Las demos se traen una sola vez y el recorte por mes se hace aca: el listado
+// no trae los archivos, son unos cientos por año, cambiar de mes es inmediato
+// y el limite hacia atras (la demo mas vieja) necesita verlas todas igual.
+
+function _demosMesClave(fecha) {
+  return fecha.getFullYear() + '-' + String(fecha.getMonth() + 1).padStart(2, '0');
+}
+
+function _demosMesSumar(mes, delta) {
+  const partes = String(mes).split('-');
+  const total = parseInt(partes[0], 10) * 12 + (parseInt(partes[1], 10) - 1) + delta;
+  return Math.floor(total / 12) + '-' + String(total % 12 + 1).padStart(2, '0');
+}
+
+function _demosMesMasViejo(lista) {
+  let viejo = '';
   lista.forEach(d => {
-    const clave = _demosMesDe(d);
-    if (!grupos.has(clave)) grupos.set(clave, []);
-    grupos.get(clave).push(d);
+    const m = _demosMesDe(d);
+    if (m !== 'sin-fecha' && (!viejo || m < viejo)) viejo = m;
   });
-  const orden = (a, b) => a === b ? 0 : a === 'sin-fecha' ? 1 : b === 'sin-fecha' ? -1 : (a < b ? 1 : -1);
-  return Array.from(grupos.keys()).sort(orden).map(clave => {
-    const demos = grupos.get(clave);
-    return {clave: clave, etiqueta: _demosEtiquetaMes(clave), demos: demos,
-            conPresupuesto: demos.filter(d => d.presupuesto_id).length};
-  });
+  return viejo;
+}
+
+function _demosMesMover(mes, delta, masViejo, actual) {
+  // Nunca al futuro; hacia atras, hasta el mes de la demo mas vieja (sin
+  // demos, el piso es el mes actual).
+  let m = _demosMesSumar(mes, delta);
+  if (m > actual) m = actual;
+  const piso = masViejo && masViejo < actual ? masViejo : actual;
+  if (m < piso) m = piso;
+  return m;
+}
+
+function _demosDelMes(lista, mes) {
+  return lista.filter(d => _demosMesDe(d) === mes);
+}
+
+function _demosMesVisible() {
+  return _demosMesVista || _demosMesClave(new Date());
+}
+
+function demosMes(delta) {
+  _demosMesVista = _demosMesMover(_demosMesVisible(), delta, _demosMesMasViejo(_demos),
+                                  _demosMesClave(new Date()));
+  renderDemos();
+}
+
+function demosMesHoy() { _demosMesVista = ''; renderDemos(); }
+
+function _demosPintarNavegador(mes) {
+  const label = document.getElementById('demos-mes-label');
+  if (label) label.textContent = _demosEtiquetaMes(mes);
+  const viejo = _demosMesMasViejo(_demos);
+  const ant = document.getElementById('demos-mes-ant');
+  const sig = document.getElementById('demos-mes-sig');
+  if (ant) ant.disabled = !viejo || mes <= viejo;
+  if (sig) sig.disabled = mes >= _demosMesClave(new Date());
+}
+
+function _demosResumenHtml(demos, mes) {
+  const estados = _DEMOS_ESTADOS.map(e => {
+    const n = demos.filter(d => _demosEstadoDe(d) === e.clave).length;
+    return n ? `<span class="demo-resumen-estado"><span class="demo-punto demo-punto-${e.clave}"></span>${n} ${n === 1 ? e.uno : e.varios}</span>` : '';
+  }).filter(Boolean);
+  const aMano = demos.filter(d => _demosEstadoDe(d) === 'mano').length;
+  if (aMano) estados.push(`<span class="demo-resumen-estado">${aMano} a mano</span>`);
+  const conPresu = demos.filter(d => d.presupuesto_id).length;
+  return `<div class="demo-mes-head">
+      <h2 class="demo-mes-titulo">${esc(_demosEtiquetaMes(mes))}</h2>
+      <span class="demo-mes-cuenta">${demos.length} ${demos.length === 1 ? 'demo' : 'demos'}</span>
+      <span class="demo-mes-presu">${conPresu} de ${demos.length} con presupuesto</span>
+    </div>
+    <div class="demo-resumen-estados" aria-label="${esc(_demosConteoEstados(demos))}">${estados.join('<span class="demo-resumen-sep">·</span>')}</div>`;
 }
 
 function _demosFecha(iso) {
@@ -3492,34 +3624,39 @@ function _demosFilaHtml(d) {
     <div class="demo-row-head">
       <span class="demo-num">Demo ${d.numero || '?'}</span>
       <span class="demo-cliente"${abrir}>${esc(nombre)}</span>
-      <span class="demo-meta">${esc(d.realizada_por_nombre || 'sin asignar')} · ${esc(_demosFecha(d.fecha || d.created_at))}</span>
+      ${_demosEstadoHtml(d)}
+      <span class="demo-meta">${esc(d.realizada_por_nombre || (d.origen === 'planilla' ? 'planilla de leads' : 'sin asignar'))} · ${esc(_demosFecha(d.fecha || d.created_at))}</span>
       <button class="demo-del" onclick="borrarDemo(${d.id})" title="Borrar">&times;</button>
     </div>
-    <div class="demo-texto">${esc(d.actualizacion || 'Sin notas')}</div>
+    ${d.actualizacion || d.origen !== 'planilla' ? `<div class="demo-texto">${esc(d.actualizacion || 'Sin notas')}</div>` : ''}
     <div class="demo-presu-fila">${presu}</div>
   </div>`;
 }
 
 function renderDemos() {
   const body = document.getElementById('demos-body');
-  let lista = _demos;
+  const mes = _demosMesVisible();
+  _demosPintarNavegador(mes);
+  if (!_demos.length) {
+    body.innerHTML = '<div class="demo-aviso">Todavía no hay demos registradas. Cargá la primera con «+ Registrar demo».</div>';
+    return;
+  }
+  const delMes = _demosDelMes(_demos, mes);
+  if (!delMes.length) {
+    body.innerHTML = '<div class="demo-aviso">No hay demos en ' + esc(_demosEtiquetaMes(mes)) + '</div>';
+    return;
+  }
+  // El resumen es del mes entero; los filtros recortan la lista de abajo.
+  let lista = delMes;
   if (_demosFiltro) lista = lista.filter(d => (d.cliente_nombre || '').toLowerCase().includes(_demosFiltro));
   if (_demosFiltroPresu === 'con') lista = lista.filter(d => d.presupuesto_id);
   if (_demosFiltroPresu === 'sin') lista = lista.filter(d => !d.presupuesto_id);
-  if (!lista.length) {
-    body.innerHTML = '<div class="demo-aviso">' + (_demos.length
-      ? 'Ninguna demo coincide con el filtro'
-      : 'Todavía no hay demos registradas. Cargá la primera con «+ Registrar demo».') + '</div>';
-    return;
-  }
-  body.innerHTML = _demosAgruparPorMes(lista).map(g => `<section class="demo-mes">
-    <div class="demo-mes-head">
-      <h2 class="demo-mes-titulo">${esc(g.etiqueta)}</h2>
-      <span class="demo-mes-cuenta">${g.demos.length} ${g.demos.length === 1 ? 'demo' : 'demos'}</span>
-      <span class="demo-mes-presu">${g.conPresupuesto} de ${g.demos.length} con presupuesto</span>
-    </div>
-    ${g.demos.map(_demosFilaHtml).join('')}
-  </section>`).join('');
+  if (_demosFiltroEstado) lista = lista.filter(d => _demosEstadoDe(d) === _demosFiltroEstado);
+  body.innerHTML = `<section class="demo-mes">
+    ${_demosResumenHtml(delMes, mes)}
+    ${lista.length ? lista.map(_demosFilaHtml).join('')
+      : '<div class="demo-aviso">Ninguna demo coincide con el filtro en ' + esc(_demosEtiquetaMes(mes)) + '</div>'}
+  </section>`;
 }
 
 function _demosValidarArchivo(file) {
@@ -3650,6 +3787,10 @@ async function guardarDemo() {
       if (error) alert('La demo se guardó, pero el presupuesto no: ' + error);
     }
     cerrarNuevaDemo();
+    // Que se vea la demo recien cargada: el navegador va a su mes (sin pasar
+    // al futuro, que no se puede mirar).
+    const mesNueva = fecha ? fecha.slice(0, 7) : '';
+    _demosMesVista = mesNueva && mesNueva < _demosMesClave(new Date()) ? mesNueva : '';
     cargarDemos();
   } finally { btn.disabled = false; }
 }
