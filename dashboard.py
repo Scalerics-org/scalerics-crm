@@ -359,7 +359,14 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 
    --verde-texto es el verde para texto chico. --verde en claro (#059669)
    da 3,77:1 sobre blanco: alcanza para rellenos y numeros grandes, no
-   para un rotulo de .7rem. #047857 da 5,48:1. En oscuro son el mismo. */
+   para un rotulo de .7rem. #047857 da 5,48:1. En oscuro son el mismo.
+
+   Estados: una familia por significado. --X-tinte es el fondo del chip
+   y el texto que va encima es el de su color (--verde-texto,
+   --rojo-texto, --ambar, --azul-claro): todos llegan a 4,5 sobre su tinte
+   en los dos temas. --rojo-texto existe porque --rojo en claro (#dc2626)
+   da 4,0 sobre #fee2e2. --rojo-borde y --ambar-borde marcan las filas
+   de seguimientos vencidas y de hoy. */
 :root{
   --fondo:#0a0f1a;
   --fondo-hundido:#0f1117;
@@ -381,6 +388,13 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   --verde-texto:#10b981;
   --rojo:#f87171;
   --ambar:#f59e0b;
+  --verde-tinte:#0f2a1a;
+  --rojo-texto:#f87171;
+  --rojo-tinte:#2a1515;
+  --rojo-borde:#7f1d1d;
+  --ambar-tinte:#292116;
+  --ambar-borde:#ca8a04;
+  --azul-tinte:#0f1f35;
   --sombra:rgba(0,0,0,.4);
 }
 body.light{
@@ -404,6 +418,13 @@ body.light{
   --verde-texto:#047857;
   --rojo:#dc2626;
   --ambar:#b45309;
+  --verde-tinte:#d1fae5;
+  --rojo-texto:#b91c1c;
+  --rojo-tinte:#fee2e2;
+  --rojo-borde:#fca5a5;
+  --ambar-tinte:#fef3c7;
+  --ambar-borde:#fde047;
+  --azul-tinte:#e0f2fe;
   --sombra:rgba(0,0,0,.12);
 }
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
@@ -554,17 +575,15 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .biz-name{font-weight:600;font-size:.88rem;color:#e2e8f0;display:flex;align-items:center;gap:7px}
 .biz-sub{font-size:.7rem;color:#475569;margin-top:2px}
 .score-badge{display:inline-flex;align-items:center;gap:3px;font-size:.62rem;font-weight:700;padding:1px 6px;border-radius:4px;letter-spacing:.02em;flex-shrink:0}
-.score-hot{background:rgba(16,185,129,.15);color:#34d399;border:1px solid rgba(16,185,129,.25)}
-.score-mid{background:rgba(0,136,204,.12);color:#60a5fa;border:1px solid rgba(0,136,204,.22)}
-.score-low{background:rgba(100,116,139,.1);color:#64748b;border:1px solid rgba(100,116,139,.18)}
+.score-hot{background:var(--verde-tinte);color:var(--verde-texto);border:1px solid transparent}
+.score-mid{background:var(--azul-tinte);color:var(--azul-claro);border:1px solid transparent}
+.score-low{background:var(--relleno);color:var(--texto-debil);border:1px solid transparent}
 .phone-val{font-size:.8rem;color:#4ade80;font-family:monospace;text-decoration:none}
 .phone-val:hover{color:#86efac;text-decoration:underline}
 .phone-plain{font-size:.8rem;color:#64748b;font-family:monospace}
 .call-btn{border:1px solid #1e293b;background:none;color:#64748b;padding:2px 7px;border-radius:5px;font-size:.72rem;cursor:pointer;text-decoration:none;font-family:'Inter',sans-serif;transition:all .15s}.call-btn:hover{border-color:#334155;color:#94a3b8}
 .no-val{font-size:.75rem;color:#1e293b}
 .email-val{font-size:.76rem;color:#94a3b8;word-break:break-all}
-.dot{width:5px;height:5px;border-radius:50%;display:inline-block}
-.dot.green{background:#4ade80}.dot.orange{background:#fbbf24}.dot.gray{background:#334155}.dot.purple{background:#818cf8}.dot.red{background:#f87171}
 .actions{display:flex;gap:5px;align-items:center;flex-wrap:wrap}
 .pitch-btn{background:#1a2e1e;border:none;color:#4ade80;padding:5px 9px;border-radius:6px;font-size:.7rem;cursor:pointer;font-weight:600;font-family:'Inter',sans-serif;white-space:nowrap}
 .pitch-btn:hover{background:#14532d}
@@ -669,10 +688,10 @@ body.light .demo-cliente{color:#0f172a}
 .log-line.ok{color:#4ade80}.log-line.err{color:#f87171}.log-line.warn{color:#fbbf24}
 .log-empty{color:#1e293b;text-align:center;padding-top:80px;font-family:'Inter',sans-serif}
 .status-pill{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;font-size:.72rem;font-weight:700}
-.status-pill.idle{background:#1e293b;color:#64748b}
-.status-pill.running{background:#1a2e1e;color:#4ade80}
-.status-pill.done{background:#1a2e1e;color:#4ade80}
-.status-pill.error{background:#2a1515;color:#f87171}
+.status-pill.idle{background:var(--relleno);color:var(--texto-debil)}
+.status-pill.running{background:var(--verde-tinte);color:var(--verde-texto)}
+.status-pill.done{background:var(--verde-tinte);color:var(--verde-texto)}
+.status-pill.error{background:var(--rojo-tinte);color:var(--rojo-texto)}
 .spinner{width:8px;height:8px;border:2px solid #4ade80;border-top-color:transparent;border-radius:50%;animation:spin .6s linear infinite;display:inline-block}
 @keyframes spin{to{transform:rotate(360deg)}}
 
@@ -899,12 +918,8 @@ body.light .demo-cliente{color:#0f172a}
 .cp-btn-success{background:#16a34a;color:#fff}
 .cp-btn-ghost{background:var(--relleno);color:var(--texto-tenue)}
 .cp-badge{display:inline-block;padding:2px 8px;border-radius:99px;font-size:.7rem;font-weight:600}
-.cp-badge-draft{background:var(--relleno);color:var(--texto-tenue)}
-.cp-badge-sent{background:#064e3b;color:#34d399}
-.cp-badge-pending{background:#1e3a5f;color:#60a5fa}
-.cp-badge-completed{background:#14532d;color:#4ade80}
-.cp-badge-generating{background:#451a03;color:#fb923c}
-.cp-badge-failed{background:#450a0a;color:#f87171}
+.cp-badge-completed{background:var(--verde-tinte);color:var(--verde-texto)}
+.cp-badge-generating{background:var(--ambar-tinte);color:var(--ambar)}
 .cp-wa-msg{padding:8px 12px;border-radius:10px;font-size:.8rem;margin-bottom:6px;max-width:88%;line-height:1.5}
 .cp-wa-msg.out{background:#1e3a5f;color:#bfdbfe;align-self:flex-end;margin-left:auto}
 .cp-wa-msg.in{background:var(--relleno);color:var(--texto)}
@@ -941,10 +956,8 @@ body.light .demo-cliente{color:#0f172a}
 .sdr-detail-row{display:flex;align-items:center;gap:10px;padding:9px 8px;border-radius:8px;cursor:pointer;transition:background .12s}
 .sdr-detail-row:hover{background:#1e293b}
 .act-entity-link:hover{color:#7dd3fc}
-.no-answer-badge{display:inline-flex;align-items:center;gap:3px;background:rgba(239,68,68,.15);color:#f87171;font-size:.65rem;font-weight:700;padding:2px 6px;border-radius:99px;border:1px solid rgba(239,68,68,.3)}
-.no-interest-badge{display:inline-flex;align-items:center;gap:3px;background:rgba(245,158,11,.15);color:#fbbf24;font-size:.65rem;font-weight:700;padding:2px 6px;border-radius:99px;border:1px solid rgba(245,158,11,.3)}
-body.light .no-answer-badge{background:rgba(239,68,68,.1);color:#dc2626;border-color:rgba(239,68,68,.25)}
-body.light .no-interest-badge{background:rgba(245,158,11,.1);color:#b45309;border-color:rgba(245,158,11,.25)}
+.no-answer-badge{display:inline-flex;align-items:center;gap:3px;background:var(--rojo-tinte);color:var(--rojo-texto);font-size:.65rem;font-weight:700;padding:2px 6px;border-radius:99px;border:1px solid transparent}
+.no-interest-badge{display:inline-flex;align-items:center;gap:3px;background:var(--ambar-tinte);color:var(--ambar);font-size:.65rem;font-weight:700;padding:2px 6px;border-radius:99px;border:1px solid transparent}
 /* ── Row status colors ────────────────────────────────────────────────────── */
 .row-sin_contactar{border-left:3px solid transparent}
 .row-no_interesa{border-left:3px solid #ef4444;background:rgba(239,68,68,.05)}
@@ -1082,7 +1095,6 @@ body.light .notes-inline{color:#64748b}
 body.light .notes-inline:hover{background:#f1f5f9;border-bottom-color:#94a3b8}
 body.light .notes-inline:focus{background:#f1f5f9;border-bottom-color:#0088cc;color:#0f172a}
 body.light .notes-inline::placeholder{color:#cbd5e1}
-body.light .score-badge{filter:brightness(.9)}
 body.light .pitch-btn{background:#e0f2fe;border-color:#0088cc;color:#0369a1}
 body.light .pitch-btn:hover{background:#0088cc;color:#fff}
 body.light .delete-btn{color:#94a3b8}
@@ -1091,13 +1103,10 @@ body.light .export-btn{background:#f1f5f9;border-color:#e2e8f0;color:#475569}
 body.light .modal input[type=datetime-local]::-webkit-calendar-picker-indicator{filter:none;opacity:.6}
 body.light .outcome-btn{background:#f8fafc;border-color:#e2e8f0;color:#0f172a}
 body.light .outcome-btn:hover{background:#f1f5f9}
-body.light .cb-overdue{background:#fef2f2;border-color:#fca5a5 !important}
-body.light .cb-today{background:#fefce8;border-color:#fde047 !important}
 body.light ::-webkit-scrollbar-thumb{background:#e2e8f0}
 body.light ::-webkit-scrollbar-thumb:hover{background:#94a3b8}
 body.light .biz-name{color:#0f172a !important}
 body.light .biz-sub{color:#64748b !important}
-body.light .score-badge{color:#475569 !important}
 body.light .phone-val{color:#0088cc !important}
 body.light .phone-plain{color:#475569 !important}
 body.light .no-val{color:#94a3b8 !important}
@@ -1124,8 +1133,6 @@ body.light .search-input::placeholder{color:#94a3b8}
 body.light .pill{background:#f8fafc;border-color:#e2e8f0;color:#475569}
 body.light .pill:hover{color:#0f172a}
 body.light .pill.active{background:#dbeafe;color:#1d4ed8;border-color:#93c5fd}
-body.light .task-status-badge.in_progress{background:#dbeafe;color:#1d4ed8;border-color:#93c5fd}
-body.light .task-status-badge.done{background:#dcfce7;color:#16a34a;border-color:#86efac}
 body.light .panel-sub{color:#64748b}
 body.light .proj-card{background:#f8fafc;border-color:#e2e8f0}
 body.light .proj-name{color:#0f172a}
@@ -1177,12 +1184,12 @@ body.light .btn-icon{stroke:currentColor}
 .outcome-meeting:hover{background:#0d1f35;border-color:#3b82f6;color:#60a5fa}
 .outcome-contacted:hover{background:#1a2d3d;border-color:#0088cc;color:#0088cc}
 /* ── Callback urgency ─────────────────────────────────────────────────────── */
-.cb-overdue{background:#2a1515;border-color:#7f1d1d !important}
-.cb-today{background:#1a1a0f;border-color:#ca8a04 !important}
+.cb-overdue,body.light .cb-overdue{background:var(--rojo-tinte);border-color:var(--rojo-borde) !important}
+.cb-today,body.light .cb-today{background:var(--ambar-tinte);border-color:var(--ambar-borde) !important}
 .cb-date-pill{display:inline-block;padding:2px 8px;border-radius:99px;font-size:.72rem;font-weight:600}
-.cb-date-overdue{background:#2a1515;color:#f87171}
-.cb-date-today{background:#1a1a0f;color:#fbbf24}
-.cb-date-future{background:#0f1f35;color:#60a5fa}
+.cb-date-overdue{background:var(--rojo-tinte);color:var(--rojo-texto)}
+.cb-date-today{background:var(--ambar-tinte);color:var(--ambar)}
+.cb-date-future{background:var(--azul-tinte);color:var(--azul-claro)}
 /* ── Kanban ───────────────────────────────────────────────────────────────── */
 /* Tablero de leads: su HTML (#kanban-board) ya no existe, pero .kanban-col,
    .kanban-card y .kanban-count los redefine el tablero de Tareas mas abajo, y
@@ -1224,17 +1231,17 @@ body.light .btn-icon{stroke:currentColor}
 .pill{padding:4px 12px;border-radius:99px;font-size:.72rem;font-weight:600;cursor:pointer;border:1px solid #1e293b;background:#111827;color:#64748b;transition:all .15s;white-space:nowrap}
 .pill:hover{color:#e2e8f0}
 .pill.active{background:#0088cc22;color:#38bdf8;border-color:#0088cc44}
-.pill.warn{border-color:#450a0a}
-.pill.warn.active{background:#450a0a22;color:#f87171;border-color:#450a0a}
-.pill.orange{border-color:#431407}
-.pill.orange.active{background:#431407;color:#fb923c;border-color:#9a3412}
+.pill.warn,body.light .pill.warn{border-color:var(--rojo-borde)}
+.pill.warn.active,body.light .pill.warn.active{background:var(--rojo-tinte);color:var(--rojo-texto);border-color:var(--rojo-borde)}
+.pill.orange,body.light .pill.orange{border-color:var(--ambar-borde)}
+.pill.orange.active,body.light .pill.orange.active{background:var(--ambar-tinte);color:var(--ambar);border-color:var(--ambar-borde)}
 .pill-count{font-weight:400;color:#334155;margin-left:3px;font-size:.68rem}
 .pill.active .pill-count{color:#0088cc99}
 .tasks-summary{font-size:.75rem;color:var(--texto-debil);margin-bottom:10px}
 .task-status-badge{padding:3px 9px;border-radius:99px;font-size:.68rem;font-weight:700;cursor:pointer;transition:all .15s;border:1px solid transparent;user-select:none}
 .task-status-badge.todo{background:var(--relleno);color:var(--texto-debil)}
-.task-status-badge.in_progress{background:#0c1f2e;color:#38bdf8;border-color:#0369a133}
-.task-status-badge.done{background:#052e16;color:#4ade80;border-color:#16a34a33}
+.task-status-badge.in_progress{background:var(--azul-tinte);color:var(--azul-claro)}
+.task-status-badge.done{background:var(--verde-tinte);color:var(--verde-texto)}
 .task-notion-badge{font-size:.72rem;color:var(--texto-tenue);background:var(--relleno);padding:2px 7px;border-radius:10px;text-decoration:none;border:1px solid var(--borde)}
 .panel-head{margin-bottom:14px}
 .panel-head h1{font-size:1.4rem;font-weight:800;color:var(--texto-fuerte)}
@@ -1280,9 +1287,9 @@ body.light .btn-icon{stroke:currentColor}
 .task-client-link{color:var(--azul-claro);cursor:pointer}
 .task-client-link:hover{text-decoration:underline}
 .task-priority{padding:2px 7px;border-radius:99px;font-size:.65rem;font-weight:700}
-.task-priority.high{background:#450a0a;color:#f87171}
-.task-priority.medium{background:#1c1917;color:#fb923c}
-.task-priority.low{background:#0c1a0c;color:#86efac}
+.task-priority.high{background:var(--rojo-tinte);color:var(--rojo-texto)}
+.task-priority.medium{background:var(--ambar-tinte);color:var(--ambar)}
+.task-priority.low{background:var(--verde-tinte);color:var(--verde-texto)}
 .task-deadline{color:var(--ambar)}
 .task-deadline.overdue{color:var(--rojo)}
 .task-actions{display:flex;gap:6px;flex-shrink:0}
