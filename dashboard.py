@@ -1587,7 +1587,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div class="nav-item" id="nav-wa" onclick="showPanel('wa')"><i data-lucide="message-circle" class="nav-icon"></i> WhatsApp</div>
   <div class="nav-item" id="nav-cal" onclick="showPanel('cal')"><i data-lucide="calendar" class="nav-icon"></i> Calendario</div>
   <div class="nav-item" id="nav-finanzas" onclick="showPanel('finanzas')"><i data-lucide="wallet" class="nav-icon"></i> Finanzas</div>
-  <div class="nav-item" id="nav-metrics" onclick="showPanel('metrics')"><i data-lucide="bar-chart-2" class="nav-icon"></i> Métricas</div>
+  <div class="nav-item" id="nav-metrics" onclick="showPanel('metrics')"><i data-lucide="bar-chart-2" class="nav-icon"></i> Outbound</div>
   <div class="nav-item" id="nav-marketing" onclick="showPanel('marketing')"><i data-lucide="target" class="nav-icon"></i> Marketing</div>
   <div class="nav-item" id="nav-activity" onclick="showPanel('activity')"><i data-lucide="clock" class="nav-icon"></i> Actividad</div>
   <div class="nav-item" id="nav-sdr" onclick="showPanel('sdr')"><i data-lucide="phone-call" class="nav-icon"></i> SDR</div>
@@ -1957,16 +1957,14 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div id="metrics-panel" class="panel">
     <div class="page-header">
       <div>
-        <h1>Métricas</h1>
+        <h1>Outbound</h1>
         <div class="page-date" id="metrics-date"></div>
       </div>
       <button class="export-btn" onclick="loadMetrics()">↻ Actualizar</button>
     </div>
-    <div style="display:flex;gap:8px;margin-bottom:24px">
-      <button id="tab-sdr-btn" onclick="switchMetricsTab('sdr')" style="padding:6px 18px;border-radius:8px;border:1px solid #1e293b;background:#0088cc;color:#fff;font-size:.82rem;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif">SDR</button>
-      <button id="tab-meta-btn" onclick="switchMetricsTab('meta')" style="display:none;padding:6px 18px;border-radius:8px;border:1px solid #1e293b;background:transparent;color:#64748b;font-size:.82rem;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif">Meta Ads</button>
-    </div>
-    <!-- Tab SDR -->
+    <!-- Lo de Meta Ads se saco de aca el 14/9: se mira en Marketing. El panel
+         sigue siendo 'metrics' por dentro porque asi estan guardados los
+         permisos de cada rol; solo cambio el nombre que se ve. -->
     <div id="metrics-sdr">
       <div class="metrics-grid" style="grid-template-columns:repeat(4,1fr)">
         <div class="stat-card"><div class="stat-label">Total leads SDR</div><div class="stat-val" id="m-total">—</div></div>
@@ -1989,27 +1987,6 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       </div>
       <div class="metrics-grid-2">
         <div class="m-card"><div class="m-card-title">Top ciudades</div><div id="m-cities"></div></div>
-      </div>
-    </div>
-    <!-- Tab Meta Ads (solo admin) -->
-    <div id="metrics-meta" style="display:none">
-      <div class="metrics-grid" style="grid-template-columns:repeat(4,1fr)">
-        <div class="stat-card"><div class="stat-label">Total leads Meta</div><div class="stat-val" id="mm-total">—</div></div>
-        <div class="stat-card"><div class="stat-label">Este mes</div><div class="stat-val blue" id="mm-month">—</div></div>
-        <div class="stat-card"><div class="stat-label">Esta semana</div><div class="stat-val yellow" id="mm-week">—</div></div>
-        <div class="stat-card"><div class="stat-label">Conversión Meta</div><div class="stat-val green" id="mm-conv">—</div></div>
-      </div>
-      <div class="metrics-grid-2">
-        <div class="m-card"><div class="m-card-title">Leads por campaña</div><div id="mm-campaigns"></div></div>
-        <div class="m-card"><div class="m-card-title">Leads por mes</div><div id="mm-months"></div></div>
-      </div>
-      <div class="metrics-grid-2">
-        <div class="m-card"><div class="m-card-title">Funnel CRM Meta</div><div id="mm-funnel"></div></div>
-        <div class="m-card"><div class="m-card-title">Qué buscan</div><div id="mm-busca"></div></div>
-      </div>
-      <div class="metrics-grid-2">
-        <div class="m-card"><div class="m-card-title">Presupuesto declarado</div><div id="mm-presupuesto"></div></div>
-        <div class="m-card"><div class="m-card-title">Top ciudades Meta</div><div id="mm-cities"></div></div>
       </div>
     </div>
   </div>
@@ -6000,7 +5977,7 @@ const NAV_ICONS = {
 const NAV_LABELS = {
   cola:'Cola',seguimientos:'Seguim.',meta:'Meta',cal:'Agenda',
   tasks:'Tareas',pipeline:'Pipeline',clientes:'Clientes',
-  wa:'WA',metrics:'Métricas',activity:'Actividad',projects:'Proyectos',
+  wa:'WA',metrics:'Outbound',activity:'Actividad',projects:'Proyectos',
   notion_clients:'Pipeline',finanzas:'Finanzas'
 };
 let _mobileNavOverflow = [];
@@ -6897,18 +6874,6 @@ function _cpChangeStatus(val) {
     method: 'POST', headers: {'Content-Type':'application/json'},
     body: JSON.stringify({crm_status: val})
   }).then(() => { if (_cpData.lead) _cpData.lead.crm_status = val; });
-}
-
-let _metricsTab = 'sdr';
-
-function switchMetricsTab(tab) {
-  _metricsTab = tab;
-  document.getElementById('metrics-sdr').style.display  = tab === 'sdr'  ? '' : 'none';
-  document.getElementById('metrics-meta').style.display = tab === 'meta' ? '' : 'none';
-  const sdrBtn  = document.getElementById('tab-sdr-btn');
-  const metaBtn = document.getElementById('tab-meta-btn');
-  if (sdrBtn)  { sdrBtn.style.background  = tab === 'sdr'  ? '#0088cc' : 'transparent'; sdrBtn.style.color  = tab === 'sdr'  ? '#fff' : '#64748b'; }
-  if (metaBtn) { metaBtn.style.background = tab === 'meta' ? '#e1306c' : 'transparent'; metaBtn.style.color = tab === 'meta' ? '#fff' : '#64748b'; }
 }
 
 function _barList(items, maxVal) {
@@ -7868,10 +7833,7 @@ async function loadMetrics() {
   const el = id => document.getElementById(id);
 
   try {
-    const fetches = [fetch('/api/metrics')];
-    if (window._isAdmin) fetches.push(fetch('/api/metrics/meta'));
-    const results = await Promise.all(fetches);
-    const m = await results[0].json();
+    const m = await (await fetch('/api/metrics')).json();
 
     if (el('m-total'))        el('m-total').textContent        = m.total;
     if (el('m-contacted'))    el('m-contacted').textContent    = m.contacted;
@@ -7906,27 +7868,10 @@ async function loadMetrics() {
     if (el('m-rubros')) el('m-rubros').innerHTML = _barList(m.top_rubros);
     if (el('m-cities')) el('m-cities').innerHTML = _barList(m.top_cities);
 
-    if (window._isAdmin && results[1]) {
-      document.getElementById('tab-meta-btn').style.display = '';
-      const mm = await results[1].json();
-
-      if (el('mm-total'))       el('mm-total').textContent       = mm.total;
-      if (el('mm-month'))       el('mm-month').textContent       = mm.this_month;
-      if (el('mm-week'))        el('mm-week').textContent        = mm.this_week;
-      if (el('mm-conv'))        el('mm-conv').textContent        = mm.conversion + '%';
-
-      if (el('mm-campaigns'))   el('mm-campaigns').innerHTML     = _barList(mm.by_campaign);
-      if (el('mm-months'))      el('mm-months').innerHTML        = _monthBars(mm.by_month);
-      if (el('mm-funnel'))      el('mm-funnel').innerHTML        = _funnelBars(mm.funnel, stateLabels, stateColors);
-      if (el('mm-busca'))       el('mm-busca').innerHTML         = _barList(mm.que_busca);
-      if (el('mm-presupuesto')) el('mm-presupuesto').innerHTML   = _barList(mm.presupuesto);
-      if (el('mm-cities'))      el('mm-cities').innerHTML        = _barList(mm.top_cities);
-    }
-
     if (el('metrics-date')) el('metrics-date').textContent = 'Actualizado: ' + new Date().toLocaleString('es-UY');
   } catch(e) {
     const p = document.getElementById('metrics-panel');
-    if (p) p.insertAdjacentHTML('afterbegin','<p style="color:#f87171;margin-bottom:16px">Error cargando métricas.</p>');
+    if (p) p.insertAdjacentHTML('afterbegin','<p style="color:#f87171;margin-bottom:16px">Error cargando Outbound.</p>');
   }
 }
 
@@ -10222,7 +10167,7 @@ select:focus{border-color:#0088cc}
 
 <script>
 const ALL_PANELS = ['cola','seguimientos','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas'];
-const PANEL_LABELS = {cola:'Cola',seguimientos:'Seguimientos',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Métricas',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Pipeline Notion',finanzas:'Finanzas'};
+const PANEL_LABELS = {cola:'Cola',seguimientos:'Seguimientos',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Outbound',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Pipeline Notion',finanzas:'Finanzas'};
 let _roles = [];
 
 function makeChips(containerId, checkedArr, prefix) {
