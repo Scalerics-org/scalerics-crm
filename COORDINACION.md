@@ -464,6 +464,29 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **14/9 — I: DEPLOYADO `v210`: arrastre en Pipeline Notion, y SE SACÓ PRE-CLIENTES DE LA VISTA. Leer si tocás Clientes o Notion.**
+
+  Ramas `feat/notion-clientes-arrastre` (`429cce0`) y `feat/sacar-preclientes` (`687c52e`).
+  - **Pipeline Notion escribe en Notion.** `POST /api/notion-clients/<id>/estado`,
+    vía `mover_cliente`: GET de la página y PATCH de la property de estado **sin
+    nombre** (clave `""`, tipo `status`), por su id. El único punto de "Notion ya
+    tiene el cambio" es `cliente_cambio_de_estado`, que se llama desde el arrastre
+    y desde el sync.
+  - **Se borró el tablero de leads viejo y muerto** (`loadKanban`, `renderKanban`,
+    el segundo par `_kanbanDragStart` y `_kanbanDrop`). El arrastre de Tareas debería
+    volver a andar.
+  - **Pre-clientes ya no está en la interfaz.** Queda `routes/preclientes.py`
+    (sirve `/api/clientes-activos`, `/api/demos-realizadas` y `/api/preclientes`,
+    que usan tests). **Un negocio pasa a Clientes cuando su ficha de Pipeline Notion
+    llega a "Presupuesto Aceptado"**, si la ficha está conectada:
+    `notion_clients.business_id`, que se carga desde el tablero con
+    `PUT /api/notion-clients/<id>/cliente-crm`. Lo hace `pasar_a_cliente`: pasa a
+    `cerrado` con `lead_event` y actividad, nunca retrocede a `en_desarrollo` ni
+    a `finalizado`, y si falla no corta el sync.
+  - **Sin verificar contra Notion real:** que la API acepte el PATCH por id de
+    property con el token actual. Juan lo prueba con una ficha de prueba.
+  2468 tests; boot limpio a las 22:32 UTC.
+
 - **14/9 — I: DEPLOYADO `v209`: Registro de demos por mes, con el presupuesto adjunto. Producción = `deploy/i-calendario-mobile` en `4cd011f`.**
 
   Rama `feat/demos-por-mes-presupuesto`. `lead_attachments.demo_id` (índice
