@@ -140,9 +140,11 @@ def test_el_rotulo_ya_alcanza_para_texto():
                  # Los rotulos de las tarjetas de anuncio. Van sobre
                  # --fondo-hundido y sobre --hover, no sobre --superficie:
                  # medidos aparte en PARES.
-                 ".sc-anun-campana", ".sc-anun-dato span", ".sc-anun-extra",
+                 # El 14/9 se fueron el nombre de campaña, la linea de CTR y
+                 # el marbete de "Apagado" (ahora cada grupo tiene su titulo);
+                 # entraron las fechas del mes y la cuenta de cada grupo.
+                 ".sc-anun-fechas", ".sc-anun-dato span",
                  ".sc-anun-sinfoto", ".sc-anun-reco",
-                 # El marbete de "Apagado" arriba de la tarjeta.
-                 ".sc-anun-apagado"}
+                 ".sc-piezas-grupo span"}
     assert con_rotulo == esperados, (
         f"--rotulo esta en {sorted(con_rotulo)} y se esperaba {sorted(esperados)}")

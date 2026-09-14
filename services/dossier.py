@@ -448,11 +448,40 @@ def serie_semanal(db_path: str, desde: str, hasta: str) -> list:
     for fila in lead_filas:
         _slot(_lunes_de(fila["scraped_at"]))["leads_crm"] += 1
 
+    if not semanas:
+        return []
+
+    # Las semanas del medio salen aunque esten vacias, igual que en
+    # `serie_mensual`. Sin esto, un mes entero sin pauta desaparecia del
+    # grafico: la barra de despues quedaba pegada a la de antes y se llamaba
+    # "Semana 4" siendo la septima. El hueco es justo lo que hay que ver.
+    from datetime import timedelta as _td
+
+    orden = sorted(semanas)
+    y, m, d = (int(x) for x in orden[-1].split("-"))
+    ultima = _date(y, m, d)
+    y, m, d = (int(x) for x in orden[0].split("-"))
+    lunes = _date(y, m, d)
+    while lunes <= ultima:
+        _slot(lunes.isoformat())
+        lunes += _td(days=7)
+
     salida = []
+    gasto_acum, leads_acum = 0.0, 0
     for inicio in sorted(semanas):
         s = semanas[inicio]
         s["gasto"] = round(s["gasto"], 2)
         s["cpl"] = costo(s["gasto"], s["leads_crm"])
+        # Si la semana tuvo algo. Las rellenadas no: sirven para dibujar el
+        # hueco, pero no cuentan para "por semana" (el historico tampoco las
+        # cuenta, y compararlos con denominadores distintos mentiria).
+        s["con_actividad"] = bool(s["gasto"] or s["leads_crm"]
+                                  or s["impresiones"])
+        # Lo corrido desde el inicio del PERIODO, no de la historia: responde
+        # "cuanto costo llegar hasta aca" dentro de lo que se esta mirando.
+        gasto_acum = round(gasto_acum + s["gasto"], 2)
+        leads_acum += s["leads_crm"]
+        s["gasto_acum"], s["leads_acum"] = gasto_acum, leads_acum
         y, m, d = (int(x) for x in inicio.split("-"))
         s["semana"] = "%d-W%02d" % _date(y, m, d).isocalendar()[:2]
         salida.append(s)

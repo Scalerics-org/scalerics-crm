@@ -564,13 +564,30 @@
     // El eje X son todas las semanas que aparecen en cualquier serie, en orden.
     // Si cada serie usara su propio eje, dos campanas con semanas distintas
     // quedarian desalineadas y la comparacion mentiria.
-    var equis = [];
+    //
+    // El orden sale de `p.orden` (una fecha ISO, por ejemplo) y no del texto
+    // del rotulo. Con `equis.sort()` sobre el rotulo, "Semana 10" y "Semana 11"
+    // quedaban entre "Semana 1" y "Semana 2": las lineas se dibujaban yendo y
+    // viniendo, y un acumulado —que nunca baja— parecia bajar. Paso cuando los
+    // rotulos dejaron de ser "2026-W31", que si se ordenaba bien como texto.
+    // Sin `orden`, se respeta el orden en que vienen los puntos.
+    var equis = [], ordenDe = {};
     conDatos.forEach(function (s) {
       (s.puntos || []).forEach(function (p) {
-        if (equis.indexOf(p.x) === -1) equis.push(p.x);
+        if (equis.indexOf(p.x) === -1) {
+          equis.push(p.x);
+          ordenDe[p.x] = p.orden;
+        }
       });
     });
-    equis.sort();
+    var conOrden = equis.every(function (x) {
+      return ordenDe[x] !== undefined && ordenDe[x] !== null;
+    });
+    if (conOrden) {
+      equis.sort(function (a, b) {
+        return ordenDe[a] < ordenDe[b] ? -1 : ordenDe[a] > ordenDe[b] ? 1 : 0;
+      });
+    }
 
     var valores = [];
     conDatos.forEach(function (s) {
@@ -622,6 +639,9 @@
         '" stroke-width="1.5" stroke-dasharray="6 4"/>' +
         '<text x="' + x1 + '" y="' + (yRef - 5).toFixed(1) +
         '" text-anchor="end" font-size="9.5" font-weight="600" fill="' + mudo +
+        // Un contorno del color del fondo: el rotulo cae encima de las barras
+        // de la derecha y, sin esto, gris sobre azul no se lee.
+        '" stroke="' + fondo + '" stroke-width="3" paint-order="stroke' +
         '">' + SC.esc(ref.etiqueta || 'histórico') + ' ' +
         SC.esc(SC.fmt(refValor, opciones.formato)) + '</text>');
     }
@@ -1199,6 +1219,9 @@
         '" stroke-width="1.5" stroke-dasharray="6 4"/>' +
         '<text x="' + x1 + '" y="' + (yRef - 5).toFixed(1) +
         '" text-anchor="end" font-size="9.5" font-weight="600" fill="' + mudo +
+        // Un contorno del color del fondo: el rotulo cae encima de las barras
+        // de la derecha y, sin esto, gris sobre azul no se lee.
+        '" stroke="' + fondo + '" stroke-width="3" paint-order="stroke' +
         '">' + SC.esc(ref.etiqueta || 'histórico') + ' ' +
         SC.esc(SC.fmt(refValor, opciones.formato)) + '</text>');
     }

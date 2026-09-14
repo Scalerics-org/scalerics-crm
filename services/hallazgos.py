@@ -95,28 +95,37 @@ def _sin_cierres(dossier):
     return salida
 
 
+def _escalon_de(etapas):
+    """(peor etapa, tasa promedio del resto) si hay un escalon, o None."""
+    if not etapas or (etapas[0].get("n") or 0) < MINIMO_LEADS:
+        return None
+    # La ULTIMA etapa queda afuera. Cerrar es siempre lo mas dificil, asi
+    # que "se traba en cierres" es verdad en casi todos los embudos y no
+    # informa nada; y cuando los cierres son cero ya lo dice `sin_cierres`,
+    # que ademas trae la plata. Lo que este hallazgo busca es el escalon del
+    # MEDIO: gente que ya estaba enganchada y se cayo antes de llegar.
+    con_tasa = [e for e in etapas[:-1] if e.get("tasa") is not None]
+    if len(con_tasa) < 2:
+        return None
+    peor = min(con_tasa, key=lambda e: e["tasa"])
+    otras = [e["tasa"] for e in con_tasa if e is not peor]
+    promedio = sum(otras) / len(otras) if otras else None
+    # Marcadamente peor que el resto, no solo la más baja: en un embudo
+    # siempre hay una más baja.
+    if promedio is None or peor["tasa"] > promedio * _ESCALON_RELATIVO:
+        return None
+    return peor, promedio
+
+
 def _escalon(dossier):
     """La etapa donde más gente se cae, cuando se cae marcadamente más ahí."""
     salida = []
     for b in dossier.get("embudo_campanas") or []:
         etapas = b.get("etapas") or []
-        if not etapas or (etapas[0].get("n") or 0) < MINIMO_LEADS:
+        hay = _escalon_de(etapas)
+        if not hay:
             continue
-        # La ULTIMA etapa queda afuera. Cerrar es siempre lo mas dificil, asi
-        # que "se traba en cierres" es verdad en casi todos los embudos y no
-        # informa nada; y cuando los cierres son cero ya lo dice `sin_cierres`,
-        # que ademas trae la plata. Lo que este hallazgo busca es el escalon del
-        # MEDIO: gente que ya estaba enganchada y se cayo antes de llegar.
-        con_tasa = [e for e in etapas[:-1] if e.get("tasa") is not None]
-        if len(con_tasa) < 2:
-            continue
-        peor = min(con_tasa, key=lambda e: e["tasa"])
-        otras = [e["tasa"] for e in con_tasa if e is not peor]
-        promedio = sum(otras) / len(otras) if otras else None
-        # Marcadamente peor que el resto, no solo la más baja: en un embudo
-        # siempre hay una más baja.
-        if promedio is None or peor["tasa"] > promedio * _ESCALON_RELATIVO:
-            continue
+        peor, promedio = hay
         pasaron = peor.get("n") or 0
         salida.append({
             "tipo": "escalon",
@@ -214,14 +223,100 @@ def _brecha_finanzas(dossier):
     return salida
 
 
+# ── La pauta como un todo ────────────────────────────────────────────────────
+#
+# Juan, textual: "yo no entiendo lo de test creativo y leads uy, eso es como
+# maneja la pauta el de marketing, yo quiero ver todo en una sola en terminos
+# generales". Las reglas de arriba comparan campañas entre sí; estas miran el
+# bloque `todas`, que es la suma, con los mismos umbrales.
+
+_ETAPAS_TOTAL = (("leads", ".leads_crm", "Leads"),
+                 ("interesados", ".interesados", "Interesados"),
+                 ("agendadas", ".agendadas", "Demos agendadas"),
+                 ("demos", ".demos", "Demos hechas"),
+                 ("presupuestos", ".presupuestos", "Presupuestos enviados"),
+                 ("cierres", ".cierres", "Cierres"))
+
+
+def _total(dossier):
+    for b in dossier.get("campanas") or []:
+        if b.get("campana") == "todas":
+            return b
+    return None
+
+
+def _pauta_sin_cierres(dossier):
+    b = _total(dossier)
+    if not b:
+        return []
+    gasto = _valor(b, ".gasto") or 0
+    leads = _valor(b, ".leads_crm") or 0
+    cierres = _valor(b, ".cierres")
+    if gasto <= 0 or leads < MINIMO_LEADS or cierres is None or cierres > 0:
+        return []
+    demos = _valor(b, ".demos") or 0
+    return [{
+        "tipo": "pauta_sin_cierres",
+        "severidad": "alta",
+        "titulo": "La pauta gastó y todavía no cerró a nadie en el período",
+        "cuerpo": (
+            f"Se llevó {_plata(gasto)} y trajo {leads} leads, con {demos} "
+            f"{'demo' if demos == 1 else 'demos'} hechas, y ningún cierre. "
+            "Con esta muestra ya no alcanza con decir que es mala suerte: "
+            "o el lead que trae no compra, o se cae después de la demo."),
+        "metricas_citadas": [x for x in (
+            _id(b, ".gasto"), _id(b, ".leads_crm"), _id(b, ".demos"),
+            _id(b, ".cierres")) if x],
+        "_peso": gasto,
+    }]
+
+
+def _pauta_escalon(dossier):
+    b = _total(dossier)
+    if not b:
+        return []
+    etapas, previo = [], None
+    for clave, sufijo, etiqueta in _ETAPAS_TOTAL:
+        n = _valor(b, sufijo)
+        if n is None:
+            return []
+        etapas.append({"clave": clave, "etiqueta": etiqueta, "n": n,
+                       "tasa": (n / previo) if previo else None,
+                       "id": _id(b, sufijo)})
+        previo = n
+    hay = _escalon_de(etapas)
+    if not hay:
+        return []
+    peor, promedio = hay
+    return [{
+        "tipo": "pauta_escalon",
+        "severidad": "media",
+        "titulo": f"La pauta se traba en «{peor['etiqueta']}»",
+        "cuerpo": (
+            f"De la etapa anterior pasa solo el {_pct(peor['tasa'])} "
+            f"({peor['n']}), contra un {_pct(promedio)} promedio en el resto "
+            "del embudo. Es la etapa donde mejorar mueve el total; en las "
+            "otras ya pasa casi todo el mundo."),
+        "metricas_citadas": [peor["id"]],
+        "_peso": (1 - peor["tasa"]) * (etapas[0]["n"] or 0),
+    }]
+
+
 # El orden importa: define qué sobrevive al tope cuando hay muchos candidatos.
 _REGLAS = (_orden_invertido, _sin_cierres, _escalon, _brecha_finanzas)
 
+# Lo que muestra el panel: nada que parta la pauta por campaña.
+_REGLAS_PAUTA = (_pauta_sin_cierres, _pauta_escalon, _brecha_finanzas)
 
-def buscar(dossier: dict) -> list:
-    """Los hallazgos del dossier, los más importantes primero y acotados."""
+
+def buscar(dossier: dict, por_campana: bool = True) -> list:
+    """Los hallazgos del dossier, los más importantes primero y acotados.
+
+    Con `por_campana=False` salen los de la pauta como un todo, que es lo que
+    se muestra en el panel; los que comparan campañas quedan para el informe.
+    """
     salida = []
-    for regla in _REGLAS:
+    for regla in (_REGLAS if por_campana else _REGLAS_PAUTA):
         encontrados = regla(dossier) or []
         encontrados.sort(key=lambda h: -h.get("_peso", 0))
         salida.extend(encontrados)
