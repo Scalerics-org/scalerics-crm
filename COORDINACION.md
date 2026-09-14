@@ -464,6 +464,14 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **14/9 — I: DEPLOYADO `v208`: Clientes muestra cuánto pagó cada uno. Producción = `deploy/i-calendario-mobile` en `db73c32`.**
+
+  Rama `feat/clientes-monto-pagado`. Columnas `businesses.monto_pagado` (REAL) y
+  `moneda_pagado` (TEXT, las `MONEDAS` de Finanzas, sin convertir), PUT
+  `/api/clientes-activos/<id>/monto-pagado` y alta manual `POST /api/clientes-activos`.
+  **Juan decidió que los montos los ve cualquier usuario logueado** (sin candado
+  de panel). 2383 tests; boot limpio a las 22:02 UTC.
+
 - **14/9 — I: DEPLOYADO `v207`: editar y borrar reuniones desde el celular. Producción = `deploy/i-calendario-mobile` en `2ac63bc`.**
 
   Rama `feat/calendario-mobile-acciones` (`1c12e5d`, sale de
