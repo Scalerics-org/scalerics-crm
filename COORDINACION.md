@@ -397,6 +397,46 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **14/9 — G (marketing): hay una sección nueva con las piezas de la pauta, y
+  una tabla nueva en la base.**
+
+  Lo que toca a quien pase por acá:
+
+  - **Dos tablas nuevas**: `meta_ads` (un renglón por anuncio, estado de hoy) y
+    `meta_ad_insights` (fecha × anuncio). Son el espejo al grano del anuncio de
+    lo que `meta_insights` hace al grano de campaña. **No las sumen juntas**:
+    un anuncio pertenece a una campaña, así que sumar las dos cuenta el gasto
+    dos veces.
+  - **Hay archivos en el volumen.** `/data/creativos/` tiene 67 imágenes, 18 MB.
+    Las URLs que da Meta vienen firmadas y caducan, así que se bajan una vez y
+    se sirven desde `/api/marketing/creativo/<ad_id>`. Si alguna vez hay que
+    mover el volumen, eso va también.
+  - **Un paso nuevo en el cron** de `radiografia.yml`, entre el gasto y el
+    informe. El día pesado es el primero (baja las imágenes); después encuentra
+    los archivos y no los vuelve a pedir.
+  - `SC.barrasAgrupadas` y `SC.serieMulti` aceptan `opciones.referencia`
+    (`{valor, etiqueta}`) para la línea punteada del histórico. **La referencia
+    entra al máximo de la escala**: sin eso, un histórico más alto que todas las
+    barras se dibuja fuera del área y el gráfico dice "estamos igual" justo
+    cuando más distinto está.
+  - Se fue el bloque "Los números crudos" (pedido de Juan, dos veces).
+
+  **Lo que me costó y les puede costar:** un 403 de Meta puede ser "no tenés
+  permiso" o "te pasaste de llamadas" (code 17), y son dos problemas
+  completamente distintos. El log de los sync ahora incluye el mensaje, no solo
+  el número; averiguarlo a mano costó una vuelta entera. Y ojo con sondear la
+  API seguido: cuatro o cinco llamadas en un minuto ya te ganan el rate limit.
+
+  **Y el error que vale la pena no repetir:** la recomendación por anuncio se
+  calibró primero en leads ("menos de 5, no opino") y contra la cuenta real
+  dejó 17 de 19 anuncios sin opinión, incluido uno de 26 centavos al que le
+  pedía 5 leads. Se arregló midiendo la evidencia en plata relativa al costo de
+  la cuenta. **Correr las reglas contra los datos de producción antes de darlas
+  por buenas**: con fixtures pasaban todas.
+
+  Suite en **2173**.
+
+
 - **11/9 — G (marketing): el panel dejó de tener gráficos que nadie sabe leer.**
 
   Juan revisó el panel y la mitad de lo que señaló era lo mismo: el gráfico era
