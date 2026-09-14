@@ -815,9 +815,11 @@ body.light .demo-cliente{color:#0f172a}
 .cal-leyenda{display:flex;gap:14px;align-items:center;margin-bottom:10px;font-size:.64rem;color:#475569;flex-wrap:wrap}
 /* Reuniones del dia tocado, solo en el celular. La visibilidad la manda el CSS
    y no un style inline: el inline le gana a la regla del @media y el listado
-   quedaba oculto para siempre. Las dos reglas van juntas y en este orden. */
+   quedaba oculto para siempre. Las dos reglas van juntas y en este orden.
+   OJO con el espacio despues de la llave: `{` pegado a `#` abre un comentario
+   de Jinja (render_template_string) y la pagina entera da 500. Paso en v204. */
 #cal-day-events-mobile{display:none;margin-top:12px;padding:0 4px}
-@media(max-width:768px){#cal-day-events-mobile{display:block}}
+@media(max-width:768px){ #cal-day-events-mobile{display:block} }
 .cal-cell.sel-mobile{outline:2px solid var(--azul);outline-offset:-2px}
 .cal-mobile-vacio{color:var(--texto-debil);font-size:.78rem;padding:8px 0}
 .cal-mobile-ev{background:var(--superficie);border:1px solid var(--borde);border-radius:10px;padding:12px;margin-bottom:8px}
