@@ -434,7 +434,23 @@ leads de Meta se renombró a **D** para deshacer el empate.
   la cuenta. **Correr las reglas contra los datos de producción antes de darlas
   por buenas**: con fixtures pasaban todas.
 
-  Suite en **2173**.
+  Suite en **2188**.
+
+  **Corregido el mismo dia, sobre dos preguntas de Juan usando el panel.** Las
+  dos eran errores de semantica, no de calculo, y por eso los tests pasaban:
+
+  - El `desde` de cada anuncio salia de un `MIN` acotado por el periodo, asi que
+    devolvia el borde de la ventana. La misma pantalla contestaba distinto segun
+    el rango elegido. Ahora hay dos juegos de numeros separados —los del periodo
+    y los de toda la vida del anuncio— y cada uno dice de que habla.
+  - La seccion filtraba por `effective_status = ACTIVE`. Combinado con el
+    selector de periodo daba un hibrido: eligiendo mayo mostraba "lo que corre
+    hoy y ademas gasto en mayo". Ahora entran los que gastaron en el periodo,
+    con los que siguen al aire primero.
+
+  **La leccion, por si les sirve:** los dos tests que cubrian esas funciones
+  pasaban porque sus fechas caian adentro del periodo. Un test de recorte por
+  fechas tiene que mirar desde una ventana que NO contenga todos los datos.
 
 
 - **11/9 — G (marketing): el panel dejó de tener gráficos que nadie sabe leer.**
