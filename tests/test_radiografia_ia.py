@@ -84,6 +84,29 @@ def test_preparar_saca_los_bloques_que_no_son_metricas():
     assert "serie_semanal" not in preparar(d)
 
 
+def test_un_bloque_nuevo_del_dossier_no_llega_solo_al_modelo():
+    """La promesa que sostiene el costo y el validador a la vez.
+
+    `preparar` es una lista blanca: arma el payload campo por campo. Si algun
+    dia pasara a copiar el dossier entero, cada bloque nuevo que alguien agregue
+    para dibujar —y ya van tres— se colaria al prompt sin que nadie lo decida:
+    subiria la factura, y peor, el modelo podria citar numeros que el validador
+    no tiene en su lista de legitimos y rechazaria su propio informe.
+
+    Este test no protege un bloque puntual: protege el mecanismo.
+    """
+    d = {
+        "campanas": [],
+        "bloque_que_nadie_vio_venir": [{"n": 1}],
+        "embudo_campanas": [{"campana": "UY", "etapas": []}],
+        "serie_campanas": [{"campana": "UY", "puntos": []}],
+    }
+    listo = preparar(d)
+    for clave in ("bloque_que_nadie_vio_venir", "embudo_campanas",
+                  "serie_campanas"):
+        assert clave not in listo, f"{clave} se colo al prompt"
+
+
 # ── El validador anti-invención ──────────────────────────────────────────────
 
 from services.radiografia_ia import validar  # noqa: E402

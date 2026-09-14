@@ -1314,6 +1314,30 @@ body.light .mobile-header-title{color:#0f172a}
 /* Mobile FAB */
 /* ── Panel de Marketing ─────────────────────────────────────────────────── */
 .sc-filtros{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:22px}
+.sc-antes{display:flex;flex-wrap:wrap;gap:18px;align-items:baseline;padding-bottom:12px;margin-bottom:12px;border-bottom:1px dashed var(--borde)}
+.sc-antes-uno{font-size:.78rem;color:var(--texto-tenue)}
+.sc-antes-uno b{font-size:.92rem;color:var(--texto);font-variant-numeric:tabular-nums}
+.sc-antes-nota{font-size:.68rem;color:var(--rotulo);font-style:italic}
+.sc-hall{display:grid;gap:10px}
+.sc-hall-uno{display:grid;grid-template-columns:auto 1fr;gap:12px;align-items:start;background:var(--fondo-hundido);border:1px solid var(--borde);border-left:3px solid var(--rotulo);border-radius:10px;padding:12px 14px}
+.sc-hall-uno[data-sev="alta"]{border-left-color:var(--ambar)}
+.sc-hall-n{font-size:.8rem;font-weight:700;color:var(--rotulo);font-variant-numeric:tabular-nums;min-width:18px}
+.sc-hall-tit{font-size:.84rem;font-weight:700;color:var(--texto);margin-bottom:4px}
+.sc-hall-cuerpo{font-size:.79rem;line-height:1.55;color:var(--texto-tenue)}
+.sc-leyenda{display:flex;flex-wrap:wrap;gap:14px;margin-top:8px;padding-left:52px}
+.sc-leyenda-item{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;color:var(--rotulo)}
+.sc-leyenda-punto{width:10px;height:10px;border-radius:3px;flex-shrink:0}
+.sc-embudos{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px}
+.sc-embudo-uno{background:var(--fondo-hundido);border:1px solid var(--borde);border-radius:12px;padding:14px 16px}
+.sc-embudo-tit{font-size:.78rem;font-weight:700;color:var(--texto);margin-bottom:2px;display:flex;align-items:center;gap:7px}
+.sc-embudo-sub{font-size:.68rem;color:var(--rotulo);margin-bottom:10px}
+.sc-etapa{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;margin-bottom:7px}
+.sc-etapa-nom{font-size:.72rem;color:var(--texto-tenue)}
+.sc-etapa-n{font-size:.74rem;font-weight:700;color:var(--texto);font-variant-numeric:tabular-nums}
+.sc-etapa-barra{grid-column:1/-1;height:7px;border-radius:4px;background:var(--borde);overflow:hidden}
+.sc-etapa-lleno{height:100%;border-radius:4px}
+.sc-etapa-tasa{font-size:.66rem;color:var(--rotulo);font-variant-numeric:tabular-nums}
+.sc-caida{color:var(--ambar);font-weight:700}
 .sc-nav-mes{display:flex;align-items:center;gap:6px}
 .sc-nav-mes span{font-size:.82rem;font-weight:700;color:var(--texto);min-width:132px;text-align:center}
 .sc-filtro{display:flex;flex-direction:column;gap:4px}
@@ -1922,6 +1946,12 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     <div id="mk-cuerpo" style="display:none">
       <div id="mk-avisos"></div>
       <div id="mk-informe"></div>
+      <div class="sc-bloque" id="mk-hall-bloque">
+        <h3>Lo que salta a la vista</h3>
+        <div class="sc-sub">Calculado, no escrito por IA: son reglas sobre los mismos números que están más abajo. Cada uno cita las métricas que lo sostienen, así que se puede ir a la tabla y comprobarlo.</div>
+        <div id="mk-hallazgos"></div>
+      </div>
+
       <div id="mk-tiles"></div>
 
       <div class="sc-bloque">
@@ -1934,6 +1964,24 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
         <h3>Semana a semana</h3>
         <div class="sc-sub">Grano semanal a propósito: con poco más de un lead por día, un gráfico diario son picos y ceros.</div>
         <div id="mk-series"></div>
+      </div>
+
+      <div class="sc-bloque">
+        <h3>Dónde se cae cada campaña</h3>
+        <div class="sc-sub">El mismo embudo de arriba, pero abierto por campaña. Cada porcentaje es contra la etapa anterior, no contra el total: así se ve el escalón. En ámbar, la caída más grande de cada una.</div>
+        <div id="mk-embudos"></div>
+      </div>
+
+      <div class="sc-bloque">
+        <h3>Cómo evoluciona cada campaña</h3>
+        <div class="sc-sub">Una campaña que se pone cara queda tapada en el promedio si otra mejora al mismo tiempo. Acá cada una va por su lado, sobre el mismo eje.</div>
+        <div id="mk-evolucion"></div>
+      </div>
+
+      <div class="sc-bloque">
+        <h3>Cuánto costó llegar hasta acá</h3>
+        <div class="sc-sub">Gasto y leads acumulados desde el inicio del período. Son dos escalas distintas, así que van en dos gráficos y no en dos ejes: un eje doble hace que cualquier par de curvas parezca que se cruza donde uno quiera.</div>
+        <div id="mk-acumulado"></div>
       </div>
 
       <div class="sc-bloque">
@@ -1958,12 +2006,6 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
         <h3>La plata</h3>
         <div class="sc-sub">Lo que Meta dice que cobró contra lo que está cargado en Finanzas. La brecha dice si la contabilidad está viendo todo el gasto de pauta.</div>
         <div id="mk-conciliacion"></div>
-      </div>
-
-      <div class="sc-bloque">
-        <h3>Secuencia de recordatorios</h3>
-        <div class="sc-sub">Cuántos envíos fueron seguidos de un cambio de estado dentro de los 7 días. Es atribución, no causalidad: mide movimiento registrado en el CRM.</div>
-        <div id="mk-recordatorios"></div>
       </div>
 
       <div class="sc-bloque">
@@ -7669,6 +7711,21 @@ async function _mkInforme() {
     hallazgos + cambios + '</div>';
 }
 
+  // ── Las semanas, numeradas desde el inicio del período ─────────────────
+  //
+  // "W31" es el numero de semana ISO del ano: no le dice nada a nadie, y menos
+  // cuando el periodo arranca a mitad de mes. "Semana 3" se entiende sin
+  // pensar, y es lo que importa: cuanto hace que arranco esto.
+  //
+  // El numero sale del ORDEN dentro del periodo, no de la semana ISO, asi que
+  // al cambiar el rango se renumera solo.
+  function _mkSemanas(listaDeInicios) {
+    const orden = [...new Set(listaDeInicios)].sort();
+    const mapa = {};
+    orden.forEach((inicio, i) => { mapa[inicio] = 'Semana ' + (i + 1); });
+    return mapa;
+  }
+
 function _mkPintar() {
   if (!_mkDossier) return;
   const tema = _mkTema();
@@ -7676,6 +7733,12 @@ function _mkPintar() {
   const foco = _mkBloque(elegida || 'todas') || _mkBloque('todas');
 
   _mkAvisos();
+
+  const nombreSemana = _mkSemanas([
+    ...(_mkDossier.serie_semanal || []).map(s => s.inicio),
+    ...(_mkDossier.serie_campanas || []).flatMap(s => (s.puntos || []).map(p => p.inicio)),
+  ]);
+
 
   // ── Los ocho KPIs ──────────────────────────────────────────────────────
   // `mejor` dice para que lado es bueno: en los costos, subir es mala noticia.
@@ -7715,7 +7778,19 @@ function _mkPintar() {
     if (fuente === 'meta_insights' && !valor) valor = null;
     return { clave: suf.slice(1), etiqueta, valor, fuente };
   });
-  document.getElementById('mk-embudo').innerHTML = SC.embudo(etapas, tema);
+  // Las tres primeras son de Meta y estan en otra escala —un millon de
+  // impresiones contra 240 leads—, asi que no pueden compartir el dibujo: irian
+  // aplastadas a una linea. Van como cifras arriba, y el embudo de verdad
+  // arranca donde arranca el CRM.
+  const antes = etapas.filter(e => e.fuente === 'meta_insights');
+  const delCrm = etapas.filter(e => e.fuente === 'crm');
+  document.getElementById('mk-embudo').innerHTML =
+    '<div class="sc-antes">' + antes.map(e =>
+      '<span class="sc-antes-uno"><b>' + esc(SC.fmt(e.valor, 'numero')) +
+      '</b> ' + esc(e.etiqueta) + '</span>').join('') +
+    '<span class="sc-antes-nota">hasta acá llega un reporte de ads</span></div>' +
+    SC.embudoReal(delCrm.map(e => ({ clave: e.clave, etiqueta: e.etiqueta, n: e.valor })),
+                  { etiqueta: 'Embudo', ancho: 620, altoEtapa: 52 }, tema);
 
   // ── Series semanales ───────────────────────────────────────────────────
   const semanas = _mkDossier.serie_semanal || [];
@@ -7727,7 +7802,7 @@ function _mkPintar() {
   document.getElementById('mk-series').innerHTML = pares.map(([a, b]) => {
     const arma = ([clave, etiqueta, formato]) => ({
       etiqueta, formato,
-      puntos: semanas.map(s => ({ x: s.semana, y: s[clave] === undefined ? null : s[clave] }))
+      puntos: semanas.map(s => ({ x: nombreSemana[s.inicio] || s.semana, y: s[clave] === undefined ? null : s[clave] }))
     });
     return b ? SC.parApilado(arma(a), arma(b), tema)
              : SC.serie(arma(a).puntos, arma(a), tema);
@@ -7739,6 +7814,77 @@ function _mkPintar() {
   // Va DESPUES de `const campanas`: leerlo antes tira ReferenceError por
   // la zona muerta temporal del const. node --check no lo agarra —es
   // sintacticamente valido— y solo revienta al abrir el panel.
+  // ── Lo que salta a la vista ────────────────────────────────────────────
+  //
+  // Los hallazgos son deterministas: los calcula `services/hallazgos.py` a
+  // partir del mismo dossier que alimenta los graficos. No hay nada que
+  // validar —a diferencia del informe de IA— porque los numeros se leen, no se
+  // generan.
+  const hall = _mkDossier.hallazgos || [];
+  document.getElementById('mk-hall-bloque').style.display = hall.length ? '' : 'none';
+  document.getElementById('mk-hallazgos').innerHTML =
+    '<div class="sc-hall">' + hall.map((h, i) =>
+      '<div class="sc-hall-uno" data-sev="' + esc(h.severidad || '') + '">' +
+      '<span class="sc-hall-n">' + (i + 1) + '</span>' +
+      '<span><span class="sc-hall-tit">' + esc(h.titulo || '') + '</span>' +
+      '<span class="sc-hall-cuerpo">' + esc(h.cuerpo || '') + '</span></span>' +
+      '</div>').join('') + '</div>';
+
+  // ── Dónde se cae cada campaña ──────────────────────────────────────────
+  //
+  // El embudo global contesta "cómo venimos"; este contesta "dónde se tranca
+  // cada una", que es lo accionable. Dos campañas con el mismo costo por lead
+  // pueden perder la gente en etapas distintas.
+  //
+  // La caída más grande va marcada porque es la única etapa sobre la que tiene
+  // sentido hacer algo: mejorar donde ya se pasa el 90% no mueve el total.
+  const embudos = _mkDossier.embudo_campanas || [];
+  document.getElementById('mk-embudos').innerHTML = !embudos.length
+    ? '<div class="sc-vacio">Sin leads en el período.</div>'
+    : '<div class="sc-embudos">' + embudos.map(b => {
+        const cierres = b.etapas[b.etapas.length - 1].n;
+        return '<div class="sc-embudo-uno">' +
+               '<div class="sc-embudo-tit">' + esc(b.campana) + '</div>' +
+               '<div class="sc-embudo-sub">' + esc(SC.fmt(b.etapas[0].n, 'numero')) +
+               ' leads · ' + esc(SC.fmt(cierres, 'numero')) + ' cierres</div>' +
+               SC.embudoReal(b.etapas, { etiqueta: b.campana, ancho: 460 }, tema) +
+               '</div>';
+      }).join('') + '</div>';
+
+  // ── Cómo evoluciona cada campaña ───────────────────────────────────────
+  const porSemana = _mkDossier.serie_campanas || [];
+  // Las campañas sin gasto no dicen nada en un gráfico de costos: serían una
+  // línea vacía con su color ocupando lugar en la leyenda.
+  const conGastoSem = porSemana.filter(s =>
+    (s.puntos || []).some(p => p.gasto > 0));
+
+  const evolucion = [
+    ['costo_demo', 'Costo por demo, semana a semana', 'moneda'],
+    ['cpl', 'Costo por lead, semana a semana', 'moneda'],
+    ['gasto', 'Gasto por semana', 'moneda'],
+  ].map(([campo, titulo, formato]) => SC.serieMulti(
+    conGastoSem.map(s => ({
+      campana: s.campana,
+      puntos: (s.puntos || []).map(p => ({ x: nombreSemana[p.inicio] || p.semana, y: p[campo] })),
+    })), { etiqueta: titulo, formato }, tema)).join('');
+  document.getElementById('mk-evolucion').innerHTML = conGastoSem.length
+    ? evolucion
+    : '<div class="sc-vacio">Hace falta gasto sincronizado para ver la evolución.</div>';
+
+  // ── Cuánto costó llegar hasta acá ──────────────────────────────────────
+  //
+  // Dos gráficos y no dos ejes: con un eje doble las dos curvas se cruzan
+  // donde uno elija la escala, y el cruce parece significar algo cuando no
+  // significa nada.
+  document.getElementById('mk-acumulado').innerHTML = conGastoSem.length
+    ? [['gasto_acum', 'Gasto acumulado', 'moneda'],
+       ['leads_acum', 'Leads acumulados', 'numero']].map(([campo, titulo, formato]) =>
+        SC.serieMulti(conGastoSem.map(s => ({
+          campana: s.campana,
+          puntos: (s.puntos || []).map(p => ({ x: nombreSemana[p.inicio] || p.semana, y: p[campo] })),
+        })), { etiqueta: titulo, formato }, tema)).join('')
+    : '<div class="sc-vacio">Hace falta gasto sincronizado.</div>';
+
   // ── Qué campaña rinde de verdad ────────────────────────────────────────
   //
   // Existe porque el hallazgo mas util del modulo requeria comparar dos
@@ -7881,14 +8027,6 @@ function _mkPintar() {
       `<td>${esc(SC.fmt(suma('brecha'), 'moneda'))}</td></tr>` +
       '</tbody></table></div>';
   }
-
-  // ── Recordatorios ──────────────────────────────────────────────────────
-  const recs = (_mkDossier.recordatorios || []).map(m => ({
-    etiqueta: 'Recordatorio ' + m.id.split('_').pop(), metrica: m
-  }));
-  document.getElementById('mk-recordatorios').innerHTML = recs.length
-    ? SC.barrasConIC(recs, { etiqueta: 'Recordatorios' }, tema)
-    : '<div class="sc-vacio">No se enviaron recordatorios en el período</div>';
 
   // ── Tabla cruda ────────────────────────────────────────────────────────
   const todasLasMetricas = [];
