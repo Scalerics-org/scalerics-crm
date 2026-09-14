@@ -464,6 +464,21 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **14/9 — I: DEPLOYADO `v214`: botón "Cargar" del simulador y demos que se cargan solas desde la planilla semáforo.**
+
+  - **Demos desde la planilla** (`feat/demos-desde-planilla`, `ae6f827`):
+    `services/planilla_semaforo.sincronizar_demos` corre después de `aplicar`
+    en `POST /api/meta/sync-planilla`. Columnas nuevas en `demos_realizadas`:
+    `origen`, `estado_planilla` y `mes_planilla`, con índice único parcial.
+    Colores: verde agendada, celeste realizada, violeta no cerró, verde oscuro
+    venta. **El mes es el de la pestaña.** Nunca toca demos cargadas a mano.
+  - **Primera corrida, verificada en el log a las 23:37:50 UTC:** 66 creadas,
+    0 sin match, 0 pestañas que no son mes.
+  - **Panel de demos:** de a un mes, con flechas como Finanzas, y resumen por
+    estado.
+  - **Simulador:** botón "Cargar" al final, que usa la misma `simRecalcular`.
+  - 2666 tests; boot limpio a las 23:27 UTC.
+
 - **14/9 — I: DEPLOYADOS `v212` (Simulador financiero, `feat/simulador-financiero`) y `v213` (Métricas pasa a llamarse Outbound, `feat/metricas-outbound`).**
 
   - **Simulador:** panel nuevo bajo GESTIÓN. Tabla `simulador_escenarios`,
