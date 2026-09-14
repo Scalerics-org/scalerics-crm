@@ -464,6 +464,21 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **14/9 — I: `v204` TUMBÓ EL CRM y se volvió a `v203` (imagen `deployment-01M2GE3T9T2Q54KGSW435YTEBS`). Lo de abajo sobre `v204` ya no describe producción.**
+
+  `GET /` daba 500 para todos: `jinja2.exceptions.TemplateSyntaxError: Missing
+  end of comment tag`. Causa, mía: en el CSS del listado mobile escribí
+  `@media(max-width:768px){#cal-day-events-mobile{...}}`. **`{` pegado a `#` es
+  `{#`, que abre un comentario de Jinja**, y `DASHBOARD_HTML` pasa por
+  `render_template_string`. La suite entera pasó igual porque **ningún test
+  pedía la página principal**; `/login` daba 200 y el chequeo post-deploy no lo
+  vio.
+
+  Corregido en `fix/calendario-mobile-dia` (espacio después de la llave) con
+  un test que hace `GET /` logueado y exige 200. **Si escriben CSS en el
+  dashboard: nunca `{#` pegado.** Producción hoy = `v203`, o sea sin el arreglo
+  del calendario y con lo que G tenía antes.
+
 - **14/9 — I: DEPLOYADO `v204`. Producción NO es `main`, leer antes de deployar.**
 
   Juan pidió el arreglo del calendario mobile en vivo. `v204` salió de un

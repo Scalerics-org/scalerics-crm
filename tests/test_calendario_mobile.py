@@ -48,7 +48,7 @@ def test_oculto_de_base_y_visible_en_el_celular_en_ese_orden():
     """Misma especificidad: gana la que viene despues. Si la de base quedara
     abajo del @media, el celular volveria a no ver nada."""
     base = HTML.find("#cal-day-events-mobile{display:none")
-    movil = HTML.find("@media(max-width:768px){#cal-day-events-mobile{display:block}}")
+    movil = HTML.find("@media(max-width:768px){ #cal-day-events-mobile{display:block} }")
     assert base != -1, "falta la regla que lo oculta en escritorio"
     assert movil != -1, "falta la regla que lo muestra en el celular"
     assert base < movil
@@ -69,6 +69,33 @@ def test_el_js_no_toca_la_visibilidad_ni_pinta_colores():
 
 def test_dibujar_el_mes_elige_el_dia_del_celular():
     assert "_calSeleccionarDiaMobile();" in _funcion("renderCalendar")
+
+
+def test_la_pagina_principal_se_renderiza(tmp_path, monkeypatch):
+    """El HTML pasa por `render_template_string`, o sea por Jinja: un `{#`
+    pegado en el CSS abre un comentario que nunca cierra y `/` da 500 para
+    todos. Paso en v204 con `@media(...){#cal-day-events-mobile{...}}`, y
+    ningun test lo vio porque ninguno pedia la pagina entera."""
+    from werkzeug.security import generate_password_hash
+    from database import create_user, init_db
+
+    monkeypatch.setenv("SECRET_KEY", "test")
+    monkeypatch.setenv("ADMIN_EMAIL", "jefe@test.com")
+    db = str(tmp_path / "render.db")
+    init_db(db)
+    app = dashboard.create_app(db)
+    uid = create_user(db, name="Jefe", email="jefe@test.com", phone="099",
+                      password_hash=generate_password_hash("x" * 10))
+    cli = app.test_client()
+    with cli.session_transaction() as s:
+        s["logged_in"] = True
+        s["user_id"] = uid
+        s["user_name"] = "Jefe"
+
+    r = cli.get("/")
+
+    assert r.status_code == 200, r.status_code
+    assert b'id="cal-day-events-mobile"' in r.data
 
 
 def test_en_escritorio_las_dos_funciones_cortan_primero():
