@@ -482,7 +482,6 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
   .cal-event-chip.origen-google{background:#10b981!important}
   .cal-event-chip.origen-calendly{background:#f59e0b!important}
   .cal-chip-acts{display:none!important}
-  #cal-day-events-mobile{display:block}
   /* La vista semanal se arrastra con el mouse: en touch el drag de HTML5 no
      dispara, asi que en el celular solo queda el mes. */
   .cal-view-toggle{display:none!important}
@@ -814,6 +813,17 @@ body.light .demo-cliente{color:#0f172a}
 .cal-today-btn{background:#161b27;border:1px solid #1e293b;color:#94a3b8;padding:7px 14px;border-radius:8px;cursor:pointer;font-size:.76rem;font-weight:700;font-family:'Inter',sans-serif;line-height:1;transition:background .15s,color .15s,border-color .15s}
 .cal-today-btn:hover{background:rgba(0,136,204,.12);border-color:rgba(0,136,204,.4);color:#33aadd}
 .cal-leyenda{display:flex;gap:14px;align-items:center;margin-bottom:10px;font-size:.64rem;color:#475569;flex-wrap:wrap}
+/* Reuniones del dia tocado, solo en el celular. La visibilidad la manda el CSS
+   y no un style inline: el inline le gana a la regla del @media y el listado
+   quedaba oculto para siempre. Las dos reglas van juntas y en este orden. */
+#cal-day-events-mobile{display:none;margin-top:12px;padding:0 4px}
+@media(max-width:768px){#cal-day-events-mobile{display:block}}
+.cal-cell.sel-mobile{outline:2px solid var(--azul);outline-offset:-2px}
+.cal-mobile-vacio{color:var(--texto-debil);font-size:.78rem;padding:8px 0}
+.cal-mobile-ev{background:var(--superficie);border:1px solid var(--borde);border-radius:10px;padding:12px;margin-bottom:8px}
+.cal-mobile-ev-titulo{font-size:.82rem;font-weight:600;color:var(--texto-fuerte)}
+.cal-mobile-ev-hora{font-size:.72rem;color:var(--azul-claro);margin-top:3px}
+.cal-mobile-ev-link{display:inline-flex;align-items:center;gap:4px;margin-top:6px;font-size:.72rem;color:var(--verde-texto);text-decoration:none}
 .cal-leyenda span{display:flex;align-items:center;gap:5px}
 .cal-leyenda i{width:8px;height:8px;border-radius:2px;display:inline-block}
 .cal-grid{border:1px solid #1e293b;border-radius:14px}
@@ -1830,7 +1840,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     </div>
     <div id="cal-error" class="cal-error" style="display:none"></div>
     <div id="cal-days" class="cal-days"><div class="cal-loading">Cargando calendario...</div></div>
-    <div id="cal-day-events-mobile" style="display:none;margin-top:12px;padding:0 4px"></div>
+    <div id="cal-day-events-mobile"></div>
   </div>
 
   <!-- ======= FINANZAS PANEL ======= -->
@@ -4068,6 +4078,7 @@ async function renderCalendar() {
         </div>`
     ).join('')}
   </div>`;
+  _calSeleccionarDiaMobile();
 }
 
 // ── Vista semanal ───────────────────────────────────────────────────────────
@@ -4359,25 +4370,53 @@ document.getElementById('reprog-modal').addEventListener('click', e => {
   if (e.target === e.currentTarget) _calCerrarEditor();
 });
 
-function _calCellClick(cell, dateStr) {
+// El dia cuya lista se ve en el celular. Sobrevive a volver a dibujar el mes
+// (guardar, mover una reunion, el sync) para no perder lo que se estaba mirando.
+let calDiaMobile = null;
+
+// Que dia mostrar al dibujar el mes: el que ya estaba elegido si sigue a la
+// vista, si no hoy, y si el mes no contiene ninguno de los dos, ninguno.
+function _calDiaMobile(fechasDelMes, hoy, elegido) {
+  const fechas = fechasDelMes || [];
+  if (elegido && fechas.includes(elegido)) return elegido;
+  if (hoy && fechas.includes(hoy)) return hoy;
+  return null;
+}
+
+// Al abrir el calendario en el celular no habia ningun dia marcado: la lista
+// quedaba vacia y habia que adivinar que se toca un dia. Ahora arranca en hoy.
+// No desplaza la pantalla: eso es solo cuando la persona toca un dia.
+function _calSeleccionarDiaMobile() {
   if (window.innerWidth > 768) return;
   const mobileList = document.getElementById('cal-day-events-mobile');
   if (!mobileList) return;
-  document.querySelectorAll('.cal-cell').forEach(c => c.style.outline = '');
-  cell.style.outline = '2px solid #0088cc';
+  const celdas = Array.from(document.querySelectorAll('.cal-cell[data-date]'));
+  const ds = _calDiaMobile(celdas.map(c => c.dataset.date), _calIsoLocal(new Date()), calDiaMobile);
+  const celda = celdas.find(c => c.dataset.date === ds);
+  if (celda) { _calCellClick(celda, ds, false); return; }
+  mobileList.innerHTML = '<div class="cal-mobile-vacio">Tocá un día para ver sus reuniones.</div>';
+}
+
+function _calCellClick(cell, dateStr, desplazar) {
+  if (window.innerWidth > 768) return;
+  const mobileList = document.getElementById('cal-day-events-mobile');
+  if (!mobileList) return;
+  calDiaMobile = dateStr;
+  document.querySelectorAll('.cal-cell.sel-mobile').forEach(c => c.classList.remove('sel-mobile'));
+  cell.classList.add('sel-mobile');
   const events = (window._calEventMap || {})[dateStr] || [];
   if (!events.length) {
-    mobileList.innerHTML = '<div style="color:#475569;font-size:.78rem;padding:8px 0">Sin eventos este día.</div>';
+    mobileList.innerHTML = '<div class="cal-mobile-vacio">Sin reuniones este día.</div>';
   } else {
     mobileList.innerHTML = events.map(ev => `
-      <div style="background:#111827;border:1px solid #1e293b;border-radius:10px;padding:12px;margin-bottom:8px">
-        <div style="font-size:.82rem;font-weight:600;color:#f1f5f9">${esc(ev.title||'')}</div>
-        ${ev.time ? `<div style="font-size:.72rem;color:#0088cc;margin-top:3px">🕐 ${esc(ev.time)}</div>` : ''}
-        ${ev.meeting_url ? `<a href="${esc(ev.meeting_url)}" target="_blank" style="display:inline-flex;align-items:center;gap:4px;margin-top:6px;font-size:.72rem;color:#4ade80;text-decoration:none">▶ Unirse a reunión</a>` : ''}
+      <div class="cal-mobile-ev">
+        <div class="cal-mobile-ev-titulo">${esc(ev.title||'')}</div>
+        ${ev.time ? `<div class="cal-mobile-ev-hora">🕐 ${esc(ev.time)}</div>` : ''}
+        ${ev.meeting_url ? `<a class="cal-mobile-ev-link" href="${esc(ev.meeting_url)}" target="_blank" rel="noopener">▶ Unirse a reunión</a>` : ''}
       </div>
     `).join('');
   }
-  mobileList.scrollIntoView({behavior:'smooth',block:'nearest'});
+  if (desplazar !== false) mobileList.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
 
 function openNewEventModal() {
