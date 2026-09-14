@@ -489,7 +489,8 @@ def _contraste(a: str, b: str) -> float:
     return (x + 0.05) / (y + 0.05)
 
 
-TEXTO = ["--texto-fuerte", "--texto", "--texto-tenue", "--texto-debil", "--rotulo"]
+TEXTO = ["--texto-fuerte", "--texto", "--texto-tenue", "--texto-debil", "--rotulo",
+         "--verde-texto"]
 
 
 @pytest.mark.parametrize("token", TEXTO)
@@ -804,7 +805,10 @@ TEXTOS_DE_TAREAS = [
     (".task-meta", "--superficie"), (".task-client-link", "--superficie"),
     (".task-deadline", "--superficie"), (".task-deadline.overdue", "--superficie"),
     (".task-edit-btn", "--superficie"), (".task-del-btn", "--superficie"),
-    (".tasks-empty", "--fondo"), (".tasks-summary", "--fondo"),
+    # Van sobre la página, que no es un token: #0a0f1a en oscuro (--fondo) y
+    # #f1f5f9 en claro (--fondo-hundido). Se miden contra los dos.
+    (".tasks-empty", ("--fondo", "--fondo-hundido")),
+    (".tasks-summary", ("--fondo", "--fondo-hundido")),
     (".task-status-badge.todo", ".task-status-badge.todo"),
     (".task-notion-badge", ".task-notion-badge"),
     (".kanban-name", ".kanban-col"), (".kanban-vacia", ".kanban-col"),
@@ -822,10 +826,23 @@ def test_los_textos_de_tareas_llegan_a_4_5(oscuro, claro, tema):
     resumen era #94a3b8 sobre #f8fafc: 2,4:1. Y "venció" (#fbbf24) no tenía
     versión clara: 1,7:1 sobre blanco."""
     t = oscuro if tema == "oscuro" else claro
-    for selector, fondo in TEXTOS_DE_TAREAS:
-        token_fondo = fondo if fondo.startswith("--") else _token_en(fondo, "background")
-        c = _contraste(t[_token_en(selector, "color")], t[token_fondo])
-        assert c >= 4.5, f"{selector} sobre {token_fondo} en {tema}: {c:.2f}:1"
+    for selector, fondos in TEXTOS_DE_TAREAS:
+        for fondo in (fondos if isinstance(fondos, tuple) else (fondos,)):
+            token_fondo = fondo if fondo.startswith("--") else _token_en(fondo, "background")
+            c = _contraste(t[_token_en(selector, "color")], t[token_fondo])
+            assert c >= 4.5, f"{selector} sobre {token_fondo} en {tema}: {c:.2f}:1"
+
+
+def test_el_texto_verde_de_tareas_usa_el_verde_de_texto():
+    """"✓ Meta alcanzada", el "8/20" de una meta cumplida y el "+1" del
+    historial son texto de .7rem. `--verde` en claro (#059669) da 3,77:1 sobre
+    la fila blanca: alcanza para la barra de progreso, no para un rótulo."""
+    js = _entre("function _getFilteredTasks(", "function _cpRenderTasks(")
+    texto_en_verde = re.findall("(?<![a-z-])color[:][^;\"`]*?var[(]--verde[)]", js)
+
+    assert not texto_en_verde, f"texto chico con --verde: {texto_en_verde}"
+    assert js.count("var(--verde-texto)") == 3
+    assert "background:${pct>=100?'var(--verde)'" in js, "la barra sigue con --verde"
 
 
 # Del tablero de leads viejo, que ya no tiene HTML: tiene su propia limpieza.

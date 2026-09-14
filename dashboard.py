@@ -355,7 +355,11 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 
    --sombra es el color de la sombra de lo que flota (menus, la barra de
    lote). La del oscuro, negro al 40%, en claro era un halo gris alrededor
-   de un menu blanco. La geometria de cada sombra sigue en su regla. */
+   de un menu blanco. La geometria de cada sombra sigue en su regla.
+
+   --verde-texto es el verde para texto chico. --verde en claro (#059669)
+   da 3,77:1 sobre blanco: alcanza para rellenos y numeros grandes, no
+   para un rotulo de .7rem. #047857 da 5,48:1. En oscuro son el mismo. */
 :root{
   --fondo:#0a0f1a;
   --fondo-hundido:#0f1117;
@@ -374,6 +378,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   --azul:#0088cc;
   --azul-claro:#38bdf8;
   --verde:#10b981;
+  --verde-texto:#10b981;
   --rojo:#f87171;
   --ambar:#f59e0b;
   --sombra:rgba(0,0,0,.4);
@@ -396,6 +401,7 @@ body.light{
   --azul:#0088cc;
   --azul-claro:#0369a1;
   --verde:#059669;
+  --verde-texto:#047857;
   --rojo:#dc2626;
   --ambar:#b45309;
   --sombra:rgba(0,0,0,.12);
@@ -4884,8 +4890,8 @@ function _taskRowHtml(t) {
     <div style="margin-top:6px">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;cursor:pointer" onclick="_toggleTaskHistory(${t.id})">
         <span style="font-size:.72rem;color:var(--texto-debil)">${goalTypeLabel[t.goal_type]||t.goal_type}: </span>
-        <span style="font-size:.72rem;font-weight:600;color:${done||pct>=100?'var(--verde)':'var(--texto)'}">${progress}/${t.goal}</span>
-        ${pct >= 100 ? '<span style="font-size:.68rem;color:var(--verde)">✓ Meta alcanzada</span>' : ''}
+        <span style="font-size:.72rem;font-weight:600;color:${done||pct>=100?'var(--verde-texto)':'var(--texto)'}">${progress}/${t.goal}</span>
+        ${pct >= 100 ? '<span style="font-size:.68rem;color:var(--verde-texto)">✓ Meta alcanzada</span>' : ''}
         <span style="font-size:.68rem;color:var(--texto-debil)">▾ historial</span>
       </div>
       <div style="height:4px;background:var(--relleno);border-radius:2px;overflow:hidden;max-width:240px">
@@ -5016,7 +5022,7 @@ async function _toggleTaskHistory(taskId) {
       const dStr = d.toLocaleDateString('es-UY',{day:'2-digit',month:'2-digit'})
                  + ' ' + d.toLocaleTimeString('es-UY',{hour:'2-digit',minute:'2-digit'});
       return `<div style="display:flex;gap:8px;align-items:baseline;padding:2px 0;font-size:.72rem">
-        <span style="color:var(--verde);font-weight:700;min-width:20px">+1</span>
+        <span style="color:var(--verde-texto);font-weight:700;min-width:20px">+1</span>
         <span style="color:var(--texto-tenue);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${i.lead_name ? esc(i.lead_name) : '—'}</span>
         <span style="color:var(--texto-debil);white-space:nowrap">${dStr}</span>
       </div>`;
