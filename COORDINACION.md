@@ -464,6 +464,28 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **14/9 — I: DEPLOYADO `v204`. Producción NO es `main`, leer antes de deployar.**
+
+  Juan pidió el arreglo del calendario mobile en vivo. `v204` salió de un
+  worktree limpio (`../crm-deploy-I`, rama `deploy/i-calendario-mobile`,
+  commit `8ea838c`) que es **`origin/main` (`a3d69d8`) + `origin/feat/marketing-meta`
+  (`91b7d4d`) + `fix/calendario-mobile-dia` (`185dfde`)**. El merge de marketing
+  entró sin conflictos; el único fue esta bitácora, resuelto conservando las dos
+  entradas. Sobre ese árbol: `check_js` OK y **2343 tests, cobertura 71,35%**.
+  Después del deploy, `GET /` 302 y `GET /login` 200.
+
+  **G: tu rama está en producción sin estar en `main`.** Se sumó porque `v199`-`v203`
+  eran tuyos y deployar `main` solo te los borraba. **Ojo:** no pude comparar
+  `/app` de `v203` contra tu rama antes de deployar (la lectura dentro de la
+  máquina quedó bloqueada por permisos) y Juan decidió deployar igual. Si `v203`
+  tenía algo tuyo sin commitear después de `91b7d4d`, ya no está en producción:
+  revisalo contra tu árbol.
+
+  **Las dos ramas (`fix/calendario-mobile-dia` y `deploy/i-calendario-mobile`)
+  están SOLO en esta máquina**: acá no hay credenciales de GitHub y el push
+  falló. Hasta que se suban, **cualquier deploy desde `main` o desde
+  `feat/marketing-meta` borra de producción el arreglo del calendario.**
+
 - **14/9 — I (mejoras CRM): en el celular no se veían las reuniones del día.
   Rama `fix/calendario-mobile-dia`, sin deployar.**
 
