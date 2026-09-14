@@ -381,3 +381,81 @@ var y = parseFloat(/y1="([\d.]+)"/.exec(
 console.log(h.indexOf('histórico 64') >= 0, y > 0 && y < 300);
 """, tmp_path)
     assert salida.strip() == "true true"
+
+
+# ── Que las etiquetas no se pisen ──────────────────────────────────────────
+#
+# Juan, mirando el panel con la historia entera: "Semana 2 se solapan las
+# semanas". Con 27 semanas, "Semana 12" mide ~55px y cada grupo tiene 34.
+
+def _semanas(n, escala=2):
+    periodos = ",".join(
+        f"{{clave:'s{i}', etiqueta:'Semana {i}'}}" for i in range(1, n + 1))
+    valores = ",".join(f"s{i}:{i * escala}" for i in range(1, n + 1))
+    return (f"var periodos = [{periodos}];\n"
+            f"var series = [{{etiqueta:'Leads', color:'#60a5fa', "
+            f"valores:{{{valores}}}}}];\n")
+
+
+@sin_node
+def test_con_muchas_semanas_las_etiquetas_se_saltean(tmp_path):
+    """27 etiquetas de "Semana NN" no entran en 920px. Se escriben de a N."""
+    salida = _correr(_semanas(27) + r"""
+var h = SC.barrasAgrupadas(periodos, series, {etiqueta:'Leads'}, 'oscuro');
+console.log((h.match(/>Semana \d+</g) || []).length);
+""", tmp_path)
+    escritas = int(salida.strip())
+    assert escritas < 27, "las escribio todas: se pisan"
+    assert escritas >= 8, f"saltea de mas: quedaron {escritas}"
+
+
+@sin_node
+def test_con_pocas_semanas_se_escriben_todas(tmp_path):
+    """Saltear cuando entran seria perder informacion por nada."""
+    salida = _correr(_semanas(5) + r"""
+var h = SC.barrasAgrupadas(periodos, series, {etiqueta:'Leads'}, 'oscuro');
+console.log((h.match(/>Semana \d+</g) || []).length);
+""", tmp_path)
+    assert salida.strip() == "5"
+
+
+@sin_node
+def test_la_primera_siempre_se_escribe(tmp_path):
+    """Sin la primera no se sabe donde empieza la serie."""
+    salida = _correr(_semanas(27) + """
+var h = SC.barrasAgrupadas(periodos, series, {etiqueta:'Leads'}, 'oscuro');
+console.log(h.indexOf('>Semana 1<') >= 0);
+""", tmp_path)
+    assert salida.strip() == "true"
+
+
+@sin_node
+def test_las_barras_siguen_estando_todas(tmp_path):
+    """Se saltean las ETIQUETAS, no los datos: las 27 barras se dibujan."""
+    salida = _correr(_semanas(27) + """
+var h = SC.barrasAgrupadas(periodos, series, {etiqueta:'Leads'}, 'oscuro');
+console.log((h.match(/<rect /g) || []).length);
+""", tmp_path)
+    assert salida.strip() == "27"
+
+
+@sin_node
+def test_el_numero_de_arriba_se_esconde_si_no_entra(tmp_path):
+    """"100,00" ocupa el triple que "25". Con barras finas se pisaria con el de
+    al lado, asi que se mide contra el ancho real y no contra un minimo fijo."""
+    salida = _correr(_semanas(27, escala=100) + """
+var h = SC.barrasAgrupadas(periodos, series,
+  {etiqueta:'Gasto', formato:'moneda'}, 'oscuro');
+console.log((h.match(/font-size="9"/g) || []).length);
+""", tmp_path)
+    assert salida.strip() == "0"
+
+
+@sin_node
+def test_con_barras_anchas_el_numero_si_se_escribe(tmp_path):
+    salida = _correr(_semanas(4) + """
+var h = SC.barrasAgrupadas(periodos, series,
+  {etiqueta:'Leads', formato:'numero'}, 'oscuro');
+console.log((h.match(/font-size="9"/g) || []).length);
+""", tmp_path)
+    assert salida.strip() == "4"

@@ -104,7 +104,32 @@ def _restar_dias(iso_fecha: str, dias: int) -> str:
 
 
 def _filas(db_path: str, desde: str, hasta: str) -> list:
-    """Un renglon por anuncio en curso, con su gasto del periodo sumado."""
+    """Un renglon por anuncio en curso, con dos juegos de numeros.
+
+    Los del PERIODO salen del `JOIN` acotado por fechas y son los que se
+    muestran arriba de la tarjeta. Los de TODA LA VIDA salen de las subconsultas
+    y no miran el periodo.
+
+    **Entran los que gastaron en el PERIODO, prendidos o no.** Al principio
+    filtraba por `effective_status = ACTIVE` y el resultado era un hibrido sin
+    sentido: eligiendo mayo mostraba "lo que corre hoy y ademas gasto en mayo",
+    o sea escondia justo las publicidades que estaban al aire en mayo. Lo
+    pregunto Juan: "si pongo en mayo no me aparecen las publicidades que se
+    corrian en esos dias".
+
+    Los que siguen prendidos van primero, y cada uno trae `corriendo` para que
+    el panel los pueda distinguir.
+
+    Los dos juegos de numeros hacen falta y no son intercambiables:
+
+    * `desde` tiene que ser cuando el anuncio arranco de verdad. Sacado del
+      `MIN` acotado daba el borde del periodo: mirando setiembre decia "desde
+      el 3/9" de anuncios que venian corriendo desde junio, y la misma pantalla
+      contestaba distinto segun la ventana elegida.
+    * La pregunta "¿lo apago?" no es sobre un mes del calendario, es sobre el
+      anuncio. Un anuncio que se llevo 300 sin traer a nadie merece el mismo
+      veredicto se lo mire en setiembre o en el trimestre.
+    """
     conn = _connect(db_path)
     try:
         return conn.execute("""
@@ -115,17 +140,25 @@ def _filas(db_path: str, desde: str, hasta: str) -> list:
                    SUM(i.leads)       AS leads,
                    SUM(i.impressions) AS impresiones,
                    SUM(i.clicks)      AS clics,
-                   MIN(i.date)        AS desde,
-                   MAX(i.date)        AS hasta,
-                   MAX(i.currency)    AS moneda
+                   MAX(i.currency)    AS moneda,
+                   (SELECT MIN(date)  FROM meta_ad_insights t
+                     WHERE t.ad_id = a.ad_id AND (t.spend > 0 OR t.leads > 0))
+                     AS desde,
+                   (SELECT SUM(spend) FROM meta_ad_insights t
+                     WHERE t.ad_id = a.ad_id) AS gasto_total,
+                   (SELECT SUM(leads) FROM meta_ad_insights t
+                     WHERE t.ad_id = a.ad_id) AS leads_total,
+                   (SELECT SUM(impressions) FROM meta_ad_insights t
+                     WHERE t.ad_id = a.ad_id) AS impresiones_total,
+                   (SELECT SUM(clicks) FROM meta_ad_insights t
+                     WHERE t.ad_id = a.ad_id) AS clics_total
               FROM meta_ads a
               JOIN meta_ad_insights i ON i.ad_id = a.ad_id
-             WHERE a.effective_status = ?
-               AND i.date BETWEEN ? AND ?
+             WHERE i.date BETWEEN ? AND ?
              GROUP BY a.ad_id
              HAVING SUM(i.spend) > 0 OR SUM(i.leads) > 0
-             ORDER BY SUM(i.spend) DESC
-        """, (ESTADO_EN_CURSO, desde, hasta)).fetchall()
+             ORDER BY (a.effective_status = ?) DESC, SUM(i.spend) DESC
+        """, (desde, hasta, ESTADO_EN_CURSO)).fetchall()
     finally:
         conn.close()
 
@@ -166,11 +199,35 @@ def _recomendar(a: dict, referencia_cpl, ctr_rec, ctr_viejo) -> dict:
     regalado en otro, y el panel no tiene por que saber en cual esta.
     """
     cita = [f"anuncio.{a['ad_id']}.gasto", f"anuncio.{a['ad_id']}.leads"]
-    plata = f"{a['gasto']:.2f}"
+    plata = f"{a['gasto_total']:.2f}"
+
+    # A uno que ya esta apagado no se le dice "apagalo". Lo util de verlo es
+    # otra cosa: darse cuenta de que se apago uno que venia rindiendo.
+    if not a.get("corriendo", True):
+        if (referencia_cpl and a["cpl_total"]
+                and a["leads_total"] >= LEADS_MINIMOS
+                and a["cpl_total"] <= referencia_cpl * _BARATO):
+            return {
+                "accion": "revivir",
+                "texto": (f"Está apagado y era de los que mejor rendían: "
+                          f"{a['cpl_total']:.2f} por lead contra "
+                          f"{referencia_cpl:.2f} de la mediana. Si volvés a "
+                          "pautar algo parecido, empezá por acá."),
+                "metricas_citadas": cita + [f"anuncio.{a['ad_id']}.cpl"],
+            }
+        return {
+            "accion": "apagado",
+            "texto": (f"Está apagado. Mientras corrió se llevó {plata} y trajo "
+                      f"{a['leads_total']} lead"
+                      f"{'s' if a['leads_total'] != 1 else ''}"
+                      + (f", a {a['cpl_total']:.2f} cada uno."
+                         if a["cpl_total"] else ".")),
+            "metricas_citadas": cita,
+        }
 
     # Cuantos leads deberia haber comprado esta plata al costo habitual de la
     # cuenta. Es la medida de cuanta evidencia hay, y no depende de la escala.
-    oportunidad = (a["gasto"] / referencia_cpl) if referencia_cpl else None
+    oportunidad = (a["gasto_total"] / referencia_cpl) if referencia_cpl else None
 
     if oportunidad is not None and oportunidad < OPORTUNIDAD_PARA_ARRANCAR:
         return {
@@ -181,7 +238,7 @@ def _recomendar(a: dict, referencia_cpl, ctr_rec, ctr_viejo) -> dict:
             "metricas_citadas": cita,
         }
 
-    if not a["leads"]:
+    if not a["leads_total"]:
         if oportunidad is not None and oportunidad >= OPORTUNIDAD_PARA_JUZGAR:
             return {
                 "accion": "apagar",
@@ -214,16 +271,16 @@ def _recomendar(a: dict, referencia_cpl, ctr_rec, ctr_viejo) -> dict:
             "metricas_citadas": cita + [f"anuncio.{a['ad_id']}.ctr"],
         }
 
-    if referencia_cpl and a["cpl"]:
+    if referencia_cpl and a["cpl_total"]:
         # Para decir "esta caro" alcanza con UNA de las dos: o ya trajo
         # suficientes leads como para que su CPL sea confiable, o gasto
         # suficiente como para que la diferencia no sea casualidad.
-        hay_con_que = (a["leads"] >= LEADS_MINIMOS
+        hay_con_que = (a["leads_total"] >= LEADS_MINIMOS
                        or (oportunidad or 0) >= OPORTUNIDAD_PARA_JUZGAR)
-        if hay_con_que and a["cpl"] >= referencia_cpl * _CARO:
+        if hay_con_que and a["cpl_total"] >= referencia_cpl * _CARO:
             return {
                 "accion": "ajustar",
-                "texto": (f"Cada lead te sale {a['cpl']:.2f} y la mitad de los "
+                "texto": (f"Cada lead te sale {a['cpl_total']:.2f} y la mitad de los "
                           f"que están corriendo salen {referencia_cpl:.2f} o "
                           "menos. Bajale el presupuesto y miralo una semana, "
                           "o cambiale el público."),
@@ -231,24 +288,24 @@ def _recomendar(a: dict, referencia_cpl, ctr_rec, ctr_viejo) -> dict:
             }
         # Para "subile" se piden las DOS condiciones: recomendar poner mas
         # plata sobre poca evidencia es el mas caro de los dos errores.
-        if a["leads"] >= LEADS_MINIMOS and a["cpl"] <= referencia_cpl * _BARATO:
+        if a["leads_total"] >= LEADS_MINIMOS and a["cpl_total"] <= referencia_cpl * _BARATO:
             return {
                 "accion": "subir",
-                "texto": (f"Es de los que mejor rinden: {a['cpl']:.2f} por "
+                "texto": (f"Es de los que mejor rinden: {a['cpl_total']:.2f} por "
                           f"lead contra {referencia_cpl:.2f} de la mediana. "
                           "Subile el presupuesto."),
                 "metricas_citadas": cita + [f"anuncio.{a['ad_id']}.cpl"],
             }
 
-    if a["leads"] < LEADS_MINIMOS:
+    if a["leads_total"] < LEADS_MINIMOS:
         # Sin juicio de valor: con 1 lead, tanto un costo bueno como uno malo
         # pueden ser suerte. Decir "va bien" de un lead que salio el triple de
         # la mediana seria peor que no decir nada.
         return {
             "accion": "esperar",
-            "texto": (f"Todavía no alcanza para compararlo: {a['leads']} "
-                      f"lead{'s' if a['leads'] != 1 else ''} a "
-                      f"{a['cpl']:.2f} puede ser suerte para cualquiera de los "
+            "texto": (f"Todavía no alcanza para compararlo: {a['leads_total']} "
+                      f"lead{'s' if a['leads_total'] != 1 else ''} a "
+                      f"{a['cpl_total']:.2f} puede ser suerte para cualquiera de los "
                       "dos lados. Dejalo correr."),
             "metricas_citadas": cita,
         }
@@ -278,6 +335,8 @@ def anuncios_en_curso(db_path: str, desde: str, hasta: str, hoy=None) -> list:
         leads = int(f["leads"] or 0)
         impresiones = int(f["impresiones"] or 0)
         clics = int(f["clics"] or 0)
+        gasto_total = round(float(f["gasto_total"] or 0), 2)
+        leads_total = int(f["leads_total"] or 0)
         salida.append({
             "ad_id": f["ad_id"],
             "nombre": f["ad_name"],
@@ -288,6 +347,12 @@ def anuncios_en_curso(db_path: str, desde: str, hasta: str, hoy=None) -> list:
             "cuerpo": f["cuerpo"],
             "imagen_archivo": f["imagen_archivo"],
             "moneda": f["moneda"],
+            # Si sigue al aire hoy. Meta llama ACTIVE solo al anuncio cuyo
+            # conjunto y campana tambien estan prendidos, que es justo lo que
+            # significa "se esta pautando".
+            "corriendo": f["effective_status"] == ESTADO_EN_CURSO,
+            "estado": f["effective_status"],
+            # Lo del periodo elegido: es lo que se muestra arriba de la tarjeta.
             "gasto": gasto,
             "leads": leads,
             "impresiones": impresiones,
@@ -295,46 +360,82 @@ def anuncios_en_curso(db_path: str, desde: str, hasta: str, hoy=None) -> list:
             "cpl": _costo(gasto, leads),
             "ctr": _tasa(clics, impresiones),
             "tasa_lead": _tasa(leads, clics),
+            # Y lo de toda la vida del anuncio, que no depende de la ventana.
+            # `desde` es cuando arranco de verdad: sacado del periodo daba el
+            # borde de la ventana y la misma pantalla contestaba distinto
+            # segun que rango estuviera elegido.
             "desde": f["desde"],
-            "hasta": f["hasta"],
+            "gasto_total": gasto_total,
+            "leads_total": leads_total,
+            "cpl_total": _costo(gasto_total, leads_total),
+            "ctr_total": _tasa(int(f["clics_total"] or 0),
+                               int(f["impresiones_total"] or 0)),
         })
 
-    # La mediana se saca de los que tienen suficientes leads: meter los de 1
-    # lead la correria hacia donde mande el ruido, y despues el resto se
-    # compararia contra esa correccion.
-    mediana_cpl = _mediana([a["cpl"] for a in salida
-                            if a["leads"] >= LEADS_MINIMOS])
+    # La mediana sale de los numeros de toda la vida, igual que las reglas: con
+    # los del periodo, un mes flojo correria la vara para todos a la vez y
+    # nadie quedaria "caro" nunca.
+    # La vara sale de lo que esta corriendo hoy: es contra eso que tiene
+    # sentido comparar. Meter los apagados de hace meses la correria hacia un
+    # pasado que ya no es la referencia de nadie.
+    mediana_cpl = _mediana([a["cpl_total"] for a in salida
+                            if a["corriendo"] and a["leads_total"] >= LEADS_MINIMOS])
 
     # Si ninguno llego a esa cantidad de leads no hay mediana, y sin referencia
     # todas las reglas se caen a "dejar" — justo cuando la cuenta viene floja,
-    # que es cuando mas falta hace opinar. El respaldo es el CPL del conjunto:
-    # toda la plata de lo que esta corriendo sobre todos sus leads.
+    # que es cuando mas falta hace opinar. El respaldo es el CPL del conjunto.
     if mediana_cpl is None:
-        mediana_cpl = _costo(sum(a["gasto"] for a in salida),
-                             sum(a["leads"] for a in salida))
+        vivos = [a for a in salida if a["corriendo"]] or salida
+        mediana_cpl = _costo(sum(a["gasto_total"] for a in vivos),
+                             sum(a["leads_total"] for a in vivos))
 
     for a in salida:
         rec, viejo = _ctr_reciente(db_path, a["ad_id"], hoy)
+        # La recomendacion mira toda la vida del anuncio, no el periodo: "¿lo
+        # apago?" no es una pregunta sobre un mes del calendario. Los numeros
+        # que cita tambien se muestran en la tarjeta, asi que se pueden
+        # comprobar.
         a["recomendacion"] = _recomendar(a, mediana_cpl, rec, viejo)
         a["mediana_cpl"] = mediana_cpl
         # Cuantos leads deberia haber comprado lo que gasto, al costo habitual.
         # Va al dossier porque es el numero que sostiene la recomendacion.
-        a["oportunidad"] = (round(a["gasto"] / mediana_cpl, 2)
+        a["oportunidad"] = (round(a["gasto_total"] / mediana_cpl, 2)
                             if mediana_cpl else None)
     return salida
 
 
 def resumen_en_curso(db_path: str, desde: str, hasta: str) -> dict:
-    """El encabezado de la seccion: cuanto se lleva puesto y desde cuando."""
+    """El encabezado de la seccion, con las cuentas separadas.
+
+    `gasto` es lo del periodo elegido y cuenta TODOS los anuncios que gastaron,
+    prendidos o no: es la plata que se puso en esas fechas. `corriendo` dice
+    cuantos de esos siguen al aire hoy.
+
+    `gasto_total` y `desde` miran toda la vida de esos anuncios, que es la
+    respuesta a "cuanto se va pautando desde tal fecha".
+
+    Estaban mezclados: el numero era del periodo y la fecha era el borde de la
+    ventana, asi que juntos decian algo que no era cierto en ninguna de las dos
+    lecturas.
+    """
     filas = _filas(db_path, desde, hasta)
     gasto = round(sum(float(f["gasto"] or 0) for f in filas), 2)
     leads = sum(int(f["leads"] or 0) for f in filas)
+    gasto_total = round(sum(float(f["gasto_total"] or 0) for f in filas), 2)
+    leads_total = sum(int(f["leads_total"] or 0) for f in filas)
     fechas = [f["desde"] for f in filas if f["desde"]]
+    corriendo = sum(1 for f in filas
+                    if f["effective_status"] == ESTADO_EN_CURSO)
     return {
         "anuncios": len(filas),
+        "corriendo": corriendo,
+        "apagados": len(filas) - corriendo,
         "gasto": gasto,
         "leads": leads,
         "cpl": _costo(gasto, leads),
+        "gasto_total": gasto_total,
+        "leads_total": leads_total,
+        "cpl_total": _costo(gasto_total, leads_total),
         "desde": min(fechas) if fechas else None,
         "moneda": filas[0]["moneda"] if filas else None,
     }

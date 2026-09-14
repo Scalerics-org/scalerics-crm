@@ -1352,6 +1352,12 @@ body.light .mobile-header-title{color:#0f172a}
 .sc-anun-dato span{font-size:.62rem;letter-spacing:.03em;text-transform:uppercase;color:var(--rotulo)}
 .sc-anun-dato b{font-size:.92rem;color:var(--texto);font-variant-numeric:tabular-nums}
 .sc-anun-extra{font-size:.68rem;line-height:1.5;color:var(--rotulo)}
+.sc-anun-vida{font-size:.7rem;line-height:1.5;color:var(--texto-tenue)}
+/* La tarjeta apagada se distingue por la palabra Y por el tono: solo con
+   opacidad se leeria igual que una al aire. */
+.sc-anun[data-corriendo="false"] .sc-anun-foto,.sc-anun[data-corriendo="false"] .sc-anun-sinfoto{filter:grayscale(1);opacity:.55}
+.sc-anun-apagado{font-size:.62rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--rotulo);background:var(--hover);padding:4px 14px;border-bottom:1px solid var(--borde)}
+.sc-anun-vida b{color:var(--texto);font-variant-numeric:tabular-nums}
 /* El estado va con palabra Y con color. El borde solo seria color solo, que es
    justo lo que no puede distinguir quien no ve bien los colores. */
 .sc-anun-reco{font-size:.75rem;line-height:1.55;color:var(--texto-tenue);border-left:3px solid var(--rotulo);padding-left:10px;margin-top:auto}
@@ -2087,8 +2093,8 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       </div>
 
       <div class="sc-bloque">
-        <h3>Lo que está corriendo ahora</h3>
-        <div class="sc-sub">Los anuncios prendidos hoy, con la pieza que ve la gente y lo que está costando cada uno. Es el grano sobre el que se decide: adentro de una campaña conviven varios anuncios y uno se puede llevar la mitad de la plata sin traer a nadie. La recomendación la calculan reglas sobre estos mismos números, no una IA.</div>
+        <h3>Las piezas de la pauta</h3>
+        <div class="sc-sub">Los anuncios que gastaron en el período que tenés elegido arriba, con la pieza que ve la gente. Los que siguen al aire van primero; los apagados quedan abajo y sirven para darte cuenta si apagaste alguno que rendía. Es el grano sobre el que se decide: adentro de una campaña conviven varios anuncios y uno se puede llevar la mitad de la plata sin traer a nadie. La recomendación la calculan reglas sobre estos mismos números, no una IA.</div>
         <div id="mk-anuncios"></div>
       </div>
 
@@ -8337,25 +8343,40 @@ function _mkPintar() {
 
   if (!anuncios.length) {
     document.getElementById('mk-anuncios').innerHTML =
-      '<div class="sc-vacio">No hay anuncios corriendo en este período. ' +
-      'Si sabés que hay pauta activa, falta sincronizar: el botón está en ' +
-      'Ajustes, o corre solo todas las mañanas.</div>';
+      '<div class="sc-vacio">Ningún anuncio gastó en este período. ' +
+      'Si sabés que había pauta corriendo en estas fechas, falta sincronizar: ' +
+      'corre solo todas las mañanas.</div>';
   } else {
+    // Las dos cuentas van SEPARADAS y cada una dice de qué habla.
+    //
+    // Antes estaban mezcladas: el número era del período y la fecha era el
+    // borde de la ventana, así que "683,18 desde el 16/06" no era cierto en
+    // ninguna de las dos lecturas. Mirando setiembre decía "desde el 3/09" de
+    // anuncios que venían corriendo desde junio.
     const cab =
       '<div class="sc-plata-resumen">' +
-      `<div class="sc-tile"><div class="sc-tile-label">Corriendo</div>` +
+      `<div class="sc-tile"><div class="sc-tile-label">Anuncios</div>` +
       `<div class="sc-tile-valor">${esc(SC.fmt(resAnun.anuncios, 'numero'))}</div>` +
-      `<div class="sc-tile-delta">anuncios prendidos</div></div>` +
-      `<div class="sc-tile"><div class="sc-tile-label">Se lleva puesto</div>` +
+      `<div class="sc-tile-delta">${esc(SC.fmt(resAnun.corriendo, 'numero'))}` +
+      ` sigue${resAnun.corriendo === 1 ? '' : 'n'} al aire` +
+      (resAnun.apagados
+        ? ` · ${esc(SC.fmt(resAnun.apagados, 'numero'))} apagado` +
+          `${resAnun.apagados === 1 ? '' : 's'}`
+        : '') + '</div></div>' +
+      `<div class="sc-tile"><div class="sc-tile-label">En este período</div>` +
       `<div class="sc-tile-valor">${esc(SC.fmt(resAnun.gasto, 'moneda'))}</div>` +
-      `<div class="sc-tile-delta">desde el ${esc(_fechaCorta(resAnun.desde))}</div></div>` +
-      `<div class="sc-tile"><div class="sc-tile-label">Trajo</div>` +
-      `<div class="sc-tile-valor">${esc(SC.fmt(resAnun.leads, 'numero'))}</div>` +
-      `<div class="sc-tile-delta">leads</div></div>` +
+      `<div class="sc-tile-delta">${esc(SC.fmt(resAnun.leads, 'numero'))} leads` +
+      (resAnun.cpl ? ` · ${esc(SC.fmt(resAnun.cpl, 'moneda'))} cada uno` : '') +
+      '</div></div>' +
+      `<div class="sc-tile"><div class="sc-tile-label">Desde que arrancaron</div>` +
+      `<div class="sc-tile-valor">${esc(SC.fmt(resAnun.gasto_total, 'moneda'))}</div>` +
+      `<div class="sc-tile-delta">el más viejo, desde el ` +
+      `${esc(_fechaCorta(resAnun.desde))}</div></div>` +
       `<div class="sc-tile"><div class="sc-tile-label">Cada lead</div>` +
-      `<div class="sc-tile-valor">${esc(SC.fmt(resAnun.cpl, 'moneda'))}</div>` +
+      `<div class="sc-tile-valor">${esc(SC.fmt(resAnun.cpl_total, 'moneda'))}</div>` +
       (hist.hay && hist.cpl
-        ? `<div class="sc-tile-delta">histórico ${esc(SC.fmt(hist.cpl, 'moneda'))}</div>`
+        ? `<div class="sc-tile-delta">la cuenta viene de ` +
+          `${esc(SC.fmt(hist.cpl, 'moneda'))}</div>`
         : '') +
       '</div></div>';
 
@@ -8368,6 +8389,8 @@ function _mkPintar() {
       subir:   'Subile el presupuesto',
       esperar: 'Todavía no se sabe',
       dejar:   'Va bien',
+      apagado: 'Apagado',
+      revivir: 'Lo apagaste y rendía',
     };
 
     const tarjetas = anuncios.map(a => {
@@ -8385,14 +8408,18 @@ function _mkPintar() {
         '<div class="sc-anun-dato"><span>' + esc(rot) + '</span><b>' +
         esc(SC.fmt(val, fmt)) + '</b></div>';
 
-      return '<article class="sc-anun">' +
+      return `<article class="sc-anun" data-corriendo="${a.corriendo}">` +
         foto +
+        (a.corriendo ? ''
+          // Marcado con palabra, no solo con opacidad o color: si fuera solo
+          // visual, una tarjeta apagada se leeria igual que una al aire.
+          : '<div class="sc-anun-apagado">Apagado</div>') +
         '<div class="sc-anun-cuerpo">' +
         `<div class="sc-anun-nom">${esc(a.nombre || '(sin nombre)')}</div>` +
         `<div class="sc-anun-campana">${esc(a.campana || '')}` +
         (a.conjunto ? ` · ${esc(a.conjunto)}` : '') + '</div>' +
         '<div class="sc-anun-datos">' +
-        dato('Gasto', a.gasto, 'moneda') +
+        dato('Gasto del período', a.gasto, 'moneda') +
         dato('Leads', a.leads, 'numero') +
         dato('Por lead', a.cpl, 'moneda') +
         '</div>' +
@@ -8401,8 +8428,19 @@ function _mkPintar() {
         (a.tasa_lead !== null && a.tasa_lead !== undefined
           ? ` · dejan datos ${esc(SC.fmt(a.tasa_lead, 'porcentaje'))} de los que entran`
           : '') +
-        (a.desde ? ` · desde el ${esc(_fechaCorta(a.desde))}` : '') +
         '</div>' +
+        // La vida entera del anuncio, que es sobre lo que opina la
+        // recomendación de abajo. Va escrita para que se pueda comprobar: si
+        // la reco cita 374,74 y acá dice otra cosa, algo está mal.
+        (a.desde
+          ? '<div class="sc-anun-vida">Desde el ' +
+            `${esc(_fechaCorta(a.desde))} lleva ` +
+            `<b>${esc(SC.fmt(a.gasto_total, 'moneda'))}</b> y ` +
+            `<b>${esc(SC.fmt(a.leads_total, 'numero'))}</b> lead` +
+            `${a.leads_total === 1 ? '' : 's'}` +
+            (a.cpl_total ? `, a ${esc(SC.fmt(a.cpl_total, 'moneda'))} cada uno`
+                         : '') + '.</div>'
+          : '') +
         `<div class="sc-anun-reco" data-accion="${esc(r.accion || '')}">` +
         `<b>${esc(_ACCION[r.accion] || '')}.</b> ${esc(r.texto || '')}</div>` +
         '</div></article>';

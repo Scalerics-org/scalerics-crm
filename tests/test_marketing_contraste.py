@@ -141,6 +141,8 @@ def test_el_rotulo_ya_alcanza_para_texto():
                  # --fondo-hundido y sobre --hover, no sobre --superficie:
                  # medidos aparte en PARES.
                  ".sc-anun-campana", ".sc-anun-dato span", ".sc-anun-extra",
-                 ".sc-anun-sinfoto", ".sc-anun-reco"}
+                 ".sc-anun-sinfoto", ".sc-anun-reco",
+                 # El marbete de "Apagado" arriba de la tarjeta.
+                 ".sc-anun-apagado"}
     assert con_rotulo == esperados, (
         f"--rotulo esta en {sorted(con_rotulo)} y se esperaba {sorted(esperados)}")

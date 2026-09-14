@@ -1123,6 +1123,17 @@
     var anchoBarra = Math.min(TOPE, Math.max(
       3, (anchoGrupo * 0.78 - GAP * (series.length - 1)) / series.length));
 
+    // Cada cuantos periodos se escribe la etiqueta de abajo.
+    //
+    // Con un periodo largo se pisan: "Semana 12" mide ~55px y con 27 semanas
+    // cada grupo tiene 34. Se saltean de a N, igual que hace `SC.serie`. El
+    // ancho se estima por la cantidad de caracteres — no hay forma de medir
+    // texto sin un DOM, y este modulo dibuja SVG a mano.
+    var _anchoRotulo = Math.max.apply(null, periodos.map(function (p) {
+      return String(p.etiqueta === undefined ? '' : p.etiqueta).length;
+    })) * 5.6 + 10;
+    var cadaCuantos = Math.max(1, Math.ceil(_anchoRotulo / anchoGrupo));
+
     var piezas = [];
 
     piezas.push('<g class="sc-eje-y">' + cortes.map(function (t) {
@@ -1152,18 +1163,24 @@
                     SC.esc(p.etiqueta) + ' · ' + SC.esc(s.etiqueta) + ': ' +
                     SC.esc(SC.fmt(v, opciones.formato)) + '</title></rect>');
         // El numero arriba de la barra: con pocas barras entra y evita tener
-        // que estimar contra la grilla.
-        if (opciones.numeros !== false && anchoBarra >= 14 && v) {
+        // que estimar contra la grilla. Se mide contra el ancho de la barra
+        // —no contra un minimo fijo— porque "100,00" ocupa el triple que "25"
+        // y en un periodo largo se pisaria con el de al lado.
+        var _txt = SC.fmt(v, opciones.formato);
+        if (opciones.numeros !== false && v
+            && _txt.length * 5.2 <= anchoBarra + GAP) {
           piezas.push('<text x="' + (x + anchoBarra / 2).toFixed(1) + '" y="' +
                       (y - 4).toFixed(1) + '" text-anchor="middle" ' +
                       'font-size="9" fill="' + mudo + '">' +
-                      SC.esc(SC.fmt(v, opciones.formato)) + '</text>');
+                      SC.esc(_txt) + '</text>');
         }
       });
 
-      piezas.push('<text x="' + centro.toFixed(1) + '" y="' + (alto - 10) +
-                  '" text-anchor="middle" font-size="10" fill="' + mudo + '">' +
-                  SC.esc(p.etiqueta) + '</text>');
+      if (i % cadaCuantos === 0) {
+        piezas.push('<text x="' + centro.toFixed(1) + '" y="' + (alto - 10) +
+                    '" text-anchor="middle" font-size="10" fill="' + mudo + '">' +
+                    SC.esc(p.etiqueta) + '</text>');
+      }
     });
 
     // La linea del historico, arriba de las barras para que no quede tapada.

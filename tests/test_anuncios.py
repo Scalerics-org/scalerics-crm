@@ -65,17 +65,72 @@ def _uno(db, ad_id, **kw):
 
 # ── Que anuncios entran ────────────────────────────────────────────────────
 
-def test_solo_trae_los_que_estan_corriendo(db):
-    """Juan: "las publicaciones que se estan pautando ahora". Un anuncio
-    apagado no es una decision que se pueda tomar hoy."""
+def test_trae_los_que_gastaron_en_el_periodo_prendidos_o_no(db):
+    """EL BUG QUE PREGUNTO JUAN: "si pongo en mayo no me aparecen las
+    publicidades que se corrian en esos dias".
+
+    Al principio filtraba por `effective_status = ACTIVE`, y combinado con el
+    selector de periodo daba un hibrido sin sentido: eligiendo mayo mostraba
+    "lo que corre hoy y ademas gasto en mayo", o sea escondia justo las
+    publicidades que estaban al aire en mayo.
+    """
     _anuncio(db, "1", estado="ACTIVE")
     _anuncio(db, "2", estado="PAUSED")
     _anuncio(db, "3", estado="ADSET_PAUSED")
     _anuncio(db, "4", estado="CAMPAIGN_PAUSED")
     for a in ("1", "2", "3", "4"):
-        _gasto(db, a, "2026-09-01", 50.0, leads=4)
+        _gasto(db, a, "2026-05-10", 50.0, leads=4)
+    ids = [a["ad_id"] for a in anuncios_en_curso(db, "2026-05-01", "2026-05-31")]
+    assert sorted(ids) == ["1", "2", "3", "4"]
+
+
+def test_los_que_siguen_prendidos_van_primero(db):
+    """Cuando el periodo incluye hoy, lo accionable esta arriba."""
+    _anuncio(db, "apagado", estado="PAUSED")
+    _gasto(db, "apagado", "2026-09-01", 500.0, leads=20)
+    _anuncio(db, "vivo", estado="ACTIVE")
+    _gasto(db, "vivo", "2026-09-01", 10.0, leads=1)
     ids = [a["ad_id"] for a in anuncios_en_curso(db, "2026-03-01", "2026-12-31")]
-    assert ids == ["1"]
+    assert ids == ["vivo", "apagado"], "el apagado gasto mas pero no es de hoy"
+
+
+def test_cada_anuncio_dice_si_sigue_al_aire(db):
+    _anuncio(db, "1", estado="ACTIVE")
+    _anuncio(db, "2", estado="ADSET_PAUSED")
+    for a in ("1", "2"):
+        _gasto(db, a, "2026-09-01", 50.0, leads=4)
+    assert _uno(db, "1")["corriendo"] is True
+    assert _uno(db, "2")["corriendo"] is False
+
+
+def test_a_uno_apagado_no_se_le_dice_que_lo_apague(db):
+    """Ya esta apagado. Lo util de verlo es darse cuenta de si se apago uno que
+    venia rindiendo, no que te digan lo que ya hiciste."""
+    _mercado(db)                                  # mediana = 10
+    _anuncio(db, "x", estado="PAUSED")
+    _gasto(db, "x", "2026-09-01", 300.0, leads=0)
+    r = _reco(db, "x")
+    assert r["accion"] == "apagado"
+    assert "apagalo" not in r["texto"].lower()
+
+
+def test_avisa_si_apagaste_uno_que_rendia(db):
+    """Es la razon por la que vale la pena ver los apagados."""
+    _mercado(db, gasto=200.0, leads=10)           # mediana = 20
+    _anuncio(db, "x", estado="PAUSED")
+    _gasto(db, "x", "2026-09-01", 100.0, leads=20)   # CPL 5
+    r = _reco(db, "x")
+    assert r["accion"] == "revivir"
+    assert "apagado" in r["texto"].lower()
+
+
+def test_la_vara_sale_de_lo_que_corre_hoy(db):
+    """Meter los apagados de hace meses en la mediana la correria hacia un
+    pasado que ya no es la referencia de nadie."""
+    _mercado(db)                                  # tres vivos, CPL 10
+    _anuncio(db, "viejo", estado="PAUSED")
+    _gasto(db, "viejo", "2026-04-01", 1000.0, leads=10)   # CPL 100
+    assert _uno(db, "viejo")["mediana_cpl"] == 10
 
 
 def test_un_activo_sin_gasto_en_el_periodo_no_aparece(db):
@@ -143,6 +198,71 @@ def test_trae_desde_cuando_viene_gastando(db):
     _gasto(db, "1", "2026-07-14", 10.0, leads=1)
     _gasto(db, "1", "2026-09-01", 10.0, leads=1)
     assert _uno(db, "1")["desde"] == "2026-07-14"
+
+
+def test_la_fecha_de_arranque_no_la_recorta_el_periodo(db):
+    """EL BUG QUE PREGUNTO JUAN: "¿por que dice desde el 3/09?".
+
+    El `desde` salia de un MIN acotado por el periodo, asi que devolvia el
+    borde de la ventana y no el arranque del anuncio. Mirando setiembre decia
+    "desde el 3/9" de anuncios que venian corriendo desde junio, y la MISMA
+    pantalla contestaba distinto segun el rango elegido: setiembre daba 3/9,
+    los ultimos 90 dias daban justo el primer dia del rango, y desde marzo daba
+    la fecha de verdad.
+
+    El test viejo pasaba porque todas sus fechas caian adentro del periodo. Por
+    eso este mira desde una ventana que empieza DESPUES del arranque.
+    """
+    _anuncio(db, "1")
+    _gasto(db, "1", "2026-06-04", 50.0, leads=3)      # arranco en junio
+    _gasto(db, "1", "2026-09-03", 20.0, leads=1)      # y sigue en setiembre
+
+    for d, h in [("2026-09-01", "2026-09-30"),
+                 ("2026-06-16", "2026-09-14"),
+                 ("2026-03-01", "2026-12-31")]:
+        a = [x for x in anuncios_en_curso(db, d, h) if x["ad_id"] == "1"]
+        assert a, f"no aparece mirando {d}..{h}"
+        assert a[0]["desde"] == "2026-06-04", (
+            f"mirando {d}..{h} dice que arranco el {a[0]['desde']}")
+
+
+def test_un_dia_sin_gasto_no_cuenta_como_arranque(db):
+    """Meta devuelve filas en cero de dias en que el anuncio existia y no
+    corrio. Tomarlas como arranque adelantaria la fecha a un dia en que no
+    paso nada."""
+    _anuncio(db, "1")
+    _gasto(db, "1", "2026-05-01", 0.0, leads=0)
+    _gasto(db, "1", "2026-07-14", 10.0, leads=1)
+    assert _uno(db, "1")["desde"] == "2026-07-14"
+
+
+def test_separa_lo_del_periodo_de_lo_de_toda_la_vida(db):
+    """Los dos numeros hacen falta y no son el mismo: uno contesta "como viene
+    este mes" y el otro "cuanto lleva puesto este anuncio"."""
+    _anuncio(db, "1")
+    _gasto(db, "1", "2026-06-04", 300.0, leads=20)
+    _gasto(db, "1", "2026-09-03", 50.0, leads=2)
+    a = [x for x in anuncios_en_curso(db, "2026-09-01", "2026-09-30")
+         if x["ad_id"] == "1"][0]
+    assert a["gasto"] == 50.0 and a["leads"] == 2
+    assert a["gasto_total"] == 350.0 and a["leads_total"] == 22
+    assert a["cpl_total"] == round(350 / 22, 2)
+
+
+def test_la_recomendacion_no_cambia_segun_la_ventana_elegida(db):
+    """"¿lo apago?" no es una pregunta sobre un mes del calendario. Un anuncio
+    que se llevo 300 sin traer a nadie merece el mismo veredicto se lo mire en
+    setiembre o en el trimestre."""
+    _mercado(db)                                   # mediana de CPL = 10
+    _anuncio(db, "x")
+    _gasto(db, "x", "2026-06-04", 200.0, leads=0)
+    _gasto(db, "x", "2026-09-03", 5.0, leads=0)
+
+    veredictos = set()
+    for d, h in [("2026-09-01", "2026-09-30"), ("2026-03-01", "2026-12-31")]:
+        a = [z for z in anuncios_en_curso(db, d, h) if z["ad_id"] == "x"][0]
+        veredictos.add(a["recomendacion"]["accion"])
+    assert veredictos == {"apagar"}, veredictos
 
 
 def test_trae_la_foto_y_el_texto(db):
