@@ -1658,7 +1658,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div class="nav-section-label">GESTIÓN</div>
   <div class="nav-item" id="nav-tasks" onclick="showPanel('tasks')"><i data-lucide="check-square" class="nav-icon"></i> Tareas</div>
   <div class="nav-item" id="nav-projects" onclick="showPanel('projects')"><i data-lucide="target" class="nav-icon"></i> Proyectos</div>
-  <div class="nav-item" id="nav-notion_clients" onclick="showPanel('notion_clients')"><i data-lucide="handshake" class="nav-icon"></i> Pipeline Notion</div>
+  <div class="nav-item" id="nav-notion_clients" onclick="showPanel('notion_clients')"><i data-lucide="handshake" class="nav-icon"></i> Proceso venta</div>
   <div class="nav-item" id="nav-wa" onclick="showPanel('wa')"><i data-lucide="message-circle" class="nav-icon"></i> WhatsApp</div>
   <div class="nav-item" id="nav-cal" onclick="showPanel('cal')"><i data-lucide="calendar" class="nav-icon"></i> Calendario</div>
   <div class="nav-item" id="nav-finanzas" onclick="showPanel('finanzas')"><i data-lucide="wallet" class="nav-icon"></i> Finanzas</div>
@@ -1887,7 +1887,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <!-- ======= PIPELINE NOTION PANEL ======= -->
   <div id="notion_clients-panel" class="panel">
     <div class="panel-head">
-      <h1>Pipeline Notion</h1>
+      <h1>Proceso venta</h1>
       <p class="panel-sub">Espejo de la database Clientes. Son las fichas que el equipo maneja en Notion, no los leads del CRM. Conectá cada ficha con su persona del CRM: cuando llega a Presupuesto Aceptado, esa persona pasa a Clientes. <span class="nc-ayuda-mouse">Arrastrá una ficha a otra columna para cambiarle el estado: se guarda en Notion.</span><span class="nc-ayuda-touch">Desde el celular no se pueden arrastrar: movelas desde la compu o abrilas en Notion.</span></p>
     </div>
     <div id="notion-clients-board" class="kanban"></div>
@@ -6167,7 +6167,7 @@ const NAV_LABELS = {
   cola:'Cola',meta:'Meta',cal:'Agenda',
   tasks:'Tareas',pipeline:'Pipeline',clientes:'Clientes',
   wa:'WA',metrics:'Outbound',activity:'Actividad',projects:'Proyectos',
-  notion_clients:'Pipeline',finanzas:'Finanzas',simulador:'Simulador'
+  notion_clients:'Proceso venta',finanzas:'Finanzas',simulador:'Simulador'
 };
 let _mobileNavOverflow = [];
 
@@ -9771,7 +9771,7 @@ const _actActionLabels = {
   lead_deleted:  (i) => `eliminó lead: <b>${esc(i.entity_name)}</b>`,
   batch_status:  (i) => i.detail || 'actualizó múltiples leads',
   notion_sync:   (i) => `sincronizó con Notion${i.detail ? ': '+esc(i.detail) : ''}`,
-  notion_client_moved: (i) => `movió <b>${esc(i.entity_name)}</b> a <b>${esc(i.detail)}</b> en el Pipeline Notion`,
+  notion_client_moved: (i) => `movió <b>${esc(i.entity_name)}</b> a <b>${esc(i.detail)}</b> en Proceso venta`,
 };
 const _actCrmMap = {sin_contactar:'Sin contactar',contactado:'Contactado',reunion_agendada:'Reunión agendada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Presupuesto enviado',negociacion:'Negociación',cliente_cerrado:'Cliente cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado'};
 function _actCrmLabel(s) { return _actCrmMap[s] || s || ''; }
@@ -11120,7 +11120,7 @@ select:focus{border-color:#0088cc}
 
 <script>
 const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador'];
-const PANEL_LABELS = {cola:'Cola',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Outbound',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Pipeline Notion',finanzas:'Finanzas',simulador:'Simulador financiero'};
+const PANEL_LABELS = {cola:'Cola',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Outbound',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso venta',finanzas:'Finanzas',simulador:'Simulador financiero'};
 let _roles = [];
 
 function makeChips(containerId, checkedArr, prefix) {

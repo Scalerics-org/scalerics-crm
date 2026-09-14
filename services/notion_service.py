@@ -810,7 +810,7 @@ def cliente_cambio_de_estado(db_path: str, notion_page_id: str,
 
 
 def pasar_a_cliente(db_path: str, ficha: dict | None,
-                    quien: str = "Pipeline Notion") -> bool:
+                    quien: str = "Proceso venta") -> bool:
     """Pasa a Clientes al negocio conectado a una ficha en "Presupuesto Aceptado".
 
     Devuelve True solo si lo movio. No hace nada si la ficha no esta conectada,
@@ -832,7 +832,7 @@ def pasar_a_cliente(db_path: str, ficha: dict | None,
         return False
     update_business(db_path, business_id, crm_status="cerrado")
     add_lead_event(db_path, business_id, "cerrado",
-                   note="Presupuesto Aceptado en Pipeline Notion", created_by=quien)
+                   note="Presupuesto Aceptado en Proceso venta", created_by=quien)
     log_activity(db_path, quien, "status_change", "lead", business_id,
                  negocio.get("name", ""), "cerrado")
     logger.info("notion: %s paso a Clientes por la ficha %s",
