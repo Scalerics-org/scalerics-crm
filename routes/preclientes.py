@@ -11,15 +11,19 @@ esta cada uno:
                  El tablero dice donde esta cada uno HOY; esto dice como llego
 """
 
+import io
 import logging
 import math
 
-from flask import Blueprint, current_app, jsonify, request, session
+from flask import Blueprint, current_app, jsonify, request, send_file, session
+from werkzeug.utils import secure_filename
 
 from database import (ETAPAS_CLIENTE, ETAPAS_PRECLIENTE, actualizar_demo_realizada,
-                      borrar_demo_realizada, crear_demo_realizada, get_business,
-                      get_user_by_id, insert_business, listar_demos_realizadas,
-                      log_activity, obtener_demo_realizada, update_business)
+                      borrar_demo_realizada, borrar_presupuesto_demo,
+                      crear_demo_realizada, get_business, get_user_by_id,
+                      guardar_presupuesto_demo, insert_business,
+                      listar_demos_realizadas, log_activity, obtener_demo_realizada,
+                      obtener_presupuesto_demo, update_business)
 from database import _connect as _db_connect
 from services.finanzas import MONEDAS
 
@@ -338,4 +342,101 @@ def api_borrar_demo(demo_id):
     if not obtener_demo_realizada(_db(), demo_id):
         return jsonify({"ok": False, "error": "Demo no encontrada"}), 404
     borrar_demo_realizada(_db(), demo_id)
+    return jsonify({"ok": True})
+
+
+# ── Presupuesto adjunto a cada demo ──────────────────────────────────────────
+# Se guarda como BLOB en lead_attachments (con demo_id). Es aceptable por el
+# tamaño real de los presupuestos (250 KB a 1,3 MB, ~50 por año) siempre que se
+# cumplan tres cosas: tope de 10 MB validado aca, solo PDF o imagen, y que
+# ningun listado traiga file_data (ver listar_demos_realizadas).
+
+MAX_PRESUPUESTO_BYTES = 10 * 1024 * 1024
+
+# El tipo se decide por los primeros bytes, no por lo que dice el navegador:
+# un HTML renombrado a .pdf serviria como pagina desde el origen del CRM.
+_FIRMAS = (
+    (b"%PDF-", "application/pdf", ".pdf"),
+    (b"\x89PNG\r\n\x1a\n", "image/png", ".png"),
+    (b"\xff\xd8\xff", "image/jpeg", ".jpg"),
+    (b"GIF87a", "image/gif", ".gif"),
+    (b"GIF89a", "image/gif", ".gif"),
+)
+
+
+def _tipo_presupuesto(datos: bytes):
+    """(mime, extension) si es PDF o imagen; None si no."""
+    for firma, mime, ext in _FIRMAS:
+        if datos.startswith(firma):
+            return mime, ext
+    if datos[:4] == b"RIFF" and datos[8:12] == b"WEBP":
+        return "image/webp", ".webp"
+    return None
+
+
+def _demo_o_404(demo_id):
+    demo = obtener_demo_realizada(_db(), demo_id)
+    if not demo:
+        return None, (jsonify({"ok": False, "error": "Demo no encontrada"}), 404)
+    return demo, None
+
+
+@preclientes_bp.route("/api/demos-realizadas/<int:demo_id>/presupuesto", methods=["POST"])
+def api_adjuntar_presupuesto_demo(demo_id):
+    demo, error = _demo_o_404(demo_id)
+    if error:
+        return error
+
+    demasiado = jsonify({"ok": False, "error": "El archivo pesa más de 10 MB"}), 413
+    # Cortar antes de parsear el multipart: con un archivo enorme, leerlo
+    # entero para recien despues rechazarlo es justo el pico de memoria que
+    # tumbo la maquina en septiembre. El margen es para los bordes del multipart.
+    if request.content_length and request.content_length > MAX_PRESUPUESTO_BYTES + 64 * 1024:
+        return demasiado
+
+    archivo = request.files.get("file")
+    if not archivo:
+        return jsonify({"ok": False, "error": "Falta el archivo"}), 400
+    datos = archivo.read(MAX_PRESUPUESTO_BYTES + 1)
+    if len(datos) > MAX_PRESUPUESTO_BYTES:
+        return demasiado
+    if not datos:
+        return jsonify({"ok": False, "error": "El archivo está vacío"}), 400
+
+    tipo = _tipo_presupuesto(datos)
+    if not tipo:
+        return jsonify({"ok": False, "error": "Solo se aceptan PDF o imágenes"}), 400
+    mime, ext = tipo
+
+    nombre = secure_filename(archivo.filename or "") or "presupuesto"
+    if not nombre.lower().endswith(ext) and not (ext == ".jpg" and nombre.lower().endswith(".jpeg")):
+        nombre = nombre.rsplit(".", 1)[0] + ext
+
+    adjunto_id = guardar_presupuesto_demo(_db(), demo_id, demo["client_id"], nombre, datos, mime)
+    cliente = get_business(_db(), demo["client_id"]) or {}
+    log_activity(_db(), session.get("user_name", "sistema"), "presupuesto_demo_adjuntado",
+                 "lead", demo["client_id"], cliente.get("name", ""), nombre, user_id=_uid())
+    return jsonify({"ok": True, "id": adjunto_id, "nombre": nombre}), 201
+
+
+@preclientes_bp.route("/api/demos-realizadas/<int:demo_id>/presupuesto", methods=["GET"])
+def api_descargar_presupuesto_demo(demo_id):
+    # La unica ruta que lee el BLOB, y de a un archivo por pedido.
+    fila = obtener_presupuesto_demo(_db(), demo_id)
+    if not fila or not fila["file_data"]:
+        return jsonify({"ok": False, "error": "Esta demo no tiene presupuesto"}), 404
+    resp = send_file(io.BytesIO(fila["file_data"]),
+                     mimetype=fila["mime_type"] or "application/octet-stream",
+                     as_attachment=True, download_name=fila["name"] or "presupuesto")
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    return resp
+
+
+@preclientes_bp.route("/api/demos-realizadas/<int:demo_id>/presupuesto", methods=["DELETE"])
+def api_quitar_presupuesto_demo(demo_id):
+    _, error = _demo_o_404(demo_id)
+    if error:
+        return error
+    if not borrar_presupuesto_demo(_db(), demo_id):
+        return jsonify({"ok": False, "error": "Esta demo no tiene presupuesto"}), 404
     return jsonify({"ok": True})
