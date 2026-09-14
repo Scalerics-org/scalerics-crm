@@ -167,6 +167,204 @@ def test_responsables_de_un_cliente_inexistente_da_404(app, cli):
     assert r.status_code == 404
 
 
+# ── monto pagado por el desarrollo ───────────────────────────────────────────
+
+def test_la_migracion_agrega_monto_y_moneda(app):
+    conn = sqlite3.connect(app.config["_DB"])
+    columnas = {f[1] for f in conn.execute("PRAGMA table_info(businesses)")}
+    conn.close()
+    assert {"monto_pagado", "moneda_pagado"} <= columnas
+
+
+def test_la_migracion_del_monto_es_idempotente(tmp_path):
+    db = str(tmp_path / "monto.db")
+    for _ in range(3):
+        init_db(db)
+
+
+def test_un_cliente_sin_monto_viene_en_null(app, cli):
+    """'Sin cargar' no es 0: la tabla tiene que poder distinguirlos."""
+    _lead(app.config["_DB"], "Cliente", "cerrado")
+    c = cli.get("/api/clientes-activos").get_json()["clientes"][0]
+    assert c["monto_pagado"] is None
+    assert c["moneda_pagado"] is None
+
+
+@pytest.mark.parametrize("moneda", ["USD", "UYU"])
+def test_cargar_el_monto_pagado(app, cli, moneda):
+    db = app.config["_DB"]
+    lid = _lead(db, "Cliente", "en_desarrollo")
+    r = cli.put(f"/api/clientes-activos/{lid}/monto-pagado",
+                json={"monto": "1500.456", "moneda": moneda})
+    assert r.status_code == 200
+    assert r.get_json() == {"ok": True, "monto_pagado": 1500.46, "moneda_pagado": moneda}
+
+    c = cli.get("/api/clientes-activos").get_json()["clientes"][0]
+    assert c["monto_pagado"] == 1500.46
+    assert c["moneda_pagado"] == moneda
+
+
+def test_las_monedas_son_las_de_finanzas():
+    """Un solo criterio de moneda en todo el CRM."""
+    from routes import preclientes
+    from services.finanzas import MONEDAS
+    assert preclientes.MONEDAS is MONEDAS
+
+
+def test_el_monto_se_puede_borrar(app, cli):
+    db = app.config["_DB"]
+    lid = _lead(db, "Cliente", "cerrado")
+    cli.put(f"/api/clientes-activos/{lid}/monto-pagado", json={"monto": 800, "moneda": "USD"})
+    for vacio in (None, "", "  "):
+        cli.put(f"/api/clientes-activos/{lid}/monto-pagado", json={"monto": 800, "moneda": "USD"})
+        r = cli.put(f"/api/clientes-activos/{lid}/monto-pagado", json={"monto": vacio})
+        assert r.status_code == 200
+        b = get_business(db, lid)
+        assert b["monto_pagado"] is None and b["moneda_pagado"] is None
+
+
+def test_cero_es_un_monto_valido(app, cli):
+    """Un desarrollo por canje se carga como 0, distinto de no cargado."""
+    db = app.config["_DB"]
+    lid = _lead(db, "Canje", "cerrado")
+    r = cli.put(f"/api/clientes-activos/{lid}/monto-pagado", json={"monto": 0, "moneda": "UYU"})
+    assert r.status_code == 200
+    assert get_business(db, lid)["monto_pagado"] == 0
+
+
+@pytest.mark.parametrize("cuerpo", [
+    {"monto": -1, "moneda": "USD"},
+    {"monto": "mil", "moneda": "USD"},
+    {"monto": "nan", "moneda": "USD"},
+    {"monto": "inf", "moneda": "USD"},
+    {"monto": True, "moneda": "USD"},
+    {"monto": [100], "moneda": "USD"},
+    {"monto": {"x": 1}, "moneda": "USD"},
+    {"monto": 10_000_000_000, "moneda": "USD"},
+    {"monto": 100},
+    {"monto": 100, "moneda": "EUR"},
+    {"monto": 100, "moneda": "usd"},
+    {"monto": 100, "moneda": None},
+])
+def test_el_monto_invalido_da_400_y_no_toca_nada(app, cli, cuerpo):
+    db = app.config["_DB"]
+    lid = _lead(db, "Cliente", "cerrado")
+    cli.put(f"/api/clientes-activos/{lid}/monto-pagado", json={"monto": 500, "moneda": "USD"})
+
+    r = cli.put(f"/api/clientes-activos/{lid}/monto-pagado", json=cuerpo)
+    assert r.status_code == 400
+    assert r.get_json()["ok"] is False
+    b = get_business(db, lid)
+    assert (b["monto_pagado"], b["moneda_pagado"]) == (500, "USD")
+
+
+def test_sin_monto_en_el_cuerpo_da_400(app, cli):
+    lid = _lead(app.config["_DB"], "Cliente", "cerrado")
+    assert cli.put(f"/api/clientes-activos/{lid}/monto-pagado", json={}).status_code == 400
+    assert cli.put(f"/api/clientes-activos/{lid}/monto-pagado", json=[1, 2]).status_code == 400
+    assert cli.put(f"/api/clientes-activos/{lid}/monto-pagado", data="x",
+                   content_type="application/json").status_code == 400
+
+
+def test_monto_de_un_cliente_inexistente_da_404(app, cli):
+    r = cli.put("/api/clientes-activos/99999/monto-pagado", json={"monto": 1, "moneda": "USD"})
+    assert r.status_code == 404
+
+
+def test_cargar_el_monto_no_pisa_los_responsables(app, cli):
+    db = app.config["_DB"]
+    lid = _lead(db, "Cliente", "cerrado")
+    cli.put(f"/api/clientes-activos/{lid}/responsables", json={"cobros_id": cli._uid})
+    cli.put(f"/api/clientes-activos/{lid}/monto-pagado", json={"monto": 300, "moneda": "USD"})
+    assert get_business(db, lid)["cobros_id"] == cli._uid
+
+
+# ── alta de cliente desde Clientes ───────────────────────────────────────────
+
+def test_alta_de_cliente_con_monto(app, cli):
+    db = app.config["_DB"]
+    r = cli.post("/api/clientes-activos", json={
+        "name": "  Bloquera Norte ", "phone": "+59899111222", "city": "Salto",
+        "crm_status": "en_desarrollo", "monto": 45000, "moneda": "UYU",
+    })
+    assert r.status_code == 201
+    b = get_business(db, r.get_json()["id"])
+    assert b["name"] == "Bloquera Norte"
+    assert b["crm_status"] == "en_desarrollo"
+    assert (b["monto_pagado"], b["moneda_pagado"]) == (45000, "UYU")
+    assert b["source"] == "manual"
+
+    nombres = {c["name"] for c in cli.get("/api/clientes-activos").get_json()["clientes"]}
+    assert "Bloquera Norte" in nombres
+
+
+def test_alta_de_cliente_sin_monto_ni_telefono(app, cli):
+    """Dos altas sin telefono no chocan con el UNIQUE de phone."""
+    db = app.config["_DB"]
+    a = cli.post("/api/clientes-activos", json={"name": "A"}).get_json()
+    b = cli.post("/api/clientes-activos", json={"name": "B", "phone": ""}).get_json()
+    assert a["ok"] and b["ok"]
+    assert get_business(db, a["id"])["crm_status"] == "cerrado"
+    assert get_business(db, a["id"])["monto_pagado"] is None
+
+
+@pytest.mark.parametrize("cuerpo", [
+    {},
+    {"name": "   "},
+    {"name": "X", "crm_status": "demo_1"},
+    {"name": "X", "monto": -5, "moneda": "USD"},
+    {"name": "X", "monto": 100, "moneda": "EUR"},
+])
+def test_alta_invalida_no_crea_nada(app, cli, cuerpo):
+    db = app.config["_DB"]
+    r = cli.post("/api/clientes-activos", json=cuerpo)
+    assert r.status_code == 400
+    conn = sqlite3.connect(db)
+    assert conn.execute("SELECT COUNT(*) FROM businesses").fetchone()[0] == 0
+    conn.close()
+
+
+def test_alta_con_telefono_repetido_da_409(app, cli):
+    db = app.config["_DB"]
+    lid = _lead(db, "Ya estaba")
+    tel = get_business(db, lid)["phone"]
+    r = cli.post("/api/clientes-activos", json={"name": "Otro", "phone": tel})
+    assert r.status_code == 409
+    assert get_business(db, lid)["name"] == "Ya estaba"
+
+
+@pytest.mark.skipif(__import__("shutil").which("node") is None, reason="node no esta instalado")
+def test_el_monto_se_lee_como_se_escribe_en_uruguay():
+    """"1.500" es mil quinientos, no uno y medio. Corre el JS de verdad."""
+    import json
+    import re
+    import subprocess
+    m = re.search(r"\nfunction _cliMontoParse\(.*?\n\}", dashboard.DASHBOARD_HTML, re.S)
+    assert m, "no encontre _cliMontoParse"
+    casos = {"1.500": 1500, "1.500,50": 1500.5, "1500,5": 1500.5, "1500.50": 1500.5,
+             "1.234.567": 1234567, " 45 000 ": 45000, "0": 0, "": None, "-5": -5,
+             "abc": "NaN", "1,2,3": "NaN"}
+    script = m.group(0) + "\nconst casos = " + json.dumps(list(casos)) + ";\n" + \
+        "console.log(JSON.stringify(casos.map(c => { const n = _cliMontoParse(c); " \
+        "return Number.isNaN(n) ? 'NaN' : n; })));"
+    salida = subprocess.run(["node", "-e", script], capture_output=True, text=True, timeout=30)
+    assert salida.returncode == 0, salida.stderr
+    assert dict(zip(casos, json.loads(salida.stdout))) == casos
+
+
+def test_la_tabla_de_clientes_tiene_la_columna_del_monto():
+    """Siete columnas: la grilla y el encabezado tienen que coincidir."""
+    html = dashboard.DASHBOARD_HTML
+    i = html.index('<div class="table-header tbl-cli">')
+    encabezado = html[i:html.index("</div>", i)]
+    assert encabezado.count("<span>") == 7
+    assert "Pagó" in encabezado
+    import re
+    grilla = re.search(r"\.table-header\.tbl-cli,\.table-row\.tbl-cli\{grid-template-columns:([^}]*)\}", html)
+    assert len(grilla.group(1).split()) == 7
+    assert "cliMontoEditar(" in html and "cliNuevoAbrir(" in html
+
+
 # ── registro de demos ────────────────────────────────────────────────────────
 
 def test_registrar_una_demo(app, cli):

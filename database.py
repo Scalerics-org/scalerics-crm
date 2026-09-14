@@ -916,6 +916,15 @@ def init_db(db_path: str) -> None:
         _add_column(conn, "businesses", "cobros_id",
                     "INTEGER REFERENCES users(id) ON DELETE SET NULL")
 
+        # Cuanto pago el cliente por su desarrollo. Lo carga Juan a mano: NO se
+        # deriva de presupuestos ni de Finanzas, que pueden estar incompletos o
+        # partidos en cobros parciales. Monto y moneda van separados, con las
+        # mismas monedas que Finanzas (services.finanzas.MONEDAS), y sin pasar
+        # a dolares: es el numero que se acordo, no una conversion. Los dos en
+        # NULL es "todavia no se cargo", que no es lo mismo que 0.
+        _add_column(conn, "businesses", "monto_pagado", "REAL")
+        _add_column(conn, "businesses", "moneda_pagado", "TEXT")
+
         # Registro historico de demos dadas. NO es la tabla `demos`, que guarda la
         # pagina que genera la IA: esto es el evento comercial de haber mostrado
         # una demo, con quien la dio y como viene. Por eso admite varias por
@@ -1036,6 +1045,8 @@ ALLOWED_COLUMNS = {
     "interest", "form_data", "website",
     # Responsables de un cliente activo: dia a dia, mantenimiento y cobro.
     "encargado_id", "mantenimiento_id", "cobros_id",
+    # Cuanto pago por su desarrollo, cargado a mano desde Clientes.
+    "monto_pagado", "moneda_pagado",
 }
 
 

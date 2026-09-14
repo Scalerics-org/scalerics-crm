@@ -635,7 +635,21 @@ body.light .demo-cliente{color:#0f172a}
 
 /* Tabla de clientes activos: grilla propia, no reusa .no-cb, porque sus reglas
    mobile esconden la 4a columna — que aca es Mantenimiento, no Notas. */
-.table-header.tbl-cli,.table-row.tbl-cli{grid-template-columns:2fr 1.1fr 1.15fr 1.15fr 1.15fr 1fr}
+.table-header.tbl-cli,.table-row.tbl-cli{grid-template-columns:1.8fr 1fr 1.25fr 1.1fr 1.1fr 1.1fr .9fr}
+/* Lo que pago cada cliente: se lee sin abrir la ficha y se edita en el lugar. */
+.cli-monto{background:none;border:1px solid transparent;border-radius:6px;padding:4px 6px;font-family:inherit;font-size:.84rem;font-weight:650;color:var(--texto-fuerte);cursor:pointer;text-align:left;white-space:nowrap;font-variant-numeric:tabular-nums;max-width:100%}
+.cli-monto:hover{border-color:var(--borde-fuerte)}
+.cli-monto:focus-visible{outline:2px solid var(--azul);outline-offset:1px}
+.cli-monto.vacio{color:var(--texto-debil);font-weight:500;font-size:.76rem;border:1px dashed var(--borde)}
+.cli-monto-mon{font-size:.66rem;font-weight:700;color:var(--texto-debil);letter-spacing:.4px;margin-right:4px}
+.cli-monto-edit{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+.cli-monto-input{background:var(--superficie-honda);border:1px solid var(--borde);color:var(--texto);border-radius:6px;padding:4px 6px;font-size:.78rem;font-family:inherit;width:78px;min-width:0}
+.cli-monto-sel{background:var(--superficie-honda);border:1px solid var(--borde);color:var(--texto);border-radius:6px;padding:4px 2px;font-size:.74rem;font-family:inherit;cursor:pointer}
+.cli-monto-input:focus,.cli-monto-sel:focus{border-color:var(--azul);outline:none}
+.cli-monto-ok,.cli-monto-x{border-radius:6px;padding:4px 8px;font-size:.74rem;font-weight:600;font-family:inherit;cursor:pointer}
+.cli-monto-ok{background:var(--azul-tinte);border:1px solid var(--azul);color:var(--azul-claro)}
+.cli-monto-x{background:var(--relleno);border:1px solid var(--borde);color:var(--texto-tenue)}
+.cli-monto-ok:disabled,.cli-monto-x:disabled{opacity:.5;cursor:default}
 .resp-sel{background:var(--superficie-honda);border:1px solid var(--borde);color:var(--texto);border-radius:6px;padding:4px 6px;font-size:.76rem;font-family:inherit;width:100%;max-width:150px;cursor:pointer}
 .resp-sel:hover{border-color:var(--borde-fuerte)}
 .resp-sel.vacante{color:var(--texto-debil)}
@@ -643,6 +657,11 @@ body.light .demo-cliente{color:#0f172a}
   .table-header.tbl-cli{display:none}
   .table-row.tbl-cli{display:flex;flex-direction:column;align-items:stretch;gap:7px;grid-template-columns:none}
   .resp-sel{max-width:none}
+  /* En el celular el monto es una fila entera, con blancos de dedo, y el campo
+     en 16px para que iOS no haga zoom al tocarlo. */
+  .cli-monto{width:100%;min-height:40px;padding:8px 10px;white-space:normal}
+  .cli-monto-input{flex:1;width:auto;min-height:40px;font-size:16px}
+  .cli-monto-sel,.cli-monto-ok,.cli-monto-x{min-height:40px}
   .pre-col{max-height:none}
 }
 .table-header.no-cb{grid-template-columns:2fr 1.1fr 1fr 1.8fr 1.2fr}
@@ -1705,12 +1724,13 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     <div class="page-header">
       <div>
         <h1>Clientes</h1>
-        <div class="page-date">Quién se ocupa de cada cliente activo</div>
+        <div class="page-date">Quién se ocupa de cada cliente activo y cuánto pagó</div>
       </div>
+      <button class="export-btn" onclick="cliNuevoAbrir()">+ Nuevo cliente</button>
     </div>
     <div class="table-wrap">
       <div class="table-header tbl-cli">
-        <span>Negocio</span><span>Estado</span><span>Día a día</span><span>Mantenimiento</span><span>Cobros</span><span>Acciones</span>
+        <span>Negocio</span><span>Estado</span><span>Pagó</span><span>Día a día</span><span>Mantenimiento</span><span>Cobros</span><span>Acciones</span>
       </div>
       <div id="clientes-body"></div>
     </div>
@@ -3340,6 +3360,181 @@ async function guardarResponsable(clientId, campo, valor, sel) {
   } finally { sel.disabled = false; }
 }
 
+// == Monto pagado por el desarrollo ===========================================
+// Lo carga Juan a mano. No sale de presupuestos ni de Finanzas: es lo que se
+// acordo, en la moneda en que se acordo, sin convertir.
+let _cliMontos = {};
+let _cliNuevoModal = null;
+
+// "1.500" es mil quinientos en Uruguay, no uno y medio: se aceptan punto de
+// miles y coma decimal ademas del punto decimal. Sin regex a proposito: este
+// string pasa por Python y una barra invertida se pierde.
+function _cliMontoParse(txt) {
+  let s = String(txt || '').split(' ').join('');
+  if (s === '') return null;
+  const comas = s.split(',').length - 1;
+  const partes = s.split('.');
+  if (comas > 1) return NaN;
+  if (comas === 1) {
+    s = partes.join('').replace(',', '.');
+  } else if (partes.length > 2 || (partes.length === 2 && partes[1].length === 3)) {
+    s = partes.join('');
+  }
+  const n = Number(s);
+  return isFinite(n) ? n : NaN;
+}
+
+function _cliMontoCelda(id) {
+  const m = _cliMontos[id] || {};
+  const cargado = m.monto !== null && m.monto !== undefined;
+  if (!cargado) {
+    return `<button type="button" class="cli-monto vacio" title="Cargar cuánto pagó" onclick="cliMontoEditar(${id})">+ cargar</button>`;
+  }
+  const n = Number(m.monto).toLocaleString('es-UY', {maximumFractionDigits: 2});
+  return `<button type="button" class="cli-monto" title="Editar cuánto pagó" onclick="cliMontoEditar(${id})"><span class="cli-monto-mon">${esc(m.moneda || '')}</span>${n}</button>`;
+}
+
+function cliMontoEditar(id) {
+  const cel = document.getElementById('cli-monto-' + id);
+  if (!cel) return;
+  const m = _cliMontos[id] || {};
+  const moneda = m.moneda || 'USD';
+  const valor = (m.monto === null || m.monto === undefined) ? '' : String(m.monto).replace('.', ',');
+  cel.innerHTML = `<div class="cli-monto-edit">
+    <input type="text" inputmode="decimal" class="cli-monto-input" value="${esc(valor)}" placeholder="Ej: 1.500" aria-label="Monto pagado"
+      onkeydown="if(event.key==='Enter')cliMontoGuardar(${id});if(event.key==='Escape')cliMontoCancelar(${id})">
+    <select class="cli-monto-sel" aria-label="Moneda">
+      <option value="USD"${moneda === 'USD' ? ' selected' : ''}>USD</option>
+      <option value="UYU"${moneda === 'UYU' ? ' selected' : ''}>UYU</option>
+    </select>
+    <button type="button" class="cli-monto-ok" onclick="cliMontoGuardar(${id})">Guardar</button>
+    <button type="button" class="cli-monto-x" onclick="cliMontoCancelar(${id})" aria-label="Cancelar" title="Cancelar">&times;</button>
+  </div>`;
+  const inp = cel.querySelector('.cli-monto-input');
+  inp.focus();
+  inp.select();
+}
+
+function cliMontoCancelar(id) {
+  const cel = document.getElementById('cli-monto-' + id);
+  if (cel) cel.innerHTML = _cliMontoCelda(id);
+}
+
+async function cliMontoGuardar(id) {
+  const cel = document.getElementById('cli-monto-' + id);
+  if (!cel) return;
+  const inp = cel.querySelector('.cli-monto-input');
+  const sel = cel.querySelector('.cli-monto-sel');
+  const monto = _cliMontoParse(inp.value);
+  if (monto !== null && !(monto >= 0)) {
+    alert('El monto tiene que ser un número mayor o igual a cero. Dejalo vacío para borrarlo.');
+    inp.focus();
+    return;
+  }
+  const controles = cel.querySelectorAll('input,select,button');
+  controles.forEach(el => { el.disabled = true; });
+  try {
+    const r = await fetch('/api/clientes-activos/' + id + '/monto-pagado', {
+      method: 'PUT', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({monto: monto, moneda: sel.value}),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!d.ok) {
+      // Queda abierto con lo tipeado: cerrar mostrando el valor viejo haria
+      // creer que se guardo.
+      alert(d.error || 'No se pudo guardar el monto.');
+      controles.forEach(el => { el.disabled = false; });
+      inp.focus();
+      return;
+    }
+    _cliMontos[id] = {monto: d.monto_pagado, moneda: d.moneda_pagado};
+    cel.innerHTML = _cliMontoCelda(id);
+  } catch (e) {
+    alert('No se pudo guardar el monto: ' + e.message);
+    controles.forEach(el => { el.disabled = false; });
+  }
+}
+
+// == Alta de cliente ===========================================================
+async function cliNuevoAbrir() {
+  cliNuevoCerrar();
+  let etapas = [];
+  try {
+    const r = await fetch('/api/preclientes/etapas');
+    etapas = r.ok ? ((await r.json()).clientes || []) : [];
+  } catch (e) { etapas = []; }
+  if (!etapas.length) etapas = [{key: 'cerrado', label: 'Cerrado'}];
+  const opciones = etapas.map(e => `<option value="${esc(e.key)}">${esc(e.label)}</option>`).join('');
+  const m = document.createElement('div');
+  m.className = 'modal-overlay open';
+  m.id = 'cli-nuevo-modal';
+  m.onclick = ev => { if (ev.target === m) cliNuevoCerrar(); };
+  m.innerHTML = `<div class="modal" style="width:440px;max-width:95vw">
+    <h3>Nuevo cliente</h3>
+    <label class="modal-label">Nombre del negocio *</label>
+    <input type="text" id="cli-nuevo-nombre" class="modal-input" maxlength="200" placeholder="Ej: Bloquera Norte">
+    <div class="modal-row">
+      <div>
+        <label class="modal-label">Teléfono</label>
+        <input type="text" id="cli-nuevo-tel" class="modal-input" maxlength="40" placeholder="(opcional)">
+      </div>
+      <div>
+        <label class="modal-label">Ciudad</label>
+        <input type="text" id="cli-nuevo-ciudad" class="modal-input" maxlength="120" placeholder="(opcional)">
+      </div>
+    </div>
+    <label class="modal-label">Estado</label>
+    <select id="cli-nuevo-estado" class="modal-input">${opciones}</select>
+    <label class="modal-label">Cuánto pagó por el desarrollo</label>
+    <div style="display:flex;gap:8px">
+      <input type="text" inputmode="decimal" id="cli-nuevo-monto" class="modal-input" placeholder="(opcional) Ej: 1.500">
+      <select id="cli-nuevo-moneda" class="modal-input" style="width:92px;flex:none" aria-label="Moneda">
+        <option value="USD">USD</option>
+        <option value="UYU">UYU</option>
+      </select>
+    </div>
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="cliNuevoCerrar()">Cancelar</button>
+      <button class="btn-confirm" id="cli-nuevo-guardar" onclick="cliNuevoGuardar()">Crear cliente</button>
+    </div>
+  </div>`;
+  document.body.appendChild(m);
+  _cliNuevoModal = m;
+  document.getElementById('cli-nuevo-nombre').focus();
+}
+
+function cliNuevoCerrar() {
+  if (_cliNuevoModal) { _cliNuevoModal.remove(); _cliNuevoModal = null; }
+}
+
+async function cliNuevoGuardar() {
+  const val = id => document.getElementById(id).value.trim();
+  const nombre = val('cli-nuevo-nombre');
+  if (!nombre) { alert('Poné el nombre del negocio.'); return; }
+  const monto = _cliMontoParse(val('cli-nuevo-monto'));
+  if (monto !== null && !(monto >= 0)) {
+    alert('El monto tiene que ser un número mayor o igual a cero, o quedar vacío.');
+    return;
+  }
+  const btn = document.getElementById('cli-nuevo-guardar');
+  btn.disabled = true;
+  try {
+    const r = await fetch('/api/clientes-activos', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        name: nombre, phone: val('cli-nuevo-tel'), city: val('cli-nuevo-ciudad'),
+        crm_status: val('cli-nuevo-estado'), monto: monto, moneda: val('cli-nuevo-moneda'),
+      }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!d.ok) { alert(d.error || 'No se pudo crear el cliente.'); return; }
+    cliNuevoCerrar();
+    loadClientesPanel();
+  } catch (e) {
+    alert('No se pudo crear el cliente: ' + e.message);
+  } finally { btn.disabled = false; }
+}
+
 // ── Clientes ──────────────────────────────────────────────────────────────────
 async function loadClientesPanel() {
   const body = document.getElementById('clientes-body');
@@ -3348,6 +3543,8 @@ async function loadClientesPanel() {
     const [r, usuarios] = await Promise.all([fetch('/api/clientes-activos'), _usuarios()]);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const clientes = (await r.json()).clientes || [];
+    _cliMontos = {};
+    clientes.forEach(b => { _cliMontos[b.id] = {monto: b.monto_pagado, moneda: b.moneda_pagado}; });
     if (!clientes.length) { body.innerHTML = '<div class="empty-state">No hay clientes todavía</div>'; return; }
     const crmLabels = {cerrado:'Cerrado', en_desarrollo:'En desarrollo', finalizado:'Finalizado'};
     const crmColor  = {cerrado:'#4ade80', en_desarrollo:'#0088cc', finalizado:'#a78bfa'};
@@ -3375,6 +3572,7 @@ async function loadClientesPanel() {
           ${tel}
         </div>
         <div><span style="font-size:.72rem;font-weight:600;color:${color};background:${color}18;padding:3px 8px;border-radius:99px">${crmLabels[crm]||crm}</span></div>
+        <div data-rol="Pagó por el desarrollo" id="cli-monto-${b.id}">${_cliMontoCelda(b.id)}</div>
         <div data-rol="Día a día">${selector(b, 'encargado_id')}</div>
         <div data-rol="Mantenimiento">${selector(b, 'mantenimiento_id')}</div>
         <div data-rol="Cobros">${selector(b, 'cobros_id')}</div>

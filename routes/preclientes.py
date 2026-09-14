@@ -12,14 +12,16 @@ esta cada uno:
 """
 
 import logging
+import math
 
 from flask import Blueprint, current_app, jsonify, request, session
 
 from database import (ETAPAS_CLIENTE, ETAPAS_PRECLIENTE, actualizar_demo_realizada,
                       borrar_demo_realizada, crear_demo_realizada, get_business,
-                      get_user_by_id, listar_demos_realizadas, log_activity,
-                      obtener_demo_realizada, update_business)
+                      get_user_by_id, insert_business, listar_demos_realizadas,
+                      log_activity, obtener_demo_realizada, update_business)
 from database import _connect as _db_connect
+from services.finanzas import MONEDAS
 
 logger = logging.getLogger(__name__)
 preclientes_bp = Blueprint("preclientes", __name__)
@@ -64,6 +66,45 @@ def _usuario_valido(valor):
     if not get_user_by_id(_db(), valor):
         return None, "Usuario inexistente"
     return valor, None
+
+
+# Tope de cordura, no de negocio: un desarrollo de mil millones es un error de
+# tipeo (un cero de mas pegado dos veces), no un cliente.
+_MONTO_MAXIMO = 1_000_000_000
+
+
+def _monto_pagado_valido(data: dict):
+    """Devuelve ({monto_pagado, moneda_pagado}, None) o (None, mensaje de error).
+
+    Un monto vacio o null borra los dos campos: "no se cargo" no es 0. El 0 si
+    se acepta, porque un desarrollo regalado o por canje es un dato real.
+
+    La moneda sale de `services.finanzas.MONEDAS` para que Clientes y Finanzas
+    no puedan divergir. No se convierte a dolares: se guarda lo que se acordo.
+    """
+    monto = data.get("monto")
+    if monto is None or (isinstance(monto, str) and not monto.strip()):
+        return {"monto_pagado": None, "moneda_pagado": None}, None
+
+    # bool es subclase de int: sin esto, `true` se guardaba como 1.
+    if isinstance(monto, bool):
+        return None, "monto tiene que ser un número"
+    try:
+        monto = float(monto)
+    except (TypeError, ValueError):
+        return None, "monto tiene que ser un número"
+    if not math.isfinite(monto):
+        return None, "monto tiene que ser un número"
+    if monto < 0:
+        return None, "monto no puede ser negativo"
+    if monto > _MONTO_MAXIMO:
+        return None, "monto demasiado grande"
+
+    moneda = data.get("moneda")
+    if moneda not in MONEDAS:
+        return None, f"moneda tiene que ser una de {list(MONEDAS)}"
+
+    return {"monto_pagado": round(monto, 2), "moneda_pagado": moneda}, None
 
 
 # ── Pre-clientes ─────────────────────────────────────────────────────────────
@@ -123,13 +164,15 @@ def api_preclientes():
 
 @preclientes_bp.route("/api/clientes-activos")
 def api_clientes_activos():
-    """Los clientes que ya cerraron, con sus tres responsables resueltos a nombre."""
+    """Los clientes que ya cerraron, con sus tres responsables resueltos a nombre
+    y lo que pago cada uno por su desarrollo."""
     marcadores = ",".join("?" * len(ETAPAS_CLIENTE))
     conn = _db_connect(_db())
     try:
         filas = conn.execute(f"""
             SELECT b.id, b.name, b.crm_status, b.phone, b.email, b.city,
                    b.encargado_id, b.mantenimiento_id, b.cobros_id,
+                   b.monto_pagado, b.moneda_pagado,
                    ue.name AS encargado_nombre,
                    um.name AS mantenimiento_nombre,
                    uc.name AS cobros_nombre
@@ -166,6 +209,67 @@ def api_responsables(client_id):
 
     update_business(_db(), client_id, **campos)
     return jsonify({"ok": True, **campos})
+
+
+@preclientes_bp.route("/api/clientes-activos/<int:client_id>/monto-pagado", methods=["PUT"])
+def api_monto_pagado(client_id):
+    """Carga, corrige o borra cuanto pago el cliente. Body: {monto, moneda}.
+
+    `monto` null o vacio deja los dos campos en NULL ("sin cargar")."""
+    if not get_business(_db(), client_id):
+        return jsonify({"ok": False, "error": "Cliente no encontrado"}), 404
+
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or "monto" not in data:
+        return jsonify({"ok": False, "error": "Nada para actualizar"}), 400
+
+    campos, error = _monto_pagado_valido(data)
+    if error:
+        return jsonify({"ok": False, "error": error}), 400
+
+    update_business(_db(), client_id, **campos)
+    return jsonify({"ok": True, **campos})
+
+
+@preclientes_bp.route("/api/clientes-activos", methods=["POST"])
+def api_crear_cliente():
+    """Alta de un cliente directo en Clientes, sin pasar por la Cola.
+
+    Body: {name, phone?, city?, crm_status?, monto?, moneda?}. Todo se valida
+    antes de insertar: un monto mal escrito no puede dejar un cliente creado a
+    medias."""
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        data = {}
+
+    nombre = str(data.get("name") or "").strip()[:200]
+    if not nombre:
+        return jsonify({"ok": False, "error": "El nombre es obligatorio"}), 400
+
+    etapa = data.get("crm_status") or ETAPAS_CLIENTE[0]
+    if etapa not in ETAPAS_CLIENTE:
+        return jsonify({"ok": False,
+                        "error": f"crm_status tiene que ser una de {list(ETAPAS_CLIENTE)}"}), 400
+
+    monto, error = _monto_pagado_valido(data)
+    if error:
+        return jsonify({"ok": False, "error": error}), 400
+
+    telefono = str(data.get("phone") or "").strip()[:40] or None
+    ciudad = str(data.get("city") or "").strip()[:120] or None
+
+    client_id = insert_business(_db(), {"name": nombre, "phone": telefono,
+                                        "city": ciudad, "source": "manual"})
+    if not client_id:
+        # insert_business es INSERT OR IGNORE y `phone` es UNIQUE: el unico
+        # motivo real para no insertar es un telefono que ya esta en el CRM.
+        return jsonify({"ok": False,
+                        "error": "Ya hay un negocio con ese teléfono en el CRM"}), 409
+
+    update_business(_db(), client_id, crm_status=etapa, **monto)
+    log_activity(_db(), session.get("user_name", "sistema"), "cliente_creado",
+                 "lead", client_id, nombre, "Alta desde Clientes", user_id=_uid())
+    return jsonify({"ok": True, "id": client_id, "crm_status": etapa, **monto}), 201
 
 
 # ── Registro de demos ────────────────────────────────────────────────────────
