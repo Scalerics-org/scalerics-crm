@@ -26,6 +26,7 @@ from routes.projects import projects_bp
 from routes.preclientes import preclientes_bp
 from routes.linkedin import linkedin_bp
 from routes.finanzas import finanzas_bp
+from routes.simulador import simulador_bp
 from routes.web import web_bp
 from routes.marketing import marketing_bp
 from services.auth import is_admin
@@ -1523,6 +1524,91 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .fin-hbar-relleno{height:100%;border-radius:3px}
 .fin-hbar-monto{font-size:.75rem;color:var(--texto);width:74px;text-align:right;flex-shrink:0}
 @media (max-width:760px){.fin-split{grid-template-columns:1fr}}
+/* ── Simulador financiero ─────────────────────────────────────────────────────
+   Todo con tokens: no hay ninguna regla `body.light .sim-`. Los semaforos usan
+   los pares tinte/texto de la familia de estados, que llegan a 4,5 en los dos
+   temas. Reusa .fin-card, .fin-card-title, .fin-kpi-label y los botones. */
+.sim-escenarios{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:14px}
+.sim-in{background:var(--fondo-hundido);border:1px solid var(--borde);border-radius:8px;padding:7px 10px;color:var(--texto);font-size:.82rem;font-family:'Inter',sans-serif;min-width:0}
+.sim-in:focus{outline:none;border-color:var(--azul)}
+.sim-in::placeholder{color:var(--texto-debil)}
+.sim-in.sim-usa-default{border-color:var(--ambar-borde)}
+.sim-in-corto{width:92px;text-align:right}
+.sim-in-monto{width:100%;text-align:right}
+.sim-in-nombre{flex:1 1 180px}
+.sim-guardado{font-size:.75rem;color:var(--texto-tenue)}
+.sim-guardado.sim-mal{color:var(--rojo-texto)}
+.sim-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,380px);gap:18px;align-items:start}
+.sim-entradas{min-width:0}
+.sim-resultados{position:sticky;top:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.sim-resultados .fin-card{margin-bottom:0}
+.sim-cab{display:flex;justify-content:space-between;align-items:baseline;gap:6px 12px;flex-wrap:wrap;margin-bottom:10px}
+.sim-cab .fin-card-title{margin-bottom:0}
+.sim-sub{font-size:.76rem;font-weight:700;color:var(--texto-tenue)}
+.sim-origen{font-size:.72rem;color:var(--texto-debil);margin-bottom:8px}
+.sim-origen:empty{display:none}
+.sim-campo{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;align-items:center;padding:6px 0}
+.sim-campo label{font-size:.8rem;color:var(--texto)}
+.sim-control{display:inline-flex;align-items:center;gap:6px}
+.sim-unidad{font-size:.7rem;font-weight:700;color:var(--texto-debil)}
+.sim-rango{grid-column:1/-1;width:100%;accent-color:var(--azul);margin:2px 0}
+.sim-tipo{padding-bottom:6px;margin-bottom:6px;border-bottom:1px solid var(--borde)}
+.sim-lista{display:flex;flex-direction:column;gap:6px;margin-bottom:10px}
+.sim-fila{display:grid;grid-template-columns:auto minmax(0,1fr) 104px auto;gap:8px;align-items:center}
+.sim-fila-nombre{font-size:.82rem;color:var(--texto);overflow-wrap:anywhere}
+.sim-fila-nota{font-size:.7rem;color:var(--texto-debil)}
+.sim-apagada .sim-fila-nombre{color:var(--texto-debil)}
+.sim-vacio{font-size:.78rem;color:var(--texto-debil);padding:4px 0}
+.sim-switch{appearance:none;-webkit-appearance:none;width:36px;height:20px;border-radius:99px;background:var(--borde-fuerte);position:relative;cursor:pointer;margin:0;transition:background .15s}
+.sim-switch::after{content:'';position:absolute;top:3px;left:3px;width:14px;height:14px;border-radius:50%;background:var(--texto-fuerte);transition:left .15s}
+.sim-switch:checked{background:var(--azul)}
+.sim-switch:checked::after{left:19px}
+.sim-switch:focus-visible{outline:2px solid var(--azul-claro);outline-offset:2px}
+.sim-agregar{display:grid;grid-template-columns:minmax(0,1fr) 104px auto;gap:8px;align-items:center}
+.sim-error{font-size:.75rem;color:var(--rojo-texto);margin-top:6px}
+.sim-error:empty{display:none}
+.sim-aviso{border-radius:10px;padding:10px 12px;font-size:.8rem;line-height:1.45;margin:8px 0}
+.sim-aviso:empty{display:none}
+.sim-aviso-ambar{background:var(--ambar-tinte);color:var(--ambar);border:1px solid var(--ambar-borde)}
+.sim-aviso-clave{font-size:.86rem;font-weight:600;border-width:2px;margin:0}
+.sim-tarjetas{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.sim-tarjeta{background:var(--superficie-honda);border:1px solid var(--borde);border-radius:10px;padding:12px 14px;min-width:0}
+.sim-tarjeta-valor{font-size:1.3rem;font-weight:700;color:var(--texto-fuerte);margin-top:4px;overflow-wrap:anywhere}
+.sim-tarjeta-detalle{font-size:.7rem;color:var(--texto-debil);margin-top:4px;line-height:1.35}
+.sim-positivo{color:var(--verde-texto)}
+.sim-negativo{color:var(--rojo-texto)}
+.sim-arrastre{font-size:.78rem;color:var(--texto-tenue);line-height:1.45}
+.sim-cierre{font-size:.86rem;font-weight:700;line-height:1.45;margin-top:4px}
+.sim-semaforo{display:flex;gap:10px;align-items:flex-start;border-radius:10px;padding:10px 12px;font-size:.8rem;line-height:1.45}
+.sim-semaforo strong{display:block;font-size:.68rem;text-transform:uppercase;letter-spacing:.6px}
+.sim-punto{width:10px;height:10px;border-radius:50%;background:currentColor;flex-shrink:0;margin-top:4px}
+.sim-verde{background:var(--verde-tinte);color:var(--verde-texto)}
+.sim-rojo{background:var(--rojo-tinte);color:var(--rojo-texto)}
+.sim-ambar{background:var(--ambar-tinte);color:var(--ambar)}
+.sim-neutro{background:var(--relleno);color:var(--texto-debil)}
+.sim-numeros{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.sim-numero{font-size:.72rem;color:var(--texto-debil)}
+.sim-numero b{display:block;font-size:1.05rem;color:var(--texto-fuerte);margin-top:2px}
+.sim-meta{font-size:.8rem;color:var(--texto);line-height:1.5;margin-top:6px}
+.sim-palanca-fila{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:8px 0}
+.sim-palanca{background:var(--relleno);color:var(--texto-tenue);border:1px solid var(--borde);border-radius:99px;padding:7px 14px;font-size:.8rem;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;white-space:nowrap}
+.sim-palanca[aria-pressed="true"]{background:var(--azul-tinte);color:var(--azul-claro);border-color:var(--azul)}
+.sim-palanca-detalle{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:.76rem;color:var(--texto-tenue)}
+.sim-mini{display:none}
+@media(max-width:900px){
+  .sim-layout{grid-template-columns:1fr}
+  .sim-resultados{position:static;order:-1}
+  .sim-mini{display:flex;justify-content:space-between;gap:10px;position:sticky;top:60px;z-index:5;background:var(--superficie);border:1px solid var(--borde);border-radius:10px;padding:8px 12px;margin-bottom:10px;font-size:.78rem;color:var(--texto-tenue);box-shadow:0 4px 12px var(--sombra)}
+  .sim-mini b{color:var(--texto-fuerte)}
+  .sim-mini b.sim-positivo{color:var(--verde-texto)}
+  .sim-mini b.sim-negativo{color:var(--rojo-texto)}
+}
+@media(max-width:480px){
+  .sim-fila{grid-template-columns:auto minmax(0,1fr) 88px auto}
+  .sim-agregar{grid-template-columns:minmax(0,1fr) 88px}
+  .sim-agregar .btn-ghost{grid-column:1/-1}
+  .sim-tarjeta-valor{font-size:1.1rem}
+}
 </style>
 </head>
 <body>
@@ -1558,6 +1644,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div class="nav-item" id="nav-wa" onclick="showPanel('wa')"><i data-lucide="message-circle" class="nav-icon"></i> WhatsApp</div>
   <div class="nav-item" id="nav-cal" onclick="showPanel('cal')"><i data-lucide="calendar" class="nav-icon"></i> Calendario</div>
   <div class="nav-item" id="nav-finanzas" onclick="showPanel('finanzas')"><i data-lucide="wallet" class="nav-icon"></i> Finanzas</div>
+  <div class="nav-item" id="nav-simulador" onclick="showPanel('simulador')"><i data-lucide="calculator" class="nav-icon"></i> Simulador financiero</div>
   <div class="nav-item" id="nav-metrics" onclick="showPanel('metrics')"><i data-lucide="bar-chart-2" class="nav-icon"></i> Métricas</div>
   <div class="nav-item" id="nav-marketing" onclick="showPanel('marketing')"><i data-lucide="target" class="nav-icon"></i> Marketing</div>
   <div class="nav-item" id="nav-activity" onclick="showPanel('activity')"><i data-lucide="clock" class="nav-icon"></i> Actividad</div>
@@ -1917,6 +2004,217 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     <div id="fin-vista-pauta" style="display:none">
       <div class="fin-card"><div class="fin-card-title">Qué compró la pauta</div>
         <div id="fin-pauta"></div></div>
+    </div>
+  </div>
+
+  <!-- ======= SIMULADOR FINANCIERO PANEL ======= -->
+  <div id="simulador-panel" class="panel">
+    <div class="page-header">
+      <div>
+        <h1>Simulador financiero</h1>
+        <div class="page-date">Probá decisiones antes de tomarlas. Todo en USD y sobre una copia: nada de esto toca Finanzas.</div>
+      </div>
+    </div>
+
+    <div class="sim-escenarios">
+      <select id="sim-escenarios" class="filter-select" aria-label="Escenarios guardados">
+        <option value="">Escenarios guardados</option>
+      </select>
+      <button class="btn-ghost" type="button" onclick="simAbrir()">Abrir</button>
+      <button class="btn-ghost" type="button" onclick="simBorrarEscenario()">Borrar escenario</button>
+      <input type="text" id="sim-nombre" class="sim-in sim-in-nombre" maxlength="80" placeholder="Nombre del escenario" aria-label="Nombre del escenario">
+      <button class="btn-primary" type="button" onclick="simGuardar()">Guardar</button>
+      <button class="btn-ghost" type="button" onclick="simRestablecer()">Restablecer</button>
+      <span class="sim-guardado" id="sim-guardado" role="status"></span>
+    </div>
+    <div class="sim-aviso sim-aviso-ambar" id="sim-aviso-carga" role="status"></div>
+    <div class="sim-mini" id="sim-mini" aria-hidden="true"></div>
+
+    <div class="sim-layout">
+      <div class="sim-entradas">
+
+        <section class="fin-card">
+          <div class="sim-cab"><div class="fin-card-title">Equipo</div><span class="sim-sub" id="sim-sub-equipo"></span></div>
+          <div class="sim-campo">
+            <label for="sim-programadores">Programadores</label>
+            <input type="number" id="sim-programadores" class="sim-in sim-in-corto" data-sim="equipo.cantidadProgramadores" min="0" max="6" step="1" inputmode="numeric">
+            <input type="range" class="sim-rango" data-sim="equipo.cantidadProgramadores" min="0" max="6" step="1" aria-label="Programadores">
+          </div>
+          <div class="sim-campo">
+            <label for="sim-sueldo-prog">Sueldo por programador</label>
+            <span class="sim-control"><span class="sim-unidad">USD</span><input type="number" id="sim-sueldo-prog" class="sim-in sim-in-corto" data-sim="equipo.sueldoPorProgramador" min="0" step="any" inputmode="decimal"></span>
+          </div>
+          <div class="sim-campo">
+            <label for="sim-proy-prog">Proyectos por programador</label>
+            <input type="number" id="sim-proy-prog" class="sim-in sim-in-corto" data-sim="equipo.proyectosPorProgramador" min="0" step="any" inputmode="decimal">
+          </div>
+        </section>
+
+        <section class="fin-card">
+          <div class="sim-cab"><div class="fin-card-title">Gastos fijos</div><span class="sim-sub" id="sim-sub-gastosFijos"></span></div>
+          <div class="sim-origen" id="sim-origen-gastosFijos"></div>
+          <div class="sim-lista" id="sim-lista-gastosFijos"></div>
+          <div class="sim-agregar">
+            <input type="text" id="sim-nuevo-nombre-gastosFijos" class="sim-in" maxlength="80" placeholder="Gasto nuevo" aria-label="Nombre del gasto nuevo" onkeydown="if (event.key === 'Enter') simAgregarFila('gastosFijos')">
+            <input type="number" id="sim-nuevo-monto-gastosFijos" class="sim-in sim-in-monto" min="0" step="any" inputmode="decimal" placeholder="0" aria-label="Monto del gasto nuevo">
+            <button class="btn-ghost" type="button" onclick="simAgregarFila('gastosFijos')">Agregar</button>
+          </div>
+          <div class="sim-error" id="sim-nuevo-error-gastosFijos" role="alert"></div>
+        </section>
+
+        <section class="fin-card">
+          <div class="sim-cab"><div class="fin-card-title">Qué vendo por mes</div><span class="sim-sub" id="sim-sub-ventas"></span></div>
+          <div class="sim-tipo">
+            <div class="sim-campo">
+              <label for="sim-precio-web">Web: precio</label>
+              <span class="sim-control"><span class="sim-unidad">USD</span><input type="number" id="sim-precio-web" class="sim-in sim-in-corto" data-sim="ventas.precioWeb" min="0" step="any" inputmode="decimal"></span>
+            </div>
+            <div class="sim-campo">
+              <label for="sim-cant-web">Web: cantidad</label>
+              <input type="number" id="sim-cant-web" class="sim-in sim-in-corto" data-sim="ventas.webs" min="0" step="1" inputmode="numeric">
+              <input type="range" class="sim-rango" data-sim="ventas.webs" min="0" max="10" step="1" aria-label="Cantidad de webs">
+            </div>
+          </div>
+          <div class="sim-tipo">
+            <div class="sim-campo">
+              <label for="sim-precio-ecom">Ecommerce: precio</label>
+              <span class="sim-control"><span class="sim-unidad">USD</span><input type="number" id="sim-precio-ecom" class="sim-in sim-in-corto" data-sim="ventas.precioEcom" min="0" step="any" inputmode="decimal"></span>
+            </div>
+            <div class="sim-campo">
+              <label for="sim-cant-ecom">Ecommerce: cantidad</label>
+              <input type="number" id="sim-cant-ecom" class="sim-in sim-in-corto" data-sim="ventas.ecommerce" min="0" step="1" inputmode="numeric">
+              <input type="range" class="sim-rango" data-sim="ventas.ecommerce" min="0" max="10" step="1" aria-label="Cantidad de ecommerce">
+            </div>
+          </div>
+          <div class="sim-tipo">
+            <div class="sim-campo">
+              <label for="sim-precio-medida">A medida: precio</label>
+              <span class="sim-control"><span class="sim-unidad">USD</span><input type="number" id="sim-precio-medida" class="sim-in sim-in-corto" data-sim="ventas.precioMedida" min="0" step="any" inputmode="decimal"></span>
+            </div>
+            <div class="sim-campo">
+              <label for="sim-cant-medida">A medida: cantidad</label>
+              <input type="number" id="sim-cant-medida" class="sim-in sim-in-corto" data-sim="ventas.aMedida" min="0" step="1" inputmode="numeric">
+              <input type="range" class="sim-rango" data-sim="ventas.aMedida" min="0" max="10" step="1" aria-label="Cantidad de proyectos a medida">
+            </div>
+          </div>
+          <div class="sim-campo">
+            <label for="sim-pauta">Pauta</label>
+            <span class="sim-control"><span class="sim-unidad">USD</span><input type="number" id="sim-pauta" class="sim-in sim-in-corto" data-sim="ventas.pauta" min="0" step="any" inputmode="decimal"></span>
+            <input type="range" class="sim-rango" data-sim="ventas.pauta" min="0" max="2500" step="50" aria-label="Pauta">
+          </div>
+        </section>
+
+        <section class="fin-card">
+          <div class="sim-cab"><div class="fin-card-title">Mantenimientos</div><span class="sim-sub" id="sim-sub-mantenimientos"></span></div>
+          <div class="sim-origen" id="sim-origen-mantenimientos"></div>
+          <div class="sim-lista" id="sim-lista-mantenimientos"></div>
+          <div class="sim-agregar">
+            <input type="text" id="sim-nuevo-nombre-mantenimientos" class="sim-in" maxlength="80" placeholder="Cliente nuevo" aria-label="Nombre del cliente nuevo" onkeydown="if (event.key === 'Enter') simAgregarFila('mantenimientos')">
+            <input type="number" id="sim-nuevo-monto-mantenimientos" class="sim-in sim-in-monto" min="0" step="any" inputmode="decimal" placeholder="0" aria-label="Cuota del cliente nuevo">
+            <button class="btn-ghost" type="button" onclick="simAgregarFila('mantenimientos')">Agregar</button>
+          </div>
+          <div class="sim-error" id="sim-nuevo-error-mantenimientos" role="alert"></div>
+          <div class="sim-campo">
+            <label for="sim-altas">Altas nuevas por mes</label>
+            <input type="number" id="sim-altas" class="sim-in sim-in-corto" data-sim="mantenimiento.altasNuevasPorMes" min="0" step="1" inputmode="numeric">
+          </div>
+          <div class="sim-campo">
+            <label for="sim-cuota-alta">Cuota de cada alta nueva</label>
+            <span class="sim-control"><span class="sim-unidad">USD</span><input type="number" id="sim-cuota-alta" class="sim-in sim-in-corto" data-sim="mantenimiento.cuotaAltaNueva" min="0" step="any" inputmode="decimal"></span>
+          </div>
+          <div class="sim-campo">
+            <label for="sim-comision">Comisión de cobro (Plexo)</label>
+            <span class="sim-control"><input type="number" id="sim-comision" class="sim-in sim-in-corto" data-sim="mantenimiento.comisionCobro" min="0" max="100" step="any" inputmode="decimal"><span class="sim-unidad">%</span></span>
+          </div>
+          <div class="sim-aviso sim-aviso-ambar" id="sim-aviso-altas" role="status"></div>
+        </section>
+
+        <section class="fin-card">
+          <div class="sim-cab"><div class="fin-card-title">Pendientes por cobrar</div><span class="sim-sub" id="sim-sub-pendientes"></span></div>
+          <div class="sim-origen" id="sim-origen-pendientes"></div>
+          <div class="sim-lista" id="sim-lista-pendientes"></div>
+          <div class="sim-agregar">
+            <input type="text" id="sim-nuevo-nombre-pendientes" class="sim-in" maxlength="80" placeholder="Cliente" aria-label="Cliente del pendiente nuevo" onkeydown="if (event.key === 'Enter') simAgregarFila('pendientes')">
+            <input type="number" id="sim-nuevo-monto-pendientes" class="sim-in sim-in-monto" min="0" step="any" inputmode="decimal" placeholder="0" aria-label="Monto del pendiente nuevo">
+            <button class="btn-ghost" type="button" onclick="simAgregarFila('pendientes')">Agregar</button>
+          </div>
+          <div class="sim-error" id="sim-nuevo-error-pendientes" role="alert"></div>
+          <div class="sim-campo">
+            <label for="sim-al-firmar">Del proyecto nuevo entra al firmar</label>
+            <span class="sim-control"><input type="number" id="sim-al-firmar" class="sim-in sim-in-corto" data-sim="cobros.porcentajeAlFirmar" min="0" max="100" step="any" inputmode="decimal"><span class="sim-unidad">%</span></span>
+          </div>
+        </section>
+
+        <section class="fin-card">
+          <div class="sim-cab"><div class="fin-card-title">Palancas</div><span class="sim-sub" id="sim-sub-palancas"></span></div>
+          <div class="sim-palanca-fila">
+            <button class="sim-palanca" type="button" id="sim-palanca-projectManager" aria-pressed="false" onclick="simPalanca('projectManager')">Project manager</button>
+            <span class="sim-palanca-detalle">+ <span class="sim-control"><span class="sim-unidad">USD</span><input type="number" class="sim-in sim-in-corto" data-sim="montosPalancas.projectManager" min="0" step="any" inputmode="decimal" aria-label="Costo del project manager"></span> de costo fijo. No suma capacidad de desarrollo.</span>
+          </div>
+          <div class="sim-palanca-fila">
+            <button class="sim-palanca" type="button" id="sim-palanca-miSueldo" aria-pressed="false" onclick="simPalanca('miSueldo')">Mi sueldo</button>
+            <span class="sim-palanca-detalle">+ <span class="sim-control"><span class="sim-unidad">USD</span><input type="number" class="sim-in sim-in-corto" data-sim="montosPalancas.miSueldo" min="0" step="any" inputmode="decimal" aria-label="Mi sueldo"></span> de costo fijo.</span>
+          </div>
+          <div class="sim-palanca-fila">
+            <button class="sim-palanca" type="button" id="sim-palanca-subcontratar" aria-pressed="false" onclick="simPalanca('subcontratar')">Subcontratar excedente</button>
+            <span class="sim-palanca-detalle">Lo que pasa la capacidad se hace igual, a un <span class="sim-control"><input type="number" class="sim-in sim-in-corto" data-sim="montosPalancas.subcontratoPorcentaje" min="0" step="any" inputmode="decimal" aria-label="Costo del subcontrato como porcentaje del precio promedio"><span class="sim-unidad">%</span></span> del precio promedio.</span>
+          </div>
+          <div class="sim-palanca-fila">
+            <button class="sim-palanca" type="button" id="sim-palanca-matias50" aria-pressed="false" onclick="simPalanca('matias50')">Matías en a medida</button>
+            <span class="sim-palanca-detalle">Se lleva el <span class="sim-control"><input type="number" class="sim-in sim-in-corto" data-sim="montosPalancas.matiasPorcentaje" min="0" max="100" step="any" inputmode="decimal" aria-label="Porcentaje de Matías sobre lo facturado en a medida"><span class="sim-unidad">%</span></span> de lo facturado en a medida.</span>
+          </div>
+          <div class="sim-palanca-fila">
+            <button class="sim-palanca" type="button" id="sim-palanca-aporteJavier" aria-pressed="false" onclick="simPalanca('aporteJavier')">Aporte Javier</button>
+            <span class="sim-palanca-detalle">+ <span class="sim-control"><span class="sim-unidad">USD</span><input type="number" class="sim-in sim-in-corto" data-sim="montosPalancas.aporteJavier" min="0" step="any" inputmode="decimal" aria-label="Aporte de Javier"></span> que entran a caja y no son venta.</span>
+          </div>
+        </section>
+
+        <section class="fin-card">
+          <div class="sim-cab"><div class="fin-card-title">Supuestos del embudo</div><span class="sim-sub" id="sim-sub-embudo"></span></div>
+          <div class="sim-campo">
+            <label for="sim-cpl">Costo por lead</label>
+            <span class="sim-control"><span class="sim-unidad">USD</span><input type="number" id="sim-cpl" class="sim-in sim-in-corto" data-sim="embudo.costoPorLead" min="0" step="any" inputmode="decimal"></span>
+          </div>
+          <div class="sim-campo">
+            <label for="sim-lead-demo">De lead a demo</label>
+            <span class="sim-control"><input type="number" id="sim-lead-demo" class="sim-in sim-in-corto" data-sim="embudo.conversionLeadDemo" min="0" max="100" step="any" inputmode="decimal"><span class="sim-unidad">%</span></span>
+          </div>
+          <div class="sim-campo">
+            <label for="sim-demo-venta">De demo a venta</label>
+            <span class="sim-control"><input type="number" id="sim-demo-venta" class="sim-in sim-in-corto" data-sim="embudo.conversionDemoVenta" min="0" max="100" step="any" inputmode="decimal"><span class="sim-unidad">%</span></span>
+          </div>
+        </section>
+      </div>
+
+      <div class="sim-resultados">
+        <div class="sim-tarjetas" id="sim-tarjetas"></div>
+        <section class="fin-card">
+          <div class="fin-card-title">Caja</div>
+          <div class="sim-campo">
+            <label for="sim-caja-actual">Caja actual</label>
+            <span class="sim-control"><span class="sim-unidad">USD</span><input type="number" id="sim-caja-actual" class="sim-in sim-in-corto" data-sim="caja.cajaActual" step="any" inputmode="decimal"></span>
+          </div>
+          <div class="sim-origen" id="sim-origen-caja"></div>
+          <div class="sim-cierre" id="sim-cierre" role="status"></div>
+        </section>
+        <div class="sim-arrastre" id="sim-arrastre"></div>
+        <div class="sim-aviso sim-aviso-ambar sim-aviso-clave" id="sim-aviso-cobros" role="status"></div>
+        <div id="sim-semaforo-capacidad"></div>
+        <div id="sim-semaforo-embudo"></div>
+        <section class="fin-card">
+          <div class="fin-card-title">Embudo</div>
+          <div class="sim-numeros" id="sim-embudo-numeros"></div>
+        </section>
+        <section class="fin-card">
+          <div class="fin-card-title">Meta de sueldo</div>
+          <div class="sim-campo">
+            <label for="sim-sueldo-objetivo">Sueldo que me quiero poner</label>
+            <span class="sim-control"><span class="sim-unidad">USD</span><input type="number" id="sim-sueldo-objetivo" class="sim-in sim-in-corto" data-sim="meta.sueldoObjetivo" min="0" step="any" inputmode="decimal"></span>
+            <input type="range" class="sim-rango" data-sim="meta.sueldoObjetivo" min="0" max="5000" step="100" aria-label="Sueldo objetivo">
+          </div>
+          <div class="sim-meta" id="sim-meta"></div>
+        </section>
+      </div>
     </div>
   </div>
 
@@ -2608,6 +2906,7 @@ function showPanel(name) {
   if (name === 'projects') loadProjects();
   if (name === 'notion_clients') loadNotionClients();
   if (name === 'finanzas') loadFinanzas();
+  if (name === 'simulador') loadSimulador();
   if (name === 'metrics') loadMetrics();
   if (name === 'activity') loadActivity();
   if (name === 'sdr') loadSdr();
@@ -5622,18 +5921,18 @@ function _showScoreBreakdown(event, el) {
 }
 
 // ── Mobile navigation ─────────────────────────────────────────────────────────
-const NAV_PRIORITY = ['cola','seguimientos','meta','cal','tasks','pipeline','clientes','wa','metrics','activity','projects','notion_clients','finanzas'];
+const NAV_PRIORITY = ['cola','seguimientos','meta','cal','tasks','pipeline','clientes','wa','metrics','activity','projects','notion_clients','finanzas','simulador'];
 const NAV_ICONS = {
   cola:'inbox',seguimientos:'bookmark',meta:'instagram',cal:'calendar',
   tasks:'check-square',pipeline:'trending-up',clientes:'users',
   wa:'message-circle',metrics:'bar-chart-2',activity:'clock',projects:'target',
-  notion_clients:'handshake',finanzas:'wallet'
+  notion_clients:'handshake',finanzas:'wallet',simulador:'calculator'
 };
 const NAV_LABELS = {
   cola:'Cola',seguimientos:'Seguim.',meta:'Meta',cal:'Agenda',
   tasks:'Tareas',pipeline:'Pipeline',clientes:'Clientes',
   wa:'WA',metrics:'Métricas',activity:'Actividad',projects:'Proyectos',
-  notion_clients:'Pipeline',finanzas:'Finanzas'
+  notion_clients:'Pipeline',finanzas:'Finanzas',simulador:'Simulador'
 };
 let _mobileNavOverflow = [];
 
@@ -5713,7 +6012,7 @@ function closeMasSheet() {
 }
 
 // ── Panel access control ──────────────────────────────────────────────────────
-const ALL_PANELS = ['cola','seguimientos','meta','pipeline','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas'];
+const ALL_PANELS = ['cola','seguimientos','meta','pipeline','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador'];
 (async () => {
   try {
     const r = await fetch('/api/me');
@@ -7562,6 +7861,769 @@ async function loadMetrics() {
   }
 }
 
+// ========== Simulador financiero ==========
+// No muestra el pasado: sirve para probar decisiones. Trabaja sobre una COPIA
+// de lo que hay en Finanzas (la precarga) y nunca escribe ahi.
+//
+// Lo que va entre las dos marcas "sim: calculo puro" no toca el DOM:
+// tests/test_simulador_calculo.py lo recorta y lo corre en node. La regla de
+// la seccion es que ningun numero de la cuenta este escondido: cada supuesto
+// es un campo de SIM_CAMPOS con su control en pantalla (data-sim), y los
+// valores por defecto viven todos juntos en SIM_DEFAULTS.
+//
+// Fase 2 (comparar dos escenarios, caja a 12 meses con el mes de quiebre,
+// calendario semanal de caja, margen por cliente) se apoya en esto:
+// simCalcular es pura y el escenario guardado lleva `version`.
+// ── sim: calculo puro (inicio) ──
+const SIM_DEFAULTS = {
+  equipo: {cantidadProgramadores: 2, sueldoPorProgramador: 500, proyectosPorProgramador: 3},
+  ventas: {precioWeb: 700, webs: 2, precioEcom: 1100, ecommerce: 2,
+           precioMedida: 2000, aMedida: 1, pauta: 600},
+  mantenimiento: {altasNuevasPorMes: 0, cuotaAltaNueva: 100, comisionCobro: 5},
+  cobros: {porcentajeAlFirmar: 50},
+  palancas: {projectManager: false, miSueldo: false, subcontratar: false,
+             matias50: false, aporteJavier: false},
+  montosPalancas: {projectManager: 500, miSueldo: 500, subcontratoPorcentaje: 60,
+                   matiasPorcentaje: 50, aporteJavier: 1000},
+  embudo: {costoPorLead: 18, conversionLeadDemo: 25, conversionDemoVenta: 30},
+  meta: {sueldoObjetivo: 1000},
+  // La caja de hoy. Se pisa con la de Finanzas si responde (ingresos menos
+  // egresos acumulados); este 0 es solo el respaldo.
+  caja: {cajaActual: 0},
+  // Solo para armar la copia inicial: la cuota con la que arranca cada cliente
+  // precargado. Despues cada fila tiene la suya y se edita en pantalla.
+  precarga: {cuotaPorCliente: 100},
+  // RESPALDO: la fuente de los gastos fijos son los "Fijos" activos de
+  // Finanzas. Esta lista solo se usa si Finanzas no tiene ninguno. Valores de
+  // Juan del 14/9 (Claude sin confirmar; Matias demos ya no se paga).
+  gastosFijos: [
+    {nombre: 'Agencia de marketing', monto: 300, activo: true},
+    {nombre: 'Contador', monto: 70, activo: true},
+    {nombre: 'Claude', monto: 120, activo: true},
+    {nombre: 'Servidores y hosting', monto: 90, activo: true},
+    {nombre: 'Impuestos SAS', monto: 250, activo: true},
+    {nombre: 'Facturación electrónica', monto: 100, activo: true}
+  ]
+};
+
+// Cada numero que entra a la cuenta: [ruta, tipo, maximo]. Tipos: 'entero',
+// 'monto', 'porcentaje' (de 0 a 100, se divide por 100 en la cuenta),
+// 'factor' (un porcentaje que puede pasar de 100) y 'saldo' (un monto que puede
+// ser negativo: la caja). Vacio o negativo toma el default; un porcentaje
+// arriba de 100, tambien. En un 'saldo' solo el vacio.
+const SIM_CAMPOS = [
+  ['caja.cajaActual', 'saldo'],
+  ['equipo.cantidadProgramadores', 'entero', 6],
+  ['equipo.sueldoPorProgramador', 'monto'],
+  ['equipo.proyectosPorProgramador', 'monto'],
+  ['ventas.precioWeb', 'monto'],
+  ['ventas.webs', 'entero'],
+  ['ventas.precioEcom', 'monto'],
+  ['ventas.ecommerce', 'entero'],
+  ['ventas.precioMedida', 'monto'],
+  ['ventas.aMedida', 'entero'],
+  ['ventas.pauta', 'monto'],
+  ['mantenimiento.altasNuevasPorMes', 'entero'],
+  ['mantenimiento.cuotaAltaNueva', 'monto'],
+  ['mantenimiento.comisionCobro', 'porcentaje'],
+  ['cobros.porcentajeAlFirmar', 'porcentaje'],
+  ['montosPalancas.projectManager', 'monto'],
+  ['montosPalancas.miSueldo', 'monto'],
+  ['montosPalancas.subcontratoPorcentaje', 'factor'],
+  ['montosPalancas.matiasPorcentaje', 'porcentaje'],
+  ['montosPalancas.aporteJavier', 'monto'],
+  ['embudo.costoPorLead', 'monto'],
+  ['embudo.conversionLeadDemo', 'porcentaje'],
+  ['embudo.conversionDemoVenta', 'porcentaje'],
+  ['meta.sueldoObjetivo', 'monto']
+];
+
+// Tolerancia de coma flotante para los redondeos hacia arriba: 700 / 350 tiene
+// que dar 2 proyectos y no 3 por un 2,0000000001. No es un supuesto del negocio.
+const SIM_EPSILON = 1e-9;
+
+function simLeer(obj, ruta) {
+  return ruta.split('.').reduce((o, k) => (o === null || o === undefined) ? undefined : o[k], obj);
+}
+
+function simEscribir(obj, ruta, valor) {
+  const partes = ruta.split('.');
+  let o = obj;
+  for (let i = 0; i < partes.length - 1; i++) {
+    if (typeof o[partes[i]] !== 'object' || o[partes[i]] === null) o[partes[i]] = {};
+    o = o[partes[i]];
+  }
+  o[partes[partes.length - 1]] = valor;
+}
+
+function simClonar(x) {
+  return JSON.parse(JSON.stringify(x));
+}
+
+function simNumero(crudo, porDefecto, tipo, maximo) {
+  const texto = (crudo === null || crudo === undefined) ? '' : String(crudo).trim().replace(',', '.');
+  const n = texto === '' ? NaN : Number(texto);
+  if (!isFinite(n) || (n < 0 && tipo !== 'saldo') || (tipo === 'porcentaje' && n > 100)) {
+    return {valor: porDefecto, usoDefault: true};
+  }
+  let valor = tipo === 'entero' ? Math.floor(n) : n;
+  if (maximo !== undefined && valor > maximo) valor = maximo;
+  return {valor: valor, usoDefault: false};
+}
+
+function simNormalizar(escenario) {
+  const e = (escenario && typeof escenario === 'object') ? escenario : {};
+  const v = {};
+  const conDefault = [];
+  SIM_CAMPOS.forEach(([ruta, tipo, maximo]) => {
+    const leido = simNumero(simLeer(e, ruta), simLeer(SIM_DEFAULTS, ruta), tipo, maximo);
+    v[ruta] = leido.valor;
+    if (leido.usoDefault) conDefault.push(ruta);
+  });
+  const palancas = {};
+  Object.keys(SIM_DEFAULTS.palancas).forEach(k => {
+    palancas[k] = !!(e.palancas && e.palancas[k] === true);
+  });
+  // En las listas no hay default por fila: un monto vacio o negativo cuenta 0.
+  const lista = nombre => (Array.isArray(e[nombre]) ? e[nombre] : []).map(f => ({
+    nombre: String((f && f.nombre) || ''),
+    monto: simNumero(f && f.monto, 0, 'monto').valor,
+    activo: !!(f && f.activo === true)
+  }));
+  return {v: v, palancas: palancas, conDefault: conDefault,
+          gastosFijos: lista('gastosFijos'), mantenimientos: lista('mantenimientos'),
+          pendientes: lista('pendientes')};
+}
+
+function simResumenLista(lista) {
+  const r = {activos: 0, total: 0, inactivos: 0, totalInactivos: 0};
+  lista.forEach(f => {
+    if (f.activo) {
+      r.activos += 1;
+      r.total += f.monto;
+    } else {
+      r.inactivos += 1;
+      r.totalInactivos += f.monto;
+    }
+  });
+  return r;
+}
+
+// La cuenta de la especificacion, linea por linea. Devuelve todo lo que se
+// muestra; no redondea (eso se hace al pintar) ni toca el DOM.
+function simCalcular(escenario) {
+  const n = simNormalizar(escenario);
+  const v = n.v;
+  const p = n.palancas;
+  const pct = ruta => v[ruta] / 100;
+
+  const cantidadProgramadores = v['equipo.cantidadProgramadores'];
+  const proyectosPorProgramador = v['equipo.proyectosPorProgramador'];
+  const capacidad = cantidadProgramadores * proyectosPorProgramador;
+
+  const webs = v['ventas.webs'];
+  const ecommerce = v['ventas.ecommerce'];
+  const aMedida = v['ventas.aMedida'];
+  const precioWeb = v['ventas.precioWeb'];
+  const precioEcom = v['ventas.precioEcom'];
+  const precioMedida = v['ventas.precioMedida'];
+  const pauta = v['ventas.pauta'];
+
+  const totalProyectos = webs + ecommerce + aMedida;
+  const exceso = Math.max(0, totalProyectos - capacidad);
+  const vendidos = (exceso > 0 && !p.subcontratar) ? capacidad : totalProyectos;
+  const ratio = totalProyectos > 0 ? vendidos / totalProyectos : 0;
+  const valorProyectos = webs * precioWeb + ecommerce * precioEcom + aMedida * precioMedida;
+  const facturadoProyectos = valorProyectos * ratio;
+
+  const gastosFijos = simResumenLista(n.gastosFijos);
+  const mantenimientos = simResumenLista(n.mantenimientos);
+  const pendientes = simResumenLista(n.pendientes);
+
+  const altasNuevasPorMes = v['mantenimiento.altasNuevasPorMes'];
+  const altas = Math.min(altasNuevasPorMes, vendidos);
+  const recurrenteBruto = mantenimientos.total + altas * v['mantenimiento.cuotaAltaNueva'];
+  const recurrente = recurrenteBruto * (1 - pct('mantenimiento.comisionCobro'));
+
+  const porcentajeAlFirmar = pct('cobros.porcentajeAlFirmar');
+  const cobroDeNuevos = facturadoProyectos * porcentajeAlFirmar;
+  const quedaDeEsteMes = facturadoProyectos - cobroDeNuevos;
+  const cobrado = cobroDeNuevos + pendientes.total + recurrente;
+
+  const precios = [precioWeb, precioEcom, precioMedida];
+  const precioPromedio = precios.reduce((a, b) => a + b, 0) / precios.length;
+  const costoSubcontrato = p.subcontratar
+    ? exceso * precioPromedio * pct('montosPalancas.subcontratoPorcentaje') : 0;
+  const comisionMatias = p.matias50
+    ? aMedida * precioMedida * pct('montosPalancas.matiasPorcentaje') * ratio : 0;
+  const costoEquipo = cantidadProgramadores * v['equipo.sueldoPorProgramador'];
+  const costoProjectManager = p.projectManager ? v['montosPalancas.projectManager'] : 0;
+  const costoMiSueldo = p.miSueldo ? v['montosPalancas.miSueldo'] : 0;
+  const salidas = costoEquipo + gastosFijos.total + pauta + costoSubcontrato
+    + comisionMatias + costoProjectManager + costoMiSueldo;
+
+  const aporte = p.aporteJavier ? v['montosPalancas.aporteJavier'] : 0;
+  const cajaDelMes = cobrado + aporte - salidas;
+  const porCobrarAdelante = quedaDeEsteMes + pendientes.totalInactivos;
+  // Aparte de la cuenta de la especificacion, que no cambia: con que caja se
+  // termina el mes si se arranca con la de hoy.
+  const cajaActual = v['caja.cajaActual'];
+  const cajaAlCierre = cajaActual + cajaDelMes;
+
+  // "Facturas incluye el recurrente". Va neto de la comision de cobro, igual
+  // que entra en "Cobras": asi papel y caja se comparan sobre la misma base.
+  const facturado = facturadoProyectos + recurrente;
+  const resultadoEnPapel = facturado - salidas;
+  const avisoCobros = cajaDelMes < 0 && resultadoEnPapel >= 0;
+
+  const costoPorLead = v['embudo.costoPorLead'];
+  const leads = costoPorLead > 0 ? pauta / costoPorLead : null;
+  const demos = leads === null ? null : leads * pct('embudo.conversionLeadDemo');
+  const ventasPosibles = demos === null ? null : demos * pct('embudo.conversionDemoVenta');
+  const costoPorVenta = (ventasPosibles !== null && ventasPosibles > 0) ? pauta / ventasPosibles : null;
+
+  let capacidadEstado = 'verde';
+  if (totalProyectos > capacidad) capacidadEstado = p.subcontratar ? 'ambar' : 'rojo';
+  let embudoEstado = 'neutro';
+  if (ventasPosibles !== null) embudoEstado = ventasPosibles < vendidos ? 'rojo' : 'verde';
+
+  // Calculo inverso: cuanto hay que vender para ponerse ese sueldo.
+  const sueldoObjetivo = v['meta.sueldoObjetivo'];
+  const base = costoEquipo + gastosFijos.total + pauta + costoProjectManager;
+  const necesario = Math.max(0, base + sueldoObjetivo - recurrente);
+  const porProyecto = precioPromedio * porcentajeAlFirmar;
+  let proyectosMeta = null;
+  if (necesario <= 0) proyectosMeta = 0;
+  else if (porProyecto > 0) proyectosMeta = Math.ceil(necesario / porProyecto - SIM_EPSILON);
+  let faltanProg = null;
+  if (proyectosMeta === 0) faltanProg = 0;
+  else if (proyectosMeta !== null && proyectosPorProgramador > 0) {
+    faltanProg = Math.max(0, Math.ceil(proyectosMeta / proyectosPorProgramador - SIM_EPSILON) - cantidadProgramadores);
+  }
+
+  return {
+    cantidadProgramadores: cantidadProgramadores, capacidad: capacidad,
+    totalProyectos: totalProyectos, exceso: exceso, vendidos: vendidos, ratio: ratio,
+    valorProyectos: valorProyectos, facturadoProyectos: facturadoProyectos,
+    altasNuevasPorMes: altasNuevasPorMes, altas: altas,
+    altasTopeadas: altasNuevasPorMes > vendidos,
+    recurrenteBruto: recurrenteBruto, comisionCobro: recurrenteBruto - recurrente,
+    recurrente: recurrente,
+    cobroDeNuevos: cobroDeNuevos, quedaDeEsteMes: quedaDeEsteMes, cobrado: cobrado,
+    precioPromedio: precioPromedio, costoSubcontrato: costoSubcontrato,
+    comisionMatias: comisionMatias, costoEquipo: costoEquipo,
+    costoProjectManager: costoProjectManager, costoMiSueldo: costoMiSueldo,
+    pauta: pauta, salidas: salidas, aporte: aporte, cajaDelMes: cajaDelMes,
+    cajaActual: cajaActual, cajaAlCierre: cajaAlCierre,
+    porCobrarAdelante: porCobrarAdelante, facturado: facturado,
+    resultadoEnPapel: resultadoEnPapel, avisoCobros: avisoCobros,
+    leads: leads, demos: demos, ventasPosibles: ventasPosibles, costoPorVenta: costoPorVenta,
+    capacidadEstado: capacidadEstado, embudoEstado: embudoEstado,
+    meta: {sueldoObjetivo: sueldoObjetivo, base: base, necesario: necesario,
+           porcentajeAlFirmar: v['cobros.porcentajeAlFirmar'],
+           proyectos: proyectosMeta, faltanProg: faltanProg},
+    listas: {gastosFijos: gastosFijos, mantenimientos: mantenimientos, pendientes: pendientes},
+    palancas: p,
+    conDefault: n.conDefault
+  };
+}
+
+function simRedondear(n) {
+  const r = Math.round(n || 0);
+  return r === 0 ? 0 : r;   // sin "-0"
+}
+
+function simUsd(n) {
+  return 'USD ' + simRedondear(n).toLocaleString('es-UY');
+}
+
+function simPlural(n, uno, varios) {
+  return simRedondear(n) === 1 ? uno : varios;
+}
+
+function simTextoLista(resumen) {
+  return resumen.activos + ' ' + simPlural(resumen.activos, 'activo', 'activos')
+    + ' · ' + simUsd(resumen.total);
+}
+
+function simTextoCapacidad(r) {
+  const prog = simRedondear(r.cantidadProgramadores);
+  const quien = prog === 0
+    ? 'Sin programadores no hay capacidad'
+    : prog + ' ' + simPlural(prog, 'programador aguanta', 'programadores aguantan') + ' ' + simRedondear(r.capacidad);
+  const frase = quien + ' y estás poniendo ' + simRedondear(r.totalProyectos);
+  if (r.capacidadEstado === 'rojo') {
+    return frase + '. No da: se hacen ' + simRedondear(r.vendidos) + ' y '
+      + simRedondear(r.exceso) + ' ' + simPlural(r.exceso, 'queda', 'quedan') + ' afuera.';
+  }
+  if (r.capacidadEstado === 'ambar') {
+    return frase + '. Lo que sobra (' + simRedondear(r.exceso) + ') se subcontrata: '
+      + simUsd(r.costoSubcontrato) + '.';
+  }
+  return frase + ': da.';
+}
+
+function simTextoEmbudo(r) {
+  if (r.embudoEstado === 'neutro') {
+    return 'Con el costo por lead en 0 no se puede estimar cuántas ventas trae la pauta.';
+  }
+  const salen = Math.floor(r.ventasPosibles + SIM_EPSILON);
+  const ventas = salen + ' ' + simPlural(salen, 'venta', 'ventas');
+  if (r.embudoEstado === 'rojo') {
+    return 'Con esa pauta salen ' + ventas + ', no ' + simRedondear(r.vendidos) + '.';
+  }
+  return 'Con esa pauta salen ' + ventas + ' y vendés ' + simRedondear(r.vendidos) + ': alcanza.';
+}
+
+function simTextoMeta(r) {
+  const m = r.meta;
+  const objetivo = simUsd(m.sueldoObjetivo);
+  if (m.proyectos === null) {
+    return 'Con el precio promedio o el porcentaje al firmar en 0 no hay cantidad de proyectos que alcance.';
+  }
+  if (m.proyectos === 0) {
+    return 'Con el recurrente ya cubrís los costos y un sueldo de ' + objetivo + ': no hace falta vender proyectos.';
+  }
+  let texto = 'Para sacarte ' + objetivo + ' tenés que cubrir ' + simUsd(m.necesario)
+    + ' por mes. Cobrando el ' + simRedondear(m.porcentajeAlFirmar) + '% al firmar son '
+    + m.proyectos + ' ' + simPlural(m.proyectos, 'proyecto', 'proyectos') + ' por mes. ';
+  if (m.faltanProg === null) {
+    texto += 'Con 0 proyectos por programador no se puede saber cuántos programadores hacen falta.';
+  } else if (m.faltanProg === 0) {
+    texto += 'El equipo actual alcanza.';
+  } else {
+    texto += 'Te ' + simPlural(m.faltanProg, 'falta', 'faltan') + ' ' + m.faltanProg + ' '
+      + simPlural(m.faltanProg, 'programador', 'programadores') + '.';
+  }
+  return texto;
+}
+
+function simTextoAvisoCobros(r) {
+  if (!r.avisoCobros) return '';
+  return 'En papel el mes cierra bien (' + simUsd(r.resultadoEnPapel)
+    + ' entre lo que facturás y lo que sale), pero la caja da ' + simUsd(r.cajaDelMes)
+    + '. El problema son los cobros, no las ventas.';
+}
+
+function simTextoAvisoAltas(r) {
+  if (!r.altasTopeadas) return '';
+  return 'Pusiste ' + simRedondear(r.altasNuevasPorMes) + ' '
+    + simPlural(r.altasNuevasPorMes, 'alta', 'altas') + ' de mantenimiento pero este mes se cierran '
+    + simRedondear(r.vendidos) + ' ' + simPlural(r.vendidos, 'proyecto', 'proyectos')
+    + ': se calcula con ' + simRedondear(r.altas) + '.';
+}
+
+function simTextoCierre(r) {
+  return 'Caja al cierre del mes: ' + simUsd(r.cajaAlCierre) + ' = caja actual '
+    + simUsd(r.cajaActual) + ' + caja del mes ' + simUsd(r.cajaDelMes) + '.';
+}
+
+function simTextoArrastre(r) {
+  return 'Queda por cobrar hacia adelante ' + simUsd(r.porCobrarAdelante) + ': '
+    + simUsd(r.quedaDeEsteMes) + ' de lo que vendés este mes y '
+    + simUsd(r.listas.pendientes.totalInactivos) + ' de pendientes viejos.';
+}
+
+// La copia inicial: los defaults, mas lo que el sistema tenga. Los gastos
+// fijos vienen de Finanzas si hay; si no, la lista de SIM_DEFAULTS.
+function simEscenarioBase(precarga) {
+  const pc = (precarga && typeof precarga === 'object') ? precarga : {};
+  const d = simClonar(SIM_DEFAULTS);
+  const hayFijos = Array.isArray(pc.gastosFijos) && pc.gastosFijos.length > 0;
+  const hayCaja = typeof pc.cajaActual === 'number' && isFinite(pc.cajaActual);
+  const fila = (f, monto, activo) => ({nombre: String(f.nombre || ''), monto: monto,
+                                       activo: activo, nota: f.nota || ''});
+  return {
+    version: 1,
+    caja: {cajaActual: hayCaja ? pc.cajaActual : d.caja.cajaActual},
+    equipo: d.equipo, ventas: d.ventas, mantenimiento: d.mantenimiento, cobros: d.cobros,
+    palancas: d.palancas, montosPalancas: d.montosPalancas, embudo: d.embudo, meta: d.meta,
+    gastosFijos: (hayFijos ? pc.gastosFijos : d.gastosFijos).map(f => fila(f, f.monto, f.activo === true)),
+    mantenimientos: (Array.isArray(pc.mantenimientos) ? pc.mantenimientos : [])
+      .map(f => fila(f, d.precarga.cuotaPorCliente, false)),
+    pendientes: (Array.isArray(pc.pendientes) ? pc.pendientes : []).map(f => fila(f, f.monto, false)),
+    origen: {gastosFijos: hayFijos ? 'finanzas' : 'defaults', mantenimientos: 'clientes',
+             pendientes: 'porCobrar', caja: hayCaja ? 'cajaFinanzas' : 'cajaDefaults'}
+  };
+}
+
+// Un escenario guardado, completado con los defaults en lo que le falte: uno
+// guardado antes de agregar un campo tiene que poder abrirse igual.
+function simEscenarioAbierto(datos) {
+  const d = (datos && typeof datos === 'object') ? datos : {};
+  const base = simEscenarioBase(null);
+  const salida = simClonar(d);
+  ['caja', 'equipo', 'ventas', 'mantenimiento', 'cobros', 'palancas', 'montosPalancas', 'embudo', 'meta'].forEach(grupo => {
+    salida[grupo] = Object.assign({}, base[grupo], d[grupo] || {});
+  });
+  ['gastosFijos', 'mantenimientos', 'pendientes'].forEach(lista => {
+    salida[lista] = Array.isArray(d[lista]) ? d[lista] : [];
+  });
+  salida.origen = d.origen || {};
+  return salida;
+}
+// ── sim: calculo puro (fin) ──
+
+let simEstado = null;          // el escenario en pantalla: una copia, nunca Finanzas
+let simEscenarioId = null;     // el guardado que se abrio o se acaba de guardar
+let simNombreCargado = '';
+let simIniciado = false;
+
+const SIM_LISTAS = {
+  gastosFijos: {interruptor: 'Activo', monto: 'Monto mensual', vacio: 'No hay gastos fijos en la lista.'},
+  mantenimientos: {interruptor: 'Tiene mantenimiento', monto: 'Cuota mensual', vacio: 'No hay clientes en la lista.'},
+  pendientes: {interruptor: 'Lo cobro este mes', monto: 'Monto', vacio: 'No hay pendientes por cobrar.'}
+};
+
+const SIM_ORIGEN = {
+  finanzas: 'Precargado desde los gastos fijos de Finanzas, en USD.',
+  defaults: 'Finanzas no tiene gastos fijos cargados: lista por defecto.',
+  clientes: 'Precargado con los clientes del CRM (cerrado, en desarrollo y finalizado), todos apagados.',
+  porCobrar: 'Precargado con los saldos pendientes de Finanzas. Apagado es "se cobra más adelante": sigue contando.',
+  cajaFinanzas: 'Precargada desde Finanzas: ingresos menos egresos de todos los movimientos hasta este mes (líquido, sin IVA).',
+  cajaDefaults: 'Finanzas no respondió: arranca en el valor por defecto.'
+};
+
+async function loadSimulador() {
+  if (!simIniciado) {
+    simIniciado = true;
+    simEnlazar();
+    await simArrancar();
+  } else {
+    simRecalcular();
+  }
+  simCargarEscenarios();
+}
+
+async function simArrancar() {
+  let precarga = null;
+  const aviso = document.getElementById('sim-aviso-carga');
+  aviso.textContent = '';
+  try {
+    const r = await fetch('/api/simulador/precarga');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    precarga = await r.json();
+  } catch (e) {
+    aviso.textContent = 'No se pudo leer lo que hay en Finanzas (' + e.message
+      + '). Se arranca con los valores por defecto.';
+  }
+  simEstado = simEscenarioBase(precarga);
+  simEscenarioId = null;
+  simNombreCargado = '';
+  document.getElementById('sim-nombre').value = '';
+  simVolcar();
+}
+
+// Pasa el escenario a los controles. Solo al arrancar o al abrir uno guardado:
+// mientras se tipea, el control ya tiene el valor.
+function simVolcar() {
+  SIM_CAMPOS.forEach(([ruta]) => {
+    const valor = simLeer(simEstado, ruta);
+    document.querySelectorAll('[data-sim="' + ruta + '"]').forEach(el => {
+      el.value = (valor === null || valor === undefined) ? '' : valor;
+      if (el.type === 'number') el.placeholder = String(simLeer(SIM_DEFAULTS, ruta));
+    });
+  });
+  Object.keys(SIM_DEFAULTS.palancas).forEach(simPintarPalanca);
+  simTexto('sim-origen-caja', SIM_ORIGEN[simEstado.origen ? simEstado.origen.caja : ''] || '');
+  simPintarListas();
+  simRecalcular();
+}
+
+function simEnlazar() {
+  const panel = document.getElementById('simulador-panel');
+  panel.addEventListener('input', simAlCambiar);
+  panel.addEventListener('change', simAlCambiar);
+}
+
+function simAlCambiar(ev) {
+  const el = ev.target;
+  if (!simEstado || !el || !el.dataset) return;
+  if (el.dataset.sim) {
+    simEscribir(simEstado, el.dataset.sim, el.value);
+    // El slider y su caja de numero son el mismo campo.
+    document.querySelectorAll('[data-sim="' + el.dataset.sim + '"]').forEach(otro => {
+      if (otro !== el) otro.value = el.value;
+    });
+    simRecalcular();
+    return;
+  }
+  const lista = el.dataset.simLista;
+  if (!lista || !Array.isArray(simEstado[lista])) return;
+  const fila = simEstado[lista][Number(el.dataset.i)];
+  if (!fila) return;
+  if (el.dataset.campo === 'activo') {
+    // Apagar no borra: la fila queda, solo sale de la cuenta.
+    fila.activo = el.checked;
+    const contenedor = el.closest ? el.closest('.sim-fila') : null;
+    if (contenedor) contenedor.classList.toggle('sim-apagada', !el.checked);
+  } else {
+    fila.monto = el.value;
+  }
+  simRecalcular();
+}
+
+function simPalanca(nombre) {
+  if (!simEstado) return;
+  simEstado.palancas = simEstado.palancas || {};
+  simEstado.palancas[nombre] = !simEstado.palancas[nombre];
+  simPintarPalanca(nombre);
+  simRecalcular();
+}
+
+function simPintarPalanca(nombre) {
+  const boton = document.getElementById('sim-palanca-' + nombre);
+  if (!boton) return;
+  const prendida = !!(simEstado && simEstado.palancas && simEstado.palancas[nombre]);
+  boton.setAttribute('aria-pressed', prendida ? 'true' : 'false');
+}
+
+function simPintarListas() {
+  Object.keys(SIM_LISTAS).forEach(lista => {
+    const cont = document.getElementById('sim-lista-' + lista);
+    if (!cont) return;
+    const filas = Array.isArray(simEstado[lista]) ? simEstado[lista] : [];
+    cont.innerHTML = filas.length
+      ? filas.map((f, i) => simFilaHtml(lista, f, i)).join('')
+      : '<div class="sim-vacio">' + SIM_LISTAS[lista].vacio + '</div>';
+    if (window.lucide) lucide.createIcons({nodes: [cont]});
+    const origen = document.getElementById('sim-origen-' + lista);
+    const clave = simEstado.origen ? simEstado.origen[lista] : '';
+    if (origen) origen.textContent = SIM_ORIGEN[clave] || '';
+  });
+}
+
+// Las tres listas tienen el mismo patron: interruptor, nombre, monto editable
+// y un boton aparte para borrar.
+function simFilaHtml(lista, f, i) {
+  const conf = SIM_LISTAS[lista];
+  const nombre = esc(f.nombre || '');
+  const monto = (f.monto === null || f.monto === undefined) ? '' : esc(f.monto);
+  const nota = f.nota ? '<div class="sim-fila-nota">' + esc(f.nota) + '</div>' : '';
+  const datos = ' data-sim-lista="' + lista + '" data-i="' + i + '"';
+  return '<div class="sim-fila' + (f.activo ? '' : ' sim-apagada') + '">'
+    + '<input type="checkbox" class="sim-switch"' + datos + ' data-campo="activo"'
+    + (f.activo ? ' checked' : '') + ' aria-label="' + esc(conf.interruptor) + ': ' + nombre + '">'
+    + '<div class="sim-fila-nombre">' + nombre + nota + '</div>'
+    + '<input type="number" class="sim-in sim-in-monto"' + datos + ' data-campo="monto" min="0" step="any"'
+    + ' inputmode="decimal" placeholder="0" value="' + monto + '" aria-label="' + esc(conf.monto) + ': ' + nombre + '">'
+    + '<button class="btn-ghost btn-icono" type="button" onclick="simBorrarFila(' + "'" + lista + "'" + ', ' + i + ')"'
+    + ' title="Borrar de la lista" aria-label="Borrar ' + nombre + '"><i data-lucide="trash-2" class="nav-icon"></i></button>'
+    + '</div>';
+}
+
+function simAgregarFila(lista) {
+  if (!simEstado) return;
+  const nombreEl = document.getElementById('sim-nuevo-nombre-' + lista);
+  const montoEl = document.getElementById('sim-nuevo-monto-' + lista);
+  const errorEl = document.getElementById('sim-nuevo-error-' + lista);
+  const nombre = (nombreEl.value || '').trim();
+  if (!nombre) {
+    errorEl.textContent = 'Poné un nombre: una fila sin nombre no se agrega.';
+    nombreEl.focus();
+    return;
+  }
+  errorEl.textContent = '';
+  if (!Array.isArray(simEstado[lista])) simEstado[lista] = [];
+  simEstado[lista].push({nombre: nombre, monto: montoEl.value, activo: true, nota: ''});
+  nombreEl.value = '';
+  montoEl.value = '';
+  simPintarListas();
+  simRecalcular();
+}
+
+function simBorrarFila(lista, i) {
+  const fila = simEstado && Array.isArray(simEstado[lista]) ? simEstado[lista][i] : null;
+  if (!fila) return;
+  if (!confirm('¿Borrar "' + fila.nombre + '" de la lista? Si solo querés sacarlo de la cuenta, apagalo.')) return;
+  simEstado[lista].splice(i, 1);
+  simPintarListas();
+  simRecalcular();
+}
+
+function simHtml(id, html) {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = html;
+}
+
+function simTexto(id, texto) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = texto;
+}
+
+function simSemaforoHtml(titulo, estado, texto) {
+  return '<div class="sim-semaforo sim-' + estado + '"><span class="sim-punto"></span><div><strong>'
+    + titulo + '</strong>' + esc(texto) + '</div></div>';
+}
+
+function simRecalcular() {
+  if (!simEstado) return null;
+  const r = simCalcular(simEstado);
+  simPintarResultados(r);
+  return r;
+}
+
+function simPintarResultados(r) {
+  const signo = r.cajaDelMes < 0 ? 'sim-negativo' : 'sim-positivo';
+  const tarjeta = (rotulo, valor, detalle, clase) =>
+    '<div class="sim-tarjeta"><div class="fin-kpi-label">' + rotulo + '</div>'
+    + '<div class="sim-tarjeta-valor ' + (clase || '') + '">' + simUsd(valor) + '</div>'
+    + '<div class="sim-tarjeta-detalle">' + detalle + '</div></div>';
+  const sale = ['equipo ' + simUsd(r.costoEquipo), 'fijos ' + simUsd(r.listas.gastosFijos.total),
+                'pauta ' + simUsd(r.pauta)];
+  if (r.costoSubcontrato) sale.push('subcontrato ' + simUsd(r.costoSubcontrato));
+  if (r.comisionMatias) sale.push('Matías ' + simUsd(r.comisionMatias));
+  if (r.costoProjectManager) sale.push('PM ' + simUsd(r.costoProjectManager));
+  if (r.costoMiSueldo) sale.push('tu sueldo ' + simUsd(r.costoMiSueldo));
+  simHtml('sim-tarjetas',
+    tarjeta('Facturás', r.facturado,
+            'proyectos ' + simUsd(r.facturadoProyectos) + ' + recurrente ' + simUsd(r.recurrente))
+    + tarjeta('Cobrás', r.cobrado,
+              'al firmar ' + simUsd(r.cobroDeNuevos) + ' + pendientes '
+              + simUsd(r.listas.pendientes.total) + ' + recurrente ' + simUsd(r.recurrente))
+    + tarjeta('Sale', r.salidas, sale.join(' · '))
+    + tarjeta('Caja del mes', r.cajaDelMes,
+              r.aporte ? 'incluye el aporte de Javier (' + simUsd(r.aporte) + '), que no es venta'
+                       : 'lo que cobrás menos lo que sale', signo));
+  simTexto('sim-cierre', simTextoCierre(r));
+  const cierre = document.getElementById('sim-cierre');
+  if (cierre) cierre.className = 'sim-cierre ' + (r.cajaAlCierre < 0 ? 'sim-negativo' : 'sim-positivo');
+  simTexto('sim-arrastre', simTextoArrastre(r));
+  simTexto('sim-aviso-cobros', simTextoAvisoCobros(r));
+  simHtml('sim-semaforo-capacidad', simSemaforoHtml('Capacidad', r.capacidadEstado, simTextoCapacidad(r)));
+  simHtml('sim-semaforo-embudo', simSemaforoHtml('Embudo', r.embudoEstado, simTextoEmbudo(r)));
+  const numero = (rotulo, valor) => '<div class="sim-numero">' + rotulo + '<b>' + valor + '</b></div>';
+  const cuenta = x => x === null ? '—' : simRedondear(x).toLocaleString('es-UY');
+  simHtml('sim-embudo-numeros',
+    numero('Leads', cuenta(r.leads)) + numero('Demos', cuenta(r.demos))
+    + numero('Ventas posibles', r.ventasPosibles === null ? '—' : Math.floor(r.ventasPosibles + SIM_EPSILON))
+    + numero('Costo por venta', r.costoPorVenta === null ? '—' : simUsd(r.costoPorVenta)));
+  simTexto('sim-meta', simTextoMeta(r));
+  simTexto('sim-sub-equipo', 'capacidad ' + simRedondear(r.capacidad) + ' · ' + simUsd(r.costoEquipo));
+  simTexto('sim-sub-ventas', simRedondear(r.totalProyectos) + ' '
+    + simPlural(r.totalProyectos, 'proyecto', 'proyectos') + ' · ' + simUsd(r.valorProyectos));
+  simTexto('sim-sub-gastosFijos', simTextoLista(r.listas.gastosFijos));
+  simTexto('sim-sub-mantenimientos', simTextoLista(r.listas.mantenimientos));
+  simTexto('sim-sub-pendientes', simTextoLista(r.listas.pendientes));
+  simTexto('sim-aviso-altas', simTextoAvisoAltas(r));
+  const prendidas = Object.keys(r.palancas).filter(k => r.palancas[k]).length;
+  simTexto('sim-sub-palancas', prendidas + ' ' + simPlural(prendidas, 'prendida', 'prendidas'));
+  simTexto('sim-sub-embudo', r.leads === null ? 'sin estimación' : cuenta(r.leads) + ' leads');
+  simHtml('sim-mini', '<span>Caja del mes <b class="' + signo + '">' + simUsd(r.cajaDelMes)
+    + '</b></span><span>Al cierre <b class="' + (r.cajaAlCierre < 0 ? 'sim-negativo' : 'sim-positivo')
+    + '">' + simUsd(r.cajaAlCierre) + '</b></span>');
+  // Un campo vacio o negativo no rompe: se usa el default, y el borde lo marca.
+  SIM_CAMPOS.forEach(([ruta]) => {
+    const usa = r.conDefault.indexOf(ruta) >= 0;
+    document.querySelectorAll('[data-sim="' + ruta + '"]').forEach(el => {
+      if (el.type === 'number') el.classList.toggle('sim-usa-default', usa);
+    });
+  });
+}
+
+function simAvisoGuardado(texto, mal) {
+  const el = document.getElementById('sim-guardado');
+  if (!el) return;
+  el.textContent = texto;
+  el.classList.toggle('sim-mal', !!mal);
+}
+
+async function simCargarEscenarios() {
+  const sel = document.getElementById('sim-escenarios');
+  if (!sel) return;
+  try {
+    const r = await fetch('/api/simulador/escenarios');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const lista = await r.json();
+    sel.innerHTML = '<option value="">Escenarios guardados</option>'
+      + (Array.isArray(lista) ? lista : []).map(e => '<option value="' + e.id + '"'
+          + (e.id === simEscenarioId ? ' selected' : '') + '>' + esc(e.nombre) + '</option>').join('');
+  } catch (e) {
+    simAvisoGuardado('No se pudieron leer los escenarios guardados: ' + e.message, true);
+  }
+}
+
+async function simGuardar() {
+  if (!simEstado) return;
+  const nombreEl = document.getElementById('sim-nombre');
+  const nombre = (nombreEl.value || '').trim();
+  if (!nombre) {
+    simAvisoGuardado('Poné un nombre para guardar el escenario.', true);
+    nombreEl.focus();
+    return;
+  }
+  // Con el mismo nombre que el que se abrio, se pisa ese. Con otro, se guarda aparte.
+  const pisar = simEscenarioId !== null && nombre === simNombreCargado;
+  try {
+    const r = await fetch(pisar ? '/api/simulador/escenarios/' + simEscenarioId : '/api/simulador/escenarios', {
+      method: pisar ? 'PUT' : 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({nombre: nombre, datos: simEstado})
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok) throw new Error(j.error || 'HTTP ' + r.status);
+    simEscenarioId = j.id;
+    simNombreCargado = nombre;
+    simAvisoGuardado((pisar ? 'Actualizado: ' : 'Guardado: ') + nombre, false);
+    simCargarEscenarios();
+  } catch (e) {
+    simAvisoGuardado('No se pudo guardar: ' + e.message, true);
+  }
+}
+
+async function simAbrir() {
+  const id = document.getElementById('sim-escenarios').value;
+  if (!id) {
+    simAvisoGuardado('Elegí un escenario de la lista.', true);
+    return;
+  }
+  try {
+    const r = await fetch('/api/simulador/escenarios/' + id);
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || 'HTTP ' + r.status);
+    simEstado = simEscenarioAbierto(j.datos);
+    simEscenarioId = j.id;
+    simNombreCargado = j.nombre;
+    document.getElementById('sim-nombre').value = j.nombre;
+    simVolcar();
+    simAvisoGuardado('Abierto: ' + j.nombre, false);
+  } catch (e) {
+    simAvisoGuardado('No se pudo abrir: ' + e.message, true);
+  }
+}
+
+async function simBorrarEscenario() {
+  const sel = document.getElementById('sim-escenarios');
+  const id = sel.value;
+  if (!id) {
+    simAvisoGuardado('Elegí en la lista el escenario que querés borrar.', true);
+    return;
+  }
+  const opcion = sel.options[sel.selectedIndex];
+  const nombre = opcion ? opcion.text : '';
+  if (!confirm('¿Borrar el escenario guardado "' + nombre + '"? Lo que tenés en pantalla no cambia.')) return;
+  try {
+    const r = await fetch('/api/simulador/escenarios/' + id, {method: 'DELETE'});
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok) throw new Error(j.error || 'HTTP ' + r.status);
+    if (String(simEscenarioId) === String(id)) {
+      simEscenarioId = null;
+      simNombreCargado = '';
+    }
+    simAvisoGuardado('Borrado: ' + nombre, false);
+    simCargarEscenarios();
+  } catch (e) {
+    simAvisoGuardado('No se pudo borrar: ' + e.message, true);
+  }
+}
+
+async function simRestablecer() {
+  if (!confirm('¿Volver a los valores por defecto y a lo que hay hoy en Finanzas? Lo que no guardaste se pierde.')) return;
+  await simArrancar();
+  simAvisoGuardado('', false);
+  simCargarEscenarios();
+}
+
 // ========== Panel de Marketing ==========
 //
 // Solo pide, elige y pinta. Ningun numero se calcula aca: todos vienen del
@@ -9013,7 +10075,8 @@ def create_app(db_path: str) -> Flask:
     app.config["PIPELINE_LOCK"] = _pipeline_lock
 
     for bp in (leads_bp, demos_bp, calendar_bp, wa_bp, pipeline_bp, tasks_bp, budgets_bp, tokens_bp, meta_bp, calendly_bp, notion_bp, projects_bp, preclientes_bp,
-                notion_clients_bp, resend_bp, linkedin_bp, web_bp, finanzas_bp, marketing_bp):
+                notion_clients_bp, resend_bp, linkedin_bp, web_bp, finanzas_bp, marketing_bp,
+                simulador_bp):
         app.register_blueprint(bp)
 
     @app.before_request
@@ -9927,8 +10990,8 @@ select:focus{border-color:#0088cc}
 </div>
 
 <script>
-const ALL_PANELS = ['cola','seguimientos','meta','pipeline','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas'];
-const PANEL_LABELS = {cola:'Cola',seguimientos:'Seguimientos',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Métricas',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Pipeline Notion',finanzas:'Finanzas'};
+const ALL_PANELS = ['cola','seguimientos','meta','pipeline','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador'];
+const PANEL_LABELS = {cola:'Cola',seguimientos:'Seguimientos',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Métricas',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Pipeline Notion',finanzas:'Finanzas',simulador:'Simulador financiero'};
 let _roles = [];
 
 function makeChips(containerId, checkedArr, prefix) {
