@@ -28,6 +28,7 @@ from routes.linkedin import linkedin_bp
 from routes.finanzas import finanzas_bp
 from routes.simulador import simulador_bp
 from routes.equipo import equipo_bp
+from routes.flujos import flujos_bp
 from routes.seg_leads import seg_leads_bp
 from routes.daily import daily_bp
 from routes.plantillas import plantillas_bp
@@ -1922,9 +1923,36 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .eq-ayuda{font-size:.72rem;color:var(--texto-debil);margin:-6px 0 10px}
 .eq-error{font-size:.78rem;color:var(--rojo-texto);margin:4px 0 10px}
 .eq-error:empty{display:none}
+/* Flujos: lista vertical con una linea guia a la izquierda. */
+.eq-flujos-bajada{margin:4px 0 0;font-size:.8rem;color:var(--texto-debil)}
+.eq-flujos-selector{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+.eq-flujo-tab{background:var(--relleno);color:var(--texto-debil);border:1px solid var(--borde);border-radius:99px;padding:5px 12px;font-size:.76rem;font-weight:600;cursor:pointer;font-family:inherit}
+.eq-flujo-tab:hover{background:var(--hover);color:var(--texto)}
+.eq-flujo-tab.eq-activo{background:var(--azul-tinte);color:var(--azul-claro);border-color:var(--azul)}
+.eq-pasos{list-style:none;margin:0 0 8px;padding:0 0 0 22px;position:relative}
+.eq-pasos::before{content:'';position:absolute;left:7px;top:10px;bottom:10px;width:2px;background:var(--borde-fuerte)}
+.eq-paso{position:relative;background:var(--superficie);border:1px solid var(--borde);border-radius:10px;padding:10px 14px;margin-bottom:8px}
+.eq-paso::before{content:'';position:absolute;left:-19px;top:15px;width:8px;height:8px;border-radius:99px;background:var(--superficie-honda);border:2px solid var(--borde-fuerte)}
+.eq-paso-link{cursor:pointer}
+.eq-paso-link:hover{background:var(--hover);border-color:var(--azul)}
+.eq-paso-link:focus-visible{outline:2px solid var(--azul);outline-offset:2px}
+.eq-paso-destacado{background:var(--verde-tinte);border-color:var(--verde-tinte)}
+.eq-paso-destacado.eq-paso-link:hover{background:var(--verde-tinte);border-color:var(--verde-texto)}
+.eq-paso-cab{display:flex;align-items:baseline;gap:4px 10px;flex-wrap:wrap}
+.eq-paso-num{color:var(--texto-debil);font-size:.76rem;font-weight:700;font-variant-numeric:tabular-nums}
+.eq-paso-titulo{color:var(--texto-fuerte);font-size:.86rem;font-weight:600;flex:1;min-width:0;overflow-wrap:anywhere}
+.eq-paso-rol{color:var(--azul-claro);font-size:.76rem;font-weight:700;margin-left:auto;white-space:nowrap}
+.eq-paso-detalle{color:var(--texto-debil);font-size:.76rem;line-height:1.45;margin-top:3px}
+.eq-paso-cobros{color:var(--texto-debil);font-size:.72rem;margin-top:4px}
+.eq-paso-ir{color:var(--azul-claro);font-size:.72rem;font-weight:600;margin-top:4px}
+.eq-paso-edicion{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.eq-flujo-vacio{border:1px dashed var(--borde-fuerte);border-radius:10px;padding:16px;font-size:.8rem;color:var(--texto-debil);display:flex;flex-direction:column;align-items:flex-start;gap:10px}
+.eq-check{display:flex;align-items:center;gap:8px;font-size:.8rem;color:var(--texto);margin:2px 0 12px}
+.eq-cobro-fila{display:grid;grid-template-columns:90px 1fr auto;gap:6px;align-items:start}
 @media(max-width:480px){
   .eq-card{padding:14px}
   .eq-dia{min-width:44px;height:32px}
+  .eq-paso-rol{margin-left:0;width:100%}
 }
 /* ── Simulador financiero ─────────────────────────────────────────────────────
    Todo con tokens: no hay ninguna regla `body.light .sim-`. Los semaforos usan
@@ -2998,6 +3026,19 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       <div class="eq-cab"><div class="fin-card-title" id="eq-titulo-det">Detalle</div></div>
       <div id="eq-detalle"></div>
     </section>
+
+    <!-- Flujos: al final de Ausencias, debajo de todo. Solo roles, nunca nombres. -->
+    <section class="eq-card eq-flujos" aria-labelledby="eq-titulo-flujos">
+      <div class="eq-cab">
+        <div>
+          <div class="fin-card-title" id="eq-titulo-flujos">Flujos</div>
+          <p class="eq-flujos-bajada">Cómo trabajamos, paso a paso, con el rol responsable de cada etapa.</p>
+        </div>
+        <div id="eq-flujos-acciones"></div>
+      </div>
+      <div class="eq-flujos-selector" id="eq-flujos-selector" role="group" aria-label="Elegir flujo"></div>
+      <div id="eq-flujos-pasos"><div class="eq-vacio">Cargando...</div></div>
+    </section>
   </div>
   <!-- ======= FIN RECURSOS HUMANOS PANELES ======= -->
 
@@ -3509,6 +3550,29 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     </div>
   </div>
 </div>
+<div class="modal-overlay" id="eq-modal-paso" onclick="if(event.target===this)eqCerrarModal('eq-modal-paso')">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="eq-paso-titulo-modal">
+    <h3 id="eq-paso-titulo-modal">Paso del flujo</h3>
+    <p>Solo el rol, nunca el nombre de quien lo ocupa.</p>
+    <label class="modal-label" for="eq-paso-titulo">Título</label>
+    <input type="text" id="eq-paso-titulo" maxlength="120" placeholder="Qué se hace en este paso">
+    <label class="modal-label" for="eq-paso-rol">Rol</label>
+    <select id="eq-paso-rol"></select>
+    <label class="modal-label" for="eq-paso-detalle">Detalle</label>
+    <input type="text" id="eq-paso-detalle" maxlength="240" placeholder="Qué pasa y en qué pantalla, en una línea">
+    <label class="modal-label" for="eq-paso-pantalla">Pantalla a la que lleva</label>
+    <select id="eq-paso-pantalla"></select>
+    <label class="eq-check"><input type="checkbox" id="eq-paso-destacado"> Destacado, con fondo verde</label>
+    <div class="modal-label">Momentos de cobro</div>
+    <div id="eq-paso-cobros"></div>
+    <button class="btn-ghost eq-btn-chico" type="button" onclick="eqPasoCobroAgregar()">+ Momento de cobro</button>
+    <div class="eq-error" id="eq-paso-error" role="alert"></div>
+    <div class="modal-btns">
+      <button class="btn-ghost" type="button" onclick="eqCerrarModal('eq-modal-paso')">Cancelar</button>
+      <button class="btn-primary" type="button" onclick="eqPasoGuardar()">Guardar</button>
+    </div>
+  </div>
+</div>
 <!-- ======= FIN EQUIPO MODALES ======= -->
 
 <!-- ======= PLANTILLAS MODALES ======= -->
@@ -3702,6 +3766,7 @@ function showPanel(name) {
   if (name === 'metrics') loadMetrics();
   if (name === 'activity') loadActivity();
   if (name === 'equipo' || name === 'ausencias') loadEquipo();
+  if (name === 'ausencias') eqCargarFlujos();
   if (name === 'seg_leads') loadSegLeads();
   if (name === 'plantillas') plCargar();
   if (name === 'sdr') loadSdr();
@@ -7795,6 +7860,8 @@ const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activ
     }
     const access = m.panel_access ? JSON.parse(m.panel_access) : null;
     const allowedPanels = (access && !m.is_admin) ? access : ALL_PANELS;
+    // Lo lee Flujos para no hacer clickeable un paso que lleva a un panel vedado.
+    window._panelAccess = (access && !m.is_admin) ? access : null;
     if (access && !m.is_admin) {
       ALL_PANELS.forEach(p => {
         if (!access.includes(p)) {
@@ -11355,6 +11422,286 @@ function eqBorrarRecupero(id) {
   return eqBorrar('/api/equipo/recuperos/' + Number(id), '¿Borrar este recupero?');
 }
 
+// ── flujos ──
+// Bloque al final de Ausencias: como trabajamos, paso a paso, con el rol de
+// cada etapa y nunca nombres. Los pasos vienen de /api/flujos. Agregar, editar
+// y reordenar va detras del boton Editar y solo para administradores; el
+// servidor le responde 403 a cualquier otro.
+let eqFlujos = [];
+let eqFlujosRoles = [];
+let eqFlujosAdmin = false;
+let eqFlujosEditando = false;
+let eqFlujoActivo = null;
+let eqPasoFlujo = null;
+let eqPasoId = null;
+let eqPasoCobros = [];
+
+// Secciones a las que puede llevar un paso. En el formulario se ofrecen las
+// que estan en la pagina; una guardada que todavia no existe se conserva.
+const EQ_PANTALLAS = [['seg_leads', 'Seguimiento de leads'], ['notion_clients', 'Proceso de venta'], ['demos', 'Demos'],
+  ['clientes', 'Clientes'], ['projects', 'Proyectos'], ['tasks', 'Tareas'], ['wa', 'WhatsApp'],
+  ['cal', 'Calendario'], ['meta', 'Meta Ads'], ['marketing', 'Inteligencia marketing'],
+  ['cola', 'Outbound'], ['metrics', 'Inteligencia comercial'], ['sdr', 'SDR'],
+  ['finanzas', 'Finanzas'], ['simulador', 'Simulador financiero'], ['activity', 'Actividad'],
+  ['equipo', 'Organigrama'], ['ausencias', 'Ausencias']];
+
+async function eqCargarFlujos() {
+  if (!document.getElementById('eq-flujos-pasos')) return;
+  try {
+    const r = await fetch('/api/flujos');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    if (!d || !Array.isArray(d.flujos)) throw new Error('respuesta sin flujos');
+    eqFlujos = d.flujos;
+    eqFlujosRoles = Array.isArray(d.roles) ? d.roles : [];
+    eqFlujosAdmin = d.es_admin === true;
+  } catch (e) {
+    eqFlujos = [];
+    eqPoner('eq-flujos-selector', () => '');
+    eqPoner('eq-flujos-acciones', () => '');
+    eqPoner('eq-flujos-pasos', () => '<div class="eq-vacio">No se pudieron cargar los flujos (' + esc(e.message) + ').</div>');
+    return;
+  }
+  if (!eqFlujosAdmin) eqFlujosEditando = false;
+  if (!eqFlujos.some(f => f.id === eqFlujoActivo)) eqFlujoActivo = eqFlujos.length ? eqFlujos[0].id : null;
+  eqPintarFlujos();
+}
+
+function eqFlujoElegido() {
+  return eqFlujos.find(f => f.id === eqFlujoActivo) || null;
+}
+
+function eqPintarFlujos() {
+  eqPoner('eq-flujos-selector', () => eqFlujosSelectorHtml(eqFlujos, eqFlujoActivo));
+  eqPoner('eq-flujos-acciones', () => eqFlujosAdmin
+    ? '<button type="button" class="btn-ghost eq-btn-chico" onclick="eqFlujosAlternarEdicion()">'
+      + (eqFlujosEditando ? 'Listo' : 'Editar') + '</button>'
+    : '');
+  eqPoner('eq-flujos-pasos', () => eqPasosHtml(eqFlujoElegido(), {admin: eqFlujosAdmin, editando: eqFlujosEditando}));
+}
+
+function eqFlujosSelectorHtml(flujos, activo) {
+  return flujos.map(f => '<button type="button" class="eq-flujo-tab' + (f.id === activo ? ' eq-activo' : '')
+    + '" aria-pressed="' + (f.id === activo) + '" title="' + esc(f.descripcion || '')
+    + '" onclick="eqFlujoElegir(' + Number(f.id) + ')">' + esc(f.nombre) + '</button>').join('');
+}
+
+function eqFlujoElegir(id) {
+  eqFlujoActivo = id;
+  eqPintarFlujos();
+}
+
+function eqFlujosAlternarEdicion() {
+  if (!eqFlujosAdmin) return;
+  eqFlujosEditando = !eqFlujosEditando;
+  eqPintarFlujos();
+}
+
+// Un paso lleva a su pantalla solo si el panel esta en la pagina y el rol lo
+// puede ver: la misma regla que esconde el menu (ALL_PANELS contra el acceso).
+function eqFlujoPuedeAbrir(pantalla) {
+  if (!pantalla || !document.getElementById(pantalla + '-panel')) return false;
+  const acceso = window._panelAccess;
+  if (!Array.isArray(acceso)) return true;
+  return !ALL_PANELS.includes(pantalla) || acceso.includes(pantalla);
+}
+
+function eqFlujoIr(pantalla) {
+  if (eqFlujoPuedeAbrir(pantalla)) showPanel(pantalla);
+}
+
+function eqFlujoTecla(ev, pantalla) {
+  if (ev.key === 'Enter' || ev.key === ' ') {
+    ev.preventDefault();
+    eqFlujoIr(pantalla);
+  }
+}
+
+function eqPantallaNombre(id) {
+  const par = EQ_PANTALLAS.find(p => p[0] === id);
+  return par ? par[1] : String(id);
+}
+
+function eqPorcentaje(x) {
+  const n = Math.round(Number(x) * 100) / 100;
+  return String(n).replace('.', ',') + '%';
+}
+
+// El numero que se ve es la posicion: si en la base quedo un hueco, la
+// pantalla igual muestra 01, 02, 03.
+function eqPasosHtml(flujo, opciones) {
+  if (!flujo) return '<div class="eq-vacio">No hay flujos cargados.</div>';
+  const op = opciones || {};
+  const pasos = (flujo.pasos || []).slice().sort((a, b) => (a.numero - b.numero) || (a.id - b.id));
+  if (!pasos.length) {
+    return '<div class="eq-flujo-vacio"><span>Los pasos de ' + esc(flujo.nombre) + ' todavía no se cargaron.</span>'
+      + (op.admin ? '<button type="button" class="btn-primary eq-btn-chico" onclick="eqPasoAbrir('
+        + Number(flujo.id) + ', null)">Cargar el primer paso</button>' : '')
+      + '</div>';
+  }
+  const items = pasos.map((p, i) => {
+    const link = !op.editando && eqFlujoPuedeAbrir(p.pantalla);
+    const clases = 'eq-paso' + (p.destacado ? ' eq-paso-destacado' : '') + (link ? ' eq-paso-link' : '');
+    const attrs = link
+      ? ' role="link" tabindex="0" data-pantalla="' + esc(p.pantalla) + '" onclick="eqFlujoIr(this.dataset.pantalla)"'
+        + ' onkeydown="eqFlujoTecla(event, this.dataset.pantalla)"'
+      : '';
+    const cobros = (p.cobros || []).length
+      ? '<div class="eq-paso-cobros">Cobro: ' + p.cobros.map(c => esc(eqPorcentaje(c.porcentaje) + ' ' + c.descripcion)).join(' · ') + '</div>'
+      : '';
+    const ir = link ? '<div class="eq-paso-ir">Ir a ' + esc(eqPantallaNombre(p.pantalla)) + ' &rarr;</div>' : '';
+    const edicion = !op.editando ? '' : '<div class="eq-paso-edicion">'
+      + '<button type="button" class="btn-ghost eq-btn-chico" onclick="eqPasoMover(' + Number(p.id) + ', -1)"'
+      + (i === 0 ? ' disabled' : '') + '>&uarr; Subir</button>'
+      + '<button type="button" class="btn-ghost eq-btn-chico" onclick="eqPasoMover(' + Number(p.id) + ', 1)"'
+      + (i === pasos.length - 1 ? ' disabled' : '') + '>&darr; Bajar</button>'
+      + '<button type="button" class="btn-ghost eq-btn-chico" onclick="eqPasoAbrir(' + Number(flujo.id) + ', ' + Number(p.id) + ')">Editar</button>'
+      + '<button type="button" class="btn-ghost eq-btn-chico" onclick="eqPasoBorrar(' + Number(p.id) + ')">Borrar</button>'
+      + '</div>';
+    return '<li class="' + clases + '"' + attrs + '>'
+      + '<div class="eq-paso-cab"><span class="eq-paso-num">' + eqDosDigitos(i + 1) + '</span>'
+      + '<span class="eq-paso-titulo">' + esc(p.titulo) + '</span>'
+      + '<span class="eq-paso-rol">' + esc(p.rol) + '</span></div>'
+      + (p.detalle ? '<div class="eq-paso-detalle">' + esc(p.detalle) + '</div>' : '')
+      + cobros + ir + edicion + '</li>';
+  }).join('');
+  const agregar = op.editando
+    ? '<button type="button" class="btn-primary eq-btn-chico" onclick="eqPasoAbrir(' + Number(flujo.id) + ', null)">+ Agregar paso</button>'
+    : '';
+  return '<ol class="eq-pasos">' + items + '</ol>' + agregar;
+}
+
+function eqPantallasOpciones(actual) {
+  const lista = EQ_PANTALLAS.filter(p => document.getElementById(p[0] + '-panel'));
+  if (actual && !lista.some(p => p[0] === actual)) lista.push([actual, actual + ' (todavía no existe)']);
+  return '<option value="">Sin pantalla</option>' + lista.map(p => '<option value="' + esc(p[0]) + '"'
+    + (p[0] === actual ? ' selected' : '') + '>' + esc(p[1]) + '</option>').join('');
+}
+
+function eqPasoAbrir(flujoId, pasoId) {
+  if (!eqFlujosAdmin) return;
+  const flujo = eqFlujos.find(f => f.id === flujoId);
+  if (!flujo) return;
+  const paso = pasoId === null || pasoId === undefined ? null
+    : (flujo.pasos || []).find(p => p.id === pasoId) || null;
+  eqPasoFlujo = flujo.id;
+  eqPasoId = paso ? paso.id : null;
+  document.getElementById('eq-paso-titulo-modal').textContent = paso ? 'Editar paso' : 'Agregar paso a ' + flujo.nombre;
+  document.getElementById('eq-paso-titulo').value = paso ? paso.titulo : '';
+  document.getElementById('eq-paso-rol').innerHTML = eqFlujosRoles.map(r => '<option value="' + esc(r) + '"'
+    + (paso && paso.rol === r ? ' selected' : '') + '>' + esc(r) + '</option>').join('');
+  document.getElementById('eq-paso-rol').value = paso ? paso.rol : (eqFlujosRoles[0] || '');
+  document.getElementById('eq-paso-detalle').value = paso ? paso.detalle : '';
+  document.getElementById('eq-paso-pantalla').innerHTML = eqPantallasOpciones(paso ? paso.pantalla : null);
+  document.getElementById('eq-paso-pantalla').value = paso && paso.pantalla ? paso.pantalla : '';
+  document.getElementById('eq-paso-destacado').checked = !!(paso && paso.destacado);
+  eqPasoCobros = paso ? (paso.cobros || []).map(c => ({porcentaje: String(c.porcentaje), descripcion: c.descripcion})) : [];
+  eqPasoCobrosPintar();
+  document.getElementById('eq-paso-error').textContent = '';
+  eqAbrirModal('eq-modal-paso');
+}
+
+function eqPasoCobrosPintar() {
+  eqPoner('eq-paso-cobros', () => eqPasoCobros.map((c, i) => '<div class="eq-cobro-fila">'
+    + '<input type="number" min="0" max="100" step="any" inputmode="decimal" aria-label="Porcentaje del momento ' + (i + 1)
+    + '" placeholder="%" value="' + esc(c.porcentaje) + '" oninput="eqPasoCobroPct(' + i + ', this.value)">'
+    + '<input type="text" maxlength="120" aria-label="Cuándo se cobra el momento ' + (i + 1)
+    + '" placeholder="al confirmar" value="' + esc(c.descripcion) + '" oninput="eqPasoCobroDesc(' + i + ', this.value)">'
+    + '<button type="button" class="btn-ghost btn-icono" aria-label="Quitar el momento ' + (i + 1)
+    + '" onclick="eqPasoCobroQuitar(' + i + ')">×</button></div>').join(''));
+}
+
+function eqPasoCobroAgregar() {
+  eqPasoCobros.push({porcentaje: '', descripcion: ''});
+  eqPasoCobrosPintar();
+}
+
+function eqPasoCobroQuitar(i) {
+  eqPasoCobros.splice(i, 1);
+  eqPasoCobrosPintar();
+}
+
+function eqPasoCobroPct(i, valor) {
+  if (eqPasoCobros[i]) eqPasoCobros[i].porcentaje = valor;
+}
+
+function eqPasoCobroDesc(i, valor) {
+  if (eqPasoCobros[i]) eqPasoCobros[i].descripcion = valor;
+}
+
+function eqPasoValidar(datos) {
+  if (!datos.titulo) return 'Falta el título.';
+  if (!eqFlujosRoles.includes(datos.rol)) return 'Elegí un rol.';
+  let suma = 0;
+  for (let i = 0; i < datos.cobros.length; i++) {
+    const c = datos.cobros[i];
+    if (!(c.porcentaje > 0 && c.porcentaje <= 100)) return 'El porcentaje del momento ' + (i + 1) + ' tiene que estar entre 0 y 100.';
+    if (!c.descripcion) return 'Falta cuándo se cobra el momento ' + (i + 1) + '.';
+    suma += c.porcentaje;
+  }
+  if (suma > 100.000001) return 'Los momentos de cobro suman más del 100%.';
+  return '';
+}
+
+async function eqPasoGuardar() {
+  if (!eqPasoFlujo) return;
+  const datos = {
+    titulo: document.getElementById('eq-paso-titulo').value.trim(),
+    rol: document.getElementById('eq-paso-rol').value,
+    detalle: document.getElementById('eq-paso-detalle').value.trim(),
+    pantalla: document.getElementById('eq-paso-pantalla').value || null,
+    destacado: !!document.getElementById('eq-paso-destacado').checked,
+    cobros: eqPasoCobros.map(c => ({porcentaje: eqNumero(c.porcentaje), descripcion: String(c.descripcion || '').trim()}))
+  };
+  const error = document.getElementById('eq-paso-error');
+  const problema = eqPasoValidar(datos);
+  if (problema) { error.textContent = problema; return; }
+  error.textContent = '';
+  const url = eqPasoId ? '/api/flujos/pasos/' + Number(eqPasoId) : '/api/flujos/' + Number(eqPasoFlujo) + '/pasos';
+  try {
+    const r = await fetch(url, {method: eqPasoId ? 'PUT' : 'POST',
+      headers: {'Content-Type': 'application/json'}, body: JSON.stringify(datos)});
+    const j = await eqLeerRespuesta(r);
+    if (!r.ok) { error.textContent = j.error || 'No se pudo guardar (HTTP ' + r.status + ').'; return; }
+  } catch (e) {
+    error.textContent = 'No se pudo guardar: ' + e.message;
+    return;
+  }
+  eqCerrarModal('eq-modal-paso');
+  eqFlujoActivo = eqPasoFlujo;
+  await eqCargarFlujos();
+}
+
+async function eqPasoMover(id, delta) {
+  try {
+    const r = await fetch('/api/flujos/pasos/' + Number(id) + '/mover', {method: 'POST',
+      headers: {'Content-Type': 'application/json'}, body: JSON.stringify({delta: delta})});
+    if (!r.ok) {
+      const j = await eqLeerRespuesta(r);
+      alert(j.error || 'No se pudo mover (HTTP ' + r.status + ').');
+    }
+  } catch (e) {
+    alert('No se pudo mover: ' + e.message);
+  }
+  await eqCargarFlujos();
+}
+
+async function eqPasoBorrar(id) {
+  const flujo = eqFlujoElegido();
+  const paso = flujo && (flujo.pasos || []).find(p => p.id === id);
+  if (!confirm('¿Borrar el paso' + (paso ? ' ' + paso.titulo : '') + '? Los demás se renumeran solos.')) return;
+  try {
+    const r = await fetch('/api/flujos/pasos/' + Number(id), {method: 'DELETE'});
+    if (!r.ok) {
+      const j = await eqLeerRespuesta(r);
+      alert(j.error || 'No se pudo borrar (HTTP ' + r.status + ').');
+    }
+  } catch (e) {
+    alert('No se pudo borrar: ' + e.message);
+  }
+  await eqCargarFlujos();
+}
+
 // ========== Simulador financiero ==========
 // No muestra el pasado: sirve para probar decisiones. Trabaja sobre una COPIA
 // de lo que hay en Finanzas (la precarga) y nunca escribe ahi.
@@ -13813,7 +14160,7 @@ def create_app(db_path: str) -> Flask:
 
     for bp in (leads_bp, demos_bp, calendar_bp, wa_bp, pipeline_bp, tasks_bp, budgets_bp, tokens_bp, meta_bp, calendly_bp, notion_bp, projects_bp, preclientes_bp,
                 notion_clients_bp, resend_bp, linkedin_bp, web_bp, finanzas_bp, marketing_bp,
-                simulador_bp, equipo_bp, seg_leads_bp, daily_bp, plantillas_bp):
+                simulador_bp, equipo_bp, flujos_bp, seg_leads_bp, daily_bp, plantillas_bp):
         app.register_blueprint(bp)
 
     @app.before_request
