@@ -97,8 +97,12 @@ def test_los_dos_temas_son_de_verdad_distintos(oscuro, claro):
     # (verde, celeste, violeta, verde oscuro): el puntito del Registro de demos
     # tiene que ser el mismo color que la gente pinta, en cualquier tema. Solo
     # se usan de fondo de un puntito con aro; el texto va en tokens normales.
+    # Rojo, amarillo y negro se sumaron el 15/9 con el semaforo de Meta Ads:
+    # la fila del lead se pinta con el color que la gente pinta en la planilla
+    # (borde pleno y un tinte mezclado con la superficie, que si cambia de tema).
     esperadas = {"--azul", "--semaforo-verde", "--semaforo-celeste",
-                 "--semaforo-violeta", "--semaforo-venta"}
+                 "--semaforo-violeta", "--semaforo-venta", "--semaforo-rojo",
+                 "--semaforo-amarillo", "--semaforo-negro"}
     iguales = {k for k in oscuro if oscuro[k].strip() == claro.get(k, "").strip()}
 
     assert iguales == esperadas, (

@@ -464,6 +464,12 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **15/9 — rama `feat/meta-ads-por-mes` (worktree `../crm-meta-mes`). Sin PR, sin merge, sin deploy.**
+  - **Meta Ads por mes:** flechas, "Este mes", deslizar en el celular; siempre abre en el mes actual (hora Montevideo). Arriba, total del mes y conteo por color. JS `mm*`, CSS `.mm-*` con tokens (`--semaforo-rojo/amarillo/negro` nuevos).
+  - **Semáforo desde el CRM:** `POST /api/meta/leads/<id>/semaforo` (panel `meta`). El color NO tiene columna propia: sale de `crm_status` (`services/planilla_semaforo.ESTADO_A_COLOR`), y la demo del mes se escribe con la misma función que el sync (`_escribir_demos`). Columnas nuevas en `businesses`: `semaforo_origen`, `semaforo_at`, `semaforo_planilla`. Regla con la planilla: una marca a mano solo la mueve la planilla si se repintó después (trae otro color que en la lectura anterior), y ahí valen las reglas de siempre.
+  - **Envíos de formulario (`meta_lead_envios`):** quien vuelve a llenar el formulario cuenta también en el mes de la vuelta, como Meta. Lo registran el webhook y los imports. **Backfill:** el import diario (arranca 120 s después de cada boot, y `POST /api/meta/import-sync` con `ADMIN_TOKEN`) rellena la tabla con todo lo que devuelve Graph (~90 días) sin crear fichas ni avisar. Los contadores de Marketing (dossier, piezas) y la pauta de Finanzas cuentan envíos por mes de Montevideo (`database.ENVIOS_META_SQL`); las etapas quedan en el primer envío.
+  - **Zona compartida tocada:** `database.py` (tabla, columnas, `delete_business`/`merge_business`), `dashboard.py` (panel Meta Ads), `routes/leads.py` (`registrar_cambio_de_estado`, lo usa `/crm-status`), `services/dossier.py`, `services/anuncios.py`, `services/finanzas.py` (solo `rendimiento_pauta`).
+
 - **14/9 — rama `feat/seguimiento-leads` (sin PR, sin merge, sin deploy): Seguimiento de leads.**
   - Panel `seg_leads`, primer ítem de VENTAS (arriba de WhatsApp). Id nuevo a propósito: la sección vieja `seguimientos` sigue borrada y `tests/test_sin_seguimientos.py` no se tocó.
   - Tablas `seg_recordatorios` (índice único parcial: un solo pendiente por lead) y `seg_llamados` (historial, se escribe al marcar Hecho). `routes/seg_leads.py` y `services/seg_leads.py`. `lead_id` es `businesses.id`.

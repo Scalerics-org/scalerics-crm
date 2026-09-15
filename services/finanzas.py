@@ -466,7 +466,7 @@ def rendimiento_pauta(db_path: str, desde: str, hasta: str) -> dict:
     uno cierre en julio. Por lo mismo, el ingreso se atribuye al lead que lo
     generó y no al mes del cobro.
     """
-    from database import _connect, listar_movimientos
+    from database import ENVIOS_META_SQL, _connect, listar_movimientos
 
     periodos = meses_entre(desde, hasta)
     if not periodos:
@@ -481,8 +481,8 @@ def rendimiento_pauta(db_path: str, desde: str, hasta: str) -> dict:
     conn = _connect(db_path)
     try:
         leads = conn.execute(
-            "SELECT id, substr(scraped_at, 1, 7) AS periodo "
-            "FROM businesses WHERE source = 'meta'").fetchall()
+            "SELECT id, primero, substr(fecha_local, 1, 7) AS periodo "
+            f"FROM ({ENVIOS_META_SQL}) WHERE source = 'meta'").fetchall()
         eventos_filas = conn.execute(
             "SELECT lead_id, new_status FROM lead_events").fetchall()
         ingresos_filas = conn.execute(
@@ -507,9 +507,14 @@ def rendimiento_pauta(db_path: str, desde: str, hasta: str) -> dict:
         periodo = lead["periodo"]
         if periodo not in conteo:
             continue
-        suyos = eventos.get(lead["id"], set())
         c = conteo[periodo]
         c["leads"] += 1
+        # Los leads son envios de formulario, como los cuenta Meta: quien
+        # vuelve a escribir cuenta en el mes de la vuelta. Sus etapas y su
+        # ingreso quedan en el mes de su primer envio, una sola vez.
+        if not lead["primero"]:
+            continue
+        suyos = eventos.get(lead["id"], set())
         c["ingresos"] += ingresos_por_lead.get(lead["id"], 0.0)
         if alcanzo(suyos, "demo_agendada"):
             c["calificados"] += 1
