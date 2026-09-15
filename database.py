@@ -258,6 +258,51 @@ def init_db(db_path: str) -> None:
             )
         """)
 
+        # Un renglon por anuncio: el estado de HOY, no una serie. Lo que
+        # cambia en el tiempo (gasto, leads) vive en `meta_ad_insights`.
+        #
+        # `imagen_url` es la que devuelve Meta: viene firmada y caduca, asi que
+        # no sirve para guardar en el panel. Por eso se baja el archivo una vez
+        # a `imagen_archivo` y de ahi en mas se sirve el nuestro.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS meta_ads (
+                ad_id            TEXT PRIMARY KEY,
+                ad_name          TEXT,
+                campaign_id      TEXT,
+                campaign_name    TEXT,
+                adset_name       TEXT,
+                effective_status TEXT,
+                creative_id      TEXT,
+                object_type      TEXT,
+                titulo           TEXT,
+                cuerpo           TEXT,
+                imagen_url       TEXT,
+                imagen_archivo   TEXT,
+                synced_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # El mismo grano que `meta_insights` pero por anuncio. Existe aparte y
+        # no como columna de aquella porque un anuncio pertenece a una campana:
+        # mezclarlos haria que sumar la tabla contara el gasto dos veces.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS meta_ad_insights (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                date        TEXT NOT NULL,
+                ad_id       TEXT NOT NULL,
+                spend       REAL DEFAULT 0,
+                currency    TEXT,
+                impressions INTEGER DEFAULT 0,
+                clicks      INTEGER DEFAULT 0,
+                reach       INTEGER DEFAULT 0,
+                leads       INTEGER DEFAULT 0,
+                synced_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(date, ad_id)
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_ad_insights_fecha "
+                     "ON meta_ad_insights(date)")
+
         # Cada corrida guarda el dossier entero, no solo el informe: es lo que
         # permite auditar después por qué se dijo lo que se dijo, y comparar
         # contra el período anterior sin recalcular el pasado.
@@ -376,6 +421,12 @@ def init_db(db_path: str) -> None:
                 notion_synced_at       TIMESTAMP
             )
         """)
+        # Con que negocio del CRM se corresponde la ficha. Notion no trae ningun
+        # id del CRM (solo el nombre), asi que se conecta a mano una vez. Con eso,
+        # llegar a "Presupuesto Aceptado" pasa al negocio a Clientes: desde el
+        # 14/9 es el unico camino, porque se saco el tablero de Pre-clientes.
+        # El upsert del sync no lista esta columna, asi que no la pisa.
+        _add_column(conn, "notion_clients", "business_id", "INTEGER")
 
         # ── tasks ─────────────────────────────────────────────────────────────
         conn.execute("""
@@ -860,6 +911,29 @@ def init_db(db_path: str) -> None:
         # lo asigna Juan a mano desde el editor de roles, que es justamente
         # lo que eligió al marcar "panel normal, se asigna por rol".
 
+        # ── simulador financiero ──────────────────────────────────────────────
+        # Escenarios guardados del simulador. Tabla propia y aparte de las de
+        # finanzas a propósito: el simulador LEE Finanzas para precargar, pero
+        # trabaja sobre su copia y nunca escribe ahí. `datos` es el escenario
+        # entero en JSON (equipo, listas, palancas, supuestos): su forma la
+        # define el panel y lleva `version`, para poder migrarla sin tocar la
+        # tabla cuando lleguen la comparación y la proyección a 12 meses.
+        #
+        # Igual que Finanzas (Ruling R20), sin `_grant_panel_to_existing_roles`:
+        # el simulador muestra sueldos y lo que se debe cobrar, así que arranca
+        # sin nadie asignado y Juan lo reparte desde el editor de roles.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS simulador_escenarios (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                nombre          TEXT NOT NULL,
+                datos           TEXT NOT NULL,
+                created_by_id   INTEGER,
+                created_by_name TEXT,
+                created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
         # ── Pre-clientes y clientes activos ───────────────────────────────────
         # Los tres responsables de un cliente activo. Apuntan a users para poder
         # filtrar "mis clientes"; si alguien se va, el vinculo queda en NULL en vez
@@ -870,6 +944,15 @@ def init_db(db_path: str) -> None:
                     "INTEGER REFERENCES users(id) ON DELETE SET NULL")
         _add_column(conn, "businesses", "cobros_id",
                     "INTEGER REFERENCES users(id) ON DELETE SET NULL")
+
+        # Cuanto pago el cliente por su desarrollo. Lo carga Juan a mano: NO se
+        # deriva de presupuestos ni de Finanzas, que pueden estar incompletos o
+        # partidos en cobros parciales. Monto y moneda van separados, con las
+        # mismas monedas que Finanzas (services.finanzas.MONEDAS), y sin pasar
+        # a dolares: es el numero que se acordo, no una conversion. Los dos en
+        # NULL es "todavia no se cargo", que no es lo mismo que 0.
+        _add_column(conn, "businesses", "monto_pagado", "REAL")
+        _add_column(conn, "businesses", "moneda_pagado", "TEXT")
 
         # Registro historico de demos dadas. NO es la tabla `demos`, que guarda la
         # pagina que genera la IA: esto es el evento comercial de haber mostrado
@@ -891,6 +974,29 @@ def init_db(db_path: str) -> None:
                      "ON demos_realizadas(client_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_demos_realizadas_fecha "
                      "ON demos_realizadas(fecha)")
+        # Demos que llegan solas desde la planilla de semaforo (ver
+        # services/planilla_semaforo.sincronizar_demos). `origen` NULL es una
+        # demo cargada a mano: el sync no las toca nunca. `estado_planilla` es
+        # la clave estable del color (agendada, realizada, no_cerro, venta) y
+        # `mes_planilla` ('AAAA-MM') la pestaña de donde salio.
+        _add_column(conn, "demos_realizadas", "origen", "TEXT")
+        _add_column(conn, "demos_realizadas", "estado_planilla", "TEXT")
+        _add_column(conn, "demos_realizadas", "mes_planilla", "TEXT")
+        # Una demo de planilla por cliente y mes: es lo que hace idempotente al
+        # sync aunque dos corridas se pisen. Parcial para no limitar las
+        # cargadas a mano, que pueden ser varias en el mismo mes.
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_demos_planilla_cliente_mes "
+                     "ON demos_realizadas(client_id, mes_planilla) "
+                     "WHERE origen = 'planilla'")
+        # El presupuesto que se mando despues de una demo cuelga de la demo con
+        # una columna propia y no codificado en `section` ("demo:123"): asi se
+        # puede indexar y cruzar con un JOIN, y `section` sigue siendo 'budget',
+        # con lo que el mismo archivo aparece tambien en la ficha del cliente.
+        # El indice importa por el BLOB: buscar por demo_id sin leer la fila
+        # evita recorrer las paginas de overflow de file_data.
+        _add_column(conn, "lead_attachments", "demo_id", "INTEGER")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_lead_attachments_demo "
+                     "ON lead_attachments(demo_id)")
         _migrar_estados_preclientes(conn)
 
         # ── task assignment & goal tracking ────────────────────────────────────
@@ -991,6 +1097,8 @@ ALLOWED_COLUMNS = {
     "interest", "form_data", "website",
     # Responsables de un cliente activo: dia a dia, mantenimiento y cobro.
     "encargado_id", "mantenimiento_id", "cobros_id",
+    # Cuanto pago por su desarrollo, cargado a mano desde Clientes.
+    "monto_pagado", "moneda_pagado",
 }
 
 
@@ -1273,6 +1381,10 @@ def delete_business(db_path: str, business_id: int) -> None:
         # keys apagadas y hay que activarlas por conexion, cosa que _connect no
         # hace. Sin este borrado explicito quedarian demos huerfanas con las notas
         # comerciales de un cliente que ya no existe.
+        # Primero los presupuestos de esas demos: son BLOBs de hasta 10 MB que
+        # nadie podria volver a ver ni borrar.
+        conn.execute("DELETE FROM lead_attachments WHERE demo_id IN "
+                     "(SELECT id FROM demos_realizadas WHERE client_id = ?)", (business_id,))
         conn.execute("DELETE FROM demos_realizadas WHERE client_id = ?", (business_id,))
         conn.execute("DELETE FROM businesses WHERE id = ?", (business_id,))
         conn.commit()
@@ -1772,11 +1884,66 @@ def upsert_notion_client(db_path: str, notion_page_id: str, name: str,
 
 
 def get_notion_clients(db_path: str) -> list[dict]:
+    """Las fichas del espejo, con el nombre del negocio del CRM al que estan
+    conectadas (`business_name`, None si no hay conexion o el negocio ya no
+    existe)."""
     conn = _connect(db_path)
     try:
         cursor = conn.execute(
-            "SELECT * FROM notion_clients ORDER BY name COLLATE NOCASE")
+            "SELECT nc.*, b.name AS business_name "
+            "FROM notion_clients nc LEFT JOIN businesses b ON b.id = nc.business_id "
+            "ORDER BY nc.name COLLATE NOCASE")
         return [dict(row) for row in cursor.fetchall()]
+    finally:
+        conn.close()
+
+
+def get_notion_client_by_page(db_path: str, notion_page_id: str) -> dict | None:
+    conn = _connect(db_path)
+    try:
+        fila = conn.execute("SELECT * FROM notion_clients WHERE notion_page_id = ?",
+                            (notion_page_id,)).fetchone()
+        return dict(fila) if fila else None
+    finally:
+        conn.close()
+
+
+def vincular_notion_client(db_path: str, cliente_id: int,
+                           business_id: int | None) -> None:
+    """Conecta una ficha con su negocio del CRM, o la desconecta con None."""
+    conn = _connect(db_path)
+    try:
+        conn.execute("UPDATE notion_clients SET business_id = ? WHERE id = ?",
+                     (business_id, cliente_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_notion_client_by_id(db_path: str, cliente_id: int) -> dict | None:
+    conn = _connect(db_path)
+    try:
+        fila = conn.execute("SELECT * FROM notion_clients WHERE id = ?",
+                            (cliente_id,)).fetchone()
+        return dict(fila) if fila else None
+    finally:
+        conn.close()
+
+
+def set_notion_client_status(db_path: str, notion_page_id: str, status: str) -> None:
+    """Deja en el espejo el estado que Notion acaba de aceptar.
+
+    Solo se llama despues de un PATCH que salio bien: si no, el tablero del CRM
+    mostraria la ficha en la columna vieja hasta el proximo sync, y eso se ve
+    como un "rebote" de lo que la persona acaba de arrastrar.
+    """
+    ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    conn = _connect(db_path)
+    try:
+        conn.execute(
+            "UPDATE notion_clients SET status = ?, notion_synced_at = ? "
+            "WHERE notion_page_id = ?", (status, ahora, notion_page_id))
+        conn.commit()
     finally:
         conn.close()
 
@@ -2637,13 +2804,23 @@ def listar_demos_realizadas(db_path: str, client_id: int | None = None,
 
     Trae el nombre de quien la dio y del negocio en el mismo query: la vista los
     muestra siempre juntos, y resolverlos aparte seria un N+1.
+
+    Del presupuesto adjunto trae solo el id y el nombre, NUNCA `file_data`: la
+    maquina tiene 512 MB y un listado con los PDFs adentro son decenas de MB por
+    pedido. El BLOB se lee unicamente al descargar uno (obtener_presupuesto_demo).
+    Tampoco se pide `mime_type`: esta despues de `file_data` en la fila, y
+    leerlo obliga a SQLite a recorrer las paginas del BLOB.
     """
     where, params = "", []
     if client_id is not None:
         where = "WHERE d.client_id = ?"
         params.append(client_id)
     sql = f"""
-        SELECT d.*, u.name AS realizada_por_nombre, b.name AS cliente_nombre
+        SELECT d.*, u.name AS realizada_por_nombre, b.name AS cliente_nombre,
+               (SELECT a.id FROM lead_attachments a WHERE a.demo_id = d.id
+                 ORDER BY a.id DESC LIMIT 1) AS presupuesto_id,
+               (SELECT a.name FROM lead_attachments a WHERE a.demo_id = d.id
+                 ORDER BY a.id DESC LIMIT 1) AS presupuesto_nombre
         FROM demos_realizadas d
         LEFT JOIN users u ON d.realizada_por = u.id
         LEFT JOIN businesses b ON d.client_id = b.id
@@ -2678,8 +2855,53 @@ def actualizar_demo_realizada(db_path: str, demo_id: int, **campos) -> None:
 def borrar_demo_realizada(db_path: str, demo_id: int) -> None:
     conn = _connect(db_path)
     try:
+        # Las foreign keys estan apagadas (ver delete_business): sin esto el PDF
+        # quedaria ocupando el volumen sin ninguna pantalla que lo muestre.
+        conn.execute("DELETE FROM lead_attachments WHERE demo_id = ?", (demo_id,))
         conn.execute("DELETE FROM demos_realizadas WHERE id = ?", (demo_id,))
         conn.commit()
+    finally:
+        conn.close()
+
+
+def guardar_presupuesto_demo(db_path: str, demo_id: int, lead_id: int, nombre: str,
+                             file_data: bytes, mime_type: str) -> int:
+    """Adjunta el presupuesto de una demo. Hay uno por demo: subir otro
+    reemplaza al anterior en la misma transaccion, para no acumular BLOBs."""
+    conn = _connect(db_path)
+    try:
+        conn.execute("DELETE FROM lead_attachments WHERE demo_id = ?", (demo_id,))
+        cur = conn.execute(
+            "INSERT INTO lead_attachments (lead_id, section, name, file_data, mime_type, demo_id) "
+            "VALUES (?, 'budget', ?, ?, ?, ?)",
+            (lead_id, nombre, file_data, mime_type, demo_id),
+        )
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def obtener_presupuesto_demo(db_path: str, demo_id: int) -> Optional[dict]:
+    """El presupuesto de una demo CON el archivo. Es la unica lectura del BLOB:
+    usarla solo para descargar uno, nunca para armar un listado."""
+    conn = _connect(db_path)
+    try:
+        fila = conn.execute(
+            "SELECT id, name, file_data, mime_type FROM lead_attachments "
+            "WHERE demo_id = ? ORDER BY id DESC LIMIT 1", (demo_id,)
+        ).fetchone()
+        return dict(fila) if fila else None
+    finally:
+        conn.close()
+
+
+def borrar_presupuesto_demo(db_path: str, demo_id: int) -> int:
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute("DELETE FROM lead_attachments WHERE demo_id = ?", (demo_id,))
+        conn.commit()
+        return cur.rowcount
     finally:
         conn.close()
 
@@ -2937,6 +3159,72 @@ def listar_recurrentes(db_path: str, solo_activos: bool = False) -> list[dict]:
     try:
         cur = conn.execute(
             f"SELECT * FROM finanzas_recurrentes {where} ORDER BY concepto")
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+# ─── Simulador financiero ────────────────────────────────────────────────────
+
+def listar_clientes_activos(db_path: str) -> list[dict]:
+    """Los clientes de verdad: los que están en una etapa de ETAPAS_CLIENTE.
+
+    Es la lista con la que el simulador precarga los mantenimientos.
+    """
+    marcas = ", ".join("?" for _ in ETAPAS_CLIENTE)
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute(
+            f"SELECT id, name, crm_status FROM businesses "
+            f"WHERE crm_status IN ({marcas}) ORDER BY name COLLATE NOCASE, id",
+            list(ETAPAS_CLIENTE))
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def crear_escenario(db_path: str, nombre: str, datos: str,
+                    created_by_id=None, created_by_name=None) -> int:
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute(
+            "INSERT INTO simulador_escenarios "
+            "(nombre, datos, created_by_id, created_by_name) VALUES (?, ?, ?, ?)",
+            (nombre, datos, created_by_id, created_by_name))
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def actualizar_escenario(db_path: str, escenario_id: int, nombre: str,
+                         datos: str) -> None:
+    conn = _connect(db_path)
+    try:
+        conn.execute(
+            "UPDATE simulador_escenarios SET nombre = ?, datos = ?, "
+            "updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (nombre, datos, escenario_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def borrar_escenario(db_path: str, escenario_id: int) -> None:
+    _delete(db_path, "simulador_escenarios", escenario_id)
+
+
+def get_escenario(db_path: str, escenario_id: int) -> Optional[dict]:
+    return _get_one(db_path, "simulador_escenarios", escenario_id)
+
+
+def listar_escenarios(db_path: str) -> list[dict]:
+    """Sin `datos`: la lista es para elegir, el escenario entero se pide aparte."""
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute(
+            "SELECT id, nombre, created_by_name, created_at, updated_at "
+            "FROM simulador_escenarios ORDER BY updated_at DESC, id DESC")
         return [dict(r) for r in cur.fetchall()]
     finally:
         conn.close()

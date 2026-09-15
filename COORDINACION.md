@@ -79,6 +79,8 @@ leads de Meta se renombró a **D** para deshacer el empate.
 | E (pre-clientes/demos) | pipeline por etapas, responsables del cliente, registro de demos | `routes/preclientes.py`, `tests/test_preclientes.py`, `scripts/check_js.py`, y **zona compartida**: `database.py`, `dashboard.py`, `routes/leads.py` | 31/8 |
 | G (marketing/Meta Ads) | inteligencia comercial sobre Meta Ads. **Las tres fases hechas en `feat/marketing-meta` (PR #22), sin mergear ni deployar. La IA nace apagada.** | `services/embudo.py`, `services/dossier.py`, `services/meta_insights.py`, `services/meta_campanas.py`, `services/radiografia.py`, `services/radiografia_ia.py`, `routes/marketing.py`, `static/charts.js`, `.github/workflows/radiografia.yml`, y **zona compartida**: `database.py`, `dashboard.py`, `routes/meta.py`, `services/finanzas.py`, `tests/conftest.py` | 10/9 |
 
+| I (mejoras CRM, pedido de Juan 14/9) | seis tareas en serie, una rama por tarea, parando a mostrar cada una: (3) reuniones del día en mobile, (4) monto pagado por cliente, (1) registro de demos + adjunto de presupuesto, (5) arrastre del pipeline de Notion, (2) campañas históricas y creatividades de Meta, (6) sacar Pre-clientes | hoy `fix/calendario-mobile-dia`: `dashboard.py` (calendario). Después, en su momento: `database.py`, `routes/preclientes.py`, `routes/notion_clients.py`, `services/notion_service.py`, `services/meta_insights.py`. **No deployo nada sin que Juan lo pida.** | 14/9 |
+
 | F (finanzas) | la sección financiera del CRM | `services/finanzas.py`, `routes/finanzas.py`, `database.py` (tablas de finanzas), `dashboard.py` (panel Finanzas) | 8/9 |
 
 > **F (finanzas) acá (8/9).** Trabajé en un worktree aparte sobre la rama
@@ -461,6 +463,254 @@ leads de Meta se renombró a **D** para deshacer el empate.
 ---
 
 ## Bitácora
+
+- **14/9 — I: DEPLOYADO `v214`: botón "Cargar" del simulador y demos que se cargan solas desde la planilla semáforo.**
+
+  - **Demos desde la planilla** (`feat/demos-desde-planilla`, `ae6f827`):
+    `services/planilla_semaforo.sincronizar_demos` corre después de `aplicar`
+    en `POST /api/meta/sync-planilla`. Columnas nuevas en `demos_realizadas`:
+    `origen`, `estado_planilla` y `mes_planilla`, con índice único parcial.
+    Colores: verde agendada, celeste realizada, violeta no cerró, verde oscuro
+    venta. **El mes es el de la pestaña.** Nunca toca demos cargadas a mano.
+  - **Primera corrida, verificada en el log a las 23:37:50 UTC:** 66 creadas,
+    0 sin match, 0 pestañas que no son mes.
+  - **Panel de demos:** de a un mes, con flechas como Finanzas, y resumen por
+    estado.
+  - **Simulador:** botón "Cargar" al final, que usa la misma `simRecalcular`.
+  - 2666 tests; boot limpio a las 23:27 UTC.
+
+- **14/9 — I: DEPLOYADOS `v212` (Simulador financiero, `feat/simulador-financiero`) y `v213` (Métricas pasa a llamarse Outbound, `feat/metricas-outbound`).**
+
+  - **Simulador:** panel nuevo bajo GESTIÓN. Tabla `simulador_escenarios`,
+    `routes/simulador.py` y `services/simulador.py`. Lee Fijos y Por cobrar de
+    Finanzas y **nunca escribe en Finanzas**. El cálculo es la función pura
+    `simCalcular`, testeada en node.
+  - **Outbound:** se fue la pestaña Meta Ads del panel (se mira en Marketing). **El
+    panel sigue siendo `metrics` por dentro**, porque así están guardados los
+    permisos de cada rol; solo cambia el nombre que se ve. `/api/metrics/meta`
+    queda sin uso desde la interfaz.
+  - v212 con 2586 tests y v213 con 2591; los dos arrancaron limpios (22:58 y 23:13 UTC).
+
+- **14/9 — I: DEPLOYADO `v210`: arrastre en Pipeline Notion, y SE SACÓ PRE-CLIENTES DE LA VISTA. Leer si tocás Clientes o Notion.**
+
+  Ramas `feat/notion-clientes-arrastre` (`429cce0`) y `feat/sacar-preclientes` (`687c52e`).
+  - **Pipeline Notion escribe en Notion.** `POST /api/notion-clients/<id>/estado`,
+    vía `mover_cliente`: GET de la página y PATCH de la property de estado **sin
+    nombre** (clave `""`, tipo `status`), por su id. El único punto de "Notion ya
+    tiene el cambio" es `cliente_cambio_de_estado`, que se llama desde el arrastre
+    y desde el sync.
+  - **Se borró el tablero de leads viejo y muerto** (`loadKanban`, `renderKanban`,
+    el segundo par `_kanbanDragStart` y `_kanbanDrop`). El arrastre de Tareas debería
+    volver a andar.
+  - **Pre-clientes ya no está en la interfaz.** Queda `routes/preclientes.py`
+    (sirve `/api/clientes-activos`, `/api/demos-realizadas` y `/api/preclientes`,
+    que usan tests). **Un negocio pasa a Clientes cuando su ficha de Pipeline Notion
+    llega a "Presupuesto Aceptado"**, si la ficha está conectada:
+    `notion_clients.business_id`, que se carga desde el tablero con
+    `PUT /api/notion-clients/<id>/cliente-crm`. Lo hace `pasar_a_cliente`: pasa a
+    `cerrado` con `lead_event` y actividad, nunca retrocede a `en_desarrollo` ni
+    a `finalizado`, y si falla no corta el sync.
+  - **Sin verificar contra Notion real:** que la API acepte el PATCH por id de
+    property con el token actual. Juan lo prueba con una ficha de prueba.
+  2468 tests; boot limpio a las 22:32 UTC.
+
+- **14/9 — I: DEPLOYADO `v209`: Registro de demos por mes, con el presupuesto adjunto. Producción = `deploy/i-calendario-mobile` en `4cd011f`.**
+
+  Rama `feat/demos-por-mes-presupuesto`. `lead_attachments.demo_id` (índice
+  propio; `section` sigue en `budget`), subida con tope de 10 MB y solo
+  PDF/imagen por firma de bytes, y **ningún listado lee `file_data`** (hay un
+  test con el authorizer de SQLite). El panel estaba vacío porque nada crea
+  filas en `demos_realizadas` salvo el modal manual. Siguiente paso, en curso:
+  llenarlo desde la planilla semáforo (`feat/demos-desde-planilla`).
+  2408 tests; boot limpio a las 22:17 UTC.
+
+- **14/9 — I: DEPLOYADO `v208`: Clientes muestra cuánto pagó cada uno. Producción = `deploy/i-calendario-mobile` en `db73c32`.**
+
+  Rama `feat/clientes-monto-pagado`. Columnas `businesses.monto_pagado` (REAL) y
+  `moneda_pagado` (TEXT, las `MONEDAS` de Finanzas, sin convertir), PUT
+  `/api/clientes-activos/<id>/monto-pagado` y alta manual `POST /api/clientes-activos`.
+  **Juan decidió que los montos los ve cualquier usuario logueado** (sin candado
+  de panel). 2383 tests; boot limpio a las 22:02 UTC.
+
+- **14/9 — I: DEPLOYADO `v207`: editar y borrar reuniones desde el celular. Producción = `deploy/i-calendario-mobile` en `2ac63bc`.**
+
+  Rama `feat/calendario-mobile-acciones` (`1c12e5d`, sale de
+  `fix/calendario-mobile-dia`). En el celular no hay hover, así que
+  `.cal-chip-acts` nunca se veía: cada reunión de la lista del día tiene ahora
+  Editar / Unirse / Borrar, que llaman a **las mismas** `_calAbrirEditor` y
+  `deleteCalEvent` que el chip de escritorio (hay un test que lo exige). Calendly
+  sin Editar, igual que en escritorio. Guardar desde el celular mueve la lista
+  al día nuevo de la reunión. Sobre el árbol de deploy: `check_js` OK, **2350
+  tests**, cobertura 71,41%; boot limpio a las 20:08 UTC, sin errores en el log.
+
+  **Sigue valiendo:** producción NO es `main` y estas ramas están solo en la
+  máquina de Juan. Un deploy desde `main` o `feat/marketing-meta` borra el
+  calendario mobile de producción.
+
+- **14/9 — I: DEPLOYADO `v206`, el arreglo del calendario mobile corregido. Producción = `deploy/i-calendario-mobile` en `c36d2b0`.**
+
+  Mismo árbol que `v204` (`origin/main` + `origin/feat/marketing-meta` + calendario
+  mobile) más la corrección del `{#` (`b960e3f`). Sobre ese árbol: `check_js` OK
+  y **2344 tests, cobertura 71,41%**, incluido el test nuevo que pide `GET /`
+  logueado. Después del deploy la máquina arrancó limpia y no hay errores en el
+  log desde el boot de las 19:47 UTC.
+
+  **Sigue valiendo el aviso de `v204`:** producción NO es `main`, y las ramas
+  `fix/calendario-mobile-dia` y `deploy/i-calendario-mobile` están solo en la
+  máquina de Juan (no hay credenciales de GitHub acá). **Un deploy desde `main` o
+  desde `feat/marketing-meta` borra el arreglo del calendario de producción.**
+
+- **14/9 — I: `v204` TUMBÓ EL CRM y se volvió a `v203` (imagen `deployment-01M2GE3T9T2Q54KGSW435YTEBS`). Lo de abajo sobre `v204` ya no describe producción.**
+
+  `GET /` daba 500 para todos: `jinja2.exceptions.TemplateSyntaxError: Missing
+  end of comment tag`. Causa, mía: en el CSS del listado mobile escribí
+  `@media(max-width:768px){#cal-day-events-mobile{...}}`. **`{` pegado a `#` es
+  `{#`, que abre un comentario de Jinja**, y `DASHBOARD_HTML` pasa por
+  `render_template_string`. La suite entera pasó igual porque **ningún test
+  pedía la página principal**; `/login` daba 200 y el chequeo post-deploy no lo
+  vio.
+
+  Corregido en `fix/calendario-mobile-dia` (espacio después de la llave) con
+  un test que hace `GET /` logueado y exige 200. **Si escriben CSS en el
+  dashboard: nunca `{#` pegado.** Producción hoy = `v203`, o sea sin el arreglo
+  del calendario y con lo que G tenía antes.
+
+- **14/9 — I: DEPLOYADO `v204`. Producción NO es `main`, leer antes de deployar.**
+
+  Juan pidió el arreglo del calendario mobile en vivo. `v204` salió de un
+  worktree limpio (`../crm-deploy-I`, rama `deploy/i-calendario-mobile`,
+  commit `8ea838c`) que es **`origin/main` (`a3d69d8`) + `origin/feat/marketing-meta`
+  (`91b7d4d`) + `fix/calendario-mobile-dia` (`185dfde`)**. El merge de marketing
+  entró sin conflictos; el único fue esta bitácora, resuelto conservando las dos
+  entradas. Sobre ese árbol: `check_js` OK y **2343 tests, cobertura 71,35%**.
+  Después del deploy, `GET /` 302 y `GET /login` 200.
+
+  **G: tu rama está en producción sin estar en `main`.** Se sumó porque `v199`-`v203`
+  eran tuyos y deployar `main` solo te los borraba. **Ojo:** no pude comparar
+  `/app` de `v203` contra tu rama antes de deployar (la lectura dentro de la
+  máquina quedó bloqueada por permisos) y Juan decidió deployar igual. Si `v203`
+  tenía algo tuyo sin commitear después de `91b7d4d`, ya no está en producción:
+  revisalo contra tu árbol.
+
+  **Las dos ramas (`fix/calendario-mobile-dia` y `deploy/i-calendario-mobile`)
+  están SOLO en esta máquina**: acá no hay credenciales de GitHub y el push
+  falló. Hasta que se suban, **cualquier deploy desde `main` o desde
+  `feat/marketing-meta` borra de producción el arreglo del calendario.**
+
+- **14/9 — G (marketing): hay una sección nueva con las piezas de la pauta, y
+  una tabla nueva en la base.**
+
+  Lo que toca a quien pase por acá:
+
+  - **Dos tablas nuevas**: `meta_ads` (un renglón por anuncio, estado de hoy) y
+    `meta_ad_insights` (fecha × anuncio). Son el espejo al grano del anuncio de
+    lo que `meta_insights` hace al grano de campaña. **No las sumen juntas**:
+    un anuncio pertenece a una campaña, así que sumar las dos cuenta el gasto
+    dos veces.
+  - **Hay archivos en el volumen.** `/data/creativos/` tiene 67 imágenes, 18 MB.
+    Las URLs que da Meta vienen firmadas y caducan, así que se bajan una vez y
+    se sirven desde `/api/marketing/creativo/<ad_id>`. Si alguna vez hay que
+    mover el volumen, eso va también.
+  - **Un paso nuevo en el cron** de `radiografia.yml`, entre el gasto y el
+    informe. El día pesado es el primero (baja las imágenes); después encuentra
+    los archivos y no los vuelve a pedir.
+  - `SC.barrasAgrupadas` y `SC.serieMulti` aceptan `opciones.referencia`
+    (`{valor, etiqueta}`) para la línea punteada del histórico. **La referencia
+    entra al máximo de la escala**: sin eso, un histórico más alto que todas las
+    barras se dibuja fuera del área y el gráfico dice "estamos igual" justo
+    cuando más distinto está.
+  - Se fue el bloque "Los números crudos" (pedido de Juan, dos veces).
+
+  **Lo que me costó y les puede costar:** un 403 de Meta puede ser "no tenés
+  permiso" o "te pasaste de llamadas" (code 17), y son dos problemas
+  completamente distintos. El log de los sync ahora incluye el mensaje, no solo
+  el número; averiguarlo a mano costó una vuelta entera. Y ojo con sondear la
+  API seguido: cuatro o cinco llamadas en un minuto ya te ganan el rate limit.
+
+  **Y el error que vale la pena no repetir:** la recomendación por anuncio se
+  calibró primero en leads ("menos de 5, no opino") y contra la cuenta real
+  dejó 17 de 19 anuncios sin opinión, incluido uno de 26 centavos al que le
+  pedía 5 leads. Se arregló midiendo la evidencia en plata relativa al costo de
+  la cuenta. **Correr las reglas contra los datos de producción antes de darlas
+  por buenas**: con fixtures pasaban todas.
+
+  Suite en **2188**.
+
+  **Corregido el mismo dia, sobre dos preguntas de Juan usando el panel.** Las
+  dos eran errores de semantica, no de calculo, y por eso los tests pasaban:
+
+  - El `desde` de cada anuncio salia de un `MIN` acotado por el periodo, asi que
+    devolvia el borde de la ventana. La misma pantalla contestaba distinto segun
+    el rango elegido. Ahora hay dos juegos de numeros separados —los del periodo
+    y los de toda la vida del anuncio— y cada uno dice de que habla.
+  - La seccion filtraba por `effective_status = ACTIVE`. Combinado con el
+    selector de periodo daba un hibrido: eligiendo mayo mostraba "lo que corre
+    hoy y ademas gasto en mayo". Ahora entran los que gastaron en el periodo,
+    con los que siguen al aire primero.
+
+  **La leccion, por si les sirve:** los dos tests que cubrian esas funciones
+  pasaban porque sus fechas caian adentro del periodo. Un test de recorte por
+  fechas tiene que mirar desde una ventana que NO contenga todos los datos.
+
+
+- **11/9 — G (marketing): el panel dejó de tener gráficos que nadie sabe leer.**
+
+  Juan revisó el panel y la mitad de lo que señaló era lo mismo: el gráfico era
+  correcto y no se entendía. Los cambios, por si tocan `static/charts.js`:
+
+  - **`SC.barrasConIC` ya no se usa en el panel.** El intervalo de confianza es
+    correcto y resultó ilegible —"no los estoy logrando interpretar"—. Lo
+    reemplaza `SC.barrasSimples`, que dice la incertidumbre con palabras al lado
+    del número: "sobre 12 · muestra chica". La función queda en el archivo con
+    un cartel arriba; si vuelve al panel, vuelve el problema.
+  - **Tres funciones nuevas:** `barrasAgrupadas` (varias medidas por período,
+    un solo eje), `barrasSimples` y la opción `ayuda` en esta última.
+    `barrasAgrupadas` calcula su margen izquierdo a partir de la etiqueta más
+    larga del eje —con un margen fijo, "1.234,56" se sale del viewBox— y topea
+    el ancho de barra en 46px.
+  - **`serieMulti` y `serie` quedaron sin llamadas en Marketing.** Con dos o
+    tres semanas una línea se lee como si faltaran datos. No las saqué: son
+    tipos de gráfico válidos, solo que este panel ya no los pide.
+  - **`--rotulo` sumó cuatro selectores** (`.sc-barra-nota`, `.sc-crudo-rotulo`,
+    `.sc-crudo-n`, `.sc-crudo-fuente`). Actualicé la aserción de
+    `test_marketing_contraste.py`. Todos miden ≥4,51:1 en los dos temas.
+
+  Del lado de los datos: `serie_mensual()` en `services/dossier.py` (leads,
+  demos, ventas y gasto por mes, con los meses vacíos del medio incluidos).
+
+  **Un agujero que encontré y tapé:** `test_panel_se_pinta.py` no tenía
+  `mk-mensual` en su lista de contenedores y su dossier de prueba no traía
+  `serie_mensual`, así que el bloque "Mes a mes" tomaba el camino de "sin
+  datos" y el test pasaba con el gráfico roto. Si agregan un bloque al panel,
+  agréguenlo también a `_CONTENEDORES` y denle datos al fixture.
+
+  Suite en **2091** antes de esta tanda.
+
+- **14/9 — I (mejoras CRM): en el celular no se veían las reuniones del día.
+  Rama `fix/calendario-mobile-dia`, sin deployar.**
+
+  `#cal-day-events-mobile` tenía `style="display:none"` inline y la regla de
+  mobile lo mostraba sin `!important`: el inline gana siempre, así que la lista
+  estuvo oculta desde junio. **La visibilidad ahora la manda el CSS**: oculto de
+  base y visible en `@media(max-width:768px)`, las dos reglas juntas al lado de
+  `.cal-leyenda`. **Si movés la de base abajo del @media, el celular vuelve a no
+  ver nada** (misma especificidad, gana la última); hay un test que mide el orden.
+  Se descartó `style.display='block'` desde JS: es un inline que sobrevive a
+  agrandar la ventana y deja la lista abierta en escritorio.
+
+  Además, al dibujar el mes en el celular se elige hoy solo
+  (`_calSeleccionarDiaMobile`), sin desplazar la pantalla, y el día tocado
+  sobrevive a los redibujos. Las tarjetas del día pasaron a clases con tokens
+  (tenían `#111827` inline, oscuras en claro). Tests en
+  `tests/test_calendario_mobile.py`, corren el JS en node contra un DOM falso.
+
+  **Visto al pasar, sin tocar:** `renderCalendar` marca `.today` con `isoDate`,
+  que pasa por UTC: de 21 a 24 en Montevideo resalta el día siguiente, también
+  en escritorio.
+
+  **Entorno Windows sin admin:** Python 3.11 de python.org por winget (pide UAC
+  igual con `--scope user`) y Node con `pip install "nodejs-wheel-binaries==22.*"`
+  — deja `node.exe` en `site-packages\nodejs_wheel`, hay que sumarlo al PATH.
 
 - **11/9 — G: gracias por subir `--rotulo`, y ojo con un margen de 0,01.**
 

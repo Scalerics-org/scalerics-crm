@@ -352,6 +352,7 @@
 
     var max = valores.length ? Math.max.apply(null, valores) : 0;
     var cortes = SC.ticks(0, max || 1, 4);
+    x0 = SC.margenEjeY(cortes, opciones.formato);
     var ey = SC.escalaLineal([0, cortes[cortes.length - 1]], [y1, y0]);
     var paso = puntos.length > 1 ? (x1 - x0) / (puntos.length - 1) : 0;
     var ex = function (i) { return puntos.length > 1 ? x0 + i * paso : (x0 + x1) / 2; };
@@ -373,7 +374,8 @@
     var cada = Math.max(1, Math.ceil(puntos.length / 8));
     piezas.push('<g class="sc-eje-x">' + puntos.map(function (p, i) {
       if (i % cada) return '';
-      return '<text x="' + ex(i).toFixed(1) + '" y="' + (alto - 8) +
+      return '<text x="' + SC.centroQueEntra(ex(i), p.x, 10, ancho).toFixed(1) +
+             '" y="' + (alto - 8) +
              '" text-anchor="middle" font-size="10" fill="' + mudo + '">' +
              SC.esc(p.x) + '</text>';
     }).join('') + '</g>');
@@ -564,13 +566,30 @@
     // El eje X son todas las semanas que aparecen en cualquier serie, en orden.
     // Si cada serie usara su propio eje, dos campanas con semanas distintas
     // quedarian desalineadas y la comparacion mentiria.
-    var equis = [];
+    //
+    // El orden sale de `p.orden` (una fecha ISO, por ejemplo) y no del texto
+    // del rotulo. Con `equis.sort()` sobre el rotulo, "Semana 10" y "Semana 11"
+    // quedaban entre "Semana 1" y "Semana 2": las lineas se dibujaban yendo y
+    // viniendo, y un acumulado —que nunca baja— parecia bajar. Paso cuando los
+    // rotulos dejaron de ser "2026-W31", que si se ordenaba bien como texto.
+    // Sin `orden`, se respeta el orden en que vienen los puntos.
+    var equis = [], ordenDe = {};
     conDatos.forEach(function (s) {
       (s.puntos || []).forEach(function (p) {
-        if (equis.indexOf(p.x) === -1) equis.push(p.x);
+        if (equis.indexOf(p.x) === -1) {
+          equis.push(p.x);
+          ordenDe[p.x] = p.orden;
+        }
       });
     });
-    equis.sort();
+    var conOrden = equis.every(function (x) {
+      return ordenDe[x] !== undefined && ordenDe[x] !== null;
+    });
+    if (conOrden) {
+      equis.sort(function (a, b) {
+        return ordenDe[a] < ordenDe[b] ? -1 : ordenDe[a] > ordenDe[b] ? 1 : 0;
+      });
+    }
 
     var valores = [];
     conDatos.forEach(function (s) {
@@ -578,8 +597,17 @@
         if (p.y !== null && p.y !== undefined) valores.push(p.y);
       });
     });
+    // La referencia entra al maximo: si el historico queda por encima de todas
+    // las curvas y no se lo contempla, la linea se dibuja fuera del area y el
+    // grafico dice "estamos igual" justo cuando mas distinto esta.
+    var ref = opciones.referencia;
+    var refValor = ref && ref.valor !== null && ref.valor !== undefined
+      ? ref.valor : null;
+    if (refValor !== null) valores.push(refValor);
+
     var max = valores.length ? Math.max.apply(null, valores) : 0;
     var cortes = SC.ticks(0, max || 1, 4);
+    x0 = SC.margenEjeY(cortes, opciones.formato);
     var ey = SC.escalaLineal([0, cortes[cortes.length - 1]], [y1, y0]);
     var paso = equis.length > 1 ? (x1 - x0) / (equis.length - 1) : 0;
     var ex = function (i) {
@@ -601,10 +629,26 @@
     var cada = Math.max(1, Math.ceil(equis.length / 8));
     piezas.push('<g class="sc-eje-x">' + equis.map(function (x, i) {
       if (i % cada) return '';
-      return '<text x="' + ex(i).toFixed(1) + '" y="' + (alto - 8) +
+      return '<text x="' + SC.centroQueEntra(ex(i), x, 10, ancho).toFixed(1) +
+             '" y="' + (alto - 8) +
              '" text-anchor="middle" font-size="10" fill="' + mudo + '">' +
              SC.esc(x) + '</text>';
     }).join('') + '</g>');
+
+    if (refValor !== null) {
+      var yRef = ey(refValor);
+      piezas.push(
+        '<line x1="' + x0 + '" y1="' + yRef.toFixed(1) + '" x2="' + x1 +
+        '" y2="' + yRef.toFixed(1) + '" stroke="' + mudo +
+        '" stroke-width="1.5" stroke-dasharray="6 4"/>' +
+        '<text x="' + x1 + '" y="' + (yRef - 5).toFixed(1) +
+        '" text-anchor="end" font-size="9.5" font-weight="600" fill="' + mudo +
+        // Un contorno del color del fondo: el rotulo cae encima de las barras
+        // de la derecha y, sin esto, gris sobre azul no se lee.
+        '" stroke="' + fondo + '" stroke-width="3" paint-order="stroke' +
+        '">' + SC.esc(ref.etiqueta || 'histórico') + ' ' +
+        SC.esc(SC.fmt(refValor, opciones.formato)) + '</text>');
+    }
 
     conDatos.forEach(function (s, indice) {
       var color = SC.colorDeCampana(s.campana, indice, tema);
@@ -676,6 +720,13 @@
   // El grafico que impide decidir sobre ruido. El `n` va SIEMPRE como etiqueta
   // directa, no solo cuando la muestra es chica: es lo que deja comparar dos
   // barras sin que el largo mienta.
+  //
+  // YA NO SE USA EN EL PANEL. El bigote es correcto y resulto ilegible para
+  // quien no trabaja con intervalos todos los dias —"no los estoy logrando
+  // interpretar"— y un grafico que no se entiende no informa. El panel usa
+  // `barrasSimples`, que dice la incertidumbre con palabras: "sobre 12 ·
+  // muestra chica". Queda disponible para un informe tecnico; si vuelve al
+  // panel, vuelve el mismo problema.
 
   SC.barrasConIC = function (filas, opciones, tema) {
     opciones = opciones || {};
@@ -775,6 +826,511 @@
   // Las respuestas de texto libre del formulario pueden ser larguisimas y en
   // SVG no hay `text-overflow`: una etiqueta de 86 caracteres se sale del area
   // y se monta sobre la barra. Se corta a mano, con elipsis de verdad (…).
+
+  // ── Dispersión ───────────────────────────────────────────────────────────
+  //
+  // Dos medidas contra dos medidas es el unico caso donde una dispersion es la
+  // forma correcta: una barra compara magnitudes, una linea muestra el tiempo,
+  // pero la RELACION entre dos cosas necesita los dos ejes.
+  //
+  // El tamano de la burbuja lleva una tercera medida —el gasto— porque el area
+  // se compara mal pero alcanza para "esta pesa mas que aquella", que es todo
+  // lo que hace falta. El numero exacto va en el tooltip.
+  SC.dispersion = function (puntos, opciones, tema) {
+    opciones = opciones || {};
+    var vivos = (puntos || []).filter(function (p) {
+      return p.x !== null && p.x !== undefined && p.y !== null && p.y !== undefined;
+    });
+    if (!vivos.length) {
+      return '<div class="sc-vacio">Sin datos para «' +
+             SC.esc(opciones.etiqueta || '') + '»</div>';
+    }
+
+    var tinta = SC.PALETA.tinta[tema];
+    var mudo = SC.PALETA.mudo[tema];
+    var grilla = SC.PALETA.grilla[tema];
+    var fondo = SC.PALETA.fondo[tema];
+
+    var ancho = opciones.ancho || 980;
+    var alto = opciones.alto || 300;
+    var x0 = _M.izquierda, x1 = ancho - _M.derecha - 120;
+    var y0 = _M.arriba, y1 = alto - _M.abajo - 10;
+
+    var maxX = Math.max.apply(null, vivos.map(function (p) { return p.x; }));
+    var maxY = Math.max.apply(null, vivos.map(function (p) { return p.y; }));
+    var cortesX = SC.ticks(0, maxX || 1, 4);
+    var cortesY = SC.ticks(0, maxY || 1, 4);
+    var ex = SC.escalaLineal([0, cortesX[cortesX.length - 1]], [x0, x1]);
+    var ey = SC.escalaLineal([0, cortesY[cortesY.length - 1]], [y1, y0]);
+
+    var maxPeso = Math.max.apply(null, vivos.map(function (p) { return p.peso || 0; }));
+    function radio(peso) {
+      if (!maxPeso || !peso) return 6;
+      // Raiz cuadrada: el AREA tiene que ser proporcional al valor, no el radio.
+      // Con el radio proporcional, el doble de gasto se ve cuatro veces mas
+      // grande y la lectura miente.
+      return 6 + Math.sqrt(peso / maxPeso) * 16;
+    }
+
+    var piezas = [];
+
+    piezas.push('<g class="sc-eje-y">' + cortesY.map(function (t) {
+      var y = ey(t);
+      return '<line x1="' + x0 + '" y1="' + y.toFixed(1) + '" x2="' + x1 +
+             '" y2="' + y.toFixed(1) + '" stroke="' + grilla + '" stroke-width="1"/>' +
+             '<text x="' + (x0 - 8) + '" y="' + (y + 4).toFixed(1) +
+             '" text-anchor="end" font-size="10" fill="' + mudo + '">' +
+             SC.esc(SC.fmt(t, opciones.formatoY)) + '</text>';
+    }).join('') + '</g>');
+
+    piezas.push('<g class="sc-eje-x">' + cortesX.map(function (t) {
+      return '<text x="' + ex(t).toFixed(1) + '" y="' + (alto - 14) +
+             '" text-anchor="middle" font-size="10" fill="' + mudo + '">' +
+             SC.esc(SC.fmt(t, opciones.formatoX)) + '</text>';
+    }).join('') + '</g>');
+
+    // Los nombres de los ejes: sin ellos una dispersion es un dibujo de puntos.
+    piezas.push('<text x="' + ((x0 + x1) / 2) + '" y="' + (alto - 1) +
+                '" text-anchor="middle" font-size="10" fill="' + mudo + '">' +
+                SC.esc(opciones.nombreX || '') + '</text>');
+    piezas.push('<text x="12" y="' + ((y0 + y1) / 2) +
+                '" text-anchor="middle" font-size="10" fill="' + mudo +
+                '" transform="rotate(-90 12 ' + ((y0 + y1) / 2) + ')">' +
+                SC.esc(opciones.nombreY || '') + '</text>');
+
+    vivos.forEach(function (p, i) {
+      var color = SC.colorDeCampana(p.etiqueta, i, tema);
+      var cx = ex(p.x), cy = ey(p.y), r = radio(p.peso);
+      piezas.push('<circle cx="' + cx.toFixed(1) + '" cy="' + cy.toFixed(1) +
+                  '" r="' + r.toFixed(1) + '" fill="' + color +
+                  '" fill-opacity="0.75" stroke="' + fondo + '" stroke-width="2">' +
+                  '<title>' + SC.esc(p.etiqueta) + ' · ' +
+                  SC.esc(opciones.nombreX || 'x') + ': ' +
+                  SC.esc(SC.fmt(p.x, opciones.formatoX)) + ' · ' +
+                  SC.esc(opciones.nombreY || 'y') + ': ' +
+                  SC.esc(SC.fmt(p.y, opciones.formatoY)) +
+                  (p.peso ? ' · ' + SC.esc(opciones.nombrePeso || 'peso') + ': ' +
+                   SC.esc(SC.fmt(p.peso, opciones.formatoPeso)) : '') +
+                  '</title></circle>');
+      // Etiqueta directa al lado de cada burbuja: con pocas marcas es mejor que
+      // una leyenda, porque no obliga a ir y volver.
+      piezas.push('<text x="' + (cx + r + 6).toFixed(1) + '" y="' + (cy + 4).toFixed(1) +
+                  '" font-size="10" fill="' + tinta + '">' +
+                  SC.esc(SC.recortar(p.etiqueta, 20)) + '</text>');
+    });
+
+    return '<div class="sc-panel-serie">' +
+           '<div class="sc-titulo" style="color:' + tinta + '">' +
+           SC.esc(opciones.etiqueta || '') + '</div>' +
+           '<svg viewBox="0 0 ' + ancho + ' ' + alto +
+           '" style="width:100%;height:auto" role="img" aria-label="' +
+           SC.esc(opciones.etiqueta || '') + '">' + piezas.join('') + '</svg></div>';
+  };
+
+  // ── Barras divergentes ───────────────────────────────────────────────────
+  //
+  // Para polaridad: falta o sobra, desde un cero central. Una barra comun
+  // obliga a leer el signo en el numero; aca el lado del cero ya lo dice.
+  //
+  // Dos tonos y nada mas, nunca un arcoiris: el ojo lee "de un lado o del
+  // otro", y un tercer color inventaria una tercera categoria.
+  SC.barrasDivergentes = function (filas, opciones, tema) {
+    opciones = opciones || {};
+    var vivas = (filas || []).filter(function (f) {
+      return f.valor !== null && f.valor !== undefined;
+    });
+    if (!vivas.length) {
+      return '<div class="sc-vacio">Sin datos para «' +
+             SC.esc(opciones.etiqueta || '') + '»</div>';
+    }
+
+    var tinta = SC.PALETA.tinta[tema];
+    var mudo = SC.PALETA.mudo[tema];
+    var grilla = SC.PALETA.grilla[tema];
+    // Los colores de estado, que estan reservados justo para esto y nunca se
+    // usan como "serie 4".
+    var positivo = SC.PALETA.mal[tema];     // falta plata: es la mala noticia
+    var negativo = SC.PALETA.bien[tema];
+
+    // Los dos margenes salen del texto mas largo y no de una constante. Con 92
+    // fijos, "Septiembre 2026" se salia del viewBox por la izquierda y Juan
+    // leia "eptiembre 2026". El piso es el ancho de antes: con nombres cortos
+    // el grafico queda igual.
+    var anchoEtiqueta = Math.max(92, Math.ceil(Math.max.apply(null,
+      vivas.map(function (f) { return SC.anchoTexto(f.etiqueta, 11); }))) + 18);
+    var anchoValor = Math.max(96, Math.ceil(Math.max.apply(null,
+      vivas.map(function (f) {
+        return SC.anchoTexto(SC.fmt(f.valor, opciones.formato), 11);
+      }))) + 18);
+    var ancho = opciones.ancho || 900;
+    var altoFila = 30;
+    var alto = vivas.length * altoFila + 26;
+    var x0 = anchoEtiqueta, x1 = ancho - anchoValor;
+    var cx = (x0 + x1) / 2;
+
+    var tope = Math.max.apply(null, vivas.map(function (f) {
+      return Math.abs(f.valor);
+    })) || 1;
+    var media = (x1 - x0) / 2;
+
+    var piezas = ['<line x1="' + cx + '" y1="6" x2="' + cx + '" y2="' +
+                  (alto - 18) + '" stroke="' + grilla + '" stroke-width="1"/>'];
+
+    vivas.forEach(function (f, i) {
+      var y = 10 + i * altoFila;
+      var largo = (Math.abs(f.valor) / tope) * media;
+      var esPos = f.valor >= 0;
+      var x = esPos ? cx : cx - largo;
+      piezas.push('<rect x="' + x.toFixed(1) + '" y="' + y + '" width="' +
+                  Math.max(2, largo).toFixed(1) + '" height="' + (altoFila - 12) +
+                  '" rx="4" fill="' + (esPos ? positivo : negativo) + '">' +
+                  '<title>' + SC.esc(f.etiqueta) + ': ' +
+                  SC.esc(SC.fmt(f.valor, opciones.formato)) + '</title></rect>');
+      piezas.push('<text x="' + (anchoEtiqueta - 10) + '" y="' + (y + 13) +
+                  '" text-anchor="end" font-size="11" fill="' + tinta + '">' +
+                  SC.esc(f.etiqueta) + '</text>');
+      piezas.push('<text x="' + (x1 + 10) + '" y="' + (y + 13) +
+                  '" font-size="11" fill="' + mudo + '">' +
+                  SC.esc(SC.fmt(f.valor, opciones.formato)) + '</text>');
+    });
+
+    piezas.push('<text x="' + cx + '" y="' + (alto - 4) +
+                '" text-anchor="middle" font-size="10" fill="' + mudo + '">' +
+                SC.esc(opciones.cero || '0') + '</text>');
+
+    return '<div class="sc-panel-serie">' +
+           '<div class="sc-titulo" style="color:' + tinta + '">' +
+           SC.esc(opciones.etiqueta || '') + '</div>' +
+           '<svg viewBox="0 0 ' + ancho + ' ' + alto +
+           '" style="width:100%;height:auto" role="img" aria-label="' +
+           SC.esc(opciones.etiqueta || '') + '">' + piezas.join('') + '</svg></div>';
+  };
+
+  // ── Mapa de calor ────────────────────────────────────────────────────────
+  //
+  // Una sola rampa de un solo tono, de transparente a lleno. Nunca un arcoiris:
+  // en un arcoiris el orden de los colores no es el orden de los numeros, asi
+  // que hay que ir a la referencia por cada celda.
+  SC.matriz = function (celdas, opciones, tema) {
+    opciones = opciones || {};
+    var filas = opciones.filas || [];
+    var columnas = opciones.columnas || [];
+    if (!celdas || !celdas.length || !filas.length || !columnas.length) {
+      return '<div class="sc-vacio">Sin datos para «' +
+             SC.esc(opciones.etiqueta || '') + '»</div>';
+    }
+
+    var tinta = SC.PALETA.tinta[tema];
+    var mudo = SC.PALETA.mudo[tema];
+    var grilla = SC.PALETA.grilla[tema];
+    var base = SC.PALETA[tema][0];          // el azul de marca, como unico tono
+
+    // Del rotulo de fila mas largo, con el ancho de antes como piso.
+    var anchoEtiqueta = Math.max(46, Math.ceil(Math.max.apply(null,
+      filas.map(function (f) { return SC.anchoTexto(f.etiqueta, 10); }))) + 12);
+    var lado = opciones.lado || 36;
+    var ancho = anchoEtiqueta + columnas.length * lado + 8;
+    var alto = 24 + filas.length * lado + 8;
+    var tope = opciones.maximo;
+
+    var piezas = [];
+
+    columnas.forEach(function (c, j) {
+      piezas.push('<text x="' + (anchoEtiqueta + j * lado + lado / 2) +
+                  '" y="14" text-anchor="middle" font-size="9" fill="' + mudo +
+                  '">' + SC.esc(c.etiqueta) + '</text>');
+    });
+
+    filas.forEach(function (f, i) {
+      piezas.push('<text x="' + (anchoEtiqueta - 8) + '" y="' +
+                  (24 + i * lado + lado / 2 + 4) + '" text-anchor="end" ' +
+                  'font-size="10" fill="' + mudo + '">' +
+                  SC.esc(f.etiqueta) + '</text>');
+    });
+
+    function indice(lista, clave) {
+      for (var k = 0; k < lista.length; k++) {
+        if (lista[k].clave === clave) return k;
+      }
+      return -1;
+    }
+
+    celdas.forEach(function (celda) {
+      var i = indice(filas, celda.fila);
+      var j = indice(columnas, celda.columna);
+      if (i < 0 || j < 0) return;
+      var x = anchoEtiqueta + j * lado;
+      var y = 24 + i * lado;
+      // El cero queda sin relleno, no como el paso mas claro de la rampa: "no
+      // entro nadie" y "entro poca gente" son cosas distintas y el mapa tiene
+      // que dejar verlas distinto.
+      var intensidad = (!tope || !celda.n) ? 0 : Math.max(0.14, celda.n / tope);
+      piezas.push('<rect x="' + (x + 2) + '" y="' + (y + 2) + '" width="' +
+                  (lado - 4) + '" height="' + (lado - 4) + '" rx="4" fill="' +
+                  base + '" fill-opacity="' + intensidad.toFixed(2) +
+                  '" stroke="' + grilla + '" stroke-width="1">' +
+                  '<title>' + SC.esc(celda.titulo || '') + ': ' + celda.n +
+                  '</title></rect>');
+      if (celda.n) {
+        piezas.push('<text x="' + (x + lado / 2) + '" y="' + (y + lado / 2 + 4) +
+                    '" text-anchor="middle" font-size="10" fill="' + tinta +
+                    '">' + celda.n + '</text>');
+      }
+    });
+
+    return '<div class="sc-panel-serie">' +
+           '<div class="sc-titulo" style="color:' + tinta + '">' +
+           SC.esc(opciones.etiqueta || '') + '</div>' +
+           '<svg viewBox="0 0 ' + ancho + ' ' + alto +
+           '" style="width:100%;height:auto;max-width:' + ancho + 'px" ' +
+           'role="img" aria-label="' + SC.esc(opciones.etiqueta || '') + '">' +
+           piezas.join('') + '</svg></div>';
+  };
+
+
+  // ── Barras agrupadas ─────────────────────────────────────────────────────
+  //
+  // Varias medidas para cada periodo, una al lado de la otra. Es la forma
+  // correcta cuando lo que se compara son MAGNITUDES en categorias discretas
+  // —doce meses, no un continuo— y ademas se quiere comparar las series entre
+  // si dentro de cada periodo.
+  //
+  // Una linea serviria para la tendencia, pero con tres o cuatro puntos una
+  // linea se lee como si faltara algo. Barras, en cambio, se leen bien desde
+  // una sola barra.
+  //
+  // Un solo eje Y, y por eso las series tienen que ser de la misma naturaleza:
+  // leads, demos y ventas son todas cuentas de personas. Meterle el gasto acá
+  // seria mezclar dolares con personas en la misma escala.
+  SC.barrasAgrupadas = function (periodos, series, opciones, tema) {
+    opciones = opciones || {};
+    if (!periodos || !periodos.length || !series || !series.length) {
+      return '<div class="sc-vacio">Sin datos para «' +
+             SC.esc(opciones.etiqueta || '') + '»</div>';
+    }
+
+    var tinta = SC.PALETA.tinta[tema];
+    var mudo = SC.PALETA.mudo[tema];
+    var grilla = SC.PALETA.grilla[tema];
+    var fondo = SC.PALETA.fondo[tema];
+
+    var ancho = opciones.ancho || 980;
+    var alto = opciones.alto || 300;
+    var y0 = _M.arriba, y1 = alto - _M.abajo - 6;
+
+    var todos = [];
+    series.forEach(function (s) {
+      periodos.forEach(function (p) {
+        var v = s.valores[p.clave];
+        if (v !== null && v !== undefined) todos.push(v);
+      });
+    });
+    // La referencia entra al maximo. Si el historico queda por encima de todas
+    // las barras y no se lo contempla, la linea se dibuja fuera del area y el
+    // grafico dice "estamos igual" justo cuando mas distinto esta.
+    var ref = opciones.referencia;
+    var refValor = ref && ref.valor !== null && ref.valor !== undefined
+      ? ref.valor : null;
+    if (refValor !== null) todos.push(refValor);
+
+    var max = todos.length ? Math.max.apply(null, todos) : 0;
+    var cortes = SC.ticks(0, max || 1, 4);
+
+    // El margen izquierdo sale de la etiqueta mas larga del eje y no de una
+    // constante: con un margen fijo, "1.234,56" se sale del viewBox por la
+    // izquierda y el numero aparece cortado.
+    var x0 = SC.margenEjeY(cortes, opciones.formato);
+    var x1 = ancho - _M.derecha;
+    var ey = SC.escalaLineal([0, cortes[cortes.length - 1]], [y1, y0]);
+
+    var anchoGrupo = (x1 - x0) / periodos.length;
+    // Un respiro de 2px entre barras vecinas: pegadas se leen como una sola
+    // barra de otro color.
+    var GAP = 2;
+    // Y un tope: con una sola serie y tres periodos, el 78% del grupo son
+    // barras de 250px de ancho. Una barra asi no se lee como un dato, se lee
+    // como un bloque de color. La guia de visualizacion pide marcas finas.
+    var TOPE = opciones.anchoBarra || 46;
+    var anchoBarra = Math.min(TOPE, Math.max(
+      3, (anchoGrupo * 0.78 - GAP * (series.length - 1)) / series.length));
+
+    // Cada cuantos periodos se escribe la etiqueta de abajo.
+    //
+    // Con un periodo largo se pisan: "Semana 12" mide ~55px y con 27 semanas
+    // cada grupo tiene 34. Se saltean de a N, igual que hace `SC.serie`. El
+    // ancho se estima por la cantidad de caracteres — no hay forma de medir
+    // texto sin un DOM, y este modulo dibuja SVG a mano.
+    var _anchoRotulo = Math.max.apply(null, periodos.map(function (p) {
+      return String(p.etiqueta === undefined ? '' : p.etiqueta).length;
+    })) * 5.6 + 10;
+    var cadaCuantos = Math.max(1, Math.ceil(_anchoRotulo / anchoGrupo));
+
+    var piezas = [];
+
+    piezas.push('<g class="sc-eje-y">' + cortes.map(function (t) {
+      var y = ey(t);
+      return '<line x1="' + x0 + '" y1="' + y.toFixed(1) + '" x2="' + x1 +
+             '" y2="' + y.toFixed(1) + '" stroke="' + grilla + '" stroke-width="1"/>' +
+             '<text x="' + (x0 - 8) + '" y="' + (y + 4).toFixed(1) +
+             '" text-anchor="end" font-size="10" fill="' + mudo + '">' +
+             SC.esc(SC.fmt(t, opciones.formato)) + '</text>';
+    }).join('') + '</g>');
+
+    periodos.forEach(function (p, i) {
+      var centro = x0 + anchoGrupo * (i + 0.5);
+      var anchoTotal = anchoBarra * series.length + GAP * (series.length - 1);
+      var inicio = centro - anchoTotal / 2;
+
+      series.forEach(function (s, j) {
+        var v = s.valores[p.clave];
+        if (v === null || v === undefined) return;
+        var y = ey(v);
+        var x = inicio + j * (anchoBarra + GAP);
+        var h = Math.max(0, y1 - y);
+        piezas.push('<rect x="' + x.toFixed(1) + '" y="' + y.toFixed(1) +
+                    '" width="' + anchoBarra.toFixed(1) + '" height="' +
+                    h.toFixed(1) + '" rx="3" fill="' + s.color +
+                    '" stroke="' + fondo + '" stroke-width="1"><title>' +
+                    SC.esc(p.etiqueta) + ' · ' + SC.esc(s.etiqueta) + ': ' +
+                    SC.esc(SC.fmt(v, opciones.formato)) + '</title></rect>');
+        // El numero arriba de la barra: con pocas barras entra y evita tener
+        // que estimar contra la grilla. Se mide contra el ancho de la barra
+        // —no contra un minimo fijo— porque "100,00" ocupa el triple que "25"
+        // y en un periodo largo se pisaria con el de al lado.
+        var _txt = SC.fmt(v, opciones.formato);
+        if (opciones.numeros !== false && v
+            && _txt.length * 5.2 <= anchoBarra + GAP) {
+          piezas.push('<text x="' + (x + anchoBarra / 2).toFixed(1) + '" y="' +
+                      (y - 4).toFixed(1) + '" text-anchor="middle" ' +
+                      'font-size="9" fill="' + mudo + '">' +
+                      SC.esc(_txt) + '</text>');
+        }
+      });
+
+      if (i % cadaCuantos === 0) {
+        var xRotulo = SC.centroQueEntra(centro, p.etiqueta, 10, ancho);
+        piezas.push('<text x="' + xRotulo.toFixed(1) + '" y="' + (alto - 10) +
+                    '" text-anchor="middle" font-size="10" fill="' + mudo + '">' +
+                    SC.esc(p.etiqueta) + '</text>');
+      }
+    });
+
+    // La linea del historico, arriba de las barras para que no quede tapada.
+    //
+    // Punteada y en tinta muda a proposito: es la vara contra la que se mide,
+    // no un dato mas. Si fuera una linea llena de color competiria con las
+    // barras y el ojo la leeria como otra serie.
+    //
+    // Sin color de "bueno" o "malo": estar arriba es bueno en leads y malo en
+    // costo por lead, y la funcion no sabe cual de los dos esta dibujando.
+    if (refValor !== null) {
+      var yRef = ey(refValor);
+      piezas.push(
+        '<line x1="' + x0 + '" y1="' + yRef.toFixed(1) + '" x2="' + x1 +
+        '" y2="' + yRef.toFixed(1) + '" stroke="' + mudo +
+        '" stroke-width="1.5" stroke-dasharray="6 4"/>' +
+        '<text x="' + x1 + '" y="' + (yRef - 5).toFixed(1) +
+        '" text-anchor="end" font-size="9.5" font-weight="600" fill="' + mudo +
+        // Un contorno del color del fondo: el rotulo cae encima de las barras
+        // de la derecha y, sin esto, gris sobre azul no se lee.
+        '" stroke="' + fondo + '" stroke-width="3" paint-order="stroke' +
+        '">' + SC.esc(ref.etiqueta || 'histórico') + ' ' +
+        SC.esc(SC.fmt(refValor, opciones.formato)) + '</text>');
+    }
+
+    // Una sola serie no lleva leyenda: el titulo ya la nombra, y un recuadro
+    // con un solo item repite el titulo y se lee como si faltaran los demas.
+    var leyenda = series.length < 2 ? '' : series.map(function (s) {
+      return '<span class="sc-leyenda-item">' +
+             '<span class="sc-leyenda-punto" style="background:' + s.color +
+             '"></span>' + SC.esc(s.etiqueta) + '</span>';
+    }).join('');
+
+    return '<div class="sc-panel-serie">' +
+           '<div class="sc-titulo" style="color:' + tinta + '">' +
+           SC.esc(opciones.etiqueta || '') + '</div>' +
+           '<svg viewBox="0 0 ' + ancho + ' ' + alto +
+           '" style="width:100%;height:auto" role="img" aria-label="' +
+           SC.esc(opciones.etiqueta || '') + '">' + piezas.join('') + '</svg>' +
+           (leyenda ? '<div class="sc-leyenda">' + leyenda + '</div>' : '') +
+           '</div>';
+  };
+
+  // Barras simples de una sola serie, ordenadas de mayor a menor.
+  //
+  // Reemplaza a `barrasConIC` en el panel: el intervalo de confianza es
+  // correcto y es ilegible para quien no lo usa todos los dias, y un grafico
+  // que no se entiende no informa. La incertidumbre no se tira: se dice con
+  // palabras —"n=12, muestra chica"— al lado del numero.
+  SC.barrasSimples = function (filas, opciones, tema) {
+    opciones = opciones || {};
+    var vivas = (filas || []).filter(function (f) {
+      return f.valor !== null && f.valor !== undefined;
+    });
+    if (!vivas.length) {
+      return '<div class="sc-vacio">Sin datos para «' +
+             SC.esc(opciones.etiqueta || '') + '»</div>';
+    }
+    vivas = vivas.slice().sort(function (a, b) { return b.valor - a.valor; });
+
+    var tinta = SC.PALETA.tinta[tema];
+    var mudo = SC.PALETA.mudo[tema];
+    var pista = SC.PALETA.grilla[tema];
+
+    var tope = Math.max.apply(null, vivas.map(function (f) { return f.valor; })) || 1;
+
+    return '<div class="sc-panel-serie">' +
+           '<div class="sc-titulo" style="color:' + tinta + '">' +
+           SC.esc(opciones.etiqueta || '') + '</div>' +
+           // La ayuda va DEBAJO del titulo: primero que grafico es, despues
+           // como leerlo. Al reves se lee la explicacion de algo que todavia
+           // no tiene nombre.
+           (opciones.ayuda
+             ? '<div class="sc-barras-ayuda" style="color:' + mudo + '">' +
+               SC.esc(opciones.ayuda) + '</div>'
+             : '') +
+           '<div class="sc-barras">' + vivas.map(function (f, i) {
+             var pct = (f.valor / tope) * 100;
+             var color = f.color || SC.colorDeCampana(f.etiqueta, i, tema);
+             return '<div class="sc-barra-fila">' +
+                    '<span class="sc-barra-nom">' + SC.esc(f.etiqueta) + '</span>' +
+                    '<span class="sc-barra-pista" style="background:' + pista + '">' +
+                    '<span class="sc-barra-lleno" style="width:' + pct.toFixed(1) +
+                    '%;background:' + color + '"></span></span>' +
+                    '<span class="sc-barra-val">' +
+                    SC.esc(SC.fmt(f.valor, opciones.formato)) +
+                    (f.nota ? '<span class="sc-barra-nota">' + SC.esc(f.nota) +
+                     '</span>' : '') + '</span></div>';
+           }).join('') + '</div></div>';
+  };
+
+  // Cuanto mide un texto en el SVG, estimado. No hay DOM para medirlo, asi que
+  // va por caracteres: 0,62 del tamano de letra por caracter cubre las
+  // mayusculas y los numeros de Inter con margen. Estimar de mas deja un poco
+  // de aire; estimar de menos corta el texto, que es el bug que esto evita.
+  SC.anchoTexto = function (texto, tamano) {
+    var t = String(texto === null || texto === undefined ? '' : texto);
+    return t.length * tamano * 0.62;
+  };
+
+  // El centro de un rotulo con text-anchor="middle", corrido lo justo para que
+  // no se salga del viewBox. Sin esto el ultimo mes de un eje X largo se corta
+  // por la derecha.
+  SC.centroQueEntra = function (centro, texto, tamano, ancho) {
+    var mitad = SC.anchoTexto(texto, tamano) / 2;
+    if (mitad * 2 >= ancho) return ancho / 2;
+    return Math.min(Math.max(centro, mitad), ancho - mitad);
+  };
+
+  // El margen izquierdo de un eje Y, a partir del rotulo mas largo. Con un
+  // margen fijo, "12.345,00" se sale por la izquierda.
+  SC.margenEjeY = function (cortes, formato) {
+    var largo = Math.max.apply(null, cortes.map(function (t) {
+      return SC.anchoTexto(SC.fmt(t, formato), 10);
+    }));
+    return Math.max(_M.izquierda, Math.ceil(largo) + 14);
+  };
+
   SC.recortar = function (texto, tope) {
     var t = String(texto === null || texto === undefined ? '' : texto);
     return t.length <= tope ? t : t.slice(0, tope - 1).trimEnd() + '…';

@@ -405,7 +405,26 @@ def meta_sync_planilla():
         f"{resumen['sin_cambio']} sin cambio, {resumen['sin_match']} sin match, "
         f"{resumen['no_retrocede']} no retroceden, {resumen['color_ignorado']} sin color util"
     )
-    return jsonify({"ok": True, "dry": dry, **resumen})
+
+    # El Registro de demos va DESPUES y aparte: si se cae, los estados ya
+    # quedaron aplicados y la respuesta los tiene que seguir diciendo. El
+    # detalle del error va al log y no a la respuesta, que la lee un script
+    # pegado a una planilla ajena.
+    try:
+        from services.planilla_semaforo import sincronizar_demos
+        demos = sincronizar_demos(_db(), filas, dry_run=dry)
+        logger.info(
+            f"Sync planilla demos{' (dry)' if dry else ''}: {demos['creadas']} creadas, "
+            f"{demos['actualizadas']} actualizadas, {demos['borradas']} borradas, "
+            f"{demos['sin_cambio']} sin cambio, {demos['sin_match']} sin match, "
+            f"{demos['mes_ignorado']} con pestaña que no es mes, "
+            f"{demos['con_presupuesto_no_se_borra']} con presupuesto no se borran"
+        )
+    except Exception as e:
+        logger.error(f"Sync planilla demos fallo (los estados si se aplicaron): "
+                     f"{_redact_secrets(str(e))}")
+        demos = {"ok": False, "error": "No se pudo sincronizar el registro de demos"}
+    return jsonify({"ok": True, "dry": dry, **resumen, "demos": demos})
 
 
 @meta_bp.route("/api/meta/import-leads", methods=["POST"])

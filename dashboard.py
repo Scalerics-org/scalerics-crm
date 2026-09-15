@@ -26,6 +26,7 @@ from routes.projects import projects_bp
 from routes.preclientes import preclientes_bp
 from routes.linkedin import linkedin_bp
 from routes.finanzas import finanzas_bp
+from routes.simulador import simulador_bp
 from routes.web import web_bp
 from routes.marketing import marketing_bp
 from services.auth import is_admin
@@ -396,6 +397,10 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   --ambar-borde:#ca8a04;
   --azul-tinte:#0f1f35;
   --sombra:rgba(0,0,0,.4);
+  --semaforo-verde:#00ff00;
+  --semaforo-celeste:#00ffff;
+  --semaforo-violeta:#ff00ff;
+  --semaforo-venta:#38761d;
 }
 body.light{
   --fondo:#f8fafc;
@@ -426,6 +431,10 @@ body.light{
   --ambar-borde:#fde047;
   --azul-tinte:#e0f2fe;
   --sombra:rgba(0,0,0,.12);
+  --semaforo-verde:#00ff00;
+  --semaforo-celeste:#00ffff;
+  --semaforo-violeta:#ff00ff;
+  --semaforo-venta:#38761d;
 }
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:100vh;display:flex}
@@ -482,7 +491,6 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
   .cal-event-chip.origen-google{background:#10b981!important}
   .cal-event-chip.origen-calendly{background:#f59e0b!important}
   .cal-chip-acts{display:none!important}
-  #cal-day-events-mobile{display:block}
   /* La vista semanal se arrastra con el mouse: en touch el drag de HTML5 no
      dispara, asi que en el celular solo queda el mes. */
   .cal-view-toggle{display:none!important}
@@ -537,9 +545,6 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
   .cp-tabs{overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;flex-shrink:0}
   .cp-tabs::-webkit-scrollbar{display:none}
   .cp-tab{padding:10px 14px;font-size:.76rem;white-space:nowrap;flex-shrink:0}
-  /* Kanban: scroll táctil */
-  .kanban-board{-webkit-overflow-scrolling:touch;scroll-snap-type:x mandatory;padding-bottom:24px}
-  .kanban-col{scroll-snap-align:start}
 }
 @media(max-width:480px){
   .stats{grid-template-columns:1fr}
@@ -603,40 +608,72 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .cb{width:15px;height:15px;accent-color:#0088cc;cursor:pointer}
 .table-header{display:grid;grid-template-columns:36px 2fr 1.2fr 1.8fr 1.5fr;padding:12px 20px;background:var(--fondo-hundido);border-bottom:1px solid var(--borde)}
 .table-row{display:grid;grid-template-columns:36px 2fr 1.2fr 1.8fr 1.5fr;padding:13px 20px;border-bottom:1px solid var(--borde);align-items:center;transition:background .1s}
-/* Tablero de pre-clientes: una columna por etapa. La tabla plana anterior
-   obligaba a leer fila por fila para saber cuantos habia en cada etapa. */
-.pre-board{display:flex;gap:12px;overflow-x:auto;padding-bottom:12px;align-items:flex-start}
-.pre-col{background:#111827;border:1px solid #1e293b;border-radius:12px;min-width:230px;width:230px;flex-shrink:0;display:flex;flex-direction:column;max-height:calc(100vh - 250px)}
-.pre-col-head{padding:11px 13px 9px;border-bottom:1px solid #1e293b;display:flex;align-items:center;justify-content:space-between;gap:6px;flex-shrink:0}
-.pre-col-title{font-size:.72rem;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.4px}
-.pre-count{background:#1e293b;color:#94a3b8;border-radius:999px;padding:1px 8px;font-size:.7rem;font-weight:700;flex-shrink:0}
-.pre-cards{padding:9px;overflow-y:auto;display:flex;flex-direction:column;gap:7px}
-.pre-card{background:#0a0f1a;border:1px solid #1e293b;border-radius:8px;padding:9px 11px;cursor:pointer;transition:border-color .1s}
-.pre-card:hover{border-color:#0088cc}
-.pre-card-name{font-size:.84rem;font-weight:600;color:#e2e8f0;margin-bottom:2px;line-height:1.3}
-.pre-card-meta{font-size:.71rem;color:#64748b}
-.pre-card-demo{font-size:.7rem;color:#34d399;margin-top:5px}
-.pre-empty{color:#475569;font-size:.74rem;text-align:center;padding:12px 0}
-body.light .pre-col{background:#f8fafc;border-color:#e2e8f0}
-body.light .pre-card{background:#fff;border-color:#e2e8f0}
-body.light .pre-card-name{color:#0f172a}
 
-/* Registro de demos */
-.demo-row{background:#111827;border:1px solid #1e293b;border-radius:10px;padding:13px 17px;margin-bottom:9px}
+/* Registro de demos: agrupado por mes, con el presupuesto de cada una.
+   Solo tokens: el tema claro sale solo, sin reglas body.light al lado. */
+.demo-filtros{flex-wrap:wrap}
+.demo-mes{margin-bottom:22px}
+.demo-mes-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;padding:0 2px 8px;margin-bottom:10px;border-bottom:1px solid var(--borde)}
+.demo-mes-titulo{font-size:1rem;font-weight:700;color:var(--texto-fuerte);margin:0}
+.demo-mes-cuenta{background:var(--azul-tinte);color:var(--azul-claro);border-radius:999px;padding:1px 9px;font-size:.72rem;font-weight:700}
+.demo-mes-presu{font-size:.74rem;color:var(--texto-debil);margin-left:auto}
+.demo-row{background:var(--superficie);border:1px solid var(--borde);border-radius:10px;padding:13px 17px;margin-bottom:9px}
+.demo-row-sin{border-left:3px solid var(--ambar)}
 .demo-row-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px}
-.demo-num{background:#0088cc;color:#fff;border-radius:999px;padding:1px 9px;font-size:.71rem;font-weight:700}
-.demo-cliente{font-weight:650;color:#e2e8f0;cursor:pointer}
-.demo-cliente:hover{color:#33aadd}
-.demo-meta{font-size:.74rem;color:#64748b;margin-left:auto}
-.demo-texto{font-size:.85rem;color:#94a3b8;line-height:1.5;white-space:pre-wrap}
-.demo-del{background:none;border:none;color:#475569;cursor:pointer;font-size:.9rem;padding:0 4px}
-.demo-del:hover{color:#f87171}
-body.light .demo-row{background:#fff;border-color:#e2e8f0}
-body.light .demo-cliente{color:#0f172a}
+.demo-num{background:var(--azul-tinte);color:var(--azul-claro);border-radius:999px;padding:1px 9px;font-size:.71rem;font-weight:700}
+.demo-cliente{font-weight:650;color:var(--texto-fuerte);cursor:pointer}
+.demo-cliente:hover{color:var(--azul-claro)}
+.demo-meta{font-size:.74rem;color:var(--texto-debil);margin-left:auto}
+.demo-texto{font-size:.85rem;color:var(--texto-tenue);line-height:1.5;white-space:pre-wrap}
+.demo-del{background:none;border:none;color:var(--texto-debil);cursor:pointer;font-size:.9rem;padding:0 4px}
+.demo-del:hover{color:var(--rojo-texto)}
+.demo-presu-fila{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px}
+.demo-presu{display:inline-block;border-radius:999px;padding:3px 10px;font-size:.75rem;font-weight:600;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-decoration:none;box-sizing:border-box}
+.demo-presu-si{background:var(--verde-tinte);color:var(--verde-texto)}
+.demo-presu-si:hover{text-decoration:underline}
+.demo-presu-no{background:var(--ambar-tinte);color:var(--ambar)}
+.demo-presu-accion{background:var(--relleno);border:1px solid var(--borde);color:var(--texto-tenue);border-radius:6px;padding:3px 10px;font-size:.74rem;font-family:inherit;cursor:pointer}
+.demo-presu-accion:hover{color:var(--texto);border-color:var(--azul)}
+.demo-presu-adjuntar{color:var(--azul-claro)}
+.demo-presu-input{display:none}
+.demo-aviso{padding:32px 16px;text-align:center;color:var(--texto-debil);font-size:.88rem}
+.demo-aviso-error{color:var(--rojo-texto)}
+.demo-nav-mes{display:flex;align-items:center;gap:6px}
+.demo-nav-mes span{font-size:.82rem;font-weight:700;color:var(--texto);min-width:130px;text-align:center}
+.demo-nav-mes .cal-nav-btn:disabled{opacity:.4;cursor:default;pointer-events:none}
+.demo-resumen-estados{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;font-size:.78rem;color:var(--texto-tenue);margin:-2px 2px 14px}
+.demo-resumen-estado{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.demo-resumen-sep{color:var(--texto-debil)}
+.demo-estado{display:inline-flex;align-items:center;gap:6px;background:var(--relleno);color:var(--texto);border:1px solid var(--borde);border-radius:999px;padding:1px 9px 1px 7px;font-size:.72rem;font-weight:600;white-space:nowrap}
+.demo-estado-mano{color:var(--texto-tenue);padding-left:9px}
+.demo-punto{width:9px;height:9px;border-radius:50%;flex:none;box-shadow:0 0 0 1px var(--borde-fuerte)}
+.demo-punto-agendada{background:var(--semaforo-verde)}
+.demo-punto-realizada{background:var(--semaforo-celeste)}
+.demo-punto-no_cerro{background:var(--semaforo-violeta)}
+.demo-punto-venta{background:var(--semaforo-venta)}
+@media (max-width:768px){
+  .demo-row{padding:12px 13px}
+  .demo-meta{margin-left:0;width:100%}
+  .demo-mes-presu{margin-left:0}
+}
 
 /* Tabla de clientes activos: grilla propia, no reusa .no-cb, porque sus reglas
    mobile esconden la 4a columna — que aca es Mantenimiento, no Notas. */
-.table-header.tbl-cli,.table-row.tbl-cli{grid-template-columns:2fr 1.1fr 1.15fr 1.15fr 1.15fr 1fr}
+.table-header.tbl-cli,.table-row.tbl-cli{grid-template-columns:1.8fr 1fr 1.25fr 1.1fr 1.1fr 1.1fr .9fr}
+/* Lo que pago cada cliente: se lee sin abrir la ficha y se edita en el lugar. */
+.cli-monto{background:none;border:1px solid transparent;border-radius:6px;padding:4px 6px;font-family:inherit;font-size:.84rem;font-weight:650;color:var(--texto-fuerte);cursor:pointer;text-align:left;white-space:nowrap;font-variant-numeric:tabular-nums;max-width:100%}
+.cli-monto:hover{border-color:var(--borde-fuerte)}
+.cli-monto:focus-visible{outline:2px solid var(--azul);outline-offset:1px}
+.cli-monto.vacio{color:var(--texto-debil);font-weight:500;font-size:.76rem;border:1px dashed var(--borde)}
+.cli-monto-mon{font-size:.66rem;font-weight:700;color:var(--texto-debil);letter-spacing:.4px;margin-right:4px}
+.cli-monto-edit{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+.cli-monto-input{background:var(--superficie-honda);border:1px solid var(--borde);color:var(--texto);border-radius:6px;padding:4px 6px;font-size:.78rem;font-family:inherit;width:78px;min-width:0}
+.cli-monto-sel{background:var(--superficie-honda);border:1px solid var(--borde);color:var(--texto);border-radius:6px;padding:4px 2px;font-size:.74rem;font-family:inherit;cursor:pointer}
+.cli-monto-input:focus,.cli-monto-sel:focus{border-color:var(--azul);outline:none}
+.cli-monto-ok,.cli-monto-x{border-radius:6px;padding:4px 8px;font-size:.74rem;font-weight:600;font-family:inherit;cursor:pointer}
+.cli-monto-ok{background:var(--azul-tinte);border:1px solid var(--azul);color:var(--azul-claro)}
+.cli-monto-x{background:var(--relleno);border:1px solid var(--borde);color:var(--texto-tenue)}
+.cli-monto-ok:disabled,.cli-monto-x:disabled{opacity:.5;cursor:default}
 .resp-sel{background:var(--superficie-honda);border:1px solid var(--borde);color:var(--texto);border-radius:6px;padding:4px 6px;font-size:.76rem;font-family:inherit;width:100%;max-width:150px;cursor:pointer}
 .resp-sel:hover{border-color:var(--borde-fuerte)}
 .resp-sel.vacante{color:var(--texto-debil)}
@@ -644,7 +681,11 @@ body.light .demo-cliente{color:#0f172a}
   .table-header.tbl-cli{display:none}
   .table-row.tbl-cli{display:flex;flex-direction:column;align-items:stretch;gap:7px;grid-template-columns:none}
   .resp-sel{max-width:none}
-  .pre-col{max-height:none}
+  /* En el celular el monto es una fila entera, con blancos de dedo, y el campo
+     en 16px para que iOS no haga zoom al tocarlo. */
+  .cli-monto{width:100%;min-height:40px;padding:8px 10px;white-space:normal}
+  .cli-monto-input{flex:1;width:auto;min-height:40px;font-size:16px}
+  .cli-monto-sel,.cli-monto-ok,.cli-monto-x{min-height:40px}
 }
 .table-header.no-cb{grid-template-columns:2fr 1.1fr 1fr 1.8fr 1.2fr}
 .table-row.no-cb{grid-template-columns:2fr 1.1fr 1fr 1.8fr 1.2fr}
@@ -814,6 +855,36 @@ body.light .demo-cliente{color:#0f172a}
 .cal-today-btn{background:#161b27;border:1px solid #1e293b;color:#94a3b8;padding:7px 14px;border-radius:8px;cursor:pointer;font-size:.76rem;font-weight:700;font-family:'Inter',sans-serif;line-height:1;transition:background .15s,color .15s,border-color .15s}
 .cal-today-btn:hover{background:rgba(0,136,204,.12);border-color:rgba(0,136,204,.4);color:#33aadd}
 .cal-leyenda{display:flex;gap:14px;align-items:center;margin-bottom:10px;font-size:.64rem;color:#475569;flex-wrap:wrap}
+/* Reuniones del dia tocado, solo en el celular. La visibilidad la manda el CSS
+   y no un style inline: el inline le gana a la regla del @media y el listado
+   quedaba oculto para siempre. Las dos reglas van juntas y en este orden.
+   OJO con el espacio despues de la llave: `{` pegado a `#` abre un comentario
+   de Jinja (render_template_string) y la pagina entera da 500. Paso en v204. */
+#cal-day-events-mobile{display:none;margin-top:12px;padding:0 4px}
+@media(max-width:768px){ #cal-day-events-mobile{display:block} }
+.cal-cell.sel-mobile{outline:2px solid var(--azul);outline-offset:-2px}
+.cal-mobile-vacio{color:var(--texto-debil);font-size:.78rem;padding:8px 0}
+.cal-mobile-ev{background:var(--superficie);border:1px solid var(--borde);border-radius:10px;padding:12px;margin-bottom:8px}
+.cal-mobile-ev-titulo{font-size:.82rem;font-weight:600;color:var(--texto-fuerte)}
+.cal-mobile-ev-hora{font-size:.72rem;color:var(--azul-claro);margin-top:3px}
+.cal-mobile-ev-aviso{font-size:.7rem;color:var(--texto-debil);margin-top:3px}
+/* Pipeline Notion: con quien del CRM esta conectada cada ficha */
+.nc-vinculo{display:inline-flex;align-items:center;gap:4px;margin-top:8px;max-width:100%;padding:4px 10px;border-radius:999px;border:1px solid var(--borde);background:var(--relleno);color:var(--texto);font-size:.72rem;font-family:inherit;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nc-vinculo-falta{background:var(--ambar-tinte);color:var(--ambar);border-color:var(--ambar-borde)}
+.nc-vinculo-buscar{width:100%;margin-bottom:10px}
+.nc-vinculo-resultados{display:flex;flex-direction:column;gap:6px;max-height:280px;overflow-y:auto}
+.nc-vinculo-opcion{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;min-height:44px;padding:8px 12px;border-radius:8px;border:1px solid var(--borde);background:var(--relleno);color:var(--texto-fuerte);font-family:inherit;text-align:left;cursor:pointer}
+.nc-vinculo-opcion:hover{background:var(--hover)}
+.nc-vinculo-nombre{font-size:.84rem;font-weight:600}
+.nc-vinculo-sub{font-size:.72rem;color:var(--texto-debil)}
+.nc-vinculo-vacio{font-size:.78rem;color:var(--texto-debil);padding:6px 2px}
+.nc-vinculo-error{font-size:.78rem;color:var(--rojo-texto);min-height:1em;margin-top:8px}
+.nc-vinculo-acciones{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}
+.nc-vinculo-acciones [hidden]{display:none}
+.cal-mobile-acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.cal-mobile-act{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 16px;border-radius:10px;border:1px solid var(--borde);background:var(--relleno);color:var(--texto-fuerte);font-size:.78rem;font-weight:600;font-family:inherit;text-decoration:none;cursor:pointer}
+.cal-mobile-act-unirse{color:var(--verde-texto)}
+.cal-mobile-act-borrar{color:var(--rojo-texto)}
 .cal-leyenda span{display:flex;align-items:center;gap:5px}
 .cal-leyenda i{width:8px;height:8px;border-radius:2px;display:inline-block}
 .cal-grid{border:1px solid #1e293b;border-radius:14px}
@@ -1037,8 +1108,6 @@ body.light .cal-mob-vacio{color:#94a3b8}
 body.light #nav-meta .nav-icon{stroke:#c13584}
 /* ── Nav icon colors ──────────────────────────────────────────────────────── */
 #nav-cola .nav-icon{stroke:#60a5fa}
-#nav-seguimientos .nav-icon{stroke:#f59e0b}
-#nav-pipeline .nav-icon{stroke:#10b981}
 #nav-clientes .nav-icon{stroke:#a78bfa}
 #nav-tasks .nav-icon{stroke:#14b8a6}
 #nav-wa .nav-icon{stroke:#25d366}
@@ -1049,8 +1118,6 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 .nav-item.active .nav-icon{opacity:1}
 /* active item keeps its color but brighter */
 #nav-cola.active .nav-icon{stroke:#93c5fd}
-#nav-seguimientos.active .nav-icon{stroke:#fcd34d}
-#nav-pipeline.active .nav-icon{stroke:#34d399}
 #nav-clientes.active .nav-icon{stroke:#c4b5fd}
 #nav-tasks.active .nav-icon{stroke:#2dd4bf}
 #nav-wa.active .nav-icon{stroke:#4ade80}
@@ -1059,8 +1126,6 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-activity.active .nav-icon{stroke:#94a3b8}
 /* light mode — slightly darker tones */
 body.light #nav-cola .nav-icon{stroke:#2563eb}
-body.light #nav-seguimientos .nav-icon{stroke:#d97706}
-body.light #nav-pipeline .nav-icon{stroke:#059669}
 body.light #nav-clientes .nav-icon{stroke:#7c3aed}
 body.light #nav-tasks .nav-icon{stroke:#0d9488}
 body.light #nav-wa .nav-icon{stroke:#16a34a}
@@ -1183,32 +1248,18 @@ body.light .btn-icon{stroke:currentColor}
 .outcome-interested:hover{background:#0f2a1a;border-color:#4ade80;color:#4ade80}
 .outcome-meeting:hover{background:#0d1f35;border-color:#3b82f6;color:#60a5fa}
 .outcome-contacted:hover{background:#1a2d3d;border-color:#0088cc;color:#0088cc}
-/* ── Callback urgency ─────────────────────────────────────────────────────── */
-.cb-overdue,body.light .cb-overdue{background:var(--rojo-tinte);border-color:var(--rojo-borde) !important}
-.cb-today,body.light .cb-today{background:var(--ambar-tinte);border-color:var(--ambar-borde) !important}
-.cb-date-pill{display:inline-block;padding:2px 8px;border-radius:99px;font-size:.72rem;font-weight:600}
-.cb-date-overdue{background:var(--rojo-tinte);color:var(--rojo-texto)}
-.cb-date-today{background:var(--ambar-tinte);color:var(--ambar)}
-.cb-date-future{background:var(--azul-tinte);color:var(--azul-claro)}
 /* ── Kanban ───────────────────────────────────────────────────────────────── */
-/* Tablero de leads: su HTML (#kanban-board) ya no existe, pero .kanban-col,
-   .kanban-card y .kanban-count los redefine el tablero de Tareas mas abajo, y
-   lo que ese no pisa sigue valiendo. Los colores van iguales en los dos. */
-.kanban-board{display:flex;gap:14px;overflow-x:auto;padding-bottom:20px;align-items:flex-start;min-height:calc(100vh - 180px)}
+/* Base del tablero, del viejo tablero de leads (su HTML y su JS ya no existen).
+   .kanban-col, .kanban-card y .kanban-count los redefine el bloque de Tareas
+   mas abajo, y lo que ese no pisa sigue valiendo. Los colores van iguales. */
 .kanban-col{background:var(--fondo);border:1px solid var(--borde);border-radius:12px;min-width:220px;width:220px;flex-shrink:0;display:flex;flex-direction:column;max-height:calc(100vh - 200px)}
-.kanban-col-header{padding:12px 14px 10px;border-bottom:1px solid #1e293b;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
-.kanban-col-title{font-size:.78rem;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.6px}
 .kanban-count{background:var(--relleno);color:var(--texto-debil);font-size:.68rem;font-weight:700;padding:2px 7px;border-radius:99px}
 .kanban-cards{padding:8px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:8px}
 .kanban-col.drag-over{background:var(--hover);border-color:var(--azul)}
 .kanban-card{background:var(--superficie);border:1px solid var(--borde);border-radius:10px;padding:12px;cursor:pointer;transition:border-color .15s,transform .1s}
 .kanban-card:hover{border-color:var(--borde-fuerte);transform:translateY(-1px)}
 .kanban-card.dragging{opacity:.4;transform:rotate(1deg)}
-.kanban-card-name{font-size:.85rem;font-weight:600;color:#f1f5f9;margin-bottom:4px}
 .kanban-card-meta{font-size:.72rem;color:var(--texto-debil);margin-bottom:6px}
-.kanban-card-phone{font-size:.72rem;color:#0088cc}
-.kanban-card-rating{font-size:.68rem;color:#fbbf24}
-.kanban-empty{color:#334155;font-size:.78rem;text-align:center;padding:20px 10px}
 
 /* ── Token health panel ───────────────────────────────────────────────────── */
 .token-health{margin-bottom:20px}
@@ -1273,6 +1324,13 @@ body.light .btn-icon{stroke:currentColor}
 .kanban-card-title{font-size:.82rem;color:var(--texto);line-height:1.35;margin-bottom:6px}
 .kanban-card-meta{display:flex;flex-wrap:wrap;gap:5px;align-items:center}
 .kanban-card-who{font-size:.7rem;color:var(--texto-debil)}
+/* Pipeline Notion. En touch las fichas no se arrastran (el drag de HTML5 no
+   dispara): no muestran la manito y la ayuda del panel lo dice. La ficha que
+   espera la respuesta de Notion se ve atenuada y no se puede volver a tocar. */
+.kanban-card.nc-fija{cursor:default}
+.kanban-card.nc-guardando{opacity:.55;pointer-events:none}
+.nc-ayuda-touch{display:none}
+@media (hover:none),(pointer:coarse){ .nc-ayuda-mouse{display:none} .nc-ayuda-touch{display:inline} }
 .task-notion-badge:hover{color:var(--texto)}
 .task-row.in-progress{border-left:3px solid var(--azul)}
 .task-row.overdue{border-left:3px solid var(--rojo)}
@@ -1337,6 +1395,48 @@ body.light .mobile-header-title{color:#0f172a}
 .sc-hall-n{font-size:.8rem;font-weight:700;color:var(--rotulo);font-variant-numeric:tabular-nums;min-width:18px}
 .sc-hall-tit{font-size:.84rem;font-weight:700;color:var(--texto);margin-bottom:4px}
 .sc-hall-cuerpo{font-size:.79rem;line-height:1.55;color:var(--texto-tenue)}
+/* Las piezas de la pauta, mes por mes: una tarjeta por anuncio con su pieza.
+   auto-fill y no auto-fit: con una sola pieza en el mes, auto-fit estira esa
+   tarjeta a todo el ancho y la foto queda gigante.
+   Las que ya no estan activas se ven IGUAL que las activas, sin gris ni
+   transparencia: Juan pidio verlas ("que no me aparezcan en gris sin que se
+   vea"). Las separa el titulo de cada grupo, no el tono. */
+.sc-piezas-nav{margin:2px 0 14px;flex-wrap:wrap}
+.sc-piezas-grupo{font-size:.86rem;font-weight:700;color:var(--texto);margin:20px 0 10px}
+.sc-piezas-grupo span{font-weight:600;color:var(--rotulo);margin-left:4px}
+.sc-piezas-aviso{font-size:.76rem;line-height:1.55;color:var(--texto-tenue);margin:0 0 12px}
+.sc-anuncios{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}
+.sc-anun{display:flex;flex-direction:column;background:var(--fondo-hundido);border:1px solid var(--borde);border-radius:12px;overflow:hidden}
+/* Alto fijo y `cover`: las piezas vienen 1080x1350 y 1080x1920 mezcladas, y
+   sin esto cada tarjeta mide distinto y la grilla queda en escalera. */
+.sc-anun-foto{width:100%;height:180px;object-fit:cover;object-position:top;display:block;background:var(--hover)}
+.sc-anun-sinfoto{height:180px;display:flex;align-items:center;justify-content:center;text-align:center;font-size:.72rem;line-height:1.5;color:var(--rotulo);background:var(--hover);padding:0 18px}
+.sc-anun-cuerpo{padding:12px 14px 14px;display:flex;flex-direction:column;gap:8px;flex:1}
+.sc-anun-nom{font-size:.82rem;font-weight:700;color:var(--texto);line-height:1.35;overflow-wrap:anywhere}
+.sc-anun-fechas{font-size:.68rem;color:var(--rotulo)}
+.sc-anun-datos{display:grid;grid-template-columns:repeat(3,1fr);gap:8px 10px;padding:9px 0;border-top:1px solid var(--borde);border-bottom:1px solid var(--borde)}
+.sc-anun-dato{display:flex;flex-direction:column;gap:2px;min-width:0}
+.sc-anun-dato span{font-size:.62rem;letter-spacing:.03em;text-transform:uppercase;color:var(--rotulo)}
+.sc-anun-dato b{font-size:.92rem;color:var(--texto);font-variant-numeric:tabular-nums}
+/* El estado va con palabra Y con color. El borde solo seria color solo, que es
+   justo lo que no puede distinguir quien no ve bien los colores. */
+.sc-anun-reco{font-size:.75rem;line-height:1.55;color:var(--texto-tenue);border-left:3px solid var(--rotulo);padding-left:10px;margin-top:auto}
+.sc-anun-reco b{color:var(--texto)}
+.sc-anun-reco[data-accion="apagar"]{border-left-color:var(--rojo)}
+.sc-anun-reco[data-accion="ajustar"],.sc-anun-reco[data-accion="renovar"]{border-left-color:var(--ambar)}
+.sc-anun-reco[data-accion="subir"]{border-left-color:var(--verde)}
+.sc-comparacion{display:grid;gap:5px;font-size:.8rem;line-height:1.55;color:var(--texto);background:var(--fondo-hundido);border:1px solid var(--borde);border-radius:10px;padding:11px 14px;margin-bottom:16px}
+.sc-barras{display:grid;gap:7px;margin-top:8px}
+.sc-barras-ayuda{font-size:.72rem;line-height:1.5;margin:2px 0 4px;max-width:74ch}
+/* Varios graficos seguidos dentro del mismo bloque: sin esto se pegan y se
+   leen como uno solo con el titulo en el medio. */
+.sc-panel-serie+.sc-panel-serie{margin-top:24px;padding-top:20px;border-top:1px solid var(--borde)}
+.sc-barra-fila{display:grid;grid-template-columns:minmax(120px,1.1fr) 3fr auto;gap:10px;align-items:center}
+.sc-barra-nom{font-size:.76rem;color:var(--texto-tenue);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sc-barra-pista{height:12px;border-radius:6px;overflow:hidden;display:block}
+.sc-barra-lleno{display:block;height:100%;border-radius:6px}
+.sc-barra-val{font-size:.78rem;font-weight:700;color:var(--texto);font-variant-numeric:tabular-nums;white-space:nowrap}
+.sc-barra-nota{font-size:.66rem;font-weight:400;color:var(--rotulo);margin-left:6px}
 .sc-leyenda{display:flex;flex-wrap:wrap;gap:14px;margin-top:8px;padding-left:52px}
 .sc-leyenda-item{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;color:var(--rotulo)}
 .sc-leyenda-punto{width:10px;height:10px;border-radius:3px;flex-shrink:0}
@@ -1397,6 +1497,13 @@ body.light .mobile-header-title{color:#0f172a}
 .sc-citas{font-size:.66rem;color:var(--texto-tenue);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-all}
 .sc-cambios{border-top:1px solid var(--borde);margin-top:14px;padding-top:12px}
 .sc-cambios li{font-size:.8rem;color:var(--texto-tenue);line-height:1.6;margin-bottom:3px}
+/* La plata: primero la respuesta, despues como se llego a ella. */
+.sc-plata-resumen{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:12px}
+.sc-plata-resumen .sc-tile{background:var(--fondo-hundido)}
+.sc-plata-resumen .sc-tile[data-estado="alerta"] .sc-tile-valor{color:var(--rojo)}
+.sc-plata-resumen .sc-tile[data-estado="ok"] .sc-tile-valor{color:var(--verde)}
+.sc-plata-veredicto{font-size:.82rem;line-height:1.6;color:var(--texto-tenue);border-left:3px solid var(--verde);padding-left:12px;margin-bottom:18px}
+.sc-plata-veredicto[data-estado="alerta"]{border-left-color:var(--rojo);color:var(--texto)}
 .sc-rank-invertido{color:var(--ambar);font-weight:700}
 .sc-rank-pos{display:inline-block;min-width:18px;font-variant-numeric:tabular-nums;color:var(--texto-tenue)}
 .sc-nota{font-size:.74rem;color:var(--texto-tenue);line-height:1.55;margin-top:10px}
@@ -1458,6 +1565,91 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .fin-hbar-relleno{height:100%;border-radius:3px}
 .fin-hbar-monto{font-size:.75rem;color:var(--texto);width:74px;text-align:right;flex-shrink:0}
 @media (max-width:760px){.fin-split{grid-template-columns:1fr}}
+/* ── Simulador financiero ─────────────────────────────────────────────────────
+   Todo con tokens: no hay ninguna regla `body.light .sim-`. Los semaforos usan
+   los pares tinte/texto de la familia de estados, que llegan a 4,5 en los dos
+   temas. Reusa .fin-card, .fin-card-title, .fin-kpi-label y los botones. */
+.sim-escenarios{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:14px}
+.sim-in{background:var(--fondo-hundido);border:1px solid var(--borde);border-radius:8px;padding:7px 10px;color:var(--texto);font-size:.82rem;font-family:'Inter',sans-serif;min-width:0}
+.sim-in:focus{outline:none;border-color:var(--azul)}
+.sim-in::placeholder{color:var(--texto-debil)}
+.sim-in.sim-usa-default{border-color:var(--ambar-borde)}
+.sim-in-corto{width:92px;text-align:right}
+.sim-in-monto{width:100%;text-align:right}
+.sim-in-nombre{flex:1 1 180px}
+.sim-guardado{font-size:.75rem;color:var(--texto-tenue)}
+.sim-guardado.sim-mal{color:var(--rojo-texto)}
+.sim-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,380px);gap:18px;align-items:start}
+.sim-entradas{min-width:0}
+.sim-resultados{position:sticky;top:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.sim-resultados .fin-card{margin-bottom:0}
+.sim-cab{display:flex;justify-content:space-between;align-items:baseline;gap:6px 12px;flex-wrap:wrap;margin-bottom:10px}
+.sim-cab .fin-card-title{margin-bottom:0}
+.sim-sub{font-size:.76rem;font-weight:700;color:var(--texto-tenue)}
+.sim-origen{font-size:.72rem;color:var(--texto-debil);margin-bottom:8px}
+.sim-origen:empty{display:none}
+.sim-campo{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;align-items:center;padding:6px 0}
+.sim-campo label{font-size:.8rem;color:var(--texto)}
+.sim-control{display:inline-flex;align-items:center;gap:6px}
+.sim-unidad{font-size:.7rem;font-weight:700;color:var(--texto-debil)}
+.sim-rango{grid-column:1/-1;width:100%;accent-color:var(--azul);margin:2px 0}
+.sim-tipo{padding-bottom:6px;margin-bottom:6px;border-bottom:1px solid var(--borde)}
+.sim-lista{display:flex;flex-direction:column;gap:6px;margin-bottom:10px}
+.sim-fila{display:grid;grid-template-columns:auto minmax(0,1fr) 104px auto;gap:8px;align-items:center}
+.sim-fila-nombre{font-size:.82rem;color:var(--texto);overflow-wrap:anywhere}
+.sim-fila-nota{font-size:.7rem;color:var(--texto-debil)}
+.sim-apagada .sim-fila-nombre{color:var(--texto-debil)}
+.sim-vacio{font-size:.78rem;color:var(--texto-debil);padding:4px 0}
+.sim-switch{appearance:none;-webkit-appearance:none;width:36px;height:20px;border-radius:99px;background:var(--borde-fuerte);position:relative;cursor:pointer;margin:0;transition:background .15s}
+.sim-switch::after{content:'';position:absolute;top:3px;left:3px;width:14px;height:14px;border-radius:50%;background:var(--texto-fuerte);transition:left .15s}
+.sim-switch:checked{background:var(--azul)}
+.sim-switch:checked::after{left:19px}
+.sim-switch:focus-visible{outline:2px solid var(--azul-claro);outline-offset:2px}
+.sim-agregar{display:grid;grid-template-columns:minmax(0,1fr) 104px auto;gap:8px;align-items:center}
+.sim-error{font-size:.75rem;color:var(--rojo-texto);margin-top:6px}
+.sim-error:empty{display:none}
+.sim-aviso{border-radius:10px;padding:10px 12px;font-size:.8rem;line-height:1.45;margin:8px 0}
+.sim-aviso:empty{display:none}
+.sim-aviso-ambar{background:var(--ambar-tinte);color:var(--ambar);border:1px solid var(--ambar-borde)}
+.sim-aviso-clave{font-size:.86rem;font-weight:600;border-width:2px;margin:0}
+.sim-tarjetas{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.sim-tarjeta{background:var(--superficie-honda);border:1px solid var(--borde);border-radius:10px;padding:12px 14px;min-width:0}
+.sim-tarjeta-valor{font-size:1.3rem;font-weight:700;color:var(--texto-fuerte);margin-top:4px;overflow-wrap:anywhere}
+.sim-tarjeta-detalle{font-size:.7rem;color:var(--texto-debil);margin-top:4px;line-height:1.35}
+.sim-positivo{color:var(--verde-texto)}
+.sim-negativo{color:var(--rojo-texto)}
+.sim-arrastre{font-size:.78rem;color:var(--texto-tenue);line-height:1.45}
+.sim-cierre{font-size:.86rem;font-weight:700;line-height:1.45;margin-top:4px}
+.sim-semaforo{display:flex;gap:10px;align-items:flex-start;border-radius:10px;padding:10px 12px;font-size:.8rem;line-height:1.45}
+.sim-semaforo strong{display:block;font-size:.68rem;text-transform:uppercase;letter-spacing:.6px}
+.sim-punto{width:10px;height:10px;border-radius:50%;background:currentColor;flex-shrink:0;margin-top:4px}
+.sim-verde{background:var(--verde-tinte);color:var(--verde-texto)}
+.sim-rojo{background:var(--rojo-tinte);color:var(--rojo-texto)}
+.sim-ambar{background:var(--ambar-tinte);color:var(--ambar)}
+.sim-neutro{background:var(--relleno);color:var(--texto-debil)}
+.sim-numeros{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.sim-numero{font-size:.72rem;color:var(--texto-debil)}
+.sim-numero b{display:block;font-size:1.05rem;color:var(--texto-fuerte);margin-top:2px}
+.sim-meta{font-size:.8rem;color:var(--texto);line-height:1.5;margin-top:6px}
+.sim-palanca-fila{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:8px 0}
+.sim-palanca{background:var(--relleno);color:var(--texto-tenue);border:1px solid var(--borde);border-radius:99px;padding:7px 14px;font-size:.8rem;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;white-space:nowrap}
+.sim-palanca[aria-pressed="true"]{background:var(--azul-tinte);color:var(--azul-claro);border-color:var(--azul)}
+.sim-palanca-detalle{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:.76rem;color:var(--texto-tenue)}
+.sim-mini{display:none}
+@media(max-width:900px){
+  .sim-layout{grid-template-columns:1fr}
+  .sim-resultados{position:static;order:-1}
+  .sim-mini{display:flex;justify-content:space-between;gap:10px;position:sticky;top:60px;z-index:5;background:var(--superficie);border:1px solid var(--borde);border-radius:10px;padding:8px 12px;margin-bottom:10px;font-size:.78rem;color:var(--texto-tenue);box-shadow:0 4px 12px var(--sombra)}
+  .sim-mini b{color:var(--texto-fuerte)}
+  .sim-mini b.sim-positivo{color:var(--verde-texto)}
+  .sim-mini b.sim-negativo{color:var(--rojo-texto)}
+}
+@media(max-width:480px){
+  .sim-fila{grid-template-columns:auto minmax(0,1fr) 88px auto}
+  .sim-agregar{grid-template-columns:minmax(0,1fr) 88px}
+  .sim-agregar .btn-ghost{grid-column:1/-1}
+  .sim-tarjeta-valor{font-size:1.1rem}
+}
 </style>
 </head>
 <body>
@@ -1478,25 +1670,28 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     <img id="sidebar-logo" src="https://raw.githubusercontent.com/Scalerics-org/scalerics-assets/main/logo_full_alt.png" alt="Scalerics">
   </div>
   <div class="nav-scroll">
-  <div class="nav-section-label">LLAMADAS</div>
-  <div class="nav-item active" id="nav-cola" onclick="showPanel('cola')"><i data-lucide="inbox" class="nav-icon"></i> Cola</div>
-  <div class="nav-item" id="nav-seguimientos" onclick="showPanel('seguimientos')"><i data-lucide="bookmark" class="nav-icon"></i> Seguimientos</div>
+  <!-- Orden y grupos definidos por Juan el 14/9. Al entrar igual se abre Meta Ads. -->
+  <div class="nav-section-label">CALENDARIO</div>
+  <div class="nav-item active" id="nav-cal" onclick="showPanel('cal')"><i data-lucide="calendar" class="nav-icon"></i> Calendario</div>
+  <div class="nav-section-label">MARKETING</div>
   <div class="nav-item" id="nav-meta" onclick="showPanel('meta');clearMetaBadge()"><i data-lucide="instagram" class="nav-icon"></i> Meta Ads <span id="meta-badge" style="display:none;background:#e1306c;color:#fff;font-size:.65rem;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:4px">NEW</span></div>
-  <div class="nav-section-label">VENTAS</div>
-  <div class="nav-item" id="nav-pipeline" onclick="showPanel('pipeline')"><i data-lucide="trending-up" class="nav-icon"></i> Pre-clientes</div>
-  <div class="nav-item" id="nav-demos" onclick="showPanel('demos')"><i data-lucide="monitor-play" class="nav-icon"></i> Demos</div>
-  <div class="nav-item" id="nav-clientes" onclick="showPanel('clientes')"><i data-lucide="users" class="nav-icon"></i> Clientes</div>
-  <div class="nav-section-label">GESTIÓN</div>
-  <div class="nav-item" id="nav-tasks" onclick="showPanel('tasks')"><i data-lucide="check-square" class="nav-icon"></i> Tareas</div>
-  <div class="nav-item" id="nav-projects" onclick="showPanel('projects')"><i data-lucide="target" class="nav-icon"></i> Proyectos</div>
-  <div class="nav-item" id="nav-notion_clients" onclick="showPanel('notion_clients')"><i data-lucide="handshake" class="nav-icon"></i> Pipeline Notion</div>
-  <div class="nav-item" id="nav-wa" onclick="showPanel('wa')"><i data-lucide="message-circle" class="nav-icon"></i> WhatsApp</div>
-  <div class="nav-item" id="nav-cal" onclick="showPanel('cal')"><i data-lucide="calendar" class="nav-icon"></i> Calendario</div>
+  <div class="nav-item" id="nav-marketing" onclick="showPanel('marketing')"><i data-lucide="target" class="nav-icon"></i> Inteligencia marketing</div>
+  <div class="nav-section-label">FINANZAS</div>
   <div class="nav-item" id="nav-finanzas" onclick="showPanel('finanzas')"><i data-lucide="wallet" class="nav-icon"></i> Finanzas</div>
-  <div class="nav-item" id="nav-metrics" onclick="showPanel('metrics')"><i data-lucide="bar-chart-2" class="nav-icon"></i> Métricas</div>
-  <div class="nav-item" id="nav-marketing" onclick="showPanel('marketing')"><i data-lucide="target" class="nav-icon"></i> Marketing</div>
-  <div class="nav-item" id="nav-activity" onclick="showPanel('activity')"><i data-lucide="clock" class="nav-icon"></i> Actividad</div>
+  <div class="nav-item" id="nav-simulador" onclick="showPanel('simulador')"><i data-lucide="calculator" class="nav-icon"></i> Simulador financiero</div>
+  <div class="nav-section-label">VENTAS</div>
+  <div class="nav-item" id="nav-wa" onclick="showPanel('wa')"><i data-lucide="message-circle" class="nav-icon"></i> WhatsApp</div>
+  <div class="nav-item" id="nav-notion_clients" onclick="showPanel('notion_clients')"><i data-lucide="handshake" class="nav-icon"></i> Proceso de venta</div>
+  <div class="nav-item" id="nav-demos" onclick="showPanel('demos')"><i data-lucide="monitor-play" class="nav-icon"></i> Demos</div>
   <div class="nav-item" id="nav-sdr" onclick="showPanel('sdr')"><i data-lucide="phone-call" class="nav-icon"></i> SDR</div>
+  <div class="nav-section-label">OPERACIÓN</div>
+  <div class="nav-item" id="nav-clientes" onclick="showPanel('clientes')"><i data-lucide="users" class="nav-icon"></i> Clientes</div>
+  <div class="nav-item" id="nav-projects" onclick="showPanel('projects')"><i data-lucide="target" class="nav-icon"></i> Proyectos</div>
+  <div class="nav-item" id="nav-tasks" onclick="showPanel('tasks')"><i data-lucide="check-square" class="nav-icon"></i> Tareas</div>
+  <div class="nav-item" id="nav-activity" onclick="showPanel('activity')"><i data-lucide="clock" class="nav-icon"></i> Actividad</div>
+  <div class="nav-section-label">CAPTACIÓN</div>
+  <div class="nav-item" id="nav-metrics" onclick="showPanel('metrics')"><i data-lucide="bar-chart-2" class="nav-icon"></i> Inteligencia comercial</div>
+  <div class="nav-item" id="nav-cola" onclick="showPanel('cola')"><i data-lucide="inbox" class="nav-icon"></i> Outbound</div>
   </div>
   <div class="sidebar-bottom">
     <a id="admin-link" href="/admin/users" style="display:none;background:none;border:1px solid var(--borde);border-radius:8px;padding:6px 12px;font-size:.75rem;color:var(--texto-debil);cursor:pointer;width:100%;text-align:left;text-decoration:none;box-sizing:border-box">&#9881; Usuarios</a>
@@ -1513,17 +1708,16 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 
 <div class="main">
   <!-- ======= COLA PANEL ======= -->
-  <div id="cola-panel" class="panel active">
+  <div id="cola-panel" class="panel">
     <div class="page-header">
       <div>
-        <h1>Cola de llamadas</h1>
+        <h1>Outbound</h1>
         <div class="page-date" id="cola-date"></div>
       </div>
       <button class="export-btn" onclick="exportCSV()"><i data-lucide="download" class="btn-icon"></i> Exportar CSV</button>
     </div>
     <div class="stats">
       <div class="stat-card"><div class="stat-label">Sin contactar</div><div class="stat-val" id="stat-cola">—</div></div>
-      <div class="stat-card"><div class="stat-label">Seguimientos</div><div class="stat-val blue" id="stat-seguimientos">—</div></div>
       <div class="stat-card"><div class="stat-label">No le interesa</div><div class="stat-val" id="stat-no-interesa">—</div></div>
     </div>
     <div class="filters">
@@ -1554,30 +1748,6 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   </div>
 
   <!-- ======= SEGUIMIENTOS PANEL ======= -->
-  <div id="seguimientos-panel" class="panel">
-    <div class="page-header">
-      <div>
-        <h1>Seguimientos</h1>
-        <div class="page-date">Leads que pidieron que los llamen después</div>
-      </div>
-    </div>
-    <div class="filters">
-      <select class="filter-select" id="seg-cohorte-filter" onchange="setSegCohorte(this.value)">
-        <option value="">Todas las cohortes</option>
-        <option value="meta">Meta Ads</option>
-        <option value="sin_web">Padrón sin web</option>
-        <option value="discovery">Discovery</option>
-        <option value="calendly_gcal">Calendly</option>
-      </select>
-      <span id="seg-count" style="color:#64748b;font-size:.8rem;align-self:center;margin-left:auto"></span>
-    </div>
-    <div class="table-wrap">
-      <div class="table-header no-cb">
-        <span>Negocio</span><span>Teléfono</span><span>Callback</span><span>Notas</span><span>Acciones</span>
-      </div>
-      <div id="seguimientos-body"></div>
-    </div>
-  </div>
 
   <!-- ======= META ADS PANEL ======= -->
   <div id="meta-panel" class="panel">
@@ -1605,32 +1775,36 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     </div>
   </div>
 
-  <!-- ======= PIPELINE PANEL ======= -->
-  <div id="pipeline-panel" class="panel">
-    <div class="page-header">
-      <div>
-        <h1>Pre-clientes</h1>
-        <div class="page-date">En qué etapa está cada venta en curso</div>
-      </div>
-      <div id="pre-total" style="color:#64748b;font-size:.85rem"></div>
-    </div>
-    <div class="filters">
-      <input class="search-box" id="pipeline-search-input" placeholder="🔍 Buscar..." oninput="pipelineSearch(this.value)">
-    </div>
-    <div id="pre-board" class="pre-board"></div>
-  </div>
-
   <!-- ======= DEMOS PANEL ======= -->
   <div id="demos-panel" class="panel">
     <div class="page-header">
       <div>
         <h1>Registro de demos</h1>
-        <div class="page-date">Cada demo dada, quién la tuvo y cómo viene</div>
+        <div class="page-date">Las demos mes a mes, con el presupuesto que se envió en cada una. Las de la planilla de leads entran solas, con su color.</div>
       </div>
       <button class="export-btn" onclick="abrirNuevaDemo()">+ Registrar demo</button>
     </div>
-    <div class="filters">
+    <div class="filters demo-filtros">
+      <div class="demo-nav-mes" id="demos-nav-mes">
+        <button class="cal-nav-btn" id="demos-mes-ant" onclick="demosMes(-1)" title="Mes anterior">&larr;</button>
+        <span id="demos-mes-label"></span>
+        <button class="cal-nav-btn" id="demos-mes-sig" onclick="demosMes(1)" title="Mes siguiente">&rarr;</button>
+        <button class="cal-today-btn" onclick="demosMesHoy()">Hoy</button>
+      </div>
       <input class="search-box" id="demos-search" placeholder="🔍 Buscar por cliente..." oninput="filtrarDemos(this.value)">
+      <select class="filter-select" id="demos-estado-filtro" onchange="demosFiltrarEstado(this.value)">
+        <option value="">Todos los estados</option>
+        <option value="agendada">Demo agendada</option>
+        <option value="realizada">Demo realizada</option>
+        <option value="no_cerro">Hubo demo y no cerró</option>
+        <option value="venta">Venta concretada</option>
+        <option value="mano">Cargada a mano</option>
+      </select>
+      <select class="filter-select" id="demos-presu-filtro" onchange="demosFiltrarPresupuesto(this.value)">
+        <option value="">Todas</option>
+        <option value="con">Con presupuesto</option>
+        <option value="sin">Sin presupuesto</option>
+      </select>
     </div>
     <div id="demos-body"></div>
   </div>
@@ -1640,12 +1814,13 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     <div class="page-header">
       <div>
         <h1>Clientes</h1>
-        <div class="page-date">Quién se ocupa de cada cliente activo</div>
+        <div class="page-date">Quién se ocupa de cada cliente activo y cuánto pagó</div>
       </div>
+      <button class="export-btn" onclick="cliNuevoAbrir()">+ Nuevo cliente</button>
     </div>
     <div class="table-wrap">
       <div class="table-header tbl-cli">
-        <span>Negocio</span><span>Estado</span><span>Día a día</span><span>Mantenimiento</span><span>Cobros</span><span>Acciones</span>
+        <span>Negocio</span><span>Estado</span><span>Pagó</span><span>Día a día</span><span>Mantenimiento</span><span>Cobros</span><span>Acciones</span>
       </div>
       <div id="clientes-body"></div>
     </div>
@@ -1751,14 +1926,27 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <!-- ======= PIPELINE NOTION PANEL ======= -->
   <div id="notion_clients-panel" class="panel">
     <div class="panel-head">
-      <h1>Pipeline Notion</h1>
-      <p class="panel-sub">Espejo de la database Clientes. Son las fichas que el equipo maneja en Notion, no los leads del CRM. Para moverlas, abrilas allá.</p>
+      <h1>Proceso de venta</h1>
+      <p class="panel-sub">Espejo de la database Clientes. Son las fichas que el equipo maneja en Notion, no los leads del CRM. Conectá cada ficha con su persona del CRM: cuando llega a Presupuesto Aceptado, esa persona pasa a Clientes. <span class="nc-ayuda-mouse">Arrastrá una ficha a otra columna para cambiarle el estado: se guarda en Notion.</span><span class="nc-ayuda-touch">Desde el celular no se pueden arrastrar: movelas desde la compu o abrilas en Notion.</span></p>
     </div>
     <div id="notion-clients-board" class="kanban"></div>
+    <div class="modal-overlay" id="nc-vinculo-modal" onclick="if(event.target===this)_ncCerrarVinculo()">
+      <div class="modal">
+        <h3>Conectar con el CRM</h3>
+        <p><strong id="nc-vinculo-ficha"></strong>: <span id="nc-vinculo-actual"></span> Cuando la ficha llegue a Presupuesto Aceptado, esa persona pasa a Clientes.</p>
+        <input id="nc-vinculo-buscar" class="search-box nc-vinculo-buscar" placeholder="Buscar por nombre" oninput="_ncBuscarPersonaTecla(this.value)" autocomplete="off">
+        <div id="nc-vinculo-resultados" class="nc-vinculo-resultados"></div>
+        <div id="nc-vinculo-error" class="nc-vinculo-error"></div>
+        <div class="nc-vinculo-acciones">
+          <button id="nc-vinculo-quitar" class="btn-ghost" onclick="_ncGuardarVinculo(null)">Desconectar</button>
+          <button class="btn-ghost" onclick="_ncCerrarVinculo()">Cerrar</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- ======= CALENDAR PANEL ======= -->
-  <div id="cal-panel" class="panel">
+  <div id="cal-panel" class="panel active">
     <div class="cal-header">
       <h1 id="cal-week-label">Calendario</h1>
       <span class="cal-count" id="cal-count"></span>
@@ -1781,7 +1969,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     </div>
     <div id="cal-error" class="cal-error" style="display:none"></div>
     <div id="cal-days" class="cal-days"><div class="cal-loading">Cargando calendario...</div></div>
-    <div id="cal-day-events-mobile" style="display:none;margin-top:12px;padding:0 4px"></div>
+    <div id="cal-day-events-mobile"></div>
   </div>
 
   <!-- ======= FINANZAS PANEL ======= -->
@@ -1855,20 +2043,234 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     </div>
   </div>
 
+  <!-- ======= SIMULADOR FINANCIERO PANEL ======= -->
+  <div id="simulador-panel" class="panel">
+    <div class="page-header">
+      <div>
+        <h1>Simulador financiero</h1>
+        <div class="page-date">Probá decisiones antes de tomarlas. Todo en USD y sobre una copia: nada de esto toca Finanzas.</div>
+      </div>
+    </div>
+
+    <div class="sim-escenarios">
+      <select id="sim-escenarios" class="filter-select" aria-label="Escenarios guardados">
+        <option value="">Escenarios guardados</option>
+      </select>
+      <button class="btn-ghost" type="button" onclick="simAbrir()">Abrir</button>
+      <button class="btn-ghost" type="button" onclick="simBorrarEscenario()">Borrar escenario</button>
+      <input type="text" id="sim-nombre" class="sim-in sim-in-nombre" maxlength="80" placeholder="Nombre del escenario" aria-label="Nombre del escenario">
+      <button class="btn-primary" type="button" onclick="simGuardar()">Guardar</button>
+      <button class="btn-ghost" type="button" onclick="simRestablecer()">Restablecer</button>
+      <span class="sim-guardado" id="sim-guardado" role="status"></span>
+    </div>
+    <div class="sim-aviso sim-aviso-ambar" id="sim-aviso-carga" role="status"></div>
+    <div class="sim-mini" id="sim-mini" aria-hidden="true"></div>
+
+    <div class="sim-layout">
+      <div class="sim-entradas">
+
+        <section class="fin-card">
+          <div class="sim-cab"><div class="fin-card-title">Equipo</div><span class="sim-sub" id="sim-sub-equipo"></span></div>
+          <div class="sim-campo">
+            <label for="sim-programadores">Programadores</label>
+            <input type="number" id="sim-programadores" class="sim-in sim-in-corto" data-sim="equipo.cantidadProgramadores" min="0" max="6" step="1" inputmode="numeric">
+            <input type="range" class="sim-rango" data-sim="equipo.cantidadProgramadores" min="0" max="6" step="1" aria-label="Programadores">
+          </div>
+          <div class="sim-campo">
+            <label for="sim-sueldo-prog">Sueldo por programador</label>
+            <span class="sim-control"><span class="sim-unidad">USD</span><input type="number" id="sim-sueldo-prog" class="sim-in sim-in-corto" data-sim="equipo.sueldoPorProgramador" min="0" step="any" inputmode="decimal"></span>
+          </div>
+          <div class="sim-campo">
+            <label for="sim-proy-prog">Proyectos por programador</label>
+            <input type="number" id="sim-proy-prog" class="sim-in sim-in-corto" data-sim="equipo.proyectosPorProgramador" min="0" step="any" inputmode="decimal">
+          </div>
+        </section>
+
+        <section class="fin-card">
+          <div class="sim-cab"><div class="fin-card-title">Gastos fijos</div><span class="sim-sub" id="sim-sub-gastosFijos"></span></div>
+          <div class="sim-origen" id="sim-origen-gastosFijos"></div>
+          <div class="sim-lista" id="sim-lista-gastosFijos"></div>
+          <div class="sim-agregar">
+            <input type="text" id="sim-nuevo-nombre-gastosFijos" class="sim-in" maxlength="80" placeholder="Gasto nuevo" aria-label="Nombre del gasto nuevo" onkeydown="if (event.key === 'Enter') simAgregarFila('gastosFijos')">
+            <input type="number" id="sim-nuevo-monto-gastosFijos" class="sim-in sim-in-monto" min="0" step="any" inputmode="decimal" placeholder="0" aria-label="Monto del gasto nuevo">
+            <button class="btn-ghost" type="button" onclick="simAgregarFila('gastosFijos')">Agregar</button>
+          </div>
+          <div class="sim-error" id="sim-nuevo-error-gastosFijos" role="alert"></div>
+        </section>
+
+        <section class="fin-card">
+          <div class="sim-cab"><div class="fin-card-title">Qué vendo por mes</div><span class="sim-sub" id="sim-sub-ventas"></span></div>
+          <div class="sim-tipo">
+            <div class="sim-campo">
+              <label for="sim-precio-web">Web: precio</label>
+              <span class="sim-control"><span class="sim-unidad">USD</span><input type="number" id="sim-precio-web" class="sim-in sim-in-corto" data-sim="ventas.precioWeb" min="0" step="any" inputmode="decimal"></span>
+            </div>
+            <div class="sim-campo">
+              <label for="sim-cant-web">Web: cantidad</label>
+              <input type="number" id="sim-cant-web" class="sim-in sim-in-corto" data-sim="ventas.webs" min="0" step="1" inputmode="numeric">
+              <input type="range" class="sim-rango" data-sim="ventas.webs" min="0" max="10" step="1" aria-label="Cantidad de webs">
+            </div>
+          </div>
+          <div class="sim-tipo">
+            <div class="sim-campo">
+              <label for="sim-precio-ecom">Ecommerce: precio</label>
+              <span class="sim-control"><span class="sim-unidad">USD</span><input type="number" id="sim-precio-ecom" class="sim-in sim-in-corto" data-sim="ventas.precioEcom" min="0" step="any" inputmode="decimal"></span>
+            </div>
+            <div class="sim-campo">
+              <label for="sim-cant-ecom">Ecommerce: cantidad</label>
+              <input type="number" id="sim-cant-ecom" class="sim-in sim-in-corto" data-sim="ventas.ecommerce" min="0" step="1" inputmode="numeric">
+              <input type="range" class="sim-rango" data-sim="ventas.ecommerce" min="0" max="10" step="1" aria-label="Cantidad de ecommerce">
+            </div>
+          </div>
+          <div class="sim-tipo">
+            <div class="sim-campo">
+              <label for="sim-precio-medida">A medida: precio</label>
+              <span class="sim-control"><span class="sim-unidad">USD</span><input type="number" id="sim-precio-medida" class="sim-in sim-in-corto" data-sim="ventas.precioMedida" min="0" step="any" inputmode="decimal"></span>
+            </div>
+            <div class="sim-campo">
+              <label for="sim-cant-medida">A medida: cantidad</label>
+              <input type="number" id="sim-cant-medida" class="sim-in sim-in-corto" data-sim="ventas.aMedida" min="0" step="1" inputmode="numeric">
+              <input type="range" class="sim-rango" data-sim="ventas.aMedida" min="0" max="10" step="1" aria-label="Cantidad de proyectos a medida">
+            </div>
+          </div>
+          <div class="sim-campo">
+            <label for="sim-pauta">Pauta</label>
+            <span class="sim-control"><span class="sim-unidad">USD</span><input type="number" id="sim-pauta" class="sim-in sim-in-corto" data-sim="ventas.pauta" min="0" step="any" inputmode="decimal"></span>
+            <input type="range" class="sim-rango" data-sim="ventas.pauta" min="0" max="2500" step="50" aria-label="Pauta">
+          </div>
+        </section>
+
+        <section class="fin-card">
+          <div class="sim-cab"><div class="fin-card-title">Mantenimientos</div><span class="sim-sub" id="sim-sub-mantenimientos"></span></div>
+          <div class="sim-origen" id="sim-origen-mantenimientos"></div>
+          <div class="sim-lista" id="sim-lista-mantenimientos"></div>
+          <div class="sim-agregar">
+            <input type="text" id="sim-nuevo-nombre-mantenimientos" class="sim-in" maxlength="80" placeholder="Cliente nuevo" aria-label="Nombre del cliente nuevo" onkeydown="if (event.key === 'Enter') simAgregarFila('mantenimientos')">
+            <input type="number" id="sim-nuevo-monto-mantenimientos" class="sim-in sim-in-monto" min="0" step="any" inputmode="decimal" placeholder="0" aria-label="Cuota del cliente nuevo">
+            <button class="btn-ghost" type="button" onclick="simAgregarFila('mantenimientos')">Agregar</button>
+          </div>
+          <div class="sim-error" id="sim-nuevo-error-mantenimientos" role="alert"></div>
+          <div class="sim-campo">
+            <label for="sim-altas">Altas nuevas por mes</label>
+            <input type="number" id="sim-altas" class="sim-in sim-in-corto" data-sim="mantenimiento.altasNuevasPorMes" min="0" step="1" inputmode="numeric">
+          </div>
+          <div class="sim-campo">
+            <label for="sim-cuota-alta">Cuota de cada alta nueva</label>
+            <span class="sim-control"><span class="sim-unidad">USD</span><input type="number" id="sim-cuota-alta" class="sim-in sim-in-corto" data-sim="mantenimiento.cuotaAltaNueva" min="0" step="any" inputmode="decimal"></span>
+          </div>
+          <div class="sim-campo">
+            <label for="sim-comision">Comisión de cobro (Plexo)</label>
+            <span class="sim-control"><input type="number" id="sim-comision" class="sim-in sim-in-corto" data-sim="mantenimiento.comisionCobro" min="0" max="100" step="any" inputmode="decimal"><span class="sim-unidad">%</span></span>
+          </div>
+          <div class="sim-aviso sim-aviso-ambar" id="sim-aviso-altas" role="status"></div>
+        </section>
+
+        <section class="fin-card">
+          <div class="sim-cab"><div class="fin-card-title">Pendientes por cobrar</div><span class="sim-sub" id="sim-sub-pendientes"></span></div>
+          <div class="sim-origen" id="sim-origen-pendientes"></div>
+          <div class="sim-lista" id="sim-lista-pendientes"></div>
+          <div class="sim-agregar">
+            <input type="text" id="sim-nuevo-nombre-pendientes" class="sim-in" maxlength="80" placeholder="Cliente" aria-label="Cliente del pendiente nuevo" onkeydown="if (event.key === 'Enter') simAgregarFila('pendientes')">
+            <input type="number" id="sim-nuevo-monto-pendientes" class="sim-in sim-in-monto" min="0" step="any" inputmode="decimal" placeholder="0" aria-label="Monto del pendiente nuevo">
+            <button class="btn-ghost" type="button" onclick="simAgregarFila('pendientes')">Agregar</button>
+          </div>
+          <div class="sim-error" id="sim-nuevo-error-pendientes" role="alert"></div>
+          <div class="sim-campo">
+            <label for="sim-al-firmar">Del proyecto nuevo entra al firmar</label>
+            <span class="sim-control"><input type="number" id="sim-al-firmar" class="sim-in sim-in-corto" data-sim="cobros.porcentajeAlFirmar" min="0" max="100" step="any" inputmode="decimal"><span class="sim-unidad">%</span></span>
+          </div>
+        </section>
+
+        <section class="fin-card">
+          <div class="sim-cab"><div class="fin-card-title">Palancas</div><span class="sim-sub" id="sim-sub-palancas"></span></div>
+          <div class="sim-palanca-fila">
+            <button class="sim-palanca" type="button" id="sim-palanca-projectManager" aria-pressed="false" onclick="simPalanca('projectManager')">Project manager</button>
+            <span class="sim-palanca-detalle">+ <span class="sim-control"><span class="sim-unidad">USD</span><input type="number" class="sim-in sim-in-corto" data-sim="montosPalancas.projectManager" min="0" step="any" inputmode="decimal" aria-label="Costo del project manager"></span> de costo fijo. No suma capacidad de desarrollo.</span>
+          </div>
+          <div class="sim-palanca-fila">
+            <button class="sim-palanca" type="button" id="sim-palanca-miSueldo" aria-pressed="false" onclick="simPalanca('miSueldo')">Mi sueldo</button>
+            <span class="sim-palanca-detalle">+ <span class="sim-control"><span class="sim-unidad">USD</span><input type="number" class="sim-in sim-in-corto" data-sim="montosPalancas.miSueldo" min="0" step="any" inputmode="decimal" aria-label="Mi sueldo"></span> de costo fijo.</span>
+          </div>
+          <div class="sim-palanca-fila">
+            <button class="sim-palanca" type="button" id="sim-palanca-subcontratar" aria-pressed="false" onclick="simPalanca('subcontratar')">Subcontratar excedente</button>
+            <span class="sim-palanca-detalle">Lo que pasa la capacidad se hace igual, a un <span class="sim-control"><input type="number" class="sim-in sim-in-corto" data-sim="montosPalancas.subcontratoPorcentaje" min="0" step="any" inputmode="decimal" aria-label="Costo del subcontrato como porcentaje del precio promedio"><span class="sim-unidad">%</span></span> del precio promedio.</span>
+          </div>
+          <div class="sim-palanca-fila">
+            <button class="sim-palanca" type="button" id="sim-palanca-matias50" aria-pressed="false" onclick="simPalanca('matias50')">Matías en a medida</button>
+            <span class="sim-palanca-detalle">Se lleva el <span class="sim-control"><input type="number" class="sim-in sim-in-corto" data-sim="montosPalancas.matiasPorcentaje" min="0" max="100" step="any" inputmode="decimal" aria-label="Porcentaje de Matías sobre lo facturado en a medida"><span class="sim-unidad">%</span></span> de lo facturado en a medida.</span>
+          </div>
+          <div class="sim-palanca-fila">
+            <button class="sim-palanca" type="button" id="sim-palanca-aporteJavier" aria-pressed="false" onclick="simPalanca('aporteJavier')">Aporte Javier</button>
+            <span class="sim-palanca-detalle">+ <span class="sim-control"><span class="sim-unidad">USD</span><input type="number" class="sim-in sim-in-corto" data-sim="montosPalancas.aporteJavier" min="0" step="any" inputmode="decimal" aria-label="Aporte de Javier"></span> que entran a caja y no son venta.</span>
+          </div>
+        </section>
+
+        <section class="fin-card">
+          <div class="sim-cab"><div class="fin-card-title">Supuestos del embudo</div><span class="sim-sub" id="sim-sub-embudo"></span></div>
+          <div class="sim-campo">
+            <label for="sim-cpl">Costo por lead</label>
+            <span class="sim-control"><span class="sim-unidad">USD</span><input type="number" id="sim-cpl" class="sim-in sim-in-corto" data-sim="embudo.costoPorLead" min="0" step="any" inputmode="decimal"></span>
+          </div>
+          <div class="sim-campo">
+            <label for="sim-lead-demo">De lead a demo</label>
+            <span class="sim-control"><input type="number" id="sim-lead-demo" class="sim-in sim-in-corto" data-sim="embudo.conversionLeadDemo" min="0" max="100" step="any" inputmode="decimal"><span class="sim-unidad">%</span></span>
+          </div>
+          <div class="sim-campo">
+            <label for="sim-demo-venta">De demo a venta</label>
+            <span class="sim-control"><input type="number" id="sim-demo-venta" class="sim-in sim-in-corto" data-sim="embudo.conversionDemoVenta" min="0" max="100" step="any" inputmode="decimal"><span class="sim-unidad">%</span></span>
+          </div>
+        </section>
+
+        <div class="sim-agregar sim-cargar">
+          <button class="btn-primary" type="button" id="sim-cargar" onclick="simCargar()">Cargar</button>
+          <span class="sim-guardado" id="sim-cargar-nota" role="status"></span>
+        </div>
+      </div>
+
+      <div class="sim-resultados">
+        <div class="sim-tarjetas" id="sim-tarjetas"></div>
+        <section class="fin-card">
+          <div class="fin-card-title">Caja</div>
+          <div class="sim-campo">
+            <label for="sim-caja-actual">Caja actual</label>
+            <span class="sim-control"><span class="sim-unidad">USD</span><input type="number" id="sim-caja-actual" class="sim-in sim-in-corto" data-sim="caja.cajaActual" step="any" inputmode="decimal"></span>
+          </div>
+          <div class="sim-origen" id="sim-origen-caja"></div>
+          <div class="sim-cierre" id="sim-cierre" role="status"></div>
+        </section>
+        <div class="sim-arrastre" id="sim-arrastre"></div>
+        <div class="sim-aviso sim-aviso-ambar sim-aviso-clave" id="sim-aviso-cobros" role="status"></div>
+        <div id="sim-semaforo-capacidad"></div>
+        <div id="sim-semaforo-embudo"></div>
+        <section class="fin-card">
+          <div class="fin-card-title">Embudo</div>
+          <div class="sim-numeros" id="sim-embudo-numeros"></div>
+        </section>
+        <section class="fin-card">
+          <div class="fin-card-title">Meta de sueldo</div>
+          <div class="sim-campo">
+            <label for="sim-sueldo-objetivo">Sueldo que me quiero poner</label>
+            <span class="sim-control"><span class="sim-unidad">USD</span><input type="number" id="sim-sueldo-objetivo" class="sim-in sim-in-corto" data-sim="meta.sueldoObjetivo" min="0" step="any" inputmode="decimal"></span>
+            <input type="range" class="sim-rango" data-sim="meta.sueldoObjetivo" min="0" max="5000" step="100" aria-label="Sueldo objetivo">
+          </div>
+          <div class="sim-meta" id="sim-meta"></div>
+        </section>
+      </div>
+    </div>
+  </div>
+
   <!-- ======= METRICS PANEL ======= -->
   <div id="metrics-panel" class="panel">
     <div class="page-header">
       <div>
-        <h1>Métricas</h1>
+        <h1>Inteligencia comercial</h1>
         <div class="page-date" id="metrics-date"></div>
       </div>
       <button class="export-btn" onclick="loadMetrics()">↻ Actualizar</button>
     </div>
-    <div style="display:flex;gap:8px;margin-bottom:24px">
-      <button id="tab-sdr-btn" onclick="switchMetricsTab('sdr')" style="padding:6px 18px;border-radius:8px;border:1px solid #1e293b;background:#0088cc;color:#fff;font-size:.82rem;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif">SDR</button>
-      <button id="tab-meta-btn" onclick="switchMetricsTab('meta')" style="display:none;padding:6px 18px;border-radius:8px;border:1px solid #1e293b;background:transparent;color:#64748b;font-size:.82rem;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif">Meta Ads</button>
-    </div>
-    <!-- Tab SDR -->
+    <!-- Lo de Meta Ads se saco de aca el 14/9: se mira en Marketing. El panel
+         sigue siendo 'metrics' por dentro porque asi estan guardados los
+         permisos de cada rol; solo cambio el nombre que se ve. -->
     <div id="metrics-sdr">
       <div class="metrics-grid" style="grid-template-columns:repeat(4,1fr)">
         <div class="stat-card"><div class="stat-label">Total leads SDR</div><div class="stat-val" id="m-total">—</div></div>
@@ -1893,32 +2295,11 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
         <div class="m-card"><div class="m-card-title">Top ciudades</div><div id="m-cities"></div></div>
       </div>
     </div>
-    <!-- Tab Meta Ads (solo admin) -->
-    <div id="metrics-meta" style="display:none">
-      <div class="metrics-grid" style="grid-template-columns:repeat(4,1fr)">
-        <div class="stat-card"><div class="stat-label">Total leads Meta</div><div class="stat-val" id="mm-total">—</div></div>
-        <div class="stat-card"><div class="stat-label">Este mes</div><div class="stat-val blue" id="mm-month">—</div></div>
-        <div class="stat-card"><div class="stat-label">Esta semana</div><div class="stat-val yellow" id="mm-week">—</div></div>
-        <div class="stat-card"><div class="stat-label">Conversión Meta</div><div class="stat-val green" id="mm-conv">—</div></div>
-      </div>
-      <div class="metrics-grid-2">
-        <div class="m-card"><div class="m-card-title">Leads por campaña</div><div id="mm-campaigns"></div></div>
-        <div class="m-card"><div class="m-card-title">Leads por mes</div><div id="mm-months"></div></div>
-      </div>
-      <div class="metrics-grid-2">
-        <div class="m-card"><div class="m-card-title">Funnel CRM Meta</div><div id="mm-funnel"></div></div>
-        <div class="m-card"><div class="m-card-title">Qué buscan</div><div id="mm-busca"></div></div>
-      </div>
-      <div class="metrics-grid-2">
-        <div class="m-card"><div class="m-card-title">Presupuesto declarado</div><div id="mm-presupuesto"></div></div>
-        <div class="m-card"><div class="m-card-title">Top ciudades Meta</div><div id="mm-cities"></div></div>
-      </div>
-    </div>
   </div>
   <div id="marketing-panel" class="panel">
     <div class="page-header">
       <div>
-        <h1>Marketing</h1>
+        <h1>Inteligencia marketing</h1>
         <div class="page-date" id="mk-fecha"></div>
       </div>
       <button class="export-btn" onclick="loadMarketing()">
@@ -1928,8 +2309,8 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     <div class="sc-filtros">
       <div class="sc-filtro"><label for="mk-rango">Período</label>
         <select id="mk-rango" onchange="_mkRangoCambio()">
-          <option value="mes">Un mes</option>
-          <option value="90" selected>Últimos 90 días</option>
+          <option value="mes" selected>Un mes</option>
+          <option value="90">Últimos 90 días</option>
           <option value="anio">Este año</option>
           <option value="todo">Toda la historia</option>
           <option value="libre">Personalizado</option>
@@ -1949,8 +2330,6 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
         <input type="date" id="mk-desde" onchange="loadMarketing()"></div>
       <div class="sc-filtro" id="mk-libre-hasta"><label for="mk-hasta">Hasta</label>
         <input type="date" id="mk-hasta" onchange="loadMarketing()"></div>
-      <div class="sc-filtro"><label for="mk-campana">Campaña</label>
-        <select id="mk-campana" onchange="_mkPintar()"><option value="">Todas</option></select></div>
     </div>
 
     <!-- Cambia solo (cargando / error / sin acceso): tiene que anunciarse. -->
@@ -1974,39 +2353,21 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       </div>
 
       <div class="sc-bloque">
+        <h3>Mes a mes</h3>
+        <div class="sc-sub">Leads, demos y ventas de cada mes, uno al lado del otro. Los meses vacíos también aparecen: un mes sin nada entre dos con actividad es justo lo que hay que ver.</div>
+        <div id="mk-mensual"></div>
+      </div>
+
+      <div class="sc-bloque">
         <h3>Semana a semana</h3>
-        <div class="sc-sub">Grano semanal a propósito: con poco más de un lead por día, un gráfico diario son picos y ceros.</div>
+        <div class="sc-sub">El detalle fino, para ver dentro del mes. La línea punteada de cada gráfico es el promedio histórico —todo lo anterior a este período, no incluye el período — así se ve de una si la semana viene arriba o abajo de lo normal. Las semanas sin nada también aparecen, vacías: un hueco es algo que hay que ver.</div>
         <div id="mk-series"></div>
       </div>
 
       <div class="sc-bloque">
-        <h3>Dónde se cae cada campaña</h3>
-        <div class="sc-sub">El mismo embudo de arriba, pero abierto por campaña. Cada porcentaje es contra la etapa anterior, no contra el total: así se ve el escalón. En ámbar, la caída más grande de cada una.</div>
-        <div id="mk-embudos"></div>
-      </div>
-
-      <div class="sc-bloque">
-        <h3>Cómo evoluciona cada campaña</h3>
-        <div class="sc-sub">Una campaña que se pone cara queda tapada en el promedio si otra mejora al mismo tiempo. Acá cada una va por su lado, sobre el mismo eje.</div>
-        <div id="mk-evolucion"></div>
-      </div>
-
-      <div class="sc-bloque">
         <h3>Cuánto costó llegar hasta acá</h3>
-        <div class="sc-sub">Gasto y leads acumulados desde el inicio del período. Son dos escalas distintas, así que van en dos gráficos y no en dos ejes: un eje doble hace que cualquier par de curvas parezca que se cruza donde uno quiera.</div>
+        <div class="sc-sub">Toda la pauta junta. Cada punto es el total corrido desde el inicio del período hasta esa semana, no lo de la semana: por eso nunca bajan. Gasto y leads van en dos gráficos y no en dos ejes, porque un eje doble hace que cualquier par de curvas parezca cruzarse donde uno quiera.</div>
         <div id="mk-acumulado"></div>
-      </div>
-
-      <div class="sc-bloque">
-        <h3>Qué campaña rinde de verdad</h3>
-        <div class="sc-sub">El costo por lead es lo que muestra el Administrador de anuncios. El costo por demo es lo que te cuesta una reunión de verdad, y no siempre ordenan igual.</div>
-        <div id="mk-ranking"></div>
-      </div>
-
-      <div class="sc-bloque">
-        <h3>Por campaña</h3>
-        <div class="sc-sub">La línea sobre cada barra es el intervalo de confianza. Cuando dos se superponen, la diferencia entre esas campañas no significa nada.</div>
-        <div id="mk-campanas"></div>
       </div>
 
       <div class="sc-bloque">
@@ -2016,17 +2377,29 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       </div>
 
       <div class="sc-bloque">
+        <h3>Cuándo llegan los leads</h3>
+        <div class="sc-sub">Hora de Montevideo. Los leads de Meta se guardan en UTC, así que esto ya viene corregido: sin eso, el mapa diría que el pico es de madrugada y estaría movido tres horas.</div>
+        <div id="mk-llegada"></div>
+      </div>
+
+      <div class="sc-bloque">
         <h3>La plata</h3>
-        <div class="sc-sub">Lo que Meta dice que cobró contra lo que está cargado en Finanzas. La brecha dice si la contabilidad está viendo todo el gasto de pauta.</div>
+        <div class="sc-sub">Lo que Meta dice que cobró contra lo que está cargado en Finanzas. Si Finanzas no ve toda la pauta, el costo de cada venta se calcula sobre menos plata de la que se gastó y sale más barato de lo que fue.</div>
         <div id="mk-conciliacion"></div>
       </div>
 
       <div class="sc-bloque">
-        <h3>Los números crudos</h3>
-        <div class="sc-sub">Cada métrica del dossier con su numerador, denominador y muestra. Es lo que permite auditar cualquier número de arriba.</div>
-        <details><summary style="cursor:pointer;color:#0088cc;font-size:.8rem">Ver la tabla</summary>
-          <div class="sc-tabla-wrap" id="mk-tabla" style="margin-top:12px"></div></details>
+        <h3>Las piezas de la pauta, mes por mes</h3>
+        <div class="sc-sub">Cada anuncio que tuvo gasto o impresiones en el mes que elijas acá abajo, con los números de ese mes y nada más. Primero las que siguen activas hoy, después las que ya no. Este bloque va con su propio mes, no con el período de arriba.</div>
+        <div class="sc-nav-mes sc-piezas-nav">
+          <button class="cal-nav-btn" id="mk-piezas-ant" onclick="mkPiezasMes(-1)" title="Mes anterior" aria-label="Mes anterior">&larr;</button>
+          <span id="mk-piezas-mes" aria-live="polite"></span>
+          <button class="cal-nav-btn" id="mk-piezas-sig" onclick="mkPiezasMes(1)" title="Mes siguiente" aria-label="Mes siguiente">&rarr;</button>
+          <button class="cal-today-btn" onclick="mkPiezasMesHoy()">Este mes</button>
+        </div>
+        <div id="mk-piezas"></div>
       </div>
+
     </div>
   </div>
 
@@ -2501,7 +2874,7 @@ function closeSidebar() {
 }
 
 // ========== Panel switching ==========
-let activePanel = 'cola';
+let activePanel = 'cal';
 function showPanel(name) {
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
@@ -2512,8 +2885,6 @@ function showPanel(name) {
   _syncMobileNav(name);
   closeSidebar();
   if (name === 'cola') loadCola();
-  if (name === 'seguimientos') loadSeguimientos();
-  if (name === 'pipeline') cargarPreclientes();
   if (name === 'demos') cargarDemos();
   if (name === 'clientes') loadClientesPanel();
   if (name === 'meta') loadMetaPanel();
@@ -2525,6 +2896,7 @@ function showPanel(name) {
   if (name === 'projects') loadProjects();
   if (name === 'notion_clients') loadNotionClients();
   if (name === 'finanzas') loadFinanzas();
+  if (name === 'simulador') loadSimulador();
   if (name === 'metrics') loadMetrics();
   if (name === 'activity') loadActivity();
   if (name === 'sdr') loadSdr();
@@ -2613,7 +2985,6 @@ async function confirmCallback() {
 }
 function _reloadActiveCallPanel() {
   if (_callActivePanel === 'cola') loadCola();
-  else if (_callActivePanel === 'seguimientos') loadSeguimientos();
   loadColaStats();
 }
 
@@ -2804,17 +3175,9 @@ async function loadColaStats() {
     // lo unico que estos contadores usan.
     const cola = await fetch('/api/leads?crm_status=sin_contactar&page=1');
     const colaData = await cola.json();
-    const [segR, conR] = await Promise.all([
-      fetch('/api/leads?crm_status=llamar_despues&page=1'),
-      fetch('/api/leads?crm_status=interesado&page=1'),
-    ]);
-    const [segData, conData] = await Promise.all([segR.json(), conR.json()]);
-    const segTotal = (Array.isArray(segData) ? segData.length : (segData.total||0)) +
-                     (Array.isArray(conData) ? conData.length : (conData.total||0));
     const noInt = await fetch('/api/leads?crm_status=no_interesa&page=1');
     const noIntData = await noInt.json();
     document.getElementById('stat-cola').textContent = Array.isArray(colaData) ? colaData.length : (colaData.total || 0);
-    document.getElementById('stat-seguimientos').textContent = segTotal;
     document.getElementById('stat-no-interesa').textContent = Array.isArray(noIntData) ? noIntData.length : (noIntData.total || 0);
     const sel = document.getElementById('cola-category-filter');
     const prev = sel.value;
@@ -2933,7 +3296,9 @@ function renderCola() {
 }
 
 
-// ── Seguimientos (llamar_despues) ─────────────────────────────────────────────
+// ── SDR: colores y actividad del dia por persona ─────────────────────────────
+// Vivian bajo el titulo de Seguimientos, que se saco de la vista el 14/9. Los
+// usa el panel SDR.
 function _sdrNameColor(name) {
   const colors = ['#0369a1','#7e22ce','#065f46','#9a3412','#be185d','#0f766e','#1d4ed8','#a16207'];
   let h = 0; for (let i = 0; i < (name||'').length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xff;
@@ -2961,78 +3326,12 @@ function _renderSdrStats(stats) {
 
 let _sdrLastActor = {};
 
-// Despues de importar los estados reales de la planilla (27-8-2026) este panel
-// paso de ~35 a 128 leads y 93 son de Meta. Sin poder separar cohortes, la
-// lista de a quien llamar deja de ser una lista de trabajo.
-let _segCohorte = '';
-function setSegCohorte(v) { _segCohorte = v; loadSeguimientos(); }
 
-async function loadSeguimientos() {
-  const body = document.getElementById('seguimientos-body');
-  body.innerHTML = '<div style="color:#475569;padding:16px;font-size:.85rem">Cargando...</div>';
-  try {
-    const coh = _segCohorte ? `&cohorte=${encodeURIComponent(_segCohorte)}` : '';
-    // 'contactado' es un alias viejo de 'interesado': el dashboard lo etiqueta
-    // igual y es un estado valido, pero nadie lo pedia. Hoy tiene 0 leads; el
-    // dia que algo lo escriba, sin esto desaparecen de todas las colas.
-    const [r1, r2, r3] = await Promise.all([
-      fetch(`/api/leads?crm_status=llamar_despues${coh}`),
-      fetch(`/api/leads?crm_status=interesado${coh}`),
-      fetch(`/api/leads?crm_status=contactado${coh}`),
-    ]);
-    const [d1, d2, d3] = await Promise.all([r1.json(), r2.json(), r3.json()]);
-    const leads = [
-      ...(Array.isArray(d1) ? d1 : (d1.items || [])),
-      ...(Array.isArray(d2) ? d2 : (d2.items || [])),
-      ...(Array.isArray(d3) ? d3 : (d3.items || [])),
-    ].sort((a,b) => {
-      // llamar_despues with date first, then contactado
-      if (a.callback_date && !b.callback_date) return -1;
-      if (!a.callback_date && b.callback_date) return 1;
-      if (a.callback_date && b.callback_date) return a.callback_date.localeCompare(b.callback_date);
-      return 0;
-    });
-    const segCnt = document.getElementById('seg-count');
-    if (segCnt) segCnt.textContent = `${leads.length} seguimiento${leads.length === 1 ? '' : 's'}`;
-    if (!leads.length) { body.innerHTML = '<div class="empty-state">No hay seguimientos pendientes</div>'; return; }
-    const today = new Date().toISOString().split('T')[0];
-    body.innerHTML = leads.map(b => {
-      const cd = b.callback_date || '';
-      const isContactado = b.crm_status === 'interesado';
-      let urgencyClass = '', pillClass = 'cb-date-future', pillLabel = 'Sin fecha';
-      if (isContactado && !cd) {
-        pillClass = 'cb-date-future'; pillLabel = 'Interesado';
-      } else if (cd) {
-        const cdDate = cd.split('T')[0];
-        pillLabel = cd.replace('T',' ').replace(/:\d{2}$/,'');
-        if (cdDate < today) { urgencyClass = 'cb-overdue'; pillClass = 'cb-date-overdue'; pillLabel = '⚠ ' + pillLabel; }
-        else if (cdDate === today) { urgencyClass = 'cb-today'; pillClass = 'cb-date-today'; pillLabel = '📅 Hoy ' + cd.split('T')[1]?.replace(/:\d{2}$/,''); }
-      }
-      return `
-      <div class="table-row no-cb row-llamar_despues ${urgencyClass}">
-        <div>
-          <div class="biz-name"><span style="cursor:pointer;text-decoration:underline;text-decoration-color:#334155" onclick="openClientPanel(${b.id})">${esc(b.name||'')}</span>${_calendlyBadge(b)}</div>
-          <div class="biz-sub">${esc(b.category||'')}${b.city ? ' · '+esc(b.city) : ''}</div>
-        </div>
-        <div style="display:flex;align-items:center;gap:6px">${b.phone ? (hasWhatsApp(b.phone) ? `<a class="phone-val" href="https://wa.me/${waNum(b.phone)}${b.pitch_text ? '?text='+encodeURIComponent(b.pitch_text) : ''}" target="_blank" title="Abrir WhatsApp">${esc(b.phone)}</a>` : `<span class="phone-plain">${esc(b.phone)}</span>`) : '<span class="no-val">—</span>'}</div>
-        <div><span class="cb-date-pill ${pillClass}">${pillLabel}</span></div>
-        <div><textarea class="notes-inline" data-id="${b.id}" data-notes="${esc(b.notes||'')}" placeholder="Agregar nota..." rows="1" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea></div>
-        <div class="actions">
-          <a class="pitch-btn" href="tel:${b.phone||''}" style="text-decoration:none"><i data-lucide=\"phone\" class=\"btn-icon\"></i> Llamar</a>
-          <button class="pitch-btn" onclick="openCallModal(${b.id},${escJs(b.name||'')},${escJs(b.phone||'')},'seguimientos')" style="background:#1e293b"><i data-lucide=\"clipboard-list\" class=\"btn-icon\"></i> Resultado</button>
-          <button class="delete-btn" onclick="deleteLead(${b.id},${escJs(b.name||'')})" title="Borrar"><i data-lucide=\"trash-2\" class=\"btn-icon\"></i></button>
-        </div>
-      </div>`; }).join('');
-    _populateNotes(body);
-  } catch(e) { body.innerHTML = `<div style="color:#f87171;padding:16px">Error: ${e.message}</div>`; }
-}
-
-// == Pre-clientes ==============================================================
-// Las etapas y sus etiquetas las manda el backend (/api/preclientes). Antes
-// estaban hardcodeadas aca y al renombrar los estados el tablero mostraba el
-// valor crudo de la base.
-let _preEtapas = [];
-let _preFiltro = '';
+// == Usuarios del equipo =======================================================
+// Los selectores de responsables de Clientes y de "quien dio la demo" los
+// comparten. Vivian con el tablero de Pre-clientes, que se saco de la vista el
+// 14/9: un negocio pasa a Clientes cuando su ficha de Pipeline Notion llega a
+// "Presupuesto Aceptado" (ver cliente_cambio_de_estado en notion_service).
 let _usuariosCache = null;
 
 async function _usuarios() {
@@ -3044,108 +3343,249 @@ async function _usuarios() {
   return _usuariosCache;
 }
 
-async function cargarPreclientes() {
-  const board = document.getElementById('pre-board');
-  board.innerHTML = '<div style="color:#475569;padding:16px;font-size:.85rem">Cargando...</div>';
-  try {
-    const r = await fetch('/api/preclientes');
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    const d = await r.json();
-    _preEtapas = d.etapas || [];
-    document.getElementById('pre-total').textContent =
-      d.total === 1 ? '1 pre-cliente' : d.total + ' pre-clientes';
-    renderPreclientes();
-  } catch (e) {
-    board.innerHTML = '<div style="color:#f87171;padding:16px">No se pudo cargar el tablero: ' + esc(e.message) + '</div>';
-  }
-}
-
-function renderPreclientes() {
-  const board = document.getElementById('pre-board');
-  board.innerHTML = _preEtapas.map(et => {
-    const leads = _preFiltro
-      ? (et.leads || []).filter(l => (l.name || '').toLowerCase().includes(_preFiltro))
-      : (et.leads || []);
-    const cards = leads.length
-      ? leads.map(l => {
-          const sub = [l.city, l.category].filter(Boolean).join(' · ');
-          const quien = l.ultima_demo_por ? ' · ' + esc(l.ultima_demo_por) : '';
-          const demos = l.demos_dadas
-            ? '<div class="pre-card-demo">' + l.demos_dadas + ' demo' +
-              (l.demos_dadas > 1 ? 's' : '') + quien + '</div>'
-            : '';
-          return `<div class="pre-card" onclick="openClientPanel(${l.id})">
-            <div class="pre-card-name">${esc(l.name || 'Sin nombre')}</div>
-            <div class="pre-card-meta">${esc(sub)}</div>
-            ${demos}
-          </div>`;
-        }).join('')
-      : '<div class="pre-empty">Vacío</div>';
-    return `<div class="pre-col">
-      <div class="pre-col-head">
-        <span class="pre-col-title">${esc(et.label)}</span>
-        <span class="pre-count">${leads.length}</span>
-      </div>
-      <div class="pre-cards">${cards}</div>
-    </div>`;
-  }).join('');
-}
-
-function pipelineSearch(v) {
-  _preFiltro = (v || '').toLowerCase();
-  renderPreclientes();
-}
-
 // == Registro de demos =========================================================
+// Todas las demos dadas, de todos los clientes, agrupadas por mes (del mas
+// reciente al mas viejo), cada una con el presupuesto que se le mando.
 // El tablero dice donde esta cada uno HOY; esto guarda como llego hasta ahi.
 let _demos = [];
 let _demosFiltro = '';
+let _demosFiltroPresu = '';
+let _demosFiltroEstado = '';
+// El mes que se esta mirando ('AAAA-MM'). Vacio = el mes actual, asi el panel
+// arranca siempre en hoy aunque la pestaña quede abierta de un mes a otro.
+let _demosMesVista = '';
+// Los cuatro colores del semaforo que son demos, en el orden del encabezado del
+// mes. `clave` es el estado_planilla que guarda el sync; el puntito sale de los
+// tokens --semaforo-*. Una demo sin origen de planilla es "Cargada a mano".
+const _DEMOS_ESTADOS = [
+  {clave: 'realizada', etiqueta: 'Demo realizada', uno: 'realizada', varios: 'realizadas'},
+  {clave: 'no_cerro', etiqueta: 'Hubo demo y no cerró', uno: 'no cerró', varios: 'no cerraron'},
+  {clave: 'venta', etiqueta: 'Venta concretada', uno: 'venta', varios: 'ventas'},
+  {clave: 'agendada', etiqueta: 'Demo agendada', uno: 'agendada', varios: 'agendadas'},
+];
+const _DEMOS_MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio',
+                      'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+const _DEMOS_MAX_BYTES = 10 * 1024 * 1024;
 
 async function cargarDemos() {
   const body = document.getElementById('demos-body');
-  body.innerHTML = '<div style="color:#475569;padding:16px;font-size:.85rem">Cargando...</div>';
+  body.innerHTML = '<div class="demo-aviso">Cargando...</div>';
   try {
-    const r = await fetch('/api/demos-realizadas');
+    // El listado no trae los archivos (solo id y nombre del presupuesto), asi
+    // que pedir todas pesa poco: ~50 demos por año.
+    const r = await fetch('/api/demos-realizadas?limite=5000');
     if (!r.ok) throw new Error('HTTP ' + r.status);
     _demos = (await r.json()).demos || [];
     renderDemos();
   } catch (e) {
-    body.innerHTML = '<div style="color:#f87171;padding:16px">No se pudieron cargar las demos: ' + esc(e.message) + '</div>';
+    body.innerHTML = '<div class="demo-aviso demo-aviso-error">No se pudieron cargar las demos: ' + esc(e.message) + '</div>';
   }
 }
 
 function filtrarDemos(v) { _demosFiltro = (v || '').toLowerCase(); renderDemos(); }
 
-function renderDemos() {
-  const body = document.getElementById('demos-body');
-  const lista = _demosFiltro
-    ? _demos.filter(d => (d.cliente_nombre || '').toLowerCase().includes(_demosFiltro))
-    : _demos;
-  if (!lista.length) {
-    body.innerHTML = '<div class="empty-state">' +
-      (_demosFiltro ? 'Ningún cliente coincide' : 'Todavía no hay demos registradas') + '</div>';
-    return;
-  }
-  body.innerHTML = lista.map(d => {
-    const nombre = d.cliente_nombre || 'Cliente borrado';
-    const abrir = d.client_id ? ` onclick="openClientPanel(${d.client_id})"` : '';
-    return `<div class="demo-row">
-      <div class="demo-row-head">
-        <span class="demo-num">Demo ${d.numero || '?'}</span>
-        <span class="demo-cliente"${abrir}>${esc(nombre)}</span>
-        <span class="demo-meta">${esc(d.realizada_por_nombre || 'sin asignar')} · ${esc(_fechaCorta(d.fecha))}</span>
-        <button class="demo-del" onclick="borrarDemo(${d.id})" title="Borrar">&times;</button>
-      </div>
-      <div class="demo-texto">${esc(d.actualizacion || 'Sin notas')}</div>
-    </div>`;
-  }).join('');
+function demosFiltrarPresupuesto(v) { _demosFiltroPresu = v || ''; renderDemos(); }
+
+function demosFiltrarEstado(v) { _demosFiltroEstado = v || ''; renderDemos(); }
+
+function _demosEstadoDe(d) {
+  return d.origen === 'planilla' ? String(d.estado_planilla || '') : 'mano';
 }
 
-function _fechaCorta(iso) {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (isNaN(d)) return String(iso).slice(0, 10);
-  return d.toLocaleDateString('es-UY', {day: '2-digit', month: '2-digit', year: 'numeric'});
+function _demosEstadoHtml(d) {
+  const clave = _demosEstadoDe(d);
+  const e = _DEMOS_ESTADOS.find(x => x.clave === clave);
+  if (!e) return '<span class="demo-estado demo-estado-mano">' + (clave === 'mano' ? 'Cargada a mano' : 'De la planilla') + '</span>';
+  return `<span class="demo-estado" title="Color de la planilla de leads"><span class="demo-punto demo-punto-${e.clave}"></span>${esc(e.etiqueta)}</span>`;
+}
+
+function _demosConteoEstados(demos) {
+  const partes = _DEMOS_ESTADOS.map(e => {
+    const n = demos.filter(d => _demosEstadoDe(d) === e.clave).length;
+    return n ? n + ' ' + (n === 1 ? e.uno : e.varios) : '';
+  }).filter(Boolean);
+  const aMano = demos.filter(d => _demosEstadoDe(d) === 'mano').length;
+  if (aMano) partes.push(aMano + ' a mano');
+  return partes.join(' · ');
+}
+
+function _demosMesDe(d) {
+  // Por texto y no con new Date(): '2026-09-01' se lee como UTC y en Uruguay
+  // caeria en agosto.
+  const iso = String(d.fecha || d.created_at || '');
+  return /^[0-9]{4}-[0-9]{2}/.test(iso) ? iso.slice(0, 7) : 'sin-fecha';
+}
+
+function _demosEtiquetaMes(clave) {
+  if (clave === 'sin-fecha') return 'Sin fecha';
+  const partes = clave.split('-');
+  const mes = _DEMOS_MESES[parseInt(partes[1], 10) - 1];
+  return mes ? mes.charAt(0).toUpperCase() + mes.slice(1) + ' ' + partes[0] : clave;
+}
+
+// -- Navegador de mes (mismo patron que Finanzas, con nombres propios) --------
+// Las demos se traen una sola vez y el recorte por mes se hace aca: el listado
+// no trae los archivos, son unos cientos por año, cambiar de mes es inmediato
+// y el limite hacia atras (la demo mas vieja) necesita verlas todas igual.
+
+function _demosMesClave(fecha) {
+  return fecha.getFullYear() + '-' + String(fecha.getMonth() + 1).padStart(2, '0');
+}
+
+function _demosMesSumar(mes, delta) {
+  const partes = String(mes).split('-');
+  const total = parseInt(partes[0], 10) * 12 + (parseInt(partes[1], 10) - 1) + delta;
+  return Math.floor(total / 12) + '-' + String(total % 12 + 1).padStart(2, '0');
+}
+
+function _demosMesMasViejo(lista) {
+  let viejo = '';
+  lista.forEach(d => {
+    const m = _demosMesDe(d);
+    if (m !== 'sin-fecha' && (!viejo || m < viejo)) viejo = m;
+  });
+  return viejo;
+}
+
+function _demosMesMover(mes, delta, masViejo, actual) {
+  // Nunca al futuro; hacia atras, hasta el mes de la demo mas vieja (sin
+  // demos, el piso es el mes actual).
+  let m = _demosMesSumar(mes, delta);
+  if (m > actual) m = actual;
+  const piso = masViejo && masViejo < actual ? masViejo : actual;
+  if (m < piso) m = piso;
+  return m;
+}
+
+function _demosDelMes(lista, mes) {
+  return lista.filter(d => _demosMesDe(d) === mes);
+}
+
+function _demosMesVisible() {
+  return _demosMesVista || _demosMesClave(new Date());
+}
+
+function demosMes(delta) {
+  _demosMesVista = _demosMesMover(_demosMesVisible(), delta, _demosMesMasViejo(_demos),
+                                  _demosMesClave(new Date()));
+  renderDemos();
+}
+
+function demosMesHoy() { _demosMesVista = ''; renderDemos(); }
+
+function _demosPintarNavegador(mes) {
+  const label = document.getElementById('demos-mes-label');
+  if (label) label.textContent = _demosEtiquetaMes(mes);
+  const viejo = _demosMesMasViejo(_demos);
+  const ant = document.getElementById('demos-mes-ant');
+  const sig = document.getElementById('demos-mes-sig');
+  if (ant) ant.disabled = !viejo || mes <= viejo;
+  if (sig) sig.disabled = mes >= _demosMesClave(new Date());
+}
+
+function _demosResumenHtml(demos, mes) {
+  const estados = _DEMOS_ESTADOS.map(e => {
+    const n = demos.filter(d => _demosEstadoDe(d) === e.clave).length;
+    return n ? `<span class="demo-resumen-estado"><span class="demo-punto demo-punto-${e.clave}"></span>${n} ${n === 1 ? e.uno : e.varios}</span>` : '';
+  }).filter(Boolean);
+  const aMano = demos.filter(d => _demosEstadoDe(d) === 'mano').length;
+  if (aMano) estados.push(`<span class="demo-resumen-estado">${aMano} a mano</span>`);
+  const conPresu = demos.filter(d => d.presupuesto_id).length;
+  return `<div class="demo-mes-head">
+      <h2 class="demo-mes-titulo">${esc(_demosEtiquetaMes(mes))}</h2>
+      <span class="demo-mes-cuenta">${demos.length} ${demos.length === 1 ? 'demo' : 'demos'}</span>
+      <span class="demo-mes-presu">${conPresu} de ${demos.length} con presupuesto</span>
+    </div>
+    <div class="demo-resumen-estados" aria-label="${esc(_demosConteoEstados(demos))}">${estados.join('<span class="demo-resumen-sep">·</span>')}</div>`;
+}
+
+function _demosFecha(iso) {
+  const s = String(iso || '');
+  if (!/^[0-9]{4}-[0-9]{2}-[0-9]{2}/.test(s)) return s.slice(0, 10);
+  return s.slice(8, 10) + '/' + s.slice(5, 7) + '/' + s.slice(0, 4);
+}
+
+function _demosFilaHtml(d) {
+  const nombre = d.cliente_nombre || 'Cliente borrado';
+  const abrir = d.client_id ? ` onclick="openClientPanel(${d.client_id})"` : '';
+  const subir = `<input type="file" class="demo-presu-input" accept="application/pdf,image/*" onchange="demosSubirPresupuesto(${d.id}, this)">`;
+  const presu = d.presupuesto_id
+    ? `<a class="demo-presu demo-presu-si" href="/api/demos-realizadas/${d.id}/presupuesto" title="Descargar presupuesto">📄 ${esc(d.presupuesto_nombre || 'Presupuesto')}</a>
+       <label class="demo-presu-accion" title="Reemplazar por otro archivo">Cambiar${subir}</label>
+       <button class="demo-presu-accion" onclick="demosQuitarPresupuesto(${d.id})">Quitar</button>`
+    : `<span class="demo-presu demo-presu-no">Sin presupuesto</span>
+       <label class="demo-presu-accion demo-presu-adjuntar">+ Adjuntar presupuesto${subir}</label>`;
+  return `<div class="demo-row${d.presupuesto_id ? '' : ' demo-row-sin'}">
+    <div class="demo-row-head">
+      <span class="demo-num">Demo ${d.numero || '?'}</span>
+      <span class="demo-cliente"${abrir}>${esc(nombre)}</span>
+      ${_demosEstadoHtml(d)}
+      <span class="demo-meta">${esc(d.realizada_por_nombre || (d.origen === 'planilla' ? 'planilla de leads' : 'sin asignar'))} · ${esc(_demosFecha(d.fecha || d.created_at))}</span>
+      <button class="demo-del" onclick="borrarDemo(${d.id})" title="Borrar">&times;</button>
+    </div>
+    ${d.actualizacion || d.origen !== 'planilla' ? `<div class="demo-texto">${esc(d.actualizacion || 'Sin notas')}</div>` : ''}
+    <div class="demo-presu-fila">${presu}</div>
+  </div>`;
+}
+
+function renderDemos() {
+  const body = document.getElementById('demos-body');
+  const mes = _demosMesVisible();
+  _demosPintarNavegador(mes);
+  if (!_demos.length) {
+    body.innerHTML = '<div class="demo-aviso">Todavía no hay demos registradas. Cargá la primera con «+ Registrar demo».</div>';
+    return;
+  }
+  const delMes = _demosDelMes(_demos, mes);
+  if (!delMes.length) {
+    body.innerHTML = '<div class="demo-aviso">No hay demos en ' + esc(_demosEtiquetaMes(mes)) + '</div>';
+    return;
+  }
+  // El resumen es del mes entero; los filtros recortan la lista de abajo.
+  let lista = delMes;
+  if (_demosFiltro) lista = lista.filter(d => (d.cliente_nombre || '').toLowerCase().includes(_demosFiltro));
+  if (_demosFiltroPresu === 'con') lista = lista.filter(d => d.presupuesto_id);
+  if (_demosFiltroPresu === 'sin') lista = lista.filter(d => !d.presupuesto_id);
+  if (_demosFiltroEstado) lista = lista.filter(d => _demosEstadoDe(d) === _demosFiltroEstado);
+  body.innerHTML = `<section class="demo-mes">
+    ${_demosResumenHtml(delMes, mes)}
+    ${lista.length ? lista.map(_demosFilaHtml).join('')
+      : '<div class="demo-aviso">Ninguna demo coincide con el filtro en ' + esc(_demosEtiquetaMes(mes)) + '</div>'}
+  </section>`;
+}
+
+function _demosValidarArchivo(file) {
+  if (file.size > _DEMOS_MAX_BYTES) return 'El archivo pesa más de 10 MB.';
+  const tipo = file.type || '';
+  // Sin tipo (pasa en algunos celulares) decide el servidor mirando el archivo.
+  if (tipo && tipo !== 'application/pdf' && tipo.indexOf('image/') !== 0) return 'Solo se aceptan PDF o imágenes.';
+  return '';
+}
+
+async function _demosEnviarPresupuesto(demoId, file) {
+  const fd = new FormData();
+  fd.append('file', file);
+  const r = await fetch('/api/demos-realizadas/' + demoId + '/presupuesto', {method: 'POST', body: fd});
+  const d = await r.json().catch(() => ({}));
+  return d.ok ? '' : (d.error || ('No se pudo adjuntar el presupuesto (HTTP ' + r.status + ')'));
+}
+
+async function demosSubirPresupuesto(demoId, input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  try {
+    const error = _demosValidarArchivo(file) || await _demosEnviarPresupuesto(demoId, file);
+    if (error) { alert(error); return; }
+    cargarDemos();
+  } finally { input.value = ''; }
+}
+
+async function demosQuitarPresupuesto(demoId) {
+  if (!confirm('Quitar el presupuesto de esta demo?')) return;
+  const r = await fetch('/api/demos-realizadas/' + demoId + '/presupuesto', {method: 'DELETE'});
+  const d = await r.json().catch(() => ({}));
+  if (!d.ok) { alert(d.error || 'No se pudo quitar.'); return; }
+  cargarDemos();
 }
 
 let _regdemoModal = null;
@@ -3166,6 +3606,10 @@ async function abrirNuevaDemo() {
     <input type="hidden" id="regdemo-cliente-id">
     <label class="modal-label">La dio</label>
     <select id="regdemo-quien" class="modal-input"><option value="">Yo</option>${opciones}</select>
+    <label class="modal-label">Fecha de la demo</label>
+    <input type="date" id="regdemo-fecha" class="modal-input" value="${_demosHoy()}">
+    <label class="modal-label">Presupuesto enviado (opcional: PDF o imagen, hasta 10 MB)</label>
+    <input type="file" id="regdemo-archivo" class="modal-input" accept="application/pdf,image/*">
     <label class="modal-label">Cómo viene</label>
     <textarea id="regdemo-nota" class="modal-input" style="min-height:82px;resize:vertical"
               placeholder="Qué se mostró, qué dijo el cliente, próximo paso..."></textarea>
@@ -3205,9 +3649,20 @@ function _elegirClienteDemo(id, nombre) {
   document.getElementById('regdemo-res').innerHTML = '';
 }
 
+function _demosHoy() {
+  const h = new Date();
+  return h.getFullYear() + '-' + String(h.getMonth() + 1).padStart(2, '0') + '-' + String(h.getDate()).padStart(2, '0');
+}
+
 async function guardarDemo() {
   const id = document.getElementById('regdemo-cliente-id').value;
   if (!id) { alert('Elegí un cliente de la lista de sugerencias.'); return; }
+  const archivo = (document.getElementById('regdemo-archivo').files || [])[0];
+  const errorArchivo = archivo ? _demosValidarArchivo(archivo) : '';
+  if (errorArchivo) { alert(errorArchivo); return; }
+  // Hoy va sin fecha para que el servidor ponga tambien la hora; un dia
+  // anterior sirve para cargar demos viejas en el mes que corresponde.
+  const fecha = document.getElementById('regdemo-fecha').value;
   const btn = document.getElementById('regdemo-guardar');
   btn.disabled = true;
   try {
@@ -3216,12 +3671,21 @@ async function guardarDemo() {
       body: JSON.stringify({
         client_id: parseInt(id, 10),
         realizada_por: document.getElementById('regdemo-quien').value || null,
+        fecha: fecha && fecha !== _demosHoy() ? fecha : null,
         actualizacion: document.getElementById('regdemo-nota').value.trim(),
       }),
     });
     const d = await r.json().catch(() => ({}));
     if (!d.ok) { alert(d.error || 'No se pudo guardar la demo.'); return; }
+    if (archivo) {
+      const error = await _demosEnviarPresupuesto(d.id, archivo);
+      if (error) alert('La demo se guardó, pero el presupuesto no: ' + error);
+    }
     cerrarNuevaDemo();
+    // Que se vea la demo recien cargada: el navegador va a su mes (sin pasar
+    // al futuro, que no se puede mirar).
+    const mesNueva = fecha ? fecha.slice(0, 7) : '';
+    _demosMesVista = mesNueva && mesNueva < _demosMesClave(new Date()) ? mesNueva : '';
     cargarDemos();
   } finally { btn.disabled = false; }
 }
@@ -3257,6 +3721,181 @@ async function guardarResponsable(clientId, campo, valor, sel) {
   } finally { sel.disabled = false; }
 }
 
+// == Monto pagado por el desarrollo ===========================================
+// Lo carga Juan a mano. No sale de presupuestos ni de Finanzas: es lo que se
+// acordo, en la moneda en que se acordo, sin convertir.
+let _cliMontos = {};
+let _cliNuevoModal = null;
+
+// "1.500" es mil quinientos en Uruguay, no uno y medio: se aceptan punto de
+// miles y coma decimal ademas del punto decimal. Sin regex a proposito: este
+// string pasa por Python y una barra invertida se pierde.
+function _cliMontoParse(txt) {
+  let s = String(txt || '').split(' ').join('');
+  if (s === '') return null;
+  const comas = s.split(',').length - 1;
+  const partes = s.split('.');
+  if (comas > 1) return NaN;
+  if (comas === 1) {
+    s = partes.join('').replace(',', '.');
+  } else if (partes.length > 2 || (partes.length === 2 && partes[1].length === 3)) {
+    s = partes.join('');
+  }
+  const n = Number(s);
+  return isFinite(n) ? n : NaN;
+}
+
+function _cliMontoCelda(id) {
+  const m = _cliMontos[id] || {};
+  const cargado = m.monto !== null && m.monto !== undefined;
+  if (!cargado) {
+    return `<button type="button" class="cli-monto vacio" title="Cargar cuánto pagó" onclick="cliMontoEditar(${id})">+ cargar</button>`;
+  }
+  const n = Number(m.monto).toLocaleString('es-UY', {maximumFractionDigits: 2});
+  return `<button type="button" class="cli-monto" title="Editar cuánto pagó" onclick="cliMontoEditar(${id})"><span class="cli-monto-mon">${esc(m.moneda || '')}</span>${n}</button>`;
+}
+
+function cliMontoEditar(id) {
+  const cel = document.getElementById('cli-monto-' + id);
+  if (!cel) return;
+  const m = _cliMontos[id] || {};
+  const moneda = m.moneda || 'USD';
+  const valor = (m.monto === null || m.monto === undefined) ? '' : String(m.monto).replace('.', ',');
+  cel.innerHTML = `<div class="cli-monto-edit">
+    <input type="text" inputmode="decimal" class="cli-monto-input" value="${esc(valor)}" placeholder="Ej: 1.500" aria-label="Monto pagado"
+      onkeydown="if(event.key==='Enter')cliMontoGuardar(${id});if(event.key==='Escape')cliMontoCancelar(${id})">
+    <select class="cli-monto-sel" aria-label="Moneda">
+      <option value="USD"${moneda === 'USD' ? ' selected' : ''}>USD</option>
+      <option value="UYU"${moneda === 'UYU' ? ' selected' : ''}>UYU</option>
+    </select>
+    <button type="button" class="cli-monto-ok" onclick="cliMontoGuardar(${id})">Guardar</button>
+    <button type="button" class="cli-monto-x" onclick="cliMontoCancelar(${id})" aria-label="Cancelar" title="Cancelar">&times;</button>
+  </div>`;
+  const inp = cel.querySelector('.cli-monto-input');
+  inp.focus();
+  inp.select();
+}
+
+function cliMontoCancelar(id) {
+  const cel = document.getElementById('cli-monto-' + id);
+  if (cel) cel.innerHTML = _cliMontoCelda(id);
+}
+
+async function cliMontoGuardar(id) {
+  const cel = document.getElementById('cli-monto-' + id);
+  if (!cel) return;
+  const inp = cel.querySelector('.cli-monto-input');
+  const sel = cel.querySelector('.cli-monto-sel');
+  const monto = _cliMontoParse(inp.value);
+  if (monto !== null && !(monto >= 0)) {
+    alert('El monto tiene que ser un número mayor o igual a cero. Dejalo vacío para borrarlo.');
+    inp.focus();
+    return;
+  }
+  const controles = cel.querySelectorAll('input,select,button');
+  controles.forEach(el => { el.disabled = true; });
+  try {
+    const r = await fetch('/api/clientes-activos/' + id + '/monto-pagado', {
+      method: 'PUT', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({monto: monto, moneda: sel.value}),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!d.ok) {
+      // Queda abierto con lo tipeado: cerrar mostrando el valor viejo haria
+      // creer que se guardo.
+      alert(d.error || 'No se pudo guardar el monto.');
+      controles.forEach(el => { el.disabled = false; });
+      inp.focus();
+      return;
+    }
+    _cliMontos[id] = {monto: d.monto_pagado, moneda: d.moneda_pagado};
+    cel.innerHTML = _cliMontoCelda(id);
+  } catch (e) {
+    alert('No se pudo guardar el monto: ' + e.message);
+    controles.forEach(el => { el.disabled = false; });
+  }
+}
+
+// == Alta de cliente ===========================================================
+async function cliNuevoAbrir() {
+  cliNuevoCerrar();
+  let etapas = [];
+  try {
+    const r = await fetch('/api/preclientes/etapas');
+    etapas = r.ok ? ((await r.json()).clientes || []) : [];
+  } catch (e) { etapas = []; }
+  if (!etapas.length) etapas = [{key: 'cerrado', label: 'Cerrado'}];
+  const opciones = etapas.map(e => `<option value="${esc(e.key)}">${esc(e.label)}</option>`).join('');
+  const m = document.createElement('div');
+  m.className = 'modal-overlay open';
+  m.id = 'cli-nuevo-modal';
+  m.onclick = ev => { if (ev.target === m) cliNuevoCerrar(); };
+  m.innerHTML = `<div class="modal" style="width:440px;max-width:95vw">
+    <h3>Nuevo cliente</h3>
+    <label class="modal-label">Nombre del negocio *</label>
+    <input type="text" id="cli-nuevo-nombre" class="modal-input" maxlength="200" placeholder="Ej: Bloquera Norte">
+    <div class="modal-row">
+      <div>
+        <label class="modal-label">Teléfono</label>
+        <input type="text" id="cli-nuevo-tel" class="modal-input" maxlength="40" placeholder="(opcional)">
+      </div>
+      <div>
+        <label class="modal-label">Ciudad</label>
+        <input type="text" id="cli-nuevo-ciudad" class="modal-input" maxlength="120" placeholder="(opcional)">
+      </div>
+    </div>
+    <label class="modal-label">Estado</label>
+    <select id="cli-nuevo-estado" class="modal-input">${opciones}</select>
+    <label class="modal-label">Cuánto pagó por el desarrollo</label>
+    <div style="display:flex;gap:8px">
+      <input type="text" inputmode="decimal" id="cli-nuevo-monto" class="modal-input" placeholder="(opcional) Ej: 1.500">
+      <select id="cli-nuevo-moneda" class="modal-input" style="width:92px;flex:none" aria-label="Moneda">
+        <option value="USD">USD</option>
+        <option value="UYU">UYU</option>
+      </select>
+    </div>
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="cliNuevoCerrar()">Cancelar</button>
+      <button class="btn-confirm" id="cli-nuevo-guardar" onclick="cliNuevoGuardar()">Crear cliente</button>
+    </div>
+  </div>`;
+  document.body.appendChild(m);
+  _cliNuevoModal = m;
+  document.getElementById('cli-nuevo-nombre').focus();
+}
+
+function cliNuevoCerrar() {
+  if (_cliNuevoModal) { _cliNuevoModal.remove(); _cliNuevoModal = null; }
+}
+
+async function cliNuevoGuardar() {
+  const val = id => document.getElementById(id).value.trim();
+  const nombre = val('cli-nuevo-nombre');
+  if (!nombre) { alert('Poné el nombre del negocio.'); return; }
+  const monto = _cliMontoParse(val('cli-nuevo-monto'));
+  if (monto !== null && !(monto >= 0)) {
+    alert('El monto tiene que ser un número mayor o igual a cero, o quedar vacío.');
+    return;
+  }
+  const btn = document.getElementById('cli-nuevo-guardar');
+  btn.disabled = true;
+  try {
+    const r = await fetch('/api/clientes-activos', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        name: nombre, phone: val('cli-nuevo-tel'), city: val('cli-nuevo-ciudad'),
+        crm_status: val('cli-nuevo-estado'), monto: monto, moneda: val('cli-nuevo-moneda'),
+      }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!d.ok) { alert(d.error || 'No se pudo crear el cliente.'); return; }
+    cliNuevoCerrar();
+    loadClientesPanel();
+  } catch (e) {
+    alert('No se pudo crear el cliente: ' + e.message);
+  } finally { btn.disabled = false; }
+}
+
 // ── Clientes ──────────────────────────────────────────────────────────────────
 async function loadClientesPanel() {
   const body = document.getElementById('clientes-body');
@@ -3265,6 +3904,8 @@ async function loadClientesPanel() {
     const [r, usuarios] = await Promise.all([fetch('/api/clientes-activos'), _usuarios()]);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const clientes = (await r.json()).clientes || [];
+    _cliMontos = {};
+    clientes.forEach(b => { _cliMontos[b.id] = {monto: b.monto_pagado, moneda: b.moneda_pagado}; });
     if (!clientes.length) { body.innerHTML = '<div class="empty-state">No hay clientes todavía</div>'; return; }
     const crmLabels = {cerrado:'Cerrado', en_desarrollo:'En desarrollo', finalizado:'Finalizado'};
     const crmColor  = {cerrado:'#4ade80', en_desarrollo:'#0088cc', finalizado:'#a78bfa'};
@@ -3292,6 +3933,7 @@ async function loadClientesPanel() {
           ${tel}
         </div>
         <div><span style="font-size:.72rem;font-weight:600;color:${color};background:${color}18;padding:3px 8px;border-radius:99px">${crmLabels[crm]||crm}</span></div>
+        <div data-rol="Pagó por el desarrollo" id="cli-monto-${b.id}">${_cliMontoCelda(b.id)}</div>
         <div data-rol="Día a día">${selector(b, 'encargado_id')}</div>
         <div data-rol="Mantenimiento">${selector(b, 'mantenimiento_id')}</div>
         <div data-rol="Cobros">${selector(b, 'cobros_id')}</div>
@@ -3570,7 +4212,6 @@ async function markContacted(id) {
 
 function _refreshActivePanel() {
   if (activePanel === 'cola') loadCola();
-  else if (activePanel === 'seguimientos') loadSeguimientos();
   else if (activePanel === 'clientes') loadClientesPanel();
 }
 
@@ -4001,6 +4642,7 @@ async function renderCalendar() {
         </div>`
     ).join('')}
   </div>`;
+  _calSeleccionarDiaMobile();
 }
 
 // ── Vista semanal ───────────────────────────────────────────────────────────
@@ -4285,6 +4927,9 @@ async function _calGuardarHorario() {
     return;
   }
   _calCerrarEditor();
+  // En el celular la lista sigue a la reunion a su dia nuevo: si no, queda
+  // mostrando un dia donde la reunion ya no esta y parece que se borro.
+  if (window.innerWidth <= 768) calDiaMobile = date;
   renderCalendar();
 }
 
@@ -4292,25 +4937,69 @@ document.getElementById('reprog-modal').addEventListener('click', e => {
   if (e.target === e.currentTarget) _calCerrarEditor();
 });
 
-function _calCellClick(cell, dateStr) {
+// El dia cuya lista se ve en el celular. Sobrevive a volver a dibujar el mes
+// (guardar, mover una reunion, el sync) para no perder lo que se estaba mirando.
+let calDiaMobile = null;
+
+// Que dia mostrar al dibujar el mes: el que ya estaba elegido si sigue a la
+// vista, si no hoy, y si el mes no contiene ninguno de los dos, ninguno.
+function _calDiaMobile(fechasDelMes, hoy, elegido) {
+  const fechas = fechasDelMes || [];
+  if (elegido && fechas.includes(elegido)) return elegido;
+  if (hoy && fechas.includes(hoy)) return hoy;
+  return null;
+}
+
+// Al abrir el calendario en el celular no habia ningun dia marcado: la lista
+// quedaba vacia y habia que adivinar que se toca un dia. Ahora arranca en hoy.
+// No desplaza la pantalla: eso es solo cuando la persona toca un dia.
+function _calSeleccionarDiaMobile() {
   if (window.innerWidth > 768) return;
   const mobileList = document.getElementById('cal-day-events-mobile');
   if (!mobileList) return;
-  document.querySelectorAll('.cal-cell').forEach(c => c.style.outline = '');
-  cell.style.outline = '2px solid #0088cc';
+  const celdas = Array.from(document.querySelectorAll('.cal-cell[data-date]'));
+  const ds = _calDiaMobile(celdas.map(c => c.dataset.date), _calIsoLocal(new Date()), calDiaMobile);
+  const celda = celdas.find(c => c.dataset.date === ds);
+  if (celda) { _calCellClick(celda, ds, false); return; }
+  mobileList.innerHTML = '<div class="cal-mobile-vacio">Tocá un día para ver sus reuniones.</div>';
+}
+
+// Una reunion en la lista del celular. En el celular no hay hover, asi que las
+// acciones del chip de escritorio (.cal-chip-acts) no se ven: van aca como
+// botones. Llaman a las MISMAS funciones que el chip —editar abre el mismo
+// modal y borrar pide la misma confirmacion— para que no diverjan. Las de
+// Calendly no se editan desde aca, igual que en escritorio.
+function _calItemMobile(ev) {
+  const deCalendly = (ev.origen || 'crm') === 'calendly';
+  const editar = deCalendly
+    ? ''
+    : '<button class="cal-mobile-act cal-mobile-act-editar" onclick="_calAbrirEditor(' + escJs(ev.id) + ')">Editar</button>';
+  const unirse = ev.meeting_url
+    ? '<a class="cal-mobile-act cal-mobile-act-unirse" href="' + esc(ev.meeting_url) + '" target="_blank" rel="noopener">Unirse</a>'
+    : '';
+  const borrar = '<button class="cal-mobile-act cal-mobile-act-borrar" onclick="deleteCalEvent(' + escJs(ev.id) + ',' + escJs(ev.title || '') + ')">Borrar</button>';
+  return '<div class="cal-mobile-ev">'
+       + '<div class="cal-mobile-ev-titulo">' + esc(ev.title || '') + '</div>'
+       + (ev.time ? '<div class="cal-mobile-ev-hora">🕐 ' + esc(ev.time) + '</div>' : '')
+       + (deCalendly ? '<div class="cal-mobile-ev-aviso">De Calendly: se reprograma allá</div>' : '')
+       + '<div class="cal-mobile-acts">' + editar + unirse + borrar + '</div>'
+       + '</div>';
+}
+
+function _calCellClick(cell, dateStr, desplazar) {
+  if (window.innerWidth > 768) return;
+  const mobileList = document.getElementById('cal-day-events-mobile');
+  if (!mobileList) return;
+  calDiaMobile = dateStr;
+  document.querySelectorAll('.cal-cell.sel-mobile').forEach(c => c.classList.remove('sel-mobile'));
+  cell.classList.add('sel-mobile');
   const events = (window._calEventMap || {})[dateStr] || [];
   if (!events.length) {
-    mobileList.innerHTML = '<div style="color:#475569;font-size:.78rem;padding:8px 0">Sin eventos este día.</div>';
+    mobileList.innerHTML = '<div class="cal-mobile-vacio">Sin reuniones este día.</div>';
   } else {
-    mobileList.innerHTML = events.map(ev => `
-      <div style="background:#111827;border:1px solid #1e293b;border-radius:10px;padding:12px;margin-bottom:8px">
-        <div style="font-size:.82rem;font-weight:600;color:#f1f5f9">${esc(ev.title||'')}</div>
-        ${ev.time ? `<div style="font-size:.72rem;color:#0088cc;margin-top:3px">🕐 ${esc(ev.time)}</div>` : ''}
-        ${ev.meeting_url ? `<a href="${esc(ev.meeting_url)}" target="_blank" style="display:inline-flex;align-items:center;gap:4px;margin-top:6px;font-size:.72rem;color:#4ade80;text-decoration:none">▶ Unirse a reunión</a>` : ''}
-      </div>
-    `).join('');
+    mobileList.innerHTML = events.map(_calItemMobile).join('');
   }
-  mobileList.scrollIntoView({behavior:'smooth',block:'nearest'});
+  if (desplazar !== false) mobileList.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
 
 function openNewEventModal() {
@@ -4622,6 +5311,21 @@ async function loadProjects() {
 // viejo. Sirve para leer de un vistazo por donde va cada columna.
 const _COLOR_GRUPO_CLIENTE = {todo:'#94a3b8', in_progress:'#3b82f6', done:'#10b981', otros:'#f59e0b'};
 
+// Lo que se dibujo la ultima vez. El arrastre lo modifica y vuelve a dibujar;
+// si Notion rechaza, se restaura desde aca y la ficha vuelve a su columna.
+let _ncColumnas = [];
+let _ncClientes = [];
+let _ncArrastrando = null;  // id de la ficha que va en la mano
+let _ncGuardando = false;   // un movimiento esperando la respuesta de Notion
+
+// Las fichas se arrastran con el mouse. En touch el drag de HTML5 no dispara
+// (ya paso con la vista semanal del calendario), asi que ahi no se dibujan
+// arrastrables y la ayuda del panel dice que se mueven desde la compu. Es la
+// misma condicion que usa el CSS para elegir que ayuda mostrar.
+function _ncPuedeArrastrar() {
+  return !!(window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches);
+}
+
 async function loadNotionClients() {
   const board = document.getElementById('notion-clients-board');
   if (!board) return;
@@ -4643,22 +5347,36 @@ async function loadNotionClients() {
     board.innerHTML = '<div class="tasks-empty">No se pudieron cargar los clientes.</div>';
     return;
   }
+  _ncColumnas = columnas;
+  _ncClientes = clientes;
+  _ncDibujar();
+}
+
+function _ncDibujar() {
+  const board = document.getElementById('notion-clients-board');
+  if (!board) return;
+  const arrastrable = _ncPuedeArrastrar();
   // Lo que no cae en ningun estado conocido (un estado nuevo en Notion, o una
   // ficha sin estado) va a una columna aparte, que solo aparece si tiene algo:
   // vacia seria una columna de ruido permanente.
-  const conocidos = new Set(columnas.map(col => col.estado));
-  const sueltos = clientes.filter(c => !conocidos.has(c.status));
-  board.innerHTML = columnas.map(col =>
+  const conocidos = new Set(_ncColumnas.map(col => col.estado));
+  const sueltos = _ncClientes.filter(c => !conocidos.has(c.status));
+  board.innerHTML = _ncColumnas.map(col =>
     _notionClientColHtml(col.estado, col.grupo,
-                         clientes.filter(c => c.status === col.estado))
+                         _ncClientes.filter(c => c.status === col.estado),
+                         arrastrable, true)
   ).join('') + (sueltos.length
-    ? _notionClientColHtml('Sin clasificar', 'otros', sueltos)
+    ? _notionClientColHtml('Sin clasificar', 'otros', sueltos, arrastrable, false)
     : '');
 }
 
-function _notionClientColHtml(titulo, grupo, dentro) {
+function _notionClientColHtml(titulo, grupo, dentro, arrastrable, recibe) {
   const color = _COLOR_GRUPO_CLIENTE[grupo] || _COLOR_GRUPO_CLIENTE.otros;
-  return `<div class="kanban-col">
+  // "Sin clasificar" no recibe fichas: no es un estado que exista en Notion.
+  const destino = arrastrable && recibe
+    ? ` data-estado="${esc(titulo)}" ondragover="_ncOver(event)" ondragleave="_ncLeave(event)" ondrop="_ncDrop(event)"`
+    : '';
+  return `<div class="kanban-col"${destino}>
     <div class="kanban-head">
       <span class="kanban-dot" style="background:${color}"></span>
       <span class="kanban-name">${esc(titulo)}</span>
@@ -4666,13 +5384,13 @@ function _notionClientColHtml(titulo, grupo, dentro) {
     </div>
     <div class="kanban-cards">${
       dentro.length
-        ? dentro.map(c => _notionClientCardHtml(c)).join('')
+        ? dentro.map(c => _notionClientCardHtml(c, arrastrable)).join('')
         : '<div class="kanban-vacia">Sin fichas</div>'
     }</div>
   </div>`;
 }
 
-function _notionClientCardHtml(c) {
+function _notionClientCardHtml(c, arrastrable) {
   const url = 'https://www.notion.so/' + (c.notion_page_id||'').replace(/-/g,'');
   // El estado ya lo dice el titulo de la columna, no se repite en la tarjeta.
   const meta = [
@@ -4680,11 +5398,195 @@ function _notionClientCardHtml(c) {
     c.due_date ? `<span class="task-deadline">${esc(c.due_date)}</span>` : '',
     c.tiempo_estimado ? `<span class="proj-stage">${esc(c.tiempo_estimado)} h</span>` : '',
   ].filter(Boolean).join('');
-  return `<div class="kanban-card">
-    <a class="proj-name" href="${esc(url)}" target="_blank" rel="noopener">${esc(c.name)}</a>
+  const clases = 'kanban-card' + (arrastrable ? '' : ' nc-fija') + (c._guardando ? ' nc-guardando' : '');
+  const arrastre = arrastrable && !c._guardando
+    ? ` draggable="true" data-nc-id="${Number(c.id)}" ondragstart="_ncDragStart(event)" ondragend="_ncDragEnd(event)"`
+    : '';
+  // El link va con draggable="false": si no, agarrar la ficha por el nombre
+  // arrastra la URL en vez de la ficha.
+  return `<div class="${clases}"${arrastre}>
+    <a class="proj-name" href="${esc(url)}" target="_blank" rel="noopener" draggable="false">${esc(c.name)}</a>
     ${meta ? `<div class="kanban-card-meta">${meta}</div>` : ''}
     ${c.descripcion ? `<div class="kanban-card-who">${esc(c.descripcion)}</div>` : ''}
+    ${_ncVinculoHtml(c)}
   </div>`;
+}
+
+// ── Conectar una ficha con su persona del CRM ────────────────────────────────
+// Las fichas de Notion no traen ningun id del CRM, solo el nombre. Se conectan
+// una vez, a mano, y con eso la ficha que llega a "Presupuesto Aceptado" pasa
+// sola a Clientes (lo hace el backend, venga el cambio del arrastre o del sync).
+let _ncVinculando = null;   // la ficha cuyo buscador esta abierto
+let _ncBusquedaTimer = null;
+
+function _ncVinculoHtml(c) {
+  const accion = 'event.stopPropagation();_ncAbrirVinculo(' + Number(c.id) + ')';
+  return c.business_id
+    ? '<button class="nc-vinculo" draggable="false" onclick="' + accion + '" title="Cambiar con quién está conectada">👤 ' + esc(c.business_name || 'Persona del CRM') + '</button>'
+    : '<button class="nc-vinculo nc-vinculo-falta" draggable="false" onclick="' + accion + '">Conectar con el CRM</button>';
+}
+
+function _ncAbrirVinculo(id) {
+  const c = _ncClientes.find(x => Number(x.id) === Number(id));
+  if (!c) return;
+  _ncVinculando = c;
+  document.getElementById('nc-vinculo-ficha').textContent = c.name || '';
+  document.getElementById('nc-vinculo-actual').textContent = c.business_id
+    ? 'conectada con ' + (c.business_name || 'una persona del CRM') + '.'
+    : 'todavía no está conectada.';
+  document.getElementById('nc-vinculo-quitar').hidden = !c.business_id;
+  document.getElementById('nc-vinculo-error').textContent = '';
+  const input = document.getElementById('nc-vinculo-buscar');
+  input.value = c.business_id ? '' : (c.name || '');
+  document.getElementById('nc-vinculo-modal').classList.add('open');
+  _ncBuscarPersona(input.value);
+  input.focus();
+}
+
+function _ncCerrarVinculo() {
+  document.getElementById('nc-vinculo-modal').classList.remove('open');
+  _ncVinculando = null;
+}
+
+function _ncBuscarPersonaTecla(v) {
+  clearTimeout(_ncBusquedaTimer);
+  _ncBusquedaTimer = setTimeout(() => _ncBuscarPersona(v), 250);
+}
+
+async function _ncBuscarPersona(texto) {
+  const lista = document.getElementById('nc-vinculo-resultados');
+  const q = (texto || '').trim();
+  if (q.length < 2) {
+    lista.innerHTML = '<div class="nc-vinculo-vacio">Escribí al menos 2 letras del nombre.</div>';
+    return;
+  }
+  lista.innerHTML = '<div class="nc-vinculo-vacio">Buscando...</div>';
+  let items = [];
+  try {
+    // Con `page` la busqueda se resuelve en SQL con LIMIT. Sin `page` la ruta
+    // trae todos los leads a memoria, que es el 502 del 28/8.
+    const r = await fetch('/api/leads?page=1&search=' + encodeURIComponent(q));
+    if (!r.ok) throw new Error(r.status);
+    items = ((await r.json()) || {}).items || [];
+  } catch (e) {
+    lista.innerHTML = '<div class="nc-vinculo-vacio">No se pudo buscar. Probá de nuevo.</div>';
+    return;
+  }
+  lista.innerHTML = items.length
+    ? items.map(p => '<button class="nc-vinculo-opcion" onclick="_ncGuardarVinculo(' + Number(p.id) + ')">'
+        + '<span class="nc-vinculo-nombre">' + esc(p.name || 'Sin nombre') + '</span>'
+        + '<span class="nc-vinculo-sub">' + esc([p.city, p.phone].filter(Boolean).join(' · ')) + '</span>'
+        + '</button>').join('')
+    : '<div class="nc-vinculo-vacio">No hay nadie en el CRM con ese nombre.</div>';
+}
+
+async function _ncGuardarVinculo(businessId) {
+  const c = _ncVinculando;
+  if (!c) return;
+  const err = document.getElementById('nc-vinculo-error');
+  err.textContent = '';
+  let d = {};
+  try {
+    const r = await fetch('/api/notion-clients/' + Number(c.id) + '/cliente-crm', {
+      method: 'PUT', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({business_id: businessId})
+    });
+    try { d = await r.json(); } catch (e) { d = {}; }
+    if (!r.ok) d.ok = false;
+  } catch (e) {
+    d = {ok: false, error: 'no hubo respuesta del CRM'};
+  }
+  if (!d.ok) {
+    err.textContent = 'No se guardó: ' + (d.error || 'error desconocido');
+    return;
+  }
+  c.business_id = d.business_id;
+  c.business_name = d.business_name;
+  _ncCerrarVinculo();
+  _ncDibujar();
+  if (d.paso_a_clientes) {
+    alert((d.business_name || 'La persona') + ' pasó a Clientes, porque su ficha ya está en Presupuesto Aceptado.');
+  }
+}
+
+function _ncDragStart(ev) {
+  if (_ncGuardando) { ev.preventDefault(); return; }
+  _ncArrastrando = Number(ev.currentTarget.dataset.ncId);
+  ev.dataTransfer.setData('text/plain', String(_ncArrastrando));
+  ev.dataTransfer.effectAllowed = 'move';
+  ev.currentTarget.classList.add('dragging');
+}
+
+function _ncDragEnd(ev) {
+  ev.currentTarget.classList.remove('dragging');
+  document.querySelectorAll('#notion-clients-board .drag-over')
+    .forEach(col => col.classList.remove('drag-over'));
+  _ncArrastrando = null;
+}
+
+function _ncOver(ev) {
+  if (_ncArrastrando === null) return;  // un archivo o algo de otro tablero
+  ev.preventDefault();
+  ev.dataTransfer.dropEffect = 'move';
+  ev.currentTarget.classList.add('drag-over');
+}
+
+function _ncLeave(ev) {
+  // Pasar por encima de una ficha de la columna tambien dispara dragleave.
+  if (ev.relatedTarget && ev.currentTarget.contains(ev.relatedTarget)) return;
+  ev.currentTarget.classList.remove('drag-over');
+}
+
+async function _ncDrop(ev) {
+  ev.preventDefault();
+  ev.currentTarget.classList.remove('drag-over');
+  const id = _ncArrastrando;
+  _ncArrastrando = null;
+  const estado = ev.currentTarget.dataset.estado;
+  const c = _ncClientes.find(x => Number(x.id) === id);
+  if (!c || !estado || c.status === estado || _ncGuardando) return;
+  await _ncMover(c, estado);
+}
+
+async function _ncMover(c, estado) {
+  const antes = {status: c.status, grupo: c.grupo};
+  _ncGuardando = true;
+  // Se ve en la columna nueva mientras Notion contesta, pero atenuada: todavia
+  // no es verdad. Si Notion rechaza, vuelve a donde estaba.
+  c.status = estado;
+  c._guardando = true;
+  _ncDibujar();
+  let d = {};
+  try {
+    const r = await fetch('/api/notion-clients/' + Number(c.id) + '/estado', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({estado})
+    });
+    try { d = await r.json(); } catch (e) { d = {}; }
+    if (!r.ok) d.ok = false;
+  } catch (e) {
+    d = {ok: false, error: 'no hubo respuesta del CRM'};
+  }
+  c._guardando = false;
+  _ncGuardando = false;
+  if (d.ok) {
+    c.status = d.estado || estado;
+    c.grupo = d.grupo || c.grupo;
+  } else {
+    c.status = antes.status;
+    c.grupo = antes.grupo;
+  }
+  _ncDibujar();
+  if (!d.ok) {
+    alert('No se pudo mover ' + (c.name || 'la ficha') + ' en Notion, así que volvió a su columna. '
+          + (d.error || 'Mirá los logs del CRM.'));
+  } else if (d.paso_a_clientes) {
+    alert((c.business_name || c.name || 'La persona') + ' pasó a Clientes.');
+  } else if (d.sin_conectar) {
+    if (confirm((c.name || 'Esta ficha') + ' no está conectada con nadie del CRM, así que no pasó a Clientes. ¿La conectás ahora?')) {
+      _ncAbrirVinculo(c.id);
+    }
+  }
 }
 
 function _populateUserFilter() {
@@ -5341,95 +6243,20 @@ async function _cpBindTasks() {
   }
 }
 
-// ── Kanban ────────────────────────────────────────────────────────────────────
-
-const KANBAN_COLS = [
-  {key:'contactado',     label:'Contactado'},
-  {key:'reunion_agendada', label:'Reunión agendada'},
-  {key:'reunion_hecha',  label:'Reunión hecha'},
-  {key:'presupuesto_enviado', label:'Presupuesto enviado'},
-  {key:'cliente_cerrado',label:'Cliente cerrado'},
-];
-
-let _kanbanLeads = [];
-let _kanbanDragging = null;
-
-async function loadKanban() {
-  const board = document.getElementById('kanban-board');
-  board.innerHTML = '<div style="color:#475569;font-size:.85rem">Cargando...</div>';
-  try {
-    const r = await fetch('/api/leads');
-    _kanbanLeads = await r.json();
-  } catch { board.innerHTML = '<div style="color:#f87171">Error cargando leads</div>'; return; }
-  renderKanban();
-}
-
-function renderKanban() {
-  const board = document.getElementById('kanban-board');
-  const grouped = {};
-  KANBAN_COLS.forEach(c => grouped[c.key] = []);
-  _kanbanLeads.forEach(l => {
-    const k = l.crm_status || 'sin_contactar';
-    if (grouped[k]) grouped[k].push(l);
-    else grouped['sin_contactar'] && grouped['sin_contactar'].push({...l, crm_status:'sin_contactar'});
-  });
-  board.innerHTML = KANBAN_COLS.map(col => `
-    <div class="kanban-col" data-col="${col.key}"
-         ondragover="event.preventDefault();this.classList.add('drag-over')"
-         ondragleave="this.classList.remove('drag-over')"
-         ondrop="_kanbanDrop(event,'${col.key}')">
-      <div class="kanban-col-header">
-        <span class="kanban-col-title">${col.label}</span>
-        <span class="kanban-count">${grouped[col.key].length}</span>
-      </div>
-      <div class="kanban-cards">
-        ${grouped[col.key].length === 0
-          ? '<div class="kanban-empty">Sin leads</div>'
-          : grouped[col.key].map(l => _kanbanCard(l)).join('')}
-      </div>
-    </div>`).join('');
-}
-
-function _kanbanCard(l) {
-  const meta = [l.interest, l.category, l.city].filter(Boolean).join(' · ');
-  return `<div class="kanban-card" draggable="true" data-id="${l.id}"
-    ondragstart="_kanbanDragStart(event,${l.id})"
-    ondragend="_kanbanDragEnd(event)"
-    onclick="openClientPanel(${l.id})">
-    <div class="kanban-card-name">${esc(l.name||'')}</div>
-    ${meta ? `<div class="kanban-card-meta">${esc(meta)}</div>` : ''}
-    ${l.phone ? `<div class="kanban-card-phone">${esc(l.phone)}</div>` : ''}
-  </div>`;
-}
-
-function _kanbanDragStart(e, id) {
-  _kanbanDragging = id;
-  e.currentTarget.classList.add('dragging');
-  e.dataTransfer.effectAllowed = 'move';
-}
-
-function _kanbanDragEnd(e) {
-  e.currentTarget.classList.remove('dragging');
-  document.querySelectorAll('.kanban-col').forEach(c => c.classList.remove('drag-over'));
-}
-
-async function _kanbanDrop(e, newStatus) {
-  e.currentTarget.classList.remove('drag-over');
-  if (!_kanbanDragging) return;
-  const id = _kanbanDragging;
-  _kanbanDragging = null;
-  const lead = _kanbanLeads.find(l => l.id === id);
-  if (!lead || lead.crm_status === newStatus) return;
-  lead.crm_status = newStatus;
-  renderKanban();
-  await fetch(`/api/leads/${id}/crm-status`, {
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({crm_status: newStatus})
-  });
-}
-
-// Initial load
-loadCola();
+// Initial load. Lo primero del CRM es el Calendario, en su propio grupo arriba
+// de todo (pedido de Juan, 14/9; antes de eso habia pedido Meta Ads). El panel
+// y su item de menu ya arrancan activos en el HTML; aca solo se dibuja. Si el
+// rol no tiene el calendario, el control de acceso de abajo lo manda al primer
+// panel que si tenga.
+//
+// OJO: aca NO va showPanel. Esta linea corre antes de que se declaren
+// NAV_LABELS y compania (mas abajo, con const): showPanel -> _syncMobileNav las
+// lee y tira "Cannot access 'NAV_LABELS' before initialization", que corta el
+// resto del <script> -- permisos, barra del celular, tema -- en el navegador.
+// renderCalendar, antes de su primer await, solo usa calView, calMonthOffset y
+// el DOM, que ya estan declarados aca. calLoaded evita que showPanel('cal') lo
+// vuelva a pedir.
+calLoaded = true; renderCalendar();
 
 // ── Score badge + social icons ────────────────────────────────────────────────
 
@@ -5491,18 +6318,19 @@ function _showScoreBreakdown(event, el) {
 }
 
 // ── Mobile navigation ─────────────────────────────────────────────────────────
-const NAV_PRIORITY = ['cola','seguimientos','meta','cal','tasks','pipeline','clientes','wa','metrics','activity','projects','notion_clients','finanzas'];
+// El mismo orden que el menu de la izquierda (Juan, 14/9).
+const NAV_PRIORITY = ['cal','meta','finanzas','simulador','wa','notion_clients','clientes','projects','tasks','activity','metrics','cola'];
 const NAV_ICONS = {
-  cola:'inbox',seguimientos:'bookmark',meta:'instagram',cal:'calendar',
+  cola:'inbox',meta:'instagram',cal:'calendar',
   tasks:'check-square',pipeline:'trending-up',clientes:'users',
   wa:'message-circle',metrics:'bar-chart-2',activity:'clock',projects:'target',
-  notion_clients:'handshake',finanzas:'wallet'
+  notion_clients:'handshake',finanzas:'wallet',simulador:'calculator'
 };
 const NAV_LABELS = {
-  cola:'Cola',seguimientos:'Seguim.',meta:'Meta',cal:'Agenda',
+  cola:'Outbound',meta:'Meta',cal:'Agenda',
   tasks:'Tareas',pipeline:'Pipeline',clientes:'Clientes',
-  wa:'WA',metrics:'Métricas',activity:'Actividad',projects:'Proyectos',
-  notion_clients:'Pipeline',finanzas:'Finanzas'
+  wa:'WA',metrics:'Intel. comercial',activity:'Actividad',projects:'Proyectos',
+  notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador'
 };
 let _mobileNavOverflow = [];
 
@@ -5582,7 +6410,7 @@ function closeMasSheet() {
 }
 
 // ── Panel access control ──────────────────────────────────────────────────────
-const ALL_PANELS = ['cola','seguimientos','meta','pipeline','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas'];
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador'];
 (async () => {
   try {
     const r = await fetch('/api/me');
@@ -5603,7 +6431,13 @@ const ALL_PANELS = ['cola','seguimientos','meta','pipeline','clientes','tasks','
         }
       });
       if (!access.includes(activePanel)) {
-        const first = access[0];
+        // El primero en el orden del menu que el rol tenga Y que exista. Los
+        // permisos guardados pueden traer paneles que ya no estan en la
+        // interfaz (seguimientos, pipeline): con access[0] a ciegas, un rol que
+        // arrancaba en 'seguimientos' abria un panel inexistente, showPanel
+        // tiraba y la barra del celular no se armaba.
+        const first = NAV_PRIORITY.concat(ALL_PANELS).find(p =>
+          access.includes(p) && document.getElementById(p + '-panel'));
         if (first) showPanel(first);
       }
     }
@@ -6398,18 +7232,6 @@ function _cpChangeStatus(val) {
     method: 'POST', headers: {'Content-Type':'application/json'},
     body: JSON.stringify({crm_status: val})
   }).then(() => { if (_cpData.lead) _cpData.lead.crm_status = val; });
-}
-
-let _metricsTab = 'sdr';
-
-function switchMetricsTab(tab) {
-  _metricsTab = tab;
-  document.getElementById('metrics-sdr').style.display  = tab === 'sdr'  ? '' : 'none';
-  document.getElementById('metrics-meta').style.display = tab === 'meta' ? '' : 'none';
-  const sdrBtn  = document.getElementById('tab-sdr-btn');
-  const metaBtn = document.getElementById('tab-meta-btn');
-  if (sdrBtn)  { sdrBtn.style.background  = tab === 'sdr'  ? '#0088cc' : 'transparent'; sdrBtn.style.color  = tab === 'sdr'  ? '#fff' : '#64748b'; }
-  if (metaBtn) { metaBtn.style.background = tab === 'meta' ? '#e1306c' : 'transparent'; metaBtn.style.color = tab === 'meta' ? '#fff' : '#64748b'; }
 }
 
 function _barList(items, maxVal) {
@@ -7369,10 +8191,7 @@ async function loadMetrics() {
   const el = id => document.getElementById(id);
 
   try {
-    const fetches = [fetch('/api/metrics')];
-    if (window._isAdmin) fetches.push(fetch('/api/metrics/meta'));
-    const results = await Promise.all(fetches);
-    const m = await results[0].json();
+    const m = await (await fetch('/api/metrics')).json();
 
     if (el('m-total'))        el('m-total').textContent        = m.total;
     if (el('m-contacted'))    el('m-contacted').textContent    = m.contacted;
@@ -7407,28 +8226,791 @@ async function loadMetrics() {
     if (el('m-rubros')) el('m-rubros').innerHTML = _barList(m.top_rubros);
     if (el('m-cities')) el('m-cities').innerHTML = _barList(m.top_cities);
 
-    if (window._isAdmin && results[1]) {
-      document.getElementById('tab-meta-btn').style.display = '';
-      const mm = await results[1].json();
-
-      if (el('mm-total'))       el('mm-total').textContent       = mm.total;
-      if (el('mm-month'))       el('mm-month').textContent       = mm.this_month;
-      if (el('mm-week'))        el('mm-week').textContent        = mm.this_week;
-      if (el('mm-conv'))        el('mm-conv').textContent        = mm.conversion + '%';
-
-      if (el('mm-campaigns'))   el('mm-campaigns').innerHTML     = _barList(mm.by_campaign);
-      if (el('mm-months'))      el('mm-months').innerHTML        = _monthBars(mm.by_month);
-      if (el('mm-funnel'))      el('mm-funnel').innerHTML        = _funnelBars(mm.funnel, stateLabels, stateColors);
-      if (el('mm-busca'))       el('mm-busca').innerHTML         = _barList(mm.que_busca);
-      if (el('mm-presupuesto')) el('mm-presupuesto').innerHTML   = _barList(mm.presupuesto);
-      if (el('mm-cities'))      el('mm-cities').innerHTML        = _barList(mm.top_cities);
-    }
-
     if (el('metrics-date')) el('metrics-date').textContent = 'Actualizado: ' + new Date().toLocaleString('es-UY');
   } catch(e) {
     const p = document.getElementById('metrics-panel');
-    if (p) p.insertAdjacentHTML('afterbegin','<p style="color:#f87171;margin-bottom:16px">Error cargando métricas.</p>');
+    if (p) p.insertAdjacentHTML('afterbegin','<p style="color:#f87171;margin-bottom:16px">Error cargando Inteligencia comercial.</p>');
   }
+}
+
+// ========== Simulador financiero ==========
+// No muestra el pasado: sirve para probar decisiones. Trabaja sobre una COPIA
+// de lo que hay en Finanzas (la precarga) y nunca escribe ahi.
+//
+// Lo que va entre las dos marcas "sim: calculo puro" no toca el DOM:
+// tests/test_simulador_calculo.py lo recorta y lo corre en node. La regla de
+// la seccion es que ningun numero de la cuenta este escondido: cada supuesto
+// es un campo de SIM_CAMPOS con su control en pantalla (data-sim), y los
+// valores por defecto viven todos juntos en SIM_DEFAULTS.
+//
+// Fase 2 (comparar dos escenarios, caja a 12 meses con el mes de quiebre,
+// calendario semanal de caja, margen por cliente) se apoya en esto:
+// simCalcular es pura y el escenario guardado lleva `version`.
+// ── sim: calculo puro (inicio) ──
+const SIM_DEFAULTS = {
+  equipo: {cantidadProgramadores: 2, sueldoPorProgramador: 500, proyectosPorProgramador: 3},
+  ventas: {precioWeb: 700, webs: 2, precioEcom: 1100, ecommerce: 2,
+           precioMedida: 2000, aMedida: 1, pauta: 600},
+  mantenimiento: {altasNuevasPorMes: 0, cuotaAltaNueva: 100, comisionCobro: 5},
+  cobros: {porcentajeAlFirmar: 50},
+  palancas: {projectManager: false, miSueldo: false, subcontratar: false,
+             matias50: false, aporteJavier: false},
+  montosPalancas: {projectManager: 500, miSueldo: 500, subcontratoPorcentaje: 60,
+                   matiasPorcentaje: 50, aporteJavier: 1000},
+  embudo: {costoPorLead: 18, conversionLeadDemo: 25, conversionDemoVenta: 30},
+  meta: {sueldoObjetivo: 1000},
+  // La caja de hoy. Se pisa con la de Finanzas si responde (ingresos menos
+  // egresos acumulados); este 0 es solo el respaldo.
+  caja: {cajaActual: 0},
+  // Solo para armar la copia inicial: la cuota con la que arranca cada cliente
+  // precargado. Despues cada fila tiene la suya y se edita en pantalla.
+  precarga: {cuotaPorCliente: 100},
+  // RESPALDO: la fuente de los gastos fijos son los "Fijos" activos de
+  // Finanzas. Esta lista solo se usa si Finanzas no tiene ninguno. Valores de
+  // Juan del 14/9 (Claude sin confirmar; Matias demos ya no se paga).
+  gastosFijos: [
+    {nombre: 'Agencia de marketing', monto: 300, activo: true},
+    {nombre: 'Contador', monto: 70, activo: true},
+    {nombre: 'Claude', monto: 120, activo: true},
+    {nombre: 'Servidores y hosting', monto: 90, activo: true},
+    {nombre: 'Impuestos SAS', monto: 250, activo: true},
+    {nombre: 'Facturación electrónica', monto: 100, activo: true}
+  ]
+};
+
+// Cada numero que entra a la cuenta: [ruta, tipo, maximo]. Tipos: 'entero',
+// 'monto', 'porcentaje' (de 0 a 100, se divide por 100 en la cuenta),
+// 'factor' (un porcentaje que puede pasar de 100) y 'saldo' (un monto que puede
+// ser negativo: la caja). Vacio o negativo toma el default; un porcentaje
+// arriba de 100, tambien. En un 'saldo' solo el vacio.
+const SIM_CAMPOS = [
+  ['caja.cajaActual', 'saldo'],
+  ['equipo.cantidadProgramadores', 'entero', 6],
+  ['equipo.sueldoPorProgramador', 'monto'],
+  ['equipo.proyectosPorProgramador', 'monto'],
+  ['ventas.precioWeb', 'monto'],
+  ['ventas.webs', 'entero'],
+  ['ventas.precioEcom', 'monto'],
+  ['ventas.ecommerce', 'entero'],
+  ['ventas.precioMedida', 'monto'],
+  ['ventas.aMedida', 'entero'],
+  ['ventas.pauta', 'monto'],
+  ['mantenimiento.altasNuevasPorMes', 'entero'],
+  ['mantenimiento.cuotaAltaNueva', 'monto'],
+  ['mantenimiento.comisionCobro', 'porcentaje'],
+  ['cobros.porcentajeAlFirmar', 'porcentaje'],
+  ['montosPalancas.projectManager', 'monto'],
+  ['montosPalancas.miSueldo', 'monto'],
+  ['montosPalancas.subcontratoPorcentaje', 'factor'],
+  ['montosPalancas.matiasPorcentaje', 'porcentaje'],
+  ['montosPalancas.aporteJavier', 'monto'],
+  ['embudo.costoPorLead', 'monto'],
+  ['embudo.conversionLeadDemo', 'porcentaje'],
+  ['embudo.conversionDemoVenta', 'porcentaje'],
+  ['meta.sueldoObjetivo', 'monto']
+];
+
+// Tolerancia de coma flotante para los redondeos hacia arriba: 700 / 350 tiene
+// que dar 2 proyectos y no 3 por un 2,0000000001. No es un supuesto del negocio.
+const SIM_EPSILON = 1e-9;
+
+function simLeer(obj, ruta) {
+  return ruta.split('.').reduce((o, k) => (o === null || o === undefined) ? undefined : o[k], obj);
+}
+
+function simEscribir(obj, ruta, valor) {
+  const partes = ruta.split('.');
+  let o = obj;
+  for (let i = 0; i < partes.length - 1; i++) {
+    if (typeof o[partes[i]] !== 'object' || o[partes[i]] === null) o[partes[i]] = {};
+    o = o[partes[i]];
+  }
+  o[partes[partes.length - 1]] = valor;
+}
+
+function simClonar(x) {
+  return JSON.parse(JSON.stringify(x));
+}
+
+function simNumero(crudo, porDefecto, tipo, maximo) {
+  const texto = (crudo === null || crudo === undefined) ? '' : String(crudo).trim().replace(',', '.');
+  const n = texto === '' ? NaN : Number(texto);
+  if (!isFinite(n) || (n < 0 && tipo !== 'saldo') || (tipo === 'porcentaje' && n > 100)) {
+    return {valor: porDefecto, usoDefault: true};
+  }
+  let valor = tipo === 'entero' ? Math.floor(n) : n;
+  if (maximo !== undefined && valor > maximo) valor = maximo;
+  return {valor: valor, usoDefault: false};
+}
+
+function simNormalizar(escenario) {
+  const e = (escenario && typeof escenario === 'object') ? escenario : {};
+  const v = {};
+  const conDefault = [];
+  SIM_CAMPOS.forEach(([ruta, tipo, maximo]) => {
+    const leido = simNumero(simLeer(e, ruta), simLeer(SIM_DEFAULTS, ruta), tipo, maximo);
+    v[ruta] = leido.valor;
+    if (leido.usoDefault) conDefault.push(ruta);
+  });
+  const palancas = {};
+  Object.keys(SIM_DEFAULTS.palancas).forEach(k => {
+    palancas[k] = !!(e.palancas && e.palancas[k] === true);
+  });
+  // En las listas no hay default por fila: un monto vacio o negativo cuenta 0.
+  const lista = nombre => (Array.isArray(e[nombre]) ? e[nombre] : []).map(f => ({
+    nombre: String((f && f.nombre) || ''),
+    monto: simNumero(f && f.monto, 0, 'monto').valor,
+    activo: !!(f && f.activo === true)
+  }));
+  return {v: v, palancas: palancas, conDefault: conDefault,
+          gastosFijos: lista('gastosFijos'), mantenimientos: lista('mantenimientos'),
+          pendientes: lista('pendientes')};
+}
+
+function simResumenLista(lista) {
+  const r = {activos: 0, total: 0, inactivos: 0, totalInactivos: 0};
+  lista.forEach(f => {
+    if (f.activo) {
+      r.activos += 1;
+      r.total += f.monto;
+    } else {
+      r.inactivos += 1;
+      r.totalInactivos += f.monto;
+    }
+  });
+  return r;
+}
+
+// La cuenta de la especificacion, linea por linea. Devuelve todo lo que se
+// muestra; no redondea (eso se hace al pintar) ni toca el DOM.
+function simCalcular(escenario) {
+  const n = simNormalizar(escenario);
+  const v = n.v;
+  const p = n.palancas;
+  const pct = ruta => v[ruta] / 100;
+
+  const cantidadProgramadores = v['equipo.cantidadProgramadores'];
+  const proyectosPorProgramador = v['equipo.proyectosPorProgramador'];
+  const capacidad = cantidadProgramadores * proyectosPorProgramador;
+
+  const webs = v['ventas.webs'];
+  const ecommerce = v['ventas.ecommerce'];
+  const aMedida = v['ventas.aMedida'];
+  const precioWeb = v['ventas.precioWeb'];
+  const precioEcom = v['ventas.precioEcom'];
+  const precioMedida = v['ventas.precioMedida'];
+  const pauta = v['ventas.pauta'];
+
+  const totalProyectos = webs + ecommerce + aMedida;
+  const exceso = Math.max(0, totalProyectos - capacidad);
+  const vendidos = (exceso > 0 && !p.subcontratar) ? capacidad : totalProyectos;
+  const ratio = totalProyectos > 0 ? vendidos / totalProyectos : 0;
+  const valorProyectos = webs * precioWeb + ecommerce * precioEcom + aMedida * precioMedida;
+  const facturadoProyectos = valorProyectos * ratio;
+
+  const gastosFijos = simResumenLista(n.gastosFijos);
+  const mantenimientos = simResumenLista(n.mantenimientos);
+  const pendientes = simResumenLista(n.pendientes);
+
+  const altasNuevasPorMes = v['mantenimiento.altasNuevasPorMes'];
+  const altas = Math.min(altasNuevasPorMes, vendidos);
+  const recurrenteBruto = mantenimientos.total + altas * v['mantenimiento.cuotaAltaNueva'];
+  const recurrente = recurrenteBruto * (1 - pct('mantenimiento.comisionCobro'));
+
+  const porcentajeAlFirmar = pct('cobros.porcentajeAlFirmar');
+  const cobroDeNuevos = facturadoProyectos * porcentajeAlFirmar;
+  const quedaDeEsteMes = facturadoProyectos - cobroDeNuevos;
+  const cobrado = cobroDeNuevos + pendientes.total + recurrente;
+
+  const precios = [precioWeb, precioEcom, precioMedida];
+  const precioPromedio = precios.reduce((a, b) => a + b, 0) / precios.length;
+  const costoSubcontrato = p.subcontratar
+    ? exceso * precioPromedio * pct('montosPalancas.subcontratoPorcentaje') : 0;
+  const comisionMatias = p.matias50
+    ? aMedida * precioMedida * pct('montosPalancas.matiasPorcentaje') * ratio : 0;
+  const costoEquipo = cantidadProgramadores * v['equipo.sueldoPorProgramador'];
+  const costoProjectManager = p.projectManager ? v['montosPalancas.projectManager'] : 0;
+  const costoMiSueldo = p.miSueldo ? v['montosPalancas.miSueldo'] : 0;
+  const salidas = costoEquipo + gastosFijos.total + pauta + costoSubcontrato
+    + comisionMatias + costoProjectManager + costoMiSueldo;
+
+  const aporte = p.aporteJavier ? v['montosPalancas.aporteJavier'] : 0;
+  const cajaDelMes = cobrado + aporte - salidas;
+  const porCobrarAdelante = quedaDeEsteMes + pendientes.totalInactivos;
+  // Aparte de la cuenta de la especificacion, que no cambia: con que caja se
+  // termina el mes si se arranca con la de hoy.
+  const cajaActual = v['caja.cajaActual'];
+  const cajaAlCierre = cajaActual + cajaDelMes;
+
+  // "Facturas incluye el recurrente". Va neto de la comision de cobro, igual
+  // que entra en "Cobras": asi papel y caja se comparan sobre la misma base.
+  const facturado = facturadoProyectos + recurrente;
+  const resultadoEnPapel = facturado - salidas;
+  const avisoCobros = cajaDelMes < 0 && resultadoEnPapel >= 0;
+
+  const costoPorLead = v['embudo.costoPorLead'];
+  const leads = costoPorLead > 0 ? pauta / costoPorLead : null;
+  const demos = leads === null ? null : leads * pct('embudo.conversionLeadDemo');
+  const ventasPosibles = demos === null ? null : demos * pct('embudo.conversionDemoVenta');
+  const costoPorVenta = (ventasPosibles !== null && ventasPosibles > 0) ? pauta / ventasPosibles : null;
+
+  let capacidadEstado = 'verde';
+  if (totalProyectos > capacidad) capacidadEstado = p.subcontratar ? 'ambar' : 'rojo';
+  let embudoEstado = 'neutro';
+  if (ventasPosibles !== null) embudoEstado = ventasPosibles < vendidos ? 'rojo' : 'verde';
+
+  // Calculo inverso: cuanto hay que vender para ponerse ese sueldo.
+  const sueldoObjetivo = v['meta.sueldoObjetivo'];
+  const base = costoEquipo + gastosFijos.total + pauta + costoProjectManager;
+  const necesario = Math.max(0, base + sueldoObjetivo - recurrente);
+  const porProyecto = precioPromedio * porcentajeAlFirmar;
+  let proyectosMeta = null;
+  if (necesario <= 0) proyectosMeta = 0;
+  else if (porProyecto > 0) proyectosMeta = Math.ceil(necesario / porProyecto - SIM_EPSILON);
+  let faltanProg = null;
+  if (proyectosMeta === 0) faltanProg = 0;
+  else if (proyectosMeta !== null && proyectosPorProgramador > 0) {
+    faltanProg = Math.max(0, Math.ceil(proyectosMeta / proyectosPorProgramador - SIM_EPSILON) - cantidadProgramadores);
+  }
+
+  return {
+    cantidadProgramadores: cantidadProgramadores, capacidad: capacidad,
+    totalProyectos: totalProyectos, exceso: exceso, vendidos: vendidos, ratio: ratio,
+    valorProyectos: valorProyectos, facturadoProyectos: facturadoProyectos,
+    altasNuevasPorMes: altasNuevasPorMes, altas: altas,
+    altasTopeadas: altasNuevasPorMes > vendidos,
+    recurrenteBruto: recurrenteBruto, comisionCobro: recurrenteBruto - recurrente,
+    recurrente: recurrente,
+    cobroDeNuevos: cobroDeNuevos, quedaDeEsteMes: quedaDeEsteMes, cobrado: cobrado,
+    precioPromedio: precioPromedio, costoSubcontrato: costoSubcontrato,
+    comisionMatias: comisionMatias, costoEquipo: costoEquipo,
+    costoProjectManager: costoProjectManager, costoMiSueldo: costoMiSueldo,
+    pauta: pauta, salidas: salidas, aporte: aporte, cajaDelMes: cajaDelMes,
+    cajaActual: cajaActual, cajaAlCierre: cajaAlCierre,
+    porCobrarAdelante: porCobrarAdelante, facturado: facturado,
+    resultadoEnPapel: resultadoEnPapel, avisoCobros: avisoCobros,
+    leads: leads, demos: demos, ventasPosibles: ventasPosibles, costoPorVenta: costoPorVenta,
+    capacidadEstado: capacidadEstado, embudoEstado: embudoEstado,
+    meta: {sueldoObjetivo: sueldoObjetivo, base: base, necesario: necesario,
+           porcentajeAlFirmar: v['cobros.porcentajeAlFirmar'],
+           proyectos: proyectosMeta, faltanProg: faltanProg},
+    listas: {gastosFijos: gastosFijos, mantenimientos: mantenimientos, pendientes: pendientes},
+    palancas: p,
+    conDefault: n.conDefault
+  };
+}
+
+function simRedondear(n) {
+  const r = Math.round(n || 0);
+  return r === 0 ? 0 : r;   // sin "-0"
+}
+
+function simUsd(n) {
+  return 'USD ' + simRedondear(n).toLocaleString('es-UY');
+}
+
+function simPlural(n, uno, varios) {
+  return simRedondear(n) === 1 ? uno : varios;
+}
+
+function simTextoLista(resumen) {
+  return resumen.activos + ' ' + simPlural(resumen.activos, 'activo', 'activos')
+    + ' · ' + simUsd(resumen.total);
+}
+
+function simTextoCapacidad(r) {
+  const prog = simRedondear(r.cantidadProgramadores);
+  const quien = prog === 0
+    ? 'Sin programadores no hay capacidad'
+    : prog + ' ' + simPlural(prog, 'programador aguanta', 'programadores aguantan') + ' ' + simRedondear(r.capacidad);
+  const frase = quien + ' y estás poniendo ' + simRedondear(r.totalProyectos);
+  if (r.capacidadEstado === 'rojo') {
+    return frase + '. No da: se hacen ' + simRedondear(r.vendidos) + ' y '
+      + simRedondear(r.exceso) + ' ' + simPlural(r.exceso, 'queda', 'quedan') + ' afuera.';
+  }
+  if (r.capacidadEstado === 'ambar') {
+    return frase + '. Lo que sobra (' + simRedondear(r.exceso) + ') se subcontrata: '
+      + simUsd(r.costoSubcontrato) + '.';
+  }
+  return frase + ': da.';
+}
+
+function simTextoEmbudo(r) {
+  if (r.embudoEstado === 'neutro') {
+    return 'Con el costo por lead en 0 no se puede estimar cuántas ventas trae la pauta.';
+  }
+  const salen = Math.floor(r.ventasPosibles + SIM_EPSILON);
+  const ventas = salen + ' ' + simPlural(salen, 'venta', 'ventas');
+  if (r.embudoEstado === 'rojo') {
+    return 'Con esa pauta salen ' + ventas + ', no ' + simRedondear(r.vendidos) + '.';
+  }
+  return 'Con esa pauta salen ' + ventas + ' y vendés ' + simRedondear(r.vendidos) + ': alcanza.';
+}
+
+function simTextoMeta(r) {
+  const m = r.meta;
+  const objetivo = simUsd(m.sueldoObjetivo);
+  if (m.proyectos === null) {
+    return 'Con el precio promedio o el porcentaje al firmar en 0 no hay cantidad de proyectos que alcance.';
+  }
+  if (m.proyectos === 0) {
+    return 'Con el recurrente ya cubrís los costos y un sueldo de ' + objetivo + ': no hace falta vender proyectos.';
+  }
+  let texto = 'Para sacarte ' + objetivo + ' tenés que cubrir ' + simUsd(m.necesario)
+    + ' por mes. Cobrando el ' + simRedondear(m.porcentajeAlFirmar) + '% al firmar son '
+    + m.proyectos + ' ' + simPlural(m.proyectos, 'proyecto', 'proyectos') + ' por mes. ';
+  if (m.faltanProg === null) {
+    texto += 'Con 0 proyectos por programador no se puede saber cuántos programadores hacen falta.';
+  } else if (m.faltanProg === 0) {
+    texto += 'El equipo actual alcanza.';
+  } else {
+    texto += 'Te ' + simPlural(m.faltanProg, 'falta', 'faltan') + ' ' + m.faltanProg + ' '
+      + simPlural(m.faltanProg, 'programador', 'programadores') + '.';
+  }
+  return texto;
+}
+
+function simTextoAvisoCobros(r) {
+  if (!r.avisoCobros) return '';
+  return 'En papel el mes cierra bien (' + simUsd(r.resultadoEnPapel)
+    + ' entre lo que facturás y lo que sale), pero la caja da ' + simUsd(r.cajaDelMes)
+    + '. El problema son los cobros, no las ventas.';
+}
+
+function simTextoAvisoAltas(r) {
+  if (!r.altasTopeadas) return '';
+  return 'Pusiste ' + simRedondear(r.altasNuevasPorMes) + ' '
+    + simPlural(r.altasNuevasPorMes, 'alta', 'altas') + ' de mantenimiento pero este mes se cierran '
+    + simRedondear(r.vendidos) + ' ' + simPlural(r.vendidos, 'proyecto', 'proyectos')
+    + ': se calcula con ' + simRedondear(r.altas) + '.';
+}
+
+function simTextoCierre(r) {
+  return 'Caja al cierre del mes: ' + simUsd(r.cajaAlCierre) + ' = caja actual '
+    + simUsd(r.cajaActual) + ' + caja del mes ' + simUsd(r.cajaDelMes) + '.';
+}
+
+function simTextoArrastre(r) {
+  return 'Queda por cobrar hacia adelante ' + simUsd(r.porCobrarAdelante) + ': '
+    + simUsd(r.quedaDeEsteMes) + ' de lo que vendés este mes y '
+    + simUsd(r.listas.pendientes.totalInactivos) + ' de pendientes viejos.';
+}
+
+// La copia inicial: los defaults, mas lo que el sistema tenga. Los gastos
+// fijos vienen de Finanzas si hay; si no, la lista de SIM_DEFAULTS.
+function simEscenarioBase(precarga) {
+  const pc = (precarga && typeof precarga === 'object') ? precarga : {};
+  const d = simClonar(SIM_DEFAULTS);
+  const hayFijos = Array.isArray(pc.gastosFijos) && pc.gastosFijos.length > 0;
+  const hayCaja = typeof pc.cajaActual === 'number' && isFinite(pc.cajaActual);
+  const fila = (f, monto, activo) => ({nombre: String(f.nombre || ''), monto: monto,
+                                       activo: activo, nota: f.nota || ''});
+  return {
+    version: 1,
+    caja: {cajaActual: hayCaja ? pc.cajaActual : d.caja.cajaActual},
+    equipo: d.equipo, ventas: d.ventas, mantenimiento: d.mantenimiento, cobros: d.cobros,
+    palancas: d.palancas, montosPalancas: d.montosPalancas, embudo: d.embudo, meta: d.meta,
+    gastosFijos: (hayFijos ? pc.gastosFijos : d.gastosFijos).map(f => fila(f, f.monto, f.activo === true)),
+    mantenimientos: (Array.isArray(pc.mantenimientos) ? pc.mantenimientos : [])
+      .map(f => fila(f, d.precarga.cuotaPorCliente, false)),
+    pendientes: (Array.isArray(pc.pendientes) ? pc.pendientes : []).map(f => fila(f, f.monto, false)),
+    origen: {gastosFijos: hayFijos ? 'finanzas' : 'defaults', mantenimientos: 'clientes',
+             pendientes: 'porCobrar', caja: hayCaja ? 'cajaFinanzas' : 'cajaDefaults'}
+  };
+}
+
+// Un escenario guardado, completado con los defaults en lo que le falte: uno
+// guardado antes de agregar un campo tiene que poder abrirse igual.
+function simEscenarioAbierto(datos) {
+  const d = (datos && typeof datos === 'object') ? datos : {};
+  const base = simEscenarioBase(null);
+  const salida = simClonar(d);
+  ['caja', 'equipo', 'ventas', 'mantenimiento', 'cobros', 'palancas', 'montosPalancas', 'embudo', 'meta'].forEach(grupo => {
+    salida[grupo] = Object.assign({}, base[grupo], d[grupo] || {});
+  });
+  ['gastosFijos', 'mantenimientos', 'pendientes'].forEach(lista => {
+    salida[lista] = Array.isArray(d[lista]) ? d[lista] : [];
+  });
+  salida.origen = d.origen || {};
+  return salida;
+}
+// ── sim: calculo puro (fin) ──
+
+let simEstado = null;          // el escenario en pantalla: una copia, nunca Finanzas
+let simEscenarioId = null;     // el guardado que se abrio o se acaba de guardar
+let simNombreCargado = '';
+let simIniciado = false;
+
+const SIM_LISTAS = {
+  gastosFijos: {interruptor: 'Activo', monto: 'Monto mensual', vacio: 'No hay gastos fijos en la lista.'},
+  mantenimientos: {interruptor: 'Tiene mantenimiento', monto: 'Cuota mensual', vacio: 'No hay clientes en la lista.'},
+  pendientes: {interruptor: 'Lo cobro este mes', monto: 'Monto', vacio: 'No hay pendientes por cobrar.'}
+};
+
+const SIM_ORIGEN = {
+  finanzas: 'Precargado desde los gastos fijos de Finanzas, en USD.',
+  defaults: 'Finanzas no tiene gastos fijos cargados: lista por defecto.',
+  clientes: 'Precargado con los clientes del CRM (cerrado, en desarrollo y finalizado), todos apagados.',
+  porCobrar: 'Precargado con los saldos pendientes de Finanzas. Apagado es "se cobra más adelante": sigue contando.',
+  cajaFinanzas: 'Precargada desde Finanzas: ingresos menos egresos de todos los movimientos hasta este mes (líquido, sin IVA).',
+  cajaDefaults: 'Finanzas no respondió: arranca en el valor por defecto.'
+};
+
+async function loadSimulador() {
+  if (!simIniciado) {
+    simIniciado = true;
+    simEnlazar();
+    await simArrancar();
+  } else {
+    simRecalcular();
+  }
+  simCargarEscenarios();
+}
+
+async function simArrancar() {
+  let precarga = null;
+  const aviso = document.getElementById('sim-aviso-carga');
+  aviso.textContent = '';
+  try {
+    const r = await fetch('/api/simulador/precarga');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    precarga = await r.json();
+  } catch (e) {
+    aviso.textContent = 'No se pudo leer lo que hay en Finanzas (' + e.message
+      + '). Se arranca con los valores por defecto.';
+  }
+  simEstado = simEscenarioBase(precarga);
+  simEscenarioId = null;
+  simNombreCargado = '';
+  document.getElementById('sim-nombre').value = '';
+  simVolcar();
+}
+
+// Pasa el escenario a los controles. Solo al arrancar o al abrir uno guardado:
+// mientras se tipea, el control ya tiene el valor.
+function simVolcar() {
+  SIM_CAMPOS.forEach(([ruta]) => {
+    const valor = simLeer(simEstado, ruta);
+    document.querySelectorAll('[data-sim="' + ruta + '"]').forEach(el => {
+      el.value = (valor === null || valor === undefined) ? '' : valor;
+      if (el.type === 'number') el.placeholder = String(simLeer(SIM_DEFAULTS, ruta));
+    });
+  });
+  Object.keys(SIM_DEFAULTS.palancas).forEach(simPintarPalanca);
+  simTexto('sim-origen-caja', SIM_ORIGEN[simEstado.origen ? simEstado.origen.caja : ''] || '');
+  simPintarListas();
+  simRecalcular();
+}
+
+function simEnlazar() {
+  const panel = document.getElementById('simulador-panel');
+  panel.addEventListener('input', simAlCambiar);
+  panel.addEventListener('change', simAlCambiar);
+}
+
+function simAlCambiar(ev) {
+  const el = ev.target;
+  if (!simEstado || !el || !el.dataset) return;
+  if (el.dataset.sim) {
+    simEscribir(simEstado, el.dataset.sim, el.value);
+    // El slider y su caja de numero son el mismo campo.
+    document.querySelectorAll('[data-sim="' + el.dataset.sim + '"]').forEach(otro => {
+      if (otro !== el) otro.value = el.value;
+    });
+    simRecalcular();
+    return;
+  }
+  const lista = el.dataset.simLista;
+  if (!lista || !Array.isArray(simEstado[lista])) return;
+  const fila = simEstado[lista][Number(el.dataset.i)];
+  if (!fila) return;
+  if (el.dataset.campo === 'activo') {
+    // Apagar no borra: la fila queda, solo sale de la cuenta.
+    fila.activo = el.checked;
+    const contenedor = el.closest ? el.closest('.sim-fila') : null;
+    if (contenedor) contenedor.classList.toggle('sim-apagada', !el.checked);
+  } else {
+    fila.monto = el.value;
+  }
+  simRecalcular();
+}
+
+function simPalanca(nombre) {
+  if (!simEstado) return;
+  simEstado.palancas = simEstado.palancas || {};
+  simEstado.palancas[nombre] = !simEstado.palancas[nombre];
+  simPintarPalanca(nombre);
+  simRecalcular();
+}
+
+function simPintarPalanca(nombre) {
+  const boton = document.getElementById('sim-palanca-' + nombre);
+  if (!boton) return;
+  const prendida = !!(simEstado && simEstado.palancas && simEstado.palancas[nombre]);
+  boton.setAttribute('aria-pressed', prendida ? 'true' : 'false');
+}
+
+function simPintarListas() {
+  Object.keys(SIM_LISTAS).forEach(lista => {
+    const cont = document.getElementById('sim-lista-' + lista);
+    if (!cont) return;
+    const filas = Array.isArray(simEstado[lista]) ? simEstado[lista] : [];
+    cont.innerHTML = filas.length
+      ? filas.map((f, i) => simFilaHtml(lista, f, i)).join('')
+      : '<div class="sim-vacio">' + SIM_LISTAS[lista].vacio + '</div>';
+    if (window.lucide) lucide.createIcons({nodes: [cont]});
+    const origen = document.getElementById('sim-origen-' + lista);
+    const clave = simEstado.origen ? simEstado.origen[lista] : '';
+    if (origen) origen.textContent = SIM_ORIGEN[clave] || '';
+  });
+}
+
+// Las tres listas tienen el mismo patron: interruptor, nombre, monto editable
+// y un boton aparte para borrar.
+function simFilaHtml(lista, f, i) {
+  const conf = SIM_LISTAS[lista];
+  const nombre = esc(f.nombre || '');
+  const monto = (f.monto === null || f.monto === undefined) ? '' : esc(f.monto);
+  const nota = f.nota ? '<div class="sim-fila-nota">' + esc(f.nota) + '</div>' : '';
+  const datos = ' data-sim-lista="' + lista + '" data-i="' + i + '"';
+  return '<div class="sim-fila' + (f.activo ? '' : ' sim-apagada') + '">'
+    + '<input type="checkbox" class="sim-switch"' + datos + ' data-campo="activo"'
+    + (f.activo ? ' checked' : '') + ' aria-label="' + esc(conf.interruptor) + ': ' + nombre + '">'
+    + '<div class="sim-fila-nombre">' + nombre + nota + '</div>'
+    + '<input type="number" class="sim-in sim-in-monto"' + datos + ' data-campo="monto" min="0" step="any"'
+    + ' inputmode="decimal" placeholder="0" value="' + monto + '" aria-label="' + esc(conf.monto) + ': ' + nombre + '">'
+    + '<button class="btn-ghost btn-icono" type="button" onclick="simBorrarFila(' + "'" + lista + "'" + ', ' + i + ')"'
+    + ' title="Borrar de la lista" aria-label="Borrar ' + nombre + '"><i data-lucide="trash-2" class="nav-icon"></i></button>'
+    + '</div>';
+}
+
+function simAgregarFila(lista) {
+  if (!simEstado) return;
+  const nombreEl = document.getElementById('sim-nuevo-nombre-' + lista);
+  const montoEl = document.getElementById('sim-nuevo-monto-' + lista);
+  const errorEl = document.getElementById('sim-nuevo-error-' + lista);
+  const nombre = (nombreEl.value || '').trim();
+  if (!nombre) {
+    errorEl.textContent = 'Poné un nombre: una fila sin nombre no se agrega.';
+    nombreEl.focus();
+    return;
+  }
+  errorEl.textContent = '';
+  if (!Array.isArray(simEstado[lista])) simEstado[lista] = [];
+  simEstado[lista].push({nombre: nombre, monto: montoEl.value, activo: true, nota: ''});
+  nombreEl.value = '';
+  montoEl.value = '';
+  simPintarListas();
+  simRecalcular();
+}
+
+function simBorrarFila(lista, i) {
+  const fila = simEstado && Array.isArray(simEstado[lista]) ? simEstado[lista][i] : null;
+  if (!fila) return;
+  if (!confirm('¿Borrar "' + fila.nombre + '" de la lista? Si solo querés sacarlo de la cuenta, apagalo.')) return;
+  simEstado[lista].splice(i, 1);
+  simPintarListas();
+  simRecalcular();
+}
+
+function simHtml(id, html) {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = html;
+}
+
+function simTexto(id, texto) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = texto;
+}
+
+function simSemaforoHtml(titulo, estado, texto) {
+  return '<div class="sim-semaforo sim-' + estado + '"><span class="sim-punto"></span><div><strong>'
+    + titulo + '</strong>' + esc(texto) + '</div></div>';
+}
+
+function simRecalcular() {
+  if (!simEstado) return null;
+  const r = simCalcular(simEstado);
+  simPintarResultados(r);
+  return r;
+}
+
+// Pedido de Juan: un boton "Cargar" al final de los datos que calcule y lleve a
+// los resultados. El recalculo en vivo sigue igual: el boton no cambia ningun
+// numero, recalcula y lleva la vista a las tarjetas, que en el celular quedan
+// abajo de todo lo cargado y en la compu pueden quedar fuera de la pantalla.
+function simCargar() {
+  const nota = document.getElementById('sim-cargar-nota');
+  const r = simRecalcular();
+  if (!r) {
+    if (nota) nota.textContent = 'Todavía se están trayendo los datos de Finanzas. Probá en unos segundos.';
+    return null;
+  }
+  if (nota) nota.textContent = 'Listo: resultados actualizados.';
+  const destino = document.getElementById('sim-tarjetas');
+  if (destino && destino.scrollIntoView) destino.scrollIntoView({behavior: 'smooth', block: 'start'});
+  return r;
+}
+
+function simPintarResultados(r) {
+  const signo = r.cajaDelMes < 0 ? 'sim-negativo' : 'sim-positivo';
+  const tarjeta = (rotulo, valor, detalle, clase) =>
+    '<div class="sim-tarjeta"><div class="fin-kpi-label">' + rotulo + '</div>'
+    + '<div class="sim-tarjeta-valor ' + (clase || '') + '">' + simUsd(valor) + '</div>'
+    + '<div class="sim-tarjeta-detalle">' + detalle + '</div></div>';
+  const sale = ['equipo ' + simUsd(r.costoEquipo), 'fijos ' + simUsd(r.listas.gastosFijos.total),
+                'pauta ' + simUsd(r.pauta)];
+  if (r.costoSubcontrato) sale.push('subcontrato ' + simUsd(r.costoSubcontrato));
+  if (r.comisionMatias) sale.push('Matías ' + simUsd(r.comisionMatias));
+  if (r.costoProjectManager) sale.push('PM ' + simUsd(r.costoProjectManager));
+  if (r.costoMiSueldo) sale.push('tu sueldo ' + simUsd(r.costoMiSueldo));
+  simHtml('sim-tarjetas',
+    tarjeta('Facturás', r.facturado,
+            'proyectos ' + simUsd(r.facturadoProyectos) + ' + recurrente ' + simUsd(r.recurrente))
+    + tarjeta('Cobrás', r.cobrado,
+              'al firmar ' + simUsd(r.cobroDeNuevos) + ' + pendientes '
+              + simUsd(r.listas.pendientes.total) + ' + recurrente ' + simUsd(r.recurrente))
+    + tarjeta('Sale', r.salidas, sale.join(' · '))
+    + tarjeta('Caja del mes', r.cajaDelMes,
+              r.aporte ? 'incluye el aporte de Javier (' + simUsd(r.aporte) + '), que no es venta'
+                       : 'lo que cobrás menos lo que sale', signo));
+  simTexto('sim-cierre', simTextoCierre(r));
+  const cierre = document.getElementById('sim-cierre');
+  if (cierre) cierre.className = 'sim-cierre ' + (r.cajaAlCierre < 0 ? 'sim-negativo' : 'sim-positivo');
+  simTexto('sim-arrastre', simTextoArrastre(r));
+  simTexto('sim-aviso-cobros', simTextoAvisoCobros(r));
+  simHtml('sim-semaforo-capacidad', simSemaforoHtml('Capacidad', r.capacidadEstado, simTextoCapacidad(r)));
+  simHtml('sim-semaforo-embudo', simSemaforoHtml('Embudo', r.embudoEstado, simTextoEmbudo(r)));
+  const numero = (rotulo, valor) => '<div class="sim-numero">' + rotulo + '<b>' + valor + '</b></div>';
+  const cuenta = x => x === null ? '—' : simRedondear(x).toLocaleString('es-UY');
+  simHtml('sim-embudo-numeros',
+    numero('Leads', cuenta(r.leads)) + numero('Demos', cuenta(r.demos))
+    + numero('Ventas posibles', r.ventasPosibles === null ? '—' : Math.floor(r.ventasPosibles + SIM_EPSILON))
+    + numero('Costo por venta', r.costoPorVenta === null ? '—' : simUsd(r.costoPorVenta)));
+  simTexto('sim-meta', simTextoMeta(r));
+  simTexto('sim-sub-equipo', 'capacidad ' + simRedondear(r.capacidad) + ' · ' + simUsd(r.costoEquipo));
+  simTexto('sim-sub-ventas', simRedondear(r.totalProyectos) + ' '
+    + simPlural(r.totalProyectos, 'proyecto', 'proyectos') + ' · ' + simUsd(r.valorProyectos));
+  simTexto('sim-sub-gastosFijos', simTextoLista(r.listas.gastosFijos));
+  simTexto('sim-sub-mantenimientos', simTextoLista(r.listas.mantenimientos));
+  simTexto('sim-sub-pendientes', simTextoLista(r.listas.pendientes));
+  simTexto('sim-aviso-altas', simTextoAvisoAltas(r));
+  const prendidas = Object.keys(r.palancas).filter(k => r.palancas[k]).length;
+  simTexto('sim-sub-palancas', prendidas + ' ' + simPlural(prendidas, 'prendida', 'prendidas'));
+  simTexto('sim-sub-embudo', r.leads === null ? 'sin estimación' : cuenta(r.leads) + ' leads');
+  simHtml('sim-mini', '<span>Caja del mes <b class="' + signo + '">' + simUsd(r.cajaDelMes)
+    + '</b></span><span>Al cierre <b class="' + (r.cajaAlCierre < 0 ? 'sim-negativo' : 'sim-positivo')
+    + '">' + simUsd(r.cajaAlCierre) + '</b></span>');
+  // Un campo vacio o negativo no rompe: se usa el default, y el borde lo marca.
+  SIM_CAMPOS.forEach(([ruta]) => {
+    const usa = r.conDefault.indexOf(ruta) >= 0;
+    document.querySelectorAll('[data-sim="' + ruta + '"]').forEach(el => {
+      if (el.type === 'number') el.classList.toggle('sim-usa-default', usa);
+    });
+  });
+}
+
+function simAvisoGuardado(texto, mal) {
+  const el = document.getElementById('sim-guardado');
+  if (!el) return;
+  el.textContent = texto;
+  el.classList.toggle('sim-mal', !!mal);
+}
+
+async function simCargarEscenarios() {
+  const sel = document.getElementById('sim-escenarios');
+  if (!sel) return;
+  try {
+    const r = await fetch('/api/simulador/escenarios');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const lista = await r.json();
+    sel.innerHTML = '<option value="">Escenarios guardados</option>'
+      + (Array.isArray(lista) ? lista : []).map(e => '<option value="' + e.id + '"'
+          + (e.id === simEscenarioId ? ' selected' : '') + '>' + esc(e.nombre) + '</option>').join('');
+  } catch (e) {
+    simAvisoGuardado('No se pudieron leer los escenarios guardados: ' + e.message, true);
+  }
+}
+
+async function simGuardar() {
+  if (!simEstado) return;
+  const nombreEl = document.getElementById('sim-nombre');
+  const nombre = (nombreEl.value || '').trim();
+  if (!nombre) {
+    simAvisoGuardado('Poné un nombre para guardar el escenario.', true);
+    nombreEl.focus();
+    return;
+  }
+  // Con el mismo nombre que el que se abrio, se pisa ese. Con otro, se guarda aparte.
+  const pisar = simEscenarioId !== null && nombre === simNombreCargado;
+  try {
+    const r = await fetch(pisar ? '/api/simulador/escenarios/' + simEscenarioId : '/api/simulador/escenarios', {
+      method: pisar ? 'PUT' : 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({nombre: nombre, datos: simEstado})
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok) throw new Error(j.error || 'HTTP ' + r.status);
+    simEscenarioId = j.id;
+    simNombreCargado = nombre;
+    simAvisoGuardado((pisar ? 'Actualizado: ' : 'Guardado: ') + nombre, false);
+    simCargarEscenarios();
+  } catch (e) {
+    simAvisoGuardado('No se pudo guardar: ' + e.message, true);
+  }
+}
+
+async function simAbrir() {
+  const id = document.getElementById('sim-escenarios').value;
+  if (!id) {
+    simAvisoGuardado('Elegí un escenario de la lista.', true);
+    return;
+  }
+  try {
+    const r = await fetch('/api/simulador/escenarios/' + id);
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || 'HTTP ' + r.status);
+    simEstado = simEscenarioAbierto(j.datos);
+    simEscenarioId = j.id;
+    simNombreCargado = j.nombre;
+    document.getElementById('sim-nombre').value = j.nombre;
+    simVolcar();
+    simAvisoGuardado('Abierto: ' + j.nombre, false);
+  } catch (e) {
+    simAvisoGuardado('No se pudo abrir: ' + e.message, true);
+  }
+}
+
+async function simBorrarEscenario() {
+  const sel = document.getElementById('sim-escenarios');
+  const id = sel.value;
+  if (!id) {
+    simAvisoGuardado('Elegí en la lista el escenario que querés borrar.', true);
+    return;
+  }
+  const opcion = sel.options[sel.selectedIndex];
+  const nombre = opcion ? opcion.text : '';
+  if (!confirm('¿Borrar el escenario guardado "' + nombre + '"? Lo que tenés en pantalla no cambia.')) return;
+  try {
+    const r = await fetch('/api/simulador/escenarios/' + id, {method: 'DELETE'});
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok) throw new Error(j.error || 'HTTP ' + r.status);
+    if (String(simEscenarioId) === String(id)) {
+      simEscenarioId = null;
+      simNombreCargado = '';
+    }
+    simAvisoGuardado('Borrado: ' + nombre, false);
+    simCargarEscenarios();
+  } catch (e) {
+    simAvisoGuardado('No se pudo borrar: ' + e.message, true);
+  }
+}
+
+async function simRestablecer() {
+  if (!confirm('¿Volver a los valores por defecto y a lo que hay hoy en Finanzas? Lo que no guardaste se pierde.')) return;
+  await simArrancar();
+  simAvisoGuardado('', false);
+  simCargarEscenarios();
 }
 
 // ========== Panel de Marketing ==========
@@ -7565,7 +9147,7 @@ async function loadMarketing() {
     const r = await fetch('/api/marketing/dossier' + (q.length ? '?' + q.join('&') : ''));
     if (!r.ok) {
       estado.textContent = r.status === 403
-        ? 'No tenés acceso al panel de Marketing. Pediselo a un admin.'
+        ? 'No tenés acceso a Inteligencia marketing. Pediselo a un admin.'
         : 'No se pudo cargar el dossier (error ' + r.status + ').';
       return;
     }
@@ -7583,19 +9165,12 @@ async function loadMarketing() {
   document.getElementById('mk-fecha').textContent =
     'Del ' + (p.desde || '?') + ' al ' + (p.hasta || '?');
 
-  // El selector de campanas se arma con lo que vino, no con una lista fija.
-  const sel = document.getElementById('mk-campana');
-  const elegida = sel.value;
-  sel.innerHTML = '<option value="">Todas</option>' +
-    (_mkDossier.campanas || [])
-      .filter(b => b.campana !== 'todas')
-      .map(b => `<option value="${esc(b.campana)}">${esc(b.campana)}</option>`)
-      .join('');
-  sel.value = elegida;
-
   estado.style.display = 'none';
   cuerpo.style.display = '';
   _mkPintar();
+  // Las piezas tienen su propio mes y su propio pedido: no esperan al
+  // dossier ni al informe, y cambiar de mes no recalcula el panel.
+  _mkCargarPiezas();
   // Sin await: si el informe tarda o falla, los graficos ya estan en pantalla.
   _mkInforme();
 }
@@ -7603,7 +9178,6 @@ async function loadMarketing() {
 function _mkAvisos() {
   const avisos = [];
   const todas = _mkBloque('todas');
-  const sinCampana = _mkBloque(SC.SIN_CAMPANA);
 
   const icono = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" ' +
     'stroke="currentColor" stroke-width="1.6" stroke-linecap="round" ' +
@@ -7618,22 +9192,6 @@ function _mkAvisos() {
       'Los costos —CPL, costo por demo, costo por presupuesto— van a decir «sin datos» ' +
       'hasta que se configuren <code>META_ADS_TOKEN</code> y <code>META_AD_ACCOUNT_ID</code>. ' +
       'Todo lo demás del panel funciona igual.</div>');
-  }
-
-  // El aviso que impide leer mal la tabla por campana: si la mayoria de los
-  // cierres cayo en (sin campana), comparar cierres entre campanas es invalido.
-  if (sinCampana && todas) {
-    const cierresSin = _mkMetrica(sinCampana, '.cierres');
-    const cierresTot = _mkMetrica(todas, '.cierres');
-    if (cierresSin && cierresTot && cierresTot.valor > 0 &&
-        cierresSin.valor / cierresTot.valor >= 0.5) {
-      avisos.push(icono + '<div><b>' + cierresSin.valor + ' de los ' +
-        cierresTot.valor + ' cierres no tienen campaña atribuida.</b> ' +
-        'La campaña vivía dentro de las notas del lead y se perdió cuando alguien ' +
-        'las editó. <b>Comparar cierres entre campañas con estos datos da una ' +
-        'conclusión falsa</b>: los leads que más se trabajaron son justamente los ' +
-        'que perdieron el origen. Las tasas de interés y de demo sí se pueden comparar.</div>');
-    }
   }
 
   document.getElementById('mk-avisos').innerHTML =
@@ -7742,15 +9300,14 @@ async function _mkInforme() {
 function _mkPintar() {
   if (!_mkDossier) return;
   const tema = _mkTema();
-  const elegida = document.getElementById('mk-campana').value;
-  const foco = _mkBloque(elegida || 'todas') || _mkBloque('todas');
+  // Una sola pauta: todo sale del bloque `todas`, que es la suma de las
+  // campañas. Juan: "yo quiero ver todo en una sola en términos generales".
+  const foco = _mkBloque('todas');
 
   _mkAvisos();
 
-  const nombreSemana = _mkSemanas([
-    ...(_mkDossier.serie_semanal || []).map(s => s.inicio),
-    ...(_mkDossier.serie_campanas || []).flatMap(s => (s.puntos || []).map(p => p.inicio)),
-  ]);
+  const nombreSemana = _mkSemanas(
+    (_mkDossier.serie_semanal || []).map(s => s.inicio));
 
 
   // ── Los ocho KPIs ──────────────────────────────────────────────────────
@@ -7805,35 +9362,140 @@ function _mkPintar() {
     SC.embudoReal(delCrm.map(e => ({ clave: e.clave, etiqueta: e.etiqueta, n: e.valor })),
                   { etiqueta: 'Embudo', ancho: 620, altoEtapa: 52 }, tema);
 
-  // ── Series semanales ───────────────────────────────────────────────────
+  // ── Mes a mes ──────────────────────────────────────────────────────────
+  //
+  // Barras agrupadas y no líneas: lo que se compara son magnitudes en
+  // categorías discretas —doce meses, no un continuo— y además se quiere
+  // comparar las tres series entre sí dentro de cada mes.
+  //
+  // Leads, demos y ventas comparten eje porque son la misma naturaleza: cuentas
+  // de personas. El gasto va aparte, abajo: meter dólares y personas en la
+  // misma escala haría que una de las dos sea invisible.
+  const meses = _mkDossier.serie_mensual || [];
+  const periodosMes = meses.map(m => ({ clave: m.periodo, etiqueta: m.nombre }));
+  const valoresDe = clave => Object.fromEntries(meses.map(m => [m.periodo, m[clave]]));
+  document.getElementById('mk-mensual').innerHTML = meses.length
+    ? SC.barrasAgrupadas(periodosMes, [
+        { etiqueta: 'Leads',  valores: valoresDe('leads'),
+          color: SC.colorDeEtapa('leads', tema) },
+        { etiqueta: 'Demos',  valores: valoresDe('demos'),
+          color: SC.colorDeEtapa('demos', tema) },
+        { etiqueta: 'Ventas', valores: valoresDe('ventas'),
+          color: SC.colorDeEtapa('cierres', tema) },
+      ], { etiqueta: 'Leads, demos y ventas por mes', formato: 'numero' }, tema)
+      + SC.barrasAgrupadas(periodosMes, [
+        { etiqueta: 'Gasto', valores: valoresDe('gasto'),
+          color: SC.PALETA[tema][0] },
+      ], { etiqueta: 'Gasto por mes', formato: 'moneda' }, tema)
+      + _mkNotaMesesIncompletos(meses, _mkDossier.periodo || {})
+      + _mkTablaMensual(meses, foco)
+    : '<div class="sc-vacio">Sin actividad en el período.</div>';
+
+  // ── Semana a semana ────────────────────────────────────────────────────
   const semanas = _mkDossier.serie_semanal || [];
-  const pares = [
-    [['leads_crm', 'Leads por semana', 'numero'], ['gasto', 'Gasto por semana', 'moneda']],
-    [['impresiones', 'Impresiones por semana', 'numero'], ['clics', 'Clics por semana', 'numero']],
-    [['cpl', 'Costo por lead, por semana', 'moneda'], null]
-  ];
-  document.getElementById('mk-series').innerHTML = pares.map(([a, b]) => {
-    const arma = ([clave, etiqueta, formato]) => ({
-      etiqueta, formato,
-      puntos: semanas.map(s => ({ x: nombreSemana[s.inicio] || s.semana, y: s[clave] === undefined ? null : s[clave] }))
-    });
-    return b ? SC.parApilado(arma(a), arma(b), tema)
-             : SC.serie(arma(a).puntos, arma(a), tema);
-  }).join('');
+  const periodosSem = semanas.map(s => ({
+    // "Semana 1" entero y no "S1": abreviarlo lo devuelve al problema que
+    // tenia "W36", que era justamente que hay que traducirlo.
+    clave: s.inicio, etiqueta: nombreSemana[s.inicio] || s.semana,
+  }));
+  const porSem = clave => Object.fromEntries(
+    semanas.map(s => [s.inicio, s[clave] === undefined ? null : s[clave]]));
 
-  // ── Por campaña ────────────────────────────────────────────────────────
-  const campanas = (_mkDossier.campanas || []).filter(b => b.campana !== 'todas');
+  // La vara contra la que se lee cada barra: todo lo anterior al período.
+  //
+  // `hist.hay` es false cuando estás mirando el primer mes con datos. Ahí no
+  // se dibuja nada: una línea en cero parece un dato y no lo es.
+  const hist = _mkDossier.historico || { hay: false };
+  const _hastaCorto = (hist.hasta || '').slice(0, 10).split('-').reverse()
+    .slice(0, 2).join('/');
+  const ref = (clave) => hist.hay
+    ? { valor: hist[clave], etiqueta: `histórico hasta el ${_hastaCorto}:` }
+    : null;
 
-  // Va DESPUES de `const campanas`: leerlo antes tira ReferenceError por
-  // la zona muerta temporal del const. node --check no lo agarra —es
-  // sintacticamente valido— y solo revienta al abrir el panel.
+  // Y el mismo dato en palabras, arriba del bloque. La línea deja ver que
+  // estamos arriba o abajo; esto dice cuánto, que es lo que se repite en una
+  // reunión.
+  //
+  // Sin color: entrar más leads es bueno y pagar más por lead es malo, así que
+  // pintar "arriba" de verde mentiría en la mitad de las frases.
+  const _comparar = (ahora, antes, masEsMejor, nombre, formato) => {
+    if (!hist.hay || ahora === null || !antes) return null;
+    const dif = (ahora - antes) / antes;
+    if (Math.abs(dif) < 0.05) {
+      return `${nombre} viene igual que el histórico ` +
+             `(${esc(SC.fmt(ahora, formato))}).`;
+    }
+    const cuanto = SC.fmt(Math.abs(dif), 'porcentaje');
+    const lado = dif > 0 ? 'por encima' : 'por debajo';
+    const juicio = (dif > 0) === masEsMejor ? 'Mejor' : 'Peor';
+    return `${nombre}: ${esc(SC.fmt(ahora, formato))} contra ` +
+           `${esc(SC.fmt(antes, formato))} del histórico, ` +
+           `${esc(cuanto)} ${lado}. ${juicio} que antes.`;
+  };
+
+  // Las semanas vacías del medio se dibujan para que el hueco se vea, pero
+  // no cuentan para "por semana": el histórico divide por semanas con
+  // actividad, y comparar promedios con denominadores distintos mentiría.
+  const _activas = semanas.filter(s => s.con_actividad !== false);
+  const _nSem = _activas.length || 1;
+  const _sumSem = (c) => _activas.reduce((a, s) => a + (s[c] || 0), 0);
+  const _frases = [
+    _comparar(_sumSem('leads_crm') / _nSem, hist.leads_semana, true,
+              'Entran por semana', 'numero'),
+    // El CPL del período es plata sobre leads, no el promedio de los CPL
+    // semanales: es el mismo ratio con el que se calcula el histórico.
+    _comparar(_sumSem('leads_crm')
+                ? _sumSem('gasto') / _sumSem('leads_crm') : null,
+              hist.cpl, false, 'Cada lead cuesta', 'moneda'),
+  ].filter(Boolean);
+
+  document.getElementById('mk-series').innerHTML = semanas.length
+    ? (_frases.length
+        ? '<div class="sc-comparacion">' +
+          _frases.map(f => '<div>' + f + '</div>').join('') + '</div>'
+        : '')
+      + SC.barrasAgrupadas(periodosSem, [
+        { etiqueta: 'Leads', valores: porSem('leads_crm'),
+          color: SC.colorDeEtapa('leads', tema) },
+      ], { etiqueta: 'Leads por semana', formato: 'numero',
+           referencia: ref('leads_semana') }, tema)
+      + SC.barrasAgrupadas(periodosSem, [
+        { etiqueta: 'Gasto', valores: porSem('gasto'), color: SC.PALETA[tema][0] },
+      ], { etiqueta: 'Gasto por semana', formato: 'moneda',
+           referencia: ref('gasto_semana') }, tema)
+      + SC.barrasAgrupadas(periodosSem, [
+        { etiqueta: 'Costo por lead', valores: porSem('cpl'),
+          color: SC.PALETA[tema][1] },
+      ], { etiqueta: 'Costo por lead, por semana', formato: 'moneda',
+           // El CPL histórico es plata total sobre leads totales, no el
+           // promedio de los CPL semanales: promediar ratios le daría el mismo
+           // peso a una semana de 2 leads que a una de 30.
+           referencia: ref('cpl') }, tema)
+      // Clics e impresiones van en gráficos separados y no en uno: son 5.000
+      // contra 150, y sobre el mismo eje la barra de clics desaparece. Y un
+      // eje doble haría que se cruzaran donde uno elija la escala.
+      + SC.barrasAgrupadas(periodosSem, [
+        { etiqueta: 'Clics', valores: porSem('clics'), color: SC.PALETA[tema][2] },
+      ], { etiqueta: 'Clics por semana', formato: 'numero',
+           referencia: ref('clics_semana') }, tema)
+      + SC.barrasAgrupadas(periodosSem, [
+        { etiqueta: 'Impresiones', valores: porSem('impresiones'),
+          color: SC.PALETA[tema][3] },
+      ], { etiqueta: 'Impresiones por semana', formato: 'numero',
+           referencia: ref('impresiones_semana') }, tema)
+    : '<div class="sc-vacio">Sin semanas con datos en el período.</div>';
+  if (semanas.length) {
+    document.getElementById('mk-series').innerHTML +=
+      _mkNotaSemanasIncompletas(semanas, _mkDossier.periodo || {}, nombreSemana);
+  }
+
   // ── Lo que salta a la vista ────────────────────────────────────────────
   //
   // Los hallazgos son deterministas: los calcula `services/hallazgos.py` a
-  // partir del mismo dossier que alimenta los graficos. No hay nada que
-  // validar —a diferencia del informe de IA— porque los numeros se leen, no se
-  // generan.
-  const hall = _mkDossier.hallazgos || [];
+  // partir del mismo dossier que alimenta los graficos. Se muestran los de la
+  // pauta como un todo (`hallazgos_pauta`); los que comparan campañas entre sí
+  // siguen en el dossier para el informe.
+  const hall = _mkDossier.hallazgos_pauta || [];
   document.getElementById('mk-hall-bloque').style.display = hall.length ? '' : 'none';
   document.getElementById('mk-hallazgos').innerHTML =
     '<div class="sc-hall">' + hall.map((h, i) =>
@@ -7843,165 +9505,48 @@ function _mkPintar() {
       '<span class="sc-hall-cuerpo">' + esc(h.cuerpo || '') + '</span></span>' +
       '</div>').join('') + '</div>';
 
-  // ── Dónde se cae cada campaña ──────────────────────────────────────────
-  //
-  // El embudo global contesta "cómo venimos"; este contesta "dónde se tranca
-  // cada una", que es lo accionable. Dos campañas con el mismo costo por lead
-  // pueden perder la gente en etapas distintas.
-  //
-  // La caída más grande va marcada porque es la única etapa sobre la que tiene
-  // sentido hacer algo: mejorar donde ya se pasa el 90% no mueve el total.
-  const embudos = _mkDossier.embudo_campanas || [];
-  document.getElementById('mk-embudos').innerHTML = !embudos.length
-    ? '<div class="sc-vacio">Sin leads en el período.</div>'
-    : '<div class="sc-embudos">' + embudos.map(b => {
-        const cierres = b.etapas[b.etapas.length - 1].n;
-        return '<div class="sc-embudo-uno">' +
-               '<div class="sc-embudo-tit">' + esc(b.campana) + '</div>' +
-               '<div class="sc-embudo-sub">' + esc(SC.fmt(b.etapas[0].n, 'numero')) +
-               ' leads · ' + esc(SC.fmt(cierres, 'numero')) + ' cierres</div>' +
-               SC.embudoReal(b.etapas, { etiqueta: b.campana, ancho: 460 }, tema) +
-               '</div>';
-      }).join('') + '</div>';
-
-  // ── Cómo evoluciona cada campaña ───────────────────────────────────────
-  const porSemana = _mkDossier.serie_campanas || [];
-  // Las campañas sin gasto no dicen nada en un gráfico de costos: serían una
-  // línea vacía con su color ocupando lugar en la leyenda.
-  const conGastoSem = porSemana.filter(s =>
-    (s.puntos || []).some(p => p.gasto > 0));
-
-  const evolucion = [
-    ['costo_demo', 'Costo por demo, semana a semana', 'moneda'],
-    ['cpl', 'Costo por lead, semana a semana', 'moneda'],
-    ['gasto', 'Gasto por semana', 'moneda'],
-  ].map(([campo, titulo, formato]) => SC.serieMulti(
-    conGastoSem.map(s => ({
-      campana: s.campana,
-      puntos: (s.puntos || []).map(p => ({ x: nombreSemana[p.inicio] || p.semana, y: p[campo] })),
-    })), { etiqueta: titulo, formato }, tema)).join('');
-  document.getElementById('mk-evolucion').innerHTML = conGastoSem.length
-    ? evolucion
-    : '<div class="sc-vacio">Hace falta gasto sincronizado para ver la evolución.</div>';
-
   // ── Cuánto costó llegar hasta acá ──────────────────────────────────────
   //
-  // Dos gráficos y no dos ejes: con un eje doble las dos curvas se cruzan
-  // donde uno elija la escala, y el cruce parece significar algo cuando no
-  // significa nada.
-  document.getElementById('mk-acumulado').innerHTML = conGastoSem.length
-    ? [['gasto_acum', 'Gasto acumulado', 'moneda'],
-       ['leads_acum', 'Leads acumulados', 'numero']].map(([campo, titulo, formato]) =>
-        SC.serieMulti(conGastoSem.map(s => ({
-          campana: s.campana,
-          puntos: (s.puntos || []).map(p => ({ x: nombreSemana[p.inicio] || p.semana, y: p[campo] })),
-        })), { etiqueta: titulo, formato }, tema)).join('')
-    : '<div class="sc-vacio">Hace falta gasto sincronizado.</div>';
-
-  // ── Qué campaña rinde de verdad ────────────────────────────────────────
+  // La pauta entera en una sola curva, no una por campaña. Dos gráficos y no
+  // dos ejes: con un eje doble las dos curvas se cruzan donde uno elija la
+  // escala. Sin línea de histórico: una curva acumulada siempre sube y una
+  // horizontal la cruzaría una sola vez sin que eso signifique nada.
   //
-  // Existe porque el hallazgo mas util del modulo requeria comparar dos
-  // graficos de barras a ojo: la campana con el costo por lead mas bajo puede
-  // ser la que mas caro te sale cada demo. Poniendolos en la misma tabla, y
-  // marcando cuando el orden se da vuelta, el punto se ve solo.
-  const conGasto = campanas.filter(b => {
-    const g = _mkMetrica(b, '.gasto');
-    return g && g.valor;
-  });
-
-  if (conGasto.length < 2) {
-    document.getElementById('mk-ranking').innerHTML =
-      '<div class="sc-vacio">Hace falta gasto sincronizado en al menos dos ' +
-      'campañas para poder compararlas.</div>';
-  } else {
-    const datos = conGasto.map(b => ({
-      campana: b.campana,
-      gasto: _mkMetrica(b, '.gasto'),
-      leads: _mkMetrica(b, '.leads_crm'),
-      cpl: _mkMetrica(b, '.cpl'),
-      demos: _mkMetrica(b, '.demos'),
-      costoDemo: _mkMetrica(b, '.costo_demo'),
-    }));
-
-    // Dos rankings, mas barato primero. Un null va al final: no se puede
-    // rankear lo que no se sabe.
-    const rank = (clave) => {
-      const orden = datos.slice().sort((a, b) => {
-        const x = a[clave] && a[clave].valor, y = b[clave] && b[clave].valor;
-        if (x === null || x === undefined) return 1;
-        if (y === null || y === undefined) return -1;
-        return x - y;
-      });
-      const m = new Map();
-      orden.forEach((d, i) => m.set(d.campana, i + 1));
-      return m;
-    };
-    const rCpl = rank('cpl'), rDemo = rank('costoDemo');
-
-    const filas = datos.slice()
-      .sort((a, b) => (a.costoDemo?.valor ?? Infinity) - (b.costoDemo?.valor ?? Infinity))
-      .map(d => {
-        const pc = rCpl.get(d.campana), pd = rDemo.get(d.campana);
-        // Se marca cuando la campana cambia de mitad de tabla al pasar de una
-        // metrica a la otra: ahi es donde la lectura ingenua se equivoca.
-        const invertido = pc !== pd && (pc <= 2) !== (pd <= 2);
-        const cls = invertido ? ' class="sc-rank-invertido"' : '';
-        return `<tr><td>${esc(d.campana)}</td>` +
-               `<td>${esc(SC.fmt(d.gasto.valor, 'moneda'))}</td>` +
-               `<td>${esc(SC.fmt(d.leads?.valor, 'numero'))}</td>` +
-               `<td${cls}><span class="sc-rank-pos">${pc}.</span> ` +
-               `${esc(SC.fmt(d.cpl?.valor, 'moneda'))}</td>` +
-               `<td>${esc(SC.fmt(d.demos?.valor, 'numero'))}</td>` +
-               `<td${cls}><span class="sc-rank-pos">${pd}.</span> ` +
-               `${esc(SC.fmt(d.costoDemo?.valor, 'moneda'))}</td></tr>`;
-      }).join('');
-
-    const seDaVuelta = datos.some(d => {
-      const pc = rCpl.get(d.campana), pd = rDemo.get(d.campana);
-      return pc !== pd && (pc <= 2) !== (pd <= 2);
-    });
-
-    document.getElementById('mk-ranking').innerHTML =
-      '<div class="sc-tabla-wrap"><table class="sc-tabla"><thead><tr>' +
-      '<th>Campaña</th><th>Gasto</th><th>Leads</th><th>Costo por lead</th>' +
-      '<th>Demos</th><th>Costo por demo</th></tr></thead><tbody>' + filas +
-      '</tbody></table></div>' +
-      (seDaVuelta
-        ? '<div class="sc-nota"><b class="sc-rank-invertido">El orden se da ' +
-          'vuelta.</b> Las campañas marcadas cambian de lado según qué mires: ' +
-          'la que trae los leads más baratos no es la que consigue las reuniones ' +
-          'más baratas. El Administrador de anuncios solo muestra la primera ' +
-          'columna.</div>'
-        : '<div class="sc-nota">Los dos rankings coinciden: la que trae leads ' +
-          'más baratos también consigue demos más baratas.</div>');
-  }
-
-  const porCampana = (suf, titulo) => {
-    const filas = campanas.map(b => ({
-      etiqueta: b.campana, campana: b.campana, metrica: _mkMetrica(b, suf)
-    })).filter(f => f.metrica)
-       .sort((x, y) => (y.metrica.valor || 0) - (x.metrica.valor || 0));
-    return `<div class="sc-titulo">${esc(titulo)}</div>` +
-           SC.barrasConIC(filas, { etiqueta: titulo }, tema);
-  };
-  document.getElementById('mk-campanas').innerHTML =
-    porCampana('.tasa_interes', 'Tasa de interés') +
-    porCampana('.tasa_demo', 'Tasa de demo') +
-    porCampana('.cpl', 'Costo por lead') +
-    porCampana('.costo_demo', 'Costo por demo');
+  // `SC.serie` dibuja los puntos en el orden en que llegan (el de las
+  // semanas), así que no le pasa lo de ordenar "Semana 10" antes que la 2.
+  const _hayAcum = semanas.some(s => s.gasto_acum || s.leads_acum);
+  const _acumulado = (campo, titulo, formato) => SC.serie(
+    semanas.map(s => ({
+      x: nombreSemana[s.inicio] || s.semana,
+      y: s[campo] === undefined ? null : s[campo],
+    })), { etiqueta: titulo, formato: formato }, tema);
+  document.getElementById('mk-acumulado').innerHTML = _hayAcum
+    ? _acumulado('gasto_acum', 'Gasto acumulado', 'moneda') +
+      _acumulado('leads_acum', 'Leads acumulados', 'numero')
+    : '<div class="sc-vacio">Sin gasto ni leads en el período.</div>';
 
   // ── Segmentos declarados ───────────────────────────────────────────────
   document.getElementById('mk-segmentos').innerHTML =
     (_mkDossier.segmentos || []).map(b => {
-      const filas = b.valores.map(v => ({
-        etiqueta: v.valor_declarado,
-        metrica: v.metricas.find(m => m.id.endsWith('.tasa_demo'))
-      })).filter(f => f.metrica);
+      const filas = b.valores.map(v => {
+        const m = v.metricas.find(m => m.id.endsWith('.tasa_demo'));
+        if (!m || m.valor === null || m.valor === undefined) return null;
+        return {
+          etiqueta: v.valor_declarado,
+          valor: m.valor,
+          nota: m.n ? (m.muestra_chica
+                        ? `sobre ${m.n} · muestra chica`
+                        : `sobre ${m.n}`) : ''
+        };
+      }).filter(Boolean);
       const cola = b.valores_distintos > b.valores.length
         ? ` · ${b.valores_distintos} respuestas distintas` : '';
-      return `<div class="sc-titulo">${esc(b.etiqueta)} ` +
-             `<span style="font-weight:400;color:#64748b">(n=${b.n}${cola})</span></div>` +
-             SC.barrasConIC(filas, { etiqueta: b.etiqueta, anchoEtiqueta: 230 }, tema);
+      return SC.barrasSimples(filas, {
+        etiqueta: b.etiqueta,
+        ayuda: `Qué porcentaje de cada respuesta llegó a una reunión. ` +
+               `${b.n} respuestas${cola}.`,
+        formato: 'porcentaje'
+      }, tema);
     }).join('') || '<div class="sc-vacio">Sin respuestas de formulario en el período</div>';
 
   // ── La plata: Meta contra Finanzas ─────────────────────────────────────
@@ -8018,50 +9563,390 @@ function _mkPintar() {
       const que = m.id.split('.')[1];
       (meses[p] = meses[p] || {})[que] = m.valor;
     });
+    // Los ids traen el periodo como `2026_09`. Se muestra con el nombre del
+    // mes: "Setiembre 2026" se ubica de un vistazo y "2026_09" hay que
+    // traducirlo mentalmente cada vez. Se reusa el helper de Finanzas en vez
+    // de copiar la lista de meses por quinta vez en este archivo.
+    const nombreMes = p => _finNombreMes(p.replace('_', '-'));
+
     const filas = Object.keys(meses).sort().map(p => {
       const x = meses[p];
       const pct = x.gasto_meta ? x.brecha / x.gasto_meta : null;
       const alerta = pct !== null && pct > 0.1;
-      return `<tr><td>${esc(p.replace('_','-'))}</td>` +
+      return `<tr><td>${esc(nombreMes(p))}</td>` +
              `<td>${esc(SC.fmt(x.gasto_meta, 'moneda'))}</td>` +
              `<td>${esc(SC.fmt(x.gasto_cargado, 'moneda'))}</td>` +
-             `<td style="${alerta ? 'color:#f87171;font-weight:600' : ''}">` +
-             `${esc(SC.fmt(x.brecha, 'moneda'))}</td></tr>`;
+             `<td style="${alerta ? 'color:var(--rojo);font-weight:600' : ''}">` +
+             `${esc(SC.fmt(x.brecha, 'moneda'))}` +
+             (pct === null ? '' :
+              `<span class="sc-barra-nota">${esc(SC.fmt(pct, 'porcentaje'))}` +
+              ` del mes</span>`) +
+             `</td></tr>`;
     }).join('');
     const suma = k => conc.filter(m => m.id.split('.')[1] === k)
                           .reduce((a, m) => a + (m.valor || 0), 0);
+
+    // Primero la respuesta, despues como se llego. Antes habia que sumar la
+    // columna de la tabla para saber cuanta plata falta registrar; ahora el
+    // numero esta arriba y la tabla queda para auditarlo.
+    const totMeta = suma('gasto_meta');
+    const totCargado = suma('gasto_cargado');
+    const totBrecha = suma('brecha');
+    const pctBrecha = totMeta ? totBrecha / totMeta : null;
+    // 10% es el mismo umbral con el que se pinta cada fila: por debajo de eso
+    // la diferencia es redondeo y tipo de cambio, no plata sin registrar.
+    const sano = pctBrecha === null || Math.abs(pctBrecha) <= 0.1;
+    const veredicto = sano
+      ? 'Finanzas está viendo prácticamente todo el gasto de pauta. ' +
+        'La diferencia entra en el redondeo.'
+      : (totBrecha > 0
+          ? `Faltan ${SC.fmt(totBrecha, 'moneda')} de pauta por cargar en ` +
+            'Finanzas. Mientras no estén, el costo real de cada venta se ve ' +
+            'más barato de lo que es.'
+          : `Hay ${SC.fmt(-totBrecha, 'moneda')} cargados de más en ` +
+            'Finanzas. Puede ser gasto de pauta de otra cuenta, o una carga ' +
+            'duplicada.');
+
+    const tile = (rotulo, valor) =>
+      `<div class="sc-tile"><div class="sc-tile-label">${esc(rotulo)}</div>` +
+      `<div class="sc-tile-valor">${esc(SC.fmt(valor, 'moneda'))}</div></div>`;
+
+    // El grafico despues del resumen y antes de la tabla: se lee de un vistazo
+    // —de que lado del cero esta cada mes— y la tabla es lo que permite
+    // auditarlo. Barras divergentes y no comunes: en una barra comun el signo
+    // hay que leerlo en el numero; aca el lado ya lo dice.
+    const divergentes = Object.keys(meses).sort().map(p => ({
+      etiqueta: nombreMes(p),
+      valor: meses[p].brecha,
+    }));
     document.getElementById('mk-conciliacion').innerHTML =
+      '<div class="sc-plata-resumen">' +
+      tile('Meta cobró', totMeta) +
+      tile('Cargado en Finanzas', totCargado) +
+      `<div class="sc-tile" data-estado="${sano ? 'ok' : 'alerta'}">` +
+      '<div class="sc-tile-label">Sin registrar</div>' +
+      `<div class="sc-tile-valor">${esc(SC.fmt(totBrecha, 'moneda'))}</div>` +
+      (pctBrecha === null ? '' :
+       `<div class="sc-tile-delta">${esc(SC.fmt(pctBrecha, 'porcentaje'))}` +
+       ' del gasto de Meta</div>') +
+      '</div></div>' +
+      `<div class="sc-plata-veredicto" data-estado="${sano ? 'ok' : 'alerta'}">` +
+      `${esc(veredicto)}</div>` +
+      SC.barrasDivergentes(divergentes, {
+        etiqueta: 'Mes a mes: qué parte del gasto no está registrada',
+        formato: 'moneda',
+        cero: 'coinciden',
+      }, tema) +
+      '<div class="sc-nota">A la derecha del cero, Meta cobró más de lo que ' +
+      'está cargado: falta registrar. A la izquierda, sobra cargado y el mes ' +
+      'se ve peor de lo que fue.</div>' +
       '<div class="sc-tabla-wrap"><table class="sc-tabla"><thead><tr>' +
       '<th>Mes</th><th>Según Meta</th><th>Cargado en Finanzas</th>' +
       '<th>Sin registrar</th></tr></thead><tbody>' + filas +
       `<tr style="font-weight:700"><td>Total</td>` +
-      `<td>${esc(SC.fmt(suma('gasto_meta'), 'moneda'))}</td>` +
-      `<td>${esc(SC.fmt(suma('gasto_cargado'), 'moneda'))}</td>` +
-      `<td>${esc(SC.fmt(suma('brecha'), 'moneda'))}</td></tr>` +
+      `<td>${esc(SC.fmt(totMeta, 'moneda'))}</td>` +
+      `<td>${esc(SC.fmt(totCargado, 'moneda'))}</td>` +
+      `<td>${esc(SC.fmt(totBrecha, 'moneda'))}</td></tr>` +
       '</tbody></table></div>';
   }
 
-  // ── Tabla cruda ────────────────────────────────────────────────────────
-  const todasLasMetricas = [];
-  (_mkDossier.campanas || []).forEach(b => todasLasMetricas.push(...(b.metricas || [])));
-  (_mkDossier.segmentos || []).forEach(b => (b.valores || []).forEach(
-    v => todasLasMetricas.push(...(v.metricas || []))));
-  ['conciliacion', 'tiempos', 'recordatorios'].forEach(
-    k => todasLasMetricas.push(...(_mkDossier[k] || [])));
+  // ── Cuándo llegan los leads ────────────────────────────────────────────
+  const lleg = _mkDossier.llegada || {};
+  const DIAS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+  document.getElementById('mk-llegada').innerHTML = (lleg.total || 0)
+    ? SC.matriz(
+        (lleg.celdas || []).map(c => ({
+          fila: c.dia, columna: c.franja, n: c.n,
+          titulo: DIAS[c.dia] + ' ' + String(c.franja).padStart(2, '0') + 'h',
+        })),
+        {
+          etiqueta: 'Leads por día y franja horaria',
+          filas: DIAS.map((d, i) => ({ clave: i, etiqueta: d })),
+          columnas: (lleg.celdas || []).slice(0, 8).map(c => ({
+            clave: c.franja,
+            etiqueta: String(c.franja).padStart(2, '0'),
+          })),
+          maximo: lleg.maximo,
+        }, tema)
+      + (lleg.sin_hora
+         ? '<div class="sc-nota">' + esc(SC.fmt(lleg.sin_hora, 'numero')) +
+           ' leads no tienen hora guardada y quedan fuera del mapa. Contarlos a ' +
+           'medianoche inventaría un pico que no pasó.</div>'
+         : '')
+    : '<div class="sc-vacio">Sin leads en el período.</div>';
 
-  document.getElementById('mk-tabla').innerHTML =
-    '<table class="sc-tabla"><thead><tr><th>Métrica</th><th>Valor</th>' +
-    '<th>Numerador</th><th>Denominador</th><th>n</th><th>Fuente</th>' +
-    '<th>Contra el período anterior</th></tr></thead><tbody>' +
-    todasLasMetricas.map(m => {
-      const d = SC.fmtDelta(m.delta_periodo_anterior, m.formato);
-      return `<tr><td>${esc(m.etiqueta)}</td>` +
-             `<td>${esc(SC.fmt(m.valor, m.formato))}</td>` +
-             `<td>${m.numerador === null || m.numerador === undefined ? '—' : m.numerador}</td>` +
-             `<td>${m.denominador === null || m.denominador === undefined ? '—' : m.denominador}</td>` +
-             `<td>${m.n === null || m.n === undefined ? '—' : m.n}${m.muestra_chica ? ' ⚠' : ''}</td>` +
-             `<td>${esc(m.fuente)}</td><td>${esc(d.texto)}</td></tr>`;
-    }).join('') + '</tbody></table>';
+}
+
+// ── Ayudas del mes a mes ────────────────────────────────────────────────
+
+// '2026-09-14' -> '14/09'.
+function _mkDiaMes(iso) {
+  const p = String(iso || '').slice(0, 10).split('-');
+  return p.length === 3 ? p[2] + '/' + p[1] : '';
+}
+
+var _MK_NOMBRE_MES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Setiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+
+// '2026-09' -> 'Setiembre 2026'.
+function _mkNombreMes(mes) {
+  const m = parseInt(String(mes).slice(5, 7), 10);
+  return (_MK_NOMBRE_MES[m - 1] || mes) + ' ' + String(mes).slice(0, 4);
+}
+
+// La tabla del mes a mes: los mismos números que las barras, para leerlos
+// sin estimar contra la grilla. El total de leads y de gasto es el mismo de
+// los KPIs de arriba (mismo período, mismas tablas); el costo por lead total
+// no se recalcula acá, se lee del bloque `todas`.
+function _mkTablaMensual(meses, foco) {
+  const suma = (c) => meses.reduce((a, m) => a + (m[c] || 0), 0);
+  const cplTotal = _mkMetrica(foco, '.cpl');
+  const filas = meses.map(m =>
+    `<tr><td>${esc(m.nombre || m.periodo)} ${esc(String(m.periodo).slice(0, 4))}</td>` +
+    `<td>${esc(SC.fmt(m.leads, 'numero'))}</td>` +
+    `<td>${esc(SC.fmt(m.demos, 'numero'))}</td>` +
+    `<td>${esc(SC.fmt(m.ventas, 'numero'))}</td>` +
+    `<td>${esc(SC.fmt(m.gasto, 'moneda'))}</td>` +
+    `<td>${esc(SC.fmt(m.cpl, 'moneda'))}</td></tr>`).join('');
+  return '<div class="sc-tabla-wrap"><table class="sc-tabla"><thead><tr>' +
+    '<th>Mes</th><th>Leads</th><th>Demos</th><th>Ventas</th><th>Gasto</th>' +
+    '<th>Costo por lead</th></tr></thead><tbody>' + filas +
+    '<tr style="font-weight:700"><td>Total</td>' +
+    `<td>${esc(SC.fmt(suma('leads'), 'numero'))}</td>` +
+    `<td>${esc(SC.fmt(suma('demos'), 'numero'))}</td>` +
+    `<td>${esc(SC.fmt(suma('ventas'), 'numero'))}</td>` +
+    `<td>${esc(SC.fmt(suma('gasto'), 'moneda'))}</td>` +
+    `<td>${esc(SC.fmt(cplTotal ? cplTotal.valor : null, 'moneda'))}</td></tr>` +
+    '</tbody></table></div>';
+}
+
+// Con "últimos 90 días" el primer mes arranca a mitad de mes y el último es
+// el de hoy: sus barras salen más bajas sin que el mes haya sido peor. Se
+// dice, en vez de dejar que se lea como una caída.
+function _mkNotaMesesIncompletos(meses, p) {
+  if (!meses.length || !p.desde || !p.hasta) return '';
+  const partes = [];
+  const primero = meses[0], ultimo = meses[meses.length - 1];
+  if (p.desde.slice(0, 7) === primero.periodo && p.desde.slice(8, 10) !== '01') {
+    partes.push(`${primero.nombre} arranca el ${_mkDiaMes(p.desde)}`);
+  }
+  const y = parseInt(p.hasta.slice(0, 4), 10), mm = parseInt(p.hasta.slice(5, 7), 10);
+  const ultimoDia = new Date(y, mm, 0).getDate();
+  if (p.hasta.slice(0, 7) === ultimo.periodo &&
+      parseInt(p.hasta.slice(8, 10), 10) !== ultimoDia) {
+    partes.push(`${ultimo.nombre} llega hasta el ${_mkDiaMes(p.hasta)}`);
+  }
+  if (!partes.length) return '';
+  const cuantos = partes.length === 2 && primero.periodo !== ultimo.periodo
+    ? 'esos dos meses están incompletos' : 'ese mes está incompleto';
+  return `<div class="sc-nota">${esc(partes.join(' y '))}: ${cuantos}, así que ` +
+    'su barra no se compara de igual a igual con la de un mes entero.</div>';
+}
+
+// Lo mismo para las semanas: la primera puede arrancar a mitad de semana y la
+// última es la de hoy.
+function _mkNotaSemanasIncompletas(semanas, p, nombres) {
+  if (!semanas.length || !p.desde || !p.hasta) return '';
+  const partes = [];
+  const primera = semanas[0], ultima = semanas[semanas.length - 1];
+  if (primera.inicio < p.desde) {
+    partes.push(`${nombres[primera.inicio] || 'La primera semana'} arranca el ${_mkDiaMes(p.desde)}`);
+  }
+  const fin = new Date(ultima.inicio + 'T12:00:00');
+  fin.setDate(fin.getDate() + 6);
+  if (_mkISO(fin) > p.hasta) {
+    partes.push(`${nombres[ultima.inicio] || 'la última semana'} llega hasta el ${_mkDiaMes(p.hasta)}`);
+  }
+  if (!partes.length) return '';
+  return `<div class="sc-nota">${esc(partes.join(' y '))}: son semanas ` +
+    'incompletas, así que su barra sale más baja sin que eso quiera decir que ' +
+    'anduvieron peor.</div>';
+}
+
+// ── Las piezas de la pauta, mes por mes ─────────────────────────────────
+//
+// Pedido de Juan: ir mes por mes, y en cada mes ver las piezas que tuvieron
+// actividad con los números de ESE mes, partidas en las que siguen activas
+// hoy y las que ya no. Las que ya no se ven igual de legibles: las separa el
+// título del grupo, no un gris.
+//
+// Tiene su propio mes y su propio pedido a `/api/marketing/piezas`: el
+// período de arriba no la mueve y cambiar de mes no recalcula el panel.
+
+var _mkPiezasMesActual = null;   // 'YYYY-MM'; null es el mes de hoy
+
+// Corre un mes 'YYYY-MM' tantos meses como diga delta, cruzando el año.
+function _mkMesCorrido(mes, delta) {
+  const d = new Date(parseInt(mes.slice(0, 4), 10), parseInt(mes.slice(5, 7), 10) - 1 + delta, 1);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+}
+
+function _mkMesDeHoy() {
+  const hoy = new Date();
+  return hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0');
+}
+
+// La flecha lleva EXACTAMENTE al mes pedido, nunca a otro. Antes, retroceder
+// más allá del primer mes con datos te dejaba en ese primer mes sin avisar:
+// Juan creía estar en mayo y miraba agosto. Si el mes no tiene datos por pieza,
+// el panel lo dice. Al futuro no se va: el botón está apagado.
+function mkPiezasMes(delta) {
+  const hoy = _mkMesDeHoy();
+  const ahora = _mkPiezasMesActual || hoy;
+  const mes = _mkMesCorrido(ahora, delta);
+  if (mes > hoy || mes === ahora) return;
+  _mkPiezasMesActual = mes === hoy ? null : mes;
+  _mkCargarPiezas();
+}
+
+function mkPiezasMesHoy() {
+  _mkPiezasMesActual = null;
+  _mkCargarPiezas();
+}
+
+async function _mkCargarPiezas() {
+  const mes = _mkPiezasMesActual || _mkMesDeHoy();
+  const caja = document.getElementById('mk-piezas');
+  document.getElementById('mk-piezas-mes').textContent = _mkNombreMes(mes);
+  caja.innerHTML = '<div class="sc-vacio">Cargando las piezas…</div>';
+  let datos;
+  try {
+    const r = await fetch('/api/marketing/piezas?mes=' + encodeURIComponent(mes));
+    if (!r.ok) {
+      caja.innerHTML = '<div class="sc-vacio">No se pudieron cargar las piezas ' +
+        '(error ' + r.status + ').</div>';
+      return;
+    }
+    datos = await r.json();
+  } catch (e) {
+    caja.innerHTML = '<div class="sc-vacio">No se pudieron cargar las piezas: ' +
+      esc(e.message) + '</div>';
+    return;
+  }
+  // Si mientras llegaba se pidió otro mes, esta respuesta ya no va.
+  if (datos.mes !== (_mkPiezasMesActual || _mkMesDeHoy())) return;
+  _mkPintarPiezas(datos);
+}
+
+function _mkPintarPiezas(d) {
+  const nombre = d.nombre || _mkNombreMes(d.mes);
+  document.getElementById('mk-piezas-mes').textContent = nombre;
+  // Al futuro no se va. Hacia atrás sí, siempre: si el mes no tiene datos por
+  // pieza, se dice abajo en vez de frenar la flecha en otro mes.
+  document.getElementById('mk-piezas-sig').disabled = d.mes >= (d.mes_actual || _mkMesDeHoy());
+  document.getElementById('mk-piezas-ant').disabled = false;
+
+  const caja = document.getElementById('mk-piezas');
+  const activas = d.activas || [], inactivas = d.inactivas || [];
+  const t = d.totales || {};
+  const estado = d.estado_datos ||
+    (!d.primer_mes ? 'nada_sincronizado'
+      : (activas.length || inactivas.length) ? 'con_piezas' : 'sin_pauta');
+  // '2026-06-01' -> '01/06/2026'
+  const fecha = (iso) => _mkDiaMes(iso) + '/' + String(iso || '').slice(0, 4);
+
+  if (estado === 'nada_sincronizado') {
+    caja.innerHTML = '<div class="sc-vacio">Todavía no hay piezas sincronizadas. ' +
+      'Aparecen solas cuando corre el sync de anuncios de Meta, que necesita el ' +
+      'token configurado. El resto del panel funciona igual.</div>';
+    return;
+  }
+  if (estado === 'sin_datos_por_pieza') {
+    const porque = d.primer_dia && d.hasta && d.hasta < d.primer_dia
+      ? ` Los datos pieza por pieza empiezan el ${fecha(d.primer_dia)}.`
+      : ' Meta registra gasto de pauta en ese mes, pero pieza por pieza no se trajo.';
+    caja.innerHTML = `<div class="sc-vacio">No hay datos por pieza de Meta guardados ` +
+      `para ${esc(nombre)}.${esc(porque)} No quiere decir que no se haya pautado: ` +
+      'falta traer ese mes desde Meta.</div>';
+    return;
+  }
+  if (estado === 'sin_pauta' || (!activas.length && !inactivas.length)) {
+    caja.innerHTML = `<div class="sc-vacio">En ${esc(nombre)} no se pautó ninguna ` +
+      'pieza: ningún anuncio tuvo gasto ni impresiones.</div>';
+    return;
+  }
+
+  const tile = (rotulo, valor, pie) =>
+    `<div class="sc-tile"><div class="sc-tile-label">${esc(rotulo)}</div>` +
+    `<div class="sc-tile-valor">${esc(valor)}</div>` +
+    (pie ? `<div class="sc-tile-delta">${esc(pie)}</div>` : '') + '</div>';
+  const cab = '<div class="sc-plata-resumen">' +
+    tile('Piezas con actividad', SC.fmt(t.piezas, 'numero'),
+         `${SC.fmt(t.activas, 'numero')} activas hoy · ${SC.fmt(t.inactivas, 'numero')} ya no`) +
+    tile('Gasto del mes', SC.fmt(t.gasto, 'moneda'), t.moneda || '') +
+    tile('Leads del mes según Meta', SC.fmt(t.leads, 'numero'),
+         t.cpl ? `${SC.fmt(t.cpl, 'moneda')} cada uno` : 'sin leads no hay costo por lead') +
+    (t.leads_crm === undefined || t.leads_crm === null ? '' :
+      tile('Leads del mes en el CRM', SC.fmt(t.leads_crm, 'numero'),
+           t.leads_crm_sin_pieza
+             ? `${SC.fmt(t.leads_crm_sin_pieza, 'numero')} sin pieza identificada`
+             : 'todos con su pieza')) +
+    tile('Impresiones', SC.fmt(t.impresiones, 'numero'),
+         `${SC.fmt(t.clics, 'numero')} clics`) +
+    '</div>';
+
+  let aviso = `Todos los números son de ${nombre} y nada más. «Leads según Meta» ` +
+    'son los que Meta le atribuye a cada pieza en los días del mes; con ellos se ' +
+    'calcula el costo por lead. «Leads en el CRM» son las personas que entraron ' +
+    'al CRM ese mes por esa pieza. Son dos cuentas distintas y no se suman.';
+  if (d.datos_desde) {
+    aviso = `Ojo: los datos por pieza de ${nombre} empiezan el ` +
+      `${fecha(d.datos_desde)}; lo de los días anteriores no está. ` + aviso;
+  }
+  const g = d.gasto_pauta;
+  if (g !== null && g !== undefined && Math.abs(g - (t.gasto || 0)) > Math.max(1, g * 0.01)) {
+    aviso += ` Ojo: mirado por campaña, Meta dice que en ${nombre} se gastaron ` +
+      `${SC.fmt(g, 'moneda')} y las piezas suman ${SC.fmt(t.gasto, 'moneda')}. ` +
+      'La diferencia es gasto de anuncios que no se llegó a sincronizar pieza por pieza.';
+  }
+
+  // Sin recomendación en la tarjeta: la que había miraba toda la vida de la
+  // pieza y se leía como si fuera del mes (pedido de Juan, 14/9).
+  const tarjeta = (a) => {
+    const foto = a.tiene_imagen
+      ? `<img class="sc-anun-foto" loading="lazy" alt="Pieza ${esc(a.nombre || '')}" ` +
+        `src="/api/marketing/creativo/${encodeURIComponent(a.ad_id)}">`
+      // Los de video no tienen foto: Meta no da la portada con los permisos
+      // que tiene la app. Se dice por qué en vez de dejar un hueco.
+      : '<div class="sc-anun-sinfoto">' +
+        (a.tipo === 'VIDEO' ? 'Es un video.<br>Meta no deja bajar la portada.'
+                            : 'Sin imagen') + '</div>';
+    const dato = (rot, val, fmt) =>
+      '<div class="sc-anun-dato"><span>' + esc(rot) + '</span><b>' +
+      esc(SC.fmt(val, fmt)) + '</b></div>';
+    const fechas = !a.primer_dia ? ''
+      : a.primer_dia === a.ultimo_dia
+        ? `Con actividad el ${_mkDiaMes(a.primer_dia)}`
+        : `Con actividad del ${_mkDiaMes(a.primer_dia)} al ${_mkDiaMes(a.ultimo_dia)}`;
+    const conCrm = a.leads_crm !== null && a.leads_crm !== undefined;
+    return `<article class="sc-anun" data-corriendo="${a.corriendo ? 'true' : 'false'}">` +
+      foto + '<div class="sc-anun-cuerpo">' +
+      `<div class="sc-anun-nom">${esc(a.nombre || '(sin nombre)')}</div>` +
+      (fechas ? `<div class="sc-anun-fechas">${esc(fechas)}</div>` : '') +
+      '<div class="sc-anun-datos">' +
+      dato('Gasto', a.gasto, 'moneda') +
+      dato('Leads según Meta', a.leads, 'numero') +
+      dato('Costo por lead', a.cpl, 'moneda') +
+      (conCrm ? dato('Leads en el CRM', a.leads_crm, 'numero') : '') +
+      dato('Impresiones', a.impresiones, 'numero') +
+      dato('Clics', a.clics, 'numero') +
+      dato('CTR', a.ctr, 'porcentaje') +
+      '</div>' +
+      '</div></article>';
+  };
+
+  const grupo = (titulo, lista, vacio) =>
+    `<h4 class="sc-piezas-grupo">${esc(titulo)} <span>(${lista.length})</span></h4>` +
+    (lista.length
+      ? '<div class="sc-anuncios">' + lista.map(tarjeta).join('') + '</div>'
+      : `<div class="sc-vacio">${esc(vacio)}</div>`);
+
+  caja.innerHTML = cab +
+    `<div class="sc-piezas-aviso">${esc(aviso)}</div>` +
+    grupo('Activas hoy', activas,
+          `Ninguna de las piezas de ${nombre} sigue activa hoy.`) +
+    grupo('Ya no están activas', inactivas,
+          `Todas las piezas de ${nombre} siguen activas hoy.`);
 }
 
 // ========== Activity feed ==========
@@ -8085,11 +9970,12 @@ const _actActionLabels = {
   lead_deleted:  (i) => `eliminó lead: <b>${esc(i.entity_name)}</b>`,
   batch_status:  (i) => i.detail || 'actualizó múltiples leads',
   notion_sync:   (i) => `sincronizó con Notion${i.detail ? ': '+esc(i.detail) : ''}`,
+  notion_client_moved: (i) => `movió <b>${esc(i.entity_name)}</b> a <b>${esc(i.detail)}</b> en Proceso de venta`,
 };
 const _actCrmMap = {sin_contactar:'Sin contactar',contactado:'Contactado',reunion_agendada:'Reunión agendada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Presupuesto enviado',negociacion:'Negociación',cliente_cerrado:'Cliente cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado'};
 function _actCrmLabel(s) { return _actCrmMap[s] || s || ''; }
 function _actCallLabel(s) { return {contestó:'Contestó',no_contestó:'No contestó',buzón:'Buzón'}[s] || s || ''; }
-const _actIcons = {status_change:'🔄',note_updated:'📝',attachment_added:'📎',call_logged:'📞',budget_generated:'💰',budget_sent:'📨',task_created:'✅',task_updated:'✏️',task_deleted:'🗑️',meeting_scheduled:'📅',lead_deleted:'🗑️',batch_status:'🔄',notion_sync:'🔄'};
+const _actIcons = {status_change:'🔄',note_updated:'📝',attachment_added:'📎',call_logged:'📞',budget_generated:'💰',budget_sent:'📨',task_created:'✅',task_updated:'✏️',task_deleted:'🗑️',meeting_scheduled:'📅',lead_deleted:'🗑️',batch_status:'🔄',notion_sync:'🔄',notion_client_moved:'🔀'};
 
 // ── SDR panel ──────────────────────────────────────────────────────────────────
 let _sdrPeriod = 'month';
@@ -8517,7 +10403,8 @@ def create_app(db_path: str) -> Flask:
     app.config["PIPELINE_LOCK"] = _pipeline_lock
 
     for bp in (leads_bp, demos_bp, calendar_bp, wa_bp, pipeline_bp, tasks_bp, budgets_bp, tokens_bp, meta_bp, calendly_bp, notion_bp, projects_bp, preclientes_bp,
-                notion_clients_bp, resend_bp, linkedin_bp, web_bp, finanzas_bp, marketing_bp):
+                notion_clients_bp, resend_bp, linkedin_bp, web_bp, finanzas_bp, marketing_bp,
+                simulador_bp):
         app.register_blueprint(bp)
 
     @app.before_request
@@ -9431,8 +11318,8 @@ select:focus{border-color:#0088cc}
 </div>
 
 <script>
-const ALL_PANELS = ['cola','seguimientos','meta','pipeline','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas'];
-const PANEL_LABELS = {cola:'Cola',seguimientos:'Seguimientos',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Métricas',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Pipeline Notion',finanzas:'Finanzas'};
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador'];
+const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero'};
 let _roles = [];
 
 function makeChips(containerId, checkedArr, prefix) {

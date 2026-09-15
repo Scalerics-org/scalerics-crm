@@ -69,6 +69,23 @@ jobs:
             -H "x-admin-token: $TOKEN")
           echo "sync: $RESP"
 
+      - name: Sincronizar los anuncios y sus fotos
+        # Va DESPUÉS del gasto por campaña y no en lugar de él: son dos granos
+        # distintos, y el panel usa los dos. Si este falla, el de arriba ya
+        # quedó guardado.
+        #
+        # Es la llamada más pesada del cron: además de los insights, baja la
+        # imagen de cada anuncio nuevo. Se hace una sola vez por anuncio —la
+        # segunda corrida encuentra el archivo y no vuelve a pedirlo— así que
+        # el día pesado es el primero.
+        env:
+          CRM: ${{ secrets.CRM_URL }}
+          TOKEN: ${{ secrets.ADMIN_TOKEN }}
+        run: |
+          set -euo pipefail
+          RESP=$(curl -sS -f --retry 5 --retry-all-errors --retry-delay 10             --max-time 300 -X POST "$CRM/api/marketing/sync-anuncios"             -H "x-admin-token: $TOKEN")
+          echo "anuncios: $RESP"
+
       - name: Generar la radiografía
         id: generar
         # Solo los lunes y a mano. El cron diario existe para traer el gasto, no

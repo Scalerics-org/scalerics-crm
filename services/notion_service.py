@@ -17,9 +17,12 @@ from datetime import datetime
 
 import requests
 
+from database import (ETAPAS_CLIENTE, add_lead_event, get_business,
+                      get_notion_client_by_page, log_activity, update_business)
 from database import (borrar_notion_clients, borrar_proyectos, create_task,
-                      get_notion_clients, get_projects, get_task_by_id,
-                      get_tasks_notion, log_activity, update_task,
+                      get_notion_client_by_id, get_notion_clients, get_projects,
+                      get_task_by_id, get_tasks_notion, log_activity,
+                      set_notion_client_status, update_task,
                       upsert_notion_client, upsert_project)
 
 logger = logging.getLogger(__name__)
@@ -76,6 +79,10 @@ GRUPOS_CLIENTES = {
     "Presupuesto Rechazado": "done",
     "Presupuesto Aceptado": "done",
 }
+
+# La columna que convierte a un negocio en cliente. Desde el 14/9 no hay otro
+# camino en la interfaz: el tablero de Pre-clientes se saco de la vista.
+ESTADO_ACEPTADO = "Presupuesto Aceptado"
 
 
 def estados_de_clientes() -> list[dict]:
@@ -755,6 +762,157 @@ def _estado_de(props: dict) -> str | None:
     return None
 
 
+def _clave_de_estado(props: dict) -> str | None:
+    """Con que clave se le escribe a la property de estado de una ficha.
+
+    La misma property que lee `_estado_de` (la primera de tipo `status`), pero
+    para escribir no alcanza con ubicarla: en el PATCH hay que nombrarla, y su
+    nombre es la cadena vacia. La API acepta como clave el nombre **o el id**
+    de la property; se usa el id, que no depende de que alguien le ponga o le
+    cambie el nombre en el tablero. Sin id (no deberia pasar) queda el nombre.
+    """
+    for nombre, prop in (props or {}).items():
+        if (prop or {}).get("type") == "status":
+            return prop.get("id") or nombre
+    return None
+
+
+def cliente_cambio_de_estado(db_path: str, notion_page_id: str,
+                             anterior: str | None, nuevo: str | None) -> None:
+    """El unico lugar donde el CRM registra que una ficha de Clientes cambio de
+    estado **y Notion ya lo tiene**.
+
+    Lo llaman los dos caminos por los que eso pasa:
+
+    - `mover_cliente`, despues de que Notion acepto el PATCH (o cuando la ficha
+      ya estaba en ese estado alla y solo el espejo iba atrasado);
+    - `traer_clientes`, cuando el sync ve que una ficha que ya estaba en el
+      espejo volvio con otro estado (alguien la movio en Notion). Las fichas
+      nuevas no pasan por aca: aparecer no es moverse.
+
+    Si algo del CRM tiene que reaccionar a un cambio de columna, se cuelga de
+    esta funcion y no de cada camino por separado.
+
+    Escribe el estado en `notion_clients`. Desde el sync es redundante (el
+    upsert ya lo escribio) y es a proposito: asi la fila queda igual venga el
+    cambio de donde venga.
+    """
+    set_notion_client_status(db_path, notion_page_id, nuevo)
+    logger.info("notion: la ficha %s paso de %r a %r", notion_page_id, anterior, nuevo)
+    if nuevo == ESTADO_ACEPTADO:
+        # Un error aca no puede cortar el sync ni devolver la ficha a su
+        # columna: Notion ya tiene el cambio. Se loguea y sigue.
+        try:
+            pasar_a_cliente(db_path, get_notion_client_by_page(db_path, notion_page_id))
+        except Exception:
+            logger.warning("notion: no se pudo pasar a Clientes el negocio de la ficha %s",
+                           notion_page_id, exc_info=True)
+
+
+def pasar_a_cliente(db_path: str, ficha: dict | None,
+                    quien: str = "Proceso de venta") -> bool:
+    """Pasa a Clientes al negocio conectado a una ficha en "Presupuesto Aceptado".
+
+    Devuelve True solo si lo movio. No hace nada si la ficha no esta conectada,
+    si no esta en esa columna, o si el negocio ya es cliente: un negocio en
+    `en_desarrollo` o `finalizado` no vuelve a `cerrado` porque alguien
+    reacomodo el tablero.
+
+    Deja el mismo rastro que el cambio de estado a mano
+    (`POST /api/leads/<id>/crm-status`): el estado, el evento del historial y la
+    actividad.
+    """
+    if not ficha or ficha.get("status") != ESTADO_ACEPTADO:
+        return False
+    business_id = ficha.get("business_id")
+    if not business_id:
+        return False
+    negocio = get_business(db_path, business_id)
+    if not negocio or (negocio.get("crm_status") or "") in ETAPAS_CLIENTE:
+        return False
+    update_business(db_path, business_id, crm_status="cerrado")
+    add_lead_event(db_path, business_id, "cerrado",
+                   note="Presupuesto Aceptado en Proceso de venta", created_by=quien)
+    log_activity(db_path, quien, "status_change", "lead", business_id,
+                 negocio.get("name", ""), "cerrado")
+    logger.info("notion: %s paso a Clientes por la ficha %s",
+                negocio.get("name"), ficha.get("notion_page_id"))
+    return True
+
+
+def mover_cliente(db_path: str, cliente_id: int,
+                  estado_notion: str) -> tuple[bool, str | None]:
+    """Mueve una ficha de Clientes a otra columna del tablero de Notion.
+
+    Es `empujar_estado_exacto` para Clientes, con los mismos cuidados: estado
+    exacto, sincrono (quien arrastra espera la respuesta y la ficha vuelve a
+    su columna si Notion no acepta), sin PATCH si el estado no cambio, y
+    `(ok, error)`.
+
+    La diferencia es que antes del PATCH hay un GET de la pagina. En Tasks la
+    property se llama `Status` y se escribe a ciegas; en Clientes no tiene
+    nombre (ver `_estado_de`), asi que se lee la pagina para sacar su id. De
+    paso, si en Notion ya estaba en ese estado, tampoco se escribe.
+
+    Solo si Notion acepta se actualiza la fila local de `notion_clients`: el
+    sync de fondo la pisaria igual con lo que diga Notion, asi que dejarla
+    distinta de Notion no tiene ningun sentido.
+    """
+    if estado_notion not in GRUPOS_CLIENTES:
+        return False, f"'{estado_notion}' no es un estado del tablero de Clientes"
+
+    cfg = _config()
+    if not cfg:
+        return False, "falta NOTION_TOKEN: el sync con Notion esta apagado"
+    token, version, _ = cfg
+
+    cliente = get_notion_client_by_id(db_path, cliente_id)
+    if not cliente:
+        return False, "la ficha no existe"
+    page_id = cliente.get("notion_page_id")
+    if not page_id:
+        return False, "la ficha no tiene pagina en Notion"
+
+    if (cliente.get("status") or "") == estado_notion:
+        return True, None  # ya estaba ahi: no se manda un PATCH al vacio
+
+    headers = _headers(token, version)
+    try:
+        r = requests.get(f"{API}/pages/{page_id}", headers=headers, timeout=TIMEOUT)
+        if r.status_code >= 300:
+            logger.warning("notion: leer la ficha %s fallo con %s: %s", page_id,
+                           r.status_code, r.text[:300])
+            return False, f"Notion devolvio HTTP {r.status_code} al leer la ficha"
+        props = (r.json() or {}).get("properties") or {}
+    except Exception as e:
+        logger.warning("notion: leer la ficha %s fallo", page_id, exc_info=True)
+        return False, f"no se pudo hablar con Notion: {type(e).__name__}"
+
+    clave = _clave_de_estado(props)
+    if clave is None:
+        return False, "la ficha no tiene una property de estado en Notion"
+
+    if _estado_de(props) != estado_notion:
+        try:
+            r = requests.patch(
+                f"{API}/pages/{page_id}",
+                headers=headers,
+                json={"properties": {clave: {"status": {"name": estado_notion}}}},
+                timeout=TIMEOUT,
+            )
+            if r.status_code >= 300:
+                logger.warning("notion: mover la ficha a %s fallo con %s: %s",
+                               estado_notion, r.status_code, r.text[:300])
+                return False, f"Notion devolvio HTTP {r.status_code}"
+        except Exception as e:
+            logger.warning("notion: mover la ficha a %s fallo", estado_notion,
+                           exc_info=True)
+            return False, f"no se pudo hablar con Notion: {type(e).__name__}"
+
+    cliente_cambio_de_estado(db_path, page_id, cliente.get("status"), estado_notion)
+    return True, None
+
+
 def _texto_de(prop: dict) -> str | None:
     """Concatena los fragmentos de una property de tipo `rich_text`."""
     partes = (prop or {}).get("rich_text") or []
@@ -783,6 +941,10 @@ def traer_clientes(db_path: str) -> tuple[int, str | None]:
     vistos = set()
     cambiados = 0
     completo = True
+    # El estado que tenia cada ficha antes de este sync, para avisarle a
+    # `cliente_cambio_de_estado` solo de las que se movieron de verdad.
+    estados_previos = {c["notion_page_id"]: c.get("status")
+                       for c in get_notion_clients(db_path)}
 
     while True:
         try:
@@ -803,15 +965,19 @@ def traer_clientes(db_path: str) -> tuple[int, str | None]:
                 continue
             props = pagina.get("properties", {})
             fecha = (props.get("Due date") or {}).get("date") or {}
+            estado = _estado_de(props)
             upsert_notion_client(
                 db_path, page_id,
                 _texto_de_titulo(props.get("Name")) or "(sin nombre)",
-                status=_estado_de(props),
+                status=estado,
                 descripcion=_texto_de(props.get("Descripcion")),
                 due_date=fecha.get("start"),
                 tiempo_estimado=(props.get("Tiempo Estimado") or {}).get("number"),
                 notion_project_page_id=_proyecto_de(props),
             )
+            if page_id in estados_previos and estados_previos[page_id] != estado:
+                cliente_cambio_de_estado(db_path, page_id,
+                                         estados_previos[page_id], estado)
             vistos.add(page_id)
             cambiados += 1
 

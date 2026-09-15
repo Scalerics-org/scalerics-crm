@@ -192,3 +192,112 @@ def api_backfill_campanas():
     from services.meta_campanas import backfill_campanas
 
     return jsonify(backfill_campanas(_db()))
+
+
+@marketing_bp.route("/api/marketing/sync-anuncios", methods=["POST"])
+def api_sync_anuncios():
+    """Trae los anuncios, sus fotos y su gasto. Sin credenciales avisa y sale."""
+    from services.meta_anuncios import sincronizar_anuncios
+    from services.meta_insights import DIAS_A_RESINCRONIZAR
+
+    try:
+        dias = int(request.args.get("dias") or DIAS_A_RESINCRONIZAR)
+    except ValueError:
+        return jsonify({"error": "dias tiene que ser un numero"}), 400
+    if not 1 <= dias <= 365:
+        return jsonify({"error": "dias tiene que estar entre 1 y 365"}), 400
+
+    hasta = date.today()
+    desde = hasta - timedelta(days=dias)
+    return jsonify(sincronizar_anuncios(_db(), desde.isoformat(),
+                                        hasta.isoformat()))
+
+
+_MES = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
+
+
+@marketing_bp.route("/api/marketing/rellenar-anuncios", methods=["POST"])
+def api_rellenar_anuncios():
+    """Trae los insights por pieza de UN mes viejo. Se corre a mano, una vez.
+
+    El cron diario de `sync-anuncios` trae solo los ultimos 7 dias, asi que los
+    meses anteriores al primer sync no tienen datos por pieza. Esto los rellena
+    de a un mes por llamada, con su propio tope (ver `rellenar_mes`). Protegido
+    igual que el sync: candado del blueprint, x-admin-token o panel marketing.
+
+    429 si no paso la pausa minima desde la llamada anterior: no se reintenta
+    solo, se espera.
+    """
+    from services.meta_anuncios import ReintentarMasTarde, rellenar_mes
+
+    mes = request.args.get("mes") or ""
+    if not _MES.match(mes):
+        return jsonify({"error": "mes invalido: se espera YYYY-MM"}), 400
+    try:
+        return jsonify(rellenar_mes(_db(), mes))
+    except ReintentarMasTarde as e:
+        return jsonify({"error": str(e)}), 429
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@marketing_bp.route("/api/marketing/piezas")
+def api_piezas():
+    """Las piezas de la pauta de UN mes, partidas en activas hoy y ya no.
+
+    Va aparte del dossier y no depende del periodo de arriba: la seccion tiene
+    su propio navegador de mes, y cambiar de mes no tiene por que recalcular
+    el panel entero. Sin token de Meta contesta igual, con las listas vacias.
+    """
+    from services.anuncios import piezas_del_mes
+
+    mes = request.args.get("mes") or date.today().isoformat()[:7]
+    if not _MES.match(mes):
+        return jsonify({"error": "mes invalido: se espera YYYY-MM"}), 400
+    return jsonify(piezas_del_mes(_db(), mes))
+
+
+# Un id de anuncio de Meta es un numero largo. Se valida con esto y no con
+# `secure_filename` porque lo que importa no es que el nombre sea prolijo sino
+# que NO pueda salirse de la carpeta: sin esta guarda, un ad_id con `..`
+# serviria cualquier archivo del disco.
+_AD_ID = re.compile(r"^\d{1,32}$")
+
+
+@marketing_bp.route("/api/marketing/creativo/<ad_id>")
+def api_creativo(ad_id):
+    """La foto del anuncio, servida desde el volumen.
+
+    No se redirige a la URL de Meta: viene firmada, caduca en dias y despues
+    deja imagenes rotas sin que nada avise. Por eso el archivo es nuestro.
+    """
+    import os.path
+
+    from flask import send_file
+
+    from database import _connect
+    from services.meta_anuncios import _dir_creativos
+
+    if not _AD_ID.match(ad_id or ""):
+        return jsonify({"error": "id invalido"}), 400
+
+    conn = _connect(_db())
+    try:
+        fila = conn.execute(
+            "SELECT imagen_archivo FROM meta_ads WHERE ad_id = ?",
+            (ad_id,)).fetchone()
+    finally:
+        conn.close()
+
+    ruta = fila["imagen_archivo"] if fila else None
+    # La ruta guardada tiene que caer adentro de la carpeta de creativos: si
+    # alguna vez se guardara algo raro ahi, esto lo corta igual.
+    carpeta = os.path.abspath(_dir_creativos(_db()))
+    if not ruta or not os.path.abspath(ruta).startswith(carpeta + os.sep):
+        return jsonify({"error": "sin imagen"}), 404
+    if not os.path.exists(ruta):
+        return jsonify({"error": "sin imagen"}), 404
+
+    # Un mes de cache: el archivo no cambia nunca — si el anuncio cambia de
+    # creativo, cambia el ad_id.
+    return send_file(ruta, mimetype="image/jpeg", max_age=2592000)

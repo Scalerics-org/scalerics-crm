@@ -93,7 +93,12 @@ def test_los_dos_temas_son_de_verdad_distintos(oscuro, claro):
     no era así: en oscuro daba 3,62:1 sobre la superficie, abajo del 4,5 del
     texto chico. Ahora vale #8190a6 en oscuro y deja de ser igual en los dos.
     """
-    esperadas = {"--azul"}
+    # Los `--semaforo-*` son los colores literales de la planilla de leads
+    # (verde, celeste, violeta, verde oscuro): el puntito del Registro de demos
+    # tiene que ser el mismo color que la gente pinta, en cualquier tema. Solo
+    # se usan de fondo de un puntito con aro; el texto va en tokens normales.
+    esperadas = {"--azul", "--semaforo-verde", "--semaforo-celeste",
+                 "--semaforo-violeta", "--semaforo-venta"}
     iguales = {k for k in oscuro if oscuro[k].strip() == claro.get(k, "").strip()}
 
     assert iguales == esperadas, (
@@ -319,7 +324,9 @@ def test_no_quedan_important_en_la_cabecera():
 
 def test_los_kpis_ambar_de_metricas_usan_la_clase():
     html = dashboard.DASHBOARD_HTML
-    for id_ in ("m-meetings", "m-meeting-rate", "mm-week"):
+    # "mm-week" era el KPI ambar de la pestaña Meta Ads, que se saco del panel
+    # el 14/9 (se mira en Marketing).
+    for id_ in ("m-meetings", "m-meeting-rate"):
         assert f'class="stat-val yellow" id="{id_}"' in html, id_
     assert 'style="color:#f59e0b"' not in html, "volvió el ámbar inline"
 
@@ -845,8 +852,9 @@ def test_el_texto_verde_de_tareas_usa_el_verde_de_texto():
     assert "background:${pct>=100?'var(--verde)'" in js, "la barra sigue con --verde"
 
 
-# Del tablero de leads viejo, que ya no tiene HTML: tiene su propia limpieza.
-MUERTAS_CONOCIDAS = {"kanban-card-rating"}
+# El tablero de leads viejo se borro entero (JS y CSS) el 14/9: ya no queda
+# ninguna clase muerta conocida. Si aparece otra, va aca con su motivo.
+MUERTAS_CONOCIDAS: set = set()
 
 
 def test_no_quedan_clases_de_tareas_sin_uso():
@@ -932,9 +940,6 @@ ESTADOS = [
     (".task-priority.high", "--rojo-tinte", "--rojo-texto"),
     (".task-priority.medium", "--ambar-tinte", "--ambar"),
     (".task-priority.low", "--verde-tinte", "--verde-texto"),
-    (".cb-date-overdue", "--rojo-tinte", "--rojo-texto"),
-    (".cb-date-today", "--ambar-tinte", "--ambar"),
-    (".cb-date-future", "--azul-tinte", "--azul-claro"),
     (".score-hot", "--verde-tinte", "--verde-texto"),
     (".score-mid", "--azul-tinte", "--azul-claro"),
     (".score-low", "--relleno", "--texto-debil"),
@@ -984,21 +989,9 @@ def test_los_tintes_se_despegan_de_la_superficie(oscuro, claro, tema):
         assert d >= 4, f"{tinte} contra la superficie en {tema}: ΔE {d:.1f}"
 
 
-def test_los_tintes_de_estado_le_ganan_al_color_de_etapa_en_claro():
-    """La fila de un seguimiento vencido lleva las dos clases: el color de
-    etapa (`row-llamar_despues`, ámbar) y el estado (`cb-overdue`, rojo). En
-    claro, `body.light .row-llamar_despues` (0,2,1) le gana a un `.cb-overdue`
-    pelado (0,1,0): la fila vencida perdería el rojo y nadie lo notaría.
-
-    Por eso el estado va como un solo selector combinado, con el valor escrito
-    una sola vez, igual que el hover de fila.
-    """
-    for clase, tinte, borde in ((".cb-overdue", "--rojo-tinte", "--rojo-borde"),
-                                (".cb-today", "--ambar-tinte", "--ambar-borde")):
-        patron = (r"^" + re.escape(clase) + r",body\.light " + re.escape(clase)
-                  + r"\{background:var\(" + tinte + r"\);border-color:var\(" + borde + r"\)")
-        assert re.search(patron, dashboard.DASHBOARD_HTML, re.M), (
-            f"{clase} tiene que ir combinada con su `body.light`")
+# Los estados `.cb-overdue`, `.cb-today` y `.cb-date-*` (fila de seguimiento
+# vencida o de hoy, y su pastilla de fecha) se fueron el 14/9 con la seccion
+# Seguimientos, que era la unica que los armaba.
 
 
 def test_las_pills_de_alerta_le_ganan_a_la_pill_activa_en_claro():
@@ -1029,10 +1022,13 @@ def test_no_quedan_clases_de_estado_sin_uso():
     """`.dot` y sus cinco colores, y cuatro `.cp-badge-*`: nadie las arma."""
     css = _css_del_dashboard()
     resto = re.sub(r"<style[^>]*>.*?</style>", "", dashboard.DASHBOARD_HTML, flags=re.S)
-    clases = set(re.findall(r"[.]((?:cp-badge|score|status-pill|cb-date|dot|task-priority)[\w-]*)"
+    clases = set(re.findall(r"[.]((?:cp-badge|score|status-pill|dot|task-priority)[\w-]*)"
                             r"(?![\w-])", css))
 
-    assert len(clases) > 10, f"el parser vio pocas clases: {len(clases)}"
+    # El piso solo existe para detectar que el parser se rompio y no ve nada.
+    # Era 10 con las cuatro `.cb-date-*`, que se fueron el 14/9 con la seccion
+    # Seguimientos; quedan 9 clases legitimas.
+    assert len(clases) >= 8, f"el parser vio pocas clases: {len(clases)}"
     sin_uso = sorted(c for c in clases
                      if not re.search("(?<![\\w-])" + c + "(?![\\w:-])", resto))
     assert not sin_uso, f"clases de estado sin uso: {sin_uso}"

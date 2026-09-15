@@ -31,11 +31,13 @@ def test_estan_los_contenedores_que_el_js_llena():
     """Si el JS escribe en un id que no existe, el panel queda mudo y no se
     entera nadie: innerHTML sobre null tira una excepcion silenciosa."""
     for ident in ("mk-estado", "mk-cuerpo", "mk-avisos", "mk-tiles", "mk-embudo",
-                  "mk-series", "mk-campanas", "mk-segmentos",
-                  # mk-hallazgos, mk-embudos, mk-evolucion y mk-acumulado son
-                  # los bloques nuevos; mk-recordatorios se saco del panel.
-                  "mk-hallazgos", "mk-embudos", "mk-evolucion", "mk-acumulado",
-                  "mk-tabla", "mk-desde", "mk-hasta", "mk-campana", "mk-fecha"):
+                  "mk-series", "mk-segmentos", "mk-mensual", "mk-llegada",
+                  "mk-conciliacion",
+                  # El 14/9 se fueron los bloques por campaña (mk-embudos,
+                  # mk-evolucion, mk-ranking, mk-campanas, mk-dispersion) y el
+                  # selector mk-campana: Juan quiere la pauta como una sola.
+                  "mk-hallazgos", "mk-acumulado", "mk-piezas", "mk-piezas-mes",
+                  "mk-desde", "mk-hasta", "mk-fecha"):
         assert f'id="{ident}"' in dashboard.DASHBOARD_HTML, f"falta #{ident}"
 
 
@@ -83,10 +85,23 @@ def test_el_panel_no_tiene_reglas_claras_propias(selector):
         f"sobra `body.light {selector}`: los tokens ya lo cubren")
 
 
-def test_la_tabla_de_datos_existe():
-    """La guia de visualizacion la pide como salida accesible, y ademas es lo
-    que permite auditar cualquier numero del panel."""
-    assert "Los números crudos" in dashboard.DASHBOARD_HTML
+def test_los_numeros_siguen_teniendo_una_vista_en_tabla():
+    """La guia de visualizacion pide una salida en tabla, y no solo por
+    accesibilidad: es lo que deja auditar un numero sin estimarlo contra una
+    grilla.
+
+    Habia un bloque "Los numeros crudos" con TODAS las metricas del dossier.
+    Se saco el 14/9 a pedido de Juan, dos veces: "los numeros crudos siguen sin
+    entenderse", "saca lo de los datos crudos". Estaba bien calculado y no se
+    leia, y un bloque que no se lee no audita nada — solo ocupa lugar.
+
+    Lo que queda en tabla son las dos que sostienen decisiones: el ranking de
+    campanas (donde se ve que el orden se da vuelta segun que mires) y la
+    conciliacion contra Finanzas. El resto de los numeros sigue estando en los
+    graficos, cada uno con su valor escrito al lado de la marca.
+    """
+    assert "Los números crudos" not in dashboard.DASHBOARD_HTML
+    assert dashboard.DASHBOARD_HTML.count('class="sc-tabla"') >= 2
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node no esta instalado")
@@ -135,17 +150,15 @@ def test_el_fondo_de_los_graficos_es_la_superficie_de_la_tarjeta():
         f"el fondo oscuro de charts.js no es --superficie ({superficie})")
 
 
-def test_el_panel_compara_costo_por_lead_contra_costo_por_demo():
-    """El hallazgo mas util del modulo requeria comparar dos graficos de barras
-    a ojo. En la misma tabla, el punto se ve solo."""
-    assert 'id="mk-ranking"' in dashboard.DASHBOARD_HTML
-    assert "Qué campaña rinde de verdad" in dashboard.DASHBOARD_HTML
-    # El aviso esta partido en dos literales por el ancho de linea, asi que se
-    # busca la clase que lo marca y no el texto entero.
-    assert "sc-rank-invertido" in dashboard.DASHBOARD_HTML
-    assert "costo_demo" in dashboard.DASHBOARD_HTML or ".costo_demo" in dashboard.DASHBOARD_HTML
+def test_el_panel_muestra_la_pauta_como_una_sola():
+    """Hasta el 14/9 habia un ranking de campanas ("Que campana rinde de
+    verdad") y cuatro bloques mas partidos por campana. Juan: "yo no entiendo
+    lo de test creativo y leads uy [...] quiero ver como si fuera una sola".
 
-
-def test_el_ranking_necesita_al_menos_dos_campanas_con_gasto():
-    """Con una sola campana no hay nada que rankear."""
-    assert "conGasto.length < 2" in dashboard.DASHBOARD_HTML
+    Los KPIs, el embudo y los graficos salen del bloque `todas` del dossier,
+    que sigue trayendo el detalle por campana para el informe.
+    """
+    assert 'id="mk-ranking"' not in dashboard.DASHBOARD_HTML
+    assert "Qué campaña rinde de verdad" not in dashboard.DASHBOARD_HTML
+    assert "_mkBloque('todas')" in dashboard.DASHBOARD_HTML
+    assert "costo_demo" in dashboard.DASHBOARD_HTML
