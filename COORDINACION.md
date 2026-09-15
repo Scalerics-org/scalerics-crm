@@ -469,7 +469,20 @@ leads de Meta se renombró a **D** para deshacer el empate.
   - **Zona compartida tocada:** `database.py` (tablas `horarios_tramos` y `horarios_precarga_hecha` después de las de equipo en `init_db`; `_sembrar_horarios`, `listar_tramos_horario`, `reemplazar_horario_persona` al final de la parte de Equipo) y `dashboard.py` (menú, colores del ícono, CSS `hr-`, panel, modal, JS `hr*`, las dos `ALL_PANELS`, `PANEL_LABELS`, `NAV_*`). Nuevos: `services/horarios.py`, `routes/horarios.py`, `tests/test_horarios.py`.
   - Precarga: Gonzalo L-V 12:00-16:00; Juan (Tomasetti) lun 11-15, mar 10-14, mié 14:20-18:30, jue 14:30-18:30, vie 11-15. Una sola vez por persona (`horarios_precarga_hecha`): un horario editado, aunque sea "no trabaja" toda la semana, no se vuelve a precargar.
   - Permisos: el panel les llega a los roles con `equipo` o `ausencias` **una sola vez**, en el arranque que crea la tabla (como `seg_leads`). Quien tiene el panel ve y edita, igual que Organigrama/Ausencias. **No cambia** `horas_por_dia` ni el cálculo de Ausencias.
-  - Mergeado con `main` después de Daily (#47). **Ojo con los marcadores de sección:** `tests/test_daily.py` toma el JS de `// ========== Daily Programador` a `// ========== Equipo`, así que el JS `hr*` va ANTES de Daily (entre `FIN Seguimiento de leads` y `Daily Programador`), y el CSS `/* ── Horarios` también antes de `/* ── Daily Programador`. En `init_db`, las tablas de Daily van antes que las de Horarios.
+  - Mergeado con `main` después de Daily (#47). **Ojo con los marcadores de sección:** `tests/test_daily.py` toma el JS de `// ========== Daily Programador` a `// ========== Equipo`, así que el JS `hr*` va ANTES de Daily (entre `FIN Seguimiento de leads` y `Daily Programador`), y el CSS `/* ── Horarios` también antes de `/* ── Daily Programador`. En `init_db`, las tablas de Flujos y Daily van antes que las de Horarios.
+
+- **15/9 — I: Flujos, en `feat/recursos-humanos` (encima de #40). Sin PR ni deploy.**
+  - Bloque al final del panel Ausencias, desde el PDF "Flujos - Scalerics". No es un ítem del menú. Tiene 4 flujos; solo "De lead a cobro" tiene pasos (los 10 del PDF, con su texto exacto). Los otros tres están vacíos.
+  - Base: tablas `flujos`, `flujo_pasos` y `flujo_paso_cobros`. La última permite varios momentos de cobro por paso; el paso 07 trae uno, "100% al confirmar".
+    - La precarga es `_sembrar_flujos`: carga pasos solo en un flujo recién creado, así no pisa ediciones.
+    - `numero` se renumera 1..n cada vez que se agrega, borra o mueve un paso.
+  - API `routes/flujos.py`:
+    - Leer: pide Organigrama o Ausencias.
+    - Escribir: `require_admin`, la misma `is_admin` de `/api/me`.
+  - Pantalla: la edición va detrás del botón "Editar".
+    - Un paso con `pantalla` es clickeable solo si el panel está en la página y el rol lo ve. La regla sale de `window._panelAccess`, que ahora guarda el IIFE de permisos.
+    - Pantallas precargadas: 01 `notion_clients`, 05 `demos`, 07 `clientes`, 08 `projects`.
+  - **Si agregan paneles** (Seguimiento de leads, Plantillas): sumarlos a `EQ_PANTALLAS` para que aparezcan en el formulario. Una pantalla guardada que todavía no existe se conserva y no es clickeable.
 
 - **15/9 — rama `feat/calendario-contador-mes` (worktree `../crm-cal-mes`). Sin PR ni deploy.** Pedido de Juan: contador del mes y deslizar entre meses.
   - `#cal-count` ahora habla del MES que se mira, también en vista semana: "Septiembre 2026 · 18 reuniones · 11 hechas · 7 por venir" (pasado: "N reuniones"; futuro: "N agendadas"). Hechas/por venir contra la hora de Montevideo (`_calAhoraMvd`, UTC-3 fijo), no contra el reloj del navegador.

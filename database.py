@@ -1004,6 +1004,53 @@ def init_db(db_path: str) -> None:
         # Quien tenía Equipo veía las dos partes, así que recibe Ausencias.
         _grant_panel_to_existing_roles(conn, "ausencias", solo_si_tiene="equipo")
 
+        # ── flujos ────────────────────────────────────────────────────────────
+        # Cómo trabaja la empresa, paso a paso, con el ROL de cada etapa y
+        # nunca nombres de personas. Se muestra al final de Ausencias. Los
+        # pasos viven acá y no en el código: se agregan, editan y reordenan
+        # desde la pantalla. `numero` se renumera 1..n en cada cambio.
+        # `flujo_paso_cobros` deja que un paso tenga más de un momento de
+        # cobro (50 % al inicio y 50 % contra entrega), aunque hoy haya uno.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS flujos (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                nombre      TEXT NOT NULL,
+                descripcion TEXT NOT NULL DEFAULT '',
+                orden       INTEGER NOT NULL DEFAULT 0,
+                created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_flujos_nombre ON flujos(nombre)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS flujo_pasos (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                flujo_id    INTEGER NOT NULL REFERENCES flujos(id) ON DELETE CASCADE,
+                numero      INTEGER NOT NULL,
+                titulo      TEXT NOT NULL,
+                rol         TEXT NOT NULL,
+                detalle     TEXT NOT NULL DEFAULT '',
+                pantalla    TEXT,
+                destacado   INTEGER NOT NULL DEFAULT 0,
+                created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_flujo_pasos_flujo "
+                     "ON flujo_pasos(flujo_id, numero)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS flujo_paso_cobros (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                paso_id     INTEGER NOT NULL REFERENCES flujo_pasos(id) ON DELETE CASCADE,
+                orden       INTEGER NOT NULL DEFAULT 0,
+                porcentaje  REAL NOT NULL,
+                descripcion TEXT NOT NULL
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_flujo_paso_cobros_paso "
+                     "ON flujo_paso_cobros(paso_id)")
+        conn.commit()
+        _sembrar_flujos(conn)
+
         # ── Daily Programador ─────────────────────────────────────────────────
         # Actividades del día y recordatorios que se repiten (pedido de Juan,
         # 15/9). Van por persona de `equipo_personas`, no por usuario: en el
@@ -3891,6 +3938,199 @@ def listar_recuperos_equipo(db_path: str) -> list[dict]:
     try:
         cur = conn.execute("SELECT * FROM equipo_recuperos ORDER BY fecha, id")
         return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+# ─── Flujos ──────────────────────────────────────────────────────────────────
+# Solo roles, nunca nombres de personas (tests/test_flujos.py lo verifica).
+
+# (titulo, rol, detalle, pantalla, destacado, [(porcentaje, descripcion)])
+_PASOS_DE_LEAD_A_COBRO = (
+    ("Se genera el lead", "Marketing",
+     "Meta Ads u Outbound. Cae en Proceso de venta.", "notion_clients", False, ()),
+    ("Se atiende el lead", "Comercial",
+     "Primer llamado. Se califica y se carga el seguimiento.", None, False, ()),
+    ("Se lleva a videollamada", "Comercial",
+     "Plantilla de confirmación. Recordatorio automático el mismo día.", None, False, ()),
+    ("Se prepara la demo", "Project manager",
+     "Se arma sobre el rubro y lo que pidió el lead.", None, False, ()),
+    ("Se hace la demo", "Project manager",
+     "Queda registrada en Demos, con lo que pidió y lo que objetó.", "demos", False, ()),
+    ("Se presupuesta", "Comercial",
+     "Dentro de 48 horas. Plantilla de resumen y presupuesto.", None, False, ()),
+    ("Se cobra", "Administración",
+     "Al confirmar. Se dan de alta el cliente y el proyecto.", "clientes", False,
+     ((100, "al confirmar"),)),
+    ("Se desarrolla", "Desarrollo",
+     "El plazo corre desde que llega el material.", "projects", False, ()),
+    ("Se entrega", "Desarrollo",
+     "Publicación y capacitación. Se ofrece el mantenimiento.", None, False, ()),
+    ("Se mantiene", "Soporte",
+     "Cuota mensual. Es el ingreso que se acumula mes a mes.", None, True, ()),
+)
+
+# (nombre, descripcion, orden, pasos)
+_FLUJOS_PRECARGA = (
+    ("De lead a cobro", "Desde que entra un lead hasta que se cobra y queda en mantenimiento.",
+     1, _PASOS_DE_LEAD_A_COBRO),
+    ("Arranque de proyecto", "Desde que se confirma un proyecto hasta que arranca el desarrollo.", 2, ()),
+    ("Cobranza", "Cómo se sigue lo que falta cobrar.", 3, ()),
+    ("Alta de una persona", "Qué pasa cuando entra alguien nuevo al equipo.", 4, ()),
+)
+
+
+def _insertar_cobros(conn: sqlite3.Connection, paso_id: int, cobros) -> None:
+    for orden, cobro in enumerate(cobros):
+        if isinstance(cobro, dict):
+            pct, desc = cobro["porcentaje"], cobro["descripcion"]
+        else:
+            pct, desc = cobro
+        conn.execute("INSERT INTO flujo_paso_cobros (paso_id, orden, porcentaje, descripcion) "
+                     "VALUES (?,?,?,?)", (paso_id, orden, pct, desc))
+
+
+def _sembrar_flujos(conn: sqlite3.Connection) -> int:
+    """Precarga idempotente de los cuatro flujos, con los diez pasos de "De
+    lead a cobro".
+
+    Por nombre (índice único). Los pasos se cargan SOLO para el flujo que se
+    acaba de crear: si el flujo ya estaba, no se toca nada, así un paso
+    editado, movido o borrado desde la pantalla sobrevive a los reinicios.
+    Devuelve cuántos flujos creó.
+    """
+    creados = 0
+    for nombre, descripcion, orden, pasos in _FLUJOS_PRECARGA:
+        cur = conn.execute("INSERT OR IGNORE INTO flujos (nombre, descripcion, orden) VALUES (?,?,?)",
+                           (nombre, descripcion, orden))
+        if not cur.rowcount:
+            continue
+        creados += 1
+        flujo_id = cur.lastrowid
+        for numero, (titulo, rol, detalle, pantalla, destacado, cobros) in enumerate(pasos, start=1):
+            pid = conn.execute(
+                "INSERT INTO flujo_pasos (flujo_id, numero, titulo, rol, detalle, pantalla, destacado) "
+                "VALUES (?,?,?,?,?,?,?)",
+                (flujo_id, numero, titulo, rol, detalle, pantalla, 1 if destacado else 0)).lastrowid
+            _insertar_cobros(conn, pid, cobros)
+    conn.commit()
+    return creados
+
+
+def listar_flujos(db_path: str) -> list[dict]:
+    conn = _connect(db_path)
+    try:
+        return [dict(r) for r in conn.execute("SELECT * FROM flujos ORDER BY orden, id")]
+    finally:
+        conn.close()
+
+
+def get_flujo(db_path: str, flujo_id: int) -> Optional[dict]:
+    return _get_one(db_path, "flujos", flujo_id)
+
+
+def listar_pasos_flujos(db_path: str) -> list[dict]:
+    conn = _connect(db_path)
+    try:
+        return [dict(r) for r in conn.execute(
+            "SELECT * FROM flujo_pasos ORDER BY flujo_id, numero, id")]
+    finally:
+        conn.close()
+
+
+def get_paso_flujo(db_path: str, paso_id: int) -> Optional[dict]:
+    return _get_one(db_path, "flujo_pasos", paso_id)
+
+
+def listar_cobros_pasos_flujo(db_path: str) -> list[dict]:
+    conn = _connect(db_path)
+    try:
+        return [dict(r) for r in conn.execute(
+            "SELECT * FROM flujo_paso_cobros ORDER BY paso_id, orden, id")]
+    finally:
+        conn.close()
+
+
+def _renumerar_flujo(conn: sqlite3.Connection, flujo_id: int, ids: Optional[list] = None) -> list:
+    """Deja los números del flujo en 1..n. Sin `ids`, en el orden actual."""
+    if ids is None:
+        ids = [r[0] for r in conn.execute(
+            "SELECT id FROM flujo_pasos WHERE flujo_id = ? ORDER BY numero, id", (flujo_id,))]
+    for numero, pid in enumerate(ids, start=1):
+        conn.execute("UPDATE flujo_pasos SET numero = ? WHERE id = ? AND numero != ?",
+                     (numero, pid, numero))
+    return ids
+
+
+def crear_paso_flujo(db_path: str, flujo_id: int, titulo: str, rol: str, detalle: str = "",
+                     pantalla: Optional[str] = None, destacado: bool = False,
+                     cobros=None) -> int:
+    """Lo agrega al final del flujo."""
+    conn = _connect(db_path)
+    try:
+        _renumerar_flujo(conn, flujo_id)
+        numero = conn.execute("SELECT COUNT(*) FROM flujo_pasos WHERE flujo_id = ?",
+                              (flujo_id,)).fetchone()[0] + 1
+        pid = conn.execute(
+            "INSERT INTO flujo_pasos (flujo_id, numero, titulo, rol, detalle, pantalla, destacado) "
+            "VALUES (?,?,?,?,?,?,?)",
+            (flujo_id, numero, titulo, rol, detalle or "", pantalla, 1 if destacado else 0)).lastrowid
+        _insertar_cobros(conn, pid, cobros or [])
+        conn.commit()
+        return pid
+    finally:
+        conn.close()
+
+
+def editar_paso_flujo(db_path: str, paso_id: int, titulo: str, rol: str, detalle: str = "",
+                      pantalla: Optional[str] = None, destacado: bool = False,
+                      cobros=None) -> None:
+    """`cobros` en None deja los momentos de cobro como estaban."""
+    conn = _connect(db_path)
+    try:
+        conn.execute(
+            "UPDATE flujo_pasos SET titulo = ?, rol = ?, detalle = ?, pantalla = ?, destacado = ?, "
+            "updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (titulo, rol, detalle or "", pantalla, 1 if destacado else 0, paso_id))
+        if cobros is not None:
+            conn.execute("DELETE FROM flujo_paso_cobros WHERE paso_id = ?", (paso_id,))
+            _insertar_cobros(conn, paso_id, cobros)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def borrar_paso_flujo(db_path: str, paso_id: int) -> None:
+    """Se lleva sus momentos de cobro (sin foreign keys prendidas, el CASCADE
+    no alcanza) y renumera lo que queda."""
+    conn = _connect(db_path)
+    try:
+        fila = conn.execute("SELECT flujo_id FROM flujo_pasos WHERE id = ?", (paso_id,)).fetchone()
+        if not fila:
+            return
+        conn.execute("DELETE FROM flujo_paso_cobros WHERE paso_id = ?", (paso_id,))
+        conn.execute("DELETE FROM flujo_pasos WHERE id = ?", (paso_id,))
+        _renumerar_flujo(conn, fila[0])
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def mover_paso_flujo(db_path: str, paso_id: int, posicion: int) -> int:
+    """Lleva el paso a `posicion` (1..n, se acota) y renumera el flujo entero.
+    Devuelve el número con el que quedó."""
+    conn = _connect(db_path)
+    try:
+        fila = conn.execute("SELECT flujo_id FROM flujo_pasos WHERE id = ?", (paso_id,)).fetchone()
+        if not fila:
+            return 0
+        ids = _renumerar_flujo(conn, fila[0])
+        ids.remove(paso_id)
+        destino = max(1, min(int(posicion), len(ids) + 1))
+        ids.insert(destino - 1, paso_id)
+        _renumerar_flujo(conn, fila[0], ids)
+        conn.commit()
+        return destino
     finally:
         conn.close()
 
