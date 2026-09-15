@@ -12,7 +12,7 @@ from database import (borrar_paso_flujo, crear_paso_flujo, editar_paso_flujo,
                       get_flujo, get_paso_flujo, log_activity, mover_paso_flujo)
 from routes.equipo import PANELES_RRHH
 from services.auth import is_admin, require_admin, require_panel, tiene_panel
-from services.flujos import ROLES, estado_flujos, validar_paso
+from services.flujos import ROLES, estado_flujos, estilos_roles, validar_paso
 
 flujos_bp = Blueprint("flujos", __name__)
 
@@ -42,7 +42,8 @@ def _quien() -> tuple[int | None, str]:
 def api_flujos():
     db = _db()
     return jsonify({"ok": True, "es_admin": is_admin(db, session.get("user_id")),
-                    "roles": list(ROLES), "flujos": estado_flujos(db)})
+                    "roles": list(ROLES), "estilos": estilos_roles(),
+                    "flujos": estado_flujos(db)})
 
 
 @flujos_bp.route("/api/flujos/<int:fid>/pasos", methods=["POST"])

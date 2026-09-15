@@ -464,6 +464,12 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **15/9 — rama `feat/colores-flujos-horarios` (worktree `../crm-colores-rrhh`). Sin PR ni deploy.** Pedido de Juan: colores en Flujos y Horarios.
+  - **Flujos, un color por rol:** el mapa vive en `services/flujos.ROL_ESTILOS` (rol → color y etiqueta) y llega a la pantalla con `/api/flujos` (`estilos`). Marketing rojo, Project manager naranja, Comercial verde, Desarrollo azul, Administración violeta, Soporte teal. Tokens `--rol-<color>` y `--rol-<color>-tinte` en los dos temas, clase `.eq-rol-<color>`; todos los pares miden ≥ 4,5:1 (hay test).
+  - **"Marketing" se muestra como "Líder marketing digital"** (leyenda, tarjetas y modal). En la base sigue siendo `Marketing`: cambió la etiqueta, no el valor.
+  - Leyenda arriba del flujo con los roles que aparecen en él; tarjeta con el tinte de su rol y borde izquierdo pleno; el destacado ya no es verde: usa el color de su rol y lleva la etiqueta "Ingreso recurrente". El modal muestra el color al elegir el rol.
+  - **Horarios, el color de Daily:** `/api/horarios` manda `orden_daily` (el lugar de la persona en Daily Programador) y la pantalla usa los mismos `DY_COLORES`; `.hr-color-N` usa el mismo token que `.dy-color-N` (hay test que los compara). Tramos como pastillas, total en chip, encabezados alternados, tarjeta del celular con borde superior del color.
+
 - **15/9 — rama `feat/rrhh-horarios` (worktree `../crm-horarios`). Sin PR ni deploy.** Pedido de Juan: Recursos Humanos > **Horarios**.
   - Panel `horarios`, tercero de RECURSOS HUMANOS (Organigrama, Ausencias, Horarios). Grilla semanal (personas por días, sábado/domingo solo si alguien trabaja), horas por día y total semanal; en el celular, una tarjeta por persona. Botón Editar abre un modal por persona con tramos desde/hasta por día, agregar/quitar y "No trabaja".
   - **Zona compartida tocada:** `database.py` (tablas `horarios_tramos` y `horarios_precarga_hecha` después de las de equipo en `init_db`; `_sembrar_horarios`, `listar_tramos_horario`, `reemplazar_horario_persona` al final de la parte de Equipo) y `dashboard.py` (menú, colores del ícono, CSS `hr-`, panel, modal, JS `hr*`, las dos `ALL_PANELS`, `PANEL_LABELS`, `NAV_*`). Nuevos: `services/horarios.py`, `routes/horarios.py`, `tests/test_horarios.py`.

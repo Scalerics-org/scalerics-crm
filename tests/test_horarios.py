@@ -562,8 +562,10 @@ def test_la_pantalla_y_el_editor_se_pintan(cli, tmp_path):
     assert p.count('class="hr-col-dia"') == 5 and "Sáb" not in p
     assert p.count("12:00–16:00") == 10, "cinco en la grilla y cinco en la tarjeta"
     assert "14:20–18:30" in p and "14:30–18:30" in p and "4 h 10 min" in p
-    assert '<td class="hr-total">20 h 10 min</td>' in p and '<td class="hr-total">20 h</td>' in p
-    assert p.count('<article class="hr-tarjeta">') == 2 and "20 h 10 min por semana" in p
+    assert '<td class="hr-total"><span class="hr-total-chip">20 h 10 min</span></td>' in p
+    assert '<td class="hr-total"><span class="hr-total-chip">20 h</span></td>' in p
+    assert len(re.findall(r'<article class="hr-tarjeta hr-color-\d">', p)) == 2
+    assert '<span class="hr-total-chip">20 h 10 min</span> por semana' in p
     assert p.count('onclick="hrAbrirEditor(') == 4 and "No trabaja" not in p
 
     assert s["abierto"] and s["titulo"] == "Horario de Juan"

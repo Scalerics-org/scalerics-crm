@@ -411,6 +411,18 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   --semaforo-rojo:#ff0000;
   --semaforo-amarillo:#ffff00;
   --semaforo-negro:#000000;
+  --rol-rojo:#f87171;
+  --rol-rojo-tinte:#2b1618;
+  --rol-naranja:#fb923c;
+  --rol-naranja-tinte:#2b1d12;
+  --rol-verde:#34d399;
+  --rol-verde-tinte:#0f2a1f;
+  --rol-azul:#60a5fa;
+  --rol-azul-tinte:#111f36;
+  --rol-violeta:#c084fc;
+  --rol-violeta-tinte:#24173a;
+  --rol-teal:#2dd4bf;
+  --rol-teal-tinte:#0d2a28;
 }
 body.light{
   --fondo:#f8fafc;
@@ -448,6 +460,18 @@ body.light{
   --semaforo-rojo:#ff0000;
   --semaforo-amarillo:#ffff00;
   --semaforo-negro:#000000;
+  --rol-rojo:#b91c1c;
+  --rol-rojo-tinte:#fee2e2;
+  --rol-naranja:#c2410c;
+  --rol-naranja-tinte:#ffedd5;
+  --rol-verde:#047857;
+  --rol-verde-tinte:#d1fae5;
+  --rol-azul:#1d4ed8;
+  --rol-azul-tinte:#dbeafe;
+  --rol-violeta:#7e22ce;
+  --rol-violeta-tinte:#f3e8ff;
+  --rol-teal:#0f766e;
+  --rol-teal-tinte:#ccfbf1;
 }
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:100vh;display:flex}
@@ -1832,24 +1856,37 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .hr-tabla-wrap{overflow-x:auto}
 .hr-tabla{width:100%;border-collapse:separate;border-spacing:4px;font-size:.8rem}
 .hr-tabla th{font-weight:600;color:var(--texto-debil);font-size:.72rem;padding:4px 8px;text-align:center;white-space:nowrap}
-.hr-tabla th.hr-persona{text-align:left;color:var(--texto-fuerte);font-size:.85rem}
-.hr-celda{background:var(--relleno);color:var(--texto);border-radius:8px;padding:8px 6px;text-align:center;vertical-align:middle;min-width:92px}
-.hr-celda-libre{background:transparent;border:1px dashed var(--borde)}
+.hr-tabla th.hr-persona{text-align:left;color:var(--texto-fuerte);font-size:.85rem;white-space:nowrap}
+.hr-tabla th.hr-col-dia{border-radius:6px}
+.hr-tabla th.hr-col-dia:nth-child(even){background:var(--relleno);color:var(--texto-tenue)}
+/* El color de cada persona es el de Daily: hr-color-N usa el mismo token que
+   dy-color-N (hay un test que los compara) con el tinte de su familia. */
+.hr-color-0{--hr-c:var(--azul-claro);--hr-t:var(--azul-tinte)}
+.hr-color-1{--hr-c:var(--verde-texto);--hr-t:var(--verde-tinte)}
+.hr-color-2{--hr-c:var(--ambar);--hr-t:var(--ambar-tinte)}
+.hr-color-3{--hr-c:var(--texto-tenue);--hr-t:var(--relleno)}
+.hr-punto{display:inline-block;width:10px;height:10px;border-radius:99px;background:var(--hr-c,var(--texto-tenue));margin-right:7px;flex-shrink:0}
+.hr-celda{background:transparent;color:var(--texto);border-radius:8px;padding:6px;text-align:center;vertical-align:middle;min-width:96px}
+.hr-celda-libre{background:transparent;border:1px dashed var(--borde);opacity:.6}
 .hr-tramo-txt{display:block;font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums}
+.hr-pastilla{background:var(--hr-t,var(--relleno));border:1px solid var(--hr-c,var(--borde));color:var(--texto-fuerte);border-radius:99px;padding:3px 10px;margin:2px auto;width:max-content;max-width:100%}
 .hr-horas{display:block;font-size:.7rem;color:var(--texto-debil);margin-top:2px}
 .hr-libre{color:var(--texto-debil);font-size:.75rem}
 .hr-tabla .hr-total{font-weight:700;color:var(--texto-fuerte);white-space:nowrap;text-align:right;padding:0 8px}
+.hr-total-chip{display:inline-block;background:var(--hr-t,var(--relleno));color:var(--hr-c,var(--texto-fuerte));border:1px solid var(--hr-c,var(--borde));border-radius:99px;padding:3px 10px;font-weight:700;white-space:nowrap}
 .hr-acciones{text-align:right;white-space:nowrap}
 .hr-btn-chico{padding:6px 12px;font-size:.76rem}
 .hr-tarjetas{display:none}
-.hr-tarjeta{border-top:1px solid var(--borde);padding:12px 0}
-.hr-tarjeta:first-child{border-top:none;padding-top:0}
+.hr-tarjeta{border:1px solid var(--borde);border-top:3px solid var(--hr-c,var(--borde));border-radius:10px;padding:10px 12px;margin-bottom:10px}
+.hr-tarjeta:last-child{margin-bottom:0}
 .hr-tarjeta-cab{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px}
-.hr-tarjeta-nombre{font-size:.95rem;font-weight:700;color:var(--texto-fuerte)}
-.hr-tarjeta-total{font-size:.75rem;color:var(--texto-tenue)}
+.hr-tarjeta-nombre{font-size:.95rem;font-weight:700;color:var(--texto-fuerte);display:flex;align-items:center}
+.hr-tarjeta-total{font-size:.75rem;color:var(--texto-tenue);margin-top:4px}
 .hr-tarjeta-dia{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:7px 0;border-top:1px solid var(--borde);font-size:.82rem;color:var(--texto)}
 .hr-tarjeta-dia-nombre{color:var(--texto-tenue)}
-.hr-tarjeta-dia-tramos{text-align:right}
+.hr-tarjeta-dia-tramos{display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:4px;text-align:right}
+.hr-tarjeta-dia-tramos .hr-pastilla{display:inline-block;margin:0}
+.hr-tarjeta-dia-tramos .hr-horas{flex-basis:100%}
 .hr-oculto{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .hr-modal{width:520px;max-width:95vw;max-height:90vh;overflow-y:auto}
 .hr-dia{border-top:1px solid var(--borde);padding:10px 0}
@@ -2102,20 +2139,33 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .eq-flujo-tab.eq-activo{background:var(--azul-tinte);color:var(--azul-claro);border-color:var(--azul)}
 .eq-pasos{list-style:none;margin:0 0 8px;padding:0 0 0 22px;position:relative}
 .eq-pasos::before{content:'';position:absolute;left:7px;top:10px;bottom:10px;width:2px;background:var(--borde-fuerte)}
-.eq-paso{position:relative;background:var(--superficie);border:1px solid var(--borde);border-radius:10px;padding:10px 14px;margin-bottom:8px}
-.eq-paso::before{content:'';position:absolute;left:-19px;top:15px;width:8px;height:8px;border-radius:99px;background:var(--superficie-honda);border:2px solid var(--borde-fuerte)}
+/* Cada paso toma el color de su rol. .eq-rol-COLOR define --rol-c (pleno) y
+   --rol-t (tinte); el mapa rol a color vive en services/flujos.ROL_ESTILOS. */
+.eq-rol-rojo{--rol-c:var(--rol-rojo);--rol-t:var(--rol-rojo-tinte)}
+.eq-rol-naranja{--rol-c:var(--rol-naranja);--rol-t:var(--rol-naranja-tinte)}
+.eq-rol-verde{--rol-c:var(--rol-verde);--rol-t:var(--rol-verde-tinte)}
+.eq-rol-azul{--rol-c:var(--rol-azul);--rol-t:var(--rol-azul-tinte)}
+.eq-rol-violeta{--rol-c:var(--rol-violeta);--rol-t:var(--rol-violeta-tinte)}
+.eq-rol-teal{--rol-c:var(--rol-teal);--rol-t:var(--rol-teal-tinte)}
+.eq-rol-neutro{--rol-c:var(--texto-tenue);--rol-t:var(--relleno)}
+.eq-flujo-leyenda{display:flex;flex-wrap:wrap;gap:6px 8px;margin:0 0 14px}
+.eq-rol-chip{display:inline-flex;align-items:center;gap:6px;background:var(--rol-t,var(--relleno));color:var(--texto-fuerte);border:1px solid var(--rol-c,var(--borde));border-radius:99px;padding:3px 10px;font-size:.74rem;font-weight:600;white-space:nowrap}
+.eq-rol-punto{display:inline-block;width:9px;height:9px;border-radius:99px;background:var(--rol-c,var(--texto-tenue));flex-shrink:0}
+.eq-paso-rol-muestra{margin:-6px 0 12px}
+.eq-paso-rol-muestra:empty{display:none}
+.eq-paso{position:relative;background:var(--rol-t,var(--superficie));border:1px solid var(--borde);border-left:4px solid var(--rol-c,var(--borde-fuerte));border-radius:10px;padding:10px 14px;margin-bottom:8px}
+.eq-paso::before{content:'';position:absolute;left:-23px;top:14px;width:10px;height:10px;border-radius:99px;background:var(--rol-c,var(--borde-fuerte));border:2px solid var(--superficie-honda)}
 .eq-paso-link{cursor:pointer}
-.eq-paso-link:hover{background:var(--hover);border-color:var(--azul)}
-.eq-paso-link:focus-visible{outline:2px solid var(--azul);outline-offset:2px}
-.eq-paso-destacado{background:var(--verde-tinte);border-color:var(--verde-tinte)}
-.eq-paso-destacado.eq-paso-link:hover{background:var(--verde-tinte);border-color:var(--verde-texto)}
+.eq-paso-link:hover{box-shadow:0 0 0 2px var(--rol-c,var(--azul))}
+.eq-paso-link:focus-visible{outline:2px solid var(--rol-c,var(--azul));outline-offset:2px}
+.eq-paso-recurrente{display:inline-block;margin-top:6px;font-size:.66rem;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--rol-c,var(--verde-texto));border:1px solid var(--rol-c,var(--verde-texto));border-radius:99px;padding:1px 8px}
 .eq-paso-cab{display:flex;align-items:baseline;gap:4px 10px;flex-wrap:wrap}
-.eq-paso-num{color:var(--texto-debil);font-size:.76rem;font-weight:700;font-variant-numeric:tabular-nums}
+.eq-paso-num{color:var(--texto-tenue);font-size:.76rem;font-weight:700;font-variant-numeric:tabular-nums}
 .eq-paso-titulo{color:var(--texto-fuerte);font-size:.86rem;font-weight:600;flex:1;min-width:0;overflow-wrap:anywhere}
-.eq-paso-rol{color:var(--azul-claro);font-size:.76rem;font-weight:700;margin-left:auto;white-space:nowrap}
-.eq-paso-detalle{color:var(--texto-debil);font-size:.76rem;line-height:1.45;margin-top:3px}
-.eq-paso-cobros{color:var(--texto-debil);font-size:.72rem;margin-top:4px}
-.eq-paso-ir{color:var(--azul-claro);font-size:.72rem;font-weight:600;margin-top:4px}
+.eq-paso-rol{color:var(--rol-c,var(--azul-claro));font-size:.76rem;font-weight:700;margin-left:auto;white-space:nowrap}
+.eq-paso-detalle{color:var(--texto-tenue);font-size:.76rem;line-height:1.45;margin-top:3px}
+.eq-paso-cobros{color:var(--texto-tenue);font-size:.72rem;margin-top:4px}
+.eq-paso-ir{color:var(--rol-c,var(--azul-claro));font-size:.72rem;font-weight:600;margin-top:4px}
 .eq-paso-edicion{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .eq-flujo-vacio{border:1px dashed var(--borde-fuerte);border-radius:10px;padding:16px;font-size:.8rem;color:var(--texto-debil);display:flex;flex-direction:column;align-items:flex-start;gap:10px}
 .eq-check{display:flex;align-items:center;gap:8px;font-size:.8rem;color:var(--texto);margin:2px 0 12px}
@@ -3750,12 +3800,13 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     <label class="modal-label" for="eq-paso-titulo">Título</label>
     <input type="text" id="eq-paso-titulo" maxlength="120" placeholder="Qué se hace en este paso">
     <label class="modal-label" for="eq-paso-rol">Rol</label>
-    <select id="eq-paso-rol"></select>
+    <select id="eq-paso-rol" onchange="eqPasoRolMuestra()"></select>
+    <div class="eq-paso-rol-muestra" id="eq-paso-rol-muestra" aria-live="polite"></div>
     <label class="modal-label" for="eq-paso-detalle">Detalle</label>
     <input type="text" id="eq-paso-detalle" maxlength="240" placeholder="Qué pasa y en qué pantalla, en una línea">
     <label class="modal-label" for="eq-paso-pantalla">Pantalla a la que lleva</label>
     <select id="eq-paso-pantalla"></select>
-    <label class="eq-check"><input type="checkbox" id="eq-paso-destacado"> Destacado, con fondo verde</label>
+    <label class="eq-check"><input type="checkbox" id="eq-paso-destacado"> Destacado: ingreso recurrente</label>
     <div class="modal-label">Momentos de cobro</div>
     <div id="eq-paso-cobros"></div>
     <button class="btn-ghost eq-btn-chico" type="button" onclick="eqPasoCobroAgregar()">+ Momento de cobro</button>
@@ -11394,11 +11445,23 @@ async function hrCargar() {
   if (caja) caja.innerHTML = hrPantallaHtml(hrDatos);
 }
 
-// Los tramos de un dia y sus horas; sin tramos, "No trabaja".
-function hrDiaHtml(dia) {
+// El color de cada persona es el de Daily: su lugar en la lista de Daily
+// Programador (orden_daily, lo manda el servidor) sobre los mismos DY_COLORES
+// que usa dyColor. Quien no esta en Daily toma uno estable por su id.
+function hrColor(p) {
+  const orden = p ? p.orden_daily : null;
+  const base = (orden === null || orden === undefined) ? (Number(p && p.id) || 0) : Number(orden);
+  return ((base % DY_COLORES) + DY_COLORES) % DY_COLORES;
+}
+
+// Los tramos de un dia como pastillas, y sus horas. Sin tramos: en la grilla
+// la celda queda vacia y apagada; en la tarjeta dice "No trabaja".
+function hrDiaHtml(dia, enGrilla) {
   const tramos = (dia && dia.tramos) || [];
-  if (!tramos.length) return '<span class="hr-libre">No trabaja</span>';
-  return tramos.map(t => '<span class="hr-tramo-txt">' + esc(t.desde) + '–' + esc(t.hasta) + '</span>').join('')
+  if (!tramos.length) {
+    return enGrilla ? '<span class="hr-oculto">No trabaja</span>' : '<span class="hr-libre">No trabaja</span>';
+  }
+  return tramos.map(t => '<span class="hr-tramo-txt hr-pastilla">' + esc(t.desde) + '–' + esc(t.hasta) + '</span>').join('')
     + '<span class="hr-horas">' + esc(dia.texto || '') + '</span>';
 }
 
@@ -11415,19 +11478,22 @@ function hrPantallaHtml(d) {
     + visibles.map(i => '<th scope="col" class="hr-col-dia">' + HR_DIAS_CORTOS[i] + '</th>').join('')
     + '<th scope="col" class="hr-total">Semana</th>'
     + '<th scope="col" class="hr-acciones"><span class="hr-oculto">Editar</span></th></tr>';
-  const filas = personas.map(p => '<tr><th scope="row" class="hr-persona">' + esc(p.nombre_corto) + '</th>'
+  const punto = '<span class="hr-punto" aria-hidden="true"></span>';
+  const filas = personas.map(p => '<tr class="hr-fila hr-color-' + hrColor(p) + '"><th scope="row" class="hr-persona">'
+    + punto + esc(p.nombre_corto) + '</th>'
     + visibles.map(i => {
       const dia = (p.dias || [])[i] || {};
       const libre = !(dia.tramos && dia.tramos.length);
-      return '<td class="hr-celda' + (libre ? ' hr-celda-libre' : '') + '">' + hrDiaHtml(dia) + '</td>';
+      return '<td class="hr-celda' + (libre ? ' hr-celda-libre' : '') + '">' + hrDiaHtml(dia, true) + '</td>';
     }).join('')
-    + '<td class="hr-total">' + esc(p.texto_semana) + '</td>'
+    + '<td class="hr-total"><span class="hr-total-chip">' + esc(p.texto_semana) + '</span></td>'
     + '<td class="hr-acciones">' + hrBotonEditar(p) + '</td></tr>').join('');
-  const tarjetas = personas.map(p => '<article class="hr-tarjeta">'
-    + '<div class="hr-tarjeta-cab"><div><div class="hr-tarjeta-nombre">' + esc(p.nombre_corto) + '</div>'
-    + '<div class="hr-tarjeta-total">' + esc(p.texto_semana) + ' por semana</div></div>' + hrBotonEditar(p) + '</div>'
+  const tarjetas = personas.map(p => '<article class="hr-tarjeta hr-color-' + hrColor(p) + '">'
+    + '<div class="hr-tarjeta-cab"><div><div class="hr-tarjeta-nombre">' + punto + esc(p.nombre_corto) + '</div>'
+    + '<div class="hr-tarjeta-total"><span class="hr-total-chip">' + esc(p.texto_semana) + '</span> por semana</div></div>'
+    + hrBotonEditar(p) + '</div>'
     + visibles.map(i => '<div class="hr-tarjeta-dia"><span class="hr-tarjeta-dia-nombre">' + HR_DIAS_LARGOS[i] + '</span>'
-      + '<span class="hr-tarjeta-dia-tramos">' + hrDiaHtml((p.dias || [])[i]) + '</span></div>').join('')
+      + '<span class="hr-tarjeta-dia-tramos">' + hrDiaHtml((p.dias || [])[i], false) + '</span></div>').join('')
     + '</article>').join('');
   return '<div class="hr-tabla-wrap"><table class="hr-tabla"><thead>' + cabecera + '</thead><tbody>' + filas
     + '</tbody></table></div><div class="hr-tarjetas">' + tarjetas + '</div>';
@@ -12709,6 +12775,7 @@ function eqBorrarRecupero(id) {
 // servidor le responde 403 a cualquier otro.
 let eqFlujos = [];
 let eqFlujosRoles = [];
+let eqFlujosEstilos = [];
 let eqFlujosAdmin = false;
 let eqFlujosEditando = false;
 let eqFlujoActivo = null;
@@ -12734,6 +12801,7 @@ async function eqCargarFlujos() {
     if (!d || !Array.isArray(d.flujos)) throw new Error('respuesta sin flujos');
     eqFlujos = d.flujos;
     eqFlujosRoles = Array.isArray(d.roles) ? d.roles : [];
+    eqFlujosEstilos = Array.isArray(d.estilos) ? d.estilos : [];
     eqFlujosAdmin = d.es_admin === true;
   } catch (e) {
     eqFlujos = [];
@@ -12807,6 +12875,31 @@ function eqPorcentaje(x) {
   return String(n).replace('.', ',') + '%';
 }
 
+// El color y el nombre que se ve de cada rol. El mapa vive en el servidor
+// (services/flujos.ROL_ESTILOS) y llega con /api/flujos; un rol sin estilo se
+// pinta neutro con su nombre tal cual.
+function eqRolEstilo(rol) {
+  const e = eqFlujosEstilos.find(x => x.rol === rol);
+  return e ? {etiqueta: e.etiqueta || rol, color: e.color || 'neutro'} : {etiqueta: String(rol || ''), color: 'neutro'};
+}
+
+function eqRolChipHtml(rol) {
+  const e = eqRolEstilo(rol);
+  return '<span class="eq-rol-chip eq-rol-' + esc(e.color) + '"><i class="eq-rol-punto" aria-hidden="true"></i>'
+    + esc(e.etiqueta) + '</span>';
+}
+
+// Arriba del flujo: los roles que aparecen en sus pasos, en el orden de la
+// lista de roles, cada uno con su color. Sin pasos no hay leyenda.
+function eqFlujoLeyendaHtml(pasos) {
+  const usados = pasos.map(p => p.rol);
+  const orden = eqFlujosEstilos.map(e => e.rol).filter(r => usados.includes(r));
+  usados.forEach(r => { if (!orden.includes(r)) orden.push(r); });
+  if (!orden.length) return '';
+  return '<div class="eq-flujo-leyenda" role="group" aria-label="Roles de este flujo">'
+    + orden.map(eqRolChipHtml).join('') + '</div>';
+}
+
 // El numero que se ve es la posicion: si en la base quedo un hueco, la
 // pantalla igual muestra 01, 02, 03.
 function eqPasosHtml(flujo, opciones) {
@@ -12821,7 +12914,8 @@ function eqPasosHtml(flujo, opciones) {
   }
   const items = pasos.map((p, i) => {
     const link = !op.editando && eqFlujoPuedeAbrir(p.pantalla);
-    const clases = 'eq-paso' + (p.destacado ? ' eq-paso-destacado' : '') + (link ? ' eq-paso-link' : '');
+    const estilo = eqRolEstilo(p.rol);
+    const clases = 'eq-paso eq-rol-' + esc(estilo.color) + (p.destacado ? ' eq-paso-destacado' : '') + (link ? ' eq-paso-link' : '');
     const attrs = link
       ? ' role="link" tabindex="0" data-pantalla="' + esc(p.pantalla) + '" onclick="eqFlujoIr(this.dataset.pantalla)"'
         + ' onkeydown="eqFlujoTecla(event, this.dataset.pantalla)"'
@@ -12841,14 +12935,15 @@ function eqPasosHtml(flujo, opciones) {
     return '<li class="' + clases + '"' + attrs + '>'
       + '<div class="eq-paso-cab"><span class="eq-paso-num">' + eqDosDigitos(i + 1) + '</span>'
       + '<span class="eq-paso-titulo">' + esc(p.titulo) + '</span>'
-      + '<span class="eq-paso-rol">' + esc(p.rol) + '</span></div>'
+      + '<span class="eq-paso-rol">' + esc(estilo.etiqueta) + '</span></div>'
       + (p.detalle ? '<div class="eq-paso-detalle">' + esc(p.detalle) + '</div>' : '')
+      + (p.destacado ? '<span class="eq-paso-recurrente">Ingreso recurrente</span>' : '')
       + cobros + ir + edicion + '</li>';
   }).join('');
   const agregar = op.editando
     ? '<button type="button" class="btn-primary eq-btn-chico" onclick="eqPasoAbrir(' + Number(flujo.id) + ', null)">+ Agregar paso</button>'
     : '';
-  return '<ol class="eq-pasos">' + items + '</ol>' + agregar;
+  return eqFlujoLeyendaHtml(pasos) + '<ol class="eq-pasos">' + items + '</ol>' + agregar;
 }
 
 function eqPantallasOpciones(actual) {
@@ -12869,8 +12964,9 @@ function eqPasoAbrir(flujoId, pasoId) {
   document.getElementById('eq-paso-titulo-modal').textContent = paso ? 'Editar paso' : 'Agregar paso a ' + flujo.nombre;
   document.getElementById('eq-paso-titulo').value = paso ? paso.titulo : '';
   document.getElementById('eq-paso-rol').innerHTML = eqFlujosRoles.map(r => '<option value="' + esc(r) + '"'
-    + (paso && paso.rol === r ? ' selected' : '') + '>' + esc(r) + '</option>').join('');
+    + (paso && paso.rol === r ? ' selected' : '') + '>' + esc(eqRolEstilo(r).etiqueta) + '</option>').join('');
   document.getElementById('eq-paso-rol').value = paso ? paso.rol : (eqFlujosRoles[0] || '');
+  eqPasoRolMuestra();
   document.getElementById('eq-paso-detalle').value = paso ? paso.detalle : '';
   document.getElementById('eq-paso-pantalla').innerHTML = eqPantallasOpciones(paso ? paso.pantalla : null);
   document.getElementById('eq-paso-pantalla').value = paso && paso.pantalla ? paso.pantalla : '';
@@ -12879,6 +12975,12 @@ function eqPasoAbrir(flujoId, pasoId) {
   eqPasoCobrosPintar();
   document.getElementById('eq-paso-error').textContent = '';
   eqAbrirModal('eq-modal-paso');
+}
+
+// Al elegir el rol, el modal muestra con que color va a quedar el paso.
+function eqPasoRolMuestra() {
+  const sel = document.getElementById('eq-paso-rol');
+  eqPoner('eq-paso-rol-muestra', () => (sel && sel.value) ? eqRolChipHtml(sel.value) : '');
 }
 
 function eqPasoCobrosPintar() {
