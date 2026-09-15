@@ -31,6 +31,7 @@ from routes.equipo import equipo_bp
 from routes.flujos import flujos_bp
 from routes.seg_leads import seg_leads_bp
 from routes.daily import daily_bp
+from routes.plantillas import plantillas_bp
 from routes.web import web_bp
 from routes.marketing import marketing_bp
 from services.auth import is_admin
@@ -1215,6 +1216,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-ausencias .nav-icon{stroke:#e879f9}
 #nav-seg_leads .nav-icon{stroke:#fb7185}
 #nav-daily .nav-icon{stroke:#38bdf8}
+#nav-plantillas .nav-icon{stroke:#c084fc}
 .nav-item.active #nav-cola .nav-icon,
 .nav-item.active .nav-icon{opacity:1}
 /* active item keeps its color but brighter */
@@ -1236,6 +1238,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-equipo.active .nav-icon{stroke:#bef264}
 #nav-ausencias.active .nav-icon{stroke:#f0abfc}
 #nav-seg_leads.active .nav-icon{stroke:#fda4af}
+#nav-plantillas.active .nav-icon{stroke:#d8b4fe}
 /* light mode — slightly darker tones */
 body.light #nav-cola .nav-icon{stroke:#2563eb}
 body.light #nav-clientes .nav-icon{stroke:#7c3aed}
@@ -1255,6 +1258,7 @@ body.light #nav-projects .nav-icon{stroke:#a16207}
 body.light #nav-equipo .nav-icon{stroke:#4d7c0f}
 body.light #nav-ausencias .nav-icon{stroke:#a21caf}
 body.light #nav-seg_leads .nav-icon{stroke:#be123c}
+body.light #nav-plantillas .nav-icon{stroke:#9333ea}
 /* ── Lucide icons ─────────────────────────────────────────────────────────── */
 .nav-icon{width:15px;height:15px;stroke-width:2;flex-shrink:0}
 /* Frase de equipo, version compacta del PDF de identidad de marca. Es la
@@ -1709,6 +1713,59 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .fin-hbar-relleno{height:100%;border-radius:3px}
 .fin-hbar-monto{font-size:.75rem;color:var(--texto);width:74px;text-align:right;flex-shrink:0}
 @media (max-width:760px){.fin-split{grid-template-columns:1fr}}
+/* ── Plantillas ───────────────────────────────────────────────────────────────
+   Mensajes de siempre, en VENTAS. Solo tokens, sin reglas `body.light`: las
+   variables van en --azul-claro y las que faltan en la familia ambar, que
+   llegan a 4,5 en los dos temas. */
+.pl-cabecera{flex-wrap:wrap;gap:12px}
+.pl-grupo{margin-bottom:22px}
+.pl-momento{font-size:.7rem;font-weight:700;color:var(--rotulo);text-transform:uppercase;letter-spacing:.8px;margin:0 0 10px}
+.pl-grilla{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px;align-items:start}
+.pl-card{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:16px;min-width:0;display:flex;flex-direction:column;gap:10px}
+.pl-cab{display:flex;justify-content:space-between;align-items:baseline;gap:6px 10px;flex-wrap:wrap}
+.pl-titulo{font-size:.95rem;font-weight:700;color:var(--texto-fuerte);margin:0}
+.pl-canal{font-size:.7rem;font-weight:600;color:var(--texto-debil);background:var(--relleno);border-radius:99px;padding:2px 10px;white-space:nowrap}
+.pl-explicacion{font-size:.8rem;color:var(--texto-tenue);line-height:1.5;margin:0}
+.pl-cuerpo{background:var(--relleno);color:var(--texto);border-radius:8px;padding:12px 14px;font-size:.84rem;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere}
+.pl-var{color:var(--azul-claro);font-weight:700}
+.pl-var-falta{background:var(--ambar-tinte);color:var(--ambar);border-radius:4px;padding:0 3px}
+.pl-nota{font-size:.76rem;font-style:italic;color:var(--texto-debil);margin:0}
+.pl-auto{background:var(--azul-tinte);color:var(--azul-claro);border-radius:8px;padding:8px 12px;font-size:.78rem;font-weight:600}
+.pl-acciones{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:auto}
+.pl-acciones-der{display:flex;gap:6px;margin-left:auto}
+.pl-btn{padding:7px 12px;font-size:.78rem}
+.pl-btn-borrar:hover{color:var(--rojo-texto)}
+.pl-variables{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:16px;line-height:1.9}
+.pl-variables .pl-var{margin-right:10px;display:inline-block}
+.pl-vacio{font-size:.8rem;color:var(--texto-debil);padding:6px 0}
+.pl-modal{width:640px;max-width:94vw;max-height:90vh;overflow-y:auto}
+.pl-modal [hidden]{display:none}
+.pl-resultados{display:flex;flex-direction:column;gap:4px;margin:-6px 0 10px;max-height:220px;overflow-y:auto}
+.pl-resultados:empty{display:none}
+.pl-resultado{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;background:var(--fondo);border:1px solid var(--borde);border-radius:8px;padding:8px 12px;color:var(--texto);font-size:.82rem;font-family:'Inter',sans-serif;cursor:pointer}
+.pl-resultado:hover{border-color:var(--azul)}
+.pl-resultado:focus-visible{border-color:var(--azul);outline:none}
+.pl-resultado span{font-size:.74rem;color:var(--texto-debil)}
+.pl-elegido{font-size:.82rem;color:var(--texto-tenue);margin-bottom:12px;overflow-wrap:anywhere}
+.pl-elegido b{color:var(--texto-fuerte)}
+.pl-campos{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:0 10px}
+.modal .pl-campo input[type=text]{margin-bottom:2px}
+.modal .pl-campo-falta input[type=text]{border-color:var(--ambar-borde);background:var(--ambar-tinte);color:var(--texto)}
+.pl-campo-falta .modal-label{color:var(--ambar)}
+.pl-fuente{font-size:.68rem;color:var(--texto-debil);margin-bottom:10px;min-height:1em}
+.pl-vista{margin-bottom:8px}
+.pl-faltan{font-size:.76rem;color:var(--ambar);margin-bottom:8px}
+.pl-faltan:empty{display:none}
+.pl-error{font-size:.78rem;color:var(--rojo-texto);margin:4px 0 10px}
+.pl-error:empty{display:none}
+.pl-ayuda{font-size:.72rem;color:var(--texto-debil);margin:-10px 0 12px;line-height:1.7}
+.pl-check{display:flex;align-items:center;gap:8px;font-size:.82rem;color:var(--texto);margin:4px 0 14px;cursor:pointer}
+.pl-check input{accent-color:var(--azul);width:16px;height:16px}
+.pl-botones{flex-wrap:wrap}
+.pl-aviso{position:fixed;left:50%;bottom:24px;transform:translate(-50%,16px);background:var(--texto-fuerte);color:var(--superficie);border-radius:10px;padding:10px 18px;font-size:.84rem;font-weight:600;box-shadow:0 8px 24px var(--sombra);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:1100;max-width:90vw;text-align:center}
+.pl-aviso-visible{opacity:1;transform:translate(-50%,0)}
+.pl-fuera{position:fixed;left:-9999px;top:0;opacity:0}
+@media(max-width:768px){ .pl-grilla{grid-template-columns:1fr} .pl-acciones-der{margin-left:0} .pl-aviso{bottom:84px} .pl-modal{padding:20px} .pl-modal .modal-row{grid-template-columns:1fr} }
 /* ── Daily Programador ────────────────────────────────────────────────────────
    Solo tokens, sin reglas propias de tema claro. Reusa .fin-card,
    .fin-card-title y los botones btn-primary / btn-ghost / btn-icono. */
@@ -2028,6 +2085,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div class="nav-item" id="nav-wa" onclick="showPanel('wa')"><i data-lucide="message-circle" class="nav-icon"></i> WhatsApp</div>
   <div class="nav-item" id="nav-notion_clients" onclick="showPanel('notion_clients')"><i data-lucide="handshake" class="nav-icon"></i> Proceso de venta</div>
   <div class="nav-item" id="nav-demos" onclick="showPanel('demos')"><i data-lucide="monitor-play" class="nav-icon"></i> Demos</div>
+  <div class="nav-item" id="nav-plantillas" onclick="showPanel('plantillas')"><i data-lucide="message-square-text" class="nav-icon"></i> Plantillas</div>
   <div class="nav-section-label">OPERACIÓN</div>
   <div class="nav-item" id="nav-clientes" onclick="showPanel('clientes')"><i data-lucide="users" class="nav-icon"></i> Clientes</div>
   <div class="nav-item" id="nav-projects" onclick="showPanel('projects')"><i data-lucide="target" class="nav-icon"></i> Proyectos</div>
@@ -2984,6 +3042,23 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   </div>
   <!-- ======= FIN RECURSOS HUMANOS PANELES ======= -->
 
+  <!-- ======= PLANTILLAS PANEL ======= -->
+  <div id="plantillas-panel" class="panel">
+    <div class="page-header pl-cabecera">
+      <div>
+        <h1>Plantillas</h1>
+        <div class="page-date">Los mensajes de siempre, a mano. Lo marcado en azul se completa solo con los datos del lead.</div>
+      </div>
+      <button class="btn-primary" type="button" onclick="plAbrirEditor(0)">Nueva plantilla</button>
+    </div>
+    <div id="pl-lista"><div class="pl-vacio">Cargando...</div></div>
+    <section class="pl-variables" aria-labelledby="pl-titulo-variables">
+      <div class="fin-card-title" id="pl-titulo-variables">Variables disponibles</div>
+      <div id="pl-variables"></div>
+    </section>
+  </div>
+  <!-- ======= FIN PLANTILLAS PANEL ======= -->
+
   <!-- ======= SEG LEADS PANEL ======= -->
   <div id="seg_leads-panel" class="panel">
     <div class="page-header sl-cabecera">
@@ -3500,6 +3575,82 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 </div>
 <!-- ======= FIN EQUIPO MODALES ======= -->
 
+<!-- ======= PLANTILLAS MODALES ======= -->
+<div class="pl-aviso" id="pl-aviso" role="status" aria-live="polite"></div>
+
+<div class="modal-overlay" id="pl-modal-usar" onclick="if(event.target===this)plCerrarModal('pl-modal-usar')">
+  <div class="modal pl-modal" role="dialog" aria-modal="true" aria-labelledby="pl-usar-titulo">
+    <h3 id="pl-usar-titulo">Usar con un lead</h3>
+    <p id="pl-usar-plantilla"></p>
+    <label class="modal-label" for="pl-buscar">Lead</label>
+    <input type="text" id="pl-buscar" placeholder="Buscar por nombre o teléfono" autocomplete="off" oninput="plBuscar()">
+    <div class="pl-resultados" id="pl-resultados"></div>
+    <div class="pl-elegido" id="pl-elegido"></div>
+    <div class="pl-campos" id="pl-campos"></div>
+    <div class="modal-label">Vista previa</div>
+    <div class="pl-cuerpo pl-vista" id="pl-vista" aria-live="polite"></div>
+    <div class="pl-faltan" id="pl-faltan"></div>
+    <div class="pl-auto" id="pl-auto-aviso" hidden>La manda el bot sola: no hace falta enviarla desde acá.</div>
+    <div class="pl-error" id="pl-usar-error" role="alert"></div>
+    <div class="modal-btns pl-botones">
+      <button class="btn-ghost" type="button" onclick="plCerrarModal('pl-modal-usar')">Cerrar</button>
+      <button class="btn-ghost" type="button" onclick="plCopiarVista(this)">Copiar</button>
+      <button class="btn-primary" type="button" id="pl-btn-enviar" onclick="plPedirEnvio()">Enviar por WhatsApp</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="pl-modal-confirmar" onclick="if(event.target===this)plCerrarModal('pl-modal-confirmar')">
+  <div class="modal pl-modal" role="dialog" aria-modal="true" aria-labelledby="pl-conf-titulo">
+    <h3 id="pl-conf-titulo">¿Enviar este WhatsApp?</h3>
+    <p>Sale apenas confirmes. Revisá a quién va y el texto.</p>
+    <div class="modal-label">Para</div>
+    <div class="pl-elegido" id="pl-conf-para"></div>
+    <div class="modal-label">Texto</div>
+    <div class="pl-cuerpo pl-vista" id="pl-conf-texto"></div>
+    <div class="pl-error" id="pl-conf-error" role="alert"></div>
+    <div class="modal-btns">
+      <button class="btn-ghost" type="button" onclick="plCerrarModal('pl-modal-confirmar')">Cancelar</button>
+      <button class="btn-primary" type="button" id="pl-conf-enviar" onclick="plEnviar()">Enviar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="pl-modal-editor" onclick="if(event.target===this)plCerrarModal('pl-modal-editor')">
+  <div class="modal pl-modal" role="dialog" aria-modal="true" aria-labelledby="pl-ed-titulo-modal">
+    <h3 id="pl-ed-titulo-modal">Nueva plantilla</h3>
+    <p>Las variables van entre llaves y se completan con los datos del lead.</p>
+    <div class="modal-row">
+      <div>
+        <label class="modal-label" for="pl-ed-momento">Momento</label>
+        <input type="text" id="pl-ed-momento" maxlength="80" list="pl-ed-momentos" placeholder="Después de la demo">
+      </div>
+      <div>
+        <label class="modal-label" for="pl-ed-canal">Canal</label>
+        <input type="text" id="pl-ed-canal" maxlength="40" list="pl-ed-canales" placeholder="WhatsApp">
+      </div>
+    </div>
+    <datalist id="pl-ed-momentos"></datalist>
+    <datalist id="pl-ed-canales"><option value="WhatsApp"></option><option value="WhatsApp o mail"></option><option value="Mail"></option></datalist>
+    <label class="modal-label" for="pl-ed-titulo">Título</label>
+    <input type="text" id="pl-ed-titulo" maxlength="120">
+    <label class="modal-label" for="pl-ed-cuerpo">Texto del mensaje</label>
+    <textarea id="pl-ed-cuerpo" rows="8" maxlength="4000"></textarea>
+    <div class="pl-ayuda" id="pl-ed-ayuda"></div>
+    <label class="modal-label" for="pl-ed-nota">Nota de abajo</label>
+    <input type="text" id="pl-ed-nota" maxlength="300" placeholder="Adjunta el PDF del presupuesto.">
+    <label class="modal-label" for="pl-ed-explicacion">Explicación (opcional)</label>
+    <textarea id="pl-ed-explicacion" rows="3" maxlength="1000"></textarea>
+    <label class="pl-check"><input type="checkbox" id="pl-ed-automatica"> La manda el bot sola (no se envía desde acá)</label>
+    <div class="pl-error" id="pl-ed-error" role="alert"></div>
+    <div class="modal-btns">
+      <button class="btn-ghost" type="button" onclick="plCerrarModal('pl-modal-editor')">Cancelar</button>
+      <button class="btn-primary" type="button" onclick="plGuardar()">Guardar</button>
+    </div>
+  </div>
+</div>
+<!-- ======= FIN PLANTILLAS MODALES ======= -->
+
 <!-- ======= SEG LEADS MODALES ======= -->
 <div class="modal-overlay" id="sl-modal-nuevo" onclick="if(event.target===this)slCerrarModal('sl-modal-nuevo')">
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="sl-nuevo-titulo">
@@ -3617,6 +3768,7 @@ function showPanel(name) {
   if (name === 'equipo' || name === 'ausencias') loadEquipo();
   if (name === 'ausencias') eqCargarFlujos();
   if (name === 'seg_leads') loadSegLeads();
+  if (name === 'plantillas') plCargar();
   if (name === 'sdr') loadSdr();
 }
 
@@ -7602,20 +7754,20 @@ function _showScoreBreakdown(event, el) {
 
 // ── Mobile navigation ─────────────────────────────────────────────────────────
 // El mismo orden que el menu de la izquierda (Juan, 14/9).
-const NAV_PRIORITY = ['cal','meta','finanzas','simulador','seg_leads','wa','notion_clients','clientes','projects','tasks','daily','activity','equipo','ausencias','cola','metrics'];
+const NAV_PRIORITY = ['cal','meta','finanzas','simulador','seg_leads','wa','notion_clients','plantillas','clientes','projects','tasks','daily','activity','equipo','ausencias','cola','metrics'];
 const NAV_ICONS = {
   cola:'inbox',meta:'instagram',cal:'calendar',
   tasks:'check-square',pipeline:'trending-up',clientes:'users',
   wa:'message-circle',metrics:'bar-chart-2',activity:'clock',projects:'target',
   notion_clients:'handshake',finanzas:'wallet',simulador:'calculator',equipo:'network',
-  ausencias:'calendar-clock',seg_leads:'phone-call',daily:'clipboard-list'
+  ausencias:'calendar-clock',seg_leads:'phone-call',daily:'clipboard-list',plantillas:'message-square-text'
 };
 const NAV_LABELS = {
   cola:'Outbound',meta:'Meta',cal:'Agenda',
   tasks:'Tareas',pipeline:'Pipeline',clientes:'Clientes',
   wa:'WA',metrics:'Intel. comercial',activity:'Actividad',projects:'Proyectos',
   notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador',equipo:'Organigrama',
-  ausencias:'Ausencias',seg_leads:'Seguimiento',daily:'Daily'
+  ausencias:'Ausencias',seg_leads:'Seguimiento',daily:'Daily',plantillas:'Plantillas'
 };
 let _mobileNavOverflow = [];
 
@@ -7695,7 +7847,7 @@ function closeMasSheet() {
 }
 
 // ── Panel access control ──────────────────────────────────────────────────────
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','equipo','ausencias','seg_leads','daily'];
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','equipo','ausencias','seg_leads','daily','plantillas'];
 (async () => {
   try {
     const r = await fetch('/api/me');
@@ -9591,6 +9743,461 @@ async function loadMetrics() {
     const p = document.getElementById('metrics-panel');
     if (p) p.insertAdjacentHTML('afterbegin','<p style="color:#f87171;margin-bottom:16px">Error cargando Inteligencia comercial.</p>');
   }
+}
+
+// ========== Plantillas ==========
+// Los mensajes de siempre, con variables entre llaves que se completan con los
+// datos de un lead. Todo lleva el prefijo pl. Sin template literals ni barras
+// invertidas, y nunca dos llaves seguidas: este bloque vive en un string de
+// Python que pasa por Jinja. Las variables se leen caracter por caracter, sin
+// expresiones regulares, por lo mismo.
+let plDatos = [];
+let plVariables = [];
+let plUsando = null;
+let plLead = null;
+let plValores = {};
+let plEditando = 0;
+let plBusquedaN = 0;
+let plBuscarTimer = 0;
+let plAvisoTimer = 0;
+
+const PL_LETRAS = 'abcdefghijklmnopqrstuvwxyz_áéíóúñ';
+
+async function plCargar() {
+  try {
+    const r = await fetch('/api/plantillas');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const j = await r.json();
+    plDatos = j.plantillas || [];
+    plVariables = j.variables || [];
+  } catch (e) {
+    document.getElementById('pl-lista').innerHTML =
+      '<div class="pl-vacio">No se pudieron cargar las plantillas (' + esc(e.message) + ').</div>';
+    return;
+  }
+  plPintar();
+}
+
+function plPintar() {
+  document.getElementById('pl-lista').innerHTML = plListaHtml(plDatos);
+  document.getElementById('pl-variables').innerHTML = plVariables.map(v =>
+    '<span class="pl-var">' + esc('{' + v + '}') + '</span>').join('');
+}
+
+// ── variables ──
+function plEsVariable(nombre) {
+  if (!nombre || nombre.length > 30) return false;
+  for (const c of nombre) {
+    if (!PL_LETRAS.includes(c)) return false;
+  }
+  return true;
+}
+
+// "Hola {nombre}." -> [texto "Hola ", var "nombre", texto "."]
+function plTrozos(texto) {
+  const t = String(texto || '');
+  const trozos = [];
+  let desde = 0;
+  let i = 0;
+  while (i < t.length) {
+    if (t[i] === '{') {
+      const fin = t.indexOf('}', i + 1);
+      if (fin > i && plEsVariable(t.slice(i + 1, fin))) {
+        if (i > desde) trozos.push({tipo: 'texto', valor: t.slice(desde, i)});
+        trozos.push({tipo: 'var', valor: t.slice(i + 1, fin)});
+        i = fin + 1;
+        desde = i;
+        continue;
+      }
+    }
+    i++;
+  }
+  if (desde < t.length) trozos.push({tipo: 'texto', valor: t.slice(desde)});
+  return trozos;
+}
+
+function plVariablesDe(texto) {
+  const vistas = [];
+  plTrozos(texto).forEach(tr => {
+    if (tr.tipo === 'var' && !vistas.includes(tr.valor)) vistas.push(tr.valor);
+  });
+  return vistas;
+}
+
+function plValor(valores, nombre) {
+  const v = valores ? valores[nombre] : '';
+  return v === null || v === undefined ? '' : String(v).trim();
+}
+
+// El texto listo para mandar. Lo que no tiene valor queda con sus llaves.
+function plCompletar(texto, valores) {
+  return plTrozos(texto).map(tr => {
+    if (tr.tipo === 'texto') return tr.valor;
+    return plValor(valores, tr.valor) || '{' + tr.valor + '}';
+  }).join('');
+}
+
+// Sin valores: las variables en azul. Con valores: el dato en azul, y lo que
+// falta marcado en ambar.
+function plResaltar(texto, valores) {
+  return plTrozos(texto).map(tr => {
+    if (tr.tipo === 'texto') return esc(tr.valor);
+    const v = plValor(valores, tr.valor);
+    if (!valores) return '<span class="pl-var">' + esc('{' + tr.valor + '}') + '</span>';
+    if (v) return '<span class="pl-var">' + esc(v) + '</span>';
+    return '<span class="pl-var pl-var-falta" title="Sin dato: completalo arriba">' + esc('{' + tr.valor + '}') + '</span>';
+  }).join('');
+}
+
+// ── pantalla ──
+function plEsAutomatica(p) {
+  return !!p && Number(p.automatica) === 1;
+}
+
+function plGrupos(plantillas) {
+  const grupos = [];
+  plantillas.forEach(p => {
+    const momento = String(p.momento || '').trim() || 'Sin momento';
+    let g = grupos.find(x => x.clave === momento.toUpperCase());
+    if (!g) {
+      g = {clave: momento.toUpperCase(), momento: momento, plantillas: []};
+      grupos.push(g);
+    }
+    g.plantillas.push(p);
+  });
+  return grupos;
+}
+
+function plListaHtml(plantillas) {
+  if (!plantillas.length) {
+    return '<div class="pl-vacio">No hay plantillas. Creá la primera con Nueva plantilla.</div>';
+  }
+  return plGrupos(plantillas).map(g =>
+    '<section class="pl-grupo" aria-label="' + esc(g.momento) + '">'
+    + '<h2 class="pl-momento">' + esc(g.momento) + '</h2>'
+    + '<div class="pl-grilla">' + g.plantillas.map(plTarjetaHtml).join('') + '</div>'
+    + '</section>').join('');
+}
+
+function plTarjetaHtml(p) {
+  const id = Number(p.id);
+  return '<article class="pl-card" id="pl-card-' + id + '">'
+    + '<div class="pl-cab"><h3 class="pl-titulo">' + esc(p.titulo) + '</h3>'
+    + (p.canal ? '<span class="pl-canal">' + esc(p.canal) + '</span>' : '') + '</div>'
+    + (p.explicacion ? '<p class="pl-explicacion">' + esc(p.explicacion) + '</p>' : '')
+    + '<div class="pl-cuerpo">' + plResaltar(p.cuerpo) + '</div>'
+    + (p.nota ? '<p class="pl-nota">' + esc(p.nota) + '</p>' : '')
+    + (plEsAutomatica(p) ? '<div class="pl-auto">La manda el bot sola. No hace falta enviarla.</div>' : '')
+    + '<div class="pl-acciones">'
+    + '<button type="button" class="btn-ghost pl-btn" onclick="plCopiarPlantilla(' + id + ', this)">Copiar</button>'
+    + '<button type="button" class="btn-primary pl-btn" onclick="plAbrirUsar(' + id + ')">Usar con un lead</button>'
+    + '<span class="pl-acciones-der">'
+    + '<button type="button" class="btn-ghost pl-btn" onclick="plAbrirEditor(' + id + ')">Editar</button>'
+    + '<button type="button" class="btn-ghost pl-btn pl-btn-borrar" onclick="plBorrar(' + id + ')">Borrar</button>'
+    + '</span></div></article>';
+}
+
+function plBuscarPlantilla(id) {
+  return plDatos.find(p => Number(p.id) === Number(id)) || null;
+}
+
+// ── copiar ──
+async function plCopiarTexto(texto) {
+  try {
+    if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(texto);
+      return true;
+    }
+  } catch (e) {}
+  try {
+    const area = document.createElement('textarea');
+    area.value = texto;
+    area.className = 'pl-fuera';
+    document.body.appendChild(area);
+    area.select();
+    const ok = document.execCommand('copy');
+    area.remove();
+    return !!ok;
+  } catch (e) {
+    return false;
+  }
+}
+
+function plAvisar(mensaje) {
+  const el = document.getElementById('pl-aviso');
+  el.textContent = mensaje;
+  el.classList.add('pl-aviso-visible');
+  clearTimeout(plAvisoTimer);
+  plAvisoTimer = setTimeout(() => el.classList.remove('pl-aviso-visible'), 2200);
+}
+
+function plMarcarBoton(boton, texto) {
+  if (!boton) return;
+  const antes = boton.textContent;
+  boton.textContent = texto;
+  setTimeout(() => { boton.textContent = antes; }, 1500);
+}
+
+async function plCopiarPlantilla(id, boton) {
+  const p = plBuscarPlantilla(id);
+  if (!p) return;
+  if (await plCopiarTexto(p.cuerpo)) {
+    plAvisar('Copiado');
+    plMarcarBoton(boton, 'Copiado');
+  } else {
+    plAvisar('No se pudo copiar. Seleccioná el texto a mano.');
+  }
+}
+
+// ── usar con un lead ──
+function plAbrirModal(id) {
+  document.getElementById(id).classList.add('open');
+}
+
+function plCerrarModal(id) {
+  document.getElementById(id).classList.remove('open');
+}
+
+async function plLeerRespuesta(r) {
+  try { return await r.json(); } catch (e) { return {}; }
+}
+
+function plAbrirUsar(id) {
+  plUsando = plBuscarPlantilla(id);
+  if (!plUsando) return;
+  plLead = null;
+  plValores = {};
+  document.getElementById('pl-usar-plantilla').textContent =
+    plUsando.titulo + (plUsando.canal ? ' · ' + plUsando.canal : '');
+  document.getElementById('pl-buscar').value = '';
+  document.getElementById('pl-resultados').innerHTML = '';
+  document.getElementById('pl-usar-error').textContent = '';
+  plPintarUso();
+  plAbrirModal('pl-modal-usar');
+  document.getElementById('pl-buscar').focus();
+}
+
+function plBuscar() {
+  clearTimeout(plBuscarTimer);
+  plBuscarTimer = setTimeout(plBuscarAhora, 250);
+}
+
+async function plBuscarAhora() {
+  const q = document.getElementById('pl-buscar').value.trim();
+  const caja = document.getElementById('pl-resultados');
+  const n = ++plBusquedaN;
+  if (q.length < 2) { caja.innerHTML = ''; return; }
+  try {
+    const r = await fetch('/api/plantillas/leads?q=' + encodeURIComponent(q));
+    const j = await plLeerRespuesta(r);
+    if (n !== plBusquedaN) return;
+    if (!r.ok) throw new Error(j.error || 'HTTP ' + r.status);
+    const leads = j.leads || [];
+    caja.innerHTML = leads.length ? leads.map(l =>
+      '<button type="button" class="pl-resultado" onclick="plElegirLead(' + Number(l.id) + ')">'
+      + '<b>' + esc(l.name || 'Sin nombre') + '</b>'
+      + '<span>' + esc([l.lead_name, l.phone].filter(Boolean).join(' · ') || 'Sin teléfono') + '</span>'
+      + '</button>').join('')
+      : '<div class="pl-vacio">No hay leads con ese nombre o teléfono.</div>';
+  } catch (e) {
+    if (n === plBusquedaN) caja.innerHTML = '<div class="pl-vacio">No se pudo buscar (' + esc(e.message) + ').</div>';
+  }
+}
+
+async function plElegirLead(id) {
+  const error = document.getElementById('pl-usar-error');
+  error.textContent = '';
+  try {
+    const r = await fetch('/api/plantillas/leads/' + Number(id) + '/variables');
+    const j = await plLeerRespuesta(r);
+    if (!r.ok) throw new Error(j.error || 'HTTP ' + r.status);
+    plLead = j;
+  } catch (e) {
+    plLead = null;
+    error.textContent = 'No se pudieron traer los datos del lead (' + e.message + ').';
+    return;
+  }
+  plValores = Object.assign({}, plLead.valores || {});
+  document.getElementById('pl-resultados').innerHTML = '';
+  document.getElementById('pl-buscar').value = (plLead.lead && plLead.lead.nombre) || '';
+  plPintarUso();
+}
+
+function plFaltantes() {
+  return plUsando ? plVariablesDe(plUsando.cuerpo).filter(v => !plValor(plValores, v)) : [];
+}
+
+function plConLlaves(nombres) {
+  return nombres.map(v => '{' + v + '}').join(', ');
+}
+
+function plPintarUso() {
+  const p = plUsando;
+  if (!p) return;
+  const lead = plLead ? plLead.lead : null;
+  const fuentes = (plLead && plLead.fuentes) || {};
+  document.getElementById('pl-elegido').innerHTML = lead
+    ? 'Para <b>' + esc(lead.nombre || 'Sin nombre') + '</b> · ' + esc(lead.telefono || 'sin teléfono')
+    : 'Elegí un lead para completar las variables. También podés escribirlas a mano.';
+  document.getElementById('pl-campos').innerHTML = plVariablesDe(p.cuerpo).map(v => {
+    const valor = plValor(plValores, v);
+    return '<div class="pl-campo' + (valor ? '' : ' pl-campo-falta') + '">'
+      + '<label class="modal-label" for="pl-v-' + esc(v) + '">' + esc('{' + v + '}') + (valor ? '' : ' · sin dato') + '</label>'
+      + '<input type="text" id="pl-v-' + esc(v) + '" data-var="' + esc(v) + '" value="' + esc(valor) + '" oninput="plEditarValor(this)">'
+      + '<div class="pl-fuente">' + esc(fuentes[v] || '') + '</div>'
+      + '</div>';
+  }).join('');
+  plPintarVista();
+}
+
+function plEditarValor(input) {
+  const v = input.getAttribute('data-var');
+  plValores[v] = input.value;
+  const caja = input.closest('.pl-campo');
+  if (caja) caja.classList.toggle('pl-campo-falta', !input.value.trim());
+  plPintarVista();
+}
+
+function plPintarVista() {
+  const p = plUsando;
+  if (!p) return;
+  const auto = plEsAutomatica(p);
+  const faltan = plFaltantes();
+  document.getElementById('pl-vista').innerHTML = plResaltar(p.cuerpo, plValores);
+  document.getElementById('pl-faltan').textContent = faltan.length ? 'Falta completar: ' + plConLlaves(faltan) : '';
+  document.getElementById('pl-auto-aviso').hidden = !auto;
+  document.getElementById('pl-btn-enviar').hidden = auto;
+}
+
+async function plCopiarVista(boton) {
+  if (!plUsando) return;
+  const faltan = plFaltantes();
+  if (await plCopiarTexto(plCompletar(plUsando.cuerpo, plValores))) {
+    plAvisar(faltan.length ? 'Copiado. Ojo: falta completar ' + plConLlaves(faltan) + '.' : 'Copiado');
+    plMarcarBoton(boton, 'Copiado');
+  } else {
+    plAvisar('No se pudo copiar. Seleccioná el texto a mano.');
+  }
+}
+
+// Nada sale sin confirmar: primero se muestra a quién y el texto final.
+function plPedirEnvio() {
+  const error = document.getElementById('pl-usar-error');
+  const p = plUsando;
+  if (!p) return;
+  if (plEsAutomatica(p)) { error.textContent = 'Esta la manda el bot sola.'; return; }
+  if (!plLead || !plLead.lead) { error.textContent = 'Elegí un lead para mandarle el WhatsApp.'; return; }
+  if (!plLead.lead.telefono) { error.textContent = 'Este lead no tiene teléfono cargado.'; return; }
+  const faltan = plFaltantes();
+  if (faltan.length) { error.textContent = 'Antes de enviar completá ' + plConLlaves(faltan) + '.'; return; }
+  error.textContent = '';
+  document.getElementById('pl-conf-para').innerHTML =
+    '<b>' + esc(plLead.lead.nombre || 'Sin nombre') + '</b> · ' + esc(plLead.lead.telefono);
+  document.getElementById('pl-conf-texto').textContent = plCompletar(p.cuerpo, plValores);
+  document.getElementById('pl-conf-error').textContent = '';
+  document.getElementById('pl-conf-enviar').disabled = false;
+  plAbrirModal('pl-modal-confirmar');
+}
+
+async function plEnviar() {
+  if (!plUsando || !plLead || !plLead.lead) return;
+  const boton = document.getElementById('pl-conf-enviar');
+  const error = document.getElementById('pl-conf-error');
+  const datos = {phone: plLead.lead.telefono, text: plCompletar(plUsando.cuerpo, plValores)};
+  boton.disabled = true;
+  try {
+    const r = await fetch('/api/wa/send', {method: 'POST',
+      headers: {'Content-Type': 'application/json'}, body: JSON.stringify(datos)});
+    const j = await plLeerRespuesta(r);
+    if (!r.ok || !j.ok) {
+      error.textContent = 'No se pudo enviar: ' + (j.error || 'HTTP ' + r.status);
+      boton.disabled = false;
+      return;
+    }
+  } catch (e) {
+    error.textContent = 'No se pudo enviar: ' + e.message;
+    boton.disabled = false;
+    return;
+  }
+  plCerrarModal('pl-modal-confirmar');
+  plCerrarModal('pl-modal-usar');
+  plAvisar('Enviado por WhatsApp a ' + (plLead.lead.nombre || plLead.lead.telefono) + '.');
+}
+
+// ── editar, crear y borrar ──
+function plAbrirEditor(id) {
+  const p = id ? plBuscarPlantilla(id) : null;
+  plEditando = p ? Number(p.id) : 0;
+  const campo = nombre => document.getElementById('pl-ed-' + nombre);
+  document.getElementById('pl-ed-titulo-modal').textContent = p ? 'Editar plantilla' : 'Nueva plantilla';
+  campo('momento').value = p ? p.momento || '' : '';
+  campo('canal').value = p ? p.canal || '' : 'WhatsApp';
+  campo('titulo').value = p ? p.titulo || '' : '';
+  campo('cuerpo').value = p ? p.cuerpo || '' : '';
+  campo('nota').value = p ? p.nota || '' : '';
+  campo('explicacion').value = p ? p.explicacion || '' : '';
+  campo('automatica').checked = plEsAutomatica(p);
+  const momentos = [];
+  plDatos.forEach(x => { if (x.momento && !momentos.includes(x.momento)) momentos.push(x.momento); });
+  document.getElementById('pl-ed-momentos').innerHTML =
+    momentos.map(m => '<option value="' + esc(m) + '"></option>').join('');
+  document.getElementById('pl-ed-ayuda').textContent = plVariables.length
+    ? 'Variables: ' + plConLlaves(plVariables) : '';
+  document.getElementById('pl-ed-error').textContent = '';
+  plAbrirModal('pl-modal-editor');
+}
+
+function plValidar(datos) {
+  if (!datos.titulo) return 'Falta el título.';
+  if (!datos.cuerpo) return 'Falta el texto del mensaje.';
+  return '';
+}
+
+async function plGuardar() {
+  const campo = nombre => document.getElementById('pl-ed-' + nombre);
+  const datos = {
+    momento: campo('momento').value.trim(),
+    canal: campo('canal').value.trim(),
+    titulo: campo('titulo').value.trim(),
+    cuerpo: campo('cuerpo').value.trim(),
+    nota: campo('nota').value.trim(),
+    explicacion: campo('explicacion').value.trim(),
+    automatica: !!campo('automatica').checked
+  };
+  const error = document.getElementById('pl-ed-error');
+  const problema = plValidar(datos);
+  if (problema) { error.textContent = problema; return; }
+  error.textContent = '';
+  const editando = plEditando;
+  try {
+    const r = await fetch(editando ? '/api/plantillas/' + editando : '/api/plantillas', {
+      method: editando ? 'PUT' : 'POST',
+      headers: {'Content-Type': 'application/json'}, body: JSON.stringify(datos)});
+    const j = await plLeerRespuesta(r);
+    if (!r.ok) { error.textContent = j.error || 'No se pudo guardar (HTTP ' + r.status + ').'; return; }
+  } catch (e) {
+    error.textContent = 'No se pudo guardar (' + e.message + ').';
+    return;
+  }
+  plCerrarModal('pl-modal-editor');
+  plAvisar(editando ? 'Plantilla guardada' : 'Plantilla creada');
+  await plCargar();
+}
+
+async function plBorrar(id) {
+  const p = plBuscarPlantilla(id);
+  if (!p) return;
+  if (!confirm('¿Borrar la plantilla "' + p.titulo + '"?')) return;
+  try {
+    const r = await fetch('/api/plantillas/' + Number(id), {method: 'DELETE'});
+    const j = await plLeerRespuesta(r);
+    if (!r.ok) { alert(j.error || 'No se pudo borrar (HTTP ' + r.status + ').'); return; }
+  } catch (e) {
+    alert('No se pudo borrar (' + e.message + ').');
+    return;
+  }
+  plAvisar('Plantilla borrada');
+  await plCargar();
 }
 
 // ========== Seguimiento de leads ==========
@@ -13553,7 +14160,7 @@ def create_app(db_path: str) -> Flask:
 
     for bp in (leads_bp, demos_bp, calendar_bp, wa_bp, pipeline_bp, tasks_bp, budgets_bp, tokens_bp, meta_bp, calendly_bp, notion_bp, projects_bp, preclientes_bp,
                 notion_clients_bp, resend_bp, linkedin_bp, web_bp, finanzas_bp, marketing_bp,
-                simulador_bp, equipo_bp, flujos_bp, seg_leads_bp, daily_bp):
+                simulador_bp, equipo_bp, flujos_bp, seg_leads_bp, daily_bp, plantillas_bp):
         app.register_blueprint(bp)
 
     @app.before_request
@@ -14467,8 +15074,8 @@ select:focus{border-color:#0088cc}
 </div>
 
 <script>
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','equipo','ausencias','seg_leads','daily'];
-const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',equipo:'Organigrama',ausencias:'Ausencias',seg_leads:'Seguimiento de leads',daily:'Daily Programador'};
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','equipo','ausencias','seg_leads','daily','plantillas'];
+const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',equipo:'Organigrama',ausencias:'Ausencias',seg_leads:'Seguimiento de leads',daily:'Daily Programador',plantillas:'Plantillas'};
 let _roles = [];
 
 function makeChips(containerId, checkedArr, prefix) {
