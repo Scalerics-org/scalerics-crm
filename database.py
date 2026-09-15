@@ -17,7 +17,8 @@ def _add_column(conn: sqlite3.Connection, table: str, column: str, definition: s
 
 
 def _grant_panel_to_existing_roles(conn: sqlite3.Connection, panel: str,
-                                   solo_si_tiene: Optional[str] = None) -> int:
+                                   solo_si_tiene: Optional[str] = None,
+                                   si_tiene: tuple = ()) -> int:
     """Suma `panel` al panel_access de los roles que ya existen y no lo tengan.
 
     La siembra de roles por defecto solo corre con la tabla vacía, así que en
@@ -28,6 +29,9 @@ def _grant_panel_to_existing_roles(conn: sqlite3.Connection, panel: str,
     tienen ese otro: sirve cuando un panel se parte en dos (Equipo ->
     Organigrama + Ausencias) y quien veía el viejo tiene que seguir viendo
     todo.
+
+    Con `si_tiene`, solo se suma a los roles que ya tengan ALGUNO de esos
+    paneles (Plantillas va a quien vende: `wa` o `notion_clients`).
 
     Idempotente: si el panel ya está, no toca la fila. Un `panel_access` en
     NULL, vacío, con JSON inválido o con un JSON que no es una lista se saltea
@@ -57,6 +61,8 @@ def _grant_panel_to_existing_roles(conn: sqlite3.Connection, panel: str,
         if panel in paneles:
             continue
         if solo_si_tiene is not None and solo_si_tiene not in paneles:
+            continue
+        if si_tiene and not any(p in paneles for p in si_tiene):
             continue
         paneles.append(panel)
         try:
@@ -230,6 +236,18 @@ def init_db(db_path: str) -> None:
                 ("Ventas", _SALES),
             ])
         _grant_panel_to_existing_roles(conn, "meta")
+        # Contador y Marketing (pedido de Juan, 15/9): hoy hay Admin, SDR y
+        # Programador, y se suman estos dos. Se crean por nombre, una sola vez,
+        # también en bases que ya tienen roles; INSERT OR IGNORE no pisa lo que
+        # Juan cambie después en el editor de roles.
+        # Contador arranca SIN Finanzas ni Simulador aunque sean su trabajo: por
+        # el Ruling R20 los paneles con plata no se asignan desde el código,
+        # Juan los tilda a mano en el editor de roles.
+        import json as _jroles
+        for _nombre, _paneles in (("Contador", ["cal"]),
+                                  ("Marketing", ["cal", "meta", "marketing"])):
+            conn.execute("INSERT OR IGNORE INTO roles (name, panel_access) VALUES (?, ?)",
+                         (_nombre, _jroles.dumps(_paneles)))
         _add_column(conn, "client_info", "meeting_time", "TEXT")
         _add_column(conn, "client_info", "meeting_url", "TEXT")
 
@@ -1003,6 +1021,88 @@ def init_db(db_path: str) -> None:
         # organigrama se quedó con el id `equipo` y Ausencias es `ausencias`.
         # Quien tenía Equipo veía las dos partes, así que recibe Ausencias.
         _grant_panel_to_existing_roles(conn, "ausencias", solo_si_tiene="equipo")
+
+        # ── plantillas de mensajes ────────────────────────────────────────────
+        # Los mensajes que Juan manda siempre, con variables entre llaves que se
+        # completan con los datos del lead. NO es `wa_templates`: esa tabla son
+        # atajos sueltos del chat de WhatsApp (nombre + texto, sin editar), y
+        # meter ahí estas plantillas las haría aparecer con las llaves sin
+        # completar en el "Abrir WA" del panel de cliente.
+        #
+        # `clave` identifica a las precargadas (NULL en las creadas a mano): la
+        # precarga es INSERT OR IGNORE por clave, así que no duplica ni pisa lo
+        # que se edite. Por eso borrar es marcar `borrada`: si se borrara la
+        # fila, el próximo arranque volvería a crear la plantilla.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS plantillas_mensajes (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                clave           TEXT UNIQUE,
+                orden           INTEGER NOT NULL DEFAULT 0,
+                momento         TEXT NOT NULL DEFAULT '',
+                titulo          TEXT NOT NULL,
+                canal           TEXT NOT NULL DEFAULT '',
+                cuerpo          TEXT NOT NULL,
+                nota            TEXT NOT NULL DEFAULT '',
+                explicacion     TEXT NOT NULL DEFAULT '',
+                automatica      INTEGER NOT NULL DEFAULT 0,
+                borrada         INTEGER NOT NULL DEFAULT 0,
+                created_by_name TEXT,
+                created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.commit()
+        _sembrar_plantillas(conn)
+        # Va a quien vende: los roles con WhatsApp o con Proceso de venta.
+        _grant_panel_to_existing_roles(conn, "plantillas",
+                                       si_tiene=("wa", "notion_clients"))
+
+        # ── flujos ────────────────────────────────────────────────────────────
+        # Cómo trabaja la empresa, paso a paso, con el ROL de cada etapa y
+        # nunca nombres de personas. Se muestra al final de Ausencias. Los
+        # pasos viven acá y no en el código: se agregan, editan y reordenan
+        # desde la pantalla. `numero` se renumera 1..n en cada cambio.
+        # `flujo_paso_cobros` deja que un paso tenga más de un momento de
+        # cobro (50 % al inicio y 50 % contra entrega), aunque hoy haya uno.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS flujos (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                nombre      TEXT NOT NULL,
+                descripcion TEXT NOT NULL DEFAULT '',
+                orden       INTEGER NOT NULL DEFAULT 0,
+                created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_flujos_nombre ON flujos(nombre)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS flujo_pasos (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                flujo_id    INTEGER NOT NULL REFERENCES flujos(id) ON DELETE CASCADE,
+                numero      INTEGER NOT NULL,
+                titulo      TEXT NOT NULL,
+                rol         TEXT NOT NULL,
+                detalle     TEXT NOT NULL DEFAULT '',
+                pantalla    TEXT,
+                destacado   INTEGER NOT NULL DEFAULT 0,
+                created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_flujo_pasos_flujo "
+                     "ON flujo_pasos(flujo_id, numero)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS flujo_paso_cobros (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                paso_id     INTEGER NOT NULL REFERENCES flujo_pasos(id) ON DELETE CASCADE,
+                orden       INTEGER NOT NULL DEFAULT 0,
+                porcentaje  REAL NOT NULL,
+                descripcion TEXT NOT NULL
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_flujo_paso_cobros_paso "
+                     "ON flujo_paso_cobros(paso_id)")
+        conn.commit()
+        _sembrar_flujos(conn)
 
         # ── Daily Programador ─────────────────────────────────────────────────
         # Actividades del día y recordatorios que se repiten (pedido de Juan,
@@ -4035,6 +4135,199 @@ def listar_recuperos_equipo(db_path: str) -> list[dict]:
         conn.close()
 
 
+# ─── Flujos ──────────────────────────────────────────────────────────────────
+# Solo roles, nunca nombres de personas (tests/test_flujos.py lo verifica).
+
+# (titulo, rol, detalle, pantalla, destacado, [(porcentaje, descripcion)])
+_PASOS_DE_LEAD_A_COBRO = (
+    ("Se genera el lead", "Marketing",
+     "Meta Ads u Outbound. Cae en Proceso de venta.", "notion_clients", False, ()),
+    ("Se atiende el lead", "Comercial",
+     "Primer llamado. Se califica y se carga el seguimiento.", None, False, ()),
+    ("Se lleva a videollamada", "Comercial",
+     "Plantilla de confirmación. Recordatorio automático el mismo día.", None, False, ()),
+    ("Se prepara la demo", "Project manager",
+     "Se arma sobre el rubro y lo que pidió el lead.", None, False, ()),
+    ("Se hace la demo", "Project manager",
+     "Queda registrada en Demos, con lo que pidió y lo que objetó.", "demos", False, ()),
+    ("Se presupuesta", "Comercial",
+     "Dentro de 48 horas. Plantilla de resumen y presupuesto.", None, False, ()),
+    ("Se cobra", "Administración",
+     "Al confirmar. Se dan de alta el cliente y el proyecto.", "clientes", False,
+     ((100, "al confirmar"),)),
+    ("Se desarrolla", "Desarrollo",
+     "El plazo corre desde que llega el material.", "projects", False, ()),
+    ("Se entrega", "Desarrollo",
+     "Publicación y capacitación. Se ofrece el mantenimiento.", None, False, ()),
+    ("Se mantiene", "Soporte",
+     "Cuota mensual. Es el ingreso que se acumula mes a mes.", None, True, ()),
+)
+
+# (nombre, descripcion, orden, pasos)
+_FLUJOS_PRECARGA = (
+    ("De lead a cobro", "Desde que entra un lead hasta que se cobra y queda en mantenimiento.",
+     1, _PASOS_DE_LEAD_A_COBRO),
+    ("Arranque de proyecto", "Desde que se confirma un proyecto hasta que arranca el desarrollo.", 2, ()),
+    ("Cobranza", "Cómo se sigue lo que falta cobrar.", 3, ()),
+    ("Alta de una persona", "Qué pasa cuando entra alguien nuevo al equipo.", 4, ()),
+)
+
+
+def _insertar_cobros(conn: sqlite3.Connection, paso_id: int, cobros) -> None:
+    for orden, cobro in enumerate(cobros):
+        if isinstance(cobro, dict):
+            pct, desc = cobro["porcentaje"], cobro["descripcion"]
+        else:
+            pct, desc = cobro
+        conn.execute("INSERT INTO flujo_paso_cobros (paso_id, orden, porcentaje, descripcion) "
+                     "VALUES (?,?,?,?)", (paso_id, orden, pct, desc))
+
+
+def _sembrar_flujos(conn: sqlite3.Connection) -> int:
+    """Precarga idempotente de los cuatro flujos, con los diez pasos de "De
+    lead a cobro".
+
+    Por nombre (índice único). Los pasos se cargan SOLO para el flujo que se
+    acaba de crear: si el flujo ya estaba, no se toca nada, así un paso
+    editado, movido o borrado desde la pantalla sobrevive a los reinicios.
+    Devuelve cuántos flujos creó.
+    """
+    creados = 0
+    for nombre, descripcion, orden, pasos in _FLUJOS_PRECARGA:
+        cur = conn.execute("INSERT OR IGNORE INTO flujos (nombre, descripcion, orden) VALUES (?,?,?)",
+                           (nombre, descripcion, orden))
+        if not cur.rowcount:
+            continue
+        creados += 1
+        flujo_id = cur.lastrowid
+        for numero, (titulo, rol, detalle, pantalla, destacado, cobros) in enumerate(pasos, start=1):
+            pid = conn.execute(
+                "INSERT INTO flujo_pasos (flujo_id, numero, titulo, rol, detalle, pantalla, destacado) "
+                "VALUES (?,?,?,?,?,?,?)",
+                (flujo_id, numero, titulo, rol, detalle, pantalla, 1 if destacado else 0)).lastrowid
+            _insertar_cobros(conn, pid, cobros)
+    conn.commit()
+    return creados
+
+
+def listar_flujos(db_path: str) -> list[dict]:
+    conn = _connect(db_path)
+    try:
+        return [dict(r) for r in conn.execute("SELECT * FROM flujos ORDER BY orden, id")]
+    finally:
+        conn.close()
+
+
+def get_flujo(db_path: str, flujo_id: int) -> Optional[dict]:
+    return _get_one(db_path, "flujos", flujo_id)
+
+
+def listar_pasos_flujos(db_path: str) -> list[dict]:
+    conn = _connect(db_path)
+    try:
+        return [dict(r) for r in conn.execute(
+            "SELECT * FROM flujo_pasos ORDER BY flujo_id, numero, id")]
+    finally:
+        conn.close()
+
+
+def get_paso_flujo(db_path: str, paso_id: int) -> Optional[dict]:
+    return _get_one(db_path, "flujo_pasos", paso_id)
+
+
+def listar_cobros_pasos_flujo(db_path: str) -> list[dict]:
+    conn = _connect(db_path)
+    try:
+        return [dict(r) for r in conn.execute(
+            "SELECT * FROM flujo_paso_cobros ORDER BY paso_id, orden, id")]
+    finally:
+        conn.close()
+
+
+def _renumerar_flujo(conn: sqlite3.Connection, flujo_id: int, ids: Optional[list] = None) -> list:
+    """Deja los números del flujo en 1..n. Sin `ids`, en el orden actual."""
+    if ids is None:
+        ids = [r[0] for r in conn.execute(
+            "SELECT id FROM flujo_pasos WHERE flujo_id = ? ORDER BY numero, id", (flujo_id,))]
+    for numero, pid in enumerate(ids, start=1):
+        conn.execute("UPDATE flujo_pasos SET numero = ? WHERE id = ? AND numero != ?",
+                     (numero, pid, numero))
+    return ids
+
+
+def crear_paso_flujo(db_path: str, flujo_id: int, titulo: str, rol: str, detalle: str = "",
+                     pantalla: Optional[str] = None, destacado: bool = False,
+                     cobros=None) -> int:
+    """Lo agrega al final del flujo."""
+    conn = _connect(db_path)
+    try:
+        _renumerar_flujo(conn, flujo_id)
+        numero = conn.execute("SELECT COUNT(*) FROM flujo_pasos WHERE flujo_id = ?",
+                              (flujo_id,)).fetchone()[0] + 1
+        pid = conn.execute(
+            "INSERT INTO flujo_pasos (flujo_id, numero, titulo, rol, detalle, pantalla, destacado) "
+            "VALUES (?,?,?,?,?,?,?)",
+            (flujo_id, numero, titulo, rol, detalle or "", pantalla, 1 if destacado else 0)).lastrowid
+        _insertar_cobros(conn, pid, cobros or [])
+        conn.commit()
+        return pid
+    finally:
+        conn.close()
+
+
+def editar_paso_flujo(db_path: str, paso_id: int, titulo: str, rol: str, detalle: str = "",
+                      pantalla: Optional[str] = None, destacado: bool = False,
+                      cobros=None) -> None:
+    """`cobros` en None deja los momentos de cobro como estaban."""
+    conn = _connect(db_path)
+    try:
+        conn.execute(
+            "UPDATE flujo_pasos SET titulo = ?, rol = ?, detalle = ?, pantalla = ?, destacado = ?, "
+            "updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (titulo, rol, detalle or "", pantalla, 1 if destacado else 0, paso_id))
+        if cobros is not None:
+            conn.execute("DELETE FROM flujo_paso_cobros WHERE paso_id = ?", (paso_id,))
+            _insertar_cobros(conn, paso_id, cobros)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def borrar_paso_flujo(db_path: str, paso_id: int) -> None:
+    """Se lleva sus momentos de cobro (sin foreign keys prendidas, el CASCADE
+    no alcanza) y renumera lo que queda."""
+    conn = _connect(db_path)
+    try:
+        fila = conn.execute("SELECT flujo_id FROM flujo_pasos WHERE id = ?", (paso_id,)).fetchone()
+        if not fila:
+            return
+        conn.execute("DELETE FROM flujo_paso_cobros WHERE paso_id = ?", (paso_id,))
+        conn.execute("DELETE FROM flujo_pasos WHERE id = ?", (paso_id,))
+        _renumerar_flujo(conn, fila[0])
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def mover_paso_flujo(db_path: str, paso_id: int, posicion: int) -> int:
+    """Lleva el paso a `posicion` (1..n, se acota) y renumera el flujo entero.
+    Devuelve el número con el que quedó."""
+    conn = _connect(db_path)
+    try:
+        fila = conn.execute("SELECT flujo_id FROM flujo_pasos WHERE id = ?", (paso_id,)).fetchone()
+        if not fila:
+            return 0
+        ids = _renumerar_flujo(conn, fila[0])
+        ids.remove(paso_id)
+        destino = max(1, min(int(posicion), len(ids) + 1))
+        ids.insert(destino - 1, paso_id)
+        _renumerar_flujo(conn, fila[0], ids)
+        conn.commit()
+        return destino
+    finally:
+        conn.close()
+
+
 def entregas_de_proyectos(db_path: str) -> list[dict]:
     """Los proyectos del espejo de Notion que tienen fecha de entrega.
 
@@ -4049,5 +4342,176 @@ def entregas_de_proyectos(db_path: str) -> list[dict]:
             "SELECT id, name, timeline_end FROM projects "
             "WHERE timeline_end IS NOT NULL AND timeline_end != '' ORDER BY timeline_end")
         return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+# ─── Plantillas de mensajes ──────────────────────────────────────────────────
+# Texto exacto del PDF "Plantillas de mensajes - Scalerics" (Juan, 14/9). Los
+# párrafos van separados por una línea en blanco, como en el PDF; los cortes
+# de renglón dentro de un párrafo del PDF son solo el ancho de la página.
+
+_PLANTILLAS_PRECARGA = (
+    # Pedido aparte de Juan (15/9): va primera porque es lo primero que pasa
+    # con un lead. Una base que ya tenía las otras cinco la suma sola.
+    {
+        "clave": "no_atendio", "orden": 5,
+        "momento": "LLAMÉ Y NO ATENDIÓ",
+        "titulo": "Lead que no atendió", "canal": "WhatsApp",
+        "cuerpo": ("¿Cómo estás {nombre}? Te escribe Juan de Scalerics. Respondiste un "
+                   "formulario solicitando información acerca de {servicio}. Te llamé para "
+                   "que me cuentes un poco y ver cómo te podemos ayudar en lo que estás "
+                   "buscando. Cuando tengas unos minutos avisame y te llamo. Saludos."),
+        "nota": "Se manda después de llamar sin respuesta.",
+        "explicacion": "", "automatica": 0,
+    },
+    {
+        "clave": "confirmacion_agenda", "orden": 10,
+        "momento": "DESPUÉS DE LA PRIMERA LLAMADA",
+        "titulo": "Confirmación de agenda", "canal": "WhatsApp",
+        "cuerpo": ("¿Cómo estás {nombre}? Te habla Juan Pereyra de Scalerics.\n\n"
+                   "Quedamos agendados para el {fecha} a las {hora}. Entrás a la "
+                   "videollamada con el siguiente link: {link}\n\n"
+                   "El mismo día, un rato antes, te mando recordatorio de la "
+                   "videollamada. En lo posible confirmame con un okey.\n\n"
+                   "Saludos."),
+        "nota": "Se manda apenas queda agendada la demo.",
+        "explicacion": "", "automatica": 0,
+    },
+    {
+        "clave": "recordatorio_videollamada", "orden": 20,
+        "momento": "EL DÍA DE LA DEMO",
+        "titulo": "Recordatorio de videollamada", "canal": "WhatsApp",
+        "cuerpo": ("¿Cómo estás {nombre}? Este es un recordatorio para la "
+                   "videollamada de hoy a las {hora}.\n\n"
+                   "Entrás con el link que te pasé arriba.\n\n"
+                   "Saludos."),
+        "nota": "Automático: se dispara unas horas antes de la demo, sin que lo mandes vos.",
+        "explicacion": "", "automatica": 1,
+    },
+    {
+        "clave": "resumen_presupuesto", "orden": 30,
+        "momento": "DESPUÉS DE LA DEMO",
+        "titulo": "Resumen y presupuesto", "canal": "WhatsApp o mail",
+        "cuerpo": ("Hola {nombre}, gracias por el rato de hoy.\n\n"
+                   "Te dejo el presupuesto de la {servicio} como quedamos: {monto}, "
+                   "entrega en {plazo} desde que arrancamos.\n\n"
+                   "Cualquier duda escribime. Si querés avanzar, con confirmarme "
+                   "por acá alcanza."),
+        "nota": "Adjunta el PDF del presupuesto.",
+        "explicacion": "", "automatica": 0,
+    },
+    {
+        "clave": "reactivacion", "orden": 40,
+        "momento": "LEAD FRÍO",
+        "titulo": "Reactivación", "canal": "WhatsApp",
+        "cuerpo": ("¿Cómo estás {nombre}? Avisame si al final seguís interesado "
+                   "en avanzar con el {servicio}.\n\n"
+                   "Saludos."),
+        "nota": "", "explicacion": "", "automatica": 0,
+    },
+    {
+        "clave": "reactivacion_alternativa", "orden": 50,
+        "momento": "LEAD FRÍO",
+        "titulo": "Alternativa para el de reactivación", "canal": "WhatsApp",
+        "cuerpo": ("¿Cómo estás {nombre}? Te escribo por el {servicio} que "
+                   "habíamos charlado. ¿Lo dejamos para más adelante o lo retomamos?"),
+        "nota": "",
+        "explicacion": ("Preguntar si sigue interesado obliga al otro a decidir, y lo "
+                        "más fácil es no contestar. Esta versión ofrece dos salidas y "
+                        "las dos sirven: incluso el “más adelante” deja una fecha para "
+                        "volver a llamar."),
+        "automatica": 0,
+    },
+)
+
+_COLUMNAS_PLANTILLA = ("orden", "momento", "titulo", "canal", "cuerpo", "nota",
+                       "explicacion", "automatica")
+
+
+def _sembrar_plantillas(conn: sqlite3.Connection) -> int:
+    """Precarga idempotente de las seis plantillas: las cinco del PDF y la del
+    lead que no atendió.
+
+    Por `clave` (única): si ya están —editadas, o borradas, que quedan
+    marcadas— no se duplican ni se pisan. Devuelve cuántas creó.
+    """
+    creadas = 0
+    for p in _PLANTILLAS_PRECARGA:
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO plantillas_mensajes "
+            "(clave, orden, momento, titulo, canal, cuerpo, nota, explicacion, "
+            " automatica, created_by_name) VALUES (?,?,?,?,?,?,?,?,?,'precarga')",
+            (p["clave"],) + tuple(p[c] for c in _COLUMNAS_PLANTILLA))
+        creadas += cur.rowcount
+    conn.commit()
+    return creadas
+
+
+def listar_plantillas(db_path: str) -> list[dict]:
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute("SELECT * FROM plantillas_mensajes WHERE borrada = 0 "
+                           "ORDER BY orden, id")
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def get_plantilla(db_path: str, plantilla_id: int) -> Optional[dict]:
+    conn = _connect(db_path)
+    try:
+        fila = conn.execute("SELECT * FROM plantillas_mensajes WHERE id = ? AND borrada = 0",
+                            (plantilla_id,)).fetchone()
+        return dict(fila) if fila else None
+    finally:
+        conn.close()
+
+
+def crear_plantilla(db_path: str, created_by_name: Optional[str] = None, **campos) -> int:
+    """Una plantilla nueva va al final, salvo que traiga `orden`."""
+    datos = {c: campos[c] for c in _COLUMNAS_PLANTILLA if c in campos}
+    conn = _connect(db_path)
+    try:
+        if "orden" not in datos:
+            (ultimo,) = conn.execute(
+                "SELECT COALESCE(MAX(orden), 0) FROM plantillas_mensajes").fetchone()
+            datos["orden"] = int(ultimo) + 10
+        cols = list(datos) + ["created_by_name"]
+        cur = conn.execute(
+            f"INSERT INTO plantillas_mensajes ({', '.join(cols)}) "
+            f"VALUES ({', '.join('?' for _ in cols)})",
+            tuple(datos.values()) + (created_by_name,))
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def actualizar_plantilla(db_path: str, plantilla_id: int, **campos) -> bool:
+    datos = {c: campos[c] for c in _COLUMNAS_PLANTILLA if c in campos}
+    if not datos:
+        return False
+    conn = _connect(db_path)
+    try:
+        sets = ", ".join(f"{c} = ?" for c in datos)
+        cur = conn.execute(
+            f"UPDATE plantillas_mensajes SET {sets}, updated_at = CURRENT_TIMESTAMP "
+            "WHERE id = ? AND borrada = 0", tuple(datos.values()) + (plantilla_id,))
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def borrar_plantilla(db_path: str, plantilla_id: int) -> bool:
+    """Marca la plantilla como borrada (ver el comentario de la tabla)."""
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute(
+            "UPDATE plantillas_mensajes SET borrada = 1, updated_at = CURRENT_TIMESTAMP "
+            "WHERE id = ? AND borrada = 0", (plantilla_id,))
+        conn.commit()
+        return cur.rowcount > 0
     finally:
         conn.close()

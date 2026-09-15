@@ -470,6 +470,19 @@ leads de Meta se renombró a **D** para deshacer el empate.
   - **Envíos de formulario (`meta_lead_envios`):** quien vuelve a llenar el formulario cuenta también en el mes de la vuelta, como Meta. Lo registran el webhook y los imports. **Backfill:** el import diario (arranca 120 s después de cada boot, y `POST /api/meta/import-sync` con `ADMIN_TOKEN`) rellena la tabla con todo lo que devuelve Graph (~90 días) sin crear fichas ni avisar. Los contadores de Marketing (dossier, piezas) y la pauta de Finanzas cuentan envíos por mes de Montevideo (`database.ENVIOS_META_SQL`); las etapas quedan en el primer envío.
   - **Zona compartida tocada:** `database.py` (tabla, columnas, `delete_business`/`merge_business`), `dashboard.py` (panel Meta Ads), `routes/leads.py` (`registrar_cambio_de_estado`, lo usa `/crm-status`), `services/dossier.py`, `services/anuncios.py`, `services/finanzas.py` (solo `rendimiento_pauta`).
 
+- **15/9 — I: Flujos, en `feat/recursos-humanos` (encima de #40). Sin PR ni deploy.**
+  - Bloque al final del panel Ausencias, desde el PDF "Flujos - Scalerics". No es un ítem del menú. Tiene 4 flujos; solo "De lead a cobro" tiene pasos (los 10 del PDF, con su texto exacto). Los otros tres están vacíos.
+  - Base: tablas `flujos`, `flujo_pasos` y `flujo_paso_cobros`. La última permite varios momentos de cobro por paso; el paso 07 trae uno, "100% al confirmar".
+    - La precarga es `_sembrar_flujos`: carga pasos solo en un flujo recién creado, así no pisa ediciones.
+    - `numero` se renumera 1..n cada vez que se agrega, borra o mueve un paso.
+  - API `routes/flujos.py`:
+    - Leer: pide Organigrama o Ausencias.
+    - Escribir: `require_admin`, la misma `is_admin` de `/api/me`.
+  - Pantalla: la edición va detrás del botón "Editar".
+    - Un paso con `pantalla` es clickeable solo si el panel está en la página y el rol lo ve. La regla sale de `window._panelAccess`, que ahora guarda el IIFE de permisos.
+    - Pantallas precargadas: 01 `notion_clients`, 05 `demos`, 07 `clientes`, 08 `projects`.
+  - **Si agregan paneles** (Seguimiento de leads, Plantillas): sumarlos a `EQ_PANTALLAS` para que aparezcan en el formulario. Una pantalla guardada que todavía no existe se conserva y no es clickeable.
+
 - **15/9 — rama `feat/calendario-contador-mes` (worktree `../crm-cal-mes`). Sin PR ni deploy.** Pedido de Juan: contador del mes y deslizar entre meses.
   - `#cal-count` ahora habla del MES que se mira, también en vista semana: "Septiembre 2026 · 18 reuniones · 11 hechas · 7 por venir" (pasado: "N reuniones"; futuro: "N agendadas"). Hechas/por venir contra la hora de Montevideo (`_calAhoraMvd`, UTC-3 fijo), no contra el reloj del navegador.
   - La vista semana pide la semana **más su mes entero** en un solo GET (`_calRangoSemana`) y filtra la grilla a los 7 días. El mes de la semana: el de hoy si cae adentro, si no el del jueves.
