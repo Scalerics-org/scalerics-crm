@@ -366,6 +366,61 @@ def send_meta_lead_failure_alert(email: str, lead_id: str, error: str) -> None:
     _send(email, asunto, cuerpo)
 
 
+def send_wa_message_notification(to_email: str, nombre: str, telefono: str,
+                                 texto: str, hora: str) -> bool:
+    """Avisa que alguien escribio al WhatsApp de Scalerics.
+
+    Cuando avisar y cuando no lo decide `services/wa_aviso_mail.py`; aca solo
+    se arma el mail. Nombre, telefono y texto los escribe cualquiera que le
+    mande un WhatsApp a la empresa: van escapados, igual que los datos del
+    formulario de Meta.
+    """
+    from urllib.parse import quote
+
+    nombre_esc = html.escape(nombre or "")
+    telefono_esc = html.escape(telefono or "")
+    texto_esc = html.escape(texto or "").replace("\n", "<br>")
+    quien_esc = nombre_esc or telefono_esc or "Alguien"
+    digitos = "".join(c for c in (telefono or "") if c.isdigit())
+    link = f"{_CRM_URL}/?panel=wa" + (f"&chat={quote(digitos)}" if digitos else "")
+
+    filas = []
+    if nombre_esc:
+        filas.append(("Contacto", nombre_esc))
+    filas.append(("Teléfono", telefono_esc))
+    filas.append(("Hora", f"{html.escape(hora or '')} (Montevideo)"))
+    sin_texto = "<i>(mensaje sin texto: una nota de voz, una foto o un archivo)</i>"
+    mensaje = (
+        '<div style="background:#f0fdf4;border-left:3px solid #10b981;border-radius:6px;'
+        'padding:14px 16px;margin:0 0 20px;font-size:14px;line-height:1.6;color:#1c2b40">'
+        f'{texto_esc or sin_texto}</div>'
+    )
+    cuerpo = (
+        _info_card(filas)
+        + mensaje
+        + _muted("Se avisa con el primer mensaje de cada conversación. Lo que ese "
+                 "contacto escriba en los 30 minutos siguientes no genera otro mail.")
+    )
+    cuerpo_html = _layout(
+        badge="WhatsApp",
+        title=f"{quien_esc} escribió al WhatsApp",
+        body=cuerpo,
+        cta_url=html.escape(link),
+        cta_label="Abrir la conversación →",
+    )
+    # El asunto es texto plano: sin escapar, pero sin saltos de linea.
+    quien = " ".join((nombre or telefono or "mensaje nuevo").split())[:80]
+    asunto = f"WhatsApp: {quien} escribió — Scalerics CRM"
+    texto_plano = (
+        f"{quien} escribió al WhatsApp.\n"
+        f"Teléfono: {telefono or '-'}\n"
+        f"Hora: {hora or '-'} (Montevideo)\n\n"
+        f"{texto or '(mensaje sin texto)'}\n\n"
+        f"Abrir la conversación: {link}\n"
+    )
+    return _send_estado(to_email, asunto, cuerpo_html, text=texto_plano) == "ok"
+
+
 # _LOGO es la version clara, pensada para el header navy de _layout. Sobre el
 # fondo blanco de este mail se ve lavada y casi ilegible, asi que la firma usa
 # la version oscura.

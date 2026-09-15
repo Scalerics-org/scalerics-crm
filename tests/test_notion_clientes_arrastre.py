@@ -382,7 +382,9 @@ def _correr(cuerpo: str, tmp_path) -> str:
     fuente = "\n".join([
         dashboard.ESC_JS, colores,
         *(_funcion(n) for n in ("_ncPuedeArrastrar", "_ncDibujar", "_notionClientColHtml",
-                                "_notionClientCardHtml", "_ncVinculoHtml", "_ncDragStart",
+                                "_notionClientCardHtml", "_ncVinculoHtml",
+                                # El boton "Recordatorio de llamado" de Seguimiento de leads.
+                                "slBotonNotionHtml", "_ncDragStart",
                                 "_ncOver", "_ncDrop", "_ncMover")),
         """
         function assert(cond, msg) { if (!cond) { throw new Error(msg); } }
