@@ -123,8 +123,11 @@ def test_el_piso_es_anterior_al_primer_dato():
 
 
 def test_el_navegador_de_mes_nace_oculto():
-    """Solo tiene sentido con "Un mes" elegido; el default son 90 dias."""
+    """Nace oculto en el HTML y lo muestra `_mkPintarPeriodo` al cargar, segun el
+    periodo elegido. Desde el 14/9 el default es "Un mes" (pedido de Juan: al
+    entrar a Marketing lo primero abierto es un mes), asi que al cargar se ve."""
     html = dashboard.DASHBOARD_HTML
     m = re.search(r'id="mk-nav-mes"[^>]*', html)
     assert m and "display:none" in m.group(0), m.group(0) if m else "no esta"
-    assert '<option value="90" selected>' in html, "el default deberian ser 90 dias"
+    assert '<option value="mes" selected>' in html, "el default deberia ser un mes"
+    assert '<option value="90" selected>' not in html
