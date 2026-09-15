@@ -464,6 +464,12 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **15/9 — rama `feat/calendario-contador-mes` (worktree `../crm-cal-mes`). Sin PR ni deploy.** Pedido de Juan: contador del mes y deslizar entre meses.
+  - `#cal-count` ahora habla del MES que se mira, también en vista semana: "Septiembre 2026 · 18 reuniones · 11 hechas · 7 por venir" (pasado: "N reuniones"; futuro: "N agendadas"). Hechas/por venir contra la hora de Montevideo (`_calAhoraMvd`, UTC-3 fijo), no contra el reloj del navegador.
+  - La vista semana pide la semana **más su mes entero** en un solo GET (`_calRangoSemana`) y filtra la grilla a los 7 días. El mes de la semana: el de hoy si cae adentro, si no el del jueves.
+  - Celular: deslizar sobre `#cal-days` cambia de mes (>50px y más horizontal que vertical, listeners pasivos). `calShift` en el celular mueve siempre el mes (antes, con `calView='semana'` la flecha no hacía nada visible).
+  - `_calPedido` descarta respuestas viejas al navegar rápido. `.cal-count` pasó a tokens (se fue `body.light .cal-count`). Tests en `tests/test_calendario_contador_mes.py`.
+
 - **15/9 — I: rama `feat/recursos-humanos` (sale de `fix/piezas-y-recupero`, PR #38). Sin PR ni deploy.**
   - Pedido de Juan: Equipo pasa a ser el grupo **RECURSOS HUMANOS**, entre OPERACIÓN y CAPTACIÓN, con dos paneles:
     - **Organigrama**: conserva el id `equipo`, así los permisos guardados siguen valiendo.
