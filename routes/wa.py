@@ -1,10 +1,15 @@
 """WhatsApp panel routes — proxy to bot admin API."""
 
+import hmac
 import logging
 import os
+import threading
+from datetime import datetime, timezone
 
 import requests as http_requests
 from flask import Blueprint, current_app, jsonify, make_response, request
+
+from services import wa_aviso_mail
 
 logger = logging.getLogger(__name__)
 wa_bp = Blueprint("wa", __name__)
@@ -290,6 +295,67 @@ def api_bot_lead_qualified():
 
     logger.info(f"[bot-sync] lead-qualified done: business_id={biz_id}, crm_status={crm_status!r}")
     return jsonify({"ok": True, "business_id": biz_id})
+
+
+def _en_segundo_plano(funcion, *args) -> None:
+    """Corre `funcion` en un hilo aparte. Separado para que los tests lo puedan
+    correr en el mismo hilo y mirar lo que pasa."""
+    threading.Thread(target=funcion, args=args, daemon=True).start()
+
+
+def _ahora() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+@wa_bp.route("/api/bot/mensaje-entrante", methods=["POST"])
+def api_bot_mensaje_entrante():
+    """El bot avisa que un contacto escribio al WhatsApp.
+
+    Lo llama el bot (otro repo) con la misma credencial que usa para
+    /api/bot/lead-qualified: su CRM_ADMIN_TOKEN contra el ADMIN_TOKEN del CRM.
+    Cuerpo: {"phone": "...", "name": "...", "text": "...", "direction": "in"}.
+
+    Dispara el aviso por mail a contacto@ (ver services/wa_aviso_mail.py), que
+    decide si corresponde: el primer mensaje de la conversacion, o el primero
+    despues de 30 minutos sin mensajes de ese numero.
+
+    Nada de lo que pase con el mail le llega al bot: la decision se guarda en
+    la base y el envio corre en un hilo aparte. Si la base o Resend fallan, se
+    loguea y el bot igual recibe su 200.
+    """
+    token = request.headers.get("x-admin-token", "")
+    esperado = os.environ.get("ADMIN_TOKEN", "")
+    if not esperado or not hmac.compare_digest(token.encode(), esperado.encode()):
+        return jsonify({"error": "unauthorized"}), 401
+
+    data = request.get_json(silent=True) or {}
+    phone = str(data.get("phone") or "").strip()
+    if not phone:
+        return jsonify({"ok": False, "error": "phone requerido"}), 400
+
+    # Solo avisan los mensajes que ENTRAN. Si el bot un dia manda tambien los
+    # suyos por aca, no pueden disparar mails ni correr la ventana.
+    direccion = str(data.get("direction") or "in").strip().lower()
+    if direccion not in ("in", "inbound"):
+        return jsonify({"ok": True, "aviso": False})
+
+    nombre = str(data.get("name") or "").strip()
+    texto = str(data.get("text") or data.get("content") or "")
+    ahora = _ahora()
+
+    try:
+        avisar = wa_aviso_mail.registrar_mensaje(current_app.config["DB_PATH"], phone, ahora)
+    except Exception as e:  # noqa: BLE001 - el aviso nunca puede tirar el webhook
+        logger.error(f"[wa-aviso] no se pudo registrar el mensaje de {phone}: {e}")
+        avisar = False
+
+    if avisar:
+        try:
+            _en_segundo_plano(wa_aviso_mail.mandar_aviso, nombre, phone, texto, ahora)
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"[wa-aviso] no se pudo lanzar el aviso de {phone}: {e}")
+
+    return jsonify({"ok": True, "aviso": avisar})
 
 
 @wa_bp.route("/api/wa/templates", methods=["GET"])
