@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const { cargar } = require('../src/config');
 
-const MINIMO = { WA_API_KEY: 'una-clave-bien-larga-1234' };
+const MINIMO = { WA_API_KEY: 'una-clave-bien-larga-1234' }; // gitleaks:allow — clave de mentira para el test
 
 test('exige WA_API_KEY y falla con un mensaje util', () => {
   assert.throws(() => cargar({}), /WA_API_KEY/);

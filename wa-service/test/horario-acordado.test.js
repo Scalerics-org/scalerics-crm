@@ -14,7 +14,7 @@ const CERRADO = { BUSINESS_HOURS: '09:00-19:00', BUSINESS_DAYS: 'mon-sat' };
 const DOMINGO_MADRUGADA = new Date('2026-08-09T06:00:00Z');
 
 function limites(contadores = {}) {
-  const cfg = cargar({ WA_API_KEY: 'una-clave-bien-larga-1234', TZ: 'America/Montevideo', MAX_MSGS_PER_HOUR: '3' });
+  const cfg = cargar({ WA_API_KEY: 'una-clave-bien-larga-1234', TZ: 'America/Montevideo', MAX_MSGS_PER_HOUR: '3' }); // gitleaks:allow — clave de mentira para el test
   const repo = {
     enviosDesde: () => contadores.envios || 0,
     nuevosDesde: () => 0,

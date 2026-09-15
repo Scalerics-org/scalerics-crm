@@ -6,7 +6,7 @@ const { crearLimites, parsearHorario, parsearDias, enZona } = require('../src/ou
 const { jitter, duracionTyping, entre } = require('../src/outbound/humanize');
 const { cargar } = require('../src/config');
 
-const MIN = { WA_API_KEY: 'una-clave-bien-larga-1234' };
+const MIN = { WA_API_KEY: 'una-clave-bien-larga-1234' }; // gitleaks:allow — clave de mentira para el test
 
 // Lunes 12:00, domingo 03:00 y lunes 03:00, hora de Montevideo (UTC-3).
 const LUNES_MEDIODIA = new Date('2026-08-10T15:00:00Z');
