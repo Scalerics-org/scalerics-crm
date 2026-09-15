@@ -128,6 +128,16 @@ def _filas_db(db):
         conn.close()
 
 
+def _olvidar_reparto(conn, panel):
+    """Con los repartos de una sola vez (tabla `panel_grants_aplicados`), una
+    base "de antes" es una sin la marca de ese panel. Si la tabla todavía no
+    existe, no hay nada que olvidar."""
+    try:
+        conn.execute("DELETE FROM panel_grants_aplicados WHERE panel = ?", (panel,))
+    except sqlite3.OperationalError:
+        pass
+
+
 # ── precarga ─────────────────────────────────────────────────────────────────
 
 def test_la_precarga_es_exactamente_la_de_juan(tmp_path):
@@ -360,8 +370,8 @@ def test_el_panel_llega_a_quien_tiene_organigrama_o_ausencias(tmp_path):
                                 ("Admin", ["meta"])):
             conn.execute("UPDATE roles SET panel_access=? WHERE name=?", (json.dumps(paneles), nombre))
         conn.commit()
-        database._grant_panel_to_existing_roles(conn, "horarios", solo_si_tiene="equipo")
-        database._grant_panel_to_existing_roles(conn, "horarios", solo_si_tiene="ausencias")
+        _olvidar_reparto(conn, "horarios")
+        database._grant_panel_to_existing_roles(conn, "horarios", si_tiene=("equipo", "ausencias"))
         acceso = {n: json.loads(p) for n, p in conn.execute("SELECT name, panel_access FROM roles")}
     finally:
         conn.close()
@@ -369,8 +379,7 @@ def test_el_panel_llega_a_quien_tiene_organigrama_o_ausencias(tmp_path):
     assert acceso["Ventas"] == ["ausencias", "horarios"]
     assert acceso["Admin"] == ["meta"]
     fuente = (RAIZ / "database.py").read_text(encoding="utf-8")
-    assert '_grant_panel_to_existing_roles(conn, "horarios", solo_si_tiene="equipo")' in fuente
-    assert '_grant_panel_to_existing_roles(conn, "horarios", solo_si_tiene="ausencias")' in fuente
+    assert '_grant_panel_to_existing_roles(conn, "horarios", si_tiene=("equipo", "ausencias"))' in fuente
 
 
 # ── registrado en todos lados ────────────────────────────────────────────────
@@ -379,7 +388,7 @@ def test_esta_en_recursos_humanos_despues_de_ausencias():
     menu = HTML[HTML.index('<div class="nav-scroll">'):HTML.index('<div class="sidebar-bottom">')]
     grupo = _entre(menu, '<div class="nav-section-label">RECURSOS HUMANOS</div>',
                    '<div class="nav-section-label">CAPTACIÓN</div>')
-    assert re.findall(r'id="nav-(\w+)"', grupo) == ["equipo", "ausencias", "horarios"]
+    assert re.findall(r'id="nav-(\w+)"', grupo) == ["equipo", "ausencias", "horarios", "flujos"]
     assert ('<div class="nav-item" id="nav-horarios" onclick="showPanel(\'horarios\')">'
             '<i data-lucide="clock-4" class="nav-icon"></i> Horarios</div>') in grupo
 

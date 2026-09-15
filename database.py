@@ -1082,7 +1082,7 @@ def init_db(db_path: str) -> None:
 
         # ── flujos ────────────────────────────────────────────────────────────
         # Cómo trabaja la empresa, paso a paso, con el ROL de cada etapa y
-        # nunca nombres de personas. Se muestra al final de Ausencias. Los
+        # nunca nombres de personas. Se muestra en el panel Flujos. Los
         # pasos viven acá y no en el código: se agregan, editan y reordenan
         # desde la pantalla. `numero` se renumera 1..n en cada cambio.
         # `flujo_paso_cobros` deja que un paso tenga más de un momento de
@@ -1126,6 +1126,9 @@ def init_db(db_path: str) -> None:
                      "ON flujo_paso_cobros(paso_id)")
         conn.commit()
         _sembrar_flujos(conn)
+        # Flujos pasó de bloque al final de Ausencias a panel propio de Recursos
+        # Humanos. Quien lo leía (Organigrama o Ausencias) lo sigue viendo.
+        _grant_panel_to_existing_roles(conn, "flujos", si_tiene=("equipo", "ausencias"))
 
         # ── Daily Programador ─────────────────────────────────────────────────
         # Actividades del día y recordatorios que se repiten (pedido de Juan,
@@ -1248,8 +1251,7 @@ def init_db(db_path: str) -> None:
         # arranque que crea la tabla (como Seguimiento de leads): si después
         # Juan se lo saca a un rol, un deploy no se lo vuelve a poner.
         if horarios_nueva:
-            _grant_panel_to_existing_roles(conn, "horarios", solo_si_tiene="equipo")
-            _grant_panel_to_existing_roles(conn, "horarios", solo_si_tiene="ausencias")
+            _grant_panel_to_existing_roles(conn, "horarios", si_tiene=("equipo", "ausencias"))
 
         # ── seguimiento de leads ──────────────────────────────────────────────
         # La agenda de llamados de Juan (14/9). `lead_id` es `businesses.id`:

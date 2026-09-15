@@ -1269,6 +1269,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-equipo .nav-icon{stroke:#a3e635}
 #nav-ausencias .nav-icon{stroke:#e879f9}
 #nav-horarios .nav-icon{stroke:#fbbf24}
+#nav-flujos .nav-icon{stroke:#5eead4}
 #nav-seg_leads .nav-icon{stroke:#fb7185}
 #nav-daily .nav-icon{stroke:#38bdf8}
 #nav-daily_admin .nav-icon{stroke:#f0abfc}
@@ -1295,6 +1296,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-equipo.active .nav-icon{stroke:#bef264}
 #nav-ausencias.active .nav-icon{stroke:#f0abfc}
 #nav-horarios.active .nav-icon{stroke:#fde68a}
+#nav-flujos.active .nav-icon{stroke:#99f6e4}
 #nav-seg_leads.active .nav-icon{stroke:#fda4af}
 #nav-plantillas.active .nav-icon{stroke:#d8b4fe}
 /* light mode — slightly darker tones */
@@ -1317,6 +1319,7 @@ body.light #nav-projects .nav-icon{stroke:#a16207}
 body.light #nav-equipo .nav-icon{stroke:#4d7c0f}
 body.light #nav-ausencias .nav-icon{stroke:#a21caf}
 body.light #nav-horarios .nav-icon{stroke:#92400e}
+body.light #nav-flujos .nav-icon{stroke:#0f766e}
 body.light #nav-seg_leads .nav-icon{stroke:#be123c}
 body.light #nav-plantillas .nav-icon{stroke:#9333ea}
 /* ── Lucide icons ─────────────────────────────────────────────────────────── */
@@ -2263,6 +2266,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div class="nav-item" id="nav-equipo" onclick="showPanel('equipo')"><i data-lucide="network" class="nav-icon"></i> Organigrama</div>
   <div class="nav-item" id="nav-ausencias" onclick="showPanel('ausencias')"><i data-lucide="calendar-clock" class="nav-icon"></i> Ausencias</div>
   <div class="nav-item" id="nav-horarios" onclick="showPanel('horarios')"><i data-lucide="clock-4" class="nav-icon"></i> Horarios</div>
+  <div class="nav-item" id="nav-flujos" onclick="showPanel('flujos')"><i data-lucide="workflow" class="nav-icon"></i> Flujos</div>
   <div class="nav-section-label">CAPTACIÓN</div>
   <div class="nav-item" id="nav-cola" onclick="showPanel('cola')"><i data-lucide="inbox" class="nav-icon"></i> Outbound</div>
   <div class="nav-item" id="nav-metrics" onclick="showPanel('metrics')"><i data-lucide="bar-chart-2" class="nav-icon"></i> Inteligencia comercial</div>
@@ -3177,19 +3181,6 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       <div class="eq-cab"><div class="fin-card-title" id="eq-titulo-det">Detalle</div></div>
       <div id="eq-detalle"></div>
     </section>
-
-    <!-- Flujos: al final de Ausencias, debajo de todo. Solo roles, nunca nombres. -->
-    <section class="eq-card eq-flujos" aria-labelledby="eq-titulo-flujos">
-      <div class="eq-cab">
-        <div>
-          <div class="fin-card-title" id="eq-titulo-flujos">Flujos</div>
-          <p class="eq-flujos-bajada">Cómo trabajamos, paso a paso, con el rol responsable de cada etapa.</p>
-        </div>
-        <div id="eq-flujos-acciones"></div>
-      </div>
-      <div class="eq-flujos-selector" id="eq-flujos-selector" role="group" aria-label="Elegir flujo"></div>
-      <div id="eq-flujos-pasos"><div class="eq-vacio">Cargando...</div></div>
-    </section>
   </div>
   <!-- ======= FIN RECURSOS HUMANOS PANELES ======= -->
 
@@ -3210,6 +3201,32 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     </section>
   </div>
   <!-- ======= FIN HORARIOS PANEL ======= -->
+
+  <!-- ======= FLUJOS PANEL ======= -->
+  <!-- Recursos Humanos > Flujos. Antes era un bloque al final de Ausencias;
+       ahora es un panel propio. Lo pinta eqCargarFlujos al abrirlo. -->
+  <div id="flujos-panel" class="panel">
+    <div class="page-header">
+      <div>
+        <h1>Flujos</h1>
+        <div class="page-date">Recursos Humanos · cómo trabajamos, paso a paso.</div>
+      </div>
+    </div>
+
+    <!-- Flujos: solo roles, nunca nombres. -->
+    <section class="eq-card eq-flujos" aria-labelledby="eq-titulo-flujos">
+      <div class="eq-cab">
+        <div>
+          <div class="fin-card-title" id="eq-titulo-flujos">Flujos</div>
+          <p class="eq-flujos-bajada">Cómo trabajamos, paso a paso, con el rol responsable de cada etapa.</p>
+        </div>
+        <div id="eq-flujos-acciones"></div>
+      </div>
+      <div class="eq-flujos-selector" id="eq-flujos-selector" role="group" aria-label="Elegir flujo"></div>
+      <div id="eq-flujos-pasos"><div class="eq-vacio">Cargando...</div></div>
+    </section>
+  </div>
+  <!-- ======= FIN FLUJOS PANEL ======= -->
 
   <!-- ======= PLANTILLAS PANEL ======= -->
   <div id="plantillas-panel" class="panel">
@@ -4021,7 +4038,7 @@ function showPanel(name) {
   if (name === 'metrics') loadMetrics();
   if (name === 'activity') loadActivity();
   if (name === 'equipo' || name === 'ausencias') loadEquipo();
-  if (name === 'ausencias') eqCargarFlujos();
+  if (name === 'flujos') eqCargarFlujos();
   if (name === 'horarios') hrCargar();
   if (name === 'seg_leads') loadSegLeads();
   if (name === 'plantillas') plCargar();
@@ -8246,20 +8263,20 @@ function _showScoreBreakdown(event, el) {
 
 // ── Mobile navigation ─────────────────────────────────────────────────────────
 // El mismo orden que el menu de la izquierda (Juan, 14/9).
-const NAV_PRIORITY = ['cal','meta','finanzas','simulador','seg_leads','wa','notion_clients','plantillas','clientes','projects','tasks','daily','daily_admin','activity','equipo','ausencias','horarios','cola','metrics'];
+const NAV_PRIORITY = ['cal','meta','finanzas','simulador','seg_leads','wa','notion_clients','plantillas','clientes','projects','tasks','daily','daily_admin','activity','equipo','ausencias','horarios','flujos','cola','metrics'];
 const NAV_ICONS = {
   cola:'inbox',meta:'instagram',cal:'calendar',
   tasks:'check-square',pipeline:'trending-up',clientes:'users',
   wa:'message-circle',metrics:'bar-chart-2',activity:'clock',projects:'target',
   notion_clients:'handshake',finanzas:'wallet',simulador:'calculator',equipo:'network',
-  ausencias:'calendar-clock',horarios:'clock-4',seg_leads:'phone-call',daily:'clipboard-list',plantillas:'message-square-text',daily_admin:'clipboard-check'
+  ausencias:'calendar-clock',horarios:'clock-4',flujos:'workflow',seg_leads:'phone-call',daily:'clipboard-list',plantillas:'message-square-text',daily_admin:'clipboard-check'
 };
 const NAV_LABELS = {
   cola:'Outbound',meta:'Meta',cal:'Agenda',
   tasks:'Tareas',pipeline:'Pipeline',clientes:'Clientes',
   wa:'WA',metrics:'Intel. comercial',activity:'Actividad',projects:'Proyectos',
   notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador',equipo:'Organigrama',
-  ausencias:'Ausencias',horarios:'Horarios',seg_leads:'Seguimiento',daily:'Daily',plantillas:'Plantillas',daily_admin:'Daily Admin'
+  ausencias:'Ausencias',horarios:'Horarios',flujos:'Flujos',seg_leads:'Seguimiento',daily:'Daily',plantillas:'Plantillas',daily_admin:'Daily Admin'
 };
 let _mobileNavOverflow = [];
 
@@ -8339,7 +8356,7 @@ function closeMasSheet() {
 }
 
 // ── Panel access control ──────────────────────────────────────────────────────
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','equipo','ausencias','horarios','seg_leads','daily','plantillas','daily_admin'];
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','equipo','ausencias','horarios','flujos','seg_leads','daily','plantillas','daily_admin'];
 (async () => {
   try {
     const r = await fetch('/api/me');
@@ -12679,7 +12696,7 @@ function eqBorrarRecupero(id) {
 }
 
 // ── flujos ──
-// Bloque al final de Ausencias: como trabajamos, paso a paso, con el rol de
+// Panel Flujos de Recursos Humanos: como trabajamos, paso a paso, con el rol de
 // cada etapa y nunca nombres. Los pasos vienen de /api/flujos. Agregar, editar
 // y reordenar va detras del boton Editar y solo para administradores; el
 // servidor le responde 403 a cualquier otro.
@@ -16391,8 +16408,8 @@ select:focus{border-color:#0088cc}
 </div>
 
 <script>
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','equipo','ausencias','horarios','seg_leads','daily','plantillas','daily_admin'];
-const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',equipo:'Organigrama',ausencias:'Ausencias',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas'};
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','equipo','ausencias','horarios','flujos','seg_leads','daily','plantillas','daily_admin'];
+const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',equipo:'Organigrama',ausencias:'Ausencias',horarios:'Horarios',flujos:'Flujos',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas'};
 let _roles = [];
 
 // Paneles que muestran el check "solo lectura". El dato (roles.paneles_solo_lectura)

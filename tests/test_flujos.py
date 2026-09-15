@@ -1,7 +1,8 @@
-"""El bloque Flujos, al final de la pantalla Ausencias (PDF "Flujos - Scalerics").
+"""Flujos, panel propio de Recursos Humanos (PDF "Flujos - Scalerics").
 
-Criterios de aceptación del PDF, cada uno con su test:
-1 aparece al final de la pantalla, debajo de las ausencias · 2 ningún nombre
+Primero fue un bloque al final de Ausencias; Juan pidió que sea "una parte más
+de la sección recursos humano". Criterios del PDF, cada uno con su test:
+1 es un panel de Recursos Humanos, después de Horarios · 2 ningún nombre
 propio, solo roles · 3 cambio el título en la base y la pantalla lo refleja ·
 4 reordeno y la numeración se corrige sola · 5 un paso con pantalla lleva a
 esa sección · 6 los otros tres flujos existen y muestran su estado vacío.
@@ -12,6 +13,7 @@ cobro por paso.
 import json
 import re
 import sqlite3
+from pathlib import Path
 
 import pytest
 
@@ -37,7 +39,8 @@ PASOS_PDF = [
 PANTALLAS = {1: "notion_clients", 5: "demos", 7: "clientes", 8: "projects"}
 FLUJOS_PDF = ["De lead a cobro", "Arranque de proyecto", "Cobranza", "Alta de una persona"]
 
-BLOQUE = _entre(AUSENCIAS, "<!-- Flujos:", "</section>")
+PANEL_FLUJOS = _entre(SRC, "<!-- ======= FLUJOS PANEL ======= -->", "<!-- ======= FIN FLUJOS PANEL ======= -->")
+BLOQUE = _entre(PANEL_FLUJOS, "<!-- Flujos:", "</section>")
 MODAL_PASO = MODALES[MODALES.index('id="eq-modal-paso"'):]
 JS_FLUJOS = _entre(SRC, "// ── flujos ──", "// ========== Simulador financiero ==========")
 
@@ -112,18 +115,83 @@ def test_los_pasos_estan_en_la_base_y_no_en_la_pantalla():
         assert detalle not in BLOQUE + JS_FLUJOS + MODAL_PASO
 
 
-# ── criterio 1: al final de Ausencias ────────────────────────────────────────
+# ── criterio 1: panel propio de Recursos Humanos────────────────────────────────────────
 
-def test_c1_flujos_va_al_final_de_ausencias_y_no_en_el_menu(cli):
+def test_c1_flujos_es_un_panel_propio_de_recursos_humanos(cli):
+    """Juan: Flujos no va dentro de Ausencias, va como una parte más de Recursos
+    Humanos. El bloque entero (selector, pasos, Editar, vacíos) vive en su panel."""
     pagina = cli.get("/").get_data(as_text=True)
-    assert pagina.count('id="eq-flujos-pasos"') == 1
-    assert AUSENCIAS.index('id="eq-detalle"') < AUSENCIAS.index('id="eq-titulo-flujos"')
-    despues = AUSENCIAS[AUSENCIAS.index('id="eq-flujos-pasos"'):]
-    assert "eq-card" not in despues, "Flujos tiene que ser lo último de la pantalla"
+    assert pagina.count('id="flujos-panel"') == 1 and pagina.count('id="eq-flujos-pasos"') == 1
+    assert '<div id="flujos-panel" class="panel">' in PANEL_FLUJOS and "<h1>Flujos</h1>" in PANEL_FLUJOS
     assert ">Flujos</div>" in BLOQUE and 'class="eq-flujos-bajada"' in BLOQUE
+    for id_ in ("eq-titulo-flujos", "eq-flujos-acciones", "eq-flujos-selector", "eq-flujos-pasos"):
+        assert f'id="{id_}"' in PANEL_FLUJOS, id_
     menu = HTML[HTML.index('<div class="nav-scroll">'):HTML.index('<div class="sidebar-bottom">')]
-    assert "flujo" not in menu.lower()
-    assert "if (name === 'ausencias') eqCargarFlujos();" in pagina
+    grupo = _entre(menu, '<div class="nav-section-label">RECURSOS HUMANOS</div>',
+                   '<div class="nav-section-label">CAPTACIÓN</div>')
+    assert re.findall(r'id="nav-(\w+)"', grupo) == ["equipo", "ausencias", "horarios", "flujos"]
+    assert ('<div class="nav-item" id="nav-flujos" onclick="showPanel(\'flujos\')">'
+            '<i data-lucide="workflow" class="nav-icon"></i> Flujos</div>') in grupo
+    assert "if (name === 'flujos') eqCargarFlujos();" in pagina
+    assert "if (name === 'ausencias') eqCargarFlujos();" not in pagina
+
+
+def test_ausencias_ya_no_tiene_el_bloque_de_flujos():
+    assert "eq-flujos" not in AUSENCIAS and "Flujos" not in AUSENCIAS
+    assert AUSENCIAS.rstrip().endswith("</div>")
+    assert 'id="eq-detalle"' in AUSENCIAS
+
+
+def test_flujos_esta_registrado_en_todos_lados():
+    prioridad = re.findall(r"'(\w+)'", re.search(r"const NAV_PRIORITY = \[([^\]]*)\]", HTML).group(1))
+    assert prioridad.index("flujos") == prioridad.index("horarios") + 1
+    assert "flujos:'workflow'" in re.search(r"const NAV_ICONS = \{(.*?)\n\}", HTML, re.S).group(1)
+    assert "flujos:'Flujos'" in re.search(r"const NAV_LABELS = \{(.*?)\n\}", HTML, re.S).group(1)
+    listas = re.findall(r"const ALL_PANELS = \[([^\]]*)\]", SRC)
+    assert len(listas) == 2 and all("'flujos'" in l for l in listas)
+    assert "flujos:'Flujos'" in re.search(r"const PANEL_LABELS = \{([^}]*)\}", SRC).group(1)
+
+
+def test_el_icono_de_flujos_tiene_un_color_propio_en_los_dos_temas():
+    for patron in (r"^#nav-(\w+) \.nav-icon\{stroke:(#[0-9a-f]+)\}",
+                   r"^#nav-(\w+)\.active \.nav-icon\{stroke:(#[0-9a-f]+)\}",
+                   r"^body\.light #nav-(\w+) \.nav-icon\{stroke:(#[0-9a-f]+)\}"):
+        colores = dict(re.findall(patron, HTML, re.M))
+        propio = colores.pop("flujos")
+        assert propio not in colores.values(), (patron, propio, colores)
+
+
+def _olvidar_reparto(conn, panel):
+    """Con los repartos de una sola vez (`panel_grants_aplicados`), una base
+    "de antes" es una sin la marca de ese panel. Sin la tabla, no hay marca."""
+    try:
+        conn.execute("DELETE FROM panel_grants_aplicados WHERE panel = ?", (panel,))
+    except sqlite3.OperationalError:
+        pass
+
+
+def test_el_panel_les_llega_a_quien_tiene_organigrama_o_ausencias(tmp_path):
+    db = str(tmp_path / "roles.db")
+    init_db(db)
+    acceso = {n: json.loads(p) for n, p in _sql(db, "SELECT name, panel_access FROM roles")}
+    assert acceso and all(p.count("flujos") == 1 for p in acceso.values()), acceso
+
+    conn = sqlite3.connect(db)
+    try:
+        for nombre, paneles in (("Caller", ["cola", "equipo"]), ("Ventas", ["ausencias"]),
+                                ("Admin", ["meta"])):
+            conn.execute("UPDATE roles SET panel_access=? WHERE name=?", (json.dumps(paneles), nombre))
+        conn.commit()
+        _olvidar_reparto(conn, "flujos")
+        database._grant_panel_to_existing_roles(conn, "flujos", si_tiene=("equipo", "ausencias"))
+        acceso = {n: json.loads(p) for n, p in conn.execute("SELECT name, panel_access FROM roles")}
+    finally:
+        conn.close()
+    assert acceso["Caller"] == ["cola", "equipo", "flujos"]
+    assert acceso["Ventas"] == ["ausencias", "flujos"]
+    assert acceso["Admin"] == ["meta"], "sin Organigrama ni Ausencias no recibe Flujos"
+    fuente = (Path(database.__file__)).read_text(encoding="utf-8")
+    assert '_grant_panel_to_existing_roles(conn, "flujos", si_tiene=("equipo", "ausencias"))' in fuente
 
 
 # ── criterio 2: sin nombres propios ──────────────────────────────────────────
@@ -261,6 +329,19 @@ def test_quien_no_es_admin_lee_pero_recibe_403_al_editar(app):
     assert ajeno.get("/api/flujos").status_code == 403
 
 
+@pytest.mark.parametrize("panel", ["flujos", "equipo", "ausencias"])
+def test_se_lee_con_cualquiera_de_los_tres_paneles_y_editar_sigue_siendo_de_admin(app, panel):
+    db = app.config["_DB"]
+    c = _cli(app, _usuario(db, f"{panel}@scalerics.com", _rol(db, f"Solo-{panel}", [panel])))
+    d = _flujos(c)
+    assert d["es_admin"] is False and len(d["flujos"]) == 4
+    lead = next(f for f in d["flujos"] if f["nombre"] == "De lead a cobro")
+    assert c.post(f"/api/flujos/{lead['id']}/pasos", json={"titulo": "x", "rol": "Soporte"}).status_code == 403
+    assert c.put(f"/api/flujos/pasos/{lead['pasos'][0]['id']}",
+                 json={"titulo": "x", "rol": "Soporte"}).status_code == 403
+    assert c.get("/").status_code == 200
+
+
 def test_el_admin_se_decide_igual_que_en_api_me(app):
     db = app.config["_DB"]
     por_rol = _cli(app, _usuario(db, "rol@scalerics.com", _rol(db, "admin", ["cola"])))
@@ -320,7 +401,7 @@ _PRUEBA_PINTADO = """
 (async () => {
   const s = {};
   const llamados = [];
-  showPanel('ausencias');
+  showPanel('flujos');
   await new Promise(r => setTimeout(r, 30));
   s.selector = _el('eq-flujos-selector').innerHTML;
   s.acciones = _el('eq-flujos-acciones').innerHTML;
@@ -341,7 +422,7 @@ _PRUEBA_PINTADO = """
   // Un panel que no esta en la pagina, o que el rol no ve, no es clickeable.
   const original = document.getElementById;
   document.getElementById = id => id === 'demos-panel' ? null : original(id);
-  window._panelAccess = ['ausencias'];
+  window._panelAccess = ['flujos'];
   eqPintarFlujos();
   s.restringido = _el('eq-flujos-pasos').innerHTML;
   eqFlujoIr('clientes');
