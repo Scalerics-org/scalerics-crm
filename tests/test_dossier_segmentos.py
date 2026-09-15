@@ -97,15 +97,91 @@ def test_la_ciudad_tambien_es_un_segmento(db):
     _lead(db, "b", {"city": "Montevideo"})
     _lead(db, "c", {"city": "Maldonado"})
     valores = {v["valor_declarado"]: v["n"] for v in _bloques(db)["ciudad"]["valores"]}
-    assert valores == {"Montevideo": 2, "Maldonado": 1}
+    assert valores == {"Montevideo": 2, "Interior": 1}
 
 
 def test_los_valores_salen_ordenados_por_volumen(db):
     _lead(db, "a", {"city": "Maldonado"})
-    _lead(db, "b", {"city": "Montevideo"})
+    _lead(db, "b", {"city": "Salto"})
     _lead(db, "c", {"city": "Montevideo"})
-    assert [v["valor_declarado"] for v in _bloques(db)["ciudad"]["valores"]][0] == \
-        "Montevideo"
+    assert [v["valor_declarado"] for v in _bloques(db)["ciudad"]["valores"]] == \
+        ["Interior", "Montevideo"]
+
+
+# ── Ciudad: Montevideo e Interior (pedido de Juan, 14/9) ─────────────────
+
+_OBJETIVO_LIBRE = "¿cuál_es_el_objetivo_que_tenes_en_este_2026?"
+
+
+@pytest.mark.parametrize("ciudad", ["Montevideo", "montevideo", " MONTEVIDEO ",
+                                    "Ciudad de Montevideo", "Montevidéo",
+                                    "Mdeo", "MVD", "Montevideo, Uruguay"])
+def test_las_variantes_de_montevideo_son_montevideo(ciudad):
+    from services.dossier import zona_de_ciudad
+    assert zona_de_ciudad(ciudad) == "Montevideo"
+
+
+@pytest.mark.parametrize("ciudad", ["Maldonado", "Canelones", "vender", "Salto",
+                                    "Punta del Este", "123", "Montevide"])
+def test_todo_lo_demas_es_interior_incluida_la_basura(ciudad):
+    from services.dossier import zona_de_ciudad
+    assert zona_de_ciudad(ciudad) == "Interior"
+
+
+def test_la_ciudad_se_agrupa_y_la_tasa_se_recalcula_sobre_el_grupo(db):
+    """Montevideo junta 3 leads de tres grafias, con una sola demo: 1/3. Si se
+    promediaran las tasas de cada grafia (0, 0 y 1) daria 1/3 igual por
+    casualidad, asi que las grafias llevan pesos distintos: "Montevideo" 2
+    leads sin demo y "Mdeo" 1 con demo. Promediar daria 0,5; sumar da 0,3333."""
+    _lead(db, "a", {"city": "Montevideo"})
+    _lead(db, "b", {"city": "montevideo "})
+    _lead(db, "c", {"city": "Mdeo"}, eventos=("demo_1",))
+    _lead(db, "d", {"city": "Maldonado"}, eventos=("demo_1",))
+    _lead(db, "e", {"city": "vender"})
+    bloque = _bloques(db)["ciudad"]
+    valores = {v["valor_declarado"]: v for v in bloque["valores"]}
+    assert set(valores) == {"Montevideo", "Interior"}
+    assert bloque["valores_distintos"] == 2
+
+    def tasa(v):
+        return [m for m in v["metricas"] if m["id"].endswith(".tasa_demo")][0]
+
+    mvd, interior = tasa(valores["Montevideo"]), tasa(valores["Interior"])
+    assert (mvd["numerador"], mvd["denominador"], mvd["valor"]) == (1, 3, 0.3333)
+    assert (interior["numerador"], interior["denominador"], interior["valor"]) == (1, 2, 0.5)
+    assert mvd["id"] == "segmento.ciudad.montevideo.tasa_demo"
+    assert interior["id"] == "segmento.ciudad.interior.tasa_demo"
+    assert mvd["muestra_chica"] is True
+
+
+# ── Etiquetas legibles ───────────────────────────────────────────────────
+
+@pytest.mark.parametrize("crudo,legible", [
+    ("continuar_vendiendo", "Continuar vendiendo"),
+    ("aún_no_lo_se", "Aún no lo sé"),
+    ("aun_no_lo_se", "Aún no lo sé"),
+    ("entre_usd_500_y_usd_1.000", "Entre USD 500 y USD 1.000"),
+    ("más_de_usd_1.000", "Más de USD 1.000"),
+    ("mas_de_usd_1.000", "Más de USD 1.000"),
+    ("crear_mi_ecommerce", "Crear mi ecommerce"),
+    ("automatizaciones", "Automatizaciones"),
+    ("Montevideo", "Montevideo"),
+    ("Interior", "Interior"),
+    ("otros (4 respuestas distintas)", "otros (4 respuestas distintas)"),
+    ("Quiero vender más en mi local", "Quiero vender más en mi local"),
+    ("", ""),
+])
+def test_las_etiquetas_se_leen_en_castellano(crudo, legible):
+    from services.dossier import etiqueta_legible
+    assert etiqueta_legible(crudo) == legible
+
+
+def test_la_etiqueta_legible_no_cambia_el_dato_ni_el_id(db):
+    _lead(db, "a", {"¿contás_con_un_presupuesto_para_este_proyecto?": "aún_no_lo_se"})
+    v = _bloques(db)["presupuesto"]["valores"][0]
+    assert v["valor_declarado"] == "aún_no_lo_se"
+    assert v["etiqueta"] == "Aún no lo sé"
+    assert v["metricas"][0]["id"].startswith("segmento.presupuesto.aun_no_lo_se.")
 
 
 def test_no_se_segmenta_por_datos_personales(db):
@@ -151,31 +227,32 @@ def test_los_leads_de_prueba_de_meta_no_son_un_segmento(db):
     assert valores == {"Montevideo"}
 
 
-def test_dos_grafias_de_la_misma_ciudad_son_un_solo_segmento(db):
-    """La ciudad es texto libre. "Maldonado" y "maldonado" son la misma ciudad,
-    y ademas producian el mismo id de metrica: dos metricas con el mismo id
-    rompen la citacion del informe y hacen que el delta compare contra el
-    gemelo equivocado."""
-    _lead(db, "a", {"city": "Maldonado"})
-    _lead(db, "b", {"city": "maldonado"})
-    _lead(db, "c", {"city": " Maldonado "})
-    valores = _bloques(db)["ciudad"]["valores"]
+def test_dos_grafias_de_la_misma_respuesta_libre_son_un_solo_segmento(db):
+    """El objetivo del formulario viejo es texto libre. "Crecer" y "crecer" son
+    la misma respuesta, y ademas producian el mismo id de metrica: dos metricas
+    con el mismo id rompen la citacion del informe y hacen que el delta compare
+    contra el gemelo equivocado. (Hasta el 14/9 este test usaba la ciudad, que
+    ahora se agrupa en Montevideo e Interior.)"""
+    _lead(db, "a", {_OBJETIVO_LIBRE: "Crecer en ventas"})
+    _lead(db, "b", {_OBJETIVO_LIBRE: "crecer en ventas"})
+    _lead(db, "c", {_OBJETIVO_LIBRE: " Crecer en ventas "})
+    valores = _bloques(db)["objetivo_v2"]["valores"]
     assert len(valores) == 1
     assert valores[0]["n"] == 3
 
 
 def test_se_muestra_la_grafia_mas_frecuente(db):
-    _lead(db, "a", {"city": "Montevideo"})
-    _lead(db, "b", {"city": "Montevideo"})
-    _lead(db, "c", {"city": "montevideo"})
-    assert _bloques(db)["ciudad"]["valores"][0]["valor_declarado"] == "Montevideo"
+    _lead(db, "a", {_OBJETIVO_LIBRE: "Crecer"})
+    _lead(db, "b", {_OBJETIVO_LIBRE: "Crecer"})
+    _lead(db, "c", {_OBJETIVO_LIBRE: "crecer"})
+    assert _bloques(db)["objetivo_v2"]["valores"][0]["valor_declarado"] == "Crecer"
 
 
 def test_ningun_id_de_metrica_se_repite(db):
-    _lead(db, "a", {"city": "Maldonado"})
-    _lead(db, "b", {"city": "maldonado"})
-    _lead(db, "c", {"city": "Córdoba"})
-    _lead(db, "d", {"city": "cordoba"})
+    _lead(db, "a", {_OBJETIVO_LIBRE: "Vender más", "city": "Maldonado"})
+    _lead(db, "b", {_OBJETIVO_LIBRE: "vender mas", "city": "maldonado"})
+    _lead(db, "c", {_OBJETIVO_LIBRE: "Córdoba", "city": "Montevideo"})
+    _lead(db, "d", {_OBJETIVO_LIBRE: "cordoba", "city": "Mdeo"})
     ids = [m["id"] for b in por_segmento(db, "2026-03-01", "2026-03-31")
            for v in b["valores"] for m in v["metricas"]]
     assert len(ids) == len(set(ids))
@@ -187,8 +264,8 @@ def test_la_cola_larga_se_junta_en_otros(db):
     from services.dossier import TOPE_VALORES_POR_PREGUNTA
 
     for i in range(TOPE_VALORES_POR_PREGUNTA + 5):
-        _lead(db, f"l{i}", {"city": f"Pueblo {i}"})
-    bloque = _bloques(db)["ciudad"]
+        _lead(db, f"l{i}", {_OBJETIVO_LIBRE: f"Objetivo {i}"})
+    bloque = _bloques(db)["objetivo_v2"]
     assert len(bloque["valores"]) == TOPE_VALORES_POR_PREGUNTA + 1
     assert bloque["valores"][-1]["valor_declarado"].startswith("otros (")
     assert bloque["valores"][-1]["n"] == 5

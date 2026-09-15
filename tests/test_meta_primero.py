@@ -31,7 +31,8 @@ ORDEN = [
     ("MARKETING", ["meta", "marketing"]),
     ("FINANZAS", ["finanzas", "simulador"]),
     ("VENTAS", ["wa", "notion_clients", "demos", "plantillas"]),
-    ("OPERACIÓN", ["clientes", "projects", "tasks", "activity", "equipo"]),
+    ("OPERACIÓN", ["clientes", "projects", "tasks", "activity"]),
+    ("RECURSOS HUMANOS", ["equipo", "ausencias"]),
     ("CAPTACIÓN", ["cola", "metrics", "sdr"]),
 ]
 
@@ -123,11 +124,12 @@ def _primer_panel(access, existentes):
     (["seguimientos", "cola", "wa"], "wa"),              # 'seguimientos' ya no existe
     (["pipeline", "clientes", "meta"], "meta"),           # meta va antes que clientes
     (["cola", "tasks"], "tasks"),
+    (["cola", "ausencias"], "ausencias"),                 # Recursos Humanos va antes que Captación
 ])
 def test_un_rol_sin_calendario_arranca_en_un_panel_que_existe(tmp_path, access, esperado):
     existentes = ["meta", "cola", "cal", "tasks", "clientes", "wa", "metrics",
                   "activity", "sdr", "projects", "notion_clients", "finanzas", "simulador",
-                  "equipo"]
+                  "equipo", "ausencias"]
     archivo = tmp_path / "primero.js"
     archivo.write_text(_primer_panel(access, existentes), encoding="utf-8")
     r = subprocess.run(["node", str(archivo)], capture_output=True, text=True, encoding="utf-8")

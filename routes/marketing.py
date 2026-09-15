@@ -257,6 +257,27 @@ def api_piezas():
     return jsonify(piezas_del_mes(_db(), mes))
 
 
+@marketing_bp.route("/api/marketing/leads-semana")
+def api_leads_semana():
+    """Cuando llegan los leads, de a UNA semana (lunes a domingo, Montevideo).
+
+    Como las piezas, va aparte del dossier y no depende del periodo de arriba:
+    el bloque tiene su propio navegador de semana. Sin `semana`, la actual.
+    """
+    from services.dossier import _hoy_en_montevideo, leads_de_la_semana
+
+    semana = request.args.get("semana")
+    if not semana:
+        hoy = _hoy_en_montevideo()
+        semana = (hoy - timedelta(days=hoy.weekday())).isoformat()
+    if not _FECHA.match(semana):
+        return jsonify({"error": "semana invalida: se espera el lunes, YYYY-MM-DD"}), 400
+    try:
+        return jsonify(leads_de_la_semana(_db(), semana))
+    except ValueError:
+        return jsonify({"error": "semana invalida: se espera el lunes, YYYY-MM-DD"}), 400
+
+
 # Un id de anuncio de Meta es un numero largo. Se valida con esto y no con
 # `secure_filename` porque lo que importa no es que el nombre sea prolijo sino
 # que NO pueda salirse de la carpeta: sin esta guarda, un ad_id con `..`
