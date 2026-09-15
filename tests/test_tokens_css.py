@@ -394,7 +394,6 @@ def test_no_hay_comas_nuevas_que_corten_el_body_light():
     CONOCIDAS = {
         "body.light .biz-name,.biz-name",
         "body.light .biz-name a,.biz-name a",
-        "body.light .wa-lead-item:hover,.body.light .wa-lead-item.active",
     }
     css = chr(10).join(re.findall(r"<style[^>]*>(.*?)</style>",
                                   dashboard.DASHBOARD_HTML, re.S))
