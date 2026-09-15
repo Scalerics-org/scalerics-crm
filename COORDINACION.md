@@ -83,6 +83,34 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 | F (finanzas) | la sección financiera del CRM | `services/finanzas.py`, `routes/finanzas.py`, `database.py` (tablas de finanzas), `dashboard.py` (panel Finanzas) | 8/9 |
 
+> **Email marketing (15/9, pedido de Juan).** Rama `feat/email-marketing`,
+> worktree `crm-email-mkt`. Sin PR, sin merge y sin deploy. Panel nuevo
+> `email_mkt` al final de CAPTACIÓN.
+>
+> **Cruce de territorio, todo aditivo:**
+> - `services/email_service.py` (de A): `_send_estado` registra cada envío
+>   aceptado en la tabla nueva `emails_enviados`, con el id de Resend. No cambia
+>   ninguna firma. El tipo lo pone un decorador `@_tipo_envio(...)` en cada
+>   `send_*`; el negocio lo pasa quien llama con `contexto_envio(...)`.
+>   Registrar va en try/except: si falla, el mail sale igual.
+>   **Si agregás un `send_*` nuevo, ponele su `@_tipo_envio`** (hay un test).
+> - `services/discovery_emails.py` (de A) y `services/meta_reminders.py` (de D):
+>   solo un `with contexto_envio(business_id=..., numero=...)` alrededor del envío.
+> - `routes/resend_webhook.py` (de A): antes de vedar, guarda el evento
+>   (entregado, abierto, clic, rebote, spam) en `emails_enviados`. Si eso falla,
+>   el vedado sigue igual.
+> - `database.py`: tabla `emails_enviados`. En el arranque que la crea copia
+>   una sola vez lo histórico de `meta_reminders` y `discovery_reminders`, y
+>   reparte el panel a los roles con `cola` o `metrics`.
+> - `dashboard.py`: ítem de menú, panel, CSS y JS con prefijo `em`, y el
+>   blueprint `email_mkt_bp`.
+>
+> **Para que se vean aperturas y clics hace falta configurar Resend:** el
+> webhook tiene que suscribir `email.delivered`, `email.opened`,
+> `email.clicked`, `email.bounced`, `email.complained` (y opcionalmente
+> `email.delivery_delayed`, `email.failed`, `email.suppressed`), y el dominio
+> tiene que tener prendido el seguimiento de aperturas y de clics.
+
 > **F (finanzas) acá (8/9).** Trabajé en un worktree aparte sobre la rama
 > `feat/finanzas`. Me habia anotado como E, pero E ya estaba tomada por pre-clientes/demos, que llego primero y ya deployo: me corri a **F**. Agrega dos tablas
 > nuevas, `finanzas_movimientos` y `finanzas_recurrentes`, más
