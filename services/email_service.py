@@ -1,6 +1,9 @@
+import contextvars
+import functools
 import html
 import logging
 import os
+from contextlib import contextmanager
 
 import requests
 
@@ -99,6 +102,83 @@ def _muted(text: str) -> str:
     return f'<p style="margin:0 0 20px;font-size:13.5px;color:#5a6a82;line-height:1.6">{text}</p>'
 
 
+# ── Registro de envios (panel Email marketing) ─────────────────────────────────
+# Cada mail que Resend acepta queda en `emails_enviados` con su id de Resend,
+# para que el webhook le cuelgue despues entregado / abierto / clic / rebote.
+# Que es cada mail (tipo) y a que negocio va lo pone quien llama, con
+# `contexto_envio`; asi `_send_estado` no cambia de firma para nadie.
+
+_CONTEXTO_ENVIO = contextvars.ContextVar("contexto_envio", default={})
+# La base a la que se registra fuera de un request (los hilos de las campanas).
+# La fija `create_app`. Sin base configurada no se registra nada: un script
+# suelto o un test no escriben en un leads.db cualquiera.
+_DB_REGISTRO: str | None = None
+
+
+def configurar_registro(db_path: str | None) -> None:
+    global _DB_REGISTRO
+    _DB_REGISTRO = db_path
+
+
+@contextmanager
+def contexto_envio(**datos):
+    """Marca los envios de adentro con tipo, business_id y/o numero."""
+    nuevos = {k: v for k, v in datos.items() if v is not None}
+    token = _CONTEXTO_ENVIO.set({**_CONTEXTO_ENVIO.get(), **nuevos})
+    try:
+        yield
+    finally:
+        _CONTEXTO_ENVIO.reset(token)
+
+
+def _tipo_envio(tipo: str):
+    """Decorador: todo lo que mande la funcion se registra con ese tipo."""
+    def decorar(fn):
+        @functools.wraps(fn)
+        def envuelta(*args, **kwargs):
+            with contexto_envio(tipo=tipo):
+                return fn(*args, **kwargs)
+        return envuelta
+    return decorar
+
+
+def _db_registro() -> str | None:
+    try:
+        from flask import current_app, has_app_context
+        if has_app_context():
+            ruta = current_app.config.get("DB_PATH")
+            if ruta:
+                return ruta
+    except Exception:
+        pass
+    return _DB_REGISTRO
+
+
+def _registrar_envio(respuesta, to: str, subject: str, text: str | None, estado_envio: str) -> None:
+    """Registra el envio. NUNCA levanta: el mail ya salio (o pudo salir)."""
+    try:
+        db = _db_registro()
+        if not db:
+            return
+        resend_id = None
+        if respuesta is not None:
+            try:
+                cuerpo = respuesta.json()
+            except Exception:
+                cuerpo = None
+            if isinstance(cuerpo, dict) and isinstance(cuerpo.get("id"), str):
+                resend_id = cuerpo["id"]
+        ctx = _CONTEXTO_ENVIO.get()
+        from services.email_marketing import registrar_envio
+        registrar_envio(db, resend_id=resend_id, tipo=ctx.get("tipo", "otro"),
+                        destinatario=to, asunto=subject, texto=text,
+                        business_id=ctx.get("business_id"), numero=ctx.get("numero"),
+                        estado_envio=estado_envio)
+    except Exception as e:
+        # Sin la direccion en el log: solo que fallo y por que clase de error.
+        logger.warning(f"No se pudo registrar el envio en emails_enviados ({type(e).__name__})")
+
+
 # ── Resend sender ───────────────────────────────────────────────────────────────
 
 def _send_estado(to: str, subject: str, html: str, from_email: str | None = None,
@@ -140,6 +220,7 @@ def _send_estado(to: str, subject: str, html: str, from_email: str | None = None
             timeout=10,
         )
         r.raise_for_status()
+        _registrar_envio(r, to, subject, text, "enviado")
         return "ok"
     except requests.exceptions.HTTPError as e:
         # Resend contesto, y contesto que no. El mail no salio.
@@ -153,6 +234,7 @@ def _send_estado(to: str, subject: str, html: str, from_email: str | None = None
     except requests.exceptions.Timeout as e:
         # Se mando y no volvio la respuesta a tiempo. Puede haber salido.
         logger.error(f"Timeout sending '{subject}' to {to}, no sabemos si salio: {e}")
+        _registrar_envio(None, to, subject, text, "incierto")
         return "desconocido"
     except Exception as e:
         logger.error(f"Failed to send '{subject}' to {to}, no sabemos si salio: {e}")
@@ -167,6 +249,7 @@ def _send(to: str, subject: str, html: str, from_email: str | None = None, heade
 
 # ── Public functions ────────────────────────────────────────────────────────────
 
+@_tipo_envio("reset_password")
 def send_reset_email(to_email: str, reset_url: str) -> bool:
     body = (
         _muted("Recibimos una solicitud para resetear la contraseña de tu cuenta en Scalerics CRM. "
@@ -184,6 +267,7 @@ def send_reset_email(to_email: str, reset_url: str) -> bool:
     return _send(to_email, "Resetear contraseña — Scalerics CRM", html)
 
 
+@_tipo_envio("aviso_equipo")
 def send_new_user_notification(new_name: str, new_email: str, new_phone: str, admin_email: str) -> bool:
     body = (
         _info_card([
@@ -204,6 +288,7 @@ def send_new_user_notification(new_name: str, new_email: str, new_phone: str, ad
     return _send(admin_email, f"Nuevo usuario: {new_name} — Scalerics CRM", html)
 
 
+@_tipo_envio("aviso_equipo")
 def send_new_meta_lead_notification(to_email: str, lead_name: str, phone: str, campaign: str, city: str, lead_id: int) -> bool:
     # Todo esto sale del formulario de Meta, que llena cualquiera en internet:
     # sin escapar, un `<a href="https://phishing/">` en el campo nombre le
@@ -233,7 +318,12 @@ def send_new_meta_lead_notification(to_email: str, lead_name: str, phone: str, c
     )
     # El asunto es texto plano, no HTML: va el nombre tal cual, sin saltos de línea.
     asunto = f"Nuevo lead Meta: {(lead_name or '').replace(chr(10), ' ').replace(chr(13), ' ')} — Scalerics CRM"
-    return _send(to_email, asunto, cuerpo_html)
+    try:
+        lead = int(lead_id)
+    except (TypeError, ValueError):
+        lead = None
+    with contexto_envio(business_id=lead):
+        return _send(to_email, asunto, cuerpo_html)
 
 
 _GOAL_TYPE_LABELS = {
@@ -246,6 +336,7 @@ _GOAL_TYPE_LABELS = {
 }
 
 
+@_tipo_envio("tarea")
 def send_task_assignment_email(
     to_email: str,
     assignee_name: str,
@@ -281,6 +372,7 @@ def send_task_assignment_email(
     return _send(to_email, f"Nueva tarea: {task_title} — Scalerics CRM", html)
 
 
+@_tipo_envio("alerta")
 def send_meta_token_alert(to_email: str, error_detail: str) -> bool:
     body = (
         _muted(
@@ -307,6 +399,7 @@ def send_meta_token_alert(to_email: str, error_detail: str) -> bool:
     return _send(to_email, "ALERTA: Token Meta Ads inválido — Scalerics CRM", html)
 
 
+@_tipo_envio("alerta")
 def send_backup_alert(to_email: str, error_detail: str) -> bool:
     """El backup diario de la base fallo (integridad, subida a R2 o excepcion).
 
@@ -335,6 +428,7 @@ def send_backup_alert(to_email: str, error_detail: str) -> bool:
     return _send(to_email, "ALERTA: falló el backup de la base — Scalerics CRM", cuerpo_html)
 
 
+@_tipo_envio("alerta")
 def send_discovery_queue_alert(to_email: str, dias: int, pendientes: int,
                                tope: int) -> bool:
     """Avisa que la campana de discovery se esta quedando sin a quien escribirle.
@@ -377,6 +471,7 @@ def send_discovery_queue_alert(to_email: str, dias: int, pendientes: int,
     return _send(to_email, asunto, html)
 
 
+@_tipo_envio("alerta")
 def send_meta_lead_failure_alert(email: str, lead_id: str, error: str) -> None:
     """Avisa que un lead de Meta llegó pero no se pudo guardar."""
     # `lead_id` viene del payload del webhook y `error` puede arrastrar texto
@@ -394,6 +489,7 @@ def send_meta_lead_failure_alert(email: str, lead_id: str, error: str) -> None:
     _send(email, asunto, cuerpo)
 
 
+@_tipo_envio("aviso_equipo")
 def send_wa_message_notification(to_email: str, nombre: str, telefono: str,
                                  texto: str, hora: str) -> bool:
     """Avisa que alguien escribio al WhatsApp de Scalerics.
@@ -780,6 +876,7 @@ def _cuerpo_por_estado(estado: str, numero: int, negocio: str,
     return None
 
 
+@_tipo_envio("recordatorio_meta")
 def send_meta_lead_reminder(to_email: str, negocio: str, rubro: str,
                             unsub_url: str, numero: int = 1,
                             estado: str = "sin_contactar") -> str:
@@ -1066,6 +1163,7 @@ def _cuerpo_discovery(numero: int, negocio: str, rubro: str) -> tuple[str, list[
     ])
 
 
+@_tipo_envio("discovery")
 def send_discovery_email(to_email: str, negocio: str, rubro: str,
                          unsub_url: str, numero: int = 1) -> str:
     """Mail en frio a un comercio de la cohorte de discovery.
@@ -1181,6 +1279,7 @@ def _bloque_borrador(b: dict, base_url: str) -> str:
     </div>"""
 
 
+@_tipo_envio("linkedin")
 def send_linkedin_drafts(to: str, borradores: list, base_url: str,
                          aviso_cooldown: bool = False) -> bool:
     from datetime import datetime
@@ -1211,6 +1310,7 @@ def send_linkedin_drafts(to: str, borradores: list, base_url: str,
     return _send(to, subject, html, attachments=attachments)
 
 
+@_tipo_envio("linkedin")
 def send_linkedin_failure(to: str, motivo: str) -> bool:
     html = _layout(
         badge="LinkedIn",

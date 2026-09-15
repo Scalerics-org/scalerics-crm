@@ -1641,6 +1641,51 @@ def init_db(db_path: str) -> None:
         _add_column(conn, "tasks", "progress",       "INTEGER DEFAULT 0")
         _add_column(conn, "tasks", "goal_type",      "TEXT")
 
+        # ── Email marketing ───────────────────────────────────────────────────
+        # Cada mail que sale por Resend, con su id de Resend y lo que Resend
+        # cuenta despues por el webhook (entregado, abierto, clic, rebote,
+        # spam). Antes no quedaba en ningun lado: `_send_estado` tiraba la
+        # respuesta de Resend y el webhook solo miraba rebotes y quejas para
+        # vedar. Sin el cuerpo del mail: como mucho un extracto corto, y solo
+        # en las campanas. Las fechas van en UTC, como en meta_reminders.
+        emails_nueva = not conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='emails_enviados'").fetchone()
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS emails_enviados (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                resend_id     TEXT UNIQUE,
+                tipo          TEXT NOT NULL DEFAULT 'otro',
+                destinatario  TEXT,
+                asunto        TEXT,
+                extracto      TEXT,
+                business_id   INTEGER,
+                numero        INTEGER,
+                enviado_at    TEXT NOT NULL,
+                origen        TEXT NOT NULL DEFAULT 'crm',
+                estado_envio  TEXT NOT NULL DEFAULT 'enviado',
+                estado        TEXT NOT NULL DEFAULT 'enviado',
+                entregado_at  TEXT,
+                demorado_at   TEXT,
+                abierto_at    TEXT,
+                clic_at       TEXT,
+                rebotado_at   TEXT,
+                spam_at       TEXT,
+                fallido_at    TEXT,
+                actualizado_at TEXT
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_emails_enviados_fecha ON emails_enviados(enviado_at)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_emails_enviados_tipo ON emails_enviados(tipo, enviado_at)")
+        if emails_nueva:
+            # UNA sola vez, en el arranque que crea la tabla: lo que las dos
+            # campanas ya mandaron se ve desde el primer dia, sin consultar a
+            # Resend. Desde ahi cada envio se registra solo.
+            _backfill_emails_enviados(conn)
+        conn.commit()
+        # Email marketing va a quien ya ve Outbound o Inteligencia comercial,
+        # una sola vez (desde ahi manda lo que Juan tilde en el editor).
+        _grant_panel_to_existing_roles(conn, "email_mkt", si_tiene=("cola", "metrics"))
+
         # Backfill scores for leads that were scraped before scoring was added
         conn.execute("""
             UPDATE businesses SET score = (
@@ -1716,6 +1761,44 @@ def init_db(db_path: str) -> None:
             logger.warning(f"Index creation: {e}")
     finally:
         conn.close()
+
+
+def _backfill_emails_enviados(conn: sqlite3.Connection) -> int:
+    """Copia a `emails_enviados` los envios historicos de las dos campanas.
+
+    `meta_reminders` y `discovery_reminders` guardan una fila por mail que
+    salio (la de un envio fallido se borra), pero sin id de Resend ni asunto:
+    esas filas entran como 'historico', con un asunto descriptivo y sin
+    eventos. El destinatario es el mail actual del negocio.
+    """
+    copiadas = 0
+    try:
+        cols_meta = {c[1] for c in conn.execute("PRAGMA table_info(meta_reminders)")}
+        estado = ("CASE WHEN m.estado IS NOT NULL AND m.estado <> 'sin_contactar' "
+                  "THEN ' (' || REPLACE(m.estado, '_', ' ') || ')' ELSE '' END"
+                  if "estado" in cols_meta else "''")
+        copiadas += conn.execute(f"""
+            INSERT INTO emails_enviados (tipo, destinatario, asunto, business_id, numero,
+                                         enviado_at, origen, estado_envio, estado)
+            SELECT 'recordatorio_meta', b.email,
+                   'Recordatorio a lead de Meta' || {estado} || ' · contacto ' || m.numero,
+                   m.business_id, m.numero, datetime(m.sent_at), 'historico', 'enviado', 'enviado'
+            FROM meta_reminders m LEFT JOIN businesses b ON b.id = m.business_id
+            WHERE datetime(m.sent_at) IS NOT NULL
+        """).rowcount
+        copiadas += conn.execute("""
+            INSERT INTO emails_enviados (tipo, destinatario, asunto, business_id, numero,
+                                         enviado_at, origen, estado_envio, estado)
+            SELECT 'discovery', b.email, 'Discovery en frío · contacto ' || d.numero,
+                   d.business_id, d.numero, datetime(d.sent_at), 'historico', 'enviado', 'enviado'
+            FROM discovery_reminders d LEFT JOIN businesses b ON b.id = d.business_id
+            WHERE datetime(d.sent_at) IS NOT NULL
+        """).rowcount
+    except sqlite3.Error as e:
+        logger.warning(f"emails_enviados: no se pudo copiar el historico ({e})")
+    if copiadas:
+        logger.info(f"emails_enviados: {copiadas} envios historicos copiados")
+    return copiadas
 
 
 # ─── Businesses (existing API, preserved) ────────────────────────────────────
