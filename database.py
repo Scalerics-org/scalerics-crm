@@ -37,8 +37,24 @@ def _grant_panel_to_existing_roles(conn: sqlite3.Connection, panel: str,
     NULL, vacío, con JSON inválido o con un JSON que no es una lista se saltea
     con un warning — no se pisa lo que no se entiende. Devuelve cuántas filas
     modificó.
+
+    UNA SOLA VEZ por panel (pedido de Juan, 15/9). Antes corría en cada
+    arranque, o sea en cada deploy: si Juan le sacaba Ausencias al SDR desde el
+    editor de roles, el próximo deploy se la volvía a poner. Ahora el reparto
+    queda anotado en `panel_grants_aplicados` y no se repite; desde ahí manda
+    lo que Juan tilde. El primer arranque con esta regla todavía reparte (igual
+    que antes) y lo anota. Un rol creado después no recibe el panel solo: se
+    lo tilda Juan.
     """
     import json as _j
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS panel_grants_aplicados (
+            panel       TEXT PRIMARY KEY,
+            aplicado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    if conn.execute("SELECT 1 FROM panel_grants_aplicados WHERE panel = ?", (panel,)).fetchone():
+        return 0
     tocadas = 0
     try:
         filas = conn.execute("SELECT id, panel_access FROM roles").fetchall()
@@ -74,9 +90,10 @@ def _grant_panel_to_existing_roles(conn: sqlite3.Connection, panel: str,
         except sqlite3.Error as e:
             logger.warning(f"panel_access migration: rol id={rid} no se pudo actualizar ({e})")
 
+    conn.execute("INSERT OR IGNORE INTO panel_grants_aplicados (panel) VALUES (?)", (panel,))
+    conn.commit()
     if tocadas:
-        conn.commit()
-        logger.info(f"panel_access migration: '{panel}' agregado a {tocadas} rol(es)")
+        logger.info(f"panel_access migration: '{panel}' agregado a {tocadas} rol(es), una sola vez")
     return tocadas
 
 

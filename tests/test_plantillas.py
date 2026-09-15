@@ -236,6 +236,9 @@ def test_el_panel_les_llega_a_los_roles_que_venden(tmp_path):
     _rol(db, "SoloProceso", ["notion_clients"])
     _rol(db, "SoloFinanzas", ["finanzas", "cal"])
     _sql(db, "INSERT INTO roles (name, panel_access) VALUES ('Roto', 'no es json')")
+    # Una base de antes de Plantillas: los roles ya estaban y el panel todavía
+    # no se repartió nunca (el reparto es una sola vez).
+    _sql(db, "DELETE FROM panel_grants_aplicados WHERE panel='plantillas'")
     init_db(db)
     init_db(db)
     acceso = {n: a for n, a in sqlite3.connect(db).execute("SELECT name, panel_access FROM roles")}

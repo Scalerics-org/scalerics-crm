@@ -235,6 +235,8 @@ def test_la_migracion_le_da_ausencias_a_quien_tenia_equipo(tmp_path):
         conn.execute("UPDATE roles SET panel_access=? WHERE name='Ventas'", (json.dumps(["meta"]),))
         conn.execute("UPDATE roles SET panel_access=? WHERE name='Admin'",
                      (json.dumps(["equipo", "ausencias", "cola"]),))
+        # Una base de antes de partir Equipo: Ausencias todavía no se repartió.
+        conn.execute("DELETE FROM panel_grants_aplicados WHERE panel='ausencias'")
         conn.commit()
         assert database._grant_panel_to_existing_roles(conn, "ausencias", solo_si_tiene="equipo") == 1
         acceso = {n: json.loads(p) for n, p in conn.execute("SELECT name, panel_access FROM roles")}
@@ -245,13 +247,15 @@ def test_la_migracion_le_da_ausencias_a_quien_tenia_equipo(tmp_path):
     finally:
         conn.close()
 
-    # En el arranque real: un rol de producción con Equipo y sin Ausencias.
+    # Después del reparto, Juan le saca Ausencias a mano a un rol: el próximo
+    # arranque (un deploy) ya no se la vuelve a poner. Antes el reparto corría
+    # en cada arranque y la devolvía (pedido de Juan, 15/9).
     _set(db, "UPDATE roles SET panel_access=? WHERE name='Caller'", (json.dumps(["wa", "equipo"]),))
     init_db(db)
     conn = sqlite3.connect(db)
     caller = json.loads(conn.execute("SELECT panel_access FROM roles WHERE name='Caller'").fetchone()[0])
     conn.close()
-    assert caller[:2] == ["wa", "equipo"] and caller.count("ausencias") == 1
+    assert caller == ["wa", "equipo"], "lo que Juan saca no vuelve"
 
 
 # ── criterio 1 (revisado): Recursos Humanos, dos pantallas ───────────────────
