@@ -7327,6 +7327,7 @@ const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activ
           if (nav) nav.style.display = 'none';
         }
       });
+      _ocultarGruposVacios();
       if (!access.includes(activePanel)) {
         // El primero en el orden del menu que el rol tenga Y que exista. Los
         // permisos guardados pueden traer paneles que ya no estan en la
@@ -7342,6 +7343,20 @@ const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activ
     _syncMobileNav(activePanel);
   } catch(e) {}
 })();
+
+// Un titulo de grupo sin ninguna seccion visible debajo no se muestra: a un
+// programador sin Finanzas le quedaba "FINANZAS" solo, delatando lo que tiene
+// oculto (Juan, 15/9). Los items son hermanos planos del titulo dentro de
+// .nav-scroll, hasta el titulo siguiente. Solo corre para quien no es admin.
+function _ocultarGruposVacios() {
+  document.querySelectorAll('.nav-scroll .nav-section-label').forEach(label => {
+    let visible = false;
+    for (let el = label.nextElementSibling; el && !el.classList.contains('nav-section-label'); el = el.nextElementSibling) {
+      if (el.classList.contains('nav-item') && el.style.display !== 'none') { visible = true; break; }
+    }
+    label.style.display = visible ? '' : 'none';
+  });
+}
 
 // ── Theme toggle ──────────────────────────────────────────────────────────────
 const LOGO_DARK  = 'https://raw.githubusercontent.com/Scalerics-org/scalerics-assets/main/logo_full_alt.png';
