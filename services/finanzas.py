@@ -431,6 +431,204 @@ def _ingresos_por_cliente(db_path: str, movs: list[dict]) -> list[dict]:
     return salida
 
 
+# ─── Balance ─────────────────────────────────────────────────────────────────
+
+# Pedido de Juan (15/9): "generar balance hasta el momento", de dos maneras:
+# "en blanco" (lo que se contabiliza, con impuestos) e "interno" (lo que está
+# en blanco y lo que no).
+#
+# Qué es "en blanco" en los datos. No hay campo de comprobante, número de
+# factura ni cuenta bancaria: la única marca es `facturado` (el "¿Lleva IVA
+# (22%)?" del alta), que es la que ya decide qué entra en la pestaña IVA. Se
+# suma UN caso: los egresos de la categoría `impuestos` (IRAE, BPS, IVA a
+# DGI...). Un pago de impuestos no trae factura con IVA, así que sale con
+# facturado = 0, pero es por definición contable: dejarlo afuera del balance
+# en blanco mostraría una empresa que no paga impuestos.
+BALANCE_TIPOS = {"blanco": "En blanco (contable)", "interno": "Interno (todo)"}
+
+
+def es_en_blanco(m: dict) -> bool:
+    """Si ese movimiento se contabiliza. Ver el comentario de arriba."""
+    if m.get("facturado"):
+        return True
+    return m.get("tipo") == "egreso" and m.get("categoria") == "impuestos"
+
+
+def fecha_valida(texto) -> bool:
+    """'YYYY-MM-DD' que además sea un día que existe (no 2026-02-30)."""
+    texto = str(texto or "")
+    if len(texto) != 10 or texto[4] != "-" or texto[7] != "-":
+        return False
+    try:
+        date.fromisoformat(texto)
+    except ValueError:
+        return False
+    return True
+
+
+def _r2(x: float) -> float:
+    # `+ 0.0` evita un -0.0 que en pantalla se lee "USD -0,00".
+    return round(x, 2) + 0.0
+
+
+def _bloque_balance(movs: list[dict], tipo: str) -> dict:
+    """Total, parte en blanco, parte no facturada y desglose por categoría."""
+    cats: dict[str, dict] = {}
+    total = blanco = 0.0
+    for m in movs:
+        if m["tipo"] != tipo:
+            continue
+        usd = float(m["monto_usd"])
+        en_blanco = es_en_blanco(m)
+        c = cats.setdefault(m["categoria"], {"total": 0.0, "blanco": 0.0})
+        c["total"] += usd
+        total += usd
+        if en_blanco:
+            c["blanco"] += usd
+            blanco += usd
+    por_categoria = [{"categoria": k, "total": _r2(v["total"]),
+                      "blanco": _r2(v["blanco"]),
+                      "no_facturado": _r2(v["total"] - v["blanco"])}
+                     for k, v in cats.items()]
+    por_categoria.sort(key=lambda x: (-x["total"], x["categoria"]))
+    return {"total": _r2(total), "blanco": _r2(blanco),
+            "no_facturado": _r2(total - blanco), "por_categoria": por_categoria}
+
+
+def calcular_balance(movimientos: list[dict], tipo: str, desde: str, hasta: str,
+                     generado_en: str = "") -> dict:
+    """El balance de `desde` a `hasta` (fechas 'YYYY-MM-DD', ambas inclusive).
+
+    Pura: recibe los movimientos ya leídos y no toca la base, para poder
+    testear cada borde sin armar nada. Todo en USD con el `monto_usd`
+    congelado de cada movimiento, igual que el resto de Finanzas.
+
+    - Los fijos cuentan solo como los movimientos que ya materializaron: acá
+      no se lee `finanzas_recurrentes`, así que no hay forma de contarlos dos
+      veces. Los anulados (un fijo borrado) quedan afuera.
+    - Se filtra por FECHA y no por período: "hasta el momento" es hasta hoy,
+      y un fijo del día 20 todavía no pasó el día 15.
+    - Un movimiento sin `monto_usd` no se puede sumar: queda afuera y se
+      cuenta en `sin_cotizacion`, como hacen los totales de los fijos.
+    """
+    if tipo not in BALANCE_TIPOS:
+        raise ValueError(f"tipo tiene que ser uno de {tuple(BALANCE_TIPOS)}")
+    if not (fecha_valida(desde) and fecha_valida(hasta)):
+        raise ValueError("desde y hasta tienen que ser 'YYYY-MM-DD'")
+    if desde > hasta:
+        raise ValueError("desde tiene que ser <= hasta")
+
+    del_periodo = [m for m in movimientos
+                   if not m.get("anulado")
+                   and desde <= str(m.get("fecha") or "")[:10] <= hasta
+                   and (tipo == "interno" or es_en_blanco(m))]
+    sin_cotizacion = sum(1 for m in del_periodo if m.get("monto_usd") is None)
+    movs = [m for m in del_periodo if m.get("monto_usd") is not None]
+
+    ingresos = _bloque_balance(movs, "ingreso")
+    egresos = _bloque_balance(movs, "egreso")
+
+    iva_ventas = sum(float(m.get("iva_usd") or 0) for m in movs
+                     if m["tipo"] == "ingreso")
+    iva_compras = sum(float(m.get("iva_usd") or 0) for m in movs
+                      if m["tipo"] == "egreso")
+    saldo_iva = iva_ventas - iva_compras
+
+    impuestos: dict[str, float] = {}
+    for m in movs:
+        if m["tipo"] == "egreso" and m["categoria"] == "impuestos":
+            concepto = (m.get("concepto") or "").strip() or "Sin concepto"
+            impuestos[concepto] = impuestos.get(concepto, 0.0) + float(m["monto_usd"])
+
+    meses = {p: [0.0, 0.0] for p in meses_entre(desde[:7], hasta[:7])}
+    for m in movs:
+        fila = meses.setdefault(m["fecha"][:7], [0.0, 0.0])
+        fila[0 if m["tipo"] == "ingreso" else 1] += float(m["monto_usd"])
+
+    return {
+        "tipo": tipo,
+        "tipo_nombre": BALANCE_TIPOS[tipo],
+        "desde": desde,
+        "hasta": hasta,
+        "generado_en": generado_en,
+        "movimientos": len(movs),
+        "sin_cotizacion": sin_cotizacion,
+        "ingresos": ingresos,
+        "egresos": egresos,
+        "resultado": {
+            "total": _r2(ingresos["total"] - egresos["total"]),
+            "blanco": _r2(ingresos["blanco"] - egresos["blanco"]),
+            "no_facturado": _r2(ingresos["no_facturado"] - egresos["no_facturado"]),
+        },
+        # Débito (lo cobrado en las ventas) menos crédito (lo pagado en las
+        # compras). Positivo es a pagar, negativo a favor. Es el saldo del
+        # período entero, sin el arrastre mes a mes de la pestaña IVA.
+        "iva": {
+            "ventas": _r2(iva_ventas),
+            "compras": _r2(iva_compras),
+            "saldo": _r2(saldo_iva),
+        },
+        "con_iva": {
+            "ingresos": _r2(ingresos["total"] + iva_ventas),
+            "egresos": _r2(egresos["total"] + iva_compras),
+            "resultado": _r2(ingresos["total"] + iva_ventas
+                             - egresos["total"] - iva_compras),
+        },
+        "impuestos": {
+            "total": _r2(sum(impuestos.values())),
+            "por_concepto": sorted(
+                ({"concepto": k, "total": _r2(v)} for k, v in impuestos.items()),
+                key=lambda x: (-x["total"], x["concepto"])),
+        },
+        "meses": [{"periodo": p, "ingresos": _r2(v[0]), "egresos": _r2(v[1]),
+                   "resultado": _r2(v[0] - v[1])}
+                  for p, v in sorted(meses.items())],
+    }
+
+
+def periodo_balance(desde: str | None, hasta: str | None, hoy: date,
+                    primer_movimiento: str | None = None) -> tuple[str, str]:
+    """Resuelve el período pedido. `hoy` es el día en Montevideo.
+
+    - `hasta` vacío: hoy ("hasta el momento").
+    - `desde` vacío: el 1 de enero del año en curso ("Este año").
+    - `desde` = 'inicio': la fecha del primer movimiento (o el 1 de enero si
+      todavía no hay ninguno).
+    """
+    hasta = (hasta or "").strip() or hoy.isoformat()
+    desde = (desde or "").strip()
+    if desde == "inicio":
+        desde = (primer_movimiento or "")[:10] or f"{hoy.year:04d}-01-01"
+        # Un primer movimiento con fecha futura no puede dejar el período al
+        # revés: se toma el más chico de los dos.
+        desde = min(desde, hasta)
+    elif not desde:
+        desde = f"{hoy.year:04d}-01-01"
+    return desde, hasta
+
+
+def balance(db_path: str, tipo: str, desde: str, hasta: str,
+            generado_en: str = "") -> dict:
+    """Lee los movimientos del período y arma el balance. No materializa."""
+    from database import listar_movimientos
+
+    movs = listar_movimientos(db_path, desde=desde[:7], hasta=hasta[:7])
+    return calcular_balance(movs, tipo, desde, hasta, generado_en=generado_en)
+
+
+def primer_movimiento(db_path: str) -> str | None:
+    """La fecha del movimiento más viejo, o None si no hay ninguno."""
+    from database import _connect
+
+    conn = _connect(db_path)
+    try:
+        fila = conn.execute("SELECT MIN(fecha) FROM finanzas_movimientos "
+                            "WHERE anulado = 0").fetchone()
+    finally:
+        conn.close()
+    return fila[0] if fila and fila[0] else None
+
+
 # ─── Rendimiento de la pauta ─────────────────────────────────────────────────
 
 # El embudo (FUNNEL, alcanzo, _dividir, _costo) se mudo a

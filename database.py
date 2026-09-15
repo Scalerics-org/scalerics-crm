@@ -236,6 +236,23 @@ def init_db(db_path: str) -> None:
                 ("Ventas", _SALES),
             ])
         _grant_panel_to_existing_roles(conn, "meta")
+        # Solo lectura por panel (pedido de Juan, 15/9): "el usuario que sea
+        # dado de alta como contador no va a poder agregar movimientos o editar
+        # cosas solo a visualizar salvo la parte de balances". Lista JSON de
+        # paneles que el rol VE pero no modifica. El dato es genérico; hoy solo
+        # Finanzas lo respeta en el servidor (routes/finanzas.py).
+        #
+        # La precarga del Contador corre UNA vez: cuando la columna es nueva.
+        # Si corriera en cada arranque, destildar el "solo lectura" en el editor
+        # de roles duraría hasta el próximo deploy.
+        solo_lectura_es_nueva = not any(
+            fila[1] == "paneles_solo_lectura"
+            for fila in conn.execute("PRAGMA table_info(roles)").fetchall())
+        _add_column(conn, "roles", "paneles_solo_lectura", "TEXT NOT NULL DEFAULT '[]'")
+        if solo_lectura_es_nueva:
+            conn.execute("UPDATE roles SET paneles_solo_lectura = ? "
+                         "WHERE name = 'Contador' AND paneles_solo_lectura = '[]'",
+                         ('["finanzas"]',))
         # Contador y Marketing (pedido de Juan, 15/9): hoy hay Admin, SDR y
         # Programador, y se suman estos dos. Se crean por nombre, una sola vez,
         # también en bases que ya tienen roles; INSERT OR IGNORE no pisa lo que
@@ -243,11 +260,17 @@ def init_db(db_path: str) -> None:
         # Contador arranca SIN Finanzas ni Simulador aunque sean su trabajo: por
         # el Ruling R20 los paneles con plata no se asignan desde el código,
         # Juan los tilda a mano en el editor de roles.
+        # El Contador nace con Finanzas en solo lectura: el día que Juan le
+        # tilde Finanzas, ya entra sin poder modificarla. Si el rol se crea
+        # recién ahora (base nueva, o lo borraron), la precarga de arriba no
+        # lo vio: por eso va también en el INSERT.
         import json as _jroles
-        for _nombre, _paneles in (("Contador", ["cal"]),
-                                  ("Marketing", ["cal", "meta", "marketing"])):
-            conn.execute("INSERT OR IGNORE INTO roles (name, panel_access) VALUES (?, ?)",
-                         (_nombre, _jroles.dumps(_paneles)))
+        for _nombre, _paneles, _solo_lectura in (
+                ("Contador", ["cal"], ["finanzas"]),
+                ("Marketing", ["cal", "meta", "marketing"], [])):
+            conn.execute("INSERT OR IGNORE INTO roles (name, panel_access, paneles_solo_lectura) "
+                         "VALUES (?, ?, ?)",
+                         (_nombre, _jroles.dumps(_paneles), _jroles.dumps(_solo_lectura)))
         _add_column(conn, "client_info", "meeting_time", "TEXT")
         _add_column(conn, "client_info", "meeting_url", "TEXT")
 
