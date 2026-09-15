@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import re
 
-from database import listar_personas_equipo, listar_tramos_horario
+from database import listar_personas_daily, listar_personas_equipo, listar_tramos_horario
 
 DIAS = ("lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo")
 TRAMOS_MAX = 6
@@ -99,6 +99,10 @@ def estado(db_path: str) -> dict:
     """Todo lo que pinta la pantalla Horarios, en un solo pedido."""
     personas = personas_con_horario(db_path)
     cortos = _nombres_cortos(personas)
+    # El color de cada persona es el de Daily Programador, que sale de su lugar
+    # en esa lista (en orden de alta). Se manda el lugar; quien no está en
+    # Daily va con None y la pantalla le da uno estable.
+    orden_daily = {p["id"]: i for i, p in enumerate(listar_personas_daily(db_path, "programador"))}
     por_dia: dict[tuple[int, int], list[dict]] = {}
     for t in listar_tramos_horario(db_path):
         por_dia.setdefault((t["persona_id"], t["dia"]), []).append(t)
@@ -114,6 +118,7 @@ def estado(db_path: str) -> dict:
                          "tramos": [{"desde": t["desde"], "hasta": t["hasta"]} for t in tramos],
                          "minutos": total, "texto": duracion_texto(total) if tramos else ""})
         filas.append({"id": p["id"], "nombre": p["nombre"], "nombre_corto": cortos[p["id"]],
+                      "orden_daily": orden_daily.get(p["id"]),
                       "dias": dias, "minutos_semana": semana,
                       "texto_semana": duracion_texto(semana)})
 

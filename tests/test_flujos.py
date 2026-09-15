@@ -19,7 +19,7 @@ import pytest
 
 import database
 from database import init_db, listar_personas_equipo
-from services.flujos import ROLES, estado_flujos
+from services.flujos import ROL_ESTILOS, ROLES, estado_flujos
 from tests.test_equipo import (AUSENCIAS, HTML, MODALES, SRC, _cli, _correr_js,  # noqa: F401
                                _entre, _rol, _usuario, app, cli, sin_node)
 
@@ -466,11 +466,12 @@ def test_c5_la_pantalla_se_pinta_y_una_tarjeta_con_pantalla_llama_a_showpanel(cl
         assert f">{nombre}</button>" in s["selector"]
 
     pasos = s["pasos"]
-    assert pasos.startswith('<ol class="eq-pasos">') and pasos.count("<li ") == 10
+    assert pasos.startswith('<div class="eq-flujo-leyenda"') and '<ol class="eq-pasos">' in pasos
+    assert pasos.count("<li ") == 10
     for i, (titulo, rol, detalle) in enumerate(PASOS_PDF, start=1):
         li = _li(pasos, titulo)
         assert f'<span class="eq-paso-num">{i:02d}</span><span class="eq-paso-titulo">{titulo}</span>' \
-               f'<span class="eq-paso-rol">{rol}</span>' in li
+               f'<span class="eq-paso-rol">{ROL_ESTILOS[rol]["etiqueta"]}</span>' in li
         assert f'<div class="eq-paso-detalle">{detalle}</div>' in li
         assert ("eq-paso-destacado" in li) is (i == 10)
         assert (f'data-pantalla="{PANTALLAS[i]}"' in li) if i in PANTALLAS else ("data-pantalla" not in li)
@@ -561,7 +562,8 @@ def test_el_formulario_arma_los_momentos_de_cobro_y_valida(cli, tmp_path):
     s = _correr_js(tmp_path, {"/api/flujos": datos}, captura + prueba)
     assert s["titulo"] == "Se cobra" and s["rol"] == "Administración"
     for rol in ROLES:
-        assert f">{rol}</option>" in s["roles"]
+        assert f'<option value="{rol}"' in s["roles"]
+        assert f'>{ROL_ESTILOS[rol]["etiqueta"]}</option>' in s["roles"]
     assert '<option value="clientes" selected>Clientes</option>' in s["pantallas"]
     assert s["cobros"].count('class="eq-cobro-fila"') == 1 and 'value="100"' in s["cobros"]
     assert "más del 100%" in s["errorSuma"]
