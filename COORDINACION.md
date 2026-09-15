@@ -464,6 +464,17 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **15/9 — Inteligencia financiera, en `feat/inteligencia-financiera` (worktree `../crm-intel-fin`). Push sin PR, sin merge, sin deploy.**
+  - Panel nuevo `inteligencia_fin`, tercer ítem de FINANZAS. **Ruling R20: no se reparte a los roles** (hay test); Juan lo tilda en el editor de roles.
+  - Lógica en `services/inteligencia_fin.py`: reglas R1-R7, y en el docstring de dónde sale cada dato y cómo se mide cada regla. Rutas en `routes/inteligencia_fin.py`.
+  - **Zona compartida tocada, todo aditivo:**
+    - `database.py`: tablas `perdidas_motivo`, `proyectos_esfuerzo`, `ventas_origen_manual`, `fijos_canal`, `if_supuestos`, `if_calculos`, `if_recomendaciones`, `if_recomendaciones_tomadas`. Ninguna tabla de Finanzas cambia.
+    - `dashboard.py`: menú, CSS `ifn-*` (antes de Plantillas), panel (antes de Daily), JS `ifn*` (entre Seguimiento de leads y Daily). Selector de motivo en la tarjeta de Proceso de venta y en la fila de Demos "no cerró"; campo de esfuerzo en la ficha de Proyectos.
+    - `services/notion_service.py`: `cliente_cambio_de_estado` anota la fecha cuando una ficha pasa a Perdido / Presupuesto Rechazado. A Notion no se le escribe nada.
+    - `routes/notion_clients.py`, `routes/preclientes.py` (GET de demos) y `routes/projects.py`: suman `motivo_perdida` / `esfuerzo_*` a la respuesta.
+  - **Hilo nuevo al boot** (`start_inteligencia_fin`, detrás de `CRM_SIN_PROCESOS_DE_FONDO`): espera 2 min y revisa cada hora. Una corrida por día de Montevideo, con marca en `corridas` (`inteligencia_fin`). No manda mails ni llama afuera.
+  - **Finanzas:** solo se lee (`listar_movimientos`, `listar_por_cobrar`, `listar_recurrentes`, `a_usd`, `_totales`). No debería chocar con Balance (crm-balance).
+
 - **15/9 — I: Flujos, en `feat/recursos-humanos` (encima de #40). Sin PR ni deploy.**
   - Bloque al final del panel Ausencias, desde el PDF "Flujos - Scalerics". No es un ítem del menú. Tiene 4 flujos; solo "De lead a cobro" tiene pasos (los 10 del PDF, con su texto exacto). Los otros tres están vacíos.
   - Base: tablas `flujos`, `flujo_pasos` y `flujo_paso_cobros`. La última permite varios momentos de cobro por paso; el paso 07 trae uno, "100% al confirmar".
