@@ -526,66 +526,68 @@ def test_avisa_los_movimientos_sin_tipo_de_cambio(tmp_path):
     assert "2 movimientos sin tipo de cambio no se incluyen" in _pintar(tmp_path, d)["html"]
 
 
+def _bg_ejemplo(tipo="interno"):
+    """Un Balance General que cuadra, con el estado de resultados colgado,
+    igual que lo arma `balance_general`. Desde el 15/9 la pestaña Balance
+    pinta el Balance General y el estado de resultados va adentro."""
+    from services.finanzas import calcular_balance_general
+    datos = [
+        {"clase": "capital", "rubro": "capital", "nombre": "Aportes", "monto_usd": 500,
+         "desde": "2026-01-01", "hasta": None, "en_blanco": 1},
+        {"clase": "activo", "rubro": "maquinarias", "nombre": "Notebooks", "monto_usd": 500,
+         "desde": "2026-01-01", "hasta": None, "en_blanco": 1},
+    ]
+    bg = calcular_balance_general(_mezcla(), [], datos, tipo, "2026-09-15",
+                                  generado_en="2026-09-15 10:32")
+    bg["estado_resultados"] = calcular_balance(_mezcla(), tipo, "2026-01-01", "2026-09-15")
+    return bg
+
+
 @sin_node
 def test_generar_pide_la_ruta_y_pinta(tmp_path):
-    d = calcular_balance(_mezcla(), "interno", "2026-02-01", "2026-04-30")
+    d = _bg_ejemplo()
     prueba = """
 (async () => {
   _el('fb-tipo').value = 'interno';
-  _el('fb-preset').value = 'personalizado';
-  _el('fb-desde').value = '2026-02-01';
-  _el('fb-hasta').value = '2026-04-30';
-  _RESP['/api/finanzas/balance?tipo=interno&desde=2026-02-01&hasta=2026-04-30'] = %s;
+  _el('fb-corte').value = '2026-09-15';
+  _RESP['/api/finanzas/balance-general?tipo=interno&fecha=2026-09-15'] = %s;
   await finBalGenerar();
-  const personalizado = {html: _el('fin-balance').innerHTML, imprimir: _el('fb-imprimir').style.display};
+  const bien = {html: _el('fin-balance').innerHTML, imprimir: _el('fb-imprimir').style.display};
 
   _el('fb-tipo').value = 'blanco';
-  _el('fb-preset').value = 'inicio';
-  _RESP['/api/finanzas/balance?tipo=blanco&desde=inicio'] = {_status: 400, error: 'desde tiene que ser <= hasta'};
+  _el('fb-corte').value = '2026-13-01';
+  _RESP['/api/finanzas/balance-general?tipo=blanco&fecha=2026-13-01'] = {_status: 400, error: 'fecha mala'};
   await finBalGenerar();
   const error = {html: _el('fin-balance').innerHTML, imprimir: _el('fb-imprimir').style.display};
 
-  _el('fb-preset').value = 'anio';
+  _el('fb-corte').value = '';
   await finBalGenerar();   // respuesta vacía: muestra error, no revienta
   const rara = _el('fin-balance').innerHTML;
-  console.log(JSON.stringify({personalizado, error, rara, pedidos: _pedidos.map(p => p[0])}));
+  console.log(JSON.stringify({bien, error, rara, pedidos: _pedidos.map(p => p[0])}));
   process.exit(0);
 })().catch(e => { console.error((e && e.stack) || e); process.exit(1); });
 """ % json.dumps(d)
     s = _correr(tmp_path, prueba)
 
-    assert "Balance · Interno (todo)" in s["personalizado"]["html"]
-    assert s["personalizado"]["imprimir"] == ""
-    assert "desde tiene que ser &lt;= hasta" in s["error"]["html"]
+    assert "BALANCE GENERAL" in s["bien"]["html"]
+    assert "TOTAL PASIVO Y PATRIMONIO" in s["bien"]["html"]
+    assert "Estado de resultados del período" in s["bien"]["html"]
+    assert s["bien"]["imprimir"] == ""
+    assert "fecha mala" in s["error"]["html"]
     assert s["error"]["imprimir"] == "none"
-    assert s["pedidos"][-1] == "/api/finanzas/balance?tipo=blanco"
+    # Sin fecha de corte no se manda: el servidor usa hoy en Montevideo.
+    assert s["pedidos"][-1] == "/api/finanzas/balance-general?tipo=blanco"
     assert "Error" in s["rara"]
 
 
 @sin_node
-def test_el_preset_personalizado_muestra_las_fechas_con_valores(tmp_path):
-    prueba = """
-_el('fb-preset').value = 'personalizado';
-finBalPreset();
-const antes = {display: _el('fb-fechas').style.display, desde: _el('fb-desde').value, hasta: _el('fb-hasta').value};
-_el('fb-preset').value = 'anio';
-finBalPreset();
-console.log(JSON.stringify({antes, despues: _el('fb-fechas').style.display, hoy: _finBalHoy()}));
-"""
-    s = _correr(tmp_path, prueba)
-    assert s["antes"]["display"] == "" and s["despues"] == "none"
-    assert s["antes"]["hasta"] == s["hoy"]
-    assert s["antes"]["desde"] == s["hoy"][:4] + "-01-01"
-
-
-@sin_node
-def test_imprimir_copia_el_balance_y_lo_pone_en_claro(tmp_path):
-    d = calcular_balance(_mezcla(), "blanco", "2026-01-01", "2026-09-15")
+def test_imprimir_copia_el_balance_general_y_lo_pone_en_claro(tmp_path):
+    d = _bg_ejemplo("blanco")
     prueba = """
 _finBalUltimo = %s;
 let durante = null;
 globalThis.print = () => {
-  durante = {clases: Array.from(_clasesBody).sort(), hoja: _el('fb-print').innerHTML.length};
+  durante = {clases: Array.from(_clasesBody).sort(), hoja: _el('fb-print').innerHTML};
 };
 finBalImprimir();
 _oyentes.afterprint();
@@ -593,7 +595,10 @@ console.log(JSON.stringify({durante, despues: Array.from(_clasesBody), hoja: _el
 """ % json.dumps(d)
     s = _correr(tmp_path, prueba)
     assert s["durante"]["clases"] == ["fb-imprimiendo", "light"]
-    assert s["durante"]["hoja"] > 500
+    assert "BALANCE GENERAL" in s["durante"]["hoja"]
+    assert "TOTAL PASIVO Y PATRIMONIO" in s["durante"]["hoja"]
+    # La impresión es el balance clásico solo, sin el estado de resultados.
+    assert "Estado de resultados del período" not in s["durante"]["hoja"]
     assert s["despues"] == [] and s["hoja"] == ""
 
 
