@@ -274,7 +274,9 @@ def test_guardar_listar_abrir_actualizar_y_borrar(app, cli):
 
     datos["equipo"]["cantidadProgramadores"] = 4
     r = cli.put(f"/api/simulador/escenarios/{eid}", json={"nombre": "Cuatro", "datos": datos})
-    assert r.status_code == 200 and r.get_json() == {"ok": True, "id": eid}
+    assert r.status_code == 200
+    assert r.get_json()["ok"] is True and r.get_json()["id"] == eid
+    assert r.get_json()["nombre"] == "Cuatro" and r.get_json()["updated_at"]
     guardado = get_escenario(app.config["_DB"], eid)
     assert guardado["nombre"] == "Cuatro"
     assert json.loads(guardado["datos"])["equipo"]["cantidadProgramadores"] == 4
