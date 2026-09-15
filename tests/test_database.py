@@ -151,9 +151,11 @@ def test_roles_existentes_reciben_el_panel_meta(tmp_path):
     db = str(tmp_path / "prod.db")
     init_db(db)
 
-    # Simular producción: roles ya creados, sin "meta" en el panel_access
+    # Simular producción: roles ya creados, sin "meta" en el panel_access, y el
+    # panel todavía sin repartir (el reparto es una sola vez y queda anotado).
     conn = sqlite3.connect(db)
     conn.execute("UPDATE roles SET panel_access = ?", (json.dumps(["cola", "seguimientos", "wa"]),))
+    conn.execute("DELETE FROM panel_grants_aplicados WHERE panel = 'meta'")
     conn.commit()
     conn.close()
 
@@ -165,7 +167,8 @@ def test_roles_existentes_reciben_el_panel_meta(tmp_path):
 
 
 def test_migracion_de_panel_es_idempotente(tmp_path):
-    """Corre en cada arranque: no puede acumular 'meta' ni reescribir de más."""
+    """Arrancar varias veces no acumula 'meta' ni reescribe de más. El reparto
+    corre una sola vez: se simula una base donde Meta todavía no se repartió."""
     import json
     import sqlite3
 
@@ -175,6 +178,7 @@ def test_migracion_de_panel_es_idempotente(tmp_path):
     init_db(db)
     conn = sqlite3.connect(db)
     conn.execute("UPDATE roles SET panel_access = ?", (json.dumps(["cola"]),))
+    conn.execute("DELETE FROM panel_grants_aplicados WHERE panel = 'meta'")
     conn.commit()
     conn.close()
 
