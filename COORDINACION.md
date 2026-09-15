@@ -472,6 +472,17 @@ leads de Meta se renombró a **D** para deshacer el empate.
   - **Contador del mes:** las de otro asunto no suman a reuniones / hechas / por venir; van al final, "· 4 de otros asuntos". Una serie de cliente cuenta cada ocurrencia.
   - **Zona compartida tocada, todo aditivo:** `database.py` (4 columnas en `meetings`, tabla `reuniones_asunto` y su CRUD), `dashboard.py` (botón "+ Nueva reunión" en el Calendario, que no tenía; modal nuevo, modal de alcance, invitados en el editor, token `--violeta`, CSS `.cal-tipo*`/`.cal-rep*`/`.cal-alcance*`, etiquetas de actividad), `routes/calendar.py`.
 
+- **15/9 — Inteligencia financiera, en `feat/inteligencia-financiera` (worktree `../crm-intel-fin`). Push sin PR, sin merge, sin deploy.**
+  - Panel nuevo `inteligencia_fin`, tercer ítem de FINANZAS. **Ruling R20: no se reparte a los roles** (hay test); Juan lo tilda en el editor de roles.
+  - Lógica en `services/inteligencia_fin.py`: reglas R1-R7, y en el docstring de dónde sale cada dato y cómo se mide cada regla. Rutas en `routes/inteligencia_fin.py`.
+  - **Zona compartida tocada, todo aditivo:**
+    - `database.py`: tablas `perdidas_motivo`, `proyectos_esfuerzo`, `ventas_origen_manual`, `fijos_canal`, `if_supuestos`, `if_calculos`, `if_recomendaciones`, `if_recomendaciones_tomadas`. Ninguna tabla de Finanzas cambia.
+    - `dashboard.py`: menú, CSS `ifn-*` (antes de Plantillas), panel (antes de Daily), JS `ifn*` (entre Seguimiento de leads y Daily). Selector de motivo en la tarjeta de Proceso de venta y en la fila de Demos "no cerró"; campo de esfuerzo en la ficha de Proyectos.
+    - `services/notion_service.py`: `cliente_cambio_de_estado` anota la fecha cuando una ficha pasa a Perdido / Presupuesto Rechazado. A Notion no se le escribe nada.
+    - `routes/notion_clients.py`, `routes/preclientes.py` (GET de demos) y `routes/projects.py`: suman `motivo_perdida` / `esfuerzo_*` a la respuesta.
+  - **Hilo nuevo al boot** (`start_inteligencia_fin`, detrás de `CRM_SIN_PROCESOS_DE_FONDO`): espera 2 min y revisa cada hora. Una corrida por día de Montevideo, con marca en `corridas` (`inteligencia_fin`). No manda mails ni llama afuera.
+  - **Finanzas:** solo se lee (`listar_movimientos`, `listar_por_cobrar`, `listar_recurrentes`, `a_usd`, `_totales`). No debería chocar con Balance (crm-balance).
+
 - **15/9 — rama `feat/balance-general` (worktree `../crm-balance-general`). Sin PR, sin merge, sin deploy.** Juan rechazó el Balance de #52 (era un estado de resultados): quiere un **Balance General** clásico.
   - **Qué muestra:** la pestaña Balance ahora genera el Balance General a una fecha de corte (por defecto hoy en Montevideo), con dos columnas (ACTIVO | PASIVO y PATRIMONIO) que pasan a una en el celular. El estado de resultados de #52 queda abajo, colapsado: "Estado de resultados del período", del 1/1 al corte.
   - **Ruta y cuenta:** `GET /api/finanzas/balance-general?tipo=&fecha=`, con la cuenta pura en `services/finanzas.calcular_balance_general`. `GET /api/finanzas/balance` (#52) sigue existiendo.

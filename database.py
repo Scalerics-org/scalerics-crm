@@ -1482,6 +1482,138 @@ def init_db(db_path: str) -> None:
                      "ON lead_attachments(demo_id)")
         _migrar_estados_preclientes(conn)
 
+        # ── inteligencia financiera ───────────────────────────────────────────
+        # Los tres datos que la pantalla necesita y el sistema no guardaba, y
+        # las recomendaciones que calcula una vez por dia. Todo del lado del
+        # CRM: Proceso de venta y Proyectos son espejos de Notion y a Notion no
+        # se le escribe nada de esto. Tampoco se toca ninguna tabla de Finanzas.
+        #
+        # 1. Motivo de perdida. Una fila por cosa perdida (ficha de Proceso de
+        #    venta en Perdido / Presupuesto Rechazado, demo "no cerro" de la
+        #    planilla, lead en `rechazo`). `motivo` NULL es "se perdio y nadie
+        #    dijo por que": asi el aviso de faltantes es una consulta.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS perdidas_motivo (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                entidad     TEXT NOT NULL
+                            CHECK (entidad IN ('notion_client', 'demo', 'lead')),
+                entidad_id  INTEGER NOT NULL,
+                business_id INTEGER,
+                motivo      TEXT CHECK (motivo IS NULL OR motivo IN
+                            ('precio', 'se_enfrio', 'eligio_otro',
+                             'no_era_momento', 'no_calificaba')),
+                perdida_en  TEXT,
+                motivo_en   TEXT,
+                cargado_por TEXT,
+                UNIQUE (entidad, entidad_id)
+            )
+        """)
+        # 2. Esfuerzo por proyecto: una estimacion cargada al cerrarlo, no un
+        #    registro de horas. Se guarda lo que se escribio (valor y unidad) y
+        #    las horas que resultan, para que un cambio en las horas por dia del
+        #    equipo no reescriba lo ya cargado.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS proyectos_esfuerzo (
+                project_id     INTEGER PRIMARY KEY,
+                horas          REAL NOT NULL CHECK (horas > 0),
+                valor_cargado  REAL NOT NULL,
+                unidad_cargada TEXT NOT NULL CHECK (unidad_cargada IN ('horas', 'dias')),
+                cargado_por    TEXT,
+                updated_at     TEXT
+            )
+        """)
+        # 3. Origen de la venta elegido a mano, cuando el lead no lo dice
+        #    (`businesses.source` vacio o 'manual') o la venta no llega a un lead
+        #    (ficha aceptada sin conectar). Gana sobre lo que diga `source`.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS ventas_origen_manual (
+                entidad     TEXT NOT NULL CHECK (entidad IN ('business', 'notion_client')),
+                entidad_id  INTEGER NOT NULL,
+                canal       TEXT NOT NULL
+                            CHECK (canal IN ('meta_ads', 'outbound', 'referido', 'otro')),
+                cargado_por TEXT,
+                updated_at  TEXT,
+                PRIMARY KEY (entidad, entidad_id)
+            )
+        """)
+        # A que canal pertenece un gasto fijo de Finanzas (R5). Tabla aparte
+        # para no agregarle columnas a `finanzas_recurrentes`.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS fijos_canal (
+                recurrente_id INTEGER PRIMARY KEY,
+                canal         TEXT NOT NULL
+                              CHECK (canal IN ('meta_ads', 'outbound', 'referido', 'otro')),
+                updated_at    TEXT
+            )
+        """)
+        # Supuestos que el sistema no tiene y Juan carga desde la pantalla
+        # (hoy, la comision de cobro del mantenimiento). Sin fila no hay valor:
+        # la regla que lo necesita muestra el aviso de dato faltante.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS if_supuestos (
+                clave      TEXT PRIMARY KEY,
+                valor      REAL NOT NULL,
+                updated_by TEXT,
+                updated_at TEXT
+            )
+        """)
+        # Cada recalculo diario deja un renglon con los avisos y el encabezado
+        # que se mostraron, y sus recomendaciones cuelgan de el. Asi la
+        # pantalla muestra una foto coherente del dia y no recalcula al cargar.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS if_calculos (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                generada_en TEXT NOT NULL,
+                avisos      TEXT NOT NULL DEFAULT '[]',
+                encabezado  TEXT NOT NULL DEFAULT '{}',
+                contexto    TEXT NOT NULL DEFAULT '{}'
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS if_recomendaciones (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                calculo_id      INTEGER REFERENCES if_calculos(id),
+                regla           TEXT NOT NULL
+                                CHECK (regla IN ('R1','R2','R3','R4','R5','R6','R7')),
+                clave           TEXT NOT NULL DEFAULT '',
+                titulo          TEXT NOT NULL,
+                detalle         TEXT NOT NULL,
+                calculo         TEXT NOT NULL,
+                impacto_mensual REAL,
+                unica_vez       INTEGER NOT NULL DEFAULT 0,
+                confianza       TEXT NOT NULL CHECK (confianza IN ('alta', 'media', 'baja')),
+                tipo            TEXT NOT NULL CHECK (tipo IN ('ingreso', 'recorte', 'alerta')),
+                advertencia     TEXT NOT NULL DEFAULT '',
+                acciones        TEXT NOT NULL DEFAULT '[]',
+                metrica         TEXT NOT NULL DEFAULT '{}',
+                generada_en     TEXT NOT NULL,
+                estado          TEXT NOT NULL DEFAULT 'nueva'
+                                CHECK (estado IN ('nueva', 'tomada', 'descartada')),
+                descartada_en   TEXT
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_if_recomendaciones_calculo "
+                     "ON if_recomendaciones(calculo_id, estado)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS if_recomendaciones_tomadas (
+                id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                recomendacion_id INTEGER NOT NULL UNIQUE REFERENCES if_recomendaciones(id),
+                tomada_en        TEXT NOT NULL,
+                tomada_por       TEXT,
+                impacto_esperado REAL,
+                impacto_real     REAL,
+                resultado        TEXT NOT NULL DEFAULT 'midiendo'
+                                 CHECK (resultado IN ('funciono', 'no_funciono', 'midiendo')),
+                evaluada_en      TEXT,
+                detalle_real     TEXT NOT NULL DEFAULT ''
+            )
+        """)
+        # A proposito, sin repartir el panel a los roles que ya existen
+        # (Ruling R20, igual que Finanzas y el Simulador): la pantalla muestra
+        # margenes, cobros vencidos y gastos. Los admin la ven igual y al resto
+        # se la asigna Juan desde el editor de roles.
+        conn.commit()
+
         # ── task assignment & goal tracking ────────────────────────────────────
         _add_column(conn, "tasks", "assignee_id",    "INTEGER REFERENCES users(id) ON DELETE SET NULL")
         _add_column(conn, "tasks", "assignee_name",  "TEXT")

@@ -16,11 +16,19 @@ def api_projects():
     """
     db = current_app.config["DB_PATH"]
     tareas = get_tasks(db)
+    # El esfuerzo se guarda del lado del CRM (Inteligencia financiera): el
+    # proyecto sigue siendo un espejo de solo lectura de Notion.
+    from services.inteligencia_fin import esfuerzos
+    esfuerzo = esfuerzos(db)
     salida = []
     for p in get_projects(db):
         suyas = [t for t in tareas if t.get("notion_project_page_id") == p["notion_page_id"]]
+        e = esfuerzo.get(p["id"]) or {}
         salida.append({
             **p,
+            "esfuerzo_horas": e.get("horas"),
+            "esfuerzo_valor": e.get("valor_cargado"),
+            "esfuerzo_unidad": e.get("unidad_cargada"),
             "tasks": suyas,
             "conteo": {
                 "todo": sum(1 for t in suyas if t.get("status") == "todo"),
