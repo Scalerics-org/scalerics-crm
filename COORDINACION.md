@@ -472,6 +472,29 @@ leads de Meta se renombró a **D** para deshacer el empate.
   - Mergeado con `main` después de Daily (#47). **Ojo con los marcadores de sección:** `tests/test_daily.py` toma el JS de `// ========== Daily Programador` a `// ========== Equipo`, así que el JS `hr*` va ANTES de Daily (entre `FIN Seguimiento de leads` y `Daily Programador`), y el CSS `/* ── Horarios` también antes de `/* ── Daily Programador`. En `init_db`, las tablas de Flujos y Daily van antes que las de Horarios.
   - El ícono de Horarios es ámbar (`#fbbf24`): Daily entró con el mismo celeste que tenía Horarios, y el test ahora exige que ningún otro ítem del menú repita el color.
 
+- **15/9 — rama `feat/backup-diario-r2` (worktree `../crm-backup`). Sin PR, sin merge, sin deploy.** Backup diario de la base, pedido aprobado por el dueño. Detalle y restauración en `docs/BACKUPS.md`.
+  - `services/backup_db.py`:
+    - copia en caliente con la API de backup de SQLite y `integrity_check`;
+    - gzip `crm-leads-AAAA-MM-DD.db.gz`, con la fecha de Montevideo;
+    - subida a R2 bajo `crm/`, con SigV4 a mano sobre `requests`, sin boto3;
+    - retención: 30 días en R2 y 3 locales en `/data/backups`.
+  - Arranca 300 s después del boot y corre una vez por día, con la marca `backup_db` en `corridas`.
+    - **Prendido por defecto**; `BACKUP_DB=off` lo apaga. No manda nada a terceros.
+    - Sin `R2_*` hace solo la copia local.
+  - Si falla, avisa a los mismos admins que `send_meta_token_alert`, como mucho una vez por día (marca `backup_db_aviso`).
+  - Rutas admin: `POST /api/admin/backup-ahora` y `GET /api/admin/backups` (`routes/backups.py`). Hay una sección "Backups" en `/admin/users`.
+  - **`start.sh` cambió:** antes de gunicorn corre `python -m services.backup_db --aplicar-restauracion`. Si existe `/data/restore.db` y pasa la integridad, la pone en lugar de `leads.db` y guarda la anterior. Si no existe, no hace nada.
+  - **Zona compartida tocada, todo aditivo:**
+    - `services/email_service.py`: función nueva `send_backup_alert`;
+    - `dashboard.py`: registro del blueprint, arranque del hilo y sección en la página de administración.
+  - **Falta que el dueño cargue** `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` y `R2_BUCKET`.
+
+- **15/9 — rama `feat/meta-ads-por-mes` (worktree `../crm-meta-mes`). Sin PR, sin merge, sin deploy.**
+  - **Meta Ads por mes:** flechas, "Este mes", deslizar en el celular; siempre abre en el mes actual (hora Montevideo). Arriba, total del mes y conteo por color. JS `mm*`, CSS `.mm-*` con tokens (`--semaforo-rojo/amarillo/negro` nuevos).
+  - **Semáforo desde el CRM:** `POST /api/meta/leads/<id>/semaforo` (panel `meta`). El color NO tiene columna propia: sale de `crm_status` (`services/planilla_semaforo.ESTADO_A_COLOR`), y la demo del mes se escribe con la misma función que el sync (`_escribir_demos`). Columnas nuevas en `businesses`: `semaforo_origen`, `semaforo_at`, `semaforo_planilla`. Regla con la planilla: una marca a mano solo la mueve la planilla si se repintó después (trae otro color que en la lectura anterior), y ahí valen las reglas de siempre.
+  - **Envíos de formulario (`meta_lead_envios`):** quien vuelve a llenar el formulario cuenta también en el mes de la vuelta, como Meta. Lo registran el webhook y los imports. **Backfill:** el import diario (arranca 120 s después de cada boot, y `POST /api/meta/import-sync` con `ADMIN_TOKEN`) rellena la tabla con todo lo que devuelve Graph (~90 días) sin crear fichas ni avisar. Los contadores de Marketing (dossier, piezas) y la pauta de Finanzas cuentan envíos por mes de Montevideo (`database.ENVIOS_META_SQL`); las etapas quedan en el primer envío.
+  - **Zona compartida tocada:** `database.py` (tabla, columnas, `delete_business`/`merge_business`), `dashboard.py` (panel Meta Ads), `routes/leads.py` (`registrar_cambio_de_estado`, lo usa `/crm-status`), `services/dossier.py`, `services/anuncios.py`, `services/finanzas.py` (solo `rendimiento_pauta`).
+
 - **15/9 — rama `feat/finanzas-balance` (worktree `../crm-balance`). Sin PR ni deploy.** Dos pedidos de Juan, en commits aparte.
   - **Balance** (pestaña de Finanzas, no ítem del menú): `GET /api/finanzas/balance?tipo=blanco|interno&desde=&hasta=` (`desde=inicio` = primer movimiento), cuenta pura en `services/finanzas.calcular_balance`. "En blanco" = `facturado` + egresos de la categoría `impuestos` (no hay campo de comprobante ni cuenta). Filtra por FECHA en hora de Montevideo; los fijos cuentan solo como movimientos materializados. Imprimir: `window.print()` sobre `.fb-print`, hijo directo del body, en claro.
   - **Solo lectura por rol** (el Contador): columna `roles.paneles_solo_lectura`. El Contador nace con `["finanzas"]` (en el INSERT OR IGNORE de la rama de roles; al Contador que ya existía se le precarga UNA sola vez). Mismo criterio que `fix/permisos-una-vez`, con marca propia: la marca es la creación de la columna, así que la precarga corre solo en el arranque que la agrega, y si Juan destilda el solo lectura un deploy no lo vuelve a poner (hay test). No usa `panel_grants_aplicados` porque esa tabla todavía no estaba en main; si se unifica, la clave sería `solo_lectura:contador:finanzas`. `services/auth.require_edicion`: el candado de `routes/finanzas.py` bloquea todo lo que no sea GET salvo `_PERMITIDAS_EN_SOLO_LECTURA`. Hoy solo Finanzas respeta la marca. Simulador no se toca (panel propio).
