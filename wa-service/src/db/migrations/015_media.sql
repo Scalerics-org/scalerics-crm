@@ -1,0 +1,13 @@
+-- Los archivos que vinieron con el mensaje: por ahora las notas de voz.
+--
+-- Antes el .ogg se transcribia y se tiraba. En el panel del CRM quedaba el
+-- texto y nada mas: no se podia escuchar el original ni se notaba siquiera que
+-- habia sido un audio. Y cuando la transcripcion sale mal —que pasa, con audio
+-- corto y acento rioplatense— eso es la diferencia entre entender al lead y no.
+--
+-- Es una lista y no un archivo suelto porque el agrupador junta los mensajes
+-- que llegan seguidos: dos notas de voz de corrido son UN turno, y por lo tanto
+-- una sola fila con los dos audios.
+--
+-- Formato: [{"archivo":"...ogg","tipo":"audio","segundos":9}]
+ALTER TABLE messages ADD COLUMN media TEXT;

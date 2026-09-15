@@ -1,0 +1,283 @@
+'use strict';
+
+const test = require('node:test');
+const assert = require('node:assert');
+
+const { horasQueDijo, eligioEsaHora } = require('../src/agenda/eleccion');
+
+const TZ = 'America/Montevideo';
+
+/** Un jueves cualquiera, en hora de Montevideo (UTC-3). */
+const alas = (h, m = 0) => new Date(Date.UTC(2026, 8, 3, h + 3, m));
+
+test('saca las horas que el lead escribio', () => {
+  assert.deepEqual(horasQueDijo('15:00'), [15]);
+  assert.deepEqual(horasQueDijo('las 13'), [13]);
+  assert.deepEqual(horasQueDijo('12:30'), [12]);
+  assert.deepEqual(horasQueDijo('a las 3 de la tarde'), [3]);
+  assert.deepEqual(horasQueDijo('la primera'), [], 'sin numeros no hay hora');
+  assert.deepEqual(horasQueDijo('dale'), []);
+});
+
+/**
+ * El bug del 2-9, tal cual paso:
+ *
+ *   → Tenemos estos horarios: 12:00, 12:30, 13:00, 13:30, 14:30. ¿Cuál te viene bien?
+ *   ← 15:00
+ *   → Perfecto. Jueves 3 a las 12:00. Te paso el link...
+ *
+ * Pidio las 15 —que no estaba en la lista— y el modelo eligio las 12 igual,
+ * porque el enum solo lo deja devolver horarios ofrecidos: si el que quiere no
+ * esta, devuelve el que menos le disgusta en vez de "ninguno". El codigo
+ * confirmaba que el horario existiera y estuviera libre, pero no que fuera el
+ * que el lead pidio.
+ *
+ * Con un cliente real eso es alguien conectandose a una hora y nosotros a otra.
+ */
+test('si dijo una hora que no es la elegida, no vale', () => {
+  assert.equal(eligioEsaHora('15:00', alas(12), TZ), false);
+  assert.equal(eligioEsaHora('a las 15', alas(12, 30), TZ), false);
+  assert.equal(eligioEsaHora('9 de la mañana', alas(13), TZ), false);
+});
+
+test('si dijo la hora que se eligio, vale', () => {
+  assert.equal(eligioEsaHora('15:00', alas(15), TZ), true);
+  assert.equal(eligioEsaHora('las 13', alas(13), TZ), true);
+  assert.equal(eligioEsaHora('12:30', alas(12, 30), TZ), true);
+});
+
+/**
+ * La gente dice "a las 3" para las 15:00. Rechazar eso seria peor que el bug:
+ * dejaria sin agendar a quien eligio bien.
+ */
+test('el reloj de 12 cuenta igual que el de 24', () => {
+  assert.equal(eligioEsaHora('a las 3 de la tarde', alas(15), TZ), true);
+  assert.equal(eligioEsaHora('1 y media', alas(13, 30), TZ), true);
+  assert.equal(eligioEsaHora('12', alas(12), TZ), true);
+});
+
+/**
+ * Sin numeros no hay nada que verificar y manda el modelo, que para eso esta:
+ * entiende "la primera" y "la del mediodia".
+ */
+test('sin una hora escrita, se le cree al modelo', () => {
+  assert.equal(eligioEsaHora('la primera', alas(12), TZ), true);
+  assert.equal(eligioEsaHora('dale, esa', alas(14, 30), TZ), true);
+  assert.equal(eligioEsaHora('', alas(12), TZ), true);
+});
+
+/**
+ * Una fecha suelta no es una hora. "el 3" es el dia, y tomarlo como hora
+ * rechazaria una eleccion buena.
+ */
+test('un numero que no puede ser hora se ignora', () => {
+  assert.deepEqual(horasQueDijo('el jueves 3 dale'), [3]);
+  assert.deepEqual(horasQueDijo('somos 45 personas'), []);
+  assert.deepEqual(horasQueDijo('el 2026'), []);
+});
+
+/**
+ * Desde que los horarios abarcan varios dias, el lead puede elegir nombrando el
+ * dia en vez de la hora: "el viernes", "el 4". Mirando solo numeros, "el 4"
+ * parece la hora 4 y rechazaria una eleccion perfectamente buena.
+ */
+test('nombrar el dia elegido tambien vale', () => {
+  const viernes4 = new Date(Date.UTC(2026, 8, 4, 15)); // viernes 4, 12:00 en MVD
+  assert.equal(eligioEsaHora('el viernes', viernes4, TZ), true);
+  assert.equal(eligioEsaHora('el 4', viernes4, TZ), true);
+  assert.equal(eligioEsaHora('viernes 4 dale', viernes4, TZ), true);
+});
+
+test('nombrar OTRO dia no vale', () => {
+  const viernes4 = new Date(Date.UTC(2026, 8, 4, 15));
+  assert.equal(eligioEsaHora('el jueves', viernes4, TZ), false);
+  assert.equal(eligioEsaHora('el lunes mejor', viernes4, TZ), false);
+});
+
+/**
+ * Dia y hora juntos: los dos tienen que dar. Es el caso normal cuando hay
+ * horarios repetidos en dias distintos.
+ */
+test('con dia y hora, los dos tienen que coincidir', () => {
+  const viernes4alas1230 = new Date(Date.UTC(2026, 8, 4, 15, 30));
+  assert.equal(eligioEsaHora('el viernes 12:30', viernes4alas1230, TZ), true);
+  assert.equal(eligioEsaHora('el jueves 12:30', viernes4alas1230, TZ), false);
+});
+
+// ── una hora que el lead propone, fuera de la lista ──────────────────────────
+
+const { revisarFranja } = require('../src/agenda/eleccion');
+
+const CFG = {
+  TZ, AGENDA_DESDE: '12:00', AGENDA_HASTA: '16:00',
+  AGENDA_PASO_MIN: 30, AGENDA_DURACION_MIN: 30,
+  AGENDA_DIAS: 'mon,tue,wed,thu,fri',
+  AGENDA_DIAS_ADELANTE: 10, AGENDA_AVISO_MIN_HORAS: 3,
+};
+
+/** Miercoles 2 de setiembre de 2026, 09:00 en Montevideo. */
+const AHORA = new Date(Date.UTC(2026, 8, 2, 12));
+
+/**
+ * La lista que se le muestra son unas pocas sugerencias repartidas en dias, no
+ * todo lo que hay libre: en una franja de 12 a 16 cada media hora entran 8 por
+ * dia. Si el lead pide otra hora que esta libre, hay que darsela — decirle que
+ * no a un horario que existe es perder la reunion por nada.
+ */
+test('una hora de la franja, aunque no se haya listado, es aceptable', () => {
+  assert.deepEqual(revisarFranja(alas(15), CFG, AHORA), { ok: true });
+  assert.deepEqual(revisarFranja(alas(13, 30), CFG, AHORA), { ok: true });
+});
+
+test('fuera de la franja se rechaza, y se dice por que', () => {
+  assert.equal(revisarFranja(alas(5), CFG, AHORA).ok, false);
+  assert.equal(revisarFranja(alas(5), CFG, AHORA).motivo, 'fuera_de_franja');
+  assert.equal(revisarFranja(alas(20), CFG, AHORA).motivo, 'fuera_de_franja');
+  // 15:30 entra: arranca antes de las 16 y la reunion dura 30.
+  assert.equal(revisarFranja(alas(15, 30), CFG, AHORA).ok, true);
+  // 15:45 no: la reunion terminaria 16:15, despues de que cerramos.
+  assert.equal(revisarFranja(alas(15, 45), CFG, AHORA).motivo, 'fuera_de_franja');
+});
+
+/**
+ * El 3-9 el lead pidio las 10:23 dentro de una franja de 10:00 a 19:00 y el bot
+ * le contesto "ese horario no entra en nuestra franja de 10:00 a 19:00". Se lo
+ * marco enseguida: "pero 10:23 entra en la franja". Tenia razon.
+ *
+ * El motivo verdadero era la grilla de media hora, que es una comodidad nuestra
+ * para armar la lista de sugerencias, no un limite del negocio. Una reunion a
+ * las 10:23 se puede tener igual, y sostener que no —con un motivo que ademas
+ * es falso— es perder la reunion discutiendo.
+ */
+test('una hora corrida, fuera de la grilla, se puede agendar igual', () => {
+  assert.deepEqual(revisarFranja(alas(14, 23), CFG, AHORA), { ok: true });
+  assert.deepEqual(revisarFranja(alas(12, 15), CFG, AHORA), { ok: true });
+});
+
+test('un dia no habil se rechaza', () => {
+  // Sabado 5 de setiembre.
+  const sabado = new Date(Date.UTC(2026, 8, 5, 15));
+  assert.equal(revisarFranja(sabado, CFG, AHORA).motivo, 'dia_no_habil');
+});
+
+test('algo demasiado pronto o demasiado lejos tambien', () => {
+  // A las 9:00 en punto, las 12:00 caen justo en el piso de 3 horas y valen.
+  assert.equal(revisarFranja(new Date(Date.UTC(2026, 8, 2, 15)), CFG, AHORA).ok, true);
+  // Media hora mas tarde ya no llegan.
+  const nueveYMedia = new Date(Date.UTC(2026, 8, 2, 12, 30));
+  assert.equal(revisarFranja(new Date(Date.UTC(2026, 8, 2, 15)), CFG, nueveYMedia).motivo, 'muy_pronto');
+  // Mas de 10 dias adelante.
+  const lejos = new Date(Date.UTC(2026, 9, 15, 15));
+  assert.equal(revisarFranja(lejos, CFG, AHORA).motivo, 'muy_lejos');
+});
+
+// ── horarios distintos por dia ───────────────────────────────────────────────
+
+const { franjaDelDia } = require('../src/agenda/eleccion');
+
+/**
+ * La disponibilidad real de Scalerics en Calendly cambia segun el dia:
+ *
+ *   lun 08-20 · mar 08-20 · mie 10-20 · jue 07-20 · vie 08-20
+ *
+ * El bot tenia una sola franja para todos, asi que no habia forma de que
+ * coincidiera: con la mas angosta perdia las mañanas de cuatro dias, y con la
+ * mas ancha ofrecia horas que Calendly no da.
+ */
+const HORARIOS = 'mon:08:00-20:00,tue:08:00-20:00,wed:10:00-20:00,thu:07:00-20:00,fri:08:00-20:00';
+
+test('cada dia tiene su franja', () => {
+  assert.deepEqual(franjaDelDia('mon', HORARIOS), { desde: 480, hasta: 1200 });
+  assert.deepEqual(franjaDelDia('wed', HORARIOS), { desde: 600, hasta: 1200 });
+  assert.deepEqual(franjaDelDia('thu', HORARIOS), { desde: 420, hasta: 1200 });
+});
+
+test('un dia que no esta en la lista no se atiende', () => {
+  assert.equal(franjaDelDia('sat', HORARIOS), null);
+  assert.equal(franjaDelDia('sun', HORARIOS), null);
+});
+
+test('sin la lista, cae a la franja unica de siempre', () => {
+  // Para no romper una instalacion que solo tenga AGENDA_DESDE/HASTA.
+  assert.deepEqual(franjaDelDia('mon', '', { desde: '12:00', hasta: '16:00', dias: 'mon,tue' }),
+    { desde: 720, hasta: 960 });
+  assert.equal(franjaDelDia('wed', '', { desde: '12:00', hasta: '16:00', dias: 'mon,tue' }), null);
+});
+
+test('revisarFranja respeta el horario del dia que toca', () => {
+  const cfg = { ...CFG, AGENDA_HORARIOS: HORARIOS };
+  // Miercoles 2 de setiembre: abre 10:00, asi que las 09:00 no.
+  const mie9 = new Date(Date.UTC(2026, 8, 2, 12));
+  const ahoraTemprano = new Date(Date.UTC(2026, 8, 2, 5));
+  assert.equal(revisarFranja(mie9, cfg, ahoraTemprano).motivo, 'fuera_de_franja');
+  // Jueves 3 a las 08:00 si, porque el jueves abre 07:00.
+  const jue8 = new Date(Date.UTC(2026, 8, 3, 11));
+  assert.equal(revisarFranja(jue8, cfg, ahoraTemprano).ok, true);
+});
+
+// ── como se le explica al lead que ese horario no se puede ───────────────────
+
+const { textoDeFranja } = require('../src/agenda/eleccion');
+
+/**
+ * El 3-9 el bot se contradijo en dos mensajes seguidos:
+ *
+ *   → Tengo libre viernes 4 de 10:00 a 19:00
+ *   ← Y el 17 a las 8?
+ *   → Los horarios que manejamos son entre las 12 y las 16hs
+ *   ← Pero si dijiste que era de 10 a 19
+ *
+ * El mensaje de "fuera de franja" leia AGENDA_DESDE/AGENDA_HASTA, que quedaron
+ * en los valores viejos cuando la config paso a horarios por dia. Citaba una
+ * variable muerta.
+ */
+test('la franja que se le dice al lead sale del dia que pidio', () => {
+  const cfg = {
+    TZ, AGENDA_DESDE: '12:00', AGENDA_HASTA: '16:00',
+    AGENDA_HORARIOS: 'mon:10:00-19:00,tue:10:00-19:00,wed:10:00-19:00,thu:10:00-19:00,fri:10:00-19:00',
+  };
+  // Viernes 4, cualquier hora: la franja de ese dia es 10 a 19.
+  const viernes = new Date(Date.UTC(2026, 8, 4, 11));
+  assert.equal(textoDeFranja(viernes, cfg), '10:00 a 19:00');
+  assert.ok(!textoDeFranja(viernes, cfg).includes('12:00'), 'no repite la config vieja');
+});
+
+test('sin horarios por dia, cae a la franja unica', () => {
+  const cfg = { TZ, AGENDA_DESDE: '12:00', AGENDA_HASTA: '16:00', AGENDA_DIAS: 'mon,tue,wed,thu,fri' };
+  assert.equal(textoDeFranja(new Date(Date.UTC(2026, 8, 4, 15)), cfg), '12:00 a 16:00');
+});
+
+// ── el dia del que se viene hablando ─────────────────────────────────────────
+
+const { nombroAlgunDia } = require('../src/agenda/eleccion');
+
+/**
+ * El 3-9, con el lead preguntando por el viernes 11:
+ *
+ *   ← A las 9:59
+ *   → Ese horario no entra en nuestra franja de atención. Tenemos libres el
+ *     viernes 4 desde las 10 hasta las 19, o el lunes 7...
+ *   ← A las 10:23
+ *   → Ese horario no entra en nuestra franja de 10:00 a 19:00.
+ *
+ * La hora suelta se resolvia contra HOY, porque es el unico dia que se le pasa
+ * al modelo. Asi "10:23" caia en un jueves que ya habia pasado y el rechazo
+ * salia con un motivo inventado, ademas de volver a los dias de la lista en vez
+ * de seguir en el que el lead estaba mirando.
+ *
+ * Quien nombra un dia se sabe leyendo el mensaje, asi que lo mira el codigo.
+ */
+test('una hora suelta no nombra ningún día', () => {
+  assert.equal(nombroAlgunDia('A las 10:23'), false);
+  assert.equal(nombroAlgunDia('10:15'), false);
+  assert.equal(nombroAlgunDia('9:30 daleee'), false);
+  assert.equal(nombroAlgunDia('a las 14'), false);
+});
+
+test('pero un día nombrado sí, por nombre o por número', () => {
+  assert.equal(nombroAlgunDia('El 11 a las 10'), true);
+  assert.equal(nombroAlgunDia('el viernes 18 a las 14'), true);
+  assert.equal(nombroAlgunDia('mañana a las 10'), true);
+  assert.equal(nombroAlgunDia('hoy si se puede?'), true);
+  assert.equal(nombroAlgunDia('11 de setiembre'), true);
+});

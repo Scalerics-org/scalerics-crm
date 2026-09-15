@@ -1,0 +1,47 @@
+app = "scalerics-wa"
+primary_region = "iad"
+
+# 256mb alcanza: el bot usa ~150MB en regimen. Pero sin swap queda al filo y
+# Baileys puede morir por OOM en el pico de reconectar contra WhatsApp. El swap
+# va aca y no por "fly machine update --swap-size": puesto por comando se
+# pierde en el siguiente deploy, porque la maquina se recrea desde este archivo.
+swap_size_mb = 512
+
+[build]
+
+[env]
+  PORT = "8080"
+  # fly-local-6pn = solo la red privada de Fly. Combinado con no tener servicio
+  # publico, el bot no es alcanzable desde internet: solo desde el CRM, que
+  # esta en la misma red.
+  HOST = "fly-local-6pn"
+  NODE_ENV = "production"
+  TZ = "America/Montevideo"
+
+[[mounts]]
+  source = "wa_data"
+  destination = "/data"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Lo mas importante de este archivo es lo que NO esta.
+#
+# No hay [http_service] ni [[services]]. Eso hace dos cosas:
+#
+# 1. Fly no le asigna IP publica. El bot solo existe dentro de la red privada,
+#    donde lo alcanza el CRM por scalerics-wa.internal. Nada expuesto a internet.
+#
+# 2. El apagado automatico no aplica. auto_stop_machines solo corre para
+#    maquinas detras del proxy de Fly; sin servicio, la maquina simplemente
+#    queda prendida. Y eso es justo lo que hace falta: Baileys mantiene un
+#    WebSocket abierto contra WhatsApp, y un mensaje entrante NO llega como
+#    request HTTP sino por esa conexion. Si la maquina se detuviera, nadie la
+#    despertaria y el bot quedaria mudo sin ninguna señal.
+#
+# Una sola maquina, siempre. Dos instancias con las mismas credenciales se
+# pelean la sesion y WhatsApp termina desvinculando el numero. El volumen ayuda:
+# Fly no puede levantar una segunda maquina con el mismo volumen montado.
+# ─────────────────────────────────────────────────────────────────────────────

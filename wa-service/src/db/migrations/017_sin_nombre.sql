@@ -1,0 +1,13 @@
+-- El negocio todavia no tiene nombre.
+--
+-- Es una respuesta valida y bastante comun en alguien que esta arrancando, pero
+-- el embudo la trataba como un agujero: business_name quedaba vacio, faltantes()
+-- lo seguia pidiendo para siempre y el descubrimiento no cerraba nunca.
+--
+-- Eso no queda en "pregunta de mas": es donde el bot empieza a improvisar. El
+-- 3-9 termino negociando fechas por su cuenta y confirmando "lunes a las 12 de
+-- la noche", fuera de la franja y sin nada en el calendario.
+--
+-- Mismo criterio que business_type = no_sabe: no saber, o no tener, es una
+-- respuesta. La reunion existe justamente para eso.
+ALTER TABLE leads ADD COLUMN sin_nombre INTEGER NOT NULL DEFAULT 0;

@@ -1,0 +1,15 @@
+-- Si el nombre del negocio salio de una nota de voz.
+--
+-- Un nombre propio dicho por voz no se puede transcribir bien: no es una
+-- palabra que exista, asi que el modelo no tiene con que adivinarla. Probando
+-- el 2-9, "La Ganada" salio "Larganada" y el bot lo repitio en el mensaje
+-- siguiente como si estuviera seguro. Cambiar de modelo de transcripcion no lo
+-- arregla — ninguno acierta un nombre inventado escuchandolo dos segundos.
+--
+-- El dato se guarda igual: el equipo lo lee para preparar la reunion, y ademas
+-- tiene el audio en el panel para escucharlo. Lo que cambia es que el bot deja
+-- de escribirlo: en vez de "¿a qué se dedica Larganada?" pregunta "¿a qué se
+-- dedican?". Decir mal el nombre del negocio de alguien es peor que no decirlo.
+--
+-- Se limpia solo en cuanto el lead lo escribe.
+ALTER TABLE leads ADD COLUMN business_name_por_audio INTEGER NOT NULL DEFAULT 0;
