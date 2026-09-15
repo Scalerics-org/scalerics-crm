@@ -972,6 +972,28 @@ def init_db(db_path: str) -> None:
             )
         """)
 
+        # Datos para el Balance General (pedido de Juan, 15/9): lo que
+        # Finanzas no puede saber solo. `clase` es activo | pasivo | capital |
+        # caja_inicial; `rubro` sale de BALANCE_CLASES en services/finanzas.py.
+        # Un dato existe desde `desde` y hasta el día ANTERIOR a `hasta` (el
+        # día que se vendió o se pagó ya no está). `en_blanco` decide si entra
+        # en el balance contable; el interno los cuenta todos.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS finanzas_balance_datos (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                clase           TEXT NOT NULL,
+                rubro           TEXT NOT NULL,
+                nombre          TEXT NOT NULL,
+                monto_usd       REAL NOT NULL,
+                desde           TEXT NOT NULL,
+                hasta           TEXT,
+                en_blanco       INTEGER NOT NULL DEFAULT 1,
+                notas           TEXT,
+                created_by_name TEXT,
+                created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
         conn.execute("""
             CREATE TABLE IF NOT EXISTS finanzas_recurrentes (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -3777,6 +3799,39 @@ def listar_meses_abiertos(db_path: str) -> list[dict]:
     try:
         cur = conn.execute(
             "SELECT * FROM finanzas_meses_abiertos ORDER BY periodo DESC")
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+_DATO_BALANCE_COLUMNS = {
+    "clase", "rubro", "nombre", "monto_usd", "desde", "hasta", "en_blanco",
+    "notas", "created_by_name",
+}
+
+
+def crear_dato_balance(db_path: str, **fields) -> int:
+    return _insert(db_path, "finanzas_balance_datos", _DATO_BALANCE_COLUMNS, fields,
+                   ("clase", "rubro", "nombre", "monto_usd", "desde"))
+
+
+def actualizar_dato_balance(db_path: str, dato_id: int, **fields) -> None:
+    _update(db_path, "finanzas_balance_datos", _DATO_BALANCE_COLUMNS, dato_id, fields)
+
+
+def borrar_dato_balance(db_path: str, dato_id: int) -> None:
+    _delete(db_path, "finanzas_balance_datos", dato_id)
+
+
+def get_dato_balance(db_path: str, dato_id: int) -> Optional[dict]:
+    return _get_one(db_path, "finanzas_balance_datos", dato_id)
+
+
+def listar_datos_balance(db_path: str) -> list[dict]:
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute("SELECT * FROM finanzas_balance_datos "
+                           "ORDER BY clase, desde, id")
         return [dict(r) for r in cur.fetchall()]
     finally:
         conn.close()

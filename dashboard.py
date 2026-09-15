@@ -1843,10 +1843,36 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .fb-nota{font-size:.78rem;color:var(--texto-debil);padding:6px 0;line-height:1.45}
 .fb-error{color:var(--rojo-texto);padding:16px;font-size:.85rem}
 .fb-print{display:none}
+/* Balance General: el formato clásico que mandó Juan. Dos columnas (Activo |
+   Pasivo y Patrimonio), subtotales con línea arriba y los dos totales finales
+   con doble línea, alineados abajo. En el celular, una columna. */
+.fbg-cab{text-align:center;margin-bottom:18px;line-height:1.55;color:var(--texto);font-size:.85rem}
+.fbg-titulo{font-size:1.2rem;font-weight:800;letter-spacing:1px;color:var(--texto-fuerte)}
+.fbg-empresa{font-weight:700;color:var(--texto-fuerte)}
+.fbg-cols{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--borde-fuerte);border-radius:6px}
+.fbg-col{display:flex;flex-direction:column;padding:14px 18px;min-width:0}
+.fbg-col + .fbg-col{border-left:1px solid var(--borde-fuerte)}
+.fbg-seccion{font-weight:800;font-size:.82rem;letter-spacing:.8px;color:var(--texto-fuerte);margin:4px 0 8px}
+.fbg-fila{display:flex;justify-content:space-between;gap:12px;padding:4px 0;font-size:.85rem;color:var(--texto)}
+.fbg-num{font-variant-numeric:tabular-nums;white-space:nowrap;text-align:right}
+.fbg-sub{border-top:1px solid var(--texto-tenue);font-weight:700;margin-bottom:12px;padding-top:6px}
+.fbg-total{border-top:1px solid var(--texto-tenue);border-bottom:3px double var(--texto-fuerte);font-weight:800;padding:6px 0;margin-top:auto;color:var(--texto-fuerte)}
+.fbg-dif{color:var(--ambar);font-weight:700}
+.fbg-vacio{color:var(--texto-debil)}
+.fbg-er{margin-top:18px}
+.fbg-er summary{cursor:pointer;font-size:.78rem;font-weight:700;color:var(--rotulo);text-transform:uppercase;letter-spacing:.6px}
+.fbg-er .fb-doc{border:none;padding:10px 0 0;margin:0;background:transparent}
+.fbd-ayuda{margin:0 0 12px}
+.fbd-form{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:12px}
+.fbd-check{display:flex;align-items:center;gap:6px;font-size:.8rem;color:var(--texto);padding-bottom:8px}
+.fbd-error{padding:8px 0}
 @media (max-width:760px){
   .fin-toggle{flex-wrap:wrap;margin-left:0}
   .fb-controles{flex-direction:column;align-items:stretch}
   .fb-doc{padding:14px}
+  .fbg-cols{grid-template-columns:1fr}
+  .fbg-col + .fbg-col{border-left:none;border-top:1px solid var(--borde-fuerte)}
+  .fbd-form{flex-direction:column;align-items:stretch}
 }
 @media print{
   body.fb-imprimiendo{background:var(--superficie) !important}
@@ -1856,6 +1882,8 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   body.fb-imprimiendo .fin-kpi{background:var(--superficie)}
   body.fb-imprimiendo .fb-scroll{overflow:visible}
   body.fb-imprimiendo .fb-seccion{break-inside:avoid}
+  body.fb-imprimiendo .fbg-cols{grid-template-columns:1fr 1fr;break-inside:avoid}
+  body.fb-imprimiendo .fbg-col + .fbg-col{border-left:1px solid var(--borde-fuerte);border-top:none}
 }
 /* ── Horarios ─────────────────────────────────────────────────────────────────
    Recursos Humanos > Horarios. Solo tokens, sin reglas `body.light`. En la
@@ -2702,7 +2730,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 
     <div id="fin-vista-balance" style="display:none">
       <div class="fin-card">
-        <div class="fin-card-title">Balance</div>
+        <div class="fin-card-title">Balance general</div>
         <div class="fb-controles">
           <label class="fb-label">Tipo
             <select id="fb-tipo" class="filter-select">
@@ -2710,23 +2738,42 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
               <option value="interno">Interno (todo)</option>
             </select>
           </label>
-          <label class="fb-label">Período
-            <select id="fb-preset" class="filter-select" onchange="finBalPreset()">
-              <option value="anio" selected>Este año</option>
-              <option value="inicio">Desde el inicio</option>
-              <option value="personalizado">Personalizado</option>
-            </select>
+          <label class="fb-label">Fecha de corte
+            <input type="date" id="fb-corte" class="fb-campo">
           </label>
-          <span class="fb-fechas" id="fb-fechas" style="display:none">
-            <label class="fb-label">Desde <input type="date" id="fb-desde" class="fb-campo"></label>
-            <label class="fb-label">Hasta <input type="date" id="fb-hasta" class="fb-campo"></label>
-          </span>
           <button class="btn-primary" id="fb-generar" onclick="finBalGenerar()">Generar balance hasta el momento</button>
           <button class="btn-ghost" id="fb-imprimir" onclick="finBalImprimir()" style="display:none">Imprimir / PDF</button>
         </div>
-        <div class="fb-ayuda">En blanco: solo lo que se contabiliza (lo facturado, con IVA, y los pagos de impuestos). Interno: todo, y en cada total cuánto es en blanco y cuánto no.</div>
+        <div class="fb-ayuda">Sin fecha de corte es hoy. En blanco: solo lo que se contabiliza (lo facturado con su IVA, los pagos de impuestos y los datos marcados en blanco). Interno: todo, incluidas las cuentas por cobrar.</div>
       </div>
       <div id="fin-balance"></div>
+      <div class="fin-card" id="fbd-card">
+        <div class="fin-card-title">Datos para el balance</div>
+        <div class="fb-ayuda fbd-ayuda">Lo que Finanzas no sabe solo: el saldo inicial de caja, el capital de los socios, los bienes (mercadería, maquinarias, inmuebles, rodados) y las deudas (sueldos, préstamos, proveedores, BPS). Todo en USD.</div>
+        <div class="fbd-form" id="fbd-form">
+          <input type="hidden" id="fbd-id">
+          <label class="fb-label">Qué es
+            <select id="fbd-clase" class="filter-select" onchange="_finBalDatoRubros()">
+              <option value="activo" selected>Activo (bien)</option>
+              <option value="pasivo">Pasivo (deuda)</option>
+              <option value="capital">Capital</option>
+              <option value="caja_inicial">Saldo inicial de caja</option>
+            </select>
+          </label>
+          <label class="fb-label">Rubro
+            <select id="fbd-rubro" class="filter-select"></select>
+          </label>
+          <label class="fb-label">Nombre <input type="text" id="fbd-nombre" class="fb-campo" placeholder="Ej: notebooks del equipo"></label>
+          <label class="fb-label">Monto USD <input type="number" id="fbd-monto" class="fb-campo" step="0.01"></label>
+          <label class="fb-label">Desde <input type="date" id="fbd-desde" class="fb-campo"></label>
+          <label class="fb-label">Hasta (opcional) <input type="date" id="fbd-hasta" class="fb-campo"></label>
+          <label class="fbd-check"><input type="checkbox" id="fbd-blanco" checked> En blanco</label>
+          <button class="btn-primary" id="fbd-guardar" onclick="finBalDatoGuardar()">Guardar</button>
+          <button class="btn-ghost" id="fbd-cancelar" onclick="finBalDatoLimpiar()" style="display:none">Cancelar</button>
+        </div>
+        <div class="fb-error fbd-error" id="fbd-error" style="display:none"></div>
+        <div id="fbd-lista"></div>
+      </div>
     </div>
   </div>
 
@@ -9694,6 +9741,7 @@ function finVista(cual) {
   if (cual === 'fijos') loadFijos();
   if (cual === 'iva') loadIva();
   if (cual === 'pauta') loadPauta();
+  if (cual === 'balance') loadBalanceDatos();
 }
 
 const FIN_VERDE = '#10b981';
@@ -10250,27 +10298,12 @@ function _finBalHoy() {
   return new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10);
 }
 
-function finBalPreset() {
-  const personalizado = document.getElementById('fb-preset').value === 'personalizado';
-  document.getElementById('fb-fechas').style.display = personalizado ? '' : 'none';
-  if (!personalizado) return;
-  const hoy = _finBalHoy();
-  const desde = document.getElementById('fb-desde');
-  const hasta = document.getElementById('fb-hasta');
-  if (!desde.value) desde.value = hoy.slice(0, 4) + '-01-01';
-  if (!hasta.value) hasta.value = hoy;
-}
-
 function _finBalUrl() {
+  // Sin fecha de corte, el servidor usa hoy en Montevideo.
   const tipo = document.getElementById('fb-tipo').value;
-  const preset = document.getElementById('fb-preset').value;
-  let url = '/api/finanzas/balance?tipo=' + encodeURIComponent(tipo);
-  if (preset === 'inicio') url += '&desde=inicio';
-  if (preset === 'personalizado') {
-    url += '&desde=' + encodeURIComponent(document.getElementById('fb-desde').value)
-      + '&hasta=' + encodeURIComponent(document.getElementById('fb-hasta').value);
-  }
-  return url;
+  const corte = document.getElementById('fb-corte').value;
+  return '/api/finanzas/balance-general?tipo=' + encodeURIComponent(tipo)
+    + (corte ? '&fecha=' + encodeURIComponent(corte) : '');
 }
 
 async function finBalGenerar() {
@@ -10285,7 +10318,7 @@ async function finBalGenerar() {
     if (!r.ok) throw new Error((d && d.error) || 'no se pudo generar el balance');
     // Pintar adentro del try: una respuesta rara muestra el error en vez de
     // dejar el cartel de "Generando..." para siempre.
-    caja.innerHTML = _finBalPintar(d);
+    caja.innerHTML = _finBalGeneralPintar(d);
     _finBalUltimo = d;
   } catch (e) {
     caja.innerHTML = '<div class="fb-error">Error: ' + esc(e.message) + '</div>';
@@ -10428,7 +10461,7 @@ function finBalImprimir() {
   const hoja = document.getElementById('fb-print');
   const body = document.body;
   const eraClaro = body.classList.contains('light');
-  hoja.innerHTML = _finBalPintar(_finBalUltimo);
+  hoja.innerHTML = _finBalGeneralPintar(_finBalUltimo, true);
   // En claro siempre: un PDF con fondo oscuro no se imprime.
   body.classList.add('light');
   body.classList.add('fb-imprimiendo');
@@ -10440,6 +10473,226 @@ function finBalImprimir() {
   };
   window.addEventListener('afterprint', terminar);
   window.print();
+}
+
+// ---- Balance General (Activo = Pasivo + Patrimonio) ----
+// La cuenta la hace calcular_balance_general en services/finanzas.py. Aca se
+// pinta con el formato clasico: dos columnas, subtotales con linea arriba y
+// los totales finales con doble linea.
+const _FB_MESES_LARGOS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio',
+                          'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+function _finBalFechaLarga(iso) {
+  const p = String(iso || '').slice(0, 10).split('-');
+  const mes = _FB_MESES_LARGOS[parseInt(p[1], 10) - 1];
+  if (p.length !== 3 || !mes) return 'AL ' + esc(String(iso || ''));
+  return ('AL ' + parseInt(p[2], 10) + ' DE ' + mes + ' DE ' + p[0]).toUpperCase();
+}
+
+function _finBalMonto(n) {
+  // Convencion contable: los negativos entre parentesis.
+  const v = Number(n) || 0;
+  const texto = Math.abs(v).toLocaleString('es-UY', {minimumFractionDigits: 2,
+                                                     maximumFractionDigits: 2});
+  return v < -0.004 ? '(' + texto + ')' : texto;
+}
+
+function _finBalGFila(f, clase) {
+  return '<div class="fbg-fila' + (f.alerta ? ' fbg-dif' : '') + (clase ? ' ' + clase : '') + '">'
+    + '<span>' + esc(f.nombre) + '</span>'
+    + '<span class="fbg-num">' + _finBalMonto(f.monto) + '</span></div>';
+}
+
+function _finBalGFilas(filas) {
+  if (!filas || !filas.length) {
+    return '<div class="fbg-fila fbg-vacio"><span>Sin datos</span><span></span></div>';
+  }
+  return filas.map(f => _finBalGFila(f)).join('');
+}
+
+function _finBalGeneralPintar(d, paraImprimir) {
+  const generado = String(d.generado_en || '').split(' ');
+  let html = '<div class="fb-doc fbg">'
+    + '<div class="fbg-cab">'
+    + '<div class="fbg-titulo">BALANCE GENERAL</div>'
+    + '<div class="fbg-empresa">' + esc(d.empresa) + '</div>'
+    + '<div>' + _finBalFechaLarga(d.corte) + '</div>'
+    + '<div>(expresado en ' + esc(d.expresado_en) + ')</div>'
+    + '<div class="fb-sub">' + esc(d.tipo_nombre)
+    + (generado[0] ? ' · generado el ' + _finBalFecha(generado[0])
+      + (generado[1] ? ' a las ' + esc(generado[1]) : '') : '') + '</div>'
+    + '</div>';
+
+  if (!d.cuadra) {
+    html += '<div class="fb-aviso">El balance no cuadra: hay ' + _finUsd(Math.abs(d.diferencia))
+      + (d.diferencia > 0 ? ' de activo que el pasivo y el patrimonio no explican'
+                          : ' de pasivo y patrimonio que el activo no respalda')
+      + '. Falta cargar algo en "Datos para el balance": el saldo inicial de caja, '
+      + 'el capital de los socios o los bienes y deudas. Mientras tanto se muestra '
+      + 'como "Diferencia a revisar".</div>';
+  }
+  if (d.sin_cotizacion) {
+    html += '<div class="fb-aviso">' + d.sin_cotizacion
+      + (d.sin_cotizacion === 1 ? ' movimiento sin tipo de cambio no se incluye.'
+                                : ' movimientos sin tipo de cambio no se incluyen.')
+      + '</div>';
+  }
+
+  html += '<div class="fbg-cols">'
+    + '<div class="fbg-col fbg-activo">'
+    + '<div class="fbg-seccion">ACTIVO</div>'
+    + _finBalGFilas(d.activo.filas)
+    + _finBalGFila({nombre: 'TOTAL ACTIVO', monto: d.activo.total}, 'fbg-total')
+    + '</div>'
+    + '<div class="fbg-col fbg-pasivo">'
+    + '<div class="fbg-seccion">PASIVO</div>'
+    + _finBalGFilas(d.pasivo.filas)
+    + _finBalGFila({nombre: 'TOTAL PASIVO', monto: d.pasivo.total}, 'fbg-sub')
+    + '<div class="fbg-seccion">PATRIMONIO</div>'
+    + _finBalGFilas(d.patrimonio.filas)
+    + _finBalGFila({nombre: 'TOTAL PATRIMONIO', monto: d.patrimonio.total}, 'fbg-sub')
+    + _finBalGFila({nombre: 'TOTAL PASIVO Y PATRIMONIO', monto: d.total_pasivo_patrimonio}, 'fbg-total')
+    + '</div>'
+    + '</div>';
+
+  if (!paraImprimir && d.estado_resultados) {
+    html += '<details class="fbg-er"><summary>Estado de resultados del período</summary>'
+      + '<div class="fb-nota">Del ' + _finBalFecha(d.estado_resultados.desde) + ' al '
+      + _finBalFecha(d.estado_resultados.hasta)
+      + ': de acá sale la Utilidad del ejercicio.</div>'
+      + _finBalPintar(d.estado_resultados)
+      + '</details>';
+  }
+  return html + '</div>';
+}
+
+// ---- Datos para el balance (carga manual) ----
+// Espejo de BALANCE_CLASES en services/finanzas.py (hay un test que los compara).
+const FB_RUBROS = {
+  activo: {mercaderia: 'Mercadería', maquinarias: 'Maquinarias y equipos',
+           inmuebles: 'Edificio / inmuebles', rodados: 'Rodados', otros: 'Otros activos'},
+  pasivo: {sueldos: 'Sueldos por pagar', prestamos: 'Préstamos por pagar',
+           proveedores: 'Proveedores', fiscales: 'Deudas fiscales / BPS', otros: 'Otros pasivos'},
+  capital: {capital: 'Capital'},
+  caja_inicial: {caja_inicial: 'Saldo inicial de caja'}
+};
+const FB_CLASES = {activo: 'Activo', pasivo: 'Pasivo', capital: 'Capital',
+                   caja_inicial: 'Saldo inicial de caja'};
+let _finBalDatos = [];
+
+function _finBalDatoRubros(seleccionado) {
+  const clase = document.getElementById('fbd-clase').value;
+  const rubros = FB_RUBROS[clase] || {};
+  document.getElementById('fbd-rubro').innerHTML = Object.keys(rubros).map(k =>
+    '<option value="' + k + '"' + (k === seleccionado ? ' selected' : '') + '>'
+    + esc(rubros[k]) + '</option>').join('');
+}
+
+function _finBalDatosPintar(datos, solo) {
+  if (!datos.length) {
+    return '<div class="fb-nota">Todavía no hay datos cargados. Sin capital ni saldo '
+      + 'inicial de caja, el balance puede mostrar una diferencia a revisar.</div>';
+  }
+  return '<div class="fb-scroll"><table class="fin-tabla fb-tabla"><thead><tr>'
+    + '<th>Qué es</th><th>Nombre</th><th class="fb-num">USD</th><th>Desde</th>'
+    + '<th>Hasta</th><th>En blanco</th>' + (solo ? '' : '<th></th>')
+    + '</tr></thead><tbody>'
+    + datos.map(x => '<tr>'
+        + '<td>' + esc(FB_CLASES[x.clase] || x.clase) + ' · '
+        + esc((FB_RUBROS[x.clase] || {})[x.rubro] || x.rubro) + '</td>'
+        + '<td>' + esc(x.nombre) + '</td>'
+        + '<td class="fb-num">' + _finUsd(x.monto_usd) + '</td>'
+        + '<td>' + _finBalFecha(x.desde) + '</td>'
+        + '<td>' + (x.hasta ? _finBalFecha(x.hasta) : '—') + '</td>'
+        + '<td>' + (x.en_blanco ? 'Sí' : 'No') + '</td>'
+        + (solo ? '' : '<td style="white-space:nowrap">'
+          + '<button class="btn-ghost" onclick="finBalDatoEditar(' + x.id + ')">Editar</button> '
+          + '<button class="btn-ghost" onclick="finBalDatoBorrar(' + x.id + ')">Borrar</button></td>')
+        + '</tr>').join('')
+    + '</tbody></table></div>';
+}
+
+async function loadBalanceDatos() {
+  const lista = document.getElementById('fbd-lista');
+  const solo = _finSoloLectura();
+  // Solo lectura (el Contador): ve los datos, no los carga. El servidor igual
+  // devuelve 403.
+  document.getElementById('fbd-form').style.display = solo ? 'none' : '';
+  if (!document.getElementById('fbd-rubro').innerHTML) finBalDatoLimpiar();
+  let d;
+  try {
+    const r = await fetch('/api/finanzas/balance-datos');
+    if (!r.ok) throw new Error('no se pudo cargar');
+    d = await r.json();
+  } catch (e) {
+    lista.innerHTML = '<div class="fb-error">No se pudieron cargar los datos del balance</div>';
+    return;
+  }
+  _finBalDatos = (d && d.datos) || [];
+  lista.innerHTML = _finBalDatosPintar(_finBalDatos, solo);
+}
+
+function finBalDatoLimpiar() {
+  document.getElementById('fbd-id').value = '';
+  document.getElementById('fbd-clase').value = 'activo';
+  _finBalDatoRubros();
+  document.getElementById('fbd-nombre').value = '';
+  document.getElementById('fbd-monto').value = '';
+  document.getElementById('fbd-desde').value = _finBalHoy();
+  document.getElementById('fbd-hasta').value = '';
+  document.getElementById('fbd-blanco').checked = true;
+  document.getElementById('fbd-cancelar').style.display = 'none';
+  document.getElementById('fbd-error').style.display = 'none';
+}
+
+function finBalDatoEditar(id) {
+  const x = _finBalDatos.find(item => item.id === id);
+  if (!x) return;
+  document.getElementById('fbd-id').value = String(x.id);
+  document.getElementById('fbd-clase').value = x.clase;
+  _finBalDatoRubros(x.rubro);
+  document.getElementById('fbd-rubro').value = x.rubro;
+  document.getElementById('fbd-nombre').value = x.nombre || '';
+  document.getElementById('fbd-monto').value = String(x.monto_usd);
+  document.getElementById('fbd-desde').value = x.desde || '';
+  document.getElementById('fbd-hasta').value = x.hasta || '';
+  document.getElementById('fbd-blanco').checked = !!x.en_blanco;
+  document.getElementById('fbd-cancelar').style.display = '';
+}
+
+async function finBalDatoGuardar() {
+  const id = document.getElementById('fbd-id').value;
+  const error = document.getElementById('fbd-error');
+  const cuerpo = {
+    clase: document.getElementById('fbd-clase').value,
+    rubro: document.getElementById('fbd-rubro').value,
+    nombre: document.getElementById('fbd-nombre').value,
+    monto_usd: parseFloat(document.getElementById('fbd-monto').value),
+    desde: document.getElementById('fbd-desde').value,
+    hasta: document.getElementById('fbd-hasta').value || null,
+    en_blanco: !!document.getElementById('fbd-blanco').checked
+  };
+  const r = await fetch(id ? '/api/finanzas/balance-datos/' + id : '/api/finanzas/balance-datos', {
+    method: id ? 'PUT' : 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(cuerpo)
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    error.textContent = (d && d.error) || 'No se pudo guardar';
+    error.style.display = '';
+    return;
+  }
+  finBalDatoLimpiar();
+  await loadBalanceDatos();
+  if (_finBalUltimo) finBalGenerar();
+}
+
+async function finBalDatoBorrar(id) {
+  if (!confirm('¿Borrar este dato del balance?')) return;
+  await fetch('/api/finanzas/balance-datos/' + id, {method: 'DELETE'});
+  await loadBalanceDatos();
+  if (_finBalUltimo) finBalGenerar();
 }
 
 function _finMesActual() {
