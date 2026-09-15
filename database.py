@@ -599,6 +599,32 @@ def init_db(db_path: str) -> None:
         _add_column(conn, "businesses", "last_event_at", "TIMESTAMP")
         _add_column(conn, "businesses", "score", "INTEGER")
         _add_column(conn, "meetings", "recall_bot_id", "TEXT")
+        # Invitados y repeticion (pedido de Juan, 15/9). JSON en texto; la
+        # logica vive en services/recurrencia.py. `description` ya llegaba en
+        # el POST y se tiraba.
+        _add_column(conn, "meetings", "description", "TEXT")
+        _add_column(conn, "meetings", "invitados", "TEXT")
+        _add_column(conn, "meetings", "repeticion", "TEXT")
+        _add_column(conn, "meetings", "excepciones", "TEXT")
+        # Reuniones de "otro asunto": sin cliente. Van en su propia tabla y no
+        # en `meetings` porque ahi client_id es NOT NULL, y porque asi ninguna
+        # metrica de ventas, presupuesto, plantilla ni fusion de leads las ve.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS reuniones_asunto (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                title        TEXT NOT NULL,
+                description  TEXT,
+                start_at     TIMESTAMP NOT NULL,
+                end_at       TIMESTAMP,
+                meet_link    TEXT,
+                invitados    TEXT,
+                repeticion   TEXT,
+                excepciones  TEXT,
+                status       TEXT DEFAULT 'scheduled',
+                created_by   TEXT,
+                created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
 
         conn.execute("""
             CREATE TABLE IF NOT EXISTS wa_templates (
@@ -2247,6 +2273,7 @@ def get_job(db_path: str, job_id: int) -> Optional[dict]:
 _MEETING_COLUMNS = {
     "calendar_event_id", "title", "start_at", "end_at", "meet_link",
     "status", "transcript", "summary", "requirements", "recall_bot_id",
+    "description", "invitados", "repeticion", "excepciones",
 }
 
 
@@ -2321,6 +2348,82 @@ def delete_meeting(db_path: str, meeting_id: int) -> None:
     try:
         conn.execute("DELETE FROM meetings WHERE id = ?", (meeting_id,))
         conn.commit()
+    finally:
+        conn.close()
+
+
+# ─── Reuniones de otro asunto (sin cliente) ──────────────────────────────────
+
+_ASUNTO_COLUMNS = {
+    "title", "description", "start_at", "end_at", "meet_link", "invitados",
+    "repeticion", "excepciones", "status", "created_by",
+}
+
+
+def create_reunion_asunto(db_path: str, **fields) -> int:
+    campos = {k: v for k, v in fields.items() if k in _ASUNTO_COLUMNS}
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute(
+            f"INSERT INTO reuniones_asunto ({', '.join(campos)}) "
+            f"VALUES ({', '.join('?' for _ in campos)})", list(campos.values()))
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def get_reunion_asunto(db_path: str, asunto_id: int) -> Optional[dict]:
+    conn = _connect(db_path)
+    try:
+        row = conn.execute("SELECT * FROM reuniones_asunto WHERE id = ?",
+                           (asunto_id,)).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def update_reunion_asunto(db_path: str, asunto_id: int, **fields) -> None:
+    invalid = set(fields) - _ASUNTO_COLUMNS
+    if invalid:
+        raise ValueError(f"Invalid reuniones_asunto columns: {invalid}")
+    if not fields:
+        return
+    set_clause = ", ".join(f"{k} = :{k}" for k in fields)
+    fields["id"] = asunto_id
+    conn = _connect(db_path)
+    try:
+        conn.execute(f"UPDATE reuniones_asunto SET {set_clause} WHERE id = :id", fields)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def delete_reunion_asunto(db_path: str, asunto_id: int) -> None:
+    conn = _connect(db_path)
+    try:
+        conn.execute("DELETE FROM reuniones_asunto WHERE id = ?", (asunto_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def listar_reuniones_asunto(db_path: str, desde: str = "", hasta: str = "") -> list[dict]:
+    """Las sueltas que empiezan en el rango, y todas las series que empezaron
+    antes de que el rango termine (las ocurrencias se calculan despues)."""
+    conn = _connect(db_path)
+    try:
+        filas = conn.execute("""
+            SELECT * FROM reuniones_asunto
+            WHERE COALESCE(status, '') != 'canceled'
+              AND ((COALESCE(repeticion, '') = ''
+                    AND (? = '' OR SUBSTR(start_at, 1, 10) >= ?)
+                    AND (? = '' OR SUBSTR(start_at, 1, 10) <= ?))
+                OR (COALESCE(repeticion, '') != ''
+                    AND (? = '' OR SUBSTR(start_at, 1, 10) <= ?)))
+            ORDER BY start_at
+        """, (desde, desde, hasta, hasta, hasta, hasta)).fetchall()
+        return [dict(f) for f in filas]
     finally:
         conn.close()
 
