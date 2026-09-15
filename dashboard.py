@@ -1124,6 +1124,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-sdr .nav-icon{stroke:#f87171}
 #nav-projects .nav-icon{stroke:#facc15}
 #nav-equipo .nav-icon{stroke:#a3e635}
+#nav-ausencias .nav-icon{stroke:#e879f9}
 .nav-item.active #nav-cola .nav-icon,
 .nav-item.active .nav-icon{opacity:1}
 /* active item keeps its color but brighter */
@@ -1142,6 +1143,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-sdr.active .nav-icon{stroke:#fca5a5}
 #nav-projects.active .nav-icon{stroke:#fde047}
 #nav-equipo.active .nav-icon{stroke:#bef264}
+#nav-ausencias.active .nav-icon{stroke:#f0abfc}
 /* light mode — slightly darker tones */
 body.light #nav-cola .nav-icon{stroke:#2563eb}
 body.light #nav-clientes .nav-icon{stroke:#7c3aed}
@@ -1158,6 +1160,7 @@ body.light #nav-demos .nav-icon{stroke:#0e7490}
 body.light #nav-sdr .nav-icon{stroke:#b91c1c}
 body.light #nav-projects .nav-icon{stroke:#a16207}
 body.light #nav-equipo .nav-icon{stroke:#4d7c0f}
+body.light #nav-ausencias .nav-icon{stroke:#a21caf}
 /* ── Lucide icons ─────────────────────────────────────────────────────────── */
 .nav-icon{width:15px;height:15px;stroke-width:2;flex-shrink:0}
 /* Frase de equipo, version compacta del PDF de identidad de marca. Es la
@@ -1780,7 +1783,9 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div class="nav-item" id="nav-projects" onclick="showPanel('projects')"><i data-lucide="target" class="nav-icon"></i> Proyectos</div>
   <div class="nav-item" id="nav-tasks" onclick="showPanel('tasks')"><i data-lucide="check-square" class="nav-icon"></i> Tareas</div>
   <div class="nav-item" id="nav-activity" onclick="showPanel('activity')"><i data-lucide="clock" class="nav-icon"></i> Actividad</div>
-  <div class="nav-item" id="nav-equipo" onclick="showPanel('equipo')"><i data-lucide="network" class="nav-icon"></i> Equipo</div>
+  <div class="nav-section-label">RECURSOS HUMANOS</div>
+  <div class="nav-item" id="nav-equipo" onclick="showPanel('equipo')"><i data-lucide="network" class="nav-icon"></i> Organigrama</div>
+  <div class="nav-item" id="nav-ausencias" onclick="showPanel('ausencias')"><i data-lucide="calendar-clock" class="nav-icon"></i> Ausencias</div>
   <div class="nav-section-label">CAPTACIÓN</div>
   <div class="nav-item" id="nav-cola" onclick="showPanel('cola')"><i data-lucide="inbox" class="nav-icon"></i> Outbound</div>
   <div class="nav-item" id="nav-metrics" onclick="showPanel('metrics')"><i data-lucide="bar-chart-2" class="nav-icon"></i> Inteligencia comercial</div>
@@ -2533,12 +2538,14 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     <div id="activity-list" style="max-width:760px"></div>
   </div>
 
-  <!-- ======= EQUIPO PANEL ======= -->
+  <!-- ======= RECURSOS HUMANOS PANELES ======= -->
+  <!-- Dos paneles de Recursos Humanos. El organigrama conserva el id equipo
+       para que los permisos guardados sigan valiendo. -->
   <div id="equipo-panel" class="panel">
     <div class="page-header">
       <div>
-        <h1>Equipo</h1>
-        <div class="page-date">Organigrama y horas a recuperar. Solo horas: cuántas se deben y cuándo se devuelven.</div>
+        <h1>Organigrama</h1>
+        <div class="page-date">Recursos Humanos · quién reporta a quién.</div>
       </div>
     </div>
 
@@ -2546,6 +2553,15 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       <div class="eq-cab"><div class="fin-card-title" id="eq-titulo-org">Organigrama</div></div>
       <div class="eq-organigrama" id="eq-organigrama"><div class="eq-vacio">Cargando...</div></div>
     </section>
+  </div>
+
+  <div id="ausencias-panel" class="panel">
+    <div class="page-header">
+      <div>
+        <h1>Ausencias</h1>
+        <div class="page-date">Recursos Humanos · horas a recuperar. Solo horas: cuántas se deben y cuándo se devuelven.</div>
+      </div>
+    </div>
 
     <section class="eq-card" aria-labelledby="eq-titulo-aus">
       <div class="eq-cab">
@@ -2574,7 +2590,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       <div id="eq-detalle"></div>
     </section>
   </div>
-  <!-- ======= FIN EQUIPO PANEL ======= -->
+  <!-- ======= FIN RECURSOS HUMANOS PANELES ======= -->
 </div>
 
 <!-- Modal: Contactar -->
@@ -3093,7 +3109,7 @@ function showPanel(name) {
   if (name === 'simulador') loadSimulador();
   if (name === 'metrics') loadMetrics();
   if (name === 'activity') loadActivity();
-  if (name === 'equipo') loadEquipo();
+  if (name === 'equipo' || name === 'ausencias') loadEquipo();
   if (name === 'sdr') loadSdr();
 }
 
@@ -6514,18 +6530,20 @@ function _showScoreBreakdown(event, el) {
 
 // ── Mobile navigation ─────────────────────────────────────────────────────────
 // El mismo orden que el menu de la izquierda (Juan, 14/9).
-const NAV_PRIORITY = ['cal','meta','finanzas','simulador','wa','notion_clients','clientes','projects','tasks','activity','equipo','cola','metrics'];
+const NAV_PRIORITY = ['cal','meta','finanzas','simulador','wa','notion_clients','clientes','projects','tasks','activity','equipo','ausencias','cola','metrics'];
 const NAV_ICONS = {
   cola:'inbox',meta:'instagram',cal:'calendar',
   tasks:'check-square',pipeline:'trending-up',clientes:'users',
   wa:'message-circle',metrics:'bar-chart-2',activity:'clock',projects:'target',
-  notion_clients:'handshake',finanzas:'wallet',simulador:'calculator',equipo:'network'
+  notion_clients:'handshake',finanzas:'wallet',simulador:'calculator',equipo:'network',
+  ausencias:'calendar-clock'
 };
 const NAV_LABELS = {
   cola:'Outbound',meta:'Meta',cal:'Agenda',
   tasks:'Tareas',pipeline:'Pipeline',clientes:'Clientes',
   wa:'WA',metrics:'Intel. comercial',activity:'Actividad',projects:'Proyectos',
-  notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador',equipo:'Equipo'
+  notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador',equipo:'Organigrama',
+  ausencias:'Ausencias'
 };
 let _mobileNavOverflow = [];
 
@@ -6605,7 +6623,7 @@ function closeMasSheet() {
 }
 
 // ── Panel access control ──────────────────────────────────────────────────────
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','equipo'];
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','equipo','ausencias'];
 (async () => {
   try {
     const r = await fetch('/api/me');
@@ -8429,10 +8447,12 @@ async function loadMetrics() {
 }
 
 // ========== Equipo ==========
-// Una sola pantalla: el organigrama (SVG que sale de reporta_a) y, abajo, las
-// ausencias con su recupero. Solo horas. Todo lleva el prefijo eq, porque en
-// JS gana la ultima declaracion con el mismo nombre. Sin template literals a
-// proposito: este bloque no usa el signo de pesos en ningun lado.
+// Recursos Humanos, en dos paneles que comparten un solo pedido: Organigrama
+// (id equipo, el SVG que sale de reporta_a) y Ausencias (grilla, avisos y
+// detalle con su recupero). Solo horas. Un rol puede tener uno solo de los dos,
+// asi que cada contenedor que no esta en la pagina se saltea. Todo lleva el
+// prefijo eq, porque en JS gana la ultima declaracion con el mismo nombre. Sin
+// template literals a proposito: este bloque no usa el signo de pesos.
 let eqDatos = null;
 let eqAusenciaActual = null;
 let eqHorasTocadas = false;
@@ -8449,23 +8469,32 @@ async function loadEquipo() {
     eqDatos = await r.json();
   } catch (e) {
     eqDatos = null;
-    document.getElementById('eq-organigrama').innerHTML =
-      '<div class="eq-vacio">No se pudo cargar el equipo (' + esc(e.message) + ').</div>';
-    ['eq-avisos', 'eq-calendario', 'eq-detalle'].forEach(id => {
-      document.getElementById(id).innerHTML = '';
-    });
+    const falla = '<div class="eq-vacio">No se pudieron cargar los datos (' + esc(e.message) + ').</div>';
+    eqPoner('eq-organigrama', () => falla);
+    eqPoner('eq-calendario', () => falla);
+    eqPoner('eq-avisos', () => '');
+    eqPoner('eq-detalle', () => '');
     return;
   }
   eqPintar(eqDatos);
 }
 
+// Pinta un contenedor solo si esta en la pagina. El html se arma recien ahi,
+// para no calcular el organigrama de quien no lo ve.
+function eqPoner(id, armar) {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = armar();
+  return !!el;
+}
+
 function eqPintar(d) {
-  document.getElementById('eq-organigrama').innerHTML = eqOrganigramaSvg(d.organigrama || []);
-  document.getElementById('eq-avisos').innerHTML = eqAvisosHtml(d.avisos || []);
-  document.getElementById('eq-calendario').innerHTML = eqCalendarioHtml(d);
-  document.getElementById('eq-cal-rango').textContent = d.desde
+  eqPoner('eq-organigrama', () => eqOrganigramaSvg(d.organigrama || []));
+  eqPoner('eq-avisos', () => eqAvisosHtml(d.avisos || []));
+  eqPoner('eq-calendario', () => eqCalendarioHtml(d));
+  const rango = document.getElementById('eq-cal-rango');
+  if (rango) rango.textContent = d.desde
     ? 'Del ' + eqCorta(d.desde) + ' al ' + eqCorta(eqSumarDias(d.desde, 13)) : '';
-  document.getElementById('eq-detalle').innerHTML = eqDetalleHtml(d.ausencias || []);
+  eqPoner('eq-detalle', () => eqDetalleHtml(d.ausencias || []));
 }
 
 function eqSumarDias(iso, dias) {
@@ -9303,9 +9332,9 @@ async function loadSimulador() {
   simLeerCapacidadEquipo();
 }
 
-// Dato leido de la seccion Equipo, no un campo: no reemplaza ni esconde ninguno
-// de los de arriba, que siguen siendo los que entran en la cuenta. Si Equipo no
-// responde, el simulador sigue igual y solo lo dice.
+// Dato leido de Ausencias (Recursos Humanos), no un campo: no reemplaza ni
+// esconde ninguno de los de arriba, que siguen siendo los que entran en la
+// cuenta. Si no responde, el simulador sigue igual y solo lo dice.
 async function simLeerCapacidadEquipo() {
   const caja = document.getElementById('sim-capacidad-equipo');
   if (!caja) return;
@@ -9316,12 +9345,12 @@ async function simLeerCapacidadEquipo() {
     const c = await r.json();
     const t = c && c.totales;
     if (!t || typeof t.capacidad_neta !== 'number') throw new Error('sin datos');
-    caja.textContent = 'Capacidad neta de esta semana, leída de Equipo (no editable): '
+    caja.textContent = 'Capacidad neta de esta semana, leída de Ausencias (no editable): '
       + horas(t.capacidad_neta) + ' = ' + horas(t.horas_base) + ' base − '
       + horas(t.horas_ausencia) + ' de ausencias. Recuperos comprometidos: '
       + horas(t.horas_recupero) + ', que no suman capacidad libre.';
   } catch (e) {
-    caja.textContent = 'No se pudo leer la capacidad de la sección Equipo (' + e.message + ').';
+    caja.textContent = 'No se pudo leer la capacidad de la sección Ausencias (' + e.message + ').';
   }
 }
 
@@ -11998,8 +12027,8 @@ select:focus{border-color:#0088cc}
 </div>
 
 <script>
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','equipo'];
-const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',equipo:'Equipo'};
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','equipo','ausencias'];
+const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',equipo:'Organigrama',ausencias:'Ausencias'};
 let _roles = [];
 
 function makeChips(containerId, checkedArr, prefix) {
