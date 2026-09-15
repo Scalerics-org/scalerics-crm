@@ -28,6 +28,7 @@ from routes.linkedin import linkedin_bp
 from routes.finanzas import finanzas_bp
 from routes.simulador import simulador_bp
 from routes.equipo import equipo_bp
+from routes.seg_leads import seg_leads_bp
 from routes.web import web_bp
 from routes.marketing import marketing_bp
 from services.auth import is_admin
@@ -1205,6 +1206,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-projects .nav-icon{stroke:#facc15}
 #nav-equipo .nav-icon{stroke:#a3e635}
 #nav-ausencias .nav-icon{stroke:#e879f9}
+#nav-seg_leads .nav-icon{stroke:#fb7185}
 .nav-item.active #nav-cola .nav-icon,
 .nav-item.active .nav-icon{opacity:1}
 /* active item keeps its color but brighter */
@@ -1224,6 +1226,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-projects.active .nav-icon{stroke:#fde047}
 #nav-equipo.active .nav-icon{stroke:#bef264}
 #nav-ausencias.active .nav-icon{stroke:#f0abfc}
+#nav-seg_leads.active .nav-icon{stroke:#fda4af}
 /* light mode — slightly darker tones */
 body.light #nav-cola .nav-icon{stroke:#2563eb}
 body.light #nav-clientes .nav-icon{stroke:#7c3aed}
@@ -1241,6 +1244,7 @@ body.light #nav-sdr .nav-icon{stroke:#b91c1c}
 body.light #nav-projects .nav-icon{stroke:#a16207}
 body.light #nav-equipo .nav-icon{stroke:#4d7c0f}
 body.light #nav-ausencias .nav-icon{stroke:#a21caf}
+body.light #nav-seg_leads .nav-icon{stroke:#be123c}
 /* ── Lucide icons ─────────────────────────────────────────────────────────── */
 .nav-icon{width:15px;height:15px;stroke-width:2;flex-shrink:0}
 /* Frase de equipo, version compacta del PDF de identidad de marca. Es la
@@ -1695,6 +1699,63 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .fin-hbar-relleno{height:100%;border-radius:3px}
 .fin-hbar-monto{font-size:.75rem;color:var(--texto);width:74px;text-align:right;flex-shrink:0}
 @media (max-width:760px){.fin-split{grid-template-columns:1fr}}
+/* ── Seguimiento de leads ─────────────────────────────────────────────────────
+   La agenda de llamados. Solo tokens, sin reglas `body.light`: el rojo de
+   vencido y el verde de Hecho son los de la familia de estados, que llegan a
+   4,5 en los dos temas. */
+.sl-cabecera{gap:12px;flex-wrap:wrap}
+.sl-contadores{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:22px}
+.sl-contador{display:flex;flex-direction:column;align-items:flex-start;gap:2px;background:var(--superficie);border:1px solid var(--borde);border-radius:10px;padding:10px 14px;cursor:pointer;font-family:inherit;text-align:left;color:var(--texto)}
+.sl-contador:hover{border-color:var(--borde-fuerte)}
+.sl-contador:focus-visible{outline:2px solid var(--azul);outline-offset:2px}
+.sl-contador-num{font-size:1.3rem;font-weight:800;line-height:1.1;color:var(--texto-fuerte)}
+.sl-contador-rot{font-size:.72rem;color:var(--texto-tenue)}
+.sl-contador-vencidos{background:var(--rojo-tinte);border-color:var(--rojo-borde)}
+.sl-contador-vencidos .sl-contador-num{color:var(--rojo-texto)}
+.sl-contador-vencidos .sl-contador-rot{color:var(--rojo-texto)}
+.sl-grupo{margin-bottom:22px;scroll-margin-top:16px}
+.sl-grupo-titulo{font-size:.72rem;font-weight:700;letter-spacing:.8px;color:var(--rotulo);margin:0 0 10px}
+.sl-grupo-titulo-vencidos{color:var(--rojo-texto)}
+.sl-tarjeta{background:var(--superficie);border:1px solid var(--borde);border-radius:10px;padding:14px 16px;margin-bottom:10px}
+.sl-vencida{border-left:3px solid var(--rojo)}
+.sl-tarjeta-cab{display:flex;justify-content:space-between;align-items:baseline;gap:4px 12px;flex-wrap:wrap}
+.sl-quien{font-size:.88rem;color:var(--texto-tenue);min-width:0;overflow-wrap:anywhere}
+.sl-nombre{background:none;border:none;padding:0;font:inherit;font-weight:700;color:var(--texto-fuerte);cursor:pointer;text-align:left}
+.sl-nombre:hover{text-decoration:underline}
+.sl-cuando{font-size:.78rem;font-weight:600;color:var(--texto-tenue);white-space:nowrap}
+.sl-cuando-vencido{color:var(--rojo-texto)}
+.sl-contexto{font-size:.82rem;color:var(--texto);margin-top:6px;line-height:1.45;overflow-wrap:anywhere}
+.sl-ultima{color:var(--texto-tenue)}
+.sl-nota{font-size:.74rem;color:var(--texto-debil);margin-top:3px;overflow-wrap:anywhere}
+.sl-acciones{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.sl-btn{display:inline-flex;align-items:center;justify-content:center;background:var(--relleno);color:var(--texto);border:1px solid var(--borde);border-radius:8px;padding:6px 12px;font-size:.76rem;font-weight:600;font-family:inherit;cursor:pointer;text-decoration:none;white-space:nowrap}
+.sl-btn:hover{border-color:var(--borde-fuerte)}
+.sl-btn:disabled{opacity:.45;cursor:not-allowed}
+.sl-btn-hecho{background:var(--verde-tinte);color:var(--verde-texto)}
+.sl-linea{display:flex;justify-content:space-between;align-items:center;gap:12px;background:var(--superficie);border:1px solid var(--borde);border-radius:10px;padding:10px 14px;margin-bottom:6px}
+.sl-linea-txt{min-width:0}
+.sl-linea-motivo{font-size:.76rem;color:var(--texto-debil);margin-top:2px;overflow-wrap:anywhere}
+.sl-linea-fecha{font-size:.76rem;font-weight:600;color:var(--texto-tenue);white-space:nowrap}
+.sl-vacio{font-size:.82rem;color:var(--texto-debil);padding:6px 0}
+.sl-error{font-size:.78rem;color:var(--rojo-texto);margin:4px 0 10px}
+.sl-error:empty{display:none}
+.sl-aviso{background:var(--ambar-tinte);color:var(--ambar);border:1px solid var(--ambar-borde);border-radius:8px;padding:8px 10px;font-size:.76rem;line-height:1.4;margin-bottom:12px}
+.sl-aviso:empty{display:none}
+.sl-elegido{display:flex;justify-content:space-between;align-items:center;gap:8px;background:var(--relleno);border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:.85rem;color:var(--texto-fuerte)}
+.sl-elegido[hidden]{display:none}
+.sl-buscador[hidden]{display:none}
+.sl-bloque[hidden]{display:none}
+.sl-link{background:none;border:none;color:var(--azul-claro);font:inherit;font-size:.76rem;cursor:pointer;padding:0}
+.sl-rapidos{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px}
+.sl-check{display:flex;align-items:center;gap:8px;font-size:.84rem;color:var(--texto);margin:4px 0 14px;cursor:pointer}
+.sl-check input{accent-color:var(--azul);width:16px;height:16px}
+.sl-ficha-cab{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.sl-ficha-pendiente{background:var(--relleno);border-radius:8px;padding:10px 12px;font-size:.8rem;color:var(--texto);line-height:1.45}
+.sl-ficha-llamado{padding:7px 0;border-bottom:1px solid var(--borde);font-size:.8rem;color:var(--texto);overflow-wrap:anywhere}
+.sl-ficha-fecha{font-size:.72rem;color:var(--texto-debil);margin-right:8px;white-space:nowrap}
+@media(max-width:600px){
+  .sl-contadores{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
 /* ── Equipo ───────────────────────────────────────────────────────────────────
    Organigrama (SVG) y ausencias con recupero. Solo tokens, sin reglas
    `body.light`: los tintes rojo/verde/ambar son los de la familia de estados,
@@ -1869,6 +1930,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div class="nav-item" id="nav-finanzas" onclick="showPanel('finanzas')"><i data-lucide="wallet" class="nav-icon"></i> Finanzas</div>
   <div class="nav-item" id="nav-simulador" onclick="showPanel('simulador')"><i data-lucide="calculator" class="nav-icon"></i> Simulador financiero</div>
   <div class="nav-section-label">VENTAS</div>
+  <div class="nav-item" id="nav-seg_leads" onclick="showPanel('seg_leads')"><i data-lucide="phone-call" class="nav-icon"></i> Seguimiento de leads</div>
   <div class="nav-item" id="nav-wa" onclick="showPanel('wa')"><i data-lucide="message-circle" class="nav-icon"></i> WhatsApp</div>
   <div class="nav-item" id="nav-notion_clients" onclick="showPanel('notion_clients')"><i data-lucide="handshake" class="nav-icon"></i> Proceso de venta</div>
   <div class="nav-item" id="nav-demos" onclick="showPanel('demos')"><i data-lucide="monitor-play" class="nav-icon"></i> Demos</div>
@@ -2713,6 +2775,20 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     </section>
   </div>
   <!-- ======= FIN RECURSOS HUMANOS PANELES ======= -->
+
+  <!-- ======= SEG LEADS PANEL ======= -->
+  <div id="seg_leads-panel" class="panel">
+    <div class="page-header sl-cabecera">
+      <div>
+        <h1>Seguimiento de leads</h1>
+        <div class="page-date" id="sl-resumen">Cargando...</div>
+      </div>
+      <button class="btn-primary" type="button" onclick="slAbrirNuevo()">Nuevo recordatorio</button>
+    </div>
+    <div class="sl-contadores" id="sl-contadores" aria-label="Llamados por grupo"></div>
+    <div id="sl-lista"></div>
+  </div>
+  <!-- ======= FIN SEG LEADS PANEL ======= -->
 </div>
 
 <!-- Modal: Contactar -->
@@ -3193,6 +3269,81 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 </div>
 <!-- ======= FIN EQUIPO MODALES ======= -->
 
+<!-- ======= SEG LEADS MODALES ======= -->
+<div class="modal-overlay" id="sl-modal-nuevo" onclick="if(event.target===this)slCerrarModal('sl-modal-nuevo')">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="sl-nuevo-titulo">
+    <h3 id="sl-nuevo-titulo">Nuevo recordatorio</h3>
+    <p>A quién llamás, cuándo y por qué. Si el lead ya tenía un recordatorio abierto, ese se cierra.</p>
+    <label class="modal-label" for="sl-nuevo-buscar">Lead</label>
+    <div class="sl-buscador" id="sl-nuevo-buscador">
+      <input type="text" id="sl-nuevo-buscar" placeholder="Buscar por nombre" autocomplete="off" oninput="slBuscarTecla(this.value)">
+      <div class="nc-vinculo-resultados" id="sl-nuevo-resultados"></div>
+    </div>
+    <div class="sl-elegido" id="sl-nuevo-elegido" hidden>
+      <span id="sl-nuevo-lead"></span>
+      <button class="sl-link" type="button" onclick="slCambiarLead()">Cambiar</button>
+    </div>
+    <div class="sl-aviso" id="sl-nuevo-aviso" role="status"></div>
+    <div class="modal-row">
+      <div>
+        <label class="modal-label" for="sl-nuevo-fecha">Fecha</label>
+        <input type="date" id="sl-nuevo-fecha">
+      </div>
+      <div>
+        <label class="modal-label" for="sl-nuevo-hora">Hora (opcional)</label>
+        <input type="time" id="sl-nuevo-hora">
+      </div>
+    </div>
+    <label class="modal-label" for="sl-nuevo-motivo">Motivo</label>
+    <input type="text" id="sl-nuevo-motivo" maxlength="200" placeholder="Qué tenés que hacer o preguntar">
+    <label class="modal-label" for="sl-nuevo-nota">Nota (opcional)</label>
+    <input type="text" id="sl-nuevo-nota" maxlength="300" placeholder="Ej: llamar después de las 18">
+    <div class="sl-error" id="sl-nuevo-error" role="alert"></div>
+    <div class="modal-btns">
+      <button class="btn-ghost" type="button" onclick="slCerrarModal('sl-modal-nuevo')">Cancelar</button>
+      <button class="btn-primary" type="button" onclick="slGuardarNuevo()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="sl-modal-hecho" onclick="if(event.target===this)slCerrarModal('sl-modal-hecho')">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="sl-hecho-titulo">
+    <h3 id="sl-hecho-titulo">Marcar hecho</h3>
+    <p id="sl-hecho-contexto"></p>
+    <label class="modal-label" for="sl-hecho-resultado">Qué pasó en la llamada</label>
+    <textarea id="sl-hecho-resultado" maxlength="2000" placeholder="Ej: no atendió; quedó en mandar el logo"></textarea>
+    <div class="modal-label">Cuándo volvés a llamar</div>
+    <div class="sl-bloque" id="sl-hecho-proximo">
+      <div class="sl-rapidos">
+        <button class="sl-btn" type="button" onclick="slHechoRapido('manana')">Mañana</button>
+        <button class="sl-btn" type="button" onclick="slHechoRapido('semana')">En una semana</button>
+        <button class="sl-btn" type="button" onclick="slHechoRapido('mes')">En un mes</button>
+      </div>
+      <div class="modal-row">
+        <div>
+          <label class="modal-label" for="sl-hecho-fecha">Fecha</label>
+          <input type="date" id="sl-hecho-fecha">
+        </div>
+        <div>
+          <label class="modal-label" for="sl-hecho-hora">Hora (opcional)</label>
+          <input type="time" id="sl-hecho-hora">
+        </div>
+      </div>
+      <label class="modal-label" for="sl-hecho-motivo">Motivo</label>
+      <input type="text" id="sl-hecho-motivo" maxlength="200">
+      <label class="modal-label" for="sl-hecho-nota">Nota (opcional)</label>
+      <input type="text" id="sl-hecho-nota" maxlength="300">
+    </div>
+    <label class="sl-check"><input type="checkbox" id="sl-hecho-sin-volver" onchange="slSinVolver()"> No hace falta volver a llamar</label>
+    <div class="sl-error" id="sl-hecho-error" role="alert"></div>
+    <div class="modal-btns">
+      <button class="btn-ghost" type="button" onclick="slCerrarModal('sl-modal-hecho')">Cancelar</button>
+      <button class="btn-primary" type="button" onclick="slGuardarHecho()">Guardar</button>
+    </div>
+  </div>
+</div>
+<!-- ======= FIN SEG LEADS MODALES ======= -->
+
 <script>
 window._isAdmin = false; // default until /api/me resolves
 // ========== Sidebar mobile ==========
@@ -3232,6 +3383,7 @@ function showPanel(name) {
   if (name === 'metrics') loadMetrics();
   if (name === 'activity') loadActivity();
   if (name === 'equipo' || name === 'ausencias') loadEquipo();
+  if (name === 'seg_leads') loadSegLeads();
   if (name === 'sdr') loadSdr();
 }
 
@@ -6151,6 +6303,7 @@ function _notionClientCardHtml(c, arrastrable) {
     ${meta ? `<div class="kanban-card-meta">${meta}</div>` : ''}
     ${c.descripcion ? `<div class="kanban-card-who">${esc(c.descripcion)}</div>` : ''}
     ${_ncVinculoHtml(c)}
+    ${slBotonNotionHtml(c)}
   </div>`;
 }
 
@@ -7061,20 +7214,20 @@ function _showScoreBreakdown(event, el) {
 
 // ── Mobile navigation ─────────────────────────────────────────────────────────
 // El mismo orden que el menu de la izquierda (Juan, 14/9).
-const NAV_PRIORITY = ['cal','meta','finanzas','simulador','wa','notion_clients','clientes','projects','tasks','activity','equipo','ausencias','cola','metrics'];
+const NAV_PRIORITY = ['cal','meta','finanzas','simulador','seg_leads','wa','notion_clients','clientes','projects','tasks','activity','equipo','ausencias','cola','metrics'];
 const NAV_ICONS = {
   cola:'inbox',meta:'instagram',cal:'calendar',
   tasks:'check-square',pipeline:'trending-up',clientes:'users',
   wa:'message-circle',metrics:'bar-chart-2',activity:'clock',projects:'target',
   notion_clients:'handshake',finanzas:'wallet',simulador:'calculator',equipo:'network',
-  ausencias:'calendar-clock'
+  ausencias:'calendar-clock',seg_leads:'phone-call'
 };
 const NAV_LABELS = {
   cola:'Outbound',meta:'Meta',cal:'Agenda',
   tasks:'Tareas',pipeline:'Pipeline',clientes:'Clientes',
   wa:'WA',metrics:'Intel. comercial',activity:'Actividad',projects:'Proyectos',
   notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador',equipo:'Organigrama',
-  ausencias:'Ausencias'
+  ausencias:'Ausencias',seg_leads:'Seguimiento'
 };
 let _mobileNavOverflow = [];
 
@@ -7154,7 +7307,7 @@ function closeMasSheet() {
 }
 
 // ── Panel access control ──────────────────────────────────────────────────────
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','equipo','ausencias'];
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','equipo','ausencias','seg_leads'];
 (async () => {
   try {
     const r = await fetch('/api/me');
@@ -7241,7 +7394,7 @@ function closeClientPanel() {
 
 async function _cpLoadAll() {
   if (!_cpClientId) return;
-  const [leadRes, meetRes, budgetRes, demoRes, attBudgetRes, attDemoRes, eventsRes, callsRes] = await Promise.allSettled([
+  const [leadRes, meetRes, budgetRes, demoRes, attBudgetRes, attDemoRes, eventsRes, callsRes, segRes] = await Promise.allSettled([
     fetch('/api/leads/' + _cpClientId).then(r => r.json()),
     fetch('/api/calendar/clients/' + _cpClientId + '/meetings').then(r => r.json()),
     fetch('/api/leads/' + _cpClientId + '/budget').then(r => r.json()),
@@ -7250,6 +7403,9 @@ async function _cpLoadAll() {
     fetch('/api/leads/' + _cpClientId + '/attachments?section=demo').then(r => r.json()),
     fetch('/api/leads/' + _cpClientId + '/events').then(r => r.json()),
     fetch('/api/leads/' + _cpClientId + '/calls').then(r => r.json()),
+    // Seguimiento de leads: el recordatorio abierto y el historial de llamados.
+    // Sin el panel da 403 y la seccion no se muestra.
+    fetch('/api/seg-leads/lead/' + _cpClientId).then(r => r.ok ? r.json() : null),
   ]);
   _cpData.lead    = leadRes.status === 'fulfilled' ? leadRes.value : {};
   _cpData.meetings = meetRes.status === 'fulfilled' && Array.isArray(meetRes.value) ? meetRes.value : [];
@@ -7259,6 +7415,7 @@ async function _cpLoadAll() {
   _cpData.attDemo   = attDemoRes.status === 'fulfilled' && Array.isArray(attDemoRes.value) ? attDemoRes.value : [];
   _cpData.events    = eventsRes.status === 'fulfilled' && Array.isArray(eventsRes.value) ? eventsRes.value : [];
   _cpData.calls     = callsRes.status === 'fulfilled' && Array.isArray(callsRes.value) ? callsRes.value : [];
+  _cpData.seg       = segRes.status === 'fulfilled' ? segRes.value : null;
 
   if (_cpData.lead && _cpData.lead.phone) {
     try {
@@ -7484,7 +7641,7 @@ function _cpRenderCalls() {
       </div>
     </div>`).join('')}
   </div>` : '<div style="padding:12px 0;font-size:.82rem;color:var(--texto-debil)">Sin llamadas registradas</div>';
-  return `<div class="cp-section">
+  return slFichaHtml(_cpData.seg) + `<div class="cp-section">
     <div class="cp-section-title">Registrar llamada</div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <select id="call-outcome" style="background:var(--fondo);border:1px solid var(--borde);color:var(--texto);padding:6px 10px;border-radius:6px;font-size:.8rem">
@@ -9028,6 +9185,414 @@ async function loadMetrics() {
     if (p) p.insertAdjacentHTML('afterbegin','<p style="color:#f87171;margin-bottom:16px">Error cargando Inteligencia comercial.</p>');
   }
 }
+
+// ========== Seguimiento de leads ==========
+// La agenda de llamados de Juan: solo lo pendiente, en vencidos, hoy, esta
+// semana y mas adelante. Los grupos, el "hace 6 dias" y los numeros para tel:
+// y wa.me los arma el servidor con la fecha de Montevideo; aca solo se pinta.
+// Todo lleva el prefijo sl (o SL_), porque en JS gana la ultima declaracion
+// con el mismo nombre. Sin barras invertidas: esto vive en un string de Python.
+let slDatos = null;
+let slHoy = '';
+let slHechoId = null;
+let slNuevoLeadId = null;
+let slBusquedaTimer = null;
+
+const SL_GRUPOS = [
+  {clave: 'vencidos', rotulo: 'Vencidos', completa: true},
+  {clave: 'hoy', rotulo: 'Hoy', completa: true},
+  {clave: 'semana', rotulo: 'Esta semana', completa: false},
+  {clave: 'despues', rotulo: 'Más adelante', completa: false},
+];
+
+async function loadSegLeads() {
+  const lista = document.getElementById('sl-lista');
+  try {
+    const r = await fetch('/api/seg-leads');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    slDatos = await r.json();
+  } catch (e) {
+    slDatos = null;
+    document.getElementById('sl-resumen').textContent = '';
+    document.getElementById('sl-contadores').innerHTML = '';
+    lista.innerHTML = '<div class="sl-vacio">No se pudo cargar el seguimiento (' + esc(e.message) + ').</div>';
+    return;
+  }
+  slHoy = slDatos.hoy || slHoy;
+  slPintar(slDatos);
+}
+
+function slPintar(d) {
+  const c = d.contadores || {};
+  document.getElementById('sl-resumen').textContent = slResumen(d.pendientes || 0, c.vencidos || 0);
+  document.getElementById('sl-contadores').innerHTML = slContadoresHtml(c);
+  document.getElementById('sl-lista').innerHTML = slListaHtml(d);
+}
+
+function slPlural(n, uno, varios) {
+  return n + ' ' + (n === 1 ? uno : varios);
+}
+
+function slResumen(pendientes, vencidos) {
+  return slPlural(pendientes, 'llamado pendiente', 'llamados pendientes') + ' · '
+    + slPlural(vencidos, 'vencido', 'vencidos');
+}
+
+// Cuatro tarjetas chicas: la de vencidos en rojo claro. Tocarlas lleva al grupo.
+function slContadoresHtml(c) {
+  return SL_GRUPOS.map(g => {
+    const clase = 'sl-contador' + (g.clave === 'vencidos' ? ' sl-contador-vencidos' : '');
+    return '<button type="button" class="' + clase + '" data-grupo="' + g.clave
+      + '" onclick="slIrAGrupo(this.dataset.grupo)">'
+      + '<span class="sl-contador-num">' + Number(c[g.clave] || 0) + '</span>'
+      + '<span class="sl-contador-rot">' + esc(g.rotulo) + '</span></button>';
+  }).join('');
+}
+
+function slIrAGrupo(clave) {
+  const el = document.getElementById('sl-grupo-' + clave);
+  if (el && el.scrollIntoView) el.scrollIntoView({behavior: 'smooth', block: 'start'});
+}
+
+// Un grupo vacio no se muestra. Vencidos y hoy van con tarjeta completa; esta
+// semana y mas adelante, en una linea: todavia no hay que hacer nada con ellos.
+function slListaHtml(d) {
+  const grupos = d.grupos || {};
+  const html = SL_GRUPOS.map(g => {
+    const items = grupos[g.clave] || [];
+    if (!items.length) return '';
+    const titulo = g.clave === 'hoy' ? 'Hoy · ' + (d.hoy_texto || '') : g.rotulo;
+    const claseTitulo = 'sl-grupo-titulo' + (g.clave === 'vencidos' ? ' sl-grupo-titulo-vencidos' : '');
+    return '<section class="sl-grupo" id="sl-grupo-' + g.clave + '">'
+      + '<h2 class="' + claseTitulo + '">' + esc(titulo.toUpperCase()) + '</h2>'
+      + items.map(it => (g.completa ? slTarjetaHtml(it) : slLineaHtml(it))).join('')
+      + '</section>';
+  }).join('');
+  return html || '<div class="sl-vacio">No hay llamados pendientes. Lo que se ve acá es lo que tenés que hacer.</div>';
+}
+
+function slQuienHtml(it) {
+  const empresa = it.empresa ? '<span class="sl-empresa"> · ' + esc(it.empresa) + '</span>' : '';
+  return '<div class="sl-quien"><button type="button" class="sl-nombre" data-lead="' + Number(it.lead_id)
+    + '" onclick="openClientPanel(Number(this.dataset.lead))">' + esc(it.nombre || 'Sin nombre')
+    + '</button>' + empresa + '</div>';
+}
+
+// Sin telefono cargado, Llamar y WhatsApp quedan deshabilitados.
+function slContactoHtml(it) {
+  if (!it.tel || !it.wa) {
+    const apagado = ' disabled title="El lead no tiene teléfono cargado"';
+    return '<button type="button" class="sl-btn"' + apagado + '>Llamar</button>'
+      + '<button type="button" class="sl-btn"' + apagado + '>WhatsApp</button>';
+  }
+  return '<a class="sl-btn" href="tel:' + esc(it.tel) + '">Llamar</a>'
+    + '<a class="sl-btn" href="https://wa.me/' + esc(it.wa) + '" target="_blank" rel="noopener">WhatsApp</a>';
+}
+
+function slTarjetaHtml(it) {
+  const id = Number(it.id);
+  const vencida = it.grupo === 'vencidos';
+  const ultima = it.ultimo_resultado
+    ? '<span class="sl-ultima">Última vez: ' + esc(it.ultimo_resultado) + '.</span> ' : '';
+  const nota = it.nota ? '<div class="sl-nota">' + esc(it.nota) + '</div>' : '';
+  const posponer = cuanto => '<button type="button" class="sl-btn" data-id="' + id + '" data-cuanto="' + cuanto
+    + '" onclick="slPosponer(Number(this.dataset.id), this.dataset.cuanto)">+1 ' + cuanto + '</button>';
+  return '<article class="sl-tarjeta' + (vencida ? ' sl-vencida' : '') + '" data-sl-id="' + id + '">'
+    + '<div class="sl-tarjeta-cab">' + slQuienHtml(it)
+    + '<div class="sl-cuando' + (vencida ? ' sl-cuando-vencido' : '') + '">' + esc(it.vence_texto || '') + '</div></div>'
+    + '<div class="sl-contexto">' + ultima + esc(it.motivo || '') + '</div>'
+    + nota
+    + '<div class="sl-acciones">' + slContactoHtml(it) + posponer('semana') + posponer('mes')
+    + '<button type="button" class="sl-btn sl-btn-hecho" data-id="' + id
+    + '" onclick="slAbrirHecho(Number(this.dataset.id))">Hecho</button></div>'
+    + '</article>';
+}
+
+function slLineaHtml(it) {
+  return '<div class="sl-linea" data-sl-id="' + Number(it.id) + '"><div class="sl-linea-txt">' + slQuienHtml(it)
+    + '<div class="sl-linea-motivo">' + esc(it.motivo || '') + '</div></div>'
+    + '<div class="sl-linea-fecha">' + esc(it.vence_texto || it.fecha_texto || '') + '</div></div>';
+}
+
+function slItem(id) {
+  const grupos = (slDatos && slDatos.grupos) || {};
+  for (const g of SL_GRUPOS) {
+    const it = (grupos[g.clave] || []).find(x => Number(x.id) === Number(id));
+    if (it) return it;
+  }
+  return null;
+}
+
+async function slPedir(url, datos) {
+  let d = {};
+  try {
+    const r = await fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'},
+                                body: JSON.stringify(datos)});
+    try { d = await r.json(); } catch (e) { d = {}; }
+    d = d || {};
+    if (!r.ok) d.ok = false;
+  } catch (e) {
+    d = {ok: false, error: 'no hubo respuesta del CRM'};
+  }
+  return d;
+}
+
+async function slRefrescar() {
+  await loadSegLeads();
+  // Si la ficha del lead esta abierta, su seccion de seguimiento tambien cambia.
+  if (typeof _cpClientId !== 'undefined' && _cpClientId) {
+    try {
+      const r = await fetch('/api/seg-leads/lead/' + Number(_cpClientId));
+      _cpData.seg = r.ok ? await r.json() : null;
+      if (_cpTab === 'calls') _cpSwitchTab('calls');
+    } catch (e) {}
+  }
+}
+
+// Posponer es un clic: corre la fecha y vuelve a pintar, sin formulario.
+async function slPosponer(id, cuanto) {
+  const d = await slPedir('/api/seg-leads/recordatorios/' + Number(id) + '/posponer', {cuanto: cuanto});
+  if (!d.ok) {
+    alert('No se pudo posponer: ' + (d.error || 'error desconocido'));
+    return;
+  }
+  await slRefrescar();
+}
+
+function slCerrarModal(id) {
+  document.getElementById(id).classList.remove('open');
+}
+
+// ── fechas del formulario ──
+function slFecha(iso) {
+  if (typeof iso !== 'string' || iso.length !== 10 || iso[4] !== '-' || iso[7] !== '-') return null;
+  const p = iso.split('-').map(Number);
+  if (!p.every(Number.isInteger)) return null;
+  const d = new Date(p[0], p[1] - 1, p[2]);
+  return (d.getFullYear() === p[0] && d.getMonth() === p[1] - 1 && d.getDate() === p[2]) ? d : null;
+}
+
+function slDos(n) {
+  return (n < 10 ? '0' : '') + n;
+}
+
+function slIso(d) {
+  return d.getFullYear() + '-' + slDos(d.getMonth() + 1) + '-' + slDos(d.getDate());
+}
+
+function slSumar(iso, cuanto) {
+  const d = slFecha(iso);
+  if (!d) return '';
+  if (cuanto === 'manana') d.setDate(d.getDate() + 1);
+  else if (cuanto === 'semana') d.setDate(d.getDate() + 7);
+  else if (cuanto === 'mes') {
+    const dia = d.getDate();
+    d.setDate(1);
+    d.setMonth(d.getMonth() + 1);
+    d.setDate(Math.min(dia, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()));
+  } else return '';
+  return slIso(d);
+}
+
+// ── Hecho: siempre pide que paso y la proxima fecha, o que no hace falta ──
+function slAbrirHecho(id) {
+  const it = slItem(id);
+  if (!it) return;
+  slHechoId = Number(id);
+  document.getElementById('sl-hecho-contexto').textContent = (it.nombre || '') + ' · ' + (it.motivo || '');
+  document.getElementById('sl-hecho-resultado').value = '';
+  document.getElementById('sl-hecho-fecha').value = '';
+  document.getElementById('sl-hecho-hora').value = '';
+  document.getElementById('sl-hecho-motivo').value = it.motivo || '';
+  document.getElementById('sl-hecho-nota').value = it.nota || '';
+  document.getElementById('sl-hecho-sin-volver').checked = false;
+  document.getElementById('sl-hecho-error').textContent = '';
+  slSinVolver();
+  document.getElementById('sl-modal-hecho').classList.add('open');
+}
+
+function slSinVolver() {
+  const sin = !!document.getElementById('sl-hecho-sin-volver').checked;
+  document.getElementById('sl-hecho-proximo').hidden = sin;
+  if (sin) document.getElementById('sl-hecho-fecha').value = '';
+}
+
+function slHechoRapido(cuanto) {
+  document.getElementById('sl-hecho-sin-volver').checked = false;
+  slSinVolver();
+  document.getElementById('sl-hecho-fecha').value = slSumar(slHoy || slIso(new Date()), cuanto);
+}
+
+async function slGuardarHecho() {
+  const error = document.getElementById('sl-hecho-error');
+  error.textContent = '';
+  const resultado = String(document.getElementById('sl-hecho-resultado').value || '').trim();
+  const sinVolver = !!document.getElementById('sl-hecho-sin-volver').checked;
+  const fecha = document.getElementById('sl-hecho-fecha').value;
+  if (!resultado) {
+    error.textContent = 'Contá qué pasó en la llamada.';
+    return;
+  }
+  if (!sinVolver && !fecha) {
+    error.textContent = 'Elegí cuándo volvés a llamar, o marcá que no hace falta volver a llamar.';
+    return;
+  }
+  const datos = sinVolver
+    ? {resultado: resultado, sin_volver: true}
+    : {resultado: resultado, sin_volver: false, proxima_fecha: fecha,
+       proxima_hora: document.getElementById('sl-hecho-hora').value,
+       proximo_motivo: document.getElementById('sl-hecho-motivo').value,
+       proxima_nota: document.getElementById('sl-hecho-nota').value};
+  const d = await slPedir('/api/seg-leads/recordatorios/' + Number(slHechoId) + '/hecho', datos);
+  if (!d.ok) {
+    error.textContent = 'No se guardó: ' + (d.error || 'error desconocido');
+    return;
+  }
+  slCerrarModal('sl-modal-hecho');
+  slHechoId = null;
+  await slRefrescar();
+}
+
+// ── Nuevo recordatorio: desde esta pantalla, la ficha o Proceso de venta ──
+function slAbrirNuevo(leadId, nombre, buscar) {
+  slNuevoLeadId = null;
+  ['sl-nuevo-hora', 'sl-nuevo-motivo', 'sl-nuevo-nota'].forEach(i => { document.getElementById(i).value = ''; });
+  document.getElementById('sl-nuevo-fecha').value = slHoy || slIso(new Date());
+  document.getElementById('sl-nuevo-error').textContent = '';
+  document.getElementById('sl-nuevo-aviso').textContent = '';
+  document.getElementById('sl-modal-nuevo').classList.add('open');
+  if (leadId) slElegirLead(leadId, nombre);
+  else slCambiarLead(buscar || '');
+}
+
+function slCambiarLead(texto) {
+  slNuevoLeadId = null;
+  document.getElementById('sl-nuevo-elegido').hidden = true;
+  document.getElementById('sl-nuevo-buscador').hidden = false;
+  document.getElementById('sl-nuevo-aviso').textContent = '';
+  const input = document.getElementById('sl-nuevo-buscar');
+  input.value = typeof texto === 'string' ? texto : '';
+  slBuscarLead(input.value);
+  if (input.focus) input.focus();
+}
+
+function slBuscarTecla(v) {
+  clearTimeout(slBusquedaTimer);
+  slBusquedaTimer = setTimeout(() => slBuscarLead(v), 250);
+}
+
+async function slBuscarLead(texto) {
+  const lista = document.getElementById('sl-nuevo-resultados');
+  const q = (texto || '').trim();
+  if (q.length < 2) {
+    lista.innerHTML = '<div class="nc-vinculo-vacio">Escribí al menos 2 letras del nombre.</div>';
+    return;
+  }
+  lista.innerHTML = '<div class="nc-vinculo-vacio">Buscando...</div>';
+  let items = [];
+  try {
+    // Con page la busqueda va en SQL con LIMIT (igual que _ncBuscarPersona).
+    const r = await fetch('/api/leads?page=1&search=' + encodeURIComponent(q));
+    if (!r.ok) throw new Error(r.status);
+    items = ((await r.json()) || {}).items || [];
+  } catch (e) {
+    lista.innerHTML = '<div class="nc-vinculo-vacio">No se pudo buscar. Probá de nuevo.</div>';
+    return;
+  }
+  lista.innerHTML = items.length
+    ? items.slice(0, 20).map(p => '<button type="button" class="nc-vinculo-opcion" data-lead="' + Number(p.id)
+        + '" data-nombre="' + esc(p.name || '') + '" onclick="slElegirLead(Number(this.dataset.lead), this.dataset.nombre)">'
+        + '<span class="nc-vinculo-nombre">' + esc(p.name || 'Sin nombre') + '</span>'
+        + '<span class="nc-vinculo-sub">' + esc([p.city, p.phone || 'sin teléfono'].filter(Boolean).join(' · ')) + '</span>'
+        + '</button>').join('')
+    : '<div class="nc-vinculo-vacio">No hay nadie en el CRM con ese nombre.</div>';
+}
+
+async function slElegirLead(id, nombre) {
+  const elegido = Number(id);
+  slNuevoLeadId = elegido;
+  document.getElementById('sl-nuevo-lead').textContent = nombre || 'Lead del CRM';
+  document.getElementById('sl-nuevo-buscador').hidden = true;
+  document.getElementById('sl-nuevo-elegido').hidden = false;
+  const aviso = document.getElementById('sl-nuevo-aviso');
+  aviso.textContent = '';
+  try {
+    const r = await fetch('/api/seg-leads/lead/' + elegido);
+    if (!r.ok) return;
+    const d = await r.json();
+    if (d && d.pendiente && slNuevoLeadId === elegido) {
+      aviso.textContent = 'Ya tiene un recordatorio abierto (' + d.pendiente.fecha_texto + ': '
+        + d.pendiente.motivo + '). Al guardar este, ese se cierra solo.';
+    }
+  } catch (e) {}
+}
+
+async function slGuardarNuevo() {
+  const error = document.getElementById('sl-nuevo-error');
+  error.textContent = '';
+  const fecha = document.getElementById('sl-nuevo-fecha').value;
+  const motivo = String(document.getElementById('sl-nuevo-motivo').value || '').trim();
+  if (!slNuevoLeadId) {
+    error.textContent = 'Elegí a qué lead vas a llamar.';
+    return;
+  }
+  if (!fecha) {
+    error.textContent = 'Elegí la fecha del llamado.';
+    return;
+  }
+  if (!motivo) {
+    error.textContent = 'Escribí el motivo: qué tenés que hacer o preguntar.';
+    return;
+  }
+  const d = await slPedir('/api/seg-leads/recordatorios', {
+    lead_id: slNuevoLeadId, fecha: fecha, hora: document.getElementById('sl-nuevo-hora').value,
+    motivo: motivo, nota: document.getElementById('sl-nuevo-nota').value});
+  if (!d.ok) {
+    error.textContent = 'No se guardó: ' + (d.error || 'error desconocido');
+    return;
+  }
+  slCerrarModal('sl-modal-nuevo');
+  slNuevoLeadId = null;
+  await slRefrescar();
+}
+
+// El boton en la ficha de Proceso de venta. La ficha de Notion llega a su lead
+// por business_id; si todavia no esta conectada, el buscador se abre con el
+// nombre de la ficha.
+function slBotonNotionHtml(c) {
+  const datos = c.business_id
+    ? ' data-lead="' + Number(c.business_id) + '" data-nombre="' + esc(c.business_name || c.name || '') + '"'
+    : ' data-buscar="' + esc(c.name || '') + '"';
+  return '<button type="button" class="nc-vinculo" draggable="false"' + datos
+    + ' onclick="event.stopPropagation();slAbrirDesdeNotion(this)">Recordatorio de llamado</button>';
+}
+
+function slAbrirDesdeNotion(boton) {
+  const ds = boton.dataset || {};
+  if (ds.lead) slAbrirNuevo(Number(ds.lead), ds.nombre);
+  else slAbrirNuevo(null, '', ds.buscar || '');
+}
+
+// La ficha del lead (pestaña Llamadas): el recordatorio abierto y el historial
+// de llamados. El historial se ve aca y no en la pantalla de seguimiento.
+function slFichaHtml(seg) {
+  if (!seg || !seg.lead) return '';
+  const p = seg.pendiente;
+  const pendiente = p
+    ? '<div class="sl-ficha-pendiente' + (p.grupo === 'vencidos' ? ' sl-vencida' : '') + '"><b>'
+      + esc(p.fecha_texto || '') + (p.hora ? ' · ' + esc(p.hora) : '') + '</b> · ' + esc(p.motivo || '')
+      + (p.nota ? '<div class="sl-nota">' + esc(p.nota) + '</div>' : '') + '</div>'
+    : '<div class="sl-vacio">Sin recordatorio pendiente.</div>';
+  const llamados = (seg.llamados || []).map(l => '<div class="sl-ficha-llamado"><span class="sl-ficha-fecha">'
+    + esc(l.fecha_texto || '') + '</span>' + esc(l.resultado || '') + '</div>').join('')
+    || '<div class="sl-vacio">Todavía no hay llamados cerrados.</div>';
+  return '<div class="cp-section"><div class="cp-section-title sl-ficha-cab"><span>Próximo llamado</span>'
+    + '<button type="button" class="cp-btn cp-btn-ghost" data-lead="' + Number(seg.lead.id) + '" data-nombre="'
+    + esc(seg.lead.nombre || '') + '" onclick="slAbrirNuevo(Number(this.dataset.lead), this.dataset.nombre)">Nuevo recordatorio</button></div>'
+    + pendiente + '</div>'
+    + '<div class="cp-section"><div class="cp-section-title">Historial de llamados</div>' + llamados + '</div>';
+}
+// ========== FIN Seguimiento de leads ==========
 
 // ========== Equipo ==========
 // Recursos Humanos, en dos paneles que comparten un solo pedido: Organigrama
@@ -11813,7 +12378,7 @@ def create_app(db_path: str) -> Flask:
 
     for bp in (leads_bp, demos_bp, calendar_bp, wa_bp, pipeline_bp, tasks_bp, budgets_bp, tokens_bp, meta_bp, calendly_bp, notion_bp, projects_bp, preclientes_bp,
                 notion_clients_bp, resend_bp, linkedin_bp, web_bp, finanzas_bp, marketing_bp,
-                simulador_bp, equipo_bp):
+                simulador_bp, equipo_bp, seg_leads_bp):
         app.register_blueprint(bp)
 
     @app.before_request
@@ -12727,8 +13292,8 @@ select:focus{border-color:#0088cc}
 </div>
 
 <script>
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','equipo','ausencias'];
-const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',equipo:'Organigrama',ausencias:'Ausencias'};
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','equipo','ausencias','seg_leads'];
+const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',equipo:'Organigrama',ausencias:'Ausencias',seg_leads:'Seguimiento de leads'};
 let _roles = [];
 
 function makeChips(containerId, checkedArr, prefix) {
