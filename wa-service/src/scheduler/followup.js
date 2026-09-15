@@ -94,11 +94,22 @@ function crearScheduler({ repo, cola, cfg, redactor = null, embudo = null, limit
     const texto = await redactor?.escribir(lead, situacion, extra);
     if (!texto) return false;
 
+    // Un recordatorio no es salida en frio: el lead reservo ese horario. Por
+    // eso no espera a la apertura —el 14-9 uno quedo guardado desde el domingo
+    // y salio el lunes 56 minutos antes de la reunion, diciendo "mañana"— y por
+    // eso ademas vence: el texto dice cuanto falta, y un recordatorio que sale
+    // tarde no llega tarde, miente. Pasada la reunion no hay nada que recordar.
+    const esRecordatorio = job.type.startsWith('reminder_') && lead.meeting_time;
+    const faltanMin = esRecordatorio
+      ? Math.floor((new Date(lead.meeting_time) - momento) / 60_000)
+      : 0;
+
     cola.encolar({
       to: lead.telefono,
       texto,
       kind: job.type === 'followup' ? 'followup' : 'manual',
       leadId: lead.id,
+      ...(esRecordatorio ? { acordado: true, venceEnMin: Math.max(1, faltanMin), encoladoEn: momento } : {}),
     });
 
     if (job.type === 'followup') {

@@ -24,6 +24,28 @@ function crearCola({ proveedor, repo, cfg, logger, limites, ahora = () => new Da
   // los recordatorios tampoco: que el lead escriba no los invalida.
   const CONVERSACIONALES = new Set(['manual']);
 
+  /**
+   * Los que cuentan como contestarle al lead, y por lo tanto no esperan al
+   * horario comercial.
+   *
+   * Es una lista aparte de CONVERSACIONALES a proposito: esa dice que se
+   * DESCARTA cuando el lead vuelve a escribir, y el saludo no se descarta nunca
+   * —si se pierde, el lead nunca se entera de quien le habla—.
+   *
+   * El saludo entro aca el 14-9. Susana escribio un domingo 18:53, el bot le
+   * contesto al instante y charlaron; al otro dia 09:19 le llego "¡Buenas! Soy
+   * el agente comercial de Scalerics, la idea es hacerte unas preguntas
+   * introductorias", despues de toda la conversacion. A CD Montevideo le paso
+   * igual un sabado 07:04: converso, agendo, y a las 09:20 le llego la
+   * presentacion.
+   *
+   * El saludo del formulario NO se ve afectado y sigue esperando al horario:
+   * `esRespuesta` pide ademas que el lead haya escrito recien, y el del
+   * formulario sale sin que nadie haya escrito nada. La distincion ya estaba;
+   * faltaba dejar pasar el kind.
+   */
+  const CONTESTAN = new Set(['manual', 'welcome']);
+
   let esperandoVacio = [];
   let seq = 0;
   let despertador = null;
@@ -286,8 +308,17 @@ function crearCola({ proveedor, repo, cfg, logger, limites, ahora = () => new Da
           // Es una respuesta si el lead escribio recien. No hace falta que
           // nadie lo marque al encolar: se mira la conversacion, que es lo que
           // define si esto contesta algo o aparece de la nada.
-          esRespuesta: CONVERSACIONALES.has(item.kind)
+          esRespuesta: CONTESTAN.has(item.kind)
             && repo.escribioHaceMenos(item.leadId, cfg.RESPUESTA_VENTANA_MIN, ahora()),
+          // Lo que el lead reservo: un recordatorio de su propia reunion no es
+          // salida en frio y no puede esperar a la apertura, porque para
+          // entonces ya no sirve.
+          //
+          // Lo que escribe una persona desde el panel del CRM tampoco espera. El
+          // 14-9 Juan escribio a las 22:36 y la cola se lo guardo hasta las 9 de
+          // la manana: la decision de mandarlo a esa hora la tomo el, no el bot.
+          // Los topes por hora y por dia siguen corriendo igual.
+          esAcordado: item.acordado === true || item.humano === true,
           ahora: ahora(),
         });
 

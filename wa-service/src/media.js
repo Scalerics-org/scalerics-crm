@@ -27,6 +27,24 @@ const TIPOS = {
   jpg: 'image/jpeg',
   jpeg: 'image/jpeg',
   png: 'image/png',
+  // Los stickers son webp, siempre. Sin esta linea salen como
+  // application/octet-stream y el navegador los baja en vez de dibujarlos.
+  webp: 'image/webp',
+  gif: 'image/gif',
+  mp4: 'video/mp4',
+  pdf: 'application/pdf',
+};
+
+/**
+ * Con que extension se guarda cada tipo de medio de WhatsApp. Los documentos no
+ * estan: esos conservan la del nombre original, que es la unica que dice la
+ * verdad (un .xlsx y un .pdf llegan los dos como documentMessage).
+ */
+const EXTENSION_POR_TIPO = {
+  audio: 'ogg',
+  imagen: 'jpg',
+  sticker: 'webp',
+  video: 'mp4',
 };
 
 function crearMedia({ dir, diasRetencion = 90, logger = null } = {}) {
@@ -89,4 +107,17 @@ function crearMedia({ dir, diasRetencion = 90, logger = null } = {}) {
   };
 }
 
-module.exports = { crearMedia, TIPOS };
+/**
+ * La extension con la que hay que guardar un medio entrante.
+ *
+ * Para un documento sale del nombre con el que lo mandaron: es lo unico que
+ * distingue un presupuesto en PDF de una planilla, porque WhatsApp los entrega
+ * a los dos como `documentMessage`.
+ */
+function extensionDe(tipo, nombreArchivo = '') {
+  if (EXTENSION_POR_TIPO[tipo]) return EXTENSION_POR_TIPO[tipo];
+  const ext = path.extname(String(nombreArchivo || '')).slice(1).toLowerCase();
+  return /^[a-z0-9]{1,8}$/.test(ext) ? ext : 'bin';
+}
+
+module.exports = { crearMedia, extensionDe, TIPOS };

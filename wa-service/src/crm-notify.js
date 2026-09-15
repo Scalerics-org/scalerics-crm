@@ -13,6 +13,49 @@ function crearNotificadorCRM({ cfg, repo, logger }) {
   return {
     activo,
 
+    /**
+     * Alguien escribio al WhatsApp: se le reporta al CRM, que manda el mail.
+     *
+     * El CRM decide SI corresponde avisar —el primer mensaje de la
+     * conversacion, o el primero despues de 30 minutos de silencio— y lo
+     * persiste. Aca no hay nada de esa logica a proposito: dos reglas para lo
+     * mismo, en dos servicios, se separan; es la falla que se repitio varias
+     * veces en este proyecto. El bot reporta y se calla.
+     *
+     * `direction: 'in'` siempre: el endpoint ignora cualquier otra cosa, asi
+     * que un saliente que se cuele no puede disparar un mail ni correr la
+     * ventana.
+     *
+     * No se espera la respuesta, y no puede tirar nunca: que el CRM este caido
+     * no puede cortar la conversacion con el lead, que es lo unico que no se
+     * recupera despues.
+     */
+    async mensajeEntrante({ telefono, nombre = '', texto = '' }) {
+      if (!activo || !telefono) return false;
+
+      try {
+        const r = await fetch(`${cfg.CRM_API_URL.replace(/\/$/, '')}/api/bot/mensaje-entrante`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-admin-token': cfg.CRM_ADMIN_TOKEN },
+          body: JSON.stringify({
+            phone: telefono,
+            name: nombre,
+            text: String(texto || '').slice(0, 500),
+            direction: 'in',
+          }),
+          signal: AbortSignal.timeout(5000),
+        });
+        if (!r.ok) {
+          logger?.warn({ telefono, status: r.status }, 'el CRM rechazo el aviso de entrante');
+          return false;
+        }
+        return true;
+      } catch (e) {
+        logger?.warn({ telefono, err: String(e.message || e) }, 'no se pudo avisar del entrante');
+        return false;
+      }
+    },
+
     async leadCalifico(leadId) {
       if (!activo) return false;
 

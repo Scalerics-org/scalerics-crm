@@ -66,7 +66,16 @@ function mediosAFormatoBot(m) {
   return lista.map((x, i) => ({
     tipo: x.tipo || 'archivo',
     segundos: x.segundos || 0,
-    url: `/api/messages/${m.id}/media/${i}`,
+    // El nombre con el que lo mandaron. Solo lo traen los documentos, y es lo
+    // unico que los distingue entre si: "presupuesto.pdf" y "IMG-4032.pdf" son
+    // cosas muy distintas para el que atiende.
+    nombre: x.nombre || null,
+    // null cuando no hay archivo —era muy grande, fallo la descarga, o ya se
+    // borro por antiguedad—. Es la unica senal que tiene el panel para saberlo:
+    // `archivo` es el nombre en disco y no sale de aca a proposito. Devolver
+    // una url igual dejaba al navegador pidiendo algo que no existe, y no habia
+    // forma de dibujar "mandó un video que no pudimos guardar".
+    url: x.archivo ? `/api/messages/${m.id}/media/${i}` : null,
   }));
 }
 
@@ -169,7 +178,8 @@ function registrar(app, { cfg, repo, cola, embudo = null, media = null, logger }
       return reply.code(400).send({ error: 'phone y text requeridos' });
     }
     const lead = repo.leadPorTelefono(tel);
-    cola.encolar({ to: tel, texto: String(text).trim(), kind: 'manual', leadId: lead ? lead.id : null });
+    // humano: lo escribio una persona desde el CRM, sale aunque sea fuera de horario.
+    cola.encolar({ to: tel, texto: String(text).trim(), kind: 'manual', leadId: lead ? lead.id : null, humano: true });
 
     /**
      * Escribirle desde el panel tambien pausa al bot en ese chat.

@@ -87,10 +87,42 @@ const PIDE_HORARIO = [
 ];
 
 /**
+ * Promete un link que va a mandar despues.
+ *
+ * Costo un lead el 13-9. Susana, salon de belleza, ya habia dicho cuando podia:
+ *
+ *   ← Mañana al medio dia
+ *   → Los horarios los maneja el sistema y se ven directamente cuando agendás.
+ *     Entrá al link que te voy a pasar en un momento y elegí el que te venga bien.
+ *
+ * No existia ningun link y nunca salio ninguno. La conversacion murio ahi con
+ * la clienta esperando.
+ *
+ * Es una mentira distinta de las de arriba —no dice que agendo, no confirma un
+ * momento, no le pide un horario— pero hace el mismo daño: manda al lead a
+ * esperar algo que no viene. El bot no tiene forma de mandar "otro mensaje
+ * despues" con un link: o el link va en ESTE mensaje, o no hay link.
+ */
+const PROMETE_LINK = [
+  /\b(te|le)\s+(paso|mando|env[ií]o|comparto|dejo)\s+(el|un|los?)\s+(link|enlace)/i,
+  /\b(te|le)\s+(voy\s+a\s+|vas?\s+a\s+)?(pasar|mandar|enviar|llegar|compartir)\s+(el|un)\s+(link|enlace)/i,
+  /\b(link|enlace)\s+que\s+te\s+(voy\s+a\s+)?(pas|mand|env)/i,
+  /\b(te\s+)?(llega|llegar[aá])\s+(el|un)\s+(link|enlace)/i,
+];
+
+/** Un link de verdad adentro del mensaje. */
+const TIENE_LINK = /https?:\/\/\S+/i;
+
+/**
  * @returns {string|null} que fue lo que prometio, o null si esta bien.
  */
 function prometeAgendar(texto) {
   const t = String(texto || '');
+  // Prometer el link esta mal solo si no lo manda. "Te paso el link:
+  // https://..." es exactamente lo que tiene que hacer.
+  if (!TIENE_LINK.test(t) && PROMETE_LINK.some((re) => re.test(t))) {
+    return 'prometio un link que no mando';
+  }
   if (DICE_QUE_AGENDO.some((re) => re.test(t))) return 'dijo que ya lo agendo';
   // Preguntar es ofrecer. Solo se toma como confirmacion lo que no le deja la
   // decision al lead.
@@ -100,4 +132,4 @@ function prometeAgendar(texto) {
   return null;
 }
 
-module.exports = { prometeAgendar, DICE_QUE_AGENDO, CONFIRMA_SIN_PREGUNTAR, PIDE_HORARIO };
+module.exports = { prometeAgendar, DICE_QUE_AGENDO, CONFIRMA_SIN_PREGUNTAR, PIDE_HORARIO, PROMETE_LINK };

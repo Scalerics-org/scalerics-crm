@@ -104,6 +104,30 @@ function tipoNoLeible(msg) {
 }
 
 /**
+ * El archivo que trae un mensaje, TENGA O NO texto.
+ *
+ * Es la diferencia con `tipoNoLeible`, que solo se consultaba cuando el mensaje
+ * venia mudo. Una foto con epigrafe es un solo mensaje de WhatsApp —la imagen y
+ * su texto juntos— y salia por el camino del texto normal, asi que la foto se
+ * perdia en silencio: el bot contestaba "mira como quedo esto" sin saber que
+ * habia un esto, y en el panel del CRM no quedaba rastro de la imagen.
+ *
+ * @returns {{tipo: string, nombreArchivo: string, segundos: number}|null}
+ */
+function medioDeMensaje(msg) {
+  const m = msg?.message || {};
+  const tipo = tipoNoLeible(msg);
+  if (!tipo) return null;
+  return {
+    tipo,
+    // Solo los documentos traen nombre, y es lo unico que los distingue entre
+    // si: un PDF y una planilla llegan los dos como documentMessage.
+    nombreArchivo: m.documentMessage?.fileName || '',
+    segundos: m.audioMessage?.seconds || 0,
+  };
+}
+
+/**
  * @param {object} deps.buscarMensaje (providerMsgId) => texto|null. Lo usa
  *   Baileys para reenviar un mensaje que el destinatario no pudo descifrar.
  */
@@ -307,31 +331,34 @@ function crear(cfg, { logger, buscarMensaje = null } = {}) {
           continue;
         }
 
+        const medio = medioDeMensaje(msg);
+        // Bajar y descifrar el medio cuesta, y no siempre hace falta (un
+        // sticker que ni se guarda porque el lead se dio de baja). Se pasa la
+        // funcion y la llama quien decide.
+        const descargar = medio
+          ? async () => {
+            const b = await cargarBaileys();
+            return b.downloadMediaMessage(msg, 'buffer', {}, {
+              logger: require('pino')({ level: 'error' }),
+              reuploadRequest: sock.updateMediaMessage,
+            });
+          }
+          : null;
+
         const texto = textoDeMensaje(msg);
         if (!texto) {
           // Un audio o una foto sin epigrafe no se puede leer, pero del otro
           // lado hay alguien esperando respuesta. Se avisa hacia arriba para
           // que conteste algo en vez de dejarlo hablando solo.
-          const tipo = tipoNoLeible(msg);
-          logger?.info({ from, tipo, tipos: Object.keys(msg.message || {}) }, 'entrante sin texto');
-          if (tipo && handlerSinTexto) {
+          logger?.info({ from, tipo: medio?.tipo, tipos: Object.keys(msg.message || {}) }, 'entrante sin texto');
+          if (medio && handlerSinTexto) {
             try {
               handlerSinTexto({
                 from,
-                tipo,
+                ...medio,
                 id: msg.key.id,
                 nombre: msg.pushName || '',
-                segundos: msg.message?.audioMessage?.seconds || 0,
-                // Perezosa: bajar y descifrar el medio cuesta, y la mayoria de
-                // las veces no hace falta (una foto, un sticker, o audio sin
-                // transcripcion configurada).
-                descargar: async () => {
-                  const b = await cargarBaileys();
-                  return b.downloadMediaMessage(msg, 'buffer', {}, {
-                    logger: require('pino')({ level: 'error' }),
-                    reuploadRequest: sock.updateMediaMessage,
-                  });
-                },
+                descargar,
               });
             } catch (e) {
               logger?.error({ err: String(e.message || e) }, 'fallo el handler de entrante sin texto');
@@ -344,7 +371,9 @@ function crear(cfg, { logger, buscarMensaje = null } = {}) {
         // pushName es el nombre que la persona tiene puesto en WhatsApp. Para
         // quien escribe al numero sin pasar por el formulario, es lo unico que
         // hay para saludarlo por su nombre.
-        handler({ from, texto, id: msg.key.id, nombre: msg.pushName || '' });
+        // El medio va con el texto: si venia con epigrafe, los dos son el mismo
+        // mensaje y tienen que quedar en la misma fila del panel.
+        handler({ from, texto, id: msg.key.id, nombre: msg.pushName || '', ...(medio || {}), descargar });
       }
     });
   }
@@ -464,4 +493,6 @@ function crear(cfg, { logger, buscarMensaje = null } = {}) {
   };
 }
 
-module.exports = { crear, jidDeTelefono, telefonoDeJid, telefonoDelMensaje, textoDeMensaje, BACKOFF_MS };
+module.exports = {
+  crear, jidDeTelefono, telefonoDeJid, telefonoDelMensaje, textoDeMensaje, medioDeMensaje, BACKOFF_MS,
+};

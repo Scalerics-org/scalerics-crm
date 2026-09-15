@@ -205,6 +205,12 @@ const esquema = z.object({
   MEDIA_DIAS_RETENCION: z.coerce.number().int().positive().default(90),
   MAX_AUDIO_SEGUNDOS: z.coerce.number().positive().default(300),
 
+  // Tope de lo que se baja al volumen. Ahi vive tambien la base, y son 1GB:
+  // un video de WhatsApp puede pesar 16MB, asi que veinte de esos y no entra un
+  // backup. Pasado el tope el mensaje se registra igual, sin archivo — el que
+  // atiende ve "mando un video" y no un hueco.
+  MEDIA_MAX_MB: z.coerce.number().positive().default(8),
+
   // Cada cuanto, como mucho, se le pide a alguien que escriba en vez de mandar
   // audios. Quien manda cuatro seguidos no necesita cuatro disculpas.
   AVISO_SIN_TEXTO_MINUTOS: z.coerce.number().nonnegative().default(30),

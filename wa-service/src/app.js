@@ -100,7 +100,8 @@ function construir(cfg, {
   // Los archivos que manda el lead viven al lado de la base, en el volumen. Es
   // lo mismo que hace el bot de la bloquera con su carpeta de uploads: una nota
   // de voz pesa unos 20KB y el volumen tiene 1GB.
-  const media = require('./media').crearMedia({
+  const { crearMedia, extensionDe } = require('./media');
+  const media = crearMedia({
     dir: require('path').join(require('path').dirname(cfg.DB_PATH), 'media'),
     diasRetencion: cfg.MEDIA_DIAS_RETENCION,
     logger: log,
@@ -158,7 +159,7 @@ function construir(cfg, {
 
   const scheduler = crearScheduler({ repo, cola, cfg, redactor, embudo, limites, logger: log, ahora });
   const servicioLeads = crearServicioLeads({
-    repo, cola, cfg, logger: log, textos, redactor, embudo, scheduler, ahora,
+    repo, cola, cfg, logger: log, textos, redactor, embudo, scheduler, crmNotify, ahora,
   });
 
   // Todo lo que entra por WhatsApp pasa por aca: marca la respuesta, cancela el
@@ -198,7 +199,45 @@ function construir(cfg, {
     esperaMs: cfg.AGRUPAR_ENTRANTES_MS,
     logger: log,
   });
-  proveedor.alRecibir((m) => {
+  /**
+   * Baja el archivo que vino con un mensaje y lo deja en el volumen.
+   *
+   * Siempre devuelve un descriptor, aunque no haya archivo: `archivo: null`
+   * significa "mando esto pero no lo tenemos". Es lo que hace que en el panel
+   * se lea "mandó un video" en vez de no aparecer nada, que era el sintoma
+   * viejo. Que la descarga falle no puede costar el mensaje entero.
+   */
+  async function bajarMedio({ tipo, descargar, nombreArchivo = '', segundos = 0 }) {
+    const medio = { tipo, archivo: null };
+    if (nombreArchivo) medio.nombre = nombreArchivo;
+    if (segundos) medio.segundos = segundos;
+    if (!descargar) return { medio, buffer: null };
+
+    let buffer = null;
+    try {
+      buffer = await descargar();
+    } catch (e) {
+      log.warn({ tipo, err: String(e.message || e) }, 'no se pudo bajar el medio entrante');
+      return { medio, buffer: null };
+    }
+
+    // El volumen es de 1GB y ahi vive tambien la base: un video de WhatsApp
+    // puede pesar 16MB. Pasado el tope se registra el mensaje sin el archivo.
+    if (buffer.length > cfg.MEDIA_MAX_MB * 1024 * 1024) {
+      log.warn({ tipo, mb: (buffer.length / 1024 / 1024).toFixed(1) }, 'medio demasiado grande, no se guarda');
+      return { medio, buffer };
+    }
+
+    try {
+      medio.archivo = media.guardar(buffer, extensionDe(tipo, nombreArchivo));
+    } catch (e) {
+      // Que no se pueda guardar el archivo no puede costar el mensaje.
+      log.warn({ tipo, err: String(e.message || e) }, 'no se pudo guardar el medio entrante');
+    }
+    return { medio, buffer };
+  }
+
+  proveedor.alRecibir(async (m) => {
     // WhatsApp reenvia lo no confirmado cuando el bot reconecta. Sin este
     // filtro, una caida a mitad de turno hace que el lead reciba dos respuestas
     // al mismo mensaje, y desordenadas.
@@ -206,13 +245,31 @@ function construir(cfg, {
       log.debug({ from: m.from, id: m.id }, 'entrante repetido, se descarta');
       return;
     }
-    agrupador.recibir(m);
+    // Una foto CON epigrafe es un solo mensaje de WhatsApp: el texto y la
+    // imagen juntos. Antes salia por aca con el texto solo y la foto se perdia
+    // en silencio, asi que el bot contestaba "mira como quedo esto" sin saber
+    // que habia un esto.
+    const medio = m.tipo ? (await bajarMedio(m)).medio : null;
+    agrupador.recibir({ ...m, media: medio });
   });
 
   // Audios, fotos y archivos. No se puede leer el contenido, pero contestar
   // algo es mejor que el silencio. Se avisa una vez cada tanto y no en cada
   // mensaje: quien manda cuatro audios seguidos no necesita cuatro disculpas.
   const avisadoSinTexto = new Map();
+  /**
+   * Que fue lo que llego, para que el redactor pueda nombrarlo. El prompt de
+   * `sin_texto_archivo` habla de "un archivo o una imagen": suficiente para un
+   * PDF, raro para un sticker.
+   */
+  const QUE_MANDO = {
+    imagen: 'Lo que te mandó fue una foto.',
+    sticker: 'Lo que te mandó fue un sticker.',
+    video: 'Lo que te mandó fue un video.',
+    documento: 'Lo que te mandó fue un archivo.',
+    ubicacion: 'Lo que te mandó fue una ubicación.',
+    contacto: 'Lo que te mandó fue un contacto.',
+  };
   /**
    * Un mensaje que sale de nuestro numero pero que no mando el bot: sos vos
    * escribiendole al lead desde el telefono. El bot se calla en ese chat unas
@@ -232,42 +289,32 @@ function construir(cfg, {
     }
   });
 
-  proveedor.alRecibirSinTexto?.(async ({ from, tipo, nombre, segundos, descargar, id }) => {
+  proveedor.alRecibirSinTexto?.(async ({ from, tipo, nombre, nombreArchivo, segundos, descargar, id }) => {
     if (!repo.entranteEsNuevo(id)) return;
     const lead = repo.leadPorTelefono(from);
-    // Al que se dio de baja o esta con una persona no se le escribe igual.
-    if (lead?.opt_out || lead?.human_requested) return;
-    // Ni cuando el bot esta apagado o pausado: un sticker no lo despierta. Sin
-    // esto contestaba "no me abre el archivo" en un chat donde una persona
-    // acababa de entrar a escribir.
-    if (lead && !require('./funnel/pausa').botActivo(lead, ahora())) return;
+    // Al que se dio de baja no se le escribe ni se le guarda nada: pidio irse.
+    if (lead?.opt_out) return;
+    // Con una persona atendiendo, o con el bot apagado o pausado, el bot se
+    // calla —un sticker no lo despierta; antes contestaba "no me abre el
+    // archivo" en un chat donde alguien acababa de entrar a escribir— pero el
+    // archivo se guarda igual: el que esta atendiendo tiene que poder verlo.
+    const callado = !!lead?.human_requested
+      || (lead && !require('./funnel/pausa').botActivo(lead, ahora()));
+
+    // Se baja una sola vez, sirva para transcribir o solo para el panel.
+    const { medio, buffer } = await bajarMedio({ tipo, descargar, nombreArchivo, segundos });
 
     // Una nota de voz se transcribe y sigue el mismo camino que si la hubieran
     // escrito. Es lo que mas cambia en Uruguay, donde media conversacion de
-    // WhatsApp son audios.
-    if (tipo === 'audio' && transcriptor.activo && descargar) {
+    // WhatsApp son audios. El .ogg se guarda ademas de transcribirse: cuando la
+    // transcripcion sale mal —pasa, con audio corto y acento rioplatense— poder
+    // escuchar el original es la diferencia entre entender al lead y no.
+    if (!callado && tipo === 'audio' && transcriptor.activo && buffer) {
       try {
-        const audio = await descargar();
-        const texto = await transcriptor.transcribir(audio, segundos);
+        const texto = await transcriptor.transcribir(buffer, segundos);
         if (texto) {
           log.info({ from, segundos, largo: texto.length }, 'audio transcripto');
-          // El .ogg se guarda ademas de transcribirse. Antes se tiraba, y en el
-          // panel quedaba el texto y nada mas: no se podia escuchar el original
-          // ni se notaba que habia sido un audio. Cuando la transcripcion sale
-          // mal —pasa, con audio corto y acento rioplatense— eso es la
-          // diferencia entre entender al lead y no.
-          let archivo = null;
-          try {
-            archivo = media.guardar(audio, 'ogg');
-          } catch (e) {
-            // Que no se pueda guardar el archivo no puede costar el mensaje: la
-            // transcripcion sigue de largo igual.
-            log.warn({ from, err: String(e.message || e) }, 'no se pudo guardar la nota de voz');
-          }
-          agrupador.recibir({
-            from, texto, nombre,
-            media: archivo ? { archivo, tipo: 'audio', segundos: segundos || 0 } : null,
-          });
+          agrupador.recibir({ from, texto, nombre, media: medio });
           return;
         }
       } catch (e) {
@@ -275,14 +322,32 @@ function construir(cfg, {
       }
     }
 
-    // No se pudo leer: se avisa una vez cada tanto y no en cada mensaje, que
-    // quien manda cuatro audios seguidos no necesita cuatro disculpas.
+    // No se pudo leer, pero llego: el mensaje queda en la conversacion igual.
+    // Sin esto no existia en ningun lado y en el panel del CRM quedaba un hueco
+    // — el lead mandaba la foto del local, veia el tilde azul, y del otro lado
+    // no habia nada que mirar.
+    try {
+      servicioLeads.registrarEntranteSinTexto(from, {
+        tipo, medios: [medio], nombreWa: nombre,
+      });
+    } catch (e) {
+      log.warn({ from, tipo, err: String(e.message || e) }, 'no se pudo registrar el entrante sin texto');
+    }
+
+    // Y si el bot no tiene que hablar, ahi termina: el archivo ya quedo.
+    if (callado) return;
+
+    // Se avisa una vez cada tanto y no en cada mensaje, que quien manda cuatro
+    // audios seguidos no necesita cuatro disculpas.
     const ultimo = avisadoSinTexto.get(from) || 0;
     if (Date.now() - ultimo < cfg.AVISO_SIN_TEXTO_MINUTOS * 60_000) return;
     avisadoSinTexto.set(from, Date.now());
 
+    // Que el redactor sepa QUE llego. "No te entendi el archivo" cuando lo que
+    // mandaste fue un sticker suena a error de sistema y encima a otra
+    // conversacion.
     const situacion = tipo === 'audio' ? 'sin_texto_audio' : 'sin_texto_archivo';
-    const texto = await redactor.escribir(lead || { telefono: from }, situacion);
+    const texto = await redactor.escribir(lead || { telefono: from }, situacion, QUE_MANDO[tipo] || '');
     if (!texto) {
       log.warn({ from, tipo }, 'no se pudo redactar el aviso de entrante sin texto');
       return;

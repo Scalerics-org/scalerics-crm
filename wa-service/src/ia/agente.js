@@ -213,6 +213,53 @@ function citaEnMensaje(cita, mensaje) {
 }
 
 /**
+ * Lo que el modelo pone cuando no tiene nada que poner.
+ *
+ * `nada` es la palabra que la herramienta le sugiere para OTRO campo
+ * —`lo_que_acaba_de_decir`— cuando el mensaje no aporta datos, y el 2-9 la
+ * guardo como rubro. Con eso quedaban llenos los tres campos que el embudo
+ * mira para dar por cerrado el descubrimiento y el bot ofrecio la reunion
+ * habiendo aprendido nada.
+ *
+ * Se rechaza aunque venga con cita perfecta: estas palabras aparecen de verdad
+ * en cualquier conversacion ("no, nada que ver"), asi que la cita no prueba
+ * nada. Ninguna es un rubro, un nombre ni una necesidad.
+ */
+const RELLENO = new Set(['nada', 'no sabe', 'no se', 'ninguno', 'ninguna', 'na', 'n/a', '-', 'sin datos', 'no aplica']);
+
+/**
+ * El valor mismo, buscado en el mensaje.
+ *
+ * Existe porque el modelo cita bien el CONTENIDO y parafrasea la FORMA. Medido
+ * el 10-9: el lead escribe "necesito una página web para mi barbería acá en
+ * Montevideo" y el modelo respalda el rubro con "tengo una barbería acá en
+ * Montevideo". Dice lo mismo, pero no es literal, y el rubro —correcto— se
+ * tiraba. El bot volvia a preguntar lo que ya le habian dicho, que es
+ * exactamente el sintoma de "pregunta tres veces lo mismo".
+ *
+ * Pide tres caracteres porque un valor de una o dos letras aparece por
+ * casualidad en cualquier mensaje, y esto seria una puerta trasera.
+ */
+function valorEnMensaje(valor, mensaje) {
+  const v = normalizarCita(valor);
+  if (v.length < 3) return false;
+  const re = new RegExp(`(?<![\\p{L}\\p{N}])${escaparRegex(v)}(?![\\p{L}\\p{N}])`, 'u');
+  return re.test(normalizarCita(mensaje));
+}
+
+/**
+ * Si el dato salio del mensaje del lead o se lo invento el modelo.
+ *
+ * Alcanza con que lo respalde la cita O el valor: las dos son formas de probar
+ * que el dato estaba ahi, y exigir solo la primera costaba datos verdaderos.
+ * El relleno no pasa por ninguna de las dos.
+ */
+function respaldado(valor, cita, mensaje) {
+  if (RELLENO.has(normalizarCita(valor))) return false;
+  return citaEnMensaje(cita, mensaje) || valorEnMensaje(valor, mensaje);
+}
+
+/**
  * Deja solo lo que el modelo tiene permitido escribir, con el tipo correcto, y
  * solo si el lead lo dijo de verdad.
  *
@@ -242,7 +289,7 @@ function sanearDatos(crudo, { entrante = '' } = {}) {
     if (v === null || v === undefined || v === '') continue;
     const t = String(v).trim();
     if (!t) continue;
-    if (!citaEnMensaje(crudo?.[`${campo}_dicho`], entrante)) continue;
+    if (!respaldado(t, crudo?.[`${campo}_dicho`], entrante)) continue;
     limpio[campo] = t.slice(0, 500);
   }
 

@@ -33,8 +33,34 @@ function aFechaSqlite(v) {
 }
 
 /**
+ * Los campos del embudo que el bot puede escribir. Es la UNICA lista: la usa
+ * `actualizarFunnel` para filtrar lo que llega del modelo, y el arnes de evals
+ * para decidir si un campo que el modelo quiso guardar existe o se lo invento.
+ *
+ * Estaba duplicada de hecho: el arnes armaba la suya con `DATOS` de prompt.js,
+ * que son las TRES preguntas de descubrimiento. Con eso rechazaba `team_size`,
+ * `budget`, `instagram_web` y `needs` —columnas que el bot guarda todos los
+ * dias— como si el modelo las hubiera inventado, y despues reportaba el campo
+ * como vacio. La corrida del 10-9 dio 9 de 15 casos fallados y 21 de las 24
+ * fallas graves eran eso: el arnes midiendose contra si mismo.
+ */
+const CAMPOS_FUNNEL = [
+  'fsm_state', 'fsm_retries', 'opt_out', 'human_requested',
+  'bot_enabled', 'bot_pausado_hasta',
+  'business_name', 'business_name_por_audio', 'sin_nombre',
+  'business_type', 'budget', 'team_size',
+  'colors', 'instagram_web', 'needs', 'rubro', 'rubro_norm',
+  'score', 'priority', 'score_reason', 'meeting_url', 'meeting_time',
+  'consultas_precio', 'motivo_derivacion',
+  'horarios_ofrecidos', 'meeting_event_id', 'dia_en_foco',
+  'nurture_desde', 'nurture_motivo',
+  'no_cliente_motivo', 'no_cliente_desde',
+];
+
+/**
  * Acceso a datos. Todas las consultas viven aca; ningun otro modulo escribe SQL.
  */
+
 function crearRepo(db) {
   const stmt = {
     insertLead: db.prepare(`
@@ -112,19 +138,7 @@ function crearRepo(db) {
 
     /** Campos del embudo. Lista blanca igual que actualizarLead. */
     actualizarFunnel(id, campos) {
-      const permitidos = [
-        'fsm_state', 'fsm_retries', 'opt_out', 'human_requested',
-        'bot_enabled', 'bot_pausado_hasta',
-        'business_name', 'business_name_por_audio', 'sin_nombre',
-        'business_type', 'budget', 'team_size',
-        'colors', 'instagram_web', 'needs', 'rubro', 'rubro_norm',
-        'score', 'priority', 'score_reason', 'meeting_url', 'meeting_time',
-        'consultas_precio', 'motivo_derivacion',
-        'horarios_ofrecidos', 'meeting_event_id', 'dia_en_foco',
-        'nurture_desde', 'nurture_motivo',
-        'no_cliente_motivo', 'no_cliente_desde',
-      ];
-      const set = Object.keys(campos).filter((k) => permitidos.includes(k));
+      const set = Object.keys(campos).filter((k) => CAMPOS_FUNNEL.includes(k));
       if (!set.length) return stmt.leadPorId.get(id);
       const sql = `UPDATE leads SET ${set.map((k) => `${k} = ?`).join(', ')} WHERE id = ?`;
       db.prepare(sql).run(...set.map((k) => campos[k]), id);
@@ -505,4 +519,4 @@ function crearRepo(db) {
   };
 }
 
-module.exports = { crearRepo, aFechaSqlite };
+module.exports = { crearRepo, aFechaSqlite, CAMPOS_FUNNEL };

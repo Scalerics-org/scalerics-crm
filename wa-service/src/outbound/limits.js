@@ -102,7 +102,7 @@ function crearLimites({ repo, cfg, logger }) {
     /**
      * @returns {{ok: true} | {ok: false, motivo: string, reintentarEn: Date}}
      */
-    permitido({ esPrimerContacto, esInterno, esRespuesta = false, ahora = new Date() }) {
+    permitido({ esPrimerContacto, esInterno, esRespuesta = false, esAcordado = false, ahora = new Date() }) {
       // Los avisos al AM son contacto interno: sin limites ni horario.
       if (esInterno) return { ok: true };
 
@@ -115,10 +115,21 @@ function crearLimites({ repo, cfg, logger }) {
        * despierto a las 23:00 la tomo el lead, no nosotros. Frenarlo hasta las
        * 9 de la manana era perder el momento por nada.
        *
-       * Un follow-up, un nurture o un recordatorio si esperan: esos aparecen
-       * sin que nadie los haya pedido, y ahi la hora importa.
+       * Un follow-up o un nurture si esperan: esos aparecen sin que nadie los
+       * haya pedido, y ahi la hora importa.
+       *
+       * `esAcordado` es la tercera puerta, y salio de un caso real. Un
+       * recordatorio de una reunion NO aparece de la nada: el lead reservo ese
+       * horario. El 14-9 CD Montevideo tenia reunion el lunes 10:00, el
+       * recordatorio del dia antes tenia que salir el domingo, el domingo no es
+       * habil, y la cola lo guardo hasta el lunes 09:04 — le llego 56 minutos
+       * antes de la reunion diciendo "mañana lunes 14". Tarde y mintiendo.
+       *
+       * Un recordatorio que no puede salir cuando sirve no sirve. Y avisar a
+       * las 8:30 de una reunion a las 9:00 no molesta a nadie: la hora la eligio
+       * el lead.
        */
-      if (!esRespuesta && !enHorario(ahora)) {
+      if (!esRespuesta && !esAcordado && !enHorario(ahora)) {
         return { ok: false, motivo: 'fuera de horario', reintentarEn: proximaApertura(ahora) };
       }
 

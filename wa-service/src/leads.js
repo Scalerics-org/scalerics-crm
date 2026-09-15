@@ -6,11 +6,22 @@ const plantillas = require('./templates');
 const { entre } = require('./outbound/queue');
 const { correspondeDerivar } = require('./funnel/abandono');
 
+/** Como se nombra cada medio en el aviso al equipo. */
+const ARTICULO = {
+  audio: 'un audio',
+  imagen: 'una foto',
+  sticker: 'un sticker',
+  video: 'un video',
+  documento: 'un archivo',
+  ubicacion: 'una ubicación',
+  contacto: 'un contacto',
+};
+
 /**
  * Orquesta el alta de un lead: ficha al AM, bienvenida al lead y follow-up
  * programado. Es el corazon del servicio.
  */
-function crearServicioLeads({ repo, cola, cfg, logger, textos, redactor = null, embudo = null, scheduler = null, ahora = () => new Date() }) {
+function crearServicioLeads({ repo, cola, cfg, logger, textos, redactor = null, embudo = null, scheduler = null, crmNotify = null, ahora = () => new Date() }) {
 
   function fechaLegible(d) {
     return d.toLocaleString('es-UY', {
@@ -253,6 +264,56 @@ function crearServicioLeads({ repo, cola, cfg, logger, textos, redactor = null, 
     },
 
     /**
+     * Llego un medio sin una linea de texto: una foto, un sticker, un PDF.
+     *
+     * No es un turno del embudo —no hay nada que contestarle a una foto— pero
+     * el mensaje TIENE que quedar en la conversacion igual. Antes se descartaba
+     * entero y en el panel del CRM quedaba un hueco: el lead mandaba la foto
+     * del local, veia el tilde azul, y del otro lado no habia nada que mirar.
+     *
+     * Por eso escribe la fila a mano y no pasa por `registrarRespuesta`: eso
+     * arrancaria el embudo con un texto vacio.
+     */
+    registrarEntranteSinTexto(telefono, { tipo, medios = [], nombreWa = '' } = {}) {
+      let lead = repo.leadPorTelefono(telefono);
+      // Igual que con un texto de un desconocido: si escribe al numero sin
+      // pasar por el formulario, se da de alta. Sin lead no hay conversacion
+      // donde colgar el mensaje, y la foto no se ve en ningun lado.
+      if (!lead) {
+        lead = repo.crearLead({
+          nombre: nombreWa || '',
+          telefono,
+          origen: 'wa',
+          status: 'replied',
+        });
+        logger?.info({ leadId: lead.id, tipo }, 'lead nuevo por WhatsApp, sin texto');
+      }
+
+      crmNotify?.mensajeEntrante?.({
+        telefono, nombre: nombreWa || lead.nombre,
+        texto: `(mandó ${ARTICULO[tipo] || 'un archivo'})`,
+      });
+
+      repo.registrarMensaje({
+        lead_id: lead.id, direction: 'in', kind: 'reply',
+        // Sin texto de verdad: el cuerpo queda vacio y lo que se ve en el panel
+        // sale del medio. Poner "[foto]" aca seria inventarle palabras al lead
+        // y ensuciaria el historial que despues lee el modelo.
+        body: null,
+        provider: 'entrante', status: 'delivered',
+        media: medios,
+      });
+
+      // Si el bot esta apagado o ya lo atiende una persona, el que esta a cargo
+      // tiene que enterarse de que le mandaron algo — misma regla que el texto.
+      if (lead.human_requested || !botActivo(lead, ahora())) {
+        avisarQueSigueEscribiendo(lead, `(mandó ${ARTICULO[tipo] || 'un archivo'})`);
+      }
+
+      return repo.leadPorId(lead.id);
+    },
+
+    /**
      * El lead contesto, o alguien escribio al numero por primera vez: se cancela
      * el follow-up, se avisa al AM y la conversacion sigue en el embudo.
      *
@@ -275,6 +336,12 @@ function crearServicioLeads({ repo, cola, cfg, logger, textos, redactor = null, 
         });
         logger?.info({ leadId: lead.id, nombre: nombreWa || '(sin nombre)' }, 'lead nuevo por WhatsApp');
       }
+
+      // Que le llegue el mail al equipo. El CRM decide si corresponde —el
+      // primer mensaje de la conversacion, o el primero despues de 30 minutos
+      // de silencio— asi que aca se reporta y listo. No se espera: el mail no
+      // puede demorar la respuesta al lead.
+      crmNotify?.mensajeEntrante?.({ telefono, nombre: nombreWa || lead.nombre, texto });
 
       repo.registrarMensaje({
         lead_id: lead.id, direction: 'in', kind: 'reply', body: texto,
