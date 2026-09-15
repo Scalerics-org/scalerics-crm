@@ -181,6 +181,59 @@ def _migrar_estados_preclientes(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+# Inteligencia financiera. El CHECK de `regla` acepta cualquier "R" seguida de
+# un numero, asi una regla nueva no obliga a reconstruir la tabla otra vez.
+_SQL_IF_RECOMENDACIONES = """
+    CREATE TABLE IF NOT EXISTS {tabla} (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        calculo_id      INTEGER REFERENCES if_calculos(id),
+        regla           TEXT NOT NULL CHECK (regla GLOB 'R[0-9]*'),
+        clave           TEXT NOT NULL DEFAULT '',
+        titulo          TEXT NOT NULL,
+        detalle         TEXT NOT NULL,
+        calculo         TEXT NOT NULL,
+        impacto_mensual REAL,
+        unica_vez       INTEGER NOT NULL DEFAULT 0,
+        confianza       TEXT NOT NULL CHECK (confianza IN ('alta', 'media', 'baja')),
+        tipo            TEXT NOT NULL CHECK (tipo IN ('ingreso', 'recorte', 'alerta')),
+        advertencia     TEXT NOT NULL DEFAULT '',
+        acciones        TEXT NOT NULL DEFAULT '[]',
+        metrica         TEXT NOT NULL DEFAULT '{{}}',
+        generada_en     TEXT NOT NULL,
+        estado          TEXT NOT NULL DEFAULT 'nueva'
+                        CHECK (estado IN ('nueva', 'tomada', 'descartada')),
+        descartada_en   TEXT
+    )
+"""
+
+
+def _ampliar_reglas_if(conn: sqlite3.Connection) -> bool:
+    """Reconstruye `if_recomendaciones` si todavia tiene el CHECK de R1 a R7.
+
+    Se copia a una tabla nueva y despues se renombra: renombrar la vieja haria
+    que SQLite reescriba la referencia de `if_recomendaciones_tomadas`, que
+    quedaria apuntando a una tabla borrada. Los ids se copian tal cual, porque
+    los seguimientos apuntan a ellos. Idempotente: con el CHECK nuevo no hace
+    nada. Devuelve True si reconstruyo.
+    """
+    fila = conn.execute("SELECT sql FROM sqlite_master WHERE type = 'table' "
+                        "AND name = 'if_recomendaciones'").fetchone()
+    if not fila or "GLOB" in (fila[0] or ""):
+        return False
+    conn.execute("DROP TABLE IF EXISTS if_recomendaciones_nueva")
+    conn.execute(_SQL_IF_RECOMENDACIONES.format(tabla="if_recomendaciones_nueva"))
+    viejas = [c[1] for c in conn.execute("PRAGMA table_info(if_recomendaciones)")]
+    nuevas = {c[1] for c in conn.execute("PRAGMA table_info(if_recomendaciones_nueva)")}
+    columnas = ", ".join(c for c in viejas if c in nuevas)
+    conn.execute(f"INSERT INTO if_recomendaciones_nueva ({columnas}) "
+                 f"SELECT {columnas} FROM if_recomendaciones")
+    conn.execute("DROP TABLE if_recomendaciones")
+    conn.execute("ALTER TABLE if_recomendaciones_nueva RENAME TO if_recomendaciones")
+    conn.commit()
+    logger.info("inteligencia financiera: if_recomendaciones acepta reglas nuevas")
+    return True
+
+
 def _connect(db_path: str) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path, timeout=10)
     conn.execute("PRAGMA journal_mode=WAL")  # better concurrency
@@ -1543,31 +1596,22 @@ def init_db(db_path: str) -> None:
                 contexto    TEXT NOT NULL DEFAULT '{}'
             )
         """)
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS if_recomendaciones (
-                id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                calculo_id      INTEGER REFERENCES if_calculos(id),
-                regla           TEXT NOT NULL
-                                CHECK (regla IN ('R1','R2','R3','R4','R5','R6','R7')),
-                clave           TEXT NOT NULL DEFAULT '',
-                titulo          TEXT NOT NULL,
-                detalle         TEXT NOT NULL,
-                calculo         TEXT NOT NULL,
-                impacto_mensual REAL,
-                unica_vez       INTEGER NOT NULL DEFAULT 0,
-                confianza       TEXT NOT NULL CHECK (confianza IN ('alta', 'media', 'baja')),
-                tipo            TEXT NOT NULL CHECK (tipo IN ('ingreso', 'recorte', 'alerta')),
-                advertencia     TEXT NOT NULL DEFAULT '',
-                acciones        TEXT NOT NULL DEFAULT '[]',
-                metrica         TEXT NOT NULL DEFAULT '{}',
-                generada_en     TEXT NOT NULL,
-                estado          TEXT NOT NULL DEFAULT 'nueva'
-                                CHECK (estado IN ('nueva', 'tomada', 'descartada')),
-                descartada_en   TEXT
-            )
-        """)
+        conn.execute(_SQL_IF_RECOMENDACIONES.format(tabla="if_recomendaciones"))
+        # La primera version aceptaba solo R1 a R7 en el CHECK. Las reglas
+        # nuevas (caja corta, concentracion, demos que no se hacen) no entran,
+        # y en produccion la tabla ya existe: se reconstruye UNA vez,
+        # conservando las filas y sus ids.
+        _ampliar_reglas_if(conn)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_if_recomendaciones_calculo "
                      "ON if_recomendaciones(calculo_id, estado)")
+        # Los supuestos de cada sugerencia (la comision del Simulador, las
+        # horas estimadas por proyecto), en letra chica en la tarjeta.
+        _add_column(conn, "if_recomendaciones", "supuestos", "TEXT NOT NULL DEFAULT '[]'")
+        # El diagnostico del mes y el resumen en castellano se guardan con el
+        # recalculo diario, no en cada carga de la pantalla.
+        _add_column(conn, "if_calculos", "diagnostico", "TEXT NOT NULL DEFAULT '[]'")
+        _add_column(conn, "if_calculos", "resumen", "TEXT NOT NULL DEFAULT ''")
+        _add_column(conn, "if_calculos", "resumen_origen", "TEXT NOT NULL DEFAULT ''")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS if_recomendaciones_tomadas (
                 id               INTEGER PRIMARY KEY AUTOINCREMENT,

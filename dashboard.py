@@ -1902,41 +1902,36 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   .hr-card{padding:14px}
 }
 /* ── Inteligencia financiera ──────────────────────────────────────────────────
-   Solo tokens: el tema claro sale solo. El borde izquierdo de cada tarjeta dice
-   el tipo: verde suma ingreso, ambar recorta gasto, rojo es alerta de margen. */
+   Solo tokens. El borde de cada tarjeta dice el tipo (verde ingreso, ambar
+   recorte, rojo alerta) y el del diagnostico, el nivel. */
 .ifn-oculto{display:none}
 .ifn-cabecera{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:16px}
 .ifn-titulo{margin:0;font-size:1.3rem;color:var(--texto-fuerte)}
 .ifn-bajada{margin:4px 0 0;color:var(--texto-tenue);font-size:.85rem;max-width:760px;line-height:1.45}
 .ifn-bloque{background:var(--superficie);border:1px solid var(--borde);border-radius:10px;padding:16px;margin-bottom:16px}
 .ifn-seccion{margin:0 0 12px;font-size:.95rem;color:var(--texto-fuerte)}
-.ifn-datos-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
-.ifn-dato{background:var(--superficie-alta);border:1px solid var(--borde);border-radius:8px;padding:12px;min-width:0}
-.ifn-dato-cab{display:flex;justify-content:space-between;align-items:center;gap:8px;font-weight:600;color:var(--texto)}
-.ifn-dato-num{margin:6px 0;color:var(--texto-tenue);font-size:.85rem}
-.ifn-chip{font-size:.7rem;font-weight:600;padding:2px 8px;border-radius:10px}
-.ifn-chip-ok{background:var(--verde-tinte);color:var(--verde-texto)}
-.ifn-chip-falta{background:var(--ambar-tinte);color:var(--ambar)}
-.ifn-pends{list-style:none;margin:8px 0 0;padding:0;max-height:260px;overflow:auto;display:flex;flex-direction:column;gap:6px}
-.ifn-pend{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px;font-size:.8rem;color:var(--texto)}
-.ifn-motivo{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:.75rem;color:var(--texto-tenue);margin-top:6px}
-.ifn-motivo-falta span{color:var(--ambar)}
-.ifn-esfuerzo{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:8px;font-size:.78rem;color:var(--texto-tenue)}
-.ifn-esfuerzo-falta .ifn-esfuerzo-rotulo{color:var(--ambar)}
-.ifn-input{width:90px;background:var(--fondo-hundido);border:1px solid var(--borde-fuerte);color:var(--texto);border-radius:6px;padding:4px 6px;font-size:.8rem}
-.ifn-input:focus{outline:none;border-color:var(--azul)}
-.ifn-supuestos{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-top:12px;font-size:.8rem;color:var(--texto-tenue)}
-.ifn-supuesto{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
-.ifn-nota{font-size:.75rem;color:var(--texto-debil);margin:6px 0 0}
+.ifn-resumen{background:var(--azul-tinte);border:1px solid var(--borde);border-radius:10px;padding:14px 16px;margin-bottom:16px}
+.ifn-resumen-texto{margin:0;font-size:.9rem;line-height:1.55;color:var(--texto)}
+.ifn-resumen-origen{display:block;margin-top:6px;font-size:.7rem;color:var(--texto-debil)}
+.ifn-diag-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+.ifn-diag{background:var(--superficie-alta);border:1px solid var(--borde);border-left:4px solid var(--borde-fuerte);border-radius:8px;padding:12px;min-width:0}
+.ifn-diag-mal{border-left-color:var(--rojo)}
+.ifn-diag-atencion{border-left-color:var(--ambar)}
+.ifn-diag-bien{border-left-color:var(--verde)}
+.ifn-diag-cab{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.ifn-diag-titulo{font-size:.75rem;font-weight:600;color:var(--texto-debil);text-transform:uppercase;letter-spacing:.04em}
+.ifn-diag-valor{font-size:1.35rem;font-weight:700;color:var(--texto-fuerte);margin:4px 0}
+.ifn-diag-texto{margin:0 0 6px;font-size:.82rem;line-height:1.45;color:var(--texto)}
+.ifn-diag-cuenta{margin:0;font-family:inherit;font-size:.72rem;line-height:1.45;color:var(--texto-tenue);white-space:pre-wrap}
+.ifn-nivel{font-size:.68rem;font-weight:600;padding:2px 8px;border-radius:10px}
+.ifn-nivel-mal{background:var(--rojo-tinte);color:var(--rojo-texto)}
+.ifn-nivel-atencion{background:var(--ambar-tinte);color:var(--ambar)}
+.ifn-nivel-bien{background:var(--verde-tinte);color:var(--verde-texto)}
 .ifn-contraste{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-bottom:16px}
 .ifn-contraste-col{background:var(--superficie);border:1px solid var(--borde);border-radius:10px;padding:14px}
 .ifn-contraste-rotulo{font-size:.75rem;color:var(--texto-debil);text-transform:uppercase;letter-spacing:.04em}
 .ifn-contraste-num{font-size:1.5rem;font-weight:700;color:var(--texto-fuerte);margin:4px 0}
 .ifn-contraste-cuenta{font-size:.75rem;color:var(--texto-tenue)}
-.ifn-aviso{background:var(--ambar-tinte);border:1px solid var(--ambar-borde);border-radius:8px;padding:10px 12px;margin-bottom:10px;color:var(--texto)}
-.ifn-aviso p{margin:4px 0;font-size:.82rem}
-.ifn-aviso-titulo{font-weight:600;color:var(--ambar)}
-.ifn-aviso-reglas{font-size:.72rem;color:var(--texto-tenue)}
 .ifn-rec{background:var(--superficie);border:1px solid var(--borde);border-left:4px solid var(--borde-fuerte);border-radius:10px;padding:14px 16px;margin-bottom:12px}
 .ifn-rec-ingreso{border-left-color:var(--verde)}
 .ifn-rec-recorte{border-left-color:var(--ambar)}
@@ -1951,6 +1946,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .ifn-rec-detalle{margin:8px 0;font-size:.85rem;color:var(--texto);line-height:1.45}
 .ifn-advertencia{margin:8px 0;font-size:.8rem;color:var(--ambar);line-height:1.4}
 .ifn-calculo{background:var(--relleno);color:var(--texto);border-radius:6px;padding:10px 12px;font-size:.76rem;line-height:1.5;white-space:pre-wrap;overflow-x:auto;margin:8px 0}
+.ifn-supuestos-rec{margin:4px 0 0;font-size:.7rem;color:var(--texto-debil);line-height:1.4}
 .ifn-acciones{list-style:none;padding:0;margin:8px 0;display:flex;flex-direction:column;gap:6px}
 .ifn-accion{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;font-size:.8rem;color:var(--texto)}
 .ifn-sin-tel{color:var(--texto-debil);font-size:.75rem}
@@ -1969,6 +1965,11 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .ifn-res-no_funciono{background:var(--rojo-tinte);color:var(--rojo-texto)}
 .ifn-seg-meta{font-size:.75rem;color:var(--texto-tenue);margin-top:2px}
 .ifn-seg-detalle{font-size:.75rem;color:var(--texto-tenue);margin-top:2px}
+.ifn-afinar{margin-top:6px;font-size:.75rem;color:var(--texto-debil)}
+.ifn-afinar summary{cursor:pointer;color:var(--texto-debil)}
+.ifn-afinar-campo{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px;color:var(--texto-tenue)}
+.ifn-input{width:80px;background:var(--fondo-hundido);border:1px solid var(--borde-fuerte);color:var(--texto);border-radius:6px;padding:4px 6px;font-size:.8rem}
+.ifn-input:focus{outline:none;border-color:var(--azul)}
 @media (max-width:640px){ .ifn-rec-cab{flex-direction:column} .ifn-impacto{text-align:left} }
 /* ── Plantillas ───────────────────────────────────────────────────────────────
    Mensajes de siempre, en VENTAS. Solo tokens, sin reglas `body.light`: las
@@ -3260,13 +3261,13 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     <div class="ifn-cabecera">
       <div>
         <h2 class="ifn-titulo">Inteligencia financiera</h2>
-        <p class="ifn-bajada" id="ifn-bajada">Qué hacer este mes para ganar plata, con el número esperado y la cuenta que lo respalda.</p>
+        <p class="ifn-bajada" id="ifn-bajada">Qué está pasando con la plata y qué conviene hacer este mes, con los números del sistema.</p>
       </div>
       <button class="btn-ghost ifn-oculto" id="ifn-recalcular" onclick="ifnRecalcular()">Recalcular ahora</button>
     </div>
-    <section class="ifn-bloque" id="ifn-datos"></section>
+    <section class="ifn-resumen ifn-oculto" id="ifn-resumen"></section>
+    <section class="ifn-bloque" id="ifn-diagnostico"></section>
     <section class="ifn-contraste" id="ifn-contraste"></section>
-    <section id="ifn-avisos"></section>
     <section id="ifn-lista"></section>
     <section class="ifn-bloque" id="ifn-seguimiento"></section>
   </div>
@@ -11717,16 +11718,14 @@ function slFichaHtml(seg) {
 }
 // ========== FIN Seguimiento de leads ==========
 // ========== Inteligencia financiera ==========
-// Que hacer este mes para ganar plata. Todo lo calcula el servidor una vez por
-// dia (services/inteligencia_fin.py); aca solo se pinta, y se mandan los tres
-// datos que faltaban: motivo de perdida, esfuerzo por proyecto y origen de la
-// venta. El selector de motivo y el campo de esfuerzo tambien se usan en las
-// tarjetas de Proceso de venta, Demos y Proyectos.
+// Diagnostico del mes y sugerencias para ganar plata. Todo lo calcula el
+// servidor una vez por dia con los datos que ya tiene el sistema: la pantalla
+// no pide nada. El motivo de perdida y el esfuerzo se pueden afinar a mano, en
+// un bloque colapsado de Proceso de venta, Demos y Proyectos.
 const IFN_MOTIVOS = [['precio', 'Precio'], ['se_enfrio', 'Se enfrió'], ['eligio_otro', 'Eligió a otro'], ['no_era_momento', 'No era el momento'], ['no_calificaba', 'No calificaba']];
-const IFN_CANALES = [['meta_ads', 'Meta Ads'], ['outbound', 'Outbound'], ['referido', 'Referido'], ['otro', 'Otro']];
-const IFN_PERDIDO_NOTION = ['Perdido', 'Presupuesto Rechazado'];
 const IFN_CONFIANZA = {alta: 'Confianza alta', media: 'Confianza media', baja: 'Confianza baja'};
 const IFN_RESULTADO = {midiendo: 'Midiendo', funciono: 'Funcionó', no_funciono: 'No funcionó'};
+const IFN_NIVEL = {mal: 'Alerta', atencion: 'Atención', bien: 'Bien'};
 let ifnEstado = null;
 
 function ifnMiles(n) {
@@ -11750,26 +11749,26 @@ function ifnOpciones(lista, elegido, vacio) {
 }
 
 function ifnMotivoHtml(entidad, id, motivo) {
-  const falta = !motivo;
-  return `<label class="ifn-motivo${falta ? ' ifn-motivo-falta' : ''}" draggable="false" onclick="event.stopPropagation()">
-    <span>${falta ? 'Falta el motivo de pérdida' : 'Motivo de pérdida'}</span>
-    <select class="filter-select" onchange="ifnGuardarMotivo('${esc(entidad)}', ${Number(id)}, this.value)">${ifnOpciones(IFN_MOTIVOS, motivo || '', falta ? 'Elegí el motivo' : '')}</select>
-  </label>`;
+  return `<details class="ifn-afinar" draggable="false" onclick="event.stopPropagation()">
+    <summary>Afinar (opcional)</summary>
+    <label class="ifn-afinar-campo">Motivo de pérdida
+      <select class="filter-select" onchange="ifnGuardarMotivo('${esc(entidad)}', ${Number(id)}, this.value)">${ifnOpciones(IFN_MOTIVOS, motivo || '', 'Sin motivo')}</select>
+    </label>
+  </details>`;
 }
 
 function ifnEsfuerzoHtml(p) {
   const id = Number(p.id);
   const tiene = p.esfuerzo_horas !== null && p.esfuerzo_horas !== undefined;
   const dias = p.esfuerzo_unidad === 'dias';
-  const rotulo = tiene
-    ? 'Esfuerzo: ' + esc(String(p.esfuerzo_valor)) + (dias ? ' días (' + ifnMiles(p.esfuerzo_horas) + ' h)' : ' h')
-    : 'Esfuerzo total: cargalo al cerrar';
-  return `<div class="ifn-esfuerzo${tiene ? '' : ' ifn-esfuerzo-falta'}">
-    <span class="ifn-esfuerzo-rotulo">${rotulo}</span>
-    <input type="number" min="0" step="any" class="ifn-input" id="ifn-esf-valor-${id}" aria-label="Esfuerzo del proyecto" value="${tiene ? esc(String(p.esfuerzo_valor)) : ''}">
-    <select class="filter-select" id="ifn-esf-unidad-${id}" aria-label="Unidad del esfuerzo">${ifnOpciones([['horas', 'horas'], ['dias', 'días']], p.esfuerzo_unidad || 'horas')}</select>
-    <button class="btn-ghost" onclick="ifnGuardarEsfuerzo(${id})">Guardar</button>
-  </div>`;
+  return `<details class="ifn-afinar">
+    <summary>Afinar (opcional)${tiene ? ' · ' + esc(String(p.esfuerzo_valor)) + (dias ? ' días' : ' h') : ''}</summary>
+    <label class="ifn-afinar-campo">Horas o días que llevó
+      <input type="number" min="0" step="any" class="ifn-input" id="ifn-esf-valor-${id}" aria-label="Esfuerzo del proyecto" value="${tiene ? esc(String(p.esfuerzo_valor)) : ''}">
+      <select class="filter-select" id="ifn-esf-unidad-${id}" aria-label="Unidad del esfuerzo">${ifnOpciones([['horas', 'horas'], ['dias', 'días']], p.esfuerzo_unidad || 'horas')}</select>
+      <button class="btn-ghost" onclick="ifnGuardarEsfuerzo(${id})">Guardar</button>
+    </label>
+  </details>`;
 }
 
 async function ifnPedir(url, metodo, cuerpo) {
@@ -11796,39 +11795,19 @@ async function ifnGuardarMotivo(entidad, id, motivo) {
   if (!r) return;
   if (entidad === 'notion_client' && typeof _ncClientes !== 'undefined') {
     const c = _ncClientes.find(x => Number(x.id) === Number(id));
-    if (c) { c.motivo_perdida = motivo; if (activePanel === 'notion_clients') _ncDibujar(); }
+    if (c) c.motivo_perdida = motivo;
   }
   if (entidad === 'demo' && typeof _demos !== 'undefined') {
     const d = _demos.find(x => Number(x.id) === Number(id));
-    if (d) { d.motivo_perdida = motivo; if (activePanel === 'demos') renderDemos(); }
+    if (d) d.motivo_perdida = motivo;
   }
-  if (activePanel === 'inteligencia_fin') ifnCargar();
 }
 
 async function ifnGuardarEsfuerzo(id) {
   const valor = (document.getElementById('ifn-esf-valor-' + id) || {}).value;
   const unidad = (document.getElementById('ifn-esf-unidad-' + id) || {}).value || 'horas';
   const r = await ifnPedir('/api/proyectos/' + id + '/esfuerzo', 'PUT', {valor: valor, unidad: unidad});
-  if (!r) return;
-  if (activePanel === 'projects') loadProjects();
-  if (activePanel === 'inteligencia_fin') ifnCargar();
-}
-
-async function ifnGuardarOrigen(entidad, id, canal) {
-  if (!canal) return;
-  const r = await ifnPedir('/api/ventas/' + entidad + '/' + id + '/origen', 'PUT', {canal: canal});
-  if (r) ifnCargar();
-}
-
-async function ifnGuardarCanalFijo(id, canal) {
-  const r = await ifnPedir('/api/inteligencia-fin/fijos/' + id + '/canal', 'PUT', {canal: canal});
-  if (r) ifnCargar();
-}
-
-async function ifnGuardarComision() {
-  const campo = document.getElementById('ifn-comision');
-  const r = await ifnPedir('/api/inteligencia-fin/supuestos', 'PUT', {comision_cobro_pct: campo ? campo.value : ''});
-  if (r) ifnCargar();
+  if (r && activePanel === 'projects') loadProjects();
 }
 
 async function ifnTomar(id) {
@@ -11870,59 +11849,33 @@ function ifnPintar() {
   document.getElementById('ifn-bajada').textContent = d.bajada || '';
   const boton = document.getElementById('ifn-recalcular');
   if (boton) boton.classList.toggle('ifn-oculto', !d.es_admin);
-  document.getElementById('ifn-datos').innerHTML = ifnDatosHtml(d.datos || {}, !!d.es_admin);
+  const resumen = document.getElementById('ifn-resumen');
+  resumen.innerHTML = ifnResumenHtml(d.resumen || {});
+  resumen.classList.toggle('ifn-oculto', !(d.resumen && d.resumen.texto));
+  document.getElementById('ifn-diagnostico').innerHTML = ifnDiagnosticoHtml(d.diagnostico || []);
   document.getElementById('ifn-contraste').innerHTML = ifnContrasteHtml(d.encabezado || {});
-  document.getElementById('ifn-avisos').innerHTML = (d.avisos || []).map(ifnAvisoHtml).join('');
   const recs = d.recomendaciones || [];
-  document.getElementById('ifn-lista').innerHTML = recs.length
+  document.getElementById('ifn-lista').innerHTML = '<h3 class="ifn-seccion">Qué hacer para ganar plata</h3>' + (recs.length
     ? recs.map(ifnTarjetaHtml).join('')
-    : '<div class="ifn-vacio">Hoy no hay recomendaciones que muevan ' + ifnUsd(d.umbral_usd) + ' o más por mes con los datos que hay.</div>';
+    : '<div class="ifn-vacio">Hoy no hay sugerencias que muevan ' + ifnUsd(d.umbral_usd) + ' o más por mes.</div>');
   document.getElementById('ifn-seguimiento').innerHTML = ifnSeguimientoHtml(d.seguimiento || []);
 }
 
-function ifnDatosHtml(datos, esAdmin) {
-  const m = datos.motivo || {};
-  const e = datos.esfuerzo || {};
-  const o = datos.origen || {};
-  const chip = completo => completo
-    ? '<span class="ifn-chip ifn-chip-ok">Completo</span>'
-    : '<span class="ifn-chip ifn-chip-falta">Falta</span>';
-  const motivos = (m.pendientes || []).map(p =>
-    `<li class="ifn-pend"><span>${esc(p.nombre)} · ${esc(p.estado)}</span>${ifnMotivoHtml(p.entidad, p.entidad_id, null)}</li>`).join('');
-  const esfuerzos = (e.pendientes || []).map(p =>
-    `<li class="ifn-pend"><span>${esc(p.nombre)}${p.stage ? ' · ' + esc(p.stage) : ''}</span>${ifnEsfuerzoHtml({id: p.id, esfuerzo_horas: null})}</li>`).join('');
-  const origenes = (o.pendientes || []).map(v =>
-    `<li class="ifn-pend"><span>${esc(v.nombre)}${v.sin_lead ? ' · venta sin lead vinculado' : (v.source ? ' · origen «' + esc(v.source) + '»' : ' · el lead no dice de dónde vino')}</span><select class="filter-select" onchange="ifnGuardarOrigen('${esc(v.entidad)}', ${Number(v.id)}, this.value)">${ifnOpciones(IFN_CANALES, '', 'Elegí el canal')}</select></li>`).join('');
-  const fijos = (datos.fijos || []).map(f =>
-    `<li class="ifn-pend"><span>${esc(f.concepto)} · ${f.monto_usd === null ? 'en pesos sin tipo de cambio' : ifnUsd(f.monto_usd) + ' por mes'}</span><select class="filter-select" onchange="ifnGuardarCanalFijo(${Number(f.id)}, this.value)">${ifnOpciones(IFN_CANALES, f.canal || '', 'Sin canal')}</select></li>`).join('');
-  const com = (datos.supuestos || {}).comision_cobro_pct || {};
-  const valorCom = com.valor === null || com.valor === undefined ? '' : String(com.valor);
-  const supuesto = esAdmin
-    ? `<label class="ifn-supuesto">${esc(com.etiqueta || 'Comisión de cobro')} <input type="number" min="0" max="99" step="any" class="ifn-input" id="ifn-comision" value="${esc(valorCom)}"> <button class="btn-ghost" onclick="ifnGuardarComision()">Guardar</button></label>`
-    : `<span class="ifn-supuesto">${esc(com.etiqueta || 'Comisión de cobro')}: ${valorCom ? esc(valorCom) + ' %' : 'sin cargar (la carga un admin)'}</span>`;
-  const sinMotivo = Number(m.sin_motivo) || 0;
-  const sinOrigen = Number(o.sin_origen) || 0;
-  return `<h3 class="ifn-seccion">Los tres datos que hacen falta</h3>
-  <div class="ifn-datos-grid">
-    <div class="ifn-dato" id="ifn-dato-motivo">
-      <div class="ifn-dato-cab">1. Motivo de pérdida ${chip(m.completo)}</div>
-      <p class="ifn-dato-num">${sinMotivo} ${sinMotivo === 1 ? 'pérdida sin motivo' : 'pérdidas sin motivo'} de ${Number(m.perdidas) || 0}</p>
-      ${motivos ? '<ul class="ifn-pends">' + motivos + '</ul>' : ''}
-    </div>
-    <div class="ifn-dato" id="ifn-dato-esfuerzo">
-      <div class="ifn-dato-cab">2. Esfuerzo por proyecto ${chip(e.completo)}</div>
-      <p class="ifn-dato-num">${Number(e.con_esfuerzo) || 0} de ${Number(e.proyectos) || 0} proyectos con esfuerzo cargado</p>
-      ${esfuerzos ? '<ul class="ifn-pends">' + esfuerzos + '</ul>' : ''}
-    </div>
-    <div class="ifn-dato" id="ifn-dato-origen">
-      <div class="ifn-dato-cab">3. Origen de la venta ${chip(o.completo)}</div>
-      <p class="ifn-dato-num">${sinOrigen} ${sinOrigen === 1 ? 'venta sin origen' : 'ventas sin origen'} de ${Number(o.ventas) || 0}</p>
-      ${o.cobros_sin_cliente ? '<p class="ifn-nota">' + Number(o.cobros_sin_cliente) + ' cobros de los últimos 3 meses no tienen cliente en Finanzas: no llegan a ningún lead.</p>' : ''}
-      ${origenes ? '<ul class="ifn-pends">' + origenes + '</ul>' : ''}
-    </div>
-  </div>
-  <div class="ifn-supuestos">${supuesto}</div>
-  ${fijos ? '<p class="ifn-nota">Gastos fijos de Finanzas por canal (para ver cuáles no traen ventas):</p><ul class="ifn-pends">' + fijos + '</ul>' : ''}`;
+function ifnResumenHtml(r) {
+  if (!r.texto) return '';
+  return `<p class="ifn-resumen-texto">${esc(r.texto)}</p>
+    <span class="ifn-resumen-origen">${r.origen === 'ia' ? 'Resumen redactado con IA solo con los números de abajo' : 'Resumen armado con los números de abajo'}</span>`;
+}
+
+function ifnDiagnosticoHtml(lista) {
+  const tarjetas = lista.map(d => `<div class="ifn-diag ifn-diag-${esc(d.nivel)}">
+      <div class="ifn-diag-cab"><span class="ifn-diag-titulo">${esc(d.titulo)}</span><span class="ifn-nivel ifn-nivel-${esc(d.nivel)}">${IFN_NIVEL[d.nivel] || ''}</span></div>
+      <div class="ifn-diag-valor">${esc(d.valor)}</div>
+      <p class="ifn-diag-texto">${esc(d.texto)}</p>
+      <pre class="ifn-diag-cuenta">${esc(d.calculo)}</pre>
+    </div>`).join('');
+  return '<h3 class="ifn-seccion">Diagnóstico del mes</h3>'
+    + (tarjetas ? '<div class="ifn-diag-grid">' + tarjetas + '</div>' : '<div class="ifn-vacio">Todavía no hay movimientos para sacar conclusiones.</div>');
 }
 
 function ifnContrasteHtml(enc) {
@@ -11939,15 +11892,6 @@ function ifnContrasteHtml(enc) {
     </div>`;
 }
 
-function ifnAvisoHtml(a) {
-  const cantidad = a.cantidad === null || a.cantidad === undefined ? '' : ' (' + Number(a.cantidad) + ')';
-  return `<div class="ifn-aviso">
-    <div class="ifn-aviso-titulo">${esc(a.titulo)}${cantidad}</div>
-    <p>${esc(a.detalle)}</p>
-    <div class="ifn-aviso-reglas">No se muestra hasta tener el dato: ${(a.reglas || []).map(esc).join(', ')}</div>
-  </div>`;
-}
-
 function ifnTarjetaHtml(r) {
   const id = Number(r.id);
   const impacto = r.impacto_mensual === null || r.impacto_mensual === undefined
@@ -11957,6 +11901,8 @@ function ifnTarjetaHtml(r) {
     `<li class="ifn-accion"><span>${esc(a.cliente)} · ${ifnUsd(a.monto)}</span>${a.wa
       ? `<a class="btn-primary" href="https://wa.me/${esc(a.wa)}?text=${encodeURIComponent(a.texto)}" target="_blank" rel="noopener">Abrir mensaje de cobranza</a>`
       : '<span class="ifn-sin-tel">Sin teléfono en el CRM</span>'}</li>`).join('');
+  const supuestos = (r.supuestos || []).length
+    ? '<p class="ifn-supuestos-rec">Supuestos: ' + r.supuestos.map(esc).join(' · ') + '</p>' : '';
   return `<article class="ifn-rec ifn-rec-${esc(r.tipo)}" id="ifn-rec-${id}">
     <div class="ifn-rec-cab">
       <div><span class="ifn-regla">${esc(r.regla)}</span><h3 class="ifn-rec-titulo">${esc(r.titulo)}</h3></div>
@@ -11965,6 +11911,7 @@ function ifnTarjetaHtml(r) {
     <p class="ifn-rec-detalle">${esc(r.detalle)}</p>
     ${r.advertencia ? `<p class="ifn-advertencia">${esc(r.advertencia)}</p>` : ''}
     <pre class="ifn-calculo">${esc(r.calculo)}</pre>
+    ${supuestos}
     ${acciones ? `<ul class="ifn-acciones">${acciones}</ul>` : ''}
     <div class="ifn-rec-pie">
       <span class="ifn-confianza ifn-conf-${esc(r.confianza)}">${IFN_CONFIANZA[r.confianza] || 'Confianza sin dato'}</span>
@@ -11977,9 +11924,8 @@ function ifnTarjetaHtml(r) {
 function ifnSeguimientoHtml(lista) {
   const filas = lista.map(t => {
     const esperado = t.impacto_esperado === null || t.impacto_esperado === undefined ? 'revisar' : ifnUsd(t.impacto_esperado);
-    const real = t.regla === 'R6'
-      ? (Number(t.impacto_real) || 0).toFixed(1) + ' puntos de margen'
-      : ifnUsd(t.impacto_real);
+    const puntos = t.regla === 'R6' || t.regla === 'R9';
+    const real = puntos ? (Number(t.impacto_real) || 0).toFixed(1) + ' puntos' : ifnUsd(t.impacto_real);
     return `<li class="ifn-seg">
       <div><span class="ifn-regla">${esc(t.regla)}</span> <span class="ifn-seg-titulo">${esc(t.titulo)}</span> <span class="ifn-res ifn-res-${esc(t.resultado)}">${IFN_RESULTADO[t.resultado] || esc(t.resultado)}</span></div>
       <div class="ifn-seg-meta">Tomada el ${esc(t.tomada_el)} · esperado ${esperado} · ${t.resultado === 'midiendo' ? 'se mide el ' + esc(t.se_mide_el) : 'real ' + real}</div>
@@ -11987,7 +11933,7 @@ function ifnSeguimientoHtml(lista) {
     </li>`;
   }).join('');
   return '<h3 class="ifn-seccion">Seguimiento de lo que tomaste</h3>'
-    + (filas ? '<ul class="ifn-segs">' + filas + '</ul>' : '<div class="ifn-vacio">Todavía no tomaste ninguna recomendación.</div>');
+    + (filas ? '<ul class="ifn-segs">' + filas + '</ul>' : '<div class="ifn-vacio">Todavía no tomaste ninguna sugerencia.</div>');
 }
 // ========== FIN Inteligencia financiera ==========
 // ========== Horarios ==========
