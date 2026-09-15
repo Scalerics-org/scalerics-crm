@@ -20,6 +20,7 @@ from datetime import date, timedelta
 
 from database import (entregas_de_proyectos, listar_ausencias_equipo,
                       listar_personas_equipo, listar_recuperos_equipo)
+from services.flujos import FUERA_DE_FLUJOS, estilo_de_persona, estilos_roles
 
 MOTIVO_MAX = 160
 HORAS_MAX = 1000
@@ -152,10 +153,27 @@ def organigrama(personas: list[dict]) -> list[dict]:
                 break
             vistos.add(actual)
             actual = jefe[actual]
-    return [{"id": p["id"], "nombre": p["nombre"], "rol": p.get("rol") or "",
-             "reporta_a": jefe[p["id"]], "lleva_horas": bool(p.get("lleva_horas")),
-             "destacado": bool(_CTO.search(p.get("rol") or ""))}
-            for p in personas]
+    salida = []
+    for p in personas:
+        # El color sale del mismo mapa rol -> color que los pasos de Flujos.
+        estilo = estilo_de_persona(p.get("rol_flujo"))
+        salida.append({"id": p["id"], "nombre": p["nombre"], "rol": p.get("rol") or "",
+                       "reporta_a": jefe[p["id"]], "lleva_horas": bool(p.get("lleva_horas")),
+                       "destacado": bool(_CTO.search(p.get("rol") or "")),
+                       "rol_flujo": estilo["rol"], "color": estilo["color"],
+                       "etiqueta_flujo": estilo["etiqueta"]})
+    return salida
+
+
+def leyenda_organigrama(nodos: list[dict]) -> list[dict]:
+    """Los colores que aparecen en el organigrama, en el orden de los roles de
+    Flujos y al final "Fuera de Flujos". Solo los presentes."""
+    presentes = {n.get("color") for n in nodos}
+    leyenda = [{"color": e["color"], "etiqueta": e["etiqueta"]}
+               for e in estilos_roles() if e["color"] in presentes]
+    if FUERA_DE_FLUJOS["color"] in presentes:
+        leyenda.append(dict(FUERA_DE_FLUJOS))
+    return leyenda
 
 
 # ── estado de la pantalla ────────────────────────────────────────────────────
@@ -241,12 +259,16 @@ def estado(db_path: str, hoy: date | None = None, desde: date | None = None) -> 
                                "persona": a["persona"], "ausencia_id": a["id"]})
     avisos.sort(key=lambda x: (x["fecha_entrega"], x["proyecto"]))
 
+    nodos = organigrama(personas)
     return {
         "hoy": hoy.isoformat(),
         "esta_semana": lunes_hoy.isoformat(),
         "desde": primer_dia.isoformat(), "hasta": ultimo_dia.isoformat(),
         "semanas": [[d.isoformat() for d in s] for s in semanas],
-        "organigrama": organigrama(personas),
+        "organigrama": nodos,
+        "leyenda_organigrama": leyenda_organigrama(nodos),
+        "roles_flujo": estilos_roles(),
+        "fuera_de_flujos": dict(FUERA_DE_FLUJOS),
         "personas": [{"id": p["id"], "nombre": p["nombre"],
                       "horas_por_dia": p["horas_por_dia"]} for p in con_horas.values()],
         "calendario": filas,
