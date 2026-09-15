@@ -44,7 +44,13 @@ def _quien() -> tuple[int | None, str]:
 
 @equipo_bp.route("/api/equipo")
 def api_estado():
-    return jsonify(estado(_db(), _hoy()))
+    crudo = request.args.get("desde")
+    desde = None
+    if crudo:
+        desde = parse_fecha(crudo)
+        if desde is None:
+            return jsonify({"ok": False, "error": "desde tiene que ser AAAA-MM-DD"}), 400
+    return jsonify(estado(_db(), _hoy(), desde))
 
 
 @equipo_bp.route("/api/equipo/capacidad")

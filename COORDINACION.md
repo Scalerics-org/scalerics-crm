@@ -464,6 +464,12 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **15/9 — I: rama `fix/piezas-y-recupero`.**
+  - Piezas de la pauta: con "Un mes" arriba siguen al mes de la sección. La flecha de las piezas mueve la sección entera. Antes arriba se veía abril y abajo seguían las piezas de setiembre. Los datos de `meta_ad_insights` estaban bien fechados (abril 27 piezas, setiembre 47, ninguna en común).
+  - Equipo: la grilla navega de semana en semana con `GET /api/equipo?desde=AAAA-MM-DD`. Al agendar un recupero fuera de lo visible, salta a su semana. Sábado y domingo aparecen solo si hay un recupero ese día. `esta_semana` viene en la respuesta.
+
+- **15/9 — I: DEPLOYADO `v216` (PR #37 mergeado, `bd18b03`).** Trajo Equipo, la frase de equipo con el logo, colores del menú y SDR en CAPTACIÓN. El relleno de piezas de Meta quedó completo desde marzo.
+
 - **15/9 — I: DEPLOYADO `v215` (PR #36 mergeado a `main`, `5e3c7d7`): `main` quedó igual a producción.** Trajo:
   - menú por grupos, con Calendario como panel de entrada;
   - sin Seguimientos;

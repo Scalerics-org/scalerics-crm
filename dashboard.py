@@ -1614,6 +1614,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .eq-destacado rect{fill:var(--azul-tinte);stroke:var(--azul);stroke-width:2}
 .eq-destacado .eq-nodo-rol{fill:var(--azul-claro)}
 .eq-aviso{background:var(--ambar-tinte);color:var(--ambar);border:1px solid var(--ambar-borde);border-radius:10px;padding:10px 12px;font-size:.8rem;line-height:1.45;margin-bottom:10px}
+.eq-cal-nav{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;margin-bottom:8px;font-size:.8rem;color:var(--texto)}
 .eq-cal-wrap{overflow-x:auto}
 .eq-cal{border-collapse:separate;border-spacing:3px;font-size:.78rem}
 .eq-cal th{font-weight:600;color:var(--texto-debil);font-size:.7rem;padding:4px 6px;text-align:center;white-space:nowrap}
@@ -2552,6 +2553,12 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
         <button class="btn-primary" type="button" onclick="eqAbrirAusencia()">Registrar</button>
       </div>
       <div id="eq-avisos"></div>
+      <div class="eq-cal-nav" role="group" aria-label="Semanas de la grilla">
+        <button class="cal-nav-btn" type="button" onclick="eqSemanas(-1)" title="Semana anterior" aria-label="Semana anterior">&larr;</button>
+        <span id="eq-cal-rango" aria-live="polite"></span>
+        <button class="cal-nav-btn" type="button" onclick="eqSemanas(1)" title="Semana siguiente" aria-label="Semana siguiente">&rarr;</button>
+        <button class="cal-today-btn" type="button" onclick="eqSemanasHoy()">Esta semana</button>
+      </div>
       <div class="eq-cal-wrap" id="eq-calendario"></div>
       <div class="eq-leyenda" aria-label="Referencia de colores">
         <span><i class="eq-muestra eq-muestra-normal"></i>Normal</span>
@@ -8429,13 +8436,15 @@ async function loadMetrics() {
 let eqDatos = null;
 let eqAusenciaActual = null;
 let eqHorasTocadas = false;
+// Lunes de la primera semana de la grilla; null es la semana de hoy.
+let eqDesde = null;
 
 const EQ_DIAS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
 const EQ_NODO = {ancho: 184, alto: 52, hueco: 20, huecoRaiz: 120, fila: 48, margen: 12};
 
 async function loadEquipo() {
   try {
-    const r = await fetch('/api/equipo');
+    const r = await fetch('/api/equipo' + (eqDesde ? '?desde=' + encodeURIComponent(eqDesde) : ''));
     if (!r.ok) throw new Error('HTTP ' + r.status);
     eqDatos = await r.json();
   } catch (e) {
@@ -8454,7 +8463,36 @@ function eqPintar(d) {
   document.getElementById('eq-organigrama').innerHTML = eqOrganigramaSvg(d.organigrama || []);
   document.getElementById('eq-avisos').innerHTML = eqAvisosHtml(d.avisos || []);
   document.getElementById('eq-calendario').innerHTML = eqCalendarioHtml(d);
+  document.getElementById('eq-cal-rango').textContent = d.desde
+    ? 'Del ' + eqCorta(d.desde) + ' al ' + eqCorta(eqSumarDias(d.desde, 13)) : '';
   document.getElementById('eq-detalle').innerHTML = eqDetalleHtml(d.ausencias || []);
+}
+
+function eqSumarDias(iso, dias) {
+  const d = eqFecha(iso);
+  if (!d) return iso;
+  d.setDate(d.getDate() + dias);
+  return d.getFullYear() + '-' + eqDosDigitos(d.getMonth() + 1) + '-' + eqDosDigitos(d.getDate());
+}
+
+function eqSemanas(delta) {
+  const base = eqDesde || (eqDatos && eqDatos.desde);
+  if (!base) return;
+  eqDesde = eqSumarDias(base, 7 * delta);
+  loadEquipo();
+}
+
+function eqSemanasHoy() {
+  eqDesde = null;
+  loadEquipo();
+}
+
+// Un recupero recien agendado se tiene que ver en verde: si cae fuera de las
+// dos semanas que se estan mirando, la grilla salta a la suya.
+function eqIrALaFecha(iso) {
+  const d = eqDatos;
+  if (d && d.desde && iso >= d.desde && iso <= eqSumarDias(d.desde, 13)) return;
+  eqDesde = iso;
 }
 
 // ── fechas y horas ──
@@ -8613,8 +8651,14 @@ function eqCalendarioHtml(d) {
   const semanas = d.semanas || [];
   if (!filas.length) return '<div class="eq-vacio">Nadie del equipo lleva horas.</div>';
   const hueco = celda => '<' + celda + ' class="eq-cal-hueco" aria-hidden="true"></' + celda + '>';
-  const cabSemanas = semanas.map((s, i) => '<th colspan="5" class="eq-cal-semana">'
-    + (i ? 'Semana que viene' : 'Esta semana') + '</th>').join(hueco('th'));
+  const nombreSemana = (s, i) => {
+    if (!d.esta_semana) return i ? 'Semana que viene' : 'Esta semana';
+    if (s[0] === d.esta_semana) return 'Esta semana';
+    if (s[0] === eqSumarDias(d.esta_semana, 7)) return 'Semana que viene';
+    return 'Semana del ' + eqCorta(s[0]);
+  };
+  const cabSemanas = semanas.map((s, i) => '<th colspan="' + s.length + '" class="eq-cal-semana">'
+    + esc(nombreSemana(s, i)) + '</th>').join(hueco('th'));
   const cabDias = semanas.map(s => s.map(iso => '<th scope="col" class="eq-cal-dia' + (iso === d.hoy ? ' eq-hoy' : '') + '">'
     + esc(eqCorta(iso)) + '</th>').join('')).join(hueco('th'));
   const cuerpo = filas.map(f => {
@@ -8795,6 +8839,7 @@ async function eqGuardarRecupero() {
     return;
   }
   eqCerrarModal('eq-modal-recupero');
+  eqIrALaFecha(datos.fecha);
   await loadEquipo();
 }
 
@@ -9781,8 +9826,12 @@ async function loadMarketing() {
   estado.style.display = 'none';
   cuerpo.style.display = '';
   _mkPintar();
-  // Las piezas tienen su propio mes y su propio pedido: no esperan al
-  // dossier ni al informe, y cambiar de mes no recalcula el panel.
+  // Las piezas tienen su propio pedido y no esperan al informe. Con "Un mes"
+  // arriba siguen a ese mes.
+  if (_mkEnModoMes()) {
+    const mes = _mkMesDelPeriodo();
+    _mkPiezasMesActual = mes === _mkMesDeHoy() ? null : mes;
+  }
   _mkCargarPiezas();
   // Sin await: si el informe tarda o falla, los graficos ya estan en pantalla.
   _mkInforme();
@@ -10383,8 +10432,9 @@ function _mkNotaSemanasIncompletas(semanas, p, nombres) {
 // hoy y las que ya no. Las que ya no se ven igual de legibles: las separa el
 // título del grupo, no un gris.
 //
-// Tiene su propio mes y su propio pedido a `/api/marketing/piezas`: el
-// período de arriba no la mueve y cambiar de mes no recalcula el panel.
+// Tiene su propio pedido a `/api/marketing/piezas`. Con "Un mes" arriba
+// muestra ESE mes; con otro período (90 días, el año) navega meses por su
+// cuenta, porque ahí arriba no hay un mes que seguir.
 
 var _mkPiezasMesActual = null;   // 'YYYY-MM'; null es el mes de hoy
 
@@ -10403,7 +10453,12 @@ function _mkMesDeHoy() {
 // más allá del primer mes con datos te dejaba en ese primer mes sin avisar:
 // Juan creía estar en mayo y miraba agosto. Si el mes no tiene datos por pieza,
 // el panel lo dice. Al futuro no se va: el botón está apagado.
+//
+// Con "Un mes" arriba, la flecha de las piezas mueve la sección entera: si
+// cada una tuviera su mes, arriba decía abril y abajo seguían las piezas de
+// setiembre (Juan, 14/9).
 function mkPiezasMes(delta) {
+  if (_mkEnModoMes()) { mkMes(delta); return; }
   const hoy = _mkMesDeHoy();
   const ahora = _mkPiezasMesActual || hoy;
   const mes = _mkMesCorrido(ahora, delta);
@@ -10413,8 +10468,20 @@ function mkPiezasMes(delta) {
 }
 
 function mkPiezasMesHoy() {
+  if (_mkEnModoMes()) { mkMesHoy(); return; }
   _mkPiezasMesActual = null;
   _mkCargarPiezas();
+}
+
+function _mkEnModoMes() {
+  const sel = document.getElementById('mk-rango');
+  return !!sel && sel.value === 'mes';
+}
+
+// El mes de arriba, como 'YYYY-MM'.
+function _mkMesDelPeriodo() {
+  const d = _mkMesVisible();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
 }
 
 async function _mkCargarPiezas() {
