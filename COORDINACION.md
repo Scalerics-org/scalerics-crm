@@ -470,6 +470,12 @@ leads de Meta se renombró a **D** para deshacer el empate.
   - **Envíos de formulario (`meta_lead_envios`):** quien vuelve a llenar el formulario cuenta también en el mes de la vuelta, como Meta. Lo registran el webhook y los imports. **Backfill:** el import diario (arranca 120 s después de cada boot, y `POST /api/meta/import-sync` con `ADMIN_TOKEN`) rellena la tabla con todo lo que devuelve Graph (~90 días) sin crear fichas ni avisar. Los contadores de Marketing (dossier, piezas) y la pauta de Finanzas cuentan envíos por mes de Montevideo (`database.ENVIOS_META_SQL`); las etapas quedan en el primer envío.
   - **Zona compartida tocada:** `database.py` (tabla, columnas, `delete_business`/`merge_business`), `dashboard.py` (panel Meta Ads), `routes/leads.py` (`registrar_cambio_de_estado`, lo usa `/crm-status`), `services/dossier.py`, `services/anuncios.py`, `services/finanzas.py` (solo `rendimiento_pauta`).
 
+- **15/9 — rama `feat/calendario-contador-mes` (worktree `../crm-cal-mes`). Sin PR ni deploy.** Pedido de Juan: contador del mes y deslizar entre meses.
+  - `#cal-count` ahora habla del MES que se mira, también en vista semana: "Septiembre 2026 · 18 reuniones · 11 hechas · 7 por venir" (pasado: "N reuniones"; futuro: "N agendadas"). Hechas/por venir contra la hora de Montevideo (`_calAhoraMvd`, UTC-3 fijo), no contra el reloj del navegador.
+  - La vista semana pide la semana **más su mes entero** en un solo GET (`_calRangoSemana`) y filtra la grilla a los 7 días. El mes de la semana: el de hoy si cae adentro, si no el del jueves.
+  - Celular: deslizar sobre `#cal-days` cambia de mes (>50px y más horizontal que vertical, listeners pasivos). `calShift` en el celular mueve siempre el mes (antes, con `calView='semana'` la flecha no hacía nada visible).
+  - `_calPedido` descarta respuestas viejas al navegar rápido. `.cal-count` pasó a tokens (se fue `body.light .cal-count`). Tests en `tests/test_calendario_contador_mes.py`.
+
 - **14/9 — rama `feat/seguimiento-leads` (sin PR, sin merge, sin deploy): Seguimiento de leads.**
   - Panel `seg_leads`, primer ítem de VENTAS (arriba de WhatsApp). Id nuevo a propósito: la sección vieja `seguimientos` sigue borrada y `tests/test_sin_seguimientos.py` no se tocó.
   - Tablas `seg_recordatorios` (índice único parcial: un solo pendiente por lead) y `seg_llamados` (historial, se escribe al marcar Hecho). `routes/seg_leads.py` y `services/seg_leads.py`. `lead_id` es `businesses.id`.

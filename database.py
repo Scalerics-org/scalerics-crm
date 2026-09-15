@@ -1004,6 +1004,69 @@ def init_db(db_path: str) -> None:
         # Quien tenía Equipo veía las dos partes, así que recibe Ausencias.
         _grant_panel_to_existing_roles(conn, "ausencias", solo_si_tiene="equipo")
 
+        # ── Daily Programador ─────────────────────────────────────────────────
+        # Actividades del día y recordatorios que se repiten (pedido de Juan,
+        # 15/9). Van por persona de `equipo_personas`, no por usuario: en el
+        # menú hay una entrada por programador y cualquiera con el panel
+        # `daily` entra a cualquiera. `programador` marca quién tiene su
+        # daily; sumar a otro es prender la marca, sin tocar código. Se
+        # precarga en Juan y Gonzalo solo cuando la columna es nueva, así un
+        # cambio hecho a mano sobrevive a los reinicios.
+        columnas = {fila[1] for fila in conn.execute("PRAGMA table_info(equipo_personas)")}
+        if "programador" not in columnas:
+            conn.execute("ALTER TABLE equipo_personas "
+                         "ADD COLUMN programador INTEGER NOT NULL DEFAULT 0")
+            conn.executemany("UPDATE equipo_personas SET programador = 1 WHERE nombre = ?",
+                             [(n,) for n in _PROGRAMADORES_PRECARGA])
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS daily_actividades (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                persona_id      INTEGER NOT NULL REFERENCES equipo_personas(id) ON DELETE CASCADE,
+                fecha           TEXT NOT NULL,
+                texto           TEXT NOT NULL,
+                hecha           INTEGER NOT NULL DEFAULT 0,
+                pasada_de       TEXT,
+                created_by_id   INTEGER,
+                created_by_name TEXT,
+                created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_daily_actividades_dia "
+                     "ON daily_actividades(persona_id, fecha)")
+        # `dias`: los días de la semana como "0,2,4" (0 = lunes), solo con
+        # frecuencia 'dias'. `desde`: el día en que se creó, para que no
+        # aparezca en días anteriores.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS daily_recordatorios (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                persona_id      INTEGER NOT NULL REFERENCES equipo_personas(id) ON DELETE CASCADE,
+                texto           TEXT NOT NULL,
+                frecuencia      TEXT NOT NULL DEFAULT 'diario',
+                dias            TEXT NOT NULL DEFAULT '',
+                activo          INTEGER NOT NULL DEFAULT 1,
+                desde           TEXT NOT NULL,
+                created_by_id   INTEGER,
+                created_by_name TEXT,
+                created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_daily_recordatorios_persona "
+                     "ON daily_recordatorios(persona_id)")
+        # Un recordatorio hecho en un día es una fila; desmarcarlo la borra.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS daily_marcas (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                recordatorio_id INTEGER NOT NULL REFERENCES daily_recordatorios(id) ON DELETE CASCADE,
+                fecha           TEXT NOT NULL,
+                created_by_id   INTEGER,
+                created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE (recordatorio_id, fecha)
+            )
+        """)
+        conn.commit()
+        # Como Equipo: los roles que tienen Tareas reciben el Daily.
+        _grant_panel_to_existing_roles(conn, "daily", solo_si_tiene="tasks")
+
         # ── seguimiento de leads ──────────────────────────────────────────────
         # La agenda de llamados de Juan (14/9). `lead_id` es `businesses.id`:
         # ahí está el teléfono y es la ficha que abre el panel de cliente. Las
@@ -3561,6 +3624,9 @@ _EQUIPO_PRECARGA = (
     ("Gonzalo Siuciak", "Programador · project manager", "Matías Domínguez", True, 4),
 )
 
+# Quiénes arrancan con su Daily Programador (columna `programador`).
+_PROGRAMADORES_PRECARGA = ("Juan Tomasetti", "Gonzalo Siuciak")
+
 
 # ─── Seguimiento de leads ────────────────────────────────────────────────────
 
@@ -3733,6 +3799,163 @@ def listar_personas_equipo(db_path: str, incluir_inactivas: bool = False) -> lis
 
 def get_persona_equipo(db_path: str, persona_id: int) -> Optional[dict]:
     return _get_one(db_path, "equipo_personas", persona_id)
+
+
+# ── Daily Programador ────────────────────────────────────────────────────────
+# Las tablas se crean en init_db. Todo va por persona del equipo.
+
+def listar_programadores(db_path: str) -> list[dict]:
+    """Las personas activas marcadas como programador, en orden de alta."""
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute("SELECT * FROM equipo_personas "
+                           "WHERE activo = 1 AND programador = 1 ORDER BY id")
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def crear_actividad_daily(db_path: str, persona_id: int, fecha: str, texto: str,
+                          created_by_id: int | None = None,
+                          created_by_name: str | None = None) -> int:
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute(
+            "INSERT INTO daily_actividades (persona_id, fecha, texto, created_by_id, created_by_name) "
+            "VALUES (?,?,?,?,?)", (persona_id, fecha, texto, created_by_id, created_by_name))
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def get_actividad_daily(db_path: str, actividad_id: int) -> Optional[dict]:
+    return _get_one(db_path, "daily_actividades", actividad_id)
+
+
+_CAMPOS_ACTIVIDAD_DAILY = ("texto", "hecha", "fecha", "pasada_de")
+
+
+def actualizar_actividad_daily(db_path: str, actividad_id: int, **campos) -> None:
+    campos = {k: v for k, v in campos.items() if k in _CAMPOS_ACTIVIDAD_DAILY}
+    if not campos:
+        return
+    sets = ", ".join(f"{k} = ?" for k in campos)
+    conn = _connect(db_path)
+    try:
+        conn.execute(f"UPDATE daily_actividades SET {sets} WHERE id = ?",
+                     (*campos.values(), actividad_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def borrar_actividad_daily(db_path: str, actividad_id: int) -> None:
+    conn = _connect(db_path)
+    try:
+        conn.execute("DELETE FROM daily_actividades WHERE id = ?", (actividad_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def listar_actividades_daily(db_path: str, persona_id: int, fecha: str) -> list[dict]:
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute("SELECT * FROM daily_actividades WHERE persona_id = ? AND fecha = ? "
+                           "ORDER BY id", (persona_id, fecha))
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def crear_recordatorio_daily(db_path: str, persona_id: int, texto: str, frecuencia: str,
+                             dias: str, desde: str, activo: int = 1,
+                             created_by_id: int | None = None,
+                             created_by_name: str | None = None) -> int:
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute(
+            "INSERT INTO daily_recordatorios "
+            "(persona_id, texto, frecuencia, dias, activo, desde, created_by_id, created_by_name) "
+            "VALUES (?,?,?,?,?,?,?,?)",
+            (persona_id, texto, frecuencia, dias, activo, desde, created_by_id, created_by_name))
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def get_recordatorio_daily(db_path: str, recordatorio_id: int) -> Optional[dict]:
+    return _get_one(db_path, "daily_recordatorios", recordatorio_id)
+
+
+_CAMPOS_RECORDATORIO_DAILY = ("texto", "frecuencia", "dias", "activo")
+
+
+def actualizar_recordatorio_daily(db_path: str, recordatorio_id: int, **campos) -> None:
+    campos = {k: v for k, v in campos.items() if k in _CAMPOS_RECORDATORIO_DAILY}
+    if not campos:
+        return
+    sets = ", ".join(f"{k} = ?" for k in campos)
+    conn = _connect(db_path)
+    try:
+        conn.execute(f"UPDATE daily_recordatorios SET {sets} WHERE id = ?",
+                     (*campos.values(), recordatorio_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def borrar_recordatorio_daily(db_path: str, recordatorio_id: int) -> None:
+    """Se lleva sus marcas. No depende de que SQLite tenga las foreign keys
+    prendidas."""
+    conn = _connect(db_path)
+    try:
+        conn.execute("DELETE FROM daily_marcas WHERE recordatorio_id = ?", (recordatorio_id,))
+        conn.execute("DELETE FROM daily_recordatorios WHERE id = ?", (recordatorio_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def listar_recordatorios_daily(db_path: str, persona_id: int) -> list[dict]:
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute("SELECT * FROM daily_recordatorios WHERE persona_id = ? ORDER BY id",
+                           (persona_id,))
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def listar_marcas_daily(db_path: str, persona_id: int, fecha: str) -> set[int]:
+    """Los ids de los recordatorios de esa persona marcados como hechos ese día."""
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute(
+            "SELECT m.recordatorio_id FROM daily_marcas m "
+            "JOIN daily_recordatorios r ON r.id = m.recordatorio_id "
+            "WHERE r.persona_id = ? AND m.fecha = ?", (persona_id, fecha))
+        return {fila[0] for fila in cur.fetchall()}
+    finally:
+        conn.close()
+
+
+def marcar_recordatorio_daily(db_path: str, recordatorio_id: int, fecha: str, hecha: bool,
+                              created_by_id: int | None = None) -> None:
+    """Marca o desmarca un recordatorio en un solo día; los otros días no se tocan."""
+    conn = _connect(db_path)
+    try:
+        if hecha:
+            conn.execute("INSERT OR IGNORE INTO daily_marcas (recordatorio_id, fecha, created_by_id) "
+                         "VALUES (?,?,?)", (recordatorio_id, fecha, created_by_id))
+        else:
+            conn.execute("DELETE FROM daily_marcas WHERE recordatorio_id = ? AND fecha = ?",
+                         (recordatorio_id, fecha))
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def crear_ausencia_equipo(db_path: str, persona_id: int, fecha_desde: str,
