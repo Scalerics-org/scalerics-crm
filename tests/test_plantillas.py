@@ -37,8 +37,8 @@ def _entre(texto: str, desde: str, hasta: str) -> str:
 
 PANEL = _entre(SRC, "<!-- ======= PLANTILLAS PANEL ======= -->", "<!-- ======= FIN PLANTILLAS PANEL ======= -->")
 MODALES = _entre(SRC, "<!-- ======= PLANTILLAS MODALES ======= -->", "<!-- ======= FIN PLANTILLAS MODALES ======= -->")
-JS = _entre(SRC, "// ========== Plantillas ==========", "// ========== Equipo ==========")
-CSS = _entre(SRC, "/* ── Plantillas", "/* ── Equipo")
+JS = _entre(SRC, "// ========== Plantillas ==========", "// ========== Seguimiento de leads ==========")
+CSS = _entre(SRC, "/* ── Plantillas", "/* ── Seguimiento de leads")
 FUENTES = {"panel": PANEL, "modales": MODALES, "js": JS, "css": CSS}
 
 # Copiado a mano del PDF, a propósito sin importar la precarga: si alguien
