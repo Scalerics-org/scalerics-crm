@@ -327,6 +327,8 @@ def sync_parsed(db_path: str, datas: list, dry_run: bool = False,
                 end_at=data["end_at"],
                 meet_link=data["meet_link"],
                 status="scheduled",
+                # Nunca va a Google desde el CRM: Calendly ya lo hizo.
+                origen="calendly",
             )
         except Exception:
             stats["skipped"] += 1
