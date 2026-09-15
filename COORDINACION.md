@@ -83,6 +83,34 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 | F (finanzas) | la sección financiera del CRM | `services/finanzas.py`, `routes/finanzas.py`, `database.py` (tablas de finanzas), `dashboard.py` (panel Finanzas) | 8/9 |
 
+> **Email marketing (15/9, pedido de Juan).** Rama `feat/email-marketing`,
+> worktree `crm-email-mkt`. Sin PR, sin merge y sin deploy. Panel nuevo
+> `email_mkt` al final de CAPTACIÓN.
+>
+> **Cruce de territorio, todo aditivo:**
+> - `services/email_service.py` (de A): `_send_estado` registra cada envío
+>   aceptado en la tabla nueva `emails_enviados`, con el id de Resend. No cambia
+>   ninguna firma. El tipo lo pone un decorador `@_tipo_envio(...)` en cada
+>   `send_*`; el negocio lo pasa quien llama con `contexto_envio(...)`.
+>   Registrar va en try/except: si falla, el mail sale igual.
+>   **Si agregás un `send_*` nuevo, ponele su `@_tipo_envio`** (hay un test).
+> - `services/discovery_emails.py` (de A) y `services/meta_reminders.py` (de D):
+>   solo un `with contexto_envio(business_id=..., numero=...)` alrededor del envío.
+> - `routes/resend_webhook.py` (de A): antes de vedar, guarda el evento
+>   (entregado, abierto, clic, rebote, spam) en `emails_enviados`. Si eso falla,
+>   el vedado sigue igual.
+> - `database.py`: tabla `emails_enviados`. En el arranque que la crea copia
+>   una sola vez lo histórico de `meta_reminders` y `discovery_reminders`, y
+>   reparte el panel a los roles con `cola` o `metrics`.
+> - `dashboard.py`: ítem de menú, panel, CSS y JS con prefijo `em`, y el
+>   blueprint `email_mkt_bp`.
+>
+> **Para que se vean aperturas y clics hace falta configurar Resend:** el
+> webhook tiene que suscribir `email.delivered`, `email.opened`,
+> `email.clicked`, `email.bounced`, `email.complained` (y opcionalmente
+> `email.delivery_delayed`, `email.failed`, `email.suppressed`), y el dominio
+> tiene que tener prendido el seguimiento de aperturas y de clics.
+
 > **F (finanzas) acá (8/9).** Trabajé en un worktree aparte sobre la rama
 > `feat/finanzas`. Me habia anotado como E, pero E ya estaba tomada por pre-clientes/demos, que llego primero y ya deployo: me corri a **F**. Agrega dos tablas
 > nuevas, `finanzas_movimientos` y `finanzas_recurrentes`, más
@@ -471,6 +499,12 @@ leads de Meta se renombró a **D** para deshacer el empate.
   - **Sync de Google:** `_sync_gcal_to_db` ya no importa un evento de Google que coincide en fecha, hora y título con una ocurrencia de serie o un "otro asunto" del CRM. Sin eso, crear "Marketing semanal" también en Google (para mandar invitaciones) inventaba un lead con el primer invitado.
   - **Contador del mes:** las de otro asunto no suman a reuniones / hechas / por venir; van al final, "· 4 de otros asuntos". Una serie de cliente cuenta cada ocurrencia.
   - **Zona compartida tocada, todo aditivo:** `database.py` (4 columnas en `meetings`, tabla `reuniones_asunto` y su CRUD), `dashboard.py` (botón "+ Nueva reunión" en el Calendario, que no tenía; modal nuevo, modal de alcance, invitados en el editor, token `--violeta`, CSS `.cal-tipo*`/`.cal-rep*`/`.cal-alcance*`, etiquetas de actividad), `routes/calendar.py`.
+
+- **15/9 — rama `feat/colores-flujos-horarios` (worktree `../crm-colores-rrhh`). Sin PR ni deploy.** Pedido de Juan: colores en Flujos y Horarios.
+  - **Flujos, un color por rol:** el mapa vive en `services/flujos.ROL_ESTILOS` (rol → color y etiqueta) y llega a la pantalla con `/api/flujos` (`estilos`). Marketing rojo, Project manager naranja, Comercial verde, Desarrollo azul, Administración violeta, Soporte teal. Tokens `--rol-<color>` y `--rol-<color>-tinte` en los dos temas, clase `.eq-rol-<color>`; todos los pares miden ≥ 4,5:1 (hay test).
+  - **"Marketing" se muestra como "Líder marketing digital"** (leyenda, tarjetas y modal). En la base sigue siendo `Marketing`: cambió la etiqueta, no el valor.
+  - Leyenda arriba del flujo con los roles que aparecen en él; tarjeta con el tinte de su rol y borde izquierdo pleno; el destacado ya no es verde: usa el color de su rol y lleva la etiqueta "Ingreso recurrente". El modal muestra el color al elegir el rol.
+  - **Horarios, el color de Daily:** `/api/horarios` manda `orden_daily` (el lugar de la persona en Daily Programador) y la pantalla usa los mismos `DY_COLORES`; `.hr-color-N` usa el mismo token que `.dy-color-N` (hay test que los compara). Tramos como pastillas, total en chip, encabezados alternados, tarjeta del celular con borde superior del color.
 
 - **15/9 — rama `fix/simulador-guardar-escenario` (worktree `../crm-sim-guardar`). Sin PR, sin merge, sin deploy.** Pedido de Juan: abrir un escenario guardado, editarlo y guardarlo tiene que corregir ese mismo escenario.
   - **Causa:** el backend ya tenía `PUT`, pero el panel elegía entre actualizar y crear comparando el texto del nombre con el del abierto (`nombre === simNombreCargado`). Si no era idéntico (le cambiaste el nombre, lo elegiste en la lista sin tocar "Abrir", recargaste) hacía `POST` y creaba OTRO en silencio, con el aviso "Guardado:" casi igual a "Actualizado:". El original quedaba viejo y en la lista aparecían dos con el mismo nombre. Nada en pantalla decía cuál estaba abierto.

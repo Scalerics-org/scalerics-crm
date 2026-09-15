@@ -27,6 +27,7 @@ from routes.preclientes import preclientes_bp
 from routes.linkedin import linkedin_bp
 from routes.finanzas import finanzas_bp
 from routes.simulador import simulador_bp
+from routes.email_marketing import email_mkt_bp
 from routes.inteligencia_fin import inteligencia_fin_bp
 from routes.equipo import equipo_bp
 from routes.horarios import horarios_bp
@@ -413,6 +414,18 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   --semaforo-rojo:#ff0000;
   --semaforo-amarillo:#ffff00;
   --semaforo-negro:#000000;
+  --rol-rojo:#f87171;
+  --rol-rojo-tinte:#2b1618;
+  --rol-naranja:#fb923c;
+  --rol-naranja-tinte:#2b1d12;
+  --rol-verde:#34d399;
+  --rol-verde-tinte:#0f2a1f;
+  --rol-azul:#60a5fa;
+  --rol-azul-tinte:#111f36;
+  --rol-violeta:#c084fc;
+  --rol-violeta-tinte:#24173a;
+  --rol-teal:#2dd4bf;
+  --rol-teal-tinte:#0d2a28;
 }
 body.light{
   --fondo:#f8fafc;
@@ -451,6 +464,18 @@ body.light{
   --semaforo-rojo:#ff0000;
   --semaforo-amarillo:#ffff00;
   --semaforo-negro:#000000;
+  --rol-rojo:#b91c1c;
+  --rol-rojo-tinte:#fee2e2;
+  --rol-naranja:#c2410c;
+  --rol-naranja-tinte:#ffedd5;
+  --rol-verde:#047857;
+  --rol-verde-tinte:#d1fae5;
+  --rol-azul:#1d4ed8;
+  --rol-azul-tinte:#dbeafe;
+  --rol-violeta:#7e22ce;
+  --rol-violeta-tinte:#f3e8ff;
+  --rol-teal:#0f766e;
+  --rol-teal-tinte:#ccfbf1;
 }
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:100vh;display:flex}
@@ -1313,6 +1338,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-daily .nav-icon{stroke:#38bdf8}
 #nav-daily_admin .nav-icon{stroke:#f0abfc}
 #nav-plantillas .nav-icon{stroke:#c084fc}
+#nav-email_mkt .nav-icon{stroke:#6ee7b7}
 .nav-item.active #nav-cola .nav-icon,
 .nav-item.active .nav-icon{opacity:1}
 /* active item keeps its color but brighter */
@@ -1339,6 +1365,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-flujos.active .nav-icon{stroke:#99f6e4}
 #nav-seg_leads.active .nav-icon{stroke:#fda4af}
 #nav-plantillas.active .nav-icon{stroke:#d8b4fe}
+#nav-email_mkt.active .nav-icon{stroke:#a7f3d0}
 /* light mode — slightly darker tones */
 body.light #nav-cola .nav-icon{stroke:#2563eb}
 body.light #nav-clientes .nav-icon{stroke:#7c3aed}
@@ -1363,6 +1390,7 @@ body.light #nav-horarios .nav-icon{stroke:#92400e}
 body.light #nav-flujos .nav-icon{stroke:#0f766e}
 body.light #nav-seg_leads .nav-icon{stroke:#be123c}
 body.light #nav-plantillas .nav-icon{stroke:#9333ea}
+body.light #nav-email_mkt .nav-icon{stroke:#065f46}
 /* ── Lucide icons ─────────────────────────────────────────────────────────── */
 .nav-icon{width:15px;height:15px;stroke-width:2;flex-shrink:0}
 /* Frase de equipo, version compacta del PDF de identidad de marca. Es la
@@ -1901,24 +1929,37 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .hr-tabla-wrap{overflow-x:auto}
 .hr-tabla{width:100%;border-collapse:separate;border-spacing:4px;font-size:.8rem}
 .hr-tabla th{font-weight:600;color:var(--texto-debil);font-size:.72rem;padding:4px 8px;text-align:center;white-space:nowrap}
-.hr-tabla th.hr-persona{text-align:left;color:var(--texto-fuerte);font-size:.85rem}
-.hr-celda{background:var(--relleno);color:var(--texto);border-radius:8px;padding:8px 6px;text-align:center;vertical-align:middle;min-width:92px}
-.hr-celda-libre{background:transparent;border:1px dashed var(--borde)}
+.hr-tabla th.hr-persona{text-align:left;color:var(--texto-fuerte);font-size:.85rem;white-space:nowrap}
+.hr-tabla th.hr-col-dia{border-radius:6px}
+.hr-tabla th.hr-col-dia:nth-child(even){background:var(--relleno);color:var(--texto-tenue)}
+/* El color de cada persona es el de Daily: hr-color-N usa el mismo token que
+   dy-color-N (hay un test que los compara) con el tinte de su familia. */
+.hr-color-0{--hr-c:var(--azul-claro);--hr-t:var(--azul-tinte)}
+.hr-color-1{--hr-c:var(--verde-texto);--hr-t:var(--verde-tinte)}
+.hr-color-2{--hr-c:var(--ambar);--hr-t:var(--ambar-tinte)}
+.hr-color-3{--hr-c:var(--texto-tenue);--hr-t:var(--relleno)}
+.hr-punto{display:inline-block;width:10px;height:10px;border-radius:99px;background:var(--hr-c,var(--texto-tenue));margin-right:7px;flex-shrink:0}
+.hr-celda{background:transparent;color:var(--texto);border-radius:8px;padding:6px;text-align:center;vertical-align:middle;min-width:96px}
+.hr-celda-libre{background:transparent;border:1px dashed var(--borde);opacity:.6}
 .hr-tramo-txt{display:block;font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums}
+.hr-pastilla{background:var(--hr-t,var(--relleno));border:1px solid var(--hr-c,var(--borde));color:var(--texto-fuerte);border-radius:99px;padding:3px 10px;margin:2px auto;width:max-content;max-width:100%}
 .hr-horas{display:block;font-size:.7rem;color:var(--texto-debil);margin-top:2px}
 .hr-libre{color:var(--texto-debil);font-size:.75rem}
 .hr-tabla .hr-total{font-weight:700;color:var(--texto-fuerte);white-space:nowrap;text-align:right;padding:0 8px}
+.hr-total-chip{display:inline-block;background:var(--hr-t,var(--relleno));color:var(--hr-c,var(--texto-fuerte));border:1px solid var(--hr-c,var(--borde));border-radius:99px;padding:3px 10px;font-weight:700;white-space:nowrap}
 .hr-acciones{text-align:right;white-space:nowrap}
 .hr-btn-chico{padding:6px 12px;font-size:.76rem}
 .hr-tarjetas{display:none}
-.hr-tarjeta{border-top:1px solid var(--borde);padding:12px 0}
-.hr-tarjeta:first-child{border-top:none;padding-top:0}
+.hr-tarjeta{border:1px solid var(--borde);border-top:3px solid var(--hr-c,var(--borde));border-radius:10px;padding:10px 12px;margin-bottom:10px}
+.hr-tarjeta:last-child{margin-bottom:0}
 .hr-tarjeta-cab{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px}
-.hr-tarjeta-nombre{font-size:.95rem;font-weight:700;color:var(--texto-fuerte)}
-.hr-tarjeta-total{font-size:.75rem;color:var(--texto-tenue)}
+.hr-tarjeta-nombre{font-size:.95rem;font-weight:700;color:var(--texto-fuerte);display:flex;align-items:center}
+.hr-tarjeta-total{font-size:.75rem;color:var(--texto-tenue);margin-top:4px}
 .hr-tarjeta-dia{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:7px 0;border-top:1px solid var(--borde);font-size:.82rem;color:var(--texto)}
 .hr-tarjeta-dia-nombre{color:var(--texto-tenue)}
-.hr-tarjeta-dia-tramos{text-align:right}
+.hr-tarjeta-dia-tramos{display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:4px;text-align:right}
+.hr-tarjeta-dia-tramos .hr-pastilla{display:inline-block;margin:0}
+.hr-tarjeta-dia-tramos .hr-horas{flex-basis:100%}
 .hr-oculto{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .hr-modal{width:520px;max-width:95vw;max-height:90vh;overflow-y:auto}
 .hr-dia{border-top:1px solid var(--borde);padding:10px 0}
@@ -2179,6 +2220,60 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 @media(max-width:600px){
   .sl-contadores{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
+/* ── Email marketing ─────────────────────────────────────────────────────────
+   Lo que sale por Resend. Solo tokens, sin reglas de tema claro: los chips usan
+   la familia de estados (tintes azul/verde/rojo/ambar), que ya tiene su par. */
+.em-oculto{display:none!important}
+.em-acciones{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.em-nota-estados{font-size:.76rem;color:var(--texto-debil);margin:-6px 0 10px}
+.em-nota-estados:empty{display:none}
+.em-barra{display:flex;align-items:center;justify-content:space-between;gap:8px 12px;flex-wrap:wrap;margin-bottom:14px}
+.em-nav-mes{display:flex;align-items:center;gap:8px;font-size:.85rem;color:var(--texto-fuerte);font-weight:600}
+.em-nav-mes span{min-width:120px;text-align:center}
+.em-tipo{min-width:200px}
+.em-contadores{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;margin-bottom:14px}
+.em-contador{background:var(--superficie-honda);border:1px solid var(--borde);border-radius:10px;padding:12px 14px;min-width:0}
+.em-contador-num{font-size:1.5rem;font-weight:700;color:var(--texto-fuerte);font-variant-numeric:tabular-nums}
+.em-contador-rotulo{font-size:.74rem;font-weight:600;color:var(--texto);margin-top:2px}
+.em-contador-tasa{font-size:.7rem;color:var(--texto-debil);margin-top:2px;min-height:1em}
+.em-contador-rebotados .em-contador-num,.em-contador-spam .em-contador-num{color:var(--rojo-texto)}
+.em-aviso{background:var(--ambar-tinte);color:var(--ambar);border:1px solid var(--ambar-borde);border-radius:10px;padding:10px 12px;font-size:.78rem;line-height:1.45;margin-bottom:14px}
+.em-card{background:var(--superficie-honda);border:1px solid var(--borde);border-radius:10px;padding:16px;margin-bottom:14px;min-width:0}
+.em-card-titulo{font-size:.9rem;font-weight:700;color:var(--texto-fuerte);margin-bottom:10px}
+.em-cab{display:flex;justify-content:space-between;align-items:center;gap:8px 12px;flex-wrap:wrap;margin-bottom:10px}
+.em-cab .em-card-titulo{margin-bottom:0}
+.em-buscar{background:var(--superficie);border:1px solid var(--borde-fuerte);color:var(--texto);border-radius:8px;padding:7px 10px;font-size:.8rem;font-family:inherit;min-width:240px}
+.em-buscar:focus{outline:2px solid var(--azul);outline-offset:1px}
+.em-tabla-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.em-tabla{width:100%;min-width:760px;border-collapse:collapse;font-size:.78rem}
+.em-tabla th{text-align:left;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--texto-debil);padding:6px 8px;border-bottom:1px solid var(--borde);white-space:nowrap}
+.em-tabla td{padding:8px;border-bottom:1px solid var(--borde);color:var(--texto);vertical-align:top}
+.em-tabla tr:hover td{background:var(--hover)}
+.em-fecha{white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--texto-tenue)}
+.em-dest{overflow-wrap:anywhere;max-width:220px}
+.em-asunto{overflow-wrap:anywhere;max-width:320px}
+.em-extracto{display:block;color:var(--texto-debil);font-size:.7rem;margin-top:2px}
+.em-chip{display:inline-block;border-radius:99px;padding:2px 9px;font-size:.7rem;font-weight:700;white-space:nowrap}
+.em-chip-azul{background:var(--azul-tinte);color:var(--azul-claro)}
+.em-chip-verde{background:var(--verde-tinte);color:var(--verde-texto)}
+.em-chip-fuerte{background:var(--verde-tinte);color:var(--verde-texto);box-shadow:inset 0 0 0 1px var(--verde-texto)}
+.em-chip-rojo{background:var(--rojo-tinte);color:var(--rojo-texto)}
+.em-chip-ambar{background:var(--ambar-tinte);color:var(--ambar)}
+.em-chip-gris{background:var(--relleno);color:var(--texto-debil)}
+.em-nota{display:block;font-size:.66rem;color:var(--texto-debil);margin-top:3px}
+.em-link{background:none;border:none;padding:0;color:var(--azul-claro);font:inherit;cursor:pointer;text-align:left;text-decoration:underline;overflow-wrap:anywhere}
+.em-paginas{display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-top:10px;font-size:.76rem;color:var(--texto-tenue)}
+.em-paginas:empty{display:none}
+.em-vacio{font-size:.8rem;color:var(--texto-debil);padding:8px 0}
+@media(max-width:900px){
+  .em-contadores{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+@media(max-width:560px){
+  .em-contadores{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .em-barra{align-items:stretch}
+  .em-buscar,.em-tipo{min-width:0;width:100%}
+  .em-card{padding:12px}
+}
 /* ── Equipo ───────────────────────────────────────────────────────────────────
    Organigrama (SVG) y ausencias con recupero. Solo tokens, sin reglas
    `body.light`: los tintes rojo/verde/ambar son los de la familia de estados,
@@ -2240,20 +2335,33 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .eq-flujo-tab.eq-activo{background:var(--azul-tinte);color:var(--azul-claro);border-color:var(--azul)}
 .eq-pasos{list-style:none;margin:0 0 8px;padding:0 0 0 22px;position:relative}
 .eq-pasos::before{content:'';position:absolute;left:7px;top:10px;bottom:10px;width:2px;background:var(--borde-fuerte)}
-.eq-paso{position:relative;background:var(--superficie);border:1px solid var(--borde);border-radius:10px;padding:10px 14px;margin-bottom:8px}
-.eq-paso::before{content:'';position:absolute;left:-19px;top:15px;width:8px;height:8px;border-radius:99px;background:var(--superficie-honda);border:2px solid var(--borde-fuerte)}
+/* Cada paso toma el color de su rol. .eq-rol-COLOR define --rol-c (pleno) y
+   --rol-t (tinte); el mapa rol a color vive en services/flujos.ROL_ESTILOS. */
+.eq-rol-rojo{--rol-c:var(--rol-rojo);--rol-t:var(--rol-rojo-tinte)}
+.eq-rol-naranja{--rol-c:var(--rol-naranja);--rol-t:var(--rol-naranja-tinte)}
+.eq-rol-verde{--rol-c:var(--rol-verde);--rol-t:var(--rol-verde-tinte)}
+.eq-rol-azul{--rol-c:var(--rol-azul);--rol-t:var(--rol-azul-tinte)}
+.eq-rol-violeta{--rol-c:var(--rol-violeta);--rol-t:var(--rol-violeta-tinte)}
+.eq-rol-teal{--rol-c:var(--rol-teal);--rol-t:var(--rol-teal-tinte)}
+.eq-rol-neutro{--rol-c:var(--texto-tenue);--rol-t:var(--relleno)}
+.eq-flujo-leyenda{display:flex;flex-wrap:wrap;gap:6px 8px;margin:0 0 14px}
+.eq-rol-chip{display:inline-flex;align-items:center;gap:6px;background:var(--rol-t,var(--relleno));color:var(--texto-fuerte);border:1px solid var(--rol-c,var(--borde));border-radius:99px;padding:3px 10px;font-size:.74rem;font-weight:600;white-space:nowrap}
+.eq-rol-punto{display:inline-block;width:9px;height:9px;border-radius:99px;background:var(--rol-c,var(--texto-tenue));flex-shrink:0}
+.eq-paso-rol-muestra{margin:-6px 0 12px}
+.eq-paso-rol-muestra:empty{display:none}
+.eq-paso{position:relative;background:var(--rol-t,var(--superficie));border:1px solid var(--borde);border-left:4px solid var(--rol-c,var(--borde-fuerte));border-radius:10px;padding:10px 14px;margin-bottom:8px}
+.eq-paso::before{content:'';position:absolute;left:-23px;top:14px;width:10px;height:10px;border-radius:99px;background:var(--rol-c,var(--borde-fuerte));border:2px solid var(--superficie-honda)}
 .eq-paso-link{cursor:pointer}
-.eq-paso-link:hover{background:var(--hover);border-color:var(--azul)}
-.eq-paso-link:focus-visible{outline:2px solid var(--azul);outline-offset:2px}
-.eq-paso-destacado{background:var(--verde-tinte);border-color:var(--verde-tinte)}
-.eq-paso-destacado.eq-paso-link:hover{background:var(--verde-tinte);border-color:var(--verde-texto)}
+.eq-paso-link:hover{box-shadow:0 0 0 2px var(--rol-c,var(--azul))}
+.eq-paso-link:focus-visible{outline:2px solid var(--rol-c,var(--azul));outline-offset:2px}
+.eq-paso-recurrente{display:inline-block;margin-top:6px;font-size:.66rem;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--rol-c,var(--verde-texto));border:1px solid var(--rol-c,var(--verde-texto));border-radius:99px;padding:1px 8px}
 .eq-paso-cab{display:flex;align-items:baseline;gap:4px 10px;flex-wrap:wrap}
-.eq-paso-num{color:var(--texto-debil);font-size:.76rem;font-weight:700;font-variant-numeric:tabular-nums}
+.eq-paso-num{color:var(--texto-tenue);font-size:.76rem;font-weight:700;font-variant-numeric:tabular-nums}
 .eq-paso-titulo{color:var(--texto-fuerte);font-size:.86rem;font-weight:600;flex:1;min-width:0;overflow-wrap:anywhere}
-.eq-paso-rol{color:var(--azul-claro);font-size:.76rem;font-weight:700;margin-left:auto;white-space:nowrap}
-.eq-paso-detalle{color:var(--texto-debil);font-size:.76rem;line-height:1.45;margin-top:3px}
-.eq-paso-cobros{color:var(--texto-debil);font-size:.72rem;margin-top:4px}
-.eq-paso-ir{color:var(--azul-claro);font-size:.72rem;font-weight:600;margin-top:4px}
+.eq-paso-rol{color:var(--rol-c,var(--azul-claro));font-size:.76rem;font-weight:700;margin-left:auto;white-space:nowrap}
+.eq-paso-detalle{color:var(--texto-tenue);font-size:.76rem;line-height:1.45;margin-top:3px}
+.eq-paso-cobros{color:var(--texto-tenue);font-size:.72rem;margin-top:4px}
+.eq-paso-ir{color:var(--rol-c,var(--azul-claro));font-size:.72rem;font-weight:600;margin-top:4px}
 .eq-paso-edicion{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .eq-flujo-vacio{border:1px dashed var(--borde-fuerte);border-radius:10px;padding:16px;font-size:.8rem;color:var(--texto-debil);display:flex;flex-direction:column;align-items:flex-start;gap:10px}
 .eq-check{display:flex;align-items:center;gap:8px;font-size:.8rem;color:var(--texto);margin:2px 0 12px}
@@ -2417,6 +2525,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div class="nav-item" id="nav-cola" onclick="showPanel('cola')"><i data-lucide="inbox" class="nav-icon"></i> Outbound</div>
   <div class="nav-item" id="nav-metrics" onclick="showPanel('metrics')"><i data-lucide="bar-chart-2" class="nav-icon"></i> Inteligencia comercial</div>
   <div class="nav-item" id="nav-sdr" onclick="showPanel('sdr')"><i data-lucide="phone-call" class="nav-icon"></i> SDR</div>
+  <div class="nav-item" id="nav-email_mkt" onclick="showPanel('email_mkt')"><i data-lucide="mail" class="nav-icon"></i> Email marketing</div>
   </div>
   <div class="sidebar-bottom">
     <a id="admin-link" href="/admin/users" style="display:none;background:none;border:1px solid var(--borde);border-radius:8px;padding:6px 12px;font-size:.75rem;color:var(--texto-debil);cursor:pointer;width:100%;text-align:left;text-decoration:none;box-sizing:border-box">&#9881; Usuarios</a>
@@ -3279,6 +3388,48 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     <div id="sdr-content"></div>
   </div>
 
+  <!-- ======= EMAIL MARKETING PANEL ======= -->
+  <!-- Lo que sale por Resend: cada envio registrado con su id de Resend, mas lo
+       que cuenta el webhook (entregado, abierto, clic, rebote, spam). -->
+  <div id="email_mkt-panel" class="panel">
+    <div class="page-header">
+      <div>
+        <h1>Email marketing</h1>
+        <div class="page-date">Lo que va saliendo por Resend: campañas, recordatorios y avisos</div>
+      </div>
+      <div class="em-acciones">
+        <button type="button" class="export-btn" onclick="loadEmailMkt()">↻ Recargar</button>
+        <button type="button" class="export-btn em-oculto" id="em-btn-estados" onclick="emActualizarEstados()">Actualizar estados</button>
+      </div>
+    </div>
+    <div class="em-nota-estados" id="em-estados-nota" role="status" aria-live="polite"></div>
+    <div class="em-barra">
+      <div class="em-nav-mes">
+        <button type="button" class="cal-nav-btn" onclick="emMes(-1)" title="Mes anterior" aria-label="Mes anterior">&larr;</button>
+        <span id="em-mes-label" aria-live="polite"></span>
+        <button type="button" class="cal-nav-btn" id="em-mes-sig" onclick="emMes(1)" title="Mes siguiente" aria-label="Mes siguiente">&rarr;</button>
+        <button type="button" class="cal-today-btn" onclick="emMesHoy()">Este mes</button>
+      </div>
+      <select class="filter-select em-tipo" id="em-tipo" onchange="emFiltrar()" aria-label="Tipo de envío"><option value="">Todos los tipos</option></select>
+    </div>
+    <div id="em-estado" class="em-vacio" role="status" aria-live="polite">Cargando…</div>
+    <div id="em-contadores" class="em-contadores"></div>
+    <div id="em-aviso"></div>
+    <div class="em-card">
+      <div class="em-card-titulo">Enviados por día</div>
+      <div id="em-grafico"></div>
+    </div>
+    <div class="em-card">
+      <div class="em-cab">
+        <div class="em-card-titulo">Envíos</div>
+        <input type="search" class="em-buscar" id="em-buscar" placeholder="Buscar por mail o asunto" oninput="emBuscar()" aria-label="Buscar por mail o asunto">
+      </div>
+      <div id="em-tabla" class="em-tabla-wrap"></div>
+      <div id="em-paginas" class="em-paginas"></div>
+    </div>
+  </div>
+  <!-- ======= FIN EMAIL MARKETING PANEL ======= -->
+
   <div id="activity-panel" class="panel">
     <div class="page-header">
       <div>
@@ -4009,12 +4160,13 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     <label class="modal-label" for="eq-paso-titulo">Título</label>
     <input type="text" id="eq-paso-titulo" maxlength="120" placeholder="Qué se hace en este paso">
     <label class="modal-label" for="eq-paso-rol">Rol</label>
-    <select id="eq-paso-rol"></select>
+    <select id="eq-paso-rol" onchange="eqPasoRolMuestra()"></select>
+    <div class="eq-paso-rol-muestra" id="eq-paso-rol-muestra" aria-live="polite"></div>
     <label class="modal-label" for="eq-paso-detalle">Detalle</label>
     <input type="text" id="eq-paso-detalle" maxlength="240" placeholder="Qué pasa y en qué pantalla, en una línea">
     <label class="modal-label" for="eq-paso-pantalla">Pantalla a la que lleva</label>
     <select id="eq-paso-pantalla"></select>
-    <label class="eq-check"><input type="checkbox" id="eq-paso-destacado"> Destacado, con fondo verde</label>
+    <label class="eq-check"><input type="checkbox" id="eq-paso-destacado"> Destacado: ingreso recurrente</label>
     <div class="modal-label">Momentos de cobro</div>
     <div id="eq-paso-cobros"></div>
     <button class="btn-ghost eq-btn-chico" type="button" onclick="eqPasoCobroAgregar()">+ Momento de cobro</button>
@@ -4310,6 +4462,7 @@ function showPanel(name) {
   if (name === 'seg_leads') loadSegLeads();
   if (name === 'plantillas') plCargar();
   if (name === 'sdr') loadSdr();
+  if (name === 'email_mkt') loadEmailMkt();
 }
 
 // ========== Leads / Cola panel ==========
@@ -8810,20 +8963,20 @@ function _showScoreBreakdown(event, el) {
 
 // ── Mobile navigation ─────────────────────────────────────────────────────────
 // El mismo orden que el menu de la izquierda (Juan, 14/9).
-const NAV_PRIORITY = ['cal','meta','finanzas','simulador','inteligencia_fin','seg_leads','wa','notion_clients','plantillas','clientes','projects','tasks','daily','daily_admin','activity','equipo','ausencias','flujos','horarios','cola','metrics'];
+const NAV_PRIORITY = ['cal','meta','finanzas','simulador','inteligencia_fin','seg_leads','wa','notion_clients','plantillas','clientes','projects','tasks','daily','daily_admin','activity','equipo','ausencias','flujos','horarios','cola','metrics','email_mkt'];
 const NAV_ICONS = {
   cola:'inbox',meta:'instagram',cal:'calendar',
   tasks:'check-square',pipeline:'trending-up',clientes:'users',
   wa:'message-circle',metrics:'bar-chart-2',activity:'clock',projects:'target',
   notion_clients:'handshake',finanzas:'wallet',simulador:'calculator',inteligencia_fin:'lightbulb',equipo:'network',
-  ausencias:'calendar-clock',horarios:'clock-4',flujos:'workflow',seg_leads:'phone-call',daily:'clipboard-list',plantillas:'message-square-text',daily_admin:'clipboard-check'
+  ausencias:'calendar-clock',horarios:'clock-4',flujos:'workflow',seg_leads:'phone-call',daily:'clipboard-list',plantillas:'message-square-text',daily_admin:'clipboard-check',email_mkt:'mail'
 };
 const NAV_LABELS = {
   cola:'Outbound',meta:'Meta',cal:'Agenda',
   tasks:'Tareas',pipeline:'Pipeline',clientes:'Clientes',
   wa:'WA',metrics:'Intel. comercial',activity:'Actividad',projects:'Proyectos',
   notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador',inteligencia_fin:'Intel. financiera',equipo:'Organigrama',
-  ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento',daily:'Daily',plantillas:'Plantillas',daily_admin:'Daily Admin'
+  ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento',daily:'Daily',plantillas:'Plantillas',daily_admin:'Daily Admin',email_mkt:'Email mkt'
 };
 let _mobileNavOverflow = [];
 
@@ -8903,7 +9056,7 @@ function closeMasSheet() {
 }
 
 // ── Panel access control ──────────────────────────────────────────────────────
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin'];
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt'];
 (async () => {
   try {
     const r = await fetch('/api/me');
@@ -12410,11 +12563,23 @@ async function hrCargar() {
   if (caja) caja.innerHTML = hrPantallaHtml(hrDatos);
 }
 
-// Los tramos de un dia y sus horas; sin tramos, "No trabaja".
-function hrDiaHtml(dia) {
+// El color de cada persona es el de Daily: su lugar en la lista de Daily
+// Programador (orden_daily, lo manda el servidor) sobre los mismos DY_COLORES
+// que usa dyColor. Quien no esta en Daily toma uno estable por su id.
+function hrColor(p) {
+  const orden = p ? p.orden_daily : null;
+  const base = (orden === null || orden === undefined) ? (Number(p && p.id) || 0) : Number(orden);
+  return ((base % DY_COLORES) + DY_COLORES) % DY_COLORES;
+}
+
+// Los tramos de un dia como pastillas, y sus horas. Sin tramos: en la grilla
+// la celda queda vacia y apagada; en la tarjeta dice "No trabaja".
+function hrDiaHtml(dia, enGrilla) {
   const tramos = (dia && dia.tramos) || [];
-  if (!tramos.length) return '<span class="hr-libre">No trabaja</span>';
-  return tramos.map(t => '<span class="hr-tramo-txt">' + esc(t.desde) + '–' + esc(t.hasta) + '</span>').join('')
+  if (!tramos.length) {
+    return enGrilla ? '<span class="hr-oculto">No trabaja</span>' : '<span class="hr-libre">No trabaja</span>';
+  }
+  return tramos.map(t => '<span class="hr-tramo-txt hr-pastilla">' + esc(t.desde) + '–' + esc(t.hasta) + '</span>').join('')
     + '<span class="hr-horas">' + esc(dia.texto || '') + '</span>';
 }
 
@@ -12431,19 +12596,22 @@ function hrPantallaHtml(d) {
     + visibles.map(i => '<th scope="col" class="hr-col-dia">' + HR_DIAS_CORTOS[i] + '</th>').join('')
     + '<th scope="col" class="hr-total">Semana</th>'
     + '<th scope="col" class="hr-acciones"><span class="hr-oculto">Editar</span></th></tr>';
-  const filas = personas.map(p => '<tr><th scope="row" class="hr-persona">' + esc(p.nombre_corto) + '</th>'
+  const punto = '<span class="hr-punto" aria-hidden="true"></span>';
+  const filas = personas.map(p => '<tr class="hr-fila hr-color-' + hrColor(p) + '"><th scope="row" class="hr-persona">'
+    + punto + esc(p.nombre_corto) + '</th>'
     + visibles.map(i => {
       const dia = (p.dias || [])[i] || {};
       const libre = !(dia.tramos && dia.tramos.length);
-      return '<td class="hr-celda' + (libre ? ' hr-celda-libre' : '') + '">' + hrDiaHtml(dia) + '</td>';
+      return '<td class="hr-celda' + (libre ? ' hr-celda-libre' : '') + '">' + hrDiaHtml(dia, true) + '</td>';
     }).join('')
-    + '<td class="hr-total">' + esc(p.texto_semana) + '</td>'
+    + '<td class="hr-total"><span class="hr-total-chip">' + esc(p.texto_semana) + '</span></td>'
     + '<td class="hr-acciones">' + hrBotonEditar(p) + '</td></tr>').join('');
-  const tarjetas = personas.map(p => '<article class="hr-tarjeta">'
-    + '<div class="hr-tarjeta-cab"><div><div class="hr-tarjeta-nombre">' + esc(p.nombre_corto) + '</div>'
-    + '<div class="hr-tarjeta-total">' + esc(p.texto_semana) + ' por semana</div></div>' + hrBotonEditar(p) + '</div>'
+  const tarjetas = personas.map(p => '<article class="hr-tarjeta hr-color-' + hrColor(p) + '">'
+    + '<div class="hr-tarjeta-cab"><div><div class="hr-tarjeta-nombre">' + punto + esc(p.nombre_corto) + '</div>'
+    + '<div class="hr-tarjeta-total"><span class="hr-total-chip">' + esc(p.texto_semana) + '</span> por semana</div></div>'
+    + hrBotonEditar(p) + '</div>'
     + visibles.map(i => '<div class="hr-tarjeta-dia"><span class="hr-tarjeta-dia-nombre">' + HR_DIAS_LARGOS[i] + '</span>'
-      + '<span class="hr-tarjeta-dia-tramos">' + hrDiaHtml((p.dias || [])[i]) + '</span></div>').join('')
+      + '<span class="hr-tarjeta-dia-tramos">' + hrDiaHtml((p.dias || [])[i], false) + '</span></div>').join('')
     + '</article>').join('');
   return '<div class="hr-tabla-wrap"><table class="hr-tabla"><thead>' + cabecera + '</thead><tbody>' + filas
     + '</tbody></table></div><div class="hr-tarjetas">' + tarjetas + '</div>';
@@ -12585,6 +12753,279 @@ async function hrGuardar() {
   await hrCargar();
 }
 // ========== FIN Horarios ==========
+
+// ========== Email marketing ==========
+// Lo que sale por Resend, con lo que Resend cuenta despues. Los numeros y las
+// fechas (ya en hora de Montevideo) vienen armados de /api/email-marketing:
+// aca solo se pinta. Sin template literals: el texto se arma concatenando.
+let emMesSel = '';
+let emPagina = 1;
+let emPedido = 0;
+let emBusquedaTimer = null;
+let emDatos = null;
+
+const EM_ESTADOS = {
+  enviado: ['Enviado', 'em-chip-azul'],
+  entregado: ['Entregado', 'em-chip-verde'],
+  abierto: ['Abierto', 'em-chip-verde'],
+  clic: ['Con clic', 'em-chip-fuerte'],
+  rebotado: ['Rebotado', 'em-chip-rojo'],
+  spam: ['Marcado como spam', 'em-chip-rojo'],
+  demorado: ['Demorado', 'em-chip-ambar'],
+  fallido: ['No salió', 'em-chip-rojo'],
+  incierto: ['Sin confirmar', 'em-chip-ambar']
+};
+const EM_CONTADORES = [
+  ['enviados', 'Enviados'], ['entregados', 'Entregados'], ['abiertos', 'Abiertos'],
+  ['clics', 'Con clic'], ['rebotados', 'Rebotados'], ['spam', 'Marcados como spam']
+];
+const EM_MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto',
+  'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+
+function emEsc(texto) {
+  return String(texto === null || texto === undefined ? '' : texto)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function emEtiquetaMes(mes) {
+  const partes = String(mes || '').split('-');
+  const nombre = EM_MESES[parseInt(partes[1], 10) - 1];
+  return nombre ? nombre + ' ' + partes[0] : String(mes || '');
+}
+
+function emMesSumar(mes, delta) {
+  const partes = String(mes).split('-');
+  const total = parseInt(partes[0], 10) * 12 + (parseInt(partes[1], 10) - 1) + delta;
+  return Math.floor(total / 12) + '-' + String(total % 12 + 1).padStart(2, '0');
+}
+
+function emValor(id) {
+  const el = document.getElementById(id);
+  return el && el.value ? String(el.value) : '';
+}
+
+function emUrl() {
+  const partes = [];
+  if (emMesSel) partes.push('mes=' + encodeURIComponent(emMesSel));
+  const tipo = emValor('em-tipo');
+  if (tipo) partes.push('tipo=' + encodeURIComponent(tipo));
+  const q = emValor('em-buscar').trim();
+  if (q) partes.push('q=' + encodeURIComponent(q));
+  if (emPagina > 1) partes.push('pagina=' + emPagina);
+  return '/api/email-marketing' + (partes.length ? '?' + partes.join('&') : '');
+}
+
+async function loadEmailMkt() {
+  const estado = document.getElementById('em-estado');
+  if (!estado) return;
+  // Buscar rapido dispara varios pedidos que pueden volver desordenados: solo
+  // se pinta la respuesta del ultimo.
+  const pedido = ++emPedido;
+  let datos;
+  try {
+    const r = await fetch(emUrl());
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    datos = await r.json();
+    if (!datos || !datos.contadores) throw new Error('respuesta incompleta');
+  } catch (e) {
+    if (pedido !== emPedido) return;
+    estado.textContent = 'No se pudieron cargar los envíos. Probá de nuevo en un rato.';
+    estado.classList.remove('em-oculto');
+    return;
+  }
+  if (pedido !== emPedido) return;
+  emDatos = datos;
+  emPintar(datos);
+}
+
+function emPoner(id, html) {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = html;
+}
+
+function emPintar(d) {
+  const estado = document.getElementById('em-estado');
+  if (estado) {
+    const hay = Number(d.contadores.enviados || 0) > 0;
+    estado.textContent = hay ? '' : 'No hay envíos registrados en ' + emEtiquetaMes(d.mes) + '.';
+    if (hay) estado.classList.add('em-oculto');
+    else estado.classList.remove('em-oculto');
+  }
+  const etiqueta = document.getElementById('em-mes-label');
+  if (etiqueta) etiqueta.textContent = emEtiquetaMes(d.mes);
+  const siguiente = document.getElementById('em-mes-sig');
+  if (siguiente) siguiente.disabled = d.mes >= d.mes_actual;
+  emPintarTipos(d.tipos || []);
+  emPoner('em-contadores', emContadores(d.contadores, d.tasas || {}));
+  emPoner('em-aviso', emAviso(d.contadores));
+  emPoner('em-grafico', emGrafico(d.por_dia || []));
+  emPoner('em-tabla', emTabla(d.envios || []));
+  emPoner('em-paginas', emPaginas(d));
+  emBotonEstados(d);
+}
+
+function emPintarTipos(tipos) {
+  const sel = document.getElementById('em-tipo');
+  if (!sel) return;
+  const actual = sel.value || '';
+  sel.innerHTML = '<option value="">Todos los tipos</option>' + tipos.map(t =>
+    '<option value="' + emEsc(t.clave) + '"' + (t.clave === actual ? ' selected' : '') + '>' +
+    emEsc(t.etiqueta) + '</option>').join('');
+  sel.value = actual;
+}
+
+function emTasaTexto(tasa) {
+  if (tasa === null || tasa === undefined) return '';
+  return String(tasa).replace('.', ',') + ' % de los enviados';
+}
+
+function emContadores(c, tasas) {
+  return EM_CONTADORES.map(par => {
+    const clave = par[0];
+    let nota = emTasaTexto(tasas[clave]);
+    if (clave === 'enviados') nota = c.sin_eventos ? c.sin_eventos + ' sin datos de Resend' : 'en el mes';
+    return '<div class="em-contador em-contador-' + clave + '">' +
+      '<div class="em-contador-num">' + Number(c[clave] || 0) + '</div>' +
+      '<div class="em-contador-rotulo">' + par[1] + '</div>' +
+      '<div class="em-contador-tasa">' + emEsc(nota) + '</div></div>';
+  }).join('');
+}
+
+function emAviso(c) {
+  if (!c.enviados || !c.sin_eventos) return '';
+  return '<div class="em-aviso">' + c.sin_eventos + ' de ' + c.enviados + ' envíos todavía no tienen ' +
+    'datos de Resend (entregado, abierto, clic). Los envíos anteriores a este registro no los ' +
+    'tienen; los nuevos los reciben por el webhook de Resend.</div>';
+}
+
+function emGrafico(porDia) {
+  const total = porDia.reduce((suma, p) => suma + Number(p.n || 0), 0);
+  if (!total) return '<div class="em-vacio">Sin envíos en este mes.</div>';
+  if (typeof SC === 'undefined' || !SC.serie) {
+    return '<div class="em-vacio">' + total + ' envíos en el mes.</div>';
+  }
+  const tema = document.body.classList.contains('light') ? 'claro' : 'oscuro';
+  const puntos = porDia.map(p => ({x: String(p.dia).slice(8, 10), y: Number(p.n || 0)}));
+  return SC.serie(puntos, {etiqueta: 'Enviados por día, en hora de Montevideo', formato: 'numero', alto: 170}, tema);
+}
+
+function emTabla(envios) {
+  if (!envios.length) return '<div class="em-vacio">No hay envíos que coincidan.</div>';
+  const filas = envios.map(e => {
+    const est = EM_ESTADOS[e.estado] || [e.estado, 'em-chip-gris'];
+    const historico = e.origen === 'historico'
+      ? '<span class="em-nota">histórico, sin eventos</span>' : '';
+    const lead = e.business_id
+      ? '<button type="button" class="em-link" onclick="openClientPanel(' + Number(e.business_id) + ')">' +
+        emEsc(e.negocio || 'Ver ficha') + '</button>'
+      : '<span class="em-nota">—</span>';
+    const extracto = e.extracto ? '<span class="em-extracto">' + emEsc(e.extracto) + '</span>' : '';
+    return '<tr><td class="em-fecha">' + emEsc(e.fecha_local) + '</td>' +
+      '<td>' + emEsc(e.tipo_etiqueta) + '</td>' +
+      '<td class="em-dest">' + emEsc(e.destinatario || '—') + '</td>' +
+      '<td class="em-asunto">' + emEsc(e.asunto) + extracto + '</td>' +
+      '<td><span class="em-chip ' + est[1] + '">' + emEsc(est[0]) + '</span>' + historico + '</td>' +
+      '<td>' + lead + '</td></tr>';
+  }).join('');
+  return '<table class="em-tabla"><thead><tr><th>Fecha</th><th>Tipo</th><th>Destinatario</th>' +
+    '<th>Asunto</th><th>Estado</th><th>Lead</th></tr></thead><tbody>' + filas + '</tbody></table>';
+}
+
+function emPaginas(d) {
+  if (!d.encontrados) return '';
+  return '<button type="button" class="cal-nav-btn" onclick="emIrPagina(-1)" aria-label="Página anterior"' +
+    (d.pagina <= 1 ? ' disabled' : '') + '>&larr;</button>' +
+    '<span>Página ' + d.pagina + ' de ' + d.paginas + ' · ' + d.encontrados + ' envíos</span>' +
+    '<button type="button" class="cal-nav-btn" onclick="emIrPagina(1)" aria-label="Página siguiente"' +
+    (d.pagina >= d.paginas ? ' disabled' : '') + '>&rarr;</button>';
+}
+
+function emIrPagina(delta) {
+  if (!emDatos) return;
+  const nueva = Math.min(Math.max(1, emDatos.pagina + delta), emDatos.paginas);
+  if (nueva === emDatos.pagina) return;
+  emPagina = nueva;
+  loadEmailMkt();
+}
+
+function emMes(delta) {
+  const base = emMesSel || (emDatos && emDatos.mes) || '';
+  if (!base) return;
+  const actual = (emDatos && emDatos.mes_actual) || '';
+  let nuevo = emMesSumar(base, delta);
+  if (actual && nuevo > actual) nuevo = actual;   // el futuro no tiene envios
+  emMesSel = actual && nuevo === actual ? '' : nuevo;
+  emPagina = 1;
+  loadEmailMkt();
+}
+
+function emMesHoy() {
+  emMesSel = '';
+  emPagina = 1;
+  loadEmailMkt();
+}
+
+function emFiltrar() {
+  emPagina = 1;
+  loadEmailMkt();
+}
+
+function emBuscar() {
+  if (emBusquedaTimer) clearTimeout(emBusquedaTimer);
+  emBusquedaTimer = setTimeout(() => {
+    emBusquedaTimer = null;
+    emPagina = 1;
+    loadEmailMkt();
+  }, 300);
+}
+
+// Solo admin, y solo con la clave de Resend en el servidor. El servidor lo
+// vuelve a chequear: esconder el boton no es la seguridad.
+function emBotonEstados(d) {
+  const boton = document.getElementById('em-btn-estados');
+  const nota = document.getElementById('em-estados-nota');
+  if (!boton) return;
+  if (!d.es_admin) {
+    boton.classList.add('em-oculto');
+    if (nota) nota.textContent = '';
+    return;
+  }
+  boton.classList.remove('em-oculto');
+  boton.disabled = !d.hay_api_key;
+  if (nota && !d.hay_api_key) {
+    nota.textContent = 'Actualizar estados está deshabilitado: falta la clave de Resend (RESEND_API_KEY) en el servidor.';
+  }
+}
+
+async function emActualizarEstados() {
+  const boton = document.getElementById('em-btn-estados');
+  const nota = document.getElementById('em-estados-nota');
+  if (!boton || boton.disabled) return;
+  boton.disabled = true;
+  if (nota) nota.textContent = 'Consultando a Resend…';
+  try {
+    const r = await fetch('/api/email-marketing/actualizar-estados', {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({limite: 20})
+    });
+    let d = {};
+    try { d = await r.json(); } catch (e) { d = {}; }
+    if (!r.ok || !d.ok) {
+      if (nota) nota.textContent = d.error || 'No se pudo consultar a Resend.';
+      return;
+    }
+    if (nota) {
+      nota.textContent = 'Consultados ' + d.consultados + ' de ' + d.pendientes + ' sin eventos, ' +
+        d.actualizados + ' actualizados.' +
+        (d.cortado_por_limite ? ' Resend pidió esperar: probá de nuevo en un minuto.' : '');
+    }
+    await loadEmailMkt();
+  } catch (e) {
+    if (nota) nota.textContent = 'No se pudo consultar a Resend.';
+  } finally {
+    boton.disabled = !(emDatos && emDatos.hay_api_key);
+  }
+}
 
 // ========== Daily Programador ==========
 // Daily Programador y Daily Admin (Juan, 15 y 16/9): actividades del dia y
@@ -13725,6 +14166,7 @@ function eqBorrarRecupero(id) {
 // servidor le responde 403 a cualquier otro.
 let eqFlujos = [];
 let eqFlujosRoles = [];
+let eqFlujosEstilos = [];
 let eqFlujosAdmin = false;
 let eqFlujosEditando = false;
 let eqFlujoActivo = null;
@@ -13750,6 +14192,7 @@ async function eqCargarFlujos() {
     if (!d || !Array.isArray(d.flujos)) throw new Error('respuesta sin flujos');
     eqFlujos = d.flujos;
     eqFlujosRoles = Array.isArray(d.roles) ? d.roles : [];
+    eqFlujosEstilos = Array.isArray(d.estilos) ? d.estilos : [];
     eqFlujosAdmin = d.es_admin === true;
   } catch (e) {
     eqFlujos = [];
@@ -13823,6 +14266,31 @@ function eqPorcentaje(x) {
   return String(n).replace('.', ',') + '%';
 }
 
+// El color y el nombre que se ve de cada rol. El mapa vive en el servidor
+// (services/flujos.ROL_ESTILOS) y llega con /api/flujos; un rol sin estilo se
+// pinta neutro con su nombre tal cual.
+function eqRolEstilo(rol) {
+  const e = eqFlujosEstilos.find(x => x.rol === rol);
+  return e ? {etiqueta: e.etiqueta || rol, color: e.color || 'neutro'} : {etiqueta: String(rol || ''), color: 'neutro'};
+}
+
+function eqRolChipHtml(rol) {
+  const e = eqRolEstilo(rol);
+  return '<span class="eq-rol-chip eq-rol-' + esc(e.color) + '"><i class="eq-rol-punto" aria-hidden="true"></i>'
+    + esc(e.etiqueta) + '</span>';
+}
+
+// Arriba del flujo: los roles que aparecen en sus pasos, en el orden de la
+// lista de roles, cada uno con su color. Sin pasos no hay leyenda.
+function eqFlujoLeyendaHtml(pasos) {
+  const usados = pasos.map(p => p.rol);
+  const orden = eqFlujosEstilos.map(e => e.rol).filter(r => usados.includes(r));
+  usados.forEach(r => { if (!orden.includes(r)) orden.push(r); });
+  if (!orden.length) return '';
+  return '<div class="eq-flujo-leyenda" role="group" aria-label="Roles de este flujo">'
+    + orden.map(eqRolChipHtml).join('') + '</div>';
+}
+
 // El numero que se ve es la posicion: si en la base quedo un hueco, la
 // pantalla igual muestra 01, 02, 03.
 function eqPasosHtml(flujo, opciones) {
@@ -13837,7 +14305,8 @@ function eqPasosHtml(flujo, opciones) {
   }
   const items = pasos.map((p, i) => {
     const link = !op.editando && eqFlujoPuedeAbrir(p.pantalla);
-    const clases = 'eq-paso' + (p.destacado ? ' eq-paso-destacado' : '') + (link ? ' eq-paso-link' : '');
+    const estilo = eqRolEstilo(p.rol);
+    const clases = 'eq-paso eq-rol-' + esc(estilo.color) + (p.destacado ? ' eq-paso-destacado' : '') + (link ? ' eq-paso-link' : '');
     const attrs = link
       ? ' role="link" tabindex="0" data-pantalla="' + esc(p.pantalla) + '" onclick="eqFlujoIr(this.dataset.pantalla)"'
         + ' onkeydown="eqFlujoTecla(event, this.dataset.pantalla)"'
@@ -13857,14 +14326,15 @@ function eqPasosHtml(flujo, opciones) {
     return '<li class="' + clases + '"' + attrs + '>'
       + '<div class="eq-paso-cab"><span class="eq-paso-num">' + eqDosDigitos(i + 1) + '</span>'
       + '<span class="eq-paso-titulo">' + esc(p.titulo) + '</span>'
-      + '<span class="eq-paso-rol">' + esc(p.rol) + '</span></div>'
+      + '<span class="eq-paso-rol">' + esc(estilo.etiqueta) + '</span></div>'
       + (p.detalle ? '<div class="eq-paso-detalle">' + esc(p.detalle) + '</div>' : '')
+      + (p.destacado ? '<span class="eq-paso-recurrente">Ingreso recurrente</span>' : '')
       + cobros + ir + edicion + '</li>';
   }).join('');
   const agregar = op.editando
     ? '<button type="button" class="btn-primary eq-btn-chico" onclick="eqPasoAbrir(' + Number(flujo.id) + ', null)">+ Agregar paso</button>'
     : '';
-  return '<ol class="eq-pasos">' + items + '</ol>' + agregar;
+  return eqFlujoLeyendaHtml(pasos) + '<ol class="eq-pasos">' + items + '</ol>' + agregar;
 }
 
 function eqPantallasOpciones(actual) {
@@ -13885,8 +14355,9 @@ function eqPasoAbrir(flujoId, pasoId) {
   document.getElementById('eq-paso-titulo-modal').textContent = paso ? 'Editar paso' : 'Agregar paso a ' + flujo.nombre;
   document.getElementById('eq-paso-titulo').value = paso ? paso.titulo : '';
   document.getElementById('eq-paso-rol').innerHTML = eqFlujosRoles.map(r => '<option value="' + esc(r) + '"'
-    + (paso && paso.rol === r ? ' selected' : '') + '>' + esc(r) + '</option>').join('');
+    + (paso && paso.rol === r ? ' selected' : '') + '>' + esc(eqRolEstilo(r).etiqueta) + '</option>').join('');
   document.getElementById('eq-paso-rol').value = paso ? paso.rol : (eqFlujosRoles[0] || '');
+  eqPasoRolMuestra();
   document.getElementById('eq-paso-detalle').value = paso ? paso.detalle : '';
   document.getElementById('eq-paso-pantalla').innerHTML = eqPantallasOpciones(paso ? paso.pantalla : null);
   document.getElementById('eq-paso-pantalla').value = paso && paso.pantalla ? paso.pantalla : '';
@@ -13895,6 +14366,12 @@ function eqPasoAbrir(flujoId, pasoId) {
   eqPasoCobrosPintar();
   document.getElementById('eq-paso-error').textContent = '';
   eqAbrirModal('eq-modal-paso');
+}
+
+// Al elegir el rol, el modal muestra con que color va a quedar el paso.
+function eqPasoRolMuestra() {
+  const sel = document.getElementById('eq-paso-rol');
+  eqPoner('eq-paso-rol-muestra', () => (sel && sel.value) ? eqRolChipHtml(sel.value) : '');
 }
 
 function eqPasoCobrosPintar() {
@@ -16594,6 +17071,10 @@ def create_app(db_path: str) -> Flask:
     app = Flask(__name__)
     app.secret_key = os.environ.get("SECRET_KEY") or "scalerics-dev-key-change-in-prod"
     app.config["DB_PATH"] = db_path
+    # Los envios que salen fuera de un request (los hilos de las campanas) se
+    # registran en esta base para el panel Email marketing.
+    from services.email_service import configurar_registro
+    configurar_registro(db_path)
     # Cuando arranco este proceso. Lo usa /api/marketing/version para
     # poder contestar "¿estoy viendo lo ultimo?" sin entrar por SSH.
     import time as _t
@@ -16604,7 +17085,7 @@ def create_app(db_path: str) -> Flask:
     for bp in (leads_bp, demos_bp, calendar_bp, wa_bp, pipeline_bp, tasks_bp, budgets_bp, tokens_bp, meta_bp, calendly_bp, notion_bp, projects_bp, preclientes_bp,
                 notion_clients_bp, resend_bp, linkedin_bp, web_bp, finanzas_bp, marketing_bp,
                 simulador_bp, inteligencia_fin_bp, equipo_bp, horarios_bp, flujos_bp, seg_leads_bp, daily_bp, plantillas_bp,
-                backups_bp):
+                backups_bp, email_mkt_bp):
         app.register_blueprint(bp)
 
     @app.before_request
@@ -17578,8 +18059,8 @@ select:focus{border-color:#0088cc}
 </div>
 
 <script>
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin'];
-const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Inteligencia financiera',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas'};
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt'];
+const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Inteligencia financiera',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas',email_mkt:'Email marketing'};
 let _roles = [];
 
 // Paneles que muestran el check "solo lectura". El dato (roles.paneles_solo_lectura)

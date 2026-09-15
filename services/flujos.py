@@ -17,6 +17,26 @@ from database import (listar_cobros_pasos_flujo, listar_flujos,
 ROLES = ("Marketing", "Comercial", "Project manager", "Desarrollo",
          "Administración", "Soporte")
 
+# El color y el nombre visible de cada rol, en un solo lugar (pedido de Juan,
+# 15/9). `color` es la familia CSS: tokens `--rol-<color>` y
+# `--rol-<color>-tinte`, clase `.eq-rol-<color>`. "Marketing" se sigue
+# guardando así en la base y se muestra como "Líder marketing digital": cambia
+# la etiqueta, no el valor, así la lista cerrada de ROLES y los pasos cargados
+# no se tocan.
+ROL_ESTILOS = {
+    "Marketing": {"color": "rojo", "etiqueta": "Líder marketing digital"},
+    "Comercial": {"color": "verde", "etiqueta": "Comercial"},
+    "Project manager": {"color": "naranja", "etiqueta": "Project manager"},
+    "Desarrollo": {"color": "azul", "etiqueta": "Desarrollo"},
+    "Administración": {"color": "violeta", "etiqueta": "Administración"},
+    "Soporte": {"color": "teal", "etiqueta": "Soporte"},
+}
+
+
+def estilos_roles() -> list[dict]:
+    """[{rol, color, etiqueta}] en el orden de ROLES, para la pantalla."""
+    return [{"rol": r, **ROL_ESTILOS[r]} for r in ROLES]
+
 # Id de panel del CRM (`showPanel`): minúsculas y guion bajo.
 _PANTALLA = re.compile(r"^[a-z][a-z_]{0,39}$")
 
