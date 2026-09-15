@@ -464,6 +464,19 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **15/9 — I: Flujos, en `feat/recursos-humanos` (encima de #40). Sin PR ni deploy.**
+  - Bloque al final del panel Ausencias, desde el PDF "Flujos - Scalerics". No es un ítem del menú. Tiene 4 flujos; solo "De lead a cobro" tiene pasos (los 10 del PDF, con su texto exacto). Los otros tres están vacíos.
+  - Base: tablas `flujos`, `flujo_pasos` y `flujo_paso_cobros`. La última permite varios momentos de cobro por paso; el paso 07 trae uno, "100% al confirmar".
+    - La precarga es `_sembrar_flujos`: carga pasos solo en un flujo recién creado, así no pisa ediciones.
+    - `numero` se renumera 1..n cada vez que se agrega, borra o mueve un paso.
+  - API `routes/flujos.py`:
+    - Leer: pide Organigrama o Ausencias.
+    - Escribir: `require_admin`, la misma `is_admin` de `/api/me`.
+  - Pantalla: la edición va detrás del botón "Editar".
+    - Un paso con `pantalla` es clickeable solo si el panel está en la página y el rol lo ve. La regla sale de `window._panelAccess`, que ahora guarda el IIFE de permisos.
+    - Pantallas precargadas: 01 `notion_clients`, 05 `demos`, 07 `clientes`, 08 `projects`.
+  - **Si agregan paneles** (Seguimiento de leads, Plantillas): sumarlos a `EQ_PANTALLAS` para que aparezcan en el formulario. Una pantalla guardada que todavía no existe se conserva y no es clickeable.
+
 - **15/9 — I: rama `feat/recursos-humanos` (sale de `fix/piezas-y-recupero`, PR #38). Sin PR ni deploy.**
   - Pedido de Juan: Equipo pasa a ser el grupo **RECURSOS HUMANOS**, entre OPERACIÓN y CAPTACIÓN, con dos paneles:
     - **Organigrama**: conserva el id `equipo`, así los permisos guardados siguen valiendo.
