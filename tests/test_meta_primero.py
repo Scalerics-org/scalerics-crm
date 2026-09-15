@@ -2,8 +2,9 @@
 
 Menu, por grupo: CALENDARIO (Calendario) · MARKETING (Meta Ads, Marketing) ·
 FINANZAS (Finanzas, Simulador financiero) · VENTAS (WhatsApp, Proceso de venta,
-Demos, SDR) · OPERACION (Clientes, Proyectos, Tareas, Actividad) · CAPTACION
-(Inteligencia comercial, Outbound). La barra del celular sigue el mismo orden.
+Demos, SDR) · OPERACION (Clientes, Proyectos, Tareas, Actividad, Equipo) ·
+CAPTACION (Inteligencia comercial, Outbound). La barra del celular sigue el
+mismo orden. Equipo se sumo a OPERACION despues de Actividad el 14/9.
 
 Al entrar se abre el Calendario (Juan lo pidio despues de haber pedido Meta
 Ads: gana el ultimo pedido). Un rol que no tiene el calendario no puede quedar
@@ -29,9 +30,9 @@ ORDEN = [
     ("CALENDARIO", ["cal"]),
     ("MARKETING", ["meta", "marketing"]),
     ("FINANZAS", ["finanzas", "simulador"]),
-    ("VENTAS", ["wa", "notion_clients", "demos", "sdr"]),
-    ("OPERACIÓN", ["clientes", "projects", "tasks", "activity"]),
-    ("CAPTACIÓN", ["metrics", "cola"]),
+    ("VENTAS", ["wa", "notion_clients", "demos"]),
+    ("OPERACIÓN", ["clientes", "projects", "tasks", "activity", "equipo"]),
+    ("CAPTACIÓN", ["cola", "metrics", "sdr"]),
 ]
 
 
@@ -125,7 +126,8 @@ def _primer_panel(access, existentes):
 ])
 def test_un_rol_sin_calendario_arranca_en_un_panel_que_existe(tmp_path, access, esperado):
     existentes = ["meta", "cola", "cal", "tasks", "clientes", "wa", "metrics",
-                  "activity", "sdr", "projects", "notion_clients", "finanzas", "simulador"]
+                  "activity", "sdr", "projects", "notion_clients", "finanzas", "simulador",
+                  "equipo"]
     archivo = tmp_path / "primero.js"
     archivo.write_text(_primer_panel(access, existentes), encoding="utf-8")
     r = subprocess.run(["node", str(archivo)], capture_output=True, text=True, encoding="utf-8")

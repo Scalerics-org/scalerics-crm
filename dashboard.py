@@ -27,6 +27,7 @@ from routes.preclientes import preclientes_bp
 from routes.linkedin import linkedin_bp
 from routes.finanzas import finanzas_bp
 from routes.simulador import simulador_bp
+from routes.equipo import equipo_bp
 from routes.web import web_bp
 from routes.marketing import marketing_bp
 from services.auth import is_admin
@@ -1114,6 +1115,15 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-cal .nav-icon{stroke:#3b82f6}
 #nav-metrics .nav-icon{stroke:#6366f1}
 #nav-activity .nav-icon{stroke:#64748b}
+/* Las secciones que no tenian color (pedido de Juan, 14/9) */
+#nav-marketing .nav-icon{stroke:#f472b6}
+#nav-finanzas .nav-icon{stroke:#f59e0b}
+#nav-simulador .nav-icon{stroke:#fb923c}
+#nav-notion_clients .nav-icon{stroke:#10b981}
+#nav-demos .nav-icon{stroke:#22d3ee}
+#nav-sdr .nav-icon{stroke:#f87171}
+#nav-projects .nav-icon{stroke:#facc15}
+#nav-equipo .nav-icon{stroke:#a3e635}
 .nav-item.active #nav-cola .nav-icon,
 .nav-item.active .nav-icon{opacity:1}
 /* active item keeps its color but brighter */
@@ -1124,6 +1134,14 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-cal.active .nav-icon{stroke:#60a5fa}
 #nav-metrics.active .nav-icon{stroke:#818cf8}
 #nav-activity.active .nav-icon{stroke:#94a3b8}
+#nav-marketing.active .nav-icon{stroke:#f9a8d4}
+#nav-finanzas.active .nav-icon{stroke:#fcd34d}
+#nav-simulador.active .nav-icon{stroke:#fdba74}
+#nav-notion_clients.active .nav-icon{stroke:#34d399}
+#nav-demos.active .nav-icon{stroke:#67e8f9}
+#nav-sdr.active .nav-icon{stroke:#fca5a5}
+#nav-projects.active .nav-icon{stroke:#fde047}
+#nav-equipo.active .nav-icon{stroke:#bef264}
 /* light mode — slightly darker tones */
 body.light #nav-cola .nav-icon{stroke:#2563eb}
 body.light #nav-clientes .nav-icon{stroke:#7c3aed}
@@ -1132,8 +1150,23 @@ body.light #nav-wa .nav-icon{stroke:#16a34a}
 body.light #nav-cal .nav-icon{stroke:#2563eb}
 body.light #nav-metrics .nav-icon{stroke:#4f46e5}
 body.light #nav-activity .nav-icon{stroke:#475569}
+body.light #nav-marketing .nav-icon{stroke:#db2777}
+body.light #nav-finanzas .nav-icon{stroke:#b45309}
+body.light #nav-simulador .nav-icon{stroke:#c2410c}
+body.light #nav-notion_clients .nav-icon{stroke:#047857}
+body.light #nav-demos .nav-icon{stroke:#0e7490}
+body.light #nav-sdr .nav-icon{stroke:#b91c1c}
+body.light #nav-projects .nav-icon{stroke:#a16207}
+body.light #nav-equipo .nav-icon{stroke:#4d7c0f}
 /* ── Lucide icons ─────────────────────────────────────────────────────────── */
 .nav-icon{width:15px;height:15px;stroke-width:2;flex-shrink:0}
+/* Frase de equipo, version compacta del PDF de identidad de marca. Es la
+   version oscura en los dos temas a proposito: asi la presenta la marca. */
+.frase-equipo{display:flex;align-items:center;gap:14px;background:#0F2430;border-radius:12px;padding:10px 16px;margin-bottom:20px}
+.frase-equipo-logo{height:22px;width:auto;flex-shrink:0}
+.frase-equipo-texto{margin:0;font-size:.82rem;line-height:1.45;color:#EFEFEF}
+.frase-equipo-texto strong{color:#80CD2A;font-weight:600}
+@media(max-width:768px){ .frase-equipo{flex-direction:column;align-items:flex-start;gap:8px;padding:10px 12px;margin-bottom:14px} .frase-equipo-texto{font-size:.76rem} }
 .btn-icon{width:14px;height:14px;stroke-width:2;vertical-align:middle}
 .outcome-icon{width:22px;height:22px;stroke-width:1.8;display:block;margin:0 auto 4px}
 /* ── Theme toggle ─────────────────────────────────────────────────────────── */
@@ -1565,6 +1598,62 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .fin-hbar-relleno{height:100%;border-radius:3px}
 .fin-hbar-monto{font-size:.75rem;color:var(--texto);width:74px;text-align:right;flex-shrink:0}
 @media (max-width:760px){.fin-split{grid-template-columns:1fr}}
+/* ── Equipo ───────────────────────────────────────────────────────────────────
+   Organigrama (SVG) y ausencias con recupero. Solo tokens, sin reglas
+   `body.light`: los tintes rojo/verde/ambar son los de la familia de estados,
+   que llegan a 4,5 en los dos temas. */
+.eq-card{background:var(--superficie-honda);border:1px solid var(--borde);border-radius:10px;padding:18px;margin-bottom:18px;min-width:0}
+.eq-cab{display:flex;justify-content:space-between;align-items:center;gap:8px 12px;flex-wrap:wrap;margin-bottom:12px}
+.eq-cab .fin-card-title{margin-bottom:0}
+.eq-organigrama{overflow-x:auto;padding-bottom:4px}
+.eq-svg{display:block;margin:0 auto;max-width:none}
+.eq-linea{stroke:var(--borde-fuerte);stroke-width:1.5;fill:none}
+.eq-nodo rect{fill:var(--superficie);stroke:var(--borde-fuerte);stroke-width:1}
+.eq-nodo-nombre{fill:var(--texto-fuerte);font-size:13px;font-weight:600;font-family:'Inter',sans-serif}
+.eq-nodo-rol{fill:var(--texto-debil);font-size:11px;font-family:'Inter',sans-serif}
+.eq-destacado rect{fill:var(--azul-tinte);stroke:var(--azul);stroke-width:2}
+.eq-destacado .eq-nodo-rol{fill:var(--azul-claro)}
+.eq-aviso{background:var(--ambar-tinte);color:var(--ambar);border:1px solid var(--ambar-borde);border-radius:10px;padding:10px 12px;font-size:.8rem;line-height:1.45;margin-bottom:10px}
+.eq-cal-wrap{overflow-x:auto}
+.eq-cal{border-collapse:separate;border-spacing:3px;font-size:.78rem}
+.eq-cal th{font-weight:600;color:var(--texto-debil);font-size:.7rem;padding:4px 6px;text-align:center;white-space:nowrap}
+.eq-cal th.eq-cal-semana{text-transform:uppercase;letter-spacing:.6px;font-size:.64rem}
+.eq-cal th.eq-cal-persona{text-align:left;color:var(--texto);font-size:.8rem;padding-right:10px;position:sticky;left:0;z-index:1;background:var(--superficie-honda)}
+.eq-cal th.eq-hoy{color:var(--azul-claro)}
+.eq-cal-hueco{width:16px;min-width:16px;padding:0}
+.eq-dia{background:var(--relleno);color:var(--texto-debil);border-radius:6px;height:36px;min-width:56px;text-align:center;font-weight:600}
+.eq-muestra{display:inline-block;width:14px;height:14px;border-radius:4px;vertical-align:-3px;margin-right:5px;border:1px solid var(--borde)}
+.eq-muestra-normal{background:var(--relleno)}
+.eq-falta{background:var(--rojo-tinte);color:var(--rojo-texto)}
+.eq-recupero{background:var(--verde-tinte);color:var(--verde-texto)}
+.eq-dia-extra{display:block;font-size:.66rem}
+.eq-saldo{padding:0 8px;text-align:right;white-space:nowrap;font-weight:700;min-width:64px}
+.eq-al-dia{color:var(--verde-texto)}
+.eq-debe{color:var(--rojo-texto)}
+.eq-leyenda{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:10px;font-size:.72rem;color:var(--texto-tenue);align-items:center}
+.eq-nota{font-size:.7rem;color:var(--texto-debil);margin-top:6px}
+.eq-item{border-top:1px solid var(--borde);padding:12px 0}
+.eq-item:first-child{border-top:none;padding-top:0}
+.eq-item-cab{display:flex;justify-content:space-between;align-items:baseline;gap:6px 12px;flex-wrap:wrap}
+.eq-item-titulo{font-size:.85rem;color:var(--texto);overflow-wrap:anywhere;min-width:0}
+.eq-item-titulo b{color:var(--texto-fuerte)}
+.eq-estado{font-size:.72rem;font-weight:700;border-radius:99px;padding:2px 10px;white-space:nowrap}
+.eq-estado-ok{background:var(--verde-tinte);color:var(--verde-texto)}
+.eq-estado-mal{background:var(--rojo-tinte);color:var(--rojo-texto)}
+.eq-item-linea{font-size:.75rem;color:var(--texto-debil);margin-top:4px;line-height:1.45}
+.eq-item-acciones{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px}
+.eq-chip{display:inline-flex;align-items:center;gap:2px;background:var(--verde-tinte);color:var(--verde-texto);border-radius:99px;padding:2px 4px 2px 10px;font-size:.72rem;font-weight:600}
+.eq-chip-x{background:none;border:none;color:inherit;cursor:pointer;font-size:.9rem;line-height:1;padding:2px 6px;border-radius:99px}
+.eq-chip-x:hover{background:var(--relleno)}
+.eq-btn-chico{padding:6px 12px;font-size:.76rem}
+.eq-vacio{font-size:.8rem;color:var(--texto-debil);padding:6px 0}
+.eq-ayuda{font-size:.72rem;color:var(--texto-debil);margin:-6px 0 10px}
+.eq-error{font-size:.78rem;color:var(--rojo-texto);margin:4px 0 10px}
+.eq-error:empty{display:none}
+@media(max-width:480px){
+  .eq-card{padding:14px}
+  .eq-dia{min-width:44px;height:32px}
+}
 /* ── Simulador financiero ─────────────────────────────────────────────────────
    Todo con tokens: no hay ninguna regla `body.light .sim-`. Los semaforos usan
    los pares tinte/texto de la familia de estados, que llegan a 4,5 en los dos
@@ -1588,6 +1677,8 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .sim-sub{font-size:.76rem;font-weight:700;color:var(--texto-tenue)}
 .sim-origen{font-size:.72rem;color:var(--texto-debil);margin-bottom:8px}
 .sim-origen:empty{display:none}
+.sim-leido{font-size:.75rem;color:var(--texto-tenue);background:var(--relleno);border-radius:8px;padding:8px 10px;margin-top:8px;line-height:1.45}
+.sim-leido:empty{display:none}
 .sim-campo{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;align-items:center;padding:6px 0}
 .sim-campo label{font-size:.8rem;color:var(--texto)}
 .sim-control{display:inline-flex;align-items:center;gap:6px}
@@ -1683,15 +1774,16 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div class="nav-item" id="nav-wa" onclick="showPanel('wa')"><i data-lucide="message-circle" class="nav-icon"></i> WhatsApp</div>
   <div class="nav-item" id="nav-notion_clients" onclick="showPanel('notion_clients')"><i data-lucide="handshake" class="nav-icon"></i> Proceso de venta</div>
   <div class="nav-item" id="nav-demos" onclick="showPanel('demos')"><i data-lucide="monitor-play" class="nav-icon"></i> Demos</div>
-  <div class="nav-item" id="nav-sdr" onclick="showPanel('sdr')"><i data-lucide="phone-call" class="nav-icon"></i> SDR</div>
   <div class="nav-section-label">OPERACIÓN</div>
   <div class="nav-item" id="nav-clientes" onclick="showPanel('clientes')"><i data-lucide="users" class="nav-icon"></i> Clientes</div>
   <div class="nav-item" id="nav-projects" onclick="showPanel('projects')"><i data-lucide="target" class="nav-icon"></i> Proyectos</div>
   <div class="nav-item" id="nav-tasks" onclick="showPanel('tasks')"><i data-lucide="check-square" class="nav-icon"></i> Tareas</div>
   <div class="nav-item" id="nav-activity" onclick="showPanel('activity')"><i data-lucide="clock" class="nav-icon"></i> Actividad</div>
+  <div class="nav-item" id="nav-equipo" onclick="showPanel('equipo')"><i data-lucide="network" class="nav-icon"></i> Equipo</div>
   <div class="nav-section-label">CAPTACIÓN</div>
-  <div class="nav-item" id="nav-metrics" onclick="showPanel('metrics')"><i data-lucide="bar-chart-2" class="nav-icon"></i> Inteligencia comercial</div>
   <div class="nav-item" id="nav-cola" onclick="showPanel('cola')"><i data-lucide="inbox" class="nav-icon"></i> Outbound</div>
+  <div class="nav-item" id="nav-metrics" onclick="showPanel('metrics')"><i data-lucide="bar-chart-2" class="nav-icon"></i> Inteligencia comercial</div>
+  <div class="nav-item" id="nav-sdr" onclick="showPanel('sdr')"><i data-lucide="phone-call" class="nav-icon"></i> SDR</div>
   </div>
   <div class="sidebar-bottom">
     <a id="admin-link" href="/admin/users" style="display:none;background:none;border:1px solid var(--borde);border-radius:8px;padding:6px 12px;font-size:.75rem;color:var(--texto-debil);cursor:pointer;width:100%;text-align:left;text-decoration:none;box-sizing:border-box">&#9881; Usuarios</a>
@@ -1707,6 +1799,10 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 </div>
 
 <div class="main">
+  <div class="frase-equipo" role="note">
+    <img class="frase-equipo-logo" src="https://raw.githubusercontent.com/Scalerics-org/scalerics-assets/main/logo_full_alt.png" alt="Scalerics">
+    <p class="frase-equipo-texto">La IA avanza rápido, es cierto. Pero el mercado la entiende lento. <strong>Ahí están nuestras oportunidades.</strong></p>
+  </div>
   <!-- ======= COLA PANEL ======= -->
   <div id="cola-panel" class="panel">
     <div class="page-header">
@@ -2084,6 +2180,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
             <label for="sim-proy-prog">Proyectos por programador</label>
             <input type="number" id="sim-proy-prog" class="sim-in sim-in-corto" data-sim="equipo.proyectosPorProgramador" min="0" step="any" inputmode="decimal">
           </div>
+          <div class="sim-leido" id="sim-capacidad-equipo" role="status"></div>
         </section>
 
         <section class="fin-card">
@@ -2434,6 +2531,43 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     </div>
     <div id="activity-list" style="max-width:760px"></div>
   </div>
+
+  <!-- ======= EQUIPO PANEL ======= -->
+  <div id="equipo-panel" class="panel">
+    <div class="page-header">
+      <div>
+        <h1>Equipo</h1>
+        <div class="page-date">Organigrama y horas a recuperar. Solo horas: cuántas se deben y cuándo se devuelven.</div>
+      </div>
+    </div>
+
+    <section class="eq-card" aria-labelledby="eq-titulo-org">
+      <div class="eq-cab"><div class="fin-card-title" id="eq-titulo-org">Organigrama</div></div>
+      <div class="eq-organigrama" id="eq-organigrama"><div class="eq-vacio">Cargando...</div></div>
+    </section>
+
+    <section class="eq-card" aria-labelledby="eq-titulo-aus">
+      <div class="eq-cab">
+        <div class="fin-card-title" id="eq-titulo-aus">Ausencias y recupero</div>
+        <button class="btn-primary" type="button" onclick="eqAbrirAusencia()">Registrar</button>
+      </div>
+      <div id="eq-avisos"></div>
+      <div class="eq-cal-wrap" id="eq-calendario"></div>
+      <div class="eq-leyenda" aria-label="Referencia de colores">
+        <span><i class="eq-muestra eq-muestra-normal"></i>Normal</span>
+        <span><i class="eq-muestra eq-falta"></i>Falta</span>
+        <span><i class="eq-muestra eq-recupero"></i>Recupero, con las horas</span>
+        <span>Saldo: <b class="eq-al-dia">al día</b> o las horas que debe en <b class="eq-debe">rojo</b></span>
+      </div>
+      <div class="eq-nota">Días hábiles de lunes a viernes. Esta versión no tiene en cuenta los feriados.</div>
+    </section>
+
+    <section class="eq-card" aria-labelledby="eq-titulo-det">
+      <div class="eq-cab"><div class="fin-card-title" id="eq-titulo-det">Detalle</div></div>
+      <div id="eq-detalle"></div>
+    </section>
+  </div>
+  <!-- ======= FIN EQUIPO PANEL ======= -->
 </div>
 
 <!-- Modal: Contactar -->
@@ -2861,6 +2995,59 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   </div>
 </div>
 
+<!-- ======= EQUIPO MODALES ======= -->
+<div class="modal-overlay" id="eq-modal-ausencia" onclick="if(event.target===this)eqCerrarModal('eq-modal-ausencia')">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="eq-aus-titulo">
+    <h3 id="eq-aus-titulo">Registrar ausencia</h3>
+    <p>Queda en rojo hasta que se le agende el recupero, con fecha.</p>
+    <label class="modal-label" for="eq-aus-persona">Persona</label>
+    <select id="eq-aus-persona" onchange="eqSugerirHoras()"></select>
+    <div class="modal-row">
+      <div>
+        <label class="modal-label" for="eq-aus-desde">Desde</label>
+        <input type="date" id="eq-aus-desde" onchange="eqSugerirHoras()">
+      </div>
+      <div>
+        <label class="modal-label" for="eq-aus-hasta">Hasta</label>
+        <input type="date" id="eq-aus-hasta" onchange="eqSugerirHoras()">
+      </div>
+    </div>
+    <label class="modal-label" for="eq-aus-motivo">Motivo</label>
+    <input type="text" id="eq-aus-motivo" maxlength="160" placeholder="En una línea">
+    <label class="modal-label" for="eq-aus-horas">Horas</label>
+    <input type="number" id="eq-aus-horas" min="0" step="0.5" inputmode="decimal" oninput="eqTocarHoras()">
+    <div class="eq-ayuda" id="eq-aus-calculo"></div>
+    <div class="eq-error" id="eq-aus-error" role="alert"></div>
+    <div class="modal-btns">
+      <button class="btn-ghost" type="button" onclick="eqCerrarModal('eq-modal-ausencia')">Cancelar</button>
+      <button class="btn-primary" type="button" onclick="eqGuardarAusencia()">Registrar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="eq-modal-recupero" onclick="if(event.target===this)eqCerrarModal('eq-modal-recupero')">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="eq-rec-titulo">
+    <h3 id="eq-rec-titulo">Agendar recupero</h3>
+    <p id="eq-rec-contexto"></p>
+    <div class="modal-row">
+      <div>
+        <label class="modal-label" for="eq-rec-fecha">Fecha</label>
+        <input type="date" id="eq-rec-fecha">
+      </div>
+      <div>
+        <label class="modal-label" for="eq-rec-horas">Horas</label>
+        <input type="number" id="eq-rec-horas" min="0" step="0.5" inputmode="decimal">
+      </div>
+    </div>
+    <div class="eq-error" id="eq-rec-error" role="alert"></div>
+    <div class="modal-btns">
+      <button class="btn-ghost" type="button" onclick="eqCerrarModal('eq-modal-recupero')">Cancelar</button>
+      <button class="btn-primary" type="button" onclick="eqGuardarRecupero()">Agendar</button>
+    </div>
+  </div>
+</div>
+<!-- ======= FIN EQUIPO MODALES ======= -->
+
 <script>
 window._isAdmin = false; // default until /api/me resolves
 // ========== Sidebar mobile ==========
@@ -2899,6 +3086,7 @@ function showPanel(name) {
   if (name === 'simulador') loadSimulador();
   if (name === 'metrics') loadMetrics();
   if (name === 'activity') loadActivity();
+  if (name === 'equipo') loadEquipo();
   if (name === 'sdr') loadSdr();
 }
 
@@ -6319,18 +6507,18 @@ function _showScoreBreakdown(event, el) {
 
 // ── Mobile navigation ─────────────────────────────────────────────────────────
 // El mismo orden que el menu de la izquierda (Juan, 14/9).
-const NAV_PRIORITY = ['cal','meta','finanzas','simulador','wa','notion_clients','clientes','projects','tasks','activity','metrics','cola'];
+const NAV_PRIORITY = ['cal','meta','finanzas','simulador','wa','notion_clients','clientes','projects','tasks','activity','equipo','cola','metrics'];
 const NAV_ICONS = {
   cola:'inbox',meta:'instagram',cal:'calendar',
   tasks:'check-square',pipeline:'trending-up',clientes:'users',
   wa:'message-circle',metrics:'bar-chart-2',activity:'clock',projects:'target',
-  notion_clients:'handshake',finanzas:'wallet',simulador:'calculator'
+  notion_clients:'handshake',finanzas:'wallet',simulador:'calculator',equipo:'network'
 };
 const NAV_LABELS = {
   cola:'Outbound',meta:'Meta',cal:'Agenda',
   tasks:'Tareas',pipeline:'Pipeline',clientes:'Clientes',
   wa:'WA',metrics:'Intel. comercial',activity:'Actividad',projects:'Proyectos',
-  notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador'
+  notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador',equipo:'Equipo'
 };
 let _mobileNavOverflow = [];
 
@@ -6410,7 +6598,7 @@ function closeMasSheet() {
 }
 
 // ── Panel access control ──────────────────────────────────────────────────────
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador'];
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','equipo'];
 (async () => {
   try {
     const r = await fetch('/api/me');
@@ -8233,6 +8421,408 @@ async function loadMetrics() {
   }
 }
 
+// ========== Equipo ==========
+// Una sola pantalla: el organigrama (SVG que sale de reporta_a) y, abajo, las
+// ausencias con su recupero. Solo horas. Todo lleva el prefijo eq, porque en
+// JS gana la ultima declaracion con el mismo nombre. Sin template literals a
+// proposito: este bloque no usa el signo de pesos en ningun lado.
+let eqDatos = null;
+let eqAusenciaActual = null;
+let eqHorasTocadas = false;
+
+const EQ_DIAS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+const EQ_NODO = {ancho: 184, alto: 52, hueco: 20, huecoRaiz: 120, fila: 48, margen: 12};
+
+async function loadEquipo() {
+  try {
+    const r = await fetch('/api/equipo');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    eqDatos = await r.json();
+  } catch (e) {
+    eqDatos = null;
+    document.getElementById('eq-organigrama').innerHTML =
+      '<div class="eq-vacio">No se pudo cargar el equipo (' + esc(e.message) + ').</div>';
+    ['eq-avisos', 'eq-calendario', 'eq-detalle'].forEach(id => {
+      document.getElementById(id).innerHTML = '';
+    });
+    return;
+  }
+  eqPintar(eqDatos);
+}
+
+function eqPintar(d) {
+  document.getElementById('eq-organigrama').innerHTML = eqOrganigramaSvg(d.organigrama || []);
+  document.getElementById('eq-avisos').innerHTML = eqAvisosHtml(d.avisos || []);
+  document.getElementById('eq-calendario').innerHTML = eqCalendarioHtml(d);
+  document.getElementById('eq-detalle').innerHTML = eqDetalleHtml(d.ausencias || []);
+}
+
+// ── fechas y horas ──
+function eqFecha(iso) {
+  if (typeof iso !== 'string' || iso.length !== 10 || iso[4] !== '-' || iso[7] !== '-') return null;
+  const p = iso.split('-').map(Number);
+  if (!p.every(Number.isInteger)) return null;
+  const d = new Date(p[0], p[1] - 1, p[2]);
+  return (d.getFullYear() === p[0] && d.getMonth() === p[1] - 1 && d.getDate() === p[2]) ? d : null;
+}
+
+function eqDosDigitos(n) {
+  return (n < 10 ? '0' : '') + n;
+}
+
+function eqCorta(iso) {
+  const d = eqFecha(iso);
+  return d ? EQ_DIAS[d.getDay()] + ' ' + eqDosDigitos(d.getDate()) + '/' + eqDosDigitos(d.getMonth() + 1) : String(iso);
+}
+
+function eqLarga(iso) {
+  const d = eqFecha(iso);
+  return d ? eqDosDigitos(d.getDate()) + '/' + eqDosDigitos(d.getMonth() + 1) + '/' + d.getFullYear() : String(iso);
+}
+
+function eqHoras(x) {
+  const n = Math.round(Number(x) * 100) / 100;
+  return String(n).replace('.', ',') + 'h';
+}
+
+// Lunes a viernes, sin feriados. La cuenta que vale es la del servidor: esta es
+// solo para sugerir las horas en el formulario.
+function eqDiasHabiles(desdeIso, hastaIso) {
+  const desde = eqFecha(desdeIso);
+  const hasta = eqFecha(hastaIso);
+  if (!desde || !hasta || hasta < desde) return 0;
+  let n = 0;
+  const d = new Date(desde.getTime());
+  while (d <= hasta) {
+    if (d.getDay() !== 0 && d.getDay() !== 6) n++;
+    d.setDate(d.getDate() + 1);
+  }
+  return n;
+}
+
+// ── organigrama ──
+function eqRecortar(texto, max) {
+  const t = String(texto || '');
+  return t.length > max ? t.slice(0, max - 1) + '…' : t;
+}
+
+function eqLinea(x1, y1, x2, y2) {
+  return '<line class="eq-linea" x1="' + x1 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y2 + '"></line>';
+}
+
+// Del padre baja una linea, cruza una barra sobre los hijos y baja a cada uno.
+function eqConector(lineas, xPadre, yPadre, xsHijos, yHijos) {
+  const yMedio = (yPadre + yHijos) / 2;
+  const xs = xsHijos.concat([xPadre]);
+  lineas.push(eqLinea(xPadre, yPadre, xPadre, yMedio));
+  lineas.push(eqLinea(Math.min.apply(null, xs), yMedio, Math.max.apply(null, xs), yMedio));
+  xsHijos.forEach(x => lineas.push(eqLinea(x, yMedio, x, yHijos)));
+}
+
+// Las personas sin reporta_a son la fila de arriba. Los hijos de TODAS las
+// raices cuelgan juntos de un conector comun que las une, como en el dibujo de
+// Juan (Juan Pereyra y Javier arriba). Mas abajo, cada uno bajo su jefe.
+function eqOrganigramaSvg(personas) {
+  if (!personas.length) return '<div class="eq-vacio">No hay personas cargadas.</div>';
+  const N = EQ_NODO;
+  const hijos = {};
+  personas.forEach(p => { hijos[p.id] = []; });
+  const raices = [];
+  personas.forEach(p => {
+    if (p.reporta_a !== null && p.reporta_a !== undefined && hijos[p.reporta_a]) hijos[p.reporta_a].push(p);
+    else raices.push(p);
+  });
+  const primera = [];
+  raices.forEach(r => hijos[r.id].forEach(h => primera.push(h)));
+
+  const ancho = {};
+  const medir = p => {
+    let suma = 0;
+    hijos[p.id].forEach((h, i) => { suma += medir(h) + (i ? N.hueco : 0); });
+    ancho[p.id] = Math.max(N.ancho, suma);
+    return ancho[p.id];
+  };
+  const anchoFila = lista => lista.reduce((s, p, i) => s + ancho[p.id] + (i ? N.hueco : 0), 0);
+  primera.forEach(medir);
+  const anchoPrimera = anchoFila(primera);
+  const anchoRaices = raices.length * N.ancho + (raices.length - 1) * N.huecoRaiz;
+  const total = Math.max(anchoPrimera, anchoRaices);
+  const m = N.margen;
+  const pos = {};
+  const lineas = [];
+  let alto = m + N.alto;
+
+  const xRaices = m + (total - anchoRaices) / 2;
+  raices.forEach((r, i) => {
+    pos[r.id] = {x: xRaices + N.ancho / 2 + i * (N.ancho + N.huecoRaiz), y: m};
+  });
+
+  const ubicar = (lista, x0, y) => {
+    let x = x0;
+    lista.forEach(p => {
+      const w = ancho[p.id];
+      pos[p.id] = {x: x + w / 2, y: y};
+      alto = Math.max(alto, y + N.alto);
+      const hs = hijos[p.id];
+      if (hs.length) {
+        const yHijos = y + N.alto + N.fila;
+        ubicar(hs, x + (w - anchoFila(hs)) / 2, yHijos);
+        eqConector(lineas, x + w / 2, y + N.alto, hs.map(h => pos[h.id].x), yHijos);
+      }
+      x += w + N.hueco;
+    });
+  };
+
+  if (primera.length) {
+    const yUnion = m + N.alto + N.fila / 3;
+    const yPrimera = m + N.alto + N.fila * 1.5;
+    const xsRaices = raices.map(r => pos[r.id].x);
+    xsRaices.forEach(x => lineas.push(eqLinea(x, m + N.alto, x, yUnion)));
+    const xIzq = Math.min.apply(null, xsRaices);
+    const xDer = Math.max.apply(null, xsRaices);
+    if (xDer > xIzq) lineas.push(eqLinea(xIzq, yUnion, xDer, yUnion));
+    ubicar(primera, m + (total - anchoPrimera) / 2, yPrimera);
+    eqConector(lineas, (xIzq + xDer) / 2, yUnion, primera.map(h => pos[h.id].x), yPrimera);
+  }
+
+  const W = total + 2 * m;
+  const H = alto + m;
+  const nodos = personas.filter(p => pos[p.id]).map(p => {
+    const c = pos[p.id];
+    return '<g class="eq-nodo' + (p.destacado ? ' eq-destacado' : '') + '">'
+      + '<title>' + esc(p.nombre + (p.rol ? ' · ' + p.rol : '')) + '</title>'
+      + '<rect x="' + (c.x - N.ancho / 2) + '" y="' + c.y + '" width="' + N.ancho + '" height="' + N.alto + '" rx="8"></rect>'
+      + '<text class="eq-nodo-nombre" x="' + c.x + '" y="' + (c.y + 22) + '" text-anchor="middle">' + esc(eqRecortar(p.nombre, 24)) + '</text>'
+      + '<text class="eq-nodo-rol" x="' + c.x + '" y="' + (c.y + 39) + '" text-anchor="middle">' + esc(eqRecortar(p.rol, 32)) + '</text>'
+      + '</g>';
+  }).join('');
+  return '<svg class="eq-svg" xmlns="http://www.w3.org/2000/svg" width="' + W + '" height="' + H
+    + '" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Organigrama del equipo">'
+    + lineas.join('') + nodos + '</svg>';
+}
+
+// ── ausencias ──
+function eqAvisosHtml(avisos) {
+  return avisos.map(a => '<div class="eq-aviso" role="status"><b>' + esc(a.proyecto)
+    + '</b> tiene entrega el ' + esc(eqLarga(a.fecha_entrega)) + ' y ' + esc(a.persona)
+    + ' tiene una ausencia cargada ese día.</div>').join('');
+}
+
+function eqCalendarioHtml(d) {
+  const filas = d.calendario || [];
+  const semanas = d.semanas || [];
+  if (!filas.length) return '<div class="eq-vacio">Nadie del equipo lleva horas.</div>';
+  const hueco = celda => '<' + celda + ' class="eq-cal-hueco" aria-hidden="true"></' + celda + '>';
+  const cabSemanas = semanas.map((s, i) => '<th colspan="5" class="eq-cal-semana">'
+    + (i ? 'Semana que viene' : 'Esta semana') + '</th>').join(hueco('th'));
+  const cabDias = semanas.map(s => s.map(iso => '<th scope="col" class="eq-cal-dia' + (iso === d.hoy ? ' eq-hoy' : '') + '">'
+    + esc(eqCorta(iso)) + '</th>').join('')).join(hueco('th'));
+  const cuerpo = filas.map(f => {
+    const celdas = semanas.map(s => s.map(iso => {
+      const dia = (f.dias || {})[iso] || {};
+      const rec = dia.recupero > 0 ? '+' + eqHoras(dia.recupero) : '';
+      if (dia.falta) return '<td class="eq-dia eq-falta">falta' + (rec ? '<span class="eq-dia-extra">' + rec + '</span>' : '') + '</td>';
+      if (rec) return '<td class="eq-dia eq-recupero">' + rec + '</td>';
+      return '<td class="eq-dia"></td>';
+    }).join('')).join(hueco('td'));
+    const saldo = f.al_dia ? '<td class="eq-saldo eq-al-dia">al día</td>'
+      : '<td class="eq-saldo eq-debe">−' + eqHoras(f.saldo) + '</td>';
+    return '<tr><th scope="row" class="eq-cal-persona">' + esc(f.nombre) + '</th>' + celdas + saldo + '</tr>';
+  }).join('');
+  return '<table class="eq-cal"><thead>'
+    + '<tr><th class="eq-cal-persona"></th>' + cabSemanas + '<th></th></tr>'
+    + '<tr><th scope="col" class="eq-cal-persona">Persona</th>' + cabDias + '<th scope="col" class="eq-saldo">Saldo</th></tr>'
+    + '</thead><tbody>' + cuerpo + '</tbody></table>';
+}
+
+function eqDetalleHtml(ausencias) {
+  if (!ausencias.length) return '<div class="eq-vacio">No hay ausencias registradas.</div>';
+  return ausencias.map(a => {
+    const rango = a.fecha_desde === a.fecha_hasta ? eqCorta(a.fecha_desde)
+      : eqCorta(a.fecha_desde) + ' al ' + eqCorta(a.fecha_hasta);
+    const cuando = a.recuperos.length
+      ? 'recupera ' + a.recuperos.map(r => eqCorta(r.fecha) + ' (' + eqHoras(r.horas) + ')').join(', ')
+      : 'sin recupero agendado';
+    const estado = a.recuperado
+      ? '<span class="eq-estado eq-estado-ok">recuperado</span>'
+      : '<span class="eq-estado eq-estado-mal">sin fecha'
+        + (a.recuperos.length ? ' · faltan ' + eqHoras(a.horas_pendientes) : '') + '</span>';
+    const chips = a.recuperos.map(r => '<span class="eq-chip">' + esc(eqCorta(r.fecha)) + ' · +' + eqHoras(r.horas)
+      + '<button type="button" class="eq-chip-x" aria-label="Borrar el recupero del ' + esc(eqCorta(r.fecha))
+      + '" onclick="eqBorrarRecupero(' + Number(r.id) + ')">×</button></span>').join('');
+    const agendar = a.recuperado ? ''
+      : '<button type="button" class="btn-primary eq-btn-chico" onclick="eqAbrirRecupero(' + Number(a.id) + ')">Agendar recupero</button>';
+    return '<article class="eq-item">'
+      + '<div class="eq-item-cab"><div class="eq-item-titulo"><b>' + esc(a.persona) + '</b> · ' + esc(a.motivo) + '</div>' + estado + '</div>'
+      + '<div class="eq-item-linea">Faltó ' + esc(rango) + ' · ' + eqHoras(a.horas_totales) + ' · ' + esc(cuando) + '</div>'
+      + '<div class="eq-item-acciones">' + chips + agendar
+      + '<button type="button" class="btn-ghost eq-btn-chico" onclick="eqBorrarAusencia(' + Number(a.id) + ')">Borrar ausencia</button></div>'
+      + '</article>';
+  }).join('');
+}
+
+// ── formularios ──
+function eqAbrirModal(id) {
+  document.getElementById(id).classList.add('open');
+}
+
+function eqCerrarModal(id) {
+  document.getElementById(id).classList.remove('open');
+}
+
+async function eqLeerRespuesta(r) {
+  try { return await r.json(); } catch (e) { return {}; }
+}
+
+function eqPersonaElegida() {
+  const id = Number(document.getElementById('eq-aus-persona').value);
+  return ((eqDatos && eqDatos.personas) || []).find(p => p.id === id) || null;
+}
+
+function eqAbrirAusencia() {
+  const personas = (eqDatos && eqDatos.personas) || [];
+  document.getElementById('eq-aus-persona').innerHTML = personas.map(p =>
+    '<option value="' + Number(p.id) + '">' + esc(p.nombre) + '</option>').join('');
+  const hoy = (eqDatos && eqDatos.hoy) || '';
+  document.getElementById('eq-aus-desde').value = hoy;
+  document.getElementById('eq-aus-hasta').value = hoy;
+  document.getElementById('eq-aus-motivo').value = '';
+  document.getElementById('eq-aus-error').textContent = personas.length ? '' : 'Nadie del equipo lleva horas.';
+  eqHorasTocadas = false;
+  eqSugerirHoras();
+  eqAbrirModal('eq-modal-ausencia');
+}
+
+// Dias habiles por horas por dia. Si la persona corrigio las horas a mano, no
+// se le pisan: solo se actualiza la cuenta de referencia.
+function eqSugerirHoras() {
+  const p = eqPersonaElegida();
+  const dias = eqDiasHabiles(document.getElementById('eq-aus-desde').value,
+                             document.getElementById('eq-aus-hasta').value);
+  const porDia = p ? Number(p.horas_por_dia) : 0;
+  const calculadas = Math.round(dias * porDia * 100) / 100;
+  if (!eqHorasTocadas) document.getElementById('eq-aus-horas').value = calculadas > 0 ? String(calculadas) : '';
+  document.getElementById('eq-aus-calculo').textContent = !p ? ''
+    : dias + ' ' + (dias === 1 ? 'día hábil' : 'días hábiles') + ' × ' + eqHoras(porDia) + ' = ' + eqHoras(calculadas)
+      + (eqHorasTocadas ? '. Corregido a mano.' : '. Se puede corregir a mano.');
+}
+
+function eqTocarHoras() {
+  eqHorasTocadas = true;
+  eqSugerirHoras();
+}
+
+function eqNumero(valor) {
+  const t = String(valor === null || valor === undefined ? '' : valor).trim().replace(',', '.');
+  return t === '' ? NaN : Number(t);
+}
+
+function eqValidarAusencia(datos) {
+  if (!datos.persona_id) return 'Elegí una persona.';
+  const desde = eqFecha(datos.fecha_desde);
+  const hasta = eqFecha(datos.fecha_hasta);
+  if (!desde) return 'La fecha desde no es válida.';
+  if (!hasta) return 'La fecha hasta no es válida.';
+  if (hasta < desde) return 'Hasta no puede ser anterior a desde.';
+  if (!datos.motivo) return 'Falta el motivo.';
+  if (!(datos.horas_totales > 0)) return 'Las horas tienen que ser un número mayor que cero.';
+  return '';
+}
+
+function eqValidarRecupero(datos) {
+  if (!eqFecha(datos.fecha)) return 'La fecha del recupero no es válida.';
+  if (!(datos.horas > 0)) return 'Las horas tienen que ser un número mayor que cero.';
+  return '';
+}
+
+async function eqGuardarAusencia() {
+  const datos = {
+    persona_id: Number(document.getElementById('eq-aus-persona').value) || null,
+    fecha_desde: document.getElementById('eq-aus-desde').value,
+    fecha_hasta: document.getElementById('eq-aus-hasta').value,
+    motivo: document.getElementById('eq-aus-motivo').value.trim(),
+    horas_totales: eqNumero(document.getElementById('eq-aus-horas').value)
+  };
+  const error = document.getElementById('eq-aus-error');
+  const problema = eqValidarAusencia(datos);
+  if (problema) { error.textContent = problema; return; }
+  error.textContent = '';
+  try {
+    const r = await fetch('/api/equipo/ausencias', {method: 'POST',
+      headers: {'Content-Type': 'application/json'}, body: JSON.stringify(datos)});
+    const j = await eqLeerRespuesta(r);
+    if (!r.ok) { error.textContent = j.error || 'No se pudo guardar (HTTP ' + r.status + ').'; return; }
+  } catch (e) {
+    error.textContent = 'No se pudo guardar: ' + e.message;
+    return;
+  }
+  eqCerrarModal('eq-modal-ausencia');
+  await loadEquipo();
+}
+
+function eqAbrirRecupero(ausenciaId) {
+  const a = ((eqDatos && eqDatos.ausencias) || []).find(x => x.id === ausenciaId);
+  if (!a) return;
+  eqAusenciaActual = a;
+  const persona = ((eqDatos && eqDatos.personas) || []).find(p => p.id === a.persona_id);
+  const porDia = persona ? Number(persona.horas_por_dia) : a.horas_pendientes;
+  document.getElementById('eq-rec-contexto').textContent = a.persona + ' · ' + a.motivo + '. '
+    + (a.horas_pendientes > 0 ? 'Faltan ' + eqHoras(a.horas_pendientes) + ' por agendar.' : 'Ya está cubierta.');
+  document.getElementById('eq-rec-fecha').value = '';
+  const sugeridas = Math.min(a.horas_pendientes, porDia);
+  document.getElementById('eq-rec-horas').value = sugeridas > 0 ? String(sugeridas) : '';
+  document.getElementById('eq-rec-error').textContent = '';
+  eqAbrirModal('eq-modal-recupero');
+}
+
+async function eqGuardarRecupero() {
+  if (!eqAusenciaActual) return;
+  const datos = {
+    fecha: document.getElementById('eq-rec-fecha').value,
+    horas: eqNumero(document.getElementById('eq-rec-horas').value)
+  };
+  const error = document.getElementById('eq-rec-error');
+  const problema = eqValidarRecupero(datos);
+  if (problema) { error.textContent = problema; return; }
+  error.textContent = '';
+  try {
+    const r = await fetch('/api/equipo/ausencias/' + Number(eqAusenciaActual.id) + '/recuperos', {method: 'POST',
+      headers: {'Content-Type': 'application/json'}, body: JSON.stringify(datos)});
+    const j = await eqLeerRespuesta(r);
+    if (!r.ok) { error.textContent = j.error || 'No se pudo agendar (HTTP ' + r.status + ').'; return; }
+  } catch (e) {
+    error.textContent = 'No se pudo agendar: ' + e.message;
+    return;
+  }
+  eqCerrarModal('eq-modal-recupero');
+  await loadEquipo();
+}
+
+async function eqBorrar(url, pregunta) {
+  if (!confirm(pregunta)) return;
+  try {
+    const r = await fetch(url, {method: 'DELETE'});
+    if (!r.ok) {
+      const j = await eqLeerRespuesta(r);
+      alert(j.error || 'No se pudo borrar (HTTP ' + r.status + ').');
+    }
+  } catch (e) {
+    alert('No se pudo borrar: ' + e.message);
+  }
+  await loadEquipo();
+}
+
+function eqBorrarAusencia(id) {
+  const a = ((eqDatos && eqDatos.ausencias) || []).find(x => x.id === id);
+  const que = a ? 'la ausencia de ' + a.persona + ' (' + a.motivo + ')' : 'esta ausencia';
+  return eqBorrar('/api/equipo/ausencias/' + Number(id),
+                  '¿Borrar ' + que + '? También se borran sus recuperos.');
+}
+
+function eqBorrarRecupero(id) {
+  return eqBorrar('/api/equipo/recuperos/' + Number(id), '¿Borrar este recupero?');
+}
+
 // ========== Simulador financiero ==========
 // No muestra el pasado: sirve para probar decisiones. Trabaja sobre una COPIA
 // de lo que hay en Finanzas (la precarga) y nunca escribe ahi.
@@ -8665,6 +9255,29 @@ async function loadSimulador() {
     simRecalcular();
   }
   simCargarEscenarios();
+  simLeerCapacidadEquipo();
+}
+
+// Dato leido de la seccion Equipo, no un campo: no reemplaza ni esconde ninguno
+// de los de arriba, que siguen siendo los que entran en la cuenta. Si Equipo no
+// responde, el simulador sigue igual y solo lo dice.
+async function simLeerCapacidadEquipo() {
+  const caja = document.getElementById('sim-capacidad-equipo');
+  if (!caja) return;
+  const horas = x => (Math.round(Number(x) * 10) / 10).toLocaleString('es-UY') + ' h';
+  try {
+    const r = await fetch('/api/equipo/capacidad');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const c = await r.json();
+    const t = c && c.totales;
+    if (!t || typeof t.capacidad_neta !== 'number') throw new Error('sin datos');
+    caja.textContent = 'Capacidad neta de esta semana, leída de Equipo (no editable): '
+      + horas(t.capacidad_neta) + ' = ' + horas(t.horas_base) + ' base − '
+      + horas(t.horas_ausencia) + ' de ausencias. Recuperos comprometidos: '
+      + horas(t.horas_recupero) + ', que no suman capacidad libre.';
+  } catch (e) {
+    caja.textContent = 'No se pudo leer la capacidad de la sección Equipo (' + e.message + ').';
+  }
 }
 
 async function simArrancar() {
@@ -10404,7 +11017,7 @@ def create_app(db_path: str) -> Flask:
 
     for bp in (leads_bp, demos_bp, calendar_bp, wa_bp, pipeline_bp, tasks_bp, budgets_bp, tokens_bp, meta_bp, calendly_bp, notion_bp, projects_bp, preclientes_bp,
                 notion_clients_bp, resend_bp, linkedin_bp, web_bp, finanzas_bp, marketing_bp,
-                simulador_bp):
+                simulador_bp, equipo_bp):
         app.register_blueprint(bp)
 
     @app.before_request
@@ -11318,8 +11931,8 @@ select:focus{border-color:#0088cc}
 </div>
 
 <script>
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador'];
-const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero'};
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','equipo'];
+const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',equipo:'Equipo'};
 let _roles = [];
 
 function makeChips(containerId, checkedArr, prefix) {
