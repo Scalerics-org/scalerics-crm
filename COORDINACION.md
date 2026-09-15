@@ -472,6 +472,11 @@ leads de Meta se renombró a **D** para deshacer el empate.
   - El panel les llega a los roles que ya tienen `notion_clients`, **una sola vez** (en el arranque que crea la tabla): si Juan se lo saca a un rol, un deploy no se lo vuelve a poner.
   - Nada arranca en el boot ni manda mail.
 
+- **14/9 — WhatsApp (rama `feat/whatsapp-mail`, worktree `../crm-whatsapp`): pantalla de chat nueva y aviso por mail. Sin mergear ni deployar.**
+  - **Pantalla** (`dashboard.py`, solo el panel `wa`): bandeja estilo app de chat (buscador, último mensaje, hora, no leídos), burbujas con separador por día, caja de respuesta con Enter / Shift+Enter, y en el celular lista → chat con botón volver. Todo el CSS `.wa-*` pasó a tokens y se borraron las 9 reglas `body.light .wa-*` (la de la coma cortada salió de `CONOCIDAS` en `test_tokens_css.py`). La lógica del bot y el envío (`/api/wa/*`) no cambiaron. El refresco arranca al abrir el panel y solo corre mientras estás en WhatsApp.
+  - **Aviso por mail:** `POST /api/bot/mensaje-entrante` (en `routes/wa.py`, con `x-admin-token` = `ADMIN_TOKEN`, igual que `lead-qualified`). Avisa a `WA_AVISO_MAIL` (por defecto contacto@scalerics.com) con el primer mensaje de un número, o el primero después de 30 minutos sin mensajes de ese número. La ventana vive en la tabla `wa_avisos_mail`, que se crea desde `services/wa_aviso_mail.py` y no desde `init_db`. Sale por Resend (`send_wa_message_notification`, agregada en `email_service.py`) en un hilo aparte, y si falla no afecta al bot.
+  - **Ojo, falta la otra mitad:** el CRM no recibía ningún aviso por mensaje entrante. **El bot (`scalerics-wa`) tiene que llamar a esta ruta** por cada mensaje que entra. Hasta que eso se haga, no sale ningún mail.
+
 - **15/9 — I: rama `feat/recursos-humanos` (sale de `fix/piezas-y-recupero`, PR #38). Sin PR ni deploy.**
   - Pedido de Juan: Equipo pasa a ser el grupo **RECURSOS HUMANOS**, entre OPERACIÓN y CAPTACIÓN, con dos paneles:
     - **Organigrama**: conserva el id `equipo`, así los permisos guardados siguen valiendo.
