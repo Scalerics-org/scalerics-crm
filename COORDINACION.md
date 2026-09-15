@@ -464,6 +464,19 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **15/9 — I: Flujos, en `feat/recursos-humanos` (encima de #40). Sin PR ni deploy.**
+  - Bloque al final del panel Ausencias, desde el PDF "Flujos - Scalerics". No es un ítem del menú. Tiene 4 flujos; solo "De lead a cobro" tiene pasos (los 10 del PDF, con su texto exacto). Los otros tres están vacíos.
+  - Base: tablas `flujos`, `flujo_pasos` y `flujo_paso_cobros`. La última permite varios momentos de cobro por paso; el paso 07 trae uno, "100% al confirmar".
+    - La precarga es `_sembrar_flujos`: carga pasos solo en un flujo recién creado, así no pisa ediciones.
+    - `numero` se renumera 1..n cada vez que se agrega, borra o mueve un paso.
+  - API `routes/flujos.py`:
+    - Leer: pide Organigrama o Ausencias.
+    - Escribir: `require_admin`, la misma `is_admin` de `/api/me`.
+  - Pantalla: la edición va detrás del botón "Editar".
+    - Un paso con `pantalla` es clickeable solo si el panel está en la página y el rol lo ve. La regla sale de `window._panelAccess`, que ahora guarda el IIFE de permisos.
+    - Pantallas precargadas: 01 `notion_clients`, 05 `demos`, 07 `clientes`, 08 `projects`.
+  - **Si agregan paneles** (Seguimiento de leads, Plantillas): sumarlos a `EQ_PANTALLAS` para que aparezcan en el formulario. Una pantalla guardada que todavía no existe se conserva y no es clickeable.
+
 - **15/9 — rama `feat/calendario-contador-mes` (worktree `../crm-cal-mes`). Sin PR ni deploy.** Pedido de Juan: contador del mes y deslizar entre meses.
   - `#cal-count` ahora habla del MES que se mira, también en vista semana: "Septiembre 2026 · 18 reuniones · 11 hechas · 7 por venir" (pasado: "N reuniones"; futuro: "N agendadas"). Hechas/por venir contra la hora de Montevideo (`_calAhoraMvd`, UTC-3 fijo), no contra el reloj del navegador.
   - La vista semana pide la semana **más su mes entero** en un solo GET (`_calRangoSemana`) y filtra la grilla a los 7 días. El mes de la semana: el de hoy si cae adentro, si no el del jueves.
