@@ -34,6 +34,7 @@ from routes.daily import daily_bp
 from routes.plantillas import plantillas_bp
 from routes.web import web_bp
 from routes.marketing import marketing_bp
+from routes.backups import backups_bp
 from services.auth import is_admin
 from services.demo_service import demo_job_handler
 from services.linkedin_posts import linkedin_job_handler
@@ -14160,7 +14161,8 @@ def create_app(db_path: str) -> Flask:
 
     for bp in (leads_bp, demos_bp, calendar_bp, wa_bp, pipeline_bp, tasks_bp, budgets_bp, tokens_bp, meta_bp, calendly_bp, notion_bp, projects_bp, preclientes_bp,
                 notion_clients_bp, resend_bp, linkedin_bp, web_bp, finanzas_bp, marketing_bp,
-                simulador_bp, equipo_bp, flujos_bp, seg_leads_bp, daily_bp, plantillas_bp):
+                simulador_bp, equipo_bp, flujos_bp, seg_leads_bp, daily_bp, plantillas_bp,
+                backups_bp):
         app.register_blueprint(bp)
 
     @app.before_request
@@ -15073,6 +15075,18 @@ select:focus{border-color:#0088cc}
   <div id="users-list"></div>
 </div>
 
+<div class="section">
+  <div class="section-title">Backups de la base</div>
+  <div class="card">
+    <div class="row">
+      <button class="btn btn-primary" id="backup-btn" onclick="backupAhora(this)">Hacer backup ahora</button>
+      <span class="sub" id="backup-msg"></span>
+    </div>
+    <div class="divider"></div>
+    <div id="backups-list"><div class="sub">Cargando...</div></div>
+  </div>
+</div>
+
 <script>
 const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','equipo','ausencias','seg_leads','daily','plantillas'];
 const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',equipo:'Organigrama',ausencias:'Ausencias',seg_leads:'Seguimiento de leads',daily:'Daily Programador',plantillas:'Plantillas'};
@@ -15191,7 +15205,55 @@ async function loadAll() {
   renderUsers();
 }
 
+function _bkBytes(n) {
+  n = n || 0;
+  if (n >= 1048576) return (n / 1048576).toFixed(1) + ' MB';
+  if (n >= 1024) return Math.round(n / 1024) + ' KB';
+  return n + ' B';
+}
+function _bkEsc(s) {
+  const d = document.createElement('div');
+  d.textContent = s == null ? '' : String(s);
+  return d.innerHTML;
+}
+async function loadBackups() {
+  const el = document.getElementById('backups-list');
+  try {
+    const r = await fetch('/api/admin/backups');
+    const d = await r.json();
+    const filas = [];
+    if (!d.r2_activo) filas.push('<div class="sub">Backup a R2 desactivado: faltan los secrets R2_*. Solo hay copia local.</div>');
+    if (d.error) filas.push('<div class="sub" style="color:#f87171">' + _bkEsc(d.error) + '</div>');
+    (d.backups || []).forEach(b => filas.push(
+      '<div class="row"><div class="name">' + _bkEsc(b.nombre) + '</div><span class="badge has-role">R2</span>' +
+      '<span class="sub">' + _bkBytes(b.tamano) + ' · ' + _bkEsc((b.fecha || '').slice(0, 16).replace('T', ' ')) + '</span></div>'));
+    (d.locales || []).forEach(b => filas.push(
+      '<div class="row"><div class="name">' + _bkEsc(b.nombre) + '</div><span class="badge">local</span>' +
+      '<span class="sub">' + _bkBytes(b.tamano) + '</span></div>'));
+    el.innerHTML = filas.join('') || '<div class="sub">Todavía no hay backups.</div>';
+  } catch (e) {
+    el.innerHTML = '<div class="sub">No se pudo leer la lista de backups.</div>';
+  }
+}
+async function backupAhora(btn) {
+  const msg = document.getElementById('backup-msg');
+  btn.disabled = true;
+  msg.textContent = 'Haciendo backup...';
+  try {
+    const r = await fetch('/api/admin/backup-ahora', {method: 'POST'});
+    const d = await r.json();
+    msg.textContent = d.ok
+      ? 'Listo: ' + d.nombre + ', ' + _bkBytes(d.tamano) + ', subido a R2: ' + (d.subido ? 'sí' : 'no')
+      : 'Falló: ' + (d.error || 'error desconocido');
+  } catch (e) {
+    msg.textContent = 'Falló la llamada.';
+  }
+  btn.disabled = false;
+  loadBackups();
+}
+
 loadAll();
+loadBackups();
 </script>
 </body>
 </html>"""
@@ -15236,6 +15298,11 @@ loadAll();
 
         from services.discovery_emails import start_discovery_emails
         start_discovery_emails(app)
+
+        # Backup diario de la base (docs/BACKUPS.md). Prendido por defecto,
+        # BACKUP_DB=off lo apaga; trae su propia marca en `corridas`.
+        from services.backup_db import start_backup_db
+        start_backup_db(app)
 
     try:
         from database import get_all_users

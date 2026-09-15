@@ -464,6 +464,23 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **15/9 — rama `feat/backup-diario-r2` (worktree `../crm-backup`). Sin PR, sin merge, sin deploy.** Backup diario de la base, pedido aprobado por el dueño. Detalle y restauración en `docs/BACKUPS.md`.
+  - `services/backup_db.py`:
+    - copia en caliente con la API de backup de SQLite y `integrity_check`;
+    - gzip `crm-leads-AAAA-MM-DD.db.gz`, con la fecha de Montevideo;
+    - subida a R2 bajo `crm/`, con SigV4 a mano sobre `requests`, sin boto3;
+    - retención: 30 días en R2 y 3 locales en `/data/backups`.
+  - Arranca 300 s después del boot y corre una vez por día, con la marca `backup_db` en `corridas`.
+    - **Prendido por defecto**; `BACKUP_DB=off` lo apaga. No manda nada a terceros.
+    - Sin `R2_*` hace solo la copia local.
+  - Si falla, avisa a los mismos admins que `send_meta_token_alert`, como mucho una vez por día (marca `backup_db_aviso`).
+  - Rutas admin: `POST /api/admin/backup-ahora` y `GET /api/admin/backups` (`routes/backups.py`). Hay una sección "Backups" en `/admin/users`.
+  - **`start.sh` cambió:** antes de gunicorn corre `python -m services.backup_db --aplicar-restauracion`. Si existe `/data/restore.db` y pasa la integridad, la pone en lugar de `leads.db` y guarda la anterior. Si no existe, no hace nada.
+  - **Zona compartida tocada, todo aditivo:**
+    - `services/email_service.py`: función nueva `send_backup_alert`;
+    - `dashboard.py`: registro del blueprint, arranque del hilo y sección en la página de administración.
+  - **Falta que el dueño cargue** `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` y `R2_BUCKET`.
+
 - **15/9 — I: Flujos, en `feat/recursos-humanos` (encima de #40). Sin PR ni deploy.**
   - Bloque al final del panel Ausencias, desde el PDF "Flujos - Scalerics". No es un ítem del menú. Tiene 4 flujos; solo "De lead a cobro" tiene pasos (los 10 del PDF, con su texto exacto). Los otros tres están vacíos.
   - Base: tablas `flujos`, `flujo_pasos` y `flujo_paso_cobros`. La última permite varios momentos de cobro por paso; el paso 07 trae uno, "100% al confirmar".
