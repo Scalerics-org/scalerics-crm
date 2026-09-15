@@ -29,6 +29,7 @@ from routes.finanzas import finanzas_bp
 from routes.simulador import simulador_bp
 from routes.equipo import equipo_bp
 from routes.flujos import flujos_bp
+from routes.seg_leads import seg_leads_bp
 from routes.web import web_bp
 from routes.marketing import marketing_bp
 from services.auth import is_admin
@@ -472,9 +473,18 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
   .table-wrap{overflow-x:auto}
   .table-header:not(.tbl-cli) span:nth-child(3),.table-row:not(.tbl-cli)>div:nth-child(3){display:none}
   .table-header,.table-row{grid-template-columns:2fr 1.1fr 1.4fr}
-  .wa-container{grid-template-columns:1fr;height:auto}
-  .wa-list{max-height:240px;border-right:none;border-bottom:1px solid #1e293b}
-  .wa-chat{height:calc(100vh - 380px);min-height:320px}
+  .wa-page-header{display:none}
+  .wa-container{grid-template-columns:1fr;height:calc(100vh - 170px);height:calc(100dvh - 170px);min-height:380px;border-radius:12px}
+  .wa-list{border-right:none}
+  .wa-container .wa-chat{display:none}
+  .wa-container.wa-en-chat .wa-list{display:none}
+  .wa-container.wa-en-chat .wa-chat{display:flex}
+  .wa-volver{display:inline-flex}
+  .wa-chat-header{padding:8px 10px;flex-wrap:wrap}
+  .wa-chat-acciones{width:100%;justify-content:flex-start}
+  .wa-bubble{max-width:85%}
+  .wa-messages{padding:6px 10px 12px}
+  .wa-input-ayuda{display:none}
   .cal-header{flex-wrap:wrap;gap:8px}
   .cal-header h1{flex:1;font-size:1.1rem}
   .cal-grid-header{font-size:.55rem;padding:6px 2px}
@@ -738,40 +748,74 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .spinner{width:8px;height:8px;border:2px solid #4ade80;border-top-color:transparent;border-radius:50%;animation:spin .6s linear infinite;display:inline-block}
 @keyframes spin{to{transform:rotate(360deg)}}
 
-/* ---- WhatsApp panel ---- */
-.wa-container{display:grid;grid-template-columns:280px 1fr;gap:0;background:#161b27;border:1px solid #1e293b;border-radius:14px;overflow:hidden;height:calc(100vh - 120px);min-height:500px}
-.wa-list{border-right:1px solid #1e293b;overflow-y:auto;display:flex;flex-direction:column}
-.wa-list-header{padding:14px 18px;font-size:.78rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.8px;border-bottom:1px solid #1e293b;flex-shrink:0}
-.wa-lead-item{padding:12px 18px;border-bottom:1px solid #1a2234;cursor:pointer;transition:background .1s;flex-shrink:0}
-.wa-lead-item:hover{background:#1a2234}
-.wa-lead-item.selected{background:#1e293b;border-left:3px solid #6366f1}
-.wa-lead-name{font-size:.85rem;font-weight:600;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.wa-lead-meta{display:flex;align-items:center;gap:7px;margin-top:4px}
-.wa-state-badge{font-size:.62rem;font-weight:700;padding:2px 7px;border-radius:999px}
-.wa-state-NEW{background:#1e293b;color:#94a3b8}
-.wa-state-QUAL{background:#292116;color:#fbbf24}
-.wa-state-SCORED{background:#172036;color:#60a5fa}
-.wa-state-SCHEDULED{background:#1a2e1e;color:#4ade80}
-.wa-state-NURTURE{background:#1e1b4b;color:#a78bfa}
-.wa-state-DISQUALIFIED{background:#2a1515;color:#f87171}
-.wa-lead-time{font-size:.65rem;color:#334155}
-.wa-chat{display:flex;flex-direction:column;background:#0f1117;overflow:hidden;min-height:0}
-.wa-chat-header{padding:10px 20px;border-bottom:1px solid #1e293b;flex-shrink:0;background:#161b27;display:flex;align-items:center;justify-content:space-between;gap:12px}
+/* ---- WhatsApp panel ----
+   Bandeja estilo app de chat (14/9, pedido de Juan: "que quede mas vistoso,
+   esta un poco incomodo"). Todo con tokens: el panel viejo tenia 60 colores
+   escritos a mano y 9 reglas claras, y en tema claro la conversacion seguia
+   oscura. Ninguna regla de aca lleva su `body.light`: los tokens la cubren.
+   En el celular es una columna: la lista, y al tocar un chat, el chat con un
+   boton para volver (`.wa-en-chat` en el contenedor). */
+.wa-container{display:grid;grid-template-columns:320px 1fr;background:var(--superficie);border:1px solid var(--borde);border-radius:14px;overflow:hidden;height:calc(100vh - 150px);min-height:520px}
+.wa-list{border-right:1px solid var(--borde);display:flex;flex-direction:column;min-height:0;min-width:0;background:var(--superficie)}
+.wa-list-header{padding:14px 14px 10px;border-bottom:1px solid var(--borde);flex-shrink:0;display:flex;flex-direction:column;gap:10px}
+.wa-list-title{font-size:.95rem;font-weight:700;color:var(--texto-fuerte);display:flex;align-items:center;gap:8px}
+.wa-count{font-size:.66rem;font-weight:700;color:var(--texto-debil);background:var(--relleno);padding:1px 8px;border-radius:999px}
+.wa-count:empty{display:none}
+.wa-search{display:flex;align-items:center;gap:8px;background:var(--fondo-hundido);border:1px solid var(--borde);border-radius:10px;padding:0 10px;cursor:text}
+.wa-search:focus-within{border-color:var(--azul)}
+.wa-search-icono{width:15px;height:15px;color:var(--texto-debil);flex-shrink:0}
+.wa-search input{flex:1;min-width:0;background:transparent;border:none;outline:none;color:var(--texto);font-size:.82rem;padding:9px 0;font-family:'Inter',sans-serif}
+.wa-search input::placeholder{color:var(--texto-debil)}
+.wa-lead-list{flex:1;overflow-y:auto;min-height:0}
+.wa-lead-item{display:flex;gap:11px;align-items:flex-start;padding:11px 14px;border-bottom:1px solid var(--borde);border-left:3px solid transparent;cursor:pointer;transition:background .1s}
+.wa-lead-item:hover{background:var(--hover)}
+.wa-lead-item.selected{background:var(--hover);border-left-color:var(--azul)}
+.wa-avatar{width:40px;height:40px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:var(--azul-tinte);color:var(--azul-claro);font-size:.8rem;font-weight:700;letter-spacing:.3px}
+.wa-avatar-chico{width:36px;height:36px;font-size:.74rem}
+.wa-lead-body{flex:1;min-width:0}
+.wa-lead-top{display:flex;align-items:center;gap:8px;min-width:0}
+.wa-lead-bottom{display:flex;align-items:center;gap:8px;min-width:0;margin-top:3px}
+.wa-lead-name{flex:1;min-width:0;font-size:.86rem;font-weight:600;color:var(--texto);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wa-lead-time{font-size:.66rem;color:var(--texto-debil);flex-shrink:0;white-space:nowrap}
+.wa-lead-preview{flex:1;min-width:0;font-size:.76rem;color:var(--texto-debil);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wa-no-leido .wa-lead-name{color:var(--texto-fuerte);font-weight:700}
+.wa-no-leido .wa-lead-preview{color:var(--texto)}
+.wa-no-leido .wa-lead-time{color:var(--verde-texto);font-weight:700}
+.wa-unread{min-width:18px;height:18px;padding:0 6px;border-radius:999px;background:var(--verde-tinte);color:var(--verde-texto);font-size:.62rem;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
+.wa-unread:empty{min-width:10px;width:10px;height:10px;padding:0;background:var(--verde)}
+.wa-lead-meta{display:flex;align-items:center;gap:7px;margin-top:5px}
+.wa-state-badge{font-size:.6rem;font-weight:700;padding:2px 7px;border-radius:999px;white-space:nowrap}
+.wa-state-badge:empty{display:none}
+.wa-state-NEW{background:var(--relleno);color:var(--texto-debil)}
+.wa-state-NURTURE{background:var(--relleno);color:var(--texto-debil)}
+.wa-state-QUAL{background:var(--ambar-tinte);color:var(--ambar)}
+.wa-state-SCORED{background:var(--azul-tinte);color:var(--azul-claro)}
+.wa-state-SCHEDULED{background:var(--verde-tinte);color:var(--verde-texto)}
+.wa-state-DISQUALIFIED{background:var(--rojo-tinte);color:var(--rojo-texto)}
+.wa-chat{display:flex;flex-direction:column;background:var(--fondo-hundido);overflow:hidden;min-height:0;min-width:0}
+.wa-chat-content{flex:1;flex-direction:column;min-height:0;overflow:hidden}
+.wa-chat-header{padding:10px 16px;border-bottom:1px solid var(--borde);flex-shrink:0;background:var(--superficie);display:flex;align-items:center;gap:10px;min-width:0}
+.wa-volver{display:none;align-items:center;justify-content:center;background:transparent;border:none;color:var(--texto-tenue);padding:6px;margin-left:-6px;border-radius:8px;cursor:pointer;flex-shrink:0}
+.wa-volver:hover{background:var(--hover);color:var(--texto)}
+.wa-volver svg{width:20px;height:20px;display:block}
 .wa-chat-info{flex:1;min-width:0}
-.wa-chat-name{font-size:.9rem;font-weight:700;color:#fff}
-.wa-chat-phone{font-size:.72rem;color:#475569;margin-top:2px}
-.wa-release-btn{background:#1a2e1e;border:none;color:#4ade80;font-size:.72rem;font-weight:700;padding:5px 10px;border-radius:6px;cursor:pointer;font-family:'Inter',sans-serif;white-space:nowrap;flex-shrink:0}
-.wa-release-btn:hover{background:#14532d}
-.wa-human-badge{font-size:.68rem;font-weight:700;color:#fbbf24;background:#292116;padding:3px 8px;border-radius:999px;flex-shrink:0}
-.wa-bot-switch{display:inline-flex;align-items:center;gap:6px;background:#0f1a12;border:1px solid #1f3d28;color:#4ade80;font-size:.72rem;font-weight:700;padding:5px 10px;border-radius:999px;cursor:pointer;font-family:'Inter',sans-serif;white-space:nowrap;flex-shrink:0}
-.wa-bot-switch:hover{border-color:#4ade80}
-.wa-bot-dot{width:7px;height:7px;border-radius:50%;background:#4ade80;flex-shrink:0}
-.wa-bot-switch.off{background:#1a1113;border-color:#3d1f24;color:#94a3b8}
-.wa-bot-switch.off .wa-bot-dot{background:#64748b}
+.wa-chat-name{font-size:.92rem;font-weight:700;color:var(--texto-fuerte);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wa-chat-sub{display:flex;align-items:center;gap:8px;margin-top:2px;min-width:0}
+.wa-chat-phone{font-size:.72rem;color:var(--texto-debil);white-space:nowrap}
+.wa-chat-acciones{display:flex;align-items:center;gap:8px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end}
+.wa-release-btn{background:var(--verde-tinte);border:none;color:var(--verde-texto);font-size:.72rem;font-weight:700;padding:5px 10px;border-radius:999px;cursor:pointer;font-family:'Inter',sans-serif;white-space:nowrap;flex-shrink:0}
+.wa-release-btn:hover{filter:brightness(1.08)}
+.wa-human-badge{font-size:.68rem;font-weight:700;color:var(--ambar);background:var(--ambar-tinte);padding:3px 8px;border-radius:999px;flex-shrink:0}
+.wa-bot-switch{display:inline-flex;align-items:center;gap:6px;background:var(--verde-tinte);border:1px solid transparent;color:var(--verde-texto);font-size:.72rem;font-weight:700;padding:5px 10px;border-radius:999px;cursor:pointer;font-family:'Inter',sans-serif;white-space:nowrap;flex-shrink:0}
+.wa-bot-switch:hover{border-color:var(--verde)}
+.wa-bot-dot{width:7px;height:7px;border-radius:50%;background:var(--verde);flex-shrink:0}
+.wa-bot-switch.off{background:var(--relleno);color:var(--texto-debil)}
+.wa-bot-switch.off:hover{border-color:var(--borde-fuerte)}
+.wa-bot-switch.off .wa-bot-dot{background:var(--texto-debil)}
 .wa-audio{margin:0 0 6px}
-.wa-audio audio{width:230px;height:32px;display:block}
-.wa-audio-label{font-size:.62rem;color:#64748b;margin-top:3px}
-.wa-audio-dur{color:#94a3b8}
+.wa-audio audio{width:230px;max-width:100%;height:32px;display:block}
+.wa-audio-label{font-size:.62rem;color:var(--texto-debil);margin-top:3px}
+.wa-audio-dur{color:var(--texto-tenue)}
 /* La foto, el sticker, el video y el archivo que manda el lead. El tope de
    ancho es el de la burbuja: una foto vertical de celular, sin esto, estira la
    conversación entera. */
@@ -782,25 +826,62 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .wa-sticker img{border-radius:0}
 .wa-medio-video{display:block;margin:0 0 6px;max-width:230px;border-radius:8px}
 .wa-medio-doc{display:inline-block;margin:0 0 6px;padding:6px 10px;border-radius:8px;
-  background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.09);
-  color:#e2e8f0;font-size:.72rem;text-decoration:none;word-break:break-all}
-.wa-medio-doc:hover{background:rgba(255,255,255,.1)}
+  background:var(--relleno);border:1px solid var(--borde);
+  color:var(--texto);font-size:.72rem;text-decoration:none;word-break:break-all}
+.wa-medio-doc:hover{border-color:var(--borde-fuerte)}
 /* Llegó pero no lo tenemos. Se dice, en vez de dejar un roto sin explicación. */
-.wa-medio-ausente{margin:0 0 6px;font-size:.66rem;color:#64748b;font-style:italic}
-.wa-pausa-badge{font-size:.68rem;font-weight:700;color:#93c5fd;background:#16213a;padding:3px 8px;border-radius:999px;flex-shrink:0}
-.wa-messages{flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:8px;min-height:0}
-.wa-bubble{max-width:68%;padding:9px 13px;border-radius:12px;font-size:.84rem;line-height:1.5;white-space:pre-wrap;word-break:break-word}
-.wa-bubble-in{background:#1e293b;color:#e2e8f0;align-self:flex-start;border-bottom-left-radius:3px}
-.wa-bubble-out{background:#0a3a5c;color:#e2e8f0;align-self:flex-end;border-bottom-right-radius:3px}
-.wa-bubble-time{font-size:.62rem;color:#475569;margin-top:4px}
-.wa-input-row{padding:12px 16px;border-top:1px solid #1e293b;display:flex;gap:10px;align-items:center;flex-shrink:0;background:#161b27}
-.wa-input{flex:1;background:#0f1117;border:1px solid #1e293b;border-radius:8px;padding:10px 14px;font-size:.85rem;color:#e2e8f0;font-family:'Inter',sans-serif;outline:none}
-.wa-input:focus{border-color:#6366f1}
-.wa-send-btn{background:#0088cc;border:none;color:#fff;padding:10px 18px;border-radius:8px;font-size:.82rem;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;white-space:nowrap}
-.wa-send-btn:hover{background:#0077b3}
-.wa-empty{flex:1;display:flex;align-items:center;justify-content:center;color:#334155;font-size:.88rem}
-.wa-no-leads{padding:32px;text-align:center;color:#334155;font-size:.85rem}
-.wa-error-banner{padding:12px 18px;background:#2a1515;border:1px solid #7f1d1d;border-radius:8px;color:#f87171;font-size:.82rem;margin:16px}
+.wa-medio-ausente{margin:0 0 6px;font-size:.66rem;color:var(--texto-debil);font-style:italic}
+.wa-pausa-badge{font-size:.68rem;font-weight:700;color:var(--azul-claro);background:var(--azul-tinte);padding:3px 8px;border-radius:999px;flex-shrink:0}
+.wa-messages{flex:1;overflow-y:auto;padding:8px 18px 18px;display:flex;flex-direction:column;gap:3px;min-height:0;overscroll-behavior:contain}
+/* El separador de dia queda pegado arriba mientras se scrollea ese dia. */
+.wa-dia{display:flex;justify-content:center;margin:10px 0 6px;position:sticky;top:0;z-index:1}
+.wa-dia span{font-size:.68rem;font-weight:600;color:var(--texto-tenue);background:var(--superficie);border:1px solid var(--borde);padding:3px 11px;border-radius:999px;box-shadow:0 1px 3px var(--sombra)}
+.wa-fila{display:flex;margin-top:3px}
+.wa-fila-out{justify-content:flex-end}
+.wa-fila-in{justify-content:flex-start}
+.wa-bubble{max-width:min(72%,560px);padding:7px 10px 5px 11px;border-radius:12px;font-size:.85rem;line-height:1.45;word-break:break-word;box-shadow:0 1px 1px var(--sombra)}
+.wa-bubble-in{background:var(--superficie);color:var(--texto);border:1px solid var(--borde);border-top-left-radius:4px}
+.wa-bubble-out{background:var(--azul-tinte);color:var(--texto);border:1px solid var(--azul-tinte);border-top-right-radius:4px}
+/* pre-wrap solo en el texto: en la burbuja entera dibujaba como saltos de
+   linea la sangria del HTML que arma el JS. */
+.wa-texto{white-space:pre-wrap}
+.wa-bubble-time{display:block;text-align:right;font-size:.62rem;color:var(--texto-tenue);margin-top:2px;line-height:1.2}
+.wa-plantillas{border-top:1px solid var(--borde);padding:10px 14px;background:var(--superficie);flex-shrink:0;max-height:220px;overflow-y:auto}
+.wa-plantillas-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.wa-plantillas-titulo{font-size:.7rem;font-weight:700;color:var(--texto-debil);text-transform:uppercase;letter-spacing:.5px}
+.wa-plantillas-nueva{font-size:.72rem;background:var(--relleno);border:none;color:var(--texto-tenue);padding:4px 10px;border-radius:6px;cursor:pointer;font-family:'Inter',sans-serif}
+.wa-plantillas-nueva:hover{color:var(--texto)}
+.wa-tmpl-form{margin-bottom:8px}
+.wa-tmpl-campo{display:block;width:100%;background:var(--fondo-hundido);border:1px solid var(--borde);color:var(--texto);padding:7px 9px;border-radius:6px;font-size:.8rem;font-family:'Inter',sans-serif;resize:none;margin-bottom:6px;outline:none}
+.wa-tmpl-campo:focus{border-color:var(--azul)}
+.wa-tmpl-campo::placeholder{color:var(--texto-debil)}
+.wa-tmpl-guardar{font-size:.76rem;background:var(--azul);border:none;color:#fff;padding:5px 14px;border-radius:6px;cursor:pointer;font-weight:600;font-family:'Inter',sans-serif}
+.wa-tmpl-lista{display:flex;flex-wrap:wrap;gap:6px}
+.wa-tmpl-item{display:inline-flex;align-items:center;background:var(--relleno);border:1px solid var(--borde);border-radius:999px;max-width:100%}
+.wa-tmpl-usar{background:transparent;border:none;color:var(--texto);font-size:.76rem;padding:5px 4px 5px 11px;cursor:pointer;max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:'Inter',sans-serif}
+.wa-tmpl-borrar{background:transparent;border:none;color:var(--texto-debil);font-size:.7rem;padding:5px 9px 5px 5px;cursor:pointer}
+.wa-tmpl-borrar:hover{color:var(--rojo-texto)}
+.wa-tmpl-vacio{font-size:.74rem;color:var(--texto-debil)}
+.wa-input-row{padding:10px 12px;border-top:1px solid var(--borde);display:flex;gap:8px;align-items:flex-end;flex-shrink:0;background:var(--superficie)}
+.wa-input{flex:1;min-width:0;display:block;background:var(--fondo-hundido);border:1px solid var(--borde);border-radius:20px;padding:10px 16px;font-size:.86rem;line-height:1.4;color:var(--texto);font-family:'Inter',sans-serif;outline:none;resize:none;max-height:140px;overflow-y:auto}
+.wa-input::placeholder{color:var(--texto-debil)}
+.wa-input:focus{border-color:var(--azul)}
+.wa-icono-btn{width:40px;height:40px;flex-shrink:0;border-radius:50%;border:none;background:transparent;color:var(--texto-tenue);cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+.wa-icono-btn:hover{background:var(--hover);color:var(--texto)}
+.wa-icono-btn.activo{background:var(--azul-tinte);color:var(--azul-claro)}
+.wa-icono-btn svg{width:18px;height:18px}
+.wa-send-btn{width:40px;height:40px;flex-shrink:0;border-radius:50%;border:none;background:var(--azul);color:#fff;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:filter .1s}
+.wa-send-btn svg{width:18px;height:18px}
+.wa-send-btn:hover{filter:brightness(1.1)}
+.wa-send-btn:disabled{opacity:.55;cursor:default}
+.wa-input-ayuda{font-size:.64rem;color:var(--texto-debil);padding:0 18px 7px;background:var(--superficie);text-align:right;flex-shrink:0}
+.wa-empty{flex:1;display:flex;align-items:center;justify-content:center;padding:24px}
+.wa-vacio{display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;padding:36px 20px;margin:auto}
+.wa-vacio-icono{width:34px;height:34px;color:var(--texto-debil);margin-bottom:4px}
+.wa-vacio-titulo{font-size:.9rem;font-weight:600;color:var(--texto-tenue)}
+.wa-vacio-detalle{font-size:.78rem;color:var(--texto-debil);max-width:280px;line-height:1.5}
+.wa-cargando{padding:28px;text-align:center;color:var(--texto-debil);font-size:.82rem}
+.wa-error-banner{padding:12px 16px;background:var(--rojo-tinte);border:1px solid var(--rojo-borde);border-radius:8px;color:var(--rojo-texto);font-size:.82rem;margin:14px;line-height:1.5}
 
 /* ---- Calendar panel ---- */
 .cal-header{display:flex;align-items:center;gap:12px;margin-bottom:20px}
@@ -1126,6 +1207,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-projects .nav-icon{stroke:#facc15}
 #nav-equipo .nav-icon{stroke:#a3e635}
 #nav-ausencias .nav-icon{stroke:#e879f9}
+#nav-seg_leads .nav-icon{stroke:#fb7185}
 .nav-item.active #nav-cola .nav-icon,
 .nav-item.active .nav-icon{opacity:1}
 /* active item keeps its color but brighter */
@@ -1145,6 +1227,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-projects.active .nav-icon{stroke:#fde047}
 #nav-equipo.active .nav-icon{stroke:#bef264}
 #nav-ausencias.active .nav-icon{stroke:#f0abfc}
+#nav-seg_leads.active .nav-icon{stroke:#fda4af}
 /* light mode — slightly darker tones */
 body.light #nav-cola .nav-icon{stroke:#2563eb}
 body.light #nav-clientes .nav-icon{stroke:#7c3aed}
@@ -1162,6 +1245,7 @@ body.light #nav-sdr .nav-icon{stroke:#b91c1c}
 body.light #nav-projects .nav-icon{stroke:#a16207}
 body.light #nav-equipo .nav-icon{stroke:#4d7c0f}
 body.light #nav-ausencias .nav-icon{stroke:#a21caf}
+body.light #nav-seg_leads .nav-icon{stroke:#be123c}
 /* ── Lucide icons ─────────────────────────────────────────────────────────── */
 .nav-icon{width:15px;height:15px;stroke-width:2;flex-shrink:0}
 /* Frase de equipo, version compacta del PDF de identidad de marca. Es la
@@ -1221,15 +1305,6 @@ body.light .budget-table th{color:#64748b !important;background:#f8fafc}
 body.light .attach-item{background:#f8fafc;border-color:#e2e8f0}
 body.light .attach-item-name{color:#0f172a !important}
 body.light .empty-state{color:#94a3b8}
-body.light .wa-lead-name{color:#0f172a !important}
-body.light .wa-lead-phone{color:#64748b}
-body.light .wa-chat-name{color:#0f172a}
-body.light .wa-chat-phone{color:#64748b}
-body.light .wa-list{background:#f8fafc;border-right-color:#e2e8f0}
-body.light .wa-list-header{color:#64748b;border-bottom-color:#e2e8f0}
-body.light .wa-lead-item{border-bottom-color:#f1f5f9}
-body.light .wa-lead-item:hover,.body.light .wa-lead-item.active{background:#f1f5f9}
-body.light .wa-chat{background:#fff}
 body.light .search-input{background:#fff;border-color:#e2e8f0;color:#0f172a}
 body.light .search-input::placeholder{color:#94a3b8}
 body.light .pill{background:#f8fafc;border-color:#e2e8f0;color:#475569}
@@ -1625,6 +1700,63 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .fin-hbar-relleno{height:100%;border-radius:3px}
 .fin-hbar-monto{font-size:.75rem;color:var(--texto);width:74px;text-align:right;flex-shrink:0}
 @media (max-width:760px){.fin-split{grid-template-columns:1fr}}
+/* ── Seguimiento de leads ─────────────────────────────────────────────────────
+   La agenda de llamados. Solo tokens, sin reglas `body.light`: el rojo de
+   vencido y el verde de Hecho son los de la familia de estados, que llegan a
+   4,5 en los dos temas. */
+.sl-cabecera{gap:12px;flex-wrap:wrap}
+.sl-contadores{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:22px}
+.sl-contador{display:flex;flex-direction:column;align-items:flex-start;gap:2px;background:var(--superficie);border:1px solid var(--borde);border-radius:10px;padding:10px 14px;cursor:pointer;font-family:inherit;text-align:left;color:var(--texto)}
+.sl-contador:hover{border-color:var(--borde-fuerte)}
+.sl-contador:focus-visible{outline:2px solid var(--azul);outline-offset:2px}
+.sl-contador-num{font-size:1.3rem;font-weight:800;line-height:1.1;color:var(--texto-fuerte)}
+.sl-contador-rot{font-size:.72rem;color:var(--texto-tenue)}
+.sl-contador-vencidos{background:var(--rojo-tinte);border-color:var(--rojo-borde)}
+.sl-contador-vencidos .sl-contador-num{color:var(--rojo-texto)}
+.sl-contador-vencidos .sl-contador-rot{color:var(--rojo-texto)}
+.sl-grupo{margin-bottom:22px;scroll-margin-top:16px}
+.sl-grupo-titulo{font-size:.72rem;font-weight:700;letter-spacing:.8px;color:var(--rotulo);margin:0 0 10px}
+.sl-grupo-titulo-vencidos{color:var(--rojo-texto)}
+.sl-tarjeta{background:var(--superficie);border:1px solid var(--borde);border-radius:10px;padding:14px 16px;margin-bottom:10px}
+.sl-vencida{border-left:3px solid var(--rojo)}
+.sl-tarjeta-cab{display:flex;justify-content:space-between;align-items:baseline;gap:4px 12px;flex-wrap:wrap}
+.sl-quien{font-size:.88rem;color:var(--texto-tenue);min-width:0;overflow-wrap:anywhere}
+.sl-nombre{background:none;border:none;padding:0;font:inherit;font-weight:700;color:var(--texto-fuerte);cursor:pointer;text-align:left}
+.sl-nombre:hover{text-decoration:underline}
+.sl-cuando{font-size:.78rem;font-weight:600;color:var(--texto-tenue);white-space:nowrap}
+.sl-cuando-vencido{color:var(--rojo-texto)}
+.sl-contexto{font-size:.82rem;color:var(--texto);margin-top:6px;line-height:1.45;overflow-wrap:anywhere}
+.sl-ultima{color:var(--texto-tenue)}
+.sl-nota{font-size:.74rem;color:var(--texto-debil);margin-top:3px;overflow-wrap:anywhere}
+.sl-acciones{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.sl-btn{display:inline-flex;align-items:center;justify-content:center;background:var(--relleno);color:var(--texto);border:1px solid var(--borde);border-radius:8px;padding:6px 12px;font-size:.76rem;font-weight:600;font-family:inherit;cursor:pointer;text-decoration:none;white-space:nowrap}
+.sl-btn:hover{border-color:var(--borde-fuerte)}
+.sl-btn:disabled{opacity:.45;cursor:not-allowed}
+.sl-btn-hecho{background:var(--verde-tinte);color:var(--verde-texto)}
+.sl-linea{display:flex;justify-content:space-between;align-items:center;gap:12px;background:var(--superficie);border:1px solid var(--borde);border-radius:10px;padding:10px 14px;margin-bottom:6px}
+.sl-linea-txt{min-width:0}
+.sl-linea-motivo{font-size:.76rem;color:var(--texto-debil);margin-top:2px;overflow-wrap:anywhere}
+.sl-linea-fecha{font-size:.76rem;font-weight:600;color:var(--texto-tenue);white-space:nowrap}
+.sl-vacio{font-size:.82rem;color:var(--texto-debil);padding:6px 0}
+.sl-error{font-size:.78rem;color:var(--rojo-texto);margin:4px 0 10px}
+.sl-error:empty{display:none}
+.sl-aviso{background:var(--ambar-tinte);color:var(--ambar);border:1px solid var(--ambar-borde);border-radius:8px;padding:8px 10px;font-size:.76rem;line-height:1.4;margin-bottom:12px}
+.sl-aviso:empty{display:none}
+.sl-elegido{display:flex;justify-content:space-between;align-items:center;gap:8px;background:var(--relleno);border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:.85rem;color:var(--texto-fuerte)}
+.sl-elegido[hidden]{display:none}
+.sl-buscador[hidden]{display:none}
+.sl-bloque[hidden]{display:none}
+.sl-link{background:none;border:none;color:var(--azul-claro);font:inherit;font-size:.76rem;cursor:pointer;padding:0}
+.sl-rapidos{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px}
+.sl-check{display:flex;align-items:center;gap:8px;font-size:.84rem;color:var(--texto);margin:4px 0 14px;cursor:pointer}
+.sl-check input{accent-color:var(--azul);width:16px;height:16px}
+.sl-ficha-cab{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.sl-ficha-pendiente{background:var(--relleno);border-radius:8px;padding:10px 12px;font-size:.8rem;color:var(--texto);line-height:1.45}
+.sl-ficha-llamado{padding:7px 0;border-bottom:1px solid var(--borde);font-size:.8rem;color:var(--texto);overflow-wrap:anywhere}
+.sl-ficha-fecha{font-size:.72rem;color:var(--texto-debil);margin-right:8px;white-space:nowrap}
+@media(max-width:600px){
+  .sl-contadores{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
 /* ── Equipo ───────────────────────────────────────────────────────────────────
    Organigrama (SVG) y ausencias con recupero. Solo tokens, sin reglas
    `body.light`: los tintes rojo/verde/ambar son los de la familia de estados,
@@ -1826,6 +1958,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div class="nav-item" id="nav-finanzas" onclick="showPanel('finanzas')"><i data-lucide="wallet" class="nav-icon"></i> Finanzas</div>
   <div class="nav-item" id="nav-simulador" onclick="showPanel('simulador')"><i data-lucide="calculator" class="nav-icon"></i> Simulador financiero</div>
   <div class="nav-section-label">VENTAS</div>
+  <div class="nav-item" id="nav-seg_leads" onclick="showPanel('seg_leads')"><i data-lucide="phone-call" class="nav-icon"></i> Seguimiento de leads</div>
   <div class="nav-item" id="nav-wa" onclick="showPanel('wa')"><i data-lucide="message-circle" class="nav-icon"></i> WhatsApp</div>
   <div class="nav-item" id="nav-notion_clients" onclick="showPanel('notion_clients')"><i data-lucide="handshake" class="nav-icon"></i> Proceso de venta</div>
   <div class="nav-item" id="nav-demos" onclick="showPanel('demos')"><i data-lucide="monitor-play" class="nav-icon"></i> Demos</div>
@@ -1981,51 +2114,72 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 
   <!-- ======= WHATSAPP PANEL ======= -->
   <div id="wa-panel" class="panel">
-    <div class="page-header">
+    <div class="page-header wa-page-header">
       <div>
         <h1>WhatsApp</h1>
         <div class="page-date">Conversaciones del bot</div>
       </div>
     </div>
-    <div class="wa-container">
-      <div class="wa-list">
-        <div class="wa-list-header">Leads</div>
-        <div id="wa-lead-list"><div class="wa-no-leads">Cargando...</div></div>
-      </div>
-      <div class="wa-chat" id="wa-chat-area">
-        <div class="wa-empty" id="wa-empty-state">← Seleccioná un lead para ver la conversación</div>
-        <div id="wa-chat-content" style="display:none;flex:1;flex-direction:column;min-height:0;overflow:hidden">
-          <div class="wa-chat-header">
-            <div class="wa-chat-info">
-              <div class="wa-chat-name" id="wa-chat-name"></div>
-              <div class="wa-chat-phone" id="wa-chat-phone"></div>
-            </div>
-            <span class="wa-pausa-badge" id="wa-pausa-badge" style="display:none"></span>
-            <button class="wa-bot-switch" id="wa-bot-switch" onclick="toggleBot()" title="Prender o apagar el bot para este lead">
-              <span class="wa-bot-dot"></span><span id="wa-bot-label">Bot</span>
-            </button>
-            <span class="wa-human-badge" id="wa-human-badge" style="display:none">👤 Humano activo</span>
-            <button class="wa-release-btn" id="wa-release-btn" style="display:none" onclick="releaseToBot()">🤖 Devolver al bot</button>
-          </div>
-          <div class="wa-messages" id="wa-messages"></div>
-          <div class="wa-input-row">
-            <input class="wa-input" id="wa-input" placeholder="Escribir mensaje..." onkeydown="if(event.key==='Enter')sendWaMessage()">
-            <button class="wa-send-btn" onclick="sendWaMessage()">Enviar</button>
-          </div>
-          <div id="wa-templates-panel" style="border-top:1px solid #1e293b;padding:10px;background:#0d1525">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-              <span style="font-size:.75rem;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.5px">Plantillas</span>
-              <button onclick="toggleWaTemplateForm()" style="font-size:.72rem;background:#1e293b;border:none;color:#94a3b8;padding:3px 8px;border-radius:4px;cursor:pointer">+ Nueva</button>
-            </div>
-            <div id="wa-template-form" style="display:none;margin-bottom:8px">
-              <input id="wa-tmpl-name" placeholder="Nombre de la plantilla" style="width:100%;background:#111827;border:1px solid #1e293b;color:#e2e8f0;padding:5px 8px;border-radius:4px;font-size:.78rem;margin-bottom:4px;box-sizing:border-box">
-              <textarea id="wa-tmpl-body" rows="2" placeholder="Texto del mensaje..." style="width:100%;background:#111827;border:1px solid #1e293b;color:#e2e8f0;padding:5px 8px;border-radius:4px;font-size:.78rem;resize:none;margin-bottom:4px;box-sizing:border-box"></textarea>
-              <button onclick="saveWaTemplate()" style="font-size:.75rem;background:#0088cc;border:none;color:#fff;padding:4px 12px;border-radius:4px;cursor:pointer">Guardar</button>
-            </div>
-            <div id="wa-template-list" style="max-height:120px;overflow-y:auto"></div>
+    <div class="wa-container" id="wa-container">
+      <aside class="wa-list">
+        <div class="wa-list-header">
+          <div class="wa-list-title">Chats <span class="wa-count" id="wa-count"></span></div>
+          <label class="wa-search">
+            <i data-lucide="search" class="wa-search-icono"></i>
+            <input id="wa-buscar" type="search" placeholder="Buscar por nombre o teléfono" autocomplete="off" oninput="waFiltrar(this.value)">
+          </label>
+        </div>
+        <div id="wa-lead-list" class="wa-lead-list"><div class="wa-cargando">Cargando conversaciones…</div></div>
+      </aside>
+      <section class="wa-chat" id="wa-chat-area">
+        <div class="wa-empty" id="wa-empty-state">
+          <div class="wa-vacio">
+            <i data-lucide="messages-square" class="wa-vacio-icono"></i>
+            <div class="wa-vacio-titulo">Elegí una conversación</div>
+            <div class="wa-vacio-detalle">Tocá un chat de la lista para leerlo y responder.</div>
           </div>
         </div>
-      </div>
+        <div id="wa-chat-content" class="wa-chat-content" style="display:none">
+          <div class="wa-chat-header">
+            <button class="wa-volver" id="wa-volver" type="button" onclick="waVolver()" title="Volver a la lista" aria-label="Volver a la lista"><i data-lucide="arrow-left"></i></button>
+            <div class="wa-avatar wa-avatar-chico" id="wa-chat-avatar"></div>
+            <div class="wa-chat-info">
+              <div class="wa-chat-name" id="wa-chat-name"></div>
+              <div class="wa-chat-sub">
+                <span class="wa-chat-phone" id="wa-chat-phone"></span>
+                <span class="wa-state-badge" id="wa-chat-estado"></span>
+              </div>
+            </div>
+            <div class="wa-chat-acciones">
+              <span class="wa-pausa-badge" id="wa-pausa-badge" style="display:none"></span>
+              <button class="wa-bot-switch" id="wa-bot-switch" onclick="toggleBot()" title="Prender o apagar el bot para este lead">
+                <span class="wa-bot-dot"></span><span id="wa-bot-label">Bot</span>
+              </button>
+              <span class="wa-human-badge" id="wa-human-badge" style="display:none">👤 Humano activo</span>
+              <button class="wa-release-btn" id="wa-release-btn" style="display:none" onclick="releaseToBot()">🤖 Devolver al bot</button>
+            </div>
+          </div>
+          <div class="wa-messages" id="wa-messages"></div>
+          <div id="wa-templates-panel" class="wa-plantillas" style="display:none">
+            <div class="wa-plantillas-head">
+              <span class="wa-plantillas-titulo">Plantillas</span>
+              <button type="button" class="wa-plantillas-nueva" onclick="toggleWaTemplateForm()">+ Nueva</button>
+            </div>
+            <div id="wa-template-form" class="wa-tmpl-form" style="display:none">
+              <input id="wa-tmpl-name" class="wa-tmpl-campo" placeholder="Nombre de la plantilla">
+              <textarea id="wa-tmpl-body" class="wa-tmpl-campo" rows="2" placeholder="Texto del mensaje..."></textarea>
+              <button type="button" class="wa-tmpl-guardar" onclick="saveWaTemplate()">Guardar</button>
+            </div>
+            <div id="wa-template-list" class="wa-tmpl-lista"></div>
+          </div>
+          <div class="wa-input-row">
+            <button type="button" class="wa-icono-btn" id="wa-plantillas-btn" onclick="waTogglePlantillas()" title="Plantillas" aria-label="Plantillas"><i data-lucide="file-text"></i></button>
+            <textarea class="wa-input" id="wa-input" rows="1" placeholder="Escribí un mensaje" onkeydown="waTeclaInput(event)" oninput="waAjustarAlto(this)"></textarea>
+            <button class="wa-send-btn" id="wa-send-btn" type="button" onclick="sendWaMessage()" title="Enviar (Enter)" aria-label="Enviar"><i data-lucide="send"></i></button>
+          </div>
+          <div class="wa-input-ayuda">Enter para enviar · Shift+Enter para un salto de línea</div>
+        </div>
+      </section>
     </div>
   </div>
 
@@ -2180,6 +2334,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     </div>
 
     <div id="fin-vista-fijos" style="display:none">
+      <div class="fin-kpis" id="fin-fijos-totales"></div>
       <div class="fin-card"><div class="fin-card-title">Gastos e ingresos fijos</div>
         <div id="fin-fijos"></div></div>
     </div>
@@ -2661,6 +2816,20 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     </section>
   </div>
   <!-- ======= FIN RECURSOS HUMANOS PANELES ======= -->
+
+  <!-- ======= SEG LEADS PANEL ======= -->
+  <div id="seg_leads-panel" class="panel">
+    <div class="page-header sl-cabecera">
+      <div>
+        <h1>Seguimiento de leads</h1>
+        <div class="page-date" id="sl-resumen">Cargando...</div>
+      </div>
+      <button class="btn-primary" type="button" onclick="slAbrirNuevo()">Nuevo recordatorio</button>
+    </div>
+    <div class="sl-contadores" id="sl-contadores" aria-label="Llamados por grupo"></div>
+    <div id="sl-lista"></div>
+  </div>
+  <!-- ======= FIN SEG LEADS PANEL ======= -->
 </div>
 
 <!-- Modal: Contactar -->
@@ -3164,6 +3333,81 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 </div>
 <!-- ======= FIN EQUIPO MODALES ======= -->
 
+<!-- ======= SEG LEADS MODALES ======= -->
+<div class="modal-overlay" id="sl-modal-nuevo" onclick="if(event.target===this)slCerrarModal('sl-modal-nuevo')">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="sl-nuevo-titulo">
+    <h3 id="sl-nuevo-titulo">Nuevo recordatorio</h3>
+    <p>A quién llamás, cuándo y por qué. Si el lead ya tenía un recordatorio abierto, ese se cierra.</p>
+    <label class="modal-label" for="sl-nuevo-buscar">Lead</label>
+    <div class="sl-buscador" id="sl-nuevo-buscador">
+      <input type="text" id="sl-nuevo-buscar" placeholder="Buscar por nombre" autocomplete="off" oninput="slBuscarTecla(this.value)">
+      <div class="nc-vinculo-resultados" id="sl-nuevo-resultados"></div>
+    </div>
+    <div class="sl-elegido" id="sl-nuevo-elegido" hidden>
+      <span id="sl-nuevo-lead"></span>
+      <button class="sl-link" type="button" onclick="slCambiarLead()">Cambiar</button>
+    </div>
+    <div class="sl-aviso" id="sl-nuevo-aviso" role="status"></div>
+    <div class="modal-row">
+      <div>
+        <label class="modal-label" for="sl-nuevo-fecha">Fecha</label>
+        <input type="date" id="sl-nuevo-fecha">
+      </div>
+      <div>
+        <label class="modal-label" for="sl-nuevo-hora">Hora (opcional)</label>
+        <input type="time" id="sl-nuevo-hora">
+      </div>
+    </div>
+    <label class="modal-label" for="sl-nuevo-motivo">Motivo</label>
+    <input type="text" id="sl-nuevo-motivo" maxlength="200" placeholder="Qué tenés que hacer o preguntar">
+    <label class="modal-label" for="sl-nuevo-nota">Nota (opcional)</label>
+    <input type="text" id="sl-nuevo-nota" maxlength="300" placeholder="Ej: llamar después de las 18">
+    <div class="sl-error" id="sl-nuevo-error" role="alert"></div>
+    <div class="modal-btns">
+      <button class="btn-ghost" type="button" onclick="slCerrarModal('sl-modal-nuevo')">Cancelar</button>
+      <button class="btn-primary" type="button" onclick="slGuardarNuevo()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="sl-modal-hecho" onclick="if(event.target===this)slCerrarModal('sl-modal-hecho')">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="sl-hecho-titulo">
+    <h3 id="sl-hecho-titulo">Marcar hecho</h3>
+    <p id="sl-hecho-contexto"></p>
+    <label class="modal-label" for="sl-hecho-resultado">Qué pasó en la llamada</label>
+    <textarea id="sl-hecho-resultado" maxlength="2000" placeholder="Ej: no atendió; quedó en mandar el logo"></textarea>
+    <div class="modal-label">Cuándo volvés a llamar</div>
+    <div class="sl-bloque" id="sl-hecho-proximo">
+      <div class="sl-rapidos">
+        <button class="sl-btn" type="button" onclick="slHechoRapido('manana')">Mañana</button>
+        <button class="sl-btn" type="button" onclick="slHechoRapido('semana')">En una semana</button>
+        <button class="sl-btn" type="button" onclick="slHechoRapido('mes')">En un mes</button>
+      </div>
+      <div class="modal-row">
+        <div>
+          <label class="modal-label" for="sl-hecho-fecha">Fecha</label>
+          <input type="date" id="sl-hecho-fecha">
+        </div>
+        <div>
+          <label class="modal-label" for="sl-hecho-hora">Hora (opcional)</label>
+          <input type="time" id="sl-hecho-hora">
+        </div>
+      </div>
+      <label class="modal-label" for="sl-hecho-motivo">Motivo</label>
+      <input type="text" id="sl-hecho-motivo" maxlength="200">
+      <label class="modal-label" for="sl-hecho-nota">Nota (opcional)</label>
+      <input type="text" id="sl-hecho-nota" maxlength="300">
+    </div>
+    <label class="sl-check"><input type="checkbox" id="sl-hecho-sin-volver" onchange="slSinVolver()"> No hace falta volver a llamar</label>
+    <div class="sl-error" id="sl-hecho-error" role="alert"></div>
+    <div class="modal-btns">
+      <button class="btn-ghost" type="button" onclick="slCerrarModal('sl-modal-hecho')">Cancelar</button>
+      <button class="btn-primary" type="button" onclick="slGuardarHecho()">Guardar</button>
+    </div>
+  </div>
+</div>
+<!-- ======= FIN SEG LEADS MODALES ======= -->
+
 <script>
 window._isAdmin = false; // default until /api/me resolves
 // ========== Sidebar mobile ==========
@@ -3204,6 +3448,7 @@ function showPanel(name) {
   if (name === 'activity') loadActivity();
   if (name === 'equipo' || name === 'ausencias') loadEquipo();
   if (name === 'ausencias') eqCargarFlujos();
+  if (name === 'seg_leads') loadSegLeads();
   if (name === 'sdr') loadSdr();
 }
 
@@ -4602,14 +4847,14 @@ async function loadWaTemplates() {
     const templates = await r.json();
     const list = document.getElementById('wa-template-list');
     if (!list) return;
-    if (!templates.length) { list.innerHTML = '<div style="font-size:.72rem;color:#475569;padding:2px 0">Sin plantillas guardadas</div>'; return; }
+    if (!templates.length) { list.innerHTML = '<div class="wa-tmpl-vacio">Sin plantillas guardadas</div>'; return; }
+    // Cada plantilla es una pastilla: tocarla la pega en la caja de respuesta.
+    // El texto va con escJs y no con JSON.stringify: adentro de un onclick
+    // entre comillas dobles, una plantilla con comillas cortaba el atributo.
     list.innerHTML = templates.map(t =>
-      `<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid #1a2234">
-        <span style="font-size:.78rem;color:#94a3b8;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-right:8px">${esc(t.name)}</span>
-        <div style="display:flex;gap:4px;flex-shrink:0">
-          <button onclick="useWaTemplate(${JSON.stringify(t.body)})" style="font-size:.7rem;background:#1e293b;border:none;color:#60a5fa;padding:2px 8px;border-radius:4px;cursor:pointer">Usar</button>
-          <button onclick="deleteWaTemplate(${t.id})" style="font-size:.7rem;background:#1e293b;border:none;color:#f87171;padding:2px 8px;border-radius:4px;cursor:pointer">✕</button>
-        </div>
+      `<div class="wa-tmpl-item">
+        <button type="button" class="wa-tmpl-usar" onclick="useWaTemplate(${escJs(t.body)})" title="${esc(t.body)}">${esc(t.name)}</button>
+        <button type="button" class="wa-tmpl-borrar" onclick="deleteWaTemplate(${Number(t.id)})" title="Borrar plantilla" aria-label="Borrar plantilla">✕</button>
       </div>`
     ).join('');
   } catch(e) { console.error('loadWaTemplates', e); }
@@ -4634,7 +4879,7 @@ async function saveWaTemplate() {
 
 function useWaTemplate(body) {
   const input = document.getElementById('wa-input');
-  if (input) { input.value = body; input.focus(); }
+  if (input) { input.value = body; waAjustarAlto(input); input.focus(); }
 }
 
 async function deleteWaTemplate(id) {
@@ -4643,20 +4888,56 @@ async function deleteWaTemplate(id) {
 }
 
 // ========== WhatsApp panel ==========
+// Bandeja estilo app de chat (14/9, pedido de Juan): lista de chats a la
+// izquierda con buscador, último mensaje, hora y no leídos; la conversación a la
+// derecha con burbujas, hora y un separador por día; la caja de respuesta fija
+// abajo (Enter envía, Shift+Enter baja de línea). En el celular es una sola
+// columna: la lista, y al tocar un chat, el chat con un botón para volver.
+//
+// Lo que se manda y cómo no cambió: son las mismas rutas /api/wa/* contra el
+// mismo bot. Esto es cómo se ve y cómo se usa, nada más.
 let waLoaded = false;
 let waLeads = [];
 let selectedPhone = null;
 let waPolling = null;
+let waTicks = 0;
+let waFiltro = '';
+// El último mensaje de cada chat, para la vista previa de la lista. La lista de
+// leads del bot no lo trae: se completa pidiendo la conversación de los chats
+// de arriba, y cada vez que se abre uno.
+let waUltimos = {};
+let waPreviasCorriendo = false;
+// Lo último que se dibujó en la conversación. Si el refresco trae lo mismo no se
+// redibuja: redibujar cada 5 segundos cortaba la nota de voz que estabas
+// escuchando y te movía el scroll mientras leías para arriba.
+let waFirmaMensajes = '';
+// El teléfono que pidió el link del mail de aviso (/?panel=wa&chat=598...).
+let waChatPendiente = null;
+// No leídos: la última actividad de cada chat que viste, en este navegador.
+const WA_CLAVE_VISTOS = 'crm-wa-vistos';
+let waVistos = null;
+
+const WA_ESTADOS = {
+  NEW: 'Nuevo', SCORED: 'Calificado', SCHEDULED: 'Agendado', MEETING_SENT: 'Link enviado',
+  NURTURE: 'Seguimiento', DISQUALIFIED: 'Descartado', HUMAN_QUEUED: 'Espera humano',
+};
 
 function waStateBadgeClass(state) {
   if (!state) return 'wa-state-NEW';
-  if (state === 'SCHEDULED') return 'wa-state-SCHEDULED';
+  if (state === 'SCHEDULED' || state === 'MEETING_SENT') return 'wa-state-SCHEDULED';
   if (state === 'SCORED') return 'wa-state-SCORED';
   if (state === 'NURTURE') return 'wa-state-NURTURE';
   if (state === 'DISQUALIFIED') return 'wa-state-DISQUALIFIED';
-  if (state === 'HUMAN_QUEUED') return 'wa-state-NURTURE';
+  if (state === 'HUMAN_QUEUED') return 'wa-state-QUAL';
   if (state.startsWith('QUAL')) return 'wa-state-QUAL';
   return 'wa-state-NEW';
+}
+
+function waEstadoTexto(state) {
+  if (!state) return 'Nuevo';
+  if (WA_ESTADOS[state]) return WA_ESTADOS[state];
+  if (String(state).startsWith('QUAL')) return 'Calificando';
+  return String(state);
 }
 
 function fmtWaTime(ts) {
@@ -4667,49 +4948,313 @@ function fmtWaTime(ts) {
   } catch(e) { return ts; }
 }
 
+function waFecha(ts) {
+  if (!ts) return null;
+  const d = new Date(ts);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+function waMismoDia(a, b) {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+function waHora(d) {
+  return d.toLocaleTimeString('es-UY', {hour: '2-digit', minute: '2-digit'});
+}
+
+function waMayuscula(s) {
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+}
+
+// La hora de la lista, como en el celular: la hora si es de hoy, "Ayer", el día
+// de la semana si es de estos días, y la fecha si es más vieja.
+function waHoraLista(ts, hoy) {
+  const d = waFecha(ts);
+  if (!d) return '';
+  hoy = hoy || new Date();
+  if (waMismoDia(d, hoy)) return waHora(d);
+  const ayer = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - 1);
+  if (waMismoDia(d, ayer)) return 'Ayer';
+  if (d < hoy && hoy - d < 6 * 86400000) return waMayuscula(d.toLocaleDateString('es-UY', {weekday: 'long'}));
+  return d.toLocaleDateString('es-UY', {day: '2-digit', month: '2-digit', year: '2-digit'});
+}
+
+function waEtiquetaDia(d, hoy) {
+  hoy = hoy || new Date();
+  if (waMismoDia(d, hoy)) return 'Hoy';
+  const ayer = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - 1);
+  if (waMismoDia(d, ayer)) return 'Ayer';
+  const opciones = {weekday: 'long', day: 'numeric', month: 'long'};
+  if (d.getFullYear() !== hoy.getFullYear()) opciones.year = 'numeric';
+  return waMayuscula(d.toLocaleDateString('es-UY', opciones));
+}
+
+// Las iniciales del contacto para el círculo. Si no hay nombre (o el nombre es
+// el mismo teléfono), los dos últimos dígitos.
+function waIniciales(nombre, phone) {
+  const palabras = String(nombre || '').split(' ')
+    .map(p => p.replace(/[^A-Za-zÀ-ÿ0-9]/g, '')).filter(Boolean);
+  if (!palabras.length || /^[0-9]+$/.test(palabras[0])) {
+    return String(phone || '').replace(/[^0-9]/g, '').slice(-2) || '?';
+  }
+  const primera = palabras[0].charAt(0);
+  const ultima = palabras.length > 1 ? palabras[palabras.length - 1].charAt(0) : '';
+  return (primera + ultima).toUpperCase();
+}
+
+function waSale(m) {
+  return !!m && (m.direction === 'out' || m.direction === 'outbound');
+}
+
+function waLeerVistos() {
+  try { return JSON.parse(localStorage.getItem(WA_CLAVE_VISTOS) || 'null'); } catch (e) { return null; }
+}
+
+function waGuardarVistos() {
+  try { localStorage.setItem(WA_CLAVE_VISTOS, JSON.stringify(waVistos || {})); } catch (e) {}
+}
+
+function waMarcarVisto(phone, ts) {
+  if (!phone) return;
+  if (!waVistos) waVistos = {};
+  waVistos[phone] = ts || new Date().toISOString();
+  waGuardarVistos();
+}
+
+// Hay algo nuevo si el chat tuvo actividad después de la última vez que lo
+// abriste en este navegador. La primera vez que se abre la bandeja se toma todo
+// como visto: si no, arrancaría con doscientos chats "sin leer".
+function waNoLeido(lead) {
+  if (!lead || lead.phone === selectedPhone) return false;
+  const actividad = waFecha(lead.last_activity);
+  if (!actividad) return false;
+  const ultimo = waUltimos[lead.phone];
+  if (ultimo && ultimo.dir === 'out' && ultimo.actividad === lead.last_activity) return false;
+  const visto = waVistos && waVistos[lead.phone] ? waFecha(waVistos[lead.phone]) : null;
+  return !visto || actividad > visto;
+}
+
+function waOrdenados() {
+  return waLeads.slice().sort((a, b) => {
+    const fa = waFecha(a.last_activity), fb = waFecha(b.last_activity);
+    return (fb ? fb.getTime() : 0) - (fa ? fa.getTime() : 0);
+  });
+}
+
+function waVistaPrevia(lead) {
+  const u = waUltimos[lead.phone];
+  if (u && u.texto) return (u.dir === 'out' ? '✓ ' : '') + u.texto;
+  if (u) return 'Sin mensajes';
+  return lead.name ? String(lead.phone || '') : '';
+}
+
+function waVacio(icono, titulo, detalle) {
+  return `<div class="wa-vacio"><i data-lucide="${icono}" class="wa-vacio-icono"></i>`
+    + `<div class="wa-vacio-titulo">${esc(titulo)}</div>`
+    + (detalle ? `<div class="wa-vacio-detalle">${esc(detalle)}</div>` : '')
+    + `</div>`;
+}
+
+function waIconos(nodo) {
+  if (nodo && typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons({nodes: [nodo]});
+}
+
+// Busca por nombre, o por teléfono con los dígitos que escribas: "099 123"
+// encuentra a +598 99 123 456.
+function waCoincide(lead, q) {
+  if (!q) return true;
+  const texto = q.toLowerCase();
+  if (String(lead.name || '').toLowerCase().includes(texto)) return true;
+  let digitos = texto.replace(/[^0-9]/g, '');
+  if (digitos.startsWith('0')) digitos = digitos.slice(1);
+  return !!digitos && String(lead.phone || '').replace(/[^0-9]/g, '').includes(digitos);
+}
+
+function waItemLista(lead) {
+  const nombre = lead.name || lead.phone;
+  const nuevo = waNoLeido(lead);
+  return `<div class="wa-lead-item${lead.phone === selectedPhone ? ' selected' : ''}${nuevo ? ' wa-no-leido' : ''}" id="wa-lead-${esc(lead.phone)}" onclick="selectWaLead(${escJs(lead.phone)},${escJs(nombre)})">
+    <div class="wa-avatar">${esc(waIniciales(lead.name, lead.phone))}</div>
+    <div class="wa-lead-body">
+      <div class="wa-lead-top">
+        <span class="wa-lead-name">${esc(nombre)}</span>
+        <span class="wa-lead-time">${esc(waHoraLista(lead.last_activity))}</span>
+      </div>
+      <div class="wa-lead-bottom">
+        <span class="wa-lead-preview">${esc(waVistaPrevia(lead))}</span>
+        ${nuevo ? '<span class="wa-unread" title="Mensajes nuevos"></span>' : ''}
+      </div>
+      <div class="wa-lead-meta"><span class="wa-state-badge ${waStateBadgeClass(lead.state)}" title="${esc(lead.state || 'NEW')}">${esc(waEstadoTexto(lead.state))}</span></div>
+    </div>
+  </div>`;
+}
+
+function waPintarLista() {
+  const listEl = document.getElementById('wa-lead-list');
+  if (!listEl) return;
+  const contador = document.getElementById('wa-count');
+  if (contador) contador.textContent = waLeads.length ? String(waLeads.length) : '';
+  if (!waLeads.length) {
+    listEl.innerHTML = waVacio('message-circle', 'Todavía no hay conversaciones',
+      'Cuando alguien le escriba al WhatsApp, aparece acá.');
+  } else {
+    const visibles = waOrdenados().filter(l => waCoincide(l, waFiltro.trim()));
+    listEl.innerHTML = visibles.length
+      ? visibles.map(waItemLista).join('')
+      : waVacio('search', 'Ningún chat coincide con la búsqueda',
+          'Probá con otro nombre o con parte del teléfono.');
+  }
+  waIconos(listEl);
+}
+
+function waFiltrar(valor) {
+  waFiltro = String(valor == null ? '' : valor);
+  waPintarLista();
+}
+
 async function loadWaLeads() {
   waLoaded = true;
+  waIniciarRefresco();
   const listEl = document.getElementById('wa-lead-list');
-  const r = await fetch('/api/wa/leads');
-  const d = await r.json();
-  if (d.error) {
-    listEl.innerHTML = `<div class="wa-error-banner">${esc(d.error)}</div>`;
+  let d;
+  try {
+    const r = await fetch('/api/wa/leads');
+    d = await r.json();
+  } catch (e) {
+    d = {error: 'No se pudo conectar con el CRM. Revisá la conexión.'};
+  }
+  if (!Array.isArray(d)) {
+    // Si ya había una bandeja dibujada, un refresco que falla no la borra.
+    if (!waLeads.length && listEl) {
+      listEl.innerHTML = `<div class="wa-error-banner">${esc((d && d.error) || 'No se pudo cargar la bandeja')}</div>`;
+    }
     return;
   }
   waLeads = d;
-  if (!d.length) { listEl.innerHTML = '<div class="wa-no-leads">No hay leads en el bot</div>'; return; }
-  listEl.innerHTML = d.map(lead => `
-    <div class="wa-lead-item" id="wa-lead-${esc(lead.phone)}" onclick="selectWaLead(${escJs(lead.phone)},${escJs(lead.name||lead.phone)})">
-      <div class="wa-lead-name">${esc(lead.name || lead.phone)}</div>
-      <div class="wa-lead-meta">
-        <span class="wa-state-badge ${waStateBadgeClass(lead.state)}">${esc(lead.state||'NEW')}</span>
-        <span class="wa-lead-time">${fmtWaTime(lead.last_activity)}</span>
-      </div>
-    </div>`).join('');
+  if (waVistos === null) {
+    waVistos = waLeerVistos();
+    if (!waVistos) {
+      waVistos = {};
+      d.forEach(l => { if (l.phone && l.last_activity) waVistos[l.phone] = l.last_activity; });
+      waGuardarVistos();
+    }
+  }
+  // Lo que llegó al chat que tenés abierto ya lo estás viendo.
+  const abierto = selectedPhone && d.find(l => l.phone === selectedPhone);
+  if (abierto) waMarcarVisto(abierto.phone, abierto.last_activity);
+  waPintarLista();
+  if (waChatPendiente) {
+    const buscado = waChatPendiente;
+    waChatPendiente = null;
+    const lead = d.find(l => String(l.phone || '').replace(/[^0-9]/g, '') === buscado);
+    if (lead) selectWaLead(lead.phone, lead.name || lead.phone);
+  }
+  waCargarPrevias();
+}
+
+// Un solo reloj para la bandeja, y solo mientras estás en WhatsApp: la
+// conversación abierta cada 5 segundos y la lista cada 20. Arranca la primera
+// vez que se abre el panel, nunca al cargar la página.
+function waIniciarRefresco() {
+  if (waPolling) return;
+  waPolling = setInterval(() => {
+    if (activePanel !== 'wa') return;
+    if (typeof document !== 'undefined' && document.hidden) return;
+    waTicks++;
+    if (selectedPhone) loadWaMessages(selectedPhone);
+    if (waTicks % 4 === 0) loadWaLeads();
+  }, 5000);
+}
+
+function waGuardarUltimo(phone, mensajes, actividad) {
+  const u = mensajes.length ? mensajes[mensajes.length - 1] : null;
+  let texto = u ? String(u.content || '') : '';
+  if (u && !texto && u.media && u.media.length) {
+    texto = waMayuscula(NOMBRE_MEDIO[u.media[0].tipo] || 'un archivo');
+  }
+  waUltimos[phone] = {texto: texto, dir: u ? (waSale(u) ? 'out' : 'in') : '', actividad: actividad || ''};
+}
+
+// La vista previa de los chats de arriba de la lista. De a uno y con tope, para
+// no llenar al bot de pedidos: los que no cambiaron no se vuelven a pedir.
+async function waCargarPrevias() {
+  if (waPreviasCorriendo) return;
+  waPreviasCorriendo = true;
+  let hubo = false;
+  try {
+    const pendientes = waOrdenados().slice(0, 30)
+      .filter(l => l.phone && (!waUltimos[l.phone] || waUltimos[l.phone].actividad !== (l.last_activity || '')))
+      .slice(0, 10);
+    for (const lead of pendientes) {
+      if (activePanel !== 'wa') break;
+      let d;
+      try {
+        const r = await fetch('/api/wa/leads/' + encodeURIComponent(lead.phone) + '/messages');
+        d = await r.json();
+      } catch (e) { break; }
+      if (!Array.isArray(d)) break;
+      waGuardarUltimo(lead.phone, d, lead.last_activity);
+      hubo = true;
+    }
+  } finally {
+    waPreviasCorriendo = false;
+  }
+  if (hubo) waPintarLista();
 }
 
 async function selectWaLead(phone, name) {
   selectedPhone = phone;
+  waFirmaMensajes = '';
+  const lead = waLeads.find(l => l.phone === phone);
+  waMarcarVisto(phone, lead && lead.last_activity);
   document.querySelectorAll('.wa-lead-item').forEach(el => el.classList.remove('selected'));
   const item = document.getElementById('wa-lead-' + phone);
-  if (item) item.classList.add('selected');
+  if (item) {
+    item.classList.add('selected');
+    item.classList.remove('wa-no-leido');
+    const punto = item.querySelector('.wa-unread');
+    if (punto) punto.remove();
+  }
+  // En el celular esto cambia la lista por el chat.
+  const contenedor = document.getElementById('wa-container');
+  if (contenedor) contenedor.classList.add('wa-en-chat');
 
   document.getElementById('wa-empty-state').style.display = 'none';
   const content = document.getElementById('wa-chat-content');
   content.style.display = 'flex';
   document.getElementById('wa-chat-name').textContent = name;
   document.getElementById('wa-chat-phone').textContent = phone;
-  document.getElementById('wa-messages').innerHTML = '<div style="color:#334155;text-align:center;padding:20px">Cargando...</div>';
+  const avatar = document.getElementById('wa-chat-avatar');
+  if (avatar) avatar.textContent = waIniciales(lead ? lead.name : name, phone);
+  const estado = document.getElementById('wa-chat-estado');
+  if (estado) {
+    estado.className = 'wa-state-badge ' + waStateBadgeClass(lead && lead.state);
+    estado.textContent = lead ? waEstadoTexto(lead.state) : '';
+  }
+  document.getElementById('wa-messages').innerHTML = '<div class="wa-cargando">Cargando conversación…</div>';
 
-  const lead = waLeads.find(l => l.phone === phone);
   const isHuman = lead && (lead.state === 'HUMAN_QUEUED');
   document.getElementById('wa-human-badge').style.display = isHuman ? 'inline-flex' : 'none';
   document.getElementById('wa-release-btn').style.display = isHuman ? 'inline-flex' : 'none';
   pintarSwitchBot(lead);
+  waIniciarRefresco();
 
-  await loadWaMessages(phone);
-  if (waPolling) clearInterval(waPolling);
-  waPolling = setInterval(() => { if (selectedPhone === phone) loadWaMessages(phone); }, 5000);
+  await loadWaMessages(phone, true);
+  const input = document.getElementById('wa-input');
+  if (input && selectedPhone === phone && window.innerWidth > 768) input.focus();
+}
+
+// El botón de volver del celular: de la conversación a la lista.
+function waVolver() {
+  const contenedor = document.getElementById('wa-container');
+  if (contenedor) contenedor.classList.remove('wa-en-chat');
+  selectedPhone = null;
+  waFirmaMensajes = '';
+  const content = document.getElementById('wa-chat-content');
+  if (content) content.style.display = 'none';
+  const vacio = document.getElementById('wa-empty-state');
+  if (vacio) vacio.style.display = '';
+  waPintarLista();
 }
 
 // El interruptor del bot, por lead. Son dos cosas distintas y las dos se
@@ -4773,21 +5318,74 @@ async function releaseToBot() {
 
 /*WA_MEDIOS_JS*/
 
-async function loadWaMessages(phone) {
-  const r = await fetch('/api/wa/leads/' + encodeURIComponent(phone) + '/messages');
-  const d = await r.json();
-  if (d.error) {
-    document.getElementById('wa-messages').innerHTML = `<div style="color:#f87171;padding:16px">${esc(d.error)}</div>`;
+// La conversación: una burbuja por mensaje (las que entran a la izquierda, las
+// que salen a la derecha), con su hora adentro y un separador cada vez que
+// cambia el día. `hoy` existe para poder probarlo con una fecha fija.
+function waPintarMensajes(mensajes, hoy) {
+  if (!mensajes.length) {
+    return waVacio('message-square', 'Sin mensajes todavía',
+      'Cuando haya mensajes en esta conversación, aparecen acá.');
+  }
+  let diaAnterior = '';
+  return mensajes.map(m => {
+    const fecha = waFecha(m.created_at);
+    let separador = '';
+    if (fecha) {
+      const clave = fecha.getFullYear() + '-' + fecha.getMonth() + '-' + fecha.getDate();
+      if (clave !== diaAnterior) {
+        diaAnterior = clave;
+        separador = `<div class="wa-dia"><span>${esc(waEtiquetaDia(fecha, hoy))}</span></div>`;
+      }
+    }
+    const sale = waSale(m);
+    const texto = m.content ? `<span class="wa-texto">${esc(m.content)}</span>` : '';
+    const hora = fecha ? `<span class="wa-bubble-time">${esc(waHora(fecha))}</span>` : '';
+    return separador
+      + `<div class="wa-fila ${sale ? 'wa-fila-out' : 'wa-fila-in'}">`
+      + `<div class="wa-bubble ${sale ? 'wa-bubble-out' : 'wa-bubble-in'}">${mediosDeMensaje(m)}${texto}${hora}</div>`
+      + `</div>`;
+  }).join('');
+}
+
+function waAlFinal(el) {
+  if (!el) return;
+  el.scrollTop = el.scrollHeight;
+  // Las fotos terminan de cargar después y empujan la conversación para arriba.
+  setTimeout(() => { el.scrollTop = el.scrollHeight; }, 80);
+  setTimeout(() => { el.scrollTop = el.scrollHeight; }, 500);
+}
+
+async function loadWaMessages(phone, alFinal) {
+  let d;
+  try {
+    const r = await fetch('/api/wa/leads/' + encodeURIComponent(phone) + '/messages');
+    d = await r.json();
+  } catch (e) {
+    d = {error: 'No se pudo cargar la conversación'};
+  }
+  // Cambiaste de chat mientras esta cargaba: no pisar el que estás mirando.
+  if (phone !== selectedPhone) return;
+  const el = document.getElementById('wa-messages');
+  if (!Array.isArray(d)) {
+    if (!waFirmaMensajes) {
+      el.innerHTML = `<div class="wa-error-banner">${esc((d && d.error) || 'No se pudo cargar la conversación')}</div>`;
+    }
     return;
   }
-  const el = document.getElementById('wa-messages');
-  if (!d.length) { el.innerHTML = '<div style="color:#334155;text-align:center;padding:20px">Sin mensajes</div>'; return; }
-  el.innerHTML = d.map((m, i) => `
-    <div style="display:flex;flex-direction:column;align-items:${m.direction==='out'?'flex-end':'flex-start'}">
-      <div class="wa-bubble ${m.direction==='out'?'wa-bubble-out':'wa-bubble-in'}">${mediosDeMensaje(m)}${esc(m.content||'')}</div>
-      <div class="wa-bubble-time">${fmtWaTime(m.created_at)}</div>
-    </div>`).join('');
-  setTimeout(() => { el.scrollTop = el.scrollHeight; }, 50);
+  const ultimo = d.length ? d[d.length - 1] : null;
+  const firma = d.length + '|' + (ultimo ? (ultimo.id || '') + '|' + (ultimo.created_at || '') : '');
+  if (firma === waFirmaMensajes && !alFinal) return;
+  // Solo se baja sola si ya estabas abajo: si subiste a leer algo, no te saca.
+  const cercaDelFinal = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+  const primeraVez = !waFirmaMensajes;
+  waFirmaMensajes = firma;
+
+  const lead = waLeads.find(l => l.phone === phone);
+  waGuardarUltimo(phone, d, lead && lead.last_activity);
+  el.innerHTML = waPintarMensajes(d);
+  waIconos(el);
+  if (alFinal || primeraVez || cercaDelFinal) waAlFinal(el);
+  waPintarLista();
 }
 
 async function sendWaMessage() {
@@ -4795,12 +5393,68 @@ async function sendWaMessage() {
   const input = document.getElementById('wa-input');
   const text = input.value.trim();
   if (!text) return;
+  const phone = selectedPhone;
+  const boton = document.getElementById('wa-send-btn');
   input.value = '';
-  const r = await fetch('/api/wa/send', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({phone:selectedPhone, text})});
-  const d = await r.json();
-  if (!d.ok) { alert('Error enviando mensaje: '+(d.error||'Error desconocido')); input.value = text; return; }
-  await loadWaMessages(selectedPhone);
+  waAjustarAlto(input);
+  if (boton) boton.disabled = true;
+  try {
+    const r = await fetch('/api/wa/send', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({phone:phone, text})});
+    const d = await r.json();
+    if (!d.ok) {
+      alert('Error enviando mensaje: '+(d.error||'Error desconocido'));
+      input.value = text;
+      waAjustarAlto(input);
+      return;
+    }
+    waMarcarVisto(phone);
+    if (phone === selectedPhone) await loadWaMessages(phone, true);
+  } catch (e) {
+    alert('Error enviando mensaje: no se pudo conectar');
+    input.value = text;
+    waAjustarAlto(input);
+  } finally {
+    if (boton) boton.disabled = false;
+  }
 }
+
+// Enter manda y Shift+Enter baja de línea, como en WhatsApp Web. `isComposing`
+// es el Enter que confirma una tilde o un emoji del teclado: ese no manda.
+function waTeclaInput(e) {
+  if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+    e.preventDefault();
+    sendWaMessage();
+  }
+}
+
+// La caja crece con el texto hasta unas seis líneas; después scrollea.
+function waAjustarAlto(el) {
+  if (!el || !el.style) return;
+  el.style.height = 'auto';
+  if (el.scrollHeight) el.style.height = Math.min(el.scrollHeight + 2, 140) + 'px';
+  else el.style.height = '';
+}
+
+function waTogglePlantillas() {
+  const panel = document.getElementById('wa-templates-panel');
+  if (!panel) return;
+  const abrir = panel.style.display === 'none';
+  panel.style.display = abrir ? 'block' : 'none';
+  const boton = document.getElementById('wa-plantillas-btn');
+  if (boton) boton.classList.toggle('activo', abrir);
+  if (abrir) loadWaTemplates();
+}
+
+// El link del mail de aviso abre directo la conversación: /?panel=wa&chat=598...
+// Sin `location` (los tests de node) no hace nada.
+(function () {
+  if (typeof location === 'undefined' || !location.search) return;
+  let q;
+  try { q = new URLSearchParams(location.search); } catch (e) { return; }
+  if (q.get('panel') !== 'wa') return;
+  waChatPendiente = (q.get('chat') || '').replace(/[^0-9]/g, '') || null;
+  setTimeout(() => { try { showPanel('wa'); } catch (e) {} }, 0);
+})();
 
 // ========== Calendar panel ==========
 let calLoaded = false;
@@ -5714,6 +6368,7 @@ function _notionClientCardHtml(c, arrastrable) {
     ${meta ? `<div class="kanban-card-meta">${meta}</div>` : ''}
     ${c.descripcion ? `<div class="kanban-card-who">${esc(c.descripcion)}</div>` : ''}
     ${_ncVinculoHtml(c)}
+    ${slBotonNotionHtml(c)}
   </div>`;
 }
 
@@ -6624,20 +7279,20 @@ function _showScoreBreakdown(event, el) {
 
 // ── Mobile navigation ─────────────────────────────────────────────────────────
 // El mismo orden que el menu de la izquierda (Juan, 14/9).
-const NAV_PRIORITY = ['cal','meta','finanzas','simulador','wa','notion_clients','clientes','projects','tasks','activity','equipo','ausencias','cola','metrics'];
+const NAV_PRIORITY = ['cal','meta','finanzas','simulador','seg_leads','wa','notion_clients','clientes','projects','tasks','activity','equipo','ausencias','cola','metrics'];
 const NAV_ICONS = {
   cola:'inbox',meta:'instagram',cal:'calendar',
   tasks:'check-square',pipeline:'trending-up',clientes:'users',
   wa:'message-circle',metrics:'bar-chart-2',activity:'clock',projects:'target',
   notion_clients:'handshake',finanzas:'wallet',simulador:'calculator',equipo:'network',
-  ausencias:'calendar-clock'
+  ausencias:'calendar-clock',seg_leads:'phone-call'
 };
 const NAV_LABELS = {
   cola:'Outbound',meta:'Meta',cal:'Agenda',
   tasks:'Tareas',pipeline:'Pipeline',clientes:'Clientes',
   wa:'WA',metrics:'Intel. comercial',activity:'Actividad',projects:'Proyectos',
   notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador',equipo:'Organigrama',
-  ausencias:'Ausencias'
+  ausencias:'Ausencias',seg_leads:'Seguimiento'
 };
 let _mobileNavOverflow = [];
 
@@ -6717,7 +7372,7 @@ function closeMasSheet() {
 }
 
 // ── Panel access control ──────────────────────────────────────────────────────
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','equipo','ausencias'];
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','equipo','ausencias','seg_leads'];
 (async () => {
   try {
     const r = await fetch('/api/me');
@@ -6806,7 +7461,7 @@ function closeClientPanel() {
 
 async function _cpLoadAll() {
   if (!_cpClientId) return;
-  const [leadRes, meetRes, budgetRes, demoRes, attBudgetRes, attDemoRes, eventsRes, callsRes] = await Promise.allSettled([
+  const [leadRes, meetRes, budgetRes, demoRes, attBudgetRes, attDemoRes, eventsRes, callsRes, segRes] = await Promise.allSettled([
     fetch('/api/leads/' + _cpClientId).then(r => r.json()),
     fetch('/api/calendar/clients/' + _cpClientId + '/meetings').then(r => r.json()),
     fetch('/api/leads/' + _cpClientId + '/budget').then(r => r.json()),
@@ -6815,6 +7470,9 @@ async function _cpLoadAll() {
     fetch('/api/leads/' + _cpClientId + '/attachments?section=demo').then(r => r.json()),
     fetch('/api/leads/' + _cpClientId + '/events').then(r => r.json()),
     fetch('/api/leads/' + _cpClientId + '/calls').then(r => r.json()),
+    // Seguimiento de leads: el recordatorio abierto y el historial de llamados.
+    // Sin el panel da 403 y la seccion no se muestra.
+    fetch('/api/seg-leads/lead/' + _cpClientId).then(r => r.ok ? r.json() : null),
   ]);
   _cpData.lead    = leadRes.status === 'fulfilled' ? leadRes.value : {};
   _cpData.meetings = meetRes.status === 'fulfilled' && Array.isArray(meetRes.value) ? meetRes.value : [];
@@ -6824,6 +7482,7 @@ async function _cpLoadAll() {
   _cpData.attDemo   = attDemoRes.status === 'fulfilled' && Array.isArray(attDemoRes.value) ? attDemoRes.value : [];
   _cpData.events    = eventsRes.status === 'fulfilled' && Array.isArray(eventsRes.value) ? eventsRes.value : [];
   _cpData.calls     = callsRes.status === 'fulfilled' && Array.isArray(callsRes.value) ? callsRes.value : [];
+  _cpData.seg       = segRes.status === 'fulfilled' ? segRes.value : null;
 
   if (_cpData.lead && _cpData.lead.phone) {
     try {
@@ -7049,7 +7708,7 @@ function _cpRenderCalls() {
       </div>
     </div>`).join('')}
   </div>` : '<div style="padding:12px 0;font-size:.82rem;color:var(--texto-debil)">Sin llamadas registradas</div>';
-  return `<div class="cp-section">
+  return slFichaHtml(_cpData.seg) + `<div class="cp-section">
     <div class="cp-section-title">Registrar llamada</div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <select id="call-outcome" style="background:var(--fondo);border:1px solid var(--borde);color:var(--texto);padding:6px 10px;border-radius:6px;font-size:.8rem">
@@ -8431,30 +9090,82 @@ async function guardarFijo() {
   loadFijos();
 }
 
+// Si ese fijo corre en el mes: `desde` y `hasta` son 'YYYY-MM', y comparados
+// como texto ordenan igual que las fechas.
+function _finFijoVigente(f, mes) {
+  return (!f.desde || f.desde <= mes) && (!f.hasta || f.hasta >= mes);
+}
+
+// Los totales de la vista Fijos. Todos los fijos son mensuales (tienen dia del
+// mes, no hay otra frecuencia), asi que la suma ya es "por mes".
+// Cuentan solo los activos que corren en el mes en curso: uno apagado, uno que
+// ya termino o uno que todavia no empezo no genera plata este mes.
+// Todo en USD con el monto_usd que calculo el servidor: el panel no convierte.
+// Un fijo en pesos sin tipo de cambio usable llega con monto_usd null y queda
+// afuera, contado en sinCotizar, en vez de sumarse a un valor inventado.
+// Es el liquido, sin IVA: igual que el numero grande de los KPIs de Movimientos.
+function _finTotalesFijos(fijos, mes) {
+  const t = {ingresos: 0, egresos: 0, resultado: 0, sinCotizar: 0, contados: 0};
+  (fijos || []).forEach(f => {
+    if (!f.activo || !_finFijoVigente(f, mes)) return;
+    if (f.tipo !== 'ingreso' && f.tipo !== 'egreso') return;
+    if (f.monto_usd === null || f.monto_usd === undefined) { t.sinCotizar += 1; return; }
+    if (f.tipo === 'ingreso') t.ingresos += f.monto_usd;
+    else t.egresos += f.monto_usd;
+    t.contados += 1;
+  });
+  const redondear = v => Math.round(v * 100) / 100;
+  t.ingresos = redondear(t.ingresos);
+  t.egresos = redondear(t.egresos);
+  t.resultado = redondear(t.ingresos - t.egresos);
+  return t;
+}
+
+function _finKpisFijos(t) {
+  const nota = '<div class="fin-kpi-var">por mes, en USD sin IVA</div>';
+  return `
+    <div class="fin-kpi">
+      <div class="fin-kpi-label">Total egresos fijos</div>
+      <div class="fin-kpi-valor fin-rojo">${_finUsd(t.egresos)}</div>
+      ${nota}
+    </div>
+    <div class="fin-kpi">
+      <div class="fin-kpi-label">Total ingresos fijos</div>
+      <div class="fin-kpi-valor fin-verde">${_finUsd(t.ingresos)}</div>
+      ${nota}
+    </div>
+    <div class="fin-kpi">
+      <div class="fin-kpi-label">Resultado de los fijos</div>
+      <div class="fin-kpi-valor ${t.resultado >= 0 ? 'fin-verde' : 'fin-rojo'}">${_finUsd(t.resultado)}</div>
+      <div class="fin-kpi-var">ingresos menos egresos</div>
+    </div>`;
+}
+
 async function loadFijos() {
   const cuerpo = document.getElementById('fin-fijos');
+  const totalesEl = document.getElementById('fin-fijos-totales');
   const r = await fetch('/api/finanzas/recurrentes');
   if (!r.ok) {
+    // Sin datos no hay totales: dejar los de antes seria mostrar numeros viejos.
+    totalesEl.innerHTML = '';
     cuerpo.innerHTML = '<div style="color:#f87171;padding:16px">No se pudieron cargar los fijos</div>';
     return;
   }
   const fijos = await r.json();
 
-  // El total sale del monto_usd que ya calculó el servidor: el panel no
-  // convierte. Un fijo en pesos sin tipo de cambio usable llega con
-  // monto_usd null y queda afuera del total, no adentro a un valor inventado.
-  const activos = fijos.filter(f => f.activo && f.tipo === 'egreso');
-  const sinCotizar = activos.filter(f => f.monto_usd === null || f.monto_usd === undefined).length;
-  const mensual = activos.reduce((suma, f) => suma + (f.monto_usd || 0), 0);
+  const mes = _finMeses.mes_actual || _finMesActual();
+  const totales = _finTotalesFijos(fijos, mes);
+  const sinCotizar = totales.sinCotizar;
+  totalesEl.innerHTML = _finKpisFijos(totales);
 
   const encabezado = `
     <div class="fin-toolbar">
-      <div class="fin-kpi-var">Egresos fijos activos: <strong>${_finUsd(mensual)}</strong> por mes</div>
+      <div class="fin-kpi-var">Cuentan los fijos activos que corren este mes.</div>
       <button class="btn-primary" style="margin-left:auto" onclick="abrirFijo()">
         <i data-lucide="plus" class="nav-icon"></i> Fijo
       </button>
       ${sinCotizar > 0 ? `<div class="fin-rojo" style="width:100%;font-size:.75rem">
-        ${sinCotizar} fijo${sinCotizar > 1 ? 's' : ''} en pesos sin tipo de cambio cargado, afuera de este total</div>` : ''}
+        ${sinCotizar} fijo${sinCotizar > 1 ? 's' : ''} en pesos sin tipo de cambio cargado, afuera de los totales</div>` : ''}
     </div>`;
 
   if (!fijos.length) {
@@ -8470,7 +9181,7 @@ async function loadFijos() {
     <div class="table-row no-cb" style="${f.activo ? '' : 'opacity:.5'}">
       <div style="flex:1">
         <div class="biz-name">${esc(f.concepto)}</div>
-        <div class="fin-kpi-var">${esc(f.categoria.replace(/_/g, ' '))} · día ${f.dia_del_mes} · desde ${f.desde}${f.hasta ? ' hasta ' + f.hasta : ''}${f.facturado ? ' · con IVA' : ''}${f.activo ? '' : ' · apagado'}</div>
+        <div class="fin-kpi-var">${esc(f.categoria.replace(/_/g, ' '))} · día ${f.dia_del_mes} · desde ${f.desde}${f.hasta ? ' hasta ' + f.hasta : ''}${f.facturado ? ' · con IVA' : ''}${f.activo ? (_finFijoVigente(f, mes) ? '' : ' · no corre este mes') : ' · apagado'}</div>
       </div>
       <div style="flex:0 0 150px;text-align:right"
            class="${f.tipo === 'ingreso' ? 'fin-verde' : 'fin-rojo'}">
@@ -8541,6 +9252,414 @@ async function loadMetrics() {
     if (p) p.insertAdjacentHTML('afterbegin','<p style="color:#f87171;margin-bottom:16px">Error cargando Inteligencia comercial.</p>');
   }
 }
+
+// ========== Seguimiento de leads ==========
+// La agenda de llamados de Juan: solo lo pendiente, en vencidos, hoy, esta
+// semana y mas adelante. Los grupos, el "hace 6 dias" y los numeros para tel:
+// y wa.me los arma el servidor con la fecha de Montevideo; aca solo se pinta.
+// Todo lleva el prefijo sl (o SL_), porque en JS gana la ultima declaracion
+// con el mismo nombre. Sin barras invertidas: esto vive en un string de Python.
+let slDatos = null;
+let slHoy = '';
+let slHechoId = null;
+let slNuevoLeadId = null;
+let slBusquedaTimer = null;
+
+const SL_GRUPOS = [
+  {clave: 'vencidos', rotulo: 'Vencidos', completa: true},
+  {clave: 'hoy', rotulo: 'Hoy', completa: true},
+  {clave: 'semana', rotulo: 'Esta semana', completa: false},
+  {clave: 'despues', rotulo: 'Más adelante', completa: false},
+];
+
+async function loadSegLeads() {
+  const lista = document.getElementById('sl-lista');
+  try {
+    const r = await fetch('/api/seg-leads');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    slDatos = await r.json();
+  } catch (e) {
+    slDatos = null;
+    document.getElementById('sl-resumen').textContent = '';
+    document.getElementById('sl-contadores').innerHTML = '';
+    lista.innerHTML = '<div class="sl-vacio">No se pudo cargar el seguimiento (' + esc(e.message) + ').</div>';
+    return;
+  }
+  slHoy = slDatos.hoy || slHoy;
+  slPintar(slDatos);
+}
+
+function slPintar(d) {
+  const c = d.contadores || {};
+  document.getElementById('sl-resumen').textContent = slResumen(d.pendientes || 0, c.vencidos || 0);
+  document.getElementById('sl-contadores').innerHTML = slContadoresHtml(c);
+  document.getElementById('sl-lista').innerHTML = slListaHtml(d);
+}
+
+function slPlural(n, uno, varios) {
+  return n + ' ' + (n === 1 ? uno : varios);
+}
+
+function slResumen(pendientes, vencidos) {
+  return slPlural(pendientes, 'llamado pendiente', 'llamados pendientes') + ' · '
+    + slPlural(vencidos, 'vencido', 'vencidos');
+}
+
+// Cuatro tarjetas chicas: la de vencidos en rojo claro. Tocarlas lleva al grupo.
+function slContadoresHtml(c) {
+  return SL_GRUPOS.map(g => {
+    const clase = 'sl-contador' + (g.clave === 'vencidos' ? ' sl-contador-vencidos' : '');
+    return '<button type="button" class="' + clase + '" data-grupo="' + g.clave
+      + '" onclick="slIrAGrupo(this.dataset.grupo)">'
+      + '<span class="sl-contador-num">' + Number(c[g.clave] || 0) + '</span>'
+      + '<span class="sl-contador-rot">' + esc(g.rotulo) + '</span></button>';
+  }).join('');
+}
+
+function slIrAGrupo(clave) {
+  const el = document.getElementById('sl-grupo-' + clave);
+  if (el && el.scrollIntoView) el.scrollIntoView({behavior: 'smooth', block: 'start'});
+}
+
+// Un grupo vacio no se muestra. Vencidos y hoy van con tarjeta completa; esta
+// semana y mas adelante, en una linea: todavia no hay que hacer nada con ellos.
+function slListaHtml(d) {
+  const grupos = d.grupos || {};
+  const html = SL_GRUPOS.map(g => {
+    const items = grupos[g.clave] || [];
+    if (!items.length) return '';
+    const titulo = g.clave === 'hoy' ? 'Hoy · ' + (d.hoy_texto || '') : g.rotulo;
+    const claseTitulo = 'sl-grupo-titulo' + (g.clave === 'vencidos' ? ' sl-grupo-titulo-vencidos' : '');
+    return '<section class="sl-grupo" id="sl-grupo-' + g.clave + '">'
+      + '<h2 class="' + claseTitulo + '">' + esc(titulo.toUpperCase()) + '</h2>'
+      + items.map(it => (g.completa ? slTarjetaHtml(it) : slLineaHtml(it))).join('')
+      + '</section>';
+  }).join('');
+  return html || '<div class="sl-vacio">No hay llamados pendientes. Lo que se ve acá es lo que tenés que hacer.</div>';
+}
+
+function slQuienHtml(it) {
+  const empresa = it.empresa ? '<span class="sl-empresa"> · ' + esc(it.empresa) + '</span>' : '';
+  return '<div class="sl-quien"><button type="button" class="sl-nombre" data-lead="' + Number(it.lead_id)
+    + '" onclick="openClientPanel(Number(this.dataset.lead))">' + esc(it.nombre || 'Sin nombre')
+    + '</button>' + empresa + '</div>';
+}
+
+// Sin telefono cargado, Llamar y WhatsApp quedan deshabilitados.
+function slContactoHtml(it) {
+  if (!it.tel || !it.wa) {
+    const apagado = ' disabled title="El lead no tiene teléfono cargado"';
+    return '<button type="button" class="sl-btn"' + apagado + '>Llamar</button>'
+      + '<button type="button" class="sl-btn"' + apagado + '>WhatsApp</button>';
+  }
+  return '<a class="sl-btn" href="tel:' + esc(it.tel) + '">Llamar</a>'
+    + '<a class="sl-btn" href="https://wa.me/' + esc(it.wa) + '" target="_blank" rel="noopener">WhatsApp</a>';
+}
+
+function slTarjetaHtml(it) {
+  const id = Number(it.id);
+  const vencida = it.grupo === 'vencidos';
+  const ultima = it.ultimo_resultado
+    ? '<span class="sl-ultima">Última vez: ' + esc(it.ultimo_resultado) + '.</span> ' : '';
+  const nota = it.nota ? '<div class="sl-nota">' + esc(it.nota) + '</div>' : '';
+  const posponer = cuanto => '<button type="button" class="sl-btn" data-id="' + id + '" data-cuanto="' + cuanto
+    + '" onclick="slPosponer(Number(this.dataset.id), this.dataset.cuanto)">+1 ' + cuanto + '</button>';
+  return '<article class="sl-tarjeta' + (vencida ? ' sl-vencida' : '') + '" data-sl-id="' + id + '">'
+    + '<div class="sl-tarjeta-cab">' + slQuienHtml(it)
+    + '<div class="sl-cuando' + (vencida ? ' sl-cuando-vencido' : '') + '">' + esc(it.vence_texto || '') + '</div></div>'
+    + '<div class="sl-contexto">' + ultima + esc(it.motivo || '') + '</div>'
+    + nota
+    + '<div class="sl-acciones">' + slContactoHtml(it) + posponer('semana') + posponer('mes')
+    + '<button type="button" class="sl-btn sl-btn-hecho" data-id="' + id
+    + '" onclick="slAbrirHecho(Number(this.dataset.id))">Hecho</button></div>'
+    + '</article>';
+}
+
+function slLineaHtml(it) {
+  return '<div class="sl-linea" data-sl-id="' + Number(it.id) + '"><div class="sl-linea-txt">' + slQuienHtml(it)
+    + '<div class="sl-linea-motivo">' + esc(it.motivo || '') + '</div></div>'
+    + '<div class="sl-linea-fecha">' + esc(it.vence_texto || it.fecha_texto || '') + '</div></div>';
+}
+
+function slItem(id) {
+  const grupos = (slDatos && slDatos.grupos) || {};
+  for (const g of SL_GRUPOS) {
+    const it = (grupos[g.clave] || []).find(x => Number(x.id) === Number(id));
+    if (it) return it;
+  }
+  return null;
+}
+
+async function slPedir(url, datos) {
+  let d = {};
+  try {
+    const r = await fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'},
+                                body: JSON.stringify(datos)});
+    try { d = await r.json(); } catch (e) { d = {}; }
+    d = d || {};
+    if (!r.ok) d.ok = false;
+  } catch (e) {
+    d = {ok: false, error: 'no hubo respuesta del CRM'};
+  }
+  return d;
+}
+
+async function slRefrescar() {
+  await loadSegLeads();
+  // Si la ficha del lead esta abierta, su seccion de seguimiento tambien cambia.
+  if (typeof _cpClientId !== 'undefined' && _cpClientId) {
+    try {
+      const r = await fetch('/api/seg-leads/lead/' + Number(_cpClientId));
+      _cpData.seg = r.ok ? await r.json() : null;
+      if (_cpTab === 'calls') _cpSwitchTab('calls');
+    } catch (e) {}
+  }
+}
+
+// Posponer es un clic: corre la fecha y vuelve a pintar, sin formulario.
+async function slPosponer(id, cuanto) {
+  const d = await slPedir('/api/seg-leads/recordatorios/' + Number(id) + '/posponer', {cuanto: cuanto});
+  if (!d.ok) {
+    alert('No se pudo posponer: ' + (d.error || 'error desconocido'));
+    return;
+  }
+  await slRefrescar();
+}
+
+function slCerrarModal(id) {
+  document.getElementById(id).classList.remove('open');
+}
+
+// ── fechas del formulario ──
+function slFecha(iso) {
+  if (typeof iso !== 'string' || iso.length !== 10 || iso[4] !== '-' || iso[7] !== '-') return null;
+  const p = iso.split('-').map(Number);
+  if (!p.every(Number.isInteger)) return null;
+  const d = new Date(p[0], p[1] - 1, p[2]);
+  return (d.getFullYear() === p[0] && d.getMonth() === p[1] - 1 && d.getDate() === p[2]) ? d : null;
+}
+
+function slDos(n) {
+  return (n < 10 ? '0' : '') + n;
+}
+
+function slIso(d) {
+  return d.getFullYear() + '-' + slDos(d.getMonth() + 1) + '-' + slDos(d.getDate());
+}
+
+function slSumar(iso, cuanto) {
+  const d = slFecha(iso);
+  if (!d) return '';
+  if (cuanto === 'manana') d.setDate(d.getDate() + 1);
+  else if (cuanto === 'semana') d.setDate(d.getDate() + 7);
+  else if (cuanto === 'mes') {
+    const dia = d.getDate();
+    d.setDate(1);
+    d.setMonth(d.getMonth() + 1);
+    d.setDate(Math.min(dia, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()));
+  } else return '';
+  return slIso(d);
+}
+
+// ── Hecho: siempre pide que paso y la proxima fecha, o que no hace falta ──
+function slAbrirHecho(id) {
+  const it = slItem(id);
+  if (!it) return;
+  slHechoId = Number(id);
+  document.getElementById('sl-hecho-contexto').textContent = (it.nombre || '') + ' · ' + (it.motivo || '');
+  document.getElementById('sl-hecho-resultado').value = '';
+  document.getElementById('sl-hecho-fecha').value = '';
+  document.getElementById('sl-hecho-hora').value = '';
+  document.getElementById('sl-hecho-motivo').value = it.motivo || '';
+  document.getElementById('sl-hecho-nota').value = it.nota || '';
+  document.getElementById('sl-hecho-sin-volver').checked = false;
+  document.getElementById('sl-hecho-error').textContent = '';
+  slSinVolver();
+  document.getElementById('sl-modal-hecho').classList.add('open');
+}
+
+function slSinVolver() {
+  const sin = !!document.getElementById('sl-hecho-sin-volver').checked;
+  document.getElementById('sl-hecho-proximo').hidden = sin;
+  if (sin) document.getElementById('sl-hecho-fecha').value = '';
+}
+
+function slHechoRapido(cuanto) {
+  document.getElementById('sl-hecho-sin-volver').checked = false;
+  slSinVolver();
+  document.getElementById('sl-hecho-fecha').value = slSumar(slHoy || slIso(new Date()), cuanto);
+}
+
+async function slGuardarHecho() {
+  const error = document.getElementById('sl-hecho-error');
+  error.textContent = '';
+  const resultado = String(document.getElementById('sl-hecho-resultado').value || '').trim();
+  const sinVolver = !!document.getElementById('sl-hecho-sin-volver').checked;
+  const fecha = document.getElementById('sl-hecho-fecha').value;
+  if (!resultado) {
+    error.textContent = 'Contá qué pasó en la llamada.';
+    return;
+  }
+  if (!sinVolver && !fecha) {
+    error.textContent = 'Elegí cuándo volvés a llamar, o marcá que no hace falta volver a llamar.';
+    return;
+  }
+  const datos = sinVolver
+    ? {resultado: resultado, sin_volver: true}
+    : {resultado: resultado, sin_volver: false, proxima_fecha: fecha,
+       proxima_hora: document.getElementById('sl-hecho-hora').value,
+       proximo_motivo: document.getElementById('sl-hecho-motivo').value,
+       proxima_nota: document.getElementById('sl-hecho-nota').value};
+  const d = await slPedir('/api/seg-leads/recordatorios/' + Number(slHechoId) + '/hecho', datos);
+  if (!d.ok) {
+    error.textContent = 'No se guardó: ' + (d.error || 'error desconocido');
+    return;
+  }
+  slCerrarModal('sl-modal-hecho');
+  slHechoId = null;
+  await slRefrescar();
+}
+
+// ── Nuevo recordatorio: desde esta pantalla, la ficha o Proceso de venta ──
+function slAbrirNuevo(leadId, nombre, buscar) {
+  slNuevoLeadId = null;
+  ['sl-nuevo-hora', 'sl-nuevo-motivo', 'sl-nuevo-nota'].forEach(i => { document.getElementById(i).value = ''; });
+  document.getElementById('sl-nuevo-fecha').value = slHoy || slIso(new Date());
+  document.getElementById('sl-nuevo-error').textContent = '';
+  document.getElementById('sl-nuevo-aviso').textContent = '';
+  document.getElementById('sl-modal-nuevo').classList.add('open');
+  if (leadId) slElegirLead(leadId, nombre);
+  else slCambiarLead(buscar || '');
+}
+
+function slCambiarLead(texto) {
+  slNuevoLeadId = null;
+  document.getElementById('sl-nuevo-elegido').hidden = true;
+  document.getElementById('sl-nuevo-buscador').hidden = false;
+  document.getElementById('sl-nuevo-aviso').textContent = '';
+  const input = document.getElementById('sl-nuevo-buscar');
+  input.value = typeof texto === 'string' ? texto : '';
+  slBuscarLead(input.value);
+  if (input.focus) input.focus();
+}
+
+function slBuscarTecla(v) {
+  clearTimeout(slBusquedaTimer);
+  slBusquedaTimer = setTimeout(() => slBuscarLead(v), 250);
+}
+
+async function slBuscarLead(texto) {
+  const lista = document.getElementById('sl-nuevo-resultados');
+  const q = (texto || '').trim();
+  if (q.length < 2) {
+    lista.innerHTML = '<div class="nc-vinculo-vacio">Escribí al menos 2 letras del nombre.</div>';
+    return;
+  }
+  lista.innerHTML = '<div class="nc-vinculo-vacio">Buscando...</div>';
+  let items = [];
+  try {
+    // Con page la busqueda va en SQL con LIMIT (igual que _ncBuscarPersona).
+    const r = await fetch('/api/leads?page=1&search=' + encodeURIComponent(q));
+    if (!r.ok) throw new Error(r.status);
+    items = ((await r.json()) || {}).items || [];
+  } catch (e) {
+    lista.innerHTML = '<div class="nc-vinculo-vacio">No se pudo buscar. Probá de nuevo.</div>';
+    return;
+  }
+  lista.innerHTML = items.length
+    ? items.slice(0, 20).map(p => '<button type="button" class="nc-vinculo-opcion" data-lead="' + Number(p.id)
+        + '" data-nombre="' + esc(p.name || '') + '" onclick="slElegirLead(Number(this.dataset.lead), this.dataset.nombre)">'
+        + '<span class="nc-vinculo-nombre">' + esc(p.name || 'Sin nombre') + '</span>'
+        + '<span class="nc-vinculo-sub">' + esc([p.city, p.phone || 'sin teléfono'].filter(Boolean).join(' · ')) + '</span>'
+        + '</button>').join('')
+    : '<div class="nc-vinculo-vacio">No hay nadie en el CRM con ese nombre.</div>';
+}
+
+async function slElegirLead(id, nombre) {
+  const elegido = Number(id);
+  slNuevoLeadId = elegido;
+  document.getElementById('sl-nuevo-lead').textContent = nombre || 'Lead del CRM';
+  document.getElementById('sl-nuevo-buscador').hidden = true;
+  document.getElementById('sl-nuevo-elegido').hidden = false;
+  const aviso = document.getElementById('sl-nuevo-aviso');
+  aviso.textContent = '';
+  try {
+    const r = await fetch('/api/seg-leads/lead/' + elegido);
+    if (!r.ok) return;
+    const d = await r.json();
+    if (d && d.pendiente && slNuevoLeadId === elegido) {
+      aviso.textContent = 'Ya tiene un recordatorio abierto (' + d.pendiente.fecha_texto + ': '
+        + d.pendiente.motivo + '). Al guardar este, ese se cierra solo.';
+    }
+  } catch (e) {}
+}
+
+async function slGuardarNuevo() {
+  const error = document.getElementById('sl-nuevo-error');
+  error.textContent = '';
+  const fecha = document.getElementById('sl-nuevo-fecha').value;
+  const motivo = String(document.getElementById('sl-nuevo-motivo').value || '').trim();
+  if (!slNuevoLeadId) {
+    error.textContent = 'Elegí a qué lead vas a llamar.';
+    return;
+  }
+  if (!fecha) {
+    error.textContent = 'Elegí la fecha del llamado.';
+    return;
+  }
+  if (!motivo) {
+    error.textContent = 'Escribí el motivo: qué tenés que hacer o preguntar.';
+    return;
+  }
+  const d = await slPedir('/api/seg-leads/recordatorios', {
+    lead_id: slNuevoLeadId, fecha: fecha, hora: document.getElementById('sl-nuevo-hora').value,
+    motivo: motivo, nota: document.getElementById('sl-nuevo-nota').value});
+  if (!d.ok) {
+    error.textContent = 'No se guardó: ' + (d.error || 'error desconocido');
+    return;
+  }
+  slCerrarModal('sl-modal-nuevo');
+  slNuevoLeadId = null;
+  await slRefrescar();
+}
+
+// El boton en la ficha de Proceso de venta. La ficha de Notion llega a su lead
+// por business_id; si todavia no esta conectada, el buscador se abre con el
+// nombre de la ficha.
+function slBotonNotionHtml(c) {
+  const datos = c.business_id
+    ? ' data-lead="' + Number(c.business_id) + '" data-nombre="' + esc(c.business_name || c.name || '') + '"'
+    : ' data-buscar="' + esc(c.name || '') + '"';
+  return '<button type="button" class="nc-vinculo" draggable="false"' + datos
+    + ' onclick="event.stopPropagation();slAbrirDesdeNotion(this)">Recordatorio de llamado</button>';
+}
+
+function slAbrirDesdeNotion(boton) {
+  const ds = boton.dataset || {};
+  if (ds.lead) slAbrirNuevo(Number(ds.lead), ds.nombre);
+  else slAbrirNuevo(null, '', ds.buscar || '');
+}
+
+// La ficha del lead (pestaña Llamadas): el recordatorio abierto y el historial
+// de llamados. El historial se ve aca y no en la pantalla de seguimiento.
+function slFichaHtml(seg) {
+  if (!seg || !seg.lead) return '';
+  const p = seg.pendiente;
+  const pendiente = p
+    ? '<div class="sl-ficha-pendiente' + (p.grupo === 'vencidos' ? ' sl-vencida' : '') + '"><b>'
+      + esc(p.fecha_texto || '') + (p.hora ? ' · ' + esc(p.hora) : '') + '</b> · ' + esc(p.motivo || '')
+      + (p.nota ? '<div class="sl-nota">' + esc(p.nota) + '</div>' : '') + '</div>'
+    : '<div class="sl-vacio">Sin recordatorio pendiente.</div>';
+  const llamados = (seg.llamados || []).map(l => '<div class="sl-ficha-llamado"><span class="sl-ficha-fecha">'
+    + esc(l.fecha_texto || '') + '</span>' + esc(l.resultado || '') + '</div>').join('')
+    || '<div class="sl-vacio">Todavía no hay llamados cerrados.</div>';
+  return '<div class="cp-section"><div class="cp-section-title sl-ficha-cab"><span>Próximo llamado</span>'
+    + '<button type="button" class="cp-btn cp-btn-ghost" data-lead="' + Number(seg.lead.id) + '" data-nombre="'
+    + esc(seg.lead.nombre || '') + '" onclick="slAbrirNuevo(Number(this.dataset.lead), this.dataset.nombre)">Nuevo recordatorio</button></div>'
+    + pendiente + '</div>'
+    + '<div class="cp-section"><div class="cp-section-title">Historial de llamados</div>' + llamados + '</div>';
+}
+// ========== FIN Seguimiento de leads ==========
 
 // ========== Equipo ==========
 // Recursos Humanos, en dos paneles que comparten un solo pedido: Organigrama
@@ -9009,7 +10128,7 @@ let eqPasoCobros = [];
 
 // Secciones a las que puede llevar un paso. En el formulario se ofrecen las
 // que estan en la pagina; una guardada que todavia no existe se conserva.
-const EQ_PANTALLAS = [['notion_clients', 'Proceso de venta'], ['demos', 'Demos'],
+const EQ_PANTALLAS = [['seg_leads', 'Seguimiento de leads'], ['notion_clients', 'Proceso de venta'], ['demos', 'Demos'],
   ['clientes', 'Clientes'], ['projects', 'Proyectos'], ['tasks', 'Tareas'], ['wa', 'WhatsApp'],
   ['cal', 'Calendario'], ['meta', 'Meta Ads'], ['marketing', 'Inteligencia marketing'],
   ['cola', 'Outbound'], ['metrics', 'Inteligencia comercial'], ['sdr', 'SDR'],
@@ -11606,7 +12725,7 @@ def create_app(db_path: str) -> Flask:
 
     for bp in (leads_bp, demos_bp, calendar_bp, wa_bp, pipeline_bp, tasks_bp, budgets_bp, tokens_bp, meta_bp, calendly_bp, notion_bp, projects_bp, preclientes_bp,
                 notion_clients_bp, resend_bp, linkedin_bp, web_bp, finanzas_bp, marketing_bp,
-                simulador_bp, equipo_bp, flujos_bp):
+                simulador_bp, equipo_bp, flujos_bp, seg_leads_bp):
         app.register_blueprint(bp)
 
     @app.before_request
@@ -12520,8 +13639,8 @@ select:focus{border-color:#0088cc}
 </div>
 
 <script>
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','equipo','ausencias'];
-const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',equipo:'Organigrama',ausencias:'Ausencias'};
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','equipo','ausencias','seg_leads'];
+const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',equipo:'Organigrama',ausencias:'Ausencias',seg_leads:'Seguimiento de leads'};
 let _roles = [];
 
 function makeChips(containerId, checkedArr, prefix) {
