@@ -625,6 +625,15 @@ def init_db(db_path: str) -> None:
                 created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        # El evento que el CRM crea en Google Calendar (services/gcal_eventos.py).
+        # `google_sync`: 'ok' o 'error' (con `google_error` en palabras para la
+        # pantalla); NULL si no se intento (creacion apagada o sin credenciales).
+        # Va aparte de `calendar_event_id`, que es de las reuniones que se
+        # importan DESDE Google o llegan de Calendly.
+        for _tabla in ("meetings", "reuniones_asunto"):
+            _add_column(conn, _tabla, "google_event_id", "TEXT")
+            _add_column(conn, _tabla, "google_sync", "TEXT")
+            _add_column(conn, _tabla, "google_error", "TEXT")
 
         conn.execute("""
             CREATE TABLE IF NOT EXISTS wa_templates (
@@ -2191,6 +2200,7 @@ _MEETING_COLUMNS = {
     "calendar_event_id", "title", "start_at", "end_at", "meet_link",
     "status", "transcript", "summary", "requirements", "recall_bot_id",
     "description", "invitados", "repeticion", "excepciones",
+    "google_event_id", "google_sync", "google_error",
 }
 
 
@@ -2274,6 +2284,7 @@ def delete_meeting(db_path: str, meeting_id: int) -> None:
 _ASUNTO_COLUMNS = {
     "title", "description", "start_at", "end_at", "meet_link", "invitados",
     "repeticion", "excepciones", "status", "created_by",
+    "google_event_id", "google_sync", "google_error",
 }
 
 
