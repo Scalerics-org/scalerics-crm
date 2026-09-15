@@ -36,7 +36,7 @@ def _entre(texto: str, desde: str, hasta: str) -> str:
 PANEL = _entre(SRC, "<!-- ======= HORARIOS PANEL ======= -->", "<!-- ======= FIN HORARIOS PANEL ======= -->")
 MODALES = _entre(SRC, "<!-- ======= HORARIOS MODALES ======= -->", "<!-- ======= FIN HORARIOS MODALES ======= -->")
 JS = _entre(SRC, "// ========== Horarios ==========", "// ========== FIN Horarios ==========")
-CSS = _entre(SRC, "/* ── Horarios", "/* ── Seguimiento de leads")
+CSS = _entre(SRC, "/* ── Horarios", "/* ── Daily Programador")
 FUENTES = {"panel": PANEL, "modales": MODALES, "js": JS, "css": CSS}
 
 L_V = [0, 1, 2, 3, 4]
