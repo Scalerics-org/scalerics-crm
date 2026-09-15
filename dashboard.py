@@ -1672,10 +1672,10 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div class="nav-scroll">
   <!-- Orden y grupos definidos por Juan el 14/9. Al entrar igual se abre Meta Ads. -->
   <div class="nav-section-label">CALENDARIO</div>
-  <div class="nav-item" id="nav-cal" onclick="showPanel('cal')"><i data-lucide="calendar" class="nav-icon"></i> Calendario</div>
+  <div class="nav-item active" id="nav-cal" onclick="showPanel('cal')"><i data-lucide="calendar" class="nav-icon"></i> Calendario</div>
   <div class="nav-section-label">MARKETING</div>
-  <div class="nav-item active" id="nav-meta" onclick="showPanel('meta');clearMetaBadge()"><i data-lucide="instagram" class="nav-icon"></i> Meta Ads <span id="meta-badge" style="display:none;background:#e1306c;color:#fff;font-size:.65rem;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:4px">NEW</span></div>
-  <div class="nav-item" id="nav-marketing" onclick="showPanel('marketing')"><i data-lucide="target" class="nav-icon"></i> Marketing</div>
+  <div class="nav-item" id="nav-meta" onclick="showPanel('meta');clearMetaBadge()"><i data-lucide="instagram" class="nav-icon"></i> Meta Ads <span id="meta-badge" style="display:none;background:#e1306c;color:#fff;font-size:.65rem;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:4px">NEW</span></div>
+  <div class="nav-item" id="nav-marketing" onclick="showPanel('marketing')"><i data-lucide="target" class="nav-icon"></i> Inteligencia marketing</div>
   <div class="nav-section-label">FINANZAS</div>
   <div class="nav-item" id="nav-finanzas" onclick="showPanel('finanzas')"><i data-lucide="wallet" class="nav-icon"></i> Finanzas</div>
   <div class="nav-item" id="nav-simulador" onclick="showPanel('simulador')"><i data-lucide="calculator" class="nav-icon"></i> Simulador financiero</div>
@@ -1690,8 +1690,8 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div class="nav-item" id="nav-tasks" onclick="showPanel('tasks')"><i data-lucide="check-square" class="nav-icon"></i> Tareas</div>
   <div class="nav-item" id="nav-activity" onclick="showPanel('activity')"><i data-lucide="clock" class="nav-icon"></i> Actividad</div>
   <div class="nav-section-label">CAPTACIÓN</div>
-  <div class="nav-item" id="nav-metrics" onclick="showPanel('metrics')"><i data-lucide="bar-chart-2" class="nav-icon"></i> Outbound</div>
-  <div class="nav-item" id="nav-cola" onclick="showPanel('cola')"><i data-lucide="inbox" class="nav-icon"></i> Cola</div>
+  <div class="nav-item" id="nav-metrics" onclick="showPanel('metrics')"><i data-lucide="bar-chart-2" class="nav-icon"></i> Inteligencia comercial</div>
+  <div class="nav-item" id="nav-cola" onclick="showPanel('cola')"><i data-lucide="inbox" class="nav-icon"></i> Outbound</div>
   </div>
   <div class="sidebar-bottom">
     <a id="admin-link" href="/admin/users" style="display:none;background:none;border:1px solid var(--borde);border-radius:8px;padding:6px 12px;font-size:.75rem;color:var(--texto-debil);cursor:pointer;width:100%;text-align:left;text-decoration:none;box-sizing:border-box">&#9881; Usuarios</a>
@@ -1711,7 +1711,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div id="cola-panel" class="panel">
     <div class="page-header">
       <div>
-        <h1>Cola de llamadas</h1>
+        <h1>Outbound</h1>
         <div class="page-date" id="cola-date"></div>
       </div>
       <button class="export-btn" onclick="exportCSV()"><i data-lucide="download" class="btn-icon"></i> Exportar CSV</button>
@@ -1750,7 +1750,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <!-- ======= SEGUIMIENTOS PANEL ======= -->
 
   <!-- ======= META ADS PANEL ======= -->
-  <div id="meta-panel" class="panel active">
+  <div id="meta-panel" class="panel">
     <div class="page-header">
       <div>
         <h1>Meta Ads</h1>
@@ -1946,7 +1946,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   </div>
 
   <!-- ======= CALENDAR PANEL ======= -->
-  <div id="cal-panel" class="panel">
+  <div id="cal-panel" class="panel active">
     <div class="cal-header">
       <h1 id="cal-week-label">Calendario</h1>
       <span class="cal-count" id="cal-count"></span>
@@ -2263,7 +2263,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div id="metrics-panel" class="panel">
     <div class="page-header">
       <div>
-        <h1>Outbound</h1>
+        <h1>Inteligencia comercial</h1>
         <div class="page-date" id="metrics-date"></div>
       </div>
       <button class="export-btn" onclick="loadMetrics()">↻ Actualizar</button>
@@ -2299,7 +2299,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div id="marketing-panel" class="panel">
     <div class="page-header">
       <div>
-        <h1>Marketing</h1>
+        <h1>Inteligencia marketing</h1>
         <div class="page-date" id="mk-fecha"></div>
       </div>
       <button class="export-btn" onclick="loadMarketing()">
@@ -2874,7 +2874,7 @@ function closeSidebar() {
 }
 
 // ========== Panel switching ==========
-let activePanel = 'meta';
+let activePanel = 'cal';
 function showPanel(name) {
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
@@ -6243,17 +6243,20 @@ async function _cpBindTasks() {
   }
 }
 
-// Initial load. Lo primero del CRM es Meta Ads, no la Cola (pedido de Juan,
-// 14/9): es donde entran los leads que se trabajan. El panel y su item de menu
-// ya arrancan activos en el HTML; aca solo se cargan los datos. Si el rol no
-// tiene Meta, el control de acceso de abajo lo manda al primer panel que si.
+// Initial load. Lo primero del CRM es el Calendario, en su propio grupo arriba
+// de todo (pedido de Juan, 14/9; antes de eso habia pedido Meta Ads). El panel
+// y su item de menu ya arrancan activos en el HTML; aca solo se dibuja. Si el
+// rol no tiene el calendario, el control de acceso de abajo lo manda al primer
+// panel que si tenga.
 //
 // OJO: aca NO va showPanel. Esta linea corre antes de que se declaren
 // NAV_LABELS y compania (mas abajo, con const): showPanel -> _syncMobileNav las
 // lee y tira "Cannot access 'NAV_LABELS' before initialization", que corta el
 // resto del <script> -- permisos, barra del celular, tema -- en el navegador.
-// loadMetaPanel solo toca #meta-body antes de su primer await.
-loadMetaPanel();
+// renderCalendar, antes de su primer await, solo usa calView, calMonthOffset y
+// el DOM, que ya estan declarados aca. calLoaded evita que showPanel('cal') lo
+// vuelva a pedir.
+calLoaded = true; renderCalendar();
 
 // ── Score badge + social icons ────────────────────────────────────────────────
 
@@ -6324,9 +6327,9 @@ const NAV_ICONS = {
   notion_clients:'handshake',finanzas:'wallet',simulador:'calculator'
 };
 const NAV_LABELS = {
-  cola:'Cola',meta:'Meta',cal:'Agenda',
+  cola:'Outbound',meta:'Meta',cal:'Agenda',
   tasks:'Tareas',pipeline:'Pipeline',clientes:'Clientes',
-  wa:'WA',metrics:'Outbound',activity:'Actividad',projects:'Proyectos',
+  wa:'WA',metrics:'Intel. comercial',activity:'Actividad',projects:'Proyectos',
   notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador'
 };
 let _mobileNavOverflow = [];
@@ -8226,7 +8229,7 @@ async function loadMetrics() {
     if (el('metrics-date')) el('metrics-date').textContent = 'Actualizado: ' + new Date().toLocaleString('es-UY');
   } catch(e) {
     const p = document.getElementById('metrics-panel');
-    if (p) p.insertAdjacentHTML('afterbegin','<p style="color:#f87171;margin-bottom:16px">Error cargando Outbound.</p>');
+    if (p) p.insertAdjacentHTML('afterbegin','<p style="color:#f87171;margin-bottom:16px">Error cargando Inteligencia comercial.</p>');
   }
 }
 
@@ -9144,7 +9147,7 @@ async function loadMarketing() {
     const r = await fetch('/api/marketing/dossier' + (q.length ? '?' + q.join('&') : ''));
     if (!r.ok) {
       estado.textContent = r.status === 403
-        ? 'No tenés acceso al panel de Marketing. Pediselo a un admin.'
+        ? 'No tenés acceso a Inteligencia marketing. Pediselo a un admin.'
         : 'No se pudo cargar el dossier (error ' + r.status + ').';
       return;
     }
@@ -11316,7 +11319,7 @@ select:focus{border-color:#0088cc}
 
 <script>
 const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador'];
-const PANEL_LABELS = {cola:'Cola',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Outbound',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero'};
+const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero'};
 let _roles = [];
 
 function makeChips(containerId, checkedArr, prefix) {
