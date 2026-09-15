@@ -464,6 +464,14 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **14/9 — rama `feat/seguimiento-leads` (sin PR, sin merge, sin deploy): Seguimiento de leads.**
+  - Panel `seg_leads`, primer ítem de VENTAS (arriba de WhatsApp). Id nuevo a propósito: la sección vieja `seguimientos` sigue borrada y `tests/test_sin_seguimientos.py` no se tocó.
+  - Tablas `seg_recordatorios` (índice único parcial: un solo pendiente por lead) y `seg_llamados` (historial, se escribe al marcar Hecho). `routes/seg_leads.py` y `services/seg_leads.py`. `lead_id` es `businesses.id`.
+  - "Hoy" y "vencido" salen de la fecha de Montevideo (`services/seg_leads.hoy_mvd`), no de la del servidor.
+  - **Zona compartida tocada:** `database.py` (tablas al final de la parte de equipo en `init_db`; `merge_business` y `delete_business` ahora mueven/borran el seguimiento; `_grant_panel_to_existing_roles` acepta `solo_si_tiene`) y `dashboard.py` (menú, panel, modales, JS `sl*`, botón en la tarjeta de Proceso de venta, sección en la pestaña Llamadas de la ficha).
+  - El panel les llega a los roles que ya tienen `notion_clients`, **una sola vez** (en el arranque que crea la tabla): si Juan se lo saca a un rol, un deploy no se lo vuelve a poner.
+  - Nada arranca en el boot ni manda mail.
+
 - **15/9 — I: DEPLOYADO `v215` (PR #36 mergeado a `main`, `5e3c7d7`): `main` quedó igual a producción.** Trajo:
   - menú por grupos, con Calendario como panel de entrada;
   - sin Seguimientos;
