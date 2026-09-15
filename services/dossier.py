@@ -11,7 +11,16 @@ leads y un 5% sobre 2000 se leen igual en un grafico, y no son lo mismo.
 import logging
 import math
 
-from database import _connect
+from database import ENVIOS_META_FECHAS_SQL, ENVIOS_META_SQL, _connect
+
+# Los leads de Meta se cuentan por ENVIO de formulario, como Meta: quien vuelve
+# a escribir cuenta tambien en el mes de la vuelta. Cada fila trae `fecha_local`
+# (hora de Montevideo), que es la que corta periodos y meses, y `primero`: las
+# etapas (demo, presupuesto, venta) se cuentan solo en el primer envio de la
+# persona, asi una vuelta no duplica una demo. Ver database.ENVIOS_META_SQL.
+_ENVIOS = f"({ENVIOS_META_SQL})"
+# La misma, sin form_data ni campana: para contar por fecha y hora.
+_ENVIOS_FECHAS = f"({ENVIOS_META_FECHAS_SQL})"
 
 logger = logging.getLogger(__name__)
 
@@ -126,8 +135,8 @@ def por_campana(db_path: str, desde: str, hasta: str) -> list:
     conn = _connect(db_path)
     try:
         leads = conn.execute(
-            "SELECT id, meta_campaign_name, meta_campaign_id FROM businesses "
-            "WHERE source = 'meta' AND substr(scraped_at, 1, 10) BETWEEN ? AND ?",
+            f"SELECT id, meta_campaign_name, meta_campaign_id, primero FROM {_ENVIOS} "
+            "WHERE source = 'meta' AND substr(fecha_local, 1, 10) BETWEEN ? AND ?",
             (desde, hasta)).fetchall()
         eventos_filas = conn.execute(
             "SELECT lead_id, new_status FROM lead_events").fetchall()
@@ -171,7 +180,7 @@ def por_campana(db_path: str, desde: str, hasta: str) -> list:
         pref = f"campana.{_slug(campana)}"
         n = len(del_grupo)
         conteo = {clave: sum(1 for l in del_grupo
-                             if alcanzo(eventos.get(l["id"], set()), etapa))
+                             if l["primero"] and alcanzo(eventos.get(l["id"], set()), etapa))
                   for clave, etapa, _ in _ETAPAS}
 
         ms = [
@@ -259,6 +268,39 @@ _PREFIJO_LEAD_DE_PRUEBA = "<test lead:"
 # el dossier entero es lo que se le manda al modelo.
 TOPE_VALORES_POR_PREGUNTA = 12
 
+# La ciudad se muestra en dos: Montevideo e Interior (pedido de Juan, 14/9: "en
+# el de ciudad pone Montevideo e Interior solo y agrupalos asi"). Es Montevideo
+# si alguna palabra de la respuesta normalizada es una de estas: cubre
+# "Montevideo", "montevideo ", "Ciudad de Montevideo", "Mdeo", "MVD". Todo lo
+# demas es Interior, incluida la basura ("vender").
+_PALABRAS_DE_MONTEVIDEO = {"montevideo", "mdeo", "mvd", "mvdeo"}
+
+
+def zona_de_ciudad(valor: str) -> str:
+    palabras = set(_slug(valor).split("_"))
+    return "Montevideo" if palabras & _PALABRAS_DE_MONTEVIDEO else "Interior"
+
+
+# Palabras que el formulario guarda sin tilde o en minuscula dentro de sus
+# codigos ("aún_no_lo_se", "más_de_usd_1.000").
+_PALABRAS_LEGIBLES = {"usd": "USD", "mas": "más", "aun": "aún", "ano": "año"}
+
+
+def etiqueta_legible(valor) -> str:
+    """"entre_usd_500_y_usd_1.000" -> "Entre USD 500 y USD 1.000".
+
+    Solo para mostrar: `valor_declarado` y los ids no cambian. Lo que ya tiene
+    espacios es texto libre de la persona y queda como lo escribio.
+    """
+    import re
+
+    texto = " ".join(str(valor or "").split())
+    if not texto or " " in texto:
+        return texto
+    palabras = [_PALABRAS_LEGIBLES.get(p.lower(), p) for p in texto.split("_") if p]
+    frase = re.sub(r"\blo se\b", "lo sé", " ".join(palabras))
+    return frase[:1].upper() + frase[1:]
+
 
 def normalizar_clave(clave: str) -> str:
     """Una clave de form_data comparable.
@@ -276,14 +318,18 @@ def normalizar_clave(clave: str) -> str:
 
 
 def _leer_formularios(db_path: str, desde: str, hasta: str):
-    """(lead_id, {clave normalizada: valor}) de cada lead del periodo."""
+    """(lead_id, {clave normalizada: valor}) de cada envio del periodo.
+
+    `lead_id` es None en el envio de alguien que ya habia escrito antes: cuenta
+    como lead del segmento, pero sus etapas ya cuentan en su primer envio.
+    """
     import json as _json
 
     conn = _connect(db_path)
     try:
         filas = conn.execute(
-            "SELECT id, form_data FROM businesses WHERE source = 'meta' "
-            "AND substr(scraped_at, 1, 10) BETWEEN ? AND ? "
+            f"SELECT id, primero, form_data FROM {_ENVIOS} WHERE source = 'meta' "
+            "AND substr(fecha_local, 1, 10) BETWEEN ? AND ? "
             "AND form_data IS NOT NULL AND form_data != ''",
             (desde, hasta)).fetchall()
     finally:
@@ -295,7 +341,8 @@ def _leer_formularios(db_path: str, desde: str, hasta: str):
         except (ValueError, TypeError):
             continue          # un form_data roto no puede tumbar el dossier
         if isinstance(datos, dict):
-            yield fila["id"], {normalizar_clave(k): v for k, v in datos.items()}
+            yield (fila["id"] if fila["primero"] else None), {
+                normalizar_clave(k): v for k, v in datos.items()}
 
 
 def claves_no_mapeadas(db_path: str, desde: str, hasta: str) -> dict:
@@ -353,6 +400,10 @@ def por_segmento(db_path: str, desde: str, hasta: str) -> list:
             valor = " ".join(str(valor).split())
             if not valor or valor.startswith(_PREFIJO_LEAD_DE_PRUEBA):
                 continue
+            # La ciudad se agrupa ANTES de contar: la tasa de Montevideo sale
+            # de sus leads sumados, nunca de promediar las tasas de cada grafia.
+            if pregunta == "ciudad":
+                valor = zona_de_ciudad(valor)
             slot = grupos.setdefault(pregunta, {}).setdefault(
                 _slug(valor), {"etiquetas": {}, "ids": []})
             slot["etiquetas"][valor] = slot["etiquetas"].get(valor, 0) + 1
@@ -368,7 +419,8 @@ def por_segmento(db_path: str, desde: str, hasta: str) -> list:
                 f"{pref}.{_SUFIJO_TASA[clave]}",
                 f"Tasa de {etiqueta.lower()} — {declarado}",
                 exitos, total, "crm"))
-        return {"valor_declarado": declarado, "n": total, "metricas": ms}
+        return {"valor_declarado": declarado, "etiqueta": etiqueta_legible(declarado),
+                "n": total, "metricas": ms}
 
     bloques = []
     for pregunta in sorted(grupos):
@@ -425,8 +477,8 @@ def serie_semanal(db_path: str, desde: str, hasta: str) -> list:
             "SELECT date, spend, impressions, clicks, leads FROM meta_insights "
             "WHERE date BETWEEN ? AND ?", (desde, hasta)).fetchall()
         lead_filas = conn.execute(
-            "SELECT scraped_at FROM businesses WHERE source = 'meta' "
-            "AND substr(scraped_at, 1, 10) BETWEEN ? AND ?",
+            f"SELECT fecha_local FROM {_ENVIOS_FECHAS} WHERE source = 'meta' "
+            "AND substr(fecha_local, 1, 10) BETWEEN ? AND ?",
             (desde, hasta)).fetchall()
     finally:
         conn.close()
@@ -446,13 +498,42 @@ def serie_semanal(db_path: str, desde: str, hasta: str) -> list:
         s["leads_meta"] += int(fila["leads"] or 0)
 
     for fila in lead_filas:
-        _slot(_lunes_de(fila["scraped_at"]))["leads_crm"] += 1
+        _slot(_lunes_de(fila["fecha_local"]))["leads_crm"] += 1
+
+    if not semanas:
+        return []
+
+    # Las semanas del medio salen aunque esten vacias, igual que en
+    # `serie_mensual`. Sin esto, un mes entero sin pauta desaparecia del
+    # grafico: la barra de despues quedaba pegada a la de antes y se llamaba
+    # "Semana 4" siendo la septima. El hueco es justo lo que hay que ver.
+    from datetime import timedelta as _td
+
+    orden = sorted(semanas)
+    y, m, d = (int(x) for x in orden[-1].split("-"))
+    ultima = _date(y, m, d)
+    y, m, d = (int(x) for x in orden[0].split("-"))
+    lunes = _date(y, m, d)
+    while lunes <= ultima:
+        _slot(lunes.isoformat())
+        lunes += _td(days=7)
 
     salida = []
+    gasto_acum, leads_acum = 0.0, 0
     for inicio in sorted(semanas):
         s = semanas[inicio]
         s["gasto"] = round(s["gasto"], 2)
         s["cpl"] = costo(s["gasto"], s["leads_crm"])
+        # Si la semana tuvo algo. Las rellenadas no: sirven para dibujar el
+        # hueco, pero no cuentan para "por semana" (el historico tampoco las
+        # cuenta, y compararlos con denominadores distintos mentiria).
+        s["con_actividad"] = bool(s["gasto"] or s["leads_crm"]
+                                  or s["impresiones"])
+        # Lo corrido desde el inicio del PERIODO, no de la historia: responde
+        # "cuanto costo llegar hasta aca" dentro de lo que se esta mirando.
+        gasto_acum = round(gasto_acum + s["gasto"], 2)
+        leads_acum += s["leads_crm"]
+        s["gasto_acum"], s["leads_acum"] = gasto_acum, leads_acum
         y, m, d = (int(x) for x in inicio.split("-"))
         s["semana"] = "%d-W%02d" % _date(y, m, d).isocalendar()[:2]
         salida.append(s)
@@ -479,8 +560,8 @@ def embudo_por_campana(db_path: str, desde: str, hasta: str) -> list:
     conn = _connect(db_path)
     try:
         leads = conn.execute(
-            "SELECT id, meta_campaign_name FROM businesses WHERE source = 'meta' "
-            "AND substr(scraped_at, 1, 10) BETWEEN ? AND ?",
+            f"SELECT id, meta_campaign_name, primero FROM {_ENVIOS} WHERE source = 'meta' "
+            "AND substr(fecha_local, 1, 10) BETWEEN ? AND ?",
             (desde, hasta)).fetchall()
         eventos_filas = conn.execute(
             "SELECT lead_id, new_status FROM lead_events").fetchall()
@@ -503,7 +584,7 @@ def embudo_por_campana(db_path: str, desde: str, hasta: str) -> list:
                    "n": len(del_grupo), "tasa": None}]
         for clave, etapa, etiqueta in _ETAPAS:
             n = sum(1 for l in del_grupo
-                    if alcanzo(eventos.get(l["id"], set()), etapa))
+                    if l["primero"] and alcanzo(eventos.get(l["id"], set()), etapa))
             previo = etapas[-1]["n"]
             etapas.append({
                 "clave": clave, "etiqueta": etiqueta, "n": n,
@@ -534,8 +615,8 @@ def serie_por_campana(db_path: str, desde: str, hasta: str) -> list:
             "SELECT date, campaign_name, spend FROM meta_insights "
             "WHERE date BETWEEN ? AND ?", (desde, hasta)).fetchall()
         leads = conn.execute(
-            "SELECT id, scraped_at, meta_campaign_name FROM businesses "
-            "WHERE source = 'meta' AND substr(scraped_at, 1, 10) BETWEEN ? AND ?",
+            f"SELECT id, fecha_local, meta_campaign_name, primero FROM {_ENVIOS} "
+            "WHERE source = 'meta' AND substr(fecha_local, 1, 10) BETWEEN ? AND ?",
             (desde, hasta)).fetchall()
         eventos_filas = conn.execute(
             "SELECT lead_id, new_status FROM lead_events").fetchall()
@@ -562,9 +643,9 @@ def serie_por_campana(db_path: str, desde: str, hasta: str) -> list:
 
     for lead in leads:
         s = _slot(lead["meta_campaign_name"] or SIN_CAMPANA,
-                  _lunes_de(lead["scraped_at"]))
+                  _lunes_de(lead["fecha_local"]))
         s["leads"] += 1
-        if alcanzo(eventos.get(lead["id"], set()), "demo_1"):
+        if lead["primero"] and alcanzo(eventos.get(lead["id"], set()), "demo_1"):
             s["demos"] += 1
 
     salida = []
@@ -617,8 +698,8 @@ def llegada_de_leads(db_path: str, desde: str, hasta: str) -> dict:
     conn = _connect(db_path)
     try:
         filas = conn.execute(
-            "SELECT scraped_at FROM businesses WHERE source = 'meta' "
-            "AND substr(scraped_at, 1, 10) BETWEEN ? AND ?",
+            f"SELECT scraped_at FROM {_ENVIOS_FECHAS} WHERE source = 'meta' "
+            "AND substr(fecha_local, 1, 10) BETWEEN ? AND ?",
             (desde, hasta)).fetchall()
     finally:
         conn.close()
@@ -669,7 +750,112 @@ def llegada_de_leads(db_path: str, desde: str, hasta: str) -> dict:
     }
 
 
-_MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio",
+def _hoy_en_montevideo():
+    from datetime import datetime, timedelta, timezone
+    return (datetime.now(timezone.utc)
+            + timedelta(hours=HORAS_UTC_A_MONTEVIDEO)).date()
+
+
+def _a_montevideo(dia_utc, hora_utc: int):
+    """(fecha local, hora local) de una fecha y hora UTC."""
+    from datetime import datetime, timedelta
+    local = (datetime(dia_utc.year, dia_utc.month, dia_utc.day, hora_utc)
+             + timedelta(hours=HORAS_UTC_A_MONTEVIDEO))
+    return local.date(), local.hour
+
+
+# Lo que SQLite considera un `scraped_at` con fecha. Lo demas (vacio, basura) no
+# entra ni a la grilla ni al primer lunes.
+_CON_FECHA = "scraped_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]*'"
+# Con hora: mismo criterio que `llegada_de_leads` (largo >= 13 y un ':').
+_HORA_SQL = ("CASE WHEN length(scraped_at) >= 13 AND instr(scraped_at, ':') > 0 "
+             "THEN substr(scraped_at, 12, 2) END")
+
+
+def leads_de_la_semana(db_path: str, lunes: str, hoy=None) -> dict:
+    """Los leads de Meta de UNA semana, dia por dia y hora por hora.
+
+    Pedido de Juan sobre "Cuando llegan los leads": ir semana por semana y con
+    mas detalle. El mapa de franjas de `llegada_de_leads` sigue existiendo para
+    el dossier y el informe; esto es solo la vista del bloque.
+
+    La semana es de lunes a domingo EN HORA DE MONTEVIDEO. `scraped_at` esta en
+    UTC, asi que la ventana en UTC va del lunes 03:00 al lunes siguiente 03:00:
+    un lead del domingo 23:59 local (lunes 02:59 UTC) es de ESTA semana, y uno
+    del lunes 00:00 local (lunes 03:00 UTC) ya es de la que sigue.
+
+    No lee filas: SQLite agrupa por fecha y hora UTC y aca solo se corren esos
+    grupos (a lo sumo 8 dias x 24 horas) a hora local.
+    """
+    from datetime import date, timedelta
+
+    inicio = date.fromisoformat(lunes)
+    if inicio.weekday() != 0:
+        raise ValueError(f"{lunes} no es lunes")
+    fin = inicio + timedelta(days=6)
+    hoy = date.fromisoformat(hoy) if isinstance(hoy, str) else (hoy or _hoy_en_montevideo())
+
+    grilla = [[0] * 24 for _ in range(7)]
+    sin_hora = 0
+
+    conn = _connect(db_path)
+    try:
+        # Del lunes al lunes siguiente en fechas UTC: el domingo local de 21 a
+        # 24 cae el lunes siguiente en UTC.
+        grupos = conn.execute(
+            f"SELECT substr(scraped_at, 1, 10) AS dia, {_HORA_SQL} AS hora, "
+            f"COUNT(*) AS n FROM {_ENVIOS_FECHAS} WHERE source = 'meta' "
+            f"AND {_CON_FECHA} AND substr(scraped_at, 1, 10) BETWEEN ? AND ? "
+            "GROUP BY dia, hora",
+            (inicio.isoformat(), (inicio + timedelta(days=7)).isoformat())).fetchall()
+        primero = conn.execute(
+            f"SELECT substr(scraped_at, 1, 10) AS dia, MIN({_HORA_SQL}) AS hora "
+            f"FROM {_ENVIOS_FECHAS} WHERE source = 'meta' AND {_CON_FECHA} "
+            "GROUP BY dia ORDER BY dia LIMIT 1").fetchone()
+    finally:
+        conn.close()
+
+    for g in grupos:
+        try:
+            dia_utc = date.fromisoformat(g["dia"])
+        except ValueError:
+            continue
+        if g["hora"] is None or not str(g["hora"]).isdigit() or int(g["hora"]) > 23:
+            # Sin hora no se puede saber de que dia local es si cae en el
+            # borde; se cuenta aparte, por su fecha tal cual, y no en la grilla.
+            if inicio <= dia_utc <= fin:
+                sin_hora += g["n"]
+            continue
+        dia_local, hora_local = _a_montevideo(dia_utc, int(g["hora"]))
+        if inicio <= dia_local <= fin:
+            grilla[(dia_local - inicio).days][hora_local] += g["n"]
+
+    primera_semana = None
+    if primero:
+        try:
+            dia0 = date.fromisoformat(primero["dia"])
+            hora0 = primero["hora"]
+            if hora0 is not None and str(hora0).isdigit():
+                dia0 = _a_montevideo(dia0, int(hora0))[0]
+            primera_semana = (dia0 - timedelta(days=dia0.weekday())).isoformat()
+        except ValueError:
+            primera_semana = None
+
+    total = sum(sum(fila) for fila in grilla)
+    return {
+        "semana": inicio.isoformat(),
+        "hasta": fin.isoformat(),
+        "semana_actual": (hoy - timedelta(days=hoy.weekday())).isoformat(),
+        "primera_semana": primera_semana,
+        "dias": [{"fecha": (inicio + timedelta(days=i)).isoformat(),
+                  "horas": grilla[i], "total": sum(grilla[i])} for i in range(7)],
+        "total": total,
+        "maximo": max(max(fila) for fila in grilla) if total else None,
+        "sin_hora": sin_hora,
+    }
+
+
+_MESES =["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio",
           "Agosto", "Setiembre", "Octubre", "Noviembre", "Diciembre"]
 
 
@@ -692,8 +878,8 @@ def serie_mensual(db_path: str, desde: str, hasta: str) -> list:
     conn = _connect(db_path)
     try:
         leads = conn.execute(
-            "SELECT id, scraped_at FROM businesses WHERE source = 'meta' "
-            "AND substr(scraped_at, 1, 10) BETWEEN ? AND ?",
+            f"SELECT id, fecha_local, primero FROM {_ENVIOS} WHERE source = 'meta' "
+            "AND substr(fecha_local, 1, 10) BETWEEN ? AND ?",
             (desde, hasta)).fetchall()
         eventos_filas = conn.execute(
             "SELECT lead_id, new_status FROM lead_events").fetchall()
@@ -717,9 +903,9 @@ def serie_mensual(db_path: str, desde: str, hasta: str) -> list:
             "costo_venta": None})
 
     for lead in leads:
-        s = _slot(str(lead["scraped_at"])[:7])
+        s = _slot(str(lead["fecha_local"])[:7])
         s["leads"] += 1
-        ev = eventos.get(lead["id"], set())
+        ev = eventos.get(lead["id"], set()) if lead["primero"] else set()
         if alcanzo(ev, "demo_1"):
             s["demos"] += 1
         if alcanzo(ev, "cerrado"):
@@ -789,8 +975,8 @@ def historico(db_path: str, desde: str) -> dict:
             "SELECT date, spend, impressions, clicks FROM meta_insights "
             "WHERE date < ?", (desde,)).fetchall()
         lead_filas = conn.execute(
-            "SELECT id, scraped_at FROM businesses WHERE source = 'meta' "
-            "AND substr(scraped_at, 1, 10) < ?", (desde,)).fetchall()
+            f"SELECT id, fecha_local, primero FROM {_ENVIOS} WHERE source = 'meta' "
+            "AND substr(fecha_local, 1, 10) < ?", (desde,)).fetchall()
         eventos_filas = conn.execute(
             "SELECT lead_id, new_status FROM lead_events").fetchall()
     finally:
@@ -808,16 +994,16 @@ def historico(db_path: str, desde: str) -> dict:
     impresiones = sum(int(f["impressions"] or 0) for f in gasto_filas)
     leads = len(lead_filas)
     demos = sum(1 for f in lead_filas
-                if alcanzo(eventos.get(f["id"], set()), "demo_1"))
+                if f["primero"] and alcanzo(eventos.get(f["id"], set()), "demo_1"))
 
     # Una semana cuenta si tuvo gasto O leads: un lead que entro sin pauta esa
     # semana igual paso.
     activas = {_lunes_de(f["date"]) for f in gasto_filas}
-    activas |= {_lunes_de(f["scraped_at"]) for f in lead_filas}
+    activas |= {_lunes_de(f["fecha_local"]) for f in lead_filas}
     semanas = len(activas)
 
     fechas = [f["date"][:10] for f in gasto_filas]
-    fechas += [str(f["scraped_at"])[:10] for f in lead_filas]
+    fechas += [str(f["fecha_local"])[:10] for f in lead_filas]
 
     def _por_semana(total):
         return round(total / semanas, 2) if semanas else None

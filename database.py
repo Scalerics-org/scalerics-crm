@@ -16,19 +16,45 @@ def _add_column(conn: sqlite3.Connection, table: str, column: str, definition: s
         pass  # column already exists
 
 
-def _grant_panel_to_existing_roles(conn: sqlite3.Connection, panel: str) -> int:
+def _grant_panel_to_existing_roles(conn: sqlite3.Connection, panel: str,
+                                   solo_si_tiene: Optional[str] = None,
+                                   si_tiene: tuple = ()) -> int:
     """Suma `panel` al panel_access de los roles que ya existen y no lo tengan.
 
     La siembra de roles por defecto solo corre con la tabla vacía, así que en
     una base que ya tiene roles (producción) un panel nuevo no le llega a
     nadie salvo a los admin, que reciben todos. Esto lo arregla en el arranque.
 
+    Con `solo_si_tiene`, el panel le llega únicamente a los roles que ya
+    tienen ese otro: sirve cuando un panel se parte en dos (Equipo ->
+    Organigrama + Ausencias) y quien veía el viejo tiene que seguir viendo
+    todo.
+
+    Con `si_tiene`, solo se suma a los roles que ya tengan ALGUNO de esos
+    paneles (Plantillas va a quien vende: `wa` o `notion_clients`).
+
     Idempotente: si el panel ya está, no toca la fila. Un `panel_access` en
     NULL, vacío, con JSON inválido o con un JSON que no es una lista se saltea
     con un warning — no se pisa lo que no se entiende. Devuelve cuántas filas
     modificó.
+
+    UNA SOLA VEZ por panel (pedido de Juan, 15/9). Antes corría en cada
+    arranque, o sea en cada deploy: si Juan le sacaba Ausencias al SDR desde el
+    editor de roles, el próximo deploy se la volvía a poner. Ahora el reparto
+    queda anotado en `panel_grants_aplicados` y no se repite; desde ahí manda
+    lo que Juan tilde. El primer arranque con esta regla todavía reparte (igual
+    que antes) y lo anota. Un rol creado después no recibe el panel solo: se
+    lo tilda Juan.
     """
     import json as _j
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS panel_grants_aplicados (
+            panel       TEXT PRIMARY KEY,
+            aplicado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    if conn.execute("SELECT 1 FROM panel_grants_aplicados WHERE panel = ?", (panel,)).fetchone():
+        return 0
     tocadas = 0
     try:
         filas = conn.execute("SELECT id, panel_access FROM roles").fetchall()
@@ -50,6 +76,10 @@ def _grant_panel_to_existing_roles(conn: sqlite3.Connection, panel: str) -> int:
             continue
         if panel in paneles:
             continue
+        if solo_si_tiene is not None and solo_si_tiene not in paneles:
+            continue
+        if si_tiene and not any(p in paneles for p in si_tiene):
+            continue
         paneles.append(panel)
         try:
             conn.execute(
@@ -60,9 +90,10 @@ def _grant_panel_to_existing_roles(conn: sqlite3.Connection, panel: str) -> int:
         except sqlite3.Error as e:
             logger.warning(f"panel_access migration: rol id={rid} no se pudo actualizar ({e})")
 
+    conn.execute("INSERT OR IGNORE INTO panel_grants_aplicados (panel) VALUES (?)", (panel,))
+    conn.commit()
     if tocadas:
-        conn.commit()
-        logger.info(f"panel_access migration: '{panel}' agregado a {tocadas} rol(es)")
+        logger.info(f"panel_access migration: '{panel}' agregado a {tocadas} rol(es), una sola vez")
     return tocadas
 
 
@@ -222,6 +253,41 @@ def init_db(db_path: str) -> None:
                 ("Ventas", _SALES),
             ])
         _grant_panel_to_existing_roles(conn, "meta")
+        # Solo lectura por panel (pedido de Juan, 15/9): "el usuario que sea
+        # dado de alta como contador no va a poder agregar movimientos o editar
+        # cosas solo a visualizar salvo la parte de balances". Lista JSON de
+        # paneles que el rol VE pero no modifica. El dato es genérico; hoy solo
+        # Finanzas lo respeta en el servidor (routes/finanzas.py).
+        #
+        # La precarga del Contador corre UNA vez: cuando la columna es nueva.
+        # Si corriera en cada arranque, destildar el "solo lectura" en el editor
+        # de roles duraría hasta el próximo deploy.
+        solo_lectura_es_nueva = not any(
+            fila[1] == "paneles_solo_lectura"
+            for fila in conn.execute("PRAGMA table_info(roles)").fetchall())
+        _add_column(conn, "roles", "paneles_solo_lectura", "TEXT NOT NULL DEFAULT '[]'")
+        if solo_lectura_es_nueva:
+            conn.execute("UPDATE roles SET paneles_solo_lectura = ? "
+                         "WHERE name = 'Contador' AND paneles_solo_lectura = '[]'",
+                         ('["finanzas"]',))
+        # Contador y Marketing (pedido de Juan, 15/9): hoy hay Admin, SDR y
+        # Programador, y se suman estos dos. Se crean por nombre, una sola vez,
+        # también en bases que ya tienen roles; INSERT OR IGNORE no pisa lo que
+        # Juan cambie después en el editor de roles.
+        # Contador arranca SIN Finanzas ni Simulador aunque sean su trabajo: por
+        # el Ruling R20 los paneles con plata no se asignan desde el código,
+        # Juan los tilda a mano en el editor de roles.
+        # El Contador nace con Finanzas en solo lectura: el día que Juan le
+        # tilde Finanzas, ya entra sin poder modificarla. Si el rol se crea
+        # recién ahora (base nueva, o lo borraron), la precarga de arriba no
+        # lo vio: por eso va también en el INSERT.
+        import json as _jroles
+        for _nombre, _paneles, _solo_lectura in (
+                ("Contador", ["cal"], ["finanzas"]),
+                ("Marketing", ["cal", "meta", "marketing"], [])):
+            conn.execute("INSERT OR IGNORE INTO roles (name, panel_access, paneles_solo_lectura) "
+                         "VALUES (?, ?, ?)",
+                         (_nombre, _jroles.dumps(_paneles), _jroles.dumps(_solo_lectura)))
         _add_column(conn, "client_info", "meeting_time", "TEXT")
         _add_column(conn, "client_info", "meeting_url", "TEXT")
 
@@ -431,6 +497,12 @@ def init_db(db_path: str) -> None:
                 notion_synced_at       TIMESTAMP
             )
         """)
+        # Con que negocio del CRM se corresponde la ficha. Notion no trae ningun
+        # id del CRM (solo el nombre), asi que se conecta a mano una vez. Con eso,
+        # llegar a "Presupuesto Aceptado" pasa al negocio a Clientes: desde el
+        # 14/9 es el unico camino, porque se saco el tablero de Pre-clientes.
+        # El upsert del sync no lista esta columna, asi que no la pisa.
+        _add_column(conn, "notion_clients", "business_id", "INTEGER")
 
         # ── tasks ─────────────────────────────────────────────────────────────
         conn.execute("""
@@ -915,6 +987,311 @@ def init_db(db_path: str) -> None:
         # lo asigna Juan a mano desde el editor de roles, que es justamente
         # lo que eligió al marcar "panel normal, se asigna por rol".
 
+        # ── simulador financiero ──────────────────────────────────────────────
+        # Escenarios guardados del simulador. Tabla propia y aparte de las de
+        # finanzas a propósito: el simulador LEE Finanzas para precargar, pero
+        # trabaja sobre su copia y nunca escribe ahí. `datos` es el escenario
+        # entero en JSON (equipo, listas, palancas, supuestos): su forma la
+        # define el panel y lleva `version`, para poder migrarla sin tocar la
+        # tabla cuando lleguen la comparación y la proyección a 12 meses.
+        #
+        # Igual que Finanzas (Ruling R20), sin `_grant_panel_to_existing_roles`:
+        # el simulador muestra sueldos y lo que se debe cobrar, así que arranca
+        # sin nadie asignado y Juan lo reparte desde el editor de roles.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS simulador_escenarios (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                nombre          TEXT NOT NULL,
+                datos           TEXT NOT NULL,
+                created_by_id   INTEGER,
+                created_by_name TEXT,
+                created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # ── equipo ────────────────────────────────────────────────────────────
+        # Organigrama y horas a recuperar. A propósito NINGUNA de las tres
+        # tablas tiene campos de dinero: si alguien falta no se le descuenta
+        # nada, solo se registra cuántas horas debe y cuándo las devuelve
+        # (pedido de Juan, 14/9). tests/test_equipo.py lo verifica sobre el
+        # esquema.
+        #
+        # `reporta_a` es un solo id. Las personas con NULL son la fila de
+        # arriba del organigrama; los hijos de cualquier raíz se dibujan bajo
+        # un conector común que une a todas las raíces.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS equipo_personas (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                nombre          TEXT NOT NULL,
+                rol             TEXT NOT NULL DEFAULT '',
+                reporta_a       INTEGER REFERENCES equipo_personas(id) ON DELETE SET NULL,
+                lleva_horas     INTEGER NOT NULL DEFAULT 0,
+                horas_por_dia   REAL NOT NULL DEFAULT 4,
+                activo          INTEGER NOT NULL DEFAULT 1,
+                created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_equipo_personas_nombre "
+                     "ON equipo_personas(nombre)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS equipo_ausencias (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                persona_id      INTEGER NOT NULL REFERENCES equipo_personas(id) ON DELETE CASCADE,
+                fecha_desde     TEXT NOT NULL,
+                fecha_hasta     TEXT NOT NULL,
+                motivo          TEXT NOT NULL,
+                horas_totales   REAL NOT NULL,
+                created_by_id   INTEGER,
+                created_by_name TEXT,
+                created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_equipo_ausencias_persona "
+                     "ON equipo_ausencias(persona_id)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS equipo_recuperos (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                ausencia_id     INTEGER NOT NULL REFERENCES equipo_ausencias(id) ON DELETE CASCADE,
+                fecha           TEXT NOT NULL,
+                horas           REAL NOT NULL,
+                created_by_id   INTEGER,
+                created_by_name TEXT,
+                created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_equipo_recuperos_ausencia "
+                     "ON equipo_recuperos(ausencia_id)")
+        conn.commit()
+        _sembrar_equipo(conn)
+        # Como Marketing y a diferencia de Finanzas/Simulador (Ruling R20):
+        # acá no hay plata, así que el panel les llega a los roles existentes.
+        _grant_panel_to_existing_roles(conn, "equipo")
+        # Recursos Humanos partió Equipo en dos paneles (pedido de Juan): el
+        # organigrama se quedó con el id `equipo` y Ausencias es `ausencias`.
+        # Quien tenía Equipo veía las dos partes, así que recibe Ausencias.
+        _grant_panel_to_existing_roles(conn, "ausencias", solo_si_tiene="equipo")
+
+        # ── plantillas de mensajes ────────────────────────────────────────────
+        # Los mensajes que Juan manda siempre, con variables entre llaves que se
+        # completan con los datos del lead. NO es `wa_templates`: esa tabla son
+        # atajos sueltos del chat de WhatsApp (nombre + texto, sin editar), y
+        # meter ahí estas plantillas las haría aparecer con las llaves sin
+        # completar en el "Abrir WA" del panel de cliente.
+        #
+        # `clave` identifica a las precargadas (NULL en las creadas a mano): la
+        # precarga es INSERT OR IGNORE por clave, así que no duplica ni pisa lo
+        # que se edite. Por eso borrar es marcar `borrada`: si se borrara la
+        # fila, el próximo arranque volvería a crear la plantilla.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS plantillas_mensajes (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                clave           TEXT UNIQUE,
+                orden           INTEGER NOT NULL DEFAULT 0,
+                momento         TEXT NOT NULL DEFAULT '',
+                titulo          TEXT NOT NULL,
+                canal           TEXT NOT NULL DEFAULT '',
+                cuerpo          TEXT NOT NULL,
+                nota            TEXT NOT NULL DEFAULT '',
+                explicacion     TEXT NOT NULL DEFAULT '',
+                automatica      INTEGER NOT NULL DEFAULT 0,
+                borrada         INTEGER NOT NULL DEFAULT 0,
+                created_by_name TEXT,
+                created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.commit()
+        _sembrar_plantillas(conn)
+        # Va a quien vende: los roles con WhatsApp o con Proceso de venta.
+        _grant_panel_to_existing_roles(conn, "plantillas",
+                                       si_tiene=("wa", "notion_clients"))
+
+        # ── flujos ────────────────────────────────────────────────────────────
+        # Cómo trabaja la empresa, paso a paso, con el ROL de cada etapa y
+        # nunca nombres de personas. Se muestra al final de Ausencias. Los
+        # pasos viven acá y no en el código: se agregan, editan y reordenan
+        # desde la pantalla. `numero` se renumera 1..n en cada cambio.
+        # `flujo_paso_cobros` deja que un paso tenga más de un momento de
+        # cobro (50 % al inicio y 50 % contra entrega), aunque hoy haya uno.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS flujos (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                nombre      TEXT NOT NULL,
+                descripcion TEXT NOT NULL DEFAULT '',
+                orden       INTEGER NOT NULL DEFAULT 0,
+                created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_flujos_nombre ON flujos(nombre)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS flujo_pasos (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                flujo_id    INTEGER NOT NULL REFERENCES flujos(id) ON DELETE CASCADE,
+                numero      INTEGER NOT NULL,
+                titulo      TEXT NOT NULL,
+                rol         TEXT NOT NULL,
+                detalle     TEXT NOT NULL DEFAULT '',
+                pantalla    TEXT,
+                destacado   INTEGER NOT NULL DEFAULT 0,
+                created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_flujo_pasos_flujo "
+                     "ON flujo_pasos(flujo_id, numero)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS flujo_paso_cobros (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                paso_id     INTEGER NOT NULL REFERENCES flujo_pasos(id) ON DELETE CASCADE,
+                orden       INTEGER NOT NULL DEFAULT 0,
+                porcentaje  REAL NOT NULL,
+                descripcion TEXT NOT NULL
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_flujo_paso_cobros_paso "
+                     "ON flujo_paso_cobros(paso_id)")
+        conn.commit()
+        _sembrar_flujos(conn)
+
+        # ── Daily Programador ─────────────────────────────────────────────────
+        # Actividades del día y recordatorios que se repiten (pedido de Juan,
+        # 15/9). Van por persona de `equipo_personas`, no por usuario: en el
+        # menú hay una entrada por programador y cualquiera con el panel
+        # `daily` entra a cualquiera. `programador` marca quién tiene su
+        # daily; sumar a otro es prender la marca, sin tocar código. Se
+        # precarga en Juan y Gonzalo solo cuando la columna es nueva, así un
+        # cambio hecho a mano sobrevive a los reinicios.
+        columnas = {fila[1] for fila in conn.execute("PRAGMA table_info(equipo_personas)")}
+        if "programador" not in columnas:
+            conn.execute("ALTER TABLE equipo_personas "
+                         "ADD COLUMN programador INTEGER NOT NULL DEFAULT 0")
+            conn.executemany("UPDATE equipo_personas SET programador = 1 WHERE nombre = ?",
+                             [(n,) for n in _PROGRAMADORES_PRECARGA])
+        # Daily Admin y el nombre para mostrar (Juan, 16/9). Lo nuevo de
+        # personas (Matías en Daily Programador; Juan Pereyra y Javier en
+        # Daily Admin; el apodo "Juanchi") se suma UNA sola vez, en el arranque
+        # que crea `admin_daily`: lo que se cambie a mano antes o después no se
+        # pisa, y nada de lo ya cargado cambia de dueño.
+        _add_column(conn, "equipo_personas", "apodo", "TEXT")
+        columnas = {fila[1] for fila in conn.execute("PRAGMA table_info(equipo_personas)")}
+        if "admin_daily" not in columnas:
+            conn.execute("ALTER TABLE equipo_personas "
+                         "ADD COLUMN admin_daily INTEGER NOT NULL DEFAULT 0")
+            _sumar_personas_daily(conn)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS daily_actividades (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                persona_id      INTEGER NOT NULL REFERENCES equipo_personas(id) ON DELETE CASCADE,
+                fecha           TEXT NOT NULL,
+                texto           TEXT NOT NULL,
+                hecha           INTEGER NOT NULL DEFAULT 0,
+                pasada_de       TEXT,
+                created_by_id   INTEGER,
+                created_by_name TEXT,
+                created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_daily_actividades_dia "
+                     "ON daily_actividades(persona_id, fecha)")
+        # `dias`: los días de la semana como "0,2,4" (0 = lunes), solo con
+        # frecuencia 'dias'. `desde`: el día en que se creó, para que no
+        # aparezca en días anteriores.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS daily_recordatorios (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                persona_id      INTEGER NOT NULL REFERENCES equipo_personas(id) ON DELETE CASCADE,
+                texto           TEXT NOT NULL,
+                frecuencia      TEXT NOT NULL DEFAULT 'diario',
+                dias            TEXT NOT NULL DEFAULT '',
+                activo          INTEGER NOT NULL DEFAULT 1,
+                desde           TEXT NOT NULL,
+                created_by_id   INTEGER,
+                created_by_name TEXT,
+                created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_daily_recordatorios_persona "
+                     "ON daily_recordatorios(persona_id)")
+        # Un recordatorio hecho en un día es una fila; desmarcarlo la borra.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS daily_marcas (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                recordatorio_id INTEGER NOT NULL REFERENCES daily_recordatorios(id) ON DELETE CASCADE,
+                fecha           TEXT NOT NULL,
+                created_by_id   INTEGER,
+                created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE (recordatorio_id, fecha)
+            )
+        """)
+        # Hora y nota opcionales (pedido de Juan, 16/9: tarjetas como las de
+        # Seguimiento de leads). Columnas nuevas en NULL: lo que ya estaba
+        # cargado sigue igual, sin hora ni nota.
+        for tabla in ("daily_actividades", "daily_recordatorios"):
+            _add_column(conn, tabla, "hora", "TEXT")
+            _add_column(conn, tabla, "nota", "TEXT")
+            # De qué Daily es: 'programador' o 'admin'. Una persona puede estar
+            # en los dos y las listas no se mezclan. Lo cargado antes es del
+            # Daily Programador, que era el único.
+            _add_column(conn, tabla, "seccion", "TEXT NOT NULL DEFAULT 'programador'")
+        conn.commit()
+        # Como Equipo: los roles que tienen Tareas reciben el Daily.
+        _grant_panel_to_existing_roles(conn, "daily", solo_si_tiene="tasks")
+
+        # ── seguimiento de leads ──────────────────────────────────────────────
+        # La agenda de llamados de Juan (14/9). `lead_id` es `businesses.id`:
+        # ahí está el teléfono y es la ficha que abre el panel de cliente. Las
+        # fichas de Proceso de venta llegan a su lead por
+        # `notion_clients.business_id`.
+        #
+        # Un lead tiene a lo sumo UN recordatorio pendiente: lo garantiza el
+        # índice único parcial, no solo el código. `cierre` dice por qué se
+        # cerró uno: 'llamado' (Hecho) o 'reemplazado' (se creó otro).
+        seg_leads_nueva = not conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='seg_recordatorios'"
+        ).fetchone()
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS seg_recordatorios (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                lead_id     INTEGER NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+                fecha       TEXT NOT NULL,
+                hora        TEXT,
+                motivo      TEXT NOT NULL,
+                nota        TEXT,
+                estado      TEXT NOT NULL DEFAULT 'pendiente'
+                            CHECK (estado IN ('pendiente', 'hecho')),
+                creado_en   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                cerrado_en  TIMESTAMP,
+                cierre      TEXT
+            )
+        """)
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_seg_recordatorios_un_pendiente "
+                     "ON seg_recordatorios(lead_id) WHERE estado = 'pendiente'")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_seg_recordatorios_estado_fecha "
+                     "ON seg_recordatorios(estado, fecha)")
+        # El historial: una fila por cada Hecho. `fecha` es 'AAAA-MM-DD HH:MM'
+        # en hora de Montevideo.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS seg_llamados (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                lead_id         INTEGER NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+                fecha           TEXT NOT NULL,
+                resultado       TEXT NOT NULL,
+                recordatorio_id INTEGER REFERENCES seg_recordatorios(id) ON DELETE SET NULL,
+                creado_por      TEXT,
+                creado_en       TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_seg_llamados_lead "
+                     "ON seg_llamados(lead_id, fecha)")
+        conn.commit()
+        # Como Equipo (sin plata, así que no aplica el Ruling R20), pero solo a
+        # los roles que ya ven Proceso de venta, y UNA sola vez: en el arranque
+        # que crea la tabla. Si después Juan le saca el panel a un rol desde el
+        # editor, un deploy no se lo vuelve a poner.
+        if seg_leads_nueva:
+            _grant_panel_to_existing_roles(conn, "seg_leads", solo_si_tiene="notion_clients")
+
         # ── Pre-clientes y clientes activos ───────────────────────────────────
         # Los tres responsables de un cliente activo. Apuntan a users para poder
         # filtrar "mis clientes"; si alguien se va, el vinculo queda en NULL en vez
@@ -925,6 +1302,50 @@ def init_db(db_path: str) -> None:
                     "INTEGER REFERENCES users(id) ON DELETE SET NULL")
         _add_column(conn, "businesses", "cobros_id",
                     "INTEGER REFERENCES users(id) ON DELETE SET NULL")
+
+        # Cuanto pago el cliente por su desarrollo. Lo carga Juan a mano: NO se
+        # deriva de presupuestos ni de Finanzas, que pueden estar incompletos o
+        # partidos en cobros parciales. Monto y moneda van separados, con las
+        # mismas monedas que Finanzas (services.finanzas.MONEDAS), y sin pasar
+        # a dolares: es el numero que se acordo, no una conversion. Los dos en
+        # NULL es "todavia no se cargo", que no es lo mismo que 0.
+        _add_column(conn, "businesses", "monto_pagado", "REAL")
+        _add_column(conn, "businesses", "moneda_pagado", "TEXT")
+
+        # Semaforo marcado a mano desde Meta Ads (ver
+        # services/planilla_semaforo.marcar_color). El color en si NO se guarda
+        # aca: sale de `crm_status`, igual que cuando lo trae la planilla.
+        # `semaforo_origen` dice quien lo puso por ultima vez ('crm' o
+        # 'planilla'), `semaforo_at` cuando, y `semaforo_planilla` el ultimo
+        # estado que trajo la planilla para ese lead: es lo que permite saber si
+        # la planilla se repinto despues de la marca a mano o si sigue diciendo
+        # lo mismo de antes.
+        _add_column(conn, "businesses", "semaforo_origen", "TEXT")
+        _add_column(conn, "businesses", "semaforo_at", "TEXT")
+        _add_column(conn, "businesses", "semaforo_planilla", "TEXT")
+
+        # Cada formulario de Meta enviado, por separado. Una ficha puede tener
+        # varios: la persona que vuelve a escribir meses despues cuenta tambien
+        # en el mes de la vuelta, como la cuenta Meta. `meta_lead_id` es el
+        # leadgen id de Meta y hace idempotente el registro (webhook que
+        # reintenta, import diario que repasa todo). `created_time` va en UTC
+        # con el formato de la casa ('AAAA-MM-DD HH:MM:SS'), igual que scraped_at.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS meta_lead_envios (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                business_id     INTEGER NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+                meta_lead_id    TEXT NOT NULL UNIQUE,
+                created_time    TEXT NOT NULL,
+                form_data       TEXT,
+                campaign_id     TEXT,
+                campaign_name   TEXT,
+                ad_id           TEXT,
+                ad_name         TEXT,
+                created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_meta_lead_envios_business "
+                     "ON meta_lead_envios(business_id)")
 
         # Registro historico de demos dadas. NO es la tabla `demos`, que guarda la
         # pagina que genera la IA: esto es el evento comercial de haber mostrado
@@ -946,6 +1367,29 @@ def init_db(db_path: str) -> None:
                      "ON demos_realizadas(client_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_demos_realizadas_fecha "
                      "ON demos_realizadas(fecha)")
+        # Demos que llegan solas desde la planilla de semaforo (ver
+        # services/planilla_semaforo.sincronizar_demos). `origen` NULL es una
+        # demo cargada a mano: el sync no las toca nunca. `estado_planilla` es
+        # la clave estable del color (agendada, realizada, no_cerro, venta) y
+        # `mes_planilla` ('AAAA-MM') la pestaña de donde salio.
+        _add_column(conn, "demos_realizadas", "origen", "TEXT")
+        _add_column(conn, "demos_realizadas", "estado_planilla", "TEXT")
+        _add_column(conn, "demos_realizadas", "mes_planilla", "TEXT")
+        # Una demo de planilla por cliente y mes: es lo que hace idempotente al
+        # sync aunque dos corridas se pisen. Parcial para no limitar las
+        # cargadas a mano, que pueden ser varias en el mismo mes.
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_demos_planilla_cliente_mes "
+                     "ON demos_realizadas(client_id, mes_planilla) "
+                     "WHERE origen = 'planilla'")
+        # El presupuesto que se mando despues de una demo cuelga de la demo con
+        # una columna propia y no codificado en `section` ("demo:123"): asi se
+        # puede indexar y cruzar con un JOIN, y `section` sigue siendo 'budget',
+        # con lo que el mismo archivo aparece tambien en la ficha del cliente.
+        # El indice importa por el BLOB: buscar por demo_id sin leer la fila
+        # evita recorrer las paginas de overflow de file_data.
+        _add_column(conn, "lead_attachments", "demo_id", "INTEGER")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_lead_attachments_demo "
+                     "ON lead_attachments(demo_id)")
         _migrar_estados_preclientes(conn)
 
         # ── task assignment & goal tracking ────────────────────────────────────
@@ -1046,6 +1490,8 @@ ALLOWED_COLUMNS = {
     "interest", "form_data", "website",
     # Responsables de un cliente activo: dia a dia, mantenimiento y cobro.
     "encargado_id", "mantenimiento_id", "cobros_id",
+    # Cuanto pago por su desarrollo, cargado a mano desde Clientes.
+    "monto_pagado", "moneda_pagado",
 }
 
 
@@ -1328,7 +1774,14 @@ def delete_business(db_path: str, business_id: int) -> None:
         # keys apagadas y hay que activarlas por conexion, cosa que _connect no
         # hace. Sin este borrado explicito quedarian demos huerfanas con las notas
         # comerciales de un cliente que ya no existe.
+        # Primero los presupuestos de esas demos: son BLOBs de hasta 10 MB que
+        # nadie podria volver a ver ni borrar.
+        conn.execute("DELETE FROM lead_attachments WHERE demo_id IN "
+                     "(SELECT id FROM demos_realizadas WHERE client_id = ?)", (business_id,))
         conn.execute("DELETE FROM demos_realizadas WHERE client_id = ?", (business_id,))
+        conn.execute("DELETE FROM seg_llamados WHERE lead_id = ?", (business_id,))
+        conn.execute("DELETE FROM seg_recordatorios WHERE lead_id = ?", (business_id,))
+        conn.execute("DELETE FROM meta_lead_envios WHERE business_id = ?", (business_id,))
         conn.execute("DELETE FROM businesses WHERE id = ?", (business_id,))
         conn.commit()
     finally:
@@ -1339,7 +1792,18 @@ def merge_business(db_path: str, source_id: int, target_id: int) -> None:
     """Transfer all relations from source_id to target_id, then delete source."""
     conn = _connect(db_path)
     try:
+        # Seguimiento de leads: el indice unico no deja dos recordatorios
+        # pendientes por lead. Si los dos tienen uno abierto, queda el del
+        # destino y el del que se fusiona se cierra como reemplazado.
+        if conn.execute("SELECT 1 FROM seg_recordatorios WHERE lead_id = ? "
+                        "AND estado = 'pendiente'", (target_id,)).fetchone():
+            conn.execute(
+                "UPDATE seg_recordatorios SET estado = 'hecho', cierre = 'reemplazado', "
+                "cerrado_en = CURRENT_TIMESTAMP WHERE lead_id = ? AND estado = 'pendiente'",
+                (source_id,))
         for table, col in [
+            ("seg_recordatorios", "lead_id"),
+            ("seg_llamados",     "lead_id"),
             ("meetings",         "client_id"),
             ("demos",            "client_id"),
             ("budgets",          "client_id"),
@@ -1347,6 +1811,7 @@ def merge_business(db_path: str, source_id: int, target_id: int) -> None:
             ("lead_attachments", "lead_id"),
             ("lead_events",      "lead_id"),
             ("call_logs",        "lead_id"),
+            ("meta_lead_envios", "business_id"),
         ]:
             conn.execute(
                 f"UPDATE {table} SET {col} = ? WHERE {col} = ?",
@@ -1827,11 +2292,66 @@ def upsert_notion_client(db_path: str, notion_page_id: str, name: str,
 
 
 def get_notion_clients(db_path: str) -> list[dict]:
+    """Las fichas del espejo, con el nombre del negocio del CRM al que estan
+    conectadas (`business_name`, None si no hay conexion o el negocio ya no
+    existe)."""
     conn = _connect(db_path)
     try:
         cursor = conn.execute(
-            "SELECT * FROM notion_clients ORDER BY name COLLATE NOCASE")
+            "SELECT nc.*, b.name AS business_name "
+            "FROM notion_clients nc LEFT JOIN businesses b ON b.id = nc.business_id "
+            "ORDER BY nc.name COLLATE NOCASE")
         return [dict(row) for row in cursor.fetchall()]
+    finally:
+        conn.close()
+
+
+def get_notion_client_by_page(db_path: str, notion_page_id: str) -> dict | None:
+    conn = _connect(db_path)
+    try:
+        fila = conn.execute("SELECT * FROM notion_clients WHERE notion_page_id = ?",
+                            (notion_page_id,)).fetchone()
+        return dict(fila) if fila else None
+    finally:
+        conn.close()
+
+
+def vincular_notion_client(db_path: str, cliente_id: int,
+                           business_id: int | None) -> None:
+    """Conecta una ficha con su negocio del CRM, o la desconecta con None."""
+    conn = _connect(db_path)
+    try:
+        conn.execute("UPDATE notion_clients SET business_id = ? WHERE id = ?",
+                     (business_id, cliente_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_notion_client_by_id(db_path: str, cliente_id: int) -> dict | None:
+    conn = _connect(db_path)
+    try:
+        fila = conn.execute("SELECT * FROM notion_clients WHERE id = ?",
+                            (cliente_id,)).fetchone()
+        return dict(fila) if fila else None
+    finally:
+        conn.close()
+
+
+def set_notion_client_status(db_path: str, notion_page_id: str, status: str) -> None:
+    """Deja en el espejo el estado que Notion acaba de aceptar.
+
+    Solo se llama despues de un PATCH que salio bien: si no, el tablero del CRM
+    mostraria la ficha en la columna vieja hasta el proximo sync, y eso se ve
+    como un "rebote" de lo que la persona acaba de arrastrar.
+    """
+    ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    conn = _connect(db_path)
+    try:
+        conn.execute(
+            "UPDATE notion_clients SET status = ?, notion_synced_at = ? "
+            "WHERE notion_page_id = ?", (status, ahora, notion_page_id))
+        conn.commit()
     finally:
         conn.close()
 
@@ -2130,6 +2650,149 @@ def seed_pitch_templates(db_path: str) -> None:
         logger.info(f"Seeded {len(templates)} pitch templates")
     finally:
         conn.close()
+
+
+# ─── Envios de formulario de Meta ─────────────────────────────────────────────
+# Pedido de Juan (15/9): "Como Meta: si alguien vuelve a llenar el formulario,
+# cuenta tambien en ese mes, marcado como 'volvio a escribir'". Adrian Zabaleta
+# lleno el formulario en agosto y otra vez el 8/9; Meta conto 11 leads en
+# setiembre y el CRM 10, porque la ficha es una sola y se contaba por su
+# `scraped_at`.
+#
+# La regla, en un solo lugar (ENVIOS_META_SQL): los envios de una ficha de Meta
+# son los registrados en `meta_lead_envios` MAS su `scraped_at`, salvo que ya
+# haya un envio registrado en ese mismo minuto. Asi una ficha vieja sin envios
+# sigue contando en su mes de siempre, y el import que rellena la tabla no
+# duplica el primer envio (que es el mismo `created_time` que `scraped_at`).
+
+def norm_created_time(valor) -> str | None:
+    """El `created_time` de Graph ('2026-09-08T14:03:11+0000') en UTC con el
+    formato de la casa, o None si no se puede leer."""
+    from datetime import datetime, timezone
+
+    texto = str(valor or "").strip()
+    if not texto:
+        return None
+    try:
+        return (datetime.fromisoformat(texto.replace("+0000", ""))
+                .replace(tzinfo=timezone.utc).strftime("%Y-%m-%d %H:%M:%S"))
+    except ValueError:
+        return None
+
+
+_MINUTO_SQL = "substr(replace({}, 'T', ' '), 1, 16)"
+
+# Una fila por envio de formulario de un lead de Meta, con las columnas que
+# leen los contadores (mismos nombres que en `businesses`, asi las consultas
+# cambian el FROM y nada mas):
+#   scraped_at   fecha del envio en UTC, tal como se guardo
+#   fecha_local  la misma en hora de Montevideo (UTC-3 fijo desde 2015); una
+#                fecha sin hora queda tal cual, correrla la mandaria al dia antes
+#   primero      1 en el primer envio de la persona: las etapas (demo, venta,
+#                ingresos) se atribuyen ahi, una sola vez, como siempre
+#   registrado   1 si viene de meta_lead_envios, 0 si es el scraped_at de la ficha
+def _sql_envios_meta(detalle: bool) -> str:
+    # Sin detalle solo se leen id, source y scraped_at de la ficha: es la
+    # version para contar por fecha y hora, que no tiene por que tocar el
+    # form_data de nadie (ver tests/test_leads_semana.py).
+    extra_ficha = (", b.form_data, b.meta_campaign_name, b.meta_campaign_id, b.meta_ad_id"
+                   if detalle else "")
+    extra_envio = (", COALESCE(e.form_data, b.form_data), "
+                   "COALESCE(NULLIF(e.campaign_name, ''), b.meta_campaign_name), "
+                   "COALESCE(NULLIF(e.campaign_id, ''), b.meta_campaign_id), "
+                   "COALESCE(NULLIF(e.ad_id, ''), b.meta_ad_id)" if detalle else "")
+    return f"""
+    SELECT v.*,
+           CASE WHEN instr(v.scraped_at, ':') > 0
+                THEN COALESCE(datetime(substr(replace(v.scraped_at, 'T', ' '), 1, 19), '-3 hours'),
+                              v.scraped_at)
+                ELSE v.scraped_at END AS fecha_local,
+           (ROW_NUMBER() OVER (PARTITION BY v.id
+                               ORDER BY substr(replace(v.scraped_at, 'T', ' '), 1, 19),
+                                        v.registrado)) = 1 AS primero
+      FROM (
+        SELECT b.id, b.source, b.scraped_at, 0 AS registrado{extra_ficha}
+          FROM businesses b
+         WHERE b.source = 'meta' AND b.scraped_at IS NOT NULL
+           AND NOT EXISTS (SELECT 1 FROM meta_lead_envios e
+                            WHERE e.business_id = b.id
+                              AND {_MINUTO_SQL.format('e.created_time')} = {_MINUTO_SQL.format('b.scraped_at')})
+        UNION ALL
+        SELECT b.id, b.source, e.created_time, 1{extra_envio}
+          FROM meta_lead_envios e JOIN businesses b ON b.id = e.business_id
+         WHERE b.source = 'meta'
+      ) v
+"""
+
+
+ENVIOS_META_SQL = _sql_envios_meta(detalle=True)
+ENVIOS_META_FECHAS_SQL = _sql_envios_meta(detalle=False)
+
+
+def envio_meta_registrado(db_path: str, meta_lead_id) -> bool:
+    if not meta_lead_id:
+        return False
+    conn = _connect(db_path)
+    try:
+        return conn.execute("SELECT 1 FROM meta_lead_envios WHERE meta_lead_id = ?",
+                            (str(meta_lead_id),)).fetchone() is not None
+    finally:
+        conn.close()
+
+
+def registrar_envio_meta(db_path: str, business_id: int, meta_lead_id, created_time,
+                         form_data=None, campaign_id=None, campaign_name=None,
+                         ad_id=None, ad_name=None) -> bool:
+    """Guarda un envio de formulario. True si era nuevo, False si ya estaba.
+
+    Idempotente por `meta_lead_id`: el webhook reintenta y el import diario
+    repasa todos los formularios cada dia.
+    """
+    ct = norm_created_time(created_time) if "T" in str(created_time or "") else created_time
+    if not meta_lead_id or not business_id or not ct:
+        return False
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO meta_lead_envios "
+            "(business_id, meta_lead_id, created_time, form_data, campaign_id, "
+            " campaign_name, ad_id, ad_name) VALUES (?,?,?,?,?,?,?,?)",
+            (business_id, str(meta_lead_id), ct, form_data, campaign_id or None,
+             campaign_name or None, ad_id or None, ad_name or None))
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def buscar_ficha_meta_por_mail(db_path: str, email) -> Optional[dict]:
+    """La ficha de Meta con ese mail, para un formulario que llega sin telefono."""
+    mail = (email or "").strip().lower()
+    if not mail:
+        return None
+    conn = _connect(db_path)
+    try:
+        fila = conn.execute(
+            "SELECT * FROM businesses WHERE source = 'meta' AND LOWER(TRIM(email)) = ? "
+            "ORDER BY id LIMIT 1", (mail,)).fetchone()
+        return dict(fila) if fila else None
+    finally:
+        conn.close()
+
+
+def envios_meta_por_lead(db_path: str) -> dict:
+    """{business_id: [scraped_at de cada envio, ordenados]} de los leads de Meta."""
+    conn = _connect(db_path)
+    try:
+        filas = conn.execute(
+            f"SELECT id, scraped_at FROM ({ENVIOS_META_SQL}) "
+            "ORDER BY id, substr(replace(scraped_at, 'T', ' '), 1, 19)").fetchall()
+    finally:
+        conn.close()
+    salida: dict = {}
+    for f in filas:
+        salida.setdefault(f["id"], []).append(f["scraped_at"])
+    return salida
 
 
 # ─── Lead events ──────────────────────────────────────────────────────────────
@@ -2692,13 +3355,23 @@ def listar_demos_realizadas(db_path: str, client_id: int | None = None,
 
     Trae el nombre de quien la dio y del negocio en el mismo query: la vista los
     muestra siempre juntos, y resolverlos aparte seria un N+1.
+
+    Del presupuesto adjunto trae solo el id y el nombre, NUNCA `file_data`: la
+    maquina tiene 512 MB y un listado con los PDFs adentro son decenas de MB por
+    pedido. El BLOB se lee unicamente al descargar uno (obtener_presupuesto_demo).
+    Tampoco se pide `mime_type`: esta despues de `file_data` en la fila, y
+    leerlo obliga a SQLite a recorrer las paginas del BLOB.
     """
     where, params = "", []
     if client_id is not None:
         where = "WHERE d.client_id = ?"
         params.append(client_id)
     sql = f"""
-        SELECT d.*, u.name AS realizada_por_nombre, b.name AS cliente_nombre
+        SELECT d.*, u.name AS realizada_por_nombre, b.name AS cliente_nombre,
+               (SELECT a.id FROM lead_attachments a WHERE a.demo_id = d.id
+                 ORDER BY a.id DESC LIMIT 1) AS presupuesto_id,
+               (SELECT a.name FROM lead_attachments a WHERE a.demo_id = d.id
+                 ORDER BY a.id DESC LIMIT 1) AS presupuesto_nombre
         FROM demos_realizadas d
         LEFT JOIN users u ON d.realizada_por = u.id
         LEFT JOIN businesses b ON d.client_id = b.id
@@ -2733,8 +3406,53 @@ def actualizar_demo_realizada(db_path: str, demo_id: int, **campos) -> None:
 def borrar_demo_realizada(db_path: str, demo_id: int) -> None:
     conn = _connect(db_path)
     try:
+        # Las foreign keys estan apagadas (ver delete_business): sin esto el PDF
+        # quedaria ocupando el volumen sin ninguna pantalla que lo muestre.
+        conn.execute("DELETE FROM lead_attachments WHERE demo_id = ?", (demo_id,))
         conn.execute("DELETE FROM demos_realizadas WHERE id = ?", (demo_id,))
         conn.commit()
+    finally:
+        conn.close()
+
+
+def guardar_presupuesto_demo(db_path: str, demo_id: int, lead_id: int, nombre: str,
+                             file_data: bytes, mime_type: str) -> int:
+    """Adjunta el presupuesto de una demo. Hay uno por demo: subir otro
+    reemplaza al anterior en la misma transaccion, para no acumular BLOBs."""
+    conn = _connect(db_path)
+    try:
+        conn.execute("DELETE FROM lead_attachments WHERE demo_id = ?", (demo_id,))
+        cur = conn.execute(
+            "INSERT INTO lead_attachments (lead_id, section, name, file_data, mime_type, demo_id) "
+            "VALUES (?, 'budget', ?, ?, ?, ?)",
+            (lead_id, nombre, file_data, mime_type, demo_id),
+        )
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def obtener_presupuesto_demo(db_path: str, demo_id: int) -> Optional[dict]:
+    """El presupuesto de una demo CON el archivo. Es la unica lectura del BLOB:
+    usarla solo para descargar uno, nunca para armar un listado."""
+    conn = _connect(db_path)
+    try:
+        fila = conn.execute(
+            "SELECT id, name, file_data, mime_type FROM lead_attachments "
+            "WHERE demo_id = ? ORDER BY id DESC LIMIT 1", (demo_id,)
+        ).fetchone()
+        return dict(fila) if fila else None
+    finally:
+        conn.close()
+
+
+def borrar_presupuesto_demo(db_path: str, demo_id: int) -> int:
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute("DELETE FROM lead_attachments WHERE demo_id = ?", (demo_id,))
+        conn.commit()
+        return cur.rowcount
     finally:
         conn.close()
 
@@ -2993,5 +3711,915 @@ def listar_recurrentes(db_path: str, solo_activos: bool = False) -> list[dict]:
         cur = conn.execute(
             f"SELECT * FROM finanzas_recurrentes {where} ORDER BY concepto")
         return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+# ─── Simulador financiero ────────────────────────────────────────────────────
+
+def listar_clientes_activos(db_path: str) -> list[dict]:
+    """Los clientes de verdad: los que están en una etapa de ETAPAS_CLIENTE.
+
+    Es la lista con la que el simulador precarga los mantenimientos.
+    """
+    marcas = ", ".join("?" for _ in ETAPAS_CLIENTE)
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute(
+            f"SELECT id, name, crm_status FROM businesses "
+            f"WHERE crm_status IN ({marcas}) ORDER BY name COLLATE NOCASE, id",
+            list(ETAPAS_CLIENTE))
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def crear_escenario(db_path: str, nombre: str, datos: str,
+                    created_by_id=None, created_by_name=None) -> int:
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute(
+            "INSERT INTO simulador_escenarios "
+            "(nombre, datos, created_by_id, created_by_name) VALUES (?, ?, ?, ?)",
+            (nombre, datos, created_by_id, created_by_name))
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def actualizar_escenario(db_path: str, escenario_id: int, nombre: str,
+                         datos: str) -> None:
+    conn = _connect(db_path)
+    try:
+        conn.execute(
+            "UPDATE simulador_escenarios SET nombre = ?, datos = ?, "
+            "updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (nombre, datos, escenario_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def borrar_escenario(db_path: str, escenario_id: int) -> None:
+    _delete(db_path, "simulador_escenarios", escenario_id)
+
+
+def get_escenario(db_path: str, escenario_id: int) -> Optional[dict]:
+    return _get_one(db_path, "simulador_escenarios", escenario_id)
+
+
+def listar_escenarios(db_path: str) -> list[dict]:
+    """Sin `datos`: la lista es para elegir, el escenario entero se pide aparte."""
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute(
+            "SELECT id, nombre, created_by_name, created_at, updated_at "
+            "FROM simulador_escenarios ORDER BY updated_at DESC, id DESC")
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+# ─── Equipo ──────────────────────────────────────────────────────────────────
+# Sin dinero en ningún lado: personas, ausencias en horas y recuperos en horas.
+
+# (nombre, rol, reporta_a por nombre, lleva_horas, horas_por_dia)
+_EQUIPO_PRECARGA = (
+    ("Juan Pereyra", "Comercial y administración", None, False, 4),
+    ("Javier Tomasetti", "Legal", None, False, 4),
+    ("Andrés Rosi", "Marketing digital", "Juan Pereyra", False, 4),
+    ("Matías Domínguez", "CTO", "Juan Pereyra", False, 4),
+    ("Guillermo Paredes", "Contador", "Juan Pereyra", False, 4),
+    ("Juan Tomasetti", "Programador", "Matías Domínguez", True, 4),
+    ("Gonzalo Siuciak", "Programador · project manager", "Matías Domínguez", True, 4),
+)
+
+# Quiénes arrancan en cada Daily (Juan, 16/9). Daily Programador: Juan
+# Tomasetti, Gonzalo y Matías. Daily Admin: Juan Pereyra ("Juanchi") y
+# Javier. La primera versión (15/9) tenía solo a Juan Tomasetti y Gonzalo:
+# `_sumar_personas_daily` suma lo nuevo una sola vez.
+_PROGRAMADORES_PRECARGA = ("Juan Tomasetti", "Gonzalo Siuciak", "Matías Domínguez")
+_PROGRAMADORES_SUMADOS_16_9 = ("Matías Domínguez",)
+_ADMIN_DAILY_PRECARGA = ("Juan Pereyra", "Javier Tomasetti")
+_APODOS_PRECARGA = (("Juan Pereyra", "Juanchi"),)
+
+
+# ─── Seguimiento de leads ────────────────────────────────────────────────────
+
+_SEG_PENDIENTES = """
+    SELECT r.id, r.lead_id, r.fecha, r.hora, r.motivo, r.nota, r.creado_en,
+           b.name AS nombre, b.phone AS telefono, b.category AS rubro,
+           ci.business_name AS empresa, ci.rubro AS ci_rubro,
+           (SELECT l.resultado FROM seg_llamados l WHERE l.lead_id = r.lead_id
+             ORDER BY l.fecha DESC, l.id DESC LIMIT 1) AS ultimo_resultado
+      FROM seg_recordatorios r
+      JOIN businesses b ON b.id = r.lead_id
+      LEFT JOIN client_info ci ON ci.client_id = r.lead_id
+     WHERE r.estado = 'pendiente'
+"""
+
+
+def seg_crear_recordatorio(db_path: str, lead_id: int, fecha: str, motivo: str,
+                           hora: Optional[str] = None,
+                           nota: Optional[str] = None) -> tuple[int, list[int]]:
+    """Crea un recordatorio pendiente y cierra el que el lead tuviera abierto.
+
+    Devuelve (id nuevo, ids cerrados). Todo en una transacción: nunca quedan
+    dos pendientes, ni ninguno si el INSERT falla.
+    """
+    conn = _connect(db_path)
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        abiertos = [f[0] for f in conn.execute(
+            "SELECT id FROM seg_recordatorios WHERE lead_id = ? AND estado = 'pendiente'",
+            (lead_id,))]
+        if abiertos:
+            conn.execute(
+                "UPDATE seg_recordatorios SET estado = 'hecho', cierre = 'reemplazado', "
+                "cerrado_en = CURRENT_TIMESTAMP WHERE lead_id = ? AND estado = 'pendiente'",
+                (lead_id,))
+        rid = conn.execute(
+            "INSERT INTO seg_recordatorios (lead_id, fecha, hora, motivo, nota) "
+            "VALUES (?, ?, ?, ?, ?)", (lead_id, fecha, hora, motivo, nota)).lastrowid
+        conn.commit()
+        return rid, abiertos
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def seg_get_recordatorio(db_path: str, recordatorio_id: int) -> Optional[dict]:
+    return _get_one(db_path, "seg_recordatorios", recordatorio_id)
+
+
+def seg_mover_fecha(db_path: str, recordatorio_id: int, fecha: str) -> bool:
+    """Corre la fecha de un pendiente. False si ya no está pendiente."""
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute(
+            "UPDATE seg_recordatorios SET fecha = ? WHERE id = ? AND estado = 'pendiente'",
+            (fecha, recordatorio_id))
+        conn.commit()
+        return cur.rowcount == 1
+    finally:
+        conn.close()
+
+
+def seg_cerrar_con_llamado(db_path: str, recordatorio_id: int, fecha_llamado: str,
+                           resultado: str, creado_por: Optional[str] = None,
+                           proximo: Optional[dict] = None) -> Optional[dict]:
+    """Marca hecho un pendiente, guarda el llamado y, si hay, crea el próximo.
+
+    `proximo` es {fecha, hora, motivo, nota} o None ("no hace falta volver a
+    llamar"). Devuelve {lead_id, llamado_id, nuevo_id}, o None si el
+    recordatorio ya no estaba pendiente.
+    """
+    conn = _connect(db_path)
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        fila = conn.execute(
+            "SELECT lead_id FROM seg_recordatorios WHERE id = ? AND estado = 'pendiente'",
+            (recordatorio_id,)).fetchone()
+        if not fila:
+            conn.rollback()
+            return None
+        lead_id = fila[0]
+        conn.execute(
+            "UPDATE seg_recordatorios SET estado = 'hecho', cierre = 'llamado', "
+            "cerrado_en = CURRENT_TIMESTAMP WHERE id = ?", (recordatorio_id,))
+        llamado_id = conn.execute(
+            "INSERT INTO seg_llamados (lead_id, fecha, resultado, recordatorio_id, creado_por) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (lead_id, fecha_llamado, resultado, recordatorio_id, creado_por)).lastrowid
+        nuevo_id = None
+        if proximo:
+            nuevo_id = conn.execute(
+                "INSERT INTO seg_recordatorios (lead_id, fecha, hora, motivo, nota) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (lead_id, proximo["fecha"], proximo.get("hora"), proximo["motivo"],
+                 proximo.get("nota"))).lastrowid
+        conn.commit()
+        return {"lead_id": lead_id, "llamado_id": llamado_id, "nuevo_id": nuevo_id}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def seg_listar_pendientes(db_path: str, lead_id: Optional[int] = None) -> list[dict]:
+    """Los pendientes con el nombre, el teléfono y el último resultado del lead."""
+    sql = _SEG_PENDIENTES + (" AND r.lead_id = ?" if lead_id is not None else "")
+    sql += " ORDER BY r.fecha, r.hora IS NULL, r.hora, r.id"
+    conn = _connect(db_path)
+    try:
+        filas = conn.execute(sql, (lead_id,) if lead_id is not None else ()).fetchall()
+        return [dict(f) for f in filas]
+    finally:
+        conn.close()
+
+
+def seg_llamados_del_lead(db_path: str, lead_id: int) -> list[dict]:
+    """El historial de llamados del lead, del más nuevo al más viejo."""
+    conn = _connect(db_path)
+    try:
+        filas = conn.execute(
+            "SELECT l.*, r.motivo AS motivo FROM seg_llamados l "
+            "LEFT JOIN seg_recordatorios r ON r.id = l.recordatorio_id "
+            "WHERE l.lead_id = ? ORDER BY l.fecha DESC, l.id DESC", (lead_id,)).fetchall()
+        return [dict(f) for f in filas]
+    finally:
+        conn.close()
+
+
+def _sembrar_equipo(conn: sqlite3.Connection) -> int:
+    """Precarga idempotente de las siete personas del organigrama.
+
+    Por nombre (hay un índice único): si ya están, no se duplican ni se pisa
+    nada. `reporta_a` se escribe solo para las filas que se acaban de crear,
+    así un cambio hecho a mano en la base sobrevive a los reinicios.
+    Devuelve cuántas personas creó.
+    """
+    nuevas = []
+    for nombre, rol, _jefe, lleva, horas in _EQUIPO_PRECARGA:
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO equipo_personas "
+            "(nombre, rol, lleva_horas, horas_por_dia, activo) VALUES (?,?,?,?,1)",
+            (nombre, rol, 1 if lleva else 0, horas))
+        if cur.rowcount:
+            nuevas.append(nombre)
+    jefes = {nombre: jefe for nombre, _r, jefe, _l, _h in _EQUIPO_PRECARGA}
+    for nombre in nuevas:
+        if jefes[nombre]:
+            conn.execute(
+                "UPDATE equipo_personas SET reporta_a = "
+                "(SELECT id FROM equipo_personas WHERE nombre = ?) "
+                "WHERE nombre = ? AND reporta_a IS NULL",
+                (jefes[nombre], nombre))
+    conn.commit()
+    return len(nuevas)
+
+
+def listar_personas_equipo(db_path: str, incluir_inactivas: bool = False) -> list[dict]:
+    """En orden de alta: es el orden de los hermanos en el organigrama."""
+    conn = _connect(db_path)
+    try:
+        where = "" if incluir_inactivas else "WHERE activo = 1"
+        cur = conn.execute(f"SELECT * FROM equipo_personas {where} ORDER BY id")
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def get_persona_equipo(db_path: str, persona_id: int) -> Optional[dict]:
+    return _get_one(db_path, "equipo_personas", persona_id)
+
+
+# ── Daily Programador ────────────────────────────────────────────────────────
+# Las tablas se crean en init_db. Todo va por persona del equipo.
+
+# La marca de `equipo_personas` que dice quién aparece en cada Daily.
+_MARCAS_DAILY = {"programador": "programador", "admin": "admin_daily"}
+
+
+def _sumar_personas_daily(conn: sqlite3.Connection) -> None:
+    """Una sola vez (la llama init_db al crear `admin_daily`): Matías entra a
+    Daily Programador, Juan Pereyra y Javier a Daily Admin, y Juan Pereyra se
+    muestra como "Juanchi". Solo suma: no le saca la marca a nadie. Juan Pereyra
+    y Javier ya están en la precarga de Equipo."""
+    conn.executemany("UPDATE equipo_personas SET programador = 1 WHERE nombre = ?",
+                     [(n,) for n in _PROGRAMADORES_SUMADOS_16_9])
+    conn.executemany("UPDATE equipo_personas SET admin_daily = 1 WHERE nombre = ?",
+                     [(n,) for n in _ADMIN_DAILY_PRECARGA])
+    conn.executemany("UPDATE equipo_personas SET apodo = ? WHERE nombre = ? AND (apodo IS NULL OR apodo = '')",
+                     [(apodo, nombre) for nombre, apodo in _APODOS_PRECARGA])
+    conn.commit()
+
+
+def listar_personas_daily(db_path: str, seccion: str = "programador") -> list[dict]:
+    """Las personas activas de un Daily, en orden de alta."""
+    campo = _MARCAS_DAILY[seccion]
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute(f"SELECT * FROM equipo_personas WHERE activo = 1 AND {campo} = 1 ORDER BY id")
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def listar_programadores(db_path: str) -> list[dict]:
+    return listar_personas_daily(db_path, "programador")
+
+
+def crear_actividad_daily(db_path: str, persona_id: int, fecha: str, texto: str,
+                          created_by_id: int | None = None,
+                          created_by_name: str | None = None,
+                          hora: str | None = None, nota: str | None = None,
+                          seccion: str = "programador") -> int:
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute(
+            "INSERT INTO daily_actividades "
+            "(persona_id, fecha, texto, hora, nota, seccion, created_by_id, created_by_name) "
+            "VALUES (?,?,?,?,?,?,?,?)",
+            (persona_id, fecha, texto, hora, nota, seccion, created_by_id, created_by_name))
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def get_actividad_daily(db_path: str, actividad_id: int) -> Optional[dict]:
+    return _get_one(db_path, "daily_actividades", actividad_id)
+
+
+_CAMPOS_ACTIVIDAD_DAILY = ("texto", "hecha", "fecha", "pasada_de", "hora", "nota")
+
+
+def actualizar_actividad_daily(db_path: str, actividad_id: int, **campos) -> None:
+    campos = {k: v for k, v in campos.items() if k in _CAMPOS_ACTIVIDAD_DAILY}
+    if not campos:
+        return
+    sets = ", ".join(f"{k} = ?" for k in campos)
+    conn = _connect(db_path)
+    try:
+        conn.execute(f"UPDATE daily_actividades SET {sets} WHERE id = ?",
+                     (*campos.values(), actividad_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def borrar_actividad_daily(db_path: str, actividad_id: int) -> None:
+    conn = _connect(db_path)
+    try:
+        conn.execute("DELETE FROM daily_actividades WHERE id = ?", (actividad_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def listar_actividades_daily(db_path: str, persona_id: int, fecha: str,
+                             seccion: str = "programador") -> list[dict]:
+    conn = _connect(db_path)
+    try:
+        # Las que tienen hora primero y en orden de hora; las otras, como se cargaron.
+        cur = conn.execute("SELECT * FROM daily_actividades WHERE persona_id = ? AND fecha = ? AND seccion = ? "
+                           "ORDER BY hora IS NULL, hora, id", (persona_id, fecha, seccion))
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def crear_recordatorio_daily(db_path: str, persona_id: int, texto: str, frecuencia: str,
+                             dias: str, desde: str, activo: int = 1,
+                             created_by_id: int | None = None,
+                             created_by_name: str | None = None,
+                             hora: str | None = None, nota: str | None = None,
+                             seccion: str = "programador") -> int:
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute(
+            "INSERT INTO daily_recordatorios "
+            "(persona_id, texto, frecuencia, dias, activo, desde, hora, nota, seccion, created_by_id, created_by_name) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (persona_id, texto, frecuencia, dias, activo, desde, hora, nota, seccion, created_by_id, created_by_name))
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def get_recordatorio_daily(db_path: str, recordatorio_id: int) -> Optional[dict]:
+    return _get_one(db_path, "daily_recordatorios", recordatorio_id)
+
+
+_CAMPOS_RECORDATORIO_DAILY = ("texto", "frecuencia", "dias", "activo", "hora", "nota")
+
+
+def actualizar_recordatorio_daily(db_path: str, recordatorio_id: int, **campos) -> None:
+    """No toca `daily_marcas`: editar un recordatorio no borra lo hecho otros días."""
+    campos = {k: v for k, v in campos.items() if k in _CAMPOS_RECORDATORIO_DAILY}
+    if not campos:
+        return
+    sets = ", ".join(f"{k} = ?" for k in campos)
+    conn = _connect(db_path)
+    try:
+        conn.execute(f"UPDATE daily_recordatorios SET {sets} WHERE id = ?",
+                     (*campos.values(), recordatorio_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def borrar_recordatorio_daily(db_path: str, recordatorio_id: int) -> None:
+    """Se lleva sus marcas. No depende de que SQLite tenga las foreign keys
+    prendidas."""
+    conn = _connect(db_path)
+    try:
+        conn.execute("DELETE FROM daily_marcas WHERE recordatorio_id = ?", (recordatorio_id,))
+        conn.execute("DELETE FROM daily_recordatorios WHERE id = ?", (recordatorio_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def listar_recordatorios_daily(db_path: str, persona_id: int, seccion: str = "programador") -> list[dict]:
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute("SELECT * FROM daily_recordatorios WHERE persona_id = ? AND seccion = ? ORDER BY id",
+                           (persona_id, seccion))
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def listar_marcas_daily(db_path: str, persona_id: int, fecha: str, seccion: str = "programador") -> set[int]:
+    """Los ids de los recordatorios de esa persona y ese Daily marcados como hechos ese día."""
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute(
+            "SELECT m.recordatorio_id FROM daily_marcas m "
+            "JOIN daily_recordatorios r ON r.id = m.recordatorio_id "
+            "WHERE r.persona_id = ? AND r.seccion = ? AND m.fecha = ?", (persona_id, seccion, fecha))
+        return {fila[0] for fila in cur.fetchall()}
+    finally:
+        conn.close()
+
+
+def marcar_recordatorio_daily(db_path: str, recordatorio_id: int, fecha: str, hecha: bool,
+                              created_by_id: int | None = None) -> None:
+    """Marca o desmarca un recordatorio en un solo día; los otros días no se tocan."""
+    conn = _connect(db_path)
+    try:
+        if hecha:
+            conn.execute("INSERT OR IGNORE INTO daily_marcas (recordatorio_id, fecha, created_by_id) "
+                         "VALUES (?,?,?)", (recordatorio_id, fecha, created_by_id))
+        else:
+            conn.execute("DELETE FROM daily_marcas WHERE recordatorio_id = ? AND fecha = ?",
+                         (recordatorio_id, fecha))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def crear_ausencia_equipo(db_path: str, persona_id: int, fecha_desde: str,
+                          fecha_hasta: str, motivo: str, horas_totales: float,
+                          created_by_id: int | None = None,
+                          created_by_name: str | None = None) -> int:
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute(
+            "INSERT INTO equipo_ausencias (persona_id, fecha_desde, fecha_hasta, "
+            "motivo, horas_totales, created_by_id, created_by_name) "
+            "VALUES (?,?,?,?,?,?,?)",
+            (persona_id, fecha_desde, fecha_hasta, motivo, horas_totales,
+             created_by_id, created_by_name))
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def get_ausencia_equipo(db_path: str, ausencia_id: int) -> Optional[dict]:
+    return _get_one(db_path, "equipo_ausencias", ausencia_id)
+
+
+def borrar_ausencia_equipo(db_path: str, ausencia_id: int) -> None:
+    """Borra la ausencia y sus recuperos juntos. SQLite no tiene las foreign
+    keys prendidas en este proyecto, así que el ON DELETE CASCADE del esquema
+    no alcanza: sin esto quedarían recuperos huérfanos restando saldo."""
+    conn = _connect(db_path)
+    try:
+        conn.execute("DELETE FROM equipo_recuperos WHERE ausencia_id = ?", (ausencia_id,))
+        conn.execute("DELETE FROM equipo_ausencias WHERE id = ?", (ausencia_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def listar_ausencias_equipo(db_path: str) -> list[dict]:
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute(
+            "SELECT * FROM equipo_ausencias ORDER BY fecha_desde DESC, id DESC")
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def crear_recupero_equipo(db_path: str, ausencia_id: int, fecha: str, horas: float,
+                          created_by_id: int | None = None,
+                          created_by_name: str | None = None) -> int:
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute(
+            "INSERT INTO equipo_recuperos (ausencia_id, fecha, horas, "
+            "created_by_id, created_by_name) VALUES (?,?,?,?,?)",
+            (ausencia_id, fecha, horas, created_by_id, created_by_name))
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def get_recupero_equipo(db_path: str, recupero_id: int) -> Optional[dict]:
+    return _get_one(db_path, "equipo_recuperos", recupero_id)
+
+
+def borrar_recupero_equipo(db_path: str, recupero_id: int) -> None:
+    _delete(db_path, "equipo_recuperos", recupero_id)
+
+
+def listar_recuperos_equipo(db_path: str) -> list[dict]:
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute("SELECT * FROM equipo_recuperos ORDER BY fecha, id")
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+# ─── Flujos ──────────────────────────────────────────────────────────────────
+# Solo roles, nunca nombres de personas (tests/test_flujos.py lo verifica).
+
+# (titulo, rol, detalle, pantalla, destacado, [(porcentaje, descripcion)])
+_PASOS_DE_LEAD_A_COBRO = (
+    ("Se genera el lead", "Marketing",
+     "Meta Ads u Outbound. Cae en Proceso de venta.", "notion_clients", False, ()),
+    ("Se atiende el lead", "Comercial",
+     "Primer llamado. Se califica y se carga el seguimiento.", None, False, ()),
+    ("Se lleva a videollamada", "Comercial",
+     "Plantilla de confirmación. Recordatorio automático el mismo día.", None, False, ()),
+    ("Se prepara la demo", "Project manager",
+     "Se arma sobre el rubro y lo que pidió el lead.", None, False, ()),
+    ("Se hace la demo", "Project manager",
+     "Queda registrada en Demos, con lo que pidió y lo que objetó.", "demos", False, ()),
+    ("Se presupuesta", "Comercial",
+     "Dentro de 48 horas. Plantilla de resumen y presupuesto.", None, False, ()),
+    ("Se cobra", "Administración",
+     "Al confirmar. Se dan de alta el cliente y el proyecto.", "clientes", False,
+     ((100, "al confirmar"),)),
+    ("Se desarrolla", "Desarrollo",
+     "El plazo corre desde que llega el material.", "projects", False, ()),
+    ("Se entrega", "Desarrollo",
+     "Publicación y capacitación. Se ofrece el mantenimiento.", None, False, ()),
+    ("Se mantiene", "Soporte",
+     "Cuota mensual. Es el ingreso que se acumula mes a mes.", None, True, ()),
+)
+
+# (nombre, descripcion, orden, pasos)
+_FLUJOS_PRECARGA = (
+    ("De lead a cobro", "Desde que entra un lead hasta que se cobra y queda en mantenimiento.",
+     1, _PASOS_DE_LEAD_A_COBRO),
+    ("Arranque de proyecto", "Desde que se confirma un proyecto hasta que arranca el desarrollo.", 2, ()),
+    ("Cobranza", "Cómo se sigue lo que falta cobrar.", 3, ()),
+    ("Alta de una persona", "Qué pasa cuando entra alguien nuevo al equipo.", 4, ()),
+)
+
+
+def _insertar_cobros(conn: sqlite3.Connection, paso_id: int, cobros) -> None:
+    for orden, cobro in enumerate(cobros):
+        if isinstance(cobro, dict):
+            pct, desc = cobro["porcentaje"], cobro["descripcion"]
+        else:
+            pct, desc = cobro
+        conn.execute("INSERT INTO flujo_paso_cobros (paso_id, orden, porcentaje, descripcion) "
+                     "VALUES (?,?,?,?)", (paso_id, orden, pct, desc))
+
+
+def _sembrar_flujos(conn: sqlite3.Connection) -> int:
+    """Precarga idempotente de los cuatro flujos, con los diez pasos de "De
+    lead a cobro".
+
+    Por nombre (índice único). Los pasos se cargan SOLO para el flujo que se
+    acaba de crear: si el flujo ya estaba, no se toca nada, así un paso
+    editado, movido o borrado desde la pantalla sobrevive a los reinicios.
+    Devuelve cuántos flujos creó.
+    """
+    creados = 0
+    for nombre, descripcion, orden, pasos in _FLUJOS_PRECARGA:
+        cur = conn.execute("INSERT OR IGNORE INTO flujos (nombre, descripcion, orden) VALUES (?,?,?)",
+                           (nombre, descripcion, orden))
+        if not cur.rowcount:
+            continue
+        creados += 1
+        flujo_id = cur.lastrowid
+        for numero, (titulo, rol, detalle, pantalla, destacado, cobros) in enumerate(pasos, start=1):
+            pid = conn.execute(
+                "INSERT INTO flujo_pasos (flujo_id, numero, titulo, rol, detalle, pantalla, destacado) "
+                "VALUES (?,?,?,?,?,?,?)",
+                (flujo_id, numero, titulo, rol, detalle, pantalla, 1 if destacado else 0)).lastrowid
+            _insertar_cobros(conn, pid, cobros)
+    conn.commit()
+    return creados
+
+
+def listar_flujos(db_path: str) -> list[dict]:
+    conn = _connect(db_path)
+    try:
+        return [dict(r) for r in conn.execute("SELECT * FROM flujos ORDER BY orden, id")]
+    finally:
+        conn.close()
+
+
+def get_flujo(db_path: str, flujo_id: int) -> Optional[dict]:
+    return _get_one(db_path, "flujos", flujo_id)
+
+
+def listar_pasos_flujos(db_path: str) -> list[dict]:
+    conn = _connect(db_path)
+    try:
+        return [dict(r) for r in conn.execute(
+            "SELECT * FROM flujo_pasos ORDER BY flujo_id, numero, id")]
+    finally:
+        conn.close()
+
+
+def get_paso_flujo(db_path: str, paso_id: int) -> Optional[dict]:
+    return _get_one(db_path, "flujo_pasos", paso_id)
+
+
+def listar_cobros_pasos_flujo(db_path: str) -> list[dict]:
+    conn = _connect(db_path)
+    try:
+        return [dict(r) for r in conn.execute(
+            "SELECT * FROM flujo_paso_cobros ORDER BY paso_id, orden, id")]
+    finally:
+        conn.close()
+
+
+def _renumerar_flujo(conn: sqlite3.Connection, flujo_id: int, ids: Optional[list] = None) -> list:
+    """Deja los números del flujo en 1..n. Sin `ids`, en el orden actual."""
+    if ids is None:
+        ids = [r[0] for r in conn.execute(
+            "SELECT id FROM flujo_pasos WHERE flujo_id = ? ORDER BY numero, id", (flujo_id,))]
+    for numero, pid in enumerate(ids, start=1):
+        conn.execute("UPDATE flujo_pasos SET numero = ? WHERE id = ? AND numero != ?",
+                     (numero, pid, numero))
+    return ids
+
+
+def crear_paso_flujo(db_path: str, flujo_id: int, titulo: str, rol: str, detalle: str = "",
+                     pantalla: Optional[str] = None, destacado: bool = False,
+                     cobros=None) -> int:
+    """Lo agrega al final del flujo."""
+    conn = _connect(db_path)
+    try:
+        _renumerar_flujo(conn, flujo_id)
+        numero = conn.execute("SELECT COUNT(*) FROM flujo_pasos WHERE flujo_id = ?",
+                              (flujo_id,)).fetchone()[0] + 1
+        pid = conn.execute(
+            "INSERT INTO flujo_pasos (flujo_id, numero, titulo, rol, detalle, pantalla, destacado) "
+            "VALUES (?,?,?,?,?,?,?)",
+            (flujo_id, numero, titulo, rol, detalle or "", pantalla, 1 if destacado else 0)).lastrowid
+        _insertar_cobros(conn, pid, cobros or [])
+        conn.commit()
+        return pid
+    finally:
+        conn.close()
+
+
+def editar_paso_flujo(db_path: str, paso_id: int, titulo: str, rol: str, detalle: str = "",
+                      pantalla: Optional[str] = None, destacado: bool = False,
+                      cobros=None) -> None:
+    """`cobros` en None deja los momentos de cobro como estaban."""
+    conn = _connect(db_path)
+    try:
+        conn.execute(
+            "UPDATE flujo_pasos SET titulo = ?, rol = ?, detalle = ?, pantalla = ?, destacado = ?, "
+            "updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (titulo, rol, detalle or "", pantalla, 1 if destacado else 0, paso_id))
+        if cobros is not None:
+            conn.execute("DELETE FROM flujo_paso_cobros WHERE paso_id = ?", (paso_id,))
+            _insertar_cobros(conn, paso_id, cobros)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def borrar_paso_flujo(db_path: str, paso_id: int) -> None:
+    """Se lleva sus momentos de cobro (sin foreign keys prendidas, el CASCADE
+    no alcanza) y renumera lo que queda."""
+    conn = _connect(db_path)
+    try:
+        fila = conn.execute("SELECT flujo_id FROM flujo_pasos WHERE id = ?", (paso_id,)).fetchone()
+        if not fila:
+            return
+        conn.execute("DELETE FROM flujo_paso_cobros WHERE paso_id = ?", (paso_id,))
+        conn.execute("DELETE FROM flujo_pasos WHERE id = ?", (paso_id,))
+        _renumerar_flujo(conn, fila[0])
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def mover_paso_flujo(db_path: str, paso_id: int, posicion: int) -> int:
+    """Lleva el paso a `posicion` (1..n, se acota) y renumera el flujo entero.
+    Devuelve el número con el que quedó."""
+    conn = _connect(db_path)
+    try:
+        fila = conn.execute("SELECT flujo_id FROM flujo_pasos WHERE id = ?", (paso_id,)).fetchone()
+        if not fila:
+            return 0
+        ids = _renumerar_flujo(conn, fila[0])
+        ids.remove(paso_id)
+        destino = max(1, min(int(posicion), len(ids) + 1))
+        ids.insert(destino - 1, paso_id)
+        _renumerar_flujo(conn, fila[0], ids)
+        conn.commit()
+        return destino
+    finally:
+        conn.close()
+
+
+def entregas_de_proyectos(db_path: str) -> list[dict]:
+    """Los proyectos del espejo de Notion que tienen fecha de entrega.
+
+    La entrega es `timeline_end`: el final del rango "Timeline" de la database
+    Projects (services/notion_service.py). Un Timeline de una sola fecha llega
+    sin final y no se toma como entrega: no hay forma de saber si ese día es el
+    arranque o la entrega.
+    """
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute(
+            "SELECT id, name, timeline_end FROM projects "
+            "WHERE timeline_end IS NOT NULL AND timeline_end != '' ORDER BY timeline_end")
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+# ─── Plantillas de mensajes ──────────────────────────────────────────────────
+# Texto exacto del PDF "Plantillas de mensajes - Scalerics" (Juan, 14/9). Los
+# párrafos van separados por una línea en blanco, como en el PDF; los cortes
+# de renglón dentro de un párrafo del PDF son solo el ancho de la página.
+
+_PLANTILLAS_PRECARGA = (
+    # Pedido aparte de Juan (15/9): va primera porque es lo primero que pasa
+    # con un lead. Una base que ya tenía las otras cinco la suma sola.
+    {
+        "clave": "no_atendio", "orden": 5,
+        "momento": "LLAMÉ Y NO ATENDIÓ",
+        "titulo": "Lead que no atendió", "canal": "WhatsApp",
+        "cuerpo": ("¿Cómo estás {nombre}? Te escribe Juan de Scalerics. Respondiste un "
+                   "formulario solicitando información acerca de {servicio}. Te llamé para "
+                   "que me cuentes un poco y ver cómo te podemos ayudar en lo que estás "
+                   "buscando. Cuando tengas unos minutos avisame y te llamo. Saludos."),
+        "nota": "Se manda después de llamar sin respuesta.",
+        "explicacion": "", "automatica": 0,
+    },
+    {
+        "clave": "confirmacion_agenda", "orden": 10,
+        "momento": "DESPUÉS DE LA PRIMERA LLAMADA",
+        "titulo": "Confirmación de agenda", "canal": "WhatsApp",
+        "cuerpo": ("¿Cómo estás {nombre}? Te habla Juan Pereyra de Scalerics.\n\n"
+                   "Quedamos agendados para el {fecha} a las {hora}. Entrás a la "
+                   "videollamada con el siguiente link: {link}\n\n"
+                   "El mismo día, un rato antes, te mando recordatorio de la "
+                   "videollamada. En lo posible confirmame con un okey.\n\n"
+                   "Saludos."),
+        "nota": "Se manda apenas queda agendada la demo.",
+        "explicacion": "", "automatica": 0,
+    },
+    {
+        "clave": "recordatorio_videollamada", "orden": 20,
+        "momento": "EL DÍA DE LA DEMO",
+        "titulo": "Recordatorio de videollamada", "canal": "WhatsApp",
+        "cuerpo": ("¿Cómo estás {nombre}? Este es un recordatorio para la "
+                   "videollamada de hoy a las {hora}.\n\n"
+                   "Entrás con el link que te pasé arriba.\n\n"
+                   "Saludos."),
+        "nota": "Automático: se dispara unas horas antes de la demo, sin que lo mandes vos.",
+        "explicacion": "", "automatica": 1,
+    },
+    {
+        "clave": "resumen_presupuesto", "orden": 30,
+        "momento": "DESPUÉS DE LA DEMO",
+        "titulo": "Resumen y presupuesto", "canal": "WhatsApp o mail",
+        "cuerpo": ("Hola {nombre}, gracias por el rato de hoy.\n\n"
+                   "Te dejo el presupuesto de la {servicio} como quedamos: {monto}, "
+                   "entrega en {plazo} desde que arrancamos.\n\n"
+                   "Cualquier duda escribime. Si querés avanzar, con confirmarme "
+                   "por acá alcanza."),
+        "nota": "Adjunta el PDF del presupuesto.",
+        "explicacion": "", "automatica": 0,
+    },
+    {
+        "clave": "reactivacion", "orden": 40,
+        "momento": "LEAD FRÍO",
+        "titulo": "Reactivación", "canal": "WhatsApp",
+        "cuerpo": ("¿Cómo estás {nombre}? Avisame si al final seguís interesado "
+                   "en avanzar con el {servicio}.\n\n"
+                   "Saludos."),
+        "nota": "", "explicacion": "", "automatica": 0,
+    },
+    {
+        "clave": "reactivacion_alternativa", "orden": 50,
+        "momento": "LEAD FRÍO",
+        "titulo": "Alternativa para el de reactivación", "canal": "WhatsApp",
+        "cuerpo": ("¿Cómo estás {nombre}? Te escribo por el {servicio} que "
+                   "habíamos charlado. ¿Lo dejamos para más adelante o lo retomamos?"),
+        "nota": "",
+        "explicacion": ("Preguntar si sigue interesado obliga al otro a decidir, y lo "
+                        "más fácil es no contestar. Esta versión ofrece dos salidas y "
+                        "las dos sirven: incluso el “más adelante” deja una fecha para "
+                        "volver a llamar."),
+        "automatica": 0,
+    },
+)
+
+_COLUMNAS_PLANTILLA = ("orden", "momento", "titulo", "canal", "cuerpo", "nota",
+                       "explicacion", "automatica")
+
+
+def _sembrar_plantillas(conn: sqlite3.Connection) -> int:
+    """Precarga idempotente de las seis plantillas: las cinco del PDF y la del
+    lead que no atendió.
+
+    Por `clave` (única): si ya están —editadas, o borradas, que quedan
+    marcadas— no se duplican ni se pisan. Devuelve cuántas creó.
+    """
+    creadas = 0
+    for p in _PLANTILLAS_PRECARGA:
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO plantillas_mensajes "
+            "(clave, orden, momento, titulo, canal, cuerpo, nota, explicacion, "
+            " automatica, created_by_name) VALUES (?,?,?,?,?,?,?,?,?,'precarga')",
+            (p["clave"],) + tuple(p[c] for c in _COLUMNAS_PLANTILLA))
+        creadas += cur.rowcount
+    conn.commit()
+    return creadas
+
+
+def listar_plantillas(db_path: str) -> list[dict]:
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute("SELECT * FROM plantillas_mensajes WHERE borrada = 0 "
+                           "ORDER BY orden, id")
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def get_plantilla(db_path: str, plantilla_id: int) -> Optional[dict]:
+    conn = _connect(db_path)
+    try:
+        fila = conn.execute("SELECT * FROM plantillas_mensajes WHERE id = ? AND borrada = 0",
+                            (plantilla_id,)).fetchone()
+        return dict(fila) if fila else None
+    finally:
+        conn.close()
+
+
+def crear_plantilla(db_path: str, created_by_name: Optional[str] = None, **campos) -> int:
+    """Una plantilla nueva va al final, salvo que traiga `orden`."""
+    datos = {c: campos[c] for c in _COLUMNAS_PLANTILLA if c in campos}
+    conn = _connect(db_path)
+    try:
+        if "orden" not in datos:
+            (ultimo,) = conn.execute(
+                "SELECT COALESCE(MAX(orden), 0) FROM plantillas_mensajes").fetchone()
+            datos["orden"] = int(ultimo) + 10
+        cols = list(datos) + ["created_by_name"]
+        cur = conn.execute(
+            f"INSERT INTO plantillas_mensajes ({', '.join(cols)}) "
+            f"VALUES ({', '.join('?' for _ in cols)})",
+            tuple(datos.values()) + (created_by_name,))
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def actualizar_plantilla(db_path: str, plantilla_id: int, **campos) -> bool:
+    datos = {c: campos[c] for c in _COLUMNAS_PLANTILLA if c in campos}
+    if not datos:
+        return False
+    conn = _connect(db_path)
+    try:
+        sets = ", ".join(f"{c} = ?" for c in datos)
+        cur = conn.execute(
+            f"UPDATE plantillas_mensajes SET {sets}, updated_at = CURRENT_TIMESTAMP "
+            "WHERE id = ? AND borrada = 0", tuple(datos.values()) + (plantilla_id,))
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def borrar_plantilla(db_path: str, plantilla_id: int) -> bool:
+    """Marca la plantilla como borrada (ver el comentario de la tabla)."""
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute(
+            "UPDATE plantillas_mensajes SET borrada = 1, updated_at = CURRENT_TIMESTAMP "
+            "WHERE id = ? AND borrada = 0", (plantilla_id,))
+        conn.commit()
+        return cur.rowcount > 0
     finally:
         conn.close()

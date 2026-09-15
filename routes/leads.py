@@ -155,6 +155,16 @@ def api_leads():
         businesses = get_all_businesses(_db(), crm_statuses=_CLIENT_STATUSES, cohorte=cohorte)
     elif crm_group == "meta":
         businesses = get_all_businesses(_db(), source="meta")
+        # Lo que necesita la lista por mes de Meta Ads: el color del semaforo
+        # (sale del estado, ver services/planilla_semaforo.ESTADO_A_COLOR) y la
+        # fecha de cada formulario que mando la persona, para que quien volvio a
+        # escribir aparezca tambien en el mes de la vuelta.
+        from database import envios_meta_por_lead
+        from services.planilla_semaforo import color_de_estado
+        envios = envios_meta_por_lead(_db())
+        for b in businesses:
+            b["semaforo"] = color_de_estado(b.get("crm_status"))
+            b["envios"] = envios.get(b["id"]) or ([b["scraped_at"]] if b.get("scraped_at") else [])
     else:
         businesses = get_all_businesses(_db(), crm_status=crm_status, cohorte=cohorte)
     if category:
@@ -193,11 +203,21 @@ def api_crm_status(biz_id):
     # deploy lo manda) pero no se GUARDA: guardado tal cual, el lead queda en un
     # estado que ya no es etapa y se cae del tablero de pre-clientes.
     crm_status = normalizar_crm_status(crm_status)
-    db = _db()
+    registrar_cambio_de_estado(_db(), biz_id, crm_status)
+    return jsonify({"ok": True})
+
+
+def registrar_cambio_de_estado(db: str, biz_id: int, crm_status: str, nota: str = "") -> None:
+    """Todo lo que pasa cuando una persona cambia el estado de un lead.
+
+    Lo usan el cambio de estado de la ficha y el semaforo de Meta Ads
+    (routes/meta.py): marcar un color es cambiar el estado, y tiene que dejar
+    el mismo rastro (evento, actividad) y mover las mismas metas.
+    """
     biz = get_business(db, biz_id) or {}
     user_name = session.get("user_name", "sistema")
     update_business(db, biz_id, crm_status=crm_status)
-    add_lead_event(db, biz_id, crm_status, created_by=user_name)
+    add_lead_event(db, biz_id, crm_status, note=nota, created_by=user_name)
     log_activity(db, user_name, "status_change", "lead", biz_id, biz.get("name", ""), crm_status,
                  user_id=session.get("user_id"))
     # Las claves son las etapas NUEVAS: arriba ya se normalizo, asi que con los
@@ -211,7 +231,6 @@ def api_crm_status(biz_id):
         uids = _contributors(db, biz_id, session.get("user_id"))
         increment_task_progress(db, uids, _STATUS_TO_GOAL[crm_status],
                                 lead_id=biz_id, lead_name=biz.get("name", ""))
-    return jsonify({"ok": True})
 
 
 @leads_bp.route("/api/leads/remap-category", methods=["POST"])

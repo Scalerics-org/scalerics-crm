@@ -307,6 +307,34 @@ def send_meta_token_alert(to_email: str, error_detail: str) -> bool:
     return _send(to_email, "ALERTA: Token Meta Ads inválido — Scalerics CRM", html)
 
 
+def send_backup_alert(to_email: str, error_detail: str) -> bool:
+    """El backup diario de la base fallo (integridad, subida a R2 o excepcion).
+
+    Lo manda `services/backup_db.py`, como mucho uno por dia.
+    """
+    body = (
+        _muted(
+            "El backup diario de la base del CRM <b>no se completó</b>. "
+            "Mientras no se arregle, la única copia fuera del volumen puede estar quedando vieja."
+        )
+        + _info_card([("Error", html.escape(error_detail or ""))])
+        + _muted(
+            "Para revisarlo: mirá el log de la app (<code>flyctl logs -a scalerics-crm</code>, "
+            "buscar <code>backup</code>) y probá una corrida a mano desde Administración "
+            "o con <code>POST /api/admin/backup-ahora</code>. "
+            "Pasos y restauración en <code>docs/BACKUPS.md</code>."
+        )
+    )
+    cuerpo_html = _layout(
+        badge="Alerta de backup",
+        title="Falló el backup diario de la base",
+        body=body,
+        cta_url=f"{_CRM_URL}/admin/users",
+        cta_label="Ir a Administración →",
+    )
+    return _send(to_email, "ALERTA: falló el backup de la base — Scalerics CRM", cuerpo_html)
+
+
 def send_discovery_queue_alert(to_email: str, dias: int, pendientes: int,
                                tope: int) -> bool:
     """Avisa que la campana de discovery se esta quedando sin a quien escribirle.
@@ -364,6 +392,61 @@ def send_meta_lead_failure_alert(email: str, lead_id: str, error: str) -> None:
         f"buscando ese id.</p>"
     )
     _send(email, asunto, cuerpo)
+
+
+def send_wa_message_notification(to_email: str, nombre: str, telefono: str,
+                                 texto: str, hora: str) -> bool:
+    """Avisa que alguien escribio al WhatsApp de Scalerics.
+
+    Cuando avisar y cuando no lo decide `services/wa_aviso_mail.py`; aca solo
+    se arma el mail. Nombre, telefono y texto los escribe cualquiera que le
+    mande un WhatsApp a la empresa: van escapados, igual que los datos del
+    formulario de Meta.
+    """
+    from urllib.parse import quote
+
+    nombre_esc = html.escape(nombre or "")
+    telefono_esc = html.escape(telefono or "")
+    texto_esc = html.escape(texto or "").replace("\n", "<br>")
+    quien_esc = nombre_esc or telefono_esc or "Alguien"
+    digitos = "".join(c for c in (telefono or "") if c.isdigit())
+    link = f"{_CRM_URL}/?panel=wa" + (f"&chat={quote(digitos)}" if digitos else "")
+
+    filas = []
+    if nombre_esc:
+        filas.append(("Contacto", nombre_esc))
+    filas.append(("Teléfono", telefono_esc))
+    filas.append(("Hora", f"{html.escape(hora or '')} (Montevideo)"))
+    sin_texto = "<i>(mensaje sin texto: una nota de voz, una foto o un archivo)</i>"
+    mensaje = (
+        '<div style="background:#f0fdf4;border-left:3px solid #10b981;border-radius:6px;'
+        'padding:14px 16px;margin:0 0 20px;font-size:14px;line-height:1.6;color:#1c2b40">'
+        f'{texto_esc or sin_texto}</div>'
+    )
+    cuerpo = (
+        _info_card(filas)
+        + mensaje
+        + _muted("Se avisa con el primer mensaje de cada conversación. Lo que ese "
+                 "contacto escriba en los 30 minutos siguientes no genera otro mail.")
+    )
+    cuerpo_html = _layout(
+        badge="WhatsApp",
+        title=f"{quien_esc} escribió al WhatsApp",
+        body=cuerpo,
+        cta_url=html.escape(link),
+        cta_label="Abrir la conversación →",
+    )
+    # El asunto es texto plano: sin escapar, pero sin saltos de linea.
+    quien = " ".join((nombre or telefono or "mensaje nuevo").split())[:80]
+    asunto = f"WhatsApp: {quien} escribió — Scalerics CRM"
+    texto_plano = (
+        f"{quien} escribió al WhatsApp.\n"
+        f"Teléfono: {telefono or '-'}\n"
+        f"Hora: {hora or '-'} (Montevideo)\n\n"
+        f"{texto or '(mensaje sin texto)'}\n\n"
+        f"Abrir la conversación: {link}\n"
+    )
+    return _send_estado(to_email, asunto, cuerpo_html, text=texto_plano) == "ok"
 
 
 # _LOGO es la version clara, pensada para el header navy de _layout. Sobre el

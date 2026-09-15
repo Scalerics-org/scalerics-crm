@@ -213,6 +213,71 @@ def api_sync_anuncios():
                                         hasta.isoformat()))
 
 
+_MES = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
+
+
+@marketing_bp.route("/api/marketing/rellenar-anuncios", methods=["POST"])
+def api_rellenar_anuncios():
+    """Trae los insights por pieza de UN mes viejo. Se corre a mano, una vez.
+
+    El cron diario de `sync-anuncios` trae solo los ultimos 7 dias, asi que los
+    meses anteriores al primer sync no tienen datos por pieza. Esto los rellena
+    de a un mes por llamada, con su propio tope (ver `rellenar_mes`). Protegido
+    igual que el sync: candado del blueprint, x-admin-token o panel marketing.
+
+    429 si no paso la pausa minima desde la llamada anterior: no se reintenta
+    solo, se espera.
+    """
+    from services.meta_anuncios import ReintentarMasTarde, rellenar_mes
+
+    mes = request.args.get("mes") or ""
+    if not _MES.match(mes):
+        return jsonify({"error": "mes invalido: se espera YYYY-MM"}), 400
+    try:
+        return jsonify(rellenar_mes(_db(), mes))
+    except ReintentarMasTarde as e:
+        return jsonify({"error": str(e)}), 429
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@marketing_bp.route("/api/marketing/piezas")
+def api_piezas():
+    """Las piezas de la pauta de UN mes, partidas en activas hoy y ya no.
+
+    Va aparte del dossier y no depende del periodo de arriba: la seccion tiene
+    su propio navegador de mes, y cambiar de mes no tiene por que recalcular
+    el panel entero. Sin token de Meta contesta igual, con las listas vacias.
+    """
+    from services.anuncios import piezas_del_mes
+
+    mes = request.args.get("mes") or date.today().isoformat()[:7]
+    if not _MES.match(mes):
+        return jsonify({"error": "mes invalido: se espera YYYY-MM"}), 400
+    return jsonify(piezas_del_mes(_db(), mes))
+
+
+@marketing_bp.route("/api/marketing/leads-semana")
+def api_leads_semana():
+    """Cuando llegan los leads, de a UNA semana (lunes a domingo, Montevideo).
+
+    Como las piezas, va aparte del dossier y no depende del periodo de arriba:
+    el bloque tiene su propio navegador de semana. Sin `semana`, la actual.
+    """
+    from services.dossier import _hoy_en_montevideo, leads_de_la_semana
+
+    semana = request.args.get("semana")
+    if not semana:
+        hoy = _hoy_en_montevideo()
+        semana = (hoy - timedelta(days=hoy.weekday())).isoformat()
+    if not _FECHA.match(semana):
+        return jsonify({"error": "semana invalida: se espera el lunes, YYYY-MM-DD"}), 400
+    try:
+        return jsonify(leads_de_la_semana(_db(), semana))
+    except ValueError:
+        return jsonify({"error": "semana invalida: se espera el lunes, YYYY-MM-DD"}), 400
+
+
 # Un id de anuncio de Meta es un numero largo. Se valida con esto y no con
 # `secure_filename` porque lo que importa no es que el nombre sea prolijo sino
 # que NO pueda salirse de la carpeta: sin esta guarda, un ad_id con `..`

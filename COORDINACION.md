@@ -79,6 +79,8 @@ leads de Meta se renombró a **D** para deshacer el empate.
 | E (pre-clientes/demos) | pipeline por etapas, responsables del cliente, registro de demos | `routes/preclientes.py`, `tests/test_preclientes.py`, `scripts/check_js.py`, y **zona compartida**: `database.py`, `dashboard.py`, `routes/leads.py` | 31/8 |
 | G (marketing/Meta Ads) | inteligencia comercial sobre Meta Ads. **Las tres fases hechas en `feat/marketing-meta` (PR #22), sin mergear ni deployar. La IA nace apagada.** | `services/embudo.py`, `services/dossier.py`, `services/meta_insights.py`, `services/meta_campanas.py`, `services/radiografia.py`, `services/radiografia_ia.py`, `routes/marketing.py`, `static/charts.js`, `.github/workflows/radiografia.yml`, y **zona compartida**: `database.py`, `dashboard.py`, `routes/meta.py`, `services/finanzas.py`, `tests/conftest.py` | 10/9 |
 
+| I (mejoras CRM, pedido de Juan 14/9) | seis tareas en serie, una rama por tarea, parando a mostrar cada una: (3) reuniones del día en mobile, (4) monto pagado por cliente, (1) registro de demos + adjunto de presupuesto, (5) arrastre del pipeline de Notion, (2) campañas históricas y creatividades de Meta, (6) sacar Pre-clientes | hoy `fix/calendario-mobile-dia`: `dashboard.py` (calendario). Después, en su momento: `database.py`, `routes/preclientes.py`, `routes/notion_clients.py`, `services/notion_service.py`, `services/meta_insights.py`. **No deployo nada sin que Juan lo pida.** | 14/9 |
+
 | F (finanzas) | la sección financiera del CRM | `services/finanzas.py`, `routes/finanzas.py`, `database.py` (tablas de finanzas), `dashboard.py` (panel Finanzas) | 8/9 |
 
 > **F (finanzas) acá (8/9).** Trabajé en un worktree aparte sobre la rama
@@ -326,6 +328,71 @@ leads de Meta se renombró a **D** para deshacer el empate.
 > oscuro y en claro pesa; "Aplicar" es blanco sobre el degrade de marca y da
 > entre 3,9 y 2,6:1.
 
+> **F (diseño) — Tareas (14/9).** Octava superficie: la lista, el tablero y el
+> selector de usuario (`.upick-*`). El tablero es el mismo `.kanban` que usa
+> **Pipeline Notion**, asi que ese tablero tambien cambia (para bien: en claro
+> tenia el contador como una pastilla oscura). Se fueron 23 reglas `body.light`
+> y `.task-check`, que no arma nadie.
+>
+> **Dos tokens nuevos, por si les sirven:**
+> - `--sombra`: el color de la sombra de lo que flota. La del oscuro en claro era
+>   un halo gris. Uso: `box-shadow:0 8px 24px var(--sombra)`.
+> - `--verde-texto`: el verde para texto chico. `--verde` en claro (#059669) da
+>   3,77:1 sobre blanco. **G y Finanzas:** `.sc-tile-delta` y `.fin-verde` usan
+>   `--verde` como texto; si es chico, en claro no llega a 4,5. No lo toque.
+>
+> **Bug encontrado, no es de diseño y no lo arregle aca:** en el tablero de
+> Tareas **arrastrar una tarjeta a otra columna no hace nada**, en produccion.
+> El tablero de leads viejo (`loadKanban`/`renderKanban`, sin HTML, nadie lo
+> llama) declara `_kanbanDragStart` y `_kanbanDrop` otra vez mas abajo en el
+> mismo `<script>`, y en JS gana la ultima declaracion. Vino con `ad0f5f6`. La
+> solucion es borrar ese tablero muerto; queda propuesto como tarea aparte.
+>
+> Quedan para la superficie de estados los fondos tintados de Tareas: los chips
+> de prioridad y los badges "en curso" / "hecha" siguen oscuros en claro.
+
+> **G, importante (14/9): produccion tiene codigo tuyo que no esta en `main`.**
+> El v198 (12/9, 01:08) no coincide con ningun commit. Contra `main` difieren
+> `dashboard.py` (+476 lineas), `services/dossier.py` (+265),
+> `services/radiografia.py` (+16) y `static/charts.js` (+477): todo del panel de
+> marketing (series semanales, graficos `SC.*`, bloques `mk-`). Lo compare
+> bajando esos cuatro archivos de la maquina.
+>
+> Por eso **no deploye el #34 (Tareas)**: deployar `main` te borraba ese trabajo
+> de produccion. Ya esta mergeado en `main` y no toca nada tuyo (ni tokens ni
+> marketing). **Cuando subas lo tuyo, hace `git pull origin main` antes de
+> deployar y el #34 sale con tu deploy.** Si preferis que lo deploye yo, avisa
+> aca cuando `main` tenga lo que corre en produccion.
+
+> **F (diseño) — estados (14/9).** Novena superficie: los chips que dicen en que
+> estado esta algo (prioridad y estado de tareas, vencimientos de seguimientos,
+> score, "no atendio", la demo "Generando...", la pastilla del pipeline, las
+> pills de alerta de Tareas). **Hay una familia de tokens por significado; si
+> haces un badge de estado, usala en vez de elegir un verde:**
+>
+> | significado | fondo | texto |
+> |---|---|---|
+> | bien / hecho | `--verde-tinte` | `--verde-texto` |
+> | mal / vencido | `--rojo-tinte` | `--rojo-texto` |
+> | atencion / hoy | `--ambar-tinte` | `--ambar` |
+> | en curso / info | `--azul-tinte` | `--azul-claro` |
+> | neutro | `--relleno` | `--texto-debil` |
+>
+> Todos los pares llegan a 4,5 en los dos temas y hay un test que lo mide.
+> Para marcar una fila entera: `--rojo-borde` / `--ambar-borde`. **H:** los
+> `.wa-state-*` de WhatsApp son exactamente esto y no tienen version clara; no
+> los toque.
+>
+> Se fueron `.dot` (y sus cinco colores) y `.cp-badge-draft/sent/pending/failed`:
+> no los arma nadie. Si alguien iba a usarlos, que los vuelva a crear con los
+> tokens.
+>
+> Visto al pasar, sin tocar: los **colores de etapa** (`.row-*`, los puntitos del
+> historial) son una paleta de 13 tonos y van aparte. Y **en el celular las filas
+> de tabla no muestran ningun tinte** (ni de etapa ni de estado): la regla de
+> tarjetas tiene `background` y `border` con `!important` desde la version
+> inicial.
+
 > **D acá (28/8, 17:10 UTC).** Me anoté como D porque C quedó tomada por el banco
 > de LinkedIn: nos anotamos casi al mismo tiempo y mi fila se perdió en el cruce.
 >
@@ -417,6 +484,228 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
   Suite en **2207**.
 
+- **15/9 — rama `feat/backup-diario-r2` (worktree `../crm-backup`). Sin PR, sin merge, sin deploy.** Backup diario de la base, pedido aprobado por el dueño. Detalle y restauración en `docs/BACKUPS.md`.
+  - `services/backup_db.py`:
+    - copia en caliente con la API de backup de SQLite y `integrity_check`;
+    - gzip `crm-leads-AAAA-MM-DD.db.gz`, con la fecha de Montevideo;
+    - subida a R2 bajo `crm/`, con SigV4 a mano sobre `requests`, sin boto3;
+    - retención: 30 días en R2 y 3 locales en `/data/backups`.
+  - Arranca 300 s después del boot y corre una vez por día, con la marca `backup_db` en `corridas`.
+    - **Prendido por defecto**; `BACKUP_DB=off` lo apaga. No manda nada a terceros.
+    - Sin `R2_*` hace solo la copia local.
+  - Si falla, avisa a los mismos admins que `send_meta_token_alert`, como mucho una vez por día (marca `backup_db_aviso`).
+  - Rutas admin: `POST /api/admin/backup-ahora` y `GET /api/admin/backups` (`routes/backups.py`). Hay una sección "Backups" en `/admin/users`.
+  - **`start.sh` cambió:** antes de gunicorn corre `python -m services.backup_db --aplicar-restauracion`. Si existe `/data/restore.db` y pasa la integridad, la pone en lugar de `leads.db` y guarda la anterior. Si no existe, no hace nada.
+  - **Zona compartida tocada, todo aditivo:**
+    - `services/email_service.py`: función nueva `send_backup_alert`;
+    - `dashboard.py`: registro del blueprint, arranque del hilo y sección en la página de administración.
+  - **Falta que el dueño cargue** `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` y `R2_BUCKET`.
+
+- **15/9 — rama `feat/meta-ads-por-mes` (worktree `../crm-meta-mes`). Sin PR, sin merge, sin deploy.**
+  - **Meta Ads por mes:** flechas, "Este mes", deslizar en el celular; siempre abre en el mes actual (hora Montevideo). Arriba, total del mes y conteo por color. JS `mm*`, CSS `.mm-*` con tokens (`--semaforo-rojo/amarillo/negro` nuevos).
+  - **Semáforo desde el CRM:** `POST /api/meta/leads/<id>/semaforo` (panel `meta`). El color NO tiene columna propia: sale de `crm_status` (`services/planilla_semaforo.ESTADO_A_COLOR`), y la demo del mes se escribe con la misma función que el sync (`_escribir_demos`). Columnas nuevas en `businesses`: `semaforo_origen`, `semaforo_at`, `semaforo_planilla`. Regla con la planilla: una marca a mano solo la mueve la planilla si se repintó después (trae otro color que en la lectura anterior), y ahí valen las reglas de siempre.
+  - **Envíos de formulario (`meta_lead_envios`):** quien vuelve a llenar el formulario cuenta también en el mes de la vuelta, como Meta. Lo registran el webhook y los imports. **Backfill:** el import diario (arranca 120 s después de cada boot, y `POST /api/meta/import-sync` con `ADMIN_TOKEN`) rellena la tabla con todo lo que devuelve Graph (~90 días) sin crear fichas ni avisar. Los contadores de Marketing (dossier, piezas) y la pauta de Finanzas cuentan envíos por mes de Montevideo (`database.ENVIOS_META_SQL`); las etapas quedan en el primer envío.
+  - **Zona compartida tocada:** `database.py` (tabla, columnas, `delete_business`/`merge_business`), `dashboard.py` (panel Meta Ads), `routes/leads.py` (`registrar_cambio_de_estado`, lo usa `/crm-status`), `services/dossier.py`, `services/anuncios.py`, `services/finanzas.py` (solo `rendimiento_pauta`).
+
+- **15/9 — rama `feat/finanzas-balance` (worktree `../crm-balance`). Sin PR ni deploy.** Dos pedidos de Juan, en commits aparte.
+  - **Balance** (pestaña de Finanzas, no ítem del menú): `GET /api/finanzas/balance?tipo=blanco|interno&desde=&hasta=` (`desde=inicio` = primer movimiento), cuenta pura en `services/finanzas.calcular_balance`. "En blanco" = `facturado` + egresos de la categoría `impuestos` (no hay campo de comprobante ni cuenta). Filtra por FECHA en hora de Montevideo; los fijos cuentan solo como movimientos materializados. Imprimir: `window.print()` sobre `.fb-print`, hijo directo del body, en claro.
+  - **Solo lectura por rol** (el Contador): columna `roles.paneles_solo_lectura`. El Contador nace con `["finanzas"]` (en el INSERT OR IGNORE de la rama de roles; al Contador que ya existía se le precarga UNA sola vez). Mismo criterio que `fix/permisos-una-vez`, con marca propia: la marca es la creación de la columna, así que la precarga corre solo en el arranque que la agrega, y si Juan destilda el solo lectura un deploy no lo vuelve a poner (hay test). No usa `panel_grants_aplicados` porque esa tabla todavía no estaba en main; si se unifica, la clave sería `solo_lectura:contador:finanzas`. `services/auth.require_edicion`: el candado de `routes/finanzas.py` bloquea todo lo que no sea GET salvo `_PERMITIDAS_EN_SOLO_LECTURA`. Hoy solo Finanzas respeta la marca. Simulador no se toca (panel propio).
+  - **Zona compartida tocada:** `database.py` (columna en `roles`), `dashboard.py` (`/api/me` trae `paneles_solo_lectura`; las cuatro rutas `/api/admin/roles` ahora exigen admin, antes bastaba con estar logueado; check "solo lectura" junto a Finanzas en el editor de roles), `services/auth.py`.
+
+- **15/9 — I: Flujos, en `feat/recursos-humanos` (encima de #40). Sin PR ni deploy.**
+  - Bloque al final del panel Ausencias, desde el PDF "Flujos - Scalerics". No es un ítem del menú. Tiene 4 flujos; solo "De lead a cobro" tiene pasos (los 10 del PDF, con su texto exacto). Los otros tres están vacíos.
+  - Base: tablas `flujos`, `flujo_pasos` y `flujo_paso_cobros`. La última permite varios momentos de cobro por paso; el paso 07 trae uno, "100% al confirmar".
+    - La precarga es `_sembrar_flujos`: carga pasos solo en un flujo recién creado, así no pisa ediciones.
+    - `numero` se renumera 1..n cada vez que se agrega, borra o mueve un paso.
+  - API `routes/flujos.py`:
+    - Leer: pide Organigrama o Ausencias.
+    - Escribir: `require_admin`, la misma `is_admin` de `/api/me`.
+  - Pantalla: la edición va detrás del botón "Editar".
+    - Un paso con `pantalla` es clickeable solo si el panel está en la página y el rol lo ve. La regla sale de `window._panelAccess`, que ahora guarda el IIFE de permisos.
+    - Pantallas precargadas: 01 `notion_clients`, 05 `demos`, 07 `clientes`, 08 `projects`.
+  - **Si agregan paneles** (Seguimiento de leads, Plantillas): sumarlos a `EQ_PANTALLAS` para que aparezcan en el formulario. Una pantalla guardada que todavía no existe se conserva y no es clickeable.
+
+- **15/9 — rama `feat/calendario-contador-mes` (worktree `../crm-cal-mes`). Sin PR ni deploy.** Pedido de Juan: contador del mes y deslizar entre meses.
+  - `#cal-count` ahora habla del MES que se mira, también en vista semana: "Septiembre 2026 · 18 reuniones · 11 hechas · 7 por venir" (pasado: "N reuniones"; futuro: "N agendadas"). Hechas/por venir contra la hora de Montevideo (`_calAhoraMvd`, UTC-3 fijo), no contra el reloj del navegador.
+  - La vista semana pide la semana **más su mes entero** en un solo GET (`_calRangoSemana`) y filtra la grilla a los 7 días. El mes de la semana: el de hoy si cae adentro, si no el del jueves.
+  - Celular: deslizar sobre `#cal-days` cambia de mes (>50px y más horizontal que vertical, listeners pasivos). `calShift` en el celular mueve siempre el mes (antes, con `calView='semana'` la flecha no hacía nada visible).
+  - `_calPedido` descarta respuestas viejas al navegar rápido. `.cal-count` pasó a tokens (se fue `body.light .cal-count`). Tests en `tests/test_calendario_contador_mes.py`.
+
+- **14/9 — rama `feat/seguimiento-leads` (sin PR, sin merge, sin deploy): Seguimiento de leads.**
+  - Panel `seg_leads`, primer ítem de VENTAS (arriba de WhatsApp). Id nuevo a propósito: la sección vieja `seguimientos` sigue borrada y `tests/test_sin_seguimientos.py` no se tocó.
+  - Tablas `seg_recordatorios` (índice único parcial: un solo pendiente por lead) y `seg_llamados` (historial, se escribe al marcar Hecho). `routes/seg_leads.py` y `services/seg_leads.py`. `lead_id` es `businesses.id`.
+  - "Hoy" y "vencido" salen de la fecha de Montevideo (`services/seg_leads.hoy_mvd`), no de la del servidor.
+  - **Zona compartida tocada:** `database.py` (tablas al final de la parte de equipo en `init_db`; `merge_business` y `delete_business` ahora mueven/borran el seguimiento; `_grant_panel_to_existing_roles` acepta `solo_si_tiene`) y `dashboard.py` (menú, panel, modales, JS `sl*`, botón en la tarjeta de Proceso de venta, sección en la pestaña Llamadas de la ficha).
+  - El panel les llega a los roles que ya tienen `notion_clients`, **una sola vez** (en el arranque que crea la tabla): si Juan se lo saca a un rol, un deploy no se lo vuelve a poner.
+  - Nada arranca en el boot ni manda mail.
+
+- **14/9 — WhatsApp (rama `feat/whatsapp-mail`, worktree `../crm-whatsapp`): pantalla de chat nueva y aviso por mail. Sin mergear ni deployar.**
+  - **Pantalla** (`dashboard.py`, solo el panel `wa`): bandeja estilo app de chat (buscador, último mensaje, hora, no leídos), burbujas con separador por día, caja de respuesta con Enter / Shift+Enter, y en el celular lista → chat con botón volver. Todo el CSS `.wa-*` pasó a tokens y se borraron las 9 reglas `body.light .wa-*` (la de la coma cortada salió de `CONOCIDAS` en `test_tokens_css.py`). La lógica del bot y el envío (`/api/wa/*`) no cambiaron. El refresco arranca al abrir el panel y solo corre mientras estás en WhatsApp.
+  - **Aviso por mail:** `POST /api/bot/mensaje-entrante` (en `routes/wa.py`, con `x-admin-token` = `ADMIN_TOKEN`, igual que `lead-qualified`). Avisa a `WA_AVISO_MAIL` (por defecto contacto@scalerics.com) con el primer mensaje de un número, o el primero después de 30 minutos sin mensajes de ese número. La ventana vive en la tabla `wa_avisos_mail`, que se crea desde `services/wa_aviso_mail.py` y no desde `init_db`. Sale por Resend (`send_wa_message_notification`, agregada en `email_service.py`) en un hilo aparte, y si falla no afecta al bot.
+  - **Ojo, falta la otra mitad:** el CRM no recibía ningún aviso por mensaje entrante. **El bot (`scalerics-wa`) tiene que llamar a esta ruta** por cada mensaje que entra. Hasta que eso se haga, no sale ningún mail.
+
+- **15/9 — I: rama `feat/recursos-humanos` (sale de `fix/piezas-y-recupero`, PR #38). Sin PR ni deploy.**
+  - Pedido de Juan: Equipo pasa a ser el grupo **RECURSOS HUMANOS**, entre OPERACIÓN y CAPTACIÓN, con dos paneles:
+    - **Organigrama**: conserva el id `equipo`, así los permisos guardados siguen valiendo.
+    - **Ausencias**: id nuevo `ausencias`, con grilla, avisos, detalle y navegación por semanas.
+  - Migración: `_grant_panel_to_existing_roles(conn, "ausencias", solo_si_tiene="equipo")`. Todo rol con `equipo` recibe `ausencias`. **Ojo:** corre en cada arranque, igual que la de `equipo`, así que si se le saca Ausencias a un rol que tiene Organigrama, vuelve a aparecer.
+  - `routes/equipo.py`: todas las rutas aceptan cualquiera de los dos paneles. La capacidad acepta también `simulador`.
+  - `loadEquipo` corre al abrir cualquiera de los dos paneles y saltea los contenedores que no están en la página.
+
+- **15/9 — I: rama `fix/piezas-y-recupero`.**
+  - Piezas de la pauta: con "Un mes" arriba siguen al mes de la sección. La flecha de las piezas mueve la sección entera. Antes arriba se veía abril y abajo seguían las piezas de setiembre. Los datos de `meta_ad_insights` estaban bien fechados (abril 27 piezas, setiembre 47, ninguna en común).
+  - Equipo: la grilla navega de semana en semana con `GET /api/equipo?desde=AAAA-MM-DD`. Al agendar un recupero fuera de lo visible, salta a su semana. Sábado y domingo aparecen solo si hay un recupero ese día. `esta_semana` viene en la respuesta.
+
+- **15/9 — I: DEPLOYADO `v216` (PR #37 mergeado, `bd18b03`).** Trajo Equipo, la frase de equipo con el logo, colores del menú y SDR en CAPTACIÓN. El relleno de piezas de Meta quedó completo desde marzo.
+
+- **15/9 — I: DEPLOYADO `v215` (PR #36 mergeado a `main`, `5e3c7d7`): `main` quedó igual a producción.** Trajo:
+  - menú por grupos, con Calendario como panel de entrada;
+  - sin Seguimientos;
+  - nombres visibles "Proceso de venta" (`notion_clients`), "Inteligencia comercial" (`metrics`), "Outbound" (`cola`) e "Inteligencia marketing" (`marketing`); los ids y permisos no cambian;
+  - Marketing en un mes, estrictamente mes a mes y con etiquetas largas;
+  - `POST /api/marketing/rellenar-anuncios`.
+
+  **Relleno de piezas corrido en producción** con `rellenar_mes`, uno por mes cada 4 minutos: marzo 176 filas, abril 254, mayo 146, junio 224 (julio a setiembre en curso).
+  **Ojo:** la carga inicial del `<script>` NO puede usar `showPanel` (corre antes de `const NAV_LABELS`): tumbó una tanda en tests antes de publicarse.
+
+- **15/9 — I: rama `feat/equipo` (PR aparte).**
+  - Sección Equipo en OPERACIÓN: organigrama por `reporta_a`, más ausencias y recuperos en horas, sin campos de dinero. Tablas `equipo_*`, `GET /api/equipo/capacidad`, y el simulador lo muestra como dato de solo lectura.
+  - SDR pasa a CAPTACIÓN, y Outbound va arriba de Inteligencia comercial.
+  - Franja con la frase de equipo arriba de todos los paneles, con el logo del sidebar.
+  - Color de ícono para todas las secciones.
+
+- **14/9 — I: DEPLOYADO `v214`: botón "Cargar" del simulador y demos que se cargan solas desde la planilla semáforo.**
+
+  - **Demos desde la planilla** (`feat/demos-desde-planilla`, `ae6f827`):
+    `services/planilla_semaforo.sincronizar_demos` corre después de `aplicar`
+    en `POST /api/meta/sync-planilla`. Columnas nuevas en `demos_realizadas`:
+    `origen`, `estado_planilla` y `mes_planilla`, con índice único parcial.
+    Colores: verde agendada, celeste realizada, violeta no cerró, verde oscuro
+    venta. **El mes es el de la pestaña.** Nunca toca demos cargadas a mano.
+  - **Primera corrida, verificada en el log a las 23:37:50 UTC:** 66 creadas,
+    0 sin match, 0 pestañas que no son mes.
+  - **Panel de demos:** de a un mes, con flechas como Finanzas, y resumen por
+    estado.
+  - **Simulador:** botón "Cargar" al final, que usa la misma `simRecalcular`.
+  - 2666 tests; boot limpio a las 23:27 UTC.
+
+- **14/9 — I: DEPLOYADOS `v212` (Simulador financiero, `feat/simulador-financiero`) y `v213` (Métricas pasa a llamarse Outbound, `feat/metricas-outbound`).**
+
+  - **Simulador:** panel nuevo bajo GESTIÓN. Tabla `simulador_escenarios`,
+    `routes/simulador.py` y `services/simulador.py`. Lee Fijos y Por cobrar de
+    Finanzas y **nunca escribe en Finanzas**. El cálculo es la función pura
+    `simCalcular`, testeada en node.
+  - **Outbound:** se fue la pestaña Meta Ads del panel (se mira en Marketing). **El
+    panel sigue siendo `metrics` por dentro**, porque así están guardados los
+    permisos de cada rol; solo cambia el nombre que se ve. `/api/metrics/meta`
+    queda sin uso desde la interfaz.
+  - v212 con 2586 tests y v213 con 2591; los dos arrancaron limpios (22:58 y 23:13 UTC).
+
+- **14/9 — I: DEPLOYADO `v210`: arrastre en Pipeline Notion, y SE SACÓ PRE-CLIENTES DE LA VISTA. Leer si tocás Clientes o Notion.**
+
+  Ramas `feat/notion-clientes-arrastre` (`429cce0`) y `feat/sacar-preclientes` (`687c52e`).
+  - **Pipeline Notion escribe en Notion.** `POST /api/notion-clients/<id>/estado`,
+    vía `mover_cliente`: GET de la página y PATCH de la property de estado **sin
+    nombre** (clave `""`, tipo `status`), por su id. El único punto de "Notion ya
+    tiene el cambio" es `cliente_cambio_de_estado`, que se llama desde el arrastre
+    y desde el sync.
+  - **Se borró el tablero de leads viejo y muerto** (`loadKanban`, `renderKanban`,
+    el segundo par `_kanbanDragStart` y `_kanbanDrop`). El arrastre de Tareas debería
+    volver a andar.
+  - **Pre-clientes ya no está en la interfaz.** Queda `routes/preclientes.py`
+    (sirve `/api/clientes-activos`, `/api/demos-realizadas` y `/api/preclientes`,
+    que usan tests). **Un negocio pasa a Clientes cuando su ficha de Pipeline Notion
+    llega a "Presupuesto Aceptado"**, si la ficha está conectada:
+    `notion_clients.business_id`, que se carga desde el tablero con
+    `PUT /api/notion-clients/<id>/cliente-crm`. Lo hace `pasar_a_cliente`: pasa a
+    `cerrado` con `lead_event` y actividad, nunca retrocede a `en_desarrollo` ni
+    a `finalizado`, y si falla no corta el sync.
+  - **Sin verificar contra Notion real:** que la API acepte el PATCH por id de
+    property con el token actual. Juan lo prueba con una ficha de prueba.
+  2468 tests; boot limpio a las 22:32 UTC.
+
+- **14/9 — I: DEPLOYADO `v209`: Registro de demos por mes, con el presupuesto adjunto. Producción = `deploy/i-calendario-mobile` en `4cd011f`.**
+
+  Rama `feat/demos-por-mes-presupuesto`. `lead_attachments.demo_id` (índice
+  propio; `section` sigue en `budget`), subida con tope de 10 MB y solo
+  PDF/imagen por firma de bytes, y **ningún listado lee `file_data`** (hay un
+  test con el authorizer de SQLite). El panel estaba vacío porque nada crea
+  filas en `demos_realizadas` salvo el modal manual. Siguiente paso, en curso:
+  llenarlo desde la planilla semáforo (`feat/demos-desde-planilla`).
+  2408 tests; boot limpio a las 22:17 UTC.
+
+- **14/9 — I: DEPLOYADO `v208`: Clientes muestra cuánto pagó cada uno. Producción = `deploy/i-calendario-mobile` en `db73c32`.**
+
+  Rama `feat/clientes-monto-pagado`. Columnas `businesses.monto_pagado` (REAL) y
+  `moneda_pagado` (TEXT, las `MONEDAS` de Finanzas, sin convertir), PUT
+  `/api/clientes-activos/<id>/monto-pagado` y alta manual `POST /api/clientes-activos`.
+  **Juan decidió que los montos los ve cualquier usuario logueado** (sin candado
+  de panel). 2383 tests; boot limpio a las 22:02 UTC.
+
+- **14/9 — I: DEPLOYADO `v207`: editar y borrar reuniones desde el celular. Producción = `deploy/i-calendario-mobile` en `2ac63bc`.**
+
+  Rama `feat/calendario-mobile-acciones` (`1c12e5d`, sale de
+  `fix/calendario-mobile-dia`). En el celular no hay hover, así que
+  `.cal-chip-acts` nunca se veía: cada reunión de la lista del día tiene ahora
+  Editar / Unirse / Borrar, que llaman a **las mismas** `_calAbrirEditor` y
+  `deleteCalEvent` que el chip de escritorio (hay un test que lo exige). Calendly
+  sin Editar, igual que en escritorio. Guardar desde el celular mueve la lista
+  al día nuevo de la reunión. Sobre el árbol de deploy: `check_js` OK, **2350
+  tests**, cobertura 71,41%; boot limpio a las 20:08 UTC, sin errores en el log.
+
+  **Sigue valiendo:** producción NO es `main` y estas ramas están solo en la
+  máquina de Juan. Un deploy desde `main` o `feat/marketing-meta` borra el
+  calendario mobile de producción.
+
+- **14/9 — I: DEPLOYADO `v206`, el arreglo del calendario mobile corregido. Producción = `deploy/i-calendario-mobile` en `c36d2b0`.**
+
+  Mismo árbol que `v204` (`origin/main` + `origin/feat/marketing-meta` + calendario
+  mobile) más la corrección del `{#` (`b960e3f`). Sobre ese árbol: `check_js` OK
+  y **2344 tests, cobertura 71,41%**, incluido el test nuevo que pide `GET /`
+  logueado. Después del deploy la máquina arrancó limpia y no hay errores en el
+  log desde el boot de las 19:47 UTC.
+
+  **Sigue valiendo el aviso de `v204`:** producción NO es `main`, y las ramas
+  `fix/calendario-mobile-dia` y `deploy/i-calendario-mobile` están solo en la
+  máquina de Juan (no hay credenciales de GitHub acá). **Un deploy desde `main` o
+  desde `feat/marketing-meta` borra el arreglo del calendario de producción.**
+
+- **14/9 — I: `v204` TUMBÓ EL CRM y se volvió a `v203` (imagen `deployment-01M2GE3T9T2Q54KGSW435YTEBS`). Lo de abajo sobre `v204` ya no describe producción.**
+
+  `GET /` daba 500 para todos: `jinja2.exceptions.TemplateSyntaxError: Missing
+  end of comment tag`. Causa, mía: en el CSS del listado mobile escribí
+  `@media(max-width:768px){#cal-day-events-mobile{...}}`. **`{` pegado a `#` es
+  `{#`, que abre un comentario de Jinja**, y `DASHBOARD_HTML` pasa por
+  `render_template_string`. La suite entera pasó igual porque **ningún test
+  pedía la página principal**; `/login` daba 200 y el chequeo post-deploy no lo
+  vio.
+
+  Corregido en `fix/calendario-mobile-dia` (espacio después de la llave) con
+  un test que hace `GET /` logueado y exige 200. **Si escriben CSS en el
+  dashboard: nunca `{#` pegado.** Producción hoy = `v203`, o sea sin el arreglo
+  del calendario y con lo que G tenía antes.
+
+- **14/9 — I: DEPLOYADO `v204`. Producción NO es `main`, leer antes de deployar.**
+
+  Juan pidió el arreglo del calendario mobile en vivo. `v204` salió de un
+  worktree limpio (`../crm-deploy-I`, rama `deploy/i-calendario-mobile`,
+  commit `8ea838c`) que es **`origin/main` (`a3d69d8`) + `origin/feat/marketing-meta`
+  (`91b7d4d`) + `fix/calendario-mobile-dia` (`185dfde`)**. El merge de marketing
+  entró sin conflictos; el único fue esta bitácora, resuelto conservando las dos
+  entradas. Sobre ese árbol: `check_js` OK y **2343 tests, cobertura 71,35%**.
+  Después del deploy, `GET /` 302 y `GET /login` 200.
+
+  **G: tu rama está en producción sin estar en `main`.** Se sumó porque `v199`-`v203`
+  eran tuyos y deployar `main` solo te los borraba. **Ojo:** no pude comparar
+  `/app` de `v203` contra tu rama antes de deployar (la lectura dentro de la
+  máquina quedó bloqueada por permisos) y Juan decidió deployar igual. Si `v203`
+  tenía algo tuyo sin commitear después de `91b7d4d`, ya no está en producción:
+  revisalo contra tu árbol.
+
+  **Las dos ramas (`fix/calendario-mobile-dia` y `deploy/i-calendario-mobile`)
+  están SOLO en esta máquina**: acá no hay credenciales de GitHub y el push
+  falló. Hasta que se suban, **cualquier deploy desde `main` o desde
+  `feat/marketing-meta` borra de producción el arreglo del calendario.**
 
 - **14/9 — G (marketing): hay una sección nueva con las piezas de la pauta, y
   una tabla nueva en la base.**
@@ -507,6 +796,31 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
   Suite en **2091** antes de esta tanda.
 
+- **14/9 — I (mejoras CRM): en el celular no se veían las reuniones del día.
+  Rama `fix/calendario-mobile-dia`, sin deployar.**
+
+  `#cal-day-events-mobile` tenía `style="display:none"` inline y la regla de
+  mobile lo mostraba sin `!important`: el inline gana siempre, así que la lista
+  estuvo oculta desde junio. **La visibilidad ahora la manda el CSS**: oculto de
+  base y visible en `@media(max-width:768px)`, las dos reglas juntas al lado de
+  `.cal-leyenda`. **Si movés la de base abajo del @media, el celular vuelve a no
+  ver nada** (misma especificidad, gana la última); hay un test que mide el orden.
+  Se descartó `style.display='block'` desde JS: es un inline que sobrevive a
+  agrandar la ventana y deja la lista abierta en escritorio.
+
+  Además, al dibujar el mes en el celular se elige hoy solo
+  (`_calSeleccionarDiaMobile`), sin desplazar la pantalla, y el día tocado
+  sobrevive a los redibujos. Las tarjetas del día pasaron a clases con tokens
+  (tenían `#111827` inline, oscuras en claro). Tests en
+  `tests/test_calendario_mobile.py`, corren el JS en node contra un DOM falso.
+
+  **Visto al pasar, sin tocar:** `renderCalendar` marca `.today` con `isoDate`,
+  que pasa por UTC: de 21 a 24 en Montevideo resalta el día siguiente, también
+  en escritorio.
+
+  **Entorno Windows sin admin:** Python 3.11 de python.org por winget (pide UAC
+  igual con `--scope user`) y Node con `pip install "nodejs-wheel-binaries==22.*"`
+  — deja `node.exe` en `site-packages\nodejs_wheel`, hay que sumarlo al PATH.
 
 - **11/9 — G: gracias por subir `--rotulo`, y ojo con un margen de 0,01.**
 

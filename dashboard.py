@@ -26,8 +26,15 @@ from routes.projects import projects_bp
 from routes.preclientes import preclientes_bp
 from routes.linkedin import linkedin_bp
 from routes.finanzas import finanzas_bp
+from routes.simulador import simulador_bp
+from routes.equipo import equipo_bp
+from routes.flujos import flujos_bp
+from routes.seg_leads import seg_leads_bp
+from routes.daily import daily_bp
+from routes.plantillas import plantillas_bp
 from routes.web import web_bp
 from routes.marketing import marketing_bp
+from routes.backups import backups_bp
 from services.auth import is_admin
 from services.demo_service import demo_job_handler
 from services.linkedin_posts import linkedin_job_handler
@@ -351,7 +358,22 @@ DASHBOARD_HTML = """<!DOCTYPE html>
    para un tercer gris mas apagado donde se usaba. Los rotulos en
    mayuscula se distinguen por la tipografia, no por un color que no se
    lee. El claro de --texto-debil paso de #64748b a #627188 (dE 1,2) para
-   pasar tambien sobre #f1f5f9, donde van los encabezados de tabla. */
+   pasar tambien sobre #f1f5f9, donde van los encabezados de tabla.
+
+   --sombra es el color de la sombra de lo que flota (menus, la barra de
+   lote). La del oscuro, negro al 40%, en claro era un halo gris alrededor
+   de un menu blanco. La geometria de cada sombra sigue en su regla.
+
+   --verde-texto es el verde para texto chico. --verde en claro (#059669)
+   da 3,77:1 sobre blanco: alcanza para rellenos y numeros grandes, no
+   para un rotulo de .7rem. #047857 da 5,48:1. En oscuro son el mismo.
+
+   Estados: una familia por significado. --X-tinte es el fondo del chip
+   y el texto que va encima es el de su color (--verde-texto,
+   --rojo-texto, --ambar, --azul-claro): todos llegan a 4,5 sobre su tinte
+   en los dos temas. --rojo-texto existe porque --rojo en claro (#dc2626)
+   da 4,0 sobre #fee2e2. --rojo-borde y --ambar-borde marcan las filas
+   de seguimientos vencidas y de hoy. */
 :root{
   --fondo:#0a0f1a;
   --fondo-hundido:#0f1117;
@@ -370,8 +392,24 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   --azul:#0088cc;
   --azul-claro:#38bdf8;
   --verde:#10b981;
+  --verde-texto:#10b981;
   --rojo:#f87171;
   --ambar:#f59e0b;
+  --verde-tinte:#0f2a1a;
+  --rojo-texto:#f87171;
+  --rojo-tinte:#2a1515;
+  --rojo-borde:#7f1d1d;
+  --ambar-tinte:#292116;
+  --ambar-borde:#ca8a04;
+  --azul-tinte:#0f1f35;
+  --sombra:rgba(0,0,0,.4);
+  --semaforo-verde:#00ff00;
+  --semaforo-celeste:#00ffff;
+  --semaforo-violeta:#ff00ff;
+  --semaforo-venta:#38761d;
+  --semaforo-rojo:#ff0000;
+  --semaforo-amarillo:#ffff00;
+  --semaforo-negro:#000000;
 }
 body.light{
   --fondo:#f8fafc;
@@ -391,8 +429,24 @@ body.light{
   --azul:#0088cc;
   --azul-claro:#0369a1;
   --verde:#059669;
+  --verde-texto:#047857;
   --rojo:#dc2626;
   --ambar:#b45309;
+  --verde-tinte:#d1fae5;
+  --rojo-texto:#b91c1c;
+  --rojo-tinte:#fee2e2;
+  --rojo-borde:#fca5a5;
+  --ambar-tinte:#fef3c7;
+  --ambar-borde:#fde047;
+  --azul-tinte:#e0f2fe;
+  --sombra:rgba(0,0,0,.12);
+  --semaforo-verde:#00ff00;
+  --semaforo-celeste:#00ffff;
+  --semaforo-violeta:#ff00ff;
+  --semaforo-venta:#38761d;
+  --semaforo-rojo:#ff0000;
+  --semaforo-amarillo:#ffff00;
+  --semaforo-negro:#000000;
 }
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:100vh;display:flex}
@@ -428,9 +482,18 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
   .table-wrap{overflow-x:auto}
   .table-header:not(.tbl-cli) span:nth-child(3),.table-row:not(.tbl-cli)>div:nth-child(3){display:none}
   .table-header,.table-row{grid-template-columns:2fr 1.1fr 1.4fr}
-  .wa-container{grid-template-columns:1fr;height:auto}
-  .wa-list{max-height:240px;border-right:none;border-bottom:1px solid #1e293b}
-  .wa-chat{height:calc(100vh - 380px);min-height:320px}
+  .wa-page-header{display:none}
+  .wa-container{grid-template-columns:1fr;height:calc(100vh - 170px);height:calc(100dvh - 170px);min-height:380px;border-radius:12px}
+  .wa-list{border-right:none}
+  .wa-container .wa-chat{display:none}
+  .wa-container.wa-en-chat .wa-list{display:none}
+  .wa-container.wa-en-chat .wa-chat{display:flex}
+  .wa-volver{display:inline-flex}
+  .wa-chat-header{padding:8px 10px;flex-wrap:wrap}
+  .wa-chat-acciones{width:100%;justify-content:flex-start}
+  .wa-bubble{max-width:85%}
+  .wa-messages{padding:6px 10px 12px}
+  .wa-input-ayuda{display:none}
   .cal-header{flex-wrap:wrap;gap:8px}
   .cal-header h1{flex:1;font-size:1.1rem}
   .cal-grid-header{font-size:.55rem;padding:6px 2px}
@@ -449,7 +512,6 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
   .cal-event-chip.origen-google{background:#10b981!important}
   .cal-event-chip.origen-calendly{background:#f59e0b!important}
   .cal-chip-acts{display:none!important}
-  #cal-day-events-mobile{display:block}
   /* La vista semanal se arrastra con el mouse: en touch el drag de HTML5 no
      dispara, asi que en el celular solo queda el mes. */
   .cal-view-toggle{display:none!important}
@@ -504,9 +566,6 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
   .cp-tabs{overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;flex-shrink:0}
   .cp-tabs::-webkit-scrollbar{display:none}
   .cp-tab{padding:10px 14px;font-size:.76rem;white-space:nowrap;flex-shrink:0}
-  /* Kanban: scroll táctil */
-  .kanban-board{-webkit-overflow-scrolling:touch;scroll-snap-type:x mandatory;padding-bottom:24px}
-  .kanban-col{scroll-snap-align:start}
 }
 @media(max-width:480px){
   .stats{grid-template-columns:1fr}
@@ -542,17 +601,15 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .biz-name{font-weight:600;font-size:.88rem;color:#e2e8f0;display:flex;align-items:center;gap:7px}
 .biz-sub{font-size:.7rem;color:#475569;margin-top:2px}
 .score-badge{display:inline-flex;align-items:center;gap:3px;font-size:.62rem;font-weight:700;padding:1px 6px;border-radius:4px;letter-spacing:.02em;flex-shrink:0}
-.score-hot{background:rgba(16,185,129,.15);color:#34d399;border:1px solid rgba(16,185,129,.25)}
-.score-mid{background:rgba(0,136,204,.12);color:#60a5fa;border:1px solid rgba(0,136,204,.22)}
-.score-low{background:rgba(100,116,139,.1);color:#64748b;border:1px solid rgba(100,116,139,.18)}
+.score-hot{background:var(--verde-tinte);color:var(--verde-texto);border:1px solid transparent}
+.score-mid{background:var(--azul-tinte);color:var(--azul-claro);border:1px solid transparent}
+.score-low{background:var(--relleno);color:var(--texto-debil);border:1px solid transparent}
 .phone-val{font-size:.8rem;color:#4ade80;font-family:monospace;text-decoration:none}
 .phone-val:hover{color:#86efac;text-decoration:underline}
 .phone-plain{font-size:.8rem;color:#64748b;font-family:monospace}
 .call-btn{border:1px solid #1e293b;background:none;color:#64748b;padding:2px 7px;border-radius:5px;font-size:.72rem;cursor:pointer;text-decoration:none;font-family:'Inter',sans-serif;transition:all .15s}.call-btn:hover{border-color:#334155;color:#94a3b8}
 .no-val{font-size:.75rem;color:#1e293b}
 .email-val{font-size:.76rem;color:#94a3b8;word-break:break-all}
-.dot{width:5px;height:5px;border-radius:50%;display:inline-block}
-.dot.green{background:#4ade80}.dot.orange{background:#fbbf24}.dot.gray{background:#334155}.dot.purple{background:#818cf8}.dot.red{background:#f87171}
 .actions{display:flex;gap:5px;align-items:center;flex-wrap:wrap}
 .pitch-btn{background:#1a2e1e;border:none;color:#4ade80;padding:5px 9px;border-radius:6px;font-size:.7rem;cursor:pointer;font-weight:600;font-family:'Inter',sans-serif;white-space:nowrap}
 .pitch-btn:hover{background:#14532d}
@@ -572,40 +629,118 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .cb{width:15px;height:15px;accent-color:#0088cc;cursor:pointer}
 .table-header{display:grid;grid-template-columns:36px 2fr 1.2fr 1.8fr 1.5fr;padding:12px 20px;background:var(--fondo-hundido);border-bottom:1px solid var(--borde)}
 .table-row{display:grid;grid-template-columns:36px 2fr 1.2fr 1.8fr 1.5fr;padding:13px 20px;border-bottom:1px solid var(--borde);align-items:center;transition:background .1s}
-/* Tablero de pre-clientes: una columna por etapa. La tabla plana anterior
-   obligaba a leer fila por fila para saber cuantos habia en cada etapa. */
-.pre-board{display:flex;gap:12px;overflow-x:auto;padding-bottom:12px;align-items:flex-start}
-.pre-col{background:#111827;border:1px solid #1e293b;border-radius:12px;min-width:230px;width:230px;flex-shrink:0;display:flex;flex-direction:column;max-height:calc(100vh - 250px)}
-.pre-col-head{padding:11px 13px 9px;border-bottom:1px solid #1e293b;display:flex;align-items:center;justify-content:space-between;gap:6px;flex-shrink:0}
-.pre-col-title{font-size:.72rem;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.4px}
-.pre-count{background:#1e293b;color:#94a3b8;border-radius:999px;padding:1px 8px;font-size:.7rem;font-weight:700;flex-shrink:0}
-.pre-cards{padding:9px;overflow-y:auto;display:flex;flex-direction:column;gap:7px}
-.pre-card{background:#0a0f1a;border:1px solid #1e293b;border-radius:8px;padding:9px 11px;cursor:pointer;transition:border-color .1s}
-.pre-card:hover{border-color:#0088cc}
-.pre-card-name{font-size:.84rem;font-weight:600;color:#e2e8f0;margin-bottom:2px;line-height:1.3}
-.pre-card-meta{font-size:.71rem;color:#64748b}
-.pre-card-demo{font-size:.7rem;color:#34d399;margin-top:5px}
-.pre-empty{color:#475569;font-size:.74rem;text-align:center;padding:12px 0}
-body.light .pre-col{background:#f8fafc;border-color:#e2e8f0}
-body.light .pre-card{background:#fff;border-color:#e2e8f0}
-body.light .pre-card-name{color:#0f172a}
 
-/* Registro de demos */
-.demo-row{background:#111827;border:1px solid #1e293b;border-radius:10px;padding:13px 17px;margin-bottom:9px}
+/* Registro de demos: agrupado por mes, con el presupuesto de cada una.
+   Solo tokens: el tema claro sale solo, sin reglas body.light al lado. */
+.demo-filtros{flex-wrap:wrap}
+.demo-mes{margin-bottom:22px}
+.demo-mes-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;padding:0 2px 8px;margin-bottom:10px;border-bottom:1px solid var(--borde)}
+.demo-mes-titulo{font-size:1rem;font-weight:700;color:var(--texto-fuerte);margin:0}
+.demo-mes-cuenta{background:var(--azul-tinte);color:var(--azul-claro);border-radius:999px;padding:1px 9px;font-size:.72rem;font-weight:700}
+.demo-mes-presu{font-size:.74rem;color:var(--texto-debil);margin-left:auto}
+.demo-row{background:var(--superficie);border:1px solid var(--borde);border-radius:10px;padding:13px 17px;margin-bottom:9px}
+.demo-row-sin{border-left:3px solid var(--ambar)}
 .demo-row-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px}
-.demo-num{background:#0088cc;color:#fff;border-radius:999px;padding:1px 9px;font-size:.71rem;font-weight:700}
-.demo-cliente{font-weight:650;color:#e2e8f0;cursor:pointer}
-.demo-cliente:hover{color:#33aadd}
-.demo-meta{font-size:.74rem;color:#64748b;margin-left:auto}
-.demo-texto{font-size:.85rem;color:#94a3b8;line-height:1.5;white-space:pre-wrap}
-.demo-del{background:none;border:none;color:#475569;cursor:pointer;font-size:.9rem;padding:0 4px}
-.demo-del:hover{color:#f87171}
-body.light .demo-row{background:#fff;border-color:#e2e8f0}
-body.light .demo-cliente{color:#0f172a}
+.demo-num{background:var(--azul-tinte);color:var(--azul-claro);border-radius:999px;padding:1px 9px;font-size:.71rem;font-weight:700}
+.demo-cliente{font-weight:650;color:var(--texto-fuerte);cursor:pointer}
+.demo-cliente:hover{color:var(--azul-claro)}
+.demo-meta{font-size:.74rem;color:var(--texto-debil);margin-left:auto}
+.demo-texto{font-size:.85rem;color:var(--texto-tenue);line-height:1.5;white-space:pre-wrap}
+.demo-del{background:none;border:none;color:var(--texto-debil);cursor:pointer;font-size:.9rem;padding:0 4px}
+.demo-del:hover{color:var(--rojo-texto)}
+.demo-presu-fila{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px}
+.demo-presu{display:inline-block;border-radius:999px;padding:3px 10px;font-size:.75rem;font-weight:600;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-decoration:none;box-sizing:border-box}
+.demo-presu-si{background:var(--verde-tinte);color:var(--verde-texto)}
+.demo-presu-si:hover{text-decoration:underline}
+.demo-presu-no{background:var(--ambar-tinte);color:var(--ambar)}
+.demo-presu-accion{background:var(--relleno);border:1px solid var(--borde);color:var(--texto-tenue);border-radius:6px;padding:3px 10px;font-size:.74rem;font-family:inherit;cursor:pointer}
+.demo-presu-accion:hover{color:var(--texto);border-color:var(--azul)}
+.demo-presu-adjuntar{color:var(--azul-claro)}
+.demo-presu-input{display:none}
+.demo-aviso{padding:32px 16px;text-align:center;color:var(--texto-debil);font-size:.88rem}
+.demo-aviso-error{color:var(--rojo-texto)}
+.demo-nav-mes{display:flex;align-items:center;gap:6px}
+.demo-nav-mes span{font-size:.82rem;font-weight:700;color:var(--texto);min-width:130px;text-align:center}
+.demo-nav-mes .cal-nav-btn:disabled{opacity:.4;cursor:default;pointer-events:none}
+.demo-resumen-estados{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;font-size:.78rem;color:var(--texto-tenue);margin:-2px 2px 14px}
+.demo-resumen-estado{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.demo-resumen-sep{color:var(--texto-debil)}
+.demo-estado{display:inline-flex;align-items:center;gap:6px;background:var(--relleno);color:var(--texto);border:1px solid var(--borde);border-radius:999px;padding:1px 9px 1px 7px;font-size:.72rem;font-weight:600;white-space:nowrap}
+.demo-estado-mano{color:var(--texto-tenue);padding-left:9px}
+.demo-punto{width:9px;height:9px;border-radius:50%;flex:none;box-shadow:0 0 0 1px var(--borde-fuerte)}
+.demo-punto-agendada{background:var(--semaforo-verde)}
+.demo-punto-realizada{background:var(--semaforo-celeste)}
+.demo-punto-no_cerro{background:var(--semaforo-violeta)}
+.demo-punto-venta{background:var(--semaforo-venta)}
+@media (max-width:768px){
+  .demo-row{padding:12px 13px}
+  .demo-meta{margin-left:0;width:100%}
+  .demo-mes-presu{margin-left:0}
+}
+/* ── Meta Ads por mes y semaforo ─────────────────────────────────────────────
+   La lista de Meta Ads va de a un mes y cada lead se pinta con el color del
+   semaforo de la planilla: borde grueso del color pleno y un tinte suave de
+   fondo, mezclado con la superficie del tema para que el texto se siga leyendo
+   en claro y en oscuro. Los colores son los tokens --semaforo-*, los mismos del
+   Registro de demos. */
+.mm-nav-mes{display:flex;align-items:center;gap:6px}
+.mm-nav-mes span{font-size:.82rem;font-weight:700;color:var(--texto);min-width:130px;text-align:center}
+.mm-nav-mes .cal-nav-btn:disabled{opacity:.4;cursor:default;pointer-events:none}
+.mm-resumen{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;font-size:.8rem;color:var(--texto-tenue);margin:-2px 2px 12px}
+.mm-resumen-total{font-weight:700;color:var(--texto)}
+.mm-resumen-color{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.mm-buscar-todos{margin:-4px 2px 12px;font-size:.8rem;color:var(--texto-tenue)}
+.mm-link{background:none;border:none;padding:0;font:inherit;color:var(--azul-claro);cursor:pointer;text-decoration:underline}
+.mm-c-rojo{--mm-color:var(--semaforo-rojo)}
+.mm-c-amarillo{--mm-color:var(--semaforo-amarillo)}
+.mm-c-verde{--mm-color:var(--semaforo-verde)}
+.mm-c-celeste{--mm-color:var(--semaforo-celeste)}
+.mm-c-violeta{--mm-color:var(--semaforo-violeta)}
+.mm-c-venta{--mm-color:var(--semaforo-venta)}
+.mm-c-negro{--mm-color:var(--semaforo-negro)}
+.mm-c-sin{--mm-color:var(--borde-fuerte)}
+.mm-punto{display:inline-block;width:12px;height:12px;border-radius:50%;flex:none;background:var(--mm-color);box-shadow:0 0 0 1px var(--borde-fuerte)}
+.mm-c-sin .mm-punto,.mm-punto.mm-c-sin{background:var(--relleno);box-shadow:inset 0 0 0 2px var(--borde-fuerte)}
+#meta-body .table-row.mm-pintado{border-left:6px solid var(--mm-color);background:color-mix(in srgb,var(--mm-color) 14%,var(--superficie))}
+#meta-body .table-row.mm-pintado:hover{background:color-mix(in srgb,var(--mm-color) 22%,var(--superficie))}
+#meta-body .table-row.mm-c-negro{box-shadow:inset 0 0 0 1px var(--borde-fuerte)}
+.mm-sem-btn{display:inline-flex;align-items:center;gap:7px;background:var(--relleno);border:1px solid var(--borde-fuerte);color:var(--texto);border-radius:999px;padding:4px 11px 4px 6px;font-size:.74rem;font-weight:650;font-family:inherit;cursor:pointer;white-space:nowrap}
+.mm-sem-btn:hover,.mm-sem-btn.mm-abierto{border-color:var(--azul)}
+.mm-sem-btn .mm-punto{width:16px;height:16px}
+.mm-opciones{display:flex;flex-wrap:wrap;gap:8px;padding:12px;margin:-4px 0 10px;background:var(--superficie-alta);border:1px solid var(--borde-fuerte);border-radius:12px}
+.mm-opciones-titulo{flex-basis:100%;font-size:.76rem;color:var(--texto-tenue)}
+.mm-opcion{display:inline-flex;align-items:center;gap:9px;min-height:40px;padding:6px 14px 6px 8px;border-radius:999px;border:2px solid var(--mm-color);background:color-mix(in srgb,var(--mm-color) 16%,var(--superficie));color:var(--texto);font-size:.84rem;font-weight:650;font-family:inherit;cursor:pointer}
+.mm-opcion:hover{background:color-mix(in srgb,var(--mm-color) 28%,var(--superficie))}
+.mm-opcion .mm-punto{width:22px;height:22px}
+.mm-opcion.mm-actual{box-shadow:0 0 0 2px var(--azul)}
+.mm-opcion.mm-c-sin{background:var(--relleno)}
+.mm-vuelta{display:inline-block;margin-left:4px;font-size:.66rem;font-weight:700;padding:1px 7px;border-radius:99px;background:var(--azul-tinte);color:var(--azul-claro);white-space:nowrap}
+.mm-vuelta-primero{display:block;font-size:.68rem;color:var(--texto-debil);margin-top:2px}
+.mm-fecha{font-size:.72rem;color:var(--texto-debil)}
+@media (max-width:768px){
+  #meta-body .table-row.mm-pintado{border-left:6px solid var(--mm-color)!important;background:color-mix(in srgb,var(--mm-color) 14%,var(--superficie))!important}
+  .mm-opcion{min-height:44px;flex:1 1 45%}
+  .mm-nav-mes{width:100%;justify-content:space-between}
+}
+/* ── fin Meta Ads por mes */
 
 /* Tabla de clientes activos: grilla propia, no reusa .no-cb, porque sus reglas
    mobile esconden la 4a columna — que aca es Mantenimiento, no Notas. */
-.table-header.tbl-cli,.table-row.tbl-cli{grid-template-columns:2fr 1.1fr 1.15fr 1.15fr 1.15fr 1fr}
+.table-header.tbl-cli,.table-row.tbl-cli{grid-template-columns:1.8fr 1fr 1.25fr 1.1fr 1.1fr 1.1fr .9fr}
+/* Lo que pago cada cliente: se lee sin abrir la ficha y se edita en el lugar. */
+.cli-monto{background:none;border:1px solid transparent;border-radius:6px;padding:4px 6px;font-family:inherit;font-size:.84rem;font-weight:650;color:var(--texto-fuerte);cursor:pointer;text-align:left;white-space:nowrap;font-variant-numeric:tabular-nums;max-width:100%}
+.cli-monto:hover{border-color:var(--borde-fuerte)}
+.cli-monto:focus-visible{outline:2px solid var(--azul);outline-offset:1px}
+.cli-monto.vacio{color:var(--texto-debil);font-weight:500;font-size:.76rem;border:1px dashed var(--borde)}
+.cli-monto-mon{font-size:.66rem;font-weight:700;color:var(--texto-debil);letter-spacing:.4px;margin-right:4px}
+.cli-monto-edit{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+.cli-monto-input{background:var(--superficie-honda);border:1px solid var(--borde);color:var(--texto);border-radius:6px;padding:4px 6px;font-size:.78rem;font-family:inherit;width:78px;min-width:0}
+.cli-monto-sel{background:var(--superficie-honda);border:1px solid var(--borde);color:var(--texto);border-radius:6px;padding:4px 2px;font-size:.74rem;font-family:inherit;cursor:pointer}
+.cli-monto-input:focus,.cli-monto-sel:focus{border-color:var(--azul);outline:none}
+.cli-monto-ok,.cli-monto-x{border-radius:6px;padding:4px 8px;font-size:.74rem;font-weight:600;font-family:inherit;cursor:pointer}
+.cli-monto-ok{background:var(--azul-tinte);border:1px solid var(--azul);color:var(--azul-claro)}
+.cli-monto-x{background:var(--relleno);border:1px solid var(--borde);color:var(--texto-tenue)}
+.cli-monto-ok:disabled,.cli-monto-x:disabled{opacity:.5;cursor:default}
 .resp-sel{background:var(--superficie-honda);border:1px solid var(--borde);color:var(--texto);border-radius:6px;padding:4px 6px;font-size:.76rem;font-family:inherit;width:100%;max-width:150px;cursor:pointer}
 .resp-sel:hover{border-color:var(--borde-fuerte)}
 .resp-sel.vacante{color:var(--texto-debil)}
@@ -613,11 +748,15 @@ body.light .demo-cliente{color:#0f172a}
   .table-header.tbl-cli{display:none}
   .table-row.tbl-cli{display:flex;flex-direction:column;align-items:stretch;gap:7px;grid-template-columns:none}
   .resp-sel{max-width:none}
-  .pre-col{max-height:none}
+  /* En el celular el monto es una fila entera, con blancos de dedo, y el campo
+     en 16px para que iOS no haga zoom al tocarlo. */
+  .cli-monto{width:100%;min-height:40px;padding:8px 10px;white-space:normal}
+  .cli-monto-input{flex:1;width:auto;min-height:40px;font-size:16px}
+  .cli-monto-sel,.cli-monto-ok,.cli-monto-x{min-height:40px}
 }
 .table-header.no-cb{grid-template-columns:2fr 1.1fr 1fr 1.8fr 1.2fr}
 .table-row.no-cb{grid-template-columns:2fr 1.1fr 1fr 1.8fr 1.2fr}
-.batch-bar{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--relleno);border:1px solid var(--borde-fuerte);border-radius:12px;padding:10px 18px;display:none;align-items:center;gap:12px;z-index:500;box-shadow:0 4px 24px rgba(0,0,0,.5)}
+.batch-bar{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--relleno);border:1px solid var(--borde-fuerte);border-radius:12px;padding:10px 18px;display:none;align-items:center;gap:12px;z-index:500;box-shadow:0 4px 24px var(--sombra)}
 .batch-bar.open{display:flex}
 .batch-count{font-size:.82rem;color:var(--texto-tenue);white-space:nowrap}
 .batch-sel{background:var(--superficie-honda);border:1px solid var(--borde);border-radius:8px;padding:6px 10px;font-size:.78rem;color:var(--texto);font-family:'Inter',sans-serif;outline:none;cursor:pointer}
@@ -657,47 +796,81 @@ body.light .demo-cliente{color:#0f172a}
 .log-line.ok{color:#4ade80}.log-line.err{color:#f87171}.log-line.warn{color:#fbbf24}
 .log-empty{color:#1e293b;text-align:center;padding-top:80px;font-family:'Inter',sans-serif}
 .status-pill{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;font-size:.72rem;font-weight:700}
-.status-pill.idle{background:#1e293b;color:#64748b}
-.status-pill.running{background:#1a2e1e;color:#4ade80}
-.status-pill.done{background:#1a2e1e;color:#4ade80}
-.status-pill.error{background:#2a1515;color:#f87171}
+.status-pill.idle{background:var(--relleno);color:var(--texto-debil)}
+.status-pill.running{background:var(--verde-tinte);color:var(--verde-texto)}
+.status-pill.done{background:var(--verde-tinte);color:var(--verde-texto)}
+.status-pill.error{background:var(--rojo-tinte);color:var(--rojo-texto)}
 .spinner{width:8px;height:8px;border:2px solid #4ade80;border-top-color:transparent;border-radius:50%;animation:spin .6s linear infinite;display:inline-block}
 @keyframes spin{to{transform:rotate(360deg)}}
 
-/* ---- WhatsApp panel ---- */
-.wa-container{display:grid;grid-template-columns:280px 1fr;gap:0;background:#161b27;border:1px solid #1e293b;border-radius:14px;overflow:hidden;height:calc(100vh - 120px);min-height:500px}
-.wa-list{border-right:1px solid #1e293b;overflow-y:auto;display:flex;flex-direction:column}
-.wa-list-header{padding:14px 18px;font-size:.78rem;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.8px;border-bottom:1px solid #1e293b;flex-shrink:0}
-.wa-lead-item{padding:12px 18px;border-bottom:1px solid #1a2234;cursor:pointer;transition:background .1s;flex-shrink:0}
-.wa-lead-item:hover{background:#1a2234}
-.wa-lead-item.selected{background:#1e293b;border-left:3px solid #6366f1}
-.wa-lead-name{font-size:.85rem;font-weight:600;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.wa-lead-meta{display:flex;align-items:center;gap:7px;margin-top:4px}
-.wa-state-badge{font-size:.62rem;font-weight:700;padding:2px 7px;border-radius:999px}
-.wa-state-NEW{background:#1e293b;color:#94a3b8}
-.wa-state-QUAL{background:#292116;color:#fbbf24}
-.wa-state-SCORED{background:#172036;color:#60a5fa}
-.wa-state-SCHEDULED{background:#1a2e1e;color:#4ade80}
-.wa-state-NURTURE{background:#1e1b4b;color:#a78bfa}
-.wa-state-DISQUALIFIED{background:#2a1515;color:#f87171}
-.wa-lead-time{font-size:.65rem;color:#334155}
-.wa-chat{display:flex;flex-direction:column;background:#0f1117;overflow:hidden;min-height:0}
-.wa-chat-header{padding:10px 20px;border-bottom:1px solid #1e293b;flex-shrink:0;background:#161b27;display:flex;align-items:center;justify-content:space-between;gap:12px}
+/* ---- WhatsApp panel ----
+   Bandeja estilo app de chat (14/9, pedido de Juan: "que quede mas vistoso,
+   esta un poco incomodo"). Todo con tokens: el panel viejo tenia 60 colores
+   escritos a mano y 9 reglas claras, y en tema claro la conversacion seguia
+   oscura. Ninguna regla de aca lleva su `body.light`: los tokens la cubren.
+   En el celular es una columna: la lista, y al tocar un chat, el chat con un
+   boton para volver (`.wa-en-chat` en el contenedor). */
+.wa-container{display:grid;grid-template-columns:320px 1fr;background:var(--superficie);border:1px solid var(--borde);border-radius:14px;overflow:hidden;height:calc(100vh - 150px);min-height:520px}
+.wa-list{border-right:1px solid var(--borde);display:flex;flex-direction:column;min-height:0;min-width:0;background:var(--superficie)}
+.wa-list-header{padding:14px 14px 10px;border-bottom:1px solid var(--borde);flex-shrink:0;display:flex;flex-direction:column;gap:10px}
+.wa-list-title{font-size:.95rem;font-weight:700;color:var(--texto-fuerte);display:flex;align-items:center;gap:8px}
+.wa-count{font-size:.66rem;font-weight:700;color:var(--texto-debil);background:var(--relleno);padding:1px 8px;border-radius:999px}
+.wa-count:empty{display:none}
+.wa-search{display:flex;align-items:center;gap:8px;background:var(--fondo-hundido);border:1px solid var(--borde);border-radius:10px;padding:0 10px;cursor:text}
+.wa-search:focus-within{border-color:var(--azul)}
+.wa-search-icono{width:15px;height:15px;color:var(--texto-debil);flex-shrink:0}
+.wa-search input{flex:1;min-width:0;background:transparent;border:none;outline:none;color:var(--texto);font-size:.82rem;padding:9px 0;font-family:'Inter',sans-serif}
+.wa-search input::placeholder{color:var(--texto-debil)}
+.wa-lead-list{flex:1;overflow-y:auto;min-height:0}
+.wa-lead-item{display:flex;gap:11px;align-items:flex-start;padding:11px 14px;border-bottom:1px solid var(--borde);border-left:3px solid transparent;cursor:pointer;transition:background .1s}
+.wa-lead-item:hover{background:var(--hover)}
+.wa-lead-item.selected{background:var(--hover);border-left-color:var(--azul)}
+.wa-avatar{width:40px;height:40px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:var(--azul-tinte);color:var(--azul-claro);font-size:.8rem;font-weight:700;letter-spacing:.3px}
+.wa-avatar-chico{width:36px;height:36px;font-size:.74rem}
+.wa-lead-body{flex:1;min-width:0}
+.wa-lead-top{display:flex;align-items:center;gap:8px;min-width:0}
+.wa-lead-bottom{display:flex;align-items:center;gap:8px;min-width:0;margin-top:3px}
+.wa-lead-name{flex:1;min-width:0;font-size:.86rem;font-weight:600;color:var(--texto);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wa-lead-time{font-size:.66rem;color:var(--texto-debil);flex-shrink:0;white-space:nowrap}
+.wa-lead-preview{flex:1;min-width:0;font-size:.76rem;color:var(--texto-debil);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wa-no-leido .wa-lead-name{color:var(--texto-fuerte);font-weight:700}
+.wa-no-leido .wa-lead-preview{color:var(--texto)}
+.wa-no-leido .wa-lead-time{color:var(--verde-texto);font-weight:700}
+.wa-unread{min-width:18px;height:18px;padding:0 6px;border-radius:999px;background:var(--verde-tinte);color:var(--verde-texto);font-size:.62rem;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
+.wa-unread:empty{min-width:10px;width:10px;height:10px;padding:0;background:var(--verde)}
+.wa-lead-meta{display:flex;align-items:center;gap:7px;margin-top:5px}
+.wa-state-badge{font-size:.6rem;font-weight:700;padding:2px 7px;border-radius:999px;white-space:nowrap}
+.wa-state-badge:empty{display:none}
+.wa-state-NEW{background:var(--relleno);color:var(--texto-debil)}
+.wa-state-NURTURE{background:var(--relleno);color:var(--texto-debil)}
+.wa-state-QUAL{background:var(--ambar-tinte);color:var(--ambar)}
+.wa-state-SCORED{background:var(--azul-tinte);color:var(--azul-claro)}
+.wa-state-SCHEDULED{background:var(--verde-tinte);color:var(--verde-texto)}
+.wa-state-DISQUALIFIED{background:var(--rojo-tinte);color:var(--rojo-texto)}
+.wa-chat{display:flex;flex-direction:column;background:var(--fondo-hundido);overflow:hidden;min-height:0;min-width:0}
+.wa-chat-content{flex:1;flex-direction:column;min-height:0;overflow:hidden}
+.wa-chat-header{padding:10px 16px;border-bottom:1px solid var(--borde);flex-shrink:0;background:var(--superficie);display:flex;align-items:center;gap:10px;min-width:0}
+.wa-volver{display:none;align-items:center;justify-content:center;background:transparent;border:none;color:var(--texto-tenue);padding:6px;margin-left:-6px;border-radius:8px;cursor:pointer;flex-shrink:0}
+.wa-volver:hover{background:var(--hover);color:var(--texto)}
+.wa-volver svg{width:20px;height:20px;display:block}
 .wa-chat-info{flex:1;min-width:0}
-.wa-chat-name{font-size:.9rem;font-weight:700;color:#fff}
-.wa-chat-phone{font-size:.72rem;color:#475569;margin-top:2px}
-.wa-release-btn{background:#1a2e1e;border:none;color:#4ade80;font-size:.72rem;font-weight:700;padding:5px 10px;border-radius:6px;cursor:pointer;font-family:'Inter',sans-serif;white-space:nowrap;flex-shrink:0}
-.wa-release-btn:hover{background:#14532d}
-.wa-human-badge{font-size:.68rem;font-weight:700;color:#fbbf24;background:#292116;padding:3px 8px;border-radius:999px;flex-shrink:0}
-.wa-bot-switch{display:inline-flex;align-items:center;gap:6px;background:#0f1a12;border:1px solid #1f3d28;color:#4ade80;font-size:.72rem;font-weight:700;padding:5px 10px;border-radius:999px;cursor:pointer;font-family:'Inter',sans-serif;white-space:nowrap;flex-shrink:0}
-.wa-bot-switch:hover{border-color:#4ade80}
-.wa-bot-dot{width:7px;height:7px;border-radius:50%;background:#4ade80;flex-shrink:0}
-.wa-bot-switch.off{background:#1a1113;border-color:#3d1f24;color:#94a3b8}
-.wa-bot-switch.off .wa-bot-dot{background:#64748b}
+.wa-chat-name{font-size:.92rem;font-weight:700;color:var(--texto-fuerte);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wa-chat-sub{display:flex;align-items:center;gap:8px;margin-top:2px;min-width:0}
+.wa-chat-phone{font-size:.72rem;color:var(--texto-debil);white-space:nowrap}
+.wa-chat-acciones{display:flex;align-items:center;gap:8px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end}
+.wa-release-btn{background:var(--verde-tinte);border:none;color:var(--verde-texto);font-size:.72rem;font-weight:700;padding:5px 10px;border-radius:999px;cursor:pointer;font-family:'Inter',sans-serif;white-space:nowrap;flex-shrink:0}
+.wa-release-btn:hover{filter:brightness(1.08)}
+.wa-human-badge{font-size:.68rem;font-weight:700;color:var(--ambar);background:var(--ambar-tinte);padding:3px 8px;border-radius:999px;flex-shrink:0}
+.wa-bot-switch{display:inline-flex;align-items:center;gap:6px;background:var(--verde-tinte);border:1px solid transparent;color:var(--verde-texto);font-size:.72rem;font-weight:700;padding:5px 10px;border-radius:999px;cursor:pointer;font-family:'Inter',sans-serif;white-space:nowrap;flex-shrink:0}
+.wa-bot-switch:hover{border-color:var(--verde)}
+.wa-bot-dot{width:7px;height:7px;border-radius:50%;background:var(--verde);flex-shrink:0}
+.wa-bot-switch.off{background:var(--relleno);color:var(--texto-debil)}
+.wa-bot-switch.off:hover{border-color:var(--borde-fuerte)}
+.wa-bot-switch.off .wa-bot-dot{background:var(--texto-debil)}
 .wa-audio{margin:0 0 6px}
-.wa-audio audio{width:230px;height:32px;display:block}
-.wa-audio-label{font-size:.62rem;color:#64748b;margin-top:3px}
-.wa-audio-dur{color:#94a3b8}
+.wa-audio audio{width:230px;max-width:100%;height:32px;display:block}
+.wa-audio-label{font-size:.62rem;color:var(--texto-debil);margin-top:3px}
+.wa-audio-dur{color:var(--texto-tenue)}
 /* La foto, el sticker, el video y el archivo que manda el lead. El tope de
    ancho es el de la burbuja: una foto vertical de celular, sin esto, estira la
    conversación entera. */
@@ -708,25 +881,62 @@ body.light .demo-cliente{color:#0f172a}
 .wa-sticker img{border-radius:0}
 .wa-medio-video{display:block;margin:0 0 6px;max-width:230px;border-radius:8px}
 .wa-medio-doc{display:inline-block;margin:0 0 6px;padding:6px 10px;border-radius:8px;
-  background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.09);
-  color:#e2e8f0;font-size:.72rem;text-decoration:none;word-break:break-all}
-.wa-medio-doc:hover{background:rgba(255,255,255,.1)}
+  background:var(--relleno);border:1px solid var(--borde);
+  color:var(--texto);font-size:.72rem;text-decoration:none;word-break:break-all}
+.wa-medio-doc:hover{border-color:var(--borde-fuerte)}
 /* Llegó pero no lo tenemos. Se dice, en vez de dejar un roto sin explicación. */
-.wa-medio-ausente{margin:0 0 6px;font-size:.66rem;color:#64748b;font-style:italic}
-.wa-pausa-badge{font-size:.68rem;font-weight:700;color:#93c5fd;background:#16213a;padding:3px 8px;border-radius:999px;flex-shrink:0}
-.wa-messages{flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:8px;min-height:0}
-.wa-bubble{max-width:68%;padding:9px 13px;border-radius:12px;font-size:.84rem;line-height:1.5;white-space:pre-wrap;word-break:break-word}
-.wa-bubble-in{background:#1e293b;color:#e2e8f0;align-self:flex-start;border-bottom-left-radius:3px}
-.wa-bubble-out{background:#0a3a5c;color:#e2e8f0;align-self:flex-end;border-bottom-right-radius:3px}
-.wa-bubble-time{font-size:.62rem;color:#475569;margin-top:4px}
-.wa-input-row{padding:12px 16px;border-top:1px solid #1e293b;display:flex;gap:10px;align-items:center;flex-shrink:0;background:#161b27}
-.wa-input{flex:1;background:#0f1117;border:1px solid #1e293b;border-radius:8px;padding:10px 14px;font-size:.85rem;color:#e2e8f0;font-family:'Inter',sans-serif;outline:none}
-.wa-input:focus{border-color:#6366f1}
-.wa-send-btn{background:#0088cc;border:none;color:#fff;padding:10px 18px;border-radius:8px;font-size:.82rem;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;white-space:nowrap}
-.wa-send-btn:hover{background:#0077b3}
-.wa-empty{flex:1;display:flex;align-items:center;justify-content:center;color:#334155;font-size:.88rem}
-.wa-no-leads{padding:32px;text-align:center;color:#334155;font-size:.85rem}
-.wa-error-banner{padding:12px 18px;background:#2a1515;border:1px solid #7f1d1d;border-radius:8px;color:#f87171;font-size:.82rem;margin:16px}
+.wa-medio-ausente{margin:0 0 6px;font-size:.66rem;color:var(--texto-debil);font-style:italic}
+.wa-pausa-badge{font-size:.68rem;font-weight:700;color:var(--azul-claro);background:var(--azul-tinte);padding:3px 8px;border-radius:999px;flex-shrink:0}
+.wa-messages{flex:1;overflow-y:auto;padding:8px 18px 18px;display:flex;flex-direction:column;gap:3px;min-height:0;overscroll-behavior:contain}
+/* El separador de dia queda pegado arriba mientras se scrollea ese dia. */
+.wa-dia{display:flex;justify-content:center;margin:10px 0 6px;position:sticky;top:0;z-index:1}
+.wa-dia span{font-size:.68rem;font-weight:600;color:var(--texto-tenue);background:var(--superficie);border:1px solid var(--borde);padding:3px 11px;border-radius:999px;box-shadow:0 1px 3px var(--sombra)}
+.wa-fila{display:flex;margin-top:3px}
+.wa-fila-out{justify-content:flex-end}
+.wa-fila-in{justify-content:flex-start}
+.wa-bubble{max-width:min(72%,560px);padding:7px 10px 5px 11px;border-radius:12px;font-size:.85rem;line-height:1.45;word-break:break-word;box-shadow:0 1px 1px var(--sombra)}
+.wa-bubble-in{background:var(--superficie);color:var(--texto);border:1px solid var(--borde);border-top-left-radius:4px}
+.wa-bubble-out{background:var(--azul-tinte);color:var(--texto);border:1px solid var(--azul-tinte);border-top-right-radius:4px}
+/* pre-wrap solo en el texto: en la burbuja entera dibujaba como saltos de
+   linea la sangria del HTML que arma el JS. */
+.wa-texto{white-space:pre-wrap}
+.wa-bubble-time{display:block;text-align:right;font-size:.62rem;color:var(--texto-tenue);margin-top:2px;line-height:1.2}
+.wa-plantillas{border-top:1px solid var(--borde);padding:10px 14px;background:var(--superficie);flex-shrink:0;max-height:220px;overflow-y:auto}
+.wa-plantillas-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.wa-plantillas-titulo{font-size:.7rem;font-weight:700;color:var(--texto-debil);text-transform:uppercase;letter-spacing:.5px}
+.wa-plantillas-nueva{font-size:.72rem;background:var(--relleno);border:none;color:var(--texto-tenue);padding:4px 10px;border-radius:6px;cursor:pointer;font-family:'Inter',sans-serif}
+.wa-plantillas-nueva:hover{color:var(--texto)}
+.wa-tmpl-form{margin-bottom:8px}
+.wa-tmpl-campo{display:block;width:100%;background:var(--fondo-hundido);border:1px solid var(--borde);color:var(--texto);padding:7px 9px;border-radius:6px;font-size:.8rem;font-family:'Inter',sans-serif;resize:none;margin-bottom:6px;outline:none}
+.wa-tmpl-campo:focus{border-color:var(--azul)}
+.wa-tmpl-campo::placeholder{color:var(--texto-debil)}
+.wa-tmpl-guardar{font-size:.76rem;background:var(--azul);border:none;color:#fff;padding:5px 14px;border-radius:6px;cursor:pointer;font-weight:600;font-family:'Inter',sans-serif}
+.wa-tmpl-lista{display:flex;flex-wrap:wrap;gap:6px}
+.wa-tmpl-item{display:inline-flex;align-items:center;background:var(--relleno);border:1px solid var(--borde);border-radius:999px;max-width:100%}
+.wa-tmpl-usar{background:transparent;border:none;color:var(--texto);font-size:.76rem;padding:5px 4px 5px 11px;cursor:pointer;max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:'Inter',sans-serif}
+.wa-tmpl-borrar{background:transparent;border:none;color:var(--texto-debil);font-size:.7rem;padding:5px 9px 5px 5px;cursor:pointer}
+.wa-tmpl-borrar:hover{color:var(--rojo-texto)}
+.wa-tmpl-vacio{font-size:.74rem;color:var(--texto-debil)}
+.wa-input-row{padding:10px 12px;border-top:1px solid var(--borde);display:flex;gap:8px;align-items:flex-end;flex-shrink:0;background:var(--superficie)}
+.wa-input{flex:1;min-width:0;display:block;background:var(--fondo-hundido);border:1px solid var(--borde);border-radius:20px;padding:10px 16px;font-size:.86rem;line-height:1.4;color:var(--texto);font-family:'Inter',sans-serif;outline:none;resize:none;max-height:140px;overflow-y:auto}
+.wa-input::placeholder{color:var(--texto-debil)}
+.wa-input:focus{border-color:var(--azul)}
+.wa-icono-btn{width:40px;height:40px;flex-shrink:0;border-radius:50%;border:none;background:transparent;color:var(--texto-tenue);cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+.wa-icono-btn:hover{background:var(--hover);color:var(--texto)}
+.wa-icono-btn.activo{background:var(--azul-tinte);color:var(--azul-claro)}
+.wa-icono-btn svg{width:18px;height:18px}
+.wa-send-btn{width:40px;height:40px;flex-shrink:0;border-radius:50%;border:none;background:var(--azul);color:#fff;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:filter .1s}
+.wa-send-btn svg{width:18px;height:18px}
+.wa-send-btn:hover{filter:brightness(1.1)}
+.wa-send-btn:disabled{opacity:.55;cursor:default}
+.wa-input-ayuda{font-size:.64rem;color:var(--texto-debil);padding:0 18px 7px;background:var(--superficie);text-align:right;flex-shrink:0}
+.wa-empty{flex:1;display:flex;align-items:center;justify-content:center;padding:24px}
+.wa-vacio{display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;padding:36px 20px;margin:auto}
+.wa-vacio-icono{width:34px;height:34px;color:var(--texto-debil);margin-bottom:4px}
+.wa-vacio-titulo{font-size:.9rem;font-weight:600;color:var(--texto-tenue)}
+.wa-vacio-detalle{font-size:.78rem;color:var(--texto-debil);max-width:280px;line-height:1.5}
+.wa-cargando{padding:28px;text-align:center;color:var(--texto-debil);font-size:.82rem}
+.wa-error-banner{padding:12px 16px;background:var(--rojo-tinte);border:1px solid var(--rojo-borde);border-radius:8px;color:var(--rojo-texto);font-size:.82rem;margin:14px;line-height:1.5}
 
 /* ---- Calendar panel ---- */
 .cal-header{display:flex;align-items:center;gap:12px;margin-bottom:20px}
@@ -779,12 +989,48 @@ body.light .demo-cliente{color:#0f172a}
 .fin-nav-mes{display:flex;align-items:center;gap:6px}
 .fin-nav-mes span{font-size:.82rem;font-weight:700;color:var(--texto);min-width:130px;text-align:center}
 .fin-cerrado{display:flex;align-items:center;gap:8px;font-size:.7rem;font-weight:700;color:var(--ambar);background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);padding:4px 10px;border-radius:999px;text-transform:uppercase;letter-spacing:.04em}
-.cal-count{font-size:.66rem;font-weight:700;color:#64748b;background:#161b27;border:1px solid #1e293b;padding:4px 10px;border-radius:999px;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap}
+.cal-count{font-size:.74rem;font-weight:600;color:var(--texto-tenue);background:var(--superficie);border:1px solid var(--borde);padding:5px 12px;border-radius:999px;white-space:nowrap}
+.cal-count:empty{display:none}
 .cal-today-btn{background:#161b27;border:1px solid #1e293b;color:#94a3b8;padding:7px 14px;border-radius:8px;cursor:pointer;font-size:.76rem;font-weight:700;font-family:'Inter',sans-serif;line-height:1;transition:background .15s,color .15s,border-color .15s}
 .cal-today-btn:hover{background:rgba(0,136,204,.12);border-color:rgba(0,136,204,.4);color:#33aadd}
 .cal-leyenda{display:flex;gap:14px;align-items:center;margin-bottom:10px;font-size:.64rem;color:#475569;flex-wrap:wrap}
+/* Reuniones del dia tocado, solo en el celular. La visibilidad la manda el CSS
+   y no un style inline: el inline le gana a la regla del @media y el listado
+   quedaba oculto para siempre. Las dos reglas van juntas y en este orden.
+   OJO con el espacio despues de la llave: `{` pegado a `#` abre un comentario
+   de Jinja (render_template_string) y la pagina entera da 500. Paso en v204. */
+#cal-day-events-mobile{display:none;margin-top:12px;padding:0 4px}
+@media(max-width:768px){ #cal-day-events-mobile{display:block} }
+.cal-cell.sel-mobile{outline:2px solid var(--azul);outline-offset:-2px}
+.cal-mobile-vacio{color:var(--texto-debil);font-size:.78rem;padding:8px 0}
+.cal-mobile-ev{background:var(--superficie);border:1px solid var(--borde);border-radius:10px;padding:12px;margin-bottom:8px}
+.cal-mobile-ev-titulo{font-size:.82rem;font-weight:600;color:var(--texto-fuerte)}
+.cal-mobile-ev-hora{font-size:.72rem;color:var(--azul-claro);margin-top:3px}
+.cal-mobile-ev-aviso{font-size:.7rem;color:var(--texto-debil);margin-top:3px}
+/* Pipeline Notion: con quien del CRM esta conectada cada ficha */
+.nc-vinculo{display:inline-flex;align-items:center;gap:4px;margin-top:8px;max-width:100%;padding:4px 10px;border-radius:999px;border:1px solid var(--borde);background:var(--relleno);color:var(--texto);font-size:.72rem;font-family:inherit;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nc-vinculo-falta{background:var(--ambar-tinte);color:var(--ambar);border-color:var(--ambar-borde)}
+.nc-vinculo-buscar{width:100%;margin-bottom:10px}
+.nc-vinculo-resultados{display:flex;flex-direction:column;gap:6px;max-height:280px;overflow-y:auto}
+.nc-vinculo-opcion{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;min-height:44px;padding:8px 12px;border-radius:8px;border:1px solid var(--borde);background:var(--relleno);color:var(--texto-fuerte);font-family:inherit;text-align:left;cursor:pointer}
+.nc-vinculo-opcion:hover{background:var(--hover)}
+.nc-vinculo-nombre{font-size:.84rem;font-weight:600}
+.nc-vinculo-sub{font-size:.72rem;color:var(--texto-debil)}
+.nc-vinculo-vacio{font-size:.78rem;color:var(--texto-debil);padding:6px 2px}
+.nc-vinculo-error{font-size:.78rem;color:var(--rojo-texto);min-height:1em;margin-top:8px}
+.nc-vinculo-acciones{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}
+.nc-vinculo-acciones [hidden]{display:none}
+.cal-mobile-acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.cal-mobile-act{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 16px;border-radius:10px;border:1px solid var(--borde);background:var(--relleno);color:var(--texto-fuerte);font-size:.78rem;font-weight:600;font-family:inherit;text-decoration:none;cursor:pointer}
+.cal-mobile-act-unirse{color:var(--verde-texto)}
+.cal-mobile-act-borrar{color:var(--rojo-texto)}
 .cal-leyenda span{display:flex;align-items:center;gap:5px}
 .cal-leyenda i{width:8px;height:8px;border-radius:2px;display:inline-block}
+/* Contador del mes y aviso de deslizar. Van DESPUES de `.cal-leyenda span` y de
+   la regla base de `.cal-count`: misma especificidad, gana la ultima. En el
+   celular el contador baja a su propio renglon, entero, arriba de la grilla. */
+.cal-leyenda .cal-hint-movil{display:none}
+@media(max-width:768px){ .cal-leyenda .cal-hint-movil{display:flex} .cal-leyenda .cal-hint-escritorio{display:none} .cal-count{order:3;width:100%;white-space:normal;border-radius:10px} }
 .cal-grid{border:1px solid #1e293b;border-radius:14px}
 .cal-cell{min-height:112px;transition:background .12s,box-shadow .12s}
 .cal-cell.weekend{background:#12161f}
@@ -887,12 +1133,8 @@ body.light .demo-cliente{color:#0f172a}
 .cp-btn-success{background:#16a34a;color:#fff}
 .cp-btn-ghost{background:var(--relleno);color:var(--texto-tenue)}
 .cp-badge{display:inline-block;padding:2px 8px;border-radius:99px;font-size:.7rem;font-weight:600}
-.cp-badge-draft{background:var(--relleno);color:var(--texto-tenue)}
-.cp-badge-sent{background:#064e3b;color:#34d399}
-.cp-badge-pending{background:#1e3a5f;color:#60a5fa}
-.cp-badge-completed{background:#14532d;color:#4ade80}
-.cp-badge-generating{background:#451a03;color:#fb923c}
-.cp-badge-failed{background:#450a0a;color:#f87171}
+.cp-badge-completed{background:var(--verde-tinte);color:var(--verde-texto)}
+.cp-badge-generating{background:var(--ambar-tinte);color:var(--ambar)}
 .cp-wa-msg{padding:8px 12px;border-radius:10px;font-size:.8rem;margin-bottom:6px;max-width:88%;line-height:1.5}
 .cp-wa-msg.out{background:#1e3a5f;color:#bfdbfe;align-self:flex-end;margin-left:auto}
 .cp-wa-msg.in{background:var(--relleno);color:var(--texto)}
@@ -929,10 +1171,8 @@ body.light .demo-cliente{color:#0f172a}
 .sdr-detail-row{display:flex;align-items:center;gap:10px;padding:9px 8px;border-radius:8px;cursor:pointer;transition:background .12s}
 .sdr-detail-row:hover{background:#1e293b}
 .act-entity-link:hover{color:#7dd3fc}
-.no-answer-badge{display:inline-flex;align-items:center;gap:3px;background:rgba(239,68,68,.15);color:#f87171;font-size:.65rem;font-weight:700;padding:2px 6px;border-radius:99px;border:1px solid rgba(239,68,68,.3)}
-.no-interest-badge{display:inline-flex;align-items:center;gap:3px;background:rgba(245,158,11,.15);color:#fbbf24;font-size:.65rem;font-weight:700;padding:2px 6px;border-radius:99px;border:1px solid rgba(245,158,11,.3)}
-body.light .no-answer-badge{background:rgba(239,68,68,.1);color:#dc2626;border-color:rgba(239,68,68,.25)}
-body.light .no-interest-badge{background:rgba(245,158,11,.1);color:#b45309;border-color:rgba(245,158,11,.25)}
+.no-answer-badge{display:inline-flex;align-items:center;gap:3px;background:var(--rojo-tinte);color:var(--rojo-texto);font-size:.65rem;font-weight:700;padding:2px 6px;border-radius:99px;border:1px solid transparent}
+.no-interest-badge{display:inline-flex;align-items:center;gap:3px;background:var(--ambar-tinte);color:var(--ambar);font-size:.65rem;font-weight:700;padding:2px 6px;border-radius:99px;border:1px solid transparent}
 /* ── Row status colors ────────────────────────────────────────────────────── */
 .row-sin_contactar{border-left:3px solid transparent}
 .row-no_interesa{border-left:3px solid #ef4444;background:rgba(239,68,68,.05)}
@@ -987,7 +1227,6 @@ body.light .cal-del-btn{background:rgba(239,68,68,.07);color:#dc2626;border-colo
 body.light .cal-hora-btn{background:rgba(0,136,204,.08);color:#0369a1;border-color:rgba(0,136,204,.2)}
 body.light .cal-join-btn{background:rgba(22,163,74,.08);color:#15803d;border-color:rgba(22,163,74,.2)}
 body.light .cal-loading{color:#94a3b8}
-body.light .cal-count{background:#f1f5f9;border-color:#e2e8f0;color:#64748b}
 body.light .cal-today-btn{background:#f1f5f9;border:1px solid #e2e8f0;color:#475569}
 body.light .cal-today-btn:hover{background:#eff6ff;border-color:#bfdbfe;color:#0369a1}
 body.light .cal-leyenda{color:#94a3b8}
@@ -1012,38 +1251,79 @@ body.light .cal-mob-vacio{color:#94a3b8}
 body.light #nav-meta .nav-icon{stroke:#c13584}
 /* ── Nav icon colors ──────────────────────────────────────────────────────── */
 #nav-cola .nav-icon{stroke:#60a5fa}
-#nav-seguimientos .nav-icon{stroke:#f59e0b}
-#nav-pipeline .nav-icon{stroke:#10b981}
 #nav-clientes .nav-icon{stroke:#a78bfa}
 #nav-tasks .nav-icon{stroke:#14b8a6}
 #nav-wa .nav-icon{stroke:#25d366}
 #nav-cal .nav-icon{stroke:#3b82f6}
 #nav-metrics .nav-icon{stroke:#6366f1}
 #nav-activity .nav-icon{stroke:#64748b}
+/* Las secciones que no tenian color (pedido de Juan, 14/9) */
+#nav-marketing .nav-icon{stroke:#f472b6}
+#nav-finanzas .nav-icon{stroke:#f59e0b}
+#nav-simulador .nav-icon{stroke:#fb923c}
+#nav-notion_clients .nav-icon{stroke:#10b981}
+#nav-demos .nav-icon{stroke:#22d3ee}
+#nav-sdr .nav-icon{stroke:#f87171}
+#nav-projects .nav-icon{stroke:#facc15}
+#nav-equipo .nav-icon{stroke:#a3e635}
+#nav-ausencias .nav-icon{stroke:#e879f9}
+#nav-seg_leads .nav-icon{stroke:#fb7185}
+#nav-daily .nav-icon{stroke:#38bdf8}
+#nav-daily_admin .nav-icon{stroke:#f0abfc}
+#nav-plantillas .nav-icon{stroke:#c084fc}
 .nav-item.active #nav-cola .nav-icon,
 .nav-item.active .nav-icon{opacity:1}
 /* active item keeps its color but brighter */
 #nav-cola.active .nav-icon{stroke:#93c5fd}
-#nav-seguimientos.active .nav-icon{stroke:#fcd34d}
-#nav-pipeline.active .nav-icon{stroke:#34d399}
 #nav-clientes.active .nav-icon{stroke:#c4b5fd}
 #nav-tasks.active .nav-icon{stroke:#2dd4bf}
 #nav-wa.active .nav-icon{stroke:#4ade80}
 #nav-cal.active .nav-icon{stroke:#60a5fa}
 #nav-metrics.active .nav-icon{stroke:#818cf8}
 #nav-activity.active .nav-icon{stroke:#94a3b8}
+#nav-marketing.active .nav-icon{stroke:#f9a8d4}
+#nav-finanzas.active .nav-icon{stroke:#fcd34d}
+#nav-simulador.active .nav-icon{stroke:#fdba74}
+#nav-daily.active .nav-icon{stroke:#7dd3fc}
+#nav-daily_admin.active .nav-icon{stroke:#f5d0fe}
+#nav-notion_clients.active .nav-icon{stroke:#34d399}
+#nav-demos.active .nav-icon{stroke:#67e8f9}
+#nav-sdr.active .nav-icon{stroke:#fca5a5}
+#nav-projects.active .nav-icon{stroke:#fde047}
+#nav-equipo.active .nav-icon{stroke:#bef264}
+#nav-ausencias.active .nav-icon{stroke:#f0abfc}
+#nav-seg_leads.active .nav-icon{stroke:#fda4af}
+#nav-plantillas.active .nav-icon{stroke:#d8b4fe}
 /* light mode — slightly darker tones */
 body.light #nav-cola .nav-icon{stroke:#2563eb}
-body.light #nav-seguimientos .nav-icon{stroke:#d97706}
-body.light #nav-pipeline .nav-icon{stroke:#059669}
 body.light #nav-clientes .nav-icon{stroke:#7c3aed}
 body.light #nav-tasks .nav-icon{stroke:#0d9488}
 body.light #nav-wa .nav-icon{stroke:#16a34a}
 body.light #nav-cal .nav-icon{stroke:#2563eb}
 body.light #nav-metrics .nav-icon{stroke:#4f46e5}
 body.light #nav-activity .nav-icon{stroke:#475569}
+body.light #nav-marketing .nav-icon{stroke:#db2777}
+body.light #nav-finanzas .nav-icon{stroke:#b45309}
+body.light #nav-simulador .nav-icon{stroke:#c2410c}
+body.light #nav-daily .nav-icon{stroke:#0284c7}
+body.light #nav-daily_admin .nav-icon{stroke:#a21caf}
+body.light #nav-notion_clients .nav-icon{stroke:#047857}
+body.light #nav-demos .nav-icon{stroke:#0e7490}
+body.light #nav-sdr .nav-icon{stroke:#b91c1c}
+body.light #nav-projects .nav-icon{stroke:#a16207}
+body.light #nav-equipo .nav-icon{stroke:#4d7c0f}
+body.light #nav-ausencias .nav-icon{stroke:#a21caf}
+body.light #nav-seg_leads .nav-icon{stroke:#be123c}
+body.light #nav-plantillas .nav-icon{stroke:#9333ea}
 /* ── Lucide icons ─────────────────────────────────────────────────────────── */
 .nav-icon{width:15px;height:15px;stroke-width:2;flex-shrink:0}
+/* Frase de equipo, version compacta del PDF de identidad de marca. Es la
+   version oscura en los dos temas a proposito: asi la presenta la marca. */
+.frase-equipo{display:flex;align-items:center;gap:14px;background:#0F2430;border-radius:12px;padding:10px 16px;margin-bottom:20px}
+.frase-equipo-logo{height:22px;width:auto;flex-shrink:0}
+.frase-equipo-texto{margin:0;font-size:.82rem;line-height:1.45;color:#EFEFEF}
+.frase-equipo-texto strong{color:#80CD2A;font-weight:600}
+@media(max-width:768px){ .frase-equipo{flex-direction:column;align-items:flex-start;gap:8px;padding:10px 12px;margin-bottom:14px} .frase-equipo-texto{font-size:.76rem} }
 .btn-icon{width:14px;height:14px;stroke-width:2;vertical-align:middle}
 .outcome-icon{width:22px;height:22px;stroke-width:1.8;display:block;margin:0 auto 4px}
 /* ── Theme toggle ─────────────────────────────────────────────────────────── */
@@ -1070,7 +1350,6 @@ body.light .notes-inline{color:#64748b}
 body.light .notes-inline:hover{background:#f1f5f9;border-bottom-color:#94a3b8}
 body.light .notes-inline:focus{background:#f1f5f9;border-bottom-color:#0088cc;color:#0f172a}
 body.light .notes-inline::placeholder{color:#cbd5e1}
-body.light .score-badge{filter:brightness(.9)}
 body.light .pitch-btn{background:#e0f2fe;border-color:#0088cc;color:#0369a1}
 body.light .pitch-btn:hover{background:#0088cc;color:#fff}
 body.light .delete-btn{color:#94a3b8}
@@ -1079,13 +1358,10 @@ body.light .export-btn{background:#f1f5f9;border-color:#e2e8f0;color:#475569}
 body.light .modal input[type=datetime-local]::-webkit-calendar-picker-indicator{filter:none;opacity:.6}
 body.light .outcome-btn{background:#f8fafc;border-color:#e2e8f0;color:#0f172a}
 body.light .outcome-btn:hover{background:#f1f5f9}
-body.light .cb-overdue{background:#fef2f2;border-color:#fca5a5 !important}
-body.light .cb-today{background:#fefce8;border-color:#fde047 !important}
 body.light ::-webkit-scrollbar-thumb{background:#e2e8f0}
 body.light ::-webkit-scrollbar-thumb:hover{background:#94a3b8}
 body.light .biz-name{color:#0f172a !important}
 body.light .biz-sub{color:#64748b !important}
-body.light .score-badge{color:#475569 !important}
 body.light .phone-val{color:#0088cc !important}
 body.light .phone-plain{color:#475569 !important}
 body.light .no-val{color:#94a3b8 !important}
@@ -1098,44 +1374,16 @@ body.light .budget-table th{color:#64748b !important;background:#f8fafc}
 body.light .attach-item{background:#f8fafc;border-color:#e2e8f0}
 body.light .attach-item-name{color:#0f172a !important}
 body.light .empty-state{color:#94a3b8}
-body.light .wa-lead-name{color:#0f172a !important}
-body.light .wa-lead-phone{color:#64748b}
-body.light .wa-chat-name{color:#0f172a}
-body.light .wa-chat-phone{color:#64748b}
-body.light .wa-list{background:#f8fafc;border-right-color:#e2e8f0}
-body.light .wa-list-header{color:#64748b;border-bottom-color:#e2e8f0}
-body.light .wa-lead-item{border-bottom-color:#f1f5f9}
-body.light .wa-lead-item:hover,.body.light .wa-lead-item.active{background:#f1f5f9}
-body.light .wa-chat{background:#fff}
-body.light .task-row{background:#fff;border-color:#e2e8f0}
-body.light .task-row:hover{border-color:#94a3b8}
-body.light .task-title{color:#0f172a !important}
-body.light .task-meta{color:#64748b}
-body.light .task-check{border-color:#94a3b8}
 body.light .search-input{background:#fff;border-color:#e2e8f0;color:#0f172a}
 body.light .search-input::placeholder{color:#94a3b8}
 body.light .pill{background:#f8fafc;border-color:#e2e8f0;color:#475569}
 body.light .pill:hover{color:#0f172a}
 body.light .pill.active{background:#dbeafe;color:#1d4ed8;border-color:#93c5fd}
-body.light .task-status-badge.todo{background:#f1f5f9;color:#64748b}
-body.light .task-status-badge.in_progress{background:#dbeafe;color:#1d4ed8;border-color:#93c5fd}
-body.light .task-status-badge.done{background:#dcfce7;color:#16a34a;border-color:#86efac}
-body.light .task-notion-badge{background:#f1f5f9;color:#64748b;border-color:#e2e8f0}
 body.light .panel-sub{color:#64748b}
 body.light .proj-card{background:#f8fafc;border-color:#e2e8f0}
 body.light .proj-name{color:#0f172a}
 body.light .proj-stage{background:#f1f5f9;color:#64748b}
 body.light .proj-task{color:#334155}
-body.light .kanban-col{background:#f8fafc;border-color:#e2e8f0}
-body.light .kanban-col.drag-over{border-color:#0088cc;background:#eff6ff}
-body.light .kanban-name{color:#475569}
-body.light .kanban-count{color:#94a3b8}
-body.light .kanban-card{background:#ffffff;border-color:#e2e8f0}
-body.light .kanban-card:hover{border-color:#cbd5e1}
-body.light .kanban-card-title{color:#0f172a}
-body.light .kanban-card-who{color:#64748b}
-body.light .task-notion-badge:hover{color:#0f172a}
-body.light .tasks-summary{color:#94a3b8}
 body.light .mobile-bottom-nav{background:rgba(255,255,255,.92);border-color:rgba(0,0,0,.1)}
 body.light .mbn-icon{stroke:#94a3b8}
 body.light .mbn-label{color:#94a3b8}
@@ -1181,29 +1429,18 @@ body.light .btn-icon{stroke:currentColor}
 .outcome-interested:hover{background:#0f2a1a;border-color:#4ade80;color:#4ade80}
 .outcome-meeting:hover{background:#0d1f35;border-color:#3b82f6;color:#60a5fa}
 .outcome-contacted:hover{background:#1a2d3d;border-color:#0088cc;color:#0088cc}
-/* ── Callback urgency ─────────────────────────────────────────────────────── */
-.cb-overdue{background:#2a1515;border-color:#7f1d1d !important}
-.cb-today{background:#1a1a0f;border-color:#ca8a04 !important}
-.cb-date-pill{display:inline-block;padding:2px 8px;border-radius:99px;font-size:.72rem;font-weight:600}
-.cb-date-overdue{background:#2a1515;color:#f87171}
-.cb-date-today{background:#1a1a0f;color:#fbbf24}
-.cb-date-future{background:#0f1f35;color:#60a5fa}
 /* ── Kanban ───────────────────────────────────────────────────────────────── */
-.kanban-board{display:flex;gap:14px;overflow-x:auto;padding-bottom:20px;align-items:flex-start;min-height:calc(100vh - 180px)}
-.kanban-col{background:#111827;border:1px solid #1e293b;border-radius:12px;min-width:220px;width:220px;flex-shrink:0;display:flex;flex-direction:column;max-height:calc(100vh - 200px)}
-.kanban-col-header{padding:12px 14px 10px;border-bottom:1px solid #1e293b;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
-.kanban-col-title{font-size:.78rem;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.6px}
-.kanban-count{background:#1e293b;color:#475569;font-size:.68rem;font-weight:700;padding:2px 7px;border-radius:99px}
+/* Base del tablero, del viejo tablero de leads (su HTML y su JS ya no existen).
+   .kanban-col, .kanban-card y .kanban-count los redefine el bloque de Tareas
+   mas abajo, y lo que ese no pisa sigue valiendo. Los colores van iguales. */
+.kanban-col{background:var(--fondo);border:1px solid var(--borde);border-radius:12px;min-width:220px;width:220px;flex-shrink:0;display:flex;flex-direction:column;max-height:calc(100vh - 200px)}
+.kanban-count{background:var(--relleno);color:var(--texto-debil);font-size:.68rem;font-weight:700;padding:2px 7px;border-radius:99px}
 .kanban-cards{padding:8px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:8px}
-.kanban-col.drag-over{background:#1a2d3d;border-color:#0088cc}
-.kanban-card{background:#0a0f1a;border:1px solid #1e293b;border-radius:10px;padding:12px;cursor:pointer;transition:border-color .15s,transform .1s}
-.kanban-card:hover{border-color:#334155;transform:translateY(-1px)}
+.kanban-col.drag-over{background:var(--hover);border-color:var(--azul)}
+.kanban-card{background:var(--superficie);border:1px solid var(--borde);border-radius:10px;padding:12px;cursor:pointer;transition:border-color .15s,transform .1s}
+.kanban-card:hover{border-color:var(--borde-fuerte);transform:translateY(-1px)}
 .kanban-card.dragging{opacity:.4;transform:rotate(1deg)}
-.kanban-card-name{font-size:.85rem;font-weight:600;color:#f1f5f9;margin-bottom:4px}
-.kanban-card-meta{font-size:.72rem;color:#475569;margin-bottom:6px}
-.kanban-card-phone{font-size:.72rem;color:#0088cc}
-.kanban-card-rating{font-size:.68rem;color:#fbbf24}
-.kanban-empty{color:#334155;font-size:.78rem;text-align:center;padding:20px 10px}
+.kanban-card-meta{font-size:.72rem;color:var(--texto-debil);margin-bottom:6px}
 
 /* ── Token health panel ───────────────────────────────────────────────────── */
 .token-health{margin-bottom:20px}
@@ -1226,18 +1463,18 @@ body.light .btn-icon{stroke:currentColor}
 .pill{padding:4px 12px;border-radius:99px;font-size:.72rem;font-weight:600;cursor:pointer;border:1px solid #1e293b;background:#111827;color:#64748b;transition:all .15s;white-space:nowrap}
 .pill:hover{color:#e2e8f0}
 .pill.active{background:#0088cc22;color:#38bdf8;border-color:#0088cc44}
-.pill.warn{border-color:#450a0a}
-.pill.warn.active{background:#450a0a22;color:#f87171;border-color:#450a0a}
-.pill.orange{border-color:#431407}
-.pill.orange.active{background:#431407;color:#fb923c;border-color:#9a3412}
+.pill.warn,body.light .pill.warn{border-color:var(--rojo-borde)}
+.pill.warn.active,body.light .pill.warn.active{background:var(--rojo-tinte);color:var(--rojo-texto);border-color:var(--rojo-borde)}
+.pill.orange,body.light .pill.orange{border-color:var(--ambar-borde)}
+.pill.orange.active,body.light .pill.orange.active{background:var(--ambar-tinte);color:var(--ambar);border-color:var(--ambar-borde)}
 .pill-count{font-weight:400;color:#334155;margin-left:3px;font-size:.68rem}
 .pill.active .pill-count{color:#0088cc99}
-.tasks-summary{font-size:.75rem;color:#475569;margin-bottom:10px}
+.tasks-summary{font-size:.75rem;color:var(--texto-debil);margin-bottom:10px}
 .task-status-badge{padding:3px 9px;border-radius:99px;font-size:.68rem;font-weight:700;cursor:pointer;transition:all .15s;border:1px solid transparent;user-select:none}
-.task-status-badge.todo{background:#1e293b;color:#64748b}
-.task-status-badge.in_progress{background:#0c1f2e;color:#38bdf8;border-color:#0369a133}
-.task-status-badge.done{background:#052e16;color:#4ade80;border-color:#16a34a33}
-.task-notion-badge{font-size:.72rem;color:#94a3b8;background:#1a2234;padding:2px 7px;border-radius:10px;text-decoration:none;border:1px solid #23304a}
+.task-status-badge.todo{background:var(--relleno);color:var(--texto-debil)}
+.task-status-badge.in_progress{background:var(--azul-tinte);color:var(--azul-claro)}
+.task-status-badge.done{background:var(--verde-tinte);color:var(--verde-texto)}
+.task-notion-badge{font-size:.72rem;color:var(--texto-tenue);background:var(--relleno);padding:2px 7px;border-radius:10px;text-decoration:none;border:1px solid var(--borde)}
 .panel-head{margin-bottom:14px}
 .panel-head h1{font-size:1.4rem;font-weight:800;color:var(--texto-fuerte)}
 .panel-sub{font-size:.78rem;color:#475569;margin-top:3px}
@@ -1254,46 +1491,50 @@ body.light .btn-icon{stroke:currentColor}
 /* Kanban de tareas: mismas columnas que el tablero de Notion */
 .tasks-viewswitch{display:flex;gap:6px;margin:10px 0 4px}
 .kanban{display:flex;gap:12px;overflow-x:auto;padding:4px 0 12px;align-items:flex-start}
-.kanban-col{flex:0 0 260px;background:#0d1420;border:1px solid #1e293b;border-radius:10px;padding:8px;min-height:120px}
-.kanban-col.drag-over{border-color:#0088cc;background:#0f1b2b}
+.kanban-col{flex:0 0 260px;background:var(--fondo);border:1px solid var(--borde);border-radius:10px;padding:8px;min-height:120px}
+.kanban-col.drag-over{border-color:var(--azul);background:var(--hover)}
 .kanban-head{display:flex;align-items:center;gap:8px;padding:2px 4px 8px}
 .kanban-dot{width:7px;height:7px;border-radius:99px;flex-shrink:0}
-.kanban-vacia{font-size:.72rem;color:#334155;padding:6px 4px}
-.kanban-name{font-size:.78rem;font-weight:600;color:#94a3b8}
-.kanban-count{font-size:.72rem;color:#475569}
+.kanban-vacia{font-size:.72rem;color:var(--texto-debil);padding:6px 4px}
+.kanban-name{font-size:.78rem;font-weight:600;color:var(--texto-tenue)}
+.kanban-count{font-size:.72rem;color:var(--texto-debil)}
 .kanban-cards{display:flex;flex-direction:column;gap:8px}
-.kanban-card{background:#111a28;border:1px solid #1e293b;border-radius:8px;padding:9px 10px;cursor:grab}
-.kanban-card:hover{border-color:#2a3a52}
-.kanban-card.overdue{border-left:2px solid #f97316}
-.kanban-card-title{font-size:.82rem;color:#e2e8f0;line-height:1.35;margin-bottom:6px}
+.kanban-card{background:var(--superficie);border:1px solid var(--borde);border-radius:8px;padding:9px 10px;cursor:grab}
+.kanban-card:hover{border-color:var(--borde-fuerte)}
+.kanban-card.overdue{border-left:2px solid var(--rojo)}
+.kanban-card-title{font-size:.82rem;color:var(--texto);line-height:1.35;margin-bottom:6px}
 .kanban-card-meta{display:flex;flex-wrap:wrap;gap:5px;align-items:center}
-.kanban-card-who{font-size:.7rem;color:#64748b}
-.task-notion-badge:hover{color:#e2e8f0}
-.task-row.in-progress{border-left:3px solid #0369a1}
-.task-row.overdue{border-left:3px solid #f87171}
-.task-edit-btn{background:none;border:1px solid #1e293b;color:#64748b;cursor:pointer;font-size:.78rem;padding:3px 7px;border-radius:6px;transition:all .15s}
-.task-edit-btn:hover{border-color:#334155;color:#94a3b8}
-.task-row{background:#111827;border:1px solid #1e293b;border-radius:10px;padding:14px 16px;margin-bottom:8px;display:flex;align-items:flex-start;gap:12px;transition:border-color .15s}
-.task-row:hover{border-color:#334155}
-.task-check{width:18px;height:18px;border:2px solid #334155;border-radius:4px;cursor:pointer;flex-shrink:0;margin-top:2px;display:flex;align-items:center;justify-content:center;transition:all .15s}
-.task-check.done{background:#16a34a;border-color:#16a34a;color:#fff;font-size:.7rem}
-.task-check:hover:not(.done){border-color:#0088cc}
+.kanban-card-who{font-size:.7rem;color:var(--texto-debil)}
+/* Pipeline Notion. En touch las fichas no se arrastran (el drag de HTML5 no
+   dispara): no muestran la manito y la ayuda del panel lo dice. La ficha que
+   espera la respuesta de Notion se ve atenuada y no se puede volver a tocar. */
+.kanban-card.nc-fija{cursor:default}
+.kanban-card.nc-guardando{opacity:.55;pointer-events:none}
+.nc-ayuda-touch{display:none}
+@media (hover:none),(pointer:coarse){ .nc-ayuda-mouse{display:none} .nc-ayuda-touch{display:inline} }
+.task-notion-badge:hover{color:var(--texto)}
+.task-row.in-progress{border-left:3px solid var(--azul)}
+.task-row.overdue{border-left:3px solid var(--rojo)}
+.task-edit-btn{background:none;border:1px solid var(--borde);color:var(--texto-debil);cursor:pointer;font-size:.78rem;padding:3px 7px;border-radius:6px;transition:all .15s}
+.task-edit-btn:hover{border-color:var(--borde-fuerte);color:var(--texto-tenue)}
+.task-row{background:var(--superficie);border:1px solid var(--borde);border-radius:10px;padding:14px 16px;margin-bottom:8px;display:flex;align-items:flex-start;gap:12px;transition:border-color .15s}
+.task-row:hover{border-color:var(--borde-fuerte)}
 .task-body{flex:1;min-width:0}
-.task-title{font-size:.88rem;font-weight:600;color:#f1f5f9;margin-bottom:3px}
-.task-title.done-text{text-decoration:line-through;color:#475569}
-.task-meta{font-size:.72rem;color:#475569;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-.task-client-link{color:#0088cc;cursor:pointer}
+.task-title{font-size:.88rem;font-weight:600;color:var(--texto-fuerte);margin-bottom:3px}
+.task-title.done-text{text-decoration:line-through;color:var(--texto-debil)}
+.task-meta{font-size:.72rem;color:var(--texto-debil);display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.task-client-link{color:var(--azul-claro);cursor:pointer}
 .task-client-link:hover{text-decoration:underline}
 .task-priority{padding:2px 7px;border-radius:99px;font-size:.65rem;font-weight:700}
-.task-priority.high{background:#450a0a;color:#f87171}
-.task-priority.medium{background:#1c1917;color:#fb923c}
-.task-priority.low{background:#0c1a0c;color:#86efac}
-.task-deadline{color:#fbbf24}
-.task-deadline.overdue{color:#f87171}
+.task-priority.high{background:var(--rojo-tinte);color:var(--rojo-texto)}
+.task-priority.medium{background:var(--ambar-tinte);color:var(--ambar)}
+.task-priority.low{background:var(--verde-tinte);color:var(--verde-texto)}
+.task-deadline{color:var(--ambar)}
+.task-deadline.overdue{color:var(--rojo)}
 .task-actions{display:flex;gap:6px;flex-shrink:0}
-.task-del-btn{background:none;border:none;color:#334155;cursor:pointer;font-size:.9rem;padding:2px 4px}
-.task-del-btn:hover{color:#f87171}
-.tasks-empty{text-align:center;color:#334155;padding:40px;font-size:.88rem}
+.task-del-btn{background:none;border:none;color:var(--texto-debil);cursor:pointer;font-size:.9rem;padding:2px 4px}
+.task-del-btn:hover{color:var(--rojo)}
+.tasks-empty{text-align:center;color:var(--texto-debil);padding:40px;font-size:.88rem}
 /* Mobile header */
 .mobile-header{display:none;position:fixed;top:0;left:0;right:0;height:52px;background:rgba(17,24,39,.95);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid rgba(255,255,255,.07);z-index:250;align-items:center;padding:0 16px;gap:12px}
 .mobile-header img{height:24px;object-fit:contain}
@@ -1335,32 +1576,42 @@ body.light .mobile-header-title{color:#0f172a}
 .sc-hall-n{font-size:.8rem;font-weight:700;color:var(--rotulo);font-variant-numeric:tabular-nums;min-width:18px}
 .sc-hall-tit{font-size:.84rem;font-weight:700;color:var(--texto);margin-bottom:4px}
 .sc-hall-cuerpo{font-size:.79rem;line-height:1.55;color:var(--texto-tenue)}
-/* Lo que esta corriendo ahora: una tarjeta por anuncio con su pieza.
-   auto-fill y no auto-fit: con un solo anuncio prendido, auto-fit estira esa
-   tarjeta a todo el ancho y la foto queda gigante. */
-.sc-anuncios{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:14px}
+/* Las piezas de la pauta, mes por mes: una tarjeta por anuncio con su pieza.
+   auto-fill y no auto-fit: con una sola pieza en el mes, auto-fit estira esa
+   tarjeta a todo el ancho y la foto queda gigante.
+   Las que ya no estan activas se ven IGUAL que las activas, sin gris ni
+   transparencia: Juan pidio verlas ("que no me aparezcan en gris sin que se
+   vea"). Las separa el titulo de cada grupo, no el tono. */
+.sc-piezas-nav{margin:2px 0 14px;flex-wrap:wrap}
+/* Cuando llegan los leads, semana por semana: una fila por dia y una columna
+   por hora. Tabla y no SVG: un SVG de 24 columnas se achica hasta ser ilegible
+   en el celular; la tabla scrollea adentro de la tarjeta con el dia fijo a la
+   izquierda. El relleno de cada casillero sale de --azul (inline, con
+   color-mix) y el cero queda sin relleno. */
+.sc-lleg-resumen{font-size:.8rem;color:var(--texto-tenue);margin:0 0 10px}
+.sc-lleg-resumen b{color:var(--texto);font-variant-numeric:tabular-nums}
+.sc-lleg-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}
+.sc-lleg{border-collapse:separate;border-spacing:2px;font-size:.7rem;font-variant-numeric:tabular-nums;width:100%}
+.sc-lleg th{font-weight:600;color:var(--rotulo);padding:2px 1px;text-align:center}
+.sc-lleg td{min-width:24px;height:28px;padding:0 2px;text-align:center;color:var(--texto);border:1px solid var(--borde);border-radius:4px}
+.sc-lleg th[scope="row"]{position:sticky;left:0;z-index:1;background:var(--superficie);text-align:left;padding-right:8px;white-space:nowrap}
+.sc-lleg .sc-lleg-total{font-weight:700;color:var(--texto);padding-left:8px;border-color:transparent;text-align:right;white-space:nowrap}
+.sc-piezas-grupo{font-size:.86rem;font-weight:700;color:var(--texto);margin:20px 0 10px}
+.sc-piezas-grupo span{font-weight:600;color:var(--rotulo);margin-left:4px}
+.sc-piezas-aviso{font-size:.76rem;line-height:1.55;color:var(--texto-tenue);margin:0 0 12px}
+.sc-anuncios{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}
 .sc-anun{display:flex;flex-direction:column;background:var(--fondo-hundido);border:1px solid var(--borde);border-radius:12px;overflow:hidden}
 /* Alto fijo y `cover`: las piezas vienen 1080x1350 y 1080x1920 mezcladas, y
    sin esto cada tarjeta mide distinto y la grilla queda en escalera. */
-.sc-anun-foto{width:100%;height:200px;object-fit:cover;object-position:top;display:block;background:var(--hover)}
-.sc-anun-sinfoto{height:200px;display:flex;align-items:center;justify-content:center;text-align:center;font-size:.72rem;line-height:1.5;color:var(--rotulo);background:var(--hover);padding:0 18px}
+.sc-anun-foto{width:100%;height:180px;object-fit:cover;object-position:top;display:block;background:var(--hover)}
+.sc-anun-sinfoto{height:180px;display:flex;align-items:center;justify-content:center;text-align:center;font-size:.72rem;line-height:1.5;color:var(--rotulo);background:var(--hover);padding:0 18px}
 .sc-anun-cuerpo{padding:12px 14px 14px;display:flex;flex-direction:column;gap:8px;flex:1}
-.sc-anun-nom{font-size:.82rem;font-weight:700;color:var(--texto);line-height:1.35}
-.sc-anun-campana{font-size:.68rem;color:var(--rotulo)}
-.sc-anun-datos{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:9px 0;border-top:1px solid var(--borde);border-bottom:1px solid var(--borde)}
-.sc-anun-dato{display:flex;flex-direction:column;gap:2px}
+.sc-anun-nom{font-size:.82rem;font-weight:700;color:var(--texto);line-height:1.35;overflow-wrap:anywhere}
+.sc-anun-fechas{font-size:.68rem;color:var(--rotulo)}
+.sc-anun-datos{display:grid;grid-template-columns:repeat(3,1fr);gap:8px 10px;padding:9px 0;border-top:1px solid var(--borde);border-bottom:1px solid var(--borde)}
+.sc-anun-dato{display:flex;flex-direction:column;gap:2px;min-width:0}
 .sc-anun-dato span{font-size:.62rem;letter-spacing:.03em;text-transform:uppercase;color:var(--rotulo)}
 .sc-anun-dato b{font-size:.92rem;color:var(--texto);font-variant-numeric:tabular-nums}
-.sc-anun-extra{font-size:.68rem;line-height:1.5;color:var(--rotulo)}
-.sc-anun-demos{display:grid;gap:2px;font-size:.72rem;line-height:1.5;color:var(--texto-tenue)}
-.sc-anun-demos b{color:var(--texto);font-variant-numeric:tabular-nums}
-.sc-anun-cobertura{font-size:.64rem;color:var(--rotulo)}
-.sc-anun-vida{font-size:.7rem;line-height:1.5;color:var(--texto-tenue)}
-/* La tarjeta apagada se distingue por la palabra Y por el tono: solo con
-   opacidad se leeria igual que una al aire. */
-.sc-anun[data-corriendo="false"] .sc-anun-foto,.sc-anun[data-corriendo="false"] .sc-anun-sinfoto{filter:grayscale(1);opacity:.55}
-.sc-anun-apagado{font-size:.62rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--rotulo);background:var(--hover);padding:4px 14px;border-bottom:1px solid var(--borde)}
-.sc-anun-vida b{color:var(--texto);font-variant-numeric:tabular-nums}
 /* El estado va con palabra Y con color. El borde solo seria color solo, que es
    justo lo que no puede distinguir quien no ve bien los colores. */
 .sc-anun-reco{font-size:.75rem;line-height:1.55;color:var(--texto-tenue);border-left:3px solid var(--rotulo);padding-left:10px;margin-top:auto}
@@ -1375,6 +1626,16 @@ body.light .mobile-header-title{color:#0f172a}
 .sc-version{font-size:.66rem;color:var(--rotulo);text-align:right;padding:4px 2px 0;font-variant-numeric:tabular-nums}
 .sc-comparacion{display:grid;gap:5px;font-size:.8rem;line-height:1.55;color:var(--texto);background:var(--fondo-hundido);border:1px solid var(--borde);border-radius:10px;padding:11px 14px;margin-bottom:16px}
 .sc-barras{display:grid;gap:7px;margin-top:8px}
+/* Por lo que el lead declaro: una dona por pregunta. De a dos por fila en
+   escritorio, de a una en el celular (min() evita que 380px desborde a 390). */
+.sc-donas{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,380px),1fr));gap:18px}
+.sc-dona{border:1px solid var(--borde);border-radius:12px;padding:14px 16px;min-width:0}
+.sc-dona-cuerpo{display:flex;flex-wrap:wrap;align-items:center;gap:14px 18px;margin-top:8px}
+.sc-dona-svg{width:220px;max-width:100%;height:auto;flex:0 0 auto}
+.sc-dona-leyenda{list-style:none;margin:0;padding:0;display:grid;gap:9px;flex:1 1 180px;min-width:0}
+.sc-dona-item{display:grid;grid-template-columns:10px 1fr;gap:8px;align-items:start;font-size:.78rem;line-height:1.45;color:var(--texto);overflow-wrap:anywhere}
+.sc-dona-item .sc-leyenda-punto{margin-top:4px}
+.sc-dona-tasa{display:block;font-size:.72rem;color:var(--texto-tenue)}
 .sc-barras-ayuda{font-size:.72rem;line-height:1.5;margin:2px 0 4px;max-width:74ch}
 /* Varios graficos seguidos dentro del mismo bloque: sin esto se pegan y se
    leen como uno solo con el titulo en el medio. */
@@ -1413,7 +1674,7 @@ body.light .mobile-header-title{color:#0f172a}
 .sc-tile-delta[data-animo="malo"]{color:var(--rojo)}
 .sc-bloque{background:var(--superficie);border:1px solid var(--borde);border-radius:14px;padding:18px 20px;margin-bottom:18px}
 .sc-bloque>h3{font-size:.92rem;font-weight:700;color:var(--texto);margin:0 0 4px}
-.sc-bloque>.sc-sub{font-size:.74rem;color:var(--rotulo);margin-bottom:14px;line-height:1.5}
+.sc-bloque>.sc-sub{font-size:.74rem;color:var(--rotulo);margin-bottom:14px;line-height:1.5;white-space:normal;overflow-wrap:anywhere;max-width:100%}
 .sc-par{display:grid;grid-template-columns:1fr;gap:6px}
 .sc-titulo{font-size:.78rem;font-weight:600;margin-bottom:2px}
 .sc-vacio{color:var(--texto-tenue);font-size:.8rem;padding:14px 0}
@@ -1466,27 +1727,22 @@ body.light .mobile-header-title{color:#0f172a}
 }
 /* Custom user picker */
 .upick-wrap{position:relative}
-.upick-trigger{display:flex;align-items:center;gap:8px;background:#0a0f1a;border:1px solid #334155;border-radius:8px;padding:8px 12px;cursor:pointer;transition:border-color .15s;user-select:none}
-.upick-trigger:hover{border-color:#0088cc55}
-.upick-trigger.open{border-color:#0088cc}
-.upick-label{flex:1;font-size:.82rem;color:#e2e8f0}
-.upick-chevron{color:#475569;font-size:.7rem;transition:transform .15s}
+.upick-trigger{display:flex;align-items:center;gap:8px;background:var(--fondo);border:1px solid var(--borde);border-radius:8px;padding:8px 12px;cursor:pointer;transition:border-color .15s;user-select:none}
+.upick-trigger:hover{border-color:var(--borde-fuerte)}
+.upick-trigger.open{border-color:var(--azul)}
+.upick-label{flex:1;font-size:.82rem;color:var(--texto)}
+.upick-chevron{color:var(--texto-debil);font-size:.7rem;transition:transform .15s}
 .upick-trigger.open .upick-chevron{transform:rotate(180deg)}
-.upick-dropdown{position:absolute;top:calc(100% + 6px);left:0;right:0;background:#111827;border:1px solid #334155;border-radius:10px;overflow:hidden;z-index:200;box-shadow:0 8px 24px rgba(0,0,0,.4)}
+.upick-dropdown{position:absolute;top:calc(100% + 6px);left:0;right:0;background:var(--superficie);border:1px solid var(--borde-fuerte);border-radius:10px;overflow:hidden;z-index:200;box-shadow:0 8px 24px var(--sombra)}
 .upick-option{display:flex;align-items:center;gap:10px;padding:9px 12px;cursor:pointer;transition:background .12s}
-.upick-option:hover{background:#1a2234}
-.upick-option.upick-sel{background:#0c1a2e}
+.upick-option:hover{background:var(--hover)}
+.upick-option.upick-sel{background:var(--hover)}
 .upick-av{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.65rem;font-weight:800;flex-shrink:0;color:#fff}
-.upick-name{font-size:.82rem;color:#e2e8f0;font-weight:500;flex:1}
-.upick-check{color:#0088cc;font-size:.8rem;font-weight:700}
-body.light .upick-trigger{background:#fff;border-color:#e2e8f0}
-body.light .upick-dropdown{background:#fff;border-color:#e2e8f0;box-shadow:0 8px 24px rgba(0,0,0,.12)}
-body.light .upick-option:hover{background:#f8fafc}
-body.light .upick-option.upick-sel{background:#eff6ff}
-body.light .upick-label{color:#0f172a}
-body.light .upick-name{color:#0f172a}
+.upick-name{font-size:.82rem;color:var(--texto);font-weight:500;flex:1}
+.upick-check{color:var(--azul);font-size:.8rem;font-weight:700}
 .fin-toolbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:18px}
 .fin-toggle{display:flex;gap:6px;margin-left:auto}
+.fin-aviso-sl{background:var(--azul-tinte);color:var(--azul-claro);border:1px solid var(--borde);border-radius:8px;padding:8px 12px;font-size:.78rem;font-weight:600;margin-bottom:14px}
 .fin-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:18px}
 .fin-kpi{background:var(--superficie-honda);border:1px solid var(--borde);border-radius:10px;padding:16px 18px}
 .fin-kpi-label{font-size:.7rem;font-weight:700;color:var(--rotulo);text-transform:uppercase;letter-spacing:.8px}
@@ -1519,9 +1775,401 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .fin-hbar-relleno{height:100%;border-radius:3px}
 .fin-hbar-monto{font-size:.75rem;color:var(--texto);width:74px;text-align:right;flex-shrink:0}
 @media (max-width:760px){.fin-split{grid-template-columns:1fr}}
+/* ── Finanzas: Balance ────────────────────────────────────────────────────────
+   Todo con tokens. Para imprimir, finBalImprimir() copia el balance a
+   .fb-print (hijo directo del body), le pone al body `light` y
+   `fb-imprimiendo`, y el @media print esconde todo lo demás: sale en claro
+   aunque la pantalla esté en oscuro. */
+.fb-controles{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end}
+.fb-label{display:flex;flex-direction:column;gap:4px;font-size:.7rem;font-weight:700;color:var(--rotulo);text-transform:uppercase;letter-spacing:.6px}
+.fb-fechas{display:flex;flex-wrap:wrap;gap:12px}
+.fb-campo{background:var(--fondo-hundido);border:1px solid var(--borde);border-radius:8px;padding:7px 10px;color:var(--texto);font-size:.82rem;font-family:inherit}
+.fb-campo:focus{outline:none;border-color:var(--azul)}
+.fb-ayuda{font-size:.75rem;color:var(--texto-debil);margin-top:12px;line-height:1.45}
+.fb-doc{background:var(--superficie-honda);border:1px solid var(--borde);border-radius:10px;padding:22px;margin-bottom:18px}
+.fb-cabecera{border-bottom:1px solid var(--borde);padding-bottom:14px;margin-bottom:18px}
+.fb-titulo{font-size:1.15rem;font-weight:700;color:var(--texto-fuerte)}
+.fb-sub{font-size:.78rem;color:var(--texto-tenue);margin-top:4px}
+.fb-aviso{background:var(--ambar-tinte);color:var(--ambar);border:1px solid var(--ambar-borde);border-radius:8px;padding:9px 12px;font-size:.8rem;margin-bottom:16px}
+.fb-desglose{font-size:.72rem;color:var(--texto-tenue);margin-top:6px;line-height:1.4}
+.fb-seccion{margin-top:22px}
+.fb-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.fb-tabla td.fb-num,.fb-tabla th.fb-num{text-align:right}
+.fb-tabla tr.fb-total td{font-weight:700;border-top:2px solid var(--borde-fuerte)}
+.fb-nota{font-size:.78rem;color:var(--texto-debil);padding:6px 0;line-height:1.45}
+.fb-error{color:var(--rojo-texto);padding:16px;font-size:.85rem}
+.fb-print{display:none}
+@media (max-width:760px){
+  .fin-toggle{flex-wrap:wrap;margin-left:0}
+  .fb-controles{flex-direction:column;align-items:stretch}
+  .fb-doc{padding:14px}
+}
+@media print{
+  body.fb-imprimiendo{background:var(--superficie) !important}
+  body.fb-imprimiendo > *{display:none !important}
+  body.fb-imprimiendo > .fb-print{display:block !important;padding:0;margin:0}
+  body.fb-imprimiendo .fb-doc{border:none;padding:0;background:var(--superficie)}
+  body.fb-imprimiendo .fin-kpi{background:var(--superficie)}
+  body.fb-imprimiendo .fb-scroll{overflow:visible}
+  body.fb-imprimiendo .fb-seccion{break-inside:avoid}
+}
+/* ── Plantillas ───────────────────────────────────────────────────────────────
+   Mensajes de siempre, en VENTAS. Solo tokens, sin reglas `body.light`: las
+   variables van en --azul-claro y las que faltan en la familia ambar, que
+   llegan a 4,5 en los dos temas. */
+.pl-cabecera{flex-wrap:wrap;gap:12px}
+.pl-grupo{margin-bottom:22px}
+.pl-momento{font-size:.7rem;font-weight:700;color:var(--rotulo);text-transform:uppercase;letter-spacing:.8px;margin:0 0 10px}
+.pl-grilla{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px;align-items:start}
+.pl-card{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:16px;min-width:0;display:flex;flex-direction:column;gap:10px}
+.pl-cab{display:flex;justify-content:space-between;align-items:baseline;gap:6px 10px;flex-wrap:wrap}
+.pl-titulo{font-size:.95rem;font-weight:700;color:var(--texto-fuerte);margin:0}
+.pl-canal{font-size:.7rem;font-weight:600;color:var(--texto-debil);background:var(--relleno);border-radius:99px;padding:2px 10px;white-space:nowrap}
+.pl-explicacion{font-size:.8rem;color:var(--texto-tenue);line-height:1.5;margin:0}
+.pl-cuerpo{background:var(--relleno);color:var(--texto);border-radius:8px;padding:12px 14px;font-size:.84rem;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere}
+.pl-var{color:var(--azul-claro);font-weight:700}
+.pl-var-falta{background:var(--ambar-tinte);color:var(--ambar);border-radius:4px;padding:0 3px}
+.pl-nota{font-size:.76rem;font-style:italic;color:var(--texto-debil);margin:0}
+.pl-auto{background:var(--azul-tinte);color:var(--azul-claro);border-radius:8px;padding:8px 12px;font-size:.78rem;font-weight:600}
+.pl-acciones{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:auto}
+.pl-acciones-der{display:flex;gap:6px;margin-left:auto}
+.pl-btn{padding:7px 12px;font-size:.78rem}
+.pl-btn-borrar:hover{color:var(--rojo-texto)}
+.pl-variables{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:16px;line-height:1.9}
+.pl-variables .pl-var{margin-right:10px;display:inline-block}
+.pl-vacio{font-size:.8rem;color:var(--texto-debil);padding:6px 0}
+.pl-modal{width:640px;max-width:94vw;max-height:90vh;overflow-y:auto}
+.pl-modal [hidden]{display:none}
+.pl-resultados{display:flex;flex-direction:column;gap:4px;margin:-6px 0 10px;max-height:220px;overflow-y:auto}
+.pl-resultados:empty{display:none}
+.pl-resultado{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;background:var(--fondo);border:1px solid var(--borde);border-radius:8px;padding:8px 12px;color:var(--texto);font-size:.82rem;font-family:'Inter',sans-serif;cursor:pointer}
+.pl-resultado:hover{border-color:var(--azul)}
+.pl-resultado:focus-visible{border-color:var(--azul);outline:none}
+.pl-resultado span{font-size:.74rem;color:var(--texto-debil)}
+.pl-elegido{font-size:.82rem;color:var(--texto-tenue);margin-bottom:12px;overflow-wrap:anywhere}
+.pl-elegido b{color:var(--texto-fuerte)}
+.pl-campos{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:0 10px}
+.modal .pl-campo input[type=text]{margin-bottom:2px}
+.modal .pl-campo-falta input[type=text]{border-color:var(--ambar-borde);background:var(--ambar-tinte);color:var(--texto)}
+.pl-campo-falta .modal-label{color:var(--ambar)}
+.pl-fuente{font-size:.68rem;color:var(--texto-debil);margin-bottom:10px;min-height:1em}
+.pl-vista{margin-bottom:8px}
+.pl-faltan{font-size:.76rem;color:var(--ambar);margin-bottom:8px}
+.pl-faltan:empty{display:none}
+.pl-error{font-size:.78rem;color:var(--rojo-texto);margin:4px 0 10px}
+.pl-error:empty{display:none}
+.pl-ayuda{font-size:.72rem;color:var(--texto-debil);margin:-10px 0 12px;line-height:1.7}
+.pl-check{display:flex;align-items:center;gap:8px;font-size:.82rem;color:var(--texto);margin:4px 0 14px;cursor:pointer}
+.pl-check input{accent-color:var(--azul);width:16px;height:16px}
+.pl-botones{flex-wrap:wrap}
+.pl-aviso{position:fixed;left:50%;bottom:24px;transform:translate(-50%,16px);background:var(--texto-fuerte);color:var(--superficie);border-radius:10px;padding:10px 18px;font-size:.84rem;font-weight:600;box-shadow:0 8px 24px var(--sombra);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:1100;max-width:90vw;text-align:center}
+.pl-aviso-visible{opacity:1;transform:translate(-50%,0)}
+.pl-fuera{position:fixed;left:-9999px;top:0;opacity:0}
+@media(max-width:768px){ .pl-grilla{grid-template-columns:1fr} .pl-acciones-der{margin-left:0} .pl-aviso{bottom:84px} .pl-modal{padding:20px} .pl-modal .modal-row{grid-template-columns:1fr} }
+/* ── Daily Programador ────────────────────────────────────────────────────────
+   Daily Programador y Daily Admin: la misma pantalla. Solo tokens, sin reglas
+   propias de tema claro. El día usa las tarjetas, contadores y grupos de
+   Seguimiento de leads (clases sl-): acá va solo lo propio. El menú por
+   persona con su ícono y su color, lo que Seguimiento no tiene (hechas
+   colapsadas, estado vacío) y los recordatorios que se repiten. */
+.dy-nav-personas{display:flex;flex-direction:column}
+.dy-nav-sub{display:flex;align-items:center;gap:8px;padding:7px 20px 7px 42px;font-size:.8rem;font-weight:500;color:var(--texto-debil);cursor:pointer;border-left:3px solid transparent;transition:all .15s}
+.dy-nav-sub:hover{color:var(--texto);background:var(--hover)}
+.dy-nav-sub.dy-activa{color:var(--texto-fuerte);border-left-color:var(--azul);background:var(--azul-tinte)}
+.dy-nav-icono{width:15px;height:15px;stroke-width:2;flex-shrink:0}
+.dy-nav-icono.dy-color-0{stroke:var(--azul-claro)}
+.dy-nav-icono.dy-color-1{stroke:var(--verde-texto)}
+.dy-nav-icono.dy-color-2{stroke:var(--ambar)}
+.dy-nav-icono.dy-color-3{stroke:var(--texto-tenue)}
+.dy-borde-0{border-left:3px solid var(--azul-claro)}
+.dy-borde-1{border-left:3px solid var(--verde-texto)}
+.dy-borde-2{border-left:3px solid var(--ambar)}
+.dy-borde-3{border-left:3px solid var(--texto-tenue)}
+.dy-personas{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.dy-persona{display:inline-flex;align-items:center;gap:6px;min-height:36px;background:var(--relleno);color:var(--texto-tenue);border:1px solid var(--borde);border-radius:99px;padding:6px 14px;font-size:.82rem;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer}
+.dy-persona[aria-pressed="true"]{background:var(--azul-tinte);color:var(--azul-claro);border-color:var(--azul)}
+.dy-dia{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.dy-fecha{font-size:1rem;font-weight:700;color:var(--texto-fuerte);min-width:0}
+.dy-fecha-hoy{font-size:.68rem;font-weight:700;color:var(--azul-claro);background:var(--azul-tinte);border-radius:99px;padding:2px 8px;margin-left:8px;vertical-align:middle}
+.dy-agregar{display:flex;gap:8px;margin-bottom:18px}
+.dy-in{flex:1 1 auto;background:var(--fondo-hundido);border:1px solid var(--borde);border-radius:8px;padding:8px 10px;color:var(--texto);font-size:.84rem;font-family:'Inter',sans-serif;min-width:0}
+.dy-in:focus{outline:none;border-color:var(--azul)}
+.dy-in::placeholder{color:var(--texto-debil)}
+.dy-error{font-size:.75rem;color:var(--rojo-texto);margin:4px 0 10px}
+.dy-error:empty{display:none}
+.dy-tarjeta-titulo{font-size:.9rem;font-weight:700;color:var(--texto-fuerte);min-width:0;overflow-wrap:anywhere}
+.dy-etiqueta{display:inline-block;font-size:.66rem;font-weight:700;border-radius:99px;padding:2px 8px;background:var(--relleno);color:var(--texto-tenue);margin-top:8px}
+.dy-hechas summary{cursor:pointer}
+.dy-hechas summary::marker{color:var(--texto-debil)}
+.dy-tachado{font-size:.84rem;color:var(--texto-debil);text-decoration:line-through;overflow-wrap:anywhere}
+.dy-linea-botones{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px;flex-shrink:0}
+.dy-vacio-grande{display:flex;flex-direction:column;align-items:flex-start;gap:10px;background:var(--superficie);border:1px dashed var(--borde-fuerte);border-radius:10px;padding:18px 16px;margin-bottom:22px;font-size:.88rem;color:var(--texto-tenue)}
+.dy-recurrentes{margin-top:8px}
+.dy-recurrentes-cab{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px}
+.dy-recurrentes-cab .fin-card-title{margin-bottom:0}
+.dy-lista{display:flex;flex-direction:column;gap:6px}
+.dy-vacio{font-size:.8rem;color:var(--texto-debil);padding:6px 2px}
+.dy-dias{display:flex;flex-wrap:wrap;gap:6px}
+.modal .dy-dias{margin:0 0 12px}
+.dy-dia-chip{display:inline-flex;align-items:center;gap:4px;font-size:.76rem;color:var(--texto-tenue);background:var(--relleno);border:1px solid var(--borde);border-radius:99px;padding:5px 10px;cursor:pointer}
+.dy-dia-chip input{accent-color:var(--azul);margin:0}
+.dy-aviso-modal{font-size:.74rem;color:var(--texto-debil);margin:0 0 10px;line-height:1.4}
+.dy-rec{display:flex;align-items:center;gap:6px;padding:8px 10px;border-radius:8px;border:1px solid var(--borde);background:var(--superficie-honda)}
+.dy-rec-cuerpo{flex:1;min-width:0}
+.dy-rec-texto{font-size:.84rem;color:var(--texto);overflow-wrap:anywhere}
+.dy-rec-cuando{font-size:.7rem;color:var(--texto-debil);margin-top:2px}
+.dy-pausado .dy-rec-texto{color:var(--texto-debil)}
+.dy-badge{font-size:.64rem;font-weight:700;border-radius:99px;padding:2px 8px;background:var(--relleno);color:var(--texto-debil);white-space:nowrap}
+.dy-panel .dy-oculto,.modal .dy-oculto{display:none}
+@media(max-width:600px){
+  .dy-panel .sl-btn,.dy-panel .btn-primary,.dy-panel .btn-ghost,.dy-persona,.dy-nav-sub{min-height:40px}
+  .dy-panel .sl-acciones .sl-btn{flex:1 1 auto}
+  .dy-fecha{flex:1 1 100%;order:-1;font-size:.95rem}
+  .dy-rec{flex-wrap:wrap}
+  .dy-rec-cuerpo{flex-basis:100%}
+}
+/* ── Seguimiento de leads ─────────────────────────────────────────────────────
+   La agenda de llamados. Solo tokens, sin reglas `body.light`: el rojo de
+   vencido y el verde de Hecho son los de la familia de estados, que llegan a
+   4,5 en los dos temas. */
+.sl-cabecera{gap:12px;flex-wrap:wrap}
+.sl-contadores{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:22px}
+.sl-contador{display:flex;flex-direction:column;align-items:flex-start;gap:2px;background:var(--superficie);border:1px solid var(--borde);border-radius:10px;padding:10px 14px;cursor:pointer;font-family:inherit;text-align:left;color:var(--texto)}
+.sl-contador:hover{border-color:var(--borde-fuerte)}
+.sl-contador:focus-visible{outline:2px solid var(--azul);outline-offset:2px}
+.sl-contador-num{font-size:1.3rem;font-weight:800;line-height:1.1;color:var(--texto-fuerte)}
+.sl-contador-rot{font-size:.72rem;color:var(--texto-tenue)}
+.sl-contador-vencidos{background:var(--rojo-tinte);border-color:var(--rojo-borde)}
+.sl-contador-vencidos .sl-contador-num{color:var(--rojo-texto)}
+.sl-contador-vencidos .sl-contador-rot{color:var(--rojo-texto)}
+.sl-grupo{margin-bottom:22px;scroll-margin-top:16px}
+.sl-grupo-titulo{font-size:.72rem;font-weight:700;letter-spacing:.8px;color:var(--rotulo);margin:0 0 10px}
+.sl-grupo-titulo-vencidos{color:var(--rojo-texto)}
+.sl-tarjeta{background:var(--superficie);border:1px solid var(--borde);border-radius:10px;padding:14px 16px;margin-bottom:10px}
+.sl-vencida{border-left:3px solid var(--rojo)}
+.sl-tarjeta-cab{display:flex;justify-content:space-between;align-items:baseline;gap:4px 12px;flex-wrap:wrap}
+.sl-quien{font-size:.88rem;color:var(--texto-tenue);min-width:0;overflow-wrap:anywhere}
+.sl-nombre{background:none;border:none;padding:0;font:inherit;font-weight:700;color:var(--texto-fuerte);cursor:pointer;text-align:left}
+.sl-nombre:hover{text-decoration:underline}
+.sl-cuando{font-size:.78rem;font-weight:600;color:var(--texto-tenue);white-space:nowrap}
+.sl-cuando-vencido{color:var(--rojo-texto)}
+.sl-contexto{font-size:.82rem;color:var(--texto);margin-top:6px;line-height:1.45;overflow-wrap:anywhere}
+.sl-ultima{color:var(--texto-tenue)}
+.sl-nota{font-size:.74rem;color:var(--texto-debil);margin-top:3px;overflow-wrap:anywhere}
+.sl-acciones{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.sl-btn{display:inline-flex;align-items:center;justify-content:center;background:var(--relleno);color:var(--texto);border:1px solid var(--borde);border-radius:8px;padding:6px 12px;font-size:.76rem;font-weight:600;font-family:inherit;cursor:pointer;text-decoration:none;white-space:nowrap}
+.sl-btn:hover{border-color:var(--borde-fuerte)}
+.sl-btn:disabled{opacity:.45;cursor:not-allowed}
+.sl-btn-hecho{background:var(--verde-tinte);color:var(--verde-texto)}
+.sl-linea{display:flex;justify-content:space-between;align-items:center;gap:12px;background:var(--superficie);border:1px solid var(--borde);border-radius:10px;padding:10px 14px;margin-bottom:6px}
+.sl-linea-txt{min-width:0}
+.sl-linea-motivo{font-size:.76rem;color:var(--texto-debil);margin-top:2px;overflow-wrap:anywhere}
+.sl-linea-fecha{font-size:.76rem;font-weight:600;color:var(--texto-tenue);white-space:nowrap}
+.sl-vacio{font-size:.82rem;color:var(--texto-debil);padding:6px 0}
+.sl-error{font-size:.78rem;color:var(--rojo-texto);margin:4px 0 10px}
+.sl-error:empty{display:none}
+.sl-aviso{background:var(--ambar-tinte);color:var(--ambar);border:1px solid var(--ambar-borde);border-radius:8px;padding:8px 10px;font-size:.76rem;line-height:1.4;margin-bottom:12px}
+.sl-aviso:empty{display:none}
+.sl-elegido{display:flex;justify-content:space-between;align-items:center;gap:8px;background:var(--relleno);border-radius:8px;padding:8px 12px;margin-bottom:12px;font-size:.85rem;color:var(--texto-fuerte)}
+.sl-elegido[hidden]{display:none}
+.sl-buscador[hidden]{display:none}
+.sl-bloque[hidden]{display:none}
+.sl-link{background:none;border:none;color:var(--azul-claro);font:inherit;font-size:.76rem;cursor:pointer;padding:0}
+.sl-rapidos{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px}
+.sl-check{display:flex;align-items:center;gap:8px;font-size:.84rem;color:var(--texto);margin:4px 0 14px;cursor:pointer}
+.sl-check input{accent-color:var(--azul);width:16px;height:16px}
+.sl-ficha-cab{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.sl-ficha-pendiente{background:var(--relleno);border-radius:8px;padding:10px 12px;font-size:.8rem;color:var(--texto);line-height:1.45}
+.sl-ficha-llamado{padding:7px 0;border-bottom:1px solid var(--borde);font-size:.8rem;color:var(--texto);overflow-wrap:anywhere}
+.sl-ficha-fecha{font-size:.72rem;color:var(--texto-debil);margin-right:8px;white-space:nowrap}
+@media(max-width:600px){
+  .sl-contadores{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+/* ── Equipo ───────────────────────────────────────────────────────────────────
+   Organigrama (SVG) y ausencias con recupero. Solo tokens, sin reglas
+   `body.light`: los tintes rojo/verde/ambar son los de la familia de estados,
+   que llegan a 4,5 en los dos temas. */
+.eq-card{background:var(--superficie-honda);border:1px solid var(--borde);border-radius:10px;padding:18px;margin-bottom:18px;min-width:0}
+.eq-cab{display:flex;justify-content:space-between;align-items:center;gap:8px 12px;flex-wrap:wrap;margin-bottom:12px}
+.eq-cab .fin-card-title{margin-bottom:0}
+.eq-organigrama{overflow-x:auto;padding-bottom:4px}
+.eq-svg{display:block;margin:0 auto;max-width:none}
+.eq-linea{stroke:var(--borde-fuerte);stroke-width:1.5;fill:none}
+.eq-nodo rect{fill:var(--superficie);stroke:var(--borde-fuerte);stroke-width:1}
+.eq-nodo-nombre{fill:var(--texto-fuerte);font-size:13px;font-weight:600;font-family:'Inter',sans-serif}
+.eq-nodo-rol{fill:var(--texto-debil);font-size:11px;font-family:'Inter',sans-serif}
+.eq-destacado rect{fill:var(--azul-tinte);stroke:var(--azul);stroke-width:2}
+.eq-destacado .eq-nodo-rol{fill:var(--azul-claro)}
+.eq-aviso{background:var(--ambar-tinte);color:var(--ambar);border:1px solid var(--ambar-borde);border-radius:10px;padding:10px 12px;font-size:.8rem;line-height:1.45;margin-bottom:10px}
+.eq-cal-nav{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;margin-bottom:8px;font-size:.8rem;color:var(--texto)}
+.eq-cal-wrap{overflow-x:auto}
+.eq-cal{border-collapse:separate;border-spacing:3px;font-size:.78rem}
+.eq-cal th{font-weight:600;color:var(--texto-debil);font-size:.7rem;padding:4px 6px;text-align:center;white-space:nowrap}
+.eq-cal th.eq-cal-semana{text-transform:uppercase;letter-spacing:.6px;font-size:.64rem}
+.eq-cal th.eq-cal-persona{text-align:left;color:var(--texto);font-size:.8rem;padding-right:10px;position:sticky;left:0;z-index:1;background:var(--superficie-honda)}
+.eq-cal th.eq-hoy{color:var(--azul-claro)}
+.eq-cal-hueco{width:16px;min-width:16px;padding:0}
+.eq-dia{background:var(--relleno);color:var(--texto-debil);border-radius:6px;height:36px;min-width:56px;text-align:center;font-weight:600}
+.eq-muestra{display:inline-block;width:14px;height:14px;border-radius:4px;vertical-align:-3px;margin-right:5px;border:1px solid var(--borde)}
+.eq-muestra-normal{background:var(--relleno)}
+.eq-falta{background:var(--rojo-tinte);color:var(--rojo-texto)}
+.eq-recupero{background:var(--verde-tinte);color:var(--verde-texto)}
+.eq-dia-extra{display:block;font-size:.66rem}
+.eq-saldo{padding:0 8px;text-align:right;white-space:nowrap;font-weight:700;min-width:64px}
+.eq-al-dia{color:var(--verde-texto)}
+.eq-debe{color:var(--rojo-texto)}
+.eq-leyenda{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:10px;font-size:.72rem;color:var(--texto-tenue);align-items:center}
+.eq-nota{font-size:.7rem;color:var(--texto-debil);margin-top:6px}
+.eq-item{border-top:1px solid var(--borde);padding:12px 0}
+.eq-item:first-child{border-top:none;padding-top:0}
+.eq-item-cab{display:flex;justify-content:space-between;align-items:baseline;gap:6px 12px;flex-wrap:wrap}
+.eq-item-titulo{font-size:.85rem;color:var(--texto);overflow-wrap:anywhere;min-width:0}
+.eq-item-titulo b{color:var(--texto-fuerte)}
+.eq-estado{font-size:.72rem;font-weight:700;border-radius:99px;padding:2px 10px;white-space:nowrap}
+.eq-estado-ok{background:var(--verde-tinte);color:var(--verde-texto)}
+.eq-estado-mal{background:var(--rojo-tinte);color:var(--rojo-texto)}
+.eq-item-linea{font-size:.75rem;color:var(--texto-debil);margin-top:4px;line-height:1.45}
+.eq-item-acciones{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px}
+.eq-chip{display:inline-flex;align-items:center;gap:2px;background:var(--verde-tinte);color:var(--verde-texto);border-radius:99px;padding:2px 4px 2px 10px;font-size:.72rem;font-weight:600}
+.eq-chip-x{background:none;border:none;color:inherit;cursor:pointer;font-size:.9rem;line-height:1;padding:2px 6px;border-radius:99px}
+.eq-chip-x:hover{background:var(--relleno)}
+.eq-btn-chico{padding:6px 12px;font-size:.76rem}
+.eq-vacio{font-size:.8rem;color:var(--texto-debil);padding:6px 0}
+.eq-ayuda{font-size:.72rem;color:var(--texto-debil);margin:-6px 0 10px}
+.eq-error{font-size:.78rem;color:var(--rojo-texto);margin:4px 0 10px}
+.eq-error:empty{display:none}
+/* Flujos: lista vertical con una linea guia a la izquierda. */
+.eq-flujos-bajada{margin:4px 0 0;font-size:.8rem;color:var(--texto-debil)}
+.eq-flujos-selector{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+.eq-flujo-tab{background:var(--relleno);color:var(--texto-debil);border:1px solid var(--borde);border-radius:99px;padding:5px 12px;font-size:.76rem;font-weight:600;cursor:pointer;font-family:inherit}
+.eq-flujo-tab:hover{background:var(--hover);color:var(--texto)}
+.eq-flujo-tab.eq-activo{background:var(--azul-tinte);color:var(--azul-claro);border-color:var(--azul)}
+.eq-pasos{list-style:none;margin:0 0 8px;padding:0 0 0 22px;position:relative}
+.eq-pasos::before{content:'';position:absolute;left:7px;top:10px;bottom:10px;width:2px;background:var(--borde-fuerte)}
+.eq-paso{position:relative;background:var(--superficie);border:1px solid var(--borde);border-radius:10px;padding:10px 14px;margin-bottom:8px}
+.eq-paso::before{content:'';position:absolute;left:-19px;top:15px;width:8px;height:8px;border-radius:99px;background:var(--superficie-honda);border:2px solid var(--borde-fuerte)}
+.eq-paso-link{cursor:pointer}
+.eq-paso-link:hover{background:var(--hover);border-color:var(--azul)}
+.eq-paso-link:focus-visible{outline:2px solid var(--azul);outline-offset:2px}
+.eq-paso-destacado{background:var(--verde-tinte);border-color:var(--verde-tinte)}
+.eq-paso-destacado.eq-paso-link:hover{background:var(--verde-tinte);border-color:var(--verde-texto)}
+.eq-paso-cab{display:flex;align-items:baseline;gap:4px 10px;flex-wrap:wrap}
+.eq-paso-num{color:var(--texto-debil);font-size:.76rem;font-weight:700;font-variant-numeric:tabular-nums}
+.eq-paso-titulo{color:var(--texto-fuerte);font-size:.86rem;font-weight:600;flex:1;min-width:0;overflow-wrap:anywhere}
+.eq-paso-rol{color:var(--azul-claro);font-size:.76rem;font-weight:700;margin-left:auto;white-space:nowrap}
+.eq-paso-detalle{color:var(--texto-debil);font-size:.76rem;line-height:1.45;margin-top:3px}
+.eq-paso-cobros{color:var(--texto-debil);font-size:.72rem;margin-top:4px}
+.eq-paso-ir{color:var(--azul-claro);font-size:.72rem;font-weight:600;margin-top:4px}
+.eq-paso-edicion{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.eq-flujo-vacio{border:1px dashed var(--borde-fuerte);border-radius:10px;padding:16px;font-size:.8rem;color:var(--texto-debil);display:flex;flex-direction:column;align-items:flex-start;gap:10px}
+.eq-check{display:flex;align-items:center;gap:8px;font-size:.8rem;color:var(--texto);margin:2px 0 12px}
+.eq-cobro-fila{display:grid;grid-template-columns:90px 1fr auto;gap:6px;align-items:start}
+@media(max-width:480px){
+  .eq-card{padding:14px}
+  .eq-dia{min-width:44px;height:32px}
+  .eq-paso-rol{margin-left:0;width:100%}
+}
+/* ── Simulador financiero ─────────────────────────────────────────────────────
+   Todo con tokens: no hay ninguna regla `body.light .sim-`. Los semaforos usan
+   los pares tinte/texto de la familia de estados, que llegan a 4,5 en los dos
+   temas. Reusa .fin-card, .fin-card-title, .fin-kpi-label y los botones. */
+.sim-escenarios{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:14px}
+.sim-in{background:var(--fondo-hundido);border:1px solid var(--borde);border-radius:8px;padding:7px 10px;color:var(--texto);font-size:.82rem;font-family:'Inter',sans-serif;min-width:0}
+.sim-in:focus{outline:none;border-color:var(--azul)}
+.sim-in::placeholder{color:var(--texto-debil)}
+.sim-in.sim-usa-default{border-color:var(--ambar-borde)}
+.sim-in-corto{width:92px;text-align:right}
+.sim-in-monto{width:100%;text-align:right}
+.sim-in-nombre{flex:1 1 180px}
+.sim-guardado{font-size:.75rem;color:var(--texto-tenue)}
+.sim-guardado.sim-mal{color:var(--rojo-texto)}
+.sim-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,380px);gap:18px;align-items:start}
+.sim-entradas{min-width:0}
+.sim-resultados{position:sticky;top:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.sim-resultados .fin-card{margin-bottom:0}
+.sim-cab{display:flex;justify-content:space-between;align-items:baseline;gap:6px 12px;flex-wrap:wrap;margin-bottom:10px}
+.sim-cab .fin-card-title{margin-bottom:0}
+.sim-sub{font-size:.76rem;font-weight:700;color:var(--texto-tenue)}
+.sim-origen{font-size:.72rem;color:var(--texto-debil);margin-bottom:8px}
+.sim-origen:empty{display:none}
+.sim-leido{font-size:.75rem;color:var(--texto-tenue);background:var(--relleno);border-radius:8px;padding:8px 10px;margin-top:8px;line-height:1.45}
+.sim-leido:empty{display:none}
+.sim-campo{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;align-items:center;padding:6px 0}
+.sim-campo label{font-size:.8rem;color:var(--texto)}
+.sim-control{display:inline-flex;align-items:center;gap:6px}
+.sim-unidad{font-size:.7rem;font-weight:700;color:var(--texto-debil)}
+.sim-rango{grid-column:1/-1;width:100%;accent-color:var(--azul);margin:2px 0}
+.sim-tipo{padding-bottom:6px;margin-bottom:6px;border-bottom:1px solid var(--borde)}
+.sim-in-forma{width:210px;max-width:100%;cursor:pointer}
+.sim-cobro-nota{grid-column:1/-1;font-size:.72rem;color:var(--texto-debil)}
+.sim-cobro-nota:empty{display:none}
+.sim-meses{overflow-x:auto;margin:6px 0}
+.sim-tabla{width:100%;border-collapse:collapse;font-size:.76rem}
+.sim-tabla th{text-align:right;font-size:.64rem;font-weight:700;color:var(--texto-debil);text-transform:uppercase;letter-spacing:.4px;padding:4px 6px;border-bottom:1px solid var(--borde);white-space:nowrap}
+.sim-tabla td{text-align:right;padding:5px 6px;color:var(--texto);border-bottom:1px solid var(--borde);white-space:nowrap}
+.sim-tabla th:first-child,.sim-tabla td:first-child{text-align:left}
+.sim-tabla td.sim-negativo{color:var(--rojo-texto)}
+.sim-lista{display:flex;flex-direction:column;gap:6px;margin-bottom:10px}
+.sim-fila{display:grid;grid-template-columns:auto minmax(0,1fr) 104px auto;gap:8px;align-items:center}
+.sim-fila-nombre{font-size:.82rem;color:var(--texto);overflow-wrap:anywhere}
+.sim-fila-nota{font-size:.7rem;color:var(--texto-debil)}
+.sim-apagada .sim-fila-nombre{color:var(--texto-debil)}
+.sim-vacio{font-size:.78rem;color:var(--texto-debil);padding:4px 0}
+.sim-switch{appearance:none;-webkit-appearance:none;width:36px;height:20px;border-radius:99px;background:var(--borde-fuerte);position:relative;cursor:pointer;margin:0;transition:background .15s}
+.sim-switch::after{content:'';position:absolute;top:3px;left:3px;width:14px;height:14px;border-radius:50%;background:var(--texto-fuerte);transition:left .15s}
+.sim-switch:checked{background:var(--azul)}
+.sim-switch:checked::after{left:19px}
+.sim-switch:focus-visible{outline:2px solid var(--azul-claro);outline-offset:2px}
+.sim-agregar{display:grid;grid-template-columns:minmax(0,1fr) 104px auto;gap:8px;align-items:center}
+.sim-error{font-size:.75rem;color:var(--rojo-texto);margin-top:6px}
+.sim-error:empty{display:none}
+.sim-aviso{border-radius:10px;padding:10px 12px;font-size:.8rem;line-height:1.45;margin:8px 0}
+.sim-aviso:empty{display:none}
+.sim-aviso-ambar{background:var(--ambar-tinte);color:var(--ambar);border:1px solid var(--ambar-borde)}
+.sim-aviso-clave{font-size:.86rem;font-weight:600;border-width:2px;margin:0}
+.sim-tarjetas{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.sim-tarjeta{background:var(--superficie-honda);border:1px solid var(--borde);border-radius:10px;padding:12px 14px;min-width:0}
+.sim-tarjeta-valor{font-size:1.3rem;font-weight:700;color:var(--texto-fuerte);margin-top:4px;overflow-wrap:anywhere}
+.sim-tarjeta-detalle{font-size:.7rem;color:var(--texto-debil);margin-top:4px;line-height:1.35}
+.sim-positivo{color:var(--verde-texto)}
+.sim-negativo{color:var(--rojo-texto)}
+.sim-arrastre{font-size:.78rem;color:var(--texto-tenue);line-height:1.45}
+.sim-cierre{font-size:.86rem;font-weight:700;line-height:1.45;margin-top:4px}
+.sim-semaforo{display:flex;gap:10px;align-items:flex-start;border-radius:10px;padding:10px 12px;font-size:.8rem;line-height:1.45}
+.sim-semaforo strong{display:block;font-size:.68rem;text-transform:uppercase;letter-spacing:.6px}
+.sim-punto{width:10px;height:10px;border-radius:50%;background:currentColor;flex-shrink:0;margin-top:4px}
+.sim-verde{background:var(--verde-tinte);color:var(--verde-texto)}
+.sim-rojo{background:var(--rojo-tinte);color:var(--rojo-texto)}
+.sim-ambar{background:var(--ambar-tinte);color:var(--ambar)}
+.sim-neutro{background:var(--relleno);color:var(--texto-debil)}
+.sim-numeros{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.sim-numero{font-size:.72rem;color:var(--texto-debil)}
+.sim-numero b{display:block;font-size:1.05rem;color:var(--texto-fuerte);margin-top:2px}
+.sim-meta{font-size:.8rem;color:var(--texto);line-height:1.5;margin-top:6px}
+.sim-palanca-fila{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:8px 0}
+.sim-palanca{background:var(--relleno);color:var(--texto-tenue);border:1px solid var(--borde);border-radius:99px;padding:7px 14px;font-size:.8rem;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;white-space:nowrap}
+.sim-palanca[aria-pressed="true"]{background:var(--azul-tinte);color:var(--azul-claro);border-color:var(--azul)}
+.sim-palanca-detalle{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:.76rem;color:var(--texto-tenue)}
+.sim-mini{display:none}
+@media(max-width:900px){
+  .sim-layout{grid-template-columns:1fr}
+  .sim-resultados{position:static;order:-1}
+  .sim-mini{display:flex;justify-content:space-between;gap:10px;position:sticky;top:60px;z-index:5;background:var(--superficie);border:1px solid var(--borde);border-radius:10px;padding:8px 12px;margin-bottom:10px;font-size:.78rem;color:var(--texto-tenue);box-shadow:0 4px 12px var(--sombra)}
+  .sim-mini b{color:var(--texto-fuerte)}
+  .sim-mini b.sim-positivo{color:var(--verde-texto)}
+  .sim-mini b.sim-negativo{color:var(--rojo-texto)}
+}
+@media(max-width:480px){
+  .sim-fila{grid-template-columns:auto minmax(0,1fr) 88px auto}
+  .sim-agregar{grid-template-columns:minmax(0,1fr) 88px}
+  .sim-agregar .btn-ghost{grid-column:1/-1}
+  .sim-tarjeta-valor{font-size:1.1rem}
+  .sim-in-forma{width:170px}
+}
 </style>
 </head>
 <body>
+<div class="fb-print" id="fb-print"></div>
 <div class="sidebar-backdrop" id="sidebar-backdrop" onclick="closeSidebar()"></div>
 <header class="mobile-header" id="mobile-header">
   <img id="mobile-header-logo" src="https://raw.githubusercontent.com/Scalerics-org/scalerics-assets/main/logo_full_alt.png" alt="Scalerics">
@@ -1539,24 +2187,36 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     <img id="sidebar-logo" src="https://raw.githubusercontent.com/Scalerics-org/scalerics-assets/main/logo_full_alt.png" alt="Scalerics">
   </div>
   <div class="nav-scroll">
-  <div class="nav-section-label">LLAMADAS</div>
-  <div class="nav-item active" id="nav-cola" onclick="showPanel('cola')"><i data-lucide="inbox" class="nav-icon"></i> Cola</div>
-  <div class="nav-item" id="nav-seguimientos" onclick="showPanel('seguimientos')"><i data-lucide="bookmark" class="nav-icon"></i> Seguimientos</div>
+  <!-- Orden y grupos definidos por Juan el 14/9. Al entrar igual se abre Meta Ads. -->
+  <div class="nav-section-label">CALENDARIO</div>
+  <div class="nav-item active" id="nav-cal" onclick="showPanel('cal')"><i data-lucide="calendar" class="nav-icon"></i> Calendario</div>
+  <div class="nav-section-label">MARKETING</div>
   <div class="nav-item" id="nav-meta" onclick="showPanel('meta');clearMetaBadge()"><i data-lucide="instagram" class="nav-icon"></i> Meta Ads <span id="meta-badge" style="display:none;background:#e1306c;color:#fff;font-size:.65rem;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:4px">NEW</span></div>
-  <div class="nav-section-label">VENTAS</div>
-  <div class="nav-item" id="nav-pipeline" onclick="showPanel('pipeline')"><i data-lucide="trending-up" class="nav-icon"></i> Pre-clientes</div>
-  <div class="nav-item" id="nav-demos" onclick="showPanel('demos')"><i data-lucide="monitor-play" class="nav-icon"></i> Demos</div>
-  <div class="nav-item" id="nav-clientes" onclick="showPanel('clientes')"><i data-lucide="users" class="nav-icon"></i> Clientes</div>
-  <div class="nav-section-label">GESTIÓN</div>
-  <div class="nav-item" id="nav-tasks" onclick="showPanel('tasks')"><i data-lucide="check-square" class="nav-icon"></i> Tareas</div>
-  <div class="nav-item" id="nav-projects" onclick="showPanel('projects')"><i data-lucide="target" class="nav-icon"></i> Proyectos</div>
-  <div class="nav-item" id="nav-notion_clients" onclick="showPanel('notion_clients')"><i data-lucide="handshake" class="nav-icon"></i> Pipeline Notion</div>
-  <div class="nav-item" id="nav-wa" onclick="showPanel('wa')"><i data-lucide="message-circle" class="nav-icon"></i> WhatsApp</div>
-  <div class="nav-item" id="nav-cal" onclick="showPanel('cal')"><i data-lucide="calendar" class="nav-icon"></i> Calendario</div>
+  <div class="nav-item" id="nav-marketing" onclick="showPanel('marketing')"><i data-lucide="target" class="nav-icon"></i> Inteligencia marketing</div>
+  <div class="nav-section-label">FINANZAS</div>
   <div class="nav-item" id="nav-finanzas" onclick="showPanel('finanzas')"><i data-lucide="wallet" class="nav-icon"></i> Finanzas</div>
-  <div class="nav-item" id="nav-metrics" onclick="showPanel('metrics')"><i data-lucide="bar-chart-2" class="nav-icon"></i> Métricas</div>
-  <div class="nav-item" id="nav-marketing" onclick="showPanel('marketing')"><i data-lucide="target" class="nav-icon"></i> Marketing</div>
+  <div class="nav-item" id="nav-simulador" onclick="showPanel('simulador')"><i data-lucide="calculator" class="nav-icon"></i> Simulador financiero</div>
+  <div class="nav-section-label">VENTAS</div>
+  <div class="nav-item" id="nav-seg_leads" onclick="showPanel('seg_leads')"><i data-lucide="phone-call" class="nav-icon"></i> Seguimiento de leads</div>
+  <div class="nav-item" id="nav-wa" onclick="showPanel('wa')"><i data-lucide="message-circle" class="nav-icon"></i> WhatsApp</div>
+  <div class="nav-item" id="nav-notion_clients" onclick="showPanel('notion_clients')"><i data-lucide="handshake" class="nav-icon"></i> Proceso de venta</div>
+  <div class="nav-item" id="nav-demos" onclick="showPanel('demos')"><i data-lucide="monitor-play" class="nav-icon"></i> Demos</div>
+  <div class="nav-item" id="nav-plantillas" onclick="showPanel('plantillas')"><i data-lucide="message-square-text" class="nav-icon"></i> Plantillas</div>
+  <div class="nav-section-label">OPERACIÓN</div>
+  <div class="nav-item" id="nav-clientes" onclick="showPanel('clientes')"><i data-lucide="users" class="nav-icon"></i> Clientes</div>
+  <div class="nav-item" id="nav-projects" onclick="showPanel('projects')"><i data-lucide="target" class="nav-icon"></i> Proyectos</div>
+  <div class="nav-item" id="nav-tasks" onclick="showPanel('tasks')"><i data-lucide="check-square" class="nav-icon"></i> Tareas</div>
+  <div class="nav-item" id="nav-daily" onclick="showPanel('daily')"><i data-lucide="clipboard-list" class="nav-icon"></i> Daily Programador</div>
+  <div class="dy-nav-personas" id="dy-nav-personas"></div>
+  <div class="nav-item" id="nav-daily_admin" onclick="showPanel('daily_admin')"><i data-lucide="clipboard-check" class="nav-icon"></i> Daily Admin</div>
+  <div class="dy-nav-personas" id="dya-nav-personas"></div>
   <div class="nav-item" id="nav-activity" onclick="showPanel('activity')"><i data-lucide="clock" class="nav-icon"></i> Actividad</div>
+  <div class="nav-section-label">RECURSOS HUMANOS</div>
+  <div class="nav-item" id="nav-equipo" onclick="showPanel('equipo')"><i data-lucide="network" class="nav-icon"></i> Organigrama</div>
+  <div class="nav-item" id="nav-ausencias" onclick="showPanel('ausencias')"><i data-lucide="calendar-clock" class="nav-icon"></i> Ausencias</div>
+  <div class="nav-section-label">CAPTACIÓN</div>
+  <div class="nav-item" id="nav-cola" onclick="showPanel('cola')"><i data-lucide="inbox" class="nav-icon"></i> Outbound</div>
+  <div class="nav-item" id="nav-metrics" onclick="showPanel('metrics')"><i data-lucide="bar-chart-2" class="nav-icon"></i> Inteligencia comercial</div>
   <div class="nav-item" id="nav-sdr" onclick="showPanel('sdr')"><i data-lucide="phone-call" class="nav-icon"></i> SDR</div>
   </div>
   <div class="sidebar-bottom">
@@ -1573,18 +2233,21 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 </div>
 
 <div class="main">
+  <div class="frase-equipo" role="note">
+    <img class="frase-equipo-logo" src="https://raw.githubusercontent.com/Scalerics-org/scalerics-assets/main/logo_full_alt.png" alt="Scalerics">
+    <p class="frase-equipo-texto">La IA avanza rápido, es cierto. Pero el mercado la entiende lento. <strong>Ahí están nuestras oportunidades.</strong></p>
+  </div>
   <!-- ======= COLA PANEL ======= -->
-  <div id="cola-panel" class="panel active">
+  <div id="cola-panel" class="panel">
     <div class="page-header">
       <div>
-        <h1>Cola de llamadas</h1>
+        <h1>Outbound</h1>
         <div class="page-date" id="cola-date"></div>
       </div>
       <button class="export-btn" onclick="exportCSV()"><i data-lucide="download" class="btn-icon"></i> Exportar CSV</button>
     </div>
     <div class="stats">
       <div class="stat-card"><div class="stat-label">Sin contactar</div><div class="stat-val" id="stat-cola">—</div></div>
-      <div class="stat-card"><div class="stat-label">Seguimientos</div><div class="stat-val blue" id="stat-seguimientos">—</div></div>
       <div class="stat-card"><div class="stat-label">No le interesa</div><div class="stat-val" id="stat-no-interesa">—</div></div>
     </div>
     <div class="filters">
@@ -1615,30 +2278,6 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   </div>
 
   <!-- ======= SEGUIMIENTOS PANEL ======= -->
-  <div id="seguimientos-panel" class="panel">
-    <div class="page-header">
-      <div>
-        <h1>Seguimientos</h1>
-        <div class="page-date">Leads que pidieron que los llamen después</div>
-      </div>
-    </div>
-    <div class="filters">
-      <select class="filter-select" id="seg-cohorte-filter" onchange="setSegCohorte(this.value)">
-        <option value="">Todas las cohortes</option>
-        <option value="meta">Meta Ads</option>
-        <option value="sin_web">Padrón sin web</option>
-        <option value="discovery">Discovery</option>
-        <option value="calendly_gcal">Calendly</option>
-      </select>
-      <span id="seg-count" style="color:#64748b;font-size:.8rem;align-self:center;margin-left:auto"></span>
-    </div>
-    <div class="table-wrap">
-      <div class="table-header no-cb">
-        <span>Negocio</span><span>Teléfono</span><span>Callback</span><span>Notas</span><span>Acciones</span>
-      </div>
-      <div id="seguimientos-body"></div>
-    </div>
-  </div>
 
   <!-- ======= META ADS PANEL ======= -->
   <div id="meta-panel" class="panel">
@@ -1649,15 +2288,20 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       </div>
     </div>
     <div class="filters">
+      <div class="mm-nav-mes" id="meta-mes-nav">
+        <button class="cal-nav-btn" id="meta-mes-ant" onclick="mmMes(-1)" title="Mes anterior">&larr;</button>
+        <span id="meta-mes-label"></span>
+        <button class="cal-nav-btn" id="meta-mes-sig" onclick="mmMes(1)" title="Mes siguiente">&rarr;</button>
+        <button class="cal-today-btn" onclick="mmMesHoy()">Este mes</button>
+      </div>
       <input class="search-box" id="meta-search-input" placeholder="🔍 Buscar..." oninput="metaSearch(this.value)">
-      <select class="filter-select" id="meta-month-filter" onchange="metaMonthFilter(this.value)">
-        <option value="">Todos los meses</option>
-      </select>
       <select class="filter-select" id="meta-estado-filter" onchange="metaEstadoFilter(this.value)">
         <option value="">Todos los estados</option>
       </select>
       <span id="meta-count" style="color:#64748b;font-size:.8rem;align-self:center;margin-left:auto"></span>
     </div>
+    <div class="mm-resumen" id="meta-mes-resumen"></div>
+    <div class="mm-buscar-todos" id="meta-mes-buscar-todos"></div>
     <div class="table-wrap">
       <div class="table-header no-cb" style="grid-template-columns:1.8fr 1fr 1.2fr 1.2fr 0.9fr 0.8fr 1.1fr">
         <span>Nombre / Negocio</span><span>Teléfono</span><span>Qué busca</span><span>Presupuesto</span><span>Ciudad</span><span style="cursor:pointer" onclick="toggleMetaSort()">Fecha <span id="meta-sort-icon">↓</span></span><span>Acciones</span>
@@ -1666,32 +2310,36 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     </div>
   </div>
 
-  <!-- ======= PIPELINE PANEL ======= -->
-  <div id="pipeline-panel" class="panel">
-    <div class="page-header">
-      <div>
-        <h1>Pre-clientes</h1>
-        <div class="page-date">En qué etapa está cada venta en curso</div>
-      </div>
-      <div id="pre-total" style="color:#64748b;font-size:.85rem"></div>
-    </div>
-    <div class="filters">
-      <input class="search-box" id="pipeline-search-input" placeholder="🔍 Buscar..." oninput="pipelineSearch(this.value)">
-    </div>
-    <div id="pre-board" class="pre-board"></div>
-  </div>
-
   <!-- ======= DEMOS PANEL ======= -->
   <div id="demos-panel" class="panel">
     <div class="page-header">
       <div>
         <h1>Registro de demos</h1>
-        <div class="page-date">Cada demo dada, quién la tuvo y cómo viene</div>
+        <div class="page-date">Las demos mes a mes, con el presupuesto que se envió en cada una. Las de la planilla de leads entran solas, con su color.</div>
       </div>
       <button class="export-btn" onclick="abrirNuevaDemo()">+ Registrar demo</button>
     </div>
-    <div class="filters">
+    <div class="filters demo-filtros">
+      <div class="demo-nav-mes" id="demos-nav-mes">
+        <button class="cal-nav-btn" id="demos-mes-ant" onclick="demosMes(-1)" title="Mes anterior">&larr;</button>
+        <span id="demos-mes-label"></span>
+        <button class="cal-nav-btn" id="demos-mes-sig" onclick="demosMes(1)" title="Mes siguiente">&rarr;</button>
+        <button class="cal-today-btn" onclick="demosMesHoy()">Hoy</button>
+      </div>
       <input class="search-box" id="demos-search" placeholder="🔍 Buscar por cliente..." oninput="filtrarDemos(this.value)">
+      <select class="filter-select" id="demos-estado-filtro" onchange="demosFiltrarEstado(this.value)">
+        <option value="">Todos los estados</option>
+        <option value="agendada">Demo agendada</option>
+        <option value="realizada">Demo realizada</option>
+        <option value="no_cerro">Hubo demo y no cerró</option>
+        <option value="venta">Venta concretada</option>
+        <option value="mano">Cargada a mano</option>
+      </select>
+      <select class="filter-select" id="demos-presu-filtro" onchange="demosFiltrarPresupuesto(this.value)">
+        <option value="">Todas</option>
+        <option value="con">Con presupuesto</option>
+        <option value="sin">Sin presupuesto</option>
+      </select>
     </div>
     <div id="demos-body"></div>
   </div>
@@ -1701,12 +2349,13 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     <div class="page-header">
       <div>
         <h1>Clientes</h1>
-        <div class="page-date">Quién se ocupa de cada cliente activo</div>
+        <div class="page-date">Quién se ocupa de cada cliente activo y cuánto pagó</div>
       </div>
+      <button class="export-btn" onclick="cliNuevoAbrir()">+ Nuevo cliente</button>
     </div>
     <div class="table-wrap">
       <div class="table-header tbl-cli">
-        <span>Negocio</span><span>Estado</span><span>Día a día</span><span>Mantenimiento</span><span>Cobros</span><span>Acciones</span>
+        <span>Negocio</span><span>Estado</span><span>Pagó</span><span>Día a día</span><span>Mantenimiento</span><span>Cobros</span><span>Acciones</span>
       </div>
       <div id="clientes-body"></div>
     </div>
@@ -1714,51 +2363,72 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 
   <!-- ======= WHATSAPP PANEL ======= -->
   <div id="wa-panel" class="panel">
-    <div class="page-header">
+    <div class="page-header wa-page-header">
       <div>
         <h1>WhatsApp</h1>
         <div class="page-date">Conversaciones del bot</div>
       </div>
     </div>
-    <div class="wa-container">
-      <div class="wa-list">
-        <div class="wa-list-header">Leads</div>
-        <div id="wa-lead-list"><div class="wa-no-leads">Cargando...</div></div>
-      </div>
-      <div class="wa-chat" id="wa-chat-area">
-        <div class="wa-empty" id="wa-empty-state">← Seleccioná un lead para ver la conversación</div>
-        <div id="wa-chat-content" style="display:none;flex:1;flex-direction:column;min-height:0;overflow:hidden">
-          <div class="wa-chat-header">
-            <div class="wa-chat-info">
-              <div class="wa-chat-name" id="wa-chat-name"></div>
-              <div class="wa-chat-phone" id="wa-chat-phone"></div>
-            </div>
-            <span class="wa-pausa-badge" id="wa-pausa-badge" style="display:none"></span>
-            <button class="wa-bot-switch" id="wa-bot-switch" onclick="toggleBot()" title="Prender o apagar el bot para este lead">
-              <span class="wa-bot-dot"></span><span id="wa-bot-label">Bot</span>
-            </button>
-            <span class="wa-human-badge" id="wa-human-badge" style="display:none">👤 Humano activo</span>
-            <button class="wa-release-btn" id="wa-release-btn" style="display:none" onclick="releaseToBot()">🤖 Devolver al bot</button>
-          </div>
-          <div class="wa-messages" id="wa-messages"></div>
-          <div class="wa-input-row">
-            <input class="wa-input" id="wa-input" placeholder="Escribir mensaje..." onkeydown="if(event.key==='Enter')sendWaMessage()">
-            <button class="wa-send-btn" onclick="sendWaMessage()">Enviar</button>
-          </div>
-          <div id="wa-templates-panel" style="border-top:1px solid #1e293b;padding:10px;background:#0d1525">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-              <span style="font-size:.75rem;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.5px">Plantillas</span>
-              <button onclick="toggleWaTemplateForm()" style="font-size:.72rem;background:#1e293b;border:none;color:#94a3b8;padding:3px 8px;border-radius:4px;cursor:pointer">+ Nueva</button>
-            </div>
-            <div id="wa-template-form" style="display:none;margin-bottom:8px">
-              <input id="wa-tmpl-name" placeholder="Nombre de la plantilla" style="width:100%;background:#111827;border:1px solid #1e293b;color:#e2e8f0;padding:5px 8px;border-radius:4px;font-size:.78rem;margin-bottom:4px;box-sizing:border-box">
-              <textarea id="wa-tmpl-body" rows="2" placeholder="Texto del mensaje..." style="width:100%;background:#111827;border:1px solid #1e293b;color:#e2e8f0;padding:5px 8px;border-radius:4px;font-size:.78rem;resize:none;margin-bottom:4px;box-sizing:border-box"></textarea>
-              <button onclick="saveWaTemplate()" style="font-size:.75rem;background:#0088cc;border:none;color:#fff;padding:4px 12px;border-radius:4px;cursor:pointer">Guardar</button>
-            </div>
-            <div id="wa-template-list" style="max-height:120px;overflow-y:auto"></div>
+    <div class="wa-container" id="wa-container">
+      <aside class="wa-list">
+        <div class="wa-list-header">
+          <div class="wa-list-title">Chats <span class="wa-count" id="wa-count"></span></div>
+          <label class="wa-search">
+            <i data-lucide="search" class="wa-search-icono"></i>
+            <input id="wa-buscar" type="search" placeholder="Buscar por nombre o teléfono" autocomplete="off" oninput="waFiltrar(this.value)">
+          </label>
+        </div>
+        <div id="wa-lead-list" class="wa-lead-list"><div class="wa-cargando">Cargando conversaciones…</div></div>
+      </aside>
+      <section class="wa-chat" id="wa-chat-area">
+        <div class="wa-empty" id="wa-empty-state">
+          <div class="wa-vacio">
+            <i data-lucide="messages-square" class="wa-vacio-icono"></i>
+            <div class="wa-vacio-titulo">Elegí una conversación</div>
+            <div class="wa-vacio-detalle">Tocá un chat de la lista para leerlo y responder.</div>
           </div>
         </div>
-      </div>
+        <div id="wa-chat-content" class="wa-chat-content" style="display:none">
+          <div class="wa-chat-header">
+            <button class="wa-volver" id="wa-volver" type="button" onclick="waVolver()" title="Volver a la lista" aria-label="Volver a la lista"><i data-lucide="arrow-left"></i></button>
+            <div class="wa-avatar wa-avatar-chico" id="wa-chat-avatar"></div>
+            <div class="wa-chat-info">
+              <div class="wa-chat-name" id="wa-chat-name"></div>
+              <div class="wa-chat-sub">
+                <span class="wa-chat-phone" id="wa-chat-phone"></span>
+                <span class="wa-state-badge" id="wa-chat-estado"></span>
+              </div>
+            </div>
+            <div class="wa-chat-acciones">
+              <span class="wa-pausa-badge" id="wa-pausa-badge" style="display:none"></span>
+              <button class="wa-bot-switch" id="wa-bot-switch" onclick="toggleBot()" title="Prender o apagar el bot para este lead">
+                <span class="wa-bot-dot"></span><span id="wa-bot-label">Bot</span>
+              </button>
+              <span class="wa-human-badge" id="wa-human-badge" style="display:none">👤 Humano activo</span>
+              <button class="wa-release-btn" id="wa-release-btn" style="display:none" onclick="releaseToBot()">🤖 Devolver al bot</button>
+            </div>
+          </div>
+          <div class="wa-messages" id="wa-messages"></div>
+          <div id="wa-templates-panel" class="wa-plantillas" style="display:none">
+            <div class="wa-plantillas-head">
+              <span class="wa-plantillas-titulo">Plantillas</span>
+              <button type="button" class="wa-plantillas-nueva" onclick="toggleWaTemplateForm()">+ Nueva</button>
+            </div>
+            <div id="wa-template-form" class="wa-tmpl-form" style="display:none">
+              <input id="wa-tmpl-name" class="wa-tmpl-campo" placeholder="Nombre de la plantilla">
+              <textarea id="wa-tmpl-body" class="wa-tmpl-campo" rows="2" placeholder="Texto del mensaje..."></textarea>
+              <button type="button" class="wa-tmpl-guardar" onclick="saveWaTemplate()">Guardar</button>
+            </div>
+            <div id="wa-template-list" class="wa-tmpl-lista"></div>
+          </div>
+          <div class="wa-input-row">
+            <button type="button" class="wa-icono-btn" id="wa-plantillas-btn" onclick="waTogglePlantillas()" title="Plantillas" aria-label="Plantillas"><i data-lucide="file-text"></i></button>
+            <textarea class="wa-input" id="wa-input" rows="1" placeholder="Escribí un mensaje" onkeydown="waTeclaInput(event)" oninput="waAjustarAlto(this)"></textarea>
+            <button class="wa-send-btn" id="wa-send-btn" type="button" onclick="sendWaMessage()" title="Enviar (Enter)" aria-label="Enviar"><i data-lucide="send"></i></button>
+          </div>
+          <div class="wa-input-ayuda">Enter para enviar · Shift+Enter para un salto de línea</div>
+        </div>
+      </section>
     </div>
   </div>
 
@@ -1774,7 +2444,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
         <input type="text" id="task-search" class="search-input" placeholder="🔍 Buscar tarea..." oninput="_onTaskSearch(this.value)">
         <div class="upick-wrap">
           <div class="upick-trigger" id="upick-filter-trigger" onclick="_upickToggle('filter')">
-            <div class="upick-av" id="upick-filter-av" style="background:#1e293b;color:#475569;font-size:.8rem">👤</div>
+            <div class="upick-av" id="upick-filter-av" style="background:var(--relleno);color:var(--texto-debil);font-size:.8rem">👤</div>
             <span class="upick-label" id="upick-filter-label">Todos los usuarios</span>
             <span class="upick-chevron">▾</span>
           </div>
@@ -1786,7 +2456,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
         <button class="pill" id="pill-todo" onclick="filterTasks('todo',this)">Pendientes <span class="pill-count" id="pill-count-todo">0</span></button>
         <button class="pill" id="pill-inprogress" onclick="filterTasks('in_progress',this)">En progreso <span class="pill-count" id="pill-count-inprogress">0</span></button>
         <button class="pill" id="pill-done" onclick="filterTasks('done',this)">Hechas <span class="pill-count" id="pill-count-done">0</span></button>
-        <div style="width:1px;height:20px;background:#1e293b;margin:0 2px;flex-shrink:0"></div>
+        <div style="width:1px;height:20px;background:var(--borde);margin:0 2px;flex-shrink:0"></div>
         <button class="pill warn" id="pill-high" onclick="filterTasksQuick('high',this)">⚠ Alta prioridad <span class="pill-count" id="pill-count-high">0</span></button>
         <button class="pill orange" id="pill-overdue" onclick="filterTasksQuick('overdue',this)">🕐 Vencidas <span class="pill-count" id="pill-count-overdue">0</span></button>
       </div>
@@ -1812,25 +2482,38 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <!-- ======= PIPELINE NOTION PANEL ======= -->
   <div id="notion_clients-panel" class="panel">
     <div class="panel-head">
-      <h1>Pipeline Notion</h1>
-      <p class="panel-sub">Espejo de la database Clientes. Son las fichas que el equipo maneja en Notion, no los leads del CRM. Para moverlas, abrilas allá.</p>
+      <h1>Proceso de venta</h1>
+      <p class="panel-sub">Espejo de la database Clientes. Son las fichas que el equipo maneja en Notion, no los leads del CRM. Conectá cada ficha con su persona del CRM: cuando llega a Presupuesto Aceptado, esa persona pasa a Clientes. <span class="nc-ayuda-mouse">Arrastrá una ficha a otra columna para cambiarle el estado: se guarda en Notion.</span><span class="nc-ayuda-touch">Desde el celular no se pueden arrastrar: movelas desde la compu o abrilas en Notion.</span></p>
     </div>
     <div id="notion-clients-board" class="kanban"></div>
+    <div class="modal-overlay" id="nc-vinculo-modal" onclick="if(event.target===this)_ncCerrarVinculo()">
+      <div class="modal">
+        <h3>Conectar con el CRM</h3>
+        <p><strong id="nc-vinculo-ficha"></strong>: <span id="nc-vinculo-actual"></span> Cuando la ficha llegue a Presupuesto Aceptado, esa persona pasa a Clientes.</p>
+        <input id="nc-vinculo-buscar" class="search-box nc-vinculo-buscar" placeholder="Buscar por nombre" oninput="_ncBuscarPersonaTecla(this.value)" autocomplete="off">
+        <div id="nc-vinculo-resultados" class="nc-vinculo-resultados"></div>
+        <div id="nc-vinculo-error" class="nc-vinculo-error"></div>
+        <div class="nc-vinculo-acciones">
+          <button id="nc-vinculo-quitar" class="btn-ghost" onclick="_ncGuardarVinculo(null)">Desconectar</button>
+          <button class="btn-ghost" onclick="_ncCerrarVinculo()">Cerrar</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- ======= CALENDAR PANEL ======= -->
-  <div id="cal-panel" class="panel">
+  <div id="cal-panel" class="panel active">
     <div class="cal-header">
       <h1 id="cal-week-label">Calendario</h1>
-      <span class="cal-count" id="cal-count"></span>
+      <span class="cal-count" id="cal-count" aria-live="polite"></span>
       <div style="display:flex;gap:8px;align-items:center;flex-shrink:0;margin-left:auto">
         <div class="cal-view-toggle">
           <button id="cal-view-mes" class="cal-view-btn active" onclick="calSetView('mes')">Mes</button>
           <button id="cal-view-semana" class="cal-view-btn" onclick="calSetView('semana')">Semana</button>
         </div>
-        <button class="cal-nav-btn" onclick="calShift(-1)">←</button>
+        <button class="cal-nav-btn" onclick="calShift(-1)" title="Anterior" aria-label="Anterior">←</button>
         <button class="cal-today-btn" onclick="calHoy()">Hoy</button>
-        <button class="cal-nav-btn" onclick="calShift(1)">→</button>
+        <button class="cal-nav-btn" onclick="calShift(1)" title="Siguiente" aria-label="Siguiente">→</button>
         <a href="https://calendly.com/scalerics/consultoriagratuita" target="_blank" class="cal-new-btn" style="background:#0f2a1a;border:1px solid #10b981;color:#10b981;text-decoration:none">+ Calendly</a>
       </div>
     </div>
@@ -1838,15 +2521,17 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       <span><i style="background:#0088cc"></i> Del CRM</span>
       <span><i style="background:#10b981"></i> De Google</span>
       <span><i style="background:#f59e0b"></i> De Calendly &mdash; se reprograma allá</span>
-      <span style="margin-left:auto">Arrastrá una reunión para moverla</span>
+      <span class="cal-hint-escritorio" style="margin-left:auto">Arrastrá una reunión para moverla</span>
+      <span class="cal-hint-movil">Deslizá el calendario para cambiar de mes</span>
     </div>
     <div id="cal-error" class="cal-error" style="display:none"></div>
     <div id="cal-days" class="cal-days"><div class="cal-loading">Cargando calendario...</div></div>
-    <div id="cal-day-events-mobile" style="display:none;margin-top:12px;padding:0 4px"></div>
+    <div id="cal-day-events-mobile"></div>
   </div>
 
   <!-- ======= FINANZAS PANEL ======= -->
   <div id="finanzas-panel" class="panel">
+    <div class="fin-aviso-sl" id="fin-solo-lectura" style="display:none">Modo solo lectura: podés ver y generar balances</div>
     <div class="fin-toolbar">
       <div class="fin-nav-mes" id="fin-nav-mes">
         <button class="cal-nav-btn" onclick="finMes(-1)" title="Mes anterior">&larr;</button>
@@ -1856,7 +2541,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       </div>
       <span class="fin-cerrado" id="fin-cerrado" style="display:none">
         Mes cerrado
-        <button class="cal-today-btn" onclick="finReabrirMes()">Reabrir mes</button>
+        <button class="cal-today-btn" id="fin-btn-reabrir" onclick="finReabrirMes()">Reabrir mes</button>
       </span>
       <select id="fin-rango" class="filter-select" onchange="_finRangoCambio()">
         <option value="mes" selected>Mes actual</option>
@@ -1870,8 +2555,9 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
         <button class="pill" id="fin-tab-fijos" onclick="finVista('fijos')">Fijos</button>
         <button class="pill" id="fin-tab-iva" onclick="finVista('iva')">IVA</button>
         <button class="pill" id="fin-tab-pauta" onclick="finVista('pauta')">Pauta</button>
+        <button class="pill" id="fin-tab-balance" onclick="finVista('balance')">Balance</button>
       </div>
-      <button class="btn-primary" onclick="abrirMovimiento()">
+      <button class="btn-primary" id="fin-btn-movimiento" onclick="abrirMovimiento()">
         <i data-lucide="plus" class="nav-icon"></i> Movimiento
       </button>
     </div>
@@ -1894,12 +2580,13 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       <div class="fin-card">
         <div class="fin-card-title" style="display:flex;align-items:center;gap:10px">
           Lo que falta cobrar
-          <button class="cal-today-btn" onclick="abrirPendiente()">+ Agregar</button>
+          <button class="cal-today-btn" id="fin-btn-pendiente" onclick="abrirPendiente()">+ Agregar</button>
         </div>
         <div id="fin-cobrar"></div></div>
     </div>
 
     <div id="fin-vista-fijos" style="display:none">
+      <div class="fin-kpis" id="fin-fijos-totales"></div>
       <div class="fin-card"><div class="fin-card-title">Gastos e ingresos fijos</div>
         <div id="fin-fijos"></div></div>
     </div>
@@ -1914,22 +2601,305 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       <div class="fin-card"><div class="fin-card-title">Qué compró la pauta</div>
         <div id="fin-pauta"></div></div>
     </div>
+
+    <div id="fin-vista-balance" style="display:none">
+      <div class="fin-card">
+        <div class="fin-card-title">Balance</div>
+        <div class="fb-controles">
+          <label class="fb-label">Tipo
+            <select id="fb-tipo" class="filter-select">
+              <option value="blanco" selected>En blanco (contable)</option>
+              <option value="interno">Interno (todo)</option>
+            </select>
+          </label>
+          <label class="fb-label">Período
+            <select id="fb-preset" class="filter-select" onchange="finBalPreset()">
+              <option value="anio" selected>Este año</option>
+              <option value="inicio">Desde el inicio</option>
+              <option value="personalizado">Personalizado</option>
+            </select>
+          </label>
+          <span class="fb-fechas" id="fb-fechas" style="display:none">
+            <label class="fb-label">Desde <input type="date" id="fb-desde" class="fb-campo"></label>
+            <label class="fb-label">Hasta <input type="date" id="fb-hasta" class="fb-campo"></label>
+          </span>
+          <button class="btn-primary" id="fb-generar" onclick="finBalGenerar()">Generar balance hasta el momento</button>
+          <button class="btn-ghost" id="fb-imprimir" onclick="finBalImprimir()" style="display:none">Imprimir / PDF</button>
+        </div>
+        <div class="fb-ayuda">En blanco: solo lo que se contabiliza (lo facturado, con IVA, y los pagos de impuestos). Interno: todo, y en cada total cuánto es en blanco y cuánto no.</div>
+      </div>
+      <div id="fin-balance"></div>
+    </div>
+  </div>
+
+  <!-- ======= SIMULADOR FINANCIERO PANEL ======= -->
+  <div id="simulador-panel" class="panel">
+    <div class="page-header">
+      <div>
+        <h1>Simulador financiero</h1>
+        <div class="page-date">Probá decisiones antes de tomarlas. Todo en USD y sobre una copia: nada de esto toca Finanzas.</div>
+      </div>
+    </div>
+
+    <div class="sim-escenarios">
+      <select id="sim-escenarios" class="filter-select" aria-label="Escenarios guardados">
+        <option value="">Escenarios guardados</option>
+      </select>
+      <button class="btn-ghost" type="button" onclick="simAbrir()">Abrir</button>
+      <button class="btn-ghost" type="button" onclick="simBorrarEscenario()">Borrar escenario</button>
+      <input type="text" id="sim-nombre" class="sim-in sim-in-nombre" maxlength="80" placeholder="Nombre del escenario" aria-label="Nombre del escenario">
+      <button class="btn-primary" type="button" onclick="simGuardar()">Guardar</button>
+      <button class="btn-ghost" type="button" onclick="simRestablecer()">Restablecer</button>
+      <span class="sim-guardado" id="sim-guardado" role="status"></span>
+    </div>
+    <div class="sim-aviso sim-aviso-ambar" id="sim-aviso-carga" role="status"></div>
+    <div class="sim-mini" id="sim-mini" aria-hidden="true"></div>
+
+    <div class="sim-layout">
+      <div class="sim-entradas">
+
+        <section class="fin-card">
+          <div class="sim-cab"><div class="fin-card-title">Equipo</div><span class="sim-sub" id="sim-sub-equipo"></span></div>
+          <div class="sim-campo">
+            <label for="sim-programadores">Programadores</label>
+            <input type="number" id="sim-programadores" class="sim-in sim-in-corto" data-sim="equipo.cantidadProgramadores" min="0" max="6" step="1" inputmode="numeric">
+            <input type="range" class="sim-rango" data-sim="equipo.cantidadProgramadores" min="0" max="6" step="1" aria-label="Programadores">
+          </div>
+          <div class="sim-campo">
+            <label for="sim-sueldo-prog">Sueldo por programador</label>
+            <span class="sim-control"><span class="sim-unidad">USD</span><input type="number" id="sim-sueldo-prog" class="sim-in sim-in-corto" data-sim="equipo.sueldoPorProgramador" min="0" step="any" inputmode="decimal"></span>
+          </div>
+          <div class="sim-campo">
+            <label for="sim-proy-prog">Proyectos por programador</label>
+            <input type="number" id="sim-proy-prog" class="sim-in sim-in-corto" data-sim="equipo.proyectosPorProgramador" min="0" step="any" inputmode="decimal">
+          </div>
+          <div class="sim-leido" id="sim-capacidad-equipo" role="status"></div>
+        </section>
+
+        <section class="fin-card">
+          <div class="sim-cab"><div class="fin-card-title">Gastos fijos</div><span class="sim-sub" id="sim-sub-gastosFijos"></span></div>
+          <div class="sim-origen" id="sim-origen-gastosFijos"></div>
+          <div class="sim-lista" id="sim-lista-gastosFijos"></div>
+          <div class="sim-agregar">
+            <input type="text" id="sim-nuevo-nombre-gastosFijos" class="sim-in" maxlength="80" placeholder="Gasto nuevo" aria-label="Nombre del gasto nuevo" onkeydown="if (event.key === 'Enter') simAgregarFila('gastosFijos')">
+            <input type="number" id="sim-nuevo-monto-gastosFijos" class="sim-in sim-in-monto" min="0" step="any" inputmode="decimal" placeholder="0" aria-label="Monto del gasto nuevo">
+            <button class="btn-ghost" type="button" onclick="simAgregarFila('gastosFijos')">Agregar</button>
+          </div>
+          <div class="sim-error" id="sim-nuevo-error-gastosFijos" role="alert"></div>
+        </section>
+
+        <section class="fin-card">
+          <div class="sim-cab"><div class="fin-card-title">Qué vendo por mes</div><span class="sim-sub" id="sim-sub-ventas"></span></div>
+          <div class="sim-tipo">
+            <div class="sim-campo">
+              <label for="sim-precio-web">Web: precio</label>
+              <span class="sim-control"><span class="sim-unidad">USD</span><input type="number" id="sim-precio-web" class="sim-in sim-in-corto" data-sim="ventas.precioWeb" min="0" step="any" inputmode="decimal"></span>
+            </div>
+            <div class="sim-campo">
+              <label for="sim-cant-web">Web: cantidad</label>
+              <input type="number" id="sim-cant-web" class="sim-in sim-in-corto" data-sim="ventas.webs" min="0" step="1" inputmode="numeric">
+              <input type="range" class="sim-rango" data-sim="ventas.webs" min="0" max="10" step="1" aria-label="Cantidad de webs">
+            </div>
+            <div class="sim-campo">
+              <label for="sim-forma-web">Web: cómo se cobra</label>
+              <select id="sim-forma-web" class="sim-in sim-in-forma" data-sim-forma="web">
+                <option value="todo">Todo al confirmar</option>
+                <option value="mitad">Mitad ahora y mitad al entregar</option>
+              </select>
+              <div class="sim-cobro-nota" id="sim-cobro-web" role="status"></div>
+            </div>
+          </div>
+          <div class="sim-tipo">
+            <div class="sim-campo">
+              <label for="sim-precio-ecom">Ecommerce: precio</label>
+              <span class="sim-control"><span class="sim-unidad">USD</span><input type="number" id="sim-precio-ecom" class="sim-in sim-in-corto" data-sim="ventas.precioEcom" min="0" step="any" inputmode="decimal"></span>
+            </div>
+            <div class="sim-campo">
+              <label for="sim-cant-ecom">Ecommerce: cantidad</label>
+              <input type="number" id="sim-cant-ecom" class="sim-in sim-in-corto" data-sim="ventas.ecommerce" min="0" step="1" inputmode="numeric">
+              <input type="range" class="sim-rango" data-sim="ventas.ecommerce" min="0" max="10" step="1" aria-label="Cantidad de ecommerce">
+            </div>
+            <div class="sim-campo">
+              <label for="sim-forma-ecommerce">Ecommerce: cómo se cobra</label>
+              <select id="sim-forma-ecommerce" class="sim-in sim-in-forma" data-sim-forma="ecommerce">
+                <option value="todo">Todo al confirmar</option>
+                <option value="mitad">Mitad ahora y mitad al entregar</option>
+              </select>
+              <div class="sim-cobro-nota" id="sim-cobro-ecommerce" role="status"></div>
+            </div>
+          </div>
+          <div class="sim-tipo">
+            <div class="sim-campo">
+              <label for="sim-precio-medida">A medida: precio</label>
+              <span class="sim-control"><span class="sim-unidad">USD</span><input type="number" id="sim-precio-medida" class="sim-in sim-in-corto" data-sim="ventas.precioMedida" min="0" step="any" inputmode="decimal"></span>
+            </div>
+            <div class="sim-campo">
+              <label for="sim-cant-medida">A medida: cantidad</label>
+              <input type="number" id="sim-cant-medida" class="sim-in sim-in-corto" data-sim="ventas.aMedida" min="0" step="1" inputmode="numeric">
+              <input type="range" class="sim-rango" data-sim="ventas.aMedida" min="0" max="10" step="1" aria-label="Cantidad de proyectos a medida">
+            </div>
+            <div class="sim-campo">
+              <label for="sim-forma-aMedida">A medida: cómo se cobra</label>
+              <select id="sim-forma-aMedida" class="sim-in sim-in-forma" data-sim-forma="aMedida">
+                <option value="todo">Todo al confirmar</option>
+                <option value="mitad">Mitad ahora y mitad al entregar</option>
+              </select>
+              <div class="sim-cobro-nota" id="sim-cobro-aMedida" role="status"></div>
+            </div>
+          </div>
+          <div class="sim-tipo">
+            <div class="sim-campo">
+              <label for="sim-al-firmar">En «mitad ahora», entra al confirmar</label>
+              <span class="sim-control"><input type="number" id="sim-al-firmar" class="sim-in sim-in-corto" data-sim="cobros.porcentajeAlFirmar" min="0" max="100" step="any" inputmode="decimal"><span class="sim-unidad">%</span></span>
+            </div>
+            <div class="sim-campo">
+              <label for="sim-meses-entrega">Meses hasta entregar (ahí entra el resto)</label>
+              <input type="number" id="sim-meses-entrega" class="sim-in sim-in-corto" data-sim="cobros.mesesEntrega" min="0" max="12" step="1" inputmode="numeric">
+            </div>
+          </div>
+          <div class="sim-campo">
+            <label for="sim-pauta">Pauta</label>
+            <span class="sim-control"><span class="sim-unidad">USD</span><input type="number" id="sim-pauta" class="sim-in sim-in-corto" data-sim="ventas.pauta" min="0" step="any" inputmode="decimal"></span>
+            <input type="range" class="sim-rango" data-sim="ventas.pauta" min="0" max="2500" step="50" aria-label="Pauta">
+          </div>
+        </section>
+
+        <section class="fin-card">
+          <div class="sim-cab"><div class="fin-card-title">Mantenimientos</div><span class="sim-sub" id="sim-sub-mantenimientos"></span></div>
+          <div class="sim-origen" id="sim-origen-mantenimientos"></div>
+          <div class="sim-lista" id="sim-lista-mantenimientos"></div>
+          <div class="sim-agregar">
+            <input type="text" id="sim-nuevo-nombre-mantenimientos" class="sim-in" maxlength="80" placeholder="Cliente nuevo" aria-label="Nombre del cliente nuevo" onkeydown="if (event.key === 'Enter') simAgregarFila('mantenimientos')">
+            <input type="number" id="sim-nuevo-monto-mantenimientos" class="sim-in sim-in-monto" min="0" step="any" inputmode="decimal" placeholder="0" aria-label="Cuota del cliente nuevo">
+            <button class="btn-ghost" type="button" onclick="simAgregarFila('mantenimientos')">Agregar</button>
+          </div>
+          <div class="sim-error" id="sim-nuevo-error-mantenimientos" role="alert"></div>
+          <div class="sim-campo">
+            <label for="sim-altas">Altas nuevas por mes</label>
+            <input type="number" id="sim-altas" class="sim-in sim-in-corto" data-sim="mantenimiento.altasNuevasPorMes" min="0" step="1" inputmode="numeric">
+          </div>
+          <div class="sim-campo">
+            <label for="sim-cuota-alta">Cuota de cada alta nueva</label>
+            <span class="sim-control"><span class="sim-unidad">USD</span><input type="number" id="sim-cuota-alta" class="sim-in sim-in-corto" data-sim="mantenimiento.cuotaAltaNueva" min="0" step="any" inputmode="decimal"></span>
+          </div>
+          <div class="sim-campo">
+            <label for="sim-comision">Comisión de cobro (Plexo)</label>
+            <span class="sim-control"><input type="number" id="sim-comision" class="sim-in sim-in-corto" data-sim="mantenimiento.comisionCobro" min="0" max="100" step="any" inputmode="decimal"><span class="sim-unidad">%</span></span>
+          </div>
+          <div class="sim-aviso sim-aviso-ambar" id="sim-aviso-altas" role="status"></div>
+        </section>
+
+        <section class="fin-card">
+          <div class="sim-cab"><div class="fin-card-title">Pendientes por cobrar</div><span class="sim-sub" id="sim-sub-pendientes"></span></div>
+          <div class="sim-origen" id="sim-origen-pendientes"></div>
+          <div class="sim-lista" id="sim-lista-pendientes"></div>
+          <div class="sim-agregar">
+            <input type="text" id="sim-nuevo-nombre-pendientes" class="sim-in" maxlength="80" placeholder="Cliente" aria-label="Cliente del pendiente nuevo" onkeydown="if (event.key === 'Enter') simAgregarFila('pendientes')">
+            <input type="number" id="sim-nuevo-monto-pendientes" class="sim-in sim-in-monto" min="0" step="any" inputmode="decimal" placeholder="0" aria-label="Monto del pendiente nuevo">
+            <button class="btn-ghost" type="button" onclick="simAgregarFila('pendientes')">Agregar</button>
+          </div>
+          <div class="sim-error" id="sim-nuevo-error-pendientes" role="alert"></div>
+        </section>
+
+        <section class="fin-card">
+          <div class="sim-cab"><div class="fin-card-title">Palancas</div><span class="sim-sub" id="sim-sub-palancas"></span></div>
+          <div class="sim-palanca-fila">
+            <button class="sim-palanca" type="button" id="sim-palanca-projectManager" aria-pressed="false" onclick="simPalanca('projectManager')">Project manager</button>
+            <span class="sim-palanca-detalle">+ <span class="sim-control"><span class="sim-unidad">USD</span><input type="number" class="sim-in sim-in-corto" data-sim="montosPalancas.projectManager" min="0" step="any" inputmode="decimal" aria-label="Costo del project manager"></span> de costo fijo. No suma capacidad de desarrollo.</span>
+          </div>
+          <div class="sim-palanca-fila">
+            <button class="sim-palanca" type="button" id="sim-palanca-miSueldo" aria-pressed="false" onclick="simPalanca('miSueldo')">Mi sueldo</button>
+            <span class="sim-palanca-detalle">+ <span class="sim-control"><span class="sim-unidad">USD</span><input type="number" class="sim-in sim-in-corto" data-sim="montosPalancas.miSueldo" min="0" step="any" inputmode="decimal" aria-label="Mi sueldo"></span> de costo fijo.</span>
+          </div>
+          <div class="sim-palanca-fila">
+            <button class="sim-palanca" type="button" id="sim-palanca-subcontratar" aria-pressed="false" onclick="simPalanca('subcontratar')">Subcontratar excedente</button>
+            <span class="sim-palanca-detalle">Lo que pasa la capacidad se hace igual, a un <span class="sim-control"><input type="number" class="sim-in sim-in-corto" data-sim="montosPalancas.subcontratoPorcentaje" min="0" step="any" inputmode="decimal" aria-label="Costo del subcontrato como porcentaje del precio promedio"><span class="sim-unidad">%</span></span> del precio promedio.</span>
+          </div>
+          <div class="sim-palanca-fila">
+            <button class="sim-palanca" type="button" id="sim-palanca-matias50" aria-pressed="false" onclick="simPalanca('matias50')">Matías en a medida</button>
+            <span class="sim-palanca-detalle">Se lleva el <span class="sim-control"><input type="number" class="sim-in sim-in-corto" data-sim="montosPalancas.matiasPorcentaje" min="0" max="100" step="any" inputmode="decimal" aria-label="Porcentaje de Matías sobre lo facturado en a medida"><span class="sim-unidad">%</span></span> de lo facturado en a medida.</span>
+          </div>
+          <div class="sim-palanca-fila">
+            <button class="sim-palanca" type="button" id="sim-palanca-aporteJavier" aria-pressed="false" onclick="simPalanca('aporteJavier')">Aporte Javier</button>
+            <span class="sim-palanca-detalle">+ <span class="sim-control"><span class="sim-unidad">USD</span><input type="number" class="sim-in sim-in-corto" data-sim="montosPalancas.aporteJavier" min="0" step="any" inputmode="decimal" aria-label="Aporte de Javier"></span> que entran a caja y no son venta.</span>
+          </div>
+        </section>
+
+        <section class="fin-card">
+          <div class="sim-cab"><div class="fin-card-title">Supuestos del embudo</div><span class="sim-sub" id="sim-sub-embudo"></span></div>
+          <div class="sim-campo">
+            <label for="sim-cpl">Costo por lead</label>
+            <span class="sim-control"><span class="sim-unidad">USD</span><input type="number" id="sim-cpl" class="sim-in sim-in-corto" data-sim="embudo.costoPorLead" min="0" step="any" inputmode="decimal"></span>
+          </div>
+          <div class="sim-campo">
+            <label for="sim-lead-demo">De lead a demo</label>
+            <span class="sim-control"><input type="number" id="sim-lead-demo" class="sim-in sim-in-corto" data-sim="embudo.conversionLeadDemo" min="0" max="100" step="any" inputmode="decimal"><span class="sim-unidad">%</span></span>
+          </div>
+          <div class="sim-campo">
+            <label for="sim-demo-venta">De demo a venta</label>
+            <span class="sim-control"><input type="number" id="sim-demo-venta" class="sim-in sim-in-corto" data-sim="embudo.conversionDemoVenta" min="0" max="100" step="any" inputmode="decimal"><span class="sim-unidad">%</span></span>
+          </div>
+        </section>
+
+        <div class="sim-agregar sim-cargar">
+          <button class="btn-primary" type="button" id="sim-cargar" onclick="simCargar()">Cargar</button>
+          <span class="sim-guardado" id="sim-cargar-nota" role="status"></span>
+        </div>
+      </div>
+
+      <div class="sim-resultados">
+        <div class="sim-tarjetas" id="sim-tarjetas"></div>
+        <section class="fin-card">
+          <div class="fin-card-title">Caja</div>
+          <div class="sim-campo">
+            <label for="sim-caja-actual">Caja actual</label>
+            <span class="sim-control"><span class="sim-unidad">USD</span><input type="number" id="sim-caja-actual" class="sim-in sim-in-corto" data-sim="caja.cajaActual" step="any" inputmode="decimal"></span>
+          </div>
+          <div class="sim-origen" id="sim-origen-caja"></div>
+          <div class="sim-cierre" id="sim-cierre" role="status"></div>
+        </section>
+        <div class="sim-arrastre" id="sim-arrastre"></div>
+        <section class="fin-card">
+          <div class="sim-cab"><div class="fin-card-title">Caja mes a mes</div><span class="sim-sub" id="sim-sub-meses"></span></div>
+          <div class="sim-campo">
+            <label for="sim-meses-proyeccion">Meses a mostrar</label>
+            <input type="number" id="sim-meses-proyeccion" class="sim-in sim-in-corto" data-sim="cobros.mesesProyeccion" min="0" max="12" step="1" inputmode="numeric">
+          </div>
+          <div class="sim-meses" id="sim-meses"></div>
+          <div class="sim-leido" id="sim-meses-nota"></div>
+        </section>
+        <div class="sim-aviso sim-aviso-ambar sim-aviso-clave" id="sim-aviso-cobros" role="status"></div>
+        <div id="sim-semaforo-capacidad"></div>
+        <div id="sim-semaforo-embudo"></div>
+        <section class="fin-card">
+          <div class="fin-card-title">Embudo</div>
+          <div class="sim-numeros" id="sim-embudo-numeros"></div>
+        </section>
+        <section class="fin-card">
+          <div class="fin-card-title">Meta de sueldo</div>
+          <div class="sim-campo">
+            <label for="sim-sueldo-objetivo">Sueldo que me quiero poner</label>
+            <span class="sim-control"><span class="sim-unidad">USD</span><input type="number" id="sim-sueldo-objetivo" class="sim-in sim-in-corto" data-sim="meta.sueldoObjetivo" min="0" step="any" inputmode="decimal"></span>
+            <input type="range" class="sim-rango" data-sim="meta.sueldoObjetivo" min="0" max="5000" step="100" aria-label="Sueldo objetivo">
+          </div>
+          <div class="sim-meta" id="sim-meta"></div>
+        </section>
+      </div>
+    </div>
   </div>
 
   <!-- ======= METRICS PANEL ======= -->
   <div id="metrics-panel" class="panel">
     <div class="page-header">
       <div>
-        <h1>Métricas</h1>
+        <h1>Inteligencia comercial</h1>
         <div class="page-date" id="metrics-date"></div>
       </div>
       <button class="export-btn" onclick="loadMetrics()">↻ Actualizar</button>
     </div>
-    <div style="display:flex;gap:8px;margin-bottom:24px">
-      <button id="tab-sdr-btn" onclick="switchMetricsTab('sdr')" style="padding:6px 18px;border-radius:8px;border:1px solid #1e293b;background:#0088cc;color:#fff;font-size:.82rem;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif">SDR</button>
-      <button id="tab-meta-btn" onclick="switchMetricsTab('meta')" style="display:none;padding:6px 18px;border-radius:8px;border:1px solid #1e293b;background:transparent;color:#64748b;font-size:.82rem;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif">Meta Ads</button>
-    </div>
-    <!-- Tab SDR -->
+    <!-- Lo de Meta Ads se saco de aca el 14/9: se mira en Marketing. El panel
+         sigue siendo 'metrics' por dentro porque asi estan guardados los
+         permisos de cada rol; solo cambio el nombre que se ve. -->
     <div id="metrics-sdr">
       <div class="metrics-grid" style="grid-template-columns:repeat(4,1fr)">
         <div class="stat-card"><div class="stat-label">Total leads SDR</div><div class="stat-val" id="m-total">—</div></div>
@@ -1954,32 +2924,11 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
         <div class="m-card"><div class="m-card-title">Top ciudades</div><div id="m-cities"></div></div>
       </div>
     </div>
-    <!-- Tab Meta Ads (solo admin) -->
-    <div id="metrics-meta" style="display:none">
-      <div class="metrics-grid" style="grid-template-columns:repeat(4,1fr)">
-        <div class="stat-card"><div class="stat-label">Total leads Meta</div><div class="stat-val" id="mm-total">—</div></div>
-        <div class="stat-card"><div class="stat-label">Este mes</div><div class="stat-val blue" id="mm-month">—</div></div>
-        <div class="stat-card"><div class="stat-label">Esta semana</div><div class="stat-val yellow" id="mm-week">—</div></div>
-        <div class="stat-card"><div class="stat-label">Conversión Meta</div><div class="stat-val green" id="mm-conv">—</div></div>
-      </div>
-      <div class="metrics-grid-2">
-        <div class="m-card"><div class="m-card-title">Leads por campaña</div><div id="mm-campaigns"></div></div>
-        <div class="m-card"><div class="m-card-title">Leads por mes</div><div id="mm-months"></div></div>
-      </div>
-      <div class="metrics-grid-2">
-        <div class="m-card"><div class="m-card-title">Funnel CRM Meta</div><div id="mm-funnel"></div></div>
-        <div class="m-card"><div class="m-card-title">Qué buscan</div><div id="mm-busca"></div></div>
-      </div>
-      <div class="metrics-grid-2">
-        <div class="m-card"><div class="m-card-title">Presupuesto declarado</div><div id="mm-presupuesto"></div></div>
-        <div class="m-card"><div class="m-card-title">Top ciudades Meta</div><div id="mm-cities"></div></div>
-      </div>
-    </div>
   </div>
   <div id="marketing-panel" class="panel">
     <div class="page-header">
       <div>
-        <h1>Marketing</h1>
+        <h1>Inteligencia marketing</h1>
         <div class="page-date" id="mk-fecha"></div>
       </div>
       <button class="export-btn" onclick="loadMarketing()">
@@ -1989,8 +2938,8 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     <div class="sc-filtros">
       <div class="sc-filtro"><label for="mk-rango">Período</label>
         <select id="mk-rango" onchange="_mkRangoCambio()">
-          <option value="mes">Un mes</option>
-          <option value="90" selected>Últimos 90 días</option>
+          <option value="mes" selected>Un mes</option>
+          <option value="90">Últimos 90 días</option>
           <option value="anio">Este año</option>
           <option value="todo">Toda la historia</option>
           <option value="libre">Personalizado</option>
@@ -2010,8 +2959,6 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
         <input type="date" id="mk-desde" onchange="loadMarketing()"></div>
       <div class="sc-filtro" id="mk-libre-hasta"><label for="mk-hasta">Hasta</label>
         <input type="date" id="mk-hasta" onchange="loadMarketing()"></div>
-      <div class="sc-filtro"><label for="mk-campana">Campaña</label>
-        <select id="mk-campana" onchange="_mkPintar()"><option value="">Todas</option></select></div>
     </div>
 
     <!-- Cambia solo (cargando / error / sin acceso): tiene que anunciarse. -->
@@ -2042,55 +2989,31 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 
       <div class="sc-bloque">
         <h3>Semana a semana</h3>
-        <div class="sc-sub">El detalle fino, para ver dentro del mes. La línea punteada de cada gráfico es el promedio histórico —todo lo anterior a este período, no incluye el período — así se ve de una si la semana viene arriba o abajo de lo normal.</div>
+        <div class="sc-sub">El detalle fino, para ver dentro del mes. La línea punteada de cada gráfico es el promedio histórico —todo lo anterior a este período, no incluye el período — así se ve de una si la semana viene arriba o abajo de lo normal. Las semanas sin nada también aparecen, vacías: un hueco es algo que hay que ver.</div>
         <div id="mk-series"></div>
       </div>
 
       <div class="sc-bloque">
-        <h3>Dónde se cae cada campaña</h3>
-        <div class="sc-sub">El mismo embudo de arriba, pero abierto por campaña. Cada porcentaje es contra la etapa anterior, no contra el total: así se ve el escalón. En ámbar, la caída más grande de cada una.</div>
-        <div id="mk-embudos"></div>
-      </div>
-
-      <div class="sc-bloque">
-        <h3>Cómo evoluciona cada campaña</h3>
-        <div class="sc-sub">Una campaña que se pone cara queda tapada en el promedio si otra mejora al mismo tiempo. Acá cada una va por su lado, todas sobre el mismo eje. La línea punteada es el histórico de la cuenta: lo que quede por encima está saliendo más caro que lo de siempre. Un corte en la línea es una semana sin gasto de esa campaña, no un cero.</div>
-        <div id="mk-evolucion"></div>
-      </div>
-
-      <div class="sc-bloque">
         <h3>Cuánto costó llegar hasta acá</h3>
-        <div class="sc-sub">Cada punto es el total corrido hasta esa semana, no lo de la semana: por eso nunca bajan. Gasto y leads van en dos gráficos y no en dos ejes, porque un eje doble hace que cualquier par de curvas parezca cruzarse donde uno quiera. Acá no va la línea del histórico: una curva que siempre sube cruza una horizontal una sola vez y después queda abajo para siempre, sin que eso signifique nada.</div>
+        <div class="sc-sub">Toda la pauta junta. Cada punto es el total corrido desde el inicio del período hasta esa semana, no lo de la semana: por eso nunca bajan. Gasto y leads van en dos gráficos y no en dos ejes, porque un eje doble hace que cualquier par de curvas parezca cruzarse donde uno quiera.</div>
         <div id="mk-acumulado"></div>
       </div>
 
       <div class="sc-bloque">
-        <h3>Qué campaña rinde de verdad</h3>
-        <div class="sc-sub">El costo por lead es lo que muestra el Administrador de anuncios. El costo por demo es lo que te cuesta una reunión de verdad, y no siempre ordenan igual.</div>
-        <div id="mk-ranking"></div>
-      </div>
-
-      <div class="sc-bloque">
-        <h3>Por campaña</h3>
-        <div class="sc-sub">Cuatro preguntas, una barra por campaña en cada una. Al lado del número dice sobre cuántos leads se calculó: cuando dice «muestra chica» la diferencia con la de al lado puede ser casualidad.</div>
-        <div id="mk-campanas"></div>
-      </div>
-
-      <div class="sc-bloque">
         <h3>Por lo que el lead declaró</h3>
-        <div class="sc-sub">Respuestas del propio formulario de Meta: qué busca, cuánto presupuesto dice tener y cuál es su objetivo.</div>
+        <div class="sc-sub">Respuestas del propio formulario de Meta: qué busca, cuánto presupuesto dice tener, cuál es su objetivo y de dónde es. Cada círculo es cómo se reparten los leads entre las respuestas, y debajo de cada respuesta está qué parte llegó a una reunión. La ciudad va agrupada en Montevideo e Interior.</div>
         <div id="mk-segmentos"></div>
       </div>
 
       <div class="sc-bloque">
-        <h3>¿Pagar más por lead trae mejores leads?</h3>
-        <div class="sc-sub">Cada burbuja es una campaña: a la derecha paga más por lead, arriba convierte más a demo. El tamaño es cuánto se gastó. Si la nube sube hacia la derecha, pagar más rinde; si baja, no.</div>
-        <div id="mk-dispersion"></div>
-      </div>
-
-      <div class="sc-bloque">
         <h3>Cuándo llegan los leads</h3>
-        <div class="sc-sub">Hora de Montevideo. Los leads de Meta se guardan en UTC, así que esto ya viene corregido: sin eso, el mapa diría que el pico es de madrugada y estaría movido tres horas.</div>
+        <div class="sc-sub">Semana por semana, de lunes a domingo y en hora de Montevideo: cada casillero es cuántos leads de Meta entraron en esa hora de ese día. Los leads de Meta se guardan en UTC, así que esto ya viene corregido: sin eso, el pico parecería de madrugada. Este bloque va con su propia semana, no con el período de arriba.</div>
+        <div class="sc-nav-mes sc-piezas-nav">
+          <button class="cal-nav-btn" id="mk-llegada-ant" onclick="mkLlegadaSemana(-1)" title="Semana anterior" aria-label="Semana anterior" disabled>&larr;</button>
+          <span id="mk-llegada-semana" aria-live="polite"></span>
+          <button class="cal-nav-btn" id="mk-llegada-sig" onclick="mkLlegadaSemana(1)" title="Semana siguiente" aria-label="Semana siguiente" disabled>&rarr;</button>
+          <button class="cal-today-btn" onclick="mkLlegadaSemanaHoy()">Esta semana</button>
+        </div>
         <div id="mk-llegada"></div>
       </div>
 
@@ -2101,9 +3024,15 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       </div>
 
       <div class="sc-bloque">
-        <h3>Las piezas de la pauta</h3>
-        <div class="sc-sub">Los anuncios que gastaron en el período que tenés elegido arriba, con la pieza que ve la gente. Los que siguen al aire van primero; los apagados quedan abajo y sirven para darte cuenta si apagaste alguno que rendía. Es el grano sobre el que se decide: adentro de una campaña conviven varios anuncios y uno se puede llevar la mitad de la plata sin traer a nadie. La recomendación la calculan reglas sobre estos mismos números, no una IA.</div>
-        <div id="mk-anuncios"></div>
+        <h3>Las piezas de la pauta, mes por mes</h3>
+        <div class="sc-sub">Cada anuncio que tuvo gasto o impresiones en el mes que elijas acá abajo, con los números de ese mes y nada más. Primero las que siguen activas hoy, después las que ya no. Este bloque va con su propio mes, no con el período de arriba.</div>
+        <div class="sc-nav-mes sc-piezas-nav">
+          <button class="cal-nav-btn" id="mk-piezas-ant" onclick="mkPiezasMes(-1)" title="Mes anterior" aria-label="Mes anterior">&larr;</button>
+          <span id="mk-piezas-mes" aria-live="polite"></span>
+          <button class="cal-nav-btn" id="mk-piezas-sig" onclick="mkPiezasMes(1)" title="Mes siguiente" aria-label="Mes siguiente">&rarr;</button>
+          <button class="cal-today-btn" onclick="mkPiezasMesHoy()">Este mes</button>
+        </div>
+        <div id="mk-piezas"></div>
       </div>
 
       <div id="mk-version" class="sc-version"></div>
@@ -2142,6 +3071,111 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     </div>
     <div id="activity-list" style="max-width:760px"></div>
   </div>
+
+  <!-- ======= DAILY PROGRAMADOR PANEL ======= -->
+  <!-- Daily Programador y Daily Admin son la misma pantalla con los mismos
+       datos por persona: el JS arma el contenido de cada una (dyArmarPanel)
+       con sus propios ids (dy- y dya-). La persona es estado del JS. -->
+  <div id="daily-panel" class="panel dy-panel"></div>
+  <div id="daily_admin-panel" class="panel dy-panel"></div>
+
+  <!-- ======= RECURSOS HUMANOS PANELES ======= -->
+  <!-- Dos paneles de Recursos Humanos. El organigrama conserva el id equipo
+       para que los permisos guardados sigan valiendo. -->
+  <div id="equipo-panel" class="panel">
+    <div class="page-header">
+      <div>
+        <h1>Organigrama</h1>
+        <div class="page-date">Recursos Humanos · quién reporta a quién.</div>
+      </div>
+    </div>
+
+    <section class="eq-card" aria-labelledby="eq-titulo-org">
+      <div class="eq-cab"><div class="fin-card-title" id="eq-titulo-org">Organigrama</div></div>
+      <div class="eq-organigrama" id="eq-organigrama"><div class="eq-vacio">Cargando...</div></div>
+    </section>
+  </div>
+
+  <div id="ausencias-panel" class="panel">
+    <div class="page-header">
+      <div>
+        <h1>Ausencias</h1>
+        <div class="page-date">Recursos Humanos · horas a recuperar. Solo horas: cuántas se deben y cuándo se devuelven.</div>
+      </div>
+    </div>
+
+    <section class="eq-card" aria-labelledby="eq-titulo-aus">
+      <div class="eq-cab">
+        <div class="fin-card-title" id="eq-titulo-aus">Ausencias y recupero</div>
+        <button class="btn-primary" type="button" onclick="eqAbrirAusencia()">Registrar</button>
+      </div>
+      <div id="eq-avisos"></div>
+      <div class="eq-cal-nav" role="group" aria-label="Semanas de la grilla">
+        <button class="cal-nav-btn" type="button" onclick="eqSemanas(-1)" title="Semana anterior" aria-label="Semana anterior">&larr;</button>
+        <span id="eq-cal-rango" aria-live="polite"></span>
+        <button class="cal-nav-btn" type="button" onclick="eqSemanas(1)" title="Semana siguiente" aria-label="Semana siguiente">&rarr;</button>
+        <button class="cal-today-btn" type="button" onclick="eqSemanasHoy()">Esta semana</button>
+      </div>
+      <div class="eq-cal-wrap" id="eq-calendario"></div>
+      <div class="eq-leyenda" aria-label="Referencia de colores">
+        <span><i class="eq-muestra eq-muestra-normal"></i>Normal</span>
+        <span><i class="eq-muestra eq-falta"></i>Falta</span>
+        <span><i class="eq-muestra eq-recupero"></i>Recupero, con las horas</span>
+        <span>Saldo: <b class="eq-al-dia">al día</b> o las horas que debe en <b class="eq-debe">rojo</b></span>
+      </div>
+      <div class="eq-nota">Días hábiles de lunes a viernes. Esta versión no tiene en cuenta los feriados.</div>
+    </section>
+
+    <section class="eq-card" aria-labelledby="eq-titulo-det">
+      <div class="eq-cab"><div class="fin-card-title" id="eq-titulo-det">Detalle</div></div>
+      <div id="eq-detalle"></div>
+    </section>
+
+    <!-- Flujos: al final de Ausencias, debajo de todo. Solo roles, nunca nombres. -->
+    <section class="eq-card eq-flujos" aria-labelledby="eq-titulo-flujos">
+      <div class="eq-cab">
+        <div>
+          <div class="fin-card-title" id="eq-titulo-flujos">Flujos</div>
+          <p class="eq-flujos-bajada">Cómo trabajamos, paso a paso, con el rol responsable de cada etapa.</p>
+        </div>
+        <div id="eq-flujos-acciones"></div>
+      </div>
+      <div class="eq-flujos-selector" id="eq-flujos-selector" role="group" aria-label="Elegir flujo"></div>
+      <div id="eq-flujos-pasos"><div class="eq-vacio">Cargando...</div></div>
+    </section>
+  </div>
+  <!-- ======= FIN RECURSOS HUMANOS PANELES ======= -->
+
+  <!-- ======= PLANTILLAS PANEL ======= -->
+  <div id="plantillas-panel" class="panel">
+    <div class="page-header pl-cabecera">
+      <div>
+        <h1>Plantillas</h1>
+        <div class="page-date">Los mensajes de siempre, a mano. Lo marcado en azul se completa solo con los datos del lead.</div>
+      </div>
+      <button class="btn-primary" type="button" onclick="plAbrirEditor(0)">Nueva plantilla</button>
+    </div>
+    <div id="pl-lista"><div class="pl-vacio">Cargando...</div></div>
+    <section class="pl-variables" aria-labelledby="pl-titulo-variables">
+      <div class="fin-card-title" id="pl-titulo-variables">Variables disponibles</div>
+      <div id="pl-variables"></div>
+    </section>
+  </div>
+  <!-- ======= FIN PLANTILLAS PANEL ======= -->
+
+  <!-- ======= SEG LEADS PANEL ======= -->
+  <div id="seg_leads-panel" class="panel">
+    <div class="page-header sl-cabecera">
+      <div>
+        <h1>Seguimiento de leads</h1>
+        <div class="page-date" id="sl-resumen">Cargando...</div>
+      </div>
+      <button class="btn-primary" type="button" onclick="slAbrirNuevo()">Nuevo recordatorio</button>
+    </div>
+    <div class="sl-contadores" id="sl-contadores" aria-label="Llamados por grupo"></div>
+    <div id="sl-lista"></div>
+  </div>
+  <!-- ======= FIN SEG LEADS PANEL ======= -->
 </div>
 
 <!-- Modal: Contactar -->
@@ -2208,7 +3242,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       <label class="modal-label">Asignar a</label>
       <div class="upick-wrap">
         <div class="upick-trigger" id="upick-modal-trigger" onclick="_upickToggle('modal')">
-          <div class="upick-av" id="upick-modal-av" style="background:#1e293b;color:#475569;font-size:.9rem">—</div>
+          <div class="upick-av" id="upick-modal-av" style="background:var(--relleno);color:var(--texto-debil);font-size:.9rem">—</div>
           <span class="upick-label" id="upick-modal-label">— Sin asignar —</span>
           <span class="upick-chevron">▾</span>
         </div>
@@ -2236,9 +3270,9 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     <div style="margin-top:10px">
       <label class="modal-label">Cliente (opcional)</label>
       <input type="text" id="task-client-search" class="modal-input" placeholder="Buscar negocio..." oninput="_taskClientSearch(this.value)">
-      <div id="task-client-results" style="background:#0a0f1a;border:1px solid #1e293b;border-radius:6px;margin-top:4px;display:none;max-height:140px;overflow-y:auto"></div>
+      <div id="task-client-results" style="background:var(--fondo);border:1px solid var(--borde);border-radius:6px;margin-top:4px;display:none;max-height:140px;overflow-y:auto"></div>
       <input type="hidden" id="task-client-id">
-      <div id="task-client-chosen" style="font-size:.78rem;color:#0088cc;margin-top:4px"></div>
+      <div id="task-client-chosen" style="font-size:.78rem;color:var(--azul-claro);margin-top:4px"></div>
     </div>
     <div style="margin-top:10px">
       <label class="modal-label">Estado</label>
@@ -2252,7 +3286,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       <label class="modal-label">Notion (opcional)</label>
       <input type="text" id="task-notion-url" class="modal-input"
              placeholder="Pegá la URL de la tarjeta para vincularla">
-      <div id="task-notion-linked" style="font-size:.78rem;color:#0088cc;margin-top:4px"></div>
+      <div id="task-notion-linked" style="font-size:.78rem;color:var(--azul-claro);margin-top:4px"></div>
     </div>
     <input type="hidden" id="task-edit-id">
     <div class="modal-btns" style="margin-top:16px">
@@ -2569,6 +3603,303 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   </div>
 </div>
 
+<!-- ======= EQUIPO MODALES ======= -->
+<div class="modal-overlay" id="eq-modal-ausencia" onclick="if(event.target===this)eqCerrarModal('eq-modal-ausencia')">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="eq-aus-titulo">
+    <h3 id="eq-aus-titulo">Registrar ausencia</h3>
+    <p>Queda en rojo hasta que se le agende el recupero, con fecha.</p>
+    <label class="modal-label" for="eq-aus-persona">Persona</label>
+    <select id="eq-aus-persona" onchange="eqSugerirHoras()"></select>
+    <div class="modal-row">
+      <div>
+        <label class="modal-label" for="eq-aus-desde">Desde</label>
+        <input type="date" id="eq-aus-desde" onchange="eqSugerirHoras()">
+      </div>
+      <div>
+        <label class="modal-label" for="eq-aus-hasta">Hasta</label>
+        <input type="date" id="eq-aus-hasta" onchange="eqSugerirHoras()">
+      </div>
+    </div>
+    <label class="modal-label" for="eq-aus-motivo">Motivo</label>
+    <input type="text" id="eq-aus-motivo" maxlength="160" placeholder="En una línea">
+    <label class="modal-label" for="eq-aus-horas">Horas</label>
+    <input type="number" id="eq-aus-horas" min="0" step="0.5" inputmode="decimal" oninput="eqTocarHoras()">
+    <div class="eq-ayuda" id="eq-aus-calculo"></div>
+    <div class="eq-error" id="eq-aus-error" role="alert"></div>
+    <div class="modal-btns">
+      <button class="btn-ghost" type="button" onclick="eqCerrarModal('eq-modal-ausencia')">Cancelar</button>
+      <button class="btn-primary" type="button" onclick="eqGuardarAusencia()">Registrar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="eq-modal-recupero" onclick="if(event.target===this)eqCerrarModal('eq-modal-recupero')">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="eq-rec-titulo">
+    <h3 id="eq-rec-titulo">Agendar recupero</h3>
+    <p id="eq-rec-contexto"></p>
+    <div class="modal-row">
+      <div>
+        <label class="modal-label" for="eq-rec-fecha">Fecha</label>
+        <input type="date" id="eq-rec-fecha">
+      </div>
+      <div>
+        <label class="modal-label" for="eq-rec-horas">Horas</label>
+        <input type="number" id="eq-rec-horas" min="0" step="0.5" inputmode="decimal">
+      </div>
+    </div>
+    <div class="eq-error" id="eq-rec-error" role="alert"></div>
+    <div class="modal-btns">
+      <button class="btn-ghost" type="button" onclick="eqCerrarModal('eq-modal-recupero')">Cancelar</button>
+      <button class="btn-primary" type="button" onclick="eqGuardarRecupero()">Agendar</button>
+    </div>
+  </div>
+</div>
+<div class="modal-overlay" id="eq-modal-paso" onclick="if(event.target===this)eqCerrarModal('eq-modal-paso')">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="eq-paso-titulo-modal">
+    <h3 id="eq-paso-titulo-modal">Paso del flujo</h3>
+    <p>Solo el rol, nunca el nombre de quien lo ocupa.</p>
+    <label class="modal-label" for="eq-paso-titulo">Título</label>
+    <input type="text" id="eq-paso-titulo" maxlength="120" placeholder="Qué se hace en este paso">
+    <label class="modal-label" for="eq-paso-rol">Rol</label>
+    <select id="eq-paso-rol"></select>
+    <label class="modal-label" for="eq-paso-detalle">Detalle</label>
+    <input type="text" id="eq-paso-detalle" maxlength="240" placeholder="Qué pasa y en qué pantalla, en una línea">
+    <label class="modal-label" for="eq-paso-pantalla">Pantalla a la que lleva</label>
+    <select id="eq-paso-pantalla"></select>
+    <label class="eq-check"><input type="checkbox" id="eq-paso-destacado"> Destacado, con fondo verde</label>
+    <div class="modal-label">Momentos de cobro</div>
+    <div id="eq-paso-cobros"></div>
+    <button class="btn-ghost eq-btn-chico" type="button" onclick="eqPasoCobroAgregar()">+ Momento de cobro</button>
+    <div class="eq-error" id="eq-paso-error" role="alert"></div>
+    <div class="modal-btns">
+      <button class="btn-ghost" type="button" onclick="eqCerrarModal('eq-modal-paso')">Cancelar</button>
+      <button class="btn-primary" type="button" onclick="eqPasoGuardar()">Guardar</button>
+    </div>
+  </div>
+</div>
+<!-- ======= FIN EQUIPO MODALES ======= -->
+
+<!-- ======= DAILY MODALES ======= -->
+<!-- Los usan los dos Daily: dyModalSeccion dice de cuál es el modal abierto. -->
+<div class="modal-overlay" id="dy-modal-actividad" onclick="if(event.target===this)dyCerrarModal()">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="dy-act-titulo">
+    <h3 id="dy-act-titulo">Nueva actividad</h3>
+    <p id="dy-act-contexto"></p>
+    <label class="modal-label" for="dy-act-texto">Qué hay que hacer</label>
+    <input type="text" id="dy-act-texto" maxlength="200" placeholder="Ej: terminar la landing de Tito">
+    <div class="modal-row">
+      <div>
+        <label class="modal-label" for="dy-act-fecha">Día</label>
+        <input type="date" id="dy-act-fecha">
+      </div>
+      <div>
+        <label class="modal-label" for="dy-act-hora">Hora (opcional)</label>
+        <input type="time" id="dy-act-hora">
+      </div>
+    </div>
+    <label class="modal-label" for="dy-act-nota">Nota (opcional)</label>
+    <input type="text" id="dy-act-nota" maxlength="300" placeholder="Ej: pedirle el logo antes">
+    <div class="dy-error" id="dy-act-error" role="alert"></div>
+    <div class="modal-btns">
+      <button class="btn-ghost dy-oculto" type="button" id="dy-act-borrar" onclick="dyBorrarDesdeModal()">Borrar</button>
+      <button class="btn-ghost" type="button" onclick="dyCerrarModal()">Cancelar</button>
+      <button class="btn-primary" type="button" onclick="dyGuardarActividad()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="dy-modal-recordatorio" onclick="if(event.target===this)dyCerrarRecordatorio()">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="dy-recm-titulo">
+    <h3 id="dy-recm-titulo">Nuevo recordatorio</h3>
+    <p id="dy-recm-contexto"></p>
+    <label class="modal-label" for="dy-recm-texto">Qué hay que recordar</label>
+    <input type="text" id="dy-recm-texto" maxlength="200" placeholder="Ej: revisar mails de clientes">
+    <div class="modal-row">
+      <div>
+        <label class="modal-label" for="dy-recm-frecuencia">Cada cuánto</label>
+        <select id="dy-recm-frecuencia" onchange="dyPintarDiasForm()">
+          <option value="diario">Todos los días</option>
+          <option value="habiles">Días hábiles (lunes a viernes)</option>
+          <option value="dias">Días elegidos de la semana</option>
+        </select>
+      </div>
+      <div>
+        <label class="modal-label" for="dy-recm-hora">Hora (opcional)</label>
+        <input type="time" id="dy-recm-hora">
+      </div>
+    </div>
+    <div class="dy-dias dy-oculto" id="dy-recm-dias">
+      <label class="dy-dia-chip"><input type="checkbox" id="dy-recm-dia-0"> Lun</label>
+      <label class="dy-dia-chip"><input type="checkbox" id="dy-recm-dia-1"> Mar</label>
+      <label class="dy-dia-chip"><input type="checkbox" id="dy-recm-dia-2"> Mié</label>
+      <label class="dy-dia-chip"><input type="checkbox" id="dy-recm-dia-3"> Jue</label>
+      <label class="dy-dia-chip"><input type="checkbox" id="dy-recm-dia-4"> Vie</label>
+      <label class="dy-dia-chip"><input type="checkbox" id="dy-recm-dia-5"> Sáb</label>
+      <label class="dy-dia-chip"><input type="checkbox" id="dy-recm-dia-6"> Dom</label>
+    </div>
+    <label class="modal-label" for="dy-recm-nota">Nota (opcional)</label>
+    <input type="text" id="dy-recm-nota" maxlength="300" placeholder="Ej: los urgentes primero">
+    <div class="dy-aviso-modal dy-oculto" id="dy-recm-aviso">Cambia cómo se repite de acá en adelante. Lo que ya marcaste como hecho en otros días queda como estaba.</div>
+    <div class="dy-error" id="dy-recm-error" role="alert"></div>
+    <div class="modal-btns">
+      <button class="btn-ghost" type="button" onclick="dyCerrarRecordatorio()">Cancelar</button>
+      <button class="btn-primary" type="button" onclick="dyGuardarRecordatorio()">Guardar</button>
+    </div>
+  </div>
+</div>
+<!-- ======= FIN DAILY MODALES ======= -->
+
+<!-- ======= PLANTILLAS MODALES ======= -->
+<div class="pl-aviso" id="pl-aviso" role="status" aria-live="polite"></div>
+
+<div class="modal-overlay" id="pl-modal-usar" onclick="if(event.target===this)plCerrarModal('pl-modal-usar')">
+  <div class="modal pl-modal" role="dialog" aria-modal="true" aria-labelledby="pl-usar-titulo">
+    <h3 id="pl-usar-titulo">Usar con un lead</h3>
+    <p id="pl-usar-plantilla"></p>
+    <label class="modal-label" for="pl-buscar">Lead</label>
+    <input type="text" id="pl-buscar" placeholder="Buscar por nombre o teléfono" autocomplete="off" oninput="plBuscar()">
+    <div class="pl-resultados" id="pl-resultados"></div>
+    <div class="pl-elegido" id="pl-elegido"></div>
+    <div class="pl-campos" id="pl-campos"></div>
+    <div class="modal-label">Vista previa</div>
+    <div class="pl-cuerpo pl-vista" id="pl-vista" aria-live="polite"></div>
+    <div class="pl-faltan" id="pl-faltan"></div>
+    <div class="pl-auto" id="pl-auto-aviso" hidden>La manda el bot sola: no hace falta enviarla desde acá.</div>
+    <div class="pl-error" id="pl-usar-error" role="alert"></div>
+    <div class="modal-btns pl-botones">
+      <button class="btn-ghost" type="button" onclick="plCerrarModal('pl-modal-usar')">Cerrar</button>
+      <button class="btn-ghost" type="button" onclick="plCopiarVista(this)">Copiar</button>
+      <button class="btn-primary" type="button" id="pl-btn-enviar" onclick="plPedirEnvio()">Enviar por WhatsApp</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="pl-modal-confirmar" onclick="if(event.target===this)plCerrarModal('pl-modal-confirmar')">
+  <div class="modal pl-modal" role="dialog" aria-modal="true" aria-labelledby="pl-conf-titulo">
+    <h3 id="pl-conf-titulo">¿Enviar este WhatsApp?</h3>
+    <p>Sale apenas confirmes. Revisá a quién va y el texto.</p>
+    <div class="modal-label">Para</div>
+    <div class="pl-elegido" id="pl-conf-para"></div>
+    <div class="modal-label">Texto</div>
+    <div class="pl-cuerpo pl-vista" id="pl-conf-texto"></div>
+    <div class="pl-error" id="pl-conf-error" role="alert"></div>
+    <div class="modal-btns">
+      <button class="btn-ghost" type="button" onclick="plCerrarModal('pl-modal-confirmar')">Cancelar</button>
+      <button class="btn-primary" type="button" id="pl-conf-enviar" onclick="plEnviar()">Enviar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="pl-modal-editor" onclick="if(event.target===this)plCerrarModal('pl-modal-editor')">
+  <div class="modal pl-modal" role="dialog" aria-modal="true" aria-labelledby="pl-ed-titulo-modal">
+    <h3 id="pl-ed-titulo-modal">Nueva plantilla</h3>
+    <p>Las variables van entre llaves y se completan con los datos del lead.</p>
+    <div class="modal-row">
+      <div>
+        <label class="modal-label" for="pl-ed-momento">Momento</label>
+        <input type="text" id="pl-ed-momento" maxlength="80" list="pl-ed-momentos" placeholder="Después de la demo">
+      </div>
+      <div>
+        <label class="modal-label" for="pl-ed-canal">Canal</label>
+        <input type="text" id="pl-ed-canal" maxlength="40" list="pl-ed-canales" placeholder="WhatsApp">
+      </div>
+    </div>
+    <datalist id="pl-ed-momentos"></datalist>
+    <datalist id="pl-ed-canales"><option value="WhatsApp"></option><option value="WhatsApp o mail"></option><option value="Mail"></option></datalist>
+    <label class="modal-label" for="pl-ed-titulo">Título</label>
+    <input type="text" id="pl-ed-titulo" maxlength="120">
+    <label class="modal-label" for="pl-ed-cuerpo">Texto del mensaje</label>
+    <textarea id="pl-ed-cuerpo" rows="8" maxlength="4000"></textarea>
+    <div class="pl-ayuda" id="pl-ed-ayuda"></div>
+    <label class="modal-label" for="pl-ed-nota">Nota de abajo</label>
+    <input type="text" id="pl-ed-nota" maxlength="300" placeholder="Adjunta el PDF del presupuesto.">
+    <label class="modal-label" for="pl-ed-explicacion">Explicación (opcional)</label>
+    <textarea id="pl-ed-explicacion" rows="3" maxlength="1000"></textarea>
+    <label class="pl-check"><input type="checkbox" id="pl-ed-automatica"> La manda el bot sola (no se envía desde acá)</label>
+    <div class="pl-error" id="pl-ed-error" role="alert"></div>
+    <div class="modal-btns">
+      <button class="btn-ghost" type="button" onclick="plCerrarModal('pl-modal-editor')">Cancelar</button>
+      <button class="btn-primary" type="button" onclick="plGuardar()">Guardar</button>
+    </div>
+  </div>
+</div>
+<!-- ======= FIN PLANTILLAS MODALES ======= -->
+
+<!-- ======= SEG LEADS MODALES ======= -->
+<div class="modal-overlay" id="sl-modal-nuevo" onclick="if(event.target===this)slCerrarModal('sl-modal-nuevo')">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="sl-nuevo-titulo">
+    <h3 id="sl-nuevo-titulo">Nuevo recordatorio</h3>
+    <p>A quién llamás, cuándo y por qué. Si el lead ya tenía un recordatorio abierto, ese se cierra.</p>
+    <label class="modal-label" for="sl-nuevo-buscar">Lead</label>
+    <div class="sl-buscador" id="sl-nuevo-buscador">
+      <input type="text" id="sl-nuevo-buscar" placeholder="Buscar por nombre" autocomplete="off" oninput="slBuscarTecla(this.value)">
+      <div class="nc-vinculo-resultados" id="sl-nuevo-resultados"></div>
+    </div>
+    <div class="sl-elegido" id="sl-nuevo-elegido" hidden>
+      <span id="sl-nuevo-lead"></span>
+      <button class="sl-link" type="button" onclick="slCambiarLead()">Cambiar</button>
+    </div>
+    <div class="sl-aviso" id="sl-nuevo-aviso" role="status"></div>
+    <div class="modal-row">
+      <div>
+        <label class="modal-label" for="sl-nuevo-fecha">Fecha</label>
+        <input type="date" id="sl-nuevo-fecha">
+      </div>
+      <div>
+        <label class="modal-label" for="sl-nuevo-hora">Hora (opcional)</label>
+        <input type="time" id="sl-nuevo-hora">
+      </div>
+    </div>
+    <label class="modal-label" for="sl-nuevo-motivo">Motivo</label>
+    <input type="text" id="sl-nuevo-motivo" maxlength="200" placeholder="Qué tenés que hacer o preguntar">
+    <label class="modal-label" for="sl-nuevo-nota">Nota (opcional)</label>
+    <input type="text" id="sl-nuevo-nota" maxlength="300" placeholder="Ej: llamar después de las 18">
+    <div class="sl-error" id="sl-nuevo-error" role="alert"></div>
+    <div class="modal-btns">
+      <button class="btn-ghost" type="button" onclick="slCerrarModal('sl-modal-nuevo')">Cancelar</button>
+      <button class="btn-primary" type="button" onclick="slGuardarNuevo()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="sl-modal-hecho" onclick="if(event.target===this)slCerrarModal('sl-modal-hecho')">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="sl-hecho-titulo">
+    <h3 id="sl-hecho-titulo">Marcar hecho</h3>
+    <p id="sl-hecho-contexto"></p>
+    <label class="modal-label" for="sl-hecho-resultado">Qué pasó en la llamada</label>
+    <textarea id="sl-hecho-resultado" maxlength="2000" placeholder="Ej: no atendió; quedó en mandar el logo"></textarea>
+    <div class="modal-label">Cuándo volvés a llamar</div>
+    <div class="sl-bloque" id="sl-hecho-proximo">
+      <div class="sl-rapidos">
+        <button class="sl-btn" type="button" onclick="slHechoRapido('manana')">Mañana</button>
+        <button class="sl-btn" type="button" onclick="slHechoRapido('semana')">En una semana</button>
+        <button class="sl-btn" type="button" onclick="slHechoRapido('mes')">En un mes</button>
+      </div>
+      <div class="modal-row">
+        <div>
+          <label class="modal-label" for="sl-hecho-fecha">Fecha</label>
+          <input type="date" id="sl-hecho-fecha">
+        </div>
+        <div>
+          <label class="modal-label" for="sl-hecho-hora">Hora (opcional)</label>
+          <input type="time" id="sl-hecho-hora">
+        </div>
+      </div>
+      <label class="modal-label" for="sl-hecho-motivo">Motivo</label>
+      <input type="text" id="sl-hecho-motivo" maxlength="200">
+      <label class="modal-label" for="sl-hecho-nota">Nota (opcional)</label>
+      <input type="text" id="sl-hecho-nota" maxlength="300">
+    </div>
+    <label class="sl-check"><input type="checkbox" id="sl-hecho-sin-volver" onchange="slSinVolver()"> No hace falta volver a llamar</label>
+    <div class="sl-error" id="sl-hecho-error" role="alert"></div>
+    <div class="modal-btns">
+      <button class="btn-ghost" type="button" onclick="slCerrarModal('sl-modal-hecho')">Cancelar</button>
+      <button class="btn-primary" type="button" onclick="slGuardarHecho()">Guardar</button>
+    </div>
+  </div>
+</div>
+<!-- ======= FIN SEG LEADS MODALES ======= -->
+
 <script>
 window._isAdmin = false; // default until /api/me resolves
 // ========== Sidebar mobile ==========
@@ -2582,7 +3913,7 @@ function closeSidebar() {
 }
 
 // ========== Panel switching ==========
-let activePanel = 'cola';
+let activePanel = 'cal';
 function showPanel(name) {
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
@@ -2593,8 +3924,6 @@ function showPanel(name) {
   _syncMobileNav(name);
   closeSidebar();
   if (name === 'cola') loadCola();
-  if (name === 'seguimientos') loadSeguimientos();
-  if (name === 'pipeline') cargarPreclientes();
   if (name === 'demos') cargarDemos();
   if (name === 'clientes') loadClientesPanel();
   if (name === 'meta') loadMetaPanel();
@@ -2603,11 +3932,18 @@ function showPanel(name) {
   if (name === 'wa') loadWaTemplates();
   if (name === 'cal' && !calLoaded) { calLoaded = true; renderCalendar(); }
   if (name === 'tasks') loadTasks();
+  if (name === 'daily') loadDaily('programador');
+  if (name === 'daily_admin') loadDaily('admin');
   if (name === 'projects') loadProjects();
   if (name === 'notion_clients') loadNotionClients();
   if (name === 'finanzas') loadFinanzas();
+  if (name === 'simulador') loadSimulador();
   if (name === 'metrics') loadMetrics();
   if (name === 'activity') loadActivity();
+  if (name === 'equipo' || name === 'ausencias') loadEquipo();
+  if (name === 'ausencias') eqCargarFlujos();
+  if (name === 'seg_leads') loadSegLeads();
+  if (name === 'plantillas') plCargar();
   if (name === 'sdr') loadSdr();
 }
 
@@ -2694,13 +4030,11 @@ async function confirmCallback() {
 }
 function _reloadActiveCallPanel() {
   if (_callActivePanel === 'cola') loadCola();
-  else if (_callActivePanel === 'seguimientos') loadSeguimientos();
   loadColaStats();
 }
 
 // ── Meta Ads panel ───────────────────────────────────────────────────────────
 let _metaSearch = '';
-let _metaMonth = '';
 let _metaEstado = '';
 let _metaLeads = [];
 let _metaSortDesc = true;
@@ -2724,8 +4058,6 @@ function _startMetaPoll() {
         badge.textContent = newOnes.length === 1 ? 'NEW' : `+${newOnes.length}`;
         badge.style.display = '';
         _metaLeads = leads;
-        _fillMetaMonths();
-        _fillMetaEstados();
         const activePanel = document.querySelector('.panel.active');
         if (activePanel && activePanel.id === 'meta-panel') {
           renderMetaTable();
@@ -2736,55 +4068,270 @@ function _startMetaPoll() {
     } catch(e) {}
   }, 60000);
 }
-function metaSearch(v) { _metaSearch = v.toLowerCase(); renderMetaTable(); }
-function metaMonthFilter(v) { _metaMonth = v; renderMetaTable(); }
+function metaSearch(v) {
+  _metaSearch = v.toLowerCase();
+  if (!_metaSearch) mmTodosLosMeses = false;
+  renderMetaTable();
+}
 // La cola fria excluye a los leads de Meta a proposito, asi que este es el
 // unico lugar donde se puede preguntar "a quien de Meta no llamo nadie".
 function metaEstadoFilter(v) { _metaEstado = v; renderMetaTable(); }
 
-// Clave 'YYYY-MM' del lead, o '' si no tiene fecha usable. Es la misma funcion
-// que usan el <select> y el filtro, para que no puedan discrepar: si una arma
-// la clave distinto que la otra, el mes queda en la lista y no filtra nada.
-function _metaMesKey(l) {
-  const d = new Date(l.scraped_at || 0);
-  return isNaN(d) || !l.scraped_at ? '' : `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+// -- Lista por mes (pedido de Juan, 15/9) -------------------------------------
+// "Que se haga una lista por meses, donde puedas ir deslizando por mes". El mes
+// de un lead es el de cada formulario que mando, en hora de Montevideo: quien
+// volvio a escribir aparece tambien en el mes de la vuelta, marcado. Todo se
+// recorta aca: el panel ya trae todos los leads de Meta (y el poll tambien).
+let mmMesVista = '';          // 'AAAA-MM'; vacio = el mes actual
+let mmTodosLosMeses = false;  // la busqueda mira todos los meses
+let mmAbierto = null;         // id del lead con las opciones de color abiertas
+let mmToque = null;           // donde apoyo el dedo, para deslizar
+let mmSwipeListo = false;
+let mmGuardando = false;
+// Los colores del semaforo en el orden del embudo. Mismas claves y nombres que
+// services/planilla_semaforo.SEMAFORO (un test los compara). El color de cada
+// uno sale del token --semaforo-* por la clase mm-c-<clave>.
+const MM_SEMAFORO = [
+  {clave: 'rojo', etiqueta: 'No atiende'},
+  {clave: 'amarillo', etiqueta: 'Interesado'},
+  {clave: 'verde', etiqueta: 'Demo agendada'},
+  {clave: 'celeste', etiqueta: 'Demo realizada'},
+  {clave: 'violeta', etiqueta: 'Hubo demo y no cerró'},
+  {clave: 'venta', etiqueta: 'Venta concretada'},
+  {clave: 'negro', etiqueta: 'No le interesa'},
+];
+const MM_MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio',
+                  'Agosto', 'Setiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+const MM_HORAS_UTC = 3 * 3600 * 1000;   // Uruguay: UTC-3 fijo desde 2015
+
+// 'AAAA-MM' en hora de Montevideo de una fecha UTC de la base. Por texto y
+// Date.UTC, nunca new Date(texto): el navegador la leeria en SU hora. Una fecha
+// sin hora queda en su mes (correrla la mandaria al dia anterior).
+function mmMesDe(fecha) {
+  const m = String(fecha || '').match(/^([0-9]{4})-([0-9]{2})-([0-9]{2})(?:[ T]([0-9]{2}):([0-9]{2}))?/);
+  if (!m) return '';
+  if (m[4] === undefined) return m[1] + '-' + m[2];
+  const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) - MM_HORAS_UTC);
+  return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0');
 }
 
-function _fillMetaEstados() {
+function mmMesActual(ahoraMs) {
+  const d = new Date((ahoraMs === undefined ? Date.now() : ahoraMs) - MM_HORAS_UTC);
+  return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0');
+}
+
+function mmMesSumar(mes, delta) {
+  const partes = String(mes).split('-');
+  const total = parseInt(partes[0], 10) * 12 + (parseInt(partes[1], 10) - 1) + delta;
+  return Math.floor(total / 12) + '-' + String(total % 12 + 1).padStart(2, '0');
+}
+
+function mmEtiquetaMes(clave) {
+  const partes = String(clave).split('-');
+  const mes = MM_MESES[parseInt(partes[1], 10) - 1];
+  return mes ? mes + ' ' + partes[0] : clave;
+}
+
+// Las fechas de cada formulario del lead (UTC). Sin el dato del servidor, la
+// fecha de la ficha: es lo que se contaba antes.
+function mmEnvios(b) {
+  if (b.envios && b.envios.length) return b.envios;
+  return b.scraped_at ? [b.scraped_at] : [];
+}
+
+function mmMesesDe(b) { return mmEnvios(b).map(mmMesDe).filter(Boolean); }
+
+function mmEnviosDelMes(b, mes) { return mmEnvios(b).filter(f => mmMesDe(f) === mes); }
+
+// Cada persona una sola vez por mes, aunque haya escrito dos veces ese mes.
+function mmDelMes(leads, mes) { return leads.filter(b => mmMesesDe(b).indexOf(mes) !== -1); }
+
+// Volvio a escribir: ya habia mandado un formulario en un mes anterior.
+function mmVolvio(b, mes) { return mmMesesDe(b).some(m => m < mes); }
+
+function mmPrimerEnvio(b) { return mmEnvios(b).slice().sort()[0] || ''; }
+
+function mmFechaCorta(fecha) {
+  const s = String(fecha || '');
+  return /^[0-9]{4}-[0-9]{2}-[0-9]{2}/.test(s) ? s.slice(8, 10) + '/' + s.slice(5, 7) + '/' + s.slice(0, 4) : s;
+}
+
+// La fecha que muestra la fila: la del formulario de ESE mes (el ultimo, si
+// fueron dos), o el ultimo de todos cuando se busca en todos los meses.
+function mmFechaDeFila(b, mes, todos) {
+  const e = (todos ? mmEnvios(b) : mmEnviosDelMes(b, mes)).slice().sort();
+  return e.length ? e[e.length - 1] : (b.scraped_at || '');
+}
+
+function mmMesMasViejo(leads) {
+  let viejo = '';
+  leads.forEach(b => mmMesesDe(b).forEach(m => { if (!viejo || m < viejo) viejo = m; }));
+  return viejo;
+}
+
+// Nunca al futuro; para atras, hasta el mes del lead mas viejo.
+function mmMesMover(mes, delta, masViejo, actual) {
+  let m = mmMesSumar(mes, delta);
+  if (m > actual) m = actual;
+  const piso = masViejo && masViejo < actual ? masViejo : actual;
+  if (m < piso) m = piso;
+  return m;
+}
+
+function mmMesVisible() { return mmMesVista || mmMesActual(); }
+
+// Total del mes y cuantos de cada color. `envios` cuenta formularios, como
+// Meta (el contador principal); `personas`, filas de la lista.
+function mmConteo(leads, mes) {
+  const por = {};
+  let envios = 0;
+  let sin = 0;
+  leads.forEach(b => {
+    envios += mes ? mmEnviosDelMes(b, mes).length : 1;
+    if (b.semaforo) por[b.semaforo] = (por[b.semaforo] || 0) + 1;
+    else sin += 1;
+  });
+  return {personas: leads.length, envios: envios, por: por, sin: sin};
+}
+
+function mmResumenHtml(leads, mes) {
+  const c = mmConteo(leads, mes);
+  const total = c.envios === c.personas
+    ? c.envios + (c.envios === 1 ? ' lead' : ' leads')
+    : c.envios + ' leads · ' + c.personas + ' personas';
+  const partes = MM_SEMAFORO.filter(s => c.por[s.clave]).map(s =>
+    `<span class="mm-resumen-color mm-c-${s.clave}"><span class="mm-punto"></span>${c.por[s.clave]} ${esc(s.etiqueta)}</span>`);
+  if (c.sin) partes.push(`<span class="mm-resumen-color mm-c-sin"><span class="mm-punto"></span>${c.sin} sin color</span>`);
+  return `<span class="mm-resumen-total">${esc(mmEtiquetaMes(mes))}: ${total}</span>` + partes.join('');
+}
+
+function mmPintarNavegador(mes) {
+  const label = document.getElementById('meta-mes-label');
+  if (label) label.textContent = mmEtiquetaMes(mes);
+  const viejo = mmMesMasViejo(_metaLeads);
+  const ant = document.getElementById('meta-mes-ant');
+  const sig = document.getElementById('meta-mes-sig');
+  if (ant) ant.disabled = !viejo || mes <= viejo;
+  if (sig) sig.disabled = mes >= mmMesActual();
+}
+
+function mmMes(delta) {
+  mmMesVista = mmMesMover(mmMesVisible(), delta, mmMesMasViejo(_metaLeads), mmMesActual());
+  mmAbierto = null;
+  renderMetaTable();
+}
+
+function mmMesHoy() { mmMesVista = ''; mmAbierto = null; renderMetaTable(); }
+
+function mmBuscarTodos(si) { mmTodosLosMeses = !!si; renderMetaTable(); }
+
+// Deslizar sobre la lista en el celular: a la izquierda, el mes siguiente; a la
+// derecha, el anterior. Solo un gesto franco (mas de 50px y mas horizontal que
+// vertical) cambia de mes: el scroll y los toques quedan como estaban, y los
+// listeners son pasivos, no frenan el scroll.
+function mmDireccionDeslizar(dx, dy) {
+  if (Math.abs(dx) <= 50 || Math.abs(dx) <= Math.abs(dy)) return 0;
+  return dx < 0 ? 1 : -1;
+}
+
+function mmToqueInicio(e) {
+  const t = e && e.touches && e.touches[0];
+  mmToque = t ? {x: t.clientX, y: t.clientY} : null;
+}
+
+function mmToqueFin(e) {
+  const t = e && e.changedTouches && e.changedTouches[0];
+  const inicio = mmToque;
+  mmToque = null;
+  if (!inicio || !t) return;
+  const dir = mmDireccionDeslizar(t.clientX - inicio.x, t.clientY - inicio.y);
+  if (dir) mmMes(dir);
+}
+
+function mmActivarDeslizar() {
+  if (mmSwipeListo) return;
+  const body = document.getElementById('meta-body');
+  if (!body || !body.addEventListener) return;
+  body.addEventListener('touchstart', mmToqueInicio, {passive: true});
+  body.addEventListener('touchend', mmToqueFin, {passive: true});
+  mmSwipeListo = true;
+}
+
+// -- Semaforo: tocar el color y elegir --------------------------------------
+function mmColorInfo(clave) { return MM_SEMAFORO.find(s => s.clave === clave) || null; }
+
+function mmBotonColor(b) {
+  const info = mmColorInfo(b.semaforo);
+  const clase = info ? 'mm-c-' + info.clave : 'mm-c-sin';
+  const abierto = mmAbierto === b.id ? ' mm-abierto' : '';
+  return `<button class="mm-sem-btn ${clase}${abierto}" onclick="mmAbrirColor(${b.id})" title="Marcar el color del semáforo"><span class="mm-punto"></span>${info ? esc(info.etiqueta) : 'Sin color'}</button>`;
+}
+
+function mmOpcionesHtml(b) {
+  const actual = b.semaforo || '';
+  const opciones = MM_SEMAFORO.map(s =>
+    `<button class="mm-opcion mm-c-${s.clave}${s.clave === actual ? ' mm-actual' : ''}" onclick="mmMarcarColor(${b.id}, '${s.clave}')"><span class="mm-punto"></span>${esc(s.etiqueta)}</button>`);
+  opciones.push(`<button class="mm-opcion mm-c-sin${actual ? '' : ' mm-actual'}" onclick="mmMarcarColor(${b.id}, 'sin_color')"><span class="mm-punto"></span>Sin color</button>`);
+  return `<div class="mm-opciones" id="meta-mes-opciones-${b.id}"><div class="mm-opciones-titulo">Color del semáforo para ${esc(b.name || 'este lead')}</div>${opciones.join('')}</div>`;
+}
+
+function mmAbrirColor(id) { mmAbierto = mmAbierto === id ? null : id; renderMetaTable(); }
+
+// Se guarda al tocar, sin boton Guardar, y la opcion se cierra.
+async function mmMarcarColor(id, clave) {
+  if (mmGuardando) return;
+  mmGuardando = true;
+  try {
+    const r = await fetch('/api/meta/leads/' + id + '/semaforo', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({color: clave, mes: mmMesVisible()}),
+    });
+    let d = {};
+    try { d = await r.json(); } catch (e) { d = {}; }
+    if (!r.ok || !d.ok) { alert(d.error || 'No se pudo guardar el color'); return; }
+    const lead = _metaLeads.find(l => l.id === id);
+    if (lead) {
+      lead.crm_status = d.crm_status;
+      lead.semaforo = d.semaforo || '';
+      if (d.semaforo_origen) lead.semaforo_origen = d.semaforo_origen;
+    }
+    mmAbierto = null;
+    renderMetaTable();
+  } catch (e) {
+    alert('No se pudo guardar el color: ' + e.message);
+  } finally {
+    mmGuardando = false;
+  }
+}
+
+function _fillMetaEstados(leads) {
   const sel = document.getElementById('meta-estado-filter');
   if (!sel) return;
+  const base = leads || _metaLeads;
   const etiquetas = {sin_contactar:'Sin contactar',interesado:'Interesado',contactado:'Interesado',reunion_agendada:'Reunión agendada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Ppto enviado',negociacion:'Negociación',cliente_cerrado:'Cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado',llamar_despues:'Llamar después',no_interesa:'No le interesa'};
   const cuenta = {};
-  _metaLeads.forEach(l => { const k = l.crm_status || 'sin_contactar'; cuenta[k] = (cuenta[k]||0)+1; });
+  base.forEach(l => { const k = l.crm_status || 'sin_contactar'; cuenta[k] = (cuenta[k]||0)+1; });
+  // El filtro elegido se mantiene al cambiar de mes aunque ese mes no tenga
+  // ninguno: si se cayera solo, la lista cambiaria sin que nadie lo pida.
   const previo = _metaEstado;
   const claves = Object.keys(cuenta).sort((a,b) => cuenta[b] - cuenta[a]);
-  sel.innerHTML = `<option value="">Todos los estados (${_metaLeads.length})</option>` +
-    claves.map(k => `<option value="${k}">${etiquetas[k] || k} (${cuenta[k]})</option>`).join('');
-  sel.value = claves.includes(previo) ? previo : '';
-  _metaEstado = sel.value;
-}
-
-function _fillMetaMonths() {
-  const sel = document.getElementById('meta-month-filter');
-  if (!sel) return;
-  const cuenta = {};
-  _metaLeads.forEach(l => { const k = _metaMesKey(l); if (k) cuenta[k] = (cuenta[k]||0)+1; });
-  const meses = Object.keys(cuenta).sort().reverse();
-  // Se preserva la seleccion: el poll de 60s repuebla la lista y sin esto el
-  // filtro del usuario se resetearia solo mientras mira la tabla.
-  const previo = _metaMonth;
-  const nombres = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-  sel.innerHTML = `<option value="">Todos los meses (${_metaLeads.length})</option>` +
-    meses.map(k => {
-      const [a, m] = k.split('-');
-      return `<option value="${k}">${nombres[parseInt(m,10)-1]} ${a} (${cuenta[k]})</option>`;
-    }).join('');
-  sel.value = meses.includes(previo) ? previo : '';
-  _metaMonth = sel.value;
+  if (previo && !claves.includes(previo)) claves.push(previo);
+  sel.innerHTML = `<option value="">Todos los estados (${base.length})</option>` +
+    claves.map(k => `<option value="${k}">${etiquetas[k] || k} (${cuenta[k] || 0})</option>`).join('');
+  sel.value = previo;
+  _metaEstado = previo;
 }
 function toggleMetaSort() { _metaSortDesc = !_metaSortDesc; document.getElementById('meta-sort-icon').textContent = _metaSortDesc ? '↓' : '↑'; renderMetaTable(); }
 
 async function loadMetaPanel() {
+  // Juan: "cuando entres a meta ads que lo primero que aparezca sea el mes
+  // actual". Cada vez que se abre el panel vuelve al mes de hoy, sin buscar en
+  // todos los meses ni opciones abiertas. El poll no pasa por aca: repinta el
+  // mes que se esta mirando.
+  mmMesVista = '';
+  mmTodosLosMeses = false;
+  mmAbierto = null;
   const body = document.getElementById('meta-body');
   body.innerHTML = '<div style="color:#475569;padding:16px;font-size:.85rem">Cargando...</div>';
   try {
@@ -2792,8 +4339,7 @@ async function loadMetaPanel() {
     const data = await r.json();
     _metaLeads = Array.isArray(data) ? data : (data.items || []);
     _metaLeads.forEach(l => _metaKnownIds.add(l.id));
-    _fillMetaMonths();
-    _fillMetaEstados();
+    mmActivarDeslizar();
     renderMetaTable();
     _startMetaPoll();
   } catch(e) { body.innerHTML = `<div style="color:#f87171;padding:16px">Error: ${e.message}</div>`; }
@@ -2801,20 +4347,40 @@ async function loadMetaPanel() {
 
 function renderMetaTable() {
   const body = document.getElementById('meta-body');
-  let leads = _metaLeads;
-  if (_metaSearch) leads = leads.filter(b => (b.name||'').toLowerCase().includes(_metaSearch) || (b.notes||'').toLowerCase().includes(_metaSearch));
-  if (_metaMonth) leads = leads.filter(b => _metaMesKey(b) === _metaMonth);
+  const mes = mmMesVisible();
+  mmPintarNavegador(mes);
+  const delMes = mmDelMes(_metaLeads, mes);
+  const resumen = document.getElementById('meta-mes-resumen');
+  if (resumen) resumen.innerHTML = mmResumenHtml(delMes, mes);
+  _fillMetaEstados(delMes);
+  const coincide = b => (b.name||'').toLowerCase().includes(_metaSearch) || (b.notes||'').toLowerCase().includes(_metaSearch);
+  const todos = !!_metaSearch && mmTodosLosMeses;
+  let leads = (todos ? _metaLeads : delMes).slice();
+  if (_metaSearch) leads = leads.filter(coincide);
   if (_metaEstado) leads = leads.filter(b => (b.crm_status || 'sin_contactar') === _metaEstado);
+  const aviso = document.getElementById('meta-mes-buscar-todos');
+  if (aviso) {
+    if (!_metaSearch) aviso.innerHTML = '';
+    else if (todos) aviso.innerHTML = `Buscando en todos los meses · <button class="mm-link" onclick="mmBuscarTodos(false)">Solo ${esc(mmEtiquetaMes(mes))}</button>`;
+    else aviso.innerHTML = `Buscando en ${esc(mmEtiquetaMes(mes))} · <button class="mm-link" onclick="mmBuscarTodos(true)">Buscar en todos los meses (${_metaLeads.filter(coincide).length})</button>`;
+  }
+  const base = todos ? _metaLeads.length : delMes.length;
   const _cnt = document.getElementById('meta-count');
-  if (_cnt) _cnt.textContent = leads.length === _metaLeads.length
+  if (_cnt) _cnt.textContent = leads.length === base
     ? `${leads.length} leads`
-    : `${leads.length} de ${_metaLeads.length}`;
-  if (!leads.length) { body.innerHTML = '<div class="empty-state">No hay leads que coincidan con el filtro</div>'; return; }
+    : `${leads.length} de ${base}`;
+  if (!leads.length) {
+    body.innerHTML = (_metaSearch || _metaEstado)
+      ? '<div class="empty-state">No hay leads que coincidan con el filtro</div>'
+      : `<div class="empty-state">No hay leads en ${esc(mmEtiquetaMes(mes))}</div>`;
+    return;
+  }
   const crmLabels = {sin_contactar:'Sin contactar',interesado:'Interesado',contactado:'Interesado',reunion_agendada:'Reunión agendada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Ppto enviado',negociacion:'Negociación',cliente_cerrado:'Cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado',llamar_despues:'Llamar después',no_interesa:'No le interesa'};
   const crmColor = {sin_contactar:'#475569',interesado:'#10b981',contactado:'#10b981',reunion_agendada:'#3b82f6',reunion_hecha:'#14b8a6',presupuesto_enviado:'#f97316',negociacion:'#fbbf24',cliente_cerrado:'#10b981',en_desarrollo:'#0088cc',finalizado:'#6ee7b7',llamar_despues:'#f59e0b',no_interesa:'#ef4444'};
   leads.sort((a,b) => {
-    const da = new Date(a.scraped_at||0), db2 = new Date(b.scraped_at||0);
-    return _metaSortDesc ? db2-da : da-db2;
+    const fa = String(mmFechaDeFila(a, mes, todos)), fb = String(mmFechaDeFila(b, mes, todos));
+    const orden = fa < fb ? -1 : (fa > fb ? 1 : 0);
+    return _metaSortDesc ? -orden : orden;
   });
   const buscarLabels = {
     'una_nueva_p\u00e1gina_web':'Nueva web',
@@ -2843,6 +4409,9 @@ function renderMetaTable() {
   body.innerHTML = leads.map(b => {
     const crm = b.crm_status || 'sin_contactar';
     const color = crmColor[crm] || '#475569';
+    const mmColor = mmColorInfo(b.semaforo) ? b.semaforo : '';
+    const mmFecha = String(mmFechaDeFila(b, mes, todos) || '');
+    const mmVuelta = !todos && mmVolvio(b, mes);
     let fd = {};
     try { fd = JSON.parse(b.form_data || '{}'); } catch(e) {}
     const negocio = fd['\u00bfc\u00f3mo_se_llama_tu_negocio?'] || fd['como_se_llama_tu_negocio'] || fd['nombre_del_negocio'] || '';
@@ -2851,23 +4420,25 @@ function renderMetaTable() {
     const presupRaw = fd['\u00bfcont\u00e1s_con_un_presupuesto_para_este_proyecto?'] || fd['presupuesto'] || '';
     const presup = presupLabels[presupRaw] || presupRaw.replace(/_/g,' ') || '—';
     return `
-    <div class="table-row no-cb row-${crm}" style="grid-template-columns:1.8fr 1fr 1.2fr 1.2fr 0.9fr 0.8fr 1.1fr">
+    <div class="table-row no-cb ${mmColor ? 'mm-pintado mm-c-' + mmColor : 'row-' + crm}" data-mm-color="${mmColor}" style="grid-template-columns:1.8fr 1fr 1.2fr 1.2fr 0.9fr 0.8fr 1.1fr">
       <div>
         <div class="biz-name"><span style="cursor:pointer;text-decoration:underline;text-decoration-color:#334155" onclick="openClientPanel(${b.id})">${esc(b.name||'')}</span>
-        <span style="font-size:.65rem;background:linear-gradient(135deg,#833ab4,#fd1d1d,#fcb045);color:#fff;padding:1px 6px;border-radius:99px;font-weight:700;margin-left:4px">IG/FB</span></div>
+        <span style="font-size:.65rem;background:linear-gradient(135deg,#833ab4,#fd1d1d,#fcb045);color:#fff;padding:1px 6px;border-radius:99px;font-weight:700;margin-left:4px">IG/FB</span>${mmVuelta ? '<span class="mm-vuelta">Volvió a escribir</span>' : ''}</div>
         <div class="biz-sub">${negocio ? esc(negocio) : (esc(b.city||'') || '—')}</div>
+        ${mmVuelta ? '<span class="mm-vuelta-primero">Primer contacto: ' + esc(mmFechaCorta(mmPrimerEnvio(b))) + '</span>' : ''}
       </div>
       <div>${b.phone ? (hasWhatsApp(b.phone) ? `<a class="phone-val" href="https://wa.me/${waNum(b.phone)}${b.pitch_text ? '?text='+encodeURIComponent(b.pitch_text) : ''}" target="_blank" title="Abrir WhatsApp">${esc(b.phone)}</a>` : `<span class="phone-plain">${esc(b.phone)}</span>`) : '<span class="no-val">—</span>'}</div>
       <div style="font-size:.78rem;color:#94a3b8">${esc(busca)}</div>
       <div style="font-size:.78rem;color:#94a3b8">${esc(presup)}</div>
       <div style="font-size:.78rem;color:#64748b">${esc(b.city||'—')}</div>
-      <div style="font-size:.72rem;color:#475569">${b.scraped_at ? new Date(b.scraped_at+'Z').toLocaleString('es-UY',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—'}</div>
+      <div style="font-size:.72rem;color:#475569">${mmFecha ? new Date(mmFecha.slice(0, 19).replace(' ', 'T') + 'Z').toLocaleString('es-UY',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—'}</div>
       <div class="actions">
+        ${mmBotonColor(b)}
         <span style="font-size:.68rem;font-weight:600;color:${color};background:${color}18;padding:2px 6px;border-radius:99px">${crmLabels[crm]||crm}</span>
         <button class="pitch-btn" onclick="openClientPanel(${b.id})">Ver ficha</button>
         <button class="delete-btn" onclick="deleteLead(${b.id},${escJs(b.name||'')},loadMetaPanel)" title="Borrar"><i data-lucide=\"trash-2\" class=\"btn-icon\"></i></button>
       </div>
-    </div>`;
+    </div>${mmAbierto === b.id ? mmOpcionesHtml(b) : ''}`;
   }).join('');
   _populateNotes(body);
 }
@@ -2885,17 +4456,9 @@ async function loadColaStats() {
     // lo unico que estos contadores usan.
     const cola = await fetch('/api/leads?crm_status=sin_contactar&page=1');
     const colaData = await cola.json();
-    const [segR, conR] = await Promise.all([
-      fetch('/api/leads?crm_status=llamar_despues&page=1'),
-      fetch('/api/leads?crm_status=interesado&page=1'),
-    ]);
-    const [segData, conData] = await Promise.all([segR.json(), conR.json()]);
-    const segTotal = (Array.isArray(segData) ? segData.length : (segData.total||0)) +
-                     (Array.isArray(conData) ? conData.length : (conData.total||0));
     const noInt = await fetch('/api/leads?crm_status=no_interesa&page=1');
     const noIntData = await noInt.json();
     document.getElementById('stat-cola').textContent = Array.isArray(colaData) ? colaData.length : (colaData.total || 0);
-    document.getElementById('stat-seguimientos').textContent = segTotal;
     document.getElementById('stat-no-interesa').textContent = Array.isArray(noIntData) ? noIntData.length : (noIntData.total || 0);
     const sel = document.getElementById('cola-category-filter');
     const prev = sel.value;
@@ -3014,7 +4577,9 @@ function renderCola() {
 }
 
 
-// ── Seguimientos (llamar_despues) ─────────────────────────────────────────────
+// ── SDR: colores y actividad del dia por persona ─────────────────────────────
+// Vivian bajo el titulo de Seguimientos, que se saco de la vista el 14/9. Los
+// usa el panel SDR.
 function _sdrNameColor(name) {
   const colors = ['#0369a1','#7e22ce','#065f46','#9a3412','#be185d','#0f766e','#1d4ed8','#a16207'];
   let h = 0; for (let i = 0; i < (name||'').length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xff;
@@ -3042,78 +4607,12 @@ function _renderSdrStats(stats) {
 
 let _sdrLastActor = {};
 
-// Despues de importar los estados reales de la planilla (27-8-2026) este panel
-// paso de ~35 a 128 leads y 93 son de Meta. Sin poder separar cohortes, la
-// lista de a quien llamar deja de ser una lista de trabajo.
-let _segCohorte = '';
-function setSegCohorte(v) { _segCohorte = v; loadSeguimientos(); }
 
-async function loadSeguimientos() {
-  const body = document.getElementById('seguimientos-body');
-  body.innerHTML = '<div style="color:#475569;padding:16px;font-size:.85rem">Cargando...</div>';
-  try {
-    const coh = _segCohorte ? `&cohorte=${encodeURIComponent(_segCohorte)}` : '';
-    // 'contactado' es un alias viejo de 'interesado': el dashboard lo etiqueta
-    // igual y es un estado valido, pero nadie lo pedia. Hoy tiene 0 leads; el
-    // dia que algo lo escriba, sin esto desaparecen de todas las colas.
-    const [r1, r2, r3] = await Promise.all([
-      fetch(`/api/leads?crm_status=llamar_despues${coh}`),
-      fetch(`/api/leads?crm_status=interesado${coh}`),
-      fetch(`/api/leads?crm_status=contactado${coh}`),
-    ]);
-    const [d1, d2, d3] = await Promise.all([r1.json(), r2.json(), r3.json()]);
-    const leads = [
-      ...(Array.isArray(d1) ? d1 : (d1.items || [])),
-      ...(Array.isArray(d2) ? d2 : (d2.items || [])),
-      ...(Array.isArray(d3) ? d3 : (d3.items || [])),
-    ].sort((a,b) => {
-      // llamar_despues with date first, then contactado
-      if (a.callback_date && !b.callback_date) return -1;
-      if (!a.callback_date && b.callback_date) return 1;
-      if (a.callback_date && b.callback_date) return a.callback_date.localeCompare(b.callback_date);
-      return 0;
-    });
-    const segCnt = document.getElementById('seg-count');
-    if (segCnt) segCnt.textContent = `${leads.length} seguimiento${leads.length === 1 ? '' : 's'}`;
-    if (!leads.length) { body.innerHTML = '<div class="empty-state">No hay seguimientos pendientes</div>'; return; }
-    const today = new Date().toISOString().split('T')[0];
-    body.innerHTML = leads.map(b => {
-      const cd = b.callback_date || '';
-      const isContactado = b.crm_status === 'interesado';
-      let urgencyClass = '', pillClass = 'cb-date-future', pillLabel = 'Sin fecha';
-      if (isContactado && !cd) {
-        pillClass = 'cb-date-future'; pillLabel = 'Interesado';
-      } else if (cd) {
-        const cdDate = cd.split('T')[0];
-        pillLabel = cd.replace('T',' ').replace(/:\d{2}$/,'');
-        if (cdDate < today) { urgencyClass = 'cb-overdue'; pillClass = 'cb-date-overdue'; pillLabel = '⚠ ' + pillLabel; }
-        else if (cdDate === today) { urgencyClass = 'cb-today'; pillClass = 'cb-date-today'; pillLabel = '📅 Hoy ' + cd.split('T')[1]?.replace(/:\d{2}$/,''); }
-      }
-      return `
-      <div class="table-row no-cb row-llamar_despues ${urgencyClass}">
-        <div>
-          <div class="biz-name"><span style="cursor:pointer;text-decoration:underline;text-decoration-color:#334155" onclick="openClientPanel(${b.id})">${esc(b.name||'')}</span>${_calendlyBadge(b)}</div>
-          <div class="biz-sub">${esc(b.category||'')}${b.city ? ' · '+esc(b.city) : ''}</div>
-        </div>
-        <div style="display:flex;align-items:center;gap:6px">${b.phone ? (hasWhatsApp(b.phone) ? `<a class="phone-val" href="https://wa.me/${waNum(b.phone)}${b.pitch_text ? '?text='+encodeURIComponent(b.pitch_text) : ''}" target="_blank" title="Abrir WhatsApp">${esc(b.phone)}</a>` : `<span class="phone-plain">${esc(b.phone)}</span>`) : '<span class="no-val">—</span>'}</div>
-        <div><span class="cb-date-pill ${pillClass}">${pillLabel}</span></div>
-        <div><textarea class="notes-inline" data-id="${b.id}" data-notes="${esc(b.notes||'')}" placeholder="Agregar nota..." rows="1" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea></div>
-        <div class="actions">
-          <a class="pitch-btn" href="tel:${b.phone||''}" style="text-decoration:none"><i data-lucide=\"phone\" class=\"btn-icon\"></i> Llamar</a>
-          <button class="pitch-btn" onclick="openCallModal(${b.id},${escJs(b.name||'')},${escJs(b.phone||'')},'seguimientos')" style="background:#1e293b"><i data-lucide=\"clipboard-list\" class=\"btn-icon\"></i> Resultado</button>
-          <button class="delete-btn" onclick="deleteLead(${b.id},${escJs(b.name||'')})" title="Borrar"><i data-lucide=\"trash-2\" class=\"btn-icon\"></i></button>
-        </div>
-      </div>`; }).join('');
-    _populateNotes(body);
-  } catch(e) { body.innerHTML = `<div style="color:#f87171;padding:16px">Error: ${e.message}</div>`; }
-}
-
-// == Pre-clientes ==============================================================
-// Las etapas y sus etiquetas las manda el backend (/api/preclientes). Antes
-// estaban hardcodeadas aca y al renombrar los estados el tablero mostraba el
-// valor crudo de la base.
-let _preEtapas = [];
-let _preFiltro = '';
+// == Usuarios del equipo =======================================================
+// Los selectores de responsables de Clientes y de "quien dio la demo" los
+// comparten. Vivian con el tablero de Pre-clientes, que se saco de la vista el
+// 14/9: un negocio pasa a Clientes cuando su ficha de Pipeline Notion llega a
+// "Presupuesto Aceptado" (ver cliente_cambio_de_estado en notion_service).
 let _usuariosCache = null;
 
 async function _usuarios() {
@@ -3125,108 +4624,249 @@ async function _usuarios() {
   return _usuariosCache;
 }
 
-async function cargarPreclientes() {
-  const board = document.getElementById('pre-board');
-  board.innerHTML = '<div style="color:#475569;padding:16px;font-size:.85rem">Cargando...</div>';
-  try {
-    const r = await fetch('/api/preclientes');
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    const d = await r.json();
-    _preEtapas = d.etapas || [];
-    document.getElementById('pre-total').textContent =
-      d.total === 1 ? '1 pre-cliente' : d.total + ' pre-clientes';
-    renderPreclientes();
-  } catch (e) {
-    board.innerHTML = '<div style="color:#f87171;padding:16px">No se pudo cargar el tablero: ' + esc(e.message) + '</div>';
-  }
-}
-
-function renderPreclientes() {
-  const board = document.getElementById('pre-board');
-  board.innerHTML = _preEtapas.map(et => {
-    const leads = _preFiltro
-      ? (et.leads || []).filter(l => (l.name || '').toLowerCase().includes(_preFiltro))
-      : (et.leads || []);
-    const cards = leads.length
-      ? leads.map(l => {
-          const sub = [l.city, l.category].filter(Boolean).join(' · ');
-          const quien = l.ultima_demo_por ? ' · ' + esc(l.ultima_demo_por) : '';
-          const demos = l.demos_dadas
-            ? '<div class="pre-card-demo">' + l.demos_dadas + ' demo' +
-              (l.demos_dadas > 1 ? 's' : '') + quien + '</div>'
-            : '';
-          return `<div class="pre-card" onclick="openClientPanel(${l.id})">
-            <div class="pre-card-name">${esc(l.name || 'Sin nombre')}</div>
-            <div class="pre-card-meta">${esc(sub)}</div>
-            ${demos}
-          </div>`;
-        }).join('')
-      : '<div class="pre-empty">Vacío</div>';
-    return `<div class="pre-col">
-      <div class="pre-col-head">
-        <span class="pre-col-title">${esc(et.label)}</span>
-        <span class="pre-count">${leads.length}</span>
-      </div>
-      <div class="pre-cards">${cards}</div>
-    </div>`;
-  }).join('');
-}
-
-function pipelineSearch(v) {
-  _preFiltro = (v || '').toLowerCase();
-  renderPreclientes();
-}
-
 // == Registro de demos =========================================================
+// Todas las demos dadas, de todos los clientes, agrupadas por mes (del mas
+// reciente al mas viejo), cada una con el presupuesto que se le mando.
 // El tablero dice donde esta cada uno HOY; esto guarda como llego hasta ahi.
 let _demos = [];
 let _demosFiltro = '';
+let _demosFiltroPresu = '';
+let _demosFiltroEstado = '';
+// El mes que se esta mirando ('AAAA-MM'). Vacio = el mes actual, asi el panel
+// arranca siempre en hoy aunque la pestaña quede abierta de un mes a otro.
+let _demosMesVista = '';
+// Los cuatro colores del semaforo que son demos, en el orden del encabezado del
+// mes. `clave` es el estado_planilla que guarda el sync; el puntito sale de los
+// tokens --semaforo-*. Una demo sin origen de planilla es "Cargada a mano".
+const _DEMOS_ESTADOS = [
+  {clave: 'realizada', etiqueta: 'Demo realizada', uno: 'realizada', varios: 'realizadas'},
+  {clave: 'no_cerro', etiqueta: 'Hubo demo y no cerró', uno: 'no cerró', varios: 'no cerraron'},
+  {clave: 'venta', etiqueta: 'Venta concretada', uno: 'venta', varios: 'ventas'},
+  {clave: 'agendada', etiqueta: 'Demo agendada', uno: 'agendada', varios: 'agendadas'},
+];
+const _DEMOS_MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio',
+                      'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+const _DEMOS_MAX_BYTES = 10 * 1024 * 1024;
 
 async function cargarDemos() {
   const body = document.getElementById('demos-body');
-  body.innerHTML = '<div style="color:#475569;padding:16px;font-size:.85rem">Cargando...</div>';
+  body.innerHTML = '<div class="demo-aviso">Cargando...</div>';
   try {
-    const r = await fetch('/api/demos-realizadas');
+    // El listado no trae los archivos (solo id y nombre del presupuesto), asi
+    // que pedir todas pesa poco: ~50 demos por año.
+    const r = await fetch('/api/demos-realizadas?limite=5000');
     if (!r.ok) throw new Error('HTTP ' + r.status);
     _demos = (await r.json()).demos || [];
     renderDemos();
   } catch (e) {
-    body.innerHTML = '<div style="color:#f87171;padding:16px">No se pudieron cargar las demos: ' + esc(e.message) + '</div>';
+    body.innerHTML = '<div class="demo-aviso demo-aviso-error">No se pudieron cargar las demos: ' + esc(e.message) + '</div>';
   }
 }
 
 function filtrarDemos(v) { _demosFiltro = (v || '').toLowerCase(); renderDemos(); }
 
-function renderDemos() {
-  const body = document.getElementById('demos-body');
-  const lista = _demosFiltro
-    ? _demos.filter(d => (d.cliente_nombre || '').toLowerCase().includes(_demosFiltro))
-    : _demos;
-  if (!lista.length) {
-    body.innerHTML = '<div class="empty-state">' +
-      (_demosFiltro ? 'Ningún cliente coincide' : 'Todavía no hay demos registradas') + '</div>';
-    return;
-  }
-  body.innerHTML = lista.map(d => {
-    const nombre = d.cliente_nombre || 'Cliente borrado';
-    const abrir = d.client_id ? ` onclick="openClientPanel(${d.client_id})"` : '';
-    return `<div class="demo-row">
-      <div class="demo-row-head">
-        <span class="demo-num">Demo ${d.numero || '?'}</span>
-        <span class="demo-cliente"${abrir}>${esc(nombre)}</span>
-        <span class="demo-meta">${esc(d.realizada_por_nombre || 'sin asignar')} · ${esc(_fechaCorta(d.fecha))}</span>
-        <button class="demo-del" onclick="borrarDemo(${d.id})" title="Borrar">&times;</button>
-      </div>
-      <div class="demo-texto">${esc(d.actualizacion || 'Sin notas')}</div>
-    </div>`;
-  }).join('');
+function demosFiltrarPresupuesto(v) { _demosFiltroPresu = v || ''; renderDemos(); }
+
+function demosFiltrarEstado(v) { _demosFiltroEstado = v || ''; renderDemos(); }
+
+function _demosEstadoDe(d) {
+  return d.origen === 'planilla' ? String(d.estado_planilla || '') : 'mano';
 }
 
-function _fechaCorta(iso) {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (isNaN(d)) return String(iso).slice(0, 10);
-  return d.toLocaleDateString('es-UY', {day: '2-digit', month: '2-digit', year: 'numeric'});
+function _demosEstadoHtml(d) {
+  const clave = _demosEstadoDe(d);
+  const e = _DEMOS_ESTADOS.find(x => x.clave === clave);
+  if (!e) return '<span class="demo-estado demo-estado-mano">' + (clave === 'mano' ? 'Cargada a mano' : 'De la planilla') + '</span>';
+  return `<span class="demo-estado" title="Color de la planilla de leads"><span class="demo-punto demo-punto-${e.clave}"></span>${esc(e.etiqueta)}</span>`;
+}
+
+function _demosConteoEstados(demos) {
+  const partes = _DEMOS_ESTADOS.map(e => {
+    const n = demos.filter(d => _demosEstadoDe(d) === e.clave).length;
+    return n ? n + ' ' + (n === 1 ? e.uno : e.varios) : '';
+  }).filter(Boolean);
+  const aMano = demos.filter(d => _demosEstadoDe(d) === 'mano').length;
+  if (aMano) partes.push(aMano + ' a mano');
+  return partes.join(' · ');
+}
+
+function _demosMesDe(d) {
+  // Por texto y no con new Date(): '2026-09-01' se lee como UTC y en Uruguay
+  // caeria en agosto.
+  const iso = String(d.fecha || d.created_at || '');
+  return /^[0-9]{4}-[0-9]{2}/.test(iso) ? iso.slice(0, 7) : 'sin-fecha';
+}
+
+function _demosEtiquetaMes(clave) {
+  if (clave === 'sin-fecha') return 'Sin fecha';
+  const partes = clave.split('-');
+  const mes = _DEMOS_MESES[parseInt(partes[1], 10) - 1];
+  return mes ? mes.charAt(0).toUpperCase() + mes.slice(1) + ' ' + partes[0] : clave;
+}
+
+// -- Navegador de mes (mismo patron que Finanzas, con nombres propios) --------
+// Las demos se traen una sola vez y el recorte por mes se hace aca: el listado
+// no trae los archivos, son unos cientos por año, cambiar de mes es inmediato
+// y el limite hacia atras (la demo mas vieja) necesita verlas todas igual.
+
+function _demosMesClave(fecha) {
+  return fecha.getFullYear() + '-' + String(fecha.getMonth() + 1).padStart(2, '0');
+}
+
+function _demosMesSumar(mes, delta) {
+  const partes = String(mes).split('-');
+  const total = parseInt(partes[0], 10) * 12 + (parseInt(partes[1], 10) - 1) + delta;
+  return Math.floor(total / 12) + '-' + String(total % 12 + 1).padStart(2, '0');
+}
+
+function _demosMesMasViejo(lista) {
+  let viejo = '';
+  lista.forEach(d => {
+    const m = _demosMesDe(d);
+    if (m !== 'sin-fecha' && (!viejo || m < viejo)) viejo = m;
+  });
+  return viejo;
+}
+
+function _demosMesMover(mes, delta, masViejo, actual) {
+  // Nunca al futuro; hacia atras, hasta el mes de la demo mas vieja (sin
+  // demos, el piso es el mes actual).
+  let m = _demosMesSumar(mes, delta);
+  if (m > actual) m = actual;
+  const piso = masViejo && masViejo < actual ? masViejo : actual;
+  if (m < piso) m = piso;
+  return m;
+}
+
+function _demosDelMes(lista, mes) {
+  return lista.filter(d => _demosMesDe(d) === mes);
+}
+
+function _demosMesVisible() {
+  return _demosMesVista || _demosMesClave(new Date());
+}
+
+function demosMes(delta) {
+  _demosMesVista = _demosMesMover(_demosMesVisible(), delta, _demosMesMasViejo(_demos),
+                                  _demosMesClave(new Date()));
+  renderDemos();
+}
+
+function demosMesHoy() { _demosMesVista = ''; renderDemos(); }
+
+function _demosPintarNavegador(mes) {
+  const label = document.getElementById('demos-mes-label');
+  if (label) label.textContent = _demosEtiquetaMes(mes);
+  const viejo = _demosMesMasViejo(_demos);
+  const ant = document.getElementById('demos-mes-ant');
+  const sig = document.getElementById('demos-mes-sig');
+  if (ant) ant.disabled = !viejo || mes <= viejo;
+  if (sig) sig.disabled = mes >= _demosMesClave(new Date());
+}
+
+function _demosResumenHtml(demos, mes) {
+  const estados = _DEMOS_ESTADOS.map(e => {
+    const n = demos.filter(d => _demosEstadoDe(d) === e.clave).length;
+    return n ? `<span class="demo-resumen-estado"><span class="demo-punto demo-punto-${e.clave}"></span>${n} ${n === 1 ? e.uno : e.varios}</span>` : '';
+  }).filter(Boolean);
+  const aMano = demos.filter(d => _demosEstadoDe(d) === 'mano').length;
+  if (aMano) estados.push(`<span class="demo-resumen-estado">${aMano} a mano</span>`);
+  const conPresu = demos.filter(d => d.presupuesto_id).length;
+  return `<div class="demo-mes-head">
+      <h2 class="demo-mes-titulo">${esc(_demosEtiquetaMes(mes))}</h2>
+      <span class="demo-mes-cuenta">${demos.length} ${demos.length === 1 ? 'demo' : 'demos'}</span>
+      <span class="demo-mes-presu">${conPresu} de ${demos.length} con presupuesto</span>
+    </div>
+    <div class="demo-resumen-estados" aria-label="${esc(_demosConteoEstados(demos))}">${estados.join('<span class="demo-resumen-sep">·</span>')}</div>`;
+}
+
+function _demosFecha(iso) {
+  const s = String(iso || '');
+  if (!/^[0-9]{4}-[0-9]{2}-[0-9]{2}/.test(s)) return s.slice(0, 10);
+  return s.slice(8, 10) + '/' + s.slice(5, 7) + '/' + s.slice(0, 4);
+}
+
+function _demosFilaHtml(d) {
+  const nombre = d.cliente_nombre || 'Cliente borrado';
+  const abrir = d.client_id ? ` onclick="openClientPanel(${d.client_id})"` : '';
+  const subir = `<input type="file" class="demo-presu-input" accept="application/pdf,image/*" onchange="demosSubirPresupuesto(${d.id}, this)">`;
+  const presu = d.presupuesto_id
+    ? `<a class="demo-presu demo-presu-si" href="/api/demos-realizadas/${d.id}/presupuesto" title="Descargar presupuesto">📄 ${esc(d.presupuesto_nombre || 'Presupuesto')}</a>
+       <label class="demo-presu-accion" title="Reemplazar por otro archivo">Cambiar${subir}</label>
+       <button class="demo-presu-accion" onclick="demosQuitarPresupuesto(${d.id})">Quitar</button>`
+    : `<span class="demo-presu demo-presu-no">Sin presupuesto</span>
+       <label class="demo-presu-accion demo-presu-adjuntar">+ Adjuntar presupuesto${subir}</label>`;
+  return `<div class="demo-row${d.presupuesto_id ? '' : ' demo-row-sin'}">
+    <div class="demo-row-head">
+      <span class="demo-num">Demo ${d.numero || '?'}</span>
+      <span class="demo-cliente"${abrir}>${esc(nombre)}</span>
+      ${_demosEstadoHtml(d)}
+      <span class="demo-meta">${esc(d.realizada_por_nombre || (d.origen === 'planilla' ? 'planilla de leads' : 'sin asignar'))} · ${esc(_demosFecha(d.fecha || d.created_at))}</span>
+      <button class="demo-del" onclick="borrarDemo(${d.id})" title="Borrar">&times;</button>
+    </div>
+    ${d.actualizacion || d.origen !== 'planilla' ? `<div class="demo-texto">${esc(d.actualizacion || 'Sin notas')}</div>` : ''}
+    <div class="demo-presu-fila">${presu}</div>
+  </div>`;
+}
+
+function renderDemos() {
+  const body = document.getElementById('demos-body');
+  const mes = _demosMesVisible();
+  _demosPintarNavegador(mes);
+  if (!_demos.length) {
+    body.innerHTML = '<div class="demo-aviso">Todavía no hay demos registradas. Cargá la primera con «+ Registrar demo».</div>';
+    return;
+  }
+  const delMes = _demosDelMes(_demos, mes);
+  if (!delMes.length) {
+    body.innerHTML = '<div class="demo-aviso">No hay demos en ' + esc(_demosEtiquetaMes(mes)) + '</div>';
+    return;
+  }
+  // El resumen es del mes entero; los filtros recortan la lista de abajo.
+  let lista = delMes;
+  if (_demosFiltro) lista = lista.filter(d => (d.cliente_nombre || '').toLowerCase().includes(_demosFiltro));
+  if (_demosFiltroPresu === 'con') lista = lista.filter(d => d.presupuesto_id);
+  if (_demosFiltroPresu === 'sin') lista = lista.filter(d => !d.presupuesto_id);
+  if (_demosFiltroEstado) lista = lista.filter(d => _demosEstadoDe(d) === _demosFiltroEstado);
+  body.innerHTML = `<section class="demo-mes">
+    ${_demosResumenHtml(delMes, mes)}
+    ${lista.length ? lista.map(_demosFilaHtml).join('')
+      : '<div class="demo-aviso">Ninguna demo coincide con el filtro en ' + esc(_demosEtiquetaMes(mes)) + '</div>'}
+  </section>`;
+}
+
+function _demosValidarArchivo(file) {
+  if (file.size > _DEMOS_MAX_BYTES) return 'El archivo pesa más de 10 MB.';
+  const tipo = file.type || '';
+  // Sin tipo (pasa en algunos celulares) decide el servidor mirando el archivo.
+  if (tipo && tipo !== 'application/pdf' && tipo.indexOf('image/') !== 0) return 'Solo se aceptan PDF o imágenes.';
+  return '';
+}
+
+async function _demosEnviarPresupuesto(demoId, file) {
+  const fd = new FormData();
+  fd.append('file', file);
+  const r = await fetch('/api/demos-realizadas/' + demoId + '/presupuesto', {method: 'POST', body: fd});
+  const d = await r.json().catch(() => ({}));
+  return d.ok ? '' : (d.error || ('No se pudo adjuntar el presupuesto (HTTP ' + r.status + ')'));
+}
+
+async function demosSubirPresupuesto(demoId, input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  try {
+    const error = _demosValidarArchivo(file) || await _demosEnviarPresupuesto(demoId, file);
+    if (error) { alert(error); return; }
+    cargarDemos();
+  } finally { input.value = ''; }
+}
+
+async function demosQuitarPresupuesto(demoId) {
+  if (!confirm('Quitar el presupuesto de esta demo?')) return;
+  const r = await fetch('/api/demos-realizadas/' + demoId + '/presupuesto', {method: 'DELETE'});
+  const d = await r.json().catch(() => ({}));
+  if (!d.ok) { alert(d.error || 'No se pudo quitar.'); return; }
+  cargarDemos();
 }
 
 let _regdemoModal = null;
@@ -3247,6 +4887,10 @@ async function abrirNuevaDemo() {
     <input type="hidden" id="regdemo-cliente-id">
     <label class="modal-label">La dio</label>
     <select id="regdemo-quien" class="modal-input"><option value="">Yo</option>${opciones}</select>
+    <label class="modal-label">Fecha de la demo</label>
+    <input type="date" id="regdemo-fecha" class="modal-input" value="${_demosHoy()}">
+    <label class="modal-label">Presupuesto enviado (opcional: PDF o imagen, hasta 10 MB)</label>
+    <input type="file" id="regdemo-archivo" class="modal-input" accept="application/pdf,image/*">
     <label class="modal-label">Cómo viene</label>
     <textarea id="regdemo-nota" class="modal-input" style="min-height:82px;resize:vertical"
               placeholder="Qué se mostró, qué dijo el cliente, próximo paso..."></textarea>
@@ -3276,7 +4920,7 @@ async function _buscarClienteDemo(q) {
     const items = (Array.isArray(d) ? d : (d.items || [])).slice(0, 6);
     cont.innerHTML = items.length
       ? items.map(b => `<div class="upick-option" onclick="_elegirClienteDemo(${b.id}, ${escJs(b.name || '')})">${esc(b.name || '')}</div>`).join('')
-      : '<div class="upick-option" style="color:#64748b;cursor:default">Sin resultados</div>';
+      : '<div class="upick-option" style="color:var(--texto-debil);cursor:default">Sin resultados</div>';
   } catch (e) { cont.innerHTML = ''; }
 }
 
@@ -3286,9 +4930,20 @@ function _elegirClienteDemo(id, nombre) {
   document.getElementById('regdemo-res').innerHTML = '';
 }
 
+function _demosHoy() {
+  const h = new Date();
+  return h.getFullYear() + '-' + String(h.getMonth() + 1).padStart(2, '0') + '-' + String(h.getDate()).padStart(2, '0');
+}
+
 async function guardarDemo() {
   const id = document.getElementById('regdemo-cliente-id').value;
   if (!id) { alert('Elegí un cliente de la lista de sugerencias.'); return; }
+  const archivo = (document.getElementById('regdemo-archivo').files || [])[0];
+  const errorArchivo = archivo ? _demosValidarArchivo(archivo) : '';
+  if (errorArchivo) { alert(errorArchivo); return; }
+  // Hoy va sin fecha para que el servidor ponga tambien la hora; un dia
+  // anterior sirve para cargar demos viejas en el mes que corresponde.
+  const fecha = document.getElementById('regdemo-fecha').value;
   const btn = document.getElementById('regdemo-guardar');
   btn.disabled = true;
   try {
@@ -3297,12 +4952,21 @@ async function guardarDemo() {
       body: JSON.stringify({
         client_id: parseInt(id, 10),
         realizada_por: document.getElementById('regdemo-quien').value || null,
+        fecha: fecha && fecha !== _demosHoy() ? fecha : null,
         actualizacion: document.getElementById('regdemo-nota').value.trim(),
       }),
     });
     const d = await r.json().catch(() => ({}));
     if (!d.ok) { alert(d.error || 'No se pudo guardar la demo.'); return; }
+    if (archivo) {
+      const error = await _demosEnviarPresupuesto(d.id, archivo);
+      if (error) alert('La demo se guardó, pero el presupuesto no: ' + error);
+    }
     cerrarNuevaDemo();
+    // Que se vea la demo recien cargada: el navegador va a su mes (sin pasar
+    // al futuro, que no se puede mirar).
+    const mesNueva = fecha ? fecha.slice(0, 7) : '';
+    _demosMesVista = mesNueva && mesNueva < _demosMesClave(new Date()) ? mesNueva : '';
     cargarDemos();
   } finally { btn.disabled = false; }
 }
@@ -3338,6 +5002,181 @@ async function guardarResponsable(clientId, campo, valor, sel) {
   } finally { sel.disabled = false; }
 }
 
+// == Monto pagado por el desarrollo ===========================================
+// Lo carga Juan a mano. No sale de presupuestos ni de Finanzas: es lo que se
+// acordo, en la moneda en que se acordo, sin convertir.
+let _cliMontos = {};
+let _cliNuevoModal = null;
+
+// "1.500" es mil quinientos en Uruguay, no uno y medio: se aceptan punto de
+// miles y coma decimal ademas del punto decimal. Sin regex a proposito: este
+// string pasa por Python y una barra invertida se pierde.
+function _cliMontoParse(txt) {
+  let s = String(txt || '').split(' ').join('');
+  if (s === '') return null;
+  const comas = s.split(',').length - 1;
+  const partes = s.split('.');
+  if (comas > 1) return NaN;
+  if (comas === 1) {
+    s = partes.join('').replace(',', '.');
+  } else if (partes.length > 2 || (partes.length === 2 && partes[1].length === 3)) {
+    s = partes.join('');
+  }
+  const n = Number(s);
+  return isFinite(n) ? n : NaN;
+}
+
+function _cliMontoCelda(id) {
+  const m = _cliMontos[id] || {};
+  const cargado = m.monto !== null && m.monto !== undefined;
+  if (!cargado) {
+    return `<button type="button" class="cli-monto vacio" title="Cargar cuánto pagó" onclick="cliMontoEditar(${id})">+ cargar</button>`;
+  }
+  const n = Number(m.monto).toLocaleString('es-UY', {maximumFractionDigits: 2});
+  return `<button type="button" class="cli-monto" title="Editar cuánto pagó" onclick="cliMontoEditar(${id})"><span class="cli-monto-mon">${esc(m.moneda || '')}</span>${n}</button>`;
+}
+
+function cliMontoEditar(id) {
+  const cel = document.getElementById('cli-monto-' + id);
+  if (!cel) return;
+  const m = _cliMontos[id] || {};
+  const moneda = m.moneda || 'USD';
+  const valor = (m.monto === null || m.monto === undefined) ? '' : String(m.monto).replace('.', ',');
+  cel.innerHTML = `<div class="cli-monto-edit">
+    <input type="text" inputmode="decimal" class="cli-monto-input" value="${esc(valor)}" placeholder="Ej: 1.500" aria-label="Monto pagado"
+      onkeydown="if(event.key==='Enter')cliMontoGuardar(${id});if(event.key==='Escape')cliMontoCancelar(${id})">
+    <select class="cli-monto-sel" aria-label="Moneda">
+      <option value="USD"${moneda === 'USD' ? ' selected' : ''}>USD</option>
+      <option value="UYU"${moneda === 'UYU' ? ' selected' : ''}>UYU</option>
+    </select>
+    <button type="button" class="cli-monto-ok" onclick="cliMontoGuardar(${id})">Guardar</button>
+    <button type="button" class="cli-monto-x" onclick="cliMontoCancelar(${id})" aria-label="Cancelar" title="Cancelar">&times;</button>
+  </div>`;
+  const inp = cel.querySelector('.cli-monto-input');
+  inp.focus();
+  inp.select();
+}
+
+function cliMontoCancelar(id) {
+  const cel = document.getElementById('cli-monto-' + id);
+  if (cel) cel.innerHTML = _cliMontoCelda(id);
+}
+
+async function cliMontoGuardar(id) {
+  const cel = document.getElementById('cli-monto-' + id);
+  if (!cel) return;
+  const inp = cel.querySelector('.cli-monto-input');
+  const sel = cel.querySelector('.cli-monto-sel');
+  const monto = _cliMontoParse(inp.value);
+  if (monto !== null && !(monto >= 0)) {
+    alert('El monto tiene que ser un número mayor o igual a cero. Dejalo vacío para borrarlo.');
+    inp.focus();
+    return;
+  }
+  const controles = cel.querySelectorAll('input,select,button');
+  controles.forEach(el => { el.disabled = true; });
+  try {
+    const r = await fetch('/api/clientes-activos/' + id + '/monto-pagado', {
+      method: 'PUT', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({monto: monto, moneda: sel.value}),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!d.ok) {
+      // Queda abierto con lo tipeado: cerrar mostrando el valor viejo haria
+      // creer que se guardo.
+      alert(d.error || 'No se pudo guardar el monto.');
+      controles.forEach(el => { el.disabled = false; });
+      inp.focus();
+      return;
+    }
+    _cliMontos[id] = {monto: d.monto_pagado, moneda: d.moneda_pagado};
+    cel.innerHTML = _cliMontoCelda(id);
+  } catch (e) {
+    alert('No se pudo guardar el monto: ' + e.message);
+    controles.forEach(el => { el.disabled = false; });
+  }
+}
+
+// == Alta de cliente ===========================================================
+async function cliNuevoAbrir() {
+  cliNuevoCerrar();
+  let etapas = [];
+  try {
+    const r = await fetch('/api/preclientes/etapas');
+    etapas = r.ok ? ((await r.json()).clientes || []) : [];
+  } catch (e) { etapas = []; }
+  if (!etapas.length) etapas = [{key: 'cerrado', label: 'Cerrado'}];
+  const opciones = etapas.map(e => `<option value="${esc(e.key)}">${esc(e.label)}</option>`).join('');
+  const m = document.createElement('div');
+  m.className = 'modal-overlay open';
+  m.id = 'cli-nuevo-modal';
+  m.onclick = ev => { if (ev.target === m) cliNuevoCerrar(); };
+  m.innerHTML = `<div class="modal" style="width:440px;max-width:95vw">
+    <h3>Nuevo cliente</h3>
+    <label class="modal-label">Nombre del negocio *</label>
+    <input type="text" id="cli-nuevo-nombre" class="modal-input" maxlength="200" placeholder="Ej: Bloquera Norte">
+    <div class="modal-row">
+      <div>
+        <label class="modal-label">Teléfono</label>
+        <input type="text" id="cli-nuevo-tel" class="modal-input" maxlength="40" placeholder="(opcional)">
+      </div>
+      <div>
+        <label class="modal-label">Ciudad</label>
+        <input type="text" id="cli-nuevo-ciudad" class="modal-input" maxlength="120" placeholder="(opcional)">
+      </div>
+    </div>
+    <label class="modal-label">Estado</label>
+    <select id="cli-nuevo-estado" class="modal-input">${opciones}</select>
+    <label class="modal-label">Cuánto pagó por el desarrollo</label>
+    <div style="display:flex;gap:8px">
+      <input type="text" inputmode="decimal" id="cli-nuevo-monto" class="modal-input" placeholder="(opcional) Ej: 1.500">
+      <select id="cli-nuevo-moneda" class="modal-input" style="width:92px;flex:none" aria-label="Moneda">
+        <option value="USD">USD</option>
+        <option value="UYU">UYU</option>
+      </select>
+    </div>
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="cliNuevoCerrar()">Cancelar</button>
+      <button class="btn-confirm" id="cli-nuevo-guardar" onclick="cliNuevoGuardar()">Crear cliente</button>
+    </div>
+  </div>`;
+  document.body.appendChild(m);
+  _cliNuevoModal = m;
+  document.getElementById('cli-nuevo-nombre').focus();
+}
+
+function cliNuevoCerrar() {
+  if (_cliNuevoModal) { _cliNuevoModal.remove(); _cliNuevoModal = null; }
+}
+
+async function cliNuevoGuardar() {
+  const val = id => document.getElementById(id).value.trim();
+  const nombre = val('cli-nuevo-nombre');
+  if (!nombre) { alert('Poné el nombre del negocio.'); return; }
+  const monto = _cliMontoParse(val('cli-nuevo-monto'));
+  if (monto !== null && !(monto >= 0)) {
+    alert('El monto tiene que ser un número mayor o igual a cero, o quedar vacío.');
+    return;
+  }
+  const btn = document.getElementById('cli-nuevo-guardar');
+  btn.disabled = true;
+  try {
+    const r = await fetch('/api/clientes-activos', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        name: nombre, phone: val('cli-nuevo-tel'), city: val('cli-nuevo-ciudad'),
+        crm_status: val('cli-nuevo-estado'), monto: monto, moneda: val('cli-nuevo-moneda'),
+      }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!d.ok) { alert(d.error || 'No se pudo crear el cliente.'); return; }
+    cliNuevoCerrar();
+    loadClientesPanel();
+  } catch (e) {
+    alert('No se pudo crear el cliente: ' + e.message);
+  } finally { btn.disabled = false; }
+}
+
 // ── Clientes ──────────────────────────────────────────────────────────────────
 async function loadClientesPanel() {
   const body = document.getElementById('clientes-body');
@@ -3346,6 +5185,8 @@ async function loadClientesPanel() {
     const [r, usuarios] = await Promise.all([fetch('/api/clientes-activos'), _usuarios()]);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const clientes = (await r.json()).clientes || [];
+    _cliMontos = {};
+    clientes.forEach(b => { _cliMontos[b.id] = {monto: b.monto_pagado, moneda: b.moneda_pagado}; });
     if (!clientes.length) { body.innerHTML = '<div class="empty-state">No hay clientes todavía</div>'; return; }
     const crmLabels = {cerrado:'Cerrado', en_desarrollo:'En desarrollo', finalizado:'Finalizado'};
     const crmColor  = {cerrado:'#4ade80', en_desarrollo:'#0088cc', finalizado:'#a78bfa'};
@@ -3373,6 +5214,7 @@ async function loadClientesPanel() {
           ${tel}
         </div>
         <div><span style="font-size:.72rem;font-weight:600;color:${color};background:${color}18;padding:3px 8px;border-radius:99px">${crmLabels[crm]||crm}</span></div>
+        <div data-rol="Pagó por el desarrollo" id="cli-monto-${b.id}">${_cliMontoCelda(b.id)}</div>
         <div data-rol="Día a día">${selector(b, 'encargado_id')}</div>
         <div data-rol="Mantenimiento">${selector(b, 'mantenimiento_id')}</div>
         <div data-rol="Cobros">${selector(b, 'cobros_id')}</div>
@@ -3651,7 +5493,6 @@ async function markContacted(id) {
 
 function _refreshActivePanel() {
   if (activePanel === 'cola') loadCola();
-  else if (activePanel === 'seguimientos') loadSeguimientos();
   else if (activePanel === 'clientes') loadClientesPanel();
 }
 
@@ -3737,14 +5578,14 @@ async function loadWaTemplates() {
     const templates = await r.json();
     const list = document.getElementById('wa-template-list');
     if (!list) return;
-    if (!templates.length) { list.innerHTML = '<div style="font-size:.72rem;color:#475569;padding:2px 0">Sin plantillas guardadas</div>'; return; }
+    if (!templates.length) { list.innerHTML = '<div class="wa-tmpl-vacio">Sin plantillas guardadas</div>'; return; }
+    // Cada plantilla es una pastilla: tocarla la pega en la caja de respuesta.
+    // El texto va con escJs y no con JSON.stringify: adentro de un onclick
+    // entre comillas dobles, una plantilla con comillas cortaba el atributo.
     list.innerHTML = templates.map(t =>
-      `<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid #1a2234">
-        <span style="font-size:.78rem;color:#94a3b8;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-right:8px">${esc(t.name)}</span>
-        <div style="display:flex;gap:4px;flex-shrink:0">
-          <button onclick="useWaTemplate(${JSON.stringify(t.body)})" style="font-size:.7rem;background:#1e293b;border:none;color:#60a5fa;padding:2px 8px;border-radius:4px;cursor:pointer">Usar</button>
-          <button onclick="deleteWaTemplate(${t.id})" style="font-size:.7rem;background:#1e293b;border:none;color:#f87171;padding:2px 8px;border-radius:4px;cursor:pointer">✕</button>
-        </div>
+      `<div class="wa-tmpl-item">
+        <button type="button" class="wa-tmpl-usar" onclick="useWaTemplate(${escJs(t.body)})" title="${esc(t.body)}">${esc(t.name)}</button>
+        <button type="button" class="wa-tmpl-borrar" onclick="deleteWaTemplate(${Number(t.id)})" title="Borrar plantilla" aria-label="Borrar plantilla">✕</button>
       </div>`
     ).join('');
   } catch(e) { console.error('loadWaTemplates', e); }
@@ -3769,7 +5610,7 @@ async function saveWaTemplate() {
 
 function useWaTemplate(body) {
   const input = document.getElementById('wa-input');
-  if (input) { input.value = body; input.focus(); }
+  if (input) { input.value = body; waAjustarAlto(input); input.focus(); }
 }
 
 async function deleteWaTemplate(id) {
@@ -3778,20 +5619,56 @@ async function deleteWaTemplate(id) {
 }
 
 // ========== WhatsApp panel ==========
+// Bandeja estilo app de chat (14/9, pedido de Juan): lista de chats a la
+// izquierda con buscador, último mensaje, hora y no leídos; la conversación a la
+// derecha con burbujas, hora y un separador por día; la caja de respuesta fija
+// abajo (Enter envía, Shift+Enter baja de línea). En el celular es una sola
+// columna: la lista, y al tocar un chat, el chat con un botón para volver.
+//
+// Lo que se manda y cómo no cambió: son las mismas rutas /api/wa/* contra el
+// mismo bot. Esto es cómo se ve y cómo se usa, nada más.
 let waLoaded = false;
 let waLeads = [];
 let selectedPhone = null;
 let waPolling = null;
+let waTicks = 0;
+let waFiltro = '';
+// El último mensaje de cada chat, para la vista previa de la lista. La lista de
+// leads del bot no lo trae: se completa pidiendo la conversación de los chats
+// de arriba, y cada vez que se abre uno.
+let waUltimos = {};
+let waPreviasCorriendo = false;
+// Lo último que se dibujó en la conversación. Si el refresco trae lo mismo no se
+// redibuja: redibujar cada 5 segundos cortaba la nota de voz que estabas
+// escuchando y te movía el scroll mientras leías para arriba.
+let waFirmaMensajes = '';
+// El teléfono que pidió el link del mail de aviso (/?panel=wa&chat=598...).
+let waChatPendiente = null;
+// No leídos: la última actividad de cada chat que viste, en este navegador.
+const WA_CLAVE_VISTOS = 'crm-wa-vistos';
+let waVistos = null;
+
+const WA_ESTADOS = {
+  NEW: 'Nuevo', SCORED: 'Calificado', SCHEDULED: 'Agendado', MEETING_SENT: 'Link enviado',
+  NURTURE: 'Seguimiento', DISQUALIFIED: 'Descartado', HUMAN_QUEUED: 'Espera humano',
+};
 
 function waStateBadgeClass(state) {
   if (!state) return 'wa-state-NEW';
-  if (state === 'SCHEDULED') return 'wa-state-SCHEDULED';
+  if (state === 'SCHEDULED' || state === 'MEETING_SENT') return 'wa-state-SCHEDULED';
   if (state === 'SCORED') return 'wa-state-SCORED';
   if (state === 'NURTURE') return 'wa-state-NURTURE';
   if (state === 'DISQUALIFIED') return 'wa-state-DISQUALIFIED';
-  if (state === 'HUMAN_QUEUED') return 'wa-state-NURTURE';
+  if (state === 'HUMAN_QUEUED') return 'wa-state-QUAL';
   if (state.startsWith('QUAL')) return 'wa-state-QUAL';
   return 'wa-state-NEW';
+}
+
+function waEstadoTexto(state) {
+  if (!state) return 'Nuevo';
+  if (WA_ESTADOS[state]) return WA_ESTADOS[state];
+  if (String(state).startsWith('QUAL')) return 'Calificando';
+  return String(state);
 }
 
 function fmtWaTime(ts) {
@@ -3802,49 +5679,313 @@ function fmtWaTime(ts) {
   } catch(e) { return ts; }
 }
 
+function waFecha(ts) {
+  if (!ts) return null;
+  const d = new Date(ts);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+function waMismoDia(a, b) {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+function waHora(d) {
+  return d.toLocaleTimeString('es-UY', {hour: '2-digit', minute: '2-digit'});
+}
+
+function waMayuscula(s) {
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+}
+
+// La hora de la lista, como en el celular: la hora si es de hoy, "Ayer", el día
+// de la semana si es de estos días, y la fecha si es más vieja.
+function waHoraLista(ts, hoy) {
+  const d = waFecha(ts);
+  if (!d) return '';
+  hoy = hoy || new Date();
+  if (waMismoDia(d, hoy)) return waHora(d);
+  const ayer = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - 1);
+  if (waMismoDia(d, ayer)) return 'Ayer';
+  if (d < hoy && hoy - d < 6 * 86400000) return waMayuscula(d.toLocaleDateString('es-UY', {weekday: 'long'}));
+  return d.toLocaleDateString('es-UY', {day: '2-digit', month: '2-digit', year: '2-digit'});
+}
+
+function waEtiquetaDia(d, hoy) {
+  hoy = hoy || new Date();
+  if (waMismoDia(d, hoy)) return 'Hoy';
+  const ayer = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - 1);
+  if (waMismoDia(d, ayer)) return 'Ayer';
+  const opciones = {weekday: 'long', day: 'numeric', month: 'long'};
+  if (d.getFullYear() !== hoy.getFullYear()) opciones.year = 'numeric';
+  return waMayuscula(d.toLocaleDateString('es-UY', opciones));
+}
+
+// Las iniciales del contacto para el círculo. Si no hay nombre (o el nombre es
+// el mismo teléfono), los dos últimos dígitos.
+function waIniciales(nombre, phone) {
+  const palabras = String(nombre || '').split(' ')
+    .map(p => p.replace(/[^A-Za-zÀ-ÿ0-9]/g, '')).filter(Boolean);
+  if (!palabras.length || /^[0-9]+$/.test(palabras[0])) {
+    return String(phone || '').replace(/[^0-9]/g, '').slice(-2) || '?';
+  }
+  const primera = palabras[0].charAt(0);
+  const ultima = palabras.length > 1 ? palabras[palabras.length - 1].charAt(0) : '';
+  return (primera + ultima).toUpperCase();
+}
+
+function waSale(m) {
+  return !!m && (m.direction === 'out' || m.direction === 'outbound');
+}
+
+function waLeerVistos() {
+  try { return JSON.parse(localStorage.getItem(WA_CLAVE_VISTOS) || 'null'); } catch (e) { return null; }
+}
+
+function waGuardarVistos() {
+  try { localStorage.setItem(WA_CLAVE_VISTOS, JSON.stringify(waVistos || {})); } catch (e) {}
+}
+
+function waMarcarVisto(phone, ts) {
+  if (!phone) return;
+  if (!waVistos) waVistos = {};
+  waVistos[phone] = ts || new Date().toISOString();
+  waGuardarVistos();
+}
+
+// Hay algo nuevo si el chat tuvo actividad después de la última vez que lo
+// abriste en este navegador. La primera vez que se abre la bandeja se toma todo
+// como visto: si no, arrancaría con doscientos chats "sin leer".
+function waNoLeido(lead) {
+  if (!lead || lead.phone === selectedPhone) return false;
+  const actividad = waFecha(lead.last_activity);
+  if (!actividad) return false;
+  const ultimo = waUltimos[lead.phone];
+  if (ultimo && ultimo.dir === 'out' && ultimo.actividad === lead.last_activity) return false;
+  const visto = waVistos && waVistos[lead.phone] ? waFecha(waVistos[lead.phone]) : null;
+  return !visto || actividad > visto;
+}
+
+function waOrdenados() {
+  return waLeads.slice().sort((a, b) => {
+    const fa = waFecha(a.last_activity), fb = waFecha(b.last_activity);
+    return (fb ? fb.getTime() : 0) - (fa ? fa.getTime() : 0);
+  });
+}
+
+function waVistaPrevia(lead) {
+  const u = waUltimos[lead.phone];
+  if (u && u.texto) return (u.dir === 'out' ? '✓ ' : '') + u.texto;
+  if (u) return 'Sin mensajes';
+  return lead.name ? String(lead.phone || '') : '';
+}
+
+function waVacio(icono, titulo, detalle) {
+  return `<div class="wa-vacio"><i data-lucide="${icono}" class="wa-vacio-icono"></i>`
+    + `<div class="wa-vacio-titulo">${esc(titulo)}</div>`
+    + (detalle ? `<div class="wa-vacio-detalle">${esc(detalle)}</div>` : '')
+    + `</div>`;
+}
+
+function waIconos(nodo) {
+  if (nodo && typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons({nodes: [nodo]});
+}
+
+// Busca por nombre, o por teléfono con los dígitos que escribas: "099 123"
+// encuentra a +598 99 123 456.
+function waCoincide(lead, q) {
+  if (!q) return true;
+  const texto = q.toLowerCase();
+  if (String(lead.name || '').toLowerCase().includes(texto)) return true;
+  let digitos = texto.replace(/[^0-9]/g, '');
+  if (digitos.startsWith('0')) digitos = digitos.slice(1);
+  return !!digitos && String(lead.phone || '').replace(/[^0-9]/g, '').includes(digitos);
+}
+
+function waItemLista(lead) {
+  const nombre = lead.name || lead.phone;
+  const nuevo = waNoLeido(lead);
+  return `<div class="wa-lead-item${lead.phone === selectedPhone ? ' selected' : ''}${nuevo ? ' wa-no-leido' : ''}" id="wa-lead-${esc(lead.phone)}" onclick="selectWaLead(${escJs(lead.phone)},${escJs(nombre)})">
+    <div class="wa-avatar">${esc(waIniciales(lead.name, lead.phone))}</div>
+    <div class="wa-lead-body">
+      <div class="wa-lead-top">
+        <span class="wa-lead-name">${esc(nombre)}</span>
+        <span class="wa-lead-time">${esc(waHoraLista(lead.last_activity))}</span>
+      </div>
+      <div class="wa-lead-bottom">
+        <span class="wa-lead-preview">${esc(waVistaPrevia(lead))}</span>
+        ${nuevo ? '<span class="wa-unread" title="Mensajes nuevos"></span>' : ''}
+      </div>
+      <div class="wa-lead-meta"><span class="wa-state-badge ${waStateBadgeClass(lead.state)}" title="${esc(lead.state || 'NEW')}">${esc(waEstadoTexto(lead.state))}</span></div>
+    </div>
+  </div>`;
+}
+
+function waPintarLista() {
+  const listEl = document.getElementById('wa-lead-list');
+  if (!listEl) return;
+  const contador = document.getElementById('wa-count');
+  if (contador) contador.textContent = waLeads.length ? String(waLeads.length) : '';
+  if (!waLeads.length) {
+    listEl.innerHTML = waVacio('message-circle', 'Todavía no hay conversaciones',
+      'Cuando alguien le escriba al WhatsApp, aparece acá.');
+  } else {
+    const visibles = waOrdenados().filter(l => waCoincide(l, waFiltro.trim()));
+    listEl.innerHTML = visibles.length
+      ? visibles.map(waItemLista).join('')
+      : waVacio('search', 'Ningún chat coincide con la búsqueda',
+          'Probá con otro nombre o con parte del teléfono.');
+  }
+  waIconos(listEl);
+}
+
+function waFiltrar(valor) {
+  waFiltro = String(valor == null ? '' : valor);
+  waPintarLista();
+}
+
 async function loadWaLeads() {
   waLoaded = true;
+  waIniciarRefresco();
   const listEl = document.getElementById('wa-lead-list');
-  const r = await fetch('/api/wa/leads');
-  const d = await r.json();
-  if (d.error) {
-    listEl.innerHTML = `<div class="wa-error-banner">${esc(d.error)}</div>`;
+  let d;
+  try {
+    const r = await fetch('/api/wa/leads');
+    d = await r.json();
+  } catch (e) {
+    d = {error: 'No se pudo conectar con el CRM. Revisá la conexión.'};
+  }
+  if (!Array.isArray(d)) {
+    // Si ya había una bandeja dibujada, un refresco que falla no la borra.
+    if (!waLeads.length && listEl) {
+      listEl.innerHTML = `<div class="wa-error-banner">${esc((d && d.error) || 'No se pudo cargar la bandeja')}</div>`;
+    }
     return;
   }
   waLeads = d;
-  if (!d.length) { listEl.innerHTML = '<div class="wa-no-leads">No hay leads en el bot</div>'; return; }
-  listEl.innerHTML = d.map(lead => `
-    <div class="wa-lead-item" id="wa-lead-${esc(lead.phone)}" onclick="selectWaLead(${escJs(lead.phone)},${escJs(lead.name||lead.phone)})">
-      <div class="wa-lead-name">${esc(lead.name || lead.phone)}</div>
-      <div class="wa-lead-meta">
-        <span class="wa-state-badge ${waStateBadgeClass(lead.state)}">${esc(lead.state||'NEW')}</span>
-        <span class="wa-lead-time">${fmtWaTime(lead.last_activity)}</span>
-      </div>
-    </div>`).join('');
+  if (waVistos === null) {
+    waVistos = waLeerVistos();
+    if (!waVistos) {
+      waVistos = {};
+      d.forEach(l => { if (l.phone && l.last_activity) waVistos[l.phone] = l.last_activity; });
+      waGuardarVistos();
+    }
+  }
+  // Lo que llegó al chat que tenés abierto ya lo estás viendo.
+  const abierto = selectedPhone && d.find(l => l.phone === selectedPhone);
+  if (abierto) waMarcarVisto(abierto.phone, abierto.last_activity);
+  waPintarLista();
+  if (waChatPendiente) {
+    const buscado = waChatPendiente;
+    waChatPendiente = null;
+    const lead = d.find(l => String(l.phone || '').replace(/[^0-9]/g, '') === buscado);
+    if (lead) selectWaLead(lead.phone, lead.name || lead.phone);
+  }
+  waCargarPrevias();
+}
+
+// Un solo reloj para la bandeja, y solo mientras estás en WhatsApp: la
+// conversación abierta cada 5 segundos y la lista cada 20. Arranca la primera
+// vez que se abre el panel, nunca al cargar la página.
+function waIniciarRefresco() {
+  if (waPolling) return;
+  waPolling = setInterval(() => {
+    if (activePanel !== 'wa') return;
+    if (typeof document !== 'undefined' && document.hidden) return;
+    waTicks++;
+    if (selectedPhone) loadWaMessages(selectedPhone);
+    if (waTicks % 4 === 0) loadWaLeads();
+  }, 5000);
+}
+
+function waGuardarUltimo(phone, mensajes, actividad) {
+  const u = mensajes.length ? mensajes[mensajes.length - 1] : null;
+  let texto = u ? String(u.content || '') : '';
+  if (u && !texto && u.media && u.media.length) {
+    texto = waMayuscula(NOMBRE_MEDIO[u.media[0].tipo] || 'un archivo');
+  }
+  waUltimos[phone] = {texto: texto, dir: u ? (waSale(u) ? 'out' : 'in') : '', actividad: actividad || ''};
+}
+
+// La vista previa de los chats de arriba de la lista. De a uno y con tope, para
+// no llenar al bot de pedidos: los que no cambiaron no se vuelven a pedir.
+async function waCargarPrevias() {
+  if (waPreviasCorriendo) return;
+  waPreviasCorriendo = true;
+  let hubo = false;
+  try {
+    const pendientes = waOrdenados().slice(0, 30)
+      .filter(l => l.phone && (!waUltimos[l.phone] || waUltimos[l.phone].actividad !== (l.last_activity || '')))
+      .slice(0, 10);
+    for (const lead of pendientes) {
+      if (activePanel !== 'wa') break;
+      let d;
+      try {
+        const r = await fetch('/api/wa/leads/' + encodeURIComponent(lead.phone) + '/messages');
+        d = await r.json();
+      } catch (e) { break; }
+      if (!Array.isArray(d)) break;
+      waGuardarUltimo(lead.phone, d, lead.last_activity);
+      hubo = true;
+    }
+  } finally {
+    waPreviasCorriendo = false;
+  }
+  if (hubo) waPintarLista();
 }
 
 async function selectWaLead(phone, name) {
   selectedPhone = phone;
+  waFirmaMensajes = '';
+  const lead = waLeads.find(l => l.phone === phone);
+  waMarcarVisto(phone, lead && lead.last_activity);
   document.querySelectorAll('.wa-lead-item').forEach(el => el.classList.remove('selected'));
   const item = document.getElementById('wa-lead-' + phone);
-  if (item) item.classList.add('selected');
+  if (item) {
+    item.classList.add('selected');
+    item.classList.remove('wa-no-leido');
+    const punto = item.querySelector('.wa-unread');
+    if (punto) punto.remove();
+  }
+  // En el celular esto cambia la lista por el chat.
+  const contenedor = document.getElementById('wa-container');
+  if (contenedor) contenedor.classList.add('wa-en-chat');
 
   document.getElementById('wa-empty-state').style.display = 'none';
   const content = document.getElementById('wa-chat-content');
   content.style.display = 'flex';
   document.getElementById('wa-chat-name').textContent = name;
   document.getElementById('wa-chat-phone').textContent = phone;
-  document.getElementById('wa-messages').innerHTML = '<div style="color:#334155;text-align:center;padding:20px">Cargando...</div>';
+  const avatar = document.getElementById('wa-chat-avatar');
+  if (avatar) avatar.textContent = waIniciales(lead ? lead.name : name, phone);
+  const estado = document.getElementById('wa-chat-estado');
+  if (estado) {
+    estado.className = 'wa-state-badge ' + waStateBadgeClass(lead && lead.state);
+    estado.textContent = lead ? waEstadoTexto(lead.state) : '';
+  }
+  document.getElementById('wa-messages').innerHTML = '<div class="wa-cargando">Cargando conversación…</div>';
 
-  const lead = waLeads.find(l => l.phone === phone);
   const isHuman = lead && (lead.state === 'HUMAN_QUEUED');
   document.getElementById('wa-human-badge').style.display = isHuman ? 'inline-flex' : 'none';
   document.getElementById('wa-release-btn').style.display = isHuman ? 'inline-flex' : 'none';
   pintarSwitchBot(lead);
+  waIniciarRefresco();
 
-  await loadWaMessages(phone);
-  if (waPolling) clearInterval(waPolling);
-  waPolling = setInterval(() => { if (selectedPhone === phone) loadWaMessages(phone); }, 5000);
+  await loadWaMessages(phone, true);
+  const input = document.getElementById('wa-input');
+  if (input && selectedPhone === phone && window.innerWidth > 768) input.focus();
+}
+
+// El botón de volver del celular: de la conversación a la lista.
+function waVolver() {
+  const contenedor = document.getElementById('wa-container');
+  if (contenedor) contenedor.classList.remove('wa-en-chat');
+  selectedPhone = null;
+  waFirmaMensajes = '';
+  const content = document.getElementById('wa-chat-content');
+  if (content) content.style.display = 'none';
+  const vacio = document.getElementById('wa-empty-state');
+  if (vacio) vacio.style.display = '';
+  waPintarLista();
 }
 
 // El interruptor del bot, por lead. Son dos cosas distintas y las dos se
@@ -3908,21 +6049,74 @@ async function releaseToBot() {
 
 /*WA_MEDIOS_JS*/
 
-async function loadWaMessages(phone) {
-  const r = await fetch('/api/wa/leads/' + encodeURIComponent(phone) + '/messages');
-  const d = await r.json();
-  if (d.error) {
-    document.getElementById('wa-messages').innerHTML = `<div style="color:#f87171;padding:16px">${esc(d.error)}</div>`;
+// La conversación: una burbuja por mensaje (las que entran a la izquierda, las
+// que salen a la derecha), con su hora adentro y un separador cada vez que
+// cambia el día. `hoy` existe para poder probarlo con una fecha fija.
+function waPintarMensajes(mensajes, hoy) {
+  if (!mensajes.length) {
+    return waVacio('message-square', 'Sin mensajes todavía',
+      'Cuando haya mensajes en esta conversación, aparecen acá.');
+  }
+  let diaAnterior = '';
+  return mensajes.map(m => {
+    const fecha = waFecha(m.created_at);
+    let separador = '';
+    if (fecha) {
+      const clave = fecha.getFullYear() + '-' + fecha.getMonth() + '-' + fecha.getDate();
+      if (clave !== diaAnterior) {
+        diaAnterior = clave;
+        separador = `<div class="wa-dia"><span>${esc(waEtiquetaDia(fecha, hoy))}</span></div>`;
+      }
+    }
+    const sale = waSale(m);
+    const texto = m.content ? `<span class="wa-texto">${esc(m.content)}</span>` : '';
+    const hora = fecha ? `<span class="wa-bubble-time">${esc(waHora(fecha))}</span>` : '';
+    return separador
+      + `<div class="wa-fila ${sale ? 'wa-fila-out' : 'wa-fila-in'}">`
+      + `<div class="wa-bubble ${sale ? 'wa-bubble-out' : 'wa-bubble-in'}">${mediosDeMensaje(m)}${texto}${hora}</div>`
+      + `</div>`;
+  }).join('');
+}
+
+function waAlFinal(el) {
+  if (!el) return;
+  el.scrollTop = el.scrollHeight;
+  // Las fotos terminan de cargar después y empujan la conversación para arriba.
+  setTimeout(() => { el.scrollTop = el.scrollHeight; }, 80);
+  setTimeout(() => { el.scrollTop = el.scrollHeight; }, 500);
+}
+
+async function loadWaMessages(phone, alFinal) {
+  let d;
+  try {
+    const r = await fetch('/api/wa/leads/' + encodeURIComponent(phone) + '/messages');
+    d = await r.json();
+  } catch (e) {
+    d = {error: 'No se pudo cargar la conversación'};
+  }
+  // Cambiaste de chat mientras esta cargaba: no pisar el que estás mirando.
+  if (phone !== selectedPhone) return;
+  const el = document.getElementById('wa-messages');
+  if (!Array.isArray(d)) {
+    if (!waFirmaMensajes) {
+      el.innerHTML = `<div class="wa-error-banner">${esc((d && d.error) || 'No se pudo cargar la conversación')}</div>`;
+    }
     return;
   }
-  const el = document.getElementById('wa-messages');
-  if (!d.length) { el.innerHTML = '<div style="color:#334155;text-align:center;padding:20px">Sin mensajes</div>'; return; }
-  el.innerHTML = d.map((m, i) => `
-    <div style="display:flex;flex-direction:column;align-items:${m.direction==='out'?'flex-end':'flex-start'}">
-      <div class="wa-bubble ${m.direction==='out'?'wa-bubble-out':'wa-bubble-in'}">${mediosDeMensaje(m)}${esc(m.content||'')}</div>
-      <div class="wa-bubble-time">${fmtWaTime(m.created_at)}</div>
-    </div>`).join('');
-  setTimeout(() => { el.scrollTop = el.scrollHeight; }, 50);
+  const ultimo = d.length ? d[d.length - 1] : null;
+  const firma = d.length + '|' + (ultimo ? (ultimo.id || '') + '|' + (ultimo.created_at || '') : '');
+  if (firma === waFirmaMensajes && !alFinal) return;
+  // Solo se baja sola si ya estabas abajo: si subiste a leer algo, no te saca.
+  const cercaDelFinal = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+  const primeraVez = !waFirmaMensajes;
+  waFirmaMensajes = firma;
+
+  const lead = waLeads.find(l => l.phone === phone);
+  waGuardarUltimo(phone, d, lead && lead.last_activity);
+  el.innerHTML = waPintarMensajes(d);
+  waIconos(el);
+  if (alFinal || primeraVez || cercaDelFinal) waAlFinal(el);
+  waPintarLista();
 }
 
 async function sendWaMessage() {
@@ -3930,26 +6124,88 @@ async function sendWaMessage() {
   const input = document.getElementById('wa-input');
   const text = input.value.trim();
   if (!text) return;
+  const phone = selectedPhone;
+  const boton = document.getElementById('wa-send-btn');
   input.value = '';
-  const r = await fetch('/api/wa/send', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({phone:selectedPhone, text})});
-  const d = await r.json();
-  if (!d.ok) { alert('Error enviando mensaje: '+(d.error||'Error desconocido')); input.value = text; return; }
-  await loadWaMessages(selectedPhone);
+  waAjustarAlto(input);
+  if (boton) boton.disabled = true;
+  try {
+    const r = await fetch('/api/wa/send', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({phone:phone, text})});
+    const d = await r.json();
+    if (!d.ok) {
+      alert('Error enviando mensaje: '+(d.error||'Error desconocido'));
+      input.value = text;
+      waAjustarAlto(input);
+      return;
+    }
+    waMarcarVisto(phone);
+    if (phone === selectedPhone) await loadWaMessages(phone, true);
+  } catch (e) {
+    alert('Error enviando mensaje: no se pudo conectar');
+    input.value = text;
+    waAjustarAlto(input);
+  } finally {
+    if (boton) boton.disabled = false;
+  }
 }
+
+// Enter manda y Shift+Enter baja de línea, como en WhatsApp Web. `isComposing`
+// es el Enter que confirma una tilde o un emoji del teclado: ese no manda.
+function waTeclaInput(e) {
+  if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+    e.preventDefault();
+    sendWaMessage();
+  }
+}
+
+// La caja crece con el texto hasta unas seis líneas; después scrollea.
+function waAjustarAlto(el) {
+  if (!el || !el.style) return;
+  el.style.height = 'auto';
+  if (el.scrollHeight) el.style.height = Math.min(el.scrollHeight + 2, 140) + 'px';
+  else el.style.height = '';
+}
+
+function waTogglePlantillas() {
+  const panel = document.getElementById('wa-templates-panel');
+  if (!panel) return;
+  const abrir = panel.style.display === 'none';
+  panel.style.display = abrir ? 'block' : 'none';
+  const boton = document.getElementById('wa-plantillas-btn');
+  if (boton) boton.classList.toggle('activo', abrir);
+  if (abrir) loadWaTemplates();
+}
+
+// El link del mail de aviso abre directo la conversación: /?panel=wa&chat=598...
+// Sin `location` (los tests de node) no hace nada.
+(function () {
+  if (typeof location === 'undefined' || !location.search) return;
+  let q;
+  try { q = new URLSearchParams(location.search); } catch (e) { return; }
+  if (q.get('panel') !== 'wa') return;
+  waChatPendiente = (q.get('chat') || '').replace(/[^0-9]/g, '') || null;
+  setTimeout(() => { try { showPanel('wa'); } catch (e) {} }, 0);
+})();
 
 // ========== Calendar panel ==========
 let calLoaded = false;
 let calMonthOffset = 0;
 let calWeekOffset = 0;
 let calView = 'mes';   // 'mes' | 'semana'
+// Numero del ultimo pedido de reuniones. Deslizar rapido dispara varios pedidos
+// y pueden volver desordenados: solo se dibuja la respuesta del ultimo, si no
+// el contador y la grilla quedan mostrando un mes que ya no es el que se mira.
+let _calPedido = 0;
 
 const CAL_MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const CAL_MESES_CORTOS = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
 const CAL_DIAS = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
 
-// Las flechas mueven de mes o de semana segun la vista que estes mirando.
+// Las flechas mueven de mes o de semana segun la vista que estes mirando. En el
+// celular la semana no existe (renderCalendar dibuja el mes), asi que ahi
+// siempre se mueve el mes: si no, las flechas no hacian nada visible.
 function calShift(delta) {
-  if (calView === 'semana') calWeekOffset += delta;
+  if (calView === 'semana' && window.innerWidth > 768) calWeekOffset += delta;
   else calMonthOffset += delta;
   renderCalendar();
 }
@@ -4015,31 +6271,37 @@ function _calHoraDeLaReunion(reunion) {
 
 async function renderCalendar() {
   if (calView === 'semana' && window.innerWidth > 768) return renderCalWeek();
-  const now = new Date();
-  const target = new Date(now.getFullYear(), now.getMonth() + calMonthOffset, 1);
-  const year = target.getFullYear();
-  const month = target.getMonth();
+  // El mes que se mira sale de hoy en Montevideo, no del reloj del navegador ni
+  // de UTC: a las 22 del 30/9 en Montevideo ya es 1/10 en UTC.
+  const ahora = _calAhoraMvd();
+  const visto = _calMesVisto(calMonthOffset, ahora);
+  const year = visto.anio;
+  const month = visto.mes;
   const monthStart = new Date(year, month, 1);
   const monthEnd = new Date(year, month + 1, 0);
+  const rango = _calRangoMes(year, month);
+  const pedido = ++_calPedido;
 
-  const monthNames = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-  document.getElementById('cal-week-label').textContent = monthNames[month] + ' ' + year;
+  document.getElementById('cal-week-label').textContent = CAL_MESES[month] + ' ' + year;
+  _calPintarContador(year, month, 'contando…');
 
   const daysEl = document.getElementById('cal-days');
   daysEl.innerHTML = '<div class="cal-loading">Cargando...</div>';
   document.getElementById('cal-error').style.display = 'none';
 
-  const r = await fetch('/api/calendar/events?start='+isoDate(monthStart)+'&end='+isoDate(monthEnd));
+  const r = await fetch('/api/calendar/events?start=' + rango.start + '&end=' + rango.end);
   const d = await r.json();
+  if (pedido !== _calPedido) return;   // ya se pidio otro mes
 
   if (d.error) {
     document.getElementById('cal-error').textContent = d.error;
     document.getElementById('cal-error').style.display = 'block';
     daysEl.innerHTML = '';
+    _calPintarContador(year, month, 'sin datos');
     return;
   }
 
-  const todayStr = isoDate(new Date());
+  const todayStr = ahora.slice(0, 10);
   const dayNames = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
 
   const eventMap = {};
@@ -4049,7 +6311,7 @@ async function renderCalendar() {
   });
   window._calEventMap = eventMap;
   _calEventos = d.events || [];
-  _calPintarContador();
+  _calPintarContador(year, month);
 
   let firstWeekday = monthStart.getDay() - 1;
   if (firstWeekday < 0) firstWeekday = 6;
@@ -4062,7 +6324,7 @@ async function renderCalendar() {
     if (dayNum < 1 || dayNum > daysInMonth) {
       cells.push({ empty: true });
     } else {
-      const ds = isoDate(new Date(year, month, dayNum));
+      const ds = _calIsoLocal(new Date(year, month, dayNum));
       cells.push({ dayNum, ds, isToday: ds === todayStr, weekend: (i % 7) >= 5,
                    events: (eventMap[ds] || []).sort((a,b) => (a.time||'').localeCompare(b.time||'')) });
     }
@@ -4082,6 +6344,7 @@ async function renderCalendar() {
         </div>`
     ).join('')}
   </div>`;
+  _calSeleccionarDiaMobile();
 }
 
 // ── Vista semanal ───────────────────────────────────────────────────────────
@@ -4100,11 +6363,105 @@ function _calEvento(id) {
   return _calEventos.find(e => String(e.id) === String(id));
 }
 
-function _calPintarContador() {
+// ── Contador del mes ─────────────────────────────────────────────────────────
+// "Septiembre 2026 · 18 reuniones · 11 hechas · 7 por venir". Siempre habla del
+// MES: en la vista semana, del mes de la semana visible. Cuenta todo lo que el
+// calendario dibuja como reunion (del CRM, de Google y de Calendly; las
+// canceladas ya no vienen del endpoint), sin distinguir tipos.
+
+// Hoy en Montevideo como 'AAAA-MM-DDTHH:MM'. Uruguay es UTC-3 fijo (no tiene
+// horario de verano desde 2015), asi que no depende del huso del navegador.
+function _calAhoraMvd(ms) {
+  const d = new Date((ms === undefined ? Date.now() : ms) - 3 * 3600000);
+  const dos = n => String(n).padStart(2, '0');
+  return d.getUTCFullYear() + '-' + dos(d.getUTCMonth() + 1) + '-' + dos(d.getUTCDate())
+       + 'T' + dos(d.getUTCHours()) + ':' + dos(d.getUTCMinutes());
+}
+
+// El mes que se mira: el de `ahoraMvd` corrido `offset` meses. `mes` va de 0 a 11.
+function _calMesVisto(offset, ahoraMvd) {
+  const d = new Date(parseInt(ahoraMvd.slice(0, 4), 10),
+                     parseInt(ahoraMvd.slice(5, 7), 10) - 1 + (offset || 0), 1);
+  return {anio: d.getFullYear(), mes: d.getMonth()};
+}
+
+// Primer y ultimo dia del mes, en fecha local (sin pasar por UTC).
+function _calRangoMes(anio, mes) {
+  return {start: _calIsoLocal(new Date(anio, mes, 1)),
+          end: _calIsoLocal(new Date(anio, mes + 1, 0))};
+}
+
+// A que mes pertenece la semana visible. Si hoy cae adentro, al mes de hoy (el
+// miercoles 30/9 se sigue contando setiembre). Si no, al del jueves, que es el
+// que tiene la mayoria de los dias cuando la semana cruza dos meses.
+function _calMesDeLaSemana(lunes, hoyIso) {
+  const domingo = new Date(lunes.getFullYear(), lunes.getMonth(), lunes.getDate() + 6);
+  if (hoyIso && hoyIso >= _calIsoLocal(lunes) && hoyIso <= _calIsoLocal(domingo)) {
+    return {anio: parseInt(hoyIso.slice(0, 4), 10), mes: parseInt(hoyIso.slice(5, 7), 10) - 1};
+  }
+  const jueves = new Date(lunes.getFullYear(), lunes.getMonth(), lunes.getDate() + 3);
+  return {anio: jueves.getFullYear(), mes: jueves.getMonth()};
+}
+
+// Lo que pide la vista semana: la semana Y su mes entero, en un solo pedido,
+// para que el contador cuente el mes aunque la grilla muestre 7 dias.
+function _calRangoSemana(lunes, anio, mes) {
+  const domingo = new Date(lunes.getFullYear(), lunes.getMonth(), lunes.getDate() + 6);
+  const delMes = _calRangoMes(anio, mes);
+  const desde = _calIsoLocal(lunes);
+  const hasta = _calIsoLocal(domingo);
+  return {start: desde < delMes.start ? desde : delMes.start,
+          end: hasta > delMes.end ? hasta : delMes.end};
+}
+
+// Cuantas reuniones tiene el mes y cuantas ya pasaron. "Hecha" = su hora de
+// inicio ya paso en Montevideo. Las de dia entero (sin hora) cuentan como
+// hechas recien cuando termino su dia.
+function _calResumenMes(eventos, anio, mes, ahoraMvd) {
+  const clave = anio + '-' + String(mes + 1).padStart(2, '0');
+  const delMes = (eventos || []).filter(ev => String((ev && ev.date) || '').slice(0, 7) === clave);
+  const mesDeHoy = ahoraMvd.slice(0, 7);
+  const tipo = clave < mesDeHoy ? 'pasado' : (clave > mesDeHoy ? 'futuro' : 'actual');
+  let hechas = 0;
+  delMes.forEach(ev => {
+    const inicio = ev.date + 'T' + (ev.time || '24:00');
+    if (inicio <= ahoraMvd) hechas++;
+  });
+  return {tipo: tipo, total: delMes.length, hechas: hechas, porVenir: delMes.length - hechas};
+}
+
+function _calPlural(n, uno, varios) {
+  return n + ' ' + (n === 1 ? uno : varios);
+}
+
+// Mes pasado: "N reuniones". Mes actual: "N reuniones · H hechas · P por venir".
+// Mes futuro: "N agendadas".
+function _calTextoContador(resumen, anio, mes) {
+  const partes = [CAL_MESES[mes] + ' ' + anio];
+  if (resumen.tipo === 'futuro') {
+    partes.push(_calPlural(resumen.total, 'agendada', 'agendadas'));
+  } else {
+    partes.push(_calPlural(resumen.total, 'reunión', 'reuniones'));
+  }
+  if (resumen.tipo === 'actual') {
+    partes.push(_calPlural(resumen.hechas, 'hecha', 'hechas'));
+    partes.push(resumen.porVenir + ' por venir');
+  }
+  return partes.join(' · ');
+}
+
+// Con `estado` ("contando…", "sin datos") muestra el mes y el estado; sin el,
+// cuenta lo que hay en _calEventos. Crear, editar, mover y borrar terminan en
+// renderCalendar, que pasa por aca: el contador se actualiza solo.
+function _calPintarContador(anio, mes, estado) {
   const el = document.getElementById('cal-count');
   if (!el) return;
-  const n = _calEventos.length;
-  el.textContent = n === 1 ? '1 reunión' : n + ' reuniones';
+  if (estado) {
+    el.textContent = CAL_MESES[mes] + ' ' + anio + ' · ' + estado;
+    return;
+  }
+  el.textContent = _calTextoContador(
+    _calResumenMes(_calEventos, anio, mes, _calAhoraMvd()), anio, mes);
 }
 
 function _calChip(ev) {
@@ -4206,22 +6563,34 @@ async function renderCalWeek() {
       ? lunes.getDate() + ' – ' + domingo.getDate() + ' de ' + CAL_MESES[domingo.getMonth()] + ' ' + domingo.getFullYear()
       : lunes.getDate() + ' ' + CAL_MESES_CORTOS[lunes.getMonth()] + ' – ' + domingo.getDate() + ' ' + CAL_MESES_CORTOS[domingo.getMonth()] + ' ' + domingo.getFullYear();
 
+  const mesSemana = _calMesDeLaSemana(lunes, _calAhoraMvd().slice(0, 10));
+  const pedidoRango = _calRangoSemana(lunes, mesSemana.anio, mesSemana.mes);
+  const pedido = ++_calPedido;
+  _calPintarContador(mesSemana.anio, mesSemana.mes, 'contando…');
+
   const daysEl = document.getElementById('cal-days');
   daysEl.innerHTML = '<div class="cal-loading">Cargando...</div>';
   document.getElementById('cal-error').style.display = 'none';
 
-  const r = await fetch('/api/calendar/events?start='+_calIsoLocal(lunes)+'&end='+_calIsoLocal(domingo));
+  // Se pide la semana y su mes entero: la grilla usa la semana, el contador el mes.
+  const r = await fetch('/api/calendar/events?start=' + pedidoRango.start + '&end=' + pedidoRango.end);
   const d = await r.json();
+  if (pedido !== _calPedido) return;   // ya se pidio otra semana
   if (d.error) {
     document.getElementById('cal-error').textContent = d.error;
     document.getElementById('cal-error').style.display = 'block';
     daysEl.innerHTML = '';
+    _calPintarContador(mesSemana.anio, mesSemana.mes, 'sin datos');
     return;
   }
 
-  const eventos = d.events || [];
-  _calEventos = eventos;
-  _calPintarContador();
+  // _calEventos tiene todo lo pedido (el editor y el arrastre buscan por id);
+  // la grilla, solo lo de la semana.
+  _calEventos = d.events || [];
+  _calPintarContador(mesSemana.anio, mesSemana.mes);
+  const semDesde = _calIsoLocal(lunes);
+  const semHasta = _calIsoLocal(domingo);
+  const eventos = _calEventos.filter(ev => ev.date >= semDesde && ev.date <= semHasta);
   window._calEventMap = {};
   eventos.forEach(ev => {
     if (!window._calEventMap[ev.date]) window._calEventMap[ev.date] = [];
@@ -4366,6 +6735,9 @@ async function _calGuardarHorario() {
     return;
   }
   _calCerrarEditor();
+  // En el celular la lista sigue a la reunion a su dia nuevo: si no, queda
+  // mostrando un dia donde la reunion ya no esta y parece que se borro.
+  if (window.innerWidth <= 768) calDiaMobile = date;
   renderCalendar();
 }
 
@@ -4373,26 +6745,107 @@ document.getElementById('reprog-modal').addEventListener('click', e => {
   if (e.target === e.currentTarget) _calCerrarEditor();
 });
 
-function _calCellClick(cell, dateStr) {
+// El dia cuya lista se ve en el celular. Sobrevive a volver a dibujar el mes
+// (guardar, mover una reunion, el sync) para no perder lo que se estaba mirando.
+let calDiaMobile = null;
+
+// Que dia mostrar al dibujar el mes: el que ya estaba elegido si sigue a la
+// vista, si no hoy, y si el mes no contiene ninguno de los dos, ninguno.
+function _calDiaMobile(fechasDelMes, hoy, elegido) {
+  const fechas = fechasDelMes || [];
+  if (elegido && fechas.includes(elegido)) return elegido;
+  if (hoy && fechas.includes(hoy)) return hoy;
+  return null;
+}
+
+// Al abrir el calendario en el celular no habia ningun dia marcado: la lista
+// quedaba vacia y habia que adivinar que se toca un dia. Ahora arranca en hoy.
+// No desplaza la pantalla: eso es solo cuando la persona toca un dia.
+function _calSeleccionarDiaMobile() {
   if (window.innerWidth > 768) return;
   const mobileList = document.getElementById('cal-day-events-mobile');
   if (!mobileList) return;
-  document.querySelectorAll('.cal-cell').forEach(c => c.style.outline = '');
-  cell.style.outline = '2px solid #0088cc';
+  const celdas = Array.from(document.querySelectorAll('.cal-cell[data-date]'));
+  const ds = _calDiaMobile(celdas.map(c => c.dataset.date), _calIsoLocal(new Date()), calDiaMobile);
+  const celda = celdas.find(c => c.dataset.date === ds);
+  if (celda) { _calCellClick(celda, ds, false); return; }
+  mobileList.innerHTML = '<div class="cal-mobile-vacio">Tocá un día para ver sus reuniones.</div>';
+}
+
+// Una reunion en la lista del celular. En el celular no hay hover, asi que las
+// acciones del chip de escritorio (.cal-chip-acts) no se ven: van aca como
+// botones. Llaman a las MISMAS funciones que el chip —editar abre el mismo
+// modal y borrar pide la misma confirmacion— para que no diverjan. Las de
+// Calendly no se editan desde aca, igual que en escritorio.
+function _calItemMobile(ev) {
+  const deCalendly = (ev.origen || 'crm') === 'calendly';
+  const editar = deCalendly
+    ? ''
+    : '<button class="cal-mobile-act cal-mobile-act-editar" onclick="_calAbrirEditor(' + escJs(ev.id) + ')">Editar</button>';
+  const unirse = ev.meeting_url
+    ? '<a class="cal-mobile-act cal-mobile-act-unirse" href="' + esc(ev.meeting_url) + '" target="_blank" rel="noopener">Unirse</a>'
+    : '';
+  const borrar = '<button class="cal-mobile-act cal-mobile-act-borrar" onclick="deleteCalEvent(' + escJs(ev.id) + ',' + escJs(ev.title || '') + ')">Borrar</button>';
+  return '<div class="cal-mobile-ev">'
+       + '<div class="cal-mobile-ev-titulo">' + esc(ev.title || '') + '</div>'
+       + (ev.time ? '<div class="cal-mobile-ev-hora">🕐 ' + esc(ev.time) + '</div>' : '')
+       + (deCalendly ? '<div class="cal-mobile-ev-aviso">De Calendly: se reprograma allá</div>' : '')
+       + '<div class="cal-mobile-acts">' + editar + unirse + borrar + '</div>'
+       + '</div>';
+}
+
+function _calCellClick(cell, dateStr, desplazar) {
+  if (window.innerWidth > 768) return;
+  const mobileList = document.getElementById('cal-day-events-mobile');
+  if (!mobileList) return;
+  calDiaMobile = dateStr;
+  document.querySelectorAll('.cal-cell.sel-mobile').forEach(c => c.classList.remove('sel-mobile'));
+  cell.classList.add('sel-mobile');
   const events = (window._calEventMap || {})[dateStr] || [];
   if (!events.length) {
-    mobileList.innerHTML = '<div style="color:#475569;font-size:.78rem;padding:8px 0">Sin eventos este día.</div>';
+    mobileList.innerHTML = '<div class="cal-mobile-vacio">Sin reuniones este día.</div>';
   } else {
-    mobileList.innerHTML = events.map(ev => `
-      <div style="background:#111827;border:1px solid #1e293b;border-radius:10px;padding:12px;margin-bottom:8px">
-        <div style="font-size:.82rem;font-weight:600;color:#f1f5f9">${esc(ev.title||'')}</div>
-        ${ev.time ? `<div style="font-size:.72rem;color:#0088cc;margin-top:3px">🕐 ${esc(ev.time)}</div>` : ''}
-        ${ev.meeting_url ? `<a href="${esc(ev.meeting_url)}" target="_blank" style="display:inline-flex;align-items:center;gap:4px;margin-top:6px;font-size:.72rem;color:#4ade80;text-decoration:none">▶ Unirse a reunión</a>` : ''}
-      </div>
-    `).join('');
+    mobileList.innerHTML = events.map(_calItemMobile).join('');
   }
-  mobileList.scrollIntoView({behavior:'smooth',block:'nearest'});
+  if (desplazar !== false) mobileList.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
+
+// ── Deslizar para cambiar de mes (celular) ──────────────────────────────────
+// Izquierda = mes siguiente, derecha = mes anterior. Solo cuenta un gesto de mas
+// de 50px y mas horizontal que vertical: uno vertical es el scroll de la pagina
+// y uno corto es un toque para abrir un dia o sus botones, y esos dos tienen
+// que seguir andando. Los listeners son pasivos: nunca frenan el scroll.
+function _calDireccionSwipe(dx, dy) {
+  if (Math.abs(dx) <= 50) return 0;
+  if (Math.abs(dx) <= Math.abs(dy)) return 0;
+  return dx < 0 ? 1 : -1;
+}
+
+let _calToque = null;
+
+function _calToqueInicio(e) {
+  // Dos dedos es zoom, no deslizar.
+  if (!e.touches || e.touches.length !== 1) { _calToque = null; return; }
+  _calToque = {x: e.touches[0].clientX, y: e.touches[0].clientY};
+}
+
+function _calToqueFin(e) {
+  const inicio = _calToque;
+  _calToque = null;
+  if (!inicio || !e.changedTouches || !e.changedTouches.length) return;
+  const fin = e.changedTouches[0];
+  const dir = _calDireccionSwipe(fin.clientX - inicio.x, fin.clientY - inicio.y);
+  if (dir) calShift(dir);
+}
+
+// Sobre #cal-days, que no se reemplaza al redibujar (cambia su contenido).
+(function () {
+  const zona = document.getElementById('cal-days');
+  if (!zona) return;
+  zona.addEventListener('touchstart', _calToqueInicio, {passive: true});
+  zona.addEventListener('touchend', _calToqueFin, {passive: true});
+  zona.addEventListener('touchcancel', function () { _calToque = null; }, {passive: true});
+})();
 
 function openNewEventModal() {
   const today = isoDate(new Date());
@@ -4703,6 +7156,21 @@ async function loadProjects() {
 // viejo. Sirve para leer de un vistazo por donde va cada columna.
 const _COLOR_GRUPO_CLIENTE = {todo:'#94a3b8', in_progress:'#3b82f6', done:'#10b981', otros:'#f59e0b'};
 
+// Lo que se dibujo la ultima vez. El arrastre lo modifica y vuelve a dibujar;
+// si Notion rechaza, se restaura desde aca y la ficha vuelve a su columna.
+let _ncColumnas = [];
+let _ncClientes = [];
+let _ncArrastrando = null;  // id de la ficha que va en la mano
+let _ncGuardando = false;   // un movimiento esperando la respuesta de Notion
+
+// Las fichas se arrastran con el mouse. En touch el drag de HTML5 no dispara
+// (ya paso con la vista semanal del calendario), asi que ahi no se dibujan
+// arrastrables y la ayuda del panel dice que se mueven desde la compu. Es la
+// misma condicion que usa el CSS para elegir que ayuda mostrar.
+function _ncPuedeArrastrar() {
+  return !!(window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches);
+}
+
 async function loadNotionClients() {
   const board = document.getElementById('notion-clients-board');
   if (!board) return;
@@ -4724,22 +7192,36 @@ async function loadNotionClients() {
     board.innerHTML = '<div class="tasks-empty">No se pudieron cargar los clientes.</div>';
     return;
   }
+  _ncColumnas = columnas;
+  _ncClientes = clientes;
+  _ncDibujar();
+}
+
+function _ncDibujar() {
+  const board = document.getElementById('notion-clients-board');
+  if (!board) return;
+  const arrastrable = _ncPuedeArrastrar();
   // Lo que no cae en ningun estado conocido (un estado nuevo en Notion, o una
   // ficha sin estado) va a una columna aparte, que solo aparece si tiene algo:
   // vacia seria una columna de ruido permanente.
-  const conocidos = new Set(columnas.map(col => col.estado));
-  const sueltos = clientes.filter(c => !conocidos.has(c.status));
-  board.innerHTML = columnas.map(col =>
+  const conocidos = new Set(_ncColumnas.map(col => col.estado));
+  const sueltos = _ncClientes.filter(c => !conocidos.has(c.status));
+  board.innerHTML = _ncColumnas.map(col =>
     _notionClientColHtml(col.estado, col.grupo,
-                         clientes.filter(c => c.status === col.estado))
+                         _ncClientes.filter(c => c.status === col.estado),
+                         arrastrable, true)
   ).join('') + (sueltos.length
-    ? _notionClientColHtml('Sin clasificar', 'otros', sueltos)
+    ? _notionClientColHtml('Sin clasificar', 'otros', sueltos, arrastrable, false)
     : '');
 }
 
-function _notionClientColHtml(titulo, grupo, dentro) {
+function _notionClientColHtml(titulo, grupo, dentro, arrastrable, recibe) {
   const color = _COLOR_GRUPO_CLIENTE[grupo] || _COLOR_GRUPO_CLIENTE.otros;
-  return `<div class="kanban-col">
+  // "Sin clasificar" no recibe fichas: no es un estado que exista en Notion.
+  const destino = arrastrable && recibe
+    ? ` data-estado="${esc(titulo)}" ondragover="_ncOver(event)" ondragleave="_ncLeave(event)" ondrop="_ncDrop(event)"`
+    : '';
+  return `<div class="kanban-col"${destino}>
     <div class="kanban-head">
       <span class="kanban-dot" style="background:${color}"></span>
       <span class="kanban-name">${esc(titulo)}</span>
@@ -4747,13 +7229,13 @@ function _notionClientColHtml(titulo, grupo, dentro) {
     </div>
     <div class="kanban-cards">${
       dentro.length
-        ? dentro.map(c => _notionClientCardHtml(c)).join('')
+        ? dentro.map(c => _notionClientCardHtml(c, arrastrable)).join('')
         : '<div class="kanban-vacia">Sin fichas</div>'
     }</div>
   </div>`;
 }
 
-function _notionClientCardHtml(c) {
+function _notionClientCardHtml(c, arrastrable) {
   const url = 'https://www.notion.so/' + (c.notion_page_id||'').replace(/-/g,'');
   // El estado ya lo dice el titulo de la columna, no se repite en la tarjeta.
   const meta = [
@@ -4761,11 +7243,196 @@ function _notionClientCardHtml(c) {
     c.due_date ? `<span class="task-deadline">${esc(c.due_date)}</span>` : '',
     c.tiempo_estimado ? `<span class="proj-stage">${esc(c.tiempo_estimado)} h</span>` : '',
   ].filter(Boolean).join('');
-  return `<div class="kanban-card">
-    <a class="proj-name" href="${esc(url)}" target="_blank" rel="noopener">${esc(c.name)}</a>
+  const clases = 'kanban-card' + (arrastrable ? '' : ' nc-fija') + (c._guardando ? ' nc-guardando' : '');
+  const arrastre = arrastrable && !c._guardando
+    ? ` draggable="true" data-nc-id="${Number(c.id)}" ondragstart="_ncDragStart(event)" ondragend="_ncDragEnd(event)"`
+    : '';
+  // El link va con draggable="false": si no, agarrar la ficha por el nombre
+  // arrastra la URL en vez de la ficha.
+  return `<div class="${clases}"${arrastre}>
+    <a class="proj-name" href="${esc(url)}" target="_blank" rel="noopener" draggable="false">${esc(c.name)}</a>
     ${meta ? `<div class="kanban-card-meta">${meta}</div>` : ''}
     ${c.descripcion ? `<div class="kanban-card-who">${esc(c.descripcion)}</div>` : ''}
+    ${_ncVinculoHtml(c)}
+    ${slBotonNotionHtml(c)}
   </div>`;
+}
+
+// ── Conectar una ficha con su persona del CRM ────────────────────────────────
+// Las fichas de Notion no traen ningun id del CRM, solo el nombre. Se conectan
+// una vez, a mano, y con eso la ficha que llega a "Presupuesto Aceptado" pasa
+// sola a Clientes (lo hace el backend, venga el cambio del arrastre o del sync).
+let _ncVinculando = null;   // la ficha cuyo buscador esta abierto
+let _ncBusquedaTimer = null;
+
+function _ncVinculoHtml(c) {
+  const accion = 'event.stopPropagation();_ncAbrirVinculo(' + Number(c.id) + ')';
+  return c.business_id
+    ? '<button class="nc-vinculo" draggable="false" onclick="' + accion + '" title="Cambiar con quién está conectada">👤 ' + esc(c.business_name || 'Persona del CRM') + '</button>'
+    : '<button class="nc-vinculo nc-vinculo-falta" draggable="false" onclick="' + accion + '">Conectar con el CRM</button>';
+}
+
+function _ncAbrirVinculo(id) {
+  const c = _ncClientes.find(x => Number(x.id) === Number(id));
+  if (!c) return;
+  _ncVinculando = c;
+  document.getElementById('nc-vinculo-ficha').textContent = c.name || '';
+  document.getElementById('nc-vinculo-actual').textContent = c.business_id
+    ? 'conectada con ' + (c.business_name || 'una persona del CRM') + '.'
+    : 'todavía no está conectada.';
+  document.getElementById('nc-vinculo-quitar').hidden = !c.business_id;
+  document.getElementById('nc-vinculo-error').textContent = '';
+  const input = document.getElementById('nc-vinculo-buscar');
+  input.value = c.business_id ? '' : (c.name || '');
+  document.getElementById('nc-vinculo-modal').classList.add('open');
+  _ncBuscarPersona(input.value);
+  input.focus();
+}
+
+function _ncCerrarVinculo() {
+  document.getElementById('nc-vinculo-modal').classList.remove('open');
+  _ncVinculando = null;
+}
+
+function _ncBuscarPersonaTecla(v) {
+  clearTimeout(_ncBusquedaTimer);
+  _ncBusquedaTimer = setTimeout(() => _ncBuscarPersona(v), 250);
+}
+
+async function _ncBuscarPersona(texto) {
+  const lista = document.getElementById('nc-vinculo-resultados');
+  const q = (texto || '').trim();
+  if (q.length < 2) {
+    lista.innerHTML = '<div class="nc-vinculo-vacio">Escribí al menos 2 letras del nombre.</div>';
+    return;
+  }
+  lista.innerHTML = '<div class="nc-vinculo-vacio">Buscando...</div>';
+  let items = [];
+  try {
+    // Con `page` la busqueda se resuelve en SQL con LIMIT. Sin `page` la ruta
+    // trae todos los leads a memoria, que es el 502 del 28/8.
+    const r = await fetch('/api/leads?page=1&search=' + encodeURIComponent(q));
+    if (!r.ok) throw new Error(r.status);
+    items = ((await r.json()) || {}).items || [];
+  } catch (e) {
+    lista.innerHTML = '<div class="nc-vinculo-vacio">No se pudo buscar. Probá de nuevo.</div>';
+    return;
+  }
+  lista.innerHTML = items.length
+    ? items.map(p => '<button class="nc-vinculo-opcion" onclick="_ncGuardarVinculo(' + Number(p.id) + ')">'
+        + '<span class="nc-vinculo-nombre">' + esc(p.name || 'Sin nombre') + '</span>'
+        + '<span class="nc-vinculo-sub">' + esc([p.city, p.phone].filter(Boolean).join(' · ')) + '</span>'
+        + '</button>').join('')
+    : '<div class="nc-vinculo-vacio">No hay nadie en el CRM con ese nombre.</div>';
+}
+
+async function _ncGuardarVinculo(businessId) {
+  const c = _ncVinculando;
+  if (!c) return;
+  const err = document.getElementById('nc-vinculo-error');
+  err.textContent = '';
+  let d = {};
+  try {
+    const r = await fetch('/api/notion-clients/' + Number(c.id) + '/cliente-crm', {
+      method: 'PUT', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({business_id: businessId})
+    });
+    try { d = await r.json(); } catch (e) { d = {}; }
+    if (!r.ok) d.ok = false;
+  } catch (e) {
+    d = {ok: false, error: 'no hubo respuesta del CRM'};
+  }
+  if (!d.ok) {
+    err.textContent = 'No se guardó: ' + (d.error || 'error desconocido');
+    return;
+  }
+  c.business_id = d.business_id;
+  c.business_name = d.business_name;
+  _ncCerrarVinculo();
+  _ncDibujar();
+  if (d.paso_a_clientes) {
+    alert((d.business_name || 'La persona') + ' pasó a Clientes, porque su ficha ya está en Presupuesto Aceptado.');
+  }
+}
+
+function _ncDragStart(ev) {
+  if (_ncGuardando) { ev.preventDefault(); return; }
+  _ncArrastrando = Number(ev.currentTarget.dataset.ncId);
+  ev.dataTransfer.setData('text/plain', String(_ncArrastrando));
+  ev.dataTransfer.effectAllowed = 'move';
+  ev.currentTarget.classList.add('dragging');
+}
+
+function _ncDragEnd(ev) {
+  ev.currentTarget.classList.remove('dragging');
+  document.querySelectorAll('#notion-clients-board .drag-over')
+    .forEach(col => col.classList.remove('drag-over'));
+  _ncArrastrando = null;
+}
+
+function _ncOver(ev) {
+  if (_ncArrastrando === null) return;  // un archivo o algo de otro tablero
+  ev.preventDefault();
+  ev.dataTransfer.dropEffect = 'move';
+  ev.currentTarget.classList.add('drag-over');
+}
+
+function _ncLeave(ev) {
+  // Pasar por encima de una ficha de la columna tambien dispara dragleave.
+  if (ev.relatedTarget && ev.currentTarget.contains(ev.relatedTarget)) return;
+  ev.currentTarget.classList.remove('drag-over');
+}
+
+async function _ncDrop(ev) {
+  ev.preventDefault();
+  ev.currentTarget.classList.remove('drag-over');
+  const id = _ncArrastrando;
+  _ncArrastrando = null;
+  const estado = ev.currentTarget.dataset.estado;
+  const c = _ncClientes.find(x => Number(x.id) === id);
+  if (!c || !estado || c.status === estado || _ncGuardando) return;
+  await _ncMover(c, estado);
+}
+
+async function _ncMover(c, estado) {
+  const antes = {status: c.status, grupo: c.grupo};
+  _ncGuardando = true;
+  // Se ve en la columna nueva mientras Notion contesta, pero atenuada: todavia
+  // no es verdad. Si Notion rechaza, vuelve a donde estaba.
+  c.status = estado;
+  c._guardando = true;
+  _ncDibujar();
+  let d = {};
+  try {
+    const r = await fetch('/api/notion-clients/' + Number(c.id) + '/estado', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({estado})
+    });
+    try { d = await r.json(); } catch (e) { d = {}; }
+    if (!r.ok) d.ok = false;
+  } catch (e) {
+    d = {ok: false, error: 'no hubo respuesta del CRM'};
+  }
+  c._guardando = false;
+  _ncGuardando = false;
+  if (d.ok) {
+    c.status = d.estado || estado;
+    c.grupo = d.grupo || c.grupo;
+  } else {
+    c.status = antes.status;
+    c.grupo = antes.grupo;
+  }
+  _ncDibujar();
+  if (!d.ok) {
+    alert('No se pudo mover ' + (c.name || 'la ficha') + ' en Notion, así que volvió a su columna. '
+          + (d.error || 'Mirá los logs del CRM.'));
+  } else if (d.paso_a_clientes) {
+    alert((c.business_name || c.name || 'La persona') + ' pasó a Clientes.');
+  } else if (d.sin_conectar) {
+    if (confirm((c.name || 'Esta ficha') + ' no está conectada con nadie del CRM, así que no pasó a Clientes. ¿La conectás ahora?')) {
+      _ncAbrirVinculo(c.id);
+    }
+  }
 }
 
 function _populateUserFilter() {
@@ -4977,18 +7644,18 @@ function _taskRowHtml(t) {
   const progressBar = t.goal ? `
     <div style="margin-top:6px">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;cursor:pointer" onclick="_toggleTaskHistory(${t.id})">
-        <span style="font-size:.72rem;color:#64748b">${goalTypeLabel[t.goal_type]||t.goal_type}: </span>
-        <span style="font-size:.72rem;font-weight:600;color:${done||pct>=100?'#10b981':'#e2e8f0'}">${progress}/${t.goal}</span>
-        ${pct >= 100 ? '<span style="font-size:.68rem;color:#10b981">✓ Meta alcanzada</span>' : ''}
-        <span style="font-size:.68rem;color:#334155">▾ historial</span>
+        <span style="font-size:.72rem;color:var(--texto-debil)">${goalTypeLabel[t.goal_type]||t.goal_type}: </span>
+        <span style="font-size:.72rem;font-weight:600;color:${done||pct>=100?'var(--verde-texto)':'var(--texto)'}">${progress}/${t.goal}</span>
+        ${pct >= 100 ? '<span style="font-size:.68rem;color:var(--verde-texto)">✓ Meta alcanzada</span>' : ''}
+        <span style="font-size:.68rem;color:var(--texto-debil)">▾ historial</span>
       </div>
-      <div style="height:4px;background:#1e293b;border-radius:2px;overflow:hidden;max-width:240px">
-        <div style="height:100%;width:${pct}%;background:${pct>=100?'#10b981':'#0088cc'};transition:width .3s"></div>
+      <div style="height:4px;background:var(--relleno);border-radius:2px;overflow:hidden;max-width:240px">
+        <div style="height:100%;width:${pct}%;background:${pct>=100?'var(--verde)':'var(--azul)'};transition:width .3s"></div>
       </div>
-      <div id="task-history-${t.id}" style="display:none;margin-top:6px;padding:6px 0;border-top:1px solid #1e293b"></div>
+      <div id="task-history-${t.id}" style="display:none;margin-top:6px;padding:6px 0;border-top:1px solid var(--borde)"></div>
     </div>` : '';
-  const assigneeBadge = t.assignee_name ? `<span style="font-size:.72rem;color:#64748b;background:#1a2234;padding:2px 7px;border-radius:10px">→ ${esc(t.assignee_name)}</span>` : '';
-  const createdByBadge = t.created_by_name && t.assignee_name ? `<span style="font-size:.72rem;color:#334155">de ${esc(t.created_by_name)}</span>` : '';
+  const assigneeBadge = t.assignee_name ? `<span style="font-size:.72rem;color:var(--texto-debil);background:var(--relleno);padding:2px 7px;border-radius:10px">→ ${esc(t.assignee_name)}</span>` : '';
+  const createdByBadge = t.created_by_name && t.assignee_name ? `<span style="font-size:.72rem;color:var(--texto-debil)">de ${esc(t.created_by_name)}</span>` : '';
   const notionBadge = t.notion_page_id
     ? `<a href="https://www.notion.so/${t.notion_page_id.replace(/-/g,'')}" target="_blank" rel="noopener"
           class="task-notion-badge" title="${esc(t.notion_status||'')}">Notion</a>`
@@ -4997,7 +7664,7 @@ function _taskRowHtml(t) {
   return `<div class="task-row${rowExtra}" id="task-row-${t.id}">
     <div class="task-body" style="flex:1;min-width:0">
       <div class="task-title ${done ? 'done-text' : ''}">${esc(t.title)}</div>
-      ${t.description ? `<div style="font-size:.75rem;color:#64748b;margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.description)}</div>` : ''}
+      ${t.description ? `<div style="font-size:.75rem;color:var(--texto-debil);margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.description)}</div>` : ''}
       <div class="task-meta">
         <span class="task-status-badge ${statusClass}" onclick="_setTaskStatus(${t.id})" title="Click para cambiar estado">${statusLabel}</span>
         ${t.priority ? `<span class="task-priority ${t.priority}">${prioLabel}</span>` : ''}
@@ -5096,13 +7763,13 @@ async function _toggleTaskHistory(taskId) {
   const el = document.getElementById(`task-history-${taskId}`);
   if (!el) return;
   if (el.style.display !== 'none') { el.style.display = 'none'; return; }
-  el.innerHTML = '<div style="font-size:.72rem;color:#475569;padding:2px 0">Cargando...</div>';
+  el.innerHTML = '<div style="font-size:.72rem;color:var(--texto-debil);padding:2px 0">Cargando...</div>';
   el.style.display = '';
   try {
     const r = await fetch(`/api/tasks/${taskId}/progress-history`);
     const items = await r.json();
     if (!Array.isArray(items) || !items.length) {
-      el.innerHTML = '<div style="font-size:.72rem;color:#475569;padding:2px 0">Sin historial aún</div>';
+      el.innerHTML = '<div style="font-size:.72rem;color:var(--texto-debil);padding:2px 0">Sin historial aún</div>';
       return;
     }
     el.innerHTML = items.slice(0, 50).map(i => {
@@ -5110,13 +7777,13 @@ async function _toggleTaskHistory(taskId) {
       const dStr = d.toLocaleDateString('es-UY',{day:'2-digit',month:'2-digit'})
                  + ' ' + d.toLocaleTimeString('es-UY',{hour:'2-digit',minute:'2-digit'});
       return `<div style="display:flex;gap:8px;align-items:baseline;padding:2px 0;font-size:.72rem">
-        <span style="color:#10b981;font-weight:700;min-width:20px">+1</span>
-        <span style="color:#94a3b8;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${i.lead_name ? esc(i.lead_name) : '—'}</span>
-        <span style="color:#475569;white-space:nowrap">${dStr}</span>
+        <span style="color:var(--verde-texto);font-weight:700;min-width:20px">+1</span>
+        <span style="color:var(--texto-tenue);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${i.lead_name ? esc(i.lead_name) : '—'}</span>
+        <span style="color:var(--texto-debil);white-space:nowrap">${dStr}</span>
       </div>`;
     }).join('');
   } catch(e) {
-    el.innerHTML = '<div style="font-size:.72rem;color:#f87171;padding:2px 0">Error cargando historial</div>';
+    el.innerHTML = '<div style="font-size:.72rem;color:var(--rojo);padding:2px 0">Error cargando historial</div>';
   }
 }
 
@@ -5172,7 +7839,7 @@ async function openEditTaskModal(taskId) {
     notionLinked.innerHTML = 'Vinculada a Notion' +
       (t.notion_status ? ' (' + esc(t.notion_status) + ')' : '') +
       ' · <a href="https://www.notion.so/' + t.notion_page_id.replace(/-/g,'') +
-      '" target="_blank" rel="noopener" style="color:#0088cc">abrir</a>';
+      '" target="_blank" rel="noopener" style="color:var(--azul-claro)">abrir</a>';
   } else {
     notionUrlInput.style.display = '';
     notionLinked.textContent = '';
@@ -5198,7 +7865,7 @@ function _taskClientSearch(q) {
   const matches = _allLeads.filter(l => l.name && l.name.toLowerCase().includes(q.toLowerCase())).slice(0,6);
   if (!matches.length) { res.style.display = 'none'; return; }
   res.style.display = '';
-  res.innerHTML = matches.map(l => `<div style="padding:8px 12px;cursor:pointer;font-size:.82rem;color:#e2e8f0;border-bottom:1px solid #1e293b" onmousedown="_pickTaskClient(${l.id},${escJs(l.name||'')})">${esc(l.name||'')}</div>`).join('');
+  res.innerHTML = matches.map(l => `<div style="padding:8px 12px;cursor:pointer;font-size:.82rem;color:var(--texto);border-bottom:1px solid var(--borde)" onmousedown="_pickTaskClient(${l.id},${escJs(l.name||'')})">${esc(l.name||'')}</div>`).join('');
 }
 
 function _pickTaskClient(id, name) {
@@ -5325,12 +7992,12 @@ function _upickRenderDropdown(id) {
   const noneLabel = isFilter ? 'Todos los usuarios' : '— Sin asignar —';
   const noneAv = isFilter ? '👤' : '—';
   const noneAvStyle = isFilter
-    ? 'background:#1e293b;color:#475569;font-size:.8rem'
-    : 'background:#1e293b;color:#475569;font-size:.9rem';
+    ? 'background:var(--relleno);color:var(--texto-debil);font-size:.8rem'
+    : 'background:var(--relleno);color:var(--texto-debil);font-size:.9rem';
   const noneSel = !selectedId;
   let html = `<div class="upick-option ${noneSel?'upick-sel':''}" data-uid="" data-name="" data-email="" data-label="${noneLabel}">
     <div class="upick-av" style="${noneAvStyle}">${noneAv}</div>
-    <span class="upick-name" style="color:#64748b">${noneLabel}</span>
+    <span class="upick-name" style="color:var(--texto-debil)">${noneLabel}</span>
     ${noneSel?'<span class="upick-check">✓</span>':''}
   </div>`;
   html += _allUsers.map(u => {
@@ -5359,7 +8026,7 @@ function _upickSelect(id, userId, userName, userEmail, label) {
     if (lbl) lbl.textContent = userName;
   } else {
     const isFilter = id === 'filter';
-    if (av) { av.style.cssText = `background:#1e293b;color:#475569;font-size:${isFilter?'.8rem':'.9rem'}`; av.textContent = isFilter ? '👤' : '—'; }
+    if (av) { av.style.cssText = `background:var(--relleno);color:var(--texto-debil);font-size:${isFilter?'.8rem':'.9rem'}`; av.textContent = isFilter ? '👤' : '—'; }
     if (lbl) lbl.textContent = label;
   }
   const dd = document.getElementById('upick-'+id+'-dropdown');
@@ -5422,95 +8089,20 @@ async function _cpBindTasks() {
   }
 }
 
-// ── Kanban ────────────────────────────────────────────────────────────────────
-
-const KANBAN_COLS = [
-  {key:'contactado',     label:'Contactado'},
-  {key:'reunion_agendada', label:'Reunión agendada'},
-  {key:'reunion_hecha',  label:'Reunión hecha'},
-  {key:'presupuesto_enviado', label:'Presupuesto enviado'},
-  {key:'cliente_cerrado',label:'Cliente cerrado'},
-];
-
-let _kanbanLeads = [];
-let _kanbanDragging = null;
-
-async function loadKanban() {
-  const board = document.getElementById('kanban-board');
-  board.innerHTML = '<div style="color:#475569;font-size:.85rem">Cargando...</div>';
-  try {
-    const r = await fetch('/api/leads');
-    _kanbanLeads = await r.json();
-  } catch { board.innerHTML = '<div style="color:#f87171">Error cargando leads</div>'; return; }
-  renderKanban();
-}
-
-function renderKanban() {
-  const board = document.getElementById('kanban-board');
-  const grouped = {};
-  KANBAN_COLS.forEach(c => grouped[c.key] = []);
-  _kanbanLeads.forEach(l => {
-    const k = l.crm_status || 'sin_contactar';
-    if (grouped[k]) grouped[k].push(l);
-    else grouped['sin_contactar'] && grouped['sin_contactar'].push({...l, crm_status:'sin_contactar'});
-  });
-  board.innerHTML = KANBAN_COLS.map(col => `
-    <div class="kanban-col" data-col="${col.key}"
-         ondragover="event.preventDefault();this.classList.add('drag-over')"
-         ondragleave="this.classList.remove('drag-over')"
-         ondrop="_kanbanDrop(event,'${col.key}')">
-      <div class="kanban-col-header">
-        <span class="kanban-col-title">${col.label}</span>
-        <span class="kanban-count">${grouped[col.key].length}</span>
-      </div>
-      <div class="kanban-cards">
-        ${grouped[col.key].length === 0
-          ? '<div class="kanban-empty">Sin leads</div>'
-          : grouped[col.key].map(l => _kanbanCard(l)).join('')}
-      </div>
-    </div>`).join('');
-}
-
-function _kanbanCard(l) {
-  const meta = [l.interest, l.category, l.city].filter(Boolean).join(' · ');
-  return `<div class="kanban-card" draggable="true" data-id="${l.id}"
-    ondragstart="_kanbanDragStart(event,${l.id})"
-    ondragend="_kanbanDragEnd(event)"
-    onclick="openClientPanel(${l.id})">
-    <div class="kanban-card-name">${esc(l.name||'')}</div>
-    ${meta ? `<div class="kanban-card-meta">${esc(meta)}</div>` : ''}
-    ${l.phone ? `<div class="kanban-card-phone">${esc(l.phone)}</div>` : ''}
-  </div>`;
-}
-
-function _kanbanDragStart(e, id) {
-  _kanbanDragging = id;
-  e.currentTarget.classList.add('dragging');
-  e.dataTransfer.effectAllowed = 'move';
-}
-
-function _kanbanDragEnd(e) {
-  e.currentTarget.classList.remove('dragging');
-  document.querySelectorAll('.kanban-col').forEach(c => c.classList.remove('drag-over'));
-}
-
-async function _kanbanDrop(e, newStatus) {
-  e.currentTarget.classList.remove('drag-over');
-  if (!_kanbanDragging) return;
-  const id = _kanbanDragging;
-  _kanbanDragging = null;
-  const lead = _kanbanLeads.find(l => l.id === id);
-  if (!lead || lead.crm_status === newStatus) return;
-  lead.crm_status = newStatus;
-  renderKanban();
-  await fetch(`/api/leads/${id}/crm-status`, {
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({crm_status: newStatus})
-  });
-}
-
-// Initial load
-loadCola();
+// Initial load. Lo primero del CRM es el Calendario, en su propio grupo arriba
+// de todo (pedido de Juan, 14/9; antes de eso habia pedido Meta Ads). El panel
+// y su item de menu ya arrancan activos en el HTML; aca solo se dibuja. Si el
+// rol no tiene el calendario, el control de acceso de abajo lo manda al primer
+// panel que si tenga.
+//
+// OJO: aca NO va showPanel. Esta linea corre antes de que se declaren
+// NAV_LABELS y compania (mas abajo, con const): showPanel -> _syncMobileNav las
+// lee y tira "Cannot access 'NAV_LABELS' before initialization", que corta el
+// resto del <script> -- permisos, barra del celular, tema -- en el navegador.
+// renderCalendar, antes de su primer await, solo usa calView, calMonthOffset y
+// el DOM, que ya estan declarados aca. calLoaded evita que showPanel('cal') lo
+// vuelva a pedir.
+calLoaded = true; renderCalendar();
 
 // ── Score badge + social icons ────────────────────────────────────────────────
 
@@ -5572,18 +8164,21 @@ function _showScoreBreakdown(event, el) {
 }
 
 // ── Mobile navigation ─────────────────────────────────────────────────────────
-const NAV_PRIORITY = ['cola','seguimientos','meta','cal','tasks','pipeline','clientes','wa','metrics','activity','projects','notion_clients','finanzas'];
+// El mismo orden que el menu de la izquierda (Juan, 14/9).
+const NAV_PRIORITY = ['cal','meta','finanzas','simulador','seg_leads','wa','notion_clients','plantillas','clientes','projects','tasks','daily','daily_admin','activity','equipo','ausencias','cola','metrics'];
 const NAV_ICONS = {
-  cola:'inbox',seguimientos:'bookmark',meta:'instagram',cal:'calendar',
+  cola:'inbox',meta:'instagram',cal:'calendar',
   tasks:'check-square',pipeline:'trending-up',clientes:'users',
   wa:'message-circle',metrics:'bar-chart-2',activity:'clock',projects:'target',
-  notion_clients:'handshake',finanzas:'wallet'
+  notion_clients:'handshake',finanzas:'wallet',simulador:'calculator',equipo:'network',
+  ausencias:'calendar-clock',seg_leads:'phone-call',daily:'clipboard-list',plantillas:'message-square-text',daily_admin:'clipboard-check'
 };
 const NAV_LABELS = {
-  cola:'Cola',seguimientos:'Seguim.',meta:'Meta',cal:'Agenda',
+  cola:'Outbound',meta:'Meta',cal:'Agenda',
   tasks:'Tareas',pipeline:'Pipeline',clientes:'Clientes',
-  wa:'WA',metrics:'Métricas',activity:'Actividad',projects:'Proyectos',
-  notion_clients:'Pipeline',finanzas:'Finanzas'
+  wa:'WA',metrics:'Intel. comercial',activity:'Actividad',projects:'Proyectos',
+  notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador',equipo:'Organigrama',
+  ausencias:'Ausencias',seg_leads:'Seguimiento',daily:'Daily',plantillas:'Plantillas',daily_admin:'Daily Admin'
 };
 let _mobileNavOverflow = [];
 
@@ -5663,19 +8258,27 @@ function closeMasSheet() {
 }
 
 // ── Panel access control ──────────────────────────────────────────────────────
-const ALL_PANELS = ['cola','seguimientos','meta','pipeline','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas'];
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','equipo','ausencias','seg_leads','daily','plantillas','daily_admin'];
 (async () => {
   try {
     const r = await fetch('/api/me');
     if (!r.ok) return;
     const m = await r.json();
     window._isAdmin = m.is_admin;
+    // Paneles que el rol ve pero no modifica (el Contador, en Finanzas). Si
+    // /api/me falla queda vacio: se ve el modo normal y el servidor igual
+    // bloquea las escrituras con 403.
+    window._panelesSoloLectura = (!m.is_admin && Array.isArray(m.paneles_solo_lectura))
+      ? m.paneles_solo_lectura : [];
+    _finAplicarSoloLectura();
     if (m.is_admin) {
       const a = document.getElementById('admin-link');
       if (a) a.style.display = 'block';
     }
     const access = m.panel_access ? JSON.parse(m.panel_access) : null;
     const allowedPanels = (access && !m.is_admin) ? access : ALL_PANELS;
+    // Lo lee Flujos para no hacer clickeable un paso que lleva a un panel vedado.
+    window._panelAccess = (access && !m.is_admin) ? access : null;
     if (access && !m.is_admin) {
       ALL_PANELS.forEach(p => {
         if (!access.includes(p)) {
@@ -5683,15 +8286,39 @@ const ALL_PANELS = ['cola','seguimientos','meta','pipeline','clientes','tasks','
           if (nav) nav.style.display = 'none';
         }
       });
+      _ocultarGruposVacios();
       if (!access.includes(activePanel)) {
-        const first = access[0];
+        // El primero en el orden del menu que el rol tenga Y que exista. Los
+        // permisos guardados pueden traer paneles que ya no estan en la
+        // interfaz (seguimientos, pipeline): con access[0] a ciegas, un rol que
+        // arrancaba en 'seguimientos' abria un panel inexistente, showPanel
+        // tiraba y la barra del celular no se armaba.
+        const first = NAV_PRIORITY.concat(ALL_PANELS).find(p =>
+          access.includes(p) && document.getElementById(p + '-panel'));
         if (first) showPanel(first);
       }
     }
     _buildMobileNav(allowedPanels);
     _syncMobileNav(activePanel);
+    // Las opciones por persona debajo de "Daily Programador" salen de la base.
+    if (allowedPanels.includes('daily')) dyCargarPersonas('programador');
+    if (allowedPanels.includes('daily_admin')) dyCargarPersonas('admin');
   } catch(e) {}
 })();
+
+// Un titulo de grupo sin ninguna seccion visible debajo no se muestra: a un
+// programador sin Finanzas le quedaba "FINANZAS" solo, delatando lo que tiene
+// oculto (Juan, 15/9). Los items son hermanos planos del titulo dentro de
+// .nav-scroll, hasta el titulo siguiente. Solo corre para quien no es admin.
+function _ocultarGruposVacios() {
+  document.querySelectorAll('.nav-scroll .nav-section-label').forEach(label => {
+    let visible = false;
+    for (let el = label.nextElementSibling; el && !el.classList.contains('nav-section-label'); el = el.nextElementSibling) {
+      if (el.classList.contains('nav-item') && el.style.display !== 'none') { visible = true; break; }
+    }
+    label.style.display = visible ? '' : 'none';
+  });
+}
 
 // ── Theme toggle ──────────────────────────────────────────────────────────────
 const LOGO_DARK  = 'https://raw.githubusercontent.com/Scalerics-org/scalerics-assets/main/logo_full_alt.png';
@@ -5744,7 +8371,7 @@ function closeClientPanel() {
 
 async function _cpLoadAll() {
   if (!_cpClientId) return;
-  const [leadRes, meetRes, budgetRes, demoRes, attBudgetRes, attDemoRes, eventsRes, callsRes] = await Promise.allSettled([
+  const [leadRes, meetRes, budgetRes, demoRes, attBudgetRes, attDemoRes, eventsRes, callsRes, segRes] = await Promise.allSettled([
     fetch('/api/leads/' + _cpClientId).then(r => r.json()),
     fetch('/api/calendar/clients/' + _cpClientId + '/meetings').then(r => r.json()),
     fetch('/api/leads/' + _cpClientId + '/budget').then(r => r.json()),
@@ -5753,6 +8380,9 @@ async function _cpLoadAll() {
     fetch('/api/leads/' + _cpClientId + '/attachments?section=demo').then(r => r.json()),
     fetch('/api/leads/' + _cpClientId + '/events').then(r => r.json()),
     fetch('/api/leads/' + _cpClientId + '/calls').then(r => r.json()),
+    // Seguimiento de leads: el recordatorio abierto y el historial de llamados.
+    // Sin el panel da 403 y la seccion no se muestra.
+    fetch('/api/seg-leads/lead/' + _cpClientId).then(r => r.ok ? r.json() : null),
   ]);
   _cpData.lead    = leadRes.status === 'fulfilled' ? leadRes.value : {};
   _cpData.meetings = meetRes.status === 'fulfilled' && Array.isArray(meetRes.value) ? meetRes.value : [];
@@ -5762,6 +8392,7 @@ async function _cpLoadAll() {
   _cpData.attDemo   = attDemoRes.status === 'fulfilled' && Array.isArray(attDemoRes.value) ? attDemoRes.value : [];
   _cpData.events    = eventsRes.status === 'fulfilled' && Array.isArray(eventsRes.value) ? eventsRes.value : [];
   _cpData.calls     = callsRes.status === 'fulfilled' && Array.isArray(callsRes.value) ? callsRes.value : [];
+  _cpData.seg       = segRes.status === 'fulfilled' ? segRes.value : null;
 
   if (_cpData.lead && _cpData.lead.phone) {
     try {
@@ -5987,7 +8618,7 @@ function _cpRenderCalls() {
       </div>
     </div>`).join('')}
   </div>` : '<div style="padding:12px 0;font-size:.82rem;color:var(--texto-debil)">Sin llamadas registradas</div>';
-  return `<div class="cp-section">
+  return slFichaHtml(_cpData.seg) + `<div class="cp-section">
     <div class="cp-section-title">Registrar llamada</div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <select id="call-outcome" style="background:var(--fondo);border:1px solid var(--borde);color:var(--texto);padding:6px 10px;border-radius:6px;font-size:.8rem">
@@ -6481,18 +9112,6 @@ function _cpChangeStatus(val) {
   }).then(() => { if (_cpData.lead) _cpData.lead.crm_status = val; });
 }
 
-let _metricsTab = 'sdr';
-
-function switchMetricsTab(tab) {
-  _metricsTab = tab;
-  document.getElementById('metrics-sdr').style.display  = tab === 'sdr'  ? '' : 'none';
-  document.getElementById('metrics-meta').style.display = tab === 'meta' ? '' : 'none';
-  const sdrBtn  = document.getElementById('tab-sdr-btn');
-  const metaBtn = document.getElementById('tab-meta-btn');
-  if (sdrBtn)  { sdrBtn.style.background  = tab === 'sdr'  ? '#0088cc' : 'transparent'; sdrBtn.style.color  = tab === 'sdr'  ? '#fff' : '#64748b'; }
-  if (metaBtn) { metaBtn.style.background = tab === 'meta' ? '#e1306c' : 'transparent'; metaBtn.style.color = tab === 'meta' ? '#fff' : '#64748b'; }
-}
-
 function _barList(items, maxVal) {
   if (!items || !items.length) return '<div style="color:var(--texto-debil);font-size:.8rem">Sin datos</div>';
   const max = maxVal || Math.max(...items.map(i => i.count), 1);
@@ -6523,7 +9142,27 @@ function _funnelBars(items, stateLabels, stateColors) {
 }
 
 // ========== Finanzas panel ==========
-const FIN_VISTAS = ['movimientos', 'cobrar', 'fijos', 'iva', 'pauta'];
+const FIN_VISTAS = ['movimientos', 'cobrar', 'fijos', 'iva', 'pauta', 'balance'];
+
+// ── Finanzas en solo lectura (el Contador) ──
+// No se dibujan los botones de alta, edicion ni borrado, y arriba va un aviso.
+// El Balance queda completo. Es cosmetico: el servidor devuelve 403 igual.
+window._panelesSoloLectura = window._panelesSoloLectura || [];
+
+function _finSoloLectura() {
+  return Array.isArray(window._panelesSoloLectura)
+    && window._panelesSoloLectura.indexOf('finanzas') >= 0;
+}
+
+function _finAplicarSoloLectura() {
+  const solo = _finSoloLectura();
+  ['fin-btn-movimiento', 'fin-btn-reabrir', 'fin-btn-pendiente'].forEach(id => {
+    const b = document.getElementById(id);
+    if (b) b.style.display = solo ? 'none' : '';
+  });
+  const aviso = document.getElementById('fin-solo-lectura');
+  if (aviso) aviso.style.display = solo ? '' : 'none';
+}
 
 function _finRangoCambio() {
   // El selector de rango es compartido por las tres vistas, pero loadFinanzas
@@ -6545,6 +9184,9 @@ function finVista(cual) {
   document.getElementById('fin-tab-fijos').classList.toggle('active', cual === 'fijos');
   document.getElementById('fin-tab-iva').classList.toggle('active', cual === 'iva');
   document.getElementById('fin-tab-pauta').classList.toggle('active', cual === 'pauta');
+  document.getElementById('fin-tab-balance').classList.toggle('active', cual === 'balance');
+  // El Balance tiene su propio periodo (Este año / Desde el inicio /
+  // Personalizado): el selector de rango no aplica y se esconde, como en IVA.
   // El IVA se liquida por MES: un saldo de "los ultimos 12 meses" no
   // significa nada. En vez de dejar el selector de rango diciendo una cosa y
   // la tabla otra -el problema que _finRangoCambio arregla para Pauta-, aca
@@ -6552,7 +9194,7 @@ function finVista(cual) {
   // Ni el IVA ni lo que falta cobrar dependen del rango: el IVA se liquida por
   // mes y un pendiente esta o no esta, no pertenece a ningun periodo.
   document.getElementById('fin-rango').style.display =
-    (cual === 'iva' || cual === 'cobrar') ? 'none' : '';
+    (cual === 'iva' || cual === 'cobrar' || cual === 'balance') ? 'none' : '';
   if (cual === 'cobrar') loadPorCobrar();
   if (cual === 'fijos') loadFijos();
   if (cual === 'iva') loadIva();
@@ -6811,6 +9453,7 @@ function _finBarras(filas, color) {
 let _finResumen = null;
 
 async function loadFinanzas() {
+  _finAplicarSoloLectura();
   await _finCargarMeses();
   _finPintarNavegador();
   const {desde, hasta} = _finRango();
@@ -6995,8 +9638,9 @@ async function loadPorCobrar() {
         + '<td class="' + (p.vencido ? 'fin-rojo' : '') + '">' + esc(p.texto) + '</td>'
         + '<td style="text-align:right">' + _finUsd(p.monto_usd) + '</td>'
         + '<td style="text-align:right;white-space:nowrap">'
-        + '<button class="btn-ghost" onclick="cobrarPendiente(' + p.id + ')">Cobrar</button> '
-        + '<button class="btn-ghost" onclick="borrarPendiente(' + p.id + ')">Borrar</button>'
+        + (_finSoloLectura() ? ''
+          : '<button class="btn-ghost" onclick="cobrarPendiente(' + p.id + ')">Cobrar</button> '
+            + '<button class="btn-ghost" onclick="borrarPendiente(' + p.id + ')">Borrar</button>')
         + '</td></tr>').join('')
     + '</tbody></table>';
 }
@@ -7100,6 +9744,209 @@ async function loadIva() {
     + '</tbody></table>';
 }
 
+// ========== Finanzas: Balance ==========
+// La cuenta la hace el servidor (calcular_balance en services/finanzas.py):
+// aca solo se pide y se pinta. Todo en USD, como el resto de Finanzas.
+let _finBalUltimo = null;
+
+function _finBalHoy() {
+  // Montevideo es UTC-3 fijo: se resta al reloj UTC para no depender de la
+  // zona horaria de la compu del que mira.
+  return new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10);
+}
+
+function finBalPreset() {
+  const personalizado = document.getElementById('fb-preset').value === 'personalizado';
+  document.getElementById('fb-fechas').style.display = personalizado ? '' : 'none';
+  if (!personalizado) return;
+  const hoy = _finBalHoy();
+  const desde = document.getElementById('fb-desde');
+  const hasta = document.getElementById('fb-hasta');
+  if (!desde.value) desde.value = hoy.slice(0, 4) + '-01-01';
+  if (!hasta.value) hasta.value = hoy;
+}
+
+function _finBalUrl() {
+  const tipo = document.getElementById('fb-tipo').value;
+  const preset = document.getElementById('fb-preset').value;
+  let url = '/api/finanzas/balance?tipo=' + encodeURIComponent(tipo);
+  if (preset === 'inicio') url += '&desde=inicio';
+  if (preset === 'personalizado') {
+    url += '&desde=' + encodeURIComponent(document.getElementById('fb-desde').value)
+      + '&hasta=' + encodeURIComponent(document.getElementById('fb-hasta').value);
+  }
+  return url;
+}
+
+async function finBalGenerar() {
+  const caja = document.getElementById('fin-balance');
+  const imprimir = document.getElementById('fb-imprimir');
+  imprimir.style.display = 'none';
+  _finBalUltimo = null;
+  caja.innerHTML = '<div class="fb-nota">Generando balance...</div>';
+  try {
+    const r = await fetch(_finBalUrl());
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error((d && d.error) || 'no se pudo generar el balance');
+    // Pintar adentro del try: una respuesta rara muestra el error en vez de
+    // dejar el cartel de "Generando..." para siempre.
+    caja.innerHTML = _finBalPintar(d);
+    _finBalUltimo = d;
+  } catch (e) {
+    caja.innerHTML = '<div class="fb-error">Error: ' + esc(e.message) + '</div>';
+    return;
+  }
+  imprimir.style.display = '';
+}
+
+function _finBalFecha(iso) {
+  const p = String(iso || '').slice(0, 10).split('-');
+  return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : String(iso || '');
+}
+
+function _finBalCat(c) {
+  const t = String(c || '').replace(/_/g, ' ');
+  return esc(t.charAt(0).toUpperCase() + t.slice(1));
+}
+
+function _finBalColor(n) {
+  return n >= 0 ? 'fin-verde' : 'fin-rojo';
+}
+
+// "USD 12.000 = USD 9.000 en blanco + USD 3.000 no facturado". Solo en el
+// interno: en el de blanco todo es blanco y la cuenta no dice nada.
+function _finBalDesglose(b, interno) {
+  if (!interno) return '';
+  const signo = b.no_facturado < 0 ? ' − ' : ' + ';
+  return '<div class="fb-desglose">' + _finUsd(b.total) + ' = ' + _finUsd(b.blanco)
+    + ' en blanco' + signo + _finUsd(Math.abs(b.no_facturado)) + ' no facturado</div>';
+}
+
+function _finBalKpi(rotulo, valor, clase, extra) {
+  return '<div class="fin-kpi"><div class="fin-kpi-label">' + rotulo + '</div>'
+    + '<div class="fin-kpi-valor ' + clase + '">' + _finUsd(valor) + '</div>'
+    + (extra || '') + '</div>';
+}
+
+function _finBalTablaCats(bloque, interno, rotulo) {
+  if (!bloque.por_categoria.length) {
+    return '<div class="fb-nota">Sin ' + rotulo.toLowerCase() + ' en el período.</div>';
+  }
+  const partes = (x) => interno
+    ? '<td class="fb-num">' + _finUsd(x.blanco) + '</td><td class="fb-num">' + _finUsd(x.no_facturado) + '</td>'
+    : '';
+  return '<div class="fb-scroll"><table class="fin-tabla fb-tabla"><thead><tr>'
+    + '<th>Categoría</th><th class="fb-num">Total</th>'
+    + (interno ? '<th class="fb-num">En blanco</th><th class="fb-num">No facturado</th>' : '')
+    + '</tr></thead><tbody>'
+    + bloque.por_categoria.map(c => '<tr><td>' + _finBalCat(c.categoria) + '</td>'
+        + '<td class="fb-num">' + _finUsd(c.total) + '</td>' + partes(c) + '</tr>').join('')
+    + '<tr class="fb-total"><td>Total ' + rotulo.toLowerCase() + '</td>'
+    + '<td class="fb-num">' + _finUsd(bloque.total) + '</td>' + partes(bloque) + '</tr>'
+    + '</tbody></table></div>';
+}
+
+function _finBalFila(rotulo, valor, clase) {
+  return '<tr' + (clase ? ' class="' + clase + '"' : '') + '><td>' + rotulo + '</td>'
+    + '<td class="fb-num">' + _finUsd(valor) + '</td></tr>';
+}
+
+function _finBalPintar(d) {
+  const interno = d.tipo === 'interno';
+  const generado = String(d.generado_en || '').split(' ');
+  const saldo = d.iva.saldo;
+  const estadoIva = Math.abs(saldo) < 0.005 ? 'sin saldo' : (saldo > 0 ? 'a pagar' : 'a favor');
+
+  let html = '<div class="fb-doc">'
+    + '<div class="fb-cabecera">'
+    + '<div class="fb-titulo">Balance · ' + esc(d.tipo_nombre) + '</div>'
+    + '<div class="fb-sub">Período: del ' + _finBalFecha(d.desde) + ' al ' + _finBalFecha(d.hasta) + '</div>'
+    + '<div class="fb-sub">Generado el ' + _finBalFecha(generado[0])
+    + (generado[1] ? ' a las ' + esc(generado[1]) : '') + ' (hora de Montevideo)</div>'
+    + '<div class="fb-sub">Montos en USD, netos (sin IVA) salvo donde dice "con IVA".</div>'
+    + '</div>';
+
+  if (d.sin_cotizacion) {
+    html += '<div class="fb-aviso">' + d.sin_cotizacion
+      + (d.sin_cotizacion === 1 ? ' movimiento sin tipo de cambio no se incluye.'
+                                : ' movimientos sin tipo de cambio no se incluyen.')
+      + '</div>';
+  }
+
+  html += '<div class="fin-kpis">'
+    + _finBalKpi('Ingresos', d.ingresos.total, 'fin-verde', _finBalDesglose(d.ingresos, interno))
+    + _finBalKpi('Egresos', d.egresos.total, 'fin-rojo', _finBalDesglose(d.egresos, interno))
+    + _finBalKpi('Resultado', d.resultado.total, _finBalColor(d.resultado.total),
+                 '<div class="fin-kpi-var">ingresos menos egresos</div>'
+                 + _finBalDesglose(d.resultado, interno))
+    + '</div>';
+
+  html += '<div class="fb-seccion"><div class="fin-card-title">Ingresos por categoría</div>'
+    + _finBalTablaCats(d.ingresos, interno, 'Ingresos') + '</div>'
+    + '<div class="fb-seccion"><div class="fin-card-title">Egresos por categoría</div>'
+    + _finBalTablaCats(d.egresos, interno, 'Egresos') + '</div>';
+
+  html += '<div class="fb-seccion"><div class="fin-card-title">IVA y totales con IVA</div>'
+    + '<div class="fb-scroll"><table class="fin-tabla fb-tabla"><tbody>'
+    + _finBalFila('Ingresos netos', d.ingresos.total)
+    + _finBalFila('IVA ventas (débito)', d.iva.ventas)
+    + _finBalFila('Ingresos con IVA', d.con_iva.ingresos, 'fb-total')
+    + _finBalFila('Egresos netos', d.egresos.total)
+    + _finBalFila('IVA compras (crédito)', d.iva.compras)
+    + _finBalFila('Egresos con IVA', d.con_iva.egresos, 'fb-total')
+    + _finBalFila('Saldo de IVA (' + estadoIva + ')', Math.abs(saldo), 'fb-total')
+    + _finBalFila('Resultado con IVA', d.con_iva.resultado, 'fb-total')
+    + '</tbody></table></div>'
+    + '<div class="fb-nota">Solo lo facturado lleva IVA. El saldo es débito menos crédito del período entero, sin el arrastre mes a mes de la pestaña IVA.</div>'
+    + '</div>';
+
+  html += '<div class="fb-seccion"><div class="fin-card-title">Impuestos</div>';
+  if (d.impuestos.por_concepto.length) {
+    html += '<div class="fb-scroll"><table class="fin-tabla fb-tabla"><tbody>'
+      + d.impuestos.por_concepto.map(i => _finBalFila(esc(i.concepto), i.total)).join('')
+      + _finBalFila('Total impuestos', d.impuestos.total, 'fb-total')
+      + '</tbody></table></div>';
+  } else {
+    html += '<div class="fb-nota">No hay egresos en la categoría Impuestos en el período.</div>';
+  }
+  html += '<div class="fb-nota">Egresos de la categoría Impuestos (IRAE, BPS, pagos a DGI). Ya están sumados en Egresos.</div></div>';
+
+  html += '<div class="fb-seccion"><div class="fin-card-title">Evolución mes a mes</div>'
+    + '<div class="fb-scroll"><table class="fin-tabla fb-tabla"><thead><tr>'
+    + '<th>Mes</th><th class="fb-num">Ingresos</th><th class="fb-num">Egresos</th><th class="fb-num">Resultado</th>'
+    + '</tr></thead><tbody>'
+    + d.meses.map(m => '<tr><td>' + _finNombreMes(m.periodo) + '</td>'
+        + '<td class="fb-num">' + _finUsd(m.ingresos) + '</td>'
+        + '<td class="fb-num">' + _finUsd(m.egresos) + '</td>'
+        + '<td class="fb-num ' + _finBalColor(m.resultado) + '">' + _finUsd(m.resultado) + '</td></tr>').join('')
+    + '<tr class="fb-total"><td>Total</td>'
+    + '<td class="fb-num">' + _finUsd(d.ingresos.total) + '</td>'
+    + '<td class="fb-num">' + _finUsd(d.egresos.total) + '</td>'
+    + '<td class="fb-num ' + _finBalColor(d.resultado.total) + '">' + _finUsd(d.resultado.total) + '</td></tr>'
+    + '</tbody></table></div></div>';
+
+  return html + '</div>';
+}
+
+function finBalImprimir() {
+  if (!_finBalUltimo) return;
+  const hoja = document.getElementById('fb-print');
+  const body = document.body;
+  const eraClaro = body.classList.contains('light');
+  hoja.innerHTML = _finBalPintar(_finBalUltimo);
+  // En claro siempre: un PDF con fondo oscuro no se imprime.
+  body.classList.add('light');
+  body.classList.add('fb-imprimiendo');
+  const terminar = () => {
+    window.removeEventListener('afterprint', terminar);
+    body.classList.remove('fb-imprimiendo');
+    if (!eraClaro) body.classList.remove('light');
+    hoja.innerHTML = '';
+  };
+  window.addEventListener('afterprint', terminar);
+  window.print();
+}
+
 function _finMesActual() {
   const h = new Date();
   return h.getFullYear() + '-' + String(h.getMonth() + 1).padStart(2, '0');
@@ -7128,6 +9975,10 @@ function _finRecalcularUsd() {
 }
 
 async function abrirMovimiento(prefill) {
+  // Se llega tambien desde el panel de cliente ("registrar cobro"), donde el
+  // boton no sabe del modo solo lectura: se corta aca en vez de abrir un
+  // formulario que al guardar va a dar 403.
+  if (_finSoloLectura()) { alert('Tu rol puede ver Finanzas pero no modificarla'); return; }
   await _finCargarCategorias();
   const p = prefill || {};
   document.getElementById('fin-modal-title').textContent =
@@ -7238,6 +10089,7 @@ async function loadMovimientos(desde, hasta) {
     cuerpo.innerHTML = '<div class="empty-state">No hay movimientos en el período</div>';
     return;
   }
+  const soloLectura = _finSoloLectura();
   cuerpo.innerHTML = movs.map(m => {
     const esIngreso = m.tipo === 'ingreso';
     const original = m.moneda === 'UYU'
@@ -7254,11 +10106,11 @@ async function loadMovimientos(desde, hasta) {
            class="${esIngreso ? 'fin-verde' : 'fin-rojo'}">
         ${esIngreso ? '+' : '−'}${_finUsd(m.monto_usd)}${original}
       </div>
-      <div style="flex:0 0 76px;text-align:right">
+      <div style="flex:0 0 76px;text-align:right">${soloLectura ? '' : `
         <button class="btn-ghost btn-icono" onclick='abrirMovimiento(${_finAttr(m)})'
                 title="Editar"><i data-lucide="pencil" class="nav-icon"></i></button>
         <button class="btn-ghost btn-icono" onclick="borrarMovimientoUI(${m.id}, ${m.recurrente_id ? 1 : 0})"
-                title="Borrar"><i data-lucide="trash-2" class="nav-icon"></i></button>
+                title="Borrar"><i data-lucide="trash-2" class="nav-icon"></i></button>`}
       </div>
     </div>`;
   }).join('');
@@ -7381,30 +10233,83 @@ async function guardarFijo() {
   loadFijos();
 }
 
+// Si ese fijo corre en el mes: `desde` y `hasta` son 'YYYY-MM', y comparados
+// como texto ordenan igual que las fechas.
+function _finFijoVigente(f, mes) {
+  return (!f.desde || f.desde <= mes) && (!f.hasta || f.hasta >= mes);
+}
+
+// Los totales de la vista Fijos. Todos los fijos son mensuales (tienen dia del
+// mes, no hay otra frecuencia), asi que la suma ya es "por mes".
+// Cuentan solo los activos que corren en el mes en curso: uno apagado, uno que
+// ya termino o uno que todavia no empezo no genera plata este mes.
+// Todo en USD con el monto_usd que calculo el servidor: el panel no convierte.
+// Un fijo en pesos sin tipo de cambio usable llega con monto_usd null y queda
+// afuera, contado en sinCotizar, en vez de sumarse a un valor inventado.
+// Es el liquido, sin IVA: igual que el numero grande de los KPIs de Movimientos.
+function _finTotalesFijos(fijos, mes) {
+  const t = {ingresos: 0, egresos: 0, resultado: 0, sinCotizar: 0, contados: 0};
+  (fijos || []).forEach(f => {
+    if (!f.activo || !_finFijoVigente(f, mes)) return;
+    if (f.tipo !== 'ingreso' && f.tipo !== 'egreso') return;
+    if (f.monto_usd === null || f.monto_usd === undefined) { t.sinCotizar += 1; return; }
+    if (f.tipo === 'ingreso') t.ingresos += f.monto_usd;
+    else t.egresos += f.monto_usd;
+    t.contados += 1;
+  });
+  const redondear = v => Math.round(v * 100) / 100;
+  t.ingresos = redondear(t.ingresos);
+  t.egresos = redondear(t.egresos);
+  t.resultado = redondear(t.ingresos - t.egresos);
+  return t;
+}
+
+function _finKpisFijos(t) {
+  const nota = '<div class="fin-kpi-var">por mes, en USD sin IVA</div>';
+  return `
+    <div class="fin-kpi">
+      <div class="fin-kpi-label">Total egresos fijos</div>
+      <div class="fin-kpi-valor fin-rojo">${_finUsd(t.egresos)}</div>
+      ${nota}
+    </div>
+    <div class="fin-kpi">
+      <div class="fin-kpi-label">Total ingresos fijos</div>
+      <div class="fin-kpi-valor fin-verde">${_finUsd(t.ingresos)}</div>
+      ${nota}
+    </div>
+    <div class="fin-kpi">
+      <div class="fin-kpi-label">Resultado de los fijos</div>
+      <div class="fin-kpi-valor ${t.resultado >= 0 ? 'fin-verde' : 'fin-rojo'}">${_finUsd(t.resultado)}</div>
+      <div class="fin-kpi-var">ingresos menos egresos</div>
+    </div>`;
+}
+
 async function loadFijos() {
   const cuerpo = document.getElementById('fin-fijos');
+  const totalesEl = document.getElementById('fin-fijos-totales');
   const r = await fetch('/api/finanzas/recurrentes');
   if (!r.ok) {
+    // Sin datos no hay totales: dejar los de antes seria mostrar numeros viejos.
+    totalesEl.innerHTML = '';
     cuerpo.innerHTML = '<div style="color:#f87171;padding:16px">No se pudieron cargar los fijos</div>';
     return;
   }
   const fijos = await r.json();
 
-  // El total sale del monto_usd que ya calculó el servidor: el panel no
-  // convierte. Un fijo en pesos sin tipo de cambio usable llega con
-  // monto_usd null y queda afuera del total, no adentro a un valor inventado.
-  const activos = fijos.filter(f => f.activo && f.tipo === 'egreso');
-  const sinCotizar = activos.filter(f => f.monto_usd === null || f.monto_usd === undefined).length;
-  const mensual = activos.reduce((suma, f) => suma + (f.monto_usd || 0), 0);
+  const mes = _finMeses.mes_actual || _finMesActual();
+  const totales = _finTotalesFijos(fijos, mes);
+  const sinCotizar = totales.sinCotizar;
+  const soloLectura = _finSoloLectura();
+  totalesEl.innerHTML = _finKpisFijos(totales);
 
   const encabezado = `
     <div class="fin-toolbar">
-      <div class="fin-kpi-var">Egresos fijos activos: <strong>${_finUsd(mensual)}</strong> por mes</div>
-      <button class="btn-primary" style="margin-left:auto" onclick="abrirFijo()">
+      <div class="fin-kpi-var">Cuentan los fijos activos que corren este mes.</div>
+      ${soloLectura ? '' : `<button class="btn-primary" style="margin-left:auto" onclick="abrirFijo()">
         <i data-lucide="plus" class="nav-icon"></i> Fijo
-      </button>
+      </button>`}
       ${sinCotizar > 0 ? `<div class="fin-rojo" style="width:100%;font-size:.75rem">
-        ${sinCotizar} fijo${sinCotizar > 1 ? 's' : ''} en pesos sin tipo de cambio cargado, afuera de este total</div>` : ''}
+        ${sinCotizar} fijo${sinCotizar > 1 ? 's' : ''} en pesos sin tipo de cambio cargado, afuera de los totales</div>` : ''}
     </div>`;
 
   if (!fijos.length) {
@@ -7420,18 +10325,18 @@ async function loadFijos() {
     <div class="table-row no-cb" style="${f.activo ? '' : 'opacity:.5'}">
       <div style="flex:1">
         <div class="biz-name">${esc(f.concepto)}</div>
-        <div class="fin-kpi-var">${esc(f.categoria.replace(/_/g, ' '))} · día ${f.dia_del_mes} · desde ${f.desde}${f.hasta ? ' hasta ' + f.hasta : ''}${f.facturado ? ' · con IVA' : ''}${f.activo ? '' : ' · apagado'}</div>
+        <div class="fin-kpi-var">${esc(f.categoria.replace(/_/g, ' '))} · día ${f.dia_del_mes} · desde ${f.desde}${f.hasta ? ' hasta ' + f.hasta : ''}${f.facturado ? ' · con IVA' : ''}${f.activo ? (_finFijoVigente(f, mes) ? '' : ' · no corre este mes') : ' · apagado'}</div>
       </div>
       <div style="flex:0 0 150px;text-align:right"
            class="${f.tipo === 'ingreso' ? 'fin-verde' : 'fin-rojo'}">
         ${f.moneda} ${f.monto.toLocaleString('es-UY')}
         ${enUsd}
       </div>
-      <div style="flex:0 0 76px;text-align:right">
+      <div style="flex:0 0 76px;text-align:right">${soloLectura ? '' : `
         <button class="btn-ghost btn-icono" onclick='abrirFijo(${_finAttr(f)})'
                 title="Editar"><i data-lucide="pencil" class="nav-icon"></i></button>
         <button class="btn-ghost btn-icono" onclick="borrarFijoUI(${f.id})"
-                title="Borrar"><i data-lucide="trash-2" class="nav-icon"></i></button>
+                title="Borrar"><i data-lucide="trash-2" class="nav-icon"></i></button>`}
       </div>
     </div>`;
   }).join('');
@@ -7450,10 +10355,7 @@ async function loadMetrics() {
   const el = id => document.getElementById(id);
 
   try {
-    const fetches = [fetch('/api/metrics')];
-    if (window._isAdmin) fetches.push(fetch('/api/metrics/meta'));
-    const results = await Promise.all(fetches);
-    const m = await results[0].json();
+    const m = await (await fetch('/api/metrics')).json();
 
     if (el('m-total'))        el('m-total').textContent        = m.total;
     if (el('m-contacted'))    el('m-contacted').textContent    = m.contacted;
@@ -7488,28 +10390,3213 @@ async function loadMetrics() {
     if (el('m-rubros')) el('m-rubros').innerHTML = _barList(m.top_rubros);
     if (el('m-cities')) el('m-cities').innerHTML = _barList(m.top_cities);
 
-    if (window._isAdmin && results[1]) {
-      document.getElementById('tab-meta-btn').style.display = '';
-      const mm = await results[1].json();
-
-      if (el('mm-total'))       el('mm-total').textContent       = mm.total;
-      if (el('mm-month'))       el('mm-month').textContent       = mm.this_month;
-      if (el('mm-week'))        el('mm-week').textContent        = mm.this_week;
-      if (el('mm-conv'))        el('mm-conv').textContent        = mm.conversion + '%';
-
-      if (el('mm-campaigns'))   el('mm-campaigns').innerHTML     = _barList(mm.by_campaign);
-      if (el('mm-months'))      el('mm-months').innerHTML        = _monthBars(mm.by_month);
-      if (el('mm-funnel'))      el('mm-funnel').innerHTML        = _funnelBars(mm.funnel, stateLabels, stateColors);
-      if (el('mm-busca'))       el('mm-busca').innerHTML         = _barList(mm.que_busca);
-      if (el('mm-presupuesto')) el('mm-presupuesto').innerHTML   = _barList(mm.presupuesto);
-      if (el('mm-cities'))      el('mm-cities').innerHTML        = _barList(mm.top_cities);
-    }
-
     if (el('metrics-date')) el('metrics-date').textContent = 'Actualizado: ' + new Date().toLocaleString('es-UY');
   } catch(e) {
     const p = document.getElementById('metrics-panel');
-    if (p) p.insertAdjacentHTML('afterbegin','<p style="color:#f87171;margin-bottom:16px">Error cargando métricas.</p>');
+    if (p) p.insertAdjacentHTML('afterbegin','<p style="color:#f87171;margin-bottom:16px">Error cargando Inteligencia comercial.</p>');
   }
+}
+
+// ========== Plantillas ==========
+// Los mensajes de siempre, con variables entre llaves que se completan con los
+// datos de un lead. Todo lleva el prefijo pl. Sin template literals ni barras
+// invertidas, y nunca dos llaves seguidas: este bloque vive en un string de
+// Python que pasa por Jinja. Las variables se leen caracter por caracter, sin
+// expresiones regulares, por lo mismo.
+let plDatos = [];
+let plVariables = [];
+let plUsando = null;
+let plLead = null;
+let plValores = {};
+let plEditando = 0;
+let plBusquedaN = 0;
+let plBuscarTimer = 0;
+let plAvisoTimer = 0;
+
+const PL_LETRAS = 'abcdefghijklmnopqrstuvwxyz_áéíóúñ';
+
+async function plCargar() {
+  try {
+    const r = await fetch('/api/plantillas');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const j = await r.json();
+    plDatos = j.plantillas || [];
+    plVariables = j.variables || [];
+  } catch (e) {
+    document.getElementById('pl-lista').innerHTML =
+      '<div class="pl-vacio">No se pudieron cargar las plantillas (' + esc(e.message) + ').</div>';
+    return;
+  }
+  plPintar();
+}
+
+function plPintar() {
+  document.getElementById('pl-lista').innerHTML = plListaHtml(plDatos);
+  document.getElementById('pl-variables').innerHTML = plVariables.map(v =>
+    '<span class="pl-var">' + esc('{' + v + '}') + '</span>').join('');
+}
+
+// ── variables ──
+function plEsVariable(nombre) {
+  if (!nombre || nombre.length > 30) return false;
+  for (const c of nombre) {
+    if (!PL_LETRAS.includes(c)) return false;
+  }
+  return true;
+}
+
+// "Hola {nombre}." -> [texto "Hola ", var "nombre", texto "."]
+function plTrozos(texto) {
+  const t = String(texto || '');
+  const trozos = [];
+  let desde = 0;
+  let i = 0;
+  while (i < t.length) {
+    if (t[i] === '{') {
+      const fin = t.indexOf('}', i + 1);
+      if (fin > i && plEsVariable(t.slice(i + 1, fin))) {
+        if (i > desde) trozos.push({tipo: 'texto', valor: t.slice(desde, i)});
+        trozos.push({tipo: 'var', valor: t.slice(i + 1, fin)});
+        i = fin + 1;
+        desde = i;
+        continue;
+      }
+    }
+    i++;
+  }
+  if (desde < t.length) trozos.push({tipo: 'texto', valor: t.slice(desde)});
+  return trozos;
+}
+
+function plVariablesDe(texto) {
+  const vistas = [];
+  plTrozos(texto).forEach(tr => {
+    if (tr.tipo === 'var' && !vistas.includes(tr.valor)) vistas.push(tr.valor);
+  });
+  return vistas;
+}
+
+function plValor(valores, nombre) {
+  const v = valores ? valores[nombre] : '';
+  return v === null || v === undefined ? '' : String(v).trim();
+}
+
+// El texto listo para mandar. Lo que no tiene valor queda con sus llaves.
+function plCompletar(texto, valores) {
+  return plTrozos(texto).map(tr => {
+    if (tr.tipo === 'texto') return tr.valor;
+    return plValor(valores, tr.valor) || '{' + tr.valor + '}';
+  }).join('');
+}
+
+// Sin valores: las variables en azul. Con valores: el dato en azul, y lo que
+// falta marcado en ambar.
+function plResaltar(texto, valores) {
+  return plTrozos(texto).map(tr => {
+    if (tr.tipo === 'texto') return esc(tr.valor);
+    const v = plValor(valores, tr.valor);
+    if (!valores) return '<span class="pl-var">' + esc('{' + tr.valor + '}') + '</span>';
+    if (v) return '<span class="pl-var">' + esc(v) + '</span>';
+    return '<span class="pl-var pl-var-falta" title="Sin dato: completalo arriba">' + esc('{' + tr.valor + '}') + '</span>';
+  }).join('');
+}
+
+// ── pantalla ──
+function plEsAutomatica(p) {
+  return !!p && Number(p.automatica) === 1;
+}
+
+function plGrupos(plantillas) {
+  const grupos = [];
+  plantillas.forEach(p => {
+    const momento = String(p.momento || '').trim() || 'Sin momento';
+    let g = grupos.find(x => x.clave === momento.toUpperCase());
+    if (!g) {
+      g = {clave: momento.toUpperCase(), momento: momento, plantillas: []};
+      grupos.push(g);
+    }
+    g.plantillas.push(p);
+  });
+  return grupos;
+}
+
+function plListaHtml(plantillas) {
+  if (!plantillas.length) {
+    return '<div class="pl-vacio">No hay plantillas. Creá la primera con Nueva plantilla.</div>';
+  }
+  return plGrupos(plantillas).map(g =>
+    '<section class="pl-grupo" aria-label="' + esc(g.momento) + '">'
+    + '<h2 class="pl-momento">' + esc(g.momento) + '</h2>'
+    + '<div class="pl-grilla">' + g.plantillas.map(plTarjetaHtml).join('') + '</div>'
+    + '</section>').join('');
+}
+
+function plTarjetaHtml(p) {
+  const id = Number(p.id);
+  return '<article class="pl-card" id="pl-card-' + id + '">'
+    + '<div class="pl-cab"><h3 class="pl-titulo">' + esc(p.titulo) + '</h3>'
+    + (p.canal ? '<span class="pl-canal">' + esc(p.canal) + '</span>' : '') + '</div>'
+    + (p.explicacion ? '<p class="pl-explicacion">' + esc(p.explicacion) + '</p>' : '')
+    + '<div class="pl-cuerpo">' + plResaltar(p.cuerpo) + '</div>'
+    + (p.nota ? '<p class="pl-nota">' + esc(p.nota) + '</p>' : '')
+    + (plEsAutomatica(p) ? '<div class="pl-auto">La manda el bot sola. No hace falta enviarla.</div>' : '')
+    + '<div class="pl-acciones">'
+    + '<button type="button" class="btn-ghost pl-btn" onclick="plCopiarPlantilla(' + id + ', this)">Copiar</button>'
+    + '<button type="button" class="btn-primary pl-btn" onclick="plAbrirUsar(' + id + ')">Usar con un lead</button>'
+    + '<span class="pl-acciones-der">'
+    + '<button type="button" class="btn-ghost pl-btn" onclick="plAbrirEditor(' + id + ')">Editar</button>'
+    + '<button type="button" class="btn-ghost pl-btn pl-btn-borrar" onclick="plBorrar(' + id + ')">Borrar</button>'
+    + '</span></div></article>';
+}
+
+function plBuscarPlantilla(id) {
+  return plDatos.find(p => Number(p.id) === Number(id)) || null;
+}
+
+// ── copiar ──
+async function plCopiarTexto(texto) {
+  try {
+    if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(texto);
+      return true;
+    }
+  } catch (e) {}
+  try {
+    const area = document.createElement('textarea');
+    area.value = texto;
+    area.className = 'pl-fuera';
+    document.body.appendChild(area);
+    area.select();
+    const ok = document.execCommand('copy');
+    area.remove();
+    return !!ok;
+  } catch (e) {
+    return false;
+  }
+}
+
+function plAvisar(mensaje) {
+  const el = document.getElementById('pl-aviso');
+  el.textContent = mensaje;
+  el.classList.add('pl-aviso-visible');
+  clearTimeout(plAvisoTimer);
+  plAvisoTimer = setTimeout(() => el.classList.remove('pl-aviso-visible'), 2200);
+}
+
+function plMarcarBoton(boton, texto) {
+  if (!boton) return;
+  const antes = boton.textContent;
+  boton.textContent = texto;
+  setTimeout(() => { boton.textContent = antes; }, 1500);
+}
+
+async function plCopiarPlantilla(id, boton) {
+  const p = plBuscarPlantilla(id);
+  if (!p) return;
+  if (await plCopiarTexto(p.cuerpo)) {
+    plAvisar('Copiado');
+    plMarcarBoton(boton, 'Copiado');
+  } else {
+    plAvisar('No se pudo copiar. Seleccioná el texto a mano.');
+  }
+}
+
+// ── usar con un lead ──
+function plAbrirModal(id) {
+  document.getElementById(id).classList.add('open');
+}
+
+function plCerrarModal(id) {
+  document.getElementById(id).classList.remove('open');
+}
+
+async function plLeerRespuesta(r) {
+  try { return await r.json(); } catch (e) { return {}; }
+}
+
+function plAbrirUsar(id) {
+  plUsando = plBuscarPlantilla(id);
+  if (!plUsando) return;
+  plLead = null;
+  plValores = {};
+  document.getElementById('pl-usar-plantilla').textContent =
+    plUsando.titulo + (plUsando.canal ? ' · ' + plUsando.canal : '');
+  document.getElementById('pl-buscar').value = '';
+  document.getElementById('pl-resultados').innerHTML = '';
+  document.getElementById('pl-usar-error').textContent = '';
+  plPintarUso();
+  plAbrirModal('pl-modal-usar');
+  document.getElementById('pl-buscar').focus();
+}
+
+function plBuscar() {
+  clearTimeout(plBuscarTimer);
+  plBuscarTimer = setTimeout(plBuscarAhora, 250);
+}
+
+async function plBuscarAhora() {
+  const q = document.getElementById('pl-buscar').value.trim();
+  const caja = document.getElementById('pl-resultados');
+  const n = ++plBusquedaN;
+  if (q.length < 2) { caja.innerHTML = ''; return; }
+  try {
+    const r = await fetch('/api/plantillas/leads?q=' + encodeURIComponent(q));
+    const j = await plLeerRespuesta(r);
+    if (n !== plBusquedaN) return;
+    if (!r.ok) throw new Error(j.error || 'HTTP ' + r.status);
+    const leads = j.leads || [];
+    caja.innerHTML = leads.length ? leads.map(l =>
+      '<button type="button" class="pl-resultado" onclick="plElegirLead(' + Number(l.id) + ')">'
+      + '<b>' + esc(l.name || 'Sin nombre') + '</b>'
+      + '<span>' + esc([l.lead_name, l.phone].filter(Boolean).join(' · ') || 'Sin teléfono') + '</span>'
+      + '</button>').join('')
+      : '<div class="pl-vacio">No hay leads con ese nombre o teléfono.</div>';
+  } catch (e) {
+    if (n === plBusquedaN) caja.innerHTML = '<div class="pl-vacio">No se pudo buscar (' + esc(e.message) + ').</div>';
+  }
+}
+
+async function plElegirLead(id) {
+  const error = document.getElementById('pl-usar-error');
+  error.textContent = '';
+  try {
+    const r = await fetch('/api/plantillas/leads/' + Number(id) + '/variables');
+    const j = await plLeerRespuesta(r);
+    if (!r.ok) throw new Error(j.error || 'HTTP ' + r.status);
+    plLead = j;
+  } catch (e) {
+    plLead = null;
+    error.textContent = 'No se pudieron traer los datos del lead (' + e.message + ').';
+    return;
+  }
+  plValores = Object.assign({}, plLead.valores || {});
+  document.getElementById('pl-resultados').innerHTML = '';
+  document.getElementById('pl-buscar').value = (plLead.lead && plLead.lead.nombre) || '';
+  plPintarUso();
+}
+
+function plFaltantes() {
+  return plUsando ? plVariablesDe(plUsando.cuerpo).filter(v => !plValor(plValores, v)) : [];
+}
+
+function plConLlaves(nombres) {
+  return nombres.map(v => '{' + v + '}').join(', ');
+}
+
+function plPintarUso() {
+  const p = plUsando;
+  if (!p) return;
+  const lead = plLead ? plLead.lead : null;
+  const fuentes = (plLead && plLead.fuentes) || {};
+  document.getElementById('pl-elegido').innerHTML = lead
+    ? 'Para <b>' + esc(lead.nombre || 'Sin nombre') + '</b> · ' + esc(lead.telefono || 'sin teléfono')
+    : 'Elegí un lead para completar las variables. También podés escribirlas a mano.';
+  document.getElementById('pl-campos').innerHTML = plVariablesDe(p.cuerpo).map(v => {
+    const valor = plValor(plValores, v);
+    return '<div class="pl-campo' + (valor ? '' : ' pl-campo-falta') + '">'
+      + '<label class="modal-label" for="pl-v-' + esc(v) + '">' + esc('{' + v + '}') + (valor ? '' : ' · sin dato') + '</label>'
+      + '<input type="text" id="pl-v-' + esc(v) + '" data-var="' + esc(v) + '" value="' + esc(valor) + '" oninput="plEditarValor(this)">'
+      + '<div class="pl-fuente">' + esc(fuentes[v] || '') + '</div>'
+      + '</div>';
+  }).join('');
+  plPintarVista();
+}
+
+function plEditarValor(input) {
+  const v = input.getAttribute('data-var');
+  plValores[v] = input.value;
+  const caja = input.closest('.pl-campo');
+  if (caja) caja.classList.toggle('pl-campo-falta', !input.value.trim());
+  plPintarVista();
+}
+
+function plPintarVista() {
+  const p = plUsando;
+  if (!p) return;
+  const auto = plEsAutomatica(p);
+  const faltan = plFaltantes();
+  document.getElementById('pl-vista').innerHTML = plResaltar(p.cuerpo, plValores);
+  document.getElementById('pl-faltan').textContent = faltan.length ? 'Falta completar: ' + plConLlaves(faltan) : '';
+  document.getElementById('pl-auto-aviso').hidden = !auto;
+  document.getElementById('pl-btn-enviar').hidden = auto;
+}
+
+async function plCopiarVista(boton) {
+  if (!plUsando) return;
+  const faltan = plFaltantes();
+  if (await plCopiarTexto(plCompletar(plUsando.cuerpo, plValores))) {
+    plAvisar(faltan.length ? 'Copiado. Ojo: falta completar ' + plConLlaves(faltan) + '.' : 'Copiado');
+    plMarcarBoton(boton, 'Copiado');
+  } else {
+    plAvisar('No se pudo copiar. Seleccioná el texto a mano.');
+  }
+}
+
+// Nada sale sin confirmar: primero se muestra a quién y el texto final.
+function plPedirEnvio() {
+  const error = document.getElementById('pl-usar-error');
+  const p = plUsando;
+  if (!p) return;
+  if (plEsAutomatica(p)) { error.textContent = 'Esta la manda el bot sola.'; return; }
+  if (!plLead || !plLead.lead) { error.textContent = 'Elegí un lead para mandarle el WhatsApp.'; return; }
+  if (!plLead.lead.telefono) { error.textContent = 'Este lead no tiene teléfono cargado.'; return; }
+  const faltan = plFaltantes();
+  if (faltan.length) { error.textContent = 'Antes de enviar completá ' + plConLlaves(faltan) + '.'; return; }
+  error.textContent = '';
+  document.getElementById('pl-conf-para').innerHTML =
+    '<b>' + esc(plLead.lead.nombre || 'Sin nombre') + '</b> · ' + esc(plLead.lead.telefono);
+  document.getElementById('pl-conf-texto').textContent = plCompletar(p.cuerpo, plValores);
+  document.getElementById('pl-conf-error').textContent = '';
+  document.getElementById('pl-conf-enviar').disabled = false;
+  plAbrirModal('pl-modal-confirmar');
+}
+
+async function plEnviar() {
+  if (!plUsando || !plLead || !plLead.lead) return;
+  const boton = document.getElementById('pl-conf-enviar');
+  const error = document.getElementById('pl-conf-error');
+  const datos = {phone: plLead.lead.telefono, text: plCompletar(plUsando.cuerpo, plValores)};
+  boton.disabled = true;
+  try {
+    const r = await fetch('/api/wa/send', {method: 'POST',
+      headers: {'Content-Type': 'application/json'}, body: JSON.stringify(datos)});
+    const j = await plLeerRespuesta(r);
+    if (!r.ok || !j.ok) {
+      error.textContent = 'No se pudo enviar: ' + (j.error || 'HTTP ' + r.status);
+      boton.disabled = false;
+      return;
+    }
+  } catch (e) {
+    error.textContent = 'No se pudo enviar: ' + e.message;
+    boton.disabled = false;
+    return;
+  }
+  plCerrarModal('pl-modal-confirmar');
+  plCerrarModal('pl-modal-usar');
+  plAvisar('Enviado por WhatsApp a ' + (plLead.lead.nombre || plLead.lead.telefono) + '.');
+}
+
+// ── editar, crear y borrar ──
+function plAbrirEditor(id) {
+  const p = id ? plBuscarPlantilla(id) : null;
+  plEditando = p ? Number(p.id) : 0;
+  const campo = nombre => document.getElementById('pl-ed-' + nombre);
+  document.getElementById('pl-ed-titulo-modal').textContent = p ? 'Editar plantilla' : 'Nueva plantilla';
+  campo('momento').value = p ? p.momento || '' : '';
+  campo('canal').value = p ? p.canal || '' : 'WhatsApp';
+  campo('titulo').value = p ? p.titulo || '' : '';
+  campo('cuerpo').value = p ? p.cuerpo || '' : '';
+  campo('nota').value = p ? p.nota || '' : '';
+  campo('explicacion').value = p ? p.explicacion || '' : '';
+  campo('automatica').checked = plEsAutomatica(p);
+  const momentos = [];
+  plDatos.forEach(x => { if (x.momento && !momentos.includes(x.momento)) momentos.push(x.momento); });
+  document.getElementById('pl-ed-momentos').innerHTML =
+    momentos.map(m => '<option value="' + esc(m) + '"></option>').join('');
+  document.getElementById('pl-ed-ayuda').textContent = plVariables.length
+    ? 'Variables: ' + plConLlaves(plVariables) : '';
+  document.getElementById('pl-ed-error').textContent = '';
+  plAbrirModal('pl-modal-editor');
+}
+
+function plValidar(datos) {
+  if (!datos.titulo) return 'Falta el título.';
+  if (!datos.cuerpo) return 'Falta el texto del mensaje.';
+  return '';
+}
+
+async function plGuardar() {
+  const campo = nombre => document.getElementById('pl-ed-' + nombre);
+  const datos = {
+    momento: campo('momento').value.trim(),
+    canal: campo('canal').value.trim(),
+    titulo: campo('titulo').value.trim(),
+    cuerpo: campo('cuerpo').value.trim(),
+    nota: campo('nota').value.trim(),
+    explicacion: campo('explicacion').value.trim(),
+    automatica: !!campo('automatica').checked
+  };
+  const error = document.getElementById('pl-ed-error');
+  const problema = plValidar(datos);
+  if (problema) { error.textContent = problema; return; }
+  error.textContent = '';
+  const editando = plEditando;
+  try {
+    const r = await fetch(editando ? '/api/plantillas/' + editando : '/api/plantillas', {
+      method: editando ? 'PUT' : 'POST',
+      headers: {'Content-Type': 'application/json'}, body: JSON.stringify(datos)});
+    const j = await plLeerRespuesta(r);
+    if (!r.ok) { error.textContent = j.error || 'No se pudo guardar (HTTP ' + r.status + ').'; return; }
+  } catch (e) {
+    error.textContent = 'No se pudo guardar (' + e.message + ').';
+    return;
+  }
+  plCerrarModal('pl-modal-editor');
+  plAvisar(editando ? 'Plantilla guardada' : 'Plantilla creada');
+  await plCargar();
+}
+
+async function plBorrar(id) {
+  const p = plBuscarPlantilla(id);
+  if (!p) return;
+  if (!confirm('¿Borrar la plantilla "' + p.titulo + '"?')) return;
+  try {
+    const r = await fetch('/api/plantillas/' + Number(id), {method: 'DELETE'});
+    const j = await plLeerRespuesta(r);
+    if (!r.ok) { alert(j.error || 'No se pudo borrar (HTTP ' + r.status + ').'); return; }
+  } catch (e) {
+    alert('No se pudo borrar (' + e.message + ').');
+    return;
+  }
+  plAvisar('Plantilla borrada');
+  await plCargar();
+}
+
+// ========== Seguimiento de leads ==========
+// La agenda de llamados de Juan: solo lo pendiente, en vencidos, hoy, esta
+// semana y mas adelante. Los grupos, el "hace 6 dias" y los numeros para tel:
+// y wa.me los arma el servidor con la fecha de Montevideo; aca solo se pinta.
+// Todo lleva el prefijo sl (o SL_), porque en JS gana la ultima declaracion
+// con el mismo nombre. Sin barras invertidas: esto vive en un string de Python.
+let slDatos = null;
+let slHoy = '';
+let slHechoId = null;
+let slNuevoLeadId = null;
+let slBusquedaTimer = null;
+
+const SL_GRUPOS = [
+  {clave: 'vencidos', rotulo: 'Vencidos', completa: true},
+  {clave: 'hoy', rotulo: 'Hoy', completa: true},
+  {clave: 'semana', rotulo: 'Esta semana', completa: false},
+  {clave: 'despues', rotulo: 'Más adelante', completa: false},
+];
+
+async function loadSegLeads() {
+  const lista = document.getElementById('sl-lista');
+  try {
+    const r = await fetch('/api/seg-leads');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    slDatos = await r.json();
+  } catch (e) {
+    slDatos = null;
+    document.getElementById('sl-resumen').textContent = '';
+    document.getElementById('sl-contadores').innerHTML = '';
+    lista.innerHTML = '<div class="sl-vacio">No se pudo cargar el seguimiento (' + esc(e.message) + ').</div>';
+    return;
+  }
+  slHoy = slDatos.hoy || slHoy;
+  slPintar(slDatos);
+}
+
+function slPintar(d) {
+  const c = d.contadores || {};
+  document.getElementById('sl-resumen').textContent = slResumen(d.pendientes || 0, c.vencidos || 0);
+  document.getElementById('sl-contadores').innerHTML = slContadoresHtml(c);
+  document.getElementById('sl-lista').innerHTML = slListaHtml(d);
+}
+
+function slPlural(n, uno, varios) {
+  return n + ' ' + (n === 1 ? uno : varios);
+}
+
+function slResumen(pendientes, vencidos) {
+  return slPlural(pendientes, 'llamado pendiente', 'llamados pendientes') + ' · '
+    + slPlural(vencidos, 'vencido', 'vencidos');
+}
+
+// Cuatro tarjetas chicas: la de vencidos en rojo claro. Tocarlas lleva al grupo.
+function slContadoresHtml(c) {
+  return SL_GRUPOS.map(g => {
+    const clase = 'sl-contador' + (g.clave === 'vencidos' ? ' sl-contador-vencidos' : '');
+    return '<button type="button" class="' + clase + '" data-grupo="' + g.clave
+      + '" onclick="slIrAGrupo(this.dataset.grupo)">'
+      + '<span class="sl-contador-num">' + Number(c[g.clave] || 0) + '</span>'
+      + '<span class="sl-contador-rot">' + esc(g.rotulo) + '</span></button>';
+  }).join('');
+}
+
+function slIrAGrupo(clave) {
+  const el = document.getElementById('sl-grupo-' + clave);
+  if (el && el.scrollIntoView) el.scrollIntoView({behavior: 'smooth', block: 'start'});
+}
+
+// Un grupo vacio no se muestra. Vencidos y hoy van con tarjeta completa; esta
+// semana y mas adelante, en una linea: todavia no hay que hacer nada con ellos.
+function slListaHtml(d) {
+  const grupos = d.grupos || {};
+  const html = SL_GRUPOS.map(g => {
+    const items = grupos[g.clave] || [];
+    if (!items.length) return '';
+    const titulo = g.clave === 'hoy' ? 'Hoy · ' + (d.hoy_texto || '') : g.rotulo;
+    const claseTitulo = 'sl-grupo-titulo' + (g.clave === 'vencidos' ? ' sl-grupo-titulo-vencidos' : '');
+    return '<section class="sl-grupo" id="sl-grupo-' + g.clave + '">'
+      + '<h2 class="' + claseTitulo + '">' + esc(titulo.toUpperCase()) + '</h2>'
+      + items.map(it => (g.completa ? slTarjetaHtml(it) : slLineaHtml(it))).join('')
+      + '</section>';
+  }).join('');
+  return html || '<div class="sl-vacio">No hay llamados pendientes. Lo que se ve acá es lo que tenés que hacer.</div>';
+}
+
+function slQuienHtml(it) {
+  const empresa = it.empresa ? '<span class="sl-empresa"> · ' + esc(it.empresa) + '</span>' : '';
+  return '<div class="sl-quien"><button type="button" class="sl-nombre" data-lead="' + Number(it.lead_id)
+    + '" onclick="openClientPanel(Number(this.dataset.lead))">' + esc(it.nombre || 'Sin nombre')
+    + '</button>' + empresa + '</div>';
+}
+
+// Sin telefono cargado, Llamar y WhatsApp quedan deshabilitados.
+function slContactoHtml(it) {
+  if (!it.tel || !it.wa) {
+    const apagado = ' disabled title="El lead no tiene teléfono cargado"';
+    return '<button type="button" class="sl-btn"' + apagado + '>Llamar</button>'
+      + '<button type="button" class="sl-btn"' + apagado + '>WhatsApp</button>';
+  }
+  return '<a class="sl-btn" href="tel:' + esc(it.tel) + '">Llamar</a>'
+    + '<a class="sl-btn" href="https://wa.me/' + esc(it.wa) + '" target="_blank" rel="noopener">WhatsApp</a>';
+}
+
+function slTarjetaHtml(it) {
+  const id = Number(it.id);
+  const vencida = it.grupo === 'vencidos';
+  const ultima = it.ultimo_resultado
+    ? '<span class="sl-ultima">Última vez: ' + esc(it.ultimo_resultado) + '.</span> ' : '';
+  const nota = it.nota ? '<div class="sl-nota">' + esc(it.nota) + '</div>' : '';
+  const posponer = cuanto => '<button type="button" class="sl-btn" data-id="' + id + '" data-cuanto="' + cuanto
+    + '" onclick="slPosponer(Number(this.dataset.id), this.dataset.cuanto)">+1 ' + cuanto + '</button>';
+  return '<article class="sl-tarjeta' + (vencida ? ' sl-vencida' : '') + '" data-sl-id="' + id + '">'
+    + '<div class="sl-tarjeta-cab">' + slQuienHtml(it)
+    + '<div class="sl-cuando' + (vencida ? ' sl-cuando-vencido' : '') + '">' + esc(it.vence_texto || '') + '</div></div>'
+    + '<div class="sl-contexto">' + ultima + esc(it.motivo || '') + '</div>'
+    + nota
+    + '<div class="sl-acciones">' + slContactoHtml(it) + posponer('semana') + posponer('mes')
+    + '<button type="button" class="sl-btn sl-btn-hecho" data-id="' + id
+    + '" onclick="slAbrirHecho(Number(this.dataset.id))">Hecho</button></div>'
+    + '</article>';
+}
+
+function slLineaHtml(it) {
+  return '<div class="sl-linea" data-sl-id="' + Number(it.id) + '"><div class="sl-linea-txt">' + slQuienHtml(it)
+    + '<div class="sl-linea-motivo">' + esc(it.motivo || '') + '</div></div>'
+    + '<div class="sl-linea-fecha">' + esc(it.vence_texto || it.fecha_texto || '') + '</div></div>';
+}
+
+function slItem(id) {
+  const grupos = (slDatos && slDatos.grupos) || {};
+  for (const g of SL_GRUPOS) {
+    const it = (grupos[g.clave] || []).find(x => Number(x.id) === Number(id));
+    if (it) return it;
+  }
+  return null;
+}
+
+async function slPedir(url, datos) {
+  let d = {};
+  try {
+    const r = await fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'},
+                                body: JSON.stringify(datos)});
+    try { d = await r.json(); } catch (e) { d = {}; }
+    d = d || {};
+    if (!r.ok) d.ok = false;
+  } catch (e) {
+    d = {ok: false, error: 'no hubo respuesta del CRM'};
+  }
+  return d;
+}
+
+async function slRefrescar() {
+  await loadSegLeads();
+  // Si la ficha del lead esta abierta, su seccion de seguimiento tambien cambia.
+  if (typeof _cpClientId !== 'undefined' && _cpClientId) {
+    try {
+      const r = await fetch('/api/seg-leads/lead/' + Number(_cpClientId));
+      _cpData.seg = r.ok ? await r.json() : null;
+      if (_cpTab === 'calls') _cpSwitchTab('calls');
+    } catch (e) {}
+  }
+}
+
+// Posponer es un clic: corre la fecha y vuelve a pintar, sin formulario.
+async function slPosponer(id, cuanto) {
+  const d = await slPedir('/api/seg-leads/recordatorios/' + Number(id) + '/posponer', {cuanto: cuanto});
+  if (!d.ok) {
+    alert('No se pudo posponer: ' + (d.error || 'error desconocido'));
+    return;
+  }
+  await slRefrescar();
+}
+
+function slCerrarModal(id) {
+  document.getElementById(id).classList.remove('open');
+}
+
+// ── fechas del formulario ──
+function slFecha(iso) {
+  if (typeof iso !== 'string' || iso.length !== 10 || iso[4] !== '-' || iso[7] !== '-') return null;
+  const p = iso.split('-').map(Number);
+  if (!p.every(Number.isInteger)) return null;
+  const d = new Date(p[0], p[1] - 1, p[2]);
+  return (d.getFullYear() === p[0] && d.getMonth() === p[1] - 1 && d.getDate() === p[2]) ? d : null;
+}
+
+function slDos(n) {
+  return (n < 10 ? '0' : '') + n;
+}
+
+function slIso(d) {
+  return d.getFullYear() + '-' + slDos(d.getMonth() + 1) + '-' + slDos(d.getDate());
+}
+
+function slSumar(iso, cuanto) {
+  const d = slFecha(iso);
+  if (!d) return '';
+  if (cuanto === 'manana') d.setDate(d.getDate() + 1);
+  else if (cuanto === 'semana') d.setDate(d.getDate() + 7);
+  else if (cuanto === 'mes') {
+    const dia = d.getDate();
+    d.setDate(1);
+    d.setMonth(d.getMonth() + 1);
+    d.setDate(Math.min(dia, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()));
+  } else return '';
+  return slIso(d);
+}
+
+// ── Hecho: siempre pide que paso y la proxima fecha, o que no hace falta ──
+function slAbrirHecho(id) {
+  const it = slItem(id);
+  if (!it) return;
+  slHechoId = Number(id);
+  document.getElementById('sl-hecho-contexto').textContent = (it.nombre || '') + ' · ' + (it.motivo || '');
+  document.getElementById('sl-hecho-resultado').value = '';
+  document.getElementById('sl-hecho-fecha').value = '';
+  document.getElementById('sl-hecho-hora').value = '';
+  document.getElementById('sl-hecho-motivo').value = it.motivo || '';
+  document.getElementById('sl-hecho-nota').value = it.nota || '';
+  document.getElementById('sl-hecho-sin-volver').checked = false;
+  document.getElementById('sl-hecho-error').textContent = '';
+  slSinVolver();
+  document.getElementById('sl-modal-hecho').classList.add('open');
+}
+
+function slSinVolver() {
+  const sin = !!document.getElementById('sl-hecho-sin-volver').checked;
+  document.getElementById('sl-hecho-proximo').hidden = sin;
+  if (sin) document.getElementById('sl-hecho-fecha').value = '';
+}
+
+function slHechoRapido(cuanto) {
+  document.getElementById('sl-hecho-sin-volver').checked = false;
+  slSinVolver();
+  document.getElementById('sl-hecho-fecha').value = slSumar(slHoy || slIso(new Date()), cuanto);
+}
+
+async function slGuardarHecho() {
+  const error = document.getElementById('sl-hecho-error');
+  error.textContent = '';
+  const resultado = String(document.getElementById('sl-hecho-resultado').value || '').trim();
+  const sinVolver = !!document.getElementById('sl-hecho-sin-volver').checked;
+  const fecha = document.getElementById('sl-hecho-fecha').value;
+  if (!resultado) {
+    error.textContent = 'Contá qué pasó en la llamada.';
+    return;
+  }
+  if (!sinVolver && !fecha) {
+    error.textContent = 'Elegí cuándo volvés a llamar, o marcá que no hace falta volver a llamar.';
+    return;
+  }
+  const datos = sinVolver
+    ? {resultado: resultado, sin_volver: true}
+    : {resultado: resultado, sin_volver: false, proxima_fecha: fecha,
+       proxima_hora: document.getElementById('sl-hecho-hora').value,
+       proximo_motivo: document.getElementById('sl-hecho-motivo').value,
+       proxima_nota: document.getElementById('sl-hecho-nota').value};
+  const d = await slPedir('/api/seg-leads/recordatorios/' + Number(slHechoId) + '/hecho', datos);
+  if (!d.ok) {
+    error.textContent = 'No se guardó: ' + (d.error || 'error desconocido');
+    return;
+  }
+  slCerrarModal('sl-modal-hecho');
+  slHechoId = null;
+  await slRefrescar();
+}
+
+// ── Nuevo recordatorio: desde esta pantalla, la ficha o Proceso de venta ──
+function slAbrirNuevo(leadId, nombre, buscar) {
+  slNuevoLeadId = null;
+  ['sl-nuevo-hora', 'sl-nuevo-motivo', 'sl-nuevo-nota'].forEach(i => { document.getElementById(i).value = ''; });
+  document.getElementById('sl-nuevo-fecha').value = slHoy || slIso(new Date());
+  document.getElementById('sl-nuevo-error').textContent = '';
+  document.getElementById('sl-nuevo-aviso').textContent = '';
+  document.getElementById('sl-modal-nuevo').classList.add('open');
+  if (leadId) slElegirLead(leadId, nombre);
+  else slCambiarLead(buscar || '');
+}
+
+function slCambiarLead(texto) {
+  slNuevoLeadId = null;
+  document.getElementById('sl-nuevo-elegido').hidden = true;
+  document.getElementById('sl-nuevo-buscador').hidden = false;
+  document.getElementById('sl-nuevo-aviso').textContent = '';
+  const input = document.getElementById('sl-nuevo-buscar');
+  input.value = typeof texto === 'string' ? texto : '';
+  slBuscarLead(input.value);
+  if (input.focus) input.focus();
+}
+
+function slBuscarTecla(v) {
+  clearTimeout(slBusquedaTimer);
+  slBusquedaTimer = setTimeout(() => slBuscarLead(v), 250);
+}
+
+async function slBuscarLead(texto) {
+  const lista = document.getElementById('sl-nuevo-resultados');
+  const q = (texto || '').trim();
+  if (q.length < 2) {
+    lista.innerHTML = '<div class="nc-vinculo-vacio">Escribí al menos 2 letras del nombre.</div>';
+    return;
+  }
+  lista.innerHTML = '<div class="nc-vinculo-vacio">Buscando...</div>';
+  let items = [];
+  try {
+    // Con page la busqueda va en SQL con LIMIT (igual que _ncBuscarPersona).
+    const r = await fetch('/api/leads?page=1&search=' + encodeURIComponent(q));
+    if (!r.ok) throw new Error(r.status);
+    items = ((await r.json()) || {}).items || [];
+  } catch (e) {
+    lista.innerHTML = '<div class="nc-vinculo-vacio">No se pudo buscar. Probá de nuevo.</div>';
+    return;
+  }
+  lista.innerHTML = items.length
+    ? items.slice(0, 20).map(p => '<button type="button" class="nc-vinculo-opcion" data-lead="' + Number(p.id)
+        + '" data-nombre="' + esc(p.name || '') + '" onclick="slElegirLead(Number(this.dataset.lead), this.dataset.nombre)">'
+        + '<span class="nc-vinculo-nombre">' + esc(p.name || 'Sin nombre') + '</span>'
+        + '<span class="nc-vinculo-sub">' + esc([p.city, p.phone || 'sin teléfono'].filter(Boolean).join(' · ')) + '</span>'
+        + '</button>').join('')
+    : '<div class="nc-vinculo-vacio">No hay nadie en el CRM con ese nombre.</div>';
+}
+
+async function slElegirLead(id, nombre) {
+  const elegido = Number(id);
+  slNuevoLeadId = elegido;
+  document.getElementById('sl-nuevo-lead').textContent = nombre || 'Lead del CRM';
+  document.getElementById('sl-nuevo-buscador').hidden = true;
+  document.getElementById('sl-nuevo-elegido').hidden = false;
+  const aviso = document.getElementById('sl-nuevo-aviso');
+  aviso.textContent = '';
+  try {
+    const r = await fetch('/api/seg-leads/lead/' + elegido);
+    if (!r.ok) return;
+    const d = await r.json();
+    if (d && d.pendiente && slNuevoLeadId === elegido) {
+      aviso.textContent = 'Ya tiene un recordatorio abierto (' + d.pendiente.fecha_texto + ': '
+        + d.pendiente.motivo + '). Al guardar este, ese se cierra solo.';
+    }
+  } catch (e) {}
+}
+
+async function slGuardarNuevo() {
+  const error = document.getElementById('sl-nuevo-error');
+  error.textContent = '';
+  const fecha = document.getElementById('sl-nuevo-fecha').value;
+  const motivo = String(document.getElementById('sl-nuevo-motivo').value || '').trim();
+  if (!slNuevoLeadId) {
+    error.textContent = 'Elegí a qué lead vas a llamar.';
+    return;
+  }
+  if (!fecha) {
+    error.textContent = 'Elegí la fecha del llamado.';
+    return;
+  }
+  if (!motivo) {
+    error.textContent = 'Escribí el motivo: qué tenés que hacer o preguntar.';
+    return;
+  }
+  const d = await slPedir('/api/seg-leads/recordatorios', {
+    lead_id: slNuevoLeadId, fecha: fecha, hora: document.getElementById('sl-nuevo-hora').value,
+    motivo: motivo, nota: document.getElementById('sl-nuevo-nota').value});
+  if (!d.ok) {
+    error.textContent = 'No se guardó: ' + (d.error || 'error desconocido');
+    return;
+  }
+  slCerrarModal('sl-modal-nuevo');
+  slNuevoLeadId = null;
+  await slRefrescar();
+}
+
+// El boton en la ficha de Proceso de venta. La ficha de Notion llega a su lead
+// por business_id; si todavia no esta conectada, el buscador se abre con el
+// nombre de la ficha.
+function slBotonNotionHtml(c) {
+  const datos = c.business_id
+    ? ' data-lead="' + Number(c.business_id) + '" data-nombre="' + esc(c.business_name || c.name || '') + '"'
+    : ' data-buscar="' + esc(c.name || '') + '"';
+  return '<button type="button" class="nc-vinculo" draggable="false"' + datos
+    + ' onclick="event.stopPropagation();slAbrirDesdeNotion(this)">Recordatorio de llamado</button>';
+}
+
+function slAbrirDesdeNotion(boton) {
+  const ds = boton.dataset || {};
+  if (ds.lead) slAbrirNuevo(Number(ds.lead), ds.nombre);
+  else slAbrirNuevo(null, '', ds.buscar || '');
+}
+
+// La ficha del lead (pestaña Llamadas): el recordatorio abierto y el historial
+// de llamados. El historial se ve aca y no en la pantalla de seguimiento.
+function slFichaHtml(seg) {
+  if (!seg || !seg.lead) return '';
+  const p = seg.pendiente;
+  const pendiente = p
+    ? '<div class="sl-ficha-pendiente' + (p.grupo === 'vencidos' ? ' sl-vencida' : '') + '"><b>'
+      + esc(p.fecha_texto || '') + (p.hora ? ' · ' + esc(p.hora) : '') + '</b> · ' + esc(p.motivo || '')
+      + (p.nota ? '<div class="sl-nota">' + esc(p.nota) + '</div>' : '') + '</div>'
+    : '<div class="sl-vacio">Sin recordatorio pendiente.</div>';
+  const llamados = (seg.llamados || []).map(l => '<div class="sl-ficha-llamado"><span class="sl-ficha-fecha">'
+    + esc(l.fecha_texto || '') + '</span>' + esc(l.resultado || '') + '</div>').join('')
+    || '<div class="sl-vacio">Todavía no hay llamados cerrados.</div>';
+  return '<div class="cp-section"><div class="cp-section-title sl-ficha-cab"><span>Próximo llamado</span>'
+    + '<button type="button" class="cp-btn cp-btn-ghost" data-lead="' + Number(seg.lead.id) + '" data-nombre="'
+    + esc(seg.lead.nombre || '') + '" onclick="slAbrirNuevo(Number(this.dataset.lead), this.dataset.nombre)">Nuevo recordatorio</button></div>'
+    + pendiente + '</div>'
+    + '<div class="cp-section"><div class="cp-section-title">Historial de llamados</div>' + llamados + '</div>';
+}
+// ========== FIN Seguimiento de leads ==========
+// ========== Daily Programador ==========
+// Daily Programador y Daily Admin (Juan, 15 y 16/9): actividades del dia y
+// recordatorios que se repiten, por persona del equipo. Son la misma pantalla
+// y la misma API; cambia la seccion ('programador' o 'admin'), que dice el
+// panel (daily / daily_admin), quien aparece (marca programador / admin_daily)
+// y los ids del DOM (dy- / dya-). Todo boton lleva data-seccion.
+// El dia se pinta como Seguimiento de leads: contadores, grupos y tarjetas con
+// las clases sl-. El dia de hoy lo decide el servidor en hora de Montevideo;
+// aca solo se suman dias a una fecha AAAA-MM-DD en UTC.
+// No es Tareas: Tareas es el tablero del equipo (cliente, responsable,
+// prioridad, fecha limite, Notion); esto es la lista personal de cada dia.
+
+const DY_SECCIONES = {
+  programador: {panel: 'daily', pre: 'dy', titulo: 'Daily Programador',
+                sinPersonas: 'No hay nadie marcado como programador en Recursos Humanos.'},
+  admin: {panel: 'daily_admin', pre: 'dya', titulo: 'Daily Admin',
+          sinPersonas: 'No hay nadie marcado para Daily Admin en Recursos Humanos.'}
+};
+const DY_DIAS_LARGOS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+const DY_MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto',
+                  'septiembre', 'octubre', 'noviembre', 'diciembre'];
+// Cuantos colores de persona hay en el CSS (dy-color-N y dy-borde-N).
+const DY_COLORES = 4;
+const DY_GRUPOS = [
+  {clave: 'ayer', rotulo: 'Pendiente de ayer'},
+  {clave: 'hoy', rotulo: 'Hoy'},
+  {clave: 'recordatorios', rotulo: 'Recordatorios'},
+  {clave: 'hechas', rotulo: 'Hechas'}
+];
+// El estado de cada Daily, por separado.
+const DY_EST = {programador: dyEstadoNuevo(), admin: dyEstadoNuevo()};
+
+let dyModalSeccion = 'programador';  // de que Daily es el modal abierto
+let dyActividadId = null;            // la actividad del modal; null es una nueva
+let dyRecordatorioId = null;         // el recordatorio del modal; null es uno nuevo
+
+function dyEstadoNuevo() {
+  // fecha: el dia que se esta mirando. hoy: hoy en Montevideo, segun el
+  // servidor. pedido: descarta respuestas viejas si se cambia rapido de dia.
+  return {personas: [], personaId: null, fecha: null, hoy: null, datos: null,
+          hechasAbiertas: false, pedido: 0};
+}
+
+function dySeccion(s) {
+  return DY_SECCIONES[s] ? s : 'programador';
+}
+
+function dyId(s, nombre) {
+  return DY_SECCIONES[dySeccion(s)].pre + '-' + nombre;
+}
+
+function dyAttr(s) {
+  return ' data-seccion="' + dySeccion(s) + '"';
+}
+
+function dyFechaMas(fecha, dias) {
+  const p = String(fecha).split('-').map(Number);
+  return new Date(Date.UTC(p[0], p[1] - 1, p[2] + dias)).toISOString().slice(0, 10);
+}
+
+function dyFechaLarga(fecha) {
+  const p = String(fecha).split('-').map(Number);
+  const d = new Date(Date.UTC(p[0], p[1] - 1, p[2]));
+  return DY_DIAS_LARGOS[d.getUTCDay()] + ' ' + p[2] + ' de ' + DY_MESES[p[1] - 1];
+}
+
+function dyFechaCorta(fecha) {
+  const p = String(fecha).split('-');
+  return p[2] + '/' + p[1];
+}
+
+function dyTexto(id, texto) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = texto;
+}
+
+function dyHtml(id, html) {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = html;
+}
+
+function dyIconos(id) {
+  const el = document.getElementById(id);
+  if (window.lucide && el) lucide.createIcons({nodes: [el]});
+}
+
+function dyBuscar(lista, id) {
+  return (Array.isArray(lista) ? lista : []).find(x => Number(x.id) === Number(id)) || null;
+}
+
+function dyPlural(n, uno, varios) {
+  return n + ' ' + (n === 1 ? uno : varios);
+}
+
+// El apodo si tiene ("Juanchi"), si no el primer nombre. Lo arma el servidor.
+function dyNombre(p) {
+  return (p && (p.mostrar || p.primer_nombre)) || '';
+}
+
+function dyEsHoy(s) {
+  const e = DY_EST[s];
+  return !!e.fecha && e.fecha === e.hoy;
+}
+
+// El color de cada persona sale de su lugar en la lista, que va en orden de
+// alta: sumar a alguien al final no le cambia el color a nadie.
+function dyColor(s, id) {
+  const i = DY_EST[s].personas.findIndex(p => Number(p.id) === Number(id));
+  return (i < 0 ? 0 : i) % DY_COLORES;
+}
+
+function dyIconoPersona(s, id) {
+  return '<i data-lucide="user-round" class="dy-nav-icono dy-color-' + dyColor(s, id) + '" aria-hidden="true"></i>';
+}
+
+// El contenido del panel, una sola vez: los dos Daily tienen el mismo.
+function dyArmarPanel(s) {
+  const conf = DY_SECCIONES[s];
+  const panel = document.getElementById(conf.panel + '-panel');
+  if (!panel || (panel.dataset && panel.dataset.dyArmado === '1')) return;
+  const id = nombre => ' id="' + dyId(s, nombre) + '"';
+  const a = dyAttr(s);
+  panel.innerHTML = '<div class="page-header sl-cabecera"><div><h1' + id('titulo') + '>' + esc(conf.titulo) + '</h1>'
+    + '<div class="page-date"' + id('resumen') + '>Cargando...</div></div>'
+    + '<button class="btn-primary" type="button"' + a + ' onclick="dyAbrirActividad(this.dataset.seccion)">Nueva actividad</button></div>'
+    + '<div class="dy-personas"' + id('personas') + ' role="group" aria-label="De quién es el día"></div>'
+    + '<div class="dy-dia">'
+    + '<button class="btn-ghost btn-icono" type="button"' + a + ' onclick="dyMoverDia(this.dataset.seccion, -1)"'
+    + ' title="Día anterior" aria-label="Día anterior"><i data-lucide="chevron-left" class="nav-icon"></i></button>'
+    + '<button class="btn-ghost btn-icono" type="button"' + a + ' onclick="dyMoverDia(this.dataset.seccion, 1)"'
+    + ' title="Día siguiente" aria-label="Día siguiente"><i data-lucide="chevron-right" class="nav-icon"></i></button>'
+    + '<button class="btn-ghost" type="button"' + a + ' onclick="dyIrHoy(this.dataset.seccion)">Hoy</button>'
+    + '<div class="dy-fecha"' + id('fecha') + ' role="status"></div></div>'
+    + '<div class="dy-error"' + id('error') + ' role="alert"></div>'
+    + '<div class="sl-contadores"' + id('contadores') + ' aria-label="Lo del día por grupo"></div>'
+    + '<div class="dy-agregar"><input type="text"' + id('nueva') + ' class="dy-in" maxlength="200"'
+    + ' placeholder="Actividad rápida para este día y Enter" aria-label="Actividad rápida"' + a
+    + ' onkeydown="if (event.key === ' + "'Enter'" + ') dyAgregar(this.dataset.seccion)">'
+    + '<button class="btn-ghost" type="button"' + a + ' onclick="dyAgregar(this.dataset.seccion)">Agregar</button></div>'
+    + '<div' + id('lista') + '></div>'
+    + '<section class="fin-card dy-recurrentes"' + id('recurrentes') + '><div class="dy-recurrentes-cab">'
+    + '<div class="fin-card-title">Recordatorios que se repiten</div>'
+    + '<button class="btn-ghost" type="button"' + a + ' onclick="dyAbrirRecordatorio(this.dataset.seccion)">Nuevo recordatorio</button></div>'
+    + '<div class="dy-error"' + id('rec-error') + ' role="alert"></div>'
+    + '<div class="dy-lista"' + id('recordatorios') + '></div></section>';
+  if (panel.dataset) panel.dataset.dyArmado = '1';
+}
+
+async function dyCargarPersonas(s) {
+  s = dySeccion(s);
+  const e = DY_EST[s];
+  try {
+    const r = await fetch('/api/daily/personas?seccion=' + s);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const j = await r.json();
+    e.personas = Array.isArray(j.personas) ? j.personas : [];
+  } catch (err) {
+    e.personas = [];
+  }
+  if (!dyBuscar(e.personas, e.personaId)) e.personaId = e.personas.length ? e.personas[0].id : null;
+  dyPintarPersonas(s);
+  return e.personas;
+}
+
+function dyPintarPersonas(s) {
+  const e = DY_EST[s];
+  const enPanel = activePanel === DY_SECCIONES[s].panel;
+  const a = dyAttr(s);
+  dyHtml(dyId(s, 'nav-personas'), e.personas.map(p => {
+    const id = Number(p.id);
+    return '<div class="dy-nav-sub' + (enPanel && id === e.personaId ? ' dy-activa' : '') + '" id="'
+      + dyId(s, 'nav-persona-' + id) + '" role="button" tabindex="0"' + a + ' data-persona="' + id + '"'
+      + ' onclick="dyAbrirPersona(this.dataset.seccion, Number(this.dataset.persona))"'
+      + ' onkeydown="if (event.key === ' + "'Enter'" + ') dyAbrirPersona(this.dataset.seccion, Number(this.dataset.persona))">'
+      + dyIconoPersona(s, id) + '<span>' + esc(dyNombre(p)) + '</span></div>';
+  }).join(''));
+  dyHtml(dyId(s, 'personas'), e.personas.length
+    ? e.personas.map(p => {
+        const id = Number(p.id);
+        return '<button class="dy-persona" type="button" aria-pressed="' + (id === e.personaId ? 'true' : 'false') + '"'
+          + a + ' data-persona="' + id + '" onclick="dyElegirPersona(this.dataset.seccion, Number(this.dataset.persona))">'
+          + dyIconoPersona(s, id) + '<span>' + esc(dyNombre(p)) + '</span></button>';
+      }).join('')
+    : '<div class="dy-vacio">' + esc(DY_SECCIONES[s].sinPersonas) + '</div>');
+  dyIconos(dyId(s, 'nav-personas'));
+  dyIconos(dyId(s, 'personas'));
+}
+
+// Desde el menu: abre el panel de ese Daily en el dia de esa persona.
+function dyAbrirPersona(s, id) {
+  s = dySeccion(s);
+  DY_EST[s].personaId = id;
+  showPanel(DY_SECCIONES[s].panel);   // showPanel llama a loadDaily
+}
+
+function dyElegirPersona(s, id) {
+  s = dySeccion(s);
+  if (id === DY_EST[s].personaId) return;
+  DY_EST[s].personaId = id;
+  dyCargarDia(s);
+}
+
+async function loadDaily(s) {
+  s = dySeccion(s);
+  dyArmarPanel(s);
+  if (!DY_EST[s].personas.length) await dyCargarPersonas(s);
+  await dyCargarDia(s);
+}
+
+function dyMoverDia(s, dias) {
+  s = dySeccion(s);
+  const e = DY_EST[s];
+  if (!e.fecha) return;
+  e.fecha = dyFechaMas(e.fecha, dias);
+  dyCargarDia(s);
+}
+
+function dyIrHoy(s) {
+  s = dySeccion(s);
+  DY_EST[s].fecha = null;   // sin fecha, el servidor devuelve hoy en Montevideo
+  dyCargarDia(s);
+}
+
+async function dyCargarDia(s) {
+  s = dySeccion(s);
+  const e = DY_EST[s];
+  dyPintarPersonas(s);
+  if (e.personaId === null) {
+    e.datos = null;
+    dyPintarDia(s);
+    return;
+  }
+  const pedido = ++e.pedido;
+  const url = '/api/daily?seccion=' + s + '&persona_id=' + e.personaId + (e.fecha ? '&fecha=' + e.fecha : '');
+  let error = '';
+  let datos = null;
+  try {
+    const r = await fetch(url);
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || 'HTTP ' + r.status);
+    datos = j;
+  } catch (err) {
+    error = 'No se pudo leer el día: ' + err.message;
+  }
+  if (pedido !== e.pedido) return;
+  e.datos = datos;
+  if (datos) {
+    e.fecha = datos.fecha || e.fecha;
+    e.hoy = datos.hoy || e.hoy;
+  }
+  dyTexto(dyId(s, 'error'), error);
+  dyPintarDia(s);
+}
+
+// Lo del dia separado como lo muestra la pantalla.
+function dyGrupos(d) {
+  const lista = x => Array.isArray(x) ? x : [];
+  const actividades = lista(d.actividades);
+  const recordatorios = lista(d.recordatorios);
+  return {
+    ayer: lista(d.pendientes_ayer),
+    hoy: actividades.filter(a => !a.hecha),
+    recordatorios: recordatorios.filter(r => !r.hecha),
+    hechas: actividades.filter(a => a.hecha).map(a => Object.assign({tipo: 'actividad'}, a))
+      .concat(recordatorios.filter(r => r.hecha).map(r => Object.assign({tipo: 'recordatorio'}, r)))
+  };
+}
+
+function dyResumen(g) {
+  const partes = [dyPlural(g.hoy.length + g.recordatorios.length, 'pendiente', 'pendientes'),
+                  dyPlural(g.hechas.length, 'hecha', 'hechas')];
+  if (g.ayer.length) partes.push(g.ayer.length + ' de ayer');
+  return partes.join(' · ');
+}
+
+// Cuatro tarjetas chicas; la de ayer en rojo claro si hay algo. Tocarlas lleva al grupo.
+function dyContadoresHtml(s, g) {
+  return DY_GRUPOS.map(x => {
+    const n = g[x.clave].length;
+    const clase = 'sl-contador' + (x.clave === 'ayer' && n > 0 ? ' sl-contador-vencidos' : '');
+    return '<button type="button" class="' + clase + '" data-grupo="' + x.clave + '"' + dyAttr(s)
+      + ' onclick="dyIrAGrupo(this.dataset.seccion, this.dataset.grupo)">'
+      + '<span class="sl-contador-num">' + n + '</span>'
+      + '<span class="sl-contador-rot">' + esc(x.rotulo) + '</span></button>';
+  }).join('');
+}
+
+function dyIrAGrupo(s, clave) {
+  s = dySeccion(s);
+  const el = document.getElementById(dyId(s, 'grupo-' + clave));
+  if (!el) return;
+  if (clave === 'hechas') {
+    DY_EST[s].hechasAbiertas = true;
+    el.open = true;
+  }
+  if (el.scrollIntoView) el.scrollIntoView({behavior: 'smooth', block: 'start'});
+}
+
+function dyTituloDia(s) {
+  const e = DY_EST[s];
+  if (!e.fecha) return '';
+  const largo = dyFechaLarga(e.fecha);
+  return dyEsHoy(s) ? 'Hoy · ' + largo : largo;
+}
+
+function dyBoton(s, texto, accion, id, extra) {
+  return '<button type="button" class="sl-btn' + (extra || '') + '"' + dyAttr(s) + ' data-id="' + Number(id)
+    + '" onclick="' + accion + '(this.dataset.seccion, Number(this.dataset.id))">' + texto + '</button>';
+}
+
+// Un grupo vacio no se muestra. Las hechas van al final, colapsadas.
+function dyListaHtml(s, g) {
+  const esHoy = dyEsHoy(s);
+  const grupo = (clave, titulo, items, tipo) => '<section class="sl-grupo" id="' + dyId(s, 'grupo-' + clave) + '">'
+    + '<h2 class="sl-grupo-titulo' + (clave === 'ayer' ? ' sl-grupo-titulo-vencidos' : '') + '">'
+    + esc(titulo.toUpperCase()) + '</h2>'
+    + items.map(it => dyTarjetaHtml(s, it, tipo)).join('') + '</section>';
+  let html = '';
+  if (g.ayer.length) html += grupo('ayer', 'Pendiente de ayer', g.ayer, 'ayer');
+  if (g.hoy.length) html += grupo('hoy', dyTituloDia(s), g.hoy, 'hoy');
+  if (g.recordatorios.length) {
+    html += grupo('recordatorios', esHoy ? 'Recordatorios de hoy' : 'Recordatorios del día', g.recordatorios, 'recordatorio');
+  }
+  if (!g.ayer.length && !g.hoy.length && !g.recordatorios.length) {
+    html += '<div class="dy-vacio-grande"><span>' + (esHoy ? 'Nada pendiente para hoy.' : 'Nada pendiente para este día.')
+      + '</span><button class="btn-primary" type="button"' + dyAttr(s)
+      + ' onclick="dyAbrirActividad(this.dataset.seccion)">Agregar actividad</button></div>';
+  }
+  if (g.hechas.length) {
+    html += '<details class="sl-grupo dy-hechas" id="' + dyId(s, 'grupo-hechas') + '"' + dyAttr(s)
+      + (DY_EST[s].hechasAbiertas ? ' open' : '')
+      + ' ontoggle="DY_EST[this.dataset.seccion].hechasAbiertas = this.open">'
+      + '<summary class="sl-grupo-titulo">HECHAS (' + g.hechas.length + ')</summary>'
+      + g.hechas.map(it => dyLineaHechaHtml(s, it)).join('') + '</details>';
+  }
+  return html;
+}
+
+// Tarjeta completa, como las de Seguimiento. Lo de ayer lleva el borde rojo de
+// los vencidos; los recordatorios, el color de la persona. Todo tiene Editar.
+function dyTarjetaHtml(s, it, tipo) {
+  const id = Number(it.id);
+  const ayer = tipo === 'ayer';
+  const rec = tipo === 'recordatorio';
+  const clase = 'sl-tarjeta dy-tarjeta' + (ayer ? ' sl-vencida' : '')
+    + (rec ? ' dy-borde-' + dyColor(s, DY_EST[s].personaId) : '');
+  const hora = it.hora
+    ? '<div class="sl-cuando' + (ayer ? ' sl-cuando-vencido' : '') + '">' + esc(it.hora) + '</div>' : '';
+  const nota = it.nota ? '<div class="sl-nota">' + esc(it.nota) + '</div>' : '';
+  let etiqueta = '';
+  if (rec) etiqueta = '<span class="dy-etiqueta">' + esc(it.cuando || '') + '</span>';
+  else if (it.pasada_de) etiqueta = '<span class="dy-etiqueta">Pasada del ' + esc(dyFechaCorta(it.pasada_de)) + '</span>';
+  let acciones;
+  if (rec) {
+    acciones = dyBoton(s, 'Hecho', 'dyRecordatorioHecho', id, ' sl-btn-hecho')
+      + dyBoton(s, 'Editar', 'dyEditarRecordatorio', id);
+  } else if (ayer) {
+    acciones = dyBoton(s, dyEsHoy(s) ? 'Pasar a hoy' : 'Pasar a este día', 'dyPasar', id)
+      + dyBoton(s, 'Hecho', 'dyActividadHecha', id, ' sl-btn-hecho') + dyBoton(s, 'Editar', 'dyAbrirActividad', id);
+  } else {
+    acciones = dyBoton(s, 'Hecho', 'dyActividadHecha', id, ' sl-btn-hecho')
+      + dyBoton(s, 'Pasar a mañana', 'dyPasarAManiana', id) + dyBoton(s, 'Editar', 'dyAbrirActividad', id);
+  }
+  return '<article class="' + clase + '" data-dy-id="' + id + '" data-dy-tipo="' + tipo + '">'
+    + '<div class="sl-tarjeta-cab"><div class="dy-tarjeta-titulo">' + esc(it.texto) + '</div>' + hora + '</div>'
+    + nota + etiqueta + '<div class="sl-acciones">' + acciones + '</div></article>';
+}
+
+function dyLineaHechaHtml(s, it) {
+  const id = Number(it.id);
+  const rec = it.tipo === 'recordatorio';
+  return '<div class="sl-linea dy-linea-hecha" data-dy-id="' + id + '"><div class="sl-linea-txt">'
+    + '<div class="dy-tachado">' + esc(it.texto) + '</div>'
+    + (rec ? '<div class="sl-linea-motivo">' + esc(it.cuando || '') + '</div>' : '') + '</div>'
+    + '<div class="dy-linea-botones">'
+    + dyBoton(s, 'Editar', rec ? 'dyEditarRecordatorio' : 'dyAbrirActividad', id)
+    + dyBoton(s, 'Deshacer', rec ? 'dyDeshacerRecordatorio' : 'dyDeshacerActividad', id) + '</div></div>';
+}
+
+function dyPintarDia(s) {
+  const e = DY_EST[s];
+  const persona = dyBuscar(e.personas, e.personaId);
+  dyTexto(dyId(s, 'titulo'), persona ? 'Daily de ' + dyNombre(persona) : DY_SECCIONES[s].titulo);
+  dyHtml(dyId(s, 'fecha'), e.fecha
+    ? esc(dyFechaLarga(e.fecha)) + (dyEsHoy(s) ? '<span class="dy-fecha-hoy">Hoy</span>' : '') : '');
+  if (!e.datos) {
+    dyTexto(dyId(s, 'resumen'), e.personaId === null ? DY_SECCIONES[s].sinPersonas : '');
+    dyHtml(dyId(s, 'contadores'), '');
+    dyHtml(dyId(s, 'lista'), '');
+    dyPintarRecordatorios(s);
+    return;
+  }
+  const g = dyGrupos(e.datos);
+  dyTexto(dyId(s, 'resumen'), dyResumen(g));
+  dyHtml(dyId(s, 'contadores'), dyContadoresHtml(s, g));
+  dyHtml(dyId(s, 'lista'), dyListaHtml(s, g));
+  dyPintarRecordatorios(s);
+  dyIconos(DY_SECCIONES[s].panel + '-panel');
+}
+
+function dyPintarRecordatorios(s) {
+  const e = DY_EST[s];
+  const todos = e.datos && Array.isArray(e.datos.recordatorios_todos) ? e.datos.recordatorios_todos : [];
+  const boton = (accion, id, icono, rotulo, texto) =>
+    '<button class="btn-ghost btn-icono" type="button"' + dyAttr(s) + ' data-id="' + id + '" onclick="' + accion
+    + '(this.dataset.seccion, Number(this.dataset.id))" title="' + rotulo + '" aria-label="' + rotulo + ': ' + esc(texto)
+    + '"><i data-lucide="' + icono + '" class="nav-icon"></i></button>';
+  dyHtml(dyId(s, 'recordatorios'), todos.length
+    ? todos.map(r => {
+        const id = Number(r.id);
+        return '<div class="dy-rec' + (r.activo ? '' : ' dy-pausado') + '"><div class="dy-rec-cuerpo">'
+          + '<div class="dy-rec-texto">' + esc(r.texto) + '</div>'
+          + '<div class="dy-rec-cuando">' + esc(r.cuando || '') + (r.hora ? ' · ' + esc(r.hora) : '') + '</div></div>'
+          + (r.activo ? '' : '<span class="dy-badge">Pausado</span>')
+          + boton('dyEditarRecordatorio', id, 'pencil', 'Editar', r.texto)
+          + boton('dyPausarRecordatorio', id, r.activo ? 'pause' : 'play', r.activo ? 'Pausar' : 'Reanudar', r.texto)
+          + boton('dyBorrarRecordatorio', id, 'trash-2', 'Borrar', r.texto)
+          + '</div>';
+      }).join('')
+    : '<div class="dy-vacio">Sin recordatorios. Creá uno con "Nuevo recordatorio": aparece solo en los días que le tocan.</div>');
+}
+
+async function dyPedir(url, metodo, cuerpo) {
+  const opciones = {method: metodo, headers: {'Content-Type': 'application/json'}};
+  if (cuerpo !== undefined) opciones.body = JSON.stringify(cuerpo);
+  const r = await fetch(url, opciones);
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || j.ok === false) throw new Error(j.error || 'HTTP ' + r.status);
+  return j;
+}
+
+// Hace el pedido, recarga el dia y deja el error (si hubo) en el aviso del panel.
+async function dyAccion(s, nombreError, prefijo, hacer) {
+  s = dySeccion(s);
+  let error = '';
+  try {
+    await hacer();
+  } catch (err) {
+    error = prefijo + err.message;
+  }
+  await dyCargarDia(s);
+  if (error) dyTexto(dyId(s, nombreError), error);
+  return !error;
+}
+
+// ── botones de las tarjetas ──
+function dyActividadHecha(s, id) {
+  return dyAccion(s, 'error', 'No se pudo marcar: ', () =>
+    dyPedir('/api/daily/actividades/' + id, 'PATCH', {hecha: true}));
+}
+
+function dyDeshacerActividad(s, id) {
+  return dyAccion(s, 'error', 'No se pudo deshacer: ', () =>
+    dyPedir('/api/daily/actividades/' + id, 'PATCH', {hecha: false}));
+}
+
+function dyRecordatorioHecho(s, id) {
+  return dyAccion(s, 'error', 'No se pudo marcar: ', () =>
+    dyPedir('/api/daily/recordatorios/' + id + '/marca', 'PUT', {fecha: DY_EST[dySeccion(s)].fecha, hecha: true}));
+}
+
+function dyDeshacerRecordatorio(s, id) {
+  return dyAccion(s, 'error', 'No se pudo deshacer: ', () =>
+    dyPedir('/api/daily/recordatorios/' + id + '/marca', 'PUT', {fecha: DY_EST[dySeccion(s)].fecha, hecha: false}));
+}
+
+// Lo de ayer pasa al dia que se esta mirando.
+function dyPasar(s, id) {
+  return dyAccion(s, 'error', 'No se pudo pasar: ', () =>
+    dyPedir('/api/daily/actividades/' + id + '/pasar', 'POST', {fecha: DY_EST[dySeccion(s)].fecha}));
+}
+
+// "Mañana" es el dia siguiente al que se esta mirando.
+function dyPasarAManiana(s, id) {
+  return dyAccion(s, 'error', 'No se pudo pasar: ', () =>
+    dyPedir('/api/daily/actividades/' + id + '/pasar', 'POST', {fecha: dyFechaMas(DY_EST[dySeccion(s)].fecha, 1)}));
+}
+
+// ── alta rapida con Enter ──
+async function dyAgregar(s) {
+  s = dySeccion(s);
+  const e = DY_EST[s];
+  const input = document.getElementById(dyId(s, 'nueva'));
+  const texto = (input.value || '').trim();
+  if (!texto) {
+    dyTexto(dyId(s, 'error'), 'Escribí la actividad antes de agregarla.');
+    input.focus();
+    return;
+  }
+  if (e.personaId === null || !e.fecha) {
+    dyTexto(dyId(s, 'error'), 'Elegí de quién es el día.');
+    return;
+  }
+  const ok = await dyAccion(s, 'error', 'No se pudo agregar: ', () =>
+    dyPedir('/api/daily/actividades', 'POST', {seccion: s, persona_id: e.personaId, fecha: e.fecha, texto: texto}));
+  if (ok) input.value = '';
+  input.focus();
+}
+
+// ── modal de actividad: nueva o editar (texto, dia, hora y nota) ──
+function dyItemDelDia(s, id) {
+  const d = DY_EST[s].datos || {};
+  return dyBuscar(d.actividades, id) || dyBuscar(d.pendientes_ayer, id);
+}
+
+function dyAbrirActividad(s, id) {
+  s = dySeccion(s);
+  const e = DY_EST[s];
+  if (e.personaId === null) {
+    dyTexto(dyId(s, 'error'), 'Elegí de quién es el día.');
+    return;
+  }
+  const a = (id === undefined || id === null) ? null : dyItemDelDia(s, id);
+  const persona = dyBuscar(e.personas, e.personaId);
+  dyModalSeccion = s;
+  dyActividadId = a ? Number(a.id) : null;
+  dyTexto('dy-act-titulo', a ? 'Editar actividad' : 'Nueva actividad');
+  dyTexto('dy-act-contexto', 'Daily de ' + dyNombre(persona));
+  document.getElementById('dy-act-texto').value = a ? a.texto : '';
+  document.getElementById('dy-act-fecha').value = a ? a.fecha : (e.fecha || e.hoy || '');
+  document.getElementById('dy-act-hora').value = a && a.hora ? a.hora : '';
+  document.getElementById('dy-act-nota').value = a && a.nota ? a.nota : '';
+  dyTexto('dy-act-error', '');
+  const borrar = document.getElementById('dy-act-borrar');
+  if (borrar) borrar.classList.toggle('dy-oculto', !a);
+  document.getElementById('dy-modal-actividad').classList.add('open');
+  const texto = document.getElementById('dy-act-texto');
+  if (texto.focus) texto.focus();
+}
+
+function dyCerrarModal() {
+  document.getElementById('dy-modal-actividad').classList.remove('open');
+  dyActividadId = null;
+}
+
+async function dyGuardarActividad() {
+  const s = dyModalSeccion;
+  const e = DY_EST[s];
+  const texto = String(document.getElementById('dy-act-texto').value || '').trim();
+  const fecha = document.getElementById('dy-act-fecha').value || e.fecha;
+  if (!texto) {
+    dyTexto('dy-act-error', 'Escribí qué hay que hacer.');
+    return;
+  }
+  if (!fecha) {
+    dyTexto('dy-act-error', 'Elegí el día.');
+    return;
+  }
+  const datos = {texto: texto, fecha: fecha, hora: document.getElementById('dy-act-hora').value || '',
+                 nota: document.getElementById('dy-act-nota').value || ''};
+  const editando = dyActividadId;
+  try {
+    if (editando !== null) await dyPedir('/api/daily/actividades/' + editando, 'PATCH', datos);
+    else await dyPedir('/api/daily/actividades', 'POST', Object.assign({seccion: s, persona_id: e.personaId}, datos));
+  } catch (err) {
+    dyTexto('dy-act-error', 'No se guardó: ' + err.message);
+    return;
+  }
+  dyCerrarModal();
+  await dyCargarDia(s);
+}
+
+async function dyBorrarDesdeModal() {
+  const s = dyModalSeccion;
+  const id = dyActividadId;
+  if (id === null) return;
+  const a = dyItemDelDia(s, id);
+  if (!confirm('¿Borrar "' + (a ? a.texto : 'la actividad') + '"?')) return;
+  try {
+    await dyPedir('/api/daily/actividades/' + id, 'DELETE');
+  } catch (err) {
+    dyTexto('dy-act-error', 'No se pudo borrar: ' + err.message);
+    return;
+  }
+  dyCerrarModal();
+  await dyCargarDia(s);
+}
+
+// ── modal de recordatorio: nuevo o editar (texto, frecuencia, dias, hora y nota) ──
+// Editar no toca las marcas de hecho de los otros dias: viven aparte.
+function dyDiasElegidos() {
+  const dias = [];
+  for (let i = 0; i < 7; i++) {
+    const c = document.getElementById('dy-recm-dia-' + i);
+    if (c && c.checked) dias.push(i);
+  }
+  return dias;
+}
+
+function dyPintarDiasForm() {
+  const sel = document.getElementById('dy-recm-frecuencia');
+  const dias = document.getElementById('dy-recm-dias');
+  if (sel && dias) dias.classList.toggle('dy-oculto', sel.value !== 'dias');
+}
+
+function dyAbrirRecordatorio(s, id) {
+  s = dySeccion(s);
+  const e = DY_EST[s];
+  if (e.personaId === null) {
+    dyTexto(dyId(s, 'rec-error'), 'Elegí de quién es el recordatorio.');
+    return;
+  }
+  const r = (id === undefined || id === null) ? null : dyBuscar(e.datos && e.datos.recordatorios_todos, id);
+  const persona = dyBuscar(e.personas, e.personaId);
+  dyModalSeccion = s;
+  dyRecordatorioId = r ? Number(r.id) : null;
+  dyTexto('dy-recm-titulo', r ? 'Editar recordatorio' : 'Nuevo recordatorio');
+  dyTexto('dy-recm-contexto', 'Daily de ' + dyNombre(persona));
+  document.getElementById('dy-recm-texto').value = r ? r.texto : '';
+  document.getElementById('dy-recm-frecuencia').value = r ? r.frecuencia : 'diario';
+  document.getElementById('dy-recm-hora').value = r && r.hora ? r.hora : '';
+  document.getElementById('dy-recm-nota').value = r && r.nota ? r.nota : '';
+  const dias = r && Array.isArray(r.dias) ? r.dias : [];
+  for (let i = 0; i < 7; i++) {
+    const c = document.getElementById('dy-recm-dia-' + i);
+    if (c) c.checked = dias.indexOf(i) >= 0;
+  }
+  dyPintarDiasForm();
+  const aviso = document.getElementById('dy-recm-aviso');
+  if (aviso) aviso.classList.toggle('dy-oculto', !r);
+  dyTexto('dy-recm-error', '');
+  document.getElementById('dy-modal-recordatorio').classList.add('open');
+  const texto = document.getElementById('dy-recm-texto');
+  if (texto.focus) texto.focus();
+}
+
+function dyEditarRecordatorio(s, id) {
+  dyAbrirRecordatorio(s, id);
+}
+
+function dyCerrarRecordatorio() {
+  document.getElementById('dy-modal-recordatorio').classList.remove('open');
+  dyRecordatorioId = null;
+}
+
+async function dyGuardarRecordatorio() {
+  const s = dyModalSeccion;
+  const e = DY_EST[s];
+  const texto = String(document.getElementById('dy-recm-texto').value || '').trim();
+  const frecuencia = document.getElementById('dy-recm-frecuencia').value || 'diario';
+  const dias = frecuencia === 'dias' ? dyDiasElegidos() : [];
+  if (!texto) {
+    dyTexto('dy-recm-error', 'Escribí qué hay que recordar.');
+    return;
+  }
+  if (frecuencia === 'dias' && !dias.length) {
+    dyTexto('dy-recm-error', 'Elegí al menos un día de la semana.');
+    return;
+  }
+  const datos = {texto: texto, frecuencia: frecuencia, dias: dias,
+                 hora: document.getElementById('dy-recm-hora').value || '',
+                 nota: document.getElementById('dy-recm-nota').value || ''};
+  const editando = dyRecordatorioId;
+  try {
+    if (editando !== null) await dyPedir('/api/daily/recordatorios/' + editando, 'PUT', datos);
+    else await dyPedir('/api/daily/recordatorios', 'POST', Object.assign({seccion: s, persona_id: e.personaId}, datos));
+  } catch (err) {
+    dyTexto('dy-recm-error', 'No se guardó: ' + err.message);
+    return;
+  }
+  dyCerrarRecordatorio();
+  await dyCargarDia(s);
+}
+
+function dyPausarRecordatorio(s, id) {
+  s = dySeccion(s);
+  const r = dyBuscar(DY_EST[s].datos && DY_EST[s].datos.recordatorios_todos, id);
+  if (!r) return null;
+  return dyAccion(s, 'rec-error', 'No se pudo ' + (r.activo ? 'pausar' : 'reanudar') + ': ', () =>
+    dyPedir('/api/daily/recordatorios/' + id, 'PUT', {activo: !r.activo}));
+}
+
+async function dyBorrarRecordatorio(s, id) {
+  s = dySeccion(s);
+  const r = dyBuscar(DY_EST[s].datos && DY_EST[s].datos.recordatorios_todos, id);
+  if (!r) return;
+  if (!confirm('¿Borrar el recordatorio "' + r.texto + '"? Deja de aparecer en todos los días. '
+      + 'Si solo querés frenarlo un tiempo, pausalo.')) return;
+  await dyAccion(s, 'rec-error', 'No se pudo borrar: ', () => dyPedir('/api/daily/recordatorios/' + id, 'DELETE'));
+}
+
+// ========== Equipo ==========
+// Recursos Humanos, en dos paneles que comparten un solo pedido: Organigrama
+// (id equipo, el SVG que sale de reporta_a) y Ausencias (grilla, avisos y
+// detalle con su recupero). Solo horas. Un rol puede tener uno solo de los dos,
+// asi que cada contenedor que no esta en la pagina se saltea. Todo lleva el
+// prefijo eq, porque en JS gana la ultima declaracion con el mismo nombre. Sin
+// template literals a proposito: este bloque no usa el signo de pesos.
+let eqDatos = null;
+let eqAusenciaActual = null;
+let eqHorasTocadas = false;
+// Lunes de la primera semana de la grilla; null es la semana de hoy.
+let eqDesde = null;
+
+const EQ_DIAS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+const EQ_NODO = {ancho: 184, alto: 52, hueco: 20, huecoRaiz: 120, fila: 48, margen: 12};
+
+async function loadEquipo() {
+  try {
+    const r = await fetch('/api/equipo' + (eqDesde ? '?desde=' + encodeURIComponent(eqDesde) : ''));
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    eqDatos = await r.json();
+  } catch (e) {
+    eqDatos = null;
+    const falla = '<div class="eq-vacio">No se pudieron cargar los datos (' + esc(e.message) + ').</div>';
+    eqPoner('eq-organigrama', () => falla);
+    eqPoner('eq-calendario', () => falla);
+    eqPoner('eq-avisos', () => '');
+    eqPoner('eq-detalle', () => '');
+    return;
+  }
+  eqPintar(eqDatos);
+}
+
+// Pinta un contenedor solo si esta en la pagina. El html se arma recien ahi,
+// para no calcular el organigrama de quien no lo ve.
+function eqPoner(id, armar) {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = armar();
+  return !!el;
+}
+
+function eqPintar(d) {
+  eqPoner('eq-organigrama', () => eqOrganigramaSvg(d.organigrama || []));
+  eqPoner('eq-avisos', () => eqAvisosHtml(d.avisos || []));
+  eqPoner('eq-calendario', () => eqCalendarioHtml(d));
+  const rango = document.getElementById('eq-cal-rango');
+  if (rango) rango.textContent = d.desde
+    ? 'Del ' + eqCorta(d.desde) + ' al ' + eqCorta(eqSumarDias(d.desde, 13)) : '';
+  eqPoner('eq-detalle', () => eqDetalleHtml(d.ausencias || []));
+}
+
+function eqSumarDias(iso, dias) {
+  const d = eqFecha(iso);
+  if (!d) return iso;
+  d.setDate(d.getDate() + dias);
+  return d.getFullYear() + '-' + eqDosDigitos(d.getMonth() + 1) + '-' + eqDosDigitos(d.getDate());
+}
+
+function eqSemanas(delta) {
+  const base = eqDesde || (eqDatos && eqDatos.desde);
+  if (!base) return;
+  eqDesde = eqSumarDias(base, 7 * delta);
+  loadEquipo();
+}
+
+function eqSemanasHoy() {
+  eqDesde = null;
+  loadEquipo();
+}
+
+// Un recupero recien agendado se tiene que ver en verde: si cae fuera de las
+// dos semanas que se estan mirando, la grilla salta a la suya.
+function eqIrALaFecha(iso) {
+  const d = eqDatos;
+  if (d && d.desde && iso >= d.desde && iso <= eqSumarDias(d.desde, 13)) return;
+  eqDesde = iso;
+}
+
+// ── fechas y horas ──
+function eqFecha(iso) {
+  if (typeof iso !== 'string' || iso.length !== 10 || iso[4] !== '-' || iso[7] !== '-') return null;
+  const p = iso.split('-').map(Number);
+  if (!p.every(Number.isInteger)) return null;
+  const d = new Date(p[0], p[1] - 1, p[2]);
+  return (d.getFullYear() === p[0] && d.getMonth() === p[1] - 1 && d.getDate() === p[2]) ? d : null;
+}
+
+function eqDosDigitos(n) {
+  return (n < 10 ? '0' : '') + n;
+}
+
+function eqCorta(iso) {
+  const d = eqFecha(iso);
+  return d ? EQ_DIAS[d.getDay()] + ' ' + eqDosDigitos(d.getDate()) + '/' + eqDosDigitos(d.getMonth() + 1) : String(iso);
+}
+
+function eqLarga(iso) {
+  const d = eqFecha(iso);
+  return d ? eqDosDigitos(d.getDate()) + '/' + eqDosDigitos(d.getMonth() + 1) + '/' + d.getFullYear() : String(iso);
+}
+
+function eqHoras(x) {
+  const n = Math.round(Number(x) * 100) / 100;
+  return String(n).replace('.', ',') + 'h';
+}
+
+// Lunes a viernes, sin feriados. La cuenta que vale es la del servidor: esta es
+// solo para sugerir las horas en el formulario.
+function eqDiasHabiles(desdeIso, hastaIso) {
+  const desde = eqFecha(desdeIso);
+  const hasta = eqFecha(hastaIso);
+  if (!desde || !hasta || hasta < desde) return 0;
+  let n = 0;
+  const d = new Date(desde.getTime());
+  while (d <= hasta) {
+    if (d.getDay() !== 0 && d.getDay() !== 6) n++;
+    d.setDate(d.getDate() + 1);
+  }
+  return n;
+}
+
+// ── organigrama ──
+function eqRecortar(texto, max) {
+  const t = String(texto || '');
+  return t.length > max ? t.slice(0, max - 1) + '…' : t;
+}
+
+function eqLinea(x1, y1, x2, y2) {
+  return '<line class="eq-linea" x1="' + x1 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y2 + '"></line>';
+}
+
+// Del padre baja una linea, cruza una barra sobre los hijos y baja a cada uno.
+function eqConector(lineas, xPadre, yPadre, xsHijos, yHijos) {
+  const yMedio = (yPadre + yHijos) / 2;
+  const xs = xsHijos.concat([xPadre]);
+  lineas.push(eqLinea(xPadre, yPadre, xPadre, yMedio));
+  lineas.push(eqLinea(Math.min.apply(null, xs), yMedio, Math.max.apply(null, xs), yMedio));
+  xsHijos.forEach(x => lineas.push(eqLinea(x, yMedio, x, yHijos)));
+}
+
+// Las personas sin reporta_a son la fila de arriba. Los hijos de TODAS las
+// raices cuelgan juntos de un conector comun que las une, como en el dibujo de
+// Juan (Juan Pereyra y Javier arriba). Mas abajo, cada uno bajo su jefe.
+function eqOrganigramaSvg(personas) {
+  if (!personas.length) return '<div class="eq-vacio">No hay personas cargadas.</div>';
+  const N = EQ_NODO;
+  const hijos = {};
+  personas.forEach(p => { hijos[p.id] = []; });
+  const raices = [];
+  personas.forEach(p => {
+    if (p.reporta_a !== null && p.reporta_a !== undefined && hijos[p.reporta_a]) hijos[p.reporta_a].push(p);
+    else raices.push(p);
+  });
+  const primera = [];
+  raices.forEach(r => hijos[r.id].forEach(h => primera.push(h)));
+
+  const ancho = {};
+  const medir = p => {
+    let suma = 0;
+    hijos[p.id].forEach((h, i) => { suma += medir(h) + (i ? N.hueco : 0); });
+    ancho[p.id] = Math.max(N.ancho, suma);
+    return ancho[p.id];
+  };
+  const anchoFila = lista => lista.reduce((s, p, i) => s + ancho[p.id] + (i ? N.hueco : 0), 0);
+  primera.forEach(medir);
+  const anchoPrimera = anchoFila(primera);
+  const anchoRaices = raices.length * N.ancho + (raices.length - 1) * N.huecoRaiz;
+  const total = Math.max(anchoPrimera, anchoRaices);
+  const m = N.margen;
+  const pos = {};
+  const lineas = [];
+  let alto = m + N.alto;
+
+  const xRaices = m + (total - anchoRaices) / 2;
+  raices.forEach((r, i) => {
+    pos[r.id] = {x: xRaices + N.ancho / 2 + i * (N.ancho + N.huecoRaiz), y: m};
+  });
+
+  const ubicar = (lista, x0, y) => {
+    let x = x0;
+    lista.forEach(p => {
+      const w = ancho[p.id];
+      pos[p.id] = {x: x + w / 2, y: y};
+      alto = Math.max(alto, y + N.alto);
+      const hs = hijos[p.id];
+      if (hs.length) {
+        const yHijos = y + N.alto + N.fila;
+        ubicar(hs, x + (w - anchoFila(hs)) / 2, yHijos);
+        eqConector(lineas, x + w / 2, y + N.alto, hs.map(h => pos[h.id].x), yHijos);
+      }
+      x += w + N.hueco;
+    });
+  };
+
+  if (primera.length) {
+    const yUnion = m + N.alto + N.fila / 3;
+    const yPrimera = m + N.alto + N.fila * 1.5;
+    const xsRaices = raices.map(r => pos[r.id].x);
+    xsRaices.forEach(x => lineas.push(eqLinea(x, m + N.alto, x, yUnion)));
+    const xIzq = Math.min.apply(null, xsRaices);
+    const xDer = Math.max.apply(null, xsRaices);
+    if (xDer > xIzq) lineas.push(eqLinea(xIzq, yUnion, xDer, yUnion));
+    ubicar(primera, m + (total - anchoPrimera) / 2, yPrimera);
+    eqConector(lineas, (xIzq + xDer) / 2, yUnion, primera.map(h => pos[h.id].x), yPrimera);
+  }
+
+  const W = total + 2 * m;
+  const H = alto + m;
+  const nodos = personas.filter(p => pos[p.id]).map(p => {
+    const c = pos[p.id];
+    return '<g class="eq-nodo' + (p.destacado ? ' eq-destacado' : '') + '">'
+      + '<title>' + esc(p.nombre + (p.rol ? ' · ' + p.rol : '')) + '</title>'
+      + '<rect x="' + (c.x - N.ancho / 2) + '" y="' + c.y + '" width="' + N.ancho + '" height="' + N.alto + '" rx="8"></rect>'
+      + '<text class="eq-nodo-nombre" x="' + c.x + '" y="' + (c.y + 22) + '" text-anchor="middle">' + esc(eqRecortar(p.nombre, 24)) + '</text>'
+      + '<text class="eq-nodo-rol" x="' + c.x + '" y="' + (c.y + 39) + '" text-anchor="middle">' + esc(eqRecortar(p.rol, 32)) + '</text>'
+      + '</g>';
+  }).join('');
+  return '<svg class="eq-svg" xmlns="http://www.w3.org/2000/svg" width="' + W + '" height="' + H
+    + '" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Organigrama del equipo">'
+    + lineas.join('') + nodos + '</svg>';
+}
+
+// ── ausencias ──
+function eqAvisosHtml(avisos) {
+  return avisos.map(a => '<div class="eq-aviso" role="status"><b>' + esc(a.proyecto)
+    + '</b> tiene entrega el ' + esc(eqLarga(a.fecha_entrega)) + ' y ' + esc(a.persona)
+    + ' tiene una ausencia cargada ese día.</div>').join('');
+}
+
+function eqCalendarioHtml(d) {
+  const filas = d.calendario || [];
+  const semanas = d.semanas || [];
+  if (!filas.length) return '<div class="eq-vacio">Nadie del equipo lleva horas.</div>';
+  const hueco = celda => '<' + celda + ' class="eq-cal-hueco" aria-hidden="true"></' + celda + '>';
+  const nombreSemana = (s, i) => {
+    if (!d.esta_semana) return i ? 'Semana que viene' : 'Esta semana';
+    if (s[0] === d.esta_semana) return 'Esta semana';
+    if (s[0] === eqSumarDias(d.esta_semana, 7)) return 'Semana que viene';
+    return 'Semana del ' + eqCorta(s[0]);
+  };
+  const cabSemanas = semanas.map((s, i) => '<th colspan="' + s.length + '" class="eq-cal-semana">'
+    + esc(nombreSemana(s, i)) + '</th>').join(hueco('th'));
+  const cabDias = semanas.map(s => s.map(iso => '<th scope="col" class="eq-cal-dia' + (iso === d.hoy ? ' eq-hoy' : '') + '">'
+    + esc(eqCorta(iso)) + '</th>').join('')).join(hueco('th'));
+  const cuerpo = filas.map(f => {
+    const celdas = semanas.map(s => s.map(iso => {
+      const dia = (f.dias || {})[iso] || {};
+      const rec = dia.recupero > 0 ? '+' + eqHoras(dia.recupero) : '';
+      if (dia.falta) return '<td class="eq-dia eq-falta">falta' + (rec ? '<span class="eq-dia-extra">' + rec + '</span>' : '') + '</td>';
+      if (rec) return '<td class="eq-dia eq-recupero">' + rec + '</td>';
+      return '<td class="eq-dia"></td>';
+    }).join('')).join(hueco('td'));
+    const saldo = f.al_dia ? '<td class="eq-saldo eq-al-dia">al día</td>'
+      : '<td class="eq-saldo eq-debe">−' + eqHoras(f.saldo) + '</td>';
+    return '<tr><th scope="row" class="eq-cal-persona">' + esc(f.nombre) + '</th>' + celdas + saldo + '</tr>';
+  }).join('');
+  return '<table class="eq-cal"><thead>'
+    + '<tr><th class="eq-cal-persona"></th>' + cabSemanas + '<th></th></tr>'
+    + '<tr><th scope="col" class="eq-cal-persona">Persona</th>' + cabDias + '<th scope="col" class="eq-saldo">Saldo</th></tr>'
+    + '</thead><tbody>' + cuerpo + '</tbody></table>';
+}
+
+function eqDetalleHtml(ausencias) {
+  if (!ausencias.length) return '<div class="eq-vacio">No hay ausencias registradas.</div>';
+  return ausencias.map(a => {
+    const rango = a.fecha_desde === a.fecha_hasta ? eqCorta(a.fecha_desde)
+      : eqCorta(a.fecha_desde) + ' al ' + eqCorta(a.fecha_hasta);
+    const cuando = a.recuperos.length
+      ? 'recupera ' + a.recuperos.map(r => eqCorta(r.fecha) + ' (' + eqHoras(r.horas) + ')').join(', ')
+      : 'sin recupero agendado';
+    const estado = a.recuperado
+      ? '<span class="eq-estado eq-estado-ok">recuperado</span>'
+      : '<span class="eq-estado eq-estado-mal">sin fecha'
+        + (a.recuperos.length ? ' · faltan ' + eqHoras(a.horas_pendientes) : '') + '</span>';
+    const chips = a.recuperos.map(r => '<span class="eq-chip">' + esc(eqCorta(r.fecha)) + ' · +' + eqHoras(r.horas)
+      + '<button type="button" class="eq-chip-x" aria-label="Borrar el recupero del ' + esc(eqCorta(r.fecha))
+      + '" onclick="eqBorrarRecupero(' + Number(r.id) + ')">×</button></span>').join('');
+    const agendar = a.recuperado ? ''
+      : '<button type="button" class="btn-primary eq-btn-chico" onclick="eqAbrirRecupero(' + Number(a.id) + ')">Agendar recupero</button>';
+    return '<article class="eq-item">'
+      + '<div class="eq-item-cab"><div class="eq-item-titulo"><b>' + esc(a.persona) + '</b> · ' + esc(a.motivo) + '</div>' + estado + '</div>'
+      + '<div class="eq-item-linea">Faltó ' + esc(rango) + ' · ' + eqHoras(a.horas_totales) + ' · ' + esc(cuando) + '</div>'
+      + '<div class="eq-item-acciones">' + chips + agendar
+      + '<button type="button" class="btn-ghost eq-btn-chico" onclick="eqBorrarAusencia(' + Number(a.id) + ')">Borrar ausencia</button></div>'
+      + '</article>';
+  }).join('');
+}
+
+// ── formularios ──
+function eqAbrirModal(id) {
+  document.getElementById(id).classList.add('open');
+}
+
+function eqCerrarModal(id) {
+  document.getElementById(id).classList.remove('open');
+}
+
+async function eqLeerRespuesta(r) {
+  try { return await r.json(); } catch (e) { return {}; }
+}
+
+function eqPersonaElegida() {
+  const id = Number(document.getElementById('eq-aus-persona').value);
+  return ((eqDatos && eqDatos.personas) || []).find(p => p.id === id) || null;
+}
+
+function eqAbrirAusencia() {
+  const personas = (eqDatos && eqDatos.personas) || [];
+  document.getElementById('eq-aus-persona').innerHTML = personas.map(p =>
+    '<option value="' + Number(p.id) + '">' + esc(p.nombre) + '</option>').join('');
+  const hoy = (eqDatos && eqDatos.hoy) || '';
+  document.getElementById('eq-aus-desde').value = hoy;
+  document.getElementById('eq-aus-hasta').value = hoy;
+  document.getElementById('eq-aus-motivo').value = '';
+  document.getElementById('eq-aus-error').textContent = personas.length ? '' : 'Nadie del equipo lleva horas.';
+  eqHorasTocadas = false;
+  eqSugerirHoras();
+  eqAbrirModal('eq-modal-ausencia');
+}
+
+// Dias habiles por horas por dia. Si la persona corrigio las horas a mano, no
+// se le pisan: solo se actualiza la cuenta de referencia.
+function eqSugerirHoras() {
+  const p = eqPersonaElegida();
+  const dias = eqDiasHabiles(document.getElementById('eq-aus-desde').value,
+                             document.getElementById('eq-aus-hasta').value);
+  const porDia = p ? Number(p.horas_por_dia) : 0;
+  const calculadas = Math.round(dias * porDia * 100) / 100;
+  if (!eqHorasTocadas) document.getElementById('eq-aus-horas').value = calculadas > 0 ? String(calculadas) : '';
+  document.getElementById('eq-aus-calculo').textContent = !p ? ''
+    : dias + ' ' + (dias === 1 ? 'día hábil' : 'días hábiles') + ' × ' + eqHoras(porDia) + ' = ' + eqHoras(calculadas)
+      + (eqHorasTocadas ? '. Corregido a mano.' : '. Se puede corregir a mano.');
+}
+
+function eqTocarHoras() {
+  eqHorasTocadas = true;
+  eqSugerirHoras();
+}
+
+function eqNumero(valor) {
+  const t = String(valor === null || valor === undefined ? '' : valor).trim().replace(',', '.');
+  return t === '' ? NaN : Number(t);
+}
+
+function eqValidarAusencia(datos) {
+  if (!datos.persona_id) return 'Elegí una persona.';
+  const desde = eqFecha(datos.fecha_desde);
+  const hasta = eqFecha(datos.fecha_hasta);
+  if (!desde) return 'La fecha desde no es válida.';
+  if (!hasta) return 'La fecha hasta no es válida.';
+  if (hasta < desde) return 'Hasta no puede ser anterior a desde.';
+  if (!datos.motivo) return 'Falta el motivo.';
+  if (!(datos.horas_totales > 0)) return 'Las horas tienen que ser un número mayor que cero.';
+  return '';
+}
+
+function eqValidarRecupero(datos) {
+  if (!eqFecha(datos.fecha)) return 'La fecha del recupero no es válida.';
+  if (!(datos.horas > 0)) return 'Las horas tienen que ser un número mayor que cero.';
+  return '';
+}
+
+async function eqGuardarAusencia() {
+  const datos = {
+    persona_id: Number(document.getElementById('eq-aus-persona').value) || null,
+    fecha_desde: document.getElementById('eq-aus-desde').value,
+    fecha_hasta: document.getElementById('eq-aus-hasta').value,
+    motivo: document.getElementById('eq-aus-motivo').value.trim(),
+    horas_totales: eqNumero(document.getElementById('eq-aus-horas').value)
+  };
+  const error = document.getElementById('eq-aus-error');
+  const problema = eqValidarAusencia(datos);
+  if (problema) { error.textContent = problema; return; }
+  error.textContent = '';
+  try {
+    const r = await fetch('/api/equipo/ausencias', {method: 'POST',
+      headers: {'Content-Type': 'application/json'}, body: JSON.stringify(datos)});
+    const j = await eqLeerRespuesta(r);
+    if (!r.ok) { error.textContent = j.error || 'No se pudo guardar (HTTP ' + r.status + ').'; return; }
+  } catch (e) {
+    error.textContent = 'No se pudo guardar: ' + e.message;
+    return;
+  }
+  eqCerrarModal('eq-modal-ausencia');
+  await loadEquipo();
+}
+
+function eqAbrirRecupero(ausenciaId) {
+  const a = ((eqDatos && eqDatos.ausencias) || []).find(x => x.id === ausenciaId);
+  if (!a) return;
+  eqAusenciaActual = a;
+  const persona = ((eqDatos && eqDatos.personas) || []).find(p => p.id === a.persona_id);
+  const porDia = persona ? Number(persona.horas_por_dia) : a.horas_pendientes;
+  document.getElementById('eq-rec-contexto').textContent = a.persona + ' · ' + a.motivo + '. '
+    + (a.horas_pendientes > 0 ? 'Faltan ' + eqHoras(a.horas_pendientes) + ' por agendar.' : 'Ya está cubierta.');
+  document.getElementById('eq-rec-fecha').value = '';
+  const sugeridas = Math.min(a.horas_pendientes, porDia);
+  document.getElementById('eq-rec-horas').value = sugeridas > 0 ? String(sugeridas) : '';
+  document.getElementById('eq-rec-error').textContent = '';
+  eqAbrirModal('eq-modal-recupero');
+}
+
+async function eqGuardarRecupero() {
+  if (!eqAusenciaActual) return;
+  const datos = {
+    fecha: document.getElementById('eq-rec-fecha').value,
+    horas: eqNumero(document.getElementById('eq-rec-horas').value)
+  };
+  const error = document.getElementById('eq-rec-error');
+  const problema = eqValidarRecupero(datos);
+  if (problema) { error.textContent = problema; return; }
+  error.textContent = '';
+  try {
+    const r = await fetch('/api/equipo/ausencias/' + Number(eqAusenciaActual.id) + '/recuperos', {method: 'POST',
+      headers: {'Content-Type': 'application/json'}, body: JSON.stringify(datos)});
+    const j = await eqLeerRespuesta(r);
+    if (!r.ok) { error.textContent = j.error || 'No se pudo agendar (HTTP ' + r.status + ').'; return; }
+  } catch (e) {
+    error.textContent = 'No se pudo agendar: ' + e.message;
+    return;
+  }
+  eqCerrarModal('eq-modal-recupero');
+  eqIrALaFecha(datos.fecha);
+  await loadEquipo();
+}
+
+async function eqBorrar(url, pregunta) {
+  if (!confirm(pregunta)) return;
+  try {
+    const r = await fetch(url, {method: 'DELETE'});
+    if (!r.ok) {
+      const j = await eqLeerRespuesta(r);
+      alert(j.error || 'No se pudo borrar (HTTP ' + r.status + ').');
+    }
+  } catch (e) {
+    alert('No se pudo borrar: ' + e.message);
+  }
+  await loadEquipo();
+}
+
+function eqBorrarAusencia(id) {
+  const a = ((eqDatos && eqDatos.ausencias) || []).find(x => x.id === id);
+  const que = a ? 'la ausencia de ' + a.persona + ' (' + a.motivo + ')' : 'esta ausencia';
+  return eqBorrar('/api/equipo/ausencias/' + Number(id),
+                  '¿Borrar ' + que + '? También se borran sus recuperos.');
+}
+
+function eqBorrarRecupero(id) {
+  return eqBorrar('/api/equipo/recuperos/' + Number(id), '¿Borrar este recupero?');
+}
+
+// ── flujos ──
+// Bloque al final de Ausencias: como trabajamos, paso a paso, con el rol de
+// cada etapa y nunca nombres. Los pasos vienen de /api/flujos. Agregar, editar
+// y reordenar va detras del boton Editar y solo para administradores; el
+// servidor le responde 403 a cualquier otro.
+let eqFlujos = [];
+let eqFlujosRoles = [];
+let eqFlujosAdmin = false;
+let eqFlujosEditando = false;
+let eqFlujoActivo = null;
+let eqPasoFlujo = null;
+let eqPasoId = null;
+let eqPasoCobros = [];
+
+// Secciones a las que puede llevar un paso. En el formulario se ofrecen las
+// que estan en la pagina; una guardada que todavia no existe se conserva.
+const EQ_PANTALLAS = [['seg_leads', 'Seguimiento de leads'], ['notion_clients', 'Proceso de venta'], ['demos', 'Demos'],
+  ['clientes', 'Clientes'], ['projects', 'Proyectos'], ['tasks', 'Tareas'], ['wa', 'WhatsApp'],
+  ['cal', 'Calendario'], ['meta', 'Meta Ads'], ['marketing', 'Inteligencia marketing'],
+  ['cola', 'Outbound'], ['metrics', 'Inteligencia comercial'], ['sdr', 'SDR'],
+  ['finanzas', 'Finanzas'], ['simulador', 'Simulador financiero'], ['activity', 'Actividad'],
+  ['equipo', 'Organigrama'], ['ausencias', 'Ausencias']];
+
+async function eqCargarFlujos() {
+  if (!document.getElementById('eq-flujos-pasos')) return;
+  try {
+    const r = await fetch('/api/flujos');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    if (!d || !Array.isArray(d.flujos)) throw new Error('respuesta sin flujos');
+    eqFlujos = d.flujos;
+    eqFlujosRoles = Array.isArray(d.roles) ? d.roles : [];
+    eqFlujosAdmin = d.es_admin === true;
+  } catch (e) {
+    eqFlujos = [];
+    eqPoner('eq-flujos-selector', () => '');
+    eqPoner('eq-flujos-acciones', () => '');
+    eqPoner('eq-flujos-pasos', () => '<div class="eq-vacio">No se pudieron cargar los flujos (' + esc(e.message) + ').</div>');
+    return;
+  }
+  if (!eqFlujosAdmin) eqFlujosEditando = false;
+  if (!eqFlujos.some(f => f.id === eqFlujoActivo)) eqFlujoActivo = eqFlujos.length ? eqFlujos[0].id : null;
+  eqPintarFlujos();
+}
+
+function eqFlujoElegido() {
+  return eqFlujos.find(f => f.id === eqFlujoActivo) || null;
+}
+
+function eqPintarFlujos() {
+  eqPoner('eq-flujos-selector', () => eqFlujosSelectorHtml(eqFlujos, eqFlujoActivo));
+  eqPoner('eq-flujos-acciones', () => eqFlujosAdmin
+    ? '<button type="button" class="btn-ghost eq-btn-chico" onclick="eqFlujosAlternarEdicion()">'
+      + (eqFlujosEditando ? 'Listo' : 'Editar') + '</button>'
+    : '');
+  eqPoner('eq-flujos-pasos', () => eqPasosHtml(eqFlujoElegido(), {admin: eqFlujosAdmin, editando: eqFlujosEditando}));
+}
+
+function eqFlujosSelectorHtml(flujos, activo) {
+  return flujos.map(f => '<button type="button" class="eq-flujo-tab' + (f.id === activo ? ' eq-activo' : '')
+    + '" aria-pressed="' + (f.id === activo) + '" title="' + esc(f.descripcion || '')
+    + '" onclick="eqFlujoElegir(' + Number(f.id) + ')">' + esc(f.nombre) + '</button>').join('');
+}
+
+function eqFlujoElegir(id) {
+  eqFlujoActivo = id;
+  eqPintarFlujos();
+}
+
+function eqFlujosAlternarEdicion() {
+  if (!eqFlujosAdmin) return;
+  eqFlujosEditando = !eqFlujosEditando;
+  eqPintarFlujos();
+}
+
+// Un paso lleva a su pantalla solo si el panel esta en la pagina y el rol lo
+// puede ver: la misma regla que esconde el menu (ALL_PANELS contra el acceso).
+function eqFlujoPuedeAbrir(pantalla) {
+  if (!pantalla || !document.getElementById(pantalla + '-panel')) return false;
+  const acceso = window._panelAccess;
+  if (!Array.isArray(acceso)) return true;
+  return !ALL_PANELS.includes(pantalla) || acceso.includes(pantalla);
+}
+
+function eqFlujoIr(pantalla) {
+  if (eqFlujoPuedeAbrir(pantalla)) showPanel(pantalla);
+}
+
+function eqFlujoTecla(ev, pantalla) {
+  if (ev.key === 'Enter' || ev.key === ' ') {
+    ev.preventDefault();
+    eqFlujoIr(pantalla);
+  }
+}
+
+function eqPantallaNombre(id) {
+  const par = EQ_PANTALLAS.find(p => p[0] === id);
+  return par ? par[1] : String(id);
+}
+
+function eqPorcentaje(x) {
+  const n = Math.round(Number(x) * 100) / 100;
+  return String(n).replace('.', ',') + '%';
+}
+
+// El numero que se ve es la posicion: si en la base quedo un hueco, la
+// pantalla igual muestra 01, 02, 03.
+function eqPasosHtml(flujo, opciones) {
+  if (!flujo) return '<div class="eq-vacio">No hay flujos cargados.</div>';
+  const op = opciones || {};
+  const pasos = (flujo.pasos || []).slice().sort((a, b) => (a.numero - b.numero) || (a.id - b.id));
+  if (!pasos.length) {
+    return '<div class="eq-flujo-vacio"><span>Los pasos de ' + esc(flujo.nombre) + ' todavía no se cargaron.</span>'
+      + (op.admin ? '<button type="button" class="btn-primary eq-btn-chico" onclick="eqPasoAbrir('
+        + Number(flujo.id) + ', null)">Cargar el primer paso</button>' : '')
+      + '</div>';
+  }
+  const items = pasos.map((p, i) => {
+    const link = !op.editando && eqFlujoPuedeAbrir(p.pantalla);
+    const clases = 'eq-paso' + (p.destacado ? ' eq-paso-destacado' : '') + (link ? ' eq-paso-link' : '');
+    const attrs = link
+      ? ' role="link" tabindex="0" data-pantalla="' + esc(p.pantalla) + '" onclick="eqFlujoIr(this.dataset.pantalla)"'
+        + ' onkeydown="eqFlujoTecla(event, this.dataset.pantalla)"'
+      : '';
+    const cobros = (p.cobros || []).length
+      ? '<div class="eq-paso-cobros">Cobro: ' + p.cobros.map(c => esc(eqPorcentaje(c.porcentaje) + ' ' + c.descripcion)).join(' · ') + '</div>'
+      : '';
+    const ir = link ? '<div class="eq-paso-ir">Ir a ' + esc(eqPantallaNombre(p.pantalla)) + ' &rarr;</div>' : '';
+    const edicion = !op.editando ? '' : '<div class="eq-paso-edicion">'
+      + '<button type="button" class="btn-ghost eq-btn-chico" onclick="eqPasoMover(' + Number(p.id) + ', -1)"'
+      + (i === 0 ? ' disabled' : '') + '>&uarr; Subir</button>'
+      + '<button type="button" class="btn-ghost eq-btn-chico" onclick="eqPasoMover(' + Number(p.id) + ', 1)"'
+      + (i === pasos.length - 1 ? ' disabled' : '') + '>&darr; Bajar</button>'
+      + '<button type="button" class="btn-ghost eq-btn-chico" onclick="eqPasoAbrir(' + Number(flujo.id) + ', ' + Number(p.id) + ')">Editar</button>'
+      + '<button type="button" class="btn-ghost eq-btn-chico" onclick="eqPasoBorrar(' + Number(p.id) + ')">Borrar</button>'
+      + '</div>';
+    return '<li class="' + clases + '"' + attrs + '>'
+      + '<div class="eq-paso-cab"><span class="eq-paso-num">' + eqDosDigitos(i + 1) + '</span>'
+      + '<span class="eq-paso-titulo">' + esc(p.titulo) + '</span>'
+      + '<span class="eq-paso-rol">' + esc(p.rol) + '</span></div>'
+      + (p.detalle ? '<div class="eq-paso-detalle">' + esc(p.detalle) + '</div>' : '')
+      + cobros + ir + edicion + '</li>';
+  }).join('');
+  const agregar = op.editando
+    ? '<button type="button" class="btn-primary eq-btn-chico" onclick="eqPasoAbrir(' + Number(flujo.id) + ', null)">+ Agregar paso</button>'
+    : '';
+  return '<ol class="eq-pasos">' + items + '</ol>' + agregar;
+}
+
+function eqPantallasOpciones(actual) {
+  const lista = EQ_PANTALLAS.filter(p => document.getElementById(p[0] + '-panel'));
+  if (actual && !lista.some(p => p[0] === actual)) lista.push([actual, actual + ' (todavía no existe)']);
+  return '<option value="">Sin pantalla</option>' + lista.map(p => '<option value="' + esc(p[0]) + '"'
+    + (p[0] === actual ? ' selected' : '') + '>' + esc(p[1]) + '</option>').join('');
+}
+
+function eqPasoAbrir(flujoId, pasoId) {
+  if (!eqFlujosAdmin) return;
+  const flujo = eqFlujos.find(f => f.id === flujoId);
+  if (!flujo) return;
+  const paso = pasoId === null || pasoId === undefined ? null
+    : (flujo.pasos || []).find(p => p.id === pasoId) || null;
+  eqPasoFlujo = flujo.id;
+  eqPasoId = paso ? paso.id : null;
+  document.getElementById('eq-paso-titulo-modal').textContent = paso ? 'Editar paso' : 'Agregar paso a ' + flujo.nombre;
+  document.getElementById('eq-paso-titulo').value = paso ? paso.titulo : '';
+  document.getElementById('eq-paso-rol').innerHTML = eqFlujosRoles.map(r => '<option value="' + esc(r) + '"'
+    + (paso && paso.rol === r ? ' selected' : '') + '>' + esc(r) + '</option>').join('');
+  document.getElementById('eq-paso-rol').value = paso ? paso.rol : (eqFlujosRoles[0] || '');
+  document.getElementById('eq-paso-detalle').value = paso ? paso.detalle : '';
+  document.getElementById('eq-paso-pantalla').innerHTML = eqPantallasOpciones(paso ? paso.pantalla : null);
+  document.getElementById('eq-paso-pantalla').value = paso && paso.pantalla ? paso.pantalla : '';
+  document.getElementById('eq-paso-destacado').checked = !!(paso && paso.destacado);
+  eqPasoCobros = paso ? (paso.cobros || []).map(c => ({porcentaje: String(c.porcentaje), descripcion: c.descripcion})) : [];
+  eqPasoCobrosPintar();
+  document.getElementById('eq-paso-error').textContent = '';
+  eqAbrirModal('eq-modal-paso');
+}
+
+function eqPasoCobrosPintar() {
+  eqPoner('eq-paso-cobros', () => eqPasoCobros.map((c, i) => '<div class="eq-cobro-fila">'
+    + '<input type="number" min="0" max="100" step="any" inputmode="decimal" aria-label="Porcentaje del momento ' + (i + 1)
+    + '" placeholder="%" value="' + esc(c.porcentaje) + '" oninput="eqPasoCobroPct(' + i + ', this.value)">'
+    + '<input type="text" maxlength="120" aria-label="Cuándo se cobra el momento ' + (i + 1)
+    + '" placeholder="al confirmar" value="' + esc(c.descripcion) + '" oninput="eqPasoCobroDesc(' + i + ', this.value)">'
+    + '<button type="button" class="btn-ghost btn-icono" aria-label="Quitar el momento ' + (i + 1)
+    + '" onclick="eqPasoCobroQuitar(' + i + ')">×</button></div>').join(''));
+}
+
+function eqPasoCobroAgregar() {
+  eqPasoCobros.push({porcentaje: '', descripcion: ''});
+  eqPasoCobrosPintar();
+}
+
+function eqPasoCobroQuitar(i) {
+  eqPasoCobros.splice(i, 1);
+  eqPasoCobrosPintar();
+}
+
+function eqPasoCobroPct(i, valor) {
+  if (eqPasoCobros[i]) eqPasoCobros[i].porcentaje = valor;
+}
+
+function eqPasoCobroDesc(i, valor) {
+  if (eqPasoCobros[i]) eqPasoCobros[i].descripcion = valor;
+}
+
+function eqPasoValidar(datos) {
+  if (!datos.titulo) return 'Falta el título.';
+  if (!eqFlujosRoles.includes(datos.rol)) return 'Elegí un rol.';
+  let suma = 0;
+  for (let i = 0; i < datos.cobros.length; i++) {
+    const c = datos.cobros[i];
+    if (!(c.porcentaje > 0 && c.porcentaje <= 100)) return 'El porcentaje del momento ' + (i + 1) + ' tiene que estar entre 0 y 100.';
+    if (!c.descripcion) return 'Falta cuándo se cobra el momento ' + (i + 1) + '.';
+    suma += c.porcentaje;
+  }
+  if (suma > 100.000001) return 'Los momentos de cobro suman más del 100%.';
+  return '';
+}
+
+async function eqPasoGuardar() {
+  if (!eqPasoFlujo) return;
+  const datos = {
+    titulo: document.getElementById('eq-paso-titulo').value.trim(),
+    rol: document.getElementById('eq-paso-rol').value,
+    detalle: document.getElementById('eq-paso-detalle').value.trim(),
+    pantalla: document.getElementById('eq-paso-pantalla').value || null,
+    destacado: !!document.getElementById('eq-paso-destacado').checked,
+    cobros: eqPasoCobros.map(c => ({porcentaje: eqNumero(c.porcentaje), descripcion: String(c.descripcion || '').trim()}))
+  };
+  const error = document.getElementById('eq-paso-error');
+  const problema = eqPasoValidar(datos);
+  if (problema) { error.textContent = problema; return; }
+  error.textContent = '';
+  const url = eqPasoId ? '/api/flujos/pasos/' + Number(eqPasoId) : '/api/flujos/' + Number(eqPasoFlujo) + '/pasos';
+  try {
+    const r = await fetch(url, {method: eqPasoId ? 'PUT' : 'POST',
+      headers: {'Content-Type': 'application/json'}, body: JSON.stringify(datos)});
+    const j = await eqLeerRespuesta(r);
+    if (!r.ok) { error.textContent = j.error || 'No se pudo guardar (HTTP ' + r.status + ').'; return; }
+  } catch (e) {
+    error.textContent = 'No se pudo guardar: ' + e.message;
+    return;
+  }
+  eqCerrarModal('eq-modal-paso');
+  eqFlujoActivo = eqPasoFlujo;
+  await eqCargarFlujos();
+}
+
+async function eqPasoMover(id, delta) {
+  try {
+    const r = await fetch('/api/flujos/pasos/' + Number(id) + '/mover', {method: 'POST',
+      headers: {'Content-Type': 'application/json'}, body: JSON.stringify({delta: delta})});
+    if (!r.ok) {
+      const j = await eqLeerRespuesta(r);
+      alert(j.error || 'No se pudo mover (HTTP ' + r.status + ').');
+    }
+  } catch (e) {
+    alert('No se pudo mover: ' + e.message);
+  }
+  await eqCargarFlujos();
+}
+
+async function eqPasoBorrar(id) {
+  const flujo = eqFlujoElegido();
+  const paso = flujo && (flujo.pasos || []).find(p => p.id === id);
+  if (!confirm('¿Borrar el paso' + (paso ? ' ' + paso.titulo : '') + '? Los demás se renumeran solos.')) return;
+  try {
+    const r = await fetch('/api/flujos/pasos/' + Number(id), {method: 'DELETE'});
+    if (!r.ok) {
+      const j = await eqLeerRespuesta(r);
+      alert(j.error || 'No se pudo borrar (HTTP ' + r.status + ').');
+    }
+  } catch (e) {
+    alert('No se pudo borrar: ' + e.message);
+  }
+  await eqCargarFlujos();
+}
+
+// ========== Simulador financiero ==========
+// No muestra el pasado: sirve para probar decisiones. Trabaja sobre una COPIA
+// de lo que hay en Finanzas (la precarga) y nunca escribe ahi.
+//
+// Lo que va entre las dos marcas "sim: calculo puro" no toca el DOM:
+// tests/test_simulador_calculo.py lo recorta y lo corre en node. La regla de
+// la seccion es que ningun numero de la cuenta este escondido: cada supuesto
+// es un campo de SIM_CAMPOS con su control en pantalla (data-sim), y los
+// valores por defecto viven todos juntos en SIM_DEFAULTS.
+//
+// Fase 2 (comparar dos escenarios, caja a 12 meses con el mes de quiebre,
+// calendario semanal de caja, margen por cliente) se apoya en esto:
+// simCalcular es pura y el escenario guardado lleva `version`.
+// ── sim: calculo puro (inicio) ──
+const SIM_DEFAULTS = {
+  equipo: {cantidadProgramadores: 2, sueldoPorProgramador: 500, proyectosPorProgramador: 3},
+  ventas: {precioWeb: 700, webs: 2, precioEcom: 1100, ecommerce: 2,
+           precioMedida: 2000, aMedida: 1, pauta: 600},
+  mantenimiento: {altasNuevasPorMes: 0, cuotaAltaNueva: 100, comisionCobro: 5},
+  // Como se cobra cada tipo de venta (pedido de Juan, 15/9): 'todo' entra
+  // entero en el mes de la venta; 'mitad' entra el porcentajeAlFirmar al
+  // confirmar y el resto `mesesEntrega` meses despues, cuando se entrega. Las
+  // webs se venden de una. `mesesProyeccion` es cuantos meses muestra la caja
+  // mes a mes.
+  cobros: {porcentajeAlFirmar: 50, mesesEntrega: 1, mesesProyeccion: 6,
+           formas: {web: 'todo', ecommerce: 'mitad', aMedida: 'mitad'}},
+  palancas: {projectManager: false, miSueldo: false, subcontratar: false,
+             matias50: false, aporteJavier: false},
+  montosPalancas: {projectManager: 500, miSueldo: 500, subcontratoPorcentaje: 60,
+                   matiasPorcentaje: 50, aporteJavier: 1000},
+  embudo: {costoPorLead: 18, conversionLeadDemo: 25, conversionDemoVenta: 30},
+  meta: {sueldoObjetivo: 1000},
+  // La caja de hoy. Se pisa con la de Finanzas si responde (ingresos menos
+  // egresos acumulados); este 0 es solo el respaldo.
+  caja: {cajaActual: 0},
+  // Solo para armar la copia inicial: la cuota con la que arranca cada cliente
+  // precargado. Despues cada fila tiene la suya y se edita en pantalla.
+  precarga: {cuotaPorCliente: 100},
+  // RESPALDO: la fuente de los gastos fijos son los "Fijos" activos de
+  // Finanzas. Esta lista solo se usa si Finanzas no tiene ninguno. Valores de
+  // Juan del 14/9 (Claude sin confirmar; Matias demos ya no se paga).
+  gastosFijos: [
+    {nombre: 'Agencia de marketing', monto: 300, activo: true},
+    {nombre: 'Contador', monto: 70, activo: true},
+    {nombre: 'Claude', monto: 120, activo: true},
+    {nombre: 'Servidores y hosting', monto: 90, activo: true},
+    {nombre: 'Impuestos SAS', monto: 250, activo: true},
+    {nombre: 'Facturación electrónica', monto: 100, activo: true}
+  ]
+};
+
+// Cada numero que entra a la cuenta: [ruta, tipo, maximo]. Tipos: 'entero',
+// 'monto', 'porcentaje' (de 0 a 100, se divide por 100 en la cuenta),
+// 'factor' (un porcentaje que puede pasar de 100) y 'saldo' (un monto que puede
+// ser negativo: la caja). Vacio o negativo toma el default; un porcentaje
+// arriba de 100, tambien. En un 'saldo' solo el vacio.
+const SIM_CAMPOS = [
+  ['caja.cajaActual', 'saldo'],
+  ['equipo.cantidadProgramadores', 'entero', 6],
+  ['equipo.sueldoPorProgramador', 'monto'],
+  ['equipo.proyectosPorProgramador', 'monto'],
+  ['ventas.precioWeb', 'monto'],
+  ['ventas.webs', 'entero'],
+  ['ventas.precioEcom', 'monto'],
+  ['ventas.ecommerce', 'entero'],
+  ['ventas.precioMedida', 'monto'],
+  ['ventas.aMedida', 'entero'],
+  ['ventas.pauta', 'monto'],
+  ['mantenimiento.altasNuevasPorMes', 'entero'],
+  ['mantenimiento.cuotaAltaNueva', 'monto'],
+  ['mantenimiento.comisionCobro', 'porcentaje'],
+  ['cobros.porcentajeAlFirmar', 'porcentaje'],
+  ['cobros.mesesEntrega', 'entero', 12],
+  ['cobros.mesesProyeccion', 'entero', 12],
+  ['montosPalancas.projectManager', 'monto'],
+  ['montosPalancas.miSueldo', 'monto'],
+  ['montosPalancas.subcontratoPorcentaje', 'factor'],
+  ['montosPalancas.matiasPorcentaje', 'porcentaje'],
+  ['montosPalancas.aporteJavier', 'monto'],
+  ['embudo.costoPorLead', 'monto'],
+  ['embudo.conversionLeadDemo', 'porcentaje'],
+  ['embudo.conversionDemoVenta', 'porcentaje'],
+  ['meta.sueldoObjetivo', 'monto']
+];
+
+// Los tipos de venta y la forma de cobro de cada uno. La forma no es un numero:
+// va aparte de SIM_CAMPOS y su control en pantalla es un select con
+// data-sim-forma.
+const SIM_TIPOS = [
+  {clave: 'web', nombre: 'Web', cantidad: 'ventas.webs', precio: 'ventas.precioWeb'},
+  {clave: 'ecommerce', nombre: 'Ecommerce', cantidad: 'ventas.ecommerce', precio: 'ventas.precioEcom'},
+  {clave: 'aMedida', nombre: 'A medida', cantidad: 'ventas.aMedida', precio: 'ventas.precioMedida'}
+];
+const SIM_FORMAS = {todo: 'Todo al confirmar', mitad: 'Mitad ahora y mitad al entregar'};
+
+// Tolerancia de coma flotante para los redondeos hacia arriba: 700 / 350 tiene
+// que dar 2 proyectos y no 3 por un 2,0000000001. No es un supuesto del negocio.
+const SIM_EPSILON = 1e-9;
+
+function simLeer(obj, ruta) {
+  return ruta.split('.').reduce((o, k) => (o === null || o === undefined) ? undefined : o[k], obj);
+}
+
+function simEscribir(obj, ruta, valor) {
+  const partes = ruta.split('.');
+  let o = obj;
+  for (let i = 0; i < partes.length - 1; i++) {
+    if (typeof o[partes[i]] !== 'object' || o[partes[i]] === null) o[partes[i]] = {};
+    o = o[partes[i]];
+  }
+  o[partes[partes.length - 1]] = valor;
+}
+
+function simClonar(x) {
+  return JSON.parse(JSON.stringify(x));
+}
+
+function simNumero(crudo, porDefecto, tipo, maximo) {
+  const texto = (crudo === null || crudo === undefined) ? '' : String(crudo).trim().replace(',', '.');
+  const n = texto === '' ? NaN : Number(texto);
+  if (!isFinite(n) || (n < 0 && tipo !== 'saldo') || (tipo === 'porcentaje' && n > 100)) {
+    return {valor: porDefecto, usoDefault: true};
+  }
+  let valor = tipo === 'entero' ? Math.floor(n) : n;
+  if (maximo !== undefined && valor > maximo) valor = maximo;
+  return {valor: valor, usoDefault: false};
+}
+
+function simNormalizar(escenario) {
+  const e = (escenario && typeof escenario === 'object') ? escenario : {};
+  const v = {};
+  const conDefault = [];
+  SIM_CAMPOS.forEach(([ruta, tipo, maximo]) => {
+    const leido = simNumero(simLeer(e, ruta), simLeer(SIM_DEFAULTS, ruta), tipo, maximo);
+    v[ruta] = leido.valor;
+    if (leido.usoDefault) conDefault.push(ruta);
+  });
+  const palancas = {};
+  Object.keys(SIM_DEFAULTS.palancas).forEach(k => {
+    palancas[k] = !!(e.palancas && e.palancas[k] === true);
+  });
+  // Una forma que no es 'todo' ni 'mitad' toma la del default de su tipo.
+  const formasLeidas = (e.cobros && e.cobros.formas && typeof e.cobros.formas === 'object') ? e.cobros.formas : {};
+  const formas = {};
+  SIM_TIPOS.forEach(t => {
+    const f = formasLeidas[t.clave];
+    formas[t.clave] = SIM_FORMAS.hasOwnProperty(f) ? f : SIM_DEFAULTS.cobros.formas[t.clave];
+  });
+  // En las listas no hay default por fila: un monto vacio o negativo cuenta 0.
+  const lista = nombre => (Array.isArray(e[nombre]) ? e[nombre] : []).map(f => ({
+    nombre: String((f && f.nombre) || ''),
+    monto: simNumero(f && f.monto, 0, 'monto').valor,
+    activo: !!(f && f.activo === true)
+  }));
+  return {v: v, palancas: palancas, formas: formas, conDefault: conDefault,
+          gastosFijos: lista('gastosFijos'), mantenimientos: lista('mantenimientos'),
+          pendientes: lista('pendientes')};
+}
+
+function simResumenLista(lista) {
+  const r = {activos: 0, total: 0, inactivos: 0, totalInactivos: 0};
+  lista.forEach(f => {
+    if (f.activo) {
+      r.activos += 1;
+      r.total += f.monto;
+    } else {
+      r.inactivos += 1;
+      r.totalInactivos += f.monto;
+    }
+  });
+  return r;
+}
+
+// La cuenta de la especificacion, linea por linea. Devuelve todo lo que se
+// muestra; no redondea (eso se hace al pintar) ni toca el DOM.
+function simCalcular(escenario) {
+  const n = simNormalizar(escenario);
+  const v = n.v;
+  const p = n.palancas;
+  const pct = ruta => v[ruta] / 100;
+
+  const cantidadProgramadores = v['equipo.cantidadProgramadores'];
+  const proyectosPorProgramador = v['equipo.proyectosPorProgramador'];
+  const capacidad = cantidadProgramadores * proyectosPorProgramador;
+
+  const webs = v['ventas.webs'];
+  const ecommerce = v['ventas.ecommerce'];
+  const aMedida = v['ventas.aMedida'];
+  const precioWeb = v['ventas.precioWeb'];
+  const precioEcom = v['ventas.precioEcom'];
+  const precioMedida = v['ventas.precioMedida'];
+  const pauta = v['ventas.pauta'];
+
+  const totalProyectos = webs + ecommerce + aMedida;
+  const exceso = Math.max(0, totalProyectos - capacidad);
+  const vendidos = (exceso > 0 && !p.subcontratar) ? capacidad : totalProyectos;
+  const ratio = totalProyectos > 0 ? vendidos / totalProyectos : 0;
+  const valorProyectos = webs * precioWeb + ecommerce * precioEcom + aMedida * precioMedida;
+  const facturadoProyectos = valorProyectos * ratio;
+
+  const gastosFijos = simResumenLista(n.gastosFijos);
+  const mantenimientos = simResumenLista(n.mantenimientos);
+  const pendientes = simResumenLista(n.pendientes);
+
+  const altasNuevasPorMes = v['mantenimiento.altasNuevasPorMes'];
+  const altas = Math.min(altasNuevasPorMes, vendidos);
+  const recurrenteBruto = mantenimientos.total + altas * v['mantenimiento.cuotaAltaNueva'];
+  const recurrente = recurrenteBruto * (1 - pct('mantenimiento.comisionCobro'));
+
+  // Cada tipo se cobra a su manera: 'todo' entra entero en el mes de la venta;
+  // 'mitad' entra el porcentaje al confirmar y el resto al entregar. Si se
+  // entrega en el mismo mes (mesesEntrega 0), las dos partes caen en este mes.
+  const porcentajeAlFirmar = pct('cobros.porcentajeAlFirmar');
+  const mesesEntrega = v['cobros.mesesEntrega'];
+  const fraccionAhora = clave => (n.formas[clave] === 'todo' || mesesEntrega === 0) ? 1 : porcentajeAlFirmar;
+  const porTipo = SIM_TIPOS.map(t => {
+    const facturadoTipo = v[t.cantidad] * v[t.precio] * ratio;
+    const alConfirmar = facturadoTipo * fraccionAhora(t.clave);
+    return {clave: t.clave, nombre: t.nombre, forma: n.formas[t.clave],
+            facturado: facturadoTipo, alConfirmar: alConfirmar,
+            alEntregar: facturadoTipo - alConfirmar};
+  });
+  const cobroDeNuevos = porTipo.reduce((a, t) => a + t.alConfirmar, 0);
+  const quedaDeEsteMes = porTipo.reduce((a, t) => a + t.alEntregar, 0);
+  const cobrado = cobroDeNuevos + pendientes.total + recurrente;
+
+  const precios = [precioWeb, precioEcom, precioMedida];
+  const precioPromedio = precios.reduce((a, b) => a + b, 0) / precios.length;
+  const costoSubcontrato = p.subcontratar
+    ? exceso * precioPromedio * pct('montosPalancas.subcontratoPorcentaje') : 0;
+  const comisionMatias = p.matias50
+    ? aMedida * precioMedida * pct('montosPalancas.matiasPorcentaje') * ratio : 0;
+  const costoEquipo = cantidadProgramadores * v['equipo.sueldoPorProgramador'];
+  const costoProjectManager = p.projectManager ? v['montosPalancas.projectManager'] : 0;
+  const costoMiSueldo = p.miSueldo ? v['montosPalancas.miSueldo'] : 0;
+  const salidas = costoEquipo + gastosFijos.total + pauta + costoSubcontrato
+    + comisionMatias + costoProjectManager + costoMiSueldo;
+
+  const aporte = p.aporteJavier ? v['montosPalancas.aporteJavier'] : 0;
+  const cajaDelMes = cobrado + aporte - salidas;
+  const porCobrarAdelante = quedaDeEsteMes + pendientes.totalInactivos;
+  // Aparte de la cuenta de la especificacion, que no cambia: con que caja se
+  // termina el mes si se arranca con la de hoy.
+  const cajaActual = v['caja.cajaActual'];
+  const cajaAlCierre = cajaActual + cajaDelMes;
+
+  // Caja mes a mes. Cada mes se repite lo que se vende, lo que sale y el
+  // recurrente. Lo que se cobra al entregar llega `mesesEntrega` meses despues
+  // de cada venta, asi que los primeros meses no lo tienen. Los pendientes
+  // prendidos y el aporte entran solo el primer mes; los apagados no tienen
+  // fecha y no se ubican. El primer mes es exactamente la caja del mes.
+  const mesesProyeccion = v['cobros.mesesProyeccion'];
+  const meses = [];
+  let saldo = cajaActual;
+  let primerMesNegativo = null;
+  for (let i = 0; i < mesesProyeccion; i++) {
+    const deEntregas = i >= mesesEntrega ? quedaDeEsteMes : 0;
+    const pendientesMes = i === 0 ? pendientes.total : 0;
+    const aporteMes = i === 0 ? aporte : 0;
+    const entra = cobroDeNuevos + deEntregas + pendientesMes + recurrente + aporteMes;
+    const cajaMes = entra - salidas;
+    saldo += cajaMes;
+    if (primerMesNegativo === null && saldo < 0) primerMesNegativo = i + 1;
+    meses.push({mes: i + 1, alConfirmar: cobroDeNuevos, alEntregar: deEntregas,
+                pendientes: pendientesMes, recurrente: recurrente, aporte: aporteMes,
+                entra: entra, sale: salidas, caja: cajaMes, saldo: saldo});
+  }
+
+  // "Facturas incluye el recurrente". Va neto de la comision de cobro, igual
+  // que entra en "Cobras": asi papel y caja se comparan sobre la misma base.
+  const facturado = facturadoProyectos + recurrente;
+  const resultadoEnPapel = facturado - salidas;
+  const avisoCobros = cajaDelMes < 0 && resultadoEnPapel >= 0;
+
+  const costoPorLead = v['embudo.costoPorLead'];
+  const leads = costoPorLead > 0 ? pauta / costoPorLead : null;
+  const demos = leads === null ? null : leads * pct('embudo.conversionLeadDemo');
+  const ventasPosibles = demos === null ? null : demos * pct('embudo.conversionDemoVenta');
+  const costoPorVenta = (ventasPosibles !== null && ventasPosibles > 0) ? pauta / ventasPosibles : null;
+
+  let capacidadEstado = 'verde';
+  if (totalProyectos > capacidad) capacidadEstado = p.subcontratar ? 'ambar' : 'rojo';
+  let embudoEstado = 'neutro';
+  if (ventasPosibles !== null) embudoEstado = ventasPosibles < vendidos ? 'rojo' : 'verde';
+
+  // Calculo inverso: cuanto hay que vender para ponerse ese sueldo.
+  const sueldoObjetivo = v['meta.sueldoObjetivo'];
+  const base = costoEquipo + gastosFijos.total + pauta + costoProjectManager;
+  const necesario = Math.max(0, base + sueldoObjetivo - recurrente);
+  // Lo que entra en el mes de la venta por proyecto, promediando los tipos con
+  // su forma de cobro (una web que se cobra entera aporta su precio entero).
+  const porProyecto = SIM_TIPOS.reduce((a, t) => a + v[t.precio] * fraccionAhora(t.clave), 0) / SIM_TIPOS.length;
+  let proyectosMeta = null;
+  if (necesario <= 0) proyectosMeta = 0;
+  else if (porProyecto > 0) proyectosMeta = Math.ceil(necesario / porProyecto - SIM_EPSILON);
+  let faltanProg = null;
+  if (proyectosMeta === 0) faltanProg = 0;
+  else if (proyectosMeta !== null && proyectosPorProgramador > 0) {
+    faltanProg = Math.max(0, Math.ceil(proyectosMeta / proyectosPorProgramador - SIM_EPSILON) - cantidadProgramadores);
+  }
+
+  return {
+    cantidadProgramadores: cantidadProgramadores, capacidad: capacidad,
+    totalProyectos: totalProyectos, exceso: exceso, vendidos: vendidos, ratio: ratio,
+    valorProyectos: valorProyectos, facturadoProyectos: facturadoProyectos,
+    altasNuevasPorMes: altasNuevasPorMes, altas: altas,
+    altasTopeadas: altasNuevasPorMes > vendidos,
+    recurrenteBruto: recurrenteBruto, comisionCobro: recurrenteBruto - recurrente,
+    recurrente: recurrente,
+    cobroDeNuevos: cobroDeNuevos, quedaDeEsteMes: quedaDeEsteMes, cobrado: cobrado,
+    porTipo: porTipo, mesesEntrega: mesesEntrega, meses: meses,
+    primerMesNegativo: primerMesNegativo,
+    precioPromedio: precioPromedio, costoSubcontrato: costoSubcontrato,
+    comisionMatias: comisionMatias, costoEquipo: costoEquipo,
+    costoProjectManager: costoProjectManager, costoMiSueldo: costoMiSueldo,
+    pauta: pauta, salidas: salidas, aporte: aporte, cajaDelMes: cajaDelMes,
+    cajaActual: cajaActual, cajaAlCierre: cajaAlCierre,
+    porCobrarAdelante: porCobrarAdelante, facturado: facturado,
+    resultadoEnPapel: resultadoEnPapel, avisoCobros: avisoCobros,
+    leads: leads, demos: demos, ventasPosibles: ventasPosibles, costoPorVenta: costoPorVenta,
+    capacidadEstado: capacidadEstado, embudoEstado: embudoEstado,
+    meta: {sueldoObjetivo: sueldoObjetivo, base: base, necesario: necesario,
+           porcentajeAlFirmar: v['cobros.porcentajeAlFirmar'], porProyecto: porProyecto,
+           proyectos: proyectosMeta, faltanProg: faltanProg},
+    listas: {gastosFijos: gastosFijos, mantenimientos: mantenimientos, pendientes: pendientes},
+    palancas: p,
+    conDefault: n.conDefault
+  };
+}
+
+function simRedondear(n) {
+  const r = Math.round(n || 0);
+  return r === 0 ? 0 : r;   // sin "-0"
+}
+
+function simUsd(n) {
+  return 'USD ' + simRedondear(n).toLocaleString('es-UY');
+}
+
+function simPlural(n, uno, varios) {
+  return simRedondear(n) === 1 ? uno : varios;
+}
+
+function simTextoLista(resumen) {
+  return resumen.activos + ' ' + simPlural(resumen.activos, 'activo', 'activos')
+    + ' · ' + simUsd(resumen.total);
+}
+
+function simTextoCapacidad(r) {
+  const prog = simRedondear(r.cantidadProgramadores);
+  const quien = prog === 0
+    ? 'Sin programadores no hay capacidad'
+    : prog + ' ' + simPlural(prog, 'programador aguanta', 'programadores aguantan') + ' ' + simRedondear(r.capacidad);
+  const frase = quien + ' y estás poniendo ' + simRedondear(r.totalProyectos);
+  if (r.capacidadEstado === 'rojo') {
+    return frase + '. No da: se hacen ' + simRedondear(r.vendidos) + ' y '
+      + simRedondear(r.exceso) + ' ' + simPlural(r.exceso, 'queda', 'quedan') + ' afuera.';
+  }
+  if (r.capacidadEstado === 'ambar') {
+    return frase + '. Lo que sobra (' + simRedondear(r.exceso) + ') se subcontrata: '
+      + simUsd(r.costoSubcontrato) + '.';
+  }
+  return frase + ': da.';
+}
+
+function simTextoEmbudo(r) {
+  if (r.embudoEstado === 'neutro') {
+    return 'Con el costo por lead en 0 no se puede estimar cuántas ventas trae la pauta.';
+  }
+  const salen = Math.floor(r.ventasPosibles + SIM_EPSILON);
+  const ventas = salen + ' ' + simPlural(salen, 'venta', 'ventas');
+  if (r.embudoEstado === 'rojo') {
+    return 'Con esa pauta salen ' + ventas + ', no ' + simRedondear(r.vendidos) + '.';
+  }
+  return 'Con esa pauta salen ' + ventas + ' y vendés ' + simRedondear(r.vendidos) + ': alcanza.';
+}
+
+function simTextoMeta(r) {
+  const m = r.meta;
+  const objetivo = simUsd(m.sueldoObjetivo);
+  if (m.proyectos === null) {
+    return 'Con los precios o lo que entra al confirmar en 0 no hay cantidad de proyectos que alcance.';
+  }
+  if (m.proyectos === 0) {
+    return 'Con el recurrente ya cubrís los costos y un sueldo de ' + objetivo + ': no hace falta vender proyectos.';
+  }
+  let texto = 'Para sacarte ' + objetivo + ' tenés que cubrir ' + simUsd(m.necesario)
+    + ' por mes. Con lo que entra al confirmar (' + simUsd(m.porProyecto)
+    + ' por proyecto, en promedio según cómo se cobra cada tipo) son '
+    + m.proyectos + ' ' + simPlural(m.proyectos, 'proyecto', 'proyectos') + ' por mes. ';
+  if (m.faltanProg === null) {
+    texto += 'Con 0 proyectos por programador no se puede saber cuántos programadores hacen falta.';
+  } else if (m.faltanProg === 0) {
+    texto += 'El equipo actual alcanza.';
+  } else {
+    texto += 'Te ' + simPlural(m.faltanProg, 'falta', 'faltan') + ' ' + m.faltanProg + ' '
+      + simPlural(m.faltanProg, 'programador', 'programadores') + '.';
+  }
+  return texto;
+}
+
+function simTextoAvisoCobros(r) {
+  if (!r.avisoCobros) return '';
+  return 'En papel el mes cierra bien (' + simUsd(r.resultadoEnPapel)
+    + ' entre lo que facturás y lo que sale), pero la caja da ' + simUsd(r.cajaDelMes)
+    + '. El problema son los cobros, no las ventas.';
+}
+
+function simTextoAvisoAltas(r) {
+  if (!r.altasTopeadas) return '';
+  return 'Pusiste ' + simRedondear(r.altasNuevasPorMes) + ' '
+    + simPlural(r.altasNuevasPorMes, 'alta', 'altas') + ' de mantenimiento pero este mes se cierran '
+    + simRedondear(r.vendidos) + ' ' + simPlural(r.vendidos, 'proyecto', 'proyectos')
+    + ': se calcula con ' + simRedondear(r.altas) + '.';
+}
+
+function simTextoCierre(r) {
+  return 'Caja al cierre del mes: ' + simUsd(r.cajaAlCierre) + ' = caja actual '
+    + simUsd(r.cajaActual) + ' + caja del mes ' + simUsd(r.cajaDelMes) + '.';
+}
+
+function simTextoMesesDespues(n) {
+  return n + ' ' + simPlural(n, 'mes', 'meses') + ' después';
+}
+
+function simTextoArrastre(r) {
+  const cuando = r.quedaDeEsteMes > 0 ? ' (entra al entregar, ' + simTextoMesesDespues(r.mesesEntrega) + ')' : '';
+  return 'Queda por cobrar hacia adelante ' + simUsd(r.porCobrarAdelante) + ': '
+    + simUsd(r.quedaDeEsteMes) + ' de lo que vendés este mes' + cuando + ' y '
+    + simUsd(r.listas.pendientes.totalInactivos) + ' de pendientes viejos.';
+}
+
+// La nota debajo del select de cada tipo: cuanto entra y cuando.
+function simTextoCobroTipo(t, r) {
+  if (!(t.facturado > 0)) return 'Sin ventas de este tipo este mes.';
+  if (t.alEntregar > 0) {
+    return 'Este mes entran ' + simUsd(t.alConfirmar) + ' y ' + simUsd(t.alEntregar)
+      + ' al entregar, ' + simTextoMesesDespues(r.mesesEntrega) + '.';
+  }
+  return 'Entra todo en el mes de la venta: ' + simUsd(t.alConfirmar) + '.';
+}
+
+function simMesesHtml(r) {
+  if (!r.meses.length) return '<div class="sim-vacio">Poné cuántos meses querés ver.</div>';
+  const celda = (x, clase) => '<td' + (clase ? ' class="' + clase + '"' : '') + '>' + simUsd(x) + '</td>';
+  const signo = x => x < 0 ? 'sim-negativo' : '';
+  return '<table class="sim-tabla"><thead><tr><th>Mes</th><th>Entra</th><th>De entregas</th>'
+    + '<th>Caja del mes</th><th>Saldo</th></tr></thead><tbody>'
+    + r.meses.map(m => '<tr><td>' + (m.mes === 1 ? 'Este mes' : 'Mes ' + m.mes) + '</td>'
+      + celda(m.entra) + celda(m.alEntregar) + celda(m.caja, signo(m.caja))
+      + celda(m.saldo, signo(m.saldo)) + '</tr>').join('')
+    + '</tbody></table>';
+}
+
+function simTextoMeses(r) {
+  if (!r.meses.length) return '';
+  const cuantos = r.meses.length + ' ' + simPlural(r.meses.length, 'mes', 'meses');
+  const quiebre = r.primerMesNegativo === null
+    ? 'La caja no queda en negativo en ' + (r.meses.length === 1 ? 'este mes' : 'estos ' + cuantos) + '.'
+    : 'La caja queda en negativo en el mes ' + r.primerMesNegativo + '.';
+  return quiebre + ' Cada mes repite lo que vendés, lo que sale y el recurrente. Lo que se cobra al entregar llega '
+    + simTextoMesesDespues(r.mesesEntrega) + ' de cada venta. Los pendientes prendidos y el aporte de Javier '
+    + 'entran solo el primer mes; los pendientes apagados no tienen fecha y no se cuentan.';
+}
+
+// La copia inicial: los defaults, mas lo que el sistema tenga. Los gastos
+// fijos vienen de Finanzas si hay; si no, la lista de SIM_DEFAULTS.
+function simEscenarioBase(precarga) {
+  const pc = (precarga && typeof precarga === 'object') ? precarga : {};
+  const d = simClonar(SIM_DEFAULTS);
+  const hayFijos = Array.isArray(pc.gastosFijos) && pc.gastosFijos.length > 0;
+  const hayCaja = typeof pc.cajaActual === 'number' && isFinite(pc.cajaActual);
+  const fila = (f, monto, activo) => ({nombre: String(f.nombre || ''), monto: monto,
+                                       activo: activo, nota: f.nota || ''});
+  return {
+    version: 1,
+    caja: {cajaActual: hayCaja ? pc.cajaActual : d.caja.cajaActual},
+    equipo: d.equipo, ventas: d.ventas, mantenimiento: d.mantenimiento, cobros: d.cobros,
+    palancas: d.palancas, montosPalancas: d.montosPalancas, embudo: d.embudo, meta: d.meta,
+    gastosFijos: (hayFijos ? pc.gastosFijos : d.gastosFijos).map(f => fila(f, f.monto, f.activo === true)),
+    mantenimientos: (Array.isArray(pc.mantenimientos) ? pc.mantenimientos : [])
+      .map(f => fila(f, d.precarga.cuotaPorCliente, false)),
+    pendientes: (Array.isArray(pc.pendientes) ? pc.pendientes : []).map(f => fila(f, f.monto, false)),
+    origen: {gastosFijos: hayFijos ? 'finanzas' : 'defaults', mantenimientos: 'clientes',
+             pendientes: 'porCobrar', caja: hayCaja ? 'cajaFinanzas' : 'cajaDefaults'}
+  };
+}
+
+// Un escenario guardado, completado con los defaults en lo que le falte: uno
+// guardado antes de agregar un campo tiene que poder abrirse igual.
+function simEscenarioAbierto(datos) {
+  const d = (datos && typeof datos === 'object') ? datos : {};
+  const base = simEscenarioBase(null);
+  const salida = simClonar(d);
+  ['caja', 'equipo', 'ventas', 'mantenimiento', 'cobros', 'palancas', 'montosPalancas', 'embudo', 'meta'].forEach(grupo => {
+    salida[grupo] = Object.assign({}, base[grupo], d[grupo] || {});
+  });
+  ['gastosFijos', 'mantenimientos', 'pendientes'].forEach(lista => {
+    salida[lista] = Array.isArray(d[lista]) ? d[lista] : [];
+  });
+  // Uno guardado antes de la forma de cobro por tipo se calculaba con todo en
+  // dos partes: se abre igual, para que sus numeros no cambien solos.
+  if (!(d.cobros && d.cobros.formas && typeof d.cobros.formas === 'object')) {
+    salida.cobros.formas = {};
+    SIM_TIPOS.forEach(t => { salida.cobros.formas[t.clave] = 'mitad'; });
+  }
+  salida.origen = d.origen || {};
+  return salida;
+}
+// ── sim: calculo puro (fin) ──
+
+let simEstado = null;          // el escenario en pantalla: una copia, nunca Finanzas
+let simEscenarioId = null;     // el guardado que se abrio o se acaba de guardar
+let simNombreCargado = '';
+let simIniciado = false;
+
+const SIM_LISTAS = {
+  gastosFijos: {interruptor: 'Activo', monto: 'Monto mensual', vacio: 'No hay gastos fijos en la lista.'},
+  mantenimientos: {interruptor: 'Tiene mantenimiento', monto: 'Cuota mensual', vacio: 'No hay clientes en la lista.'},
+  pendientes: {interruptor: 'Lo cobro este mes', monto: 'Monto', vacio: 'No hay pendientes por cobrar.'}
+};
+
+const SIM_ORIGEN = {
+  finanzas: 'Precargado desde los gastos fijos de Finanzas, en USD.',
+  defaults: 'Finanzas no tiene gastos fijos cargados: lista por defecto.',
+  clientes: 'Precargado con los clientes del CRM (cerrado, en desarrollo y finalizado), todos apagados.',
+  porCobrar: 'Precargado con los saldos pendientes de Finanzas. Apagado es "se cobra más adelante": sigue contando.',
+  cajaFinanzas: 'Precargada desde Finanzas: ingresos menos egresos de todos los movimientos hasta este mes (líquido, sin IVA).',
+  cajaDefaults: 'Finanzas no respondió: arranca en el valor por defecto.'
+};
+
+async function loadSimulador() {
+  if (!simIniciado) {
+    simIniciado = true;
+    simEnlazar();
+    await simArrancar();
+  } else {
+    simRecalcular();
+  }
+  simCargarEscenarios();
+  simLeerCapacidadEquipo();
+}
+
+// Dato leido de Ausencias (Recursos Humanos), no un campo: no reemplaza ni
+// esconde ninguno de los de arriba, que siguen siendo los que entran en la
+// cuenta. Si no responde, el simulador sigue igual y solo lo dice.
+async function simLeerCapacidadEquipo() {
+  const caja = document.getElementById('sim-capacidad-equipo');
+  if (!caja) return;
+  const horas = x => (Math.round(Number(x) * 10) / 10).toLocaleString('es-UY') + ' h';
+  try {
+    const r = await fetch('/api/equipo/capacidad');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const c = await r.json();
+    const t = c && c.totales;
+    if (!t || typeof t.capacidad_neta !== 'number') throw new Error('sin datos');
+    caja.textContent = 'Capacidad neta de esta semana, leída de Ausencias (no editable): '
+      + horas(t.capacidad_neta) + ' = ' + horas(t.horas_base) + ' base − '
+      + horas(t.horas_ausencia) + ' de ausencias. Recuperos comprometidos: '
+      + horas(t.horas_recupero) + ', que no suman capacidad libre.';
+  } catch (e) {
+    caja.textContent = 'No se pudo leer la capacidad de la sección Ausencias (' + e.message + ').';
+  }
+}
+
+async function simArrancar() {
+  let precarga = null;
+  const aviso = document.getElementById('sim-aviso-carga');
+  aviso.textContent = '';
+  try {
+    const r = await fetch('/api/simulador/precarga');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    precarga = await r.json();
+  } catch (e) {
+    aviso.textContent = 'No se pudo leer lo que hay en Finanzas (' + e.message
+      + '). Se arranca con los valores por defecto.';
+  }
+  simEstado = simEscenarioBase(precarga);
+  simEscenarioId = null;
+  simNombreCargado = '';
+  document.getElementById('sim-nombre').value = '';
+  simVolcar();
+}
+
+// Pasa el escenario a los controles. Solo al arrancar o al abrir uno guardado:
+// mientras se tipea, el control ya tiene el valor.
+function simVolcar() {
+  SIM_CAMPOS.forEach(([ruta]) => {
+    const valor = simLeer(simEstado, ruta);
+    document.querySelectorAll('[data-sim="' + ruta + '"]').forEach(el => {
+      el.value = (valor === null || valor === undefined) ? '' : valor;
+      if (el.type === 'number') el.placeholder = String(simLeer(SIM_DEFAULTS, ruta));
+    });
+  });
+  Object.keys(SIM_DEFAULTS.palancas).forEach(simPintarPalanca);
+  const formas = simNormalizar(simEstado).formas;
+  SIM_TIPOS.forEach(t => {
+    const sel = document.getElementById('sim-forma-' + t.clave);
+    if (sel) sel.value = formas[t.clave];
+  });
+  simTexto('sim-origen-caja', SIM_ORIGEN[simEstado.origen ? simEstado.origen.caja : ''] || '');
+  simPintarListas();
+  simRecalcular();
+}
+
+function simEnlazar() {
+  const panel = document.getElementById('simulador-panel');
+  panel.addEventListener('input', simAlCambiar);
+  panel.addEventListener('change', simAlCambiar);
+}
+
+function simAlCambiar(ev) {
+  const el = ev.target;
+  if (!simEstado || !el || !el.dataset) return;
+  if (el.dataset.sim) {
+    simEscribir(simEstado, el.dataset.sim, el.value);
+    // El slider y su caja de numero son el mismo campo.
+    document.querySelectorAll('[data-sim="' + el.dataset.sim + '"]').forEach(otro => {
+      if (otro !== el) otro.value = el.value;
+    });
+    simRecalcular();
+    return;
+  }
+  if (el.dataset.simForma) {
+    simEstado.cobros = simEstado.cobros || {};
+    simEstado.cobros.formas = Object.assign({}, simEstado.cobros.formas || {});
+    simEstado.cobros.formas[el.dataset.simForma] = el.value;
+    simRecalcular();
+    return;
+  }
+  const lista = el.dataset.simLista;
+  if (!lista || !Array.isArray(simEstado[lista])) return;
+  const fila = simEstado[lista][Number(el.dataset.i)];
+  if (!fila) return;
+  if (el.dataset.campo === 'activo') {
+    // Apagar no borra: la fila queda, solo sale de la cuenta.
+    fila.activo = el.checked;
+    const contenedor = el.closest ? el.closest('.sim-fila') : null;
+    if (contenedor) contenedor.classList.toggle('sim-apagada', !el.checked);
+  } else {
+    fila.monto = el.value;
+  }
+  simRecalcular();
+}
+
+function simPalanca(nombre) {
+  if (!simEstado) return;
+  simEstado.palancas = simEstado.palancas || {};
+  simEstado.palancas[nombre] = !simEstado.palancas[nombre];
+  simPintarPalanca(nombre);
+  simRecalcular();
+}
+
+function simPintarPalanca(nombre) {
+  const boton = document.getElementById('sim-palanca-' + nombre);
+  if (!boton) return;
+  const prendida = !!(simEstado && simEstado.palancas && simEstado.palancas[nombre]);
+  boton.setAttribute('aria-pressed', prendida ? 'true' : 'false');
+}
+
+function simPintarListas() {
+  Object.keys(SIM_LISTAS).forEach(lista => {
+    const cont = document.getElementById('sim-lista-' + lista);
+    if (!cont) return;
+    const filas = Array.isArray(simEstado[lista]) ? simEstado[lista] : [];
+    cont.innerHTML = filas.length
+      ? filas.map((f, i) => simFilaHtml(lista, f, i)).join('')
+      : '<div class="sim-vacio">' + SIM_LISTAS[lista].vacio + '</div>';
+    if (window.lucide) lucide.createIcons({nodes: [cont]});
+    const origen = document.getElementById('sim-origen-' + lista);
+    const clave = simEstado.origen ? simEstado.origen[lista] : '';
+    if (origen) origen.textContent = SIM_ORIGEN[clave] || '';
+  });
+}
+
+// Las tres listas tienen el mismo patron: interruptor, nombre, monto editable
+// y un boton aparte para borrar.
+function simFilaHtml(lista, f, i) {
+  const conf = SIM_LISTAS[lista];
+  const nombre = esc(f.nombre || '');
+  const monto = (f.monto === null || f.monto === undefined) ? '' : esc(f.monto);
+  const nota = f.nota ? '<div class="sim-fila-nota">' + esc(f.nota) + '</div>' : '';
+  const datos = ' data-sim-lista="' + lista + '" data-i="' + i + '"';
+  return '<div class="sim-fila' + (f.activo ? '' : ' sim-apagada') + '">'
+    + '<input type="checkbox" class="sim-switch"' + datos + ' data-campo="activo"'
+    + (f.activo ? ' checked' : '') + ' aria-label="' + esc(conf.interruptor) + ': ' + nombre + '">'
+    + '<div class="sim-fila-nombre">' + nombre + nota + '</div>'
+    + '<input type="number" class="sim-in sim-in-monto"' + datos + ' data-campo="monto" min="0" step="any"'
+    + ' inputmode="decimal" placeholder="0" value="' + monto + '" aria-label="' + esc(conf.monto) + ': ' + nombre + '">'
+    + '<button class="btn-ghost btn-icono" type="button" onclick="simBorrarFila(' + "'" + lista + "'" + ', ' + i + ')"'
+    + ' title="Borrar de la lista" aria-label="Borrar ' + nombre + '"><i data-lucide="trash-2" class="nav-icon"></i></button>'
+    + '</div>';
+}
+
+function simAgregarFila(lista) {
+  if (!simEstado) return;
+  const nombreEl = document.getElementById('sim-nuevo-nombre-' + lista);
+  const montoEl = document.getElementById('sim-nuevo-monto-' + lista);
+  const errorEl = document.getElementById('sim-nuevo-error-' + lista);
+  const nombre = (nombreEl.value || '').trim();
+  if (!nombre) {
+    errorEl.textContent = 'Poné un nombre: una fila sin nombre no se agrega.';
+    nombreEl.focus();
+    return;
+  }
+  errorEl.textContent = '';
+  if (!Array.isArray(simEstado[lista])) simEstado[lista] = [];
+  simEstado[lista].push({nombre: nombre, monto: montoEl.value, activo: true, nota: ''});
+  nombreEl.value = '';
+  montoEl.value = '';
+  simPintarListas();
+  simRecalcular();
+}
+
+function simBorrarFila(lista, i) {
+  const fila = simEstado && Array.isArray(simEstado[lista]) ? simEstado[lista][i] : null;
+  if (!fila) return;
+  if (!confirm('¿Borrar "' + fila.nombre + '" de la lista? Si solo querés sacarlo de la cuenta, apagalo.')) return;
+  simEstado[lista].splice(i, 1);
+  simPintarListas();
+  simRecalcular();
+}
+
+function simHtml(id, html) {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = html;
+}
+
+function simTexto(id, texto) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = texto;
+}
+
+function simSemaforoHtml(titulo, estado, texto) {
+  return '<div class="sim-semaforo sim-' + estado + '"><span class="sim-punto"></span><div><strong>'
+    + titulo + '</strong>' + esc(texto) + '</div></div>';
+}
+
+function simRecalcular() {
+  if (!simEstado) return null;
+  const r = simCalcular(simEstado);
+  simPintarResultados(r);
+  return r;
+}
+
+// Pedido de Juan: un boton "Cargar" al final de los datos que calcule y lleve a
+// los resultados. El recalculo en vivo sigue igual: el boton no cambia ningun
+// numero, recalcula y lleva la vista a las tarjetas, que en el celular quedan
+// abajo de todo lo cargado y en la compu pueden quedar fuera de la pantalla.
+function simCargar() {
+  const nota = document.getElementById('sim-cargar-nota');
+  const r = simRecalcular();
+  if (!r) {
+    if (nota) nota.textContent = 'Todavía se están trayendo los datos de Finanzas. Probá en unos segundos.';
+    return null;
+  }
+  if (nota) nota.textContent = 'Listo: resultados actualizados.';
+  const destino = document.getElementById('sim-tarjetas');
+  if (destino && destino.scrollIntoView) destino.scrollIntoView({behavior: 'smooth', block: 'start'});
+  return r;
+}
+
+function simPintarResultados(r) {
+  const signo = r.cajaDelMes < 0 ? 'sim-negativo' : 'sim-positivo';
+  const tarjeta = (rotulo, valor, detalle, clase) =>
+    '<div class="sim-tarjeta"><div class="fin-kpi-label">' + rotulo + '</div>'
+    + '<div class="sim-tarjeta-valor ' + (clase || '') + '">' + simUsd(valor) + '</div>'
+    + '<div class="sim-tarjeta-detalle">' + detalle + '</div></div>';
+  const sale = ['equipo ' + simUsd(r.costoEquipo), 'fijos ' + simUsd(r.listas.gastosFijos.total),
+                'pauta ' + simUsd(r.pauta)];
+  if (r.costoSubcontrato) sale.push('subcontrato ' + simUsd(r.costoSubcontrato));
+  if (r.comisionMatias) sale.push('Matías ' + simUsd(r.comisionMatias));
+  if (r.costoProjectManager) sale.push('PM ' + simUsd(r.costoProjectManager));
+  if (r.costoMiSueldo) sale.push('tu sueldo ' + simUsd(r.costoMiSueldo));
+  simHtml('sim-tarjetas',
+    tarjeta('Facturás', r.facturado,
+            'proyectos ' + simUsd(r.facturadoProyectos) + ' + recurrente ' + simUsd(r.recurrente))
+    + tarjeta('Cobrás', r.cobrado,
+              'al confirmar ' + simUsd(r.cobroDeNuevos) + ' + pendientes '
+              + simUsd(r.listas.pendientes.total) + ' + recurrente ' + simUsd(r.recurrente))
+    + tarjeta('Sale', r.salidas, sale.join(' · '))
+    + tarjeta('Caja del mes', r.cajaDelMes,
+              r.aporte ? 'incluye el aporte de Javier (' + simUsd(r.aporte) + '), que no es venta'
+                       : 'lo que cobrás menos lo que sale', signo));
+  simTexto('sim-cierre', simTextoCierre(r));
+  const cierre = document.getElementById('sim-cierre');
+  if (cierre) cierre.className = 'sim-cierre ' + (r.cajaAlCierre < 0 ? 'sim-negativo' : 'sim-positivo');
+  simTexto('sim-arrastre', simTextoArrastre(r));
+  r.porTipo.forEach(t => simTexto('sim-cobro-' + t.clave, simTextoCobroTipo(t, r)));
+  simHtml('sim-meses', simMesesHtml(r));
+  simTexto('sim-meses-nota', simTextoMeses(r));
+  const ultimo = r.meses.length ? r.meses[r.meses.length - 1] : null;
+  simTexto('sim-sub-meses', ultimo ? 'saldo en el mes ' + ultimo.mes + ': ' + simUsd(ultimo.saldo) : '');
+  simTexto('sim-aviso-cobros', simTextoAvisoCobros(r));
+  simHtml('sim-semaforo-capacidad', simSemaforoHtml('Capacidad', r.capacidadEstado, simTextoCapacidad(r)));
+  simHtml('sim-semaforo-embudo', simSemaforoHtml('Embudo', r.embudoEstado, simTextoEmbudo(r)));
+  const numero = (rotulo, valor) => '<div class="sim-numero">' + rotulo + '<b>' + valor + '</b></div>';
+  const cuenta = x => x === null ? '—' : simRedondear(x).toLocaleString('es-UY');
+  simHtml('sim-embudo-numeros',
+    numero('Leads', cuenta(r.leads)) + numero('Demos', cuenta(r.demos))
+    + numero('Ventas posibles', r.ventasPosibles === null ? '—' : Math.floor(r.ventasPosibles + SIM_EPSILON))
+    + numero('Costo por venta', r.costoPorVenta === null ? '—' : simUsd(r.costoPorVenta)));
+  simTexto('sim-meta', simTextoMeta(r));
+  simTexto('sim-sub-equipo', 'capacidad ' + simRedondear(r.capacidad) + ' · ' + simUsd(r.costoEquipo));
+  simTexto('sim-sub-ventas', simRedondear(r.totalProyectos) + ' '
+    + simPlural(r.totalProyectos, 'proyecto', 'proyectos') + ' · ' + simUsd(r.valorProyectos));
+  simTexto('sim-sub-gastosFijos', simTextoLista(r.listas.gastosFijos));
+  simTexto('sim-sub-mantenimientos', simTextoLista(r.listas.mantenimientos));
+  simTexto('sim-sub-pendientes', simTextoLista(r.listas.pendientes));
+  simTexto('sim-aviso-altas', simTextoAvisoAltas(r));
+  const prendidas = Object.keys(r.palancas).filter(k => r.palancas[k]).length;
+  simTexto('sim-sub-palancas', prendidas + ' ' + simPlural(prendidas, 'prendida', 'prendidas'));
+  simTexto('sim-sub-embudo', r.leads === null ? 'sin estimación' : cuenta(r.leads) + ' leads');
+  simHtml('sim-mini', '<span>Caja del mes <b class="' + signo + '">' + simUsd(r.cajaDelMes)
+    + '</b></span><span>Al cierre <b class="' + (r.cajaAlCierre < 0 ? 'sim-negativo' : 'sim-positivo')
+    + '">' + simUsd(r.cajaAlCierre) + '</b></span>');
+  // Un campo vacio o negativo no rompe: se usa el default, y el borde lo marca.
+  SIM_CAMPOS.forEach(([ruta]) => {
+    const usa = r.conDefault.indexOf(ruta) >= 0;
+    document.querySelectorAll('[data-sim="' + ruta + '"]').forEach(el => {
+      if (el.type === 'number') el.classList.toggle('sim-usa-default', usa);
+    });
+  });
+}
+
+function simAvisoGuardado(texto, mal) {
+  const el = document.getElementById('sim-guardado');
+  if (!el) return;
+  el.textContent = texto;
+  el.classList.toggle('sim-mal', !!mal);
+}
+
+async function simCargarEscenarios() {
+  const sel = document.getElementById('sim-escenarios');
+  if (!sel) return;
+  try {
+    const r = await fetch('/api/simulador/escenarios');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const lista = await r.json();
+    sel.innerHTML = '<option value="">Escenarios guardados</option>'
+      + (Array.isArray(lista) ? lista : []).map(e => '<option value="' + e.id + '"'
+          + (e.id === simEscenarioId ? ' selected' : '') + '>' + esc(e.nombre) + '</option>').join('');
+  } catch (e) {
+    simAvisoGuardado('No se pudieron leer los escenarios guardados: ' + e.message, true);
+  }
+}
+
+async function simGuardar() {
+  if (!simEstado) return;
+  const nombreEl = document.getElementById('sim-nombre');
+  const nombre = (nombreEl.value || '').trim();
+  if (!nombre) {
+    simAvisoGuardado('Poné un nombre para guardar el escenario.', true);
+    nombreEl.focus();
+    return;
+  }
+  // Con el mismo nombre que el que se abrio, se pisa ese. Con otro, se guarda aparte.
+  const pisar = simEscenarioId !== null && nombre === simNombreCargado;
+  try {
+    const r = await fetch(pisar ? '/api/simulador/escenarios/' + simEscenarioId : '/api/simulador/escenarios', {
+      method: pisar ? 'PUT' : 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({nombre: nombre, datos: simEstado})
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok) throw new Error(j.error || 'HTTP ' + r.status);
+    simEscenarioId = j.id;
+    simNombreCargado = nombre;
+    simAvisoGuardado((pisar ? 'Actualizado: ' : 'Guardado: ') + nombre, false);
+    simCargarEscenarios();
+  } catch (e) {
+    simAvisoGuardado('No se pudo guardar: ' + e.message, true);
+  }
+}
+
+async function simAbrir() {
+  const id = document.getElementById('sim-escenarios').value;
+  if (!id) {
+    simAvisoGuardado('Elegí un escenario de la lista.', true);
+    return;
+  }
+  try {
+    const r = await fetch('/api/simulador/escenarios/' + id);
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || 'HTTP ' + r.status);
+    simEstado = simEscenarioAbierto(j.datos);
+    simEscenarioId = j.id;
+    simNombreCargado = j.nombre;
+    document.getElementById('sim-nombre').value = j.nombre;
+    simVolcar();
+    simAvisoGuardado('Abierto: ' + j.nombre, false);
+  } catch (e) {
+    simAvisoGuardado('No se pudo abrir: ' + e.message, true);
+  }
+}
+
+async function simBorrarEscenario() {
+  const sel = document.getElementById('sim-escenarios');
+  const id = sel.value;
+  if (!id) {
+    simAvisoGuardado('Elegí en la lista el escenario que querés borrar.', true);
+    return;
+  }
+  const opcion = sel.options[sel.selectedIndex];
+  const nombre = opcion ? opcion.text : '';
+  if (!confirm('¿Borrar el escenario guardado "' + nombre + '"? Lo que tenés en pantalla no cambia.')) return;
+  try {
+    const r = await fetch('/api/simulador/escenarios/' + id, {method: 'DELETE'});
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok) throw new Error(j.error || 'HTTP ' + r.status);
+    if (String(simEscenarioId) === String(id)) {
+      simEscenarioId = null;
+      simNombreCargado = '';
+    }
+    simAvisoGuardado('Borrado: ' + nombre, false);
+    simCargarEscenarios();
+  } catch (e) {
+    simAvisoGuardado('No se pudo borrar: ' + e.message, true);
+  }
+}
+
+async function simRestablecer() {
+  if (!confirm('¿Volver a los valores por defecto y a lo que hay hoy en Finanzas? Lo que no guardaste se pierde.')) return;
+  await simArrancar();
+  simAvisoGuardado('', false);
+  simCargarEscenarios();
 }
 
 // ========== Panel de Marketing ==========
@@ -7670,7 +13757,7 @@ async function loadMarketing() {
     const r = await fetch('/api/marketing/dossier' + (q.length ? '?' + q.join('&') : ''));
     if (!r.ok) {
       estado.textContent = r.status === 403
-        ? 'No tenés acceso al panel de Marketing. Pediselo a un admin.'
+        ? 'No tenés acceso a Inteligencia marketing. Pediselo a un admin.'
         : 'No se pudo cargar el dossier (error ' + r.status + ').';
       return;
     }
@@ -7688,19 +13775,18 @@ async function loadMarketing() {
   document.getElementById('mk-fecha').textContent =
     'Del ' + (p.desde || '?') + ' al ' + (p.hasta || '?');
 
-  // El selector de campanas se arma con lo que vino, no con una lista fija.
-  const sel = document.getElementById('mk-campana');
-  const elegida = sel.value;
-  sel.innerHTML = '<option value="">Todas</option>' +
-    (_mkDossier.campanas || [])
-      .filter(b => b.campana !== 'todas')
-      .map(b => `<option value="${esc(b.campana)}">${esc(b.campana)}</option>`)
-      .join('');
-  sel.value = elegida;
-
   estado.style.display = 'none';
   cuerpo.style.display = '';
   _mkPintar();
+  // Las piezas tienen su propio pedido y no esperan al informe. Con "Un mes"
+  // arriba siguen a ese mes.
+  if (_mkEnModoMes()) {
+    const mes = _mkMesDelPeriodo();
+    _mkPiezasMesActual = mes === _mkMesDeHoy() ? null : mes;
+  }
+  _mkCargarPiezas();
+  // Lo mismo "Cuándo llegan los leads": su propia semana y su propio pedido.
+  _mkCargarLlegada();
   // Sin await: si el informe tarda o falla, los graficos ya estan en pantalla.
   _mkInforme();
 }
@@ -7708,7 +13794,6 @@ async function loadMarketing() {
 function _mkAvisos() {
   const avisos = [];
   const todas = _mkBloque('todas');
-  const sinCampana = _mkBloque(SC.SIN_CAMPANA);
 
   const icono = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" ' +
     'stroke="currentColor" stroke-width="1.6" stroke-linecap="round" ' +
@@ -7723,22 +13808,6 @@ function _mkAvisos() {
       'Los costos —CPL, costo por demo, costo por presupuesto— van a decir «sin datos» ' +
       'hasta que se configuren <code>META_ADS_TOKEN</code> y <code>META_AD_ACCOUNT_ID</code>. ' +
       'Todo lo demás del panel funciona igual.</div>');
-  }
-
-  // El aviso que impide leer mal la tabla por campana: si la mayoria de los
-  // cierres cayo en (sin campana), comparar cierres entre campanas es invalido.
-  if (sinCampana && todas) {
-    const cierresSin = _mkMetrica(sinCampana, '.cierres');
-    const cierresTot = _mkMetrica(todas, '.cierres');
-    if (cierresSin && cierresTot && cierresTot.valor > 0 &&
-        cierresSin.valor / cierresTot.valor >= 0.5) {
-      avisos.push(icono + '<div><b>' + cierresSin.valor + ' de los ' +
-        cierresTot.valor + ' cierres no tienen campaña atribuida.</b> ' +
-        'La campaña vivía dentro de las notas del lead y se perdió cuando alguien ' +
-        'las editó. <b>Comparar cierres entre campañas con estos datos da una ' +
-        'conclusión falsa</b>: los leads que más se trabajaron son justamente los ' +
-        'que perdieron el origen. Las tasas de interés y de demo sí se pueden comparar.</div>');
-    }
   }
 
   document.getElementById('mk-avisos').innerHTML =
@@ -7847,15 +13916,14 @@ async function _mkInforme() {
 function _mkPintar() {
   if (!_mkDossier) return;
   const tema = _mkTema();
-  const elegida = document.getElementById('mk-campana').value;
-  const foco = _mkBloque(elegida || 'todas') || _mkBloque('todas');
+  // Una sola pauta: todo sale del bloque `todas`, que es la suma de las
+  // campañas. Juan: "yo quiero ver todo en una sola en términos generales".
+  const foco = _mkBloque('todas');
 
   _mkAvisos();
 
-  const nombreSemana = _mkSemanas([
-    ...(_mkDossier.serie_semanal || []).map(s => s.inicio),
-    ...(_mkDossier.serie_campanas || []).flatMap(s => (s.puntos || []).map(p => p.inicio)),
-  ]);
+  const nombreSemana = _mkSemanas(
+    (_mkDossier.serie_semanal || []).map(s => s.inicio));
 
 
   // ── Los ocho KPIs ──────────────────────────────────────────────────────
@@ -7935,6 +14003,8 @@ function _mkPintar() {
         { etiqueta: 'Gasto', valores: valoresDe('gasto'),
           color: SC.PALETA[tema][0] },
       ], { etiqueta: 'Gasto por mes', formato: 'moneda' }, tema)
+      + _mkNotaMesesIncompletos(meses, _mkDossier.periodo || {})
+      + _mkTablaMensual(meses, foco)
     : '<div class="sc-vacio">Sin actividad en el período.</div>';
 
   // ── Semana a semana ────────────────────────────────────────────────────
@@ -7979,8 +14049,12 @@ function _mkPintar() {
            `${esc(cuanto)} ${lado}. ${juicio} que antes.`;
   };
 
-  const _nSem = semanas.length || 1;
-  const _sumSem = (c) => semanas.reduce((a, s) => a + (s[c] || 0), 0);
+  // Las semanas vacías del medio se dibujan para que el hueco se vea, pero
+  // no cuentan para "por semana": el histórico divide por semanas con
+  // actividad, y comparar promedios con denominadores distintos mentiría.
+  const _activas = semanas.filter(s => s.con_actividad !== false);
+  const _nSem = _activas.length || 1;
+  const _sumSem = (c) => _activas.reduce((a, s) => a + (s[c] || 0), 0);
   const _frases = [
     _comparar(_sumSem('leads_crm') / _nSem, hist.leads_semana, true,
               'Entran por semana', 'numero'),
@@ -8026,20 +14100,18 @@ function _mkPintar() {
       ], { etiqueta: 'Impresiones por semana', formato: 'numero',
            referencia: ref('impresiones_semana') }, tema)
     : '<div class="sc-vacio">Sin semanas con datos en el período.</div>';
+  if (semanas.length) {
+    document.getElementById('mk-series').innerHTML +=
+      _mkNotaSemanasIncompletas(semanas, _mkDossier.periodo || {}, nombreSemana);
+  }
 
-  // ── Por campaña ────────────────────────────────────────────────────────
-  const campanas = (_mkDossier.campanas || []).filter(b => b.campana !== 'todas');
-
-  // Va DESPUES de `const campanas`: leerlo antes tira ReferenceError por
-  // la zona muerta temporal del const. node --check no lo agarra —es
-  // sintacticamente valido— y solo revienta al abrir el panel.
   // ── Lo que salta a la vista ────────────────────────────────────────────
   //
   // Los hallazgos son deterministas: los calcula `services/hallazgos.py` a
-  // partir del mismo dossier que alimenta los graficos. No hay nada que
-  // validar —a diferencia del informe de IA— porque los numeros se leen, no se
-  // generan.
-  const hall = _mkDossier.hallazgos || [];
+  // partir del mismo dossier que alimenta los graficos. Se muestran los de la
+  // pauta como un todo (`hallazgos_pauta`); los que comparan campañas entre sí
+  // siguen en el dossier para el informe.
+  const hall = _mkDossier.hallazgos_pauta || [];
   document.getElementById('mk-hall-bloque').style.display = hall.length ? '' : 'none';
   document.getElementById('mk-hallazgos').innerHTML =
     '<div class="sc-hall">' + hall.map((h, i) =>
@@ -8049,211 +14121,49 @@ function _mkPintar() {
       '<span class="sc-hall-cuerpo">' + esc(h.cuerpo || '') + '</span></span>' +
       '</div>').join('') + '</div>';
 
-  // ── Dónde se cae cada campaña ──────────────────────────────────────────
-  //
-  // El embudo global contesta "cómo venimos"; este contesta "dónde se tranca
-  // cada una", que es lo accionable. Dos campañas con el mismo costo por lead
-  // pueden perder la gente en etapas distintas.
-  //
-  // La caída más grande va marcada porque es la única etapa sobre la que tiene
-  // sentido hacer algo: mejorar donde ya se pasa el 90% no mueve el total.
-  const embudos = _mkDossier.embudo_campanas || [];
-  document.getElementById('mk-embudos').innerHTML = !embudos.length
-    ? '<div class="sc-vacio">Sin leads en el período.</div>'
-    : '<div class="sc-embudos">' + embudos.map(b => {
-        const cierres = b.etapas[b.etapas.length - 1].n;
-        return '<div class="sc-embudo-uno">' +
-               '<div class="sc-embudo-tit">' + esc(b.campana) + '</div>' +
-               '<div class="sc-embudo-sub">' + esc(SC.fmt(b.etapas[0].n, 'numero')) +
-               ' leads · ' + esc(SC.fmt(cierres, 'numero')) + ' cierres</div>' +
-               SC.embudoReal(b.etapas, { etiqueta: b.campana, ancho: 460 }, tema) +
-               '</div>';
-      }).join('') + '</div>';
-
-  // ── Cómo evoluciona cada campaña ───────────────────────────────────────
-  const porSemana = _mkDossier.serie_campanas || [];
-  // Las campañas sin gasto no dicen nada en un gráfico de costos: serían una
-  // línea vacía con su color ocupando lugar en la leyenda.
-  const conGastoSem = porSemana.filter(s =>
-    (s.puntos || []).some(p => p.gasto > 0));
-
-  // Líneas y no barras. Acá lo que se compara son campañas ENTRE SÍ a lo largo
-  // del tiempo, y para eso la línea gana: se sigue el recorrido de una campaña
-  // sin tener que buscar su color barra por barra dentro de cada grupo.
-  //
-  // Es el caso opuesto al de "Semana a semana", que dibuja una sola serie y ahí
-  // la barra se lee mejor.
-  const porCampanaEnEl = (campo, titulo, formato, refClave) => SC.serieMulti(
-    conGastoSem.map(s => ({
-      campana: s.campana,
-      puntos: (s.puntos || []).map(p => ({
-        x: nombreSemana[p.inicio] || p.semana, y: p[campo],
-      })),
-    })),
-    { etiqueta: titulo, formato,
-      referencia: refClave ? ref(refClave) : null }, tema);
-
-  document.getElementById('mk-evolucion').innerHTML = conGastoSem.length
-    ? porCampanaEnEl('costo_demo', 'Costo por demo, semana a semana', 'moneda',
-                     'costo_demo') +
-      porCampanaEnEl('cpl', 'Costo por lead, semana a semana', 'moneda', 'cpl') +
-      // El gasto va sin línea: el histórico es el de la cuenta entera y acá
-      // cada curva es una campaña sola. Comparar una campaña contra el total
-      // de la cuenta no dice nada.
-      porCampanaEnEl('gasto', 'Gasto por semana', 'moneda', null)
-    : '<div class="sc-vacio">Hace falta gasto sincronizado para ver la evolución.</div>';
-
   // ── Cuánto costó llegar hasta acá ──────────────────────────────────────
   //
-  // Dos gráficos y no dos ejes: con un eje doble las dos curvas se cruzan
-  // donde uno elija la escala, y el cruce parece significar algo cuando no
-  // significa nada.
+  // La pauta entera en una sola curva, no una por campaña. Dos gráficos y no
+  // dos ejes: con un eje doble las dos curvas se cruzan donde uno elija la
+  // escala. Sin línea de histórico: una curva acumulada siempre sube y una
+  // horizontal la cruzaría una sola vez sin que eso signifique nada.
   //
-  // Sin línea de histórico: una curva acumulada siempre sube, así que una línea
-  // horizontal la cruza una vez y de ahí en más queda abajo para siempre. El
-  // cruce no significaría nada más que "ya pasó tanto tiempo".
-  document.getElementById('mk-acumulado').innerHTML = conGastoSem.length
-    ? porCampanaEnEl('gasto_acum', 'Gasto acumulado', 'moneda', null) +
-      porCampanaEnEl('leads_acum', 'Leads acumulados', 'numero', null)
-    : '<div class="sc-vacio">Hace falta gasto sincronizado.</div>';
-
-  // ── Qué campaña rinde de verdad ────────────────────────────────────────
-  //
-  // Existe porque el hallazgo mas util del modulo requeria comparar dos
-  // graficos de barras a ojo: la campana con el costo por lead mas bajo puede
-  // ser la que mas caro te sale cada demo. Poniendolos en la misma tabla, y
-  // marcando cuando el orden se da vuelta, el punto se ve solo.
-  const conGasto = campanas.filter(b => {
-    const g = _mkMetrica(b, '.gasto');
-    return g && g.valor;
-  });
-
-  if (conGasto.length < 2) {
-    document.getElementById('mk-ranking').innerHTML =
-      '<div class="sc-vacio">Hace falta gasto sincronizado en al menos dos ' +
-      'campañas para poder compararlas.</div>';
-  } else {
-    const datos = conGasto.map(b => ({
-      campana: b.campana,
-      gasto: _mkMetrica(b, '.gasto'),
-      leads: _mkMetrica(b, '.leads_crm'),
-      cpl: _mkMetrica(b, '.cpl'),
-      demos: _mkMetrica(b, '.demos'),
-      costoDemo: _mkMetrica(b, '.costo_demo'),
-    }));
-
-    // Dos rankings, mas barato primero. Un null va al final: no se puede
-    // rankear lo que no se sabe.
-    const rank = (clave) => {
-      const orden = datos.slice().sort((a, b) => {
-        const x = a[clave] && a[clave].valor, y = b[clave] && b[clave].valor;
-        if (x === null || x === undefined) return 1;
-        if (y === null || y === undefined) return -1;
-        return x - y;
-      });
-      const m = new Map();
-      orden.forEach((d, i) => m.set(d.campana, i + 1));
-      return m;
-    };
-    const rCpl = rank('cpl'), rDemo = rank('costoDemo');
-
-    const filas = datos.slice()
-      .sort((a, b) => (a.costoDemo?.valor ?? Infinity) - (b.costoDemo?.valor ?? Infinity))
-      .map(d => {
-        const pc = rCpl.get(d.campana), pd = rDemo.get(d.campana);
-        // Se marca cuando la campana cambia de mitad de tabla al pasar de una
-        // metrica a la otra: ahi es donde la lectura ingenua se equivoca.
-        const invertido = pc !== pd && (pc <= 2) !== (pd <= 2);
-        const cls = invertido ? ' class="sc-rank-invertido"' : '';
-        return `<tr><td>${esc(d.campana)}</td>` +
-               `<td>${esc(SC.fmt(d.gasto.valor, 'moneda'))}</td>` +
-               `<td>${esc(SC.fmt(d.leads?.valor, 'numero'))}</td>` +
-               `<td${cls}><span class="sc-rank-pos">${pc}.</span> ` +
-               `${esc(SC.fmt(d.cpl?.valor, 'moneda'))}</td>` +
-               `<td>${esc(SC.fmt(d.demos?.valor, 'numero'))}</td>` +
-               `<td${cls}><span class="sc-rank-pos">${pd}.</span> ` +
-               `${esc(SC.fmt(d.costoDemo?.valor, 'moneda'))}</td></tr>`;
-      }).join('');
-
-    const seDaVuelta = datos.some(d => {
-      const pc = rCpl.get(d.campana), pd = rDemo.get(d.campana);
-      return pc !== pd && (pc <= 2) !== (pd <= 2);
-    });
-
-    document.getElementById('mk-ranking').innerHTML =
-      '<div class="sc-tabla-wrap"><table class="sc-tabla"><thead><tr>' +
-      '<th>Campaña</th><th>Gasto</th><th>Leads</th><th>Costo por lead</th>' +
-      '<th>Demos</th><th>Costo por demo</th></tr></thead><tbody>' + filas +
-      '</tbody></table></div>' +
-      (seDaVuelta
-        ? '<div class="sc-nota"><b class="sc-rank-invertido">El orden se da ' +
-          'vuelta.</b> Las campañas marcadas cambian de lado según qué mires: ' +
-          'la que trae los leads más baratos no es la que consigue las reuniones ' +
-          'más baratas. El Administrador de anuncios solo muestra la primera ' +
-          'columna.</div>'
-        : '<div class="sc-nota">Los dos rankings coinciden: la que trae leads ' +
-          'más baratos también consigue demos más baratas.</div>');
-  }
-
-  // Cada metrica es una barra por campana, ordenada de mayor a menor.
-  //
-  // Antes iba con intervalos de confianza: el bigote era correcto y era
-  // ilegible. La incertidumbre no se tira, se dice con palabras al lado del
-  // numero —"sobre 12 leads"— que es lo que hace falta para saber si el numero
-  // se puede creer.
-  const porCampana = (suf, titulo, ayuda) => {
-    let fmt = 'numero';
-    const filas = campanas.map(b => {
-      const m = _mkMetrica(b, suf);
-      if (!m || m.valor === null || m.valor === undefined) return null;
-      fmt = m.formato || fmt;
-      return {
-        etiqueta: b.campana,
-        valor: m.valor,
-        color: SC.colorDeCampana(b.campana, 0, tema),
-        nota: m.n ? (m.muestra_chica
-                      ? `sobre ${m.n} · muestra chica`
-                      : `sobre ${m.n}`) : ''
-      };
-    }).filter(Boolean);
-    return SC.barrasSimples(
-      filas, { etiqueta: titulo, ayuda: ayuda, formato: fmt }, tema);
-  };
-  document.getElementById('mk-campanas').innerHTML =
-    porCampana('.tasa_demo', 'Tasa de demo',
-               'De cada 100 leads que trajo la campaña, cuántos llegaron a una ' +
-               'reunión. Es la medida de si el lead sirve.') +
-    porCampana('.costo_demo', 'Costo por demo',
-               'Cuántos dólares de pauta costó cada reunión conseguida.') +
-    porCampana('.cpl', 'Costo por lead',
-               'Cuántos dólares costó cada contacto. Barato acá no significa ' +
-               'bueno: mirarlo contra la tasa de demo de arriba.') +
-    porCampana('.tasa_interes', 'Tasa de interés',
-               'Cuántos contestaron algo, aunque no hayan llegado a reunión.');
+  // `SC.serie` dibuja los puntos en el orden en que llegan (el de las
+  // semanas), así que no le pasa lo de ordenar "Semana 10" antes que la 2.
+  const _hayAcum = semanas.some(s => s.gasto_acum || s.leads_acum);
+  const _acumulado = (campo, titulo, formato) => SC.serie(
+    semanas.map(s => ({
+      x: nombreSemana[s.inicio] || s.semana,
+      y: s[campo] === undefined ? null : s[campo],
+    })), { etiqueta: titulo, formato: formato }, tema);
+  document.getElementById('mk-acumulado').innerHTML = _hayAcum
+    ? _acumulado('gasto_acum', 'Gasto acumulado', 'moneda') +
+      _acumulado('leads_acum', 'Leads acumulados', 'numero')
+    : '<div class="sc-vacio">Sin gasto ni leads en el período.</div>';
 
   // ── Segmentos declarados ───────────────────────────────────────────────
-  document.getElementById('mk-segmentos').innerHTML =
-    (_mkDossier.segmentos || []).map(b => {
-      const filas = b.valores.map(v => {
-        const m = v.metricas.find(m => m.id.endsWith('.tasa_demo'));
-        if (!m || m.valor === null || m.valor === undefined) return null;
-        return {
-          etiqueta: v.valor_declarado,
-          valor: m.valor,
-          nota: m.n ? (m.muestra_chica
-                        ? `sobre ${m.n} · muestra chica`
-                        : `sobre ${m.n}`) : ''
-        };
-      }).filter(Boolean);
-      const cola = b.valores_distintos > b.valores.length
-        ? ` · ${b.valores_distintos} respuestas distintas` : '';
-      return SC.barrasSimples(filas, {
-        etiqueta: b.etiqueta,
-        ayuda: `Qué porcentaje de cada respuesta llegó a una reunión. ` +
-               `${b.n} respuestas${cola}.`,
-        formato: 'porcentaje'
-      }, tema);
-    }).join('') || '<div class="sc-vacio">Sin respuestas de formulario en el período</div>';
+  // Pedido de Juan (14/9): "gráficos circulares y más grandes". La dona dice
+  // cómo se reparten los leads entre las respuestas; lo que antes decían las
+  // barras —qué parte llegó a una reunión— va escrito al lado de cada una. La
+  // ciudad ya viene agrupada en Montevideo e Interior desde el dossier.
+  const _donas = (_mkDossier.segmentos || []).map(b => {
+    const valores = b.valores || [];
+    const porciones = valores.map(v => {
+      const m = (v.metricas || []).find(x => String(x.id).endsWith('.tasa_demo')) || {};
+      return { etiqueta: v.etiqueta || v.valor_declarado, n: v.n,
+               tasa: m.valor, muestraChica: !!m.muestra_chica };
+    });
+    const cola = b.valores_distintos > valores.length
+      ? ` · ${b.valores_distintos} respuestas distintas` : '';
+    return SC.dona(porciones, {
+      etiqueta: b.etiqueta,
+      ayuda: `Cómo se reparten las ${b.n} respuestas${cola}. Debajo de cada ` +
+             'una, qué parte llegó a una reunión.',
+    }, tema);
+  });
+  document.getElementById('mk-segmentos').innerHTML = _donas.length
+    ? '<div class="sc-donas">' + _donas.join('') + '</div>'
+    : '<div class="sc-vacio">Sin respuestas de formulario en el período</div>';
 
   // ── La plata: Meta contra Finanzas ─────────────────────────────────────
   const conc = _mkDossier.conciliacion || [];
@@ -8356,198 +14266,441 @@ function _mkPintar() {
       '</tbody></table></div>';
   }
 
-  // ── Lo que está corriendo ahora ────────────────────────────────────────
-  //
-  // Una tarjeta por anuncio prendido, con la pieza que ve la gente. La campaña
-  // no es la unidad sobre la que se decide: adentro de una campaña conviven
-  // varios anuncios y uno se puede llevar la mitad de la plata sin traer a
-  // nadie.
-  //
-  // La recomendación la calculan reglas en `services/anuncios.py`, no un
-  // modelo: la IA está apagada, y además una regla se puede discutir porque
-  // cita los números que la sostienen.
-  const anuncios = _mkDossier.anuncios || [];
-  const resAnun = _mkDossier.anuncios_resumen || {};
+  // "Cuándo llegan los leads" ya no sale del dossier: va semana por semana,
+  // con su propio pedido (ver `_mkCargarLlegada`). El dossier sigue trayendo
+  // `llegada` en franjas de tres horas, para el informe.
+}
 
-  const _fechaCorta = (iso) => {
-    if (!iso) return '';
-    const p = String(iso).slice(0, 10).split('-');
-    return `${p[2]}/${p[1]}`;
-  };
+// ── Ayudas del mes a mes ────────────────────────────────────────────────
 
-  if (!anuncios.length) {
-    document.getElementById('mk-anuncios').innerHTML =
-      '<div class="sc-vacio">Ningún anuncio gastó en este período. ' +
-      'Si sabés que había pauta corriendo en estas fechas, falta sincronizar: ' +
-      'corre solo todas las mañanas.</div>';
-  } else {
-    // Las dos cuentas van SEPARADAS y cada una dice de qué habla.
-    //
-    // Antes estaban mezcladas: el número era del período y la fecha era el
-    // borde de la ventana, así que "683,18 desde el 16/06" no era cierto en
-    // ninguna de las dos lecturas. Mirando setiembre decía "desde el 3/09" de
-    // anuncios que venían corriendo desde junio.
-    const cab =
-      '<div class="sc-plata-resumen">' +
-      `<div class="sc-tile"><div class="sc-tile-label">Anuncios</div>` +
-      `<div class="sc-tile-valor">${esc(SC.fmt(resAnun.anuncios, 'numero'))}</div>` +
-      `<div class="sc-tile-delta">${esc(SC.fmt(resAnun.corriendo, 'numero'))}` +
-      ` sigue${resAnun.corriendo === 1 ? '' : 'n'} al aire` +
-      (resAnun.apagados
-        ? ` · ${esc(SC.fmt(resAnun.apagados, 'numero'))} apagado` +
-          `${resAnun.apagados === 1 ? '' : 's'}`
-        : '') + '</div></div>' +
-      `<div class="sc-tile"><div class="sc-tile-label">En este período</div>` +
-      `<div class="sc-tile-valor">${esc(SC.fmt(resAnun.gasto, 'moneda'))}</div>` +
-      `<div class="sc-tile-delta">${esc(SC.fmt(resAnun.leads, 'numero'))} leads` +
-      (resAnun.cpl ? ` · ${esc(SC.fmt(resAnun.cpl, 'moneda'))} cada uno` : '') +
-      '</div></div>' +
-      `<div class="sc-tile"><div class="sc-tile-label">Desde que arrancaron</div>` +
-      `<div class="sc-tile-valor">${esc(SC.fmt(resAnun.gasto_total, 'moneda'))}</div>` +
-      `<div class="sc-tile-delta">el más viejo, desde el ` +
-      `${esc(_fechaCorta(resAnun.desde))}</div></div>` +
-      `<div class="sc-tile"><div class="sc-tile-label">Cada lead</div>` +
-      `<div class="sc-tile-valor">${esc(SC.fmt(resAnun.cpl_total, 'moneda'))}</div>` +
-      (hist.hay && hist.cpl
-        ? `<div class="sc-tile-delta">la cuenta viene de ` +
-          `${esc(SC.fmt(hist.cpl, 'moneda'))}</div>`
-        : '') +
-      '</div></div>';
+// '2026-09-14' -> '14/09'.
+function _mkDiaMes(iso) {
+  const p = String(iso || '').slice(0, 10).split('-');
+  return p.length === 3 ? p[2] + '/' + p[1] : '';
+}
 
-    // El estado va con palabra Y con color, nunca con color solo: es la regla
-    // de la guía de visualización para los colores de estado.
-    const _ACCION = {
-      apagar:  'Apagalo',
-      ajustar: 'Está caro',
-      renovar: 'Se está gastando',
-      subir:   'Subile el presupuesto',
-      esperar: 'Todavía no se sabe',
-      dejar:   'Va bien',
-      apagado: 'Apagado',
-      revivir: 'Lo apagaste y rendía',
-    };
+var _MK_NOMBRE_MES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Setiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
-    const tarjetas = anuncios.map(a => {
-      const r = a.recomendacion || {};
-      const foto = a.imagen_archivo
-        ? `<img class="sc-anun-foto" loading="lazy" alt="Pieza del anuncio ${esc(a.nombre || '')}" ` +
-          `src="/api/marketing/creativo/${encodeURIComponent(a.ad_id)}">`
-        // Los de video no tienen foto: Meta no da el still con los permisos que
-        // tiene la app. Se dice por qué en vez de dejar un hueco gris.
-        : '<div class="sc-anun-sinfoto">' +
-          (a.tipo === 'VIDEO' ? 'Es un video.<br>Meta no deja bajar la portada.'
-                              : 'Sin imagen') + '</div>';
+// '2026-09' -> 'Setiembre 2026'.
+function _mkNombreMes(mes) {
+  const m = parseInt(String(mes).slice(5, 7), 10);
+  return (_MK_NOMBRE_MES[m - 1] || mes) + ' ' + String(mes).slice(0, 4);
+}
 
-      const dato = (rot, val, fmt) =>
-        '<div class="sc-anun-dato"><span>' + esc(rot) + '</span><b>' +
-        esc(SC.fmt(val, fmt)) + '</b></div>';
+// La tabla del mes a mes: los mismos números que las barras, para leerlos
+// sin estimar contra la grilla. El total de leads y de gasto es el mismo de
+// los KPIs de arriba (mismo período, mismas tablas); el costo por lead total
+// no se recalcula acá, se lee del bloque `todas`.
+function _mkTablaMensual(meses, foco) {
+  const suma = (c) => meses.reduce((a, m) => a + (m[c] || 0), 0);
+  const cplTotal = _mkMetrica(foco, '.cpl');
+  const filas = meses.map(m =>
+    `<tr><td>${esc(m.nombre || m.periodo)} ${esc(String(m.periodo).slice(0, 4))}</td>` +
+    `<td>${esc(SC.fmt(m.leads, 'numero'))}</td>` +
+    `<td>${esc(SC.fmt(m.demos, 'numero'))}</td>` +
+    `<td>${esc(SC.fmt(m.ventas, 'numero'))}</td>` +
+    `<td>${esc(SC.fmt(m.gasto, 'moneda'))}</td>` +
+    `<td>${esc(SC.fmt(m.cpl, 'moneda'))}</td></tr>`).join('');
+  return '<div class="sc-tabla-wrap"><table class="sc-tabla"><thead><tr>' +
+    '<th>Mes</th><th>Leads</th><th>Demos</th><th>Ventas</th><th>Gasto</th>' +
+    '<th>Costo por lead</th></tr></thead><tbody>' + filas +
+    '<tr style="font-weight:700"><td>Total</td>' +
+    `<td>${esc(SC.fmt(suma('leads'), 'numero'))}</td>` +
+    `<td>${esc(SC.fmt(suma('demos'), 'numero'))}</td>` +
+    `<td>${esc(SC.fmt(suma('ventas'), 'numero'))}</td>` +
+    `<td>${esc(SC.fmt(suma('gasto'), 'moneda'))}</td>` +
+    `<td>${esc(SC.fmt(cplTotal ? cplTotal.valor : null, 'moneda'))}</td></tr>` +
+    '</tbody></table></div>';
+}
 
-      return `<article class="sc-anun" data-corriendo="${a.corriendo}">` +
-        foto +
-        (a.corriendo ? ''
-          // Marcado con palabra, no solo con opacidad o color: si fuera solo
-          // visual, una tarjeta apagada se leeria igual que una al aire.
-          : '<div class="sc-anun-apagado">Apagado</div>') +
-        '<div class="sc-anun-cuerpo">' +
-        `<div class="sc-anun-nom">${esc(a.nombre || '(sin nombre)')}</div>` +
-        `<div class="sc-anun-campana">${esc(a.campana || '')}` +
-        (a.conjunto ? ` · ${esc(a.conjunto)}` : '') + '</div>' +
-        '<div class="sc-anun-datos">' +
-        dato('Gasto del período', a.gasto, 'moneda') +
-        dato('Leads', a.leads, 'numero') +
-        dato('Por lead', a.cpl, 'moneda') +
-        '</div>' +
-        // Lo que de verdad decide. El costo por lead dice cuál es barato; el
-        // costo por demo dice cuál sirve, y no ordenan igual.
-        //
-        // `leads_atribuidos` puede ser menor que lo que dice Meta: los leads
-        // se guardan 90 días y de los viejos no sabemos de qué anuncio
-        // vinieron. Se dice, en vez de mostrar un costo por demo que miente.
-        '<div class="sc-anun-demos">' +
-        `<span>Se sentaron a hablar <b>${esc(SC.fmt(a.demos, 'numero'))}</b>` +
-        (a.costo_demo
-          ? ` · <b>${esc(SC.fmt(a.costo_demo, 'moneda'))}</b> cada uno` : '') +
-        '</span>' +
-        (a.leads_atribuidos < a.leads_total
-          ? `<span class="sc-anun-cobertura">sobre ${esc(SC.fmt(a.leads_atribuidos, 'numero'))}` +
-            ` de ${esc(SC.fmt(a.leads_total, 'numero'))} leads de los que sabemos el anuncio</span>`
-          : '') +
-        '</div>' +
-        '<div class="sc-anun-extra">' +
-        `CTR ${esc(SC.fmt(a.ctr, 'porcentaje'))}` +
-        (a.tasa_lead !== null && a.tasa_lead !== undefined
-          ? ` · dejan datos ${esc(SC.fmt(a.tasa_lead, 'porcentaje'))} de los que entran`
-          : '') +
-        '</div>' +
-        // La vida entera del anuncio, que es sobre lo que opina la
-        // recomendación de abajo. Va escrita para que se pueda comprobar: si
-        // la reco cita 374,74 y acá dice otra cosa, algo está mal.
-        (a.desde
-          ? '<div class="sc-anun-vida">Desde el ' +
-            `${esc(_fechaCorta(a.desde))} lleva ` +
-            `<b>${esc(SC.fmt(a.gasto_total, 'moneda'))}</b> y ` +
-            `<b>${esc(SC.fmt(a.leads_total, 'numero'))}</b> lead` +
-            `${a.leads_total === 1 ? '' : 's'}` +
-            (a.cpl_total ? `, a ${esc(SC.fmt(a.cpl_total, 'moneda'))} cada uno`
-                         : '') + '.</div>'
-          : '') +
-        `<div class="sc-anun-reco" data-accion="${esc(r.accion || '')}">` +
-        `<b>${esc(_ACCION[r.accion] || '')}.</b> ${esc(r.texto || '')}</div>` +
-        '</div></article>';
-    }).join('');
+// Con "últimos 90 días" el primer mes arranca a mitad de mes y el último es
+// el de hoy: sus barras salen más bajas sin que el mes haya sido peor. Se
+// dice, en vez de dejar que se lea como una caída.
+function _mkNotaMesesIncompletos(meses, p) {
+  if (!meses.length || !p.desde || !p.hasta) return '';
+  const partes = [];
+  const primero = meses[0], ultimo = meses[meses.length - 1];
+  if (p.desde.slice(0, 7) === primero.periodo && p.desde.slice(8, 10) !== '01') {
+    partes.push(`${primero.nombre} arranca el ${_mkDiaMes(p.desde)}`);
+  }
+  const y = parseInt(p.hasta.slice(0, 4), 10), mm = parseInt(p.hasta.slice(5, 7), 10);
+  const ultimoDia = new Date(y, mm, 0).getDate();
+  if (p.hasta.slice(0, 7) === ultimo.periodo &&
+      parseInt(p.hasta.slice(8, 10), 10) !== ultimoDia) {
+    partes.push(`${ultimo.nombre} llega hasta el ${_mkDiaMes(p.hasta)}`);
+  }
+  if (!partes.length) return '';
+  const cuantos = partes.length === 2 && primero.periodo !== ultimo.periodo
+    ? 'esos dos meses están incompletos' : 'ese mes está incompleto';
+  return `<div class="sc-nota">${esc(partes.join(' y '))}: ${cuantos}, así que ` +
+    'su barra no se compara de igual a igual con la de un mes entero.</div>';
+}
 
-    document.getElementById('mk-anuncios').innerHTML =
-      cab + '<div class="sc-anuncios">' + tarjetas + '</div>';
+// Lo mismo para las semanas: la primera puede arrancar a mitad de semana y la
+// última es la de hoy.
+function _mkNotaSemanasIncompletas(semanas, p, nombres) {
+  if (!semanas.length || !p.desde || !p.hasta) return '';
+  const partes = [];
+  const primera = semanas[0], ultima = semanas[semanas.length - 1];
+  if (primera.inicio < p.desde) {
+    partes.push(`${nombres[primera.inicio] || 'La primera semana'} arranca el ${_mkDiaMes(p.desde)}`);
+  }
+  const fin = new Date(ultima.inicio + 'T12:00:00');
+  fin.setDate(fin.getDate() + 6);
+  if (_mkISO(fin) > p.hasta) {
+    partes.push(`${nombres[ultima.inicio] || 'la última semana'} llega hasta el ${_mkDiaMes(p.hasta)}`);
+  }
+  if (!partes.length) return '';
+  return `<div class="sc-nota">${esc(partes.join(' y '))}: son semanas ` +
+    'incompletas, así que su barra sale más baja sin que eso quiera decir que ' +
+    'anduvieron peor.</div>';
+}
+
+// ── Cuándo llegan los leads, semana por semana ──────────────────────────
+//
+// Pedido de Juan (14/9): "esto vamos a ir viendo más detallado por semana".
+// Una fila por día con su fecha, una columna por hora (0 a 23), lunes a
+// domingo en hora de Montevideo. Como las piezas, tiene su propio navegador
+// y su propio pedido a `/api/marketing/leads-semana`: el período de arriba no
+// lo mueve. No va al futuro y hacia atrás llega hasta la semana del primer
+// lead de Meta.
+
+var _mkLlegadaSemana = null;   // lunes 'YYYY-MM-DD'; null es la semana actual
+var _mkLlegadaUltima = null;   // la última respuesta: trae la semana actual y la primera
+
+var _MK_DIAS_CORTOS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+
+// 'YYYY-MM-DD' corrido tantos días como diga `dias`. En UTC, para que ningún
+// cambio de hora del navegador mueva la fecha.
+function _mkDiaCorrido(iso, dias) {
+  const p = String(iso).split('-').map(Number);
+  return new Date(Date.UTC(p[0], p[1] - 1, p[2] + dias)).toISOString().slice(0, 10);
+}
+
+// El lunes de hoy según el navegador. Solo se usa hasta que llega la primera
+// respuesta, que trae la semana actual de Montevideo calculada en el servidor.
+function _mkLunesDeHoy() {
+  const hoy = new Date();
+  const iso = hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0') +
+    '-' + String(hoy.getDate()).padStart(2, '0');
+  return _mkDiaCorrido(iso, -((hoy.getDay() + 6) % 7));
+}
+
+// '2026-09-07' -> '7 al 13 de setiembre 2026'. Si la semana cruza de mes o de
+// año, los dos lados lo dicen.
+function _mkNombreSemana(lunes) {
+  const domingo = _mkDiaCorrido(lunes, 6);
+  const [a1, m1, d1] = String(lunes).split('-').map(Number);
+  const [a2, m2, d2] = domingo.split('-').map(Number);
+  const mes = (m) => (_MK_NOMBRE_MES[m - 1] || '').toLowerCase();
+  if (a1 !== a2) return `${d1} de ${mes(m1)} ${a1} al ${d2} de ${mes(m2)} ${a2}`;
+  if (m1 !== m2) return `${d1} de ${mes(m1)} al ${d2} de ${mes(m2)} ${a2}`;
+  return `${d1} al ${d2} de ${mes(m2)} ${a2}`;
+}
+
+function mkLlegadaSemana(delta) {
+  const ultima = _mkLlegadaUltima;
+  const actual = (ultima && ultima.semana_actual) || _mkLunesDeHoy();
+  const ahora = _mkLlegadaSemana || actual;
+  const semana = _mkDiaCorrido(ahora, 7 * delta);
+  if (semana > actual || semana === ahora) return;
+  // Antes de la semana del primer lead no hay nada que mirar.
+  if (semana < ahora && !(ultima && ultima.primera_semana && semana >= ultima.primera_semana)) return;
+  _mkLlegadaSemana = semana === actual ? null : semana;
+  _mkCargarLlegada();
+}
+
+function mkLlegadaSemanaHoy() {
+  _mkLlegadaSemana = null;
+  _mkCargarLlegada();
+}
+
+async function _mkCargarLlegada() {
+  const pedida = _mkLlegadaSemana;
+  const caja = document.getElementById('mk-llegada');
+  document.getElementById('mk-llegada-semana').textContent = _mkNombreSemana(
+    pedida || (_mkLlegadaUltima && _mkLlegadaUltima.semana_actual) || _mkLunesDeHoy());
+  caja.innerHTML = '<div class="sc-vacio">Cargando la semana…</div>';
+  let datos;
+  try {
+    const r = await fetch('/api/marketing/leads-semana' +
+      (pedida ? '?semana=' + encodeURIComponent(pedida) : ''));
+    if (!r.ok) {
+      caja.innerHTML = '<div class="sc-vacio">No se pudo cargar la semana ' +
+        '(error ' + r.status + ').</div>';
+      return;
+    }
+    datos = await r.json();
+  } catch (e) {
+    caja.innerHTML = '<div class="sc-vacio">No se pudo cargar la semana: ' +
+      esc(e.message) + '</div>';
+    return;
+  }
+  // Si mientras llegaba se pidió otra semana, esta respuesta ya no va.
+  if (_mkLlegadaSemana !== pedida) return;
+  _mkPintarLlegada(datos);
+}
+
+function _mkPintarLlegada(d) {
+  _mkLlegadaUltima = d;
+  const nombre = _mkNombreSemana(d.semana);
+  document.getElementById('mk-llegada-semana').textContent = nombre;
+  document.getElementById('mk-llegada-sig').disabled = !(d.semana < d.semana_actual);
+  document.getElementById('mk-llegada-ant').disabled =
+    !(d.primera_semana && d.semana > d.primera_semana);
+
+  const caja = document.getElementById('mk-llegada');
+  const sinHora = d.sin_hora
+    ? '<div class="sc-nota">' + esc(SC.fmt(d.sin_hora, 'numero')) +
+      (d.sin_hora === 1 ? ' lead de esta semana no tiene' : ' leads de esta semana no tienen') +
+      ' hora guardada y quedan fuera de la grilla. Contarlos a medianoche ' +
+      'inventaría un pico que no pasó.</div>'
+    : '';
+  if (!d.total) {
+    const porque = d.primera_semana
+      ? `No entró ningún lead de Meta en la semana del ${nombre}.`
+      : 'Todavía no hay ningún lead de Meta guardado.';
+    caja.innerHTML = `<div class="sc-vacio">${esc(porque)}</div>` + sinHora;
+    return;
   }
 
-  // ── ¿Pagar más por lead trae mejores leads? ────────────────────────────
-  //
-  // Una dispersion y no dos barras: la pregunta es sobre la RELACION entre dos
-  // medidas, y eso necesita los dos ejes. Dos graficos de barras al lado
-  // obligan a cruzarlos a ojo, que es justo lo que sale mal.
-  const paraNube = campanas
-    .filter(b => b.campana !== 'todas' && b.campana !== '(sin campaña)')
-    .map(b => ({
-      etiqueta: b.campana,
-      x: (_mkMetrica(b, '.cpl') || {}).valor,
-      y: (_mkMetrica(b, '.tasa_demo') || {}).valor,
-      peso: (_mkMetrica(b, '.gasto') || {}).valor,
-    }))
-    .filter(p => p.x !== null && p.x !== undefined && p.y !== null && p.y !== undefined);
-  document.getElementById('mk-dispersion').innerHTML = paraNube.length >= 2
-    ? SC.dispersion(paraNube, {
-        etiqueta: 'Costo por lead contra tasa de demo',
-        nombreX: 'Costo por lead', formatoX: 'moneda',
-        nombreY: 'Tasa de demo', formatoY: 'porcentaje',
-        nombrePeso: 'Gasto', formatoPeso: 'moneda',
-      }, tema)
-    : '<div class="sc-vacio">Hacen falta al menos dos campañas con gasto.</div>';
+  // Relleno de 14% a 70% de --azul según el máximo de la semana: arriba de
+  // 70% el número deja de leerse en el tema oscuro. El cero queda sin relleno.
+  const tope = d.maximo || 1;
+  const cabeza = '<tr><th scope="col" class="sc-lleg-dia">Día</th>' +
+    Array.from({ length: 24 }, (_, h) => `<th scope="col">${h}</th>`).join('') +
+    '<th scope="col" class="sc-lleg-total">Total</th></tr>';
+  const filas = (d.dias || []).map((dia, i) => {
+    const partes = String(dia.fecha).split('-').map(Number);
+    const rotulo = `${_MK_DIAS_CORTOS[i] || ''} ${partes[2]}/${partes[1]}`;
+    const celdas = (dia.horas || []).map((n, h) => {
+      const titulo = `${rotulo}, de ${h} a ${h + 1} h: ${n} ${n === 1 ? 'lead' : 'leads'}`;
+      if (!n) return `<td title="${esc(titulo)}"></td>`;
+      const pct = Math.round(14 + 56 * Math.min(1, n / tope));
+      return `<td data-n="${n}" title="${esc(titulo)}" ` +
+        `style="background:color-mix(in srgb,var(--azul) ${pct}%,transparent)">${n}</td>`;
+    }).join('');
+    return `<tr><th scope="row">${esc(rotulo)}</th>${celdas}` +
+      `<td class="sc-lleg-total">${esc(SC.fmt(dia.total, 'numero'))}</td></tr>`;
+  }).join('');
 
-  // ── Cuándo llegan los leads ────────────────────────────────────────────
-  const lleg = _mkDossier.llegada || {};
-  const DIAS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
-  document.getElementById('mk-llegada').innerHTML = (lleg.total || 0)
-    ? SC.matriz(
-        (lleg.celdas || []).map(c => ({
-          fila: c.dia, columna: c.franja, n: c.n,
-          titulo: DIAS[c.dia] + ' ' + String(c.franja).padStart(2, '0') + 'h',
-        })),
-        {
-          etiqueta: 'Leads por día y franja horaria',
-          filas: DIAS.map((d, i) => ({ clave: i, etiqueta: d })),
-          columnas: (lleg.celdas || []).slice(0, 8).map(c => ({
-            clave: c.franja,
-            etiqueta: String(c.franja).padStart(2, '0'),
-          })),
-          maximo: lleg.maximo,
-        }, tema)
-      + (lleg.sin_hora
-         ? '<div class="sc-nota">' + esc(SC.fmt(lleg.sin_hora, 'numero')) +
-           ' leads no tienen hora guardada y quedan fuera del mapa. Contarlos a ' +
-           'medianoche inventaría un pico que no pasó.</div>'
-         : '')
-    : '<div class="sc-vacio">Sin leads en el período.</div>';
+  caja.innerHTML =
+    `<div class="sc-lleg-resumen"><b>${esc(SC.fmt(d.total, 'numero'))} ` +
+    `${d.total === 1 ? 'lead' : 'leads'}</b> en la semana. Columnas: hora de ` +
+    'Montevideo, de 0 a 23.</div>' +
+    '<div class="sc-lleg-wrap"><table class="sc-lleg" ' +
+    `aria-label="Leads por día y hora, semana del ${esc(nombre)}">` +
+    `<thead>${cabeza}</thead><tbody>${filas}</tbody></table></div>` + sinHora;
+}
 
+// ── Las piezas de la pauta, mes por mes ─────────────────────────────────
+//
+// Pedido de Juan: ir mes por mes, y en cada mes ver las piezas que tuvieron
+// actividad con los números de ESE mes, partidas en las que siguen activas
+// hoy y las que ya no. Las que ya no se ven igual de legibles: las separa el
+// título del grupo, no un gris.
+//
+// Tiene su propio pedido a `/api/marketing/piezas`. Con "Un mes" arriba
+// muestra ESE mes; con otro período (90 días, el año) navega meses por su
+// cuenta, porque ahí arriba no hay un mes que seguir.
+
+var _mkPiezasMesActual = null;   // 'YYYY-MM'; null es el mes de hoy
+
+// Corre un mes 'YYYY-MM' tantos meses como diga delta, cruzando el año.
+function _mkMesCorrido(mes, delta) {
+  const d = new Date(parseInt(mes.slice(0, 4), 10), parseInt(mes.slice(5, 7), 10) - 1 + delta, 1);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+}
+
+function _mkMesDeHoy() {
+  const hoy = new Date();
+  return hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0');
+}
+
+// La flecha lleva EXACTAMENTE al mes pedido, nunca a otro. Antes, retroceder
+// más allá del primer mes con datos te dejaba en ese primer mes sin avisar:
+// Juan creía estar en mayo y miraba agosto. Si el mes no tiene datos por pieza,
+// el panel lo dice. Al futuro no se va: el botón está apagado.
+//
+// Con "Un mes" arriba, la flecha de las piezas mueve la sección entera: si
+// cada una tuviera su mes, arriba decía abril y abajo seguían las piezas de
+// setiembre (Juan, 14/9).
+function mkPiezasMes(delta) {
+  if (_mkEnModoMes()) { mkMes(delta); return; }
+  const hoy = _mkMesDeHoy();
+  const ahora = _mkPiezasMesActual || hoy;
+  const mes = _mkMesCorrido(ahora, delta);
+  if (mes > hoy || mes === ahora) return;
+  _mkPiezasMesActual = mes === hoy ? null : mes;
+  _mkCargarPiezas();
+}
+
+function mkPiezasMesHoy() {
+  if (_mkEnModoMes()) { mkMesHoy(); return; }
+  _mkPiezasMesActual = null;
+  _mkCargarPiezas();
+}
+
+function _mkEnModoMes() {
+  const sel = document.getElementById('mk-rango');
+  return !!sel && sel.value === 'mes';
+}
+
+// El mes de arriba, como 'YYYY-MM'.
+function _mkMesDelPeriodo() {
+  const d = _mkMesVisible();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+}
+
+async function _mkCargarPiezas() {
+  const mes = _mkPiezasMesActual || _mkMesDeHoy();
+  const caja = document.getElementById('mk-piezas');
+  document.getElementById('mk-piezas-mes').textContent = _mkNombreMes(mes);
+  caja.innerHTML = '<div class="sc-vacio">Cargando las piezas…</div>';
+  let datos;
+  try {
+    const r = await fetch('/api/marketing/piezas?mes=' + encodeURIComponent(mes));
+    if (!r.ok) {
+      caja.innerHTML = '<div class="sc-vacio">No se pudieron cargar las piezas ' +
+        '(error ' + r.status + ').</div>';
+      return;
+    }
+    datos = await r.json();
+  } catch (e) {
+    caja.innerHTML = '<div class="sc-vacio">No se pudieron cargar las piezas: ' +
+      esc(e.message) + '</div>';
+    return;
+  }
+  // Si mientras llegaba se pidió otro mes, esta respuesta ya no va.
+  if (datos.mes !== (_mkPiezasMesActual || _mkMesDeHoy())) return;
+  _mkPintarPiezas(datos);
+}
+
+function _mkPintarPiezas(d) {
+  const nombre = d.nombre || _mkNombreMes(d.mes);
+  document.getElementById('mk-piezas-mes').textContent = nombre;
+  // Al futuro no se va. Hacia atrás sí, siempre: si el mes no tiene datos por
+  // pieza, se dice abajo en vez de frenar la flecha en otro mes.
+  document.getElementById('mk-piezas-sig').disabled = d.mes >= (d.mes_actual || _mkMesDeHoy());
+  document.getElementById('mk-piezas-ant').disabled = false;
+
+  const caja = document.getElementById('mk-piezas');
+  const activas = d.activas || [], inactivas = d.inactivas || [];
+  const t = d.totales || {};
+  const estado = d.estado_datos ||
+    (!d.primer_mes ? 'nada_sincronizado'
+      : (activas.length || inactivas.length) ? 'con_piezas' : 'sin_pauta');
+  // '2026-06-01' -> '01/06/2026'
+  const fecha = (iso) => _mkDiaMes(iso) + '/' + String(iso || '').slice(0, 4);
+
+  if (estado === 'nada_sincronizado') {
+    caja.innerHTML = '<div class="sc-vacio">Todavía no hay piezas sincronizadas. ' +
+      'Aparecen solas cuando corre el sync de anuncios de Meta, que necesita el ' +
+      'token configurado. El resto del panel funciona igual.</div>';
+    return;
+  }
+  if (estado === 'sin_datos_por_pieza') {
+    const porque = d.primer_dia && d.hasta && d.hasta < d.primer_dia
+      ? ` Los datos pieza por pieza empiezan el ${fecha(d.primer_dia)}.`
+      : ' Meta registra gasto de pauta en ese mes, pero pieza por pieza no se trajo.';
+    caja.innerHTML = `<div class="sc-vacio">No hay datos por pieza de Meta guardados ` +
+      `para ${esc(nombre)}.${esc(porque)} No quiere decir que no se haya pautado: ` +
+      'falta traer ese mes desde Meta.</div>';
+    return;
+  }
+  if (estado === 'sin_pauta' || (!activas.length && !inactivas.length)) {
+    caja.innerHTML = `<div class="sc-vacio">En ${esc(nombre)} no se pautó ninguna ` +
+      'pieza: ningún anuncio tuvo gasto ni impresiones.</div>';
+    return;
+  }
+
+  const tile = (rotulo, valor, pie) =>
+    `<div class="sc-tile"><div class="sc-tile-label">${esc(rotulo)}</div>` +
+    `<div class="sc-tile-valor">${esc(valor)}</div>` +
+    (pie ? `<div class="sc-tile-delta">${esc(pie)}</div>` : '') + '</div>';
+  const cab = '<div class="sc-plata-resumen">' +
+    tile('Piezas con actividad', SC.fmt(t.piezas, 'numero'),
+         `${SC.fmt(t.activas, 'numero')} activas hoy · ${SC.fmt(t.inactivas, 'numero')} ya no`) +
+    tile('Gasto del mes', SC.fmt(t.gasto, 'moneda'), t.moneda || '') +
+    tile('Leads del mes según Meta', SC.fmt(t.leads, 'numero'),
+         t.cpl ? `${SC.fmt(t.cpl, 'moneda')} cada uno` : 'sin leads no hay costo por lead') +
+    (t.leads_crm === undefined || t.leads_crm === null ? '' :
+      tile('Leads del mes en el CRM', SC.fmt(t.leads_crm, 'numero'),
+           t.leads_crm_sin_pieza
+             ? `${SC.fmt(t.leads_crm_sin_pieza, 'numero')} sin pieza identificada`
+             : 'todos con su pieza')) +
+    tile('Impresiones', SC.fmt(t.impresiones, 'numero'),
+         `${SC.fmt(t.clics, 'numero')} clics`) +
+    '</div>';
+
+  let aviso = `Todos los números son de ${nombre} y nada más. «Leads según Meta» ` +
+    'son los que Meta le atribuye a cada pieza en los días del mes; con ellos se ' +
+    'calcula el costo por lead. «Leads en el CRM» son las personas que entraron ' +
+    'al CRM ese mes por esa pieza. Son dos cuentas distintas y no se suman.';
+  if (d.datos_desde) {
+    aviso = `Ojo: los datos por pieza de ${nombre} empiezan el ` +
+      `${fecha(d.datos_desde)}; lo de los días anteriores no está. ` + aviso;
+  }
+  const g = d.gasto_pauta;
+  if (g !== null && g !== undefined && Math.abs(g - (t.gasto || 0)) > Math.max(1, g * 0.01)) {
+    aviso += ` Ojo: mirado por campaña, Meta dice que en ${nombre} se gastaron ` +
+      `${SC.fmt(g, 'moneda')} y las piezas suman ${SC.fmt(t.gasto, 'moneda')}. ` +
+      'La diferencia es gasto de anuncios que no se llegó a sincronizar pieza por pieza.';
+  }
+
+  // Sin recomendación en la tarjeta: la que había miraba toda la vida de la
+  // pieza y se leía como si fuera del mes (pedido de Juan, 14/9).
+  const tarjeta = (a) => {
+    const foto = a.tiene_imagen
+      ? `<img class="sc-anun-foto" loading="lazy" alt="Pieza ${esc(a.nombre || '')}" ` +
+        `src="/api/marketing/creativo/${encodeURIComponent(a.ad_id)}">`
+      // Los de video no tienen foto: Meta no da la portada con los permisos
+      // que tiene la app. Se dice por qué en vez de dejar un hueco.
+      : '<div class="sc-anun-sinfoto">' +
+        (a.tipo === 'VIDEO' ? 'Es un video.<br>Meta no deja bajar la portada.'
+                            : 'Sin imagen') + '</div>';
+    const dato = (rot, val, fmt) =>
+      '<div class="sc-anun-dato"><span>' + esc(rot) + '</span><b>' +
+      esc(SC.fmt(val, fmt)) + '</b></div>';
+    const fechas = !a.primer_dia ? ''
+      : a.primer_dia === a.ultimo_dia
+        ? `Con actividad el ${_mkDiaMes(a.primer_dia)}`
+        : `Con actividad del ${_mkDiaMes(a.primer_dia)} al ${_mkDiaMes(a.ultimo_dia)}`;
+    const conCrm = a.leads_crm !== null && a.leads_crm !== undefined;
+    return `<article class="sc-anun" data-corriendo="${a.corriendo ? 'true' : 'false'}">` +
+      foto + '<div class="sc-anun-cuerpo">' +
+      `<div class="sc-anun-nom">${esc(a.nombre || '(sin nombre)')}</div>` +
+      (fechas ? `<div class="sc-anun-fechas">${esc(fechas)}</div>` : '') +
+      '<div class="sc-anun-datos">' +
+      dato('Gasto', a.gasto, 'moneda') +
+      dato('Leads según Meta', a.leads, 'numero') +
+      dato('Costo por lead', a.cpl, 'moneda') +
+      (conCrm ? dato('Leads en el CRM', a.leads_crm, 'numero') : '') +
+      // Lo que ordena distinto que el costo por lead: contra los datos
+      // reales, dos piezas que traian leads a 15 y a 19 daban reuniones a 50
+      // y a 127. Mirando solo el costo por lead esa diferencia no se ve.
+      (conCrm ? dato('Se sentaron a hablar', a.demos, 'numero') : '') +
+      (conCrm ? dato('Costo por reunión', a.costo_demo, 'moneda') : '') +
+      dato('Impresiones', a.impresiones, 'numero') +
+      dato('Clics', a.clics, 'numero') +
+      dato('CTR', a.ctr, 'porcentaje') +
+      '</div>' +
+      '</div></article>';
+  };
+
+  const grupo = (titulo, lista, vacio) =>
+    `<h4 class="sc-piezas-grupo">${esc(titulo)} <span>(${lista.length})</span></h4>` +
+    (lista.length
+      ? '<div class="sc-anuncios">' + lista.map(tarjeta).join('') + '</div>'
+      : `<div class="sc-vacio">${esc(vacio)}</div>`);
+
+  caja.innerHTML = cab +
+    `<div class="sc-piezas-aviso">${esc(aviso)}</div>` +
+    grupo('Activas hoy', activas,
+          `Ninguna de las piezas de ${nombre} sigue activa hoy.`) +
+    grupo('Ya no están activas', inactivas,
+          `Todas las piezas de ${nombre} siguen activas hoy.`);
 }
 
 // ========== Activity feed ==========
@@ -8571,11 +14724,12 @@ const _actActionLabels = {
   lead_deleted:  (i) => `eliminó lead: <b>${esc(i.entity_name)}</b>`,
   batch_status:  (i) => i.detail || 'actualizó múltiples leads',
   notion_sync:   (i) => `sincronizó con Notion${i.detail ? ': '+esc(i.detail) : ''}`,
+  notion_client_moved: (i) => `movió <b>${esc(i.entity_name)}</b> a <b>${esc(i.detail)}</b> en Proceso de venta`,
 };
 const _actCrmMap = {sin_contactar:'Sin contactar',contactado:'Contactado',reunion_agendada:'Reunión agendada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Presupuesto enviado',negociacion:'Negociación',cliente_cerrado:'Cliente cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado'};
 function _actCrmLabel(s) { return _actCrmMap[s] || s || ''; }
 function _actCallLabel(s) { return {contestó:'Contestó',no_contestó:'No contestó',buzón:'Buzón'}[s] || s || ''; }
-const _actIcons = {status_change:'🔄',note_updated:'📝',attachment_added:'📎',call_logged:'📞',budget_generated:'💰',budget_sent:'📨',task_created:'✅',task_updated:'✏️',task_deleted:'🗑️',meeting_scheduled:'📅',lead_deleted:'🗑️',batch_status:'🔄',notion_sync:'🔄'};
+const _actIcons = {status_change:'🔄',note_updated:'📝',attachment_added:'📎',call_logged:'📞',budget_generated:'💰',budget_sent:'📨',task_created:'✅',task_updated:'✏️',task_deleted:'🗑️',meeting_scheduled:'📅',lead_deleted:'🗑️',batch_status:'🔄',notion_sync:'🔄',notion_client_moved:'🔀'};
 
 // ── SDR panel ──────────────────────────────────────────────────────────────────
 let _sdrPeriod = 'month';
@@ -9007,7 +15161,9 @@ def create_app(db_path: str) -> Flask:
     app.config["PIPELINE_LOCK"] = _pipeline_lock
 
     for bp in (leads_bp, demos_bp, calendar_bp, wa_bp, pipeline_bp, tasks_bp, budgets_bp, tokens_bp, meta_bp, calendly_bp, notion_bp, projects_bp, preclientes_bp,
-                notion_clients_bp, resend_bp, linkedin_bp, web_bp, finanzas_bp, marketing_bp):
+                notion_clients_bp, resend_bp, linkedin_bp, web_bp, finanzas_bp, marketing_bp,
+                simulador_bp, equipo_bp, flujos_bp, seg_leads_bp, daily_bp, plantillas_bp,
+                backups_bp):
         app.register_blueprint(bp)
 
     @app.before_request
@@ -9594,6 +15750,7 @@ def create_app(db_path: str) -> Flask:
                 finally: conn3.close()
             else:
                 panel_access = "[]"  # sin rol = sin acceso
+        from services.auth import paneles_solo_lectura
         return jsonify({
             "id": user["id"],
             "name": user["name"],
@@ -9602,6 +15759,10 @@ def create_app(db_path: str) -> Flask:
             "is_admin": es_admin,
             "panel_access": panel_access,
             "role_id": user.get("role_id"),
+            # Lo que el rol ve pero no modifica. Una lista, no un string JSON
+            # como panel_access. El servidor bloquea igual: esto es solo para
+            # no mostrar botones que van a dar 403.
+            "paneles_solo_lectura": [] if es_admin else paneles_solo_lectura(db_path, user_id),
         })
 
     @app.route("/api/me", methods=["PUT"])
@@ -9649,9 +15810,32 @@ def create_app(db_path: str) -> Flask:
             conn2.close()
         return jsonify({"ok": True})
 
+    # Las cuatro rutas de roles no miraban si quien llama es admin: bastaba
+    # con estar logueado. Con el "solo lectura" eso ya no es un detalle: un
+    # Contador podía sacarse la marca a sí mismo con un PUT.
+    def _solo_admin_roles():
+        if not is_admin(db_path, session.get("user_id")):
+            return jsonify({"ok": False, "error": "No autorizado"}), 403
+        return None
+
+    def _solo_lectura_pedida(data, panels):
+        """(lista, None), (None, None) si no vino, o (None, error)."""
+        valor = data.get("paneles_solo_lectura")
+        if valor is None:
+            return None, None
+        if not isinstance(valor, list) or not all(isinstance(p, str) for p in valor):
+            return None, "paneles_solo_lectura tiene que ser una lista de paneles"
+        if isinstance(panels, list):
+            # Solo lectura de un panel que el rol no ve no significa nada.
+            valor = [p for p in valor if p in panels]
+        return sorted(set(valor)), None
+
     @app.route("/api/admin/roles", methods=["GET"])
     def admin_list_roles():
         import sqlite3 as _sq
+        bloqueo = _solo_admin_roles()
+        if bloqueo:
+            return bloqueo
         conn2 = _sq.connect(db_path); conn2.row_factory = _sq.Row
         try:
             rows = conn2.execute("SELECT * FROM roles ORDER BY id").fetchall()
@@ -9661,13 +15845,20 @@ def create_app(db_path: str) -> Flask:
     @app.route("/api/admin/roles", methods=["POST"])
     def admin_create_role():
         import sqlite3 as _sq, json as _j
+        bloqueo = _solo_admin_roles()
+        if bloqueo:
+            return bloqueo
         data = request.get_json() or {}
         name = (data.get("name") or "").strip()
         panels = data.get("panels", [])
         if not name: return jsonify({"ok": False, "error": "Nombre requerido"}), 400
+        solo_lectura, error = _solo_lectura_pedida(data, panels)
+        if error:
+            return jsonify({"ok": False, "error": error}), 400
         conn2 = _sq.connect(db_path)
         try:
-            conn2.execute("INSERT INTO roles (name, panel_access) VALUES (?,?)", (name, _j.dumps(panels)))
+            conn2.execute("INSERT INTO roles (name, panel_access, paneles_solo_lectura) VALUES (?,?,?)",
+                          (name, _j.dumps(panels), _j.dumps(solo_lectura or [])))
             conn2.commit()
             rid = conn2.execute("SELECT last_insert_rowid()").fetchone()[0]
             return jsonify({"ok": True, "id": rid})
@@ -9677,13 +15868,22 @@ def create_app(db_path: str) -> Flask:
     @app.route("/api/admin/roles/<int:rid>", methods=["PUT"])
     def admin_update_role(rid):
         import sqlite3 as _sq, json as _j
+        bloqueo = _solo_admin_roles()
+        if bloqueo:
+            return bloqueo
         data = request.get_json() or {}
         name = (data.get("name") or "").strip()
         panels = data.get("panels")
+        solo_lectura, error = _solo_lectura_pedida(data, panels)
+        if error:
+            return jsonify({"ok": False, "error": error}), 400
         conn2 = _sq.connect(db_path)
         try:
             if name: conn2.execute("UPDATE roles SET name=? WHERE id=?", (name, rid))
             if panels is not None: conn2.execute("UPDATE roles SET panel_access=? WHERE id=?", (_j.dumps(panels), rid))
+            if solo_lectura is not None:
+                conn2.execute("UPDATE roles SET paneles_solo_lectura=? WHERE id=?",
+                              (_j.dumps(solo_lectura), rid))
             conn2.commit()
             return jsonify({"ok": True})
         finally: conn2.close()
@@ -9691,6 +15891,9 @@ def create_app(db_path: str) -> Flask:
     @app.route("/api/admin/roles/<int:rid>", methods=["DELETE"])
     def admin_delete_role(rid):
         import sqlite3 as _sq
+        bloqueo = _solo_admin_roles()
+        if bloqueo:
+            return bloqueo
         conn2 = _sq.connect(db_path)
         try:
             conn2.execute("UPDATE users SET role_id=NULL WHERE role_id=?", (rid,))
@@ -9894,6 +16097,7 @@ select:focus{border-color:#0088cc}
 .chip input{accent-color:#0088cc;cursor:pointer;width:12px;height:12px}
 .chip.on{border-color:#0088cc;background:rgba(0,136,204,.12);color:#60a5fa}
 .chip.meta-on{border-color:#c084fc;background:rgba(192,132,252,.1);color:#c084fc}
+.chip-sl{border-style:dashed;color:#fbbf24}
 .toast{display:none;font-size:.75rem;color:#4ade80;margin-left:8px}
 .msg-ok{background:rgba(16,185,129,.1);color:#4ade80;border-radius:6px;padding:8px 12px;font-size:.8rem;margin-bottom:14px}
 .divider{height:1px;background:#1e293b;margin:10px 0}
@@ -9920,21 +16124,52 @@ select:focus{border-color:#0088cc}
   <div id="users-list"></div>
 </div>
 
+<div class="section">
+  <div class="section-title">Backups de la base</div>
+  <div class="card">
+    <div class="row">
+      <button class="btn btn-primary" id="backup-btn" onclick="backupAhora(this)">Hacer backup ahora</button>
+      <span class="sub" id="backup-msg"></span>
+    </div>
+    <div class="divider"></div>
+    <div id="backups-list"><div class="sub">Cargando...</div></div>
+  </div>
+</div>
+
 <script>
-const ALL_PANELS = ['cola','seguimientos','meta','pipeline','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas'];
-const PANEL_LABELS = {cola:'Cola',seguimientos:'Seguimientos',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Métricas',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Pipeline Notion',finanzas:'Finanzas'};
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','equipo','ausencias','seg_leads','daily','plantillas','daily_admin'];
+const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',equipo:'Organigrama',ausencias:'Ausencias',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas'};
 let _roles = [];
 
-function makeChips(containerId, checkedArr, prefix) {
+// Paneles que muestran el check "solo lectura". El dato (roles.paneles_solo_lectura)
+// es generico, pero hoy solo Finanzas lo respeta en el servidor: mostrarlo en
+// los demas prometeria algo que no pasa.
+const PANELES_CON_SOLO_LECTURA = ['finanzas'];
+
+function makeChips(containerId, checkedArr, prefix, soloLecturaArr) {
   const el = document.getElementById(containerId);
+  const soloLectura = soloLecturaArr || [];
   el.innerHTML = ALL_PANELS.map(p => {
     const on = checkedArr ? checkedArr.includes(p) : true;
     const isMeta = p === 'meta';
+    const sl = PANELES_CON_SOLO_LECTURA.includes(p)
+      ? `<label class="chip chip-sl" id="${prefix}-sl-chip-${p}" title="Ve el panel pero no puede agregar, editar ni borrar (los balances si)">
+      <input type="checkbox" id="${prefix}-sl-${p}" ${soloLectura.includes(p)?'checked':''}>
+      ${PANEL_LABELS[p]}: solo lectura
+    </label>`
+      : '';
     return `<label class="chip ${on?(isMeta?'meta-on':'on'):''}" id="${prefix}-chip-${p}">
       <input type="checkbox" id="${prefix}-cb-${p}" ${on?'checked':''} onchange="toggleChip('${prefix}','${p}',this.checked)">
       ${PANEL_LABELS[p]}
-    </label>`;
+    </label>` + sl;
   }).join('');
+}
+function getSoloLectura(prefix) {
+  // Solo cuenta si el panel esta tildado: solo lectura de algo que no se ve no
+  // significa nada.
+  return PANELES_CON_SOLO_LECTURA.filter(p =>
+    document.getElementById(`${prefix}-cb-${p}`)?.checked
+    && document.getElementById(`${prefix}-sl-${p}`)?.checked);
 }
 function toggleChip(prefix, p, on) {
   const chip = document.getElementById(`${prefix}-chip-${p}`);
@@ -9968,14 +16203,16 @@ function renderRoles() {
   }).join('');
   _roles.forEach(role => {
     const panels = JSON.parse(role.panel_access || '[]');
-    makeChips(`role-panels-${role.id}`, panels, `r${role.id}`);
+    makeChips(`role-panels-${role.id}`, panels, `r${role.id}`,
+              JSON.parse(role.paneles_solo_lectura || '[]'));
   });
 }
 
 async function saveRole(id) {
   const name = document.getElementById(`role-name-${id}`).value.trim();
   const panels = ALL_PANELS.filter(p => document.getElementById(`r${id}-cb-${p}`)?.checked);
-  const r = await fetch(`/api/admin/roles/${id}`, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name, panels})});
+  const paneles_solo_lectura = getSoloLectura(`r${id}`);
+  const r = await fetch(`/api/admin/roles/${id}`, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name, panels, paneles_solo_lectura})});
   if (r.ok) {
     const t = document.getElementById(`role-toast-${id}`);
     t.style.display='inline'; setTimeout(()=>{t.style.display='none'},2000);
@@ -9995,7 +16232,8 @@ async function createRole() {
   const name = document.getElementById('new-role-name').value.trim();
   if (!name) { document.getElementById('new-role-name').focus(); return; }
   const panels = ALL_PANELS.filter(p => document.getElementById(`new-cb-${p}`)?.checked);
-  const r = await fetch('/api/admin/roles', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name, panels})});
+  const paneles_solo_lectura = getSoloLectura('new');
+  const r = await fetch('/api/admin/roles', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name, panels, paneles_solo_lectura})});
   const d = await r.json();
   if (d.ok) { document.getElementById('new-role-name').value=''; await loadRoles(); }
   else alert(d.error);
@@ -10038,7 +16276,55 @@ async function loadAll() {
   renderUsers();
 }
 
+function _bkBytes(n) {
+  n = n || 0;
+  if (n >= 1048576) return (n / 1048576).toFixed(1) + ' MB';
+  if (n >= 1024) return Math.round(n / 1024) + ' KB';
+  return n + ' B';
+}
+function _bkEsc(s) {
+  const d = document.createElement('div');
+  d.textContent = s == null ? '' : String(s);
+  return d.innerHTML;
+}
+async function loadBackups() {
+  const el = document.getElementById('backups-list');
+  try {
+    const r = await fetch('/api/admin/backups');
+    const d = await r.json();
+    const filas = [];
+    if (!d.r2_activo) filas.push('<div class="sub">Backup a R2 desactivado: faltan los secrets R2_*. Solo hay copia local.</div>');
+    if (d.error) filas.push('<div class="sub" style="color:#f87171">' + _bkEsc(d.error) + '</div>');
+    (d.backups || []).forEach(b => filas.push(
+      '<div class="row"><div class="name">' + _bkEsc(b.nombre) + '</div><span class="badge has-role">R2</span>' +
+      '<span class="sub">' + _bkBytes(b.tamano) + ' · ' + _bkEsc((b.fecha || '').slice(0, 16).replace('T', ' ')) + '</span></div>'));
+    (d.locales || []).forEach(b => filas.push(
+      '<div class="row"><div class="name">' + _bkEsc(b.nombre) + '</div><span class="badge">local</span>' +
+      '<span class="sub">' + _bkBytes(b.tamano) + '</span></div>'));
+    el.innerHTML = filas.join('') || '<div class="sub">Todavía no hay backups.</div>';
+  } catch (e) {
+    el.innerHTML = '<div class="sub">No se pudo leer la lista de backups.</div>';
+  }
+}
+async function backupAhora(btn) {
+  const msg = document.getElementById('backup-msg');
+  btn.disabled = true;
+  msg.textContent = 'Haciendo backup...';
+  try {
+    const r = await fetch('/api/admin/backup-ahora', {method: 'POST'});
+    const d = await r.json();
+    msg.textContent = d.ok
+      ? 'Listo: ' + d.nombre + ', ' + _bkBytes(d.tamano) + ', subido a R2: ' + (d.subido ? 'sí' : 'no')
+      : 'Falló: ' + (d.error || 'error desconocido');
+  } catch (e) {
+    msg.textContent = 'Falló la llamada.';
+  }
+  btn.disabled = false;
+  loadBackups();
+}
+
 loadAll();
+loadBackups();
 </script>
 </body>
 </html>"""
@@ -10083,6 +16369,11 @@ loadAll();
 
         from services.discovery_emails import start_discovery_emails
         start_discovery_emails(app)
+
+        # Backup diario de la base (docs/BACKUPS.md). Prendido por defecto,
+        # BACKUP_DB=off lo apaga; trae su propia marca en `corridas`.
+        from services.backup_db import start_backup_db
+        start_backup_db(app)
 
     try:
         from database import get_all_users

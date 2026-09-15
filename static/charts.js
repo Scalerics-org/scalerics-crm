@@ -352,6 +352,7 @@
 
     var max = valores.length ? Math.max.apply(null, valores) : 0;
     var cortes = SC.ticks(0, max || 1, 4);
+    x0 = SC.margenEjeY(cortes, opciones.formato);
     var ey = SC.escalaLineal([0, cortes[cortes.length - 1]], [y1, y0]);
     var paso = puntos.length > 1 ? (x1 - x0) / (puntos.length - 1) : 0;
     var ex = function (i) { return puntos.length > 1 ? x0 + i * paso : (x0 + x1) / 2; };
@@ -373,7 +374,8 @@
     var cada = Math.max(1, Math.ceil(puntos.length / 8));
     piezas.push('<g class="sc-eje-x">' + puntos.map(function (p, i) {
       if (i % cada) return '';
-      return '<text x="' + ex(i).toFixed(1) + '" y="' + (alto - 8) +
+      return '<text x="' + SC.centroQueEntra(ex(i), p.x, 10, ancho).toFixed(1) +
+             '" y="' + (alto - 8) +
              '" text-anchor="middle" font-size="10" fill="' + mudo + '">' +
              SC.esc(p.x) + '</text>';
     }).join('') + '</g>');
@@ -564,13 +566,30 @@
     // El eje X son todas las semanas que aparecen en cualquier serie, en orden.
     // Si cada serie usara su propio eje, dos campanas con semanas distintas
     // quedarian desalineadas y la comparacion mentiria.
-    var equis = [];
+    //
+    // El orden sale de `p.orden` (una fecha ISO, por ejemplo) y no del texto
+    // del rotulo. Con `equis.sort()` sobre el rotulo, "Semana 10" y "Semana 11"
+    // quedaban entre "Semana 1" y "Semana 2": las lineas se dibujaban yendo y
+    // viniendo, y un acumulado —que nunca baja— parecia bajar. Paso cuando los
+    // rotulos dejaron de ser "2026-W31", que si se ordenaba bien como texto.
+    // Sin `orden`, se respeta el orden en que vienen los puntos.
+    var equis = [], ordenDe = {};
     conDatos.forEach(function (s) {
       (s.puntos || []).forEach(function (p) {
-        if (equis.indexOf(p.x) === -1) equis.push(p.x);
+        if (equis.indexOf(p.x) === -1) {
+          equis.push(p.x);
+          ordenDe[p.x] = p.orden;
+        }
       });
     });
-    equis.sort();
+    var conOrden = equis.every(function (x) {
+      return ordenDe[x] !== undefined && ordenDe[x] !== null;
+    });
+    if (conOrden) {
+      equis.sort(function (a, b) {
+        return ordenDe[a] < ordenDe[b] ? -1 : ordenDe[a] > ordenDe[b] ? 1 : 0;
+      });
+    }
 
     var valores = [];
     conDatos.forEach(function (s) {
@@ -588,6 +607,7 @@
 
     var max = valores.length ? Math.max.apply(null, valores) : 0;
     var cortes = SC.ticks(0, max || 1, 4);
+    x0 = SC.margenEjeY(cortes, opciones.formato);
     var ey = SC.escalaLineal([0, cortes[cortes.length - 1]], [y1, y0]);
     var paso = equis.length > 1 ? (x1 - x0) / (equis.length - 1) : 0;
     var ex = function (i) {
@@ -609,7 +629,8 @@
     var cada = Math.max(1, Math.ceil(equis.length / 8));
     piezas.push('<g class="sc-eje-x">' + equis.map(function (x, i) {
       if (i % cada) return '';
-      return '<text x="' + ex(i).toFixed(1) + '" y="' + (alto - 8) +
+      return '<text x="' + SC.centroQueEntra(ex(i), x, 10, ancho).toFixed(1) +
+             '" y="' + (alto - 8) +
              '" text-anchor="middle" font-size="10" fill="' + mudo + '">' +
              SC.esc(x) + '</text>';
     }).join('') + '</g>');
@@ -622,6 +643,9 @@
         '" stroke-width="1.5" stroke-dasharray="6 4"/>' +
         '<text x="' + x1 + '" y="' + (yRef - 5).toFixed(1) +
         '" text-anchor="end" font-size="9.5" font-weight="600" fill="' + mudo +
+        // Un contorno del color del fondo: el rotulo cae encima de las barras
+        // de la derecha y, sin esto, gris sobre azul no se lee.
+        '" stroke="' + fondo + '" stroke-width="3" paint-order="stroke' +
         '">' + SC.esc(ref.etiqueta || 'histórico') + ' ' +
         SC.esc(SC.fmt(refValor, opciones.formato)) + '</text>');
     }
@@ -928,8 +952,16 @@
     var positivo = SC.PALETA.mal[tema];     // falta plata: es la mala noticia
     var negativo = SC.PALETA.bien[tema];
 
-    var anchoEtiqueta = 92;
-    var anchoValor = 96;
+    // Los dos margenes salen del texto mas largo y no de una constante. Con 92
+    // fijos, "Septiembre 2026" se salia del viewBox por la izquierda y Juan
+    // leia "eptiembre 2026". El piso es el ancho de antes: con nombres cortos
+    // el grafico queda igual.
+    var anchoEtiqueta = Math.max(92, Math.ceil(Math.max.apply(null,
+      vivas.map(function (f) { return SC.anchoTexto(f.etiqueta, 11); }))) + 18);
+    var anchoValor = Math.max(96, Math.ceil(Math.max.apply(null,
+      vivas.map(function (f) {
+        return SC.anchoTexto(SC.fmt(f.valor, opciones.formato), 11);
+      }))) + 18);
     var ancho = opciones.ancho || 900;
     var altoFila = 30;
     var alto = vivas.length * altoFila + 26;
@@ -993,7 +1025,9 @@
     var grilla = SC.PALETA.grilla[tema];
     var base = SC.PALETA[tema][0];          // el azul de marca, como unico tono
 
-    var anchoEtiqueta = 46;
+    // Del rotulo de fila mas largo, con el ancho de antes como piso.
+    var anchoEtiqueta = Math.max(46, Math.ceil(Math.max.apply(null,
+      filas.map(function (f) { return SC.anchoTexto(f.etiqueta, 10); }))) + 12);
     var lado = opciones.lado || 36;
     var ancho = anchoEtiqueta + columnas.length * lado + 8;
     var alto = 24 + filas.length * lado + 8;
@@ -1105,10 +1139,7 @@
     // El margen izquierdo sale de la etiqueta mas larga del eje y no de una
     // constante: con un margen fijo, "1.234,56" se sale del viewBox por la
     // izquierda y el numero aparece cortado.
-    var largoY = Math.max.apply(null, cortes.map(function (t) {
-      return SC.fmt(t, opciones.formato).length;
-    }));
-    var x0 = Math.max(_M.izquierda, largoY * 6 + 14);
+    var x0 = SC.margenEjeY(cortes, opciones.formato);
     var x1 = ancho - _M.derecha;
     var ey = SC.escalaLineal([0, cortes[cortes.length - 1]], [y1, y0]);
 
@@ -1177,7 +1208,8 @@
       });
 
       if (i % cadaCuantos === 0) {
-        piezas.push('<text x="' + centro.toFixed(1) + '" y="' + (alto - 10) +
+        var xRotulo = SC.centroQueEntra(centro, p.etiqueta, 10, ancho);
+        piezas.push('<text x="' + xRotulo.toFixed(1) + '" y="' + (alto - 10) +
                     '" text-anchor="middle" font-size="10" fill="' + mudo + '">' +
                     SC.esc(p.etiqueta) + '</text>');
       }
@@ -1199,6 +1231,9 @@
         '" stroke-width="1.5" stroke-dasharray="6 4"/>' +
         '<text x="' + x1 + '" y="' + (yRef - 5).toFixed(1) +
         '" text-anchor="end" font-size="9.5" font-weight="600" fill="' + mudo +
+        // Un contorno del color del fondo: el rotulo cae encima de las barras
+        // de la derecha y, sin esto, gris sobre azul no se lee.
+        '" stroke="' + fondo + '" stroke-width="3" paint-order="stroke' +
         '">' + SC.esc(ref.etiqueta || 'histórico') + ' ' +
         SC.esc(SC.fmt(refValor, opciones.formato)) + '</text>');
     }
@@ -1267,6 +1302,132 @@
                     (f.nota ? '<span class="sc-barra-nota">' + SC.esc(f.nota) +
                      '</span>' : '') + '</span></div>';
            }).join('') + '</div></div>';
+  };
+
+  // ── Dona ─────────────────────────────────────────────────────────────────
+  //
+  // Como se reparten los leads entre las respuestas de UNA pregunta. Pedido de
+  // Juan para "Por lo que el lead declaro": graficos circulares y mas grandes.
+  //
+  // La dona dice cantidad. El otro dato —que parte de cada respuesta llego a
+  // una reunion— no entra en el angulo: va escrito en la leyenda, al lado de
+  // cada respuesta, con la muestra chica avisada con palabras.
+  //
+  // Sin texto encima de los colores: blanco sobre la paleta no llega a 4,5:1.
+  // Y la leyenda es texto con su color al lado, no solo color: la paleta tiene
+  // un aviso de daltonismo entre el azul y el violeta. Desde la sexta
+  // respuesta, y en "otros", el color es el gris neutro.
+  //
+  // porciones: [{etiqueta, n, tasa (0..1 o null), muestraChica}]
+  SC.dona = function (porciones, opciones, tema) {
+    opciones = opciones || {};
+    var vivas = (porciones || []).filter(function (p) {
+      return p && typeof p.n === 'number' && isFinite(p.n) && p.n > 0;
+    });
+    var total = vivas.reduce(function (a, p) { return a + p.n; }, 0);
+    if (!total) {
+      return '<div class="sc-vacio">Sin datos para «' +
+             SC.esc(opciones.etiqueta || '') + '»</div>';
+    }
+
+    var hues = SC.PALETA[tema] || SC.PALETA.oscuro;
+    var gris = SC.PALETA.neutro[tema] || SC.PALETA.neutro.oscuro;
+    var tinta = SC.PALETA.tinta[tema];
+    var mudo = SC.PALETA.mudo[tema];
+    var fondo = SC.PALETA.fondo[tema];
+
+    var lado = 220, c = lado / 2, rExt = 104, rInt = 64;
+    function punto(r, a) {
+      return (c + r * Math.cos(a)).toFixed(2) + ' ' + (c + r * Math.sin(a)).toFixed(2);
+    }
+
+    var piezas = [], leyenda = [];
+    var desde = -Math.PI / 2;               // arranca a las doce
+    vivas.forEach(function (p, i) {
+      var otros = String(p.etiqueta).indexOf('otros (') === 0;
+      var color = (otros || i >= hues.length) ? gris : hues[i];
+      var parte = p.n / total;
+      var hasta = desde + parte * 2 * Math.PI;
+      var titulo = '<title>' + SC.esc(p.etiqueta) + ': ' + p.n + '</title>';
+      var d;
+      if (vivas.length === 1) {
+        // Un arco de 360 grados no se puede dibujar: empieza y termina en el
+        // mismo punto y el SVG no pinta nada. Dos circulos con evenodd.
+        d = 'M ' + (c - rExt) + ' ' + c + ' A ' + rExt + ' ' + rExt + ' 0 1 0 ' +
+            (c + rExt) + ' ' + c + ' A ' + rExt + ' ' + rExt + ' 0 1 0 ' +
+            (c - rExt) + ' ' + c + ' Z M ' + (c - rInt) + ' ' + c + ' A ' + rInt +
+            ' ' + rInt + ' 0 1 0 ' + (c + rInt) + ' ' + c + ' A ' + rInt + ' ' +
+            rInt + ' 0 1 0 ' + (c - rInt) + ' ' + c + ' Z';
+      } else {
+        var grande = parte > 0.5 ? 1 : 0;
+        d = 'M ' + punto(rExt, desde) + ' A ' + rExt + ' ' + rExt + ' 0 ' + grande +
+            ' 1 ' + punto(rExt, hasta) + ' L ' + punto(rInt, hasta) + ' A ' + rInt +
+            ' ' + rInt + ' 0 ' + grande + ' 0 ' + punto(rInt, desde) + ' Z';
+      }
+      piezas.push('<path d="' + d + '" fill="' + color + '" fill-rule="evenodd" ' +
+                  'stroke="' + fondo + '" stroke-width="2" data-grados="' +
+                  (parte * 360).toFixed(4) + '">' + titulo + '</path>');
+      desde = hasta;
+
+      var tasa = (p.tasa === null || p.tasa === undefined || !isFinite(p.tasa))
+        ? 'sin datos de reunión'
+        : SC.fmt(p.tasa, 'porcentaje') + ' llegó a reunión' +
+          (p.muestraChica ? ' · sobre ' + SC.fmt(p.n, 'numero') + ' · muestra chica' : '');
+      leyenda.push('<li class="sc-dona-item"><span class="sc-leyenda-punto" ' +
+                   'style="background:' + color + '"></span><span>' +
+                   '<b>' + SC.esc(p.etiqueta) + '</b> · ' + SC.fmt(p.n, 'numero') +
+                   (p.n === 1 ? ' lead' : ' leads') + ' · ' +
+                   SC.fmt(parte, 'porcentaje') + ' del total' +
+                   '<span class="sc-dona-tasa">' + SC.esc(tasa) + '</span></span></li>');
+    });
+
+    piezas.push('<text x="' + c + '" y="' + (c + 4) + '" text-anchor="middle" ' +
+                'font-size="26" font-weight="700" fill="' + tinta + '">' +
+                SC.fmt(total, 'numero') + '</text>');
+    piezas.push('<text x="' + c + '" y="' + (c + 22) + '" text-anchor="middle" ' +
+                'font-size="11" fill="' + mudo + '">' +
+                (total === 1 ? 'lead' : 'leads') + '</text>');
+
+    return '<div class="sc-dona">' +
+           '<div class="sc-titulo" style="color:' + tinta + '">' +
+           SC.esc(opciones.etiqueta || '') + '</div>' +
+           (opciones.ayuda
+             ? '<div class="sc-barras-ayuda" style="color:' + mudo + '">' +
+               SC.esc(opciones.ayuda) + '</div>'
+             : '') +
+           '<div class="sc-dona-cuerpo">' +
+           '<svg class="sc-dona-svg" viewBox="0 0 ' + lado + ' ' + lado + '" ' +
+           'role="img" aria-label="' + SC.esc(opciones.etiqueta || '') + '">' +
+           piezas.join('') + '</svg>' +
+           '<ul class="sc-dona-leyenda">' + leyenda.join('') + '</ul>' +
+           '</div></div>';
+  };
+
+  // Cuanto mide un texto en el SVG, estimado. No hay DOM para medirlo, asi que
+  // va por caracteres: 0,62 del tamano de letra por caracter cubre las
+  // mayusculas y los numeros de Inter con margen. Estimar de mas deja un poco
+  // de aire; estimar de menos corta el texto, que es el bug que esto evita.
+  SC.anchoTexto = function (texto, tamano) {
+    var t = String(texto === null || texto === undefined ? '' : texto);
+    return t.length * tamano * 0.62;
+  };
+
+  // El centro de un rotulo con text-anchor="middle", corrido lo justo para que
+  // no se salga del viewBox. Sin esto el ultimo mes de un eje X largo se corta
+  // por la derecha.
+  SC.centroQueEntra = function (centro, texto, tamano, ancho) {
+    var mitad = SC.anchoTexto(texto, tamano) / 2;
+    if (mitad * 2 >= ancho) return ancho / 2;
+    return Math.min(Math.max(centro, mitad), ancho - mitad);
+  };
+
+  // El margen izquierdo de un eje Y, a partir del rotulo mas largo. Con un
+  // margen fijo, "12.345,00" se sale por la izquierda.
+  SC.margenEjeY = function (cortes, formato) {
+    var largo = Math.max.apply(null, cortes.map(function (t) {
+      return SC.anchoTexto(SC.fmt(t, formato), 10);
+    }));
+    return Math.max(_M.izquierda, Math.ceil(largo) + 14);
   };
 
   SC.recortar = function (texto, tope) {

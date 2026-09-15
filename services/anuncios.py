@@ -429,6 +429,233 @@ def anuncios_en_curso(db_path: str, desde: str, hasta: str, hoy=None) -> list:
     return salida
 
 
+_NOMBRES_MES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio",
+                "Agosto", "Setiembre", "Octubre", "Noviembre", "Diciembre"]
+
+
+def limites_del_mes(mes: str) -> tuple:
+    """('2026-02-01', '2026-02-28') para '2026-02'. Sin saber cuantos dias tiene."""
+    import calendar
+
+    y, m = (int(x) for x in mes.split("-"))
+    return (f"{y:04d}-{m:02d}-01",
+            f"{y:04d}-{m:02d}-{calendar.monthrange(y, m)[1]:02d}")
+
+
+def piezas_del_mes(db_path: str, mes: str, hoy=None) -> dict:
+    """Las piezas que tuvieron actividad en UN mes, con los numeros de ESE mes.
+
+    Pedido de Juan, textual: "quiero ir mes por mes, y que en cada mes me
+    aparezcan las que estuvieron activas, que metricas dieron, y las que no
+    estan mas activas y que metricas tuvieron, pero solo de ese mes, sino me
+    aparecen 300 y no se entiende nada".
+
+    **Actividad es gasto O impresiones en el mes.** Una pieza que se mostro sin
+    cobrar (pasa con los primeros dias de un anuncio) igual estuvo al aire. Una
+    pieza sin nada en el mes no aparece en ese mes, este prendida hoy o no.
+
+    **Todos los numeros son del mes y nada mas, sin excepciones.** Hasta el
+    14/9 cada tarjeta activa traia la recomendacion de `anuncios_en_curso`, que
+    mira toda la vida del anuncio y el CTR de los ultimos 7 dias contados desde
+    HOY. Juan, entrando a mayo: "me aparece la pauta de agosto [...] que cuando
+    entre a mayo me muestre lo que fue su costo por lead en mayo, no en
+    setiembre". El rotulo que lo aclaraba no alcanzo: un numero en la tarjeta se
+    lee como del mes. Se saco la recomendacion de la seccion. No se la
+    recalculo con el mes porque sus umbrales estan calibrados contra la vida
+    del anuncio en la cuenta real, y reglas nuevas sin correrlas contra
+    produccion son justo el error que G ya pago una vez. Sigue en el dossier.
+
+    **Dos leads, rotulados aparte y nunca sumados.** `leads` es lo que Meta le
+    atribuye a la pieza en los dias del mes (con eso se calcula el costo por
+    lead: la plata tambien es de Meta). `leads_crm` son las personas que
+    entraron al CRM en el mes con el `meta_ad_id` de la pieza. Hacen falta los
+    dos: Meta cuenta el lead el dia de la impresion y puede contar formularios
+    que nunca llegaron; el CRM cuenta gente de verdad pero solo sabe la pieza
+    de los leads que Meta mando con `ad_id`. Si ningun lead del mes trae la
+    pieza (los viejos no la tienen), `leads_crm` es None y no 0: un cero diria
+    "no trajo a nadie" cuando lo que falta es el dato. Los del CRM son
+    envios de formulario (database.ENVIOS_META_SQL: quien vuelve a escribir
+    cuenta tambien en el mes de la vuelta), por su dia en hora de Montevideo.
+
+    **Un mes sin piezas dice por que.** `estado_datos` separa "no se pauto"
+    (`sin_pauta`) de "no hay datos por pieza guardados" (`sin_datos_por_pieza`):
+    el mes es anterior al primer dia sincronizado, o Meta registra gasto por
+    campana en ese mes y por pieza no hay nada. Confundirlos le dice a Juan que
+    un mes con pauta no tuvo pauta.
+
+    **Se parte en dos por el estado de HOY**, no por si estaba prendida en ese
+    mes: Meta no guarda la historia del estado, solo el actual. "Activas hoy" y
+    "Ya no estan activas" es lo que se puede afirmar sin inventar.
+
+    Sale de `meta_ad_insights` con LEFT JOIN a `meta_ads`: si un anuncio tiene
+    gasto pero su ficha no se pudo traer, su plata igual cuenta en el mes. Y no
+    se suma con `meta_insights` (es la misma plata vista por campana): solo se
+    lee aparte, para avisar si las dos no cuadran.
+    """
+    from datetime import date
+
+    hoy = hoy or date.today().isoformat()
+    desde, hasta = limites_del_mes(mes)
+
+    conn = _connect(db_path)
+    try:
+        filas = conn.execute("""
+            SELECT i.ad_id, a.ad_name, a.object_type, a.titulo,
+                   a.imagen_archivo, a.effective_status,
+                   SUM(i.spend)       AS gasto,
+                   SUM(i.impressions) AS impresiones,
+                   SUM(i.clicks)      AS clics,
+                   SUM(i.leads)       AS leads,
+                   MAX(i.currency)    AS moneda,
+                   MIN(CASE WHEN i.spend > 0 OR i.impressions > 0
+                            THEN i.date END) AS primer_dia,
+                   MAX(CASE WHEN i.spend > 0 OR i.impressions > 0
+                            THEN i.date END) AS ultimo_dia
+              FROM meta_ad_insights i
+              LEFT JOIN meta_ads a ON a.ad_id = i.ad_id
+             WHERE i.date BETWEEN ? AND ?
+             GROUP BY i.ad_id
+            HAVING SUM(i.spend) > 0 OR SUM(i.impressions) > 0
+             ORDER BY SUM(i.spend) DESC, SUM(i.impressions) DESC
+        """, (desde, hasta)).fetchall()
+        cuenta = conn.execute(
+            "SELECT COUNT(*) AS n, SUM(spend) AS gasto FROM meta_insights "
+            "WHERE date BETWEEN ? AND ?", (desde, hasta)).fetchone()
+        extremos = conn.execute(
+            "SELECT MIN(date) AS primero FROM meta_ad_insights "
+            "WHERE spend > 0 OR impressions > 0").fetchone()
+        # Los leads de Meta que entraron al CRM en el mes, con la pieza que
+        # dijo Meta. `meta_ad_id` vacio es "no se sabe", no "ninguna".
+        from database import ENVIOS_META_SQL
+        crm = conn.execute(
+            "SELECT NULLIF(meta_ad_id, '') AS ad_id, COUNT(*) AS n "
+            f"FROM ({ENVIOS_META_SQL}) WHERE source = 'meta' "
+            "AND substr(fecha_local, 1, 10) BETWEEN ? AND ? "
+            "GROUP BY NULLIF(meta_ad_id, '')", (desde, hasta)).fetchall()
+        # Y cuantos de esos se sentaron a hablar. Es el numero que ordena
+        # distinto que el costo por lead: contra los datos reales, dos piezas
+        # que traian leads a 15 y a 19 daban reuniones a 50 y a 127.
+        #
+        # Del mes, como todo lo demas de esta seccion: se cuenta el lead que
+        # ENTRO en el mes y alguna vez llego a demo. La demo puede ser
+        # posterior —una reunion de un lead de mayo se hace en junio— y por eso
+        # no se filtra la fecha del evento: se le acredita a la pieza que lo
+        # trajo, que es de quien se esta hablando.
+        demos = conn.execute(
+            "SELECT NULLIF(v.meta_ad_id, '') AS ad_id, COUNT(*) AS n "
+            f"FROM ({ENVIOS_META_SQL}) v WHERE v.source = 'meta' "
+            "AND v.primero = 1 "
+            "AND substr(v.fecha_local, 1, 10) BETWEEN ? AND ? "
+            "AND EXISTS (SELECT 1 FROM lead_events e WHERE e.lead_id = v.id "
+            "  AND e.new_status IN ('demo_1','demo_2','demo_3',"
+            "      'presupuesto_enviado','follow_up_1','follow_up_2',"
+            "      'acepto','cerrado','en_desarrollo','finalizado')) "
+            "GROUP BY NULLIF(v.meta_ad_id, '')", (desde, hasta)).fetchall()
+    finally:
+        conn.close()
+
+    crm_por_pieza = {c["ad_id"]: int(c["n"]) for c in crm if c["ad_id"]}
+    demos_por_pieza = {d["ad_id"]: int(d["n"]) for d in demos if d["ad_id"]}
+    leads_crm_mes = sum(int(c["n"]) for c in crm)
+    # Sin un solo lead del mes con pieza, contar 0 por tarjeta seria mentir.
+    hay_pieza_en_crm = bool(crm_por_pieza)
+
+    activas, inactivas = [], []
+    for f in filas:
+        gasto = round(float(f["gasto"] or 0), 2)
+        leads = int(f["leads"] or 0)
+        impresiones = int(f["impresiones"] or 0)
+        clics = int(f["clics"] or 0)
+        corriendo = f["effective_status"] == ESTADO_EN_CURSO
+        pieza = {
+            "ad_id": f["ad_id"],
+            "nombre": f["ad_name"],
+            "tipo": f["object_type"],
+            "titulo": f["titulo"],
+            "tiene_imagen": bool(f["imagen_archivo"]),
+            "corriendo": corriendo,
+            "moneda": f["moneda"],
+            "gasto": gasto,
+            "impresiones": impresiones,
+            "clics": clics,
+            "leads": leads,
+            "cpl": _costo(gasto, leads),
+            "ctr": _tasa(clics, impresiones),
+            "primer_dia": f["primer_dia"],
+            "ultimo_dia": f["ultimo_dia"],
+            # Personas que entraron al CRM en el mes por esta pieza.
+            "leads_crm": (crm_por_pieza.get(f["ad_id"], 0)
+                          if hay_pieza_en_crm else None),
+            # Y cuantas se sentaron a hablar. Va con el mismo None que
+            # `leads_crm`: sin una sola pieza conocida en el mes, un cero
+            # diria "no trajo a nadie" cuando lo que falta es el dato.
+            "demos": (demos_por_pieza.get(f["ad_id"], 0)
+                      if hay_pieza_en_crm else None),
+            "costo_demo": (_costo(gasto, demos_por_pieza.get(f["ad_id"], 0))
+                           if hay_pieza_en_crm else None),
+        }
+        (activas if corriendo else inactivas).append(pieza)
+
+    todas = activas + inactivas
+    gasto = round(sum(p["gasto"] for p in todas), 2)
+    leads = sum(p["leads"] for p in todas)
+    impresiones = sum(p["impresiones"] for p in todas)
+    clics = sum(p["clics"] for p in todas)
+    en_tarjetas = sum(p["leads_crm"] or 0 for p in todas)
+    gasto_pauta = (round(float(cuenta["gasto"] or 0), 2)
+                   if cuenta["n"] else None)
+    primero = extremos["primero"]
+
+    if not primero:
+        estado = "nada_sincronizado"
+    elif todas:
+        estado = "con_piezas"
+    elif hasta < primero or (gasto_pauta or 0) > 0:
+        estado = "sin_datos_por_pieza"
+    else:
+        estado = "sin_pauta"
+
+    y, m = (int(x) for x in mes.split("-"))
+    return {
+        "mes": mes,
+        "nombre": f"{_NOMBRES_MES[m - 1]} {y}",
+        "desde": desde,
+        "hasta": hasta,
+        "mes_actual": hoy[:7],
+        # Desde cuando hay datos por pieza. Ya NO frena la flecha: el panel
+        # va al mes pedido y, si es anterior, lo dice.
+        "primer_mes": primero[:7] if primero else None,
+        "primer_dia": primero,
+        "estado_datos": estado,
+        # El mes arranca antes del primer dia guardado: lo de antes falta.
+        "datos_desde": primero if primero and desde < primero <= hasta else None,
+        "activas": activas,
+        "inactivas": inactivas,
+        "totales": {
+            "piezas": len(todas),
+            "activas": len(activas),
+            "inactivas": len(inactivas),
+            "gasto": gasto,
+            "leads": leads,
+            "impresiones": impresiones,
+            "clics": clics,
+            "cpl": _costo(gasto, leads),
+            "ctr": _tasa(clics, impresiones),
+            "moneda": todas[0]["moneda"] if todas else None,
+            # Del CRM, aparte. `leads_crm_sin_pieza` son los del mes que no se
+            # pueden poner en ninguna tarjeta: sin `ad_id`, o de una pieza que
+            # en el mes no tuvo actividad.
+            "leads_crm": leads_crm_mes,
+            "leads_crm_sin_pieza": leads_crm_mes - en_tarjetas,
+        },
+        # Lo que Meta dice que se gasto en el mes mirado por campana. Si no
+        # cuadra con la suma de las piezas, falta sincronizar algun anuncio y
+        # el panel lo avisa en vez de mostrar dos numeros distintos sin decir
+        # por que. None cuando esa tabla no tiene nada del mes.
+        "gasto_pauta": gasto_pauta,
+    }
+
+
 def resumen_en_curso(db_path: str, desde: str, hasta: str) -> dict:
     """El encabezado de la seccion, con las cuentas separadas.
 
