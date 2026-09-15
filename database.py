@@ -1264,6 +1264,41 @@ def init_db(db_path: str) -> None:
         _add_column(conn, "businesses", "monto_pagado", "REAL")
         _add_column(conn, "businesses", "moneda_pagado", "TEXT")
 
+        # Semaforo marcado a mano desde Meta Ads (ver
+        # services/planilla_semaforo.marcar_color). El color en si NO se guarda
+        # aca: sale de `crm_status`, igual que cuando lo trae la planilla.
+        # `semaforo_origen` dice quien lo puso por ultima vez ('crm' o
+        # 'planilla'), `semaforo_at` cuando, y `semaforo_planilla` el ultimo
+        # estado que trajo la planilla para ese lead: es lo que permite saber si
+        # la planilla se repinto despues de la marca a mano o si sigue diciendo
+        # lo mismo de antes.
+        _add_column(conn, "businesses", "semaforo_origen", "TEXT")
+        _add_column(conn, "businesses", "semaforo_at", "TEXT")
+        _add_column(conn, "businesses", "semaforo_planilla", "TEXT")
+
+        # Cada formulario de Meta enviado, por separado. Una ficha puede tener
+        # varios: la persona que vuelve a escribir meses despues cuenta tambien
+        # en el mes de la vuelta, como la cuenta Meta. `meta_lead_id` es el
+        # leadgen id de Meta y hace idempotente el registro (webhook que
+        # reintenta, import diario que repasa todo). `created_time` va en UTC
+        # con el formato de la casa ('AAAA-MM-DD HH:MM:SS'), igual que scraped_at.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS meta_lead_envios (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                business_id     INTEGER NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+                meta_lead_id    TEXT NOT NULL UNIQUE,
+                created_time    TEXT NOT NULL,
+                form_data       TEXT,
+                campaign_id     TEXT,
+                campaign_name   TEXT,
+                ad_id           TEXT,
+                ad_name         TEXT,
+                created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_meta_lead_envios_business "
+                     "ON meta_lead_envios(business_id)")
+
         # Registro historico de demos dadas. NO es la tabla `demos`, que guarda la
         # pagina que genera la IA: esto es el evento comercial de haber mostrado
         # una demo, con quien la dio y como viene. Por eso admite varias por
@@ -1698,6 +1733,7 @@ def delete_business(db_path: str, business_id: int) -> None:
         conn.execute("DELETE FROM demos_realizadas WHERE client_id = ?", (business_id,))
         conn.execute("DELETE FROM seg_llamados WHERE lead_id = ?", (business_id,))
         conn.execute("DELETE FROM seg_recordatorios WHERE lead_id = ?", (business_id,))
+        conn.execute("DELETE FROM meta_lead_envios WHERE business_id = ?", (business_id,))
         conn.execute("DELETE FROM businesses WHERE id = ?", (business_id,))
         conn.commit()
     finally:
@@ -1727,6 +1763,7 @@ def merge_business(db_path: str, source_id: int, target_id: int) -> None:
             ("lead_attachments", "lead_id"),
             ("lead_events",      "lead_id"),
             ("call_logs",        "lead_id"),
+            ("meta_lead_envios", "business_id"),
         ]:
             conn.execute(
                 f"UPDATE {table} SET {col} = ? WHERE {col} = ?",
@@ -2565,6 +2602,149 @@ def seed_pitch_templates(db_path: str) -> None:
         logger.info(f"Seeded {len(templates)} pitch templates")
     finally:
         conn.close()
+
+
+# ─── Envios de formulario de Meta ─────────────────────────────────────────────
+# Pedido de Juan (15/9): "Como Meta: si alguien vuelve a llenar el formulario,
+# cuenta tambien en ese mes, marcado como 'volvio a escribir'". Adrian Zabaleta
+# lleno el formulario en agosto y otra vez el 8/9; Meta conto 11 leads en
+# setiembre y el CRM 10, porque la ficha es una sola y se contaba por su
+# `scraped_at`.
+#
+# La regla, en un solo lugar (ENVIOS_META_SQL): los envios de una ficha de Meta
+# son los registrados en `meta_lead_envios` MAS su `scraped_at`, salvo que ya
+# haya un envio registrado en ese mismo minuto. Asi una ficha vieja sin envios
+# sigue contando en su mes de siempre, y el import que rellena la tabla no
+# duplica el primer envio (que es el mismo `created_time` que `scraped_at`).
+
+def norm_created_time(valor) -> str | None:
+    """El `created_time` de Graph ('2026-09-08T14:03:11+0000') en UTC con el
+    formato de la casa, o None si no se puede leer."""
+    from datetime import datetime, timezone
+
+    texto = str(valor or "").strip()
+    if not texto:
+        return None
+    try:
+        return (datetime.fromisoformat(texto.replace("+0000", ""))
+                .replace(tzinfo=timezone.utc).strftime("%Y-%m-%d %H:%M:%S"))
+    except ValueError:
+        return None
+
+
+_MINUTO_SQL = "substr(replace({}, 'T', ' '), 1, 16)"
+
+# Una fila por envio de formulario de un lead de Meta, con las columnas que
+# leen los contadores (mismos nombres que en `businesses`, asi las consultas
+# cambian el FROM y nada mas):
+#   scraped_at   fecha del envio en UTC, tal como se guardo
+#   fecha_local  la misma en hora de Montevideo (UTC-3 fijo desde 2015); una
+#                fecha sin hora queda tal cual, correrla la mandaria al dia antes
+#   primero      1 en el primer envio de la persona: las etapas (demo, venta,
+#                ingresos) se atribuyen ahi, una sola vez, como siempre
+#   registrado   1 si viene de meta_lead_envios, 0 si es el scraped_at de la ficha
+def _sql_envios_meta(detalle: bool) -> str:
+    # Sin detalle solo se leen id, source y scraped_at de la ficha: es la
+    # version para contar por fecha y hora, que no tiene por que tocar el
+    # form_data de nadie (ver tests/test_leads_semana.py).
+    extra_ficha = (", b.form_data, b.meta_campaign_name, b.meta_campaign_id, b.meta_ad_id"
+                   if detalle else "")
+    extra_envio = (", COALESCE(e.form_data, b.form_data), "
+                   "COALESCE(NULLIF(e.campaign_name, ''), b.meta_campaign_name), "
+                   "COALESCE(NULLIF(e.campaign_id, ''), b.meta_campaign_id), "
+                   "COALESCE(NULLIF(e.ad_id, ''), b.meta_ad_id)" if detalle else "")
+    return f"""
+    SELECT v.*,
+           CASE WHEN instr(v.scraped_at, ':') > 0
+                THEN COALESCE(datetime(substr(replace(v.scraped_at, 'T', ' '), 1, 19), '-3 hours'),
+                              v.scraped_at)
+                ELSE v.scraped_at END AS fecha_local,
+           (ROW_NUMBER() OVER (PARTITION BY v.id
+                               ORDER BY substr(replace(v.scraped_at, 'T', ' '), 1, 19),
+                                        v.registrado)) = 1 AS primero
+      FROM (
+        SELECT b.id, b.source, b.scraped_at, 0 AS registrado{extra_ficha}
+          FROM businesses b
+         WHERE b.source = 'meta' AND b.scraped_at IS NOT NULL
+           AND NOT EXISTS (SELECT 1 FROM meta_lead_envios e
+                            WHERE e.business_id = b.id
+                              AND {_MINUTO_SQL.format('e.created_time')} = {_MINUTO_SQL.format('b.scraped_at')})
+        UNION ALL
+        SELECT b.id, b.source, e.created_time, 1{extra_envio}
+          FROM meta_lead_envios e JOIN businesses b ON b.id = e.business_id
+         WHERE b.source = 'meta'
+      ) v
+"""
+
+
+ENVIOS_META_SQL = _sql_envios_meta(detalle=True)
+ENVIOS_META_FECHAS_SQL = _sql_envios_meta(detalle=False)
+
+
+def envio_meta_registrado(db_path: str, meta_lead_id) -> bool:
+    if not meta_lead_id:
+        return False
+    conn = _connect(db_path)
+    try:
+        return conn.execute("SELECT 1 FROM meta_lead_envios WHERE meta_lead_id = ?",
+                            (str(meta_lead_id),)).fetchone() is not None
+    finally:
+        conn.close()
+
+
+def registrar_envio_meta(db_path: str, business_id: int, meta_lead_id, created_time,
+                         form_data=None, campaign_id=None, campaign_name=None,
+                         ad_id=None, ad_name=None) -> bool:
+    """Guarda un envio de formulario. True si era nuevo, False si ya estaba.
+
+    Idempotente por `meta_lead_id`: el webhook reintenta y el import diario
+    repasa todos los formularios cada dia.
+    """
+    ct = norm_created_time(created_time) if "T" in str(created_time or "") else created_time
+    if not meta_lead_id or not business_id or not ct:
+        return False
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO meta_lead_envios "
+            "(business_id, meta_lead_id, created_time, form_data, campaign_id, "
+            " campaign_name, ad_id, ad_name) VALUES (?,?,?,?,?,?,?,?)",
+            (business_id, str(meta_lead_id), ct, form_data, campaign_id or None,
+             campaign_name or None, ad_id or None, ad_name or None))
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def buscar_ficha_meta_por_mail(db_path: str, email) -> Optional[dict]:
+    """La ficha de Meta con ese mail, para un formulario que llega sin telefono."""
+    mail = (email or "").strip().lower()
+    if not mail:
+        return None
+    conn = _connect(db_path)
+    try:
+        fila = conn.execute(
+            "SELECT * FROM businesses WHERE source = 'meta' AND LOWER(TRIM(email)) = ? "
+            "ORDER BY id LIMIT 1", (mail,)).fetchone()
+        return dict(fila) if fila else None
+    finally:
+        conn.close()
+
+
+def envios_meta_por_lead(db_path: str) -> dict:
+    """{business_id: [scraped_at de cada envio, ordenados]} de los leads de Meta."""
+    conn = _connect(db_path)
+    try:
+        filas = conn.execute(
+            f"SELECT id, scraped_at FROM ({ENVIOS_META_SQL}) "
+            "ORDER BY id, substr(replace(scraped_at, 'T', ' '), 1, 19)").fetchall()
+    finally:
+        conn.close()
+    salida: dict = {}
+    for f in filas:
+        salida.setdefault(f["id"], []).append(f["scraped_at"])
+    return salida
 
 
 # ─── Lead events ──────────────────────────────────────────────────────────────

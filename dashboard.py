@@ -407,6 +407,9 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   --semaforo-celeste:#00ffff;
   --semaforo-violeta:#ff00ff;
   --semaforo-venta:#38761d;
+  --semaforo-rojo:#ff0000;
+  --semaforo-amarillo:#ffff00;
+  --semaforo-negro:#000000;
 }
 body.light{
   --fondo:#f8fafc;
@@ -441,6 +444,9 @@ body.light{
   --semaforo-celeste:#00ffff;
   --semaforo-violeta:#ff00ff;
   --semaforo-venta:#38761d;
+  --semaforo-rojo:#ff0000;
+  --semaforo-amarillo:#ffff00;
+  --semaforo-negro:#000000;
 }
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:100vh;display:flex}
@@ -671,6 +677,52 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
   .demo-meta{margin-left:0;width:100%}
   .demo-mes-presu{margin-left:0}
 }
+/* ── Meta Ads por mes y semaforo ─────────────────────────────────────────────
+   La lista de Meta Ads va de a un mes y cada lead se pinta con el color del
+   semaforo de la planilla: borde grueso del color pleno y un tinte suave de
+   fondo, mezclado con la superficie del tema para que el texto se siga leyendo
+   en claro y en oscuro. Los colores son los tokens --semaforo-*, los mismos del
+   Registro de demos. */
+.mm-nav-mes{display:flex;align-items:center;gap:6px}
+.mm-nav-mes span{font-size:.82rem;font-weight:700;color:var(--texto);min-width:130px;text-align:center}
+.mm-nav-mes .cal-nav-btn:disabled{opacity:.4;cursor:default;pointer-events:none}
+.mm-resumen{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;font-size:.8rem;color:var(--texto-tenue);margin:-2px 2px 12px}
+.mm-resumen-total{font-weight:700;color:var(--texto)}
+.mm-resumen-color{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.mm-buscar-todos{margin:-4px 2px 12px;font-size:.8rem;color:var(--texto-tenue)}
+.mm-link{background:none;border:none;padding:0;font:inherit;color:var(--azul-claro);cursor:pointer;text-decoration:underline}
+.mm-c-rojo{--mm-color:var(--semaforo-rojo)}
+.mm-c-amarillo{--mm-color:var(--semaforo-amarillo)}
+.mm-c-verde{--mm-color:var(--semaforo-verde)}
+.mm-c-celeste{--mm-color:var(--semaforo-celeste)}
+.mm-c-violeta{--mm-color:var(--semaforo-violeta)}
+.mm-c-venta{--mm-color:var(--semaforo-venta)}
+.mm-c-negro{--mm-color:var(--semaforo-negro)}
+.mm-c-sin{--mm-color:var(--borde-fuerte)}
+.mm-punto{display:inline-block;width:12px;height:12px;border-radius:50%;flex:none;background:var(--mm-color);box-shadow:0 0 0 1px var(--borde-fuerte)}
+.mm-c-sin .mm-punto,.mm-punto.mm-c-sin{background:var(--relleno);box-shadow:inset 0 0 0 2px var(--borde-fuerte)}
+#meta-body .table-row.mm-pintado{border-left:6px solid var(--mm-color);background:color-mix(in srgb,var(--mm-color) 14%,var(--superficie))}
+#meta-body .table-row.mm-pintado:hover{background:color-mix(in srgb,var(--mm-color) 22%,var(--superficie))}
+#meta-body .table-row.mm-c-negro{box-shadow:inset 0 0 0 1px var(--borde-fuerte)}
+.mm-sem-btn{display:inline-flex;align-items:center;gap:7px;background:var(--relleno);border:1px solid var(--borde-fuerte);color:var(--texto);border-radius:999px;padding:4px 11px 4px 6px;font-size:.74rem;font-weight:650;font-family:inherit;cursor:pointer;white-space:nowrap}
+.mm-sem-btn:hover,.mm-sem-btn.mm-abierto{border-color:var(--azul)}
+.mm-sem-btn .mm-punto{width:16px;height:16px}
+.mm-opciones{display:flex;flex-wrap:wrap;gap:8px;padding:12px;margin:-4px 0 10px;background:var(--superficie-alta);border:1px solid var(--borde-fuerte);border-radius:12px}
+.mm-opciones-titulo{flex-basis:100%;font-size:.76rem;color:var(--texto-tenue)}
+.mm-opcion{display:inline-flex;align-items:center;gap:9px;min-height:40px;padding:6px 14px 6px 8px;border-radius:999px;border:2px solid var(--mm-color);background:color-mix(in srgb,var(--mm-color) 16%,var(--superficie));color:var(--texto);font-size:.84rem;font-weight:650;font-family:inherit;cursor:pointer}
+.mm-opcion:hover{background:color-mix(in srgb,var(--mm-color) 28%,var(--superficie))}
+.mm-opcion .mm-punto{width:22px;height:22px}
+.mm-opcion.mm-actual{box-shadow:0 0 0 2px var(--azul)}
+.mm-opcion.mm-c-sin{background:var(--relleno)}
+.mm-vuelta{display:inline-block;margin-left:4px;font-size:.66rem;font-weight:700;padding:1px 7px;border-radius:99px;background:var(--azul-tinte);color:var(--azul-claro);white-space:nowrap}
+.mm-vuelta-primero{display:block;font-size:.68rem;color:var(--texto-debil);margin-top:2px}
+.mm-fecha{font-size:.72rem;color:var(--texto-debil)}
+@media (max-width:768px){
+  #meta-body .table-row.mm-pintado{border-left:6px solid var(--mm-color)!important;background:color-mix(in srgb,var(--mm-color) 14%,var(--superficie))!important}
+  .mm-opcion{min-height:44px;flex:1 1 45%}
+  .mm-nav-mes{width:100%;justify-content:space-between}
+}
+/* ── fin Meta Ads por mes */
 
 /* Tabla de clientes activos: grilla propia, no reusa .no-cb, porque sus reglas
    mobile esconden la 4a columna — que aca es Mantenimiento, no Notas. */
@@ -2211,15 +2263,20 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       </div>
     </div>
     <div class="filters">
+      <div class="mm-nav-mes" id="meta-mes-nav">
+        <button class="cal-nav-btn" id="meta-mes-ant" onclick="mmMes(-1)" title="Mes anterior">&larr;</button>
+        <span id="meta-mes-label"></span>
+        <button class="cal-nav-btn" id="meta-mes-sig" onclick="mmMes(1)" title="Mes siguiente">&rarr;</button>
+        <button class="cal-today-btn" onclick="mmMesHoy()">Este mes</button>
+      </div>
       <input class="search-box" id="meta-search-input" placeholder="🔍 Buscar..." oninput="metaSearch(this.value)">
-      <select class="filter-select" id="meta-month-filter" onchange="metaMonthFilter(this.value)">
-        <option value="">Todos los meses</option>
-      </select>
       <select class="filter-select" id="meta-estado-filter" onchange="metaEstadoFilter(this.value)">
         <option value="">Todos los estados</option>
       </select>
       <span id="meta-count" style="color:#64748b;font-size:.8rem;align-self:center;margin-left:auto"></span>
     </div>
+    <div class="mm-resumen" id="meta-mes-resumen"></div>
+    <div class="mm-buscar-todos" id="meta-mes-buscar-todos"></div>
     <div class="table-wrap">
       <div class="table-header no-cb" style="grid-template-columns:1.8fr 1fr 1.2fr 1.2fr 0.9fr 0.8fr 1.1fr">
         <span>Nombre / Negocio</span><span>Teléfono</span><span>Qué busca</span><span>Presupuesto</span><span>Ciudad</span><span style="cursor:pointer" onclick="toggleMetaSort()">Fecha <span id="meta-sort-icon">↓</span></span><span>Acciones</span>
@@ -3932,7 +3989,6 @@ function _reloadActiveCallPanel() {
 
 // ── Meta Ads panel ───────────────────────────────────────────────────────────
 let _metaSearch = '';
-let _metaMonth = '';
 let _metaEstado = '';
 let _metaLeads = [];
 let _metaSortDesc = true;
@@ -3956,8 +4012,6 @@ function _startMetaPoll() {
         badge.textContent = newOnes.length === 1 ? 'NEW' : `+${newOnes.length}`;
         badge.style.display = '';
         _metaLeads = leads;
-        _fillMetaMonths();
-        _fillMetaEstados();
         const activePanel = document.querySelector('.panel.active');
         if (activePanel && activePanel.id === 'meta-panel') {
           renderMetaTable();
@@ -3968,55 +4022,270 @@ function _startMetaPoll() {
     } catch(e) {}
   }, 60000);
 }
-function metaSearch(v) { _metaSearch = v.toLowerCase(); renderMetaTable(); }
-function metaMonthFilter(v) { _metaMonth = v; renderMetaTable(); }
+function metaSearch(v) {
+  _metaSearch = v.toLowerCase();
+  if (!_metaSearch) mmTodosLosMeses = false;
+  renderMetaTable();
+}
 // La cola fria excluye a los leads de Meta a proposito, asi que este es el
 // unico lugar donde se puede preguntar "a quien de Meta no llamo nadie".
 function metaEstadoFilter(v) { _metaEstado = v; renderMetaTable(); }
 
-// Clave 'YYYY-MM' del lead, o '' si no tiene fecha usable. Es la misma funcion
-// que usan el <select> y el filtro, para que no puedan discrepar: si una arma
-// la clave distinto que la otra, el mes queda en la lista y no filtra nada.
-function _metaMesKey(l) {
-  const d = new Date(l.scraped_at || 0);
-  return isNaN(d) || !l.scraped_at ? '' : `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+// -- Lista por mes (pedido de Juan, 15/9) -------------------------------------
+// "Que se haga una lista por meses, donde puedas ir deslizando por mes". El mes
+// de un lead es el de cada formulario que mando, en hora de Montevideo: quien
+// volvio a escribir aparece tambien en el mes de la vuelta, marcado. Todo se
+// recorta aca: el panel ya trae todos los leads de Meta (y el poll tambien).
+let mmMesVista = '';          // 'AAAA-MM'; vacio = el mes actual
+let mmTodosLosMeses = false;  // la busqueda mira todos los meses
+let mmAbierto = null;         // id del lead con las opciones de color abiertas
+let mmToque = null;           // donde apoyo el dedo, para deslizar
+let mmSwipeListo = false;
+let mmGuardando = false;
+// Los colores del semaforo en el orden del embudo. Mismas claves y nombres que
+// services/planilla_semaforo.SEMAFORO (un test los compara). El color de cada
+// uno sale del token --semaforo-* por la clase mm-c-<clave>.
+const MM_SEMAFORO = [
+  {clave: 'rojo', etiqueta: 'No atiende'},
+  {clave: 'amarillo', etiqueta: 'Interesado'},
+  {clave: 'verde', etiqueta: 'Demo agendada'},
+  {clave: 'celeste', etiqueta: 'Demo realizada'},
+  {clave: 'violeta', etiqueta: 'Hubo demo y no cerró'},
+  {clave: 'venta', etiqueta: 'Venta concretada'},
+  {clave: 'negro', etiqueta: 'No le interesa'},
+];
+const MM_MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio',
+                  'Agosto', 'Setiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+const MM_HORAS_UTC = 3 * 3600 * 1000;   // Uruguay: UTC-3 fijo desde 2015
+
+// 'AAAA-MM' en hora de Montevideo de una fecha UTC de la base. Por texto y
+// Date.UTC, nunca new Date(texto): el navegador la leeria en SU hora. Una fecha
+// sin hora queda en su mes (correrla la mandaria al dia anterior).
+function mmMesDe(fecha) {
+  const m = String(fecha || '').match(/^([0-9]{4})-([0-9]{2})-([0-9]{2})(?:[ T]([0-9]{2}):([0-9]{2}))?/);
+  if (!m) return '';
+  if (m[4] === undefined) return m[1] + '-' + m[2];
+  const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) - MM_HORAS_UTC);
+  return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0');
 }
 
-function _fillMetaEstados() {
+function mmMesActual(ahoraMs) {
+  const d = new Date((ahoraMs === undefined ? Date.now() : ahoraMs) - MM_HORAS_UTC);
+  return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0');
+}
+
+function mmMesSumar(mes, delta) {
+  const partes = String(mes).split('-');
+  const total = parseInt(partes[0], 10) * 12 + (parseInt(partes[1], 10) - 1) + delta;
+  return Math.floor(total / 12) + '-' + String(total % 12 + 1).padStart(2, '0');
+}
+
+function mmEtiquetaMes(clave) {
+  const partes = String(clave).split('-');
+  const mes = MM_MESES[parseInt(partes[1], 10) - 1];
+  return mes ? mes + ' ' + partes[0] : clave;
+}
+
+// Las fechas de cada formulario del lead (UTC). Sin el dato del servidor, la
+// fecha de la ficha: es lo que se contaba antes.
+function mmEnvios(b) {
+  if (b.envios && b.envios.length) return b.envios;
+  return b.scraped_at ? [b.scraped_at] : [];
+}
+
+function mmMesesDe(b) { return mmEnvios(b).map(mmMesDe).filter(Boolean); }
+
+function mmEnviosDelMes(b, mes) { return mmEnvios(b).filter(f => mmMesDe(f) === mes); }
+
+// Cada persona una sola vez por mes, aunque haya escrito dos veces ese mes.
+function mmDelMes(leads, mes) { return leads.filter(b => mmMesesDe(b).indexOf(mes) !== -1); }
+
+// Volvio a escribir: ya habia mandado un formulario en un mes anterior.
+function mmVolvio(b, mes) { return mmMesesDe(b).some(m => m < mes); }
+
+function mmPrimerEnvio(b) { return mmEnvios(b).slice().sort()[0] || ''; }
+
+function mmFechaCorta(fecha) {
+  const s = String(fecha || '');
+  return /^[0-9]{4}-[0-9]{2}-[0-9]{2}/.test(s) ? s.slice(8, 10) + '/' + s.slice(5, 7) + '/' + s.slice(0, 4) : s;
+}
+
+// La fecha que muestra la fila: la del formulario de ESE mes (el ultimo, si
+// fueron dos), o el ultimo de todos cuando se busca en todos los meses.
+function mmFechaDeFila(b, mes, todos) {
+  const e = (todos ? mmEnvios(b) : mmEnviosDelMes(b, mes)).slice().sort();
+  return e.length ? e[e.length - 1] : (b.scraped_at || '');
+}
+
+function mmMesMasViejo(leads) {
+  let viejo = '';
+  leads.forEach(b => mmMesesDe(b).forEach(m => { if (!viejo || m < viejo) viejo = m; }));
+  return viejo;
+}
+
+// Nunca al futuro; para atras, hasta el mes del lead mas viejo.
+function mmMesMover(mes, delta, masViejo, actual) {
+  let m = mmMesSumar(mes, delta);
+  if (m > actual) m = actual;
+  const piso = masViejo && masViejo < actual ? masViejo : actual;
+  if (m < piso) m = piso;
+  return m;
+}
+
+function mmMesVisible() { return mmMesVista || mmMesActual(); }
+
+// Total del mes y cuantos de cada color. `envios` cuenta formularios, como
+// Meta (el contador principal); `personas`, filas de la lista.
+function mmConteo(leads, mes) {
+  const por = {};
+  let envios = 0;
+  let sin = 0;
+  leads.forEach(b => {
+    envios += mes ? mmEnviosDelMes(b, mes).length : 1;
+    if (b.semaforo) por[b.semaforo] = (por[b.semaforo] || 0) + 1;
+    else sin += 1;
+  });
+  return {personas: leads.length, envios: envios, por: por, sin: sin};
+}
+
+function mmResumenHtml(leads, mes) {
+  const c = mmConteo(leads, mes);
+  const total = c.envios === c.personas
+    ? c.envios + (c.envios === 1 ? ' lead' : ' leads')
+    : c.envios + ' leads · ' + c.personas + ' personas';
+  const partes = MM_SEMAFORO.filter(s => c.por[s.clave]).map(s =>
+    `<span class="mm-resumen-color mm-c-${s.clave}"><span class="mm-punto"></span>${c.por[s.clave]} ${esc(s.etiqueta)}</span>`);
+  if (c.sin) partes.push(`<span class="mm-resumen-color mm-c-sin"><span class="mm-punto"></span>${c.sin} sin color</span>`);
+  return `<span class="mm-resumen-total">${esc(mmEtiquetaMes(mes))}: ${total}</span>` + partes.join('');
+}
+
+function mmPintarNavegador(mes) {
+  const label = document.getElementById('meta-mes-label');
+  if (label) label.textContent = mmEtiquetaMes(mes);
+  const viejo = mmMesMasViejo(_metaLeads);
+  const ant = document.getElementById('meta-mes-ant');
+  const sig = document.getElementById('meta-mes-sig');
+  if (ant) ant.disabled = !viejo || mes <= viejo;
+  if (sig) sig.disabled = mes >= mmMesActual();
+}
+
+function mmMes(delta) {
+  mmMesVista = mmMesMover(mmMesVisible(), delta, mmMesMasViejo(_metaLeads), mmMesActual());
+  mmAbierto = null;
+  renderMetaTable();
+}
+
+function mmMesHoy() { mmMesVista = ''; mmAbierto = null; renderMetaTable(); }
+
+function mmBuscarTodos(si) { mmTodosLosMeses = !!si; renderMetaTable(); }
+
+// Deslizar sobre la lista en el celular: a la izquierda, el mes siguiente; a la
+// derecha, el anterior. Solo un gesto franco (mas de 50px y mas horizontal que
+// vertical) cambia de mes: el scroll y los toques quedan como estaban, y los
+// listeners son pasivos, no frenan el scroll.
+function mmDireccionDeslizar(dx, dy) {
+  if (Math.abs(dx) <= 50 || Math.abs(dx) <= Math.abs(dy)) return 0;
+  return dx < 0 ? 1 : -1;
+}
+
+function mmToqueInicio(e) {
+  const t = e && e.touches && e.touches[0];
+  mmToque = t ? {x: t.clientX, y: t.clientY} : null;
+}
+
+function mmToqueFin(e) {
+  const t = e && e.changedTouches && e.changedTouches[0];
+  const inicio = mmToque;
+  mmToque = null;
+  if (!inicio || !t) return;
+  const dir = mmDireccionDeslizar(t.clientX - inicio.x, t.clientY - inicio.y);
+  if (dir) mmMes(dir);
+}
+
+function mmActivarDeslizar() {
+  if (mmSwipeListo) return;
+  const body = document.getElementById('meta-body');
+  if (!body || !body.addEventListener) return;
+  body.addEventListener('touchstart', mmToqueInicio, {passive: true});
+  body.addEventListener('touchend', mmToqueFin, {passive: true});
+  mmSwipeListo = true;
+}
+
+// -- Semaforo: tocar el color y elegir --------------------------------------
+function mmColorInfo(clave) { return MM_SEMAFORO.find(s => s.clave === clave) || null; }
+
+function mmBotonColor(b) {
+  const info = mmColorInfo(b.semaforo);
+  const clase = info ? 'mm-c-' + info.clave : 'mm-c-sin';
+  const abierto = mmAbierto === b.id ? ' mm-abierto' : '';
+  return `<button class="mm-sem-btn ${clase}${abierto}" onclick="mmAbrirColor(${b.id})" title="Marcar el color del semáforo"><span class="mm-punto"></span>${info ? esc(info.etiqueta) : 'Sin color'}</button>`;
+}
+
+function mmOpcionesHtml(b) {
+  const actual = b.semaforo || '';
+  const opciones = MM_SEMAFORO.map(s =>
+    `<button class="mm-opcion mm-c-${s.clave}${s.clave === actual ? ' mm-actual' : ''}" onclick="mmMarcarColor(${b.id}, '${s.clave}')"><span class="mm-punto"></span>${esc(s.etiqueta)}</button>`);
+  opciones.push(`<button class="mm-opcion mm-c-sin${actual ? '' : ' mm-actual'}" onclick="mmMarcarColor(${b.id}, 'sin_color')"><span class="mm-punto"></span>Sin color</button>`);
+  return `<div class="mm-opciones" id="meta-mes-opciones-${b.id}"><div class="mm-opciones-titulo">Color del semáforo para ${esc(b.name || 'este lead')}</div>${opciones.join('')}</div>`;
+}
+
+function mmAbrirColor(id) { mmAbierto = mmAbierto === id ? null : id; renderMetaTable(); }
+
+// Se guarda al tocar, sin boton Guardar, y la opcion se cierra.
+async function mmMarcarColor(id, clave) {
+  if (mmGuardando) return;
+  mmGuardando = true;
+  try {
+    const r = await fetch('/api/meta/leads/' + id + '/semaforo', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({color: clave, mes: mmMesVisible()}),
+    });
+    let d = {};
+    try { d = await r.json(); } catch (e) { d = {}; }
+    if (!r.ok || !d.ok) { alert(d.error || 'No se pudo guardar el color'); return; }
+    const lead = _metaLeads.find(l => l.id === id);
+    if (lead) {
+      lead.crm_status = d.crm_status;
+      lead.semaforo = d.semaforo || '';
+      if (d.semaforo_origen) lead.semaforo_origen = d.semaforo_origen;
+    }
+    mmAbierto = null;
+    renderMetaTable();
+  } catch (e) {
+    alert('No se pudo guardar el color: ' + e.message);
+  } finally {
+    mmGuardando = false;
+  }
+}
+
+function _fillMetaEstados(leads) {
   const sel = document.getElementById('meta-estado-filter');
   if (!sel) return;
+  const base = leads || _metaLeads;
   const etiquetas = {sin_contactar:'Sin contactar',interesado:'Interesado',contactado:'Interesado',reunion_agendada:'Reunión agendada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Ppto enviado',negociacion:'Negociación',cliente_cerrado:'Cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado',llamar_despues:'Llamar después',no_interesa:'No le interesa'};
   const cuenta = {};
-  _metaLeads.forEach(l => { const k = l.crm_status || 'sin_contactar'; cuenta[k] = (cuenta[k]||0)+1; });
+  base.forEach(l => { const k = l.crm_status || 'sin_contactar'; cuenta[k] = (cuenta[k]||0)+1; });
+  // El filtro elegido se mantiene al cambiar de mes aunque ese mes no tenga
+  // ninguno: si se cayera solo, la lista cambiaria sin que nadie lo pida.
   const previo = _metaEstado;
   const claves = Object.keys(cuenta).sort((a,b) => cuenta[b] - cuenta[a]);
-  sel.innerHTML = `<option value="">Todos los estados (${_metaLeads.length})</option>` +
-    claves.map(k => `<option value="${k}">${etiquetas[k] || k} (${cuenta[k]})</option>`).join('');
-  sel.value = claves.includes(previo) ? previo : '';
-  _metaEstado = sel.value;
-}
-
-function _fillMetaMonths() {
-  const sel = document.getElementById('meta-month-filter');
-  if (!sel) return;
-  const cuenta = {};
-  _metaLeads.forEach(l => { const k = _metaMesKey(l); if (k) cuenta[k] = (cuenta[k]||0)+1; });
-  const meses = Object.keys(cuenta).sort().reverse();
-  // Se preserva la seleccion: el poll de 60s repuebla la lista y sin esto el
-  // filtro del usuario se resetearia solo mientras mira la tabla.
-  const previo = _metaMonth;
-  const nombres = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-  sel.innerHTML = `<option value="">Todos los meses (${_metaLeads.length})</option>` +
-    meses.map(k => {
-      const [a, m] = k.split('-');
-      return `<option value="${k}">${nombres[parseInt(m,10)-1]} ${a} (${cuenta[k]})</option>`;
-    }).join('');
-  sel.value = meses.includes(previo) ? previo : '';
-  _metaMonth = sel.value;
+  if (previo && !claves.includes(previo)) claves.push(previo);
+  sel.innerHTML = `<option value="">Todos los estados (${base.length})</option>` +
+    claves.map(k => `<option value="${k}">${etiquetas[k] || k} (${cuenta[k] || 0})</option>`).join('');
+  sel.value = previo;
+  _metaEstado = previo;
 }
 function toggleMetaSort() { _metaSortDesc = !_metaSortDesc; document.getElementById('meta-sort-icon').textContent = _metaSortDesc ? '↓' : '↑'; renderMetaTable(); }
 
 async function loadMetaPanel() {
+  // Juan: "cuando entres a meta ads que lo primero que aparezca sea el mes
+  // actual". Cada vez que se abre el panel vuelve al mes de hoy, sin buscar en
+  // todos los meses ni opciones abiertas. El poll no pasa por aca: repinta el
+  // mes que se esta mirando.
+  mmMesVista = '';
+  mmTodosLosMeses = false;
+  mmAbierto = null;
   const body = document.getElementById('meta-body');
   body.innerHTML = '<div style="color:#475569;padding:16px;font-size:.85rem">Cargando...</div>';
   try {
@@ -4024,8 +4293,7 @@ async function loadMetaPanel() {
     const data = await r.json();
     _metaLeads = Array.isArray(data) ? data : (data.items || []);
     _metaLeads.forEach(l => _metaKnownIds.add(l.id));
-    _fillMetaMonths();
-    _fillMetaEstados();
+    mmActivarDeslizar();
     renderMetaTable();
     _startMetaPoll();
   } catch(e) { body.innerHTML = `<div style="color:#f87171;padding:16px">Error: ${e.message}</div>`; }
@@ -4033,20 +4301,40 @@ async function loadMetaPanel() {
 
 function renderMetaTable() {
   const body = document.getElementById('meta-body');
-  let leads = _metaLeads;
-  if (_metaSearch) leads = leads.filter(b => (b.name||'').toLowerCase().includes(_metaSearch) || (b.notes||'').toLowerCase().includes(_metaSearch));
-  if (_metaMonth) leads = leads.filter(b => _metaMesKey(b) === _metaMonth);
+  const mes = mmMesVisible();
+  mmPintarNavegador(mes);
+  const delMes = mmDelMes(_metaLeads, mes);
+  const resumen = document.getElementById('meta-mes-resumen');
+  if (resumen) resumen.innerHTML = mmResumenHtml(delMes, mes);
+  _fillMetaEstados(delMes);
+  const coincide = b => (b.name||'').toLowerCase().includes(_metaSearch) || (b.notes||'').toLowerCase().includes(_metaSearch);
+  const todos = !!_metaSearch && mmTodosLosMeses;
+  let leads = (todos ? _metaLeads : delMes).slice();
+  if (_metaSearch) leads = leads.filter(coincide);
   if (_metaEstado) leads = leads.filter(b => (b.crm_status || 'sin_contactar') === _metaEstado);
+  const aviso = document.getElementById('meta-mes-buscar-todos');
+  if (aviso) {
+    if (!_metaSearch) aviso.innerHTML = '';
+    else if (todos) aviso.innerHTML = `Buscando en todos los meses · <button class="mm-link" onclick="mmBuscarTodos(false)">Solo ${esc(mmEtiquetaMes(mes))}</button>`;
+    else aviso.innerHTML = `Buscando en ${esc(mmEtiquetaMes(mes))} · <button class="mm-link" onclick="mmBuscarTodos(true)">Buscar en todos los meses (${_metaLeads.filter(coincide).length})</button>`;
+  }
+  const base = todos ? _metaLeads.length : delMes.length;
   const _cnt = document.getElementById('meta-count');
-  if (_cnt) _cnt.textContent = leads.length === _metaLeads.length
+  if (_cnt) _cnt.textContent = leads.length === base
     ? `${leads.length} leads`
-    : `${leads.length} de ${_metaLeads.length}`;
-  if (!leads.length) { body.innerHTML = '<div class="empty-state">No hay leads que coincidan con el filtro</div>'; return; }
+    : `${leads.length} de ${base}`;
+  if (!leads.length) {
+    body.innerHTML = (_metaSearch || _metaEstado)
+      ? '<div class="empty-state">No hay leads que coincidan con el filtro</div>'
+      : `<div class="empty-state">No hay leads en ${esc(mmEtiquetaMes(mes))}</div>`;
+    return;
+  }
   const crmLabels = {sin_contactar:'Sin contactar',interesado:'Interesado',contactado:'Interesado',reunion_agendada:'Reunión agendada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Ppto enviado',negociacion:'Negociación',cliente_cerrado:'Cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado',llamar_despues:'Llamar después',no_interesa:'No le interesa'};
   const crmColor = {sin_contactar:'#475569',interesado:'#10b981',contactado:'#10b981',reunion_agendada:'#3b82f6',reunion_hecha:'#14b8a6',presupuesto_enviado:'#f97316',negociacion:'#fbbf24',cliente_cerrado:'#10b981',en_desarrollo:'#0088cc',finalizado:'#6ee7b7',llamar_despues:'#f59e0b',no_interesa:'#ef4444'};
   leads.sort((a,b) => {
-    const da = new Date(a.scraped_at||0), db2 = new Date(b.scraped_at||0);
-    return _metaSortDesc ? db2-da : da-db2;
+    const fa = String(mmFechaDeFila(a, mes, todos)), fb = String(mmFechaDeFila(b, mes, todos));
+    const orden = fa < fb ? -1 : (fa > fb ? 1 : 0);
+    return _metaSortDesc ? -orden : orden;
   });
   const buscarLabels = {
     'una_nueva_p\u00e1gina_web':'Nueva web',
@@ -4075,6 +4363,9 @@ function renderMetaTable() {
   body.innerHTML = leads.map(b => {
     const crm = b.crm_status || 'sin_contactar';
     const color = crmColor[crm] || '#475569';
+    const mmColor = mmColorInfo(b.semaforo) ? b.semaforo : '';
+    const mmFecha = String(mmFechaDeFila(b, mes, todos) || '');
+    const mmVuelta = !todos && mmVolvio(b, mes);
     let fd = {};
     try { fd = JSON.parse(b.form_data || '{}'); } catch(e) {}
     const negocio = fd['\u00bfc\u00f3mo_se_llama_tu_negocio?'] || fd['como_se_llama_tu_negocio'] || fd['nombre_del_negocio'] || '';
@@ -4083,23 +4374,25 @@ function renderMetaTable() {
     const presupRaw = fd['\u00bfcont\u00e1s_con_un_presupuesto_para_este_proyecto?'] || fd['presupuesto'] || '';
     const presup = presupLabels[presupRaw] || presupRaw.replace(/_/g,' ') || '—';
     return `
-    <div class="table-row no-cb row-${crm}" style="grid-template-columns:1.8fr 1fr 1.2fr 1.2fr 0.9fr 0.8fr 1.1fr">
+    <div class="table-row no-cb ${mmColor ? 'mm-pintado mm-c-' + mmColor : 'row-' + crm}" data-mm-color="${mmColor}" style="grid-template-columns:1.8fr 1fr 1.2fr 1.2fr 0.9fr 0.8fr 1.1fr">
       <div>
         <div class="biz-name"><span style="cursor:pointer;text-decoration:underline;text-decoration-color:#334155" onclick="openClientPanel(${b.id})">${esc(b.name||'')}</span>
-        <span style="font-size:.65rem;background:linear-gradient(135deg,#833ab4,#fd1d1d,#fcb045);color:#fff;padding:1px 6px;border-radius:99px;font-weight:700;margin-left:4px">IG/FB</span></div>
+        <span style="font-size:.65rem;background:linear-gradient(135deg,#833ab4,#fd1d1d,#fcb045);color:#fff;padding:1px 6px;border-radius:99px;font-weight:700;margin-left:4px">IG/FB</span>${mmVuelta ? '<span class="mm-vuelta">Volvió a escribir</span>' : ''}</div>
         <div class="biz-sub">${negocio ? esc(negocio) : (esc(b.city||'') || '—')}</div>
+        ${mmVuelta ? '<span class="mm-vuelta-primero">Primer contacto: ' + esc(mmFechaCorta(mmPrimerEnvio(b))) + '</span>' : ''}
       </div>
       <div>${b.phone ? (hasWhatsApp(b.phone) ? `<a class="phone-val" href="https://wa.me/${waNum(b.phone)}${b.pitch_text ? '?text='+encodeURIComponent(b.pitch_text) : ''}" target="_blank" title="Abrir WhatsApp">${esc(b.phone)}</a>` : `<span class="phone-plain">${esc(b.phone)}</span>`) : '<span class="no-val">—</span>'}</div>
       <div style="font-size:.78rem;color:#94a3b8">${esc(busca)}</div>
       <div style="font-size:.78rem;color:#94a3b8">${esc(presup)}</div>
       <div style="font-size:.78rem;color:#64748b">${esc(b.city||'—')}</div>
-      <div style="font-size:.72rem;color:#475569">${b.scraped_at ? new Date(b.scraped_at+'Z').toLocaleString('es-UY',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—'}</div>
+      <div style="font-size:.72rem;color:#475569">${mmFecha ? new Date(mmFecha.slice(0, 19).replace(' ', 'T') + 'Z').toLocaleString('es-UY',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—'}</div>
       <div class="actions">
+        ${mmBotonColor(b)}
         <span style="font-size:.68rem;font-weight:600;color:${color};background:${color}18;padding:2px 6px;border-radius:99px">${crmLabels[crm]||crm}</span>
         <button class="pitch-btn" onclick="openClientPanel(${b.id})">Ver ficha</button>
         <button class="delete-btn" onclick="deleteLead(${b.id},${escJs(b.name||'')},loadMetaPanel)" title="Borrar"><i data-lucide=\"trash-2\" class=\"btn-icon\"></i></button>
       </div>
-    </div>`;
+    </div>${mmAbierto === b.id ? mmOpcionesHtml(b) : ''}`;
   }).join('');
   _populateNotes(body);
 }
