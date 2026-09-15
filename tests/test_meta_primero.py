@@ -1,10 +1,12 @@
 """El menu en el orden que definio Juan, con el Calendario primero (14/9).
 
 Menu, por grupo: CALENDARIO (Calendario) · MARKETING (Meta Ads, Marketing) ·
-FINANZAS (Finanzas, Simulador financiero) · VENTAS (WhatsApp, Proceso de venta,
-Demos, SDR) · OPERACION (Clientes, Proyectos, Tareas, Actividad, Equipo) ·
-CAPTACION (Inteligencia comercial, Outbound). La barra del celular sigue el
-mismo orden. Equipo se sumo a OPERACION despues de Actividad el 14/9. Daily
+FINANZAS (Finanzas, Simulador financiero) · VENTAS (Seguimiento de leads,
+WhatsApp, Proceso de venta, Demos) · OPERACION (Clientes, Proyectos, Tareas,
+Daily Programador, Actividad) · RECURSOS HUMANOS · CAPTACION (Outbound,
+Inteligencia comercial, SDR). La barra del celular sigue el mismo orden. Equipo
+se sumo despues de Actividad el 14/9, Seguimiento de leads (`seg_leads`) es el
+primer item de VENTAS, arriba de WhatsApp (pedido de Juan, 14/9), y Daily
 Programador va en OPERACION justo despues de Tareas (15/9).
 
 Al entrar se abre el Calendario (Juan lo pidio despues de haber pedido Meta
@@ -31,7 +33,7 @@ ORDEN = [
     ("CALENDARIO", ["cal"]),
     ("MARKETING", ["meta", "marketing"]),
     ("FINANZAS", ["finanzas", "simulador"]),
-    ("VENTAS", ["wa", "notion_clients", "demos"]),
+    ("VENTAS", ["seg_leads", "wa", "notion_clients", "demos"]),
     ("OPERACIÓN", ["clientes", "projects", "tasks", "daily", "activity"]),
     ("RECURSOS HUMANOS", ["equipo", "ausencias"]),
     ("CAPTACIÓN", ["cola", "metrics", "sdr"]),
@@ -131,7 +133,7 @@ def _primer_panel(access, existentes):
 def test_un_rol_sin_calendario_arranca_en_un_panel_que_existe(tmp_path, access, esperado):
     existentes = ["meta", "cola", "cal", "tasks", "clientes", "wa", "metrics",
                   "activity", "sdr", "projects", "notion_clients", "finanzas", "simulador",
-                  "equipo", "ausencias", "daily"]
+                  "equipo", "ausencias", "seg_leads", "daily"]
     archivo = tmp_path / "primero.js"
     archivo.write_text(_primer_panel(access, existentes), encoding="utf-8")
     r = subprocess.run(["node", str(archivo)], capture_output=True, text=True, encoding="utf-8")

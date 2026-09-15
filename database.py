@@ -1067,6 +1067,60 @@ def init_db(db_path: str) -> None:
         # Como Equipo: los roles que tienen Tareas reciben el Daily.
         _grant_panel_to_existing_roles(conn, "daily", solo_si_tiene="tasks")
 
+        # ── seguimiento de leads ──────────────────────────────────────────────
+        # La agenda de llamados de Juan (14/9). `lead_id` es `businesses.id`:
+        # ahí está el teléfono y es la ficha que abre el panel de cliente. Las
+        # fichas de Proceso de venta llegan a su lead por
+        # `notion_clients.business_id`.
+        #
+        # Un lead tiene a lo sumo UN recordatorio pendiente: lo garantiza el
+        # índice único parcial, no solo el código. `cierre` dice por qué se
+        # cerró uno: 'llamado' (Hecho) o 'reemplazado' (se creó otro).
+        seg_leads_nueva = not conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='seg_recordatorios'"
+        ).fetchone()
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS seg_recordatorios (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                lead_id     INTEGER NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+                fecha       TEXT NOT NULL,
+                hora        TEXT,
+                motivo      TEXT NOT NULL,
+                nota        TEXT,
+                estado      TEXT NOT NULL DEFAULT 'pendiente'
+                            CHECK (estado IN ('pendiente', 'hecho')),
+                creado_en   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                cerrado_en  TIMESTAMP,
+                cierre      TEXT
+            )
+        """)
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_seg_recordatorios_un_pendiente "
+                     "ON seg_recordatorios(lead_id) WHERE estado = 'pendiente'")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_seg_recordatorios_estado_fecha "
+                     "ON seg_recordatorios(estado, fecha)")
+        # El historial: una fila por cada Hecho. `fecha` es 'AAAA-MM-DD HH:MM'
+        # en hora de Montevideo.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS seg_llamados (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                lead_id         INTEGER NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+                fecha           TEXT NOT NULL,
+                resultado       TEXT NOT NULL,
+                recordatorio_id INTEGER REFERENCES seg_recordatorios(id) ON DELETE SET NULL,
+                creado_por      TEXT,
+                creado_en       TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_seg_llamados_lead "
+                     "ON seg_llamados(lead_id, fecha)")
+        conn.commit()
+        # Como Equipo (sin plata, así que no aplica el Ruling R20), pero solo a
+        # los roles que ya ven Proceso de venta, y UNA sola vez: en el arranque
+        # que crea la tabla. Si después Juan le saca el panel a un rol desde el
+        # editor, un deploy no se lo vuelve a poner.
+        if seg_leads_nueva:
+            _grant_panel_to_existing_roles(conn, "seg_leads", solo_si_tiene="notion_clients")
+
         # ── Pre-clientes y clientes activos ───────────────────────────────────
         # Los tres responsables de un cliente activo. Apuntan a users para poder
         # filtrar "mis clientes"; si alguien se va, el vinculo queda en NULL en vez
@@ -1519,6 +1573,8 @@ def delete_business(db_path: str, business_id: int) -> None:
         conn.execute("DELETE FROM lead_attachments WHERE demo_id IN "
                      "(SELECT id FROM demos_realizadas WHERE client_id = ?)", (business_id,))
         conn.execute("DELETE FROM demos_realizadas WHERE client_id = ?", (business_id,))
+        conn.execute("DELETE FROM seg_llamados WHERE lead_id = ?", (business_id,))
+        conn.execute("DELETE FROM seg_recordatorios WHERE lead_id = ?", (business_id,))
         conn.execute("DELETE FROM businesses WHERE id = ?", (business_id,))
         conn.commit()
     finally:
@@ -1529,7 +1585,18 @@ def merge_business(db_path: str, source_id: int, target_id: int) -> None:
     """Transfer all relations from source_id to target_id, then delete source."""
     conn = _connect(db_path)
     try:
+        # Seguimiento de leads: el indice unico no deja dos recordatorios
+        # pendientes por lead. Si los dos tienen uno abierto, queda el del
+        # destino y el del que se fusiona se cierra como reemplazado.
+        if conn.execute("SELECT 1 FROM seg_recordatorios WHERE lead_id = ? "
+                        "AND estado = 'pendiente'", (target_id,)).fetchone():
+            conn.execute(
+                "UPDATE seg_recordatorios SET estado = 'hecho', cierre = 'reemplazado', "
+                "cerrado_en = CURRENT_TIMESTAMP WHERE lead_id = ? AND estado = 'pendiente'",
+                (source_id,))
         for table, col in [
+            ("seg_recordatorios", "lead_id"),
+            ("seg_llamados",     "lead_id"),
             ("meetings",         "client_id"),
             ("demos",            "client_id"),
             ("budgets",          "client_id"),
@@ -3379,6 +3446,136 @@ _EQUIPO_PRECARGA = (
 
 # Quiénes arrancan con su Daily Programador (columna `programador`).
 _PROGRAMADORES_PRECARGA = ("Juan Tomasetti", "Gonzalo Siuciak")
+
+
+# ─── Seguimiento de leads ────────────────────────────────────────────────────
+
+_SEG_PENDIENTES = """
+    SELECT r.id, r.lead_id, r.fecha, r.hora, r.motivo, r.nota, r.creado_en,
+           b.name AS nombre, b.phone AS telefono, b.category AS rubro,
+           ci.business_name AS empresa, ci.rubro AS ci_rubro,
+           (SELECT l.resultado FROM seg_llamados l WHERE l.lead_id = r.lead_id
+             ORDER BY l.fecha DESC, l.id DESC LIMIT 1) AS ultimo_resultado
+      FROM seg_recordatorios r
+      JOIN businesses b ON b.id = r.lead_id
+      LEFT JOIN client_info ci ON ci.client_id = r.lead_id
+     WHERE r.estado = 'pendiente'
+"""
+
+
+def seg_crear_recordatorio(db_path: str, lead_id: int, fecha: str, motivo: str,
+                           hora: Optional[str] = None,
+                           nota: Optional[str] = None) -> tuple[int, list[int]]:
+    """Crea un recordatorio pendiente y cierra el que el lead tuviera abierto.
+
+    Devuelve (id nuevo, ids cerrados). Todo en una transacción: nunca quedan
+    dos pendientes, ni ninguno si el INSERT falla.
+    """
+    conn = _connect(db_path)
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        abiertos = [f[0] for f in conn.execute(
+            "SELECT id FROM seg_recordatorios WHERE lead_id = ? AND estado = 'pendiente'",
+            (lead_id,))]
+        if abiertos:
+            conn.execute(
+                "UPDATE seg_recordatorios SET estado = 'hecho', cierre = 'reemplazado', "
+                "cerrado_en = CURRENT_TIMESTAMP WHERE lead_id = ? AND estado = 'pendiente'",
+                (lead_id,))
+        rid = conn.execute(
+            "INSERT INTO seg_recordatorios (lead_id, fecha, hora, motivo, nota) "
+            "VALUES (?, ?, ?, ?, ?)", (lead_id, fecha, hora, motivo, nota)).lastrowid
+        conn.commit()
+        return rid, abiertos
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def seg_get_recordatorio(db_path: str, recordatorio_id: int) -> Optional[dict]:
+    return _get_one(db_path, "seg_recordatorios", recordatorio_id)
+
+
+def seg_mover_fecha(db_path: str, recordatorio_id: int, fecha: str) -> bool:
+    """Corre la fecha de un pendiente. False si ya no está pendiente."""
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute(
+            "UPDATE seg_recordatorios SET fecha = ? WHERE id = ? AND estado = 'pendiente'",
+            (fecha, recordatorio_id))
+        conn.commit()
+        return cur.rowcount == 1
+    finally:
+        conn.close()
+
+
+def seg_cerrar_con_llamado(db_path: str, recordatorio_id: int, fecha_llamado: str,
+                           resultado: str, creado_por: Optional[str] = None,
+                           proximo: Optional[dict] = None) -> Optional[dict]:
+    """Marca hecho un pendiente, guarda el llamado y, si hay, crea el próximo.
+
+    `proximo` es {fecha, hora, motivo, nota} o None ("no hace falta volver a
+    llamar"). Devuelve {lead_id, llamado_id, nuevo_id}, o None si el
+    recordatorio ya no estaba pendiente.
+    """
+    conn = _connect(db_path)
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        fila = conn.execute(
+            "SELECT lead_id FROM seg_recordatorios WHERE id = ? AND estado = 'pendiente'",
+            (recordatorio_id,)).fetchone()
+        if not fila:
+            conn.rollback()
+            return None
+        lead_id = fila[0]
+        conn.execute(
+            "UPDATE seg_recordatorios SET estado = 'hecho', cierre = 'llamado', "
+            "cerrado_en = CURRENT_TIMESTAMP WHERE id = ?", (recordatorio_id,))
+        llamado_id = conn.execute(
+            "INSERT INTO seg_llamados (lead_id, fecha, resultado, recordatorio_id, creado_por) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (lead_id, fecha_llamado, resultado, recordatorio_id, creado_por)).lastrowid
+        nuevo_id = None
+        if proximo:
+            nuevo_id = conn.execute(
+                "INSERT INTO seg_recordatorios (lead_id, fecha, hora, motivo, nota) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (lead_id, proximo["fecha"], proximo.get("hora"), proximo["motivo"],
+                 proximo.get("nota"))).lastrowid
+        conn.commit()
+        return {"lead_id": lead_id, "llamado_id": llamado_id, "nuevo_id": nuevo_id}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def seg_listar_pendientes(db_path: str, lead_id: Optional[int] = None) -> list[dict]:
+    """Los pendientes con el nombre, el teléfono y el último resultado del lead."""
+    sql = _SEG_PENDIENTES + (" AND r.lead_id = ?" if lead_id is not None else "")
+    sql += " ORDER BY r.fecha, r.hora IS NULL, r.hora, r.id"
+    conn = _connect(db_path)
+    try:
+        filas = conn.execute(sql, (lead_id,) if lead_id is not None else ()).fetchall()
+        return [dict(f) for f in filas]
+    finally:
+        conn.close()
+
+
+def seg_llamados_del_lead(db_path: str, lead_id: int) -> list[dict]:
+    """El historial de llamados del lead, del más nuevo al más viejo."""
+    conn = _connect(db_path)
+    try:
+        filas = conn.execute(
+            "SELECT l.*, r.motivo AS motivo FROM seg_llamados l "
+            "LEFT JOIN seg_recordatorios r ON r.id = l.recordatorio_id "
+            "WHERE l.lead_id = ? ORDER BY l.fecha DESC, l.id DESC", (lead_id,)).fetchall()
+        return [dict(f) for f in filas]
+    finally:
+        conn.close()
 
 
 def _sembrar_equipo(conn: sqlite3.Connection) -> int:

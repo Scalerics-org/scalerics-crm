@@ -46,7 +46,8 @@ def _entre(texto: str, desde: str, hasta: str) -> str:
 PANEL = _entre(SRC, "<!-- ======= DAILY PROGRAMADOR PANEL ======= -->",
                "<!-- ======= RECURSOS HUMANOS PANELES ======= -->")
 JS = _entre(SRC, "// ========== Daily Programador ==========", "// ========== Equipo ==========")
-CSS = _entre(SRC, "/* ── Daily Programador", "/* ── Equipo")
+# Termina donde empieza Seguimiento de leads, que va pegado abajo.
+CSS = _entre(SRC, "/* ── Daily Programador", "/* ── Seguimiento de leads")
 FUENTES = {"panel": PANEL, "js": JS, "css": CSS}
 
 
