@@ -464,6 +464,28 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **15/9 — I: rama `fix/piezas-y-recupero`.**
+  - Piezas de la pauta: con "Un mes" arriba siguen al mes de la sección. La flecha de las piezas mueve la sección entera. Antes arriba se veía abril y abajo seguían las piezas de setiembre. Los datos de `meta_ad_insights` estaban bien fechados (abril 27 piezas, setiembre 47, ninguna en común).
+  - Equipo: la grilla navega de semana en semana con `GET /api/equipo?desde=AAAA-MM-DD`. Al agendar un recupero fuera de lo visible, salta a su semana. Sábado y domingo aparecen solo si hay un recupero ese día. `esta_semana` viene en la respuesta.
+
+- **15/9 — I: DEPLOYADO `v216` (PR #37 mergeado, `bd18b03`).** Trajo Equipo, la frase de equipo con el logo, colores del menú y SDR en CAPTACIÓN. El relleno de piezas de Meta quedó completo desde marzo.
+
+- **15/9 — I: DEPLOYADO `v215` (PR #36 mergeado a `main`, `5e3c7d7`): `main` quedó igual a producción.** Trajo:
+  - menú por grupos, con Calendario como panel de entrada;
+  - sin Seguimientos;
+  - nombres visibles "Proceso de venta" (`notion_clients`), "Inteligencia comercial" (`metrics`), "Outbound" (`cola`) e "Inteligencia marketing" (`marketing`); los ids y permisos no cambian;
+  - Marketing en un mes, estrictamente mes a mes y con etiquetas largas;
+  - `POST /api/marketing/rellenar-anuncios`.
+
+  **Relleno de piezas corrido en producción** con `rellenar_mes`, uno por mes cada 4 minutos: marzo 176 filas, abril 254, mayo 146, junio 224 (julio a setiembre en curso).
+  **Ojo:** la carga inicial del `<script>` NO puede usar `showPanel` (corre antes de `const NAV_LABELS`): tumbó una tanda en tests antes de publicarse.
+
+- **15/9 — I: rama `feat/equipo` (PR aparte).**
+  - Sección Equipo en OPERACIÓN: organigrama por `reporta_a`, más ausencias y recuperos en horas, sin campos de dinero. Tablas `equipo_*`, `GET /api/equipo/capacidad`, y el simulador lo muestra como dato de solo lectura.
+  - SDR pasa a CAPTACIÓN, y Outbound va arriba de Inteligencia comercial.
+  - Franja con la frase de equipo arriba de todos los paneles, con el logo del sidebar.
+  - Color de ícono para todas las secciones.
+
 - **14/9 — I: DEPLOYADO `v214`: botón "Cargar" del simulador y demos que se cargan solas desde la planilla semáforo.**
 
   - **Demos desde la planilla** (`feat/demos-desde-planilla`, `ae6f827`):
