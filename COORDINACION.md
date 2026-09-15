@@ -83,6 +83,34 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 | F (finanzas) | la sección financiera del CRM | `services/finanzas.py`, `routes/finanzas.py`, `database.py` (tablas de finanzas), `dashboard.py` (panel Finanzas) | 8/9 |
 
+> **Email marketing (15/9, pedido de Juan).** Rama `feat/email-marketing`,
+> worktree `crm-email-mkt`. Sin PR, sin merge y sin deploy. Panel nuevo
+> `email_mkt` al final de CAPTACIÓN.
+>
+> **Cruce de territorio, todo aditivo:**
+> - `services/email_service.py` (de A): `_send_estado` registra cada envío
+>   aceptado en la tabla nueva `emails_enviados`, con el id de Resend. No cambia
+>   ninguna firma. El tipo lo pone un decorador `@_tipo_envio(...)` en cada
+>   `send_*`; el negocio lo pasa quien llama con `contexto_envio(...)`.
+>   Registrar va en try/except: si falla, el mail sale igual.
+>   **Si agregás un `send_*` nuevo, ponele su `@_tipo_envio`** (hay un test).
+> - `services/discovery_emails.py` (de A) y `services/meta_reminders.py` (de D):
+>   solo un `with contexto_envio(business_id=..., numero=...)` alrededor del envío.
+> - `routes/resend_webhook.py` (de A): antes de vedar, guarda el evento
+>   (entregado, abierto, clic, rebote, spam) en `emails_enviados`. Si eso falla,
+>   el vedado sigue igual.
+> - `database.py`: tabla `emails_enviados`. En el arranque que la crea copia
+>   una sola vez lo histórico de `meta_reminders` y `discovery_reminders`, y
+>   reparte el panel a los roles con `cola` o `metrics`.
+> - `dashboard.py`: ítem de menú, panel, CSS y JS con prefijo `em`, y el
+>   blueprint `email_mkt_bp`.
+>
+> **Para que se vean aperturas y clics hace falta configurar Resend:** el
+> webhook tiene que suscribir `email.delivered`, `email.opened`,
+> `email.clicked`, `email.bounced`, `email.complained` (y opcionalmente
+> `email.delivery_delayed`, `email.failed`, `email.suppressed`), y el dominio
+> tiene que tener prendido el seguimiento de aperturas y de clics.
+
 > **F (finanzas) acá (8/9).** Trabajé en un worktree aparte sobre la rama
 > `feat/finanzas`. Me habia anotado como E, pero E ya estaba tomada por pre-clientes/demos, que llego primero y ya deployo: me corri a **F**. Agrega dos tablas
 > nuevas, `finanzas_movimientos` y `finanzas_recurrentes`, más
@@ -471,6 +499,23 @@ leads de Meta se renombró a **D** para deshacer el empate.
   - **`database.py`:** `if_recomendaciones` pasa a `CHECK (regla GLOB 'R[0-9]*')`. En producción la tabla vieja se reconstruye UNA vez (`_ampliar_reglas_if`), conservando filas e ids. Columnas nuevas: `if_recomendaciones.supuestos` y `if_calculos.diagnostico` / `resumen` / `resumen_origen`.
   - **IA opcional** (`services/inteligencia_fin_ia.py`): la misma integración que la radiografía (modelo, cliente y bandera `RADIOGRAFIA_IA_ACTIVA`, que nace apagada). Solo recibe los números ya calculados, se descarta si escribe un número que no está en el JSON, y cae al texto determinístico. Se guarda con el recálculo diario.
   - **Zona compartida tocada:** `dashboard.py` (solo el panel Inteligencia financiera y los dos `ifnMotivoHtml`/`ifnEsfuerzoHtml` que usan las tarjetas) y `database.py` (lo de arriba).
+- **15/9 — rama `feat/calendario-google-invitaciones` (worktree `../crm-cal-google`), encima de `feat/calendario-asunto-repeticion`. Sin PR, sin merge, sin deploy.** Pedido de Juan: que el CRM vuelva a crear las reuniones en Google Calendar y que Google mande las invitaciones.
+  - **Por qué se había sacado (`81f19fb`, 1/6):** el calendario leía Google en vivo y la app de OAuth estaba "En prueba" (refresh token de 7 días): al vencer se caían el panel y el alta. Hoy la app está publicada (`routes/tokens.py`) y la base del CRM manda: si Google falla, la reunión queda igual, marcada "No sincronizada", con botón "Reintentar en Google" (nunca reintenta sola).
+  - **El riesgo real era el import** (`_sync_gcal_to_db`, volvió el 4/6), que trae todo evento desconocido y le inventa un lead al primer invitado. Ahora saltea por `google_event_id` los eventos que creó el CRM y sus instancias (`<id>_<fecha>`, `recurringEventId`). El id se elige antes de crear y se guarda: un reintento tras una respuesta perdida da 409 y no un evento ni una invitación duplicados.
+  - **Qué hace:** crear = `events.insert` con attendees (mail del cliente + invitados), Meet, `sendUpdates="all"` y RRULE si se repite (un solo evento recurrente). Editar: todas = patch; solo esta = `instances(originalStart)` + patch de la instancia; esta y las siguientes = UNTIL + serie nueva. Borrar: Google primero (si falla no se borra nada). Calendly no se toca.
+  - **Interruptor `GCAL_CREAR_EVENTOS`:** `on` por defecto si hay credenciales `GCAL_*`; `off` deja las nuevas solo en el CRM (las que ya están en Google se siguen actualizando). Qué habilitar y cómo verificar el scope de escritura, en `docs/puesta-en-produccion-google-calendar.md`.
+  - **Calendly nunca va a Google desde el CRM (pedido de Juan):** columna nueva `meetings.origen` (`crm` / `calendly` / `google`). La escriben el webhook y el sync de Calendly (`calendly`), el import de Google (`calendly` si la descripción tiene un link de calendly.com, si no `google`) y el alta manual (`crm`). Toda escritura a Google pasa por `routes/calendar._va_a_google`: solo `crm` y "otro asunto". Una de Calendly hace cero llamadas a Google al moverla, borrarla, enviarla o agregarle invitados (hay tests).
+  - **Google Meet siempre** (`conferenceData` + `conferenceDataVersion=1`), también en series; el link queda en `google_meet` y se ve como "Unirse con Google Meet" en el calendario y en la ventana de editar.
+  - **Reuniones de antes de publicar** (ej. "Marketing Semanal"): nada se manda solo, ni al arrancar ni al abrir el calendario. Botón "Enviar a Google Calendar" (misma ruta que "Reintentar"): un solo evento recurrente con Meet e invitaciones; un segundo toque actualiza, no duplica. La ventana de editar dice el estado real (enviada / no enviada / falló / de Calendly).
+  - **Zona compartida tocada, todo aditivo:** `database.py` (`google_event_id`, `google_sync`, `google_error`, `google_meet` en `meetings` y `reuniones_asunto`; `origen` en `meetings`), `dashboard.py` (aviso `#cal-aviso-google`, marca ⚠, "Reintentar" / "Enviar a Google Calendar" y "Unirse con Google Meet" en el chip y en el celular, botón de Meet y nota de estado en la ventana de editar), `routes/calendar.py`, `routes/calendly.py` y `services/calendly_gcal.py` (solo `origen="calendly"`). Nuevo: `services/gcal_eventos.py`.
+
+- **15/9 — rama `feat/calendario-asunto-repeticion` (worktree `../crm-cal-repeticion`). Sin PR, sin merge, sin deploy.** Pedido de Juan: reuniones de "otro asunto" (sin cliente) y reuniones que se repiten.
+  - **Dónde viven:** en la base del CRM. Crear una reunión NO crea evento en Google desde `81f19fb` (1/6) y eso no cambió: los invitados quedan guardados y **no se les manda nada**. Google solo se toca, como antes, al mover o borrar una reunión importada de Google.
+  - **Otro asunto:** tabla nueva `reuniones_asunto`, aparte de `meetings` porque ahí `client_id` es NOT NULL y así ninguna métrica de ventas, presupuesto, plantilla ni fusión de leads las ve. Rutas `PATCH/DELETE/GET /api/calendar/asuntos/<id>`. Actividad `asunto_agendado` / `asunto_movido` con `entity_type='asunto'` (el SDR no las cuenta).
+  - **Repetición:** columnas nuevas en `meetings` (`description`, `invitados`, `repeticion`, `excepciones`) y las mismas en `reuniones_asunto`. Lógica pura en `services/recurrencia.py`; `GET /api/calendar/events` expande las ocurrencias del rango con id `<id>@<fecha original>`. Hora de pared de Montevideo, sin pasar por UTC. Editar y borrar aceptan `ocurrencia` + `alcance` (`esta` / `siguientes` / `todas`).
+  - **Sync de Google:** `_sync_gcal_to_db` ya no importa un evento de Google que coincide en fecha, hora y título con una ocurrencia de serie o un "otro asunto" del CRM. Sin eso, crear "Marketing semanal" también en Google (para mandar invitaciones) inventaba un lead con el primer invitado.
+  - **Contador del mes:** las de otro asunto no suman a reuniones / hechas / por venir; van al final, "· 4 de otros asuntos". Una serie de cliente cuenta cada ocurrencia.
+  - **Zona compartida tocada, todo aditivo:** `database.py` (4 columnas en `meetings`, tabla `reuniones_asunto` y su CRUD), `dashboard.py` (botón "+ Nueva reunión" en el Calendario, que no tenía; modal nuevo, modal de alcance, invitados en el editor, token `--violeta`, CSS `.cal-tipo*`/`.cal-rep*`/`.cal-alcance*`, etiquetas de actividad), `routes/calendar.py`.
 
 - **15/9 — rama `feat/colores-flujos-horarios` (worktree `../crm-colores-rrhh`). Sin PR ni deploy.** Pedido de Juan: colores en Flujos y Horarios.
   - **Flujos, un color por rol:** el mapa vive en `services/flujos.ROL_ESTILOS` (rol → color y etiqueta) y llega a la pantalla con `/api/flujos` (`estilos`). Marketing rojo, Project manager naranja, Comercial verde, Desarrollo azul, Administración violeta, Soporte teal. Tokens `--rol-<color>` y `--rol-<color>-tinte` en los dos temas, clase `.eq-rol-<color>`; todos los pares miden ≥ 4,5:1 (hay test).

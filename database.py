@@ -652,6 +652,49 @@ def init_db(db_path: str) -> None:
         _add_column(conn, "businesses", "last_event_at", "TIMESTAMP")
         _add_column(conn, "businesses", "score", "INTEGER")
         _add_column(conn, "meetings", "recall_bot_id", "TEXT")
+        # Invitados y repeticion (pedido de Juan, 15/9). JSON en texto; la
+        # logica vive en services/recurrencia.py. `description` ya llegaba en
+        # el POST y se tiraba.
+        _add_column(conn, "meetings", "description", "TEXT")
+        _add_column(conn, "meetings", "invitados", "TEXT")
+        _add_column(conn, "meetings", "repeticion", "TEXT")
+        _add_column(conn, "meetings", "excepciones", "TEXT")
+        # Reuniones de "otro asunto": sin cliente. Van en su propia tabla y no
+        # en `meetings` porque ahi client_id es NOT NULL, y porque asi ninguna
+        # metrica de ventas, presupuesto, plantilla ni fusion de leads las ve.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS reuniones_asunto (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                title        TEXT NOT NULL,
+                description  TEXT,
+                start_at     TIMESTAMP NOT NULL,
+                end_at       TIMESTAMP,
+                meet_link    TEXT,
+                invitados    TEXT,
+                repeticion   TEXT,
+                excepciones  TEXT,
+                status       TEXT DEFAULT 'scheduled',
+                created_by   TEXT,
+                created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        # El evento que el CRM crea en Google Calendar (services/gcal_eventos.py).
+        # `google_sync`: 'ok' o 'error' (con `google_error` en palabras para la
+        # pantalla); NULL si no se intento (creacion apagada o sin credenciales).
+        # Va aparte de `calendar_event_id`, que es de las reuniones que se
+        # importan DESDE Google o llegan de Calendly.
+        for _tabla in ("meetings", "reuniones_asunto"):
+            _add_column(conn, _tabla, "google_event_id", "TEXT")
+            _add_column(conn, _tabla, "google_sync", "TEXT")
+            _add_column(conn, _tabla, "google_error", "TEXT")
+            # El link de Google Meet que devuelve Google al crear el evento.
+            _add_column(conn, _tabla, "google_meet", "TEXT")
+        # De donde vino la reunion: 'crm' (creada a mano en el CRM), 'calendly'
+        # (webhook, sync de Calendly o evento de Calendly importado de Google) o
+        # 'google' (importada). SOLO las 'crm' van a Google: Calendly ya crea su
+        # evento y manda su invitacion, y tocarlo le mandaria al cliente otra.
+        # Las filas de antes quedan en NULL y se deducen de calendar_event_id.
+        _add_column(conn, "meetings", "origen", "TEXT")
 
         conn.execute("""
             CREATE TABLE IF NOT EXISTS wa_templates (
@@ -1642,6 +1685,51 @@ def init_db(db_path: str) -> None:
         _add_column(conn, "tasks", "progress",       "INTEGER DEFAULT 0")
         _add_column(conn, "tasks", "goal_type",      "TEXT")
 
+        # ── Email marketing ───────────────────────────────────────────────────
+        # Cada mail que sale por Resend, con su id de Resend y lo que Resend
+        # cuenta despues por el webhook (entregado, abierto, clic, rebote,
+        # spam). Antes no quedaba en ningun lado: `_send_estado` tiraba la
+        # respuesta de Resend y el webhook solo miraba rebotes y quejas para
+        # vedar. Sin el cuerpo del mail: como mucho un extracto corto, y solo
+        # en las campanas. Las fechas van en UTC, como en meta_reminders.
+        emails_nueva = not conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='emails_enviados'").fetchone()
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS emails_enviados (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                resend_id     TEXT UNIQUE,
+                tipo          TEXT NOT NULL DEFAULT 'otro',
+                destinatario  TEXT,
+                asunto        TEXT,
+                extracto      TEXT,
+                business_id   INTEGER,
+                numero        INTEGER,
+                enviado_at    TEXT NOT NULL,
+                origen        TEXT NOT NULL DEFAULT 'crm',
+                estado_envio  TEXT NOT NULL DEFAULT 'enviado',
+                estado        TEXT NOT NULL DEFAULT 'enviado',
+                entregado_at  TEXT,
+                demorado_at   TEXT,
+                abierto_at    TEXT,
+                clic_at       TEXT,
+                rebotado_at   TEXT,
+                spam_at       TEXT,
+                fallido_at    TEXT,
+                actualizado_at TEXT
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_emails_enviados_fecha ON emails_enviados(enviado_at)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_emails_enviados_tipo ON emails_enviados(tipo, enviado_at)")
+        if emails_nueva:
+            # UNA sola vez, en el arranque que crea la tabla: lo que las dos
+            # campanas ya mandaron se ve desde el primer dia, sin consultar a
+            # Resend. Desde ahi cada envio se registra solo.
+            _backfill_emails_enviados(conn)
+        conn.commit()
+        # Email marketing va a quien ya ve Outbound o Inteligencia comercial,
+        # una sola vez (desde ahi manda lo que Juan tilde en el editor).
+        _grant_panel_to_existing_roles(conn, "email_mkt", si_tiene=("cola", "metrics"))
+
         # Backfill scores for leads that were scraped before scoring was added
         conn.execute("""
             UPDATE businesses SET score = (
@@ -1717,6 +1805,44 @@ def init_db(db_path: str) -> None:
             logger.warning(f"Index creation: {e}")
     finally:
         conn.close()
+
+
+def _backfill_emails_enviados(conn: sqlite3.Connection) -> int:
+    """Copia a `emails_enviados` los envios historicos de las dos campanas.
+
+    `meta_reminders` y `discovery_reminders` guardan una fila por mail que
+    salio (la de un envio fallido se borra), pero sin id de Resend ni asunto:
+    esas filas entran como 'historico', con un asunto descriptivo y sin
+    eventos. El destinatario es el mail actual del negocio.
+    """
+    copiadas = 0
+    try:
+        cols_meta = {c[1] for c in conn.execute("PRAGMA table_info(meta_reminders)")}
+        estado = ("CASE WHEN m.estado IS NOT NULL AND m.estado <> 'sin_contactar' "
+                  "THEN ' (' || REPLACE(m.estado, '_', ' ') || ')' ELSE '' END"
+                  if "estado" in cols_meta else "''")
+        copiadas += conn.execute(f"""
+            INSERT INTO emails_enviados (tipo, destinatario, asunto, business_id, numero,
+                                         enviado_at, origen, estado_envio, estado)
+            SELECT 'recordatorio_meta', b.email,
+                   'Recordatorio a lead de Meta' || {estado} || ' · contacto ' || m.numero,
+                   m.business_id, m.numero, datetime(m.sent_at), 'historico', 'enviado', 'enviado'
+            FROM meta_reminders m LEFT JOIN businesses b ON b.id = m.business_id
+            WHERE datetime(m.sent_at) IS NOT NULL
+        """).rowcount
+        copiadas += conn.execute("""
+            INSERT INTO emails_enviados (tipo, destinatario, asunto, business_id, numero,
+                                         enviado_at, origen, estado_envio, estado)
+            SELECT 'discovery', b.email, 'Discovery en frío · contacto ' || d.numero,
+                   d.business_id, d.numero, datetime(d.sent_at), 'historico', 'enviado', 'enviado'
+            FROM discovery_reminders d LEFT JOIN businesses b ON b.id = d.business_id
+            WHERE datetime(d.sent_at) IS NOT NULL
+        """).rowcount
+    except sqlite3.Error as e:
+        logger.warning(f"emails_enviados: no se pudo copiar el historico ({e})")
+    if copiadas:
+        logger.info(f"emails_enviados: {copiadas} envios historicos copiados")
+    return copiadas
 
 
 # ─── Businesses (existing API, preserved) ────────────────────────────────────
@@ -2208,6 +2334,8 @@ def get_job(db_path: str, job_id: int) -> Optional[dict]:
 _MEETING_COLUMNS = {
     "calendar_event_id", "title", "start_at", "end_at", "meet_link",
     "status", "transcript", "summary", "requirements", "recall_bot_id",
+    "description", "invitados", "repeticion", "excepciones",
+    "google_event_id", "google_sync", "google_error", "google_meet", "origen",
 }
 
 
@@ -2282,6 +2410,83 @@ def delete_meeting(db_path: str, meeting_id: int) -> None:
     try:
         conn.execute("DELETE FROM meetings WHERE id = ?", (meeting_id,))
         conn.commit()
+    finally:
+        conn.close()
+
+
+# ─── Reuniones de otro asunto (sin cliente) ──────────────────────────────────
+
+_ASUNTO_COLUMNS = {
+    "title", "description", "start_at", "end_at", "meet_link", "invitados",
+    "repeticion", "excepciones", "status", "created_by",
+    "google_event_id", "google_sync", "google_error", "google_meet",
+}
+
+
+def create_reunion_asunto(db_path: str, **fields) -> int:
+    campos = {k: v for k, v in fields.items() if k in _ASUNTO_COLUMNS}
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute(
+            f"INSERT INTO reuniones_asunto ({', '.join(campos)}) "
+            f"VALUES ({', '.join('?' for _ in campos)})", list(campos.values()))
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def get_reunion_asunto(db_path: str, asunto_id: int) -> Optional[dict]:
+    conn = _connect(db_path)
+    try:
+        row = conn.execute("SELECT * FROM reuniones_asunto WHERE id = ?",
+                           (asunto_id,)).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def update_reunion_asunto(db_path: str, asunto_id: int, **fields) -> None:
+    invalid = set(fields) - _ASUNTO_COLUMNS
+    if invalid:
+        raise ValueError(f"Invalid reuniones_asunto columns: {invalid}")
+    if not fields:
+        return
+    set_clause = ", ".join(f"{k} = :{k}" for k in fields)
+    fields["id"] = asunto_id
+    conn = _connect(db_path)
+    try:
+        conn.execute(f"UPDATE reuniones_asunto SET {set_clause} WHERE id = :id", fields)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def delete_reunion_asunto(db_path: str, asunto_id: int) -> None:
+    conn = _connect(db_path)
+    try:
+        conn.execute("DELETE FROM reuniones_asunto WHERE id = ?", (asunto_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def listar_reuniones_asunto(db_path: str, desde: str = "", hasta: str = "") -> list[dict]:
+    """Las sueltas que empiezan en el rango, y todas las series que empezaron
+    antes de que el rango termine (las ocurrencias se calculan despues)."""
+    conn = _connect(db_path)
+    try:
+        filas = conn.execute("""
+            SELECT * FROM reuniones_asunto
+            WHERE COALESCE(status, '') != 'canceled'
+              AND ((COALESCE(repeticion, '') = ''
+                    AND (? = '' OR SUBSTR(start_at, 1, 10) >= ?)
+                    AND (? = '' OR SUBSTR(start_at, 1, 10) <= ?))
+                OR (COALESCE(repeticion, '') != ''
+                    AND (? = '' OR SUBSTR(start_at, 1, 10) <= ?)))
+            ORDER BY start_at
+        """, (desde, desde, hasta, hasta, hasta, hasta)).fetchall()
+        return [dict(f) for f in filas]
     finally:
         conn.close()
 

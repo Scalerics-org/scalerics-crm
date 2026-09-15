@@ -27,6 +27,7 @@ from routes.preclientes import preclientes_bp
 from routes.linkedin import linkedin_bp
 from routes.finanzas import finanzas_bp
 from routes.simulador import simulador_bp
+from routes.email_marketing import email_mkt_bp
 from routes.inteligencia_fin import inteligencia_fin_bp
 from routes.equipo import equipo_bp
 from routes.horarios import horarios_bp
@@ -404,6 +405,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   --ambar-tinte:#292116;
   --ambar-borde:#ca8a04;
   --azul-tinte:#0f1f35;
+  --violeta:#a78bfa;
   --sombra:rgba(0,0,0,.4);
   --semaforo-verde:#00ff00;
   --semaforo-celeste:#00ffff;
@@ -453,6 +455,7 @@ body.light{
   --ambar-tinte:#fef3c7;
   --ambar-borde:#fde047;
   --azul-tinte:#e0f2fe;
+  --violeta:#6d28d9;
   --sombra:rgba(0,0,0,.12);
   --semaforo-verde:#00ff00;
   --semaforo-celeste:#00ffff;
@@ -1033,6 +1036,52 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .cal-mobile-ev-titulo{font-size:.82rem;font-weight:600;color:var(--texto-fuerte)}
 .cal-mobile-ev-hora{font-size:.72rem;color:var(--azul-claro);margin-top:3px}
 .cal-mobile-ev-aviso{font-size:.7rem;color:var(--texto-debil);margin-top:3px}
+/* Reuniones de otro asunto y reuniones que se repiten (pedido de Juan, 15/9).
+   Todo con tokens: sirve igual en claro y en oscuro. El chip va combinado con
+   su body.light porque `body.light .cal-event-chip` le pisa el borde. */
+.cal-event-chip.tipo-asunto,.calw-chip.tipo-asunto,body.light .cal-event-chip.tipo-asunto,body.light .calw-chip.tipo-asunto{border-left-color:var(--violeta)}
+.cal-chip-tag{display:inline-block;font-size:.52rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--violeta);margin-right:4px}
+.cal-chip-rep{font-weight:800;color:var(--texto-tenue);margin-right:3px}
+.cal-leyenda-asunto{background:var(--violeta)}
+.cal-leyenda-rep{font-weight:800;color:var(--texto-tenue)}
+.cal-mobile-ev.tipo-asunto{border-left:3px solid var(--violeta)}
+.cal-mobile-ev-tag{font-size:.64rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--violeta);margin-bottom:2px}
+.cal-mobile-ev-rep{font-size:.72rem;color:var(--texto-tenue);margin-top:3px}
+.cal-modal-alto{max-height:90vh;overflow-y:auto}
+.cal-modal-alto [hidden]{display:none}
+.cal-tipo{display:grid;grid-template-columns:1fr 1fr;gap:4px;background:var(--fondo);border:1px solid var(--borde);border-radius:10px;padding:4px;margin:10px 0 14px}
+.cal-tipo-btn{min-height:40px;border:none;border-radius:7px;background:transparent;color:var(--texto-tenue);font-size:.8rem;font-weight:600;font-family:inherit;cursor:pointer}
+.cal-tipo-btn.active{background:var(--relleno);color:var(--texto-fuerte);box-shadow:inset 0 0 0 1px var(--borde-fuerte)}
+.cal-tipo-btn:focus-visible{outline:2px solid var(--azul-claro);outline-offset:1px}
+.cal-cliente-resultados{display:flex;flex-direction:column;gap:4px;max-height:180px;overflow-y:auto;margin:-6px 0 12px}
+.cal-cliente-opcion{text-align:left;min-height:40px;padding:6px 10px;border-radius:8px;border:1px solid var(--borde);background:var(--relleno);color:var(--texto-fuerte);font-size:.8rem;font-family:inherit;cursor:pointer}
+.cal-cliente-opcion:hover{background:var(--hover)}
+.cal-cliente-vacio{font-size:.74rem;color:var(--texto-debil);padding:2px}
+.cal-cliente-elegido{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;border:1px solid var(--borde);border-radius:8px;background:var(--relleno);color:var(--texto-fuerte);font-size:.82rem;margin-bottom:12px}
+.cal-cliente-cambiar{background:none;border:none;color:var(--azul-claro);font-size:.76rem;font-weight:600;font-family:inherit;cursor:pointer;min-height:32px}
+.cal-rep-dias{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.cal-rep-dia{position:relative;cursor:pointer}
+.cal-rep-dia input{position:absolute;opacity:0;pointer-events:none}
+.cal-rep-dia span{display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:50%;border:1px solid var(--borde);background:var(--fondo);color:var(--texto-tenue);font-size:.76rem;font-weight:700}
+.cal-rep-dia input:checked+span{background:var(--azul);border-color:var(--azul);color:#fff}
+.cal-rep-dia input:focus-visible+span{outline:2px solid var(--azul-claro);outline-offset:2px}
+.cal-rep-resumen{font-size:.76rem;font-weight:600;color:var(--azul-claro);margin:0 0 12px}
+.cal-modal-nota{font-size:.72rem;color:var(--texto-debil);margin:-6px 0 12px}
+.cal-serie-aviso{font-size:.74rem;color:var(--texto-tenue);background:var(--relleno);border-radius:8px;padding:8px 10px;margin-bottom:12px}
+.cal-alcance-btns{display:flex;flex-direction:column;gap:8px;margin-bottom:14px}
+.cal-alcance-btn{min-height:44px;border-radius:10px;border:1px solid var(--borde);background:var(--relleno);color:var(--texto-fuerte);font-size:.84rem;font-weight:600;font-family:inherit;cursor:pointer}
+.cal-alcance-btn:hover{background:var(--hover)}
+/* Reuniones que el CRM no pudo crear o actualizar en Google Calendar */
+.cal-aviso-google{padding:12px 16px;background:var(--ambar-tinte);border:1px solid var(--ambar-borde);border-radius:8px;color:var(--ambar);font-size:.82rem;line-height:1.5;margin-bottom:16px}
+.cal-chip-sync{font-weight:800;color:var(--ambar);margin-right:3px}
+.cal-act-retry{background:var(--ambar-tinte);border-color:var(--ambar-borde);color:var(--ambar)}
+.cal-mobile-ev-sync{font-size:.72rem;color:var(--ambar);margin-top:4px}
+.cal-mobile-act-reintentar{color:var(--ambar)}
+/* "Enviar a Google Calendar" y "Unirse con Google Meet" */
+.cal-act-send{background:var(--azul-tinte);border-color:var(--borde);color:var(--azul-claro)}
+.cal-act-meet,.cal-act-send,.cal-act-retry{white-space:normal}
+.cal-mobile-act-enviar{color:var(--azul-claro)}
+.cal-meet-btn{display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:0 14px;margin:0 0 12px;border-radius:8px;border:1px solid var(--borde);background:var(--verde-tinte);color:var(--verde-texto);font-size:.8rem;font-weight:700;text-decoration:none}
 /* Pipeline Notion: con quien del CRM esta conectada cada ficha */
 .nc-vinculo{display:inline-flex;align-items:center;gap:4px;margin-top:8px;max-width:100%;padding:4px 10px;border-radius:999px;border:1px solid var(--borde);background:var(--relleno);color:var(--texto);font-size:.72rem;font-family:inherit;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .nc-vinculo-falta{background:var(--ambar-tinte);color:var(--ambar);border-color:var(--ambar-borde)}
@@ -1300,6 +1349,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-daily .nav-icon{stroke:#38bdf8}
 #nav-daily_admin .nav-icon{stroke:#f0abfc}
 #nav-plantillas .nav-icon{stroke:#c084fc}
+#nav-email_mkt .nav-icon{stroke:#6ee7b7}
 .nav-item.active #nav-cola .nav-icon,
 .nav-item.active .nav-icon{opacity:1}
 /* active item keeps its color but brighter */
@@ -1326,6 +1376,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-flujos.active .nav-icon{stroke:#99f6e4}
 #nav-seg_leads.active .nav-icon{stroke:#fda4af}
 #nav-plantillas.active .nav-icon{stroke:#d8b4fe}
+#nav-email_mkt.active .nav-icon{stroke:#a7f3d0}
 /* light mode — slightly darker tones */
 body.light #nav-cola .nav-icon{stroke:#2563eb}
 body.light #nav-clientes .nav-icon{stroke:#7c3aed}
@@ -1350,6 +1401,7 @@ body.light #nav-horarios .nav-icon{stroke:#92400e}
 body.light #nav-flujos .nav-icon{stroke:#0f766e}
 body.light #nav-seg_leads .nav-icon{stroke:#be123c}
 body.light #nav-plantillas .nav-icon{stroke:#9333ea}
+body.light #nav-email_mkt .nav-icon{stroke:#065f46}
 /* ── Lucide icons ─────────────────────────────────────────────────────────── */
 .nav-icon{width:15px;height:15px;stroke-width:2;flex-shrink:0}
 /* Frase de equipo, version compacta del PDF de identidad de marca. Es la
@@ -2180,6 +2232,60 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 @media(max-width:600px){
   .sl-contadores{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
+/* ── Email marketing ─────────────────────────────────────────────────────────
+   Lo que sale por Resend. Solo tokens, sin reglas de tema claro: los chips usan
+   la familia de estados (tintes azul/verde/rojo/ambar), que ya tiene su par. */
+.em-oculto{display:none!important}
+.em-acciones{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.em-nota-estados{font-size:.76rem;color:var(--texto-debil);margin:-6px 0 10px}
+.em-nota-estados:empty{display:none}
+.em-barra{display:flex;align-items:center;justify-content:space-between;gap:8px 12px;flex-wrap:wrap;margin-bottom:14px}
+.em-nav-mes{display:flex;align-items:center;gap:8px;font-size:.85rem;color:var(--texto-fuerte);font-weight:600}
+.em-nav-mes span{min-width:120px;text-align:center}
+.em-tipo{min-width:200px}
+.em-contadores{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;margin-bottom:14px}
+.em-contador{background:var(--superficie-honda);border:1px solid var(--borde);border-radius:10px;padding:12px 14px;min-width:0}
+.em-contador-num{font-size:1.5rem;font-weight:700;color:var(--texto-fuerte);font-variant-numeric:tabular-nums}
+.em-contador-rotulo{font-size:.74rem;font-weight:600;color:var(--texto);margin-top:2px}
+.em-contador-tasa{font-size:.7rem;color:var(--texto-debil);margin-top:2px;min-height:1em}
+.em-contador-rebotados .em-contador-num,.em-contador-spam .em-contador-num{color:var(--rojo-texto)}
+.em-aviso{background:var(--ambar-tinte);color:var(--ambar);border:1px solid var(--ambar-borde);border-radius:10px;padding:10px 12px;font-size:.78rem;line-height:1.45;margin-bottom:14px}
+.em-card{background:var(--superficie-honda);border:1px solid var(--borde);border-radius:10px;padding:16px;margin-bottom:14px;min-width:0}
+.em-card-titulo{font-size:.9rem;font-weight:700;color:var(--texto-fuerte);margin-bottom:10px}
+.em-cab{display:flex;justify-content:space-between;align-items:center;gap:8px 12px;flex-wrap:wrap;margin-bottom:10px}
+.em-cab .em-card-titulo{margin-bottom:0}
+.em-buscar{background:var(--superficie);border:1px solid var(--borde-fuerte);color:var(--texto);border-radius:8px;padding:7px 10px;font-size:.8rem;font-family:inherit;min-width:240px}
+.em-buscar:focus{outline:2px solid var(--azul);outline-offset:1px}
+.em-tabla-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.em-tabla{width:100%;min-width:760px;border-collapse:collapse;font-size:.78rem}
+.em-tabla th{text-align:left;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--texto-debil);padding:6px 8px;border-bottom:1px solid var(--borde);white-space:nowrap}
+.em-tabla td{padding:8px;border-bottom:1px solid var(--borde);color:var(--texto);vertical-align:top}
+.em-tabla tr:hover td{background:var(--hover)}
+.em-fecha{white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--texto-tenue)}
+.em-dest{overflow-wrap:anywhere;max-width:220px}
+.em-asunto{overflow-wrap:anywhere;max-width:320px}
+.em-extracto{display:block;color:var(--texto-debil);font-size:.7rem;margin-top:2px}
+.em-chip{display:inline-block;border-radius:99px;padding:2px 9px;font-size:.7rem;font-weight:700;white-space:nowrap}
+.em-chip-azul{background:var(--azul-tinte);color:var(--azul-claro)}
+.em-chip-verde{background:var(--verde-tinte);color:var(--verde-texto)}
+.em-chip-fuerte{background:var(--verde-tinte);color:var(--verde-texto);box-shadow:inset 0 0 0 1px var(--verde-texto)}
+.em-chip-rojo{background:var(--rojo-tinte);color:var(--rojo-texto)}
+.em-chip-ambar{background:var(--ambar-tinte);color:var(--ambar)}
+.em-chip-gris{background:var(--relleno);color:var(--texto-debil)}
+.em-nota{display:block;font-size:.66rem;color:var(--texto-debil);margin-top:3px}
+.em-link{background:none;border:none;padding:0;color:var(--azul-claro);font:inherit;cursor:pointer;text-align:left;text-decoration:underline;overflow-wrap:anywhere}
+.em-paginas{display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-top:10px;font-size:.76rem;color:var(--texto-tenue)}
+.em-paginas:empty{display:none}
+.em-vacio{font-size:.8rem;color:var(--texto-debil);padding:8px 0}
+@media(max-width:900px){
+  .em-contadores{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+@media(max-width:560px){
+  .em-contadores{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .em-barra{align-items:stretch}
+  .em-buscar,.em-tipo{min-width:0;width:100%}
+  .em-card{padding:12px}
+}
 /* ── Equipo ───────────────────────────────────────────────────────────────────
    Organigrama (SVG) y ausencias con recupero. Solo tokens, sin reglas
    `body.light`: los tintes rojo/verde/ambar son los de la familia de estados,
@@ -2431,6 +2537,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div class="nav-item" id="nav-cola" onclick="showPanel('cola')"><i data-lucide="inbox" class="nav-icon"></i> Outbound</div>
   <div class="nav-item" id="nav-metrics" onclick="showPanel('metrics')"><i data-lucide="bar-chart-2" class="nav-icon"></i> Inteligencia comercial</div>
   <div class="nav-item" id="nav-sdr" onclick="showPanel('sdr')"><i data-lucide="phone-call" class="nav-icon"></i> SDR</div>
+  <div class="nav-item" id="nav-email_mkt" onclick="showPanel('email_mkt')"><i data-lucide="mail" class="nav-icon"></i> Email marketing</div>
   </div>
   <div class="sidebar-bottom">
     <a id="admin-link" href="/admin/users" style="display:none;background:none;border:1px solid var(--borde);border-radius:8px;padding:6px 12px;font-size:.75rem;color:var(--texto-debil);cursor:pointer;width:100%;text-align:left;text-decoration:none;box-sizing:border-box">&#9881; Usuarios</a>
@@ -2727,6 +2834,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
         <button class="cal-nav-btn" onclick="calShift(-1)" title="Anterior" aria-label="Anterior">←</button>
         <button class="cal-today-btn" onclick="calHoy()">Hoy</button>
         <button class="cal-nav-btn" onclick="calShift(1)" title="Siguiente" aria-label="Siguiente">→</button>
+        <button class="cal-new-btn" onclick="openNewEventModal()">+ Nueva reunión</button>
         <a href="https://calendly.com/scalerics/consultoriagratuita" target="_blank" class="cal-new-btn" style="background:#0f2a1a;border:1px solid #10b981;color:#10b981;text-decoration:none">+ Calendly</a>
       </div>
     </div>
@@ -2734,10 +2842,13 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       <span><i style="background:#0088cc"></i> Del CRM</span>
       <span><i style="background:#10b981"></i> De Google</span>
       <span><i style="background:#f59e0b"></i> De Calendly &mdash; se reprograma allá</span>
+      <span><i class="cal-leyenda-asunto"></i> Otro asunto</span>
+      <span><b class="cal-leyenda-rep">↻</b> Se repite</span>
       <span class="cal-hint-escritorio" style="margin-left:auto">Arrastrá una reunión para moverla</span>
       <span class="cal-hint-movil">Deslizá el calendario para cambiar de mes</span>
     </div>
     <div id="cal-error" class="cal-error" style="display:none"></div>
+    <div id="cal-aviso-google" class="cal-aviso-google" role="status" hidden></div>
     <div id="cal-days" class="cal-days"><div class="cal-loading">Cargando calendario...</div></div>
     <div id="cal-day-events-mobile"></div>
   </div>
@@ -3290,6 +3401,48 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     <div id="sdr-content"></div>
   </div>
 
+  <!-- ======= EMAIL MARKETING PANEL ======= -->
+  <!-- Lo que sale por Resend: cada envio registrado con su id de Resend, mas lo
+       que cuenta el webhook (entregado, abierto, clic, rebote, spam). -->
+  <div id="email_mkt-panel" class="panel">
+    <div class="page-header">
+      <div>
+        <h1>Email marketing</h1>
+        <div class="page-date">Lo que va saliendo por Resend: campañas, recordatorios y avisos</div>
+      </div>
+      <div class="em-acciones">
+        <button type="button" class="export-btn" onclick="loadEmailMkt()">↻ Recargar</button>
+        <button type="button" class="export-btn em-oculto" id="em-btn-estados" onclick="emActualizarEstados()">Actualizar estados</button>
+      </div>
+    </div>
+    <div class="em-nota-estados" id="em-estados-nota" role="status" aria-live="polite"></div>
+    <div class="em-barra">
+      <div class="em-nav-mes">
+        <button type="button" class="cal-nav-btn" onclick="emMes(-1)" title="Mes anterior" aria-label="Mes anterior">&larr;</button>
+        <span id="em-mes-label" aria-live="polite"></span>
+        <button type="button" class="cal-nav-btn" id="em-mes-sig" onclick="emMes(1)" title="Mes siguiente" aria-label="Mes siguiente">&rarr;</button>
+        <button type="button" class="cal-today-btn" onclick="emMesHoy()">Este mes</button>
+      </div>
+      <select class="filter-select em-tipo" id="em-tipo" onchange="emFiltrar()" aria-label="Tipo de envío"><option value="">Todos los tipos</option></select>
+    </div>
+    <div id="em-estado" class="em-vacio" role="status" aria-live="polite">Cargando…</div>
+    <div id="em-contadores" class="em-contadores"></div>
+    <div id="em-aviso"></div>
+    <div class="em-card">
+      <div class="em-card-titulo">Enviados por día</div>
+      <div id="em-grafico"></div>
+    </div>
+    <div class="em-card">
+      <div class="em-cab">
+        <div class="em-card-titulo">Envíos</div>
+        <input type="search" class="em-buscar" id="em-buscar" placeholder="Buscar por mail o asunto" oninput="emBuscar()" aria-label="Buscar por mail o asunto">
+      </div>
+      <div id="em-tabla" class="em-tabla-wrap"></div>
+      <div id="em-paginas" class="em-paginas"></div>
+    </div>
+  </div>
+  <!-- ======= FIN EMAIL MARKETING PANEL ======= -->
+
   <div id="activity-panel" class="panel">
     <div class="page-header">
       <div>
@@ -3612,7 +3765,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 
 <!-- Modal: Nueva reunión -->
 <div class="modal-overlay" id="reprog-modal">
-  <div class="modal" style="width:400px;max-width:95vw">
+  <div class="modal cal-modal-alto" style="width:400px;max-width:95vw">
     <h3>Editar reunión</h3>
     <p style="margin-bottom:16px" id="reprog-title"></p>
     <label class="modal-label">Título</label>
@@ -3633,7 +3786,11 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
         <input type="number" id="reprog-duracion" min="5" max="480" step="5">
       </div>
     </div>
-    <p style="font-size:.72rem;color:#64748b;margin:10px 0 0">Si la reunión está en Google Calendar, se mueve ahí también y al invitado le llega el aviso por mail.</p>
+    <div class="cal-serie-aviso" id="reprog-serie" hidden></div>
+    <label class="modal-label">Invitados</label>
+    <input type="text" id="reprog-invitados" placeholder="mail@ejemplo.com, otro@ejemplo.com" autocomplete="off">
+    <a id="reprog-meet" class="cal-meet-btn" href="#" target="_blank" rel="noopener" hidden>Unirse con Google Meet</a>
+    <div class="cal-modal-nota" id="reprog-google-nota" aria-live="polite"></div>
     <div class="cal-error" id="reprog-error" style="display:none;margin:12px 0 0"></div>
     <div class="modal-btns">
       <button class="btn-cancel" onclick="_calCerrarEditor()">Cancelar</button>
@@ -3642,20 +3799,46 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   </div>
 </div>
 
+<!-- Modal: una reunion que se repite, a cuales aplica el cambio o el borrado -->
+<div class="modal-overlay" id="alcance-modal">
+  <div class="modal" style="width:380px;max-width:95vw">
+    <h3 id="alcance-titulo">Reunión que se repite</h3>
+    <p id="alcance-texto">¿A cuáles se aplica?</p>
+    <div class="cal-alcance-btns">
+      <button type="button" class="cal-alcance-btn" id="alcance-esta" onclick="_calResolverAlcance('esta')">Solo esta</button>
+      <button type="button" class="cal-alcance-btn" id="alcance-siguientes" onclick="_calResolverAlcance('siguientes')">Esta y las siguientes</button>
+      <button type="button" class="cal-alcance-btn" id="alcance-todas" onclick="_calResolverAlcance('todas')">Todas</button>
+    </div>
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="_calResolverAlcance(null)">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Nueva reunión -->
 <div class="modal-overlay" id="event-modal">
-  <div class="modal" style="width:460px;max-width:95vw">
+  <div class="modal cal-modal-alto" style="width:480px;max-width:95vw">
     <h3>Nueva reunión</h3>
-    <p style="margin-bottom:16px"></p>
-    <label class="modal-label">Título</label>
+    <div class="cal-tipo" role="radiogroup" aria-label="Tipo de reunión">
+      <button type="button" role="radio" aria-checked="true" id="ev-tipo-cliente" class="cal-tipo-btn active" onclick="_calElegirTipo('cliente')">Con un cliente / lead</button>
+      <button type="button" role="radio" aria-checked="false" id="ev-tipo-asunto" class="cal-tipo-btn" onclick="_calElegirTipo('asunto')">Otro asunto</button>
+    </div>
+    <div id="ev-bloque-cliente">
+      <label class="modal-label">Cliente o lead</label>
+      <div id="ev-cliente-elegido" class="cal-cliente-elegido" hidden></div>
+      <input type="text" id="ev-cliente-buscar" placeholder="Buscá por nombre o teléfono" autocomplete="off" oninput="_calBuscarClienteTecla(this.value)">
+      <div id="ev-cliente-resultados" class="cal-cliente-resultados"></div>
+    </div>
+    <label class="modal-label" id="ev-title-label">Título</label>
     <input type="text" id="ev-title" placeholder="Ej: Reunión con El Fogón">
     <div class="modal-row">
       <div>
         <label class="modal-label">Fecha</label>
-        <input type="date" id="ev-date">
+        <input type="date" id="ev-date" onchange="_calPintarRepeticion()">
       </div>
       <div>
-        <label class="modal-label">Hora</label>
-        <input type="time" id="ev-time" value="10:00">
+        <label class="modal-label">Hora (Montevideo)</label>
+        <input type="time" id="ev-time" value="10:00" onchange="_calPintarRepeticion()">
       </div>
     </div>
     <div class="modal-row">
@@ -3663,12 +3846,59 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
         <label class="modal-label">Duración (min)</label>
         <input type="number" id="ev-duration" value="60" min="15" max="480">
       </div>
+      <div>
+        <label class="modal-label">Se repite</label>
+        <select id="ev-rep-freq" onchange="_calPintarRepeticion()">
+          <option value="no">No se repite</option>
+          <option value="diaria">Todos los días</option>
+          <option value="semanal">Todas las semanas</option>
+          <option value="quincenal">Cada 2 semanas</option>
+          <option value="mensual">Todos los meses (mismo día)</option>
+        </select>
+      </div>
     </div>
+    <div id="ev-rep-opciones" hidden>
+      <div id="ev-rep-dias-bloque">
+        <label class="modal-label">Qué días</label>
+        <div class="cal-rep-dias" id="ev-rep-dias">
+          <label class="cal-rep-dia" title="Lunes"><input type="checkbox" value="0" aria-label="Lunes" onchange="_calPintarRepeticion()"><span>L</span></label>
+          <label class="cal-rep-dia" title="Martes"><input type="checkbox" value="1" aria-label="Martes" onchange="_calPintarRepeticion()"><span>M</span></label>
+          <label class="cal-rep-dia" title="Miércoles"><input type="checkbox" value="2" aria-label="Miércoles" onchange="_calPintarRepeticion()"><span>X</span></label>
+          <label class="cal-rep-dia" title="Jueves"><input type="checkbox" value="3" aria-label="Jueves" onchange="_calPintarRepeticion()"><span>J</span></label>
+          <label class="cal-rep-dia" title="Viernes"><input type="checkbox" value="4" aria-label="Viernes" onchange="_calPintarRepeticion()"><span>V</span></label>
+          <label class="cal-rep-dia" title="Sábado"><input type="checkbox" value="5" aria-label="Sábado" onchange="_calPintarRepeticion()"><span>S</span></label>
+          <label class="cal-rep-dia" title="Domingo"><input type="checkbox" value="6" aria-label="Domingo" onchange="_calPintarRepeticion()"><span>D</span></label>
+        </div>
+      </div>
+      <div class="modal-row">
+        <div>
+          <label class="modal-label">Termina</label>
+          <select id="ev-rep-fin" onchange="_calPintarRepeticion()">
+            <option value="nunca">Nunca</option>
+            <option value="fecha">Hasta una fecha</option>
+            <option value="veces">Después de N veces</option>
+          </select>
+        </div>
+        <div id="ev-rep-hasta-bloque" hidden>
+          <label class="modal-label">Hasta</label>
+          <input type="date" id="ev-rep-hasta" onchange="_calPintarRepeticion()">
+        </div>
+        <div id="ev-rep-veces-bloque" hidden>
+          <label class="modal-label">Cuántas veces</label>
+          <input type="number" id="ev-rep-veces" value="10" min="1" max="500" oninput="_calPintarRepeticion()">
+        </div>
+      </div>
+      <div class="cal-rep-resumen" id="ev-rep-resumen" aria-live="polite"></div>
+    </div>
+    <label class="modal-label">Invitados</label>
+    <input type="text" id="ev-invitados" placeholder="mail@ejemplo.com, otro@ejemplo.com" autocomplete="off">
+    <div class="cal-modal-nota">Separados por coma. Al crear la reunión, Google Calendar les manda la invitación por mail con el link de Google Meet (y al cliente, si tiene mail cargado).</div>
     <label class="modal-label">Link de reunión</label>
     <input type="url" id="ev-email" placeholder="(opcional) https://meet.google.com/..." style="margin-bottom:12px">
     <label class="modal-label">Descripción</label>
     <textarea id="ev-desc" placeholder="(opcional)" style="min-height:60px"></textarea>
     <input type="hidden" id="ev-client-id" value="">
+    <div class="cal-error" id="ev-error" style="display:none;margin:0 0 12px"></div>
     <div class="modal-btns">
       <button class="btn-cancel" onclick="closeNewEventModal()">Cancelar</button>
       <button class="btn-confirm" id="ev-save-btn" onclick="saveEvent()">📅 Crear reunión</button>
@@ -4245,6 +4475,7 @@ function showPanel(name) {
   if (name === 'seg_leads') loadSegLeads();
   if (name === 'plantillas') plCargar();
   if (name === 'sdr') loadSdr();
+  if (name === 'email_mkt') loadEmailMkt();
 }
 
 // ========== Leads / Cola panel ==========
@@ -6668,7 +6899,8 @@ function _calEvento(id) {
 // "Septiembre 2026 · 18 reuniones · 11 hechas · 7 por venir". Siempre habla del
 // MES: en la vista semana, del mes de la semana visible. Cuenta todo lo que el
 // calendario dibuja como reunion (del CRM, de Google y de Calendly; las
-// canceladas ya no vienen del endpoint), sin distinguir tipos.
+// canceladas ya no vienen del endpoint). Las de "otro asunto" no son reuniones
+// de ventas: van aparte, "· 2 de otros asuntos". Una serie cuenta cada vez.
 
 // Hoy en Montevideo como 'AAAA-MM-DDTHH:MM'. Uruguay es UTC-3 fijo (no tiene
 // horario de verano desde 2015), asi que no depende del huso del navegador.
@@ -6720,7 +6952,8 @@ function _calRangoSemana(lunes, anio, mes) {
 // hechas recien cuando termino su dia.
 function _calResumenMes(eventos, anio, mes, ahoraMvd) {
   const clave = anio + '-' + String(mes + 1).padStart(2, '0');
-  const delMes = (eventos || []).filter(ev => String((ev && ev.date) || '').slice(0, 7) === clave);
+  const todasDelMes = (eventos || []).filter(ev => String((ev && ev.date) || '').slice(0, 7) === clave);
+  const delMes = todasDelMes.filter(ev => ev.tipo !== 'asunto');
   const mesDeHoy = ahoraMvd.slice(0, 7);
   const tipo = clave < mesDeHoy ? 'pasado' : (clave > mesDeHoy ? 'futuro' : 'actual');
   let hechas = 0;
@@ -6728,7 +6961,8 @@ function _calResumenMes(eventos, anio, mes, ahoraMvd) {
     const inicio = ev.date + 'T' + (ev.time || '24:00');
     if (inicio <= ahoraMvd) hechas++;
   });
-  return {tipo: tipo, total: delMes.length, hechas: hechas, porVenir: delMes.length - hechas};
+  return {tipo: tipo, total: delMes.length, hechas: hechas, porVenir: delMes.length - hechas,
+          asuntos: todasDelMes.length - delMes.length};
 }
 
 function _calPlural(n, uno, varios) {
@@ -6747,6 +6981,9 @@ function _calTextoContador(resumen, anio, mes) {
   if (resumen.tipo === 'actual') {
     partes.push(_calPlural(resumen.hechas, 'hecha', 'hechas'));
     partes.push(resumen.porVenir + ' por venir');
+  }
+  if (resumen.asuntos) {
+    partes.push(_calPlural(resumen.asuntos, 'de otro asunto', 'de otros asuntos'));
   }
   return partes.join(' · ');
 }
@@ -6774,21 +7011,36 @@ function _calChip(ev) {
 function _calChipHtml(ev, clase) {
   const origen = ev.origen || 'crm';
   const deCalendly = origen === 'calendly';
+  const asunto = ev.tipo === 'asunto';
   const titulo = (ev.time ? ev.time + ' ' : '') + (ev.title || '');
-  const aviso = deCalendly ? ' (de Calendly: se reprograma allá)' : '';
+  const sinGoogle = !!(ev.google && ev.google.estado === 'error');
+  const aviso = (deCalendly ? ' (de Calendly: se reprograma allá)' : '')
+              + (asunto ? ' · otro asunto' : '')
+              + (ev.serie ? ' · ' + _calTextoRepeticion(ev.repeticion) : '')
+              + (sinGoogle ? ' · No sincronizada con Google (' + (ev.google.error || 'error') + ')' : '');
   const editar = deCalendly
     ? ''
     : '<button class="cal-chip-act cal-act-edit" draggable="false" onclick="event.stopPropagation();_calAbrirEditor(' + escJs(ev.id) + ')">Editar</button>';
+  const esMeet = String(ev.meeting_url || '').indexOf('meet.google.com') !== -1;
   const unirse = ev.meeting_url
-    ? '<a class="cal-chip-act cal-act-join" draggable="false" href="' + esc(ev.meeting_url) + '" target="_blank" onclick="event.stopPropagation()">Unirse</a>'
+    ? '<a class="cal-chip-act cal-act-join' + (esMeet ? ' cal-act-meet' : '') + '" draggable="false" href="' + esc(ev.meeting_url) + '" target="_blank" onclick="event.stopPropagation()">' + (esMeet ? 'Unirse con Google Meet' : 'Unirse') + '</a>'
     : '';
-  return '<div class="' + clase + ' origen-' + origen + '" draggable="' + (deCalendly ? 'false' : 'true') + '"'
+  // Solo lo creado a mano en el CRM (nunca Calendly) y con el envio prendido.
+  const g = ev.google || {};
+  const accionGoogle = g.puede_enviar ? (sinGoogle ? 'Reintentar en Google' : 'Enviar a Google Calendar') : '';
+  const reintentar = accionGoogle
+    ? '<button class="cal-chip-act ' + (sinGoogle ? 'cal-act-retry' : 'cal-act-send') + '" draggable="false" onclick="event.stopPropagation();_calReintentarGoogle(' + escJs(ev.id) + ')">' + accionGoogle + '</button>'
+    : '';
+  return '<div class="' + clase + ' origen-' + origen + (asunto ? ' tipo-asunto' : '') + '" draggable="' + (deCalendly ? 'false' : 'true') + '"'
        + ' title="' + esc(titulo + aviso) + '"'
        + ' ondragstart="_calDragStart(event,' + escJs(ev.id) + ',' + escJs(origen) + ')"'
        + ' ondragend="_calDragEnd(event)">'
        + (ev.time ? '<span class="cal-chip-time">' + esc(ev.time) + '</span>' : '')
+       + (sinGoogle ? '<span class="cal-chip-sync" aria-label="No sincronizada con Google">⚠</span>' : '')
+       + (ev.serie ? '<span class="cal-chip-rep" aria-label="Se repite">↻</span>' : '')
+       + (asunto ? '<span class="cal-chip-tag">Asunto</span>' : '')
        + '<span class="cal-chip-title">' + esc(ev.title || '') + '</span>'
-       + '<div class="cal-chip-acts">' + editar + unirse
+       + '<div class="cal-chip-acts">' + editar + unirse + reintentar
        + '<button class="cal-chip-act cal-act-del" draggable="false" onclick="event.stopPropagation();deleteCalEvent(' + escJs(ev.id) + ',' + escJs(ev.title || '') + ')">Borrar</button>'
        + '</div></div>';
 }
@@ -6837,12 +7089,21 @@ function _calSoltar(e) {
 
 async function _calMover(ev, fecha, hora) {
   if (ev.date === fecha && ev.time === hora) return;
+  const cuerpo = {date: fecha, time: hora};
+  if (ev.serie) {
+    const alcance = await _calElegirAlcance('mover');
+    if (!alcance) return;
+    cuerpo.ocurrencia = ev.ocurrencia;
+    cuerpo.alcance = alcance;
+    // "Solo esta" conserva el nombre y la duracion que esa reunion ya tenia.
+    if (alcance === 'esta') { cuerpo.title = ev.title; cuerpo.duration_min = ev.duration_min; }
+  }
   let j;
   try {
-    const r = await fetch('/api/calendar/meetings/' + encodeURIComponent(ev.id), {
+    const r = await fetch(_calRutaReunion(ev), {
       method: 'PATCH',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({date: fecha, time: hora}),
+      body: JSON.stringify(cuerpo),
     });
     j = await r.json();
   } catch (err) {
@@ -6850,6 +7111,8 @@ async function _calMover(ev, fecha, hora) {
   }
   if (!j || !j.ok) {
     alert('No se movió la reunión: ' + ((j && j.error) || 'error desconocido'));
+  } else {
+    _calAvisoGoogle(_calTextoGoogle(j.google, 'actualizó'));
   }
   renderCalendar();
 }
@@ -6969,12 +7232,25 @@ function _calAbrirEditor(id) {
   const ev = _calEvento(id);
   if (!ev) return;
   _calEditando = {id: ev.id, title: ev.title, date: ev.date, time: ev.time,
-                  duration_min: ev.duration_min || 60};
-  document.getElementById('reprog-title').textContent = ev.client_name || '';
+                  duration_min: ev.duration_min || 60,
+                  invitados: (ev.invitados || []).join(', '), evento: ev};
+  document.getElementById('reprog-title').textContent = ev.tipo === 'asunto' ? 'Otro asunto' : (ev.client_name || '');
   document.getElementById('reprog-nombre').value = ev.title || '';
   document.getElementById('reprog-duracion').value = _calEditando.duration_min;
-  document.getElementById('reprog-date').value = ev.date || _calIsoLocal(new Date());
+  document.getElementById('reprog-date').value = ev.date || _calAhoraMvd().slice(0, 10);
   document.getElementById('reprog-time').value = _calHoraDeLaReunion(_calEditando);
+  document.getElementById('reprog-invitados').value = _calEditando.invitados;
+  const meet = document.getElementById('reprog-meet');
+  const linkMeet = (ev.google && ev.google.meet)
+    || (String(ev.meeting_url || '').indexOf('meet.google.com') !== -1 ? ev.meeting_url : '');
+  meet.href = linkMeet || '#';
+  meet.hidden = !linkMeet;
+  document.getElementById('reprog-google-nota').textContent = _calTextoEstadoGoogle(ev);
+  const serie = document.getElementById('reprog-serie');
+  serie.hidden = !ev.serie;
+  serie.textContent = ev.serie
+    ? '↻ ' + _calTextoRepeticion(ev.repeticion, ev.time) + '. Al guardar elegís si el cambio es solo para esta, para esta y las siguientes o para todas. Los invitados son de toda la serie.'
+    : '';
   const err = document.getElementById('reprog-error');
   err.style.display = 'none';
   err.textContent = '';
@@ -6993,6 +7269,7 @@ async function _calGuardarHorario() {
   const time = document.getElementById('reprog-time').value;
   const nombre = document.getElementById('reprog-nombre').value.trim();
   const duracion = parseInt(document.getElementById('reprog-duracion').value, 10);
+  const mails = _calLeerMails(document.getElementById('reprog-invitados').value);
   const err = document.getElementById('reprog-error');
 
   if (!date || !time) {
@@ -7005,24 +7282,39 @@ async function _calGuardarHorario() {
     err.style.display = 'block';
     return;
   }
+  if (mails.malos.length) {
+    err.textContent = 'Estos mails no son válidos: ' + mails.malos.join(', ');
+    err.style.display = 'block';
+    return;
+  }
   // Sin cambios: cerramos y no molestamos a nadie. El horario lo decide
-  // _calDestinoValido; el nombre y la duración se miran acá.
+  // _calDestinoValido; el nombre, la duración y los invitados se miran acá.
   const cambioNombre = nombre && nombre !== (reunion.title || '');
   const cambioDuracion = duracion !== (reunion.duration_min || 60);
-  if (!_calDestinoValido(reunion, date, time) && !cambioNombre && !cambioDuracion) {
+  const cambioInvitados = mails.lista.join(', ') !== _calLeerMails(reunion.invitados).lista.join(', ');
+  if (!_calDestinoValido(reunion, date, time) && !cambioNombre && !cambioDuracion && !cambioInvitados) {
     _calCerrarEditor();
     return;
+  }
+
+  const ev = reunion.evento || {id: reunion.id};
+  const cuerpo = {date: date, time: time, title: nombre, duration_min: duracion,
+                  invitados: mails.lista};
+  if (ev.serie) {
+    const alcance = await _calElegirAlcance('editar');
+    if (!alcance) return;
+    cuerpo.ocurrencia = ev.ocurrencia;
+    cuerpo.alcance = alcance;
   }
 
   const btn = document.getElementById('reprog-save-btn');
   btn.disabled = true; btn.textContent = 'Guardando...';
   let j;
   try {
-    const r = await fetch('/api/calendar/meetings/' + encodeURIComponent(reunion.id), {
+    const r = await fetch(_calRutaReunion(ev), {
       method: 'PATCH',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({date: date, time: time, title: nombre,
-                            duration_min: duracion}),
+      body: JSON.stringify(cuerpo),
     });
     j = await r.json();
   } catch (e) {
@@ -7036,6 +7328,7 @@ async function _calGuardarHorario() {
     return;
   }
   _calCerrarEditor();
+  _calAvisoGoogle(_calTextoGoogle(j.google, 'actualizó'));
   // En el celular la lista sigue a la reunion a su dia nuevo: si no, queda
   // mostrando un dia donde la reunion ya no esta y parece que se borro.
   if (window.innerWidth <= 768) calDiaMobile = date;
@@ -7080,18 +7373,29 @@ function _calSeleccionarDiaMobile() {
 // Calendly no se editan desde aca, igual que en escritorio.
 function _calItemMobile(ev) {
   const deCalendly = (ev.origen || 'crm') === 'calendly';
+  const asunto = ev.tipo === 'asunto';
   const editar = deCalendly
     ? ''
     : '<button class="cal-mobile-act cal-mobile-act-editar" onclick="_calAbrirEditor(' + escJs(ev.id) + ')">Editar</button>';
+  const esMeet = String(ev.meeting_url || '').indexOf('meet.google.com') !== -1;
   const unirse = ev.meeting_url
-    ? '<a class="cal-mobile-act cal-mobile-act-unirse" href="' + esc(ev.meeting_url) + '" target="_blank" rel="noopener">Unirse</a>'
+    ? '<a class="cal-mobile-act cal-mobile-act-unirse" href="' + esc(ev.meeting_url) + '" target="_blank" rel="noopener">' + (esMeet ? 'Unirse con Google Meet' : 'Unirse') + '</a>'
     : '';
   const borrar = '<button class="cal-mobile-act cal-mobile-act-borrar" onclick="deleteCalEvent(' + escJs(ev.id) + ',' + escJs(ev.title || '') + ')">Borrar</button>';
-  return '<div class="cal-mobile-ev">'
+  const sinGoogle = !!(ev.google && ev.google.estado === 'error');
+  const g = ev.google || {};
+  const accionGoogle = g.puede_enviar ? (sinGoogle ? 'Reintentar en Google' : 'Enviar a Google Calendar') : '';
+  const reintentar = accionGoogle
+    ? '<button class="cal-mobile-act ' + (sinGoogle ? 'cal-mobile-act-reintentar' : 'cal-mobile-act-enviar') + '" onclick="_calReintentarGoogle(' + escJs(ev.id) + ')">' + accionGoogle + '</button>'
+    : '';
+  return '<div class="cal-mobile-ev' + (asunto ? ' tipo-asunto' : '') + '">'
+       + (asunto ? '<div class="cal-mobile-ev-tag">Otro asunto</div>' : '')
        + '<div class="cal-mobile-ev-titulo">' + esc(ev.title || '') + '</div>'
        + (ev.time ? '<div class="cal-mobile-ev-hora">🕐 ' + esc(ev.time) + '</div>' : '')
+       + (ev.serie ? '<div class="cal-mobile-ev-rep">↻ ' + esc(_calTextoRepeticion(ev.repeticion)) + '</div>' : '')
        + (deCalendly ? '<div class="cal-mobile-ev-aviso">De Calendly: se reprograma allá</div>' : '')
-       + '<div class="cal-mobile-acts">' + editar + unirse + borrar + '</div>'
+       + (sinGoogle ? '<div class="cal-mobile-ev-sync">⚠ No sincronizada con Google: ' + esc(ev.google.error || 'error desconocido') + '</div>' : '')
+       + '<div class="cal-mobile-acts">' + editar + unirse + reintentar + borrar + '</div>'
        + '</div>';
 }
 
@@ -7148,44 +7452,322 @@ function _calToqueFin(e) {
   zona.addEventListener('touchcancel', function () { _calToque = null; }, {passive: true});
 })();
 
-function openNewEventModal() {
-  const today = isoDate(new Date());
-  document.getElementById('ev-title').value = '';
-  document.getElementById('ev-date').value = today;
-  document.getElementById('ev-time').value = '10:00';
-  document.getElementById('ev-duration').value = '60';
-  document.getElementById('ev-desc').value = '';
-  document.getElementById('ev-email').value = '';
+// ── Nueva reunión ───────────────────────────────────────────────────────────
+// Con un cliente / lead (lo de siempre) u otro asunto (sin cliente, con el
+// titulo que se escriba). Las dos pueden tener invitados y repetirse. Nada de
+// esto crea eventos en Google ni manda mails: se guarda en el CRM, y el
+// servidor expande las repeticiones para el mes o la semana que se mira.
+
+const CAL_DIAS_PLURAL = ['los lunes', 'los martes', 'los miércoles', 'los jueves', 'los viernes', 'los sábados', 'los domingos'];
+let _calTipoNueva = 'cliente';
+let _calClienteTimer = null;
+let _calAlcanceResolver = null;
+
+// A que ruta va una reunion: las de otro asunto tienen la suya. Las
+// ocurrencias de una serie comparten `reunion_id` y se distinguen por fecha.
+function _calRutaReunion(ev) {
+  const base = ev.tipo === 'asunto' ? '/api/calendar/asuntos/' : '/api/calendar/meetings/';
+  return base + encodeURIComponent(ev.reunion_id != null ? ev.reunion_id : ev.id);
+}
+
+// ── Google Calendar ─────────────────────────────────────────────────────────
+// El CRM crea las reuniones en Google y Google manda las invitaciones. Si Google
+// falla, la reunion igual queda en el CRM: el aviso de arriba lo dice y la
+// reunion muestra "No sincronizada" con un boton para reintentar. Nunca se
+// reintenta sola.
+
+function _calAvisoGoogle(texto) {
+  const el = document.getElementById('cal-aviso-google');
+  if (!el) return;
+  el.textContent = texto || '';
+  el.hidden = !texto;
+}
+
+function _calTextoGoogle(google, accion) {
+  if (!google || google.estado !== 'error') return '';
+  return 'La reunión quedó guardada en el CRM, pero no se ' + accion + ' en Google Calendar: '
+       + (google.error || 'error desconocido') + '. Tocá "Reintentar en Google" en la reunión.';
+}
+
+// Lo que dice la ventana de editar sobre Google: si los invitados ya recibieron
+// algo o no. Dice lo que pasó, no lo que debería pasar.
+function _calTextoEstadoGoogle(ev) {
+  const g = (ev && ev.google) || {};
+  const origen = (ev && ev.origen) || 'crm';
+  if (origen === 'calendly') return 'Reunión de Calendly: la invitación y los avisos los manda Calendly. El CRM no la toca en Google.';
+  if (origen === 'google') return 'Está en Google Calendar: al guardar se mueve ahí y Google les avisa a los invitados.';
+  if (g.estado === 'ok') return 'Enviada a Google Calendar: los invitados recibieron la invitación, y al guardar Google les avisa del cambio.';
+  if (g.estado === 'error') return 'No se pudo enviar a Google Calendar (' + (g.error || 'error desconocido') + '): los invitados todavía no recibieron nada. Usá "Reintentar en Google".';
+  if (g.puede_enviar) return 'Todavía no está en Google Calendar: los invitados no recibieron ningún mail. Usá "Enviar a Google Calendar" en la reunión.';
+  return 'No está en Google Calendar: el CRM no les manda ningún mail a los invitados.';
+}
+
+async function _calReintentarGoogle(id) {
+  const ev = _calEvento(id);
+  if (!ev) return;
+  let d;
+  try {
+    const r = await fetch(_calRutaReunion(ev) + '/google', {method: 'POST'});
+    d = await r.json();
+  } catch (e) {
+    d = {ok: false, error: 'no se pudo hablar con el servidor'};
+  }
+  _calAvisoGoogle(d && d.ok ? '' : 'No se pudo enviar a Google Calendar: ' + ((d && d.error) || 'error desconocido') + '.');
+  renderCalendar();
+}
+
+// "Todos los viernes a las 19:00, sin fin". Sirve para el modal, el chip y el celular.
+function _calTextoRepeticion(regla, hora, fecha) {
+  if (!regla || !regla.freq) return '';
+  const lista = xs => xs.length > 1 ? xs.slice(0, -1).join(', ') + ' y ' + xs[xs.length - 1] : (xs[0] || '');
+  const dias = (regla.dias || []).map(d => CAL_DIAS_PLURAL[d]).filter(Boolean);
+  let texto;
+  if (regla.freq === 'diaria') texto = 'Todos los días';
+  else if (regla.freq === 'semanal') texto = dias.length === 1 ? 'Todos ' + dias[0] : 'Todas las semanas: ' + lista(dias);
+  else if (regla.freq === 'quincenal') texto = 'Cada 2 semanas: ' + lista(dias);
+  else texto = 'Todos los meses' + (fecha ? ' el día ' + parseInt(String(fecha).slice(8, 10), 10) : '');
+  if (hora) texto += ' a las ' + hora;
+  if (regla.fin === 'fecha' && regla.hasta) texto += ', hasta el ' + String(regla.hasta).split('-').reverse().join('/');
+  else if (regla.fin === 'veces' && regla.veces) texto += ', ' + _calPlural(regla.veces, 'vez', 'veces');
+  else texto += ', sin fin';
+  return texto;
+}
+
+// Los mails de un campo de texto, separados por coma, punto y coma o espacio.
+// El servidor vuelve a validar: esto es para avisar antes de mandar.
+function _calLeerMails(texto) {
+  const lista = [];
+  const malos = [];
+  const vistos = {};
+  String(texto || '').split(/[,; ]+/).forEach(crudo => {
+    const mail = crudo.trim();
+    if (!mail) return;
+    if (!/^[^@ ,;<>]+@[^@ ,;<>]+[.][^@ ,;<>.]{2,}$/.test(mail)) { malos.push(mail); return; }
+    if (vistos[mail.toLowerCase()]) return;
+    vistos[mail.toLowerCase()] = true;
+    lista.push(mail);
+  });
+  return {lista: lista, malos: malos};
+}
+
+// Dia de la semana de una fecha 'AAAA-MM-DD', lunes = 0. Sin pasar por UTC.
+function _calDiaSemana(iso) {
+  const p = String(iso || '').split('-').map(n => parseInt(n, 10));
+  if (p.length < 3 || p.some(isNaN)) return null;
+  return (new Date(p[0], p[1] - 1, p[2]).getDay() + 6) % 7;
+}
+
+// Una reunion que se repite: "Solo esta", "Esta y las siguientes" o "Todas".
+// Devuelve una promesa con la eleccion, o null si se cancela. Las tres se
+// pueden siempre: la serie vive en el CRM, no en Google.
+function _calElegirAlcance(accion) {
+  return new Promise(ok => {
+    _calAlcanceResolver = ok;
+    const borrar = accion === 'borrar';
+    document.getElementById('alcance-titulo').textContent = borrar ? 'Borrar una reunión que se repite' : 'Cambiar una reunión que se repite';
+    document.getElementById('alcance-texto').textContent = borrar ? '¿Cuáles se borran?' : '¿A cuáles se aplica el cambio?';
+    document.getElementById('alcance-modal').classList.add('open');
+  });
+}
+
+function _calResolverAlcance(valor) {
+  document.getElementById('alcance-modal').classList.remove('open');
+  const ok = _calAlcanceResolver;
+  _calAlcanceResolver = null;
+  if (ok) ok(valor);
+}
+
+document.getElementById('alcance-modal').addEventListener('click', e => {
+  if (e.target === e.currentTarget) _calResolverAlcance(null);
+});
+
+function _calElegirTipo(tipo) {
+  _calTipoNueva = tipo === 'asunto' ? 'asunto' : 'cliente';
+  const asunto = _calTipoNueva === 'asunto';
+  [['ev-tipo-cliente', !asunto], ['ev-tipo-asunto', asunto]].forEach(par => {
+    const b = document.getElementById(par[0]);
+    b.classList.toggle('active', par[1]);
+    b.setAttribute('aria-checked', par[1] ? 'true' : 'false');
+  });
+  document.getElementById('ev-bloque-cliente').hidden = asunto;
+  document.getElementById('ev-title-label').textContent = asunto ? 'Asunto' : 'Título';
+  document.getElementById('ev-title').placeholder = asunto ? 'Ej: Marketing semanal' : 'Ej: Reunión con El Fogón';
+}
+
+function _calPonerCliente(id, nombre) {
+  document.getElementById('ev-client-id').value = id;
+  const elegido = document.getElementById('ev-cliente-elegido');
+  elegido.innerHTML = '<span>' + esc(nombre || 'Cliente elegido') + '</span>'
+    + '<button type="button" class="cal-cliente-cambiar" onclick="_calQuitarCliente()">Cambiar</button>';
+  elegido.hidden = false;
+  document.getElementById('ev-cliente-buscar').hidden = true;
+  document.getElementById('ev-cliente-resultados').innerHTML = '';
+  const titulo = document.getElementById('ev-title');
+  if (!titulo.value.trim() && nombre) titulo.value = 'Reunión con ' + nombre;
+}
+
+function _calQuitarCliente() {
   document.getElementById('ev-client-id').value = '';
+  const elegido = document.getElementById('ev-cliente-elegido');
+  elegido.innerHTML = '';
+  elegido.hidden = true;
+  const buscar = document.getElementById('ev-cliente-buscar');
+  buscar.hidden = false;
+  buscar.value = '';
+  document.getElementById('ev-cliente-resultados').innerHTML = '';
+}
+
+function _calBuscarClienteTecla(v) {
+  clearTimeout(_calClienteTimer);
+  _calClienteTimer = setTimeout(() => _calBuscarCliente(v), 250);
+}
+
+async function _calBuscarCliente(texto) {
+  const lista = document.getElementById('ev-cliente-resultados');
+  const q = (texto || '').trim();
+  if (q.length < 2) { lista.innerHTML = ''; return; }
+  let items = [];
+  try {
+    // Con `page` la busqueda va por SQL con LIMIT; sin `page` trae todos los
+    // leads a memoria (el 502 del 28/8).
+    const r = await fetch('/api/leads?page=1&search=' + encodeURIComponent(q));
+    if (!r.ok) throw new Error(r.status);
+    items = ((await r.json()) || {}).items || [];
+  } catch (e) {
+    lista.innerHTML = '<div class="cal-cliente-vacio">No se pudo buscar. Probá de nuevo.</div>';
+    return;
+  }
+  lista.innerHTML = items.length
+    ? items.slice(0, 8).map(p => '<button type="button" class="cal-cliente-opcion" onclick="_calPonerCliente(' + Number(p.id) + ',' + escJs(p.name || '') + ')">'
+        + esc(p.name || 'Sin nombre') + (p.phone ? ' · ' + esc(p.phone) : '') + '</button>').join('')
+    : '<div class="cal-cliente-vacio">No hay nadie en el CRM con ese nombre. Si no es de ventas, elegí "Otro asunto".</div>';
+}
+
+// La regla que arma el modal, null si no se repite, o {error} si falta algo.
+function _calReglaDelModal() {
+  const freq = document.getElementById('ev-rep-freq').value;
+  if (freq === 'no') return null;
+  const regla = {freq: freq, fin: document.getElementById('ev-rep-fin').value};
+  if (freq === 'semanal' || freq === 'quincenal') {
+    regla.dias = Array.from(document.querySelectorAll('#ev-rep-dias input'))
+      .filter(c => c.checked).map(c => parseInt(c.value, 10));
+    if (!regla.dias.length) return {error: 'Elegí al menos un día de la semana.'};
+  }
+  if (regla.fin === 'fecha') {
+    regla.hasta = document.getElementById('ev-rep-hasta').value;
+    if (!regla.hasta) return {error: 'Poné hasta qué fecha se repite.'};
+    if (regla.hasta < document.getElementById('ev-date').value) return {error: 'La fecha de fin no puede ser antes de la primera reunión.'};
+  }
+  if (regla.fin === 'veces') {
+    regla.veces = parseInt(document.getElementById('ev-rep-veces').value, 10);
+    if (!(regla.veces >= 1 && regla.veces <= 500)) return {error: 'Las veces tienen que ir de 1 a 500.'};
+  }
+  return regla;
+}
+
+function _calPintarRepeticion() {
+  const freq = document.getElementById('ev-rep-freq').value;
+  const conDias = freq === 'semanal' || freq === 'quincenal';
+  const fin = document.getElementById('ev-rep-fin').value;
+  const fecha = document.getElementById('ev-date').value;
+  document.getElementById('ev-rep-opciones').hidden = freq === 'no';
+  document.getElementById('ev-rep-dias-bloque').hidden = !conDias;
+  document.getElementById('ev-rep-hasta-bloque').hidden = fin !== 'fecha';
+  document.getElementById('ev-rep-veces-bloque').hidden = fin !== 'veces';
+  // Semanal sin ningun dia marcado arranca con el dia de la fecha elegida.
+  const casillas = Array.from(document.querySelectorAll('#ev-rep-dias input'));
+  if (conDias && !casillas.some(c => c.checked)) {
+    const dia = _calDiaSemana(fecha);
+    casillas.forEach(c => { c.checked = parseInt(c.value, 10) === dia; });
+  }
+  const regla = _calReglaDelModal();
+  document.getElementById('ev-rep-resumen').textContent = regla && !regla.error
+    ? _calTextoRepeticion(regla, document.getElementById('ev-time').value, fecha)
+    : ((regla && regla.error) || '');
+}
+
+// `opciones`: {tipo, clientId, clientName}, lo que manda la ficha del cliente.
+function openNewEventModal(opciones) {
+  const o = opciones || {};
+  const poner = (id, v) => { document.getElementById(id).value = v; };
+  poner('ev-title', '');
+  // Hoy en Montevideo: de noche, la fecha del navegador en UTC ya es mañana.
+  poner('ev-date', _calAhoraMvd().slice(0, 10));
+  poner('ev-time', '10:00');
+  poner('ev-duration', '60');
+  poner('ev-desc', '');
+  poner('ev-email', '');
+  poner('ev-invitados', '');
+  poner('ev-rep-freq', 'no');
+  poner('ev-rep-fin', 'nunca');
+  poner('ev-rep-hasta', '');
+  poner('ev-rep-veces', '10');
+  document.querySelectorAll('#ev-rep-dias input').forEach(c => { c.checked = false; });
+  document.getElementById('ev-error').style.display = 'none';
+  _calQuitarCliente();
+  _calElegirTipo(o.tipo || 'cliente');
+  if (o.clientId) _calPonerCliente(o.clientId, o.clientName || '');
+  _calPintarRepeticion();
   document.getElementById('event-modal').classList.add('open');
 }
 function closeNewEventModal() { document.getElementById('event-modal').classList.remove('open'); }
 document.getElementById('event-modal').addEventListener('click', e => { if(e.target===e.currentTarget) closeNewEventModal(); });
 
 async function deleteCalEvent(eventId, title) {
-  if (!confirm('¿Borrar "' + title + '" del calendario?')) return;
-  const r = await fetch('/api/calendar/meetings/' + eventId, { method: 'DELETE' });
+  const ev = _calEvento(eventId) || {id: eventId};
+  let consulta = '';
+  if (ev.serie) {
+    const alcance = await _calElegirAlcance('borrar');
+    if (!alcance) return;
+    consulta = '?alcance=' + encodeURIComponent(alcance) + '&ocurrencia=' + encodeURIComponent(ev.ocurrencia || '');
+  } else if (!confirm('¿Borrar "' + title + '" del calendario?')) {
+    return;
+  }
+  const r = await fetch(_calRutaReunion(ev) + consulta, { method: 'DELETE' });
   const d = await r.json();
   if (d.ok) { renderCalendar(); }
   else { alert('Error al borrar: ' + (d.error || 'desconocido')); }
 }
 
 async function saveEvent() {
+  const tipo = _calTipoNueva;
   const title = document.getElementById('ev-title').value.trim();
   const date = document.getElementById('ev-date').value;
   const time = document.getElementById('ev-time').value;
   const duration = parseInt(document.getElementById('ev-duration').value) || 60;
   const desc = document.getElementById('ev-desc').value.trim();
-  if (!title || !date || !time) { alert('Completá el título, fecha y hora'); return; }
   const meet_link = document.getElementById('ev-email').value.trim();
   const clientId = document.getElementById('ev-client-id').value.trim() || null;
+  const err = document.getElementById('ev-error');
+  const falla = texto => { err.textContent = texto; err.style.display = 'block'; };
+  err.style.display = 'none';
+
+  if (tipo === 'asunto' && !title) return falla('Escribí de qué es la reunión (el asunto).');
+  if (!title || !date || !time) return falla('Completá el título, la fecha y la hora.');
+  if (tipo === 'cliente' && !clientId) return falla('Elegí el cliente o lead. Si no es con un cliente, elegí "Otro asunto".');
+  const mails = _calLeerMails(document.getElementById('ev-invitados').value);
+  if (mails.malos.length) return falla('Estos mails no son válidos: ' + mails.malos.join(', '));
+  const regla = _calReglaDelModal();
+  if (regla && regla.error) return falla(regla.error);
+
+  const cuerpo = {tipo: tipo, title: title, date: date, time: time, duration_min: duration,
+                  description: desc, meet_link: meet_link,
+                  client_id: tipo === 'cliente' ? clientId : null,
+                  invitados: mails.lista, repeticion: regla};
   const btn = document.getElementById('ev-save-btn');
   btn.disabled = true; btn.textContent = '...';
-  const r = await fetch('/api/calendar/events', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({title,date,time,duration_min:duration,description:desc,meet_link,client_id:clientId})});
-  const d = await r.json();
+  let d;
+  try {
+    const r = await fetch('/api/calendar/events', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(cuerpo)});
+    d = await r.json();
+  } catch (e) {
+    d = {ok: false, error: 'no se pudo hablar con el servidor'};
+  }
   btn.disabled = false; btn.textContent = '📅 Crear reunión';
-  if (!d.ok) { alert('Error: '+(d.error||'Error desconocido')); return; }
+  if (!d || !d.ok) return falla('No se guardó: ' + ((d && d.error) || 'error desconocido'));
   closeNewEventModal();
+  _calAvisoGoogle(_calTextoGoogle(d.google, 'creó'));
+  if (window.innerWidth <= 768) calDiaMobile = date;
   renderCalendar();
 }
 
@@ -8468,20 +9050,20 @@ function _showScoreBreakdown(event, el) {
 
 // ── Mobile navigation ─────────────────────────────────────────────────────────
 // El mismo orden que el menu de la izquierda (Juan, 14/9).
-const NAV_PRIORITY = ['cal','meta','finanzas','simulador','inteligencia_fin','seg_leads','wa','notion_clients','plantillas','clientes','projects','tasks','daily','daily_admin','activity','equipo','ausencias','flujos','horarios','cola','metrics'];
+const NAV_PRIORITY = ['cal','meta','finanzas','simulador','inteligencia_fin','seg_leads','wa','notion_clients','plantillas','clientes','projects','tasks','daily','daily_admin','activity','equipo','ausencias','flujos','horarios','cola','metrics','email_mkt'];
 const NAV_ICONS = {
   cola:'inbox',meta:'instagram',cal:'calendar',
   tasks:'check-square',pipeline:'trending-up',clientes:'users',
   wa:'message-circle',metrics:'bar-chart-2',activity:'clock',projects:'target',
   notion_clients:'handshake',finanzas:'wallet',simulador:'calculator',inteligencia_fin:'lightbulb',equipo:'network',
-  ausencias:'calendar-clock',horarios:'clock-4',flujos:'workflow',seg_leads:'phone-call',daily:'clipboard-list',plantillas:'message-square-text',daily_admin:'clipboard-check'
+  ausencias:'calendar-clock',horarios:'clock-4',flujos:'workflow',seg_leads:'phone-call',daily:'clipboard-list',plantillas:'message-square-text',daily_admin:'clipboard-check',email_mkt:'mail'
 };
 const NAV_LABELS = {
   cola:'Outbound',meta:'Meta',cal:'Agenda',
   tasks:'Tareas',pipeline:'Pipeline',clientes:'Clientes',
   wa:'WA',metrics:'Intel. comercial',activity:'Actividad',projects:'Proyectos',
   notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador',inteligencia_fin:'Intel. financiera',equipo:'Organigrama',
-  ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento',daily:'Daily',plantillas:'Plantillas',daily_admin:'Daily Admin'
+  ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento',daily:'Daily',plantillas:'Plantillas',daily_admin:'Daily Admin',email_mkt:'Email mkt'
 };
 let _mobileNavOverflow = [];
 
@@ -8561,7 +9143,7 @@ function closeMasSheet() {
 }
 
 // ── Panel access control ──────────────────────────────────────────────────────
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin'];
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt'];
 (async () => {
   try {
     const r = await fetch('/api/me');
@@ -9141,12 +9723,8 @@ async function _cpSummarize(meetingId) {
 function _cpOpenNewMeeting() {
   showPanel('cal');
   closeClientPanel();
-  openNewEventModal();
-  if (_cpClientId) {
-    document.getElementById('ev-client-id').value = _cpClientId;
-    const clientName = _cpData.info && _cpData.info.name ? _cpData.info.name : '';
-    if (clientName) document.getElementById('ev-title').value = 'Reunión con ' + clientName;
-  }
+  const clientName = _cpData.info && _cpData.info.name ? _cpData.info.name : '';
+  openNewEventModal(_cpClientId ? {tipo: 'cliente', clientId: _cpClientId, clientName: clientName} : {});
 }
 
 
@@ -12207,6 +12785,279 @@ async function hrGuardar() {
   await hrCargar();
 }
 // ========== FIN Horarios ==========
+
+// ========== Email marketing ==========
+// Lo que sale por Resend, con lo que Resend cuenta despues. Los numeros y las
+// fechas (ya en hora de Montevideo) vienen armados de /api/email-marketing:
+// aca solo se pinta. Sin template literals: el texto se arma concatenando.
+let emMesSel = '';
+let emPagina = 1;
+let emPedido = 0;
+let emBusquedaTimer = null;
+let emDatos = null;
+
+const EM_ESTADOS = {
+  enviado: ['Enviado', 'em-chip-azul'],
+  entregado: ['Entregado', 'em-chip-verde'],
+  abierto: ['Abierto', 'em-chip-verde'],
+  clic: ['Con clic', 'em-chip-fuerte'],
+  rebotado: ['Rebotado', 'em-chip-rojo'],
+  spam: ['Marcado como spam', 'em-chip-rojo'],
+  demorado: ['Demorado', 'em-chip-ambar'],
+  fallido: ['No salió', 'em-chip-rojo'],
+  incierto: ['Sin confirmar', 'em-chip-ambar']
+};
+const EM_CONTADORES = [
+  ['enviados', 'Enviados'], ['entregados', 'Entregados'], ['abiertos', 'Abiertos'],
+  ['clics', 'Con clic'], ['rebotados', 'Rebotados'], ['spam', 'Marcados como spam']
+];
+const EM_MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto',
+  'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+
+function emEsc(texto) {
+  return String(texto === null || texto === undefined ? '' : texto)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function emEtiquetaMes(mes) {
+  const partes = String(mes || '').split('-');
+  const nombre = EM_MESES[parseInt(partes[1], 10) - 1];
+  return nombre ? nombre + ' ' + partes[0] : String(mes || '');
+}
+
+function emMesSumar(mes, delta) {
+  const partes = String(mes).split('-');
+  const total = parseInt(partes[0], 10) * 12 + (parseInt(partes[1], 10) - 1) + delta;
+  return Math.floor(total / 12) + '-' + String(total % 12 + 1).padStart(2, '0');
+}
+
+function emValor(id) {
+  const el = document.getElementById(id);
+  return el && el.value ? String(el.value) : '';
+}
+
+function emUrl() {
+  const partes = [];
+  if (emMesSel) partes.push('mes=' + encodeURIComponent(emMesSel));
+  const tipo = emValor('em-tipo');
+  if (tipo) partes.push('tipo=' + encodeURIComponent(tipo));
+  const q = emValor('em-buscar').trim();
+  if (q) partes.push('q=' + encodeURIComponent(q));
+  if (emPagina > 1) partes.push('pagina=' + emPagina);
+  return '/api/email-marketing' + (partes.length ? '?' + partes.join('&') : '');
+}
+
+async function loadEmailMkt() {
+  const estado = document.getElementById('em-estado');
+  if (!estado) return;
+  // Buscar rapido dispara varios pedidos que pueden volver desordenados: solo
+  // se pinta la respuesta del ultimo.
+  const pedido = ++emPedido;
+  let datos;
+  try {
+    const r = await fetch(emUrl());
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    datos = await r.json();
+    if (!datos || !datos.contadores) throw new Error('respuesta incompleta');
+  } catch (e) {
+    if (pedido !== emPedido) return;
+    estado.textContent = 'No se pudieron cargar los envíos. Probá de nuevo en un rato.';
+    estado.classList.remove('em-oculto');
+    return;
+  }
+  if (pedido !== emPedido) return;
+  emDatos = datos;
+  emPintar(datos);
+}
+
+function emPoner(id, html) {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = html;
+}
+
+function emPintar(d) {
+  const estado = document.getElementById('em-estado');
+  if (estado) {
+    const hay = Number(d.contadores.enviados || 0) > 0;
+    estado.textContent = hay ? '' : 'No hay envíos registrados en ' + emEtiquetaMes(d.mes) + '.';
+    if (hay) estado.classList.add('em-oculto');
+    else estado.classList.remove('em-oculto');
+  }
+  const etiqueta = document.getElementById('em-mes-label');
+  if (etiqueta) etiqueta.textContent = emEtiquetaMes(d.mes);
+  const siguiente = document.getElementById('em-mes-sig');
+  if (siguiente) siguiente.disabled = d.mes >= d.mes_actual;
+  emPintarTipos(d.tipos || []);
+  emPoner('em-contadores', emContadores(d.contadores, d.tasas || {}));
+  emPoner('em-aviso', emAviso(d.contadores));
+  emPoner('em-grafico', emGrafico(d.por_dia || []));
+  emPoner('em-tabla', emTabla(d.envios || []));
+  emPoner('em-paginas', emPaginas(d));
+  emBotonEstados(d);
+}
+
+function emPintarTipos(tipos) {
+  const sel = document.getElementById('em-tipo');
+  if (!sel) return;
+  const actual = sel.value || '';
+  sel.innerHTML = '<option value="">Todos los tipos</option>' + tipos.map(t =>
+    '<option value="' + emEsc(t.clave) + '"' + (t.clave === actual ? ' selected' : '') + '>' +
+    emEsc(t.etiqueta) + '</option>').join('');
+  sel.value = actual;
+}
+
+function emTasaTexto(tasa) {
+  if (tasa === null || tasa === undefined) return '';
+  return String(tasa).replace('.', ',') + ' % de los enviados';
+}
+
+function emContadores(c, tasas) {
+  return EM_CONTADORES.map(par => {
+    const clave = par[0];
+    let nota = emTasaTexto(tasas[clave]);
+    if (clave === 'enviados') nota = c.sin_eventos ? c.sin_eventos + ' sin datos de Resend' : 'en el mes';
+    return '<div class="em-contador em-contador-' + clave + '">' +
+      '<div class="em-contador-num">' + Number(c[clave] || 0) + '</div>' +
+      '<div class="em-contador-rotulo">' + par[1] + '</div>' +
+      '<div class="em-contador-tasa">' + emEsc(nota) + '</div></div>';
+  }).join('');
+}
+
+function emAviso(c) {
+  if (!c.enviados || !c.sin_eventos) return '';
+  return '<div class="em-aviso">' + c.sin_eventos + ' de ' + c.enviados + ' envíos todavía no tienen ' +
+    'datos de Resend (entregado, abierto, clic). Los envíos anteriores a este registro no los ' +
+    'tienen; los nuevos los reciben por el webhook de Resend.</div>';
+}
+
+function emGrafico(porDia) {
+  const total = porDia.reduce((suma, p) => suma + Number(p.n || 0), 0);
+  if (!total) return '<div class="em-vacio">Sin envíos en este mes.</div>';
+  if (typeof SC === 'undefined' || !SC.serie) {
+    return '<div class="em-vacio">' + total + ' envíos en el mes.</div>';
+  }
+  const tema = document.body.classList.contains('light') ? 'claro' : 'oscuro';
+  const puntos = porDia.map(p => ({x: String(p.dia).slice(8, 10), y: Number(p.n || 0)}));
+  return SC.serie(puntos, {etiqueta: 'Enviados por día, en hora de Montevideo', formato: 'numero', alto: 170}, tema);
+}
+
+function emTabla(envios) {
+  if (!envios.length) return '<div class="em-vacio">No hay envíos que coincidan.</div>';
+  const filas = envios.map(e => {
+    const est = EM_ESTADOS[e.estado] || [e.estado, 'em-chip-gris'];
+    const historico = e.origen === 'historico'
+      ? '<span class="em-nota">histórico, sin eventos</span>' : '';
+    const lead = e.business_id
+      ? '<button type="button" class="em-link" onclick="openClientPanel(' + Number(e.business_id) + ')">' +
+        emEsc(e.negocio || 'Ver ficha') + '</button>'
+      : '<span class="em-nota">—</span>';
+    const extracto = e.extracto ? '<span class="em-extracto">' + emEsc(e.extracto) + '</span>' : '';
+    return '<tr><td class="em-fecha">' + emEsc(e.fecha_local) + '</td>' +
+      '<td>' + emEsc(e.tipo_etiqueta) + '</td>' +
+      '<td class="em-dest">' + emEsc(e.destinatario || '—') + '</td>' +
+      '<td class="em-asunto">' + emEsc(e.asunto) + extracto + '</td>' +
+      '<td><span class="em-chip ' + est[1] + '">' + emEsc(est[0]) + '</span>' + historico + '</td>' +
+      '<td>' + lead + '</td></tr>';
+  }).join('');
+  return '<table class="em-tabla"><thead><tr><th>Fecha</th><th>Tipo</th><th>Destinatario</th>' +
+    '<th>Asunto</th><th>Estado</th><th>Lead</th></tr></thead><tbody>' + filas + '</tbody></table>';
+}
+
+function emPaginas(d) {
+  if (!d.encontrados) return '';
+  return '<button type="button" class="cal-nav-btn" onclick="emIrPagina(-1)" aria-label="Página anterior"' +
+    (d.pagina <= 1 ? ' disabled' : '') + '>&larr;</button>' +
+    '<span>Página ' + d.pagina + ' de ' + d.paginas + ' · ' + d.encontrados + ' envíos</span>' +
+    '<button type="button" class="cal-nav-btn" onclick="emIrPagina(1)" aria-label="Página siguiente"' +
+    (d.pagina >= d.paginas ? ' disabled' : '') + '>&rarr;</button>';
+}
+
+function emIrPagina(delta) {
+  if (!emDatos) return;
+  const nueva = Math.min(Math.max(1, emDatos.pagina + delta), emDatos.paginas);
+  if (nueva === emDatos.pagina) return;
+  emPagina = nueva;
+  loadEmailMkt();
+}
+
+function emMes(delta) {
+  const base = emMesSel || (emDatos && emDatos.mes) || '';
+  if (!base) return;
+  const actual = (emDatos && emDatos.mes_actual) || '';
+  let nuevo = emMesSumar(base, delta);
+  if (actual && nuevo > actual) nuevo = actual;   // el futuro no tiene envios
+  emMesSel = actual && nuevo === actual ? '' : nuevo;
+  emPagina = 1;
+  loadEmailMkt();
+}
+
+function emMesHoy() {
+  emMesSel = '';
+  emPagina = 1;
+  loadEmailMkt();
+}
+
+function emFiltrar() {
+  emPagina = 1;
+  loadEmailMkt();
+}
+
+function emBuscar() {
+  if (emBusquedaTimer) clearTimeout(emBusquedaTimer);
+  emBusquedaTimer = setTimeout(() => {
+    emBusquedaTimer = null;
+    emPagina = 1;
+    loadEmailMkt();
+  }, 300);
+}
+
+// Solo admin, y solo con la clave de Resend en el servidor. El servidor lo
+// vuelve a chequear: esconder el boton no es la seguridad.
+function emBotonEstados(d) {
+  const boton = document.getElementById('em-btn-estados');
+  const nota = document.getElementById('em-estados-nota');
+  if (!boton) return;
+  if (!d.es_admin) {
+    boton.classList.add('em-oculto');
+    if (nota) nota.textContent = '';
+    return;
+  }
+  boton.classList.remove('em-oculto');
+  boton.disabled = !d.hay_api_key;
+  if (nota && !d.hay_api_key) {
+    nota.textContent = 'Actualizar estados está deshabilitado: falta la clave de Resend (RESEND_API_KEY) en el servidor.';
+  }
+}
+
+async function emActualizarEstados() {
+  const boton = document.getElementById('em-btn-estados');
+  const nota = document.getElementById('em-estados-nota');
+  if (!boton || boton.disabled) return;
+  boton.disabled = true;
+  if (nota) nota.textContent = 'Consultando a Resend…';
+  try {
+    const r = await fetch('/api/email-marketing/actualizar-estados', {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({limite: 20})
+    });
+    let d = {};
+    try { d = await r.json(); } catch (e) { d = {}; }
+    if (!r.ok || !d.ok) {
+      if (nota) nota.textContent = d.error || 'No se pudo consultar a Resend.';
+      return;
+    }
+    if (nota) {
+      nota.textContent = 'Consultados ' + d.consultados + ' de ' + d.pendientes + ' sin eventos, ' +
+        d.actualizados + ' actualizados.' +
+        (d.cortado_por_limite ? ' Resend pidió esperar: probá de nuevo en un minuto.' : '');
+    }
+    await loadEmailMkt();
+  } catch (e) {
+    if (nota) nota.textContent = 'No se pudo consultar a Resend.';
+  } finally {
+    boton.disabled = !(emDatos && emDatos.hay_api_key);
+  }
+}
 
 // ========== Daily Programador ==========
 // Daily Programador y Daily Admin (Juan, 15 y 16/9): actividades del dia y
@@ -15818,6 +16669,8 @@ const _actActionLabels = {
   task_updated:  (i) => `actualizó tarea: <b>${esc(i.entity_name)}</b>${i.detail ? ' ('+esc(i.detail)+')' : ''}`,
   task_deleted:  (i) => `eliminó tarea: <b>${esc(i.entity_name)}</b>`,
   meeting_scheduled: (i) => `agendó reunión${i.entity_name ? ' con '+_actEntityLink(i) : ''}${i.detail ? ': '+esc(i.detail) : ''}`,
+  asunto_agendado: (i) => `agendó una reunión de otro asunto: <b>${esc(i.entity_name)}</b>${i.detail ? ' ('+esc(i.detail)+')' : ''}`,
+  asunto_movido: (i) => `cambió la reunión <b>${esc(i.entity_name)}</b>${i.detail ? ' a '+esc(i.detail) : ''}`,
   lead_deleted:  (i) => `eliminó lead: <b>${esc(i.entity_name)}</b>`,
   batch_status:  (i) => i.detail || 'actualizó múltiples leads',
   notion_sync:   (i) => `sincronizó con Notion${i.detail ? ': '+esc(i.detail) : ''}`,
@@ -15826,7 +16679,7 @@ const _actActionLabels = {
 const _actCrmMap = {sin_contactar:'Sin contactar',contactado:'Contactado',reunion_agendada:'Reunión agendada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Presupuesto enviado',negociacion:'Negociación',cliente_cerrado:'Cliente cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado'};
 function _actCrmLabel(s) { return _actCrmMap[s] || s || ''; }
 function _actCallLabel(s) { return {contestó:'Contestó',no_contestó:'No contestó',buzón:'Buzón'}[s] || s || ''; }
-const _actIcons = {status_change:'🔄',note_updated:'📝',attachment_added:'📎',call_logged:'📞',budget_generated:'💰',budget_sent:'📨',task_created:'✅',task_updated:'✏️',task_deleted:'🗑️',meeting_scheduled:'📅',lead_deleted:'🗑️',batch_status:'🔄',notion_sync:'🔄',notion_client_moved:'🔀'};
+const _actIcons = {status_change:'🔄',note_updated:'📝',attachment_added:'📎',call_logged:'📞',budget_generated:'💰',budget_sent:'📨',task_created:'✅',task_updated:'✏️',task_deleted:'🗑️',meeting_scheduled:'📅',asunto_agendado:'📅',asunto_movido:'📅',lead_deleted:'🗑️',batch_status:'🔄',notion_sync:'🔄',notion_client_moved:'🔀'};
 
 // ── SDR panel ──────────────────────────────────────────────────────────────────
 let _sdrPeriod = 'month';
@@ -16250,6 +17103,10 @@ def create_app(db_path: str) -> Flask:
     app = Flask(__name__)
     app.secret_key = os.environ.get("SECRET_KEY") or "scalerics-dev-key-change-in-prod"
     app.config["DB_PATH"] = db_path
+    # Los envios que salen fuera de un request (los hilos de las campanas) se
+    # registran en esta base para el panel Email marketing.
+    from services.email_service import configurar_registro
+    configurar_registro(db_path)
     # Cuando arranco este proceso. Lo usa /api/marketing/version para
     # poder contestar "¿estoy viendo lo ultimo?" sin entrar por SSH.
     import time as _t
@@ -16260,7 +17117,7 @@ def create_app(db_path: str) -> Flask:
     for bp in (leads_bp, demos_bp, calendar_bp, wa_bp, pipeline_bp, tasks_bp, budgets_bp, tokens_bp, meta_bp, calendly_bp, notion_bp, projects_bp, preclientes_bp,
                 notion_clients_bp, resend_bp, linkedin_bp, web_bp, finanzas_bp, marketing_bp,
                 simulador_bp, inteligencia_fin_bp, equipo_bp, horarios_bp, flujos_bp, seg_leads_bp, daily_bp, plantillas_bp,
-                backups_bp):
+                backups_bp, email_mkt_bp):
         app.register_blueprint(bp)
 
     @app.before_request
@@ -17234,8 +18091,8 @@ select:focus{border-color:#0088cc}
 </div>
 
 <script>
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin'];
-const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Inteligencia financiera',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas'};
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt'];
+const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Inteligencia financiera',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas',email_mkt:'Email marketing'};
 let _roles = [];
 
 // Paneles que muestran el check "solo lectura". El dato (roles.paneles_solo_lectura)

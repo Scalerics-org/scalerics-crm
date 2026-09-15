@@ -1,6 +1,7 @@
 """Google Calendar routes."""
 
 import datetime
+import json
 import uuid
 
 import pytz
@@ -8,15 +9,23 @@ from flask import Blueprint, current_app, jsonify, request, session
 
 from database import (
     create_meeting,
+    create_reunion_asunto,
     delete_meeting,
+    delete_reunion_asunto,
     get_business,
     get_lead_contributor_ids,
     get_meeting,
+    get_meeting_by_calendar_id,
     get_meetings_for_client,
+    get_reunion_asunto,
     increment_task_progress,
+    listar_reuniones_asunto,
     log_activity,
     update_meeting,
+    update_reunion_asunto,
 )
+from services import gcal_eventos as gce
+from services import recurrencia as rec
 
 calendar_bp = Blueprint("calendar", __name__)
 
@@ -120,6 +129,98 @@ def _contributors(db: str, lead_id: int, current_uid: int | None) -> list[int]:
     return list(ids)
 
 
+def _json_lista(texto) -> list:
+    try:
+        valor = json.loads(texto) if texto else []
+    except (TypeError, ValueError):
+        return []
+    return valor if isinstance(valor, list) else []
+
+
+def _eventos_locales(db: str, start: str, end: str) -> list[dict]:
+    """Todo lo que el calendario dibuja entre `start` y `end`, ya expandido.
+
+    Reuniones con cliente (`meetings`) y de otro asunto (`reuniones_asunto`).
+    Las que se repiten se devuelven una vez por ocurrencia, con id
+    `<id>@<fecha original>` para que el editor y el arrastre sepan cual es.
+    Sin rango no se puede expandir una serie sin fin: va solo la primera.
+    """
+    import sqlite3 as _sq
+    conn = _sq.connect(db); conn.row_factory = _sq.Row
+    try:
+        filas = [dict(r) for r in conn.execute("""
+            SELECT m.id, m.title, m.start_at, m.end_at, m.meet_link, m.status,
+                   m.calendar_event_id, b.name as client_name, m.client_id,
+                   m.invitados, m.repeticion, m.excepciones, m.description,
+                   m.google_event_id, m.google_sync, m.google_error,
+                   m.origen, m.google_meet
+            FROM meetings m
+            LEFT JOIN businesses b ON m.client_id = b.id
+            WHERE m.status != 'canceled'
+              AND ((COALESCE(m.repeticion, '') = ''
+                    AND (? = '' OR SUBSTR(m.start_at, 1, 10) >= ?)
+                    AND (? = '' OR SUBSTR(m.start_at, 1, 10) <= ?))
+                OR (COALESCE(m.repeticion, '') != ''
+                    AND (? = '' OR SUBSTR(m.start_at, 1, 10) <= ?)))
+            ORDER BY m.start_at ASC
+        """, (start, start, end, end, end, end)).fetchall()]
+    finally:
+        conn.close()
+
+    eventos = []
+
+    def agregar(fila, tipo, base_id, extra):
+        sa = fila["start_at"] or ""
+        base = {
+            "reunion_id": fila["id"],
+            "tipo": tipo,
+            "title": fila["title"] or fila.get("client_name") or "Reunión",
+            "meeting_url": fila["meet_link"] or fila.get("google_meet") or "",
+            "client_id": fila.get("client_id"),
+            "client_name": fila.get("client_name") or "",
+            # De donde vino decide si se puede reprogramar desde aca y
+            # de que color va la barra del chip.
+            "origen": _origen_de(fila),
+            "invitados": _json_lista(fila.get("invitados")),
+            "description": fila.get("description") or "",
+            # Como quedo en Google Calendar: 'ok', 'error' (con el motivo) o ''
+            # si no se intento. Con 'error' la pantalla ofrece "Reintentar".
+            "google": {"estado": fila.get("google_sync") or "",
+                       "error": fila.get("google_error") or "",
+                       "meet": fila.get("google_meet") or "",
+                       # Creada a mano y todavia no en Google (o fallo): la
+                       # pantalla ofrece "Enviar a Google Calendar". Nunca
+                       # para las de Calendly ni con el envio apagado.
+                       "puede_enviar": bool(_va_a_google(fila, tipo)
+                                            and gce.creacion_activada()
+                                            and fila.get("google_sync") != "ok")},
+        }
+        regla = rec.regla_de(fila)
+        if regla and start and end:
+            for oc in rec.ocurrencias(fila, start, end):
+                ev = dict(base, **extra)
+                ev.update(id=f"{base_id}@{oc['ocurrencia']}", serie=True,
+                          ocurrencia=oc["ocurrencia"], repeticion=regla,
+                          title=oc["title"] or base["title"], date=oc["date"],
+                          time=oc["time"], duration_min=oc["duration_min"])
+                eventos.append(ev)
+            return
+        ev = dict(base, **extra)
+        ev.update(id=str(base_id), serie=bool(regla), ocurrencia=sa[:10] if regla else "",
+                  repeticion=regla, date=sa[:10] if sa else "",
+                  time=sa[11:16] if "T" in sa else "",
+                  duration_min=int(_meeting_duration(fila).total_seconds() // 60))
+        eventos.append(ev)
+
+    for fila in filas:
+        agregar(fila, "cliente", fila["id"], {})
+    for fila in listar_reuniones_asunto(db, start, end):
+        agregar(fila, "asunto", f"asunto-{fila['id']}", {})
+
+    eventos.sort(key=lambda e: (e["date"], e["time"]))
+    return eventos
+
+
 def _sync_gcal_to_db(db: str, start: str, end: str) -> None:
     """Pull Google Calendar events for the given date range and upsert into meetings table."""
     import re, sqlite3 as _sq
@@ -127,6 +228,18 @@ def _sync_gcal_to_db(db: str, start: str, end: str) -> None:
     service, err = _get_calendar_service()
     if err or not service:
         return
+    # Lo que ya esta en el CRM y no es una fila suelta de `meetings`: las
+    # ocurrencias de una serie y las reuniones de otro asunto. Si alguien crea
+    # la misma reunion tambien en Google (por ejemplo, para que les llegue la
+    # invitacion a los invitados), el sync la importaba como reunion con un
+    # lead nuevo inventado a partir del primer invitado, una vez por ocurrencia.
+    ya_en_el_crm = {
+        (e["date"], e["time"], (e["title"] or "").strip().casefold())
+        for e in _eventos_locales(db, start, end)
+        if e["tipo"] == "asunto" or e["serie"]
+    }
+    # Los eventos que creo el propio CRM, por id: el evento y sus instancias.
+    ids_del_crm = _ids_de_google_del_crm(db)
     try:
         items = service.events().list(
             calendarId="primary",
@@ -145,6 +258,10 @@ def _sync_gcal_to_db(db: str, start: str, end: str) -> None:
         for ev in items:
             gcal_id = ev.get("id", "")
             if not gcal_id:
+                continue
+            # Un evento que creo el CRM ya esta en el CRM. Importarlo lo
+            # duplicaria y le inventaria un lead al primer invitado.
+            if gce.es_del_crm(ev, ids_del_crm):
                 continue
             # Skip cancelled events
             if ev.get("status") == "cancelled":
@@ -178,6 +295,9 @@ def _sync_gcal_to_db(db: str, start: str, end: str) -> None:
 
             start_at = _to_utc(raw_start)
             end_at   = _to_utc(raw_end)
+
+            if (start_at[:10], start_at[11:16], summary.strip().casefold()) in ya_en_el_crm:
+                continue
 
             # Skip if meeting already exists at same UTC hour
             if start_at and conn.execute(
@@ -214,15 +334,213 @@ def _sync_gcal_to_db(db: str, start: str, end: str) -> None:
                 )
                 client_id = cur.lastrowid
 
+            # Si lo creo Calendly (su link esta en la descripcion) queda como
+            # reunion de Calendly: el CRM nunca la toca en Google.
+            origen = "calendly" if gce.es_de_calendly_por_texto(ev) else "google"
             conn.execute(
-                "INSERT INTO meetings (client_id, calendar_event_id, title, start_at, end_at, meet_link, status) VALUES (?,?,?,?,?,?,?)",
-                (client_id, gcal_id, summary, start_at, end_at, meet_link, "scheduled"),
+                "INSERT INTO meetings (client_id, calendar_event_id, title, start_at, end_at, meet_link, status, origen) VALUES (?,?,?,?,?,?,?,?)",
+                (client_id, gcal_id, summary, start_at, end_at, meet_link, "scheduled", origen),
             )
         conn.commit()
     except Exception as e:
         import logging; logging.getLogger(__name__).warning(f"GCal upsert error: {e}")
     finally:
         conn.close()
+
+
+# ── Google Calendar: las reuniones que crea el CRM ───────────────────────────
+# La base del CRM manda. Crear y editar: primero la base, despues Google; si
+# Google falla, la reunion queda marcada "No sincronizada" para reintentar desde
+# la pantalla (nunca sola, en loop). Borrar: primero Google, porque borrar solo
+# en el CRM deja el evento vivo en Google y el import lo traeria de vuelta.
+
+def _ids_de_google_del_crm(db: str) -> set:
+    import sqlite3 as _sq
+    conn = _sq.connect(db)
+    try:
+        return {r[0] for r in conn.execute(
+            "SELECT google_event_id FROM meetings WHERE COALESCE(google_event_id, '') != '' "
+            "UNION SELECT google_event_id FROM reuniones_asunto "
+            "WHERE COALESCE(google_event_id, '') != ''")}
+    finally:
+        conn.close()
+
+
+def _fila(db: str, tipo: str, rid: int):
+    return get_meeting(db, rid) if tipo == "cliente" else get_reunion_asunto(db, rid)
+
+
+def _origen_de(fila: dict) -> str:
+    """'crm', 'calendly' o 'google'. La columna `origen` manda; las filas de
+    antes de que existiera se deducen de `calendar_event_id`."""
+    origen = (fila.get("origen") or "").strip()
+    if origen in ("crm", "calendly", "google"):
+        return origen
+    return _origen(fila.get("calendar_event_id"))
+
+
+def _va_a_google(fila: dict, tipo: str) -> bool:
+    """La unica puerta a Google: solo lo creado a mano en el CRM.
+
+    Calendly ya crea el evento en Google y le manda la invitacion al cliente;
+    crearlo, moverlo o borrarlo desde aca le mandaria otra. Las importadas de
+    Google tampoco pasan por aca (se mueven, como antes, por su propio camino).
+    """
+    if tipo == "asunto":
+        return True
+    return _origen_de(fila) == "crm" and not fila.get("calendar_event_id")
+
+
+def _guardar(db: str, tipo: str, rid: int, **campos) -> None:
+    (update_meeting if tipo == "cliente" else update_reunion_asunto)(db, rid, **campos)
+
+
+def _email_cliente(db: str, fila: dict, tipo: str):
+    if tipo != "cliente" or not fila.get("client_id"):
+        return None
+    return (get_business(db, int(fila["client_id"])) or {}).get("email") or None
+
+
+def _servicio_para_escribir():
+    service, err = _get_calendar_service()
+    if err or not service:
+        return None, gce.NO_CONECTADO
+    if gce.permiso_de_escritura(service) is False:
+        return None, gce.SIN_PERMISO
+    return service, None
+
+
+def _log_google(tipo, rid, e) -> None:
+    import logging
+    logging.getLogger(__name__).warning(f"Google Calendar ({tipo} {rid}): {e}")
+
+
+def _en_google(db: str, tipo: str, rid: int, operacion) -> dict:
+    """Corre `operacion(service)` y deja anotado en la reunion como quedo."""
+    service, error = _servicio_para_escribir()
+    if not error:
+        try:
+            operacion(service)
+            _guardar(db, tipo, rid, google_sync="ok", google_error=None)
+            return {"estado": "ok", "error": ""}
+        except Exception as e:  # noqa: BLE001 - cualquier falla se anota igual
+            _log_google(tipo, rid, e)
+            error = gce.mensaje_error(e)
+    _guardar(db, tipo, rid, google_sync="error", google_error=error)
+    return {"estado": "error", "error": error}
+
+
+def _google_o_error(tipo: str, rid: int, operacion):
+    """Para borrar. None si quedo hecho (o Google ya no lo tenia); si no, el motivo."""
+    service, error = _servicio_para_escribir()
+    if error:
+        return error
+    try:
+        operacion(service)
+        return None
+    except Exception as e:  # noqa: BLE001
+        if gce.ya_no_existe(e):
+            return None
+        _log_google(tipo, rid, e)
+        return gce.mensaje_error(e)
+
+
+def _subir_a_google(db: str, tipo: str, rid: int, *, reintento: bool = False) -> dict:
+    """Crea el evento (o lo pone al dia, si ya existe) con todo lo que tiene la
+    reunion en el CRM, incluidas las ocurrencias borradas o movidas.
+
+    El id del evento se elige ANTES de pedirselo a Google y se guarda: si la
+    respuesta se pierde, el reintento usa el mismo id y Google contesta 409 en
+    vez de crear otro evento y mandar otra invitacion.
+    """
+    fila = _fila(db, tipo, rid)
+    if not _va_a_google(fila, tipo):
+        return {"estado": "", "error": ""}
+    if not fila.get("google_event_id"):
+        _guardar(db, tipo, rid, google_event_id=gce.nuevo_id(tipo, rid))
+        fila = _fila(db, tipo, rid)
+    gid = fila["google_event_id"]
+    email = _email_cliente(db, fila, tipo)
+
+    def operacion(service):
+        sin_meet = not fila.get("google_meet")
+        if reintento and fila.get("google_sync") == "ok":
+            evento = gce.actualizar(service, gid, fila, email, con_meet=sin_meet)
+        else:
+            try:
+                evento = gce.crear(service, fila, email, event_id=gid)
+            except Exception as e:  # noqa: BLE001
+                if gce.estado_http(e) != 409:
+                    raise
+                # Ya estaba creado (se perdio la respuesta): se actualiza.
+                evento = gce.actualizar(service, gid, fila, email, con_meet=sin_meet)
+        meet = gce.meet_de(evento)
+        if meet and meet != fila.get("google_meet"):
+            _guardar(db, tipo, rid, google_meet=meet)
+        if reintento:
+            gce.aplicar_excepciones(service, gid, fila)
+
+    return _en_google(db, tipo, rid, operacion)
+
+
+def _editar_en_google(db: str, tipo: str, rid: int, antes: dict, *, alcance=None,
+                      ocurrencia=None, cambios=None, invitados_cambiaron=False,
+                      nueva_id=None) -> dict:
+    """Lleva a Google lo que ya se guardo en la base. `antes` es la fila como
+    estaba: la instancia de "solo esta" se busca con la hora original."""
+    resultado = {"estado": "", "error": ""}
+    if not _va_a_google(antes, tipo):
+        return resultado
+    gid = antes.get("google_event_id")
+    if gid:
+        fila = _fila(db, tipo, rid)
+        email = _email_cliente(db, fila, tipo)
+
+        def operacion(service):
+            if alcance == "esta":
+                gce.mover_instancia(service, gid, antes, ocurrencia, cambios)
+                if invitados_cambiaron:
+                    gce.actualizar(service, gid, fila, email)
+            elif alcance == "siguientes" and nueva_id:
+                gce.cambiar_regla(service, gid, fila)
+            else:
+                gce.actualizar(service, gid, fila, email)
+
+        resultado = _en_google(db, tipo, rid, operacion)
+    if nueva_id and gce.creacion_activada():
+        nuevo = _subir_a_google(db, tipo, nueva_id)
+        if nuevo["estado"] == "error" and resultado["estado"] != "error":
+            resultado = nuevo
+    return resultado
+
+
+def _borrar_en_google(tipo: str, rid: int, fila: dict, alcance: str, ocurrencia: str,
+                      plan: dict | None):
+    """None si Google quedo al dia (o la reunion no esta en Google); si no, el motivo."""
+    if not _va_a_google(fila, tipo):
+        return None
+    gid = fila.get("google_event_id")
+    if not gid:
+        return None
+    if plan and not plan["borrar"]:
+        cortada = dict(fila, **plan["actualizar"])
+        if alcance == "esta":
+            return _google_o_error(tipo, rid, lambda s: gce.cancelar_instancia(s, gid, fila, ocurrencia))
+        return _google_o_error(tipo, rid, lambda s: gce.cambiar_regla(s, gid, cortada))
+    return _google_o_error(tipo, rid, lambda s: gce.borrar(s, gid))
+
+
+def _crear_si_corresponde(db: str, tipo: str, rid: int) -> dict:
+    """Al crear: si GCAL_CREAR_EVENTOS esta apagado o no hay credenciales, no se
+    intenta y la reunion queda solo en el CRM, como hasta ahora."""
+    if not gce.creacion_activada():
+        return {"estado": "", "error": ""}
+    return _subir_a_google(db, tipo, rid)
+
+
+def _no_se_borro(error: str):
+    return jsonify({"ok": False, "error": f"No se borró: Google Calendar no respondió bien "
+                                          f"({error}). Probá de nuevo en un rato."}), 502
 
 
 @calendar_bp.route("/api/calendar/events", methods=["GET", "POST"])
@@ -237,63 +555,70 @@ def api_calendar_events():
         if start and end:
             _sync_gcal_to_db(db, start, end)
 
-        conn = _sq.connect(db); conn.row_factory = _sq.Row
-        try:
-            rows = conn.execute("""
-                SELECT m.id, m.title, m.start_at, m.end_at, m.meet_link, m.status,
-                       m.calendar_event_id, b.name as client_name, m.client_id
-                FROM meetings m
-                LEFT JOIN businesses b ON m.client_id = b.id
-                WHERE m.status != 'canceled'
-                  AND (? = '' OR SUBSTR(m.start_at, 1, 10) >= ?)
-                  AND (? = '' OR SUBSTR(m.start_at, 1, 10) <= ?)
-                ORDER BY m.start_at ASC
-            """, (start, start, end, end)).fetchall()
-            events = []
-            for r in rows:
-                sa = r["start_at"] or ""
-                day_str = sa[:10] if sa else ""
-                time_str = sa[11:16] if "T" in sa else ""
-                events.append({
-                    "id": str(r["id"]),
-                    "title": r["title"] or r["client_name"] or "Reunión",
-                    "date": day_str,
-                    "time": time_str,
-                    "meeting_url": r["meet_link"] or "",
-                    "client_id": r["client_id"],
-                    "client_name": r["client_name"] or "",
-                    # De donde vino decide si se puede reprogramar desde aca y
-                    # de que color va la barra del chip.
-                    "origen": _origen(r["calendar_event_id"]),
-                    "duration_min": int(
-                        _meeting_duration({"start_at": r["start_at"],
-                                           "end_at": r["end_at"]}).total_seconds() // 60),
-                })
-            return jsonify({"events": events})
-        finally:
-            conn.close()
+        return jsonify({"events": _eventos_locales(db, start, end)})
 
-    # POST — save meeting to DB only (no Google Calendar)
+    # POST — se guarda en la base del CRM y despues se crea el evento en Google
+    # Calendar, que les manda la invitacion al cliente y a los invitados
+    # (services/gcal_eventos.py). Si Google falla, la reunion queda igual.
     data = request.get_json() or {}
+    tipo = data.get("tipo") or "cliente"
     title = (data.get("title") or "").strip()
     date = data.get("date", "")
     time = data.get("time", "")
-    duration_min = int(data.get("duration_min") or 60)
     meet_link = (data.get("meet_link") or "").strip()
     description = (data.get("description") or "").strip()
     client_id = data.get("client_id")
 
+    if tipo not in ("cliente", "asunto"):
+        return jsonify({"ok": False, "error": "Tipo de reunión desconocido"})
+    if tipo == "asunto" and not title:
+        return jsonify({"ok": False, "error": "Escribí de qué es la reunión (el asunto)"})
     if not title or not date or not time:
         return jsonify({"ok": False, "error": "title, date y time requeridos"})
     # meetings.client_id es NOT NULL: sin cliente no hay reunion que guardar.
     # Antes se devolvia ok:true sin guardar nada y la reunion desaparecia.
-    if not client_id:
+    if tipo == "cliente" and not client_id:
         return jsonify({"ok": False, "error": "Eligi un cliente para la reunion"})
+    try:
+        duration_min = int(data.get("duration_min") or 60)
+        start_dt = datetime.datetime.fromisoformat(f"{date}T{time}:00")
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "Fecha, hora o duración inválidas"})
+    if duration_min < 1:
+        return jsonify({"ok": False, "error": "Fecha, hora o duración inválidas"})
+    invitados, error = rec.validar_invitados(data.get("invitados"))
+    if error:
+        return jsonify({"ok": False, "error": error})
+    regla, error = rec.validar_regla(data.get("repeticion"), start_dt.date())
+    if error:
+        return jsonify({"ok": False, "error": error})
+
+    extra = {
+        "description": description or None,
+        "invitados": json.dumps(invitados) if invitados else None,
+        "repeticion": json.dumps(regla) if regla else None,
+    }
 
     try:
-        start_dt = datetime.datetime.fromisoformat(f"{date}T{time}:00")
         end_dt = start_dt + datetime.timedelta(minutes=duration_min)
         db = _db()
+
+        if tipo == "asunto":
+            # Ni estado del lead, ni actividad de lead, ni metas de "reuniones
+            # agendadas": no es una reunion de ventas.
+            asunto_id = create_reunion_asunto(
+                db, title=title, start_at=start_dt.isoformat(),
+                end_at=end_dt.isoformat(), meet_link=meet_link, status="scheduled",
+                created_by=session.get("user_name", "sistema"), **extra)
+            log_activity(db, session.get("user_name", "sistema"), "asunto_agendado",
+                         "asunto", asunto_id, title, f"{date} {time}",
+                         user_id=session.get("user_id"))
+            google = _crear_si_corresponde(db, "asunto", asunto_id)
+            fila = get_reunion_asunto(db, asunto_id)
+            return jsonify({"ok": True, "asunto_id": asunto_id,
+                            "id": f"asunto-{asunto_id}",
+                            "meet_url": fila.get("google_meet") or fila.get("meet_link") or "",
+                            "event_id": fila.get("google_event_id"), "google": google})
 
         meeting_id = create_meeting(
             db, int(client_id),
@@ -302,6 +627,8 @@ def api_calendar_events():
             end_at=end_dt.isoformat(),
             meet_link=meet_link,
             status="scheduled",
+            origen="crm",
+            **extra,
         )
         from database import update_business
         update_business(db, int(client_id), crm_status="demo_agendada")
@@ -313,7 +640,11 @@ def api_calendar_events():
         increment_task_progress(db, uids, "reuniones_agendadas",
                                 lead_id=int(client_id), lead_name=client.get("name", ""))
 
-        return jsonify({"ok": True, "meeting_id": meeting_id, "meet_url": meet_link, "event_id": None})
+        google = _crear_si_corresponde(db, "cliente", meeting_id)
+        fila = get_meeting(db, meeting_id)
+        return jsonify({"ok": True, "meeting_id": meeting_id,
+                        "meet_url": fila.get("google_meet") or fila.get("meet_link") or "",
+                        "event_id": fila.get("google_event_id"), "google": google})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)})
 
@@ -554,6 +885,10 @@ def api_fetch_transcript(meeting_id):
 
 @calendar_bp.route("/api/calendar/events/<string:cal_event_id>/attendees", methods=["POST"])
 def api_add_attendee(cal_event_id):
+    fila = get_meeting_by_calendar_id(_db(), cal_event_id)
+    if _es_uri_de_calendly(cal_event_id) or (fila and _origen_de(fila) == "calendly"):
+        return jsonify({"ok": False, "error": "Es una reunión de Calendly: los invitados "
+                                              "se manejan en Calendly."}), 409
     service, err = _get_calendar_service()
     if err:
         return jsonify({"ok": False, "error": err})
@@ -582,7 +917,9 @@ def api_add_attendee(cal_event_id):
 
 @calendar_bp.route("/api/calendar/events/<string:cal_event_id>", methods=["DELETE"])
 def api_delete_cal_event(cal_event_id):
-    service, err = _get_calendar_service()
+    fila = get_meeting_by_calendar_id(_db(), cal_event_id)
+    de_calendly = _es_uri_de_calendly(cal_event_id) or bool(fila and _origen_de(fila) == "calendly")
+    service, err = (None, None) if de_calendly else _get_calendar_service()
     if service:
         try:
             service.events().delete(
@@ -619,8 +956,27 @@ def api_delete_meeting(meeting_id):
     if not meeting:
         return jsonify({"ok": False, "error": "Reunión no encontrada"}), 404
 
+    # Una ocurrencia de una serie: "solo esta" o "esta y las siguientes" se
+    # resuelven en la fila. Sin alcance (el panel del cliente) se borra todo.
+    alcance = request.args.get("alcance") or "todas"
+    ocurrencia = request.args.get("ocurrencia", "")
+    plan = None
+    if rec.regla_de(meeting) and alcance != "todas":
+        try:
+            plan = rec.borrar(meeting, ocurrencia, alcance)
+        except ValueError as e:
+            return jsonify({"ok": False, "error": str(e)}), 400
+    error = _borrar_en_google("cliente", meeting_id, meeting, alcance, ocurrencia, plan)
+    if error:
+        return _no_se_borro(error)
+    if plan and not plan["borrar"]:
+        update_meeting(_db(), meeting_id, **plan["actualizar"])
+        return jsonify({"ok": True, "borrada": False})
+
+    # Las importadas de Google se cancelan en Google como antes. Las de Calendly
+    # no: su evento y su invitacion los maneja Calendly.
     cal_event_id = meeting.get("calendar_event_id")
-    if cal_event_id:
+    if cal_event_id and _origen_de(meeting) == "google":
         service, err = _get_calendar_service()
         if service:
             try:
@@ -677,6 +1033,56 @@ def _meeting_duration(meeting: dict) -> datetime.timedelta:
     return delta if delta > datetime.timedelta(0) else datetime.timedelta(hours=1)
 
 
+_ALCANCE_TEXTO = {"esta": "solo esta", "siguientes": "esta y las siguientes",
+                  "todas": "todas"}
+
+
+def _cambios_del_pedido(data: dict, fila: dict):
+    """Fecha, hora, titulo, duracion e invitados de un PATCH, validados.
+
+    Devuelve (cambios, invitados, error). `invitados` es False si el pedido
+    no los trae (no se tocan), o el JSON a guardar. `error` es la respuesta
+    lista para devolver.
+    """
+    date = (data.get("date") or "").strip()
+    time = (data.get("time") or "").strip()
+    try:
+        start_dt = datetime.datetime.strptime(f"{date} {time}", "%Y-%m-%d %H:%M")
+    except ValueError:
+        return None, False, (jsonify({"ok": False, "error": "Fecha u hora inválidas"}), 400)
+    duracion = data.get("duration_min")
+    if duracion in (None, ""):
+        minutos = rec.duracion_min(fila)
+    else:
+        try:
+            minutos = int(duracion)
+        except (TypeError, ValueError):
+            minutos = 0
+        if minutos < 1:
+            return None, False, (jsonify({"ok": False, "error": "Duración inválida"}), 400)
+    invitados = False
+    if "invitados" in data:
+        lista, error = rec.validar_invitados(data.get("invitados"))
+        if error:
+            return None, False, (jsonify({"ok": False, "error": error}), 400)
+        invitados = json.dumps(lista) if lista else None
+    return ({"date": date, "time": start_dt.strftime("%H:%M"), "start_dt": start_dt,
+             "title": (data.get("title") or "").strip(), "duration_min": minutos},
+            invitados, None)
+
+
+def _plan_de_serie(fila: dict, data: dict, cambios: dict):
+    """Que cambia en la serie segun el alcance elegido. Sin `ocurrencia` (una
+    pestaña vieja) se toma la serie entera desde su primera reunion."""
+    ocurrencia = (data.get("ocurrencia") or "").strip()
+    alcance = data.get("alcance") or ("esta" if ocurrencia else "todas")
+    ocurrencia = ocurrencia or str(fila.get("start_at") or "")[:10]
+    try:
+        return rec.editar(fila, ocurrencia, alcance, cambios), alcance, None
+    except ValueError as e:
+        return None, alcance, (jsonify({"ok": False, "error": str(e)}), 400)
+
+
 @calendar_bp.route("/api/calendar/meetings/<int:meeting_id>", methods=["PATCH"])
 def api_reschedule_meeting(meeting_id):
     """Mueve una reunion a otra fecha/hora — es lo que dispara el arrastre.
@@ -692,6 +1098,40 @@ def api_reschedule_meeting(meeting_id):
         return jsonify({"ok": False, "error": "Reunión no encontrada"}), 404
 
     data = request.get_json(silent=True) or {}
+
+    # Una reunion que se repite se crea en el CRM (nunca se importa): se
+    # resuelve en la base segun el alcance y despues se lleva a Google.
+    if rec.regla_de(meeting):
+        cambios, invitados, error = _cambios_del_pedido(data, meeting)
+        if error:
+            return error
+        plan, alcance, error = _plan_de_serie(meeting, data, cambios)
+        if error:
+            return error
+        ocurrencia = (data.get("ocurrencia") or "").strip() or str(meeting.get("start_at") or "")[:10]
+        actualizar = dict(plan["actualizar"])
+        if invitados is not False and not plan["nueva"]:
+            actualizar["invitados"] = invitados
+        update_meeting(db, meeting_id, **actualizar)
+        nueva_id = None
+        if plan["nueva"]:
+            nueva_id = create_meeting(
+                db, meeting["client_id"], meet_link=meeting.get("meet_link"),
+                description=meeting.get("description"), status="scheduled", origen="crm",
+                invitados=meeting.get("invitados") if invitados is False else invitados,
+                **plan["nueva"])
+        client = get_business(db, int(meeting["client_id"])) or {}
+        log_activity(db, session.get("user_name", "sistema"), "meeting_rescheduled",
+                     "lead", meeting["client_id"], client.get("name", ""),
+                     f"{cambios['title'] or meeting.get('title') or 'Reunión'} → "
+                     f"{cambios['date']} {cambios['time']} ({_ALCANCE_TEXTO[alcance]})",
+                     user_id=session.get("user_id"))
+        google = _editar_en_google(db, "cliente", meeting_id, meeting, alcance=alcance,
+                                   ocurrencia=ocurrencia, cambios=cambios,
+                                   invitados_cambiaron=invitados is not False,
+                                   nueva_id=nueva_id)
+        return jsonify({"ok": True, "nueva_id": nueva_id, "google": google})
+
     date = (data.get("date") or "").strip()
     time = (data.get("time") or "").strip()
     try:
@@ -720,8 +1160,18 @@ def api_reschedule_meeting(meeting_id):
     titulo_nuevo = (data.get("title") or "").strip()
     titulo = titulo_nuevo or (meeting.get("title") or "")
 
+    # Los invitados son opcionales en el pedido y quedan solo en el CRM.
+    extra = {}
+    if "invitados" in data:
+        lista, error = rec.validar_invitados(data.get("invitados"))
+        if error:
+            return jsonify({"ok": False, "error": error}), 400
+        extra["invitados"] = json.dumps(lista) if lista else None
+
     cal_event_id = meeting.get("calendar_event_id")
-    if _es_uri_de_calendly(cal_event_id):
+    # Por URI (webhook, sync) o por origen (evento de Calendly importado de
+    # Google): se reprograma en Calendly, y el CRM no le toca Google.
+    if _origen_de(meeting) == "calendly":
         return jsonify({
             "ok": False,
             "error": "Esta reunión la creó Calendly. Reprogramala desde Calendly "
@@ -756,7 +1206,7 @@ def api_reschedule_meeting(meeting_id):
             }), 502
 
     update_meeting(db, meeting_id, title=titulo,
-                   start_at=start_dt.isoformat(), end_at=end_dt.isoformat())
+                   start_at=start_dt.isoformat(), end_at=end_dt.isoformat(), **extra)
 
     client_id = meeting.get("client_id")
     client = get_business(db, int(client_id)) if client_id else {}
@@ -765,7 +1215,134 @@ def api_reschedule_meeting(meeting_id):
                  f"{titulo or 'Reunión'} → {date} {time}",
                  user_id=session.get("user_id"))
 
+    # Las que creo el CRM en Google (las importadas ya se movieron arriba).
+    google = _editar_en_google(db, "cliente", meeting_id, meeting,
+                               invitados_cambiaron="invitados" in extra)
+
     return jsonify({"ok": True,
                     "title": titulo,
                     "start_at": start_dt.isoformat(),
-                    "end_at": end_dt.isoformat()})
+                    "end_at": end_dt.isoformat(),
+                    "google": google})
+
+
+# ── Reuniones de otro asunto ─────────────────────────────────────────────────
+# Sin cliente. En Google van igual que las de cliente, con sus invitados.
+
+@calendar_bp.route("/api/calendar/asuntos/<int:asunto_id>", methods=["GET"])
+def api_get_asunto(asunto_id):
+    fila = get_reunion_asunto(_db(), asunto_id)
+    if not fila:
+        return jsonify({"ok": False, "error": "Reunión no encontrada"}), 404
+    return jsonify(fila)
+
+
+@calendar_bp.route("/api/calendar/asuntos/<int:asunto_id>", methods=["PATCH"])
+def api_editar_asunto(asunto_id):
+    db = _db()
+    fila = get_reunion_asunto(db, asunto_id)
+    if not fila:
+        return jsonify({"ok": False, "error": "Reunión no encontrada"}), 404
+    data = request.get_json(silent=True) or {}
+    cambios, invitados, error = _cambios_del_pedido(data, fila)
+    if error:
+        return error
+
+    alcance = None
+    if rec.regla_de(fila):
+        plan, alcance, error = _plan_de_serie(fila, data, cambios)
+        if error:
+            return error
+        ocurrencia = (data.get("ocurrencia") or "").strip() or str(fila.get("start_at") or "")[:10]
+        actualizar = dict(plan["actualizar"])
+        if invitados is not False and not plan["nueva"]:
+            actualizar["invitados"] = invitados
+        update_reunion_asunto(db, asunto_id, **actualizar)
+        nueva_id = None
+        if plan["nueva"]:
+            nueva_id = create_reunion_asunto(
+                db, meet_link=fila.get("meet_link"), description=fila.get("description"),
+                invitados=fila.get("invitados") if invitados is False else invitados,
+                status="scheduled", created_by=session.get("user_name", "sistema"),
+                **plan["nueva"])
+        google = _editar_en_google(db, "asunto", asunto_id, fila, alcance=alcance,
+                                   ocurrencia=ocurrencia, cambios=cambios,
+                                   invitados_cambiaron=invitados is not False,
+                                   nueva_id=nueva_id)
+    else:
+        campos = {
+            "title": cambios["title"] or fila.get("title") or "",
+            "start_at": cambios["start_dt"].isoformat(),
+            "end_at": (cambios["start_dt"]
+                       + datetime.timedelta(minutes=cambios["duration_min"])).isoformat(),
+        }
+        if invitados is not False:
+            campos["invitados"] = invitados
+        update_reunion_asunto(db, asunto_id, **campos)
+        google = _editar_en_google(db, "asunto", asunto_id, fila,
+                                   invitados_cambiaron=invitados is not False)
+
+    log_activity(db, session.get("user_name", "sistema"), "asunto_movido", "asunto",
+                 asunto_id, cambios["title"] or fila.get("title") or "",
+                 f"{cambios['date']} {cambios['time']}"
+                 + (f" ({_ALCANCE_TEXTO[alcance]})" if alcance else ""),
+                 user_id=session.get("user_id"))
+    return jsonify({"ok": True, "google": google})
+
+
+@calendar_bp.route("/api/calendar/asuntos/<int:asunto_id>", methods=["DELETE"])
+def api_borrar_asunto(asunto_id):
+    db = _db()
+    fila = get_reunion_asunto(db, asunto_id)
+    if not fila:
+        return jsonify({"ok": False, "error": "Reunión no encontrada"}), 404
+    alcance = request.args.get("alcance") or "todas"
+    ocurrencia = request.args.get("ocurrencia", "")
+    plan = None
+    if rec.regla_de(fila) and alcance != "todas":
+        try:
+            plan = rec.borrar(fila, ocurrencia, alcance)
+        except ValueError as e:
+            return jsonify({"ok": False, "error": str(e)}), 400
+    error = _borrar_en_google("asunto", asunto_id, fila, alcance, ocurrencia, plan)
+    if error:
+        return _no_se_borro(error)
+    if plan and not plan["borrar"]:
+        update_reunion_asunto(db, asunto_id, **plan["actualizar"])
+        return jsonify({"ok": True, "borrada": False})
+    delete_reunion_asunto(db, asunto_id)
+    return jsonify({"ok": True, "borrada": True})
+
+
+# ── Reintentar en Google ─────────────────────────────────────────────────────
+# Lo disparan los botones "Enviar a Google Calendar" (una reunion creada a mano
+# que todavia no esta en Google, por ejemplo las de antes de publicar esto) y
+# "Reintentar en Google" (una que fallo). Sube la reunion entera tal como esta
+# en el CRM, con Meet: una serie es un solo evento recurrente. Nunca corre sola,
+# ni al arrancar.
+
+def _reintentar(tipo: str, rid: int):
+    db = _db()
+    fila = _fila(db, tipo, rid)
+    if not fila:
+        return jsonify({"ok": False, "error": "Reunión no encontrada"}), 404
+    if not _va_a_google(fila, tipo):
+        return jsonify({"ok": False, "error": "Esta reunión no se creó en el CRM (vino de "
+                                              "Calendly o de Google): no se manda a Google "
+                                              "desde acá."}), 400
+    if not gce.creacion_activada():
+        return jsonify({"ok": False, "error": "El envío a Google Calendar está apagado "
+                                              "(GCAL_CREAR_EVENTOS) o faltan las credenciales."}), 409
+    google = _subir_a_google(db, tipo, rid, reintento=True)
+    ok = google["estado"] == "ok"
+    return jsonify({"ok": ok, "google": google, "error": google["error"]}), (200 if ok else 502)
+
+
+@calendar_bp.route("/api/calendar/meetings/<int:meeting_id>/google", methods=["POST"])
+def api_reintentar_meeting_google(meeting_id):
+    return _reintentar("cliente", meeting_id)
+
+
+@calendar_bp.route("/api/calendar/asuntos/<int:asunto_id>/google", methods=["POST"])
+def api_reintentar_asunto_google(asunto_id):
+    return _reintentar("asunto", asunto_id)

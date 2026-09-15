@@ -251,6 +251,9 @@ def calendly_webhook():
                 meet_link=actual_meet_url or meet_link,
                 status="scheduled",
                 recall_bot_id=recall_bot_id,
+                # Calendly ya creo el evento en Google y mando la invitacion:
+                # el CRM nunca la manda a Google (routes/calendar._va_a_google).
+                origen="calendly",
             )
         except Exception:
             # Duplicate webhook from Calendly — meeting already exists
