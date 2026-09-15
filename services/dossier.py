@@ -259,6 +259,39 @@ _PREFIJO_LEAD_DE_PRUEBA = "<test lead:"
 # el dossier entero es lo que se le manda al modelo.
 TOPE_VALORES_POR_PREGUNTA = 12
 
+# La ciudad se muestra en dos: Montevideo e Interior (pedido de Juan, 14/9: "en
+# el de ciudad pone Montevideo e Interior solo y agrupalos asi"). Es Montevideo
+# si alguna palabra de la respuesta normalizada es una de estas: cubre
+# "Montevideo", "montevideo ", "Ciudad de Montevideo", "Mdeo", "MVD". Todo lo
+# demas es Interior, incluida la basura ("vender").
+_PALABRAS_DE_MONTEVIDEO = {"montevideo", "mdeo", "mvd", "mvdeo"}
+
+
+def zona_de_ciudad(valor: str) -> str:
+    palabras = set(_slug(valor).split("_"))
+    return "Montevideo" if palabras & _PALABRAS_DE_MONTEVIDEO else "Interior"
+
+
+# Palabras que el formulario guarda sin tilde o en minuscula dentro de sus
+# codigos ("aún_no_lo_se", "más_de_usd_1.000").
+_PALABRAS_LEGIBLES = {"usd": "USD", "mas": "más", "aun": "aún", "ano": "año"}
+
+
+def etiqueta_legible(valor) -> str:
+    """"entre_usd_500_y_usd_1.000" -> "Entre USD 500 y USD 1.000".
+
+    Solo para mostrar: `valor_declarado` y los ids no cambian. Lo que ya tiene
+    espacios es texto libre de la persona y queda como lo escribio.
+    """
+    import re
+
+    texto = " ".join(str(valor or "").split())
+    if not texto or " " in texto:
+        return texto
+    palabras = [_PALABRAS_LEGIBLES.get(p.lower(), p) for p in texto.split("_") if p]
+    frase = re.sub(r"\blo se\b", "lo sé", " ".join(palabras))
+    return frase[:1].upper() + frase[1:]
+
 
 def normalizar_clave(clave: str) -> str:
     """Una clave de form_data comparable.
@@ -353,6 +386,10 @@ def por_segmento(db_path: str, desde: str, hasta: str) -> list:
             valor = " ".join(str(valor).split())
             if not valor or valor.startswith(_PREFIJO_LEAD_DE_PRUEBA):
                 continue
+            # La ciudad se agrupa ANTES de contar: la tasa de Montevideo sale
+            # de sus leads sumados, nunca de promediar las tasas de cada grafia.
+            if pregunta == "ciudad":
+                valor = zona_de_ciudad(valor)
             slot = grupos.setdefault(pregunta, {}).setdefault(
                 _slug(valor), {"etiquetas": {}, "ids": []})
             slot["etiquetas"][valor] = slot["etiquetas"].get(valor, 0) + 1
@@ -368,7 +405,8 @@ def por_segmento(db_path: str, desde: str, hasta: str) -> list:
                 f"{pref}.{_SUFIJO_TASA[clave]}",
                 f"Tasa de {etiqueta.lower()} — {declarado}",
                 exitos, total, "crm"))
-        return {"valor_declarado": declarado, "n": total, "metricas": ms}
+        return {"valor_declarado": declarado, "etiqueta": etiqueta_legible(declarado),
+                "n": total, "metricas": ms}
 
     bloques = []
     for pregunta in sorted(grupos):

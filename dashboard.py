@@ -1440,6 +1440,16 @@ body.light .mobile-header-title{color:#0f172a}
 .sc-anun-reco[data-accion="subir"]{border-left-color:var(--verde)}
 .sc-comparacion{display:grid;gap:5px;font-size:.8rem;line-height:1.55;color:var(--texto);background:var(--fondo-hundido);border:1px solid var(--borde);border-radius:10px;padding:11px 14px;margin-bottom:16px}
 .sc-barras{display:grid;gap:7px;margin-top:8px}
+/* Por lo que el lead declaro: una dona por pregunta. De a dos por fila en
+   escritorio, de a una en el celular (min() evita que 380px desborde a 390). */
+.sc-donas{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,380px),1fr));gap:18px}
+.sc-dona{border:1px solid var(--borde);border-radius:12px;padding:14px 16px;min-width:0}
+.sc-dona-cuerpo{display:flex;flex-wrap:wrap;align-items:center;gap:14px 18px;margin-top:8px}
+.sc-dona-svg{width:220px;max-width:100%;height:auto;flex:0 0 auto}
+.sc-dona-leyenda{list-style:none;margin:0;padding:0;display:grid;gap:9px;flex:1 1 180px;min-width:0}
+.sc-dona-item{display:grid;grid-template-columns:10px 1fr;gap:8px;align-items:start;font-size:.78rem;line-height:1.45;color:var(--texto);overflow-wrap:anywhere}
+.sc-dona-item .sc-leyenda-punto{margin-top:4px}
+.sc-dona-tasa{display:block;font-size:.72rem;color:var(--texto-tenue)}
 .sc-barras-ayuda{font-size:.72rem;line-height:1.5;margin:2px 0 4px;max-width:74ch}
 /* Varios graficos seguidos dentro del mismo bloque: sin esto se pegan y se
    leen como uno solo con el titulo en el medio. */
@@ -2385,7 +2395,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 
       <div class="sc-bloque">
         <h3>Por lo que el lead declaró</h3>
-        <div class="sc-sub">Respuestas del propio formulario de Meta: qué busca, cuánto presupuesto dice tener y cuál es su objetivo.</div>
+        <div class="sc-sub">Respuestas del propio formulario de Meta: qué busca, cuánto presupuesto dice tener, cuál es su objetivo y de dónde es. Cada círculo es cómo se reparten los leads entre las respuestas, y debajo de cada respuesta está qué parte llegó a una reunión. La ciudad va agrupada en Montevideo e Interior.</div>
         <div id="mk-segmentos"></div>
       </div>
 
@@ -9547,28 +9557,28 @@ function _mkPintar() {
     : '<div class="sc-vacio">Sin gasto ni leads en el período.</div>';
 
   // ── Segmentos declarados ───────────────────────────────────────────────
-  document.getElementById('mk-segmentos').innerHTML =
-    (_mkDossier.segmentos || []).map(b => {
-      const filas = b.valores.map(v => {
-        const m = v.metricas.find(m => m.id.endsWith('.tasa_demo'));
-        if (!m || m.valor === null || m.valor === undefined) return null;
-        return {
-          etiqueta: v.valor_declarado,
-          valor: m.valor,
-          nota: m.n ? (m.muestra_chica
-                        ? `sobre ${m.n} · muestra chica`
-                        : `sobre ${m.n}`) : ''
-        };
-      }).filter(Boolean);
-      const cola = b.valores_distintos > b.valores.length
-        ? ` · ${b.valores_distintos} respuestas distintas` : '';
-      return SC.barrasSimples(filas, {
-        etiqueta: b.etiqueta,
-        ayuda: `Qué porcentaje de cada respuesta llegó a una reunión. ` +
-               `${b.n} respuestas${cola}.`,
-        formato: 'porcentaje'
-      }, tema);
-    }).join('') || '<div class="sc-vacio">Sin respuestas de formulario en el período</div>';
+  // Pedido de Juan (14/9): "gráficos circulares y más grandes". La dona dice
+  // cómo se reparten los leads entre las respuestas; lo que antes decían las
+  // barras —qué parte llegó a una reunión— va escrito al lado de cada una. La
+  // ciudad ya viene agrupada en Montevideo e Interior desde el dossier.
+  const _donas = (_mkDossier.segmentos || []).map(b => {
+    const valores = b.valores || [];
+    const porciones = valores.map(v => {
+      const m = (v.metricas || []).find(x => String(x.id).endsWith('.tasa_demo')) || {};
+      return { etiqueta: v.etiqueta || v.valor_declarado, n: v.n,
+               tasa: m.valor, muestraChica: !!m.muestra_chica };
+    });
+    const cola = b.valores_distintos > valores.length
+      ? ` · ${b.valores_distintos} respuestas distintas` : '';
+    return SC.dona(porciones, {
+      etiqueta: b.etiqueta,
+      ayuda: `Cómo se reparten las ${b.n} respuestas${cola}. Debajo de cada ` +
+             'una, qué parte llegó a una reunión.',
+    }, tema);
+  });
+  document.getElementById('mk-segmentos').innerHTML = _donas.length
+    ? '<div class="sc-donas">' + _donas.join('') + '</div>'
+    : '<div class="sc-vacio">Sin respuestas de formulario en el período</div>';
 
   // ── La plata: Meta contra Finanzas ─────────────────────────────────────
   const conc = _mkDossier.conciliacion || [];

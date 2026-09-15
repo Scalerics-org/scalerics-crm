@@ -241,6 +241,11 @@ def test_el_panel_se_pinta_entero_sin_reventar(tmp_path):
     assert 'class="sc-tabla"' in html["mk-mensual"]
     assert html["mk-series"].count("Semana ") >= 4
     assert "Semana 2 · Leads: 0" in html["mk-series"]
+    # Por lo que el lead declaró: donas, con el % de reunión en la leyenda.
+    assert '<div class="sc-donas">' in html["mk-segmentos"]
+    assert html["mk-segmentos"].count('class="sc-dona"') == 1
+    assert "llegó a reunión" in html["mk-segmentos"]
+    assert "sc-barras" not in html["mk-segmentos"].replace("sc-barras-ayuda", "")
 
 
 @sin_node

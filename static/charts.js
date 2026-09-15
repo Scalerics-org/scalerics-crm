@@ -1304,6 +1304,105 @@
            }).join('') + '</div></div>';
   };
 
+  // ── Dona ─────────────────────────────────────────────────────────────────
+  //
+  // Como se reparten los leads entre las respuestas de UNA pregunta. Pedido de
+  // Juan para "Por lo que el lead declaro": graficos circulares y mas grandes.
+  //
+  // La dona dice cantidad. El otro dato —que parte de cada respuesta llego a
+  // una reunion— no entra en el angulo: va escrito en la leyenda, al lado de
+  // cada respuesta, con la muestra chica avisada con palabras.
+  //
+  // Sin texto encima de los colores: blanco sobre la paleta no llega a 4,5:1.
+  // Y la leyenda es texto con su color al lado, no solo color: la paleta tiene
+  // un aviso de daltonismo entre el azul y el violeta. Desde la sexta
+  // respuesta, y en "otros", el color es el gris neutro.
+  //
+  // porciones: [{etiqueta, n, tasa (0..1 o null), muestraChica}]
+  SC.dona = function (porciones, opciones, tema) {
+    opciones = opciones || {};
+    var vivas = (porciones || []).filter(function (p) {
+      return p && typeof p.n === 'number' && isFinite(p.n) && p.n > 0;
+    });
+    var total = vivas.reduce(function (a, p) { return a + p.n; }, 0);
+    if (!total) {
+      return '<div class="sc-vacio">Sin datos para «' +
+             SC.esc(opciones.etiqueta || '') + '»</div>';
+    }
+
+    var hues = SC.PALETA[tema] || SC.PALETA.oscuro;
+    var gris = SC.PALETA.neutro[tema] || SC.PALETA.neutro.oscuro;
+    var tinta = SC.PALETA.tinta[tema];
+    var mudo = SC.PALETA.mudo[tema];
+    var fondo = SC.PALETA.fondo[tema];
+
+    var lado = 220, c = lado / 2, rExt = 104, rInt = 64;
+    function punto(r, a) {
+      return (c + r * Math.cos(a)).toFixed(2) + ' ' + (c + r * Math.sin(a)).toFixed(2);
+    }
+
+    var piezas = [], leyenda = [];
+    var desde = -Math.PI / 2;               // arranca a las doce
+    vivas.forEach(function (p, i) {
+      var otros = String(p.etiqueta).indexOf('otros (') === 0;
+      var color = (otros || i >= hues.length) ? gris : hues[i];
+      var parte = p.n / total;
+      var hasta = desde + parte * 2 * Math.PI;
+      var titulo = '<title>' + SC.esc(p.etiqueta) + ': ' + p.n + '</title>';
+      var d;
+      if (vivas.length === 1) {
+        // Un arco de 360 grados no se puede dibujar: empieza y termina en el
+        // mismo punto y el SVG no pinta nada. Dos circulos con evenodd.
+        d = 'M ' + (c - rExt) + ' ' + c + ' A ' + rExt + ' ' + rExt + ' 0 1 0 ' +
+            (c + rExt) + ' ' + c + ' A ' + rExt + ' ' + rExt + ' 0 1 0 ' +
+            (c - rExt) + ' ' + c + ' Z M ' + (c - rInt) + ' ' + c + ' A ' + rInt +
+            ' ' + rInt + ' 0 1 0 ' + (c + rInt) + ' ' + c + ' A ' + rInt + ' ' +
+            rInt + ' 0 1 0 ' + (c - rInt) + ' ' + c + ' Z';
+      } else {
+        var grande = parte > 0.5 ? 1 : 0;
+        d = 'M ' + punto(rExt, desde) + ' A ' + rExt + ' ' + rExt + ' 0 ' + grande +
+            ' 1 ' + punto(rExt, hasta) + ' L ' + punto(rInt, hasta) + ' A ' + rInt +
+            ' ' + rInt + ' 0 ' + grande + ' 0 ' + punto(rInt, desde) + ' Z';
+      }
+      piezas.push('<path d="' + d + '" fill="' + color + '" fill-rule="evenodd" ' +
+                  'stroke="' + fondo + '" stroke-width="2" data-grados="' +
+                  (parte * 360).toFixed(4) + '">' + titulo + '</path>');
+      desde = hasta;
+
+      var tasa = (p.tasa === null || p.tasa === undefined || !isFinite(p.tasa))
+        ? 'sin datos de reunión'
+        : SC.fmt(p.tasa, 'porcentaje') + ' llegó a reunión' +
+          (p.muestraChica ? ' · sobre ' + SC.fmt(p.n, 'numero') + ' · muestra chica' : '');
+      leyenda.push('<li class="sc-dona-item"><span class="sc-leyenda-punto" ' +
+                   'style="background:' + color + '"></span><span>' +
+                   '<b>' + SC.esc(p.etiqueta) + '</b> · ' + SC.fmt(p.n, 'numero') +
+                   (p.n === 1 ? ' lead' : ' leads') + ' · ' +
+                   SC.fmt(parte, 'porcentaje') + ' del total' +
+                   '<span class="sc-dona-tasa">' + SC.esc(tasa) + '</span></span></li>');
+    });
+
+    piezas.push('<text x="' + c + '" y="' + (c + 4) + '" text-anchor="middle" ' +
+                'font-size="26" font-weight="700" fill="' + tinta + '">' +
+                SC.fmt(total, 'numero') + '</text>');
+    piezas.push('<text x="' + c + '" y="' + (c + 22) + '" text-anchor="middle" ' +
+                'font-size="11" fill="' + mudo + '">' +
+                (total === 1 ? 'lead' : 'leads') + '</text>');
+
+    return '<div class="sc-dona">' +
+           '<div class="sc-titulo" style="color:' + tinta + '">' +
+           SC.esc(opciones.etiqueta || '') + '</div>' +
+           (opciones.ayuda
+             ? '<div class="sc-barras-ayuda" style="color:' + mudo + '">' +
+               SC.esc(opciones.ayuda) + '</div>'
+             : '') +
+           '<div class="sc-dona-cuerpo">' +
+           '<svg class="sc-dona-svg" viewBox="0 0 ' + lado + ' ' + lado + '" ' +
+           'role="img" aria-label="' + SC.esc(opciones.etiqueta || '') + '">' +
+           piezas.join('') + '</svg>' +
+           '<ul class="sc-dona-leyenda">' + leyenda.join('') + '</ul>' +
+           '</div></div>';
+  };
+
   // Cuanto mide un texto en el SVG, estimado. No hay DOM para medirlo, asi que
   // va por caracteres: 0,62 del tamano de letra por caracter cubre las
   // mayusculas y los numeros de Inter con margen. Estimar de mas deja un poco
