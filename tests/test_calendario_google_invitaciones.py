@@ -91,6 +91,8 @@ class GoogleFalso:
             body = kw["body"]
             meet = "https://meet.google.com/abc-defg-hij" if "conferenceData" in body else ""
             return {"id": body["id"], "hangoutLink": meet}
+        if metodo == "patch" and "conferenceData" in (kw.get("body") or {}):
+            return {"id": kw["eventId"], "hangoutLink": "https://meet.google.com/abc-defg-hij"}
         if metodo == "instances":
             return {"items": [{"id": kw["eventId"] + "_instancia"}]}
         if metodo == "list":
@@ -184,12 +186,23 @@ def test_crear_otro_asunto_crea_el_evento_e_invita(app, cliente, google):
     fila = get_reunion_asunto(db, d["asunto_id"])
     assert fila["google_event_id"] == body["id"] == d["event_id"]
     assert fila["google_sync"] == "ok" and fila["google_error"] is None
-    assert fila["meet_link"] == d["meet_url"] == "https://meet.google.com/abc-defg-hij"
+    assert fila["google_meet"] == d["meet_url"] == "https://meet.google.com/abc-defg-hij"
+    [ev] = _eventos(cliente)
+    assert ev["meeting_url"] == ev["google"]["meet"] == "https://meet.google.com/abc-defg-hij"
 
 
-def test_con_un_link_propio_no_se_pide_meet(cliente, google):
-    _crear(cliente, meet_link="https://zoom.us/j/123")
-    assert "conferenceData" not in google.de("insert")[0]["body"]
+def test_todo_evento_del_crm_lleva_meet_aunque_la_reunion_traiga_otro_link(app, cliente, google):
+    """Pedido de Juan: el link de Meet va siempre en la invitacion. Si la
+    reunion ya tenia un link propio, ese se sigue viendo en el CRM."""
+    d = _crear(cliente, meet_link="https://zoom.us/j/123", repeticion=VIERNES)
+
+    [pedido] = google.de("insert")
+    assert pedido["conferenceDataVersion"] == 1
+    assert pedido["body"]["conferenceData"]["createRequest"]["conferenceSolutionKey"] == {
+        "type": "hangoutsMeet"}
+    fila = get_reunion_asunto(app.config["DB_PATH"], d["asunto_id"])
+    assert fila["google_meet"] == "https://meet.google.com/abc-defg-hij"
+    assert fila["meet_link"] == "https://zoom.us/j/123"
 
 
 def test_con_cliente_el_mail_del_cliente_va_como_invitado(app, cliente, google):
@@ -221,6 +234,7 @@ def test_un_viernes_19_que_se_repite_es_un_solo_evento_con_rrule(cliente, google
     assert primero["body"]["recurrence"] == ["RRULE:FREQ=WEEKLY;BYDAY=FR"]
     assert primero["body"]["start"] == {"dateTime": "2026-09-18T19:00:00", "timeZone": MVD}
     assert primero["sendUpdates"] == "all"
+    assert primero["conferenceDataVersion"] == 1 and "conferenceData" in primero["body"]
     assert segundo["body"]["start"] == {"dateTime": "2026-09-25T23:30:00", "timeZone": MVD}
     assert segundo["body"]["end"] == {"dateTime": "2026-09-26T00:30:00", "timeZone": MVD}
 
@@ -281,6 +295,8 @@ def test_reintentar_cuando_el_evento_ya_se_habia_creado_no_lo_duplica(cliente, g
     assert primer["body"]["id"] == segundo["body"]["id"]
     [parche] = google.de("patch")
     assert parche["eventId"] == primer["body"]["id"] and parche["sendUpdates"] == "all"
+    # El evento que quedo de la vez anterior se completa con su Meet.
+    assert parche["conferenceDataVersion"] == 1 and "conferenceData" in parche["body"]
 
 
 def test_reintentar_que_vuelve_a_fallar_sigue_marcada(app, cliente, google):
@@ -391,6 +407,7 @@ def test_editar_esta_y_las_siguientes_corta_la_serie_y_crea_otra(app, cliente, g
     body = nuevo["body"]
     assert body["id"] != gid
     assert body["start"] == {"dateTime": "2026-10-02T20:00:00", "timeZone": MVD}
+    assert nuevo["conferenceDataVersion"] == 1 and "conferenceData" in body   # su propio Meet
     assert body["recurrence"] == ["RRULE:FREQ=WEEKLY;BYDAY=FR"]
     assert [a["email"] for a in body["attendees"]] == ["ana@agencia.com", "pablo@estudio.uy",
                                                        "sofi@marca.com"]
@@ -584,6 +601,170 @@ def test_calendly_no_se_toca(app, cliente, google):
     [ev] = _eventos(cliente)
     assert ev["origen"] == "calendly" and ev["google"]["estado"] == ""
     assert get_meeting(db, mid)["google_event_id"] is None
+
+
+def _llamadas_a_google(google):
+    """Todo lo que no es el listado del import (que pasa siempre al abrir el calendario)."""
+    return [m for m, _ in google.llamadas if m != "list"]
+
+
+def _calendly_por_sync(db):
+    """Una reserva de Calendly cargada como la carga el sync de Calendly."""
+    from services.calendly_gcal import sync_parsed
+    sync_parsed(db, [{
+        "event_uri": "https://api.calendly.com/scheduled_events/BBB", "name": "Laura",
+        "email": "laura@ferreteria.uy", "company": "Ferreteria Norte", "service": "",
+        "phone": "", "start_at": "2026-09-18T15:00:00", "end_at": "2026-09-18T15:30:00",
+        "meet_link": "", "canceled": False}], now="2026-09-01T00:00:00")
+    return _filas(db, "SELECT id FROM meetings")[0][0]
+
+
+def test_una_reunion_de_calendly_hace_cero_llamadas_a_google(app, cliente, google):
+    """Pedido de Juan: Calendly ya crea el evento y manda la invitacion. Ni
+    mover, ni enviar, ni borrar desde el CRM le tocan Google."""
+    db = app.config["DB_PATH"]
+    mid = _calendly_por_sync(db)
+    assert get_meeting(db, mid)["origen"] == "calendly"
+
+    [ev] = _eventos(cliente)
+    r_mover = cliente.patch(f"/api/calendar/meetings/{mid}", headers=_AUTH,
+                            json={"date": "2026-09-19", "time": "10:00"})
+    r_enviar = cliente.post(f"/api/calendar/meetings/{mid}/google", headers=_AUTH)
+    r_borrar = cliente.delete(f"/api/calendar/meetings/{mid}", headers=_AUTH)
+
+    assert ev["origen"] == "calendly" and ev["google"]["puede_enviar"] is False
+    assert r_mover.status_code == 409 and r_enviar.status_code == 400
+    assert r_borrar.get_json()["ok"] is True and get_meeting(db, mid) is None
+    assert _llamadas_a_google(google) == []
+
+
+def test_el_webhook_de_calendly_la_guarda_como_de_calendly_sin_tocar_google(tmp_path, monkeypatch, google):
+    from flask import Flask
+    from routes.calendly import calendly_bp
+    db = str(tmp_path / "webhook.db")
+    init_db(db)
+    monkeypatch.setenv("DB_PATH", db)
+    monkeypatch.delenv("CALENDLY_WEBHOOK_SECRET", raising=False)
+    monkeypatch.delenv("RECALL_API_KEY", raising=False)
+    app = Flask(__name__)
+    app.register_blueprint(calendly_bp)
+    app.config["DB_PATH"] = db
+    payload = {"event": "invitee.created", "payload": {
+        "invitee": {"name": "Laura", "email": "laura@ferreteria.uy",
+                    "questions_and_answers": [{"question": "Empresa", "answer": "Ferreteria Norte"}]},
+        "event": {"uri": "https://api.calendly.com/scheduled_events/EVT9",
+                  "start_time": "2026-09-18T18:00:00.000000Z",
+                  "end_time": "2026-09-18T18:30:00.000000Z",
+                  "location": {"join_url": "https://meet.google.com/xyz-calendly"}}}}
+
+    r = app.test_client().post("/api/calendly/webhook", json=payload)
+
+    assert r.status_code == 200, r.data
+    assert _filas(db, "SELECT origen, calendar_event_id FROM meetings") == [
+        ("calendly", "https://api.calendly.com/scheduled_events/EVT9")]
+    assert google.llamadas == []
+
+
+def test_un_evento_de_calendly_que_entra_por_el_import_de_google_tampoco_se_toca(app, cliente, google):
+    db = app.config["DB_PATH"]
+    google.items = [_evento("gcal-calendly-1", "Laura y Scalerics", "2026-09-18", "15:00",
+                            "laura@ferreteria.uy",
+                            description="Consultoria\nhttps://calendly.com/events/1234/google_meet")]
+    [ev] = _eventos(cliente)
+    google.items = []
+    mid = int(ev["id"])
+
+    assert ev["origen"] == "calendly" and get_meeting(db, mid)["origen"] == "calendly"
+    r_mover = cliente.patch(f"/api/calendar/meetings/{mid}", headers=_AUTH,
+                            json={"date": "2026-09-19", "time": "10:00"})
+    r_invitar = cliente.post("/api/calendar/events/gcal-calendly-1/attendees", headers=_AUTH,
+                             json={"email": "otro@ferreteria.uy"})
+    r_borrar = cliente.delete(f"/api/calendar/meetings/{mid}", headers=_AUTH)
+
+    assert r_mover.status_code == 409 and r_invitar.status_code == 409
+    assert r_borrar.get_json()["ok"] is True
+    assert _llamadas_a_google(google) == []
+
+
+def test_una_importada_de_google_que_no_es_de_calendly_se_mueve_como_antes(app, cliente, google):
+    db = app.config["DB_PATH"]
+    google.items = [_evento("gcal-a-mano", "Llamada con proveedor", "2026-09-18", "11:00",
+                            "proveedor@imprenta.uy")]
+    [ev] = _eventos(cliente)
+    google.items = []
+
+    cliente.patch(f"/api/calendar/meetings/{ev['id']}", headers=_AUTH,
+                  json={"date": "2026-09-18", "time": "12:00"})
+
+    assert ev["origen"] == "google" and get_meeting(db, int(ev["id"]))["origen"] == "google"
+    assert [kw["eventId"] for kw in google.de("patch")] == ["gcal-a-mano"]
+    assert google.de("insert") == []
+
+
+def test_una_reunion_creada_a_mano_hace_una_sola_llamada(app, cliente, google):
+    db = app.config["DB_PATH"]
+    lid = insert_business(db, {"name": "Optica Luz"})
+
+    d = _crear(cliente, tipo="cliente", client_id=lid, title="Demo", invitados="")
+
+    assert _llamadas_a_google(google) == ["insert"]
+    assert get_meeting(db, d["meeting_id"])["origen"] == "crm"
+
+
+# ── reuniones de antes de publicar: "Enviar a Google Calendar" ───────────────
+
+def test_una_reunion_de_antes_se_envia_una_sola_vez_como_una_serie(app, cliente, google, monkeypatch):
+    """Como "Marketing Semanal": creada antes de que el CRM mandara a Google.
+    Abrir el calendario no manda nada; el boton manda un solo evento
+    recurrente con Meet e invitaciones, y un segundo toque no crea otro."""
+    monkeypatch.setenv("GCAL_CREAR_EVENTOS", "off")
+    d = _crear(cliente, title="Marketing Semanal", repeticion=VIERNES)
+    aid = d["asunto_id"]
+    monkeypatch.delenv("GCAL_CREAR_EVENTOS")
+
+    eventos = _eventos(cliente)
+    assert len(eventos) == 2
+    assert all(e["google"] == {"estado": "", "error": "", "meet": "", "puede_enviar": True}
+               for e in eventos)
+    assert _llamadas_a_google(google) == []
+
+    r = cliente.post(f"/api/calendar/asuntos/{aid}/google", headers=_AUTH)
+
+    assert r.get_json()["ok"] is True
+    [(metodo, kw)] = google.escrituras()
+    assert metodo == "insert" and kw["sendUpdates"] == "all" and kw["conferenceDataVersion"] == 1
+    assert kw["body"]["recurrence"] == ["RRULE:FREQ=WEEKLY;BYDAY=FR"]
+    assert kw["body"]["start"] == {"dateTime": "2026-09-18T19:00:00", "timeZone": MVD}
+    assert "conferenceData" in kw["body"] and len(kw["body"]["attendees"]) == 3
+    eventos = _eventos(cliente)
+    assert all(e["google"]["estado"] == "ok" and e["google"]["puede_enviar"] is False
+               for e in eventos)
+    assert {e["meeting_url"] for e in eventos} == {"https://meet.google.com/abc-defg-hij"}
+
+    cliente.post(f"/api/calendar/asuntos/{aid}/google", headers=_AUTH)
+    assert len(google.de("insert")) == 1
+
+
+def test_con_el_envio_apagado_no_se_ofrece_ni_se_manda(cliente, google, monkeypatch):
+    monkeypatch.setenv("GCAL_CREAR_EVENTOS", "off")
+    d = _crear(cliente)
+
+    [ev] = _eventos(cliente)
+    r = cliente.post(f"/api/calendar/asuntos/{d['asunto_id']}/google", headers=_AUTH)
+
+    assert ev["google"]["puede_enviar"] is False
+    assert r.status_code == 409
+    assert _llamadas_a_google(google) == []
+
+
+def test_arrancar_el_crm_no_manda_nada_a_google(app, cliente, google, monkeypatch):
+    monkeypatch.setenv("GCAL_CREAR_EVENTOS", "off")
+    _crear(cliente, repeticion=VIERNES)
+    monkeypatch.delenv("GCAL_CREAR_EVENTOS")
+
+    dashboard.create_app(app.config["DB_PATH"])
+
+    assert google.llamadas == []
 
 
 # ── la pagina ────────────────────────────────────────────────────────────────

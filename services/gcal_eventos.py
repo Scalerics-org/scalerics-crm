@@ -179,19 +179,42 @@ def nuevo_id(tipo: str, rid: int) -> str:
 
 def crear(service, fila: dict, email_cliente: str | None = None, *, event_id: str) -> dict:
     """Un solo evento (recurrente si la reunion se repite): una sola invitacion.
-    Con Meet, como antes de 81f19fb, salvo que la reunion ya traiga su link."""
-    con_meet = not (fila.get("meet_link") or "").strip()
-    body = cuerpo(fila, email_cliente, con_meet=con_meet)
+    Siempre con Google Meet (pedido de Juan, 15/9): el link les llega adentro de
+    la invitacion. Si la reunion ya traia otro link, ese sigue en el CRM."""
+    body = cuerpo(fila, email_cliente, con_meet=True)
     body["id"] = event_id
     return service.events().insert(
         calendarId=CALENDARIO, body=body, conferenceDataVersion=1,
         sendUpdates="all").execute()
 
 
-def actualizar(service, event_id: str, fila: dict, email_cliente: str | None = None) -> None:
-    """La reunion entera (o la serie entera, con su RRULE) como esta en el CRM."""
-    service.events().patch(calendarId=CALENDARIO, eventId=event_id,
-                           body=cuerpo(fila, email_cliente), sendUpdates="all").execute()
+def actualizar(service, event_id: str, fila: dict, email_cliente: str | None = None,
+               *, con_meet: bool = False) -> dict:
+    """La reunion entera (o la serie entera, con su RRULE) como esta en el CRM.
+    `con_meet` le agrega el Meet a un evento que todavia no lo tenia."""
+    extra = {"conferenceDataVersion": 1} if con_meet else {}
+    return service.events().patch(
+        calendarId=CALENDARIO, eventId=event_id, sendUpdates="all",
+        body=cuerpo(fila, email_cliente, con_meet=con_meet), **extra).execute() or {}
+
+
+def meet_de(evento) -> str:
+    """El link de Meet de un evento: `hangoutLink`, o su entrada de video."""
+    if not isinstance(evento, dict):
+        return ""
+    if evento.get("hangoutLink"):
+        return evento["hangoutLink"]
+    for ep in (evento.get("conferenceData") or {}).get("entryPoints") or []:
+        if ep.get("entryPointType") == "video" and ep.get("uri"):
+            return ep["uri"]
+    return ""
+
+
+def es_de_calendly_por_texto(evento: dict) -> bool:
+    """Calendly escribe sus links (calendly.com/events/..., cancelar, reprogramar)
+    en la descripcion del evento que crea en Google."""
+    texto = f"{evento.get('description') or ''} {evento.get('location') or ''}".lower()
+    return "calendly.com" in texto
 
 
 def cambiar_regla(service, event_id: str, fila: dict) -> None:

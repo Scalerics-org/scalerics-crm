@@ -10,7 +10,10 @@ Calendar y que Google mande las invitaciones solo.
   `sendUpdates="all"`: Google les manda la invitación por mail a los invitados
   y, si es con un cliente que tiene mail cargado, también al cliente.
   - Hora de Montevideo (`timeZone: America/Montevideo`).
-  - Link de Meet, como antes del 1/6, salvo que la reunión ya traiga un link.
+  - **Siempre con link de Google Meet** (`conferenceData.createRequest`
+    `hangoutsMeet`, `conferenceDataVersion=1`), también en las series. El link
+    llega adentro de la invitación y en el CRM se ve como "Unirse con Google
+    Meet", en el calendario y en la ventana de editar.
   - Si se repite: **un solo evento recurrente** con RRULE
     (`RRULE:FREQ=WEEKLY;BYDAY=FR`, `INTERVAL=2`, `UNTIL`/`COUNT`). Es una sola
     invitación para toda la serie.
@@ -24,7 +27,18 @@ Calendar y que Google mande las invitaciones solo.
 - **Si Google falla al crear o editar**, la reunión queda en el CRM igual,
   marcada "No sincronizada con Google" (⚠), con un aviso arriba del calendario
   y un botón **Reintentar en Google**. No se reintenta solo.
-- **Calendly** no se toca: esas reuniones ya viven en Google.
+- **Calendly nunca pasa por acá.** Calendly ya crea el evento en Google y le
+  manda la invitación al cliente. Cada reunión guarda de dónde vino (columna
+  `meetings.origen`: `crm`, `calendly` o `google`; el webhook y el sync de
+  Calendly escriben `calendly`, y un evento importado de Google con un link de
+  calendly.com en la descripción también). Solo las `crm` y las de "otro
+  asunto" llegan a Google: crear, mover, borrar, enviar e invitar desde el CRM
+  hacen **cero** llamadas a Google para una reunión de Calendly.
+- **Reuniones creadas antes de publicar esto** (por ejemplo "Marketing
+  Semanal"): no se mandan solas, ni al arrancar ni al abrir el calendario.
+  Muestran el botón **Enviar a Google Calendar**, que crea el evento (una serie
+  es un solo evento recurrente) con Meet y manda las invitaciones. Tocarlo dos
+  veces no crea otro evento.
 - **El import de Google** (lo que trae a Calendly y a las reuniones creadas a
   mano en Google) saltea los eventos que creó el CRM y sus instancias, por id.
   No los duplica ni les inventa un lead.

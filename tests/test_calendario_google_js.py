@@ -51,8 +51,14 @@ _REUNIONES = """
 const SIN_GOOGLE = {id: 'asunto-5@2026-09-18', reunion_id: 5, tipo: 'asunto', serie: true,
   ocurrencia: '2026-09-18', repeticion: {freq: 'semanal', dias: [4], fin: 'nunca'},
   title: 'Marketing semanal', date: '2026-09-18', time: '19:00', origen: 'crm',
-  google: {estado: 'error', error: 'falta permiso de escritura en Google Calendar'}};
-const EN_GOOGLE = Object.assign({}, SIN_GOOGLE, {google: {estado: 'ok', error: ''}});
+  google: {estado: 'error', error: 'falta permiso de escritura en Google Calendar', puede_enviar: true}};
+const EN_GOOGLE = Object.assign({}, SIN_GOOGLE, {google: {estado: 'ok', error: '', puede_enviar: false,
+  meet: 'https://meet.google.com/abc-defg-hij'}, meeting_url: 'https://meet.google.com/abc-defg-hij'});
+const NO_ENVIADA = Object.assign({}, SIN_GOOGLE, {id: 'asunto-6@2026-09-18', reunion_id: 6,
+  google: {estado: '', error: '', puede_enviar: true, meet: ''}});
+const CALENDLY = {id: '40', reunion_id: 40, tipo: 'cliente', title: 'Consultoria', date: '2026-09-18',
+  time: '15:00', origen: 'calendly', meeting_url: 'https://calendly.com/events/x/google_meet',
+  google: {estado: '', error: '', puede_enviar: false, meet: ''}};
 """
 
 _ACCIONES = """
@@ -195,9 +201,84 @@ def test_crear_con_google_caido_avisa_arriba_del_calendario(tmp_path):
     """, tmp_path)
 
 
+@node
+def test_una_reunion_que_no_esta_en_google_ofrece_enviarla_y_la_de_calendly_no(tmp_path):
+    _node([_funcion("_calChipHtml"), _funcion("_calItemMobile"), _funcion("_calTextoRepeticion"),
+           _funcion("_calPlural"), _REUNIONES, _ACCIONES], """
+      const chip = _calChipHtml(NO_ENVIADA, 'cal-event-chip');
+      assert(chip.includes('cal-act-send') && chip.includes('>Enviar a Google Calendar<'), 'falta Enviar en el chip');
+      assert(!chip.includes('cal-chip-sync') && !chip.includes('cal-act-retry'), 'no enviada no es un error');
+      assert(tocar(chip, 'cal-act-send'), 'no se toca');
+      const movil = _calItemMobile(NO_ENVIADA);
+      assert(movil.includes('cal-mobile-act-enviar') && movil.includes('>Enviar a Google Calendar<'), 'falta Enviar en el celular');
+      assert(!movil.includes('No sincronizada'), 'no enviada no es un error');
+      assert(tocar(movil, 'cal-mobile-act-enviar'), 'no se toca');
+      assert(JSON.stringify(llamadas) === JSON.stringify([['reintentar', 'asunto-6@2026-09-18'], ['reintentar', 'asunto-6@2026-09-18']]), JSON.stringify(llamadas));
+
+      for (const html of [_calChipHtml(CALENDLY, 'cal-event-chip'), _calItemMobile(CALENDLY)]) {
+        assert(!html.includes('Enviar a Google') && !html.includes('Reintentar'), 'Calendly nunca se manda a Google');
+        assert(!html.includes('Google Meet'), 'el link de Calendly no es un Meet del CRM');
+      }
+      for (const html of [_calChipHtml(EN_GOOGLE, 'cal-event-chip'), _calItemMobile(EN_GOOGLE)]) {
+        assert(!html.includes('Enviar a Google') && !html.includes('Reintentar'), 'ya esta en Google');
+      }
+    """, tmp_path)
+
+
+@node
+def test_el_meet_se_muestra_como_unirse_con_google_meet(tmp_path):
+    _node([_funcion("_calChipHtml"), _funcion("_calItemMobile"), _funcion("_calTextoRepeticion"),
+           _funcion("_calPlural"), _REUNIONES, _ACCIONES], """
+      for (const html of [_calChipHtml(EN_GOOGLE, 'calw-chip'), _calItemMobile(EN_GOOGLE)]) {
+        assert(html.includes('href="https://meet.google.com/abc-defg-hij"'), 'falta el link');
+        assert(html.includes('>Unirse con Google Meet<'), html);
+      }
+      const zoom = Object.assign({}, EN_GOOGLE, {meeting_url: 'https://zoom.us/j/1'});
+      assert(_calItemMobile(zoom).includes('>Unirse<'), 'otro link sigue diciendo Unirse');
+    """, tmp_path)
+
+
+@node
+def test_la_ventana_de_editar_muestra_el_meet_y_dice_si_esta_en_google(tmp_path):
+    partes = [_funcion(n) for n in (
+        "_calAbrirEditor", "_calEvento", "_calHoraDeLaReunion", "_calHoraLabel",
+        "_calTextoRepeticion", "_calPlural", "_calAhoraMvd", "_calTextoEstadoGoogle")] + [_REUNIONES, """
+      function elemento(id) {
+        const clases = new Set();
+        return {id: id, value: '', hidden: false, textContent: '', href: '', style: {},
+                classList: {add: c => clases.add(c), remove: c => clases.delete(c), contains: c => clases.has(c)}};
+      }
+      const els = {};
+      const document = {getElementById: id => els[id] || (els[id] = elemento(id))};
+      const $ = id => document.getElementById(id);
+      let _calEditando = null;
+      let _calEventos = [EN_GOOGLE, NO_ENVIADA, SIN_GOOGLE, CALENDLY];
+    """]
+    _node(partes, """
+      _calAbrirEditor('asunto-5@2026-09-18');
+      assert(!$('reprog-meet').hidden && $('reprog-meet').href === 'https://meet.google.com/abc-defg-hij', 'falta el Meet');
+      assert($('reprog-google-nota').textContent.startsWith('Enviada a Google Calendar'), $('reprog-google-nota').textContent);
+
+      _calAbrirEditor('asunto-6@2026-09-18');
+      assert($('reprog-meet').hidden, 'sin Meet no hay boton');
+      const nota = $('reprog-google-nota').textContent;
+      assert(nota.includes('Todavía no está en Google Calendar') && nota.includes('Enviar a Google Calendar'), nota);
+
+      _calAbrirEditor('40');
+      assert($('reprog-meet').hidden, 'el link de Calendly no es un Meet del CRM');
+      assert($('reprog-google-nota').textContent.startsWith('Reunión de Calendly'), $('reprog-google-nota').textContent);
+
+      const t = _calTextoEstadoGoogle;
+      assert(t(SIN_GOOGLE).includes('No se pudo enviar a Google Calendar (falta permiso de escritura en Google Calendar)'), t(SIN_GOOGLE));
+      assert(t({origen: 'google', google: {}}).startsWith('Está en Google Calendar'), 'importada de Google');
+      assert(t({tipo: 'asunto', google: {estado: '', puede_enviar: false}}).includes('no les manda ningún mail'), 'envio apagado');
+    """, tmp_path)
+
+
 def test_el_css_del_aviso_usa_tokens():
     for selector in (".cal-aviso-google", ".cal-chip-sync", ".cal-act-retry",
-                     ".cal-mobile-ev-sync", ".cal-mobile-act-reintentar"):
+                     ".cal-mobile-ev-sync", ".cal-mobile-act-reintentar", ".cal-act-send",
+                     ".cal-mobile-act-enviar", ".cal-meet-btn"):
         m = re.search(r"^" + re.escape(selector) + r"\{([^}]*)\}", HTML, re.M)
         assert m, f"falta la regla {selector}"
         assert not re.findall("#[0-9a-fA-F]{3,8}(?![0-9a-zA-Z])", m.group(1)), selector

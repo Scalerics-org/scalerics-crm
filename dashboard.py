@@ -1076,6 +1076,11 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .cal-act-retry{background:var(--ambar-tinte);border-color:var(--ambar-borde);color:var(--ambar)}
 .cal-mobile-ev-sync{font-size:.72rem;color:var(--ambar);margin-top:4px}
 .cal-mobile-act-reintentar{color:var(--ambar)}
+/* "Enviar a Google Calendar" y "Unirse con Google Meet" */
+.cal-act-send{background:var(--azul-tinte);border-color:var(--borde);color:var(--azul-claro)}
+.cal-act-meet,.cal-act-send,.cal-act-retry{white-space:normal}
+.cal-mobile-act-enviar{color:var(--azul-claro)}
+.cal-meet-btn{display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:0 14px;margin:0 0 12px;border-radius:8px;border:1px solid var(--borde);background:var(--verde-tinte);color:var(--verde-texto);font-size:.8rem;font-weight:700;text-decoration:none}
 /* Pipeline Notion: con quien del CRM esta conectada cada ficha */
 .nc-vinculo{display:inline-flex;align-items:center;gap:4px;margin-top:8px;max-width:100%;padding:4px 10px;border-radius:999px;border:1px solid var(--borde);background:var(--relleno);color:var(--texto);font-size:.72rem;font-family:inherit;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .nc-vinculo-falta{background:var(--ambar-tinte);color:var(--ambar);border-color:var(--ambar-borde)}
@@ -3682,8 +3687,8 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     <div class="cal-serie-aviso" id="reprog-serie" hidden></div>
     <label class="modal-label">Invitados</label>
     <input type="text" id="reprog-invitados" placeholder="mail@ejemplo.com, otro@ejemplo.com" autocomplete="off">
-    <div class="cal-modal-nota">Si la reunión está en Google Calendar, los invitados nuevos reciben la invitación de Google.</div>
-    <p style="font-size:.72rem;color:#64748b;margin:10px 0 0">Si la reunión está en Google Calendar, se mueve ahí también y al invitado le llega el aviso por mail.</p>
+    <a id="reprog-meet" class="cal-meet-btn" href="#" target="_blank" rel="noopener" hidden>Unirse con Google Meet</a>
+    <div class="cal-modal-nota" id="reprog-google-nota" aria-live="polite"></div>
     <div class="cal-error" id="reprog-error" style="display:none;margin:12px 0 0"></div>
     <div class="modal-btns">
       <button class="btn-cancel" onclick="_calCerrarEditor()">Cancelar</button>
@@ -3785,7 +3790,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     </div>
     <label class="modal-label">Invitados</label>
     <input type="text" id="ev-invitados" placeholder="mail@ejemplo.com, otro@ejemplo.com" autocomplete="off">
-    <div class="cal-modal-nota">Separados por coma. Al crear la reunión, Google Calendar les manda la invitación por mail (y al cliente, si tiene mail cargado).</div>
+    <div class="cal-modal-nota">Separados por coma. Al crear la reunión, Google Calendar les manda la invitación por mail con el link de Google Meet (y al cliente, si tiene mail cargado).</div>
     <label class="modal-label">Link de reunión</label>
     <input type="url" id="ev-email" placeholder="(opcional) https://meet.google.com/..." style="margin-bottom:12px">
     <label class="modal-label">Descripción</label>
@@ -6913,11 +6918,15 @@ function _calChipHtml(ev, clase) {
   const editar = deCalendly
     ? ''
     : '<button class="cal-chip-act cal-act-edit" draggable="false" onclick="event.stopPropagation();_calAbrirEditor(' + escJs(ev.id) + ')">Editar</button>';
+  const esMeet = String(ev.meeting_url || '').indexOf('meet.google.com') !== -1;
   const unirse = ev.meeting_url
-    ? '<a class="cal-chip-act cal-act-join" draggable="false" href="' + esc(ev.meeting_url) + '" target="_blank" onclick="event.stopPropagation()">Unirse</a>'
+    ? '<a class="cal-chip-act cal-act-join' + (esMeet ? ' cal-act-meet' : '') + '" draggable="false" href="' + esc(ev.meeting_url) + '" target="_blank" onclick="event.stopPropagation()">' + (esMeet ? 'Unirse con Google Meet' : 'Unirse') + '</a>'
     : '';
-  const reintentar = sinGoogle
-    ? '<button class="cal-chip-act cal-act-retry" draggable="false" onclick="event.stopPropagation();_calReintentarGoogle(' + escJs(ev.id) + ')">Reintentar</button>'
+  // Solo lo creado a mano en el CRM (nunca Calendly) y con el envio prendido.
+  const g = ev.google || {};
+  const accionGoogle = g.puede_enviar ? (sinGoogle ? 'Reintentar en Google' : 'Enviar a Google Calendar') : '';
+  const reintentar = accionGoogle
+    ? '<button class="cal-chip-act ' + (sinGoogle ? 'cal-act-retry' : 'cal-act-send') + '" draggable="false" onclick="event.stopPropagation();_calReintentarGoogle(' + escJs(ev.id) + ')">' + accionGoogle + '</button>'
     : '';
   return '<div class="' + clase + ' origen-' + origen + (asunto ? ' tipo-asunto' : '') + '" draggable="' + (deCalendly ? 'false' : 'true') + '"'
        + ' title="' + esc(titulo + aviso) + '"'
@@ -7128,6 +7137,12 @@ function _calAbrirEditor(id) {
   document.getElementById('reprog-date').value = ev.date || _calAhoraMvd().slice(0, 10);
   document.getElementById('reprog-time').value = _calHoraDeLaReunion(_calEditando);
   document.getElementById('reprog-invitados').value = _calEditando.invitados;
+  const meet = document.getElementById('reprog-meet');
+  const linkMeet = (ev.google && ev.google.meet)
+    || (String(ev.meeting_url || '').indexOf('meet.google.com') !== -1 ? ev.meeting_url : '');
+  meet.href = linkMeet || '#';
+  meet.hidden = !linkMeet;
+  document.getElementById('reprog-google-nota').textContent = _calTextoEstadoGoogle(ev);
   const serie = document.getElementById('reprog-serie');
   serie.hidden = !ev.serie;
   serie.textContent = ev.serie
@@ -7259,13 +7274,16 @@ function _calItemMobile(ev) {
   const editar = deCalendly
     ? ''
     : '<button class="cal-mobile-act cal-mobile-act-editar" onclick="_calAbrirEditor(' + escJs(ev.id) + ')">Editar</button>';
+  const esMeet = String(ev.meeting_url || '').indexOf('meet.google.com') !== -1;
   const unirse = ev.meeting_url
-    ? '<a class="cal-mobile-act cal-mobile-act-unirse" href="' + esc(ev.meeting_url) + '" target="_blank" rel="noopener">Unirse</a>'
+    ? '<a class="cal-mobile-act cal-mobile-act-unirse" href="' + esc(ev.meeting_url) + '" target="_blank" rel="noopener">' + (esMeet ? 'Unirse con Google Meet' : 'Unirse') + '</a>'
     : '';
   const borrar = '<button class="cal-mobile-act cal-mobile-act-borrar" onclick="deleteCalEvent(' + escJs(ev.id) + ',' + escJs(ev.title || '') + ')">Borrar</button>';
   const sinGoogle = !!(ev.google && ev.google.estado === 'error');
-  const reintentar = sinGoogle
-    ? '<button class="cal-mobile-act cal-mobile-act-reintentar" onclick="_calReintentarGoogle(' + escJs(ev.id) + ')">Reintentar en Google</button>'
+  const g = ev.google || {};
+  const accionGoogle = g.puede_enviar ? (sinGoogle ? 'Reintentar en Google' : 'Enviar a Google Calendar') : '';
+  const reintentar = accionGoogle
+    ? '<button class="cal-mobile-act ' + (sinGoogle ? 'cal-mobile-act-reintentar' : 'cal-mobile-act-enviar') + '" onclick="_calReintentarGoogle(' + escJs(ev.id) + ')">' + accionGoogle + '</button>'
     : '';
   return '<div class="cal-mobile-ev' + (asunto ? ' tipo-asunto' : '') + '">'
        + (asunto ? '<div class="cal-mobile-ev-tag">Otro asunto</div>' : '')
@@ -7368,6 +7386,19 @@ function _calTextoGoogle(google, accion) {
        + (google.error || 'error desconocido') + '. Tocá "Reintentar en Google" en la reunión.';
 }
 
+// Lo que dice la ventana de editar sobre Google: si los invitados ya recibieron
+// algo o no. Dice lo que pasó, no lo que debería pasar.
+function _calTextoEstadoGoogle(ev) {
+  const g = (ev && ev.google) || {};
+  const origen = (ev && ev.origen) || 'crm';
+  if (origen === 'calendly') return 'Reunión de Calendly: la invitación y los avisos los manda Calendly. El CRM no la toca en Google.';
+  if (origen === 'google') return 'Está en Google Calendar: al guardar se mueve ahí y Google les avisa a los invitados.';
+  if (g.estado === 'ok') return 'Enviada a Google Calendar: los invitados recibieron la invitación, y al guardar Google les avisa del cambio.';
+  if (g.estado === 'error') return 'No se pudo enviar a Google Calendar (' + (g.error || 'error desconocido') + '): los invitados todavía no recibieron nada. Usá "Reintentar en Google".';
+  if (g.puede_enviar) return 'Todavía no está en Google Calendar: los invitados no recibieron ningún mail. Usá "Enviar a Google Calendar" en la reunión.';
+  return 'No está en Google Calendar: el CRM no les manda ningún mail a los invitados.';
+}
+
 async function _calReintentarGoogle(id) {
   const ev = _calEvento(id);
   if (!ev) return;
@@ -7378,7 +7409,7 @@ async function _calReintentarGoogle(id) {
   } catch (e) {
     d = {ok: false, error: 'no se pudo hablar con el servidor'};
   }
-  _calAvisoGoogle(d && d.ok ? '' : 'Sigue sin sincronizar con Google Calendar: ' + ((d && d.error) || 'error desconocido') + '.');
+  _calAvisoGoogle(d && d.ok ? '' : 'No se pudo enviar a Google Calendar: ' + ((d && d.error) || 'error desconocido') + '.');
   renderCalendar();
 }
 
