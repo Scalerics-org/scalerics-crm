@@ -1435,6 +1435,19 @@ body.light .mobile-header-title{color:#0f172a}
    transparencia: Juan pidio verlas ("que no me aparezcan en gris sin que se
    vea"). Las separa el titulo de cada grupo, no el tono. */
 .sc-piezas-nav{margin:2px 0 14px;flex-wrap:wrap}
+/* Cuando llegan los leads, semana por semana: una fila por dia y una columna
+   por hora. Tabla y no SVG: un SVG de 24 columnas se achica hasta ser ilegible
+   en el celular; la tabla scrollea adentro de la tarjeta con el dia fijo a la
+   izquierda. El relleno de cada casillero sale de --azul (inline, con
+   color-mix) y el cero queda sin relleno. */
+.sc-lleg-resumen{font-size:.8rem;color:var(--texto-tenue);margin:0 0 10px}
+.sc-lleg-resumen b{color:var(--texto);font-variant-numeric:tabular-nums}
+.sc-lleg-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}
+.sc-lleg{border-collapse:separate;border-spacing:2px;font-size:.7rem;font-variant-numeric:tabular-nums;width:100%}
+.sc-lleg th{font-weight:600;color:var(--rotulo);padding:2px 1px;text-align:center}
+.sc-lleg td{min-width:24px;height:28px;padding:0 2px;text-align:center;color:var(--texto);border:1px solid var(--borde);border-radius:4px}
+.sc-lleg th[scope="row"]{position:sticky;left:0;z-index:1;background:var(--superficie);text-align:left;padding-right:8px;white-space:nowrap}
+.sc-lleg .sc-lleg-total{font-weight:700;color:var(--texto);padding-left:8px;border-color:transparent;text-align:right;white-space:nowrap}
 .sc-piezas-grupo{font-size:.86rem;font-weight:700;color:var(--texto);margin:20px 0 10px}
 .sc-piezas-grupo span{font-weight:600;color:var(--rotulo);margin-left:4px}
 .sc-piezas-aviso{font-size:.76rem;line-height:1.55;color:var(--texto-tenue);margin:0 0 12px}
@@ -1460,6 +1473,16 @@ body.light .mobile-header-title{color:#0f172a}
 .sc-anun-reco[data-accion="subir"]{border-left-color:var(--verde)}
 .sc-comparacion{display:grid;gap:5px;font-size:.8rem;line-height:1.55;color:var(--texto);background:var(--fondo-hundido);border:1px solid var(--borde);border-radius:10px;padding:11px 14px;margin-bottom:16px}
 .sc-barras{display:grid;gap:7px;margin-top:8px}
+/* Por lo que el lead declaro: una dona por pregunta. De a dos por fila en
+   escritorio, de a una en el celular (min() evita que 380px desborde a 390). */
+.sc-donas{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,380px),1fr));gap:18px}
+.sc-dona{border:1px solid var(--borde);border-radius:12px;padding:14px 16px;min-width:0}
+.sc-dona-cuerpo{display:flex;flex-wrap:wrap;align-items:center;gap:14px 18px;margin-top:8px}
+.sc-dona-svg{width:220px;max-width:100%;height:auto;flex:0 0 auto}
+.sc-dona-leyenda{list-style:none;margin:0;padding:0;display:grid;gap:9px;flex:1 1 180px;min-width:0}
+.sc-dona-item{display:grid;grid-template-columns:10px 1fr;gap:8px;align-items:start;font-size:.78rem;line-height:1.45;color:var(--texto);overflow-wrap:anywhere}
+.sc-dona-item .sc-leyenda-punto{margin-top:4px}
+.sc-dona-tasa{display:block;font-size:.72rem;color:var(--texto-tenue)}
 .sc-barras-ayuda{font-size:.72rem;line-height:1.5;margin:2px 0 4px;max-width:74ch}
 /* Varios graficos seguidos dentro del mismo bloque: sin esto se pegan y se
    leen como uno solo con el titulo en el medio. */
@@ -1498,7 +1521,7 @@ body.light .mobile-header-title{color:#0f172a}
 .sc-tile-delta[data-animo="malo"]{color:var(--rojo)}
 .sc-bloque{background:var(--superficie);border:1px solid var(--borde);border-radius:14px;padding:18px 20px;margin-bottom:18px}
 .sc-bloque>h3{font-size:.92rem;font-weight:700;color:var(--texto);margin:0 0 4px}
-.sc-bloque>.sc-sub{font-size:.74rem;color:var(--rotulo);margin-bottom:14px;line-height:1.5}
+.sc-bloque>.sc-sub{font-size:.74rem;color:var(--rotulo);margin-bottom:14px;line-height:1.5;white-space:normal;overflow-wrap:anywhere;max-width:100%}
 .sc-par{display:grid;grid-template-columns:1fr;gap:6px}
 .sc-titulo{font-size:.78rem;font-weight:600;margin-bottom:2px}
 .sc-vacio{color:var(--texto-tenue);font-size:.8rem;padding:14px 0}
@@ -2470,13 +2493,19 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 
       <div class="sc-bloque">
         <h3>Por lo que el lead declaró</h3>
-        <div class="sc-sub">Respuestas del propio formulario de Meta: qué busca, cuánto presupuesto dice tener y cuál es su objetivo.</div>
+        <div class="sc-sub">Respuestas del propio formulario de Meta: qué busca, cuánto presupuesto dice tener, cuál es su objetivo y de dónde es. Cada círculo es cómo se reparten los leads entre las respuestas, y debajo de cada respuesta está qué parte llegó a una reunión. La ciudad va agrupada en Montevideo e Interior.</div>
         <div id="mk-segmentos"></div>
       </div>
 
       <div class="sc-bloque">
         <h3>Cuándo llegan los leads</h3>
-        <div class="sc-sub">Hora de Montevideo. Los leads de Meta se guardan en UTC, así que esto ya viene corregido: sin eso, el mapa diría que el pico es de madrugada y estaría movido tres horas.</div>
+        <div class="sc-sub">Semana por semana, de lunes a domingo y en hora de Montevideo: cada casillero es cuántos leads de Meta entraron en esa hora de ese día. Los leads de Meta se guardan en UTC, así que esto ya viene corregido: sin eso, el pico parecería de madrugada. Este bloque va con su propia semana, no con el período de arriba.</div>
+        <div class="sc-nav-mes sc-piezas-nav">
+          <button class="cal-nav-btn" id="mk-llegada-ant" onclick="mkLlegadaSemana(-1)" title="Semana anterior" aria-label="Semana anterior" disabled>&larr;</button>
+          <span id="mk-llegada-semana" aria-live="polite"></span>
+          <button class="cal-nav-btn" id="mk-llegada-sig" onclick="mkLlegadaSemana(1)" title="Semana siguiente" aria-label="Semana siguiente" disabled>&rarr;</button>
+          <button class="cal-today-btn" onclick="mkLlegadaSemanaHoy()">Esta semana</button>
+        </div>
         <div id="mk-llegada"></div>
       </div>
 
@@ -9833,6 +9862,8 @@ async function loadMarketing() {
     _mkPiezasMesActual = mes === _mkMesDeHoy() ? null : mes;
   }
   _mkCargarPiezas();
+  // Lo mismo "Cuándo llegan los leads": su propia semana y su propio pedido.
+  _mkCargarLlegada();
   // Sin await: si el informe tarda o falla, los graficos ya estan en pantalla.
   _mkInforme();
 }
@@ -10188,28 +10219,28 @@ function _mkPintar() {
     : '<div class="sc-vacio">Sin gasto ni leads en el período.</div>';
 
   // ── Segmentos declarados ───────────────────────────────────────────────
-  document.getElementById('mk-segmentos').innerHTML =
-    (_mkDossier.segmentos || []).map(b => {
-      const filas = b.valores.map(v => {
-        const m = v.metricas.find(m => m.id.endsWith('.tasa_demo'));
-        if (!m || m.valor === null || m.valor === undefined) return null;
-        return {
-          etiqueta: v.valor_declarado,
-          valor: m.valor,
-          nota: m.n ? (m.muestra_chica
-                        ? `sobre ${m.n} · muestra chica`
-                        : `sobre ${m.n}`) : ''
-        };
-      }).filter(Boolean);
-      const cola = b.valores_distintos > b.valores.length
-        ? ` · ${b.valores_distintos} respuestas distintas` : '';
-      return SC.barrasSimples(filas, {
-        etiqueta: b.etiqueta,
-        ayuda: `Qué porcentaje de cada respuesta llegó a una reunión. ` +
-               `${b.n} respuestas${cola}.`,
-        formato: 'porcentaje'
-      }, tema);
-    }).join('') || '<div class="sc-vacio">Sin respuestas de formulario en el período</div>';
+  // Pedido de Juan (14/9): "gráficos circulares y más grandes". La dona dice
+  // cómo se reparten los leads entre las respuestas; lo que antes decían las
+  // barras —qué parte llegó a una reunión— va escrito al lado de cada una. La
+  // ciudad ya viene agrupada en Montevideo e Interior desde el dossier.
+  const _donas = (_mkDossier.segmentos || []).map(b => {
+    const valores = b.valores || [];
+    const porciones = valores.map(v => {
+      const m = (v.metricas || []).find(x => String(x.id).endsWith('.tasa_demo')) || {};
+      return { etiqueta: v.etiqueta || v.valor_declarado, n: v.n,
+               tasa: m.valor, muestraChica: !!m.muestra_chica };
+    });
+    const cola = b.valores_distintos > valores.length
+      ? ` · ${b.valores_distintos} respuestas distintas` : '';
+    return SC.dona(porciones, {
+      etiqueta: b.etiqueta,
+      ayuda: `Cómo se reparten las ${b.n} respuestas${cola}. Debajo de cada ` +
+             'una, qué parte llegó a una reunión.',
+    }, tema);
+  });
+  document.getElementById('mk-segmentos').innerHTML = _donas.length
+    ? '<div class="sc-donas">' + _donas.join('') + '</div>'
+    : '<div class="sc-vacio">Sin respuestas de formulario en el período</div>';
 
   // ── La plata: Meta contra Finanzas ─────────────────────────────────────
   const conc = _mkDossier.conciliacion || [];
@@ -10312,31 +10343,9 @@ function _mkPintar() {
       '</tbody></table></div>';
   }
 
-  // ── Cuándo llegan los leads ────────────────────────────────────────────
-  const lleg = _mkDossier.llegada || {};
-  const DIAS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
-  document.getElementById('mk-llegada').innerHTML = (lleg.total || 0)
-    ? SC.matriz(
-        (lleg.celdas || []).map(c => ({
-          fila: c.dia, columna: c.franja, n: c.n,
-          titulo: DIAS[c.dia] + ' ' + String(c.franja).padStart(2, '0') + 'h',
-        })),
-        {
-          etiqueta: 'Leads por día y franja horaria',
-          filas: DIAS.map((d, i) => ({ clave: i, etiqueta: d })),
-          columnas: (lleg.celdas || []).slice(0, 8).map(c => ({
-            clave: c.franja,
-            etiqueta: String(c.franja).padStart(2, '0'),
-          })),
-          maximo: lleg.maximo,
-        }, tema)
-      + (lleg.sin_hora
-         ? '<div class="sc-nota">' + esc(SC.fmt(lleg.sin_hora, 'numero')) +
-           ' leads no tienen hora guardada y quedan fuera del mapa. Contarlos a ' +
-           'medianoche inventaría un pico que no pasó.</div>'
-         : '')
-    : '<div class="sc-vacio">Sin leads en el período.</div>';
-
+  // "Cuándo llegan los leads" ya no sale del dossier: va semana por semana,
+  // con su propio pedido (ver `_mkCargarLlegada`). El dossier sigue trayendo
+  // `llegada` en franjas de tres horas, para el informe.
 }
 
 // ── Ayudas del mes a mes ────────────────────────────────────────────────
@@ -10423,6 +10432,143 @@ function _mkNotaSemanasIncompletas(semanas, p, nombres) {
   return `<div class="sc-nota">${esc(partes.join(' y '))}: son semanas ` +
     'incompletas, así que su barra sale más baja sin que eso quiera decir que ' +
     'anduvieron peor.</div>';
+}
+
+// ── Cuándo llegan los leads, semana por semana ──────────────────────────
+//
+// Pedido de Juan (14/9): "esto vamos a ir viendo más detallado por semana".
+// Una fila por día con su fecha, una columna por hora (0 a 23), lunes a
+// domingo en hora de Montevideo. Como las piezas, tiene su propio navegador
+// y su propio pedido a `/api/marketing/leads-semana`: el período de arriba no
+// lo mueve. No va al futuro y hacia atrás llega hasta la semana del primer
+// lead de Meta.
+
+var _mkLlegadaSemana = null;   // lunes 'YYYY-MM-DD'; null es la semana actual
+var _mkLlegadaUltima = null;   // la última respuesta: trae la semana actual y la primera
+
+var _MK_DIAS_CORTOS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+
+// 'YYYY-MM-DD' corrido tantos días como diga `dias`. En UTC, para que ningún
+// cambio de hora del navegador mueva la fecha.
+function _mkDiaCorrido(iso, dias) {
+  const p = String(iso).split('-').map(Number);
+  return new Date(Date.UTC(p[0], p[1] - 1, p[2] + dias)).toISOString().slice(0, 10);
+}
+
+// El lunes de hoy según el navegador. Solo se usa hasta que llega la primera
+// respuesta, que trae la semana actual de Montevideo calculada en el servidor.
+function _mkLunesDeHoy() {
+  const hoy = new Date();
+  const iso = hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0') +
+    '-' + String(hoy.getDate()).padStart(2, '0');
+  return _mkDiaCorrido(iso, -((hoy.getDay() + 6) % 7));
+}
+
+// '2026-09-07' -> '7 al 13 de setiembre 2026'. Si la semana cruza de mes o de
+// año, los dos lados lo dicen.
+function _mkNombreSemana(lunes) {
+  const domingo = _mkDiaCorrido(lunes, 6);
+  const [a1, m1, d1] = String(lunes).split('-').map(Number);
+  const [a2, m2, d2] = domingo.split('-').map(Number);
+  const mes = (m) => (_MK_NOMBRE_MES[m - 1] || '').toLowerCase();
+  if (a1 !== a2) return `${d1} de ${mes(m1)} ${a1} al ${d2} de ${mes(m2)} ${a2}`;
+  if (m1 !== m2) return `${d1} de ${mes(m1)} al ${d2} de ${mes(m2)} ${a2}`;
+  return `${d1} al ${d2} de ${mes(m2)} ${a2}`;
+}
+
+function mkLlegadaSemana(delta) {
+  const ultima = _mkLlegadaUltima;
+  const actual = (ultima && ultima.semana_actual) || _mkLunesDeHoy();
+  const ahora = _mkLlegadaSemana || actual;
+  const semana = _mkDiaCorrido(ahora, 7 * delta);
+  if (semana > actual || semana === ahora) return;
+  // Antes de la semana del primer lead no hay nada que mirar.
+  if (semana < ahora && !(ultima && ultima.primera_semana && semana >= ultima.primera_semana)) return;
+  _mkLlegadaSemana = semana === actual ? null : semana;
+  _mkCargarLlegada();
+}
+
+function mkLlegadaSemanaHoy() {
+  _mkLlegadaSemana = null;
+  _mkCargarLlegada();
+}
+
+async function _mkCargarLlegada() {
+  const pedida = _mkLlegadaSemana;
+  const caja = document.getElementById('mk-llegada');
+  document.getElementById('mk-llegada-semana').textContent = _mkNombreSemana(
+    pedida || (_mkLlegadaUltima && _mkLlegadaUltima.semana_actual) || _mkLunesDeHoy());
+  caja.innerHTML = '<div class="sc-vacio">Cargando la semana…</div>';
+  let datos;
+  try {
+    const r = await fetch('/api/marketing/leads-semana' +
+      (pedida ? '?semana=' + encodeURIComponent(pedida) : ''));
+    if (!r.ok) {
+      caja.innerHTML = '<div class="sc-vacio">No se pudo cargar la semana ' +
+        '(error ' + r.status + ').</div>';
+      return;
+    }
+    datos = await r.json();
+  } catch (e) {
+    caja.innerHTML = '<div class="sc-vacio">No se pudo cargar la semana: ' +
+      esc(e.message) + '</div>';
+    return;
+  }
+  // Si mientras llegaba se pidió otra semana, esta respuesta ya no va.
+  if (_mkLlegadaSemana !== pedida) return;
+  _mkPintarLlegada(datos);
+}
+
+function _mkPintarLlegada(d) {
+  _mkLlegadaUltima = d;
+  const nombre = _mkNombreSemana(d.semana);
+  document.getElementById('mk-llegada-semana').textContent = nombre;
+  document.getElementById('mk-llegada-sig').disabled = !(d.semana < d.semana_actual);
+  document.getElementById('mk-llegada-ant').disabled =
+    !(d.primera_semana && d.semana > d.primera_semana);
+
+  const caja = document.getElementById('mk-llegada');
+  const sinHora = d.sin_hora
+    ? '<div class="sc-nota">' + esc(SC.fmt(d.sin_hora, 'numero')) +
+      (d.sin_hora === 1 ? ' lead de esta semana no tiene' : ' leads de esta semana no tienen') +
+      ' hora guardada y quedan fuera de la grilla. Contarlos a medianoche ' +
+      'inventaría un pico que no pasó.</div>'
+    : '';
+  if (!d.total) {
+    const porque = d.primera_semana
+      ? `No entró ningún lead de Meta en la semana del ${nombre}.`
+      : 'Todavía no hay ningún lead de Meta guardado.';
+    caja.innerHTML = `<div class="sc-vacio">${esc(porque)}</div>` + sinHora;
+    return;
+  }
+
+  // Relleno de 14% a 70% de --azul según el máximo de la semana: arriba de
+  // 70% el número deja de leerse en el tema oscuro. El cero queda sin relleno.
+  const tope = d.maximo || 1;
+  const cabeza = '<tr><th scope="col" class="sc-lleg-dia">Día</th>' +
+    Array.from({ length: 24 }, (_, h) => `<th scope="col">${h}</th>`).join('') +
+    '<th scope="col" class="sc-lleg-total">Total</th></tr>';
+  const filas = (d.dias || []).map((dia, i) => {
+    const partes = String(dia.fecha).split('-').map(Number);
+    const rotulo = `${_MK_DIAS_CORTOS[i] || ''} ${partes[2]}/${partes[1]}`;
+    const celdas = (dia.horas || []).map((n, h) => {
+      const titulo = `${rotulo}, de ${h} a ${h + 1} h: ${n} ${n === 1 ? 'lead' : 'leads'}`;
+      if (!n) return `<td title="${esc(titulo)}"></td>`;
+      const pct = Math.round(14 + 56 * Math.min(1, n / tope));
+      return `<td data-n="${n}" title="${esc(titulo)}" ` +
+        `style="background:color-mix(in srgb,var(--azul) ${pct}%,transparent)">${n}</td>`;
+    }).join('');
+    return `<tr><th scope="row">${esc(rotulo)}</th>${celdas}` +
+      `<td class="sc-lleg-total">${esc(SC.fmt(dia.total, 'numero'))}</td></tr>`;
+  }).join('');
+
+  caja.innerHTML =
+    `<div class="sc-lleg-resumen"><b>${esc(SC.fmt(d.total, 'numero'))} ` +
+    `${d.total === 1 ? 'lead' : 'leads'}</b> en la semana. Columnas: hora de ` +
+    'Montevideo, de 0 a 23.</div>' +
+    '<div class="sc-lleg-wrap"><table class="sc-lleg" ' +
+    `aria-label="Leads por día y hora, semana del ${esc(nombre)}">` +
+    `<thead>${cabeza}</thead><tbody>${filas}</tbody></table></div>` + sinHora;
 }
 
 // ── Las piezas de la pauta, mes por mes ─────────────────────────────────
