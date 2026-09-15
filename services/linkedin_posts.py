@@ -327,5 +327,13 @@ def linkedin_job_handler(payload: dict) -> dict:
     if not borradores:
         destino = os.environ.get("LINKEDIN_MAIL_TO", "scalerics@gmail.com")
         send_linkedin_failure(destino, "no se pudo armar ningun borrador")
+    else:
+        # Ademas del mail, que no cambia, quedan en el panel LinkedIn. Si
+        # guardarlos falla, el job sigue: el mail vale mas que la pantalla.
+        try:
+            from services.linkedin_borradores import guardar_borradores
+            guardar_borradores(db_path, borradores)
+        except Exception as e:
+            logger.error(f"LinkedIn: no se pudieron guardar los borradores en el panel ({type(e).__name__}: {e})")
 
     return {"lote": lote, "borradores": borradores, "aviso_cooldown": aviso_cooldown}

@@ -1643,6 +1643,43 @@ def init_db(db_path: str) -> None:
         # una sola vez (desde ahi manda lo que Juan tilde en el editor).
         _grant_panel_to_existing_roles(conn, "email_mkt", si_tiene=("cola", "metrics"))
 
+        # ── LinkedIn en el CRM ────────────────────────────────────────────────
+        # Los borradores de LinkedIn semana por semana (panel LinkedIn). El
+        # cron sigue igual y el mail tambien: esto es donde ademas quedan para
+        # copiarlos, editarlos, bajar la imagen y marcarlos. La imagen es la
+        # tarjeta que el runner ya manda para el mail. Ver
+        # services/linkedin_borradores.py.
+        linkedin_borradores_nueva = not conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='linkedin_borradores'").fetchone()
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS linkedin_borradores (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                post_id         INTEGER UNIQUE,
+                semana          TEXT NOT NULL,
+                orden           INTEGER NOT NULL,
+                tema            TEXT,
+                texto           TEXT NOT NULL,
+                texto_original  TEXT NOT NULL,
+                hashtags        TEXT,
+                estado          TEXT NOT NULL DEFAULT 'borrador',
+                publicado_en    TEXT,
+                editado_por     TEXT,
+                editado_en      TEXT,
+                created_at      TEXT NOT NULL,
+                imagen_png      BLOB,
+                UNIQUE (semana, orden)
+            )
+        """)
+        if linkedin_borradores_nueva:
+            # Una sola vez: lo que ya se genero esta en linkedin_posts.
+            from services.linkedin_borradores import copiar_historico
+            copiar_historico(conn)
+        conn.commit()
+        # LinkedIn va a quien ya ve Inteligencia marketing, una sola vez
+        # (desde ahi manda lo que Juan tilde en el editor). No es un panel de
+        # plata.
+        _grant_panel_to_existing_roles(conn, "linkedin", si_tiene=("marketing",))
+
         # Backfill scores for leads that were scraped before scoring was added
         conn.execute("""
             UPDATE businesses SET score = (
