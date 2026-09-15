@@ -397,6 +397,27 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **15/9 — G (marketing): dos columnas nuevas en `businesses`, y el import de
+  Meta estaba tirando datos.**
+
+  `meta_lead_id` y `meta_organico`. La primera es el id del lead en Meta, sin
+  el cual un lead no se puede volver a consultar contra la API; la segunda
+  marca a los que llegaron al formulario sin anuncio.
+
+  **El bug, por si tocan `routes/meta.py`:** `_run_import_sync` le pedía
+  `ad_id,adset_id,campaign_id` a la API —estaban en el `fields` desde
+  siempre— y después no los guardaba. El webhook llamaba a
+  `_guardar_campana_del_lead` y el import no. Resultado: de 245 leads, 3
+  tenían anuncio. Se recuperaron 103 con `services/meta_atribucion.py`; el
+  resto se perdió porque Meta guarda los leads 90 días.
+
+  A `_run_import_sync` le agregué un parámetro `traer` para poder probarlo:
+  su fetch estaba anidado adentro de la función y no había forma de
+  interceptarlo, que es por lo que el bug vivió sin que ningún test lo viera.
+
+  Suite en **2207**.
+
+
 - **14/9 — G (marketing): hay una sección nueva con las piezas de la pauta, y
   una tabla nueva en la base.**
 
