@@ -4852,7 +4852,7 @@ function _demosFilaHtml(d) {
     </div>
     ${d.actualizacion || d.origen !== 'planilla' ? `<div class="demo-texto">${esc(d.actualizacion || 'Sin notas')}</div>` : ''}
     <div class="demo-presu-fila">${presu}</div>
-    ${d.estado_planilla === 'no_cerro' ? ifnMotivoHtml('demo', d.id, d.motivo_perdida) : ''}
+    ${typeof ifnMotivoHtml === 'function' && d.estado_planilla === 'no_cerro' ? ifnMotivoHtml('demo', d.id, d.motivo_perdida) : ''}
   </div>`;
 }
 
@@ -7194,7 +7194,7 @@ async function loadProjects() {
             }</span> ${esc(t.title)}</div>`).join('')
           : '<div class="proj-task proj-vacio">Sin tareas</div>'
       }</div>
-      ${ifnEsfuerzoHtml(p)}
+      ${typeof ifnEsfuerzoHtml === 'function' ? ifnEsfuerzoHtml(p) : ''}
     </div>`;
   }).join('');
 }
@@ -7302,7 +7302,7 @@ function _notionClientCardHtml(c, arrastrable) {
     ${meta ? `<div class="kanban-card-meta">${meta}</div>` : ''}
     ${c.descripcion ? `<div class="kanban-card-who">${esc(c.descripcion)}</div>` : ''}
     ${_ncVinculoHtml(c)}
-    ${IFN_PERDIDO_NOTION.includes(c.status) ? ifnMotivoHtml('notion_client', c.id, c.motivo_perdida) : ''}
+    ${typeof ifnMotivoHtml === 'function' && ['Perdido', 'Presupuesto Rechazado'].includes(c.status) ? ifnMotivoHtml('notion_client', c.id, c.motivo_perdida) : ''}
     ${slBotonNotionHtml(c)}
   </div>`;
 }
