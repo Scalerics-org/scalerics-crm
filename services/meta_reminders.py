@@ -9,7 +9,8 @@ import threading
 import time
 from datetime import datetime, timezone
 
-from services.corridas import marcar_corrida, puede_correr, ultima_corrida
+from services.corridas import (marcar_corrida, puede_correr, siguiente_revision,
+                               ultima_corrida)
 from services.email_service import send_meta_lead_reminder
 from services.secuencia_contactos import (
     DIAS_DE_CADA_CONTACTO,
@@ -27,7 +28,9 @@ logger = logging.getLogger(__name__)
 # Resend free permite 2 envios por segundo. A 15 por dia sobra, pero el codigo
 # no tiene que depender de que el volumen sea bajo.
 _PAUSA_ENTRE_ENVIOS = 0.6
-_CADA_24_HORAS = 24 * 60 * 60
+# Dejar que la app termine de levantar. Y 180 y no 600 como discovery, a
+# proposito: ver `_RETRASO_INICIAL_S` alla.
+_RETRASO_INICIAL_S = 180
 # Tope de mails por dia, no por corrida: la maquina se reinicia sola (un secret
 # nuevo en Fly la reinicia) y sin este tope cada reinicio dispara otros 15.
 _TOPE_DIARIO = 15
@@ -543,19 +546,23 @@ def enviar_recordatorios(db_path: str, base_url: str, dry_run: bool = False) -> 
 
 
 def tanda_diaria(db_path: str, base_url: str):
-    """La tanda de hoy, o None si ya corrio dentro del plazo.
+    """Una revision del hilo: la tanda de hoy, o None si no le toca.
 
     Mismo motivo que en discovery: el hilo arranca 180 segundos despues de CADA
     boot y Fly reinicia en cada deploy. El tope rodante de 24 horas ya evitaba
-    mandar de mas, pero era el unico guard; este es el segundo e independiente.
+    mandar de mas, pero era el unico guard; la marca es el segundo e
+    independiente.
+
+    Se llama cada hora, asi que casi siempre devuelve None, y eso tiene que ser
+    silencioso y no tocar Gmail: marca y cupo se miran antes que nada.
 
     La marca se deja ANTES de mandar: si la tanda se muere en el medio, el
     reinicio siguiente no puede volver a intentarla entera.
     """
     if not puede_correr(db_path, "meta"):
-        logger.info(
+        logger.debug(
             f"Recordatorios Meta: ya corrio el {ultima_corrida(db_path, 'meta')}, "
-            f"se saltea esta tanda (arranque por deploy)"
+            f"esta revision no manda"
         )
         return None
     # El cupo se mira ANTES de marcar. Una tanda que no puede mandar nada
@@ -568,13 +575,18 @@ def tanda_diaria(db_path: str, base_url: str):
     # La marca sigue yendo antes del envio, que es lo que protege de la tanda
     # que se muere en el medio: lo que cambia es que no se marca una tanda que
     # ni siquiera empezo.
+    #
+    # Esto solo no alcanzaba: hasta el 15/9/2026 el hilo dormia 24 horas despues
+    # de cada intento, asi que "no marcar" igual dejaba el reintento para
+    # manana, y Meta perdia los mismos dias que discovery. Ahora el hilo revisa
+    # cada hora y la tanda sale en la primera revision con cupo.
     if enviados_ultimas_24h(db_path) >= _TOPE_DIARIO:
-        logger.info(
+        logger.debug(
             f"Recordatorios Meta: no se marca la corrida, el cupo de {_TOPE_DIARIO} "
-            f"en 24 horas ya esta lleno. Se reintenta en el proximo arranque."
+            f"en 24 horas ya esta lleno. Se vuelve a mirar en la proxima revision."
         )
         return None
-    # Las respuestas ANTES de los envios, igual que hace discovery en su bucle:
+    # Las respuestas ANTES de los envios, igual que hace discovery en su tanda:
     # si alguien contesto ayer y hoy le vence el contacto siguiente, hay que
     # frenarlo antes de que salga, no despues.
     #
@@ -603,12 +615,17 @@ def tanda_diaria(db_path: str, base_url: str):
 
 
 def start_meta_reminders(app) -> None:
-    """Corre una vez por dia. Arranca SOLO con META_RECORDATORIOS=on.
+    """Revisa cada hora si toca la tanda. Arranca SOLO con META_RECORDATORIOS=on.
 
     El default es apagado a proposito: esto le manda mail a terceros reales, y
     el hilo corre 180 segundos despues de cada boot. Fly reinicia la maquina
     para aplicar un secret, asi que un default encendido convierte cualquier
     deploy en una tanda de mails que nadie pidio.
+
+    Revisar cada hora no manda mas: la marca de 20 horas y el tope rodante de
+    24 siguen decidiendo, y dejan una tanda por ventana de 24 horas. Lo que
+    cambia es que una revision que llega antes de que se libere el cupo ya no
+    se lleva el dia puesto.
     """
     if os.environ.get("META_RECORDATORIOS", "").strip().lower() != "on":
         logger.info(
@@ -617,7 +634,10 @@ def start_meta_reminders(app) -> None:
         return
 
     def _loop():
-        time.sleep(180)  # dejar que la app termine de levantar
+        time.sleep(_RETRASO_INICIAL_S)
+        # La grilla se cuenta desde esta primera revision y no desde el final
+        # de cada vuelta: asi el desfase con discovery no se va corriendo.
+        turno = time.monotonic()
         while True:
             try:
                 with app.app_context():
@@ -627,12 +647,14 @@ def start_meta_reminders(app) -> None:
                     )
             except Exception as e:
                 logger.warning(f"Recordatorios Meta: {e}")
-            time.sleep(_CADA_24_HORAS)
+            turno = siguiente_revision(turno, time.monotonic())
+            time.sleep(max(0.0, turno - time.monotonic()))
 
     threading.Thread(target=_loop, daemon=True, name="meta-reminders").start()
     logger.info(
-        f"Recordatorios de Meta ACTIVOS por META_RECORDATORIOS=on: una corrida por dia, "
-        f"hasta {_TOPE_DIARIO} mails, la primera 180s despues de este arranque"
+        f"Recordatorios de Meta ACTIVOS por META_RECORDATORIOS=on: revisa cada hora, "
+        f"una tanda de hasta {_TOPE_DIARIO} mails por ventana de 24 horas, la primera "
+        f"revision {_RETRASO_INICIAL_S}s despues de este arranque"
     )
 
 
