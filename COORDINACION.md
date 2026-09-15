@@ -464,6 +464,11 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **15/9 — rama `feat/finanzas-balance` (worktree `../crm-balance`). Sin PR ni deploy.** Dos pedidos de Juan, en commits aparte.
+  - **Balance** (pestaña de Finanzas, no ítem del menú): `GET /api/finanzas/balance?tipo=blanco|interno&desde=&hasta=` (`desde=inicio` = primer movimiento), cuenta pura en `services/finanzas.calcular_balance`. "En blanco" = `facturado` + egresos de la categoría `impuestos` (no hay campo de comprobante ni cuenta). Filtra por FECHA en hora de Montevideo; los fijos cuentan solo como movimientos materializados. Imprimir: `window.print()` sobre `.fb-print`, hijo directo del body, en claro.
+  - **Solo lectura por rol** (el Contador): columna `roles.paneles_solo_lectura`. El Contador nace con `["finanzas"]` (precarga una sola vez, cuando la columna es nueva, y en el INSERT OR IGNORE de la rama de roles). `services/auth.require_edicion`: el candado de `routes/finanzas.py` bloquea todo lo que no sea GET salvo `_PERMITIDAS_EN_SOLO_LECTURA`. Hoy solo Finanzas respeta la marca. Simulador no se toca (panel propio).
+  - **Zona compartida tocada:** `database.py` (columna en `roles`), `dashboard.py` (`/api/me` trae `paneles_solo_lectura`; las cuatro rutas `/api/admin/roles` ahora exigen admin, antes bastaba con estar logueado; check "solo lectura" junto a Finanzas en el editor de roles), `services/auth.py`.
+
 - **15/9 — I: Flujos, en `feat/recursos-humanos` (encima de #40). Sin PR ni deploy.**
   - Bloque al final del panel Ausencias, desde el PDF "Flujos - Scalerics". No es un ítem del menú. Tiene 4 flujos; solo "De lead a cobro" tiene pasos (los 10 del PDF, con su texto exacto). Los otros tres están vacíos.
   - Base: tablas `flujos`, `flujo_pasos` y `flujo_paso_cobros`. La última permite varios momentos de cobro por paso; el paso 07 trae uno, "100% al confirmar".

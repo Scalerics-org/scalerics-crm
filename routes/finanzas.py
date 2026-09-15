@@ -15,7 +15,7 @@ from database import (actualizar_movimiento, actualizar_recurrente,
                       listar_meses_abiertos, listar_movimientos,
                       listar_por_cobrar, listar_recurrentes, log_activity,
                       marcar_mes_abierto, marcar_mes_cerrado)
-from services.auth import require_panel
+from services.auth import require_edicion, require_panel
 from services.finanzas import (BALANCE_TIPOS, CATEGORIAS, MONEDAS, a_usd,
                                balance, estado_de_cobro, fecha_valida,
                                iva_sobre, materializar_recurrentes,
@@ -31,14 +31,30 @@ def _db() -> str:
     return current_app.config["DB_PATH"]
 
 
+# Rutas que un rol con Finanzas en solo lectura puede usar aunque no sean GET.
+# Hoy el Balance se genera con GET y ya pasa solo; queda anotado acá para que
+# el día que generar o guardar un balance sea POST, el Contador lo siga
+# pudiendo hacer (pedido de Juan: "salvo la parte de balances").
+_PERMITIDAS_EN_SOLO_LECTURA = {"finanzas.api_balance"}
+
+
 @finanzas_bp.before_request
 def _candado():
-    """Una línea, cubre todo el blueprint.
+    """Cubre todo el blueprint, en dos pasos.
 
-    Con un decorador por ruta, agregar un endpoint el mes que viene y olvidarse
-    del candado deja la plata abierta. Así no hay forma de olvidarse.
+    1. Ver: sin el panel `finanzas`, nada (Ruling R20).
+    2. Modificar: todo lo que no sea GET necesita además que el rol no tenga
+       Finanzas en solo lectura (el Contador). Va acá y no ruta por ruta por el
+       mismo motivo que el paso 1: un endpoint nuevo que escriba queda cubierto
+       sin que nadie se acuerde.
     """
-    return require_panel(_db(), "finanzas")
+    bloqueo = require_panel(_db(), "finanzas")
+    if bloqueo:
+        return bloqueo
+    if request.method in ("GET", "HEAD", "OPTIONS") \
+            or request.endpoint in _PERMITIDAS_EN_SOLO_LECTURA:
+        return None
+    return require_edicion(_db(), "finanzas")
 
 
 def _quien() -> tuple[int | None, str]:

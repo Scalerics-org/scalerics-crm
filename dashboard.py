@@ -1681,6 +1681,7 @@ body.light .mobile-header-title{color:#0f172a}
 .upick-check{color:var(--azul);font-size:.8rem;font-weight:700}
 .fin-toolbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:18px}
 .fin-toggle{display:flex;gap:6px;margin-left:auto}
+.fin-aviso-sl{background:var(--azul-tinte);color:var(--azul-claro);border:1px solid var(--borde);border-radius:8px;padding:8px 12px;font-size:.78rem;font-weight:600;margin-bottom:14px}
 .fin-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:18px}
 .fin-kpi{background:var(--superficie-honda);border:1px solid var(--borde);border-radius:10px;padding:16px 18px}
 .fin-kpi-label{font-size:.7rem;font-weight:700;color:var(--rotulo);text-transform:uppercase;letter-spacing:.8px}
@@ -1738,6 +1739,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .fb-error{color:var(--rojo-texto);padding:16px;font-size:.85rem}
 .fb-print{display:none}
 @media (max-width:760px){
+  .fin-toggle{flex-wrap:wrap;margin-left:0}
   .fb-controles{flex-direction:column;align-items:stretch}
   .fb-doc{padding:14px}
 }
@@ -2446,6 +2448,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 
   <!-- ======= FINANZAS PANEL ======= -->
   <div id="finanzas-panel" class="panel">
+    <div class="fin-aviso-sl" id="fin-solo-lectura" style="display:none">Modo solo lectura: podés ver y generar balances</div>
     <div class="fin-toolbar">
       <div class="fin-nav-mes" id="fin-nav-mes">
         <button class="cal-nav-btn" onclick="finMes(-1)" title="Mes anterior">&larr;</button>
@@ -2455,7 +2458,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       </div>
       <span class="fin-cerrado" id="fin-cerrado" style="display:none">
         Mes cerrado
-        <button class="cal-today-btn" onclick="finReabrirMes()">Reabrir mes</button>
+        <button class="cal-today-btn" id="fin-btn-reabrir" onclick="finReabrirMes()">Reabrir mes</button>
       </span>
       <select id="fin-rango" class="filter-select" onchange="_finRangoCambio()">
         <option value="mes" selected>Mes actual</option>
@@ -2471,7 +2474,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
         <button class="pill" id="fin-tab-pauta" onclick="finVista('pauta')">Pauta</button>
         <button class="pill" id="fin-tab-balance" onclick="finVista('balance')">Balance</button>
       </div>
-      <button class="btn-primary" onclick="abrirMovimiento()">
+      <button class="btn-primary" id="fin-btn-movimiento" onclick="abrirMovimiento()">
         <i data-lucide="plus" class="nav-icon"></i> Movimiento
       </button>
     </div>
@@ -2494,7 +2497,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       <div class="fin-card">
         <div class="fin-card-title" style="display:flex;align-items:center;gap:10px">
           Lo que falta cobrar
-          <button class="cal-today-btn" onclick="abrirPendiente()">+ Agregar</button>
+          <button class="cal-today-btn" id="fin-btn-pendiente" onclick="abrirPendiente()">+ Agregar</button>
         </div>
         <div id="fin-cobrar"></div></div>
     </div>
@@ -7922,6 +7925,12 @@ const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activ
     if (!r.ok) return;
     const m = await r.json();
     window._isAdmin = m.is_admin;
+    // Paneles que el rol ve pero no modifica (el Contador, en Finanzas). Si
+    // /api/me falla queda vacio: se ve el modo normal y el servidor igual
+    // bloquea las escrituras con 403.
+    window._panelesSoloLectura = (!m.is_admin && Array.isArray(m.paneles_solo_lectura))
+      ? m.paneles_solo_lectura : [];
+    _finAplicarSoloLectura();
     if (m.is_admin) {
       const a = document.getElementById('admin-link');
       if (a) a.style.display = 'block';
@@ -8794,6 +8803,26 @@ function _funnelBars(items, stateLabels, stateColors) {
 // ========== Finanzas panel ==========
 const FIN_VISTAS = ['movimientos', 'cobrar', 'fijos', 'iva', 'pauta', 'balance'];
 
+// ── Finanzas en solo lectura (el Contador) ──
+// No se dibujan los botones de alta, edicion ni borrado, y arriba va un aviso.
+// El Balance queda completo. Es cosmetico: el servidor devuelve 403 igual.
+window._panelesSoloLectura = window._panelesSoloLectura || [];
+
+function _finSoloLectura() {
+  return Array.isArray(window._panelesSoloLectura)
+    && window._panelesSoloLectura.indexOf('finanzas') >= 0;
+}
+
+function _finAplicarSoloLectura() {
+  const solo = _finSoloLectura();
+  ['fin-btn-movimiento', 'fin-btn-reabrir', 'fin-btn-pendiente'].forEach(id => {
+    const b = document.getElementById(id);
+    if (b) b.style.display = solo ? 'none' : '';
+  });
+  const aviso = document.getElementById('fin-solo-lectura');
+  if (aviso) aviso.style.display = solo ? '' : 'none';
+}
+
 function _finRangoCambio() {
   // El selector de rango es compartido por las tres vistas, pero loadFinanzas
   // solo recarga Movimientos. Sin este handler, cambiar a "Este año" con
@@ -9083,6 +9112,7 @@ function _finBarras(filas, color) {
 let _finResumen = null;
 
 async function loadFinanzas() {
+  _finAplicarSoloLectura();
   await _finCargarMeses();
   _finPintarNavegador();
   const {desde, hasta} = _finRango();
@@ -9267,8 +9297,9 @@ async function loadPorCobrar() {
         + '<td class="' + (p.vencido ? 'fin-rojo' : '') + '">' + esc(p.texto) + '</td>'
         + '<td style="text-align:right">' + _finUsd(p.monto_usd) + '</td>'
         + '<td style="text-align:right;white-space:nowrap">'
-        + '<button class="btn-ghost" onclick="cobrarPendiente(' + p.id + ')">Cobrar</button> '
-        + '<button class="btn-ghost" onclick="borrarPendiente(' + p.id + ')">Borrar</button>'
+        + (_finSoloLectura() ? ''
+          : '<button class="btn-ghost" onclick="cobrarPendiente(' + p.id + ')">Cobrar</button> '
+            + '<button class="btn-ghost" onclick="borrarPendiente(' + p.id + ')">Borrar</button>')
         + '</td></tr>').join('')
     + '</tbody></table>';
 }
@@ -9603,6 +9634,10 @@ function _finRecalcularUsd() {
 }
 
 async function abrirMovimiento(prefill) {
+  // Se llega tambien desde el panel de cliente ("registrar cobro"), donde el
+  // boton no sabe del modo solo lectura: se corta aca en vez de abrir un
+  // formulario que al guardar va a dar 403.
+  if (_finSoloLectura()) { alert('Tu rol puede ver Finanzas pero no modificarla'); return; }
   await _finCargarCategorias();
   const p = prefill || {};
   document.getElementById('fin-modal-title').textContent =
@@ -9713,6 +9748,7 @@ async function loadMovimientos(desde, hasta) {
     cuerpo.innerHTML = '<div class="empty-state">No hay movimientos en el período</div>';
     return;
   }
+  const soloLectura = _finSoloLectura();
   cuerpo.innerHTML = movs.map(m => {
     const esIngreso = m.tipo === 'ingreso';
     const original = m.moneda === 'UYU'
@@ -9729,11 +9765,11 @@ async function loadMovimientos(desde, hasta) {
            class="${esIngreso ? 'fin-verde' : 'fin-rojo'}">
         ${esIngreso ? '+' : '−'}${_finUsd(m.monto_usd)}${original}
       </div>
-      <div style="flex:0 0 76px;text-align:right">
+      <div style="flex:0 0 76px;text-align:right">${soloLectura ? '' : `
         <button class="btn-ghost btn-icono" onclick='abrirMovimiento(${_finAttr(m)})'
                 title="Editar"><i data-lucide="pencil" class="nav-icon"></i></button>
         <button class="btn-ghost btn-icono" onclick="borrarMovimientoUI(${m.id}, ${m.recurrente_id ? 1 : 0})"
-                title="Borrar"><i data-lucide="trash-2" class="nav-icon"></i></button>
+                title="Borrar"><i data-lucide="trash-2" class="nav-icon"></i></button>`}
       </div>
     </div>`;
   }).join('');
@@ -9922,14 +9958,15 @@ async function loadFijos() {
   const mes = _finMeses.mes_actual || _finMesActual();
   const totales = _finTotalesFijos(fijos, mes);
   const sinCotizar = totales.sinCotizar;
+  const soloLectura = _finSoloLectura();
   totalesEl.innerHTML = _finKpisFijos(totales);
 
   const encabezado = `
     <div class="fin-toolbar">
       <div class="fin-kpi-var">Cuentan los fijos activos que corren este mes.</div>
-      <button class="btn-primary" style="margin-left:auto" onclick="abrirFijo()">
+      ${soloLectura ? '' : `<button class="btn-primary" style="margin-left:auto" onclick="abrirFijo()">
         <i data-lucide="plus" class="nav-icon"></i> Fijo
-      </button>
+      </button>`}
       ${sinCotizar > 0 ? `<div class="fin-rojo" style="width:100%;font-size:.75rem">
         ${sinCotizar} fijo${sinCotizar > 1 ? 's' : ''} en pesos sin tipo de cambio cargado, afuera de los totales</div>` : ''}
     </div>`;
@@ -9954,11 +9991,11 @@ async function loadFijos() {
         ${f.moneda} ${f.monto.toLocaleString('es-UY')}
         ${enUsd}
       </div>
-      <div style="flex:0 0 76px;text-align:right">
+      <div style="flex:0 0 76px;text-align:right">${soloLectura ? '' : `
         <button class="btn-ghost btn-icono" onclick='abrirFijo(${_finAttr(f)})'
                 title="Editar"><i data-lucide="pencil" class="nav-icon"></i></button>
         <button class="btn-ghost btn-icono" onclick="borrarFijoUI(${f.id})"
-                title="Borrar"><i data-lucide="trash-2" class="nav-icon"></i></button>
+                title="Borrar"><i data-lucide="trash-2" class="nav-icon"></i></button>`}
       </div>
     </div>`;
   }).join('');
@@ -15021,6 +15058,7 @@ def create_app(db_path: str) -> Flask:
                 finally: conn3.close()
             else:
                 panel_access = "[]"  # sin rol = sin acceso
+        from services.auth import paneles_solo_lectura
         return jsonify({
             "id": user["id"],
             "name": user["name"],
@@ -15029,6 +15067,10 @@ def create_app(db_path: str) -> Flask:
             "is_admin": es_admin,
             "panel_access": panel_access,
             "role_id": user.get("role_id"),
+            # Lo que el rol ve pero no modifica. Una lista, no un string JSON
+            # como panel_access. El servidor bloquea igual: esto es solo para
+            # no mostrar botones que van a dar 403.
+            "paneles_solo_lectura": [] if es_admin else paneles_solo_lectura(db_path, user_id),
         })
 
     @app.route("/api/me", methods=["PUT"])
@@ -15076,9 +15118,32 @@ def create_app(db_path: str) -> Flask:
             conn2.close()
         return jsonify({"ok": True})
 
+    # Las cuatro rutas de roles no miraban si quien llama es admin: bastaba
+    # con estar logueado. Con el "solo lectura" eso ya no es un detalle: un
+    # Contador podía sacarse la marca a sí mismo con un PUT.
+    def _solo_admin_roles():
+        if not is_admin(db_path, session.get("user_id")):
+            return jsonify({"ok": False, "error": "No autorizado"}), 403
+        return None
+
+    def _solo_lectura_pedida(data, panels):
+        """(lista, None), (None, None) si no vino, o (None, error)."""
+        valor = data.get("paneles_solo_lectura")
+        if valor is None:
+            return None, None
+        if not isinstance(valor, list) or not all(isinstance(p, str) for p in valor):
+            return None, "paneles_solo_lectura tiene que ser una lista de paneles"
+        if isinstance(panels, list):
+            # Solo lectura de un panel que el rol no ve no significa nada.
+            valor = [p for p in valor if p in panels]
+        return sorted(set(valor)), None
+
     @app.route("/api/admin/roles", methods=["GET"])
     def admin_list_roles():
         import sqlite3 as _sq
+        bloqueo = _solo_admin_roles()
+        if bloqueo:
+            return bloqueo
         conn2 = _sq.connect(db_path); conn2.row_factory = _sq.Row
         try:
             rows = conn2.execute("SELECT * FROM roles ORDER BY id").fetchall()
@@ -15088,13 +15153,20 @@ def create_app(db_path: str) -> Flask:
     @app.route("/api/admin/roles", methods=["POST"])
     def admin_create_role():
         import sqlite3 as _sq, json as _j
+        bloqueo = _solo_admin_roles()
+        if bloqueo:
+            return bloqueo
         data = request.get_json() or {}
         name = (data.get("name") or "").strip()
         panels = data.get("panels", [])
         if not name: return jsonify({"ok": False, "error": "Nombre requerido"}), 400
+        solo_lectura, error = _solo_lectura_pedida(data, panels)
+        if error:
+            return jsonify({"ok": False, "error": error}), 400
         conn2 = _sq.connect(db_path)
         try:
-            conn2.execute("INSERT INTO roles (name, panel_access) VALUES (?,?)", (name, _j.dumps(panels)))
+            conn2.execute("INSERT INTO roles (name, panel_access, paneles_solo_lectura) VALUES (?,?,?)",
+                          (name, _j.dumps(panels), _j.dumps(solo_lectura or [])))
             conn2.commit()
             rid = conn2.execute("SELECT last_insert_rowid()").fetchone()[0]
             return jsonify({"ok": True, "id": rid})
@@ -15104,13 +15176,22 @@ def create_app(db_path: str) -> Flask:
     @app.route("/api/admin/roles/<int:rid>", methods=["PUT"])
     def admin_update_role(rid):
         import sqlite3 as _sq, json as _j
+        bloqueo = _solo_admin_roles()
+        if bloqueo:
+            return bloqueo
         data = request.get_json() or {}
         name = (data.get("name") or "").strip()
         panels = data.get("panels")
+        solo_lectura, error = _solo_lectura_pedida(data, panels)
+        if error:
+            return jsonify({"ok": False, "error": error}), 400
         conn2 = _sq.connect(db_path)
         try:
             if name: conn2.execute("UPDATE roles SET name=? WHERE id=?", (name, rid))
             if panels is not None: conn2.execute("UPDATE roles SET panel_access=? WHERE id=?", (_j.dumps(panels), rid))
+            if solo_lectura is not None:
+                conn2.execute("UPDATE roles SET paneles_solo_lectura=? WHERE id=?",
+                              (_j.dumps(solo_lectura), rid))
             conn2.commit()
             return jsonify({"ok": True})
         finally: conn2.close()
@@ -15118,6 +15199,9 @@ def create_app(db_path: str) -> Flask:
     @app.route("/api/admin/roles/<int:rid>", methods=["DELETE"])
     def admin_delete_role(rid):
         import sqlite3 as _sq
+        bloqueo = _solo_admin_roles()
+        if bloqueo:
+            return bloqueo
         conn2 = _sq.connect(db_path)
         try:
             conn2.execute("UPDATE users SET role_id=NULL WHERE role_id=?", (rid,))
@@ -15321,6 +15405,7 @@ select:focus{border-color:#0088cc}
 .chip input{accent-color:#0088cc;cursor:pointer;width:12px;height:12px}
 .chip.on{border-color:#0088cc;background:rgba(0,136,204,.12);color:#60a5fa}
 .chip.meta-on{border-color:#c084fc;background:rgba(192,132,252,.1);color:#c084fc}
+.chip-sl{border-style:dashed;color:#fbbf24}
 .toast{display:none;font-size:.75rem;color:#4ade80;margin-left:8px}
 .msg-ok{background:rgba(16,185,129,.1);color:#4ade80;border-radius:6px;padding:8px 12px;font-size:.8rem;margin-bottom:14px}
 .divider{height:1px;background:#1e293b;margin:10px 0}
@@ -15352,16 +15437,35 @@ const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activ
 const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',equipo:'Organigrama',ausencias:'Ausencias',seg_leads:'Seguimiento de leads',daily:'Daily Programador',plantillas:'Plantillas'};
 let _roles = [];
 
-function makeChips(containerId, checkedArr, prefix) {
+// Paneles que muestran el check "solo lectura". El dato (roles.paneles_solo_lectura)
+// es generico, pero hoy solo Finanzas lo respeta en el servidor: mostrarlo en
+// los demas prometeria algo que no pasa.
+const PANELES_CON_SOLO_LECTURA = ['finanzas'];
+
+function makeChips(containerId, checkedArr, prefix, soloLecturaArr) {
   const el = document.getElementById(containerId);
+  const soloLectura = soloLecturaArr || [];
   el.innerHTML = ALL_PANELS.map(p => {
     const on = checkedArr ? checkedArr.includes(p) : true;
     const isMeta = p === 'meta';
+    const sl = PANELES_CON_SOLO_LECTURA.includes(p)
+      ? `<label class="chip chip-sl" id="${prefix}-sl-chip-${p}" title="Ve el panel pero no puede agregar, editar ni borrar (los balances si)">
+      <input type="checkbox" id="${prefix}-sl-${p}" ${soloLectura.includes(p)?'checked':''}>
+      ${PANEL_LABELS[p]}: solo lectura
+    </label>`
+      : '';
     return `<label class="chip ${on?(isMeta?'meta-on':'on'):''}" id="${prefix}-chip-${p}">
       <input type="checkbox" id="${prefix}-cb-${p}" ${on?'checked':''} onchange="toggleChip('${prefix}','${p}',this.checked)">
       ${PANEL_LABELS[p]}
-    </label>`;
+    </label>` + sl;
   }).join('');
+}
+function getSoloLectura(prefix) {
+  // Solo cuenta si el panel esta tildado: solo lectura de algo que no se ve no
+  // significa nada.
+  return PANELES_CON_SOLO_LECTURA.filter(p =>
+    document.getElementById(`${prefix}-cb-${p}`)?.checked
+    && document.getElementById(`${prefix}-sl-${p}`)?.checked);
 }
 function toggleChip(prefix, p, on) {
   const chip = document.getElementById(`${prefix}-chip-${p}`);
@@ -15395,14 +15499,16 @@ function renderRoles() {
   }).join('');
   _roles.forEach(role => {
     const panels = JSON.parse(role.panel_access || '[]');
-    makeChips(`role-panels-${role.id}`, panels, `r${role.id}`);
+    makeChips(`role-panels-${role.id}`, panels, `r${role.id}`,
+              JSON.parse(role.paneles_solo_lectura || '[]'));
   });
 }
 
 async function saveRole(id) {
   const name = document.getElementById(`role-name-${id}`).value.trim();
   const panels = ALL_PANELS.filter(p => document.getElementById(`r${id}-cb-${p}`)?.checked);
-  const r = await fetch(`/api/admin/roles/${id}`, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name, panels})});
+  const paneles_solo_lectura = getSoloLectura(`r${id}`);
+  const r = await fetch(`/api/admin/roles/${id}`, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name, panels, paneles_solo_lectura})});
   if (r.ok) {
     const t = document.getElementById(`role-toast-${id}`);
     t.style.display='inline'; setTimeout(()=>{t.style.display='none'},2000);
@@ -15422,7 +15528,8 @@ async function createRole() {
   const name = document.getElementById('new-role-name').value.trim();
   if (!name) { document.getElementById('new-role-name').focus(); return; }
   const panels = ALL_PANELS.filter(p => document.getElementById(`new-cb-${p}`)?.checked);
-  const r = await fetch('/api/admin/roles', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name, panels})});
+  const paneles_solo_lectura = getSoloLectura('new');
+  const r = await fetch('/api/admin/roles', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name, panels, paneles_solo_lectura})});
   const d = await r.json();
   if (d.ok) { document.getElementById('new-role-name').value=''; await loadRoles(); }
   else alert(d.error);
