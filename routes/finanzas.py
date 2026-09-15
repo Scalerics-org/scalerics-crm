@@ -4,7 +4,7 @@ Las rutas son finas: validan la entrada, llaman a `services/finanzas.py` y
 serializan. Ninguna cuenta se hace acá.
 """
 
-from datetime import date
+from datetime import date, datetime, timezone
 
 from flask import Blueprint, current_app, jsonify, request, session
 
@@ -16,9 +16,11 @@ from database import (actualizar_movimiento, actualizar_recurrente,
                       listar_por_cobrar, listar_recurrentes, log_activity,
                       marcar_mes_abierto, marcar_mes_cerrado)
 from services.auth import require_panel
-from services.finanzas import (CATEGORIAS, MONEDAS, a_usd, estado_de_cobro,
+from services.finanzas import (BALANCE_TIPOS, CATEGORIAS, MONEDAS, a_usd,
+                               balance, estado_de_cobro, fecha_valida,
                                iva_sobre, materializar_recurrentes,
-                               mes_editable, meses_con_datos, periodo_de,
+                               mes_editable, meses_con_datos, periodo_balance,
+                               periodo_de, primer_movimiento,
                                rendimiento_pauta, resumen, resumen_iva,
                                saldar_por_cobrar)
 
@@ -577,6 +579,46 @@ def api_iva():
         return jsonify({"ok": False, "error": "periodo tiene que ser 'YYYY-MM'"}), 400
     materializar_recurrentes(db, hoy=hoy)
     return jsonify(resumen_iva(db, periodo))
+
+
+@finanzas_bp.route("/api/finanzas/balance")
+def api_balance():
+    """El balance "hasta el momento": en blanco (contable) o interno (todo).
+
+    `tipo` es obligatorio. `desde` vacío es el 1 de enero del año en curso,
+    `desde=inicio` es el primer movimiento, y `hasta` vacío es hoy. Las
+    fechas son de Montevideo: el servidor corre en UTC, y de 21 a 24 ya sería
+    mañana.
+
+    Materializa antes, igual que el resumen: un fijo del mes ya tiene que
+    estar contado. Lo cubre el candado del blueprint (Ruling R20).
+    """
+    from services.daily import MONTEVIDEO, hoy_montevideo
+
+    tipo = request.args.get("tipo") or ""
+    if tipo not in BALANCE_TIPOS:
+        return jsonify({"ok": False,
+                        "error": "tipo tiene que ser 'blanco' o 'interno'"}), 400
+    db = _db()
+    hoy = hoy_montevideo()
+    desde_pedido = (request.args.get("desde") or "").strip()
+    hasta_pedido = (request.args.get("hasta") or "").strip()
+    for nombre, valor in (("desde", desde_pedido), ("hasta", hasta_pedido)):
+        if valor and not (nombre == "desde" and valor == "inicio") \
+                and not fecha_valida(valor):
+            return jsonify({"ok": False,
+                            "error": f"{nombre} tiene que ser 'YYYY-MM-DD'"}), 400
+
+    materializar_recurrentes(db, hoy=hoy)
+    desde, hasta = periodo_balance(
+        desde_pedido, hasta_pedido, hoy,
+        primer_movimiento(db) if desde_pedido == "inicio" else None)
+    if desde > hasta:
+        return jsonify({"ok": False, "error": "desde tiene que ser <= hasta"}), 400
+
+    generado = datetime.now(timezone.utc).astimezone(MONTEVIDEO)
+    return jsonify(balance(db, tipo, desde, hasta,
+                           generado_en=generado.strftime("%Y-%m-%d %H:%M")))
 
 
 @finanzas_bp.route("/api/finanzas/categorias")
