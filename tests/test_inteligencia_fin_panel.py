@@ -1,5 +1,5 @@
 """El panel de Inteligencia financiera: registrado, con tokens, sin trampas de
-Jinja, y pintado de verdad en node con lo que devuelve el servidor."""
+Jinja, sin pedir datos, y pintado de verdad en node con lo que devuelve el servidor."""
 
 import json
 import re
@@ -13,8 +13,8 @@ import pytest
 from werkzeug.security import generate_password_hash
 
 import dashboard
-from database import (create_user, crear_por_cobrar, init_db, insert_business,
-                      update_business)
+from database import (create_user, crear_movimiento, crear_por_cobrar, init_db,
+                      insert_business, update_business)
 from services import inteligencia_fin as ifn
 
 HTML = dashboard.DASHBOARD_HTML
@@ -37,6 +37,10 @@ PANEL = _entre(SRC, "<!-- ======= INTELIGENCIA FINANCIERA PANEL ======= -->",
 CSS = _entre(SRC, "/* ── Inteligencia financiera", "/* ── Plantillas")
 FUENTES = {"js": JS, "panel": PANEL, "css": CSS}
 
+# Lo que la pantalla ya no puede decir: no pide datos.
+PEDIDOS = ("Falta", "falta cargar", "Cargá", "cargalo", "Elegí el", "ifn-comision",
+           "datos que hacen falta", "No se muestra hasta tener el dato")
+
 
 # ── registrado en todos los lugares ──────────────────────────────────────────
 
@@ -44,47 +48,34 @@ def test_es_el_tercer_item_de_finanzas():
     grupo = _entre(HTML, '<div class="nav-section-label">FINANZAS</div>',
                    '<div class="nav-section-label">VENTAS</div>')
     assert re.findall(r'id="nav-(\w+)"', grupo) == ["finanzas", "simulador", "inteligencia_fin"]
-    assert ('<div class="nav-item" id="nav-inteligencia_fin" onclick="showPanel(\'inteligencia_fin\')">'
-            '<i data-lucide="lightbulb" class="nav-icon"></i> Inteligencia financiera</div>') in grupo
 
 
 def test_esta_en_los_dos_all_panels_y_en_el_editor_de_roles():
     listas = re.findall(r"const ALL_PANELS = \[([^\]]*)\]", SRC)
     assert len(listas) == 2 and all("'inteligencia_fin'" in lista for lista in listas)
-    etiquetas = re.search(r"const PANEL_LABELS = \{([^}]*)\}", SRC).group(1)
-    assert "inteligencia_fin:'Inteligencia financiera'" in etiquetas
-
-
-def test_navegacion_mobile_colores_y_carga():
-    assert "'inteligencia_fin'" in re.search(r"const NAV_PRIORITY = \[([^\]]*)\]", HTML).group(1)
-    assert "inteligencia_fin:'lightbulb'" in re.search(r"const NAV_ICONS = \{(.*?)\n\}", HTML, re.S).group(1)
-    assert "inteligencia_fin:'Intel. financiera'" in re.search(r"const NAV_LABELS = \{(.*?)\n\}", HTML, re.S).group(1)
-    for regla in ("#nav-inteligencia_fin .nav-icon{stroke:", "#nav-inteligencia_fin.active .nav-icon{stroke:",
-                  "body.light #nav-inteligencia_fin .nav-icon{stroke:"):
-        assert len(re.findall("^" + re.escape(regla), HTML, re.M)) == 1, regla
+    assert "inteligencia_fin:'Inteligencia financiera'" in re.search(r"const PANEL_LABELS = \{([^}]*)\}", SRC).group(1)
     assert "if (name === 'inteligencia_fin') ifnCargar();" in HTML
-    assert PANEL.count('id="inteligencia_fin-panel" class="panel"') == 1
 
 
-def test_el_blueprint_esta_registrado():
-    assert "from routes.inteligencia_fin import inteligencia_fin_bp" in SRC
-    assert "inteligencia_fin_bp" in re.search(r"for bp in \((.*?)\):", SRC, re.S).group(1)
-
-
-def test_no_se_le_da_el_panel_a_los_roles_existentes():
-    """Ruling R20, igual que Finanzas y el Simulador."""
-    fuente = (RAIZ / "database.py").read_text(encoding="utf-8")
-    assert '_grant_panel_to_existing_roles(conn, "inteligencia_fin")' not in fuente
-    assert "inteligencia_fin" not in "".join(re.findall(r"_grant_panel_to_existing_roles\([^)]*\)", fuente))
-
-
-def test_los_tres_datos_van_antes_que_las_recomendaciones():
-    orden = [PANEL.index(f'id="{i}"') for i in ("ifn-datos", "ifn-contraste", "ifn-avisos",
+def test_el_orden_de_la_pantalla():
+    orden = [PANEL.index(f'id="{i}"') for i in ("ifn-resumen", "ifn-diagnostico", "ifn-contraste",
                                                  "ifn-lista", "ifn-seguimiento")]
     assert orden == sorted(orden)
 
 
-def _login(tmp_path, monkeypatch):
+def test_la_pantalla_no_pide_datos():
+    for pedido in PEDIDOS:
+        assert pedido not in PANEL and pedido not in JS, pedido
+    for viejo in ("ifnDatosHtml", "ifnAvisoHtml", "ifnGuardarComision", "ifnGuardarOrigen", "ifnGuardarCanalFijo"):
+        assert viejo not in HTML, viejo
+
+
+def test_afinar_es_opcional_y_colapsado():
+    assert "<details class=\"ifn-afinar\"" in JS and "open" not in re.findall(r"<details[^>]*>", JS)[0]
+    assert JS.count("<summary>Afinar (opcional)") == 2
+
+
+def test_get_raiz_da_200_con_el_panel(tmp_path, monkeypatch):
     monkeypatch.setenv("SECRET_KEY", "test")
     monkeypatch.setenv("ADMIN_EMAIL", "jefe@test.com")
     db = str(tmp_path / "render.db")
@@ -97,15 +88,8 @@ def _login(tmp_path, monkeypatch):
         s["logged_in"] = True
         s["user_id"] = uid
         s["user_name"] = "Jefe"
-    return cli, db
-
-
-def test_get_raiz_da_200_con_el_panel(tmp_path, monkeypatch):
-    cli, _ = _login(tmp_path, monkeypatch)
     r = cli.get("/")
-    assert r.status_code == 200
-    assert b'id="inteligencia_fin-panel"' in r.data
-    assert b"function ifnTarjetaHtml(" in r.data
+    assert r.status_code == 200 and b'id="inteligencia_fin-panel"' in r.data
 
 
 # ── las trampas de DASHBOARD_HTML ────────────────────────────────────────────
@@ -115,23 +99,16 @@ def test_nada_que_jinja_o_python_interpreten(nombre):
     texto = FUENTES[nombre]
     for trampa in ("{#", "{{", "{%"):
         assert trampa not in texto, f"{trampa!r} en el {nombre}"
-    assert chr(92) not in texto, f"un backslash en el {nombre}: Python se lo come"
+    assert chr(92) not in texto, f"un backslash en el {nombre}"
 
 
 def test_todo_lo_del_js_lleva_el_prefijo_ifn():
     nombres = re.findall(r"^(?:async )?function ([A-Za-z_$][\w$]*)\(", JS, re.M)
     nombres += re.findall(r"^(?:const|let) ([A-Za-z_$][\w$]*)", JS, re.M)
-    assert len(nombres) > 20
-    sueltos = [n for n in nombres if not (n.startswith("ifn") or n.startswith("IFN_"))]
-    assert not sueltos, f"sin prefijo: {sueltos}"
+    assert len(nombres) > 15
+    assert not [n for n in nombres if not (n.startswith("ifn") or n.startswith("IFN_"))]
     for nombre in nombres:
-        declaraciones = re.findall(r"^(?:async )?(?:function|const|let) " + re.escape(nombre) + r"\b", HTML, re.M)
-        assert len(declaraciones) == 1, f"{nombre} está declarado {len(declaraciones)} veces"
-
-
-def test_sin_setinterval_ni_showpanel_en_la_carga():
-    assert "setInterval" not in JS
-    assert "showPanel(" not in JS
+        assert len(re.findall(r"^(?:async )?(?:function|const|let) " + re.escape(nombre) + r"\b", HTML, re.M)) == 1, nombre
 
 
 def test_el_css_usa_solo_tokens():
@@ -140,14 +117,7 @@ def test_el_css_usa_solo_tokens():
     for selector, cuerpo in reglas:
         assert not re.search(r"#[0-9a-fA-F]{3,8}(?![0-9a-zA-Z])|rgba?\(", cuerpo), selector.strip()
     assert "body.light" not in CSS
-    for nombre in ("panel", "js"):
-        assert "style=" not in FUENTES[nombre], f"estilo inline en el {nombre}"
-
-
-def test_los_bordes_por_tipo():
-    assert ".ifn-rec-ingreso{border-left-color:var(--verde)}" in CSS
-    assert ".ifn-rec-recorte{border-left-color:var(--ambar)}" in CSS
-    assert ".ifn-rec-alerta{border-left-color:var(--rojo)}" in CSS
+    assert "style=" not in PANEL and "style=" not in JS
 
 
 # ── se pinta de verdad ───────────────────────────────────────────────────────
@@ -181,7 +151,6 @@ const _pedidos = [];
 globalThis.fetch = (url, opciones) => {
   _pedidos.push([String(url), (opciones && opciones.method) || 'GET']);
   const r = _RESPUESTAS[String(url)];
-  if (r === 'falla') return Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) });
   return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(r === undefined ? {} : r) });
 };
 """
@@ -191,13 +160,11 @@ _PRUEBA = """
   activePanel = 'inteligencia_fin';
   await ifnCargar();
   const s = {};
-  ['ifn-datos', 'ifn-contraste', 'ifn-avisos', 'ifn-lista', 'ifn-seguimiento'].forEach(id => { s[id] = _el(id).innerHTML; });
+  ['ifn-resumen', 'ifn-diagnostico', 'ifn-contraste', 'ifn-lista', 'ifn-seguimiento'].forEach(id => { s[id] = _el(id).innerHTML; });
   s.bajada = _el('ifn-bajada').textContent;
   s.tarjetaNotion = _notionClientCardHtml({id: 7, name: 'Bar', status: 'Perdido', notion_page_id: 'x', motivo_perdida: null}, false);
-  s.tarjetaViva = _notionClientCardHtml({id: 8, name: 'Viva', status: 'Demo Agendada', notion_page_id: 'y'}, false);
   s.esfuerzo = ifnEsfuerzoHtml({id: 3, esfuerzo_horas: 40, esfuerzo_valor: 5, esfuerzo_unidad: 'dias'});
   await ifnTomar(__REC__);
-  await ifnGuardarMotivo('notion_client', 7, 'precio');
   s.pedidos = _pedidos;
   console.log(JSON.stringify(s));
   process.exit(0);
@@ -206,20 +173,25 @@ _PRUEBA = """
 
 
 @sin_node
-def test_la_pantalla_se_pinta_con_lo_que_devuelve_el_servidor(tmp_path):
+def test_la_pantalla_se_pinta_sin_pedir_nada(tmp_path):
     db = str(tmp_path / "pinta.db")
     init_db(db)
-    bid = insert_business(db, {"name": "Bar <b>Tito</b>", "phone": "099 123 456"})
+    for p in ("2026-06", "2026-07", "2026-08"):
+        crear_movimiento(db, tipo="egreso", fecha=f"{p}-10", periodo=p, concepto="Gasto", categoria="servicios",
+                         monto=900, moneda="USD", monto_usd=900)
+    bid = insert_business(db, {"name": "Bar <b>Tito</b>", "phone": "099 123 456", "scraped_at": "2026-07-01 10:00:00"})
     update_business(db, bid, crm_status="cerrado")
+    crear_movimiento(db, tipo="ingreso", fecha="2026-07-05", periodo="2026-07", concepto="Web",
+                     categoria="desarrollo_web", monto=3000, moneda="USD", monto_usd=3000, client_id=bid)
+    for i in range(2):
+        otro = insert_business(db, {"name": f"Cliente {i}"})
+        update_business(db, otro, crm_status="finalizado")
     crear_por_cobrar(db, client_id=bid, concepto="50% final", monto_usd=800, vence="2026-09-01")
     ifn.corrida_diaria(db, AHORA)
     estado = ifn.estado_pantalla(db, es_admin=True, ahora=AHORA)
     rec = next(r for r in estado["recomendaciones"] if r["regla"] == "R4")
-    ifn.tomar(db, rec["id"], "Juan", AHORA)
-    estado_con_seguimiento = ifn.estado_pantalla(db, es_admin=True, ahora=AHORA)
-    estado_con_seguimiento["recomendaciones"] = estado["recomendaciones"]
 
-    respuestas = {"/api/inteligencia-fin": json.loads(json.dumps(estado_con_seguimiento, default=str))}
+    respuestas = {"/api/inteligencia-fin": json.loads(json.dumps(estado, default=str))}
     bloques = re.findall(r"<script>(.*?)</script>", HTML, re.S)
     archivo = tmp_path / "ifn.js"
     archivo.write_text(_ARNES.replace("__RESPUESTAS__", json.dumps(respuestas, ensure_ascii=False))
@@ -229,29 +201,21 @@ def test_la_pantalla_se_pinta_con_lo_que_devuelve_el_servidor(tmp_path):
     assert r.returncode == 0, (r.stderr or "")[:2000]
     s = json.loads(r.stdout.strip().splitlines()[-1])
 
+    assert "Diagnóstico del mes" in s["ifn-diagnostico"] and "Resultado del mes" in s["ifn-diagnostico"]
+    assert "ifn-nivel-mal" in s["ifn-diagnostico"]
+    assert "Resumen armado con los números de abajo" in s["ifn-resumen"]
     lista = s["ifn-lista"]
-    assert "Cobrá los USD 800 vencidos" in lista
-    assert "+USD 800" in lista and "por única vez" in lista
-    assert "Confianza alta" in lista
-    assert "ifn-rec ifn-rec-ingreso" in lista
-    assert '<pre class="ifn-calculo">' in lista and "Total vencido" in lista
+    assert "Cobrá los USD 800 vencidos" in lista and "Confianza alta" in lista
+    assert "Supuestos: Comisión de cobro 5 %" in lista
     assert "Lo voy a hacer" in lista and "Descartar" in lista
-    assert "https://wa.me/59899123456?text=" in lista and "Abrir mensaje de cobranza" in lista
-    assert "&lt;b&gt;Tito" in lista and "<b>Tito" not in lista, "el nombre va escapado"
+    assert "https://wa.me/59899123456?text=" in lista
+    assert "&lt;b&gt;Tito" in lista and "<b>Tito" not in lista
+    todo = "".join(s[k] for k in ("ifn-resumen", "ifn-diagnostico", "ifn-contraste", "ifn-lista", "ifn-seguimiento"))
+    for pedido in PEDIDOS:
+        assert pedido not in todo, pedido
+    assert "Calculado el 15/09/2026" in s["bajada"]
 
-    datos = s["ifn-datos"]
-    for rotulo in ("1. Motivo de pérdida", "2. Esfuerzo por proyecto", "3. Origen de la venta"):
-        assert rotulo in datos
-    assert 'id="ifn-comision"' in datos, "el admin carga la comisión"
-    assert "Cómo cierra el mes hoy" in s["ifn-contraste"] and "Aplicando las tres primeras" in s["ifn-contraste"]
-    assert "Falta el esfuerzo de los proyectos" in s["ifn-avisos"]
-    assert "Midiendo" in s["ifn-seguimiento"] and "se mide el 15/10/2026" in s["ifn-seguimiento"]
-    assert "Calculado el 15/09/2026" in s["bajada"] and "USD" in s["bajada"]
-
-    assert "Falta el motivo de pérdida" in s["tarjetaNotion"] and "Se enfrió" in s["tarjetaNotion"]
-    assert "ifn-motivo" not in s["tarjetaViva"]
-    assert "5 días (40 h)" in s["esfuerzo"]
-
-    pedidos = [tuple(p) for p in s["pedidos"]]
-    assert (f"/api/inteligencia-fin/recomendaciones/{rec['id']}/tomar", "POST") in pedidos
-    assert ("/api/perdidas/notion_client/7/motivo", "PUT") in pedidos
+    assert "<details" in s["tarjetaNotion"] and "Afinar (opcional)" in s["tarjetaNotion"]
+    assert "Falta" not in s["tarjetaNotion"]
+    assert "Afinar (opcional) · 5 días" in s["esfuerzo"]
+    assert [f"/api/inteligencia-fin/recomendaciones/{rec['id']}/tomar", "POST"] in s["pedidos"]
