@@ -470,6 +470,19 @@ leads de Meta se renombró a **D** para deshacer el empate.
   - `routes/simulador.py`: `POST` y `PUT` devuelven además `nombre` y `updated_at`. Sin cambios de tabla ni de permisos (el Contador sigue usando y guardando el simulador).
   - **Zona compartida tocada:** `dashboard.py` (solo el panel Simulador: HTML, `.sim-editando`, JS `sim*`). Tests en `tests/test_simulador_guardar_escenario.py`.
 
+- **15/9 — rama `feat/rrhh-horarios` (worktree `../crm-horarios`). Sin PR ni deploy.** Pedido de Juan: Recursos Humanos > **Horarios**.
+  - Panel `horarios`, tercero de RECURSOS HUMANOS (Organigrama, Ausencias, Horarios). Grilla semanal (personas por días, sábado/domingo solo si alguien trabaja), horas por día y total semanal; en el celular, una tarjeta por persona. Botón Editar abre un modal por persona con tramos desde/hasta por día, agregar/quitar y "No trabaja".
+  - **Zona compartida tocada:** `database.py` (tablas `horarios_tramos` y `horarios_precarga_hecha` después de las de equipo en `init_db`; `_sembrar_horarios`, `listar_tramos_horario`, `reemplazar_horario_persona` al final de la parte de Equipo) y `dashboard.py` (menú, colores del ícono, CSS `hr-`, panel, modal, JS `hr*`, las dos `ALL_PANELS`, `PANEL_LABELS`, `NAV_*`). Nuevos: `services/horarios.py`, `routes/horarios.py`, `tests/test_horarios.py`.
+  - Precarga: Gonzalo L-V 12:00-16:00; Juan (Tomasetti) lun 11-15, mar 10-14, mié 14:20-18:30, jue 14:30-18:30, vie 11-15. Una sola vez por persona (`horarios_precarga_hecha`): un horario editado, aunque sea "no trabaja" toda la semana, no se vuelve a precargar.
+  - Permisos: el panel les llega a los roles con `equipo` o `ausencias` **una sola vez**, en el arranque que crea la tabla (como `seg_leads`). Quien tiene el panel ve y edita, igual que Organigrama/Ausencias. **No cambia** `horas_por_dia` ni el cálculo de Ausencias.
+  - Mergeado con `main` después de Daily (#47). **Ojo con los marcadores de sección:** `tests/test_daily.py` toma el JS de `// ========== Daily Programador` a `// ========== Equipo`, así que el JS `hr*` va ANTES de Daily (entre `FIN Seguimiento de leads` y `Daily Programador`), y el CSS `/* ── Horarios` también antes de `/* ── Daily Programador`. En `init_db`, las tablas de Flujos y Daily van antes que las de Horarios.
+  - El ícono de Horarios es ámbar (`#fbbf24`): Daily entró con el mismo celeste que tenía Horarios, y el test ahora exige que ningún otro ítem del menú repita el color.
+  - **Segunda parte, en commit aparte: Flujos pasa a panel propio.** Pedido de Juan: "Flujos no va dentro de ausencias va como una parte mas de la seccion recursos humano".
+    - Panel `flujos` ("Flujos"), tercero de RECURSOS HUMANOS, abajo de Ausencias y arriba de Horarios (corrección de orden de Juan): `["equipo", "ausencias", "flujos", "horarios"]`. Ícono `workflow`, color `#5eead4` (activo `#99f6e4`, claro `#0f766e`).
+    - El bloque entero (selector, pasos, Editar, vacíos) se movió de Ausencias al panel, con los mismos ids y el mismo JS `eq*`. La carga se dispara al abrir `flujos`, ya no al abrir Ausencias. **La nota de Flujos más abajo ("no es un ítem del menú") ya no vale.**
+    - Leer `/api/flujos`: `flujos`, `equipo` o `ausencias`. Editar: solo admin, como antes.
+    - Migración: `_grant_panel_to_existing_roles(conn, "flujos", si_tiene=("equipo", "ausencias"))`. Horarios pasó a la misma forma (una sola llamada), así con los repartos de una sola vez no queda una segunda llamada que no hace nada. Los tests que llaman al reparto a mano borran antes la marca de `panel_grants_aplicados`, si la tabla existe.
+
 - **15/9 — G (marketing): dos columnas nuevas en `businesses`, y el import de
   Meta estaba tirando datos.**
 
