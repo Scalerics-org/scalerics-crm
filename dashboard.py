@@ -2083,6 +2083,8 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .sim-in-nombre{flex:1 1 180px}
 .sim-guardado{font-size:.75rem;color:var(--texto-tenue)}
 .sim-guardado.sim-mal{color:var(--rojo-texto)}
+.sim-editando{font-size:.8rem;color:var(--texto-tenue);margin:-6px 0 14px}
+.sim-editando.sim-abierto{color:var(--texto-fuerte);font-weight:600}
 .sim-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,380px);gap:18px;align-items:start}
 .sim-entradas{min-width:0}
 .sim-resultados{position:sticky;top:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
@@ -2648,10 +2650,12 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       <button class="btn-ghost" type="button" onclick="simAbrir()">Abrir</button>
       <button class="btn-ghost" type="button" onclick="simBorrarEscenario()">Borrar escenario</button>
       <input type="text" id="sim-nombre" class="sim-in sim-in-nombre" maxlength="80" placeholder="Nombre del escenario" aria-label="Nombre del escenario">
-      <button class="btn-primary" type="button" onclick="simGuardar()">Guardar</button>
-      <button class="btn-ghost" type="button" onclick="simRestablecer()">Restablecer</button>
+      <button class="btn-primary" type="button" id="sim-btn-guardar" onclick="simGuardar()">Guardar</button>
+      <button class="btn-ghost" type="button" id="sim-btn-guardar-nuevo" onclick="simGuardarComoNuevo()">Guardar como nuevo</button>
+      <button class="btn-ghost" type="button" id="sim-btn-nuevo" onclick="simRestablecer()" title="Vuelve a los valores por defecto y a lo que hay hoy en Finanzas. Los escenarios guardados no se tocan.">Nuevo escenario</button>
       <span class="sim-guardado" id="sim-guardado" role="status"></span>
     </div>
+    <div class="sim-editando" id="sim-editando" role="status">Escenario nuevo, todavía sin guardar.</div>
     <div class="sim-aviso sim-aviso-ambar" id="sim-aviso-carga" role="status"></div>
     <div class="sim-mini" id="sim-mini" aria-hidden="true"></div>
 
@@ -13185,6 +13189,7 @@ function simEscenarioAbierto(datos) {
 let simEstado = null;          // el escenario en pantalla: una copia, nunca Finanzas
 let simEscenarioId = null;     // el guardado que se abrio o se acaba de guardar
 let simNombreCargado = '';
+let simModificadoCargado = ''; // updated_at del abierto, para "Editando: ..."
 let simIniciado = false;
 
 const SIM_LISTAS = {
@@ -13249,8 +13254,7 @@ async function simArrancar() {
       + '). Se arranca con los valores por defecto.';
   }
   simEstado = simEscenarioBase(precarga);
-  simEscenarioId = null;
-  simNombreCargado = '';
+  simDejarDeEditar();
   document.getElementById('sim-nombre').value = '';
   simVolcar();
 }
@@ -13503,6 +13507,52 @@ function simAvisoGuardado(texto, mal) {
   el.classList.toggle('sim-mal', !!mal);
 }
 
+// La fecha de SQLite (CURRENT_TIMESTAMP, en UTC y sin zona) en hora de
+// Montevideo. Si no se puede leer, se muestra tal cual.
+function simFechaCorta(texto) {
+  if (!texto) return '';
+  const iso = String(texto).replace(' ', 'T');
+  const d = new Date(iso.length === 19 ? iso + 'Z' : iso);
+  if (isNaN(d.getTime())) return String(texto);
+  try {
+    return d.toLocaleString('es-UY', {timeZone: 'America/Montevideo', day: '2-digit', month: '2-digit',
+                                      year: 'numeric', hour: '2-digit', minute: '2-digit'});
+  } catch (e) {
+    return d.toLocaleString();
+  }
+}
+
+// Pedido de Juan (15/9): abrir un guardado, editarlo y tocar "Guardar" tiene
+// que corregir ESE escenario. Antes se decidia por el texto del nombre: si no
+// era identico al del abierto, se creaba otro en silencio y el original
+// quedaba viejo. Ahora manda simEscenarioId: "Guardar" actualiza el abierto
+// (aunque le cambies el nombre) y "Guardar como nuevo" es el unico camino que
+// crea otro. Este es el unico lugar que cambia cual esta abierto.
+function simEditar(id, nombre, modificado) {
+  simEscenarioId = (id === null || id === undefined) ? null : id;
+  simNombreCargado = simEscenarioId === null ? '' : String(nombre || '');
+  simModificadoCargado = simEscenarioId === null ? '' : String(modificado || '');
+  simPintarEditando();
+}
+
+function simDejarDeEditar() {
+  simEditar(null, '', '');
+}
+
+function simPintarEditando() {
+  const el = document.getElementById('sim-editando');
+  if (!el) return;
+  if (simEscenarioId === null) {
+    el.textContent = 'Escenario nuevo, todavía sin guardar.';
+    el.classList.remove('sim-abierto');
+    return;
+  }
+  el.textContent = 'Editando: ' + simNombreCargado
+    + (simModificadoCargado ? ' (última modificación ' + simFechaCorta(simModificadoCargado) + ')' : '')
+    + '. "Guardar" corrige este escenario; "Guardar como nuevo" crea otro sin tocarlo.';
+  el.classList.add('sim-abierto');
+}
+
 async function simCargarEscenarios() {
   const sel = document.getElementById('sim-escenarios');
   if (!sel) return;
@@ -13512,10 +13562,24 @@ async function simCargarEscenarios() {
     const lista = await r.json();
     sel.innerHTML = '<option value="">Escenarios guardados</option>'
       + (Array.isArray(lista) ? lista : []).map(e => '<option value="' + e.id + '"'
-          + (e.id === simEscenarioId ? ' selected' : '') + '>' + esc(e.nombre) + '</option>').join('');
+          + (String(e.id) === String(simEscenarioId) ? ' selected' : '') + '>' + esc(e.nombre)
+          + (e.updated_at ? ' · modificado ' + esc(simFechaCorta(e.updated_at)) : '')
+          + '</option>').join('');
   } catch (e) {
     simAvisoGuardado('No se pudieron leer los escenarios guardados: ' + e.message, true);
   }
+}
+
+// Manda lo que hay en pantalla, entero: simEstado ya tiene cada tecla, las
+// formas de cobro por tipo y los meses hasta entregar.
+async function simEnviarEscenario(url, metodo, nombre) {
+  const r = await fetch(url, {
+    method: metodo,
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({nombre: nombre, datos: simEstado})
+  });
+  const j = await r.json().catch(() => ({}));
+  return {r: r, j: j};
 }
 
 async function simGuardar() {
@@ -13527,22 +13591,66 @@ async function simGuardar() {
     nombreEl.focus();
     return;
   }
-  // Con el mismo nombre que el que se abrio, se pisa ese. Con otro, se guarda aparte.
-  const pisar = simEscenarioId !== null && nombre === simNombreCargado;
+  if (simEscenarioId === null) {
+    await simCrearEscenario(nombre);
+    return;
+  }
+  const nombreAbierto = simNombreCargado;
   try {
-    const r = await fetch(pisar ? '/api/simulador/escenarios/' + simEscenarioId : '/api/simulador/escenarios', {
-      method: pisar ? 'PUT' : 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({nombre: nombre, datos: simEstado})
-    });
-    const j = await r.json().catch(() => ({}));
+    const {r, j} = await simEnviarEscenario('/api/simulador/escenarios/' + simEscenarioId, 'PUT', nombre);
+    if (r.status === 404) {
+      await simAbiertoBorrado(nombreAbierto, nombre);
+      return;
+    }
     if (!r.ok || !j.ok) throw new Error(j.error || 'HTTP ' + r.status);
-    simEscenarioId = j.id;
-    simNombreCargado = nombre;
-    simAvisoGuardado((pisar ? 'Actualizado: ' : 'Guardado: ') + nombre, false);
+    simEditar(j.id, j.nombre || nombre, j.updated_at);
+    nombreEl.value = simNombreCargado;
+    simAvisoGuardado('Cambios guardados en ' + simNombreCargado, false);
     simCargarEscenarios();
   } catch (e) {
     simAvisoGuardado('No se pudo guardar: ' + e.message, true);
+  }
+}
+
+async function simCrearEscenario(nombre) {
+  try {
+    const {r, j} = await simEnviarEscenario('/api/simulador/escenarios', 'POST', nombre);
+    if (!r.ok || !j.ok) throw new Error(j.error || 'HTTP ' + r.status);
+    simEditar(j.id, j.nombre || nombre, j.updated_at);
+    document.getElementById('sim-nombre').value = simNombreCargado;
+    simAvisoGuardado('Guardado como escenario nuevo: ' + simNombreCargado, false);
+    simCargarEscenarios();
+  } catch (e) {
+    simAvisoGuardado('No se pudo guardar: ' + e.message, true);
+  }
+}
+
+// Pide el nombre aparte, para que quede claro que el abierto no se toca.
+async function simGuardarComoNuevo(sugerido) {
+  if (!simEstado) return;
+  const actual = (document.getElementById('sim-nombre').value || '').trim();
+  const propuesta = typeof sugerido === 'string' ? sugerido
+    : (simEscenarioId !== null && actual === simNombreCargado ? actual + ' (copia)' : actual);
+  const respuesta = prompt(simEscenarioId !== null
+    ? 'Nombre del escenario nuevo. "' + simNombreCargado + '" queda como está.'
+    : 'Nombre del escenario nuevo.', propuesta);
+  if (respuesta === null || respuesta === undefined) return;
+  const nombre = String(respuesta).trim();
+  if (!nombre) {
+    simAvisoGuardado('Poné un nombre para guardar el escenario nuevo.', true);
+    return;
+  }
+  await simCrearEscenario(nombre);
+}
+
+// Otro usuario lo borro mientras estaba abierto: no se recrea solo. Se avisa,
+// lo de la pantalla queda igual y se ofrece guardarlo como nuevo.
+async function simAbiertoBorrado(nombreAbierto, nombre) {
+  simDejarDeEditar();
+  simCargarEscenarios();
+  simAvisoGuardado('No se guardó: "' + nombreAbierto + '" ya no existe, alguien lo borró mientras lo tenías abierto. Lo que tenés en pantalla sigue igual.', true);
+  if (confirm('El escenario "' + nombreAbierto + '" ya no existe: alguien lo borró mientras lo tenías abierto. ¿Guardar lo que tenés en pantalla como un escenario nuevo?')) {
+    await simGuardarComoNuevo(nombre);
   }
 }
 
@@ -13557,8 +13665,7 @@ async function simAbrir() {
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.error || 'HTTP ' + r.status);
     simEstado = simEscenarioAbierto(j.datos);
-    simEscenarioId = j.id;
-    simNombreCargado = j.nombre;
+    simEditar(j.id, j.nombre, j.updated_at);
     document.getElementById('sim-nombre').value = j.nombre;
     simVolcar();
     simAvisoGuardado('Abierto: ' + j.nombre, false);
@@ -13581,10 +13688,7 @@ async function simBorrarEscenario() {
     const r = await fetch('/api/simulador/escenarios/' + id, {method: 'DELETE'});
     const j = await r.json().catch(() => ({}));
     if (!r.ok || !j.ok) throw new Error(j.error || 'HTTP ' + r.status);
-    if (String(simEscenarioId) === String(id)) {
-      simEscenarioId = null;
-      simNombreCargado = '';
-    }
+    if (String(simEscenarioId) === String(id)) simDejarDeEditar();
     simAvisoGuardado('Borrado: ' + nombre, false);
     simCargarEscenarios();
   } catch (e) {
@@ -13592,8 +13696,10 @@ async function simBorrarEscenario() {
   }
 }
 
+// "Nuevo escenario": vuelve a los defaults y a Finanzas y deja de editar el
+// abierto. Los escenarios guardados no se tocan.
 async function simRestablecer() {
-  if (!confirm('¿Volver a los valores por defecto y a lo que hay hoy en Finanzas? Lo que no guardaste se pierde.')) return;
+  if (!confirm('¿Empezar un escenario nuevo, con los valores por defecto y lo que hay hoy en Finanzas? Lo que no guardaste se pierde; los escenarios guardados no se tocan.')) return;
   await simArrancar();
   simAvisoGuardado('', false);
   simCargarEscenarios();

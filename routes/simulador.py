@@ -66,7 +66,15 @@ def api_crear_escenario():
                              created_by_name=quien)
     log_activity(db, quien, "simulador_escenario_guardado", "simulador", esc_id,
                  nombre, "", user_id=uid)
-    return jsonify({"ok": True, "id": esc_id}), 201
+    return jsonify(_guardado(db, esc_id, nombre)), 201
+
+
+def _guardado(db: str, esc_id: int, nombre: str) -> dict:
+    """Lo que el panel necesita para mostrar "Editando: <nombre>" con la fecha
+    de la ultima modificacion sin pedir la lista de nuevo."""
+    esc = get_escenario(db, esc_id) or {}
+    return {"ok": True, "id": esc_id, "nombre": nombre,
+            "updated_at": esc.get("updated_at")}
 
 
 @simulador_bp.route("/api/simulador/escenarios/<int:esc_id>", methods=["PUT"])
@@ -82,7 +90,7 @@ def api_actualizar_escenario(esc_id):
     uid, quien = _quien()
     log_activity(db, quien, "simulador_escenario_actualizado", "simulador",
                  esc_id, nombre, "", user_id=uid)
-    return jsonify({"ok": True, "id": esc_id})
+    return jsonify(_guardado(db, esc_id, nombre))
 
 
 @simulador_bp.route("/api/simulador/escenarios/<int:esc_id>", methods=["DELETE"])
