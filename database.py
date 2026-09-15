@@ -1163,6 +1163,17 @@ def init_db(db_path: str) -> None:
                          "ADD COLUMN programador INTEGER NOT NULL DEFAULT 0")
             conn.executemany("UPDATE equipo_personas SET programador = 1 WHERE nombre = ?",
                              [(n,) for n in _PROGRAMADORES_PRECARGA])
+        # Daily Admin y el nombre para mostrar (Juan, 16/9). Lo nuevo de
+        # personas (Matías en Daily Programador; Juan Pereyra y Javier en
+        # Daily Admin; el apodo "Juanchi") se suma UNA sola vez, en el arranque
+        # que crea `admin_daily`: lo que se cambie a mano antes o después no se
+        # pisa, y nada de lo ya cargado cambia de dueño.
+        _add_column(conn, "equipo_personas", "apodo", "TEXT")
+        columnas = {fila[1] for fila in conn.execute("PRAGMA table_info(equipo_personas)")}
+        if "admin_daily" not in columnas:
+            conn.execute("ALTER TABLE equipo_personas "
+                         "ADD COLUMN admin_daily INTEGER NOT NULL DEFAULT 0")
+            _sumar_personas_daily(conn)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS daily_actividades (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1208,6 +1219,16 @@ def init_db(db_path: str) -> None:
                 UNIQUE (recordatorio_id, fecha)
             )
         """)
+        # Hora y nota opcionales (pedido de Juan, 16/9: tarjetas como las de
+        # Seguimiento de leads). Columnas nuevas en NULL: lo que ya estaba
+        # cargado sigue igual, sin hora ni nota.
+        for tabla in ("daily_actividades", "daily_recordatorios"):
+            _add_column(conn, tabla, "hora", "TEXT")
+            _add_column(conn, tabla, "nota", "TEXT")
+            # De qué Daily es: 'programador' o 'admin'. Una persona puede estar
+            # en los dos y las listas no se mezclan. Lo cargado antes es del
+            # Daily Programador, que era el único.
+            _add_column(conn, tabla, "seccion", "TEXT NOT NULL DEFAULT 'programador'")
         conn.commit()
         # Como Equipo: los roles que tienen Tareas reciben el Daily.
         _grant_panel_to_existing_roles(conn, "daily", solo_si_tiene="tasks")
@@ -3802,8 +3823,14 @@ _EQUIPO_PRECARGA = (
     ("Gonzalo Siuciak", "Programador · project manager", "Matías Domínguez", True, 4),
 )
 
-# Quiénes arrancan con su Daily Programador (columna `programador`).
-_PROGRAMADORES_PRECARGA = ("Juan Tomasetti", "Gonzalo Siuciak")
+# Quiénes arrancan en cada Daily (Juan, 16/9). Daily Programador: Juan
+# Tomasetti, Gonzalo y Matías. Daily Admin: Juan Pereyra ("Juanchi") y
+# Javier. La primera versión (15/9) tenía solo a Juan Tomasetti y Gonzalo:
+# `_sumar_personas_daily` suma lo nuevo una sola vez.
+_PROGRAMADORES_PRECARGA = ("Juan Tomasetti", "Gonzalo Siuciak", "Matías Domínguez")
+_PROGRAMADORES_SUMADOS_16_9 = ("Matías Domínguez",)
+_ADMIN_DAILY_PRECARGA = ("Juan Pereyra", "Javier Tomasetti")
+_APODOS_PRECARGA = (("Juan Pereyra", "Juanchi"),)
 
 
 # ─── Seguimiento de leads ────────────────────────────────────────────────────
@@ -3982,25 +4009,51 @@ def get_persona_equipo(db_path: str, persona_id: int) -> Optional[dict]:
 # ── Daily Programador ────────────────────────────────────────────────────────
 # Las tablas se crean en init_db. Todo va por persona del equipo.
 
-def listar_programadores(db_path: str) -> list[dict]:
-    """Las personas activas marcadas como programador, en orden de alta."""
+# La marca de `equipo_personas` que dice quién aparece en cada Daily.
+_MARCAS_DAILY = {"programador": "programador", "admin": "admin_daily"}
+
+
+def _sumar_personas_daily(conn: sqlite3.Connection) -> None:
+    """Una sola vez (la llama init_db al crear `admin_daily`): Matías entra a
+    Daily Programador, Juan Pereyra y Javier a Daily Admin, y Juan Pereyra se
+    muestra como "Juanchi". Solo suma: no le saca la marca a nadie. Juan Pereyra
+    y Javier ya están en la precarga de Equipo."""
+    conn.executemany("UPDATE equipo_personas SET programador = 1 WHERE nombre = ?",
+                     [(n,) for n in _PROGRAMADORES_SUMADOS_16_9])
+    conn.executemany("UPDATE equipo_personas SET admin_daily = 1 WHERE nombre = ?",
+                     [(n,) for n in _ADMIN_DAILY_PRECARGA])
+    conn.executemany("UPDATE equipo_personas SET apodo = ? WHERE nombre = ? AND (apodo IS NULL OR apodo = '')",
+                     [(apodo, nombre) for nombre, apodo in _APODOS_PRECARGA])
+    conn.commit()
+
+
+def listar_personas_daily(db_path: str, seccion: str = "programador") -> list[dict]:
+    """Las personas activas de un Daily, en orden de alta."""
+    campo = _MARCAS_DAILY[seccion]
     conn = _connect(db_path)
     try:
-        cur = conn.execute("SELECT * FROM equipo_personas "
-                           "WHERE activo = 1 AND programador = 1 ORDER BY id")
+        cur = conn.execute(f"SELECT * FROM equipo_personas WHERE activo = 1 AND {campo} = 1 ORDER BY id")
         return [dict(r) for r in cur.fetchall()]
     finally:
         conn.close()
 
 
+def listar_programadores(db_path: str) -> list[dict]:
+    return listar_personas_daily(db_path, "programador")
+
+
 def crear_actividad_daily(db_path: str, persona_id: int, fecha: str, texto: str,
                           created_by_id: int | None = None,
-                          created_by_name: str | None = None) -> int:
+                          created_by_name: str | None = None,
+                          hora: str | None = None, nota: str | None = None,
+                          seccion: str = "programador") -> int:
     conn = _connect(db_path)
     try:
         cur = conn.execute(
-            "INSERT INTO daily_actividades (persona_id, fecha, texto, created_by_id, created_by_name) "
-            "VALUES (?,?,?,?,?)", (persona_id, fecha, texto, created_by_id, created_by_name))
+            "INSERT INTO daily_actividades "
+            "(persona_id, fecha, texto, hora, nota, seccion, created_by_id, created_by_name) "
+            "VALUES (?,?,?,?,?,?,?,?)",
+            (persona_id, fecha, texto, hora, nota, seccion, created_by_id, created_by_name))
         conn.commit()
         return cur.lastrowid
     finally:
@@ -4011,7 +4064,7 @@ def get_actividad_daily(db_path: str, actividad_id: int) -> Optional[dict]:
     return _get_one(db_path, "daily_actividades", actividad_id)
 
 
-_CAMPOS_ACTIVIDAD_DAILY = ("texto", "hecha", "fecha", "pasada_de")
+_CAMPOS_ACTIVIDAD_DAILY = ("texto", "hecha", "fecha", "pasada_de", "hora", "nota")
 
 
 def actualizar_actividad_daily(db_path: str, actividad_id: int, **campos) -> None:
@@ -4037,11 +4090,13 @@ def borrar_actividad_daily(db_path: str, actividad_id: int) -> None:
         conn.close()
 
 
-def listar_actividades_daily(db_path: str, persona_id: int, fecha: str) -> list[dict]:
+def listar_actividades_daily(db_path: str, persona_id: int, fecha: str,
+                             seccion: str = "programador") -> list[dict]:
     conn = _connect(db_path)
     try:
-        cur = conn.execute("SELECT * FROM daily_actividades WHERE persona_id = ? AND fecha = ? "
-                           "ORDER BY id", (persona_id, fecha))
+        # Las que tienen hora primero y en orden de hora; las otras, como se cargaron.
+        cur = conn.execute("SELECT * FROM daily_actividades WHERE persona_id = ? AND fecha = ? AND seccion = ? "
+                           "ORDER BY hora IS NULL, hora, id", (persona_id, fecha, seccion))
         return [dict(r) for r in cur.fetchall()]
     finally:
         conn.close()
@@ -4050,14 +4105,16 @@ def listar_actividades_daily(db_path: str, persona_id: int, fecha: str) -> list[
 def crear_recordatorio_daily(db_path: str, persona_id: int, texto: str, frecuencia: str,
                              dias: str, desde: str, activo: int = 1,
                              created_by_id: int | None = None,
-                             created_by_name: str | None = None) -> int:
+                             created_by_name: str | None = None,
+                             hora: str | None = None, nota: str | None = None,
+                             seccion: str = "programador") -> int:
     conn = _connect(db_path)
     try:
         cur = conn.execute(
             "INSERT INTO daily_recordatorios "
-            "(persona_id, texto, frecuencia, dias, activo, desde, created_by_id, created_by_name) "
-            "VALUES (?,?,?,?,?,?,?,?)",
-            (persona_id, texto, frecuencia, dias, activo, desde, created_by_id, created_by_name))
+            "(persona_id, texto, frecuencia, dias, activo, desde, hora, nota, seccion, created_by_id, created_by_name) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (persona_id, texto, frecuencia, dias, activo, desde, hora, nota, seccion, created_by_id, created_by_name))
         conn.commit()
         return cur.lastrowid
     finally:
@@ -4068,10 +4125,11 @@ def get_recordatorio_daily(db_path: str, recordatorio_id: int) -> Optional[dict]
     return _get_one(db_path, "daily_recordatorios", recordatorio_id)
 
 
-_CAMPOS_RECORDATORIO_DAILY = ("texto", "frecuencia", "dias", "activo")
+_CAMPOS_RECORDATORIO_DAILY = ("texto", "frecuencia", "dias", "activo", "hora", "nota")
 
 
 def actualizar_recordatorio_daily(db_path: str, recordatorio_id: int, **campos) -> None:
+    """No toca `daily_marcas`: editar un recordatorio no borra lo hecho otros días."""
     campos = {k: v for k, v in campos.items() if k in _CAMPOS_RECORDATORIO_DAILY}
     if not campos:
         return
@@ -4097,24 +4155,24 @@ def borrar_recordatorio_daily(db_path: str, recordatorio_id: int) -> None:
         conn.close()
 
 
-def listar_recordatorios_daily(db_path: str, persona_id: int) -> list[dict]:
+def listar_recordatorios_daily(db_path: str, persona_id: int, seccion: str = "programador") -> list[dict]:
     conn = _connect(db_path)
     try:
-        cur = conn.execute("SELECT * FROM daily_recordatorios WHERE persona_id = ? ORDER BY id",
-                           (persona_id,))
+        cur = conn.execute("SELECT * FROM daily_recordatorios WHERE persona_id = ? AND seccion = ? ORDER BY id",
+                           (persona_id, seccion))
         return [dict(r) for r in cur.fetchall()]
     finally:
         conn.close()
 
 
-def listar_marcas_daily(db_path: str, persona_id: int, fecha: str) -> set[int]:
-    """Los ids de los recordatorios de esa persona marcados como hechos ese día."""
+def listar_marcas_daily(db_path: str, persona_id: int, fecha: str, seccion: str = "programador") -> set[int]:
+    """Los ids de los recordatorios de esa persona y ese Daily marcados como hechos ese día."""
     conn = _connect(db_path)
     try:
         cur = conn.execute(
             "SELECT m.recordatorio_id FROM daily_marcas m "
             "JOIN daily_recordatorios r ON r.id = m.recordatorio_id "
-            "WHERE r.persona_id = ? AND m.fecha = ?", (persona_id, fecha))
+            "WHERE r.persona_id = ? AND r.seccion = ? AND m.fecha = ?", (persona_id, seccion, fecha))
         return {fila[0] for fila in cur.fetchall()}
     finally:
         conn.close()
