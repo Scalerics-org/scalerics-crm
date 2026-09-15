@@ -28,8 +28,8 @@ logger = logging.getLogger(__name__)
 # ritmo lo pone el tope rodante de 24 horas, que es el que deja la revision
 # vacia hasta que la tanda de ayer sale de la ventana. Con la revision horaria
 # la marca queda como segundo guard contra una tanda repetida (un deploy justo
-# despues de mandar), y tiene que ser menor que 24 para no sumarle su propio
-# atraso a la tanda de manana.
+# despues de mandar). No puede ser mayor que la ventana del cupo: si lo fuera,
+# le sumaria su propio atraso a la tanda de manana.
 _CADA_HORAS = 20
 
 # Cada cuanto se fija cada hilo de campana si le toca mandar. Una hora, y no un

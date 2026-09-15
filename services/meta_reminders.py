@@ -586,7 +586,7 @@ def tanda_diaria(db_path: str, base_url: str):
             f"en 24 horas ya esta lleno. Se vuelve a mirar en la proxima revision."
         )
         return None
-    # Las respuestas ANTES de los envios, igual que hace discovery en su bucle:
+    # Las respuestas ANTES de los envios, igual que hace discovery en su tanda:
     # si alguien contesto ayer y hoy le vence el contacto siguiente, hay que
     # frenarlo antes de que salga, no despues.
     #
