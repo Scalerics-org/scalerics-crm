@@ -42,7 +42,7 @@ def _entre(texto, desde, hasta):
 
 PANEL = _entre(SRC, "<!-- ======= EMAIL MARKETING PANEL ======= -->",
                "<!-- ======= FIN EMAIL MARKETING PANEL ======= -->")
-JS = _entre(SRC, "// ========== Email marketing ==========", "// ========== Equipo ==========")
+JS = _entre(SRC, "// ========== Email marketing ==========", "// ========== Daily Programador ==========")
 CSS = _entre(SRC, "/* ── Email marketing", "/* ── Equipo")
 FUENTES = {"panel": PANEL, "js": JS, "css": CSS}
 

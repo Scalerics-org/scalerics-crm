@@ -11925,6 +11925,279 @@ async function hrGuardar() {
 }
 // ========== FIN Horarios ==========
 
+// ========== Email marketing ==========
+// Lo que sale por Resend, con lo que Resend cuenta despues. Los numeros y las
+// fechas (ya en hora de Montevideo) vienen armados de /api/email-marketing:
+// aca solo se pinta. Sin template literals: el texto se arma concatenando.
+let emMesSel = '';
+let emPagina = 1;
+let emPedido = 0;
+let emBusquedaTimer = null;
+let emDatos = null;
+
+const EM_ESTADOS = {
+  enviado: ['Enviado', 'em-chip-azul'],
+  entregado: ['Entregado', 'em-chip-verde'],
+  abierto: ['Abierto', 'em-chip-verde'],
+  clic: ['Con clic', 'em-chip-fuerte'],
+  rebotado: ['Rebotado', 'em-chip-rojo'],
+  spam: ['Marcado como spam', 'em-chip-rojo'],
+  demorado: ['Demorado', 'em-chip-ambar'],
+  fallido: ['No salió', 'em-chip-rojo'],
+  incierto: ['Sin confirmar', 'em-chip-ambar']
+};
+const EM_CONTADORES = [
+  ['enviados', 'Enviados'], ['entregados', 'Entregados'], ['abiertos', 'Abiertos'],
+  ['clics', 'Con clic'], ['rebotados', 'Rebotados'], ['spam', 'Marcados como spam']
+];
+const EM_MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto',
+  'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+
+function emEsc(texto) {
+  return String(texto === null || texto === undefined ? '' : texto)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function emEtiquetaMes(mes) {
+  const partes = String(mes || '').split('-');
+  const nombre = EM_MESES[parseInt(partes[1], 10) - 1];
+  return nombre ? nombre + ' ' + partes[0] : String(mes || '');
+}
+
+function emMesSumar(mes, delta) {
+  const partes = String(mes).split('-');
+  const total = parseInt(partes[0], 10) * 12 + (parseInt(partes[1], 10) - 1) + delta;
+  return Math.floor(total / 12) + '-' + String(total % 12 + 1).padStart(2, '0');
+}
+
+function emValor(id) {
+  const el = document.getElementById(id);
+  return el && el.value ? String(el.value) : '';
+}
+
+function emUrl() {
+  const partes = [];
+  if (emMesSel) partes.push('mes=' + encodeURIComponent(emMesSel));
+  const tipo = emValor('em-tipo');
+  if (tipo) partes.push('tipo=' + encodeURIComponent(tipo));
+  const q = emValor('em-buscar').trim();
+  if (q) partes.push('q=' + encodeURIComponent(q));
+  if (emPagina > 1) partes.push('pagina=' + emPagina);
+  return '/api/email-marketing' + (partes.length ? '?' + partes.join('&') : '');
+}
+
+async function loadEmailMkt() {
+  const estado = document.getElementById('em-estado');
+  if (!estado) return;
+  // Buscar rapido dispara varios pedidos que pueden volver desordenados: solo
+  // se pinta la respuesta del ultimo.
+  const pedido = ++emPedido;
+  let datos;
+  try {
+    const r = await fetch(emUrl());
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    datos = await r.json();
+    if (!datos || !datos.contadores) throw new Error('respuesta incompleta');
+  } catch (e) {
+    if (pedido !== emPedido) return;
+    estado.textContent = 'No se pudieron cargar los envíos. Probá de nuevo en un rato.';
+    estado.classList.remove('em-oculto');
+    return;
+  }
+  if (pedido !== emPedido) return;
+  emDatos = datos;
+  emPintar(datos);
+}
+
+function emPoner(id, html) {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = html;
+}
+
+function emPintar(d) {
+  const estado = document.getElementById('em-estado');
+  if (estado) {
+    const hay = Number(d.contadores.enviados || 0) > 0;
+    estado.textContent = hay ? '' : 'No hay envíos registrados en ' + emEtiquetaMes(d.mes) + '.';
+    if (hay) estado.classList.add('em-oculto');
+    else estado.classList.remove('em-oculto');
+  }
+  const etiqueta = document.getElementById('em-mes-label');
+  if (etiqueta) etiqueta.textContent = emEtiquetaMes(d.mes);
+  const siguiente = document.getElementById('em-mes-sig');
+  if (siguiente) siguiente.disabled = d.mes >= d.mes_actual;
+  emPintarTipos(d.tipos || []);
+  emPoner('em-contadores', emContadores(d.contadores, d.tasas || {}));
+  emPoner('em-aviso', emAviso(d.contadores));
+  emPoner('em-grafico', emGrafico(d.por_dia || []));
+  emPoner('em-tabla', emTabla(d.envios || []));
+  emPoner('em-paginas', emPaginas(d));
+  emBotonEstados(d);
+}
+
+function emPintarTipos(tipos) {
+  const sel = document.getElementById('em-tipo');
+  if (!sel) return;
+  const actual = sel.value || '';
+  sel.innerHTML = '<option value="">Todos los tipos</option>' + tipos.map(t =>
+    '<option value="' + emEsc(t.clave) + '"' + (t.clave === actual ? ' selected' : '') + '>' +
+    emEsc(t.etiqueta) + '</option>').join('');
+  sel.value = actual;
+}
+
+function emTasaTexto(tasa) {
+  if (tasa === null || tasa === undefined) return '';
+  return String(tasa).replace('.', ',') + ' % de los enviados';
+}
+
+function emContadores(c, tasas) {
+  return EM_CONTADORES.map(par => {
+    const clave = par[0];
+    let nota = emTasaTexto(tasas[clave]);
+    if (clave === 'enviados') nota = c.sin_eventos ? c.sin_eventos + ' sin datos de Resend' : 'en el mes';
+    return '<div class="em-contador em-contador-' + clave + '">' +
+      '<div class="em-contador-num">' + Number(c[clave] || 0) + '</div>' +
+      '<div class="em-contador-rotulo">' + par[1] + '</div>' +
+      '<div class="em-contador-tasa">' + emEsc(nota) + '</div></div>';
+  }).join('');
+}
+
+function emAviso(c) {
+  if (!c.enviados || !c.sin_eventos) return '';
+  return '<div class="em-aviso">' + c.sin_eventos + ' de ' + c.enviados + ' envíos todavía no tienen ' +
+    'datos de Resend (entregado, abierto, clic). Los envíos anteriores a este registro no los ' +
+    'tienen; los nuevos los reciben por el webhook de Resend.</div>';
+}
+
+function emGrafico(porDia) {
+  const total = porDia.reduce((suma, p) => suma + Number(p.n || 0), 0);
+  if (!total) return '<div class="em-vacio">Sin envíos en este mes.</div>';
+  if (typeof SC === 'undefined' || !SC.serie) {
+    return '<div class="em-vacio">' + total + ' envíos en el mes.</div>';
+  }
+  const tema = document.body.classList.contains('light') ? 'claro' : 'oscuro';
+  const puntos = porDia.map(p => ({x: String(p.dia).slice(8, 10), y: Number(p.n || 0)}));
+  return SC.serie(puntos, {etiqueta: 'Enviados por día, en hora de Montevideo', formato: 'numero', alto: 170}, tema);
+}
+
+function emTabla(envios) {
+  if (!envios.length) return '<div class="em-vacio">No hay envíos que coincidan.</div>';
+  const filas = envios.map(e => {
+    const est = EM_ESTADOS[e.estado] || [e.estado, 'em-chip-gris'];
+    const historico = e.origen === 'historico'
+      ? '<span class="em-nota">histórico, sin eventos</span>' : '';
+    const lead = e.business_id
+      ? '<button type="button" class="em-link" onclick="openClientPanel(' + Number(e.business_id) + ')">' +
+        emEsc(e.negocio || 'Ver ficha') + '</button>'
+      : '<span class="em-nota">—</span>';
+    const extracto = e.extracto ? '<span class="em-extracto">' + emEsc(e.extracto) + '</span>' : '';
+    return '<tr><td class="em-fecha">' + emEsc(e.fecha_local) + '</td>' +
+      '<td>' + emEsc(e.tipo_etiqueta) + '</td>' +
+      '<td class="em-dest">' + emEsc(e.destinatario || '—') + '</td>' +
+      '<td class="em-asunto">' + emEsc(e.asunto) + extracto + '</td>' +
+      '<td><span class="em-chip ' + est[1] + '">' + emEsc(est[0]) + '</span>' + historico + '</td>' +
+      '<td>' + lead + '</td></tr>';
+  }).join('');
+  return '<table class="em-tabla"><thead><tr><th>Fecha</th><th>Tipo</th><th>Destinatario</th>' +
+    '<th>Asunto</th><th>Estado</th><th>Lead</th></tr></thead><tbody>' + filas + '</tbody></table>';
+}
+
+function emPaginas(d) {
+  if (!d.encontrados) return '';
+  return '<button type="button" class="cal-nav-btn" onclick="emIrPagina(-1)" aria-label="Página anterior"' +
+    (d.pagina <= 1 ? ' disabled' : '') + '>&larr;</button>' +
+    '<span>Página ' + d.pagina + ' de ' + d.paginas + ' · ' + d.encontrados + ' envíos</span>' +
+    '<button type="button" class="cal-nav-btn" onclick="emIrPagina(1)" aria-label="Página siguiente"' +
+    (d.pagina >= d.paginas ? ' disabled' : '') + '>&rarr;</button>';
+}
+
+function emIrPagina(delta) {
+  if (!emDatos) return;
+  const nueva = Math.min(Math.max(1, emDatos.pagina + delta), emDatos.paginas);
+  if (nueva === emDatos.pagina) return;
+  emPagina = nueva;
+  loadEmailMkt();
+}
+
+function emMes(delta) {
+  const base = emMesSel || (emDatos && emDatos.mes) || '';
+  if (!base) return;
+  const actual = (emDatos && emDatos.mes_actual) || '';
+  let nuevo = emMesSumar(base, delta);
+  if (actual && nuevo > actual) nuevo = actual;   // el futuro no tiene envios
+  emMesSel = actual && nuevo === actual ? '' : nuevo;
+  emPagina = 1;
+  loadEmailMkt();
+}
+
+function emMesHoy() {
+  emMesSel = '';
+  emPagina = 1;
+  loadEmailMkt();
+}
+
+function emFiltrar() {
+  emPagina = 1;
+  loadEmailMkt();
+}
+
+function emBuscar() {
+  if (emBusquedaTimer) clearTimeout(emBusquedaTimer);
+  emBusquedaTimer = setTimeout(() => {
+    emBusquedaTimer = null;
+    emPagina = 1;
+    loadEmailMkt();
+  }, 300);
+}
+
+// Solo admin, y solo con la clave de Resend en el servidor. El servidor lo
+// vuelve a chequear: esconder el boton no es la seguridad.
+function emBotonEstados(d) {
+  const boton = document.getElementById('em-btn-estados');
+  const nota = document.getElementById('em-estados-nota');
+  if (!boton) return;
+  if (!d.es_admin) {
+    boton.classList.add('em-oculto');
+    if (nota) nota.textContent = '';
+    return;
+  }
+  boton.classList.remove('em-oculto');
+  boton.disabled = !d.hay_api_key;
+  if (nota && !d.hay_api_key) {
+    nota.textContent = 'Actualizar estados está deshabilitado: falta la clave de Resend (RESEND_API_KEY) en el servidor.';
+  }
+}
+
+async function emActualizarEstados() {
+  const boton = document.getElementById('em-btn-estados');
+  const nota = document.getElementById('em-estados-nota');
+  if (!boton || boton.disabled) return;
+  boton.disabled = true;
+  if (nota) nota.textContent = 'Consultando a Resend…';
+  try {
+    const r = await fetch('/api/email-marketing/actualizar-estados', {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({limite: 20})
+    });
+    let d = {};
+    try { d = await r.json(); } catch (e) { d = {}; }
+    if (!r.ok || !d.ok) {
+      if (nota) nota.textContent = d.error || 'No se pudo consultar a Resend.';
+      return;
+    }
+    if (nota) {
+      nota.textContent = 'Consultados ' + d.consultados + ' de ' + d.pendientes + ' sin eventos, ' +
+        d.actualizados + ' actualizados.' +
+        (d.cortado_por_limite ? ' Resend pidió esperar: probá de nuevo en un minuto.' : '');
+    }
+    await loadEmailMkt();
+  } catch (e) {
+    if (nota) nota.textContent = 'No se pudo consultar a Resend.';
+  } finally {
+    boton.disabled = !(emDatos && emDatos.hay_api_key);
+  }
+}
+
 // ========== Daily Programador ==========
 // Daily Programador y Daily Admin (Juan, 15 y 16/9): actividades del dia y
 // recordatorios que se repiten, por persona del equipo. Son la misma pantalla
@@ -12604,279 +12877,6 @@ async function dyBorrarRecordatorio(s, id) {
   if (!confirm('¿Borrar el recordatorio "' + r.texto + '"? Deja de aparecer en todos los días. '
       + 'Si solo querés frenarlo un tiempo, pausalo.')) return;
   await dyAccion(s, 'rec-error', 'No se pudo borrar: ', () => dyPedir('/api/daily/recordatorios/' + id, 'DELETE'));
-}
-
-// ========== Email marketing ==========
-// Lo que sale por Resend, con lo que Resend cuenta despues. Los numeros y las
-// fechas (ya en hora de Montevideo) vienen armados de /api/email-marketing:
-// aca solo se pinta. Sin template literals: el texto se arma concatenando.
-let emMesSel = '';
-let emPagina = 1;
-let emPedido = 0;
-let emBusquedaTimer = null;
-let emDatos = null;
-
-const EM_ESTADOS = {
-  enviado: ['Enviado', 'em-chip-azul'],
-  entregado: ['Entregado', 'em-chip-verde'],
-  abierto: ['Abierto', 'em-chip-verde'],
-  clic: ['Con clic', 'em-chip-fuerte'],
-  rebotado: ['Rebotado', 'em-chip-rojo'],
-  spam: ['Marcado como spam', 'em-chip-rojo'],
-  demorado: ['Demorado', 'em-chip-ambar'],
-  fallido: ['No salió', 'em-chip-rojo'],
-  incierto: ['Sin confirmar', 'em-chip-ambar']
-};
-const EM_CONTADORES = [
-  ['enviados', 'Enviados'], ['entregados', 'Entregados'], ['abiertos', 'Abiertos'],
-  ['clics', 'Con clic'], ['rebotados', 'Rebotados'], ['spam', 'Marcados como spam']
-];
-const EM_MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto',
-  'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
-
-function emEsc(texto) {
-  return String(texto === null || texto === undefined ? '' : texto)
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}
-
-function emEtiquetaMes(mes) {
-  const partes = String(mes || '').split('-');
-  const nombre = EM_MESES[parseInt(partes[1], 10) - 1];
-  return nombre ? nombre + ' ' + partes[0] : String(mes || '');
-}
-
-function emMesSumar(mes, delta) {
-  const partes = String(mes).split('-');
-  const total = parseInt(partes[0], 10) * 12 + (parseInt(partes[1], 10) - 1) + delta;
-  return Math.floor(total / 12) + '-' + String(total % 12 + 1).padStart(2, '0');
-}
-
-function emValor(id) {
-  const el = document.getElementById(id);
-  return el && el.value ? String(el.value) : '';
-}
-
-function emUrl() {
-  const partes = [];
-  if (emMesSel) partes.push('mes=' + encodeURIComponent(emMesSel));
-  const tipo = emValor('em-tipo');
-  if (tipo) partes.push('tipo=' + encodeURIComponent(tipo));
-  const q = emValor('em-buscar').trim();
-  if (q) partes.push('q=' + encodeURIComponent(q));
-  if (emPagina > 1) partes.push('pagina=' + emPagina);
-  return '/api/email-marketing' + (partes.length ? '?' + partes.join('&') : '');
-}
-
-async function loadEmailMkt() {
-  const estado = document.getElementById('em-estado');
-  if (!estado) return;
-  // Buscar rapido dispara varios pedidos que pueden volver desordenados: solo
-  // se pinta la respuesta del ultimo.
-  const pedido = ++emPedido;
-  let datos;
-  try {
-    const r = await fetch(emUrl());
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    datos = await r.json();
-    if (!datos || !datos.contadores) throw new Error('respuesta incompleta');
-  } catch (e) {
-    if (pedido !== emPedido) return;
-    estado.textContent = 'No se pudieron cargar los envíos. Probá de nuevo en un rato.';
-    estado.classList.remove('em-oculto');
-    return;
-  }
-  if (pedido !== emPedido) return;
-  emDatos = datos;
-  emPintar(datos);
-}
-
-function emPoner(id, html) {
-  const el = document.getElementById(id);
-  if (el) el.innerHTML = html;
-}
-
-function emPintar(d) {
-  const estado = document.getElementById('em-estado');
-  if (estado) {
-    const hay = Number(d.contadores.enviados || 0) > 0;
-    estado.textContent = hay ? '' : 'No hay envíos registrados en ' + emEtiquetaMes(d.mes) + '.';
-    if (hay) estado.classList.add('em-oculto');
-    else estado.classList.remove('em-oculto');
-  }
-  const etiqueta = document.getElementById('em-mes-label');
-  if (etiqueta) etiqueta.textContent = emEtiquetaMes(d.mes);
-  const siguiente = document.getElementById('em-mes-sig');
-  if (siguiente) siguiente.disabled = d.mes >= d.mes_actual;
-  emPintarTipos(d.tipos || []);
-  emPoner('em-contadores', emContadores(d.contadores, d.tasas || {}));
-  emPoner('em-aviso', emAviso(d.contadores));
-  emPoner('em-grafico', emGrafico(d.por_dia || []));
-  emPoner('em-tabla', emTabla(d.envios || []));
-  emPoner('em-paginas', emPaginas(d));
-  emBotonEstados(d);
-}
-
-function emPintarTipos(tipos) {
-  const sel = document.getElementById('em-tipo');
-  if (!sel) return;
-  const actual = sel.value || '';
-  sel.innerHTML = '<option value="">Todos los tipos</option>' + tipos.map(t =>
-    '<option value="' + emEsc(t.clave) + '"' + (t.clave === actual ? ' selected' : '') + '>' +
-    emEsc(t.etiqueta) + '</option>').join('');
-  sel.value = actual;
-}
-
-function emTasaTexto(tasa) {
-  if (tasa === null || tasa === undefined) return '';
-  return String(tasa).replace('.', ',') + ' % de los enviados';
-}
-
-function emContadores(c, tasas) {
-  return EM_CONTADORES.map(par => {
-    const clave = par[0];
-    let nota = emTasaTexto(tasas[clave]);
-    if (clave === 'enviados') nota = c.sin_eventos ? c.sin_eventos + ' sin datos de Resend' : 'en el mes';
-    return '<div class="em-contador em-contador-' + clave + '">' +
-      '<div class="em-contador-num">' + Number(c[clave] || 0) + '</div>' +
-      '<div class="em-contador-rotulo">' + par[1] + '</div>' +
-      '<div class="em-contador-tasa">' + emEsc(nota) + '</div></div>';
-  }).join('');
-}
-
-function emAviso(c) {
-  if (!c.enviados || !c.sin_eventos) return '';
-  return '<div class="em-aviso">' + c.sin_eventos + ' de ' + c.enviados + ' envíos todavía no tienen ' +
-    'datos de Resend (entregado, abierto, clic). Los envíos anteriores a este registro no los ' +
-    'tienen; los nuevos los reciben por el webhook de Resend.</div>';
-}
-
-function emGrafico(porDia) {
-  const total = porDia.reduce((suma, p) => suma + Number(p.n || 0), 0);
-  if (!total) return '<div class="em-vacio">Sin envíos en este mes.</div>';
-  if (typeof SC === 'undefined' || !SC.serie) {
-    return '<div class="em-vacio">' + total + ' envíos en el mes.</div>';
-  }
-  const tema = document.body.classList.contains('light') ? 'claro' : 'oscuro';
-  const puntos = porDia.map(p => ({x: String(p.dia).slice(8, 10), y: Number(p.n || 0)}));
-  return SC.serie(puntos, {etiqueta: 'Enviados por día, en hora de Montevideo', formato: 'numero', alto: 170}, tema);
-}
-
-function emTabla(envios) {
-  if (!envios.length) return '<div class="em-vacio">No hay envíos que coincidan.</div>';
-  const filas = envios.map(e => {
-    const est = EM_ESTADOS[e.estado] || [e.estado, 'em-chip-gris'];
-    const historico = e.origen === 'historico'
-      ? '<span class="em-nota">histórico, sin eventos</span>' : '';
-    const lead = e.business_id
-      ? '<button type="button" class="em-link" onclick="openClientPanel(' + Number(e.business_id) + ')">' +
-        emEsc(e.negocio || 'Ver ficha') + '</button>'
-      : '<span class="em-nota">—</span>';
-    const extracto = e.extracto ? '<span class="em-extracto">' + emEsc(e.extracto) + '</span>' : '';
-    return '<tr><td class="em-fecha">' + emEsc(e.fecha_local) + '</td>' +
-      '<td>' + emEsc(e.tipo_etiqueta) + '</td>' +
-      '<td class="em-dest">' + emEsc(e.destinatario || '—') + '</td>' +
-      '<td class="em-asunto">' + emEsc(e.asunto) + extracto + '</td>' +
-      '<td><span class="em-chip ' + est[1] + '">' + emEsc(est[0]) + '</span>' + historico + '</td>' +
-      '<td>' + lead + '</td></tr>';
-  }).join('');
-  return '<table class="em-tabla"><thead><tr><th>Fecha</th><th>Tipo</th><th>Destinatario</th>' +
-    '<th>Asunto</th><th>Estado</th><th>Lead</th></tr></thead><tbody>' + filas + '</tbody></table>';
-}
-
-function emPaginas(d) {
-  if (!d.encontrados) return '';
-  return '<button type="button" class="cal-nav-btn" onclick="emIrPagina(-1)" aria-label="Página anterior"' +
-    (d.pagina <= 1 ? ' disabled' : '') + '>&larr;</button>' +
-    '<span>Página ' + d.pagina + ' de ' + d.paginas + ' · ' + d.encontrados + ' envíos</span>' +
-    '<button type="button" class="cal-nav-btn" onclick="emIrPagina(1)" aria-label="Página siguiente"' +
-    (d.pagina >= d.paginas ? ' disabled' : '') + '>&rarr;</button>';
-}
-
-function emIrPagina(delta) {
-  if (!emDatos) return;
-  const nueva = Math.min(Math.max(1, emDatos.pagina + delta), emDatos.paginas);
-  if (nueva === emDatos.pagina) return;
-  emPagina = nueva;
-  loadEmailMkt();
-}
-
-function emMes(delta) {
-  const base = emMesSel || (emDatos && emDatos.mes) || '';
-  if (!base) return;
-  const actual = (emDatos && emDatos.mes_actual) || '';
-  let nuevo = emMesSumar(base, delta);
-  if (actual && nuevo > actual) nuevo = actual;   // el futuro no tiene envios
-  emMesSel = actual && nuevo === actual ? '' : nuevo;
-  emPagina = 1;
-  loadEmailMkt();
-}
-
-function emMesHoy() {
-  emMesSel = '';
-  emPagina = 1;
-  loadEmailMkt();
-}
-
-function emFiltrar() {
-  emPagina = 1;
-  loadEmailMkt();
-}
-
-function emBuscar() {
-  if (emBusquedaTimer) clearTimeout(emBusquedaTimer);
-  emBusquedaTimer = setTimeout(() => {
-    emBusquedaTimer = null;
-    emPagina = 1;
-    loadEmailMkt();
-  }, 300);
-}
-
-// Solo admin, y solo con la clave de Resend en el servidor. El servidor lo
-// vuelve a chequear: esconder el boton no es la seguridad.
-function emBotonEstados(d) {
-  const boton = document.getElementById('em-btn-estados');
-  const nota = document.getElementById('em-estados-nota');
-  if (!boton) return;
-  if (!d.es_admin) {
-    boton.classList.add('em-oculto');
-    if (nota) nota.textContent = '';
-    return;
-  }
-  boton.classList.remove('em-oculto');
-  boton.disabled = !d.hay_api_key;
-  if (nota && !d.hay_api_key) {
-    nota.textContent = 'Actualizar estados está deshabilitado: falta la clave de Resend (RESEND_API_KEY) en el servidor.';
-  }
-}
-
-async function emActualizarEstados() {
-  const boton = document.getElementById('em-btn-estados');
-  const nota = document.getElementById('em-estados-nota');
-  if (!boton || boton.disabled) return;
-  boton.disabled = true;
-  if (nota) nota.textContent = 'Consultando a Resend…';
-  try {
-    const r = await fetch('/api/email-marketing/actualizar-estados', {
-      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({limite: 20})
-    });
-    let d = {};
-    try { d = await r.json(); } catch (e) { d = {}; }
-    if (!r.ok || !d.ok) {
-      if (nota) nota.textContent = d.error || 'No se pudo consultar a Resend.';
-      return;
-    }
-    if (nota) {
-      nota.textContent = 'Consultados ' + d.consultados + ' de ' + d.pendientes + ' sin eventos, ' +
-        d.actualizados + ' actualizados.' +
-        (d.cortado_por_limite ? ' Resend pidió esperar: probá de nuevo en un minuto.' : '');
-    }
-    await loadEmailMkt();
-  } catch (e) {
-    if (nota) nota.textContent = 'No se pudo consultar a Resend.';
-  } finally {
-    boton.disabled = !(emDatos && emDatos.hay_api_key);
-  }
 }
 
 // ========== Equipo ==========
