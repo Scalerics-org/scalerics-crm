@@ -16,12 +16,18 @@ def _add_column(conn: sqlite3.Connection, table: str, column: str, definition: s
         pass  # column already exists
 
 
-def _grant_panel_to_existing_roles(conn: sqlite3.Connection, panel: str) -> int:
+def _grant_panel_to_existing_roles(conn: sqlite3.Connection, panel: str,
+                                   solo_si_tiene: Optional[str] = None) -> int:
     """Suma `panel` al panel_access de los roles que ya existen y no lo tengan.
 
     La siembra de roles por defecto solo corre con la tabla vacía, así que en
     una base que ya tiene roles (producción) un panel nuevo no le llega a
     nadie salvo a los admin, que reciben todos. Esto lo arregla en el arranque.
+
+    Con `solo_si_tiene`, el panel le llega únicamente a los roles que ya
+    tienen ese otro: sirve cuando un panel se parte en dos (Equipo ->
+    Organigrama + Ausencias) y quien veía el viejo tiene que seguir viendo
+    todo.
 
     Idempotente: si el panel ya está, no toca la fila. Un `panel_access` en
     NULL, vacío, con JSON inválido o con un JSON que no es una lista se saltea
@@ -49,6 +55,8 @@ def _grant_panel_to_existing_roles(conn: sqlite3.Connection, panel: str) -> int:
             )
             continue
         if panel in paneles:
+            continue
+        if solo_si_tiene is not None and solo_si_tiene not in paneles:
             continue
         paneles.append(panel)
         try:
@@ -991,6 +999,10 @@ def init_db(db_path: str) -> None:
         # Como Marketing y a diferencia de Finanzas/Simulador (Ruling R20):
         # acá no hay plata, así que el panel les llega a los roles existentes.
         _grant_panel_to_existing_roles(conn, "equipo")
+        # Recursos Humanos partió Equipo en dos paneles (pedido de Juan): el
+        # organigrama se quedó con el id `equipo` y Ausencias es `ausencias`.
+        # Quien tenía Equipo veía las dos partes, así que recibe Ausencias.
+        _grant_panel_to_existing_roles(conn, "ausencias", solo_si_tiene="equipo")
 
         # ── Pre-clientes y clientes activos ───────────────────────────────────
         # Los tres responsables de un cliente activo. Apuntan a users para poder
