@@ -307,6 +307,34 @@ def send_meta_token_alert(to_email: str, error_detail: str) -> bool:
     return _send(to_email, "ALERTA: Token Meta Ads inválido — Scalerics CRM", html)
 
 
+def send_backup_alert(to_email: str, error_detail: str) -> bool:
+    """El backup diario de la base fallo (integridad, subida a R2 o excepcion).
+
+    Lo manda `services/backup_db.py`, como mucho uno por dia.
+    """
+    body = (
+        _muted(
+            "El backup diario de la base del CRM <b>no se completó</b>. "
+            "Mientras no se arregle, la única copia fuera del volumen puede estar quedando vieja."
+        )
+        + _info_card([("Error", html.escape(error_detail or ""))])
+        + _muted(
+            "Para revisarlo: mirá el log de la app (<code>flyctl logs -a scalerics-crm</code>, "
+            "buscar <code>backup</code>) y probá una corrida a mano desde Administración "
+            "o con <code>POST /api/admin/backup-ahora</code>. "
+            "Pasos y restauración en <code>docs/BACKUPS.md</code>."
+        )
+    )
+    cuerpo_html = _layout(
+        badge="Alerta de backup",
+        title="Falló el backup diario de la base",
+        body=body,
+        cta_url=f"{_CRM_URL}/admin/users",
+        cta_label="Ir a Administración →",
+    )
+    return _send(to_email, "ALERTA: falló el backup de la base — Scalerics CRM", cuerpo_html)
+
+
 def send_discovery_queue_alert(to_email: str, dias: int, pendientes: int,
                                tope: int) -> bool:
     """Avisa que la campana de discovery se esta quedando sin a quien escribirle.

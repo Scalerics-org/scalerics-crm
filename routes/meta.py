@@ -16,7 +16,11 @@ import sqlite3 as _sq_meta
 import time
 
 from database import (
+    buscar_ficha_meta_por_mail,
+    envio_meta_registrado,
     insert_business,
+    norm_created_time,
+    registrar_envio_meta,
     update_business,
     get_business_by_phone,
     log_activity,
@@ -112,6 +116,73 @@ def _notify_new_meta_lead(db: str, lead_name: str, phone: str, campaign: str, ci
     # wa_phone = os.environ.get("ADMIN_WA_PHONE", "")
     # if wa_phone:
     #     _send_wa_notification(wa_phone, lead_name, phone, campaign)
+
+
+def _registrar_envio(db: str, biz_id: int, meta_lead_id, created_time, fields: dict,
+                     lead: dict) -> bool:
+    """Guarda este formulario como un envio de la ficha `biz_id`.
+
+    Cada envio cuenta en su mes, como lo cuenta Meta: quien vuelve a escribir
+    aparece tambien en el mes de la vuelta (ver database.ENVIOS_META_SQL).
+    Nunca tumba la ingesta: si falla, el lead ya quedo guardado igual.
+    """
+    try:
+        return registrar_envio_meta(
+            db, biz_id, meta_lead_id, created_time,
+            form_data=json.dumps(fields, ensure_ascii=False),
+            campaign_id=lead.get("campaign_id"), campaign_name=lead.get("campaign_name"),
+            ad_id=lead.get("ad_id"), ad_name=lead.get("ad_name"))
+    except Exception as e:
+        logger.error(f"No se pudo registrar el envio de Meta {meta_lead_id}: {_redact_secrets(str(e))}")
+        return False
+
+
+def _envio_sobre_ficha_existente(db: str, phone: str, email: str):
+    """La ficha a la que pertenece un formulario que el INSERT no creo.
+
+    Por telefono (con sus variantes) y, si el formulario no trae telefono, por
+    el mail de una ficha de Meta. None si no hay ninguna.
+    """
+    if phone:
+        return get_business_by_phone(db, phone)
+    return buscar_ficha_meta_por_mail(db, email)
+
+
+def _ahora_utc() -> str:
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _importar_formulario(db: str, lead: dict, fields: dict, ficha: dict):
+    """El paso comun de los imports contra Graph: guarda un formulario.
+
+    Devuelve el id de la ficha si es NUEVA, o None si el formulario ya estaba
+    registrado o es de una ficha que ya existia (duplicado, como antes). En
+    los dos casos de ficha existente se registra el envio: es lo que hace
+    que el import diario rellene `meta_lead_envios` con todo lo que Graph
+    devuelve (backfill) sin crear fichas ni avisar a nadie.
+    """
+    meta_id = lead.get("id")
+    if envio_meta_registrado(db, meta_id):
+        return None
+    ficha["scraped_at"] = ficha.get("scraped_at") or _ahora_utc()
+    phone, email = ficha.get("phone") or "", ficha.get("email") or ""
+    # Primero la ficha de Meta que ya tiene ese telefono (con cualquier grafia:
+    # "+598 99..." y "59899..." son la misma persona) o, sin telefono, ese mail.
+    # Una ficha de otra cohorte no se toma: el INSERT de abajo decide como
+    # siempre, y ese lead no puede quedar fuera de Meta Ads.
+    existente = _envio_sobre_ficha_existente(db, phone, email)
+    if existente and (existente.get("source") or "") == "meta":
+        _registrar_envio(db, existente["id"], meta_id, ficha["scraped_at"], fields, lead)
+        return None
+    biz_id = insert_business(db, ficha)
+    if biz_id:
+        _registrar_envio(db, biz_id, meta_id, ficha["scraped_at"], fields, lead)
+        return biz_id
+    existente = existente or _envio_sobre_ficha_existente(db, phone, email)
+    if existente:
+        _registrar_envio(db, existente["id"], meta_id, ficha["scraped_at"], fields, lead)
+    return None
 
 
 def _page_token() -> str:
@@ -274,13 +345,34 @@ def _fetch_and_store_lead(app, lead_id: str, form_id: str):
             campaign_name = lead_data.get("campaign_name", "")
             notes = f"Meta Lead Ad · {campaign_name or ad_name or form_id or ''}".strip(" ·")
 
-            created_at = lead_data.get("created_time", "")
-            if created_at:
-                try:
-                    from datetime import datetime, timezone
-                    created_at = datetime.fromisoformat(created_at.replace("+0000","")).replace(tzinfo=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-                except Exception:
-                    created_at = ""
+            # Webhook que reintenta: este formulario ya se guardo. Sin esto, un
+            # reintento de Meta repetia el aviso de "nuevo lead".
+            if envio_meta_registrado(db, lead_id):
+                logger.info(f"Meta lead {lead_id} ya registrado: se ignora el reintento")
+                return
+
+            # Sin created_time se usa ahora mismo, y el MISMO valor va a la ficha
+            # y al envio: si no, el envio y el scraped_at quedarian a segundos de
+            # distancia y el mismo formulario contaria dos veces.
+            created_at = norm_created_time(lead_data.get("created_time", "")) or _ahora_utc()
+
+            # Sin telefono el INSERT nunca choca (phone NULL no es UNIQUE): la
+            # persona que vuelve a escribir con el mismo mail se busca a mano.
+            ficha_por_mail = None if phone else buscar_ficha_meta_por_mail(db, email)
+            if ficha_por_mail:
+                update_business(db, ficha_por_mail["id"],
+                                form_data=json.dumps(fields, ensure_ascii=False))
+                _guardar_campana_del_lead(db, ficha_por_mail["id"], lead_data)
+                _registrar_envio(db, ficha_por_mail["id"], lead_id, created_at, fields, lead_data)
+                log_activity(db, "meta_webhook", "lead_updated", "lead", ficha_por_mail["id"], name,
+                             f"Volvió a escribir por Meta · {campaign_name or ad_name}", user_id=None)
+                threading.Thread(
+                    target=_notify_new_meta_lead,
+                    args=(db, name, phone, campaign_name or ad_name or "", city, ficha_por_mail["id"]),
+                    daemon=True,
+                ).start()
+                return
+
             biz_id = insert_business(db, {
                 "name":       name,
                 "phone":      phone or None,
@@ -297,6 +389,7 @@ def _fetch_and_store_lead(app, lead_id: str, form_id: str):
 
             if biz_id:
                 _guardar_campana_del_lead(db, biz_id, lead_data)
+                _registrar_envio(db, biz_id, lead_id, created_at, fields, lead_data)
                 log_activity(db, "meta_webhook", "lead_created", "lead", biz_id, name,
                              f"Fuente: Meta Lead Ad · {campaign_name or ad_name}", user_id=None)
                 logger.info(f"Meta lead stored: {name} ({phone}) → id {biz_id}")
@@ -309,6 +402,7 @@ def _fetch_and_store_lead(app, lead_id: str, form_id: str):
                 existente_id = _merge_lead_into_existing(db, phone, email, fields)
                 if existente_id:
                     _guardar_campana_del_lead(db, existente_id, lead_data)
+                    _registrar_envio(db, existente_id, lead_id, created_at, fields, lead_data)
                     logger.warning(
                         f"Meta lead sobre un negocio que ya existia: {name} ({phone}) "
                         f"→ id {existente_id}; se le devolvio source='meta' y se guardo el form_data"
@@ -427,6 +521,34 @@ def meta_sync_planilla():
     return jsonify({"ok": True, "dry": dry, **resumen, "demos": demos})
 
 
+@meta_bp.route("/api/meta/leads/<int:lead_id>/semaforo", methods=["POST"])
+def meta_marcar_semaforo(lead_id):
+    """Marca a mano el color del semaforo de un lead desde Meta Ads.
+
+    `{"color": "celeste"}` (o "sin_color"), y opcional `"mes": "AAAA-MM"`: el
+    mes de la lista desde donde se marco, para la demo del Registro. Pide el
+    panel `meta`. Las reglas —donde se guarda, que pasa con la demo y como
+    convive con la planilla— estan en services/planilla_semaforo.marcar_color.
+    """
+    from services.auth import require_panel
+    bloqueo = require_panel(_db(), "meta")
+    if bloqueo:
+        return bloqueo
+
+    from routes.leads import registrar_cambio_de_estado
+    from services.planilla_semaforo import MarcaInvalida, marcar_color
+
+    data = request.get_json(silent=True) or {}
+    db = _db()
+    try:
+        resultado = marcar_color(
+            db, lead_id, data.get("color"), mes=data.get("mes"),
+            cambiar_estado=lambda estado, nota: registrar_cambio_de_estado(db, lead_id, estado, nota))
+    except MarcaInvalida as e:
+        return jsonify({"ok": False, "error": str(e)}), e.status
+    return jsonify({"ok": True, **resultado})
+
+
 @meta_bp.route("/api/meta/import-leads", methods=["POST"])
 def meta_import_leads():
     from flask import session
@@ -483,7 +605,7 @@ def meta_import_leads():
                             ct = datetime.fromisoformat(ct.replace("+0000","")).replace(tzinfo=tz.utc).strftime("%Y-%m-%d %H:%M:%S")
                         except Exception:
                             ct = ""
-                    biz_id = insert_business(db, {
+                    biz_id = _importar_formulario(db, lead, fields, {
                         "name":       name,
                         "phone":      phone or None,
                         "email":      email or None,
@@ -606,7 +728,7 @@ def meta_import_sync():
                         ct = datetime.fromisoformat(ct.replace("+0000","")).replace(tzinfo=tz.utc).strftime("%Y-%m-%d %H:%M:%S")
                     except Exception as e2:
                         errors.append(f"date: {e2}"); ct = ""
-                biz_id = insert_business(db, {
+                biz_id = _importar_formulario(db, lead, fields, {
                     "name": name, "phone": phone or None, "email": email or None, "city": city or None,
                     "category": "Meta Lead Ad", "status": "scraped",
                     "notes": f"Meta Lead Ad · {lead.get('campaign_name') or form.get('name','')}".strip(" ·"),
@@ -797,7 +919,7 @@ def _run_import_sync(db: str) -> tuple[int, int]:
                 except Exception:
                     ct = ""
             campaign = lead.get("campaign_name") or form.get("name", "")
-            biz_id = insert_business(db, {
+            biz_id = _importar_formulario(db, lead, fields, {
                 "name": name, "phone": phone or None, "email": email or None, "city": city or None,
                 "category": "Meta Lead Ad", "status": "scraped",
                 "notes": f"Meta Lead Ad · {campaign}".strip(" ·"),

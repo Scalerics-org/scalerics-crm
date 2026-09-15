@@ -448,8 +448,9 @@ def piezas_del_mes(db_path: str, mes: str, hoy=None) -> dict:
     que nunca llegaron; el CRM cuenta gente de verdad pero solo sabe la pieza
     de los leads que Meta mando con `ad_id`. Si ningun lead del mes trae la
     pieza (los viejos no la tienen), `leads_crm` es None y no 0: un cero diria
-    "no trajo a nadie" cuando lo que falta es el dato. La fecha del CRM es el
-    dia UTC de `scraped_at`, igual que el resto del panel.
+    "no trajo a nadie" cuando lo que falta es el dato. Los del CRM son
+    envios de formulario (database.ENVIOS_META_SQL: quien vuelve a escribir
+    cuenta tambien en el mes de la vuelta), por su dia en hora de Montevideo.
 
     **Un mes sin piezas dice por que.** `estado_datos` separa "no se pauto"
     (`sin_pauta`) de "no hay datos por pieza guardados" (`sin_datos_por_pieza`):
@@ -500,10 +501,11 @@ def piezas_del_mes(db_path: str, mes: str, hoy=None) -> dict:
             "WHERE spend > 0 OR impressions > 0").fetchone()
         # Los leads de Meta que entraron al CRM en el mes, con la pieza que
         # dijo Meta. `meta_ad_id` vacio es "no se sabe", no "ninguna".
+        from database import ENVIOS_META_SQL
         crm = conn.execute(
             "SELECT NULLIF(meta_ad_id, '') AS ad_id, COUNT(*) AS n "
-            "FROM businesses WHERE source = 'meta' "
-            "AND substr(scraped_at, 1, 10) BETWEEN ? AND ? "
+            f"FROM ({ENVIOS_META_SQL}) WHERE source = 'meta' "
+            "AND substr(fecha_local, 1, 10) BETWEEN ? AND ? "
             "GROUP BY NULLIF(meta_ad_id, '')", (desde, hasta)).fetchall()
     finally:
         conn.close()

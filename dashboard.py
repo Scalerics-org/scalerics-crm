@@ -35,6 +35,7 @@ from routes.daily import daily_bp
 from routes.plantillas import plantillas_bp
 from routes.web import web_bp
 from routes.marketing import marketing_bp
+from routes.backups import backups_bp
 from services.auth import is_admin
 from services.demo_service import demo_job_handler
 from services.linkedin_posts import linkedin_job_handler
@@ -407,6 +408,9 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   --semaforo-celeste:#00ffff;
   --semaforo-violeta:#ff00ff;
   --semaforo-venta:#38761d;
+  --semaforo-rojo:#ff0000;
+  --semaforo-amarillo:#ffff00;
+  --semaforo-negro:#000000;
 }
 body.light{
   --fondo:#f8fafc;
@@ -441,6 +445,9 @@ body.light{
   --semaforo-celeste:#00ffff;
   --semaforo-violeta:#ff00ff;
   --semaforo-venta:#38761d;
+  --semaforo-rojo:#ff0000;
+  --semaforo-amarillo:#ffff00;
+  --semaforo-negro:#000000;
 }
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:100vh;display:flex}
@@ -671,6 +678,52 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
   .demo-meta{margin-left:0;width:100%}
   .demo-mes-presu{margin-left:0}
 }
+/* ── Meta Ads por mes y semaforo ─────────────────────────────────────────────
+   La lista de Meta Ads va de a un mes y cada lead se pinta con el color del
+   semaforo de la planilla: borde grueso del color pleno y un tinte suave de
+   fondo, mezclado con la superficie del tema para que el texto se siga leyendo
+   en claro y en oscuro. Los colores son los tokens --semaforo-*, los mismos del
+   Registro de demos. */
+.mm-nav-mes{display:flex;align-items:center;gap:6px}
+.mm-nav-mes span{font-size:.82rem;font-weight:700;color:var(--texto);min-width:130px;text-align:center}
+.mm-nav-mes .cal-nav-btn:disabled{opacity:.4;cursor:default;pointer-events:none}
+.mm-resumen{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;font-size:.8rem;color:var(--texto-tenue);margin:-2px 2px 12px}
+.mm-resumen-total{font-weight:700;color:var(--texto)}
+.mm-resumen-color{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.mm-buscar-todos{margin:-4px 2px 12px;font-size:.8rem;color:var(--texto-tenue)}
+.mm-link{background:none;border:none;padding:0;font:inherit;color:var(--azul-claro);cursor:pointer;text-decoration:underline}
+.mm-c-rojo{--mm-color:var(--semaforo-rojo)}
+.mm-c-amarillo{--mm-color:var(--semaforo-amarillo)}
+.mm-c-verde{--mm-color:var(--semaforo-verde)}
+.mm-c-celeste{--mm-color:var(--semaforo-celeste)}
+.mm-c-violeta{--mm-color:var(--semaforo-violeta)}
+.mm-c-venta{--mm-color:var(--semaforo-venta)}
+.mm-c-negro{--mm-color:var(--semaforo-negro)}
+.mm-c-sin{--mm-color:var(--borde-fuerte)}
+.mm-punto{display:inline-block;width:12px;height:12px;border-radius:50%;flex:none;background:var(--mm-color);box-shadow:0 0 0 1px var(--borde-fuerte)}
+.mm-c-sin .mm-punto,.mm-punto.mm-c-sin{background:var(--relleno);box-shadow:inset 0 0 0 2px var(--borde-fuerte)}
+#meta-body .table-row.mm-pintado{border-left:6px solid var(--mm-color);background:color-mix(in srgb,var(--mm-color) 14%,var(--superficie))}
+#meta-body .table-row.mm-pintado:hover{background:color-mix(in srgb,var(--mm-color) 22%,var(--superficie))}
+#meta-body .table-row.mm-c-negro{box-shadow:inset 0 0 0 1px var(--borde-fuerte)}
+.mm-sem-btn{display:inline-flex;align-items:center;gap:7px;background:var(--relleno);border:1px solid var(--borde-fuerte);color:var(--texto);border-radius:999px;padding:4px 11px 4px 6px;font-size:.74rem;font-weight:650;font-family:inherit;cursor:pointer;white-space:nowrap}
+.mm-sem-btn:hover,.mm-sem-btn.mm-abierto{border-color:var(--azul)}
+.mm-sem-btn .mm-punto{width:16px;height:16px}
+.mm-opciones{display:flex;flex-wrap:wrap;gap:8px;padding:12px;margin:-4px 0 10px;background:var(--superficie-alta);border:1px solid var(--borde-fuerte);border-radius:12px}
+.mm-opciones-titulo{flex-basis:100%;font-size:.76rem;color:var(--texto-tenue)}
+.mm-opcion{display:inline-flex;align-items:center;gap:9px;min-height:40px;padding:6px 14px 6px 8px;border-radius:999px;border:2px solid var(--mm-color);background:color-mix(in srgb,var(--mm-color) 16%,var(--superficie));color:var(--texto);font-size:.84rem;font-weight:650;font-family:inherit;cursor:pointer}
+.mm-opcion:hover{background:color-mix(in srgb,var(--mm-color) 28%,var(--superficie))}
+.mm-opcion .mm-punto{width:22px;height:22px}
+.mm-opcion.mm-actual{box-shadow:0 0 0 2px var(--azul)}
+.mm-opcion.mm-c-sin{background:var(--relleno)}
+.mm-vuelta{display:inline-block;margin-left:4px;font-size:.66rem;font-weight:700;padding:1px 7px;border-radius:99px;background:var(--azul-tinte);color:var(--azul-claro);white-space:nowrap}
+.mm-vuelta-primero{display:block;font-size:.68rem;color:var(--texto-debil);margin-top:2px}
+.mm-fecha{font-size:.72rem;color:var(--texto-debil)}
+@media (max-width:768px){
+  #meta-body .table-row.mm-pintado{border-left:6px solid var(--mm-color)!important;background:color-mix(in srgb,var(--mm-color) 14%,var(--superficie))!important}
+  .mm-opcion{min-height:44px;flex:1 1 45%}
+  .mm-nav-mes{width:100%;justify-content:space-between}
+}
+/* ── fin Meta Ads por mes */
 
 /* Tabla de clientes activos: grilla propia, no reusa .no-cb, porque sus reglas
    mobile esconden la 4a columna — que aca es Mantenimiento, no Notas. */
@@ -1685,6 +1738,7 @@ body.light .mobile-header-title{color:#0f172a}
 .upick-check{color:var(--azul);font-size:.8rem;font-weight:700}
 .fin-toolbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:18px}
 .fin-toggle{display:flex;gap:6px;margin-left:auto}
+.fin-aviso-sl{background:var(--azul-tinte);color:var(--azul-claro);border:1px solid var(--borde);border-radius:8px;padding:8px 12px;font-size:.78rem;font-weight:600;margin-bottom:14px}
 .fin-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:18px}
 .fin-kpi{background:var(--superficie-honda);border:1px solid var(--borde);border-radius:10px;padding:16px 18px}
 .fin-kpi-label{font-size:.7rem;font-weight:700;color:var(--rotulo);text-transform:uppercase;letter-spacing:.8px}
@@ -1717,6 +1771,44 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .fin-hbar-relleno{height:100%;border-radius:3px}
 .fin-hbar-monto{font-size:.75rem;color:var(--texto);width:74px;text-align:right;flex-shrink:0}
 @media (max-width:760px){.fin-split{grid-template-columns:1fr}}
+/* ── Finanzas: Balance ────────────────────────────────────────────────────────
+   Todo con tokens. Para imprimir, finBalImprimir() copia el balance a
+   .fb-print (hijo directo del body), le pone al body `light` y
+   `fb-imprimiendo`, y el @media print esconde todo lo demás: sale en claro
+   aunque la pantalla esté en oscuro. */
+.fb-controles{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end}
+.fb-label{display:flex;flex-direction:column;gap:4px;font-size:.7rem;font-weight:700;color:var(--rotulo);text-transform:uppercase;letter-spacing:.6px}
+.fb-fechas{display:flex;flex-wrap:wrap;gap:12px}
+.fb-campo{background:var(--fondo-hundido);border:1px solid var(--borde);border-radius:8px;padding:7px 10px;color:var(--texto);font-size:.82rem;font-family:inherit}
+.fb-campo:focus{outline:none;border-color:var(--azul)}
+.fb-ayuda{font-size:.75rem;color:var(--texto-debil);margin-top:12px;line-height:1.45}
+.fb-doc{background:var(--superficie-honda);border:1px solid var(--borde);border-radius:10px;padding:22px;margin-bottom:18px}
+.fb-cabecera{border-bottom:1px solid var(--borde);padding-bottom:14px;margin-bottom:18px}
+.fb-titulo{font-size:1.15rem;font-weight:700;color:var(--texto-fuerte)}
+.fb-sub{font-size:.78rem;color:var(--texto-tenue);margin-top:4px}
+.fb-aviso{background:var(--ambar-tinte);color:var(--ambar);border:1px solid var(--ambar-borde);border-radius:8px;padding:9px 12px;font-size:.8rem;margin-bottom:16px}
+.fb-desglose{font-size:.72rem;color:var(--texto-tenue);margin-top:6px;line-height:1.4}
+.fb-seccion{margin-top:22px}
+.fb-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.fb-tabla td.fb-num,.fb-tabla th.fb-num{text-align:right}
+.fb-tabla tr.fb-total td{font-weight:700;border-top:2px solid var(--borde-fuerte)}
+.fb-nota{font-size:.78rem;color:var(--texto-debil);padding:6px 0;line-height:1.45}
+.fb-error{color:var(--rojo-texto);padding:16px;font-size:.85rem}
+.fb-print{display:none}
+@media (max-width:760px){
+  .fin-toggle{flex-wrap:wrap;margin-left:0}
+  .fb-controles{flex-direction:column;align-items:stretch}
+  .fb-doc{padding:14px}
+}
+@media print{
+  body.fb-imprimiendo{background:var(--superficie) !important}
+  body.fb-imprimiendo > *{display:none !important}
+  body.fb-imprimiendo > .fb-print{display:block !important;padding:0;margin:0}
+  body.fb-imprimiendo .fb-doc{border:none;padding:0;background:var(--superficie)}
+  body.fb-imprimiendo .fin-kpi{background:var(--superficie)}
+  body.fb-imprimiendo .fb-scroll{overflow:visible}
+  body.fb-imprimiendo .fb-seccion{break-inside:avoid}
+}
 /* ── Inteligencia financiera ──────────────────────────────────────────────────
    Solo tokens: el tema claro sale solo. El borde izquierdo de cada tarjeta dice
    el tipo: verde suma ingreso, ambar recorta gasto, rojo es alerta de margen. */
@@ -2127,6 +2219,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 </style>
 </head>
 <body>
+<div class="fb-print" id="fb-print"></div>
 <div class="sidebar-backdrop" id="sidebar-backdrop" onclick="closeSidebar()"></div>
 <header class="mobile-header" id="mobile-header">
   <img id="mobile-header-logo" src="https://raw.githubusercontent.com/Scalerics-org/scalerics-assets/main/logo_full_alt.png" alt="Scalerics">
@@ -2244,15 +2337,20 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       </div>
     </div>
     <div class="filters">
+      <div class="mm-nav-mes" id="meta-mes-nav">
+        <button class="cal-nav-btn" id="meta-mes-ant" onclick="mmMes(-1)" title="Mes anterior">&larr;</button>
+        <span id="meta-mes-label"></span>
+        <button class="cal-nav-btn" id="meta-mes-sig" onclick="mmMes(1)" title="Mes siguiente">&rarr;</button>
+        <button class="cal-today-btn" onclick="mmMesHoy()">Este mes</button>
+      </div>
       <input class="search-box" id="meta-search-input" placeholder="🔍 Buscar..." oninput="metaSearch(this.value)">
-      <select class="filter-select" id="meta-month-filter" onchange="metaMonthFilter(this.value)">
-        <option value="">Todos los meses</option>
-      </select>
       <select class="filter-select" id="meta-estado-filter" onchange="metaEstadoFilter(this.value)">
         <option value="">Todos los estados</option>
       </select>
       <span id="meta-count" style="color:#64748b;font-size:.8rem;align-self:center;margin-left:auto"></span>
     </div>
+    <div class="mm-resumen" id="meta-mes-resumen"></div>
+    <div class="mm-buscar-todos" id="meta-mes-buscar-todos"></div>
     <div class="table-wrap">
       <div class="table-header no-cb" style="grid-template-columns:1.8fr 1fr 1.2fr 1.2fr 0.9fr 0.8fr 1.1fr">
         <span>Nombre / Negocio</span><span>Teléfono</span><span>Qué busca</span><span>Presupuesto</span><span>Ciudad</span><span style="cursor:pointer" onclick="toggleMetaSort()">Fecha <span id="meta-sort-icon">↓</span></span><span>Acciones</span>
@@ -2482,6 +2580,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 
   <!-- ======= FINANZAS PANEL ======= -->
   <div id="finanzas-panel" class="panel">
+    <div class="fin-aviso-sl" id="fin-solo-lectura" style="display:none">Modo solo lectura: podés ver y generar balances</div>
     <div class="fin-toolbar">
       <div class="fin-nav-mes" id="fin-nav-mes">
         <button class="cal-nav-btn" onclick="finMes(-1)" title="Mes anterior">&larr;</button>
@@ -2491,7 +2590,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       </div>
       <span class="fin-cerrado" id="fin-cerrado" style="display:none">
         Mes cerrado
-        <button class="cal-today-btn" onclick="finReabrirMes()">Reabrir mes</button>
+        <button class="cal-today-btn" id="fin-btn-reabrir" onclick="finReabrirMes()">Reabrir mes</button>
       </span>
       <select id="fin-rango" class="filter-select" onchange="_finRangoCambio()">
         <option value="mes" selected>Mes actual</option>
@@ -2505,8 +2604,9 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
         <button class="pill" id="fin-tab-fijos" onclick="finVista('fijos')">Fijos</button>
         <button class="pill" id="fin-tab-iva" onclick="finVista('iva')">IVA</button>
         <button class="pill" id="fin-tab-pauta" onclick="finVista('pauta')">Pauta</button>
+        <button class="pill" id="fin-tab-balance" onclick="finVista('balance')">Balance</button>
       </div>
-      <button class="btn-primary" onclick="abrirMovimiento()">
+      <button class="btn-primary" id="fin-btn-movimiento" onclick="abrirMovimiento()">
         <i data-lucide="plus" class="nav-icon"></i> Movimiento
       </button>
     </div>
@@ -2529,7 +2629,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       <div class="fin-card">
         <div class="fin-card-title" style="display:flex;align-items:center;gap:10px">
           Lo que falta cobrar
-          <button class="cal-today-btn" onclick="abrirPendiente()">+ Agregar</button>
+          <button class="cal-today-btn" id="fin-btn-pendiente" onclick="abrirPendiente()">+ Agregar</button>
         </div>
         <div id="fin-cobrar"></div></div>
     </div>
@@ -2549,6 +2649,35 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     <div id="fin-vista-pauta" style="display:none">
       <div class="fin-card"><div class="fin-card-title">Qué compró la pauta</div>
         <div id="fin-pauta"></div></div>
+    </div>
+
+    <div id="fin-vista-balance" style="display:none">
+      <div class="fin-card">
+        <div class="fin-card-title">Balance</div>
+        <div class="fb-controles">
+          <label class="fb-label">Tipo
+            <select id="fb-tipo" class="filter-select">
+              <option value="blanco" selected>En blanco (contable)</option>
+              <option value="interno">Interno (todo)</option>
+            </select>
+          </label>
+          <label class="fb-label">Período
+            <select id="fb-preset" class="filter-select" onchange="finBalPreset()">
+              <option value="anio" selected>Este año</option>
+              <option value="inicio">Desde el inicio</option>
+              <option value="personalizado">Personalizado</option>
+            </select>
+          </label>
+          <span class="fb-fechas" id="fb-fechas" style="display:none">
+            <label class="fb-label">Desde <input type="date" id="fb-desde" class="fb-campo"></label>
+            <label class="fb-label">Hasta <input type="date" id="fb-hasta" class="fb-campo"></label>
+          </span>
+          <button class="btn-primary" id="fb-generar" onclick="finBalGenerar()">Generar balance hasta el momento</button>
+          <button class="btn-ghost" id="fb-imprimir" onclick="finBalImprimir()" style="display:none">Imprimir / PDF</button>
+        </div>
+        <div class="fb-ayuda">En blanco: solo lo que se contabiliza (lo facturado, con IVA, y los pagos de impuestos). Interno: todo, y en cada total cuánto es en blanco y cuánto no.</div>
+      </div>
+      <div id="fin-balance"></div>
     </div>
   </div>
 
@@ -3952,7 +4081,6 @@ function _reloadActiveCallPanel() {
 
 // ── Meta Ads panel ───────────────────────────────────────────────────────────
 let _metaSearch = '';
-let _metaMonth = '';
 let _metaEstado = '';
 let _metaLeads = [];
 let _metaSortDesc = true;
@@ -3976,8 +4104,6 @@ function _startMetaPoll() {
         badge.textContent = newOnes.length === 1 ? 'NEW' : `+${newOnes.length}`;
         badge.style.display = '';
         _metaLeads = leads;
-        _fillMetaMonths();
-        _fillMetaEstados();
         const activePanel = document.querySelector('.panel.active');
         if (activePanel && activePanel.id === 'meta-panel') {
           renderMetaTable();
@@ -3988,55 +4114,270 @@ function _startMetaPoll() {
     } catch(e) {}
   }, 60000);
 }
-function metaSearch(v) { _metaSearch = v.toLowerCase(); renderMetaTable(); }
-function metaMonthFilter(v) { _metaMonth = v; renderMetaTable(); }
+function metaSearch(v) {
+  _metaSearch = v.toLowerCase();
+  if (!_metaSearch) mmTodosLosMeses = false;
+  renderMetaTable();
+}
 // La cola fria excluye a los leads de Meta a proposito, asi que este es el
 // unico lugar donde se puede preguntar "a quien de Meta no llamo nadie".
 function metaEstadoFilter(v) { _metaEstado = v; renderMetaTable(); }
 
-// Clave 'YYYY-MM' del lead, o '' si no tiene fecha usable. Es la misma funcion
-// que usan el <select> y el filtro, para que no puedan discrepar: si una arma
-// la clave distinto que la otra, el mes queda en la lista y no filtra nada.
-function _metaMesKey(l) {
-  const d = new Date(l.scraped_at || 0);
-  return isNaN(d) || !l.scraped_at ? '' : `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+// -- Lista por mes (pedido de Juan, 15/9) -------------------------------------
+// "Que se haga una lista por meses, donde puedas ir deslizando por mes". El mes
+// de un lead es el de cada formulario que mando, en hora de Montevideo: quien
+// volvio a escribir aparece tambien en el mes de la vuelta, marcado. Todo se
+// recorta aca: el panel ya trae todos los leads de Meta (y el poll tambien).
+let mmMesVista = '';          // 'AAAA-MM'; vacio = el mes actual
+let mmTodosLosMeses = false;  // la busqueda mira todos los meses
+let mmAbierto = null;         // id del lead con las opciones de color abiertas
+let mmToque = null;           // donde apoyo el dedo, para deslizar
+let mmSwipeListo = false;
+let mmGuardando = false;
+// Los colores del semaforo en el orden del embudo. Mismas claves y nombres que
+// services/planilla_semaforo.SEMAFORO (un test los compara). El color de cada
+// uno sale del token --semaforo-* por la clase mm-c-<clave>.
+const MM_SEMAFORO = [
+  {clave: 'rojo', etiqueta: 'No atiende'},
+  {clave: 'amarillo', etiqueta: 'Interesado'},
+  {clave: 'verde', etiqueta: 'Demo agendada'},
+  {clave: 'celeste', etiqueta: 'Demo realizada'},
+  {clave: 'violeta', etiqueta: 'Hubo demo y no cerró'},
+  {clave: 'venta', etiqueta: 'Venta concretada'},
+  {clave: 'negro', etiqueta: 'No le interesa'},
+];
+const MM_MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio',
+                  'Agosto', 'Setiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+const MM_HORAS_UTC = 3 * 3600 * 1000;   // Uruguay: UTC-3 fijo desde 2015
+
+// 'AAAA-MM' en hora de Montevideo de una fecha UTC de la base. Por texto y
+// Date.UTC, nunca new Date(texto): el navegador la leeria en SU hora. Una fecha
+// sin hora queda en su mes (correrla la mandaria al dia anterior).
+function mmMesDe(fecha) {
+  const m = String(fecha || '').match(/^([0-9]{4})-([0-9]{2})-([0-9]{2})(?:[ T]([0-9]{2}):([0-9]{2}))?/);
+  if (!m) return '';
+  if (m[4] === undefined) return m[1] + '-' + m[2];
+  const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) - MM_HORAS_UTC);
+  return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0');
 }
 
-function _fillMetaEstados() {
+function mmMesActual(ahoraMs) {
+  const d = new Date((ahoraMs === undefined ? Date.now() : ahoraMs) - MM_HORAS_UTC);
+  return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0');
+}
+
+function mmMesSumar(mes, delta) {
+  const partes = String(mes).split('-');
+  const total = parseInt(partes[0], 10) * 12 + (parseInt(partes[1], 10) - 1) + delta;
+  return Math.floor(total / 12) + '-' + String(total % 12 + 1).padStart(2, '0');
+}
+
+function mmEtiquetaMes(clave) {
+  const partes = String(clave).split('-');
+  const mes = MM_MESES[parseInt(partes[1], 10) - 1];
+  return mes ? mes + ' ' + partes[0] : clave;
+}
+
+// Las fechas de cada formulario del lead (UTC). Sin el dato del servidor, la
+// fecha de la ficha: es lo que se contaba antes.
+function mmEnvios(b) {
+  if (b.envios && b.envios.length) return b.envios;
+  return b.scraped_at ? [b.scraped_at] : [];
+}
+
+function mmMesesDe(b) { return mmEnvios(b).map(mmMesDe).filter(Boolean); }
+
+function mmEnviosDelMes(b, mes) { return mmEnvios(b).filter(f => mmMesDe(f) === mes); }
+
+// Cada persona una sola vez por mes, aunque haya escrito dos veces ese mes.
+function mmDelMes(leads, mes) { return leads.filter(b => mmMesesDe(b).indexOf(mes) !== -1); }
+
+// Volvio a escribir: ya habia mandado un formulario en un mes anterior.
+function mmVolvio(b, mes) { return mmMesesDe(b).some(m => m < mes); }
+
+function mmPrimerEnvio(b) { return mmEnvios(b).slice().sort()[0] || ''; }
+
+function mmFechaCorta(fecha) {
+  const s = String(fecha || '');
+  return /^[0-9]{4}-[0-9]{2}-[0-9]{2}/.test(s) ? s.slice(8, 10) + '/' + s.slice(5, 7) + '/' + s.slice(0, 4) : s;
+}
+
+// La fecha que muestra la fila: la del formulario de ESE mes (el ultimo, si
+// fueron dos), o el ultimo de todos cuando se busca en todos los meses.
+function mmFechaDeFila(b, mes, todos) {
+  const e = (todos ? mmEnvios(b) : mmEnviosDelMes(b, mes)).slice().sort();
+  return e.length ? e[e.length - 1] : (b.scraped_at || '');
+}
+
+function mmMesMasViejo(leads) {
+  let viejo = '';
+  leads.forEach(b => mmMesesDe(b).forEach(m => { if (!viejo || m < viejo) viejo = m; }));
+  return viejo;
+}
+
+// Nunca al futuro; para atras, hasta el mes del lead mas viejo.
+function mmMesMover(mes, delta, masViejo, actual) {
+  let m = mmMesSumar(mes, delta);
+  if (m > actual) m = actual;
+  const piso = masViejo && masViejo < actual ? masViejo : actual;
+  if (m < piso) m = piso;
+  return m;
+}
+
+function mmMesVisible() { return mmMesVista || mmMesActual(); }
+
+// Total del mes y cuantos de cada color. `envios` cuenta formularios, como
+// Meta (el contador principal); `personas`, filas de la lista.
+function mmConteo(leads, mes) {
+  const por = {};
+  let envios = 0;
+  let sin = 0;
+  leads.forEach(b => {
+    envios += mes ? mmEnviosDelMes(b, mes).length : 1;
+    if (b.semaforo) por[b.semaforo] = (por[b.semaforo] || 0) + 1;
+    else sin += 1;
+  });
+  return {personas: leads.length, envios: envios, por: por, sin: sin};
+}
+
+function mmResumenHtml(leads, mes) {
+  const c = mmConteo(leads, mes);
+  const total = c.envios === c.personas
+    ? c.envios + (c.envios === 1 ? ' lead' : ' leads')
+    : c.envios + ' leads · ' + c.personas + ' personas';
+  const partes = MM_SEMAFORO.filter(s => c.por[s.clave]).map(s =>
+    `<span class="mm-resumen-color mm-c-${s.clave}"><span class="mm-punto"></span>${c.por[s.clave]} ${esc(s.etiqueta)}</span>`);
+  if (c.sin) partes.push(`<span class="mm-resumen-color mm-c-sin"><span class="mm-punto"></span>${c.sin} sin color</span>`);
+  return `<span class="mm-resumen-total">${esc(mmEtiquetaMes(mes))}: ${total}</span>` + partes.join('');
+}
+
+function mmPintarNavegador(mes) {
+  const label = document.getElementById('meta-mes-label');
+  if (label) label.textContent = mmEtiquetaMes(mes);
+  const viejo = mmMesMasViejo(_metaLeads);
+  const ant = document.getElementById('meta-mes-ant');
+  const sig = document.getElementById('meta-mes-sig');
+  if (ant) ant.disabled = !viejo || mes <= viejo;
+  if (sig) sig.disabled = mes >= mmMesActual();
+}
+
+function mmMes(delta) {
+  mmMesVista = mmMesMover(mmMesVisible(), delta, mmMesMasViejo(_metaLeads), mmMesActual());
+  mmAbierto = null;
+  renderMetaTable();
+}
+
+function mmMesHoy() { mmMesVista = ''; mmAbierto = null; renderMetaTable(); }
+
+function mmBuscarTodos(si) { mmTodosLosMeses = !!si; renderMetaTable(); }
+
+// Deslizar sobre la lista en el celular: a la izquierda, el mes siguiente; a la
+// derecha, el anterior. Solo un gesto franco (mas de 50px y mas horizontal que
+// vertical) cambia de mes: el scroll y los toques quedan como estaban, y los
+// listeners son pasivos, no frenan el scroll.
+function mmDireccionDeslizar(dx, dy) {
+  if (Math.abs(dx) <= 50 || Math.abs(dx) <= Math.abs(dy)) return 0;
+  return dx < 0 ? 1 : -1;
+}
+
+function mmToqueInicio(e) {
+  const t = e && e.touches && e.touches[0];
+  mmToque = t ? {x: t.clientX, y: t.clientY} : null;
+}
+
+function mmToqueFin(e) {
+  const t = e && e.changedTouches && e.changedTouches[0];
+  const inicio = mmToque;
+  mmToque = null;
+  if (!inicio || !t) return;
+  const dir = mmDireccionDeslizar(t.clientX - inicio.x, t.clientY - inicio.y);
+  if (dir) mmMes(dir);
+}
+
+function mmActivarDeslizar() {
+  if (mmSwipeListo) return;
+  const body = document.getElementById('meta-body');
+  if (!body || !body.addEventListener) return;
+  body.addEventListener('touchstart', mmToqueInicio, {passive: true});
+  body.addEventListener('touchend', mmToqueFin, {passive: true});
+  mmSwipeListo = true;
+}
+
+// -- Semaforo: tocar el color y elegir --------------------------------------
+function mmColorInfo(clave) { return MM_SEMAFORO.find(s => s.clave === clave) || null; }
+
+function mmBotonColor(b) {
+  const info = mmColorInfo(b.semaforo);
+  const clase = info ? 'mm-c-' + info.clave : 'mm-c-sin';
+  const abierto = mmAbierto === b.id ? ' mm-abierto' : '';
+  return `<button class="mm-sem-btn ${clase}${abierto}" onclick="mmAbrirColor(${b.id})" title="Marcar el color del semáforo"><span class="mm-punto"></span>${info ? esc(info.etiqueta) : 'Sin color'}</button>`;
+}
+
+function mmOpcionesHtml(b) {
+  const actual = b.semaforo || '';
+  const opciones = MM_SEMAFORO.map(s =>
+    `<button class="mm-opcion mm-c-${s.clave}${s.clave === actual ? ' mm-actual' : ''}" onclick="mmMarcarColor(${b.id}, '${s.clave}')"><span class="mm-punto"></span>${esc(s.etiqueta)}</button>`);
+  opciones.push(`<button class="mm-opcion mm-c-sin${actual ? '' : ' mm-actual'}" onclick="mmMarcarColor(${b.id}, 'sin_color')"><span class="mm-punto"></span>Sin color</button>`);
+  return `<div class="mm-opciones" id="meta-mes-opciones-${b.id}"><div class="mm-opciones-titulo">Color del semáforo para ${esc(b.name || 'este lead')}</div>${opciones.join('')}</div>`;
+}
+
+function mmAbrirColor(id) { mmAbierto = mmAbierto === id ? null : id; renderMetaTable(); }
+
+// Se guarda al tocar, sin boton Guardar, y la opcion se cierra.
+async function mmMarcarColor(id, clave) {
+  if (mmGuardando) return;
+  mmGuardando = true;
+  try {
+    const r = await fetch('/api/meta/leads/' + id + '/semaforo', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({color: clave, mes: mmMesVisible()}),
+    });
+    let d = {};
+    try { d = await r.json(); } catch (e) { d = {}; }
+    if (!r.ok || !d.ok) { alert(d.error || 'No se pudo guardar el color'); return; }
+    const lead = _metaLeads.find(l => l.id === id);
+    if (lead) {
+      lead.crm_status = d.crm_status;
+      lead.semaforo = d.semaforo || '';
+      if (d.semaforo_origen) lead.semaforo_origen = d.semaforo_origen;
+    }
+    mmAbierto = null;
+    renderMetaTable();
+  } catch (e) {
+    alert('No se pudo guardar el color: ' + e.message);
+  } finally {
+    mmGuardando = false;
+  }
+}
+
+function _fillMetaEstados(leads) {
   const sel = document.getElementById('meta-estado-filter');
   if (!sel) return;
+  const base = leads || _metaLeads;
   const etiquetas = {sin_contactar:'Sin contactar',interesado:'Interesado',contactado:'Interesado',reunion_agendada:'Reunión agendada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Ppto enviado',negociacion:'Negociación',cliente_cerrado:'Cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado',llamar_despues:'Llamar después',no_interesa:'No le interesa'};
   const cuenta = {};
-  _metaLeads.forEach(l => { const k = l.crm_status || 'sin_contactar'; cuenta[k] = (cuenta[k]||0)+1; });
+  base.forEach(l => { const k = l.crm_status || 'sin_contactar'; cuenta[k] = (cuenta[k]||0)+1; });
+  // El filtro elegido se mantiene al cambiar de mes aunque ese mes no tenga
+  // ninguno: si se cayera solo, la lista cambiaria sin que nadie lo pida.
   const previo = _metaEstado;
   const claves = Object.keys(cuenta).sort((a,b) => cuenta[b] - cuenta[a]);
-  sel.innerHTML = `<option value="">Todos los estados (${_metaLeads.length})</option>` +
-    claves.map(k => `<option value="${k}">${etiquetas[k] || k} (${cuenta[k]})</option>`).join('');
-  sel.value = claves.includes(previo) ? previo : '';
-  _metaEstado = sel.value;
-}
-
-function _fillMetaMonths() {
-  const sel = document.getElementById('meta-month-filter');
-  if (!sel) return;
-  const cuenta = {};
-  _metaLeads.forEach(l => { const k = _metaMesKey(l); if (k) cuenta[k] = (cuenta[k]||0)+1; });
-  const meses = Object.keys(cuenta).sort().reverse();
-  // Se preserva la seleccion: el poll de 60s repuebla la lista y sin esto el
-  // filtro del usuario se resetearia solo mientras mira la tabla.
-  const previo = _metaMonth;
-  const nombres = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-  sel.innerHTML = `<option value="">Todos los meses (${_metaLeads.length})</option>` +
-    meses.map(k => {
-      const [a, m] = k.split('-');
-      return `<option value="${k}">${nombres[parseInt(m,10)-1]} ${a} (${cuenta[k]})</option>`;
-    }).join('');
-  sel.value = meses.includes(previo) ? previo : '';
-  _metaMonth = sel.value;
+  if (previo && !claves.includes(previo)) claves.push(previo);
+  sel.innerHTML = `<option value="">Todos los estados (${base.length})</option>` +
+    claves.map(k => `<option value="${k}">${etiquetas[k] || k} (${cuenta[k] || 0})</option>`).join('');
+  sel.value = previo;
+  _metaEstado = previo;
 }
 function toggleMetaSort() { _metaSortDesc = !_metaSortDesc; document.getElementById('meta-sort-icon').textContent = _metaSortDesc ? '↓' : '↑'; renderMetaTable(); }
 
 async function loadMetaPanel() {
+  // Juan: "cuando entres a meta ads que lo primero que aparezca sea el mes
+  // actual". Cada vez que se abre el panel vuelve al mes de hoy, sin buscar en
+  // todos los meses ni opciones abiertas. El poll no pasa por aca: repinta el
+  // mes que se esta mirando.
+  mmMesVista = '';
+  mmTodosLosMeses = false;
+  mmAbierto = null;
   const body = document.getElementById('meta-body');
   body.innerHTML = '<div style="color:#475569;padding:16px;font-size:.85rem">Cargando...</div>';
   try {
@@ -4044,8 +4385,7 @@ async function loadMetaPanel() {
     const data = await r.json();
     _metaLeads = Array.isArray(data) ? data : (data.items || []);
     _metaLeads.forEach(l => _metaKnownIds.add(l.id));
-    _fillMetaMonths();
-    _fillMetaEstados();
+    mmActivarDeslizar();
     renderMetaTable();
     _startMetaPoll();
   } catch(e) { body.innerHTML = `<div style="color:#f87171;padding:16px">Error: ${e.message}</div>`; }
@@ -4053,20 +4393,40 @@ async function loadMetaPanel() {
 
 function renderMetaTable() {
   const body = document.getElementById('meta-body');
-  let leads = _metaLeads;
-  if (_metaSearch) leads = leads.filter(b => (b.name||'').toLowerCase().includes(_metaSearch) || (b.notes||'').toLowerCase().includes(_metaSearch));
-  if (_metaMonth) leads = leads.filter(b => _metaMesKey(b) === _metaMonth);
+  const mes = mmMesVisible();
+  mmPintarNavegador(mes);
+  const delMes = mmDelMes(_metaLeads, mes);
+  const resumen = document.getElementById('meta-mes-resumen');
+  if (resumen) resumen.innerHTML = mmResumenHtml(delMes, mes);
+  _fillMetaEstados(delMes);
+  const coincide = b => (b.name||'').toLowerCase().includes(_metaSearch) || (b.notes||'').toLowerCase().includes(_metaSearch);
+  const todos = !!_metaSearch && mmTodosLosMeses;
+  let leads = (todos ? _metaLeads : delMes).slice();
+  if (_metaSearch) leads = leads.filter(coincide);
   if (_metaEstado) leads = leads.filter(b => (b.crm_status || 'sin_contactar') === _metaEstado);
+  const aviso = document.getElementById('meta-mes-buscar-todos');
+  if (aviso) {
+    if (!_metaSearch) aviso.innerHTML = '';
+    else if (todos) aviso.innerHTML = `Buscando en todos los meses · <button class="mm-link" onclick="mmBuscarTodos(false)">Solo ${esc(mmEtiquetaMes(mes))}</button>`;
+    else aviso.innerHTML = `Buscando en ${esc(mmEtiquetaMes(mes))} · <button class="mm-link" onclick="mmBuscarTodos(true)">Buscar en todos los meses (${_metaLeads.filter(coincide).length})</button>`;
+  }
+  const base = todos ? _metaLeads.length : delMes.length;
   const _cnt = document.getElementById('meta-count');
-  if (_cnt) _cnt.textContent = leads.length === _metaLeads.length
+  if (_cnt) _cnt.textContent = leads.length === base
     ? `${leads.length} leads`
-    : `${leads.length} de ${_metaLeads.length}`;
-  if (!leads.length) { body.innerHTML = '<div class="empty-state">No hay leads que coincidan con el filtro</div>'; return; }
+    : `${leads.length} de ${base}`;
+  if (!leads.length) {
+    body.innerHTML = (_metaSearch || _metaEstado)
+      ? '<div class="empty-state">No hay leads que coincidan con el filtro</div>'
+      : `<div class="empty-state">No hay leads en ${esc(mmEtiquetaMes(mes))}</div>`;
+    return;
+  }
   const crmLabels = {sin_contactar:'Sin contactar',interesado:'Interesado',contactado:'Interesado',reunion_agendada:'Reunión agendada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Ppto enviado',negociacion:'Negociación',cliente_cerrado:'Cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado',llamar_despues:'Llamar después',no_interesa:'No le interesa'};
   const crmColor = {sin_contactar:'#475569',interesado:'#10b981',contactado:'#10b981',reunion_agendada:'#3b82f6',reunion_hecha:'#14b8a6',presupuesto_enviado:'#f97316',negociacion:'#fbbf24',cliente_cerrado:'#10b981',en_desarrollo:'#0088cc',finalizado:'#6ee7b7',llamar_despues:'#f59e0b',no_interesa:'#ef4444'};
   leads.sort((a,b) => {
-    const da = new Date(a.scraped_at||0), db2 = new Date(b.scraped_at||0);
-    return _metaSortDesc ? db2-da : da-db2;
+    const fa = String(mmFechaDeFila(a, mes, todos)), fb = String(mmFechaDeFila(b, mes, todos));
+    const orden = fa < fb ? -1 : (fa > fb ? 1 : 0);
+    return _metaSortDesc ? -orden : orden;
   });
   const buscarLabels = {
     'una_nueva_p\u00e1gina_web':'Nueva web',
@@ -4095,6 +4455,9 @@ function renderMetaTable() {
   body.innerHTML = leads.map(b => {
     const crm = b.crm_status || 'sin_contactar';
     const color = crmColor[crm] || '#475569';
+    const mmColor = mmColorInfo(b.semaforo) ? b.semaforo : '';
+    const mmFecha = String(mmFechaDeFila(b, mes, todos) || '');
+    const mmVuelta = !todos && mmVolvio(b, mes);
     let fd = {};
     try { fd = JSON.parse(b.form_data || '{}'); } catch(e) {}
     const negocio = fd['\u00bfc\u00f3mo_se_llama_tu_negocio?'] || fd['como_se_llama_tu_negocio'] || fd['nombre_del_negocio'] || '';
@@ -4103,23 +4466,25 @@ function renderMetaTable() {
     const presupRaw = fd['\u00bfcont\u00e1s_con_un_presupuesto_para_este_proyecto?'] || fd['presupuesto'] || '';
     const presup = presupLabels[presupRaw] || presupRaw.replace(/_/g,' ') || '—';
     return `
-    <div class="table-row no-cb row-${crm}" style="grid-template-columns:1.8fr 1fr 1.2fr 1.2fr 0.9fr 0.8fr 1.1fr">
+    <div class="table-row no-cb ${mmColor ? 'mm-pintado mm-c-' + mmColor : 'row-' + crm}" data-mm-color="${mmColor}" style="grid-template-columns:1.8fr 1fr 1.2fr 1.2fr 0.9fr 0.8fr 1.1fr">
       <div>
         <div class="biz-name"><span style="cursor:pointer;text-decoration:underline;text-decoration-color:#334155" onclick="openClientPanel(${b.id})">${esc(b.name||'')}</span>
-        <span style="font-size:.65rem;background:linear-gradient(135deg,#833ab4,#fd1d1d,#fcb045);color:#fff;padding:1px 6px;border-radius:99px;font-weight:700;margin-left:4px">IG/FB</span></div>
+        <span style="font-size:.65rem;background:linear-gradient(135deg,#833ab4,#fd1d1d,#fcb045);color:#fff;padding:1px 6px;border-radius:99px;font-weight:700;margin-left:4px">IG/FB</span>${mmVuelta ? '<span class="mm-vuelta">Volvió a escribir</span>' : ''}</div>
         <div class="biz-sub">${negocio ? esc(negocio) : (esc(b.city||'') || '—')}</div>
+        ${mmVuelta ? '<span class="mm-vuelta-primero">Primer contacto: ' + esc(mmFechaCorta(mmPrimerEnvio(b))) + '</span>' : ''}
       </div>
       <div>${b.phone ? (hasWhatsApp(b.phone) ? `<a class="phone-val" href="https://wa.me/${waNum(b.phone)}${b.pitch_text ? '?text='+encodeURIComponent(b.pitch_text) : ''}" target="_blank" title="Abrir WhatsApp">${esc(b.phone)}</a>` : `<span class="phone-plain">${esc(b.phone)}</span>`) : '<span class="no-val">—</span>'}</div>
       <div style="font-size:.78rem;color:#94a3b8">${esc(busca)}</div>
       <div style="font-size:.78rem;color:#94a3b8">${esc(presup)}</div>
       <div style="font-size:.78rem;color:#64748b">${esc(b.city||'—')}</div>
-      <div style="font-size:.72rem;color:#475569">${b.scraped_at ? new Date(b.scraped_at+'Z').toLocaleString('es-UY',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—'}</div>
+      <div style="font-size:.72rem;color:#475569">${mmFecha ? new Date(mmFecha.slice(0, 19).replace(' ', 'T') + 'Z').toLocaleString('es-UY',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—'}</div>
       <div class="actions">
+        ${mmBotonColor(b)}
         <span style="font-size:.68rem;font-weight:600;color:${color};background:${color}18;padding:2px 6px;border-radius:99px">${crmLabels[crm]||crm}</span>
         <button class="pitch-btn" onclick="openClientPanel(${b.id})">Ver ficha</button>
         <button class="delete-btn" onclick="deleteLead(${b.id},${escJs(b.name||'')},loadMetaPanel)" title="Borrar"><i data-lucide=\"trash-2\" class=\"btn-icon\"></i></button>
       </div>
-    </div>`;
+    </div>${mmAbierto === b.id ? mmOpcionesHtml(b) : ''}`;
   }).join('');
   _populateNotes(body);
 }
@@ -7949,6 +8314,12 @@ const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activ
     if (!r.ok) return;
     const m = await r.json();
     window._isAdmin = m.is_admin;
+    // Paneles que el rol ve pero no modifica (el Contador, en Finanzas). Si
+    // /api/me falla queda vacio: se ve el modo normal y el servidor igual
+    // bloquea las escrituras con 403.
+    window._panelesSoloLectura = (!m.is_admin && Array.isArray(m.paneles_solo_lectura))
+      ? m.paneles_solo_lectura : [];
+    _finAplicarSoloLectura();
     if (m.is_admin) {
       const a = document.getElementById('admin-link');
       if (a) a.style.display = 'block';
@@ -8819,7 +9190,27 @@ function _funnelBars(items, stateLabels, stateColors) {
 }
 
 // ========== Finanzas panel ==========
-const FIN_VISTAS = ['movimientos', 'cobrar', 'fijos', 'iva', 'pauta'];
+const FIN_VISTAS = ['movimientos', 'cobrar', 'fijos', 'iva', 'pauta', 'balance'];
+
+// ── Finanzas en solo lectura (el Contador) ──
+// No se dibujan los botones de alta, edicion ni borrado, y arriba va un aviso.
+// El Balance queda completo. Es cosmetico: el servidor devuelve 403 igual.
+window._panelesSoloLectura = window._panelesSoloLectura || [];
+
+function _finSoloLectura() {
+  return Array.isArray(window._panelesSoloLectura)
+    && window._panelesSoloLectura.indexOf('finanzas') >= 0;
+}
+
+function _finAplicarSoloLectura() {
+  const solo = _finSoloLectura();
+  ['fin-btn-movimiento', 'fin-btn-reabrir', 'fin-btn-pendiente'].forEach(id => {
+    const b = document.getElementById(id);
+    if (b) b.style.display = solo ? 'none' : '';
+  });
+  const aviso = document.getElementById('fin-solo-lectura');
+  if (aviso) aviso.style.display = solo ? '' : 'none';
+}
 
 function _finRangoCambio() {
   // El selector de rango es compartido por las tres vistas, pero loadFinanzas
@@ -8841,6 +9232,9 @@ function finVista(cual) {
   document.getElementById('fin-tab-fijos').classList.toggle('active', cual === 'fijos');
   document.getElementById('fin-tab-iva').classList.toggle('active', cual === 'iva');
   document.getElementById('fin-tab-pauta').classList.toggle('active', cual === 'pauta');
+  document.getElementById('fin-tab-balance').classList.toggle('active', cual === 'balance');
+  // El Balance tiene su propio periodo (Este año / Desde el inicio /
+  // Personalizado): el selector de rango no aplica y se esconde, como en IVA.
   // El IVA se liquida por MES: un saldo de "los ultimos 12 meses" no
   // significa nada. En vez de dejar el selector de rango diciendo una cosa y
   // la tabla otra -el problema que _finRangoCambio arregla para Pauta-, aca
@@ -8848,7 +9242,7 @@ function finVista(cual) {
   // Ni el IVA ni lo que falta cobrar dependen del rango: el IVA se liquida por
   // mes y un pendiente esta o no esta, no pertenece a ningun periodo.
   document.getElementById('fin-rango').style.display =
-    (cual === 'iva' || cual === 'cobrar') ? 'none' : '';
+    (cual === 'iva' || cual === 'cobrar' || cual === 'balance') ? 'none' : '';
   if (cual === 'cobrar') loadPorCobrar();
   if (cual === 'fijos') loadFijos();
   if (cual === 'iva') loadIva();
@@ -9107,6 +9501,7 @@ function _finBarras(filas, color) {
 let _finResumen = null;
 
 async function loadFinanzas() {
+  _finAplicarSoloLectura();
   await _finCargarMeses();
   _finPintarNavegador();
   const {desde, hasta} = _finRango();
@@ -9291,8 +9686,9 @@ async function loadPorCobrar() {
         + '<td class="' + (p.vencido ? 'fin-rojo' : '') + '">' + esc(p.texto) + '</td>'
         + '<td style="text-align:right">' + _finUsd(p.monto_usd) + '</td>'
         + '<td style="text-align:right;white-space:nowrap">'
-        + '<button class="btn-ghost" onclick="cobrarPendiente(' + p.id + ')">Cobrar</button> '
-        + '<button class="btn-ghost" onclick="borrarPendiente(' + p.id + ')">Borrar</button>'
+        + (_finSoloLectura() ? ''
+          : '<button class="btn-ghost" onclick="cobrarPendiente(' + p.id + ')">Cobrar</button> '
+            + '<button class="btn-ghost" onclick="borrarPendiente(' + p.id + ')">Borrar</button>')
         + '</td></tr>').join('')
     + '</tbody></table>';
 }
@@ -9396,6 +9792,209 @@ async function loadIva() {
     + '</tbody></table>';
 }
 
+// ========== Finanzas: Balance ==========
+// La cuenta la hace el servidor (calcular_balance en services/finanzas.py):
+// aca solo se pide y se pinta. Todo en USD, como el resto de Finanzas.
+let _finBalUltimo = null;
+
+function _finBalHoy() {
+  // Montevideo es UTC-3 fijo: se resta al reloj UTC para no depender de la
+  // zona horaria de la compu del que mira.
+  return new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10);
+}
+
+function finBalPreset() {
+  const personalizado = document.getElementById('fb-preset').value === 'personalizado';
+  document.getElementById('fb-fechas').style.display = personalizado ? '' : 'none';
+  if (!personalizado) return;
+  const hoy = _finBalHoy();
+  const desde = document.getElementById('fb-desde');
+  const hasta = document.getElementById('fb-hasta');
+  if (!desde.value) desde.value = hoy.slice(0, 4) + '-01-01';
+  if (!hasta.value) hasta.value = hoy;
+}
+
+function _finBalUrl() {
+  const tipo = document.getElementById('fb-tipo').value;
+  const preset = document.getElementById('fb-preset').value;
+  let url = '/api/finanzas/balance?tipo=' + encodeURIComponent(tipo);
+  if (preset === 'inicio') url += '&desde=inicio';
+  if (preset === 'personalizado') {
+    url += '&desde=' + encodeURIComponent(document.getElementById('fb-desde').value)
+      + '&hasta=' + encodeURIComponent(document.getElementById('fb-hasta').value);
+  }
+  return url;
+}
+
+async function finBalGenerar() {
+  const caja = document.getElementById('fin-balance');
+  const imprimir = document.getElementById('fb-imprimir');
+  imprimir.style.display = 'none';
+  _finBalUltimo = null;
+  caja.innerHTML = '<div class="fb-nota">Generando balance...</div>';
+  try {
+    const r = await fetch(_finBalUrl());
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error((d && d.error) || 'no se pudo generar el balance');
+    // Pintar adentro del try: una respuesta rara muestra el error en vez de
+    // dejar el cartel de "Generando..." para siempre.
+    caja.innerHTML = _finBalPintar(d);
+    _finBalUltimo = d;
+  } catch (e) {
+    caja.innerHTML = '<div class="fb-error">Error: ' + esc(e.message) + '</div>';
+    return;
+  }
+  imprimir.style.display = '';
+}
+
+function _finBalFecha(iso) {
+  const p = String(iso || '').slice(0, 10).split('-');
+  return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : String(iso || '');
+}
+
+function _finBalCat(c) {
+  const t = String(c || '').replace(/_/g, ' ');
+  return esc(t.charAt(0).toUpperCase() + t.slice(1));
+}
+
+function _finBalColor(n) {
+  return n >= 0 ? 'fin-verde' : 'fin-rojo';
+}
+
+// "USD 12.000 = USD 9.000 en blanco + USD 3.000 no facturado". Solo en el
+// interno: en el de blanco todo es blanco y la cuenta no dice nada.
+function _finBalDesglose(b, interno) {
+  if (!interno) return '';
+  const signo = b.no_facturado < 0 ? ' − ' : ' + ';
+  return '<div class="fb-desglose">' + _finUsd(b.total) + ' = ' + _finUsd(b.blanco)
+    + ' en blanco' + signo + _finUsd(Math.abs(b.no_facturado)) + ' no facturado</div>';
+}
+
+function _finBalKpi(rotulo, valor, clase, extra) {
+  return '<div class="fin-kpi"><div class="fin-kpi-label">' + rotulo + '</div>'
+    + '<div class="fin-kpi-valor ' + clase + '">' + _finUsd(valor) + '</div>'
+    + (extra || '') + '</div>';
+}
+
+function _finBalTablaCats(bloque, interno, rotulo) {
+  if (!bloque.por_categoria.length) {
+    return '<div class="fb-nota">Sin ' + rotulo.toLowerCase() + ' en el período.</div>';
+  }
+  const partes = (x) => interno
+    ? '<td class="fb-num">' + _finUsd(x.blanco) + '</td><td class="fb-num">' + _finUsd(x.no_facturado) + '</td>'
+    : '';
+  return '<div class="fb-scroll"><table class="fin-tabla fb-tabla"><thead><tr>'
+    + '<th>Categoría</th><th class="fb-num">Total</th>'
+    + (interno ? '<th class="fb-num">En blanco</th><th class="fb-num">No facturado</th>' : '')
+    + '</tr></thead><tbody>'
+    + bloque.por_categoria.map(c => '<tr><td>' + _finBalCat(c.categoria) + '</td>'
+        + '<td class="fb-num">' + _finUsd(c.total) + '</td>' + partes(c) + '</tr>').join('')
+    + '<tr class="fb-total"><td>Total ' + rotulo.toLowerCase() + '</td>'
+    + '<td class="fb-num">' + _finUsd(bloque.total) + '</td>' + partes(bloque) + '</tr>'
+    + '</tbody></table></div>';
+}
+
+function _finBalFila(rotulo, valor, clase) {
+  return '<tr' + (clase ? ' class="' + clase + '"' : '') + '><td>' + rotulo + '</td>'
+    + '<td class="fb-num">' + _finUsd(valor) + '</td></tr>';
+}
+
+function _finBalPintar(d) {
+  const interno = d.tipo === 'interno';
+  const generado = String(d.generado_en || '').split(' ');
+  const saldo = d.iva.saldo;
+  const estadoIva = Math.abs(saldo) < 0.005 ? 'sin saldo' : (saldo > 0 ? 'a pagar' : 'a favor');
+
+  let html = '<div class="fb-doc">'
+    + '<div class="fb-cabecera">'
+    + '<div class="fb-titulo">Balance · ' + esc(d.tipo_nombre) + '</div>'
+    + '<div class="fb-sub">Período: del ' + _finBalFecha(d.desde) + ' al ' + _finBalFecha(d.hasta) + '</div>'
+    + '<div class="fb-sub">Generado el ' + _finBalFecha(generado[0])
+    + (generado[1] ? ' a las ' + esc(generado[1]) : '') + ' (hora de Montevideo)</div>'
+    + '<div class="fb-sub">Montos en USD, netos (sin IVA) salvo donde dice "con IVA".</div>'
+    + '</div>';
+
+  if (d.sin_cotizacion) {
+    html += '<div class="fb-aviso">' + d.sin_cotizacion
+      + (d.sin_cotizacion === 1 ? ' movimiento sin tipo de cambio no se incluye.'
+                                : ' movimientos sin tipo de cambio no se incluyen.')
+      + '</div>';
+  }
+
+  html += '<div class="fin-kpis">'
+    + _finBalKpi('Ingresos', d.ingresos.total, 'fin-verde', _finBalDesglose(d.ingresos, interno))
+    + _finBalKpi('Egresos', d.egresos.total, 'fin-rojo', _finBalDesglose(d.egresos, interno))
+    + _finBalKpi('Resultado', d.resultado.total, _finBalColor(d.resultado.total),
+                 '<div class="fin-kpi-var">ingresos menos egresos</div>'
+                 + _finBalDesglose(d.resultado, interno))
+    + '</div>';
+
+  html += '<div class="fb-seccion"><div class="fin-card-title">Ingresos por categoría</div>'
+    + _finBalTablaCats(d.ingresos, interno, 'Ingresos') + '</div>'
+    + '<div class="fb-seccion"><div class="fin-card-title">Egresos por categoría</div>'
+    + _finBalTablaCats(d.egresos, interno, 'Egresos') + '</div>';
+
+  html += '<div class="fb-seccion"><div class="fin-card-title">IVA y totales con IVA</div>'
+    + '<div class="fb-scroll"><table class="fin-tabla fb-tabla"><tbody>'
+    + _finBalFila('Ingresos netos', d.ingresos.total)
+    + _finBalFila('IVA ventas (débito)', d.iva.ventas)
+    + _finBalFila('Ingresos con IVA', d.con_iva.ingresos, 'fb-total')
+    + _finBalFila('Egresos netos', d.egresos.total)
+    + _finBalFila('IVA compras (crédito)', d.iva.compras)
+    + _finBalFila('Egresos con IVA', d.con_iva.egresos, 'fb-total')
+    + _finBalFila('Saldo de IVA (' + estadoIva + ')', Math.abs(saldo), 'fb-total')
+    + _finBalFila('Resultado con IVA', d.con_iva.resultado, 'fb-total')
+    + '</tbody></table></div>'
+    + '<div class="fb-nota">Solo lo facturado lleva IVA. El saldo es débito menos crédito del período entero, sin el arrastre mes a mes de la pestaña IVA.</div>'
+    + '</div>';
+
+  html += '<div class="fb-seccion"><div class="fin-card-title">Impuestos</div>';
+  if (d.impuestos.por_concepto.length) {
+    html += '<div class="fb-scroll"><table class="fin-tabla fb-tabla"><tbody>'
+      + d.impuestos.por_concepto.map(i => _finBalFila(esc(i.concepto), i.total)).join('')
+      + _finBalFila('Total impuestos', d.impuestos.total, 'fb-total')
+      + '</tbody></table></div>';
+  } else {
+    html += '<div class="fb-nota">No hay egresos en la categoría Impuestos en el período.</div>';
+  }
+  html += '<div class="fb-nota">Egresos de la categoría Impuestos (IRAE, BPS, pagos a DGI). Ya están sumados en Egresos.</div></div>';
+
+  html += '<div class="fb-seccion"><div class="fin-card-title">Evolución mes a mes</div>'
+    + '<div class="fb-scroll"><table class="fin-tabla fb-tabla"><thead><tr>'
+    + '<th>Mes</th><th class="fb-num">Ingresos</th><th class="fb-num">Egresos</th><th class="fb-num">Resultado</th>'
+    + '</tr></thead><tbody>'
+    + d.meses.map(m => '<tr><td>' + _finNombreMes(m.periodo) + '</td>'
+        + '<td class="fb-num">' + _finUsd(m.ingresos) + '</td>'
+        + '<td class="fb-num">' + _finUsd(m.egresos) + '</td>'
+        + '<td class="fb-num ' + _finBalColor(m.resultado) + '">' + _finUsd(m.resultado) + '</td></tr>').join('')
+    + '<tr class="fb-total"><td>Total</td>'
+    + '<td class="fb-num">' + _finUsd(d.ingresos.total) + '</td>'
+    + '<td class="fb-num">' + _finUsd(d.egresos.total) + '</td>'
+    + '<td class="fb-num ' + _finBalColor(d.resultado.total) + '">' + _finUsd(d.resultado.total) + '</td></tr>'
+    + '</tbody></table></div></div>';
+
+  return html + '</div>';
+}
+
+function finBalImprimir() {
+  if (!_finBalUltimo) return;
+  const hoja = document.getElementById('fb-print');
+  const body = document.body;
+  const eraClaro = body.classList.contains('light');
+  hoja.innerHTML = _finBalPintar(_finBalUltimo);
+  // En claro siempre: un PDF con fondo oscuro no se imprime.
+  body.classList.add('light');
+  body.classList.add('fb-imprimiendo');
+  const terminar = () => {
+    window.removeEventListener('afterprint', terminar);
+    body.classList.remove('fb-imprimiendo');
+    if (!eraClaro) body.classList.remove('light');
+    hoja.innerHTML = '';
+  };
+  window.addEventListener('afterprint', terminar);
+  window.print();
+}
+
 function _finMesActual() {
   const h = new Date();
   return h.getFullYear() + '-' + String(h.getMonth() + 1).padStart(2, '0');
@@ -9424,6 +10023,10 @@ function _finRecalcularUsd() {
 }
 
 async function abrirMovimiento(prefill) {
+  // Se llega tambien desde el panel de cliente ("registrar cobro"), donde el
+  // boton no sabe del modo solo lectura: se corta aca en vez de abrir un
+  // formulario que al guardar va a dar 403.
+  if (_finSoloLectura()) { alert('Tu rol puede ver Finanzas pero no modificarla'); return; }
   await _finCargarCategorias();
   const p = prefill || {};
   document.getElementById('fin-modal-title').textContent =
@@ -9534,6 +10137,7 @@ async function loadMovimientos(desde, hasta) {
     cuerpo.innerHTML = '<div class="empty-state">No hay movimientos en el período</div>';
     return;
   }
+  const soloLectura = _finSoloLectura();
   cuerpo.innerHTML = movs.map(m => {
     const esIngreso = m.tipo === 'ingreso';
     const original = m.moneda === 'UYU'
@@ -9550,11 +10154,11 @@ async function loadMovimientos(desde, hasta) {
            class="${esIngreso ? 'fin-verde' : 'fin-rojo'}">
         ${esIngreso ? '+' : '−'}${_finUsd(m.monto_usd)}${original}
       </div>
-      <div style="flex:0 0 76px;text-align:right">
+      <div style="flex:0 0 76px;text-align:right">${soloLectura ? '' : `
         <button class="btn-ghost btn-icono" onclick='abrirMovimiento(${_finAttr(m)})'
                 title="Editar"><i data-lucide="pencil" class="nav-icon"></i></button>
         <button class="btn-ghost btn-icono" onclick="borrarMovimientoUI(${m.id}, ${m.recurrente_id ? 1 : 0})"
-                title="Borrar"><i data-lucide="trash-2" class="nav-icon"></i></button>
+                title="Borrar"><i data-lucide="trash-2" class="nav-icon"></i></button>`}
       </div>
     </div>`;
   }).join('');
@@ -9743,14 +10347,15 @@ async function loadFijos() {
   const mes = _finMeses.mes_actual || _finMesActual();
   const totales = _finTotalesFijos(fijos, mes);
   const sinCotizar = totales.sinCotizar;
+  const soloLectura = _finSoloLectura();
   totalesEl.innerHTML = _finKpisFijos(totales);
 
   const encabezado = `
     <div class="fin-toolbar">
       <div class="fin-kpi-var">Cuentan los fijos activos que corren este mes.</div>
-      <button class="btn-primary" style="margin-left:auto" onclick="abrirFijo()">
+      ${soloLectura ? '' : `<button class="btn-primary" style="margin-left:auto" onclick="abrirFijo()">
         <i data-lucide="plus" class="nav-icon"></i> Fijo
-      </button>
+      </button>`}
       ${sinCotizar > 0 ? `<div class="fin-rojo" style="width:100%;font-size:.75rem">
         ${sinCotizar} fijo${sinCotizar > 1 ? 's' : ''} en pesos sin tipo de cambio cargado, afuera de los totales</div>` : ''}
     </div>`;
@@ -9775,11 +10380,11 @@ async function loadFijos() {
         ${f.moneda} ${f.monto.toLocaleString('es-UY')}
         ${enUsd}
       </div>
-      <div style="flex:0 0 76px;text-align:right">
+      <div style="flex:0 0 76px;text-align:right">${soloLectura ? '' : `
         <button class="btn-ghost btn-icono" onclick='abrirFijo(${_finAttr(f)})'
                 title="Editar"><i data-lucide="pencil" class="nav-icon"></i></button>
         <button class="btn-ghost btn-icono" onclick="borrarFijoUI(${f.id})"
-                title="Borrar"><i data-lucide="trash-2" class="nav-icon"></i></button>
+                title="Borrar"><i data-lucide="trash-2" class="nav-icon"></i></button>`}
       </div>
     </div>`;
   }).join('');
@@ -14529,7 +15134,8 @@ def create_app(db_path: str) -> Flask:
 
     for bp in (leads_bp, demos_bp, calendar_bp, wa_bp, pipeline_bp, tasks_bp, budgets_bp, tokens_bp, meta_bp, calendly_bp, notion_bp, projects_bp, preclientes_bp,
                 notion_clients_bp, resend_bp, linkedin_bp, web_bp, finanzas_bp, marketing_bp,
-                simulador_bp, inteligencia_fin_bp, equipo_bp, flujos_bp, seg_leads_bp, daily_bp, plantillas_bp):
+                simulador_bp, inteligencia_fin_bp, equipo_bp, flujos_bp, seg_leads_bp, daily_bp, plantillas_bp,
+                backups_bp):
         app.register_blueprint(bp)
 
     @app.before_request
@@ -15116,6 +15722,7 @@ def create_app(db_path: str) -> Flask:
                 finally: conn3.close()
             else:
                 panel_access = "[]"  # sin rol = sin acceso
+        from services.auth import paneles_solo_lectura
         return jsonify({
             "id": user["id"],
             "name": user["name"],
@@ -15124,6 +15731,10 @@ def create_app(db_path: str) -> Flask:
             "is_admin": es_admin,
             "panel_access": panel_access,
             "role_id": user.get("role_id"),
+            # Lo que el rol ve pero no modifica. Una lista, no un string JSON
+            # como panel_access. El servidor bloquea igual: esto es solo para
+            # no mostrar botones que van a dar 403.
+            "paneles_solo_lectura": [] if es_admin else paneles_solo_lectura(db_path, user_id),
         })
 
     @app.route("/api/me", methods=["PUT"])
@@ -15171,9 +15782,32 @@ def create_app(db_path: str) -> Flask:
             conn2.close()
         return jsonify({"ok": True})
 
+    # Las cuatro rutas de roles no miraban si quien llama es admin: bastaba
+    # con estar logueado. Con el "solo lectura" eso ya no es un detalle: un
+    # Contador podía sacarse la marca a sí mismo con un PUT.
+    def _solo_admin_roles():
+        if not is_admin(db_path, session.get("user_id")):
+            return jsonify({"ok": False, "error": "No autorizado"}), 403
+        return None
+
+    def _solo_lectura_pedida(data, panels):
+        """(lista, None), (None, None) si no vino, o (None, error)."""
+        valor = data.get("paneles_solo_lectura")
+        if valor is None:
+            return None, None
+        if not isinstance(valor, list) or not all(isinstance(p, str) for p in valor):
+            return None, "paneles_solo_lectura tiene que ser una lista de paneles"
+        if isinstance(panels, list):
+            # Solo lectura de un panel que el rol no ve no significa nada.
+            valor = [p for p in valor if p in panels]
+        return sorted(set(valor)), None
+
     @app.route("/api/admin/roles", methods=["GET"])
     def admin_list_roles():
         import sqlite3 as _sq
+        bloqueo = _solo_admin_roles()
+        if bloqueo:
+            return bloqueo
         conn2 = _sq.connect(db_path); conn2.row_factory = _sq.Row
         try:
             rows = conn2.execute("SELECT * FROM roles ORDER BY id").fetchall()
@@ -15183,13 +15817,20 @@ def create_app(db_path: str) -> Flask:
     @app.route("/api/admin/roles", methods=["POST"])
     def admin_create_role():
         import sqlite3 as _sq, json as _j
+        bloqueo = _solo_admin_roles()
+        if bloqueo:
+            return bloqueo
         data = request.get_json() or {}
         name = (data.get("name") or "").strip()
         panels = data.get("panels", [])
         if not name: return jsonify({"ok": False, "error": "Nombre requerido"}), 400
+        solo_lectura, error = _solo_lectura_pedida(data, panels)
+        if error:
+            return jsonify({"ok": False, "error": error}), 400
         conn2 = _sq.connect(db_path)
         try:
-            conn2.execute("INSERT INTO roles (name, panel_access) VALUES (?,?)", (name, _j.dumps(panels)))
+            conn2.execute("INSERT INTO roles (name, panel_access, paneles_solo_lectura) VALUES (?,?,?)",
+                          (name, _j.dumps(panels), _j.dumps(solo_lectura or [])))
             conn2.commit()
             rid = conn2.execute("SELECT last_insert_rowid()").fetchone()[0]
             return jsonify({"ok": True, "id": rid})
@@ -15199,13 +15840,22 @@ def create_app(db_path: str) -> Flask:
     @app.route("/api/admin/roles/<int:rid>", methods=["PUT"])
     def admin_update_role(rid):
         import sqlite3 as _sq, json as _j
+        bloqueo = _solo_admin_roles()
+        if bloqueo:
+            return bloqueo
         data = request.get_json() or {}
         name = (data.get("name") or "").strip()
         panels = data.get("panels")
+        solo_lectura, error = _solo_lectura_pedida(data, panels)
+        if error:
+            return jsonify({"ok": False, "error": error}), 400
         conn2 = _sq.connect(db_path)
         try:
             if name: conn2.execute("UPDATE roles SET name=? WHERE id=?", (name, rid))
             if panels is not None: conn2.execute("UPDATE roles SET panel_access=? WHERE id=?", (_j.dumps(panels), rid))
+            if solo_lectura is not None:
+                conn2.execute("UPDATE roles SET paneles_solo_lectura=? WHERE id=?",
+                              (_j.dumps(solo_lectura), rid))
             conn2.commit()
             return jsonify({"ok": True})
         finally: conn2.close()
@@ -15213,6 +15863,9 @@ def create_app(db_path: str) -> Flask:
     @app.route("/api/admin/roles/<int:rid>", methods=["DELETE"])
     def admin_delete_role(rid):
         import sqlite3 as _sq
+        bloqueo = _solo_admin_roles()
+        if bloqueo:
+            return bloqueo
         conn2 = _sq.connect(db_path)
         try:
             conn2.execute("UPDATE users SET role_id=NULL WHERE role_id=?", (rid,))
@@ -15416,6 +16069,7 @@ select:focus{border-color:#0088cc}
 .chip input{accent-color:#0088cc;cursor:pointer;width:12px;height:12px}
 .chip.on{border-color:#0088cc;background:rgba(0,136,204,.12);color:#60a5fa}
 .chip.meta-on{border-color:#c084fc;background:rgba(192,132,252,.1);color:#c084fc}
+.chip-sl{border-style:dashed;color:#fbbf24}
 .toast{display:none;font-size:.75rem;color:#4ade80;margin-left:8px}
 .msg-ok{background:rgba(16,185,129,.1);color:#4ade80;border-radius:6px;padding:8px 12px;font-size:.8rem;margin-bottom:14px}
 .divider{height:1px;background:#1e293b;margin:10px 0}
@@ -15442,21 +16096,52 @@ select:focus{border-color:#0088cc}
   <div id="users-list"></div>
 </div>
 
+<div class="section">
+  <div class="section-title">Backups de la base</div>
+  <div class="card">
+    <div class="row">
+      <button class="btn btn-primary" id="backup-btn" onclick="backupAhora(this)">Hacer backup ahora</button>
+      <span class="sub" id="backup-msg"></span>
+    </div>
+    <div class="divider"></div>
+    <div id="backups-list"><div class="sub">Cargando...</div></div>
+  </div>
+</div>
+
 <script>
 const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','seg_leads','daily','plantillas'];
 const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Inteligencia financiera',equipo:'Organigrama',ausencias:'Ausencias',seg_leads:'Seguimiento de leads',daily:'Daily Programador',plantillas:'Plantillas'};
 let _roles = [];
 
-function makeChips(containerId, checkedArr, prefix) {
+// Paneles que muestran el check "solo lectura". El dato (roles.paneles_solo_lectura)
+// es generico, pero hoy solo Finanzas lo respeta en el servidor: mostrarlo en
+// los demas prometeria algo que no pasa.
+const PANELES_CON_SOLO_LECTURA = ['finanzas'];
+
+function makeChips(containerId, checkedArr, prefix, soloLecturaArr) {
   const el = document.getElementById(containerId);
+  const soloLectura = soloLecturaArr || [];
   el.innerHTML = ALL_PANELS.map(p => {
     const on = checkedArr ? checkedArr.includes(p) : true;
     const isMeta = p === 'meta';
+    const sl = PANELES_CON_SOLO_LECTURA.includes(p)
+      ? `<label class="chip chip-sl" id="${prefix}-sl-chip-${p}" title="Ve el panel pero no puede agregar, editar ni borrar (los balances si)">
+      <input type="checkbox" id="${prefix}-sl-${p}" ${soloLectura.includes(p)?'checked':''}>
+      ${PANEL_LABELS[p]}: solo lectura
+    </label>`
+      : '';
     return `<label class="chip ${on?(isMeta?'meta-on':'on'):''}" id="${prefix}-chip-${p}">
       <input type="checkbox" id="${prefix}-cb-${p}" ${on?'checked':''} onchange="toggleChip('${prefix}','${p}',this.checked)">
       ${PANEL_LABELS[p]}
-    </label>`;
+    </label>` + sl;
   }).join('');
+}
+function getSoloLectura(prefix) {
+  // Solo cuenta si el panel esta tildado: solo lectura de algo que no se ve no
+  // significa nada.
+  return PANELES_CON_SOLO_LECTURA.filter(p =>
+    document.getElementById(`${prefix}-cb-${p}`)?.checked
+    && document.getElementById(`${prefix}-sl-${p}`)?.checked);
 }
 function toggleChip(prefix, p, on) {
   const chip = document.getElementById(`${prefix}-chip-${p}`);
@@ -15490,14 +16175,16 @@ function renderRoles() {
   }).join('');
   _roles.forEach(role => {
     const panels = JSON.parse(role.panel_access || '[]');
-    makeChips(`role-panels-${role.id}`, panels, `r${role.id}`);
+    makeChips(`role-panels-${role.id}`, panels, `r${role.id}`,
+              JSON.parse(role.paneles_solo_lectura || '[]'));
   });
 }
 
 async function saveRole(id) {
   const name = document.getElementById(`role-name-${id}`).value.trim();
   const panels = ALL_PANELS.filter(p => document.getElementById(`r${id}-cb-${p}`)?.checked);
-  const r = await fetch(`/api/admin/roles/${id}`, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name, panels})});
+  const paneles_solo_lectura = getSoloLectura(`r${id}`);
+  const r = await fetch(`/api/admin/roles/${id}`, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name, panels, paneles_solo_lectura})});
   if (r.ok) {
     const t = document.getElementById(`role-toast-${id}`);
     t.style.display='inline'; setTimeout(()=>{t.style.display='none'},2000);
@@ -15517,7 +16204,8 @@ async function createRole() {
   const name = document.getElementById('new-role-name').value.trim();
   if (!name) { document.getElementById('new-role-name').focus(); return; }
   const panels = ALL_PANELS.filter(p => document.getElementById(`new-cb-${p}`)?.checked);
-  const r = await fetch('/api/admin/roles', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name, panels})});
+  const paneles_solo_lectura = getSoloLectura('new');
+  const r = await fetch('/api/admin/roles', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name, panels, paneles_solo_lectura})});
   const d = await r.json();
   if (d.ok) { document.getElementById('new-role-name').value=''; await loadRoles(); }
   else alert(d.error);
@@ -15560,7 +16248,55 @@ async function loadAll() {
   renderUsers();
 }
 
+function _bkBytes(n) {
+  n = n || 0;
+  if (n >= 1048576) return (n / 1048576).toFixed(1) + ' MB';
+  if (n >= 1024) return Math.round(n / 1024) + ' KB';
+  return n + ' B';
+}
+function _bkEsc(s) {
+  const d = document.createElement('div');
+  d.textContent = s == null ? '' : String(s);
+  return d.innerHTML;
+}
+async function loadBackups() {
+  const el = document.getElementById('backups-list');
+  try {
+    const r = await fetch('/api/admin/backups');
+    const d = await r.json();
+    const filas = [];
+    if (!d.r2_activo) filas.push('<div class="sub">Backup a R2 desactivado: faltan los secrets R2_*. Solo hay copia local.</div>');
+    if (d.error) filas.push('<div class="sub" style="color:#f87171">' + _bkEsc(d.error) + '</div>');
+    (d.backups || []).forEach(b => filas.push(
+      '<div class="row"><div class="name">' + _bkEsc(b.nombre) + '</div><span class="badge has-role">R2</span>' +
+      '<span class="sub">' + _bkBytes(b.tamano) + ' · ' + _bkEsc((b.fecha || '').slice(0, 16).replace('T', ' ')) + '</span></div>'));
+    (d.locales || []).forEach(b => filas.push(
+      '<div class="row"><div class="name">' + _bkEsc(b.nombre) + '</div><span class="badge">local</span>' +
+      '<span class="sub">' + _bkBytes(b.tamano) + '</span></div>'));
+    el.innerHTML = filas.join('') || '<div class="sub">Todavía no hay backups.</div>';
+  } catch (e) {
+    el.innerHTML = '<div class="sub">No se pudo leer la lista de backups.</div>';
+  }
+}
+async function backupAhora(btn) {
+  const msg = document.getElementById('backup-msg');
+  btn.disabled = true;
+  msg.textContent = 'Haciendo backup...';
+  try {
+    const r = await fetch('/api/admin/backup-ahora', {method: 'POST'});
+    const d = await r.json();
+    msg.textContent = d.ok
+      ? 'Listo: ' + d.nombre + ', ' + _bkBytes(d.tamano) + ', subido a R2: ' + (d.subido ? 'sí' : 'no')
+      : 'Falló: ' + (d.error || 'error desconocido');
+  } catch (e) {
+    msg.textContent = 'Falló la llamada.';
+  }
+  btn.disabled = false;
+  loadBackups();
+}
+
 loadAll();
+loadBackups();
 </script>
 </body>
 </html>"""
@@ -15605,6 +16341,11 @@ loadAll();
 
         from services.discovery_emails import start_discovery_emails
         start_discovery_emails(app)
+
+        # Backup diario de la base (docs/BACKUPS.md). Prendido por defecto,
+        # BACKUP_DB=off lo apaga; trae su propia marca en `corridas`.
+        from services.backup_db import start_backup_db
+        start_backup_db(app)
 
         # Una corrida por dia, sin mails ni llamadas afuera (marca en `corridas`).
         from services.inteligencia_fin import start_inteligencia_fin
