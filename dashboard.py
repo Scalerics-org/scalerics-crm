@@ -1215,7 +1215,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-projects .nav-icon{stroke:#facc15}
 #nav-equipo .nav-icon{stroke:#a3e635}
 #nav-ausencias .nav-icon{stroke:#e879f9}
-#nav-horarios .nav-icon{stroke:#38bdf8}
+#nav-horarios .nav-icon{stroke:#fbbf24}
 #nav-seg_leads .nav-icon{stroke:#fb7185}
 #nav-daily .nav-icon{stroke:#38bdf8}
 #nav-plantillas .nav-icon{stroke:#c084fc}
@@ -1239,7 +1239,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-projects.active .nav-icon{stroke:#fde047}
 #nav-equipo.active .nav-icon{stroke:#bef264}
 #nav-ausencias.active .nav-icon{stroke:#f0abfc}
-#nav-horarios.active .nav-icon{stroke:#7dd3fc}
+#nav-horarios.active .nav-icon{stroke:#fde68a}
 #nav-seg_leads.active .nav-icon{stroke:#fda4af}
 #nav-plantillas.active .nav-icon{stroke:#d8b4fe}
 /* light mode — slightly darker tones */
@@ -1260,7 +1260,7 @@ body.light #nav-sdr .nav-icon{stroke:#b91c1c}
 body.light #nav-projects .nav-icon{stroke:#a16207}
 body.light #nav-equipo .nav-icon{stroke:#4d7c0f}
 body.light #nav-ausencias .nav-icon{stroke:#a21caf}
-body.light #nav-horarios .nav-icon{stroke:#0369a1}
+body.light #nav-horarios .nav-icon{stroke:#92400e}
 body.light #nav-seg_leads .nav-icon{stroke:#be123c}
 body.light #nav-plantillas .nav-icon{stroke:#9333ea}
 /* ── Lucide icons ─────────────────────────────────────────────────────────── */

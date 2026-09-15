@@ -398,12 +398,14 @@ def test_esta_registrado_en_todos_lados():
 
 
 def test_el_icono_tiene_un_color_propio_en_los_dos_temas():
-    def color(prefijo, panel):
-        return re.search(prefijo + r"#nav-" + panel + r" \.nav-icon\{stroke:(#[0-9a-f]+)\}", HTML).group(1)
-    for prefijo in (r"(?<!body\.light )", r"body\.light "):
-        propio = color(prefijo, "horarios")
-        assert propio not in (color(prefijo, "equipo"), color(prefijo, "ausencias"))
-    assert "#nav-horarios.active .nav-icon{stroke:#" in HTML
+    """Ningún otro ítem del menú usa el mismo color: ni en oscuro, ni activo, ni
+    en claro (Daily entró con el celeste que tenía Horarios)."""
+    for patron in (r"^#nav-(\w+) \.nav-icon\{stroke:(#[0-9a-f]+)\}",
+                   r"^#nav-(\w+)\.active \.nav-icon\{stroke:(#[0-9a-f]+)\}",
+                   r"^body\.light #nav-(\w+) \.nav-icon\{stroke:(#[0-9a-f]+)\}"):
+        colores = dict(re.findall(patron, HTML, re.M))
+        propio = colores.pop("horarios")
+        assert propio not in colores.values(), (patron, propio, colores)
 
 
 def test_la_carga_inicial_sigue_siendo_el_calendario():
