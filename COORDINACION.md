@@ -464,6 +464,11 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **16/9 — rama `feat/colores-organigrama` (worktree `../crm-colores-org`). Sin PR ni deploy.** Pedido de Juan: el organigrama con los colores de Flujos.
+  - Columna `equipo_personas.rol_flujo` (nullable, uno de `services/flujos.ROLES`; NULL es "no participa"). Precarga UNA sola vez, en el arranque que crea la columna (`_precargar_rol_flujo`, solo por nombre exacto): Andrés Marketing, Juan Pereyra Comercial, Gonzalo Project manager, Juan Tomasetti y Matías Desarrollo, Guillermo Administración, Javier sin rol.
+  - El color de cada nodo lo arma el servidor con el MISMO mapa de Flujos (`estilo_de_persona`); quien no participa va en **rosa** ("Fuera de Flujos", tokens `--rol-rosa` y `--rol-rosa-tinte`). `/api/equipo` suma `leyenda_organigrama` (solo los colores presentes), `roles_flujo`, `fuera_de_flujos` y `es_admin`.
+  - Edición: el admin toca un nodo y elige el rol en un modal (`PUT /api/equipo/personas/<id>/rol-flujo`, solo admin, validado contra la lista cerrada). Horarios sigue con el color de Daily.
+
 - **15/9 — rama `feat/colores-flujos-horarios` (worktree `../crm-colores-rrhh`). Sin PR ni deploy.** Pedido de Juan: colores en Flujos y Horarios.
   - **Flujos, un color por rol:** el mapa vive en `services/flujos.ROL_ESTILOS` (rol → color y etiqueta) y llega a la pantalla con `/api/flujos` (`estilos`). Marketing rojo, Project manager naranja, Comercial verde, Desarrollo azul, Administración violeta, Soporte teal. Tokens `--rol-<color>` y `--rol-<color>-tinte` en los dos temas, clase `.eq-rol-<color>`; todos los pares miden ≥ 4,5:1 (hay test).
   - **"Marketing" se muestra como "Líder marketing digital"** (leyenda, tarjetas y modal). En la base sigue siendo `Marketing`: cambió la etiqueta, no el valor.

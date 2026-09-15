@@ -1204,6 +1204,15 @@ def init_db(db_path: str) -> None:
             conn.execute("ALTER TABLE equipo_personas "
                          "ADD COLUMN admin_daily INTEGER NOT NULL DEFAULT 0")
             _sumar_personas_daily(conn)
+        # Rol de cada persona en Flujos (pedido de Juan, 16/9): el organigrama
+        # la pinta con el color de ese rol. NULL es "no participa de Flujos".
+        # La lista cerrada de roles vive en services/flujos.ROLES. Se precarga
+        # UNA sola vez, en el arranque que crea la columna: lo que se cambie
+        # después desde la pantalla no se pisa en los deploys.
+        columnas = {fila[1] for fila in conn.execute("PRAGMA table_info(equipo_personas)")}
+        if "rol_flujo" not in columnas:
+            conn.execute("ALTER TABLE equipo_personas ADD COLUMN rol_flujo TEXT")
+            _precargar_rol_flujo(conn)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS daily_actividades (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -4029,6 +4038,32 @@ _EQUIPO_PRECARGA = (
 # Javier. La primera versión (15/9) tenía solo a Juan Tomasetti y Gonzalo:
 # `_sumar_personas_daily` suma lo nuevo una sola vez.
 _PROGRAMADORES_PRECARGA = ("Juan Tomasetti", "Gonzalo Siuciak", "Matías Domínguez")
+
+# Rol en Flujos de cada persona del organigrama (pedido de Juan, 16/9). None
+# es "no participa de Flujos". Solo por nombre exacto: si alguien no está,
+# queda NULL y se avisa en el log, no se adivina.
+_ROL_FLUJO_PRECARGA = (
+    ("Andrés Rosi", "Marketing"),
+    ("Juan Pereyra", "Comercial"),
+    ("Gonzalo Siuciak", "Project manager"),
+    ("Juan Tomasetti", "Desarrollo"),
+    ("Matías Domínguez", "Desarrollo"),
+    ("Guillermo Paredes", "Administración"),
+    ("Javier Tomasetti", None),
+)
+
+
+def _precargar_rol_flujo(conn: sqlite3.Connection) -> list[str]:
+    """Pone el rol en Flujos de la precarga. Devuelve los nombres que no
+    encontró (quedan en NULL)."""
+    faltan = []
+    for nombre, rol in _ROL_FLUJO_PRECARGA:
+        cur = conn.execute("UPDATE equipo_personas SET rol_flujo = ? WHERE nombre = ?", (rol, nombre))
+        if not cur.rowcount:
+            faltan.append(nombre)
+            logger.warning(f"rol_flujo: no encontré a '{nombre}' en Equipo, queda sin rol")
+    conn.commit()
+    return faltan
 _PROGRAMADORES_SUMADOS_16_9 = ("Matías Domínguez",)
 _ADMIN_DAILY_PRECARGA = ("Juan Pereyra", "Javier Tomasetti")
 _APODOS_PRECARGA = (("Juan Pereyra", "Juanchi"),)
@@ -4205,6 +4240,18 @@ def listar_personas_equipo(db_path: str, incluir_inactivas: bool = False) -> lis
 
 def get_persona_equipo(db_path: str, persona_id: int) -> Optional[dict]:
     return _get_one(db_path, "equipo_personas", persona_id)
+
+
+def actualizar_rol_flujo_persona(db_path: str, persona_id: int, rol_flujo: Optional[str]) -> bool:
+    """Cambia el rol en Flujos de una persona (None: no participa). La
+    validación contra la lista cerrada la hace services/flujos.validar_rol_flujo."""
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute("UPDATE equipo_personas SET rol_flujo = ? WHERE id = ?", (rol_flujo, persona_id))
+        conn.commit()
+        return cur.rowcount == 1
+    finally:
+        conn.close()
 
 
 # ── Daily Programador ────────────────────────────────────────────────────────

@@ -424,6 +424,8 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   --rol-violeta-tinte:#24173a;
   --rol-teal:#2dd4bf;
   --rol-teal-tinte:#0d2a28;
+  --rol-rosa:#f472b6;
+  --rol-rosa-tinte:#2d1624;
 }
 body.light{
   --fondo:#f8fafc;
@@ -473,6 +475,8 @@ body.light{
   --rol-violeta-tinte:#f3e8ff;
   --rol-teal:#0f766e;
   --rol-teal-tinte:#ccfbf1;
+  --rol-rosa:#be185d;
+  --rol-rosa-tinte:#fce7f3;
 }
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:100vh;display:flex}
@@ -2186,14 +2190,24 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .eq-card{background:var(--superficie-honda);border:1px solid var(--borde);border-radius:10px;padding:18px;margin-bottom:18px;min-width:0}
 .eq-cab{display:flex;justify-content:space-between;align-items:center;gap:8px 12px;flex-wrap:wrap;margin-bottom:12px}
 .eq-cab .fin-card-title{margin-bottom:0}
-.eq-organigrama{overflow-x:auto;padding-bottom:4px}
+.eq-organigrama{overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch}
 .eq-svg{display:block;margin:0 auto;max-width:none}
 .eq-linea{stroke:var(--borde-fuerte);stroke-width:1.5;fill:none}
-.eq-nodo rect{fill:var(--superficie);stroke:var(--borde-fuerte);stroke-width:1}
+/* Cada nodo toma el color de su rol en Flujos con la misma clase .eq-rol-COLOR
+   que los pasos (el mapa vive en services/flujos.ROL_ESTILOS). Quien no
+   participa de Flujos va en rosa. El destacado (CTO) conserva su color y se
+   marca con el borde más grueso. */
+.eq-nodo rect{fill:var(--rol-t,var(--superficie));stroke:var(--rol-c,var(--borde-fuerte));stroke-width:1.5}
 .eq-nodo-nombre{fill:var(--texto-fuerte);font-size:13px;font-weight:600;font-family:'Inter',sans-serif}
-.eq-nodo-rol{fill:var(--texto-debil);font-size:11px;font-family:'Inter',sans-serif}
-.eq-destacado rect{fill:var(--azul-tinte);stroke:var(--azul);stroke-width:2}
-.eq-destacado .eq-nodo-rol{fill:var(--azul-claro)}
+.eq-nodo-rol{fill:var(--rol-c,var(--texto-debil));font-size:11px;font-weight:600;font-family:'Inter',sans-serif}
+.eq-destacado rect{stroke-width:3.5}
+.eq-destacado .eq-nodo-nombre{font-weight:700}
+.eq-nodo-editable{cursor:pointer}
+.eq-nodo-editable:hover rect{stroke-width:2.5}
+.eq-nodo-editable:focus{outline:none}
+.eq-nodo-editable:focus rect{stroke-dasharray:4 3;stroke-width:2.5}
+.eq-org-leyenda{margin:0 0 10px}
+.eq-org-ayuda{font-size:.72rem;color:var(--texto-debil);margin:0 0 10px}
 .eq-aviso{background:var(--ambar-tinte);color:var(--ambar);border:1px solid var(--ambar-borde);border-radius:10px;padding:10px 12px;font-size:.8rem;line-height:1.45;margin-bottom:10px}
 .eq-cal-nav{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;margin-bottom:8px;font-size:.8rem;color:var(--texto)}
 .eq-cal-wrap{overflow-x:auto}
@@ -2248,6 +2262,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .eq-rol-azul{--rol-c:var(--rol-azul);--rol-t:var(--rol-azul-tinte)}
 .eq-rol-violeta{--rol-c:var(--rol-violeta);--rol-t:var(--rol-violeta-tinte)}
 .eq-rol-teal{--rol-c:var(--rol-teal);--rol-t:var(--rol-teal-tinte)}
+.eq-rol-rosa{--rol-c:var(--rol-rosa);--rol-t:var(--rol-rosa-tinte)}
 .eq-rol-neutro{--rol-c:var(--texto-tenue);--rol-t:var(--relleno)}
 .eq-flujo-leyenda{display:flex;flex-wrap:wrap;gap:6px 8px;margin:0 0 14px}
 .eq-rol-chip{display:inline-flex;align-items:center;gap:6px;background:var(--rol-t,var(--relleno));color:var(--texto-fuerte);border:1px solid var(--rol-c,var(--borde));border-radius:99px;padding:3px 10px;font-size:.74rem;font-weight:600;white-space:nowrap}
@@ -3342,6 +3357,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 
     <section class="eq-card" aria-labelledby="eq-titulo-org">
       <div class="eq-cab"><div class="fin-card-title" id="eq-titulo-org">Organigrama</div></div>
+      <div id="eq-org-leyenda"></div>
       <div class="eq-organigrama" id="eq-organigrama"><div class="eq-vacio">Cargando...</div></div>
     </section>
   </div>
@@ -3956,6 +3972,21 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     <div class="modal-btns">
       <button class="btn-ghost" type="button" onclick="eqCerrarModal('eq-modal-paso')">Cancelar</button>
       <button class="btn-primary" type="button" onclick="eqPasoGuardar()">Guardar</button>
+    </div>
+  </div>
+</div>
+<div class="modal-overlay" id="eq-modal-rol" onclick="if(event.target===this)eqCerrarModal('eq-modal-rol')">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="eq-rol-titulo">
+    <h3 id="eq-rol-titulo">Rol en Flujos</h3>
+    <p id="eq-rol-persona"></p>
+    <label class="modal-label" for="eq-rol-select">Rol en Flujos</label>
+    <select id="eq-rol-select" onchange="eqOrgRolMuestra()"></select>
+    <div class="eq-paso-rol-muestra" id="eq-rol-muestra" aria-live="polite"></div>
+    <div class="eq-ayuda">Define el color de la persona en el organigrama.</div>
+    <div class="eq-error" id="eq-rol-error" role="alert"></div>
+    <div class="modal-btns">
+      <button class="btn-ghost" type="button" onclick="eqCerrarModal('eq-modal-rol')">Cancelar</button>
+      <button class="btn-primary" type="button" onclick="eqOrgGuardarRol()">Guardar</button>
     </div>
   </div>
 </div>
@@ -12967,6 +12998,7 @@ async function loadEquipo() {
   } catch (e) {
     eqDatos = null;
     const falla = '<div class="eq-vacio">No se pudieron cargar los datos (' + esc(e.message) + ').</div>';
+    eqPoner('eq-org-leyenda', () => '');
     eqPoner('eq-organigrama', () => falla);
     eqPoner('eq-calendario', () => falla);
     eqPoner('eq-avisos', () => '');
@@ -12985,7 +13017,8 @@ function eqPoner(id, armar) {
 }
 
 function eqPintar(d) {
-  eqPoner('eq-organigrama', () => eqOrganigramaSvg(d.organigrama || []));
+  eqPoner('eq-org-leyenda', () => eqOrgLeyendaHtml(d.leyenda_organigrama || [], d.es_admin === true));
+  eqPoner('eq-organigrama', () => eqOrganigramaSvg(d.organigrama || [], {editable: d.es_admin === true}));
   eqPoner('eq-avisos', () => eqAvisosHtml(d.avisos || []));
   eqPoner('eq-calendario', () => eqCalendarioHtml(d));
   const rango = document.getElementById('eq-cal-rango');
@@ -13086,8 +13119,9 @@ function eqConector(lineas, xPadre, yPadre, xsHijos, yHijos) {
 // Las personas sin reporta_a son la fila de arriba. Los hijos de TODAS las
 // raices cuelgan juntos de un conector comun que las une, como en el dibujo de
 // Juan (Juan Pereyra y Javier arriba). Mas abajo, cada uno bajo su jefe.
-function eqOrganigramaSvg(personas) {
+function eqOrganigramaSvg(personas, opciones) {
   if (!personas.length) return '<div class="eq-vacio">No hay personas cargadas.</div>';
+  const op = opciones || {};
   const N = EQ_NODO;
   const hijos = {};
   personas.forEach(p => { hijos[p.id] = []; });
@@ -13153,8 +13187,14 @@ function eqOrganigramaSvg(personas) {
   const H = alto + m;
   const nodos = personas.filter(p => pos[p.id]).map(p => {
     const c = pos[p.id];
-    return '<g class="eq-nodo' + (p.destacado ? ' eq-destacado' : '') + '">'
-      + '<title>' + esc(p.nombre + (p.rol ? ' · ' + p.rol : '')) + '</title>'
+    // El color lo manda el servidor (color de su rol en Flujos, o rosa si no
+    // participa). Para el admin, tocar el nodo abre el cambio de rol.
+    const editable = op.editable
+      ? ' eq-nodo-editable" role="button" tabindex="0" data-persona="' + Number(p.id)
+        + '" onclick="eqOrgEditar(Number(this.dataset.persona))" onkeydown="eqOrgTecla(event, Number(this.dataset.persona))'
+      : '';
+    return '<g class="eq-nodo eq-rol-' + esc(p.color || 'rosa') + (p.destacado ? ' eq-destacado' : '') + editable + '">'
+      + '<title>' + esc(p.nombre + (p.rol ? ' · ' + p.rol : '') + ' · ' + (p.etiqueta_flujo || 'Fuera de Flujos')) + '</title>'
       + '<rect x="' + (c.x - N.ancho / 2) + '" y="' + c.y + '" width="' + N.ancho + '" height="' + N.alto + '" rx="8"></rect>'
       + '<text class="eq-nodo-nombre" x="' + c.x + '" y="' + (c.y + 22) + '" text-anchor="middle">' + esc(eqRecortar(p.nombre, 24)) + '</text>'
       + '<text class="eq-nodo-rol" x="' + c.x + '" y="' + (c.y + 39) + '" text-anchor="middle">' + esc(eqRecortar(p.rol, 32)) + '</text>'
@@ -13163,6 +13203,77 @@ function eqOrganigramaSvg(personas) {
   return '<svg class="eq-svg" xmlns="http://www.w3.org/2000/svg" width="' + W + '" height="' + H
     + '" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Organigrama del equipo">'
     + lineas.join('') + nodos + '</svg>';
+}
+
+// ── colores del organigrama ──
+let eqOrgPersona = null;
+
+function eqOrgChipHtml(color, etiqueta) {
+  return '<span class="eq-rol-chip eq-rol-' + esc(color) + '"><i class="eq-rol-punto" aria-hidden="true"></i>'
+    + esc(etiqueta) + '</span>';
+}
+
+// Arriba del organigrama: los colores que aparecen, en el orden de los roles
+// de Flujos y al final "Fuera de Flujos". La lista la arma el servidor.
+function eqOrgLeyendaHtml(leyenda, admin) {
+  const chips = leyenda.map(e => eqOrgChipHtml(e.color, e.etiqueta)).join('');
+  return (chips ? '<div class="eq-flujo-leyenda eq-org-leyenda" role="group" aria-label="Color de cada rol en Flujos">' + chips + '</div>' : '')
+    + (admin ? '<div class="eq-org-ayuda">Tocá a una persona para cambiar su rol en Flujos.</div>' : '');
+}
+
+function eqOrgTecla(ev, id) {
+  if (ev.key === 'Enter' || ev.key === ' ') {
+    ev.preventDefault();
+    eqOrgEditar(id);
+  }
+}
+
+function eqOrgEditar(id) {
+  if (!eqDatos || eqDatos.es_admin !== true) return;
+  const p = (eqDatos.organigrama || []).find(x => x.id === id);
+  if (!p) return;
+  eqOrgPersona = p;
+  document.getElementById('eq-rol-persona').textContent = p.nombre + (p.rol ? ' · ' + p.rol : '');
+  const roles = eqDatos.roles_flujo || [];
+  const sel = document.getElementById('eq-rol-select');
+  sel.innerHTML = roles.map(e => '<option value="' + esc(e.rol) + '"' + (p.rol_flujo === e.rol ? ' selected' : '') + '>'
+    + esc(e.etiqueta) + '</option>').join('')
+    + '<option value=""' + (p.rol_flujo ? '' : ' selected') + '>No participa</option>';
+  sel.value = p.rol_flujo || '';
+  document.getElementById('eq-rol-error').textContent = '';
+  eqOrgRolMuestra();
+  eqAbrirModal('eq-modal-rol');
+}
+
+// Al elegir el rol, el modal muestra con que color va a quedar la persona.
+function eqOrgRolMuestra() {
+  const sel = document.getElementById('eq-rol-select');
+  const valor = sel ? sel.value : '';
+  const e = ((eqDatos && eqDatos.roles_flujo) || []).find(x => x.rol === valor);
+  const fuera = (eqDatos && eqDatos.fuera_de_flujos) || {color: 'rosa', etiqueta: 'Fuera de Flujos'};
+  const estilo = e || fuera;
+  eqPoner('eq-rol-muestra', () => eqOrgChipHtml(estilo.color, estilo.etiqueta));
+}
+
+async function eqOrgGuardarRol() {
+  if (!eqOrgPersona) return;
+  const valor = document.getElementById('eq-rol-select').value;
+  const error = document.getElementById('eq-rol-error');
+  const roles = ((eqDatos && eqDatos.roles_flujo) || []).map(e => e.rol);
+  if (valor && !roles.includes(valor)) { error.textContent = 'Elegí un rol de la lista.'; return; }
+  error.textContent = '';
+  try {
+    const r = await fetch('/api/equipo/personas/' + Number(eqOrgPersona.id) + '/rol-flujo', {method: 'PUT',
+      headers: {'Content-Type': 'application/json'}, body: JSON.stringify({rol_flujo: valor || null})});
+    const j = await eqLeerRespuesta(r);
+    if (!r.ok) { error.textContent = j.error || 'No se pudo guardar (HTTP ' + r.status + ').'; return; }
+  } catch (e) {
+    error.textContent = 'No se pudo guardar: ' + e.message;
+    return;
+  }
+  eqCerrarModal('eq-modal-rol');
+  eqOrgPersona = null;
+  await loadEquipo();
 }
 
 // ── ausencias ──
