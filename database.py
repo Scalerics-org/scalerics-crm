@@ -230,6 +230,18 @@ def init_db(db_path: str) -> None:
                 ("Ventas", _SALES),
             ])
         _grant_panel_to_existing_roles(conn, "meta")
+        # Contador y Marketing (pedido de Juan, 15/9): hoy hay Admin, SDR y
+        # Programador, y se suman estos dos. Se crean por nombre, una sola vez,
+        # también en bases que ya tienen roles; INSERT OR IGNORE no pisa lo que
+        # Juan cambie después en el editor de roles.
+        # Contador arranca SIN Finanzas ni Simulador aunque sean su trabajo: por
+        # el Ruling R20 los paneles con plata no se asignan desde el código,
+        # Juan los tilda a mano en el editor de roles.
+        import json as _jroles
+        for _nombre, _paneles in (("Contador", ["cal"]),
+                                  ("Marketing", ["cal", "meta", "marketing"])):
+            conn.execute("INSERT OR IGNORE INTO roles (name, panel_access) VALUES (?, ?)",
+                         (_nombre, _jroles.dumps(_paneles)))
         _add_column(conn, "client_info", "meeting_time", "TEXT")
         _add_column(conn, "client_info", "meeting_url", "TEXT")
 
