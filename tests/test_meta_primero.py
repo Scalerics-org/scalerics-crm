@@ -30,9 +30,9 @@ ORDEN = [
     ("CALENDARIO", ["cal"]),
     ("MARKETING", ["meta", "marketing"]),
     ("FINANZAS", ["finanzas", "simulador"]),
-    ("VENTAS", ["wa", "notion_clients", "demos", "sdr"]),
+    ("VENTAS", ["wa", "notion_clients", "demos"]),
     ("OPERACIÓN", ["clientes", "projects", "tasks", "activity", "equipo"]),
-    ("CAPTACIÓN", ["metrics", "cola"]),
+    ("CAPTACIÓN", ["cola", "metrics", "sdr"]),
 ]
 
 

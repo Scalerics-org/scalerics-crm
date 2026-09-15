@@ -1115,6 +1115,15 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-cal .nav-icon{stroke:#3b82f6}
 #nav-metrics .nav-icon{stroke:#6366f1}
 #nav-activity .nav-icon{stroke:#64748b}
+/* Las secciones que no tenian color (pedido de Juan, 14/9) */
+#nav-marketing .nav-icon{stroke:#f472b6}
+#nav-finanzas .nav-icon{stroke:#f59e0b}
+#nav-simulador .nav-icon{stroke:#fb923c}
+#nav-notion_clients .nav-icon{stroke:#10b981}
+#nav-demos .nav-icon{stroke:#22d3ee}
+#nav-sdr .nav-icon{stroke:#f87171}
+#nav-projects .nav-icon{stroke:#facc15}
+#nav-equipo .nav-icon{stroke:#a3e635}
 .nav-item.active #nav-cola .nav-icon,
 .nav-item.active .nav-icon{opacity:1}
 /* active item keeps its color but brighter */
@@ -1125,6 +1134,14 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-cal.active .nav-icon{stroke:#60a5fa}
 #nav-metrics.active .nav-icon{stroke:#818cf8}
 #nav-activity.active .nav-icon{stroke:#94a3b8}
+#nav-marketing.active .nav-icon{stroke:#f9a8d4}
+#nav-finanzas.active .nav-icon{stroke:#fcd34d}
+#nav-simulador.active .nav-icon{stroke:#fdba74}
+#nav-notion_clients.active .nav-icon{stroke:#34d399}
+#nav-demos.active .nav-icon{stroke:#67e8f9}
+#nav-sdr.active .nav-icon{stroke:#fca5a5}
+#nav-projects.active .nav-icon{stroke:#fde047}
+#nav-equipo.active .nav-icon{stroke:#bef264}
 /* light mode — slightly darker tones */
 body.light #nav-cola .nav-icon{stroke:#2563eb}
 body.light #nav-clientes .nav-icon{stroke:#7c3aed}
@@ -1133,8 +1150,23 @@ body.light #nav-wa .nav-icon{stroke:#16a34a}
 body.light #nav-cal .nav-icon{stroke:#2563eb}
 body.light #nav-metrics .nav-icon{stroke:#4f46e5}
 body.light #nav-activity .nav-icon{stroke:#475569}
+body.light #nav-marketing .nav-icon{stroke:#db2777}
+body.light #nav-finanzas .nav-icon{stroke:#b45309}
+body.light #nav-simulador .nav-icon{stroke:#c2410c}
+body.light #nav-notion_clients .nav-icon{stroke:#047857}
+body.light #nav-demos .nav-icon{stroke:#0e7490}
+body.light #nav-sdr .nav-icon{stroke:#b91c1c}
+body.light #nav-projects .nav-icon{stroke:#a16207}
+body.light #nav-equipo .nav-icon{stroke:#4d7c0f}
 /* ── Lucide icons ─────────────────────────────────────────────────────────── */
 .nav-icon{width:15px;height:15px;stroke-width:2;flex-shrink:0}
+/* Frase de equipo, version compacta del PDF de identidad de marca. Es la
+   version oscura en los dos temas a proposito: asi la presenta la marca. */
+.frase-equipo{display:flex;align-items:center;gap:14px;background:#0F2430;border-radius:12px;padding:10px 16px;margin-bottom:20px}
+.frase-equipo-logo{height:22px;width:auto;flex-shrink:0}
+.frase-equipo-texto{margin:0;font-size:.82rem;line-height:1.45;color:#EFEFEF}
+.frase-equipo-texto strong{color:#80CD2A;font-weight:600}
+@media(max-width:768px){ .frase-equipo{flex-direction:column;align-items:flex-start;gap:8px;padding:10px 12px;margin-bottom:14px} .frase-equipo-texto{font-size:.76rem} }
 .btn-icon{width:14px;height:14px;stroke-width:2;vertical-align:middle}
 .outcome-icon{width:22px;height:22px;stroke-width:1.8;display:block;margin:0 auto 4px}
 /* ── Theme toggle ─────────────────────────────────────────────────────────── */
@@ -1742,7 +1774,6 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div class="nav-item" id="nav-wa" onclick="showPanel('wa')"><i data-lucide="message-circle" class="nav-icon"></i> WhatsApp</div>
   <div class="nav-item" id="nav-notion_clients" onclick="showPanel('notion_clients')"><i data-lucide="handshake" class="nav-icon"></i> Proceso de venta</div>
   <div class="nav-item" id="nav-demos" onclick="showPanel('demos')"><i data-lucide="monitor-play" class="nav-icon"></i> Demos</div>
-  <div class="nav-item" id="nav-sdr" onclick="showPanel('sdr')"><i data-lucide="phone-call" class="nav-icon"></i> SDR</div>
   <div class="nav-section-label">OPERACIÓN</div>
   <div class="nav-item" id="nav-clientes" onclick="showPanel('clientes')"><i data-lucide="users" class="nav-icon"></i> Clientes</div>
   <div class="nav-item" id="nav-projects" onclick="showPanel('projects')"><i data-lucide="target" class="nav-icon"></i> Proyectos</div>
@@ -1750,8 +1781,9 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div class="nav-item" id="nav-activity" onclick="showPanel('activity')"><i data-lucide="clock" class="nav-icon"></i> Actividad</div>
   <div class="nav-item" id="nav-equipo" onclick="showPanel('equipo')"><i data-lucide="network" class="nav-icon"></i> Equipo</div>
   <div class="nav-section-label">CAPTACIÓN</div>
-  <div class="nav-item" id="nav-metrics" onclick="showPanel('metrics')"><i data-lucide="bar-chart-2" class="nav-icon"></i> Inteligencia comercial</div>
   <div class="nav-item" id="nav-cola" onclick="showPanel('cola')"><i data-lucide="inbox" class="nav-icon"></i> Outbound</div>
+  <div class="nav-item" id="nav-metrics" onclick="showPanel('metrics')"><i data-lucide="bar-chart-2" class="nav-icon"></i> Inteligencia comercial</div>
+  <div class="nav-item" id="nav-sdr" onclick="showPanel('sdr')"><i data-lucide="phone-call" class="nav-icon"></i> SDR</div>
   </div>
   <div class="sidebar-bottom">
     <a id="admin-link" href="/admin/users" style="display:none;background:none;border:1px solid var(--borde);border-radius:8px;padding:6px 12px;font-size:.75rem;color:var(--texto-debil);cursor:pointer;width:100%;text-align:left;text-decoration:none;box-sizing:border-box">&#9881; Usuarios</a>
@@ -1767,6 +1799,10 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 </div>
 
 <div class="main">
+  <div class="frase-equipo" role="note">
+    <img class="frase-equipo-logo" src="https://raw.githubusercontent.com/Scalerics-org/scalerics-assets/main/logo_full_alt.png" alt="Scalerics">
+    <p class="frase-equipo-texto">La IA avanza rápido, es cierto. Pero el mercado la entiende lento. <strong>Ahí están nuestras oportunidades.</strong></p>
+  </div>
   <!-- ======= COLA PANEL ======= -->
   <div id="cola-panel" class="panel">
     <div class="page-header">
@@ -6471,7 +6507,7 @@ function _showScoreBreakdown(event, el) {
 
 // ── Mobile navigation ─────────────────────────────────────────────────────────
 // El mismo orden que el menu de la izquierda (Juan, 14/9).
-const NAV_PRIORITY = ['cal','meta','finanzas','simulador','wa','notion_clients','clientes','projects','tasks','activity','equipo','metrics','cola'];
+const NAV_PRIORITY = ['cal','meta','finanzas','simulador','wa','notion_clients','clientes','projects','tasks','activity','equipo','cola','metrics'];
 const NAV_ICONS = {
   cola:'inbox',meta:'instagram',cal:'calendar',
   tasks:'check-square',pipeline:'trending-up',clientes:'users',
