@@ -464,6 +464,14 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **15/9 — rama `feat/balance-general` (worktree `../crm-balance-general`). Sin PR, sin merge, sin deploy.** Juan rechazó el Balance de #52 (era un estado de resultados): quiere un **Balance General** clásico.
+  - **Qué muestra:** la pestaña Balance ahora genera el Balance General a una fecha de corte (por defecto hoy en Montevideo), con dos columnas (ACTIVO | PASIVO y PATRIMONIO) que pasan a una en el celular. El estado de resultados de #52 queda abajo, colapsado: "Estado de resultados del período", del 1/1 al corte.
+  - **Ruta y cuenta:** `GET /api/finanzas/balance-general?tipo=&fecha=`, con la cuenta pura en `services/finanzas.calcular_balance_general`. `GET /api/finanzas/balance` (#52) sigue existiendo.
+  - **Por qué cuadra solo:** la caja se cuenta CON IVA y el resultado SIN IVA, y la diferencia es el saldo de IVA (va a pasivo o a activo). Por eso no se reusa `cajaActual` del simulador, que es sin IVA. Las cuentas por cobrar (solo en interno) llevan su contrapartida en patrimonio: "Ventas pendientes de cobro".
+  - **Si no cuadra:** los datos manuales no tienen contrapartida automática, así que la diferencia no se fuerza. Se muestra "Diferencia a revisar (patrimonio no explicado)", en ámbar, con aviso.
+  - **Datos manuales:** tabla nueva `finanzas_balance_datos` (clase activo/pasivo/capital/caja_inicial, rubro, monto USD, desde, hasta, en_blanco) y rutas `/api/finanzas/balance-datos` (GET/POST/PUT/DELETE). Las escrituras quedan bloqueadas para el Contador por el candado del blueprint, y están sumadas a `ESCRITURAS` en `tests/test_finanzas_solo_lectura.py`.
+  - **Empresa del encabezado:** variable `EMPRESA_NOMBRE`, que por defecto es "Scalerics". No hay tabla de configuración.
+
 - **15/9 — rama `feat/meta-ads-por-mes` (worktree `../crm-meta-mes`). Sin PR, sin merge, sin deploy.**
   - **Meta Ads por mes:** flechas, "Este mes", deslizar en el celular; siempre abre en el mes actual (hora Montevideo). Arriba, total del mes y conteo por color. JS `mm*`, CSS `.mm-*` con tokens (`--semaforo-rojo/amarillo/negro` nuevos).
   - **Semáforo desde el CRM:** `POST /api/meta/leads/<id>/semaforo` (panel `meta`). El color NO tiene columna propia: sale de `crm_status` (`services/planilla_semaforo.ESTADO_A_COLOR`), y la demo del mes se escribe con la misma función que el sync (`_escribir_demos`). Columnas nuevas en `businesses`: `semaforo_origen`, `semaforo_at`, `semaforo_planilla`. Regla con la planilla: una marca a mano solo la mueve la planilla si se repintó después (trae otro color que en la lectura anterior), y ahí valen las reglas de siempre.
