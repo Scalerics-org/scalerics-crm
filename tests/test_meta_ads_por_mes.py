@@ -502,8 +502,8 @@ def test_la_lista_de_meta_trae_los_envios_de_cada_lead(cli, db):
 def test_get_raiz_da_200_con_la_lista_por_mes(cli):
     r = cli.get("/")
     assert r.status_code == 200
-    for fragmento in ('id="mm-mes-label"', 'id="mm-mes-ant"', 'id="mm-mes-sig"', "Este mes",
-                      'id="mm-resumen"', 'id="mm-buscar-todos"', 'id="meta-estado-filter"'):
+    for fragmento in ('id="meta-mes-label"', 'id="meta-mes-ant"', 'id="meta-mes-sig"', "Este mes",
+                      'id="meta-mes-resumen"', 'id="meta-mes-buscar-todos"', 'id="meta-estado-filter"'):
         assert fragmento.encode() in r.data, fragmento
     assert b'id="meta-month-filter"' not in r.data, "el desplegable de meses lo reemplaza la navegacion"
 
@@ -608,9 +608,9 @@ def test_la_lista_va_de_a_un_mes_con_su_resumen(cli, db, tmp_path):
     s = _correr_js(tmp_path, {"/api/leads?crm_group=meta": leads}, _HOY_JS + """
 (async () => {
   const s = {};
-  const foto = k => { s[k] = {label: _el('mm-mes-label').textContent, body: _el('meta-body').innerHTML,
-                              resumen: _el('mm-resumen').innerHTML, cuenta: _el('meta-count').textContent,
-                              ant: _el('mm-mes-ant').disabled, sig: _el('mm-mes-sig').disabled}; };
+  const foto = k => { s[k] = {label: _el('meta-mes-label').textContent, body: _el('meta-body').innerHTML,
+                              resumen: _el('meta-mes-resumen').innerHTML, cuenta: _el('meta-count').textContent,
+                              ant: _el('meta-mes-ant').disabled, sig: _el('meta-mes-sig').disabled}; };
   await loadMetaPanel();
   foto('sep');
   mmMes(1); foto('futuro');
@@ -663,21 +663,21 @@ def test_al_entrar_al_panel_siempre_se_ve_el_mes_actual(cli, db, tmp_path):
   globalThis.setInterval = (fn) => { poll = fn; return 1; };
   showPanel('meta');
   await new Promise(r => setTimeout(r, 20));
-  s.primera = {label: _el('mm-mes-label').textContent, body: _el('meta-body').innerHTML};
+  s.primera = {label: _el('meta-mes-label').textContent, body: _el('meta-body').innerHTML};
   mmMes(-1); mmMes(-1);
   metaSearch('heladeria'); mmBuscarTodos(true); mmAbrirColor(4);
-  s.navegado = _el('mm-mes-label').textContent;
+  s.navegado = _el('meta-mes-label').textContent;
   s.pedidosAntes = _pedidos.length;
   await poll();
-  s.trasPoll = _el('mm-mes-label').textContent;
+  s.trasPoll = _el('meta-mes-label').textContent;
   metaSearch('');
   showPanel('cal');
   showPanel('meta');
   await new Promise(r => setTimeout(r, 20));
-  s.vuelta = {label: _el('mm-mes-label').textContent, body: _el('meta-body').innerHTML,
+  s.vuelta = {label: _el('meta-mes-label').textContent, body: _el('meta-body').innerHTML,
               todos: mmTodosLosMeses, abierto: mmAbierto};
   await loadMetaPanel();
-  s.recarga = _el('mm-mes-label').textContent;
+  s.recarga = _el('meta-mes-label').textContent;
   console.log(JSON.stringify(s));
   process.exit(0);
 })().catch(e => { console.error((e && e.stack) || e); process.exit(1); });
@@ -710,7 +710,7 @@ def test_cada_lead_se_pinta_con_su_color_y_tocar_una_opcion_lo_guarda(cli, db, t
   await mmMarcarColor(1, 'violeta');
   s.pedido = _pedidos.filter(p => p[1] === 'POST').pop();
   s.despues = _el('meta-body').innerHTML;
-  s.resumenDespues = _el('mm-resumen').innerHTML;
+  s.resumenDespues = _el('meta-mes-resumen').innerHTML;
   mmAbrirColor(3);
   await mmMarcarColor(3, 'rojo');
   s.alertas = _alertas.slice();
@@ -755,7 +755,7 @@ def test_deslizar_cambia_de_mes_sin_romper_el_scroll_ni_los_toques(cli, db, tmp_
   const gesto = (x0, y0, x1, y1) => {
     mmToqueInicio({touches: [{clientX: x0, clientY: y0}]});
     mmToqueFin({changedTouches: [{clientX: x1, clientY: y1}]});
-    return _el('mm-mes-label').textContent;
+    return _el('meta-mes-label').textContent;
   };
   await loadMetaPanel();
   s.listo = mmSwipeListo;
@@ -766,7 +766,7 @@ def test_deslizar_cambia_de_mes_sin_romper_el_scroll_ni_los_toques(cli, db, tmp_
   s.vertical = gesto(300, 100, 240, 400);         // scroll: no cambia
   s.corto = gesto(200, 200, 160, 200);            // 40px: no cambia
   s.toque = gesto(200, 200, 203, 201);            // un toque: no cambia
-  s.sinInicio = (mmToqueFin({changedTouches: [{clientX: 0, clientY: 0}]}), _el('mm-mes-label').textContent);
+  s.sinInicio = (mmToqueFin({changedTouches: [{clientX: 0, clientY: 0}]}), _el('meta-mes-label').textContent);
   s.dir = [mmDireccionDeslizar(51, 0), mmDireccionDeslizar(-51, 0), mmDireccionDeslizar(50, 0),
            mmDireccionDeslizar(-60, 61), mmDireccionDeslizar(-61, 60)];
   console.log(JSON.stringify(s));
@@ -789,11 +789,11 @@ def test_la_busqueda_y_el_filtro_andan_dentro_del_mes_y_se_puede_buscar_en_todos
   const s = {};
   await loadMetaPanel();
   metaSearch('heladeria');
-  s.mes = _el('meta-body').innerHTML; s.aviso = _el('mm-buscar-todos').innerHTML;
+  s.mes = _el('meta-body').innerHTML; s.aviso = _el('meta-mes-buscar-todos').innerHTML;
   mmBuscarTodos(true);
-  s.todos = _el('meta-body').innerHTML; s.avisoTodos = _el('mm-buscar-todos').innerHTML;
+  s.todos = _el('meta-body').innerHTML; s.avisoTodos = _el('meta-mes-buscar-todos').innerHTML;
   metaSearch('');
-  s.limpio = _el('mm-buscar-todos').innerHTML; s.todosTrasLimpiar = mmTodosLosMeses;
+  s.limpio = _el('meta-mes-buscar-todos').innerHTML; s.todosTrasLimpiar = mmTodosLosMeses;
   metaEstadoFilter('demo_1');
   s.estado = _el('meta-body').innerHTML; s.opciones = _el('meta-estado-filter').innerHTML;
   mmMes(-1);

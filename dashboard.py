@@ -2136,10 +2136,10 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       </div>
     </div>
     <div class="filters">
-      <div class="mm-nav-mes" id="mm-nav-mes">
-        <button class="cal-nav-btn" id="mm-mes-ant" onclick="mmMes(-1)" title="Mes anterior">&larr;</button>
-        <span id="mm-mes-label"></span>
-        <button class="cal-nav-btn" id="mm-mes-sig" onclick="mmMes(1)" title="Mes siguiente">&rarr;</button>
+      <div class="mm-nav-mes" id="meta-mes-nav">
+        <button class="cal-nav-btn" id="meta-mes-ant" onclick="mmMes(-1)" title="Mes anterior">&larr;</button>
+        <span id="meta-mes-label"></span>
+        <button class="cal-nav-btn" id="meta-mes-sig" onclick="mmMes(1)" title="Mes siguiente">&rarr;</button>
         <button class="cal-today-btn" onclick="mmMesHoy()">Este mes</button>
       </div>
       <input class="search-box" id="meta-search-input" placeholder="🔍 Buscar..." oninput="metaSearch(this.value)">
@@ -2148,8 +2148,8 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       </select>
       <span id="meta-count" style="color:#64748b;font-size:.8rem;align-self:center;margin-left:auto"></span>
     </div>
-    <div class="mm-resumen" id="mm-resumen"></div>
-    <div class="mm-buscar-todos" id="mm-buscar-todos"></div>
+    <div class="mm-resumen" id="meta-mes-resumen"></div>
+    <div class="mm-buscar-todos" id="meta-mes-buscar-todos"></div>
     <div class="table-wrap">
       <div class="table-header no-cb" style="grid-template-columns:1.8fr 1fr 1.2fr 1.2fr 0.9fr 0.8fr 1.1fr">
         <span>Nombre / Negocio</span><span>Teléfono</span><span>Qué busca</span><span>Presupuesto</span><span>Ciudad</span><span style="cursor:pointer" onclick="toggleMetaSort()">Fecha <span id="meta-sort-icon">↓</span></span><span>Acciones</span>
@@ -3871,11 +3871,11 @@ function mmResumenHtml(leads, mes) {
 }
 
 function mmPintarNavegador(mes) {
-  const label = document.getElementById('mm-mes-label');
+  const label = document.getElementById('meta-mes-label');
   if (label) label.textContent = mmEtiquetaMes(mes);
   const viejo = mmMesMasViejo(_metaLeads);
-  const ant = document.getElementById('mm-mes-ant');
-  const sig = document.getElementById('mm-mes-sig');
+  const ant = document.getElementById('meta-mes-ant');
+  const sig = document.getElementById('meta-mes-sig');
   if (ant) ant.disabled = !viejo || mes <= viejo;
   if (sig) sig.disabled = mes >= mmMesActual();
 }
@@ -3937,7 +3937,7 @@ function mmOpcionesHtml(b) {
   const opciones = MM_SEMAFORO.map(s =>
     `<button class="mm-opcion mm-c-${s.clave}${s.clave === actual ? ' mm-actual' : ''}" onclick="mmMarcarColor(${b.id}, '${s.clave}')"><span class="mm-punto"></span>${esc(s.etiqueta)}</button>`);
   opciones.push(`<button class="mm-opcion mm-c-sin${actual ? '' : ' mm-actual'}" onclick="mmMarcarColor(${b.id}, 'sin_color')"><span class="mm-punto"></span>Sin color</button>`);
-  return `<div class="mm-opciones" id="mm-opciones-${b.id}"><div class="mm-opciones-titulo">Color del semáforo para ${esc(b.name || 'este lead')}</div>${opciones.join('')}</div>`;
+  return `<div class="mm-opciones" id="meta-mes-opciones-${b.id}"><div class="mm-opciones-titulo">Color del semáforo para ${esc(b.name || 'este lead')}</div>${opciones.join('')}</div>`;
 }
 
 function mmAbrirColor(id) { mmAbierto = mmAbierto === id ? null : id; renderMetaTable(); }
@@ -4015,7 +4015,7 @@ function renderMetaTable() {
   const mes = mmMesVisible();
   mmPintarNavegador(mes);
   const delMes = mmDelMes(_metaLeads, mes);
-  const resumen = document.getElementById('mm-resumen');
+  const resumen = document.getElementById('meta-mes-resumen');
   if (resumen) resumen.innerHTML = mmResumenHtml(delMes, mes);
   _fillMetaEstados(delMes);
   const coincide = b => (b.name||'').toLowerCase().includes(_metaSearch) || (b.notes||'').toLowerCase().includes(_metaSearch);
@@ -4023,7 +4023,7 @@ function renderMetaTable() {
   let leads = (todos ? _metaLeads : delMes).slice();
   if (_metaSearch) leads = leads.filter(coincide);
   if (_metaEstado) leads = leads.filter(b => (b.crm_status || 'sin_contactar') === _metaEstado);
-  const aviso = document.getElementById('mm-buscar-todos');
+  const aviso = document.getElementById('meta-mes-buscar-todos');
   if (aviso) {
     if (!_metaSearch) aviso.innerHTML = '';
     else if (todos) aviso.innerHTML = `Buscando en todos los meses · <button class="mm-link" onclick="mmBuscarTodos(false)">Solo ${esc(mmEtiquetaMes(mes))}</button>`;
