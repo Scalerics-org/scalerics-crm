@@ -14644,9 +14644,19 @@ function _mkPintarPiezas(d) {
   }
   const g = d.gasto_pauta;
   if (g !== null && g !== undefined && Math.abs(g - (t.gasto || 0)) > Math.max(1, g * 0.01)) {
+    // La causa NO es que falte sincronizar piezas —eso decía antes y explicaba
+    // la diferencia al revés—. Son dos consultas distintas a Meta, hechas en
+    // momentos distintos: la que se trajo último tiene más, porque el día en
+    // curso sigue acumulando gasto. Comprobado el 15/9: la diferencia estaba
+    // entera en el último día, y al resincronizar las dos quedó en 0,00.
+    //
+    // Por eso no se dice quién tiene razón: se dice que falta sincronizar.
+    const atrasada = g > (t.gasto || 0) ? 'por pieza' : 'por campaña';
     aviso += ` Ojo: mirado por campaña, Meta dice que en ${nombre} se gastaron ` +
       `${SC.fmt(g, 'moneda')} y las piezas suman ${SC.fmt(t.gasto, 'moneda')}. ` +
-      'La diferencia es gasto de anuncios que no se llegó a sincronizar pieza por pieza.';
+      'Son dos consultas distintas a Meta: el día en curso sigue acumulando ' +
+      `gasto, así que la que se trajo último tiene más. Falta sincronizar la ` +
+      `cuenta ${atrasada}; con las dos al día la diferencia se va.`;
   }
 
   // Sin recomendación en la tarjeta: la que había miraba toda la vida de la
