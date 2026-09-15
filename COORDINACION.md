@@ -464,6 +464,12 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **15/9 — rama `feat/rrhh-horarios` (worktree `../crm-horarios`). Sin PR ni deploy.** Pedido de Juan: Recursos Humanos > **Horarios**.
+  - Panel `horarios`, tercero de RECURSOS HUMANOS (Organigrama, Ausencias, Horarios). Grilla semanal (personas por días, sábado/domingo solo si alguien trabaja), horas por día y total semanal; en el celular, una tarjeta por persona. Botón Editar abre un modal por persona con tramos desde/hasta por día, agregar/quitar y "No trabaja".
+  - **Zona compartida tocada:** `database.py` (tablas `horarios_tramos` y `horarios_precarga_hecha` después de las de equipo en `init_db`; `_sembrar_horarios`, `listar_tramos_horario`, `reemplazar_horario_persona` al final de la parte de Equipo) y `dashboard.py` (menú, colores del ícono, CSS `hr-`, panel, modal, JS `hr*`, las dos `ALL_PANELS`, `PANEL_LABELS`, `NAV_*`). Nuevos: `services/horarios.py`, `routes/horarios.py`, `tests/test_horarios.py`.
+  - Precarga: Gonzalo L-V 12:00-16:00; Juan (Tomasetti) lun 11-15, mar 10-14, mié 14:20-18:30, jue 14:30-18:30, vie 11-15. Una sola vez por persona (`horarios_precarga_hecha`): un horario editado, aunque sea "no trabaja" toda la semana, no se vuelve a precargar.
+  - Permisos: el panel les llega a los roles con `equipo` o `ausencias` **una sola vez**, en el arranque que crea la tabla (como `seg_leads`). Quien tiene el panel ve y edita, igual que Organigrama/Ausencias. **No cambia** `horas_por_dia` ni el cálculo de Ausencias.
+
 - **15/9 — rama `feat/calendario-contador-mes` (worktree `../crm-cal-mes`). Sin PR ni deploy.** Pedido de Juan: contador del mes y deslizar entre meses.
   - `#cal-count` ahora habla del MES que se mira, también en vista semana: "Septiembre 2026 · 18 reuniones · 11 hechas · 7 por venir" (pasado: "N reuniones"; futuro: "N agendadas"). Hechas/por venir contra la hora de Montevideo (`_calAhoraMvd`, UTC-3 fijo), no contra el reloj del navegador.
   - La vista semana pide la semana **más su mes entero** en un solo GET (`_calRangoSemana`) y filtra la grilla a los 7 días. El mes de la semana: el de hoy si cae adentro, si no el del jueves.

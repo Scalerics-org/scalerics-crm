@@ -28,6 +28,7 @@ from routes.linkedin import linkedin_bp
 from routes.finanzas import finanzas_bp
 from routes.simulador import simulador_bp
 from routes.equipo import equipo_bp
+from routes.horarios import horarios_bp
 from routes.seg_leads import seg_leads_bp
 from routes.web import web_bp
 from routes.marketing import marketing_bp
@@ -1211,6 +1212,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-projects .nav-icon{stroke:#facc15}
 #nav-equipo .nav-icon{stroke:#a3e635}
 #nav-ausencias .nav-icon{stroke:#e879f9}
+#nav-horarios .nav-icon{stroke:#38bdf8}
 #nav-seg_leads .nav-icon{stroke:#fb7185}
 .nav-item.active #nav-cola .nav-icon,
 .nav-item.active .nav-icon{opacity:1}
@@ -1231,6 +1233,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-projects.active .nav-icon{stroke:#fde047}
 #nav-equipo.active .nav-icon{stroke:#bef264}
 #nav-ausencias.active .nav-icon{stroke:#f0abfc}
+#nav-horarios.active .nav-icon{stroke:#7dd3fc}
 #nav-seg_leads.active .nav-icon{stroke:#fda4af}
 /* light mode — slightly darker tones */
 body.light #nav-cola .nav-icon{stroke:#2563eb}
@@ -1249,6 +1252,7 @@ body.light #nav-sdr .nav-icon{stroke:#b91c1c}
 body.light #nav-projects .nav-icon{stroke:#a16207}
 body.light #nav-equipo .nav-icon{stroke:#4d7c0f}
 body.light #nav-ausencias .nav-icon{stroke:#a21caf}
+body.light #nav-horarios .nav-icon{stroke:#0369a1}
 body.light #nav-seg_leads .nav-icon{stroke:#be123c}
 /* ── Lucide icons ─────────────────────────────────────────────────────────── */
 .nav-icon{width:15px;height:15px;stroke-width:2;flex-shrink:0}
@@ -1704,6 +1708,55 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .fin-hbar-relleno{height:100%;border-radius:3px}
 .fin-hbar-monto{font-size:.75rem;color:var(--texto);width:74px;text-align:right;flex-shrink:0}
 @media (max-width:760px){.fin-split{grid-template-columns:1fr}}
+/* ── Horarios ─────────────────────────────────────────────────────────────────
+   Recursos Humanos > Horarios. Solo tokens, sin reglas `body.light`. En la
+   compu es una grilla (personas por dias); en el celular la grilla se esconde
+   y queda una tarjeta por persona con sus dias. */
+.hr-card{background:var(--superficie-honda);border:1px solid var(--borde);border-radius:10px;padding:18px;margin-bottom:18px;min-width:0}
+.hr-cab{display:flex;justify-content:space-between;align-items:center;gap:8px 12px;flex-wrap:wrap;margin-bottom:12px}
+.hr-cab .fin-card-title{margin-bottom:0}
+.hr-vacio{font-size:.8rem;color:var(--texto-debil);padding:6px 0}
+.hr-nota{font-size:.72rem;color:var(--texto-debil);margin-top:10px}
+.hr-tabla-wrap{overflow-x:auto}
+.hr-tabla{width:100%;border-collapse:separate;border-spacing:4px;font-size:.8rem}
+.hr-tabla th{font-weight:600;color:var(--texto-debil);font-size:.72rem;padding:4px 8px;text-align:center;white-space:nowrap}
+.hr-tabla th.hr-persona{text-align:left;color:var(--texto-fuerte);font-size:.85rem}
+.hr-celda{background:var(--relleno);color:var(--texto);border-radius:8px;padding:8px 6px;text-align:center;vertical-align:middle;min-width:92px}
+.hr-celda-libre{background:transparent;border:1px dashed var(--borde)}
+.hr-tramo-txt{display:block;font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums}
+.hr-horas{display:block;font-size:.7rem;color:var(--texto-debil);margin-top:2px}
+.hr-libre{color:var(--texto-debil);font-size:.75rem}
+.hr-tabla .hr-total{font-weight:700;color:var(--texto-fuerte);white-space:nowrap;text-align:right;padding:0 8px}
+.hr-acciones{text-align:right;white-space:nowrap}
+.hr-btn-chico{padding:6px 12px;font-size:.76rem}
+.hr-tarjetas{display:none}
+.hr-tarjeta{border-top:1px solid var(--borde);padding:12px 0}
+.hr-tarjeta:first-child{border-top:none;padding-top:0}
+.hr-tarjeta-cab{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px}
+.hr-tarjeta-nombre{font-size:.95rem;font-weight:700;color:var(--texto-fuerte)}
+.hr-tarjeta-total{font-size:.75rem;color:var(--texto-tenue)}
+.hr-tarjeta-dia{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:7px 0;border-top:1px solid var(--borde);font-size:.82rem;color:var(--texto)}
+.hr-tarjeta-dia-nombre{color:var(--texto-tenue)}
+.hr-tarjeta-dia-tramos{text-align:right}
+.hr-oculto{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.hr-modal{width:520px;max-width:95vw;max-height:90vh;overflow-y:auto}
+.hr-dia{border-top:1px solid var(--borde);padding:10px 0}
+.hr-dia-cab{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px}
+.hr-dia-nombre{font-size:.82rem;font-weight:700;color:var(--texto-fuerte)}
+.hr-no-trabaja{display:flex;align-items:center;gap:6px;font-size:.78rem;color:var(--texto-tenue);cursor:pointer}
+.hr-no-trabaja input{accent-color:var(--azul);width:16px;height:16px;margin:0}
+.hr-tramo{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.modal .hr-tramo input[type=time]{margin-bottom:0;flex:1 1 0;min-width:0;padding:8px 10px}
+.hr-a{font-size:.78rem;color:var(--texto-debil)}
+.hr-agregar{background:none;border:1px dashed var(--borde-fuerte);color:var(--azul-claro);border-radius:8px;padding:6px 12px;font-size:.76rem;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif}
+.hr-agregar:hover{background:var(--hover)}
+.hr-error{font-size:.78rem;color:var(--rojo-texto);margin:8px 0}
+.hr-error:empty{display:none}
+@media(max-width:640px){
+  .hr-tabla-wrap{display:none}
+  .hr-tarjetas{display:block}
+  .hr-card{padding:14px}
+}
 /* ── Seguimiento de leads ─────────────────────────────────────────────────────
    La agenda de llamados. Solo tokens, sin reglas `body.light`: el rojo de
    vencido y el verde de Hecho son los de la familia de estados, que llegan a
@@ -1957,6 +2010,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div class="nav-section-label">RECURSOS HUMANOS</div>
   <div class="nav-item" id="nav-equipo" onclick="showPanel('equipo')"><i data-lucide="network" class="nav-icon"></i> Organigrama</div>
   <div class="nav-item" id="nav-ausencias" onclick="showPanel('ausencias')"><i data-lucide="calendar-clock" class="nav-icon"></i> Ausencias</div>
+  <div class="nav-item" id="nav-horarios" onclick="showPanel('horarios')"><i data-lucide="clock-4" class="nav-icon"></i> Horarios</div>
   <div class="nav-section-label">CAPTACIÓN</div>
   <div class="nav-item" id="nav-cola" onclick="showPanel('cola')"><i data-lucide="inbox" class="nav-icon"></i> Outbound</div>
   <div class="nav-item" id="nav-metrics" onclick="showPanel('metrics')"><i data-lucide="bar-chart-2" class="nav-icon"></i> Inteligencia comercial</div>
@@ -2831,6 +2885,24 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   </div>
   <!-- ======= FIN RECURSOS HUMANOS PANELES ======= -->
 
+  <!-- ======= HORARIOS PANEL ======= -->
+  <!-- Recursos Humanos > Horarios. Lo pinta hrCargar. -->
+  <div id="horarios-panel" class="panel">
+    <div class="page-header">
+      <div>
+        <h1>Horarios</h1>
+        <div class="page-date">Recursos Humanos · el horario de trabajo de cada programador.</div>
+      </div>
+    </div>
+
+    <section class="hr-card" aria-labelledby="hr-titulo">
+      <div class="hr-cab"><div class="fin-card-title" id="hr-titulo">Semana de trabajo</div></div>
+      <div id="hr-contenido"><div class="hr-vacio">Cargando...</div></div>
+      <div class="hr-nota">Horas en formato 24 h. Para cambiar un horario, tocá Editar al lado de la persona.</div>
+    </section>
+  </div>
+  <!-- ======= FIN HORARIOS PANEL ======= -->
+
   <!-- ======= SEG LEADS PANEL ======= -->
   <div id="seg_leads-panel" class="panel">
     <div class="page-header sl-cabecera">
@@ -3324,6 +3396,21 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 </div>
 <!-- ======= FIN EQUIPO MODALES ======= -->
 
+<!-- ======= HORARIOS MODALES ======= -->
+<div class="modal-overlay" id="hr-modal-editor" onclick="if(event.target===this)hrCerrarEditor()">
+  <div class="modal hr-modal" role="dialog" aria-modal="true" aria-labelledby="hr-editor-titulo">
+    <h3 id="hr-editor-titulo">Horario</h3>
+    <p>Cada día puede tener más de un tramo, por ejemplo de 09:00 a 12:00 y de 14:00 a 18:00. Horas en formato 24 h.</p>
+    <div id="hr-editor-dias"></div>
+    <div class="hr-error" id="hr-editor-error" role="alert"></div>
+    <div class="modal-btns">
+      <button class="btn-ghost" type="button" onclick="hrCerrarEditor()">Cancelar</button>
+      <button class="btn-primary" type="button" onclick="hrGuardar()">Guardar</button>
+    </div>
+  </div>
+</div>
+<!-- ======= FIN HORARIOS MODALES ======= -->
+
 <!-- ======= SEG LEADS MODALES ======= -->
 <div class="modal-overlay" id="sl-modal-nuevo" onclick="if(event.target===this)slCerrarModal('sl-modal-nuevo')">
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="sl-nuevo-titulo">
@@ -3438,6 +3525,7 @@ function showPanel(name) {
   if (name === 'metrics') loadMetrics();
   if (name === 'activity') loadActivity();
   if (name === 'equipo' || name === 'ausencias') loadEquipo();
+  if (name === 'horarios') hrCargar();
   if (name === 'seg_leads') loadSegLeads();
   if (name === 'sdr') loadSdr();
 }
@@ -7424,20 +7512,20 @@ function _showScoreBreakdown(event, el) {
 
 // ── Mobile navigation ─────────────────────────────────────────────────────────
 // El mismo orden que el menu de la izquierda (Juan, 14/9).
-const NAV_PRIORITY = ['cal','meta','finanzas','simulador','seg_leads','wa','notion_clients','clientes','projects','tasks','activity','equipo','ausencias','cola','metrics'];
+const NAV_PRIORITY = ['cal','meta','finanzas','simulador','seg_leads','wa','notion_clients','clientes','projects','tasks','activity','equipo','ausencias','horarios','cola','metrics'];
 const NAV_ICONS = {
   cola:'inbox',meta:'instagram',cal:'calendar',
   tasks:'check-square',pipeline:'trending-up',clientes:'users',
   wa:'message-circle',metrics:'bar-chart-2',activity:'clock',projects:'target',
   notion_clients:'handshake',finanzas:'wallet',simulador:'calculator',equipo:'network',
-  ausencias:'calendar-clock',seg_leads:'phone-call'
+  ausencias:'calendar-clock',horarios:'clock-4',seg_leads:'phone-call'
 };
 const NAV_LABELS = {
   cola:'Outbound',meta:'Meta',cal:'Agenda',
   tasks:'Tareas',pipeline:'Pipeline',clientes:'Clientes',
   wa:'WA',metrics:'Intel. comercial',activity:'Actividad',projects:'Proyectos',
   notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador',equipo:'Organigrama',
-  ausencias:'Ausencias',seg_leads:'Seguimiento'
+  ausencias:'Ausencias',horarios:'Horarios',seg_leads:'Seguimiento'
 };
 let _mobileNavOverflow = [];
 
@@ -7517,7 +7605,7 @@ function closeMasSheet() {
 }
 
 // ── Panel access control ──────────────────────────────────────────────────────
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','equipo','ausencias','seg_leads'];
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','equipo','ausencias','horarios','seg_leads'];
 (async () => {
   try {
     const r = await fetch('/api/me');
@@ -9818,6 +9906,212 @@ function slFichaHtml(seg) {
     + '<div class="cp-section"><div class="cp-section-title">Historial de llamados</div>' + llamados + '</div>';
 }
 // ========== FIN Seguimiento de leads ==========
+
+// ========== Horarios ==========
+// Recursos Humanos > Horarios: la semana de trabajo de cada programador, con
+// sus tramos por dia, las horas de cada dia y el total. En la compu es una
+// grilla (filas = personas, columnas = dias); en el celular, una tarjeta por
+// persona. Se edita con el boton Editar, en un modal por persona: la
+// validacion que vale es la del servidor, esta avisa antes de mandar. Todo con
+// el prefijo hr. Sin template literals ni barras invertidas: vive en un string
+// de Python.
+let hrDatos = null;
+let hrEdicion = null;
+
+const HR_DIAS_CORTOS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+const HR_DIAS_LARGOS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+const HR_TRAMOS_MAX = 6;
+const HR_HORA = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
+
+async function hrCargar() {
+  const caja = document.getElementById('hr-contenido');
+  try {
+    const r = await fetch('/api/horarios');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    hrDatos = await r.json();
+  } catch (e) {
+    hrDatos = null;
+    if (caja) caja.innerHTML = '<div class="hr-vacio">No se pudieron cargar los horarios (' + esc(e.message) + ').</div>';
+    return;
+  }
+  if (caja) caja.innerHTML = hrPantallaHtml(hrDatos);
+}
+
+// Los tramos de un dia y sus horas; sin tramos, "No trabaja".
+function hrDiaHtml(dia) {
+  const tramos = (dia && dia.tramos) || [];
+  if (!tramos.length) return '<span class="hr-libre">No trabaja</span>';
+  return tramos.map(t => '<span class="hr-tramo-txt">' + esc(t.desde) + '–' + esc(t.hasta) + '</span>').join('')
+    + '<span class="hr-horas">' + esc(dia.texto || '') + '</span>';
+}
+
+function hrBotonEditar(p) {
+  return '<button type="button" class="btn-ghost hr-btn-chico" aria-label="Editar el horario de ' + esc(p.nombre_corto)
+    + '" onclick="hrAbrirEditor(' + Number(p.id) + ')">Editar</button>';
+}
+
+function hrPantallaHtml(d) {
+  const personas = (d && d.personas) || [];
+  if (!personas.length) return '<div class="hr-vacio">Nadie del equipo lleva horas.</div>';
+  const visibles = (d.visibles && d.visibles.length) ? d.visibles : [0, 1, 2, 3, 4];
+  const cabecera = '<tr><th scope="col" class="hr-persona">Persona</th>'
+    + visibles.map(i => '<th scope="col" class="hr-col-dia">' + HR_DIAS_CORTOS[i] + '</th>').join('')
+    + '<th scope="col" class="hr-total">Semana</th>'
+    + '<th scope="col" class="hr-acciones"><span class="hr-oculto">Editar</span></th></tr>';
+  const filas = personas.map(p => '<tr><th scope="row" class="hr-persona">' + esc(p.nombre_corto) + '</th>'
+    + visibles.map(i => {
+      const dia = (p.dias || [])[i] || {};
+      const libre = !(dia.tramos && dia.tramos.length);
+      return '<td class="hr-celda' + (libre ? ' hr-celda-libre' : '') + '">' + hrDiaHtml(dia) + '</td>';
+    }).join('')
+    + '<td class="hr-total">' + esc(p.texto_semana) + '</td>'
+    + '<td class="hr-acciones">' + hrBotonEditar(p) + '</td></tr>').join('');
+  const tarjetas = personas.map(p => '<article class="hr-tarjeta">'
+    + '<div class="hr-tarjeta-cab"><div><div class="hr-tarjeta-nombre">' + esc(p.nombre_corto) + '</div>'
+    + '<div class="hr-tarjeta-total">' + esc(p.texto_semana) + ' por semana</div></div>' + hrBotonEditar(p) + '</div>'
+    + visibles.map(i => '<div class="hr-tarjeta-dia"><span class="hr-tarjeta-dia-nombre">' + HR_DIAS_LARGOS[i] + '</span>'
+      + '<span class="hr-tarjeta-dia-tramos">' + hrDiaHtml((p.dias || [])[i]) + '</span></div>').join('')
+    + '</article>').join('');
+  return '<div class="hr-tabla-wrap"><table class="hr-tabla"><thead>' + cabecera + '</thead><tbody>' + filas
+    + '</tbody></table></div><div class="hr-tarjetas">' + tarjetas + '</div>';
+}
+
+// ── editor ──
+function hrMinutos(hora) {
+  if (typeof hora !== 'string' || !HR_HORA.test(hora)) return null;
+  return Number(hora.slice(0, 2)) * 60 + Number(hora.slice(3, 5));
+}
+
+function hrHora(minutos) {
+  const m = Math.max(0, Math.min(minutos, 23 * 60 + 59));
+  const h = Math.floor(m / 60);
+  const r = m % 60;
+  return (h < 10 ? '0' : '') + h + ':' + (r < 10 ? '0' : '') + r;
+}
+
+function hrAbrirEditor(personaId) {
+  const p = ((hrDatos && hrDatos.personas) || []).find(x => x.id === personaId);
+  if (!p) return;
+  hrEdicion = {id: p.id, nombre: p.nombre_corto,
+    dias: [0, 1, 2, 3, 4, 5, 6].map(i => ((((p.dias || [])[i] || {}).tramos) || []).map(t => ({desde: t.desde, hasta: t.hasta})))};
+  document.getElementById('hr-editor-titulo').textContent = 'Horario de ' + p.nombre_corto;
+  document.getElementById('hr-editor-error').textContent = '';
+  hrPintarEditor();
+  document.getElementById('hr-modal-editor').classList.add('open');
+}
+
+function hrCerrarEditor() {
+  document.getElementById('hr-modal-editor').classList.remove('open');
+  hrEdicion = null;
+}
+
+function hrPintarEditor() {
+  if (!hrEdicion) return;
+  document.getElementById('hr-editor-dias').innerHTML = hrEdicion.dias.map((tramos, d) => {
+    const nombre = HR_DIAS_LARGOS[d];
+    const filas = tramos.map((t, i) => {
+      const base = 'hr-t-' + d + '-' + i;
+      const que = nombre + ', tramo ' + (i + 1);
+      return '<div class="hr-tramo">'
+        + '<label class="hr-oculto" for="' + base + '-desde">' + que + ', desde</label>'
+        + '<input type="time" id="' + base + '-desde" value="' + esc(t.desde) + '" oninput="hrCambiarTramo(' + d + ',' + i + ',0,this.value)">'
+        + '<span class="hr-a" aria-hidden="true">a</span>'
+        + '<label class="hr-oculto" for="' + base + '-hasta">' + que + ', hasta</label>'
+        + '<input type="time" id="' + base + '-hasta" value="' + esc(t.hasta) + '" oninput="hrCambiarTramo(' + d + ',' + i + ',1,this.value)">'
+        + '<button type="button" class="btn-ghost btn-icono hr-quitar" aria-label="Quitar ' + que + '" onclick="hrQuitarTramo(' + d + ',' + i + ')">×</button>'
+        + '</div>';
+    }).join('');
+    const agregar = (tramos.length && tramos.length < HR_TRAMOS_MAX)
+      ? '<button type="button" class="hr-agregar" onclick="hrAgregarTramo(' + d + ')">+ Agregar tramo</button>' : '';
+    return '<div class="hr-dia" role="group" aria-labelledby="hr-dia-' + d + '">'
+      + '<div class="hr-dia-cab"><span class="hr-dia-nombre" id="hr-dia-' + d + '">' + nombre + '</span>'
+      + '<label class="hr-no-trabaja"><input type="checkbox"' + (tramos.length ? '' : ' checked')
+      + ' onchange="hrNoTrabaja(' + d + ',this.checked)"> No trabaja</label></div>'
+      + filas + agregar + '</div>';
+  }).join('');
+}
+
+function hrCambiarTramo(dia, i, campo, valor) {
+  if (!hrEdicion || !hrEdicion.dias[dia] || !hrEdicion.dias[dia][i]) return;
+  hrEdicion.dias[dia][i][campo ? 'hasta' : 'desde'] = String(valor || '');
+}
+
+// Un tramo nuevo arranca donde termina el ultimo del dia y dura una hora.
+function hrAgregarTramo(dia) {
+  if (!hrEdicion || !hrEdicion.dias[dia]) return;
+  const tramos = hrEdicion.dias[dia];
+  if (tramos.length >= HR_TRAMOS_MAX) return;
+  const ultimo = tramos[tramos.length - 1];
+  const fin = ultimo ? hrMinutos(ultimo.hasta) : null;
+  if (fin === null || fin >= 23 * 60) tramos.push({desde: '09:00', hasta: '13:00'});
+  else tramos.push({desde: hrHora(fin), hasta: hrHora(fin + 60)});
+  hrPintarEditor();
+}
+
+function hrQuitarTramo(dia, i) {
+  if (!hrEdicion || !hrEdicion.dias[dia]) return;
+  hrEdicion.dias[dia].splice(i, 1);
+  hrPintarEditor();
+}
+
+function hrNoTrabaja(dia, marcado) {
+  if (!hrEdicion) return;
+  hrEdicion.dias[dia] = marcado ? [] : [{desde: '09:00', hasta: '13:00'}];
+  hrPintarEditor();
+}
+
+// Las mismas reglas que el servidor, con las mismas palabras.
+function hrValidar(dias) {
+  for (let d = 0; d < 7; d++) {
+    const nombre = HR_DIAS_LARGOS[d].toLowerCase();
+    const tramos = dias[d] || [];
+    if (tramos.length > HR_TRAMOS_MAX) return nombre + ': hasta ' + HR_TRAMOS_MAX + ' tramos por día';
+    const orden = [];
+    for (let i = 0; i < tramos.length; i++) {
+      const desde = hrMinutos(tramos[i].desde);
+      const hasta = hrMinutos(tramos[i].hasta);
+      const que = nombre + ', tramo ' + (i + 1);
+      if (desde === null) return que + ': la hora desde tiene que ser HH:MM';
+      if (hasta === null) return que + ': la hora hasta tiene que ser HH:MM';
+      if (desde >= hasta) return que + ': desde tiene que ser antes que hasta';
+      orden.push([desde, hasta, tramos[i]]);
+    }
+    orden.sort((a, b) => a[0] - b[0]);
+    for (let i = 1; i < orden.length; i++) {
+      if (orden[i][0] < orden[i - 1][1]) {
+        return nombre + ': los tramos ' + orden[i - 1][2].desde + '–' + orden[i - 1][2].hasta
+          + ' y ' + orden[i][2].desde + '–' + orden[i][2].hasta + ' se superponen';
+      }
+    }
+  }
+  return '';
+}
+
+function hrMayuscula(texto) {
+  const t = String(texto || '');
+  return t ? t.charAt(0).toUpperCase() + t.slice(1) : t;
+}
+
+async function hrGuardar() {
+  if (!hrEdicion) return;
+  const error = document.getElementById('hr-editor-error');
+  const problema = hrValidar(hrEdicion.dias);
+  if (problema) { error.textContent = hrMayuscula(problema) + '.'; return; }
+  error.textContent = '';
+  try {
+    const r = await fetch('/api/horarios/' + Number(hrEdicion.id), {method: 'PUT',
+      headers: {'Content-Type': 'application/json'}, body: JSON.stringify({dias: hrEdicion.dias})});
+    let j = {};
+    try { j = await r.json(); } catch (e) { j = {}; }
+    if (!r.ok) { error.textContent = hrMayuscula(j.error || 'no se pudo guardar (HTTP ' + r.status + ')') + '.'; return; }
+  } catch (e) {
+    error.textContent = 'No se pudo guardar: ' + e.message;
+    return;
+  }
+  hrCerrarEditor();
+  await hrCargar();
+}
+// ========== FIN Horarios ==========
 
 // ========== Equipo ==========
 // Recursos Humanos, en dos paneles que comparten un solo pedido: Organigrama
@@ -12728,7 +13022,7 @@ def create_app(db_path: str) -> Flask:
 
     for bp in (leads_bp, demos_bp, calendar_bp, wa_bp, pipeline_bp, tasks_bp, budgets_bp, tokens_bp, meta_bp, calendly_bp, notion_bp, projects_bp, preclientes_bp,
                 notion_clients_bp, resend_bp, linkedin_bp, web_bp, finanzas_bp, marketing_bp,
-                simulador_bp, equipo_bp, seg_leads_bp):
+                simulador_bp, equipo_bp, horarios_bp, seg_leads_bp):
         app.register_blueprint(bp)
 
     @app.before_request
@@ -13642,8 +13936,8 @@ select:focus{border-color:#0088cc}
 </div>
 
 <script>
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','equipo','ausencias','seg_leads'];
-const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',equipo:'Organigrama',ausencias:'Ausencias',seg_leads:'Seguimiento de leads'};
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','equipo','ausencias','horarios','seg_leads'];
+const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',equipo:'Organigrama',ausencias:'Ausencias',horarios:'Horarios',seg_leads:'Seguimiento de leads'};
 let _roles = [];
 
 function makeChips(containerId, checkedArr, prefix) {

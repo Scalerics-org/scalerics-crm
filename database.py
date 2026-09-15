@@ -1004,6 +1004,46 @@ def init_db(db_path: str) -> None:
         # Quien tenía Equipo veía las dos partes, así que recibe Ausencias.
         _grant_panel_to_existing_roles(conn, "ausencias", solo_si_tiene="equipo")
 
+        # ── horarios de trabajo ───────────────────────────────────────────────
+        # Recursos Humanos > Horarios (pedido de Juan, 15/9). Un tramo por fila:
+        # persona, día de la semana (0 = lunes ... 6 = domingo) y hora desde /
+        # hasta en 'HH:MM'. Un día puede tener más de un tramo (9-12 y 14-18);
+        # un día sin filas es "no trabaja". Sin dinero, igual que Equipo.
+        #
+        # `horarios_precarga_hecha` recuerda a quién ya se le cargó el horario
+        # inicial: sin eso, alguien que se edita a "no trabaja" toda la semana
+        # quedaba sin tramos y el próximo arranque se los volvía a poner.
+        horarios_nueva = not conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='horarios_tramos'"
+        ).fetchone()
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS horarios_tramos (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                persona_id  INTEGER NOT NULL REFERENCES equipo_personas(id) ON DELETE CASCADE,
+                dia         INTEGER NOT NULL CHECK (dia BETWEEN 0 AND 6),
+                desde       TEXT NOT NULL,
+                hasta       TEXT NOT NULL,
+                created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_horarios_tramos_persona "
+                     "ON horarios_tramos(persona_id, dia, desde)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS horarios_precarga_hecha (
+                nombre      TEXT PRIMARY KEY,
+                persona_id  INTEGER NOT NULL,
+                created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.commit()
+        _sembrar_horarios(conn)
+        # Quien ve Organigrama o Ausencias ve Horarios. UNA sola vez, en el
+        # arranque que crea la tabla (como Seguimiento de leads): si después
+        # Juan se lo saca a un rol, un deploy no se lo vuelve a poner.
+        if horarios_nueva:
+            _grant_panel_to_existing_roles(conn, "horarios", solo_si_tiene="equipo")
+            _grant_panel_to_existing_roles(conn, "horarios", solo_si_tiene="ausencias")
+
         # ── seguimiento de leads ──────────────────────────────────────────────
         # La agenda de llamados de Juan (14/9). `lead_id` es `businesses.id`:
         # ahí está el teléfono y es la ficha que abre el panel de cliente. Las
@@ -3628,6 +3668,106 @@ def listar_recuperos_equipo(db_path: str) -> list[dict]:
     try:
         cur = conn.execute("SELECT * FROM equipo_recuperos ORDER BY fecha, id")
         return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+# ─── Horarios de trabajo ─────────────────────────────────────────────────────
+# Día 0 = lunes ... 6 = domingo. Horas en 'HH:MM', 24 h.
+
+_L_V = (0, 1, 2, 3, 4)
+
+# (nombre en Equipo, ((día, desde, hasta), ...)). Pedido de Juan, 15/9:
+# "cuando digo dos es 14".
+_HORARIOS_PRECARGA = (
+    ("Gonzalo Siuciak", tuple((d, "12:00", "16:00") for d in _L_V)),
+    ("Juan Tomasetti", (
+        (0, "11:00", "15:00"),
+        (1, "10:00", "14:00"),
+        (2, "14:20", "18:30"),
+        (3, "14:30", "18:30"),
+        (4, "11:00", "15:00"),
+    )),
+)
+
+
+def _persona_para_horario(conn: sqlite3.Connection, nombre: str) -> Optional[int]:
+    """El id de la persona de Equipo para la precarga.
+
+    Primero por nombre exacto. Si no está (alguien lo renombró), por primer
+    nombre entre las activas que llevan horas, y solo si hay UNA sola: con dos
+    "Juan" no se adivina.
+    """
+    fila = conn.execute("SELECT id FROM equipo_personas WHERE nombre = ?", (nombre,)).fetchone()
+    if fila:
+        return fila[0]
+    primero = nombre.split()[0].lower()
+    candidatas = [f[0] for f in conn.execute(
+        "SELECT id, nombre FROM equipo_personas WHERE activo = 1 AND lleva_horas = 1")
+        if (f[1] or "").split() and f[1].split()[0].lower() == primero]
+    if len(candidatas) == 1:
+        logger.info(f"horarios: precarga de '{nombre}' por primer nombre (id={candidatas[0]})")
+        return candidatas[0]
+    return None
+
+
+def _sembrar_horarios(conn: sqlite3.Connection) -> int:
+    """Precarga idempotente de los horarios iniciales.
+
+    A cada persona se le carga una sola vez: queda anotada en
+    `horarios_precarga_hecha`, así un horario editado (aunque sea "no trabaja"
+    toda la semana) sobrevive a los reinicios. Si ya tuviera tramos cargados a
+    mano, tampoco se tocan. Si la persona no está, no se anota y se vuelve a
+    intentar en el próximo arranque. Devuelve cuántas personas cargó.
+    """
+    cargadas = 0
+    for nombre, tramos in _HORARIOS_PRECARGA:
+        if conn.execute("SELECT 1 FROM horarios_precarga_hecha WHERE nombre = ?",
+                        (nombre,)).fetchone():
+            continue
+        pid = _persona_para_horario(conn, nombre)
+        if pid is None:
+            logger.warning(f"horarios: no encontré a '{nombre}' en Equipo, sin precarga")
+            continue
+        ya_tiene = conn.execute("SELECT 1 FROM horarios_tramos WHERE persona_id = ? LIMIT 1",
+                                (pid,)).fetchone()
+        if not ya_tiene:
+            conn.executemany(
+                "INSERT INTO horarios_tramos (persona_id, dia, desde, hasta) VALUES (?,?,?,?)",
+                [(pid, dia, desde, hasta) for dia, desde, hasta in tramos])
+            cargadas += 1
+        conn.execute("INSERT INTO horarios_precarga_hecha (nombre, persona_id) VALUES (?,?)",
+                     (nombre, pid))
+    conn.commit()
+    return cargadas
+
+
+def listar_tramos_horario(db_path: str) -> list[dict]:
+    """Todos los tramos, ordenados por persona, día y hora."""
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute("SELECT id, persona_id, dia, desde, hasta FROM horarios_tramos "
+                           "ORDER BY persona_id, dia, desde, id")
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def reemplazar_horario_persona(db_path: str, persona_id: int,
+                               tramos: list[tuple[int, str, str]]) -> None:
+    """Reemplaza la semana entera de una persona por `tramos` (día, desde,
+    hasta), en una sola transacción: nunca queda media semana guardada."""
+    conn = _connect(db_path)
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        conn.execute("DELETE FROM horarios_tramos WHERE persona_id = ?", (persona_id,))
+        conn.executemany(
+            "INSERT INTO horarios_tramos (persona_id, dia, desde, hasta) VALUES (?,?,?,?)",
+            [(persona_id, dia, desde, hasta) for dia, desde, hasta in tramos])
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
