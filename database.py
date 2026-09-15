@@ -934,6 +934,64 @@ def init_db(db_path: str) -> None:
             )
         """)
 
+        # ── equipo ────────────────────────────────────────────────────────────
+        # Organigrama y horas a recuperar. A propósito NINGUNA de las tres
+        # tablas tiene campos de dinero: si alguien falta no se le descuenta
+        # nada, solo se registra cuántas horas debe y cuándo las devuelve
+        # (pedido de Juan, 14/9). tests/test_equipo.py lo verifica sobre el
+        # esquema.
+        #
+        # `reporta_a` es un solo id. Las personas con NULL son la fila de
+        # arriba del organigrama; los hijos de cualquier raíz se dibujan bajo
+        # un conector común que une a todas las raíces.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS equipo_personas (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                nombre          TEXT NOT NULL,
+                rol             TEXT NOT NULL DEFAULT '',
+                reporta_a       INTEGER REFERENCES equipo_personas(id) ON DELETE SET NULL,
+                lleva_horas     INTEGER NOT NULL DEFAULT 0,
+                horas_por_dia   REAL NOT NULL DEFAULT 4,
+                activo          INTEGER NOT NULL DEFAULT 1,
+                created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_equipo_personas_nombre "
+                     "ON equipo_personas(nombre)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS equipo_ausencias (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                persona_id      INTEGER NOT NULL REFERENCES equipo_personas(id) ON DELETE CASCADE,
+                fecha_desde     TEXT NOT NULL,
+                fecha_hasta     TEXT NOT NULL,
+                motivo          TEXT NOT NULL,
+                horas_totales   REAL NOT NULL,
+                created_by_id   INTEGER,
+                created_by_name TEXT,
+                created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_equipo_ausencias_persona "
+                     "ON equipo_ausencias(persona_id)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS equipo_recuperos (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                ausencia_id     INTEGER NOT NULL REFERENCES equipo_ausencias(id) ON DELETE CASCADE,
+                fecha           TEXT NOT NULL,
+                horas           REAL NOT NULL,
+                created_by_id   INTEGER,
+                created_by_name TEXT,
+                created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_equipo_recuperos_ausencia "
+                     "ON equipo_recuperos(ausencia_id)")
+        conn.commit()
+        _sembrar_equipo(conn)
+        # Como Marketing y a diferencia de Finanzas/Simulador (Ruling R20):
+        # acá no hay plata, así que el panel les llega a los roles existentes.
+        _grant_panel_to_existing_roles(conn, "equipo")
+
         # ── Pre-clientes y clientes activos ───────────────────────────────────
         # Los tres responsables de un cliente activo. Apuntan a users para poder
         # filtrar "mis clientes"; si alguien se va, el vinculo queda en NULL en vez
@@ -3225,6 +3283,159 @@ def listar_escenarios(db_path: str) -> list[dict]:
         cur = conn.execute(
             "SELECT id, nombre, created_by_name, created_at, updated_at "
             "FROM simulador_escenarios ORDER BY updated_at DESC, id DESC")
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+# ─── Equipo ──────────────────────────────────────────────────────────────────
+# Sin dinero en ningún lado: personas, ausencias en horas y recuperos en horas.
+
+# (nombre, rol, reporta_a por nombre, lleva_horas, horas_por_dia)
+_EQUIPO_PRECARGA = (
+    ("Juan Pereyra", "Comercial y administración", None, False, 4),
+    ("Javier Tomasetti", "Legal", None, False, 4),
+    ("Andrés Rosi", "Marketing digital", "Juan Pereyra", False, 4),
+    ("Matías Domínguez", "CTO", "Juan Pereyra", False, 4),
+    ("Guillermo Paredes", "Contador", "Juan Pereyra", False, 4),
+    ("Juan Tomasetti", "Programador", "Matías Domínguez", True, 4),
+    ("Gonzalo Siuciak", "Programador · project manager", "Matías Domínguez", True, 4),
+)
+
+
+def _sembrar_equipo(conn: sqlite3.Connection) -> int:
+    """Precarga idempotente de las siete personas del organigrama.
+
+    Por nombre (hay un índice único): si ya están, no se duplican ni se pisa
+    nada. `reporta_a` se escribe solo para las filas que se acaban de crear,
+    así un cambio hecho a mano en la base sobrevive a los reinicios.
+    Devuelve cuántas personas creó.
+    """
+    nuevas = []
+    for nombre, rol, _jefe, lleva, horas in _EQUIPO_PRECARGA:
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO equipo_personas "
+            "(nombre, rol, lleva_horas, horas_por_dia, activo) VALUES (?,?,?,?,1)",
+            (nombre, rol, 1 if lleva else 0, horas))
+        if cur.rowcount:
+            nuevas.append(nombre)
+    jefes = {nombre: jefe for nombre, _r, jefe, _l, _h in _EQUIPO_PRECARGA}
+    for nombre in nuevas:
+        if jefes[nombre]:
+            conn.execute(
+                "UPDATE equipo_personas SET reporta_a = "
+                "(SELECT id FROM equipo_personas WHERE nombre = ?) "
+                "WHERE nombre = ? AND reporta_a IS NULL",
+                (jefes[nombre], nombre))
+    conn.commit()
+    return len(nuevas)
+
+
+def listar_personas_equipo(db_path: str, incluir_inactivas: bool = False) -> list[dict]:
+    """En orden de alta: es el orden de los hermanos en el organigrama."""
+    conn = _connect(db_path)
+    try:
+        where = "" if incluir_inactivas else "WHERE activo = 1"
+        cur = conn.execute(f"SELECT * FROM equipo_personas {where} ORDER BY id")
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def get_persona_equipo(db_path: str, persona_id: int) -> Optional[dict]:
+    return _get_one(db_path, "equipo_personas", persona_id)
+
+
+def crear_ausencia_equipo(db_path: str, persona_id: int, fecha_desde: str,
+                          fecha_hasta: str, motivo: str, horas_totales: float,
+                          created_by_id: int | None = None,
+                          created_by_name: str | None = None) -> int:
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute(
+            "INSERT INTO equipo_ausencias (persona_id, fecha_desde, fecha_hasta, "
+            "motivo, horas_totales, created_by_id, created_by_name) "
+            "VALUES (?,?,?,?,?,?,?)",
+            (persona_id, fecha_desde, fecha_hasta, motivo, horas_totales,
+             created_by_id, created_by_name))
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def get_ausencia_equipo(db_path: str, ausencia_id: int) -> Optional[dict]:
+    return _get_one(db_path, "equipo_ausencias", ausencia_id)
+
+
+def borrar_ausencia_equipo(db_path: str, ausencia_id: int) -> None:
+    """Borra la ausencia y sus recuperos juntos. SQLite no tiene las foreign
+    keys prendidas en este proyecto, así que el ON DELETE CASCADE del esquema
+    no alcanza: sin esto quedarían recuperos huérfanos restando saldo."""
+    conn = _connect(db_path)
+    try:
+        conn.execute("DELETE FROM equipo_recuperos WHERE ausencia_id = ?", (ausencia_id,))
+        conn.execute("DELETE FROM equipo_ausencias WHERE id = ?", (ausencia_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def listar_ausencias_equipo(db_path: str) -> list[dict]:
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute(
+            "SELECT * FROM equipo_ausencias ORDER BY fecha_desde DESC, id DESC")
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def crear_recupero_equipo(db_path: str, ausencia_id: int, fecha: str, horas: float,
+                          created_by_id: int | None = None,
+                          created_by_name: str | None = None) -> int:
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute(
+            "INSERT INTO equipo_recuperos (ausencia_id, fecha, horas, "
+            "created_by_id, created_by_name) VALUES (?,?,?,?,?)",
+            (ausencia_id, fecha, horas, created_by_id, created_by_name))
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def get_recupero_equipo(db_path: str, recupero_id: int) -> Optional[dict]:
+    return _get_one(db_path, "equipo_recuperos", recupero_id)
+
+
+def borrar_recupero_equipo(db_path: str, recupero_id: int) -> None:
+    _delete(db_path, "equipo_recuperos", recupero_id)
+
+
+def listar_recuperos_equipo(db_path: str) -> list[dict]:
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute("SELECT * FROM equipo_recuperos ORDER BY fecha, id")
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def entregas_de_proyectos(db_path: str) -> list[dict]:
+    """Los proyectos del espejo de Notion que tienen fecha de entrega.
+
+    La entrega es `timeline_end`: el final del rango "Timeline" de la database
+    Projects (services/notion_service.py). Un Timeline de una sola fecha llega
+    sin final y no se toma como entrega: no hay forma de saber si ese día es el
+    arranque o la entrega.
+    """
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute(
+            "SELECT id, name, timeline_end FROM projects "
+            "WHERE timeline_end IS NOT NULL AND timeline_end != '' ORDER BY timeline_end")
         return [dict(r) for r in cur.fetchall()]
     finally:
         conn.close()
