@@ -3500,6 +3500,19 @@ def entregas_de_proyectos(db_path: str) -> list[dict]:
 # de renglón dentro de un párrafo del PDF son solo el ancho de la página.
 
 _PLANTILLAS_PRECARGA = (
+    # Pedido aparte de Juan (15/9): va primera porque es lo primero que pasa
+    # con un lead. Una base que ya tenía las otras cinco la suma sola.
+    {
+        "clave": "no_atendio", "orden": 5,
+        "momento": "LLAMÉ Y NO ATENDIÓ",
+        "titulo": "Lead que no atendió", "canal": "WhatsApp",
+        "cuerpo": ("¿Cómo estás {nombre}? Te escribe Juan de Scalerics. Respondiste un "
+                   "formulario solicitando información acerca de {servicio}. Te llamé para "
+                   "que me cuentes un poco y ver cómo te podemos ayudar en lo que estás "
+                   "buscando. Cuando tengas unos minutos avisame y te llamo. Saludos."),
+        "nota": "Se manda después de llamar sin respuesta.",
+        "explicacion": "", "automatica": 0,
+    },
     {
         "clave": "confirmacion_agenda", "orden": 10,
         "momento": "DESPUÉS DE LA PRIMERA LLAMADA",
@@ -3565,7 +3578,8 @@ _COLUMNAS_PLANTILLA = ("orden", "momento", "titulo", "canal", "cuerpo", "nota",
 
 
 def _sembrar_plantillas(conn: sqlite3.Connection) -> int:
-    """Precarga idempotente de las cinco plantillas del PDF.
+    """Precarga idempotente de las seis plantillas: las cinco del PDF y la del
+    lead que no atendió.
 
     Por `clave` (única): si ya están —editadas, o borradas, que quedan
     marcadas— no se duplican ni se pisan. Devuelve cuántas creó.

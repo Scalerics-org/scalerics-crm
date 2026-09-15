@@ -2,7 +2,8 @@
 
 "En la seccion ventas, agrega algo que sea Plantilla, son mensajes que uso
 siempre y los quiero tener a mano". Vienen precargadas las cinco del PDF
-"Plantillas de mensajes - Scalerics", con el texto exacto.
+"Plantillas de mensajes - Scalerics", con el texto exacto, y una sexta que
+pidió después: la del lead que no atendió.
 """
 
 import json
@@ -43,6 +44,11 @@ FUENTES = {"panel": PANEL, "modales": MODALES, "js": JS, "css": CSS}
 # Copiado a mano del PDF, a propósito sin importar la precarga: si alguien
 # "corrige" un texto en database.py, esto tiene que fallar.
 PDF = [
+    ("LLAMÉ Y NO ATENDIÓ", "Lead que no atendió", "WhatsApp",
+     "¿Cómo estás {nombre}? Te escribe Juan de Scalerics. Respondiste un formulario solicitando "
+     "información acerca de {servicio}. Te llamé para que me cuentes un poco y ver cómo te podemos "
+     "ayudar en lo que estás buscando. Cuando tengas unos minutos avisame y te llamo. Saludos.",
+     "Se manda después de llamar sin respuesta.", "", 0),
     ("DESPUÉS DE LA PRIMERA LLAMADA", "Confirmación de agenda", "WhatsApp",
      "¿Cómo estás {nombre}? Te habla Juan Pereyra de Scalerics.\n\n"
      "Quedamos agendados para el {fecha} a las {hora}. Entrás a la videollamada con el siguiente link: {link}\n\n"
@@ -164,7 +170,7 @@ AHORA = datetime(2026, 9, 14, 12, 0)
 
 # ── precarga ─────────────────────────────────────────────────────────────────
 
-def test_la_precarga_trae_las_cinco_del_pdf_con_el_texto_exacto(tmp_path):
+def test_la_precarga_trae_las_seis_con_el_texto_exacto(tmp_path):
     db = str(tmp_path / "p.db")
     init_db(db)
     plantillas = listar_plantillas(db)
@@ -178,8 +184,8 @@ def test_la_precarga_no_duplica(tmp_path):
     init_db(db)
     init_db(db)
     init_db(db)
-    assert len(listar_plantillas(db)) == 5
-    assert _uno(db, "SELECT COUNT(*) FROM plantillas_mensajes")[0] == 5
+    assert len(listar_plantillas(db)) == 6
+    assert _uno(db, "SELECT COUNT(*) FROM plantillas_mensajes")[0] == 6
 
 
 def test_la_precarga_no_pisa_lo_que_juan_edita_ni_resucita_lo_borrado(tmp_path):
@@ -191,7 +197,25 @@ def test_la_precarga_no_pisa_lo_que_juan_edita_ni_resucita_lo_borrado(tmp_path):
     por_titulo = {p["titulo"]: p for p in listar_plantillas(db)}
     assert por_titulo["Reactivación"]["cuerpo"] == "Hola {nombre}, a mi manera."
     assert "Resumen y presupuesto" not in por_titulo
-    assert len(por_titulo) == 4
+    assert len(por_titulo) == 5
+
+
+def test_una_base_con_las_cinco_viejas_suma_solo_la_nueva(tmp_path):
+    """Producción ya va a tener las cinco del PDF (editadas o no) cuando llegue
+    la sexta: se agrega sola, primera, sin duplicar ni pisar."""
+    db = str(tmp_path / "p.db")
+    init_db(db)
+    _sql(db, "DELETE FROM plantillas_mensajes WHERE clave='no_atendio'")
+    _sql(db, "UPDATE plantillas_mensajes SET titulo='Confirmación (mía)' WHERE clave='confirmacion_agenda'")
+    assert len(listar_plantillas(db)) == 5
+    init_db(db)
+    init_db(db)
+    plantillas = listar_plantillas(db)
+    assert len(plantillas) == 6
+    assert plantillas[0]["titulo"] == "Lead que no atendió"
+    assert plantillas[0]["momento"] == "LLAMÉ Y NO ATENDIÓ"
+    assert plantillas[1]["titulo"] == "Confirmación (mía)"
+    assert _uno(db, "SELECT COUNT(*) FROM plantillas_mensajes WHERE clave='no_atendio'")[0] == 1
 
 
 def test_no_toca_las_plantillas_viejas_de_whatsapp(app, cli):
@@ -200,7 +224,7 @@ def test_no_toca_las_plantillas_viejas_de_whatsapp(app, cli):
     assert cli.get("/api/wa/templates").get_json() == []
     assert cli.post("/api/wa/templates", json={"name": "Hola", "body": "Hola!"}).status_code == 201
     assert [t["name"] for t in cli.get("/api/wa/templates").get_json()] == ["Hola"]
-    assert len(cli.get("/api/plantillas").get_json()["plantillas"]) == 5
+    assert len(cli.get("/api/plantillas").get_json()["plantillas"]) == 6
 
 
 # ── roles ────────────────────────────────────────────────────────────────────
@@ -270,7 +294,7 @@ def test_la_plantilla_se_valida_en_el_servidor(cli, datos, parte):
     assert r.status_code == 400 and parte in r.get_json()["error"]
     pid = cli.get("/api/plantillas").get_json()["plantillas"][0]["id"]
     assert cli.put(f"/api/plantillas/{pid}", json=datos).status_code == 400
-    assert len(cli.get("/api/plantillas").get_json()["plantillas"]) == 5
+    assert len(cli.get("/api/plantillas").get_json()["plantillas"]) == 6
 
 
 def test_validar_sin_json():
@@ -287,7 +311,7 @@ def test_sin_el_panel_da_403(app):
     assert c.delete("/api/plantillas/1").status_code == 403
     assert c.get("/api/plantillas/leads?q=pan").status_code == 403
     assert c.get(f"/api/plantillas/leads/{lid}/variables").status_code == 403
-    assert len(listar_plantillas(db)) == 5
+    assert len(listar_plantillas(db)) == 6
 
 
 def test_con_el_panel_entra(app):
@@ -529,8 +553,9 @@ def test_la_pantalla_se_pinta_agrupada_por_momento(cli, tmp_path):
     s = _correr_js(tmp_path, {"/api/plantillas": lista}, prueba)
     html = s["lista"]
     momentos = re.findall(r'<h2 class="pl-momento">([^<]+)</h2>', html)
-    assert momentos == ["DESPUÉS DE LA PRIMERA LLAMADA", "EL DÍA DE LA DEMO", "DESPUÉS DE LA DEMO", "LEAD FRÍO"]
-    assert html.count('<article class="pl-card"') == 5
+    assert momentos == ["LLAMÉ Y NO ATENDIÓ", "DESPUÉS DE LA PRIMERA LLAMADA", "EL DÍA DE LA DEMO",
+                        "DESPUÉS DE LA DEMO", "LEAD FRÍO"]
+    assert html.count('<article class="pl-card"') == 6
     frio = html[html.index("LEAD FRÍO"):]
     assert frio.count('<article class="pl-card"') == 2
     assert '<span class="pl-var">{nombre}</span>' in html
@@ -540,7 +565,8 @@ def test_la_pantalla_se_pinta_agrupada_por_momento(cli, tmp_path):
     assert html.count("La manda el bot sola") == 1
     recordatorio = html[html.index("Recordatorio de videollamada"):html.index("DESPUÉS DE LA DEMO")]
     assert "La manda el bot sola" in recordatorio
-    assert html.count(">Usar con un lead<") == 5 and html.count(">Borrar<") == 5
+    assert html.count(">Usar con un lead<") == 6 and html.count(">Borrar<") == 6
+    assert '<p class="pl-nota">Se manda después de llamar sin respuesta.</p>' in html
     assert "Te habla Juan Pereyra de Scalerics." in html
     assert s["variables"].count('class="pl-var"') == 10
     assert [t["tipo"] for t in s["trozos"]] == ["texto", "var", "texto"]
@@ -633,7 +659,7 @@ def test_copiar_usar_con_un_lead_y_enviar(app, cli, tmp_path):
         f"/api/plantillas/{resumen}": {"ok": True},
     }, prueba)
 
-    cuerpo = PDF[2][3]
+    cuerpo = PDF[3][3]
     assert s["copiado"][0] == cuerpo and s["aviso"] == "Copiado"
     assert "Elegí un lead" in s["sinLead"] and "Elegí un lead" in s["errorSinLead"]
     assert "Panadería Ana" in s["resultados"] and "+59899123456" in s["resultados"]
