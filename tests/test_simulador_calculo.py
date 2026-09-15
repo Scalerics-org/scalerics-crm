@@ -7,7 +7,10 @@ especificación de Juan o un borde: 0 programadores, 0 proyectos, costo por lead
 0, vacíos y negativos que toman el default.
 
 Con los defaults (gastos fijos de respaldo del 14/9, que suman 930):
-facturado 5.600, cobrado 2.800, sale 2.530, caja del mes 270.
+facturado 5.600, sale 2.530. Desde el 15/9 cada tipo tiene su forma de cobro
+y las webs se cobran enteras al confirmar: cobrado 1.400 de webs + la mitad de
+2.200 de ecommerce + la mitad de 2.000 a medida = 3.500, caja del mes 970.
+Lo de las formas de cobro en detalle está en test_simulador_cobro_por_tipo.py.
 """
 
 import shutil
@@ -74,12 +77,12 @@ def test_los_defaults_dan_la_cuenta_hecha_a_mano(tmp_path):
       igual(r.vendidos, 5); igual(r.ratio, 1);
       igual(r.facturadoProyectos, 5600);
       igual(r.recurrente, 0); igual(r.facturado, 5600);
-      igual(r.cobroDeNuevos, 2800); igual(r.quedaDeEsteMes, 2800); igual(r.cobrado, 2800);
+      igual(r.cobroDeNuevos, 3500); igual(r.quedaDeEsteMes, 2100); igual(r.cobrado, 3500);
       igual(r.listas.gastosFijos.total, 930);
       igual(r.salidas, 1000 + 930 + 600);
-      igual(r.cajaDelMes, 270);
-      igual(r.porCobrarAdelante, 2800);
-      igual(r.cajaActual, 0); igual(r.cajaAlCierre, 270);
+      igual(r.cajaDelMes, 970);
+      igual(r.porCobrarAdelante, 2100);
+      igual(r.cajaActual, 0); igual(r.cajaAlCierre, 970);
       assert(r.avisoCobros === false, 'con caja positiva no hay aviso');
       assert(r.capacidadEstado === 'verde', r.capacidadEstado);
       igual(r.leads, 600 / 18); igual(r.ventasPosibles, 600 / 18 * 0.25 * 0.3);
@@ -89,11 +92,14 @@ def test_los_defaults_dan_la_cuenta_hecha_a_mano(tmp_path):
 
 
 def test_facturar_no_es_cobrar_son_dos_numeros(tmp_path):
-    """Segundo principio: con 50% al firmar se factura el doble de lo que se cobra."""
+    """Segundo principio: con todo en mitad y mitad se factura el doble de lo que
+    se cobra. Con los defaults (webs enteras) la diferencia es lo de entregas."""
     _correr("""
       const r = simCalcular(escenario());
       assert(r.facturado !== r.cobrado, 'facturado y cobrado no pueden coincidir aca');
-      igual(r.facturado - r.recurrente, 2 * (r.cobrado - r.recurrente));
+      igual(r.facturado - r.cobrado, 2100);
+      const mitad = simCalcular(escenario(e => { e.cobros.formas.web = 'mitad'; }));
+      igual(mitad.facturado - mitad.recurrente, 2 * (mitad.cobrado - mitad.recurrente));
     """, tmp_path)
 
 
@@ -105,8 +111,8 @@ def test_criterio_1_el_precio_del_ecommerce_mueve_todo(tmp_path):
       const despues = simCalcular(escenario(e => {
         e.meta.sueldoObjetivo = 2000; e.ventas.precioEcom = '1500';
       }));
-      igual(despues.facturado, 6400); igual(despues.cobrado, 3200);
-      igual(despues.cajaDelMes, 670); igual(despues.porCobrarAdelante, 3200);
+      igual(despues.facturado, 6400); igual(despues.cobrado, 3900);
+      igual(despues.cajaDelMes, 1370); igual(despues.porCobrarAdelante, 2500);
       for (const k of ['facturado', 'cobrado', 'cajaDelMes', 'porCobrarAdelante',
                        'cajaAlCierre', 'precioPromedio', 'facturadoProyectos']) {
         assert(antes[k] !== despues[k], k + ' no se movio');
@@ -154,14 +160,14 @@ def test_criterio_4_pocas_ventas_y_pendientes_viejos_la_caja_da_positiva(tmp_pat
                            e.pendientes = [{nombre: 'Cliente viejo', monto: 3000, activo: false}]; };
       const apagado = simCalcular(escenario(flojo));
       assert(apagado.cajaDelMes < 0, 'sin cobrar el pendiente la caja da negativa');
-      igual(apagado.porCobrarAdelante, 350 + 3000);
+      igual(apagado.porCobrarAdelante, 3000, 'la web se cobra entera: no queda nada de ella');
 
       const prendido = simCalcular(escenario(e => { flojo(e); e.pendientes[0].activo = true; }));
       igual(prendido.facturado, 700);
-      igual(prendido.cobrado, 350 + 3000);
-      igual(prendido.cajaDelMes, 3350 - 2530);
+      igual(prendido.cobrado, 700 + 3000);
+      igual(prendido.cajaDelMes, 3700 - 2530);
       assert(prendido.cajaDelMes > 0, 'la caja tiene que dar positiva');
-      igual(prendido.porCobrarAdelante, 350);
+      igual(prendido.porCobrarAdelante, 0);
     """, tmp_path)
 
 
@@ -195,14 +201,17 @@ def test_criterio_6_cada_mantenimiento_tiene_su_cuota(tmp_path):
 
 
 def test_criterio_7_sueldo_objetivo_de_2000(tmp_path):
-    """base = 2x500 + 930 + 600 = 2.530; +2.000 = 4.530. Por proyecto entran
-    1.266,67 x 50% = 633,33 -> 7,15 -> 8 proyectos -> 3 programadores: falta 1."""
+    """base = 2x500 + 930 + 600 = 2.530; +2.000 = 4.530. Por proyecto entran al
+    confirmar (700 entera + 1.100/2 + 2.000/2) / 3 = 750 -> 6,04 -> 7 proyectos
+    -> 3 programadores: falta 1."""
     _correr("""
       const r = simCalcular(escenario(e => { e.meta.sueldoObjetivo = 2000; }));
       igual(r.meta.base, 2530); igual(r.meta.necesario, 4530);
-      assert(r.meta.proyectos === 8, 'proyectos: ' + r.meta.proyectos);
+      igual(r.meta.porProyecto, 750);
+      assert(r.meta.proyectos === 7, 'proyectos: ' + r.meta.proyectos);
       assert(r.meta.faltanProg === 1, 'faltan: ' + r.meta.faltanProg);
-      contiene(simTextoMeta(r), '8 proyectos por mes');
+      contiene(simTextoMeta(r), '7 proyectos por mes');
+      contiene(simTextoMeta(r), 'USD 750 por proyecto');
       contiene(simTextoMeta(r), 'Te falta 1 programador');
     """, tmp_path)
 
@@ -284,10 +293,10 @@ def test_la_caja_al_cierre_no_cambia_la_caja_del_mes(tmp_path):
     _correr("""
       const r = simCalcular(escenario(e => { e.caja.cajaActual = '-500'; }));
       igual(r.cajaActual, -500, 'la caja puede estar en negativo');
-      igual(r.cajaDelMes, 270, 'cajaDelMes es la de la especificacion');
-      igual(r.cajaAlCierre, -230);
+      igual(r.cajaDelMes, 970, 'cajaDelMes es la de la especificacion');
+      igual(r.cajaAlCierre, 470);
       assert(r.conDefault.indexOf('caja.cajaActual') < 0);
-      assert(simTextoCierre(r) === 'Caja al cierre del mes: USD -230 = caja actual USD -500 + caja del mes USD 270.',
+      assert(simTextoCierre(r) === 'Caja al cierre del mes: USD 470 = caja actual USD -500 + caja del mes USD 970.',
              simTextoCierre(r));
     """, tmp_path)
 
@@ -425,7 +434,7 @@ def test_la_meta_sin_denominador(tmp_path):
 
       const sinProy = simCalcular(escenario(e => { e.equipo.proyectosPorProgramador = 0; }));
       igual(sinProy.capacidad, 0);
-      assert(sinProy.meta.proyectos === 6 && sinProy.meta.faltanProg === null, JSON.stringify(sinProy.meta));
+      assert(sinProy.meta.proyectos === 5 && sinProy.meta.faltanProg === null, JSON.stringify(sinProy.meta));
       contiene(simTextoMeta(sinProy), 'Con 0 proyectos por programador');
 
       const cubierto = simCalcular(escenario(e => {
@@ -469,7 +478,7 @@ def test_la_base_usa_finanzas_si_hay_y_el_respaldo_si_no(tmp_path):
       assert(con.mantenimientos[0].activo === false, 'mantenimientos arrancan apagados');
       igual(con.mantenimientos[0].monto, SIM_DEFAULTS.precarga.cuotaPorCliente);
       assert(con.pendientes[0].activo === false, 'pendientes arrancan como cobro futuro');
-      igual(simCalcular(con).porCobrarAdelante, 2800 + 500);
+      igual(simCalcular(con).porCobrarAdelante, 2100 + 500);
 
       const otra = simEscenarioBase(null);
       otra.equipo.sueldoPorProgramador = 1;
@@ -487,4 +496,6 @@ def test_un_escenario_viejo_se_completa_con_los_defaults(tmp_path):
       assert(e.gastosFijos.length === 0, 'una lista que no estaba queda vacia');
       assert(e.pendientes.length === 1);
       igual(simCalcular(e).costoEquipo, 1600);
+      assert(e.cobros.formas.web === 'mitad' && e.cobros.formas.ecommerce === 'mitad'
+             && e.cobros.formas.aMedida === 'mitad', 'uno viejo se abre con todo en dos partes');
     """, tmp_path)

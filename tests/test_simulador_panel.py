@@ -281,6 +281,16 @@ _PRUEBA = r"""
   simBorrarFila('gastosFijos', 0);
   s.filasTrasBorrar = simEstado.gastosFijos.length - antes;
 
+  s.formaWeb = _el('sim-forma-web').value;
+  s.formaEcom = _el('sim-forma-ecommerce').value;
+  s.notaWeb = _el('sim-cobro-web').textContent;
+  s.notaEcom = _el('sim-cobro-ecommerce').textContent;
+  s.meses = _el('sim-meses').innerHTML;
+  s.mesesNota = _el('sim-meses-nota').textContent;
+  simAlCambiar({target: {dataset: {simForma: 'web'}, value: 'mitad'}});
+  s.formaGuardada = simEstado.cobros.formas.web;
+  s.tarjetasWebMitad = _el('sim-tarjetas').innerHTML;
+
   console.log(JSON.stringify(s));
   process.exit(0);
 })().catch(e => { console.error((e && e.stack) || e); process.exit(1); });
@@ -305,8 +315,8 @@ def test_el_panel_se_pinta_y_responde(tmp_path):
 
     for rotulo in ("Facturás", "Cobrás", "Sale", "Caja del mes"):
         assert rotulo in s["tarjetas"]
-    assert "USD 270" in s["tarjetas"] and "sim-positivo" in s["tarjetas"]
-    assert s["cierre"] == "Caja al cierre del mes: USD 1.470 = caja actual USD 1.200 + caja del mes USD 270."
+    assert "USD 970" in s["tarjetas"] and "sim-positivo" in s["tarjetas"]
+    assert s["cierre"] == "Caja al cierre del mes: USD 2.170 = caja actual USD 1.200 + caja del mes USD 970."
     assert s["subGastos"] == "6 activos · USD 930", "sin fijos en Finanzas, el respaldo"
     assert "lista por defecto" in s["origenGastos"]
     assert "ingresos menos egresos" in s["origenCaja"]
@@ -320,12 +330,23 @@ def test_el_panel_se_pinta_y_responde(tmp_path):
     assert "Al cierre" in s["mini"]
 
     assert s["tarjetasDespues"] != s["tarjetas"]
-    assert "USD 670" in s["tarjetasDespues"]
+    assert "USD 1.370" in s["tarjetasDespues"]
 
     assert s["errorSinNombre"] and s["filasTrasError"] == 0
     assert s["filasTrasAgregar"] == 1 and s["errorDespues"] == ""
     assert s["subGastosDespues"] == "7 activos · USD 945"
     assert s["filasTrasApagar"] == 1 and s["primeraActiva"] is False
-    # 670 de antes, +300 de la agencia apagada, -15 de Figma, +1.000 de Javier.
-    assert "USD 1.955" in s["tarjetasConJavier"]
+    # 1.370 de antes, +300 de la agencia apagada, -15 de Figma, +1.000 de Javier.
+    assert "USD 2.655" in s["tarjetasConJavier"]
     assert s["filasTrasBorrar"] == 0, "borrar es la única forma de sacar una fila"
+
+    # Forma de cobro por tipo: los selects arrancan con el default y se pintan
+    # la nota de cada tipo y la caja mes a mes.
+    assert s["formaWeb"] == "todo" and s["formaEcom"] == "mitad"
+    assert s["notaWeb"] == "Entra todo en el mes de la venta: USD 1.400."
+    assert s["notaEcom"].startswith("Este mes entran USD 1.500 y USD 1.500 al entregar")
+    assert "Este mes" in s["meses"] and "Mes 6" in s["meses"] and "Mes 7" not in s["meses"]
+    assert "Cada mes repite" in s["mesesNota"]
+    # La web pasa a mitad y mitad: este mes entran 700 menos.
+    assert s["formaGuardada"] == "mitad"
+    assert "USD 1.955" in s["tarjetasWebMitad"]
