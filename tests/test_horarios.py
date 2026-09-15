@@ -384,18 +384,18 @@ def test_el_panel_llega_a_quien_tiene_organigrama_o_ausencias(tmp_path):
 
 # ── registrado en todos lados ────────────────────────────────────────────────
 
-def test_esta_en_recursos_humanos_despues_de_ausencias():
+def test_esta_en_recursos_humanos_despues_de_flujos():
     menu = HTML[HTML.index('<div class="nav-scroll">'):HTML.index('<div class="sidebar-bottom">')]
     grupo = _entre(menu, '<div class="nav-section-label">RECURSOS HUMANOS</div>',
                    '<div class="nav-section-label">CAPTACIÓN</div>')
-    assert re.findall(r'id="nav-(\w+)"', grupo) == ["equipo", "ausencias", "horarios", "flujos"]
+    assert re.findall(r'id="nav-(\w+)"', grupo) == ["equipo", "ausencias", "flujos", "horarios"]
     assert ('<div class="nav-item" id="nav-horarios" onclick="showPanel(\'horarios\')">'
             '<i data-lucide="clock-4" class="nav-icon"></i> Horarios</div>') in grupo
 
 
 def test_esta_registrado_en_todos_lados():
     prioridad = re.findall(r"'(\w+)'", re.search(r"const NAV_PRIORITY = \[([^\]]*)\]", HTML).group(1))
-    assert prioridad.index("horarios") == prioridad.index("ausencias") + 1
+    assert prioridad.index("horarios") == prioridad.index("flujos") + 1
     assert "horarios:'clock-4'" in re.search(r"const NAV_ICONS = \{(.*?)\n\}", HTML, re.S).group(1)
     assert "horarios:'Horarios'" in re.search(r"const NAV_LABELS = \{(.*?)\n\}", HTML, re.S).group(1)
     listas = re.findall(r"const ALL_PANELS = \[([^\]]*)\]", SRC)

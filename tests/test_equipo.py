@@ -295,7 +295,7 @@ def test_el_menu_tiene_recursos_humanos_con_organigrama_y_ausencias():
                    '<div class="nav-section-label">CAPTACIÓN</div>')
     items = re.findall(r'id="nav-(\w+)"[^>]*><i data-lucide="([\w-]+)" class="nav-icon"></i> ([^<]+)</div>', grupo)
     assert items == [("equipo", "network", "Organigrama"), ("ausencias", "calendar-clock", "Ausencias"),
-                     ("horarios", "clock-4", "Horarios"), ("flujos", "workflow", "Flujos")]
+                     ("flujos", "workflow", "Flujos"), ("horarios", "clock-4", "Horarios")]
     operacion = _entre(menu, '<div class="nav-section-label">OPERACIÓN</div>',
                        '<div class="nav-section-label">RECURSOS HUMANOS</div>')
     assert re.findall(r'id="nav-(\w+)"', operacion) == ["clientes", "projects", "tasks", "daily", "daily_admin",

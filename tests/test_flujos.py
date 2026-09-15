@@ -129,7 +129,8 @@ def test_c1_flujos_es_un_panel_propio_de_recursos_humanos(cli):
     menu = HTML[HTML.index('<div class="nav-scroll">'):HTML.index('<div class="sidebar-bottom">')]
     grupo = _entre(menu, '<div class="nav-section-label">RECURSOS HUMANOS</div>',
                    '<div class="nav-section-label">CAPTACIÓN</div>')
-    assert re.findall(r'id="nav-(\w+)"', grupo) == ["equipo", "ausencias", "horarios", "flujos"]
+    # Juan: abajo de Ausencias, tercera de la lista de Recursos Humanos.
+    assert re.findall(r'id="nav-(\w+)"', grupo) == ["equipo", "ausencias", "flujos", "horarios"]
     assert ('<div class="nav-item" id="nav-flujos" onclick="showPanel(\'flujos\')">'
             '<i data-lucide="workflow" class="nav-icon"></i> Flujos</div>') in grupo
     assert "if (name === 'flujos') eqCargarFlujos();" in pagina
@@ -144,7 +145,8 @@ def test_ausencias_ya_no_tiene_el_bloque_de_flujos():
 
 def test_flujos_esta_registrado_en_todos_lados():
     prioridad = re.findall(r"'(\w+)'", re.search(r"const NAV_PRIORITY = \[([^\]]*)\]", HTML).group(1))
-    assert prioridad.index("flujos") == prioridad.index("horarios") + 1
+    assert prioridad.index("flujos") == prioridad.index("ausencias") + 1
+    assert prioridad.index("horarios") == prioridad.index("flujos") + 1
     assert "flujos:'workflow'" in re.search(r"const NAV_ICONS = \{(.*?)\n\}", HTML, re.S).group(1)
     assert "flujos:'Flujos'" in re.search(r"const NAV_LABELS = \{(.*?)\n\}", HTML, re.S).group(1)
     listas = re.findall(r"const ALL_PANELS = \[([^\]]*)\]", SRC)
