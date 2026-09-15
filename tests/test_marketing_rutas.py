@@ -299,3 +299,26 @@ def test_un_informe_rechazado_no_se_devuelve_pero_si_el_motivo(app, cliente):
 def test_el_informe_no_se_puede_ver_sin_credenciales(cliente):
     r = cliente.get("/api/marketing/radiografia")
     assert r.status_code in (302, 401, 403)
+
+
+def test_la_version_dice_que_imagen_corre(cliente, monkeypatch):
+    """Existe porque no habia forma de contestar "¿estoy viendo lo ultimo?" sin
+    entrar por SSH. Un deploy en Fly es una carrera —la ultima imagen gana— y
+    del lado del navegador no quedaba ningun rastro de cual quedo."""
+    monkeypatch.setenv("FLY_IMAGE_REF",
+                       "registry.fly.io/scalerics-crm:deployment-01ABCDEF")
+    monkeypatch.setenv("FLY_MACHINE_ID", "897576f6e60428")
+    r = cliente.get("/api/marketing/version", headers=_AUTH)
+    assert r.status_code == 200
+    d = r.get_json()
+    assert d["imagen"] == "deployment-01ABCDEF"
+    assert d["maquina"] == "897576f6e60428"
+
+
+def test_la_version_no_revienta_fuera_de_fly(cliente, monkeypatch):
+    """En local no existen esas variables y el panel tiene que cargar igual."""
+    monkeypatch.delenv("FLY_IMAGE_REF", raising=False)
+    monkeypatch.delenv("FLY_MACHINE_ID", raising=False)
+    r = cliente.get("/api/marketing/version", headers=_AUTH)
+    assert r.status_code == 200
+    assert r.get_json()["imagen"] is None

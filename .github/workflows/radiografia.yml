@@ -83,7 +83,9 @@ jobs:
           TOKEN: ${{ secrets.ADMIN_TOKEN }}
         run: |
           set -euo pipefail
-          RESP=$(curl -sS -f --retry 5 --retry-all-errors --retry-delay 10             --max-time 300 -X POST "$CRM/api/marketing/sync-anuncios"             -H "x-admin-token: $TOKEN")
+          RESP=$(curl -sS -f --retry 5 --retry-all-errors --retry-delay 10 \
+            --max-time 300 -X POST "$CRM/api/marketing/sync-anuncios" \
+            -H "x-admin-token: $TOKEN")
           echo "anuncios: $RESP"
 
       - name: Generar la radiografía

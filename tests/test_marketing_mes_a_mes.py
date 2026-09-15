@@ -581,3 +581,94 @@ def test_mk_mes_corrido_cruza_el_ano(tmp_path):
                        encoding="utf-8")
     assert r.returncode == 0, r.stderr
     assert json.loads(r.stdout) == ["2025-12", "2027-01", "2026-01", "2026-09"]
+
+
+# ── Las reuniones por pieza ────────────────────────────────────────────────
+#
+# Es lo que ordena distinto que el costo por lead. Contra los datos reales, dos
+# piezas que traian leads a 14,91 y a 19,00 daban reuniones a 49,68 y a 126,69:
+# casi el mismo costo por lead y cinco veces de diferencia en lo que importa.
+# Mirando el Administrador de anuncios esa diferencia no se ve.
+
+def _lead_con_demo(db, scraped_at, ad_id, estado="demo_1"):
+    conn = _connect(db)
+    try:
+        cur = conn.execute(
+            "INSERT INTO businesses (name, source, scraped_at, meta_ad_id) "
+            "VALUES (?,?,?,?)", ("Lead", "meta", scraped_at, ad_id))
+        conn.execute("INSERT INTO lead_events (lead_id, new_status) VALUES (?,?)",
+                     (cur.lastrowid, estado))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _de(mes, ad_id):
+    todas = mes["activas"] + mes["inactivas"]
+    iguales = [p for p in todas if p["ad_id"] == ad_id]
+    assert iguales, f"no esta {ad_id}: {[p['ad_id'] for p in todas]}"
+    return iguales[0]
+
+
+def test_cuenta_las_reuniones_que_trajo_cada_pieza(db):
+    _anuncio(db, "web")
+    _dia(db, "web", "2026-05-10", 100.0, leads=5)
+    _lead_con_demo(db, "2026-05-11 10:00:00", "web")
+    _lead_con_demo(db, "2026-05-12 10:00:00", "web")
+    _lead(db, "2026-05-13 10:00:00", ad_id="web")
+    p = _de(piezas_del_mes(db, "2026-05"), "web")
+    assert p["leads_crm"] == 3
+    assert p["demos"] == 2
+    assert p["costo_demo"] == 50.0
+
+
+def test_un_lead_que_paso_de_largo_la_demo_igual_cuenta(db):
+    """Quien hoy figura en `presupuesto_enviado` paso por la reunion. Contar
+    solo el estado de hoy perderia a los que avanzaron."""
+    _anuncio(db, "web")
+    _dia(db, "web", "2026-05-10", 60.0, leads=2)
+    _lead_con_demo(db, "2026-05-11 10:00:00", "web", estado="presupuesto_enviado")
+    _lead_con_demo(db, "2026-05-12 10:00:00", "web", estado="cerrado")
+    assert _de(piezas_del_mes(db, "2026-05"), "web")["demos"] == 2
+
+
+def test_la_reunion_posterior_al_mes_se_le_acredita_igual(db):
+    """Una reunion de un lead de mayo puede hacerse en junio. Se le acredita a
+    la pieza que lo trajo, que es de quien habla la tarjeta."""
+    _anuncio(db, "web")
+    _dia(db, "web", "2026-05-10", 40.0, leads=1)
+    _lead_con_demo(db, "2026-05-28 10:00:00", "web")
+    assert _de(piezas_del_mes(db, "2026-05"), "web")["demos"] == 1
+
+
+def test_un_lead_de_otro_mes_no_le_suma_reuniones(db):
+    """Todo lo de la tarjeta es del mes: el lead que ENTRO en el mes."""
+    _anuncio(db, "web")
+    _dia(db, "web", "2026-05-10", 40.0, leads=1)
+    _dia(db, "web", "2026-06-10", 40.0, leads=1)
+    # Uno en mayo sin reunion —para que mayo tenga la pieza conocida y el cero
+    # signifique "no trajo" y no "falta el dato"— y uno en junio con reunion.
+    _lead(db, "2026-05-11 10:00:00", ad_id="web")
+    _lead_con_demo(db, "2026-06-11 10:00:00", "web")
+    assert _de(piezas_del_mes(db, "2026-05"), "web")["demos"] == 0
+    assert _de(piezas_del_mes(db, "2026-06"), "web")["demos"] == 1
+
+
+def test_sin_reuniones_el_costo_por_reunion_no_es_cero(db):
+    _anuncio(db, "web")
+    _dia(db, "web", "2026-05-10", 90.0, leads=3)
+    _lead(db, "2026-05-11 10:00:00", ad_id="web")
+    p = _de(piezas_del_mes(db, "2026-05"), "web")
+    assert p["demos"] == 0
+    assert p["costo_demo"] is None
+
+
+def test_sin_ninguna_pieza_conocida_las_reuniones_son_none_y_no_cero(db):
+    """Mismo criterio que `leads_crm`: un cero diria "no trajo a nadie" cuando
+    lo que falta es el dato. Los leads viejos no tienen la pieza guardada."""
+    _anuncio(db, "web")
+    _dia(db, "web", "2026-05-10", 40.0, leads=2)
+    _lead(db, "2026-05-11 10:00:00", ad_id=None)
+    p = _de(piezas_del_mes(db, "2026-05"), "web")
+    assert p["demos"] is None
+    assert p["costo_demo"] is None

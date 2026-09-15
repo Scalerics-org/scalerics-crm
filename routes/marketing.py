@@ -322,3 +322,37 @@ def api_creativo(ad_id):
     # Un mes de cache: el archivo no cambia nunca — si el anuncio cambia de
     # creativo, cambia el ad_id.
     return send_file(ruta, mimetype="image/jpeg", max_age=2592000)
+
+
+@marketing_bp.route("/api/marketing/backfill-atribucion", methods=["POST"])
+def api_backfill_atribucion():
+    """Recupera de que anuncio vino cada lead, para los que Meta todavia tiene.
+
+    Meta guarda los leads 90 dias: lo de antes se perdio. Esto es el rescate de
+    una sola vez; el arreglo de verdad es que el import ya no tire el dato.
+    """
+    from services.meta_atribucion import backfill_atribucion
+
+    return jsonify(backfill_atribucion(_db()))
+
+
+@marketing_bp.route("/api/marketing/version")
+def api_version():
+    """Que imagen esta corriendo y desde cuando.
+
+    Existe porque no habia forma de contestar "¿estoy viendo lo ultimo?" sin
+    entrar por SSH. Un deploy en Fly es una carrera —la ultima imagen gana— y
+    del lado del navegador no quedaba ningun rastro de cual quedo.
+
+    `FLY_IMAGE_REF` trae el id del deploy. No es secreto: identifica la imagen,
+    no da acceso a nada.
+    """
+    import time
+
+    ref = os.environ.get("FLY_IMAGE_REF", "")
+    return jsonify({
+        "imagen": ref.rsplit(":", 1)[-1] if ref else None,
+        "maquina": os.environ.get("FLY_MACHINE_ID") or None,
+        "arrancado": getattr(current_app, "_arrancado", None),
+        "ahora": int(time.time()),
+    })

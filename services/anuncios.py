@@ -151,7 +151,24 @@ def _filas(db_path: str, desde: str, hasta: str) -> list:
                    (SELECT SUM(impressions) FROM meta_ad_insights t
                      WHERE t.ad_id = a.ad_id) AS impresiones_total,
                    (SELECT SUM(clicks) FROM meta_ad_insights t
-                     WHERE t.ad_id = a.ad_id) AS clics_total
+                     WHERE t.ad_id = a.ad_id) AS clics_total,
+                   -- Leads del CRM que sabemos que vinieron de ESTE anuncio, y
+                   -- cuantos de ellos llegaron a sentarse a hablar. Es la unica
+                   -- forma de saber que creativo sirve: el costo por lead dice
+                   -- cual es barato, no cual trae gente que compra.
+                   (SELECT COUNT(*) FROM businesses b
+                     WHERE b.source='meta' AND b.meta_ad_id = a.ad_id)
+                     AS leads_crm,
+                   (SELECT COUNT(*) FROM businesses b
+                     WHERE b.source='meta' AND b.meta_ad_id = a.ad_id
+                       AND EXISTS (SELECT 1 FROM lead_events e
+                                    WHERE e.lead_id = b.id
+                                      AND e.new_status IN
+                                          ('demo_1','demo_2','demo_3',
+                                           'presupuesto_enviado','follow_up_1',
+                                           'follow_up_2','acepto','cerrado',
+                                           'en_desarrollo','finalizado')))
+                     AS demos
               FROM meta_ads a
               JOIN meta_ad_insights i ON i.ad_id = a.ad_id
              WHERE i.date BETWEEN ? AND ?
@@ -370,6 +387,14 @@ def anuncios_en_curso(db_path: str, desde: str, hasta: str, hoy=None) -> list:
             "cpl_total": _costo(gasto_total, leads_total),
             "ctr_total": _tasa(int(f["clics_total"] or 0),
                                int(f["impresiones_total"] or 0)),
+            # Lo que de verdad importa: cuantos se sentaron a hablar y cuanto
+            # costo cada uno. `leads_crm` puede ser menor que `leads_total` —
+            # Meta guarda los leads 90 dias y de los viejos no sabemos el
+            # anuncio— asi que el panel tiene que poder decir sobre cuantos
+            # esta hablando en vez de dar un costo por demo que miente.
+            "leads_atribuidos": int(f["leads_crm"] or 0),
+            "demos": int(f["demos"] or 0),
+            "costo_demo": _costo(gasto_total, int(f["demos"] or 0)),
         })
 
     # La mediana sale de los numeros de toda la vida, igual que las reglas: con
@@ -507,10 +532,30 @@ def piezas_del_mes(db_path: str, mes: str, hoy=None) -> dict:
             f"FROM ({ENVIOS_META_SQL}) WHERE source = 'meta' "
             "AND substr(fecha_local, 1, 10) BETWEEN ? AND ? "
             "GROUP BY NULLIF(meta_ad_id, '')", (desde, hasta)).fetchall()
+        # Y cuantos de esos se sentaron a hablar. Es el numero que ordena
+        # distinto que el costo por lead: contra los datos reales, dos piezas
+        # que traian leads a 15 y a 19 daban reuniones a 50 y a 127.
+        #
+        # Del mes, como todo lo demas de esta seccion: se cuenta el lead que
+        # ENTRO en el mes y alguna vez llego a demo. La demo puede ser
+        # posterior —una reunion de un lead de mayo se hace en junio— y por eso
+        # no se filtra la fecha del evento: se le acredita a la pieza que lo
+        # trajo, que es de quien se esta hablando.
+        demos = conn.execute(
+            "SELECT NULLIF(v.meta_ad_id, '') AS ad_id, COUNT(*) AS n "
+            f"FROM ({ENVIOS_META_SQL}) v WHERE v.source = 'meta' "
+            "AND v.primero = 1 "
+            "AND substr(v.fecha_local, 1, 10) BETWEEN ? AND ? "
+            "AND EXISTS (SELECT 1 FROM lead_events e WHERE e.lead_id = v.id "
+            "  AND e.new_status IN ('demo_1','demo_2','demo_3',"
+            "      'presupuesto_enviado','follow_up_1','follow_up_2',"
+            "      'acepto','cerrado','en_desarrollo','finalizado')) "
+            "GROUP BY NULLIF(v.meta_ad_id, '')", (desde, hasta)).fetchall()
     finally:
         conn.close()
 
     crm_por_pieza = {c["ad_id"]: int(c["n"]) for c in crm if c["ad_id"]}
+    demos_por_pieza = {d["ad_id"]: int(d["n"]) for d in demos if d["ad_id"]}
     leads_crm_mes = sum(int(c["n"]) for c in crm)
     # Sin un solo lead del mes con pieza, contar 0 por tarjeta seria mentir.
     hay_pieza_en_crm = bool(crm_por_pieza)
@@ -541,6 +586,13 @@ def piezas_del_mes(db_path: str, mes: str, hoy=None) -> dict:
             # Personas que entraron al CRM en el mes por esta pieza.
             "leads_crm": (crm_por_pieza.get(f["ad_id"], 0)
                           if hay_pieza_en_crm else None),
+            # Y cuantas se sentaron a hablar. Va con el mismo None que
+            # `leads_crm`: sin una sola pieza conocida en el mes, un cero
+            # diria "no trajo a nadie" cuando lo que falta es el dato.
+            "demos": (demos_por_pieza.get(f["ad_id"], 0)
+                      if hay_pieza_en_crm else None),
+            "costo_demo": (_costo(gasto, demos_por_pieza.get(f["ad_id"], 0))
+                           if hay_pieza_en_crm else None),
         }
         (activas if corriendo else inactivas).append(pieza)
 
