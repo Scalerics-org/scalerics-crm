@@ -16,6 +16,10 @@ from database import (actualizar_movimiento, actualizar_recurrente,
                       listar_por_cobrar, listar_recurrentes, log_activity,
                       marcar_mes_abierto, marcar_mes_cerrado)
 from services.auth import require_edicion, require_panel
+from database import (actualizar_dato_balance, borrar_dato_balance,
+                      crear_dato_balance, get_dato_balance,
+                      listar_datos_balance)
+from services.finanzas import BALANCE_CLASES, balance_general
 from services.finanzas import (BALANCE_TIPOS, CATEGORIAS, MONEDAS, a_usd,
                                balance, estado_de_cobro, fecha_valida,
                                iva_sobre, materializar_recurrentes,
@@ -35,7 +39,7 @@ def _db() -> str:
 # Hoy el Balance se genera con GET y ya pasa solo; queda anotado acá para que
 # el día que generar o guardar un balance sea POST, el Contador lo siga
 # pudiendo hacer (pedido de Juan: "salvo la parte de balances").
-_PERMITIDAS_EN_SOLO_LECTURA = {"finanzas.api_balance"}
+_PERMITIDAS_EN_SOLO_LECTURA = {"finanzas.api_balance", "finanzas.api_balance_general"}
 
 
 @finanzas_bp.before_request
@@ -635,6 +639,116 @@ def api_balance():
     generado = datetime.now(timezone.utc).astimezone(MONTEVIDEO)
     return jsonify(balance(db, tipo, desde, hasta,
                            generado_en=generado.strftime("%Y-%m-%d %H:%M")))
+
+
+@finanzas_bp.route("/api/finanzas/balance-general")
+def api_balance_general():
+    """Balance General (Activo = Pasivo + Patrimonio) a una fecha de corte.
+
+    `tipo` obligatorio ('blanco' | 'interno'); `fecha` vacía es hoy en
+    Montevideo. Es GET: el Contador (Finanzas en solo lectura) lo genera
+    igual. Materializa los fijos antes, como el resto.
+    """
+    from services.daily import MONTEVIDEO, hoy_montevideo
+
+    tipo = request.args.get("tipo") or ""
+    if tipo not in BALANCE_TIPOS:
+        return jsonify({"ok": False,
+                        "error": "tipo tiene que ser 'blanco' o 'interno'"}), 400
+    hoy = hoy_montevideo()
+    corte = (request.args.get("fecha") or "").strip() or hoy.isoformat()
+    if not fecha_valida(corte):
+        return jsonify({"ok": False, "error": "fecha tiene que ser 'YYYY-MM-DD'"}), 400
+    db = _db()
+    materializar_recurrentes(db, hoy=hoy)
+    generado = datetime.now(timezone.utc).astimezone(MONTEVIDEO)
+    return jsonify(balance_general(db, tipo, corte,
+                                   generado_en=generado.strftime("%Y-%m-%d %H:%M")))
+
+
+def _validar_dato_balance(data: dict):
+    """(campos, None) o (None, error). Ver `finanzas_balance_datos`."""
+    clase = data.get("clase")
+    if clase not in BALANCE_CLASES:
+        return None, "clase tiene que ser activo, pasivo, capital o caja_inicial"
+    rubros = BALANCE_CLASES[clase]
+    rubro = data.get("rubro") or (next(iter(rubros)) if len(rubros) == 1 else None)
+    if rubro not in rubros:
+        return None, f"rubro inválido para {clase}: {rubro!r}"
+    try:
+        monto = float(data.get("monto_usd"))
+    except (TypeError, ValueError):
+        return None, "monto_usd tiene que ser un número"
+    if monto != monto or monto in (float("inf"), float("-inf")):
+        return None, "monto_usd tiene que ser un número"
+    if clase == "caja_inicial":
+        # Un saldo inicial puede ser negativo (arrancar en rojo con el banco).
+        if abs(monto) < 0.005:
+            return None, "el saldo inicial no puede ser cero"
+    elif monto <= 0:
+        return None, "monto_usd tiene que ser mayor que cero"
+    desde = (data.get("desde") or "").strip()
+    if not fecha_valida(desde):
+        return None, "desde tiene que ser 'YYYY-MM-DD'"
+    hasta = (data.get("hasta") or "").strip() or None
+    if hasta and not fecha_valida(hasta):
+        return None, "hasta tiene que ser 'YYYY-MM-DD'"
+    if hasta and hasta <= desde:
+        return None, "hasta tiene que ser posterior a desde"
+    nombre = (data.get("nombre") or "").strip() or rubros[rubro]
+    campos = {"clase": clase, "rubro": rubro, "nombre": nombre[:120],
+              "monto_usd": round(monto, 2), "desde": desde, "hasta": hasta,
+              "en_blanco": 1 if data.get("en_blanco", True) else 0}
+    if "notas" in data:
+        campos["notas"] = (data.get("notas") or "").strip() or None
+    return campos, None
+
+
+@finanzas_bp.route("/api/finanzas/balance-datos", methods=["GET"])
+def api_listar_datos_balance():
+    return jsonify({"datos": listar_datos_balance(_db()), "clases": BALANCE_CLASES})
+
+
+@finanzas_bp.route("/api/finanzas/balance-datos", methods=["POST"])
+def api_crear_dato_balance():
+    campos, error = _validar_dato_balance(request.get_json(silent=True) or {})
+    if error:
+        return jsonify({"ok": False, "error": error}), 400
+    uid, nombre = _quien()
+    db = _db()
+    did = crear_dato_balance(db, created_by_name=nombre, **campos)
+    log_activity(db, nombre, "finanzas_dato_balance_creado", "finanzas", did,
+                 campos["nombre"], f"{campos['clase']} USD {campos['monto_usd']}",
+                 user_id=uid)
+    return jsonify({"ok": True, "id": did}), 201
+
+
+@finanzas_bp.route("/api/finanzas/balance-datos/<int:dato_id>", methods=["PUT"])
+def api_actualizar_dato_balance(dato_id):
+    db = _db()
+    if not get_dato_balance(db, dato_id):
+        return jsonify({"ok": False, "error": "no existe"}), 404
+    campos, error = _validar_dato_balance(request.get_json(silent=True) or {})
+    if error:
+        return jsonify({"ok": False, "error": error}), 400
+    actualizar_dato_balance(db, dato_id, **campos)
+    uid, nombre = _quien()
+    log_activity(db, nombre, "finanzas_dato_balance_editado", "finanzas", dato_id,
+                 campos["nombre"], "", user_id=uid)
+    return jsonify({"ok": True})
+
+
+@finanzas_bp.route("/api/finanzas/balance-datos/<int:dato_id>", methods=["DELETE"])
+def api_borrar_dato_balance(dato_id):
+    db = _db()
+    dato = get_dato_balance(db, dato_id)
+    if not dato:
+        return jsonify({"ok": False, "error": "no existe"}), 404
+    borrar_dato_balance(db, dato_id)
+    uid, nombre = _quien()
+    log_activity(db, nombre, "finanzas_dato_balance_borrado", "finanzas", dato_id,
+                 dato["nombre"], "", user_id=uid)
+    return jsonify({"ok": True})
 
 
 @finanzas_bp.route("/api/finanzas/categorias")
