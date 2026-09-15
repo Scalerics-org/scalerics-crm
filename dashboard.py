@@ -1125,7 +1125,8 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-sdr .nav-icon{stroke:#f87171}
 #nav-projects .nav-icon{stroke:#facc15}
 #nav-equipo .nav-icon{stroke:#a3e635}
-#nav-seg_leads .nav-icon{stroke:#e879f9}
+#nav-ausencias .nav-icon{stroke:#e879f9}
+#nav-seg_leads .nav-icon{stroke:#fb7185}
 .nav-item.active #nav-cola .nav-icon,
 .nav-item.active .nav-icon{opacity:1}
 /* active item keeps its color but brighter */
@@ -1144,7 +1145,8 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-sdr.active .nav-icon{stroke:#fca5a5}
 #nav-projects.active .nav-icon{stroke:#fde047}
 #nav-equipo.active .nav-icon{stroke:#bef264}
-#nav-seg_leads.active .nav-icon{stroke:#f0abfc}
+#nav-ausencias.active .nav-icon{stroke:#f0abfc}
+#nav-seg_leads.active .nav-icon{stroke:#fda4af}
 /* light mode — slightly darker tones */
 body.light #nav-cola .nav-icon{stroke:#2563eb}
 body.light #nav-clientes .nav-icon{stroke:#7c3aed}
@@ -1161,7 +1163,8 @@ body.light #nav-demos .nav-icon{stroke:#0e7490}
 body.light #nav-sdr .nav-icon{stroke:#b91c1c}
 body.light #nav-projects .nav-icon{stroke:#a16207}
 body.light #nav-equipo .nav-icon{stroke:#4d7c0f}
-body.light #nav-seg_leads .nav-icon{stroke:#a21caf}
+body.light #nav-ausencias .nav-icon{stroke:#a21caf}
+body.light #nav-seg_leads .nav-icon{stroke:#be123c}
 /* ── Lucide icons ─────────────────────────────────────────────────────────── */
 .nav-icon{width:15px;height:15px;stroke-width:2;flex-shrink:0}
 /* Frase de equipo, version compacta del PDF de identidad de marca. Es la
@@ -1439,6 +1442,19 @@ body.light .mobile-header-title{color:#0f172a}
    transparencia: Juan pidio verlas ("que no me aparezcan en gris sin que se
    vea"). Las separa el titulo de cada grupo, no el tono. */
 .sc-piezas-nav{margin:2px 0 14px;flex-wrap:wrap}
+/* Cuando llegan los leads, semana por semana: una fila por dia y una columna
+   por hora. Tabla y no SVG: un SVG de 24 columnas se achica hasta ser ilegible
+   en el celular; la tabla scrollea adentro de la tarjeta con el dia fijo a la
+   izquierda. El relleno de cada casillero sale de --azul (inline, con
+   color-mix) y el cero queda sin relleno. */
+.sc-lleg-resumen{font-size:.8rem;color:var(--texto-tenue);margin:0 0 10px}
+.sc-lleg-resumen b{color:var(--texto);font-variant-numeric:tabular-nums}
+.sc-lleg-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}
+.sc-lleg{border-collapse:separate;border-spacing:2px;font-size:.7rem;font-variant-numeric:tabular-nums;width:100%}
+.sc-lleg th{font-weight:600;color:var(--rotulo);padding:2px 1px;text-align:center}
+.sc-lleg td{min-width:24px;height:28px;padding:0 2px;text-align:center;color:var(--texto);border:1px solid var(--borde);border-radius:4px}
+.sc-lleg th[scope="row"]{position:sticky;left:0;z-index:1;background:var(--superficie);text-align:left;padding-right:8px;white-space:nowrap}
+.sc-lleg .sc-lleg-total{font-weight:700;color:var(--texto);padding-left:8px;border-color:transparent;text-align:right;white-space:nowrap}
 .sc-piezas-grupo{font-size:.86rem;font-weight:700;color:var(--texto);margin:20px 0 10px}
 .sc-piezas-grupo span{font-weight:600;color:var(--rotulo);margin-left:4px}
 .sc-piezas-aviso{font-size:.76rem;line-height:1.55;color:var(--texto-tenue);margin:0 0 12px}
@@ -1464,6 +1480,16 @@ body.light .mobile-header-title{color:#0f172a}
 .sc-anun-reco[data-accion="subir"]{border-left-color:var(--verde)}
 .sc-comparacion{display:grid;gap:5px;font-size:.8rem;line-height:1.55;color:var(--texto);background:var(--fondo-hundido);border:1px solid var(--borde);border-radius:10px;padding:11px 14px;margin-bottom:16px}
 .sc-barras{display:grid;gap:7px;margin-top:8px}
+/* Por lo que el lead declaro: una dona por pregunta. De a dos por fila en
+   escritorio, de a una en el celular (min() evita que 380px desborde a 390). */
+.sc-donas{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,380px),1fr));gap:18px}
+.sc-dona{border:1px solid var(--borde);border-radius:12px;padding:14px 16px;min-width:0}
+.sc-dona-cuerpo{display:flex;flex-wrap:wrap;align-items:center;gap:14px 18px;margin-top:8px}
+.sc-dona-svg{width:220px;max-width:100%;height:auto;flex:0 0 auto}
+.sc-dona-leyenda{list-style:none;margin:0;padding:0;display:grid;gap:9px;flex:1 1 180px;min-width:0}
+.sc-dona-item{display:grid;grid-template-columns:10px 1fr;gap:8px;align-items:start;font-size:.78rem;line-height:1.45;color:var(--texto);overflow-wrap:anywhere}
+.sc-dona-item .sc-leyenda-punto{margin-top:4px}
+.sc-dona-tasa{display:block;font-size:.72rem;color:var(--texto-tenue)}
 .sc-barras-ayuda{font-size:.72rem;line-height:1.5;margin:2px 0 4px;max-width:74ch}
 /* Varios graficos seguidos dentro del mismo bloque: sin esto se pegan y se
    leen como uno solo con el titulo en el medio. */
@@ -1502,7 +1528,7 @@ body.light .mobile-header-title{color:#0f172a}
 .sc-tile-delta[data-animo="malo"]{color:var(--rojo)}
 .sc-bloque{background:var(--superficie);border:1px solid var(--borde);border-radius:14px;padding:18px 20px;margin-bottom:18px}
 .sc-bloque>h3{font-size:.92rem;font-weight:700;color:var(--texto);margin:0 0 4px}
-.sc-bloque>.sc-sub{font-size:.74rem;color:var(--rotulo);margin-bottom:14px;line-height:1.5}
+.sc-bloque>.sc-sub{font-size:.74rem;color:var(--rotulo);margin-bottom:14px;line-height:1.5;white-space:normal;overflow-wrap:anywhere;max-width:100%}
 .sc-par{display:grid;grid-template-columns:1fr;gap:6px}
 .sc-titulo{font-size:.78rem;font-weight:600;margin-bottom:2px}
 .sc-vacio{color:var(--texto-tenue);font-size:.8rem;padding:14px 0}
@@ -1675,6 +1701,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .eq-destacado rect{fill:var(--azul-tinte);stroke:var(--azul);stroke-width:2}
 .eq-destacado .eq-nodo-rol{fill:var(--azul-claro)}
 .eq-aviso{background:var(--ambar-tinte);color:var(--ambar);border:1px solid var(--ambar-borde);border-radius:10px;padding:10px 12px;font-size:.8rem;line-height:1.45;margin-bottom:10px}
+.eq-cal-nav{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;margin-bottom:8px;font-size:.8rem;color:var(--texto)}
 .eq-cal-wrap{overflow-x:auto}
 .eq-cal{border-collapse:separate;border-spacing:3px;font-size:.78rem}
 .eq-cal th{font-weight:600;color:var(--texto-debil);font-size:.7rem;padding:4px 6px;text-align:center;white-space:nowrap}
@@ -1841,7 +1868,9 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div class="nav-item" id="nav-projects" onclick="showPanel('projects')"><i data-lucide="target" class="nav-icon"></i> Proyectos</div>
   <div class="nav-item" id="nav-tasks" onclick="showPanel('tasks')"><i data-lucide="check-square" class="nav-icon"></i> Tareas</div>
   <div class="nav-item" id="nav-activity" onclick="showPanel('activity')"><i data-lucide="clock" class="nav-icon"></i> Actividad</div>
-  <div class="nav-item" id="nav-equipo" onclick="showPanel('equipo')"><i data-lucide="network" class="nav-icon"></i> Equipo</div>
+  <div class="nav-section-label">RECURSOS HUMANOS</div>
+  <div class="nav-item" id="nav-equipo" onclick="showPanel('equipo')"><i data-lucide="network" class="nav-icon"></i> Organigrama</div>
+  <div class="nav-item" id="nav-ausencias" onclick="showPanel('ausencias')"><i data-lucide="calendar-clock" class="nav-icon"></i> Ausencias</div>
   <div class="nav-section-label">CAPTACIÓN</div>
   <div class="nav-item" id="nav-cola" onclick="showPanel('cola')"><i data-lucide="inbox" class="nav-icon"></i> Outbound</div>
   <div class="nav-item" id="nav-metrics" onclick="showPanel('metrics')"><i data-lucide="bar-chart-2" class="nav-icon"></i> Inteligencia comercial</div>
@@ -2531,13 +2560,19 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 
       <div class="sc-bloque">
         <h3>Por lo que el lead declaró</h3>
-        <div class="sc-sub">Respuestas del propio formulario de Meta: qué busca, cuánto presupuesto dice tener y cuál es su objetivo.</div>
+        <div class="sc-sub">Respuestas del propio formulario de Meta: qué busca, cuánto presupuesto dice tener, cuál es su objetivo y de dónde es. Cada círculo es cómo se reparten los leads entre las respuestas, y debajo de cada respuesta está qué parte llegó a una reunión. La ciudad va agrupada en Montevideo e Interior.</div>
         <div id="mk-segmentos"></div>
       </div>
 
       <div class="sc-bloque">
         <h3>Cuándo llegan los leads</h3>
-        <div class="sc-sub">Hora de Montevideo. Los leads de Meta se guardan en UTC, así que esto ya viene corregido: sin eso, el mapa diría que el pico es de madrugada y estaría movido tres horas.</div>
+        <div class="sc-sub">Semana por semana, de lunes a domingo y en hora de Montevideo: cada casillero es cuántos leads de Meta entraron en esa hora de ese día. Los leads de Meta se guardan en UTC, así que esto ya viene corregido: sin eso, el pico parecería de madrugada. Este bloque va con su propia semana, no con el período de arriba.</div>
+        <div class="sc-nav-mes sc-piezas-nav">
+          <button class="cal-nav-btn" id="mk-llegada-ant" onclick="mkLlegadaSemana(-1)" title="Semana anterior" aria-label="Semana anterior" disabled>&larr;</button>
+          <span id="mk-llegada-semana" aria-live="polite"></span>
+          <button class="cal-nav-btn" id="mk-llegada-sig" onclick="mkLlegadaSemana(1)" title="Semana siguiente" aria-label="Semana siguiente" disabled>&rarr;</button>
+          <button class="cal-today-btn" onclick="mkLlegadaSemanaHoy()">Esta semana</button>
+        </div>
         <div id="mk-llegada"></div>
       </div>
 
@@ -2594,12 +2629,14 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     <div id="activity-list" style="max-width:760px"></div>
   </div>
 
-  <!-- ======= EQUIPO PANEL ======= -->
+  <!-- ======= RECURSOS HUMANOS PANELES ======= -->
+  <!-- Dos paneles de Recursos Humanos. El organigrama conserva el id equipo
+       para que los permisos guardados sigan valiendo. -->
   <div id="equipo-panel" class="panel">
     <div class="page-header">
       <div>
-        <h1>Equipo</h1>
-        <div class="page-date">Organigrama y horas a recuperar. Solo horas: cuántas se deben y cuándo se devuelven.</div>
+        <h1>Organigrama</h1>
+        <div class="page-date">Recursos Humanos · quién reporta a quién.</div>
       </div>
     </div>
 
@@ -2607,6 +2644,15 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       <div class="eq-cab"><div class="fin-card-title" id="eq-titulo-org">Organigrama</div></div>
       <div class="eq-organigrama" id="eq-organigrama"><div class="eq-vacio">Cargando...</div></div>
     </section>
+  </div>
+
+  <div id="ausencias-panel" class="panel">
+    <div class="page-header">
+      <div>
+        <h1>Ausencias</h1>
+        <div class="page-date">Recursos Humanos · horas a recuperar. Solo horas: cuántas se deben y cuándo se devuelven.</div>
+      </div>
+    </div>
 
     <section class="eq-card" aria-labelledby="eq-titulo-aus">
       <div class="eq-cab">
@@ -2614,6 +2660,12 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
         <button class="btn-primary" type="button" onclick="eqAbrirAusencia()">Registrar</button>
       </div>
       <div id="eq-avisos"></div>
+      <div class="eq-cal-nav" role="group" aria-label="Semanas de la grilla">
+        <button class="cal-nav-btn" type="button" onclick="eqSemanas(-1)" title="Semana anterior" aria-label="Semana anterior">&larr;</button>
+        <span id="eq-cal-rango" aria-live="polite"></span>
+        <button class="cal-nav-btn" type="button" onclick="eqSemanas(1)" title="Semana siguiente" aria-label="Semana siguiente">&rarr;</button>
+        <button class="cal-today-btn" type="button" onclick="eqSemanasHoy()">Esta semana</button>
+      </div>
       <div class="eq-cal-wrap" id="eq-calendario"></div>
       <div class="eq-leyenda" aria-label="Referencia de colores">
         <span><i class="eq-muestra eq-muestra-normal"></i>Normal</span>
@@ -2629,7 +2681,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       <div id="eq-detalle"></div>
     </section>
   </div>
-  <!-- ======= FIN EQUIPO PANEL ======= -->
+  <!-- ======= FIN RECURSOS HUMANOS PANELES ======= -->
 
   <!-- ======= SEG LEADS PANEL ======= -->
   <div id="seg_leads-panel" class="panel">
@@ -3237,7 +3289,7 @@ function showPanel(name) {
   if (name === 'simulador') loadSimulador();
   if (name === 'metrics') loadMetrics();
   if (name === 'activity') loadActivity();
-  if (name === 'equipo') loadEquipo();
+  if (name === 'equipo' || name === 'ausencias') loadEquipo();
   if (name === 'seg_leads') loadSegLeads();
   if (name === 'sdr') loadSdr();
 }
@@ -6660,18 +6712,20 @@ function _showScoreBreakdown(event, el) {
 
 // ── Mobile navigation ─────────────────────────────────────────────────────────
 // El mismo orden que el menu de la izquierda (Juan, 14/9).
-const NAV_PRIORITY = ['cal','meta','finanzas','simulador','seg_leads','wa','notion_clients','clientes','projects','tasks','activity','equipo','cola','metrics'];
+const NAV_PRIORITY = ['cal','meta','finanzas','simulador','seg_leads','wa','notion_clients','clientes','projects','tasks','activity','equipo','ausencias','cola','metrics'];
 const NAV_ICONS = {
   cola:'inbox',meta:'instagram',cal:'calendar',
   tasks:'check-square',pipeline:'trending-up',clientes:'users',
   wa:'message-circle',metrics:'bar-chart-2',activity:'clock',projects:'target',
-  notion_clients:'handshake',finanzas:'wallet',simulador:'calculator',equipo:'network',seg_leads:'phone-call'
+  notion_clients:'handshake',finanzas:'wallet',simulador:'calculator',equipo:'network',
+  ausencias:'calendar-clock',seg_leads:'phone-call'
 };
 const NAV_LABELS = {
   cola:'Outbound',meta:'Meta',cal:'Agenda',
   tasks:'Tareas',pipeline:'Pipeline',clientes:'Clientes',
   wa:'WA',metrics:'Intel. comercial',activity:'Actividad',projects:'Proyectos',
-  notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador',equipo:'Equipo',seg_leads:'Seguimiento'
+  notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador',equipo:'Organigrama',
+  ausencias:'Ausencias',seg_leads:'Seguimiento'
 };
 let _mobileNavOverflow = [];
 
@@ -6751,7 +6805,7 @@ function closeMasSheet() {
 }
 
 // ── Panel access control ──────────────────────────────────────────────────────
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','equipo','seg_leads'];
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','equipo','ausencias','seg_leads'];
 (async () => {
   try {
     const r = await fetch('/api/me');
@@ -8987,39 +9041,81 @@ function slFichaHtml(seg) {
 // ========== FIN Seguimiento de leads ==========
 
 // ========== Equipo ==========
-// Una sola pantalla: el organigrama (SVG que sale de reporta_a) y, abajo, las
-// ausencias con su recupero. Solo horas. Todo lleva el prefijo eq, porque en
-// JS gana la ultima declaracion con el mismo nombre. Sin template literals a
-// proposito: este bloque no usa el signo de pesos en ningun lado.
+// Recursos Humanos, en dos paneles que comparten un solo pedido: Organigrama
+// (id equipo, el SVG que sale de reporta_a) y Ausencias (grilla, avisos y
+// detalle con su recupero). Solo horas. Un rol puede tener uno solo de los dos,
+// asi que cada contenedor que no esta en la pagina se saltea. Todo lleva el
+// prefijo eq, porque en JS gana la ultima declaracion con el mismo nombre. Sin
+// template literals a proposito: este bloque no usa el signo de pesos.
 let eqDatos = null;
 let eqAusenciaActual = null;
 let eqHorasTocadas = false;
+// Lunes de la primera semana de la grilla; null es la semana de hoy.
+let eqDesde = null;
 
 const EQ_DIAS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
 const EQ_NODO = {ancho: 184, alto: 52, hueco: 20, huecoRaiz: 120, fila: 48, margen: 12};
 
 async function loadEquipo() {
   try {
-    const r = await fetch('/api/equipo');
+    const r = await fetch('/api/equipo' + (eqDesde ? '?desde=' + encodeURIComponent(eqDesde) : ''));
     if (!r.ok) throw new Error('HTTP ' + r.status);
     eqDatos = await r.json();
   } catch (e) {
     eqDatos = null;
-    document.getElementById('eq-organigrama').innerHTML =
-      '<div class="eq-vacio">No se pudo cargar el equipo (' + esc(e.message) + ').</div>';
-    ['eq-avisos', 'eq-calendario', 'eq-detalle'].forEach(id => {
-      document.getElementById(id).innerHTML = '';
-    });
+    const falla = '<div class="eq-vacio">No se pudieron cargar los datos (' + esc(e.message) + ').</div>';
+    eqPoner('eq-organigrama', () => falla);
+    eqPoner('eq-calendario', () => falla);
+    eqPoner('eq-avisos', () => '');
+    eqPoner('eq-detalle', () => '');
     return;
   }
   eqPintar(eqDatos);
 }
 
+// Pinta un contenedor solo si esta en la pagina. El html se arma recien ahi,
+// para no calcular el organigrama de quien no lo ve.
+function eqPoner(id, armar) {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = armar();
+  return !!el;
+}
+
 function eqPintar(d) {
-  document.getElementById('eq-organigrama').innerHTML = eqOrganigramaSvg(d.organigrama || []);
-  document.getElementById('eq-avisos').innerHTML = eqAvisosHtml(d.avisos || []);
-  document.getElementById('eq-calendario').innerHTML = eqCalendarioHtml(d);
-  document.getElementById('eq-detalle').innerHTML = eqDetalleHtml(d.ausencias || []);
+  eqPoner('eq-organigrama', () => eqOrganigramaSvg(d.organigrama || []));
+  eqPoner('eq-avisos', () => eqAvisosHtml(d.avisos || []));
+  eqPoner('eq-calendario', () => eqCalendarioHtml(d));
+  const rango = document.getElementById('eq-cal-rango');
+  if (rango) rango.textContent = d.desde
+    ? 'Del ' + eqCorta(d.desde) + ' al ' + eqCorta(eqSumarDias(d.desde, 13)) : '';
+  eqPoner('eq-detalle', () => eqDetalleHtml(d.ausencias || []));
+}
+
+function eqSumarDias(iso, dias) {
+  const d = eqFecha(iso);
+  if (!d) return iso;
+  d.setDate(d.getDate() + dias);
+  return d.getFullYear() + '-' + eqDosDigitos(d.getMonth() + 1) + '-' + eqDosDigitos(d.getDate());
+}
+
+function eqSemanas(delta) {
+  const base = eqDesde || (eqDatos && eqDatos.desde);
+  if (!base) return;
+  eqDesde = eqSumarDias(base, 7 * delta);
+  loadEquipo();
+}
+
+function eqSemanasHoy() {
+  eqDesde = null;
+  loadEquipo();
+}
+
+// Un recupero recien agendado se tiene que ver en verde: si cae fuera de las
+// dos semanas que se estan mirando, la grilla salta a la suya.
+function eqIrALaFecha(iso) {
+  const d = eqDatos;
+  if (d && d.desde && iso >= d.desde && iso <= eqSumarDias(d.desde, 13)) return;
+  eqDesde = iso;
 }
 
 // ── fechas y horas ──
@@ -9178,8 +9274,14 @@ function eqCalendarioHtml(d) {
   const semanas = d.semanas || [];
   if (!filas.length) return '<div class="eq-vacio">Nadie del equipo lleva horas.</div>';
   const hueco = celda => '<' + celda + ' class="eq-cal-hueco" aria-hidden="true"></' + celda + '>';
-  const cabSemanas = semanas.map((s, i) => '<th colspan="5" class="eq-cal-semana">'
-    + (i ? 'Semana que viene' : 'Esta semana') + '</th>').join(hueco('th'));
+  const nombreSemana = (s, i) => {
+    if (!d.esta_semana) return i ? 'Semana que viene' : 'Esta semana';
+    if (s[0] === d.esta_semana) return 'Esta semana';
+    if (s[0] === eqSumarDias(d.esta_semana, 7)) return 'Semana que viene';
+    return 'Semana del ' + eqCorta(s[0]);
+  };
+  const cabSemanas = semanas.map((s, i) => '<th colspan="' + s.length + '" class="eq-cal-semana">'
+    + esc(nombreSemana(s, i)) + '</th>').join(hueco('th'));
   const cabDias = semanas.map(s => s.map(iso => '<th scope="col" class="eq-cal-dia' + (iso === d.hoy ? ' eq-hoy' : '') + '">'
     + esc(eqCorta(iso)) + '</th>').join('')).join(hueco('th'));
   const cuerpo = filas.map(f => {
@@ -9360,6 +9462,7 @@ async function eqGuardarRecupero() {
     return;
   }
   eqCerrarModal('eq-modal-recupero');
+  eqIrALaFecha(datos.fecha);
   await loadEquipo();
 }
 
@@ -9823,9 +9926,9 @@ async function loadSimulador() {
   simLeerCapacidadEquipo();
 }
 
-// Dato leido de la seccion Equipo, no un campo: no reemplaza ni esconde ninguno
-// de los de arriba, que siguen siendo los que entran en la cuenta. Si Equipo no
-// responde, el simulador sigue igual y solo lo dice.
+// Dato leido de Ausencias (Recursos Humanos), no un campo: no reemplaza ni
+// esconde ninguno de los de arriba, que siguen siendo los que entran en la
+// cuenta. Si no responde, el simulador sigue igual y solo lo dice.
 async function simLeerCapacidadEquipo() {
   const caja = document.getElementById('sim-capacidad-equipo');
   if (!caja) return;
@@ -9836,12 +9939,12 @@ async function simLeerCapacidadEquipo() {
     const c = await r.json();
     const t = c && c.totales;
     if (!t || typeof t.capacidad_neta !== 'number') throw new Error('sin datos');
-    caja.textContent = 'Capacidad neta de esta semana, leída de Equipo (no editable): '
+    caja.textContent = 'Capacidad neta de esta semana, leída de Ausencias (no editable): '
       + horas(t.capacidad_neta) + ' = ' + horas(t.horas_base) + ' base − '
       + horas(t.horas_ausencia) + ' de ausencias. Recuperos comprometidos: '
       + horas(t.horas_recupero) + ', que no suman capacidad libre.';
   } catch (e) {
-    caja.textContent = 'No se pudo leer la capacidad de la sección Equipo (' + e.message + ').';
+    caja.textContent = 'No se pudo leer la capacidad de la sección Ausencias (' + e.message + ').';
   }
 }
 
@@ -10346,9 +10449,15 @@ async function loadMarketing() {
   estado.style.display = 'none';
   cuerpo.style.display = '';
   _mkPintar();
-  // Las piezas tienen su propio mes y su propio pedido: no esperan al
-  // dossier ni al informe, y cambiar de mes no recalcula el panel.
+  // Las piezas tienen su propio pedido y no esperan al informe. Con "Un mes"
+  // arriba siguen a ese mes.
+  if (_mkEnModoMes()) {
+    const mes = _mkMesDelPeriodo();
+    _mkPiezasMesActual = mes === _mkMesDeHoy() ? null : mes;
+  }
   _mkCargarPiezas();
+  // Lo mismo "Cuándo llegan los leads": su propia semana y su propio pedido.
+  _mkCargarLlegada();
   // Sin await: si el informe tarda o falla, los graficos ya estan en pantalla.
   _mkInforme();
 }
@@ -10704,28 +10813,28 @@ function _mkPintar() {
     : '<div class="sc-vacio">Sin gasto ni leads en el período.</div>';
 
   // ── Segmentos declarados ───────────────────────────────────────────────
-  document.getElementById('mk-segmentos').innerHTML =
-    (_mkDossier.segmentos || []).map(b => {
-      const filas = b.valores.map(v => {
-        const m = v.metricas.find(m => m.id.endsWith('.tasa_demo'));
-        if (!m || m.valor === null || m.valor === undefined) return null;
-        return {
-          etiqueta: v.valor_declarado,
-          valor: m.valor,
-          nota: m.n ? (m.muestra_chica
-                        ? `sobre ${m.n} · muestra chica`
-                        : `sobre ${m.n}`) : ''
-        };
-      }).filter(Boolean);
-      const cola = b.valores_distintos > b.valores.length
-        ? ` · ${b.valores_distintos} respuestas distintas` : '';
-      return SC.barrasSimples(filas, {
-        etiqueta: b.etiqueta,
-        ayuda: `Qué porcentaje de cada respuesta llegó a una reunión. ` +
-               `${b.n} respuestas${cola}.`,
-        formato: 'porcentaje'
-      }, tema);
-    }).join('') || '<div class="sc-vacio">Sin respuestas de formulario en el período</div>';
+  // Pedido de Juan (14/9): "gráficos circulares y más grandes". La dona dice
+  // cómo se reparten los leads entre las respuestas; lo que antes decían las
+  // barras —qué parte llegó a una reunión— va escrito al lado de cada una. La
+  // ciudad ya viene agrupada en Montevideo e Interior desde el dossier.
+  const _donas = (_mkDossier.segmentos || []).map(b => {
+    const valores = b.valores || [];
+    const porciones = valores.map(v => {
+      const m = (v.metricas || []).find(x => String(x.id).endsWith('.tasa_demo')) || {};
+      return { etiqueta: v.etiqueta || v.valor_declarado, n: v.n,
+               tasa: m.valor, muestraChica: !!m.muestra_chica };
+    });
+    const cola = b.valores_distintos > valores.length
+      ? ` · ${b.valores_distintos} respuestas distintas` : '';
+    return SC.dona(porciones, {
+      etiqueta: b.etiqueta,
+      ayuda: `Cómo se reparten las ${b.n} respuestas${cola}. Debajo de cada ` +
+             'una, qué parte llegó a una reunión.',
+    }, tema);
+  });
+  document.getElementById('mk-segmentos').innerHTML = _donas.length
+    ? '<div class="sc-donas">' + _donas.join('') + '</div>'
+    : '<div class="sc-vacio">Sin respuestas de formulario en el período</div>';
 
   // ── La plata: Meta contra Finanzas ─────────────────────────────────────
   const conc = _mkDossier.conciliacion || [];
@@ -10828,31 +10937,9 @@ function _mkPintar() {
       '</tbody></table></div>';
   }
 
-  // ── Cuándo llegan los leads ────────────────────────────────────────────
-  const lleg = _mkDossier.llegada || {};
-  const DIAS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
-  document.getElementById('mk-llegada').innerHTML = (lleg.total || 0)
-    ? SC.matriz(
-        (lleg.celdas || []).map(c => ({
-          fila: c.dia, columna: c.franja, n: c.n,
-          titulo: DIAS[c.dia] + ' ' + String(c.franja).padStart(2, '0') + 'h',
-        })),
-        {
-          etiqueta: 'Leads por día y franja horaria',
-          filas: DIAS.map((d, i) => ({ clave: i, etiqueta: d })),
-          columnas: (lleg.celdas || []).slice(0, 8).map(c => ({
-            clave: c.franja,
-            etiqueta: String(c.franja).padStart(2, '0'),
-          })),
-          maximo: lleg.maximo,
-        }, tema)
-      + (lleg.sin_hora
-         ? '<div class="sc-nota">' + esc(SC.fmt(lleg.sin_hora, 'numero')) +
-           ' leads no tienen hora guardada y quedan fuera del mapa. Contarlos a ' +
-           'medianoche inventaría un pico que no pasó.</div>'
-         : '')
-    : '<div class="sc-vacio">Sin leads en el período.</div>';
-
+  // "Cuándo llegan los leads" ya no sale del dossier: va semana por semana,
+  // con su propio pedido (ver `_mkCargarLlegada`). El dossier sigue trayendo
+  // `llegada` en franjas de tres horas, para el informe.
 }
 
 // ── Ayudas del mes a mes ────────────────────────────────────────────────
@@ -10941,6 +11028,143 @@ function _mkNotaSemanasIncompletas(semanas, p, nombres) {
     'anduvieron peor.</div>';
 }
 
+// ── Cuándo llegan los leads, semana por semana ──────────────────────────
+//
+// Pedido de Juan (14/9): "esto vamos a ir viendo más detallado por semana".
+// Una fila por día con su fecha, una columna por hora (0 a 23), lunes a
+// domingo en hora de Montevideo. Como las piezas, tiene su propio navegador
+// y su propio pedido a `/api/marketing/leads-semana`: el período de arriba no
+// lo mueve. No va al futuro y hacia atrás llega hasta la semana del primer
+// lead de Meta.
+
+var _mkLlegadaSemana = null;   // lunes 'YYYY-MM-DD'; null es la semana actual
+var _mkLlegadaUltima = null;   // la última respuesta: trae la semana actual y la primera
+
+var _MK_DIAS_CORTOS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+
+// 'YYYY-MM-DD' corrido tantos días como diga `dias`. En UTC, para que ningún
+// cambio de hora del navegador mueva la fecha.
+function _mkDiaCorrido(iso, dias) {
+  const p = String(iso).split('-').map(Number);
+  return new Date(Date.UTC(p[0], p[1] - 1, p[2] + dias)).toISOString().slice(0, 10);
+}
+
+// El lunes de hoy según el navegador. Solo se usa hasta que llega la primera
+// respuesta, que trae la semana actual de Montevideo calculada en el servidor.
+function _mkLunesDeHoy() {
+  const hoy = new Date();
+  const iso = hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0') +
+    '-' + String(hoy.getDate()).padStart(2, '0');
+  return _mkDiaCorrido(iso, -((hoy.getDay() + 6) % 7));
+}
+
+// '2026-09-07' -> '7 al 13 de setiembre 2026'. Si la semana cruza de mes o de
+// año, los dos lados lo dicen.
+function _mkNombreSemana(lunes) {
+  const domingo = _mkDiaCorrido(lunes, 6);
+  const [a1, m1, d1] = String(lunes).split('-').map(Number);
+  const [a2, m2, d2] = domingo.split('-').map(Number);
+  const mes = (m) => (_MK_NOMBRE_MES[m - 1] || '').toLowerCase();
+  if (a1 !== a2) return `${d1} de ${mes(m1)} ${a1} al ${d2} de ${mes(m2)} ${a2}`;
+  if (m1 !== m2) return `${d1} de ${mes(m1)} al ${d2} de ${mes(m2)} ${a2}`;
+  return `${d1} al ${d2} de ${mes(m2)} ${a2}`;
+}
+
+function mkLlegadaSemana(delta) {
+  const ultima = _mkLlegadaUltima;
+  const actual = (ultima && ultima.semana_actual) || _mkLunesDeHoy();
+  const ahora = _mkLlegadaSemana || actual;
+  const semana = _mkDiaCorrido(ahora, 7 * delta);
+  if (semana > actual || semana === ahora) return;
+  // Antes de la semana del primer lead no hay nada que mirar.
+  if (semana < ahora && !(ultima && ultima.primera_semana && semana >= ultima.primera_semana)) return;
+  _mkLlegadaSemana = semana === actual ? null : semana;
+  _mkCargarLlegada();
+}
+
+function mkLlegadaSemanaHoy() {
+  _mkLlegadaSemana = null;
+  _mkCargarLlegada();
+}
+
+async function _mkCargarLlegada() {
+  const pedida = _mkLlegadaSemana;
+  const caja = document.getElementById('mk-llegada');
+  document.getElementById('mk-llegada-semana').textContent = _mkNombreSemana(
+    pedida || (_mkLlegadaUltima && _mkLlegadaUltima.semana_actual) || _mkLunesDeHoy());
+  caja.innerHTML = '<div class="sc-vacio">Cargando la semana…</div>';
+  let datos;
+  try {
+    const r = await fetch('/api/marketing/leads-semana' +
+      (pedida ? '?semana=' + encodeURIComponent(pedida) : ''));
+    if (!r.ok) {
+      caja.innerHTML = '<div class="sc-vacio">No se pudo cargar la semana ' +
+        '(error ' + r.status + ').</div>';
+      return;
+    }
+    datos = await r.json();
+  } catch (e) {
+    caja.innerHTML = '<div class="sc-vacio">No se pudo cargar la semana: ' +
+      esc(e.message) + '</div>';
+    return;
+  }
+  // Si mientras llegaba se pidió otra semana, esta respuesta ya no va.
+  if (_mkLlegadaSemana !== pedida) return;
+  _mkPintarLlegada(datos);
+}
+
+function _mkPintarLlegada(d) {
+  _mkLlegadaUltima = d;
+  const nombre = _mkNombreSemana(d.semana);
+  document.getElementById('mk-llegada-semana').textContent = nombre;
+  document.getElementById('mk-llegada-sig').disabled = !(d.semana < d.semana_actual);
+  document.getElementById('mk-llegada-ant').disabled =
+    !(d.primera_semana && d.semana > d.primera_semana);
+
+  const caja = document.getElementById('mk-llegada');
+  const sinHora = d.sin_hora
+    ? '<div class="sc-nota">' + esc(SC.fmt(d.sin_hora, 'numero')) +
+      (d.sin_hora === 1 ? ' lead de esta semana no tiene' : ' leads de esta semana no tienen') +
+      ' hora guardada y quedan fuera de la grilla. Contarlos a medianoche ' +
+      'inventaría un pico que no pasó.</div>'
+    : '';
+  if (!d.total) {
+    const porque = d.primera_semana
+      ? `No entró ningún lead de Meta en la semana del ${nombre}.`
+      : 'Todavía no hay ningún lead de Meta guardado.';
+    caja.innerHTML = `<div class="sc-vacio">${esc(porque)}</div>` + sinHora;
+    return;
+  }
+
+  // Relleno de 14% a 70% de --azul según el máximo de la semana: arriba de
+  // 70% el número deja de leerse en el tema oscuro. El cero queda sin relleno.
+  const tope = d.maximo || 1;
+  const cabeza = '<tr><th scope="col" class="sc-lleg-dia">Día</th>' +
+    Array.from({ length: 24 }, (_, h) => `<th scope="col">${h}</th>`).join('') +
+    '<th scope="col" class="sc-lleg-total">Total</th></tr>';
+  const filas = (d.dias || []).map((dia, i) => {
+    const partes = String(dia.fecha).split('-').map(Number);
+    const rotulo = `${_MK_DIAS_CORTOS[i] || ''} ${partes[2]}/${partes[1]}`;
+    const celdas = (dia.horas || []).map((n, h) => {
+      const titulo = `${rotulo}, de ${h} a ${h + 1} h: ${n} ${n === 1 ? 'lead' : 'leads'}`;
+      if (!n) return `<td title="${esc(titulo)}"></td>`;
+      const pct = Math.round(14 + 56 * Math.min(1, n / tope));
+      return `<td data-n="${n}" title="${esc(titulo)}" ` +
+        `style="background:color-mix(in srgb,var(--azul) ${pct}%,transparent)">${n}</td>`;
+    }).join('');
+    return `<tr><th scope="row">${esc(rotulo)}</th>${celdas}` +
+      `<td class="sc-lleg-total">${esc(SC.fmt(dia.total, 'numero'))}</td></tr>`;
+  }).join('');
+
+  caja.innerHTML =
+    `<div class="sc-lleg-resumen"><b>${esc(SC.fmt(d.total, 'numero'))} ` +
+    `${d.total === 1 ? 'lead' : 'leads'}</b> en la semana. Columnas: hora de ` +
+    'Montevideo, de 0 a 23.</div>' +
+    '<div class="sc-lleg-wrap"><table class="sc-lleg" ' +
+    `aria-label="Leads por día y hora, semana del ${esc(nombre)}">` +
+    `<thead>${cabeza}</thead><tbody>${filas}</tbody></table></div>` + sinHora;
+}
+
 // ── Las piezas de la pauta, mes por mes ─────────────────────────────────
 //
 // Pedido de Juan: ir mes por mes, y en cada mes ver las piezas que tuvieron
@@ -10948,8 +11172,9 @@ function _mkNotaSemanasIncompletas(semanas, p, nombres) {
 // hoy y las que ya no. Las que ya no se ven igual de legibles: las separa el
 // título del grupo, no un gris.
 //
-// Tiene su propio mes y su propio pedido a `/api/marketing/piezas`: el
-// período de arriba no la mueve y cambiar de mes no recalcula el panel.
+// Tiene su propio pedido a `/api/marketing/piezas`. Con "Un mes" arriba
+// muestra ESE mes; con otro período (90 días, el año) navega meses por su
+// cuenta, porque ahí arriba no hay un mes que seguir.
 
 var _mkPiezasMesActual = null;   // 'YYYY-MM'; null es el mes de hoy
 
@@ -10968,7 +11193,12 @@ function _mkMesDeHoy() {
 // más allá del primer mes con datos te dejaba en ese primer mes sin avisar:
 // Juan creía estar en mayo y miraba agosto. Si el mes no tiene datos por pieza,
 // el panel lo dice. Al futuro no se va: el botón está apagado.
+//
+// Con "Un mes" arriba, la flecha de las piezas mueve la sección entera: si
+// cada una tuviera su mes, arriba decía abril y abajo seguían las piezas de
+// setiembre (Juan, 14/9).
 function mkPiezasMes(delta) {
+  if (_mkEnModoMes()) { mkMes(delta); return; }
   const hoy = _mkMesDeHoy();
   const ahora = _mkPiezasMesActual || hoy;
   const mes = _mkMesCorrido(ahora, delta);
@@ -10978,8 +11208,20 @@ function mkPiezasMes(delta) {
 }
 
 function mkPiezasMesHoy() {
+  if (_mkEnModoMes()) { mkMesHoy(); return; }
   _mkPiezasMesActual = null;
   _mkCargarPiezas();
+}
+
+function _mkEnModoMes() {
+  const sel = document.getElementById('mk-rango');
+  return !!sel && sel.value === 'mes';
+}
+
+// El mes de arriba, como 'YYYY-MM'.
+function _mkMesDelPeriodo() {
+  const d = _mkMesVisible();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
 }
 
 async function _mkCargarPiezas() {
@@ -12496,8 +12738,8 @@ select:focus{border-color:#0088cc}
 </div>
 
 <script>
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','equipo','seg_leads'];
-const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',equipo:'Equipo',seg_leads:'Seguimiento de leads'};
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','equipo','ausencias','seg_leads'];
+const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',equipo:'Organigrama',ausencias:'Ausencias',seg_leads:'Seguimiento de leads'};
 let _roles = [];
 
 function makeChips(containerId, checkedArr, prefix) {

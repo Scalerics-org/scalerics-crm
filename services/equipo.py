@@ -165,12 +165,17 @@ def _entrega(valor) -> date | None:
     return parse_fecha(valor[:10]) if isinstance(valor, str) else None
 
 
-def estado(db_path: str, hoy: date | None = None) -> dict:
-    """Todo lo que pinta la pantalla Equipo, en un solo pedido."""
+def estado(db_path: str, hoy: date | None = None, desde: date | None = None) -> dict:
+    """Todo lo que pinta la pantalla Equipo, en un solo pedido.
+
+    La grilla son dos semanas: la de hoy y la que viene, o las que arrancan en
+    la semana de `desde` para ir hacia adelante o atrás. Sábado y domingo solo
+    aparecen si alguien recupera ese día: un recupero agendado tiene que verse
+    en verde (Juan, 14/9), y dos columnas vacías por semana no suman nada.
+    """
     hoy = hoy or date.today()
-    lunes = lunes_de(hoy)
-    semanas = [[lunes + timedelta(days=7 * s + i) for i in range(5)] for s in range(2)]
-    primer_dia, ultimo_dia = semanas[0][0], semanas[1][-1]
+    lunes_hoy = lunes_de(hoy)
+    lunes = lunes_de(desde) if desde else lunes_hoy
 
     personas = listar_personas_equipo(db_path)
     con_horas = {p["id"]: p for p in personas if p.get("lleva_horas")}
@@ -180,6 +185,11 @@ def estado(db_path: str, hoy: date | None = None) -> dict:
     rec_por_aus: dict[int, list[dict]] = {}
     for r in recuperos:
         rec_por_aus.setdefault(r["ausencia_id"], []).append(r)
+
+    fechas_rec = {r["fecha"] for r in recuperos}
+    semanas = [[d for d in (lunes + timedelta(days=7 * s + i) for i in range(7))
+                if d.weekday() < 5 or d.isoformat() in fechas_rec] for s in range(2)]
+    primer_dia, ultimo_dia = lunes, lunes + timedelta(days=13)
 
     detalle = []
     for a in ausencias:
@@ -223,7 +233,7 @@ def estado(db_path: str, hoy: date | None = None) -> dict:
     avisos = []
     entregas = [(e, _entrega(e["timeline_end"])) for e in entregas_de_proyectos(db_path)]
     for a in detalle:
-        if a["fecha_hasta"] < primer_dia.isoformat():
+        if a["fecha_hasta"] < lunes_hoy.isoformat():
             continue
         for e, fecha in entregas:
             if fecha and a["fecha_desde"] <= fecha.isoformat() <= a["fecha_hasta"]:
@@ -233,6 +243,7 @@ def estado(db_path: str, hoy: date | None = None) -> dict:
 
     return {
         "hoy": hoy.isoformat(),
+        "esta_semana": lunes_hoy.isoformat(),
         "desde": primer_dia.isoformat(), "hasta": ultimo_dia.isoformat(),
         "semanas": [[d.isoformat() for d in s] for s in semanas],
         "organigrama": organigrama(personas),

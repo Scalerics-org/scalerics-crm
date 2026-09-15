@@ -28,14 +28,23 @@ def _hoy() -> date:
     return date.today()
 
 
+# Recursos Humanos son dos paneles que leen el mismo `GET /api/equipo`:
+# Organigrama (conserva el id `equipo`, así los permisos guardados siguen
+# valiendo) y Ausencias. Cualquiera de los dos abre todas las rutas.
+PANELES_RRHH = ("equipo", "ausencias")
+
+
 @equipo_bp.before_request
 def _candado():
-    """Todo pide el panel `equipo`. La capacidad la lee también el Simulador
-    financiero, así que ahí alcanza con cualquiera de los dos paneles."""
-    if request.endpoint == "equipo.api_capacidad" and tiene_panel(
-            _db(), session.get("user_id"), "simulador"):
+    """Todo pide Organigrama o Ausencias. La capacidad la lee también el
+    Simulador financiero, así que ahí alcanza además con ese panel."""
+    db, uid = _db(), session.get("user_id")
+    paneles = PANELES_RRHH
+    if request.endpoint == "equipo.api_capacidad":
+        paneles = PANELES_RRHH + ("simulador",)
+    if any(tiene_panel(db, uid, p) for p in paneles):
         return None
-    return require_panel(_db(), "equipo")
+    return require_panel(db, "equipo")
 
 
 def _quien() -> tuple[int | None, str]:
@@ -44,7 +53,13 @@ def _quien() -> tuple[int | None, str]:
 
 @equipo_bp.route("/api/equipo")
 def api_estado():
-    return jsonify(estado(_db(), _hoy()))
+    crudo = request.args.get("desde")
+    desde = None
+    if crudo:
+        desde = parse_fecha(crudo)
+        if desde is None:
+            return jsonify({"ok": False, "error": "desde tiene que ser AAAA-MM-DD"}), 400
+    return jsonify(estado(_db(), _hoy(), desde))
 
 
 @equipo_bp.route("/api/equipo/capacidad")

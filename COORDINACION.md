@@ -472,6 +472,20 @@ leads de Meta se renombró a **D** para deshacer el empate.
   - El panel les llega a los roles que ya tienen `notion_clients`, **una sola vez** (en el arranque que crea la tabla): si Juan se lo saca a un rol, un deploy no se lo vuelve a poner.
   - Nada arranca en el boot ni manda mail.
 
+- **15/9 — I: rama `feat/recursos-humanos` (sale de `fix/piezas-y-recupero`, PR #38). Sin PR ni deploy.**
+  - Pedido de Juan: Equipo pasa a ser el grupo **RECURSOS HUMANOS**, entre OPERACIÓN y CAPTACIÓN, con dos paneles:
+    - **Organigrama**: conserva el id `equipo`, así los permisos guardados siguen valiendo.
+    - **Ausencias**: id nuevo `ausencias`, con grilla, avisos, detalle y navegación por semanas.
+  - Migración: `_grant_panel_to_existing_roles(conn, "ausencias", solo_si_tiene="equipo")`. Todo rol con `equipo` recibe `ausencias`. **Ojo:** corre en cada arranque, igual que la de `equipo`, así que si se le saca Ausencias a un rol que tiene Organigrama, vuelve a aparecer.
+  - `routes/equipo.py`: todas las rutas aceptan cualquiera de los dos paneles. La capacidad acepta también `simulador`.
+  - `loadEquipo` corre al abrir cualquiera de los dos paneles y saltea los contenedores que no están en la página.
+
+- **15/9 — I: rama `fix/piezas-y-recupero`.**
+  - Piezas de la pauta: con "Un mes" arriba siguen al mes de la sección. La flecha de las piezas mueve la sección entera. Antes arriba se veía abril y abajo seguían las piezas de setiembre. Los datos de `meta_ad_insights` estaban bien fechados (abril 27 piezas, setiembre 47, ninguna en común).
+  - Equipo: la grilla navega de semana en semana con `GET /api/equipo?desde=AAAA-MM-DD`. Al agendar un recupero fuera de lo visible, salta a su semana. Sábado y domingo aparecen solo si hay un recupero ese día. `esta_semana` viene en la respuesta.
+
+- **15/9 — I: DEPLOYADO `v216` (PR #37 mergeado, `bd18b03`).** Trajo Equipo, la frase de equipo con el logo, colores del menú y SDR en CAPTACIÓN. El relleno de piezas de Meta quedó completo desde marzo.
+
 - **15/9 — I: DEPLOYADO `v215` (PR #36 mergeado a `main`, `5e3c7d7`): `main` quedó igual a producción.** Trajo:
   - menú por grupos, con Calendario como panel de entrada;
   - sin Seguimientos;

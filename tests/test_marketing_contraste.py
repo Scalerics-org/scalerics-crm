@@ -145,6 +145,9 @@ def test_el_rotulo_ya_alcanza_para_texto():
                  # entraron las fechas del mes y la cuenta de cada grupo.
                  ".sc-anun-fechas", ".sc-anun-dato span",
                  ".sc-anun-sinfoto", ".sc-anun-reco",
-                 ".sc-piezas-grupo span"}
+                 ".sc-piezas-grupo span",
+                 # Las horas y los días de "Cuándo llegan los leads", sobre
+                 # --superficie (la columna fija del día pinta ese fondo).
+                 ".sc-lleg th"}
     assert con_rotulo == esperados, (
         f"--rotulo esta en {sorted(con_rotulo)} y se esperaba {sorted(esperados)}")
