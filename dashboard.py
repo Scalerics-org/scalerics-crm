@@ -933,7 +933,8 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .fin-nav-mes{display:flex;align-items:center;gap:6px}
 .fin-nav-mes span{font-size:.82rem;font-weight:700;color:var(--texto);min-width:130px;text-align:center}
 .fin-cerrado{display:flex;align-items:center;gap:8px;font-size:.7rem;font-weight:700;color:var(--ambar);background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);padding:4px 10px;border-radius:999px;text-transform:uppercase;letter-spacing:.04em}
-.cal-count{font-size:.66rem;font-weight:700;color:#64748b;background:#161b27;border:1px solid #1e293b;padding:4px 10px;border-radius:999px;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap}
+.cal-count{font-size:.74rem;font-weight:600;color:var(--texto-tenue);background:var(--superficie);border:1px solid var(--borde);padding:5px 12px;border-radius:999px;white-space:nowrap}
+.cal-count:empty{display:none}
 .cal-today-btn{background:#161b27;border:1px solid #1e293b;color:#94a3b8;padding:7px 14px;border-radius:8px;cursor:pointer;font-size:.76rem;font-weight:700;font-family:'Inter',sans-serif;line-height:1;transition:background .15s,color .15s,border-color .15s}
 .cal-today-btn:hover{background:rgba(0,136,204,.12);border-color:rgba(0,136,204,.4);color:#33aadd}
 .cal-leyenda{display:flex;gap:14px;align-items:center;margin-bottom:10px;font-size:.64rem;color:#475569;flex-wrap:wrap}
@@ -969,6 +970,11 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .cal-mobile-act-borrar{color:var(--rojo-texto)}
 .cal-leyenda span{display:flex;align-items:center;gap:5px}
 .cal-leyenda i{width:8px;height:8px;border-radius:2px;display:inline-block}
+/* Contador del mes y aviso de deslizar. Van DESPUES de `.cal-leyenda span` y de
+   la regla base de `.cal-count`: misma especificidad, gana la ultima. En el
+   celular el contador baja a su propio renglon, entero, arriba de la grilla. */
+.cal-leyenda .cal-hint-movil{display:none}
+@media(max-width:768px){ .cal-leyenda .cal-hint-movil{display:flex} .cal-leyenda .cal-hint-escritorio{display:none} .cal-count{order:3;width:100%;white-space:normal;border-radius:10px} }
 .cal-grid{border:1px solid #1e293b;border-radius:14px}
 .cal-cell{min-height:112px;transition:background .12s,box-shadow .12s}
 .cal-cell.weekend{background:#12161f}
@@ -1165,7 +1171,6 @@ body.light .cal-del-btn{background:rgba(239,68,68,.07);color:#dc2626;border-colo
 body.light .cal-hora-btn{background:rgba(0,136,204,.08);color:#0369a1;border-color:rgba(0,136,204,.2)}
 body.light .cal-join-btn{background:rgba(22,163,74,.08);color:#15803d;border-color:rgba(22,163,74,.2)}
 body.light .cal-loading{color:#94a3b8}
-body.light .cal-count{background:#f1f5f9;border-color:#e2e8f0;color:#64748b}
 body.light .cal-today-btn{background:#f1f5f9;border:1px solid #e2e8f0;color:#475569}
 body.light .cal-today-btn:hover{background:#eff6ff;border-color:#bfdbfe;color:#0369a1}
 body.light .cal-leyenda{color:#94a3b8}
@@ -2238,15 +2243,15 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div id="cal-panel" class="panel active">
     <div class="cal-header">
       <h1 id="cal-week-label">Calendario</h1>
-      <span class="cal-count" id="cal-count"></span>
+      <span class="cal-count" id="cal-count" aria-live="polite"></span>
       <div style="display:flex;gap:8px;align-items:center;flex-shrink:0;margin-left:auto">
         <div class="cal-view-toggle">
           <button id="cal-view-mes" class="cal-view-btn active" onclick="calSetView('mes')">Mes</button>
           <button id="cal-view-semana" class="cal-view-btn" onclick="calSetView('semana')">Semana</button>
         </div>
-        <button class="cal-nav-btn" onclick="calShift(-1)">←</button>
+        <button class="cal-nav-btn" onclick="calShift(-1)" title="Anterior" aria-label="Anterior">←</button>
         <button class="cal-today-btn" onclick="calHoy()">Hoy</button>
-        <button class="cal-nav-btn" onclick="calShift(1)">→</button>
+        <button class="cal-nav-btn" onclick="calShift(1)" title="Siguiente" aria-label="Siguiente">→</button>
         <a href="https://calendly.com/scalerics/consultoriagratuita" target="_blank" class="cal-new-btn" style="background:#0f2a1a;border:1px solid #10b981;color:#10b981;text-decoration:none">+ Calendly</a>
       </div>
     </div>
@@ -2254,7 +2259,8 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       <span><i style="background:#0088cc"></i> Del CRM</span>
       <span><i style="background:#10b981"></i> De Google</span>
       <span><i style="background:#f59e0b"></i> De Calendly &mdash; se reprograma allá</span>
-      <span style="margin-left:auto">Arrastrá una reunión para moverla</span>
+      <span class="cal-hint-escritorio" style="margin-left:auto">Arrastrá una reunión para moverla</span>
+      <span class="cal-hint-movil">Deslizá el calendario para cambiar de mes</span>
     </div>
     <div id="cal-error" class="cal-error" style="display:none"></div>
     <div id="cal-days" class="cal-days"><div class="cal-loading">Cargando calendario...</div></div>
@@ -5445,14 +5451,20 @@ let calLoaded = false;
 let calMonthOffset = 0;
 let calWeekOffset = 0;
 let calView = 'mes';   // 'mes' | 'semana'
+// Numero del ultimo pedido de reuniones. Deslizar rapido dispara varios pedidos
+// y pueden volver desordenados: solo se dibuja la respuesta del ultimo, si no
+// el contador y la grilla quedan mostrando un mes que ya no es el que se mira.
+let _calPedido = 0;
 
 const CAL_MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const CAL_MESES_CORTOS = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
 const CAL_DIAS = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
 
-// Las flechas mueven de mes o de semana segun la vista que estes mirando.
+// Las flechas mueven de mes o de semana segun la vista que estes mirando. En el
+// celular la semana no existe (renderCalendar dibuja el mes), asi que ahi
+// siempre se mueve el mes: si no, las flechas no hacian nada visible.
 function calShift(delta) {
-  if (calView === 'semana') calWeekOffset += delta;
+  if (calView === 'semana' && window.innerWidth > 768) calWeekOffset += delta;
   else calMonthOffset += delta;
   renderCalendar();
 }
@@ -5518,31 +5530,37 @@ function _calHoraDeLaReunion(reunion) {
 
 async function renderCalendar() {
   if (calView === 'semana' && window.innerWidth > 768) return renderCalWeek();
-  const now = new Date();
-  const target = new Date(now.getFullYear(), now.getMonth() + calMonthOffset, 1);
-  const year = target.getFullYear();
-  const month = target.getMonth();
+  // El mes que se mira sale de hoy en Montevideo, no del reloj del navegador ni
+  // de UTC: a las 22 del 30/9 en Montevideo ya es 1/10 en UTC.
+  const ahora = _calAhoraMvd();
+  const visto = _calMesVisto(calMonthOffset, ahora);
+  const year = visto.anio;
+  const month = visto.mes;
   const monthStart = new Date(year, month, 1);
   const monthEnd = new Date(year, month + 1, 0);
+  const rango = _calRangoMes(year, month);
+  const pedido = ++_calPedido;
 
-  const monthNames = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-  document.getElementById('cal-week-label').textContent = monthNames[month] + ' ' + year;
+  document.getElementById('cal-week-label').textContent = CAL_MESES[month] + ' ' + year;
+  _calPintarContador(year, month, 'contando…');
 
   const daysEl = document.getElementById('cal-days');
   daysEl.innerHTML = '<div class="cal-loading">Cargando...</div>';
   document.getElementById('cal-error').style.display = 'none';
 
-  const r = await fetch('/api/calendar/events?start='+isoDate(monthStart)+'&end='+isoDate(monthEnd));
+  const r = await fetch('/api/calendar/events?start=' + rango.start + '&end=' + rango.end);
   const d = await r.json();
+  if (pedido !== _calPedido) return;   // ya se pidio otro mes
 
   if (d.error) {
     document.getElementById('cal-error').textContent = d.error;
     document.getElementById('cal-error').style.display = 'block';
     daysEl.innerHTML = '';
+    _calPintarContador(year, month, 'sin datos');
     return;
   }
 
-  const todayStr = isoDate(new Date());
+  const todayStr = ahora.slice(0, 10);
   const dayNames = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
 
   const eventMap = {};
@@ -5552,7 +5570,7 @@ async function renderCalendar() {
   });
   window._calEventMap = eventMap;
   _calEventos = d.events || [];
-  _calPintarContador();
+  _calPintarContador(year, month);
 
   let firstWeekday = monthStart.getDay() - 1;
   if (firstWeekday < 0) firstWeekday = 6;
@@ -5565,7 +5583,7 @@ async function renderCalendar() {
     if (dayNum < 1 || dayNum > daysInMonth) {
       cells.push({ empty: true });
     } else {
-      const ds = isoDate(new Date(year, month, dayNum));
+      const ds = _calIsoLocal(new Date(year, month, dayNum));
       cells.push({ dayNum, ds, isToday: ds === todayStr, weekend: (i % 7) >= 5,
                    events: (eventMap[ds] || []).sort((a,b) => (a.time||'').localeCompare(b.time||'')) });
     }
@@ -5604,11 +5622,105 @@ function _calEvento(id) {
   return _calEventos.find(e => String(e.id) === String(id));
 }
 
-function _calPintarContador() {
+// ── Contador del mes ─────────────────────────────────────────────────────────
+// "Septiembre 2026 · 18 reuniones · 11 hechas · 7 por venir". Siempre habla del
+// MES: en la vista semana, del mes de la semana visible. Cuenta todo lo que el
+// calendario dibuja como reunion (del CRM, de Google y de Calendly; las
+// canceladas ya no vienen del endpoint), sin distinguir tipos.
+
+// Hoy en Montevideo como 'AAAA-MM-DDTHH:MM'. Uruguay es UTC-3 fijo (no tiene
+// horario de verano desde 2015), asi que no depende del huso del navegador.
+function _calAhoraMvd(ms) {
+  const d = new Date((ms === undefined ? Date.now() : ms) - 3 * 3600000);
+  const dos = n => String(n).padStart(2, '0');
+  return d.getUTCFullYear() + '-' + dos(d.getUTCMonth() + 1) + '-' + dos(d.getUTCDate())
+       + 'T' + dos(d.getUTCHours()) + ':' + dos(d.getUTCMinutes());
+}
+
+// El mes que se mira: el de `ahoraMvd` corrido `offset` meses. `mes` va de 0 a 11.
+function _calMesVisto(offset, ahoraMvd) {
+  const d = new Date(parseInt(ahoraMvd.slice(0, 4), 10),
+                     parseInt(ahoraMvd.slice(5, 7), 10) - 1 + (offset || 0), 1);
+  return {anio: d.getFullYear(), mes: d.getMonth()};
+}
+
+// Primer y ultimo dia del mes, en fecha local (sin pasar por UTC).
+function _calRangoMes(anio, mes) {
+  return {start: _calIsoLocal(new Date(anio, mes, 1)),
+          end: _calIsoLocal(new Date(anio, mes + 1, 0))};
+}
+
+// A que mes pertenece la semana visible. Si hoy cae adentro, al mes de hoy (el
+// miercoles 30/9 se sigue contando setiembre). Si no, al del jueves, que es el
+// que tiene la mayoria de los dias cuando la semana cruza dos meses.
+function _calMesDeLaSemana(lunes, hoyIso) {
+  const domingo = new Date(lunes.getFullYear(), lunes.getMonth(), lunes.getDate() + 6);
+  if (hoyIso && hoyIso >= _calIsoLocal(lunes) && hoyIso <= _calIsoLocal(domingo)) {
+    return {anio: parseInt(hoyIso.slice(0, 4), 10), mes: parseInt(hoyIso.slice(5, 7), 10) - 1};
+  }
+  const jueves = new Date(lunes.getFullYear(), lunes.getMonth(), lunes.getDate() + 3);
+  return {anio: jueves.getFullYear(), mes: jueves.getMonth()};
+}
+
+// Lo que pide la vista semana: la semana Y su mes entero, en un solo pedido,
+// para que el contador cuente el mes aunque la grilla muestre 7 dias.
+function _calRangoSemana(lunes, anio, mes) {
+  const domingo = new Date(lunes.getFullYear(), lunes.getMonth(), lunes.getDate() + 6);
+  const delMes = _calRangoMes(anio, mes);
+  const desde = _calIsoLocal(lunes);
+  const hasta = _calIsoLocal(domingo);
+  return {start: desde < delMes.start ? desde : delMes.start,
+          end: hasta > delMes.end ? hasta : delMes.end};
+}
+
+// Cuantas reuniones tiene el mes y cuantas ya pasaron. "Hecha" = su hora de
+// inicio ya paso en Montevideo. Las de dia entero (sin hora) cuentan como
+// hechas recien cuando termino su dia.
+function _calResumenMes(eventos, anio, mes, ahoraMvd) {
+  const clave = anio + '-' + String(mes + 1).padStart(2, '0');
+  const delMes = (eventos || []).filter(ev => String((ev && ev.date) || '').slice(0, 7) === clave);
+  const mesDeHoy = ahoraMvd.slice(0, 7);
+  const tipo = clave < mesDeHoy ? 'pasado' : (clave > mesDeHoy ? 'futuro' : 'actual');
+  let hechas = 0;
+  delMes.forEach(ev => {
+    const inicio = ev.date + 'T' + (ev.time || '24:00');
+    if (inicio <= ahoraMvd) hechas++;
+  });
+  return {tipo: tipo, total: delMes.length, hechas: hechas, porVenir: delMes.length - hechas};
+}
+
+function _calPlural(n, uno, varios) {
+  return n + ' ' + (n === 1 ? uno : varios);
+}
+
+// Mes pasado: "N reuniones". Mes actual: "N reuniones · H hechas · P por venir".
+// Mes futuro: "N agendadas".
+function _calTextoContador(resumen, anio, mes) {
+  const partes = [CAL_MESES[mes] + ' ' + anio];
+  if (resumen.tipo === 'futuro') {
+    partes.push(_calPlural(resumen.total, 'agendada', 'agendadas'));
+  } else {
+    partes.push(_calPlural(resumen.total, 'reunión', 'reuniones'));
+  }
+  if (resumen.tipo === 'actual') {
+    partes.push(_calPlural(resumen.hechas, 'hecha', 'hechas'));
+    partes.push(resumen.porVenir + ' por venir');
+  }
+  return partes.join(' · ');
+}
+
+// Con `estado` ("contando…", "sin datos") muestra el mes y el estado; sin el,
+// cuenta lo que hay en _calEventos. Crear, editar, mover y borrar terminan en
+// renderCalendar, que pasa por aca: el contador se actualiza solo.
+function _calPintarContador(anio, mes, estado) {
   const el = document.getElementById('cal-count');
   if (!el) return;
-  const n = _calEventos.length;
-  el.textContent = n === 1 ? '1 reunión' : n + ' reuniones';
+  if (estado) {
+    el.textContent = CAL_MESES[mes] + ' ' + anio + ' · ' + estado;
+    return;
+  }
+  el.textContent = _calTextoContador(
+    _calResumenMes(_calEventos, anio, mes, _calAhoraMvd()), anio, mes);
 }
 
 function _calChip(ev) {
@@ -5710,22 +5822,34 @@ async function renderCalWeek() {
       ? lunes.getDate() + ' – ' + domingo.getDate() + ' de ' + CAL_MESES[domingo.getMonth()] + ' ' + domingo.getFullYear()
       : lunes.getDate() + ' ' + CAL_MESES_CORTOS[lunes.getMonth()] + ' – ' + domingo.getDate() + ' ' + CAL_MESES_CORTOS[domingo.getMonth()] + ' ' + domingo.getFullYear();
 
+  const mesSemana = _calMesDeLaSemana(lunes, _calAhoraMvd().slice(0, 10));
+  const pedidoRango = _calRangoSemana(lunes, mesSemana.anio, mesSemana.mes);
+  const pedido = ++_calPedido;
+  _calPintarContador(mesSemana.anio, mesSemana.mes, 'contando…');
+
   const daysEl = document.getElementById('cal-days');
   daysEl.innerHTML = '<div class="cal-loading">Cargando...</div>';
   document.getElementById('cal-error').style.display = 'none';
 
-  const r = await fetch('/api/calendar/events?start='+_calIsoLocal(lunes)+'&end='+_calIsoLocal(domingo));
+  // Se pide la semana y su mes entero: la grilla usa la semana, el contador el mes.
+  const r = await fetch('/api/calendar/events?start=' + pedidoRango.start + '&end=' + pedidoRango.end);
   const d = await r.json();
+  if (pedido !== _calPedido) return;   // ya se pidio otra semana
   if (d.error) {
     document.getElementById('cal-error').textContent = d.error;
     document.getElementById('cal-error').style.display = 'block';
     daysEl.innerHTML = '';
+    _calPintarContador(mesSemana.anio, mesSemana.mes, 'sin datos');
     return;
   }
 
-  const eventos = d.events || [];
-  _calEventos = eventos;
-  _calPintarContador();
+  // _calEventos tiene todo lo pedido (el editor y el arrastre buscan por id);
+  // la grilla, solo lo de la semana.
+  _calEventos = d.events || [];
+  _calPintarContador(mesSemana.anio, mesSemana.mes);
+  const semDesde = _calIsoLocal(lunes);
+  const semHasta = _calIsoLocal(domingo);
+  const eventos = _calEventos.filter(ev => ev.date >= semDesde && ev.date <= semHasta);
   window._calEventMap = {};
   eventos.forEach(ev => {
     if (!window._calEventMap[ev.date]) window._calEventMap[ev.date] = [];
@@ -5944,6 +6068,43 @@ function _calCellClick(cell, dateStr, desplazar) {
   }
   if (desplazar !== false) mobileList.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
+
+// ── Deslizar para cambiar de mes (celular) ──────────────────────────────────
+// Izquierda = mes siguiente, derecha = mes anterior. Solo cuenta un gesto de mas
+// de 50px y mas horizontal que vertical: uno vertical es el scroll de la pagina
+// y uno corto es un toque para abrir un dia o sus botones, y esos dos tienen
+// que seguir andando. Los listeners son pasivos: nunca frenan el scroll.
+function _calDireccionSwipe(dx, dy) {
+  if (Math.abs(dx) <= 50) return 0;
+  if (Math.abs(dx) <= Math.abs(dy)) return 0;
+  return dx < 0 ? 1 : -1;
+}
+
+let _calToque = null;
+
+function _calToqueInicio(e) {
+  // Dos dedos es zoom, no deslizar.
+  if (!e.touches || e.touches.length !== 1) { _calToque = null; return; }
+  _calToque = {x: e.touches[0].clientX, y: e.touches[0].clientY};
+}
+
+function _calToqueFin(e) {
+  const inicio = _calToque;
+  _calToque = null;
+  if (!inicio || !e.changedTouches || !e.changedTouches.length) return;
+  const fin = e.changedTouches[0];
+  const dir = _calDireccionSwipe(fin.clientX - inicio.x, fin.clientY - inicio.y);
+  if (dir) calShift(dir);
+}
+
+// Sobre #cal-days, que no se reemplaza al redibujar (cambia su contenido).
+(function () {
+  const zona = document.getElementById('cal-days');
+  if (!zona) return;
+  zona.addEventListener('touchstart', _calToqueInicio, {passive: true});
+  zona.addEventListener('touchend', _calToqueFin, {passive: true});
+  zona.addEventListener('touchcancel', function () { _calToque = null; }, {passive: true});
+})();
 
 function openNewEventModal() {
   const today = isoDate(new Date());
