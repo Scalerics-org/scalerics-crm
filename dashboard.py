@@ -1712,6 +1712,15 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .sim-unidad{font-size:.7rem;font-weight:700;color:var(--texto-debil)}
 .sim-rango{grid-column:1/-1;width:100%;accent-color:var(--azul);margin:2px 0}
 .sim-tipo{padding-bottom:6px;margin-bottom:6px;border-bottom:1px solid var(--borde)}
+.sim-in-forma{width:210px;max-width:100%;cursor:pointer}
+.sim-cobro-nota{grid-column:1/-1;font-size:.72rem;color:var(--texto-debil)}
+.sim-cobro-nota:empty{display:none}
+.sim-meses{overflow-x:auto;margin:6px 0}
+.sim-tabla{width:100%;border-collapse:collapse;font-size:.76rem}
+.sim-tabla th{text-align:right;font-size:.64rem;font-weight:700;color:var(--texto-debil);text-transform:uppercase;letter-spacing:.4px;padding:4px 6px;border-bottom:1px solid var(--borde);white-space:nowrap}
+.sim-tabla td{text-align:right;padding:5px 6px;color:var(--texto);border-bottom:1px solid var(--borde);white-space:nowrap}
+.sim-tabla th:first-child,.sim-tabla td:first-child{text-align:left}
+.sim-tabla td.sim-negativo{color:var(--rojo-texto)}
 .sim-lista{display:flex;flex-direction:column;gap:6px;margin-bottom:10px}
 .sim-fila{display:grid;grid-template-columns:auto minmax(0,1fr) 104px auto;gap:8px;align-items:center}
 .sim-fila-nombre{font-size:.82rem;color:var(--texto);overflow-wrap:anywhere}
@@ -1767,6 +1776,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   .sim-agregar{grid-template-columns:minmax(0,1fr) 88px}
   .sim-agregar .btn-ghost{grid-column:1/-1}
   .sim-tarjeta-valor{font-size:1.1rem}
+  .sim-in-forma{width:170px}
 }
 </style>
 </head>
@@ -2236,6 +2246,14 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
               <input type="number" id="sim-cant-web" class="sim-in sim-in-corto" data-sim="ventas.webs" min="0" step="1" inputmode="numeric">
               <input type="range" class="sim-rango" data-sim="ventas.webs" min="0" max="10" step="1" aria-label="Cantidad de webs">
             </div>
+            <div class="sim-campo">
+              <label for="sim-forma-web">Web: cómo se cobra</label>
+              <select id="sim-forma-web" class="sim-in sim-in-forma" data-sim-forma="web">
+                <option value="todo">Todo al confirmar</option>
+                <option value="mitad">Mitad ahora y mitad al entregar</option>
+              </select>
+              <div class="sim-cobro-nota" id="sim-cobro-web" role="status"></div>
+            </div>
           </div>
           <div class="sim-tipo">
             <div class="sim-campo">
@@ -2247,6 +2265,14 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
               <input type="number" id="sim-cant-ecom" class="sim-in sim-in-corto" data-sim="ventas.ecommerce" min="0" step="1" inputmode="numeric">
               <input type="range" class="sim-rango" data-sim="ventas.ecommerce" min="0" max="10" step="1" aria-label="Cantidad de ecommerce">
             </div>
+            <div class="sim-campo">
+              <label for="sim-forma-ecommerce">Ecommerce: cómo se cobra</label>
+              <select id="sim-forma-ecommerce" class="sim-in sim-in-forma" data-sim-forma="ecommerce">
+                <option value="todo">Todo al confirmar</option>
+                <option value="mitad">Mitad ahora y mitad al entregar</option>
+              </select>
+              <div class="sim-cobro-nota" id="sim-cobro-ecommerce" role="status"></div>
+            </div>
           </div>
           <div class="sim-tipo">
             <div class="sim-campo">
@@ -2257,6 +2283,24 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
               <label for="sim-cant-medida">A medida: cantidad</label>
               <input type="number" id="sim-cant-medida" class="sim-in sim-in-corto" data-sim="ventas.aMedida" min="0" step="1" inputmode="numeric">
               <input type="range" class="sim-rango" data-sim="ventas.aMedida" min="0" max="10" step="1" aria-label="Cantidad de proyectos a medida">
+            </div>
+            <div class="sim-campo">
+              <label for="sim-forma-aMedida">A medida: cómo se cobra</label>
+              <select id="sim-forma-aMedida" class="sim-in sim-in-forma" data-sim-forma="aMedida">
+                <option value="todo">Todo al confirmar</option>
+                <option value="mitad">Mitad ahora y mitad al entregar</option>
+              </select>
+              <div class="sim-cobro-nota" id="sim-cobro-aMedida" role="status"></div>
+            </div>
+          </div>
+          <div class="sim-tipo">
+            <div class="sim-campo">
+              <label for="sim-al-firmar">En «mitad ahora», entra al confirmar</label>
+              <span class="sim-control"><input type="number" id="sim-al-firmar" class="sim-in sim-in-corto" data-sim="cobros.porcentajeAlFirmar" min="0" max="100" step="any" inputmode="decimal"><span class="sim-unidad">%</span></span>
+            </div>
+            <div class="sim-campo">
+              <label for="sim-meses-entrega">Meses hasta entregar (ahí entra el resto)</label>
+              <input type="number" id="sim-meses-entrega" class="sim-in sim-in-corto" data-sim="cobros.mesesEntrega" min="0" max="12" step="1" inputmode="numeric">
             </div>
           </div>
           <div class="sim-campo">
@@ -2301,10 +2345,6 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
             <button class="btn-ghost" type="button" onclick="simAgregarFila('pendientes')">Agregar</button>
           </div>
           <div class="sim-error" id="sim-nuevo-error-pendientes" role="alert"></div>
-          <div class="sim-campo">
-            <label for="sim-al-firmar">Del proyecto nuevo entra al firmar</label>
-            <span class="sim-control"><input type="number" id="sim-al-firmar" class="sim-in sim-in-corto" data-sim="cobros.porcentajeAlFirmar" min="0" max="100" step="any" inputmode="decimal"><span class="sim-unidad">%</span></span>
-          </div>
         </section>
 
         <section class="fin-card">
@@ -2365,6 +2405,15 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
           <div class="sim-cierre" id="sim-cierre" role="status"></div>
         </section>
         <div class="sim-arrastre" id="sim-arrastre"></div>
+        <section class="fin-card">
+          <div class="sim-cab"><div class="fin-card-title">Caja mes a mes</div><span class="sim-sub" id="sim-sub-meses"></span></div>
+          <div class="sim-campo">
+            <label for="sim-meses-proyeccion">Meses a mostrar</label>
+            <input type="number" id="sim-meses-proyeccion" class="sim-in sim-in-corto" data-sim="cobros.mesesProyeccion" min="0" max="12" step="1" inputmode="numeric">
+          </div>
+          <div class="sim-meses" id="sim-meses"></div>
+          <div class="sim-leido" id="sim-meses-nota"></div>
+        </section>
         <div class="sim-aviso sim-aviso-ambar sim-aviso-clave" id="sim-aviso-cobros" role="status"></div>
         <div id="sim-semaforo-capacidad"></div>
         <div id="sim-semaforo-embudo"></div>
@@ -8945,7 +8994,13 @@ const SIM_DEFAULTS = {
   ventas: {precioWeb: 700, webs: 2, precioEcom: 1100, ecommerce: 2,
            precioMedida: 2000, aMedida: 1, pauta: 600},
   mantenimiento: {altasNuevasPorMes: 0, cuotaAltaNueva: 100, comisionCobro: 5},
-  cobros: {porcentajeAlFirmar: 50},
+  // Como se cobra cada tipo de venta (pedido de Juan, 15/9): 'todo' entra
+  // entero en el mes de la venta; 'mitad' entra el porcentajeAlFirmar al
+  // confirmar y el resto `mesesEntrega` meses despues, cuando se entrega. Las
+  // webs se venden de una. `mesesProyeccion` es cuantos meses muestra la caja
+  // mes a mes.
+  cobros: {porcentajeAlFirmar: 50, mesesEntrega: 1, mesesProyeccion: 6,
+           formas: {web: 'todo', ecommerce: 'mitad', aMedida: 'mitad'}},
   palancas: {projectManager: false, miSueldo: false, subcontratar: false,
              matias50: false, aporteJavier: false},
   montosPalancas: {projectManager: 500, miSueldo: 500, subcontratoPorcentaje: 60,
@@ -8992,6 +9047,8 @@ const SIM_CAMPOS = [
   ['mantenimiento.cuotaAltaNueva', 'monto'],
   ['mantenimiento.comisionCobro', 'porcentaje'],
   ['cobros.porcentajeAlFirmar', 'porcentaje'],
+  ['cobros.mesesEntrega', 'entero', 12],
+  ['cobros.mesesProyeccion', 'entero', 12],
   ['montosPalancas.projectManager', 'monto'],
   ['montosPalancas.miSueldo', 'monto'],
   ['montosPalancas.subcontratoPorcentaje', 'factor'],
@@ -9002,6 +9059,16 @@ const SIM_CAMPOS = [
   ['embudo.conversionDemoVenta', 'porcentaje'],
   ['meta.sueldoObjetivo', 'monto']
 ];
+
+// Los tipos de venta y la forma de cobro de cada uno. La forma no es un numero:
+// va aparte de SIM_CAMPOS y su control en pantalla es un select con
+// data-sim-forma.
+const SIM_TIPOS = [
+  {clave: 'web', nombre: 'Web', cantidad: 'ventas.webs', precio: 'ventas.precioWeb'},
+  {clave: 'ecommerce', nombre: 'Ecommerce', cantidad: 'ventas.ecommerce', precio: 'ventas.precioEcom'},
+  {clave: 'aMedida', nombre: 'A medida', cantidad: 'ventas.aMedida', precio: 'ventas.precioMedida'}
+];
+const SIM_FORMAS = {todo: 'Todo al confirmar', mitad: 'Mitad ahora y mitad al entregar'};
 
 // Tolerancia de coma flotante para los redondeos hacia arriba: 700 / 350 tiene
 // que dar 2 proyectos y no 3 por un 2,0000000001. No es un supuesto del negocio.
@@ -9049,13 +9116,20 @@ function simNormalizar(escenario) {
   Object.keys(SIM_DEFAULTS.palancas).forEach(k => {
     palancas[k] = !!(e.palancas && e.palancas[k] === true);
   });
+  // Una forma que no es 'todo' ni 'mitad' toma la del default de su tipo.
+  const formasLeidas = (e.cobros && e.cobros.formas && typeof e.cobros.formas === 'object') ? e.cobros.formas : {};
+  const formas = {};
+  SIM_TIPOS.forEach(t => {
+    const f = formasLeidas[t.clave];
+    formas[t.clave] = SIM_FORMAS.hasOwnProperty(f) ? f : SIM_DEFAULTS.cobros.formas[t.clave];
+  });
   // En las listas no hay default por fila: un monto vacio o negativo cuenta 0.
   const lista = nombre => (Array.isArray(e[nombre]) ? e[nombre] : []).map(f => ({
     nombre: String((f && f.nombre) || ''),
     monto: simNumero(f && f.monto, 0, 'monto').valor,
     activo: !!(f && f.activo === true)
   }));
-  return {v: v, palancas: palancas, conDefault: conDefault,
+  return {v: v, palancas: palancas, formas: formas, conDefault: conDefault,
           gastosFijos: lista('gastosFijos'), mantenimientos: lista('mantenimientos'),
           pendientes: lista('pendientes')};
 }
@@ -9110,9 +9184,21 @@ function simCalcular(escenario) {
   const recurrenteBruto = mantenimientos.total + altas * v['mantenimiento.cuotaAltaNueva'];
   const recurrente = recurrenteBruto * (1 - pct('mantenimiento.comisionCobro'));
 
+  // Cada tipo se cobra a su manera: 'todo' entra entero en el mes de la venta;
+  // 'mitad' entra el porcentaje al confirmar y el resto al entregar. Si se
+  // entrega en el mismo mes (mesesEntrega 0), las dos partes caen en este mes.
   const porcentajeAlFirmar = pct('cobros.porcentajeAlFirmar');
-  const cobroDeNuevos = facturadoProyectos * porcentajeAlFirmar;
-  const quedaDeEsteMes = facturadoProyectos - cobroDeNuevos;
+  const mesesEntrega = v['cobros.mesesEntrega'];
+  const fraccionAhora = clave => (n.formas[clave] === 'todo' || mesesEntrega === 0) ? 1 : porcentajeAlFirmar;
+  const porTipo = SIM_TIPOS.map(t => {
+    const facturadoTipo = v[t.cantidad] * v[t.precio] * ratio;
+    const alConfirmar = facturadoTipo * fraccionAhora(t.clave);
+    return {clave: t.clave, nombre: t.nombre, forma: n.formas[t.clave],
+            facturado: facturadoTipo, alConfirmar: alConfirmar,
+            alEntregar: facturadoTipo - alConfirmar};
+  });
+  const cobroDeNuevos = porTipo.reduce((a, t) => a + t.alConfirmar, 0);
+  const quedaDeEsteMes = porTipo.reduce((a, t) => a + t.alEntregar, 0);
   const cobrado = cobroDeNuevos + pendientes.total + recurrente;
 
   const precios = [precioWeb, precioEcom, precioMedida];
@@ -9135,6 +9221,28 @@ function simCalcular(escenario) {
   const cajaActual = v['caja.cajaActual'];
   const cajaAlCierre = cajaActual + cajaDelMes;
 
+  // Caja mes a mes. Cada mes se repite lo que se vende, lo que sale y el
+  // recurrente. Lo que se cobra al entregar llega `mesesEntrega` meses despues
+  // de cada venta, asi que los primeros meses no lo tienen. Los pendientes
+  // prendidos y el aporte entran solo el primer mes; los apagados no tienen
+  // fecha y no se ubican. El primer mes es exactamente la caja del mes.
+  const mesesProyeccion = v['cobros.mesesProyeccion'];
+  const meses = [];
+  let saldo = cajaActual;
+  let primerMesNegativo = null;
+  for (let i = 0; i < mesesProyeccion; i++) {
+    const deEntregas = i >= mesesEntrega ? quedaDeEsteMes : 0;
+    const pendientesMes = i === 0 ? pendientes.total : 0;
+    const aporteMes = i === 0 ? aporte : 0;
+    const entra = cobroDeNuevos + deEntregas + pendientesMes + recurrente + aporteMes;
+    const cajaMes = entra - salidas;
+    saldo += cajaMes;
+    if (primerMesNegativo === null && saldo < 0) primerMesNegativo = i + 1;
+    meses.push({mes: i + 1, alConfirmar: cobroDeNuevos, alEntregar: deEntregas,
+                pendientes: pendientesMes, recurrente: recurrente, aporte: aporteMes,
+                entra: entra, sale: salidas, caja: cajaMes, saldo: saldo});
+  }
+
   // "Facturas incluye el recurrente". Va neto de la comision de cobro, igual
   // que entra en "Cobras": asi papel y caja se comparan sobre la misma base.
   const facturado = facturadoProyectos + recurrente;
@@ -9156,7 +9264,9 @@ function simCalcular(escenario) {
   const sueldoObjetivo = v['meta.sueldoObjetivo'];
   const base = costoEquipo + gastosFijos.total + pauta + costoProjectManager;
   const necesario = Math.max(0, base + sueldoObjetivo - recurrente);
-  const porProyecto = precioPromedio * porcentajeAlFirmar;
+  // Lo que entra en el mes de la venta por proyecto, promediando los tipos con
+  // su forma de cobro (una web que se cobra entera aporta su precio entero).
+  const porProyecto = SIM_TIPOS.reduce((a, t) => a + v[t.precio] * fraccionAhora(t.clave), 0) / SIM_TIPOS.length;
   let proyectosMeta = null;
   if (necesario <= 0) proyectosMeta = 0;
   else if (porProyecto > 0) proyectosMeta = Math.ceil(necesario / porProyecto - SIM_EPSILON);
@@ -9175,6 +9285,8 @@ function simCalcular(escenario) {
     recurrenteBruto: recurrenteBruto, comisionCobro: recurrenteBruto - recurrente,
     recurrente: recurrente,
     cobroDeNuevos: cobroDeNuevos, quedaDeEsteMes: quedaDeEsteMes, cobrado: cobrado,
+    porTipo: porTipo, mesesEntrega: mesesEntrega, meses: meses,
+    primerMesNegativo: primerMesNegativo,
     precioPromedio: precioPromedio, costoSubcontrato: costoSubcontrato,
     comisionMatias: comisionMatias, costoEquipo: costoEquipo,
     costoProjectManager: costoProjectManager, costoMiSueldo: costoMiSueldo,
@@ -9185,7 +9297,7 @@ function simCalcular(escenario) {
     leads: leads, demos: demos, ventasPosibles: ventasPosibles, costoPorVenta: costoPorVenta,
     capacidadEstado: capacidadEstado, embudoEstado: embudoEstado,
     meta: {sueldoObjetivo: sueldoObjetivo, base: base, necesario: necesario,
-           porcentajeAlFirmar: v['cobros.porcentajeAlFirmar'],
+           porcentajeAlFirmar: v['cobros.porcentajeAlFirmar'], porProyecto: porProyecto,
            proyectos: proyectosMeta, faltanProg: faltanProg},
     listas: {gastosFijos: gastosFijos, mantenimientos: mantenimientos, pendientes: pendientes},
     palancas: p,
@@ -9244,13 +9356,14 @@ function simTextoMeta(r) {
   const m = r.meta;
   const objetivo = simUsd(m.sueldoObjetivo);
   if (m.proyectos === null) {
-    return 'Con el precio promedio o el porcentaje al firmar en 0 no hay cantidad de proyectos que alcance.';
+    return 'Con los precios o lo que entra al confirmar en 0 no hay cantidad de proyectos que alcance.';
   }
   if (m.proyectos === 0) {
     return 'Con el recurrente ya cubrís los costos y un sueldo de ' + objetivo + ': no hace falta vender proyectos.';
   }
   let texto = 'Para sacarte ' + objetivo + ' tenés que cubrir ' + simUsd(m.necesario)
-    + ' por mes. Cobrando el ' + simRedondear(m.porcentajeAlFirmar) + '% al firmar son '
+    + ' por mes. Con lo que entra al confirmar (' + simUsd(m.porProyecto)
+    + ' por proyecto, en promedio según cómo se cobra cada tipo) son '
     + m.proyectos + ' ' + simPlural(m.proyectos, 'proyecto', 'proyectos') + ' por mes. ';
   if (m.faltanProg === null) {
     texto += 'Con 0 proyectos por programador no se puede saber cuántos programadores hacen falta.';
@@ -9283,10 +9396,48 @@ function simTextoCierre(r) {
     + simUsd(r.cajaActual) + ' + caja del mes ' + simUsd(r.cajaDelMes) + '.';
 }
 
+function simTextoMesesDespues(n) {
+  return n + ' ' + simPlural(n, 'mes', 'meses') + ' después';
+}
+
 function simTextoArrastre(r) {
+  const cuando = r.quedaDeEsteMes > 0 ? ' (entra al entregar, ' + simTextoMesesDespues(r.mesesEntrega) + ')' : '';
   return 'Queda por cobrar hacia adelante ' + simUsd(r.porCobrarAdelante) + ': '
-    + simUsd(r.quedaDeEsteMes) + ' de lo que vendés este mes y '
+    + simUsd(r.quedaDeEsteMes) + ' de lo que vendés este mes' + cuando + ' y '
     + simUsd(r.listas.pendientes.totalInactivos) + ' de pendientes viejos.';
+}
+
+// La nota debajo del select de cada tipo: cuanto entra y cuando.
+function simTextoCobroTipo(t, r) {
+  if (!(t.facturado > 0)) return 'Sin ventas de este tipo este mes.';
+  if (t.alEntregar > 0) {
+    return 'Este mes entran ' + simUsd(t.alConfirmar) + ' y ' + simUsd(t.alEntregar)
+      + ' al entregar, ' + simTextoMesesDespues(r.mesesEntrega) + '.';
+  }
+  return 'Entra todo en el mes de la venta: ' + simUsd(t.alConfirmar) + '.';
+}
+
+function simMesesHtml(r) {
+  if (!r.meses.length) return '<div class="sim-vacio">Poné cuántos meses querés ver.</div>';
+  const celda = (x, clase) => '<td' + (clase ? ' class="' + clase + '"' : '') + '>' + simUsd(x) + '</td>';
+  const signo = x => x < 0 ? 'sim-negativo' : '';
+  return '<table class="sim-tabla"><thead><tr><th>Mes</th><th>Entra</th><th>De entregas</th>'
+    + '<th>Caja del mes</th><th>Saldo</th></tr></thead><tbody>'
+    + r.meses.map(m => '<tr><td>' + (m.mes === 1 ? 'Este mes' : 'Mes ' + m.mes) + '</td>'
+      + celda(m.entra) + celda(m.alEntregar) + celda(m.caja, signo(m.caja))
+      + celda(m.saldo, signo(m.saldo)) + '</tr>').join('')
+    + '</tbody></table>';
+}
+
+function simTextoMeses(r) {
+  if (!r.meses.length) return '';
+  const cuantos = r.meses.length + ' ' + simPlural(r.meses.length, 'mes', 'meses');
+  const quiebre = r.primerMesNegativo === null
+    ? 'La caja no queda en negativo en ' + (r.meses.length === 1 ? 'este mes' : 'estos ' + cuantos) + '.'
+    : 'La caja queda en negativo en el mes ' + r.primerMesNegativo + '.';
+  return quiebre + ' Cada mes repite lo que vendés, lo que sale y el recurrente. Lo que se cobra al entregar llega '
+    + simTextoMesesDespues(r.mesesEntrega) + ' de cada venta. Los pendientes prendidos y el aporte de Javier '
+    + 'entran solo el primer mes; los pendientes apagados no tienen fecha y no se cuentan.';
 }
 
 // La copia inicial: los defaults, mas lo que el sistema tenga. Los gastos
@@ -9324,6 +9475,12 @@ function simEscenarioAbierto(datos) {
   ['gastosFijos', 'mantenimientos', 'pendientes'].forEach(lista => {
     salida[lista] = Array.isArray(d[lista]) ? d[lista] : [];
   });
+  // Uno guardado antes de la forma de cobro por tipo se calculaba con todo en
+  // dos partes: se abre igual, para que sus numeros no cambien solos.
+  if (!(d.cobros && d.cobros.formas && typeof d.cobros.formas === 'object')) {
+    salida.cobros.formas = {};
+    SIM_TIPOS.forEach(t => { salida.cobros.formas[t.clave] = 'mitad'; });
+  }
   salida.origen = d.origen || {};
   return salida;
 }
@@ -9413,6 +9570,11 @@ function simVolcar() {
     });
   });
   Object.keys(SIM_DEFAULTS.palancas).forEach(simPintarPalanca);
+  const formas = simNormalizar(simEstado).formas;
+  SIM_TIPOS.forEach(t => {
+    const sel = document.getElementById('sim-forma-' + t.clave);
+    if (sel) sel.value = formas[t.clave];
+  });
   simTexto('sim-origen-caja', SIM_ORIGEN[simEstado.origen ? simEstado.origen.caja : ''] || '');
   simPintarListas();
   simRecalcular();
@@ -9433,6 +9595,13 @@ function simAlCambiar(ev) {
     document.querySelectorAll('[data-sim="' + el.dataset.sim + '"]').forEach(otro => {
       if (otro !== el) otro.value = el.value;
     });
+    simRecalcular();
+    return;
+  }
+  if (el.dataset.simForma) {
+    simEstado.cobros = simEstado.cobros || {};
+    simEstado.cobros.formas = Object.assign({}, simEstado.cobros.formas || {});
+    simEstado.cobros.formas[el.dataset.simForma] = el.value;
     simRecalcular();
     return;
   }
@@ -9584,7 +9753,7 @@ function simPintarResultados(r) {
     tarjeta('Facturás', r.facturado,
             'proyectos ' + simUsd(r.facturadoProyectos) + ' + recurrente ' + simUsd(r.recurrente))
     + tarjeta('Cobrás', r.cobrado,
-              'al firmar ' + simUsd(r.cobroDeNuevos) + ' + pendientes '
+              'al confirmar ' + simUsd(r.cobroDeNuevos) + ' + pendientes '
               + simUsd(r.listas.pendientes.total) + ' + recurrente ' + simUsd(r.recurrente))
     + tarjeta('Sale', r.salidas, sale.join(' · '))
     + tarjeta('Caja del mes', r.cajaDelMes,
@@ -9594,6 +9763,11 @@ function simPintarResultados(r) {
   const cierre = document.getElementById('sim-cierre');
   if (cierre) cierre.className = 'sim-cierre ' + (r.cajaAlCierre < 0 ? 'sim-negativo' : 'sim-positivo');
   simTexto('sim-arrastre', simTextoArrastre(r));
+  r.porTipo.forEach(t => simTexto('sim-cobro-' + t.clave, simTextoCobroTipo(t, r)));
+  simHtml('sim-meses', simMesesHtml(r));
+  simTexto('sim-meses-nota', simTextoMeses(r));
+  const ultimo = r.meses.length ? r.meses[r.meses.length - 1] : null;
+  simTexto('sim-sub-meses', ultimo ? 'saldo en el mes ' + ultimo.mes + ': ' + simUsd(ultimo.saldo) : '');
   simTexto('sim-aviso-cobros', simTextoAvisoCobros(r));
   simHtml('sim-semaforo-capacidad', simSemaforoHtml('Capacidad', r.capacidadEstado, simTextoCapacidad(r)));
   simHtml('sim-semaforo-embudo', simSemaforoHtml('Embudo', r.embudoEstado, simTextoEmbudo(r)));
