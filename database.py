@@ -17,7 +17,8 @@ def _add_column(conn: sqlite3.Connection, table: str, column: str, definition: s
 
 
 def _grant_panel_to_existing_roles(conn: sqlite3.Connection, panel: str,
-                                   solo_si_tiene: Optional[str] = None) -> int:
+                                   solo_si_tiene: Optional[str] = None,
+                                   si_tiene: tuple = ()) -> int:
     """Suma `panel` al panel_access de los roles que ya existen y no lo tengan.
 
     La siembra de roles por defecto solo corre con la tabla vacía, así que en
@@ -28,6 +29,9 @@ def _grant_panel_to_existing_roles(conn: sqlite3.Connection, panel: str,
     tienen ese otro: sirve cuando un panel se parte en dos (Equipo ->
     Organigrama + Ausencias) y quien veía el viejo tiene que seguir viendo
     todo.
+
+    Con `si_tiene`, solo se suma a los roles que ya tengan ALGUNO de esos
+    paneles (Plantillas va a quien vende: `wa` o `notion_clients`).
 
     Idempotente: si el panel ya está, no toca la fila. Un `panel_access` en
     NULL, vacío, con JSON inválido o con un JSON que no es una lista se saltea
@@ -57,6 +61,8 @@ def _grant_panel_to_existing_roles(conn: sqlite3.Connection, panel: str,
         if panel in paneles:
             continue
         if solo_si_tiene is not None and solo_si_tiene not in paneles:
+            continue
+        if si_tiene and not any(p in paneles for p in si_tiene):
             continue
         paneles.append(panel)
         try:
@@ -1003,6 +1009,41 @@ def init_db(db_path: str) -> None:
         # organigrama se quedó con el id `equipo` y Ausencias es `ausencias`.
         # Quien tenía Equipo veía las dos partes, así que recibe Ausencias.
         _grant_panel_to_existing_roles(conn, "ausencias", solo_si_tiene="equipo")
+
+        # ── plantillas de mensajes ────────────────────────────────────────────
+        # Los mensajes que Juan manda siempre, con variables entre llaves que se
+        # completan con los datos del lead. NO es `wa_templates`: esa tabla son
+        # atajos sueltos del chat de WhatsApp (nombre + texto, sin editar), y
+        # meter ahí estas plantillas las haría aparecer con las llaves sin
+        # completar en el "Abrir WA" del panel de cliente.
+        #
+        # `clave` identifica a las precargadas (NULL en las creadas a mano): la
+        # precarga es INSERT OR IGNORE por clave, así que no duplica ni pisa lo
+        # que se edite. Por eso borrar es marcar `borrada`: si se borrara la
+        # fila, el próximo arranque volvería a crear la plantilla.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS plantillas_mensajes (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                clave           TEXT UNIQUE,
+                orden           INTEGER NOT NULL DEFAULT 0,
+                momento         TEXT NOT NULL DEFAULT '',
+                titulo          TEXT NOT NULL,
+                canal           TEXT NOT NULL DEFAULT '',
+                cuerpo          TEXT NOT NULL,
+                nota            TEXT NOT NULL DEFAULT '',
+                explicacion     TEXT NOT NULL DEFAULT '',
+                automatica      INTEGER NOT NULL DEFAULT 0,
+                borrada         INTEGER NOT NULL DEFAULT 0,
+                created_by_name TEXT,
+                created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.commit()
+        _sembrar_plantillas(conn)
+        # Va a quien vende: los roles con WhatsApp o con Proceso de venta.
+        _grant_panel_to_existing_roles(conn, "plantillas",
+                                       si_tiene=("wa", "notion_clients"))
 
         # ── flujos ────────────────────────────────────────────────────────────
         # Cómo trabaja la empresa, paso a paso, con el ROL de cada etapa y
@@ -4249,5 +4290,176 @@ def entregas_de_proyectos(db_path: str) -> list[dict]:
             "SELECT id, name, timeline_end FROM projects "
             "WHERE timeline_end IS NOT NULL AND timeline_end != '' ORDER BY timeline_end")
         return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+# ─── Plantillas de mensajes ──────────────────────────────────────────────────
+# Texto exacto del PDF "Plantillas de mensajes - Scalerics" (Juan, 14/9). Los
+# párrafos van separados por una línea en blanco, como en el PDF; los cortes
+# de renglón dentro de un párrafo del PDF son solo el ancho de la página.
+
+_PLANTILLAS_PRECARGA = (
+    # Pedido aparte de Juan (15/9): va primera porque es lo primero que pasa
+    # con un lead. Una base que ya tenía las otras cinco la suma sola.
+    {
+        "clave": "no_atendio", "orden": 5,
+        "momento": "LLAMÉ Y NO ATENDIÓ",
+        "titulo": "Lead que no atendió", "canal": "WhatsApp",
+        "cuerpo": ("¿Cómo estás {nombre}? Te escribe Juan de Scalerics. Respondiste un "
+                   "formulario solicitando información acerca de {servicio}. Te llamé para "
+                   "que me cuentes un poco y ver cómo te podemos ayudar en lo que estás "
+                   "buscando. Cuando tengas unos minutos avisame y te llamo. Saludos."),
+        "nota": "Se manda después de llamar sin respuesta.",
+        "explicacion": "", "automatica": 0,
+    },
+    {
+        "clave": "confirmacion_agenda", "orden": 10,
+        "momento": "DESPUÉS DE LA PRIMERA LLAMADA",
+        "titulo": "Confirmación de agenda", "canal": "WhatsApp",
+        "cuerpo": ("¿Cómo estás {nombre}? Te habla Juan Pereyra de Scalerics.\n\n"
+                   "Quedamos agendados para el {fecha} a las {hora}. Entrás a la "
+                   "videollamada con el siguiente link: {link}\n\n"
+                   "El mismo día, un rato antes, te mando recordatorio de la "
+                   "videollamada. En lo posible confirmame con un okey.\n\n"
+                   "Saludos."),
+        "nota": "Se manda apenas queda agendada la demo.",
+        "explicacion": "", "automatica": 0,
+    },
+    {
+        "clave": "recordatorio_videollamada", "orden": 20,
+        "momento": "EL DÍA DE LA DEMO",
+        "titulo": "Recordatorio de videollamada", "canal": "WhatsApp",
+        "cuerpo": ("¿Cómo estás {nombre}? Este es un recordatorio para la "
+                   "videollamada de hoy a las {hora}.\n\n"
+                   "Entrás con el link que te pasé arriba.\n\n"
+                   "Saludos."),
+        "nota": "Automático: se dispara unas horas antes de la demo, sin que lo mandes vos.",
+        "explicacion": "", "automatica": 1,
+    },
+    {
+        "clave": "resumen_presupuesto", "orden": 30,
+        "momento": "DESPUÉS DE LA DEMO",
+        "titulo": "Resumen y presupuesto", "canal": "WhatsApp o mail",
+        "cuerpo": ("Hola {nombre}, gracias por el rato de hoy.\n\n"
+                   "Te dejo el presupuesto de la {servicio} como quedamos: {monto}, "
+                   "entrega en {plazo} desde que arrancamos.\n\n"
+                   "Cualquier duda escribime. Si querés avanzar, con confirmarme "
+                   "por acá alcanza."),
+        "nota": "Adjunta el PDF del presupuesto.",
+        "explicacion": "", "automatica": 0,
+    },
+    {
+        "clave": "reactivacion", "orden": 40,
+        "momento": "LEAD FRÍO",
+        "titulo": "Reactivación", "canal": "WhatsApp",
+        "cuerpo": ("¿Cómo estás {nombre}? Avisame si al final seguís interesado "
+                   "en avanzar con el {servicio}.\n\n"
+                   "Saludos."),
+        "nota": "", "explicacion": "", "automatica": 0,
+    },
+    {
+        "clave": "reactivacion_alternativa", "orden": 50,
+        "momento": "LEAD FRÍO",
+        "titulo": "Alternativa para el de reactivación", "canal": "WhatsApp",
+        "cuerpo": ("¿Cómo estás {nombre}? Te escribo por el {servicio} que "
+                   "habíamos charlado. ¿Lo dejamos para más adelante o lo retomamos?"),
+        "nota": "",
+        "explicacion": ("Preguntar si sigue interesado obliga al otro a decidir, y lo "
+                        "más fácil es no contestar. Esta versión ofrece dos salidas y "
+                        "las dos sirven: incluso el “más adelante” deja una fecha para "
+                        "volver a llamar."),
+        "automatica": 0,
+    },
+)
+
+_COLUMNAS_PLANTILLA = ("orden", "momento", "titulo", "canal", "cuerpo", "nota",
+                       "explicacion", "automatica")
+
+
+def _sembrar_plantillas(conn: sqlite3.Connection) -> int:
+    """Precarga idempotente de las seis plantillas: las cinco del PDF y la del
+    lead que no atendió.
+
+    Por `clave` (única): si ya están —editadas, o borradas, que quedan
+    marcadas— no se duplican ni se pisan. Devuelve cuántas creó.
+    """
+    creadas = 0
+    for p in _PLANTILLAS_PRECARGA:
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO plantillas_mensajes "
+            "(clave, orden, momento, titulo, canal, cuerpo, nota, explicacion, "
+            " automatica, created_by_name) VALUES (?,?,?,?,?,?,?,?,?,'precarga')",
+            (p["clave"],) + tuple(p[c] for c in _COLUMNAS_PLANTILLA))
+        creadas += cur.rowcount
+    conn.commit()
+    return creadas
+
+
+def listar_plantillas(db_path: str) -> list[dict]:
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute("SELECT * FROM plantillas_mensajes WHERE borrada = 0 "
+                           "ORDER BY orden, id")
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def get_plantilla(db_path: str, plantilla_id: int) -> Optional[dict]:
+    conn = _connect(db_path)
+    try:
+        fila = conn.execute("SELECT * FROM plantillas_mensajes WHERE id = ? AND borrada = 0",
+                            (plantilla_id,)).fetchone()
+        return dict(fila) if fila else None
+    finally:
+        conn.close()
+
+
+def crear_plantilla(db_path: str, created_by_name: Optional[str] = None, **campos) -> int:
+    """Una plantilla nueva va al final, salvo que traiga `orden`."""
+    datos = {c: campos[c] for c in _COLUMNAS_PLANTILLA if c in campos}
+    conn = _connect(db_path)
+    try:
+        if "orden" not in datos:
+            (ultimo,) = conn.execute(
+                "SELECT COALESCE(MAX(orden), 0) FROM plantillas_mensajes").fetchone()
+            datos["orden"] = int(ultimo) + 10
+        cols = list(datos) + ["created_by_name"]
+        cur = conn.execute(
+            f"INSERT INTO plantillas_mensajes ({', '.join(cols)}) "
+            f"VALUES ({', '.join('?' for _ in cols)})",
+            tuple(datos.values()) + (created_by_name,))
+        conn.commit()
+        return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def actualizar_plantilla(db_path: str, plantilla_id: int, **campos) -> bool:
+    datos = {c: campos[c] for c in _COLUMNAS_PLANTILLA if c in campos}
+    if not datos:
+        return False
+    conn = _connect(db_path)
+    try:
+        sets = ", ".join(f"{c} = ?" for c in datos)
+        cur = conn.execute(
+            f"UPDATE plantillas_mensajes SET {sets}, updated_at = CURRENT_TIMESTAMP "
+            "WHERE id = ? AND borrada = 0", tuple(datos.values()) + (plantilla_id,))
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def borrar_plantilla(db_path: str, plantilla_id: int) -> bool:
+    """Marca la plantilla como borrada (ver el comentario de la tabla)."""
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute(
+            "UPDATE plantillas_mensajes SET borrada = 1, updated_at = CURRENT_TIMESTAMP "
+            "WHERE id = ? AND borrada = 0", (plantilla_id,))
+        conn.commit()
+        return cur.rowcount > 0
     finally:
         conn.close()
