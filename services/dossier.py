@@ -11,7 +11,16 @@ leads y un 5% sobre 2000 se leen igual en un grafico, y no son lo mismo.
 import logging
 import math
 
-from database import _connect
+from database import ENVIOS_META_FECHAS_SQL, ENVIOS_META_SQL, _connect
+
+# Los leads de Meta se cuentan por ENVIO de formulario, como Meta: quien vuelve
+# a escribir cuenta tambien en el mes de la vuelta. Cada fila trae `fecha_local`
+# (hora de Montevideo), que es la que corta periodos y meses, y `primero`: las
+# etapas (demo, presupuesto, venta) se cuentan solo en el primer envio de la
+# persona, asi una vuelta no duplica una demo. Ver database.ENVIOS_META_SQL.
+_ENVIOS = f"({ENVIOS_META_SQL})"
+# La misma, sin form_data ni campana: para contar por fecha y hora.
+_ENVIOS_FECHAS = f"({ENVIOS_META_FECHAS_SQL})"
 
 logger = logging.getLogger(__name__)
 
@@ -126,8 +135,8 @@ def por_campana(db_path: str, desde: str, hasta: str) -> list:
     conn = _connect(db_path)
     try:
         leads = conn.execute(
-            "SELECT id, meta_campaign_name, meta_campaign_id FROM businesses "
-            "WHERE source = 'meta' AND substr(scraped_at, 1, 10) BETWEEN ? AND ?",
+            f"SELECT id, meta_campaign_name, meta_campaign_id, primero FROM {_ENVIOS} "
+            "WHERE source = 'meta' AND substr(fecha_local, 1, 10) BETWEEN ? AND ?",
             (desde, hasta)).fetchall()
         eventos_filas = conn.execute(
             "SELECT lead_id, new_status FROM lead_events").fetchall()
@@ -171,7 +180,7 @@ def por_campana(db_path: str, desde: str, hasta: str) -> list:
         pref = f"campana.{_slug(campana)}"
         n = len(del_grupo)
         conteo = {clave: sum(1 for l in del_grupo
-                             if alcanzo(eventos.get(l["id"], set()), etapa))
+                             if l["primero"] and alcanzo(eventos.get(l["id"], set()), etapa))
                   for clave, etapa, _ in _ETAPAS}
 
         ms = [
@@ -309,14 +318,18 @@ def normalizar_clave(clave: str) -> str:
 
 
 def _leer_formularios(db_path: str, desde: str, hasta: str):
-    """(lead_id, {clave normalizada: valor}) de cada lead del periodo."""
+    """(lead_id, {clave normalizada: valor}) de cada envio del periodo.
+
+    `lead_id` es None en el envio de alguien que ya habia escrito antes: cuenta
+    como lead del segmento, pero sus etapas ya cuentan en su primer envio.
+    """
     import json as _json
 
     conn = _connect(db_path)
     try:
         filas = conn.execute(
-            "SELECT id, form_data FROM businesses WHERE source = 'meta' "
-            "AND substr(scraped_at, 1, 10) BETWEEN ? AND ? "
+            f"SELECT id, primero, form_data FROM {_ENVIOS} WHERE source = 'meta' "
+            "AND substr(fecha_local, 1, 10) BETWEEN ? AND ? "
             "AND form_data IS NOT NULL AND form_data != ''",
             (desde, hasta)).fetchall()
     finally:
@@ -328,7 +341,8 @@ def _leer_formularios(db_path: str, desde: str, hasta: str):
         except (ValueError, TypeError):
             continue          # un form_data roto no puede tumbar el dossier
         if isinstance(datos, dict):
-            yield fila["id"], {normalizar_clave(k): v for k, v in datos.items()}
+            yield (fila["id"] if fila["primero"] else None), {
+                normalizar_clave(k): v for k, v in datos.items()}
 
 
 def claves_no_mapeadas(db_path: str, desde: str, hasta: str) -> dict:
@@ -463,8 +477,8 @@ def serie_semanal(db_path: str, desde: str, hasta: str) -> list:
             "SELECT date, spend, impressions, clicks, leads FROM meta_insights "
             "WHERE date BETWEEN ? AND ?", (desde, hasta)).fetchall()
         lead_filas = conn.execute(
-            "SELECT scraped_at FROM businesses WHERE source = 'meta' "
-            "AND substr(scraped_at, 1, 10) BETWEEN ? AND ?",
+            f"SELECT fecha_local FROM {_ENVIOS_FECHAS} WHERE source = 'meta' "
+            "AND substr(fecha_local, 1, 10) BETWEEN ? AND ?",
             (desde, hasta)).fetchall()
     finally:
         conn.close()
@@ -484,7 +498,7 @@ def serie_semanal(db_path: str, desde: str, hasta: str) -> list:
         s["leads_meta"] += int(fila["leads"] or 0)
 
     for fila in lead_filas:
-        _slot(_lunes_de(fila["scraped_at"]))["leads_crm"] += 1
+        _slot(_lunes_de(fila["fecha_local"]))["leads_crm"] += 1
 
     if not semanas:
         return []
@@ -546,8 +560,8 @@ def embudo_por_campana(db_path: str, desde: str, hasta: str) -> list:
     conn = _connect(db_path)
     try:
         leads = conn.execute(
-            "SELECT id, meta_campaign_name FROM businesses WHERE source = 'meta' "
-            "AND substr(scraped_at, 1, 10) BETWEEN ? AND ?",
+            f"SELECT id, meta_campaign_name, primero FROM {_ENVIOS} WHERE source = 'meta' "
+            "AND substr(fecha_local, 1, 10) BETWEEN ? AND ?",
             (desde, hasta)).fetchall()
         eventos_filas = conn.execute(
             "SELECT lead_id, new_status FROM lead_events").fetchall()
@@ -570,7 +584,7 @@ def embudo_por_campana(db_path: str, desde: str, hasta: str) -> list:
                    "n": len(del_grupo), "tasa": None}]
         for clave, etapa, etiqueta in _ETAPAS:
             n = sum(1 for l in del_grupo
-                    if alcanzo(eventos.get(l["id"], set()), etapa))
+                    if l["primero"] and alcanzo(eventos.get(l["id"], set()), etapa))
             previo = etapas[-1]["n"]
             etapas.append({
                 "clave": clave, "etiqueta": etiqueta, "n": n,
@@ -601,8 +615,8 @@ def serie_por_campana(db_path: str, desde: str, hasta: str) -> list:
             "SELECT date, campaign_name, spend FROM meta_insights "
             "WHERE date BETWEEN ? AND ?", (desde, hasta)).fetchall()
         leads = conn.execute(
-            "SELECT id, scraped_at, meta_campaign_name FROM businesses "
-            "WHERE source = 'meta' AND substr(scraped_at, 1, 10) BETWEEN ? AND ?",
+            f"SELECT id, fecha_local, meta_campaign_name, primero FROM {_ENVIOS} "
+            "WHERE source = 'meta' AND substr(fecha_local, 1, 10) BETWEEN ? AND ?",
             (desde, hasta)).fetchall()
         eventos_filas = conn.execute(
             "SELECT lead_id, new_status FROM lead_events").fetchall()
@@ -629,9 +643,9 @@ def serie_por_campana(db_path: str, desde: str, hasta: str) -> list:
 
     for lead in leads:
         s = _slot(lead["meta_campaign_name"] or SIN_CAMPANA,
-                  _lunes_de(lead["scraped_at"]))
+                  _lunes_de(lead["fecha_local"]))
         s["leads"] += 1
-        if alcanzo(eventos.get(lead["id"], set()), "demo_1"):
+        if lead["primero"] and alcanzo(eventos.get(lead["id"], set()), "demo_1"):
             s["demos"] += 1
 
     salida = []
@@ -684,8 +698,8 @@ def llegada_de_leads(db_path: str, desde: str, hasta: str) -> dict:
     conn = _connect(db_path)
     try:
         filas = conn.execute(
-            "SELECT scraped_at FROM businesses WHERE source = 'meta' "
-            "AND substr(scraped_at, 1, 10) BETWEEN ? AND ?",
+            f"SELECT scraped_at FROM {_ENVIOS_FECHAS} WHERE source = 'meta' "
+            "AND substr(fecha_local, 1, 10) BETWEEN ? AND ?",
             (desde, hasta)).fetchall()
     finally:
         conn.close()
@@ -790,13 +804,13 @@ def leads_de_la_semana(db_path: str, lunes: str, hoy=None) -> dict:
         # 24 cae el lunes siguiente en UTC.
         grupos = conn.execute(
             f"SELECT substr(scraped_at, 1, 10) AS dia, {_HORA_SQL} AS hora, "
-            "COUNT(*) AS n FROM businesses WHERE source = 'meta' "
+            f"COUNT(*) AS n FROM {_ENVIOS_FECHAS} WHERE source = 'meta' "
             f"AND {_CON_FECHA} AND substr(scraped_at, 1, 10) BETWEEN ? AND ? "
             "GROUP BY dia, hora",
             (inicio.isoformat(), (inicio + timedelta(days=7)).isoformat())).fetchall()
         primero = conn.execute(
             f"SELECT substr(scraped_at, 1, 10) AS dia, MIN({_HORA_SQL}) AS hora "
-            f"FROM businesses WHERE source = 'meta' AND {_CON_FECHA} "
+            f"FROM {_ENVIOS_FECHAS} WHERE source = 'meta' AND {_CON_FECHA} "
             "GROUP BY dia ORDER BY dia LIMIT 1").fetchone()
     finally:
         conn.close()
@@ -864,8 +878,8 @@ def serie_mensual(db_path: str, desde: str, hasta: str) -> list:
     conn = _connect(db_path)
     try:
         leads = conn.execute(
-            "SELECT id, scraped_at FROM businesses WHERE source = 'meta' "
-            "AND substr(scraped_at, 1, 10) BETWEEN ? AND ?",
+            f"SELECT id, fecha_local, primero FROM {_ENVIOS} WHERE source = 'meta' "
+            "AND substr(fecha_local, 1, 10) BETWEEN ? AND ?",
             (desde, hasta)).fetchall()
         eventos_filas = conn.execute(
             "SELECT lead_id, new_status FROM lead_events").fetchall()
@@ -889,9 +903,9 @@ def serie_mensual(db_path: str, desde: str, hasta: str) -> list:
             "costo_venta": None})
 
     for lead in leads:
-        s = _slot(str(lead["scraped_at"])[:7])
+        s = _slot(str(lead["fecha_local"])[:7])
         s["leads"] += 1
-        ev = eventos.get(lead["id"], set())
+        ev = eventos.get(lead["id"], set()) if lead["primero"] else set()
         if alcanzo(ev, "demo_1"):
             s["demos"] += 1
         if alcanzo(ev, "cerrado"):
@@ -961,8 +975,8 @@ def historico(db_path: str, desde: str) -> dict:
             "SELECT date, spend, impressions, clicks FROM meta_insights "
             "WHERE date < ?", (desde,)).fetchall()
         lead_filas = conn.execute(
-            "SELECT id, scraped_at FROM businesses WHERE source = 'meta' "
-            "AND substr(scraped_at, 1, 10) < ?", (desde,)).fetchall()
+            f"SELECT id, fecha_local, primero FROM {_ENVIOS} WHERE source = 'meta' "
+            "AND substr(fecha_local, 1, 10) < ?", (desde,)).fetchall()
         eventos_filas = conn.execute(
             "SELECT lead_id, new_status FROM lead_events").fetchall()
     finally:
@@ -980,16 +994,16 @@ def historico(db_path: str, desde: str) -> dict:
     impresiones = sum(int(f["impressions"] or 0) for f in gasto_filas)
     leads = len(lead_filas)
     demos = sum(1 for f in lead_filas
-                if alcanzo(eventos.get(f["id"], set()), "demo_1"))
+                if f["primero"] and alcanzo(eventos.get(f["id"], set()), "demo_1"))
 
     # Una semana cuenta si tuvo gasto O leads: un lead que entro sin pauta esa
     # semana igual paso.
     activas = {_lunes_de(f["date"]) for f in gasto_filas}
-    activas |= {_lunes_de(f["scraped_at"]) for f in lead_filas}
+    activas |= {_lunes_de(f["fecha_local"]) for f in lead_filas}
     semanas = len(activas)
 
     fechas = [f["date"][:10] for f in gasto_filas]
-    fechas += [str(f["scraped_at"])[:10] for f in lead_filas]
+    fechas += [str(f["fecha_local"])[:10] for f in lead_filas]
 
     def _por_semana(total):
         return round(total / semanas, 2) if semanas else None
