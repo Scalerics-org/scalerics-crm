@@ -83,6 +83,24 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 | F (finanzas) | la sección financiera del CRM | `services/finanzas.py`, `routes/finanzas.py`, `database.py` (tablas de finanzas), `dashboard.py` (panel Finanzas) | 8/9 |
 
+> **Email marketing: ver el mail (15/9, pedido de Juan).** Rama
+> `feat/email-mkt-ver-mail`, worktree `crm-email-ver`. Sin PR, sin merge y sin
+> deploy. Botón "Ver mail" en la tabla, que abre un modal con el mail.
+>
+> - **De dónde sale el cuerpo** (nunca se guarda en la base):
+>   1. Envíos con id de Resend: `GET /emails/{id}` en el momento, con timeout,
+>      pausa mínima y cache en memoria de 5 minutos (`services/email_contenido.py`).
+>   2. Si Resend no lo tiene, no hay clave o es histórico: discovery y
+>      recordatorios de Meta se reconstruyen con la MISMA función de envío,
+>      corrida dentro de `email_service.capturar_envio()`, que arma el mail sin
+>      mandarlo ni registrarlo. Va con aviso de "reconstruido".
+>   3. Los otros tipos sin id: "no disponible".
+> - **Si tocás `_send_estado`:** el `capturar_envio` va antes de mirar la clave de
+>   Resend. Si lo movés abajo, reconstruir un mail en producción lo MANDA.
+> - **HTML:** se sanitiza en el servidor (sin scripts, `on*`, `javascript:`,
+>   iframes, formularios, `href` ni pixel de apertura) y la pantalla lo carga
+>   con `srcdoc` en un iframe con `sandbox=""`.
+
 > **Email marketing (15/9, pedido de Juan).** Rama `feat/email-marketing`,
 > worktree `crm-email-mkt`. Sin PR, sin merge y sin deploy. Panel nuevo
 > `email_mkt` al final de CAPTACIÓN.

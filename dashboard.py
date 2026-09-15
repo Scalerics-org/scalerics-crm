@@ -2237,6 +2237,31 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   .em-buscar,.em-tipo{min-width:0;width:100%}
   .em-card{padding:12px}
 }
+/* Ver el mail: modal con la vista en un iframe con sandbox vacio y la version
+   de texto. El iframe va sobre blanco, como lo ve quien lo recibe. */
+.em-ver{display:inline-block;margin-top:4px;background:none;border:1px solid var(--borde-fuerte);color:var(--azul-claro);border-radius:6px;padding:2px 8px;font-size:.7rem;font-weight:600;font-family:inherit;cursor:pointer}
+.em-ver:hover{background:var(--hover);border-color:var(--azul)}
+.em-mail-modal{width:780px;max-width:95vw;max-height:92vh;display:flex;flex-direction:column;gap:10px;padding:20px}
+.em-mail-cab{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.em-mail-cab h3{margin:0;overflow-wrap:anywhere}
+.em-mail-cerrar{background:none;border:none;color:var(--texto-tenue);font-size:1.4rem;line-height:1;cursor:pointer;padding:0 4px;font-family:inherit}
+.em-mail-cerrar:hover{color:var(--texto-fuerte)}
+.em-mail-datos{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:.76rem;margin:0}
+.em-mail-datos dt{color:var(--texto-debil);font-weight:600}
+.em-mail-datos dd{margin:0;color:var(--texto);overflow-wrap:anywhere}
+.em-mail-aviso{background:var(--ambar-tinte);color:var(--ambar);border:1px solid var(--ambar-borde);border-radius:8px;padding:8px 10px;font-size:.76rem;line-height:1.4}
+.em-mail-tabs{display:flex;gap:6px}
+.em-mail-tab{background:var(--relleno);color:var(--texto-debil);border:1px solid var(--borde);border-radius:99px;padding:4px 12px;font-size:.74rem;font-weight:600;cursor:pointer;font-family:inherit}
+.em-mail-tab.em-activo{background:var(--azul-tinte);color:var(--azul-claro);border-color:var(--azul)}
+.em-mail-cuerpo{flex:1;min-height:0;display:flex;flex-direction:column}
+.em-mail-iframe{width:100%;height:62vh;min-height:320px;border:1px solid var(--borde);border-radius:8px;background:white}
+.em-mail-texto{margin:0;height:62vh;min-height:320px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;background:var(--superficie-honda);color:var(--texto);border:1px solid var(--borde);border-radius:8px;padding:12px;font-size:.78rem;line-height:1.5;font-family:ui-monospace,Menlo,Consolas,monospace}
+@media(max-width:560px){
+  .em-mail-modal{padding:16px}
+  .em-mail-iframe,.em-mail-texto{height:55vh;min-height:260px}
+  .em-mail-datos{grid-template-columns:1fr}
+  .em-mail-datos dd{margin-bottom:4px}
+}
 /* ── Equipo ───────────────────────────────────────────────────────────────────
    Organigrama (SVG) y ausencias con recupero. Solo tokens, sin reglas
    `body.light`: los tintes rojo/verde/ambar son los de la familia de estados,
@@ -3386,6 +3411,28 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       </div>
       <div id="em-tabla" class="em-tabla-wrap"></div>
       <div id="em-paginas" class="em-paginas"></div>
+    </div>
+    <!-- Ver el mail. El contenido llega por la API, ya sanitizado, y el JS lo
+         carga con srcdoc en un iframe con sandbox vacio: sin scripts, sin
+         mismo origen y sin navegacion. -->
+    <div class="modal-overlay" id="em-mail-modal" onclick="if(event.target===this)emCerrarMail()">
+      <div class="modal em-mail-modal" role="dialog" aria-modal="true" aria-labelledby="em-mail-asunto">
+        <div class="em-mail-cab">
+          <h3 id="em-mail-asunto">Mail</h3>
+          <button type="button" class="em-mail-cerrar" onclick="emCerrarMail()" aria-label="Cerrar">×</button>
+        </div>
+        <dl class="em-mail-datos" id="em-mail-datos"></dl>
+        <div class="em-mail-aviso em-oculto" id="em-mail-aviso" role="status"></div>
+        <div class="em-mail-tabs em-oculto" id="em-mail-tabs" role="tablist">
+          <button type="button" class="em-mail-tab em-activo" id="em-mail-tab-html" role="tab" onclick="emMailPestana('html')">Vista</button>
+          <button type="button" class="em-mail-tab" id="em-mail-tab-texto" role="tab" onclick="emMailPestana('texto')">Texto</button>
+        </div>
+        <div class="em-mail-cuerpo">
+          <iframe id="em-mail-iframe" class="em-mail-iframe em-oculto" sandbox="" referrerpolicy="no-referrer" title="Vista del mail"></iframe>
+          <pre id="em-mail-texto" class="em-mail-texto em-oculto"></pre>
+          <div id="em-mail-vacio" class="em-vacio"></div>
+        </div>
+      </div>
     </div>
   </div>
   <!-- ======= FIN EMAIL MARKETING PANEL ======= -->
@@ -12534,7 +12581,8 @@ function emTabla(envios) {
     return '<tr><td class="em-fecha">' + emEsc(e.fecha_local) + '</td>' +
       '<td>' + emEsc(e.tipo_etiqueta) + '</td>' +
       '<td class="em-dest">' + emEsc(e.destinatario || '—') + '</td>' +
-      '<td class="em-asunto">' + emEsc(e.asunto) + extracto + '</td>' +
+      '<td class="em-asunto">' + emEsc(e.asunto) + extracto +
+      '<button type="button" class="em-ver" onclick="emVerMail(' + Number(e.id) + ')">Ver mail</button></td>' +
       '<td><span class="em-chip ' + est[1] + '">' + emEsc(est[0]) + '</span>' + historico + '</td>' +
       '<td>' + lead + '</td></tr>';
   }).join('');
@@ -12635,6 +12683,117 @@ async function emActualizarEstados() {
   } finally {
     boton.disabled = !(emDatos && emDatos.hay_api_key);
   }
+}
+
+// ── Ver el mail ──────────────────────────────────────────────────────────────
+// El contenido llega de /api/email-mkt/envios/ID/contenido, ya sanitizado en el
+// servidor, y se carga con srcdoc en un iframe con sandbox vacio: sin scripts,
+// sin mismo origen y sin navegacion. Nunca se mete en el DOM del CRM.
+let emMailPedido = 0;
+let emMailDatos = null;
+
+function emEnvioPorId(id) {
+  const lista = (emDatos && emDatos.envios) || [];
+  return lista.find(e => Number(e.id) === Number(id)) || null;
+}
+
+function emMailClase(id, poner, clase) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (poner) el.classList.add(clase);
+  else el.classList.remove(clase);
+}
+
+function emMailCabecera(d) {
+  const asunto = document.getElementById('em-mail-asunto');
+  if (asunto) asunto.textContent = d.asunto || '(sin asunto)';
+  const est = EM_ESTADOS[d.estado] || [d.estado || '—', 'em-chip-gris'];
+  const filas = [
+    ['Remitente', emEsc(d.remitente || '—')],
+    ['Destinatario', emEsc(d.destinatario || '—')],
+    ['Fecha', emEsc(d.fecha_local ? d.fecha_local + ' (Montevideo)' : '—')],
+    ['Tipo', emEsc(d.tipo_etiqueta || d.tipo || '—')],
+    ['Estado', '<span class="em-chip ' + est[1] + '">' + emEsc(est[0]) + '</span>']
+  ];
+  emPoner('em-mail-datos', filas.map(f => '<dt>' + f[0] + '</dt><dd>' + f[1] + '</dd>').join(''));
+}
+
+function emMailVacio(texto) {
+  const vacio = document.getElementById('em-mail-vacio');
+  if (vacio) vacio.textContent = texto;
+  emMailClase('em-mail-vacio', false, 'em-oculto');
+  emMailClase('em-mail-iframe', true, 'em-oculto');
+  emMailClase('em-mail-texto', true, 'em-oculto');
+  emMailClase('em-mail-tabs', true, 'em-oculto');
+  const iframe = document.getElementById('em-mail-iframe');
+  if (iframe) iframe.srcdoc = '';
+}
+
+async function emVerMail(id) {
+  const modal = document.getElementById('em-mail-modal');
+  if (!modal) return;
+  const pedido = ++emMailPedido;
+  emMailDatos = null;
+  emMailCabecera(emEnvioPorId(id) || {});
+  const aviso = document.getElementById('em-mail-aviso');
+  if (aviso) aviso.textContent = '';
+  emMailClase('em-mail-aviso', true, 'em-oculto');
+  emMailVacio('Cargando el mail…');
+  modal.classList.add('open');
+  let d = null;
+  try {
+    const r = await fetch('/api/email-mkt/envios/' + Number(id) + '/contenido');
+    try { d = await r.json(); } catch (e) { d = null; }
+    if (!r.ok || !d || !d.ok) throw new Error((d && d.error) || ('HTTP ' + r.status));
+  } catch (e) {
+    if (pedido !== emMailPedido) return;
+    emMailVacio('No se pudo cargar el contenido de este mail. Probá de nuevo en un rato.');
+    return;
+  }
+  if (pedido !== emMailPedido) return;
+  emMailDatos = d;
+  emMailPintar(d);
+}
+
+function emMailPintar(d) {
+  emMailCabecera(d);
+  const avisos = (d.avisos || []).filter(Boolean);
+  const aviso = document.getElementById('em-mail-aviso');
+  if (aviso) aviso.textContent = avisos.join(' ');
+  emMailClase('em-mail-aviso', !avisos.length, 'em-oculto');
+  if (!d.html && !d.text) {
+    emMailVacio(d.motivo || 'El contenido de este mail no está disponible.');
+    return;
+  }
+  const iframe = document.getElementById('em-mail-iframe');
+  if (iframe) {
+    // El sandbox vacio se vuelve a fijar antes de cargar: es lo que impide
+    // scripts, formularios y navegacion adentro del mail.
+    iframe.setAttribute('sandbox', '');
+    iframe.srcdoc = d.html || '';
+  }
+  const texto = document.getElementById('em-mail-texto');
+  if (texto) texto.textContent = d.text || 'Este mail no tiene versión en texto plano.';
+  emMailClase('em-mail-vacio', true, 'em-oculto');
+  emMailClase('em-mail-tabs', false, 'em-oculto');
+  emMailPestana(d.html ? 'html' : 'texto');
+}
+
+function emMailPestana(cual) {
+  const vista = cual === 'html' && !!(emMailDatos && emMailDatos.html);
+  emMailClase('em-mail-iframe', !vista, 'em-oculto');
+  emMailClase('em-mail-texto', vista, 'em-oculto');
+  emMailClase('em-mail-tab-html', vista, 'em-activo');
+  emMailClase('em-mail-tab-texto', !vista, 'em-activo');
+}
+
+function emCerrarMail() {
+  emMailPedido++;
+  emMailDatos = null;
+  const modal = document.getElementById('em-mail-modal');
+  if (modal) modal.classList.remove('open');
+  const iframe = document.getElementById('em-mail-iframe');
+  if (iframe) iframe.srcdoc = '';
 }
 
 // ========== Daily Programador ==========
