@@ -37,6 +37,31 @@ def estilos_roles() -> list[dict]:
     """[{rol, color, etiqueta}] en el orden de ROLES, para la pantalla."""
     return [{"rol": r, **ROL_ESTILOS[r]} for r in ROLES]
 
+
+# Quien no participa de Flujos (organigrama, pedido de Juan 16/9): un color que
+# no es de ningún rol. Tokens `--rol-rosa` y `--rol-rosa-tinte`.
+FUERA_DE_FLUJOS = {"color": "rosa", "etiqueta": "Fuera de Flujos"}
+
+
+def estilo_de_persona(rol_flujo) -> dict:
+    """{rol, color, etiqueta} de una persona según su rol en Flujos. Un rol que
+    no es de la lista cerrada cuenta como "fuera de Flujos"."""
+    if isinstance(rol_flujo, str) and rol_flujo in ROL_ESTILOS:
+        return {"rol": rol_flujo, **ROL_ESTILOS[rol_flujo]}
+    return {"rol": None, **FUERA_DE_FLUJOS}
+
+
+def validar_rol_flujo(datos):
+    """{'rol_flujo': uno de ROLES, o null / '' para "no participa"}."""
+    if not isinstance(datos, dict) or "rol_flujo" not in datos:
+        return None, "falta rol_flujo"
+    valor = datos.get("rol_flujo")
+    if valor is None or valor == "":
+        return {"rol_flujo": None}, None
+    if not isinstance(valor, str) or valor not in ROLES:
+        return None, "el rol en Flujos tiene que ser uno de: " + ", ".join(ROLES) + ", o ninguno"
+    return {"rol_flujo": valor}, None
+
 # Id de panel del CRM (`showPanel`): minúsculas y guion bajo.
 _PANTALLA = re.compile(r"^[a-z][a-z_]{0,39}$")
 

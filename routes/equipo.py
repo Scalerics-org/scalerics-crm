@@ -8,13 +8,15 @@ from datetime import date
 
 from flask import Blueprint, current_app, jsonify, request, session
 
-from database import (borrar_ausencia_equipo, borrar_recupero_equipo,
-                      crear_ausencia_equipo, crear_recupero_equipo,
-                      get_ausencia_equipo, get_persona_equipo,
-                      get_recupero_equipo, listar_personas_equipo, log_activity)
-from services.auth import require_panel, tiene_panel
+from database import (actualizar_rol_flujo_persona, borrar_ausencia_equipo,
+                      borrar_recupero_equipo, crear_ausencia_equipo,
+                      crear_recupero_equipo, get_ausencia_equipo,
+                      get_persona_equipo, get_recupero_equipo,
+                      listar_personas_equipo, log_activity)
+from services.auth import is_admin, require_admin, require_panel, tiene_panel
 from services.equipo import (capacidad, estado, parse_fecha, validar_ausencia,
                              validar_recupero)
+from services.flujos import estilo_de_persona, validar_rol_flujo
 
 equipo_bp = Blueprint("equipo", __name__)
 
@@ -59,7 +61,33 @@ def api_estado():
         desde = parse_fecha(crudo)
         if desde is None:
             return jsonify({"ok": False, "error": "desde tiene que ser AAAA-MM-DD"}), 400
-    return jsonify(estado(_db(), _hoy(), desde))
+    datos = estado(_db(), _hoy(), desde)
+    # Solo el admin cambia el rol en Flujos desde el organigrama.
+    datos["es_admin"] = is_admin(_db(), session.get("user_id"))
+    return jsonify(datos)
+
+
+@equipo_bp.route("/api/equipo/personas/<int:pid>/rol-flujo", methods=["PUT"])
+def api_rol_flujo(pid):
+    """Cambia el rol en Flujos de una persona, que define su color en el
+    organigrama. Solo admin; la lista de roles es la cerrada de Flujos."""
+    db = _db()
+    no_admin = require_admin(db)
+    if no_admin:
+        return no_admin
+    persona = get_persona_equipo(db, pid)
+    if not persona or not persona.get("activo"):
+        return jsonify({"ok": False, "error": "esa persona no está en el organigrama"}), 404
+    campos, error = validar_rol_flujo(request.get_json(silent=True))
+    if error:
+        return jsonify({"ok": False, "error": error}), 400
+    actualizar_rol_flujo_persona(db, pid, campos["rol_flujo"])
+    estilo = estilo_de_persona(campos["rol_flujo"])
+    uid, quien = _quien()
+    log_activity(db, quien, "equipo_rol_flujo", "equipo", pid, persona["nombre"],
+                 estilo["etiqueta"], user_id=uid)
+    return jsonify({"ok": True, "rol_flujo": estilo["rol"], "color": estilo["color"],
+                    "etiqueta": estilo["etiqueta"]})
 
 
 @equipo_bp.route("/api/equipo/capacidad")
