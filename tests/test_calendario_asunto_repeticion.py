@@ -166,9 +166,11 @@ def test_una_reunion_con_cliente_tambien_lleva_invitados(app, cliente):
     assert ev["invitados"] == ["socio@opticaluz.uy"] and ev["tipo"] == "cliente"
 
 
-def test_crear_no_le_pide_nada_a_google_ni_manda_invitaciones(app, cliente, google):
-    """El CRM no crea eventos en Google desde el 1/6/2026: los invitados quedan
-    guardados y a nadie le llega un mail. Si esto cambia, que sea a proposito."""
+def test_sin_credenciales_de_google_no_se_crea_nada_en_google(app, cliente, google):
+    """Desde el 15/9 el CRM crea las reuniones en Google y Google manda las
+    invitaciones (tests/test_calendario_google_invitaciones.py), pero solo si
+    hay credenciales GCAL_* cargadas. Aca no hay: la reunion queda en el CRM y a
+    nadie le llega un mail."""
     lid = insert_business(app.config["DB_PATH"], {"name": "Optica Luz"})
 
     _crear(cliente, invitados="ana@agencia.com", repeticion=VIERNES)
