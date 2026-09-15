@@ -27,6 +27,7 @@ from routes.preclientes import preclientes_bp
 from routes.linkedin import linkedin_bp
 from routes.finanzas import finanzas_bp
 from routes.simulador import simulador_bp
+from routes.email_marketing import email_mkt_bp
 from routes.inteligencia_fin import inteligencia_fin_bp
 from routes.equipo import equipo_bp
 from routes.horarios import horarios_bp
@@ -1304,6 +1305,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-daily .nav-icon{stroke:#38bdf8}
 #nav-daily_admin .nav-icon{stroke:#f0abfc}
 #nav-plantillas .nav-icon{stroke:#c084fc}
+#nav-email_mkt .nav-icon{stroke:#6ee7b7}
 .nav-item.active #nav-cola .nav-icon,
 .nav-item.active .nav-icon{opacity:1}
 /* active item keeps its color but brighter */
@@ -1330,6 +1332,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-flujos.active .nav-icon{stroke:#99f6e4}
 #nav-seg_leads.active .nav-icon{stroke:#fda4af}
 #nav-plantillas.active .nav-icon{stroke:#d8b4fe}
+#nav-email_mkt.active .nav-icon{stroke:#a7f3d0}
 /* light mode — slightly darker tones */
 body.light #nav-cola .nav-icon{stroke:#2563eb}
 body.light #nav-clientes .nav-icon{stroke:#7c3aed}
@@ -1354,6 +1357,7 @@ body.light #nav-horarios .nav-icon{stroke:#92400e}
 body.light #nav-flujos .nav-icon{stroke:#0f766e}
 body.light #nav-seg_leads .nav-icon{stroke:#be123c}
 body.light #nav-plantillas .nav-icon{stroke:#9333ea}
+body.light #nav-email_mkt .nav-icon{stroke:#065f46}
 /* ── Lucide icons ─────────────────────────────────────────────────────────── */
 .nav-icon{width:15px;height:15px;stroke-width:2;flex-shrink:0}
 /* Frase de equipo, version compacta del PDF de identidad de marca. Es la
@@ -2183,6 +2187,60 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 @media(max-width:600px){
   .sl-contadores{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
+/* ── Email marketing ─────────────────────────────────────────────────────────
+   Lo que sale por Resend. Solo tokens, sin reglas de tema claro: los chips usan
+   la familia de estados (tintes azul/verde/rojo/ambar), que ya tiene su par. */
+.em-oculto{display:none!important}
+.em-acciones{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.em-nota-estados{font-size:.76rem;color:var(--texto-debil);margin:-6px 0 10px}
+.em-nota-estados:empty{display:none}
+.em-barra{display:flex;align-items:center;justify-content:space-between;gap:8px 12px;flex-wrap:wrap;margin-bottom:14px}
+.em-nav-mes{display:flex;align-items:center;gap:8px;font-size:.85rem;color:var(--texto-fuerte);font-weight:600}
+.em-nav-mes span{min-width:120px;text-align:center}
+.em-tipo{min-width:200px}
+.em-contadores{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;margin-bottom:14px}
+.em-contador{background:var(--superficie-honda);border:1px solid var(--borde);border-radius:10px;padding:12px 14px;min-width:0}
+.em-contador-num{font-size:1.5rem;font-weight:700;color:var(--texto-fuerte);font-variant-numeric:tabular-nums}
+.em-contador-rotulo{font-size:.74rem;font-weight:600;color:var(--texto);margin-top:2px}
+.em-contador-tasa{font-size:.7rem;color:var(--texto-debil);margin-top:2px;min-height:1em}
+.em-contador-rebotados .em-contador-num,.em-contador-spam .em-contador-num{color:var(--rojo-texto)}
+.em-aviso{background:var(--ambar-tinte);color:var(--ambar);border:1px solid var(--ambar-borde);border-radius:10px;padding:10px 12px;font-size:.78rem;line-height:1.45;margin-bottom:14px}
+.em-card{background:var(--superficie-honda);border:1px solid var(--borde);border-radius:10px;padding:16px;margin-bottom:14px;min-width:0}
+.em-card-titulo{font-size:.9rem;font-weight:700;color:var(--texto-fuerte);margin-bottom:10px}
+.em-cab{display:flex;justify-content:space-between;align-items:center;gap:8px 12px;flex-wrap:wrap;margin-bottom:10px}
+.em-cab .em-card-titulo{margin-bottom:0}
+.em-buscar{background:var(--superficie);border:1px solid var(--borde-fuerte);color:var(--texto);border-radius:8px;padding:7px 10px;font-size:.8rem;font-family:inherit;min-width:240px}
+.em-buscar:focus{outline:2px solid var(--azul);outline-offset:1px}
+.em-tabla-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.em-tabla{width:100%;min-width:760px;border-collapse:collapse;font-size:.78rem}
+.em-tabla th{text-align:left;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--texto-debil);padding:6px 8px;border-bottom:1px solid var(--borde);white-space:nowrap}
+.em-tabla td{padding:8px;border-bottom:1px solid var(--borde);color:var(--texto);vertical-align:top}
+.em-tabla tr:hover td{background:var(--hover)}
+.em-fecha{white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--texto-tenue)}
+.em-dest{overflow-wrap:anywhere;max-width:220px}
+.em-asunto{overflow-wrap:anywhere;max-width:320px}
+.em-extracto{display:block;color:var(--texto-debil);font-size:.7rem;margin-top:2px}
+.em-chip{display:inline-block;border-radius:99px;padding:2px 9px;font-size:.7rem;font-weight:700;white-space:nowrap}
+.em-chip-azul{background:var(--azul-tinte);color:var(--azul-claro)}
+.em-chip-verde{background:var(--verde-tinte);color:var(--verde-texto)}
+.em-chip-fuerte{background:var(--verde-tinte);color:var(--verde-texto);box-shadow:inset 0 0 0 1px var(--verde-texto)}
+.em-chip-rojo{background:var(--rojo-tinte);color:var(--rojo-texto)}
+.em-chip-ambar{background:var(--ambar-tinte);color:var(--ambar)}
+.em-chip-gris{background:var(--relleno);color:var(--texto-debil)}
+.em-nota{display:block;font-size:.66rem;color:var(--texto-debil);margin-top:3px}
+.em-link{background:none;border:none;padding:0;color:var(--azul-claro);font:inherit;cursor:pointer;text-align:left;text-decoration:underline;overflow-wrap:anywhere}
+.em-paginas{display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-top:10px;font-size:.76rem;color:var(--texto-tenue)}
+.em-paginas:empty{display:none}
+.em-vacio{font-size:.8rem;color:var(--texto-debil);padding:8px 0}
+@media(max-width:900px){
+  .em-contadores{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+@media(max-width:560px){
+  .em-contadores{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .em-barra{align-items:stretch}
+  .em-buscar,.em-tipo{min-width:0;width:100%}
+  .em-card{padding:12px}
+}
 /* ── Equipo ───────────────────────────────────────────────────────────────────
    Organigrama (SVG) y ausencias con recupero. Solo tokens, sin reglas
    `body.light`: los tintes rojo/verde/ambar son los de la familia de estados,
@@ -2445,6 +2503,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div class="nav-item" id="nav-cola" onclick="showPanel('cola')"><i data-lucide="inbox" class="nav-icon"></i> Outbound</div>
   <div class="nav-item" id="nav-metrics" onclick="showPanel('metrics')"><i data-lucide="bar-chart-2" class="nav-icon"></i> Inteligencia comercial</div>
   <div class="nav-item" id="nav-sdr" onclick="showPanel('sdr')"><i data-lucide="phone-call" class="nav-icon"></i> SDR</div>
+  <div class="nav-item" id="nav-email_mkt" onclick="showPanel('email_mkt')"><i data-lucide="mail" class="nav-icon"></i> Email marketing</div>
   </div>
   <div class="sidebar-bottom">
     <a id="admin-link" href="/admin/users" style="display:none;background:none;border:1px solid var(--borde);border-radius:8px;padding:6px 12px;font-size:.75rem;color:var(--texto-debil);cursor:pointer;width:100%;text-align:left;text-decoration:none;box-sizing:border-box">&#9881; Usuarios</a>
@@ -3303,6 +3362,48 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     </div>
     <div id="sdr-content"></div>
   </div>
+
+  <!-- ======= EMAIL MARKETING PANEL ======= -->
+  <!-- Lo que sale por Resend: cada envio registrado con su id de Resend, mas lo
+       que cuenta el webhook (entregado, abierto, clic, rebote, spam). -->
+  <div id="email_mkt-panel" class="panel">
+    <div class="page-header">
+      <div>
+        <h1>Email marketing</h1>
+        <div class="page-date">Lo que va saliendo por Resend: campañas, recordatorios y avisos</div>
+      </div>
+      <div class="em-acciones">
+        <button type="button" class="export-btn" onclick="loadEmailMkt()">↻ Recargar</button>
+        <button type="button" class="export-btn em-oculto" id="em-btn-estados" onclick="emActualizarEstados()">Actualizar estados</button>
+      </div>
+    </div>
+    <div class="em-nota-estados" id="em-estados-nota" role="status" aria-live="polite"></div>
+    <div class="em-barra">
+      <div class="em-nav-mes">
+        <button type="button" class="cal-nav-btn" onclick="emMes(-1)" title="Mes anterior" aria-label="Mes anterior">&larr;</button>
+        <span id="em-mes-label" aria-live="polite"></span>
+        <button type="button" class="cal-nav-btn" id="em-mes-sig" onclick="emMes(1)" title="Mes siguiente" aria-label="Mes siguiente">&rarr;</button>
+        <button type="button" class="cal-today-btn" onclick="emMesHoy()">Este mes</button>
+      </div>
+      <select class="filter-select em-tipo" id="em-tipo" onchange="emFiltrar()" aria-label="Tipo de envío"><option value="">Todos los tipos</option></select>
+    </div>
+    <div id="em-estado" class="em-vacio" role="status" aria-live="polite">Cargando…</div>
+    <div id="em-contadores" class="em-contadores"></div>
+    <div id="em-aviso"></div>
+    <div class="em-card">
+      <div class="em-card-titulo">Enviados por día</div>
+      <div id="em-grafico"></div>
+    </div>
+    <div class="em-card">
+      <div class="em-cab">
+        <div class="em-card-titulo">Envíos</div>
+        <input type="search" class="em-buscar" id="em-buscar" placeholder="Buscar por mail o asunto" oninput="emBuscar()" aria-label="Buscar por mail o asunto">
+      </div>
+      <div id="em-tabla" class="em-tabla-wrap"></div>
+      <div id="em-paginas" class="em-paginas"></div>
+    </div>
+  </div>
+  <!-- ======= FIN EMAIL MARKETING PANEL ======= -->
 
   <div id="activity-panel" class="panel">
     <div class="page-header">
@@ -4275,6 +4376,7 @@ function showPanel(name) {
   if (name === 'seg_leads') loadSegLeads();
   if (name === 'plantillas') plCargar();
   if (name === 'sdr') loadSdr();
+  if (name === 'email_mkt') loadEmailMkt();
 }
 
 // ========== Leads / Cola panel ==========
@@ -8498,20 +8600,20 @@ function _showScoreBreakdown(event, el) {
 
 // ── Mobile navigation ─────────────────────────────────────────────────────────
 // El mismo orden que el menu de la izquierda (Juan, 14/9).
-const NAV_PRIORITY = ['cal','meta','finanzas','simulador','inteligencia_fin','seg_leads','wa','notion_clients','plantillas','clientes','projects','tasks','daily','daily_admin','activity','equipo','ausencias','flujos','horarios','cola','metrics'];
+const NAV_PRIORITY = ['cal','meta','finanzas','simulador','inteligencia_fin','seg_leads','wa','notion_clients','plantillas','clientes','projects','tasks','daily','daily_admin','activity','equipo','ausencias','flujos','horarios','cola','metrics','email_mkt'];
 const NAV_ICONS = {
   cola:'inbox',meta:'instagram',cal:'calendar',
   tasks:'check-square',pipeline:'trending-up',clientes:'users',
   wa:'message-circle',metrics:'bar-chart-2',activity:'clock',projects:'target',
   notion_clients:'handshake',finanzas:'wallet',simulador:'calculator',inteligencia_fin:'lightbulb',equipo:'network',
-  ausencias:'calendar-clock',horarios:'clock-4',flujos:'workflow',seg_leads:'phone-call',daily:'clipboard-list',plantillas:'message-square-text',daily_admin:'clipboard-check'
+  ausencias:'calendar-clock',horarios:'clock-4',flujos:'workflow',seg_leads:'phone-call',daily:'clipboard-list',plantillas:'message-square-text',daily_admin:'clipboard-check',email_mkt:'mail'
 };
 const NAV_LABELS = {
   cola:'Outbound',meta:'Meta',cal:'Agenda',
   tasks:'Tareas',pipeline:'Pipeline',clientes:'Clientes',
   wa:'WA',metrics:'Intel. comercial',activity:'Actividad',projects:'Proyectos',
   notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador',inteligencia_fin:'Intel. financiera',equipo:'Organigrama',
-  ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento',daily:'Daily',plantillas:'Plantillas',daily_admin:'Daily Admin'
+  ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento',daily:'Daily',plantillas:'Plantillas',daily_admin:'Daily Admin',email_mkt:'Email mkt'
 };
 let _mobileNavOverflow = [];
 
@@ -8591,7 +8693,7 @@ function closeMasSheet() {
 }
 
 // ── Panel access control ──────────────────────────────────────────────────────
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin'];
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt'];
 (async () => {
   try {
     const r = await fetch('/api/me');
@@ -12292,6 +12394,279 @@ async function hrGuardar() {
   await hrCargar();
 }
 // ========== FIN Horarios ==========
+
+// ========== Email marketing ==========
+// Lo que sale por Resend, con lo que Resend cuenta despues. Los numeros y las
+// fechas (ya en hora de Montevideo) vienen armados de /api/email-marketing:
+// aca solo se pinta. Sin template literals: el texto se arma concatenando.
+let emMesSel = '';
+let emPagina = 1;
+let emPedido = 0;
+let emBusquedaTimer = null;
+let emDatos = null;
+
+const EM_ESTADOS = {
+  enviado: ['Enviado', 'em-chip-azul'],
+  entregado: ['Entregado', 'em-chip-verde'],
+  abierto: ['Abierto', 'em-chip-verde'],
+  clic: ['Con clic', 'em-chip-fuerte'],
+  rebotado: ['Rebotado', 'em-chip-rojo'],
+  spam: ['Marcado como spam', 'em-chip-rojo'],
+  demorado: ['Demorado', 'em-chip-ambar'],
+  fallido: ['No salió', 'em-chip-rojo'],
+  incierto: ['Sin confirmar', 'em-chip-ambar']
+};
+const EM_CONTADORES = [
+  ['enviados', 'Enviados'], ['entregados', 'Entregados'], ['abiertos', 'Abiertos'],
+  ['clics', 'Con clic'], ['rebotados', 'Rebotados'], ['spam', 'Marcados como spam']
+];
+const EM_MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto',
+  'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+
+function emEsc(texto) {
+  return String(texto === null || texto === undefined ? '' : texto)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function emEtiquetaMes(mes) {
+  const partes = String(mes || '').split('-');
+  const nombre = EM_MESES[parseInt(partes[1], 10) - 1];
+  return nombre ? nombre + ' ' + partes[0] : String(mes || '');
+}
+
+function emMesSumar(mes, delta) {
+  const partes = String(mes).split('-');
+  const total = parseInt(partes[0], 10) * 12 + (parseInt(partes[1], 10) - 1) + delta;
+  return Math.floor(total / 12) + '-' + String(total % 12 + 1).padStart(2, '0');
+}
+
+function emValor(id) {
+  const el = document.getElementById(id);
+  return el && el.value ? String(el.value) : '';
+}
+
+function emUrl() {
+  const partes = [];
+  if (emMesSel) partes.push('mes=' + encodeURIComponent(emMesSel));
+  const tipo = emValor('em-tipo');
+  if (tipo) partes.push('tipo=' + encodeURIComponent(tipo));
+  const q = emValor('em-buscar').trim();
+  if (q) partes.push('q=' + encodeURIComponent(q));
+  if (emPagina > 1) partes.push('pagina=' + emPagina);
+  return '/api/email-marketing' + (partes.length ? '?' + partes.join('&') : '');
+}
+
+async function loadEmailMkt() {
+  const estado = document.getElementById('em-estado');
+  if (!estado) return;
+  // Buscar rapido dispara varios pedidos que pueden volver desordenados: solo
+  // se pinta la respuesta del ultimo.
+  const pedido = ++emPedido;
+  let datos;
+  try {
+    const r = await fetch(emUrl());
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    datos = await r.json();
+    if (!datos || !datos.contadores) throw new Error('respuesta incompleta');
+  } catch (e) {
+    if (pedido !== emPedido) return;
+    estado.textContent = 'No se pudieron cargar los envíos. Probá de nuevo en un rato.';
+    estado.classList.remove('em-oculto');
+    return;
+  }
+  if (pedido !== emPedido) return;
+  emDatos = datos;
+  emPintar(datos);
+}
+
+function emPoner(id, html) {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = html;
+}
+
+function emPintar(d) {
+  const estado = document.getElementById('em-estado');
+  if (estado) {
+    const hay = Number(d.contadores.enviados || 0) > 0;
+    estado.textContent = hay ? '' : 'No hay envíos registrados en ' + emEtiquetaMes(d.mes) + '.';
+    if (hay) estado.classList.add('em-oculto');
+    else estado.classList.remove('em-oculto');
+  }
+  const etiqueta = document.getElementById('em-mes-label');
+  if (etiqueta) etiqueta.textContent = emEtiquetaMes(d.mes);
+  const siguiente = document.getElementById('em-mes-sig');
+  if (siguiente) siguiente.disabled = d.mes >= d.mes_actual;
+  emPintarTipos(d.tipos || []);
+  emPoner('em-contadores', emContadores(d.contadores, d.tasas || {}));
+  emPoner('em-aviso', emAviso(d.contadores));
+  emPoner('em-grafico', emGrafico(d.por_dia || []));
+  emPoner('em-tabla', emTabla(d.envios || []));
+  emPoner('em-paginas', emPaginas(d));
+  emBotonEstados(d);
+}
+
+function emPintarTipos(tipos) {
+  const sel = document.getElementById('em-tipo');
+  if (!sel) return;
+  const actual = sel.value || '';
+  sel.innerHTML = '<option value="">Todos los tipos</option>' + tipos.map(t =>
+    '<option value="' + emEsc(t.clave) + '"' + (t.clave === actual ? ' selected' : '') + '>' +
+    emEsc(t.etiqueta) + '</option>').join('');
+  sel.value = actual;
+}
+
+function emTasaTexto(tasa) {
+  if (tasa === null || tasa === undefined) return '';
+  return String(tasa).replace('.', ',') + ' % de los enviados';
+}
+
+function emContadores(c, tasas) {
+  return EM_CONTADORES.map(par => {
+    const clave = par[0];
+    let nota = emTasaTexto(tasas[clave]);
+    if (clave === 'enviados') nota = c.sin_eventos ? c.sin_eventos + ' sin datos de Resend' : 'en el mes';
+    return '<div class="em-contador em-contador-' + clave + '">' +
+      '<div class="em-contador-num">' + Number(c[clave] || 0) + '</div>' +
+      '<div class="em-contador-rotulo">' + par[1] + '</div>' +
+      '<div class="em-contador-tasa">' + emEsc(nota) + '</div></div>';
+  }).join('');
+}
+
+function emAviso(c) {
+  if (!c.enviados || !c.sin_eventos) return '';
+  return '<div class="em-aviso">' + c.sin_eventos + ' de ' + c.enviados + ' envíos todavía no tienen ' +
+    'datos de Resend (entregado, abierto, clic). Los envíos anteriores a este registro no los ' +
+    'tienen; los nuevos los reciben por el webhook de Resend.</div>';
+}
+
+function emGrafico(porDia) {
+  const total = porDia.reduce((suma, p) => suma + Number(p.n || 0), 0);
+  if (!total) return '<div class="em-vacio">Sin envíos en este mes.</div>';
+  if (typeof SC === 'undefined' || !SC.serie) {
+    return '<div class="em-vacio">' + total + ' envíos en el mes.</div>';
+  }
+  const tema = document.body.classList.contains('light') ? 'claro' : 'oscuro';
+  const puntos = porDia.map(p => ({x: String(p.dia).slice(8, 10), y: Number(p.n || 0)}));
+  return SC.serie(puntos, {etiqueta: 'Enviados por día, en hora de Montevideo', formato: 'numero', alto: 170}, tema);
+}
+
+function emTabla(envios) {
+  if (!envios.length) return '<div class="em-vacio">No hay envíos que coincidan.</div>';
+  const filas = envios.map(e => {
+    const est = EM_ESTADOS[e.estado] || [e.estado, 'em-chip-gris'];
+    const historico = e.origen === 'historico'
+      ? '<span class="em-nota">histórico, sin eventos</span>' : '';
+    const lead = e.business_id
+      ? '<button type="button" class="em-link" onclick="openClientPanel(' + Number(e.business_id) + ')">' +
+        emEsc(e.negocio || 'Ver ficha') + '</button>'
+      : '<span class="em-nota">—</span>';
+    const extracto = e.extracto ? '<span class="em-extracto">' + emEsc(e.extracto) + '</span>' : '';
+    return '<tr><td class="em-fecha">' + emEsc(e.fecha_local) + '</td>' +
+      '<td>' + emEsc(e.tipo_etiqueta) + '</td>' +
+      '<td class="em-dest">' + emEsc(e.destinatario || '—') + '</td>' +
+      '<td class="em-asunto">' + emEsc(e.asunto) + extracto + '</td>' +
+      '<td><span class="em-chip ' + est[1] + '">' + emEsc(est[0]) + '</span>' + historico + '</td>' +
+      '<td>' + lead + '</td></tr>';
+  }).join('');
+  return '<table class="em-tabla"><thead><tr><th>Fecha</th><th>Tipo</th><th>Destinatario</th>' +
+    '<th>Asunto</th><th>Estado</th><th>Lead</th></tr></thead><tbody>' + filas + '</tbody></table>';
+}
+
+function emPaginas(d) {
+  if (!d.encontrados) return '';
+  return '<button type="button" class="cal-nav-btn" onclick="emIrPagina(-1)" aria-label="Página anterior"' +
+    (d.pagina <= 1 ? ' disabled' : '') + '>&larr;</button>' +
+    '<span>Página ' + d.pagina + ' de ' + d.paginas + ' · ' + d.encontrados + ' envíos</span>' +
+    '<button type="button" class="cal-nav-btn" onclick="emIrPagina(1)" aria-label="Página siguiente"' +
+    (d.pagina >= d.paginas ? ' disabled' : '') + '>&rarr;</button>';
+}
+
+function emIrPagina(delta) {
+  if (!emDatos) return;
+  const nueva = Math.min(Math.max(1, emDatos.pagina + delta), emDatos.paginas);
+  if (nueva === emDatos.pagina) return;
+  emPagina = nueva;
+  loadEmailMkt();
+}
+
+function emMes(delta) {
+  const base = emMesSel || (emDatos && emDatos.mes) || '';
+  if (!base) return;
+  const actual = (emDatos && emDatos.mes_actual) || '';
+  let nuevo = emMesSumar(base, delta);
+  if (actual && nuevo > actual) nuevo = actual;   // el futuro no tiene envios
+  emMesSel = actual && nuevo === actual ? '' : nuevo;
+  emPagina = 1;
+  loadEmailMkt();
+}
+
+function emMesHoy() {
+  emMesSel = '';
+  emPagina = 1;
+  loadEmailMkt();
+}
+
+function emFiltrar() {
+  emPagina = 1;
+  loadEmailMkt();
+}
+
+function emBuscar() {
+  if (emBusquedaTimer) clearTimeout(emBusquedaTimer);
+  emBusquedaTimer = setTimeout(() => {
+    emBusquedaTimer = null;
+    emPagina = 1;
+    loadEmailMkt();
+  }, 300);
+}
+
+// Solo admin, y solo con la clave de Resend en el servidor. El servidor lo
+// vuelve a chequear: esconder el boton no es la seguridad.
+function emBotonEstados(d) {
+  const boton = document.getElementById('em-btn-estados');
+  const nota = document.getElementById('em-estados-nota');
+  if (!boton) return;
+  if (!d.es_admin) {
+    boton.classList.add('em-oculto');
+    if (nota) nota.textContent = '';
+    return;
+  }
+  boton.classList.remove('em-oculto');
+  boton.disabled = !d.hay_api_key;
+  if (nota && !d.hay_api_key) {
+    nota.textContent = 'Actualizar estados está deshabilitado: falta la clave de Resend (RESEND_API_KEY) en el servidor.';
+  }
+}
+
+async function emActualizarEstados() {
+  const boton = document.getElementById('em-btn-estados');
+  const nota = document.getElementById('em-estados-nota');
+  if (!boton || boton.disabled) return;
+  boton.disabled = true;
+  if (nota) nota.textContent = 'Consultando a Resend…';
+  try {
+    const r = await fetch('/api/email-marketing/actualizar-estados', {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({limite: 20})
+    });
+    let d = {};
+    try { d = await r.json(); } catch (e) { d = {}; }
+    if (!r.ok || !d.ok) {
+      if (nota) nota.textContent = d.error || 'No se pudo consultar a Resend.';
+      return;
+    }
+    if (nota) {
+      nota.textContent = 'Consultados ' + d.consultados + ' de ' + d.pendientes + ' sin eventos, ' +
+        d.actualizados + ' actualizados.' +
+        (d.cortado_por_limite ? ' Resend pidió esperar: probá de nuevo en un minuto.' : '');
+    }
+    await loadEmailMkt();
+  } catch (e) {
+    if (nota) nota.textContent = 'No se pudo consultar a Resend.';
+  } finally {
+    boton.disabled = !(emDatos && emDatos.hay_api_key);
+  }
+}
 
 // ========== Daily Programador ==========
 // Daily Programador y Daily Admin (Juan, 15 y 16/9): actividades del dia y
@@ -16415,6 +16790,10 @@ def create_app(db_path: str) -> Flask:
     app = Flask(__name__)
     app.secret_key = os.environ.get("SECRET_KEY") or "scalerics-dev-key-change-in-prod"
     app.config["DB_PATH"] = db_path
+    # Los envios que salen fuera de un request (los hilos de las campanas) se
+    # registran en esta base para el panel Email marketing.
+    from services.email_service import configurar_registro
+    configurar_registro(db_path)
     # Cuando arranco este proceso. Lo usa /api/marketing/version para
     # poder contestar "¿estoy viendo lo ultimo?" sin entrar por SSH.
     import time as _t
@@ -16425,7 +16804,7 @@ def create_app(db_path: str) -> Flask:
     for bp in (leads_bp, demos_bp, calendar_bp, wa_bp, pipeline_bp, tasks_bp, budgets_bp, tokens_bp, meta_bp, calendly_bp, notion_bp, projects_bp, preclientes_bp,
                 notion_clients_bp, resend_bp, linkedin_bp, web_bp, finanzas_bp, marketing_bp,
                 simulador_bp, inteligencia_fin_bp, equipo_bp, horarios_bp, flujos_bp, seg_leads_bp, daily_bp, plantillas_bp,
-                backups_bp):
+                backups_bp, email_mkt_bp):
         app.register_blueprint(bp)
 
     @app.before_request
@@ -17399,8 +17778,8 @@ select:focus{border-color:#0088cc}
 </div>
 
 <script>
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin'];
-const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Inteligencia financiera',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas'};
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt'];
+const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Inteligencia financiera',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas',email_mkt:'Email marketing'};
 let _roles = [];
 
 // Paneles que muestran el check "solo lectura". El dato (roles.paneles_solo_lectura)
