@@ -361,6 +361,51 @@ setTimeout(() => console.log(JSON.stringify({{
     assert "Agosto" not in r["caja"]
 
 
+@sin_node
+def test_con_un_mes_arriba_las_piezas_son_de_ese_mes(tmp_path):
+    """EL BUG del 14/9: arriba decía abril y abajo seguían las piezas de
+    setiembre, porque las piezas tenían su propio mes y la flecha de arriba no
+    lo movía. Con "Un mes" arriba, hay un solo mes."""
+    dossier = json.dumps(_dossier_de_prueba(), ensure_ascii=False)
+    base = json.dumps(_PIEZAS, ensure_ascii=False)
+    cola = f"""
+const _DOSSIER = {dossier};
+const _BASE = {base};
+_mkMesDeHoy = function () {{ return '2026-09'; }};
+_mkMesVisible = function () {{ return new Date(2026, 8 + _mkMesOffset, 1); }};
+_el('mk-rango').value = 'mes';
+const _piezas = [];
+globalThis.fetch = (url) => {{
+  const u = String(url);
+  let d = {{}};
+  if (u.indexOf('/api/marketing/dossier') !== -1) d = _DOSSIER;
+  if (u.indexOf('/api/marketing/piezas') !== -1) {{
+    const mes = decodeURIComponent(u.split('mes=')[1]);
+    _piezas.push(mes);
+    d = Object.assign({{}}, _BASE, {{ mes: mes, nombre: _mkNombreMes(mes) }});
+  }}
+  return Promise.resolve({{ ok: true, status: 200, json: () => Promise.resolve(d) }});
+}};
+const _espera = () => new Promise(r => setTimeout(r, 50));
+(async () => {{
+  const s = {{}};
+  mkMes(-5); await _espera();
+  s.abril = [_piezas[_piezas.length - 1], _els['mk-piezas-mes'].textContent];
+  mkPiezasMes(1); await _espera();
+  s.mayo = [_piezas[_piezas.length - 1], _mkMesOffset, _els['mk-piezas-mes'].textContent];
+  mkPiezasMesHoy(); await _espera();
+  s.hoy = [_piezas[_piezas.length - 1], _mkMesOffset];
+  s.caja = _els['mk-piezas'].innerHTML.length > 0;
+  console.log(JSON.stringify(s));
+}})();
+"""
+    r = _correr(tmp_path, cola)
+    assert r["abril"] == ["2026-04", "Abril 2026"]
+    assert r["mayo"] == ["2026-05", -4, "Mayo 2026"], "la flecha de las piezas mueve la sección"
+    assert r["hoy"] == ["2026-09", 0]
+    assert r["caja"]
+
+
 # Hubo aquí un segundo test que buscaba el mismo bug leyendo el texto: por cada
 # `const`, mirar si el nombre aparecía en una línea anterior. Se sacó porque
 # daba falsos positivos y no había forma barata de arreglarlos: confundía los

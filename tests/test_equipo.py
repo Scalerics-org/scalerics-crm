@@ -330,6 +330,37 @@ def test_c4_dos_recuperos_de_4h_lo_dejan_al_dia(cli):
     assert estado["ausencias"][0]["recuperado"] is True
 
 
+def test_la_grilla_va_a_la_semana_pedida(cli):
+    """Un recupero a tres semanas no entraba en la grilla de dos semanas: se
+    agendaba y no se veia en verde en ningun lado (Juan, 14/9)."""
+    aid = _ausencia(cli).get_json()["id"]
+    cli.post(f"/api/equipo/ausencias/{aid}/recuperos", json={"fecha": "2026-10-07", "horas": 4})
+
+    assert "2026-10-07" not in _fila(_estado(cli), "Gonzalo Siuciak")["dias"]
+
+    r = cli.get("/api/equipo?desde=2026-10-07")
+    assert r.status_code == 200
+    estado = r.get_json()
+    assert estado["semanas"][0][0] == "2026-10-05" and estado["desde"] == "2026-10-05"
+    assert estado["esta_semana"] == LUNES
+    assert _fila(estado, "Gonzalo Siuciak")["dias"]["2026-10-07"]["recupero"] == 4
+    # La ausencia de esta semana sigue contando para el saldo aunque no se vea.
+    assert _fila(estado, "Gonzalo Siuciak")["saldo"] == 4
+
+
+def test_desde_invalido_da_400(cli):
+    assert cli.get("/api/equipo?desde=ayer").status_code == 400
+
+
+def test_un_recupero_en_sabado_agrega_la_columna(cli):
+    aid = _ausencia(cli).get_json()["id"]
+    cli.post(f"/api/equipo/ausencias/{aid}/recuperos", json={"fecha": "2026-09-19", "horas": 4})
+    estado = _estado(cli)
+    assert estado["semanas"][0] == [LUNES, MARTES, MIERCOLES, "2026-09-17", "2026-09-18", "2026-09-19"]
+    assert len(estado["semanas"][1]) == 5, "sin recuperos el fin de semana no aparece"
+    assert _fila(estado, "Gonzalo Siuciak")["dias"]["2026-09-19"]["recupero"] == 4
+
+
 def test_las_horas_corregidas_a_mano_se_respetan(cli):
     r = _ausencia(cli, horas_totales=6)
     assert r.status_code == 201
@@ -662,6 +693,56 @@ def test_la_pantalla_se_pinta_con_lo_que_devuelve_el_servidor(cli, tmp_path):
 
     todo = "".join(str(v) for v in s.values())
     assert not _sin_dinero(todo)
+
+
+@sin_node
+def test_al_agendar_un_recupero_lejos_la_grilla_salta_a_su_semana(cli, tmp_path):
+    aid = _ausencia(cli).get_json()["id"]
+    antes = _estado(cli)
+    cli.post(f"/api/equipo/ausencias/{aid}/recuperos", json={"fecha": "2026-10-07", "horas": 2})
+    octubre = cli.get("/api/equipo?desde=2026-10-07").get_json()
+    cerca = _estado(cli)
+
+    prueba = """
+(async () => {
+  const s = {};
+  await loadEquipo();
+  s.rangoHoy = _el('eq-cal-rango').textContent;
+
+  eqAbrirRecupero(__AUSENCIA__);
+  _el('eq-rec-fecha').value = '2026-10-07';
+  _el('eq-rec-horas').value = '2';
+  await eqGuardarRecupero();
+  s.pedidoLejos = _pedidos.filter(p => p[1] === 'GET').pop()[0];
+  s.calLejos = _el('eq-calendario').innerHTML;
+  s.rangoLejos = _el('eq-cal-rango').textContent;
+
+  eqSemanasHoy();
+  await new Promise(r => setTimeout(r, 10));
+  eqAbrirRecupero(__AUSENCIA__);
+  _el('eq-rec-fecha').value = '2026-09-16';
+  _el('eq-rec-horas').value = '2';
+  await eqGuardarRecupero();
+  s.pedidoCerca = _pedidos.filter(p => p[1] === 'GET').pop()[0];
+
+  eqSemanas(1);
+  await new Promise(r => setTimeout(r, 10));
+  s.pedidoSiguiente = _pedidos.filter(p => p[1] === 'GET').pop()[0];
+
+  console.log(JSON.stringify(s));
+  process.exit(0);
+})().catch(e => { console.error((e && e.stack) || e); process.exit(1); });
+""".replace("__AUSENCIA__", str(aid))
+    s = _correr_js(tmp_path, {"/api/equipo": antes, "/api/equipo?desde=2026-10-07": octubre,
+                              "/api/equipo?desde=2026-09-21": cerca}, prueba)
+
+    assert s["rangoHoy"] == "Del lun 14/09 al dom 27/09"
+    assert s["pedidoLejos"] == "/api/equipo?desde=2026-10-07"
+    assert '<td class="eq-dia eq-recupero">+2h</td>' in s["calLejos"]
+    assert "Semana del lun 05/10" in s["calLejos"] and "Esta semana" not in s["calLejos"]
+    assert s["rangoLejos"] == "Del lun 05/10 al dom 18/10"
+    assert s["pedidoCerca"] == "/api/equipo", "si ya se ve, la grilla no se mueve"
+    assert s["pedidoSiguiente"] == "/api/equipo?desde=2026-09-21"
 
 
 @sin_node
