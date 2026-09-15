@@ -1,79 +1,50 @@
-"""Inteligencia financiera: qué hacer este mes para ganar plata, con la cuenta.
+"""Inteligencia financiera: diagnóstico del mes y sugerencias para ganar plata.
 
-Lee todo el sistema y arma una lista corta de acciones (reglas R1 a R7 del
-documento de Juan), ordenadas por cuánta plata mueven. Las recomendaciones se
-recalculan UNA vez por día (`corrida_diaria`), no en cada carga de la pantalla.
+No pide datos. Lee lo que ya hay en el sistema (Finanzas, la pauta de Meta, el
+semáforo de leads, Demos, Clientes, Proyectos y Equipo), saca conclusiones y
+sugiere qué hacer, cada cosa con su número y la cuenta a la vista (pedido de
+Juan, 15/9: "no quiero que me pida datos"). Si alguien cargó a mano un motivo
+de pérdida, el esfuerzo de un proyecto o el origen de una venta, se aprovecha;
+si no, se usa el mejor dato que exista. Si para una regla no hay ningún dato,
+esa regla no aparece, sin aviso.
 
-Moneda: todo en dólares (USD), con la misma conversión que Finanzas
-(`monto_usd` de los movimientos y `a_usd` con el tipo de cambio del fijo). El
-documento dice "pesos", pero Finanzas trabaja en USD; el umbral de "impacto
-menor a 100 al mes" es USD 100.
+Moneda: USD, con la misma conversión que Finanzas (`monto_usd` de los
+movimientos y `a_usd` con el tipo de cambio del fijo). Ventana: los 3 meses
+completos anteriores más el mes en curso.
 
-Criterio 8, nunca inventar números: cada valor sale de una tabla del sistema o
-de una cuenta entre valores del sistema, y la caja del cálculo muestra la cuenta
-entera. Los únicos números escritos acá son los del documento (umbral 100,
-máximo 6, 3 meses, 30 días, 20 %, 40 %, 30 %) y `FUNCIONO_SI_LLEGA_A`, que es un
-supuesto a confirmar. Lo que el sistema no tiene (la comisión de cobro) se
-carga desde la pantalla en `if_supuestos`; sin eso la regla muestra el aviso de
-dato faltante.
+Se recalcula UNA vez por día (`corrida_diaria`), no en cada carga.
 
 De dónde sale cada dato
 -----------------------
-Ventas            negocios en ETAPAS_CLIENTE (cerrado / en desarrollo /
-                  finalizado). Fecha: el primer `lead_event` que los pasó a una
-                  de esas etapas; si no hay, `scraped_at` (el alta). Más las
-                  fichas de Proceso de venta en "Presupuesto Aceptado" que no
-                  están conectadas a un negocio (ventas sin lead, sin fecha).
-Canal de la venta `ventas_origen_manual` (elegido a mano) y si no,
-                  `businesses.source` normalizado: meta -> Meta Ads; discovery o
-                  vacío con `maps_url` (padrón de Google Maps) -> Outbound;
-                  web_guia / calendly / calendly_gcal -> Otro. 'manual', vacío
-                  sin padrón o un valor desconocido -> sin origen (se pide).
-Precio cobrado    ingresos de Finanzas del cliente sin la categoría
-                  mantenimiento; si no hay, `businesses.monto_pagado` en USD
-                  (Clientes); si no, el último `budgets.total_amount`.
-Tipo de proyecto  la categoría de ingreso de Finanzas con más plata
-                  (desarrollo_web / software_medida / marketing); si no,
-                  `client_info.rubro` (lo que pidió en el bot); si no,
-                  `businesses.interest`.
-Proyecto -> venta `projects.notion_page_id` = `notion_clients.notion_project_page_id`
-                  y `notion_clients.business_id` = el negocio.
-Esfuerzo          `proyectos_esfuerzo` (cargado en Proyectos al cerrar).
-Costo por hora    egresos de Finanzas de los últimos 3 meses sin publicidad ÷
-                  horas base del equipo en esos días (personas que llevan horas
-                  × horas por día × días hábiles). Supuesto a confirmar: reparte
-                  todo el gasto de la empresa sobre las horas del equipo.
-Margen por venta  promedio de (precio − horas × costo por hora) de los proyectos
-                  con esfuerzo y precio.
-Capacidad del mes `capacidad()` de services/equipo.py semana por semana, en la
-                  parte de cada semana que cae en el mes: horas base − ausencias
-                  (los recuperos no suman). Menos las horas comprometidas en
-                  proyectos en curso (su esfuerzo o el promedio, en la parte de
-                  su timeline que cae en el mes). Capacidad en proyectos = horas
-                  libres ÷ esfuerzo promedio, redondeado para abajo.
-Pauta de Meta     `meta_insights.spend` de los últimos 3 meses (por campaña;
-                  nunca sumado con `meta_ad_insights`, que contaría dos veces).
-Pérdidas          fichas de Proceso de venta en Perdido / Presupuesto Rechazado,
-                  demos de la planilla en "no cerró", leads en `rechazo`. Una
-                  pérdida por negocio (la ficha, la demo y el lead del mismo
-                  negocio son la misma pérdida). Motivo en `perdidas_motivo`.
-Cobros vencidos   `finanzas_por_cobrar` sin cobrar con `vence` anterior a hoy.
-Fijos por canal   `finanzas_recurrentes` (egresos activos) + `fijos_canal`.
-Resultado del mes ingresos − egresos de Finanzas del mes en curso (`_totales`).
+Ingresos/egresos  `finanzas_movimientos` (sin anulados), por período.
+Fijos             `finanzas_recurrentes` activos y vigentes este mes. Variables
+                  = egresos sin `recurrente_id`, promedio de los 3 meses previos.
+Caja              la de Balance General (`balance_general`, tipo interno, al día
+                  de hoy): la misma que ve Finanzas.
+Mantenimiento     ingresos fijos y cobros de la categoría mantenimiento.
+Ventas            negocios en cerrado / en desarrollo / finalizado, fechados por
+                  su primer evento de cierre (o el alta). Canal: el elegido a mano
+                  si existe, si no `businesses.source` (meta = Meta Ads).
+Ticket promedio   precio de las ventas de la ventana (cobros en Finanzas sin
+                  mantenimiento, monto pagado en Clientes o último presupuesto);
+                  si ninguna tiene precio, todas las ventas con precio.
+Margen %          (ingresos − egresos) ÷ ingresos de la ventana.
+Margen por venta  ticket promedio × margen %.
+Pauta y leads     `meta_insights.spend` y leads con `source='meta'` por fecha de
+                  alta. Costo por venta = pauta ÷ ventas de Meta.
+Embudo            leads de Meta → demo agendada → demo realizada → venta, con el
+                  historial de `lead_events` y el `crm_status` (semáforo), más
+                  las demos "no cerró" de Demos.
+Capacidad         `capacidad()` de Equipo, horas libres ÷ horas por proyecto.
+Horas/proyecto    el esfuerzo cargado si hay; si no, la duración promedio de los
+                  timelines de Proyectos × horas por día del equipo (supuesto).
+Costo por hora    egresos de los 3 meses previos sin pauta ÷ horas del equipo.
 
-Cómo se mide cada regla a los 30 días (`medir`)
-------------------------------------------------
-R1  ingreso mensual por mantenimiento neto de comisión: hoy − al tomarla.
-R2  (ventas de Meta Ads en los 30 días − ventas de Meta por mes al tomarla) ×
-    (margen − costo por venta al tomarla).
-R3  (ventas totales en los 30 días − ventas por mes al tomarla) × margen.
-R4  suma de los saldos vencidos listados que ya figuran cobrados.
-R5  suma de los fijos listados que ya están apagados o terminados.
-R6  margen del tipo hoy − al tomarla (en puntos); funcionó si llega al 20 %.
-R7  (pérdidas por ese motivo por mes al tomarla − pérdidas en los 30 días) ×
-    margen por venta.
-Funcionó: el impacto real llega a `FUNCIONO_SI_LLEGA_A` del esperado (R6: el
-margen del tipo quedó en 20 % o más).
+Supuestos que se muestran en la tarjeta: la comisión de cobro y la cuota de
+mantenimiento cuando salen del Simulador o de presupuestos, y las horas por
+proyecto cuando son estimadas. Los umbrales (USD 100, 6 sugerencias, 3 meses de
+caja, 20 % de margen, 30 % de recupero) son los del pedido; los demás están
+nombrados abajo como constantes.
 """
 
 from __future__ import annotations
@@ -91,23 +62,35 @@ from database import (ETAPAS_CLIENTE, _connect, get_recurrente,
                       listar_clientes_activos, listar_movimientos,
                       listar_personas_equipo, listar_por_cobrar,
                       listar_recurrentes)
-from services.embudo import normalizar_estado
+from services.embudo import alcanzo, normalizar_estado
 from services.equipo import capacidad, dias_habiles, lunes_de
 from services.finanzas import _totales, a_usd
 
 logger = logging.getLogger(__name__)
 
-# ── lo que dice el documento ─────────────────────────────────────────────────
-UMBRAL_IMPACTO_USD = 100        # regla transversal 5
+# ── umbrales ─────────────────────────────────────────────────────────────────
+UMBRAL_IMPACTO_USD = 100
 MAX_RECOMENDACIONES = 6
-VENTANA_MESES = 3               # ventana móvil
-DIAS_SEGUIMIENTO = 30           # regla transversal 4
-MARGEN_MINIMO = 0.20            # R6
-CONCENTRACION_MOTIVO = 0.40     # R7
-RECUPERO_MOTIVO = 0.30          # R7
-# Supuesto a confirmar con Juan: "funcionó" si lo que pasó de verdad llega a la
-# mitad de lo esperado. El documento pide comparar, no dice contra qué umbral.
-FUNCIONO_SI_LLEGA_A = 0.5
+MAX_DIAGNOSTICO = 6
+VENTANA_MESES = 3
+DIAS_SEGUIMIENTO = 30
+MARGEN_MINIMO = 0.20          # R6
+RECUPERO_PERDIDAS = 0.30      # R7
+CAJA_MESES_MINIMO = 3         # alerta de caja y R8
+CAJA_MESES_ATENCION = 6       # supuesto: debajo de 6 meses, "atención"
+CONCENTRACION_ALTA = 0.40     # supuesto: más del 40 % en un cliente es riesgo (R9)
+CONCENTRACION_ATENCION = 0.25
+DEMOS_REALIZADAS_MINIMO = 0.60  # supuesto: si se hacen menos de 6 de cada 10 demos (R10)
+FIJO_PESA = 0.10              # supuesto: un fijo que es el 10 % de los ingresos pesa (R5)
+PESO_FIJOS_ALTO = 0.70
+PESO_FIJOS_ATENCION = 0.40
+FUNCIONO_SI_LLEGA_A = 0.5     # supuesto: funcionó si lo real llega a la mitad de lo esperado
+
+# Los mismos valores por defecto que el Simulador (`SIM_DEFAULTS` en
+# dashboard.py: mantenimiento.comisionCobro y mantenimiento.cuotaAltaNueva).
+# Hay un test que verifica que coincidan.
+COMISION_SIMULADOR_PCT = 5
+CUOTA_SIMULADOR_USD = 100
 
 CORRIDA = "inteligencia_fin"
 LISTA_MAX = 50
@@ -115,14 +98,17 @@ ESFUERZO_MAX = 5000
 _EPS = 1e-9
 _MVD = timezone(timedelta(hours=-3))
 
-REGLAS = {  # regla -> (confianza, tipo)
+REGLAS = {  # regla -> (confianza por defecto, tipo)
     "R1": ("alta", "ingreso"),
     "R2": ("media", "ingreso"),
-    "R3": ("media", "ingreso"),
+    "R3": ("media", "recorte"),
     "R4": ("alta", "ingreso"),
     "R5": ("media", "recorte"),
     "R6": ("alta", "alerta"),
     "R7": ("baja", "ingreso"),
+    "R8": ("alta", "alerta"),
+    "R9": ("alta", "alerta"),
+    "R10": ("media", "ingreso"),
 }
 
 MOTIVOS = {
@@ -142,59 +128,30 @@ ESTADOS_PERDIDO_NOTION = ("Perdido", "Presupuesto Rechazado")
 ESTADO_PERDIDO_DEMO = "no_cerro"
 ESTADO_PERDIDO_LEAD = "rechazo"
 ESTADO_ACEPTADO = "Presupuesto Aceptado"   # el mismo de services/notion_service.py
+# "Hubo demo y no cerró" en el semáforo (violeta).
+ESTADOS_DEMO_SIN_CIERRE = {"presupuesto_enviado", "follow_up_1", "follow_up_2",
+                           "en_espera", "rechazo"}
 
-# Etapas de Notion Projects que ya no ocupan al equipo.
 ETAPAS_TERMINADAS = {"done", "complete", "completed", "canceled", "cancelled",
                      "archived", "terminado", "finalizado", "entregado", "cancelado"}
 CATEGORIAS_TIPO = ("desarrollo_web", "software_medida", "marketing")
 ETIQUETA_TIPO = {"desarrollo_web": "Desarrollo web",
                  "software_medida": "Software a medida", "marketing": "Marketing"}
+ETIQUETA_CATEGORIA = {"infraestructura": "infraestructura", "herramientas": "herramientas",
+                      "publicidad": "publicidad", "servicios": "servicios", "otros": "otros gastos"}
+# Lo que no se sugiere recortar: no es un gasto que se pueda probar un mes sin.
+CATEGORIAS_NO_RECORTABLES = ("impuestos", "retiros")
 
 SUPUESTOS = {"comision_cobro_pct": "Comisión de cobro del mantenimiento (%)"}
 
-ADVERTENCIA_R5 = ("Puede estar aportando algo que el sistema no mide (marca, "
-                  "referidos que no quedaron registrados). Probá un mes sin ese "
-                  "gasto antes de cortarlo.")
+ADVERTENCIA_R5 = ("Puede estar aportando algo que el sistema no mide. Probá un mes sin "
+                  "ese gasto antes de cortarlo.")
 ADVERTENCIA_R6 = ("La recomendación es revisar el precio, nunca abandonar la línea: "
                   "un margen bajo puede convenir si abre mantenimiento recurrente.")
-SUGERENCIA_R7 = {
-    "precio": "Revisá cómo presentás el precio: alcance por etapas o en cuotas.",
-    "se_enfrio": "Acortá el tiempo entre la demo y el presupuesto, y seguí cada caso en Seguimiento de leads.",
-    "eligio_otro": "Averiguá contra quién perdés y qué ofrece que vos no.",
-    "no_era_momento": "Agendales un seguimiento a futuro en Seguimiento de leads.",
-    "no_calificaba": "Filtrá mejor antes de agendar la demo.",
-}
+ADVERTENCIA_R3 = ("Mirá qué campaña trae las pocas ventas antes de pausar todo: bajar "
+                  "la que no rinde puede alcanzar.")
 
-MARGEN_REGLAS = ("R2", "R3", "R6", "R7")
-AVISOS = {
-    "motivo": ("Faltan motivos de pérdida",
-               "Elegí el motivo de cada pérdida de la lista. Habilitaría ver dónde se pierde la plata (R7)."),
-    "esfuerzo": ("Falta el esfuerzo de los proyectos",
-                 "Cargá las horas o los días de cada proyecto al cerrarlo, en Proyectos. Habilitaría el "
-                 "margen por venta y por tipo: escalar la pauta (R2), capacidad ociosa (R3), margen "
-                 "bajo por tipo de proyecto (R6) y motivo de pérdida dominante (R7)."),
-    "precio": ("Los proyectos con esfuerzo no llegan a un precio",
-               "Conectá la ficha de Proceso de venta con su proyecto y con el cliente del CRM, y cargá "
-               "lo cobrado en Finanzas. Sin precio no hay margen (R2, R3, R6, R7)."),
-    "costo_hora": ("Falta el costo por hora del equipo",
-                   "Sale de los egresos de Finanzas de los últimos 3 meses (sin pauta) ÷ las horas del "
-                   "equipo cargado en Equipo. Habilitaría el margen (R2, R3, R6, R7)."),
-    "equipo": ("Falta la capacidad del equipo",
-               "Cargá en Equipo a las personas que llevan horas. Habilitaría escalar la pauta (R2) y "
-               "la capacidad ociosa (R3)."),
-    "origen": ("Hay ventas sin origen",
-               "Elegí el canal de cada venta sin lead vinculado. Habilitaría el costo por venta por "
-               "canal (R2, R3) y los gastos fijos sin retorno (R5)."),
-    "moneda_pauta": ("La pauta de Meta no está en dólares",
-                     "El gasto de Meta viene en otra moneda y el sistema no tiene con qué convertirlo. "
-                     "Habilitaría R2 y R3."),
-    "cuota": ("No hay ninguna cuota de mantenimiento en Finanzas",
-              "Cargá al menos un ingreso fijo de categoría mantenimiento con su cliente. Habilitaría "
-              "cobrar mantenimiento a los clientes que no lo pagan (R1)."),
-    "comision": ("Falta la comisión de cobro",
-                 "Cargala en Supuestos, abajo de los datos. Habilitaría cobrar mantenimiento a los "
-                 "clientes que no lo pagan (R1)."),
-}
+NIVELES = ("mal", "atencion", "bien")
 
 
 # ── tiempo ───────────────────────────────────────────────────────────────────
@@ -226,14 +183,34 @@ def _fecha(valor) -> date | None:
         return None
 
 
-def _restar_meses(d: date, n: int) -> date:
-    y, m = divmod(d.year * 12 + d.month - 1 - n, 12)
-    return date(y, m + 1, min(d.day, calendar.monthrange(y, m + 1)[1]))
+def _periodo(d: date) -> str:
+    return f"{d.year:04d}-{d.month:02d}"
+
+
+def _mover_periodo(periodo: str, n: int) -> str:
+    y, m = divmod(int(periodo[:4]) * 12 + int(periodo[5:7]) - 1 + n, 12)
+    return f"{y:04d}-{m + 1:02d}"
+
+
+def _primer_dia(periodo: str) -> date:
+    return date(int(periodo[:4]), int(periodo[5:7]), 1)
+
+
+def _ultimo_dia(periodo: str) -> date:
+    y, m = int(periodo[:4]), int(periodo[5:7])
+    return date(y, m, calendar.monthrange(y, m)[1])
+
+
+def periodos(hoy: date) -> tuple[list[str], str]:
+    """(los 3 meses completos anteriores, el mes en curso)."""
+    mes = _periodo(hoy)
+    return [_mover_periodo(mes, -i) for i in range(VENTANA_MESES, 0, -1)], mes
 
 
 def ventana(hoy: date) -> tuple[date, date]:
-    """Los últimos 3 meses, hasta hoy inclusive."""
-    return _restar_meses(hoy, VENTANA_MESES), hoy
+    """Del primer día de los 3 meses anteriores hasta hoy."""
+    previos, _ = periodos(hoy)
+    return _primer_dia(previos[0]), hoy
 
 
 # ── formato ──────────────────────────────────────────────────────────────────
@@ -254,6 +231,10 @@ def num(x, decimales: int = 1) -> str:
     if abs(n - round(n)) < 10 ** -(decimales + 1):
         return f"{int(round(n)):,}".replace(",", ".")
     return f"{n:,.{decimales}f}".replace(",", "#").replace(".", ",").replace("#", ".")
+
+
+def pct(fraccion, decimales: int = 0) -> str:
+    return num(float(fraccion or 0) * 100, decimales)
 
 
 def _dmy(d: date | None) -> str:
@@ -282,14 +263,17 @@ def _numero(valor) -> float | None:
     return x if math.isfinite(x) else None
 
 
+def _promedio(valores) -> float | None:
+    valores = list(valores)
+    return sum(valores) / len(valores) if valores else None
+
+
 # ── ventas y su origen ───────────────────────────────────────────────────────
 
 def canal_de_source(source, maps_url=None) -> str | None:
-    """`businesses.source` a los canales del documento, o None si no se sabe."""
+    """`businesses.source` a los canales, o None si no se sabe."""
     s = (source or "").strip().lower()
     if not s:
-        # Sin source: los del padrón scrapeado de Google Maps son Outbound. Uno
-        # cargado a mano sin source no dice de dónde vino.
         return "outbound" if (maps_url or "").strip() else None
     return SOURCE_A_CANAL.get(s)
 
@@ -313,26 +297,22 @@ def ventas(db_path: str) -> list[dict]:
 
     salida = []
     for n in negocios:
-        canal, origen = manual.get(("business", n["id"])), "manual"
-        if not canal:
-            canal = canal_de_source(n["source"], n["maps_url"])
-            origen = "lead" if canal else None
+        canal = manual.get(("business", n["id"])) or canal_de_source(n["source"], n["maps_url"])
         salida.append({"entidad": "business", "id": n["id"], "business_id": n["id"],
                        "nombre": n["name"], "fecha": primera.get(n["id"]) or _fecha(n["scraped_at"]),
-                       "canal": canal, "origen": origen, "source": n["source"] or ""})
+                       "canal": canal, "source": n["source"] or ""})
     fichas = _q(db_path, "SELECT nc.id, nc.name FROM notion_clients nc "
                          "LEFT JOIN businesses b ON b.id = nc.business_id "
                          "WHERE nc.status = ? AND b.id IS NULL", (ESTADO_ACEPTADO,))
     for f in fichas:
-        canal = manual.get(("notion_client", f["id"]))
         salida.append({"entidad": "notion_client", "id": f["id"], "business_id": None,
-                       "nombre": f["name"], "fecha": None, "canal": canal,
-                       "origen": "manual" if canal else None, "source": ""})
+                       "nombre": f["name"], "fecha": None,
+                       "canal": manual.get(("notion_client", f["id"])), "source": ""})
     return salida
 
 
 def precios_y_tipos(db_path: str) -> dict[int, dict]:
-    """Precio cobrado y tipo de proyecto por negocio (ver el docstring del módulo)."""
+    """Precio cobrado y tipo de proyecto por negocio."""
     info: dict[int, dict] = {}
     cats: dict[int, dict] = {}
     for f in _q(db_path, "SELECT client_id, categoria, SUM(monto_usd) AS total "
@@ -349,7 +329,7 @@ def precios_y_tipos(db_path: str) -> dict[int, dict]:
         info[cid] = {"precio": total, "fuente_precio": "cobros en Finanzas",
                      "tipo": max(tipos, key=tipos.get) if tipos else None,
                      "fuente_tipo": "categoría del cobro en Finanzas" if tipos else ""}
-    for f in _q(db_path, "SELECT id, monto_pagado, moneda_pagado FROM businesses "
+    for f in _q(db_path, "SELECT id, monto_pagado FROM businesses "
                          "WHERE monto_pagado > 0 AND moneda_pagado = 'USD'"):
         if f["id"] not in info:
             info[f["id"]] = {"precio": round(float(f["monto_pagado"]), 2),
@@ -371,7 +351,7 @@ def precios_y_tipos(db_path: str) -> dict[int, dict]:
     return info
 
 
-# ── proyectos, costo por hora, margen y capacidad ────────────────────────────
+# ── proyectos, horas y capacidad ─────────────────────────────────────────────
 
 def proyectos(db_path: str) -> list[dict]:
     filas = _q(db_path, "SELECT p.id, p.notion_page_id, p.name, p.stage, p.timeline_start, "
@@ -390,47 +370,49 @@ def proyectos(db_path: str) -> list[dict]:
     return filas
 
 
+def _personas_con_horas(db_path: str) -> list[dict]:
+    return [p for p in listar_personas_equipo(db_path) if p.get("lleva_horas")]
+
+
+def horas_por_proyecto(db_path: str, proys: list[dict]) -> dict | None:
+    """Las horas que lleva un proyecto: las cargadas o, si no hay, una estimación."""
+    cargadas = [p["horas"] for p in proys if p["horas"]]
+    if cargadas:
+        return {"horas": round(sum(cargadas) / len(cargadas), 2), "estimado": False,
+                "fuente": f"esfuerzo cargado en {len(cargadas)} "
+                          f"{_plural(len(cargadas), 'proyecto', 'proyectos')}"}
+    personas = _personas_con_horas(db_path)
+    duraciones = []
+    for p in proys:
+        inicio, fin = _fecha(p["timeline_start"]), _fecha(p["timeline_end"])
+        if inicio and fin and fin >= inicio:
+            dias = len(dias_habiles(inicio, fin))
+            if dias:
+                duraciones.append(dias)
+    if not duraciones or not personas:
+        return None
+    dias = sum(duraciones) / len(duraciones)
+    por_dia = sum(float(p["horas_por_dia"]) for p in personas) / len(personas)
+    return {"horas": round(dias * por_dia, 2), "estimado": True,
+            "fuente": (f"estimado: duración promedio de {len(duraciones)} "
+                       f"{_plural(len(duraciones), 'timeline', 'timelines')} de Proyectos "
+                       f"({num(dias)} días hábiles) × {num(por_dia)} h por día del equipo")}
+
+
 def costo_hora(db_path: str, desde: date, hasta: date) -> dict:
     egresos = round(sum(float(m["monto_usd"] or 0)
                         for m in listar_movimientos(db_path, tipo="egreso")
                         if m["categoria"] != "publicidad"
                         and desde.isoformat() <= (m["fecha"] or "")[:10] <= hasta.isoformat()), 2)
-    personas = [p for p in listar_personas_equipo(db_path) if p.get("lleva_horas")]
+    personas = _personas_con_horas(db_path)
     dias = len(dias_habiles(desde, hasta))
     horas = round(sum(float(p["horas_por_dia"]) for p in personas) * dias, 2)
     valor = round(egresos / horas, 2) if egresos > 0 and horas > 0 else None
     return {"egresos": egresos, "horas": horas, "dias": dias, "personas": len(personas), "valor": valor}
 
 
-def margenes(db_path: str, hoy: date) -> dict:
-    desde, hasta = ventana(hoy)
-    ch = costo_hora(db_path, desde, hasta)
-    proys = proyectos(db_path)
-    precios = precios_y_tipos(db_path)
-    con_esfuerzo = [p for p in proys if p["horas"]]
-    filas = []
-    for p in con_esfuerzo:
-        info = precios.get(p["business_id"]) if p["business_id"] else None
-        if not info or not info.get("precio"):
-            continue
-        costo = round(p["horas"] * ch["valor"], 2) if ch["valor"] is not None else None
-        filas.append({"project_id": p["id"], "nombre": p["name"], "horas": p["horas"],
-                      "precio": info["precio"], "fuente_precio": info["fuente_precio"],
-                      "tipo": info["tipo"], "fuente_tipo": info["fuente_tipo"], "costo": costo,
-                      "margen": round(info["precio"] - costo, 2) if costo is not None else None})
-    esfuerzo_prom = (round(sum(p["horas"] for p in con_esfuerzo) / len(con_esfuerzo), 2)
-                     if con_esfuerzo else None)
-    precio_prom = round(sum(f["precio"] for f in filas) / len(filas), 2) if filas else None
-    esf_con_precio = round(sum(f["horas"] for f in filas) / len(filas), 2) if filas else None
-    margen_venta = (round(sum(f["margen"] for f in filas) / len(filas), 2)
-                    if filas and ch["valor"] is not None else None)
-    return {"costo_hora": ch, "proyectos": proys, "con_esfuerzo": len(con_esfuerzo),
-            "filas": filas, "esfuerzo_promedio": esfuerzo_prom, "precio_promedio": precio_prom,
-            "esfuerzo_con_precio": esf_con_precio, "margen_venta": margen_venta}
-
-
-def capacidad_mes(db_path: str, hoy: date, proys: list[dict], esfuerzo_prom) -> dict | None:
-    if not [p for p in listar_personas_equipo(db_path) if p.get("lleva_horas")]:
+def capacidad_mes(db_path: str, hoy: date, proys: list[dict], horas_proyecto) -> dict | None:
+    if not _personas_con_horas(db_path):
         return None
     primero = hoy.replace(day=1)
     ultimo = hoy.replace(day=calendar.monthrange(hoy.year, hoy.month)[1])
@@ -453,7 +435,7 @@ def capacidad_mes(db_path: str, hoy: date, proys: list[dict], esfuerzo_prom) -> 
         inicio, fin = _fecha(p["timeline_start"]), _fecha(p["timeline_end"])
         if (fin and fin < primero) or (inicio and inicio > ultimo):
             continue
-        horas = p["horas"] or esfuerzo_prom
+        horas = p["horas"] or horas_proyecto
         if not horas:
             continue
         parte = 1.0
@@ -465,12 +447,14 @@ def capacidad_mes(db_path: str, hoy: date, proys: list[dict], esfuerzo_prom) -> 
         en_curso += 1
 
     libres_h = max(netas - comprometidas, 0.0)
-    slots = math.floor(libres_h / esfuerzo_prom + _EPS) if esfuerzo_prom else None
+    slots = math.floor(libres_h / horas_proyecto + _EPS) if horas_proyecto else None
     return {"desde": primero, "hasta": ultimo, "base": round(base, 2),
             "ausencia": round(ausencia, 2), "netas": round(netas, 2),
             "comprometidas": round(comprometidas, 2), "en_curso": en_curso,
             "libres_horas": round(libres_h, 2), "slots": slots}
 
+
+# ── pauta, embudo, caja ──────────────────────────────────────────────────────
 
 def pauta_meta(db_path: str, desde: date, hasta: date) -> dict:
     d, h = desde.isoformat(), hasta.isoformat()
@@ -479,13 +463,73 @@ def pauta_meta(db_path: str, desde: date, hasta: date) -> dict:
     monedas = {(r["currency"] or "").upper()
                for r in _q(db_path, "SELECT DISTINCT currency FROM meta_insights "
                                     "WHERE date BETWEEN ? AND ? AND spend > 0", (d, h))}
-    leads = _q(db_path, "SELECT COUNT(*) AS n FROM businesses WHERE source = 'meta' "
-                        "AND substr(scraped_at, 1, 10) BETWEEN ? AND ?", (d, h))[0]["n"]
-    return {"gasto": round(float(gasto or 0), 2), "leads": leads,
-            "monedas_raras": sorted(monedas - {"", "USD"})}
+    return {"gasto": round(float(gasto or 0), 2), "monedas_raras": sorted(monedas - {"", "USD"})}
 
 
-# ── pérdidas ─────────────────────────────────────────────────────────────────
+def embudo(db_path: str, desde: date, hasta: date) -> dict:
+    """Leads de Meta que entraron en esas fechas y hasta dónde llegó cada uno."""
+    leads = _q(db_path, "SELECT id, crm_status FROM businesses WHERE source = 'meta' "
+                        "AND substr(replace(scraped_at, 'T', ' '), 1, 10) BETWEEN ? AND ?",
+               (desde.isoformat(), hasta.isoformat()))
+    eventos: dict[int, set] = {}
+    ids = [l["id"] for l in leads]
+    for i in range(0, len(ids), 500):
+        tramo = ids[i:i + 500]
+        for e in _q(db_path, f"SELECT lead_id, new_status FROM lead_events "
+                             f"WHERE lead_id IN ({', '.join('?' for _ in tramo)})", tramo):
+            eventos.setdefault(e["lead_id"], set()).add(e["new_status"])
+
+    c = {"leads": len(leads), "no_atiende": 0, "no_interesa": 0, "atendieron": 0,
+         "agendadas": 0, "realizadas": 0, "ventas": 0}
+    sin_cierre: set = set()
+    for l in leads:
+        estado = normalizar_estado(l["crm_status"] or "")
+        estados = eventos.get(l["id"], set()) | {estado}
+        if estado == "llamar_despues":
+            c["no_atiende"] += 1
+        if estado == "no_interesa":
+            c["no_interesa"] += 1
+        if estado == "no_interesa" or alcanzo(estados, "interesado"):
+            c["atendieron"] += 1
+        if alcanzo(estados, "demo_agendada"):
+            c["agendadas"] += 1
+        if alcanzo(estados, "demo_1"):
+            c["realizadas"] += 1
+        if alcanzo(estados, "cerrado"):
+            c["ventas"] += 1
+        elif estado in ESTADOS_DEMO_SIN_CIERRE:
+            sin_cierre.add(l["id"])
+    # Las demos que la planilla marca "no cerró" en esos meses, sin repetir negocio.
+    for d in _q(db_path, "SELECT client_id FROM demos_realizadas WHERE estado_planilla = ? "
+                         "AND COALESCE(NULLIF(mes_planilla, ''), substr(fecha, 1, 7)) BETWEEN ? AND ?",
+                (ESTADO_PERDIDO_DEMO, _periodo(desde), _periodo(hasta))):
+        sin_cierre.add(d["client_id"])
+    c["demo_no_cerro"] = len(sin_cierre)
+    c["etapas"] = [
+        {"clave": "agendar", "nombre": "de lead a demo agendada", "base": c["leads"], "pasan": c["agendadas"]},
+        {"clave": "hacer", "nombre": "de demo agendada a demo realizada", "base": c["agendadas"], "pasan": c["realizadas"]},
+        {"clave": "cerrar", "nombre": "de demo realizada a venta", "base": c["realizadas"], "pasan": c["ventas"]},
+    ]
+    for e in c["etapas"]:
+        e["tasa"] = e["pasan"] / e["base"] if e["base"] else None
+    return c
+
+
+def caja_hoy(db_path: str, hoy: date) -> float | None:
+    """La caja de Balance General (la misma que Finanzas). None sin movimientos."""
+    if not _q(db_path, "SELECT 1 AS x FROM finanzas_movimientos WHERE anulado = 0 LIMIT 1"):
+        return None
+    try:
+        from services.finanzas import balance_general
+        bg = balance_general(db_path, "interno", hoy.isoformat())
+        fila = next(f for f in bg["activo"]["filas"] if f["clave"] == "caja")
+        return round(float(fila["monto"]), 2)
+    except Exception:
+        logger.warning("inteligencia financiera: no se pudo leer la caja", exc_info=True)
+        return None
+
+
+# ── pérdidas cargadas a mano (si hay) ────────────────────────────────────────
 
 def perdidas(db_path: str) -> list[dict]:
     """Una pérdida por negocio, con su motivo (el cargado más reciente)."""
@@ -524,7 +568,6 @@ def perdidas(db_path: str) -> list[dict]:
 
 
 def motivos_por_entidad(db_path: str, entidad: str) -> dict[int, str | None]:
-    """{id: motivo} de las cosas perdidas de esa entidad, para pintar el selector."""
     salida = {}
     for g in perdidas(db_path):
         for it in g["items"]:
@@ -535,17 +578,15 @@ def motivos_por_entidad(db_path: str, entidad: str) -> dict[int, str | None]:
 
 def guardar_motivo(db_path: str, entidad: str, entidad_id: int, motivo,
                    quien: str = "", ahora: datetime | None = None) -> str | None:
-    """Devuelve None si guardó, o el mensaje de error."""
     if entidad not in ENTIDADES_PERDIDA:
         return "no se reconoce qué se perdió"
     if motivo not in MOTIVOS:
         return "elegí un motivo de la lista: " + " / ".join(MOTIVOS.values()).lower()
-    item = next((it for g in perdidas(db_path) for it in g["items"]
-                 if it["entidad"] == entidad and it["entidad_id"] == entidad_id), None)
-    if not item:
+    grupos = perdidas(db_path)
+    grupo = next((g for g in grupos for it in g["items"]
+                  if it["entidad"] == entidad and it["entidad_id"] == entidad_id), None)
+    if not grupo:
         return "eso no está marcado como perdido"
-    grupo = next(g for g in perdidas(db_path) if item in g["items"])
-    ahora = ahora or ahora_utc()
     conn = _connect(db_path)
     try:
         conn.execute(
@@ -554,7 +595,7 @@ def guardar_motivo(db_path: str, entidad: str, entidad_id: int, motivo,
             "motivo = excluded.motivo, motivo_en = excluded.motivo_en, "
             "cargado_por = excluded.cargado_por, "
             "business_id = COALESCE(excluded.business_id, perdidas_motivo.business_id)",
-            (entidad, entidad_id, grupo["business_id"], motivo, _iso(ahora), quien))
+            (entidad, entidad_id, grupo["business_id"], motivo, _iso(ahora or ahora_utc()), quien))
         conn.commit()
     finally:
         conn.close()
@@ -562,15 +603,11 @@ def guardar_motivo(db_path: str, entidad: str, entidad_id: int, motivo,
 
 
 def registrar_perdida_ficha(db_path: str, notion_page_id: str, ahora: datetime | None = None) -> None:
-    """Anota el día en que una ficha pasó a perdida (lo llama `cliente_cambio_de_estado`).
-
-    Sin motivo: queda como pérdida sin motivo hasta que alguien lo elija.
-    """
+    """Anota el día en que una ficha pasó a perdida (lo llama `cliente_cambio_de_estado`)."""
     fichas = _q(db_path, "SELECT id, business_id FROM notion_clients WHERE notion_page_id = ?",
                 (notion_page_id,))
     if not fichas:
         return
-    hoy = hoy_de(ahora or ahora_utc()).isoformat()
     conn = _connect(db_path)
     try:
         conn.execute(
@@ -578,13 +615,13 @@ def registrar_perdida_ficha(db_path: str, notion_page_id: str, ahora: datetime |
             "VALUES ('notion_client', ?, ?, ?) ON CONFLICT(entidad, entidad_id) DO UPDATE SET "
             "perdida_en = excluded.perdida_en, "
             "business_id = COALESCE(excluded.business_id, perdidas_motivo.business_id)",
-            (fichas[0]["id"], fichas[0]["business_id"], hoy))
+            (fichas[0]["id"], fichas[0]["business_id"], hoy_de(ahora or ahora_utc()).isoformat()))
         conn.commit()
     finally:
         conn.close()
 
 
-# ── esfuerzo, origen, fijos por canal y supuestos ────────────────────────────
+# ── lo opcional que se puede afinar a mano ───────────────────────────────────
 
 def esfuerzos(db_path: str) -> dict[int, dict]:
     return {r["project_id"]: r for r in _q(db_path, "SELECT * FROM proyectos_esfuerzo")}
@@ -606,10 +643,9 @@ def guardar_esfuerzo(db_path: str, project_id: int, datos, quien: str = "",
         return None, "ese proyecto no existe"
     horas_por_dia = None
     if unidad == "dias":
-        personas = [p for p in listar_personas_equipo(db_path) if p.get("lleva_horas")]
+        personas = _personas_con_horas(db_path)
         if not personas:
-            return None, ("para cargar días hace falta el equipo con horas por día en Equipo: "
-                          "cargalo en horas")
+            return None, "para cargar días hace falta el equipo con horas por día: cargalo en horas"
         horas_por_dia = sum(float(p["horas_por_dia"]) for p in personas) / len(personas)
         horas = round(valor * horas_por_dia, 2)
     else:
@@ -702,12 +738,12 @@ def guardar_supuesto(db_path: str, clave: str, valor, quien: str = "",
     return None
 
 
-# ── mantenimiento (R1) ───────────────────────────────────────────────────────
+# ── mantenimiento ────────────────────────────────────────────────────────────
 
-def _fijos_mantenimiento(db_path: str, mes: str) -> list[tuple[dict, float]]:
+def _fijos_vigentes(db_path: str, mes: str, tipo: str, categoria: str | None = None) -> list[tuple[dict, float]]:
     salida = []
     for r in listar_recurrentes(db_path, solo_activos=True):
-        if r["tipo"] != "ingreso" or r["categoria"] != "mantenimiento":
+        if r["tipo"] != tipo or (categoria and r["categoria"] != categoria):
             continue
         if (r["hasta"] and r["hasta"] < mes) or (r["desde"] and r["desde"] > mes):
             continue
@@ -718,10 +754,12 @@ def _fijos_mantenimiento(db_path: str, mes: str) -> list[tuple[dict, float]]:
     return salida
 
 
+def _fijos_mantenimiento(db_path: str, mes: str) -> list[tuple[dict, float]]:
+    return _fijos_vigentes(db_path, mes, "ingreso", "mantenimiento")
+
+
 def ingreso_mensual_mantenimiento(db_path: str, hoy: date, comision_pct) -> dict:
-    """Los fijos de mantenimiento del mes, más los cobros sueltos de mantenimiento
-    de los últimos 30 días que no vienen de un fijo."""
-    fijos = _fijos_mantenimiento(db_path, f"{hoy:%Y-%m}")
+    fijos = _fijos_mantenimiento(db_path, _periodo(hoy))
     con_fijo = {r["client_id"] for r, _ in fijos if r["client_id"]}
     desde = (hoy - timedelta(days=DIAS_SEGUIMIENTO)).isoformat()
     sueltos = [m for m in listar_movimientos(db_path, tipo="ingreso", categoria="mantenimiento")
@@ -732,218 +770,443 @@ def ingreso_mensual_mantenimiento(db_path: str, hoy: date, comision_pct) -> dict
     return {"bruto": bruto, "neto": neto, "fijos": len(fijos), "sueltos": len(sueltos)}
 
 
-# ── las reglas ───────────────────────────────────────────────────────────────
+def _ultimo_escenario(db_path: str) -> dict:
+    try:
+        filas = _q(db_path, "SELECT datos FROM simulador_escenarios "
+                            "ORDER BY COALESCE(updated_at, created_at) DESC, id DESC LIMIT 1")
+        return json.loads(filas[0]["datos"]) if filas else {}
+    except Exception:
+        return {}
+
+
+def comision_cobro(db_path: str) -> dict:
+    """La comisión de cobro: la cargada, la del último escenario o la del Simulador."""
+    cargada = leer_supuestos(db_path).get("comision_cobro_pct")
+    if cargada is not None:
+        return {"valor": float(cargada), "fuente": "cargada en Inteligencia financiera"}
+    valor = _numero(((_ultimo_escenario(db_path).get("mantenimiento") or {}).get("comisionCobro")))
+    if valor is not None and 0 <= valor < 100:
+        return {"valor": valor, "fuente": "la del último escenario guardado del Simulador"}
+    return {"valor": float(COMISION_SIMULADOR_PCT), "fuente": "la que usa el Simulador"}
+
+
+def cuota_mantenimiento(db_path: str, fijos: list, movs: list) -> dict | None:
+    if fijos:
+        valores = [u for _, u in fijos]
+        return {"valor": sum(valores) / len(valores), "suma": sum(valores), "n": len(valores),
+                "supuesto": False, "fuente": f"promedio de {len(valores)} "
+                f"{_plural(len(valores), 'ingreso fijo', 'ingresos fijos')} de mantenimiento en Finanzas"}
+    valores = [float(m["monto_usd"] or 0) for m in movs if m["client_id"] and m["monto_usd"]]
+    if valores:
+        return {"valor": sum(valores) / len(valores), "suma": sum(valores), "n": len(valores),
+                "supuesto": False, "fuente": f"promedio de {len(valores)} "
+                f"{_plural(len(valores), 'cobro', 'cobros')} de mantenimiento en Finanzas"}
+    presupuestos = []
+    for f in _q(db_path, "SELECT notes FROM budgets WHERE notes IS NOT NULL AND notes != ''"):
+        try:
+            v = _numero((json.loads(f["notes"]) or {}).get("monthly_price"))
+        except (ValueError, TypeError, AttributeError):
+            v = None
+        if v and v > 0:
+            presupuestos.append(v)
+    if presupuestos:
+        return {"valor": sum(presupuestos) / len(presupuestos), "suma": sum(presupuestos),
+                "n": len(presupuestos), "supuesto": True,
+                "fuente": f"promedio del mantenimiento mensual de {len(presupuestos)} "
+                          f"{_plural(len(presupuestos), 'presupuesto', 'presupuestos')}"}
+    v = _numero(((_ultimo_escenario(db_path).get("mantenimiento") or {}).get("cuotaAltaNueva")))
+    if v and v > 0:
+        return {"valor": v, "suma": v, "n": 1, "supuesto": True,
+                "fuente": "la cuota del último escenario guardado del Simulador"}
+    return {"valor": float(CUOTA_SIMULADOR_USD), "suma": float(CUOTA_SIMULADOR_USD), "n": 1,
+            "supuesto": True, "fuente": "la cuota por defecto del Simulador"}
+
+
+# ── el contexto: todo lo que se lee una vez ──────────────────────────────────
+
+def _contexto(db_path: str, hoy: date) -> dict:
+    previos, mes = periodos(hoy)
+    desde, hasta = ventana(hoy)
+    desde_prev, hasta_prev = _primer_dia(previos[0]), _ultimo_dia(previos[-1])
+    movs = listar_movimientos(db_path, desde=previos[0], hasta=mes)
+    por_periodo = {p: _totales([m for m in movs if m["periodo"] == p]) for p in previos + [mes]}
+    ing_v = round(sum(i for i, _ in por_periodo.values()), 2)
+    egr_v = round(sum(e for _, e in por_periodo.values()), 2)
+    ing_prom = sum(por_periodo[p][0] for p in previos) / VENTANA_MESES
+    egr_prom = sum(por_periodo[p][1] for p in previos) / VENTANA_MESES
+    variables_prev = sum(float(m["monto_usd"] or 0) for m in movs
+                         if m["tipo"] == "egreso" and not m["recurrente_id"] and m["periodo"] in previos)
+    variables_v = sum(float(m["monto_usd"] or 0) for m in movs
+                      if m["tipo"] == "egreso" and not m["recurrente_id"])
+    fijos = _fijos_vigentes(db_path, mes, "egreso")
+
+    lista = ventas(db_path)
+    ventas_v = [v for v in lista if v["fecha"] and desde <= v["fecha"] <= hasta]
+    ventas_prev = [v for v in lista if v["fecha"] and desde_prev <= v["fecha"] <= hasta_prev]
+    precios = precios_y_tipos(db_path)
+    con_precio = [precios[v["business_id"]]["precio"] for v in ventas_v if v["business_id"] in precios]
+    alcance = "de las ventas de los últimos 3 meses"
+    if not con_precio:
+        con_precio = [precios[v["business_id"]]["precio"] for v in lista if v["business_id"] in precios]
+        alcance = "de todas las ventas con precio"
+    ticket = ({"valor": sum(con_precio) / len(con_precio), "n": len(con_precio),
+               "total": sum(con_precio), "alcance": alcance} if con_precio else None)
+    margen_pct = (ing_v - egr_v) / ing_v if ing_v > 0 else None
+    margen_venta = ticket["valor"] * margen_pct if ticket and margen_pct is not None else None
+
+    proys = proyectos(db_path)
+    horas = horas_por_proyecto(db_path, proys)
+    return {
+        "db_path": db_path,
+        "hoy": hoy, "mes": mes, "previos": previos, "desde": desde, "hasta": hasta,
+        "desde_prev": desde_prev, "hasta_prev": hasta_prev,
+        "movs": movs, "por_periodo": por_periodo, "ingresos_ventana": ing_v, "egresos_ventana": egr_v,
+        "ingresos_promedio": ing_prom, "egresos_promedio": egr_prom,
+        "variables_promedio": variables_prev / VENTANA_MESES, "variables_ventana": variables_v,
+        "fijos": fijos, "fijos_total": round(sum(u for _, u in fijos), 2),
+        "caja": caja_hoy(db_path, hoy),
+        "ventas": lista, "ventas_ventana": ventas_v, "ventas_prev": ventas_prev,
+        "precios": precios, "ticket": ticket, "margen_pct": margen_pct, "margen_venta": margen_venta,
+        "pauta": pauta_meta(db_path, desde, hasta), "pauta_prev": pauta_meta(db_path, desde_prev, hasta_prev),
+        "embudo": embudo(db_path, desde, hasta), "embudo_prev": embudo(db_path, desde_prev, hasta_prev),
+        "vencidos": [p for p in listar_por_cobrar(db_path)
+                     if _fecha(p["vence"]) and _fecha(p["vence"]) < hoy and float(p["monto_usd"] or 0) > 0],
+        "mantenimiento": ingreso_mensual_mantenimiento(db_path, hoy, None)["bruto"],
+        "proyectos": proys, "horas_proyecto": horas,
+        "capacidad": capacidad_mes(db_path, hoy, proys, horas["horas"] if horas else None),
+        "costo_hora": costo_hora(db_path, desde_prev, hasta_prev),
+    }
+
+
+def _concentracion(ctx: dict) -> dict | None:
+    por_cliente: dict[int, float] = {}
+    for m in ctx["movs"]:
+        if m["tipo"] == "ingreso" and m["client_id"]:
+            por_cliente[m["client_id"]] = por_cliente.get(m["client_id"], 0.0) + float(m["monto_usd"] or 0)
+    total = ctx["ingresos_ventana"]
+    if not por_cliente or total <= 0:
+        return None
+    cid = max(por_cliente, key=por_cliente.get)
+    nombre = (_q_nombre(ctx, cid))
+    return {"client_id": cid, "nombre": nombre, "monto": round(por_cliente[cid], 2),
+            "total": total, "share": por_cliente[cid] / total}
+
+
+def _q_nombre(ctx: dict, cid: int) -> str:
+    filas = _q(ctx["db_path"], "SELECT name FROM businesses WHERE id = ?", (cid,))
+    return (filas[0]["name"] if filas and filas[0]["name"] else f"el cliente #{cid}")
+
+
+def _fijos_crecidos(ctx: dict) -> list[dict]:
+    """Los fijos que hoy cuestan más que al principio de la ventana, o que son nuevos."""
+    salida = []
+    for rec, actual in ctx["fijos"]:
+        suyos = sorted((m for m in ctx["movs"] if m["recurrente_id"] == rec["id"]),
+                       key=lambda m: (m["periodo"], m["id"]))
+        if suyos and actual > float(suyos[0]["monto_usd"] or 0) + 0.5:
+            salida.append({"id": rec["id"], "concepto": rec["concepto"], "categoria": rec["categoria"],
+                           "antes": round(float(suyos[0]["monto_usd"]), 2), "ahora": actual,
+                           "desde": suyos[0]["periodo"], "nuevo": False})
+        elif not suyos and rec["desde"] and rec["desde"] >= ctx["previos"][0]:
+            salida.append({"id": rec["id"], "concepto": rec["concepto"], "categoria": rec["categoria"],
+                           "antes": 0.0, "ahora": actual, "desde": rec["desde"], "nuevo": True})
+        elif suyos and rec["desde"] and rec["desde"] >= ctx["previos"][0] and suyos[0]["periodo"] >= ctx["previos"][0]:
+            salida.append({"id": rec["id"], "concepto": rec["concepto"], "categoria": rec["categoria"],
+                           "antes": 0.0, "ahora": actual, "desde": rec["desde"], "nuevo": True})
+    return salida
+
+
+# ── diagnóstico ──────────────────────────────────────────────────────────────
+
+def _diag(clave, titulo, valor, texto, lineas, nivel) -> dict:
+    return {"clave": clave, "titulo": titulo, "valor": valor, "texto": texto,
+            "calculo": "\n".join(lineas), "nivel": nivel}
+
+
+def diagnostico(ctx: dict) -> list[dict]:
+    """Entre 4 y 6 conclusiones, las alertas primero. Solo las que tienen datos."""
+    salida = []
+    mes, previos = ctx["mes"], ctx["previos"]
+
+    # Resultado y margen
+    if ctx["movs"]:
+        i, e = ctx["por_periodo"][mes]
+        neto = i - e
+        prom = sum(ctx["por_periodo"][p][0] - ctx["por_periodo"][p][1] for p in previos) / VENTANA_MESES
+        margen = neto / i if i > 0 else None
+        if neto < 0:
+            frase = f"salieron {usd(-neto)} más de lo que entró"
+        else:
+            frase = f"quedan {usd(neto)}" + (f" ({pct(margen)} % de margen)" if margen is not None else "")
+        comparacion = "por debajo" if neto < prom else "por encima"
+        salida.append(_diag(
+            "resultado", "Resultado del mes", usd(neto),
+            f"Este mes, hasta hoy, entraron {usd(i)} y salieron {usd(e)}: {frase}. "
+            f"Los 3 meses anteriores dejaron {usd(prom)} por mes: vas {comparacion}.",
+            [f"Mes en curso: ingresos {usd(i)} − egresos {usd(e)} = {usd(neto)}"
+             + (f" → margen {usd(neto)} ÷ {usd(i)} = {pct(margen, 1)} %" if margen is not None else ""),
+             "Meses anteriores: " + " · ".join(
+                 f"{p} {usd(ctx['por_periodo'][p][0] - ctx['por_periodo'][p][1])}" for p in previos)
+             + f" → promedio {usd(prom)}"],
+            "mal" if neto < 0 else ("atencion" if neto < prom else "bien")))
+
+    # Caja y meses de supervivencia
+    gasto = ctx["fijos_total"] + ctx["variables_promedio"]
+    if ctx["caja"] is not None and gasto > 0:
+        meses = max(ctx["caja"], 0) / gasto
+        salida.append(_diag(
+            "caja", "Caja", f"{num(meses)} meses",
+            f"Con la caja de hoy ({usd(ctx['caja'])}) cubrís {num(meses)} meses de gastos"
+            + (". Es poco: por debajo de 3 meses cualquier atraso de un cobro duele." if meses < CAJA_MESES_MINIMO
+               else "."),
+            [f"Caja (Balance General) {usd(ctx['caja'])} ÷ (fijos {usd(ctx['fijos_total'])} + variables "
+             f"promedio {usd(ctx['variables_promedio'])}) = {num(meses)} meses"],
+            "mal" if meses < CAJA_MESES_MINIMO else ("atencion" if meses < CAJA_MESES_ATENCION else "bien")))
+
+    # Punto de equilibrio
+    if ctx["fijos_total"] > 0 and ctx["ingresos_ventana"] > 0:
+        proporcion = ctx["variables_ventana"] / ctx["ingresos_ventana"]
+        if proporcion < 1:
+            equilibrio = ctx["fijos_total"] / (1 - proporcion)
+            cubre = ctx["mantenimiento"] / equilibrio if equilibrio else 0
+            salida.append(_diag(
+                "equilibrio", "Punto de equilibrio", usd(equilibrio),
+                f"Para cubrir los fijos tenés que facturar {usd(equilibrio)} por mes. El mantenimiento "
+                f"recurrente ({usd(ctx['mantenimiento'])}) ya cubre el {pct(cubre)} %.",
+                [f"Gastos variables ÷ ingresos de la ventana = {usd(ctx['variables_ventana'])} ÷ "
+                 f"{usd(ctx['ingresos_ventana'])} = {pct(proporcion, 1)} %",
+                 f"Equilibrio = fijos {usd(ctx['fijos_total'])} ÷ (1 − {pct(proporcion, 1)} %) = {usd(equilibrio)}",
+                 f"Mantenimiento {usd(ctx['mantenimiento'])} ÷ {usd(equilibrio)} = {pct(cubre, 1)} %"],
+                "bien" if ctx["ingresos_promedio"] >= equilibrio else "mal"))
+
+    # Costo por lead y por venta
+    pauta, emb = ctx["pauta"]["gasto"], ctx["embudo"]
+    if pauta > 0 and not ctx["pauta"]["monedas_raras"]:
+        meta = [v for v in ctx["ventas_ventana"] if v["canal"] == "meta_ads"]
+        lineas = [f"Pauta de Meta del {_dmy(ctx['desde'])} al {_dmy(ctx['hasta'])}: {usd(pauta)}"]
+        partes = []
+        if emb["leads"]:
+            cpl = pauta / emb["leads"]
+            lineas.append(f"Costo por lead = {usd(pauta)} ÷ {emb['leads']} leads = {usd(cpl)}")
+            partes.append(f"cada lead cuesta {usd(cpl)}")
+        if meta:
+            cpv = pauta / len(meta)
+            lineas.append(f"Costo por venta = {usd(pauta)} ÷ {len(meta)} ventas de Meta = {usd(cpv)}")
+            partes.append(f"cada venta cuesta {usd(cpv)}")
+        if ctx["ticket"]:
+            lineas.append(f"Ticket promedio = {usd(ctx['ticket']['total'])} ÷ {ctx['ticket']['n']} = "
+                          f"{usd(ctx['ticket']['valor'])} ({ctx['ticket']['alcance']})")
+        if meta:
+            cpv = pauta / len(meta)
+            rinde = ctx["margen_venta"] is not None and ctx["margen_venta"] > cpv
+            if ctx["margen_venta"] is not None:
+                lineas.append(f"Margen por venta = {usd(ctx['ticket']['valor'])} × {pct(ctx['margen_pct'], 1)} % "
+                              f"= {usd(ctx['margen_venta'])}")
+            texto = (f"En pauta, {', '.join(partes)}"
+                     + (f", contra un ticket promedio de {usd(ctx['ticket']['valor'])}." if ctx["ticket"] else ".")
+                     + (" La venta deja más de lo que cuesta conseguirla." if rinde
+                        else " Conseguir la venta cuesta más de lo que deja." if ctx["margen_venta"] is not None else ""))
+            salida.append(_diag("pauta", "Costo por venta", usd(cpv), texto, lineas,
+                                "bien" if rinde else ("mal" if ctx["margen_venta"] is not None else "atencion")))
+        else:
+            salida.append(_diag("pauta", "Costo por venta", "sin ventas",
+                                f"Se invirtieron {usd(pauta)} en Meta" + (f" ({', '.join(partes)})" if partes else "")
+                                + " y ninguna venta vino de ahí en la ventana.", lineas, "mal"))
+
+    # Embudo
+    if emb["leads"]:
+        con_tasa = [e for e in emb["etapas"] if e["tasa"] is not None]
+        peor = min(con_tasa, key=lambda e: e["tasa"]) if con_tasa else None
+        texto = (f"De {emb['leads']} leads de Meta, {emb['agendadas']} agendaron demo, "
+                 f"{emb['realizadas']} la hicieron y {emb['ventas']} compraron.")
+        if peor:
+            texto += f" La caída más grande es {peor['nombre']}: pasa el {pct(peor['tasa'])} %."
+        salida.append(_diag(
+            "embudo", "Embudo", f"{emb['ventas']} de {emb['leads']}", texto,
+            [f"{e['nombre'].capitalize()}: {e['pasan']} ÷ {e['base']} = {pct(e['tasa'], 1)} %"
+             for e in con_tasa]
+            + [f"No atiende: {emb['no_atiende']} · no le interesa: {emb['no_interesa']} · "
+               f"hubo demo y no cerró: {emb['demo_no_cerro']}"],
+            "mal" if peor and peor["tasa"] < 0.2 else "atencion"))
+
+    # Concentración
+    conc = _concentracion(ctx)
+    if conc:
+        salida.append(_diag(
+            "concentracion", "Concentración", f"{pct(conc['share'])} %",
+            f"El {pct(conc['share'])} % de los ingresos de la ventana viene de {conc['nombre']}.",
+            [f"{conc['nombre']}: {usd(conc['monto'])} ÷ ingresos {usd(conc['total'])} = {pct(conc['share'], 1)} %"],
+            "mal" if conc["share"] >= CONCENTRACION_ALTA else
+            ("atencion" if conc["share"] >= CONCENTRACION_ATENCION else "bien")))
+
+    # Fijos
+    if ctx["fijos_total"] > 0 and ctx["ingresos_promedio"] > 0:
+        peso = ctx["fijos_total"] / ctx["ingresos_promedio"]
+        crecidos = _fijos_crecidos(ctx)
+        texto = f"Los fijos ({usd(ctx['fijos_total'])} por mes) son el {pct(peso)} % de lo que entra por mes."
+        if crecidos:
+            texto += " Crecieron: " + ", ".join(
+                f"{c['concepto']} ({'nuevo' if c['nuevo'] else usd(c['antes']) + ' → ' + usd(c['ahora'])})"
+                for c in crecidos[:3]) + "."
+        salida.append(_diag(
+            "fijos", "Gastos fijos", f"{pct(peso)} %", texto,
+            [f"Fijos {usd(ctx['fijos_total'])} ÷ ingresos promedio de los 3 meses anteriores "
+             f"{usd(ctx['ingresos_promedio'])} = {pct(peso, 1)} %"]
+            + [f"{c['concepto']}: {usd(c['antes'])} en {c['desde']} → {usd(c['ahora'])} hoy" for c in crecidos],
+            "mal" if peso >= PESO_FIJOS_ALTO else ("atencion" if peso >= PESO_FIJOS_ATENCION or crecidos else "bien")))
+
+    # Cobros vencidos
+    if ctx["vencidos"]:
+        total = sum(float(p["monto_usd"]) for p in ctx["vencidos"])
+        n = len(ctx["vencidos"])
+        salida.append(_diag(
+            "vencidos", "Cobros vencidos", usd(total),
+            f"Hay {n} {_plural(n, 'cobro vencido', 'cobros vencidos')} por {usd(total)}.",
+            [" + ".join(usd(p["monto_usd"]) for p in ctx["vencidos"]) + f" = {usd(total)} (Finanzas, Por cobrar)"],
+            "mal"))
+
+    orden = {n: i for i, n in enumerate(NIVELES)}
+    salida.sort(key=lambda d: orden[d["nivel"]])
+    return salida[:MAX_DIAGNOSTICO]
+
+
+# ── sugerencias ──────────────────────────────────────────────────────────────
 
 def _rec(regla, clave, titulo, detalle, lineas, impacto, metrica, acciones=None,
-         advertencia="", unica_vez=False) -> dict:
-    confianza, tipo = REGLAS[regla]
+         advertencia="", unica_vez=False, confianza=None, supuestos=None) -> dict:
+    confianza_regla, tipo = REGLAS[regla]
     return {"regla": regla, "clave": str(clave), "titulo": titulo, "detalle": detalle,
             "calculo": "\n".join(lineas),
             "impacto_mensual": round(impacto, 2) if impacto is not None else None,
-            "unica_vez": bool(unica_vez), "confianza": confianza, "tipo": tipo,
-            "advertencia": advertencia, "acciones": acciones or [], "metrica": metrica}
-
-
-def _aviso(clave: str, reglas, cantidad=None) -> dict:
-    titulo, detalle = AVISOS[clave]
-    return {"clave": clave, "titulo": titulo, "detalle": detalle,
-            "reglas": sorted(set(reglas)), "cantidad": cantidad}
-
-
-def _unir_avisos(avisos: list[dict]) -> list[dict]:
-    por_clave: dict[str, dict] = {}
-    for a in avisos:
-        if a["clave"] in por_clave:
-            b = por_clave[a["clave"]]
-            b["reglas"] = sorted(set(b["reglas"]) | set(a["reglas"]))
-            if a["cantidad"] is not None:
-                b["cantidad"] = max(b["cantidad"] or 0, a["cantidad"])
-        else:
-            por_clave[a["clave"]] = dict(a)
-    return list(por_clave.values())
-
-
-def _avisos_margen(ctx: dict, reglas) -> list[dict]:
-    m = ctx["margen"]
-    avisos = []
-    if not m["con_esfuerzo"]:
-        avisos.append(_aviso("esfuerzo", reglas, cantidad=len(m["proyectos"])))
-    elif not m["filas"]:
-        avisos.append(_aviso("precio", reglas, cantidad=m["con_esfuerzo"]))
-    if m["costo_hora"]["valor"] is None:
-        avisos.append(_aviso("costo_hora", reglas))
-    return avisos
+            "unica_vez": bool(unica_vez), "confianza": confianza or confianza_regla, "tipo": tipo,
+            "advertencia": advertencia, "acciones": acciones or [], "metrica": metrica,
+            "supuestos": list(supuestos or [])}
 
 
 def _lineas_margen(ctx: dict) -> list[str]:
-    m, ch = ctx["margen"], ctx["margen"]["costo_hora"]
-    d, h = ctx["desde"], ctx["hasta"]
-    return [
-        f"Costo por hora = egresos de Finanzas sin pauta del {_dmy(d)} al {_dmy(h)} {usd(ch['egresos'])} "
-        f"÷ {num(ch['horas'])} h del equipo ({ch['personas']} {_plural(ch['personas'], 'persona', 'personas')} "
-        f"× {ch['dias']} días hábiles) = {usd(ch['valor'])}",
-        f"Margen por venta = precio promedio {usd(m['precio_promedio'])} − esfuerzo promedio "
-        f"{num(m['esfuerzo_con_precio'])} h × {usd(ch['valor'])} = {usd(m['margen_venta'])} "
-        f"({len(m['filas'])} {_plural(len(m['filas']), 'proyecto', 'proyectos')} con esfuerzo y precio)",
-    ]
+    t = ctx["ticket"]
+    return [f"Ticket promedio = {usd(t['total'])} ÷ {t['n']} {_plural(t['n'], 'venta', 'ventas')} = "
+            f"{usd(t['valor'])} ({t['alcance']})",
+            f"Margen real = (ingresos {usd(ctx['ingresos_ventana'])} − egresos {usd(ctx['egresos_ventana'])}) ÷ "
+            f"{usd(ctx['ingresos_ventana'])} = {pct(ctx['margen_pct'], 1)} %",
+            f"Margen por venta = {usd(t['valor'])} × {pct(ctx['margen_pct'], 1)} % = {usd(ctx['margen_venta'])}"]
 
 
-def _lineas_capacidad(ctx: dict) -> list[str]:
-    c, esf = ctx["capacidad"], ctx["margen"]["esfuerzo_promedio"]
-    return [
-        f"Capacidad del {_dmy(c['desde'])} al {_dmy(c['hasta'])}: {num(c['base'])} h − "
-        f"{num(c['ausencia'])} h de ausencias = {num(c['netas'])} h netas (Equipo)",
-        f"Comprometidas: {num(c['comprometidas'])} h en {c['en_curso']} "
-        f"{_plural(c['en_curso'], 'proyecto', 'proyectos')} en curso → {num(c['libres_horas'])} h libres "
-        f"÷ {num(esf)} h por proyecto (esfuerzo promedio) = {c['slots']} "
-        f"{_plural(c['slots'], 'proyecto', 'proyectos')}",
-    ]
-
-
-def _r1(db_path: str, hoy: date, ctx: dict):
-    desde, hasta = ctx["desde"], ctx["hasta"]
+def _r1(db_path: str, hoy: date, ctx: dict) -> list[dict]:
     clientes = listar_clientes_activos(db_path)
     if not clientes:
-        return [], []
-    fijos = _fijos_mantenimiento(db_path, f"{hoy:%Y-%m}")
-    movs = [m for m in listar_movimientos(db_path, tipo="ingreso", categoria="mantenimiento")
-            if desde.isoformat() <= (m["fecha"] or "")[:10] <= hasta.isoformat()]
-    con_cuota = {r["client_id"] for r, _ in fijos if r["client_id"]} | \
-                {m["client_id"] for m in movs if m["client_id"]}
+        return []
+    fijos = _fijos_mantenimiento(db_path, ctx["mes"])
+    movs = [m for m in ctx["movs"] if m["tipo"] == "ingreso" and m["categoria"] == "mantenimiento"]
+    con_cuota = ({r["client_id"] for r, _ in fijos if r["client_id"]}
+                 | {m["client_id"] for m in movs if m["client_id"]})
     sin = [c for c in clientes if c["id"] not in con_cuota]
     if not sin:
-        return [], []
-    avisos = []
-    if fijos:
-        cuotas = [u for _, u in fijos]
-        fuente = f"{len(cuotas)} {_plural(len(cuotas), 'ingreso fijo', 'ingresos fijos')} de mantenimiento en Finanzas"
-    else:
-        cuotas = [float(m["monto_usd"] or 0) for m in movs if m["client_id"]]
-        fuente = (f"{len(cuotas)} {_plural(len(cuotas), 'cobro', 'cobros')} de mantenimiento en Finanzas "
-                  f"del {_dmy(desde)} al {_dmy(hasta)}")
-    if not cuotas:
-        avisos.append(_aviso("cuota", ["R1"]))
-    comision = ctx["supuestos"].get("comision_cobro_pct")
-    if comision is None:
-        avisos.append(_aviso("comision", ["R1"]))
-    if avisos:
-        return [], avisos
-
+        return []
+    cuota = cuota_mantenimiento(db_path, fijos, movs)
+    comision = comision_cobro(db_path)
     n = len(sin)
-    suma = round(sum(cuotas), 2)
-    cuota = round(suma / len(cuotas), 2)
-    impacto = n * cuota * (1 - comision / 100)
+    impacto = n * cuota["valor"] * (1 - comision["valor"] / 100)
+    supuestos = [f"Comisión de cobro {num(comision['valor'])} %: {comision['fuente']}"]
+    if cuota["supuesto"]:
+        supuestos.append(f"Cuota de {usd(cuota['valor'])}: {cuota['fuente']}")
     nombres = ", ".join(c["name"] for c in sin[:6]) + (" y otros" if n > 6 else "")
-    lineas = [
-        f"Clientes activos (Clientes): {len(clientes)}; con cuota de mantenimiento: "
-        f"{len(clientes) - n}; sin cuota: {n}",
-        f"Cuota promedio = {usd(suma)} ÷ {len(cuotas)} = {usd(cuota)} ({fuente})",
-        f"Comisión de cobro: {num(comision)} % (Supuestos)",
-        f"Impacto = {n} × {usd(cuota)} × (1 − {num(comision)} %) = {usd(impacto)} por mes",
-    ]
-    base = ingreso_mensual_mantenimiento(db_path, hoy, comision)
     return [_rec(
         "R1", "mantenimiento",
         f"Cobrales mantenimiento a los {n} {_plural(n, 'cliente', 'clientes')} que ya tenés",
         f"De {len(clientes)} clientes activos, {n} no pagan cuota mensual: {nombres}. Ya confían en "
         f"vos, así que es ingreso recurrente sin salir a buscar clientes nuevos.",
-        lineas, impacto,
-        {"mensual": base["neto"], "comision_pct": comision},
-    )], []
+        [f"Clientes activos: {len(clientes)}; con ingreso de mantenimiento en Finanzas: "
+         f"{len(clientes) - n}; sin: {n}",
+         f"Cuota = {usd(cuota['suma'])} ÷ {cuota['n']} = {usd(cuota['valor'])} ({cuota['fuente']})",
+         f"Impacto = {n} × {usd(cuota['valor'])} × (1 − {num(comision['valor'])} %) = {usd(impacto)} por mes"],
+        impacto, {"mensual": ingreso_mensual_mantenimiento(db_path, hoy, comision["valor"])["neto"],
+                  "comision_pct": comision["valor"]},
+        confianza="alta" if not cuota["supuesto"] else "media", supuestos=supuestos)]
 
 
-def _r2_r3(db_path: str, hoy: date, ctx: dict):
-    reglas = ("R2", "R3")
-    avisos = _avisos_margen(ctx, reglas)
-    if ctx["capacidad"] is None:
-        avisos.append(_aviso("equipo", reglas))
-    if ctx["sin_origen_ventana"]:
-        avisos.append(_aviso("origen", reglas, cantidad=len(ctx["sin_origen_ventana"])))
+def _r2_r3(db_path: str, hoy: date, ctx: dict) -> list[dict]:
     if ctx["pauta"]["monedas_raras"]:
-        avisos.append(_aviso("moneda_pauta", reglas))
-    if avisos:
-        return [], avisos
-
-    margen = ctx["margen"]["margen_venta"]
-    slots = ctx["capacidad"]["slots"]
-    if slots is None:
-        return [], []
-    gasto = ctx["pauta"]["gasto"]
-    x = gasto / VENTANA_MESES
+        return []
+    gasto_prev = ctx["pauta_prev"]["gasto"]
+    x = gasto_prev / VENTANA_MESES
     meta = [v for v in ctx["ventas_ventana"] if v["canal"] == "meta_ads"]
-    cac = gasto / len(meta) if meta and gasto > 0 else None
+    meta_prev = [v for v in ctx["ventas_prev"] if v["canal"] == "meta_ads"]
+    pauta = ctx["pauta"]["gasto"]
+    if pauta <= 0 or x <= 0:
+        return []
+    cpv = pauta / len(meta) if meta else None
+    margen = ctx["margen_venta"]
     d, h = _dmy(ctx["desde"]), _dmy(ctx["hasta"])
-    lineas_pauta = [f"Pauta de Meta del {d} al {h}: {usd(gasto)} ÷ {VENTANA_MESES} meses = {usd(x)} por mes "
-                    f"({ctx['pauta']['leads']} leads de Meta)"]
-    if cac is not None:
-        lineas_pauta.append(f"Ventas de Meta Ads en ese período: {len(meta)} → costo por venta = "
-                            f"{usd(gasto)} ÷ {len(meta)} = {usd(cac)}")
-    else:
-        lineas_pauta.append(f"Ventas de Meta Ads en ese período: {len(meta)}")
+    lineas_pauta = [f"Pauta de Meta: {usd(gasto_prev)} en los 3 meses anteriores ÷ 3 = {usd(x)} por mes",
+                    f"Ventas de Meta del {d} al {h}: {len(meta)}"
+                    + (f" → costo por venta = {usd(pauta)} ÷ {len(meta)} = {usd(cpv)}" if cpv else "")]
 
-    if cac is not None and margen > cac:
-        vp = x / cac
-        libre = math.floor(slots - vp + _EPS)
+    if cpv is not None and margen is not None and margen > cpv:
+        horas, cap = ctx["horas_proyecto"], ctx["capacidad"]
+        if not horas or not cap or cap["slots"] is None:
+            return []
+        vp = x / cpv
+        libre = math.floor(cap["slots"] - vp + _EPS)
         if libre < 1:
-            return [], []
-        y = x + libre * cac
-        impacto = libre * (margen - cac)
-        lineas = lineas_pauta + _lineas_margen(ctx) + _lineas_capacidad(ctx) + [
-            f"La pauta actual ya trae {usd(x)} ÷ {usd(cac)} = {num(vp)} ventas por mes → capacidad libre = "
-            f"{slots} − {num(vp)} = {libre} (redondeado para abajo)",
-            f"Pauta recomendada = {usd(x)} + {libre} × {usd(cac)} = {usd(y)}",
-            f"Impacto = {libre} × ({usd(margen)} − {usd(cac)}) = {usd(impacto)} por mes",
-        ]
+            return []
+        y = x + libre * cpv
+        impacto = libre * (margen - cpv)
+        supuestos = [f"Horas por proyecto: {num(horas['horas'])} h ({horas['fuente']})"] if horas["estimado"] else []
+        lineas = lineas_pauta + _lineas_margen(ctx) + [
+            f"Capacidad del mes: {num(cap['netas'])} h netas (Equipo) − {num(cap['comprometidas'])} h en "
+            f"{cap['en_curso']} proyectos en curso = {num(cap['libres_horas'])} h ÷ {num(horas['horas'])} h "
+            f"por proyecto = {cap['slots']} proyectos",
+            f"La pauta actual ya trae {usd(x)} ÷ {usd(cpv)} = {num(vp)} ventas por mes → capacidad libre = "
+            f"{cap['slots']} − {num(vp)} = {libre}",
+            f"Pauta recomendada = {usd(x)} + {libre} × {usd(cpv)} = {usd(y)}",
+            f"Impacto = {libre} × ({usd(margen)} − {usd(cpv)}) = {usd(impacto)} por mes"]
         return [_rec(
             "R2", "meta_ads", f"Subí la pauta de {usd(x)} a {usd(y)}, no más",
-            f"Cada venta de Meta Ads deja {usd(margen)} de margen y conseguirla cuesta {usd(cac)}: "
-            f"conviene invertir más. Pero el tope lo pone el equipo, no el presupuesto: este mes hay lugar "
-            f"para {libre} {_plural(libre, 'venta más', 'ventas más')}.",
+            f"Cada venta de Meta deja {usd(margen)} y cuesta {usd(cpv)} conseguirla. El tope lo pone el "
+            f"equipo: este mes hay lugar para {libre} {_plural(libre, 'venta más', 'ventas más')}.",
             lineas, impacto,
-            {"canal": "meta_ads", "ventas_mes": len(meta) / VENTANA_MESES, "margen_menos_cac": margen - cac},
-            advertencia=(f"No pases de {usd(y)}: cada {usd(cac)} de más trae una venta que el equipo no puede "
-                         f"hacer este mes. Pasarte en una venta tira {usd(cac)}; en dos, tira {usd(2 * cac)}."),
-        )], []
+            {"canal": "meta_ads", "ventas_mes": len(meta_prev) / VENTANA_MESES, "margen_menos_cac": margen - cpv},
+            advertencia=f"Pasarte de {usd(y)} tira {usd(cpv)} por cada venta que el equipo no puede hacer.",
+            confianza="baja" if horas["estimado"] else "media", supuestos=supuestos)]
 
-    vp = x / cac if cac else 0.0
-    if slots < 2 or vp >= slots or margen <= 0:
-        return [], []
-    ociosa = math.floor(slots - vp + _EPS)
-    if ociosa < 1:
-        return [], []
-    impacto = ociosa * margen
-    por_que = ("la pauta de hoy no trajo ventas en 3 meses" if cac is None
-               else f"cada venta de Meta cuesta {usd(cac)} y deja {usd(margen)}, así que subir la pauta no conviene")
-    lineas = lineas_pauta + _lineas_margen(ctx) + _lineas_capacidad(ctx) + [
-        f"Ventas por mes con la pauta actual: {num(vp)}" + (f" ({usd(x)} ÷ {usd(cac)})" if cac else ""),
-        f"Capacidad ociosa = {slots} − {num(vp)} = {ociosa} (redondeado para abajo)",
-        f"Impacto = {ociosa} × margen por venta {usd(margen)} = {usd(impacto)} por mes",
-    ]
+    # La pauta no rinde: lo que vuelve por mes no cubre lo que se gasta.
+    ventas_mes = len(meta_prev) / VENTANA_MESES
+    if meta_prev and margen is None:
+        return []
+    retorno = ventas_mes * margen if meta_prev else 0.0
+    perdida = x - retorno
+    if perdida <= 0:
+        return []
+    lineas = list(lineas_pauta)
+    if meta_prev:
+        lineas += _lineas_margen(ctx) + [
+            f"Vuelve por mes: {num(ventas_mes)} ventas de Meta × {usd(margen)} = {usd(retorno)}"]
+        por_que = (f"cada venta de Meta cuesta {usd(cpv)} y deja {usd(margen)}" if cpv
+                   else f"lo que vuelve ({usd(retorno)} por mes) no cubre la pauta")
+    else:
+        lineas.append("Ventas de Meta en los 3 meses anteriores: 0 → vuelve USD 0 por mes")
+        por_que = "en los 3 meses anteriores ninguna venta vino de Meta"
+    lineas.append(f"Se pierde = pauta {usd(x)} − retorno {usd(retorno)} = {usd(perdida)} por mes")
     return [_rec(
-        "R3", "capacidad",
-        f"Te {_plural(ociosa, 'sobra', 'sobran')} {ociosa} {_plural(ociosa, 'proyecto', 'proyectos')} "
-        f"de capacidad y la pauta no alcanza",
-        f"El equipo tiene lugar para {slots} proyectos este mes y {por_que}. Esa capacidad se paga igual: "
-        f"conseguí ventas para llenarla (outbound, referidos o una pauta distinta).",
-        lineas, impacto,
-        {"ventas_mes": len(ctx["ventas_ventana"]) / VENTANA_MESES, "margen": margen},
-    )], []
+        "R3", "pauta_no_rinde", "Bajá o pausá la pauta de Meta",
+        f"La pauta no se paga: {por_que}. Por mes se pierden {usd(perdida)}.",
+        lineas, perdida, {"pauta_mes": x}, advertencia=ADVERTENCIA_R3)]
 
 
-def _r4(db_path: str, hoy: date, ctx: dict):
+def _r4(db_path: str, hoy: date, ctx: dict) -> list[dict]:
     from services.plantillas import variables_del_lead
     from services.seg_leads import telefonos
 
-    vencidos = [p for p in listar_por_cobrar(db_path)
-                if _fecha(p["vence"]) and _fecha(p["vence"]) < hoy and float(p["monto_usd"] or 0) > 0]
+    vencidos = ctx["vencidos"]
     if not vencidos:
-        return [], []
+        return []
     grupos: dict = {}
     for p in vencidos:
         grupos.setdefault(p["client_id"] or f"sin-{p['id']}", []).append(p)
     total = round(sum(float(p["monto_usd"]) for p in vencidos), 2)
     lineas, acciones = [], []
-    for clave, suyos in grupos.items():
+    for suyos in grupos.values():
         nombre = suyos[0].get("client_name") or suyos[0]["concepto"]
         for p in suyos:
             lineas.append(f"{nombre} · {p['concepto']}: {usd(p['monto_usd'])}, venció el {_dmy(_fecha(p['vence']))}")
@@ -969,160 +1232,227 @@ def _r4(db_path: str, hoy: date, ctx: dict):
         f"{len(vencidos)} {_plural(len(vencidos), 'saldo ya pasó', 'saldos ya pasaron')} su fecha de cobro "
         f"({n} {_plural(n, 'cliente', 'clientes')}). Es plata que ya ganaste: mandá el mensaje de cobranza hoy.",
         lineas, total, {"ids": [p["id"] for p in vencidos], "monto": total},
-        acciones=acciones, unica_vez=True,
-    )], []
+        acciones=acciones, unica_vez=True)]
 
 
-def _r5(db_path: str, hoy: date, ctx: dict):
-    asignados = {r["recurrente_id"]: r["canal"] for r in _q(db_path, "SELECT * FROM fijos_canal")}
-    if not asignados:
-        return [], []
-    mes = f"{hoy:%Y-%m}"
-    fijos = [r for r in listar_recurrentes(db_path, solo_activos=True)
-             if r["id"] in asignados and r["tipo"] == "egreso" and not (r["hasta"] and r["hasta"] < mes)]
-    if not fijos:
-        return [], []
-    if ctx["sin_origen_ventana"]:
-        return [], [_aviso("origen", ["R5"], cantidad=len(ctx["sin_origen_ventana"]))]
-    por_canal: dict[str, list] = {}
-    for r in fijos:
-        por_canal.setdefault(asignados[r["id"]], []).append(r)
+def _r5(db_path: str, hoy: date, ctx: dict) -> list[dict]:
+    if not ctx["fijos"]:
+        return []
+    crecidos = {c["id"]: c for c in _fijos_crecidos(ctx)}
+    ing = ctx["ingresos_promedio"]
+    por_cat: dict[str, list] = {}
+    for rec, monto in ctx["fijos"]:
+        if rec["categoria"] in CATEGORIAS_NO_RECORTABLES:
+            continue
+        motivos = []
+        if rec["id"] in crecidos:
+            c = crecidos[rec["id"]]
+            motivos.append("es nuevo" if c["nuevo"] else f"pasó de {usd(c['antes'])} a {usd(monto)}")
+        if ing > 0 and monto >= FIJO_PESA * ing:
+            motivos.append(f"es el {pct(monto / ing)} % de lo que entra por mes")
+        if motivos:
+            por_cat.setdefault(rec["categoria"], []).append((rec, monto, motivos))
     recs = []
-    for canal, suyos in por_canal.items():
-        vendidas = [v for v in ctx["ventas_ventana"] if v["canal"] == canal]
-        if vendidas:
-            continue
-        partes, ids, montos, sin_tc = [], [], {}, []
-        for r in suyos:
-            try:
-                u = a_usd(r["monto"], r["moneda"], r["tipo_cambio"])
-            except (TypeError, ValueError):
-                sin_tc.append(r["concepto"])
-                continue
-            partes.append((r["concepto"], u))
-            ids.append(r["id"])
-            montos[str(r["id"])] = u
-        if not partes:
-            continue
-        total = round(sum(u for _, u in partes), 2)
-        lineas = [f"Fijos de {CANALES[canal]}: " + " + ".join(f"{c} {usd(u)}" for c, u in partes)
-                  + f" = {usd(total)} por mes (Finanzas, Fijos)",
-                  f"Ventas atribuidas a {CANALES[canal]} del {_dmy(ctx['desde'])} al {_dmy(ctx['hasta'])}: 0 "
-                  f"(de {len(ctx['ventas_ventana'])} ventas con origen)"]
-        if sin_tc:
-            lineas.append("Sin sumar, en pesos sin tipo de cambio: " + ", ".join(sin_tc))
+    for cat, filas in por_cat.items():
+        total = round(sum(m for _, m, _ in filas), 2)
+        etiqueta = ETIQUETA_CATEGORIA.get(cat, cat)
+        conceptos = ", ".join(r["concepto"] for r, _, _ in filas)
+        lineas = [f"{r['concepto']} ({etiqueta}): {usd(m)} por mes, {' y '.join(mot)}" for r, m, mot in filas]
+        if ing > 0:
+            lineas.append(f"Ingresos promedio de los 3 meses anteriores: {usd(ing)} por mes")
+        lineas.append(f"Impacto = " + " + ".join(usd(m) for _, m, _ in filas) + f" = {usd(total)} por mes")
         recs.append(_rec(
-            "R5", canal, f"Probá un mes sin los gastos fijos de {CANALES[canal]}",
-            f"En los últimos 3 meses ninguna venta vino de {CANALES[canal]} y sus gastos fijos siguen "
-            f"saliendo todos los meses.",
-            lineas, total, {"ids": ids, "montos": montos, "monto": total},
-            advertencia=ADVERTENCIA_R5,
-        ))
-    return recs, []
+            "R5", cat, f"Probá un mes sin {conceptos}",
+            f"Son gastos fijos de {etiqueta} que crecieron o pesan mucho sobre los ingresos, y no están "
+            f"atados a ninguna venta.",
+            lineas, total, {"ids": [r["id"] for r, _, _ in filas],
+                            "montos": {str(r["id"]): m for r, m, _ in filas}, "monto": total},
+            advertencia=ADVERTENCIA_R5))
+    return recs
 
 
-def _r6(db_path: str, hoy: date, ctx: dict):
-    avisos = _avisos_margen(ctx, ["R6"])
-    if avisos:
-        return [], avisos
-    m = ctx["margen"]
-    ch = m["costo_hora"]["valor"]
-    por_tipo: dict[str, list] = {}
-    for f in m["filas"]:
-        if f["tipo"]:
-            por_tipo.setdefault(f["tipo"], []).append(f)
+def _margen_por_tipo(ctx: dict) -> dict[str, dict]:
+    """Por tipo de venta: ticket promedio, horas por proyecto y margen con el costo por hora."""
+    ch = ctx["costo_hora"]["valor"]
+    general = ctx["horas_proyecto"]
+    if ch is None or not general:
+        return {}
+    horas_tipo: dict[str, list] = {}
+    for p in ctx["proyectos"]:
+        info = ctx["precios"].get(p["business_id"]) if p["business_id"] else None
+        if p["horas"] and info and info["tipo"]:
+            horas_tipo.setdefault(info["tipo"], []).append(p["horas"])
+    precios_tipo: dict[str, list] = {}
+    for v in ctx["ventas"]:
+        info = ctx["precios"].get(v["business_id"]) if v["business_id"] else None
+        if info and info["tipo"]:
+            precios_tipo.setdefault(info["tipo"], []).append((v["nombre"], info))
+    salida = {}
+    for tipo, filas in precios_tipo.items():
+        ticket = sum(i["precio"] for _, i in filas) / len(filas)
+        if horas_tipo.get(tipo):
+            horas = sum(horas_tipo[tipo]) / len(horas_tipo[tipo])
+            fuente, estimado = f"esfuerzo cargado en {len(horas_tipo[tipo])} proyectos de ese tipo", False
+        else:
+            horas, fuente, estimado = general["horas"], general["fuente"], general["estimado"]
+        costo = horas * ch
+        salida[tipo] = {"ticket": ticket, "n": len(filas), "horas": horas, "fuente": fuente,
+                        "estimado": estimado, "costo": costo, "margen": (ticket - costo) / ticket,
+                        "fuente_tipo": filas[0][1]["fuente_tipo"]}
+    return salida
+
+
+def _r6(db_path: str, hoy: date, ctx: dict) -> list[dict]:
     recs = []
-    for tipo, filas in por_tipo.items():
-        precio = round(sum(f["precio"] for f in filas), 2)
-        margen = round(sum(f["margen"] for f in filas), 2)
-        pct = margen / precio if precio else None
-        if pct is None or pct >= MARGEN_MINIMO:
+    ch = ctx["costo_hora"]
+    for tipo, t in _margen_por_tipo(ctx).items():
+        if t["margen"] >= MARGEN_MINIMO:
             continue
         etiqueta = ETIQUETA_TIPO.get(tipo, tipo)
-        lineas = [_lineas_margen(ctx)[0]] + [
-            f"{f['nombre']}: {usd(f['precio'])} ({f['fuente_precio']}) − {num(f['horas'])} h × {usd(ch)} "
-            f"= {usd(f['margen'])}" for f in filas
-        ] + [f"Margen del tipo {etiqueta} = {usd(margen)} ÷ {usd(precio)} = {num(pct * 100)} % "
-             f"(piso: {num(MARGEN_MINIMO * 100)} %; tipo según {filas[0]['fuente_tipo']})"]
+        supuestos = [f"Horas por proyecto: {num(t['horas'])} h ({t['fuente']})"] if t["estimado"] else []
         recs.append(_rec(
-            "R6", tipo, f"Los proyectos de tipo {etiqueta} te dejan {num(pct * 100)} %",
-            f"Revisá el precio de los proyectos de tipo {etiqueta} antes de vender el próximo. "
-            f"No abandones la línea.",
-            lineas, None, {"tipo": tipo, "margen_pct": round(pct * 100, 2)},
-            advertencia=ADVERTENCIA_R6,
-        ))
-    return recs, []
+            "R6", tipo, f"Revisá el precio de {etiqueta}",
+            f"Los proyectos de {etiqueta} se venden a {usd(t['ticket'])} y cuestan {usd(t['costo'])} en "
+            f"horas del equipo: dejan {pct(t['margen'])} %. No abandones la línea.",
+            [f"Costo por hora = egresos sin pauta de los 3 meses anteriores {usd(ch['egresos'])} ÷ "
+             f"{num(ch['horas'])} h del equipo = {usd(ch['valor'])}",
+             f"Ticket de {etiqueta}: {usd(t['ticket'])} ({t['n']} {_plural(t['n'], 'venta', 'ventas')}, tipo según "
+             f"{t['fuente_tipo']})",
+             f"Costo = {num(t['horas'])} h × {usd(ch['valor'])} = {usd(t['costo'])}",
+             f"Margen = ({usd(t['ticket'])} − {usd(t['costo'])}) ÷ {usd(t['ticket'])} = {pct(t['margen'], 1)} % "
+             f"(piso: {pct(MARGEN_MINIMO)} %)"],
+            None, {"tipo": tipo, "margen_pct": round(t["margen"] * 100, 2)},
+            advertencia=ADVERTENCIA_R6, confianza="media" if t["estimado"] else "alta", supuestos=supuestos))
+    return recs
 
 
-def _r7(db_path: str, hoy: date, ctx: dict):
-    desde, hasta = ctx["desde"], ctx["hasta"]
-    en_ventana = [g for g in ctx["perdidas"] if g["fecha"] and desde <= g["fecha"] <= hasta]
-    if not en_ventana:
-        return [], []
-    avisos = []
-    sin = [g for g in en_ventana if not g["motivo"]]
-    if sin:
-        avisos.append(_aviso("motivo", ["R7"], cantidad=len(sin)))
-    avisos += _avisos_margen(ctx, ["R7"])
-    if avisos:
-        return [], avisos
-    cuenta = Counter(g["motivo"] for g in en_ventana)
-    motivo, n = cuenta.most_common(1)[0]
-    total = len(en_ventana)
-    share = n / total
-    if share <= CONCENTRACION_MOTIVO:
-        return [], []
-    margen = ctx["margen"]["margen_venta"]
-    impacto = n / VENTANA_MESES * margen * RECUPERO_MOTIVO
-    lineas = [
-        f"Pérdidas del {_dmy(desde)} al {_dmy(hasta)}: {total}; por «{MOTIVOS[motivo]}»: {n} → "
-        f"{n} ÷ {total} = {num(share * 100)} % (umbral: {num(CONCENTRACION_MOTIVO * 100)} %)",
-        _lineas_margen(ctx)[1],
-        f"Impacto = {n} pérdidas ÷ {VENTANA_MESES} meses × {usd(margen)} × "
-        f"{num(RECUPERO_MOTIVO * 100)} % de recupero = {usd(impacto)} por mes",
+def _r7(db_path: str, hoy: date, ctx: dict) -> list[dict]:
+    emb, margen = ctx["embudo_prev"], ctx["margen_venta"]
+    if not emb["leads"] or margen is None or margen <= 0:
+        return []
+    tasa_atendidos = emb["ventas"] / emb["atendieron"] if emb["atendieron"] else 0.0
+    etapas = [
+        ("no_atiende", "no atienden", emb["no_atiende"], tasa_atendidos,
+         f"de los que atienden compra el {pct(tasa_atendidos, 1)} % ({emb['ventas']} ÷ {emb['atendieron']})"),
+        ("no_interesa", "dijeron que no les interesa", emb["no_interesa"], tasa_atendidos,
+         f"de los que atienden compra el {pct(tasa_atendidos, 1)} % ({emb['ventas']} ÷ {emb['atendieron']})"),
+        ("demo_no_cerro", "tuvieron demo y no cerraron", emb["demo_no_cerro"], 1.0,
+         "cada uno es una venta que se escapó"),
     ]
+    candidatas = []
+    for clave, nombre, n, tasa, explicacion in etapas:
+        perdidas_ = n * tasa
+        if n and perdidas_ > 0:
+            candidatas.append((perdidas_ / VENTANA_MESES * margen * RECUPERO_PERDIDAS,
+                               clave, nombre, n, tasa, explicacion, perdidas_))
+    if not candidatas:
+        return []
+    impacto, clave, nombre, n, tasa, explicacion, perdidas_ = max(candidatas)
+    lineas = [f"Leads de Meta del {_dmy(ctx['desde_prev'])} al {_dmy(ctx['hasta_prev'])}: {emb['leads']}; "
+              f"{n} {nombre}",
+              f"Ventas perdidas = {n} × {pct(tasa, 1)} % = {num(perdidas_)} ({explicacion})"] + \
+        _lineas_margen(ctx) + [
+            f"Impacto = {num(perdidas_)} ÷ {VENTANA_MESES} meses × {usd(margen)} × "
+            f"{pct(RECUPERO_PERDIDAS)} % de recupero = {usd(impacto)} por mes"]
+    motivos = Counter(g["motivo"] for g in perdidas(db_path) if g["motivo"])
+    if motivos:
+        lineas.append("Motivos cargados a mano: " + ", ".join(
+            f"{MOTIVOS[m].lower()} {c}" for m, c in motivos.most_common()))
     return [_rec(
-        "R7", motivo, f"El {num(share * 100, 0)} % de lo que perdés es por {MOTIVOS[motivo].lower()}",
-        f"{SUGERENCIA_R7[motivo]} Si recuperás 3 de cada 10 de esas ventas, suma lo de la derecha.",
-        lineas, impacto,
-        {"motivo": motivo, "perdidas_mes": n / VENTANA_MESES, "margen": margen},
-    )], []
+        "R7", clave, f"Recuperá a los {n} que {nombre}",
+        f"Es donde más plata se pierde del embudo. Si recuperás 3 de cada 10, suma lo de la derecha.",
+        lineas, impacto, {"etapa": clave, "base_mes": n / VENTANA_MESES,
+                          "valor_unidad": tasa * margen * RECUPERO_PERDIDAS})]
 
 
-# ── cálculo completo ─────────────────────────────────────────────────────────
+def _r8(db_path: str, hoy: date, ctx: dict) -> list[dict]:
+    gasto = ctx["fijos_total"] + ctx["variables_promedio"]
+    if ctx["caja"] is None or gasto <= 0:
+        return []
+    meses = max(ctx["caja"], 0) / gasto
+    if meses >= CAJA_MESES_MINIMO:
+        return []
+    recortables = sorted((f for f in ctx["fijos"] if f[0]["categoria"] not in CATEGORIAS_NO_RECORTABLES),
+                         key=lambda f: -f[1])
+    vencido = round(sum(float(p["monto_usd"]) for p in ctx["vencidos"]), 2)
+    if not recortables and not vencido:
+        return []
+    partes, lineas = [], [f"Caja {usd(ctx['caja'])} ÷ gastos del mes {usd(gasto)} = {num(meses)} meses"]
+    impacto, unica = None, False
+    if recortables:
+        rec, monto = recortables[0]
+        partes.append(f"frená {rec['concepto']} ({usd(monto)} por mes)")
+        lineas.append(f"Fijo más grande que se puede frenar: {rec['concepto']}, {usd(monto)} por mes")
+        impacto = monto
+    if vencido:
+        partes.append(f"cobrá los {usd(vencido)} vencidos")
+        lineas.append(f"Cobros vencidos: {usd(vencido)}")
+        if impacto is None:
+            impacto, unica = vencido, True
+    return [_rec(
+        "R8", "caja", f"Tenés {num(meses)} meses de caja: " + " o ".join(partes),
+        "Con menos de 3 meses de caja, un cobro que se atrasa o un mes flojo te deja sin margen.",
+        lineas, impacto, {"caja": ctx["caja"], "meses": meses}, unica_vez=unica)]
 
-def _contexto(db_path: str, hoy: date) -> dict:
-    desde, hasta = ventana(hoy)
-    lista = ventas(db_path)
-    en_ventana = [v for v in lista if v["fecha"] and desde <= v["fecha"] <= hasta]
-    m = margenes(db_path, hoy)
-    return {
-        "hoy": hoy, "desde": desde, "hasta": hasta,
-        "ventas": lista,
-        "ventas_ventana": [v for v in en_ventana if v["canal"]],
-        "sin_origen_ventana": [v for v in en_ventana if not v["canal"]],
-        "margen": m,
-        "capacidad": capacidad_mes(db_path, hoy, m["proyectos"], m["esfuerzo_promedio"]),
-        "pauta": pauta_meta(db_path, desde, hasta),
-        "perdidas": perdidas(db_path),
-        "supuestos": leer_supuestos(db_path),
-    }
+
+def _r9(db_path: str, hoy: date, ctx: dict) -> list[dict]:
+    conc = _concentracion(ctx)
+    if not conc or conc["share"] < CONCENTRACION_ALTA:
+        return []
+    return [_rec(
+        "R9", "concentracion", f"Sumá clientes: el {pct(conc['share'])} % de lo que entra viene de {conc['nombre']}",
+        f"Si {conc['nombre']} se va o se atrasa, se lleva casi la mitad de los ingresos. Priorizá ventas nuevas "
+        f"y mantenimiento de otros clientes.",
+        [f"{conc['nombre']}: {usd(conc['monto'])} ÷ ingresos de la ventana {usd(conc['total'])} = "
+         f"{pct(conc['share'], 1)} % (riesgo desde {pct(CONCENTRACION_ALTA)} %)"],
+        None, {"client_id": conc["client_id"], "share": conc["share"]})]
+
+
+def _r10(db_path: str, hoy: date, ctx: dict) -> list[dict]:
+    emb, margen = ctx["embudo_prev"], ctx["margen_venta"]
+    if not emb["agendadas"] or not emb["realizadas"] or margen is None or margen <= 0:
+        return []
+    tasa = emb["realizadas"] / emb["agendadas"]
+    if tasa >= DEMOS_REALIZADAS_MINIMO:
+        return []
+    caidas = emb["agendadas"] - emb["realizadas"]
+    cierre = emb["ventas"] / emb["realizadas"]
+    impacto = caidas / VENTANA_MESES * cierre * margen
+    lineas = [f"Demos agendadas {emb['agendadas']} → realizadas {emb['realizadas']} = {pct(tasa, 1)} % "
+              f"(se caen {caidas})",
+              f"Cierre después de la demo = {emb['ventas']} ÷ {emb['realizadas']} = {pct(cierre, 1)} %"]
+    gasto_prev = ctx["pauta_prev"]["gasto"]
+    if gasto_prev > 0:
+        costo_demo = gasto_prev / emb["agendadas"]
+        lineas.append(f"Cada demo agendada costó {usd(gasto_prev)} ÷ {emb['agendadas']} = {usd(costo_demo)} de "
+                      f"pauta → las que se cayeron: {usd(costo_demo * caidas)}")
+    lineas += _lineas_margen(ctx) + [
+        f"Impacto = {caidas} ÷ {VENTANA_MESES} meses × {pct(cierre, 1)} % × {usd(margen)} = {usd(impacto)} por mes"]
+    return [_rec(
+        "R10", "demos", f"Confirmá las demos: se caen {caidas} de {emb['agendadas']}",
+        "Una demo agendada que no se hace ya costó el lead. Un recordatorio el día anterior y confirmar "
+        "por WhatsApp suele alcanzar.",
+        lineas, impacto, {"caidas_mes": caidas / VENTANA_MESES, "valor_unidad": cierre * margen})]
+
+
+REGLAS_EN_ORDEN = (_r1, _r2_r3, _r4, _r5, _r6, _r7, _r8, _r9, _r10)
 
 
 def calcular(db_path: str, hoy: date) -> dict:
-    """Todas las recomendaciones candidatas y los avisos, sin filtrar."""
     ctx = _contexto(db_path, hoy)
-    recs, avisos = [], []
-    for regla in (_r1, _r2_r3, _r4, _r5, _r6, _r7):
-        r, a = regla(db_path, hoy, ctx)
-        recs += r
-        avisos += a
-    return {"recomendaciones": recs, "avisos": _unir_avisos(avisos), "contexto": ctx}
+    recs = []
+    for regla in REGLAS_EN_ORDEN:
+        try:
+            recs += regla(db_path, hoy, ctx)
+        except Exception:
+            # Una regla que falla no puede dejar sin pantalla al resto.
+            logger.warning("inteligencia financiera: falló %s", regla.__name__, exc_info=True)
+    return {"recomendaciones": recs, "diagnostico": diagnostico(ctx), "contexto": ctx}
 
 
 def ordenar(recs: list[dict]) -> list[dict]:
-    """Umbral de USD 100, de mayor a menor impacto, máximo 6. Lo que no se estima
-    en plata (R6, "revisar") no es obvio: entra, al final."""
+    """Umbral de USD 100, de mayor a menor impacto, máximo 6. Lo que no se mide
+    en plata (revisar un precio, la concentración) va al final."""
     visibles = [r for r in recs
                 if r["impacto_mensual"] is None or r["impacto_mensual"] >= UMBRAL_IMPACTO_USD]
     visibles.sort(key=lambda r: (r["impacto_mensual"] is None, -(r["impacto_mensual"] or 0)))
@@ -1130,39 +1460,31 @@ def ordenar(recs: list[dict]) -> list[dict]:
 
 
 def encabezado(db_path: str, hoy: date, visibles: list[dict]) -> dict:
-    mes = f"{hoy:%Y-%m}"
+    mes = _periodo(hoy)
     ingresos, egresos = _totales(listar_movimientos(db_path, desde=mes, hasta=mes))
     neto = round(ingresos - egresos, 2)
     primeras = [r for r in visibles[:3] if r["impacto_mensual"] is not None]
     con = round(neto + sum(r["impacto_mensual"] for r in primeras), 2)
-    calculo_hoy = f"Ingresos {usd(ingresos)} − egresos {usd(egresos)} = {usd(neto)} (Finanzas, mes en curso)"
-    calculo_con = (f"{usd(neto)} + " + " + ".join(usd(r["impacto_mensual"]) for r in primeras) + f" = {usd(con)}"
-                   if primeras else "Todavía no hay recomendaciones con impacto en plata.")
     return {"mes": mes, "ingresos": ingresos, "egresos": egresos, "hoy": neto, "con_tres": con,
-            "calculo_hoy": calculo_hoy, "calculo_con_tres": calculo_con}
-
-
-def _resumen_contexto(ctx: dict) -> dict:
-    return {"desde": ctx["desde"].isoformat(), "hasta": ctx["hasta"].isoformat(),
-            "ventas": len(ctx["ventas_ventana"]) + len(ctx["sin_origen_ventana"]),
-            "pauta": ctx["pauta"]["gasto"], "proyectos_con_esfuerzo": ctx["margen"]["con_esfuerzo"]}
+            "calculo_hoy": f"Ingresos {usd(ingresos)} − egresos {usd(egresos)} = {usd(neto)} (Finanzas, mes en curso)",
+            "calculo_con_tres": (f"{usd(neto)} + " + " + ".join(usd(r["impacto_mensual"]) for r in primeras)
+                                 + f" = {usd(con)}") if primeras else "Sin sugerencias con impacto en plata."}
 
 
 def _suprimidas(conn, hoy: date) -> set:
-    """Lo que no se vuelve a sugerir: lo tomado que se está midiendo, y lo
-    descartado este mes."""
     sup = {(f["regla"], f["clave"]) for f in conn.execute(
         "SELECT r.regla, r.clave FROM if_recomendaciones r JOIN if_recomendaciones_tomadas t "
         "ON t.recomendacion_id = r.id WHERE t.resultado = 'midiendo'")}
-    for f in conn.execute("SELECT regla, clave, descartada_en FROM if_recomendaciones "
-                          "WHERE estado = 'descartada'"):
+    for f in conn.execute("SELECT regla, clave, descartada_en FROM if_recomendaciones WHERE estado = 'descartada'"):
         cuando = _parse_iso(f["descartada_en"])
-        if cuando and f"{hoy_de(cuando):%Y-%m}" == f"{hoy:%Y-%m}":
+        if cuando and _periodo(hoy_de(cuando)) == _periodo(hoy):
             sup.add((f["regla"], f["clave"]))
     return sup
 
 
-def recalcular(db_path: str, ahora: datetime | None = None) -> int:
+def recalcular(db_path: str, ahora: datetime | None = None, redactar=None) -> int:
+    from services import inteligencia_fin_ia
+
     ahora = ahora or ahora_utc()
     hoy = hoy_de(ahora)
     calc = calcular(db_path, hoy)
@@ -1173,23 +1495,27 @@ def recalcular(db_path: str, ahora: datetime | None = None) -> int:
         conn.close()
     visibles = ordenar([r for r in calc["recomendaciones"] if (r["regla"], r["clave"]) not in sup])
     enc = encabezado(db_path, hoy, visibles)
+    resumen, origen = inteligencia_fin_ia.redactar(calc["diagnostico"], visibles, llamar=redactar)
+    ctx = calc["contexto"]
     generada = _iso(ahora)
     conn = _connect(db_path)
     try:
         cid = conn.execute(
-            "INSERT INTO if_calculos (generada_en, avisos, encabezado, contexto) VALUES (?, ?, ?, ?)",
-            (generada, json.dumps(calc["avisos"], ensure_ascii=False),
-             json.dumps(enc, ensure_ascii=False),
-             json.dumps(_resumen_contexto(calc["contexto"]), ensure_ascii=False))).lastrowid
+            "INSERT INTO if_calculos (generada_en, avisos, encabezado, contexto, diagnostico, resumen, "
+            "resumen_origen) VALUES (?, '[]', ?, ?, ?, ?, ?)",
+            (generada, json.dumps(enc, ensure_ascii=False),
+             json.dumps({"desde": ctx["desde"].isoformat(), "hasta": ctx["hasta"].isoformat()}),
+             json.dumps(calc["diagnostico"], ensure_ascii=False), resumen, origen)).lastrowid
         for r in visibles:
             conn.execute(
                 "INSERT INTO if_recomendaciones (calculo_id, regla, clave, titulo, detalle, calculo, "
-                "impacto_mensual, unica_vez, confianza, tipo, advertencia, acciones, metrica, generada_en) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "impacto_mensual, unica_vez, confianza, tipo, advertencia, acciones, metrica, generada_en, "
+                "supuestos) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (cid, r["regla"], r["clave"], r["titulo"], r["detalle"], r["calculo"],
                  r["impacto_mensual"], 1 if r["unica_vez"] else 0, r["confianza"], r["tipo"],
                  r["advertencia"], json.dumps(r["acciones"], ensure_ascii=False),
-                 json.dumps(r["metrica"], ensure_ascii=False), generada))
+                 json.dumps(r["metrica"], ensure_ascii=False), generada,
+                 json.dumps(r["supuestos"], ensure_ascii=False)))
         conn.commit()
     finally:
         conn.close()
@@ -1204,7 +1530,6 @@ def _rec_por_id(db_path: str, rec_id: int) -> dict | None:
 
 
 def tomar(db_path: str, rec_id: int, quien: str = "", ahora: datetime | None = None):
-    """(True, None) o (False, (código HTTP, mensaje))."""
     rec = _rec_por_id(db_path, rec_id)
     if not rec:
         return False, (404, "esa recomendación no existe")
@@ -1239,69 +1564,75 @@ def descartar(db_path: str, rec_id: int, ahora: datetime | None = None):
 
 
 def medir(db_path: str, regla: str, metrica: dict, desde: date, hasta: date) -> tuple[float, str]:
-    """(impacto real, cómo se midió). La misma métrica que usó la regla."""
+    """(impacto real, cómo se midió), con la misma métrica que usó la regla."""
     if regla == "R1":
         actual = ingreso_mensual_mantenimiento(db_path, hasta, metrica.get("comision_pct") or 0)["neto"]
         base = metrica.get("mensual") or 0
-        return actual - base, (f"Ingreso mensual por mantenimiento neto de comisión: {usd(base)} al tomarla "
-                               f"→ {usd(actual)} el {_dmy(hasta)}")
-    if regla in ("R2", "R3"):
-        todas = [v for v in ventas(db_path) if v["fecha"] and desde <= v["fecha"] <= hasta]
-        if regla == "R2":
-            todas = [v for v in todas if v["canal"] == metrica.get("canal")]
-            factor, rotulo = metrica.get("margen_menos_cac") or 0, "margen − costo por venta"
-        else:
-            factor, rotulo = metrica.get("margen") or 0, "margen por venta"
-        base = metrica.get("ventas_mes") or 0
-        real = (len(todas) - base) * factor
-        return real, (f"Ventas del {_dmy(desde)} al {_dmy(hasta)}: {len(todas)} contra {num(base)} por mes al "
-                      f"tomarla → ({len(todas)} − {num(base)}) × {rotulo} {usd(factor)} = {usd(real)}")
+        return actual - base, f"Ingreso mensual por mantenimiento: {usd(base)} al tomarla → {usd(actual)}"
+    if regla == "R2":
+        n = len([v for v in ventas(db_path) if v["fecha"] and desde <= v["fecha"] <= hasta
+                 and v["canal"] == metrica.get("canal")])
+        base, factor = metrica.get("ventas_mes") or 0, metrica.get("margen_menos_cac") or 0
+        real = (n - base) * factor
+        return real, f"Ventas de Meta en 30 días: {n} contra {num(base)} por mes → ({n} − {num(base)}) × {usd(factor)} = {usd(real)}"
+    if regla == "R3":
+        gasto = pauta_meta(db_path, desde, hasta)["gasto"]
+        base = metrica.get("pauta_mes") or 0
+        real = base - gasto
+        return real, f"Pauta en 30 días: {usd(gasto)} contra {usd(base)} por mes al tomarla → ahorro {usd(real)}"
     if regla == "R4":
         ids = [int(i) for i in metrica.get("ids") or []]
         cobrados = _q(db_path, "SELECT monto_usd FROM finanzas_por_cobrar WHERE cobrado_movimiento_id "
                                f"IS NOT NULL AND id IN ({', '.join('?' for _ in ids) or 'NULL'})", ids)
         real = sum(float(c["monto_usd"] or 0) for c in cobrados)
-        return real, (f"Cobrados {len(cobrados)} de {len(ids)} saldos vencidos: {usd(real)} de "
-                      f"{usd(metrica.get('monto'))}")
+        return real, f"Cobrados {len(cobrados)} de {len(ids)} saldos vencidos: {usd(real)} de {usd(metrica.get('monto'))}"
     if regla == "R5":
-        mes = f"{hasta:%Y-%m}"
+        mes = _periodo(hasta)
         real, cortados = 0.0, 0
         for rid, monto in (metrica.get("montos") or {}).items():
             fijo = get_recurrente(db_path, int(rid))
             if not fijo or not fijo["activo"] or (fijo["hasta"] and fijo["hasta"] < mes):
                 real += float(monto)
                 cortados += 1
-        return real, (f"Fijos apagados o terminados: {cortados} de {len(metrica.get('montos') or {})}, "
-                      f"{usd(real)} por mes")
+        return real, f"Fijos apagados: {cortados} de {len(metrica.get('montos') or {})}, {usd(real)} por mes"
     if regla == "R6":
-        tipo = metrica.get("tipo")
-        filas = [f for f in margenes(db_path, hasta)["filas"] if f["tipo"] == tipo and f["margen"] is not None]
-        precio = sum(f["precio"] for f in filas)
-        actual = (sum(f["margen"] for f in filas) / precio * 100) if precio else 0.0
+        ctx = _contexto(db_path, hasta)
+        t = _margen_por_tipo(ctx).get(metrica.get("tipo"))
+        actual = t["margen"] * 100 if t else 0.0
         base = metrica.get("margen_pct") or 0
-        return actual - base, f"Margen del tipo: {num(base)} % al tomarla → {num(actual)} % el {_dmy(hasta)}"
+        return actual - base, f"Margen del tipo: {num(base)} % al tomarla → {num(actual)} %"
     if regla == "R7":
-        motivo = metrica.get("motivo")
-        n = len([g for g in perdidas(db_path)
-                 if g["motivo"] == motivo and g["fecha"] and desde <= g["fecha"] <= hasta])
-        base = metrica.get("perdidas_mes") or 0
-        margen = metrica.get("margen") or 0
-        real = (base - n) * margen
-        return real, (f"Pérdidas por «{MOTIVOS.get(motivo, motivo)}» del {_dmy(desde)} al {_dmy(hasta)}: {n} "
-                      f"contra {num(base)} por mes al tomarla → ({num(base)} − {n}) × {usd(margen)} = {usd(real)}")
+        emb = embudo(db_path, desde, hasta)
+        n = emb.get(metrica.get("etapa"), 0)
+        base, valor = metrica.get("base_mes") or 0, metrica.get("valor_unidad") or 0
+        real = (base - n) * valor
+        return real, f"Leads en esa etapa en 30 días: {n} contra {num(base)} por mes → {usd(real)}"
+    if regla == "R8":
+        actual = caja_hoy(db_path, hasta) or 0.0
+        base = metrica.get("caja") or 0
+        return actual - base, f"Caja: {usd(base)} al tomarla → {usd(actual)}"
+    if regla == "R9":
+        conc = _concentracion(_contexto(db_path, hasta))
+        actual = conc["share"] if conc else 0.0
+        base = metrica.get("share") or 0
+        return (base - actual) * 100, f"Concentración: {pct(base, 1)} % al tomarla → {pct(actual, 1)} %"
+    if regla == "R10":
+        emb = embudo(db_path, desde, hasta)
+        caidas = emb["agendadas"] - emb["realizadas"]
+        base, valor = metrica.get("caidas_mes") or 0, metrica.get("valor_unidad") or 0
+        real = (base - caidas) * valor
+        return real, f"Demos caídas en 30 días: {caidas} contra {num(base)} por mes → {usd(real)}"
     return 0.0, ""
 
 
 def evaluar_seguimiento(db_path: str, ahora: datetime | None = None) -> int:
     ahora = ahora or ahora_utc()
-    limite = _iso(ahora - timedelta(days=DIAS_SEGUIMIENTO))
     filas = _q(db_path, "SELECT t.id, t.tomada_en, t.impacto_esperado, r.regla, r.metrica "
                         "FROM if_recomendaciones_tomadas t JOIN if_recomendaciones r "
                         "ON r.id = t.recomendacion_id WHERE t.resultado = 'midiendo' AND t.tomada_en <= ?",
-               (limite,))
+               (_iso(ahora - timedelta(days=DIAS_SEGUIMIENTO)),))
     for f in filas:
-        tomada = _parse_iso(f["tomada_en"])
-        desde = hoy_de(tomada)
+        desde = hoy_de(_parse_iso(f["tomada_en"]))
         hasta = desde + timedelta(days=DIAS_SEGUIMIENTO)
         try:
             metrica = json.loads(f["metrica"] or "{}")
@@ -1310,6 +1641,8 @@ def evaluar_seguimiento(db_path: str, ahora: datetime | None = None) -> int:
         real, detalle = medir(db_path, f["regla"], metrica, desde, hasta)
         if f["regla"] == "R6":
             funciono = (metrica.get("margen_pct") or 0) + real >= MARGEN_MINIMO * 100
+        elif f["regla"] == "R9":
+            funciono = (metrica.get("share") or 0) - real / 100 < CONCENTRACION_ALTA
         elif f["impacto_esperado"] and f["impacto_esperado"] > 0:
             funciono = real >= f["impacto_esperado"] * FUNCIONO_SI_LLEGA_A
         else:
@@ -1332,7 +1665,6 @@ _LOCK = threading.Lock()
 
 
 def ya_corrio_hoy(db_path: str, ahora: datetime | None = None) -> bool:
-    """Si ya hubo un recálculo en el día de hoy (hora de Montevideo)."""
     ahora = ahora or ahora_utc()
     filas = _q(db_path, "SELECT ultima FROM corridas WHERE nombre = ?", (CORRIDA,))
     ultima = _parse_iso(filas[0]["ultima"]) if filas else None
@@ -1349,26 +1681,24 @@ def _marcar(db_path: str, ahora: datetime) -> None:
         conn.close()
 
 
-def corrida_diaria(db_path: str, ahora: datetime | None = None, forzar: bool = False) -> dict | None:
+def corrida_diaria(db_path: str, ahora: datetime | None = None, forzar: bool = False,
+                   redactar=None) -> dict | None:
     """Mide lo tomado hace 30 días y recalcula. None si ya corrió hoy.
 
-    No manda nada ni llama afuera: un arranque de más solo lee y escribe estas
-    tablas, y la marca de "ya corrió hoy" evita repetirlo en cada deploy.
-    `forzar` es el botón "Recalcular ahora" de un admin.
+    El único llamado afuera posible es el resumen con IA, y solo si
+    RADIOGRAFIA_IA_ACTIVA está prendida y hay clave: por defecto no sale nada.
     """
     ahora = ahora or ahora_utc()
     with _LOCK:
         if not forzar and ya_corrio_hoy(db_path, ahora):
             return None
         evaluadas = evaluar_seguimiento(db_path, ahora)
-        calculo_id = recalcular(db_path, ahora)
+        calculo_id = recalcular(db_path, ahora, redactar=redactar)
         _marcar(db_path, ahora)
     return {"calculo_id": calculo_id, "evaluadas": evaluadas}
 
 
 def start_inteligencia_fin(app) -> None:
-    """Hilo que revisa cada hora si hay que correr la tanda del día. No bloquea
-    el arranque: espera dos minutos y todo lo que hace va dentro de un try."""
     def _loop():
         time.sleep(120)
         while True:
@@ -1383,58 +1713,6 @@ def start_inteligencia_fin(app) -> None:
 
 # ── lo que pinta la pantalla ─────────────────────────────────────────────────
 
-def estado_datos(db_path: str, hoy: date) -> dict:
-    """El estado de los tres datos previos, calculado en vivo (es barato)."""
-    desde, hasta = ventana(hoy)
-    grupos = perdidas(db_path)
-    sin_motivo = [g for g in grupos if not g["motivo"]]
-    sin_motivo.sort(key=lambda g: (g["fecha"] is None, -(g["fecha"].toordinal() if g["fecha"] else 0)))
-    proys = proyectos(db_path)
-    con_esfuerzo = [p for p in proys if p["horas"]]
-    sin_esfuerzo = sorted([p for p in proys if not p["horas"]], key=lambda p: not p["terminado"])
-    lista_ventas = ventas(db_path)
-    sin_origen = [v for v in lista_ventas if not v["canal"]]
-    cobros_sin_cliente = len([m for m in listar_movimientos(db_path, tipo="ingreso")
-                              if not m["client_id"]
-                              and desde.isoformat() <= (m["fecha"] or "")[:10] <= hasta.isoformat()])
-    canal_de = {r["recurrente_id"]: r["canal"] for r in _q(db_path, "SELECT * FROM fijos_canal")}
-    fijos = []
-    for r in listar_recurrentes(db_path, solo_activos=True):
-        if r["tipo"] != "egreso":
-            continue
-        try:
-            monto = a_usd(r["monto"], r["moneda"], r["tipo_cambio"])
-        except (TypeError, ValueError):
-            monto = None
-        fijos.append({"id": r["id"], "concepto": r["concepto"], "categoria": r["categoria"],
-                      "monto_usd": monto, "canal": canal_de.get(r["id"], "")})
-    supuestos = leer_supuestos(db_path)
-    return {
-        "motivo": {"completo": not sin_motivo, "perdidas": len(grupos), "sin_motivo": len(sin_motivo),
-                   "pendientes": [{"entidad": g["entidad"], "entidad_id": g["entidad_id"],
-                                   "nombre": g["nombre"], "estado": g["estado"],
-                                   "fecha": g["fecha"].isoformat() if g["fecha"] else None}
-                                  for g in sin_motivo[:LISTA_MAX]]},
-        "esfuerzo": {"completo": bool(con_esfuerzo) and not [p for p in proys if p["terminado"] and not p["horas"]],
-                     "proyectos": len(proys), "con_esfuerzo": len(con_esfuerzo),
-                     "pendientes": [{"id": p["id"], "nombre": p["name"], "stage": p["stage"] or "",
-                                     "terminado": p["terminado"]} for p in sin_esfuerzo[:LISTA_MAX]]},
-        "origen": {"completo": not sin_origen, "ventas": len(lista_ventas), "sin_origen": len(sin_origen),
-                   "cobros_sin_cliente": cobros_sin_cliente,
-                   "pendientes": [{"entidad": v["entidad"], "id": v["id"], "nombre": v["nombre"],
-                                   "source": v["source"],
-                                   "sin_lead": v["entidad"] == "notion_client"}
-                                  for v in sin_origen[:LISTA_MAX]]},
-        "fijos": fijos,
-        "supuestos": {c: {"etiqueta": e, "valor": supuestos.get(c)} for c, e in SUPUESTOS.items()},
-    }
-
-
-def _ultimo_calculo(db_path: str) -> dict | None:
-    filas = _q(db_path, "SELECT * FROM if_calculos ORDER BY id DESC LIMIT 1")
-    return filas[0] if filas else None
-
-
 def _texto_momento(iso: str) -> str:
     dt = _parse_iso(iso)
     return dt.astimezone(_MVD).strftime("%d/%m/%Y %H:%M") if dt else ""
@@ -1442,51 +1720,47 @@ def _texto_momento(iso: str) -> str:
 
 def estado_pantalla(db_path: str, es_admin: bool = False, ahora: datetime | None = None) -> dict:
     ahora = ahora or ahora_utc()
-    hoy = hoy_de(ahora)
     if not ya_corrio_hoy(db_path, ahora):
-        # La primera carga del día, si el hilo todavía no corrió (recién
-        # deployado). Las demás cargas leen lo guardado.
         corrida_diaria(db_path, ahora)
-    calc = _ultimo_calculo(db_path)
-    recs, avisos, enc, ctx = [], [], {}, {}
+    filas = _q(db_path, "SELECT * FROM if_calculos ORDER BY id DESC LIMIT 1")
+    calc = filas[0] if filas else None
+    recs, diag, enc, ctx = [], [], {}, {}
     if calc:
-        avisos = json.loads(calc["avisos"] or "[]")
+        diag = json.loads(calc.get("diagnostico") or "[]")
         enc = json.loads(calc["encabezado"] or "{}")
         ctx = json.loads(calc["contexto"] or "{}")
         for r in _q(db_path, "SELECT * FROM if_recomendaciones WHERE calculo_id = ? AND estado = 'nueva'",
                     (calc["id"],)):
             r["acciones"] = json.loads(r["acciones"] or "[]")
+            r["supuestos"] = json.loads(r.get("supuestos") or "[]")
             r["unica_vez"] = bool(r["unica_vez"])
             r.pop("metrica", None)
             recs.append(r)
         recs = ordenar(recs)
     seguimiento = []
     for t in _q(db_path, "SELECT t.*, r.titulo, r.regla, r.tipo, r.unica_vez FROM if_recomendaciones_tomadas t "
-                         "JOIN if_recomendaciones r ON r.id = t.recomendacion_id ORDER BY t.tomada_en DESC, t.id DESC "
-                         "LIMIT ?", (LISTA_MAX,)):
+                         "JOIN if_recomendaciones r ON r.id = t.recomendacion_id "
+                         "ORDER BY t.tomada_en DESC, t.id DESC LIMIT ?", (LISTA_MAX,)):
         tomada = _parse_iso(t["tomada_en"])
         t["tomada_el"] = _dmy(hoy_de(tomada)) if tomada else ""
         t["se_mide_el"] = _dmy(hoy_de(tomada) + timedelta(days=DIAS_SEGUIMIENTO)) if tomada else ""
         t["unica_vez"] = bool(t["unica_vez"])
         seguimiento.append(t)
-    desde = _fecha(ctx.get("desde"))
-    hasta = _fecha(ctx.get("hasta"))
     bajada = ""
     if calc:
-        bajada = (f"Calculado el {_texto_momento(calc['generada_en'])} con los datos del {_dmy(desde)} al "
-                  f"{_dmy(hasta)}: pauta de Meta, ventas y pérdidas (Proceso de venta, Demos, Clientes), "
-                  f"esfuerzo de Proyectos, capacidad de Equipo, y gastos y cobros de Finanzas. Montos en "
-                  f"dólares (USD), con la misma conversión que Finanzas. Se recalcula una vez por día.")
+        bajada = (f"Calculado el {_texto_momento(calc['generada_en'])} con los datos del "
+                  f"{_dmy(_fecha(ctx.get('desde')))} al {_dmy(_fecha(ctx.get('hasta')))} (los 3 meses "
+                  f"anteriores y el mes en curso): Finanzas, pauta de Meta, leads, Demos, Clientes, "
+                  f"Proyectos y Equipo. Montos en dólares (USD), con la conversión de Finanzas. "
+                  f"Se recalcula una vez por día.")
     return {
         "es_admin": bool(es_admin),
         "generada_en": calc["generada_en"] if calc else None,
         "bajada": bajada,
+        "resumen": {"texto": (calc or {}).get("resumen") or "", "origen": (calc or {}).get("resumen_origen") or ""},
+        "diagnostico": diag,
         "encabezado": enc,
-        "avisos": avisos,
         "recomendaciones": recs,
         "seguimiento": seguimiento,
-        "datos": estado_datos(db_path, hoy),
-        "motivos": [{"clave": c, "etiqueta": e} for c, e in MOTIVOS.items()],
-        "canales": [{"clave": c, "etiqueta": e} for c, e in CANALES.items()],
         "umbral_usd": UMBRAL_IMPACTO_USD,
     }
