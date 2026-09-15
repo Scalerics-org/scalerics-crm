@@ -29,6 +29,7 @@ from routes.finanzas import finanzas_bp
 from routes.simulador import simulador_bp
 from routes.inteligencia_fin import inteligencia_fin_bp
 from routes.equipo import equipo_bp
+from routes.horarios import horarios_bp
 from routes.flujos import flujos_bp
 from routes.seg_leads import seg_leads_bp
 from routes.daily import daily_bp
@@ -1262,13 +1263,15 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-marketing .nav-icon{stroke:#f472b6}
 #nav-finanzas .nav-icon{stroke:#f59e0b}
 #nav-simulador .nav-icon{stroke:#fb923c}
-#nav-inteligencia_fin .nav-icon{stroke:#fbbf24}
+#nav-inteligencia_fin .nav-icon{stroke:#86efac}
 #nav-notion_clients .nav-icon{stroke:#10b981}
 #nav-demos .nav-icon{stroke:#22d3ee}
 #nav-sdr .nav-icon{stroke:#f87171}
 #nav-projects .nav-icon{stroke:#facc15}
 #nav-equipo .nav-icon{stroke:#a3e635}
 #nav-ausencias .nav-icon{stroke:#e879f9}
+#nav-horarios .nav-icon{stroke:#fbbf24}
+#nav-flujos .nav-icon{stroke:#5eead4}
 #nav-seg_leads .nav-icon{stroke:#fb7185}
 #nav-daily .nav-icon{stroke:#38bdf8}
 #nav-daily_admin .nav-icon{stroke:#f0abfc}
@@ -1286,7 +1289,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-marketing.active .nav-icon{stroke:#f9a8d4}
 #nav-finanzas.active .nav-icon{stroke:#fcd34d}
 #nav-simulador.active .nav-icon{stroke:#fdba74}
-#nav-inteligencia_fin.active .nav-icon{stroke:#fde68a}
+#nav-inteligencia_fin.active .nav-icon{stroke:#bbf7d0}
 #nav-daily.active .nav-icon{stroke:#7dd3fc}
 #nav-daily_admin.active .nav-icon{stroke:#f5d0fe}
 #nav-notion_clients.active .nav-icon{stroke:#34d399}
@@ -1295,6 +1298,8 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-projects.active .nav-icon{stroke:#fde047}
 #nav-equipo.active .nav-icon{stroke:#bef264}
 #nav-ausencias.active .nav-icon{stroke:#f0abfc}
+#nav-horarios.active .nav-icon{stroke:#fde68a}
+#nav-flujos.active .nav-icon{stroke:#99f6e4}
 #nav-seg_leads.active .nav-icon{stroke:#fda4af}
 #nav-plantillas.active .nav-icon{stroke:#d8b4fe}
 /* light mode — slightly darker tones */
@@ -1308,7 +1313,7 @@ body.light #nav-activity .nav-icon{stroke:#475569}
 body.light #nav-marketing .nav-icon{stroke:#db2777}
 body.light #nav-finanzas .nav-icon{stroke:#b45309}
 body.light #nav-simulador .nav-icon{stroke:#c2410c}
-body.light #nav-inteligencia_fin .nav-icon{stroke:#92400e}
+body.light #nav-inteligencia_fin .nav-icon{stroke:#15803d}
 body.light #nav-daily .nav-icon{stroke:#0284c7}
 body.light #nav-daily_admin .nav-icon{stroke:#a21caf}
 body.light #nav-notion_clients .nav-icon{stroke:#047857}
@@ -1317,6 +1322,8 @@ body.light #nav-sdr .nav-icon{stroke:#b91c1c}
 body.light #nav-projects .nav-icon{stroke:#a16207}
 body.light #nav-equipo .nav-icon{stroke:#4d7c0f}
 body.light #nav-ausencias .nav-icon{stroke:#a21caf}
+body.light #nav-horarios .nav-icon{stroke:#92400e}
+body.light #nav-flujos .nav-icon{stroke:#0f766e}
 body.light #nav-seg_leads .nav-icon{stroke:#be123c}
 body.light #nav-plantillas .nav-icon{stroke:#9333ea}
 /* ── Lucide icons ─────────────────────────────────────────────────────────── */
@@ -1623,6 +1630,11 @@ body.light .mobile-header-title{color:#0f172a}
 .sc-anun-reco[data-accion="apagar"]{border-left-color:var(--rojo)}
 .sc-anun-reco[data-accion="ajustar"],.sc-anun-reco[data-accion="renovar"]{border-left-color:var(--ambar)}
 .sc-anun-reco[data-accion="subir"]{border-left-color:var(--verde)}
+/* El sello de version. Existe porque no habia forma de contestar
+   "¿estoy viendo lo ultimo?" sin entrar por SSH, y un deploy en Fly es
+   una carrera: la ultima imagen gana y del lado del navegador no
+   quedaba ningun rastro de cual quedo. */
+.sc-version{font-size:.66rem;color:var(--rotulo);text-align:right;padding:4px 2px 0;font-variant-numeric:tabular-nums}
 .sc-comparacion{display:grid;gap:5px;font-size:.8rem;line-height:1.55;color:var(--texto);background:var(--fondo-hundido);border:1px solid var(--borde);border-radius:10px;padding:11px 14px;margin-bottom:16px}
 .sc-barras{display:grid;gap:7px;margin-top:8px}
 /* Por lo que el lead declaro: una dona por pregunta. De a dos por fila en
@@ -1798,10 +1810,36 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .fb-nota{font-size:.78rem;color:var(--texto-debil);padding:6px 0;line-height:1.45}
 .fb-error{color:var(--rojo-texto);padding:16px;font-size:.85rem}
 .fb-print{display:none}
+/* Balance General: el formato clásico que mandó Juan. Dos columnas (Activo |
+   Pasivo y Patrimonio), subtotales con línea arriba y los dos totales finales
+   con doble línea, alineados abajo. En el celular, una columna. */
+.fbg-cab{text-align:center;margin-bottom:18px;line-height:1.55;color:var(--texto);font-size:.85rem}
+.fbg-titulo{font-size:1.2rem;font-weight:800;letter-spacing:1px;color:var(--texto-fuerte)}
+.fbg-empresa{font-weight:700;color:var(--texto-fuerte)}
+.fbg-cols{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--borde-fuerte);border-radius:6px}
+.fbg-col{display:flex;flex-direction:column;padding:14px 18px;min-width:0}
+.fbg-col + .fbg-col{border-left:1px solid var(--borde-fuerte)}
+.fbg-seccion{font-weight:800;font-size:.82rem;letter-spacing:.8px;color:var(--texto-fuerte);margin:4px 0 8px}
+.fbg-fila{display:flex;justify-content:space-between;gap:12px;padding:4px 0;font-size:.85rem;color:var(--texto)}
+.fbg-num{font-variant-numeric:tabular-nums;white-space:nowrap;text-align:right}
+.fbg-sub{border-top:1px solid var(--texto-tenue);font-weight:700;margin-bottom:12px;padding-top:6px}
+.fbg-total{border-top:1px solid var(--texto-tenue);border-bottom:3px double var(--texto-fuerte);font-weight:800;padding:6px 0;margin-top:auto;color:var(--texto-fuerte)}
+.fbg-dif{color:var(--ambar);font-weight:700}
+.fbg-vacio{color:var(--texto-debil)}
+.fbg-er{margin-top:18px}
+.fbg-er summary{cursor:pointer;font-size:.78rem;font-weight:700;color:var(--rotulo);text-transform:uppercase;letter-spacing:.6px}
+.fbg-er .fb-doc{border:none;padding:10px 0 0;margin:0;background:transparent}
+.fbd-ayuda{margin:0 0 12px}
+.fbd-form{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:12px}
+.fbd-check{display:flex;align-items:center;gap:6px;font-size:.8rem;color:var(--texto);padding-bottom:8px}
+.fbd-error{padding:8px 0}
 @media (max-width:760px){
   .fin-toggle{flex-wrap:wrap;margin-left:0}
   .fb-controles{flex-direction:column;align-items:stretch}
   .fb-doc{padding:14px}
+  .fbg-cols{grid-template-columns:1fr}
+  .fbg-col + .fbg-col{border-left:none;border-top:1px solid var(--borde-fuerte)}
+  .fbd-form{flex-direction:column;align-items:stretch}
 }
 @media print{
   body.fb-imprimiendo{background:var(--superficie) !important}
@@ -1811,6 +1849,57 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   body.fb-imprimiendo .fin-kpi{background:var(--superficie)}
   body.fb-imprimiendo .fb-scroll{overflow:visible}
   body.fb-imprimiendo .fb-seccion{break-inside:avoid}
+  body.fb-imprimiendo .fbg-cols{grid-template-columns:1fr 1fr;break-inside:avoid}
+  body.fb-imprimiendo .fbg-col + .fbg-col{border-left:1px solid var(--borde-fuerte);border-top:none}
+}
+/* ── Horarios ─────────────────────────────────────────────────────────────────
+   Recursos Humanos > Horarios. Solo tokens, sin reglas `body.light`. En la
+   compu es una grilla (personas por dias); en el celular la grilla se esconde
+   y queda una tarjeta por persona con sus dias. */
+.hr-card{background:var(--superficie-honda);border:1px solid var(--borde);border-radius:10px;padding:18px;margin-bottom:18px;min-width:0}
+.hr-cab{display:flex;justify-content:space-between;align-items:center;gap:8px 12px;flex-wrap:wrap;margin-bottom:12px}
+.hr-cab .fin-card-title{margin-bottom:0}
+.hr-vacio{font-size:.8rem;color:var(--texto-debil);padding:6px 0}
+.hr-nota{font-size:.72rem;color:var(--texto-debil);margin-top:10px}
+.hr-tabla-wrap{overflow-x:auto}
+.hr-tabla{width:100%;border-collapse:separate;border-spacing:4px;font-size:.8rem}
+.hr-tabla th{font-weight:600;color:var(--texto-debil);font-size:.72rem;padding:4px 8px;text-align:center;white-space:nowrap}
+.hr-tabla th.hr-persona{text-align:left;color:var(--texto-fuerte);font-size:.85rem}
+.hr-celda{background:var(--relleno);color:var(--texto);border-radius:8px;padding:8px 6px;text-align:center;vertical-align:middle;min-width:92px}
+.hr-celda-libre{background:transparent;border:1px dashed var(--borde)}
+.hr-tramo-txt{display:block;font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums}
+.hr-horas{display:block;font-size:.7rem;color:var(--texto-debil);margin-top:2px}
+.hr-libre{color:var(--texto-debil);font-size:.75rem}
+.hr-tabla .hr-total{font-weight:700;color:var(--texto-fuerte);white-space:nowrap;text-align:right;padding:0 8px}
+.hr-acciones{text-align:right;white-space:nowrap}
+.hr-btn-chico{padding:6px 12px;font-size:.76rem}
+.hr-tarjetas{display:none}
+.hr-tarjeta{border-top:1px solid var(--borde);padding:12px 0}
+.hr-tarjeta:first-child{border-top:none;padding-top:0}
+.hr-tarjeta-cab{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px}
+.hr-tarjeta-nombre{font-size:.95rem;font-weight:700;color:var(--texto-fuerte)}
+.hr-tarjeta-total{font-size:.75rem;color:var(--texto-tenue)}
+.hr-tarjeta-dia{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:7px 0;border-top:1px solid var(--borde);font-size:.82rem;color:var(--texto)}
+.hr-tarjeta-dia-nombre{color:var(--texto-tenue)}
+.hr-tarjeta-dia-tramos{text-align:right}
+.hr-oculto{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.hr-modal{width:520px;max-width:95vw;max-height:90vh;overflow-y:auto}
+.hr-dia{border-top:1px solid var(--borde);padding:10px 0}
+.hr-dia-cab{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px}
+.hr-dia-nombre{font-size:.82rem;font-weight:700;color:var(--texto-fuerte)}
+.hr-no-trabaja{display:flex;align-items:center;gap:6px;font-size:.78rem;color:var(--texto-tenue);cursor:pointer}
+.hr-no-trabaja input{accent-color:var(--azul);width:16px;height:16px;margin:0}
+.hr-tramo{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.modal .hr-tramo input[type=time]{margin-bottom:0;flex:1 1 0;min-width:0;padding:8px 10px}
+.hr-a{font-size:.78rem;color:var(--texto-debil)}
+.hr-agregar{background:none;border:1px dashed var(--borde-fuerte);color:var(--azul-claro);border-radius:8px;padding:6px 12px;font-size:.76rem;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif}
+.hr-agregar:hover{background:var(--hover)}
+.hr-error{font-size:.78rem;color:var(--rojo-texto);margin:8px 0}
+.hr-error:empty{display:none}
+@media(max-width:640px){
+  .hr-tabla-wrap{display:none}
+  .hr-tarjetas{display:block}
+  .hr-card{padding:14px}
 }
 /* ── Inteligencia financiera ──────────────────────────────────────────────────
    Solo tokens: el tema claro sale solo. El borde izquierdo de cada tarjeta dice
@@ -2283,6 +2372,8 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div class="nav-section-label">RECURSOS HUMANOS</div>
   <div class="nav-item" id="nav-equipo" onclick="showPanel('equipo')"><i data-lucide="network" class="nav-icon"></i> Organigrama</div>
   <div class="nav-item" id="nav-ausencias" onclick="showPanel('ausencias')"><i data-lucide="calendar-clock" class="nav-icon"></i> Ausencias</div>
+  <div class="nav-item" id="nav-flujos" onclick="showPanel('flujos')"><i data-lucide="workflow" class="nav-icon"></i> Flujos</div>
+  <div class="nav-item" id="nav-horarios" onclick="showPanel('horarios')"><i data-lucide="clock-4" class="nav-icon"></i> Horarios</div>
   <div class="nav-section-label">CAPTACIÓN</div>
   <div class="nav-item" id="nav-cola" onclick="showPanel('cola')"><i data-lucide="inbox" class="nav-icon"></i> Outbound</div>
   <div class="nav-item" id="nav-metrics" onclick="showPanel('metrics')"><i data-lucide="bar-chart-2" class="nav-icon"></i> Inteligencia comercial</div>
@@ -2673,7 +2764,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 
     <div id="fin-vista-balance" style="display:none">
       <div class="fin-card">
-        <div class="fin-card-title">Balance</div>
+        <div class="fin-card-title">Balance general</div>
         <div class="fb-controles">
           <label class="fb-label">Tipo
             <select id="fb-tipo" class="filter-select">
@@ -2681,23 +2772,42 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
               <option value="interno">Interno (todo)</option>
             </select>
           </label>
-          <label class="fb-label">Período
-            <select id="fb-preset" class="filter-select" onchange="finBalPreset()">
-              <option value="anio" selected>Este año</option>
-              <option value="inicio">Desde el inicio</option>
-              <option value="personalizado">Personalizado</option>
-            </select>
+          <label class="fb-label">Fecha de corte
+            <input type="date" id="fb-corte" class="fb-campo">
           </label>
-          <span class="fb-fechas" id="fb-fechas" style="display:none">
-            <label class="fb-label">Desde <input type="date" id="fb-desde" class="fb-campo"></label>
-            <label class="fb-label">Hasta <input type="date" id="fb-hasta" class="fb-campo"></label>
-          </span>
           <button class="btn-primary" id="fb-generar" onclick="finBalGenerar()">Generar balance hasta el momento</button>
           <button class="btn-ghost" id="fb-imprimir" onclick="finBalImprimir()" style="display:none">Imprimir / PDF</button>
         </div>
-        <div class="fb-ayuda">En blanco: solo lo que se contabiliza (lo facturado, con IVA, y los pagos de impuestos). Interno: todo, y en cada total cuánto es en blanco y cuánto no.</div>
+        <div class="fb-ayuda">Sin fecha de corte es hoy. En blanco: solo lo que se contabiliza (lo facturado con su IVA, los pagos de impuestos y los datos marcados en blanco). Interno: todo, incluidas las cuentas por cobrar.</div>
       </div>
       <div id="fin-balance"></div>
+      <div class="fin-card" id="fbd-card">
+        <div class="fin-card-title">Datos para el balance</div>
+        <div class="fb-ayuda fbd-ayuda">Lo que Finanzas no sabe solo: el saldo inicial de caja, el capital de los socios, los bienes (mercadería, maquinarias, inmuebles, rodados) y las deudas (sueldos, préstamos, proveedores, BPS). Todo en USD.</div>
+        <div class="fbd-form" id="fbd-form">
+          <input type="hidden" id="fbd-id">
+          <label class="fb-label">Qué es
+            <select id="fbd-clase" class="filter-select" onchange="_finBalDatoRubros()">
+              <option value="activo" selected>Activo (bien)</option>
+              <option value="pasivo">Pasivo (deuda)</option>
+              <option value="capital">Capital</option>
+              <option value="caja_inicial">Saldo inicial de caja</option>
+            </select>
+          </label>
+          <label class="fb-label">Rubro
+            <select id="fbd-rubro" class="filter-select"></select>
+          </label>
+          <label class="fb-label">Nombre <input type="text" id="fbd-nombre" class="fb-campo" placeholder="Ej: notebooks del equipo"></label>
+          <label class="fb-label">Monto USD <input type="number" id="fbd-monto" class="fb-campo" step="0.01"></label>
+          <label class="fb-label">Desde <input type="date" id="fbd-desde" class="fb-campo"></label>
+          <label class="fb-label">Hasta (opcional) <input type="date" id="fbd-hasta" class="fb-campo"></label>
+          <label class="fbd-check"><input type="checkbox" id="fbd-blanco" checked> En blanco</label>
+          <button class="btn-primary" id="fbd-guardar" onclick="finBalDatoGuardar()">Guardar</button>
+          <button class="btn-ghost" id="fbd-cancelar" onclick="finBalDatoLimpiar()" style="display:none">Cancelar</button>
+        </div>
+        <div class="fb-error fbd-error" id="fbd-error" style="display:none"></div>
+        <div id="fbd-lista"></div>
+      </div>
     </div>
   </div>
 
@@ -3104,6 +3214,8 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
         <div id="mk-piezas"></div>
       </div>
 
+      <div id="mk-version" class="sc-version"></div>
+
     </div>
   </div>
 
@@ -3214,8 +3326,39 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       <div class="eq-cab"><div class="fin-card-title" id="eq-titulo-det">Detalle</div></div>
       <div id="eq-detalle"></div>
     </section>
+  </div>
+  <!-- ======= FIN RECURSOS HUMANOS PANELES ======= -->
 
-    <!-- Flujos: al final de Ausencias, debajo de todo. Solo roles, nunca nombres. -->
+  <!-- ======= HORARIOS PANEL ======= -->
+  <!-- Recursos Humanos > Horarios. Lo pinta hrCargar. -->
+  <div id="horarios-panel" class="panel">
+    <div class="page-header">
+      <div>
+        <h1>Horarios</h1>
+        <div class="page-date">Recursos Humanos · el horario de trabajo de cada programador.</div>
+      </div>
+    </div>
+
+    <section class="hr-card" aria-labelledby="hr-titulo">
+      <div class="hr-cab"><div class="fin-card-title" id="hr-titulo">Semana de trabajo</div></div>
+      <div id="hr-contenido"><div class="hr-vacio">Cargando...</div></div>
+      <div class="hr-nota">Horas en formato 24 h. Para cambiar un horario, tocá Editar al lado de la persona.</div>
+    </section>
+  </div>
+  <!-- ======= FIN HORARIOS PANEL ======= -->
+
+  <!-- ======= FLUJOS PANEL ======= -->
+  <!-- Recursos Humanos > Flujos. Antes era un bloque al final de Ausencias;
+       ahora es un panel propio. Lo pinta eqCargarFlujos al abrirlo. -->
+  <div id="flujos-panel" class="panel">
+    <div class="page-header">
+      <div>
+        <h1>Flujos</h1>
+        <div class="page-date">Recursos Humanos · cómo trabajamos, paso a paso.</div>
+      </div>
+    </div>
+
+    <!-- Flujos: solo roles, nunca nombres. -->
     <section class="eq-card eq-flujos" aria-labelledby="eq-titulo-flujos">
       <div class="eq-cab">
         <div>
@@ -3228,7 +3371,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       <div id="eq-flujos-pasos"><div class="eq-vacio">Cargando...</div></div>
     </section>
   </div>
-  <!-- ======= FIN RECURSOS HUMANOS PANELES ======= -->
+  <!-- ======= FIN FLUJOS PANEL ======= -->
 
   <!-- ======= PLANTILLAS PANEL ======= -->
   <div id="plantillas-panel" class="panel">
@@ -3763,6 +3906,21 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 </div>
 <!-- ======= FIN EQUIPO MODALES ======= -->
 
+<!-- ======= HORARIOS MODALES ======= -->
+<div class="modal-overlay" id="hr-modal-editor" onclick="if(event.target===this)hrCerrarEditor()">
+  <div class="modal hr-modal" role="dialog" aria-modal="true" aria-labelledby="hr-editor-titulo">
+    <h3 id="hr-editor-titulo">Horario</h3>
+    <p>Cada día puede tener más de un tramo, por ejemplo de 09:00 a 12:00 y de 14:00 a 18:00. Horas en formato 24 h.</p>
+    <div id="hr-editor-dias"></div>
+    <div class="hr-error" id="hr-editor-error" role="alert"></div>
+    <div class="modal-btns">
+      <button class="btn-ghost" type="button" onclick="hrCerrarEditor()">Cancelar</button>
+      <button class="btn-primary" type="button" onclick="hrGuardar()">Guardar</button>
+    </div>
+  </div>
+</div>
+<!-- ======= FIN HORARIOS MODALES ======= -->
+
 <!-- ======= DAILY MODALES ======= -->
 <!-- Los usan los dos Daily: dyModalSeccion dice de cuál es el modal abierto. -->
 <div class="modal-overlay" id="dy-modal-actividad" onclick="if(event.target===this)dyCerrarModal()">
@@ -4026,7 +4184,8 @@ function showPanel(name) {
   if (name === 'metrics') loadMetrics();
   if (name === 'activity') loadActivity();
   if (name === 'equipo' || name === 'ausencias') loadEquipo();
-  if (name === 'ausencias') eqCargarFlujos();
+  if (name === 'flujos') eqCargarFlujos();
+  if (name === 'horarios') hrCargar();
   if (name === 'seg_leads') loadSegLeads();
   if (name === 'plantillas') plCargar();
   if (name === 'sdr') loadSdr();
@@ -8253,20 +8412,20 @@ function _showScoreBreakdown(event, el) {
 
 // ── Mobile navigation ─────────────────────────────────────────────────────────
 // El mismo orden que el menu de la izquierda (Juan, 14/9).
-const NAV_PRIORITY = ['cal','meta','finanzas','simulador','inteligencia_fin','seg_leads','wa','notion_clients','plantillas','clientes','projects','tasks','daily','daily_admin','activity','equipo','ausencias','cola','metrics'];
+const NAV_PRIORITY = ['cal','meta','finanzas','simulador','inteligencia_fin','seg_leads','wa','notion_clients','plantillas','clientes','projects','tasks','daily','daily_admin','activity','equipo','ausencias','flujos','horarios','cola','metrics'];
 const NAV_ICONS = {
   cola:'inbox',meta:'instagram',cal:'calendar',
   tasks:'check-square',pipeline:'trending-up',clientes:'users',
   wa:'message-circle',metrics:'bar-chart-2',activity:'clock',projects:'target',
   notion_clients:'handshake',finanzas:'wallet',simulador:'calculator',inteligencia_fin:'lightbulb',equipo:'network',
-  ausencias:'calendar-clock',seg_leads:'phone-call',daily:'clipboard-list',plantillas:'message-square-text',daily_admin:'clipboard-check'
+  ausencias:'calendar-clock',horarios:'clock-4',flujos:'workflow',seg_leads:'phone-call',daily:'clipboard-list',plantillas:'message-square-text',daily_admin:'clipboard-check'
 };
 const NAV_LABELS = {
   cola:'Outbound',meta:'Meta',cal:'Agenda',
   tasks:'Tareas',pipeline:'Pipeline',clientes:'Clientes',
   wa:'WA',metrics:'Intel. comercial',activity:'Actividad',projects:'Proyectos',
   notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador',inteligencia_fin:'Intel. financiera',equipo:'Organigrama',
-  ausencias:'Ausencias',seg_leads:'Seguimiento',daily:'Daily',plantillas:'Plantillas',daily_admin:'Daily Admin'
+  ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento',daily:'Daily',plantillas:'Plantillas',daily_admin:'Daily Admin'
 };
 let _mobileNavOverflow = [];
 
@@ -8346,7 +8505,7 @@ function closeMasSheet() {
 }
 
 // ── Panel access control ──────────────────────────────────────────────────────
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','seg_leads','daily','plantillas','daily_admin'];
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin'];
 (async () => {
   try {
     const r = await fetch('/api/me');
@@ -9287,6 +9446,7 @@ function finVista(cual) {
   if (cual === 'fijos') loadFijos();
   if (cual === 'iva') loadIva();
   if (cual === 'pauta') loadPauta();
+  if (cual === 'balance') loadBalanceDatos();
 }
 
 const FIN_VERDE = '#10b981';
@@ -9843,27 +10003,12 @@ function _finBalHoy() {
   return new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10);
 }
 
-function finBalPreset() {
-  const personalizado = document.getElementById('fb-preset').value === 'personalizado';
-  document.getElementById('fb-fechas').style.display = personalizado ? '' : 'none';
-  if (!personalizado) return;
-  const hoy = _finBalHoy();
-  const desde = document.getElementById('fb-desde');
-  const hasta = document.getElementById('fb-hasta');
-  if (!desde.value) desde.value = hoy.slice(0, 4) + '-01-01';
-  if (!hasta.value) hasta.value = hoy;
-}
-
 function _finBalUrl() {
+  // Sin fecha de corte, el servidor usa hoy en Montevideo.
   const tipo = document.getElementById('fb-tipo').value;
-  const preset = document.getElementById('fb-preset').value;
-  let url = '/api/finanzas/balance?tipo=' + encodeURIComponent(tipo);
-  if (preset === 'inicio') url += '&desde=inicio';
-  if (preset === 'personalizado') {
-    url += '&desde=' + encodeURIComponent(document.getElementById('fb-desde').value)
-      + '&hasta=' + encodeURIComponent(document.getElementById('fb-hasta').value);
-  }
-  return url;
+  const corte = document.getElementById('fb-corte').value;
+  return '/api/finanzas/balance-general?tipo=' + encodeURIComponent(tipo)
+    + (corte ? '&fecha=' + encodeURIComponent(corte) : '');
 }
 
 async function finBalGenerar() {
@@ -9878,7 +10023,7 @@ async function finBalGenerar() {
     if (!r.ok) throw new Error((d && d.error) || 'no se pudo generar el balance');
     // Pintar adentro del try: una respuesta rara muestra el error en vez de
     // dejar el cartel de "Generando..." para siempre.
-    caja.innerHTML = _finBalPintar(d);
+    caja.innerHTML = _finBalGeneralPintar(d);
     _finBalUltimo = d;
   } catch (e) {
     caja.innerHTML = '<div class="fb-error">Error: ' + esc(e.message) + '</div>';
@@ -10021,7 +10166,7 @@ function finBalImprimir() {
   const hoja = document.getElementById('fb-print');
   const body = document.body;
   const eraClaro = body.classList.contains('light');
-  hoja.innerHTML = _finBalPintar(_finBalUltimo);
+  hoja.innerHTML = _finBalGeneralPintar(_finBalUltimo, true);
   // En claro siempre: un PDF con fondo oscuro no se imprime.
   body.classList.add('light');
   body.classList.add('fb-imprimiendo');
@@ -10033,6 +10178,226 @@ function finBalImprimir() {
   };
   window.addEventListener('afterprint', terminar);
   window.print();
+}
+
+// ---- Balance General (Activo = Pasivo + Patrimonio) ----
+// La cuenta la hace calcular_balance_general en services/finanzas.py. Aca se
+// pinta con el formato clasico: dos columnas, subtotales con linea arriba y
+// los totales finales con doble linea.
+const _FB_MESES_LARGOS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio',
+                          'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+function _finBalFechaLarga(iso) {
+  const p = String(iso || '').slice(0, 10).split('-');
+  const mes = _FB_MESES_LARGOS[parseInt(p[1], 10) - 1];
+  if (p.length !== 3 || !mes) return 'AL ' + esc(String(iso || ''));
+  return ('AL ' + parseInt(p[2], 10) + ' DE ' + mes + ' DE ' + p[0]).toUpperCase();
+}
+
+function _finBalMonto(n) {
+  // Convencion contable: los negativos entre parentesis.
+  const v = Number(n) || 0;
+  const texto = Math.abs(v).toLocaleString('es-UY', {minimumFractionDigits: 2,
+                                                     maximumFractionDigits: 2});
+  return v < -0.004 ? '(' + texto + ')' : texto;
+}
+
+function _finBalGFila(f, clase) {
+  return '<div class="fbg-fila' + (f.alerta ? ' fbg-dif' : '') + (clase ? ' ' + clase : '') + '">'
+    + '<span>' + esc(f.nombre) + '</span>'
+    + '<span class="fbg-num">' + _finBalMonto(f.monto) + '</span></div>';
+}
+
+function _finBalGFilas(filas) {
+  if (!filas || !filas.length) {
+    return '<div class="fbg-fila fbg-vacio"><span>Sin datos</span><span></span></div>';
+  }
+  return filas.map(f => _finBalGFila(f)).join('');
+}
+
+function _finBalGeneralPintar(d, paraImprimir) {
+  const generado = String(d.generado_en || '').split(' ');
+  let html = '<div class="fb-doc fbg">'
+    + '<div class="fbg-cab">'
+    + '<div class="fbg-titulo">BALANCE GENERAL</div>'
+    + '<div class="fbg-empresa">' + esc(d.empresa) + '</div>'
+    + '<div>' + _finBalFechaLarga(d.corte) + '</div>'
+    + '<div>(expresado en ' + esc(d.expresado_en) + ')</div>'
+    + '<div class="fb-sub">' + esc(d.tipo_nombre)
+    + (generado[0] ? ' · generado el ' + _finBalFecha(generado[0])
+      + (generado[1] ? ' a las ' + esc(generado[1]) : '') : '') + '</div>'
+    + '</div>';
+
+  if (!d.cuadra) {
+    html += '<div class="fb-aviso">El balance no cuadra: hay ' + _finUsd(Math.abs(d.diferencia))
+      + (d.diferencia > 0 ? ' de activo que el pasivo y el patrimonio no explican'
+                          : ' de pasivo y patrimonio que el activo no respalda')
+      + '. Falta cargar algo en "Datos para el balance": el saldo inicial de caja, '
+      + 'el capital de los socios o los bienes y deudas. Mientras tanto se muestra '
+      + 'como "Diferencia a revisar".</div>';
+  }
+  if (d.sin_cotizacion) {
+    html += '<div class="fb-aviso">' + d.sin_cotizacion
+      + (d.sin_cotizacion === 1 ? ' movimiento sin tipo de cambio no se incluye.'
+                                : ' movimientos sin tipo de cambio no se incluyen.')
+      + '</div>';
+  }
+
+  html += '<div class="fbg-cols">'
+    + '<div class="fbg-col fbg-activo">'
+    + '<div class="fbg-seccion">ACTIVO</div>'
+    + _finBalGFilas(d.activo.filas)
+    + _finBalGFila({nombre: 'TOTAL ACTIVO', monto: d.activo.total}, 'fbg-total')
+    + '</div>'
+    + '<div class="fbg-col fbg-pasivo">'
+    + '<div class="fbg-seccion">PASIVO</div>'
+    + _finBalGFilas(d.pasivo.filas)
+    + _finBalGFila({nombre: 'TOTAL PASIVO', monto: d.pasivo.total}, 'fbg-sub')
+    + '<div class="fbg-seccion">PATRIMONIO</div>'
+    + _finBalGFilas(d.patrimonio.filas)
+    + _finBalGFila({nombre: 'TOTAL PATRIMONIO', monto: d.patrimonio.total}, 'fbg-sub')
+    + _finBalGFila({nombre: 'TOTAL PASIVO Y PATRIMONIO', monto: d.total_pasivo_patrimonio}, 'fbg-total')
+    + '</div>'
+    + '</div>';
+
+  if (!paraImprimir && d.estado_resultados) {
+    html += '<details class="fbg-er"><summary>Estado de resultados del período</summary>'
+      + '<div class="fb-nota">Del ' + _finBalFecha(d.estado_resultados.desde) + ' al '
+      + _finBalFecha(d.estado_resultados.hasta)
+      + ': de acá sale la Utilidad del ejercicio.</div>'
+      + _finBalPintar(d.estado_resultados)
+      + '</details>';
+  }
+  return html + '</div>';
+}
+
+// ---- Datos para el balance (carga manual) ----
+// Espejo de BALANCE_CLASES en services/finanzas.py (hay un test que los compara).
+const FB_RUBROS = {
+  activo: {mercaderia: 'Mercadería', maquinarias: 'Maquinarias y equipos',
+           inmuebles: 'Edificio / inmuebles', rodados: 'Rodados', otros: 'Otros activos'},
+  pasivo: {sueldos: 'Sueldos por pagar', prestamos: 'Préstamos por pagar',
+           proveedores: 'Proveedores', fiscales: 'Deudas fiscales / BPS', otros: 'Otros pasivos'},
+  capital: {capital: 'Capital'},
+  caja_inicial: {caja_inicial: 'Saldo inicial de caja'}
+};
+const FB_CLASES = {activo: 'Activo', pasivo: 'Pasivo', capital: 'Capital',
+                   caja_inicial: 'Saldo inicial de caja'};
+let _finBalDatos = [];
+
+function _finBalDatoRubros(seleccionado) {
+  const clase = document.getElementById('fbd-clase').value;
+  const rubros = FB_RUBROS[clase] || {};
+  document.getElementById('fbd-rubro').innerHTML = Object.keys(rubros).map(k =>
+    '<option value="' + k + '"' + (k === seleccionado ? ' selected' : '') + '>'
+    + esc(rubros[k]) + '</option>').join('');
+}
+
+function _finBalDatosPintar(datos, solo) {
+  if (!datos.length) {
+    return '<div class="fb-nota">Todavía no hay datos cargados. Sin capital ni saldo '
+      + 'inicial de caja, el balance puede mostrar una diferencia a revisar.</div>';
+  }
+  return '<div class="fb-scroll"><table class="fin-tabla fb-tabla"><thead><tr>'
+    + '<th>Qué es</th><th>Nombre</th><th class="fb-num">USD</th><th>Desde</th>'
+    + '<th>Hasta</th><th>En blanco</th>' + (solo ? '' : '<th></th>')
+    + '</tr></thead><tbody>'
+    + datos.map(x => '<tr>'
+        + '<td>' + esc(FB_CLASES[x.clase] || x.clase) + ' · '
+        + esc((FB_RUBROS[x.clase] || {})[x.rubro] || x.rubro) + '</td>'
+        + '<td>' + esc(x.nombre) + '</td>'
+        + '<td class="fb-num">' + _finUsd(x.monto_usd) + '</td>'
+        + '<td>' + _finBalFecha(x.desde) + '</td>'
+        + '<td>' + (x.hasta ? _finBalFecha(x.hasta) : '—') + '</td>'
+        + '<td>' + (x.en_blanco ? 'Sí' : 'No') + '</td>'
+        + (solo ? '' : '<td style="white-space:nowrap">'
+          + '<button class="btn-ghost" onclick="finBalDatoEditar(' + x.id + ')">Editar</button> '
+          + '<button class="btn-ghost" onclick="finBalDatoBorrar(' + x.id + ')">Borrar</button></td>')
+        + '</tr>').join('')
+    + '</tbody></table></div>';
+}
+
+async function loadBalanceDatos() {
+  const lista = document.getElementById('fbd-lista');
+  const solo = _finSoloLectura();
+  // Solo lectura (el Contador): ve los datos, no los carga. El servidor igual
+  // devuelve 403.
+  document.getElementById('fbd-form').style.display = solo ? 'none' : '';
+  if (!document.getElementById('fbd-rubro').innerHTML) finBalDatoLimpiar();
+  let d;
+  try {
+    const r = await fetch('/api/finanzas/balance-datos');
+    if (!r.ok) throw new Error('no se pudo cargar');
+    d = await r.json();
+  } catch (e) {
+    lista.innerHTML = '<div class="fb-error">No se pudieron cargar los datos del balance</div>';
+    return;
+  }
+  _finBalDatos = (d && d.datos) || [];
+  lista.innerHTML = _finBalDatosPintar(_finBalDatos, solo);
+}
+
+function finBalDatoLimpiar() {
+  document.getElementById('fbd-id').value = '';
+  document.getElementById('fbd-clase').value = 'activo';
+  _finBalDatoRubros();
+  document.getElementById('fbd-nombre').value = '';
+  document.getElementById('fbd-monto').value = '';
+  document.getElementById('fbd-desde').value = _finBalHoy();
+  document.getElementById('fbd-hasta').value = '';
+  document.getElementById('fbd-blanco').checked = true;
+  document.getElementById('fbd-cancelar').style.display = 'none';
+  document.getElementById('fbd-error').style.display = 'none';
+}
+
+function finBalDatoEditar(id) {
+  const x = _finBalDatos.find(item => item.id === id);
+  if (!x) return;
+  document.getElementById('fbd-id').value = String(x.id);
+  document.getElementById('fbd-clase').value = x.clase;
+  _finBalDatoRubros(x.rubro);
+  document.getElementById('fbd-rubro').value = x.rubro;
+  document.getElementById('fbd-nombre').value = x.nombre || '';
+  document.getElementById('fbd-monto').value = String(x.monto_usd);
+  document.getElementById('fbd-desde').value = x.desde || '';
+  document.getElementById('fbd-hasta').value = x.hasta || '';
+  document.getElementById('fbd-blanco').checked = !!x.en_blanco;
+  document.getElementById('fbd-cancelar').style.display = '';
+}
+
+async function finBalDatoGuardar() {
+  const id = document.getElementById('fbd-id').value;
+  const error = document.getElementById('fbd-error');
+  const cuerpo = {
+    clase: document.getElementById('fbd-clase').value,
+    rubro: document.getElementById('fbd-rubro').value,
+    nombre: document.getElementById('fbd-nombre').value,
+    monto_usd: parseFloat(document.getElementById('fbd-monto').value),
+    desde: document.getElementById('fbd-desde').value,
+    hasta: document.getElementById('fbd-hasta').value || null,
+    en_blanco: !!document.getElementById('fbd-blanco').checked
+  };
+  const r = await fetch(id ? '/api/finanzas/balance-datos/' + id : '/api/finanzas/balance-datos', {
+    method: id ? 'PUT' : 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(cuerpo)
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    error.textContent = (d && d.error) || 'No se pudo guardar';
+    error.style.display = '';
+    return;
+  }
+  finBalDatoLimpiar();
+  await loadBalanceDatos();
+  if (_finBalUltimo) finBalGenerar();
+}
+
+async function finBalDatoBorrar(id) {
+  if (!confirm('¿Borrar este dato del balance?')) return;
+  await fetch('/api/finanzas/balance-datos/' + id, {method: 'DELETE'});
+  await loadBalanceDatos();
+  if (_finBalUltimo) finBalGenerar();
 }
 
 function _finMesActual() {
@@ -11621,6 +11986,212 @@ function ifnSeguimientoHtml(lista) {
     + (filas ? '<ul class="ifn-segs">' + filas + '</ul>' : '<div class="ifn-vacio">Todavía no tomaste ninguna recomendación.</div>');
 }
 // ========== FIN Inteligencia financiera ==========
+// ========== Horarios ==========
+// Recursos Humanos > Horarios: la semana de trabajo de cada programador, con
+// sus tramos por dia, las horas de cada dia y el total. En la compu es una
+// grilla (filas = personas, columnas = dias); en el celular, una tarjeta por
+// persona. Se edita con el boton Editar, en un modal por persona: la
+// validacion que vale es la del servidor, esta avisa antes de mandar. Todo con
+// el prefijo hr. Sin template literals ni barras invertidas: vive en un string
+// de Python.
+let hrDatos = null;
+let hrEdicion = null;
+
+const HR_DIAS_CORTOS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+const HR_DIAS_LARGOS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+const HR_TRAMOS_MAX = 6;
+const HR_HORA = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
+
+async function hrCargar() {
+  const caja = document.getElementById('hr-contenido');
+  try {
+    const r = await fetch('/api/horarios');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    hrDatos = await r.json();
+  } catch (e) {
+    hrDatos = null;
+    if (caja) caja.innerHTML = '<div class="hr-vacio">No se pudieron cargar los horarios (' + esc(e.message) + ').</div>';
+    return;
+  }
+  if (caja) caja.innerHTML = hrPantallaHtml(hrDatos);
+}
+
+// Los tramos de un dia y sus horas; sin tramos, "No trabaja".
+function hrDiaHtml(dia) {
+  const tramos = (dia && dia.tramos) || [];
+  if (!tramos.length) return '<span class="hr-libre">No trabaja</span>';
+  return tramos.map(t => '<span class="hr-tramo-txt">' + esc(t.desde) + '–' + esc(t.hasta) + '</span>').join('')
+    + '<span class="hr-horas">' + esc(dia.texto || '') + '</span>';
+}
+
+function hrBotonEditar(p) {
+  return '<button type="button" class="btn-ghost hr-btn-chico" aria-label="Editar el horario de ' + esc(p.nombre_corto)
+    + '" onclick="hrAbrirEditor(' + Number(p.id) + ')">Editar</button>';
+}
+
+function hrPantallaHtml(d) {
+  const personas = (d && d.personas) || [];
+  if (!personas.length) return '<div class="hr-vacio">Nadie del equipo lleva horas.</div>';
+  const visibles = (d.visibles && d.visibles.length) ? d.visibles : [0, 1, 2, 3, 4];
+  const cabecera = '<tr><th scope="col" class="hr-persona">Persona</th>'
+    + visibles.map(i => '<th scope="col" class="hr-col-dia">' + HR_DIAS_CORTOS[i] + '</th>').join('')
+    + '<th scope="col" class="hr-total">Semana</th>'
+    + '<th scope="col" class="hr-acciones"><span class="hr-oculto">Editar</span></th></tr>';
+  const filas = personas.map(p => '<tr><th scope="row" class="hr-persona">' + esc(p.nombre_corto) + '</th>'
+    + visibles.map(i => {
+      const dia = (p.dias || [])[i] || {};
+      const libre = !(dia.tramos && dia.tramos.length);
+      return '<td class="hr-celda' + (libre ? ' hr-celda-libre' : '') + '">' + hrDiaHtml(dia) + '</td>';
+    }).join('')
+    + '<td class="hr-total">' + esc(p.texto_semana) + '</td>'
+    + '<td class="hr-acciones">' + hrBotonEditar(p) + '</td></tr>').join('');
+  const tarjetas = personas.map(p => '<article class="hr-tarjeta">'
+    + '<div class="hr-tarjeta-cab"><div><div class="hr-tarjeta-nombre">' + esc(p.nombre_corto) + '</div>'
+    + '<div class="hr-tarjeta-total">' + esc(p.texto_semana) + ' por semana</div></div>' + hrBotonEditar(p) + '</div>'
+    + visibles.map(i => '<div class="hr-tarjeta-dia"><span class="hr-tarjeta-dia-nombre">' + HR_DIAS_LARGOS[i] + '</span>'
+      + '<span class="hr-tarjeta-dia-tramos">' + hrDiaHtml((p.dias || [])[i]) + '</span></div>').join('')
+    + '</article>').join('');
+  return '<div class="hr-tabla-wrap"><table class="hr-tabla"><thead>' + cabecera + '</thead><tbody>' + filas
+    + '</tbody></table></div><div class="hr-tarjetas">' + tarjetas + '</div>';
+}
+
+// ── editor ──
+function hrMinutos(hora) {
+  if (typeof hora !== 'string' || !HR_HORA.test(hora)) return null;
+  return Number(hora.slice(0, 2)) * 60 + Number(hora.slice(3, 5));
+}
+
+function hrHora(minutos) {
+  const m = Math.max(0, Math.min(minutos, 23 * 60 + 59));
+  const h = Math.floor(m / 60);
+  const r = m % 60;
+  return (h < 10 ? '0' : '') + h + ':' + (r < 10 ? '0' : '') + r;
+}
+
+function hrAbrirEditor(personaId) {
+  const p = ((hrDatos && hrDatos.personas) || []).find(x => x.id === personaId);
+  if (!p) return;
+  hrEdicion = {id: p.id, nombre: p.nombre_corto,
+    dias: [0, 1, 2, 3, 4, 5, 6].map(i => ((((p.dias || [])[i] || {}).tramos) || []).map(t => ({desde: t.desde, hasta: t.hasta})))};
+  document.getElementById('hr-editor-titulo').textContent = 'Horario de ' + p.nombre_corto;
+  document.getElementById('hr-editor-error').textContent = '';
+  hrPintarEditor();
+  document.getElementById('hr-modal-editor').classList.add('open');
+}
+
+function hrCerrarEditor() {
+  document.getElementById('hr-modal-editor').classList.remove('open');
+  hrEdicion = null;
+}
+
+function hrPintarEditor() {
+  if (!hrEdicion) return;
+  document.getElementById('hr-editor-dias').innerHTML = hrEdicion.dias.map((tramos, d) => {
+    const nombre = HR_DIAS_LARGOS[d];
+    const filas = tramos.map((t, i) => {
+      const base = 'hr-t-' + d + '-' + i;
+      const que = nombre + ', tramo ' + (i + 1);
+      return '<div class="hr-tramo">'
+        + '<label class="hr-oculto" for="' + base + '-desde">' + que + ', desde</label>'
+        + '<input type="time" id="' + base + '-desde" value="' + esc(t.desde) + '" oninput="hrCambiarTramo(' + d + ',' + i + ',0,this.value)">'
+        + '<span class="hr-a" aria-hidden="true">a</span>'
+        + '<label class="hr-oculto" for="' + base + '-hasta">' + que + ', hasta</label>'
+        + '<input type="time" id="' + base + '-hasta" value="' + esc(t.hasta) + '" oninput="hrCambiarTramo(' + d + ',' + i + ',1,this.value)">'
+        + '<button type="button" class="btn-ghost btn-icono hr-quitar" aria-label="Quitar ' + que + '" onclick="hrQuitarTramo(' + d + ',' + i + ')">×</button>'
+        + '</div>';
+    }).join('');
+    const agregar = (tramos.length && tramos.length < HR_TRAMOS_MAX)
+      ? '<button type="button" class="hr-agregar" onclick="hrAgregarTramo(' + d + ')">+ Agregar tramo</button>' : '';
+    return '<div class="hr-dia" role="group" aria-labelledby="hr-dia-' + d + '">'
+      + '<div class="hr-dia-cab"><span class="hr-dia-nombre" id="hr-dia-' + d + '">' + nombre + '</span>'
+      + '<label class="hr-no-trabaja"><input type="checkbox"' + (tramos.length ? '' : ' checked')
+      + ' onchange="hrNoTrabaja(' + d + ',this.checked)"> No trabaja</label></div>'
+      + filas + agregar + '</div>';
+  }).join('');
+}
+
+function hrCambiarTramo(dia, i, campo, valor) {
+  if (!hrEdicion || !hrEdicion.dias[dia] || !hrEdicion.dias[dia][i]) return;
+  hrEdicion.dias[dia][i][campo ? 'hasta' : 'desde'] = String(valor || '');
+}
+
+// Un tramo nuevo arranca donde termina el ultimo del dia y dura una hora.
+function hrAgregarTramo(dia) {
+  if (!hrEdicion || !hrEdicion.dias[dia]) return;
+  const tramos = hrEdicion.dias[dia];
+  if (tramos.length >= HR_TRAMOS_MAX) return;
+  const ultimo = tramos[tramos.length - 1];
+  const fin = ultimo ? hrMinutos(ultimo.hasta) : null;
+  if (fin === null || fin >= 23 * 60) tramos.push({desde: '09:00', hasta: '13:00'});
+  else tramos.push({desde: hrHora(fin), hasta: hrHora(fin + 60)});
+  hrPintarEditor();
+}
+
+function hrQuitarTramo(dia, i) {
+  if (!hrEdicion || !hrEdicion.dias[dia]) return;
+  hrEdicion.dias[dia].splice(i, 1);
+  hrPintarEditor();
+}
+
+function hrNoTrabaja(dia, marcado) {
+  if (!hrEdicion) return;
+  hrEdicion.dias[dia] = marcado ? [] : [{desde: '09:00', hasta: '13:00'}];
+  hrPintarEditor();
+}
+
+// Las mismas reglas que el servidor, con las mismas palabras.
+function hrValidar(dias) {
+  for (let d = 0; d < 7; d++) {
+    const nombre = HR_DIAS_LARGOS[d].toLowerCase();
+    const tramos = dias[d] || [];
+    if (tramos.length > HR_TRAMOS_MAX) return nombre + ': hasta ' + HR_TRAMOS_MAX + ' tramos por día';
+    const orden = [];
+    for (let i = 0; i < tramos.length; i++) {
+      const desde = hrMinutos(tramos[i].desde);
+      const hasta = hrMinutos(tramos[i].hasta);
+      const que = nombre + ', tramo ' + (i + 1);
+      if (desde === null) return que + ': la hora desde tiene que ser HH:MM';
+      if (hasta === null) return que + ': la hora hasta tiene que ser HH:MM';
+      if (desde >= hasta) return que + ': desde tiene que ser antes que hasta';
+      orden.push([desde, hasta, tramos[i]]);
+    }
+    orden.sort((a, b) => a[0] - b[0]);
+    for (let i = 1; i < orden.length; i++) {
+      if (orden[i][0] < orden[i - 1][1]) {
+        return nombre + ': los tramos ' + orden[i - 1][2].desde + '–' + orden[i - 1][2].hasta
+          + ' y ' + orden[i][2].desde + '–' + orden[i][2].hasta + ' se superponen';
+      }
+    }
+  }
+  return '';
+}
+
+function hrMayuscula(texto) {
+  const t = String(texto || '');
+  return t ? t.charAt(0).toUpperCase() + t.slice(1) : t;
+}
+
+async function hrGuardar() {
+  if (!hrEdicion) return;
+  const error = document.getElementById('hr-editor-error');
+  const problema = hrValidar(hrEdicion.dias);
+  if (problema) { error.textContent = hrMayuscula(problema) + '.'; return; }
+  error.textContent = '';
+  try {
+    const r = await fetch('/api/horarios/' + Number(hrEdicion.id), {method: 'PUT',
+      headers: {'Content-Type': 'application/json'}, body: JSON.stringify({dias: hrEdicion.dias})});
+    let j = {};
+    try { j = await r.json(); } catch (e) { j = {}; }
+    if (!r.ok) { error.textContent = hrMayuscula(j.error || 'no se pudo guardar (HTTP ' + r.status + ')') + '.'; return; }
+  } catch (e) {
+    error.textContent = 'No se pudo guardar: ' + e.message;
+    return;
+  }
+  hrCerrarEditor();
+  await hrCargar();
+}
+// ========== FIN Horarios ==========
+
 // ========== Daily Programador ==========
 // Daily Programador y Daily Admin (Juan, 15 y 16/9): actividades del dia y
 // recordatorios que se repiten, por persona del equipo. Son la misma pantalla
@@ -12754,7 +13325,7 @@ function eqBorrarRecupero(id) {
 }
 
 // ── flujos ──
-// Bloque al final de Ausencias: como trabajamos, paso a paso, con el rol de
+// Panel Flujos de Recursos Humanos: como trabajamos, paso a paso, con el rol de
 // cada etapa y nunca nombres. Los pasos vienen de /api/flujos. Agregar, editar
 // y reordenar va detras del boton Editar y solo para administradores; el
 // servidor le responde 403 a cualquier otro.
@@ -14077,7 +14648,31 @@ function _mkPintarPeriodo() {
   }
 }
 
+// Que version del CRM esta viendo el navegador, y desde cuando corre.
+//
+// Se pinta aparte del dossier a proposito: si el panel falla, esto igual dice
+// que version fallo. Es la primera pregunta cuando alguien dice "no me
+// aparecen los cambios".
+async function _mkVersion() {
+  const caja = document.getElementById('mk-version');
+  if (!caja) return;
+  try {
+    const r = await fetch('/api/marketing/version');
+    if (!r.ok) return;
+    const v = await r.json();
+    const desde = v.arrancado
+      ? new Date(v.arrancado * 1000).toLocaleString('es-UY',
+          { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+      : '?';
+    caja.textContent = `versión ${(v.imagen || '?').slice(-8)} · ` +
+                       `en el aire desde ${desde}`;
+  } catch (e) {
+    // Sin versión visible el panel sigue sirviendo: no es un dato del negocio.
+  }
+}
+
 async function loadMarketing() {
+  _mkVersion();
   const estado = document.getElementById('mk-estado');
   const cuerpo = document.getElementById('mk-cuerpo');
   estado.style.display = '';
@@ -14982,9 +15577,19 @@ function _mkPintarPiezas(d) {
   }
   const g = d.gasto_pauta;
   if (g !== null && g !== undefined && Math.abs(g - (t.gasto || 0)) > Math.max(1, g * 0.01)) {
+    // La causa NO es que falte sincronizar piezas —eso decía antes y explicaba
+    // la diferencia al revés—. Son dos consultas distintas a Meta, hechas en
+    // momentos distintos: la que se trajo último tiene más, porque el día en
+    // curso sigue acumulando gasto. Comprobado el 15/9: la diferencia estaba
+    // entera en el último día, y al resincronizar las dos quedó en 0,00.
+    //
+    // Por eso no se dice quién tiene razón: se dice que falta sincronizar.
+    const atrasada = g > (t.gasto || 0) ? 'por pieza' : 'por campaña';
     aviso += ` Ojo: mirado por campaña, Meta dice que en ${nombre} se gastaron ` +
       `${SC.fmt(g, 'moneda')} y las piezas suman ${SC.fmt(t.gasto, 'moneda')}. ` +
-      'La diferencia es gasto de anuncios que no se llegó a sincronizar pieza por pieza.';
+      'Son dos consultas distintas a Meta: el día en curso sigue acumulando ' +
+      `gasto, así que la que se trajo último tiene más. Falta sincronizar la ` +
+      `cuenta ${atrasada}; con las dos al día la diferencia se va.`;
   }
 
   // Sin recomendación en la tarjeta: la que había miraba toda la vida de la
@@ -15015,6 +15620,11 @@ function _mkPintarPiezas(d) {
       dato('Leads según Meta', a.leads, 'numero') +
       dato('Costo por lead', a.cpl, 'moneda') +
       (conCrm ? dato('Leads en el CRM', a.leads_crm, 'numero') : '') +
+      // Lo que ordena distinto que el costo por lead: contra los datos
+      // reales, dos piezas que traian leads a 15 y a 19 daban reuniones a 50
+      // y a 127. Mirando solo el costo por lead esa diferencia no se ve.
+      (conCrm ? dato('Se sentaron a hablar', a.demos, 'numero') : '') +
+      (conCrm ? dato('Costo por reunión', a.costo_demo, 'moneda') : '') +
       dato('Impresiones', a.impresiones, 'numero') +
       dato('Clics', a.clics, 'numero') +
       dato('CTR', a.ctr, 'porcentaje') +
@@ -15486,12 +16096,16 @@ def create_app(db_path: str) -> Flask:
     app = Flask(__name__)
     app.secret_key = os.environ.get("SECRET_KEY") or "scalerics-dev-key-change-in-prod"
     app.config["DB_PATH"] = db_path
+    # Cuando arranco este proceso. Lo usa /api/marketing/version para
+    # poder contestar "¿estoy viendo lo ultimo?" sin entrar por SSH.
+    import time as _t
+    app._arrancado = int(_t.time())
     app.config["PIPELINE_STATUS"] = _pipeline_status
     app.config["PIPELINE_LOCK"] = _pipeline_lock
 
     for bp in (leads_bp, demos_bp, calendar_bp, wa_bp, pipeline_bp, tasks_bp, budgets_bp, tokens_bp, meta_bp, calendly_bp, notion_bp, projects_bp, preclientes_bp,
                 notion_clients_bp, resend_bp, linkedin_bp, web_bp, finanzas_bp, marketing_bp,
-                simulador_bp, inteligencia_fin_bp, equipo_bp, flujos_bp, seg_leads_bp, daily_bp, plantillas_bp,
+                simulador_bp, inteligencia_fin_bp, equipo_bp, horarios_bp, flujos_bp, seg_leads_bp, daily_bp, plantillas_bp,
                 backups_bp):
         app.register_blueprint(bp)
 
@@ -16466,8 +17080,8 @@ select:focus{border-color:#0088cc}
 </div>
 
 <script>
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','seg_leads','daily','plantillas','daily_admin'];
-const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Inteligencia financiera',equipo:'Organigrama',ausencias:'Ausencias',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas'};
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin'];
+const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Inteligencia financiera',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas'};
 let _roles = [];
 
 // Paneles que muestran el check "solo lectura". El dato (roles.paneles_solo_lectura)

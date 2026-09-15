@@ -473,3 +473,82 @@ def test_con_pocos_leads_no_se_dice_que_va_bien(db):
     assert r["accion"] == "esperar"
     assert "va bien" not in r["texto"].lower()
     assert "suerte" in r["texto"].lower()
+
+
+# ── Lo que de verdad importa: quien trae gente que se sienta a hablar ──────
+#
+# El costo por lead dice cual es barato. El costo por demo dice cual sirve, y
+# no ordenan igual: contra los datos reales, "UGC 1 - Junio" traia leads a
+# 14,91 y demos a 49,68, mientras "Tiene APP - Junio" traia leads a 19,00 y
+# demos a 126,69. Mirando solo el CPL, la diferencia no se ve.
+
+def _con_estado(db, ad_id, cuantos, estado):
+    """Leads del CRM atribuidos a `ad_id`, algunos con un evento del embudo."""
+    conn = _connect(db)
+    try:
+        # El telefono es UNIQUE: la clave lleva el estado para que dos
+        # llamadas sobre el mismo anuncio no choquen entre si.
+        for i in range(cuantos):
+            clave = f"{ad_id}-{estado or 'nada'}-{i}"
+            cur = conn.execute(
+                "INSERT INTO businesses (name, phone, source, scraped_at, "
+                "meta_ad_id) VALUES (?,?,?,?,?)",
+                (clave, clave, "meta", "2026-09-01", ad_id))
+            if estado:
+                conn.execute("INSERT INTO lead_events (lead_id, new_status) "
+                             "VALUES (?,?)", (cur.lastrowid, estado))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def test_cuenta_los_leads_que_llegaron_a_demo(db):
+    _anuncio(db, "1")
+    _gasto(db, "1", "2026-09-01", 100.0, leads=10)
+    _con_estado(db, "1", 3, "demo_1")
+    _con_estado(db, "1", 5, None)
+    a = _uno(db, "1")
+    assert a["leads_atribuidos"] == 8
+    assert a["demos"] == 3
+    assert a["costo_demo"] == round(100 / 3, 2)
+
+
+def test_un_lead_que_paso_de_largo_la_demo_igual_cuenta(db):
+    """Un lead que hoy figura en `presupuesto_enviado` paso por la demo. Contar
+    solo el estado de hoy perderia a los que avanzaron."""
+    _anuncio(db, "1")
+    _gasto(db, "1", "2026-09-01", 100.0, leads=5)
+    _con_estado(db, "1", 1, "presupuesto_enviado")
+    _con_estado(db, "1", 1, "cerrado")
+    assert _uno(db, "1")["demos"] == 2
+
+
+def test_sin_demos_el_costo_por_demo_no_es_cero(db):
+    _anuncio(db, "1")
+    _gasto(db, "1", "2026-09-01", 100.0, leads=5)
+    _con_estado(db, "1", 4, None)
+    a = _uno(db, "1")
+    assert a["demos"] == 0
+    assert a["costo_demo"] is None
+
+
+def test_los_leads_de_otro_anuncio_no_se_le_cuentan(db):
+    _anuncio(db, "1")
+    _anuncio(db, "2")
+    _gasto(db, "1", "2026-09-01", 100.0, leads=5)
+    _gasto(db, "2", "2026-09-01", 100.0, leads=5)
+    _con_estado(db, "2", 4, "demo_1")
+    assert _uno(db, "1")["demos"] == 0
+    assert _uno(db, "2")["demos"] == 4
+
+
+def test_se_puede_ver_de_cuantos_leads_sabemos_el_anuncio(db):
+    """Meta guarda los leads 90 dias: de los viejos no sabemos de que anuncio
+    vinieron. Si el panel no dijera sobre cuantos esta hablando, un anuncio
+    viejo mostraria un costo por demo altisimo que es puro hueco de datos."""
+    _anuncio(db, "1")
+    _gasto(db, "1", "2026-09-01", 100.0, leads=20)   # Meta dice 20
+    _con_estado(db, "1", 4, "demo_1")                # sabemos el anuncio de 4
+    a = _uno(db, "1")
+    assert a["leads_total"] == 20
+    assert a["leads_atribuidos"] == 4
