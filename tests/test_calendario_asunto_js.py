@@ -263,6 +263,7 @@ _MODAL = [_linea("function closeNewEventModal(")] + _funciones(
     "openNewEventModal", "_calElegirTipo", "_calPonerCliente",
     "_calQuitarCliente", "_calReglaDelModal", "_calPintarRepeticion", "_calTextoRepeticion",
     "_calPlural", "_calLeerMails", "_calDiaSemana", "_calAhoraMvd", "saveEvent",
+    "_calAvisoGoogle", "_calTextoGoogle",
 )
 
 
@@ -405,7 +406,7 @@ const esperar = () => new Promise(ok => setTimeout(ok, 0));
 """
 
 _ALCANCE = _funciones("deleteCalEvent", "_calMover", "_calElegirAlcance", "_calResolverAlcance",
-                      "_calRutaReunion", "_calEvento")
+                      "_calRutaReunion", "_calEvento", "_calAvisoGoogle", "_calTextoGoogle")
 
 
 @node
