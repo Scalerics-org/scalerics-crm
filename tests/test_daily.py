@@ -6,6 +6,9 @@ olvidarse. Después lo ajustó: en el menú, debajo del ítem, una opción por
 persona (Juan y Gonzalo), y cualquiera con el panel entra a cualquiera. Las
 personas salen de Recursos Humanos: `equipo_personas.programador`.
 
+16/9: cada persona con su ícono en el menú, y el día pintado como Seguimiento
+de leads (contadores, grupos y tarjetas), con hora y nota opcionales.
+
 El reloj está fijo en el martes 15/9/2026, 10:00 de Montevideo (13:00 UTC).
 """
 
@@ -24,7 +27,7 @@ import dashboard
 import database
 import routes.daily as rutas_daily
 from database import create_user, get_actividad_daily, init_db, listar_personas_equipo
-from services.daily import hoy_montevideo, le_toca
+from services.daily import cuando, hoy_montevideo, le_toca
 
 HTML = dashboard.DASHBOARD_HTML
 RAIZ = Path(__file__).resolve().parents[1]
@@ -35,7 +38,7 @@ sin_node = pytest.mark.skipif(shutil.which("node") is None,
 
 AHORA = datetime(2026, 9, 15, 13, 0, tzinfo=timezone.utc)  # martes 10:00 en Montevideo
 LUNES, MARTES, MIERCOLES = "2026-09-14", "2026-09-15", "2026-09-16"
-SABADO, DOMINGO, PROX_LUNES = "2026-09-19", "2026-09-20", "2026-09-21"
+JUEVES, SABADO, DOMINGO, PROX_LUNES = "2026-09-17", "2026-09-19", "2026-09-20", "2026-09-21"
 
 
 def _entre(texto: str, desde: str, hasta: str) -> str:
@@ -45,10 +48,11 @@ def _entre(texto: str, desde: str, hasta: str) -> str:
 
 PANEL = _entre(SRC, "<!-- ======= DAILY PROGRAMADOR PANEL ======= -->",
                "<!-- ======= RECURSOS HUMANOS PANELES ======= -->")
+MODALES = _entre(SRC, "<!-- ======= DAILY MODALES ======= -->", "<!-- ======= FIN DAILY MODALES ======= -->")
 JS = _entre(SRC, "// ========== Daily Programador ==========", "// ========== Equipo ==========")
 # Termina donde empieza Seguimiento de leads, que va pegado abajo.
 CSS = _entre(SRC, "/* ── Daily Programador", "/* ── Seguimiento de leads")
-FUENTES = {"panel": PANEL, "js": JS, "css": CSS}
+FUENTES = {"panel": PANEL, "modales": MODALES, "js": JS, "css": CSS}
 
 
 # ── fixtures ─────────────────────────────────────────────────────────────────
@@ -129,14 +133,15 @@ def _dia(c, persona_id, fecha=None):
     return r.get_json()
 
 
-def _act(c, persona_id, texto, fecha=MARTES):
-    r = c.post("/api/daily/actividades", json={"persona_id": persona_id, "texto": texto, "fecha": fecha})
+def _act(c, persona_id, texto, fecha=MARTES, **extra):
+    r = c.post("/api/daily/actividades",
+               json={"persona_id": persona_id, "texto": texto, "fecha": fecha, **extra})
     assert r.status_code == 201, r.get_json()
     return r.get_json()["id"]
 
 
-def _rec(c, persona_id, texto, frecuencia="diario", dias=None):
-    datos = {"persona_id": persona_id, "texto": texto, "frecuencia": frecuencia}
+def _rec(c, persona_id, texto, frecuencia="diario", dias=None, **extra):
+    datos = {"persona_id": persona_id, "texto": texto, "frecuencia": frecuencia, **extra}
     if dias is not None:
         datos["dias"] = dias
     r = c.post("/api/daily/recordatorios", json=datos)
@@ -152,6 +157,14 @@ def _marcas(db):
     conn = sqlite3.connect(db)
     try:
         return conn.execute("SELECT COUNT(*) FROM daily_marcas").fetchone()[0]
+    finally:
+        conn.close()
+
+
+def _columnas(db, tabla):
+    conn = sqlite3.connect(db)
+    try:
+        return {fila[1] for fila in conn.execute(f"PRAGMA table_info({tabla})")}
     finally:
         conn.close()
 
@@ -230,7 +243,7 @@ def test_crud_de_actividades(cli):
     aid = _act(cli, juan, "  Terminar   la landing  ")
     assert _dia(cli, juan, MARTES)["actividades"] == [{
         "id": aid, "texto": "Terminar la landing", "hecha": False, "fecha": MARTES,
-        "pasada_de": None, "creada_por": "test"}]
+        "pasada_de": None, "hora": None, "nota": None, "creada_por": "test"}]
     assert cli.patch(f"/api/daily/actividades/{aid}", json={"hecha": True}).status_code == 200
     assert _dia(cli, juan, MARTES)["actividades"][0]["hecha"] is True
     assert cli.patch(f"/api/daily/actividades/{aid}", json={"hecha": False}).status_code == 200
@@ -250,6 +263,11 @@ def test_crud_de_actividades(cli):
     ({"texto": 5}, "vacío"),
     ({"texto": "x" * 201}, "200"),
     ({"texto": "ok", "fecha": "15/09/2026"}, "AAAA-MM-DD"),
+    ({"texto": "ok", "hora": "25:00"}, "HH:MM"),
+    ({"texto": "ok", "hora": "9:30"}, "HH:MM"),
+    ({"texto": "ok", "hora": 930}, "HH:MM"),
+    ({"texto": "ok", "nota": "x" * 301}, "300"),
+    ({"texto": "ok", "nota": 5}, "texto"),
 ])
 def test_la_actividad_se_valida_en_el_servidor(cli, datos, parte):
     r = cli.post("/api/daily/actividades", json={"persona_id": _juan(cli), **datos})
@@ -258,9 +276,47 @@ def test_la_actividad_se_valida_en_el_servidor(cli, datos, parte):
 
 def test_editar_o_pasar_una_actividad_se_valida(cli):
     aid = _act(cli, _juan(cli), "Algo")
-    for cuerpo in ({}, {"hecha": "si"}, {"hecha": 1}, {"texto": ""}):
+    for cuerpo in ({}, {"hecha": "si"}, {"hecha": 1}, {"texto": ""}, {"hora": "24:00"},
+                   {"nota": ["x"]}, {"fecha": "mañana"}):
         assert cli.patch(f"/api/daily/actividades/{aid}", json=cuerpo).status_code == 400, cuerpo
     assert cli.post(f"/api/daily/actividades/{aid}/pasar", json={"fecha": "mañana"}).status_code == 400
+
+
+def test_hora_y_nota_de_una_actividad_y_el_orden_por_hora(cli):
+    juan = _juan(cli)
+    sin_hora = _act(cli, juan, "Sin hora")
+    tarde = _act(cli, juan, "A la tarde", hora="15:00")
+    temprano = _act(cli, juan, "Temprano", hora="09:30", nota="  Pedir acceso al hosting  ")
+    dia = _dia(cli, juan, MARTES)
+    assert _textos(dia["actividades"]) == ["Temprano", "A la tarde", "Sin hora"], "con hora primero, en orden"
+    assert dia["actividades"][0]["hora"] == "09:30"
+    assert dia["actividades"][0]["nota"] == "Pedir acceso al hosting"
+
+    # Editar: sacar la hora, cambiar la nota y moverla de día.
+    assert cli.patch(f"/api/daily/actividades/{tarde}", json={"hora": "", "nota": "Después del almuerzo"}).status_code == 200
+    fila = get_actividad_daily(_db(cli), tarde)
+    assert fila["hora"] is None and fila["nota"] == "Después del almuerzo"
+    assert cli.patch(f"/api/daily/actividades/{temprano}", json={"nota": ""}).status_code == 200
+    assert get_actividad_daily(_db(cli), temprano)["nota"] is None, "una nota vacía es sin nota"
+    assert cli.patch(f"/api/daily/actividades/{sin_hora}", json={"fecha": JUEVES}).status_code == 200
+    assert _textos(_dia(cli, juan, JUEVES)["actividades"]) == ["Sin hora"]
+
+
+def test_pasar_a_maniana_y_hecho(cli):
+    """Los dos botones de cada tarjeta del día. "Pasar a mañana" es el mismo
+    pasar de siempre con el día siguiente; "Hecho" es marcarla."""
+    juan = _juan(cli)
+    aid = _act(cli, juan, "Revisar PR", hora="11:00")
+    r = cli.post(f"/api/daily/actividades/{aid}/pasar", json={"fecha": MIERCOLES})
+    assert r.status_code == 200 and r.get_json()["fecha"] == MIERCOLES
+    assert _dia(cli, juan, MARTES)["actividades"] == []
+    [miercoles] = _dia(cli, juan, MIERCOLES)["actividades"]
+    assert miercoles["pasada_de"] == MARTES and miercoles["hora"] == "11:00" and miercoles["hecha"] is False
+
+    assert cli.patch(f"/api/daily/actividades/{aid}", json={"hecha": True}).status_code == 200
+    assert _dia(cli, juan, MIERCOLES)["actividades"][0]["hecha"] is True
+    assert cli.patch(f"/api/daily/actividades/{aid}", json={"hecha": False}).status_code == 200, "Deshacer"
+    assert _dia(cli, juan, MIERCOLES)["actividades"][0]["hecha"] is False
 
 
 def test_lo_de_juan_no_aparece_en_el_dia_de_gonzalo(cli):
@@ -274,6 +330,45 @@ def test_lo_de_juan_no_aparece_en_el_dia_de_gonzalo(cli):
     assert _textos(dj["recordatorios"]) == ["Recordatorio de Juan"]
     assert dg["recordatorios"] == [] and dg["recordatorios_todos"] == []
     assert dj["persona"]["primer_nombre"] == "Juan" and dg["persona"]["primer_nombre"] == "Gonzalo"
+
+
+# ── migración ────────────────────────────────────────────────────────────────
+
+def test_la_migracion_agrega_hora_y_nota_sin_romper_lo_cargado(tmp_path):
+    """Una base con las tablas del Daily como quedaron publicadas (v226), sin
+    hora ni nota y con datos: al arrancar se suman las columnas y lo cargado
+    sigue igual."""
+    db = str(tmp_path / "vieja.db")
+    conn = sqlite3.connect(db)
+    conn.execute("""CREATE TABLE daily_actividades (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, persona_id INTEGER NOT NULL, fecha TEXT NOT NULL,
+        texto TEXT NOT NULL, hecha INTEGER NOT NULL DEFAULT 0, pasada_de TEXT,
+        created_by_id INTEGER, created_by_name TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
+    conn.execute("""CREATE TABLE daily_recordatorios (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, persona_id INTEGER NOT NULL, texto TEXT NOT NULL,
+        frecuencia TEXT NOT NULL DEFAULT 'diario', dias TEXT NOT NULL DEFAULT '',
+        activo INTEGER NOT NULL DEFAULT 1, desde TEXT NOT NULL, created_by_id INTEGER,
+        created_by_name TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
+    conn.execute("INSERT INTO daily_actividades (persona_id, fecha, texto, hecha, pasada_de) "
+                 "VALUES (6, ?, 'Cargada antes', 1, ?)", (MARTES, LUNES))
+    conn.execute("INSERT INTO daily_recordatorios (persona_id, texto, frecuencia, dias, desde) "
+                 "VALUES (6, 'Revisar mails', 'dias', '1,3', ?)", (LUNES,))
+    conn.commit()
+    conn.close()
+    assert "hora" not in _columnas(db, "daily_actividades")
+
+    init_db(db)
+    init_db(db)  # dos arranques: la migración no falla la segunda vez
+    for tabla in ("daily_actividades", "daily_recordatorios"):
+        assert {"hora", "nota"} <= _columnas(db, tabla), tabla
+
+    [a] = database.listar_actividades_daily(db, 6, MARTES)
+    assert (a["texto"], a["hecha"], a["pasada_de"], a["hora"], a["nota"]) == (
+        "Cargada antes", 1, LUNES, None, None)
+    [r] = database.listar_recordatorios_daily(db, 6)
+    assert (r["texto"], r["dias"], r["desde"], r["hora"], r["nota"]) == (
+        "Revisar mails", "1,3", LUNES, None, None)
+    assert cuando(r) == "Mar y Jue"
 
 
 # ── permisos ─────────────────────────────────────────────────────────────────
@@ -347,8 +442,17 @@ def test_los_recordatorios_aparecen_en_los_dias_que_les_tocan(cli):
     for fecha, textos in esperado.items():
         assert _textos(_dia(cli, juan, fecha)["recordatorios"]) == textos, fecha
     todos = _dia(cli, juan, LUNES)["recordatorios_todos"]
-    assert [r["cuando"] for r in todos] == ["Todos los días", "Días hábiles (lunes a viernes)", "Lun, Mié"]
+    assert [r["cuando"] for r in todos] == ["Todos los días", "Lun a Vie", "Lun y Mié"]
     assert todos[2]["dias"] == [0, 2] and todos[0]["dias"] == []
+
+
+def test_la_etiqueta_de_frecuencia():
+    base = {"activo": 1, "desde": LUNES}
+    assert cuando(dict(base, frecuencia="diario", dias="")) == "Todos los días"
+    assert cuando(dict(base, frecuencia="habiles", dias="")) == "Lun a Vie"
+    assert cuando(dict(base, frecuencia="dias", dias="1,3")) == "Mar y Jue"
+    assert cuando(dict(base, frecuencia="dias", dias="0,2,4")) == "Lun, Mié y Vie"
+    assert cuando(dict(base, frecuencia="dias", dias="6")) == "Dom"
 
 
 def test_le_toca_sin_base():
@@ -368,10 +472,32 @@ def test_le_toca_sin_base():
     ({"texto": "x", "frecuencia": "dias", "dias": [True]}, "0 (lunes)"),
     ({"texto": "x", "frecuencia": "dias", "dias": "lunes"}, "0 (lunes)"),
     ({"texto": "x", "activo": "no"}, "activo"),
+    ({"texto": "x", "hora": "7 de la mañana"}, "HH:MM"),
+    ({"texto": "x", "nota": "x" * 301}, "300"),
 ])
 def test_el_recordatorio_se_valida_en_el_servidor(cli, datos, parte):
     r = cli.post("/api/daily/recordatorios", json={"persona_id": _juan(cli), **datos})
     assert r.status_code == 400 and parte in r.get_json()["error"], r.get_json()
+
+
+def test_hora_y_nota_de_un_recordatorio_y_el_orden_por_hora(cli):
+    juan = _juan(cli)
+    sin_hora = _rec(cli, juan, "Sin hora")
+    rid = _rec(cli, juan, "Revisar mails", hora="10:00", nota="Los de clientes primero")
+    _rec(cli, juan, "Subir backup", hora="08:15")
+    assert _textos(_dia(cli, juan, MARTES)["recordatorios"]) == ["Subir backup", "Revisar mails", "Sin hora"]
+    todos = {r["id"]: r for r in _dia(cli, juan, MARTES)["recordatorios_todos"]}
+    assert todos[rid]["hora"] == "10:00" and todos[rid]["nota"] == "Los de clientes primero"
+    assert todos[sin_hora]["hora"] is None
+
+    # Mandar solo la hora no pisa la nota (ni al revés).
+    assert cli.put(f"/api/daily/recordatorios/{rid}", json={"hora": "07:00"}).status_code == 200
+    r = next(x for x in _dia(cli, juan, MARTES)["recordatorios_todos"] if x["id"] == rid)
+    assert r["hora"] == "07:00" and r["nota"] == "Los de clientes primero"
+    assert cli.put(f"/api/daily/recordatorios/{rid}", json={"hora": "", "nota": ""}).status_code == 200
+    r = next(x for x in _dia(cli, juan, MARTES)["recordatorios_todos"] if x["id"] == rid)
+    assert r["hora"] is None and r["nota"] is None
+    assert cli.put(f"/api/daily/recordatorios/{rid}", json={"hora": "99:99"}).status_code == 400
 
 
 def test_pausar_editar_y_borrar_un_recordatorio(cli):
@@ -459,6 +585,15 @@ def test_lo_que_quedo_sin_hacer_ayer_se_ve_y_se_pasa_a_hoy(cli):
     assert cli.post("/api/daily/actividades/9999/pasar", json={}).status_code == 404
 
 
+def test_un_dia_futuro_no_tiene_pendiente_de_ayer_y_uno_pasado_si(cli, monkeypatch):
+    juan = _juan(cli)
+    _act(cli, juan, "Quedó sin hacer el martes", MARTES)
+    assert _dia(cli, juan, MIERCOLES)["pendientes_ayer"] == [], "el miércoles todavía no llegó"
+    monkeypatch.setattr(rutas_daily, "_ahora", lambda: datetime(2026, 9, 17, 13, 0, tzinfo=timezone.utc))
+    assert _textos(_dia(cli, juan, MIERCOLES)["pendientes_ayer"]) == ["Quedó sin hacer el martes"], \
+        "mirando un día pasado se ve lo que quedó"
+
+
 # ── registrado en todos lados ────────────────────────────────────────────────
 
 def test_daily_va_en_operacion_despues_de_tareas_con_lugar_para_las_personas():
@@ -488,12 +623,31 @@ def test_esta_registrado_en_todos_lados():
     assert '_grant_panel_to_existing_roles(conn, "daily", solo_si_tiene="tasks")' in fuente_db
 
 
+def test_cada_persona_tiene_su_color_en_los_dos_temas():
+    """El ícono y el borde de los recordatorios usan tokens, que ya cambian con
+    el tema: no hace falta una regla clara aparte."""
+    for i in range(4):
+        assert re.search(r"\.dy-nav-icono\.dy-color-" + str(i) + r"\{stroke:var\(--[\w-]+\)\}", CSS), i
+        assert re.search(r"\.dy-borde-" + str(i) + r"\{border-left:3px solid var\(--[\w-]+\)\}", CSS), i
+    assert "const DY_COLORES = 4;" in JS
+
+
+def test_el_dia_reusa_las_piezas_de_seguimiento_de_leads():
+    assert 'class="page-header sl-cabecera"' in PANEL and 'class="sl-contadores" id="dy-contadores"' in PANEL
+    assert ">Nueva actividad</button>" in PANEL
+    for clase in ("sl-grupo", "sl-grupo-titulo-vencidos", "sl-tarjeta", "sl-vencida", "sl-acciones",
+                  "sl-btn-hecho", "sl-linea", "sl-contador-vencidos", "sl-nota", "sl-cuando"):
+        assert clase in JS, clase
+        assert re.search(r"\." + clase + r"\{", SRC), f"{clase} ya no existe en el CSS de Seguimiento"
+
+
 def test_la_pagina_abre_con_el_panel(cli):
     r = cli.get("/")
     assert r.status_code == 200
     pagina = r.get_data(as_text=True)
     assert pagina.count('id="daily-panel"') == 1 and pagina.count('id="nav-daily"') == 1
     assert pagina.count('id="dy-nav-personas"') == 1
+    assert pagina.count('id="dy-modal-actividad"') == 1 and pagina.count('id="dy-contadores"') == 1
 
 
 # ── las trampas de DASHBOARD_HTML ────────────────────────────────────────────
@@ -512,9 +666,15 @@ def test_el_css_usa_solo_tokens_y_nada_inline():
     for selector, cuerpo in reglas:
         assert not re.search(r"#[0-9a-fA-F]{3,8}(?![0-9a-zA-Z])|rgba?\(", cuerpo), selector.strip()
     assert "body.light" not in CSS.split("*/", 1)[1]
-    assert "style=" not in PANEL and "style=" not in JS
+    for nombre in ("panel", "modales", "js"):
+        assert "style=" not in FUENTES[nombre], nombre
     assert "setInterval" not in JS and "showPanel" not in re.search(
         r"// Initial load.*?\n([^/\s].*?)\n", HTML, re.S).group(1)
+
+
+def test_en_el_celular_los_botones_tienen_al_menos_40px():
+    movil = CSS[CSS.index("@media(max-width:600px){"):]
+    assert "#daily-panel .sl-btn" in movil and "min-height:40px" in movil
 
 
 def test_todo_lo_del_js_lleva_el_prefijo_dy():
@@ -560,7 +720,7 @@ globalThis.setInterval = () => 0;
 const _RESPUESTAS = __RESPUESTAS__;
 const _pedidos = [];
 globalThis.fetch = (url, opciones) => {
-  _pedidos.push([String(url), (opciones && opciones.method) || 'GET']);
+  _pedidos.push([String(url), (opciones && opciones.method) || 'GET', (opciones && opciones.body) || null]);
   const r = _RESPUESTAS[String(url)];
   if (r === 'falla') return Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) });
   return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(r === undefined ? {} : r) });
@@ -590,69 +750,81 @@ _PRUEBA = """
   dyAbrirPersona(__GONZALO__);
   s.panel = activePanel;
   await loadDaily();
-  s.actividadesGonzalo = _el('dy-actividades').innerHTML;
+  s.tituloGonzalo = _el('dy-titulo').textContent;
+  s.listaGonzalo = _el('dy-lista').innerHTML;
   s.menuConGonzalo = _el('dy-nav-personas').innerHTML;
-  s.pidioGonzalo = _pedidos.some(p => p[0].indexOf('/api/daily?persona_id=__GONZALO__') === 0);
+  dyMoverDia(1);
+  await dyCargarDia();
+  s.vacioFuturo = _el('dy-lista').innerHTML;
+  s.contadoresVacio = _el('dy-contadores').innerHTML;
 
   dyElegirPersona(__JUAN__);
+  dyIrHoy();
   await dyCargarDia();
+  s.titulo = _el('dy-titulo').textContent;
+  s.resumen = _el('dy-resumen').textContent;
   s.fecha = _el('dy-fecha').innerHTML;
-  s.actividades = _el('dy-actividades').innerHTML;
-  s.pendientes = _el('dy-pendientes').innerHTML;
-  s.recordatoriosHoy = _el('dy-recordatorios-hoy').innerHTML;
+  s.contadores = _el('dy-contadores').innerHTML;
+  s.lista = _el('dy-lista').innerHTML;
   s.recordatorios = _el('dy-recordatorios').innerHTML;
 
   const antes = _pedidos.length;
+  await dyActividadHecha(__TEMPRANO__);
+  await dyPasarAManiana(__SIN_HORA__);
+  await dyPasar(__PENDIENTE__);
+  await dyRecordatorioHecho(__DIARIO__);
+  await dyDeshacerActividad(__HECHA__);
+  await dyDeshacerRecordatorio(__REC_HECHO__);
+
   _el('dy-nueva').value = '   ';
   await dyAgregar();
   s.errorVacio = _el('dy-error').textContent;
-  s.postsVacio = _pedidos.slice(antes).filter(p => p[1] === 'POST').length;
   _el('dy-nueva').value = 'Llamar a Tito';
   await dyAgregar();
-  s.postsAgregar = _pedidos.slice(antes).filter(p => p[0] === '/api/daily/actividades' && p[1] === 'POST').length;
   s.nuevaVacia = _el('dy-nueva').value;
 
-  await dyPasar(__PENDIENTE__);
-  s.pasar = _pedidos.some(p => p[0] === '/api/daily/actividades/__PENDIENTE__/pasar' && p[1] === 'POST');
-  await dyMarcarRecordatorio(__DIARIO__, true);
-  s.marca = _pedidos.some(p => p[0] === '/api/daily/recordatorios/__DIARIO__/marca' && p[1] === 'PUT');
-  await dyMarcarActividad(__HECHA__, false);
-  s.patch = _pedidos.some(p => p[0] === '/api/daily/actividades/__HECHA__' && p[1] === 'PATCH');
+  dyAbrirActividad();
+  s.modalTitulo = _el('dy-act-titulo').textContent;
+  s.modalContexto = _el('dy-act-contexto').textContent;
+  s.modalFecha = _el('dy-act-fecha').value;
+  _el('dy-act-texto').value = '  ';
+  await dyGuardarActividad();
+  s.modalError = _el('dy-act-error').textContent;
+  _el('dy-act-texto').value = 'Preparar demo';
+  _el('dy-act-hora').value = '16:00';
+  _el('dy-act-nota').value = 'Con datos reales';
+  await dyGuardarActividad();
 
-  _el('dy-rec-texto').value = 'Subir backup';
+  dyAbrirActividad(__TEMPRANO__);
+  s.editTitulo = _el('dy-act-titulo').textContent;
+  s.editTexto = _el('dy-act-texto').value;
+  s.editHora = _el('dy-act-hora').value;
+  s.editNota = _el('dy-act-nota').value;
+  _el('dy-act-hora').value = '11:00';
+  await dyGuardarActividad();
+
+  dyAbrirActividad(__SIN_HORA__);
+  await dyBorrarDesdeModal();
+
+  _el('dy-rec-texto').value = 'Daily con el equipo';
   _el('dy-rec-frecuencia').value = 'dias';
-  const antesRec = _pedidos.length;
   await dyGuardarRecordatorio();
   s.errorDias = _el('dy-rec-error').textContent;
-  s.postsRecSinDias = _pedidos.slice(antesRec).filter(p => p[1] === 'POST').length;
-  _el('dy-rec-dia-0').checked = true;
-  _el('dy-rec-dia-3').checked = true;
+  _el('dy-rec-dia-1').checked = true;
+  _el('dy-rec-hora').value = '18:00';
+  _el('dy-rec-nota').value = 'Antes de irse';
   await dyGuardarRecordatorio();
-  s.postRec = _pedidos.some(p => p[0] === '/api/daily/recordatorios' && p[1] === 'POST');
   s.textoTrasCrear = _el('dy-rec-texto').value;
-
   dyEditarRecordatorio(__DIARIO__);
-  s.editTexto = _el('dy-rec-texto').value;
+  s.editRecHora = _el('dy-rec-hora').value;
+  s.editRecNota = _el('dy-rec-nota').value;
   s.botonEdit = _el('dy-rec-guardar').textContent;
-  await dyGuardarRecordatorio();
-  s.put = _pedidos.some(p => p[0] === '/api/daily/recordatorios/__DIARIO__' && p[1] === 'PUT');
-  s.botonTras = _el('dy-rec-guardar').textContent;
+  s.pedidos = _pedidos.slice(antes);
 
-  await dyPausarRecordatorio(__DIARIO__);
-  s.puts = _pedidos.filter(p => p[0] === '/api/daily/recordatorios/__DIARIO__' && p[1] === 'PUT').length;
-  await dyBorrarRecordatorio(__PAUSADO__);
-  s.borrar = _pedidos.some(p => p[0] === '/api/daily/recordatorios/__PAUSADO__' && p[1] === 'DELETE');
-  await dyBorrarActividad(__HECHA__);
-  s.borrarAct = _pedidos.some(p => p[0] === '/api/daily/actividades/__HECHA__' && p[1] === 'DELETE');
-
-  dyMoverDia(1);
+  dyMoverDia(-1);
   await dyCargarDia();
-  s.fechaSiguiente = dyFecha;
-  s.fechaSiguienteTexto = _el('dy-fecha').innerHTML;
-  s.pendientesManiana = _el('dy-pendientes').innerHTML;
-  dyIrHoy();
-  await dyCargarDia();
-  s.fechaHoy = dyFecha;
+  s.fechaLunes = dyFecha;
+  s.listaLunes = _el('dy-lista').innerHTML;
 
   console.log(JSON.stringify(s));
   process.exit(0);
@@ -660,15 +832,32 @@ _PRUEBA = """
 """
 
 
+def _grupo(lista, clave):
+    """El HTML de un grupo de la lista, hasta el grupo siguiente."""
+    inicio = lista.index(f'id="dy-grupo-{clave}"')
+    siguientes = [lista.index(m, inicio + 1) for m in ("<section", "<details", '<div class="dy-vacio-grande"')
+                  if m in lista[inicio + 1:]]
+    return lista[inicio:min(siguientes)] if siguientes else lista[inicio:]
+
+
+def _hubo(pedidos, url, metodo, cuerpo=None):
+    return any(p[0] == url and p[1] == metodo and (cuerpo is None or json.loads(p[2] or "null") == cuerpo)
+               for p in pedidos)
+
+
 @sin_node
-def test_la_pantalla_se_pinta_y_cada_persona_del_menu_abre_su_dia(cli, tmp_path):
+def test_la_pantalla_se_pinta_como_seguimiento_y_cada_persona_del_menu_abre_su_dia(cli, tmp_path):
     juan, gonzalo = _juan(cli), _gonzalo(cli)
-    pendiente = _act(cli, juan, "Terminar landing", LUNES)
-    hecha = _act(cli, juan, "Deploy <b>Bar Tito</b>")
+    pendiente = _act(cli, juan, "Terminar landing", LUNES, hora="08:00")
+    sin_hora = _act(cli, juan, "Revisar PR")
+    temprano = _act(cli, juan, "Deploy <b>Bar Tito</b>", hora="09:30", nota="Pedir acceso al hosting")
+    hecha = _act(cli, juan, "Mandar presupuesto")
     cli.patch(f"/api/daily/actividades/{hecha}", json={"hecha": True})
-    _act(cli, juan, "Revisar PR")
-    diario = _rec(cli, juan, "Revisar mails de clientes")
-    pausado = _rec(cli, juan, "Subir backup", "habiles")
+    diario = _rec(cli, juan, "Revisar mails de clientes", hora="10:00", nota="Los urgentes primero")
+    _rec(cli, juan, "Daily con Matías", "dias", [1, 3])
+    rec_hecho = _rec(cli, juan, "Subir backup", "habiles")
+    cli.put(f"/api/daily/recordatorios/{rec_hecho}/marca", json={"fecha": MARTES, "hecha": True})
+    pausado = _rec(cli, juan, "Llamar al contador", "habiles")
     cli.put(f"/api/daily/recordatorios/{pausado}", json={"activo": False})
     _act(cli, gonzalo, "Reunión con Matías")
 
@@ -676,51 +865,130 @@ def test_la_pantalla_se_pinta_y_cada_persona_del_menu_abre_su_dia(cli, tmp_path)
         "/api/daily/personas": cli.get("/api/daily/personas").get_json(),
         f"/api/daily?persona_id={juan}": _dia(cli, juan),
         f"/api/daily?persona_id={juan}&fecha={MARTES}": _dia(cli, juan, MARTES),
+        f"/api/daily?persona_id={juan}&fecha={LUNES}": _dia(cli, juan, LUNES),
         f"/api/daily?persona_id={juan}&fecha={MIERCOLES}": _dia(cli, juan, MIERCOLES),
         f"/api/daily?persona_id={gonzalo}": _dia(cli, gonzalo),
         f"/api/daily?persona_id={gonzalo}&fecha={MARTES}": _dia(cli, gonzalo, MARTES),
+        f"/api/daily?persona_id={gonzalo}&fecha={MIERCOLES}": _dia(cli, gonzalo, MIERCOLES),
     }
     prueba = _PRUEBA
     for clave, valor in {"__JUAN__": juan, "__GONZALO__": gonzalo, "__PENDIENTE__": pendiente,
-                         "__HECHA__": hecha, "__DIARIO__": diario, "__PAUSADO__": pausado}.items():
+                         "__SIN_HORA__": sin_hora, "__TEMPRANO__": temprano, "__HECHA__": hecha,
+                         "__DIARIO__": diario, "__REC_HECHO__": rec_hecho}.items():
         prueba = prueba.replace(clave, str(valor))
     s = _correr_js(tmp_path, respuestas, prueba)
 
-    # Las dos opciones del menú, en orden, y cada una abre su día.
+    # ── menú: cada persona con su ícono a la izquierda, en su color ──
+    icono_juan = '<i data-lucide="user-round" class="dy-nav-icono dy-color-0" aria-hidden="true"></i><span>Juan</span>'
+    icono_gonzalo = '<i data-lucide="user-round" class="dy-nav-icono dy-color-1" aria-hidden="true"></i><span>Gonzalo</span>'
+    assert icono_juan in s["menu"] and icono_gonzalo in s["menu"]
+    assert s["menu"].index(icono_juan) < s["menu"].index(icono_gonzalo)
     assert f"dyAbrirPersona({juan})" in s["menu"] and f"dyAbrirPersona({gonzalo})" in s["menu"]
-    assert s["menu"].index(">Juan</div>") < s["menu"].index(">Gonzalo</div>")
     assert "dy-activa" not in s["menu"], "fuera del panel no se marca ninguna"
-    assert 'aria-pressed="true"' in s["selector"] and ">Juan</button>" in s["selector"]
-    assert ">Gonzalo</button>" in s["selector"], "en el celular se elige arriba del panel"
+    assert icono_juan + "</button>" in s["selector"] and icono_gonzalo + "</button>" in s["selector"], \
+        "en el celular, el mismo ícono en el selector"
+    assert 'aria-pressed="true" onclick="dyElegirPersona(%d)"' % juan in s["selector"]
     assert s["primera"] == juan
-    assert s["panel"] == "daily" and s["pidioGonzalo"]
-    assert "Reunión con Matías" in s["actividadesGonzalo"] and "Revisar PR" not in s["actividadesGonzalo"]
+
+    # ── Gonzalo desde el menú ──
+    assert s["panel"] == "daily" and s["tituloGonzalo"] == "Daily de Gonzalo"
     assert f'class="dy-nav-sub dy-activa" id="dy-nav-persona-{gonzalo}"' in s["menuConGonzalo"]
+    assert "Reunión con Matías" in s["listaGonzalo"] and "Revisar PR" not in s["listaGonzalo"]
+    assert "Nada pendiente para este día." in s["vacioFuturo"] and 'onclick="dyAbrirActividad()"' in s["vacioFuturo"]
+    assert "sl-contador-vencidos" not in s["contadoresVacio"], "sin nada de ayer, sin rojo"
 
-    # El día de Juan.
+    # ── encabezado y contadores del día de Juan ──
+    assert s["titulo"] == "Daily de Juan"
+    assert s["resumen"] == "4 pendientes · 2 hechas · 1 de ayer"
     assert s["fecha"] == 'martes 15 de septiembre<span class="dy-fecha-hoy">Hoy</span>'
-    assert "Revisar PR" in s["actividades"]
-    assert "&lt;b&gt;Bar Tito&lt;/b&gt;" in s["actividades"] and "<b>" not in s["actividades"]
-    assert s["actividades"].count("dy-hecha") == 1 and s["actividades"].count(" checked") == 1
-    assert "Pendiente de ayer" in s["pendientes"] and "Terminar landing" in s["pendientes"]
-    assert "Pasar a hoy" in s["pendientes"] and f"dyPasar({pendiente})" in s["pendientes"]
-    assert "Revisar mails de clientes" in s["recordatoriosHoy"] and "Todos los días" in s["recordatoriosHoy"]
-    assert "Subir backup" not in s["recordatoriosHoy"], "pausado no aparece en el día"
-    assert "Pausado" in s["recordatorios"] and "Subir backup" in s["recordatorios"]
-    assert f"dyBorrarRecordatorio({pausado})" in s["recordatorios"]
+    contadores = re.findall(r'data-grupo="(\w+)".*?sl-contador-num">(\d+)</span><span class="sl-contador-rot">([^<]+)<',
+                            s["contadores"])
+    assert contadores == [("ayer", "1", "Pendiente de ayer"), ("hoy", "2", "Hoy"),
+                          ("recordatorios", "2", "Recordatorios"), ("hechas", "2", "Hechas")]
+    assert 'class="sl-contador sl-contador-vencidos" data-grupo="ayer"' in s["contadores"]
+    assert 'onclick="dyIrAGrupo(this.dataset.grupo)"' in s["contadores"]
 
-    # Lo que manda cada botón.
-    assert s["errorVacio"] and s["postsVacio"] == 0
-    assert s["postsAgregar"] == 1 and s["nuevaVacia"] == ""
-    assert s["pasar"] and s["marca"] and s["patch"]
-    assert "al menos un día" in s["errorDias"] and s["postsRecSinDias"] == 0
-    assert s["postRec"] and s["textoTrasCrear"] == ""
-    assert s["editTexto"] == "Revisar mails de clientes" and s["botonEdit"] == "Guardar cambios"
-    assert s["put"] and s["botonTras"] == "Crear recordatorio"
-    assert s["puts"] == 2, "editar y pausar"
-    assert s["borrar"] and s["borrarAct"]
+    # ── grupos en orden, con su título ──
+    lista = s["lista"]
+    orden = [lista.index(f'id="dy-grupo-{g}"') for g in ("ayer", "hoy", "recordatorios", "hechas")]
+    assert orden == sorted(orden)
+    assert '<h2 class="sl-grupo-titulo sl-grupo-titulo-vencidos">PENDIENTE DE AYER</h2>' in lista
+    assert '<h2 class="sl-grupo-titulo">HOY · MARTES 15 DE SEPTIEMBRE</h2>' in lista
+    assert '<h2 class="sl-grupo-titulo">RECORDATORIOS DE HOY</h2>' in lista
+    assert '<summary class="sl-grupo-titulo">HECHAS (2)</summary>' in lista
+    assert '<details class="sl-grupo dy-hechas" id="dy-grupo-hechas" ontoggle' in lista, "colapsado por defecto"
+    assert "Nada pendiente" not in lista
 
-    # Las flechas y "Hoy".
-    assert s["fechaSiguiente"] == MIERCOLES and s["fechaSiguienteTexto"] == "miércoles 16 de septiembre"
-    assert "Revisar PR" in s["pendientesManiana"] and "Pasar a este día" in s["pendientesManiana"]
-    assert s["fechaHoy"] == MARTES
+    # Pendiente de ayer: borde rojo, hora en rojo, "Pasar a hoy".
+    ayer = _grupo(lista, "ayer")
+    assert ayer.count("<article") == 1
+    assert '<article class="sl-tarjeta dy-tarjeta sl-vencida"' in ayer and "Terminar landing" in ayer
+    assert 'class="sl-cuando sl-cuando-vencido">08:00' in ayer
+    botones = re.findall(r'<button type="button" class="sl-btn[^"]*"[^>]*>([^<]+)</button>', ayer)
+    assert botones == ["Pasar a hoy", "Hecho", "Editar"]
+
+    # Hoy: tarjetas completas en orden de hora, con nota y los tres botones.
+    hoy = _grupo(lista, "hoy")
+    assert hoy.count("<article") == 2 and "sl-vencida" not in hoy
+    assert hoy.index("Deploy") < hoy.index("Revisar PR")
+    assert "&lt;b&gt;Bar Tito&lt;/b&gt;" in hoy and "<b>" not in hoy
+    assert '<div class="sl-cuando">09:30</div>' in hoy and '<div class="sl-nota">Pedir acceso al hosting</div>' in hoy
+    botones = re.findall(r'<button type="button" class="sl-btn[^"]*"[^>]*>([^<]+)</button>', hoy)
+    assert botones == ["Hecho", "Pasar a mañana", "Editar"] * 2
+    assert 'class="sl-btn sl-btn-hecho" data-id="%d" onclick="dyActividadHecha(' % temprano in hoy
+
+    # Recordatorios de hoy: borde del color de la persona y etiqueta de frecuencia.
+    recs = _grupo(lista, "recordatorios")
+    assert recs.count('<article class="sl-tarjeta dy-tarjeta dy-borde-0"') == 2
+    assert recs.index("Revisar mails de clientes") < recs.index("Daily con Matías"), "con hora primero"
+    assert '<span class="dy-etiqueta">Todos los días</span>' in recs and '<span class="dy-etiqueta">Mar y Jue</span>' in recs
+    assert re.findall(r'class="sl-btn[^"]*"[^>]*>([^<]+)</button>', recs) == ["Hecho", "Editar"] * 2
+    assert "Llamar al contador" not in lista, "pausado no aparece en el día"
+
+    # Hechas: una línea tachada con Deshacer.
+    hechas = _grupo(lista, "hechas")
+    assert hechas.count('class="sl-linea dy-linea-hecha"') == 2 and hechas.count(">Deshacer</button>") == 2
+    assert '<div class="dy-tachado">Mandar presupuesto</div>' in hechas and "Subir backup" in hechas
+    assert f'onclick="dyDeshacerActividad(Number(this.dataset.id))"' in hechas
+    assert "dyDeshacerRecordatorio(" in hechas
+    assert "Mandar presupuesto" not in hoy
+
+    assert "Llamar al contador" in s["recordatorios"] and "Pausado" in s["recordatorios"]
+    assert "Todos los días · 10:00" in s["recordatorios"]
+
+    # ── lo que manda cada botón ──
+    p = s["pedidos"]
+    assert _hubo(p, f"/api/daily/actividades/{temprano}", "PATCH", {"hecha": True}), "Hecho"
+    assert _hubo(p, f"/api/daily/actividades/{sin_hora}/pasar", "POST", {"fecha": MIERCOLES}), "Pasar a mañana"
+    assert _hubo(p, f"/api/daily/actividades/{pendiente}/pasar", "POST", {"fecha": MARTES}), "Pasar a hoy"
+    assert _hubo(p, f"/api/daily/recordatorios/{diario}/marca", "PUT", {"fecha": MARTES, "hecha": True})
+    assert _hubo(p, f"/api/daily/actividades/{hecha}", "PATCH", {"hecha": False}), "Deshacer"
+    assert _hubo(p, f"/api/daily/recordatorios/{rec_hecho}/marca", "PUT", {"fecha": MARTES, "hecha": False})
+
+    assert s["errorVacio"] and s["nuevaVacia"] == ""
+    assert _hubo(p, "/api/daily/actividades", "POST", {"persona_id": juan, "fecha": MARTES, "texto": "Llamar a Tito"})
+    altas = [x for x in p if x[0] == "/api/daily/actividades" and x[1] == "POST"]
+    assert len(altas) == 2, "el vacío y el modal sin texto no mandan nada"
+
+    assert s["modalTitulo"] == "Nueva actividad" and s["modalContexto"] == "Daily de Juan"
+    assert s["modalFecha"] == MARTES and "Escribí qué hay que hacer" in s["modalError"]
+    assert _hubo(p, "/api/daily/actividades", "POST", {"persona_id": juan, "texto": "Preparar demo",
+                                                       "fecha": MARTES, "hora": "16:00", "nota": "Con datos reales"})
+    assert s["editTitulo"] == "Editar actividad" and s["editTexto"] == "Deploy <b>Bar Tito</b>"
+    assert s["editHora"] == "09:30" and s["editNota"] == "Pedir acceso al hosting"
+    assert _hubo(p, f"/api/daily/actividades/{temprano}", "PATCH", {"texto": "Deploy <b>Bar Tito</b>", "fecha": MARTES,
+                                                                    "hora": "11:00", "nota": "Pedir acceso al hosting"})
+    assert _hubo(p, f"/api/daily/actividades/{sin_hora}", "DELETE")
+
+    assert "al menos un día" in s["errorDias"]
+    assert _hubo(p, "/api/daily/recordatorios", "POST", {"persona_id": juan, "texto": "Daily con el equipo",
+                                                         "frecuencia": "dias", "dias": [1], "hora": "18:00",
+                                                         "nota": "Antes de irse"})
+    assert s["textoTrasCrear"] == ""
+    assert s["editRecHora"] == "10:00" and s["editRecNota"] == "Los urgentes primero"
+    assert s["botonEdit"] == "Guardar cambios"
+
+    # ── un día pasado ──
+    assert s["fechaLunes"] == LUNES
+    assert "Terminar landing" in s["listaLunes"] and "dy-grupo-ayer" not in s["listaLunes"]
+    assert '<h2 class="sl-grupo-titulo">LUNES 14 DE SEPTIEMBRE</h2>' in s["listaLunes"]

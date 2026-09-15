@@ -1063,6 +1063,12 @@ def init_db(db_path: str) -> None:
                 UNIQUE (recordatorio_id, fecha)
             )
         """)
+        # Hora y nota opcionales (pedido de Juan, 16/9: tarjetas como las de
+        # Seguimiento de leads). Columnas nuevas en NULL: lo que ya estaba
+        # cargado sigue igual, sin hora ni nota.
+        for tabla in ("daily_actividades", "daily_recordatorios"):
+            _add_column(conn, tabla, "hora", "TEXT")
+            _add_column(conn, tabla, "nota", "TEXT")
         conn.commit()
         # Como Equipo: los roles que tienen Tareas reciben el Daily.
         _grant_panel_to_existing_roles(conn, "daily", solo_si_tiene="tasks")
@@ -3637,12 +3643,15 @@ def listar_programadores(db_path: str) -> list[dict]:
 
 def crear_actividad_daily(db_path: str, persona_id: int, fecha: str, texto: str,
                           created_by_id: int | None = None,
-                          created_by_name: str | None = None) -> int:
+                          created_by_name: str | None = None,
+                          hora: str | None = None, nota: str | None = None) -> int:
     conn = _connect(db_path)
     try:
         cur = conn.execute(
-            "INSERT INTO daily_actividades (persona_id, fecha, texto, created_by_id, created_by_name) "
-            "VALUES (?,?,?,?,?)", (persona_id, fecha, texto, created_by_id, created_by_name))
+            "INSERT INTO daily_actividades "
+            "(persona_id, fecha, texto, hora, nota, created_by_id, created_by_name) "
+            "VALUES (?,?,?,?,?,?,?)",
+            (persona_id, fecha, texto, hora, nota, created_by_id, created_by_name))
         conn.commit()
         return cur.lastrowid
     finally:
@@ -3653,7 +3662,7 @@ def get_actividad_daily(db_path: str, actividad_id: int) -> Optional[dict]:
     return _get_one(db_path, "daily_actividades", actividad_id)
 
 
-_CAMPOS_ACTIVIDAD_DAILY = ("texto", "hecha", "fecha", "pasada_de")
+_CAMPOS_ACTIVIDAD_DAILY = ("texto", "hecha", "fecha", "pasada_de", "hora", "nota")
 
 
 def actualizar_actividad_daily(db_path: str, actividad_id: int, **campos) -> None:
@@ -3682,8 +3691,9 @@ def borrar_actividad_daily(db_path: str, actividad_id: int) -> None:
 def listar_actividades_daily(db_path: str, persona_id: int, fecha: str) -> list[dict]:
     conn = _connect(db_path)
     try:
+        # Las que tienen hora primero y en orden de hora; las otras, como se cargaron.
         cur = conn.execute("SELECT * FROM daily_actividades WHERE persona_id = ? AND fecha = ? "
-                           "ORDER BY id", (persona_id, fecha))
+                           "ORDER BY hora IS NULL, hora, id", (persona_id, fecha))
         return [dict(r) for r in cur.fetchall()]
     finally:
         conn.close()
@@ -3692,14 +3702,15 @@ def listar_actividades_daily(db_path: str, persona_id: int, fecha: str) -> list[
 def crear_recordatorio_daily(db_path: str, persona_id: int, texto: str, frecuencia: str,
                              dias: str, desde: str, activo: int = 1,
                              created_by_id: int | None = None,
-                             created_by_name: str | None = None) -> int:
+                             created_by_name: str | None = None,
+                             hora: str | None = None, nota: str | None = None) -> int:
     conn = _connect(db_path)
     try:
         cur = conn.execute(
             "INSERT INTO daily_recordatorios "
-            "(persona_id, texto, frecuencia, dias, activo, desde, created_by_id, created_by_name) "
-            "VALUES (?,?,?,?,?,?,?,?)",
-            (persona_id, texto, frecuencia, dias, activo, desde, created_by_id, created_by_name))
+            "(persona_id, texto, frecuencia, dias, activo, desde, hora, nota, created_by_id, created_by_name) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (persona_id, texto, frecuencia, dias, activo, desde, hora, nota, created_by_id, created_by_name))
         conn.commit()
         return cur.lastrowid
     finally:
@@ -3710,7 +3721,7 @@ def get_recordatorio_daily(db_path: str, recordatorio_id: int) -> Optional[dict]
     return _get_one(db_path, "daily_recordatorios", recordatorio_id)
 
 
-_CAMPOS_RECORDATORIO_DAILY = ("texto", "frecuencia", "dias", "activo")
+_CAMPOS_RECORDATORIO_DAILY = ("texto", "frecuencia", "dias", "activo", "hora", "nota")
 
 
 def actualizar_recordatorio_daily(db_path: str, recordatorio_id: int, **campos) -> None:

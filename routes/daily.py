@@ -18,7 +18,8 @@ from database import (actualizar_actividad_daily, actualizar_recordatorio_daily,
                       marcar_recordatorio_daily)
 from services.auth import require_panel
 from services.daily import (dia, dias_de_texto, hoy_montevideo, primer_nombre,
-                            validar_recordatorio, validar_texto)
+                            validar_hora, validar_nota, validar_recordatorio,
+                            validar_texto)
 from services.equipo import parse_fecha
 
 daily_bp = Blueprint("daily", __name__)
@@ -108,8 +109,15 @@ def api_crear_actividad():
     texto, error = validar_texto(data.get("texto"))
     if error:
         return _error(error)
+    hora, error = validar_hora(data.get("hora"))
+    if error:
+        return _error(error)
+    nota, error = validar_nota(data.get("nota"))
+    if error:
+        return _error(error)
     aid = crear_actividad_daily(db, persona["id"], fecha.isoformat(), texto,
-                                session.get("user_id"), session.get("user_name", "sistema"))
+                                session.get("user_id"), session.get("user_name", "sistema"),
+                                hora=hora, nota=nota)
     return jsonify({"ok": True, "id": aid}), 201
 
 
@@ -136,8 +144,21 @@ def api_editar_actividad(actividad_id):
         if error:
             return _error(error)
         campos["texto"] = texto
+    if "hora" in data:
+        campos["hora"], error = validar_hora(data["hora"])
+        if error:
+            return _error(error)
+    if "nota" in data:
+        campos["nota"], error = validar_nota(data["nota"])
+        if error:
+            return _error(error)
+    if "fecha" in data:
+        fecha = parse_fecha(data["fecha"])
+        if fecha is None:
+            return _error("fecha tiene que ser AAAA-MM-DD")
+        campos["fecha"] = fecha.isoformat()
     if not campos:
-        return _error("no hay nada para cambiar: mandá hecha o texto")
+        return _error("no hay nada para cambiar: mandá hecha, texto, hora, nota o fecha")
     actualizar_actividad_daily(db, actividad_id, **campos)
     return jsonify({"ok": True})
 
@@ -183,7 +204,8 @@ def api_crear_recordatorio():
         return _error(error)
     rid = crear_recordatorio_daily(db, persona["id"], campos["texto"], campos["frecuencia"],
                                    campos["dias"], _hoy().isoformat(), campos["activo"],
-                                   session.get("user_id"), session.get("user_name", "sistema"))
+                                   session.get("user_id"), session.get("user_name", "sistema"),
+                                   hora=campos["hora"], nota=campos["nota"])
     return jsonify({"ok": True, "id": rid}), 201
 
 
@@ -195,8 +217,10 @@ def api_editar_recordatorio(recordatorio_id):
         return _error("no existe ese recordatorio", 404)
     # Lo que no se manda queda como estaba: pausar es mandar solo `activo`.
     completo = {"texto": actual["texto"], "frecuencia": actual["frecuencia"],
-                "dias": dias_de_texto(actual["dias"]), "activo": bool(actual["activo"])}
-    completo.update({k: data[k] for k in ("texto", "frecuencia", "dias", "activo") if k in data})
+                "dias": dias_de_texto(actual["dias"]), "activo": bool(actual["activo"]),
+                "hora": actual.get("hora"), "nota": actual.get("nota")}
+    completo.update({k: data[k] for k in ("texto", "frecuencia", "dias", "activo", "hora", "nota")
+                     if k in data})
     campos, error = validar_recordatorio(completo)
     if error:
         return _error(error)

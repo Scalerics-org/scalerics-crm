@@ -1709,37 +1709,45 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .fin-hbar-monto{font-size:.75rem;color:var(--texto);width:74px;text-align:right;flex-shrink:0}
 @media (max-width:760px){.fin-split{grid-template-columns:1fr}}
 /* ── Daily Programador ────────────────────────────────────────────────────────
-   Solo tokens, sin reglas propias de tema claro. Reusa .fin-card,
-   .fin-card-title y los botones btn-primary / btn-ghost / btn-icono. */
+   Solo tokens, sin reglas propias de tema claro. El día de cada persona usa las
+   tarjetas, contadores y grupos de Seguimiento de leads (clases sl-): acá va
+   solo lo propio. El menú por persona con su ícono y su color, lo que
+   Seguimiento no tiene (hechas colapsadas, estado vacío) y el formulario de
+   recordatorios. */
 .dy-nav-personas{display:flex;flex-direction:column}
-.dy-nav-sub{padding:6px 20px 6px 48px;font-size:.8rem;font-weight:500;color:var(--texto-debil);cursor:pointer;border-left:3px solid transparent}
+.dy-nav-sub{display:flex;align-items:center;gap:8px;padding:7px 20px 7px 42px;font-size:.8rem;font-weight:500;color:var(--texto-debil);cursor:pointer;border-left:3px solid transparent;transition:all .15s}
 .dy-nav-sub:hover{color:var(--texto);background:var(--hover)}
 .dy-nav-sub.dy-activa{color:var(--texto-fuerte);border-left-color:var(--azul);background:var(--azul-tinte)}
+.dy-nav-icono{width:15px;height:15px;stroke-width:2;flex-shrink:0}
+.dy-nav-icono.dy-color-0{stroke:var(--azul-claro)}
+.dy-nav-icono.dy-color-1{stroke:var(--verde-texto)}
+.dy-nav-icono.dy-color-2{stroke:var(--ambar)}
+.dy-nav-icono.dy-color-3{stroke:var(--texto-tenue)}
+.dy-borde-0{border-left:3px solid var(--azul-claro)}
+.dy-borde-1{border-left:3px solid var(--verde-texto)}
+.dy-borde-2{border-left:3px solid var(--ambar)}
+.dy-borde-3{border-left:3px solid var(--texto-tenue)}
 .dy-personas{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
-.dy-persona{background:var(--relleno);color:var(--texto-tenue);border:1px solid var(--borde);border-radius:99px;padding:7px 16px;font-size:.82rem;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer}
+.dy-persona{display:inline-flex;align-items:center;gap:6px;min-height:36px;background:var(--relleno);color:var(--texto-tenue);border:1px solid var(--borde);border-radius:99px;padding:6px 14px;font-size:.82rem;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer}
 .dy-persona[aria-pressed="true"]{background:var(--azul-tinte);color:var(--azul-claro);border-color:var(--azul)}
 .dy-dia{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px}
 .dy-fecha{font-size:1rem;font-weight:700;color:var(--texto-fuerte);min-width:0}
 .dy-fecha-hoy{font-size:.68rem;font-weight:700;color:var(--azul-claro);background:var(--azul-tinte);border-radius:99px;padding:2px 8px;margin-left:8px;vertical-align:middle}
-.dy-layout{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:16px;align-items:start}
-.dy-layout .fin-card{margin-bottom:0}
-.dy-agregar{display:flex;gap:8px;margin-bottom:4px}
+.dy-agregar{display:flex;gap:8px;margin-bottom:18px}
 .dy-in{flex:1 1 auto;background:var(--fondo-hundido);border:1px solid var(--borde);border-radius:8px;padding:8px 10px;color:var(--texto);font-size:.84rem;font-family:'Inter',sans-serif;min-width:0}
 .dy-in:focus{outline:none;border-color:var(--azul)}
 .dy-in::placeholder{color:var(--texto-debil)}
-.dy-error{font-size:.75rem;color:var(--rojo-texto);margin:4px 0}
+.dy-in-hora{flex:0 0 118px}
+.dy-error{font-size:.75rem;color:var(--rojo-texto);margin:4px 0 10px}
 .dy-error:empty{display:none}
-.dy-bloque{margin-top:12px}
-.dy-bloque-titulo{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--texto-debil);margin-bottom:6px}
+.dy-tarjeta-titulo{font-size:.9rem;font-weight:700;color:var(--texto-fuerte);min-width:0;overflow-wrap:anywhere}
+.dy-etiqueta{display:inline-block;font-size:.66rem;font-weight:700;border-radius:99px;padding:2px 8px;background:var(--relleno);color:var(--texto-tenue);margin-top:8px}
+.dy-hechas summary{cursor:pointer}
+.dy-hechas summary::marker{color:var(--texto-debil)}
+.dy-tachado{font-size:.84rem;color:var(--texto-debil);text-decoration:line-through;overflow-wrap:anywhere}
+.dy-vacio-grande{display:flex;flex-direction:column;align-items:flex-start;gap:10px;background:var(--superficie);border:1px dashed var(--borde-fuerte);border-radius:10px;padding:18px 16px;margin-bottom:22px;font-size:.88rem;color:var(--texto-tenue)}
+.dy-recurrentes{margin-top:8px}
 .dy-lista{display:flex;flex-direction:column;gap:6px}
-.dy-item{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:var(--superficie-honda);border:1px solid var(--borde);min-height:40px}
-.dy-item-texto{flex:1;min-width:0;font-size:.85rem;color:var(--texto);overflow-wrap:anywhere;cursor:pointer}
-.dy-item-nota{display:block;font-size:.7rem;color:var(--texto-debil);margin-top:2px}
-.dy-hecha .dy-item-texto{color:var(--texto-debil);text-decoration:line-through}
-.dy-check{width:18px;height:18px;accent-color:var(--azul);cursor:pointer;flex-shrink:0;margin:0}
-.dy-recordatorio{border-left:3px solid var(--azul)}
-.dy-pendiente{background:var(--ambar-tinte);border-color:var(--ambar-borde)}
-.dy-pendiente .dy-item-texto{cursor:default}
 .dy-vacio{font-size:.8rem;color:var(--texto-debil);padding:6px 2px}
 .dy-form{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}
 .dy-form-fila{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
@@ -1752,9 +1760,14 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .dy-rec-cuando{font-size:.7rem;color:var(--texto-debil);margin-top:2px}
 .dy-pausado .dy-rec-texto{color:var(--texto-debil)}
 .dy-badge{font-size:.64rem;font-weight:700;border-radius:99px;padding:2px 8px;background:var(--relleno);color:var(--texto-debil);white-space:nowrap}
-#daily-panel .dy-oculto{display:none}
-@media(max-width:900px){.dy-layout{grid-template-columns:1fr}}
-@media(max-width:480px){.dy-fecha{flex:1 1 100%;order:-1;font-size:.95rem}.dy-rec{flex-wrap:wrap}.dy-rec-cuerpo{flex-basis:100%}}
+#daily-panel .dy-oculto,#dy-modal-actividad .dy-oculto{display:none}
+@media(max-width:600px){
+  #daily-panel .sl-btn,#daily-panel .btn-primary,#daily-panel .btn-ghost,.dy-persona,.dy-nav-sub{min-height:40px}
+  #daily-panel .sl-acciones .sl-btn{flex:1 1 auto}
+  .dy-fecha{flex:1 1 100%;order:-1;font-size:.95rem}
+  .dy-rec{flex-wrap:wrap}
+  .dy-rec-cuerpo{flex-basis:100%}
+}
 /* ── Seguimiento de leads ─────────────────────────────────────────────────────
    La agenda de llamados. Solo tokens, sin reglas `body.light`: el rojo de
    vencido y el verde de Hecho son los de la familia de estados, que llegan a
@@ -2831,13 +2844,15 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   </div>
 
   <!-- ======= DAILY PROGRAMADOR PANEL ======= -->
-  <!-- Un solo panel para todos: la persona es estado del JS (dyPersonaId). -->
+  <!-- Un solo panel para todos: la persona es estado del JS (dyPersonaId). El
+       dia se arma como Seguimiento de leads: contadores, grupos y tarjetas. -->
   <div id="daily-panel" class="panel">
-    <div class="page-header">
+    <div class="page-header sl-cabecera">
       <div>
-        <h1>Daily Programador</h1>
-        <div class="page-date">Lo de cada día: actividades y recordatorios que se repiten, por persona.</div>
+        <h1 id="dy-titulo">Daily Programador</h1>
+        <div class="page-date" id="dy-resumen">Cargando...</div>
       </div>
+      <button class="btn-primary" type="button" onclick="dyAbrirActividad()">Nueva actividad</button>
     </div>
     <div class="dy-personas" id="dy-personas" role="group" aria-label="De quién es el día"></div>
     <div class="dy-dia">
@@ -2846,47 +2861,43 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       <button class="btn-ghost" type="button" onclick="dyIrHoy()">Hoy</button>
       <div class="dy-fecha" id="dy-fecha" role="status"></div>
     </div>
-    <div class="dy-layout">
-      <section class="fin-card">
-        <div class="fin-card-title">Actividades del día</div>
-        <div class="dy-agregar">
-          <input type="text" id="dy-nueva" class="dy-in" maxlength="200" placeholder="Agregar actividad y Enter" aria-label="Actividad nueva" onkeydown="if (event.key === 'Enter') dyAgregar()">
-          <button class="btn-primary" type="button" onclick="dyAgregar()">Agregar</button>
-        </div>
-        <div class="dy-error" id="dy-error" role="alert"></div>
-        <div id="dy-pendientes"></div>
-        <div id="dy-recordatorios-hoy"></div>
-        <div id="dy-actividades"></div>
-      </section>
-      <section class="fin-card">
-        <div class="fin-card-title">Recordatorios que se repiten</div>
-        <div class="dy-form">
-          <input type="text" id="dy-rec-texto" class="dy-in" maxlength="200" placeholder="Ej.: revisar mails de clientes" aria-label="Qué hay que recordar" onkeydown="if (event.key === 'Enter') dyGuardarRecordatorio()">
-          <div class="dy-form-fila">
-            <select id="dy-rec-frecuencia" class="dy-in" aria-label="Cada cuánto" onchange="dyPintarDiasForm()">
-              <option value="diario">Todos los días</option>
-              <option value="habiles">Días hábiles (lunes a viernes)</option>
-              <option value="dias">Días elegidos de la semana</option>
-            </select>
-          </div>
-          <div class="dy-dias dy-oculto" id="dy-rec-dias">
-            <label class="dy-dia-chip"><input type="checkbox" id="dy-rec-dia-0"> Lun</label>
-            <label class="dy-dia-chip"><input type="checkbox" id="dy-rec-dia-1"> Mar</label>
-            <label class="dy-dia-chip"><input type="checkbox" id="dy-rec-dia-2"> Mié</label>
-            <label class="dy-dia-chip"><input type="checkbox" id="dy-rec-dia-3"> Jue</label>
-            <label class="dy-dia-chip"><input type="checkbox" id="dy-rec-dia-4"> Vie</label>
-            <label class="dy-dia-chip"><input type="checkbox" id="dy-rec-dia-5"> Sáb</label>
-            <label class="dy-dia-chip"><input type="checkbox" id="dy-rec-dia-6"> Dom</label>
-          </div>
-          <div class="dy-form-fila">
-            <button class="btn-primary" type="button" id="dy-rec-guardar" onclick="dyGuardarRecordatorio()">Crear recordatorio</button>
-            <button class="btn-ghost dy-oculto" type="button" id="dy-rec-cancelar" onclick="dyCancelarEdicion()">Cancelar</button>
-          </div>
-          <div class="dy-error" id="dy-rec-error" role="alert"></div>
-        </div>
-        <div class="dy-lista" id="dy-recordatorios"></div>
-      </section>
+    <div class="dy-error" id="dy-error" role="alert"></div>
+    <div class="sl-contadores" id="dy-contadores" aria-label="Lo del día por grupo"></div>
+    <div class="dy-agregar">
+      <input type="text" id="dy-nueva" class="dy-in" maxlength="200" placeholder="Actividad rápida para este día y Enter" aria-label="Actividad rápida" onkeydown="if (event.key === 'Enter') dyAgregar()">
+      <button class="btn-ghost" type="button" onclick="dyAgregar()">Agregar</button>
     </div>
+    <div id="dy-lista"></div>
+    <section class="fin-card dy-recurrentes" id="dy-recurrentes">
+      <div class="fin-card-title">Recordatorios que se repiten</div>
+      <div class="dy-form">
+        <input type="text" id="dy-rec-texto" class="dy-in" maxlength="200" placeholder="Ej.: revisar mails de clientes" aria-label="Qué hay que recordar" onkeydown="if (event.key === 'Enter') dyGuardarRecordatorio()">
+        <div class="dy-form-fila">
+          <select id="dy-rec-frecuencia" class="dy-in" aria-label="Cada cuánto" onchange="dyPintarDiasForm()">
+            <option value="diario">Todos los días</option>
+            <option value="habiles">Días hábiles (lunes a viernes)</option>
+            <option value="dias">Días elegidos de la semana</option>
+          </select>
+          <input type="time" id="dy-rec-hora" class="dy-in dy-in-hora" aria-label="Hora (opcional)" title="Hora (opcional)">
+        </div>
+        <div class="dy-dias dy-oculto" id="dy-rec-dias">
+          <label class="dy-dia-chip"><input type="checkbox" id="dy-rec-dia-0"> Lun</label>
+          <label class="dy-dia-chip"><input type="checkbox" id="dy-rec-dia-1"> Mar</label>
+          <label class="dy-dia-chip"><input type="checkbox" id="dy-rec-dia-2"> Mié</label>
+          <label class="dy-dia-chip"><input type="checkbox" id="dy-rec-dia-3"> Jue</label>
+          <label class="dy-dia-chip"><input type="checkbox" id="dy-rec-dia-4"> Vie</label>
+          <label class="dy-dia-chip"><input type="checkbox" id="dy-rec-dia-5"> Sáb</label>
+          <label class="dy-dia-chip"><input type="checkbox" id="dy-rec-dia-6"> Dom</label>
+        </div>
+        <input type="text" id="dy-rec-nota" class="dy-in" maxlength="300" placeholder="Nota (opcional)" aria-label="Nota (opcional)">
+        <div class="dy-form-fila">
+          <button class="btn-primary" type="button" id="dy-rec-guardar" onclick="dyGuardarRecordatorio()">Crear recordatorio</button>
+          <button class="btn-ghost dy-oculto" type="button" id="dy-rec-cancelar" onclick="dyCancelarEdicion()">Cancelar</button>
+        </div>
+        <div class="dy-error" id="dy-rec-error" role="alert"></div>
+      </div>
+      <div class="dy-lista" id="dy-recordatorios"></div>
+    </section>
   </div>
 
   <!-- ======= RECURSOS HUMANOS PANELES ======= -->
@@ -3435,6 +3446,35 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   </div>
 </div>
 <!-- ======= FIN EQUIPO MODALES ======= -->
+
+<!-- ======= DAILY MODALES ======= -->
+<div class="modal-overlay" id="dy-modal-actividad" onclick="if(event.target===this)dyCerrarModal()">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="dy-act-titulo">
+    <h3 id="dy-act-titulo">Nueva actividad</h3>
+    <p id="dy-act-contexto"></p>
+    <label class="modal-label" for="dy-act-texto">Qué hay que hacer</label>
+    <input type="text" id="dy-act-texto" maxlength="200" placeholder="Ej: terminar la landing de Tito">
+    <div class="modal-row">
+      <div>
+        <label class="modal-label" for="dy-act-fecha">Día</label>
+        <input type="date" id="dy-act-fecha">
+      </div>
+      <div>
+        <label class="modal-label" for="dy-act-hora">Hora (opcional)</label>
+        <input type="time" id="dy-act-hora">
+      </div>
+    </div>
+    <label class="modal-label" for="dy-act-nota">Nota (opcional)</label>
+    <input type="text" id="dy-act-nota" maxlength="300" placeholder="Ej: pedirle el logo antes">
+    <div class="dy-error" id="dy-act-error" role="alert"></div>
+    <div class="modal-btns">
+      <button class="btn-ghost dy-oculto" type="button" id="dy-act-borrar" onclick="dyBorrarDesdeModal()">Borrar</button>
+      <button class="btn-ghost" type="button" onclick="dyCerrarModal()">Cancelar</button>
+      <button class="btn-primary" type="button" onclick="dyGuardarActividad()">Guardar</button>
+    </div>
+  </div>
+</div>
+<!-- ======= FIN DAILY MODALES ======= -->
 
 <!-- ======= SEG LEADS MODALES ======= -->
 <div class="modal-overlay" id="sl-modal-nuevo" onclick="if(event.target===this)slCerrarModal('sl-modal-nuevo')">
@@ -9937,8 +9977,10 @@ function slFichaHtml(seg) {
 // Actividades del dia y recordatorios que se repiten, por persona del equipo
 // marcada como programador (pedido de Juan, 15/9). Un solo panel `daily`: la
 // persona es estado (dyPersonaId), no un panel por persona, asi los permisos
-// siguen siendo un id. En el menu hay una opcion por persona debajo de "Daily
-// Programador"; en el celular, el selector de arriba del panel.
+// siguen siendo un id. En el menu hay una opcion por persona, con su icono y su
+// color, debajo de "Daily Programador"; en el celular, el selector de arriba.
+// El dia se pinta como Seguimiento de leads (Juan, 16/9): contadores, grupos y
+// tarjetas con las clases sl-. La API y los datos son los de siempre.
 // El dia de hoy lo decide el servidor en hora de Montevideo. Aca solo se suman
 // dias a una fecha AAAA-MM-DD en UTC, sin mirar el reloj de la compu.
 // No es Tareas: Tareas es el tablero del equipo (cliente, responsable,
@@ -9947,14 +9989,24 @@ function slFichaHtml(seg) {
 const DY_DIAS_LARGOS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 const DY_MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto',
                   'septiembre', 'octubre', 'noviembre', 'diciembre'];
+// Cuantos colores de persona hay en el CSS (dy-color-N y dy-borde-N).
+const DY_COLORES = 4;
+const DY_GRUPOS = [
+  {clave: 'ayer', rotulo: 'Pendiente de ayer'},
+  {clave: 'hoy', rotulo: 'Hoy'},
+  {clave: 'recordatorios', rotulo: 'Recordatorios'},
+  {clave: 'hechas', rotulo: 'Hechas'}
+];
 
 let dyPersonas = [];
 let dyPersonaId = null;
-let dyFecha = null;      // el dia que se esta mirando, AAAA-MM-DD
-let dyHoy = null;        // hoy en Montevideo, segun el servidor
+let dyFecha = null;          // el dia que se esta mirando, AAAA-MM-DD
+let dyHoy = null;            // hoy en Montevideo, segun el servidor
 let dyDatos = null;
-let dyEditandoId = null;
-let dyPedido = 0;        // descarta respuestas viejas si se cambia rapido de dia o persona
+let dyEditandoId = null;     // el recordatorio que esta en el formulario
+let dyActividadId = null;    // la actividad del modal; null es una nueva
+let dyHechasAbiertas = false;
+let dyPedido = 0;            // descarta respuestas viejas si se cambia rapido de dia o persona
 
 function dyFechaMas(fecha, dias) {
   const p = String(fecha).split('-').map(Number);
@@ -9982,8 +10034,32 @@ function dyHtml(id, html) {
   if (el) el.innerHTML = html;
 }
 
+function dyIconos(id) {
+  const el = document.getElementById(id);
+  if (window.lucide && el) lucide.createIcons({nodes: [el]});
+}
+
 function dyBuscar(lista, id) {
   return (Array.isArray(lista) ? lista : []).find(x => Number(x.id) === Number(id)) || null;
+}
+
+function dyPlural(n, uno, varios) {
+  return n + ' ' + (n === 1 ? uno : varios);
+}
+
+function dyEsHoy() {
+  return !!dyFecha && dyFecha === dyHoy;
+}
+
+// El color de cada persona sale de su lugar en la lista, que va en orden de
+// alta: sumar a alguien al final no le cambia el color a nadie.
+function dyColor(id) {
+  const i = dyPersonas.findIndex(p => Number(p.id) === Number(id));
+  return (i < 0 ? 0 : i) % DY_COLORES;
+}
+
+function dyIconoPersona(id) {
+  return '<i data-lucide="user-round" class="dy-nav-icono dy-color-' + dyColor(id) + '" aria-hidden="true"></i>';
 }
 
 async function dyCargarPersonas() {
@@ -10002,16 +10078,22 @@ async function dyCargarPersonas() {
 
 function dyPintarPersonas() {
   const enDaily = activePanel === 'daily';
-  dyHtml('dy-nav-personas', dyPersonas.map(p =>
-    '<div class="dy-nav-sub' + (enDaily && p.id === dyPersonaId ? ' dy-activa' : '') + '" id="dy-nav-persona-' + Number(p.id)
-    + '" role="button" tabindex="0" onclick="dyAbrirPersona(' + Number(p.id) + ')"'
-    + ' onkeydown="if (event.key === ' + "'Enter'" + ') dyAbrirPersona(' + Number(p.id) + ')">'
-    + esc(p.primer_nombre) + '</div>').join(''));
+  dyHtml('dy-nav-personas', dyPersonas.map(p => {
+    const id = Number(p.id);
+    return '<div class="dy-nav-sub' + (enDaily && id === dyPersonaId ? ' dy-activa' : '') + '" id="dy-nav-persona-' + id
+      + '" role="button" tabindex="0" onclick="dyAbrirPersona(' + id + ')"'
+      + ' onkeydown="if (event.key === ' + "'Enter'" + ') dyAbrirPersona(' + id + ')">'
+      + dyIconoPersona(id) + '<span>' + esc(p.primer_nombre) + '</span></div>';
+  }).join(''));
   dyHtml('dy-personas', dyPersonas.length
-    ? dyPersonas.map(p => '<button class="dy-persona" type="button" aria-pressed="'
-        + (p.id === dyPersonaId ? 'true' : 'false') + '" onclick="dyElegirPersona(' + Number(p.id) + ')">'
-        + esc(p.primer_nombre) + '</button>').join('')
+    ? dyPersonas.map(p => {
+        const id = Number(p.id);
+        return '<button class="dy-persona" type="button" aria-pressed="' + (id === dyPersonaId ? 'true' : 'false')
+          + '" onclick="dyElegirPersona(' + id + ')">' + dyIconoPersona(id) + '<span>' + esc(p.primer_nombre) + '</span></button>';
+      }).join('')
     : '<div class="dy-vacio">No hay nadie marcado como programador en Recursos Humanos.</div>');
+  dyIconos('dy-nav-personas');
+  dyIconos('dy-personas');
 }
 
 // Desde el menu: abre el panel en el dia de esa persona.
@@ -10073,53 +10155,139 @@ async function dyCargarDia() {
   dyPintarDia();
 }
 
-function dyItemHtml(x, marcar, clase, nota, borrable) {
-  const id = Number(x.id);
-  const idCheck = 'dy-check-' + marcar + '-' + id;
-  return '<div class="dy-item' + (clase ? ' ' + clase : '') + (x.hecha ? ' dy-hecha' : '') + '">'
-    + '<input type="checkbox" class="dy-check" id="' + idCheck + '"' + (x.hecha ? ' checked' : '')
-    + ' onchange="' + marcar + '(' + id + ', this.checked)">'
-    + '<label class="dy-item-texto" for="' + idCheck + '">' + esc(x.texto)
-    + (nota ? '<span class="dy-item-nota">' + esc(nota) + '</span>' : '') + '</label>'
-    + (borrable ? '<button class="btn-ghost btn-icono" type="button" onclick="dyBorrarActividad(' + id + ')"'
-        + ' title="Borrar" aria-label="Borrar ' + esc(x.texto) + '"><i data-lucide="trash-2" class="nav-icon"></i></button>' : '')
-    + '</div>';
+// Lo del dia separado como lo muestra la pantalla.
+function dyGrupos(d) {
+  const lista = x => Array.isArray(x) ? x : [];
+  const actividades = lista(d.actividades);
+  const recordatorios = lista(d.recordatorios);
+  return {
+    ayer: lista(d.pendientes_ayer),
+    hoy: actividades.filter(a => !a.hecha),
+    recordatorios: recordatorios.filter(r => !r.hecha),
+    hechas: actividades.filter(a => a.hecha).map(a => Object.assign({tipo: 'actividad'}, a))
+      .concat(recordatorios.filter(r => r.hecha).map(r => Object.assign({tipo: 'recordatorio'}, r)))
+  };
+}
+
+function dyResumen(g) {
+  const partes = [dyPlural(g.hoy.length + g.recordatorios.length, 'pendiente', 'pendientes'),
+                  dyPlural(g.hechas.length, 'hecha', 'hechas')];
+  if (g.ayer.length) partes.push(g.ayer.length + ' de ayer');
+  return partes.join(' · ');
+}
+
+// Cuatro tarjetas chicas; la de ayer en rojo claro si hay algo. Tocarlas lleva al grupo.
+function dyContadoresHtml(g) {
+  return DY_GRUPOS.map(x => {
+    const n = g[x.clave].length;
+    const clase = 'sl-contador' + (x.clave === 'ayer' && n > 0 ? ' sl-contador-vencidos' : '');
+    return '<button type="button" class="' + clase + '" data-grupo="' + x.clave
+      + '" onclick="dyIrAGrupo(this.dataset.grupo)">'
+      + '<span class="sl-contador-num">' + n + '</span>'
+      + '<span class="sl-contador-rot">' + esc(x.rotulo) + '</span></button>';
+  }).join('');
+}
+
+function dyIrAGrupo(clave) {
+  const el = document.getElementById('dy-grupo-' + clave);
+  if (!el) return;
+  if (clave === 'hechas') {
+    dyHechasAbiertas = true;
+    el.open = true;
+  }
+  if (el.scrollIntoView) el.scrollIntoView({behavior: 'smooth', block: 'start'});
+}
+
+function dyTituloDia() {
+  if (!dyFecha) return '';
+  const largo = dyFechaLarga(dyFecha);
+  return dyEsHoy() ? 'Hoy · ' + largo : largo;
+}
+
+// Un grupo vacio no se muestra. Las hechas van al final, colapsadas.
+function dyListaHtml(g) {
+  const esHoy = dyEsHoy();
+  const grupo = (clave, titulo, items, tipo) => '<section class="sl-grupo" id="dy-grupo-' + clave + '">'
+    + '<h2 class="sl-grupo-titulo' + (clave === 'ayer' ? ' sl-grupo-titulo-vencidos' : '') + '">'
+    + esc(titulo.toUpperCase()) + '</h2>'
+    + items.map(it => dyTarjetaHtml(it, tipo)).join('') + '</section>';
+  let html = '';
+  if (g.ayer.length) html += grupo('ayer', 'Pendiente de ayer', g.ayer, 'ayer');
+  if (g.hoy.length) html += grupo('hoy', dyTituloDia(), g.hoy, 'hoy');
+  if (g.recordatorios.length) {
+    html += grupo('recordatorios', esHoy ? 'Recordatorios de hoy' : 'Recordatorios del día', g.recordatorios, 'recordatorio');
+  }
+  if (!g.ayer.length && !g.hoy.length && !g.recordatorios.length) {
+    html += '<div class="dy-vacio-grande"><span>' + (esHoy ? 'Nada pendiente para hoy.' : 'Nada pendiente para este día.')
+      + '</span><button class="btn-primary" type="button" onclick="dyAbrirActividad()">Agregar actividad</button></div>';
+  }
+  if (g.hechas.length) {
+    html += '<details class="sl-grupo dy-hechas" id="dy-grupo-hechas"' + (dyHechasAbiertas ? ' open' : '')
+      + ' ontoggle="dyHechasAbiertas = this.open">'
+      + '<summary class="sl-grupo-titulo">HECHAS (' + g.hechas.length + ')</summary>'
+      + g.hechas.map(dyLineaHechaHtml).join('') + '</details>';
+  }
+  return html;
+}
+
+// Tarjeta completa, como las de Seguimiento. Lo de ayer lleva el borde rojo de
+// los vencidos; los recordatorios, el color de la persona.
+function dyTarjetaHtml(it, tipo) {
+  const id = Number(it.id);
+  const ayer = tipo === 'ayer';
+  const rec = tipo === 'recordatorio';
+  const clase = 'sl-tarjeta dy-tarjeta' + (ayer ? ' sl-vencida' : '') + (rec ? ' dy-borde-' + dyColor(dyPersonaId) : '');
+  const hora = it.hora
+    ? '<div class="sl-cuando' + (ayer ? ' sl-cuando-vencido' : '') + '">' + esc(it.hora) + '</div>' : '';
+  const nota = it.nota ? '<div class="sl-nota">' + esc(it.nota) + '</div>' : '';
+  let etiqueta = '';
+  if (rec) etiqueta = '<span class="dy-etiqueta">' + esc(it.cuando || '') + '</span>';
+  else if (it.pasada_de) etiqueta = '<span class="dy-etiqueta">Pasada del ' + esc(dyFechaCorta(it.pasada_de)) + '</span>';
+  const boton = (texto, accion, extra) => '<button type="button" class="sl-btn' + (extra || '') + '" data-id="' + id
+    + '" onclick="' + accion + '(Number(this.dataset.id))">' + texto + '</button>';
+  let acciones;
+  if (rec) {
+    acciones = boton('Hecho', 'dyRecordatorioHecho', ' sl-btn-hecho') + boton('Editar', 'dyEditarRecordatorio');
+  } else if (ayer) {
+    acciones = boton(dyEsHoy() ? 'Pasar a hoy' : 'Pasar a este día', 'dyPasar')
+      + boton('Hecho', 'dyActividadHecha', ' sl-btn-hecho') + boton('Editar', 'dyAbrirActividad');
+  } else {
+    acciones = boton('Hecho', 'dyActividadHecha', ' sl-btn-hecho') + boton('Pasar a mañana', 'dyPasarAManiana')
+      + boton('Editar', 'dyAbrirActividad');
+  }
+  return '<article class="' + clase + '" data-dy-id="' + id + '" data-dy-tipo="' + tipo + '">'
+    + '<div class="sl-tarjeta-cab"><div class="dy-tarjeta-titulo">' + esc(it.texto) + '</div>' + hora + '</div>'
+    + nota + etiqueta + '<div class="sl-acciones">' + acciones + '</div></article>';
+}
+
+function dyLineaHechaHtml(it) {
+  const id = Number(it.id);
+  const rec = it.tipo === 'recordatorio';
+  return '<div class="sl-linea dy-linea-hecha" data-dy-id="' + id + '"><div class="sl-linea-txt">'
+    + '<div class="dy-tachado">' + esc(it.texto) + '</div>'
+    + (rec ? '<div class="sl-linea-motivo">' + esc(it.cuando || '') + '</div>' : '') + '</div>'
+    + '<button type="button" class="sl-btn" data-id="' + id + '" onclick="'
+    + (rec ? 'dyDeshacerRecordatorio' : 'dyDeshacerActividad') + '(Number(this.dataset.id))">Deshacer</button></div>';
 }
 
 function dyPintarDia() {
-  const d = dyDatos || {};
-  const lista = x => Array.isArray(x) ? x : [];
-  const esHoy = !!dyFecha && dyFecha === dyHoy;
+  const persona = dyBuscar(dyPersonas, dyPersonaId);
+  dyTexto('dy-titulo', persona ? 'Daily de ' + persona.primer_nombre : 'Daily Programador');
   dyHtml('dy-fecha', dyFecha
-    ? esc(dyFechaLarga(dyFecha)) + (esHoy ? '<span class="dy-fecha-hoy">Hoy</span>' : '') : '');
-
-  const pendientes = lista(d.pendientes_ayer);
-  dyHtml('dy-pendientes', pendientes.length
-    ? '<div class="dy-bloque"><div class="dy-bloque-titulo">Pendiente de ayer</div><div class="dy-lista">'
-      + pendientes.map(a => '<div class="dy-item dy-pendiente"><span class="dy-item-texto">' + esc(a.texto) + '</span>'
-          + '<button class="btn-ghost" type="button" onclick="dyPasar(' + Number(a.id) + ')">'
-          + (esHoy ? 'Pasar a hoy' : 'Pasar a este día') + '</button></div>').join('')
-      + '</div></div>'
-    : '');
-
-  const recordatorios = lista(d.recordatorios);
-  dyHtml('dy-recordatorios-hoy', recordatorios.length
-    ? '<div class="dy-bloque"><div class="dy-bloque-titulo">Recordatorios de este día</div><div class="dy-lista">'
-      + recordatorios.map(x => dyItemHtml(x, 'dyMarcarRecordatorio', 'dy-recordatorio', x.cuando, false)).join('')
-      + '</div></div>'
-    : '');
-
-  const actividades = lista(d.actividades);
-  dyHtml('dy-actividades', '<div class="dy-bloque"><div class="dy-bloque-titulo">Actividades</div>'
-    + (actividades.length
-      ? '<div class="dy-lista">' + actividades.map(a => dyItemHtml(a, 'dyMarcarActividad', '',
-          a.pasada_de ? 'Pasada del ' + dyFechaCorta(a.pasada_de) : '', true)).join('') + '</div>'
-      : '<div class="dy-vacio">Nada cargado para este día. Escribí arriba y apretá Enter.</div>')
-    + '</div>');
-
+    ? esc(dyFechaLarga(dyFecha)) + (dyEsHoy() ? '<span class="dy-fecha-hoy">Hoy</span>' : '') : '');
+  if (!dyDatos) {
+    dyTexto('dy-resumen', dyPersonaId === null ? 'No hay nadie marcado como programador.' : '');
+    dyHtml('dy-contadores', '');
+    dyHtml('dy-lista', '');
+    dyPintarRecordatorios();
+    return;
+  }
+  const g = dyGrupos(dyDatos);
+  dyTexto('dy-resumen', dyResumen(g));
+  dyHtml('dy-contadores', dyContadoresHtml(g));
+  dyHtml('dy-lista', dyListaHtml(g));
   dyPintarRecordatorios();
-  const panel = document.getElementById('daily-panel');
-  if (window.lucide && panel) lucide.createIcons({nodes: [panel]});
+  dyIconos('daily-panel');
 }
 
 function dyPintarRecordatorios() {
@@ -10132,7 +10300,7 @@ function dyPintarRecordatorios() {
         const id = Number(r.id);
         return '<div class="dy-rec' + (r.activo ? '' : ' dy-pausado') + '"><div class="dy-rec-cuerpo">'
           + '<div class="dy-rec-texto">' + esc(r.texto) + '</div>'
-          + '<div class="dy-rec-cuando">' + esc(r.cuando || '') + '</div></div>'
+          + '<div class="dy-rec-cuando">' + esc(r.cuando || '') + (r.hora ? ' · ' + esc(r.hora) : '') + '</div></div>'
           + (r.activo ? '' : '<span class="dy-badge">Pausado</span>')
           + boton('dyEditarRecordatorio', id, 'pencil', 'Editar', r.texto)
           + boton('dyPausarRecordatorio', id, r.activo ? 'pause' : 'play', r.activo ? 'Pausar' : 'Reanudar', r.texto)
@@ -10164,6 +10332,40 @@ async function dyAccion(idError, prefijo, hacer) {
   return !error;
 }
 
+// ── botones de las tarjetas ──
+function dyActividadHecha(id) {
+  return dyAccion('dy-error', 'No se pudo marcar: ', () =>
+    dyPedir('/api/daily/actividades/' + id, 'PATCH', {hecha: true}));
+}
+
+function dyDeshacerActividad(id) {
+  return dyAccion('dy-error', 'No se pudo deshacer: ', () =>
+    dyPedir('/api/daily/actividades/' + id, 'PATCH', {hecha: false}));
+}
+
+function dyRecordatorioHecho(id) {
+  return dyAccion('dy-error', 'No se pudo marcar: ', () =>
+    dyPedir('/api/daily/recordatorios/' + id + '/marca', 'PUT', {fecha: dyFecha, hecha: true}));
+}
+
+function dyDeshacerRecordatorio(id) {
+  return dyAccion('dy-error', 'No se pudo deshacer: ', () =>
+    dyPedir('/api/daily/recordatorios/' + id + '/marca', 'PUT', {fecha: dyFecha, hecha: false}));
+}
+
+// Lo de ayer pasa al dia que se esta mirando.
+function dyPasar(id) {
+  return dyAccion('dy-error', 'No se pudo pasar: ', () =>
+    dyPedir('/api/daily/actividades/' + id + '/pasar', 'POST', {fecha: dyFecha}));
+}
+
+// "Mañana" es el dia siguiente al que se esta mirando.
+function dyPasarAManiana(id) {
+  return dyAccion('dy-error', 'No se pudo pasar: ', () =>
+    dyPedir('/api/daily/actividades/' + id + '/pasar', 'POST', {fecha: dyFechaMas(dyFecha, 1)}));
+}
+
+// ── alta rapida con Enter ──
 async function dyAgregar() {
   const input = document.getElementById('dy-nueva');
   const texto = (input.value || '').trim();
@@ -10182,27 +10384,80 @@ async function dyAgregar() {
   input.focus();
 }
 
-function dyMarcarActividad(id, hecha) {
-  return dyAccion('dy-error', 'No se pudo marcar: ', () =>
-    dyPedir('/api/daily/actividades/' + id, 'PATCH', {hecha: !!hecha}));
+// ── modal de actividad: nueva o editar, con hora y nota ──
+function dyItemDelDia(id) {
+  const d = dyDatos || {};
+  return dyBuscar(d.actividades, id) || dyBuscar(d.pendientes_ayer, id);
 }
 
-function dyMarcarRecordatorio(id, hecha) {
-  return dyAccion('dy-error', 'No se pudo marcar: ', () =>
-    dyPedir('/api/daily/recordatorios/' + id + '/marca', 'PUT', {fecha: dyFecha, hecha: !!hecha}));
+function dyAbrirActividad(id) {
+  if (dyPersonaId === null) {
+    dyTexto('dy-error', 'Elegí de quién es el día.');
+    return;
+  }
+  const a = (id === undefined || id === null) ? null : dyItemDelDia(id);
+  const persona = dyBuscar(dyPersonas, dyPersonaId);
+  dyActividadId = a ? Number(a.id) : null;
+  dyTexto('dy-act-titulo', a ? 'Editar actividad' : 'Nueva actividad');
+  dyTexto('dy-act-contexto', 'Daily de ' + (persona ? persona.primer_nombre : ''));
+  document.getElementById('dy-act-texto').value = a ? a.texto : '';
+  document.getElementById('dy-act-fecha').value = a ? a.fecha : (dyFecha || dyHoy || '');
+  document.getElementById('dy-act-hora').value = a && a.hora ? a.hora : '';
+  document.getElementById('dy-act-nota').value = a && a.nota ? a.nota : '';
+  dyTexto('dy-act-error', '');
+  const borrar = document.getElementById('dy-act-borrar');
+  if (borrar) borrar.classList.toggle('dy-oculto', !a);
+  document.getElementById('dy-modal-actividad').classList.add('open');
+  const texto = document.getElementById('dy-act-texto');
+  if (texto.focus) texto.focus();
 }
 
-function dyPasar(id) {
-  return dyAccion('dy-error', 'No se pudo pasar: ', () =>
-    dyPedir('/api/daily/actividades/' + id + '/pasar', 'POST', {fecha: dyFecha}));
+function dyCerrarModal() {
+  document.getElementById('dy-modal-actividad').classList.remove('open');
+  dyActividadId = null;
 }
 
-async function dyBorrarActividad(id) {
-  const a = dyBuscar(dyDatos && dyDatos.actividades, id);
+async function dyGuardarActividad() {
+  const texto = String(document.getElementById('dy-act-texto').value || '').trim();
+  const fecha = document.getElementById('dy-act-fecha').value || dyFecha;
+  if (!texto) {
+    dyTexto('dy-act-error', 'Escribí qué hay que hacer.');
+    return;
+  }
+  if (!fecha) {
+    dyTexto('dy-act-error', 'Elegí el día.');
+    return;
+  }
+  const datos = {texto: texto, fecha: fecha, hora: document.getElementById('dy-act-hora').value || '',
+                 nota: document.getElementById('dy-act-nota').value || ''};
+  const editando = dyActividadId;
+  try {
+    if (editando !== null) await dyPedir('/api/daily/actividades/' + editando, 'PATCH', datos);
+    else await dyPedir('/api/daily/actividades', 'POST', Object.assign({persona_id: dyPersonaId}, datos));
+  } catch (e) {
+    dyTexto('dy-act-error', 'No se guardó: ' + e.message);
+    return;
+  }
+  dyCerrarModal();
+  await dyCargarDia();
+}
+
+async function dyBorrarDesdeModal() {
+  const id = dyActividadId;
+  if (id === null) return;
+  const a = dyItemDelDia(id);
   if (!confirm('¿Borrar "' + (a ? a.texto : 'la actividad') + '"?')) return;
-  await dyAccion('dy-error', 'No se pudo borrar: ', () => dyPedir('/api/daily/actividades/' + id, 'DELETE'));
+  try {
+    await dyPedir('/api/daily/actividades/' + id, 'DELETE');
+  } catch (e) {
+    dyTexto('dy-act-error', 'No se pudo borrar: ' + e.message);
+    return;
+  }
+  dyCerrarModal();
+  await dyCargarDia();
 }
 
+// ── recordatorios que se repiten ──
 function dyDiasElegidos() {
   const dias = [];
   for (let i = 0; i < 7; i++) {
@@ -10237,7 +10492,9 @@ async function dyGuardarRecordatorio() {
     return;
   }
   const editando = dyEditandoId;
-  const datos = {texto: texto, frecuencia: frecuencia, dias: dias};
+  const datos = {texto: texto, frecuencia: frecuencia, dias: dias,
+                 hora: document.getElementById('dy-rec-hora').value || '',
+                 nota: document.getElementById('dy-rec-nota').value || ''};
   const ok = await dyAccion('dy-rec-error', 'No se pudo guardar: ', () => editando !== null
     ? dyPedir('/api/daily/recordatorios/' + editando, 'PUT', datos)
     : dyPedir('/api/daily/recordatorios', 'POST', Object.assign({persona_id: dyPersonaId}, datos)));
@@ -10251,6 +10508,8 @@ function dyEditarRecordatorio(id) {
   const dias = Array.isArray(r.dias) ? r.dias : [];
   document.getElementById('dy-rec-texto').value = r.texto;
   document.getElementById('dy-rec-frecuencia').value = r.frecuencia;
+  document.getElementById('dy-rec-hora').value = r.hora || '';
+  document.getElementById('dy-rec-nota').value = r.nota || '';
   for (let i = 0; i < 7; i++) {
     const c = document.getElementById('dy-rec-dia-' + i);
     if (c) c.checked = dias.indexOf(i) >= 0;
@@ -10260,13 +10519,17 @@ function dyEditarRecordatorio(id) {
   const cancelar = document.getElementById('dy-rec-cancelar');
   if (cancelar) cancelar.classList.remove('dy-oculto');
   dyTexto('dy-rec-error', '');
+  const form = document.getElementById('dy-recurrentes');
+  if (form && form.scrollIntoView) form.scrollIntoView({behavior: 'smooth', block: 'start'});
   document.getElementById('dy-rec-texto').focus();
 }
 
 function dyCancelarEdicion() {
   dyEditandoId = null;
-  const texto = document.getElementById('dy-rec-texto');
-  if (texto) texto.value = '';
+  ['dy-rec-texto', 'dy-rec-hora', 'dy-rec-nota'].forEach(i => {
+    const el = document.getElementById(i);
+    if (el) el.value = '';
+  });
   const frecuencia = document.getElementById('dy-rec-frecuencia');
   if (frecuencia) frecuencia.value = 'diario';
   for (let i = 0; i < 7; i++) {
