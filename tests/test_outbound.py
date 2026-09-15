@@ -1,15 +1,17 @@
-"""El panel Metricas pasa a llamarse Outbound y deja de mostrar Meta Ads.
+"""Los nombres que definio Juan el 14/9 para tres paneles.
 
-Pedido de Juan (14/9): lo de Meta se mira en Marketing, asi que la pestaña
-"Meta Ads" sobraba, y el panel queda con lo del outbound (SDR: cola, llamadas,
-rubros, ciudades).
+- Metricas: primero se llamo "Outbound" (sin la pestaña Meta Ads, que se mira en
+  Marketing) y despues "Inteligencia comercial".
+- Cola: pasa a llamarse "Outbound".
+- Marketing: pasa a llamarse "Inteligencia marketing".
 
-El panel sigue siendo `metrics` por dentro: los permisos de cada rol estan
-guardados con ese nombre en la base, y renombrarlo le sacaria el panel a todos
-sin avisar. Solo cambia lo que se ve.
+Por dentro los paneles siguen siendo `metrics`, `cola` y `marketing`: los
+permisos de cada rol estan guardados con esos nombres, y renombrarlos les
+sacaria el panel a todos. Solo cambia lo que se ve.
 """
 
 import re
+from pathlib import Path
 
 from werkzeug.security import generate_password_hash
 
@@ -17,19 +19,43 @@ import dashboard
 from database import create_user, init_db
 
 HTML = dashboard.DASHBOARD_HTML
+SRC = Path(dashboard.__file__).read_text(encoding="utf-8")
 
 
-def test_el_panel_se_llama_outbound():
-    assert "<h1>Outbound</h1>" in HTML
-    assert re.search(r"id=\"nav-metrics\"[^>]*>.*?Outbound</div>", HTML)
+def _nav(panel: str) -> str:
+    m = re.search(r'id="nav-' + panel + r'"[^>]*>.*?</i>\s*([^<]+?)\s*(?:<span|</div>)', HTML)
+    assert m, f"no encontre el item de menu de {panel}"
+    return m.group(1)
+
+
+def test_metricas_se_llama_inteligencia_comercial():
+    assert _nav("metrics") == "Inteligencia comercial"
+    assert "<h1>Inteligencia comercial</h1>" in HTML
     assert "<h1>Métricas</h1>" not in HTML
+    assert "metrics:'Intel. comercial'" in HTML            # barra del celular
+    assert "metrics:'Inteligencia comercial'" in SRC       # permisos
 
 
-def test_los_nombres_cortos_tambien_dicen_outbound():
-    """La barra del celular (NAV_LABELS) y la pantalla de permisos
-    (PANEL_LABELS) tienen su propia copia del nombre."""
-    assert "metrics:'Métricas'" not in HTML
-    assert HTML.count("metrics:'Outbound'") >= 1
+def test_cola_se_llama_outbound():
+    assert _nav("cola") == "Outbound"
+    assert "<h1>Outbound</h1>" in HTML
+    assert "<h1>Cola de llamadas</h1>" not in HTML
+    assert "cola:'Outbound'" in HTML
+    assert "{cola:'Outbound'," in SRC
+
+
+def test_marketing_se_llama_inteligencia_marketing():
+    assert _nav("marketing") == "Inteligencia marketing"
+    assert "<h1>Inteligencia marketing</h1>" in HTML
+
+
+def test_outbound_no_quedo_en_dos_paneles():
+    """Al renombrar Metricas y Cola en la misma tanda, "Outbound" tiene que
+    quedar solo en la Cola."""
+    assert _nav("metrics") != "Outbound"
+    assert HTML.count("<h1>Outbound</h1>") == 1
+    assert "metrics:'Outbound'" not in SRC
+    assert "metrics:'Métricas'" not in SRC
 
 
 def test_no_queda_nada_de_la_pestaña_meta():
@@ -38,23 +64,24 @@ def test_no_queda_nada_de_la_pestaña_meta():
         assert resto not in HTML, resto
 
 
-def test_el_panel_sigue_siendo_metrics_por_dentro():
-    """Los permisos guardados dicen 'metrics': cambiar el id se los saca a todos."""
-    assert 'id="metrics-panel"' in HTML
-    assert "showPanel('metrics')" in HTML
+def test_los_paneles_siguen_con_su_nombre_por_dentro():
+    """Los permisos guardados dicen 'metrics', 'cola' y 'marketing'."""
+    for panel in ("metrics", "cola", "marketing"):
+        assert f'id="{panel}-panel"' in HTML, panel
+        assert f"showPanel('{panel}')" in HTML, panel
     assert "if (name === 'metrics') loadMetrics();" in HTML
-    for lista in re.findall(r"const ALL_PANELS = \[([^\]]*)\]", HTML):
-        assert "'metrics'" in lista
+    for lista in re.findall(r"const ALL_PANELS = \[([^\]]*)\]", SRC):
+        assert "'metrics'" in lista and "'cola'" in lista
 
 
-def test_lo_del_outbound_sigue(tmp_path, monkeypatch):
+def test_lo_del_panel_sigue_y_la_pagina_abre(tmp_path, monkeypatch):
     for id_ in ("m-total", "m-contacted", "m-funnel", "m-calls", "m-months",
                 "m-rubros", "m-cities"):
         assert f'id="{id_}"' in HTML, id_
 
     monkeypatch.setenv("SECRET_KEY", "test")
     monkeypatch.setenv("ADMIN_EMAIL", "jefe@test.com")
-    db = str(tmp_path / "outbound.db")
+    db = str(tmp_path / "nombres.db")
     init_db(db)
     app = dashboard.create_app(db)
     uid = create_user(db, name="Jefe", email="jefe@test.com", phone="099",
