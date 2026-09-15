@@ -799,6 +799,15 @@ def cliente_cambio_de_estado(db_path: str, notion_page_id: str,
     """
     set_notion_client_status(db_path, notion_page_id, nuevo)
     logger.info("notion: la ficha %s paso de %r a %r", notion_page_id, anterior, nuevo)
+    # Inteligencia financiera: el dia en que se perdio, para pedir el motivo.
+    # Del lado del CRM (a Notion no se le escribe) y sin cortar nada si falla.
+    try:
+        from services.inteligencia_fin import ESTADOS_PERDIDO_NOTION, registrar_perdida_ficha
+        if nuevo in ESTADOS_PERDIDO_NOTION:
+            registrar_perdida_ficha(db_path, notion_page_id)
+    except Exception:
+        logger.warning("notion: no se pudo anotar la perdida de la ficha %s",
+                       notion_page_id, exc_info=True)
     if nuevo == ESTADO_ACEPTADO:
         # Un error aca no puede cortar el sync ni devolver la ficha a su
         # columna: Notion ya tiene el cambio. Se loguea y sigue.
