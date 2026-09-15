@@ -470,6 +470,25 @@ leads de Meta se renombró a **D** para deshacer el empate.
   - `routes/simulador.py`: `POST` y `PUT` devuelven además `nombre` y `updated_at`. Sin cambios de tabla ni de permisos (el Contador sigue usando y guardando el simulador).
   - **Zona compartida tocada:** `dashboard.py` (solo el panel Simulador: HTML, `.sim-editando`, JS `sim*`). Tests en `tests/test_simulador_guardar_escenario.py`.
 
+- **15/9 — Inteligencia financiera, en `feat/inteligencia-financiera` (worktree `../crm-intel-fin`). Push sin PR, sin merge, sin deploy.**
+  - Panel nuevo `inteligencia_fin`, tercer ítem de FINANZAS. **Ruling R20: no se reparte a los roles** (hay test); Juan lo tilda en el editor de roles.
+  - Lógica en `services/inteligencia_fin.py`: reglas R1-R7, y en el docstring de dónde sale cada dato y cómo se mide cada regla. Rutas en `routes/inteligencia_fin.py`.
+  - **Zona compartida tocada, todo aditivo:**
+    - `database.py`: tablas `perdidas_motivo`, `proyectos_esfuerzo`, `ventas_origen_manual`, `fijos_canal`, `if_supuestos`, `if_calculos`, `if_recomendaciones`, `if_recomendaciones_tomadas`. Ninguna tabla de Finanzas cambia.
+    - `dashboard.py`: menú, CSS `ifn-*` (antes de Plantillas), panel (antes de Daily), JS `ifn*` (entre Seguimiento de leads y Daily). Selector de motivo en la tarjeta de Proceso de venta y en la fila de Demos "no cerró"; campo de esfuerzo en la ficha de Proyectos.
+    - `services/notion_service.py`: `cliente_cambio_de_estado` anota la fecha cuando una ficha pasa a Perdido / Presupuesto Rechazado. A Notion no se le escribe nada.
+    - `routes/notion_clients.py`, `routes/preclientes.py` (GET de demos) y `routes/projects.py`: suman `motivo_perdida` / `esfuerzo_*` a la respuesta.
+  - **Hilo nuevo al boot** (`start_inteligencia_fin`, detrás de `CRM_SIN_PROCESOS_DE_FONDO`): espera 2 min y revisa cada hora. Una corrida por día de Montevideo, con marca en `corridas` (`inteligencia_fin`). No manda mails ni llama afuera.
+  - **Finanzas:** solo se lee (`listar_movimientos`, `listar_por_cobrar`, `listar_recurrentes`, `a_usd`, `_totales`). No debería chocar con Balance (crm-balance).
+
+- **15/9 — rama `feat/balance-general` (worktree `../crm-balance-general`). Sin PR, sin merge, sin deploy.** Juan rechazó el Balance de #52 (era un estado de resultados): quiere un **Balance General** clásico.
+  - **Qué muestra:** la pestaña Balance ahora genera el Balance General a una fecha de corte (por defecto hoy en Montevideo), con dos columnas (ACTIVO | PASIVO y PATRIMONIO) que pasan a una en el celular. El estado de resultados de #52 queda abajo, colapsado: "Estado de resultados del período", del 1/1 al corte.
+  - **Ruta y cuenta:** `GET /api/finanzas/balance-general?tipo=&fecha=`, con la cuenta pura en `services/finanzas.calcular_balance_general`. `GET /api/finanzas/balance` (#52) sigue existiendo.
+  - **Por qué cuadra solo:** la caja se cuenta CON IVA y el resultado SIN IVA, y la diferencia es el saldo de IVA (va a pasivo o a activo). Por eso no se reusa `cajaActual` del simulador, que es sin IVA. Las cuentas por cobrar (solo en interno) llevan su contrapartida en patrimonio: "Ventas pendientes de cobro".
+  - **Si no cuadra:** los datos manuales no tienen contrapartida automática, así que la diferencia no se fuerza. Se muestra "Diferencia a revisar (patrimonio no explicado)", en ámbar, con aviso.
+  - **Datos manuales:** tabla nueva `finanzas_balance_datos` (clase activo/pasivo/capital/caja_inicial, rubro, monto USD, desde, hasta, en_blanco) y rutas `/api/finanzas/balance-datos` (GET/POST/PUT/DELETE). Las escrituras quedan bloqueadas para el Contador por el candado del blueprint, y están sumadas a `ESCRITURAS` en `tests/test_finanzas_solo_lectura.py`.
+  - **Empresa del encabezado:** variable `EMPRESA_NOMBRE`, que por defecto es "Scalerics". No hay tabla de configuración.
+
 - **15/9 — rama `feat/rrhh-horarios` (worktree `../crm-horarios`). Sin PR ni deploy.** Pedido de Juan: Recursos Humanos > **Horarios**.
   - Panel `horarios`, tercero de RECURSOS HUMANOS (Organigrama, Ausencias, Horarios). Grilla semanal (personas por días, sábado/domingo solo si alguien trabaja), horas por día y total semanal; en el celular, una tarjeta por persona. Botón Editar abre un modal por persona con tramos desde/hasta por día, agregar/quitar y "No trabaja".
   - **Zona compartida tocada:** `database.py` (tablas `horarios_tramos` y `horarios_precarga_hecha` después de las de equipo en `init_db`; `_sembrar_horarios`, `listar_tramos_horario`, `reemplazar_horario_persona` al final de la parte de Equipo) y `dashboard.py` (menú, colores del ícono, CSS `hr-`, panel, modal, JS `hr*`, las dos `ALL_PANELS`, `PANEL_LABELS`, `NAV_*`). Nuevos: `services/horarios.py`, `routes/horarios.py`, `tests/test_horarios.py`.

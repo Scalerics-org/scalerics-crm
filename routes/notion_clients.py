@@ -38,12 +38,16 @@ def api_notion_clients():
     """
     db = current_app.config["DB_PATH"]
     proyectos = {p["notion_page_id"]: p["name"] for p in get_projects(db)}
+    # El motivo de pérdida vive del lado del CRM (Inteligencia financiera).
+    from services.inteligencia_fin import motivos_por_entidad
+    motivos = motivos_por_entidad(db, "notion_client")
     return jsonify({
         "columnas": estados_de_clientes(),
         "clientes": [
             {**c,
              "grupo": grupo_de_cliente(c.get("status")),
-             "project_name": proyectos.get(c.get("notion_project_page_id"))}
+             "project_name": proyectos.get(c.get("notion_project_page_id")),
+             "motivo_perdida": motivos.get(c.get("id"))}
             for c in get_notion_clients(db)
         ],
     })

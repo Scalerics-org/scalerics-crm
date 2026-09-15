@@ -27,6 +27,7 @@ from routes.preclientes import preclientes_bp
 from routes.linkedin import linkedin_bp
 from routes.finanzas import finanzas_bp
 from routes.simulador import simulador_bp
+from routes.inteligencia_fin import inteligencia_fin_bp
 from routes.equipo import equipo_bp
 from routes.horarios import horarios_bp
 from routes.flujos import flujos_bp
@@ -1262,6 +1263,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-marketing .nav-icon{stroke:#f472b6}
 #nav-finanzas .nav-icon{stroke:#f59e0b}
 #nav-simulador .nav-icon{stroke:#fb923c}
+#nav-inteligencia_fin .nav-icon{stroke:#86efac}
 #nav-notion_clients .nav-icon{stroke:#10b981}
 #nav-demos .nav-icon{stroke:#22d3ee}
 #nav-sdr .nav-icon{stroke:#f87171}
@@ -1287,6 +1289,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-marketing.active .nav-icon{stroke:#f9a8d4}
 #nav-finanzas.active .nav-icon{stroke:#fcd34d}
 #nav-simulador.active .nav-icon{stroke:#fdba74}
+#nav-inteligencia_fin.active .nav-icon{stroke:#bbf7d0}
 #nav-daily.active .nav-icon{stroke:#7dd3fc}
 #nav-daily_admin.active .nav-icon{stroke:#f5d0fe}
 #nav-notion_clients.active .nav-icon{stroke:#34d399}
@@ -1310,6 +1313,7 @@ body.light #nav-activity .nav-icon{stroke:#475569}
 body.light #nav-marketing .nav-icon{stroke:#db2777}
 body.light #nav-finanzas .nav-icon{stroke:#b45309}
 body.light #nav-simulador .nav-icon{stroke:#c2410c}
+body.light #nav-inteligencia_fin .nav-icon{stroke:#15803d}
 body.light #nav-daily .nav-icon{stroke:#0284c7}
 body.light #nav-daily_admin .nav-icon{stroke:#a21caf}
 body.light #nav-notion_clients .nav-icon{stroke:#047857}
@@ -1806,10 +1810,36 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .fb-nota{font-size:.78rem;color:var(--texto-debil);padding:6px 0;line-height:1.45}
 .fb-error{color:var(--rojo-texto);padding:16px;font-size:.85rem}
 .fb-print{display:none}
+/* Balance General: el formato clásico que mandó Juan. Dos columnas (Activo |
+   Pasivo y Patrimonio), subtotales con línea arriba y los dos totales finales
+   con doble línea, alineados abajo. En el celular, una columna. */
+.fbg-cab{text-align:center;margin-bottom:18px;line-height:1.55;color:var(--texto);font-size:.85rem}
+.fbg-titulo{font-size:1.2rem;font-weight:800;letter-spacing:1px;color:var(--texto-fuerte)}
+.fbg-empresa{font-weight:700;color:var(--texto-fuerte)}
+.fbg-cols{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--borde-fuerte);border-radius:6px}
+.fbg-col{display:flex;flex-direction:column;padding:14px 18px;min-width:0}
+.fbg-col + .fbg-col{border-left:1px solid var(--borde-fuerte)}
+.fbg-seccion{font-weight:800;font-size:.82rem;letter-spacing:.8px;color:var(--texto-fuerte);margin:4px 0 8px}
+.fbg-fila{display:flex;justify-content:space-between;gap:12px;padding:4px 0;font-size:.85rem;color:var(--texto)}
+.fbg-num{font-variant-numeric:tabular-nums;white-space:nowrap;text-align:right}
+.fbg-sub{border-top:1px solid var(--texto-tenue);font-weight:700;margin-bottom:12px;padding-top:6px}
+.fbg-total{border-top:1px solid var(--texto-tenue);border-bottom:3px double var(--texto-fuerte);font-weight:800;padding:6px 0;margin-top:auto;color:var(--texto-fuerte)}
+.fbg-dif{color:var(--ambar);font-weight:700}
+.fbg-vacio{color:var(--texto-debil)}
+.fbg-er{margin-top:18px}
+.fbg-er summary{cursor:pointer;font-size:.78rem;font-weight:700;color:var(--rotulo);text-transform:uppercase;letter-spacing:.6px}
+.fbg-er .fb-doc{border:none;padding:10px 0 0;margin:0;background:transparent}
+.fbd-ayuda{margin:0 0 12px}
+.fbd-form{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:12px}
+.fbd-check{display:flex;align-items:center;gap:6px;font-size:.8rem;color:var(--texto);padding-bottom:8px}
+.fbd-error{padding:8px 0}
 @media (max-width:760px){
   .fin-toggle{flex-wrap:wrap;margin-left:0}
   .fb-controles{flex-direction:column;align-items:stretch}
   .fb-doc{padding:14px}
+  .fbg-cols{grid-template-columns:1fr}
+  .fbg-col + .fbg-col{border-left:none;border-top:1px solid var(--borde-fuerte)}
+  .fbd-form{flex-direction:column;align-items:stretch}
 }
 @media print{
   body.fb-imprimiendo{background:var(--superficie) !important}
@@ -1819,6 +1849,8 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   body.fb-imprimiendo .fin-kpi{background:var(--superficie)}
   body.fb-imprimiendo .fb-scroll{overflow:visible}
   body.fb-imprimiendo .fb-seccion{break-inside:avoid}
+  body.fb-imprimiendo .fbg-cols{grid-template-columns:1fr 1fr;break-inside:avoid}
+  body.fb-imprimiendo .fbg-col + .fbg-col{border-left:1px solid var(--borde-fuerte);border-top:none}
 }
 /* ── Horarios ─────────────────────────────────────────────────────────────────
    Recursos Humanos > Horarios. Solo tokens, sin reglas `body.light`. En la
@@ -1869,6 +1901,75 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   .hr-tarjetas{display:block}
   .hr-card{padding:14px}
 }
+/* ── Inteligencia financiera ──────────────────────────────────────────────────
+   Solo tokens: el tema claro sale solo. El borde izquierdo de cada tarjeta dice
+   el tipo: verde suma ingreso, ambar recorta gasto, rojo es alerta de margen. */
+.ifn-oculto{display:none}
+.ifn-cabecera{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:16px}
+.ifn-titulo{margin:0;font-size:1.3rem;color:var(--texto-fuerte)}
+.ifn-bajada{margin:4px 0 0;color:var(--texto-tenue);font-size:.85rem;max-width:760px;line-height:1.45}
+.ifn-bloque{background:var(--superficie);border:1px solid var(--borde);border-radius:10px;padding:16px;margin-bottom:16px}
+.ifn-seccion{margin:0 0 12px;font-size:.95rem;color:var(--texto-fuerte)}
+.ifn-datos-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.ifn-dato{background:var(--superficie-alta);border:1px solid var(--borde);border-radius:8px;padding:12px;min-width:0}
+.ifn-dato-cab{display:flex;justify-content:space-between;align-items:center;gap:8px;font-weight:600;color:var(--texto)}
+.ifn-dato-num{margin:6px 0;color:var(--texto-tenue);font-size:.85rem}
+.ifn-chip{font-size:.7rem;font-weight:600;padding:2px 8px;border-radius:10px}
+.ifn-chip-ok{background:var(--verde-tinte);color:var(--verde-texto)}
+.ifn-chip-falta{background:var(--ambar-tinte);color:var(--ambar)}
+.ifn-pends{list-style:none;margin:8px 0 0;padding:0;max-height:260px;overflow:auto;display:flex;flex-direction:column;gap:6px}
+.ifn-pend{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px;font-size:.8rem;color:var(--texto)}
+.ifn-motivo{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:.75rem;color:var(--texto-tenue);margin-top:6px}
+.ifn-motivo-falta span{color:var(--ambar)}
+.ifn-esfuerzo{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:8px;font-size:.78rem;color:var(--texto-tenue)}
+.ifn-esfuerzo-falta .ifn-esfuerzo-rotulo{color:var(--ambar)}
+.ifn-input{width:90px;background:var(--fondo-hundido);border:1px solid var(--borde-fuerte);color:var(--texto);border-radius:6px;padding:4px 6px;font-size:.8rem}
+.ifn-input:focus{outline:none;border-color:var(--azul)}
+.ifn-supuestos{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-top:12px;font-size:.8rem;color:var(--texto-tenue)}
+.ifn-supuesto{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.ifn-nota{font-size:.75rem;color:var(--texto-debil);margin:6px 0 0}
+.ifn-contraste{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-bottom:16px}
+.ifn-contraste-col{background:var(--superficie);border:1px solid var(--borde);border-radius:10px;padding:14px}
+.ifn-contraste-rotulo{font-size:.75rem;color:var(--texto-debil);text-transform:uppercase;letter-spacing:.04em}
+.ifn-contraste-num{font-size:1.5rem;font-weight:700;color:var(--texto-fuerte);margin:4px 0}
+.ifn-contraste-cuenta{font-size:.75rem;color:var(--texto-tenue)}
+.ifn-aviso{background:var(--ambar-tinte);border:1px solid var(--ambar-borde);border-radius:8px;padding:10px 12px;margin-bottom:10px;color:var(--texto)}
+.ifn-aviso p{margin:4px 0;font-size:.82rem}
+.ifn-aviso-titulo{font-weight:600;color:var(--ambar)}
+.ifn-aviso-reglas{font-size:.72rem;color:var(--texto-tenue)}
+.ifn-rec{background:var(--superficie);border:1px solid var(--borde);border-left:4px solid var(--borde-fuerte);border-radius:10px;padding:14px 16px;margin-bottom:12px}
+.ifn-rec-ingreso{border-left-color:var(--verde)}
+.ifn-rec-recorte{border-left-color:var(--ambar)}
+.ifn-rec-alerta{border-left-color:var(--rojo)}
+.ifn-rec-cab{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.ifn-regla{font-size:.7rem;color:var(--texto-debil);font-weight:600}
+.ifn-rec-titulo{margin:2px 0 0;font-size:1rem;color:var(--texto-fuerte)}
+.ifn-impacto{font-size:1.15rem;font-weight:700;text-align:right;white-space:nowrap}
+.ifn-impacto span{display:block;font-size:.7rem;font-weight:500;color:var(--texto-debil)}
+.ifn-suma{color:var(--verde-texto)}
+.ifn-revisar{color:var(--rojo-texto)}
+.ifn-rec-detalle{margin:8px 0;font-size:.85rem;color:var(--texto);line-height:1.45}
+.ifn-advertencia{margin:8px 0;font-size:.8rem;color:var(--ambar);line-height:1.4}
+.ifn-calculo{background:var(--relleno);color:var(--texto);border-radius:6px;padding:10px 12px;font-size:.76rem;line-height:1.5;white-space:pre-wrap;overflow-x:auto;margin:8px 0}
+.ifn-acciones{list-style:none;padding:0;margin:8px 0;display:flex;flex-direction:column;gap:6px}
+.ifn-accion{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;font-size:.8rem;color:var(--texto)}
+.ifn-sin-tel{color:var(--texto-debil);font-size:.75rem}
+.ifn-rec-pie{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:10px}
+.ifn-confianza{font-size:.72rem;font-weight:600;padding:2px 8px;border-radius:10px;margin-right:auto}
+.ifn-conf-alta{background:var(--verde-tinte);color:var(--verde-texto)}
+.ifn-conf-media{background:var(--azul-tinte);color:var(--azul-claro)}
+.ifn-conf-baja{background:var(--relleno);color:var(--texto-debil)}
+.ifn-vacio{padding:14px;color:var(--texto-tenue);font-size:.85rem}
+.ifn-segs{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:8px}
+.ifn-seg{border-bottom:1px solid var(--borde);padding-bottom:8px}
+.ifn-seg-titulo{color:var(--texto);font-size:.85rem}
+.ifn-res{font-size:.7rem;font-weight:600;padding:2px 8px;border-radius:10px}
+.ifn-res-midiendo{background:var(--azul-tinte);color:var(--azul-claro)}
+.ifn-res-funciono{background:var(--verde-tinte);color:var(--verde-texto)}
+.ifn-res-no_funciono{background:var(--rojo-tinte);color:var(--rojo-texto)}
+.ifn-seg-meta{font-size:.75rem;color:var(--texto-tenue);margin-top:2px}
+.ifn-seg-detalle{font-size:.75rem;color:var(--texto-tenue);margin-top:2px}
+@media (max-width:640px){ .ifn-rec-cab{flex-direction:column} .ifn-impacto{text-align:left} }
 /* ── Plantillas ───────────────────────────────────────────────────────────────
    Mensajes de siempre, en VENTAS. Solo tokens, sin reglas `body.light`: las
    variables van en --azul-claro y las que faltan en la familia ambar, que
@@ -2254,6 +2355,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div class="nav-section-label">FINANZAS</div>
   <div class="nav-item" id="nav-finanzas" onclick="showPanel('finanzas')"><i data-lucide="wallet" class="nav-icon"></i> Finanzas</div>
   <div class="nav-item" id="nav-simulador" onclick="showPanel('simulador')"><i data-lucide="calculator" class="nav-icon"></i> Simulador financiero</div>
+  <div class="nav-item" id="nav-inteligencia_fin" onclick="showPanel('inteligencia_fin')"><i data-lucide="lightbulb" class="nav-icon"></i> Inteligencia financiera</div>
   <div class="nav-section-label">VENTAS</div>
   <div class="nav-item" id="nav-seg_leads" onclick="showPanel('seg_leads')"><i data-lucide="phone-call" class="nav-icon"></i> Seguimiento de leads</div>
   <div class="nav-item" id="nav-wa" onclick="showPanel('wa')"><i data-lucide="message-circle" class="nav-icon"></i> WhatsApp</div>
@@ -2664,7 +2766,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 
     <div id="fin-vista-balance" style="display:none">
       <div class="fin-card">
-        <div class="fin-card-title">Balance</div>
+        <div class="fin-card-title">Balance general</div>
         <div class="fb-controles">
           <label class="fb-label">Tipo
             <select id="fb-tipo" class="filter-select">
@@ -2672,23 +2774,42 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
               <option value="interno">Interno (todo)</option>
             </select>
           </label>
-          <label class="fb-label">Período
-            <select id="fb-preset" class="filter-select" onchange="finBalPreset()">
-              <option value="anio" selected>Este año</option>
-              <option value="inicio">Desde el inicio</option>
-              <option value="personalizado">Personalizado</option>
-            </select>
+          <label class="fb-label">Fecha de corte
+            <input type="date" id="fb-corte" class="fb-campo">
           </label>
-          <span class="fb-fechas" id="fb-fechas" style="display:none">
-            <label class="fb-label">Desde <input type="date" id="fb-desde" class="fb-campo"></label>
-            <label class="fb-label">Hasta <input type="date" id="fb-hasta" class="fb-campo"></label>
-          </span>
           <button class="btn-primary" id="fb-generar" onclick="finBalGenerar()">Generar balance hasta el momento</button>
           <button class="btn-ghost" id="fb-imprimir" onclick="finBalImprimir()" style="display:none">Imprimir / PDF</button>
         </div>
-        <div class="fb-ayuda">En blanco: solo lo que se contabiliza (lo facturado, con IVA, y los pagos de impuestos). Interno: todo, y en cada total cuánto es en blanco y cuánto no.</div>
+        <div class="fb-ayuda">Sin fecha de corte es hoy. En blanco: solo lo que se contabiliza (lo facturado con su IVA, los pagos de impuestos y los datos marcados en blanco). Interno: todo, incluidas las cuentas por cobrar.</div>
       </div>
       <div id="fin-balance"></div>
+      <div class="fin-card" id="fbd-card">
+        <div class="fin-card-title">Datos para el balance</div>
+        <div class="fb-ayuda fbd-ayuda">Lo que Finanzas no sabe solo: el saldo inicial de caja, el capital de los socios, los bienes (mercadería, maquinarias, inmuebles, rodados) y las deudas (sueldos, préstamos, proveedores, BPS). Todo en USD.</div>
+        <div class="fbd-form" id="fbd-form">
+          <input type="hidden" id="fbd-id">
+          <label class="fb-label">Qué es
+            <select id="fbd-clase" class="filter-select" onchange="_finBalDatoRubros()">
+              <option value="activo" selected>Activo (bien)</option>
+              <option value="pasivo">Pasivo (deuda)</option>
+              <option value="capital">Capital</option>
+              <option value="caja_inicial">Saldo inicial de caja</option>
+            </select>
+          </label>
+          <label class="fb-label">Rubro
+            <select id="fbd-rubro" class="filter-select"></select>
+          </label>
+          <label class="fb-label">Nombre <input type="text" id="fbd-nombre" class="fb-campo" placeholder="Ej: notebooks del equipo"></label>
+          <label class="fb-label">Monto USD <input type="number" id="fbd-monto" class="fb-campo" step="0.01"></label>
+          <label class="fb-label">Desde <input type="date" id="fbd-desde" class="fb-campo"></label>
+          <label class="fb-label">Hasta (opcional) <input type="date" id="fbd-hasta" class="fb-campo"></label>
+          <label class="fbd-check"><input type="checkbox" id="fbd-blanco" checked> En blanco</label>
+          <button class="btn-primary" id="fbd-guardar" onclick="finBalDatoGuardar()">Guardar</button>
+          <button class="btn-ghost" id="fbd-cancelar" onclick="finBalDatoLimpiar()" style="display:none">Cancelar</button>
+        </div>
+        <div class="fb-error fbd-error" id="fbd-error" style="display:none"></div>
+        <div id="fbd-lista"></div>
+      </div>
     </div>
   </div>
 
@@ -3133,6 +3254,23 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     </div>
     <div id="activity-list" style="max-width:760px"></div>
   </div>
+
+  <!-- ======= INTELIGENCIA FINANCIERA PANEL ======= -->
+  <div id="inteligencia_fin-panel" class="panel">
+    <div class="ifn-cabecera">
+      <div>
+        <h2 class="ifn-titulo">Inteligencia financiera</h2>
+        <p class="ifn-bajada" id="ifn-bajada">Qué hacer este mes para ganar plata, con el número esperado y la cuenta que lo respalda.</p>
+      </div>
+      <button class="btn-ghost ifn-oculto" id="ifn-recalcular" onclick="ifnRecalcular()">Recalcular ahora</button>
+    </div>
+    <section class="ifn-bloque" id="ifn-datos"></section>
+    <section class="ifn-contraste" id="ifn-contraste"></section>
+    <section id="ifn-avisos"></section>
+    <section id="ifn-lista"></section>
+    <section class="ifn-bloque" id="ifn-seguimiento"></section>
+  </div>
+  <!-- ======= FIN INTELIGENCIA FINANCIERA PANEL ======= -->
 
   <!-- ======= DAILY PROGRAMADOR PANEL ======= -->
   <!-- Daily Programador y Daily Admin son la misma pantalla con los mismos
@@ -4046,6 +4184,7 @@ function showPanel(name) {
   if (name === 'notion_clients') loadNotionClients();
   if (name === 'finanzas') loadFinanzas();
   if (name === 'simulador') loadSimulador();
+  if (name === 'inteligencia_fin') ifnCargar();
   if (name === 'metrics') loadMetrics();
   if (name === 'activity') loadActivity();
   if (name === 'equipo' || name === 'ausencias') loadEquipo();
@@ -4915,6 +5054,7 @@ function _demosFilaHtml(d) {
     </div>
     ${d.actualizacion || d.origen !== 'planilla' ? `<div class="demo-texto">${esc(d.actualizacion || 'Sin notas')}</div>` : ''}
     <div class="demo-presu-fila">${presu}</div>
+    ${typeof ifnMotivoHtml === 'function' && d.estado_planilla === 'no_cerro' ? ifnMotivoHtml('demo', d.id, d.motivo_perdida) : ''}
   </div>`;
 }
 
@@ -7256,6 +7396,7 @@ async function loadProjects() {
             }</span> ${esc(t.title)}</div>`).join('')
           : '<div class="proj-task proj-vacio">Sin tareas</div>'
       }</div>
+      ${typeof ifnEsfuerzoHtml === 'function' ? ifnEsfuerzoHtml(p) : ''}
     </div>`;
   }).join('');
 }
@@ -7363,6 +7504,7 @@ function _notionClientCardHtml(c, arrastrable) {
     ${meta ? `<div class="kanban-card-meta">${meta}</div>` : ''}
     ${c.descripcion ? `<div class="kanban-card-who">${esc(c.descripcion)}</div>` : ''}
     ${_ncVinculoHtml(c)}
+    ${typeof ifnMotivoHtml === 'function' && ['Perdido', 'Presupuesto Rechazado'].includes(c.status) ? ifnMotivoHtml('notion_client', c.id, c.motivo_perdida) : ''}
     ${slBotonNotionHtml(c)}
   </div>`;
 }
@@ -8274,19 +8416,19 @@ function _showScoreBreakdown(event, el) {
 
 // ── Mobile navigation ─────────────────────────────────────────────────────────
 // El mismo orden que el menu de la izquierda (Juan, 14/9).
-const NAV_PRIORITY = ['cal','meta','finanzas','simulador','seg_leads','wa','notion_clients','plantillas','clientes','projects','tasks','daily','daily_admin','activity','equipo','ausencias','flujos','horarios','cola','metrics'];
+const NAV_PRIORITY = ['cal','meta','finanzas','simulador','inteligencia_fin','seg_leads','wa','notion_clients','plantillas','clientes','projects','tasks','daily','daily_admin','activity','equipo','ausencias','flujos','horarios','cola','metrics'];
 const NAV_ICONS = {
   cola:'inbox',meta:'instagram',cal:'calendar',
   tasks:'check-square',pipeline:'trending-up',clientes:'users',
   wa:'message-circle',metrics:'bar-chart-2',activity:'clock',projects:'target',
-  notion_clients:'handshake',finanzas:'wallet',simulador:'calculator',equipo:'network',
+  notion_clients:'handshake',finanzas:'wallet',simulador:'calculator',inteligencia_fin:'lightbulb',equipo:'network',
   ausencias:'calendar-clock',horarios:'clock-4',flujos:'workflow',seg_leads:'phone-call',daily:'clipboard-list',plantillas:'message-square-text',daily_admin:'clipboard-check'
 };
 const NAV_LABELS = {
   cola:'Outbound',meta:'Meta',cal:'Agenda',
   tasks:'Tareas',pipeline:'Pipeline',clientes:'Clientes',
   wa:'WA',metrics:'Intel. comercial',activity:'Actividad',projects:'Proyectos',
-  notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador',equipo:'Organigrama',
+  notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador',inteligencia_fin:'Intel. financiera',equipo:'Organigrama',
   ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento',daily:'Daily',plantillas:'Plantillas',daily_admin:'Daily Admin'
 };
 let _mobileNavOverflow = [];
@@ -8367,7 +8509,7 @@ function closeMasSheet() {
 }
 
 // ── Panel access control ──────────────────────────────────────────────────────
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin'];
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin'];
 (async () => {
   try {
     const r = await fetch('/api/me');
@@ -9308,6 +9450,7 @@ function finVista(cual) {
   if (cual === 'fijos') loadFijos();
   if (cual === 'iva') loadIva();
   if (cual === 'pauta') loadPauta();
+  if (cual === 'balance') loadBalanceDatos();
 }
 
 const FIN_VERDE = '#10b981';
@@ -9864,27 +10007,12 @@ function _finBalHoy() {
   return new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10);
 }
 
-function finBalPreset() {
-  const personalizado = document.getElementById('fb-preset').value === 'personalizado';
-  document.getElementById('fb-fechas').style.display = personalizado ? '' : 'none';
-  if (!personalizado) return;
-  const hoy = _finBalHoy();
-  const desde = document.getElementById('fb-desde');
-  const hasta = document.getElementById('fb-hasta');
-  if (!desde.value) desde.value = hoy.slice(0, 4) + '-01-01';
-  if (!hasta.value) hasta.value = hoy;
-}
-
 function _finBalUrl() {
+  // Sin fecha de corte, el servidor usa hoy en Montevideo.
   const tipo = document.getElementById('fb-tipo').value;
-  const preset = document.getElementById('fb-preset').value;
-  let url = '/api/finanzas/balance?tipo=' + encodeURIComponent(tipo);
-  if (preset === 'inicio') url += '&desde=inicio';
-  if (preset === 'personalizado') {
-    url += '&desde=' + encodeURIComponent(document.getElementById('fb-desde').value)
-      + '&hasta=' + encodeURIComponent(document.getElementById('fb-hasta').value);
-  }
-  return url;
+  const corte = document.getElementById('fb-corte').value;
+  return '/api/finanzas/balance-general?tipo=' + encodeURIComponent(tipo)
+    + (corte ? '&fecha=' + encodeURIComponent(corte) : '');
 }
 
 async function finBalGenerar() {
@@ -9899,7 +10027,7 @@ async function finBalGenerar() {
     if (!r.ok) throw new Error((d && d.error) || 'no se pudo generar el balance');
     // Pintar adentro del try: una respuesta rara muestra el error en vez de
     // dejar el cartel de "Generando..." para siempre.
-    caja.innerHTML = _finBalPintar(d);
+    caja.innerHTML = _finBalGeneralPintar(d);
     _finBalUltimo = d;
   } catch (e) {
     caja.innerHTML = '<div class="fb-error">Error: ' + esc(e.message) + '</div>';
@@ -10042,7 +10170,7 @@ function finBalImprimir() {
   const hoja = document.getElementById('fb-print');
   const body = document.body;
   const eraClaro = body.classList.contains('light');
-  hoja.innerHTML = _finBalPintar(_finBalUltimo);
+  hoja.innerHTML = _finBalGeneralPintar(_finBalUltimo, true);
   // En claro siempre: un PDF con fondo oscuro no se imprime.
   body.classList.add('light');
   body.classList.add('fb-imprimiendo');
@@ -10054,6 +10182,226 @@ function finBalImprimir() {
   };
   window.addEventListener('afterprint', terminar);
   window.print();
+}
+
+// ---- Balance General (Activo = Pasivo + Patrimonio) ----
+// La cuenta la hace calcular_balance_general en services/finanzas.py. Aca se
+// pinta con el formato clasico: dos columnas, subtotales con linea arriba y
+// los totales finales con doble linea.
+const _FB_MESES_LARGOS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio',
+                          'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+function _finBalFechaLarga(iso) {
+  const p = String(iso || '').slice(0, 10).split('-');
+  const mes = _FB_MESES_LARGOS[parseInt(p[1], 10) - 1];
+  if (p.length !== 3 || !mes) return 'AL ' + esc(String(iso || ''));
+  return ('AL ' + parseInt(p[2], 10) + ' DE ' + mes + ' DE ' + p[0]).toUpperCase();
+}
+
+function _finBalMonto(n) {
+  // Convencion contable: los negativos entre parentesis.
+  const v = Number(n) || 0;
+  const texto = Math.abs(v).toLocaleString('es-UY', {minimumFractionDigits: 2,
+                                                     maximumFractionDigits: 2});
+  return v < -0.004 ? '(' + texto + ')' : texto;
+}
+
+function _finBalGFila(f, clase) {
+  return '<div class="fbg-fila' + (f.alerta ? ' fbg-dif' : '') + (clase ? ' ' + clase : '') + '">'
+    + '<span>' + esc(f.nombre) + '</span>'
+    + '<span class="fbg-num">' + _finBalMonto(f.monto) + '</span></div>';
+}
+
+function _finBalGFilas(filas) {
+  if (!filas || !filas.length) {
+    return '<div class="fbg-fila fbg-vacio"><span>Sin datos</span><span></span></div>';
+  }
+  return filas.map(f => _finBalGFila(f)).join('');
+}
+
+function _finBalGeneralPintar(d, paraImprimir) {
+  const generado = String(d.generado_en || '').split(' ');
+  let html = '<div class="fb-doc fbg">'
+    + '<div class="fbg-cab">'
+    + '<div class="fbg-titulo">BALANCE GENERAL</div>'
+    + '<div class="fbg-empresa">' + esc(d.empresa) + '</div>'
+    + '<div>' + _finBalFechaLarga(d.corte) + '</div>'
+    + '<div>(expresado en ' + esc(d.expresado_en) + ')</div>'
+    + '<div class="fb-sub">' + esc(d.tipo_nombre)
+    + (generado[0] ? ' · generado el ' + _finBalFecha(generado[0])
+      + (generado[1] ? ' a las ' + esc(generado[1]) : '') : '') + '</div>'
+    + '</div>';
+
+  if (!d.cuadra) {
+    html += '<div class="fb-aviso">El balance no cuadra: hay ' + _finUsd(Math.abs(d.diferencia))
+      + (d.diferencia > 0 ? ' de activo que el pasivo y el patrimonio no explican'
+                          : ' de pasivo y patrimonio que el activo no respalda')
+      + '. Falta cargar algo en "Datos para el balance": el saldo inicial de caja, '
+      + 'el capital de los socios o los bienes y deudas. Mientras tanto se muestra '
+      + 'como "Diferencia a revisar".</div>';
+  }
+  if (d.sin_cotizacion) {
+    html += '<div class="fb-aviso">' + d.sin_cotizacion
+      + (d.sin_cotizacion === 1 ? ' movimiento sin tipo de cambio no se incluye.'
+                                : ' movimientos sin tipo de cambio no se incluyen.')
+      + '</div>';
+  }
+
+  html += '<div class="fbg-cols">'
+    + '<div class="fbg-col fbg-activo">'
+    + '<div class="fbg-seccion">ACTIVO</div>'
+    + _finBalGFilas(d.activo.filas)
+    + _finBalGFila({nombre: 'TOTAL ACTIVO', monto: d.activo.total}, 'fbg-total')
+    + '</div>'
+    + '<div class="fbg-col fbg-pasivo">'
+    + '<div class="fbg-seccion">PASIVO</div>'
+    + _finBalGFilas(d.pasivo.filas)
+    + _finBalGFila({nombre: 'TOTAL PASIVO', monto: d.pasivo.total}, 'fbg-sub')
+    + '<div class="fbg-seccion">PATRIMONIO</div>'
+    + _finBalGFilas(d.patrimonio.filas)
+    + _finBalGFila({nombre: 'TOTAL PATRIMONIO', monto: d.patrimonio.total}, 'fbg-sub')
+    + _finBalGFila({nombre: 'TOTAL PASIVO Y PATRIMONIO', monto: d.total_pasivo_patrimonio}, 'fbg-total')
+    + '</div>'
+    + '</div>';
+
+  if (!paraImprimir && d.estado_resultados) {
+    html += '<details class="fbg-er"><summary>Estado de resultados del período</summary>'
+      + '<div class="fb-nota">Del ' + _finBalFecha(d.estado_resultados.desde) + ' al '
+      + _finBalFecha(d.estado_resultados.hasta)
+      + ': de acá sale la Utilidad del ejercicio.</div>'
+      + _finBalPintar(d.estado_resultados)
+      + '</details>';
+  }
+  return html + '</div>';
+}
+
+// ---- Datos para el balance (carga manual) ----
+// Espejo de BALANCE_CLASES en services/finanzas.py (hay un test que los compara).
+const FB_RUBROS = {
+  activo: {mercaderia: 'Mercadería', maquinarias: 'Maquinarias y equipos',
+           inmuebles: 'Edificio / inmuebles', rodados: 'Rodados', otros: 'Otros activos'},
+  pasivo: {sueldos: 'Sueldos por pagar', prestamos: 'Préstamos por pagar',
+           proveedores: 'Proveedores', fiscales: 'Deudas fiscales / BPS', otros: 'Otros pasivos'},
+  capital: {capital: 'Capital'},
+  caja_inicial: {caja_inicial: 'Saldo inicial de caja'}
+};
+const FB_CLASES = {activo: 'Activo', pasivo: 'Pasivo', capital: 'Capital',
+                   caja_inicial: 'Saldo inicial de caja'};
+let _finBalDatos = [];
+
+function _finBalDatoRubros(seleccionado) {
+  const clase = document.getElementById('fbd-clase').value;
+  const rubros = FB_RUBROS[clase] || {};
+  document.getElementById('fbd-rubro').innerHTML = Object.keys(rubros).map(k =>
+    '<option value="' + k + '"' + (k === seleccionado ? ' selected' : '') + '>'
+    + esc(rubros[k]) + '</option>').join('');
+}
+
+function _finBalDatosPintar(datos, solo) {
+  if (!datos.length) {
+    return '<div class="fb-nota">Todavía no hay datos cargados. Sin capital ni saldo '
+      + 'inicial de caja, el balance puede mostrar una diferencia a revisar.</div>';
+  }
+  return '<div class="fb-scroll"><table class="fin-tabla fb-tabla"><thead><tr>'
+    + '<th>Qué es</th><th>Nombre</th><th class="fb-num">USD</th><th>Desde</th>'
+    + '<th>Hasta</th><th>En blanco</th>' + (solo ? '' : '<th></th>')
+    + '</tr></thead><tbody>'
+    + datos.map(x => '<tr>'
+        + '<td>' + esc(FB_CLASES[x.clase] || x.clase) + ' · '
+        + esc((FB_RUBROS[x.clase] || {})[x.rubro] || x.rubro) + '</td>'
+        + '<td>' + esc(x.nombre) + '</td>'
+        + '<td class="fb-num">' + _finUsd(x.monto_usd) + '</td>'
+        + '<td>' + _finBalFecha(x.desde) + '</td>'
+        + '<td>' + (x.hasta ? _finBalFecha(x.hasta) : '—') + '</td>'
+        + '<td>' + (x.en_blanco ? 'Sí' : 'No') + '</td>'
+        + (solo ? '' : '<td style="white-space:nowrap">'
+          + '<button class="btn-ghost" onclick="finBalDatoEditar(' + x.id + ')">Editar</button> '
+          + '<button class="btn-ghost" onclick="finBalDatoBorrar(' + x.id + ')">Borrar</button></td>')
+        + '</tr>').join('')
+    + '</tbody></table></div>';
+}
+
+async function loadBalanceDatos() {
+  const lista = document.getElementById('fbd-lista');
+  const solo = _finSoloLectura();
+  // Solo lectura (el Contador): ve los datos, no los carga. El servidor igual
+  // devuelve 403.
+  document.getElementById('fbd-form').style.display = solo ? 'none' : '';
+  if (!document.getElementById('fbd-rubro').innerHTML) finBalDatoLimpiar();
+  let d;
+  try {
+    const r = await fetch('/api/finanzas/balance-datos');
+    if (!r.ok) throw new Error('no se pudo cargar');
+    d = await r.json();
+  } catch (e) {
+    lista.innerHTML = '<div class="fb-error">No se pudieron cargar los datos del balance</div>';
+    return;
+  }
+  _finBalDatos = (d && d.datos) || [];
+  lista.innerHTML = _finBalDatosPintar(_finBalDatos, solo);
+}
+
+function finBalDatoLimpiar() {
+  document.getElementById('fbd-id').value = '';
+  document.getElementById('fbd-clase').value = 'activo';
+  _finBalDatoRubros();
+  document.getElementById('fbd-nombre').value = '';
+  document.getElementById('fbd-monto').value = '';
+  document.getElementById('fbd-desde').value = _finBalHoy();
+  document.getElementById('fbd-hasta').value = '';
+  document.getElementById('fbd-blanco').checked = true;
+  document.getElementById('fbd-cancelar').style.display = 'none';
+  document.getElementById('fbd-error').style.display = 'none';
+}
+
+function finBalDatoEditar(id) {
+  const x = _finBalDatos.find(item => item.id === id);
+  if (!x) return;
+  document.getElementById('fbd-id').value = String(x.id);
+  document.getElementById('fbd-clase').value = x.clase;
+  _finBalDatoRubros(x.rubro);
+  document.getElementById('fbd-rubro').value = x.rubro;
+  document.getElementById('fbd-nombre').value = x.nombre || '';
+  document.getElementById('fbd-monto').value = String(x.monto_usd);
+  document.getElementById('fbd-desde').value = x.desde || '';
+  document.getElementById('fbd-hasta').value = x.hasta || '';
+  document.getElementById('fbd-blanco').checked = !!x.en_blanco;
+  document.getElementById('fbd-cancelar').style.display = '';
+}
+
+async function finBalDatoGuardar() {
+  const id = document.getElementById('fbd-id').value;
+  const error = document.getElementById('fbd-error');
+  const cuerpo = {
+    clase: document.getElementById('fbd-clase').value,
+    rubro: document.getElementById('fbd-rubro').value,
+    nombre: document.getElementById('fbd-nombre').value,
+    monto_usd: parseFloat(document.getElementById('fbd-monto').value),
+    desde: document.getElementById('fbd-desde').value,
+    hasta: document.getElementById('fbd-hasta').value || null,
+    en_blanco: !!document.getElementById('fbd-blanco').checked
+  };
+  const r = await fetch(id ? '/api/finanzas/balance-datos/' + id : '/api/finanzas/balance-datos', {
+    method: id ? 'PUT' : 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(cuerpo)
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    error.textContent = (d && d.error) || 'No se pudo guardar';
+    error.style.display = '';
+    return;
+  }
+  finBalDatoLimpiar();
+  await loadBalanceDatos();
+  if (_finBalUltimo) finBalGenerar();
+}
+
+async function finBalDatoBorrar(id) {
+  if (!confirm('¿Borrar este dato del balance?')) return;
+  await fetch('/api/finanzas/balance-datos/' + id, {method: 'DELETE'});
+  await loadBalanceDatos();
+  if (_finBalUltimo) finBalGenerar();
 }
 
 function _finMesActual() {
@@ -11368,6 +11716,280 @@ function slFichaHtml(seg) {
     + '<div class="cp-section"><div class="cp-section-title">Historial de llamados</div>' + llamados + '</div>';
 }
 // ========== FIN Seguimiento de leads ==========
+// ========== Inteligencia financiera ==========
+// Que hacer este mes para ganar plata. Todo lo calcula el servidor una vez por
+// dia (services/inteligencia_fin.py); aca solo se pinta, y se mandan los tres
+// datos que faltaban: motivo de perdida, esfuerzo por proyecto y origen de la
+// venta. El selector de motivo y el campo de esfuerzo tambien se usan en las
+// tarjetas de Proceso de venta, Demos y Proyectos.
+const IFN_MOTIVOS = [['precio', 'Precio'], ['se_enfrio', 'Se enfrió'], ['eligio_otro', 'Eligió a otro'], ['no_era_momento', 'No era el momento'], ['no_calificaba', 'No calificaba']];
+const IFN_CANALES = [['meta_ads', 'Meta Ads'], ['outbound', 'Outbound'], ['referido', 'Referido'], ['otro', 'Otro']];
+const IFN_PERDIDO_NOTION = ['Perdido', 'Presupuesto Rechazado'];
+const IFN_CONFIANZA = {alta: 'Confianza alta', media: 'Confianza media', baja: 'Confianza baja'};
+const IFN_RESULTADO = {midiendo: 'Midiendo', funciono: 'Funcionó', no_funciono: 'No funcionó'};
+let ifnEstado = null;
+
+function ifnMiles(n) {
+  const s = String(Math.round(Math.abs(Number(n) || 0)));
+  let out = '';
+  for (let i = 0; i < s.length; i++) {
+    if (i && (s.length - i) % 3 === 0) out += '.';
+    out += s[i];
+  }
+  return out;
+}
+
+function ifnUsd(n) {
+  const x = Number(n) || 0;
+  return (x < 0 ? '−' : '') + 'USD ' + ifnMiles(x);
+}
+
+function ifnOpciones(lista, elegido, vacio) {
+  return (vacio ? '<option value="">' + esc(vacio) + '</option>' : '')
+    + lista.map(par => '<option value="' + par[0] + '"' + (par[0] === elegido ? ' selected' : '') + '>' + esc(par[1]) + '</option>').join('');
+}
+
+function ifnMotivoHtml(entidad, id, motivo) {
+  const falta = !motivo;
+  return `<label class="ifn-motivo${falta ? ' ifn-motivo-falta' : ''}" draggable="false" onclick="event.stopPropagation()">
+    <span>${falta ? 'Falta el motivo de pérdida' : 'Motivo de pérdida'}</span>
+    <select class="filter-select" onchange="ifnGuardarMotivo('${esc(entidad)}', ${Number(id)}, this.value)">${ifnOpciones(IFN_MOTIVOS, motivo || '', falta ? 'Elegí el motivo' : '')}</select>
+  </label>`;
+}
+
+function ifnEsfuerzoHtml(p) {
+  const id = Number(p.id);
+  const tiene = p.esfuerzo_horas !== null && p.esfuerzo_horas !== undefined;
+  const dias = p.esfuerzo_unidad === 'dias';
+  const rotulo = tiene
+    ? 'Esfuerzo: ' + esc(String(p.esfuerzo_valor)) + (dias ? ' días (' + ifnMiles(p.esfuerzo_horas) + ' h)' : ' h')
+    : 'Esfuerzo total: cargalo al cerrar';
+  return `<div class="ifn-esfuerzo${tiene ? '' : ' ifn-esfuerzo-falta'}">
+    <span class="ifn-esfuerzo-rotulo">${rotulo}</span>
+    <input type="number" min="0" step="any" class="ifn-input" id="ifn-esf-valor-${id}" aria-label="Esfuerzo del proyecto" value="${tiene ? esc(String(p.esfuerzo_valor)) : ''}">
+    <select class="filter-select" id="ifn-esf-unidad-${id}" aria-label="Unidad del esfuerzo">${ifnOpciones([['horas', 'horas'], ['dias', 'días']], p.esfuerzo_unidad || 'horas')}</select>
+    <button class="btn-ghost" onclick="ifnGuardarEsfuerzo(${id})">Guardar</button>
+  </div>`;
+}
+
+async function ifnPedir(url, metodo, cuerpo) {
+  try {
+    const opciones = {method: metodo, headers: {'Content-Type': 'application/json'}};
+    if (cuerpo !== undefined) opciones.body = JSON.stringify(cuerpo);
+    const r = await fetch(url, opciones);
+    let datos = {};
+    try { datos = await r.json(); } catch (e) { datos = {}; }
+    if (!r.ok) {
+      alert((datos && datos.error) || 'No se pudo guardar.');
+      return null;
+    }
+    return datos;
+  } catch (e) {
+    alert('No se pudo conectar con el servidor.');
+    return null;
+  }
+}
+
+async function ifnGuardarMotivo(entidad, id, motivo) {
+  if (!motivo) return;
+  const r = await ifnPedir('/api/perdidas/' + entidad + '/' + id + '/motivo', 'PUT', {motivo: motivo});
+  if (!r) return;
+  if (entidad === 'notion_client' && typeof _ncClientes !== 'undefined') {
+    const c = _ncClientes.find(x => Number(x.id) === Number(id));
+    if (c) { c.motivo_perdida = motivo; if (activePanel === 'notion_clients') _ncDibujar(); }
+  }
+  if (entidad === 'demo' && typeof _demos !== 'undefined') {
+    const d = _demos.find(x => Number(x.id) === Number(id));
+    if (d) { d.motivo_perdida = motivo; if (activePanel === 'demos') renderDemos(); }
+  }
+  if (activePanel === 'inteligencia_fin') ifnCargar();
+}
+
+async function ifnGuardarEsfuerzo(id) {
+  const valor = (document.getElementById('ifn-esf-valor-' + id) || {}).value;
+  const unidad = (document.getElementById('ifn-esf-unidad-' + id) || {}).value || 'horas';
+  const r = await ifnPedir('/api/proyectos/' + id + '/esfuerzo', 'PUT', {valor: valor, unidad: unidad});
+  if (!r) return;
+  if (activePanel === 'projects') loadProjects();
+  if (activePanel === 'inteligencia_fin') ifnCargar();
+}
+
+async function ifnGuardarOrigen(entidad, id, canal) {
+  if (!canal) return;
+  const r = await ifnPedir('/api/ventas/' + entidad + '/' + id + '/origen', 'PUT', {canal: canal});
+  if (r) ifnCargar();
+}
+
+async function ifnGuardarCanalFijo(id, canal) {
+  const r = await ifnPedir('/api/inteligencia-fin/fijos/' + id + '/canal', 'PUT', {canal: canal});
+  if (r) ifnCargar();
+}
+
+async function ifnGuardarComision() {
+  const campo = document.getElementById('ifn-comision');
+  const r = await ifnPedir('/api/inteligencia-fin/supuestos', 'PUT', {comision_cobro_pct: campo ? campo.value : ''});
+  if (r) ifnCargar();
+}
+
+async function ifnTomar(id) {
+  const r = await ifnPedir('/api/inteligencia-fin/recomendaciones/' + id + '/tomar', 'POST');
+  if (r) ifnCargar();
+}
+
+async function ifnDescartar(id) {
+  const r = await ifnPedir('/api/inteligencia-fin/recomendaciones/' + id + '/descartar', 'POST');
+  if (r) ifnCargar();
+}
+
+async function ifnRecalcular() {
+  const boton = document.getElementById('ifn-recalcular');
+  if (boton) boton.disabled = true;
+  const r = await ifnPedir('/api/inteligencia-fin/recalcular', 'POST');
+  if (boton) boton.disabled = false;
+  if (r) ifnCargar();
+}
+
+async function ifnCargar() {
+  const lista = document.getElementById('ifn-lista');
+  if (!lista) return;
+  let datos;
+  try {
+    const r = await fetch('/api/inteligencia-fin');
+    if (!r.ok) throw new Error(String(r.status));
+    datos = await r.json();
+  } catch (e) {
+    lista.innerHTML = '<div class="ifn-vacio">No se pudo cargar Inteligencia financiera.</div>';
+    return;
+  }
+  ifnEstado = datos;
+  ifnPintar();
+}
+
+function ifnPintar() {
+  const d = ifnEstado || {};
+  document.getElementById('ifn-bajada').textContent = d.bajada || '';
+  const boton = document.getElementById('ifn-recalcular');
+  if (boton) boton.classList.toggle('ifn-oculto', !d.es_admin);
+  document.getElementById('ifn-datos').innerHTML = ifnDatosHtml(d.datos || {}, !!d.es_admin);
+  document.getElementById('ifn-contraste').innerHTML = ifnContrasteHtml(d.encabezado || {});
+  document.getElementById('ifn-avisos').innerHTML = (d.avisos || []).map(ifnAvisoHtml).join('');
+  const recs = d.recomendaciones || [];
+  document.getElementById('ifn-lista').innerHTML = recs.length
+    ? recs.map(ifnTarjetaHtml).join('')
+    : '<div class="ifn-vacio">Hoy no hay recomendaciones que muevan ' + ifnUsd(d.umbral_usd) + ' o más por mes con los datos que hay.</div>';
+  document.getElementById('ifn-seguimiento').innerHTML = ifnSeguimientoHtml(d.seguimiento || []);
+}
+
+function ifnDatosHtml(datos, esAdmin) {
+  const m = datos.motivo || {};
+  const e = datos.esfuerzo || {};
+  const o = datos.origen || {};
+  const chip = completo => completo
+    ? '<span class="ifn-chip ifn-chip-ok">Completo</span>'
+    : '<span class="ifn-chip ifn-chip-falta">Falta</span>';
+  const motivos = (m.pendientes || []).map(p =>
+    `<li class="ifn-pend"><span>${esc(p.nombre)} · ${esc(p.estado)}</span>${ifnMotivoHtml(p.entidad, p.entidad_id, null)}</li>`).join('');
+  const esfuerzos = (e.pendientes || []).map(p =>
+    `<li class="ifn-pend"><span>${esc(p.nombre)}${p.stage ? ' · ' + esc(p.stage) : ''}</span>${ifnEsfuerzoHtml({id: p.id, esfuerzo_horas: null})}</li>`).join('');
+  const origenes = (o.pendientes || []).map(v =>
+    `<li class="ifn-pend"><span>${esc(v.nombre)}${v.sin_lead ? ' · venta sin lead vinculado' : (v.source ? ' · origen «' + esc(v.source) + '»' : ' · el lead no dice de dónde vino')}</span><select class="filter-select" onchange="ifnGuardarOrigen('${esc(v.entidad)}', ${Number(v.id)}, this.value)">${ifnOpciones(IFN_CANALES, '', 'Elegí el canal')}</select></li>`).join('');
+  const fijos = (datos.fijos || []).map(f =>
+    `<li class="ifn-pend"><span>${esc(f.concepto)} · ${f.monto_usd === null ? 'en pesos sin tipo de cambio' : ifnUsd(f.monto_usd) + ' por mes'}</span><select class="filter-select" onchange="ifnGuardarCanalFijo(${Number(f.id)}, this.value)">${ifnOpciones(IFN_CANALES, f.canal || '', 'Sin canal')}</select></li>`).join('');
+  const com = (datos.supuestos || {}).comision_cobro_pct || {};
+  const valorCom = com.valor === null || com.valor === undefined ? '' : String(com.valor);
+  const supuesto = esAdmin
+    ? `<label class="ifn-supuesto">${esc(com.etiqueta || 'Comisión de cobro')} <input type="number" min="0" max="99" step="any" class="ifn-input" id="ifn-comision" value="${esc(valorCom)}"> <button class="btn-ghost" onclick="ifnGuardarComision()">Guardar</button></label>`
+    : `<span class="ifn-supuesto">${esc(com.etiqueta || 'Comisión de cobro')}: ${valorCom ? esc(valorCom) + ' %' : 'sin cargar (la carga un admin)'}</span>`;
+  const sinMotivo = Number(m.sin_motivo) || 0;
+  const sinOrigen = Number(o.sin_origen) || 0;
+  return `<h3 class="ifn-seccion">Los tres datos que hacen falta</h3>
+  <div class="ifn-datos-grid">
+    <div class="ifn-dato" id="ifn-dato-motivo">
+      <div class="ifn-dato-cab">1. Motivo de pérdida ${chip(m.completo)}</div>
+      <p class="ifn-dato-num">${sinMotivo} ${sinMotivo === 1 ? 'pérdida sin motivo' : 'pérdidas sin motivo'} de ${Number(m.perdidas) || 0}</p>
+      ${motivos ? '<ul class="ifn-pends">' + motivos + '</ul>' : ''}
+    </div>
+    <div class="ifn-dato" id="ifn-dato-esfuerzo">
+      <div class="ifn-dato-cab">2. Esfuerzo por proyecto ${chip(e.completo)}</div>
+      <p class="ifn-dato-num">${Number(e.con_esfuerzo) || 0} de ${Number(e.proyectos) || 0} proyectos con esfuerzo cargado</p>
+      ${esfuerzos ? '<ul class="ifn-pends">' + esfuerzos + '</ul>' : ''}
+    </div>
+    <div class="ifn-dato" id="ifn-dato-origen">
+      <div class="ifn-dato-cab">3. Origen de la venta ${chip(o.completo)}</div>
+      <p class="ifn-dato-num">${sinOrigen} ${sinOrigen === 1 ? 'venta sin origen' : 'ventas sin origen'} de ${Number(o.ventas) || 0}</p>
+      ${o.cobros_sin_cliente ? '<p class="ifn-nota">' + Number(o.cobros_sin_cliente) + ' cobros de los últimos 3 meses no tienen cliente en Finanzas: no llegan a ningún lead.</p>' : ''}
+      ${origenes ? '<ul class="ifn-pends">' + origenes + '</ul>' : ''}
+    </div>
+  </div>
+  <div class="ifn-supuestos">${supuesto}</div>
+  ${fijos ? '<p class="ifn-nota">Gastos fijos de Finanzas por canal (para ver cuáles no traen ventas):</p><ul class="ifn-pends">' + fijos + '</ul>' : ''}`;
+}
+
+function ifnContrasteHtml(enc) {
+  if (enc.hoy === undefined) return '';
+  return `<div class="ifn-contraste-col">
+      <div class="ifn-contraste-rotulo">Cómo cierra el mes hoy</div>
+      <div class="ifn-contraste-num">${ifnUsd(enc.hoy)}</div>
+      <div class="ifn-contraste-cuenta">${esc(enc.calculo_hoy || '')}</div>
+    </div>
+    <div class="ifn-contraste-col">
+      <div class="ifn-contraste-rotulo">Aplicando las tres primeras</div>
+      <div class="ifn-contraste-num ifn-suma">${ifnUsd(enc.con_tres)}</div>
+      <div class="ifn-contraste-cuenta">${esc(enc.calculo_con_tres || '')}</div>
+    </div>`;
+}
+
+function ifnAvisoHtml(a) {
+  const cantidad = a.cantidad === null || a.cantidad === undefined ? '' : ' (' + Number(a.cantidad) + ')';
+  return `<div class="ifn-aviso">
+    <div class="ifn-aviso-titulo">${esc(a.titulo)}${cantidad}</div>
+    <p>${esc(a.detalle)}</p>
+    <div class="ifn-aviso-reglas">No se muestra hasta tener el dato: ${(a.reglas || []).map(esc).join(', ')}</div>
+  </div>`;
+}
+
+function ifnTarjetaHtml(r) {
+  const id = Number(r.id);
+  const impacto = r.impacto_mensual === null || r.impacto_mensual === undefined
+    ? '<div class="ifn-impacto ifn-revisar">Revisar</div>'
+    : `<div class="ifn-impacto ifn-suma">+${ifnUsd(r.impacto_mensual)}<span>${r.unica_vez ? 'por única vez' : 'por mes'}</span></div>`;
+  const acciones = (r.acciones || []).map(a =>
+    `<li class="ifn-accion"><span>${esc(a.cliente)} · ${ifnUsd(a.monto)}</span>${a.wa
+      ? `<a class="btn-primary" href="https://wa.me/${esc(a.wa)}?text=${encodeURIComponent(a.texto)}" target="_blank" rel="noopener">Abrir mensaje de cobranza</a>`
+      : '<span class="ifn-sin-tel">Sin teléfono en el CRM</span>'}</li>`).join('');
+  return `<article class="ifn-rec ifn-rec-${esc(r.tipo)}" id="ifn-rec-${id}">
+    <div class="ifn-rec-cab">
+      <div><span class="ifn-regla">${esc(r.regla)}</span><h3 class="ifn-rec-titulo">${esc(r.titulo)}</h3></div>
+      ${impacto}
+    </div>
+    <p class="ifn-rec-detalle">${esc(r.detalle)}</p>
+    ${r.advertencia ? `<p class="ifn-advertencia">${esc(r.advertencia)}</p>` : ''}
+    <pre class="ifn-calculo">${esc(r.calculo)}</pre>
+    ${acciones ? `<ul class="ifn-acciones">${acciones}</ul>` : ''}
+    <div class="ifn-rec-pie">
+      <span class="ifn-confianza ifn-conf-${esc(r.confianza)}">${IFN_CONFIANZA[r.confianza] || 'Confianza sin dato'}</span>
+      <button class="btn-primary" onclick="ifnTomar(${id})">Lo voy a hacer</button>
+      <button class="btn-ghost" onclick="ifnDescartar(${id})">Descartar</button>
+    </div>
+  </article>`;
+}
+
+function ifnSeguimientoHtml(lista) {
+  const filas = lista.map(t => {
+    const esperado = t.impacto_esperado === null || t.impacto_esperado === undefined ? 'revisar' : ifnUsd(t.impacto_esperado);
+    const real = t.regla === 'R6'
+      ? (Number(t.impacto_real) || 0).toFixed(1) + ' puntos de margen'
+      : ifnUsd(t.impacto_real);
+    return `<li class="ifn-seg">
+      <div><span class="ifn-regla">${esc(t.regla)}</span> <span class="ifn-seg-titulo">${esc(t.titulo)}</span> <span class="ifn-res ifn-res-${esc(t.resultado)}">${IFN_RESULTADO[t.resultado] || esc(t.resultado)}</span></div>
+      <div class="ifn-seg-meta">Tomada el ${esc(t.tomada_el)} · esperado ${esperado} · ${t.resultado === 'midiendo' ? 'se mide el ' + esc(t.se_mide_el) : 'real ' + real}</div>
+      ${t.detalle_real ? `<div class="ifn-seg-detalle">${esc(t.detalle_real)}</div>` : ''}
+    </li>`;
+  }).join('');
+  return '<h3 class="ifn-seccion">Seguimiento de lo que tomaste</h3>'
+    + (filas ? '<ul class="ifn-segs">' + filas + '</ul>' : '<div class="ifn-vacio">Todavía no tomaste ninguna recomendación.</div>');
+}
+// ========== FIN Inteligencia financiera ==========
 // ========== Horarios ==========
 // Recursos Humanos > Horarios: la semana de trabajo de cada programador, con
 // sus tramos por dia, las horas de cada dia y el total. En la compu es una
@@ -15589,7 +16211,7 @@ def create_app(db_path: str) -> Flask:
 
     for bp in (leads_bp, demos_bp, calendar_bp, wa_bp, pipeline_bp, tasks_bp, budgets_bp, tokens_bp, meta_bp, calendly_bp, notion_bp, projects_bp, preclientes_bp,
                 notion_clients_bp, resend_bp, linkedin_bp, web_bp, finanzas_bp, marketing_bp,
-                simulador_bp, equipo_bp, horarios_bp, flujos_bp, seg_leads_bp, daily_bp, plantillas_bp,
+                simulador_bp, inteligencia_fin_bp, equipo_bp, horarios_bp, flujos_bp, seg_leads_bp, daily_bp, plantillas_bp,
                 backups_bp):
         app.register_blueprint(bp)
 
@@ -16564,8 +17186,8 @@ select:focus{border-color:#0088cc}
 </div>
 
 <script>
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin'];
-const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas'};
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin'];
+const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Inteligencia financiera',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas'};
 let _roles = [];
 
 // Paneles que muestran el check "solo lectura". El dato (roles.paneles_solo_lectura)
@@ -16801,6 +17423,10 @@ loadBackups();
         # BACKUP_DB=off lo apaga; trae su propia marca en `corridas`.
         from services.backup_db import start_backup_db
         start_backup_db(app)
+
+        # Una corrida por dia, sin mails ni llamadas afuera (marca en `corridas`).
+        from services.inteligencia_fin import start_inteligencia_fin
+        start_inteligencia_fin(app)
 
     try:
         from database import get_all_users
