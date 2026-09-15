@@ -2152,6 +2152,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     </div>
 
     <div id="fin-vista-fijos" style="display:none">
+      <div class="fin-kpis" id="fin-fijos-totales"></div>
       <div class="fin-card"><div class="fin-card-title">Gastos e ingresos fijos</div>
         <div id="fin-fijos"></div></div>
     </div>
@@ -8364,30 +8365,82 @@ async function guardarFijo() {
   loadFijos();
 }
 
+// Si ese fijo corre en el mes: `desde` y `hasta` son 'YYYY-MM', y comparados
+// como texto ordenan igual que las fechas.
+function _finFijoVigente(f, mes) {
+  return (!f.desde || f.desde <= mes) && (!f.hasta || f.hasta >= mes);
+}
+
+// Los totales de la vista Fijos. Todos los fijos son mensuales (tienen dia del
+// mes, no hay otra frecuencia), asi que la suma ya es "por mes".
+// Cuentan solo los activos que corren en el mes en curso: uno apagado, uno que
+// ya termino o uno que todavia no empezo no genera plata este mes.
+// Todo en USD con el monto_usd que calculo el servidor: el panel no convierte.
+// Un fijo en pesos sin tipo de cambio usable llega con monto_usd null y queda
+// afuera, contado en sinCotizar, en vez de sumarse a un valor inventado.
+// Es el liquido, sin IVA: igual que el numero grande de los KPIs de Movimientos.
+function _finTotalesFijos(fijos, mes) {
+  const t = {ingresos: 0, egresos: 0, resultado: 0, sinCotizar: 0, contados: 0};
+  (fijos || []).forEach(f => {
+    if (!f.activo || !_finFijoVigente(f, mes)) return;
+    if (f.tipo !== 'ingreso' && f.tipo !== 'egreso') return;
+    if (f.monto_usd === null || f.monto_usd === undefined) { t.sinCotizar += 1; return; }
+    if (f.tipo === 'ingreso') t.ingresos += f.monto_usd;
+    else t.egresos += f.monto_usd;
+    t.contados += 1;
+  });
+  const redondear = v => Math.round(v * 100) / 100;
+  t.ingresos = redondear(t.ingresos);
+  t.egresos = redondear(t.egresos);
+  t.resultado = redondear(t.ingresos - t.egresos);
+  return t;
+}
+
+function _finKpisFijos(t) {
+  const nota = '<div class="fin-kpi-var">por mes, en USD sin IVA</div>';
+  return `
+    <div class="fin-kpi">
+      <div class="fin-kpi-label">Total egresos fijos</div>
+      <div class="fin-kpi-valor fin-rojo">${_finUsd(t.egresos)}</div>
+      ${nota}
+    </div>
+    <div class="fin-kpi">
+      <div class="fin-kpi-label">Total ingresos fijos</div>
+      <div class="fin-kpi-valor fin-verde">${_finUsd(t.ingresos)}</div>
+      ${nota}
+    </div>
+    <div class="fin-kpi">
+      <div class="fin-kpi-label">Resultado de los fijos</div>
+      <div class="fin-kpi-valor ${t.resultado >= 0 ? 'fin-verde' : 'fin-rojo'}">${_finUsd(t.resultado)}</div>
+      <div class="fin-kpi-var">ingresos menos egresos</div>
+    </div>`;
+}
+
 async function loadFijos() {
   const cuerpo = document.getElementById('fin-fijos');
+  const totalesEl = document.getElementById('fin-fijos-totales');
   const r = await fetch('/api/finanzas/recurrentes');
   if (!r.ok) {
+    // Sin datos no hay totales: dejar los de antes seria mostrar numeros viejos.
+    totalesEl.innerHTML = '';
     cuerpo.innerHTML = '<div style="color:#f87171;padding:16px">No se pudieron cargar los fijos</div>';
     return;
   }
   const fijos = await r.json();
 
-  // El total sale del monto_usd que ya calculó el servidor: el panel no
-  // convierte. Un fijo en pesos sin tipo de cambio usable llega con
-  // monto_usd null y queda afuera del total, no adentro a un valor inventado.
-  const activos = fijos.filter(f => f.activo && f.tipo === 'egreso');
-  const sinCotizar = activos.filter(f => f.monto_usd === null || f.monto_usd === undefined).length;
-  const mensual = activos.reduce((suma, f) => suma + (f.monto_usd || 0), 0);
+  const mes = _finMeses.mes_actual || _finMesActual();
+  const totales = _finTotalesFijos(fijos, mes);
+  const sinCotizar = totales.sinCotizar;
+  totalesEl.innerHTML = _finKpisFijos(totales);
 
   const encabezado = `
     <div class="fin-toolbar">
-      <div class="fin-kpi-var">Egresos fijos activos: <strong>${_finUsd(mensual)}</strong> por mes</div>
+      <div class="fin-kpi-var">Cuentan los fijos activos que corren este mes.</div>
       <button class="btn-primary" style="margin-left:auto" onclick="abrirFijo()">
         <i data-lucide="plus" class="nav-icon"></i> Fijo
       </button>
       ${sinCotizar > 0 ? `<div class="fin-rojo" style="width:100%;font-size:.75rem">
-        ${sinCotizar} fijo${sinCotizar > 1 ? 's' : ''} en pesos sin tipo de cambio cargado, afuera de este total</div>` : ''}
+        ${sinCotizar} fijo${sinCotizar > 1 ? 's' : ''} en pesos sin tipo de cambio cargado, afuera de los totales</div>` : ''}
     </div>`;
 
   if (!fijos.length) {
@@ -8403,7 +8456,7 @@ async function loadFijos() {
     <div class="table-row no-cb" style="${f.activo ? '' : 'opacity:.5'}">
       <div style="flex:1">
         <div class="biz-name">${esc(f.concepto)}</div>
-        <div class="fin-kpi-var">${esc(f.categoria.replace(/_/g, ' '))} · día ${f.dia_del_mes} · desde ${f.desde}${f.hasta ? ' hasta ' + f.hasta : ''}${f.facturado ? ' · con IVA' : ''}${f.activo ? '' : ' · apagado'}</div>
+        <div class="fin-kpi-var">${esc(f.categoria.replace(/_/g, ' '))} · día ${f.dia_del_mes} · desde ${f.desde}${f.hasta ? ' hasta ' + f.hasta : ''}${f.facturado ? ' · con IVA' : ''}${f.activo ? (_finFijoVigente(f, mes) ? '' : ' · no corre este mes') : ' · apagado'}</div>
       </div>
       <div style="flex:0 0 150px;text-align:right"
            class="${f.tipo === 'ingreso' ? 'fin-verde' : 'fin-rojo'}">
