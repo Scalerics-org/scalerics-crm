@@ -85,17 +85,22 @@ def _guardar_campana_del_lead(db: str, lead_id: int, lead_data: dict) -> None:
     try:
         conn.execute(
             "UPDATE businesses SET "
+            "  meta_lead_id       = COALESCE(?, meta_lead_id), "
             "  meta_campaign_id   = COALESCE(?, meta_campaign_id), "
             "  meta_campaign_name = COALESCE(?, meta_campaign_name), "
             "  meta_adset_id      = COALESCE(?, meta_adset_id), "
             "  meta_ad_id         = COALESCE(?, meta_ad_id), "
-            "  meta_ad_name       = COALESCE(?, meta_ad_name) "
+            "  meta_ad_name       = COALESCE(?, meta_ad_name), "
+            "  meta_organico      = COALESCE(?, meta_organico) "
             "WHERE id = ?",
-            (lead_data.get("campaign_id") or None,
+            (str(lead_data.get("id")) if lead_data.get("id") else None,
+             lead_data.get("campaign_id") or None,
              lead_data.get("campaign_name") or None,
              lead_data.get("adset_id") or None,
              lead_data.get("ad_id") or None,
              lead_data.get("ad_name") or None,
+             (1 if lead_data.get("is_organic") else 0)
+             if "is_organic" in lead_data else None,
              lead_id))
         conn.commit()
     finally:
@@ -255,7 +260,7 @@ def _fetch_and_store_lead(app, lead_id: str, form_id: str):
 
             r = requests.get(
                 f"{GRAPH}/{lead_id}",
-                params={"access_token": page_token, "fields": "field_data,created_time,ad_name,ad_id,adset_id,campaign_name,campaign_id,form_id"},
+                params={"access_token": page_token, "fields": "field_data,created_time,is_organic,ad_name,ad_id,adset_id,campaign_name,campaign_id,form_id"},
                 timeout=10,
             )
             r.raise_for_status()
@@ -444,7 +449,7 @@ def meta_import_leads():
             for form in forms:
                 leads = get_all(
                     f"{GRAPH}/{form['id']}/leads",
-                    {"access_token": pt, "fields": "id,created_time,field_data,ad_name,ad_id,adset_id,campaign_name,campaign_id"}
+                    {"access_token": pt, "fields": "id,created_time,is_organic,field_data,ad_name,ad_id,adset_id,campaign_name,campaign_id"}
                 )
                 for lead in leads:
                     fields = {f["name"].lower(): f["values"][0] if f.get("values") else ""
@@ -573,7 +578,7 @@ def meta_import_sync():
                     {"access_token": pt, "fields": "id,name,leads_count"})
         for form in forms:
             leads = _ga(f"{GRAPH}/{form['id']}/leads",
-                        {"access_token": pt, "fields": "id,created_time,field_data,ad_name,ad_id,adset_id,campaign_name,campaign_id"})
+                        {"access_token": pt, "fields": "id,created_time,is_organic,field_data,ad_name,ad_id,adset_id,campaign_name,campaign_id"})
             for lead in leads:
                 fields = {f["name"].lower(): (f.get("values") or [""])[0] for f in lead.get("field_data", [])}
                 name  = fields.get("full_name") or fields.get("nombre") or fields.get("name") or "Lead Meta"
@@ -731,7 +736,14 @@ def start_meta_token_monitor(app) -> None:
 
 # ── Daily import cron ─────────────────────────────────────────────────────────
 
-def _run_import_sync(db: str) -> tuple[int, int]:
+def _run_import_sync(db: str, traer=None) -> tuple[int, int]:
+    """La importacion diaria de leads desde los formularios de la pagina.
+
+    `traer` recibe (url, params) y devuelve la lista de resultados paginados.
+    Existe para poder probar el guardado sin salir a la red, que es el mismo
+    patron que usan los sync de `services/`. Hizo falta al descubrir que este
+    camino le pedia `ad_id` a la API y despues no lo guardaba.
+    """
     pt = _page_token()
     page_id = os.environ.get("META_PAGE_ID", "")
     if not pt or not page_id:
@@ -755,6 +767,9 @@ def _run_import_sync(db: str) -> tuple[int, int]:
             params = {}
         return results
 
+    if traer is not None:
+        _ga = traer
+
     forms = _ga(
         f"{GRAPH}/{page_id}/leadgen_forms",
         {"access_token": pt, "fields": "id,name,leads_count"},
@@ -762,7 +777,7 @@ def _run_import_sync(db: str) -> tuple[int, int]:
     for form in forms:
         leads = _ga(
             f"{GRAPH}/{form['id']}/leads",
-            {"access_token": pt, "fields": "id,created_time,field_data,ad_name,ad_id,adset_id,campaign_name,campaign_id"},
+            {"access_token": pt, "fields": "id,created_time,is_organic,field_data,ad_name,ad_id,adset_id,campaign_name,campaign_id"},
         )
         for lead in leads:
             fields = {f["name"].lower(): (f.get("values") or [""])[0] for f in lead.get("field_data", [])}
@@ -787,6 +802,10 @@ def _run_import_sync(db: str) -> tuple[int, int]:
                 "scraped_at": ct or None,
             })
             if biz_id:
+                # ACA SE PERDIAN. El import pedia ad_id y adset_id a la API y
+                # despues no los escribia: de 245 leads, 3 tenian anuncio. El
+                # webhook si llamaba a esto; el import, no.
+                _guardar_campana_del_lead(db, biz_id, lead)
                 new_c += 1
                 log_activity(db, "meta_daily_import", "lead_created", "lead", biz_id, name,
                              f"Fuente: Meta Lead Ad · {campaign}", user_id=None)
