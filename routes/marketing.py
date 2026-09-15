@@ -269,3 +269,25 @@ def api_backfill_atribucion():
     from services.meta_atribucion import backfill_atribucion
 
     return jsonify(backfill_atribucion(_db()))
+
+
+@marketing_bp.route("/api/marketing/version")
+def api_version():
+    """Que imagen esta corriendo y desde cuando.
+
+    Existe porque no habia forma de contestar "¿estoy viendo lo ultimo?" sin
+    entrar por SSH. Un deploy en Fly es una carrera —la ultima imagen gana— y
+    del lado del navegador no quedaba ningun rastro de cual quedo.
+
+    `FLY_IMAGE_REF` trae el id del deploy. No es secreto: identifica la imagen,
+    no da acceso a nada.
+    """
+    import time
+
+    ref = os.environ.get("FLY_IMAGE_REF", "")
+    return jsonify({
+        "imagen": ref.rsplit(":", 1)[-1] if ref else None,
+        "maquina": os.environ.get("FLY_MACHINE_ID") or None,
+        "arrancado": getattr(current_app, "_arrancado", None),
+        "ahora": int(time.time()),
+    })

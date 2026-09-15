@@ -145,6 +145,8 @@ def test_el_rotulo_ya_alcanza_para_texto():
                  # El marbete de "Apagado" arriba de la tarjeta.
                  ".sc-anun-apagado",
                  # "sobre 18 de 20 leads de los que sabemos el anuncio".
-                 ".sc-anun-cobertura"}
+                 ".sc-anun-cobertura",
+                 # El sello de version al pie del panel.
+                 ".sc-version"}
     assert con_rotulo == esperados, (
         f"--rotulo esta en {sorted(con_rotulo)} y se esperaba {sorted(esperados)}")

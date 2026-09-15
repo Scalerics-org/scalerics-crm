@@ -1368,6 +1368,11 @@ body.light .mobile-header-title{color:#0f172a}
 .sc-anun-reco[data-accion="apagar"]{border-left-color:var(--rojo)}
 .sc-anun-reco[data-accion="ajustar"],.sc-anun-reco[data-accion="renovar"]{border-left-color:var(--ambar)}
 .sc-anun-reco[data-accion="subir"]{border-left-color:var(--verde)}
+/* El sello de version. Existe porque no habia forma de contestar
+   "¿estoy viendo lo ultimo?" sin entrar por SSH, y un deploy en Fly es
+   una carrera: la ultima imagen gana y del lado del navegador no
+   quedaba ningun rastro de cual quedo. */
+.sc-version{font-size:.66rem;color:var(--rotulo);text-align:right;padding:4px 2px 0;font-variant-numeric:tabular-nums}
 .sc-comparacion{display:grid;gap:5px;font-size:.8rem;line-height:1.55;color:var(--texto);background:var(--fondo-hundido);border:1px solid var(--borde);border-radius:10px;padding:11px 14px;margin-bottom:16px}
 .sc-barras{display:grid;gap:7px;margin-top:8px}
 .sc-barras-ayuda{font-size:.72rem;line-height:1.5;margin:2px 0 4px;max-width:74ch}
@@ -2100,6 +2105,8 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
         <div class="sc-sub">Los anuncios que gastaron en el período que tenés elegido arriba, con la pieza que ve la gente. Los que siguen al aire van primero; los apagados quedan abajo y sirven para darte cuenta si apagaste alguno que rendía. Es el grano sobre el que se decide: adentro de una campaña conviven varios anuncios y uno se puede llevar la mitad de la plata sin traer a nadie. La recomendación la calculan reglas sobre estos mismos números, no una IA.</div>
         <div id="mk-anuncios"></div>
       </div>
+
+      <div id="mk-version" class="sc-version"></div>
 
     </div>
   </div>
@@ -7621,7 +7628,31 @@ function _mkPintarPeriodo() {
   }
 }
 
+// Que version del CRM esta viendo el navegador, y desde cuando corre.
+//
+// Se pinta aparte del dossier a proposito: si el panel falla, esto igual dice
+// que version fallo. Es la primera pregunta cuando alguien dice "no me
+// aparecen los cambios".
+async function _mkVersion() {
+  const caja = document.getElementById('mk-version');
+  if (!caja) return;
+  try {
+    const r = await fetch('/api/marketing/version');
+    if (!r.ok) return;
+    const v = await r.json();
+    const desde = v.arrancado
+      ? new Date(v.arrancado * 1000).toLocaleString('es-UY',
+          { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+      : '?';
+    caja.textContent = `versión ${(v.imagen || '?').slice(-8)} · ` +
+                       `en el aire desde ${desde}`;
+  } catch (e) {
+    // Sin versión visible el panel sigue sirviendo: no es un dato del negocio.
+  }
+}
+
 async function loadMarketing() {
+  _mkVersion();
   const estado = document.getElementById('mk-estado');
   const cuerpo = document.getElementById('mk-cuerpo');
   estado.style.display = '';
@@ -8968,6 +8999,10 @@ def create_app(db_path: str) -> Flask:
     app = Flask(__name__)
     app.secret_key = os.environ.get("SECRET_KEY") or "scalerics-dev-key-change-in-prod"
     app.config["DB_PATH"] = db_path
+    # Cuando arranco este proceso. Lo usa /api/marketing/version para
+    # poder contestar "¿estoy viendo lo ultimo?" sin entrar por SSH.
+    import time as _t
+    app._arrancado = int(_t.time())
     app.config["PIPELINE_STATUS"] = _pipeline_status
     app.config["PIPELINE_LOCK"] = _pipeline_lock
 
