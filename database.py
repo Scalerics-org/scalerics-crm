@@ -300,6 +300,16 @@ def init_db(db_path: str) -> None:
         _add_column(conn, "businesses", "meta_adset_id", "TEXT")
         _add_column(conn, "businesses", "meta_ad_id", "TEXT")
         _add_column(conn, "businesses", "meta_ad_name", "TEXT")
+        # El id del lead en Meta. Sin el, un lead no se puede volver a
+        # consultar contra la API ni auditar: es lo que faltaba para poder
+        # contestar cualquier pregunta nueva sobre un lead viejo.
+        _add_column(conn, "businesses", "meta_lead_id", "TEXT")
+        # Un lead organico llego al formulario sin anuncio. No es un lead al
+        # que le falte la atribucion: es otra cosa, y contarlo con la pauta
+        # ensucia el costo por lead.
+        _add_column(conn, "businesses", "meta_organico", "INTEGER")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_businesses_meta_lead "
+                     "ON businesses(meta_lead_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_biz_meta_campaign "
                      "ON businesses(meta_campaign_id)")
 
