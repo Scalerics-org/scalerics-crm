@@ -500,6 +500,7 @@ def test_con_un_mes_arriba_las_piezas_son_de_ese_mes(tmp_path):
     cola = f"""
 const _DOSSIER = {dossier};
 const _BASE = {base};
+const _SEMANA = {json.dumps(_semana())};
 _mkMesDeHoy = function () {{ return '2026-09'; }};
 _mkMesVisible = function () {{ return new Date(2026, 8 + _mkMesOffset, 1); }};
 _el('mk-rango').value = 'mes';
@@ -508,6 +509,7 @@ globalThis.fetch = (url) => {{
   const u = String(url);
   let d = {{}};
   if (u.indexOf('/api/marketing/dossier') !== -1) d = _DOSSIER;
+  if (u.indexOf('/api/marketing/leads-semana') !== -1) d = _SEMANA;
   if (u.indexOf('/api/marketing/piezas') !== -1) {{
     const mes = decodeURIComponent(u.split('mes=')[1]);
     _piezas.push(mes);
