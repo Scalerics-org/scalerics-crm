@@ -36,8 +36,11 @@ sin_node = pytest.mark.skipif(shutil.which("node") is None,
 
 # Los contenedores que el pintado tiene que llenar. Si alguno queda vacío, o
 # reventó antes de llegar o se lo está dibujando en un id que no existe.
+#
+# `mk-llegada` no está: desde el 14/9 "Cuándo llegan los leads" va semana por
+# semana con su propio pedido, como las piezas, y se prueba aparte más abajo.
 _CONTENEDORES = ["mk-tiles", "mk-embudo", "mk-mensual", "mk-series",
-                 "mk-acumulado", "mk-segmentos", "mk-llegada",
+                 "mk-acumulado", "mk-segmentos",
                  "mk-conciliacion", "mk-hallazgos"]
 
 
@@ -359,6 +362,127 @@ setTimeout(() => console.log(JSON.stringify({{
     assert r["ant"] is False, "la flecha hacia atras no se apaga en el primer mes con datos"
     assert "No hay datos por pieza de Meta guardados para Mayo 2026" in r["caja"]
     assert "Agosto" not in r["caja"]
+
+
+# ── Cuándo llegan los leads, semana por semana ───────────────────────────
+
+def _semana(lunes="2026-09-07", actual="2026-09-14", primera="2026-08-31", horas=None):
+    """La forma de `/api/marketing/leads-semana`."""
+    from datetime import date, timedelta
+    horas = horas or {}
+    inicio = date.fromisoformat(lunes)
+    dias = []
+    for i in range(7):
+        fila = [horas.get((i, h), 0) for h in range(24)]
+        dias.append({"fecha": (inicio + timedelta(days=i)).isoformat(),
+                     "horas": fila, "total": sum(fila)})
+    total = sum(d["total"] for d in dias)
+    return {"semana": lunes, "hasta": (inicio + timedelta(days=6)).isoformat(),
+            "semana_actual": actual, "primera_semana": primera, "dias": dias,
+            "total": total, "maximo": max(max(d["horas"]) for d in dias) if total else None,
+            "sin_hora": 0}
+
+
+@sin_node
+def test_la_semana_se_pinta_dia_por_dia_y_hora_por_hora(tmp_path):
+    datos = _semana(horas={(0, 0): 1, (3, 11): 3, (6, 23): 1})
+    datos["sin_hora"] = 2
+    r = _correr(tmp_path, f"_mkPintarLlegada({json.dumps(datos)});\n" + """
+console.log(JSON.stringify({ caja: _els['mk-llegada'].innerHTML,
+  rotulo: _els['mk-llegada-semana'].textContent,
+  ant: _els['mk-llegada-ant'].disabled, sig: _els['mk-llegada-sig'].disabled }));
+""")
+    caja = r["caja"]
+    assert r["rotulo"] == "7 al 13 de setiembre 2026"
+    assert r["sig"] is False, "desde la semana anterior a la actual se puede avanzar"
+    assert r["ant"] is False, "la primera semana (31/8) es anterior: se puede retroceder"
+    for dia in ("Lun 7/9", "Mar 8/9", "Jue 10/9", "Dom 13/9"):
+        assert f'<th scope="row">{dia}</th>' in caja, dia
+    # 24 columnas de hora, de 0 a 23, más el día y el total.
+    assert caja.count('<th scope="col"') == 26
+    assert '<th scope="col">0</th>' in caja and '<th scope="col">23</th>' in caja
+    assert caja.count("<td") == 7 * 25
+    assert 'data-n="3"' in caja and "Jue 10/9, de 11 a 12 h: 3 leads" in caja
+    assert "<b>5 leads</b> en la semana" in caja
+    assert '<td class="sc-lleg-total">3</td>' in caja
+    assert "2 leads de esta semana no tienen hora guardada" in caja
+    assert "NaN" not in caja and "undefined" not in caja
+    # Colores solo con tokens.
+    assert "var(--azul)" in caja and "#" not in caja.replace("&#39;", "")
+
+
+@sin_node
+def test_la_semana_actual_no_deja_avanzar(tmp_path):
+    datos = _semana(lunes="2026-09-14", primera="2026-09-14", horas={(0, 5): 1})
+    r = _correr(tmp_path, f"_mkPintarLlegada({json.dumps(datos)});\n" + """
+console.log(JSON.stringify({ ant: _els['mk-llegada-ant'].disabled,
+  sig: _els['mk-llegada-sig'].disabled }));
+""")
+    assert r == {"ant": True, "sig": True}
+
+
+@sin_node
+def test_una_semana_sin_leads_lo_dice(tmp_path):
+    vacia = _semana()
+    html = _correr(tmp_path, f"_mkPintarLlegada({json.dumps(vacia)});\n" + _VOLCAR)
+    assert ("No entró ningún lead de Meta en la semana del 7 al 13 de setiembre 2026"
+            in html["mk-llegada"])
+    assert "<table" not in html["mk-llegada"]
+    nunca = _semana(primera=None)
+    html = _correr(tmp_path, f"_mkPintarLlegada({json.dumps(nunca)});\n" + _VOLCAR)
+    assert "Todavía no hay ningún lead de Meta guardado" in html["mk-llegada"]
+
+
+@sin_node
+def test_el_rotulo_de_la_semana_cruza_mes_y_anio(tmp_path):
+    r = _correr(tmp_path, """
+console.log(JSON.stringify([_mkNombreSemana('2026-08-31'),
+  _mkNombreSemana('2025-12-29'), _mkNombreSemana('2026-09-14')]));
+""")
+    assert r == ["31 de agosto al 6 de setiembre 2026",
+                 "29 de diciembre 2025 al 4 de enero 2026",
+                 "14 al 20 de setiembre 2026"]
+
+
+@sin_node
+def test_las_flechas_de_semana_no_van_al_futuro_ni_antes_del_primer_lead(tmp_path):
+    cola = f"""
+const _ACTUAL = {json.dumps(_semana(lunes="2026-09-14"))};
+const _pedidos = [];
+const _fetchDelArnes = globalThis.fetch;
+globalThis.fetch = (url) => {{
+  if (String(url).indexOf('/api/marketing/leads-semana') === -1) return _fetchDelArnes(url);
+  _pedidos.push(String(url));
+  const semana = String(url).indexOf('semana=') === -1
+    ? _ACTUAL.semana : decodeURIComponent(String(url).split('semana=')[1]);
+  const d = Object.assign({{}}, _ACTUAL, {{ semana: semana }});
+  return Promise.resolve({{ ok: true, status: 200, json: () => Promise.resolve(d) }});
+}};
+const _espera = () => new Promise(r => setTimeout(r, 5));
+(async () => {{
+  _mkCargarLlegada(); await _espera();          // arranca en la actual, sin parámetro
+  mkLlegadaSemana(1); await _espera();          // al futuro no va
+  const alFuturo = _pedidos.length;
+  mkLlegadaSemana(-1); await _espera();         // 7/9
+  mkLlegadaSemana(-1); await _espera();         // 31/8, la del primer lead
+  const enLaPrimera = {{ ant: _els['mk-llegada-ant'].disabled,
+    rotulo: _els['mk-llegada-semana'].textContent }};
+  mkLlegadaSemana(-1); await _espera();         // antes del primer lead: no
+  const antesDelPrimero = _pedidos.length;
+  mkLlegadaSemanaHoy(); await _espera();
+  console.log(JSON.stringify({{ alFuturo, enLaPrimera, antesDelPrimero,
+    pedidos: _pedidos, actual: _mkLlegadaSemana,
+    rotulo: _els['mk-llegada-semana'].textContent }}));
+}})();
+"""
+    r = _correr(tmp_path, cola)
+    assert r["alFuturo"] == 1
+    assert r["antesDelPrimero"] == 3
+    assert [p.split("leads-semana")[1] for p in r["pedidos"]] == [
+        "", "?semana=2026-09-07", "?semana=2026-08-31", ""]
+    assert r["enLaPrimera"] == {"ant": True, "rotulo": "31 de agosto al 6 de setiembre 2026"}
+    assert r["actual"] is None
+    assert r["rotulo"] == "14 al 20 de setiembre 2026"
 
 
 # Hubo aquí un segundo test que buscaba el mismo bug leyendo el texto: por cada
