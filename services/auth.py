@@ -107,3 +107,57 @@ def require_panel(db_path: str, panel: str):
     if not tiene_panel(db_path, session.get("user_id"), panel):
         return jsonify({"ok": False, "error": "No autorizado"}), 403
     return None
+
+
+# ── solo lectura ──────────────────────────────────────────────────────────────
+# Un rol puede VER un panel sin poder modificarlo (pedido de Juan, 15/9, para el
+# Contador). Vive en `roles.paneles_solo_lectura`. El dato es genérico, pero hoy
+# solo Finanzas lo respeta: un panel que no llame a `require_edicion` ignora la
+# marca.
+
+MENSAJES_SOLO_LECTURA = {
+    "finanzas": "Tu rol puede ver Finanzas pero no modificarla",
+}
+
+
+def paneles_solo_lectura(db_path: str, user_id) -> list:
+    """Los paneles que el rol del usuario ve pero no modifica. Admin: ninguno."""
+    if not user_id or is_admin(db_path, user_id):
+        return []
+    conn = _db_connect(db_path)
+    try:
+        fila = conn.execute(
+            "SELECT r.paneles_solo_lectura FROM users u "
+            "LEFT JOIN roles r ON u.role_id = r.id WHERE u.id = ?",
+            (user_id,)).fetchone()
+    finally:
+        conn.close()
+    if not fila or not fila[0]:
+        return []
+    try:
+        valor = json.loads(fila[0])
+    except (ValueError, TypeError):
+        return []
+    if not isinstance(valor, list):
+        return []
+    return [p for p in valor if isinstance(p, str)]
+
+
+def puede_editar_panel(db_path: str, user_id, panel: str) -> bool:
+    """Si el usuario puede modificar ese panel: lo ve y no lo tiene en solo
+    lectura. Un admin siempre puede."""
+    if is_admin(db_path, user_id):
+        return True
+    if not tiene_panel(db_path, user_id, panel):
+        return False
+    return panel not in paneles_solo_lectura(db_path, user_id)
+
+
+def require_edicion(db_path: str, panel: str):
+    """403 si el usuario de la sesión no puede modificar ese panel; None si
+    puede seguir. Va después de `require_panel`, en las rutas que escriben."""
+    if puede_editar_panel(db_path, session.get("user_id"), panel):
+        return None
+    mensaje = MENSAJES_SOLO_LECTURA.get(
+        panel, "Tu rol puede ver este panel pero no modificarlo")
+    return jsonify({"ok": False, "solo_lectura": True, "error": mensaje}), 403
