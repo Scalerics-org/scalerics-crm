@@ -137,7 +137,12 @@ def test_un_dia_que_no_es_lunes_no_se_acepta(db):
 
 
 def test_no_lee_filas_completas(db, monkeypatch):
-    """Agrupa en SQLite: de `businesses` solo se leen `source` y `scraped_at`."""
+    """Agrupa en SQLite: de `businesses` solo se leen `source`, `scraped_at` e `id`.
+
+    El `id` (la clave, sin costo) se lee desde el 15/9 para juntar cada ficha
+    con sus envios de formulario: quien vuelve a escribir cuenta en la semana
+    de la vuelta. Lo que importa sigue igual: nada de form_data ni fila entera.
+    """
     _cargar_bordes(db)
     leidas = set()
     original = dossier._connect
@@ -154,7 +159,7 @@ def test_no_lee_filas_completas(db, monkeypatch):
 
     monkeypatch.setattr(dossier, "_connect", conectar)
     assert leads_de_la_semana(db, LUNES, hoy=HOY)["total"] == 3
-    assert leidas and leidas <= {"source", "scraped_at"}, leidas
+    assert leidas and leidas <= {"source", "scraped_at", "id"}, leidas
 
 
 def test_el_mapa_de_franjas_del_dossier_sigue_igual(db):

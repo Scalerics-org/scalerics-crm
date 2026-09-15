@@ -34,6 +34,7 @@ from routes.daily import daily_bp
 from routes.plantillas import plantillas_bp
 from routes.web import web_bp
 from routes.marketing import marketing_bp
+from routes.backups import backups_bp
 from services.auth import is_admin
 from services.demo_service import demo_job_handler
 from services.linkedin_posts import linkedin_job_handler
@@ -406,6 +407,9 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   --semaforo-celeste:#00ffff;
   --semaforo-violeta:#ff00ff;
   --semaforo-venta:#38761d;
+  --semaforo-rojo:#ff0000;
+  --semaforo-amarillo:#ffff00;
+  --semaforo-negro:#000000;
 }
 body.light{
   --fondo:#f8fafc;
@@ -440,6 +444,9 @@ body.light{
   --semaforo-celeste:#00ffff;
   --semaforo-violeta:#ff00ff;
   --semaforo-venta:#38761d;
+  --semaforo-rojo:#ff0000;
+  --semaforo-amarillo:#ffff00;
+  --semaforo-negro:#000000;
 }
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:100vh;display:flex}
@@ -670,6 +677,52 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
   .demo-meta{margin-left:0;width:100%}
   .demo-mes-presu{margin-left:0}
 }
+/* ── Meta Ads por mes y semaforo ─────────────────────────────────────────────
+   La lista de Meta Ads va de a un mes y cada lead se pinta con el color del
+   semaforo de la planilla: borde grueso del color pleno y un tinte suave de
+   fondo, mezclado con la superficie del tema para que el texto se siga leyendo
+   en claro y en oscuro. Los colores son los tokens --semaforo-*, los mismos del
+   Registro de demos. */
+.mm-nav-mes{display:flex;align-items:center;gap:6px}
+.mm-nav-mes span{font-size:.82rem;font-weight:700;color:var(--texto);min-width:130px;text-align:center}
+.mm-nav-mes .cal-nav-btn:disabled{opacity:.4;cursor:default;pointer-events:none}
+.mm-resumen{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;font-size:.8rem;color:var(--texto-tenue);margin:-2px 2px 12px}
+.mm-resumen-total{font-weight:700;color:var(--texto)}
+.mm-resumen-color{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.mm-buscar-todos{margin:-4px 2px 12px;font-size:.8rem;color:var(--texto-tenue)}
+.mm-link{background:none;border:none;padding:0;font:inherit;color:var(--azul-claro);cursor:pointer;text-decoration:underline}
+.mm-c-rojo{--mm-color:var(--semaforo-rojo)}
+.mm-c-amarillo{--mm-color:var(--semaforo-amarillo)}
+.mm-c-verde{--mm-color:var(--semaforo-verde)}
+.mm-c-celeste{--mm-color:var(--semaforo-celeste)}
+.mm-c-violeta{--mm-color:var(--semaforo-violeta)}
+.mm-c-venta{--mm-color:var(--semaforo-venta)}
+.mm-c-negro{--mm-color:var(--semaforo-negro)}
+.mm-c-sin{--mm-color:var(--borde-fuerte)}
+.mm-punto{display:inline-block;width:12px;height:12px;border-radius:50%;flex:none;background:var(--mm-color);box-shadow:0 0 0 1px var(--borde-fuerte)}
+.mm-c-sin .mm-punto,.mm-punto.mm-c-sin{background:var(--relleno);box-shadow:inset 0 0 0 2px var(--borde-fuerte)}
+#meta-body .table-row.mm-pintado{border-left:6px solid var(--mm-color);background:color-mix(in srgb,var(--mm-color) 14%,var(--superficie))}
+#meta-body .table-row.mm-pintado:hover{background:color-mix(in srgb,var(--mm-color) 22%,var(--superficie))}
+#meta-body .table-row.mm-c-negro{box-shadow:inset 0 0 0 1px var(--borde-fuerte)}
+.mm-sem-btn{display:inline-flex;align-items:center;gap:7px;background:var(--relleno);border:1px solid var(--borde-fuerte);color:var(--texto);border-radius:999px;padding:4px 11px 4px 6px;font-size:.74rem;font-weight:650;font-family:inherit;cursor:pointer;white-space:nowrap}
+.mm-sem-btn:hover,.mm-sem-btn.mm-abierto{border-color:var(--azul)}
+.mm-sem-btn .mm-punto{width:16px;height:16px}
+.mm-opciones{display:flex;flex-wrap:wrap;gap:8px;padding:12px;margin:-4px 0 10px;background:var(--superficie-alta);border:1px solid var(--borde-fuerte);border-radius:12px}
+.mm-opciones-titulo{flex-basis:100%;font-size:.76rem;color:var(--texto-tenue)}
+.mm-opcion{display:inline-flex;align-items:center;gap:9px;min-height:40px;padding:6px 14px 6px 8px;border-radius:999px;border:2px solid var(--mm-color);background:color-mix(in srgb,var(--mm-color) 16%,var(--superficie));color:var(--texto);font-size:.84rem;font-weight:650;font-family:inherit;cursor:pointer}
+.mm-opcion:hover{background:color-mix(in srgb,var(--mm-color) 28%,var(--superficie))}
+.mm-opcion .mm-punto{width:22px;height:22px}
+.mm-opcion.mm-actual{box-shadow:0 0 0 2px var(--azul)}
+.mm-opcion.mm-c-sin{background:var(--relleno)}
+.mm-vuelta{display:inline-block;margin-left:4px;font-size:.66rem;font-weight:700;padding:1px 7px;border-radius:99px;background:var(--azul-tinte);color:var(--azul-claro);white-space:nowrap}
+.mm-vuelta-primero{display:block;font-size:.68rem;color:var(--texto-debil);margin-top:2px}
+.mm-fecha{font-size:.72rem;color:var(--texto-debil)}
+@media (max-width:768px){
+  #meta-body .table-row.mm-pintado{border-left:6px solid var(--mm-color)!important;background:color-mix(in srgb,var(--mm-color) 14%,var(--superficie))!important}
+  .mm-opcion{min-height:44px;flex:1 1 45%}
+  .mm-nav-mes{width:100%;justify-content:space-between}
+}
+/* ── fin Meta Ads por mes */
 
 /* Tabla de clientes activos: grilla propia, no reusa .no-cb, porque sus reglas
    mobile esconden la 4a columna — que aca es Mantenimiento, no Notas. */
@@ -1216,6 +1269,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-ausencias .nav-icon{stroke:#e879f9}
 #nav-seg_leads .nav-icon{stroke:#fb7185}
 #nav-daily .nav-icon{stroke:#38bdf8}
+#nav-daily_admin .nav-icon{stroke:#f0abfc}
 #nav-plantillas .nav-icon{stroke:#c084fc}
 .nav-item.active #nav-cola .nav-icon,
 .nav-item.active .nav-icon{opacity:1}
@@ -1231,6 +1285,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-finanzas.active .nav-icon{stroke:#fcd34d}
 #nav-simulador.active .nav-icon{stroke:#fdba74}
 #nav-daily.active .nav-icon{stroke:#7dd3fc}
+#nav-daily_admin.active .nav-icon{stroke:#f5d0fe}
 #nav-notion_clients.active .nav-icon{stroke:#34d399}
 #nav-demos.active .nav-icon{stroke:#67e8f9}
 #nav-sdr.active .nav-icon{stroke:#fca5a5}
@@ -1251,6 +1306,7 @@ body.light #nav-marketing .nav-icon{stroke:#db2777}
 body.light #nav-finanzas .nav-icon{stroke:#b45309}
 body.light #nav-simulador .nav-icon{stroke:#c2410c}
 body.light #nav-daily .nav-icon{stroke:#0284c7}
+body.light #nav-daily_admin .nav-icon{stroke:#a21caf}
 body.light #nav-notion_clients .nav-icon{stroke:#047857}
 body.light #nav-demos .nav-icon{stroke:#0e7490}
 body.light #nav-sdr .nav-icon{stroke:#b91c1c}
@@ -1681,6 +1737,7 @@ body.light .mobile-header-title{color:#0f172a}
 .upick-check{color:var(--azul);font-size:.8rem;font-weight:700}
 .fin-toolbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:18px}
 .fin-toggle{display:flex;gap:6px;margin-left:auto}
+.fin-aviso-sl{background:var(--azul-tinte);color:var(--azul-claro);border:1px solid var(--borde);border-radius:8px;padding:8px 12px;font-size:.78rem;font-weight:600;margin-bottom:14px}
 .fin-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:18px}
 .fin-kpi{background:var(--superficie-honda);border:1px solid var(--borde);border-radius:10px;padding:16px 18px}
 .fin-kpi-label{font-size:.7rem;font-weight:700;color:var(--rotulo);text-transform:uppercase;letter-spacing:.8px}
@@ -1713,6 +1770,44 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .fin-hbar-relleno{height:100%;border-radius:3px}
 .fin-hbar-monto{font-size:.75rem;color:var(--texto);width:74px;text-align:right;flex-shrink:0}
 @media (max-width:760px){.fin-split{grid-template-columns:1fr}}
+/* ── Finanzas: Balance ────────────────────────────────────────────────────────
+   Todo con tokens. Para imprimir, finBalImprimir() copia el balance a
+   .fb-print (hijo directo del body), le pone al body `light` y
+   `fb-imprimiendo`, y el @media print esconde todo lo demás: sale en claro
+   aunque la pantalla esté en oscuro. */
+.fb-controles{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end}
+.fb-label{display:flex;flex-direction:column;gap:4px;font-size:.7rem;font-weight:700;color:var(--rotulo);text-transform:uppercase;letter-spacing:.6px}
+.fb-fechas{display:flex;flex-wrap:wrap;gap:12px}
+.fb-campo{background:var(--fondo-hundido);border:1px solid var(--borde);border-radius:8px;padding:7px 10px;color:var(--texto);font-size:.82rem;font-family:inherit}
+.fb-campo:focus{outline:none;border-color:var(--azul)}
+.fb-ayuda{font-size:.75rem;color:var(--texto-debil);margin-top:12px;line-height:1.45}
+.fb-doc{background:var(--superficie-honda);border:1px solid var(--borde);border-radius:10px;padding:22px;margin-bottom:18px}
+.fb-cabecera{border-bottom:1px solid var(--borde);padding-bottom:14px;margin-bottom:18px}
+.fb-titulo{font-size:1.15rem;font-weight:700;color:var(--texto-fuerte)}
+.fb-sub{font-size:.78rem;color:var(--texto-tenue);margin-top:4px}
+.fb-aviso{background:var(--ambar-tinte);color:var(--ambar);border:1px solid var(--ambar-borde);border-radius:8px;padding:9px 12px;font-size:.8rem;margin-bottom:16px}
+.fb-desglose{font-size:.72rem;color:var(--texto-tenue);margin-top:6px;line-height:1.4}
+.fb-seccion{margin-top:22px}
+.fb-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.fb-tabla td.fb-num,.fb-tabla th.fb-num{text-align:right}
+.fb-tabla tr.fb-total td{font-weight:700;border-top:2px solid var(--borde-fuerte)}
+.fb-nota{font-size:.78rem;color:var(--texto-debil);padding:6px 0;line-height:1.45}
+.fb-error{color:var(--rojo-texto);padding:16px;font-size:.85rem}
+.fb-print{display:none}
+@media (max-width:760px){
+  .fin-toggle{flex-wrap:wrap;margin-left:0}
+  .fb-controles{flex-direction:column;align-items:stretch}
+  .fb-doc{padding:14px}
+}
+@media print{
+  body.fb-imprimiendo{background:var(--superficie) !important}
+  body.fb-imprimiendo > *{display:none !important}
+  body.fb-imprimiendo > .fb-print{display:block !important;padding:0;margin:0}
+  body.fb-imprimiendo .fb-doc{border:none;padding:0;background:var(--superficie)}
+  body.fb-imprimiendo .fin-kpi{background:var(--superficie)}
+  body.fb-imprimiendo .fb-scroll{overflow:visible}
+  body.fb-imprimiendo .fb-seccion{break-inside:avoid}
+}
 /* ── Plantillas ───────────────────────────────────────────────────────────────
    Mensajes de siempre, en VENTAS. Solo tokens, sin reglas `body.light`: las
    variables van en --azul-claro y las que faltan en la familia ambar, que
@@ -1767,52 +1862,67 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .pl-fuera{position:fixed;left:-9999px;top:0;opacity:0}
 @media(max-width:768px){ .pl-grilla{grid-template-columns:1fr} .pl-acciones-der{margin-left:0} .pl-aviso{bottom:84px} .pl-modal{padding:20px} .pl-modal .modal-row{grid-template-columns:1fr} }
 /* ── Daily Programador ────────────────────────────────────────────────────────
-   Solo tokens, sin reglas propias de tema claro. Reusa .fin-card,
-   .fin-card-title y los botones btn-primary / btn-ghost / btn-icono. */
+   Daily Programador y Daily Admin: la misma pantalla. Solo tokens, sin reglas
+   propias de tema claro. El día usa las tarjetas, contadores y grupos de
+   Seguimiento de leads (clases sl-): acá va solo lo propio. El menú por
+   persona con su ícono y su color, lo que Seguimiento no tiene (hechas
+   colapsadas, estado vacío) y los recordatorios que se repiten. */
 .dy-nav-personas{display:flex;flex-direction:column}
-.dy-nav-sub{padding:6px 20px 6px 48px;font-size:.8rem;font-weight:500;color:var(--texto-debil);cursor:pointer;border-left:3px solid transparent}
+.dy-nav-sub{display:flex;align-items:center;gap:8px;padding:7px 20px 7px 42px;font-size:.8rem;font-weight:500;color:var(--texto-debil);cursor:pointer;border-left:3px solid transparent;transition:all .15s}
 .dy-nav-sub:hover{color:var(--texto);background:var(--hover)}
 .dy-nav-sub.dy-activa{color:var(--texto-fuerte);border-left-color:var(--azul);background:var(--azul-tinte)}
+.dy-nav-icono{width:15px;height:15px;stroke-width:2;flex-shrink:0}
+.dy-nav-icono.dy-color-0{stroke:var(--azul-claro)}
+.dy-nav-icono.dy-color-1{stroke:var(--verde-texto)}
+.dy-nav-icono.dy-color-2{stroke:var(--ambar)}
+.dy-nav-icono.dy-color-3{stroke:var(--texto-tenue)}
+.dy-borde-0{border-left:3px solid var(--azul-claro)}
+.dy-borde-1{border-left:3px solid var(--verde-texto)}
+.dy-borde-2{border-left:3px solid var(--ambar)}
+.dy-borde-3{border-left:3px solid var(--texto-tenue)}
 .dy-personas{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
-.dy-persona{background:var(--relleno);color:var(--texto-tenue);border:1px solid var(--borde);border-radius:99px;padding:7px 16px;font-size:.82rem;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer}
+.dy-persona{display:inline-flex;align-items:center;gap:6px;min-height:36px;background:var(--relleno);color:var(--texto-tenue);border:1px solid var(--borde);border-radius:99px;padding:6px 14px;font-size:.82rem;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer}
 .dy-persona[aria-pressed="true"]{background:var(--azul-tinte);color:var(--azul-claro);border-color:var(--azul)}
 .dy-dia{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px}
 .dy-fecha{font-size:1rem;font-weight:700;color:var(--texto-fuerte);min-width:0}
 .dy-fecha-hoy{font-size:.68rem;font-weight:700;color:var(--azul-claro);background:var(--azul-tinte);border-radius:99px;padding:2px 8px;margin-left:8px;vertical-align:middle}
-.dy-layout{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:16px;align-items:start}
-.dy-layout .fin-card{margin-bottom:0}
-.dy-agregar{display:flex;gap:8px;margin-bottom:4px}
+.dy-agregar{display:flex;gap:8px;margin-bottom:18px}
 .dy-in{flex:1 1 auto;background:var(--fondo-hundido);border:1px solid var(--borde);border-radius:8px;padding:8px 10px;color:var(--texto);font-size:.84rem;font-family:'Inter',sans-serif;min-width:0}
 .dy-in:focus{outline:none;border-color:var(--azul)}
 .dy-in::placeholder{color:var(--texto-debil)}
-.dy-error{font-size:.75rem;color:var(--rojo-texto);margin:4px 0}
+.dy-error{font-size:.75rem;color:var(--rojo-texto);margin:4px 0 10px}
 .dy-error:empty{display:none}
-.dy-bloque{margin-top:12px}
-.dy-bloque-titulo{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--texto-debil);margin-bottom:6px}
+.dy-tarjeta-titulo{font-size:.9rem;font-weight:700;color:var(--texto-fuerte);min-width:0;overflow-wrap:anywhere}
+.dy-etiqueta{display:inline-block;font-size:.66rem;font-weight:700;border-radius:99px;padding:2px 8px;background:var(--relleno);color:var(--texto-tenue);margin-top:8px}
+.dy-hechas summary{cursor:pointer}
+.dy-hechas summary::marker{color:var(--texto-debil)}
+.dy-tachado{font-size:.84rem;color:var(--texto-debil);text-decoration:line-through;overflow-wrap:anywhere}
+.dy-linea-botones{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px;flex-shrink:0}
+.dy-vacio-grande{display:flex;flex-direction:column;align-items:flex-start;gap:10px;background:var(--superficie);border:1px dashed var(--borde-fuerte);border-radius:10px;padding:18px 16px;margin-bottom:22px;font-size:.88rem;color:var(--texto-tenue)}
+.dy-recurrentes{margin-top:8px}
+.dy-recurrentes-cab{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px}
+.dy-recurrentes-cab .fin-card-title{margin-bottom:0}
 .dy-lista{display:flex;flex-direction:column;gap:6px}
-.dy-item{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:var(--superficie-honda);border:1px solid var(--borde);min-height:40px}
-.dy-item-texto{flex:1;min-width:0;font-size:.85rem;color:var(--texto);overflow-wrap:anywhere;cursor:pointer}
-.dy-item-nota{display:block;font-size:.7rem;color:var(--texto-debil);margin-top:2px}
-.dy-hecha .dy-item-texto{color:var(--texto-debil);text-decoration:line-through}
-.dy-check{width:18px;height:18px;accent-color:var(--azul);cursor:pointer;flex-shrink:0;margin:0}
-.dy-recordatorio{border-left:3px solid var(--azul)}
-.dy-pendiente{background:var(--ambar-tinte);border-color:var(--ambar-borde)}
-.dy-pendiente .dy-item-texto{cursor:default}
 .dy-vacio{font-size:.8rem;color:var(--texto-debil);padding:6px 2px}
-.dy-form{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}
-.dy-form-fila{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .dy-dias{display:flex;flex-wrap:wrap;gap:6px}
+.modal .dy-dias{margin:0 0 12px}
 .dy-dia-chip{display:inline-flex;align-items:center;gap:4px;font-size:.76rem;color:var(--texto-tenue);background:var(--relleno);border:1px solid var(--borde);border-radius:99px;padding:5px 10px;cursor:pointer}
 .dy-dia-chip input{accent-color:var(--azul);margin:0}
+.dy-aviso-modal{font-size:.74rem;color:var(--texto-debil);margin:0 0 10px;line-height:1.4}
 .dy-rec{display:flex;align-items:center;gap:6px;padding:8px 10px;border-radius:8px;border:1px solid var(--borde);background:var(--superficie-honda)}
 .dy-rec-cuerpo{flex:1;min-width:0}
 .dy-rec-texto{font-size:.84rem;color:var(--texto);overflow-wrap:anywhere}
 .dy-rec-cuando{font-size:.7rem;color:var(--texto-debil);margin-top:2px}
 .dy-pausado .dy-rec-texto{color:var(--texto-debil)}
 .dy-badge{font-size:.64rem;font-weight:700;border-radius:99px;padding:2px 8px;background:var(--relleno);color:var(--texto-debil);white-space:nowrap}
-#daily-panel .dy-oculto{display:none}
-@media(max-width:900px){.dy-layout{grid-template-columns:1fr}}
-@media(max-width:480px){.dy-fecha{flex:1 1 100%;order:-1;font-size:.95rem}.dy-rec{flex-wrap:wrap}.dy-rec-cuerpo{flex-basis:100%}}
+.dy-panel .dy-oculto,.modal .dy-oculto{display:none}
+@media(max-width:600px){
+  .dy-panel .sl-btn,.dy-panel .btn-primary,.dy-panel .btn-ghost,.dy-persona,.dy-nav-sub{min-height:40px}
+  .dy-panel .sl-acciones .sl-btn{flex:1 1 auto}
+  .dy-fecha{flex:1 1 100%;order:-1;font-size:.95rem}
+  .dy-rec{flex-wrap:wrap}
+  .dy-rec-cuerpo{flex-basis:100%}
+}
 /* ── Seguimiento de leads ─────────────────────────────────────────────────────
    La agenda de llamados. Solo tokens, sin reglas `body.light`: el rojo de
    vencido y el verde de Hecho son los de la familia de estados, que llegan a
@@ -2054,6 +2164,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 </style>
 </head>
 <body>
+<div class="fb-print" id="fb-print"></div>
 <div class="sidebar-backdrop" id="sidebar-backdrop" onclick="closeSidebar()"></div>
 <header class="mobile-header" id="mobile-header">
   <img id="mobile-header-logo" src="https://raw.githubusercontent.com/Scalerics-org/scalerics-assets/main/logo_full_alt.png" alt="Scalerics">
@@ -2092,6 +2203,8 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div class="nav-item" id="nav-tasks" onclick="showPanel('tasks')"><i data-lucide="check-square" class="nav-icon"></i> Tareas</div>
   <div class="nav-item" id="nav-daily" onclick="showPanel('daily')"><i data-lucide="clipboard-list" class="nav-icon"></i> Daily Programador</div>
   <div class="dy-nav-personas" id="dy-nav-personas"></div>
+  <div class="nav-item" id="nav-daily_admin" onclick="showPanel('daily_admin')"><i data-lucide="clipboard-check" class="nav-icon"></i> Daily Admin</div>
+  <div class="dy-nav-personas" id="dya-nav-personas"></div>
   <div class="nav-item" id="nav-activity" onclick="showPanel('activity')"><i data-lucide="clock" class="nav-icon"></i> Actividad</div>
   <div class="nav-section-label">RECURSOS HUMANOS</div>
   <div class="nav-item" id="nav-equipo" onclick="showPanel('equipo')"><i data-lucide="network" class="nav-icon"></i> Organigrama</div>
@@ -2170,15 +2283,20 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       </div>
     </div>
     <div class="filters">
+      <div class="mm-nav-mes" id="meta-mes-nav">
+        <button class="cal-nav-btn" id="meta-mes-ant" onclick="mmMes(-1)" title="Mes anterior">&larr;</button>
+        <span id="meta-mes-label"></span>
+        <button class="cal-nav-btn" id="meta-mes-sig" onclick="mmMes(1)" title="Mes siguiente">&rarr;</button>
+        <button class="cal-today-btn" onclick="mmMesHoy()">Este mes</button>
+      </div>
       <input class="search-box" id="meta-search-input" placeholder="🔍 Buscar..." oninput="metaSearch(this.value)">
-      <select class="filter-select" id="meta-month-filter" onchange="metaMonthFilter(this.value)">
-        <option value="">Todos los meses</option>
-      </select>
       <select class="filter-select" id="meta-estado-filter" onchange="metaEstadoFilter(this.value)">
         <option value="">Todos los estados</option>
       </select>
       <span id="meta-count" style="color:#64748b;font-size:.8rem;align-self:center;margin-left:auto"></span>
     </div>
+    <div class="mm-resumen" id="meta-mes-resumen"></div>
+    <div class="mm-buscar-todos" id="meta-mes-buscar-todos"></div>
     <div class="table-wrap">
       <div class="table-header no-cb" style="grid-template-columns:1.8fr 1fr 1.2fr 1.2fr 0.9fr 0.8fr 1.1fr">
         <span>Nombre / Negocio</span><span>Teléfono</span><span>Qué busca</span><span>Presupuesto</span><span>Ciudad</span><span style="cursor:pointer" onclick="toggleMetaSort()">Fecha <span id="meta-sort-icon">↓</span></span><span>Acciones</span>
@@ -2408,6 +2526,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 
   <!-- ======= FINANZAS PANEL ======= -->
   <div id="finanzas-panel" class="panel">
+    <div class="fin-aviso-sl" id="fin-solo-lectura" style="display:none">Modo solo lectura: podés ver y generar balances</div>
     <div class="fin-toolbar">
       <div class="fin-nav-mes" id="fin-nav-mes">
         <button class="cal-nav-btn" onclick="finMes(-1)" title="Mes anterior">&larr;</button>
@@ -2417,7 +2536,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       </div>
       <span class="fin-cerrado" id="fin-cerrado" style="display:none">
         Mes cerrado
-        <button class="cal-today-btn" onclick="finReabrirMes()">Reabrir mes</button>
+        <button class="cal-today-btn" id="fin-btn-reabrir" onclick="finReabrirMes()">Reabrir mes</button>
       </span>
       <select id="fin-rango" class="filter-select" onchange="_finRangoCambio()">
         <option value="mes" selected>Mes actual</option>
@@ -2431,8 +2550,9 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
         <button class="pill" id="fin-tab-fijos" onclick="finVista('fijos')">Fijos</button>
         <button class="pill" id="fin-tab-iva" onclick="finVista('iva')">IVA</button>
         <button class="pill" id="fin-tab-pauta" onclick="finVista('pauta')">Pauta</button>
+        <button class="pill" id="fin-tab-balance" onclick="finVista('balance')">Balance</button>
       </div>
-      <button class="btn-primary" onclick="abrirMovimiento()">
+      <button class="btn-primary" id="fin-btn-movimiento" onclick="abrirMovimiento()">
         <i data-lucide="plus" class="nav-icon"></i> Movimiento
       </button>
     </div>
@@ -2455,7 +2575,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       <div class="fin-card">
         <div class="fin-card-title" style="display:flex;align-items:center;gap:10px">
           Lo que falta cobrar
-          <button class="cal-today-btn" onclick="abrirPendiente()">+ Agregar</button>
+          <button class="cal-today-btn" id="fin-btn-pendiente" onclick="abrirPendiente()">+ Agregar</button>
         </div>
         <div id="fin-cobrar"></div></div>
     </div>
@@ -2475,6 +2595,35 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     <div id="fin-vista-pauta" style="display:none">
       <div class="fin-card"><div class="fin-card-title">Qué compró la pauta</div>
         <div id="fin-pauta"></div></div>
+    </div>
+
+    <div id="fin-vista-balance" style="display:none">
+      <div class="fin-card">
+        <div class="fin-card-title">Balance</div>
+        <div class="fb-controles">
+          <label class="fb-label">Tipo
+            <select id="fb-tipo" class="filter-select">
+              <option value="blanco" selected>En blanco (contable)</option>
+              <option value="interno">Interno (todo)</option>
+            </select>
+          </label>
+          <label class="fb-label">Período
+            <select id="fb-preset" class="filter-select" onchange="finBalPreset()">
+              <option value="anio" selected>Este año</option>
+              <option value="inicio">Desde el inicio</option>
+              <option value="personalizado">Personalizado</option>
+            </select>
+          </label>
+          <span class="fb-fechas" id="fb-fechas" style="display:none">
+            <label class="fb-label">Desde <input type="date" id="fb-desde" class="fb-campo"></label>
+            <label class="fb-label">Hasta <input type="date" id="fb-hasta" class="fb-campo"></label>
+          </span>
+          <button class="btn-primary" id="fb-generar" onclick="finBalGenerar()">Generar balance hasta el momento</button>
+          <button class="btn-ghost" id="fb-imprimir" onclick="finBalImprimir()" style="display:none">Imprimir / PDF</button>
+        </div>
+        <div class="fb-ayuda">En blanco: solo lo que se contabiliza (lo facturado, con IVA, y los pagos de impuestos). Interno: todo, y en cada total cuánto es en blanco y cuánto no.</div>
+      </div>
+      <div id="fin-balance"></div>
     </div>
   </div>
 
@@ -2917,63 +3066,11 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   </div>
 
   <!-- ======= DAILY PROGRAMADOR PANEL ======= -->
-  <!-- Un solo panel para todos: la persona es estado del JS (dyPersonaId). -->
-  <div id="daily-panel" class="panel">
-    <div class="page-header">
-      <div>
-        <h1>Daily Programador</h1>
-        <div class="page-date">Lo de cada día: actividades y recordatorios que se repiten, por persona.</div>
-      </div>
-    </div>
-    <div class="dy-personas" id="dy-personas" role="group" aria-label="De quién es el día"></div>
-    <div class="dy-dia">
-      <button class="btn-ghost btn-icono" type="button" onclick="dyMoverDia(-1)" title="Día anterior" aria-label="Día anterior"><i data-lucide="chevron-left" class="nav-icon"></i></button>
-      <button class="btn-ghost btn-icono" type="button" onclick="dyMoverDia(1)" title="Día siguiente" aria-label="Día siguiente"><i data-lucide="chevron-right" class="nav-icon"></i></button>
-      <button class="btn-ghost" type="button" onclick="dyIrHoy()">Hoy</button>
-      <div class="dy-fecha" id="dy-fecha" role="status"></div>
-    </div>
-    <div class="dy-layout">
-      <section class="fin-card">
-        <div class="fin-card-title">Actividades del día</div>
-        <div class="dy-agregar">
-          <input type="text" id="dy-nueva" class="dy-in" maxlength="200" placeholder="Agregar actividad y Enter" aria-label="Actividad nueva" onkeydown="if (event.key === 'Enter') dyAgregar()">
-          <button class="btn-primary" type="button" onclick="dyAgregar()">Agregar</button>
-        </div>
-        <div class="dy-error" id="dy-error" role="alert"></div>
-        <div id="dy-pendientes"></div>
-        <div id="dy-recordatorios-hoy"></div>
-        <div id="dy-actividades"></div>
-      </section>
-      <section class="fin-card">
-        <div class="fin-card-title">Recordatorios que se repiten</div>
-        <div class="dy-form">
-          <input type="text" id="dy-rec-texto" class="dy-in" maxlength="200" placeholder="Ej.: revisar mails de clientes" aria-label="Qué hay que recordar" onkeydown="if (event.key === 'Enter') dyGuardarRecordatorio()">
-          <div class="dy-form-fila">
-            <select id="dy-rec-frecuencia" class="dy-in" aria-label="Cada cuánto" onchange="dyPintarDiasForm()">
-              <option value="diario">Todos los días</option>
-              <option value="habiles">Días hábiles (lunes a viernes)</option>
-              <option value="dias">Días elegidos de la semana</option>
-            </select>
-          </div>
-          <div class="dy-dias dy-oculto" id="dy-rec-dias">
-            <label class="dy-dia-chip"><input type="checkbox" id="dy-rec-dia-0"> Lun</label>
-            <label class="dy-dia-chip"><input type="checkbox" id="dy-rec-dia-1"> Mar</label>
-            <label class="dy-dia-chip"><input type="checkbox" id="dy-rec-dia-2"> Mié</label>
-            <label class="dy-dia-chip"><input type="checkbox" id="dy-rec-dia-3"> Jue</label>
-            <label class="dy-dia-chip"><input type="checkbox" id="dy-rec-dia-4"> Vie</label>
-            <label class="dy-dia-chip"><input type="checkbox" id="dy-rec-dia-5"> Sáb</label>
-            <label class="dy-dia-chip"><input type="checkbox" id="dy-rec-dia-6"> Dom</label>
-          </div>
-          <div class="dy-form-fila">
-            <button class="btn-primary" type="button" id="dy-rec-guardar" onclick="dyGuardarRecordatorio()">Crear recordatorio</button>
-            <button class="btn-ghost dy-oculto" type="button" id="dy-rec-cancelar" onclick="dyCancelarEdicion()">Cancelar</button>
-          </div>
-          <div class="dy-error" id="dy-rec-error" role="alert"></div>
-        </div>
-        <div class="dy-lista" id="dy-recordatorios"></div>
-      </section>
-    </div>
-  </div>
+  <!-- Daily Programador y Daily Admin son la misma pantalla con los mismos
+       datos por persona: el JS arma el contenido de cada una (dyArmarPanel)
+       con sus propios ids (dy- y dya-). La persona es estado del JS. -->
+  <div id="daily-panel" class="panel dy-panel"></div>
+  <div id="daily_admin-panel" class="panel dy-panel"></div>
 
   <!-- ======= RECURSOS HUMANOS PANELES ======= -->
   <!-- Dos paneles de Recursos Humanos. El organigrama conserva el id equipo
@@ -3575,6 +3672,76 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 </div>
 <!-- ======= FIN EQUIPO MODALES ======= -->
 
+<!-- ======= DAILY MODALES ======= -->
+<!-- Los usan los dos Daily: dyModalSeccion dice de cuál es el modal abierto. -->
+<div class="modal-overlay" id="dy-modal-actividad" onclick="if(event.target===this)dyCerrarModal()">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="dy-act-titulo">
+    <h3 id="dy-act-titulo">Nueva actividad</h3>
+    <p id="dy-act-contexto"></p>
+    <label class="modal-label" for="dy-act-texto">Qué hay que hacer</label>
+    <input type="text" id="dy-act-texto" maxlength="200" placeholder="Ej: terminar la landing de Tito">
+    <div class="modal-row">
+      <div>
+        <label class="modal-label" for="dy-act-fecha">Día</label>
+        <input type="date" id="dy-act-fecha">
+      </div>
+      <div>
+        <label class="modal-label" for="dy-act-hora">Hora (opcional)</label>
+        <input type="time" id="dy-act-hora">
+      </div>
+    </div>
+    <label class="modal-label" for="dy-act-nota">Nota (opcional)</label>
+    <input type="text" id="dy-act-nota" maxlength="300" placeholder="Ej: pedirle el logo antes">
+    <div class="dy-error" id="dy-act-error" role="alert"></div>
+    <div class="modal-btns">
+      <button class="btn-ghost dy-oculto" type="button" id="dy-act-borrar" onclick="dyBorrarDesdeModal()">Borrar</button>
+      <button class="btn-ghost" type="button" onclick="dyCerrarModal()">Cancelar</button>
+      <button class="btn-primary" type="button" onclick="dyGuardarActividad()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="dy-modal-recordatorio" onclick="if(event.target===this)dyCerrarRecordatorio()">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="dy-recm-titulo">
+    <h3 id="dy-recm-titulo">Nuevo recordatorio</h3>
+    <p id="dy-recm-contexto"></p>
+    <label class="modal-label" for="dy-recm-texto">Qué hay que recordar</label>
+    <input type="text" id="dy-recm-texto" maxlength="200" placeholder="Ej: revisar mails de clientes">
+    <div class="modal-row">
+      <div>
+        <label class="modal-label" for="dy-recm-frecuencia">Cada cuánto</label>
+        <select id="dy-recm-frecuencia" onchange="dyPintarDiasForm()">
+          <option value="diario">Todos los días</option>
+          <option value="habiles">Días hábiles (lunes a viernes)</option>
+          <option value="dias">Días elegidos de la semana</option>
+        </select>
+      </div>
+      <div>
+        <label class="modal-label" for="dy-recm-hora">Hora (opcional)</label>
+        <input type="time" id="dy-recm-hora">
+      </div>
+    </div>
+    <div class="dy-dias dy-oculto" id="dy-recm-dias">
+      <label class="dy-dia-chip"><input type="checkbox" id="dy-recm-dia-0"> Lun</label>
+      <label class="dy-dia-chip"><input type="checkbox" id="dy-recm-dia-1"> Mar</label>
+      <label class="dy-dia-chip"><input type="checkbox" id="dy-recm-dia-2"> Mié</label>
+      <label class="dy-dia-chip"><input type="checkbox" id="dy-recm-dia-3"> Jue</label>
+      <label class="dy-dia-chip"><input type="checkbox" id="dy-recm-dia-4"> Vie</label>
+      <label class="dy-dia-chip"><input type="checkbox" id="dy-recm-dia-5"> Sáb</label>
+      <label class="dy-dia-chip"><input type="checkbox" id="dy-recm-dia-6"> Dom</label>
+    </div>
+    <label class="modal-label" for="dy-recm-nota">Nota (opcional)</label>
+    <input type="text" id="dy-recm-nota" maxlength="300" placeholder="Ej: los urgentes primero">
+    <div class="dy-aviso-modal dy-oculto" id="dy-recm-aviso">Cambia cómo se repite de acá en adelante. Lo que ya marcaste como hecho en otros días queda como estaba.</div>
+    <div class="dy-error" id="dy-recm-error" role="alert"></div>
+    <div class="modal-btns">
+      <button class="btn-ghost" type="button" onclick="dyCerrarRecordatorio()">Cancelar</button>
+      <button class="btn-primary" type="button" onclick="dyGuardarRecordatorio()">Guardar</button>
+    </div>
+  </div>
+</div>
+<!-- ======= FIN DAILY MODALES ======= -->
+
 <!-- ======= PLANTILLAS MODALES ======= -->
 <div class="pl-aviso" id="pl-aviso" role="status" aria-live="polite"></div>
 
@@ -3758,7 +3925,8 @@ function showPanel(name) {
   if (name === 'wa') loadWaTemplates();
   if (name === 'cal' && !calLoaded) { calLoaded = true; renderCalendar(); }
   if (name === 'tasks') loadTasks();
-  if (name === 'daily') loadDaily();
+  if (name === 'daily') loadDaily('programador');
+  if (name === 'daily_admin') loadDaily('admin');
   if (name === 'projects') loadProjects();
   if (name === 'notion_clients') loadNotionClients();
   if (name === 'finanzas') loadFinanzas();
@@ -3860,7 +4028,6 @@ function _reloadActiveCallPanel() {
 
 // ── Meta Ads panel ───────────────────────────────────────────────────────────
 let _metaSearch = '';
-let _metaMonth = '';
 let _metaEstado = '';
 let _metaLeads = [];
 let _metaSortDesc = true;
@@ -3884,8 +4051,6 @@ function _startMetaPoll() {
         badge.textContent = newOnes.length === 1 ? 'NEW' : `+${newOnes.length}`;
         badge.style.display = '';
         _metaLeads = leads;
-        _fillMetaMonths();
-        _fillMetaEstados();
         const activePanel = document.querySelector('.panel.active');
         if (activePanel && activePanel.id === 'meta-panel') {
           renderMetaTable();
@@ -3896,55 +4061,270 @@ function _startMetaPoll() {
     } catch(e) {}
   }, 60000);
 }
-function metaSearch(v) { _metaSearch = v.toLowerCase(); renderMetaTable(); }
-function metaMonthFilter(v) { _metaMonth = v; renderMetaTable(); }
+function metaSearch(v) {
+  _metaSearch = v.toLowerCase();
+  if (!_metaSearch) mmTodosLosMeses = false;
+  renderMetaTable();
+}
 // La cola fria excluye a los leads de Meta a proposito, asi que este es el
 // unico lugar donde se puede preguntar "a quien de Meta no llamo nadie".
 function metaEstadoFilter(v) { _metaEstado = v; renderMetaTable(); }
 
-// Clave 'YYYY-MM' del lead, o '' si no tiene fecha usable. Es la misma funcion
-// que usan el <select> y el filtro, para que no puedan discrepar: si una arma
-// la clave distinto que la otra, el mes queda en la lista y no filtra nada.
-function _metaMesKey(l) {
-  const d = new Date(l.scraped_at || 0);
-  return isNaN(d) || !l.scraped_at ? '' : `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+// -- Lista por mes (pedido de Juan, 15/9) -------------------------------------
+// "Que se haga una lista por meses, donde puedas ir deslizando por mes". El mes
+// de un lead es el de cada formulario que mando, en hora de Montevideo: quien
+// volvio a escribir aparece tambien en el mes de la vuelta, marcado. Todo se
+// recorta aca: el panel ya trae todos los leads de Meta (y el poll tambien).
+let mmMesVista = '';          // 'AAAA-MM'; vacio = el mes actual
+let mmTodosLosMeses = false;  // la busqueda mira todos los meses
+let mmAbierto = null;         // id del lead con las opciones de color abiertas
+let mmToque = null;           // donde apoyo el dedo, para deslizar
+let mmSwipeListo = false;
+let mmGuardando = false;
+// Los colores del semaforo en el orden del embudo. Mismas claves y nombres que
+// services/planilla_semaforo.SEMAFORO (un test los compara). El color de cada
+// uno sale del token --semaforo-* por la clase mm-c-<clave>.
+const MM_SEMAFORO = [
+  {clave: 'rojo', etiqueta: 'No atiende'},
+  {clave: 'amarillo', etiqueta: 'Interesado'},
+  {clave: 'verde', etiqueta: 'Demo agendada'},
+  {clave: 'celeste', etiqueta: 'Demo realizada'},
+  {clave: 'violeta', etiqueta: 'Hubo demo y no cerró'},
+  {clave: 'venta', etiqueta: 'Venta concretada'},
+  {clave: 'negro', etiqueta: 'No le interesa'},
+];
+const MM_MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio',
+                  'Agosto', 'Setiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+const MM_HORAS_UTC = 3 * 3600 * 1000;   // Uruguay: UTC-3 fijo desde 2015
+
+// 'AAAA-MM' en hora de Montevideo de una fecha UTC de la base. Por texto y
+// Date.UTC, nunca new Date(texto): el navegador la leeria en SU hora. Una fecha
+// sin hora queda en su mes (correrla la mandaria al dia anterior).
+function mmMesDe(fecha) {
+  const m = String(fecha || '').match(/^([0-9]{4})-([0-9]{2})-([0-9]{2})(?:[ T]([0-9]{2}):([0-9]{2}))?/);
+  if (!m) return '';
+  if (m[4] === undefined) return m[1] + '-' + m[2];
+  const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) - MM_HORAS_UTC);
+  return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0');
 }
 
-function _fillMetaEstados() {
+function mmMesActual(ahoraMs) {
+  const d = new Date((ahoraMs === undefined ? Date.now() : ahoraMs) - MM_HORAS_UTC);
+  return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0');
+}
+
+function mmMesSumar(mes, delta) {
+  const partes = String(mes).split('-');
+  const total = parseInt(partes[0], 10) * 12 + (parseInt(partes[1], 10) - 1) + delta;
+  return Math.floor(total / 12) + '-' + String(total % 12 + 1).padStart(2, '0');
+}
+
+function mmEtiquetaMes(clave) {
+  const partes = String(clave).split('-');
+  const mes = MM_MESES[parseInt(partes[1], 10) - 1];
+  return mes ? mes + ' ' + partes[0] : clave;
+}
+
+// Las fechas de cada formulario del lead (UTC). Sin el dato del servidor, la
+// fecha de la ficha: es lo que se contaba antes.
+function mmEnvios(b) {
+  if (b.envios && b.envios.length) return b.envios;
+  return b.scraped_at ? [b.scraped_at] : [];
+}
+
+function mmMesesDe(b) { return mmEnvios(b).map(mmMesDe).filter(Boolean); }
+
+function mmEnviosDelMes(b, mes) { return mmEnvios(b).filter(f => mmMesDe(f) === mes); }
+
+// Cada persona una sola vez por mes, aunque haya escrito dos veces ese mes.
+function mmDelMes(leads, mes) { return leads.filter(b => mmMesesDe(b).indexOf(mes) !== -1); }
+
+// Volvio a escribir: ya habia mandado un formulario en un mes anterior.
+function mmVolvio(b, mes) { return mmMesesDe(b).some(m => m < mes); }
+
+function mmPrimerEnvio(b) { return mmEnvios(b).slice().sort()[0] || ''; }
+
+function mmFechaCorta(fecha) {
+  const s = String(fecha || '');
+  return /^[0-9]{4}-[0-9]{2}-[0-9]{2}/.test(s) ? s.slice(8, 10) + '/' + s.slice(5, 7) + '/' + s.slice(0, 4) : s;
+}
+
+// La fecha que muestra la fila: la del formulario de ESE mes (el ultimo, si
+// fueron dos), o el ultimo de todos cuando se busca en todos los meses.
+function mmFechaDeFila(b, mes, todos) {
+  const e = (todos ? mmEnvios(b) : mmEnviosDelMes(b, mes)).slice().sort();
+  return e.length ? e[e.length - 1] : (b.scraped_at || '');
+}
+
+function mmMesMasViejo(leads) {
+  let viejo = '';
+  leads.forEach(b => mmMesesDe(b).forEach(m => { if (!viejo || m < viejo) viejo = m; }));
+  return viejo;
+}
+
+// Nunca al futuro; para atras, hasta el mes del lead mas viejo.
+function mmMesMover(mes, delta, masViejo, actual) {
+  let m = mmMesSumar(mes, delta);
+  if (m > actual) m = actual;
+  const piso = masViejo && masViejo < actual ? masViejo : actual;
+  if (m < piso) m = piso;
+  return m;
+}
+
+function mmMesVisible() { return mmMesVista || mmMesActual(); }
+
+// Total del mes y cuantos de cada color. `envios` cuenta formularios, como
+// Meta (el contador principal); `personas`, filas de la lista.
+function mmConteo(leads, mes) {
+  const por = {};
+  let envios = 0;
+  let sin = 0;
+  leads.forEach(b => {
+    envios += mes ? mmEnviosDelMes(b, mes).length : 1;
+    if (b.semaforo) por[b.semaforo] = (por[b.semaforo] || 0) + 1;
+    else sin += 1;
+  });
+  return {personas: leads.length, envios: envios, por: por, sin: sin};
+}
+
+function mmResumenHtml(leads, mes) {
+  const c = mmConteo(leads, mes);
+  const total = c.envios === c.personas
+    ? c.envios + (c.envios === 1 ? ' lead' : ' leads')
+    : c.envios + ' leads · ' + c.personas + ' personas';
+  const partes = MM_SEMAFORO.filter(s => c.por[s.clave]).map(s =>
+    `<span class="mm-resumen-color mm-c-${s.clave}"><span class="mm-punto"></span>${c.por[s.clave]} ${esc(s.etiqueta)}</span>`);
+  if (c.sin) partes.push(`<span class="mm-resumen-color mm-c-sin"><span class="mm-punto"></span>${c.sin} sin color</span>`);
+  return `<span class="mm-resumen-total">${esc(mmEtiquetaMes(mes))}: ${total}</span>` + partes.join('');
+}
+
+function mmPintarNavegador(mes) {
+  const label = document.getElementById('meta-mes-label');
+  if (label) label.textContent = mmEtiquetaMes(mes);
+  const viejo = mmMesMasViejo(_metaLeads);
+  const ant = document.getElementById('meta-mes-ant');
+  const sig = document.getElementById('meta-mes-sig');
+  if (ant) ant.disabled = !viejo || mes <= viejo;
+  if (sig) sig.disabled = mes >= mmMesActual();
+}
+
+function mmMes(delta) {
+  mmMesVista = mmMesMover(mmMesVisible(), delta, mmMesMasViejo(_metaLeads), mmMesActual());
+  mmAbierto = null;
+  renderMetaTable();
+}
+
+function mmMesHoy() { mmMesVista = ''; mmAbierto = null; renderMetaTable(); }
+
+function mmBuscarTodos(si) { mmTodosLosMeses = !!si; renderMetaTable(); }
+
+// Deslizar sobre la lista en el celular: a la izquierda, el mes siguiente; a la
+// derecha, el anterior. Solo un gesto franco (mas de 50px y mas horizontal que
+// vertical) cambia de mes: el scroll y los toques quedan como estaban, y los
+// listeners son pasivos, no frenan el scroll.
+function mmDireccionDeslizar(dx, dy) {
+  if (Math.abs(dx) <= 50 || Math.abs(dx) <= Math.abs(dy)) return 0;
+  return dx < 0 ? 1 : -1;
+}
+
+function mmToqueInicio(e) {
+  const t = e && e.touches && e.touches[0];
+  mmToque = t ? {x: t.clientX, y: t.clientY} : null;
+}
+
+function mmToqueFin(e) {
+  const t = e && e.changedTouches && e.changedTouches[0];
+  const inicio = mmToque;
+  mmToque = null;
+  if (!inicio || !t) return;
+  const dir = mmDireccionDeslizar(t.clientX - inicio.x, t.clientY - inicio.y);
+  if (dir) mmMes(dir);
+}
+
+function mmActivarDeslizar() {
+  if (mmSwipeListo) return;
+  const body = document.getElementById('meta-body');
+  if (!body || !body.addEventListener) return;
+  body.addEventListener('touchstart', mmToqueInicio, {passive: true});
+  body.addEventListener('touchend', mmToqueFin, {passive: true});
+  mmSwipeListo = true;
+}
+
+// -- Semaforo: tocar el color y elegir --------------------------------------
+function mmColorInfo(clave) { return MM_SEMAFORO.find(s => s.clave === clave) || null; }
+
+function mmBotonColor(b) {
+  const info = mmColorInfo(b.semaforo);
+  const clase = info ? 'mm-c-' + info.clave : 'mm-c-sin';
+  const abierto = mmAbierto === b.id ? ' mm-abierto' : '';
+  return `<button class="mm-sem-btn ${clase}${abierto}" onclick="mmAbrirColor(${b.id})" title="Marcar el color del semáforo"><span class="mm-punto"></span>${info ? esc(info.etiqueta) : 'Sin color'}</button>`;
+}
+
+function mmOpcionesHtml(b) {
+  const actual = b.semaforo || '';
+  const opciones = MM_SEMAFORO.map(s =>
+    `<button class="mm-opcion mm-c-${s.clave}${s.clave === actual ? ' mm-actual' : ''}" onclick="mmMarcarColor(${b.id}, '${s.clave}')"><span class="mm-punto"></span>${esc(s.etiqueta)}</button>`);
+  opciones.push(`<button class="mm-opcion mm-c-sin${actual ? '' : ' mm-actual'}" onclick="mmMarcarColor(${b.id}, 'sin_color')"><span class="mm-punto"></span>Sin color</button>`);
+  return `<div class="mm-opciones" id="meta-mes-opciones-${b.id}"><div class="mm-opciones-titulo">Color del semáforo para ${esc(b.name || 'este lead')}</div>${opciones.join('')}</div>`;
+}
+
+function mmAbrirColor(id) { mmAbierto = mmAbierto === id ? null : id; renderMetaTable(); }
+
+// Se guarda al tocar, sin boton Guardar, y la opcion se cierra.
+async function mmMarcarColor(id, clave) {
+  if (mmGuardando) return;
+  mmGuardando = true;
+  try {
+    const r = await fetch('/api/meta/leads/' + id + '/semaforo', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({color: clave, mes: mmMesVisible()}),
+    });
+    let d = {};
+    try { d = await r.json(); } catch (e) { d = {}; }
+    if (!r.ok || !d.ok) { alert(d.error || 'No se pudo guardar el color'); return; }
+    const lead = _metaLeads.find(l => l.id === id);
+    if (lead) {
+      lead.crm_status = d.crm_status;
+      lead.semaforo = d.semaforo || '';
+      if (d.semaforo_origen) lead.semaforo_origen = d.semaforo_origen;
+    }
+    mmAbierto = null;
+    renderMetaTable();
+  } catch (e) {
+    alert('No se pudo guardar el color: ' + e.message);
+  } finally {
+    mmGuardando = false;
+  }
+}
+
+function _fillMetaEstados(leads) {
   const sel = document.getElementById('meta-estado-filter');
   if (!sel) return;
+  const base = leads || _metaLeads;
   const etiquetas = {sin_contactar:'Sin contactar',interesado:'Interesado',contactado:'Interesado',reunion_agendada:'Reunión agendada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Ppto enviado',negociacion:'Negociación',cliente_cerrado:'Cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado',llamar_despues:'Llamar después',no_interesa:'No le interesa'};
   const cuenta = {};
-  _metaLeads.forEach(l => { const k = l.crm_status || 'sin_contactar'; cuenta[k] = (cuenta[k]||0)+1; });
+  base.forEach(l => { const k = l.crm_status || 'sin_contactar'; cuenta[k] = (cuenta[k]||0)+1; });
+  // El filtro elegido se mantiene al cambiar de mes aunque ese mes no tenga
+  // ninguno: si se cayera solo, la lista cambiaria sin que nadie lo pida.
   const previo = _metaEstado;
   const claves = Object.keys(cuenta).sort((a,b) => cuenta[b] - cuenta[a]);
-  sel.innerHTML = `<option value="">Todos los estados (${_metaLeads.length})</option>` +
-    claves.map(k => `<option value="${k}">${etiquetas[k] || k} (${cuenta[k]})</option>`).join('');
-  sel.value = claves.includes(previo) ? previo : '';
-  _metaEstado = sel.value;
-}
-
-function _fillMetaMonths() {
-  const sel = document.getElementById('meta-month-filter');
-  if (!sel) return;
-  const cuenta = {};
-  _metaLeads.forEach(l => { const k = _metaMesKey(l); if (k) cuenta[k] = (cuenta[k]||0)+1; });
-  const meses = Object.keys(cuenta).sort().reverse();
-  // Se preserva la seleccion: el poll de 60s repuebla la lista y sin esto el
-  // filtro del usuario se resetearia solo mientras mira la tabla.
-  const previo = _metaMonth;
-  const nombres = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-  sel.innerHTML = `<option value="">Todos los meses (${_metaLeads.length})</option>` +
-    meses.map(k => {
-      const [a, m] = k.split('-');
-      return `<option value="${k}">${nombres[parseInt(m,10)-1]} ${a} (${cuenta[k]})</option>`;
-    }).join('');
-  sel.value = meses.includes(previo) ? previo : '';
-  _metaMonth = sel.value;
+  if (previo && !claves.includes(previo)) claves.push(previo);
+  sel.innerHTML = `<option value="">Todos los estados (${base.length})</option>` +
+    claves.map(k => `<option value="${k}">${etiquetas[k] || k} (${cuenta[k] || 0})</option>`).join('');
+  sel.value = previo;
+  _metaEstado = previo;
 }
 function toggleMetaSort() { _metaSortDesc = !_metaSortDesc; document.getElementById('meta-sort-icon').textContent = _metaSortDesc ? '↓' : '↑'; renderMetaTable(); }
 
 async function loadMetaPanel() {
+  // Juan: "cuando entres a meta ads que lo primero que aparezca sea el mes
+  // actual". Cada vez que se abre el panel vuelve al mes de hoy, sin buscar en
+  // todos los meses ni opciones abiertas. El poll no pasa por aca: repinta el
+  // mes que se esta mirando.
+  mmMesVista = '';
+  mmTodosLosMeses = false;
+  mmAbierto = null;
   const body = document.getElementById('meta-body');
   body.innerHTML = '<div style="color:#475569;padding:16px;font-size:.85rem">Cargando...</div>';
   try {
@@ -3952,8 +4332,7 @@ async function loadMetaPanel() {
     const data = await r.json();
     _metaLeads = Array.isArray(data) ? data : (data.items || []);
     _metaLeads.forEach(l => _metaKnownIds.add(l.id));
-    _fillMetaMonths();
-    _fillMetaEstados();
+    mmActivarDeslizar();
     renderMetaTable();
     _startMetaPoll();
   } catch(e) { body.innerHTML = `<div style="color:#f87171;padding:16px">Error: ${e.message}</div>`; }
@@ -3961,20 +4340,40 @@ async function loadMetaPanel() {
 
 function renderMetaTable() {
   const body = document.getElementById('meta-body');
-  let leads = _metaLeads;
-  if (_metaSearch) leads = leads.filter(b => (b.name||'').toLowerCase().includes(_metaSearch) || (b.notes||'').toLowerCase().includes(_metaSearch));
-  if (_metaMonth) leads = leads.filter(b => _metaMesKey(b) === _metaMonth);
+  const mes = mmMesVisible();
+  mmPintarNavegador(mes);
+  const delMes = mmDelMes(_metaLeads, mes);
+  const resumen = document.getElementById('meta-mes-resumen');
+  if (resumen) resumen.innerHTML = mmResumenHtml(delMes, mes);
+  _fillMetaEstados(delMes);
+  const coincide = b => (b.name||'').toLowerCase().includes(_metaSearch) || (b.notes||'').toLowerCase().includes(_metaSearch);
+  const todos = !!_metaSearch && mmTodosLosMeses;
+  let leads = (todos ? _metaLeads : delMes).slice();
+  if (_metaSearch) leads = leads.filter(coincide);
   if (_metaEstado) leads = leads.filter(b => (b.crm_status || 'sin_contactar') === _metaEstado);
+  const aviso = document.getElementById('meta-mes-buscar-todos');
+  if (aviso) {
+    if (!_metaSearch) aviso.innerHTML = '';
+    else if (todos) aviso.innerHTML = `Buscando en todos los meses · <button class="mm-link" onclick="mmBuscarTodos(false)">Solo ${esc(mmEtiquetaMes(mes))}</button>`;
+    else aviso.innerHTML = `Buscando en ${esc(mmEtiquetaMes(mes))} · <button class="mm-link" onclick="mmBuscarTodos(true)">Buscar en todos los meses (${_metaLeads.filter(coincide).length})</button>`;
+  }
+  const base = todos ? _metaLeads.length : delMes.length;
   const _cnt = document.getElementById('meta-count');
-  if (_cnt) _cnt.textContent = leads.length === _metaLeads.length
+  if (_cnt) _cnt.textContent = leads.length === base
     ? `${leads.length} leads`
-    : `${leads.length} de ${_metaLeads.length}`;
-  if (!leads.length) { body.innerHTML = '<div class="empty-state">No hay leads que coincidan con el filtro</div>'; return; }
+    : `${leads.length} de ${base}`;
+  if (!leads.length) {
+    body.innerHTML = (_metaSearch || _metaEstado)
+      ? '<div class="empty-state">No hay leads que coincidan con el filtro</div>'
+      : `<div class="empty-state">No hay leads en ${esc(mmEtiquetaMes(mes))}</div>`;
+    return;
+  }
   const crmLabels = {sin_contactar:'Sin contactar',interesado:'Interesado',contactado:'Interesado',reunion_agendada:'Reunión agendada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Ppto enviado',negociacion:'Negociación',cliente_cerrado:'Cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado',llamar_despues:'Llamar después',no_interesa:'No le interesa'};
   const crmColor = {sin_contactar:'#475569',interesado:'#10b981',contactado:'#10b981',reunion_agendada:'#3b82f6',reunion_hecha:'#14b8a6',presupuesto_enviado:'#f97316',negociacion:'#fbbf24',cliente_cerrado:'#10b981',en_desarrollo:'#0088cc',finalizado:'#6ee7b7',llamar_despues:'#f59e0b',no_interesa:'#ef4444'};
   leads.sort((a,b) => {
-    const da = new Date(a.scraped_at||0), db2 = new Date(b.scraped_at||0);
-    return _metaSortDesc ? db2-da : da-db2;
+    const fa = String(mmFechaDeFila(a, mes, todos)), fb = String(mmFechaDeFila(b, mes, todos));
+    const orden = fa < fb ? -1 : (fa > fb ? 1 : 0);
+    return _metaSortDesc ? -orden : orden;
   });
   const buscarLabels = {
     'una_nueva_p\u00e1gina_web':'Nueva web',
@@ -4003,6 +4402,9 @@ function renderMetaTable() {
   body.innerHTML = leads.map(b => {
     const crm = b.crm_status || 'sin_contactar';
     const color = crmColor[crm] || '#475569';
+    const mmColor = mmColorInfo(b.semaforo) ? b.semaforo : '';
+    const mmFecha = String(mmFechaDeFila(b, mes, todos) || '');
+    const mmVuelta = !todos && mmVolvio(b, mes);
     let fd = {};
     try { fd = JSON.parse(b.form_data || '{}'); } catch(e) {}
     const negocio = fd['\u00bfc\u00f3mo_se_llama_tu_negocio?'] || fd['como_se_llama_tu_negocio'] || fd['nombre_del_negocio'] || '';
@@ -4011,23 +4413,25 @@ function renderMetaTable() {
     const presupRaw = fd['\u00bfcont\u00e1s_con_un_presupuesto_para_este_proyecto?'] || fd['presupuesto'] || '';
     const presup = presupLabels[presupRaw] || presupRaw.replace(/_/g,' ') || '—';
     return `
-    <div class="table-row no-cb row-${crm}" style="grid-template-columns:1.8fr 1fr 1.2fr 1.2fr 0.9fr 0.8fr 1.1fr">
+    <div class="table-row no-cb ${mmColor ? 'mm-pintado mm-c-' + mmColor : 'row-' + crm}" data-mm-color="${mmColor}" style="grid-template-columns:1.8fr 1fr 1.2fr 1.2fr 0.9fr 0.8fr 1.1fr">
       <div>
         <div class="biz-name"><span style="cursor:pointer;text-decoration:underline;text-decoration-color:#334155" onclick="openClientPanel(${b.id})">${esc(b.name||'')}</span>
-        <span style="font-size:.65rem;background:linear-gradient(135deg,#833ab4,#fd1d1d,#fcb045);color:#fff;padding:1px 6px;border-radius:99px;font-weight:700;margin-left:4px">IG/FB</span></div>
+        <span style="font-size:.65rem;background:linear-gradient(135deg,#833ab4,#fd1d1d,#fcb045);color:#fff;padding:1px 6px;border-radius:99px;font-weight:700;margin-left:4px">IG/FB</span>${mmVuelta ? '<span class="mm-vuelta">Volvió a escribir</span>' : ''}</div>
         <div class="biz-sub">${negocio ? esc(negocio) : (esc(b.city||'') || '—')}</div>
+        ${mmVuelta ? '<span class="mm-vuelta-primero">Primer contacto: ' + esc(mmFechaCorta(mmPrimerEnvio(b))) + '</span>' : ''}
       </div>
       <div>${b.phone ? (hasWhatsApp(b.phone) ? `<a class="phone-val" href="https://wa.me/${waNum(b.phone)}${b.pitch_text ? '?text='+encodeURIComponent(b.pitch_text) : ''}" target="_blank" title="Abrir WhatsApp">${esc(b.phone)}</a>` : `<span class="phone-plain">${esc(b.phone)}</span>`) : '<span class="no-val">—</span>'}</div>
       <div style="font-size:.78rem;color:#94a3b8">${esc(busca)}</div>
       <div style="font-size:.78rem;color:#94a3b8">${esc(presup)}</div>
       <div style="font-size:.78rem;color:#64748b">${esc(b.city||'—')}</div>
-      <div style="font-size:.72rem;color:#475569">${b.scraped_at ? new Date(b.scraped_at+'Z').toLocaleString('es-UY',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—'}</div>
+      <div style="font-size:.72rem;color:#475569">${mmFecha ? new Date(mmFecha.slice(0, 19).replace(' ', 'T') + 'Z').toLocaleString('es-UY',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—'}</div>
       <div class="actions">
+        ${mmBotonColor(b)}
         <span style="font-size:.68rem;font-weight:600;color:${color};background:${color}18;padding:2px 6px;border-radius:99px">${crmLabels[crm]||crm}</span>
         <button class="pitch-btn" onclick="openClientPanel(${b.id})">Ver ficha</button>
         <button class="delete-btn" onclick="deleteLead(${b.id},${escJs(b.name||'')},loadMetaPanel)" title="Borrar"><i data-lucide=\"trash-2\" class=\"btn-icon\"></i></button>
       </div>
-    </div>`;
+    </div>${mmAbierto === b.id ? mmOpcionesHtml(b) : ''}`;
   }).join('');
   _populateNotes(body);
 }
@@ -7754,20 +8158,20 @@ function _showScoreBreakdown(event, el) {
 
 // ── Mobile navigation ─────────────────────────────────────────────────────────
 // El mismo orden que el menu de la izquierda (Juan, 14/9).
-const NAV_PRIORITY = ['cal','meta','finanzas','simulador','seg_leads','wa','notion_clients','plantillas','clientes','projects','tasks','daily','activity','equipo','ausencias','cola','metrics'];
+const NAV_PRIORITY = ['cal','meta','finanzas','simulador','seg_leads','wa','notion_clients','plantillas','clientes','projects','tasks','daily','daily_admin','activity','equipo','ausencias','cola','metrics'];
 const NAV_ICONS = {
   cola:'inbox',meta:'instagram',cal:'calendar',
   tasks:'check-square',pipeline:'trending-up',clientes:'users',
   wa:'message-circle',metrics:'bar-chart-2',activity:'clock',projects:'target',
   notion_clients:'handshake',finanzas:'wallet',simulador:'calculator',equipo:'network',
-  ausencias:'calendar-clock',seg_leads:'phone-call',daily:'clipboard-list',plantillas:'message-square-text'
+  ausencias:'calendar-clock',seg_leads:'phone-call',daily:'clipboard-list',plantillas:'message-square-text',daily_admin:'clipboard-check'
 };
 const NAV_LABELS = {
   cola:'Outbound',meta:'Meta',cal:'Agenda',
   tasks:'Tareas',pipeline:'Pipeline',clientes:'Clientes',
   wa:'WA',metrics:'Intel. comercial',activity:'Actividad',projects:'Proyectos',
   notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador',equipo:'Organigrama',
-  ausencias:'Ausencias',seg_leads:'Seguimiento',daily:'Daily',plantillas:'Plantillas'
+  ausencias:'Ausencias',seg_leads:'Seguimiento',daily:'Daily',plantillas:'Plantillas',daily_admin:'Daily Admin'
 };
 let _mobileNavOverflow = [];
 
@@ -7847,13 +8251,19 @@ function closeMasSheet() {
 }
 
 // ── Panel access control ──────────────────────────────────────────────────────
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','equipo','ausencias','seg_leads','daily','plantillas'];
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','equipo','ausencias','seg_leads','daily','plantillas','daily_admin'];
 (async () => {
   try {
     const r = await fetch('/api/me');
     if (!r.ok) return;
     const m = await r.json();
     window._isAdmin = m.is_admin;
+    // Paneles que el rol ve pero no modifica (el Contador, en Finanzas). Si
+    // /api/me falla queda vacio: se ve el modo normal y el servidor igual
+    // bloquea las escrituras con 403.
+    window._panelesSoloLectura = (!m.is_admin && Array.isArray(m.paneles_solo_lectura))
+      ? m.paneles_solo_lectura : [];
+    _finAplicarSoloLectura();
     if (m.is_admin) {
       const a = document.getElementById('admin-link');
       if (a) a.style.display = 'block';
@@ -7884,7 +8294,8 @@ const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activ
     _buildMobileNav(allowedPanels);
     _syncMobileNav(activePanel);
     // Las opciones por persona debajo de "Daily Programador" salen de la base.
-    if (allowedPanels.includes('daily')) dyCargarPersonas();
+    if (allowedPanels.includes('daily')) dyCargarPersonas('programador');
+    if (allowedPanels.includes('daily_admin')) dyCargarPersonas('admin');
   } catch(e) {}
 })();
 
@@ -8724,7 +9135,27 @@ function _funnelBars(items, stateLabels, stateColors) {
 }
 
 // ========== Finanzas panel ==========
-const FIN_VISTAS = ['movimientos', 'cobrar', 'fijos', 'iva', 'pauta'];
+const FIN_VISTAS = ['movimientos', 'cobrar', 'fijos', 'iva', 'pauta', 'balance'];
+
+// ── Finanzas en solo lectura (el Contador) ──
+// No se dibujan los botones de alta, edicion ni borrado, y arriba va un aviso.
+// El Balance queda completo. Es cosmetico: el servidor devuelve 403 igual.
+window._panelesSoloLectura = window._panelesSoloLectura || [];
+
+function _finSoloLectura() {
+  return Array.isArray(window._panelesSoloLectura)
+    && window._panelesSoloLectura.indexOf('finanzas') >= 0;
+}
+
+function _finAplicarSoloLectura() {
+  const solo = _finSoloLectura();
+  ['fin-btn-movimiento', 'fin-btn-reabrir', 'fin-btn-pendiente'].forEach(id => {
+    const b = document.getElementById(id);
+    if (b) b.style.display = solo ? 'none' : '';
+  });
+  const aviso = document.getElementById('fin-solo-lectura');
+  if (aviso) aviso.style.display = solo ? '' : 'none';
+}
 
 function _finRangoCambio() {
   // El selector de rango es compartido por las tres vistas, pero loadFinanzas
@@ -8746,6 +9177,9 @@ function finVista(cual) {
   document.getElementById('fin-tab-fijos').classList.toggle('active', cual === 'fijos');
   document.getElementById('fin-tab-iva').classList.toggle('active', cual === 'iva');
   document.getElementById('fin-tab-pauta').classList.toggle('active', cual === 'pauta');
+  document.getElementById('fin-tab-balance').classList.toggle('active', cual === 'balance');
+  // El Balance tiene su propio periodo (Este año / Desde el inicio /
+  // Personalizado): el selector de rango no aplica y se esconde, como en IVA.
   // El IVA se liquida por MES: un saldo de "los ultimos 12 meses" no
   // significa nada. En vez de dejar el selector de rango diciendo una cosa y
   // la tabla otra -el problema que _finRangoCambio arregla para Pauta-, aca
@@ -8753,7 +9187,7 @@ function finVista(cual) {
   // Ni el IVA ni lo que falta cobrar dependen del rango: el IVA se liquida por
   // mes y un pendiente esta o no esta, no pertenece a ningun periodo.
   document.getElementById('fin-rango').style.display =
-    (cual === 'iva' || cual === 'cobrar') ? 'none' : '';
+    (cual === 'iva' || cual === 'cobrar' || cual === 'balance') ? 'none' : '';
   if (cual === 'cobrar') loadPorCobrar();
   if (cual === 'fijos') loadFijos();
   if (cual === 'iva') loadIva();
@@ -9012,6 +9446,7 @@ function _finBarras(filas, color) {
 let _finResumen = null;
 
 async function loadFinanzas() {
+  _finAplicarSoloLectura();
   await _finCargarMeses();
   _finPintarNavegador();
   const {desde, hasta} = _finRango();
@@ -9196,8 +9631,9 @@ async function loadPorCobrar() {
         + '<td class="' + (p.vencido ? 'fin-rojo' : '') + '">' + esc(p.texto) + '</td>'
         + '<td style="text-align:right">' + _finUsd(p.monto_usd) + '</td>'
         + '<td style="text-align:right;white-space:nowrap">'
-        + '<button class="btn-ghost" onclick="cobrarPendiente(' + p.id + ')">Cobrar</button> '
-        + '<button class="btn-ghost" onclick="borrarPendiente(' + p.id + ')">Borrar</button>'
+        + (_finSoloLectura() ? ''
+          : '<button class="btn-ghost" onclick="cobrarPendiente(' + p.id + ')">Cobrar</button> '
+            + '<button class="btn-ghost" onclick="borrarPendiente(' + p.id + ')">Borrar</button>')
         + '</td></tr>').join('')
     + '</tbody></table>';
 }
@@ -9301,6 +9737,209 @@ async function loadIva() {
     + '</tbody></table>';
 }
 
+// ========== Finanzas: Balance ==========
+// La cuenta la hace el servidor (calcular_balance en services/finanzas.py):
+// aca solo se pide y se pinta. Todo en USD, como el resto de Finanzas.
+let _finBalUltimo = null;
+
+function _finBalHoy() {
+  // Montevideo es UTC-3 fijo: se resta al reloj UTC para no depender de la
+  // zona horaria de la compu del que mira.
+  return new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10);
+}
+
+function finBalPreset() {
+  const personalizado = document.getElementById('fb-preset').value === 'personalizado';
+  document.getElementById('fb-fechas').style.display = personalizado ? '' : 'none';
+  if (!personalizado) return;
+  const hoy = _finBalHoy();
+  const desde = document.getElementById('fb-desde');
+  const hasta = document.getElementById('fb-hasta');
+  if (!desde.value) desde.value = hoy.slice(0, 4) + '-01-01';
+  if (!hasta.value) hasta.value = hoy;
+}
+
+function _finBalUrl() {
+  const tipo = document.getElementById('fb-tipo').value;
+  const preset = document.getElementById('fb-preset').value;
+  let url = '/api/finanzas/balance?tipo=' + encodeURIComponent(tipo);
+  if (preset === 'inicio') url += '&desde=inicio';
+  if (preset === 'personalizado') {
+    url += '&desde=' + encodeURIComponent(document.getElementById('fb-desde').value)
+      + '&hasta=' + encodeURIComponent(document.getElementById('fb-hasta').value);
+  }
+  return url;
+}
+
+async function finBalGenerar() {
+  const caja = document.getElementById('fin-balance');
+  const imprimir = document.getElementById('fb-imprimir');
+  imprimir.style.display = 'none';
+  _finBalUltimo = null;
+  caja.innerHTML = '<div class="fb-nota">Generando balance...</div>';
+  try {
+    const r = await fetch(_finBalUrl());
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error((d && d.error) || 'no se pudo generar el balance');
+    // Pintar adentro del try: una respuesta rara muestra el error en vez de
+    // dejar el cartel de "Generando..." para siempre.
+    caja.innerHTML = _finBalPintar(d);
+    _finBalUltimo = d;
+  } catch (e) {
+    caja.innerHTML = '<div class="fb-error">Error: ' + esc(e.message) + '</div>';
+    return;
+  }
+  imprimir.style.display = '';
+}
+
+function _finBalFecha(iso) {
+  const p = String(iso || '').slice(0, 10).split('-');
+  return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : String(iso || '');
+}
+
+function _finBalCat(c) {
+  const t = String(c || '').replace(/_/g, ' ');
+  return esc(t.charAt(0).toUpperCase() + t.slice(1));
+}
+
+function _finBalColor(n) {
+  return n >= 0 ? 'fin-verde' : 'fin-rojo';
+}
+
+// "USD 12.000 = USD 9.000 en blanco + USD 3.000 no facturado". Solo en el
+// interno: en el de blanco todo es blanco y la cuenta no dice nada.
+function _finBalDesglose(b, interno) {
+  if (!interno) return '';
+  const signo = b.no_facturado < 0 ? ' − ' : ' + ';
+  return '<div class="fb-desglose">' + _finUsd(b.total) + ' = ' + _finUsd(b.blanco)
+    + ' en blanco' + signo + _finUsd(Math.abs(b.no_facturado)) + ' no facturado</div>';
+}
+
+function _finBalKpi(rotulo, valor, clase, extra) {
+  return '<div class="fin-kpi"><div class="fin-kpi-label">' + rotulo + '</div>'
+    + '<div class="fin-kpi-valor ' + clase + '">' + _finUsd(valor) + '</div>'
+    + (extra || '') + '</div>';
+}
+
+function _finBalTablaCats(bloque, interno, rotulo) {
+  if (!bloque.por_categoria.length) {
+    return '<div class="fb-nota">Sin ' + rotulo.toLowerCase() + ' en el período.</div>';
+  }
+  const partes = (x) => interno
+    ? '<td class="fb-num">' + _finUsd(x.blanco) + '</td><td class="fb-num">' + _finUsd(x.no_facturado) + '</td>'
+    : '';
+  return '<div class="fb-scroll"><table class="fin-tabla fb-tabla"><thead><tr>'
+    + '<th>Categoría</th><th class="fb-num">Total</th>'
+    + (interno ? '<th class="fb-num">En blanco</th><th class="fb-num">No facturado</th>' : '')
+    + '</tr></thead><tbody>'
+    + bloque.por_categoria.map(c => '<tr><td>' + _finBalCat(c.categoria) + '</td>'
+        + '<td class="fb-num">' + _finUsd(c.total) + '</td>' + partes(c) + '</tr>').join('')
+    + '<tr class="fb-total"><td>Total ' + rotulo.toLowerCase() + '</td>'
+    + '<td class="fb-num">' + _finUsd(bloque.total) + '</td>' + partes(bloque) + '</tr>'
+    + '</tbody></table></div>';
+}
+
+function _finBalFila(rotulo, valor, clase) {
+  return '<tr' + (clase ? ' class="' + clase + '"' : '') + '><td>' + rotulo + '</td>'
+    + '<td class="fb-num">' + _finUsd(valor) + '</td></tr>';
+}
+
+function _finBalPintar(d) {
+  const interno = d.tipo === 'interno';
+  const generado = String(d.generado_en || '').split(' ');
+  const saldo = d.iva.saldo;
+  const estadoIva = Math.abs(saldo) < 0.005 ? 'sin saldo' : (saldo > 0 ? 'a pagar' : 'a favor');
+
+  let html = '<div class="fb-doc">'
+    + '<div class="fb-cabecera">'
+    + '<div class="fb-titulo">Balance · ' + esc(d.tipo_nombre) + '</div>'
+    + '<div class="fb-sub">Período: del ' + _finBalFecha(d.desde) + ' al ' + _finBalFecha(d.hasta) + '</div>'
+    + '<div class="fb-sub">Generado el ' + _finBalFecha(generado[0])
+    + (generado[1] ? ' a las ' + esc(generado[1]) : '') + ' (hora de Montevideo)</div>'
+    + '<div class="fb-sub">Montos en USD, netos (sin IVA) salvo donde dice "con IVA".</div>'
+    + '</div>';
+
+  if (d.sin_cotizacion) {
+    html += '<div class="fb-aviso">' + d.sin_cotizacion
+      + (d.sin_cotizacion === 1 ? ' movimiento sin tipo de cambio no se incluye.'
+                                : ' movimientos sin tipo de cambio no se incluyen.')
+      + '</div>';
+  }
+
+  html += '<div class="fin-kpis">'
+    + _finBalKpi('Ingresos', d.ingresos.total, 'fin-verde', _finBalDesglose(d.ingresos, interno))
+    + _finBalKpi('Egresos', d.egresos.total, 'fin-rojo', _finBalDesglose(d.egresos, interno))
+    + _finBalKpi('Resultado', d.resultado.total, _finBalColor(d.resultado.total),
+                 '<div class="fin-kpi-var">ingresos menos egresos</div>'
+                 + _finBalDesglose(d.resultado, interno))
+    + '</div>';
+
+  html += '<div class="fb-seccion"><div class="fin-card-title">Ingresos por categoría</div>'
+    + _finBalTablaCats(d.ingresos, interno, 'Ingresos') + '</div>'
+    + '<div class="fb-seccion"><div class="fin-card-title">Egresos por categoría</div>'
+    + _finBalTablaCats(d.egresos, interno, 'Egresos') + '</div>';
+
+  html += '<div class="fb-seccion"><div class="fin-card-title">IVA y totales con IVA</div>'
+    + '<div class="fb-scroll"><table class="fin-tabla fb-tabla"><tbody>'
+    + _finBalFila('Ingresos netos', d.ingresos.total)
+    + _finBalFila('IVA ventas (débito)', d.iva.ventas)
+    + _finBalFila('Ingresos con IVA', d.con_iva.ingresos, 'fb-total')
+    + _finBalFila('Egresos netos', d.egresos.total)
+    + _finBalFila('IVA compras (crédito)', d.iva.compras)
+    + _finBalFila('Egresos con IVA', d.con_iva.egresos, 'fb-total')
+    + _finBalFila('Saldo de IVA (' + estadoIva + ')', Math.abs(saldo), 'fb-total')
+    + _finBalFila('Resultado con IVA', d.con_iva.resultado, 'fb-total')
+    + '</tbody></table></div>'
+    + '<div class="fb-nota">Solo lo facturado lleva IVA. El saldo es débito menos crédito del período entero, sin el arrastre mes a mes de la pestaña IVA.</div>'
+    + '</div>';
+
+  html += '<div class="fb-seccion"><div class="fin-card-title">Impuestos</div>';
+  if (d.impuestos.por_concepto.length) {
+    html += '<div class="fb-scroll"><table class="fin-tabla fb-tabla"><tbody>'
+      + d.impuestos.por_concepto.map(i => _finBalFila(esc(i.concepto), i.total)).join('')
+      + _finBalFila('Total impuestos', d.impuestos.total, 'fb-total')
+      + '</tbody></table></div>';
+  } else {
+    html += '<div class="fb-nota">No hay egresos en la categoría Impuestos en el período.</div>';
+  }
+  html += '<div class="fb-nota">Egresos de la categoría Impuestos (IRAE, BPS, pagos a DGI). Ya están sumados en Egresos.</div></div>';
+
+  html += '<div class="fb-seccion"><div class="fin-card-title">Evolución mes a mes</div>'
+    + '<div class="fb-scroll"><table class="fin-tabla fb-tabla"><thead><tr>'
+    + '<th>Mes</th><th class="fb-num">Ingresos</th><th class="fb-num">Egresos</th><th class="fb-num">Resultado</th>'
+    + '</tr></thead><tbody>'
+    + d.meses.map(m => '<tr><td>' + _finNombreMes(m.periodo) + '</td>'
+        + '<td class="fb-num">' + _finUsd(m.ingresos) + '</td>'
+        + '<td class="fb-num">' + _finUsd(m.egresos) + '</td>'
+        + '<td class="fb-num ' + _finBalColor(m.resultado) + '">' + _finUsd(m.resultado) + '</td></tr>').join('')
+    + '<tr class="fb-total"><td>Total</td>'
+    + '<td class="fb-num">' + _finUsd(d.ingresos.total) + '</td>'
+    + '<td class="fb-num">' + _finUsd(d.egresos.total) + '</td>'
+    + '<td class="fb-num ' + _finBalColor(d.resultado.total) + '">' + _finUsd(d.resultado.total) + '</td></tr>'
+    + '</tbody></table></div></div>';
+
+  return html + '</div>';
+}
+
+function finBalImprimir() {
+  if (!_finBalUltimo) return;
+  const hoja = document.getElementById('fb-print');
+  const body = document.body;
+  const eraClaro = body.classList.contains('light');
+  hoja.innerHTML = _finBalPintar(_finBalUltimo);
+  // En claro siempre: un PDF con fondo oscuro no se imprime.
+  body.classList.add('light');
+  body.classList.add('fb-imprimiendo');
+  const terminar = () => {
+    window.removeEventListener('afterprint', terminar);
+    body.classList.remove('fb-imprimiendo');
+    if (!eraClaro) body.classList.remove('light');
+    hoja.innerHTML = '';
+  };
+  window.addEventListener('afterprint', terminar);
+  window.print();
+}
+
 function _finMesActual() {
   const h = new Date();
   return h.getFullYear() + '-' + String(h.getMonth() + 1).padStart(2, '0');
@@ -9329,6 +9968,10 @@ function _finRecalcularUsd() {
 }
 
 async function abrirMovimiento(prefill) {
+  // Se llega tambien desde el panel de cliente ("registrar cobro"), donde el
+  // boton no sabe del modo solo lectura: se corta aca en vez de abrir un
+  // formulario que al guardar va a dar 403.
+  if (_finSoloLectura()) { alert('Tu rol puede ver Finanzas pero no modificarla'); return; }
   await _finCargarCategorias();
   const p = prefill || {};
   document.getElementById('fin-modal-title').textContent =
@@ -9439,6 +10082,7 @@ async function loadMovimientos(desde, hasta) {
     cuerpo.innerHTML = '<div class="empty-state">No hay movimientos en el período</div>';
     return;
   }
+  const soloLectura = _finSoloLectura();
   cuerpo.innerHTML = movs.map(m => {
     const esIngreso = m.tipo === 'ingreso';
     const original = m.moneda === 'UYU'
@@ -9455,11 +10099,11 @@ async function loadMovimientos(desde, hasta) {
            class="${esIngreso ? 'fin-verde' : 'fin-rojo'}">
         ${esIngreso ? '+' : '−'}${_finUsd(m.monto_usd)}${original}
       </div>
-      <div style="flex:0 0 76px;text-align:right">
+      <div style="flex:0 0 76px;text-align:right">${soloLectura ? '' : `
         <button class="btn-ghost btn-icono" onclick='abrirMovimiento(${_finAttr(m)})'
                 title="Editar"><i data-lucide="pencil" class="nav-icon"></i></button>
         <button class="btn-ghost btn-icono" onclick="borrarMovimientoUI(${m.id}, ${m.recurrente_id ? 1 : 0})"
-                title="Borrar"><i data-lucide="trash-2" class="nav-icon"></i></button>
+                title="Borrar"><i data-lucide="trash-2" class="nav-icon"></i></button>`}
       </div>
     </div>`;
   }).join('');
@@ -9648,14 +10292,15 @@ async function loadFijos() {
   const mes = _finMeses.mes_actual || _finMesActual();
   const totales = _finTotalesFijos(fijos, mes);
   const sinCotizar = totales.sinCotizar;
+  const soloLectura = _finSoloLectura();
   totalesEl.innerHTML = _finKpisFijos(totales);
 
   const encabezado = `
     <div class="fin-toolbar">
       <div class="fin-kpi-var">Cuentan los fijos activos que corren este mes.</div>
-      <button class="btn-primary" style="margin-left:auto" onclick="abrirFijo()">
+      ${soloLectura ? '' : `<button class="btn-primary" style="margin-left:auto" onclick="abrirFijo()">
         <i data-lucide="plus" class="nav-icon"></i> Fijo
-      </button>
+      </button>`}
       ${sinCotizar > 0 ? `<div class="fin-rojo" style="width:100%;font-size:.75rem">
         ${sinCotizar} fijo${sinCotizar > 1 ? 's' : ''} en pesos sin tipo de cambio cargado, afuera de los totales</div>` : ''}
     </div>`;
@@ -9680,11 +10325,11 @@ async function loadFijos() {
         ${f.moneda} ${f.monto.toLocaleString('es-UY')}
         ${enUsd}
       </div>
-      <div style="flex:0 0 76px;text-align:right">
+      <div style="flex:0 0 76px;text-align:right">${soloLectura ? '' : `
         <button class="btn-ghost btn-icono" onclick='abrirFijo(${_finAttr(f)})'
                 title="Editar"><i data-lucide="pencil" class="nav-icon"></i></button>
         <button class="btn-ghost btn-icono" onclick="borrarFijoUI(${f.id})"
-                title="Borrar"><i data-lucide="trash-2" class="nav-icon"></i></button>
+                title="Borrar"><i data-lucide="trash-2" class="nav-icon"></i></button>`}
       </div>
     </div>`;
   }).join('');
@@ -10608,27 +11253,59 @@ function slFichaHtml(seg) {
 }
 // ========== FIN Seguimiento de leads ==========
 // ========== Daily Programador ==========
-// Actividades del dia y recordatorios que se repiten, por persona del equipo
-// marcada como programador (pedido de Juan, 15/9). Un solo panel `daily`: la
-// persona es estado (dyPersonaId), no un panel por persona, asi los permisos
-// siguen siendo un id. En el menu hay una opcion por persona debajo de "Daily
-// Programador"; en el celular, el selector de arriba del panel.
-// El dia de hoy lo decide el servidor en hora de Montevideo. Aca solo se suman
-// dias a una fecha AAAA-MM-DD en UTC, sin mirar el reloj de la compu.
+// Daily Programador y Daily Admin (Juan, 15 y 16/9): actividades del dia y
+// recordatorios que se repiten, por persona del equipo. Son la misma pantalla
+// y la misma API; cambia la seccion ('programador' o 'admin'), que dice el
+// panel (daily / daily_admin), quien aparece (marca programador / admin_daily)
+// y los ids del DOM (dy- / dya-). Todo boton lleva data-seccion.
+// El dia se pinta como Seguimiento de leads: contadores, grupos y tarjetas con
+// las clases sl-. El dia de hoy lo decide el servidor en hora de Montevideo;
+// aca solo se suman dias a una fecha AAAA-MM-DD en UTC.
 // No es Tareas: Tareas es el tablero del equipo (cliente, responsable,
 // prioridad, fecha limite, Notion); esto es la lista personal de cada dia.
 
+const DY_SECCIONES = {
+  programador: {panel: 'daily', pre: 'dy', titulo: 'Daily Programador',
+                sinPersonas: 'No hay nadie marcado como programador en Recursos Humanos.'},
+  admin: {panel: 'daily_admin', pre: 'dya', titulo: 'Daily Admin',
+          sinPersonas: 'No hay nadie marcado para Daily Admin en Recursos Humanos.'}
+};
 const DY_DIAS_LARGOS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 const DY_MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto',
                   'septiembre', 'octubre', 'noviembre', 'diciembre'];
+// Cuantos colores de persona hay en el CSS (dy-color-N y dy-borde-N).
+const DY_COLORES = 4;
+const DY_GRUPOS = [
+  {clave: 'ayer', rotulo: 'Pendiente de ayer'},
+  {clave: 'hoy', rotulo: 'Hoy'},
+  {clave: 'recordatorios', rotulo: 'Recordatorios'},
+  {clave: 'hechas', rotulo: 'Hechas'}
+];
+// El estado de cada Daily, por separado.
+const DY_EST = {programador: dyEstadoNuevo(), admin: dyEstadoNuevo()};
 
-let dyPersonas = [];
-let dyPersonaId = null;
-let dyFecha = null;      // el dia que se esta mirando, AAAA-MM-DD
-let dyHoy = null;        // hoy en Montevideo, segun el servidor
-let dyDatos = null;
-let dyEditandoId = null;
-let dyPedido = 0;        // descarta respuestas viejas si se cambia rapido de dia o persona
+let dyModalSeccion = 'programador';  // de que Daily es el modal abierto
+let dyActividadId = null;            // la actividad del modal; null es una nueva
+let dyRecordatorioId = null;         // el recordatorio del modal; null es uno nuevo
+
+function dyEstadoNuevo() {
+  // fecha: el dia que se esta mirando. hoy: hoy en Montevideo, segun el
+  // servidor. pedido: descarta respuestas viejas si se cambia rapido de dia.
+  return {personas: [], personaId: null, fecha: null, hoy: null, datos: null,
+          hechasAbiertas: false, pedido: 0};
+}
+
+function dySeccion(s) {
+  return DY_SECCIONES[s] ? s : 'programador';
+}
+
+function dyId(s, nombre) {
+  return DY_SECCIONES[dySeccion(s)].pre + '-' + nombre;
+}
+
+function dyAttr(s) {
+  return ' data-seccion="' + dySeccion(s) + '"';
+}
 
 function dyFechaMas(fecha, dias) {
   const p = String(fecha).split('-').map(Number);
@@ -10656,77 +11333,159 @@ function dyHtml(id, html) {
   if (el) el.innerHTML = html;
 }
 
+function dyIconos(id) {
+  const el = document.getElementById(id);
+  if (window.lucide && el) lucide.createIcons({nodes: [el]});
+}
+
 function dyBuscar(lista, id) {
   return (Array.isArray(lista) ? lista : []).find(x => Number(x.id) === Number(id)) || null;
 }
 
-async function dyCargarPersonas() {
+function dyPlural(n, uno, varios) {
+  return n + ' ' + (n === 1 ? uno : varios);
+}
+
+// El apodo si tiene ("Juanchi"), si no el primer nombre. Lo arma el servidor.
+function dyNombre(p) {
+  return (p && (p.mostrar || p.primer_nombre)) || '';
+}
+
+function dyEsHoy(s) {
+  const e = DY_EST[s];
+  return !!e.fecha && e.fecha === e.hoy;
+}
+
+// El color de cada persona sale de su lugar en la lista, que va en orden de
+// alta: sumar a alguien al final no le cambia el color a nadie.
+function dyColor(s, id) {
+  const i = DY_EST[s].personas.findIndex(p => Number(p.id) === Number(id));
+  return (i < 0 ? 0 : i) % DY_COLORES;
+}
+
+function dyIconoPersona(s, id) {
+  return '<i data-lucide="user-round" class="dy-nav-icono dy-color-' + dyColor(s, id) + '" aria-hidden="true"></i>';
+}
+
+// El contenido del panel, una sola vez: los dos Daily tienen el mismo.
+function dyArmarPanel(s) {
+  const conf = DY_SECCIONES[s];
+  const panel = document.getElementById(conf.panel + '-panel');
+  if (!panel || (panel.dataset && panel.dataset.dyArmado === '1')) return;
+  const id = nombre => ' id="' + dyId(s, nombre) + '"';
+  const a = dyAttr(s);
+  panel.innerHTML = '<div class="page-header sl-cabecera"><div><h1' + id('titulo') + '>' + esc(conf.titulo) + '</h1>'
+    + '<div class="page-date"' + id('resumen') + '>Cargando...</div></div>'
+    + '<button class="btn-primary" type="button"' + a + ' onclick="dyAbrirActividad(this.dataset.seccion)">Nueva actividad</button></div>'
+    + '<div class="dy-personas"' + id('personas') + ' role="group" aria-label="De quién es el día"></div>'
+    + '<div class="dy-dia">'
+    + '<button class="btn-ghost btn-icono" type="button"' + a + ' onclick="dyMoverDia(this.dataset.seccion, -1)"'
+    + ' title="Día anterior" aria-label="Día anterior"><i data-lucide="chevron-left" class="nav-icon"></i></button>'
+    + '<button class="btn-ghost btn-icono" type="button"' + a + ' onclick="dyMoverDia(this.dataset.seccion, 1)"'
+    + ' title="Día siguiente" aria-label="Día siguiente"><i data-lucide="chevron-right" class="nav-icon"></i></button>'
+    + '<button class="btn-ghost" type="button"' + a + ' onclick="dyIrHoy(this.dataset.seccion)">Hoy</button>'
+    + '<div class="dy-fecha"' + id('fecha') + ' role="status"></div></div>'
+    + '<div class="dy-error"' + id('error') + ' role="alert"></div>'
+    + '<div class="sl-contadores"' + id('contadores') + ' aria-label="Lo del día por grupo"></div>'
+    + '<div class="dy-agregar"><input type="text"' + id('nueva') + ' class="dy-in" maxlength="200"'
+    + ' placeholder="Actividad rápida para este día y Enter" aria-label="Actividad rápida"' + a
+    + ' onkeydown="if (event.key === ' + "'Enter'" + ') dyAgregar(this.dataset.seccion)">'
+    + '<button class="btn-ghost" type="button"' + a + ' onclick="dyAgregar(this.dataset.seccion)">Agregar</button></div>'
+    + '<div' + id('lista') + '></div>'
+    + '<section class="fin-card dy-recurrentes"' + id('recurrentes') + '><div class="dy-recurrentes-cab">'
+    + '<div class="fin-card-title">Recordatorios que se repiten</div>'
+    + '<button class="btn-ghost" type="button"' + a + ' onclick="dyAbrirRecordatorio(this.dataset.seccion)">Nuevo recordatorio</button></div>'
+    + '<div class="dy-error"' + id('rec-error') + ' role="alert"></div>'
+    + '<div class="dy-lista"' + id('recordatorios') + '></div></section>';
+  if (panel.dataset) panel.dataset.dyArmado = '1';
+}
+
+async function dyCargarPersonas(s) {
+  s = dySeccion(s);
+  const e = DY_EST[s];
   try {
-    const r = await fetch('/api/daily/personas');
+    const r = await fetch('/api/daily/personas?seccion=' + s);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const j = await r.json();
-    dyPersonas = Array.isArray(j.personas) ? j.personas : [];
-  } catch (e) {
-    dyPersonas = [];
+    e.personas = Array.isArray(j.personas) ? j.personas : [];
+  } catch (err) {
+    e.personas = [];
   }
-  if (!dyBuscar(dyPersonas, dyPersonaId)) dyPersonaId = dyPersonas.length ? dyPersonas[0].id : null;
-  dyPintarPersonas();
-  return dyPersonas;
+  if (!dyBuscar(e.personas, e.personaId)) e.personaId = e.personas.length ? e.personas[0].id : null;
+  dyPintarPersonas(s);
+  return e.personas;
 }
 
-function dyPintarPersonas() {
-  const enDaily = activePanel === 'daily';
-  dyHtml('dy-nav-personas', dyPersonas.map(p =>
-    '<div class="dy-nav-sub' + (enDaily && p.id === dyPersonaId ? ' dy-activa' : '') + '" id="dy-nav-persona-' + Number(p.id)
-    + '" role="button" tabindex="0" onclick="dyAbrirPersona(' + Number(p.id) + ')"'
-    + ' onkeydown="if (event.key === ' + "'Enter'" + ') dyAbrirPersona(' + Number(p.id) + ')">'
-    + esc(p.primer_nombre) + '</div>').join(''));
-  dyHtml('dy-personas', dyPersonas.length
-    ? dyPersonas.map(p => '<button class="dy-persona" type="button" aria-pressed="'
-        + (p.id === dyPersonaId ? 'true' : 'false') + '" onclick="dyElegirPersona(' + Number(p.id) + ')">'
-        + esc(p.primer_nombre) + '</button>').join('')
-    : '<div class="dy-vacio">No hay nadie marcado como programador en Recursos Humanos.</div>');
+function dyPintarPersonas(s) {
+  const e = DY_EST[s];
+  const enPanel = activePanel === DY_SECCIONES[s].panel;
+  const a = dyAttr(s);
+  dyHtml(dyId(s, 'nav-personas'), e.personas.map(p => {
+    const id = Number(p.id);
+    return '<div class="dy-nav-sub' + (enPanel && id === e.personaId ? ' dy-activa' : '') + '" id="'
+      + dyId(s, 'nav-persona-' + id) + '" role="button" tabindex="0"' + a + ' data-persona="' + id + '"'
+      + ' onclick="dyAbrirPersona(this.dataset.seccion, Number(this.dataset.persona))"'
+      + ' onkeydown="if (event.key === ' + "'Enter'" + ') dyAbrirPersona(this.dataset.seccion, Number(this.dataset.persona))">'
+      + dyIconoPersona(s, id) + '<span>' + esc(dyNombre(p)) + '</span></div>';
+  }).join(''));
+  dyHtml(dyId(s, 'personas'), e.personas.length
+    ? e.personas.map(p => {
+        const id = Number(p.id);
+        return '<button class="dy-persona" type="button" aria-pressed="' + (id === e.personaId ? 'true' : 'false') + '"'
+          + a + ' data-persona="' + id + '" onclick="dyElegirPersona(this.dataset.seccion, Number(this.dataset.persona))">'
+          + dyIconoPersona(s, id) + '<span>' + esc(dyNombre(p)) + '</span></button>';
+      }).join('')
+    : '<div class="dy-vacio">' + esc(DY_SECCIONES[s].sinPersonas) + '</div>');
+  dyIconos(dyId(s, 'nav-personas'));
+  dyIconos(dyId(s, 'personas'));
 }
 
-// Desde el menu: abre el panel en el dia de esa persona.
-function dyAbrirPersona(id) {
-  if (id !== dyPersonaId) dyCancelarEdicion();
-  dyPersonaId = id;
-  showPanel('daily');   // showPanel llama a loadDaily
+// Desde el menu: abre el panel de ese Daily en el dia de esa persona.
+function dyAbrirPersona(s, id) {
+  s = dySeccion(s);
+  DY_EST[s].personaId = id;
+  showPanel(DY_SECCIONES[s].panel);   // showPanel llama a loadDaily
 }
 
-function dyElegirPersona(id) {
-  if (id === dyPersonaId) return;
-  dyPersonaId = id;
-  dyCancelarEdicion();
-  dyCargarDia();
+function dyElegirPersona(s, id) {
+  s = dySeccion(s);
+  if (id === DY_EST[s].personaId) return;
+  DY_EST[s].personaId = id;
+  dyCargarDia(s);
 }
 
-async function loadDaily() {
-  if (!dyPersonas.length) await dyCargarPersonas();
-  await dyCargarDia();
+async function loadDaily(s) {
+  s = dySeccion(s);
+  dyArmarPanel(s);
+  if (!DY_EST[s].personas.length) await dyCargarPersonas(s);
+  await dyCargarDia(s);
 }
 
-function dyMoverDia(dias) {
-  if (!dyFecha) return;
-  dyFecha = dyFechaMas(dyFecha, dias);
-  dyCargarDia();
+function dyMoverDia(s, dias) {
+  s = dySeccion(s);
+  const e = DY_EST[s];
+  if (!e.fecha) return;
+  e.fecha = dyFechaMas(e.fecha, dias);
+  dyCargarDia(s);
 }
 
-function dyIrHoy() {
-  dyFecha = null;   // sin fecha, el servidor devuelve hoy en Montevideo
-  dyCargarDia();
+function dyIrHoy(s) {
+  s = dySeccion(s);
+  DY_EST[s].fecha = null;   // sin fecha, el servidor devuelve hoy en Montevideo
+  dyCargarDia(s);
 }
 
-async function dyCargarDia() {
-  dyPintarPersonas();
-  if (dyPersonaId === null) {
-    dyDatos = null;
-    dyPintarDia();
+async function dyCargarDia(s) {
+  s = dySeccion(s);
+  const e = DY_EST[s];
+  dyPintarPersonas(s);
+  if (e.personaId === null) {
+    e.datos = null;
+    dyPintarDia(s);
     return;
   }
-  const pedido = ++dyPedido;
-  const url = '/api/daily?persona_id=' + dyPersonaId + (dyFecha ? '&fecha=' + dyFecha : '');
+  const pedido = ++e.pedido;
+  const url = '/api/daily?seccion=' + s + '&persona_id=' + e.personaId + (e.fecha ? '&fecha=' + e.fecha : '');
   let error = '';
   let datos = null;
   try {
@@ -10734,86 +11493,185 @@ async function dyCargarDia() {
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.error || 'HTTP ' + r.status);
     datos = j;
-  } catch (e) {
-    error = 'No se pudo leer el día: ' + e.message;
+  } catch (err) {
+    error = 'No se pudo leer el día: ' + err.message;
   }
-  if (pedido !== dyPedido) return;
-  dyDatos = datos;
+  if (pedido !== e.pedido) return;
+  e.datos = datos;
   if (datos) {
-    dyFecha = datos.fecha || dyFecha;
-    dyHoy = datos.hoy || dyHoy;
+    e.fecha = datos.fecha || e.fecha;
+    e.hoy = datos.hoy || e.hoy;
   }
-  dyTexto('dy-error', error);
-  dyPintarDia();
+  dyTexto(dyId(s, 'error'), error);
+  dyPintarDia(s);
 }
 
-function dyItemHtml(x, marcar, clase, nota, borrable) {
-  const id = Number(x.id);
-  const idCheck = 'dy-check-' + marcar + '-' + id;
-  return '<div class="dy-item' + (clase ? ' ' + clase : '') + (x.hecha ? ' dy-hecha' : '') + '">'
-    + '<input type="checkbox" class="dy-check" id="' + idCheck + '"' + (x.hecha ? ' checked' : '')
-    + ' onchange="' + marcar + '(' + id + ', this.checked)">'
-    + '<label class="dy-item-texto" for="' + idCheck + '">' + esc(x.texto)
-    + (nota ? '<span class="dy-item-nota">' + esc(nota) + '</span>' : '') + '</label>'
-    + (borrable ? '<button class="btn-ghost btn-icono" type="button" onclick="dyBorrarActividad(' + id + ')"'
-        + ' title="Borrar" aria-label="Borrar ' + esc(x.texto) + '"><i data-lucide="trash-2" class="nav-icon"></i></button>' : '')
-    + '</div>';
-}
-
-function dyPintarDia() {
-  const d = dyDatos || {};
+// Lo del dia separado como lo muestra la pantalla.
+function dyGrupos(d) {
   const lista = x => Array.isArray(x) ? x : [];
-  const esHoy = !!dyFecha && dyFecha === dyHoy;
-  dyHtml('dy-fecha', dyFecha
-    ? esc(dyFechaLarga(dyFecha)) + (esHoy ? '<span class="dy-fecha-hoy">Hoy</span>' : '') : '');
-
-  const pendientes = lista(d.pendientes_ayer);
-  dyHtml('dy-pendientes', pendientes.length
-    ? '<div class="dy-bloque"><div class="dy-bloque-titulo">Pendiente de ayer</div><div class="dy-lista">'
-      + pendientes.map(a => '<div class="dy-item dy-pendiente"><span class="dy-item-texto">' + esc(a.texto) + '</span>'
-          + '<button class="btn-ghost" type="button" onclick="dyPasar(' + Number(a.id) + ')">'
-          + (esHoy ? 'Pasar a hoy' : 'Pasar a este día') + '</button></div>').join('')
-      + '</div></div>'
-    : '');
-
-  const recordatorios = lista(d.recordatorios);
-  dyHtml('dy-recordatorios-hoy', recordatorios.length
-    ? '<div class="dy-bloque"><div class="dy-bloque-titulo">Recordatorios de este día</div><div class="dy-lista">'
-      + recordatorios.map(x => dyItemHtml(x, 'dyMarcarRecordatorio', 'dy-recordatorio', x.cuando, false)).join('')
-      + '</div></div>'
-    : '');
-
   const actividades = lista(d.actividades);
-  dyHtml('dy-actividades', '<div class="dy-bloque"><div class="dy-bloque-titulo">Actividades</div>'
-    + (actividades.length
-      ? '<div class="dy-lista">' + actividades.map(a => dyItemHtml(a, 'dyMarcarActividad', '',
-          a.pasada_de ? 'Pasada del ' + dyFechaCorta(a.pasada_de) : '', true)).join('') + '</div>'
-      : '<div class="dy-vacio">Nada cargado para este día. Escribí arriba y apretá Enter.</div>')
-    + '</div>');
-
-  dyPintarRecordatorios();
-  const panel = document.getElementById('daily-panel');
-  if (window.lucide && panel) lucide.createIcons({nodes: [panel]});
+  const recordatorios = lista(d.recordatorios);
+  return {
+    ayer: lista(d.pendientes_ayer),
+    hoy: actividades.filter(a => !a.hecha),
+    recordatorios: recordatorios.filter(r => !r.hecha),
+    hechas: actividades.filter(a => a.hecha).map(a => Object.assign({tipo: 'actividad'}, a))
+      .concat(recordatorios.filter(r => r.hecha).map(r => Object.assign({tipo: 'recordatorio'}, r)))
+  };
 }
 
-function dyPintarRecordatorios() {
-  const todos = dyDatos && Array.isArray(dyDatos.recordatorios_todos) ? dyDatos.recordatorios_todos : [];
+function dyResumen(g) {
+  const partes = [dyPlural(g.hoy.length + g.recordatorios.length, 'pendiente', 'pendientes'),
+                  dyPlural(g.hechas.length, 'hecha', 'hechas')];
+  if (g.ayer.length) partes.push(g.ayer.length + ' de ayer');
+  return partes.join(' · ');
+}
+
+// Cuatro tarjetas chicas; la de ayer en rojo claro si hay algo. Tocarlas lleva al grupo.
+function dyContadoresHtml(s, g) {
+  return DY_GRUPOS.map(x => {
+    const n = g[x.clave].length;
+    const clase = 'sl-contador' + (x.clave === 'ayer' && n > 0 ? ' sl-contador-vencidos' : '');
+    return '<button type="button" class="' + clase + '" data-grupo="' + x.clave + '"' + dyAttr(s)
+      + ' onclick="dyIrAGrupo(this.dataset.seccion, this.dataset.grupo)">'
+      + '<span class="sl-contador-num">' + n + '</span>'
+      + '<span class="sl-contador-rot">' + esc(x.rotulo) + '</span></button>';
+  }).join('');
+}
+
+function dyIrAGrupo(s, clave) {
+  s = dySeccion(s);
+  const el = document.getElementById(dyId(s, 'grupo-' + clave));
+  if (!el) return;
+  if (clave === 'hechas') {
+    DY_EST[s].hechasAbiertas = true;
+    el.open = true;
+  }
+  if (el.scrollIntoView) el.scrollIntoView({behavior: 'smooth', block: 'start'});
+}
+
+function dyTituloDia(s) {
+  const e = DY_EST[s];
+  if (!e.fecha) return '';
+  const largo = dyFechaLarga(e.fecha);
+  return dyEsHoy(s) ? 'Hoy · ' + largo : largo;
+}
+
+function dyBoton(s, texto, accion, id, extra) {
+  return '<button type="button" class="sl-btn' + (extra || '') + '"' + dyAttr(s) + ' data-id="' + Number(id)
+    + '" onclick="' + accion + '(this.dataset.seccion, Number(this.dataset.id))">' + texto + '</button>';
+}
+
+// Un grupo vacio no se muestra. Las hechas van al final, colapsadas.
+function dyListaHtml(s, g) {
+  const esHoy = dyEsHoy(s);
+  const grupo = (clave, titulo, items, tipo) => '<section class="sl-grupo" id="' + dyId(s, 'grupo-' + clave) + '">'
+    + '<h2 class="sl-grupo-titulo' + (clave === 'ayer' ? ' sl-grupo-titulo-vencidos' : '') + '">'
+    + esc(titulo.toUpperCase()) + '</h2>'
+    + items.map(it => dyTarjetaHtml(s, it, tipo)).join('') + '</section>';
+  let html = '';
+  if (g.ayer.length) html += grupo('ayer', 'Pendiente de ayer', g.ayer, 'ayer');
+  if (g.hoy.length) html += grupo('hoy', dyTituloDia(s), g.hoy, 'hoy');
+  if (g.recordatorios.length) {
+    html += grupo('recordatorios', esHoy ? 'Recordatorios de hoy' : 'Recordatorios del día', g.recordatorios, 'recordatorio');
+  }
+  if (!g.ayer.length && !g.hoy.length && !g.recordatorios.length) {
+    html += '<div class="dy-vacio-grande"><span>' + (esHoy ? 'Nada pendiente para hoy.' : 'Nada pendiente para este día.')
+      + '</span><button class="btn-primary" type="button"' + dyAttr(s)
+      + ' onclick="dyAbrirActividad(this.dataset.seccion)">Agregar actividad</button></div>';
+  }
+  if (g.hechas.length) {
+    html += '<details class="sl-grupo dy-hechas" id="' + dyId(s, 'grupo-hechas') + '"' + dyAttr(s)
+      + (DY_EST[s].hechasAbiertas ? ' open' : '')
+      + ' ontoggle="DY_EST[this.dataset.seccion].hechasAbiertas = this.open">'
+      + '<summary class="sl-grupo-titulo">HECHAS (' + g.hechas.length + ')</summary>'
+      + g.hechas.map(it => dyLineaHechaHtml(s, it)).join('') + '</details>';
+  }
+  return html;
+}
+
+// Tarjeta completa, como las de Seguimiento. Lo de ayer lleva el borde rojo de
+// los vencidos; los recordatorios, el color de la persona. Todo tiene Editar.
+function dyTarjetaHtml(s, it, tipo) {
+  const id = Number(it.id);
+  const ayer = tipo === 'ayer';
+  const rec = tipo === 'recordatorio';
+  const clase = 'sl-tarjeta dy-tarjeta' + (ayer ? ' sl-vencida' : '')
+    + (rec ? ' dy-borde-' + dyColor(s, DY_EST[s].personaId) : '');
+  const hora = it.hora
+    ? '<div class="sl-cuando' + (ayer ? ' sl-cuando-vencido' : '') + '">' + esc(it.hora) + '</div>' : '';
+  const nota = it.nota ? '<div class="sl-nota">' + esc(it.nota) + '</div>' : '';
+  let etiqueta = '';
+  if (rec) etiqueta = '<span class="dy-etiqueta">' + esc(it.cuando || '') + '</span>';
+  else if (it.pasada_de) etiqueta = '<span class="dy-etiqueta">Pasada del ' + esc(dyFechaCorta(it.pasada_de)) + '</span>';
+  let acciones;
+  if (rec) {
+    acciones = dyBoton(s, 'Hecho', 'dyRecordatorioHecho', id, ' sl-btn-hecho')
+      + dyBoton(s, 'Editar', 'dyEditarRecordatorio', id);
+  } else if (ayer) {
+    acciones = dyBoton(s, dyEsHoy(s) ? 'Pasar a hoy' : 'Pasar a este día', 'dyPasar', id)
+      + dyBoton(s, 'Hecho', 'dyActividadHecha', id, ' sl-btn-hecho') + dyBoton(s, 'Editar', 'dyAbrirActividad', id);
+  } else {
+    acciones = dyBoton(s, 'Hecho', 'dyActividadHecha', id, ' sl-btn-hecho')
+      + dyBoton(s, 'Pasar a mañana', 'dyPasarAManiana', id) + dyBoton(s, 'Editar', 'dyAbrirActividad', id);
+  }
+  return '<article class="' + clase + '" data-dy-id="' + id + '" data-dy-tipo="' + tipo + '">'
+    + '<div class="sl-tarjeta-cab"><div class="dy-tarjeta-titulo">' + esc(it.texto) + '</div>' + hora + '</div>'
+    + nota + etiqueta + '<div class="sl-acciones">' + acciones + '</div></article>';
+}
+
+function dyLineaHechaHtml(s, it) {
+  const id = Number(it.id);
+  const rec = it.tipo === 'recordatorio';
+  return '<div class="sl-linea dy-linea-hecha" data-dy-id="' + id + '"><div class="sl-linea-txt">'
+    + '<div class="dy-tachado">' + esc(it.texto) + '</div>'
+    + (rec ? '<div class="sl-linea-motivo">' + esc(it.cuando || '') + '</div>' : '') + '</div>'
+    + '<div class="dy-linea-botones">'
+    + dyBoton(s, 'Editar', rec ? 'dyEditarRecordatorio' : 'dyAbrirActividad', id)
+    + dyBoton(s, 'Deshacer', rec ? 'dyDeshacerRecordatorio' : 'dyDeshacerActividad', id) + '</div></div>';
+}
+
+function dyPintarDia(s) {
+  const e = DY_EST[s];
+  const persona = dyBuscar(e.personas, e.personaId);
+  dyTexto(dyId(s, 'titulo'), persona ? 'Daily de ' + dyNombre(persona) : DY_SECCIONES[s].titulo);
+  dyHtml(dyId(s, 'fecha'), e.fecha
+    ? esc(dyFechaLarga(e.fecha)) + (dyEsHoy(s) ? '<span class="dy-fecha-hoy">Hoy</span>' : '') : '');
+  if (!e.datos) {
+    dyTexto(dyId(s, 'resumen'), e.personaId === null ? DY_SECCIONES[s].sinPersonas : '');
+    dyHtml(dyId(s, 'contadores'), '');
+    dyHtml(dyId(s, 'lista'), '');
+    dyPintarRecordatorios(s);
+    return;
+  }
+  const g = dyGrupos(e.datos);
+  dyTexto(dyId(s, 'resumen'), dyResumen(g));
+  dyHtml(dyId(s, 'contadores'), dyContadoresHtml(s, g));
+  dyHtml(dyId(s, 'lista'), dyListaHtml(s, g));
+  dyPintarRecordatorios(s);
+  dyIconos(DY_SECCIONES[s].panel + '-panel');
+}
+
+function dyPintarRecordatorios(s) {
+  const e = DY_EST[s];
+  const todos = e.datos && Array.isArray(e.datos.recordatorios_todos) ? e.datos.recordatorios_todos : [];
   const boton = (accion, id, icono, rotulo, texto) =>
-    '<button class="btn-ghost btn-icono" type="button" onclick="' + accion + '(' + id + ')" title="' + rotulo
-    + '" aria-label="' + rotulo + ': ' + esc(texto) + '"><i data-lucide="' + icono + '" class="nav-icon"></i></button>';
-  dyHtml('dy-recordatorios', todos.length
+    '<button class="btn-ghost btn-icono" type="button"' + dyAttr(s) + ' data-id="' + id + '" onclick="' + accion
+    + '(this.dataset.seccion, Number(this.dataset.id))" title="' + rotulo + '" aria-label="' + rotulo + ': ' + esc(texto)
+    + '"><i data-lucide="' + icono + '" class="nav-icon"></i></button>';
+  dyHtml(dyId(s, 'recordatorios'), todos.length
     ? todos.map(r => {
         const id = Number(r.id);
         return '<div class="dy-rec' + (r.activo ? '' : ' dy-pausado') + '"><div class="dy-rec-cuerpo">'
           + '<div class="dy-rec-texto">' + esc(r.texto) + '</div>'
-          + '<div class="dy-rec-cuando">' + esc(r.cuando || '') + '</div></div>'
+          + '<div class="dy-rec-cuando">' + esc(r.cuando || '') + (r.hora ? ' · ' + esc(r.hora) : '') + '</div></div>'
           + (r.activo ? '' : '<span class="dy-badge">Pausado</span>')
           + boton('dyEditarRecordatorio', id, 'pencil', 'Editar', r.texto)
           + boton('dyPausarRecordatorio', id, r.activo ? 'pause' : 'play', r.activo ? 'Pausar' : 'Reanudar', r.texto)
           + boton('dyBorrarRecordatorio', id, 'trash-2', 'Borrar', r.texto)
           + '</div>';
       }).join('')
-    : '<div class="dy-vacio">Sin recordatorios. Creá uno arriba: aparece solo en los días que le tocan.</div>');
+    : '<div class="dy-vacio">Sin recordatorios. Creá uno con "Nuevo recordatorio": aparece solo en los días que le tocan.</div>');
 }
 
 async function dyPedir(url, metodo, cuerpo) {
@@ -10825,150 +11683,254 @@ async function dyPedir(url, metodo, cuerpo) {
   return j;
 }
 
-// Hace el pedido, recarga el dia y deja el error (si hubo) en `idError`.
-async function dyAccion(idError, prefijo, hacer) {
+// Hace el pedido, recarga el dia y deja el error (si hubo) en el aviso del panel.
+async function dyAccion(s, nombreError, prefijo, hacer) {
+  s = dySeccion(s);
   let error = '';
   try {
     await hacer();
-  } catch (e) {
-    error = prefijo + e.message;
+  } catch (err) {
+    error = prefijo + err.message;
   }
-  await dyCargarDia();
-  if (error) dyTexto(idError, error);
+  await dyCargarDia(s);
+  if (error) dyTexto(dyId(s, nombreError), error);
   return !error;
 }
 
-async function dyAgregar() {
-  const input = document.getElementById('dy-nueva');
+// ── botones de las tarjetas ──
+function dyActividadHecha(s, id) {
+  return dyAccion(s, 'error', 'No se pudo marcar: ', () =>
+    dyPedir('/api/daily/actividades/' + id, 'PATCH', {hecha: true}));
+}
+
+function dyDeshacerActividad(s, id) {
+  return dyAccion(s, 'error', 'No se pudo deshacer: ', () =>
+    dyPedir('/api/daily/actividades/' + id, 'PATCH', {hecha: false}));
+}
+
+function dyRecordatorioHecho(s, id) {
+  return dyAccion(s, 'error', 'No se pudo marcar: ', () =>
+    dyPedir('/api/daily/recordatorios/' + id + '/marca', 'PUT', {fecha: DY_EST[dySeccion(s)].fecha, hecha: true}));
+}
+
+function dyDeshacerRecordatorio(s, id) {
+  return dyAccion(s, 'error', 'No se pudo deshacer: ', () =>
+    dyPedir('/api/daily/recordatorios/' + id + '/marca', 'PUT', {fecha: DY_EST[dySeccion(s)].fecha, hecha: false}));
+}
+
+// Lo de ayer pasa al dia que se esta mirando.
+function dyPasar(s, id) {
+  return dyAccion(s, 'error', 'No se pudo pasar: ', () =>
+    dyPedir('/api/daily/actividades/' + id + '/pasar', 'POST', {fecha: DY_EST[dySeccion(s)].fecha}));
+}
+
+// "Mañana" es el dia siguiente al que se esta mirando.
+function dyPasarAManiana(s, id) {
+  return dyAccion(s, 'error', 'No se pudo pasar: ', () =>
+    dyPedir('/api/daily/actividades/' + id + '/pasar', 'POST', {fecha: dyFechaMas(DY_EST[dySeccion(s)].fecha, 1)}));
+}
+
+// ── alta rapida con Enter ──
+async function dyAgregar(s) {
+  s = dySeccion(s);
+  const e = DY_EST[s];
+  const input = document.getElementById(dyId(s, 'nueva'));
   const texto = (input.value || '').trim();
   if (!texto) {
-    dyTexto('dy-error', 'Escribí la actividad antes de agregarla.');
+    dyTexto(dyId(s, 'error'), 'Escribí la actividad antes de agregarla.');
     input.focus();
     return;
   }
-  if (dyPersonaId === null || !dyFecha) {
-    dyTexto('dy-error', 'Elegí de quién es el día.');
+  if (e.personaId === null || !e.fecha) {
+    dyTexto(dyId(s, 'error'), 'Elegí de quién es el día.');
     return;
   }
-  const ok = await dyAccion('dy-error', 'No se pudo agregar: ', () =>
-    dyPedir('/api/daily/actividades', 'POST', {persona_id: dyPersonaId, fecha: dyFecha, texto: texto}));
+  const ok = await dyAccion(s, 'error', 'No se pudo agregar: ', () =>
+    dyPedir('/api/daily/actividades', 'POST', {seccion: s, persona_id: e.personaId, fecha: e.fecha, texto: texto}));
   if (ok) input.value = '';
   input.focus();
 }
 
-function dyMarcarActividad(id, hecha) {
-  return dyAccion('dy-error', 'No se pudo marcar: ', () =>
-    dyPedir('/api/daily/actividades/' + id, 'PATCH', {hecha: !!hecha}));
+// ── modal de actividad: nueva o editar (texto, dia, hora y nota) ──
+function dyItemDelDia(s, id) {
+  const d = DY_EST[s].datos || {};
+  return dyBuscar(d.actividades, id) || dyBuscar(d.pendientes_ayer, id);
 }
 
-function dyMarcarRecordatorio(id, hecha) {
-  return dyAccion('dy-error', 'No se pudo marcar: ', () =>
-    dyPedir('/api/daily/recordatorios/' + id + '/marca', 'PUT', {fecha: dyFecha, hecha: !!hecha}));
+function dyAbrirActividad(s, id) {
+  s = dySeccion(s);
+  const e = DY_EST[s];
+  if (e.personaId === null) {
+    dyTexto(dyId(s, 'error'), 'Elegí de quién es el día.');
+    return;
+  }
+  const a = (id === undefined || id === null) ? null : dyItemDelDia(s, id);
+  const persona = dyBuscar(e.personas, e.personaId);
+  dyModalSeccion = s;
+  dyActividadId = a ? Number(a.id) : null;
+  dyTexto('dy-act-titulo', a ? 'Editar actividad' : 'Nueva actividad');
+  dyTexto('dy-act-contexto', 'Daily de ' + dyNombre(persona));
+  document.getElementById('dy-act-texto').value = a ? a.texto : '';
+  document.getElementById('dy-act-fecha').value = a ? a.fecha : (e.fecha || e.hoy || '');
+  document.getElementById('dy-act-hora').value = a && a.hora ? a.hora : '';
+  document.getElementById('dy-act-nota').value = a && a.nota ? a.nota : '';
+  dyTexto('dy-act-error', '');
+  const borrar = document.getElementById('dy-act-borrar');
+  if (borrar) borrar.classList.toggle('dy-oculto', !a);
+  document.getElementById('dy-modal-actividad').classList.add('open');
+  const texto = document.getElementById('dy-act-texto');
+  if (texto.focus) texto.focus();
 }
 
-function dyPasar(id) {
-  return dyAccion('dy-error', 'No se pudo pasar: ', () =>
-    dyPedir('/api/daily/actividades/' + id + '/pasar', 'POST', {fecha: dyFecha}));
+function dyCerrarModal() {
+  document.getElementById('dy-modal-actividad').classList.remove('open');
+  dyActividadId = null;
 }
 
-async function dyBorrarActividad(id) {
-  const a = dyBuscar(dyDatos && dyDatos.actividades, id);
+async function dyGuardarActividad() {
+  const s = dyModalSeccion;
+  const e = DY_EST[s];
+  const texto = String(document.getElementById('dy-act-texto').value || '').trim();
+  const fecha = document.getElementById('dy-act-fecha').value || e.fecha;
+  if (!texto) {
+    dyTexto('dy-act-error', 'Escribí qué hay que hacer.');
+    return;
+  }
+  if (!fecha) {
+    dyTexto('dy-act-error', 'Elegí el día.');
+    return;
+  }
+  const datos = {texto: texto, fecha: fecha, hora: document.getElementById('dy-act-hora').value || '',
+                 nota: document.getElementById('dy-act-nota').value || ''};
+  const editando = dyActividadId;
+  try {
+    if (editando !== null) await dyPedir('/api/daily/actividades/' + editando, 'PATCH', datos);
+    else await dyPedir('/api/daily/actividades', 'POST', Object.assign({seccion: s, persona_id: e.personaId}, datos));
+  } catch (err) {
+    dyTexto('dy-act-error', 'No se guardó: ' + err.message);
+    return;
+  }
+  dyCerrarModal();
+  await dyCargarDia(s);
+}
+
+async function dyBorrarDesdeModal() {
+  const s = dyModalSeccion;
+  const id = dyActividadId;
+  if (id === null) return;
+  const a = dyItemDelDia(s, id);
   if (!confirm('¿Borrar "' + (a ? a.texto : 'la actividad') + '"?')) return;
-  await dyAccion('dy-error', 'No se pudo borrar: ', () => dyPedir('/api/daily/actividades/' + id, 'DELETE'));
+  try {
+    await dyPedir('/api/daily/actividades/' + id, 'DELETE');
+  } catch (err) {
+    dyTexto('dy-act-error', 'No se pudo borrar: ' + err.message);
+    return;
+  }
+  dyCerrarModal();
+  await dyCargarDia(s);
 }
 
+// ── modal de recordatorio: nuevo o editar (texto, frecuencia, dias, hora y nota) ──
+// Editar no toca las marcas de hecho de los otros dias: viven aparte.
 function dyDiasElegidos() {
   const dias = [];
   for (let i = 0; i < 7; i++) {
-    const c = document.getElementById('dy-rec-dia-' + i);
+    const c = document.getElementById('dy-recm-dia-' + i);
     if (c && c.checked) dias.push(i);
   }
   return dias;
 }
 
 function dyPintarDiasForm() {
-  const sel = document.getElementById('dy-rec-frecuencia');
-  const dias = document.getElementById('dy-rec-dias');
+  const sel = document.getElementById('dy-recm-frecuencia');
+  const dias = document.getElementById('dy-recm-dias');
   if (sel && dias) dias.classList.toggle('dy-oculto', sel.value !== 'dias');
 }
 
-async function dyGuardarRecordatorio() {
-  const textoEl = document.getElementById('dy-rec-texto');
-  const texto = (textoEl.value || '').trim();
-  const frecuencia = document.getElementById('dy-rec-frecuencia').value || 'diario';
-  const dias = frecuencia === 'dias' ? dyDiasElegidos() : [];
-  if (!texto) {
-    dyTexto('dy-rec-error', 'Escribí qué hay que recordar.');
-    textoEl.focus();
+function dyAbrirRecordatorio(s, id) {
+  s = dySeccion(s);
+  const e = DY_EST[s];
+  if (e.personaId === null) {
+    dyTexto(dyId(s, 'rec-error'), 'Elegí de quién es el recordatorio.');
     return;
   }
-  if (frecuencia === 'dias' && !dias.length) {
-    dyTexto('dy-rec-error', 'Elegí al menos un día de la semana.');
-    return;
-  }
-  if (dyPersonaId === null) {
-    dyTexto('dy-rec-error', 'Elegí de quién es el recordatorio.');
-    return;
-  }
-  const editando = dyEditandoId;
-  const datos = {texto: texto, frecuencia: frecuencia, dias: dias};
-  const ok = await dyAccion('dy-rec-error', 'No se pudo guardar: ', () => editando !== null
-    ? dyPedir('/api/daily/recordatorios/' + editando, 'PUT', datos)
-    : dyPedir('/api/daily/recordatorios', 'POST', Object.assign({persona_id: dyPersonaId}, datos)));
-  if (ok) dyCancelarEdicion();
-}
-
-function dyEditarRecordatorio(id) {
-  const r = dyBuscar(dyDatos && dyDatos.recordatorios_todos, id);
-  if (!r) return;
-  dyEditandoId = Number(r.id);
-  const dias = Array.isArray(r.dias) ? r.dias : [];
-  document.getElementById('dy-rec-texto').value = r.texto;
-  document.getElementById('dy-rec-frecuencia').value = r.frecuencia;
+  const r = (id === undefined || id === null) ? null : dyBuscar(e.datos && e.datos.recordatorios_todos, id);
+  const persona = dyBuscar(e.personas, e.personaId);
+  dyModalSeccion = s;
+  dyRecordatorioId = r ? Number(r.id) : null;
+  dyTexto('dy-recm-titulo', r ? 'Editar recordatorio' : 'Nuevo recordatorio');
+  dyTexto('dy-recm-contexto', 'Daily de ' + dyNombre(persona));
+  document.getElementById('dy-recm-texto').value = r ? r.texto : '';
+  document.getElementById('dy-recm-frecuencia').value = r ? r.frecuencia : 'diario';
+  document.getElementById('dy-recm-hora').value = r && r.hora ? r.hora : '';
+  document.getElementById('dy-recm-nota').value = r && r.nota ? r.nota : '';
+  const dias = r && Array.isArray(r.dias) ? r.dias : [];
   for (let i = 0; i < 7; i++) {
-    const c = document.getElementById('dy-rec-dia-' + i);
+    const c = document.getElementById('dy-recm-dia-' + i);
     if (c) c.checked = dias.indexOf(i) >= 0;
   }
   dyPintarDiasForm();
-  dyTexto('dy-rec-guardar', 'Guardar cambios');
-  const cancelar = document.getElementById('dy-rec-cancelar');
-  if (cancelar) cancelar.classList.remove('dy-oculto');
-  dyTexto('dy-rec-error', '');
-  document.getElementById('dy-rec-texto').focus();
+  const aviso = document.getElementById('dy-recm-aviso');
+  if (aviso) aviso.classList.toggle('dy-oculto', !r);
+  dyTexto('dy-recm-error', '');
+  document.getElementById('dy-modal-recordatorio').classList.add('open');
+  const texto = document.getElementById('dy-recm-texto');
+  if (texto.focus) texto.focus();
 }
 
-function dyCancelarEdicion() {
-  dyEditandoId = null;
-  const texto = document.getElementById('dy-rec-texto');
-  if (texto) texto.value = '';
-  const frecuencia = document.getElementById('dy-rec-frecuencia');
-  if (frecuencia) frecuencia.value = 'diario';
-  for (let i = 0; i < 7; i++) {
-    const c = document.getElementById('dy-rec-dia-' + i);
-    if (c) c.checked = false;
+function dyEditarRecordatorio(s, id) {
+  dyAbrirRecordatorio(s, id);
+}
+
+function dyCerrarRecordatorio() {
+  document.getElementById('dy-modal-recordatorio').classList.remove('open');
+  dyRecordatorioId = null;
+}
+
+async function dyGuardarRecordatorio() {
+  const s = dyModalSeccion;
+  const e = DY_EST[s];
+  const texto = String(document.getElementById('dy-recm-texto').value || '').trim();
+  const frecuencia = document.getElementById('dy-recm-frecuencia').value || 'diario';
+  const dias = frecuencia === 'dias' ? dyDiasElegidos() : [];
+  if (!texto) {
+    dyTexto('dy-recm-error', 'Escribí qué hay que recordar.');
+    return;
   }
-  dyPintarDiasForm();
-  dyTexto('dy-rec-guardar', 'Crear recordatorio');
-  const cancelar = document.getElementById('dy-rec-cancelar');
-  if (cancelar) cancelar.classList.add('dy-oculto');
-  dyTexto('dy-rec-error', '');
+  if (frecuencia === 'dias' && !dias.length) {
+    dyTexto('dy-recm-error', 'Elegí al menos un día de la semana.');
+    return;
+  }
+  const datos = {texto: texto, frecuencia: frecuencia, dias: dias,
+                 hora: document.getElementById('dy-recm-hora').value || '',
+                 nota: document.getElementById('dy-recm-nota').value || ''};
+  const editando = dyRecordatorioId;
+  try {
+    if (editando !== null) await dyPedir('/api/daily/recordatorios/' + editando, 'PUT', datos);
+    else await dyPedir('/api/daily/recordatorios', 'POST', Object.assign({seccion: s, persona_id: e.personaId}, datos));
+  } catch (err) {
+    dyTexto('dy-recm-error', 'No se guardó: ' + err.message);
+    return;
+  }
+  dyCerrarRecordatorio();
+  await dyCargarDia(s);
 }
 
-function dyPausarRecordatorio(id) {
-  const r = dyBuscar(dyDatos && dyDatos.recordatorios_todos, id);
+function dyPausarRecordatorio(s, id) {
+  s = dySeccion(s);
+  const r = dyBuscar(DY_EST[s].datos && DY_EST[s].datos.recordatorios_todos, id);
   if (!r) return null;
-  return dyAccion('dy-rec-error', 'No se pudo ' + (r.activo ? 'pausar' : 'reanudar') + ': ', () =>
+  return dyAccion(s, 'rec-error', 'No se pudo ' + (r.activo ? 'pausar' : 'reanudar') + ': ', () =>
     dyPedir('/api/daily/recordatorios/' + id, 'PUT', {activo: !r.activo}));
 }
 
-async function dyBorrarRecordatorio(id) {
-  const r = dyBuscar(dyDatos && dyDatos.recordatorios_todos, id);
+async function dyBorrarRecordatorio(s, id) {
+  s = dySeccion(s);
+  const r = dyBuscar(DY_EST[s].datos && DY_EST[s].datos.recordatorios_todos, id);
   if (!r) return;
   if (!confirm('¿Borrar el recordatorio "' + r.texto + '"? Deja de aparecer en todos los días. '
       + 'Si solo querés frenarlo un tiempo, pausalo.')) return;
-  const ok = await dyAccion('dy-rec-error', 'No se pudo borrar: ', () =>
-    dyPedir('/api/daily/recordatorios/' + id, 'DELETE'));
-  if (ok && dyEditandoId === Number(id)) dyCancelarEdicion();
+  await dyAccion(s, 'rec-error', 'No se pudo borrar: ', () => dyPedir('/api/daily/recordatorios/' + id, 'DELETE'));
 }
 
 // ========== Equipo ==========
@@ -14160,7 +15122,8 @@ def create_app(db_path: str) -> Flask:
 
     for bp in (leads_bp, demos_bp, calendar_bp, wa_bp, pipeline_bp, tasks_bp, budgets_bp, tokens_bp, meta_bp, calendly_bp, notion_bp, projects_bp, preclientes_bp,
                 notion_clients_bp, resend_bp, linkedin_bp, web_bp, finanzas_bp, marketing_bp,
-                simulador_bp, equipo_bp, flujos_bp, seg_leads_bp, daily_bp, plantillas_bp):
+                simulador_bp, equipo_bp, flujos_bp, seg_leads_bp, daily_bp, plantillas_bp,
+                backups_bp):
         app.register_blueprint(bp)
 
     @app.before_request
@@ -14747,6 +15710,7 @@ def create_app(db_path: str) -> Flask:
                 finally: conn3.close()
             else:
                 panel_access = "[]"  # sin rol = sin acceso
+        from services.auth import paneles_solo_lectura
         return jsonify({
             "id": user["id"],
             "name": user["name"],
@@ -14755,6 +15719,10 @@ def create_app(db_path: str) -> Flask:
             "is_admin": es_admin,
             "panel_access": panel_access,
             "role_id": user.get("role_id"),
+            # Lo que el rol ve pero no modifica. Una lista, no un string JSON
+            # como panel_access. El servidor bloquea igual: esto es solo para
+            # no mostrar botones que van a dar 403.
+            "paneles_solo_lectura": [] if es_admin else paneles_solo_lectura(db_path, user_id),
         })
 
     @app.route("/api/me", methods=["PUT"])
@@ -14802,9 +15770,32 @@ def create_app(db_path: str) -> Flask:
             conn2.close()
         return jsonify({"ok": True})
 
+    # Las cuatro rutas de roles no miraban si quien llama es admin: bastaba
+    # con estar logueado. Con el "solo lectura" eso ya no es un detalle: un
+    # Contador podía sacarse la marca a sí mismo con un PUT.
+    def _solo_admin_roles():
+        if not is_admin(db_path, session.get("user_id")):
+            return jsonify({"ok": False, "error": "No autorizado"}), 403
+        return None
+
+    def _solo_lectura_pedida(data, panels):
+        """(lista, None), (None, None) si no vino, o (None, error)."""
+        valor = data.get("paneles_solo_lectura")
+        if valor is None:
+            return None, None
+        if not isinstance(valor, list) or not all(isinstance(p, str) for p in valor):
+            return None, "paneles_solo_lectura tiene que ser una lista de paneles"
+        if isinstance(panels, list):
+            # Solo lectura de un panel que el rol no ve no significa nada.
+            valor = [p for p in valor if p in panels]
+        return sorted(set(valor)), None
+
     @app.route("/api/admin/roles", methods=["GET"])
     def admin_list_roles():
         import sqlite3 as _sq
+        bloqueo = _solo_admin_roles()
+        if bloqueo:
+            return bloqueo
         conn2 = _sq.connect(db_path); conn2.row_factory = _sq.Row
         try:
             rows = conn2.execute("SELECT * FROM roles ORDER BY id").fetchall()
@@ -14814,13 +15805,20 @@ def create_app(db_path: str) -> Flask:
     @app.route("/api/admin/roles", methods=["POST"])
     def admin_create_role():
         import sqlite3 as _sq, json as _j
+        bloqueo = _solo_admin_roles()
+        if bloqueo:
+            return bloqueo
         data = request.get_json() or {}
         name = (data.get("name") or "").strip()
         panels = data.get("panels", [])
         if not name: return jsonify({"ok": False, "error": "Nombre requerido"}), 400
+        solo_lectura, error = _solo_lectura_pedida(data, panels)
+        if error:
+            return jsonify({"ok": False, "error": error}), 400
         conn2 = _sq.connect(db_path)
         try:
-            conn2.execute("INSERT INTO roles (name, panel_access) VALUES (?,?)", (name, _j.dumps(panels)))
+            conn2.execute("INSERT INTO roles (name, panel_access, paneles_solo_lectura) VALUES (?,?,?)",
+                          (name, _j.dumps(panels), _j.dumps(solo_lectura or [])))
             conn2.commit()
             rid = conn2.execute("SELECT last_insert_rowid()").fetchone()[0]
             return jsonify({"ok": True, "id": rid})
@@ -14830,13 +15828,22 @@ def create_app(db_path: str) -> Flask:
     @app.route("/api/admin/roles/<int:rid>", methods=["PUT"])
     def admin_update_role(rid):
         import sqlite3 as _sq, json as _j
+        bloqueo = _solo_admin_roles()
+        if bloqueo:
+            return bloqueo
         data = request.get_json() or {}
         name = (data.get("name") or "").strip()
         panels = data.get("panels")
+        solo_lectura, error = _solo_lectura_pedida(data, panels)
+        if error:
+            return jsonify({"ok": False, "error": error}), 400
         conn2 = _sq.connect(db_path)
         try:
             if name: conn2.execute("UPDATE roles SET name=? WHERE id=?", (name, rid))
             if panels is not None: conn2.execute("UPDATE roles SET panel_access=? WHERE id=?", (_j.dumps(panels), rid))
+            if solo_lectura is not None:
+                conn2.execute("UPDATE roles SET paneles_solo_lectura=? WHERE id=?",
+                              (_j.dumps(solo_lectura), rid))
             conn2.commit()
             return jsonify({"ok": True})
         finally: conn2.close()
@@ -14844,6 +15851,9 @@ def create_app(db_path: str) -> Flask:
     @app.route("/api/admin/roles/<int:rid>", methods=["DELETE"])
     def admin_delete_role(rid):
         import sqlite3 as _sq
+        bloqueo = _solo_admin_roles()
+        if bloqueo:
+            return bloqueo
         conn2 = _sq.connect(db_path)
         try:
             conn2.execute("UPDATE users SET role_id=NULL WHERE role_id=?", (rid,))
@@ -15047,6 +16057,7 @@ select:focus{border-color:#0088cc}
 .chip input{accent-color:#0088cc;cursor:pointer;width:12px;height:12px}
 .chip.on{border-color:#0088cc;background:rgba(0,136,204,.12);color:#60a5fa}
 .chip.meta-on{border-color:#c084fc;background:rgba(192,132,252,.1);color:#c084fc}
+.chip-sl{border-style:dashed;color:#fbbf24}
 .toast{display:none;font-size:.75rem;color:#4ade80;margin-left:8px}
 .msg-ok{background:rgba(16,185,129,.1);color:#4ade80;border-radius:6px;padding:8px 12px;font-size:.8rem;margin-bottom:14px}
 .divider{height:1px;background:#1e293b;margin:10px 0}
@@ -15073,21 +16084,52 @@ select:focus{border-color:#0088cc}
   <div id="users-list"></div>
 </div>
 
+<div class="section">
+  <div class="section-title">Backups de la base</div>
+  <div class="card">
+    <div class="row">
+      <button class="btn btn-primary" id="backup-btn" onclick="backupAhora(this)">Hacer backup ahora</button>
+      <span class="sub" id="backup-msg"></span>
+    </div>
+    <div class="divider"></div>
+    <div id="backups-list"><div class="sub">Cargando...</div></div>
+  </div>
+</div>
+
 <script>
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','equipo','ausencias','seg_leads','daily','plantillas'];
-const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',equipo:'Organigrama',ausencias:'Ausencias',seg_leads:'Seguimiento de leads',daily:'Daily Programador',plantillas:'Plantillas'};
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','equipo','ausencias','seg_leads','daily','plantillas','daily_admin'];
+const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',equipo:'Organigrama',ausencias:'Ausencias',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas'};
 let _roles = [];
 
-function makeChips(containerId, checkedArr, prefix) {
+// Paneles que muestran el check "solo lectura". El dato (roles.paneles_solo_lectura)
+// es generico, pero hoy solo Finanzas lo respeta en el servidor: mostrarlo en
+// los demas prometeria algo que no pasa.
+const PANELES_CON_SOLO_LECTURA = ['finanzas'];
+
+function makeChips(containerId, checkedArr, prefix, soloLecturaArr) {
   const el = document.getElementById(containerId);
+  const soloLectura = soloLecturaArr || [];
   el.innerHTML = ALL_PANELS.map(p => {
     const on = checkedArr ? checkedArr.includes(p) : true;
     const isMeta = p === 'meta';
+    const sl = PANELES_CON_SOLO_LECTURA.includes(p)
+      ? `<label class="chip chip-sl" id="${prefix}-sl-chip-${p}" title="Ve el panel pero no puede agregar, editar ni borrar (los balances si)">
+      <input type="checkbox" id="${prefix}-sl-${p}" ${soloLectura.includes(p)?'checked':''}>
+      ${PANEL_LABELS[p]}: solo lectura
+    </label>`
+      : '';
     return `<label class="chip ${on?(isMeta?'meta-on':'on'):''}" id="${prefix}-chip-${p}">
       <input type="checkbox" id="${prefix}-cb-${p}" ${on?'checked':''} onchange="toggleChip('${prefix}','${p}',this.checked)">
       ${PANEL_LABELS[p]}
-    </label>`;
+    </label>` + sl;
   }).join('');
+}
+function getSoloLectura(prefix) {
+  // Solo cuenta si el panel esta tildado: solo lectura de algo que no se ve no
+  // significa nada.
+  return PANELES_CON_SOLO_LECTURA.filter(p =>
+    document.getElementById(`${prefix}-cb-${p}`)?.checked
+    && document.getElementById(`${prefix}-sl-${p}`)?.checked);
 }
 function toggleChip(prefix, p, on) {
   const chip = document.getElementById(`${prefix}-chip-${p}`);
@@ -15121,14 +16163,16 @@ function renderRoles() {
   }).join('');
   _roles.forEach(role => {
     const panels = JSON.parse(role.panel_access || '[]');
-    makeChips(`role-panels-${role.id}`, panels, `r${role.id}`);
+    makeChips(`role-panels-${role.id}`, panels, `r${role.id}`,
+              JSON.parse(role.paneles_solo_lectura || '[]'));
   });
 }
 
 async function saveRole(id) {
   const name = document.getElementById(`role-name-${id}`).value.trim();
   const panels = ALL_PANELS.filter(p => document.getElementById(`r${id}-cb-${p}`)?.checked);
-  const r = await fetch(`/api/admin/roles/${id}`, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name, panels})});
+  const paneles_solo_lectura = getSoloLectura(`r${id}`);
+  const r = await fetch(`/api/admin/roles/${id}`, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name, panels, paneles_solo_lectura})});
   if (r.ok) {
     const t = document.getElementById(`role-toast-${id}`);
     t.style.display='inline'; setTimeout(()=>{t.style.display='none'},2000);
@@ -15148,7 +16192,8 @@ async function createRole() {
   const name = document.getElementById('new-role-name').value.trim();
   if (!name) { document.getElementById('new-role-name').focus(); return; }
   const panels = ALL_PANELS.filter(p => document.getElementById(`new-cb-${p}`)?.checked);
-  const r = await fetch('/api/admin/roles', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name, panels})});
+  const paneles_solo_lectura = getSoloLectura('new');
+  const r = await fetch('/api/admin/roles', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name, panels, paneles_solo_lectura})});
   const d = await r.json();
   if (d.ok) { document.getElementById('new-role-name').value=''; await loadRoles(); }
   else alert(d.error);
@@ -15191,7 +16236,55 @@ async function loadAll() {
   renderUsers();
 }
 
+function _bkBytes(n) {
+  n = n || 0;
+  if (n >= 1048576) return (n / 1048576).toFixed(1) + ' MB';
+  if (n >= 1024) return Math.round(n / 1024) + ' KB';
+  return n + ' B';
+}
+function _bkEsc(s) {
+  const d = document.createElement('div');
+  d.textContent = s == null ? '' : String(s);
+  return d.innerHTML;
+}
+async function loadBackups() {
+  const el = document.getElementById('backups-list');
+  try {
+    const r = await fetch('/api/admin/backups');
+    const d = await r.json();
+    const filas = [];
+    if (!d.r2_activo) filas.push('<div class="sub">Backup a R2 desactivado: faltan los secrets R2_*. Solo hay copia local.</div>');
+    if (d.error) filas.push('<div class="sub" style="color:#f87171">' + _bkEsc(d.error) + '</div>');
+    (d.backups || []).forEach(b => filas.push(
+      '<div class="row"><div class="name">' + _bkEsc(b.nombre) + '</div><span class="badge has-role">R2</span>' +
+      '<span class="sub">' + _bkBytes(b.tamano) + ' · ' + _bkEsc((b.fecha || '').slice(0, 16).replace('T', ' ')) + '</span></div>'));
+    (d.locales || []).forEach(b => filas.push(
+      '<div class="row"><div class="name">' + _bkEsc(b.nombre) + '</div><span class="badge">local</span>' +
+      '<span class="sub">' + _bkBytes(b.tamano) + '</span></div>'));
+    el.innerHTML = filas.join('') || '<div class="sub">Todavía no hay backups.</div>';
+  } catch (e) {
+    el.innerHTML = '<div class="sub">No se pudo leer la lista de backups.</div>';
+  }
+}
+async function backupAhora(btn) {
+  const msg = document.getElementById('backup-msg');
+  btn.disabled = true;
+  msg.textContent = 'Haciendo backup...';
+  try {
+    const r = await fetch('/api/admin/backup-ahora', {method: 'POST'});
+    const d = await r.json();
+    msg.textContent = d.ok
+      ? 'Listo: ' + d.nombre + ', ' + _bkBytes(d.tamano) + ', subido a R2: ' + (d.subido ? 'sí' : 'no')
+      : 'Falló: ' + (d.error || 'error desconocido');
+  } catch (e) {
+    msg.textContent = 'Falló la llamada.';
+  }
+  btn.disabled = false;
+  loadBackups();
+}
+
 loadAll();
+loadBackups();
 </script>
 </body>
 </html>"""
@@ -15236,6 +16329,11 @@ loadAll();
 
         from services.discovery_emails import start_discovery_emails
         start_discovery_emails(app)
+
+        # Backup diario de la base (docs/BACKUPS.md). Prendido por defecto,
+        # BACKUP_DB=off lo apaga; trae su propia marca en `corridas`.
+        from services.backup_db import start_backup_db
+        start_backup_db(app)
 
     try:
         from database import get_all_users

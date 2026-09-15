@@ -253,6 +253,23 @@ def init_db(db_path: str) -> None:
                 ("Ventas", _SALES),
             ])
         _grant_panel_to_existing_roles(conn, "meta")
+        # Solo lectura por panel (pedido de Juan, 15/9): "el usuario que sea
+        # dado de alta como contador no va a poder agregar movimientos o editar
+        # cosas solo a visualizar salvo la parte de balances". Lista JSON de
+        # paneles que el rol VE pero no modifica. El dato es genérico; hoy solo
+        # Finanzas lo respeta en el servidor (routes/finanzas.py).
+        #
+        # La precarga del Contador corre UNA vez: cuando la columna es nueva.
+        # Si corriera en cada arranque, destildar el "solo lectura" en el editor
+        # de roles duraría hasta el próximo deploy.
+        solo_lectura_es_nueva = not any(
+            fila[1] == "paneles_solo_lectura"
+            for fila in conn.execute("PRAGMA table_info(roles)").fetchall())
+        _add_column(conn, "roles", "paneles_solo_lectura", "TEXT NOT NULL DEFAULT '[]'")
+        if solo_lectura_es_nueva:
+            conn.execute("UPDATE roles SET paneles_solo_lectura = ? "
+                         "WHERE name = 'Contador' AND paneles_solo_lectura = '[]'",
+                         ('["finanzas"]',))
         # Contador y Marketing (pedido de Juan, 15/9): hoy hay Admin, SDR y
         # Programador, y se suman estos dos. Se crean por nombre, una sola vez,
         # también en bases que ya tienen roles; INSERT OR IGNORE no pisa lo que
@@ -260,11 +277,17 @@ def init_db(db_path: str) -> None:
         # Contador arranca SIN Finanzas ni Simulador aunque sean su trabajo: por
         # el Ruling R20 los paneles con plata no se asignan desde el código,
         # Juan los tilda a mano en el editor de roles.
+        # El Contador nace con Finanzas en solo lectura: el día que Juan le
+        # tilde Finanzas, ya entra sin poder modificarla. Si el rol se crea
+        # recién ahora (base nueva, o lo borraron), la precarga de arriba no
+        # lo vio: por eso va también en el INSERT.
         import json as _jroles
-        for _nombre, _paneles in (("Contador", ["cal"]),
-                                  ("Marketing", ["cal", "meta", "marketing"])):
-            conn.execute("INSERT OR IGNORE INTO roles (name, panel_access) VALUES (?, ?)",
-                         (_nombre, _jroles.dumps(_paneles)))
+        for _nombre, _paneles, _solo_lectura in (
+                ("Contador", ["cal"], ["finanzas"]),
+                ("Marketing", ["cal", "meta", "marketing"], [])):
+            conn.execute("INSERT OR IGNORE INTO roles (name, panel_access, paneles_solo_lectura) "
+                         "VALUES (?, ?, ?)",
+                         (_nombre, _jroles.dumps(_paneles), _jroles.dumps(_solo_lectura)))
         _add_column(conn, "client_info", "meeting_time", "TEXT")
         _add_column(conn, "client_info", "meeting_url", "TEXT")
 
@@ -1135,6 +1158,17 @@ def init_db(db_path: str) -> None:
                          "ADD COLUMN programador INTEGER NOT NULL DEFAULT 0")
             conn.executemany("UPDATE equipo_personas SET programador = 1 WHERE nombre = ?",
                              [(n,) for n in _PROGRAMADORES_PRECARGA])
+        # Daily Admin y el nombre para mostrar (Juan, 16/9). Lo nuevo de
+        # personas (Matías en Daily Programador; Juan Pereyra y Javier en
+        # Daily Admin; el apodo "Juanchi") se suma UNA sola vez, en el arranque
+        # que crea `admin_daily`: lo que se cambie a mano antes o después no se
+        # pisa, y nada de lo ya cargado cambia de dueño.
+        _add_column(conn, "equipo_personas", "apodo", "TEXT")
+        columnas = {fila[1] for fila in conn.execute("PRAGMA table_info(equipo_personas)")}
+        if "admin_daily" not in columnas:
+            conn.execute("ALTER TABLE equipo_personas "
+                         "ADD COLUMN admin_daily INTEGER NOT NULL DEFAULT 0")
+            _sumar_personas_daily(conn)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS daily_actividades (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1180,6 +1214,16 @@ def init_db(db_path: str) -> None:
                 UNIQUE (recordatorio_id, fecha)
             )
         """)
+        # Hora y nota opcionales (pedido de Juan, 16/9: tarjetas como las de
+        # Seguimiento de leads). Columnas nuevas en NULL: lo que ya estaba
+        # cargado sigue igual, sin hora ni nota.
+        for tabla in ("daily_actividades", "daily_recordatorios"):
+            _add_column(conn, tabla, "hora", "TEXT")
+            _add_column(conn, tabla, "nota", "TEXT")
+            # De qué Daily es: 'programador' o 'admin'. Una persona puede estar
+            # en los dos y las listas no se mezclan. Lo cargado antes es del
+            # Daily Programador, que era el único.
+            _add_column(conn, tabla, "seccion", "TEXT NOT NULL DEFAULT 'programador'")
         conn.commit()
         # Como Equipo: los roles que tienen Tareas reciben el Daily.
         _grant_panel_to_existing_roles(conn, "daily", solo_si_tiene="tasks")
@@ -1257,6 +1301,41 @@ def init_db(db_path: str) -> None:
         # NULL es "todavia no se cargo", que no es lo mismo que 0.
         _add_column(conn, "businesses", "monto_pagado", "REAL")
         _add_column(conn, "businesses", "moneda_pagado", "TEXT")
+
+        # Semaforo marcado a mano desde Meta Ads (ver
+        # services/planilla_semaforo.marcar_color). El color en si NO se guarda
+        # aca: sale de `crm_status`, igual que cuando lo trae la planilla.
+        # `semaforo_origen` dice quien lo puso por ultima vez ('crm' o
+        # 'planilla'), `semaforo_at` cuando, y `semaforo_planilla` el ultimo
+        # estado que trajo la planilla para ese lead: es lo que permite saber si
+        # la planilla se repinto despues de la marca a mano o si sigue diciendo
+        # lo mismo de antes.
+        _add_column(conn, "businesses", "semaforo_origen", "TEXT")
+        _add_column(conn, "businesses", "semaforo_at", "TEXT")
+        _add_column(conn, "businesses", "semaforo_planilla", "TEXT")
+
+        # Cada formulario de Meta enviado, por separado. Una ficha puede tener
+        # varios: la persona que vuelve a escribir meses despues cuenta tambien
+        # en el mes de la vuelta, como la cuenta Meta. `meta_lead_id` es el
+        # leadgen id de Meta y hace idempotente el registro (webhook que
+        # reintenta, import diario que repasa todo). `created_time` va en UTC
+        # con el formato de la casa ('AAAA-MM-DD HH:MM:SS'), igual que scraped_at.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS meta_lead_envios (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                business_id     INTEGER NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+                meta_lead_id    TEXT NOT NULL UNIQUE,
+                created_time    TEXT NOT NULL,
+                form_data       TEXT,
+                campaign_id     TEXT,
+                campaign_name   TEXT,
+                ad_id           TEXT,
+                ad_name         TEXT,
+                created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_meta_lead_envios_business "
+                     "ON meta_lead_envios(business_id)")
 
         # Registro historico de demos dadas. NO es la tabla `demos`, que guarda la
         # pagina que genera la IA: esto es el evento comercial de haber mostrado
@@ -1692,6 +1771,7 @@ def delete_business(db_path: str, business_id: int) -> None:
         conn.execute("DELETE FROM demos_realizadas WHERE client_id = ?", (business_id,))
         conn.execute("DELETE FROM seg_llamados WHERE lead_id = ?", (business_id,))
         conn.execute("DELETE FROM seg_recordatorios WHERE lead_id = ?", (business_id,))
+        conn.execute("DELETE FROM meta_lead_envios WHERE business_id = ?", (business_id,))
         conn.execute("DELETE FROM businesses WHERE id = ?", (business_id,))
         conn.commit()
     finally:
@@ -1721,6 +1801,7 @@ def merge_business(db_path: str, source_id: int, target_id: int) -> None:
             ("lead_attachments", "lead_id"),
             ("lead_events",      "lead_id"),
             ("call_logs",        "lead_id"),
+            ("meta_lead_envios", "business_id"),
         ]:
             conn.execute(
                 f"UPDATE {table} SET {col} = ? WHERE {col} = ?",
@@ -2559,6 +2640,149 @@ def seed_pitch_templates(db_path: str) -> None:
         logger.info(f"Seeded {len(templates)} pitch templates")
     finally:
         conn.close()
+
+
+# ─── Envios de formulario de Meta ─────────────────────────────────────────────
+# Pedido de Juan (15/9): "Como Meta: si alguien vuelve a llenar el formulario,
+# cuenta tambien en ese mes, marcado como 'volvio a escribir'". Adrian Zabaleta
+# lleno el formulario en agosto y otra vez el 8/9; Meta conto 11 leads en
+# setiembre y el CRM 10, porque la ficha es una sola y se contaba por su
+# `scraped_at`.
+#
+# La regla, en un solo lugar (ENVIOS_META_SQL): los envios de una ficha de Meta
+# son los registrados en `meta_lead_envios` MAS su `scraped_at`, salvo que ya
+# haya un envio registrado en ese mismo minuto. Asi una ficha vieja sin envios
+# sigue contando en su mes de siempre, y el import que rellena la tabla no
+# duplica el primer envio (que es el mismo `created_time` que `scraped_at`).
+
+def norm_created_time(valor) -> str | None:
+    """El `created_time` de Graph ('2026-09-08T14:03:11+0000') en UTC con el
+    formato de la casa, o None si no se puede leer."""
+    from datetime import datetime, timezone
+
+    texto = str(valor or "").strip()
+    if not texto:
+        return None
+    try:
+        return (datetime.fromisoformat(texto.replace("+0000", ""))
+                .replace(tzinfo=timezone.utc).strftime("%Y-%m-%d %H:%M:%S"))
+    except ValueError:
+        return None
+
+
+_MINUTO_SQL = "substr(replace({}, 'T', ' '), 1, 16)"
+
+# Una fila por envio de formulario de un lead de Meta, con las columnas que
+# leen los contadores (mismos nombres que en `businesses`, asi las consultas
+# cambian el FROM y nada mas):
+#   scraped_at   fecha del envio en UTC, tal como se guardo
+#   fecha_local  la misma en hora de Montevideo (UTC-3 fijo desde 2015); una
+#                fecha sin hora queda tal cual, correrla la mandaria al dia antes
+#   primero      1 en el primer envio de la persona: las etapas (demo, venta,
+#                ingresos) se atribuyen ahi, una sola vez, como siempre
+#   registrado   1 si viene de meta_lead_envios, 0 si es el scraped_at de la ficha
+def _sql_envios_meta(detalle: bool) -> str:
+    # Sin detalle solo se leen id, source y scraped_at de la ficha: es la
+    # version para contar por fecha y hora, que no tiene por que tocar el
+    # form_data de nadie (ver tests/test_leads_semana.py).
+    extra_ficha = (", b.form_data, b.meta_campaign_name, b.meta_campaign_id, b.meta_ad_id"
+                   if detalle else "")
+    extra_envio = (", COALESCE(e.form_data, b.form_data), "
+                   "COALESCE(NULLIF(e.campaign_name, ''), b.meta_campaign_name), "
+                   "COALESCE(NULLIF(e.campaign_id, ''), b.meta_campaign_id), "
+                   "COALESCE(NULLIF(e.ad_id, ''), b.meta_ad_id)" if detalle else "")
+    return f"""
+    SELECT v.*,
+           CASE WHEN instr(v.scraped_at, ':') > 0
+                THEN COALESCE(datetime(substr(replace(v.scraped_at, 'T', ' '), 1, 19), '-3 hours'),
+                              v.scraped_at)
+                ELSE v.scraped_at END AS fecha_local,
+           (ROW_NUMBER() OVER (PARTITION BY v.id
+                               ORDER BY substr(replace(v.scraped_at, 'T', ' '), 1, 19),
+                                        v.registrado)) = 1 AS primero
+      FROM (
+        SELECT b.id, b.source, b.scraped_at, 0 AS registrado{extra_ficha}
+          FROM businesses b
+         WHERE b.source = 'meta' AND b.scraped_at IS NOT NULL
+           AND NOT EXISTS (SELECT 1 FROM meta_lead_envios e
+                            WHERE e.business_id = b.id
+                              AND {_MINUTO_SQL.format('e.created_time')} = {_MINUTO_SQL.format('b.scraped_at')})
+        UNION ALL
+        SELECT b.id, b.source, e.created_time, 1{extra_envio}
+          FROM meta_lead_envios e JOIN businesses b ON b.id = e.business_id
+         WHERE b.source = 'meta'
+      ) v
+"""
+
+
+ENVIOS_META_SQL = _sql_envios_meta(detalle=True)
+ENVIOS_META_FECHAS_SQL = _sql_envios_meta(detalle=False)
+
+
+def envio_meta_registrado(db_path: str, meta_lead_id) -> bool:
+    if not meta_lead_id:
+        return False
+    conn = _connect(db_path)
+    try:
+        return conn.execute("SELECT 1 FROM meta_lead_envios WHERE meta_lead_id = ?",
+                            (str(meta_lead_id),)).fetchone() is not None
+    finally:
+        conn.close()
+
+
+def registrar_envio_meta(db_path: str, business_id: int, meta_lead_id, created_time,
+                         form_data=None, campaign_id=None, campaign_name=None,
+                         ad_id=None, ad_name=None) -> bool:
+    """Guarda un envio de formulario. True si era nuevo, False si ya estaba.
+
+    Idempotente por `meta_lead_id`: el webhook reintenta y el import diario
+    repasa todos los formularios cada dia.
+    """
+    ct = norm_created_time(created_time) if "T" in str(created_time or "") else created_time
+    if not meta_lead_id or not business_id or not ct:
+        return False
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO meta_lead_envios "
+            "(business_id, meta_lead_id, created_time, form_data, campaign_id, "
+            " campaign_name, ad_id, ad_name) VALUES (?,?,?,?,?,?,?,?)",
+            (business_id, str(meta_lead_id), ct, form_data, campaign_id or None,
+             campaign_name or None, ad_id or None, ad_name or None))
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def buscar_ficha_meta_por_mail(db_path: str, email) -> Optional[dict]:
+    """La ficha de Meta con ese mail, para un formulario que llega sin telefono."""
+    mail = (email or "").strip().lower()
+    if not mail:
+        return None
+    conn = _connect(db_path)
+    try:
+        fila = conn.execute(
+            "SELECT * FROM businesses WHERE source = 'meta' AND LOWER(TRIM(email)) = ? "
+            "ORDER BY id LIMIT 1", (mail,)).fetchone()
+        return dict(fila) if fila else None
+    finally:
+        conn.close()
+
+
+def envios_meta_por_lead(db_path: str) -> dict:
+    """{business_id: [scraped_at de cada envio, ordenados]} de los leads de Meta."""
+    conn = _connect(db_path)
+    try:
+        filas = conn.execute(
+            f"SELECT id, scraped_at FROM ({ENVIOS_META_SQL}) "
+            "ORDER BY id, substr(replace(scraped_at, 'T', ' '), 1, 19)").fetchall()
+    finally:
+        conn.close()
+    salida: dict = {}
+    for f in filas:
+        salida.setdefault(f["id"], []).append(f["scraped_at"])
+    return salida
 
 
 # ─── Lead events ──────────────────────────────────────────────────────────────
@@ -3561,8 +3785,14 @@ _EQUIPO_PRECARGA = (
     ("Gonzalo Siuciak", "Programador · project manager", "Matías Domínguez", True, 4),
 )
 
-# Quiénes arrancan con su Daily Programador (columna `programador`).
-_PROGRAMADORES_PRECARGA = ("Juan Tomasetti", "Gonzalo Siuciak")
+# Quiénes arrancan en cada Daily (Juan, 16/9). Daily Programador: Juan
+# Tomasetti, Gonzalo y Matías. Daily Admin: Juan Pereyra ("Juanchi") y
+# Javier. La primera versión (15/9) tenía solo a Juan Tomasetti y Gonzalo:
+# `_sumar_personas_daily` suma lo nuevo una sola vez.
+_PROGRAMADORES_PRECARGA = ("Juan Tomasetti", "Gonzalo Siuciak", "Matías Domínguez")
+_PROGRAMADORES_SUMADOS_16_9 = ("Matías Domínguez",)
+_ADMIN_DAILY_PRECARGA = ("Juan Pereyra", "Javier Tomasetti")
+_APODOS_PRECARGA = (("Juan Pereyra", "Juanchi"),)
 
 
 # ─── Seguimiento de leads ────────────────────────────────────────────────────
@@ -3741,25 +3971,51 @@ def get_persona_equipo(db_path: str, persona_id: int) -> Optional[dict]:
 # ── Daily Programador ────────────────────────────────────────────────────────
 # Las tablas se crean en init_db. Todo va por persona del equipo.
 
-def listar_programadores(db_path: str) -> list[dict]:
-    """Las personas activas marcadas como programador, en orden de alta."""
+# La marca de `equipo_personas` que dice quién aparece en cada Daily.
+_MARCAS_DAILY = {"programador": "programador", "admin": "admin_daily"}
+
+
+def _sumar_personas_daily(conn: sqlite3.Connection) -> None:
+    """Una sola vez (la llama init_db al crear `admin_daily`): Matías entra a
+    Daily Programador, Juan Pereyra y Javier a Daily Admin, y Juan Pereyra se
+    muestra como "Juanchi". Solo suma: no le saca la marca a nadie. Juan Pereyra
+    y Javier ya están en la precarga de Equipo."""
+    conn.executemany("UPDATE equipo_personas SET programador = 1 WHERE nombre = ?",
+                     [(n,) for n in _PROGRAMADORES_SUMADOS_16_9])
+    conn.executemany("UPDATE equipo_personas SET admin_daily = 1 WHERE nombre = ?",
+                     [(n,) for n in _ADMIN_DAILY_PRECARGA])
+    conn.executemany("UPDATE equipo_personas SET apodo = ? WHERE nombre = ? AND (apodo IS NULL OR apodo = '')",
+                     [(apodo, nombre) for nombre, apodo in _APODOS_PRECARGA])
+    conn.commit()
+
+
+def listar_personas_daily(db_path: str, seccion: str = "programador") -> list[dict]:
+    """Las personas activas de un Daily, en orden de alta."""
+    campo = _MARCAS_DAILY[seccion]
     conn = _connect(db_path)
     try:
-        cur = conn.execute("SELECT * FROM equipo_personas "
-                           "WHERE activo = 1 AND programador = 1 ORDER BY id")
+        cur = conn.execute(f"SELECT * FROM equipo_personas WHERE activo = 1 AND {campo} = 1 ORDER BY id")
         return [dict(r) for r in cur.fetchall()]
     finally:
         conn.close()
 
 
+def listar_programadores(db_path: str) -> list[dict]:
+    return listar_personas_daily(db_path, "programador")
+
+
 def crear_actividad_daily(db_path: str, persona_id: int, fecha: str, texto: str,
                           created_by_id: int | None = None,
-                          created_by_name: str | None = None) -> int:
+                          created_by_name: str | None = None,
+                          hora: str | None = None, nota: str | None = None,
+                          seccion: str = "programador") -> int:
     conn = _connect(db_path)
     try:
         cur = conn.execute(
-            "INSERT INTO daily_actividades (persona_id, fecha, texto, created_by_id, created_by_name) "
-            "VALUES (?,?,?,?,?)", (persona_id, fecha, texto, created_by_id, created_by_name))
+            "INSERT INTO daily_actividades "
+            "(persona_id, fecha, texto, hora, nota, seccion, created_by_id, created_by_name) "
+            "VALUES (?,?,?,?,?,?,?,?)",
+            (persona_id, fecha, texto, hora, nota, seccion, created_by_id, created_by_name))
         conn.commit()
         return cur.lastrowid
     finally:
@@ -3770,7 +4026,7 @@ def get_actividad_daily(db_path: str, actividad_id: int) -> Optional[dict]:
     return _get_one(db_path, "daily_actividades", actividad_id)
 
 
-_CAMPOS_ACTIVIDAD_DAILY = ("texto", "hecha", "fecha", "pasada_de")
+_CAMPOS_ACTIVIDAD_DAILY = ("texto", "hecha", "fecha", "pasada_de", "hora", "nota")
 
 
 def actualizar_actividad_daily(db_path: str, actividad_id: int, **campos) -> None:
@@ -3796,11 +4052,13 @@ def borrar_actividad_daily(db_path: str, actividad_id: int) -> None:
         conn.close()
 
 
-def listar_actividades_daily(db_path: str, persona_id: int, fecha: str) -> list[dict]:
+def listar_actividades_daily(db_path: str, persona_id: int, fecha: str,
+                             seccion: str = "programador") -> list[dict]:
     conn = _connect(db_path)
     try:
-        cur = conn.execute("SELECT * FROM daily_actividades WHERE persona_id = ? AND fecha = ? "
-                           "ORDER BY id", (persona_id, fecha))
+        # Las que tienen hora primero y en orden de hora; las otras, como se cargaron.
+        cur = conn.execute("SELECT * FROM daily_actividades WHERE persona_id = ? AND fecha = ? AND seccion = ? "
+                           "ORDER BY hora IS NULL, hora, id", (persona_id, fecha, seccion))
         return [dict(r) for r in cur.fetchall()]
     finally:
         conn.close()
@@ -3809,14 +4067,16 @@ def listar_actividades_daily(db_path: str, persona_id: int, fecha: str) -> list[
 def crear_recordatorio_daily(db_path: str, persona_id: int, texto: str, frecuencia: str,
                              dias: str, desde: str, activo: int = 1,
                              created_by_id: int | None = None,
-                             created_by_name: str | None = None) -> int:
+                             created_by_name: str | None = None,
+                             hora: str | None = None, nota: str | None = None,
+                             seccion: str = "programador") -> int:
     conn = _connect(db_path)
     try:
         cur = conn.execute(
             "INSERT INTO daily_recordatorios "
-            "(persona_id, texto, frecuencia, dias, activo, desde, created_by_id, created_by_name) "
-            "VALUES (?,?,?,?,?,?,?,?)",
-            (persona_id, texto, frecuencia, dias, activo, desde, created_by_id, created_by_name))
+            "(persona_id, texto, frecuencia, dias, activo, desde, hora, nota, seccion, created_by_id, created_by_name) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (persona_id, texto, frecuencia, dias, activo, desde, hora, nota, seccion, created_by_id, created_by_name))
         conn.commit()
         return cur.lastrowid
     finally:
@@ -3827,10 +4087,11 @@ def get_recordatorio_daily(db_path: str, recordatorio_id: int) -> Optional[dict]
     return _get_one(db_path, "daily_recordatorios", recordatorio_id)
 
 
-_CAMPOS_RECORDATORIO_DAILY = ("texto", "frecuencia", "dias", "activo")
+_CAMPOS_RECORDATORIO_DAILY = ("texto", "frecuencia", "dias", "activo", "hora", "nota")
 
 
 def actualizar_recordatorio_daily(db_path: str, recordatorio_id: int, **campos) -> None:
+    """No toca `daily_marcas`: editar un recordatorio no borra lo hecho otros días."""
     campos = {k: v for k, v in campos.items() if k in _CAMPOS_RECORDATORIO_DAILY}
     if not campos:
         return
@@ -3856,24 +4117,24 @@ def borrar_recordatorio_daily(db_path: str, recordatorio_id: int) -> None:
         conn.close()
 
 
-def listar_recordatorios_daily(db_path: str, persona_id: int) -> list[dict]:
+def listar_recordatorios_daily(db_path: str, persona_id: int, seccion: str = "programador") -> list[dict]:
     conn = _connect(db_path)
     try:
-        cur = conn.execute("SELECT * FROM daily_recordatorios WHERE persona_id = ? ORDER BY id",
-                           (persona_id,))
+        cur = conn.execute("SELECT * FROM daily_recordatorios WHERE persona_id = ? AND seccion = ? ORDER BY id",
+                           (persona_id, seccion))
         return [dict(r) for r in cur.fetchall()]
     finally:
         conn.close()
 
 
-def listar_marcas_daily(db_path: str, persona_id: int, fecha: str) -> set[int]:
-    """Los ids de los recordatorios de esa persona marcados como hechos ese día."""
+def listar_marcas_daily(db_path: str, persona_id: int, fecha: str, seccion: str = "programador") -> set[int]:
+    """Los ids de los recordatorios de esa persona y ese Daily marcados como hechos ese día."""
     conn = _connect(db_path)
     try:
         cur = conn.execute(
             "SELECT m.recordatorio_id FROM daily_marcas m "
             "JOIN daily_recordatorios r ON r.id = m.recordatorio_id "
-            "WHERE r.persona_id = ? AND m.fecha = ?", (persona_id, fecha))
+            "WHERE r.persona_id = ? AND r.seccion = ? AND m.fecha = ?", (persona_id, seccion, fecha))
         return {fila[0] for fila in cur.fetchall()}
     finally:
         conn.close()
