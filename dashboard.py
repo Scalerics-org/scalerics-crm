@@ -30,6 +30,7 @@ from routes.simulador import simulador_bp
 from routes.equipo import equipo_bp
 from routes.flujos import flujos_bp
 from routes.seg_leads import seg_leads_bp
+from routes.daily import daily_bp
 from routes.web import web_bp
 from routes.marketing import marketing_bp
 from services.auth import is_admin
@@ -1213,6 +1214,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-equipo .nav-icon{stroke:#a3e635}
 #nav-ausencias .nav-icon{stroke:#e879f9}
 #nav-seg_leads .nav-icon{stroke:#fb7185}
+#nav-daily .nav-icon{stroke:#38bdf8}
 .nav-item.active #nav-cola .nav-icon,
 .nav-item.active .nav-icon{opacity:1}
 /* active item keeps its color but brighter */
@@ -1226,6 +1228,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-marketing.active .nav-icon{stroke:#f9a8d4}
 #nav-finanzas.active .nav-icon{stroke:#fcd34d}
 #nav-simulador.active .nav-icon{stroke:#fdba74}
+#nav-daily.active .nav-icon{stroke:#7dd3fc}
 #nav-notion_clients.active .nav-icon{stroke:#34d399}
 #nav-demos.active .nav-icon{stroke:#67e8f9}
 #nav-sdr.active .nav-icon{stroke:#fca5a5}
@@ -1244,6 +1247,7 @@ body.light #nav-activity .nav-icon{stroke:#475569}
 body.light #nav-marketing .nav-icon{stroke:#db2777}
 body.light #nav-finanzas .nav-icon{stroke:#b45309}
 body.light #nav-simulador .nav-icon{stroke:#c2410c}
+body.light #nav-daily .nav-icon{stroke:#0284c7}
 body.light #nav-notion_clients .nav-icon{stroke:#047857}
 body.light #nav-demos .nav-icon{stroke:#0e7490}
 body.light #nav-sdr .nav-icon{stroke:#b91c1c}
@@ -1705,6 +1709,53 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .fin-hbar-relleno{height:100%;border-radius:3px}
 .fin-hbar-monto{font-size:.75rem;color:var(--texto);width:74px;text-align:right;flex-shrink:0}
 @media (max-width:760px){.fin-split{grid-template-columns:1fr}}
+/* ── Daily Programador ────────────────────────────────────────────────────────
+   Solo tokens, sin reglas propias de tema claro. Reusa .fin-card,
+   .fin-card-title y los botones btn-primary / btn-ghost / btn-icono. */
+.dy-nav-personas{display:flex;flex-direction:column}
+.dy-nav-sub{padding:6px 20px 6px 48px;font-size:.8rem;font-weight:500;color:var(--texto-debil);cursor:pointer;border-left:3px solid transparent}
+.dy-nav-sub:hover{color:var(--texto);background:var(--hover)}
+.dy-nav-sub.dy-activa{color:var(--texto-fuerte);border-left-color:var(--azul);background:var(--azul-tinte)}
+.dy-personas{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.dy-persona{background:var(--relleno);color:var(--texto-tenue);border:1px solid var(--borde);border-radius:99px;padding:7px 16px;font-size:.82rem;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer}
+.dy-persona[aria-pressed="true"]{background:var(--azul-tinte);color:var(--azul-claro);border-color:var(--azul)}
+.dy-dia{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.dy-fecha{font-size:1rem;font-weight:700;color:var(--texto-fuerte);min-width:0}
+.dy-fecha-hoy{font-size:.68rem;font-weight:700;color:var(--azul-claro);background:var(--azul-tinte);border-radius:99px;padding:2px 8px;margin-left:8px;vertical-align:middle}
+.dy-layout{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:16px;align-items:start}
+.dy-layout .fin-card{margin-bottom:0}
+.dy-agregar{display:flex;gap:8px;margin-bottom:4px}
+.dy-in{flex:1 1 auto;background:var(--fondo-hundido);border:1px solid var(--borde);border-radius:8px;padding:8px 10px;color:var(--texto);font-size:.84rem;font-family:'Inter',sans-serif;min-width:0}
+.dy-in:focus{outline:none;border-color:var(--azul)}
+.dy-in::placeholder{color:var(--texto-debil)}
+.dy-error{font-size:.75rem;color:var(--rojo-texto);margin:4px 0}
+.dy-error:empty{display:none}
+.dy-bloque{margin-top:12px}
+.dy-bloque-titulo{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--texto-debil);margin-bottom:6px}
+.dy-lista{display:flex;flex-direction:column;gap:6px}
+.dy-item{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:var(--superficie-honda);border:1px solid var(--borde);min-height:40px}
+.dy-item-texto{flex:1;min-width:0;font-size:.85rem;color:var(--texto);overflow-wrap:anywhere;cursor:pointer}
+.dy-item-nota{display:block;font-size:.7rem;color:var(--texto-debil);margin-top:2px}
+.dy-hecha .dy-item-texto{color:var(--texto-debil);text-decoration:line-through}
+.dy-check{width:18px;height:18px;accent-color:var(--azul);cursor:pointer;flex-shrink:0;margin:0}
+.dy-recordatorio{border-left:3px solid var(--azul)}
+.dy-pendiente{background:var(--ambar-tinte);border-color:var(--ambar-borde)}
+.dy-pendiente .dy-item-texto{cursor:default}
+.dy-vacio{font-size:.8rem;color:var(--texto-debil);padding:6px 2px}
+.dy-form{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}
+.dy-form-fila{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.dy-dias{display:flex;flex-wrap:wrap;gap:6px}
+.dy-dia-chip{display:inline-flex;align-items:center;gap:4px;font-size:.76rem;color:var(--texto-tenue);background:var(--relleno);border:1px solid var(--borde);border-radius:99px;padding:5px 10px;cursor:pointer}
+.dy-dia-chip input{accent-color:var(--azul);margin:0}
+.dy-rec{display:flex;align-items:center;gap:6px;padding:8px 10px;border-radius:8px;border:1px solid var(--borde);background:var(--superficie-honda)}
+.dy-rec-cuerpo{flex:1;min-width:0}
+.dy-rec-texto{font-size:.84rem;color:var(--texto);overflow-wrap:anywhere}
+.dy-rec-cuando{font-size:.7rem;color:var(--texto-debil);margin-top:2px}
+.dy-pausado .dy-rec-texto{color:var(--texto-debil)}
+.dy-badge{font-size:.64rem;font-weight:700;border-radius:99px;padding:2px 8px;background:var(--relleno);color:var(--texto-debil);white-space:nowrap}
+#daily-panel .dy-oculto{display:none}
+@media(max-width:900px){.dy-layout{grid-template-columns:1fr}}
+@media(max-width:480px){.dy-fecha{flex:1 1 100%;order:-1;font-size:.95rem}.dy-rec{flex-wrap:wrap}.dy-rec-cuerpo{flex-basis:100%}}
 /* ── Seguimiento de leads ─────────────────────────────────────────────────────
    La agenda de llamados. Solo tokens, sin reglas `body.light`: el rojo de
    vencido y el verde de Hecho son los de la familia de estados, que llegan a
@@ -1981,6 +2032,8 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div class="nav-item" id="nav-clientes" onclick="showPanel('clientes')"><i data-lucide="users" class="nav-icon"></i> Clientes</div>
   <div class="nav-item" id="nav-projects" onclick="showPanel('projects')"><i data-lucide="target" class="nav-icon"></i> Proyectos</div>
   <div class="nav-item" id="nav-tasks" onclick="showPanel('tasks')"><i data-lucide="check-square" class="nav-icon"></i> Tareas</div>
+  <div class="nav-item" id="nav-daily" onclick="showPanel('daily')"><i data-lucide="clipboard-list" class="nav-icon"></i> Daily Programador</div>
+  <div class="dy-nav-personas" id="dy-nav-personas"></div>
   <div class="nav-item" id="nav-activity" onclick="showPanel('activity')"><i data-lucide="clock" class="nav-icon"></i> Actividad</div>
   <div class="nav-section-label">RECURSOS HUMANOS</div>
   <div class="nav-item" id="nav-equipo" onclick="showPanel('equipo')"><i data-lucide="network" class="nav-icon"></i> Organigrama</div>
@@ -2805,6 +2858,65 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     <div id="activity-list" style="max-width:760px"></div>
   </div>
 
+  <!-- ======= DAILY PROGRAMADOR PANEL ======= -->
+  <!-- Un solo panel para todos: la persona es estado del JS (dyPersonaId). -->
+  <div id="daily-panel" class="panel">
+    <div class="page-header">
+      <div>
+        <h1>Daily Programador</h1>
+        <div class="page-date">Lo de cada día: actividades y recordatorios que se repiten, por persona.</div>
+      </div>
+    </div>
+    <div class="dy-personas" id="dy-personas" role="group" aria-label="De quién es el día"></div>
+    <div class="dy-dia">
+      <button class="btn-ghost btn-icono" type="button" onclick="dyMoverDia(-1)" title="Día anterior" aria-label="Día anterior"><i data-lucide="chevron-left" class="nav-icon"></i></button>
+      <button class="btn-ghost btn-icono" type="button" onclick="dyMoverDia(1)" title="Día siguiente" aria-label="Día siguiente"><i data-lucide="chevron-right" class="nav-icon"></i></button>
+      <button class="btn-ghost" type="button" onclick="dyIrHoy()">Hoy</button>
+      <div class="dy-fecha" id="dy-fecha" role="status"></div>
+    </div>
+    <div class="dy-layout">
+      <section class="fin-card">
+        <div class="fin-card-title">Actividades del día</div>
+        <div class="dy-agregar">
+          <input type="text" id="dy-nueva" class="dy-in" maxlength="200" placeholder="Agregar actividad y Enter" aria-label="Actividad nueva" onkeydown="if (event.key === 'Enter') dyAgregar()">
+          <button class="btn-primary" type="button" onclick="dyAgregar()">Agregar</button>
+        </div>
+        <div class="dy-error" id="dy-error" role="alert"></div>
+        <div id="dy-pendientes"></div>
+        <div id="dy-recordatorios-hoy"></div>
+        <div id="dy-actividades"></div>
+      </section>
+      <section class="fin-card">
+        <div class="fin-card-title">Recordatorios que se repiten</div>
+        <div class="dy-form">
+          <input type="text" id="dy-rec-texto" class="dy-in" maxlength="200" placeholder="Ej.: revisar mails de clientes" aria-label="Qué hay que recordar" onkeydown="if (event.key === 'Enter') dyGuardarRecordatorio()">
+          <div class="dy-form-fila">
+            <select id="dy-rec-frecuencia" class="dy-in" aria-label="Cada cuánto" onchange="dyPintarDiasForm()">
+              <option value="diario">Todos los días</option>
+              <option value="habiles">Días hábiles (lunes a viernes)</option>
+              <option value="dias">Días elegidos de la semana</option>
+            </select>
+          </div>
+          <div class="dy-dias dy-oculto" id="dy-rec-dias">
+            <label class="dy-dia-chip"><input type="checkbox" id="dy-rec-dia-0"> Lun</label>
+            <label class="dy-dia-chip"><input type="checkbox" id="dy-rec-dia-1"> Mar</label>
+            <label class="dy-dia-chip"><input type="checkbox" id="dy-rec-dia-2"> Mié</label>
+            <label class="dy-dia-chip"><input type="checkbox" id="dy-rec-dia-3"> Jue</label>
+            <label class="dy-dia-chip"><input type="checkbox" id="dy-rec-dia-4"> Vie</label>
+            <label class="dy-dia-chip"><input type="checkbox" id="dy-rec-dia-5"> Sáb</label>
+            <label class="dy-dia-chip"><input type="checkbox" id="dy-rec-dia-6"> Dom</label>
+          </div>
+          <div class="dy-form-fila">
+            <button class="btn-primary" type="button" id="dy-rec-guardar" onclick="dyGuardarRecordatorio()">Crear recordatorio</button>
+            <button class="btn-ghost dy-oculto" type="button" id="dy-rec-cancelar" onclick="dyCancelarEdicion()">Cancelar</button>
+          </div>
+          <div class="dy-error" id="dy-rec-error" role="alert"></div>
+        </div>
+        <div class="dy-lista" id="dy-recordatorios"></div>
+      </section>
+    </div>
+  </div>
+
   <!-- ======= RECURSOS HUMANOS PANELES ======= -->
   <!-- Dos paneles de Recursos Humanos. El organigrama conserva el id equipo
        para que los permisos guardados sigan valiendo. -->
@@ -3495,6 +3607,7 @@ function showPanel(name) {
   if (name === 'wa') loadWaTemplates();
   if (name === 'cal' && !calLoaded) { calLoaded = true; renderCalendar(); }
   if (name === 'tasks') loadTasks();
+  if (name === 'daily') loadDaily();
   if (name === 'projects') loadProjects();
   if (name === 'notion_clients') loadNotionClients();
   if (name === 'finanzas') loadFinanzas();
@@ -7489,20 +7602,20 @@ function _showScoreBreakdown(event, el) {
 
 // ── Mobile navigation ─────────────────────────────────────────────────────────
 // El mismo orden que el menu de la izquierda (Juan, 14/9).
-const NAV_PRIORITY = ['cal','meta','finanzas','simulador','seg_leads','wa','notion_clients','clientes','projects','tasks','activity','equipo','ausencias','cola','metrics'];
+const NAV_PRIORITY = ['cal','meta','finanzas','simulador','seg_leads','wa','notion_clients','clientes','projects','tasks','daily','activity','equipo','ausencias','cola','metrics'];
 const NAV_ICONS = {
   cola:'inbox',meta:'instagram',cal:'calendar',
   tasks:'check-square',pipeline:'trending-up',clientes:'users',
   wa:'message-circle',metrics:'bar-chart-2',activity:'clock',projects:'target',
   notion_clients:'handshake',finanzas:'wallet',simulador:'calculator',equipo:'network',
-  ausencias:'calendar-clock',seg_leads:'phone-call'
+  ausencias:'calendar-clock',seg_leads:'phone-call',daily:'clipboard-list'
 };
 const NAV_LABELS = {
   cola:'Outbound',meta:'Meta',cal:'Agenda',
   tasks:'Tareas',pipeline:'Pipeline',clientes:'Clientes',
   wa:'WA',metrics:'Intel. comercial',activity:'Actividad',projects:'Proyectos',
   notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador',equipo:'Organigrama',
-  ausencias:'Ausencias',seg_leads:'Seguimiento'
+  ausencias:'Ausencias',seg_leads:'Seguimiento',daily:'Daily'
 };
 let _mobileNavOverflow = [];
 
@@ -7582,7 +7695,7 @@ function closeMasSheet() {
 }
 
 // ── Panel access control ──────────────────────────────────────────────────────
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','equipo','ausencias','seg_leads'];
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','equipo','ausencias','seg_leads','daily'];
 (async () => {
   try {
     const r = await fetch('/api/me');
@@ -7618,6 +7731,8 @@ const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activ
     }
     _buildMobileNav(allowedPanels);
     _syncMobileNav(activePanel);
+    // Las opciones por persona debajo de "Daily Programador" salen de la base.
+    if (allowedPanels.includes('daily')) dyCargarPersonas();
   } catch(e) {}
 })();
 
@@ -9885,6 +10000,369 @@ function slFichaHtml(seg) {
     + '<div class="cp-section"><div class="cp-section-title">Historial de llamados</div>' + llamados + '</div>';
 }
 // ========== FIN Seguimiento de leads ==========
+// ========== Daily Programador ==========
+// Actividades del dia y recordatorios que se repiten, por persona del equipo
+// marcada como programador (pedido de Juan, 15/9). Un solo panel `daily`: la
+// persona es estado (dyPersonaId), no un panel por persona, asi los permisos
+// siguen siendo un id. En el menu hay una opcion por persona debajo de "Daily
+// Programador"; en el celular, el selector de arriba del panel.
+// El dia de hoy lo decide el servidor en hora de Montevideo. Aca solo se suman
+// dias a una fecha AAAA-MM-DD en UTC, sin mirar el reloj de la compu.
+// No es Tareas: Tareas es el tablero del equipo (cliente, responsable,
+// prioridad, fecha limite, Notion); esto es la lista personal de cada dia.
+
+const DY_DIAS_LARGOS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+const DY_MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto',
+                  'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+let dyPersonas = [];
+let dyPersonaId = null;
+let dyFecha = null;      // el dia que se esta mirando, AAAA-MM-DD
+let dyHoy = null;        // hoy en Montevideo, segun el servidor
+let dyDatos = null;
+let dyEditandoId = null;
+let dyPedido = 0;        // descarta respuestas viejas si se cambia rapido de dia o persona
+
+function dyFechaMas(fecha, dias) {
+  const p = String(fecha).split('-').map(Number);
+  return new Date(Date.UTC(p[0], p[1] - 1, p[2] + dias)).toISOString().slice(0, 10);
+}
+
+function dyFechaLarga(fecha) {
+  const p = String(fecha).split('-').map(Number);
+  const d = new Date(Date.UTC(p[0], p[1] - 1, p[2]));
+  return DY_DIAS_LARGOS[d.getUTCDay()] + ' ' + p[2] + ' de ' + DY_MESES[p[1] - 1];
+}
+
+function dyFechaCorta(fecha) {
+  const p = String(fecha).split('-');
+  return p[2] + '/' + p[1];
+}
+
+function dyTexto(id, texto) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = texto;
+}
+
+function dyHtml(id, html) {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = html;
+}
+
+function dyBuscar(lista, id) {
+  return (Array.isArray(lista) ? lista : []).find(x => Number(x.id) === Number(id)) || null;
+}
+
+async function dyCargarPersonas() {
+  try {
+    const r = await fetch('/api/daily/personas');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const j = await r.json();
+    dyPersonas = Array.isArray(j.personas) ? j.personas : [];
+  } catch (e) {
+    dyPersonas = [];
+  }
+  if (!dyBuscar(dyPersonas, dyPersonaId)) dyPersonaId = dyPersonas.length ? dyPersonas[0].id : null;
+  dyPintarPersonas();
+  return dyPersonas;
+}
+
+function dyPintarPersonas() {
+  const enDaily = activePanel === 'daily';
+  dyHtml('dy-nav-personas', dyPersonas.map(p =>
+    '<div class="dy-nav-sub' + (enDaily && p.id === dyPersonaId ? ' dy-activa' : '') + '" id="dy-nav-persona-' + Number(p.id)
+    + '" role="button" tabindex="0" onclick="dyAbrirPersona(' + Number(p.id) + ')"'
+    + ' onkeydown="if (event.key === ' + "'Enter'" + ') dyAbrirPersona(' + Number(p.id) + ')">'
+    + esc(p.primer_nombre) + '</div>').join(''));
+  dyHtml('dy-personas', dyPersonas.length
+    ? dyPersonas.map(p => '<button class="dy-persona" type="button" aria-pressed="'
+        + (p.id === dyPersonaId ? 'true' : 'false') + '" onclick="dyElegirPersona(' + Number(p.id) + ')">'
+        + esc(p.primer_nombre) + '</button>').join('')
+    : '<div class="dy-vacio">No hay nadie marcado como programador en Recursos Humanos.</div>');
+}
+
+// Desde el menu: abre el panel en el dia de esa persona.
+function dyAbrirPersona(id) {
+  if (id !== dyPersonaId) dyCancelarEdicion();
+  dyPersonaId = id;
+  showPanel('daily');   // showPanel llama a loadDaily
+}
+
+function dyElegirPersona(id) {
+  if (id === dyPersonaId) return;
+  dyPersonaId = id;
+  dyCancelarEdicion();
+  dyCargarDia();
+}
+
+async function loadDaily() {
+  if (!dyPersonas.length) await dyCargarPersonas();
+  await dyCargarDia();
+}
+
+function dyMoverDia(dias) {
+  if (!dyFecha) return;
+  dyFecha = dyFechaMas(dyFecha, dias);
+  dyCargarDia();
+}
+
+function dyIrHoy() {
+  dyFecha = null;   // sin fecha, el servidor devuelve hoy en Montevideo
+  dyCargarDia();
+}
+
+async function dyCargarDia() {
+  dyPintarPersonas();
+  if (dyPersonaId === null) {
+    dyDatos = null;
+    dyPintarDia();
+    return;
+  }
+  const pedido = ++dyPedido;
+  const url = '/api/daily?persona_id=' + dyPersonaId + (dyFecha ? '&fecha=' + dyFecha : '');
+  let error = '';
+  let datos = null;
+  try {
+    const r = await fetch(url);
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || 'HTTP ' + r.status);
+    datos = j;
+  } catch (e) {
+    error = 'No se pudo leer el día: ' + e.message;
+  }
+  if (pedido !== dyPedido) return;
+  dyDatos = datos;
+  if (datos) {
+    dyFecha = datos.fecha || dyFecha;
+    dyHoy = datos.hoy || dyHoy;
+  }
+  dyTexto('dy-error', error);
+  dyPintarDia();
+}
+
+function dyItemHtml(x, marcar, clase, nota, borrable) {
+  const id = Number(x.id);
+  const idCheck = 'dy-check-' + marcar + '-' + id;
+  return '<div class="dy-item' + (clase ? ' ' + clase : '') + (x.hecha ? ' dy-hecha' : '') + '">'
+    + '<input type="checkbox" class="dy-check" id="' + idCheck + '"' + (x.hecha ? ' checked' : '')
+    + ' onchange="' + marcar + '(' + id + ', this.checked)">'
+    + '<label class="dy-item-texto" for="' + idCheck + '">' + esc(x.texto)
+    + (nota ? '<span class="dy-item-nota">' + esc(nota) + '</span>' : '') + '</label>'
+    + (borrable ? '<button class="btn-ghost btn-icono" type="button" onclick="dyBorrarActividad(' + id + ')"'
+        + ' title="Borrar" aria-label="Borrar ' + esc(x.texto) + '"><i data-lucide="trash-2" class="nav-icon"></i></button>' : '')
+    + '</div>';
+}
+
+function dyPintarDia() {
+  const d = dyDatos || {};
+  const lista = x => Array.isArray(x) ? x : [];
+  const esHoy = !!dyFecha && dyFecha === dyHoy;
+  dyHtml('dy-fecha', dyFecha
+    ? esc(dyFechaLarga(dyFecha)) + (esHoy ? '<span class="dy-fecha-hoy">Hoy</span>' : '') : '');
+
+  const pendientes = lista(d.pendientes_ayer);
+  dyHtml('dy-pendientes', pendientes.length
+    ? '<div class="dy-bloque"><div class="dy-bloque-titulo">Pendiente de ayer</div><div class="dy-lista">'
+      + pendientes.map(a => '<div class="dy-item dy-pendiente"><span class="dy-item-texto">' + esc(a.texto) + '</span>'
+          + '<button class="btn-ghost" type="button" onclick="dyPasar(' + Number(a.id) + ')">'
+          + (esHoy ? 'Pasar a hoy' : 'Pasar a este día') + '</button></div>').join('')
+      + '</div></div>'
+    : '');
+
+  const recordatorios = lista(d.recordatorios);
+  dyHtml('dy-recordatorios-hoy', recordatorios.length
+    ? '<div class="dy-bloque"><div class="dy-bloque-titulo">Recordatorios de este día</div><div class="dy-lista">'
+      + recordatorios.map(x => dyItemHtml(x, 'dyMarcarRecordatorio', 'dy-recordatorio', x.cuando, false)).join('')
+      + '</div></div>'
+    : '');
+
+  const actividades = lista(d.actividades);
+  dyHtml('dy-actividades', '<div class="dy-bloque"><div class="dy-bloque-titulo">Actividades</div>'
+    + (actividades.length
+      ? '<div class="dy-lista">' + actividades.map(a => dyItemHtml(a, 'dyMarcarActividad', '',
+          a.pasada_de ? 'Pasada del ' + dyFechaCorta(a.pasada_de) : '', true)).join('') + '</div>'
+      : '<div class="dy-vacio">Nada cargado para este día. Escribí arriba y apretá Enter.</div>')
+    + '</div>');
+
+  dyPintarRecordatorios();
+  const panel = document.getElementById('daily-panel');
+  if (window.lucide && panel) lucide.createIcons({nodes: [panel]});
+}
+
+function dyPintarRecordatorios() {
+  const todos = dyDatos && Array.isArray(dyDatos.recordatorios_todos) ? dyDatos.recordatorios_todos : [];
+  const boton = (accion, id, icono, rotulo, texto) =>
+    '<button class="btn-ghost btn-icono" type="button" onclick="' + accion + '(' + id + ')" title="' + rotulo
+    + '" aria-label="' + rotulo + ': ' + esc(texto) + '"><i data-lucide="' + icono + '" class="nav-icon"></i></button>';
+  dyHtml('dy-recordatorios', todos.length
+    ? todos.map(r => {
+        const id = Number(r.id);
+        return '<div class="dy-rec' + (r.activo ? '' : ' dy-pausado') + '"><div class="dy-rec-cuerpo">'
+          + '<div class="dy-rec-texto">' + esc(r.texto) + '</div>'
+          + '<div class="dy-rec-cuando">' + esc(r.cuando || '') + '</div></div>'
+          + (r.activo ? '' : '<span class="dy-badge">Pausado</span>')
+          + boton('dyEditarRecordatorio', id, 'pencil', 'Editar', r.texto)
+          + boton('dyPausarRecordatorio', id, r.activo ? 'pause' : 'play', r.activo ? 'Pausar' : 'Reanudar', r.texto)
+          + boton('dyBorrarRecordatorio', id, 'trash-2', 'Borrar', r.texto)
+          + '</div>';
+      }).join('')
+    : '<div class="dy-vacio">Sin recordatorios. Creá uno arriba: aparece solo en los días que le tocan.</div>');
+}
+
+async function dyPedir(url, metodo, cuerpo) {
+  const opciones = {method: metodo, headers: {'Content-Type': 'application/json'}};
+  if (cuerpo !== undefined) opciones.body = JSON.stringify(cuerpo);
+  const r = await fetch(url, opciones);
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || j.ok === false) throw new Error(j.error || 'HTTP ' + r.status);
+  return j;
+}
+
+// Hace el pedido, recarga el dia y deja el error (si hubo) en `idError`.
+async function dyAccion(idError, prefijo, hacer) {
+  let error = '';
+  try {
+    await hacer();
+  } catch (e) {
+    error = prefijo + e.message;
+  }
+  await dyCargarDia();
+  if (error) dyTexto(idError, error);
+  return !error;
+}
+
+async function dyAgregar() {
+  const input = document.getElementById('dy-nueva');
+  const texto = (input.value || '').trim();
+  if (!texto) {
+    dyTexto('dy-error', 'Escribí la actividad antes de agregarla.');
+    input.focus();
+    return;
+  }
+  if (dyPersonaId === null || !dyFecha) {
+    dyTexto('dy-error', 'Elegí de quién es el día.');
+    return;
+  }
+  const ok = await dyAccion('dy-error', 'No se pudo agregar: ', () =>
+    dyPedir('/api/daily/actividades', 'POST', {persona_id: dyPersonaId, fecha: dyFecha, texto: texto}));
+  if (ok) input.value = '';
+  input.focus();
+}
+
+function dyMarcarActividad(id, hecha) {
+  return dyAccion('dy-error', 'No se pudo marcar: ', () =>
+    dyPedir('/api/daily/actividades/' + id, 'PATCH', {hecha: !!hecha}));
+}
+
+function dyMarcarRecordatorio(id, hecha) {
+  return dyAccion('dy-error', 'No se pudo marcar: ', () =>
+    dyPedir('/api/daily/recordatorios/' + id + '/marca', 'PUT', {fecha: dyFecha, hecha: !!hecha}));
+}
+
+function dyPasar(id) {
+  return dyAccion('dy-error', 'No se pudo pasar: ', () =>
+    dyPedir('/api/daily/actividades/' + id + '/pasar', 'POST', {fecha: dyFecha}));
+}
+
+async function dyBorrarActividad(id) {
+  const a = dyBuscar(dyDatos && dyDatos.actividades, id);
+  if (!confirm('¿Borrar "' + (a ? a.texto : 'la actividad') + '"?')) return;
+  await dyAccion('dy-error', 'No se pudo borrar: ', () => dyPedir('/api/daily/actividades/' + id, 'DELETE'));
+}
+
+function dyDiasElegidos() {
+  const dias = [];
+  for (let i = 0; i < 7; i++) {
+    const c = document.getElementById('dy-rec-dia-' + i);
+    if (c && c.checked) dias.push(i);
+  }
+  return dias;
+}
+
+function dyPintarDiasForm() {
+  const sel = document.getElementById('dy-rec-frecuencia');
+  const dias = document.getElementById('dy-rec-dias');
+  if (sel && dias) dias.classList.toggle('dy-oculto', sel.value !== 'dias');
+}
+
+async function dyGuardarRecordatorio() {
+  const textoEl = document.getElementById('dy-rec-texto');
+  const texto = (textoEl.value || '').trim();
+  const frecuencia = document.getElementById('dy-rec-frecuencia').value || 'diario';
+  const dias = frecuencia === 'dias' ? dyDiasElegidos() : [];
+  if (!texto) {
+    dyTexto('dy-rec-error', 'Escribí qué hay que recordar.');
+    textoEl.focus();
+    return;
+  }
+  if (frecuencia === 'dias' && !dias.length) {
+    dyTexto('dy-rec-error', 'Elegí al menos un día de la semana.');
+    return;
+  }
+  if (dyPersonaId === null) {
+    dyTexto('dy-rec-error', 'Elegí de quién es el recordatorio.');
+    return;
+  }
+  const editando = dyEditandoId;
+  const datos = {texto: texto, frecuencia: frecuencia, dias: dias};
+  const ok = await dyAccion('dy-rec-error', 'No se pudo guardar: ', () => editando !== null
+    ? dyPedir('/api/daily/recordatorios/' + editando, 'PUT', datos)
+    : dyPedir('/api/daily/recordatorios', 'POST', Object.assign({persona_id: dyPersonaId}, datos)));
+  if (ok) dyCancelarEdicion();
+}
+
+function dyEditarRecordatorio(id) {
+  const r = dyBuscar(dyDatos && dyDatos.recordatorios_todos, id);
+  if (!r) return;
+  dyEditandoId = Number(r.id);
+  const dias = Array.isArray(r.dias) ? r.dias : [];
+  document.getElementById('dy-rec-texto').value = r.texto;
+  document.getElementById('dy-rec-frecuencia').value = r.frecuencia;
+  for (let i = 0; i < 7; i++) {
+    const c = document.getElementById('dy-rec-dia-' + i);
+    if (c) c.checked = dias.indexOf(i) >= 0;
+  }
+  dyPintarDiasForm();
+  dyTexto('dy-rec-guardar', 'Guardar cambios');
+  const cancelar = document.getElementById('dy-rec-cancelar');
+  if (cancelar) cancelar.classList.remove('dy-oculto');
+  dyTexto('dy-rec-error', '');
+  document.getElementById('dy-rec-texto').focus();
+}
+
+function dyCancelarEdicion() {
+  dyEditandoId = null;
+  const texto = document.getElementById('dy-rec-texto');
+  if (texto) texto.value = '';
+  const frecuencia = document.getElementById('dy-rec-frecuencia');
+  if (frecuencia) frecuencia.value = 'diario';
+  for (let i = 0; i < 7; i++) {
+    const c = document.getElementById('dy-rec-dia-' + i);
+    if (c) c.checked = false;
+  }
+  dyPintarDiasForm();
+  dyTexto('dy-rec-guardar', 'Crear recordatorio');
+  const cancelar = document.getElementById('dy-rec-cancelar');
+  if (cancelar) cancelar.classList.add('dy-oculto');
+  dyTexto('dy-rec-error', '');
+}
+
+function dyPausarRecordatorio(id) {
+  const r = dyBuscar(dyDatos && dyDatos.recordatorios_todos, id);
+  if (!r) return null;
+  return dyAccion('dy-rec-error', 'No se pudo ' + (r.activo ? 'pausar' : 'reanudar') + ': ', () =>
+    dyPedir('/api/daily/recordatorios/' + id, 'PUT', {activo: !r.activo}));
+}
+
+async function dyBorrarRecordatorio(id) {
+  const r = dyBuscar(dyDatos && dyDatos.recordatorios_todos, id);
+  if (!r) return;
+  if (!confirm('¿Borrar el recordatorio "' + r.texto + '"? Deja de aparecer en todos los días. '
+      + 'Si solo querés frenarlo un tiempo, pausalo.')) return;
+  const ok = await dyAccion('dy-rec-error', 'No se pudo borrar: ', () =>
+    dyPedir('/api/daily/recordatorios/' + id, 'DELETE'));
+  if (ok && dyEditandoId === Number(id)) dyCancelarEdicion();
+}
 
 // ========== Equipo ==========
 // Recursos Humanos, en dos paneles que comparten un solo pedido: Organigrama
@@ -13075,7 +13553,7 @@ def create_app(db_path: str) -> Flask:
 
     for bp in (leads_bp, demos_bp, calendar_bp, wa_bp, pipeline_bp, tasks_bp, budgets_bp, tokens_bp, meta_bp, calendly_bp, notion_bp, projects_bp, preclientes_bp,
                 notion_clients_bp, resend_bp, linkedin_bp, web_bp, finanzas_bp, marketing_bp,
-                simulador_bp, equipo_bp, flujos_bp, seg_leads_bp):
+                simulador_bp, equipo_bp, flujos_bp, seg_leads_bp, daily_bp):
         app.register_blueprint(bp)
 
     @app.before_request
@@ -13989,8 +14467,8 @@ select:focus{border-color:#0088cc}
 </div>
 
 <script>
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','equipo','ausencias','seg_leads'];
-const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',equipo:'Organigrama',ausencias:'Ausencias',seg_leads:'Seguimiento de leads'};
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','equipo','ausencias','seg_leads','daily'];
+const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',equipo:'Organigrama',ausencias:'Ausencias',seg_leads:'Seguimiento de leads',daily:'Daily Programador'};
 let _roles = [];
 
 function makeChips(containerId, checkedArr, prefix) {
