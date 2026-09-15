@@ -186,6 +186,7 @@ def test_los_roles_con_proceso_de_venta_reciben_el_panel_una_sola_vez(tmp_path):
     # Una base de antes de este deploy: todavía sin las tablas de seguimiento.
     _exec(db, "DROP TABLE seg_llamados")
     _exec(db, "DROP TABLE seg_recordatorios")
+    _exec(db, "DELETE FROM panel_grants_aplicados WHERE panel='seg_leads'")
     init_db(db)
     acceso = {rid: json.loads(p) for rid, p in _filas(db, "SELECT id, panel_access FROM roles")}
     assert "seg_leads" in acceso[con]

@@ -607,6 +607,8 @@ def test_los_roles_con_tareas_reciben_el_daily_y_no_el_admin(tmp_path):
         assert "daily" not in acceso["Caller"] and "daily" not in acceso["Ventas"]
         assert all("daily_admin" not in paneles for paneles in acceso.values())
         conn.execute("UPDATE roles SET panel_access=? WHERE name='Ventas'", (json.dumps(["meta", "tasks"]),))
+        # Una base de antes de Daily: el panel todavía no se repartió nunca.
+        conn.execute("DELETE FROM panel_grants_aplicados WHERE panel='daily'")
         conn.commit()
         assert database._grant_panel_to_existing_roles(conn, "daily", solo_si_tiene="tasks") == 1
         ventas = json.loads(conn.execute("SELECT panel_access FROM roles WHERE name='Ventas'").fetchone()[0])
