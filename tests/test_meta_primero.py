@@ -4,7 +4,8 @@ Menu, por grupo: CALENDARIO (Calendario) · MARKETING (Meta Ads, Marketing) ·
 FINANZAS (Finanzas, Simulador financiero) · VENTAS (WhatsApp, Proceso de venta,
 Demos, SDR) · OPERACION (Clientes, Proyectos, Tareas, Actividad, Equipo) ·
 CAPTACION (Inteligencia comercial, Outbound). La barra del celular sigue el
-mismo orden. Equipo se sumo a OPERACION despues de Actividad el 14/9.
+mismo orden. Equipo se sumo a OPERACION despues de Actividad el 14/9. Daily
+Programador va en OPERACION justo despues de Tareas (15/9).
 
 Al entrar se abre el Calendario (Juan lo pidio despues de haber pedido Meta
 Ads: gana el ultimo pedido). Un rol que no tiene el calendario no puede quedar
@@ -31,7 +32,7 @@ ORDEN = [
     ("MARKETING", ["meta", "marketing"]),
     ("FINANZAS", ["finanzas", "simulador"]),
     ("VENTAS", ["wa", "notion_clients", "demos"]),
-    ("OPERACIÓN", ["clientes", "projects", "tasks", "activity"]),
+    ("OPERACIÓN", ["clientes", "projects", "tasks", "daily", "activity"]),
     ("RECURSOS HUMANOS", ["equipo", "ausencias"]),
     ("CAPTACIÓN", ["cola", "metrics", "sdr"]),
 ]
@@ -125,11 +126,12 @@ def _primer_panel(access, existentes):
     (["pipeline", "clientes", "meta"], "meta"),           # meta va antes que clientes
     (["cola", "tasks"], "tasks"),
     (["cola", "ausencias"], "ausencias"),                 # Recursos Humanos va antes que Captación
+    (["activity", "daily"], "daily"),                     # Daily va antes que Actividad
 ])
 def test_un_rol_sin_calendario_arranca_en_un_panel_que_existe(tmp_path, access, esperado):
     existentes = ["meta", "cola", "cal", "tasks", "clientes", "wa", "metrics",
                   "activity", "sdr", "projects", "notion_clients", "finanzas", "simulador",
-                  "equipo", "ausencias"]
+                  "equipo", "ausencias", "daily"]
     archivo = tmp_path / "primero.js"
     archivo.write_text(_primer_panel(access, existentes), encoding="utf-8")
     r = subprocess.run(["node", str(archivo)], capture_output=True, text=True, encoding="utf-8")
