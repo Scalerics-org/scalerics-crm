@@ -151,7 +151,24 @@ def _filas(db_path: str, desde: str, hasta: str) -> list:
                    (SELECT SUM(impressions) FROM meta_ad_insights t
                      WHERE t.ad_id = a.ad_id) AS impresiones_total,
                    (SELECT SUM(clicks) FROM meta_ad_insights t
-                     WHERE t.ad_id = a.ad_id) AS clics_total
+                     WHERE t.ad_id = a.ad_id) AS clics_total,
+                   -- Leads del CRM que sabemos que vinieron de ESTE anuncio, y
+                   -- cuantos de ellos llegaron a sentarse a hablar. Es la unica
+                   -- forma de saber que creativo sirve: el costo por lead dice
+                   -- cual es barato, no cual trae gente que compra.
+                   (SELECT COUNT(*) FROM businesses b
+                     WHERE b.source='meta' AND b.meta_ad_id = a.ad_id)
+                     AS leads_crm,
+                   (SELECT COUNT(*) FROM businesses b
+                     WHERE b.source='meta' AND b.meta_ad_id = a.ad_id
+                       AND EXISTS (SELECT 1 FROM lead_events e
+                                    WHERE e.lead_id = b.id
+                                      AND e.new_status IN
+                                          ('demo_1','demo_2','demo_3',
+                                           'presupuesto_enviado','follow_up_1',
+                                           'follow_up_2','acepto','cerrado',
+                                           'en_desarrollo','finalizado')))
+                     AS demos
               FROM meta_ads a
               JOIN meta_ad_insights i ON i.ad_id = a.ad_id
              WHERE i.date BETWEEN ? AND ?
@@ -370,6 +387,14 @@ def anuncios_en_curso(db_path: str, desde: str, hasta: str, hoy=None) -> list:
             "cpl_total": _costo(gasto_total, leads_total),
             "ctr_total": _tasa(int(f["clics_total"] or 0),
                                int(f["impresiones_total"] or 0)),
+            # Lo que de verdad importa: cuantos se sentaron a hablar y cuanto
+            # costo cada uno. `leads_crm` puede ser menor que `leads_total` —
+            # Meta guarda los leads 90 dias y de los viejos no sabemos el
+            # anuncio— asi que el panel tiene que poder decir sobre cuantos
+            # esta hablando en vez de dar un costo por demo que miente.
+            "leads_atribuidos": int(f["leads_crm"] or 0),
+            "demos": int(f["demos"] or 0),
+            "costo_demo": _costo(gasto_total, int(f["demos"] or 0)),
         })
 
     # La mediana sale de los numeros de toda la vida, igual que las reglas: con

@@ -1352,6 +1352,9 @@ body.light .mobile-header-title{color:#0f172a}
 .sc-anun-dato span{font-size:.62rem;letter-spacing:.03em;text-transform:uppercase;color:var(--rotulo)}
 .sc-anun-dato b{font-size:.92rem;color:var(--texto);font-variant-numeric:tabular-nums}
 .sc-anun-extra{font-size:.68rem;line-height:1.5;color:var(--rotulo)}
+.sc-anun-demos{display:grid;gap:2px;font-size:.72rem;line-height:1.5;color:var(--texto-tenue)}
+.sc-anun-demos b{color:var(--texto);font-variant-numeric:tabular-nums}
+.sc-anun-cobertura{font-size:.64rem;color:var(--rotulo)}
 .sc-anun-vida{font-size:.7rem;line-height:1.5;color:var(--texto-tenue)}
 /* La tarjeta apagada se distingue por la palabra Y por el tono: solo con
    opacidad se leeria igual que una al aire. */
@@ -8422,6 +8425,22 @@ function _mkPintar() {
         dato('Gasto del período', a.gasto, 'moneda') +
         dato('Leads', a.leads, 'numero') +
         dato('Por lead', a.cpl, 'moneda') +
+        '</div>' +
+        // Lo que de verdad decide. El costo por lead dice cuál es barato; el
+        // costo por demo dice cuál sirve, y no ordenan igual.
+        //
+        // `leads_atribuidos` puede ser menor que lo que dice Meta: los leads
+        // se guardan 90 días y de los viejos no sabemos de qué anuncio
+        // vinieron. Se dice, en vez de mostrar un costo por demo que miente.
+        '<div class="sc-anun-demos">' +
+        `<span>Se sentaron a hablar <b>${esc(SC.fmt(a.demos, 'numero'))}</b>` +
+        (a.costo_demo
+          ? ` · <b>${esc(SC.fmt(a.costo_demo, 'moneda'))}</b> cada uno` : '') +
+        '</span>' +
+        (a.leads_atribuidos < a.leads_total
+          ? `<span class="sc-anun-cobertura">sobre ${esc(SC.fmt(a.leads_atribuidos, 'numero'))}` +
+            ` de ${esc(SC.fmt(a.leads_total, 'numero'))} leads de los que sabemos el anuncio</span>`
+          : '') +
         '</div>' +
         '<div class="sc-anun-extra">' +
         `CTR ${esc(SC.fmt(a.ctr, 'porcentaje'))}` +
