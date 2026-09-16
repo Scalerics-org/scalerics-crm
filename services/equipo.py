@@ -165,6 +165,26 @@ def organigrama(personas: list[dict]) -> list[dict]:
     return salida
 
 
+def colores_por_persona(personas: list[dict]) -> dict:
+    """{nombre plegado: {rol, color, etiqueta}} para pintar a cada persona con
+    el MISMO color que ya tiene en el organigrama y en Flujos.
+
+    Lo usa `/api/users` para que el avatar de Tareas no invente una paleta
+    propia: quien es azul en el organigrama es azul en su tarea. El pareo es
+    por nombre, que es el único vínculo entre `users` y `equipo_personas` (la
+    precarga de `rol_flujo` parea igual). Se pliega con casefold para que una
+    mayúscula de diferencia no deje a alguien sin color; quien no está no
+    entra, y el que pregunta cae en "fuera de Flujos".
+    """
+    salida = {}
+    for p in personas:
+        nombre = (p.get("nombre") or "").strip()
+        if not nombre:
+            continue
+        salida[nombre.casefold()] = estilo_de_persona(p.get("rol_flujo"))
+    return salida
+
+
 def leyenda_organigrama(nodos: list[dict]) -> list[dict]:
     """Los colores que aparecen en el organigrama, en el orden de los roles de
     Flujos y al final "Fuera de Flujos". Solo los presentes."""
