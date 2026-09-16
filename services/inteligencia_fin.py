@@ -70,9 +70,11 @@ logger = logging.getLogger(__name__)
 
 # ── umbrales ─────────────────────────────────────────────────────────────────
 UMBRAL_IMPACTO_USD = 100
-# Ocho y no seis: el menu muestra al menos una alternativa por palanca (son
-# cinco) y tiene que quedar lugar para las reglas con numeros reales.
-MAX_RECOMENDACIONES = 8
+# Doce: el menu muestra al menos una alternativa por palanca (son cinco),
+# las reglas con numeros reales, y ademas los recortes concretos que pidio
+# Juan (echar un programador, marketing, cortar cualquier gasto). Con ocho,
+# los recortes quedaban afuera justo cuando son lo que el pide ver.
+MAX_RECOMENDACIONES = 12
 MAX_DIAGNOSTICO = 6
 VENTANA_MESES = 3
 DIAS_SEGUIMIENTO = 30
@@ -116,6 +118,12 @@ REGLAS = {  # regla -> (confianza por defecto, tipo)
     "R10": ("media", "ingreso"),
     "R11": ("baja", "ingreso"),
     "R12": ("baja", "recorte"),
+    # Los recortes concretos que Juan pidio por su nombre (16/9): echar un
+    # programador, no pagarle al de marketing si no vende, y cortar cualquier
+    # gasto de la lista.
+    "R13": ("alta", "recorte"),
+    "R14": ("media", "recorte"),
+    "R15": ("alta", "recorte"),
 }
 
 # Las cinco palancas del menu de alternativas (spec del 15/9). El color de la
@@ -130,7 +138,8 @@ ETIQUETA_PALANCA = {"pauta": "Más pauta", "conversion": "Mejorar conversión",
 # conversion" porque convierten en plata algo que ya se vendio.
 PALANCA_DE_REGLA = {"R1": "conversion", "R2": "pauta", "R3": "recorte", "R4": "conversion",
                     "R5": "recorte", "R6": "conversion", "R7": "conversion", "R8": "recorte",
-                    "R9": "canal", "R10": "conversion", "R11": "canal", "R12": "pausa"}
+                    "R9": "canal", "R10": "conversion", "R11": "canal", "R12": "pausa",
+                    "R13": "recorte", "R14": "recorte", "R15": "recorte"}
 
 # Cuantas ventas por mes se le supone a un canal nuevo sin historial (R11).
 # Conservador a proposito: es una estimacion, no una promesa.
@@ -908,7 +917,28 @@ def _contexto(db_path: str, hoy: date) -> dict:
     # La separación NO puede mirar `client_id`: en los datos de verdad está
     # vacío y esos costos están cargados como infraestructura común. La hace
     # `clasificar_fijos`, que propone por el concepto y respeta lo que marcó Juan.
-    from services.intel_objetivo import clasificar_fijos
+    from services.intel_objetivo import clasificar_fijos, equipo_comision
+
+    # Los que cobran comision sobre el desarrollo (Matias: 50 %) no son un costo
+    # fijo: no cuestan nada si no se les da un proyecto. No van al objetivo,
+    # entran en el margen del proyecto que hacen.
+    try:
+        comisiones = equipo_comision(db_path)
+    except Exception:
+        logger.warning("inteligencia financiera: falló la lista del equipo", exc_info=True)
+        comisiones = []
+    comision_pct = round(sum(float(c["pct"] or 0) for c in comisiones), 2)
+
+    # Todos los costos del mes, en los tres grupos y con su interruptor. De acá
+    # salen las palancas de recorte: cualquier costo prendido se puede cortar.
+    try:
+        from services.intel_objetivo import costos_del_mes
+
+        costos = costos_del_mes(db_path, mes)
+    except Exception:
+        logger.warning("inteligencia financiera: fallaron los costos del mes", exc_info=True)
+        costos = {"grupos": [], "total": 0.0}
+    lineas_costo = [f for g in costos.get("grupos", []) for f in g["filas"] if f["activo"]]
 
     _todos_fijos = _fijos_vigentes(db_path, mes, "egreso")
     try:
@@ -943,6 +973,8 @@ def _contexto(db_path: str, hoy: date) -> dict:
         "ingresos_promedio": ing_prom, "egresos_promedio": egr_prom,
         "variables_promedio": variables_prev / VENTANA_MESES, "variables_ventana": variables_v,
         "fijos": fijos, "fijos_total": round(sum(u for _, u in fijos), 2),
+        "comisiones": comisiones, "comision_pct": comision_pct,
+        "costos": costos, "lineas_costo": lineas_costo,
         "fijos_cliente": fijos_cliente,
         "fijos_cliente_total": round(sum(u for _, u in fijos_cliente), 2),
         "caja": caja_hoy(db_path, hoy),
@@ -1163,7 +1195,7 @@ def diagnostico(ctx: dict) -> list[dict]:
 
 def _rec(regla, clave, titulo, detalle, lineas, impacto, metrica, acciones=None,
          advertencia="", unica_vez=False, confianza=None, supuestos=None,
-         siempre=False, nota="") -> dict:
+         siempre=False, nota="", consecuencia="", dano=1) -> dict:
     """Una alternativa. `nota` es la linea de riesgo/contexto que va debajo del
     titulo en la tarjeta; `siempre` la deja pasar el umbral de USD 100 (las
     tarjetas de oportunidad tienen que aparecer igual)."""
@@ -1173,6 +1205,9 @@ def _rec(regla, clave, titulo, detalle, lineas, impacto, metrica, acciones=None,
             "impacto_mensual": round(impacto, 2) if impacto is not None else None,
             "unica_vez": bool(unica_vez), "confianza": confianza or confianza_regla, "tipo": tipo,
             "palanca": PALANCA_DE_REGLA.get(regla, ""), "nota": nota or "",
+            # Que pasa si se elige. Juan (16/9): "si clickeo una o varias de las
+            # alternativas me diga que pasa sino no sirve para nada".
+            "consecuencia": consecuencia or "", "dano": int(dano),
             "siempre": bool(siempre),
             "advertencia": advertencia, "acciones": acciones or [], "metrica": metrica,
             "supuestos": list(supuestos or [])}
@@ -1409,8 +1444,15 @@ def _margen_por_tipo(ctx: dict) -> dict[str, dict]:
         else:
             horas, fuente, estimado = general["horas"], general["fuente"], general["estimado"]
         costo = horas * ch
+        # Si el proyecto lo hace alguien que cobra comision sobre el desarrollo
+        # (Matias, 50 %), ese porcentaje sale del mismo proyecto. No se sabe
+        # quien hace cual, asi que se informan los dos margenes y se dice cual
+        # es cual, en vez de mezclarlos en un solo numero.
+        comision = round(ticket * ctx["comision_pct"] / 100, 2) if ctx.get("comision_pct") else 0.0
         salida[tipo] = {"ticket": ticket, "n": len(filas), "horas": horas, "fuente": fuente,
                         "estimado": estimado, "costo": costo, "margen": (ticket - costo) / ticket,
+                        "comision": comision,
+                        "margen_con_comision": (ticket - costo - comision) / ticket,
                         "fuente_tipo": filas[0][1]["fuente_tipo"]}
     return salida
 
@@ -1433,7 +1475,10 @@ def _r6(db_path: str, hoy: date, ctx: dict) -> list[dict]:
              f"{t['fuente_tipo']})",
              f"Costo = {num(t['horas'])} h × {usd(ch['valor'])} = {usd(t['costo'])}",
              f"Margen = ({usd(t['ticket'])} − {usd(t['costo'])}) ÷ {usd(t['ticket'])} = {pct(t['margen'], 1)} % "
-             f"(piso: {pct(MARGEN_MINIMO)} %)"],
+             f"(piso: {pct(MARGEN_MINIMO)} %)"]
+            + ([f"Si lo hace quien cobra comisión ({pct(ctx['comision_pct'] / 100)} % del "
+                f"desarrollo = {usd(t['comision'])}), el margen baja a "
+                f"{pct(t['margen_con_comision'], 1)} %"] if t.get("comision") else []),
             None, {"tipo": tipo, "margen_pct": round(t["margen"] * 100, 2)},
             advertencia=ADVERTENCIA_R6, confianza="media" if t["estimado"] else "alta",
             nota="Tocar el precio, no abandonar la línea", supuestos=supuestos))
@@ -1616,6 +1661,47 @@ def _personas_con_costo(db_path: str, ctx: dict) -> list[dict]:
     return salida
 
 
+def _r12_comision(db_path: str, ctx: dict) -> list[dict]:
+    """No darle trabajo a quien cobra un % del desarrollo (Matías, 50 %).
+
+    Acá no se ahorra ningún costo fijo: si no se le da un proyecto, no cobra
+    nada. Lo que pasa es otra cosa, y hay que decirla sin vueltas: se deja de
+    pagar la mitad del desarrollo, pero también se deja de FACTURAR ese
+    desarrollo entero. El neto es la otra mitad, en contra.
+    """
+    if not ctx.get("comisiones") or not ctx.get("ticket"):
+        return []
+    c = max(ctx["comisiones"], key=lambda x: float(x["pct"] or 0))
+    pct_com = float(c["pct"] or 0)
+    if pct_com <= 0:
+        return []
+    ticket = float(ctx["ticket"]["valor"])
+    if ticket <= 0:
+        return []
+    ahorro = round(ticket * pct_com / 100, 2)
+    neto = round(ahorro - ticket, 2)
+    return [_rec(
+        "R12", f"comision_{c['id']}", f"No le des trabajo a {c['nombre']} este mes",
+        f"No te ahorrás un gasto fijo: {c['nombre']} no cobra nada si no trabaja. Dejás de "
+        f"pagarle {usd(ahorro)} ({num(pct_com)} % del desarrollo), pero también dejás de "
+        f"facturar ese desarrollo de {usd(ticket)}. Neto, {usd(abs(neto))} en contra.",
+        [f"{c['nombre']} cobra el {num(pct_com)} % del desarrollo, solo si se le da un proyecto "
+         f"(lista del equipo)",
+         f"Ticket promedio de un desarrollo: {usd(ticket)} ({ctx['ticket']['alcance']})",
+         f"Se ahorra la comisión: {usd(ticket)} × {num(pct_com)} % = {usd(ahorro)}",
+         f"Se deja de facturar el desarrollo: {usd(ticket)}",
+         f"Impacto NETO = {usd(ahorro)} − {usd(ticket)} = {usd(neto)} por proyecto que no se hace"],
+        neto, {"comision_id": c["id"], "nombre": c["nombre"], "pct": pct_com,
+               "ticket": ticket, "ahorro": ahorro},
+        nota="No cobra si no trabaja: perdés más de lo que ahorrás",
+        advertencia="Solo conviene si no hay con qué entregar el proyecto. El costo no es el "
+                    "problema: sin proyecto no hay costo.",
+        confianza="media",
+        supuestos=[f"Ticket del desarrollo: {usd(ticket)} ({ctx['ticket']['alcance']})",
+                   f"La comisión de {c['nombre']} ({num(pct_com)} %) sale de la lista del equipo, "
+                   f"que se edita en la pantalla"])]
+
+
 def _r12(db_path: str, hoy: date, ctx: dict) -> list[dict]:
     """No darle trabajo a alguien este mes: el impacto NETO, no el ahorro limpio.
 
@@ -1624,6 +1710,11 @@ def _r12(db_path: str, hoy: date, ctx: dict) -> list[dict]:
     paga, pero se pierde lo que sus horas podían facturar, y el resultado suele
     dar NEGATIVO. Así se muestra, en rojo y con el signo, no como un ahorro.
     """
+    # Primero el que cobra comisión: es el caso de Matías y no se parece en nada
+    # a pausar a alguien de sueldo fijo.
+    comision = _r12_comision(db_path, ctx)
+    if comision:
+        return comision
     personas = _personas_con_costo(db_path, ctx)
     horas, margen = ctx["horas_proyecto"], ctx["margen_venta"]
     if not personas or not horas or margen is None or margen <= 0:
@@ -1710,7 +1801,185 @@ def _oportunidades(recs: list[dict]) -> list[dict]:
     return salida
 
 
-REGLAS_EN_ORDEN = (_r1, _r2_r3, _r4, _r5, _r6, _r7, _r8, _r9, _r10, _r11, _r12)
+def _linea_costo(ctx: dict, *palabras) -> dict | None:
+    """La línea de costo cuyo nombre tiene alguna de esas palabras."""
+    from services.intel_objetivo import _raices
+
+    buscadas = {p for p in palabras}
+    for f in ctx.get("lineas_costo") or []:
+        if _raices(f["nombre"]) & buscadas:
+            return f
+    return None
+
+
+def _proyectos_de_una_persona(ctx: dict, hoy: date) -> float:
+    """Cuántos proyectos al mes entrega una persona, con las horas del equipo."""
+    horas = ctx["horas_proyecto"]
+    if not horas or not horas.get("horas"):
+        return 0.0
+    personas = [p for p in listar_personas_equipo(ctx["db_path"]) if p.get("lleva_horas")]
+    if not personas:
+        return 0.0
+    por_dia = sum(float(p["horas_por_dia"]) for p in personas) / len(personas)
+    habiles = len(dias_habiles(hoy.replace(day=1),
+                               hoy.replace(day=calendar.monthrange(hoy.year, hoy.month)[1])))
+    return round(por_dia * habiles / horas["horas"], 2)
+
+
+def _r13(db_path: str, hoy: date, ctx: dict) -> list[dict]:
+    """Echá un programador. Con el sueldo real y lo que se deja de entregar."""
+    fila = _linea_costo(ctx, "programador", "programmer", "dev", "desarrollador")
+    if not fila or not fila.get("cantidad"):
+        return []
+    unitario = float(fila["unitario"] or 0)
+    if unitario <= 0:
+        return []
+    margen = ctx["margen_venta"]
+    # Cuánto entrega cada uno, acotado por lo que de verdad se vende: la
+    # capacidad del equipo dice 2,8 proyectos por cabeza, pero si el negocio
+    # cierra 1 venta por mes, echar a alguien no puede costar 2,8 proyectos.
+    # Sin este tope la tarjeta decía "−USD 9.850" y no hay que creerle.
+    por_capacidad = _proyectos_de_una_persona(ctx, hoy)
+    cuantos_hay = max(int(fila["cantidad"]), 1)
+    ventas_por_mes = len(ctx["ventas_prev"]) / VENTANA_MESES
+    tope = ventas_por_mes / cuantos_hay
+    proyectos = min(por_capacidad, tope) if tope > 0 else 0.0
+    acotado = tope > 0 and tope < por_capacidad
+    recs = []
+    for cuantos in range(1, int(fila["cantidad"]) + 1):
+        ahorro = round(unitario * cuantos, 2)
+        pierde = round(proyectos * cuantos * (margen or 0), 2)
+        neto = round(ahorro - pierde, 2)
+        cuales = "un programador" if cuantos == 1 else f"los {cuantos} programadores"
+        if margen is None or proyectos <= 0:
+            detalle = (f"Te ahorrás {usd(ahorro)} por mes. Todavía no hay con qué medir cuántos "
+                       f"proyectos deja de entregar, así que el número es solo el ahorro.")
+            consecuencia = (f"Ahorrás {usd(ahorro)}, pero perdés la capacidad de entregar de "
+                            f"{cuales}.")
+        else:
+            detalle = (f"Te ahorrás {usd(ahorro)} de sueldo, pero {cuales} "
+                       f"{'entrega' if cuantos == 1 else 'entregan'} {num(proyectos * cuantos)} "
+                       f"proyectos al mes: {usd(pierde)} de margen. Neto {usd(neto)}.")
+            consecuencia = (f"Dejás de entregar {num(proyectos * cuantos)} proyectos al mes "
+                            f"({usd(pierde)}). Solo conviene si no hay proyectos para hacer.")
+        recs.append(_rec(
+            "R13", f"echar_{cuantos}",
+            f"Echá {cuales}" if cuantos > 1 else "Echá un programador",
+            detalle,
+            [f"Sueldo: {usd(unitario)} por programador y hay {fila['cantidad']} (lista del equipo)",
+             f"Se ahorra: {usd(unitario)} × {cuantos} = {usd(ahorro)} por mes"]
+            + ([f"Cada uno entrega {num(proyectos)} proyectos al mes"
+                + (f" (tope real: se cerraron {num(ventas_por_mes)} ventas por mes entre "
+                   f"{cuantos_hay}, no la capacidad teórica de {num(por_capacidad)})"
+                   if acotado else " (horas del equipo ÷ horas por proyecto)"),
+                f"Se deja de facturar: {num(proyectos * cuantos)} × {usd(margen)} = {usd(pierde)}",
+                f"Impacto NETO = {usd(ahorro)} − {usd(pierde)} = {usd(neto)} por mes"]
+               if margen is not None and proyectos > 0 else []),
+            neto if (margen is not None and proyectos > 0) else ahorro,
+            {"clave_costo": fila["clave"], "cuantos": cuantos, "ahorro": ahorro},
+            nota=f"Ahorra {usd(ahorro)} y resigna entregar",
+            consecuencia=consecuencia, dano=2,
+            advertencia="Volver a tomar a alguien cuesta tiempo y sueldo: no es una decisión de "
+                        "un mes.",
+            confianza="alta" if proyectos > 0 else "media"))
+    return recs
+
+
+def _r14(db_path: str, hoy: date, ctx: dict) -> list[dict]:
+    """No le pagues al de marketing si no vende.
+
+    Juan (16/9): "Marketing pago un fijo de 300 pero si no vendo podes poner
+    como alternativa en caso de que no caiga una venta no pagarle al de
+    marketing".
+
+    O sea: el fijo SIGUE siendo fijo y sigue contando en el objetivo. Lo que
+    hay acá es una palanca condicional, de un mes: si el mes cierra sin una
+    sola venta, ese mes no se le paga. Si ya cayó una venta, la condición no se
+    cumple y hay que decirlo, no ofrecer un ahorro que no se puede tomar.
+    """
+    fila = _linea_costo(ctx, "marketing")
+    if not fila:
+        return []
+    monto = round(float(fila["monto_usd"] or 0), 2)
+    if monto <= 0:
+        return []
+    del_mes = [v for v in ctx["ventas"] if v["fecha"] and _periodo(v["fecha"]) == ctx["mes"]]
+    n = len(del_mes)
+    # Como lo dice Juan: "no le pagues al de marketing si no vende".
+    from services.intel_objetivo import _raices
+
+    quien = "al de marketing" if "marketing" in _raices(fila["nombre"]) \
+        else f"a {fila['nombre'].lower()}"
+    emb = ctx["embudo"]
+    leads = emb["leads"] if emb else 0
+    como_viene = (f"van {n} {_plural(n, 'venta', 'ventas')} en lo que va del mes"
+                  if n else "todavía no cayó ninguna venta este mes")
+
+    lineas = [f"{fila['nombre']}: {usd(monto)} por mes, fijo ({fila['origen']})",
+              f"Ventas del mes en curso: {n} → {como_viene}",
+              f"Si el mes cierra en 0 ventas, ese mes no se le paga: {usd(monto)}"]
+    if leads:
+        lineas.append(f"Por el embudo entraron {leads} leads en la ventana: si marketing "
+                      f"para, el mes que viene entran menos")
+    consecuencia = (f"Es por un mes, no un ahorro para siempre. Y es justo el mes en que más "
+                    f"falta el flujo de leads: si para, el mes que viene arrancás con menos "
+                    f"pipeline.")
+
+    if n:
+        # La condición no se cumple: se muestra igual, pero sin ofrecer plata.
+        return [_rec(
+            "R14", f"marketing_{fila['clave']}",
+            f"No le pagues {quien} si no vende",
+            f"Este mes {como_viene}, así que la condición no se cumple: los {usd(monto)} se "
+            f"pagan igual. Queda acá para el mes que cierre sin ventas.",
+            lineas, None, {"clave_costo": fila["clave"], "monto": monto, "ventas_mes": n},
+            nota=f"No aplica: {como_viene}",
+            consecuencia="Hoy no se puede tomar: ya hubo ventas este mes.",
+            dano=0, siempre=True, confianza="alta")]
+    return [_rec(
+        "R14", f"marketing_{fila['clave']}",
+        f"No le pagues {quien} si no vende",
+        f"{fila['nombre']} cobra {usd(monto)} fijos todos los meses. Como {como_viene}, si el "
+        f"mes cierra así, esos {usd(monto)} no salen.",
+        lineas, monto, {"clave_costo": fila["clave"], "monto": monto, "ventas_mes": 0},
+        nota="Solo si el mes cierra sin ninguna venta",
+        consecuencia=consecuencia, dano=1,
+        advertencia="Acordalo antes con él: no es algo que se avise a fin de mes.",
+        confianza="media")]
+
+
+def _r15(db_path: str, hoy: date, ctx: dict) -> list[dict]:
+    """Recortá este gasto: una alternativa por cada costo prendido de la lista.
+
+    Juan: "tiene que estar clara la opcion de recortar". Cualquier costo que
+    esté prendido se puede apagar, así que cualquiera puede ser una alternativa.
+    """
+    from services.intel_objetivo import _raices
+
+    ya = {"programador", "desarrollador", "marketing", "publicidad"}
+    candidatos = [f for f in (ctx.get("lineas_costo") or [])
+                  if float(f["monto_usd"] or 0) >= UMBRAL_IMPACTO_USD
+                  and not (_raices(f["nombre"]) & ya)]
+    candidatos.sort(key=lambda f: -float(f["monto_usd"]))
+    recs = []
+    for f in candidatos[:3]:
+        monto = round(float(f["monto_usd"]), 2)
+        recs.append(_rec(
+            "R15", f"recorte_{f['clave']}", f"Recortá {f['nombre']}",
+            f"{f['nombre']} cuesta {usd(monto)} por mes ({f['origen']}). Apagarlo baja el "
+            f"objetivo del mes en ese monto.",
+            [f"{f['nombre']}: {usd(monto)} por mes ({f['origen']})",
+             f"Se ahorra: {usd(monto)} por mes, entero"],
+            monto, {"clave_costo": f["clave"], "monto": monto},
+            nota=f"Saca {usd(monto)} del objetivo del mes",
+            consecuencia=f"Te quedás sin {f['nombre']}. Verificá qué depende de eso antes.",
+            dano=1,
+            advertencia=ADVERTENCIA_R5, confianza="alta"))
+    return recs
+
+
+REGLAS_EN_ORDEN = (_r1, _r2_r3, _r4, _r5, _r6, _r7, _r8, _r9, _r10, _r11, _r12,
+                   _r13, _r14, _r15)
 
 
 def calcular(db_path: str, hoy: date) -> dict:
@@ -1722,8 +1991,26 @@ def calcular(db_path: str, hoy: date) -> dict:
         except Exception:
             # Una regla que falla no puede dejar sin pantalla al resto.
             logger.warning("inteligencia financiera: falló %s", regla.__name__, exc_info=True)
+    recs = _sin_repetidos(recs)
     recs += _oportunidades(recs)
     return {"recomendaciones": recs, "diagnostico": diagnostico(ctx), "contexto": ctx}
+
+
+def _sin_repetidos(recs: list[dict]) -> list[dict]:
+    """Saca el recorte genérico de un gasto que otra regla ya ofrece por su nombre.
+
+    R5 dice "probá un mes sin Claude" y R15 dice "recortá Claude": es la misma
+    decisión escrita dos veces, y Juan pidió menos texto, no más tarjetas.
+    """
+    otros = " · ".join(r["titulo"].lower() for r in recs if r["regla"] != "R15")
+    salida = []
+    for r in recs:
+        if r["regla"] == "R15":
+            nombre = r["titulo"][len("Recortá "):].strip().lower()
+            if nombre and nombre in otros:
+                continue
+        salida.append(r)
+    return salida
 
 
 def ordenar(recs: list[dict]) -> list[dict]:
@@ -1794,14 +2081,15 @@ def recalcular(db_path: str, ahora: datetime | None = None, redactar=None) -> in
             conn.execute(
                 "INSERT INTO if_recomendaciones (calculo_id, regla, clave, titulo, detalle, calculo, "
                 "impacto_mensual, unica_vez, confianza, tipo, advertencia, acciones, metrica, generada_en, "
-                "supuestos, palanca, nota, siempre) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "supuestos, palanca, nota, siempre, consecuencia, dano) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (cid, r["regla"], r["clave"], r["titulo"], r["detalle"], r["calculo"],
                  r["impacto_mensual"], 1 if r["unica_vez"] else 0, r["confianza"], r["tipo"],
                  r["advertencia"], json.dumps(r["acciones"], ensure_ascii=False),
                  json.dumps(r["metrica"], ensure_ascii=False), generada,
                  json.dumps(r["supuestos"], ensure_ascii=False),
-                 r.get("palanca") or "", r.get("nota") or "", 1 if r.get("siempre") else 0))
+                 r.get("palanca") or "", r.get("nota") or "", 1 if r.get("siempre") else 0,
+                 r.get("consecuencia") or "", int(r.get("dano") or 1)))
         conn.commit()
     finally:
         conn.close()
@@ -1922,7 +2210,9 @@ def medir(db_path: str, regla: str, metrica: dict, desde: date, hasta: date) -> 
 
         persona = next((p for p in listar_personas_equipo(db_path)
                         if p["id"] == metrica.get("persona_id")), None)
-        nombres = _palabras(persona["nombre"]) if persona else set()
+        # El de comisión no está en el organigrama: se lo busca por el nombre
+        # que quedó guardado en la métrica.
+        nombres = _palabras(persona["nombre"] if persona else metrica.get("nombre") or "")
         siguio = [m for m in listar_movimientos(db_path, tipo="egreso")
                   if desde.isoformat() <= (m["fecha"] or "")[:10] <= hasta.isoformat()
                   and nombres & _palabras(m["concepto"])] if nombres else []
@@ -2027,6 +2317,55 @@ def _texto_momento(iso: str) -> str:
     return dt.astimezone(_MVD).strftime("%d/%m/%Y %H:%M") if dt else ""
 
 
+MAX_PLAN = 3
+
+
+def plan_recomendado(recs: list[dict], objetivo_total: float, base_mes: float) -> dict:
+    """Qué hacer, ya elegido: lo que llega al objetivo rompiendo lo menos posible.
+
+    Juan (16/9): "Y que me de recomendaciones" / "no le pagues al de marketing
+    si no vende, echa un programador, algo asi". No alcanza con darle el menú:
+    hay que decirle cuál tomar y por qué.
+
+    Se ordena por daño (0 no rompe nada, 2 resigna entrega) y, a igual daño,
+    por lo que más mueve. Se van sumando hasta cubrir lo que falta. Si no
+    alcanza, se dice hasta dónde llega en vez de inventar.
+    """
+    falta = round(float(objetivo_total or 0) - float(base_mes or 0), 2)
+    utiles = [r for r in recs if (r.get("impacto_mensual") or 0) > 0]
+    # Primero lo que no rompe nada, después lo que es seguro, y recién ahí lo
+    # que más mueve. Sin el peso de la confianza, el titular se lo llevaba
+    # "abrí un canal nuevo" —una estimación de confianza baja— por encima de
+    # recortes concretos, que es justo lo contrario de lo que Juan pidió.
+    certeza = {"alta": 0, "media": 1, "baja": 2}
+    utiles.sort(key=lambda r: (int(r.get("dano") or 1),
+                               certeza.get(r.get("confianza"), 1),
+                               -(r["impacto_mensual"] or 0)))
+    elegidas, suma = [], 0.0
+    for r in utiles:
+        if suma >= falta > 0 or len(elegidas) >= MAX_PLAN:
+            break
+        elegidas.append(r)
+        suma = round(suma + (r["impacto_mensual"] or 0), 2)
+    if not elegidas:
+        return {"ids": [], "suma": 0.0, "falta": falta, "llega": falta <= 0, "por_que": "",
+                "consecuencias": []}
+    llega = suma >= falta
+    cuantas = len(elegidas)
+    if falta <= 0:
+        por_que = "El mes ya cubre el objetivo: esto es lo que más suma sin resignar entrega."
+    elif llega:
+        por_que = (f"{cuantas} {_plural(cuantas, 'alternativa', 'alternativas')} y llegás a los "
+                   f"{usd(objetivo_total)}. Es la combinación que menos rompe.")
+    else:
+        por_que = (f"Con esto llegás a {usd(base_mes + suma)} de {usd(objetivo_total)}: es lo más "
+                   f"que se puede sin resignar entrega.")
+    return {"ids": [r["id"] for r in elegidas if r.get("id")],
+            "suma": suma, "falta": falta, "llega": bool(llega), "por_que": por_que,
+            "titulos": [r["titulo"] for r in elegidas],
+            "consecuencias": [r.get("consecuencia") or "" for r in elegidas if r.get("consecuencia")]}
+
+
 def estado_pantalla(db_path: str, es_admin: bool = False, ahora: datetime | None = None) -> dict:
     ahora = ahora or ahora_utc()
     if not ya_corrio_hoy(db_path, ahora):
@@ -2044,6 +2383,8 @@ def estado_pantalla(db_path: str, es_admin: bool = False, ahora: datetime | None
             r["supuestos"] = json.loads(r.get("supuestos") or "[]")
             r["unica_vez"] = bool(r["unica_vez"])
             r["siempre"] = bool(r.get("siempre"))
+            r["consecuencia"] = r.get("consecuencia") or ""
+            r["dano"] = int(r.get("dano") or 1)
             r.pop("metrica", None)
             recs.append(r)
         recs = ordenar(recs)
@@ -2082,6 +2423,8 @@ def estado_pantalla(db_path: str, es_admin: bool = False, ahora: datetime | None
         "encabezado": enc,
         "objetivo": objetivo,
         "palancas": dict(ETIQUETA_PALANCA),
+        "recomendado": plan_recomendado(recs, objetivo.get("total") or 0, enc.get("hoy") or 0),
+        "escenarios": intel_objetivo.escenarios_guardados(db_path),
         "recomendaciones": recs,
         "seguimiento": seguimiento,
         "umbral_usd": UMBRAL_IMPACTO_USD,

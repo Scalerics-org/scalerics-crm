@@ -2204,6 +2204,25 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .ifn-plan-nombre{font-weight:700;color:var(--texto-fuerte)}
 .ifn-plan-riesgo{color:var(--texto-tenue)}
 /* Gastos esperados, al lado de los fijos confirmados. */
+/* El escenario guardado del Simulador, arriba de todo: es la entrada. */
+.ifn-escenario{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:12px}
+.ifn-esc-campo{display:flex;align-items:center;gap:8px;font-size:.75rem;color:var(--texto-debil)}
+/* Lo que conviene hacer, ya elegido. */
+.ifn-reco{background:var(--verde-tinte);border:1px solid var(--verde);border-radius:12px;padding:14px 16px;margin-bottom:14px}
+.ifn-reco-cab{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.ifn-reco-rotulo{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--verde-texto)}
+.ifn-reco-lista{list-style:none;padding:0;margin:8px 0 0;display:flex;flex-direction:column;gap:7px}
+.ifn-reco-item{font-size:.86rem;color:var(--texto);line-height:1.45}
+.ifn-reco-monto{font-weight:800;color:var(--verde-texto);white-space:nowrap}
+.ifn-reco-que{display:block;font-size:.74rem;color:var(--texto-tenue)}
+.ifn-reco-porque{margin:8px 0 0;font-size:.78rem;color:var(--texto-tenue);line-height:1.45}
+.ifn-alt-que{display:block;margin-top:5px;font-size:.74rem;color:var(--texto-debil);line-height:1.4}
+.ifn-plan-consecuencia{margin:8px 0 0;font-size:.79rem;color:var(--ambar);line-height:1.45}
+/* El interruptor de cada costo, como en el Simulador. Apagado se sigue viendo. */
+.ifn-sw{width:18px;height:18px;flex-shrink:0;accent-color:var(--verde);cursor:pointer}
+.ifn-apagado{opacity:.55}
+.ifn-apagado .ifn-gasto-monto{text-decoration:line-through}
+.ifn-gasto-origen{display:block;font-size:.66rem;color:var(--texto-debil)}
 .ifn-analisis{margin-bottom:12px}
 .ifn-analisis>summary{padding:8px 0}
 .ifn-grupo{margin-top:12px}
@@ -2213,6 +2232,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .ifn-gastos-lista{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:6px}
 .ifn-gasto{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--borde);border-radius:8px;background:var(--superficie-alta);font-size:.82rem;color:var(--texto);min-width:0}
 .ifn-gasto-nombre{min-width:0;overflow-wrap:anywhere}
+.ifn-eq-num{width:72px;flex-shrink:0}
 .ifn-gasto-monto{font-weight:700;color:var(--texto-fuerte);white-space:nowrap}
 .ifn-etiqueta{font-size:.62rem;font-weight:700;padding:2px 7px;border-radius:99px;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap}
 .ifn-et-confirmado{background:var(--verde-tinte);color:var(--verde-texto)}
@@ -2263,6 +2283,11 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   .ifn-gasto-campo,.ifn-gasto-campo .filter-select,.ifn-gasto-campo .ifn-input{width:100%}
   .ifn-gasto-form .btn-primary{width:100%;min-height:44px}
   .ifn-gasto{flex-wrap:wrap}
+  .ifn-eq-num{width:100%;min-height:44px}
+  .ifn-esc-campo,.ifn-esc-campo .filter-select{width:100%}
+  .ifn-reco-cab .btn-primary{width:100%;min-height:44px}
+  .ifn-sw{width:24px;height:24px}
+  .ifn-gasto .btn-primary,.ifn-gasto .btn-ghost{min-height:44px}
   .ifn-duda-botones .btn-primary,.ifn-duda-botones .btn-ghost{width:100%;min-height:44px}
 }
 /* ── Plantillas ───────────────────────────────────────────────────────────────
@@ -3831,7 +3856,9 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       </div>
       <button class="btn-ghost ifn-oculto" id="ifn-recalcular" onclick="ifnRecalcular()">Recalcular ahora</button>
     </div>
+    <section class="ifn-escenario" id="ifn-escenario"></section>
     <section class="ifn-objetivo" id="ifn-objetivo"></section>
+    <section class="ifn-reco ifn-oculto" id="ifn-recomendado"></section>
     <section id="ifn-lista"></section>
     <section class="ifn-plan ifn-oculto" id="ifn-plan"></section>
     <details class="ifn-analisis">
@@ -12930,6 +12957,9 @@ const IFN_RESULTADO = {midiendo: 'Midiendo', funciono: 'Funcionó', no_funciono:
 const IFN_NIVEL = {mal: 'Alerta', atencion: 'Atención', bien: 'Bien'};
 let ifnEstado = null;
 let ifnElegidas = [];
+let ifnEscenarioId = null;
+let ifnEscenarioNombre = '';
+let ifnEscenarioSupuestos = null;
 
 function ifnMiles(n) {
   const s = String(Math.round(Math.abs(Number(n) || 0)));
@@ -13058,7 +13088,11 @@ function ifnPintar() {
   ifnElegidas = ifnElegidas.filter(function (id) {
     return recs.some(function (r) { return Number(r.id) === id; });
   });
+  document.getElementById('ifn-escenario').innerHTML = ifnEscenarioHtml(d.escenarios || []);
   document.getElementById('ifn-objetivo').innerHTML = ifnObjetivoHtml(d.objetivo || {}, recs);
+  const reco = document.getElementById('ifn-recomendado');
+  reco.innerHTML = ifnRecomendadoHtml(d.recomendado || {}, recs);
+  reco.classList.toggle('ifn-oculto', !((d.recomendado || {}).ids || []).length);
   // El ancho de la barra se pone desde el JS y no escrito en el HTML: el panel
   // se pinta solo con clases y tokens, sin estilos sueltos en el marcado.
   const barra = document.getElementById('ifn-obj-llena');
@@ -13083,6 +13117,94 @@ function ifnPintar() {
   diag.classList.toggle('ifn-oculto', !hayDiag);
   document.getElementById('ifn-contraste').innerHTML = ifnContrasteHtml(d.encabezado || {});
   document.getElementById('ifn-seguimiento').innerHTML = ifnSeguimientoHtml(d.seguimiento || []);
+}
+
+function ifnEscenarioHtml(escenarios) {
+  // El escenario guardado del Simulador es la entrada: Juan elige uno y las
+  // alternativas se calculan contra ese. Sin elegir ninguno, los datos de hoy.
+  const opciones = (escenarios || []).map(function (e) {
+    const sel = Number(e.id) === Number(ifnEscenarioId) ? ' selected' : '';
+    return '<option value="' + Number(e.id) + '"' + sel + '>' + esc(e.nombre) + '</option>';
+  }).join('');
+  if (!opciones) {
+    return '<span class="ifn-obj-parte-origen">Con los datos reales de hoy. '
+      + 'Si guardás un escenario en el Simulador, podés calcular contra ese.</span>';
+  }
+  return '<label class="ifn-esc-campo">Calcular con'
+    + '<select class="filter-select" id="ifn-esc-select" onchange="ifnElegirEscenario()">'
+    + '<option value="">Los datos reales de hoy</option>' + opciones + '</select></label>'
+    + (ifnEscenarioNombre
+        ? '<span class="ifn-etiqueta ifn-et-esperado">escenario: ' + esc(ifnEscenarioNombre) + '</span>'
+        : '');
+}
+
+async function ifnElegirEscenario() {
+  const sel = document.getElementById('ifn-esc-select');
+  const id = sel ? sel.value : '';
+  if (!id) {
+    ifnEscenarioId = null;
+    ifnEscenarioNombre = '';
+    ifnEscenarioSupuestos = null;
+    ifnPintar();
+    return;
+  }
+  const r = await ifnPedir('/api/inteligencia-fin/escenarios/' + Number(id));
+  if (!r) return;
+  ifnEscenarioId = Number(id);
+  ifnEscenarioNombre = r.nombre || '';
+  ifnEscenarioSupuestos = r.supuestos || null;
+  ifnPintar();
+}
+
+function ifnRecomendadoHtml(reco, recs) {
+  // Lo que Juan pidio: que no tenga que buscar. Una o dos acciones concretas,
+  // con su numero, y un boton para tomarlas de una.
+  const ids = reco.ids || [];
+  if (!ids.length) return '';
+  const elegidas = (recs || []).filter(function (r) { return ids.indexOf(Number(r.id)) >= 0; });
+  const items = elegidas.map(function (r) {
+    const imp = typeof r.impacto_mensual === 'number'
+      ? ' <span class="ifn-reco-monto">' + (r.impacto_mensual < 0 ? '−' : '+')
+        + 'USD ' + ifnMiles(r.impacto_mensual) + '</span>'
+      : '';
+    return '<li class="ifn-reco-item"><span class="ifn-plan-nombre">' + esc(r.titulo) + '</span>'
+      + imp + (r.consecuencia ? '<span class="ifn-reco-que">' + esc(r.consecuencia) + '</span>' : '')
+      + '</li>';
+  }).join('');
+  const todas = ids.every(function (id) { return ifnElegidas.indexOf(Number(id)) >= 0; });
+  return '<div class="ifn-reco-cab"><span class="ifn-reco-rotulo">Lo que te conviene hacer</span>'
+    + '<button class="btn-primary" onclick="ifnTomarRecomendado()">'
+    + (todas ? 'Ya está elegido' : 'Elegir esto') + '</button></div>'
+    + '<ul class="ifn-reco-lista">' + items + '</ul>'
+    + '<p class="ifn-reco-porque">' + esc(reco.por_que || '') + '</p>';
+}
+
+function ifnTomarRecomendado() {
+  const ids = ((ifnEstado || {}).recomendado || {}).ids || [];
+  ifnElegidas = ids.map(Number);
+  ifnPintar();
+}
+
+function ifnConsecuenciaCombinada(elegidas) {
+  // Lo honesto de combinar: echar gente y subir pauta al mismo tiempo es traer
+  // leads que despues no se pueden entregar. Hay que decirlo.
+  const palancas = elegidas.map(function (r) { return r.palanca; });
+  const avisos = [];
+  const sacaEntrega = elegidas.some(function (r) { return Number(r.dano) === 2; });
+  if (sacaEntrega && palancas.indexOf('pauta') >= 0) {
+    avisos.push('Estás recortando quien entrega y subiendo la pauta al mismo tiempo: '
+      + 'vas a traer leads que después no vas a poder entregar.');
+  }
+  if (sacaEntrega && palancas.indexOf('canal') >= 0) {
+    avisos.push('Abrís un canal nuevo con menos gente para entregar: el canal sirve '
+      + 'solo si hay quien haga el trabajo.');
+  }
+  const negativas = elegidas.filter(function (r) { return Number(r.impacto_mensual) < 0; });
+  if (negativas.length) {
+    avisos.push('Hay ' + negativas.length + ' que restan: el plan cierra más abajo de lo que '
+      + 'suman las demás.');
+  }
+  return avisos.join(' ');
 }
 
 function ifnTotalElegido(recs) {
@@ -13142,23 +13264,11 @@ function ifnObjetivoHtml(o, recs) {
 }
 
 function ifnEquipoHtml(p) {
-  // El costo del equipo sale del promedio de los ultimos 3 meses de sueldos y
-  // honorarios, pero Juan sabe el numero exacto de cada uno: si lo escribe,
-  // vale el suyo y no hay que tocar codigo. Vacio vuelve al promedio.
+  // Solo el total: la lista con lo que cobra cada uno se edita abajo, en
+  // Gastos del mes. Arriba va el numero, no la tabla.
   if (p.clave !== 'fijos' || p.editado) return '';
-  return '<span class="ifn-obj-sub">Equipo'
-    + '<input type="number" min="0" step="any" class="ifn-obj-input ifn-obj-input-chico"'
-    + ' id="ifn-obj-equipo" aria-label="Costo del equipo por mes"'
-    + ' value="' + (Number(p.equipo) || 0) + '" onchange="ifnGuardarEquipo()">'
-    + (p.equipo_editado ? '' : 'promedio de 3 meses')
-    + '</span>';
-}
-
-async function ifnGuardarEquipo() {
-  const el = document.getElementById('ifn-obj-equipo');
-  const r = await ifnPedir('/api/inteligencia-fin/objetivo', 'PUT',
-    {equipo_usd: el && el.value !== '' ? Number(el.value) : null});
-  if (r && r.objetivo && ifnEstado) { ifnEstado.objetivo = r.objetivo; ifnPintar(); }
+  return '<span class="ifn-obj-sub">Equipo ' + ifnUsd(p.equipo)
+    + (p.equipo_promedio ? ' · promedio de 3 meses' : '') + '</span>';
 }
 
 function ifnAlternativaHtml(r) {
@@ -13168,7 +13278,12 @@ function ifnAlternativaHtml(r) {
   const etiquetas = (ifnEstado && ifnEstado.palancas) || {};
   const imp = r.impacto_mensual;
   let impacto;
-  if (imp === null || imp === undefined) {
+  const noAplica = (r.nota || '').toLowerCase().indexOf('no aplica') === 0;
+  if (noAplica) {
+    // Hay alternativas que hoy no se pueden tomar (marketing, si ya hubo una
+    // venta). Se muestran igual, pero no se ofrece plata que no se puede cobrar.
+    impacto = '<div class="ifn-alt-impacto ifn-alt-sd">No aplica</div>';
+  } else if (imp === null || imp === undefined) {
     impacto = '<div class="ifn-alt-impacto ifn-alt-sd">A estimar</div>';
   } else {
     impacto = '<div class="ifn-alt-impacto' + (imp < 0 ? ' ifn-alt-neg' : '') + '">'
@@ -13182,6 +13297,7 @@ function ifnAlternativaHtml(r) {
     + '<span class="ifn-alt-tipo">' + esc(etiquetas[palanca] || 'Alternativa') + '</span>'
     + '<h4 class="ifn-alt-titulo">' + esc(r.titulo) + '</h4>'
     + '<p class="ifn-alt-nota">' + esc(r.nota || r.detalle || '') + '</p>'
+    + (r.consecuencia ? '<span class="ifn-alt-que">' + esc(r.consecuencia) + '</span>' : '')
     + (elegida ? '<span class="ifn-alt-tilde">Elegida, está en el plan de abajo</span>' : '')
     + '</div>' + impacto + '</button>';
 }
@@ -13203,7 +13319,10 @@ function ifnPlanHtml(recs) {
   return '<div class="ifn-plan-titulo">Plan resultante (' + elegidas.length + ' '
     + (elegidas.length === 1 ? 'alternativa seleccionada' : 'alternativas seleccionadas') + ')</div>'
     + '<ul class="ifn-plan-lista">' + items + '</ul>'
-    + '<p class="ifn-obj-pie">Suman ' + ifnUsd(total) + ' por mes.</p>';
+    + '<p class="ifn-obj-pie">Suman ' + ifnUsd(total) + ' por mes.</p>'
+    + (ifnConsecuenciaCombinada(elegidas)
+        ? '<p class="ifn-plan-consecuencia">' + esc(ifnConsecuenciaCombinada(elegidas)) + '</p>'
+        : '');
 }
 
 function ifnGrupoHtml(rotulo, filas, accion) {
@@ -13254,10 +13373,102 @@ function ifnGastosHtml(o) {
     + '<button class="btn-primary" onclick="ifnAgregarGasto()">Agregar gasto esperado</button></div>'
     + dudas
     + ifnGrupoHtml('Esperados', o.esperados || [], 'sacar')
-    + ifnGrupoHtml('Equipo', equipo, '')
-    + ifnGrupoHtml('Estructura', base.recurrentes || [], 'a-cliente')
+    + ((((base.costos || {}).grupos) || []).map(ifnGrupoCostoHtml).join(''))
+    + ifnEquipoAltaHtml(base)
     + ifnGrupoHtml('De clientes, no del objetivo', base.por_cliente || [], 'a-estructura')
     + ifnGrupoHtml('Aparte del objetivo', base.fuera || [], '');
+}
+
+function ifnGrupoCostoHtml(g) {
+  // Un grupo de costos (sueldos, honorarios o fijos) con el interruptor de cada
+  // uno, como el Simulador. Apagado NO se esconde: se ve tachado y no suma.
+  if (!g || !(g.filas || []).length) return '';
+  const items = g.filas.map(function (f) {
+    const editable = f.editable && f.id;
+    const campos = editable
+      ? '<input type="number" min="0" step="any" class="ifn-input ifn-eq-num" id="ifn-eq-monto-'
+        + Number(f.id) + '" value="' + (Number(f.unitario) || 0) + '" aria-label="Cuánto cobra"'
+        + ' onchange="ifnGuardarPersona(' + Number(f.id) + ')">'
+        + '<input type="number" min="0" step="1" class="ifn-input ifn-eq-num" id="ifn-eq-cant-'
+        + Number(f.id) + '" value="' + (Number(f.cantidad) || 1) + '" aria-label="Cuántos son"'
+        + ' onchange="ifnGuardarPersona(' + Number(f.id) + ')">'
+      : '';
+    const sacar = editable
+      ? '<button class="btn-ghost" onclick="ifnBorrarPersona(' + Number(f.id) + ')">Sacar</button>'
+      : '';
+    return '<li class="ifn-gasto' + (f.activo ? '' : ' ifn-apagado') + '">'
+      + '<input type="checkbox" class="ifn-sw" data-clave="' + esc(f.clave) + '"'
+      + (f.activo ? ' checked' : '') + ' aria-label="Contar este gasto"'
+      + ' onchange="ifnMarcarCosto(this)">'
+      + '<span class="ifn-gasto-nombre">' + esc(f.nombre)
+      + (f.origen ? '<span class="ifn-gasto-origen">' + esc(f.origen) + '</span>' : '')
+      + '</span>' + campos
+      + '<span class="ifn-gasto-monto">' + ifnUsd(f.monto_usd) + '</span>' + sacar + '</li>';
+  }).join('');
+  return '<div class="ifn-grupo"><div class="ifn-grupo-cab"><span>' + esc(g.rotulo) + '</span>'
+    + '<span class="ifn-gasto-monto">' + ifnUsd(g.total) + '</span></div>'
+    + '<ul class="ifn-gastos-lista">' + items + '</ul></div>';
+}
+
+function ifnEquipoAltaHtml(base) {
+  // Sumar gente a la lista, y los de comision, que no suman al objetivo porque
+  // no cobran si no se les da un proyecto.
+  const eq = base.equipo || {};
+  const comision = (eq.comision || []).map(function (c) {
+    return '<li class="ifn-gasto"><span class="ifn-gasto-nombre">' + esc(c.nombre)
+      + '<span class="ifn-gasto-origen">' + esc(String(c.pct))
+      + ' % del desarrollo, solo si trabaja</span></span>'
+      + '<span class="ifn-etiqueta ifn-et-esperado">no suma</span>'
+      + '<button class="btn-ghost" onclick="ifnBorrarPersona(' + Number(c.id) + ')">Sacar</button></li>';
+  }).join('');
+  const alta = '<li class="ifn-gasto">'
+    + '<input type="text" class="ifn-input ifn-gasto-nombre" id="ifn-eq-nombre" placeholder="Programador">'
+    + '<input type="number" min="0" step="any" class="ifn-input ifn-eq-num" id="ifn-eq-monto" placeholder="50" aria-label="Cuánto cobra">'
+    + '<input type="number" min="0" step="1" class="ifn-input ifn-eq-num" id="ifn-eq-cant" value="1" aria-label="Cuántos son">'
+    + '<button class="btn-primary" onclick="ifnAgregarPersona()">Sumar</button></li>';
+  const aviso = eq.es_promedio
+    ? '<div class="ifn-obj-parte-origen">Sale del promedio de 3 meses: escribí la lista y manda la lista.</div>'
+    : '';
+  return '<div class="ifn-grupo">' + aviso
+    + '<ul class="ifn-gastos-lista">' + comision + alta + '</ul></div>';
+}
+
+async function ifnMarcarCosto(el) {
+  if (!el) return;
+  const clave = el.getAttribute('data-clave');
+  if (!clave) return;
+  const r = await ifnPedir('/api/inteligencia-fin/costos/' + encodeURIComponent(clave), 'PUT',
+    {activo: el.checked});
+  if (r && r.objetivo && ifnEstado) { ifnEstado.objetivo = r.objetivo; ifnPintar(); }
+}
+
+
+async function ifnGuardarPersona(id) {
+  const valor = function (pre) {
+    const el = document.getElementById(pre + Number(id));
+    return el ? Number(el.value) : 0;
+  };
+  const fila = (((ifnEstado || {}).objetivo || {}).base || {}).equipo || {};
+  const actual = (fila.filas || []).filter(function (f) { return Number(f.id) === Number(id); })[0];
+  const r = await ifnPedir('/api/inteligencia-fin/equipo/' + Number(id), 'PUT',
+    {nombre: actual ? actual.concepto : 'Equipo', monto_usd: valor('ifn-eq-monto-'),
+     cantidad: valor('ifn-eq-cant-'), tipo: 'fijo'});
+  if (r && r.objetivo && ifnEstado) { ifnEstado.objetivo = r.objetivo; ifnPintar(); }
+}
+
+async function ifnAgregarPersona() {
+  const valor = function (id) { return (document.getElementById(id) || {}).value || ''; };
+  const nombre = valor('ifn-eq-nombre');
+  if (!nombre.trim()) { alert('Poné el nombre o el rol.'); return; }
+  const r = await ifnPedir('/api/inteligencia-fin/equipo', 'POST',
+    {nombre: nombre, monto_usd: valor('ifn-eq-monto') || 0,
+     cantidad: valor('ifn-eq-cant') || 1, tipo: 'fijo'});
+  if (r && r.objetivo && ifnEstado) { ifnEstado.objetivo = r.objetivo; ifnPintar(); }
+}
+
+async function ifnBorrarPersona(id) {
+  const r = await ifnPedir('/api/inteligencia-fin/equipo/' + Number(id), 'DELETE');
+  if (r && r.objetivo && ifnEstado) { ifnEstado.objetivo = r.objetivo; ifnPintar(); }
 }
 
 async function ifnMarcarFijo(id, aCliente) {
