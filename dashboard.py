@@ -429,6 +429,21 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   --rol-teal-tinte:#0d2a28;
   --rol-rosa:#f472b6;
   --rol-rosa-tinte:#2d1624;
+  --pal-pauta:#38bdf8;
+  --pal-pauta-tinte:#0e2438;
+  --pal-conversion:#34d399;
+  --pal-conversion-tinte:#0f2a1f;
+  --pal-canal:#c084fc;
+  --pal-canal-tinte:#221a38;
+  --pal-recorte:#fbbf24;
+  --pal-recorte-tinte:#2b2213;
+  --pal-pausa:#94a3b8;
+  --pal-pausa-tinte:#1b2330;
+  --obj-fondo:#0d1626;
+  --obj-texto:#f8fafc;
+  --obj-rotulo:#94a3b8;
+  --obj-logro:#4ade80;
+  --obj-pista:#1e293b;
 }
 body.light{
   --fondo:#f8fafc;
@@ -481,6 +496,23 @@ body.light{
   --rol-teal-tinte:#ccfbf1;
   --rol-rosa:#be185d;
   --rol-rosa-tinte:#fce7f3;
+  --pal-pauta:#0369a1;
+  --pal-pauta-tinte:#e0f2fe;
+  --pal-conversion:#047857;
+  --pal-conversion-tinte:#d1fae5;
+  --pal-canal:#7e22ce;
+  --pal-canal-tinte:#f3e8ff;
+  --pal-recorte:#b45309;
+  --pal-recorte-tinte:#fef3c7;
+  --pal-pausa:#475569;
+  --pal-pausa-tinte:#eef2f7;
+  /* La tarjeta del objetivo queda oscura tambien en el tema claro, igual que
+     en el mockup del PDF: es la que tiene que saltar a la vista. */
+  --obj-fondo:#0f172a;
+  --obj-texto:#f8fafc;
+  --obj-rotulo:#cbd5e1;
+  --obj-logro:#4ade80;
+  --obj-pista:#334155;
 }
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:100vh;display:flex}
@@ -2113,8 +2145,77 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .ifn-afinar-campo{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px;color:var(--texto-tenue)}
 .ifn-input{width:80px;background:var(--fondo-hundido);border:1px solid var(--borde-fuerte);color:var(--texto);border-radius:6px;padding:4px 6px;font-size:.8rem}
 .ifn-input:focus{outline:none;border-color:var(--azul)}
+/* El objetivo del mes: la tarjeta que manda. Oscura en los dos temas, con el
+   objetivo a la izquierda y lo que suma el plan elegido a la derecha. */
+.ifn-objetivo{background:var(--obj-fondo);border:1px solid var(--borde);border-radius:14px;padding:18px 20px;margin-bottom:16px}
+.ifn-obj-fila{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;flex-wrap:wrap}
+.ifn-obj-lado{min-width:0}
+.ifn-obj-der{text-align:right}
+.ifn-obj-rotulo{font-size:.7rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--obj-rotulo)}
+.ifn-obj-num{font-size:2rem;font-weight:800;color:var(--obj-texto);line-height:1.15;margin-top:2px}
+.ifn-obj-num-logro{color:var(--obj-logro)}
+.ifn-obj-num-falta{color:var(--rojo)}
+.ifn-obj-pista{height:6px;border-radius:99px;background:var(--obj-pista);margin-top:14px;overflow:hidden}
+.ifn-obj-llena{height:100%;border-radius:99px;background:var(--obj-logro)}
+.ifn-obj-pie{margin-top:8px;font-size:.78rem;color:var(--obj-rotulo);line-height:1.45}
+.ifn-obj-partes{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-top:14px}
+.ifn-obj-parte{display:block;background:var(--superficie);border:1px solid var(--borde);border-radius:8px;padding:10px 12px;min-width:0}
+.ifn-obj-parte-rotulo{display:block;font-size:.68rem;color:var(--texto-debil);text-transform:uppercase;letter-spacing:.04em}
+.ifn-obj-parte-origen{display:block;font-size:.67rem;color:var(--texto-debil);margin-top:4px;line-height:1.35}
+.ifn-obj-input{width:100%;background:var(--fondo-hundido);border:1px solid var(--borde-fuerte);color:var(--texto-fuerte);border-radius:6px;padding:6px 8px;font-size:1rem;font-weight:700;font-family:inherit;margin-top:3px}
+.ifn-obj-input:focus{outline:none;border-color:var(--azul)}
+.ifn-obj-volver{margin-top:5px;font-size:.66rem;color:var(--azul-claro);background:none;border:none;padding:0;cursor:pointer;font-family:inherit;text-align:left}
+.ifn-obj-sub{display:block;margin-top:7px;font-size:.66rem;color:var(--texto-debil)}
+.ifn-obj-input-chico{font-size:.85rem;padding:4px 7px}
+/* Las alternativas. El color del borde y del fondo dice que palanca es: no es
+   decoracion, es como se distingue de un vistazo un recorte de una pauta. */
+.ifn-alt{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;width:100%;text-align:left;font-family:inherit;background:var(--pal-tinte);border:1px solid var(--borde);border-left:5px solid var(--pal);border-radius:10px;padding:14px 16px;margin-bottom:10px;cursor:pointer}
+.ifn-alt-pauta{--pal:var(--pal-pauta);--pal-tinte:var(--pal-pauta-tinte)}
+.ifn-alt-conversion{--pal:var(--pal-conversion);--pal-tinte:var(--pal-conversion-tinte)}
+.ifn-alt-canal{--pal:var(--pal-canal);--pal-tinte:var(--pal-canal-tinte)}
+.ifn-alt-recorte{--pal:var(--pal-recorte);--pal-tinte:var(--pal-recorte-tinte)}
+.ifn-alt-pausa{--pal:var(--pal-pausa);--pal-tinte:var(--pal-pausa-tinte)}
+.ifn-alt-otra{--pal:var(--borde-fuerte);--pal-tinte:var(--superficie)}
+.ifn-alt:hover{border-color:var(--pal)}
+.ifn-elegida{box-shadow:inset 0 0 0 2px var(--pal)}
+.ifn-alt-texto{min-width:0}
+.ifn-alt-tipo{display:block;font-size:.63rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--pal)}
+.ifn-alt-titulo{margin:3px 0 0;font-size:.98rem;font-weight:700;color:var(--texto-fuerte);line-height:1.3}
+.ifn-alt-nota{margin:4px 0 0;font-size:.79rem;color:var(--texto-tenue);line-height:1.4}
+.ifn-alt-impacto{font-size:1.5rem;font-weight:800;color:var(--verde-texto);text-align:right;white-space:nowrap}
+.ifn-alt-neg{color:var(--rojo-texto)}
+.ifn-alt-sd{font-size:.95rem;font-weight:700;color:var(--texto-debil)}
+.ifn-alt-periodo{display:block;font-size:.66rem;font-weight:600;color:var(--texto-debil)}
+.ifn-alt-tilde{display:block;font-size:.66rem;font-weight:700;color:var(--pal)}
+/* El plan que queda armado con lo elegido. */
+.ifn-detalle{margin:-6px 0 12px}
+.ifn-ver{cursor:pointer;color:var(--texto-debil);font-size:.72rem;padding:2px 4px;list-style:none}
+.ifn-ver::-webkit-details-marker{display:none}
+.ifn-ver:hover{color:var(--texto)}
+.ifn-plan{background:var(--verde-tinte);border:1px solid var(--borde);border-radius:10px;padding:14px 16px;margin-bottom:16px}
+.ifn-plan-titulo{font-size:.71rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--texto-debil);margin-bottom:8px}
+.ifn-plan-lista{list-style:disc;margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px}
+.ifn-plan-item{font-size:.84rem;color:var(--texto);line-height:1.5}
+.ifn-plan-nombre{font-weight:700;color:var(--texto-fuerte)}
+.ifn-plan-riesgo{color:var(--texto-tenue)}
+/* Gastos esperados, al lado de los fijos confirmados. */
+.ifn-analisis{margin-bottom:12px}
+.ifn-analisis>summary{padding:8px 0}
+.ifn-grupo{margin-top:12px}
+.ifn-grupo-cab{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--texto-debil);margin-bottom:5px}
+.ifn-gasto-form{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin-bottom:12px}
+.ifn-gasto-campo{display:flex;flex-direction:column;gap:3px;font-size:.7rem;color:var(--texto-debil);min-width:0}
+.ifn-gastos-lista{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:6px}
+.ifn-gasto{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--borde);border-radius:8px;background:var(--superficie-alta);font-size:.82rem;color:var(--texto);min-width:0}
+.ifn-gasto-nombre{min-width:0;overflow-wrap:anywhere}
+.ifn-gasto-monto{font-weight:700;color:var(--texto-fuerte);white-space:nowrap}
+.ifn-etiqueta{font-size:.62rem;font-weight:700;padding:2px 7px;border-radius:99px;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap}
+.ifn-et-confirmado{background:var(--verde-tinte);color:var(--verde-texto)}
+.ifn-et-esperado{background:var(--ambar-tinte);color:var(--ambar)}
+.ifn-duda{background:var(--ambar-tinte);border:1px solid var(--ambar-borde);border-radius:8px;padding:10px 12px;margin-top:10px;font-size:.79rem;color:var(--texto);line-height:1.45}
+.ifn-duda-botones{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
 /* Celular (misma frontera que el menu de abajo). Solo aca adentro: arriba de
-   768px la pantalla queda como estaba. Lo que cortaba era texto sin espacios
+   768px la pantalla queda como esta. Lo que cortaba era texto sin espacios
    (nombres de cliente, conceptos, lineas de la cuenta): empujaba la pagina de
    costado. Ahora todo corta palabra, las tarjetas van en una columna y los
    botones ocupan el ancho. */
@@ -2144,6 +2245,20 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   .ifn-afinar-campo .filter-select{max-width:100%}
   .ifn-afinar-campo .btn-ghost,.ifn-afinar summary{min-height:36px}
   .ifn-afinar summary{display:flex;align-items:center}
+  .ifn-objetivo{padding:14px}
+  .ifn-obj-fila{flex-direction:column;gap:10px}
+  .ifn-obj-lado,.ifn-obj-der{text-align:left;width:100%}
+  .ifn-obj-num{font-size:1.65rem}
+  .ifn-obj-partes{grid-template-columns:minmax(0,1fr)}
+  .ifn-obj-input{min-height:44px}
+  .ifn-alt{flex-direction:column;gap:8px;padding:12px}
+  .ifn-alt-impacto{text-align:left;font-size:1.35rem;white-space:normal}
+  .ifn-plan-lista{padding-left:18px}
+  .ifn-gasto-form{flex-direction:column;align-items:stretch}
+  .ifn-gasto-campo,.ifn-gasto-campo .filter-select,.ifn-gasto-campo .ifn-input{width:100%}
+  .ifn-gasto-form .btn-primary{width:100%;min-height:44px}
+  .ifn-gasto{flex-wrap:wrap}
+  .ifn-duda-botones .btn-primary,.ifn-duda-botones .btn-ghost{width:100%;min-height:44px}
 }
 /* ── Plantillas ───────────────────────────────────────────────────────────────
    Mensajes de siempre, en VENTAS. Solo tokens, sin reglas `body.light`: las
@@ -3707,15 +3822,24 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     <div class="ifn-cabecera">
       <div>
         <h2 class="ifn-titulo">Inteligencia financiera</h2>
-        <p class="ifn-bajada" id="ifn-bajada">Qué está pasando con la plata y qué conviene hacer este mes, con los números del sistema.</p>
+        <p class="ifn-bajada" id="ifn-bajada">Cuánto tenés que hacer este mes y qué podés mover para llegar.</p>
       </div>
       <button class="btn-ghost ifn-oculto" id="ifn-recalcular" onclick="ifnRecalcular()">Recalcular ahora</button>
     </div>
-    <section class="ifn-resumen ifn-oculto" id="ifn-resumen"></section>
-    <section class="ifn-bloque" id="ifn-diagnostico"></section>
-    <section class="ifn-contraste" id="ifn-contraste"></section>
+    <section class="ifn-objetivo" id="ifn-objetivo"></section>
     <section id="ifn-lista"></section>
-    <section class="ifn-bloque" id="ifn-seguimiento"></section>
+    <section class="ifn-plan ifn-oculto" id="ifn-plan"></section>
+    <details class="ifn-analisis">
+      <summary class="ifn-ver">Gastos del mes</summary>
+      <section class="ifn-bloque" id="ifn-gastos"></section>
+    </details>
+    <details class="ifn-analisis">
+      <summary class="ifn-ver">Cómo viene el mes</summary>
+      <section class="ifn-resumen ifn-oculto" id="ifn-resumen"></section>
+      <section class="ifn-bloque ifn-oculto" id="ifn-diagnostico"></section>
+      <section class="ifn-contraste" id="ifn-contraste"></section>
+      <section class="ifn-bloque" id="ifn-seguimiento"></section>
+    </details>
   </div>
   <!-- ======= FIN INTELIGENCIA FINANCIERA PANEL ======= -->
 
@@ -12694,6 +12818,7 @@ const IFN_CONFIANZA = {alta: 'Confianza alta', media: 'Confianza media', baja: '
 const IFN_RESULTADO = {midiendo: 'Midiendo', funciono: 'Funcionó', no_funciono: 'No funcionó'};
 const IFN_NIVEL = {mal: 'Alerta', atencion: 'Atención', bien: 'Bien'};
 let ifnEstado = null;
+let ifnElegidas = [];
 
 function ifnMiles(n) {
   const s = String(Math.round(Math.abs(Number(n) || 0)));
@@ -12816,16 +12941,258 @@ function ifnPintar() {
   document.getElementById('ifn-bajada').textContent = d.bajada || '';
   const boton = document.getElementById('ifn-recalcular');
   if (boton) boton.classList.toggle('ifn-oculto', !d.es_admin);
+  const recs = d.recomendaciones || [];
+  // Lo elegido se guarda por id: si el recalculo diario cambio las tarjetas,
+  // se descarta lo que ya no esta en vez de sumar un impacto que no existe.
+  ifnElegidas = ifnElegidas.filter(function (id) {
+    return recs.some(function (r) { return Number(r.id) === id; });
+  });
+  document.getElementById('ifn-objetivo').innerHTML = ifnObjetivoHtml(d.objetivo || {}, recs);
+  // El ancho de la barra se pone desde el JS y no escrito en el HTML: el panel
+  // se pinta solo con clases y tokens, sin estilos sueltos en el marcado.
+  const barra = document.getElementById('ifn-obj-llena');
+  if (barra) barra.style.width = ifnPorcentaje(d.objetivo || {}, recs) + '%';
+  // Sin titulo de seccion: la tarjeta del objetivo arriba ya dice que son las
+  // alternativas para llegar. La cuenta de cada una va plegada.
+  document.getElementById('ifn-lista').innerHTML = recs.map(function (r) {
+    return ifnAlternativaHtml(r) + ifnDetalleHtml(r);
+  }).join('');
+  const plan = document.getElementById('ifn-plan');
+  plan.innerHTML = ifnPlanHtml(recs);
+  plan.classList.toggle('ifn-oculto', ifnElegidas.length === 0);
+  document.getElementById('ifn-gastos').innerHTML = ifnGastosHtml(d.objetivo || {});
   const resumen = document.getElementById('ifn-resumen');
   resumen.innerHTML = ifnResumenHtml(d.resumen || {});
   resumen.classList.toggle('ifn-oculto', !(d.resumen && d.resumen.texto));
-  document.getElementById('ifn-diagnostico').innerHTML = ifnDiagnosticoHtml(d.diagnostico || []);
+  // El diagnostico es contexto de apoyo: si todavia no hay con que armarlo, se
+  // esconde entero. Nunca un cartel de que no hay nada para analizar.
+  const diag = document.getElementById('ifn-diagnostico');
+  const hayDiag = (d.diagnostico || []).length > 0;
+  diag.innerHTML = hayDiag ? ifnDiagnosticoHtml(d.diagnostico) : '';
+  diag.classList.toggle('ifn-oculto', !hayDiag);
   document.getElementById('ifn-contraste').innerHTML = ifnContrasteHtml(d.encabezado || {});
-  const recs = d.recomendaciones || [];
-  document.getElementById('ifn-lista').innerHTML = '<h3 class="ifn-seccion">Qué hacer para ganar plata</h3>' + (recs.length
-    ? recs.map(ifnTarjetaHtml).join('')
-    : '<div class="ifn-vacio">Hoy no hay sugerencias que muevan ' + ifnUsd(d.umbral_usd) + ' o más por mes.</div>');
   document.getElementById('ifn-seguimiento').innerHTML = ifnSeguimientoHtml(d.seguimiento || []);
+}
+
+function ifnTotalElegido(recs) {
+  return (recs || []).reduce(function (total, r) {
+    const suma = ifnElegidas.indexOf(Number(r.id)) >= 0 && typeof r.impacto_mensual === 'number'
+      ? r.impacto_mensual : 0;
+    return total + suma;
+  }, 0);
+}
+
+function ifnAlternar(id) {
+  const i = ifnElegidas.indexOf(Number(id));
+  if (i >= 0) ifnElegidas.splice(i, 1);
+  else ifnElegidas.push(Number(id));
+  ifnPintar();
+}
+
+function ifnPorcentaje(o, recs) {
+  const objetivo = Number(o.total) || 0;
+  if (objetivo <= 0) return 0;
+  return Math.max(0, Math.min(100, ifnTotalElegido(recs) / objetivo * 100));
+}
+
+function ifnObjetivoHtml(o, recs) {
+  const objetivo = Number(o.total) || 0;
+  const elegido = ifnTotalElegido(recs);
+  const falta = objetivo - elegido;
+  const clase = elegido < 0 ? ' ifn-obj-num-falta' : ' ifn-obj-num-logro';
+  let pie;
+  if (!ifnElegidas.length) {
+    pie = 'Elegí abajo y este número se mueve.';
+  } else if (falta <= 0) {
+    pie = 'Llegás al objetivo.';
+  } else {
+    pie = 'Quedan ' + ifnUsd(falta) + ' para llegar.';
+  }
+  const partes = (o.partes || []).map(function (p) {
+    const volver = p.clave === 'fijos' && p.editado
+      ? '<button type="button" class="ifn-obj-volver" onclick="ifnVolverAFinanzas()">Volver al automático</button>'
+      : '';
+    return '<label class="ifn-obj-parte">'
+      + '<span class="ifn-obj-parte-rotulo">' + esc(p.rotulo) + '</span>'
+      + '<input type="number" min="0" step="any" class="ifn-obj-input" id="ifn-obj-' + esc(p.clave)
+      + '" value="' + (Number(p.monto) || 0) + '" aria-label="' + esc(p.rotulo)
+      + '" onchange="ifnGuardarObjetivo()">'
+      + (p.origen ? '<span class="ifn-obj-parte-origen">' + esc(p.origen) + '</span>' : '')
+      + volver + ifnEquipoHtml(p) + '</label>';
+  }).join('');
+  return '<div class="ifn-obj-fila">'
+    + '<div class="ifn-obj-lado"><div class="ifn-obj-rotulo">Objetivo del mes</div>'
+    + '<div class="ifn-obj-num">' + ifnUsd(objetivo) + '</div></div>'
+    + '<div class="ifn-obj-lado ifn-obj-der"><div class="ifn-obj-rotulo">Con lo seleccionado</div>'
+    + '<div class="ifn-obj-num' + clase + '">' + ifnUsd(elegido) + '</div></div></div>'
+    + '<div class="ifn-obj-pista"><div class="ifn-obj-llena" id="ifn-obj-llena"></div></div>'
+    + '<p class="ifn-obj-pie">' + esc(pie) + '</p>'
+    + '<div class="ifn-obj-partes">' + partes + '</div>';
+}
+
+function ifnEquipoHtml(p) {
+  // El costo del equipo sale del promedio de los ultimos 3 meses de sueldos y
+  // honorarios, pero Juan sabe el numero exacto de cada uno: si lo escribe,
+  // vale el suyo y no hay que tocar codigo. Vacio vuelve al promedio.
+  if (p.clave !== 'fijos' || p.editado) return '';
+  return '<span class="ifn-obj-sub">Equipo'
+    + '<input type="number" min="0" step="any" class="ifn-obj-input ifn-obj-input-chico"'
+    + ' id="ifn-obj-equipo" aria-label="Costo del equipo por mes"'
+    + ' value="' + (Number(p.equipo) || 0) + '" onchange="ifnGuardarEquipo()">'
+    + (p.equipo_editado ? '' : 'promedio de 3 meses')
+    + '</span>';
+}
+
+async function ifnGuardarEquipo() {
+  const el = document.getElementById('ifn-obj-equipo');
+  const r = await ifnPedir('/api/inteligencia-fin/objetivo', 'PUT',
+    {equipo_usd: el && el.value !== '' ? Number(el.value) : null});
+  if (r && r.objetivo && ifnEstado) { ifnEstado.objetivo = r.objetivo; ifnPintar(); }
+}
+
+function ifnAlternativaHtml(r) {
+  const id = Number(r.id);
+  const elegida = ifnElegidas.indexOf(id) >= 0;
+  const palanca = r.palanca || 'otra';
+  const etiquetas = (ifnEstado && ifnEstado.palancas) || {};
+  const imp = r.impacto_mensual;
+  let impacto;
+  if (imp === null || imp === undefined) {
+    impacto = '<div class="ifn-alt-impacto ifn-alt-sd">A estimar</div>';
+  } else {
+    impacto = '<div class="ifn-alt-impacto' + (imp < 0 ? ' ifn-alt-neg' : '') + '">'
+      + (imp < 0 ? '−' : '+') + 'USD ' + ifnMiles(imp)
+      + '<span class="ifn-alt-periodo">' + (r.unica_vez ? 'por única vez' : 'por mes') + '</span></div>';
+  }
+  return '<button type="button" class="ifn-alt ifn-alt-' + esc(palanca)
+    + (elegida ? ' ifn-elegida' : '') + '" id="ifn-alt-' + id
+    + '" aria-pressed="' + (elegida ? 'true' : 'false') + '" onclick="ifnAlternar(' + id + ')">'
+    + '<div class="ifn-alt-texto">'
+    + '<span class="ifn-alt-tipo">' + esc(etiquetas[palanca] || 'Alternativa') + '</span>'
+    + '<h4 class="ifn-alt-titulo">' + esc(r.titulo) + '</h4>'
+    + '<p class="ifn-alt-nota">' + esc(r.nota || r.detalle || '') + '</p>'
+    + (elegida ? '<span class="ifn-alt-tilde">Elegida, está en el plan de abajo</span>' : '')
+    + '</div>' + impacto + '</button>';
+}
+
+function ifnPlanHtml(recs) {
+  const elegidas = (recs || []).filter(function (r) {
+    return ifnElegidas.indexOf(Number(r.id)) >= 0;
+  });
+  if (!elegidas.length) return '';
+  const total = ifnTotalElegido(recs);
+  const items = elegidas.map(function (r) {
+    const imp = r.impacto_mensual;
+    const monto = (imp === null || imp === undefined)
+      ? '(a estimar)'
+      : '(' + (imp < 0 ? '−' : '+') + 'USD ' + ifnMiles(imp) + ')';
+    return '<li class="ifn-plan-item"><span class="ifn-plan-nombre">' + esc(r.titulo) + '</span> '
+      + monto + ' — <span class="ifn-plan-riesgo">' + esc(r.nota || r.detalle || '') + '</span></li>';
+  }).join('');
+  return '<div class="ifn-plan-titulo">Plan resultante (' + elegidas.length + ' '
+    + (elegidas.length === 1 ? 'alternativa seleccionada' : 'alternativas seleccionadas') + ')</div>'
+    + '<ul class="ifn-plan-lista">' + items + '</ul>'
+    + '<p class="ifn-obj-pie">Suman ' + ifnUsd(total) + ' por mes.</p>';
+}
+
+function ifnGrupoHtml(rotulo, filas, accion) {
+  if (!filas || !filas.length) return '';
+  const total = filas.reduce(function (t, f) { return t + (Number(f.monto_usd) || 0); }, 0);
+  const items = filas.map(function (f) {
+    let boton = '';
+    if (accion === 'a-cliente' && f.id) {
+      boton = '<button class="btn-ghost" onclick="ifnMarcarFijo(' + Number(f.id) + ', 1)">Es de un cliente</button>';
+    } else if (accion === 'a-estructura' && f.id) {
+      boton = '<button class="btn-ghost" onclick="ifnMarcarFijo(' + Number(f.id) + ', 0)">Es de estructura</button>';
+    } else if (accion === 'sacar' && f.id) {
+      boton = '<button class="btn-ghost" onclick="ifnBorrarGasto(' + Number(f.id) + ')">Sacar</button>';
+    }
+    // El motivo va en el title y no escrito: la lista tiene que leerse de un vistazo.
+    const motivo = f.motivo ? ' title="' + esc(f.motivo) + '"' : '';
+    return '<li class="ifn-gasto"' + motivo + '><span class="ifn-gasto-nombre">'
+      + esc(f.concepto) + (f.sugerido ? ' <span class="ifn-etiqueta ifn-et-esperado">sugerido</span>' : '')
+      + '</span><span class="ifn-gasto-monto">' + ifnUsd(f.monto_usd) + '</span>' + boton + '</li>';
+  }).join('');
+  return '<div class="ifn-grupo"><div class="ifn-grupo-cab"><span>' + esc(rotulo) + '</span>'
+    + '<span class="ifn-gasto-monto">' + ifnUsd(total) + '</span></div>'
+    + '<ul class="ifn-gastos-lista">' + items + '</ul></div>';
+}
+
+function ifnGastosHtml(o) {
+  const base = o.base || {};
+  const equipo = (base.equipo || {}).filas || [];
+  const dudas = (o.dudas || []).map(function (d) {
+    return '<div class="ifn-duda">¿<strong>' + esc(d.gasto_concepto) + '</strong> ('
+      + ifnUsd(d.gasto_monto_usd) + ') es <strong>' + esc(d.movimiento_concepto)
+      + '</strong> (' + ifnUsd(d.movimiento_monto_usd) + ') de Finanzas?'
+      + '<div class="ifn-duda-botones">'
+      + '<button class="btn-primary" onclick="ifnEmparejarGasto(' + Number(d.gasto_id) + ', '
+      + Number(d.movimiento_id) + ')">Es el mismo</button>'
+      + '<button class="btn-ghost" onclick="ifnDescartarDuda()">Son distintos</button>'
+      + '</div></div>';
+  }).join('');
+  return '<div class="ifn-gasto-form">'
+    + '<label class="ifn-gasto-campo">Concepto'
+    + '<input type="text" class="ifn-input" id="ifn-gasto-concepto" placeholder="Contador"></label>'
+    + '<label class="ifn-gasto-campo">USD'
+    + '<input type="number" min="0" step="any" class="ifn-input" id="ifn-gasto-monto" placeholder="300"></label>'
+    + '<label class="ifn-gasto-campo">Tipo'
+    + '<select class="filter-select" id="ifn-gasto-categoria">'
+    + '<option value="fijo">Fijo</option><option value="variable" selected>Variable</option>'
+    + '</select></label>'
+    + '<button class="btn-primary" onclick="ifnAgregarGasto()">Agregar gasto esperado</button></div>'
+    + dudas
+    + ifnGrupoHtml('Esperados', o.esperados || [], 'sacar')
+    + ifnGrupoHtml('Equipo', equipo, '')
+    + ifnGrupoHtml('Estructura', base.recurrentes || [], 'a-cliente')
+    + ifnGrupoHtml('De clientes, no del objetivo', base.por_cliente || [], 'a-estructura')
+    + ifnGrupoHtml('Aparte del objetivo', base.fuera || [], '');
+}
+
+async function ifnMarcarFijo(id, aCliente) {
+  const r = await ifnPedir('/api/inteligencia-fin/fijos/' + Number(id) + '/clase', 'PUT',
+    {clase: aCliente ? 'cliente' : 'estructura'});
+  if (r && r.objetivo && ifnEstado) { ifnEstado.objetivo = r.objetivo; ifnPintar(); }
+}
+
+async function ifnGuardarObjetivo() {
+  const leer = function (clave) {
+    const el = document.getElementById('ifn-obj-' + clave);
+    return el && el.value !== '' ? Number(el.value) : 0;
+  };
+  const r = await ifnPedir('/api/inteligencia-fin/objetivo', 'PUT',
+    {fijos_usd: leer('fijos'), aportes_usd: leer('aportes'), sueldo_usd: leer('sueldo')});
+  if (r && r.objetivo && ifnEstado) { ifnEstado.objetivo = r.objetivo; ifnPintar(); }
+}
+
+async function ifnVolverAFinanzas() {
+  const r = await ifnPedir('/api/inteligencia-fin/objetivo', 'PUT', {fijos_usd: null});
+  if (r && r.objetivo && ifnEstado) { ifnEstado.objetivo = r.objetivo; ifnPintar(); }
+}
+
+async function ifnAgregarGasto() {
+  const valor = function (id) { return (document.getElementById(id) || {}).value || ''; };
+  const concepto = valor('ifn-gasto-concepto');
+  const monto = valor('ifn-gasto-monto');
+  if (!concepto.trim() || !monto) { alert('Poné el concepto y el monto del gasto.'); return; }
+  const r = await ifnPedir('/api/inteligencia-fin/gastos-esperados', 'POST',
+    {concepto: concepto, monto_usd: monto, categoria: valor('ifn-gasto-categoria') || 'variable'});
+  if (r && r.objetivo && ifnEstado) { ifnEstado.objetivo = r.objetivo; ifnPintar(); }
+}
+
+async function ifnBorrarGasto(id) {
+  const r = await ifnPedir('/api/inteligencia-fin/gastos-esperados/' + Number(id), 'DELETE');
+  if (r && r.objetivo && ifnEstado) { ifnEstado.objetivo = r.objetivo; ifnPintar(); }
+}
+
+async function ifnEmparejarGasto(gastoId, movimientoId) {
+  const r = await ifnPedir('/api/inteligencia-fin/gastos-esperados/' + Number(gastoId) + '/emparejar',
+    'POST', {movimiento_id: Number(movimientoId)});
+  if (r && r.objetivo && ifnEstado) { ifnEstado.objetivo = r.objetivo; ifnPintar(); }
+}
+
+function ifnDescartarDuda() {
+  alert('Listo: se deja como está. El gasto esperado sigue en la lista y lo podés sacar a mano.');
 }
 
 function ifnResumenHtml(r) {
@@ -12859,18 +13226,19 @@ function ifnContrasteHtml(enc) {
     </div>`;
 }
 
-function ifnTarjetaHtml(r) {
+function ifnDetalleHtml(r) {
   const id = Number(r.id);
   const impacto = r.impacto_mensual === null || r.impacto_mensual === undefined
-    ? '<div class="ifn-impacto ifn-revisar">Revisar</div>'
-    : `<div class="ifn-impacto ifn-suma">+${ifnUsd(r.impacto_mensual)}<span>${r.unica_vez ? 'por única vez' : 'por mes'}</span></div>`;
+    ? '<div class="ifn-impacto ifn-revisar">A estimar</div>'
+    : `<div class="ifn-impacto ${r.impacto_mensual < 0 ? 'ifn-revisar' : 'ifn-suma'}">${r.impacto_mensual < 0 ? '−' : '+'}USD ${ifnMiles(r.impacto_mensual)}<span>${r.unica_vez ? 'por única vez' : 'por mes'}</span></div>`;
   const acciones = (r.acciones || []).map(a =>
     `<li class="ifn-accion"><span>${esc(a.cliente)} · ${ifnUsd(a.monto)}</span>${a.wa
       ? `<a class="btn-primary" href="https://wa.me/${esc(a.wa)}?text=${encodeURIComponent(a.texto)}" target="_blank" rel="noopener">Abrir mensaje de cobranza</a>`
       : '<span class="ifn-sin-tel">Sin teléfono en el CRM</span>'}</li>`).join('');
   const supuestos = (r.supuestos || []).length
     ? '<p class="ifn-supuestos-rec">Supuestos: ' + r.supuestos.map(esc).join(' · ') + '</p>' : '';
-  return `<article class="ifn-rec ifn-rec-${esc(r.tipo)}" id="ifn-rec-${id}">
+  return `<details class="ifn-detalle"><summary class="ifn-ver">Ver la cuenta</summary>
+    <article class="ifn-rec ifn-rec-${esc(r.tipo)}" id="ifn-rec-${id}">
     <div class="ifn-rec-cab">
       <div><span class="ifn-regla">${esc(r.regla)}</span><h3 class="ifn-rec-titulo">${esc(r.titulo)}</h3></div>
       ${impacto}
@@ -12885,7 +13253,7 @@ function ifnTarjetaHtml(r) {
       <button class="btn-primary" onclick="ifnTomar(${id})">Lo voy a hacer</button>
       <button class="btn-ghost" onclick="ifnDescartar(${id})">Descartar</button>
     </div>
-  </article>`;
+  </article></details>`;
 }
 
 function ifnSeguimientoHtml(lista) {

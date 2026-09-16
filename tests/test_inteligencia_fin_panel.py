@@ -58,8 +58,15 @@ def test_esta_en_los_dos_all_panels_y_en_el_editor_de_roles():
 
 
 def test_el_orden_de_la_pantalla():
-    orden = [PANEL.index(f'id="{i}"') for i in ("ifn-resumen", "ifn-diagnostico", "ifn-contraste",
-                                                 "ifn-lista", "ifn-seguimiento")]
+    """Primero la decisión, después el respaldo.
+
+    Arriba el objetivo del mes y el menú de alternativas (con el plan que sale
+    de lo elegido); el diagnóstico, el contraste y el seguimiento quedan abajo
+    como contexto de apoyo, que es lo que son.
+    """
+    orden = [PANEL.index(f'id="{i}"') for i in ("ifn-objetivo", "ifn-lista", "ifn-plan",
+                                                "ifn-gastos", "ifn-resumen", "ifn-diagnostico",
+                                                "ifn-contraste", "ifn-seguimiento")]
     assert orden == sorted(orden)
 
 
@@ -155,13 +162,23 @@ globalThis.fetch = (url, opciones) => {
 };
 """
 
+_IDS = ['ifn-objetivo', 'ifn-lista', 'ifn-plan', 'ifn-gastos', 'ifn-resumen', 'ifn-diagnostico',
+        'ifn-contraste', 'ifn-seguimiento']
+
 _PRUEBA = """
 (async () => {
   activePanel = 'inteligencia_fin';
   await ifnCargar();
-  const s = {};
-  ['ifn-resumen', 'ifn-diagnostico', 'ifn-contraste', 'ifn-lista', 'ifn-seguimiento'].forEach(id => { s[id] = _el(id).innerHTML; });
+  const s = {sinElegir: _el('ifn-lista').innerHTML};
+  // La tarjeta compacta es la que se elige; el detalle (la cuenta, los
+  // supuestos y los botones) aparece al elegirla, como en el mockup. Se eligen
+  // dos: la de los vencidos (que trae acciones de cobranza) y la del
+  // mantenimiento (que es la que declara supuestos).
+  ifnAlternar(__REC__);
+  ifnAlternar(__REC2__);
+  __IDS__.forEach(id => { s[id] = _el(id).innerHTML; });
   s.bajada = _el('ifn-bajada').textContent;
+  s.elegidas = ifnElegidas.slice();
   s.tarjetaNotion = _notionClientCardHtml({id: 7, name: 'Bar', status: 'Perdido', notion_page_id: 'x', motivo_perdida: null}, false);
   s.esfuerzo = ifnEsfuerzoHtml({id: 3, esfuerzo_horas: 40, esfuerzo_valor: 5, esfuerzo_unidad: 'dias'});
   await ifnTomar(__REC__);
@@ -190,16 +207,35 @@ def test_la_pantalla_se_pinta_sin_pedir_nada(tmp_path):
     ifn.corrida_diaria(db, AHORA)
     estado = ifn.estado_pantalla(db, es_admin=True, ahora=AHORA)
     rec = next(r for r in estado["recomendaciones"] if r["regla"] == "R4")
+    rec1 = next(r for r in estado["recomendaciones"] if r["regla"] == "R1")
 
     respuestas = {"/api/inteligencia-fin": json.loads(json.dumps(estado, default=str))}
     bloques = re.findall(r"<script>(.*?)</script>", HTML, re.S)
     archivo = tmp_path / "ifn.js"
     archivo.write_text(_ARNES.replace("__RESPUESTAS__", json.dumps(respuestas, ensure_ascii=False))
-                       + "\n".join(bloques) + "\n" + _PRUEBA.replace("__REC__", str(rec["id"])),
+                       + "\n".join(bloques) + "\n"
+                       + _PRUEBA.replace("__REC2__", str(rec1["id"]))
+                                .replace("__REC__", str(rec["id"]))
+                                .replace("__IDS__", json.dumps(_IDS)),
                        encoding="utf-8")
     r = subprocess.run(["node", str(archivo)], capture_output=True, text=True, encoding="utf-8", timeout=60)
     assert r.returncode == 0, (r.stderr or "")[:2000]
     s = json.loads(r.stdout.strip().splitlines()[-1])
+
+    # Lo primero que se ve: el objetivo y el menú de alternativas de colores.
+    assert "Objetivo del mes" in s["ifn-objetivo"] and "Con lo seleccionado" in s["ifn-objetivo"]
+    # Sin titulo de seccion: lo que encabeza la pantalla es el objetivo, y
+    # Juan pidio menos texto. Las tarjetas se ven igual.
+    # El <h3> del detalle plegado no cuenta: lo que se fue es el titulo
+    # de seccion que encabezaba la lista.
+    assert '<h3 class="ifn-seccion"' not in s["ifn-lista"]
+    assert "ifn-alt-" in s["sinElegir"], "las alternativas se ven sin elegir nada"
+    assert sorted(s["elegidas"]) == sorted([rec["id"], rec1["id"]])
+    assert "Plan resultante" in s["ifn-plan"]
+    # "Gastos del mes" ahora es el <summary> del bloque plegado, que vive en
+    # el panel; lo que se pinta adentro es el formulario y los grupos.
+    assert "Agregar gasto esperado" in s["ifn-gastos"]
+    assert "Gastos del mes" in PANEL
 
     assert "Diagnóstico del mes" in s["ifn-diagnostico"] and "Resultado del mes" in s["ifn-diagnostico"]
     assert "ifn-nivel-mal" in s["ifn-diagnostico"]
@@ -210,7 +246,7 @@ def test_la_pantalla_se_pinta_sin_pedir_nada(tmp_path):
     assert "Lo voy a hacer" in lista and "Descartar" in lista
     assert "https://wa.me/59899123456?text=" in lista
     assert "&lt;b&gt;Tito" in lista and "<b>Tito" not in lista
-    todo = "".join(s[k] for k in ("ifn-resumen", "ifn-diagnostico", "ifn-contraste", "ifn-lista", "ifn-seguimiento"))
+    todo = "".join(s[k] for k in _IDS)
     for pedido in PEDIDOS:
         assert pedido not in todo, pedido
     assert "Calculado el 15/09/2026" in s["bajada"]

@@ -70,7 +70,9 @@ logger = logging.getLogger(__name__)
 
 # ── umbrales ─────────────────────────────────────────────────────────────────
 UMBRAL_IMPACTO_USD = 100
-MAX_RECOMENDACIONES = 6
+# Ocho y no seis: el menu muestra al menos una alternativa por palanca (son
+# cinco) y tiene que quedar lugar para las reglas con numeros reales.
+MAX_RECOMENDACIONES = 8
 MAX_DIAGNOSTICO = 6
 VENTANA_MESES = 3
 DIAS_SEGUIMIENTO = 30
@@ -99,6 +101,9 @@ _EPS = 1e-9
 _MVD = timezone(timedelta(hours=-3))
 
 REGLAS = {  # regla -> (confianza por defecto, tipo)
+    # R0 no es una regla: es la tarjeta que explica una palanca que hoy no
+    # tiene con que calcular. Existe para que la pantalla nunca abra vacia.
+    "R0": ("baja", "ingreso"),
     "R1": ("alta", "ingreso"),
     "R2": ("media", "ingreso"),
     "R3": ("media", "recorte"),
@@ -109,7 +114,27 @@ REGLAS = {  # regla -> (confianza por defecto, tipo)
     "R8": ("alta", "alerta"),
     "R9": ("alta", "alerta"),
     "R10": ("media", "ingreso"),
+    "R11": ("baja", "ingreso"),
+    "R12": ("baja", "recorte"),
 }
+
+# Las cinco palancas del menu de alternativas (spec del 15/9). El color de la
+# tarjeta sale de aca y NO es decoracion: dice de que tipo es la decision, para
+# que se vea de un vistazo si estas gastando mas, cobrando mejor, abriendo un
+# canal, recortando o resignando trabajo.
+PALANCAS = ("pauta", "conversion", "canal", "recorte", "pausa")
+ETIQUETA_PALANCA = {"pauta": "Más pauta", "conversion": "Mejorar conversión",
+                    "canal": "Nuevo canal", "recorte": "Recorte de costo",
+                    "pausa": "Pausa de trabajo"}
+# A que palanca pertenece cada regla. R4 y R8 son cobro: entran en "mejorar
+# conversion" porque convierten en plata algo que ya se vendio.
+PALANCA_DE_REGLA = {"R1": "conversion", "R2": "pauta", "R3": "recorte", "R4": "conversion",
+                    "R5": "recorte", "R6": "conversion", "R7": "conversion", "R8": "recorte",
+                    "R9": "canal", "R10": "conversion", "R11": "canal", "R12": "pausa"}
+
+# Cuantas ventas por mes se le supone a un canal nuevo sin historial (R11).
+# Conservador a proposito: es una estimacion, no una promesa.
+VENTAS_CANAL_NUEVO = 1.0
 
 MOTIVOS = {
     "precio": "Precio",
@@ -740,10 +765,27 @@ def guardar_supuesto(db_path: str, clave: str, valor, quien: str = "",
 
 # ── mantenimiento ────────────────────────────────────────────────────────────
 
-def _fijos_vigentes(db_path: str, mes: str, tipo: str, categoria: str | None = None) -> list[tuple[dict, float]]:
+def _fijos_vigentes(db_path: str, mes: str, tipo: str, categoria: str | None = None,
+                    con_cliente: bool | None = None) -> list[tuple[dict, float]]:
+    """Los recurrentes vigentes ese mes. `con_cliente` separa las dos familias.
+
+    No es lo mismo un gasto fijo de ESTRUCTURA (los sueldos del equipo, las
+    herramientas, la infraestructura) que el costo indirecto de UN cliente de
+    mantenimiento (el hosting de Fulano, USD 25 por mes). El primero hay que
+    cubrirlo sí o sí; el segundo existe solo mientras exista ese cliente, y se
+    descuenta de lo que ese cliente deja, no de la estructura.
+
+    La marca es la que ya tiene Finanzas: un recurrente con `client_id` es de
+    ese cliente. No se adivina por el concepto ni por la categoría, así que
+    Juan lo cambia desde Finanzas poniendo o sacando el cliente del fijo.
+    """
     salida = []
     for r in listar_recurrentes(db_path, solo_activos=True):
         if r["tipo"] != tipo or (categoria and r["categoria"] != categoria):
+            continue
+        if con_cliente is True and not r["client_id"]:
+            continue
+        if con_cliente is False and r["client_id"]:
             continue
         if (r["hasta"] and r["hasta"] < mes) or (r["desde"] and r["desde"] > mes):
             continue
@@ -756,6 +798,29 @@ def _fijos_vigentes(db_path: str, mes: str, tipo: str, categoria: str | None = N
 
 def _fijos_mantenimiento(db_path: str, mes: str) -> list[tuple[dict, float]]:
     return _fijos_vigentes(db_path, mes, "ingreso", "mantenimiento")
+
+
+def costo_indirecto_por_cliente(db_path: str, mes: str) -> dict:
+    """Lo que cuesta sostener a un cliente de mantenimiento, por cliente.
+
+    Son los recurrentes de egreso que tienen cliente (el hosting de Fulano y
+    demás). Se usan para hablar en NETO: lo que un cliente deja es su cuota
+    menos lo que cuesta mantenerlo.
+    """
+    from services.intel_objetivo import clasificar_fijos
+
+    try:
+        filas = clasificar_fijos(db_path, mes)["cliente"]
+    except Exception:
+        logger.warning("inteligencia financiera: falló la clasificación de fijos", exc_info=True)
+        filas = []
+    if not filas:
+        return {"promedio": 0.0, "n": 0, "total": 0.0, "filas": []}
+    total = sum(f["monto_usd"] for f in filas)
+    # Cada línea es el costo de un cliente, así que el promedio por cliente es
+    # el total dividido la cantidad de líneas.
+    return {"promedio": round(total / len(filas), 2), "n": len(filas),
+            "total": round(total, 2), "filas": filas}
 
 
 def ingreso_mensual_mantenimiento(db_path: str, hoy: date, comision_pct) -> dict:
@@ -838,7 +903,21 @@ def _contexto(db_path: str, hoy: date) -> dict:
                          if m["tipo"] == "egreso" and not m["recurrente_id"] and m["periodo"] in previos)
     variables_v = sum(float(m["monto_usd"] or 0) for m in movs
                       if m["tipo"] == "egreso" and not m["recurrente_id"])
-    fijos = _fijos_vigentes(db_path, mes, "egreso")
+    # Solo los de estructura: el costo indirecto de un cliente de mantenimiento
+    # no es un gasto fijo de la empresa, se descuenta de lo que deja ese cliente.
+    # La separación NO puede mirar `client_id`: en los datos de verdad está
+    # vacío y esos costos están cargados como infraestructura común. La hace
+    # `clasificar_fijos`, que propone por el concepto y respeta lo que marcó Juan.
+    from services.intel_objetivo import clasificar_fijos
+
+    _todos_fijos = _fijos_vigentes(db_path, mes, "egreso")
+    try:
+        _ids_cliente = {f["id"] for f in clasificar_fijos(db_path, mes)["cliente"]}
+    except Exception:
+        logger.warning("inteligencia financiera: falló la clasificación de fijos", exc_info=True)
+        _ids_cliente = set()
+    fijos = [(r, m) for r, m in _todos_fijos if r["id"] not in _ids_cliente]
+    fijos_cliente = [(r, m) for r, m in _todos_fijos if r["id"] in _ids_cliente]
 
     lista = ventas(db_path)
     ventas_v = [v for v in lista if v["fecha"] and desde <= v["fecha"] <= hasta]
@@ -864,6 +943,8 @@ def _contexto(db_path: str, hoy: date) -> dict:
         "ingresos_promedio": ing_prom, "egresos_promedio": egr_prom,
         "variables_promedio": variables_prev / VENTANA_MESES, "variables_ventana": variables_v,
         "fijos": fijos, "fijos_total": round(sum(u for _, u in fijos), 2),
+        "fijos_cliente": fijos_cliente,
+        "fijos_cliente_total": round(sum(u for _, u in fijos_cliente), 2),
         "caja": caja_hoy(db_path, hoy),
         "ventas": lista, "ventas_ventana": ventas_v, "ventas_prev": ventas_prev,
         "precios": precios, "ticket": ticket, "margen_pct": margen_pct, "margen_venta": margen_venta,
@@ -1043,15 +1124,23 @@ def diagnostico(ctx: dict) -> list[dict]:
     if ctx["fijos_total"] > 0 and ctx["ingresos_promedio"] > 0:
         peso = ctx["fijos_total"] / ctx["ingresos_promedio"]
         crecidos = _fijos_crecidos(ctx)
-        texto = f"Los fijos ({usd(ctx['fijos_total'])} por mes) son el {pct(peso)} % de lo que entra por mes."
+        texto = (f"Los fijos de estructura ({usd(ctx['fijos_total'])} por mes) son el "
+                 f"{pct(peso)} % de lo que entra por mes.")
+        if ctx["fijos_cliente_total"]:
+            texto += (f" Aparte, {usd(ctx['fijos_cliente_total'])} son costos de clientes de "
+                      f"mantenimiento: se descuentan de lo que deja cada cliente, no de acá.")
         if crecidos:
             texto += " Crecieron: " + ", ".join(
                 f"{c['concepto']} ({'nuevo' if c['nuevo'] else usd(c['antes']) + ' → ' + usd(c['ahora'])})"
                 for c in crecidos[:3]) + "."
         salida.append(_diag(
             "fijos", "Gastos fijos", f"{pct(peso)} %", texto,
-            [f"Fijos {usd(ctx['fijos_total'])} ÷ ingresos promedio de los 3 meses anteriores "
-             f"{usd(ctx['ingresos_promedio'])} = {pct(peso, 1)} %"]
+            [f"Fijos de estructura {usd(ctx['fijos_total'])} ÷ ingresos promedio de los 3 meses "
+             f"anteriores {usd(ctx['ingresos_promedio'])} = {pct(peso, 1)} %"]
+            + ([f"Costo de clientes de mantenimiento (aparte): {usd(ctx['fijos_cliente_total'])} "
+                f"en {len(ctx['fijos_cliente'])} "
+                f"{_plural(len(ctx['fijos_cliente']), 'gasto', 'gastos')}"]
+               if ctx["fijos_cliente_total"] else [])
             + [f"{c['concepto']}: {usd(c['antes'])} en {c['desde']} → {usd(c['ahora'])} hoy" for c in crecidos],
             "mal" if peso >= PESO_FIJOS_ALTO else ("atencion" if peso >= PESO_FIJOS_ATENCION or crecidos else "bien")))
 
@@ -1073,12 +1162,18 @@ def diagnostico(ctx: dict) -> list[dict]:
 # ── sugerencias ──────────────────────────────────────────────────────────────
 
 def _rec(regla, clave, titulo, detalle, lineas, impacto, metrica, acciones=None,
-         advertencia="", unica_vez=False, confianza=None, supuestos=None) -> dict:
+         advertencia="", unica_vez=False, confianza=None, supuestos=None,
+         siempre=False, nota="") -> dict:
+    """Una alternativa. `nota` es la linea de riesgo/contexto que va debajo del
+    titulo en la tarjeta; `siempre` la deja pasar el umbral de USD 100 (las
+    tarjetas de oportunidad tienen que aparecer igual)."""
     confianza_regla, tipo = REGLAS[regla]
     return {"regla": regla, "clave": str(clave), "titulo": titulo, "detalle": detalle,
             "calculo": "\n".join(lineas),
             "impacto_mensual": round(impacto, 2) if impacto is not None else None,
             "unica_vez": bool(unica_vez), "confianza": confianza or confianza_regla, "tipo": tipo,
+            "palanca": PALANCA_DE_REGLA.get(regla, ""), "nota": nota or "",
+            "siempre": bool(siempre),
             "advertencia": advertencia, "acciones": acciones or [], "metrica": metrica,
             "supuestos": list(supuestos or [])}
 
@@ -1105,11 +1200,19 @@ def _r1(db_path: str, hoy: date, ctx: dict) -> list[dict]:
         return []
     cuota = cuota_mantenimiento(db_path, fijos, movs)
     comision = comision_cobro(db_path)
+    indirecto = costo_indirecto_por_cliente(db_path, ctx["mes"])
     n = len(sin)
-    impacto = n * cuota["valor"] * (1 - comision["valor"] / 100)
+    # En NETO: la cuota menos lo que cuesta sostener a ese cliente (su hosting y
+    # demás). Cobrar USD 100 y gastar USD 25 en mantenerlo deja USD 75, no 100.
+    neto_cuota = cuota["valor"] - indirecto["promedio"]
+    impacto = n * neto_cuota * (1 - comision["valor"] / 100)
     supuestos = [f"Comisión de cobro {num(comision['valor'])} %: {comision['fuente']}"]
     if cuota["supuesto"]:
         supuestos.append(f"Cuota de {usd(cuota['valor'])}: {cuota['fuente']}")
+    if indirecto["n"]:
+        supuestos.append(f"Costo indirecto por cliente {usd(indirecto['promedio'])}: promedio de "
+                         f"{indirecto['n']} {_plural(indirecto['n'], 'cliente', 'clientes')} con "
+                         f"gastos a su nombre en Finanzas")
     nombres = ", ".join(c["name"] for c in sin[:6]) + (" y otros" if n > 6 else "")
     return [_rec(
         "R1", "mantenimiento",
@@ -1118,10 +1221,16 @@ def _r1(db_path: str, hoy: date, ctx: dict) -> list[dict]:
         f"vos, así que es ingreso recurrente sin salir a buscar clientes nuevos.",
         [f"Clientes activos: {len(clientes)}; con ingreso de mantenimiento en Finanzas: "
          f"{len(clientes) - n}; sin: {n}",
-         f"Cuota = {usd(cuota['suma'])} ÷ {cuota['n']} = {usd(cuota['valor'])} ({cuota['fuente']})",
-         f"Impacto = {n} × {usd(cuota['valor'])} × (1 − {num(comision['valor'])} %) = {usd(impacto)} por mes"],
+         f"Cuota = {usd(cuota['suma'])} ÷ {cuota['n']} = {usd(cuota['valor'])} ({cuota['fuente']})"]
+        + ([f"Costo indirecto de cada cliente: {usd(indirecto['promedio'])} por mes "
+            f"(gastos fijos con cliente en Finanzas)",
+            f"Cuota neta = {usd(cuota['valor'])} − {usd(indirecto['promedio'])} = {usd(neto_cuota)}"]
+           if indirecto["n"] else [])
+        + [f"Impacto = {n} × {usd(neto_cuota)} × (1 − {num(comision['valor'])} %) = "
+           f"{usd(impacto)} por mes"],
         impacto, {"mensual": ingreso_mensual_mantenimiento(db_path, hoy, comision["valor"])["neto"],
                   "comision_pct": comision["valor"]},
+        nota="Clientes que ya tenés, ingreso recurrente",
         confianza="alta" if not cuota["supuesto"] else "media", supuestos=supuestos)]
 
 
@@ -1168,6 +1277,7 @@ def _r2_r3(db_path: str, hoy: date, ctx: dict) -> list[dict]:
             lineas, impacto,
             {"canal": "meta_ads", "ventas_mes": len(meta_prev) / VENTANA_MESES, "margen_menos_cac": margen - cpv},
             advertencia=f"Pasarte de {usd(y)} tira {usd(cpv)} por cada venta que el equipo no puede hacer.",
+            nota="Más leads, mismo embudo. Tope: la capacidad",
             confianza="baja" if horas["estimado"] else "media", supuestos=supuestos)]
 
     # La pauta no rinde: lo que vuelve por mes no cubre lo que se gasta.
@@ -1191,7 +1301,8 @@ def _r2_r3(db_path: str, hoy: date, ctx: dict) -> list[dict]:
     return [_rec(
         "R3", "pauta_no_rinde", "Bajá o pausá la pauta de Meta",
         f"La pauta no se paga: {por_que}. Por mes se pierden {usd(perdida)}.",
-        lineas, perdida, {"pauta_mes": x}, advertencia=ADVERTENCIA_R3)]
+        lineas, perdida, {"pauta_mes": x}, advertencia=ADVERTENCIA_R3,
+        nota="Ahorra lo que se tira, pero corta leads")]
 
 
 def _r4(db_path: str, hoy: date, ctx: dict) -> list[dict]:
@@ -1232,7 +1343,8 @@ def _r4(db_path: str, hoy: date, ctx: dict) -> list[dict]:
         f"{len(vencidos)} {_plural(len(vencidos), 'saldo ya pasó', 'saldos ya pasaron')} su fecha de cobro "
         f"({n} {_plural(n, 'cliente', 'clientes')}). Es plata que ya ganaste: mandá el mensaje de cobranza hoy.",
         lineas, total, {"ids": [p["id"] for p in vencidos], "monto": total},
-        acciones=acciones, unica_vez=True)]
+        acciones=acciones, unica_vez=True,
+        nota="Plata ya ganada. Entra una sola vez")]
 
 
 def _r5(db_path: str, hoy: date, ctx: dict) -> list[dict]:
@@ -1267,7 +1379,8 @@ def _r5(db_path: str, hoy: date, ctx: dict) -> list[dict]:
             f"atados a ninguna venta.",
             lineas, total, {"ids": [r["id"] for r, _, _ in filas],
                             "montos": {str(r["id"]): m for r, m, _ in filas}, "monto": total},
-            advertencia=ADVERTENCIA_R5))
+            advertencia=ADVERTENCIA_R5,
+            nota="Gasto fijo sin ninguna venta atada"))
     return recs
 
 
@@ -1322,7 +1435,8 @@ def _r6(db_path: str, hoy: date, ctx: dict) -> list[dict]:
              f"Margen = ({usd(t['ticket'])} − {usd(t['costo'])}) ÷ {usd(t['ticket'])} = {pct(t['margen'], 1)} % "
              f"(piso: {pct(MARGEN_MINIMO)} %)"],
             None, {"tipo": tipo, "margen_pct": round(t["margen"] * 100, 2)},
-            advertencia=ADVERTENCIA_R6, confianza="media" if t["estimado"] else "alta", supuestos=supuestos))
+            advertencia=ADVERTENCIA_R6, confianza="media" if t["estimado"] else "alta",
+            nota="Tocar el precio, no abandonar la línea", supuestos=supuestos))
     return recs
 
 
@@ -1362,7 +1476,8 @@ def _r7(db_path: str, hoy: date, ctx: dict) -> list[dict]:
         "R7", clave, f"Recuperá a los {n} que {nombre}",
         f"Es donde más plata se pierde del embudo. Si recuperás 3 de cada 10, suma lo de la derecha.",
         lineas, impacto, {"etapa": clave, "base_mes": n / VENTANA_MESES,
-                          "valor_unidad": tasa * margen * RECUPERO_PERDIDAS})]
+                          "valor_unidad": tasa * margen * RECUPERO_PERDIDAS},
+        nota="Leads ya pagados. Recupera 3 de cada 10")]
 
 
 def _r8(db_path: str, hoy: date, ctx: dict) -> list[dict]:
@@ -1392,7 +1507,8 @@ def _r8(db_path: str, hoy: date, ctx: dict) -> list[dict]:
     return [_rec(
         "R8", "caja", f"Tenés {num(meses)} meses de caja: " + " o ".join(partes),
         "Con menos de 3 meses de caja, un cobro que se atrasa o un mes flojo te deja sin margen.",
-        lineas, impacto, {"caja": ctx["caja"], "meses": meses}, unica_vez=unica)]
+        lineas, impacto, {"caja": ctx["caja"], "meses": meses}, unica_vez=unica,
+        nota="Menos de 3 meses de caja: un atraso duele")]
 
 
 def _r9(db_path: str, hoy: date, ctx: dict) -> list[dict]:
@@ -1405,7 +1521,8 @@ def _r9(db_path: str, hoy: date, ctx: dict) -> list[dict]:
         f"y mantenimiento de otros clientes.",
         [f"{conc['nombre']}: {usd(conc['monto'])} ÷ ingresos de la ventana {usd(conc['total'])} = "
          f"{pct(conc['share'], 1)} % (riesgo desde {pct(CONCENTRACION_ALTA)} %)"],
-        None, {"client_id": conc["client_id"], "share": conc["share"]})]
+        None, {"client_id": conc["client_id"], "share": conc["share"]},
+        nota="Si se va, se lleva casi la mitad")]
 
 
 def _r10(db_path: str, hoy: date, ctx: dict) -> list[dict]:
@@ -1432,10 +1549,168 @@ def _r10(db_path: str, hoy: date, ctx: dict) -> list[dict]:
         "R10", "demos", f"Confirmá las demos: se caen {caidas} de {emb['agendadas']}",
         "Una demo agendada que no se hace ya costó el lead. Un recordatorio el día anterior y confirmar "
         "por WhatsApp suele alcanzar.",
-        lineas, impacto, {"caidas_mes": caidas / VENTANA_MESES, "valor_unidad": cierre * margen})]
+        lineas, impacto, {"caidas_mes": caidas / VENTANA_MESES, "valor_unidad": cierre * margen},
+        nota="Una demo que no se hace ya costó el lead")]
 
 
-REGLAS_EN_ORDEN = (_r1, _r2_r3, _r4, _r5, _r6, _r7, _r8, _r9, _r10)
+def _r11(db_path: str, hoy: date, ctx: dict) -> list[dict]:
+    """Abrir un canal nuevo (Upwork, Fiverr, referidos): lo que valdría una venta.
+
+    No hay historial de un canal que todavía no existe, así que el número no
+    puede salir de él: sale del margen por venta REAL de Scalerics, aplicado a
+    una sola venta por mes. Conservador a propósito y marcado como estimación.
+    """
+    margen = ctx["margen_venta"]
+    if margen is None or margen <= 0:
+        return []
+    canales = {v["canal"] for v in ctx["ventas"] if v["canal"]}
+    faltan = [CANALES[c] for c in ("referido", "outbound") if c not in canales]
+    donde = " o ".join(faltan) if faltan else "un canal de clientes del exterior (Upwork, Fiverr)"
+    return [_rec(
+        "R11", "canal_nuevo", f"Abrí {donde}",
+        f"Hoy las ventas entran por {len(canales) or 'un solo'} "
+        f"{_plural(len(canales) or 1, 'canal', 'canales')}. Una venta más por mes por un canal "
+        f"nuevo deja {usd(margen)} al margen de hoy, sin tocar la pauta.",
+        _lineas_margen(ctx) + [
+            f"Impacto = {num(VENTAS_CANAL_NUEVO)} venta por mes × {usd(margen)} de margen = "
+            f"{usd(VENTAS_CANAL_NUEVO * margen)} por mes"],
+        VENTAS_CANAL_NUEVO * margen, {"canal_nuevo": True, "margen_venta": margen},
+        nota="Canal nuevo, sin historial: estimación baja",
+        advertencia="Un canal nuevo tarda en arrancar: el primer mes puede no traer nada.")]
+
+
+def _personas_con_costo(db_path: str, ctx: dict) -> list[dict]:
+    """Cada persona del equipo con lo que cuesta por mes, si se la ve en Finanzas.
+
+    En la base NO hay ninguna relación entre una persona y lo que factura: el
+    organigrama no se cruza con Clientes ni con Proyectos. Lo único real que
+    los une es el nombre adentro del concepto de un gasto ("Honorarios Andrés",
+    "Comisión Matías"), así que se busca por ahí y se dice que se buscó por ahí.
+    """
+    from services.intel_objetivo import _palabras
+
+    personas = [p for p in listar_personas_equipo(db_path) if p.get("lleva_horas")]
+    if not personas:
+        return []
+    salida = []
+    for p in personas:
+        nombres = _palabras(p["nombre"])
+        if not nombres:
+            continue
+        fijos = [(r, m) for r, m in ctx["fijos"] if nombres & _palabras(r["concepto"])]
+        if fijos:
+            costo = round(sum(m for _, m in fijos), 2)
+            fuente = ", ".join(r["concepto"] for r, _ in fijos) + " (gasto fijo en Finanzas)"
+        else:
+            suyos = [m for m in ctx["movs"] if m["tipo"] == "egreso"
+                     and m["periodo"] in ctx["previos"] and nombres & _palabras(m["concepto"])]
+            if not suyos:
+                continue
+            costo = round(sum(float(m["monto_usd"] or 0) for m in suyos) / VENTANA_MESES, 2)
+            fuente = (f"{len(suyos)} {_plural(len(suyos), 'egreso', 'egresos')} a su nombre en los "
+                      f"3 meses anteriores ÷ {VENTANA_MESES}")
+        if costo > 0:
+            salida.append({"id": p["id"], "nombre": p["nombre"], "costo": costo, "fuente": fuente,
+                           "horas_por_dia": float(p["horas_por_dia"])})
+    salida.sort(key=lambda p: -p["costo"])
+    return salida
+
+
+def _r12(db_path: str, hoy: date, ctx: dict) -> list[dict]:
+    """No darle trabajo a alguien este mes: el impacto NETO, no el ahorro limpio.
+
+    Regla de negocio del spec: una alternativa que recorta costo pero también
+    saca techo de ingreso tiene que mostrar el neto. Se ahorra lo que se le
+    paga, pero se pierde lo que sus horas podían facturar, y el resultado suele
+    dar NEGATIVO. Así se muestra, en rojo y con el signo, no como un ahorro.
+    """
+    personas = _personas_con_costo(db_path, ctx)
+    horas, margen = ctx["horas_proyecto"], ctx["margen_venta"]
+    if not personas or not horas or margen is None or margen <= 0:
+        return []
+    p = personas[0]
+    habiles = len(dias_habiles(hoy.replace(day=1),
+                               hoy.replace(day=calendar.monthrange(hoy.year, hoy.month)[1])))
+    horas_mes = p["horas_por_dia"] * habiles
+    proyectos_mes = horas_mes / horas["horas"] if horas["horas"] else 0.0
+    ingreso = proyectos_mes * margen
+    neto = p["costo"] - ingreso
+    supuestos = [f"Horas por proyecto: {num(horas['horas'])} h ({horas['fuente']})"] \
+        if horas["estimado"] else []
+    supuestos.append(f"Costo de {p['nombre']}: {p['fuente']}")
+    supuestos.append("Qué factura cada persona no está en el sistema: se le atribuyen las ventas "
+                     "que entran en sus horas, al margen promedio.")
+    signo = "ahorra" if neto > 0 else "cuesta"
+    return [_rec(
+        "R12", f"pausa_{p['id']}", f"No le des trabajo a {p['nombre']} este mes",
+        f"Te ahorrás {usd(p['costo'])} de lo que se le paga, pero sus {num(horas_mes)} h del mes "
+        f"son {num(proyectos_mes)} {_plural(round(proyectos_mes), 'proyecto', 'proyectos')} que "
+        f"dejás de poder entregar: {usd(ingreso)} de margen. Neto, {signo} {usd(abs(neto))}.",
+        [f"Se ahorra: {usd(p['costo'])} por mes ({p['fuente']})",
+         f"Horas del mes: {num(p['horas_por_dia'])} h por día × {habiles} días hábiles = "
+         f"{num(horas_mes)} h",
+         f"Deja de entregar: {num(horas_mes)} h ÷ {num(horas['horas'])} h por proyecto = "
+         f"{num(proyectos_mes)} proyectos"] + _lineas_margen(ctx) + [
+         f"Se pierde: {num(proyectos_mes)} × {usd(margen)} = {usd(ingreso)} por mes",
+         f"Impacto NETO = {usd(p['costo'])} − {usd(ingreso)} = {usd(neto)} por mes"],
+        neto, {"persona_id": p["id"], "costo": p["costo"], "ingreso": round(ingreso, 2)},
+        nota=f"Ahorra {usd(p['costo'])}, pero resigna el ticket más alto",
+        advertencia="Es la línea de mayor ticket la que se resigna. Antes de pausarla, mirá si "
+                    "el problema es el costo o que no entran proyectos.",
+        confianza="baja", supuestos=supuestos)]
+
+
+# Lo que muestra cada palanca cuando todavía no tiene con qué calcular: qué
+# valdría y QUÉ UN SOLO DATO la enciende. Es una oportunidad, no un error, y
+# nunca un cartel de "faltan datos" tapando la pantalla (pedido de Juan, 15/9:
+# "no quiero que me diga que con los datos proporcionados no hay análisis").
+_OPORTUNIDADES = {
+    "pauta": ("Subí la pauta hasta donde rinda",
+              "Con lo que gastás en Meta y las ventas que vinieron de ahí, calculo hasta dónde "
+              "conviene subirla sin pasarte de la capacidad del equipo.",
+              "Se enciende con los insights de Meta del mes"),
+    "conversion": ("Mejorá la conversión del embudo",
+                   "Con los leads, las demos agendadas y las que se hicieron, te muestro en qué "
+                   "escalón se cae más plata y cuánto vale arreglarlo.",
+                   "Se enciende con los leads del mes"),
+    "canal": ("Abrí un canal nuevo",
+              "Un canal más (referidos, outbound, clientes del exterior) suma ventas sin tocar "
+              "la pauta.",
+              "Se enciende con el precio de una venta"),
+    "recorte": ("Revisá los gastos fijos",
+                "Con los fijos de Finanzas te marco cuáles crecieron o pesan demasiado sobre lo "
+                "que entra, para probar un mes sin ellos.",
+                "Se enciende con el primer fijo de Finanzas"),
+    "pausa": ("Mirá qué pasa si pausás una línea de trabajo",
+              "Te calculo el neto de no darle trabajo a alguien: lo que se ahorra menos lo que "
+              "se deja de facturar. Casi siempre da negativo.",
+              "Se enciende con las horas del equipo"),
+}
+
+
+def _oportunidades(recs: list[dict]) -> list[dict]:
+    """Una tarjeta por palanca que hoy no tiene ninguna alternativa con datos.
+
+    La pantalla NUNCA abre vacía ni con un cartel de que no hay análisis: cada
+    palanca que no se pudo calcular aparece igual, contando qué haría y con qué
+    dato se enciende. Sin impacto en plata (`None`, se muestra "Estimar"),
+    confianza baja y marcadas `siempre` para que pasen el umbral.
+    """
+    cubiertas = {r.get("palanca") for r in recs}
+    salida = []
+    for palanca in PALANCAS:
+        if palanca in cubiertas:
+            continue
+        titulo, detalle, nota = _OPORTUNIDADES[palanca]
+        salida.append(_rec(
+            "R0", f"oportunidad_{palanca}", titulo, detalle,
+            [detalle, nota], None, {"oportunidad": palanca},
+            nota=nota, confianza="baja", siempre=True))
+        salida[-1]["palanca"] = palanca      # la palanca la fija la oportunidad, no la regla
+    return salida
+
+
+REGLAS_EN_ORDEN = (_r1, _r2_r3, _r4, _r5, _r6, _r7, _r8, _r9, _r10, _r11, _r12)
 
 
 def calcular(db_path: str, hoy: date) -> dict:
@@ -1447,14 +1722,23 @@ def calcular(db_path: str, hoy: date) -> dict:
         except Exception:
             # Una regla que falla no puede dejar sin pantalla al resto.
             logger.warning("inteligencia financiera: falló %s", regla.__name__, exc_info=True)
+    recs += _oportunidades(recs)
     return {"recomendaciones": recs, "diagnostico": diagnostico(ctx), "contexto": ctx}
 
 
 def ordenar(recs: list[dict]) -> list[dict]:
-    """Umbral de USD 100, de mayor a menor impacto, máximo 6. Lo que no se mide
-    en plata (revisar un precio, la concentración) va al final."""
+    """Umbral de USD 100, de mayor a menor impacto. Lo que no se mide en plata
+    (revisar un precio, la concentración) va al final.
+
+    El umbral mira el VALOR ABSOLUTO: una alternativa que resta USD 700 es tan
+    importante como una que suma USD 700, y con el filtro viejo (`>= 100`) las
+    negativas desaparecían justo cuando más hay que verlas. Las que se marcan
+    `siempre` pasan igual: son las tarjetas que explican una palanca que hoy no
+    tiene datos, y la pantalla nunca puede quedar vacía.
+    """
     visibles = [r for r in recs
-                if r["impacto_mensual"] is None or r["impacto_mensual"] >= UMBRAL_IMPACTO_USD]
+                if r.get("siempre") or r["impacto_mensual"] is None
+                or abs(r["impacto_mensual"]) >= UMBRAL_IMPACTO_USD]
     visibles.sort(key=lambda r: (r["impacto_mensual"] is None, -(r["impacto_mensual"] or 0)))
     return visibles[:MAX_RECOMENDACIONES]
 
@@ -1510,12 +1794,14 @@ def recalcular(db_path: str, ahora: datetime | None = None, redactar=None) -> in
             conn.execute(
                 "INSERT INTO if_recomendaciones (calculo_id, regla, clave, titulo, detalle, calculo, "
                 "impacto_mensual, unica_vez, confianza, tipo, advertencia, acciones, metrica, generada_en, "
-                "supuestos) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "supuestos, palanca, nota, siempre) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (cid, r["regla"], r["clave"], r["titulo"], r["detalle"], r["calculo"],
                  r["impacto_mensual"], 1 if r["unica_vez"] else 0, r["confianza"], r["tipo"],
                  r["advertencia"], json.dumps(r["acciones"], ensure_ascii=False),
                  json.dumps(r["metrica"], ensure_ascii=False), generada,
-                 json.dumps(r["supuestos"], ensure_ascii=False)))
+                 json.dumps(r["supuestos"], ensure_ascii=False),
+                 r.get("palanca") or "", r.get("nota") or "", 1 if r.get("siempre") else 0))
         conn.commit()
     finally:
         conn.close()
@@ -1622,6 +1908,29 @@ def medir(db_path: str, regla: str, metrica: dict, desde: date, hasta: date) -> 
         base, valor = metrica.get("caidas_mes") or 0, metrica.get("valor_unidad") or 0
         real = (base - caidas) * valor
         return real, f"Demos caídas en 30 días: {caidas} contra {num(base)} por mes → {usd(real)}"
+    if regla == "R11":
+        margen = metrica.get("margen_venta") or 0
+        nuevas = [v for v in ventas(db_path) if v["fecha"] and desde <= v["fecha"] <= hasta
+                  and v["canal"] and v["canal"] != "meta_ads"]
+        real = len(nuevas) * margen
+        return real, (f"Ventas por canales que no son Meta en 30 días: {len(nuevas)} × "
+                      f"{usd(margen)} = {usd(real)}")
+    if regla == "R12":
+        # Lo observable es si el gasto dejó de aparecer. Lo que esa persona
+        # habría facturado no se puede medir: no está en el sistema.
+        from services.intel_objetivo import _palabras
+
+        persona = next((p for p in listar_personas_equipo(db_path)
+                        if p["id"] == metrica.get("persona_id")), None)
+        nombres = _palabras(persona["nombre"]) if persona else set()
+        siguio = [m for m in listar_movimientos(db_path, tipo="egreso")
+                  if desde.isoformat() <= (m["fecha"] or "")[:10] <= hasta.isoformat()
+                  and nombres & _palabras(m["concepto"])] if nombres else []
+        neto = (metrica.get("costo") or 0) - (metrica.get("ingreso") or 0)
+        if siguio:
+            return 0.0, (f"Se le siguió pagando ({len(siguio)} "
+                         f"{_plural(len(siguio), 'egreso', 'egresos')}): el neto no se movió")
+        return neto, f"No hubo egresos a su nombre en 30 días: neto {usd(neto)} por mes"
     return 0.0, ""
 
 
@@ -1734,6 +2043,7 @@ def estado_pantalla(db_path: str, es_admin: bool = False, ahora: datetime | None
             r["acciones"] = json.loads(r["acciones"] or "[]")
             r["supuestos"] = json.loads(r.get("supuestos") or "[]")
             r["unica_vez"] = bool(r["unica_vez"])
+            r["siempre"] = bool(r.get("siempre"))
             r.pop("metrica", None)
             recs.append(r)
         recs = ordenar(recs)
@@ -1748,11 +2058,21 @@ def estado_pantalla(db_path: str, es_admin: bool = False, ahora: datetime | None
         seguimiento.append(t)
     bajada = ""
     if calc:
-        bajada = (f"Calculado el {_texto_momento(calc['generada_en'])} con los datos del "
-                  f"{_dmy(_fecha(ctx.get('desde')))} al {_dmy(_fecha(ctx.get('hasta')))} (los 3 meses "
-                  f"anteriores y el mes en curso): Finanzas, pauta de Meta, leads, Demos, Clientes, "
-                  f"Proyectos y Equipo. Montos en dólares (USD), con la conversión de Finanzas. "
-                  f"Se recalcula una vez por día.")
+        # Corto a propósito: Juan dijo que hay demasiado texto. El detalle de
+        # de dónde sale cada número vive en la cuenta de cada tarjeta.
+        bajada = f"Calculado el {_texto_momento(calc['generada_en'])} · USD"
+    # El objetivo del mes se lee en vivo, no del cálculo guardado: Juan lo
+    # edita desde la pantalla y tiene que verlo cambiar en el momento, sin
+    # esperar al recálculo de mañana.
+    from services import intel_objetivo
+
+    mes_actual = _periodo(hoy_de(ahora))
+    try:
+        objetivo = intel_objetivo.objetivo(db_path, mes_actual)
+    except Exception:
+        logger.warning("inteligencia financiera: falló el objetivo del mes", exc_info=True)
+        objetivo = {"periodo": mes_actual, "partes": [], "total": 0.0,
+                    "fijos_confirmados": [], "esperados": [], "dudas": []}
     return {
         "es_admin": bool(es_admin),
         "generada_en": calc["generada_en"] if calc else None,
@@ -1760,6 +2080,8 @@ def estado_pantalla(db_path: str, es_admin: bool = False, ahora: datetime | None
         "resumen": {"texto": (calc or {}).get("resumen") or "", "origen": (calc or {}).get("resumen_origen") or ""},
         "diagnostico": diag,
         "encabezado": enc,
+        "objetivo": objetivo,
+        "palancas": dict(ETIQUETA_PALANCA),
         "recomendaciones": recs,
         "seguimiento": seguimiento,
         "umbral_usd": UMBRAL_IMPACTO_USD,

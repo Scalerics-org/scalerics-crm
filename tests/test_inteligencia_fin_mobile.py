@@ -10,6 +10,14 @@ de siempre.
 
 Los tests de Playwright pintan el panel de verdad, con el CSS entero del
 dashboard y lo que devuelve el servidor, a ancho de celular y de escritorio.
+
+16/9: el panel se rehizo (arriba el objetivo del mes y el menu de alternativas;
+el diagnostico, el contraste y el seguimiento pasaron a un `<details>` plegado,
+igual que la cuenta de cada alternativa). Lo que este archivo cuida no cambio
+-que a 360, 375 y 414 px no se salga nada de costado, que todo vaya en una
+columna y que lo que se toca entre en el dedo-, asi que se sigue midiendo lo
+mismo: se abren los `<details>` antes de medir, porque lo plegado no se pinta y
+un elemento que no se pinta pasaria estas pruebas sin querer.
 """
 
 import json
@@ -132,7 +140,9 @@ def _pagina(estado: dict) -> str:
     return ("<!doctype html><html><head><meta name='viewport' content='width=device-width,initial-scale=1'>"
             f"<style>{estilos}</style></head><body><div class='main'>{panel}</div>"
             f"<script>{dashboard.ESC_JS}\nlet activePanel = 'inteligencia_fin';\n{JS}\n"
-            f"ifnEstado = {json.dumps(estado, ensure_ascii=False)};\nifnPintar();</script></body></html>")
+            f"ifnEstado = {json.dumps(estado, ensure_ascii=False)};\nifnPintar();\n"
+            "document.querySelectorAll('details').forEach(d => { d.open = true; });"
+            "</script></body></html>")
 
 
 _MEDIR = """() => {
@@ -201,9 +211,12 @@ def test_en_el_celular_no_se_corta_nada(navegador, tmp_path, ancho):
     for b in m["botones"]:
         assert b["alto"] >= 44 and b["izq"] >= 0 and b["der"] <= ancho, b
     assert m["cobranza"] and min(m["cobranza"]) >= 44
-    for dato in ("Diagnóstico del mes", "Qué hacer para ganar plata", "Seguimiento de lo que tomaste",
+    for dato in ("Diagnóstico del mes", "Seguimiento de lo que tomaste",
                  "Confianza", "USD 1.234.567"):
         assert dato in m["texto"], dato
+    # El titulo de seccion de las alternativas se fue (Juan: "mucho texto"):
+    # ahora lo que encabeza la pantalla es el objetivo del mes.
+    assert "Objetivo del mes" in m["texto"].replace("OBJETIVO DEL MES", "Objetivo del mes")
 
 
 def test_en_la_computadora_queda_como_estaba(navegador, tmp_path):

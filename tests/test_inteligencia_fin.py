@@ -143,11 +143,30 @@ def test_sin_nada_cargado_a_mano_igual_hay_diagnostico_y_sugerencias(db):
     conn.close()
 
 
-def test_base_vacia_no_rompe_ni_pide_nada(db):
+def test_base_vacia_igual_abre_con_objetivo_y_alternativas(db):
+    """Pedido de Juan (15/9): "no quiero que al entrar a inteligencia financiera
+    me diga que con los datos proporcionados no hay analisis aun".
+
+    Sin un solo movimiento cargado la pantalla abre igual: el objetivo del mes
+    (en cero, pero editable) y una alternativa por palanca, cada una contando
+    que haria y con que dato se enciende. Nunca un cartel de que no hay nada.
+    """
     ifn.corrida_diaria(db, AHORA)
     estado = ifn.estado_pantalla(db, ahora=AHORA)
-    assert estado["diagnostico"] == [] and estado["recomendaciones"] == []
-    assert "movimientos" in estado["resumen"]["texto"]
+
+    assert estado["objetivo"]["total"] == 0
+    assert [p["clave"] for p in estado["objetivo"]["partes"]] == ["fijos", "aportes", "sueldo"]
+
+    recs = estado["recomendaciones"]
+    assert len(recs) >= 3
+    assert {r["palanca"] for r in recs} == set(ifn.PALANCAS)
+    # Son tarjetas de oportunidad: sin impacto en plata, pero con su nota.
+    assert all(r["regla"] == "R0" and r["nota"] and r["impacto_mensual"] is None for r in recs)
+
+    texto = json.dumps(estado, ensure_ascii=False, default=str).lower()
+    for frase in ("sin datos", "no hay análisis", "datos insuficientes",
+                  "sacar conclusiones", "falta cargar"):
+        assert frase not in texto, frase
 
 
 # ── diagnóstico ──────────────────────────────────────────────────────────────
@@ -487,9 +506,22 @@ def test_umbral_de_100_por_mes():
     assert [r["impacto_mensual"] for r in visibles] == [100, None]
 
 
-def test_maximo_6_ordenadas_por_impacto():
+def test_maximo_8_ordenadas_por_impacto():
+    """Ocho y no seis: el menú muestra al menos una alternativa por palanca (son
+    cinco) y tiene que quedar lugar para las reglas con números reales."""
     visibles = ifn.ordenar([_falsa("R1", m) for m in (150, 900, None, 300, 5000, 120, 700, 101)])
-    assert [r["impacto_mensual"] for r in visibles] == [5000, 900, 700, 300, 150, 120]
+    assert [r["impacto_mensual"] for r in visibles] == [5000, 900, 700, 300, 150, 120, 101, None]
+
+
+def test_una_alternativa_negativa_no_se_filtra():
+    """El umbral mira el VALOR ABSOLUTO.
+
+    Con el filtro viejo (`>= 100`) una alternativa que RESTA USD 700 —no darle
+    trabajo a alguien— desaparecía justo cuando más hay que verla. La que resta
+    menos que el umbral sigue sin aparecer, igual que las que suman poco.
+    """
+    visibles = ifn.ordenar([_falsa("R1", 300), _falsa("R12", -700), _falsa("R1", -50)])
+    assert [r["impacto_mensual"] for r in visibles] == [300, -700]
 
 
 # ── resumen con IA ───────────────────────────────────────────────────────────

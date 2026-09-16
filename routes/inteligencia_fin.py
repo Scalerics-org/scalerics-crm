@@ -17,6 +17,7 @@ Permisos:
 from flask import Blueprint, current_app, jsonify, request, session
 
 from database import log_activity
+from services import intel_objetivo as obj
 from services import inteligencia_fin as ifn
 from services.auth import is_admin, tiene_panel
 
@@ -139,6 +140,95 @@ def api_esfuerzo(project_id):
     log_activity(_db(), quien, "esfuerzo_proyecto", "project", project_id,
                  f"{guardado['horas']} h", "", user_id=uid)
     return jsonify({"ok": True, **guardado})
+
+
+def _mes():
+    return obj.periodo_de(obj.hoy_mvd())
+
+
+@inteligencia_fin_bp.route("/api/inteligencia-fin/objetivo", methods=["PUT"])
+def api_objetivo():
+    """Las tres partes del objetivo del mes. Cualquiera con el panel las edita:
+    es la decisión de Juan sobre su propio mes, no un dato del sistema."""
+    if not _puede(PANEL):
+        return _no_autorizado()
+    _, quien = _quien()
+    error = obj.guardar(_db(), _mes(), request.get_json(silent=True), quien)
+    if error:
+        return _error(error)
+    return jsonify({"ok": True, "objetivo": obj.objetivo(_db(), _mes())})
+
+
+@inteligencia_fin_bp.route("/api/inteligencia-fin/fijos/<int:rec_id>/clase", methods=["PUT"])
+def api_clase_fijo(rec_id):
+    """Mover un gasto fijo entre estructura y costo de un cliente.
+
+    El sistema propone (mirando si el concepto nombra a un cliente), pero la
+    última palabra es de Juan: sin esto, la clasificación sería una adivinanza
+    que él no puede corregir.
+    """
+    if not _puede(PANEL):
+        return _no_autorizado()
+    datos = request.get_json(silent=True) or {}
+    if not isinstance(datos, dict):
+        return _error("faltan los datos")
+    _, quien = _quien()
+    error = obj.marcar_fijo(_db(), rec_id, datos.get("clase"), datos.get("client_id"), quien)
+    if error:
+        return _error(error, 404 if "no existe" in error else 400)
+    return jsonify({"ok": True, "objetivo": obj.objetivo(_db(), _mes())})
+
+
+@inteligencia_fin_bp.route("/api/inteligencia-fin/gastos-esperados", methods=["POST"])
+def api_crear_gasto_esperado():
+    if not _puede(PANEL):
+        return _no_autorizado()
+    uid, quien = _quien()
+    gasto, error = obj.crear_esperado(_db(), _mes(), request.get_json(silent=True), quien)
+    if error:
+        return _error(error)
+    log_activity(_db(), quien, "gasto_esperado_cargado", "inteligencia_fin", gasto["id"],
+                 gasto["concepto"], f"USD {gasto['monto_usd']}", user_id=uid)
+    return jsonify({"ok": True, "gasto": gasto, "objetivo": obj.objetivo(_db(), _mes())}), 201
+
+
+@inteligencia_fin_bp.route("/api/inteligencia-fin/gastos-esperados/<int:gasto_id>",
+                           methods=["DELETE"])
+def api_borrar_gasto_esperado(gasto_id):
+    if not _puede(PANEL):
+        return _no_autorizado()
+    error = obj.borrar_esperado(_db(), gasto_id)
+    if error:
+        return _error(error, 404)
+    return jsonify({"ok": True, "objetivo": obj.objetivo(_db(), _mes())})
+
+
+@inteligencia_fin_bp.route("/api/inteligencia-fin/gastos-esperados/<int:gasto_id>/emparejar",
+                           methods=["POST"])
+def api_emparejar_gasto(gasto_id):
+    """Juan confirma que ese gasto esperado es ese movimiento real."""
+    if not _puede(PANEL):
+        return _no_autorizado()
+    datos = request.get_json(silent=True) or {}
+    movimiento_id = datos.get("movimiento_id") if isinstance(datos, dict) else None
+    if not isinstance(movimiento_id, int):
+        return _error("falta el movimiento con el que emparejarlo")
+    error = obj.confirmar_emparejado(_db(), gasto_id, movimiento_id)
+    if error:
+        return _error(error, 404 if "no existe" in error else 400)
+    return jsonify({"ok": True, "objetivo": obj.objetivo(_db(), _mes())})
+
+
+@inteligencia_fin_bp.route("/api/inteligencia-fin/gastos-esperados/<int:gasto_id>/descartar",
+                           methods=["POST"])
+def api_descartar_gasto(gasto_id):
+    """El gasto que al final no vino: sale del objetivo sin borrarse."""
+    if not _puede(PANEL):
+        return _no_autorizado()
+    error = obj.descartar_esperado(_db(), gasto_id)
+    if error:
+        return _error(error, 404)
+    return jsonify({"ok": True, "objetivo": obj.objetivo(_db(), _mes())})
 
 
 @inteligencia_fin_bp.route("/api/ventas/<entidad>/<int:entidad_id>/origen", methods=["PUT"])
