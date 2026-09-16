@@ -131,6 +131,23 @@ def contexto_envio(**datos):
         _CONTEXTO_ENVIO.reset(token)
 
 
+# Armar el mail sin mandarlo. Lo usa "Ver mail" de Email marketing para
+# reconstruir un envio historico con la MISMA funcion que lo mando: adentro de
+# `capturar_envio`, `_send_estado` guarda lo que iba a salir y vuelve "ok" sin
+# tocar la red ni registrar nada.
+_CAPTURA_ENVIO = contextvars.ContextVar("captura_envio", default=None)
+
+
+@contextmanager
+def capturar_envio():
+    capturados: list[dict] = []
+    token = _CAPTURA_ENVIO.set(capturados)
+    try:
+        yield capturados
+    finally:
+        _CAPTURA_ENVIO.reset(token)
+
+
 def _tipo_envio(tipo: str):
     """Decorador: todo lo que mande la funcion se registra con ese tipo."""
     def decorar(fn):
@@ -192,6 +209,13 @@ def _send_estado(to: str, subject: str, html: str, from_email: str | None = None
     cualquier otra excepcion: la peticion pudo haber llegado y el mail pudo
     haber salido igual, asi que reintentar significa mandar dos veces.
     """
+    captura = _CAPTURA_ENVIO.get()
+    if captura is not None:
+        captura.append({
+            "to": to, "subject": subject, "html": html, "text": text,
+            "from": from_email or os.environ.get("RESEND_FROM_EMAIL", "Scalerics CRM <crm@noreply.scalerics.com>"),
+        })
+        return "ok"
     api_key = os.environ.get("RESEND_API_KEY", "")
     if not api_key:
         logger.info(f"[EMAIL STUB] {subject} → {to}")
