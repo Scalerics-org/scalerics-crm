@@ -224,11 +224,18 @@ def test_la_pantalla_se_pinta_sin_pedir_nada(tmp_path):
 
     # Lo primero que se ve: el objetivo y el menú de alternativas de colores.
     assert "Objetivo del mes" in s["ifn-objetivo"] and "Con lo seleccionado" in s["ifn-objetivo"]
-    assert "Alternativas para llegar al objetivo" in s["ifn-lista"]
+    # Sin titulo de seccion: lo que encabeza la pantalla es el objetivo, y
+    # Juan pidio menos texto. Las tarjetas se ven igual.
+    # El <h3> del detalle plegado no cuenta: lo que se fue es el titulo
+    # de seccion que encabezaba la lista.
+    assert '<h3 class="ifn-seccion"' not in s["ifn-lista"]
     assert "ifn-alt-" in s["sinElegir"], "las alternativas se ven sin elegir nada"
     assert sorted(s["elegidas"]) == sorted([rec["id"], rec1["id"]])
     assert "Plan resultante" in s["ifn-plan"]
-    assert "Gastos del mes" in s["ifn-gastos"]
+    # "Gastos del mes" ahora es el <summary> del bloque plegado, que vive en
+    # el panel; lo que se pinta adentro es el formulario y los grupos.
+    assert "Agregar gasto esperado" in s["ifn-gastos"]
+    assert "Gastos del mes" in PANEL
 
     assert "Diagnóstico del mes" in s["ifn-diagnostico"] and "Resultado del mes" in s["ifn-diagnostico"]
     assert "ifn-nivel-mal" in s["ifn-diagnostico"]

@@ -404,9 +404,10 @@ def test_los_sueldos_cuentan_aunque_no_esten_en_la_pestana_de_fijos(db):
 
     assert equipo["total"] == 1300, [f["concepto"] for f in equipo["filas"]]
     assert [f["concepto"] for f in equipo["sueltos"]] == ["Honorarios Mati Dominguez"]
-    # Estructura (105) + equipo (1.300); sin los 31,24 de los clientes.
-    assert base["recurrentes_total"] == 105
-    assert base["total"] == 1405
+    # Estructura (Claude 100 + Cloudfare 5 + Pasarela 100 = 205) + equipo
+    # (1.300), sin los 31,24 de Diego Heinze y Jose: esos son de sus clientes.
+    assert base["recurrentes_total"] == 205
+    assert base["total"] == 1505
     assert base["por_cliente_total"] == 31.24
 
 
@@ -422,7 +423,7 @@ def test_la_pauta_y_los_impuestos_no_son_estructura(db):
     fuera = {f["concepto"] for f in base["fuera"]}
     assert fuera == {"IVA", "Meta"}
     assert all(f["motivo"] for f in base["fuera"]), "tiene que decir por qué queda afuera"
-    assert base["recurrentes_total"] == 105
+    assert base["recurrentes_total"] == 205
 
 
 def test_el_mantenimiento_se_razona_en_neto(db):
@@ -444,7 +445,9 @@ def test_el_punto_de_equilibrio_no_cuenta_los_costos_de_cliente(db):
     ctx = ifn._contexto(db, HOY)
 
     assert ctx["fijos_cliente_total"] == 31.24
-    assert ctx["fijos_total"] == 805, "105 de estructura + 700 de pauta, sin los de cliente"
+    # Solo los recurrentes de estructura: la pauta de estos datos es un
+    # movimiento, no un fijo, asi que no entra por aca.
+    assert ctx["fijos_total"] == 205
     assert "Servidores Diego Heinze" not in {r["concepto"] for r, _ in ctx["fijos"]}
 
 

@@ -2119,6 +2119,8 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .ifn-obj-input{width:100%;background:var(--fondo-hundido);border:1px solid var(--borde-fuerte);color:var(--texto-fuerte);border-radius:6px;padding:6px 8px;font-size:1rem;font-weight:700;font-family:inherit;margin-top:3px}
 .ifn-obj-input:focus{outline:none;border-color:var(--azul)}
 .ifn-obj-volver{margin-top:5px;font-size:.66rem;color:var(--azul-claro);background:none;border:none;padding:0;cursor:pointer;font-family:inherit;text-align:left}
+.ifn-obj-sub{display:block;margin-top:7px;font-size:.66rem;color:var(--texto-debil)}
+.ifn-obj-input-chico{font-size:.85rem;padding:4px 7px}
 /* Las alternativas. El color del borde y del fondo dice que palanca es: no es
    decoracion, es como se distingue de un vistazo un recorte de una pauta. */
 .ifn-alt{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;width:100%;text-align:left;font-family:inherit;background:var(--pal-tinte);border:1px solid var(--borde);border-left:5px solid var(--pal);border-radius:10px;padding:14px 16px;margin-bottom:10px;cursor:pointer}
@@ -12880,7 +12882,7 @@ function ifnObjetivoHtml(o, recs) {
   } else if (falta <= 0) {
     pie = 'Llegás al objetivo.';
   } else {
-    pie = 'Faltan ' + ifnUsd(falta) + '.';
+    pie = 'Quedan ' + ifnUsd(falta) + ' para llegar.';
   }
   const partes = (o.partes || []).map(function (p) {
     const volver = p.clave === 'fijos' && p.editado
@@ -12892,7 +12894,7 @@ function ifnObjetivoHtml(o, recs) {
       + '" value="' + (Number(p.monto) || 0) + '" aria-label="' + esc(p.rotulo)
       + '" onchange="ifnGuardarObjetivo()">'
       + (p.origen ? '<span class="ifn-obj-parte-origen">' + esc(p.origen) + '</span>' : '')
-      + volver + '</label>';
+      + volver + ifnEquipoHtml(p) + '</label>';
   }).join('');
   return '<div class="ifn-obj-fila">'
     + '<div class="ifn-obj-lado"><div class="ifn-obj-rotulo">Objetivo del mes</div>'
@@ -12902,6 +12904,26 @@ function ifnObjetivoHtml(o, recs) {
     + '<div class="ifn-obj-pista"><div class="ifn-obj-llena" id="ifn-obj-llena"></div></div>'
     + '<p class="ifn-obj-pie">' + esc(pie) + '</p>'
     + '<div class="ifn-obj-partes">' + partes + '</div>';
+}
+
+function ifnEquipoHtml(p) {
+  // El costo del equipo sale del promedio de los ultimos 3 meses de sueldos y
+  // honorarios, pero Juan sabe el numero exacto de cada uno: si lo escribe,
+  // vale el suyo y no hay que tocar codigo. Vacio vuelve al promedio.
+  if (p.clave !== 'fijos' || p.editado) return '';
+  return '<span class="ifn-obj-sub">Equipo'
+    + '<input type="number" min="0" step="any" class="ifn-obj-input ifn-obj-input-chico"'
+    + ' id="ifn-obj-equipo" aria-label="Costo del equipo por mes"'
+    + ' value="' + (Number(p.equipo) || 0) + '" onchange="ifnGuardarEquipo()">'
+    + (p.equipo_editado ? '' : 'promedio de 3 meses')
+    + '</span>';
+}
+
+async function ifnGuardarEquipo() {
+  const el = document.getElementById('ifn-obj-equipo');
+  const r = await ifnPedir('/api/inteligencia-fin/objetivo', 'PUT',
+    {equipo_usd: el && el.value !== '' ? Number(el.value) : null});
+  if (r && r.objetivo && ifnEstado) { ifnEstado.objetivo = r.objetivo; ifnPintar(); }
 }
 
 function ifnAlternativaHtml(r) {

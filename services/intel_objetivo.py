@@ -287,7 +287,7 @@ def costo_equipo(db_path: str, mes: str) -> dict:
             "meses": len(previos), "desde": previos[0], "hasta": previos[-1]}
 
 
-def base_estructural(db_path: str, mes: str) -> dict:
+def base_estructural(db_path: str, mes: str, equipo_usd=None) -> dict:
     """Lo que hay que cubrir sí o sí este mes: estructura + equipo.
 
     No entran ni los costos de clientes de mantenimiento, ni la pauta, ni los
@@ -300,6 +300,12 @@ def base_estructural(db_path: str, mes: str) -> dict:
     fuera = [dict(f, motivo=ETIQUETA_FUERA.get(f["categoria"], ""))
              for f in clases["estructura"] if f["categoria"] in CATEGORIAS_FUERA_DE_ESTRUCTURA]
     equipo = costo_equipo(db_path, mes)
+    # El promedio de los movimientos es una aproximación: Juan sabe el sueldo
+    # exacto de cada uno. Si lo escribió, vale el suyo y no se recalcula.
+    if equipo_usd is not None:
+        equipo = dict(equipo, total=round(float(equipo_usd), 2), editado=True)
+    else:
+        equipo = dict(equipo, editado=False)
     recurrentes_total = round(sum(f["monto_usd"] for f in estructura), 2)
     return {"recurrentes": estructura, "recurrentes_total": recurrentes_total,
             "equipo": equipo, "por_cliente": clases["cliente"],
@@ -523,26 +529,32 @@ def dudas_del_mes(db_path: str, mes: str) -> list[dict]:
 
 def leer_fila(db_path: str, mes: str) -> dict:
     filas = _q(db_path, "SELECT * FROM if_objetivo WHERE periodo = ?", (mes,))
-    return filas[0] if filas else {"periodo": mes, "fijos_usd": None,
+    return filas[0] if filas else {"periodo": mes, "fijos_usd": None, "equipo_usd": None,
                                    "aportes_usd": 0.0, "sueldo_usd": 0.0}
 
 
 def guardar(db_path: str, mes: str, datos, quien: str = "",
             ahora: datetime | None = None) -> str | None:
-    """Guarda las partes que vinieron. `fijos_usd` en null vuelve a los de Finanzas."""
+    """Guarda las partes que vinieron.
+
+    `fijos_usd` y `equipo_usd` en null vuelven a calcularse solos: el primero
+    desde Finanzas, el segundo desde el promedio de los movimientos.
+    """
     if not isinstance(datos, dict) or not datos:
         return "faltan los datos del objetivo"
     fila = leer_fila(db_path, mes)
-    valores = {"fijos_usd": fila["fijos_usd"], "aportes_usd": fila["aportes_usd"] or 0.0,
+    valores = {"fijos_usd": fila["fijos_usd"], "equipo_usd": fila.get("equipo_usd"),
+               "aportes_usd": fila["aportes_usd"] or 0.0,
                "sueldo_usd": fila["sueldo_usd"] or 0.0}
-    etiquetas = {"fijos_usd": "los costos fijos", "aportes_usd": "los aportes externos",
-                 "sueldo_usd": "el sueldo objetivo"}
+    etiquetas = {"fijos_usd": "los costos fijos", "equipo_usd": "el costo del equipo",
+                 "aportes_usd": "los aportes externos", "sueldo_usd": "el sueldo objetivo"}
+    automaticos = ("fijos_usd", "equipo_usd")
     for clave in valores:
         if clave not in datos:
             continue
         crudo = datos[clave]
-        if clave == "fijos_usd" and crudo in (None, ""):
-            valores[clave] = None      # volver a los fijos de Finanzas
+        if clave in automaticos and crudo in (None, ""):
+            valores[clave] = None      # que lo vuelva a calcular el sistema
             continue
         x = _numero(crudo)
         if x is None or x < 0:
@@ -551,13 +563,14 @@ def guardar(db_path: str, mes: str, datos, quien: str = "",
             return f"{etiquetas[clave]}: ese monto es demasiado grande"
         valores[clave] = round(x, 2)
     _ejecutar(db_path,
-              "INSERT INTO if_objetivo (periodo, fijos_usd, aportes_usd, sueldo_usd, updated_by, "
-              "updated_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(periodo) DO UPDATE SET "
-              "fijos_usd = excluded.fijos_usd, aportes_usd = excluded.aportes_usd, "
-              "sueldo_usd = excluded.sueldo_usd, updated_by = excluded.updated_by, "
-              "updated_at = excluded.updated_at",
-              (mes, valores["fijos_usd"], valores["aportes_usd"], valores["sueldo_usd"],
-               quien, _iso(ahora or _ahora())))
+              "INSERT INTO if_objetivo (periodo, fijos_usd, equipo_usd, aportes_usd, sueldo_usd, "
+              "updated_by, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) "
+              "ON CONFLICT(periodo) DO UPDATE SET "
+              "fijos_usd = excluded.fijos_usd, equipo_usd = excluded.equipo_usd, "
+              "aportes_usd = excluded.aportes_usd, sueldo_usd = excluded.sueldo_usd, "
+              "updated_by = excluded.updated_by, updated_at = excluded.updated_at",
+              (mes, valores["fijos_usd"], valores["equipo_usd"], valores["aportes_usd"],
+               valores["sueldo_usd"], quien, _iso(ahora or _ahora())))
     return None
 
 
@@ -574,7 +587,7 @@ def objetivo(db_path: str, mes: str) -> dict:
     except Exception:
         logger.warning("objetivo: falló el emparejado automático", exc_info=True)
     fila = leer_fila(db_path, mes)
-    base = base_estructural(db_path, mes)
+    base = base_estructural(db_path, mes, fila.get("equipo_usd"))
     esperados = listar_esperados(db_path, mes)
     suma_esperados = round(sum(float(g["monto_usd"] or 0) for g in esperados), 2)
     automatico = round(base["total"] + suma_esperados, 2)
@@ -601,6 +614,7 @@ def objetivo(db_path: str, mes: str) -> dict:
             {"clave": "fijos", "rotulo": "Fijos del mes", "monto": fijos,
              "origen": origen, "editado": editado, "automatico": automatico,
              "equipo": base["equipo"]["total"], "estructura": base["recurrentes_total"],
+             "equipo_editado": bool(base["equipo"].get("editado")),
              "esperados": suma_esperados},
             {"clave": "aportes", "rotulo": "Aportes a reemplazar", "monto": aportes,
              "origen": "", "editado": aportes > 0},

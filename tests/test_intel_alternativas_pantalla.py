@@ -47,7 +47,7 @@ JS = _entre(SRC, "// ========== Inteligencia financiera ==========",
             "// ========== FIN Inteligencia financiera ==========")
 
 
-def _estado(tmp_path) -> dict:
+def _estado(tmp_path, largo: bool = True) -> dict:
     db = str(tmp_path / "pantalla.db")
     init_db(db)
     for p in ("2026-06", "2026-07", "2026-08"):
@@ -67,10 +67,12 @@ def _estado(tmp_path) -> dict:
     estado = json.loads(json.dumps(ifn.estado_pantalla(db, es_admin=True, ahora=AHORA),
                                    default=str))
     assert estado["recomendaciones"], "sin alternativas no hay nada que medir"
-    # Y encima, todo lo largo que puede venir.
-    estado["recomendaciones"][0]["titulo"] += " " + LARGO
-    estado["recomendaciones"][0]["nota"] = LARGO
-    estado["recomendaciones"][0]["calculo"] += "\n" + LARGO
+    if largo:
+        # Texto sin un solo espacio donde partir, que es lo que cortaba
+        # la pantalla en el celular.
+        estado["recomendaciones"][0]["titulo"] += " " + LARGO
+        estado["recomendaciones"][0]["nota"] = LARGO
+        estado["recomendaciones"][0]["calculo"] += "\n" + LARGO
     estado["recomendaciones"][0]["impacto_mensual"] = 1234567
     return estado
 
@@ -162,8 +164,7 @@ def test_en_el_celular_no_se_corta_nada(navegador, tmp_path, ancho):
     # En minúsculas: varios rótulos van en versalitas por CSS, así que el
     # innerText los devuelve en mayúsculas.
     texto = m["texto"].lower()
-    for dato in ("objetivo del mes", "con lo seleccionado",
-                 "alternativas para llegar al objetivo", "gastos del mes"):
+    for dato in ("objetivo del mes", "con lo seleccionado", "gastos del mes"):
         assert dato in texto, dato
 
 
@@ -237,7 +238,9 @@ def test_la_cuenta_viene_plegada_y_se_abre_a_pedido(navegador, tmp_path):
 
 def test_la_pantalla_arranca_sin_parrafos(navegador, tmp_path):
     """Se tiene que leer de un vistazo: números y títulos, no prosa."""
-    pagina = _abrir(navegador, _estado(tmp_path), 1280)
+    # Sin el texto monstruoso de los otros tests: aca se mide la pantalla
+    # de verdad, con las notas que escribe el servidor.
+    pagina = _abrir(navegador, _estado(tmp_path, largo=False), 1280)
     try:
         largos = pagina.evaluate("""() => {
           const p = document.getElementById('inteligencia_fin-panel');

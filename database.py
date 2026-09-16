@@ -1706,6 +1706,10 @@ def init_db(db_path: str) -> None:
                 updated_at  TEXT
             )
         """)
+        # El costo del equipo se calcula con el promedio de los 3 meses previos
+        # de los movimientos, pero Juan sabe el sueldo exacto de cada uno: si lo
+        # escribe, vale el suyo. NULL es "calculalo vos".
+        _add_column(conn, "if_objetivo", "equipo_usd", "REAL")
         # Gastos que Juan YA SABE que van a caer este mes, cargados cuando se
         # entera y no al cierre. Alimentan el objetivo en vivo, al lado de los
         # fijos confirmados. Cuando el gasto se carga de verdad en Finanzas se
