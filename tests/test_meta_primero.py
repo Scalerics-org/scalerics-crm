@@ -1,7 +1,7 @@
 """El menu en el orden que definio Juan, con el Calendario primero (14/9).
 
 Menu, por grupo: CALENDARIO (Calendario) · MARKETING (Meta Ads, Marketing, Email marketing, LinkedIn) ·
-FINANZAS (Finanzas, Simulador financiero, Inteligencia financiera) · VENTAS (Seguimiento de leads,
+FINANZAS (Finanzas, Simulador financiero, Métricas financieras) · VENTAS (Seguimiento de leads,
 WhatsApp, Proceso de venta, Demos) · OPERACION (Clientes, Proyectos, Tareas,
 Daily Programador, Daily Admin, Actividad) · RECURSOS HUMANOS · CAPTACION
 (Outbound, Inteligencia comercial, SDR). La barra del celular sigue el mismo

@@ -4,7 +4,6 @@ Las rutas son finas: validan la entrada, llaman a `services/finanzas.py` y
 serializan. Ninguna cuenta se hace acá.
 """
 
-import logging
 from datetime import date, datetime, timezone
 
 from flask import Blueprint, current_app, jsonify, request, session
@@ -206,21 +205,6 @@ def api_crear_movimiento():
     campos["created_by_name"] = nombre
     db = _db()
     mid = crear_movimiento(db, **campos)
-    if campos["tipo"] == "egreso":
-        # Si ese gasto ya estaba anotado como "esperado" del mes en Inteligencia
-        # financiera, se cierra el esperado para no contarlo dos veces. Solo
-        # cuando no hay dudas: con mas de un candidato, o con uno que coincide a
-        # medias, no se toca nada y la pantalla se lo pregunta a Juan. El import
-        # va adentro para no atar Finanzas al modulo de inteligencia.
-        try:
-            from services.intel_objetivo import emparejar_movimiento
-
-            emparejar_movimiento(db, mid)
-        except Exception:
-            # Emparejar es una comodidad: que falle no puede tumbar la carga de
-            # un movimiento. La pantalla lo vuelve a intentar al abrirse.
-            logging.getLogger(__name__).warning(
-                "finanzas: falló el emparejado con los gastos esperados", exc_info=True)
     if pendiente:
         # "Saldo de ..." y no el concepto tal cual: el pendiente no es el cobro
         # que se acaba de hacer, es lo que falta. Heredarlo verbatim dejaba dos

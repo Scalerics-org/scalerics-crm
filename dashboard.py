@@ -29,7 +29,6 @@ from routes.finanzas import finanzas_bp
 from routes.simulador import simulador_bp
 from routes.email_marketing import email_mkt_bp
 from routes.linkedin_panel import linkedin_panel_bp
-from routes.inteligencia_fin import inteligencia_fin_bp
 from routes.equipo import equipo_bp
 from routes.horarios import horarios_bp
 from routes.flujos import flujos_bp
@@ -429,21 +428,6 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   --rol-teal-tinte:#0d2a28;
   --rol-rosa:#f472b6;
   --rol-rosa-tinte:#2d1624;
-  --pal-pauta:#38bdf8;
-  --pal-pauta-tinte:#0e2438;
-  --pal-conversion:#34d399;
-  --pal-conversion-tinte:#0f2a1f;
-  --pal-canal:#c084fc;
-  --pal-canal-tinte:#221a38;
-  --pal-recorte:#fbbf24;
-  --pal-recorte-tinte:#2b2213;
-  --pal-pausa:#94a3b8;
-  --pal-pausa-tinte:#1b2330;
-  --obj-fondo:#0d1626;
-  --obj-texto:#f8fafc;
-  --obj-rotulo:#94a3b8;
-  --obj-logro:#4ade80;
-  --obj-pista:#1e293b;
 }
 body.light{
   --fondo:#f8fafc;
@@ -496,23 +480,6 @@ body.light{
   --rol-teal-tinte:#ccfbf1;
   --rol-rosa:#be185d;
   --rol-rosa-tinte:#fce7f3;
-  --pal-pauta:#0369a1;
-  --pal-pauta-tinte:#e0f2fe;
-  --pal-conversion:#047857;
-  --pal-conversion-tinte:#d1fae5;
-  --pal-canal:#7e22ce;
-  --pal-canal-tinte:#f3e8ff;
-  --pal-recorte:#b45309;
-  --pal-recorte-tinte:#fef3c7;
-  --pal-pausa:#475569;
-  --pal-pausa-tinte:#eef2f7;
-  /* La tarjeta del objetivo queda oscura tambien en el tema claro, igual que
-     en el mockup del PDF: es la que tiene que saltar a la vista. */
-  --obj-fondo:#0f172a;
-  --obj-texto:#f8fafc;
-  --obj-rotulo:#cbd5e1;
-  --obj-logro:#4ade80;
-  --obj-pista:#334155;
 }
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:100vh;display:flex}
@@ -2081,215 +2048,6 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   .hr-tarjetas{display:block}
   .hr-card{padding:14px}
 }
-/* ── Inteligencia financiera ──────────────────────────────────────────────────
-   Solo tokens. El borde de cada tarjeta dice el tipo (verde ingreso, ambar
-   recorte, rojo alerta) y el del diagnostico, el nivel. */
-.ifn-oculto{display:none}
-.ifn-cabecera{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:16px}
-.ifn-titulo{margin:0;font-size:1.3rem;color:var(--texto-fuerte)}
-.ifn-bajada{margin:4px 0 0;color:var(--texto-tenue);font-size:.85rem;max-width:760px;line-height:1.45}
-.ifn-bloque{background:var(--superficie);border:1px solid var(--borde);border-radius:10px;padding:16px;margin-bottom:16px}
-.ifn-seccion{margin:0 0 12px;font-size:.95rem;color:var(--texto-fuerte)}
-.ifn-resumen{background:var(--azul-tinte);border:1px solid var(--borde);border-radius:10px;padding:14px 16px;margin-bottom:16px}
-.ifn-resumen-texto{margin:0;font-size:.9rem;line-height:1.55;color:var(--texto)}
-.ifn-resumen-origen{display:block;margin-top:6px;font-size:.7rem;color:var(--texto-debil)}
-.ifn-diag-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
-.ifn-diag{background:var(--superficie-alta);border:1px solid var(--borde);border-left:4px solid var(--borde-fuerte);border-radius:8px;padding:12px;min-width:0}
-.ifn-diag-mal{border-left-color:var(--rojo)}
-.ifn-diag-atencion{border-left-color:var(--ambar)}
-.ifn-diag-bien{border-left-color:var(--verde)}
-.ifn-diag-cab{display:flex;justify-content:space-between;align-items:center;gap:8px}
-.ifn-diag-titulo{font-size:.75rem;font-weight:600;color:var(--texto-debil);text-transform:uppercase;letter-spacing:.04em}
-.ifn-diag-valor{font-size:1.35rem;font-weight:700;color:var(--texto-fuerte);margin:4px 0}
-.ifn-diag-texto{margin:0 0 6px;font-size:.82rem;line-height:1.45;color:var(--texto)}
-.ifn-diag-cuenta{margin:0;font-family:inherit;font-size:.72rem;line-height:1.45;color:var(--texto-tenue);white-space:pre-wrap}
-.ifn-nivel{font-size:.68rem;font-weight:600;padding:2px 8px;border-radius:10px}
-.ifn-nivel-mal{background:var(--rojo-tinte);color:var(--rojo-texto)}
-.ifn-nivel-atencion{background:var(--ambar-tinte);color:var(--ambar)}
-.ifn-nivel-bien{background:var(--verde-tinte);color:var(--verde-texto)}
-.ifn-contraste{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-bottom:16px}
-.ifn-contraste-col{background:var(--superficie);border:1px solid var(--borde);border-radius:10px;padding:14px}
-.ifn-contraste-rotulo{font-size:.75rem;color:var(--texto-debil);text-transform:uppercase;letter-spacing:.04em}
-.ifn-contraste-num{font-size:1.5rem;font-weight:700;color:var(--texto-fuerte);margin:4px 0}
-.ifn-contraste-cuenta{font-size:.75rem;color:var(--texto-tenue)}
-.ifn-rec{background:var(--superficie);border:1px solid var(--borde);border-left:4px solid var(--borde-fuerte);border-radius:10px;padding:14px 16px;margin-bottom:12px}
-.ifn-rec-ingreso{border-left-color:var(--verde)}
-.ifn-rec-recorte{border-left-color:var(--ambar)}
-.ifn-rec-alerta{border-left-color:var(--rojo)}
-.ifn-rec-cab{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
-.ifn-regla{font-size:.7rem;color:var(--texto-debil);font-weight:600}
-.ifn-rec-titulo{margin:2px 0 0;font-size:1rem;color:var(--texto-fuerte)}
-.ifn-impacto{font-size:1.15rem;font-weight:700;text-align:right;white-space:nowrap}
-.ifn-impacto span{display:block;font-size:.7rem;font-weight:500;color:var(--texto-debil)}
-.ifn-suma{color:var(--verde-texto)}
-.ifn-revisar{color:var(--rojo-texto)}
-.ifn-rec-detalle{margin:8px 0;font-size:.85rem;color:var(--texto);line-height:1.45}
-.ifn-advertencia{margin:8px 0;font-size:.8rem;color:var(--ambar);line-height:1.4}
-.ifn-calculo{background:var(--relleno);color:var(--texto);border-radius:6px;padding:10px 12px;font-size:.76rem;line-height:1.5;white-space:pre-wrap;overflow-x:auto;margin:8px 0}
-.ifn-supuestos-rec{margin:4px 0 0;font-size:.7rem;color:var(--texto-debil);line-height:1.4}
-.ifn-acciones{list-style:none;padding:0;margin:8px 0;display:flex;flex-direction:column;gap:6px}
-.ifn-accion{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;font-size:.8rem;color:var(--texto)}
-.ifn-sin-tel{color:var(--texto-debil);font-size:.75rem}
-.ifn-rec-pie{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:10px}
-.ifn-confianza{font-size:.72rem;font-weight:600;padding:2px 8px;border-radius:10px;margin-right:auto}
-.ifn-conf-alta{background:var(--verde-tinte);color:var(--verde-texto)}
-.ifn-conf-media{background:var(--azul-tinte);color:var(--azul-claro)}
-.ifn-conf-baja{background:var(--relleno);color:var(--texto-debil)}
-.ifn-vacio{padding:14px;color:var(--texto-tenue);font-size:.85rem}
-.ifn-segs{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:8px}
-.ifn-seg{border-bottom:1px solid var(--borde);padding-bottom:8px}
-.ifn-seg-titulo{color:var(--texto);font-size:.85rem}
-.ifn-res{font-size:.7rem;font-weight:600;padding:2px 8px;border-radius:10px}
-.ifn-res-midiendo{background:var(--azul-tinte);color:var(--azul-claro)}
-.ifn-res-funciono{background:var(--verde-tinte);color:var(--verde-texto)}
-.ifn-res-no_funciono{background:var(--rojo-tinte);color:var(--rojo-texto)}
-.ifn-seg-meta{font-size:.75rem;color:var(--texto-tenue);margin-top:2px}
-.ifn-seg-detalle{font-size:.75rem;color:var(--texto-tenue);margin-top:2px}
-.ifn-afinar{margin-top:6px;font-size:.75rem;color:var(--texto-debil)}
-.ifn-afinar summary{cursor:pointer;color:var(--texto-debil)}
-.ifn-afinar-campo{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px;color:var(--texto-tenue)}
-.ifn-input{width:80px;background:var(--fondo-hundido);border:1px solid var(--borde-fuerte);color:var(--texto);border-radius:6px;padding:4px 6px;font-size:.8rem}
-.ifn-input:focus{outline:none;border-color:var(--azul)}
-/* El objetivo del mes: la tarjeta que manda. Oscura en los dos temas, con el
-   objetivo a la izquierda y lo que suma el plan elegido a la derecha. */
-.ifn-objetivo{background:var(--obj-fondo);border:1px solid var(--borde);border-radius:14px;padding:18px 20px;margin-bottom:16px}
-.ifn-obj-fila{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;flex-wrap:wrap}
-.ifn-obj-lado{min-width:0}
-.ifn-obj-der{text-align:right}
-.ifn-obj-rotulo{font-size:.7rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--obj-rotulo)}
-.ifn-obj-num{font-size:2rem;font-weight:800;color:var(--obj-texto);line-height:1.15;margin-top:2px}
-.ifn-obj-num-logro{color:var(--obj-logro)}
-.ifn-obj-num-falta{color:var(--rojo)}
-.ifn-obj-pista{height:6px;border-radius:99px;background:var(--obj-pista);margin-top:14px;overflow:hidden}
-.ifn-obj-llena{height:100%;border-radius:99px;background:var(--obj-logro)}
-.ifn-obj-pie{margin-top:8px;font-size:.78rem;color:var(--obj-rotulo);line-height:1.45}
-.ifn-obj-partes{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-top:14px}
-.ifn-obj-parte{display:block;background:var(--superficie);border:1px solid var(--borde);border-radius:8px;padding:10px 12px;min-width:0}
-.ifn-obj-parte-rotulo{display:block;font-size:.68rem;color:var(--texto-debil);text-transform:uppercase;letter-spacing:.04em}
-.ifn-obj-parte-origen{display:block;font-size:.67rem;color:var(--texto-debil);margin-top:4px;line-height:1.35}
-.ifn-obj-input{width:100%;background:var(--fondo-hundido);border:1px solid var(--borde-fuerte);color:var(--texto-fuerte);border-radius:6px;padding:6px 8px;font-size:1rem;font-weight:700;font-family:inherit;margin-top:3px}
-.ifn-obj-input:focus{outline:none;border-color:var(--azul)}
-.ifn-obj-volver{margin-top:5px;font-size:.66rem;color:var(--azul-claro);background:none;border:none;padding:0;cursor:pointer;font-family:inherit;text-align:left}
-.ifn-obj-sub{display:block;margin-top:7px;font-size:.66rem;color:var(--texto-debil)}
-.ifn-obj-input-chico{font-size:.85rem;padding:4px 7px}
-/* Las alternativas. El color del borde y del fondo dice que palanca es: no es
-   decoracion, es como se distingue de un vistazo un recorte de una pauta. */
-.ifn-alt{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;width:100%;text-align:left;font-family:inherit;background:var(--pal-tinte);border:1px solid var(--borde);border-left:5px solid var(--pal);border-radius:10px;padding:14px 16px;margin-bottom:10px;cursor:pointer}
-.ifn-alt-pauta{--pal:var(--pal-pauta);--pal-tinte:var(--pal-pauta-tinte)}
-.ifn-alt-conversion{--pal:var(--pal-conversion);--pal-tinte:var(--pal-conversion-tinte)}
-.ifn-alt-canal{--pal:var(--pal-canal);--pal-tinte:var(--pal-canal-tinte)}
-.ifn-alt-recorte{--pal:var(--pal-recorte);--pal-tinte:var(--pal-recorte-tinte)}
-.ifn-alt-pausa{--pal:var(--pal-pausa);--pal-tinte:var(--pal-pausa-tinte)}
-.ifn-alt-otra{--pal:var(--borde-fuerte);--pal-tinte:var(--superficie)}
-.ifn-alt:hover{border-color:var(--pal)}
-.ifn-elegida{box-shadow:inset 0 0 0 2px var(--pal)}
-.ifn-alt-texto{min-width:0}
-.ifn-alt-tipo{display:block;font-size:.63rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--pal)}
-.ifn-alt-titulo{margin:3px 0 0;font-size:.98rem;font-weight:700;color:var(--texto-fuerte);line-height:1.3}
-.ifn-alt-nota{margin:4px 0 0;font-size:.79rem;color:var(--texto-tenue);line-height:1.4}
-.ifn-alt-impacto{font-size:1.5rem;font-weight:800;color:var(--verde-texto);text-align:right;white-space:nowrap}
-.ifn-alt-neg{color:var(--rojo-texto)}
-.ifn-alt-sd{font-size:.95rem;font-weight:700;color:var(--texto-debil)}
-.ifn-alt-periodo{display:block;font-size:.66rem;font-weight:600;color:var(--texto-debil)}
-.ifn-alt-tilde{display:block;font-size:.66rem;font-weight:700;color:var(--pal)}
-/* El plan que queda armado con lo elegido. */
-.ifn-detalle{margin:-6px 0 12px}
-.ifn-ver{cursor:pointer;color:var(--texto-debil);font-size:.72rem;padding:2px 4px;list-style:none}
-.ifn-ver::-webkit-details-marker{display:none}
-.ifn-ver:hover{color:var(--texto)}
-.ifn-plan{background:var(--verde-tinte);border:1px solid var(--borde);border-radius:10px;padding:14px 16px;margin-bottom:16px}
-.ifn-plan-titulo{font-size:.71rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--texto-debil);margin-bottom:8px}
-.ifn-plan-lista{list-style:disc;margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px}
-.ifn-plan-item{font-size:.84rem;color:var(--texto);line-height:1.5}
-.ifn-plan-nombre{font-weight:700;color:var(--texto-fuerte)}
-.ifn-plan-riesgo{color:var(--texto-tenue)}
-/* Gastos esperados, al lado de los fijos confirmados. */
-/* El escenario guardado del Simulador, arriba de todo: es la entrada. */
-.ifn-escenario{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:12px}
-.ifn-esc-campo{display:flex;align-items:center;gap:8px;font-size:.75rem;color:var(--texto-debil)}
-/* Lo que conviene hacer, ya elegido. */
-.ifn-reco{background:var(--verde-tinte);border:1px solid var(--verde);border-radius:12px;padding:14px 16px;margin-bottom:14px}
-.ifn-reco-cab{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
-.ifn-reco-rotulo{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--verde-texto)}
-.ifn-reco-lista{list-style:none;padding:0;margin:8px 0 0;display:flex;flex-direction:column;gap:7px}
-.ifn-reco-item{font-size:.86rem;color:var(--texto);line-height:1.45}
-.ifn-reco-monto{font-weight:800;color:var(--verde-texto);white-space:nowrap}
-.ifn-reco-que{display:block;font-size:.74rem;color:var(--texto-tenue)}
-.ifn-reco-porque{margin:8px 0 0;font-size:.78rem;color:var(--texto-tenue);line-height:1.45}
-.ifn-alt-que{display:block;margin-top:5px;font-size:.74rem;color:var(--texto-debil);line-height:1.4}
-.ifn-plan-consecuencia{margin:8px 0 0;font-size:.79rem;color:var(--ambar);line-height:1.45}
-/* El interruptor de cada costo, como en el Simulador. Apagado se sigue viendo. */
-.ifn-sw{width:18px;height:18px;flex-shrink:0;accent-color:var(--verde);cursor:pointer}
-.ifn-apagado{opacity:.55}
-.ifn-apagado .ifn-gasto-monto{text-decoration:line-through}
-.ifn-gasto-origen{display:block;font-size:.66rem;color:var(--texto-debil)}
-.ifn-analisis{margin-bottom:12px}
-.ifn-analisis>summary{padding:8px 0}
-.ifn-grupo{margin-top:12px}
-.ifn-grupo-cab{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--texto-debil);margin-bottom:5px}
-.ifn-gasto-form{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin-bottom:12px}
-.ifn-gasto-campo{display:flex;flex-direction:column;gap:3px;font-size:.7rem;color:var(--texto-debil);min-width:0}
-.ifn-gastos-lista{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:6px}
-.ifn-gasto{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--borde);border-radius:8px;background:var(--superficie-alta);font-size:.82rem;color:var(--texto);min-width:0}
-.ifn-gasto-nombre{min-width:0;overflow-wrap:anywhere}
-.ifn-eq-num{width:72px;flex-shrink:0}
-.ifn-gasto-monto{font-weight:700;color:var(--texto-fuerte);white-space:nowrap}
-.ifn-etiqueta{font-size:.62rem;font-weight:700;padding:2px 7px;border-radius:99px;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap}
-.ifn-et-confirmado{background:var(--verde-tinte);color:var(--verde-texto)}
-.ifn-et-esperado{background:var(--ambar-tinte);color:var(--ambar)}
-.ifn-duda{background:var(--ambar-tinte);border:1px solid var(--ambar-borde);border-radius:8px;padding:10px 12px;margin-top:10px;font-size:.79rem;color:var(--texto);line-height:1.45}
-.ifn-duda-botones{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
-/* Celular (misma frontera que el menu de abajo). Solo aca adentro: arriba de
-   768px la pantalla queda como esta. Lo que cortaba era texto sin espacios
-   (nombres de cliente, conceptos, lineas de la cuenta): empujaba la pagina de
-   costado. Ahora todo corta palabra, las tarjetas van en una columna y los
-   botones ocupan el ancho. */
-@media (max-width:768px){
-  .ifn-panel,.ifn-afinar{overflow-wrap:anywhere;max-width:100%}
-  .ifn-titulo{font-size:1.1rem}
-  .ifn-cabecera{gap:10px}
-  .ifn-cabecera>div{min-width:0}
-  .ifn-cabecera .btn-ghost{width:100%;min-height:44px}
-  .ifn-bloque{padding:12px}
-  .ifn-resumen{padding:12px}
-  .ifn-diag-grid,.ifn-contraste{grid-template-columns:minmax(0,1fr)}
-  .ifn-diag,.ifn-contraste-col,.ifn-rec{min-width:0}
-  .ifn-diag-cab{flex-wrap:wrap}
-  .ifn-diag-valor,.ifn-contraste-num{font-size:1.2rem}
-  .ifn-nivel,.ifn-confianza,.ifn-res{white-space:nowrap}
-  .ifn-rec{padding:12px}
-  .ifn-rec-cab{flex-direction:column;gap:4px}
-  .ifn-rec-cab>div{min-width:0}
-  .ifn-impacto{text-align:left;white-space:normal}
-  .ifn-calculo,.ifn-diag-cuenta{white-space:pre-wrap;max-width:100%}
-  .ifn-accion{flex-direction:column;align-items:stretch;gap:6px}
-  .ifn-accion .btn-primary{width:100%;min-height:44px;white-space:normal;text-align:center}
-  .ifn-rec-pie{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
-  .ifn-rec-pie .ifn-confianza{grid-column:1/-1;justify-self:start;margin-right:0}
-  .ifn-rec-pie .btn-primary,.ifn-rec-pie .btn-ghost{width:100%;min-height:44px;white-space:normal;text-align:center}
-  .ifn-afinar-campo .filter-select{max-width:100%}
-  .ifn-afinar-campo .btn-ghost,.ifn-afinar summary{min-height:36px}
-  .ifn-afinar summary{display:flex;align-items:center}
-  .ifn-objetivo{padding:14px}
-  .ifn-obj-fila{flex-direction:column;gap:10px}
-  .ifn-obj-lado,.ifn-obj-der{text-align:left;width:100%}
-  .ifn-obj-num{font-size:1.65rem}
-  .ifn-obj-partes{grid-template-columns:minmax(0,1fr)}
-  .ifn-obj-input{min-height:44px}
-  .ifn-alt{flex-direction:column;gap:8px;padding:12px}
-  .ifn-alt-impacto{text-align:left;font-size:1.35rem;white-space:normal}
-  .ifn-plan-lista{padding-left:18px}
-  .ifn-gasto-form{flex-direction:column;align-items:stretch}
-  .ifn-gasto-campo,.ifn-gasto-campo .filter-select,.ifn-gasto-campo .ifn-input{width:100%}
-  .ifn-gasto-form .btn-primary{width:100%;min-height:44px}
-  .ifn-gasto{flex-wrap:wrap}
-  .ifn-eq-num{width:100%;min-height:44px}
-  .ifn-esc-campo,.ifn-esc-campo .filter-select{width:100%}
-  .ifn-reco-cab .btn-primary{width:100%;min-height:44px}
-  .ifn-sw{width:24px;height:24px}
-  .ifn-gasto .btn-primary,.ifn-gasto .btn-ghost{min-height:44px}
-  .ifn-duda-botones .btn-primary,.ifn-duda-botones .btn-ghost{width:100%;min-height:44px}
-}
 /* ── Plantillas ───────────────────────────────────────────────────────────────
    Mensajes de siempre, en VENTAS. Solo tokens, sin reglas `body.light`: las
    variables van en --azul-claro y las que faltan en la familia ambar, que
@@ -2826,7 +2584,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div class="nav-section-label">FINANZAS</div>
   <div class="nav-item" id="nav-finanzas" onclick="showPanel('finanzas')"><i data-lucide="wallet" class="nav-icon"></i> Finanzas</div>
   <div class="nav-item" id="nav-simulador" onclick="showPanel('simulador')"><i data-lucide="calculator" class="nav-icon"></i> Simulador financiero</div>
-  <div class="nav-item" id="nav-inteligencia_fin" onclick="showPanel('inteligencia_fin')"><i data-lucide="lightbulb" class="nav-icon"></i> Inteligencia financiera</div>
+  <div class="nav-item" id="nav-inteligencia_fin" onclick="showPanel('inteligencia_fin')"><i data-lucide="lightbulb" class="nav-icon"></i> Métricas financieras</div>
   <div class="nav-section-label">VENTAS</div>
   <div class="nav-item" id="nav-seg_leads" onclick="showPanel('seg_leads')"><i data-lucide="phone-call" class="nav-icon"></i> Seguimiento de leads</div>
   <div class="nav-item" id="nav-wa" onclick="showPanel('wa')"><i data-lucide="message-circle" class="nav-icon"></i> WhatsApp</div>
@@ -3847,33 +3605,18 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     <div id="activity-list" style="max-width:760px"></div>
   </div>
 
-  <!-- ======= INTELIGENCIA FINANCIERA PANEL ======= -->
-  <div id="inteligencia_fin-panel" class="panel ifn-panel">
-    <div class="ifn-cabecera">
+  <!-- ======= METRICAS FINANCIERAS PANEL ======= -->
+  <!-- Antes era Inteligencia financiera. El id sigue siendo inteligencia_fin
+       porque los roles ya lo tienen guardado en panel_access. -->
+  <div id="inteligencia_fin-panel" class="panel">
+    <div class="page-header">
       <div>
-        <h2 class="ifn-titulo">Inteligencia financiera</h2>
-        <p class="ifn-bajada" id="ifn-bajada">Cuánto tenés que hacer este mes y qué podés mover para llegar.</p>
+        <h1>Métricas financieras</h1>
+        <div class="page-date">Acá van a ir las métricas financieras.</div>
       </div>
-      <button class="btn-ghost ifn-oculto" id="ifn-recalcular" onclick="ifnRecalcular()">Recalcular ahora</button>
     </div>
-    <section class="ifn-escenario" id="ifn-escenario"></section>
-    <section class="ifn-objetivo" id="ifn-objetivo"></section>
-    <section class="ifn-reco ifn-oculto" id="ifn-recomendado"></section>
-    <section id="ifn-lista"></section>
-    <section class="ifn-plan ifn-oculto" id="ifn-plan"></section>
-    <details class="ifn-analisis">
-      <summary class="ifn-ver">Gastos del mes</summary>
-      <section class="ifn-bloque" id="ifn-gastos"></section>
-    </details>
-    <details class="ifn-analisis">
-      <summary class="ifn-ver">Cómo viene el mes</summary>
-      <section class="ifn-resumen ifn-oculto" id="ifn-resumen"></section>
-      <section class="ifn-bloque ifn-oculto" id="ifn-diagnostico"></section>
-      <section class="ifn-contraste" id="ifn-contraste"></section>
-      <section class="ifn-bloque" id="ifn-seguimiento"></section>
-    </details>
   </div>
-  <!-- ======= FIN INTELIGENCIA FINANCIERA PANEL ======= -->
+  <!-- ======= FIN METRICAS FINANCIERAS PANEL ======= -->
 
   <!-- ======= DAILY PROGRAMADOR PANEL ======= -->
   <!-- Daily Programador y Daily Admin son la misma pantalla con los mismos
@@ -4887,7 +4630,6 @@ function showPanel(name) {
   if (name === 'notion_clients') loadNotionClients();
   if (name === 'finanzas') loadFinanzas();
   if (name === 'simulador') loadSimulador();
-  if (name === 'inteligencia_fin') ifnCargar();
   if (name === 'metrics') loadMetrics();
   if (name === 'activity') loadActivity();
   if (name === 'equipo' || name === 'ausencias') loadEquipo();
@@ -5759,7 +5501,6 @@ function _demosFilaHtml(d) {
     </div>
     ${d.actualizacion || d.origen !== 'planilla' ? `<div class="demo-texto">${esc(d.actualizacion || 'Sin notas')}</div>` : ''}
     <div class="demo-presu-fila">${presu}</div>
-    ${typeof ifnMotivoHtml === 'function' && d.estado_planilla === 'no_cerro' ? ifnMotivoHtml('demo', d.id, d.motivo_perdida) : ''}
   </div>`;
 }
 
@@ -8552,7 +8293,6 @@ async function loadProjects() {
             }</span> ${esc(t.title)}</div>`).join('')
           : '<div class="proj-task proj-vacio">Sin tareas</div>'
       }</div>
-      ${typeof ifnEsfuerzoHtml === 'function' ? ifnEsfuerzoHtml(p) : ''}
     </div>`;
   }).join('');
 }
@@ -8660,7 +8400,6 @@ function _notionClientCardHtml(c, arrastrable) {
     ${meta ? `<div class="kanban-card-meta">${meta}</div>` : ''}
     ${c.descripcion ? `<div class="kanban-card-who">${esc(c.descripcion)}</div>` : ''}
     ${_ncVinculoHtml(c)}
-    ${typeof ifnMotivoHtml === 'function' && ['Perdido', 'Presupuesto Rechazado'].includes(c.status) ? ifnMotivoHtml('notion_client', c.id, c.motivo_perdida) : ''}
     ${slBotonNotionHtml(c)}
   </div>`;
 }
@@ -9662,7 +9401,7 @@ const NAV_LABELS = {
   cola:'Outbound',meta:'Meta',cal:'Agenda',
   tasks:'Tareas',pipeline:'Pipeline',clientes:'Clientes',
   wa:'WA',metrics:'Intel. comercial',activity:'Actividad',projects:'Proyectos',
-  notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador',inteligencia_fin:'Intel. financiera',equipo:'Organigrama',
+  notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',
   ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento',daily:'Daily',plantillas:'Plantillas',daily_admin:'Daily Admin',email_mkt:'Email mkt',linkedin:'LinkedIn'
 };
 let _mobileNavOverflow = [];
@@ -12946,653 +12685,6 @@ function slFichaHtml(seg) {
     + '<div class="cp-section"><div class="cp-section-title">Historial de llamados</div>' + llamados + '</div>';
 }
 // ========== FIN Seguimiento de leads ==========
-// ========== Inteligencia financiera ==========
-// Diagnostico del mes y sugerencias para ganar plata. Todo lo calcula el
-// servidor una vez por dia con los datos que ya tiene el sistema: la pantalla
-// no pide nada. El motivo de perdida y el esfuerzo se pueden afinar a mano, en
-// un bloque colapsado de Proceso de venta, Demos y Proyectos.
-const IFN_MOTIVOS = [['precio', 'Precio'], ['se_enfrio', 'Se enfrió'], ['eligio_otro', 'Eligió a otro'], ['no_era_momento', 'No era el momento'], ['no_calificaba', 'No calificaba']];
-const IFN_CONFIANZA = {alta: 'Confianza alta', media: 'Confianza media', baja: 'Confianza baja'};
-const IFN_RESULTADO = {midiendo: 'Midiendo', funciono: 'Funcionó', no_funciono: 'No funcionó'};
-const IFN_NIVEL = {mal: 'Alerta', atencion: 'Atención', bien: 'Bien'};
-let ifnEstado = null;
-let ifnElegidas = [];
-let ifnEscenarioId = null;
-let ifnEscenarioNombre = '';
-let ifnEscenarioSupuestos = null;
-
-function ifnMiles(n) {
-  const s = String(Math.round(Math.abs(Number(n) || 0)));
-  let out = '';
-  for (let i = 0; i < s.length; i++) {
-    if (i && (s.length - i) % 3 === 0) out += '.';
-    out += s[i];
-  }
-  return out;
-}
-
-function ifnUsd(n) {
-  const x = Number(n) || 0;
-  return (x < 0 ? '−' : '') + 'USD ' + ifnMiles(x);
-}
-
-function ifnOpciones(lista, elegido, vacio) {
-  return (vacio ? '<option value="">' + esc(vacio) + '</option>' : '')
-    + lista.map(par => '<option value="' + par[0] + '"' + (par[0] === elegido ? ' selected' : '') + '>' + esc(par[1]) + '</option>').join('');
-}
-
-function ifnMotivoHtml(entidad, id, motivo) {
-  return `<details class="ifn-afinar" draggable="false" onclick="event.stopPropagation()">
-    <summary>Afinar (opcional)</summary>
-    <label class="ifn-afinar-campo">Motivo de pérdida
-      <select class="filter-select" onchange="ifnGuardarMotivo('${esc(entidad)}', ${Number(id)}, this.value)">${ifnOpciones(IFN_MOTIVOS, motivo || '', 'Sin motivo')}</select>
-    </label>
-  </details>`;
-}
-
-function ifnEsfuerzoHtml(p) {
-  const id = Number(p.id);
-  const tiene = p.esfuerzo_horas !== null && p.esfuerzo_horas !== undefined;
-  const dias = p.esfuerzo_unidad === 'dias';
-  return `<details class="ifn-afinar">
-    <summary>Afinar (opcional)${tiene ? ' · ' + esc(String(p.esfuerzo_valor)) + (dias ? ' días' : ' h') : ''}</summary>
-    <label class="ifn-afinar-campo">Horas o días que llevó
-      <input type="number" min="0" step="any" class="ifn-input" id="ifn-esf-valor-${id}" aria-label="Esfuerzo del proyecto" value="${tiene ? esc(String(p.esfuerzo_valor)) : ''}">
-      <select class="filter-select" id="ifn-esf-unidad-${id}" aria-label="Unidad del esfuerzo">${ifnOpciones([['horas', 'horas'], ['dias', 'días']], p.esfuerzo_unidad || 'horas')}</select>
-      <button class="btn-ghost" onclick="ifnGuardarEsfuerzo(${id})">Guardar</button>
-    </label>
-  </details>`;
-}
-
-async function ifnPedir(url, metodo, cuerpo) {
-  try {
-    const opciones = {method: metodo, headers: {'Content-Type': 'application/json'}};
-    if (cuerpo !== undefined) opciones.body = JSON.stringify(cuerpo);
-    const r = await fetch(url, opciones);
-    let datos = {};
-    try { datos = await r.json(); } catch (e) { datos = {}; }
-    if (!r.ok) {
-      alert((datos && datos.error) || 'No se pudo guardar.');
-      return null;
-    }
-    return datos;
-  } catch (e) {
-    alert('No se pudo conectar con el servidor.');
-    return null;
-  }
-}
-
-async function ifnGuardarMotivo(entidad, id, motivo) {
-  if (!motivo) return;
-  const r = await ifnPedir('/api/perdidas/' + entidad + '/' + id + '/motivo', 'PUT', {motivo: motivo});
-  if (!r) return;
-  if (entidad === 'notion_client' && typeof _ncClientes !== 'undefined') {
-    const c = _ncClientes.find(x => Number(x.id) === Number(id));
-    if (c) c.motivo_perdida = motivo;
-  }
-  if (entidad === 'demo' && typeof _demos !== 'undefined') {
-    const d = _demos.find(x => Number(x.id) === Number(id));
-    if (d) d.motivo_perdida = motivo;
-  }
-}
-
-async function ifnGuardarEsfuerzo(id) {
-  const valor = (document.getElementById('ifn-esf-valor-' + id) || {}).value;
-  const unidad = (document.getElementById('ifn-esf-unidad-' + id) || {}).value || 'horas';
-  const r = await ifnPedir('/api/proyectos/' + id + '/esfuerzo', 'PUT', {valor: valor, unidad: unidad});
-  if (r && activePanel === 'projects') loadProjects();
-}
-
-async function ifnTomar(id) {
-  const r = await ifnPedir('/api/inteligencia-fin/recomendaciones/' + id + '/tomar', 'POST');
-  if (r) ifnCargar();
-}
-
-async function ifnDescartar(id) {
-  const r = await ifnPedir('/api/inteligencia-fin/recomendaciones/' + id + '/descartar', 'POST');
-  if (r) ifnCargar();
-}
-
-async function ifnRecalcular() {
-  const boton = document.getElementById('ifn-recalcular');
-  if (boton) boton.disabled = true;
-  const r = await ifnPedir('/api/inteligencia-fin/recalcular', 'POST');
-  if (boton) boton.disabled = false;
-  if (r) ifnCargar();
-}
-
-async function ifnCargar() {
-  const lista = document.getElementById('ifn-lista');
-  if (!lista) return;
-  let datos;
-  try {
-    const r = await fetch('/api/inteligencia-fin');
-    if (!r.ok) throw new Error(String(r.status));
-    datos = await r.json();
-  } catch (e) {
-    lista.innerHTML = '<div class="ifn-vacio">No se pudo cargar Inteligencia financiera.</div>';
-    return;
-  }
-  ifnEstado = datos;
-  ifnPintar();
-}
-
-function ifnPintar() {
-  const d = ifnEstado || {};
-  document.getElementById('ifn-bajada').textContent = d.bajada || '';
-  const boton = document.getElementById('ifn-recalcular');
-  if (boton) boton.classList.toggle('ifn-oculto', !d.es_admin);
-  const recs = d.recomendaciones || [];
-  // Lo elegido se guarda por id: si el recalculo diario cambio las tarjetas,
-  // se descarta lo que ya no esta en vez de sumar un impacto que no existe.
-  ifnElegidas = ifnElegidas.filter(function (id) {
-    return recs.some(function (r) { return Number(r.id) === id; });
-  });
-  document.getElementById('ifn-escenario').innerHTML = ifnEscenarioHtml(d.escenarios || []);
-  document.getElementById('ifn-objetivo').innerHTML = ifnObjetivoHtml(d.objetivo || {}, recs);
-  const reco = document.getElementById('ifn-recomendado');
-  reco.innerHTML = ifnRecomendadoHtml(d.recomendado || {}, recs);
-  reco.classList.toggle('ifn-oculto', !((d.recomendado || {}).ids || []).length);
-  // El ancho de la barra se pone desde el JS y no escrito en el HTML: el panel
-  // se pinta solo con clases y tokens, sin estilos sueltos en el marcado.
-  const barra = document.getElementById('ifn-obj-llena');
-  if (barra) barra.style.width = ifnPorcentaje(d.objetivo || {}, recs) + '%';
-  // Sin titulo de seccion: la tarjeta del objetivo arriba ya dice que son las
-  // alternativas para llegar. La cuenta de cada una va plegada.
-  document.getElementById('ifn-lista').innerHTML = recs.map(function (r) {
-    return ifnAlternativaHtml(r) + ifnDetalleHtml(r);
-  }).join('');
-  const plan = document.getElementById('ifn-plan');
-  plan.innerHTML = ifnPlanHtml(recs);
-  plan.classList.toggle('ifn-oculto', ifnElegidas.length === 0);
-  document.getElementById('ifn-gastos').innerHTML = ifnGastosHtml(d.objetivo || {});
-  const resumen = document.getElementById('ifn-resumen');
-  resumen.innerHTML = ifnResumenHtml(d.resumen || {});
-  resumen.classList.toggle('ifn-oculto', !(d.resumen && d.resumen.texto));
-  // El diagnostico es contexto de apoyo: si todavia no hay con que armarlo, se
-  // esconde entero. Nunca un cartel de que no hay nada para analizar.
-  const diag = document.getElementById('ifn-diagnostico');
-  const hayDiag = (d.diagnostico || []).length > 0;
-  diag.innerHTML = hayDiag ? ifnDiagnosticoHtml(d.diagnostico) : '';
-  diag.classList.toggle('ifn-oculto', !hayDiag);
-  document.getElementById('ifn-contraste').innerHTML = ifnContrasteHtml(d.encabezado || {});
-  document.getElementById('ifn-seguimiento').innerHTML = ifnSeguimientoHtml(d.seguimiento || []);
-}
-
-function ifnEscenarioHtml(escenarios) {
-  // El escenario guardado del Simulador es la entrada: Juan elige uno y las
-  // alternativas se calculan contra ese. Sin elegir ninguno, los datos de hoy.
-  const opciones = (escenarios || []).map(function (e) {
-    const sel = Number(e.id) === Number(ifnEscenarioId) ? ' selected' : '';
-    return '<option value="' + Number(e.id) + '"' + sel + '>' + esc(e.nombre) + '</option>';
-  }).join('');
-  if (!opciones) {
-    return '<span class="ifn-obj-parte-origen">Con los datos reales de hoy. '
-      + 'Si guardás un escenario en el Simulador, podés calcular contra ese.</span>';
-  }
-  return '<label class="ifn-esc-campo">Calcular con'
-    + '<select class="filter-select" id="ifn-esc-select" onchange="ifnElegirEscenario()">'
-    + '<option value="">Los datos reales de hoy</option>' + opciones + '</select></label>'
-    + (ifnEscenarioNombre
-        ? '<span class="ifn-etiqueta ifn-et-esperado">escenario: ' + esc(ifnEscenarioNombre) + '</span>'
-        : '');
-}
-
-async function ifnElegirEscenario() {
-  const sel = document.getElementById('ifn-esc-select');
-  const id = sel ? sel.value : '';
-  if (!id) {
-    ifnEscenarioId = null;
-    ifnEscenarioNombre = '';
-    ifnEscenarioSupuestos = null;
-    ifnPintar();
-    return;
-  }
-  const r = await ifnPedir('/api/inteligencia-fin/escenarios/' + Number(id));
-  if (!r) return;
-  ifnEscenarioId = Number(id);
-  ifnEscenarioNombre = r.nombre || '';
-  ifnEscenarioSupuestos = r.supuestos || null;
-  ifnPintar();
-}
-
-function ifnRecomendadoHtml(reco, recs) {
-  // Lo que Juan pidio: que no tenga que buscar. Una o dos acciones concretas,
-  // con su numero, y un boton para tomarlas de una.
-  const ids = reco.ids || [];
-  if (!ids.length) return '';
-  const elegidas = (recs || []).filter(function (r) { return ids.indexOf(Number(r.id)) >= 0; });
-  const items = elegidas.map(function (r) {
-    const imp = typeof r.impacto_mensual === 'number'
-      ? ' <span class="ifn-reco-monto">' + (r.impacto_mensual < 0 ? '−' : '+')
-        + 'USD ' + ifnMiles(r.impacto_mensual) + '</span>'
-      : '';
-    return '<li class="ifn-reco-item"><span class="ifn-plan-nombre">' + esc(r.titulo) + '</span>'
-      + imp + (r.consecuencia ? '<span class="ifn-reco-que">' + esc(r.consecuencia) + '</span>' : '')
-      + '</li>';
-  }).join('');
-  const todas = ids.every(function (id) { return ifnElegidas.indexOf(Number(id)) >= 0; });
-  return '<div class="ifn-reco-cab"><span class="ifn-reco-rotulo">Lo que te conviene hacer</span>'
-    + '<button class="btn-primary" onclick="ifnTomarRecomendado()">'
-    + (todas ? 'Ya está elegido' : 'Elegir esto') + '</button></div>'
-    + '<ul class="ifn-reco-lista">' + items + '</ul>'
-    + '<p class="ifn-reco-porque">' + esc(reco.por_que || '') + '</p>';
-}
-
-function ifnTomarRecomendado() {
-  const ids = ((ifnEstado || {}).recomendado || {}).ids || [];
-  ifnElegidas = ids.map(Number);
-  ifnPintar();
-}
-
-function ifnConsecuenciaCombinada(elegidas) {
-  // Lo honesto de combinar: echar gente y subir pauta al mismo tiempo es traer
-  // leads que despues no se pueden entregar. Hay que decirlo.
-  const palancas = elegidas.map(function (r) { return r.palanca; });
-  const avisos = [];
-  const sacaEntrega = elegidas.some(function (r) { return Number(r.dano) === 2; });
-  if (sacaEntrega && palancas.indexOf('pauta') >= 0) {
-    avisos.push('Estás recortando quien entrega y subiendo la pauta al mismo tiempo: '
-      + 'vas a traer leads que después no vas a poder entregar.');
-  }
-  if (sacaEntrega && palancas.indexOf('canal') >= 0) {
-    avisos.push('Abrís un canal nuevo con menos gente para entregar: el canal sirve '
-      + 'solo si hay quien haga el trabajo.');
-  }
-  const negativas = elegidas.filter(function (r) { return Number(r.impacto_mensual) < 0; });
-  if (negativas.length) {
-    avisos.push('Hay ' + negativas.length + ' que restan: el plan cierra más abajo de lo que '
-      + 'suman las demás.');
-  }
-  return avisos.join(' ');
-}
-
-function ifnTotalElegido(recs) {
-  return (recs || []).reduce(function (total, r) {
-    const suma = ifnElegidas.indexOf(Number(r.id)) >= 0 && typeof r.impacto_mensual === 'number'
-      ? r.impacto_mensual : 0;
-    return total + suma;
-  }, 0);
-}
-
-function ifnAlternar(id) {
-  const i = ifnElegidas.indexOf(Number(id));
-  if (i >= 0) ifnElegidas.splice(i, 1);
-  else ifnElegidas.push(Number(id));
-  ifnPintar();
-}
-
-function ifnPorcentaje(o, recs) {
-  const objetivo = Number(o.total) || 0;
-  if (objetivo <= 0) return 0;
-  return Math.max(0, Math.min(100, ifnTotalElegido(recs) / objetivo * 100));
-}
-
-function ifnObjetivoHtml(o, recs) {
-  const objetivo = Number(o.total) || 0;
-  const elegido = ifnTotalElegido(recs);
-  const falta = objetivo - elegido;
-  const clase = elegido < 0 ? ' ifn-obj-num-falta' : ' ifn-obj-num-logro';
-  let pie;
-  if (!ifnElegidas.length) {
-    pie = 'Elegí abajo y este número se mueve.';
-  } else if (falta <= 0) {
-    pie = 'Llegás al objetivo.';
-  } else {
-    pie = 'Quedan ' + ifnUsd(falta) + ' para llegar.';
-  }
-  const partes = (o.partes || []).map(function (p) {
-    const volver = p.clave === 'fijos' && p.editado
-      ? '<button type="button" class="ifn-obj-volver" onclick="ifnVolverAFinanzas()">Volver al automático</button>'
-      : '';
-    return '<label class="ifn-obj-parte">'
-      + '<span class="ifn-obj-parte-rotulo">' + esc(p.rotulo) + '</span>'
-      + '<input type="number" min="0" step="any" class="ifn-obj-input" id="ifn-obj-' + esc(p.clave)
-      + '" value="' + (Number(p.monto) || 0) + '" aria-label="' + esc(p.rotulo)
-      + '" onchange="ifnGuardarObjetivo()">'
-      + (p.origen ? '<span class="ifn-obj-parte-origen">' + esc(p.origen) + '</span>' : '')
-      + volver + ifnEquipoHtml(p) + '</label>';
-  }).join('');
-  return '<div class="ifn-obj-fila">'
-    + '<div class="ifn-obj-lado"><div class="ifn-obj-rotulo">Objetivo del mes</div>'
-    + '<div class="ifn-obj-num">' + ifnUsd(objetivo) + '</div></div>'
-    + '<div class="ifn-obj-lado ifn-obj-der"><div class="ifn-obj-rotulo">Con lo seleccionado</div>'
-    + '<div class="ifn-obj-num' + clase + '">' + ifnUsd(elegido) + '</div></div></div>'
-    + '<div class="ifn-obj-pista"><div class="ifn-obj-llena" id="ifn-obj-llena"></div></div>'
-    + '<p class="ifn-obj-pie">' + esc(pie) + '</p>'
-    + '<div class="ifn-obj-partes">' + partes + '</div>';
-}
-
-function ifnEquipoHtml(p) {
-  // Solo el total: la lista con lo que cobra cada uno se edita abajo, en
-  // Gastos del mes. Arriba va el numero, no la tabla.
-  if (p.clave !== 'fijos' || p.editado) return '';
-  return '<span class="ifn-obj-sub">Equipo ' + ifnUsd(p.equipo)
-    + (p.equipo_promedio ? ' · promedio de 3 meses' : '') + '</span>';
-}
-
-function ifnAlternativaHtml(r) {
-  const id = Number(r.id);
-  const elegida = ifnElegidas.indexOf(id) >= 0;
-  const palanca = r.palanca || 'otra';
-  const etiquetas = (ifnEstado && ifnEstado.palancas) || {};
-  const imp = r.impacto_mensual;
-  let impacto;
-  const noAplica = (r.nota || '').toLowerCase().indexOf('no aplica') === 0;
-  if (noAplica) {
-    // Hay alternativas que hoy no se pueden tomar (marketing, si ya hubo una
-    // venta). Se muestran igual, pero no se ofrece plata que no se puede cobrar.
-    impacto = '<div class="ifn-alt-impacto ifn-alt-sd">No aplica</div>';
-  } else if (imp === null || imp === undefined) {
-    impacto = '<div class="ifn-alt-impacto ifn-alt-sd">A estimar</div>';
-  } else {
-    impacto = '<div class="ifn-alt-impacto' + (imp < 0 ? ' ifn-alt-neg' : '') + '">'
-      + (imp < 0 ? '−' : '+') + 'USD ' + ifnMiles(imp)
-      + '<span class="ifn-alt-periodo">' + (r.unica_vez ? 'por única vez' : 'por mes') + '</span></div>';
-  }
-  return '<button type="button" class="ifn-alt ifn-alt-' + esc(palanca)
-    + (elegida ? ' ifn-elegida' : '') + '" id="ifn-alt-' + id
-    + '" aria-pressed="' + (elegida ? 'true' : 'false') + '" onclick="ifnAlternar(' + id + ')">'
-    + '<div class="ifn-alt-texto">'
-    + '<span class="ifn-alt-tipo">' + esc(etiquetas[palanca] || 'Alternativa') + '</span>'
-    + '<h4 class="ifn-alt-titulo">' + esc(r.titulo) + '</h4>'
-    + '<p class="ifn-alt-nota">' + esc(r.nota || r.detalle || '') + '</p>'
-    + (r.consecuencia ? '<span class="ifn-alt-que">' + esc(r.consecuencia) + '</span>' : '')
-    + (elegida ? '<span class="ifn-alt-tilde">Elegida, está en el plan de abajo</span>' : '')
-    + '</div>' + impacto + '</button>';
-}
-
-function ifnPlanHtml(recs) {
-  const elegidas = (recs || []).filter(function (r) {
-    return ifnElegidas.indexOf(Number(r.id)) >= 0;
-  });
-  if (!elegidas.length) return '';
-  const total = ifnTotalElegido(recs);
-  const items = elegidas.map(function (r) {
-    const imp = r.impacto_mensual;
-    const monto = (imp === null || imp === undefined)
-      ? '(a estimar)'
-      : '(' + (imp < 0 ? '−' : '+') + 'USD ' + ifnMiles(imp) + ')';
-    return '<li class="ifn-plan-item"><span class="ifn-plan-nombre">' + esc(r.titulo) + '</span> '
-      + monto + ' — <span class="ifn-plan-riesgo">' + esc(r.nota || r.detalle || '') + '</span></li>';
-  }).join('');
-  return '<div class="ifn-plan-titulo">Plan resultante (' + elegidas.length + ' '
-    + (elegidas.length === 1 ? 'alternativa seleccionada' : 'alternativas seleccionadas') + ')</div>'
-    + '<ul class="ifn-plan-lista">' + items + '</ul>'
-    + '<p class="ifn-obj-pie">Suman ' + ifnUsd(total) + ' por mes.</p>'
-    + (ifnConsecuenciaCombinada(elegidas)
-        ? '<p class="ifn-plan-consecuencia">' + esc(ifnConsecuenciaCombinada(elegidas)) + '</p>'
-        : '');
-}
-
-function ifnGrupoHtml(rotulo, filas, accion) {
-  if (!filas || !filas.length) return '';
-  const total = filas.reduce(function (t, f) { return t + (Number(f.monto_usd) || 0); }, 0);
-  const items = filas.map(function (f) {
-    let boton = '';
-    if (accion === 'a-cliente' && f.id) {
-      boton = '<button class="btn-ghost" onclick="ifnMarcarFijo(' + Number(f.id) + ', 1)">Es de un cliente</button>';
-    } else if (accion === 'a-estructura' && f.id) {
-      boton = '<button class="btn-ghost" onclick="ifnMarcarFijo(' + Number(f.id) + ', 0)">Es de estructura</button>';
-    } else if (accion === 'sacar' && f.id) {
-      boton = '<button class="btn-ghost" onclick="ifnBorrarGasto(' + Number(f.id) + ')">Sacar</button>';
-    }
-    // El motivo va en el title y no escrito: la lista tiene que leerse de un vistazo.
-    const motivo = f.motivo ? ' title="' + esc(f.motivo) + '"' : '';
-    return '<li class="ifn-gasto"' + motivo + '><span class="ifn-gasto-nombre">'
-      + esc(f.concepto) + (f.sugerido ? ' <span class="ifn-etiqueta ifn-et-esperado">sugerido</span>' : '')
-      + '</span><span class="ifn-gasto-monto">' + ifnUsd(f.monto_usd) + '</span>' + boton + '</li>';
-  }).join('');
-  return '<div class="ifn-grupo"><div class="ifn-grupo-cab"><span>' + esc(rotulo) + '</span>'
-    + '<span class="ifn-gasto-monto">' + ifnUsd(total) + '</span></div>'
-    + '<ul class="ifn-gastos-lista">' + items + '</ul></div>';
-}
-
-function ifnGastosHtml(o) {
-  const base = o.base || {};
-  const equipo = (base.equipo || {}).filas || [];
-  const dudas = (o.dudas || []).map(function (d) {
-    return '<div class="ifn-duda">¿<strong>' + esc(d.gasto_concepto) + '</strong> ('
-      + ifnUsd(d.gasto_monto_usd) + ') es <strong>' + esc(d.movimiento_concepto)
-      + '</strong> (' + ifnUsd(d.movimiento_monto_usd) + ') de Finanzas?'
-      + '<div class="ifn-duda-botones">'
-      + '<button class="btn-primary" onclick="ifnEmparejarGasto(' + Number(d.gasto_id) + ', '
-      + Number(d.movimiento_id) + ')">Es el mismo</button>'
-      + '<button class="btn-ghost" onclick="ifnDescartarDuda()">Son distintos</button>'
-      + '</div></div>';
-  }).join('');
-  return '<div class="ifn-gasto-form">'
-    + '<label class="ifn-gasto-campo">Concepto'
-    + '<input type="text" class="ifn-input" id="ifn-gasto-concepto" placeholder="Contador"></label>'
-    + '<label class="ifn-gasto-campo">USD'
-    + '<input type="number" min="0" step="any" class="ifn-input" id="ifn-gasto-monto" placeholder="300"></label>'
-    + '<label class="ifn-gasto-campo">Tipo'
-    + '<select class="filter-select" id="ifn-gasto-categoria">'
-    + '<option value="fijo">Fijo</option><option value="variable" selected>Variable</option>'
-    + '</select></label>'
-    + '<button class="btn-primary" onclick="ifnAgregarGasto()">Agregar gasto esperado</button></div>'
-    + dudas
-    + ifnGrupoHtml('Esperados', o.esperados || [], 'sacar')
-    + ((((base.costos || {}).grupos) || []).map(ifnGrupoCostoHtml).join(''))
-    + ifnEquipoAltaHtml(base)
-    + ifnGrupoHtml('De clientes, no del objetivo', base.por_cliente || [], 'a-estructura')
-    + ifnGrupoHtml('Aparte del objetivo', base.fuera || [], '');
-}
-
-function ifnGrupoCostoHtml(g) {
-  // Un grupo de costos (sueldos, honorarios o fijos) con el interruptor de cada
-  // uno, como el Simulador. Apagado NO se esconde: se ve tachado y no suma.
-  if (!g || !(g.filas || []).length) return '';
-  const items = g.filas.map(function (f) {
-    const editable = f.editable && f.id;
-    const campos = editable
-      ? '<input type="number" min="0" step="any" class="ifn-input ifn-eq-num" id="ifn-eq-monto-'
-        + Number(f.id) + '" value="' + (Number(f.unitario) || 0) + '" aria-label="Cuánto cobra"'
-        + ' onchange="ifnGuardarPersona(' + Number(f.id) + ')">'
-        + '<input type="number" min="0" step="1" class="ifn-input ifn-eq-num" id="ifn-eq-cant-'
-        + Number(f.id) + '" value="' + (Number(f.cantidad) || 1) + '" aria-label="Cuántos son"'
-        + ' onchange="ifnGuardarPersona(' + Number(f.id) + ')">'
-      : '';
-    const sacar = editable
-      ? '<button class="btn-ghost" onclick="ifnBorrarPersona(' + Number(f.id) + ')">Sacar</button>'
-      : '';
-    return '<li class="ifn-gasto' + (f.activo ? '' : ' ifn-apagado') + '">'
-      + '<input type="checkbox" class="ifn-sw" data-clave="' + esc(f.clave) + '"'
-      + (f.activo ? ' checked' : '') + ' aria-label="Contar este gasto"'
-      + ' onchange="ifnMarcarCosto(this)">'
-      + '<span class="ifn-gasto-nombre">' + esc(f.nombre)
-      + (f.origen ? '<span class="ifn-gasto-origen">' + esc(f.origen) + '</span>' : '')
-      + '</span>' + campos
-      + '<span class="ifn-gasto-monto">' + ifnUsd(f.monto_usd) + '</span>' + sacar + '</li>';
-  }).join('');
-  return '<div class="ifn-grupo"><div class="ifn-grupo-cab"><span>' + esc(g.rotulo) + '</span>'
-    + '<span class="ifn-gasto-monto">' + ifnUsd(g.total) + '</span></div>'
-    + '<ul class="ifn-gastos-lista">' + items + '</ul></div>';
-}
-
-function ifnEquipoAltaHtml(base) {
-  // Sumar gente a la lista, y los de comision, que no suman al objetivo porque
-  // no cobran si no se les da un proyecto.
-  const eq = base.equipo || {};
-  const comision = (eq.comision || []).map(function (c) {
-    return '<li class="ifn-gasto"><span class="ifn-gasto-nombre">' + esc(c.nombre)
-      + '<span class="ifn-gasto-origen">' + esc(String(c.pct))
-      + ' % del desarrollo, solo si trabaja</span></span>'
-      + '<span class="ifn-etiqueta ifn-et-esperado">no suma</span>'
-      + '<button class="btn-ghost" onclick="ifnBorrarPersona(' + Number(c.id) + ')">Sacar</button></li>';
-  }).join('');
-  const alta = '<li class="ifn-gasto">'
-    + '<input type="text" class="ifn-input ifn-gasto-nombre" id="ifn-eq-nombre" placeholder="Programador">'
-    + '<input type="number" min="0" step="any" class="ifn-input ifn-eq-num" id="ifn-eq-monto" placeholder="50" aria-label="Cuánto cobra">'
-    + '<input type="number" min="0" step="1" class="ifn-input ifn-eq-num" id="ifn-eq-cant" value="1" aria-label="Cuántos son">'
-    + '<button class="btn-primary" onclick="ifnAgregarPersona()">Sumar</button></li>';
-  const aviso = eq.es_promedio
-    ? '<div class="ifn-obj-parte-origen">Sale del promedio de 3 meses: escribí la lista y manda la lista.</div>'
-    : '';
-  return '<div class="ifn-grupo">' + aviso
-    + '<ul class="ifn-gastos-lista">' + comision + alta + '</ul></div>';
-}
-
-async function ifnMarcarCosto(el) {
-  if (!el) return;
-  const clave = el.getAttribute('data-clave');
-  if (!clave) return;
-  const r = await ifnPedir('/api/inteligencia-fin/costos/' + encodeURIComponent(clave), 'PUT',
-    {activo: el.checked});
-  if (r && r.objetivo && ifnEstado) { ifnEstado.objetivo = r.objetivo; ifnPintar(); }
-}
-
-
-async function ifnGuardarPersona(id) {
-  const valor = function (pre) {
-    const el = document.getElementById(pre + Number(id));
-    return el ? Number(el.value) : 0;
-  };
-  const fila = (((ifnEstado || {}).objetivo || {}).base || {}).equipo || {};
-  const actual = (fila.filas || []).filter(function (f) { return Number(f.id) === Number(id); })[0];
-  const r = await ifnPedir('/api/inteligencia-fin/equipo/' + Number(id), 'PUT',
-    {nombre: actual ? actual.concepto : 'Equipo', monto_usd: valor('ifn-eq-monto-'),
-     cantidad: valor('ifn-eq-cant-'), tipo: 'fijo'});
-  if (r && r.objetivo && ifnEstado) { ifnEstado.objetivo = r.objetivo; ifnPintar(); }
-}
-
-async function ifnAgregarPersona() {
-  const valor = function (id) { return (document.getElementById(id) || {}).value || ''; };
-  const nombre = valor('ifn-eq-nombre');
-  if (!nombre.trim()) { alert('Poné el nombre o el rol.'); return; }
-  const r = await ifnPedir('/api/inteligencia-fin/equipo', 'POST',
-    {nombre: nombre, monto_usd: valor('ifn-eq-monto') || 0,
-     cantidad: valor('ifn-eq-cant') || 1, tipo: 'fijo'});
-  if (r && r.objetivo && ifnEstado) { ifnEstado.objetivo = r.objetivo; ifnPintar(); }
-}
-
-async function ifnBorrarPersona(id) {
-  const r = await ifnPedir('/api/inteligencia-fin/equipo/' + Number(id), 'DELETE');
-  if (r && r.objetivo && ifnEstado) { ifnEstado.objetivo = r.objetivo; ifnPintar(); }
-}
-
-async function ifnMarcarFijo(id, aCliente) {
-  const r = await ifnPedir('/api/inteligencia-fin/fijos/' + Number(id) + '/clase', 'PUT',
-    {clase: aCliente ? 'cliente' : 'estructura'});
-  if (r && r.objetivo && ifnEstado) { ifnEstado.objetivo = r.objetivo; ifnPintar(); }
-}
-
-async function ifnGuardarObjetivo() {
-  const leer = function (clave) {
-    const el = document.getElementById('ifn-obj-' + clave);
-    return el && el.value !== '' ? Number(el.value) : 0;
-  };
-  const r = await ifnPedir('/api/inteligencia-fin/objetivo', 'PUT',
-    {fijos_usd: leer('fijos'), aportes_usd: leer('aportes'), sueldo_usd: leer('sueldo')});
-  if (r && r.objetivo && ifnEstado) { ifnEstado.objetivo = r.objetivo; ifnPintar(); }
-}
-
-async function ifnVolverAFinanzas() {
-  const r = await ifnPedir('/api/inteligencia-fin/objetivo', 'PUT', {fijos_usd: null});
-  if (r && r.objetivo && ifnEstado) { ifnEstado.objetivo = r.objetivo; ifnPintar(); }
-}
-
-async function ifnAgregarGasto() {
-  const valor = function (id) { return (document.getElementById(id) || {}).value || ''; };
-  const concepto = valor('ifn-gasto-concepto');
-  const monto = valor('ifn-gasto-monto');
-  if (!concepto.trim() || !monto) { alert('Poné el concepto y el monto del gasto.'); return; }
-  const r = await ifnPedir('/api/inteligencia-fin/gastos-esperados', 'POST',
-    {concepto: concepto, monto_usd: monto, categoria: valor('ifn-gasto-categoria') || 'variable'});
-  if (r && r.objetivo && ifnEstado) { ifnEstado.objetivo = r.objetivo; ifnPintar(); }
-}
-
-async function ifnBorrarGasto(id) {
-  const r = await ifnPedir('/api/inteligencia-fin/gastos-esperados/' + Number(id), 'DELETE');
-  if (r && r.objetivo && ifnEstado) { ifnEstado.objetivo = r.objetivo; ifnPintar(); }
-}
-
-async function ifnEmparejarGasto(gastoId, movimientoId) {
-  const r = await ifnPedir('/api/inteligencia-fin/gastos-esperados/' + Number(gastoId) + '/emparejar',
-    'POST', {movimiento_id: Number(movimientoId)});
-  if (r && r.objetivo && ifnEstado) { ifnEstado.objetivo = r.objetivo; ifnPintar(); }
-}
-
-function ifnDescartarDuda() {
-  alert('Listo: se deja como está. El gasto esperado sigue en la lista y lo podés sacar a mano.');
-}
-
-function ifnResumenHtml(r) {
-  if (!r.texto) return '';
-  return `<p class="ifn-resumen-texto">${esc(r.texto)}</p>
-    <span class="ifn-resumen-origen">${r.origen === 'ia' ? 'Resumen redactado con IA solo con los números de abajo' : 'Resumen armado con los números de abajo'}</span>`;
-}
-
-function ifnDiagnosticoHtml(lista) {
-  const tarjetas = lista.map(d => `<div class="ifn-diag ifn-diag-${esc(d.nivel)}">
-      <div class="ifn-diag-cab"><span class="ifn-diag-titulo">${esc(d.titulo)}</span><span class="ifn-nivel ifn-nivel-${esc(d.nivel)}">${IFN_NIVEL[d.nivel] || ''}</span></div>
-      <div class="ifn-diag-valor">${esc(d.valor)}</div>
-      <p class="ifn-diag-texto">${esc(d.texto)}</p>
-      <pre class="ifn-diag-cuenta">${esc(d.calculo)}</pre>
-    </div>`).join('');
-  return '<h3 class="ifn-seccion">Diagnóstico del mes</h3>'
-    + (tarjetas ? '<div class="ifn-diag-grid">' + tarjetas + '</div>' : '<div class="ifn-vacio">Todavía no hay movimientos para sacar conclusiones.</div>');
-}
-
-function ifnContrasteHtml(enc) {
-  if (enc.hoy === undefined) return '';
-  return `<div class="ifn-contraste-col">
-      <div class="ifn-contraste-rotulo">Cómo cierra el mes hoy</div>
-      <div class="ifn-contraste-num">${ifnUsd(enc.hoy)}</div>
-      <div class="ifn-contraste-cuenta">${esc(enc.calculo_hoy || '')}</div>
-    </div>
-    <div class="ifn-contraste-col">
-      <div class="ifn-contraste-rotulo">Aplicando las tres primeras</div>
-      <div class="ifn-contraste-num ifn-suma">${ifnUsd(enc.con_tres)}</div>
-      <div class="ifn-contraste-cuenta">${esc(enc.calculo_con_tres || '')}</div>
-    </div>`;
-}
-
-function ifnDetalleHtml(r) {
-  const id = Number(r.id);
-  const impacto = r.impacto_mensual === null || r.impacto_mensual === undefined
-    ? '<div class="ifn-impacto ifn-revisar">A estimar</div>'
-    : `<div class="ifn-impacto ${r.impacto_mensual < 0 ? 'ifn-revisar' : 'ifn-suma'}">${r.impacto_mensual < 0 ? '−' : '+'}USD ${ifnMiles(r.impacto_mensual)}<span>${r.unica_vez ? 'por única vez' : 'por mes'}</span></div>`;
-  const acciones = (r.acciones || []).map(a =>
-    `<li class="ifn-accion"><span>${esc(a.cliente)} · ${ifnUsd(a.monto)}</span>${a.wa
-      ? `<a class="btn-primary" href="https://wa.me/${esc(a.wa)}?text=${encodeURIComponent(a.texto)}" target="_blank" rel="noopener">Abrir mensaje de cobranza</a>`
-      : '<span class="ifn-sin-tel">Sin teléfono en el CRM</span>'}</li>`).join('');
-  const supuestos = (r.supuestos || []).length
-    ? '<p class="ifn-supuestos-rec">Supuestos: ' + r.supuestos.map(esc).join(' · ') + '</p>' : '';
-  return `<details class="ifn-detalle"><summary class="ifn-ver">Ver la cuenta</summary>
-    <article class="ifn-rec ifn-rec-${esc(r.tipo)}" id="ifn-rec-${id}">
-    <div class="ifn-rec-cab">
-      <div><span class="ifn-regla">${esc(r.regla)}</span><h3 class="ifn-rec-titulo">${esc(r.titulo)}</h3></div>
-      ${impacto}
-    </div>
-    <p class="ifn-rec-detalle">${esc(r.detalle)}</p>
-    ${r.advertencia ? `<p class="ifn-advertencia">${esc(r.advertencia)}</p>` : ''}
-    <pre class="ifn-calculo">${esc(r.calculo)}</pre>
-    ${supuestos}
-    ${acciones ? `<ul class="ifn-acciones">${acciones}</ul>` : ''}
-    <div class="ifn-rec-pie">
-      <span class="ifn-confianza ifn-conf-${esc(r.confianza)}">${IFN_CONFIANZA[r.confianza] || 'Confianza sin dato'}</span>
-      <button class="btn-primary" onclick="ifnTomar(${id})">Lo voy a hacer</button>
-      <button class="btn-ghost" onclick="ifnDescartar(${id})">Descartar</button>
-    </div>
-  </article></details>`;
-}
-
-function ifnSeguimientoHtml(lista) {
-  const filas = lista.map(t => {
-    const esperado = t.impacto_esperado === null || t.impacto_esperado === undefined ? 'revisar' : ifnUsd(t.impacto_esperado);
-    const puntos = t.regla === 'R6' || t.regla === 'R9';
-    const real = puntos ? (Number(t.impacto_real) || 0).toFixed(1) + ' puntos' : ifnUsd(t.impacto_real);
-    return `<li class="ifn-seg">
-      <div><span class="ifn-regla">${esc(t.regla)}</span> <span class="ifn-seg-titulo">${esc(t.titulo)}</span> <span class="ifn-res ifn-res-${esc(t.resultado)}">${IFN_RESULTADO[t.resultado] || esc(t.resultado)}</span></div>
-      <div class="ifn-seg-meta">Tomada el ${esc(t.tomada_el)} · esperado ${esperado} · ${t.resultado === 'midiendo' ? 'se mide el ' + esc(t.se_mide_el) : 'real ' + real}</div>
-      ${t.detalle_real ? `<div class="ifn-seg-detalle">${esc(t.detalle_real)}</div>` : ''}
-    </li>`;
-  }).join('');
-  return '<h3 class="ifn-seccion">Seguimiento de lo que tomaste</h3>'
-    + (filas ? '<ul class="ifn-segs">' + filas + '</ul>' : '<div class="ifn-vacio">Todavía no tomaste ninguna sugerencia.</div>');
-}
-// ========== FIN Inteligencia financiera ==========
 // ========== Horarios ==========
 // Recursos Humanos > Horarios: la semana de trabajo de cada programador, con
 // sus tramos por dia, las horas de cada dia y el total. En la compu es una
@@ -18664,7 +17756,7 @@ def create_app(db_path: str) -> Flask:
 
     for bp in (leads_bp, demos_bp, calendar_bp, wa_bp, pipeline_bp, tasks_bp, budgets_bp, tokens_bp, meta_bp, calendly_bp, notion_bp, projects_bp, preclientes_bp,
                 notion_clients_bp, resend_bp, linkedin_bp, web_bp, finanzas_bp, marketing_bp,
-                simulador_bp, inteligencia_fin_bp, equipo_bp, horarios_bp, flujos_bp, seg_leads_bp, daily_bp, plantillas_bp,
+                simulador_bp, equipo_bp, horarios_bp, flujos_bp, seg_leads_bp, daily_bp, plantillas_bp,
                 backups_bp, email_mkt_bp, linkedin_panel_bp):
         app.register_blueprint(bp)
 
@@ -19657,7 +18749,7 @@ select:focus{border-color:#0088cc}
 
 <script>
 const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin'];
-const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Inteligencia financiera',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas',email_mkt:'Email marketing',linkedin:'LinkedIn'};
+const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas',email_mkt:'Email marketing',linkedin:'LinkedIn'};
 let _roles = [];
 
 // Paneles que muestran el check "solo lectura". El dato (roles.paneles_solo_lectura)
@@ -19893,10 +18985,6 @@ loadBackups();
         # BACKUP_DB=off lo apaga; trae su propia marca en `corridas`.
         from services.backup_db import start_backup_db
         start_backup_db(app)
-
-        # Una corrida por dia, sin mails ni llamadas afuera (marca en `corridas`).
-        from services.inteligencia_fin import start_inteligencia_fin
-        start_inteligencia_fin(app)
 
     try:
         from database import get_all_users
