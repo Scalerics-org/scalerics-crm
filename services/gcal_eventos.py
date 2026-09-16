@@ -35,6 +35,7 @@ import uuid
 import pytz
 
 from services import recurrencia as rec
+from services import tipos_proyecto as tp
 
 MVD = pytz.timezone("America/Montevideo")
 CALENDARIO = "primary"
@@ -147,12 +148,27 @@ def invitados_de(fila: dict, email_cliente: str | None = None) -> list[str]:
     return lista
 
 
+def descripcion_con_tipo(fila: dict) -> str:
+    """La descripcion con el tipo de proyecto arriba (pedido de Juan, 16/9).
+
+    Va en la descripcion y no en el titulo: el titulo ya lo escribe Juan y es
+    lo que el invitado ve en su agenda. Asi la invitacion que manda Google dice
+    de que es la reunion sin pisar el nombre que le puso.
+    """
+    texto = fila.get("description") or ""
+    etiqueta = tp.etiqueta(fila.get("tipo_proyecto"), fila.get("tipo_otro"))
+    if not etiqueta:
+        return texto
+    linea = f"Tipo de proyecto: {etiqueta}"
+    return f"{linea}\n\n{texto}" if texto else linea
+
+
 def cuerpo(fila: dict, email_cliente: str | None = None, *, con_meet: bool = False) -> dict:
     inicio = _inicio(fila)
     fin = inicio + dt.timedelta(minutes=rec.duracion_min(fila))
     body = {
         "summary": fila.get("title") or "Reunión",
-        "description": fila.get("description") or "",
+        "description": descripcion_con_tipo(fila),
         "start": _cuando(inicio),
         "end": _cuando(fin),
         "attendees": [{"email": m} for m in invitados_de(fila, email_cliente)],

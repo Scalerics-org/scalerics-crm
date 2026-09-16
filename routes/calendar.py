@@ -26,6 +26,7 @@ from database import (
 )
 from services import gcal_eventos as gce
 from services import recurrencia as rec
+from services import tipos_proyecto as tp
 
 calendar_bp = Blueprint("calendar", __name__)
 
@@ -153,7 +154,7 @@ def _eventos_locales(db: str, start: str, end: str) -> list[dict]:
                    m.calendar_event_id, b.name as client_name, m.client_id,
                    m.invitados, m.repeticion, m.excepciones, m.description,
                    m.google_event_id, m.google_sync, m.google_error,
-                   m.origen, m.google_meet
+                   m.origen, m.google_meet, m.tipo_proyecto, m.tipo_otro
             FROM meetings m
             LEFT JOIN businesses b ON m.client_id = b.id
             WHERE m.status != 'canceled'
@@ -183,6 +184,11 @@ def _eventos_locales(db: str, start: str, end: str) -> list[dict]:
             "origen": _origen_de(fila),
             "invitados": _json_lista(fila.get("invitados")),
             "description": fila.get("description") or "",
+            # De que es el proyecto: la clave para el selector del editor y el
+            # texto ya armado para el chip y el celular.
+            "tipo_proyecto": fila.get("tipo_proyecto") or "",
+            "tipo_otro": fila.get("tipo_otro") or "",
+            "tipo_texto": tp.etiqueta(fila.get("tipo_proyecto"), fila.get("tipo_otro")),
             # Como quedo en Google Calendar: 'ok', 'error' (con el motivo) o ''
             # si no se intento. Con 'error' la pantalla ofrece "Reintentar".
             "google": {"estado": fila.get("google_sync") or "",
@@ -592,11 +598,17 @@ def api_calendar_events():
     regla, error = rec.validar_regla(data.get("repeticion"), start_dt.date())
     if error:
         return jsonify({"ok": False, "error": error})
+    tipo_clave, tipo_otro, error = tp.validar(data.get("tipo_proyecto"),
+                                              data.get("tipo_otro"))
+    if error:
+        return jsonify({"ok": False, "error": error})
 
     extra = {
         "description": description or None,
         "invitados": json.dumps(invitados) if invitados else None,
         "repeticion": json.dumps(regla) if regla else None,
+        "tipo_proyecto": tipo_clave,
+        "tipo_otro": tipo_otro,
     }
 
     try:
@@ -686,6 +698,9 @@ def api_summarize_meeting(meeting_id):
     if not transcript:
         return jsonify({"ok": False, "error": "transcript requerido"}), 400
 
+    # El mismo vocabulario que el selector de la reunion (services/tipos_proyecto.py):
+    # antes pedia 'app', que no es ninguno de los tipos que usa el CRM.
+    claves = "|".join(tp.CLAVES)
     prompt = f"""Resumí esta transcripción de reunión de ventas y extraé los requerimientos del proyecto.
 
 TRANSCRIPCIÓN:
@@ -695,7 +710,7 @@ Devolvé SOLO un JSON (sin texto extra, sin markdown):
 {{
   "summary": "resumen de 2-3 oraciones de qué se habló y qué quiere el cliente",
   "requirements": "requerimientos detallados del proyecto (en bullet points con guión)",
-  "service_type": "web|ecommerce|app|automatizacion|otro",
+  "service_type": "{claves}",
   "next_steps": ["acción concreta 1", "acción concreta 2"]
 }}"""
 
@@ -1071,6 +1086,20 @@ def _cambios_del_pedido(data: dict, fila: dict):
             invitados, None)
 
 
+def _tipo_del_pedido(data: dict):
+    """Los campos de tipo de proyecto de un PATCH, ya validados.
+
+    Devuelve ({} , None) si el pedido no los trae: no se tocan. El error viene
+    listo para devolver, como en `_cambios_del_pedido`.
+    """
+    if "tipo_proyecto" not in data:
+        return {}, None
+    clave, texto, error = tp.validar(data.get("tipo_proyecto"), data.get("tipo_otro"))
+    if error:
+        return None, (jsonify({"ok": False, "error": error}), 400)
+    return {"tipo_proyecto": clave, "tipo_otro": texto}, None
+
+
 def _plan_de_serie(fila: dict, data: dict, cambios: dict):
     """Que cambia en la serie segun el alcance elegido. Sin `ocurrencia` (una
     pestaña vieja) se toma la serie entera desde su primera reunion."""
@@ -1105,6 +1134,9 @@ def api_reschedule_meeting(meeting_id):
         cambios, invitados, error = _cambios_del_pedido(data, meeting)
         if error:
             return error
+        tipo, error = _tipo_del_pedido(data)
+        if error:
+            return error
         plan, alcance, error = _plan_de_serie(meeting, data, cambios)
         if error:
             return error
@@ -1112,14 +1144,20 @@ def api_reschedule_meeting(meeting_id):
         actualizar = dict(plan["actualizar"])
         if invitados is not False and not plan["nueva"]:
             actualizar["invitados"] = invitados
+        if tipo and not plan["nueva"]:
+            actualizar.update(tipo)
         update_meeting(db, meeting_id, **actualizar)
         nueva_id = None
         if plan["nueva"]:
+            # "Esta y las siguientes": la serie nueva arranca con el tipo que
+            # se acaba de elegir, o con el que ya tenia la vieja.
+            tipo_nuevo = tipo or {"tipo_proyecto": meeting.get("tipo_proyecto"),
+                                  "tipo_otro": meeting.get("tipo_otro")}
             nueva_id = create_meeting(
                 db, meeting["client_id"], meet_link=meeting.get("meet_link"),
                 description=meeting.get("description"), status="scheduled", origen="crm",
                 invitados=meeting.get("invitados") if invitados is False else invitados,
-                **plan["nueva"])
+                **tipo_nuevo, **plan["nueva"])
         client = get_business(db, int(meeting["client_id"])) or {}
         log_activity(db, session.get("user_name", "sistema"), "meeting_rescheduled",
                      "lead", meeting["client_id"], client.get("name", ""),
@@ -1167,6 +1205,10 @@ def api_reschedule_meeting(meeting_id):
         if error:
             return jsonify({"ok": False, "error": error}), 400
         extra["invitados"] = json.dumps(lista) if lista else None
+    tipo, error = _tipo_del_pedido(data)
+    if error:
+        return error
+    extra.update(tipo)
 
     cal_event_id = meeting.get("calendar_event_id")
     # Por URI (webhook, sync) o por origen (evento de Calendly importado de
@@ -1247,6 +1289,9 @@ def api_editar_asunto(asunto_id):
     cambios, invitados, error = _cambios_del_pedido(data, fila)
     if error:
         return error
+    tipo, error = _tipo_del_pedido(data)
+    if error:
+        return error
 
     alcance = None
     if rec.regla_de(fila):
@@ -1257,14 +1302,18 @@ def api_editar_asunto(asunto_id):
         actualizar = dict(plan["actualizar"])
         if invitados is not False and not plan["nueva"]:
             actualizar["invitados"] = invitados
+        if tipo and not plan["nueva"]:
+            actualizar.update(tipo)
         update_reunion_asunto(db, asunto_id, **actualizar)
         nueva_id = None
         if plan["nueva"]:
+            tipo_nuevo = tipo or {"tipo_proyecto": fila.get("tipo_proyecto"),
+                                  "tipo_otro": fila.get("tipo_otro")}
             nueva_id = create_reunion_asunto(
                 db, meet_link=fila.get("meet_link"), description=fila.get("description"),
                 invitados=fila.get("invitados") if invitados is False else invitados,
                 status="scheduled", created_by=session.get("user_name", "sistema"),
-                **plan["nueva"])
+                **tipo_nuevo, **plan["nueva"])
         google = _editar_en_google(db, "asunto", asunto_id, fila, alcance=alcance,
                                    ocurrencia=ocurrencia, cambios=cambios,
                                    invitados_cambiaron=invitados is not False,
@@ -1278,6 +1327,7 @@ def api_editar_asunto(asunto_id):
         }
         if invitados is not False:
             campos["invitados"] = invitados
+        campos.update(tipo)
         update_reunion_asunto(db, asunto_id, **campos)
         google = _editar_en_google(db, "asunto", asunto_id, fila,
                                    invitados_cambiaron=invitados is not False)

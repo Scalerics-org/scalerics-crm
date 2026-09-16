@@ -45,6 +45,23 @@ MAX_INVITADOS = 50
 
 _MAIL = re.compile(r"^[^@\s,;<>]+@[^@\s,;<>]+\.[^@\s,;<>.]{2,}$")
 
+# Los tres de Scalerics que van a toda reunion que se agenda con un lead
+# (pedido de Juan, 16/9). El modal los PROPONE al elegir el lead, a la vista y
+# antes de guardar; no se agregan aca al guardar, porque entonces lo que Juan
+# saco del campo volveria solo.
+#
+# Estan escritos y no en una pantalla de ajustes: el CRM no tiene tabla de
+# configuracion ni pantalla de settings, y el unico patron que existe son las
+# variables de entorno, que el navegador no puede leer sin agregarle un
+# endpoint. Son tres mails que cambian muy de vez en cuando: cambiarlos es
+# editar esta lista y su espejo `CAL_INVITADOS_FIJOS` en dashboard.py (hay un
+# test que los compara para que no se separen).
+INVITADOS_FIJOS = (
+    "juan.pereyra.comunicacion@gmail.com",
+    "gonzalosiuciak@gmail.com",
+    "juantomasetti240@gmail.com",
+)
+
 
 # ── invitados ────────────────────────────────────────────────────────────────
 

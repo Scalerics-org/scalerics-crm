@@ -695,6 +695,13 @@ def init_db(db_path: str) -> None:
         # evento y manda su invitacion, y tocarlo le mandaria al cliente otra.
         # Las filas de antes quedan en NULL y se deducen de calendar_event_id.
         _add_column(conn, "meetings", "origen", "TEXT")
+        # De que es el proyecto (pedido de Juan, 16/9). La clave es una de
+        # services/tipos_proyecto.CLAVES; `tipo_otro` es el texto libre que se
+        # escribe cuando la clave es 'otro'. Va en las dos tablas porque el
+        # modal de "Nueva reunion" es el mismo para cliente y para otro asunto.
+        for _tabla in ("meetings", "reuniones_asunto"):
+            _add_column(conn, _tabla, "tipo_proyecto", "TEXT")
+            _add_column(conn, _tabla, "tipo_otro", "TEXT")
 
         conn.execute("""
             CREATE TABLE IF NOT EXISTS wa_templates (
@@ -2513,6 +2520,7 @@ _MEETING_COLUMNS = {
     "status", "transcript", "summary", "requirements", "recall_bot_id",
     "description", "invitados", "repeticion", "excepciones",
     "google_event_id", "google_sync", "google_error", "google_meet", "origen",
+    "tipo_proyecto", "tipo_otro",
 }
 
 
@@ -2597,6 +2605,7 @@ _ASUNTO_COLUMNS = {
     "title", "description", "start_at", "end_at", "meet_link", "invitados",
     "repeticion", "excepciones", "status", "created_by",
     "google_event_id", "google_sync", "google_error", "google_meet",
+    "tipo_proyecto", "tipo_otro",
 }
 
 

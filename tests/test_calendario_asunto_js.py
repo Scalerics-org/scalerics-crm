@@ -259,12 +259,17 @@ async function fetch(url, opts) {
 
 # `closeNewEventModal` esta en una sola linea: `_funcion` se seguiria de largo
 # hasta la proxima llave en la columna 0 y arrastraria codigo de nivel superior.
-_MODAL = [_linea("function closeNewEventModal(")] + _funciones(
+_MODAL = ([_linea("function closeNewEventModal("),
+           _linea("const CAL_INVITADOS_FIJOS = "), _linea("const CAL_TIPOS = "),
+           _linea("let _calMailsLead = "), _linea("let _calFijosPuestos = ")]
+          + _funciones(
     "openNewEventModal", "_calElegirTipo", "_calPonerCliente",
     "_calQuitarCliente", "_calReglaDelModal", "_calPintarRepeticion", "_calTextoRepeticion",
     "_calPlural", "_calLeerMails", "_calDiaSemana", "_calAhoraMvd", "saveEvent",
-    "_calAvisoGoogle", "_calTextoGoogle",
-)
+    "_calAvisoGoogle", "_calTextoGoogle", "_calOpcionesTipo", "_calPintarTipo",
+    "_calTipoDelModal", "_calMezclarInvitados", "_calMailsDelLead",
+    "_calSincronizarInvitados",
+))
 
 
 @node
@@ -321,7 +326,7 @@ def test_marketing_semanal_desde_el_modal(tmp_path):
 def test_con_cliente_desde_la_ficha_y_sin_cliente_no_se_manda(tmp_path):
     _node(_MODAL + [_DOM_MODAL], """
       fijarReloj('2026-09-15T15:00:00Z');
-      openNewEventModal({tipo: 'cliente', clientId: 7, clientName: 'Optica Luz'});
+      await openNewEventModal({tipo: 'cliente', clientId: 7, clientName: 'Optica Luz'});
       assert($('ev-title').value === 'Reunión con Optica Luz', $('ev-title').value);
       assert(!$('ev-cliente-elegido').hidden && $('ev-cliente-elegido').innerHTML.includes('Optica Luz'), 'no muestra el cliente');
       assert($('ev-cliente-buscar').hidden, 'el buscador sobra');
@@ -329,7 +334,9 @@ def test_con_cliente_desde_la_ficha_y_sin_cliente_no_se_manda(tmp_path):
       await saveEvent();
       const c = pedidos[0].cuerpo;
       assert(c.tipo === 'cliente' && c.client_id === '7' && c.repeticion === null, JSON.stringify(c));
-      assert(c.invitados.length === 0, JSON.stringify(c));
+      // Desde el 16/9 elegir un lead propone los tres fijos de Scalerics. Aca
+      // el fetch de mentira no devuelve ficha, asi que el mail del lead no va.
+      assert(JSON.stringify(c.invitados) === JSON.stringify(CAL_INVITADOS_FIJOS), JSON.stringify(c.invitados));
 
       openNewEventModal();
       assert($('ev-client-id').value === '' && $('ev-title').value === '', 'no se limpio');

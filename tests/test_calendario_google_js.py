@@ -166,11 +166,15 @@ async function fetch() { return {json: async () => respuesta}; }
 
 @node
 def test_crear_con_google_caido_avisa_arriba_del_calendario(tmp_path):
-    partes = [_linea("function closeNewEventModal(")] + [_funcion(n) for n in (
-        "openNewEventModal", "_calElegirTipo", "_calPonerCliente", "_calQuitarCliente",
-        "_calReglaDelModal", "_calPintarRepeticion", "_calTextoRepeticion", "_calPlural",
-        "_calLeerMails", "_calDiaSemana", "_calAhoraMvd", "saveEvent", "_calAvisoGoogle",
-        "_calTextoGoogle")] + [_DOM_MODAL]
+    partes = [_linea("function closeNewEventModal("),
+              _linea("const CAL_INVITADOS_FIJOS = "), _linea("const CAL_TIPOS = "),
+              _linea("let _calMailsLead = "), _linea("let _calFijosPuestos = ")] + [
+        _funcion(n) for n in (
+            "openNewEventModal", "_calElegirTipo", "_calPonerCliente", "_calQuitarCliente",
+            "_calReglaDelModal", "_calPintarRepeticion", "_calTextoRepeticion", "_calPlural",
+            "_calLeerMails", "_calDiaSemana", "_calAhoraMvd", "saveEvent", "_calAvisoGoogle",
+            "_calTextoGoogle", "_calOpcionesTipo", "_calPintarTipo", "_calTipoDelModal",
+            "_calMezclarInvitados", "_calMailsDelLead", "_calSincronizarInvitados")] + [_DOM_MODAL]
     _node(partes, """
       openNewEventModal();
       _calElegirTipo('asunto');
@@ -240,9 +244,10 @@ def test_el_meet_se_muestra_como_unirse_con_google_meet(tmp_path):
 
 @node
 def test_la_ventana_de_editar_muestra_el_meet_y_dice_si_esta_en_google(tmp_path):
-    partes = [_funcion(n) for n in (
+    partes = [_linea("const CAL_TIPOS = ")] + [_funcion(n) for n in (
         "_calAbrirEditor", "_calEvento", "_calHoraDeLaReunion", "_calHoraLabel",
-        "_calTextoRepeticion", "_calPlural", "_calAhoraMvd", "_calTextoEstadoGoogle")] + [_REUNIONES, """
+        "_calTextoRepeticion", "_calPlural", "_calAhoraMvd", "_calTextoEstadoGoogle",
+        "_calOpcionesTipo", "_calPintarTipo")] + [_REUNIONES, """
       function elemento(id) {
         const clases = new Set();
         return {id: id, value: '', hidden: false, textContent: '', href: '', style: {},
