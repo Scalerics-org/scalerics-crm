@@ -1092,6 +1092,11 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .cal-mobile-ev.tipo-asunto{border-left:3px solid var(--violeta)}
 .cal-mobile-ev-tag{font-size:.64rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--violeta);margin-bottom:2px}
 .cal-mobile-ev-rep{font-size:.72rem;color:var(--texto-tenue);margin-top:3px}
+/* De que es la reunion (pedido de Juan, 16/9). En el chip va como pastilla al
+   lado de la hora; en el celular, como renglon propio arriba del titulo. */
+.cal-chip-tipo{display:inline-block;font-size:.52rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--azul-claro);margin-right:4px}
+.cal-mobile-ev-tipo{font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--azul-claro);margin-bottom:2px}
+.cal-modal-alto select,.cal-modal-alto input[type=text]{max-width:100%}
 .cal-modal-alto{max-height:90vh;overflow-y:auto}
 .cal-modal-alto [hidden]{display:none}
 .cal-tipo{display:grid;grid-template-columns:1fr 1fr;gap:4px;background:var(--fondo);border:1px solid var(--borde);border-radius:10px;padding:4px;margin:10px 0 14px}
@@ -4138,6 +4143,9 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     <p style="margin-bottom:16px" id="reprog-title"></p>
     <label class="modal-label">Título</label>
     <input type="text" id="reprog-nombre" placeholder="Ej: Demo con El Fogón" style="margin-bottom:12px">
+    <label class="modal-label" for="reprog-tipo-proy">De qué es</label>
+    <select id="reprog-tipo-proy" onchange="_calPintarTipo('reprog')"></select>
+    <input type="text" id="reprog-tipo-otro" placeholder="¿De qué es? (ej: chatbot de WhatsApp)" maxlength="60" autocomplete="off" hidden>
     <div class="modal-row">
       <div>
         <label class="modal-label">Fecha</label>
@@ -4199,6 +4207,9 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     </div>
     <label class="modal-label" id="ev-title-label">Título</label>
     <input type="text" id="ev-title" placeholder="Ej: Reunión con El Fogón">
+    <label class="modal-label" for="ev-tipo-proy">De qué es</label>
+    <select id="ev-tipo-proy" onchange="_calPintarTipo('ev')"></select>
+    <input type="text" id="ev-tipo-otro" placeholder="¿De qué es? (ej: chatbot de WhatsApp)" maxlength="60" autocomplete="off" hidden>
     <div class="modal-row">
       <div>
         <label class="modal-label">Fecha</label>
@@ -7399,6 +7410,7 @@ function _calChipHtml(ev, clase) {
   const titulo = (ev.time ? ev.time + ' ' : '') + (ev.title || '');
   const sinGoogle = !!(ev.google && ev.google.estado === 'error');
   const aviso = (deCalendly ? ' (de Calendly: se reprograma allá)' : '')
+              + (ev.tipo_texto ? ' · ' + ev.tipo_texto : '')
               + (asunto ? ' · otro asunto' : '')
               + (ev.serie ? ' · ' + _calTextoRepeticion(ev.repeticion) : '')
               + (sinGoogle ? ' · No sincronizada con Google (' + (ev.google.error || 'error') + ')' : '');
@@ -7423,6 +7435,7 @@ function _calChipHtml(ev, clase) {
        + (sinGoogle ? '<span class="cal-chip-sync" aria-label="No sincronizada con Google">⚠</span>' : '')
        + (ev.serie ? '<span class="cal-chip-rep" aria-label="Se repite">↻</span>' : '')
        + (asunto ? '<span class="cal-chip-tag">Asunto</span>' : '')
+       + (ev.tipo_texto ? '<span class="cal-chip-tipo">' + esc(ev.tipo_texto) + '</span>' : '')
        + '<span class="cal-chip-title">' + esc(ev.title || '') + '</span>'
        + '<div class="cal-chip-acts">' + editar + unirse + reintentar
        + '<button class="cal-chip-act cal-act-del" draggable="false" onclick="event.stopPropagation();deleteCalEvent(' + escJs(ev.id) + ',' + escJs(ev.title || '') + ')">Borrar</button>'
@@ -7617,13 +7630,20 @@ function _calAbrirEditor(id) {
   if (!ev) return;
   _calEditando = {id: ev.id, title: ev.title, date: ev.date, time: ev.time,
                   duration_min: ev.duration_min || 60,
+                  tipo_proyecto: ev.tipo_proyecto || '', tipo_otro: ev.tipo_otro || '',
                   invitados: (ev.invitados || []).join(', '), evento: ev};
   document.getElementById('reprog-title').textContent = ev.tipo === 'asunto' ? 'Otro asunto' : (ev.client_name || '');
   document.getElementById('reprog-nombre').value = ev.title || '';
   document.getElementById('reprog-duracion').value = _calEditando.duration_min;
   document.getElementById('reprog-date').value = ev.date || _calAhoraMvd().slice(0, 10);
   document.getElementById('reprog-time').value = _calHoraDeLaReunion(_calEditando);
+  // Los invitados se muestran tal como quedaron guardados: los tres fijos NO
+  // se vuelven a proponer aca, asi lo que Juan saco al crearla sigue afuera.
   document.getElementById('reprog-invitados').value = _calEditando.invitados;
+  _calOpcionesTipo('reprog-tipo-proy');
+  document.getElementById('reprog-tipo-proy').value = _calEditando.tipo_proyecto;
+  document.getElementById('reprog-tipo-otro').value = _calEditando.tipo_otro;
+  _calPintarTipo('reprog');
   const meet = document.getElementById('reprog-meet');
   const linkMeet = (ev.google && ev.google.meet)
     || (String(ev.meeting_url || '').indexOf('meet.google.com') !== -1 ? ev.meeting_url : '');
@@ -7654,6 +7674,7 @@ async function _calGuardarHorario() {
   const nombre = document.getElementById('reprog-nombre').value.trim();
   const duracion = parseInt(document.getElementById('reprog-duracion').value, 10);
   const mails = _calLeerMails(document.getElementById('reprog-invitados').value);
+  const tipoProy = _calTipoDelModal('reprog');
   const err = document.getElementById('reprog-error');
 
   if (!date || !time) {
@@ -7676,14 +7697,17 @@ async function _calGuardarHorario() {
   const cambioNombre = nombre && nombre !== (reunion.title || '');
   const cambioDuracion = duracion !== (reunion.duration_min || 60);
   const cambioInvitados = mails.lista.join(', ') !== _calLeerMails(reunion.invitados).lista.join(', ');
-  if (!_calDestinoValido(reunion, date, time) && !cambioNombre && !cambioDuracion && !cambioInvitados) {
+  const cambioTipo = tipoProy.tipo_proyecto !== (reunion.tipo_proyecto || '')
+                  || tipoProy.tipo_otro !== (reunion.tipo_otro || '');
+  if (!_calDestinoValido(reunion, date, time) && !cambioNombre && !cambioDuracion && !cambioInvitados && !cambioTipo) {
     _calCerrarEditor();
     return;
   }
 
   const ev = reunion.evento || {id: reunion.id};
   const cuerpo = {date: date, time: time, title: nombre, duration_min: duracion,
-                  invitados: mails.lista};
+                  invitados: mails.lista,
+                  tipo_proyecto: tipoProy.tipo_proyecto, tipo_otro: tipoProy.tipo_otro};
   if (ev.serie) {
     const alcance = await _calElegirAlcance('editar');
     if (!alcance) return;
@@ -7774,6 +7798,7 @@ function _calItemMobile(ev) {
     : '';
   return '<div class="cal-mobile-ev' + (asunto ? ' tipo-asunto' : '') + '">'
        + (asunto ? '<div class="cal-mobile-ev-tag">Otro asunto</div>' : '')
+       + (ev.tipo_texto ? '<div class="cal-mobile-ev-tipo">' + esc(ev.tipo_texto) + '</div>' : '')
        + '<div class="cal-mobile-ev-titulo">' + esc(ev.title || '') + '</div>'
        + (ev.time ? '<div class="cal-mobile-ev-hora">🕐 ' + esc(ev.time) + '</div>' : '')
        + (ev.serie ? '<div class="cal-mobile-ev-rep">↻ ' + esc(_calTextoRepeticion(ev.repeticion)) + '</div>' : '')
@@ -7843,6 +7868,78 @@ function _calToqueFin(e) {
 // servidor expande las repeticiones para el mes o la semana que se mira.
 
 const CAL_DIAS_PLURAL = ['los lunes', 'los martes', 'los miércoles', 'los jueves', 'los viernes', 'los sábados', 'los domingos'];
+
+// ── A quien se invita y de que es la reunion (pedido de Juan, 16/9) ──────────
+// Al elegir un lead, el campo de invitados se llena SOLO y a la vista: el mail
+// del lead y estos tres. Se ven antes de guardar, se pueden borrar, y lo que
+// Juan borre queda borrado (al editar la reunion despues no vuelven a
+// aparecer: el editor muestra lo que quedo guardado y nada mas).
+//
+// Van escritos aca y no en una pantalla de ajustes porque el CRM no tiene
+// tabla de configuracion: el unico patron que existe son variables de entorno,
+// que el navegador no puede leer. Cambiarlos es editar esta linea.
+// Espejo de services/recurrencia.INVITADOS_FIJOS (hay un test que los compara).
+const CAL_INVITADOS_FIJOS = ['juan.pereyra.comunicacion@gmail.com', 'gonzalosiuciak@gmail.com', 'juantomasetti240@gmail.com'];
+
+// Los tipos de proyecto, en el orden del selector. Espejo de
+// services/tipos_proyecto.TIPOS_PROYECTO (hay un test que los compara).
+const CAL_TIPOS = [['automatizacion', 'Automatización'], ['web', 'Página web'], ['ecommerce', 'E-commerce'], ['aMedida', 'Desarrollo a medida'], ['otro', 'Otro']];
+
+// Los mails que el modal puso solo por el lead elegido, para poder sacarlos si
+// se cambia de lead sin tocar lo que Juan haya agregado a mano.
+let _calMailsLead = [];
+let _calFijosPuestos = false;
+
+function _calOpcionesTipo(id) {
+  document.getElementById(id).innerHTML = '<option value="">Sin especificar</option>'
+    + CAL_TIPOS.map(t => '<option value="' + esc(t[0]) + '">' + esc(t[1]) + '</option>').join('');
+}
+
+// "Otro" deja escribir en pocas palabras de que es, igual que "Otro asunto"
+// deja escribir el titulo.
+function _calPintarTipo(prefijo) {
+  const sel = document.getElementById(prefijo + '-tipo-proy');
+  document.getElementById(prefijo + '-tipo-otro').hidden = sel.value !== 'otro';
+}
+
+function _calTipoDelModal(prefijo) {
+  const clave = document.getElementById(prefijo + '-tipo-proy').value || '';
+  const texto = document.getElementById(prefijo + '-tipo-otro').value.trim();
+  return {tipo_proyecto: clave, tipo_otro: clave === 'otro' ? texto : ''};
+}
+
+// Lo que tiene que quedar en el campo: lo que ya hay (menos los mails del lead
+// anterior), los del lead nuevo y, la primera vez, los tres fijos. Sin repetir.
+function _calMezclarInvitados(texto, mailsLead, conFijos) {
+  const fuera = {};
+  _calMailsLead.forEach(m => { fuera[m.toLowerCase()] = true; });
+  const base = _calLeerMails(texto).lista.filter(m => !fuera[m.toLowerCase()]);
+  const todos = base.concat(mailsLead || []).concat(conFijos ? CAL_INVITADOS_FIJOS : []);
+  return _calLeerMails(todos.join(', ')).lista.join(', ');
+}
+
+// El buscador de leads no trae el mail (la lista pagina con pocas columnas):
+// se pide la ficha, que si lo tiene. Un lead sin mail devuelve vacio, y uno con
+// varios los devuelve a todos.
+async function _calMailsDelLead(id) {
+  try {
+    const r = await fetch('/api/leads/' + encodeURIComponent(id));
+    if (!r.ok) return [];
+    const d = await r.json();
+    return _calLeerMails((d && d.email) || '').lista;
+  } catch (e) {
+    return [];
+  }
+}
+
+async function _calSincronizarInvitados(clientId) {
+  const campo = document.getElementById('ev-invitados');
+  const mails = clientId ? await _calMailsDelLead(clientId) : [];
+  campo.value = _calMezclarInvitados(campo.value, mails, !_calFijosPuestos);
+  _calMailsLead = mails;
+  _calFijosPuestos = true;
+}
+
 let _calTipoNueva = 'cliente';
 let _calClienteTimer = null;
 let _calAlcanceResolver = null;
@@ -7988,6 +8085,9 @@ function _calPonerCliente(id, nombre) {
   document.getElementById('ev-cliente-resultados').innerHTML = '';
   const titulo = document.getElementById('ev-title');
   if (!titulo.value.trim() && nombre) titulo.value = 'Reunión con ' + nombre;
+  // Devuelve la promesa para que se pueda esperar: los invitados se llenan en
+  // cuanto contesta la ficha del lead.
+  return _calSincronizarInvitados(id);
 }
 
 function _calQuitarCliente() {
@@ -8090,9 +8190,18 @@ function openNewEventModal(opciones) {
   document.getElementById('ev-error').style.display = 'none';
   _calQuitarCliente();
   _calElegirTipo(o.tipo || 'cliente');
-  if (o.clientId) _calPonerCliente(o.clientId, o.clientName || '');
+  // Cada reunion nueva arranca limpia: los tres fijos se proponen una sola vez,
+  // recien cuando se elige el lead.
+  _calMailsLead = [];
+  _calFijosPuestos = false;
+  _calOpcionesTipo('ev-tipo-proy');
+  poner('ev-tipo-proy', '');
+  poner('ev-tipo-otro', '');
+  _calPintarTipo('ev');
+  const listo = o.clientId ? _calPonerCliente(o.clientId, o.clientName || '') : null;
   _calPintarRepeticion();
   document.getElementById('event-modal').classList.add('open');
+  return listo;
 }
 function closeNewEventModal() { document.getElementById('event-modal').classList.remove('open'); }
 document.getElementById('event-modal').addEventListener('click', e => { if(e.target===e.currentTarget) closeNewEventModal(); });
@@ -8134,10 +8243,12 @@ async function saveEvent() {
   const regla = _calReglaDelModal();
   if (regla && regla.error) return falla(regla.error);
 
+  const tipoProy = _calTipoDelModal('ev');
   const cuerpo = {tipo: tipo, title: title, date: date, time: time, duration_min: duration,
                   description: desc, meet_link: meet_link,
                   client_id: tipo === 'cliente' ? clientId : null,
-                  invitados: mails.lista, repeticion: regla};
+                  invitados: mails.lista, repeticion: regla,
+                  tipo_proyecto: tipoProy.tipo_proyecto, tipo_otro: tipoProy.tipo_otro};
   const btn = document.getElementById('ev-save-btn');
   btn.disabled = true; btn.textContent = '...';
   let d;
