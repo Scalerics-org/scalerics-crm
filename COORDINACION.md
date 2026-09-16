@@ -533,6 +533,36 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **16/9 — J (agente de marketing, pedido de Juan): alertas diarias de la pauta por mail.**
+
+  Etapa 1 de un plan por fases para cubrir al de marketing (después: contenido
+  de Instagram con aprobación, recomendaciones de pauta en modo sombra). Todo
+  **gratis**: nada de esto llama a la API de Anthropic.
+
+  - **Token nuevo en Fly.** `META_ADS_TOKEN` es ahora un token de
+    `crm-insights` que suma `pages_show_list`, `pages_read_engagement`,
+    `instagram_basic`, `instagram_content_publish`, `instagram_manage_insights`
+    y `instagram_manage_comments`. A `crm-insights` se le asignó la página
+    (contenido, comunidad, mensajes, estadísticas) y a la app se le sumaron los
+    casos de uso de Instagram (login con Facebook) y de páginas. Webhook
+    `leadgen` verificado intacto después. **Juan pidió explícitamente que no se
+    publique nada en Instagram sin su OK.**
+  - **`services/alertas_meta.py`** (nuevo): hilo que mira cada 30 min y corre
+    una vez por día desde las 8 de Montevideo (marca `alertas_meta` en
+    `corridas`). Compara 7 días contra los 28 anteriores con reglas fijas y
+    muestra mínima; manda a `contacto@scalerics.com` (`ALERTAS_META_EMAIL`)
+    solo si hay alertas, y los lunes siempre. Una alerta no se repite antes de
+    72 h (marca `alertas_meta:<clave>`). `ALERTAS_META=off` lo apaga.
+    `POST /api/marketing/alertas/enviar-ahora` lo manda a pedido, pausa de 15 min.
+  - Zona compartida, todo aditivo: `dashboard.py` (dos líneas en el arranque),
+    `services/email_service.py` (dos funciones), `routes/marketing.py` (un endpoint).
+
+  **Hallazgo de los datos, para quien toque marketing:** el costo por lead pasó
+  de ~USD 11-16 (julio) a USD 33-56 (setiembre) y lo que cayó es la conversión
+  clic → lead (de ~10% a 2-3,5%), no el CPM. Campañas nuevas de setiembre
+  (`Set26 - Winners`, `Brand`, `Video View`, `RMKTG`) gastaron ~USD 100 en 30
+  días sin leads.
+
 - **16/9 — Inteligencia financiera pasa a llamarse "Métricas financieras" y queda vacía, en `feat/metricas-financieras` (worktree `../crm-metricas-fin`). Push sin PR, sin merge, sin deploy.** Juan: "Vamos a borrar la seccion inteligencia financiera, no es eficiente [...] cambiale el nombre borra lo que contiene ahora y despues en un futuro le ire agregando metricas".
   - **Solo cambia el nombre visible** (menú, título, barra del celular, editor de roles). **El id sigue siendo `inteligencia_fin`**: Admin y Contador lo tienen guardado en `panel_access`, y R20 sigue (no se reparte solo). El panel muestra el título y "Acá van a ir las métricas financieras.".
   - **Borrado:** `routes/inteligencia_fin.py` (todas las `/api/inteligencia-fin/*`, más `/api/perdidas/.../motivo`, `/api/proyectos/<id>/esfuerzo` y `/api/ventas/.../origen`), `services/inteligencia_fin.py`, `services/inteligencia_fin_ia.py`, `services/intel_objetivo.py`, el hilo diario `start_inteligencia_fin`, el CSS `ifn-*` y los tokens `--pal-*`/`--obj-*`, el JS `ifn*`, el selector de motivo de pérdida (Proceso de venta y Demos) y el de esfuerzo (Proyectos), los campos `motivo_perdida`/`esfuerzo_*` de sus APIs, el emparejado de gastos esperados al cargar un egreso en Finanzas, la marca de pérdida del sync de Notion, y los 5 tests de la sección. `RADIOGRAFIA_IA_ACTIVA` no se tocó (vive en `services/radiografia_ia.py`, la usa Marketing).

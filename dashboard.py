@@ -18981,6 +18981,10 @@ loadBackups();
         from services.discovery_emails import start_discovery_emails
         start_discovery_emails(app)
 
+        # Mail diario de la pauta a contacto@. ALERTAS_META=off lo apaga.
+        from services.alertas_meta import start_alertas_meta
+        start_alertas_meta(app)
+
         # Backup diario de la base (docs/BACKUPS.md). Prendido por defecto,
         # BACKUP_DB=off lo apaga; trae su propia marca en `corridas`.
         from services.backup_db import start_backup_db
