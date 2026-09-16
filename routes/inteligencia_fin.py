@@ -103,6 +103,75 @@ def api_supuestos():
     return jsonify({"ok": True, "supuestos": ifn.leer_supuestos(_db())})
 
 
+@inteligencia_fin_bp.route("/api/inteligencia-fin/costos/<path:clave>", methods=["PUT"])
+def api_marcar_costo(clave):
+    """Prender o apagar un costo, como los interruptores del Simulador."""
+    if not _puede(PANEL):
+        return _no_autorizado()
+    datos = request.get_json(silent=True) or {}
+    if not isinstance(datos, dict):
+        return _error("faltan los datos")
+    _, quien = _quien()
+    error = obj.marcar_costo(_db(), clave, bool(datos.get("activo")), quien)
+    if error:
+        return _error(error)
+    return jsonify({"ok": True, "objetivo": obj.objetivo(_db(), _mes())})
+
+
+@inteligencia_fin_bp.route("/api/inteligencia-fin/escenarios")
+def api_escenarios():
+    """Los escenarios guardados del Simulador, solo para elegir uno."""
+    if not _puede(PANEL):
+        return _no_autorizado()
+    return jsonify({"escenarios": obj.escenarios_guardados(_db())})
+
+
+@inteligencia_fin_bp.route("/api/inteligencia-fin/escenarios/<int:esc_id>")
+def api_escenario(esc_id):
+    if not _puede(PANEL):
+        return _no_autorizado()
+    escenario = obj.escenario_para_panel(_db(), esc_id)
+    if not escenario:
+        return _error("ese escenario no existe", 404)
+    return jsonify(escenario)
+
+
+@inteligencia_fin_bp.route("/api/inteligencia-fin/equipo", methods=["POST"])
+def api_crear_linea_equipo():
+    """Sumar una persona o un rol a la lista de costos del equipo."""
+    if not _puede(PANEL):
+        return _no_autorizado()
+    uid, quien = _quien()
+    linea, error = obj.guardar_linea_equipo(_db(), None, request.get_json(silent=True), quien)
+    if error:
+        return _error(error)
+    log_activity(_db(), quien, "equipo_costo_cargado", "inteligencia_fin", linea["id"],
+                 linea["nombre"], f"USD {linea['monto_usd']} x{linea['cantidad']}", user_id=uid)
+    return jsonify({"ok": True, "linea": linea, "objetivo": obj.objetivo(_db(), _mes())}), 201
+
+
+@inteligencia_fin_bp.route("/api/inteligencia-fin/equipo/<int:linea_id>", methods=["PUT"])
+def api_editar_linea_equipo(linea_id):
+    """Cambiar cuánto cobra o cuántos son (los programadores hoy son 2)."""
+    if not _puede(PANEL):
+        return _no_autorizado()
+    _, quien = _quien()
+    linea, error = obj.guardar_linea_equipo(_db(), linea_id, request.get_json(silent=True), quien)
+    if error:
+        return _error(error, 404 if "no está en la lista" in error else 400)
+    return jsonify({"ok": True, "linea": linea, "objetivo": obj.objetivo(_db(), _mes())})
+
+
+@inteligencia_fin_bp.route("/api/inteligencia-fin/equipo/<int:linea_id>", methods=["DELETE"])
+def api_borrar_linea_equipo(linea_id):
+    if not _puede(PANEL):
+        return _no_autorizado()
+    error = obj.borrar_linea_equipo(_db(), linea_id)
+    if error:
+        return _error(error, 404)
+    return jsonify({"ok": True, "objetivo": obj.objetivo(_db(), _mes())})
+
+
 @inteligencia_fin_bp.route("/api/inteligencia-fin/fijos/<int:rec_id>/canal", methods=["PUT"])
 def api_canal_fijo(rec_id):
     if not _puede(PANEL):
