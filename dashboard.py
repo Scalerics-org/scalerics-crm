@@ -537,9 +537,17 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
   .search-input,.upick-wrap,.upick-trigger{width:100%!important}
   .filter-row-2{gap:5px}
   .pill{font-size:.68rem;padding:5px 10px}
-  .task-edit-btn,.task-del-btn{min-height:36px;padding:6px 10px}
-  .task-status-badge{padding:5px 12px;font-size:.74rem}
+  .task-edit-btn,.task-del-btn{min-height:44px;min-width:44px;padding:6px 12px}
+  .task-status-badge{padding:7px 14px;font-size:.74rem}
   .task-row{padding:12px 14px;border-radius:12px}
+  /* El tablero en el celular va en una sola columna, una abajo de la otra: a
+     260px fijos había que arrastrar de costado para ver las seis. Va por
+     #tasks-board y no por .kanban para no tocar el tablero de Pipeline Notion. */
+  #tasks-board{flex-direction:column;overflow-x:visible}
+  #tasks-board .task-col{width:100%;flex:1 1 auto;min-width:0}
+  .task-fecha,.task-quien{font-size:.78rem}
+  .task-fecha{padding:5px 11px}
+  .tasks-summary{gap:12px}
   /* ── Calendario compacto ── */
   .cal-cell{min-height:44px!important;padding:3px 2px!important}
   .cal-event-chip{font-size:0!important;width:8px!important;height:8px!important;border-radius:50%!important;padding:0!important;min-width:0!important;display:inline-block!important;margin:1px!important;border:none!important;background:#0088cc!important}
@@ -1564,7 +1572,9 @@ body.light .btn-icon{stroke:currentColor}
 .pill.orange.active,body.light .pill.orange.active{background:var(--ambar-tinte);color:var(--ambar);border-color:var(--ambar-borde)}
 .pill-count{font-weight:400;color:#334155;margin-left:3px;font-size:.68rem}
 .pill.active .pill-count{color:#0088cc99}
-.tasks-summary{font-size:.75rem;color:var(--texto-debil);margin-bottom:10px}
+.tasks-summary{font-size:.75rem;color:var(--texto-debil);margin-bottom:12px;display:flex;gap:16px;flex-wrap:wrap;align-items:baseline}
+.tasks-summary b{font-size:1.15rem;font-weight:800;color:var(--texto-fuerte);font-variant-numeric:tabular-nums;margin-right:4px}
+.tasks-summary i{font-style:normal;color:var(--texto-tenue)}
 .task-status-badge{padding:3px 9px;border-radius:99px;font-size:.68rem;font-weight:700;cursor:pointer;transition:all .15s;border:1px solid transparent;user-select:none}
 .task-status-badge.todo{background:var(--relleno);color:var(--texto-debil)}
 .task-status-badge.in_progress{background:var(--azul-tinte);color:var(--azul-claro)}
@@ -1612,12 +1622,12 @@ body.light .btn-icon{stroke:currentColor}
 .task-row.overdue{border-left:3px solid var(--rojo)}
 .task-edit-btn{background:none;border:1px solid var(--borde);color:var(--texto-debil);cursor:pointer;font-size:.78rem;padding:3px 7px;border-radius:6px;transition:all .15s}
 .task-edit-btn:hover{border-color:var(--borde-fuerte);color:var(--texto-tenue)}
-.task-row{background:var(--superficie);border:1px solid var(--borde);border-radius:10px;padding:14px 16px;margin-bottom:8px;display:flex;align-items:flex-start;gap:12px;transition:border-color .15s}
-.task-row:hover{border-color:var(--borde-fuerte)}
+.task-row{background:var(--superficie);border:1px solid var(--borde);border-left:3px solid transparent;border-radius:12px;padding:14px 16px;margin-bottom:10px;display:flex;align-items:flex-start;gap:12px;transition:border-color .15s,background .15s}
+.task-row:hover{border-color:var(--borde-fuerte);background:var(--hover)}
 .task-body{flex:1;min-width:0}
-.task-title{font-size:.88rem;font-weight:600;color:var(--texto-fuerte);margin-bottom:3px}
+.task-title{font-size:.95rem;font-weight:700;color:var(--texto-fuerte);margin-bottom:4px;line-height:1.35}
 .task-title.done-text{text-decoration:line-through;color:var(--texto-debil)}
-.task-meta{font-size:.72rem;color:var(--texto-debil);display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.task-meta{font-size:.72rem;color:var(--texto-debil);display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .task-client-link{color:var(--azul-claro);cursor:pointer}
 .task-client-link:hover{text-decoration:underline}
 .task-priority{padding:2px 7px;border-radius:99px;font-size:.65rem;font-weight:700}
@@ -1629,7 +1639,43 @@ body.light .btn-icon{stroke:currentColor}
 .task-actions{display:flex;gap:6px;flex-shrink:0}
 .task-del-btn{background:none;border:none;color:var(--texto-debil);cursor:pointer;font-size:.9rem;padding:2px 4px}
 .task-del-btn:hover{color:var(--rojo)}
-.tasks-empty{text-align:center;color:var(--texto-debil);padding:40px;font-size:.88rem}
+.tasks-empty{text-align:center;color:var(--texto-debil);padding:44px 20px;font-size:.88rem}
+/* ── Tareas: color y jerarquía (16/9, pedido de Juan) ────────────────────────
+   "Que no quede blanco y negro". El color es semántico, no decoración, y cada
+   familia dice UNA cosa:
+   · la PERSONA lleva el color que ya tiene en el organigrama y en Flujos
+     (tokens `--rol-*` vía la clase `.eq-rol-COLOR`): no hay paleta nueva, y
+     quien es azul allá es azul acá;
+   · el VENCIMIENTO es rojo si ya pasó, ámbar si es hoy y neutro si falta;
+   · el ESTADO pinta el punto y el número de la columna, y el borde izquierdo.
+   Las columnas del tablero son `.task-col` y las fichas `.task-card` para no
+   pisar el mismo `.kanban-col` / `.kanban-card` que usa Pipeline Notion: ese
+   tablero queda exactamente como estaba. */
+.task-av{width:26px;height:26px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:800;flex-shrink:0;background:var(--rol-t,var(--relleno));color:var(--rol-c,var(--texto-tenue));border:1px solid var(--rol-c,var(--borde))}
+.task-quien{display:inline-flex;align-items:center;gap:6px;font-size:.73rem;font-weight:600;color:var(--texto-tenue);white-space:nowrap}
+.task-quien.task-sin-duenio{color:var(--texto-debil);font-style:italic;font-weight:500}
+.task-fecha{display:inline-flex;align-items:center;gap:5px;font-size:.72rem;font-weight:600;padding:3px 9px;border-radius:99px;background:var(--relleno);color:var(--texto-tenue);white-space:nowrap}
+.task-fecha.es-hoy{background:var(--ambar-tinte);color:var(--ambar)}
+.task-fecha.vencida{background:var(--rojo-tinte);color:var(--rojo-texto)}
+.task-de{font-size:.7rem;color:var(--texto-debil)}
+/* Columnas del tablero de Tareas. El color sale del grupo de Notion. */
+.task-col{border-top:3px solid var(--task-c,var(--borde-fuerte))}
+.task-col-todo{--task-c:var(--texto-tenue)}
+.task-col-curso{--task-c:var(--azul-claro)}
+.task-col-hecho{--task-c:var(--verde-texto)}
+.task-col .kanban-head{align-items:center;gap:8px;border-bottom:1px solid var(--borde);margin-bottom:8px}
+.task-col .kanban-name{font-size:.8rem;font-weight:700;color:var(--texto)}
+.task-col-punto{width:8px;height:8px;border-radius:99px;background:var(--task-c,var(--texto-tenue));flex-shrink:0}
+.task-col-n{margin-left:auto;font-size:1.05rem;font-weight:800;line-height:1;color:var(--task-c,var(--texto-tenue));font-variant-numeric:tabular-nums;background:none;padding:0}
+.task-card{border-left:3px solid transparent;transition:border-color .15s,background .15s}
+.task-card:hover{background:var(--hover)}
+.task-card.en-curso{border-left-color:var(--azul)}
+.task-card-tit{font-size:.84rem;font-weight:600;color:var(--texto);line-height:1.35;margin-bottom:7px}
+.task-card-pie{display:flex;align-items:center;gap:8px;margin-top:8px}
+/* Vacío: un estado con cara, no una línea de gris en el medio de la nada. */
+.tasks-empty-icono{font-size:1.7rem;line-height:1;margin-bottom:10px}
+.tasks-empty-tit{font-size:.95rem;font-weight:700;color:var(--texto);margin-bottom:5px}
+.tasks-empty-sub{font-size:.8rem;color:var(--texto-debil);line-height:1.5}
 /* Mobile header */
 .mobile-header{display:none;position:fixed;top:0;left:0;right:0;height:52px;background:rgba(17,24,39,.95);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid rgba(255,255,255,.07);z-index:250;align-items:center;padding:0 16px;gap:12px}
 .mobile-header img{height:24px;object-fit:contain}
@@ -8569,7 +8615,19 @@ function renderTasksList() {
       : _taskStatusFilter === 'todo' ? 'Pendientes'
       : _taskStatusFilter === 'in_progress' ? 'En progreso'
       : 'Hechas';
-    summary.textContent = `${tasks.length} tarea${tasks.length !== 1 ? 's' : ''} · ${userLabel} · ${filterLabel}`;
+    // Los números que importan, grandes: cuántas se están mirando, cuántas
+    // están vencidas y cuántas ya están hechas. Las vencidas solo aparecen si
+    // hay alguna: un "0 vencidas" permanente deja de mirarse.
+    const ahoraR = new Date();
+    const vencidas = tasks.filter(t => t.deadline && new Date(t.deadline) < ahoraR
+                                       && t.status !== 'done').length;
+    const hechas = tasks.filter(t => t.status === 'done').length;
+    const plural = (n, una, varias) => n === 1 ? una : varias;
+    summary.innerHTML =
+      `<span><b>${tasks.length}</b>${plural(tasks.length, 'tarea', 'tareas')}`
+      + ` <i>${esc(userLabel)} · ${esc(filterLabel)}</i></span>`
+      + (vencidas ? `<span><b>${vencidas}</b>${plural(vencidas, 'vencida', 'vencidas')}</span>` : '')
+      + `<span><b>${hechas}</b>${plural(hechas, 'hecha', 'hechas')}</span>`;
   }
   const board = document.getElementById('tasks-board');
   if (_taskView === 'board') {
@@ -8580,7 +8638,14 @@ function renderTasksList() {
   }
   if (board) board.style.display = 'none';
   container.style.display = '';
-  if (!tasks.length) { container.innerHTML = '<div class="tasks-empty">Sin tareas para este filtro.</div>'; return; }
+  if (!tasks.length) {
+    container.innerHTML = '<div class="tasks-empty">'
+      + '<div class="tasks-empty-icono" aria-hidden="true">📋</div>'
+      + '<div class="tasks-empty-tit">No hay tareas para este filtro</div>'
+      + '<div class="tasks-empty-sub">Probá con otro filtro o con otra persona, '
+      + 'o creá una con el botón “+ Nueva tarea”.</div></div>';
+    return;
+  }
   container.innerHTML = tasks.map(t => _taskRowHtml(t)).join('');
 }
 
@@ -8612,12 +8677,22 @@ function _renderTasksBoard(tasks) {
   const columnaDe = t => t.notion_status || _COLUMNA_POR_DEFECTO[t.status] || 'Backlog';
   board.innerHTML = _COLUMNAS_NOTION.map(col => {
     const dentro = tasks.filter(t => columnaDe(t) === col.estado);
-    return `<div class="kanban-col" data-estado="${esc(col.estado)}"
+    // El nombre de la clase va entero y no armado con un pedazo: asi se puede
+    // buscar `task-col-curso` en el archivo y encontrarlo (hay un test que
+    // avisa si una clase del CSS no la arma nadie).
+    const tono = {todo:'task-col-todo', in_progress:'task-col-curso',
+                  done:'task-col-hecho'}[col.grupo] || 'task-col-todo';
+    return `<div class="kanban-col task-col ${tono}" data-estado="${esc(col.estado)}"
                  ondragover="_kanbanOver(event)" ondragleave="_kanbanLeave(event)"
                  ondrop="_kanbanDrop(event, '${esc(col.estado)}')">
-      <div class="kanban-head"><span class="kanban-name">${esc(col.estado)}</span>
-        <span class="kanban-count">${dentro.length}</span></div>
-      <div class="kanban-cards">${dentro.map(t => _taskCardHtml(t)).join('')}</div>
+      <div class="kanban-head"><span class="task-col-punto" aria-hidden="true"></span>
+        <span class="kanban-name">${esc(col.estado)}</span>
+        <span class="kanban-count task-col-n">${dentro.length}</span></div>
+      <div class="kanban-cards">${
+        dentro.length
+          ? dentro.map(t => _taskCardHtml(t)).join('')
+          : '<div class="kanban-vacia">Sin tareas</div>'
+      }</div>
     </div>`;
   }).join('');
 }
@@ -8626,18 +8701,20 @@ function _taskCardHtml(t) {
   const lead = t.client_id ? _allLeads.find(l => l.id === t.client_id) : null;
   const dl = t.deadline ? new Date(t.deadline) : null;
   const overdue = dl && dl < new Date() && t.status !== 'done';
-  const dlStr = dl ? dl.toLocaleDateString('es-UY',{day:'2-digit',month:'2-digit'}) : '';
-  return `<div class="kanban-card${overdue ? ' overdue' : ''}" draggable="true"
+  const enCurso = t.status === 'in_progress';
+  return `<div class="kanban-card task-card${overdue ? ' overdue' : ''}${enCurso ? ' en-curso' : ''}" draggable="true"
                ondragstart="_kanbanDragStart(event, ${t.id})"
                ondblclick="openEditTaskModal(${t.id})" title="Doble clic para editar">
-    <div class="kanban-card-title">${esc(t.title)}</div>
+    <div class="kanban-card-title task-card-tit">${esc(t.title)}</div>
     <div class="kanban-card-meta">
       ${t.notion_page_id ? '<span class="task-notion-badge">Notion</span>' : ''}
       ${t.notion_project_page_id && _proyectosPorPagina && _proyectosPorPagina[t.notion_project_page_id] ? `<span class="proj-stage">${esc(_proyectosPorPagina[t.notion_project_page_id])}</span>` : ''}
       ${t.priority === 'high' ? '<span class="task-priority high">Alta</span>' : ''}
       ${lead ? `<span class="task-client-link" onclick="openClientPanel(${lead.id})">${esc(lead.name||'')}</span>` : ''}
-      ${dlStr ? `<span class="task-deadline ${overdue ? 'overdue' : ''}">${dlStr}</span>` : ''}
-      ${t.assignee_name ? `<span class="kanban-card-who">${esc(t.assignee_name)}</span>` : ''}
+    </div>
+    <div class="task-card-pie">
+      ${_taskQuienHtml(t, 'kanban-card-who')}
+      ${_taskFechaHtml(t, t.status === 'done')}
     </div>
   </div>`;
 }
@@ -8686,6 +8763,49 @@ async function _kanbanDrop(ev, estado) {
   renderTasksList();
 }
 
+// ── Quién y cuándo, que son las dos cosas que se buscan de un vistazo ────────
+// El color de una persona NO se inventa acá: es el de su rol en Flujos, el
+// mismo que tiene en el organigrama. Lo manda /api/users en `color` y se pinta
+// con la clase `.eq-rol-COLOR`, que ya existe. Quien no está en el equipo cae
+// en `neutro` (gris), no en un color de nadie.
+function _taskColorDe(id) {
+  const u = _allUsers.find(x => String(x.id) === String(id));
+  return (u && u.color) ? u.color : 'neutro';
+}
+
+function _taskAvatarHtml(id, nombre) {
+  return '<span class="task-av eq-rol-' + esc(_taskColorDe(id)) + '" aria-hidden="true">'
+    + esc(_upickInitials(nombre)) + '</span>';
+}
+
+function _taskQuienHtml(t, clase) {
+  const extra = clase ? ' ' + clase : '';
+  if (!t.assignee_name) {
+    return '<span class="task-quien task-sin-duenio' + extra + '">Sin asignar</span>';
+  }
+  return '<span class="task-quien' + extra + '">'
+    + _taskAvatarHtml(t.assignee_id, t.assignee_name)
+    + esc(t.assignee_name) + '</span>';
+}
+
+// Una fecha se lee de un vistazo o no sirve: "Venció 10/9" en rojo, "Hoy 18:00"
+// en ámbar, y el resto en gris. Una tarea hecha no vence.
+function _taskFechaHtml(t, done) {
+  if (!t.deadline) return '';
+  const dl = new Date(t.deadline);
+  if (isNaN(dl.getTime())) return '';
+  const ahora = new Date();
+  const esHoy = dl.toDateString() === ahora.toDateString();
+  const vencida = dl < ahora && !done && !esHoy;
+  const conHora = dl.getHours() !== 0 || dl.getMinutes() !== 0;
+  const dia = dl.toLocaleDateString('es-UY', {day:'2-digit', month:'2-digit'});
+  const hora = conHora ? dl.toLocaleTimeString('es-UY', {hour:'2-digit', minute:'2-digit'}) : '';
+  let clase = '', texto = dia + (hora ? ' ' + hora : '');
+  if (vencida) { clase = ' vencida'; texto = 'Venció ' + dia; }
+  else if (esHoy && !done) { clase = ' es-hoy'; texto = hora ? 'Hoy ' + hora : 'Hoy'; }
+  return '<span class="task-fecha' + clase + '">' + esc(texto) + '</span>';
+}
+
 function _taskRowHtml(t) {
   const done = t.status === 'done';
   const inProgress = t.status === 'in_progress';
@@ -8722,8 +8842,8 @@ function _taskRowHtml(t) {
       </div>
       <div id="task-history-${t.id}" style="display:none;margin-top:6px;padding:6px 0;border-top:1px solid var(--borde)"></div>
     </div>` : '';
-  const assigneeBadge = t.assignee_name ? `<span style="font-size:.72rem;color:var(--texto-debil);background:var(--relleno);padding:2px 7px;border-radius:10px">→ ${esc(t.assignee_name)}</span>` : '';
-  const createdByBadge = t.created_by_name && t.assignee_name ? `<span style="font-size:.72rem;color:var(--texto-debil)">de ${esc(t.created_by_name)}</span>` : '';
+  const assigneeBadge = _taskQuienHtml(t);
+  const createdByBadge = t.created_by_name && t.assignee_name ? `<span class="task-de">de ${esc(t.created_by_name)}</span>` : '';
   const notionBadge = t.notion_page_id
     ? `<a href="https://www.notion.so/${t.notion_page_id.replace(/-/g,'')}" target="_blank" rel="noopener"
           class="task-notion-badge" title="${esc(t.notion_status||'')}">Notion</a>`
@@ -8737,7 +8857,7 @@ function _taskRowHtml(t) {
         <span class="task-status-badge ${statusClass}" onclick="_setTaskStatus(${t.id})" title="Click para cambiar estado">${statusLabel}</span>
         ${t.priority ? `<span class="task-priority ${t.priority}">${prioLabel}</span>` : ''}
         ${lead ? `<span class="task-client-link" onclick="openClientPanel(${lead.id})">${esc(lead.name||'')}</span>` : ''}
-        ${dlStr ? `<span class="task-deadline ${overdue ? 'overdue' : ''}">📅 ${dlStr}${overdue?' (vencida)':''}</span>` : ''}
+        ${_taskFechaHtml(t, done)}
         ${assigneeBadge}${createdByBadge}${notionBadge}
       </div>
       ${progressBar}
@@ -9028,8 +9148,12 @@ async function submitAddTask() {
 
 // ── Custom user picker ────────────────────────────────────────────────────────
 
-const _upickColors = ['#0369a1','#7e22ce','#065f46','#9a3412','#be185d','#0f766e','#1d4ed8','#a16207'];
-function _upickColor(id) { return _upickColors[Number(id||0) % _upickColors.length]; }
+// El avatar del selector usa el MISMO color que la persona tiene en el
+// organigrama y en Flujos, igual que el de las tareas: se devuelve el nombre de
+// la familia (`azul`, `rojo`...) y lo pinta la clase `.eq-rol-COLOR`. Antes
+// había acá una paleta propia de 8 hex que no coincidía con ninguna otra
+// pantalla, y la misma persona salía de un color en Tareas y de otro en RRHH.
+function _upickColor(id) { return _taskColorDe(id); }
 function _upickInitials(name) { return (name||'').split(' ').slice(0,2).map(w=>w[0]||'').join('').toUpperCase()||'?'; }
 
 function _upickToggle(id) {
@@ -18109,7 +18233,9 @@ def create_app(db_path: str) -> Flask:
 
     @app.route("/api/users", methods=["GET"])
     def api_users():
-        from database import get_all_users
+        from database import get_all_users, listar_personas_equipo
+        from services.equipo import colores_por_persona
+        from services.flujos import estilo_de_persona
         admin_email = os.environ.get("ADMIN_EMAIL", "").lower()
         users = get_all_users(db_path)
         filtered = [
@@ -18117,6 +18243,21 @@ def create_app(db_path: str) -> Flask:
             if not (admin_email and u["email"].lower() == admin_email)
             and not (not admin_email and u["id"] == 1)
         ]
+        # Solo para pintar: el color con el que cada persona ya aparece en el
+        # organigrama y en Flujos, para que el avatar de Tareas sea el mismo.
+        # No cambia ningun permiso ni ninguna decision: si la persona no esta
+        # en `equipo_personas`, cae en "fuera de Flujos" (rosa), como alla.
+        try:
+            colores = colores_por_persona(
+                listar_personas_equipo(db_path, incluir_inactivas=True))
+        except Exception:      # una base vieja sin la tabla no rompe el panel
+            colores = {}
+        afuera = estilo_de_persona(None)
+        for u in filtered:
+            estilo = colores.get((u.get("name") or "").strip().casefold(), afuera)
+            u["rol_flujo"] = estilo["rol"]
+            u["color"] = estilo["color"]
+            u["etiqueta_flujo"] = estilo["etiqueta"]
         return jsonify(filtered)
 
     @app.route("/api/activity", methods=["GET"])
