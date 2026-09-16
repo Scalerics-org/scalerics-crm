@@ -37,7 +37,10 @@ import re
 import unicodedata
 from datetime import date, datetime, timedelta, timezone
 
-from database import _connect, listar_movimientos, listar_recurrentes
+import json
+
+from database import (_connect, get_escenario, listar_escenarios,
+                      listar_movimientos, listar_recurrentes)
 from services.finanzas import a_usd
 
 logger = logging.getLogger(__name__)
@@ -61,6 +64,17 @@ ETIQUETA_FUERA = {"publicidad": "es la pauta: va en las alternativas de Meta",
 PALABRAS_EQUIPO = {"sueldo", "sueldos", "salario", "salarios", "honorario",
                    "honorarios", "nomina", "jornal", "jornales"}
 MESES_EQUIPO = 3
+# Las dos formas de cobrar que hay en el equipo: sueldo fijo por mes, o
+# comision sobre el desarrollo (Matias: 50 %, y solo si se le da un proyecto).
+TIPOS_EQUIPO = ("fijo", "comision")
+CANTIDAD_MAX = 100
+# Los tres grupos que pidio Juan (16/9): "por un lado sueldos. Por el otro
+# honorarios, por el otro los fijos".
+MESES_ES = ("enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
+            "agosto", "setiembre", "octubre", "noviembre", "diciembre")
+GRUPOS_COSTO = ("sueldos", "honorarios", "fijos")
+ETIQUETA_GRUPO = {"sueldos": "Sueldos", "honorarios": "Honorarios",
+                  "fijos": "Fijos de estructura"}
 # Un pago que aparecio un solo mes no es un sueldo: es un pago suelto.
 MESES_PARA_SER_RECURRENTE = 2
 
@@ -148,20 +162,69 @@ def _meses_previos(mes: str, cuantos: int = MESES_EQUIPO) -> list[str]:
     return salida
 
 
-def _recurrentes_egreso(db_path: str, mes: str) -> list[tuple[dict, float]]:
+def _vigencia(r: dict, mes: str) -> str:
+    """Si ese fijo ya corre, arranca más adelante o ya terminó."""
+    if r["hasta"] and r["hasta"] < mes:
+        return "terminado"
+    if r["desde"] and r["desde"] > mes:
+        return "futuro"
+    return "vigente"
+
+
+def _desde_en_palabras(periodo) -> str:
+    try:
+        return f"desde {MESES_ES[int(str(periodo)[5:7]) - 1]}"
+    except (TypeError, ValueError, IndexError):
+        return "todavía no arrancó"
+
+
+def _recurrentes_egreso(db_path: str, mes: str) -> list[tuple[dict, float, str]]:
+    """TODOS los gastos fijos de la pestaña Fijos, sin filtrar por fecha.
+
+    Juan (16/9): "anda a fijos y agarra todos incluso los que se van a pagar
+    cobrar el mes que viene y ahi los tenes". Así que los que arrancan el mes
+    que viene ENTRAN —él planifica con ellos— y se marcan para que se vea por
+    qué el número es más grande que lo que pagó este mes. Los que ya
+    terminaron se listan igual, apagados, con el motivo.
+    """
     salida = []
     for r in listar_recurrentes(db_path, solo_activos=True):
         if r["tipo"] != "egreso":
             continue
-        if (r["hasta"] and r["hasta"] < mes) or (r["desde"] and r["desde"] > mes):
-            continue
         try:
-            salida.append((r, round(a_usd(r["monto"], r["moneda"], r["tipo_cambio"]), 2)))
+            monto = round(a_usd(r["monto"], r["moneda"], r["tipo_cambio"]), 2)
         except (TypeError, ValueError):
             # Un fijo en pesos sin tipo de cambio es un dato roto de Finanzas,
             # no un cero: se saltea y se sigue, no tira abajo el objetivo.
             logger.warning("objetivo: fijo %s sin tipo de cambio usable", r["id"])
+            continue
+        salida.append((r, monto, _vigencia(r, mes)))
     return salida
+
+
+def ingresos_recurrentes(db_path: str, mes: str) -> dict:
+    """Los ingresos fijos (los mantenimientos), futuros incluidos.
+
+    Los de Juan arrancan todos en octubre. Si no se contaran, el panel le
+    mostraría un agujero que en realidad no tiene.
+    """
+    filas, total = [], 0.0
+    for r in listar_recurrentes(db_path, solo_activos=True):
+        if r["tipo"] != "ingreso":
+            continue
+        vigencia = _vigencia(r, mes)
+        if vigencia == "terminado":
+            continue
+        try:
+            monto = round(a_usd(r["monto"], r["moneda"], r["tipo_cambio"]), 2)
+        except (TypeError, ValueError):
+            continue
+        filas.append({"id": r["id"], "nombre": r["concepto"], "monto_usd": monto,
+                      "vigencia": vigencia,
+                      "nota": _desde_en_palabras(r["desde"]) if vigencia == "futuro" else ""})
+        total += monto
+    filas.sort(key=lambda f: -f["monto_usd"])
+    return {"total": round(total, 2), "filas": filas}
 
 
 def _tokens_de_clientes(db_path: str) -> dict:
@@ -204,9 +267,12 @@ def clasificar_fijos(db_path: str, mes: str) -> dict:
     overrides = {r["recurrente_id"]: r for r in _q(db_path, "SELECT * FROM if_fijo_clasificacion")}
     tokens = _tokens_de_clientes(db_path)
     estructura, cliente = [], []
-    for r, monto in _recurrentes_egreso(db_path, mes):
+    for r, monto, vigencia in _recurrentes_egreso(db_path, mes):
         fila = {"id": r["id"], "concepto": r["concepto"], "categoria": r["categoria"],
-                "monto_usd": monto, "estado": "confirmado", "sugerido": False}
+                "monto_usd": monto, "estado": "confirmado", "sugerido": False,
+                "vigencia": vigencia,
+                "nota": _desde_en_palabras(r["desde"]) if vigencia == "futuro"
+                        else ("ya terminó" if vigencia == "terminado" else "")}
         ov = overrides.get(r["id"])
         if ov:
             fila["motivo"] = "lo marcaste vos"
@@ -246,18 +312,123 @@ def marcar_fijo(db_path: str, recurrente_id: int, clase, client_id=None, quien: 
     return None
 
 
+def listar_equipo(db_path: str) -> list[dict]:
+    """Las líneas de costo del equipo, como las escribió Juan."""
+    return _q(db_path, "SELECT * FROM if_equipo_costos ORDER BY orden, id")
+
+
+def equipo_comision(db_path: str) -> list[dict]:
+    """Los que no tienen costo fijo y cobran un % del desarrollo.
+
+    Matías Domínguez es el caso: si no se le da un proyecto no cuesta nada, y
+    si se le da cobra la mitad de ese desarrollo. No va al objetivo del mes:
+    entra en el margen del proyecto que hace.
+    """
+    return [f for f in listar_equipo(db_path) if f["tipo"] == "comision" and f["pct"] > 0]
+
+
+def validar_linea_equipo(datos) -> tuple[dict | None, str | None]:
+    if not isinstance(datos, dict):
+        return None, "faltan los datos de la persona"
+    nombre = str(datos.get("nombre") or "").strip()
+    if not nombre:
+        return None, "poné el nombre o el rol"
+    if len(nombre) > CONCEPTO_MAX:
+        return None, f"el nombre no puede pasar de {CONCEPTO_MAX} caracteres"
+    tipo = datos.get("tipo") or "fijo"
+    if tipo not in TIPOS_EQUIPO:
+        return None, "el tipo es fijo o comisión"
+    cantidad = _numero(datos.get("cantidad", 1))
+    if cantidad is None or cantidad < 0 or cantidad != int(cantidad):
+        return None, "la cantidad tiene que ser un número entero de cero para arriba"
+    if cantidad > CANTIDAD_MAX:
+        return None, f"la cantidad no puede pasar de {CANTIDAD_MAX}"
+    if tipo == "comision":
+        pct = _numero(datos.get("pct"))
+        if pct is None or pct <= 0 or pct > 100:
+            return None, "la comisión es un porcentaje entre 0 y 100"
+        return {"nombre": nombre, "monto_usd": 0.0, "cantidad": int(cantidad),
+                "tipo": tipo, "pct": round(pct, 2)}, None
+    monto = _numero(datos.get("monto_usd") if "monto_usd" in datos else datos.get("monto"))
+    if monto is None or monto < 0:
+        return None, "el monto tiene que ser un número de cero para arriba"
+    if monto > MONTO_MAX:
+        return None, "ese monto es demasiado grande"
+    return {"nombre": nombre, "monto_usd": round(monto, 2), "cantidad": int(cantidad),
+            "tipo": tipo, "pct": 0.0}, None
+
+
+def guardar_linea_equipo(db_path: str, linea_id, datos, quien: str = "",
+                         ahora: datetime | None = None) -> tuple[dict | None, str | None]:
+    """Crea una línea (sin id) o edita la que se le pase."""
+    campos, error = validar_linea_equipo(datos)
+    if error:
+        return None, error
+    momento = _iso(ahora or _ahora())
+    if linea_id:
+        if not _q(db_path, "SELECT id FROM if_equipo_costos WHERE id = ?", (linea_id,)):
+            return None, "esa persona no está en la lista"
+        _ejecutar(db_path,
+                  "UPDATE if_equipo_costos SET nombre = ?, monto_usd = ?, cantidad = ?, tipo = ?, "
+                  "pct = ?, updated_by = ?, updated_at = ? WHERE id = ?",
+                  (campos["nombre"], campos["monto_usd"], campos["cantidad"], campos["tipo"],
+                   campos["pct"], quien, momento, linea_id))
+    else:
+        orden = (_q(db_path, "SELECT COALESCE(MAX(orden), 0) + 1 AS o FROM if_equipo_costos")
+                 or [{"o": 0}])[0]["o"]
+        linea_id = _ejecutar(db_path,
+                             "INSERT INTO if_equipo_costos (nombre, monto_usd, cantidad, tipo, "
+                             "pct, orden, updated_by, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                             (campos["nombre"], campos["monto_usd"], campos["cantidad"],
+                              campos["tipo"], campos["pct"], orden, quien, momento))
+    return {"id": linea_id, **campos}, None
+
+
+def borrar_linea_equipo(db_path: str, linea_id: int) -> str | None:
+    if not _q(db_path, "SELECT id FROM if_equipo_costos WHERE id = ?", (linea_id,)):
+        return "esa persona no está en la lista"
+    _ejecutar(db_path, "DELETE FROM if_equipo_costos WHERE id = ?", (linea_id,))
+    return None
+
+
 def costo_equipo(db_path: str, mes: str) -> dict:
-    """El costo del equipo por mes, sacado de los movimientos reales.
+    """El costo del equipo por mes: la lista que escribió Juan.
 
-    Los sueldos no viven en la pestaña de Fijos: se cargan mes a mes como
-    movimientos sueltos, casi siempre en "servicios", con el nombre de la
-    persona en el concepto ("Sueldo Juan programador", "Honorarios Mati"). Son
-    el gasto fijo más grande que tiene la empresa: si el objetivo no los cuenta,
-    queda por el piso.
+    Hasta el 16/9 esto era el promedio de los 3 meses anteriores de sueldos y
+    honorarios. Daba unas 4 veces de más, porque metía en la bolsa pagos que no
+    son sueldo mensual. Ahora la fuente es la lista de `if_equipo_costos`, una
+    línea por rol o persona, con su monto y cuántos son (2 programadores a 50
+    son 100). Juan la edita, agrega y saca gente desde la pantalla.
 
-    Se promedia sobre los 3 meses completos anteriores y se cuenta solo lo que
-    se repite (aparece en 2 de esos 3 meses). Un pago que salió una sola vez se
-    informa aparte y no suma: no es un sueldo.
+    Los de comisión (Matías: 50 % del desarrollo) NO suman acá: no cuestan nada
+    si no se les da un proyecto, y cuando se les da, el costo sale del margen de
+    ese proyecto. Se devuelven aparte para que la pantalla los muestre igual.
+
+    El promedio sigue existiendo, pero solo de respaldo para una base sin lista,
+    y en ese caso `fuente` lo dice para que la pantalla lo avise.
+    """
+    lineas = listar_equipo(db_path)
+    comision = [f for f in lineas if f["tipo"] == "comision" and f["pct"] > 0]
+    fijas = [f for f in lineas if f["tipo"] == "fijo"]
+    if fijas:
+        filas, total = [], 0.0
+        for f in fijas:
+            subtotal = round(float(f["monto_usd"]) * int(f["cantidad"]), 2)
+            filas.append({"id": f["id"], "concepto": f["nombre"], "monto_usd": subtotal,
+                          "unitario": round(float(f["monto_usd"]), 2),
+                          "cantidad": int(f["cantidad"]), "tipo": "fijo", "pct": 0.0,
+                          "estado": "equipo"})
+            total += subtotal
+        return {"total": round(total, 2), "filas": filas, "sueltos": [], "comision": comision,
+                "fuente": "lista", "es_promedio": False}
+    return _costo_equipo_promedio(db_path, mes, comision)
+
+
+def _costo_equipo_promedio(db_path: str, mes: str, comision: list) -> dict:
+    """El respaldo de antes: promedio de los 3 meses previos de los movimientos.
+
+    Solo se usa con la lista vacía. Cuenta lo que se repite (aparece en 2 de
+    esos 3 meses); un pago que salió una sola vez se informa aparte y no suma.
     """
     previos = _meses_previos(mes)
     movs = [m for m in listar_movimientos(db_path, desde=previos[0], hasta=previos[-1],
@@ -284,7 +455,210 @@ def costo_equipo(db_path: str, mes: str) -> dict:
     filas.sort(key=lambda f: -f["monto_usd"])
     sueltos.sort(key=lambda f: -f["monto_usd"])
     return {"total": round(total, 2), "filas": filas, "sueltos": sueltos,
+            "comision": comision, "fuente": "promedio", "es_promedio": True,
             "meses": len(previos), "desde": previos[0], "hasta": previos[-1]}
+
+
+def escenarios_guardados(db_path: str) -> list[dict]:
+    """Los escenarios que Juan guardó en el Simulador. Solo de lectura.
+
+    Juan (16/9): "de ultima voy creo un escenario y me da una recomendacion".
+    El panel los lee para poder calcular contra uno de ellos, pero nunca los
+    toca: el Simulador es el dueño.
+    """
+    try:
+        return [{"id": e["id"], "nombre": e["nombre"], "actualizado": e["updated_at"]}
+                for e in listar_escenarios(db_path)]
+    except Exception:
+        logger.warning("objetivo: no se pudieron leer los escenarios", exc_info=True)
+        return []
+
+
+def escenario_para_panel(db_path: str, escenario_id) -> dict | None:
+    """Los supuestos de un escenario guardado, en los nombres del panel.
+
+    Del JSON del Simulador solo se toma lo que el panel usa: cuántos
+    programadores, qué se paga de pauta, el costo por lead y las dos
+    conversiones del embudo. El resto del escenario no se toca.
+    """
+    try:
+        fila = get_escenario(db_path, int(escenario_id))
+    except (TypeError, ValueError):
+        return None
+    if not fila:
+        return None
+    try:
+        datos = json.loads(fila["datos"] or "{}")
+    except ValueError:
+        datos = {}
+    if not isinstance(datos, dict):
+        datos = {}
+
+    def leer(grupo, clave):
+        valor = _numero((datos.get(grupo) or {}).get(clave))
+        return valor if valor is not None and valor >= 0 else None
+
+    return {
+        "id": fila["id"], "nombre": fila["nombre"], "actualizado": fila["updated_at"],
+        "supuestos": {
+            "programadores": leer("equipo", "cantidadProgramadores"),
+            "sueldo_programador": leer("equipo", "sueldoPorProgramador"),
+            "pauta": leer("ventas", "pauta"),
+            "costo_por_lead": leer("embudo", "costoPorLead"),
+            "conv_lead_demo": leer("embudo", "conversionLeadDemo"),
+            "conv_demo_venta": leer("embudo", "conversionDemoVenta"),
+            "sueldo_objetivo": leer("meta", "sueldoObjetivo"),
+        },
+    }
+
+
+def apagados(db_path: str) -> set:
+    """Las claves de costo que Juan apagó. Ausente es prendido."""
+    return {f["clave"] for f in _q(db_path, "SELECT clave FROM if_costos_activos WHERE activo = 0")}
+
+
+def marcar_costo(db_path: str, clave: str, activo, quien: str = "",
+                 ahora: datetime | None = None) -> str | None:
+    """Prende o apaga un costo. Apagado sale del objetivo, pero se sigue viendo."""
+    clave = str(clave or "").strip()
+    if not clave or len(clave) > CONCEPTO_MAX:
+        return "no se reconoce ese costo"
+    _ejecutar(db_path,
+              "INSERT INTO if_costos_activos (clave, activo, updated_by, updated_at) "
+              "VALUES (?, ?, ?, ?) ON CONFLICT(clave) DO UPDATE SET activo = excluded.activo, "
+              "updated_by = excluded.updated_by, updated_at = excluded.updated_at",
+              (clave, 1 if activo else 0, quien, _iso(ahora or _ahora())))
+    return None
+
+
+def movimientos_que_se_repiten(db_path: str, mes: str, ya_estan: set) -> list[dict]:
+    """Gastos que solo existen como movimientos y vuelven todos los meses.
+
+    En Finanzas hay costos que nunca se cargaron como "fijo": se anotan mes a
+    mes como movimiento suelto. Si el panel mira solo la pestaña de Fijos, esos
+    no aparecen, y Juan pidió que aparezcan TODOS. Se toman los que se repiten
+    (2 de los 3 meses anteriores) y no los generó un fijo, y se promedia.
+
+    `ya_estan` son los nombres que ya salen de la lista del equipo, para no
+    contar dos veces a la misma persona.
+    """
+    previos = _meses_previos(mes)
+    movs = [m for m in listar_movimientos(db_path, desde=previos[0], hasta=previos[-1],
+                                          tipo="egreso")
+            if not m["recurrente_id"] and m["categoria"] not in CATEGORIAS_FUERA_DE_ESTRUCTURA]
+    grupos: dict = {}
+    for m in movs:
+        clave = " ".join(sorted(_palabras(m["concepto"]))) or "gasto"
+        g = grupos.setdefault(clave, {"concepto": m["concepto"], "meses": set(), "total": 0.0,
+                                      "categoria": m["categoria"]})
+        g["meses"].add(m["periodo"])
+        g["total"] += float(m["monto_usd"] or 0)
+    salida = []
+    for clave, g in grupos.items():
+        if len(g["meses"]) < MESES_PARA_SER_RECURRENTE:
+            continue
+        if _raices(g["concepto"]) & ya_estan:
+            continue
+        salida.append({"clave": "mov:" + clave, "nombre": g["concepto"],
+                       "monto_usd": round(g["total"] / len(previos), 2),
+                       "grupo": _grupo_de_concepto(g["concepto"]),
+                       "origen": "se repite en Finanzas, promedio de 3 meses"})
+    return [f for f in salida if f["monto_usd"] > 0]
+
+
+def _raiz(palabra: str) -> str:
+    """La palabra sin el plural, para comparar nombres.
+
+    "Sueldo Programadores" y la línea "Programador" de la lista son la misma
+    persona. Comparando palabra por palabra no coincidían y el costo se contaba
+    DOS veces: una en la lista y otra como movimiento que se repite.
+    """
+    for fin in ("es", "s"):
+        if len(palabra) > 4 and palabra.endswith(fin):
+            return palabra[:-len(fin)]
+    return palabra
+
+
+def _raices(texto) -> set:
+    return {_raiz(p) for p in _palabras(texto)}
+
+
+def _grupo_de_concepto(concepto) -> str:
+    p = _palabras(concepto)
+    if p & {"sueldo", "sueldos", "salario", "salarios", "jornal", "jornales"}:
+        return "sueldos"
+    if p & {"honorario", "honorarios", "comision", "comisiones"}:
+        return "honorarios"
+    return "fijos"
+
+
+def costos_del_mes(db_path: str, mes: str) -> dict:
+    """TODOS los costos del mes, en los tres grupos que pidió Juan.
+
+    "Lo que hay que entender es que se deben poner todos los gastos, por un
+    lado sueldos. Por el otro honorarios, por el otro los fijos."
+
+    Cada línea trae su `clave` y si está prendida. Apagar una la saca del
+    objetivo pero NO la esconde: se sigue viendo, tachada, como en el
+    Simulador. El total son solo las prendidas.
+
+    Los costos de un cliente de mantenimiento van aparte y no entran al
+    objetivo, igual que antes; la pauta, los impuestos y los retiros también.
+    """
+    off = apagados(db_path)
+    grupos = {g: [] for g in GRUPOS_COSTO}
+
+    nombres_equipo = set()
+    for f in listar_equipo(db_path):
+        if f["tipo"] != "fijo":
+            continue
+        nombres_equipo |= _raices(f["nombre"])
+        clave = f"equipo:{f['id']}"
+        grupos[f["grupo"] if f["grupo"] in grupos else "sueldos"].append({
+            "clave": clave, "id": f["id"], "nombre": f["nombre"],
+            "unitario": round(float(f["monto_usd"]), 2), "cantidad": int(f["cantidad"]),
+            "monto_usd": round(float(f["monto_usd"]) * int(f["cantidad"]), 2),
+            "activo": clave not in off, "editable": True,
+            "origen": "lo que cobra, escrito acá"})
+
+    clases = clasificar_fijos(db_path, mes)
+    for f in clases["estructura"]:
+        if f["categoria"] in CATEGORIAS_FUERA_DE_ESTRUCTURA:
+            continue
+        clave = f"fijo:{f['id']}"
+        # Un fijo que ya terminó se sigue viendo, pero arranca apagado: no se
+        # paga más. Uno que arranca el mes que viene entra prendido, porque
+        # Juan planifica con él, y dice desde cuándo.
+        terminado = f.get("vigencia") == "terminado"
+        grupos["fijos"].append({
+            "clave": clave, "id": f["id"], "nombre": f["concepto"],
+            "unitario": f["monto_usd"], "cantidad": 1, "monto_usd": f["monto_usd"],
+            "activo": (clave not in off) and not terminado, "editable": False,
+            "vigencia": f.get("vigencia") or "vigente",
+            "origen": f.get("nota") or "gasto fijo de Finanzas"})
+
+    for f in movimientos_que_se_repiten(db_path, mes, nombres_equipo):
+        grupos[f["grupo"]].append({
+            "clave": f["clave"], "id": None, "nombre": f["nombre"],
+            "unitario": f["monto_usd"], "cantidad": 1, "monto_usd": f["monto_usd"],
+            "activo": f["clave"] not in off, "editable": False, "origen": f["origen"]})
+
+    salida, total = [], 0.0
+    for clave in GRUPOS_COSTO:
+        filas = sorted(grupos[clave], key=lambda f: -f["monto_usd"])
+        prendido = round(sum(f["monto_usd"] for f in filas if f["activo"]), 2)
+        total += prendido
+        salida.append({"clave": clave, "rotulo": ETIQUETA_GRUPO[clave], "filas": filas,
+                       "total": prendido,
+                       "total_todo": round(sum(f["monto_usd"] for f in filas), 2)})
+    return {"grupos": salida, "total": round(total, 2),
+            "ingresos": ingresos_recurrentes(db_path, mes),
+            "por_cliente": clases["cliente"],
+            "por_cliente_total": round(sum(f["monto_usd"] for f in clases["cliente"]), 2),
+            "fuera": [dict(f, motivo=ETIQUETA_FUERA.get(f["categoria"], ""))
+                      for f in clases["estructura"]
+                      if f["categoria"] in CATEGORIAS_FUERA_DE_ESTRUCTURA],
+            "comision": equipo_comision(db_path)}
 
 
 def base_estructural(db_path: str, mes: str, equipo_usd=None) -> dict:
@@ -294,23 +668,27 @@ def base_estructural(db_path: str, mes: str, equipo_usd=None) -> dict:
     impuestos, ni los retiros. Cada grupo se devuelve aparte para que se vea
     de dónde sale el número y se pueda discutir.
     """
-    clases = clasificar_fijos(db_path, mes)
-    estructura = [f for f in clases["estructura"]
-                  if f["categoria"] not in CATEGORIAS_FUERA_DE_ESTRUCTURA]
-    fuera = [dict(f, motivo=ETIQUETA_FUERA.get(f["categoria"], ""))
-             for f in clases["estructura"] if f["categoria"] in CATEGORIAS_FUERA_DE_ESTRUCTURA]
-    equipo = costo_equipo(db_path, mes)
-    # El promedio de los movimientos es una aproximación: Juan sabe el sueldo
-    # exacto de cada uno. Si lo escribió, vale el suyo y no se recalcula.
+    costos = costos_del_mes(db_path, mes)
+    por_grupo = {g["clave"]: g for g in costos["grupos"]}
+    # El equipo son sueldos + honorarios; la estructura, los fijos. Los tres
+    # grupos ya cuentan SOLO lo prendido: apagar un costo mueve el objetivo.
+    equipo_filas = por_grupo["sueldos"]["filas"] + por_grupo["honorarios"]["filas"]
+    equipo_total = round(por_grupo["sueldos"]["total"] + por_grupo["honorarios"]["total"], 2)
+    hay_lista = any(f.get("editable") for f in equipo_filas)
+    equipo = {"total": equipo_total, "filas": equipo_filas, "sueltos": [],
+              "comision": costos["comision"], "editado": False,
+              "fuente": "lista" if hay_lista else "promedio",
+              "es_promedio": not hay_lista}
+    # Juan sabe el número exacto: si lo escribió a mano, vale el suyo.
     if equipo_usd is not None:
         equipo = dict(equipo, total=round(float(equipo_usd), 2), editado=True)
-    else:
-        equipo = dict(equipo, editado=False)
-    recurrentes_total = round(sum(f["monto_usd"] for f in estructura), 2)
+    estructura = por_grupo["fijos"]["filas"]
+    recurrentes_total = por_grupo["fijos"]["total"]
     return {"recurrentes": estructura, "recurrentes_total": recurrentes_total,
-            "equipo": equipo, "por_cliente": clases["cliente"],
-            "por_cliente_total": round(sum(f["monto_usd"] for f in clases["cliente"]), 2),
-            "fuera": fuera, "total": round(recurrentes_total + equipo["total"], 2)}
+            "equipo": equipo, "por_cliente": costos["por_cliente"],
+            "por_cliente_total": costos["por_cliente_total"],
+            "fuera": costos["fuera"], "costos": costos,
+            "total": round(recurrentes_total + equipo["total"], 2)}
 
 
 def fijos_confirmados(db_path: str, mes: str) -> dict:
@@ -615,6 +993,7 @@ def objetivo(db_path: str, mes: str) -> dict:
              "origen": origen, "editado": editado, "automatico": automatico,
              "equipo": base["equipo"]["total"], "estructura": base["recurrentes_total"],
              "equipo_editado": bool(base["equipo"].get("editado")),
+             "equipo_promedio": bool(base["equipo"].get("es_promedio")),
              "esperados": suma_esperados},
             {"clave": "aportes", "rotulo": "Aportes a reemplazar", "monto": aportes,
              "origen": "", "editado": aportes > 0},

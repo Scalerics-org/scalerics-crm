@@ -24,7 +24,7 @@ from pathlib import Path
 import pytest
 
 import dashboard
-from database import (crear_movimiento, crear_recurrente, init_db,
+from database import (crear_escenario, crear_movimiento, crear_recurrente, init_db,
                       insert_business, update_business, upsert_project)
 from services import inteligencia_fin as ifn
 from services import intel_objetivo as obj
@@ -86,6 +86,17 @@ def _venta(db, nombre, periodo, precio):
     return bid
 
 
+def _sin_equipo(db):
+    """Vacia la lista de costos del equipo.
+
+    La precarga mete los 475 de Juan en toda base nueva. Los tests que no
+    son sobre el equipo la sacan, para que el numero que miran siga siendo
+    el del objetivo y no el del equipo.
+    """
+    for f in obj.listar_equipo(db):
+        obj.borrar_linea_equipo(db, f["id"])
+
+
 def _negocio_andando(db):
     """Un mes normal: ventas, gastos, un fijo a nombre de alguien del equipo."""
     for p in PREVIOS:
@@ -107,9 +118,11 @@ def test_el_objetivo_es_la_suma_de_las_tres_partes(db):
     o = obj.objetivo(db, MES)
 
     assert [p["clave"] for p in o["partes"]] == ["fijos", "aportes", "sueldo"]
-    assert [p["monto"] for p in o["partes"]] == [170, 1100, 2000]
-    # El número del PDF para Scalerics.
-    assert o["total"] == 3270
+    # 645 = Hosting 170 + equipo 475 (marketing 300 + 2 programadores a 50
+    # + contador 75), que es lo que cobra el equipo de verdad.
+    assert [p["monto"] for p in o["partes"]] == [645, 1100, 2000]
+    assert o["partes"][0]["equipo"] == 475
+    assert o["total"] == 3745
 
 
 def test_los_fijos_salen_de_finanzas_pero_se_pueden_pisar(db):
@@ -125,10 +138,11 @@ def test_los_fijos_salen_de_finanzas_pero_se_pueden_pisar(db):
     # asi el objetivo sigue a los fijos cuando cambian.
     obj.guardar(db, MES, {"fijos_usd": None})
     parte = obj.objetivo(db, MES)["partes"][0]
-    assert parte["monto"] == 170 and parte["editado"] is False
+    assert parte["monto"] == 645 and parte["editado"] is False
 
 
 def test_el_objetivo_se_guarda_por_mes_y_rechaza_negativos(db):
+    _sin_equipo(db)
     obj.guardar(db, MES, {"sueldo_usd": 2000})
     assert obj.objetivo(db, MES)["total"] == 2000
     assert obj.objetivo(db, "2026-10")["total"] == 0
@@ -159,21 +173,28 @@ def test_estan_las_cinco_palancas_del_pdf():
 
 # ── 3. la regla de negocio: el neto honesto ──────────────────────────────────
 
-def test_pausar_una_linea_muestra_el_neto_negativo_no_el_ahorro(db):
-    """"No darle trabajo a Matías" ahorra su costo pero saca la capacidad de
-    entregar. El impacto que se muestra es el NETO, y da negativo."""
+def test_pausar_a_quien_cobra_comision_no_ahorra_un_costo_fijo(db):
+    """Juan (16/9): "mati dominguez si le damos proyecto cobra el 50% del
+    desarrollo".
+
+    Entonces no darle trabajo NO ahorra un gasto fijo: si no trabaja, no cobra.
+    Lo que pasa es que se deja de pagar la mitad del desarrollo y se deja de
+    facturar el desarrollo entero. El neto es la otra mitad, en contra, y asi
+    tiene que mostrarse.
+    """
     _negocio_andando(db)
 
     r12 = {r["regla"]: r for r in ifn.calcular(db, HOY)["recomendaciones"]}["R12"]
 
     assert r12["palanca"] == "pausa"
-    assert r12["impacto_mensual"] < 0, "el ahorro limpio esconde lo que se deja de facturar"
-    assert "Matias" in r12["titulo"]
-    # La cuenta tiene que estar a la vista: lo que se ahorra y lo que se pierde.
-    assert "Se ahorra" in r12["calculo"] and "Se pierde" in r12["calculo"]
+    assert "Matías Domínguez" in r12["titulo"]
+    # Ticket 4.000 y comision 50 %: ahorra 2.000 y deja de facturar 4.000.
+    assert r12["impacto_mensual"] == -2000
+    assert "No te ahorrás un gasto fijo" in r12["detalle"]
+    assert "Se ahorra la comisión" in r12["calculo"]
+    assert "Se deja de facturar el desarrollo" in r12["calculo"]
     assert "Impacto NETO" in r12["calculo"]
-    # Y se dice de dónde sale la atribución, que es un supuesto.
-    assert any("no está en el sistema" in s for s in r12["supuestos"])
+
 
 
 def test_la_negativa_sobrevive_al_umbral_y_queda_ultima(db):
@@ -209,6 +230,7 @@ def test_validaciones_del_gasto_esperado(db):
 
 
 def test_cuando_cae_el_movimiento_real_se_empareja_y_no_se_cuenta_dos_veces(db):
+    _sin_equipo(db)
     gasto, _ = obj.crear_esperado(db, MES, {"concepto": "Contador setiembre", "monto_usd": 300,
                                             "categoria": "fijo"})
     assert obj.objetivo(db, MES)["total"] == 300
@@ -256,6 +278,7 @@ def test_un_gasto_parecido_de_otro_monto_no_se_empareja_solo(db):
 def test_el_emparejado_tambien_agarra_los_fijos_materializados(db):
     """Un movimiento puede aparecer sin pasar por la pantalla de carga (la
     materialización de un fijo). Igual se empareja al abrir el panel."""
+    _sin_equipo(db)
     obj.crear_esperado(db, MES, {"concepto": "Hosting AWS", "monto_usd": 200, "categoria": "fijo"})
     _mov(db, "egreso", 200, "2026-09-03", "infraestructura", "Hosting AWS")
 
@@ -266,6 +289,7 @@ def test_el_emparejado_tambien_agarra_los_fijos_materializados(db):
 # ── 5. nunca abre diciendo que no hay nada ───────────────────────────────────
 
 def test_base_vacia_igual_muestra_objetivo_y_cinco_alternativas(db):
+    _sin_equipo(db)
     ifn.corrida_diaria(db, AHORA)
     estado = ifn.estado_pantalla(db, es_admin=True, ahora=AHORA)
 
@@ -282,7 +306,10 @@ def test_base_vacia_igual_muestra_objetivo_y_cinco_alternativas(db):
 def test_cada_oportunidad_dice_que_haria_y_con_que_se_enciende(db):
     ifn.corrida_diaria(db, AHORA)
 
-    for r in ifn.estado_pantalla(db, ahora=AHORA)["recomendaciones"]:
+    recs = ifn.estado_pantalla(db, ahora=AHORA)["recomendaciones"]
+    oportunidades = [r for r in recs if r["regla"] == "R0"]
+    assert oportunidades, "tiene que haber tarjetas de oportunidad"
+    for r in oportunidades:
         assert r["detalle"], r["titulo"]
         assert "se enciende" in r["nota"].lower(), r["nota"]
         # Una oportunidad es una oportunidad, no un reproche.
@@ -394,9 +421,15 @@ def test_juan_puede_corregir_la_clasificacion(db):
     assert "VPS Jose" not in {f["concepto"] for f in clases["cliente"]}
 
 
-def test_los_sueldos_cuentan_aunque_no_esten_en_la_pestana_de_fijos(db):
-    """Los sueldos son el gasto fijo más grande y se cargan como movimientos.
-    Si el objetivo mirara solo los recurrentes, quedaría por el piso."""
+def test_sin_lista_los_sueldos_salen_de_los_movimientos(db):
+    """El respaldo, para una base sin la lista cargada.
+
+    Los sueldos no estan en la pestana de Fijos: se cargan como movimientos
+    sueltos. Sin lista, el objetivo los saca de ahi -si mirara solo los
+    recurrentes quedaria por el piso-, pero avisando que es un promedio.
+    Con lista cargada manda la lista: eso lo cubre el test de mas abajo.
+    """
+    _sin_equipo(db)
     _finanzas_como_en_produccion(db)
 
     equipo = obj.costo_equipo(db, MES)
@@ -473,3 +506,217 @@ def test_la_bajada_es_una_linea(db):
     ifn.corrida_diaria(db, AHORA)
     bajada = ifn.estado_pantalla(db, ahora=AHORA)["bajada"]
     assert len(bajada) <= 60, bajada
+
+
+# ── 9. lo que cobra cada uno de verdad (correccion de Juan, 16/9) ────────────
+
+def test_el_costo_del_equipo_sale_de_la_lista_no_del_promedio(db):
+    """El promedio de 3 meses daba unas 4 veces de mas. La fuente es la lista."""
+    equipo = obj.costo_equipo(db, MES)
+
+    assert equipo["fuente"] == "lista" and equipo["es_promedio"] is False
+    # 300 de marketing + 50 x 2 programadores + 75 del contador = 475.
+    assert equipo["total"] == 475
+    assert [(f["concepto"], f["unitario"], f["cantidad"]) for f in equipo["filas"]] == [
+        ("Honorarios marketing", 300, 1), ("Programador", 50, 2), ("Contador", 75, 1)]
+
+
+def test_cambiar_cuantos_programadores_hay_cambia_el_objetivo(db):
+    """"hay 2 en este momento": cuando entre otro, se cambia el numero y listo."""
+    prog = next(f for f in obj.listar_equipo(db) if f["nombre"] == "Programador")
+    antes = obj.objetivo(db, MES)["total"]
+
+    _, error = obj.guardar_linea_equipo(
+        db, prog["id"], {"nombre": "Programador", "monto_usd": 50, "cantidad": 3, "tipo": "fijo"})
+
+    assert error is None
+    assert obj.costo_equipo(db, MES)["total"] == 525
+    assert obj.objetivo(db, MES)["total"] == antes + 50
+
+
+def test_se_puede_sumar_y_sacar_gente(db):
+    linea, error = obj.guardar_linea_equipo(
+        db, None, {"nombre": "Disenador", "monto_usd": 120, "cantidad": 1, "tipo": "fijo"})
+
+    assert error is None
+    assert obj.costo_equipo(db, MES)["total"] == 595
+    assert obj.borrar_linea_equipo(db, linea["id"]) is None
+    assert obj.costo_equipo(db, MES)["total"] == 475
+
+
+def test_el_promedio_queda_de_respaldo_y_lo_dice(db):
+    _sin_equipo(db)
+    for p in PREVIOS:
+        _mov(db, "egreso", 900, f"{p}-05", "servicios", "Sueldo Programadores")
+
+    equipo = obj.costo_equipo(db, MES)
+
+    assert equipo["es_promedio"] is True and equipo["fuente"] == "promedio"
+    assert equipo["total"] == 900
+    # Y la pantalla tiene con que avisarlo.
+    assert obj.objetivo(db, MES)["partes"][0]["equipo_promedio"] is True
+
+
+def test_el_que_cobra_comision_no_suma_al_objetivo(db):
+    """No cuesta nada si no se le da un proyecto: no es un gasto fijo."""
+    assert [(c["nombre"], c["pct"]) for c in obj.equipo_comision(db)] == [("Matías Domínguez", 50)]
+
+    equipo = obj.costo_equipo(db, MES)
+
+    assert equipo["total"] == 475
+    assert all(f["concepto"] != "Matías Domínguez" for f in equipo["filas"])
+    assert [c["nombre"] for c in equipo["comision"]] == ["Matías Domínguez"]
+
+
+def test_la_comision_baja_el_margen_del_proyecto(db):
+    """El 50 % sale del mismo proyecto, asi que el margen de ese proyecto es
+    otro. Se muestran los dos, porque no se sabe quien hace cual."""
+    _negocio_andando(db)
+
+    ctx = ifn._contexto(db, HOY)
+    tipos = ifn._margen_por_tipo(ctx)
+
+    assert ctx["comision_pct"] == 50
+    t = tipos["desarrollo_web"]
+    assert t["comision"] == round(t["ticket"] * 0.5, 2)
+    assert t["margen_con_comision"] < t["margen"]
+
+
+def test_validaciones_de_la_lista_del_equipo(db):
+    assert obj.guardar_linea_equipo(db, None, {"nombre": "", "monto_usd": 10})[1]
+    assert obj.guardar_linea_equipo(db, None, {"nombre": "X", "monto_usd": -1})[1]
+    assert obj.guardar_linea_equipo(db, None, {"nombre": "X", "monto_usd": 10, "cantidad": 1.5})[1]
+    assert obj.guardar_linea_equipo(db, None, {"nombre": "X", "tipo": "comision", "pct": 0})[1]
+    assert obj.guardar_linea_equipo(db, 99999, {"nombre": "X", "monto_usd": 10})[1]
+    assert obj.borrar_linea_equipo(db, 99999)
+
+
+# ── 10. todos los costos, recortes y recomendacion (correccion de Juan, 16/9) ─
+
+def test_estan_los_tres_grupos_que_pidio_juan(db):
+    """"por un lado sueldos. Por el otro honorarios, por el otro los fijos"."""
+    crear_recurrente(db, tipo="egreso", concepto="Claude", categoria="herramientas",
+                     monto=100, moneda="USD", desde="2026-01")
+
+    c = obj.costos_del_mes(db, MES)
+
+    assert [g["clave"] for g in c["grupos"]] == ["sueldos", "honorarios", "fijos"]
+    por = {g["clave"]: g for g in c["grupos"]}
+    assert [f["nombre"] for f in por["sueldos"]["filas"]] == ["Programador"]
+    assert por["sueldos"]["total"] == 100      # 50 x 2
+    assert por["honorarios"]["total"] == 375   # 300 marketing + 75 contador
+    assert por["fijos"]["total"] == 100
+
+
+def test_apagar_un_costo_lo_saca_del_objetivo_pero_no_lo_esconde(db):
+    """Como los interruptores del Simulador: se ve, tachado, y no suma."""
+    antes = obj.objetivo(db, MES)["total"]
+    prog = next(f for g in obj.costos_del_mes(db, MES)["grupos"]
+                for f in g["filas"] if f["nombre"] == "Programador")
+
+    assert obj.marcar_costo(db, prog["clave"], False) is None
+
+    assert obj.objetivo(db, MES)["total"] == antes - 100
+    sigue = next(f for g in obj.costos_del_mes(db, MES)["grupos"]
+                 for f in g["filas"] if f["nombre"] == "Programador")
+    assert sigue["activo"] is False and sigue["monto_usd"] == 100
+
+
+def test_los_fijos_que_arrancan_el_mes_que_viene_cuentan_y_lo_dicen(db):
+    """"agarra todos incluso los que se van a pagar cobrar el mes que viene"."""
+    crear_recurrente(db, tipo="egreso", concepto="Pasarela de Pagos", categoria="infraestructura",
+                     monto=100, moneda="USD", desde="2026-10")
+    crear_recurrente(db, tipo="egreso", concepto="Claude", categoria="herramientas",
+                     monto=100, moneda="USD", desde="2026-07")
+
+    fijos = next(g for g in obj.costos_del_mes(db, MES)["grupos"] if g["clave"] == "fijos")
+    futura = next(f for f in fijos["filas"] if f["nombre"] == "Pasarela de Pagos")
+
+    assert fijos["total"] == 200, "el que arranca en octubre entra igual"
+    assert futura["vigencia"] == "futuro" and futura["activo"] is True
+    assert "octubre" in futura["origen"]
+
+
+def test_los_mantenimientos_futuros_cuentan_como_cubierto(db):
+    """Si no se contaran, le mostraria un agujero que no tiene."""
+    for nombre, monto in [("Mantenimiento Rodrigo", 50), ("Mnatenimiento Blende", 175)]:
+        crear_recurrente(db, tipo="ingreso", concepto=nombre, categoria="software_medida",
+                         monto=monto, moneda="USD", desde="2026-10")
+
+    ingresos = obj.costos_del_mes(db, MES)["ingresos"]
+
+    assert ingresos["total"] == 225
+    assert all(f["nota"] == "desde octubre" for f in ingresos["filas"])
+
+
+def test_echar_un_programador_se_acota_por_lo_que_de_verdad_se_vende(db):
+    """La capacidad teorica decia 2,8 proyectos por cabeza y el neto daba
+    -9.850. No se puede dejar de entregar mas de lo que se vende."""
+    _negocio_andando(db)
+
+    r13 = [r for r in ifn.calcular(db, HOY)["recomendaciones"] if r["regla"] == "R13"]
+
+    assert r13, "tiene que estar la opcion de echar un programador"
+    uno = r13[0]
+    assert uno["titulo"] == "Echá un programador"
+    assert uno["palanca"] == "recorte"
+    assert uno["consecuencia"], "tiene que decir que pasa"
+    assert uno["impacto_mensual"] > -3000, uno["impacto_mensual"]
+    # Y esta la de echar a los dos, que es la que el pregunto.
+    assert any("los 2" in r["titulo"] for r in r13)
+
+
+def test_marketing_solo_aplica_si_el_mes_cierra_sin_ventas(db):
+    """Juan: "en caso de que no caiga una venta no pagarle al de marketing"."""
+    sin_ventas = {r["regla"]: r for r in ifn.calcular(db, HOY)["recomendaciones"]}["R14"]
+
+    assert sin_ventas["titulo"] == "No le pagues al de marketing si no vende"
+    assert sin_ventas["impacto_mensual"] == 300
+    assert "un mes" in sin_ventas["consecuencia"]
+
+    # Con una venta este mes la condicion no se cumple: se muestra, sin ahorro.
+    _venta(db, "Cliente de setiembre", "2026-09", 4000)
+    con_venta = {r["regla"]: r for r in ifn.calcular(db, HOY)["recomendaciones"]}["R14"]
+
+    assert con_venta["impacto_mensual"] is None
+    assert "no aplica" in con_venta["nota"].lower()
+
+
+def test_cualquier_costo_se_puede_recortar(db):
+    crear_recurrente(db, tipo="egreso", concepto="Sistema de Facturacion",
+                     categoria="infraestructura", monto=100, moneda="USD", desde="2026-01")
+
+    recs = ifn.calcular(db, HOY)["recomendaciones"]
+    r15 = [r for r in recs if r["regla"] == "R15"]
+
+    assert any("Sistema de Facturacion" in r["titulo"] for r in r15)
+    assert all(r["consecuencia"] for r in r15)
+
+
+def test_la_recomendacion_es_concreta_y_no_una_apuesta(db):
+    """El titular tiene que ser "recorta esto" o "no le pagues a aquel", no una
+    estimacion de confianza baja como abrir un canal nuevo."""
+    _negocio_andando(db)
+    ifn.corrida_diaria(db, AHORA)
+
+    e = ifn.estado_pantalla(db, ahora=AHORA)
+    rec = e["recomendado"]
+
+    assert rec["ids"], "tiene que recomendar algo"
+    assert rec["por_que"]
+    assert not any("canal" in t.lower() for t in rec["titulos"]), rec["titulos"]
+
+
+def test_los_escenarios_del_simulador_se_leen_pero_no_se_tocan(db):
+    esc = crear_escenario(db, nombre="1 programador y 900 de pauta", datos=json.dumps(
+        {"equipo": {"cantidadProgramadores": 1}, "ventas": {"pauta": 900},
+         "embudo": {"costoPorLead": 30}}), created_by_id=1, created_by_name="Juan")
+
+    lista = obj.escenarios_guardados(db)
+    uno = obj.escenario_para_panel(db, esc)
+
+    assert [x["nombre"] for x in lista] == ["1 programador y 900 de pauta"]
+    assert uno["supuestos"]["programadores"] == 1
+    assert uno["supuestos"]["pauta"] == 900
+    assert uno["supuestos"]["costo_por_lead"] == 30
+    assert obj.escenario_para_panel(db, 9999) is None

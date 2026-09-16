@@ -1690,6 +1690,11 @@ def init_db(db_path: str) -> None:
         # sin la marca, esas tarjetas se filtraban al releerlas.
         _add_column(conn, "if_recomendaciones", "nota", "TEXT NOT NULL DEFAULT ''")
         _add_column(conn, "if_recomendaciones", "siempre", "INTEGER NOT NULL DEFAULT 0")
+        # Que pasa si se elige esa alternativa, en castellano, y cuanto duele
+        # (0 nada, 1 algo, 2 mucho) para poder recomendar la combinacion que
+        # llega al objetivo rompiendo lo menos posible.
+        _add_column(conn, "if_recomendaciones", "consecuencia", "TEXT NOT NULL DEFAULT ''")
+        _add_column(conn, "if_recomendaciones", "dano", "INTEGER NOT NULL DEFAULT 1")
 
         # El objetivo real del mes, en tres partes que Juan edita a mano
         # (pedido del 15/9, spec en PDF). `fijos_usd` en NULL significa "usa los
@@ -1710,6 +1715,63 @@ def init_db(db_path: str) -> None:
         # de los movimientos, pero Juan sabe el sueldo exacto de cada uno: si lo
         # escribe, vale el suyo. NULL es "calculalo vos".
         _add_column(conn, "if_objetivo", "equipo_usd", "REAL")
+        # Lo que cobra cada uno, linea por linea. El promedio de los movimientos
+        # daba ~4 veces de mas, asi que dejo de ser la fuente: ahora la fuente es
+        # esta lista y el promedio queda solo de respaldo si la lista esta vacia.
+        #
+        # Dos formas de cobrar, por eso `tipo`:
+        #   'fijo'     -> `monto_usd` por mes, por `cantidad` personas (2
+        #                 programadores a 50 son 100).
+        #   'comision' -> no tiene costo fijo: cobra `pct` % del desarrollo
+        #                 cuando se le da un proyecto (Matias Dominguez, 50 %).
+        #                 No suma al objetivo; entra en el margen del proyecto.
+        equipo_nueva = not conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='if_equipo_costos'").fetchone()
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS if_equipo_costos (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                nombre     TEXT NOT NULL,
+                monto_usd  REAL NOT NULL DEFAULT 0 CHECK (monto_usd >= 0),
+                cantidad   INTEGER NOT NULL DEFAULT 1 CHECK (cantidad >= 0),
+                tipo       TEXT NOT NULL DEFAULT 'fijo'
+                           CHECK (tipo IN ('fijo', 'comision')),
+                pct        REAL NOT NULL DEFAULT 0 CHECK (pct >= 0 AND pct <= 100),
+                grupo      TEXT NOT NULL DEFAULT 'sueldos'
+                           CHECK (grupo IN ('sueldos', 'honorarios', 'fijos')),
+                orden      INTEGER NOT NULL DEFAULT 0,
+                updated_by TEXT,
+                updated_at TEXT
+            )
+        """)
+        if equipo_nueva:
+            # UNA sola vez, en el arranque que crea la tabla: los numeros que
+            # dio Juan el 16/9 ("Honorios marketing son 300 por mes, cada
+            # programador cobra 50 por mes hay 2 en este momento, mati dominguez
+            # si le damos proyecto cobra el 50% del desarrollo. El contador
+            # cobra 75 por mes"). Fijo = 300 + 50x2 + 75 = 475. Desde la
+            # pantalla se editan, se agregan y se sacan.
+            # El grupo va explicito y no adivinado por palabra: "Contador" no
+            # tiene ninguna que lo delate como honorario. Juan lo puede cambiar.
+            for orden, (nombre, monto, cantidad, tipo, pct, grupo) in enumerate((
+                    ("Honorarios marketing", 300.0, 1, "fijo", 0.0, "honorarios"),
+                    ("Programador", 50.0, 2, "fijo", 0.0, "sueldos"),
+                    ("Contador", 75.0, 1, "fijo", 0.0, "honorarios"),
+                    ("Matías Domínguez", 0.0, 1, "comision", 50.0, "honorarios"))):
+                conn.execute(
+                    "INSERT INTO if_equipo_costos (nombre, monto_usd, cantidad, tipo, pct, "
+                    "grupo, orden, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, 'precarga')",
+                    (nombre, monto, cantidad, tipo, pct, grupo, orden))
+        # Que costo esta prendido y cual apagado. Juan: "que se activen o
+        # desactiven pero que los ponga todos como en el simulador". Ausente es
+        # prendido: apagar es la excepcion y se guarda, no al reves.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS if_costos_activos (
+                clave      TEXT PRIMARY KEY,
+                activo     INTEGER NOT NULL DEFAULT 1,
+                updated_by TEXT,
+                updated_at TEXT
+            )
+        """)
         # Gastos que Juan YA SABE que van a caer este mes, cargados cuando se
         # entera y no al cierre. Alimentan el objetivo en vivo, al lado de los
         # fijos confirmados. Cuando el gasto se carga de verdad en Finanzas se

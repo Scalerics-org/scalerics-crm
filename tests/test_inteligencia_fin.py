@@ -154,14 +154,21 @@ def test_base_vacia_igual_abre_con_objetivo_y_alternativas(db):
     ifn.corrida_diaria(db, AHORA)
     estado = ifn.estado_pantalla(db, ahora=AHORA)
 
-    assert estado["objetivo"]["total"] == 0
+    # 475: lo que cobra el equipo, precargado con los numeros que dio Juan.
+    # El objetivo abre con eso aunque no haya un solo movimiento cargado.
+    assert estado["objetivo"]["total"] == 475
     assert [p["clave"] for p in estado["objetivo"]["partes"]] == ["fijos", "aportes", "sueldo"]
 
     recs = estado["recomendaciones"]
     assert len(recs) >= 3
     assert {r["palanca"] for r in recs} == set(ifn.PALANCAS)
-    # Son tarjetas de oportunidad: sin impacto en plata, pero con su nota.
-    assert all(r["regla"] == "R0" and r["nota"] and r["impacto_mensual"] is None for r in recs)
+    # Las de oportunidad no tienen impacto en plata, pero si su nota. No son
+    # las unicas: la lista del equipo viene precargada, asi que el recorte de
+    # marketing es una alternativa de verdad incluso con la base pelada.
+    oportunidades = [r for r in recs if r["regla"] == "R0"]
+    assert oportunidades
+    assert all(r["nota"] and r["impacto_mensual"] is None for r in oportunidades)
+    assert all(r["nota"] for r in recs)
 
     texto = json.dumps(estado, ensure_ascii=False, default=str).lower()
     for frase in ("sin datos", "no hay análisis", "datos insuficientes",

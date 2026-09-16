@@ -22,7 +22,8 @@ from pathlib import Path
 import pytest
 
 import dashboard
-from database import crear_movimiento, crear_recurrente, init_db, insert_business, update_business
+from database import (crear_escenario, crear_movimiento, crear_recurrente, init_db,
+                      insert_business, update_business)
 from services import inteligencia_fin as ifn
 from services import intel_objetivo as obj
 
@@ -63,6 +64,10 @@ def _estado(tmp_path, largo: bool = True) -> dict:
                      monto=170, moneda="USD", desde="2026-01")
     obj.guardar(db, MES, {"aportes_usd": 1100, "sueldo_usd": 2000})
     obj.crear_esperado(db, MES, {"concepto": LARGO, "monto_usd": 300, "categoria": "fijo"})
+    crear_escenario(db, nombre="1 programador y 900 de pauta",
+                    datos=json.dumps({"equipo": {"cantidadProgramadores": 1},
+                                      "ventas": {"pauta": 900}}),
+                    created_by_id=1, created_by_name="Juan")
     ifn.corrida_diaria(db, AHORA)
     estado = json.loads(json.dumps(ifn.estado_pantalla(db, es_admin=True, ahora=AHORA),
                                    default=str))
@@ -83,6 +88,12 @@ def _pagina(estado: dict, tema: str = "") -> str:
     return ("<!doctype html><html><head>"
             "<meta name='viewport' content='width=device-width,initial-scale=1'>"
             f"<style>{estilos}</style></head><body class='{tema}'><div class='main'>{panel}</div>"
+            "<script>window.__pedidos = [];"
+            "window.fetch = function (url, op) {"
+            "  window.__pedidos.push([String(url), (op && op.method) || 'GET']);"
+            "  return Promise.resolve({ok: true, status: 200,"
+            "    json: function () { return Promise.resolve({ok: true, objetivo: ifnEstado.objetivo}); }});"
+            "};</script>"
             f"<script>{dashboard.ESC_JS}\nlet activePanel = 'inteligencia_fin';\n{JS}\n"
             f"ifnEstado = {json.dumps(estado, ensure_ascii=False)};\nifnPintar();</script>"
             "</body></html>")
@@ -283,3 +294,92 @@ def test_las_tarjetas_no_quedan_en_blanco_y_negro(navegador, tmp_path, tema):
     assert len(set(colores.values())) == len(colores), colores
     for palanca, color in colores.items():
         assert "rgb(0, 0, 0)" not in color, (palanca, color)
+
+
+# ── lo que Juan dijo que faltaba (16/9) ─────────────────────────────────────
+
+def test_el_escenario_guardado_esta_arriba_de_todo(navegador, tmp_path):
+    """Juan: "que saque los escenarios de los guardados en el simulador"."""
+    pagina = _abrir(navegador, _estado(tmp_path), 1280)
+    try:
+        assert pagina.is_visible("#ifn-escenario")
+        opciones = pagina.inner_text("#ifn-escenario")
+        assert "1 programador y 900 de pauta" in opciones
+        assert "datos reales de hoy" in opciones.lower()
+        # Y esta arriba del objetivo, no escondido abajo.
+        orden = pagina.evaluate("""() => {
+          const p = document.getElementById('inteligencia_fin-panel');
+          const hijos = [...p.querySelectorAll('section, details')].map(e => e.id || '');
+          return hijos.filter(x => x);
+        }""")
+        assert orden.index("ifn-escenario") < orden.index("ifn-objetivo")
+    finally:
+        pagina.close()
+
+
+def test_la_recomendacion_es_el_titular_y_se_toma_en_un_clic(navegador, tmp_path):
+    """Juan: "Y que me de recomendaciones" / "tiene que estar clara la opcion
+    de recortar". Un boton y queda elegido."""
+    estado = _estado(tmp_path)
+    pagina = _abrir(navegador, estado, 1280)
+    try:
+        assert pagina.is_visible("#ifn-recomendado")
+        texto = pagina.inner_text("#ifn-recomendado")
+        assert "lo que te conviene hacer" in texto.lower()
+        assert pagina.is_hidden("#ifn-plan")
+
+        pagina.click("#ifn-recomendado .btn-primary")
+
+        assert pagina.is_visible("#ifn-plan"), "tomar la recomendacion arma el plan"
+        assert "plan resultante" in pagina.inner_text("#ifn-plan").lower()
+        # Las recomendadas no son necesariamente la primera tarjeta: se cuentan.
+        elegidas = pagina.eval_on_selector_all(".ifn-alt.ifn-elegida", "els => els.length")
+        assert elegidas == len(estado["recomendado"]["ids"]), elegidas
+    finally:
+        pagina.close()
+
+
+def test_todos_los_costos_se_ven_con_su_interruptor(navegador, tmp_path):
+    """"que los ponga todos como en el simulador", con on/off."""
+    pagina = _abrir(navegador, _estado(tmp_path), 1280)
+    try:
+        pagina.evaluate("() => document.querySelectorAll('details').forEach(d => { d.open = true; })")
+        grupos = pagina.eval_on_selector_all(
+            "#ifn-gastos .ifn-grupo-cab span:first-child", "els => els.map(e => e.innerText)")
+        interruptores = pagina.eval_on_selector_all(
+            "#ifn-gastos .ifn-sw", "els => els.length")
+
+        en_minuscula = [g.lower() for g in grupos]
+        for grupo in ("sueldos", "honorarios", "fijos de estructura"):
+            assert grupo in en_minuscula, (grupo, grupos)
+        assert interruptores >= 3, "cada costo tiene su interruptor"
+    finally:
+        pagina.close()
+
+
+def test_apagar_un_costo_avisa_al_servidor(navegador, tmp_path):
+    pagina = _abrir(navegador, _estado(tmp_path), 1280)
+    try:
+        pagina.evaluate("() => document.querySelectorAll('details').forEach(d => { d.open = true; })")
+        pagina.click("#ifn-gastos .ifn-sw >> nth=0")
+        pedidos = pagina.evaluate("() => window.__pedidos")
+
+        assert any("/api/inteligencia-fin/costos/" in u and m == "PUT" for u, m in pedidos), pedidos
+    finally:
+        pagina.close()
+
+
+def test_cada_alternativa_dice_que_pasa(navegador, tmp_path):
+    """Juan: "si clickeo una o varias de las alternativas me diga que pasa
+    sino no sirve para nada me entendes"."""
+    estado = _estado(tmp_path, largo=False)
+    conse = [r for r in estado["recomendaciones"] if r.get("consecuencia")]
+    assert conse, "el servidor tiene que mandar consecuencias"
+    pagina = _abrir(navegador, estado, 1280)
+    try:
+        visibles = pagina.eval_on_selector_all(
+            ".ifn-alt-que", "els => els.map(e => e.innerText.trim()).filter(Boolean)")
+        assert visibles, "la consecuencia se tiene que ver en la tarjeta"
+        assert any(c["consecuencia"][:24] in " ".join(visibles) for c in conse)
+    finally:
+        pagina.close()
