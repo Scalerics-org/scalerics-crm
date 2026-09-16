@@ -424,6 +424,33 @@ def send_meta_token_alert(to_email: str, error_detail: str) -> bool:
 
 
 @_tipo_envio("alerta")
+def send_alertas_meta(to_email: str, asunto: str, cuerpo_html: str) -> bool:
+    """El mail diario de `services/alertas_meta.py`. El cuerpo ya viene escapado."""
+    html_mail = _layout(
+        badge="Pauta de Meta",
+        title="Cómo viene la pauta",
+        body=cuerpo_html,
+        cta_url=f"{_CRM_URL}",
+        cta_label="Ver el panel de Marketing →",
+    )
+    return _send(to_email, asunto, html_mail)
+
+
+@_tipo_envio("alerta")
+def send_alertas_meta_error(to_email: str, error_detail: str) -> bool:
+    body = (
+        _muted("Las alertas diarias de Meta <b>no pudieron leer los datos</b> de la cuenta "
+               "publicitaria. Hasta que se arregle no vas a recibir avisos de la pauta.")
+        + _info_card([("Error", html.escape(error_detail or ""))])
+        + _muted("Lo más común es que el token de <code>crm-insights</code> se haya revocado. "
+                 "Se carga uno nuevo con el archivo «Cargar token Meta» del Escritorio.")
+    )
+    html_mail = _layout(badge="Alerta de integración",
+                        title="Las alertas de Meta no pueden leer la cuenta", body=body)
+    return _send(to_email, "ALERTA: las alertas de Meta no pueden leer la cuenta", html_mail)
+
+
+@_tipo_envio("alerta")
 def send_backup_alert(to_email: str, error_detail: str) -> bool:
     """El backup diario de la base fallo (integridad, subida a R2 o excepcion).
 
