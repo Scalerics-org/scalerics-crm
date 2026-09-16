@@ -2067,7 +2067,38 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .ifn-afinar-campo{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px;color:var(--texto-tenue)}
 .ifn-input{width:80px;background:var(--fondo-hundido);border:1px solid var(--borde-fuerte);color:var(--texto);border-radius:6px;padding:4px 6px;font-size:.8rem}
 .ifn-input:focus{outline:none;border-color:var(--azul)}
-@media (max-width:640px){ .ifn-rec-cab{flex-direction:column} .ifn-impacto{text-align:left} }
+/* Celular (misma frontera que el menu de abajo). Solo aca adentro: arriba de
+   768px la pantalla queda como estaba. Lo que cortaba era texto sin espacios
+   (nombres de cliente, conceptos, lineas de la cuenta): empujaba la pagina de
+   costado. Ahora todo corta palabra, las tarjetas van en una columna y los
+   botones ocupan el ancho. */
+@media (max-width:768px){
+  .ifn-panel,.ifn-afinar{overflow-wrap:anywhere;max-width:100%}
+  .ifn-titulo{font-size:1.1rem}
+  .ifn-cabecera{gap:10px}
+  .ifn-cabecera>div{min-width:0}
+  .ifn-cabecera .btn-ghost{width:100%;min-height:44px}
+  .ifn-bloque{padding:12px}
+  .ifn-resumen{padding:12px}
+  .ifn-diag-grid,.ifn-contraste{grid-template-columns:minmax(0,1fr)}
+  .ifn-diag,.ifn-contraste-col,.ifn-rec{min-width:0}
+  .ifn-diag-cab{flex-wrap:wrap}
+  .ifn-diag-valor,.ifn-contraste-num{font-size:1.2rem}
+  .ifn-nivel,.ifn-confianza,.ifn-res{white-space:nowrap}
+  .ifn-rec{padding:12px}
+  .ifn-rec-cab{flex-direction:column;gap:4px}
+  .ifn-rec-cab>div{min-width:0}
+  .ifn-impacto{text-align:left;white-space:normal}
+  .ifn-calculo,.ifn-diag-cuenta{white-space:pre-wrap;max-width:100%}
+  .ifn-accion{flex-direction:column;align-items:stretch;gap:6px}
+  .ifn-accion .btn-primary{width:100%;min-height:44px;white-space:normal;text-align:center}
+  .ifn-rec-pie{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
+  .ifn-rec-pie .ifn-confianza{grid-column:1/-1;justify-self:start;margin-right:0}
+  .ifn-rec-pie .btn-primary,.ifn-rec-pie .btn-ghost{width:100%;min-height:44px;white-space:normal;text-align:center}
+  .ifn-afinar-campo .filter-select{max-width:100%}
+  .ifn-afinar-campo .btn-ghost,.ifn-afinar summary{min-height:36px}
+  .ifn-afinar summary{display:flex;align-items:center}
+}
 /* ── Plantillas ───────────────────────────────────────────────────────────────
    Mensajes de siempre, en VENTAS. Solo tokens, sin reglas `body.light`: las
    variables van en --azul-claro y las que faltan en la familia ambar, que
@@ -3626,7 +3657,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   </div>
 
   <!-- ======= INTELIGENCIA FINANCIERA PANEL ======= -->
-  <div id="inteligencia_fin-panel" class="panel">
+  <div id="inteligencia_fin-panel" class="panel ifn-panel">
     <div class="ifn-cabecera">
       <div>
         <h2 class="ifn-titulo">Inteligencia financiera</h2>
