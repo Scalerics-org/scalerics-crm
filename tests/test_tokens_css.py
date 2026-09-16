@@ -100,17 +100,9 @@ def test_los_dos_temas_son_de_verdad_distintos(oscuro, claro):
     # Rojo, amarillo y negro se sumaron el 15/9 con el semaforo de Meta Ads:
     # la fila del lead se pinta con el color que la gente pinta en la planilla
     # (borde pleno y un tinte mezclado con la superficie, que si cambia de tema).
-    # `--obj-texto` y `--obj-logro` se sumaron el 16/9 con el objetivo del mes
-    # de Inteligencia financiera: esa tarjeta queda OSCURA en los dos temas
-    # (asi esta en el mockup que mando Juan), asi que su texto blanco y el
-    # verde de "con lo seleccionado" no pueden cambiar con el tema. Si
-    # cambiaran, en el tema claro quedarian letras oscuras sobre fondo
-    # oscuro. Lo que si cambia de esa tarjeta: `--obj-fondo`, `--obj-rotulo`
-    # y `--obj-pista`.
     esperadas = {"--azul", "--semaforo-verde", "--semaforo-celeste",
                  "--semaforo-violeta", "--semaforo-venta", "--semaforo-rojo",
-                 "--semaforo-amarillo", "--semaforo-negro",
-                 "--obj-texto", "--obj-logro"}
+                 "--semaforo-amarillo", "--semaforo-negro"}
     iguales = {k for k in oscuro if oscuro[k].strip() == claro.get(k, "").strip()}
 
     assert iguales == esperadas, (
