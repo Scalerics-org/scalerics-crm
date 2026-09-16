@@ -28,6 +28,7 @@ from routes.linkedin import linkedin_bp
 from routes.finanzas import finanzas_bp
 from routes.simulador import simulador_bp
 from routes.email_marketing import email_mkt_bp
+from routes.linkedin_panel import linkedin_panel_bp
 from routes.inteligencia_fin import inteligencia_fin_bp
 from routes.equipo import equipo_bp
 from routes.horarios import horarios_bp
@@ -1354,6 +1355,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-daily_admin .nav-icon{stroke:#f0abfc}
 #nav-plantillas .nav-icon{stroke:#c084fc}
 #nav-email_mkt .nav-icon{stroke:#6ee7b7}
+#nav-linkedin .nav-icon{stroke:#4f9cf9}
 .nav-item.active #nav-cola .nav-icon,
 .nav-item.active .nav-icon{opacity:1}
 /* active item keeps its color but brighter */
@@ -1381,6 +1383,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-seg_leads.active .nav-icon{stroke:#fda4af}
 #nav-plantillas.active .nav-icon{stroke:#d8b4fe}
 #nav-email_mkt.active .nav-icon{stroke:#a7f3d0}
+#nav-linkedin.active .nav-icon{stroke:#8ec2ff}
 /* light mode — slightly darker tones */
 body.light #nav-cola .nav-icon{stroke:#2563eb}
 body.light #nav-clientes .nav-icon{stroke:#7c3aed}
@@ -1406,6 +1409,7 @@ body.light #nav-flujos .nav-icon{stroke:#0f766e}
 body.light #nav-seg_leads .nav-icon{stroke:#be123c}
 body.light #nav-plantillas .nav-icon{stroke:#9333ea}
 body.light #nav-email_mkt .nav-icon{stroke:#065f46}
+body.light #nav-linkedin .nav-icon{stroke:#0a66c2}
 /* ── Lucide icons ─────────────────────────────────────────────────────────── */
 .nav-icon{width:15px;height:15px;stroke-width:2;flex-shrink:0}
 /* Frase de equipo, version compacta del PDF de identidad de marca. Es la
@@ -2290,6 +2294,77 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   .em-buscar,.em-tipo{min-width:0;width:100%}
   .em-card{padding:12px}
 }
+/* Ver el mail: modal con la vista en un iframe con sandbox vacio y la version
+   de texto. El iframe va sobre blanco, como lo ve quien lo recibe. */
+.em-ver{display:inline-block;margin-top:4px;background:none;border:1px solid var(--borde-fuerte);color:var(--azul-claro);border-radius:6px;padding:2px 8px;font-size:.7rem;font-weight:600;font-family:inherit;cursor:pointer}
+.em-ver:hover{background:var(--hover);border-color:var(--azul)}
+.em-mail-modal{width:780px;max-width:95vw;max-height:92vh;display:flex;flex-direction:column;gap:10px;padding:20px}
+.em-mail-cab{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.em-mail-cab h3{margin:0;overflow-wrap:anywhere}
+.em-mail-cerrar{background:none;border:none;color:var(--texto-tenue);font-size:1.4rem;line-height:1;cursor:pointer;padding:0 4px;font-family:inherit}
+.em-mail-cerrar:hover{color:var(--texto-fuerte)}
+.em-mail-datos{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:.76rem;margin:0}
+.em-mail-datos dt{color:var(--texto-debil);font-weight:600}
+.em-mail-datos dd{margin:0;color:var(--texto);overflow-wrap:anywhere}
+.em-mail-aviso{background:var(--ambar-tinte);color:var(--ambar);border:1px solid var(--ambar-borde);border-radius:8px;padding:8px 10px;font-size:.76rem;line-height:1.4}
+.em-mail-tabs{display:flex;gap:6px}
+.em-mail-tab{background:var(--relleno);color:var(--texto-debil);border:1px solid var(--borde);border-radius:99px;padding:4px 12px;font-size:.74rem;font-weight:600;cursor:pointer;font-family:inherit}
+.em-mail-tab.em-activo{background:var(--azul-tinte);color:var(--azul-claro);border-color:var(--azul)}
+.em-mail-cuerpo{flex:1;min-height:0;display:flex;flex-direction:column}
+.em-mail-iframe{width:100%;height:62vh;min-height:320px;border:1px solid var(--borde);border-radius:8px;background:white}
+.em-mail-texto{margin:0;height:62vh;min-height:320px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;background:var(--superficie-honda);color:var(--texto);border:1px solid var(--borde);border-radius:8px;padding:12px;font-size:.78rem;line-height:1.5;font-family:ui-monospace,Menlo,Consolas,monospace}
+@media(max-width:560px){
+  .em-mail-modal{padding:16px}
+  .em-mail-iframe,.em-mail-texto{height:55vh;min-height:260px}
+  .em-mail-datos{grid-template-columns:1fr}
+  .em-mail-datos dd{margin-bottom:4px}
+}
+/* ── LinkedIn ─────────────────────────────────────────────────────────────────
+   Borradores para la pagina de Scalerics en LinkedIn. Solo tokens, sin reglas
+   de tema claro. */
+.li-oculto{display:none!important}
+.li-acciones{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.li-nota{font-size:.76rem;color:var(--texto-debil);margin:-6px 0 10px}
+.li-nota:empty{display:none}
+.li-barra{display:flex;align-items:center;gap:8px 12px;flex-wrap:wrap;margin-bottom:14px}
+.li-nav-semana{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:.85rem;color:var(--texto-fuerte);font-weight:600}
+.li-vacio{font-size:.82rem;color:var(--texto-debil);background:var(--superficie-honda);border:1px dashed var(--borde-fuerte);border-radius:10px;padding:18px;line-height:1.5}
+.li-tarjetas{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.li-tarjeta{background:var(--superficie-honda);border:1px solid var(--borde);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.li-tarjeta.li-descartado{opacity:.65}
+.li-cab{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.li-orden{font-size:.72rem;font-weight:700;color:var(--texto-debil);font-variant-numeric:tabular-nums}
+.li-tema{flex:1;min-width:0;font-size:.84rem;font-weight:700;color:var(--texto-fuerte);overflow-wrap:anywhere}
+.li-chip{display:inline-block;border-radius:99px;padding:2px 9px;font-size:.7rem;font-weight:700;white-space:nowrap}
+.li-chip-azul{background:var(--azul-tinte);color:var(--azul-claro)}
+.li-chip-verde{background:var(--verde-tinte);color:var(--verde-texto)}
+.li-chip-gris{background:var(--relleno);color:var(--texto-debil)}
+.li-texto{white-space:pre-wrap;overflow-wrap:anywhere;font-size:.84rem;line-height:1.55;color:var(--texto);background:var(--superficie);border:1px solid var(--borde);border-radius:8px;padding:12px;max-height:420px;overflow:auto}
+.li-visual{display:flex;flex-direction:column;align-items:flex-start;gap:6px}
+.li-imagen{display:block;width:100%;max-width:100%;height:auto;border-radius:8px;border:1px solid var(--borde);background:var(--superficie)}
+.li-pie{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:.72rem;color:var(--texto-debil)}
+.li-contador{font-variant-numeric:tabular-nums}
+.li-pasa{color:var(--rojo-texto);font-weight:700}
+.li-meta{color:var(--texto-tenue)}
+.li-acciones-tarjeta{display:flex;flex-wrap:wrap;gap:6px}
+.li-btn{background:var(--relleno);border:1px solid var(--borde-fuerte);color:var(--texto);border-radius:8px;padding:6px 12px;font-size:.76rem;font-weight:600;font-family:inherit;cursor:pointer}
+.li-btn:hover{background:var(--hover);border-color:var(--azul)}
+.li-btn-suave{background:none;color:var(--texto-debil)}
+.li-modal{width:640px;max-width:95vw}
+.li-modal-chico{width:380px;max-width:95vw}
+.li-textarea{width:100%;min-height:280px;resize:vertical;background:var(--superficie);color:var(--texto);border:1px solid var(--borde-fuerte);border-radius:8px;padding:10px;font-family:inherit;font-size:.84rem;line-height:1.5;margin:8px 0 6px}
+.li-rotulo{display:block;font-size:.78rem;color:var(--texto-tenue);margin:6px 0}
+.li-fecha{background:var(--superficie);color:var(--texto);border:1px solid var(--borde-fuerte);border-radius:8px;padding:7px 10px;font-family:inherit;margin-bottom:8px}
+.li-error{font-size:.76rem;color:var(--rojo-texto);margin:4px 0 10px}
+.li-error:empty{display:none}
+.li-copia-oculta{position:fixed;top:0;left:0;opacity:0;pointer-events:none}
+@media(max-width:768px){
+  .li-tarjetas{grid-template-columns:1fr}
+}
+@media(max-width:560px){
+  .li-tarjeta{padding:12px}
+  .li-btn{flex:1 1 auto;min-height:40px}
+}
 /* ── Equipo ───────────────────────────────────────────────────────────────────
    Organigrama (SVG) y ausencias con recupero. Solo tokens, sin reglas
    `body.light`: los tintes rojo/verde/ambar son los de la familia de estados,
@@ -2524,6 +2599,8 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div class="nav-section-label">MARKETING</div>
   <div class="nav-item" id="nav-meta" onclick="showPanel('meta');clearMetaBadge()"><i data-lucide="instagram" class="nav-icon"></i> Meta Ads <span id="meta-badge" style="display:none;background:#e1306c;color:#fff;font-size:.65rem;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:4px">NEW</span></div>
   <div class="nav-item" id="nav-marketing" onclick="showPanel('marketing')"><i data-lucide="target" class="nav-icon"></i> Inteligencia marketing</div>
+  <div class="nav-item" id="nav-email_mkt" onclick="showPanel('email_mkt')"><i data-lucide="mail" class="nav-icon"></i> Email marketing</div>
+  <div class="nav-item" id="nav-linkedin" onclick="showPanel('linkedin')"><i data-lucide="linkedin" class="nav-icon"></i> LinkedIn</div>
   <div class="nav-section-label">FINANZAS</div>
   <div class="nav-item" id="nav-finanzas" onclick="showPanel('finanzas')"><i data-lucide="wallet" class="nav-icon"></i> Finanzas</div>
   <div class="nav-item" id="nav-simulador" onclick="showPanel('simulador')"><i data-lucide="calculator" class="nav-icon"></i> Simulador financiero</div>
@@ -2552,7 +2629,6 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div class="nav-item" id="nav-cola" onclick="showPanel('cola')"><i data-lucide="inbox" class="nav-icon"></i> Outbound</div>
   <div class="nav-item" id="nav-metrics" onclick="showPanel('metrics')"><i data-lucide="bar-chart-2" class="nav-icon"></i> Inteligencia comercial</div>
   <div class="nav-item" id="nav-sdr" onclick="showPanel('sdr')"><i data-lucide="phone-call" class="nav-icon"></i> SDR</div>
-  <div class="nav-item" id="nav-email_mkt" onclick="showPanel('email_mkt')"><i data-lucide="mail" class="nav-icon"></i> Email marketing</div>
   </div>
   <div class="sidebar-bottom">
     <a id="admin-link" href="/admin/users" style="display:none;background:none;border:1px solid var(--borde);border-radius:8px;padding:6px 12px;font-size:.75rem;color:var(--texto-debil);cursor:pointer;width:100%;text-align:left;text-decoration:none;box-sizing:border-box">&#9881; Usuarios</a>
@@ -3455,8 +3531,83 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       <div id="em-tabla" class="em-tabla-wrap"></div>
       <div id="em-paginas" class="em-paginas"></div>
     </div>
+    <!-- Ver el mail. El contenido llega por la API, ya sanitizado, y el JS lo
+         carga con srcdoc en un iframe con sandbox vacio: sin scripts, sin
+         mismo origen y sin navegacion. -->
+    <div class="modal-overlay" id="em-mail-modal" onclick="if(event.target===this)emCerrarMail()">
+      <div class="modal em-mail-modal" role="dialog" aria-modal="true" aria-labelledby="em-mail-asunto">
+        <div class="em-mail-cab">
+          <h3 id="em-mail-asunto">Mail</h3>
+          <button type="button" class="em-mail-cerrar" onclick="emCerrarMail()" aria-label="Cerrar">×</button>
+        </div>
+        <dl class="em-mail-datos" id="em-mail-datos"></dl>
+        <div class="em-mail-aviso em-oculto" id="em-mail-aviso" role="status"></div>
+        <div class="em-mail-tabs em-oculto" id="em-mail-tabs" role="tablist">
+          <button type="button" class="em-mail-tab em-activo" id="em-mail-tab-html" role="tab" onclick="emMailPestana('html')">Vista</button>
+          <button type="button" class="em-mail-tab" id="em-mail-tab-texto" role="tab" onclick="emMailPestana('texto')">Texto</button>
+        </div>
+        <div class="em-mail-cuerpo">
+          <iframe id="em-mail-iframe" class="em-mail-iframe em-oculto" sandbox="" referrerpolicy="no-referrer" title="Vista del mail"></iframe>
+          <pre id="em-mail-texto" class="em-mail-texto em-oculto"></pre>
+          <div id="em-mail-vacio" class="em-vacio"></div>
+        </div>
+      </div>
+    </div>
   </div>
   <!-- ======= FIN EMAIL MARKETING PANEL ======= -->
+  <!-- ======= LINKEDIN PANEL ======= -->
+  <!-- Los borradores para la pagina de Scalerics en LinkedIn, semana por
+       semana. El texto se copia tal cual y se pega en LinkedIn a mano. -->
+  <div id="linkedin-panel" class="panel">
+    <div class="page-header">
+      <div>
+        <h1>LinkedIn</h1>
+        <div class="page-date">Borradores para la página de Scalerics en LinkedIn</div>
+      </div>
+      <div class="li-acciones">
+        <button type="button" class="export-btn li-oculto" id="li-btn-generar" onclick="liGenerar()">Generar ahora</button>
+      </div>
+    </div>
+    <div class="li-nota" id="li-nota" role="status" aria-live="polite"></div>
+    <div class="li-barra">
+      <div class="li-nav-semana">
+        <button type="button" class="cal-nav-btn" onclick="liSemana(-1)" title="Semana anterior" aria-label="Semana anterior">&larr;</button>
+        <span id="li-semana-label" aria-live="polite"></span>
+        <button type="button" class="cal-nav-btn" id="li-semana-sig" onclick="liSemana(1)" title="Semana siguiente" aria-label="Semana siguiente">&rarr;</button>
+        <button type="button" class="cal-today-btn" onclick="liSemanaHoy()">Esta semana</button>
+      </div>
+    </div>
+    <div id="li-estado" class="li-vacio" role="status" aria-live="polite">Cargando…</div>
+    <div id="li-tarjetas" class="li-tarjetas"></div>
+
+    <div class="modal-overlay" id="li-editar-modal" onclick="if(event.target===this)liCerrarEditar()">
+      <div class="modal li-modal" role="dialog" aria-modal="true" aria-labelledby="li-editar-titulo">
+        <h3 id="li-editar-titulo">Editar publicación</h3>
+        <textarea id="li-editar-texto" class="li-textarea" rows="14" oninput="liContarEdicion()" aria-label="Texto de la publicación"></textarea>
+        <div class="li-contador" id="li-editar-contador"></div>
+        <div class="li-error" id="li-editar-error" role="alert"></div>
+        <div class="modal-btns">
+          <button type="button" class="btn-cancel" onclick="liCerrarEditar()">Cancelar</button>
+          <button type="button" class="btn-confirm" onclick="liGuardarEdicion()">Guardar</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-overlay" id="li-publicar-modal" onclick="if(event.target===this)liCerrarPublicar()">
+      <div class="modal li-modal-chico" role="dialog" aria-modal="true" aria-labelledby="li-publicar-titulo">
+        <h3 id="li-publicar-titulo">Marcar como publicada</h3>
+        <label class="li-rotulo" for="li-publicar-fecha">¿Qué día se publicó en LinkedIn?</label>
+        <input type="date" id="li-publicar-fecha" class="li-fecha">
+        <div class="li-error" id="li-publicar-error" role="alert"></div>
+        <div class="modal-btns">
+          <button type="button" class="btn-cancel" onclick="liCerrarPublicar()">Cancelar</button>
+          <button type="button" class="btn-confirm" onclick="liConfirmarPublicar()">Marcar publicada</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- ======= FIN LINKEDIN PANEL ======= -->
+
 
   <div id="activity-panel" class="panel">
     <div class="page-header">
@@ -4507,6 +4658,7 @@ function showPanel(name) {
   if (name === 'plantillas') plCargar();
   if (name === 'sdr') loadSdr();
   if (name === 'email_mkt') loadEmailMkt();
+  if (name === 'linkedin') loadLinkedin();
 }
 
 // ========== Leads / Cola panel ==========
@@ -9081,20 +9233,20 @@ function _showScoreBreakdown(event, el) {
 
 // ── Mobile navigation ─────────────────────────────────────────────────────────
 // El mismo orden que el menu de la izquierda (Juan, 14/9).
-const NAV_PRIORITY = ['cal','meta','finanzas','simulador','inteligencia_fin','seg_leads','wa','notion_clients','plantillas','clientes','projects','tasks','daily','daily_admin','activity','equipo','ausencias','flujos','horarios','cola','metrics','email_mkt'];
+const NAV_PRIORITY = ['cal','meta','email_mkt','linkedin','finanzas','simulador','inteligencia_fin','seg_leads','wa','notion_clients','plantillas','clientes','projects','tasks','daily','daily_admin','activity','equipo','ausencias','flujos','horarios','cola','metrics'];
 const NAV_ICONS = {
   cola:'inbox',meta:'instagram',cal:'calendar',
   tasks:'check-square',pipeline:'trending-up',clientes:'users',
   wa:'message-circle',metrics:'bar-chart-2',activity:'clock',projects:'target',
   notion_clients:'handshake',finanzas:'wallet',simulador:'calculator',inteligencia_fin:'lightbulb',equipo:'network',
-  ausencias:'calendar-clock',horarios:'clock-4',flujos:'workflow',seg_leads:'phone-call',daily:'clipboard-list',plantillas:'message-square-text',daily_admin:'clipboard-check',email_mkt:'mail'
+  ausencias:'calendar-clock',horarios:'clock-4',flujos:'workflow',seg_leads:'phone-call',daily:'clipboard-list',plantillas:'message-square-text',daily_admin:'clipboard-check',email_mkt:'mail',linkedin:'linkedin'
 };
 const NAV_LABELS = {
   cola:'Outbound',meta:'Meta',cal:'Agenda',
   tasks:'Tareas',pipeline:'Pipeline',clientes:'Clientes',
   wa:'WA',metrics:'Intel. comercial',activity:'Actividad',projects:'Proyectos',
   notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador',inteligencia_fin:'Intel. financiera',equipo:'Organigrama',
-  ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento',daily:'Daily',plantillas:'Plantillas',daily_admin:'Daily Admin',email_mkt:'Email mkt'
+  ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento',daily:'Daily',plantillas:'Plantillas',daily_admin:'Daily Admin',email_mkt:'Email mkt',linkedin:'LinkedIn'
 };
 let _mobileNavOverflow = [];
 
@@ -9174,7 +9326,7 @@ function closeMasSheet() {
 }
 
 // ── Panel access control ──────────────────────────────────────────────────────
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt'];
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin'];
 (async () => {
   try {
     const r = await fetch('/api/me');
@@ -12817,6 +12969,334 @@ async function hrGuardar() {
 }
 // ========== FIN Horarios ==========
 
+// ========== LinkedIn ==========
+// Los borradores de la pagina de Scalerics en LinkedIn, semana por semana. Los
+// arma el cron de los martes y viernes; aca se copian, se editan y se marcan.
+// Sin template literals: el texto se arma concatenando.
+let liSemanaSel = '';
+let liDatos = null;
+let liPedido = 0;
+let liEditandoId = null;
+let liPublicandoId = null;
+
+const LI_ESTADOS = {
+  borrador: ['Borrador', 'li-chip-azul'],
+  publicado: ['Publicada', 'li-chip-verde'],
+  descartado: ['Descartada', 'li-chip-gris']
+};
+
+function liEsc(texto) {
+  return String(texto === null || texto === undefined ? '' : texto)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function liClase(id, poner, clase) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (poner) el.classList.add(clase);
+  else el.classList.remove(clase);
+}
+
+function liSumarDias(iso, dias) {
+  const p = String(iso).split('-');
+  const d = new Date(Date.UTC(parseInt(p[0], 10), parseInt(p[1], 10) - 1, parseInt(p[2], 10) + dias));
+  return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0') + '-' +
+    String(d.getUTCDate()).padStart(2, '0');
+}
+
+function liFechaCorta(iso) {
+  const s = String(iso || '');
+  return s.slice(8, 10) + '/' + s.slice(5, 7);
+}
+
+function liFechaLarga(iso) {
+  const s = String(iso || '');
+  return s.slice(8, 10) + '/' + s.slice(5, 7) + '/' + s.slice(0, 4);
+}
+
+function liEtiquetaSemana(lunes) {
+  return 'Semana del lun ' + liFechaCorta(lunes) + ' al dom ' + liFechaCorta(liSumarDias(lunes, 6));
+}
+
+// Como cuenta LinkedIn: un emoji o una letra con tilde es un caracter.
+function liCaracteres(texto) {
+  return Array.from(String(texto || '')).length;
+}
+
+function liContadorTexto(n, limite) {
+  return n + ' / ' + limite + ' caracteres' + (n > limite ? ' · pasa el límite de LinkedIn' : '');
+}
+
+function liBorrador(id) {
+  const lista = (liDatos && liDatos.borradores) || [];
+  return lista.find(b => Number(b.id) === Number(id)) || null;
+}
+
+async function loadLinkedin() {
+  const estado = document.getElementById('li-estado');
+  if (!estado) return;
+  const pedido = ++liPedido;
+  let d;
+  try {
+    const r = await fetch('/api/linkedin/borradores' + (liSemanaSel ? '?semana=' + encodeURIComponent(liSemanaSel) : ''));
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    d = await r.json();
+    if (!d || !Array.isArray(d.borradores)) throw new Error('respuesta incompleta');
+  } catch (e) {
+    if (pedido !== liPedido) return;
+    estado.textContent = 'No se pudieron cargar los borradores. Probá de nuevo en un rato.';
+    liClase('li-estado', false, 'li-oculto');
+    return;
+  }
+  if (pedido !== liPedido) return;
+  liDatos = d;
+  liPintar(d);
+}
+
+function liPintar(d) {
+  const etiqueta = document.getElementById('li-semana-label');
+  if (etiqueta) etiqueta.textContent = liEtiquetaSemana(d.semana);
+  const siguiente = document.getElementById('li-semana-sig');
+  if (siguiente) siguiente.disabled = d.semana >= d.semana_actual;
+  const estado = document.getElementById('li-estado');
+  if (estado) {
+    const hay = d.borradores.length > 0;
+    const proximos = d.proxima_generacion ? ' Los próximos se generan el ' + d.proxima_generacion + '.' : '';
+    estado.textContent = hay ? '' : (d.semana === d.semana_actual
+      ? 'Todavía no hay borradores esta semana.' : 'No hubo borradores esa semana.') + proximos;
+    liClase('li-estado', hay, 'li-oculto');
+  }
+  const tarjetas = document.getElementById('li-tarjetas');
+  if (tarjetas) tarjetas.innerHTML = d.borradores.map(b => liTarjeta(b, d.limite || 3000)).join('');
+  liClase('li-btn-generar', !d.puede_generar, 'li-oculto');
+}
+
+function liTarjeta(b, limite) {
+  const est = LI_ESTADOS[b.estado] || [b.estado, 'li-chip-gris'];
+  const n = liCaracteres(b.texto);
+  const contador = '<span class="li-contador' + (n > limite ? ' li-pasa' : '') + '">' +
+    liContadorTexto(n, limite) + '</span>';
+  const publicada = b.estado === 'publicado' && b.publicado_en
+    ? '<span class="li-meta">Publicada el ' + liEsc(liFechaLarga(b.publicado_en)) + '</span>' : '';
+  const editada = b.editado_por ? '<span class="li-meta">Editada por ' + liEsc(b.editado_por) + '</span>' : '';
+  const id = Number(b.id);
+  // La tarjeta que salio en el mail, si el runner la mando. Se muestra y se baja
+  // desde el CRM, detras del mismo permiso del panel.
+  const visual = b.tiene_imagen
+    ? '<div class="li-visual"><img class="li-imagen" src="/api/linkedin/borradores/' + id + '/imagen" ' +
+      'alt="Imagen del post" loading="lazy">' +
+      '<a class="li-btn" href="/api/linkedin/borradores/' + id + '/imagen?descargar=1" download="linkedin-' + id +
+      '.png">Descargar imagen</a></div>'
+    : '';
+  const acciones = [
+    '<button type="button" class="li-btn" id="li-copiar-' + id + '" onclick="liCopiar(' + id + ')">Copiar texto</button>',
+    '<button type="button" class="li-btn" onclick="liEditar(' + id + ')">Editar</button>',
+    b.estado === 'publicado' ? '' :
+      '<button type="button" class="li-btn" onclick="liAbrirPublicar(' + id + ')">Marcar como publicada</button>',
+    b.estado === 'descartado' ? '' :
+      '<button type="button" class="li-btn li-btn-suave" onclick="liCambiarEstado(' + id + ', ' + "'descartado'" + ')">Descartar</button>',
+    b.estado === 'borrador' ? '' :
+      '<button type="button" class="li-btn li-btn-suave" onclick="liCambiarEstado(' + id + ', ' + "'borrador'" + ')">Volver a borrador</button>'
+  ].join('');
+  return '<article class="li-tarjeta li-' + liEsc(b.estado) + '">' +
+    '<div class="li-cab"><span class="li-orden">N.º ' + Number(b.orden) + '</span>' +
+    '<span class="li-tema">' + liEsc(b.tema || 'Publicación') + '</span>' +
+    '<span class="li-chip ' + est[1] + '">' + liEsc(est[0]) + '</span></div>' +
+    '<div class="li-texto">' + liEsc(b.texto) + '</div>' + visual +
+    '<div class="li-pie">' + contador + publicada + editada + '</div>' +
+    '<div class="li-acciones-tarjeta">' + acciones + '</div></article>';
+}
+
+function liCopiarViejo(texto) {
+  try {
+    const area = document.createElement('textarea');
+    area.value = texto;
+    area.setAttribute('readonly', '');
+    area.className = 'li-copia-oculta';
+    document.body.appendChild(area);
+    area.select();
+    const ok = document.execCommand('copy');
+    area.remove();
+    return !!ok;
+  } catch (e) {
+    return false;
+  }
+}
+
+async function liCopiar(id) {
+  const b = liBorrador(id);
+  if (!b) return;
+  let ok = false;
+  try {
+    if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(b.texto);
+      ok = true;
+    }
+  } catch (e) {
+    ok = false;
+  }
+  if (!ok) ok = liCopiarViejo(b.texto);
+  const boton = document.getElementById('li-copiar-' + Number(id));
+  if (!boton) return;
+  boton.textContent = ok ? 'Copiado' : 'No se pudo copiar';
+  setTimeout(() => {
+    const otra = document.getElementById('li-copiar-' + Number(id));
+    if (otra) otra.textContent = 'Copiar texto';
+  }, 2000);
+}
+
+function liEditar(id) {
+  const b = liBorrador(id);
+  if (!b) return;
+  liEditandoId = id;
+  const area = document.getElementById('li-editar-texto');
+  if (area) area.value = b.texto;
+  const error = document.getElementById('li-editar-error');
+  if (error) error.textContent = '';
+  liContarEdicion();
+  liClase('li-editar-modal', true, 'open');
+}
+
+function liContarEdicion() {
+  const area = document.getElementById('li-editar-texto');
+  const contador = document.getElementById('li-editar-contador');
+  if (!area || !contador) return;
+  const n = liCaracteres(area.value);
+  const limite = (liDatos && liDatos.limite) || 3000;
+  contador.textContent = liContadorTexto(n, limite);
+  liClase('li-editar-contador', n > limite, 'li-pasa');
+}
+
+function liCerrarEditar() {
+  liEditandoId = null;
+  liClase('li-editar-modal', false, 'open');
+}
+
+async function liGuardarEdicion() {
+  const id = liEditandoId;
+  const area = document.getElementById('li-editar-texto');
+  const error = document.getElementById('li-editar-error');
+  if (!id || !area) return;
+  const texto = String(area.value || '');
+  if (!texto.trim()) {
+    if (error) error.textContent = 'El texto no puede quedar vacío.';
+    return;
+  }
+  try {
+    const r = await fetch('/api/linkedin/borradores/' + Number(id), {
+      method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({texto: texto})
+    });
+    let d = {};
+    try { d = await r.json(); } catch (e) { d = {}; }
+    if (!r.ok || !d.ok) {
+      if (error) error.textContent = d.error || 'No se pudo guardar.';
+      return;
+    }
+  } catch (e) {
+    if (error) error.textContent = 'No se pudo guardar.';
+    return;
+  }
+  liCerrarEditar();
+  await loadLinkedin();
+}
+
+function liAbrirPublicar(id) {
+  liPublicandoId = id;
+  const fecha = document.getElementById('li-publicar-fecha');
+  if (fecha) fecha.value = (liDatos && liDatos.hoy) || '';
+  const error = document.getElementById('li-publicar-error');
+  if (error) error.textContent = '';
+  liClase('li-publicar-modal', true, 'open');
+}
+
+function liCerrarPublicar() {
+  liPublicandoId = null;
+  liClase('li-publicar-modal', false, 'open');
+}
+
+async function liConfirmarPublicar() {
+  const id = liPublicandoId;
+  const fecha = document.getElementById('li-publicar-fecha');
+  const error = document.getElementById('li-publicar-error');
+  if (!id) return;
+  const valor = fecha ? String(fecha.value || '') : '';
+  if (!valor) {
+    if (error) error.textContent = 'Elegí el día en que se publicó.';
+    return;
+  }
+  if (await liEnviarEstado(id, 'publicado', valor, 'li-publicar-error')) liCerrarPublicar();
+}
+
+async function liCambiarEstado(id, estado) {
+  await liEnviarEstado(id, estado, '', 'li-nota');
+}
+
+async function liEnviarEstado(id, estado, fecha, idError) {
+  const error = document.getElementById(idError);
+  try {
+    const r = await fetch('/api/linkedin/borradores/' + Number(id) + '/estado', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({estado: estado, fecha: fecha || null})
+    });
+    let d = {};
+    try { d = await r.json(); } catch (e) { d = {}; }
+    if (!r.ok || !d.ok) {
+      if (error) error.textContent = d.error || 'No se pudo cambiar el estado.';
+      return false;
+    }
+  } catch (e) {
+    if (error) error.textContent = 'No se pudo cambiar el estado.';
+    return false;
+  }
+  await loadLinkedin();
+  return true;
+}
+
+function liSemana(delta) {
+  const base = liSemanaSel || (liDatos && liDatos.semana) || '';
+  if (!base) return;
+  const actual = (liDatos && liDatos.semana_actual) || '';
+  let nueva = liSumarDias(base, 7 * delta);
+  if (actual && nueva > actual) nueva = actual;   // el futuro no tiene borradores
+  liSemanaSel = actual && nueva === actual ? '' : nueva;
+  loadLinkedin();
+}
+
+function liSemanaHoy() {
+  liSemanaSel = '';
+  loadLinkedin();
+}
+
+// Solo admin. Encola lo mismo que el cron al empezar: dos borradores del
+// banco. No manda el mail, que sale con la corrida automatica.
+async function liGenerar() {
+  const pregunta = 'Esto arma ahora dos borradores nuevos con los textos del banco y los deja en esta ' +
+    'pantalla. No manda el mail: el mail con las imágenes sale con la corrida automática de los martes ' +
+    'y viernes. ¿Seguir?';
+  if (!confirm(pregunta)) return;
+  const boton = document.getElementById('li-btn-generar');
+  const nota = document.getElementById('li-nota');
+  if (boton) boton.disabled = true;
+  if (nota) nota.textContent = 'Generando…';
+  try {
+    const r = await fetch('/api/linkedin/borradores/generar', {method: 'POST'});
+    let d = {};
+    try { d = await r.json(); } catch (e) { d = {}; }
+    if (!r.ok || !d.ok) {
+      if (nota) nota.textContent = d.error || 'No se pudo generar.';
+      return;
+    }
+    if (nota) nota.textContent = 'Listo: se están armando. Aparecen acá en unos segundos.';
+    setTimeout(() => { loadLinkedin(); }, 4000);
+  } catch (e) {
+    if (nota) nota.textContent = 'No se pudo generar.';
+  } finally {
+    if (boton) boton.disabled = false;
+  }
+}
+// ========== FIN LinkedIn ==========
+
 // ========== Email marketing ==========
 // Lo que sale por Resend, con lo que Resend cuenta despues. Los numeros y las
 // fechas (ya en hora de Montevideo) vienen armados de /api/email-marketing:
@@ -12987,7 +13467,8 @@ function emTabla(envios) {
     return '<tr><td class="em-fecha">' + emEsc(e.fecha_local) + '</td>' +
       '<td>' + emEsc(e.tipo_etiqueta) + '</td>' +
       '<td class="em-dest">' + emEsc(e.destinatario || '—') + '</td>' +
-      '<td class="em-asunto">' + emEsc(e.asunto) + extracto + '</td>' +
+      '<td class="em-asunto">' + emEsc(e.asunto) + extracto +
+      '<button type="button" class="em-ver" onclick="emVerMail(' + Number(e.id) + ')">Ver mail</button></td>' +
       '<td><span class="em-chip ' + est[1] + '">' + emEsc(est[0]) + '</span>' + historico + '</td>' +
       '<td>' + lead + '</td></tr>';
   }).join('');
@@ -13088,6 +13569,117 @@ async function emActualizarEstados() {
   } finally {
     boton.disabled = !(emDatos && emDatos.hay_api_key);
   }
+}
+
+// ── Ver el mail ──────────────────────────────────────────────────────────────
+// El contenido llega de /api/email-mkt/envios/ID/contenido, ya sanitizado en el
+// servidor, y se carga con srcdoc en un iframe con sandbox vacio: sin scripts,
+// sin mismo origen y sin navegacion. Nunca se mete en el DOM del CRM.
+let emMailPedido = 0;
+let emMailDatos = null;
+
+function emEnvioPorId(id) {
+  const lista = (emDatos && emDatos.envios) || [];
+  return lista.find(e => Number(e.id) === Number(id)) || null;
+}
+
+function emMailClase(id, poner, clase) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (poner) el.classList.add(clase);
+  else el.classList.remove(clase);
+}
+
+function emMailCabecera(d) {
+  const asunto = document.getElementById('em-mail-asunto');
+  if (asunto) asunto.textContent = d.asunto || '(sin asunto)';
+  const est = EM_ESTADOS[d.estado] || [d.estado || '—', 'em-chip-gris'];
+  const filas = [
+    ['Remitente', emEsc(d.remitente || '—')],
+    ['Destinatario', emEsc(d.destinatario || '—')],
+    ['Fecha', emEsc(d.fecha_local ? d.fecha_local + ' (Montevideo)' : '—')],
+    ['Tipo', emEsc(d.tipo_etiqueta || d.tipo || '—')],
+    ['Estado', '<span class="em-chip ' + est[1] + '">' + emEsc(est[0]) + '</span>']
+  ];
+  emPoner('em-mail-datos', filas.map(f => '<dt>' + f[0] + '</dt><dd>' + f[1] + '</dd>').join(''));
+}
+
+function emMailVacio(texto) {
+  const vacio = document.getElementById('em-mail-vacio');
+  if (vacio) vacio.textContent = texto;
+  emMailClase('em-mail-vacio', false, 'em-oculto');
+  emMailClase('em-mail-iframe', true, 'em-oculto');
+  emMailClase('em-mail-texto', true, 'em-oculto');
+  emMailClase('em-mail-tabs', true, 'em-oculto');
+  const iframe = document.getElementById('em-mail-iframe');
+  if (iframe) iframe.srcdoc = '';
+}
+
+async function emVerMail(id) {
+  const modal = document.getElementById('em-mail-modal');
+  if (!modal) return;
+  const pedido = ++emMailPedido;
+  emMailDatos = null;
+  emMailCabecera(emEnvioPorId(id) || {});
+  const aviso = document.getElementById('em-mail-aviso');
+  if (aviso) aviso.textContent = '';
+  emMailClase('em-mail-aviso', true, 'em-oculto');
+  emMailVacio('Cargando el mail…');
+  modal.classList.add('open');
+  let d = null;
+  try {
+    const r = await fetch('/api/email-mkt/envios/' + Number(id) + '/contenido');
+    try { d = await r.json(); } catch (e) { d = null; }
+    if (!r.ok || !d || !d.ok) throw new Error((d && d.error) || ('HTTP ' + r.status));
+  } catch (e) {
+    if (pedido !== emMailPedido) return;
+    emMailVacio('No se pudo cargar el contenido de este mail. Probá de nuevo en un rato.');
+    return;
+  }
+  if (pedido !== emMailPedido) return;
+  emMailDatos = d;
+  emMailPintar(d);
+}
+
+function emMailPintar(d) {
+  emMailCabecera(d);
+  const avisos = (d.avisos || []).filter(Boolean);
+  const aviso = document.getElementById('em-mail-aviso');
+  if (aviso) aviso.textContent = avisos.join(' ');
+  emMailClase('em-mail-aviso', !avisos.length, 'em-oculto');
+  if (!d.html && !d.text) {
+    emMailVacio(d.motivo || 'El contenido de este mail no está disponible.');
+    return;
+  }
+  const iframe = document.getElementById('em-mail-iframe');
+  if (iframe) {
+    // El sandbox vacio se vuelve a fijar antes de cargar: es lo que impide
+    // scripts, formularios y navegacion adentro del mail.
+    iframe.setAttribute('sandbox', '');
+    iframe.srcdoc = d.html || '';
+  }
+  const texto = document.getElementById('em-mail-texto');
+  if (texto) texto.textContent = d.text || 'Este mail no tiene versión en texto plano.';
+  emMailClase('em-mail-vacio', true, 'em-oculto');
+  emMailClase('em-mail-tabs', false, 'em-oculto');
+  emMailPestana(d.html ? 'html' : 'texto');
+}
+
+function emMailPestana(cual) {
+  const vista = cual === 'html' && !!(emMailDatos && emMailDatos.html);
+  emMailClase('em-mail-iframe', !vista, 'em-oculto');
+  emMailClase('em-mail-texto', vista, 'em-oculto');
+  emMailClase('em-mail-tab-html', vista, 'em-activo');
+  emMailClase('em-mail-tab-texto', !vista, 'em-activo');
+}
+
+function emCerrarMail() {
+  emMailPedido++;
+  emMailDatos = null;
+  const modal = document.getElementById('em-mail-modal');
+  if (modal) modal.classList.remove('open');
+  const iframe = document.getElementById('em-mail-iframe');
+  if (iframe) iframe.srcdoc = '';
 }
 
 // ========== Daily Programador ==========
@@ -17228,7 +17820,7 @@ def create_app(db_path: str) -> Flask:
     for bp in (leads_bp, demos_bp, calendar_bp, wa_bp, pipeline_bp, tasks_bp, budgets_bp, tokens_bp, meta_bp, calendly_bp, notion_bp, projects_bp, preclientes_bp,
                 notion_clients_bp, resend_bp, linkedin_bp, web_bp, finanzas_bp, marketing_bp,
                 simulador_bp, inteligencia_fin_bp, equipo_bp, horarios_bp, flujos_bp, seg_leads_bp, daily_bp, plantillas_bp,
-                backups_bp, email_mkt_bp):
+                backups_bp, email_mkt_bp, linkedin_panel_bp):
         app.register_blueprint(bp)
 
     @app.before_request
@@ -18202,8 +18794,8 @@ select:focus{border-color:#0088cc}
 </div>
 
 <script>
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt'];
-const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Inteligencia financiera',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas',email_mkt:'Email marketing'};
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin'];
+const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Inteligencia financiera',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas',email_mkt:'Email marketing',linkedin:'LinkedIn'};
 let _roles = [];
 
 // Paneles que muestran el check "solo lectura". El dato (roles.paneles_solo_lectura)

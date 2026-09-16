@@ -43,7 +43,7 @@ def _entre(texto, desde, hasta):
 PANEL = _entre(SRC, "<!-- ======= EMAIL MARKETING PANEL ======= -->",
                "<!-- ======= FIN EMAIL MARKETING PANEL ======= -->")
 JS = _entre(SRC, "// ========== Email marketing ==========", "// ========== Daily Programador ==========")
-CSS = _entre(SRC, "/* ── Email marketing", "/* ── Equipo")
+CSS = _entre(SRC, "/* ── Email marketing", "/* ── LinkedIn")
 FUENTES = {"panel": PANEL, "js": JS, "css": CSS}
 
 PROHIBIDAS = ("monto", "usd", "$", "precio", "pago", "factur", "sueldo")
@@ -607,13 +607,16 @@ def test_el_boton_sin_api_key_da_400_y_con_clave_usa_el_cliente(app, jefe, monke
 
 def test_esta_registrado_en_todos_lados():
     menu = HTML[HTML.index('<div class="nav-scroll">'):HTML.index('<div class="sidebar-bottom">')]
-    captacion = menu[menu.index('nav-section-label">CAPTACIÓN'):]
-    assert re.findall(r'id="nav-(\w+)"', captacion) == ["cola", "metrics", "sdr", "email_mkt"]
+    # Juan (15/9): Email marketing pasa a MARKETING, abajo de Inteligencia marketing.
+    marketing = menu[menu.index('nav-section-label">MARKETING'):menu.index('nav-section-label">FINANZAS')]
+    assert re.findall(r'id="nav-(\w+)"', marketing) == ["meta", "marketing", "email_mkt", "linkedin"]
     assert ('<div class="nav-item" id="nav-email_mkt" onclick="showPanel(\'email_mkt\')">'
-            '<i data-lucide="mail" class="nav-icon"></i> Email marketing</div>') in captacion
+            '<i data-lucide="mail" class="nav-icon"></i> Email marketing</div>') in marketing
+    captacion = menu[menu.index('nav-section-label">CAPTACIÓN'):]
+    assert re.findall(r'id="nav-(\w+)"', captacion) == ["cola", "metrics", "sdr"]
 
     prioridad = re.findall(r"'(\w+)'", re.search(r"const NAV_PRIORITY = \[([^\]]*)\]", HTML).group(1))
-    assert prioridad[-1] == "email_mkt" and prioridad.index("email_mkt") == prioridad.index("metrics") + 1
+    assert prioridad.index("email_mkt") == prioridad.index("meta") + 1
     assert "email_mkt:'mail'" in re.search(r"const NAV_ICONS = \{(.*?)\n\}", HTML, re.S).group(1)
     assert "email_mkt:'Email mkt'" in re.search(r"const NAV_LABELS = \{(.*?)\n\}", HTML, re.S).group(1)
     listas = re.findall(r"const ALL_PANELS = \[([^\]]*)\]", SRC)

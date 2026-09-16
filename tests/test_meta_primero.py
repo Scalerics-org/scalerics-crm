@@ -1,10 +1,10 @@
 """El menu en el orden que definio Juan, con el Calendario primero (14/9).
 
-Menu, por grupo: CALENDARIO (Calendario) · MARKETING (Meta Ads, Marketing) ·
+Menu, por grupo: CALENDARIO (Calendario) · MARKETING (Meta Ads, Marketing, Email marketing, LinkedIn) ·
 FINANZAS (Finanzas, Simulador financiero, Inteligencia financiera) · VENTAS (Seguimiento de leads,
 WhatsApp, Proceso de venta, Demos) · OPERACION (Clientes, Proyectos, Tareas,
 Daily Programador, Daily Admin, Actividad) · RECURSOS HUMANOS · CAPTACION
-(Outbound, Inteligencia comercial, SDR, Email marketing). La barra del celular sigue el mismo
+(Outbound, Inteligencia comercial, SDR). La barra del celular sigue el mismo
 orden. Equipo se sumo despues de Actividad el 14/9, Seguimiento de leads
 (`seg_leads`) es el primer item de VENTAS, arriba de WhatsApp (pedido de Juan,
 14/9), Daily Programador va en OPERACION justo despues de Tareas (15/9) y Daily
@@ -32,12 +32,12 @@ sin_node = pytest.mark.skipif(shutil.which("node") is None,
 
 ORDEN = [
     ("CALENDARIO", ["cal"]),
-    ("MARKETING", ["meta", "marketing"]),
+    ("MARKETING", ["meta", "marketing", "email_mkt", "linkedin"]),
     ("FINANZAS", ["finanzas", "simulador", "inteligencia_fin"]),
     ("VENTAS", ["seg_leads", "wa", "notion_clients", "demos", "plantillas"]),
     ("OPERACIÓN", ["clientes", "projects", "tasks", "daily", "daily_admin", "activity"]),
     ("RECURSOS HUMANOS", ["equipo", "ausencias", "flujos", "horarios"]),
-    ("CAPTACIÓN", ["cola", "metrics", "sdr", "email_mkt"]),
+    ("CAPTACIÓN", ["cola", "metrics", "sdr"]),
 ]
 
 

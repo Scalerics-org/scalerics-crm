@@ -83,6 +83,47 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 | F (finanzas) | la sección financiera del CRM | `services/finanzas.py`, `routes/finanzas.py`, `database.py` (tablas de finanzas), `dashboard.py` (panel Finanzas) | 8/9 |
 
+> **MARKETING: Email marketing y panel LinkedIn (15/9, pedido de Juan).** Misma
+> rama `feat/email-mkt-ver-mail`, commit aparte. Sin PR, sin merge y sin deploy.
+>
+> - **Menú:** MARKETING queda Meta Ads, Inteligencia marketing, Email marketing y
+>   LinkedIn. Email marketing salió de CAPTACIÓN; el permiso sigue siendo `email_mkt`.
+> - **Cómo se generan los borradores de LinkedIn NO cambió:** el cron de GitHub
+>   corre martes y viernes a las 08:00 (Montevideo), saca 2 posts del banco ya
+>   escrito (sin IA) en cada corrida, o sea **4 por semana**, y el runner
+>   renderiza las tarjetas y manda el mail por `/api/linkedin/enviar`.
+> - **Lo nuevo:** cada borrador además queda en `linkedin_borradores` cuando el job
+>   lo arma (`linkedin_job_handler`, en try/except) y su imagen cuando el runner la
+>   manda para el mail (`enviar`, también en try/except). El histórico de
+>   `linkedin_posts` se copió una vez al crear la tabla, sin imágenes: esas solo
+>   viajaron adjuntas a los mails.
+> - **Sincronizado:** marcar publicada en el panel también marca `linkedin_posts`, y
+>   el link "ya lo publiqué" del mail también marca la tarjeta.
+> - **"Generar ahora" (solo admin)** encola el mismo job que el cron: arma 2
+>   borradores y consume temas del banco, pero **no manda mail ni hace imagen**
+>   (eso lo hace solo la corrida de GitHub).
+> - **Ojo, no lo toqué:** `/api/linkedin/generar` y `/api/linkedin/enviar` pasan con
+>   cualquier sesión iniciada, no solo con `x-admin-token`.
+> - Reparto una vez a los roles con `marketing`.
+
+> **Email marketing: ver el mail (15/9, pedido de Juan).** Rama
+> `feat/email-mkt-ver-mail`, worktree `crm-email-ver`. Sin PR, sin merge y sin
+> deploy. Botón "Ver mail" en la tabla, que abre un modal con el mail.
+>
+> - **De dónde sale el cuerpo** (nunca se guarda en la base):
+>   1. Envíos con id de Resend: `GET /emails/{id}` en el momento, con timeout,
+>      pausa mínima y cache en memoria de 5 minutos (`services/email_contenido.py`).
+>   2. Si Resend no lo tiene, no hay clave o es histórico: discovery y
+>      recordatorios de Meta se reconstruyen con la MISMA función de envío,
+>      corrida dentro de `email_service.capturar_envio()`, que arma el mail sin
+>      mandarlo ni registrarlo. Va con aviso de "reconstruido".
+>   3. Los otros tipos sin id: "no disponible".
+> - **Si tocás `_send_estado`:** el `capturar_envio` va antes de mirar la clave de
+>   Resend. Si lo movés abajo, reconstruir un mail en producción lo MANDA.
+> - **HTML:** se sanitiza en el servidor (sin scripts, `on*`, `javascript:`,
+>   iframes, formularios, `href` ni pixel de apertura) y la pantalla lo carga
+>   con `srcdoc` en un iframe con `sandbox=""`.
+
 > **Email marketing (15/9, pedido de Juan).** Rama `feat/email-marketing`,
 > worktree `crm-email-mkt`. Sin PR, sin merge y sin deploy. Panel nuevo
 > `email_mkt` al final de CAPTACIÓN.

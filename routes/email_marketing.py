@@ -14,6 +14,7 @@ from services.auth import is_admin, require_admin, require_panel
 from services.email_marketing import (ESTADOS, TIPOS, TOPE_CONSULTAS,
                                       actualizar_estados, mes_actual, parse_mes,
                                       resumen)
+from services.email_contenido import contenido_de_envio
 
 email_mkt_bp = Blueprint("email_mkt", __name__)
 
@@ -79,3 +80,16 @@ def api_actualizar_estados():
         return jsonify({"ok": False, "error": "limite tiene que ser un número"}), 400
     res = actualizar_estados(_db(), clave, limite=limite, http=_cliente_http())
     return jsonify({"ok": True, **res})
+
+
+@email_mkt_bp.route("/api/email-mkt/envios/<int:envio_id>/contenido")
+def api_contenido(envio_id):
+    """El mail tal cual se mando. Lo ve cualquiera con el panel, no hace falta
+    ser admin: es lo mismo que ya ve en la tabla, con el cuerpo."""
+    datos = contenido_de_envio(_db(), envio_id, _api_key(), http=_cliente_http())
+    if datos is None:
+        return jsonify({"ok": False, "error": "No existe ese envío"}), 404
+    respuesta = jsonify({"ok": True, **datos})
+    # Trae el cuerpo de un mail a un tercero: que no quede en ningun cache.
+    respuesta.headers["Cache-Control"] = "no-store"
+    return respuesta

@@ -95,6 +95,14 @@ def api_linkedin_enviar():
     for p in posts:
         update_linkedin_post(_db(), p["id"], estado="enviado")
 
+    # Las tarjetas que renderizo el runner quedan tambien en el panel LinkedIn,
+    # para descargarlas desde el CRM. Si no se pueden guardar, el mail ya salio.
+    try:
+        from services.linkedin_borradores import guardar_imagenes
+        guardar_imagenes(_db(), imagenes)
+    except Exception:
+        current_app.logger.exception("LinkedIn: no se pudieron guardar las imagenes en el panel")
+
     return jsonify({"ok": ok, "enviados": len(borradores)}), 200
 
 
@@ -127,5 +135,11 @@ def api_linkedin_marcar():
         publicado_en=datetime.now().isoformat(),
         marcar_token=None,
     )
+    # La tarjeta del panel LinkedIn tiene que decir lo mismo que el link.
+    try:
+        from services.linkedin_borradores import marcar_publicado_por_post
+        marcar_publicado_por_post(_db(), post["id"])
+    except Exception:
+        current_app.logger.exception("LinkedIn: no se pudo marcar el borrador del panel como publicado")
     return ("Listo, lo marque como publicado. Esto no publica en LinkedIn: "
             "solo registra que ya lo subiste, para que ese tema no vuelva a salir.", 200)
