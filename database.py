@@ -1678,6 +1678,71 @@ def init_db(db_path: str) -> None:
                 detalle_real     TEXT NOT NULL DEFAULT ''
             )
         """)
+        # Que palanca es cada alternativa (mas pauta, mejorar conversion, canal
+        # nuevo, recorte de costo, pausa de trabajo). Es el color de la tarjeta
+        # en la pantalla y no es decorativo: dice de que tipo es la decision.
+        # Las filas viejas quedan en '' y la pantalla las pinta como neutras.
+        _add_column(conn, "if_recomendaciones", "palanca", "TEXT NOT NULL DEFAULT ''")
+        # La linea de riesgo/contexto que va debajo del titulo en la tarjeta, y
+        # la marca de las tarjetas que tienen que aparecer aunque no lleguen al
+        # umbral de USD 100 (las que explican una palanca sin datos). `siempre`
+        # se guarda porque la pantalla vuelve a ordenar lo que lee de la tabla:
+        # sin la marca, esas tarjetas se filtraban al releerlas.
+        _add_column(conn, "if_recomendaciones", "nota", "TEXT NOT NULL DEFAULT ''")
+        _add_column(conn, "if_recomendaciones", "siempre", "INTEGER NOT NULL DEFAULT 0")
+
+        # El objetivo real del mes, en tres partes que Juan edita a mano
+        # (pedido del 15/9, spec en PDF). `fijos_usd` en NULL significa "usa los
+        # fijos confirmados de Finanzas": guardar el numero copiado congelaria
+        # el objetivo el dia que cambie un fijo. Una fila por mes, asi el mes
+        # que viene se vuelve a partir de los fijos de ese mes.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS if_objetivo (
+                periodo     TEXT PRIMARY KEY,
+                fijos_usd   REAL CHECK (fijos_usd IS NULL OR fijos_usd >= 0),
+                aportes_usd REAL NOT NULL DEFAULT 0 CHECK (aportes_usd >= 0),
+                sueldo_usd  REAL NOT NULL DEFAULT 0 CHECK (sueldo_usd >= 0),
+                updated_by  TEXT,
+                updated_at  TEXT
+            )
+        """)
+        # Gastos que Juan YA SABE que van a caer este mes, cargados cuando se
+        # entera y no al cierre. Alimentan el objetivo en vivo, al lado de los
+        # fijos confirmados. Cuando el gasto se carga de verdad en Finanzas se
+        # empareja con el movimiento (`movimiento_id`) y sale de la lista, para
+        # no contarlo dos veces. `descartado` es para el que al final no vino.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS if_gastos_esperados (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                periodo       TEXT NOT NULL,
+                concepto      TEXT NOT NULL,
+                monto_usd     REAL NOT NULL CHECK (monto_usd > 0),
+                categoria     TEXT NOT NULL CHECK (categoria IN ('fijo', 'variable')),
+                estado        TEXT NOT NULL DEFAULT 'esperado'
+                              CHECK (estado IN ('esperado', 'confirmado', 'descartado')),
+                movimiento_id INTEGER REFERENCES finanzas_movimientos(id),
+                emparejado_en TEXT,
+                cargado_por   TEXT,
+                created_at    TEXT
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_if_gastos_esperados_periodo "
+                     "ON if_gastos_esperados(periodo, estado)")
+        # Si un gasto recurrente es de ESTRUCTURA (los sueldos, las
+        # herramientas, la infra) o es el costo indirecto de UN cliente de
+        # mantenimiento (los servidores de Fulano). El sistema lo propone
+        # mirando si el concepto nombra a un cliente, pero la ultima palabra es
+        # de Juan y queda guardada aca: sin esta tabla, la clasificacion seria
+        # una adivinanza que el no puede corregir.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS if_fijo_clasificacion (
+                recurrente_id INTEGER PRIMARY KEY,
+                clase         TEXT NOT NULL CHECK (clase IN ('estructura', 'cliente')),
+                client_id     INTEGER REFERENCES businesses(id),
+                updated_by    TEXT,
+                updated_at    TEXT
+            )
+        """)
         # A proposito, sin repartir el panel a los roles que ya existen
         # (Ruling R20, igual que Finanzas y el Simulador): la pantalla muestra
         # margenes, cobros vencidos y gastos. Los admin la ven igual y al resto

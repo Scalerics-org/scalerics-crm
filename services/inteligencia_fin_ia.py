@@ -86,6 +86,12 @@ def texto_deterministico(diagnostico: list[dict], sugerencias: list[dict]) -> st
         titulo = r["titulo"][:1].lower() + r["titulo"][1:]
         partes.append(f"Lo que más plata mueve ahora: {titulo} "
                       f"({usd(r['impacto_mensual'])} {'por única vez' if r.get('unica_vez') else 'por mes'}).")
+    elif sugerencias:
+        # Todavía no hay ninguna alternativa con número (las tarjetas son las
+        # que explican cada palanca). Igual se dice por dónde empezar: el
+        # resumen nunca es un cartel de que no hay nada para analizar.
+        titulo = sugerencias[0]["titulo"]
+        partes.append(f"Por dónde empezar: {titulo[:1].lower() + titulo[1:]}.")
     return " ".join(partes)
 
 
