@@ -424,13 +424,17 @@ def send_meta_token_alert(to_email: str, error_detail: str) -> bool:
 
 
 @_tipo_envio("alerta")
-def send_alertas_meta(to_email: str, asunto: str, cuerpo_html: str) -> bool:
-    """El mail diario de `services/alertas_meta.py`. El cuerpo ya viene escapado."""
+def send_alertas_meta(to_email: str, asunto: str, cuerpo_html: str,
+                      con_boton: bool = True) -> bool:
+    """El mail de `services/alertas_meta.py`. El cuerpo ya viene escapado.
+
+    `con_boton=False` para los externos, que no tienen usuario en el CRM.
+    """
     html_mail = _layout(
         badge="Pauta de Meta",
         title="Cómo viene la pauta",
         body=cuerpo_html,
-        cta_url=f"{_CRM_URL}",
+        cta_url=f"{_CRM_URL}" if con_boton else "",
         cta_label="Ver el panel de Marketing →",
     )
     return _send(to_email, asunto, html_mail)
