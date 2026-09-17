@@ -386,6 +386,50 @@ function crearRepo(db) {
       }));
     },
 
+    /**
+     * La conversacion como la leeria alguien de afuera: lo que dijo el lead y
+     * lo que le contesto el bot, sin los avisos al equipo ni los medios sin
+     * texto. Es lo que se le pasa a Jev en modo sombra.
+     */
+    conversacionParaSombra(leadId, n = 20) {
+      const l = stmt.leadPorId.get(leadId);
+      if (!l) return [];
+      const filas = l.conversacion_desde
+        ? db.prepare(`
+          SELECT direction, body FROM messages
+          WHERE lead_id = ? AND kind != 'am_notice' AND body IS NOT NULL AND body != '' AND created_at >= ?
+          ORDER BY id DESC LIMIT ?
+        `).all(leadId, aFechaSqlite(l.conversacion_desde), n)
+        : db.prepare(`
+          SELECT direction, body FROM messages
+          WHERE lead_id = ? AND kind != 'am_notice' AND body IS NOT NULL AND body != ''
+          ORDER BY id DESC LIMIT ?
+        `).all(leadId, n);
+      return filas.reverse().map((f) => ({ de: f.direction === 'in' ? 'lead' : 'bot', texto: f.body }));
+    },
+
+    registrarSombra({ leadId, decision, bot = null, jev = null, coincide = null, confianza = null, ms = null }) {
+      db.prepare(`
+        INSERT INTO jev_sombra (lead_id, decision, bot, jev, coincide, confianza, ms)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        leadId ?? null, decision,
+        bot === null ? null : JSON.stringify(bot),
+        jev === null ? null : JSON.stringify(jev),
+        coincide === null ? null : (coincide ? 1 : 0),
+        confianza, ms,
+      );
+    },
+
+    sombrasDeLead(leadId) {
+      return db.prepare('SELECT * FROM jev_sombra WHERE lead_id = ? ORDER BY id').all(leadId).map((f) => ({
+        ...f,
+        bot: f.bot === null ? null : JSON.parse(f.bot),
+        jev: f.jev === null ? null : JSON.parse(f.jev),
+        coincide: f.coincide === null ? null : f.coincide === 1,
+      }));
+    },
+
     caracteresDelLead(leadId) {
       const l = stmt.leadPorId.get(leadId);
       if (!l) return 0;

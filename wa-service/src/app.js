@@ -21,7 +21,7 @@ const { crearAgrupador } = require('./inbound/agrupador');
  */
 function construir(cfg, {
   logger, ahora = () => new Date(), openai: clienteIA = null,
-  modelo: clienteModelo = null, google = null,
+  modelo: clienteModelo = null, google = null, jev: clienteJev = null,
 } = {}) {
   const log = logger || crearLogger({
     level: cfg.LOG_LEVEL,
@@ -150,8 +150,19 @@ function construir(cfg, {
   // servicioLeads, que se arma abajo, asi que se cablea despues.
   const { crearVigilanteDeReservas } = require('./agenda/reservas');
 
+  // Jev en modo sombra. `deps.jev` es lo que inyectan los tests; si no viene se
+  // arma contra la API, y sin clave o con JEV_MODO=apagado no consulta nada.
+  const jev = clienteJev || require('./ia/jev').crearJev({
+    apiKey: cfg.JEV_MODO === 'sombra' ? cfg.JEV_API_KEY : '',
+    url: cfg.JEV_URL,
+    modelo: cfg.JEV_MODELO,
+    timeoutMs: cfg.JEV_TIMEOUT_MS,
+    logger: log,
+  });
+  const sombra = require('./ia/sombra').crearSombra({ jev, repo, logger: log });
+
   const embudo = crearEmbudo({
-    repo, cola, textos, scorer, logger: log, cfg, crmNotify, agente, redactor, agenda, ahora,
+    repo, cola, textos, scorer, logger: log, cfg, crmNotify, agente, redactor, agenda, ahora, sombra,
     // El scheduler se arma abajo —tiene al embudo como dependencia— asi que se
     // resuelve cuando se llama y no ahora.
     recordatorios: (lead) => scheduler.programarRecordatorios(lead, ahora()),
@@ -378,8 +389,8 @@ function construir(cfg, {
 
   return {
     cfg, db, repo, proveedor, cola, limites, servicioLeads, media,
-    scheduler, embudo, scorer, agrupador, app, vigilanteReservas, logger: log,
-    ia: { conversacion: agente.activo, transcripcion: transcriptor.activo },
+    scheduler, embudo, scorer, agrupador, app, vigilanteReservas, sombra, logger: log,
+    ia: { conversacion: agente.activo, transcripcion: transcriptor.activo, jevSombra: sombra.activa },
   };
 }
 

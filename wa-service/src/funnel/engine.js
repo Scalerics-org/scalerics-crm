@@ -118,6 +118,8 @@ function crearEmbudo({
    * se llama.
    */
   recordatorios = null,
+  /** Jev en modo sombra (ia/sombra.js): mira y anota, nunca cambia lo que sale. */
+  sombra = null,
 }) {
   const CALENDLY = cfg.CALENDLY_LINK || '';
 
@@ -133,6 +135,7 @@ function crearEmbudo({
     const texto = await redactor?.escribir(lead, situacion, extra);
     if (!texto) return false;
     decir(lead, texto);
+    sombra?.alMandarIA(lead, situacion, texto);
     return true;
   }
 
@@ -531,6 +534,7 @@ ${await loQueHay()}`
       case S.SCORED: {
         const fresco = repo.leadPorId(lead.id);
         avisarDesenlace(lead.id, 'meeting');
+        sombra?.alCalificar(fresco);
         return alEntrar(fresco, S.MEETING_SENT, entrada);
       }
 

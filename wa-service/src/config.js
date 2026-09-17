@@ -199,6 +199,24 @@ const esquema = z.object({
   IA_TRANSCRIPCION: booleanoDeEnv.default(true),
   IA_MODELO_AUDIO: z.string().default('whisper-1'),
 
+  /**
+   * Jev (TypeSafe): un modelo que no escribe, decide. Devuelve una eleccion
+   * con probabilidades y confianza en unos cientos de milisegundos.
+   *
+   * `sombra` lo consulta en las decisiones donde el modelo que conversa se
+   * viene equivocando —dar por calificado a quien no dijo que necesita, y la
+   * oferta que le atribuye cosas que no dijo— y anota la respuesta en la tabla
+   * jev_sombra. No cambia nada de lo que sale: es para medir antes de dejarlo
+   * decidir. Apagado por defecto, y sin clave no hace nada aunque se prenda.
+   */
+  JEV_API_KEY: z.string().default(''),
+  JEV_MODO: z.enum(['apagado', 'sombra']).default('apagado'),
+  JEV_URL: z.string().default('https://api.typesafe.ai/v1/systemone'),
+  JEV_MODELO: z.string().default('jev-latest'),
+  // Jev tarda 150-800ms. El tope es para que una API colgada no deje
+  // promesas vivas: la conversacion no espera a Jev en ningun caso.
+  JEV_TIMEOUT_MS: z.coerce.number().int().positive().default(5000),
+
   // Cuanto se guardan las notas de voz. La transcripcion queda para siempre; el
   // audio no: guardar la voz de gente sin necesidad no aporta nada y el volumen
   // no es infinito.
