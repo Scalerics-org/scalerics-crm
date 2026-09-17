@@ -16,6 +16,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 COPY --from=build /app/node_modules ./node_modules
 COPY package.json ./
 COPY src ./src
+# Las herramientas de mano, que se corren con `fly ssh console`: sin esto el
+# informe de Jev (npm run jev:informe) no existe en la maquina y habria que
+# bajarse la base para mirarla. Son unos KB y ninguna corre sola.
+COPY scripts ./scripts
 
 ENV NODE_ENV=production
 # El volumen se monta en /data: ahi viven la sesion y la base, que son lo unico

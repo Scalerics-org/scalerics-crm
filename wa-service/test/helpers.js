@@ -135,6 +135,9 @@ async function montar(extra, reloj) {
     openai = stubTranscriptor(),
     sinIA = false,
     _google = null,
+    // Jev falso (ia/jev.js). Sin esto se arma el de verdad, que con la config de
+    // test queda apagado y no consulta nada.
+    _jev = null,
     ...cfgExtra
   } = extra || {};
   const s = construir(cfgTest(cfgExtra), {
@@ -142,6 +145,7 @@ async function montar(extra, reloj) {
     modelo: sinIA ? null : modelo,
     openai: sinIA ? null : openai,
     google: _google,
+    jev: _jev,
     ahora: reloj ? () => reloj : undefined,
   });
   await s.proveedor.conectar();

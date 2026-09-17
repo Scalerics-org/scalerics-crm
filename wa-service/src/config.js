@@ -199,6 +199,50 @@ const esquema = z.object({
   IA_TRANSCRIPCION: booleanoDeEnv.default(true),
   IA_MODELO_AUDIO: z.string().default('whisper-1'),
 
+  /**
+   * Jev (TypeSafe): un modelo que no escribe, decide. Devuelve una eleccion
+   * con probabilidades y confianza en unos cientos de milisegundos.
+   *
+   * `sombra` lo consulta en las decisiones donde el modelo que conversa se
+   * viene equivocando —dar por calificado a quien no dijo que necesita, y la
+   * oferta que le atribuye cosas que no dijo— y anota la respuesta en la tabla
+   * jev_sombra. No cambia nada de lo que sale: es para medir antes de dejarlo
+   * decidir. Apagado por defecto, y sin clave no hace nada aunque se prenda.
+   */
+  JEV_API_KEY: z.string().default(''),
+  /**
+   * `decide` deja que Jev pise la necesidad que guardo el bot y que frene una
+   * oferta que le atribuye al lead algo que no dijo. Solo por ARRIBA del
+   * umbral: con menos confianza, o sin respuesta, el bot hace lo de siempre.
+   *
+   * No se prende sin haber mirado antes `npm run jev:informe` sobre datos de
+   * sombra. El umbral sale de la curva que imprime ese informe, no de una
+   * corazonada.
+   */
+  JEV_MODO: z.enum(['apagado', 'sombra', 'decide']).default('apagado'),
+  JEV_UMBRAL: z.coerce.number().min(0).max(1).default(0.8),
+  JEV_URL: z.string().default('https://api.typesafe.ai/v1/systemone'),
+  JEV_MODELO: z.string().default('jev-latest'),
+  /**
+   * Jev tarda 150-800ms medido contra la API. En sombra el tope solo evita
+   * promesas colgadas —nadie espera— pero en `decide` el lead SI espera: el
+   * mensaje no sale hasta que Jev conteste o se venza el tope.
+   *
+   * Por eso 2,5s y no 5: peor caso de un turno son tres llamadas (la necesidad
+   * al cerrar, la oferta, y el reintento), y con el presupuesto de abajo eso
+   * queda acotado en vez de sumar sin techo.
+   */
+  JEV_TIMEOUT_MS: z.coerce.number().int().positive().default(2500),
+
+  /**
+   * Cuanto puede demorar Jev en total antes de que salga un mensaje.
+   *
+   * Si la primera revision de la oferta ya se comio el presupuesto, no se
+   * reintenta: sale el texto fijo sin atribuciones, que es seguro y no cuesta
+   * otra llamada. Vale mas un mensaje mas seco a tiempo que uno mejor tarde.
+   */
+  JEV_PRESUPUESTO_MS: z.coerce.number().int().positive().default(3000),
+
   // Cuanto se guardan las notas de voz. La transcripcion queda para siempre; el
   // audio no: guardar la voz de gente sin necesidad no aporta nada y el volumen
   // no es infinito.

@@ -102,6 +102,7 @@ const ETIQUETA = {
   agenda: 'no se pudo agendar la reunion',
   sin_ia: 'la IA no pudo responder',
   abandono: 'dejo de contestar en el medio',
+  necesidad: 'no se entiende que necesita, ni preguntandole de nuevo',
   reprograma: 'quiere mover una reunion ya agendada',
 };
 
