@@ -241,6 +241,15 @@ def api_rellenar_anuncios():
         return jsonify({"error": str(e)}), 400
 
 
+@marketing_bp.route("/api/marketing/alertas/enviar-ahora", methods=["POST"])
+def api_alertas_enviar_ahora():
+    """Manda el mail de alertas ya, aunque hoy ya haya salido. Pausa de 15 minutos."""
+    from services.alertas_meta import enviar_ahora
+
+    resultado = enviar_ahora(_db())
+    return jsonify(resultado), (429 if resultado["estado"] == "esperar" else 200)
+
+
 @marketing_bp.route("/api/marketing/piezas")
 def api_piezas():
     """Las piezas de la pauta de UN mes, partidas en activas hoy y ya no.

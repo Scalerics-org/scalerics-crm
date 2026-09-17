@@ -13,3 +13,4 @@ flask
 gunicorn
 json-repair
 pytz
+Pillow

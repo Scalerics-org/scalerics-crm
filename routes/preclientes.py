@@ -283,11 +283,6 @@ def api_listar_demos():
     client_id = request.args.get("client_id", type=int)
     limite = request.args.get("limite", type=int) or 200
     demos = listar_demos_realizadas(_db(), client_id=client_id, limite=limite)
-    # El motivo de pérdida de las demos "no cerró" (Inteligencia financiera).
-    from services.inteligencia_fin import motivos_por_entidad
-    motivos = motivos_por_entidad(_db(), "demo")
-    for d in demos:
-        d["motivo_perdida"] = motivos.get(d["id"])
     return jsonify({"demos": demos})
 
 

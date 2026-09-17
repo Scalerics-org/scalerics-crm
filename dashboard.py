@@ -27,7 +27,9 @@ from routes.preclientes import preclientes_bp
 from routes.linkedin import linkedin_bp
 from routes.finanzas import finanzas_bp
 from routes.simulador import simulador_bp
-from routes.inteligencia_fin import inteligencia_fin_bp
+from routes.email_marketing import email_mkt_bp
+from routes.linkedin_panel import linkedin_panel_bp
+from routes.instagram import instagram_bp, instagram_pub_bp
 from routes.equipo import equipo_bp
 from routes.horarios import horarios_bp
 from routes.flujos import flujos_bp
@@ -404,6 +406,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   --ambar-tinte:#292116;
   --ambar-borde:#ca8a04;
   --azul-tinte:#0f1f35;
+  --violeta:#a78bfa;
   --sombra:rgba(0,0,0,.4);
   --semaforo-verde:#00ff00;
   --semaforo-celeste:#00ffff;
@@ -412,6 +415,20 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   --semaforo-rojo:#ff0000;
   --semaforo-amarillo:#ffff00;
   --semaforo-negro:#000000;
+  --rol-rojo:#f87171;
+  --rol-rojo-tinte:#2b1618;
+  --rol-naranja:#fb923c;
+  --rol-naranja-tinte:#2b1d12;
+  --rol-verde:#34d399;
+  --rol-verde-tinte:#0f2a1f;
+  --rol-azul:#60a5fa;
+  --rol-azul-tinte:#111f36;
+  --rol-violeta:#c084fc;
+  --rol-violeta-tinte:#24173a;
+  --rol-teal:#2dd4bf;
+  --rol-teal-tinte:#0d2a28;
+  --rol-rosa:#f472b6;
+  --rol-rosa-tinte:#2d1624;
 }
 body.light{
   --fondo:#f8fafc;
@@ -441,6 +458,7 @@ body.light{
   --ambar-tinte:#fef3c7;
   --ambar-borde:#fde047;
   --azul-tinte:#e0f2fe;
+  --violeta:#6d28d9;
   --sombra:rgba(0,0,0,.12);
   --semaforo-verde:#00ff00;
   --semaforo-celeste:#00ffff;
@@ -449,6 +467,20 @@ body.light{
   --semaforo-rojo:#ff0000;
   --semaforo-amarillo:#ffff00;
   --semaforo-negro:#000000;
+  --rol-rojo:#b91c1c;
+  --rol-rojo-tinte:#fee2e2;
+  --rol-naranja:#c2410c;
+  --rol-naranja-tinte:#ffedd5;
+  --rol-verde:#047857;
+  --rol-verde-tinte:#d1fae5;
+  --rol-azul:#1d4ed8;
+  --rol-azul-tinte:#dbeafe;
+  --rol-violeta:#7e22ce;
+  --rol-violeta-tinte:#f3e8ff;
+  --rol-teal:#0f766e;
+  --rol-teal-tinte:#ccfbf1;
+  --rol-rosa:#be185d;
+  --rol-rosa-tinte:#fce7f3;
 }
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:100vh;display:flex}
@@ -505,9 +537,17 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
   .search-input,.upick-wrap,.upick-trigger{width:100%!important}
   .filter-row-2{gap:5px}
   .pill{font-size:.68rem;padding:5px 10px}
-  .task-edit-btn,.task-del-btn{min-height:36px;padding:6px 10px}
-  .task-status-badge{padding:5px 12px;font-size:.74rem}
+  .task-edit-btn,.task-del-btn{min-height:44px;min-width:44px;padding:6px 12px}
+  .task-status-badge{padding:7px 14px;font-size:.74rem}
   .task-row{padding:12px 14px;border-radius:12px}
+  /* El tablero en el celular va en una sola columna, una abajo de la otra: a
+     260px fijos había que arrastrar de costado para ver las seis. Va por
+     #tasks-board y no por .kanban para no tocar el tablero de Pipeline Notion. */
+  #tasks-board{flex-direction:column;overflow-x:visible}
+  #tasks-board .task-col{width:100%;flex:1 1 auto;min-width:0}
+  .task-fecha,.task-quien{font-size:.78rem}
+  .task-fecha{padding:5px 11px}
+  .tasks-summary{gap:12px}
   /* ── Calendario compacto ── */
   .cal-cell{min-height:44px!important;padding:3px 2px!important}
   .cal-event-chip{font-size:0!important;width:8px!important;height:8px!important;border-radius:50%!important;padding:0!important;min-width:0!important;display:inline-block!important;margin:1px!important;border:none!important;background:#0088cc!important}
@@ -1009,6 +1049,57 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .cal-mobile-ev-titulo{font-size:.82rem;font-weight:600;color:var(--texto-fuerte)}
 .cal-mobile-ev-hora{font-size:.72rem;color:var(--azul-claro);margin-top:3px}
 .cal-mobile-ev-aviso{font-size:.7rem;color:var(--texto-debil);margin-top:3px}
+/* Reuniones de otro asunto y reuniones que se repiten (pedido de Juan, 15/9).
+   Todo con tokens: sirve igual en claro y en oscuro. El chip va combinado con
+   su body.light porque `body.light .cal-event-chip` le pisa el borde. */
+.cal-event-chip.tipo-asunto,.calw-chip.tipo-asunto,body.light .cal-event-chip.tipo-asunto,body.light .calw-chip.tipo-asunto{border-left-color:var(--violeta)}
+.cal-chip-tag{display:inline-block;font-size:.52rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--violeta);margin-right:4px}
+.cal-chip-rep{font-weight:800;color:var(--texto-tenue);margin-right:3px}
+.cal-leyenda-asunto{background:var(--violeta)}
+.cal-leyenda-rep{font-weight:800;color:var(--texto-tenue)}
+.cal-mobile-ev.tipo-asunto{border-left:3px solid var(--violeta)}
+.cal-mobile-ev-tag{font-size:.64rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--violeta);margin-bottom:2px}
+.cal-mobile-ev-rep{font-size:.72rem;color:var(--texto-tenue);margin-top:3px}
+/* De que es la reunion (pedido de Juan, 16/9). En el chip va como pastilla al
+   lado de la hora; en el celular, como renglon propio arriba del titulo. */
+.cal-chip-tipo{display:inline-block;font-size:.52rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--azul-claro);margin-right:4px}
+.cal-mobile-ev-tipo{font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--azul-claro);margin-bottom:2px}
+.cal-modal-alto select,.cal-modal-alto input[type=text]{max-width:100%}
+.cal-modal-alto{max-height:90vh;overflow-y:auto}
+.cal-modal-alto [hidden]{display:none}
+.cal-tipo{display:grid;grid-template-columns:1fr 1fr;gap:4px;background:var(--fondo);border:1px solid var(--borde);border-radius:10px;padding:4px;margin:10px 0 14px}
+.cal-tipo-btn{min-height:40px;border:none;border-radius:7px;background:transparent;color:var(--texto-tenue);font-size:.8rem;font-weight:600;font-family:inherit;cursor:pointer}
+.cal-tipo-btn.active{background:var(--relleno);color:var(--texto-fuerte);box-shadow:inset 0 0 0 1px var(--borde-fuerte)}
+.cal-tipo-btn:focus-visible{outline:2px solid var(--azul-claro);outline-offset:1px}
+.cal-cliente-resultados{display:flex;flex-direction:column;gap:4px;max-height:180px;overflow-y:auto;margin:-6px 0 12px}
+.cal-cliente-opcion{text-align:left;min-height:40px;padding:6px 10px;border-radius:8px;border:1px solid var(--borde);background:var(--relleno);color:var(--texto-fuerte);font-size:.8rem;font-family:inherit;cursor:pointer}
+.cal-cliente-opcion:hover{background:var(--hover)}
+.cal-cliente-vacio{font-size:.74rem;color:var(--texto-debil);padding:2px}
+.cal-cliente-elegido{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;border:1px solid var(--borde);border-radius:8px;background:var(--relleno);color:var(--texto-fuerte);font-size:.82rem;margin-bottom:12px}
+.cal-cliente-cambiar{background:none;border:none;color:var(--azul-claro);font-size:.76rem;font-weight:600;font-family:inherit;cursor:pointer;min-height:32px}
+.cal-rep-dias{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.cal-rep-dia{position:relative;cursor:pointer}
+.cal-rep-dia input{position:absolute;opacity:0;pointer-events:none}
+.cal-rep-dia span{display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:50%;border:1px solid var(--borde);background:var(--fondo);color:var(--texto-tenue);font-size:.76rem;font-weight:700}
+.cal-rep-dia input:checked+span{background:var(--azul);border-color:var(--azul);color:#fff}
+.cal-rep-dia input:focus-visible+span{outline:2px solid var(--azul-claro);outline-offset:2px}
+.cal-rep-resumen{font-size:.76rem;font-weight:600;color:var(--azul-claro);margin:0 0 12px}
+.cal-modal-nota{font-size:.72rem;color:var(--texto-debil);margin:-6px 0 12px}
+.cal-serie-aviso{font-size:.74rem;color:var(--texto-tenue);background:var(--relleno);border-radius:8px;padding:8px 10px;margin-bottom:12px}
+.cal-alcance-btns{display:flex;flex-direction:column;gap:8px;margin-bottom:14px}
+.cal-alcance-btn{min-height:44px;border-radius:10px;border:1px solid var(--borde);background:var(--relleno);color:var(--texto-fuerte);font-size:.84rem;font-weight:600;font-family:inherit;cursor:pointer}
+.cal-alcance-btn:hover{background:var(--hover)}
+/* Reuniones que el CRM no pudo crear o actualizar en Google Calendar */
+.cal-aviso-google{padding:12px 16px;background:var(--ambar-tinte);border:1px solid var(--ambar-borde);border-radius:8px;color:var(--ambar);font-size:.82rem;line-height:1.5;margin-bottom:16px}
+.cal-chip-sync{font-weight:800;color:var(--ambar);margin-right:3px}
+.cal-act-retry{background:var(--ambar-tinte);border-color:var(--ambar-borde);color:var(--ambar)}
+.cal-mobile-ev-sync{font-size:.72rem;color:var(--ambar);margin-top:4px}
+.cal-mobile-act-reintentar{color:var(--ambar)}
+/* "Enviar a Google Calendar" y "Unirse con Google Meet" */
+.cal-act-send{background:var(--azul-tinte);border-color:var(--borde);color:var(--azul-claro)}
+.cal-act-meet,.cal-act-send,.cal-act-retry{white-space:normal}
+.cal-mobile-act-enviar{color:var(--azul-claro)}
+.cal-meet-btn{display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:0 14px;margin:0 0 12px;border-radius:8px;border:1px solid var(--borde);background:var(--verde-tinte);color:var(--verde-texto);font-size:.8rem;font-weight:700;text-decoration:none}
 /* Pipeline Notion: con quien del CRM esta conectada cada ficha */
 .nc-vinculo{display:inline-flex;align-items:center;gap:4px;margin-top:8px;max-width:100%;padding:4px 10px;border-radius:999px;border:1px solid var(--borde);background:var(--relleno);color:var(--texto);font-size:.72rem;font-family:inherit;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .nc-vinculo-falta{background:var(--ambar-tinte);color:var(--ambar);border-color:var(--ambar-borde)}
@@ -1276,6 +1367,9 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-daily .nav-icon{stroke:#38bdf8}
 #nav-daily_admin .nav-icon{stroke:#f0abfc}
 #nav-plantillas .nav-icon{stroke:#c084fc}
+#nav-email_mkt .nav-icon{stroke:#6ee7b7}
+#nav-linkedin .nav-icon{stroke:#4f9cf9}
+#nav-instagram .nav-icon{stroke:#d946ef}
 .nav-item.active #nav-cola .nav-icon,
 .nav-item.active .nav-icon{opacity:1}
 /* active item keeps its color but brighter */
@@ -1302,6 +1396,9 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-flujos.active .nav-icon{stroke:#99f6e4}
 #nav-seg_leads.active .nav-icon{stroke:#fda4af}
 #nav-plantillas.active .nav-icon{stroke:#d8b4fe}
+#nav-email_mkt.active .nav-icon{stroke:#a7f3d0}
+#nav-linkedin.active .nav-icon{stroke:#8ec2ff}
+#nav-instagram.active .nav-icon{stroke:#fae8ff}
 /* light mode — slightly darker tones */
 body.light #nav-cola .nav-icon{stroke:#2563eb}
 body.light #nav-clientes .nav-icon{stroke:#7c3aed}
@@ -1326,6 +1423,9 @@ body.light #nav-horarios .nav-icon{stroke:#92400e}
 body.light #nav-flujos .nav-icon{stroke:#0f766e}
 body.light #nav-seg_leads .nav-icon{stroke:#be123c}
 body.light #nav-plantillas .nav-icon{stroke:#9333ea}
+body.light #nav-email_mkt .nav-icon{stroke:#065f46}
+body.light #nav-linkedin .nav-icon{stroke:#0a66c2}
+body.light #nav-instagram .nav-icon{stroke:#c026d3}
 /* ── Lucide icons ─────────────────────────────────────────────────────────── */
 .nav-icon{width:15px;height:15px;stroke-width:2;flex-shrink:0}
 /* Frase de equipo, version compacta del PDF de identidad de marca. Es la
@@ -1480,7 +1580,9 @@ body.light .btn-icon{stroke:currentColor}
 .pill.orange.active,body.light .pill.orange.active{background:var(--ambar-tinte);color:var(--ambar);border-color:var(--ambar-borde)}
 .pill-count{font-weight:400;color:#334155;margin-left:3px;font-size:.68rem}
 .pill.active .pill-count{color:#0088cc99}
-.tasks-summary{font-size:.75rem;color:var(--texto-debil);margin-bottom:10px}
+.tasks-summary{font-size:.75rem;color:var(--texto-debil);margin-bottom:12px;display:flex;gap:16px;flex-wrap:wrap;align-items:baseline}
+.tasks-summary b{font-size:1.15rem;font-weight:800;color:var(--texto-fuerte);font-variant-numeric:tabular-nums;margin-right:4px}
+.tasks-summary i{font-style:normal;color:var(--texto-tenue)}
 .task-status-badge{padding:3px 9px;border-radius:99px;font-size:.68rem;font-weight:700;cursor:pointer;transition:all .15s;border:1px solid transparent;user-select:none}
 .task-status-badge.todo{background:var(--relleno);color:var(--texto-debil)}
 .task-status-badge.in_progress{background:var(--azul-tinte);color:var(--azul-claro)}
@@ -1528,12 +1630,12 @@ body.light .btn-icon{stroke:currentColor}
 .task-row.overdue{border-left:3px solid var(--rojo)}
 .task-edit-btn{background:none;border:1px solid var(--borde);color:var(--texto-debil);cursor:pointer;font-size:.78rem;padding:3px 7px;border-radius:6px;transition:all .15s}
 .task-edit-btn:hover{border-color:var(--borde-fuerte);color:var(--texto-tenue)}
-.task-row{background:var(--superficie);border:1px solid var(--borde);border-radius:10px;padding:14px 16px;margin-bottom:8px;display:flex;align-items:flex-start;gap:12px;transition:border-color .15s}
-.task-row:hover{border-color:var(--borde-fuerte)}
+.task-row{background:var(--superficie);border:1px solid var(--borde);border-left:3px solid transparent;border-radius:12px;padding:14px 16px;margin-bottom:10px;display:flex;align-items:flex-start;gap:12px;transition:border-color .15s,background .15s}
+.task-row:hover{border-color:var(--borde-fuerte);background:var(--hover)}
 .task-body{flex:1;min-width:0}
-.task-title{font-size:.88rem;font-weight:600;color:var(--texto-fuerte);margin-bottom:3px}
+.task-title{font-size:.95rem;font-weight:700;color:var(--texto-fuerte);margin-bottom:4px;line-height:1.35}
 .task-title.done-text{text-decoration:line-through;color:var(--texto-debil)}
-.task-meta{font-size:.72rem;color:var(--texto-debil);display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.task-meta{font-size:.72rem;color:var(--texto-debil);display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .task-client-link{color:var(--azul-claro);cursor:pointer}
 .task-client-link:hover{text-decoration:underline}
 .task-priority{padding:2px 7px;border-radius:99px;font-size:.65rem;font-weight:700}
@@ -1545,7 +1647,43 @@ body.light .btn-icon{stroke:currentColor}
 .task-actions{display:flex;gap:6px;flex-shrink:0}
 .task-del-btn{background:none;border:none;color:var(--texto-debil);cursor:pointer;font-size:.9rem;padding:2px 4px}
 .task-del-btn:hover{color:var(--rojo)}
-.tasks-empty{text-align:center;color:var(--texto-debil);padding:40px;font-size:.88rem}
+.tasks-empty{text-align:center;color:var(--texto-debil);padding:44px 20px;font-size:.88rem}
+/* ── Tareas: color y jerarquía (16/9, pedido de Juan) ────────────────────────
+   "Que no quede blanco y negro". El color es semántico, no decoración, y cada
+   familia dice UNA cosa:
+   · la PERSONA lleva el color que ya tiene en el organigrama y en Flujos
+     (tokens `--rol-*` vía la clase `.eq-rol-COLOR`): no hay paleta nueva, y
+     quien es azul allá es azul acá;
+   · el VENCIMIENTO es rojo si ya pasó, ámbar si es hoy y neutro si falta;
+   · el ESTADO pinta el punto y el número de la columna, y el borde izquierdo.
+   Las columnas del tablero son `.task-col` y las fichas `.task-card` para no
+   pisar el mismo `.kanban-col` / `.kanban-card` que usa Pipeline Notion: ese
+   tablero queda exactamente como estaba. */
+.task-av{width:26px;height:26px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:800;flex-shrink:0;background:var(--rol-t,var(--relleno));color:var(--rol-c,var(--texto-tenue));border:1px solid var(--rol-c,var(--borde))}
+.task-quien{display:inline-flex;align-items:center;gap:6px;font-size:.73rem;font-weight:600;color:var(--texto-tenue);white-space:nowrap}
+.task-quien.task-sin-duenio{color:var(--texto-debil);font-style:italic;font-weight:500}
+.task-fecha{display:inline-flex;align-items:center;gap:5px;font-size:.72rem;font-weight:600;padding:3px 9px;border-radius:99px;background:var(--relleno);color:var(--texto-tenue);white-space:nowrap}
+.task-fecha.es-hoy{background:var(--ambar-tinte);color:var(--ambar)}
+.task-fecha.vencida{background:var(--rojo-tinte);color:var(--rojo-texto)}
+.task-de{font-size:.7rem;color:var(--texto-debil)}
+/* Columnas del tablero de Tareas. El color sale del grupo de Notion. */
+.task-col{border-top:3px solid var(--task-c,var(--borde-fuerte))}
+.task-col-todo{--task-c:var(--texto-tenue)}
+.task-col-curso{--task-c:var(--azul-claro)}
+.task-col-hecho{--task-c:var(--verde-texto)}
+.task-col .kanban-head{align-items:center;gap:8px;border-bottom:1px solid var(--borde);margin-bottom:8px}
+.task-col .kanban-name{font-size:.8rem;font-weight:700;color:var(--texto)}
+.task-col-punto{width:8px;height:8px;border-radius:99px;background:var(--task-c,var(--texto-tenue));flex-shrink:0}
+.task-col-n{margin-left:auto;font-size:1.05rem;font-weight:800;line-height:1;color:var(--task-c,var(--texto-tenue));font-variant-numeric:tabular-nums;background:none;padding:0}
+.task-card{border-left:3px solid transparent;transition:border-color .15s,background .15s}
+.task-card:hover{background:var(--hover)}
+.task-card.en-curso{border-left-color:var(--azul)}
+.task-card-tit{font-size:.84rem;font-weight:600;color:var(--texto);line-height:1.35;margin-bottom:7px}
+.task-card-pie{display:flex;align-items:center;gap:8px;margin-top:8px}
+/* Vacío: un estado con cara, no una línea de gris en el medio de la nada. */
+.tasks-empty-icono{font-size:1.7rem;line-height:1;margin-bottom:10px}
+.tasks-empty-tit{font-size:.95rem;font-weight:700;color:var(--texto);margin-bottom:5px}
+.tasks-empty-sub{font-size:.8rem;color:var(--texto-debil);line-height:1.5}
 /* Mobile header */
 .mobile-header{display:none;position:fixed;top:0;left:0;right:0;height:52px;background:rgba(17,24,39,.95);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid rgba(255,255,255,.07);z-index:250;align-items:center;padding:0 16px;gap:12px}
 .mobile-header img{height:24px;object-fit:contain}
@@ -1864,24 +2002,37 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .hr-tabla-wrap{overflow-x:auto}
 .hr-tabla{width:100%;border-collapse:separate;border-spacing:4px;font-size:.8rem}
 .hr-tabla th{font-weight:600;color:var(--texto-debil);font-size:.72rem;padding:4px 8px;text-align:center;white-space:nowrap}
-.hr-tabla th.hr-persona{text-align:left;color:var(--texto-fuerte);font-size:.85rem}
-.hr-celda{background:var(--relleno);color:var(--texto);border-radius:8px;padding:8px 6px;text-align:center;vertical-align:middle;min-width:92px}
-.hr-celda-libre{background:transparent;border:1px dashed var(--borde)}
+.hr-tabla th.hr-persona{text-align:left;color:var(--texto-fuerte);font-size:.85rem;white-space:nowrap}
+.hr-tabla th.hr-col-dia{border-radius:6px}
+.hr-tabla th.hr-col-dia:nth-child(even){background:var(--relleno);color:var(--texto-tenue)}
+/* El color de cada persona es el de Daily: hr-color-N usa el mismo token que
+   dy-color-N (hay un test que los compara) con el tinte de su familia. */
+.hr-color-0{--hr-c:var(--azul-claro);--hr-t:var(--azul-tinte)}
+.hr-color-1{--hr-c:var(--verde-texto);--hr-t:var(--verde-tinte)}
+.hr-color-2{--hr-c:var(--ambar);--hr-t:var(--ambar-tinte)}
+.hr-color-3{--hr-c:var(--texto-tenue);--hr-t:var(--relleno)}
+.hr-punto{display:inline-block;width:10px;height:10px;border-radius:99px;background:var(--hr-c,var(--texto-tenue));margin-right:7px;flex-shrink:0}
+.hr-celda{background:transparent;color:var(--texto);border-radius:8px;padding:6px;text-align:center;vertical-align:middle;min-width:96px}
+.hr-celda-libre{background:transparent;border:1px dashed var(--borde);opacity:.6}
 .hr-tramo-txt{display:block;font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums}
+.hr-pastilla{background:var(--hr-t,var(--relleno));border:1px solid var(--hr-c,var(--borde));color:var(--texto-fuerte);border-radius:99px;padding:3px 10px;margin:2px auto;width:max-content;max-width:100%}
 .hr-horas{display:block;font-size:.7rem;color:var(--texto-debil);margin-top:2px}
 .hr-libre{color:var(--texto-debil);font-size:.75rem}
 .hr-tabla .hr-total{font-weight:700;color:var(--texto-fuerte);white-space:nowrap;text-align:right;padding:0 8px}
+.hr-total-chip{display:inline-block;background:var(--hr-t,var(--relleno));color:var(--hr-c,var(--texto-fuerte));border:1px solid var(--hr-c,var(--borde));border-radius:99px;padding:3px 10px;font-weight:700;white-space:nowrap}
 .hr-acciones{text-align:right;white-space:nowrap}
 .hr-btn-chico{padding:6px 12px;font-size:.76rem}
 .hr-tarjetas{display:none}
-.hr-tarjeta{border-top:1px solid var(--borde);padding:12px 0}
-.hr-tarjeta:first-child{border-top:none;padding-top:0}
+.hr-tarjeta{border:1px solid var(--borde);border-top:3px solid var(--hr-c,var(--borde));border-radius:10px;padding:10px 12px;margin-bottom:10px}
+.hr-tarjeta:last-child{margin-bottom:0}
 .hr-tarjeta-cab{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px}
-.hr-tarjeta-nombre{font-size:.95rem;font-weight:700;color:var(--texto-fuerte)}
-.hr-tarjeta-total{font-size:.75rem;color:var(--texto-tenue)}
+.hr-tarjeta-nombre{font-size:.95rem;font-weight:700;color:var(--texto-fuerte);display:flex;align-items:center}
+.hr-tarjeta-total{font-size:.75rem;color:var(--texto-tenue);margin-top:4px}
 .hr-tarjeta-dia{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:7px 0;border-top:1px solid var(--borde);font-size:.82rem;color:var(--texto)}
 .hr-tarjeta-dia-nombre{color:var(--texto-tenue)}
-.hr-tarjeta-dia-tramos{text-align:right}
+.hr-tarjeta-dia-tramos{display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:4px;text-align:right}
+.hr-tarjeta-dia-tramos .hr-pastilla{display:inline-block;margin:0}
+.hr-tarjeta-dia-tramos .hr-horas{flex-basis:100%}
 .hr-oculto{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .hr-modal{width:520px;max-width:95vw;max-height:90vh;overflow-y:auto}
 .hr-dia{border-top:1px solid var(--borde);padding:10px 0}
@@ -1901,75 +2052,6 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   .hr-tarjetas{display:block}
   .hr-card{padding:14px}
 }
-/* ── Inteligencia financiera ──────────────────────────────────────────────────
-   Solo tokens: el tema claro sale solo. El borde izquierdo de cada tarjeta dice
-   el tipo: verde suma ingreso, ambar recorta gasto, rojo es alerta de margen. */
-.ifn-oculto{display:none}
-.ifn-cabecera{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:16px}
-.ifn-titulo{margin:0;font-size:1.3rem;color:var(--texto-fuerte)}
-.ifn-bajada{margin:4px 0 0;color:var(--texto-tenue);font-size:.85rem;max-width:760px;line-height:1.45}
-.ifn-bloque{background:var(--superficie);border:1px solid var(--borde);border-radius:10px;padding:16px;margin-bottom:16px}
-.ifn-seccion{margin:0 0 12px;font-size:.95rem;color:var(--texto-fuerte)}
-.ifn-datos-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
-.ifn-dato{background:var(--superficie-alta);border:1px solid var(--borde);border-radius:8px;padding:12px;min-width:0}
-.ifn-dato-cab{display:flex;justify-content:space-between;align-items:center;gap:8px;font-weight:600;color:var(--texto)}
-.ifn-dato-num{margin:6px 0;color:var(--texto-tenue);font-size:.85rem}
-.ifn-chip{font-size:.7rem;font-weight:600;padding:2px 8px;border-radius:10px}
-.ifn-chip-ok{background:var(--verde-tinte);color:var(--verde-texto)}
-.ifn-chip-falta{background:var(--ambar-tinte);color:var(--ambar)}
-.ifn-pends{list-style:none;margin:8px 0 0;padding:0;max-height:260px;overflow:auto;display:flex;flex-direction:column;gap:6px}
-.ifn-pend{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px;font-size:.8rem;color:var(--texto)}
-.ifn-motivo{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:.75rem;color:var(--texto-tenue);margin-top:6px}
-.ifn-motivo-falta span{color:var(--ambar)}
-.ifn-esfuerzo{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:8px;font-size:.78rem;color:var(--texto-tenue)}
-.ifn-esfuerzo-falta .ifn-esfuerzo-rotulo{color:var(--ambar)}
-.ifn-input{width:90px;background:var(--fondo-hundido);border:1px solid var(--borde-fuerte);color:var(--texto);border-radius:6px;padding:4px 6px;font-size:.8rem}
-.ifn-input:focus{outline:none;border-color:var(--azul)}
-.ifn-supuestos{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-top:12px;font-size:.8rem;color:var(--texto-tenue)}
-.ifn-supuesto{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
-.ifn-nota{font-size:.75rem;color:var(--texto-debil);margin:6px 0 0}
-.ifn-contraste{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-bottom:16px}
-.ifn-contraste-col{background:var(--superficie);border:1px solid var(--borde);border-radius:10px;padding:14px}
-.ifn-contraste-rotulo{font-size:.75rem;color:var(--texto-debil);text-transform:uppercase;letter-spacing:.04em}
-.ifn-contraste-num{font-size:1.5rem;font-weight:700;color:var(--texto-fuerte);margin:4px 0}
-.ifn-contraste-cuenta{font-size:.75rem;color:var(--texto-tenue)}
-.ifn-aviso{background:var(--ambar-tinte);border:1px solid var(--ambar-borde);border-radius:8px;padding:10px 12px;margin-bottom:10px;color:var(--texto)}
-.ifn-aviso p{margin:4px 0;font-size:.82rem}
-.ifn-aviso-titulo{font-weight:600;color:var(--ambar)}
-.ifn-aviso-reglas{font-size:.72rem;color:var(--texto-tenue)}
-.ifn-rec{background:var(--superficie);border:1px solid var(--borde);border-left:4px solid var(--borde-fuerte);border-radius:10px;padding:14px 16px;margin-bottom:12px}
-.ifn-rec-ingreso{border-left-color:var(--verde)}
-.ifn-rec-recorte{border-left-color:var(--ambar)}
-.ifn-rec-alerta{border-left-color:var(--rojo)}
-.ifn-rec-cab{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
-.ifn-regla{font-size:.7rem;color:var(--texto-debil);font-weight:600}
-.ifn-rec-titulo{margin:2px 0 0;font-size:1rem;color:var(--texto-fuerte)}
-.ifn-impacto{font-size:1.15rem;font-weight:700;text-align:right;white-space:nowrap}
-.ifn-impacto span{display:block;font-size:.7rem;font-weight:500;color:var(--texto-debil)}
-.ifn-suma{color:var(--verde-texto)}
-.ifn-revisar{color:var(--rojo-texto)}
-.ifn-rec-detalle{margin:8px 0;font-size:.85rem;color:var(--texto);line-height:1.45}
-.ifn-advertencia{margin:8px 0;font-size:.8rem;color:var(--ambar);line-height:1.4}
-.ifn-calculo{background:var(--relleno);color:var(--texto);border-radius:6px;padding:10px 12px;font-size:.76rem;line-height:1.5;white-space:pre-wrap;overflow-x:auto;margin:8px 0}
-.ifn-acciones{list-style:none;padding:0;margin:8px 0;display:flex;flex-direction:column;gap:6px}
-.ifn-accion{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;font-size:.8rem;color:var(--texto)}
-.ifn-sin-tel{color:var(--texto-debil);font-size:.75rem}
-.ifn-rec-pie{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:10px}
-.ifn-confianza{font-size:.72rem;font-weight:600;padding:2px 8px;border-radius:10px;margin-right:auto}
-.ifn-conf-alta{background:var(--verde-tinte);color:var(--verde-texto)}
-.ifn-conf-media{background:var(--azul-tinte);color:var(--azul-claro)}
-.ifn-conf-baja{background:var(--relleno);color:var(--texto-debil)}
-.ifn-vacio{padding:14px;color:var(--texto-tenue);font-size:.85rem}
-.ifn-segs{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:8px}
-.ifn-seg{border-bottom:1px solid var(--borde);padding-bottom:8px}
-.ifn-seg-titulo{color:var(--texto);font-size:.85rem}
-.ifn-res{font-size:.7rem;font-weight:600;padding:2px 8px;border-radius:10px}
-.ifn-res-midiendo{background:var(--azul-tinte);color:var(--azul-claro)}
-.ifn-res-funciono{background:var(--verde-tinte);color:var(--verde-texto)}
-.ifn-res-no_funciono{background:var(--rojo-tinte);color:var(--rojo-texto)}
-.ifn-seg-meta{font-size:.75rem;color:var(--texto-tenue);margin-top:2px}
-.ifn-seg-detalle{font-size:.75rem;color:var(--texto-tenue);margin-top:2px}
-@media (max-width:640px){ .ifn-rec-cab{flex-direction:column} .ifn-impacto{text-align:left} }
 /* ── Plantillas ───────────────────────────────────────────────────────────────
    Mensajes de siempre, en VENTAS. Solo tokens, sin reglas `body.light`: las
    variables van en --azul-claro y las que faltan en la familia ambar, que
@@ -2142,6 +2224,177 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 @media(max-width:600px){
   .sl-contadores{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
+/* ── Email marketing ─────────────────────────────────────────────────────────
+   Lo que sale por Resend. Solo tokens, sin reglas de tema claro: los chips usan
+   la familia de estados (tintes azul/verde/rojo/ambar), que ya tiene su par. */
+.em-oculto{display:none!important}
+.em-acciones{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.em-nota-estados{font-size:.76rem;color:var(--texto-debil);margin:-6px 0 10px}
+.em-nota-estados:empty{display:none}
+.em-barra{display:flex;align-items:center;justify-content:space-between;gap:8px 12px;flex-wrap:wrap;margin-bottom:14px}
+.em-nav-mes{display:flex;align-items:center;gap:8px;font-size:.85rem;color:var(--texto-fuerte);font-weight:600}
+.em-nav-mes span{min-width:120px;text-align:center}
+.em-tipo{min-width:200px}
+.em-contadores{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;margin-bottom:14px}
+.em-contador{background:var(--superficie-honda);border:1px solid var(--borde);border-radius:10px;padding:12px 14px;min-width:0}
+.em-contador-num{font-size:1.5rem;font-weight:700;color:var(--texto-fuerte);font-variant-numeric:tabular-nums}
+.em-contador-rotulo{font-size:.74rem;font-weight:600;color:var(--texto);margin-top:2px}
+.em-contador-tasa{font-size:.7rem;color:var(--texto-debil);margin-top:2px;min-height:1em}
+.em-contador-rebotados .em-contador-num,.em-contador-spam .em-contador-num{color:var(--rojo-texto)}
+.em-aviso{background:var(--ambar-tinte);color:var(--ambar);border:1px solid var(--ambar-borde);border-radius:10px;padding:10px 12px;font-size:.78rem;line-height:1.45;margin-bottom:14px}
+.em-card{background:var(--superficie-honda);border:1px solid var(--borde);border-radius:10px;padding:16px;margin-bottom:14px;min-width:0}
+.em-card-titulo{font-size:.9rem;font-weight:700;color:var(--texto-fuerte);margin-bottom:10px}
+.em-cab{display:flex;justify-content:space-between;align-items:center;gap:8px 12px;flex-wrap:wrap;margin-bottom:10px}
+.em-cab .em-card-titulo{margin-bottom:0}
+.em-buscar{background:var(--superficie);border:1px solid var(--borde-fuerte);color:var(--texto);border-radius:8px;padding:7px 10px;font-size:.8rem;font-family:inherit;min-width:240px}
+.em-buscar:focus{outline:2px solid var(--azul);outline-offset:1px}
+.em-tabla-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.em-tabla{width:100%;min-width:760px;border-collapse:collapse;font-size:.78rem}
+.em-tabla th{text-align:left;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--texto-debil);padding:6px 8px;border-bottom:1px solid var(--borde);white-space:nowrap}
+.em-tabla td{padding:8px;border-bottom:1px solid var(--borde);color:var(--texto);vertical-align:top}
+.em-tabla tr:hover td{background:var(--hover)}
+.em-fecha{white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--texto-tenue)}
+.em-dest{overflow-wrap:anywhere;max-width:220px}
+.em-asunto{overflow-wrap:anywhere;max-width:320px}
+.em-extracto{display:block;color:var(--texto-debil);font-size:.7rem;margin-top:2px}
+.em-chip{display:inline-block;border-radius:99px;padding:2px 9px;font-size:.7rem;font-weight:700;white-space:nowrap}
+.em-chip-azul{background:var(--azul-tinte);color:var(--azul-claro)}
+.em-chip-verde{background:var(--verde-tinte);color:var(--verde-texto)}
+.em-chip-fuerte{background:var(--verde-tinte);color:var(--verde-texto);box-shadow:inset 0 0 0 1px var(--verde-texto)}
+.em-chip-rojo{background:var(--rojo-tinte);color:var(--rojo-texto)}
+.em-chip-ambar{background:var(--ambar-tinte);color:var(--ambar)}
+.em-chip-gris{background:var(--relleno);color:var(--texto-debil)}
+.em-nota{display:block;font-size:.66rem;color:var(--texto-debil);margin-top:3px}
+.em-link{background:none;border:none;padding:0;color:var(--azul-claro);font:inherit;cursor:pointer;text-align:left;text-decoration:underline;overflow-wrap:anywhere}
+.em-paginas{display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-top:10px;font-size:.76rem;color:var(--texto-tenue)}
+.em-paginas:empty{display:none}
+.em-vacio{font-size:.8rem;color:var(--texto-debil);padding:8px 0}
+@media(max-width:900px){
+  .em-contadores{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+@media(max-width:560px){
+  .em-contadores{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .em-barra{align-items:stretch}
+  .em-buscar,.em-tipo{min-width:0;width:100%}
+  .em-card{padding:12px}
+}
+/* Ver el mail: modal con la vista en un iframe con sandbox vacio y la version
+   de texto. El iframe va sobre blanco, como lo ve quien lo recibe. */
+.em-ver{display:inline-block;margin-top:4px;background:none;border:1px solid var(--borde-fuerte);color:var(--azul-claro);border-radius:6px;padding:2px 8px;font-size:.7rem;font-weight:600;font-family:inherit;cursor:pointer}
+.em-ver:hover{background:var(--hover);border-color:var(--azul)}
+.em-mail-modal{width:780px;max-width:95vw;max-height:92vh;display:flex;flex-direction:column;gap:10px;padding:20px}
+.em-mail-cab{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.em-mail-cab h3{margin:0;overflow-wrap:anywhere}
+.em-mail-cerrar{background:none;border:none;color:var(--texto-tenue);font-size:1.4rem;line-height:1;cursor:pointer;padding:0 4px;font-family:inherit}
+.em-mail-cerrar:hover{color:var(--texto-fuerte)}
+.em-mail-datos{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:.76rem;margin:0}
+.em-mail-datos dt{color:var(--texto-debil);font-weight:600}
+.em-mail-datos dd{margin:0;color:var(--texto);overflow-wrap:anywhere}
+.em-mail-aviso{background:var(--ambar-tinte);color:var(--ambar);border:1px solid var(--ambar-borde);border-radius:8px;padding:8px 10px;font-size:.76rem;line-height:1.4}
+.em-mail-tabs{display:flex;gap:6px}
+.em-mail-tab{background:var(--relleno);color:var(--texto-debil);border:1px solid var(--borde);border-radius:99px;padding:4px 12px;font-size:.74rem;font-weight:600;cursor:pointer;font-family:inherit}
+.em-mail-tab.em-activo{background:var(--azul-tinte);color:var(--azul-claro);border-color:var(--azul)}
+.em-mail-cuerpo{flex:1;min-height:0;display:flex;flex-direction:column}
+.em-mail-iframe{width:100%;height:62vh;min-height:320px;border:1px solid var(--borde);border-radius:8px;background:white}
+.em-mail-texto{margin:0;height:62vh;min-height:320px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;background:var(--superficie-honda);color:var(--texto);border:1px solid var(--borde);border-radius:8px;padding:12px;font-size:.78rem;line-height:1.5;font-family:ui-monospace,Menlo,Consolas,monospace}
+@media(max-width:560px){
+  .em-mail-modal{padding:16px}
+  .em-mail-iframe,.em-mail-texto{height:55vh;min-height:260px}
+  .em-mail-datos{grid-template-columns:1fr}
+  .em-mail-datos dd{margin-bottom:4px}
+}
+/* ── Instagram ── */
+.ig-oculto{display:none!important}
+.ig-barra{display:flex;align-items:center;justify-content:space-between;gap:8px 12px;flex-wrap:wrap;margin-bottom:14px}
+.ig-banco{font-size:.76rem;color:var(--texto-debil)}
+.ig-nota{font-size:.8rem;color:var(--texto-debil);background:var(--superficie-honda);border:1px solid var(--borde);border-radius:10px;padding:10px 14px;margin-bottom:14px;line-height:1.5}
+.ig-tarjetas{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px}
+.ig-tarjeta{background:var(--superficie-honda);border:1px solid var(--borde);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.ig-tarjeta.ig-descartada{opacity:.6}
+.ig-cab{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.ig-dia{flex:1;min-width:0;font-size:.86rem;font-weight:700;color:var(--texto-fuerte);text-transform:capitalize}
+.ig-chip{display:inline-block;border-radius:99px;padding:2px 9px;font-size:.7rem;font-weight:700;white-space:nowrap;background:var(--relleno);color:var(--texto-debil)}
+.ig-chip-verde{background:var(--verde-tinte);color:var(--verde-texto)}
+.ig-chip-azul{background:var(--azul-tinte);color:var(--azul-claro)}
+.ig-chip-rojo{background:var(--rojo-tinte);color:var(--rojo-texto)}
+.ig-visor{position:relative;border-radius:10px;overflow:hidden;border:1px solid var(--borde);background:var(--fondo-hundido)}
+.ig-visor img{display:block;width:100%;height:auto;cursor:zoom-in}
+.ig-flecha{position:absolute;top:50%;transform:translateY(-50%);width:34px;height:34px;border-radius:50%;border:1px solid var(--borde-fuerte);background:var(--superficie-alta);color:var(--texto-fuerte);font-size:1.1rem;cursor:pointer;opacity:.9}
+.ig-flecha.izq{left:8px}
+.ig-flecha.der{right:8px}
+.ig-contador{position:absolute;top:8px;left:8px;background:var(--superficie-alta);color:var(--texto-fuerte);font-size:.7rem;font-weight:700;border-radius:99px;padding:2px 8px}
+.ig-rotulo{font-size:.72rem;font-weight:700;color:var(--texto-debil);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;display:block}
+.ig-caption{width:100%;min-height:150px;resize:vertical;font-family:inherit;font-size:.82rem;line-height:1.5;color:var(--texto);background:var(--superficie);border:1px solid var(--borde);border-radius:8px;padding:10px;box-sizing:border-box}
+.ig-contador-txt{font-size:.7rem;color:var(--texto-tenue);text-align:right}
+.ig-slides summary{cursor:pointer;font-size:.8rem;font-weight:600;color:var(--texto-fuerte)}
+.ig-slide{border-top:1px solid var(--borde);padding-top:8px;margin-top:8px;display:grid;gap:6px}
+.ig-slide b{font-size:.72rem;color:var(--texto-debil)}
+.ig-input{width:100%;box-sizing:border-box;font-family:inherit;font-size:.8rem;color:var(--texto);background:var(--superficie);border:1px solid var(--borde);border-radius:6px;padding:6px 8px}
+.ig-fila{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end}
+.ig-fila>div{flex:1;min-width:120px}
+.ig-acciones{display:flex;flex-wrap:wrap;gap:6px}
+.ig-btn{background:var(--relleno);border:1px solid var(--borde-fuerte);color:var(--texto);border-radius:8px;padding:7px 12px;font-size:.78rem;font-weight:600;font-family:inherit;cursor:pointer;text-decoration:none}
+.ig-btn:hover{background:var(--hover);border-color:var(--azul)}
+.ig-btn:disabled{opacity:.5;cursor:wait}
+.ig-btn-aprobar{background:var(--verde-tinte);border-color:var(--verde);color:var(--verde-texto)}
+.ig-btn-aprobar:hover{background:var(--verde-tinte);border-color:var(--verde-texto)}
+.ig-btn-suave{background:none;color:var(--texto-debil)}
+.ig-msg{font-size:.76rem;color:var(--texto-debil)}
+.ig-msg:empty{display:none}
+.ig-msg.error{color:var(--rojo-texto)}
+.ig-msg.ok{color:var(--verde-texto)}
+.ig-grande{max-width:min(92vw,560px);max-height:88vh;border-radius:10px}
+.ig-pedido{border:1px solid var(--borde);border-radius:8px;padding:10px;background:var(--superficie);display:grid;gap:6px}
+.ig-pedido textarea{min-height:56px;resize:vertical}
+.ig-pedido-item{font-size:.74rem;color:var(--texto-debil);border-top:1px solid var(--borde);padding-top:6px;line-height:1.45}
+.ig-pedido-item b{color:var(--texto-fuerte)}
+@media(max-width:480px){.ig-tarjetas{grid-template-columns:1fr}}
+/* ── LinkedIn ─────────────────────────────────────────────────────────────────
+   Borradores para la pagina de Scalerics en LinkedIn. Solo tokens, sin reglas
+   de tema claro. */
+.li-oculto{display:none!important}
+.li-acciones{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.li-nota{font-size:.76rem;color:var(--texto-debil);margin:-6px 0 10px}
+.li-nota:empty{display:none}
+.li-barra{display:flex;align-items:center;gap:8px 12px;flex-wrap:wrap;margin-bottom:14px}
+.li-nav-semana{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:.85rem;color:var(--texto-fuerte);font-weight:600}
+.li-vacio{font-size:.82rem;color:var(--texto-debil);background:var(--superficie-honda);border:1px dashed var(--borde-fuerte);border-radius:10px;padding:18px;line-height:1.5}
+.li-tarjetas{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.li-tarjeta{background:var(--superficie-honda);border:1px solid var(--borde);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.li-tarjeta.li-descartado{opacity:.65}
+.li-cab{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.li-orden{font-size:.72rem;font-weight:700;color:var(--texto-debil);font-variant-numeric:tabular-nums}
+.li-tema{flex:1;min-width:0;font-size:.84rem;font-weight:700;color:var(--texto-fuerte);overflow-wrap:anywhere}
+.li-chip{display:inline-block;border-radius:99px;padding:2px 9px;font-size:.7rem;font-weight:700;white-space:nowrap}
+.li-chip-azul{background:var(--azul-tinte);color:var(--azul-claro)}
+.li-chip-verde{background:var(--verde-tinte);color:var(--verde-texto)}
+.li-chip-gris{background:var(--relleno);color:var(--texto-debil)}
+.li-texto{white-space:pre-wrap;overflow-wrap:anywhere;font-size:.84rem;line-height:1.55;color:var(--texto);background:var(--superficie);border:1px solid var(--borde);border-radius:8px;padding:12px;max-height:420px;overflow:auto}
+.li-visual{display:flex;flex-direction:column;align-items:flex-start;gap:6px}
+.li-imagen{display:block;width:100%;max-width:100%;height:auto;border-radius:8px;border:1px solid var(--borde);background:var(--superficie)}
+.li-pie{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:.72rem;color:var(--texto-debil)}
+.li-contador{font-variant-numeric:tabular-nums}
+.li-pasa{color:var(--rojo-texto);font-weight:700}
+.li-meta{color:var(--texto-tenue)}
+.li-acciones-tarjeta{display:flex;flex-wrap:wrap;gap:6px}
+.li-btn{background:var(--relleno);border:1px solid var(--borde-fuerte);color:var(--texto);border-radius:8px;padding:6px 12px;font-size:.76rem;font-weight:600;font-family:inherit;cursor:pointer}
+.li-btn:hover{background:var(--hover);border-color:var(--azul)}
+.li-btn-suave{background:none;color:var(--texto-debil)}
+.li-modal{width:640px;max-width:95vw}
+.li-modal-chico{width:380px;max-width:95vw}
+.li-textarea{width:100%;min-height:280px;resize:vertical;background:var(--superficie);color:var(--texto);border:1px solid var(--borde-fuerte);border-radius:8px;padding:10px;font-family:inherit;font-size:.84rem;line-height:1.5;margin:8px 0 6px}
+.li-rotulo{display:block;font-size:.78rem;color:var(--texto-tenue);margin:6px 0}
+.li-fecha{background:var(--superficie);color:var(--texto);border:1px solid var(--borde-fuerte);border-radius:8px;padding:7px 10px;font-family:inherit;margin-bottom:8px}
+.li-error{font-size:.76rem;color:var(--rojo-texto);margin:4px 0 10px}
+.li-error:empty{display:none}
+.li-copia-oculta{position:fixed;top:0;left:0;opacity:0;pointer-events:none}
+@media(max-width:768px){
+  .li-tarjetas{grid-template-columns:1fr}
+}
+@media(max-width:560px){
+  .li-tarjeta{padding:12px}
+  .li-btn{flex:1 1 auto;min-height:40px}
+}
 /* ── Equipo ───────────────────────────────────────────────────────────────────
    Organigrama (SVG) y ausencias con recupero. Solo tokens, sin reglas
    `body.light`: los tintes rojo/verde/ambar son los de la familia de estados,
@@ -2149,14 +2402,24 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .eq-card{background:var(--superficie-honda);border:1px solid var(--borde);border-radius:10px;padding:18px;margin-bottom:18px;min-width:0}
 .eq-cab{display:flex;justify-content:space-between;align-items:center;gap:8px 12px;flex-wrap:wrap;margin-bottom:12px}
 .eq-cab .fin-card-title{margin-bottom:0}
-.eq-organigrama{overflow-x:auto;padding-bottom:4px}
+.eq-organigrama{overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch}
 .eq-svg{display:block;margin:0 auto;max-width:none}
 .eq-linea{stroke:var(--borde-fuerte);stroke-width:1.5;fill:none}
-.eq-nodo rect{fill:var(--superficie);stroke:var(--borde-fuerte);stroke-width:1}
+/* Cada nodo toma el color de su rol en Flujos con la misma clase .eq-rol-COLOR
+   que los pasos (el mapa vive en services/flujos.ROL_ESTILOS). Quien no
+   participa de Flujos va en rosa. El destacado (CTO) conserva su color y se
+   marca con el borde más grueso. */
+.eq-nodo rect{fill:var(--rol-t,var(--superficie));stroke:var(--rol-c,var(--borde-fuerte));stroke-width:1.5}
 .eq-nodo-nombre{fill:var(--texto-fuerte);font-size:13px;font-weight:600;font-family:'Inter',sans-serif}
-.eq-nodo-rol{fill:var(--texto-debil);font-size:11px;font-family:'Inter',sans-serif}
-.eq-destacado rect{fill:var(--azul-tinte);stroke:var(--azul);stroke-width:2}
-.eq-destacado .eq-nodo-rol{fill:var(--azul-claro)}
+.eq-nodo-rol{fill:var(--rol-c,var(--texto-debil));font-size:11px;font-weight:600;font-family:'Inter',sans-serif}
+.eq-destacado rect{stroke-width:3.5}
+.eq-destacado .eq-nodo-nombre{font-weight:700}
+.eq-nodo-editable{cursor:pointer}
+.eq-nodo-editable:hover rect{stroke-width:2.5}
+.eq-nodo-editable:focus{outline:none}
+.eq-nodo-editable:focus rect{stroke-dasharray:4 3;stroke-width:2.5}
+.eq-org-leyenda{margin:0 0 10px}
+.eq-org-ayuda{font-size:.72rem;color:var(--texto-debil);margin:0 0 10px}
 .eq-aviso{background:var(--ambar-tinte);color:var(--ambar);border:1px solid var(--ambar-borde);border-radius:10px;padding:10px 12px;font-size:.8rem;line-height:1.45;margin-bottom:10px}
 .eq-cal-nav{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;margin-bottom:8px;font-size:.8rem;color:var(--texto)}
 .eq-cal-wrap{overflow-x:auto}
@@ -2203,20 +2466,34 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .eq-flujo-tab.eq-activo{background:var(--azul-tinte);color:var(--azul-claro);border-color:var(--azul)}
 .eq-pasos{list-style:none;margin:0 0 8px;padding:0 0 0 22px;position:relative}
 .eq-pasos::before{content:'';position:absolute;left:7px;top:10px;bottom:10px;width:2px;background:var(--borde-fuerte)}
-.eq-paso{position:relative;background:var(--superficie);border:1px solid var(--borde);border-radius:10px;padding:10px 14px;margin-bottom:8px}
-.eq-paso::before{content:'';position:absolute;left:-19px;top:15px;width:8px;height:8px;border-radius:99px;background:var(--superficie-honda);border:2px solid var(--borde-fuerte)}
+/* Cada paso toma el color de su rol. .eq-rol-COLOR define --rol-c (pleno) y
+   --rol-t (tinte); el mapa rol a color vive en services/flujos.ROL_ESTILOS. */
+.eq-rol-rojo{--rol-c:var(--rol-rojo);--rol-t:var(--rol-rojo-tinte)}
+.eq-rol-naranja{--rol-c:var(--rol-naranja);--rol-t:var(--rol-naranja-tinte)}
+.eq-rol-verde{--rol-c:var(--rol-verde);--rol-t:var(--rol-verde-tinte)}
+.eq-rol-azul{--rol-c:var(--rol-azul);--rol-t:var(--rol-azul-tinte)}
+.eq-rol-violeta{--rol-c:var(--rol-violeta);--rol-t:var(--rol-violeta-tinte)}
+.eq-rol-teal{--rol-c:var(--rol-teal);--rol-t:var(--rol-teal-tinte)}
+.eq-rol-rosa{--rol-c:var(--rol-rosa);--rol-t:var(--rol-rosa-tinte)}
+.eq-rol-neutro{--rol-c:var(--texto-tenue);--rol-t:var(--relleno)}
+.eq-flujo-leyenda{display:flex;flex-wrap:wrap;gap:6px 8px;margin:0 0 14px}
+.eq-rol-chip{display:inline-flex;align-items:center;gap:6px;background:var(--rol-t,var(--relleno));color:var(--texto-fuerte);border:1px solid var(--rol-c,var(--borde));border-radius:99px;padding:3px 10px;font-size:.74rem;font-weight:600;white-space:nowrap}
+.eq-rol-punto{display:inline-block;width:9px;height:9px;border-radius:99px;background:var(--rol-c,var(--texto-tenue));flex-shrink:0}
+.eq-paso-rol-muestra{margin:-6px 0 12px}
+.eq-paso-rol-muestra:empty{display:none}
+.eq-paso{position:relative;background:var(--rol-t,var(--superficie));border:1px solid var(--borde);border-left:4px solid var(--rol-c,var(--borde-fuerte));border-radius:10px;padding:10px 14px;margin-bottom:8px}
+.eq-paso::before{content:'';position:absolute;left:-23px;top:14px;width:10px;height:10px;border-radius:99px;background:var(--rol-c,var(--borde-fuerte));border:2px solid var(--superficie-honda)}
 .eq-paso-link{cursor:pointer}
-.eq-paso-link:hover{background:var(--hover);border-color:var(--azul)}
-.eq-paso-link:focus-visible{outline:2px solid var(--azul);outline-offset:2px}
-.eq-paso-destacado{background:var(--verde-tinte);border-color:var(--verde-tinte)}
-.eq-paso-destacado.eq-paso-link:hover{background:var(--verde-tinte);border-color:var(--verde-texto)}
+.eq-paso-link:hover{box-shadow:0 0 0 2px var(--rol-c,var(--azul))}
+.eq-paso-link:focus-visible{outline:2px solid var(--rol-c,var(--azul));outline-offset:2px}
+.eq-paso-recurrente{display:inline-block;margin-top:6px;font-size:.66rem;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--rol-c,var(--verde-texto));border:1px solid var(--rol-c,var(--verde-texto));border-radius:99px;padding:1px 8px}
 .eq-paso-cab{display:flex;align-items:baseline;gap:4px 10px;flex-wrap:wrap}
-.eq-paso-num{color:var(--texto-debil);font-size:.76rem;font-weight:700;font-variant-numeric:tabular-nums}
+.eq-paso-num{color:var(--texto-tenue);font-size:.76rem;font-weight:700;font-variant-numeric:tabular-nums}
 .eq-paso-titulo{color:var(--texto-fuerte);font-size:.86rem;font-weight:600;flex:1;min-width:0;overflow-wrap:anywhere}
-.eq-paso-rol{color:var(--azul-claro);font-size:.76rem;font-weight:700;margin-left:auto;white-space:nowrap}
-.eq-paso-detalle{color:var(--texto-debil);font-size:.76rem;line-height:1.45;margin-top:3px}
-.eq-paso-cobros{color:var(--texto-debil);font-size:.72rem;margin-top:4px}
-.eq-paso-ir{color:var(--azul-claro);font-size:.72rem;font-weight:600;margin-top:4px}
+.eq-paso-rol{color:var(--rol-c,var(--azul-claro));font-size:.76rem;font-weight:700;margin-left:auto;white-space:nowrap}
+.eq-paso-detalle{color:var(--texto-tenue);font-size:.76rem;line-height:1.45;margin-top:3px}
+.eq-paso-cobros{color:var(--texto-tenue);font-size:.72rem;margin-top:4px}
+.eq-paso-ir{color:var(--rol-c,var(--azul-claro));font-size:.72rem;font-weight:600;margin-top:4px}
 .eq-paso-edicion{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .eq-flujo-vacio{border:1px dashed var(--borde-fuerte);border-radius:10px;padding:16px;font-size:.8rem;color:var(--texto-debil);display:flex;flex-direction:column;align-items:flex-start;gap:10px}
 .eq-check{display:flex;align-items:center;gap:8px;font-size:.8rem;color:var(--texto);margin:2px 0 12px}
@@ -2352,10 +2629,13 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div class="nav-section-label">MARKETING</div>
   <div class="nav-item" id="nav-meta" onclick="showPanel('meta');clearMetaBadge()"><i data-lucide="instagram" class="nav-icon"></i> Meta Ads <span id="meta-badge" style="display:none;background:#e1306c;color:#fff;font-size:.65rem;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:4px">NEW</span></div>
   <div class="nav-item" id="nav-marketing" onclick="showPanel('marketing')"><i data-lucide="target" class="nav-icon"></i> Inteligencia marketing</div>
+  <div class="nav-item" id="nav-email_mkt" onclick="showPanel('email_mkt')"><i data-lucide="mail" class="nav-icon"></i> Email marketing</div>
+  <div class="nav-item" id="nav-linkedin" onclick="showPanel('linkedin')"><i data-lucide="linkedin" class="nav-icon"></i> LinkedIn</div>
+  <div class="nav-item" id="nav-instagram" onclick="showPanel('instagram')"><i data-lucide="image" class="nav-icon"></i> Instagram</div>
   <div class="nav-section-label">FINANZAS</div>
   <div class="nav-item" id="nav-finanzas" onclick="showPanel('finanzas')"><i data-lucide="wallet" class="nav-icon"></i> Finanzas</div>
   <div class="nav-item" id="nav-simulador" onclick="showPanel('simulador')"><i data-lucide="calculator" class="nav-icon"></i> Simulador financiero</div>
-  <div class="nav-item" id="nav-inteligencia_fin" onclick="showPanel('inteligencia_fin')"><i data-lucide="lightbulb" class="nav-icon"></i> Inteligencia financiera</div>
+  <div class="nav-item" id="nav-inteligencia_fin" onclick="showPanel('inteligencia_fin')"><i data-lucide="lightbulb" class="nav-icon"></i> Métricas financieras</div>
   <div class="nav-section-label">VENTAS</div>
   <div class="nav-item" id="nav-seg_leads" onclick="showPanel('seg_leads')"><i data-lucide="phone-call" class="nav-icon"></i> Seguimiento de leads</div>
   <div class="nav-item" id="nav-wa" onclick="showPanel('wa')"><i data-lucide="message-circle" class="nav-icon"></i> WhatsApp</div>
@@ -2676,6 +2956,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
         <button class="cal-nav-btn" onclick="calShift(-1)" title="Anterior" aria-label="Anterior">←</button>
         <button class="cal-today-btn" onclick="calHoy()">Hoy</button>
         <button class="cal-nav-btn" onclick="calShift(1)" title="Siguiente" aria-label="Siguiente">→</button>
+        <button class="cal-new-btn" onclick="openNewEventModal()">+ Nueva reunión</button>
         <a href="https://calendly.com/scalerics/consultoriagratuita" target="_blank" class="cal-new-btn" style="background:#0f2a1a;border:1px solid #10b981;color:#10b981;text-decoration:none">+ Calendly</a>
       </div>
     </div>
@@ -2683,10 +2964,13 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       <span><i style="background:#0088cc"></i> Del CRM</span>
       <span><i style="background:#10b981"></i> De Google</span>
       <span><i style="background:#f59e0b"></i> De Calendly &mdash; se reprograma allá</span>
+      <span><i class="cal-leyenda-asunto"></i> Otro asunto</span>
+      <span><b class="cal-leyenda-rep">↻</b> Se repite</span>
       <span class="cal-hint-escritorio" style="margin-left:auto">Arrastrá una reunión para moverla</span>
       <span class="cal-hint-movil">Deslizá el calendario para cambiar de mes</span>
     </div>
     <div id="cal-error" class="cal-error" style="display:none"></div>
+    <div id="cal-aviso-google" class="cal-aviso-google" role="status" hidden></div>
     <div id="cal-days" class="cal-days"><div class="cal-loading">Cargando calendario...</div></div>
     <div id="cal-day-events-mobile"></div>
   </div>
@@ -3239,6 +3523,154 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     <div id="sdr-content"></div>
   </div>
 
+  <!-- ======= EMAIL MARKETING PANEL ======= -->
+  <!-- Lo que sale por Resend: cada envio registrado con su id de Resend, mas lo
+       que cuenta el webhook (entregado, abierto, clic, rebote, spam). -->
+  <div id="email_mkt-panel" class="panel">
+    <div class="page-header">
+      <div>
+        <h1>Email marketing</h1>
+        <div class="page-date">Lo que va saliendo por Resend: campañas, recordatorios y avisos</div>
+      </div>
+      <div class="em-acciones">
+        <button type="button" class="export-btn" onclick="loadEmailMkt()">↻ Recargar</button>
+        <button type="button" class="export-btn em-oculto" id="em-btn-estados" onclick="emActualizarEstados()">Actualizar estados</button>
+      </div>
+    </div>
+    <div class="em-nota-estados" id="em-estados-nota" role="status" aria-live="polite"></div>
+    <div class="em-barra">
+      <div class="em-nav-mes">
+        <button type="button" class="cal-nav-btn" onclick="emMes(-1)" title="Mes anterior" aria-label="Mes anterior">&larr;</button>
+        <span id="em-mes-label" aria-live="polite"></span>
+        <button type="button" class="cal-nav-btn" id="em-mes-sig" onclick="emMes(1)" title="Mes siguiente" aria-label="Mes siguiente">&rarr;</button>
+        <button type="button" class="cal-today-btn" onclick="emMesHoy()">Este mes</button>
+      </div>
+      <select class="filter-select em-tipo" id="em-tipo" onchange="emFiltrar()" aria-label="Tipo de envío"><option value="">Todos los tipos</option></select>
+    </div>
+    <div id="em-estado" class="em-vacio" role="status" aria-live="polite">Cargando…</div>
+    <div id="em-contadores" class="em-contadores"></div>
+    <div id="em-aviso"></div>
+    <div class="em-card">
+      <div class="em-card-titulo">Enviados por día</div>
+      <div id="em-grafico"></div>
+    </div>
+    <div class="em-card">
+      <div class="em-cab">
+        <div class="em-card-titulo">Envíos</div>
+        <input type="search" class="em-buscar" id="em-buscar" placeholder="Buscar por mail o asunto" oninput="emBuscar()" aria-label="Buscar por mail o asunto">
+      </div>
+      <div id="em-tabla" class="em-tabla-wrap"></div>
+      <div id="em-paginas" class="em-paginas"></div>
+    </div>
+    <!-- Ver el mail. El contenido llega por la API, ya sanitizado, y el JS lo
+         carga con srcdoc en un iframe con sandbox vacio: sin scripts, sin
+         mismo origen y sin navegacion. -->
+    <div class="modal-overlay" id="em-mail-modal" onclick="if(event.target===this)emCerrarMail()">
+      <div class="modal em-mail-modal" role="dialog" aria-modal="true" aria-labelledby="em-mail-asunto">
+        <div class="em-mail-cab">
+          <h3 id="em-mail-asunto">Mail</h3>
+          <button type="button" class="em-mail-cerrar" onclick="emCerrarMail()" aria-label="Cerrar">×</button>
+        </div>
+        <dl class="em-mail-datos" id="em-mail-datos"></dl>
+        <div class="em-mail-aviso em-oculto" id="em-mail-aviso" role="status"></div>
+        <div class="em-mail-tabs em-oculto" id="em-mail-tabs" role="tablist">
+          <button type="button" class="em-mail-tab em-activo" id="em-mail-tab-html" role="tab" onclick="emMailPestana('html')">Vista</button>
+          <button type="button" class="em-mail-tab" id="em-mail-tab-texto" role="tab" onclick="emMailPestana('texto')">Texto</button>
+        </div>
+        <div class="em-mail-cuerpo">
+          <iframe id="em-mail-iframe" class="em-mail-iframe em-oculto" sandbox="" referrerpolicy="no-referrer" title="Vista del mail"></iframe>
+          <pre id="em-mail-texto" class="em-mail-texto em-oculto"></pre>
+          <div id="em-mail-vacio" class="em-vacio"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- ======= FIN EMAIL MARKETING PANEL ======= -->
+  <!-- ======= LINKEDIN PANEL ======= -->
+  <!-- Los borradores para la pagina de Scalerics en LinkedIn, semana por
+       semana. El texto se copia tal cual y se pega en LinkedIn a mano. -->
+  <div id="linkedin-panel" class="panel">
+    <div class="page-header">
+      <div>
+        <h1>LinkedIn</h1>
+        <div class="page-date">Borradores para la página de Scalerics en LinkedIn</div>
+      </div>
+      <div class="li-acciones">
+        <button type="button" class="export-btn li-oculto" id="li-btn-generar" onclick="liGenerar()">Generar ahora</button>
+      </div>
+    </div>
+    <div class="li-nota" id="li-nota" role="status" aria-live="polite"></div>
+    <div class="li-barra">
+      <div class="li-nav-semana">
+        <button type="button" class="cal-nav-btn" onclick="liSemana(-1)" title="Semana anterior" aria-label="Semana anterior">&larr;</button>
+        <span id="li-semana-label" aria-live="polite"></span>
+        <button type="button" class="cal-nav-btn" id="li-semana-sig" onclick="liSemana(1)" title="Semana siguiente" aria-label="Semana siguiente">&rarr;</button>
+        <button type="button" class="cal-today-btn" onclick="liSemanaHoy()">Esta semana</button>
+      </div>
+    </div>
+    <div id="li-estado" class="li-vacio" role="status" aria-live="polite">Cargando…</div>
+    <div id="li-tarjetas" class="li-tarjetas"></div>
+
+    <div class="modal-overlay" id="li-editar-modal" onclick="if(event.target===this)liCerrarEditar()">
+      <div class="modal li-modal" role="dialog" aria-modal="true" aria-labelledby="li-editar-titulo">
+        <h3 id="li-editar-titulo">Editar publicación</h3>
+        <textarea id="li-editar-texto" class="li-textarea" rows="14" oninput="liContarEdicion()" aria-label="Texto de la publicación"></textarea>
+        <div class="li-contador" id="li-editar-contador"></div>
+        <div class="li-error" id="li-editar-error" role="alert"></div>
+        <div class="modal-btns">
+          <button type="button" class="btn-cancel" onclick="liCerrarEditar()">Cancelar</button>
+          <button type="button" class="btn-confirm" onclick="liGuardarEdicion()">Guardar</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-overlay" id="li-publicar-modal" onclick="if(event.target===this)liCerrarPublicar()">
+      <div class="modal li-modal-chico" role="dialog" aria-modal="true" aria-labelledby="li-publicar-titulo">
+        <h3 id="li-publicar-titulo">Marcar como publicada</h3>
+        <label class="li-rotulo" for="li-publicar-fecha">¿Qué día se publicó en LinkedIn?</label>
+        <input type="date" id="li-publicar-fecha" class="li-fecha">
+        <div class="li-error" id="li-publicar-error" role="alert"></div>
+        <div class="modal-btns">
+          <button type="button" class="btn-cancel" onclick="liCerrarPublicar()">Cancelar</button>
+          <button type="button" class="btn-confirm" onclick="liConfirmarPublicar()">Marcar publicada</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- ======= FIN LINKEDIN PANEL ======= -->
+
+  <!-- ======= INSTAGRAM PANEL ======= -->
+  <!-- Publicaciones de @scalerics_ con aprobacion. Nada se publica sin
+       aprobar. Ver services/instagram.py. -->
+  <div id="instagram-panel" class="panel">
+    <div class="page-header">
+      <div>
+        <h1>Instagram</h1>
+        <div class="page-date">Revisá, corregí y aprobá lo que se publica en @scalerics_</div>
+      </div>
+      <div class="ig-acciones">
+        <button type="button" class="export-btn ig-oculto" id="ig-btn-armar" onclick="igArmar()">Armar esta semana</button>
+      </div>
+    </div>
+    <div class="ig-nota"><b>Nada se publica sin tu aprobación.</b> Si cambiás algo de una publicación aprobada, vuelve a quedar para revisar y hay que aprobarla de nuevo. En los títulos, lo que escribas entre <b>*asteriscos*</b> sale en verde.</div>
+    <div class="ig-barra">
+      <div class="li-nav-semana">
+        <button type="button" class="cal-nav-btn" onclick="igSemana(-1)" aria-label="Semana anterior">&larr;</button>
+        <span id="ig-semana-label" aria-live="polite"></span>
+        <button type="button" class="cal-nav-btn" onclick="igSemana(1)" aria-label="Semana siguiente">&rarr;</button>
+        <button type="button" class="cal-today-btn" onclick="igSemanaHoy()">Esta semana</button>
+      </div>
+      <span class="ig-banco" id="ig-banco"></span>
+    </div>
+    <div id="ig-estado" class="li-vacio" role="status" aria-live="polite">Cargando…</div>
+    <div id="ig-tarjetas" class="ig-tarjetas"></div>
+    <div class="modal-overlay" id="ig-zoom" onclick="this.classList.remove('open')">
+      <img id="ig-zoom-img" class="ig-grande" alt="Vista ampliada">
+    </div>
+  </div>
+  <!-- ======= FIN INSTAGRAM PANEL ======= -->
+
+
   <div id="activity-panel" class="panel">
     <div class="page-header">
       <div>
@@ -3255,22 +3687,18 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     <div id="activity-list" style="max-width:760px"></div>
   </div>
 
-  <!-- ======= INTELIGENCIA FINANCIERA PANEL ======= -->
+  <!-- ======= METRICAS FINANCIERAS PANEL ======= -->
+  <!-- Antes era Inteligencia financiera. El id sigue siendo inteligencia_fin
+       porque los roles ya lo tienen guardado en panel_access. -->
   <div id="inteligencia_fin-panel" class="panel">
-    <div class="ifn-cabecera">
+    <div class="page-header">
       <div>
-        <h2 class="ifn-titulo">Inteligencia financiera</h2>
-        <p class="ifn-bajada" id="ifn-bajada">Qué hacer este mes para ganar plata, con el número esperado y la cuenta que lo respalda.</p>
+        <h1>Métricas financieras</h1>
+        <div class="page-date">Acá van a ir las métricas financieras.</div>
       </div>
-      <button class="btn-ghost ifn-oculto" id="ifn-recalcular" onclick="ifnRecalcular()">Recalcular ahora</button>
     </div>
-    <section class="ifn-bloque" id="ifn-datos"></section>
-    <section class="ifn-contraste" id="ifn-contraste"></section>
-    <section id="ifn-avisos"></section>
-    <section id="ifn-lista"></section>
-    <section class="ifn-bloque" id="ifn-seguimiento"></section>
   </div>
-  <!-- ======= FIN INTELIGENCIA FINANCIERA PANEL ======= -->
+  <!-- ======= FIN METRICAS FINANCIERAS PANEL ======= -->
 
   <!-- ======= DAILY PROGRAMADOR PANEL ======= -->
   <!-- Daily Programador y Daily Admin son la misma pantalla con los mismos
@@ -3292,6 +3720,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 
     <section class="eq-card" aria-labelledby="eq-titulo-org">
       <div class="eq-cab"><div class="fin-card-title" id="eq-titulo-org">Organigrama</div></div>
+      <div id="eq-org-leyenda"></div>
       <div class="eq-organigrama" id="eq-organigrama"><div class="eq-vacio">Cargando...</div></div>
     </section>
   </div>
@@ -3561,11 +3990,14 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 
 <!-- Modal: Nueva reunión -->
 <div class="modal-overlay" id="reprog-modal">
-  <div class="modal" style="width:400px;max-width:95vw">
+  <div class="modal cal-modal-alto" style="width:400px;max-width:95vw">
     <h3>Editar reunión</h3>
     <p style="margin-bottom:16px" id="reprog-title"></p>
     <label class="modal-label">Título</label>
     <input type="text" id="reprog-nombre" placeholder="Ej: Demo con El Fogón" style="margin-bottom:12px">
+    <label class="modal-label" for="reprog-tipo-proy">De qué es</label>
+    <select id="reprog-tipo-proy" onchange="_calPintarTipo('reprog')"></select>
+    <input type="text" id="reprog-tipo-otro" placeholder="¿De qué es? (ej: chatbot de WhatsApp)" maxlength="60" autocomplete="off" hidden>
     <div class="modal-row">
       <div>
         <label class="modal-label">Fecha</label>
@@ -3582,7 +4014,11 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
         <input type="number" id="reprog-duracion" min="5" max="480" step="5">
       </div>
     </div>
-    <p style="font-size:.72rem;color:#64748b;margin:10px 0 0">Si la reunión está en Google Calendar, se mueve ahí también y al invitado le llega el aviso por mail.</p>
+    <div class="cal-serie-aviso" id="reprog-serie" hidden></div>
+    <label class="modal-label">Invitados</label>
+    <input type="text" id="reprog-invitados" placeholder="mail@ejemplo.com, otro@ejemplo.com" autocomplete="off">
+    <a id="reprog-meet" class="cal-meet-btn" href="#" target="_blank" rel="noopener" hidden>Unirse con Google Meet</a>
+    <div class="cal-modal-nota" id="reprog-google-nota" aria-live="polite"></div>
     <div class="cal-error" id="reprog-error" style="display:none;margin:12px 0 0"></div>
     <div class="modal-btns">
       <button class="btn-cancel" onclick="_calCerrarEditor()">Cancelar</button>
@@ -3591,20 +4027,49 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   </div>
 </div>
 
+<!-- Modal: una reunion que se repite, a cuales aplica el cambio o el borrado -->
+<div class="modal-overlay" id="alcance-modal">
+  <div class="modal" style="width:380px;max-width:95vw">
+    <h3 id="alcance-titulo">Reunión que se repite</h3>
+    <p id="alcance-texto">¿A cuáles se aplica?</p>
+    <div class="cal-alcance-btns">
+      <button type="button" class="cal-alcance-btn" id="alcance-esta" onclick="_calResolverAlcance('esta')">Solo esta</button>
+      <button type="button" class="cal-alcance-btn" id="alcance-siguientes" onclick="_calResolverAlcance('siguientes')">Esta y las siguientes</button>
+      <button type="button" class="cal-alcance-btn" id="alcance-todas" onclick="_calResolverAlcance('todas')">Todas</button>
+    </div>
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="_calResolverAlcance(null)">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Nueva reunión -->
 <div class="modal-overlay" id="event-modal">
-  <div class="modal" style="width:460px;max-width:95vw">
+  <div class="modal cal-modal-alto" style="width:480px;max-width:95vw">
     <h3>Nueva reunión</h3>
-    <p style="margin-bottom:16px"></p>
-    <label class="modal-label">Título</label>
+    <div class="cal-tipo" role="radiogroup" aria-label="Tipo de reunión">
+      <button type="button" role="radio" aria-checked="true" id="ev-tipo-cliente" class="cal-tipo-btn active" onclick="_calElegirTipo('cliente')">Con un cliente / lead</button>
+      <button type="button" role="radio" aria-checked="false" id="ev-tipo-asunto" class="cal-tipo-btn" onclick="_calElegirTipo('asunto')">Otro asunto</button>
+    </div>
+    <div id="ev-bloque-cliente">
+      <label class="modal-label">Cliente o lead</label>
+      <div id="ev-cliente-elegido" class="cal-cliente-elegido" hidden></div>
+      <input type="text" id="ev-cliente-buscar" placeholder="Buscá por nombre o teléfono" autocomplete="off" oninput="_calBuscarClienteTecla(this.value)">
+      <div id="ev-cliente-resultados" class="cal-cliente-resultados"></div>
+    </div>
+    <label class="modal-label" id="ev-title-label">Título</label>
     <input type="text" id="ev-title" placeholder="Ej: Reunión con El Fogón">
+    <label class="modal-label" for="ev-tipo-proy">De qué es</label>
+    <select id="ev-tipo-proy" onchange="_calPintarTipo('ev')"></select>
+    <input type="text" id="ev-tipo-otro" placeholder="¿De qué es? (ej: chatbot de WhatsApp)" maxlength="60" autocomplete="off" hidden>
     <div class="modal-row">
       <div>
         <label class="modal-label">Fecha</label>
-        <input type="date" id="ev-date">
+        <input type="date" id="ev-date" onchange="_calPintarRepeticion()">
       </div>
       <div>
-        <label class="modal-label">Hora</label>
-        <input type="time" id="ev-time" value="10:00">
+        <label class="modal-label">Hora (Montevideo)</label>
+        <input type="time" id="ev-time" value="10:00" onchange="_calPintarRepeticion()">
       </div>
     </div>
     <div class="modal-row">
@@ -3612,12 +4077,59 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
         <label class="modal-label">Duración (min)</label>
         <input type="number" id="ev-duration" value="60" min="15" max="480">
       </div>
+      <div>
+        <label class="modal-label">Se repite</label>
+        <select id="ev-rep-freq" onchange="_calPintarRepeticion()">
+          <option value="no">No se repite</option>
+          <option value="diaria">Todos los días</option>
+          <option value="semanal">Todas las semanas</option>
+          <option value="quincenal">Cada 2 semanas</option>
+          <option value="mensual">Todos los meses (mismo día)</option>
+        </select>
+      </div>
     </div>
+    <div id="ev-rep-opciones" hidden>
+      <div id="ev-rep-dias-bloque">
+        <label class="modal-label">Qué días</label>
+        <div class="cal-rep-dias" id="ev-rep-dias">
+          <label class="cal-rep-dia" title="Lunes"><input type="checkbox" value="0" aria-label="Lunes" onchange="_calPintarRepeticion()"><span>L</span></label>
+          <label class="cal-rep-dia" title="Martes"><input type="checkbox" value="1" aria-label="Martes" onchange="_calPintarRepeticion()"><span>M</span></label>
+          <label class="cal-rep-dia" title="Miércoles"><input type="checkbox" value="2" aria-label="Miércoles" onchange="_calPintarRepeticion()"><span>X</span></label>
+          <label class="cal-rep-dia" title="Jueves"><input type="checkbox" value="3" aria-label="Jueves" onchange="_calPintarRepeticion()"><span>J</span></label>
+          <label class="cal-rep-dia" title="Viernes"><input type="checkbox" value="4" aria-label="Viernes" onchange="_calPintarRepeticion()"><span>V</span></label>
+          <label class="cal-rep-dia" title="Sábado"><input type="checkbox" value="5" aria-label="Sábado" onchange="_calPintarRepeticion()"><span>S</span></label>
+          <label class="cal-rep-dia" title="Domingo"><input type="checkbox" value="6" aria-label="Domingo" onchange="_calPintarRepeticion()"><span>D</span></label>
+        </div>
+      </div>
+      <div class="modal-row">
+        <div>
+          <label class="modal-label">Termina</label>
+          <select id="ev-rep-fin" onchange="_calPintarRepeticion()">
+            <option value="nunca">Nunca</option>
+            <option value="fecha">Hasta una fecha</option>
+            <option value="veces">Después de N veces</option>
+          </select>
+        </div>
+        <div id="ev-rep-hasta-bloque" hidden>
+          <label class="modal-label">Hasta</label>
+          <input type="date" id="ev-rep-hasta" onchange="_calPintarRepeticion()">
+        </div>
+        <div id="ev-rep-veces-bloque" hidden>
+          <label class="modal-label">Cuántas veces</label>
+          <input type="number" id="ev-rep-veces" value="10" min="1" max="500" oninput="_calPintarRepeticion()">
+        </div>
+      </div>
+      <div class="cal-rep-resumen" id="ev-rep-resumen" aria-live="polite"></div>
+    </div>
+    <label class="modal-label">Invitados</label>
+    <input type="text" id="ev-invitados" placeholder="mail@ejemplo.com, otro@ejemplo.com" autocomplete="off">
+    <div class="cal-modal-nota">Separados por coma. Al crear la reunión, Google Calendar les manda la invitación por mail con el link de Google Meet (y al cliente, si tiene mail cargado).</div>
     <label class="modal-label">Link de reunión</label>
     <input type="url" id="ev-email" placeholder="(opcional) https://meet.google.com/..." style="margin-bottom:12px">
     <label class="modal-label">Descripción</label>
     <textarea id="ev-desc" placeholder="(opcional)" style="min-height:60px"></textarea>
     <input type="hidden" id="ev-client-id" value="">
+    <div class="cal-error" id="ev-error" style="display:none;margin:0 0 12px"></div>
     <div class="modal-btns">
       <button class="btn-cancel" onclick="closeNewEventModal()">Cancelar</button>
       <button class="btn-confirm" id="ev-save-btn" onclick="saveEvent()">📅 Crear reunión</button>
@@ -3892,12 +4404,13 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     <label class="modal-label" for="eq-paso-titulo">Título</label>
     <input type="text" id="eq-paso-titulo" maxlength="120" placeholder="Qué se hace en este paso">
     <label class="modal-label" for="eq-paso-rol">Rol</label>
-    <select id="eq-paso-rol"></select>
+    <select id="eq-paso-rol" onchange="eqPasoRolMuestra()"></select>
+    <div class="eq-paso-rol-muestra" id="eq-paso-rol-muestra" aria-live="polite"></div>
     <label class="modal-label" for="eq-paso-detalle">Detalle</label>
     <input type="text" id="eq-paso-detalle" maxlength="240" placeholder="Qué pasa y en qué pantalla, en una línea">
     <label class="modal-label" for="eq-paso-pantalla">Pantalla a la que lleva</label>
     <select id="eq-paso-pantalla"></select>
-    <label class="eq-check"><input type="checkbox" id="eq-paso-destacado"> Destacado, con fondo verde</label>
+    <label class="eq-check"><input type="checkbox" id="eq-paso-destacado"> Destacado: ingreso recurrente</label>
     <div class="modal-label">Momentos de cobro</div>
     <div id="eq-paso-cobros"></div>
     <button class="btn-ghost eq-btn-chico" type="button" onclick="eqPasoCobroAgregar()">+ Momento de cobro</button>
@@ -3905,6 +4418,21 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     <div class="modal-btns">
       <button class="btn-ghost" type="button" onclick="eqCerrarModal('eq-modal-paso')">Cancelar</button>
       <button class="btn-primary" type="button" onclick="eqPasoGuardar()">Guardar</button>
+    </div>
+  </div>
+</div>
+<div class="modal-overlay" id="eq-modal-rol" onclick="if(event.target===this)eqCerrarModal('eq-modal-rol')">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="eq-rol-titulo">
+    <h3 id="eq-rol-titulo">Rol en Flujos</h3>
+    <p id="eq-rol-persona"></p>
+    <label class="modal-label" for="eq-rol-select">Rol en Flujos</label>
+    <select id="eq-rol-select" onchange="eqOrgRolMuestra()"></select>
+    <div class="eq-paso-rol-muestra" id="eq-rol-muestra" aria-live="polite"></div>
+    <div class="eq-ayuda">Define el color de la persona en el organigrama.</div>
+    <div class="eq-error" id="eq-rol-error" role="alert"></div>
+    <div class="modal-btns">
+      <button class="btn-ghost" type="button" onclick="eqCerrarModal('eq-modal-rol')">Cancelar</button>
+      <button class="btn-primary" type="button" onclick="eqOrgGuardarRol()">Guardar</button>
     </div>
   </div>
 </div>
@@ -4184,7 +4712,6 @@ function showPanel(name) {
   if (name === 'notion_clients') loadNotionClients();
   if (name === 'finanzas') loadFinanzas();
   if (name === 'simulador') loadSimulador();
-  if (name === 'inteligencia_fin') ifnCargar();
   if (name === 'metrics') loadMetrics();
   if (name === 'activity') loadActivity();
   if (name === 'equipo' || name === 'ausencias') loadEquipo();
@@ -4193,6 +4720,9 @@ function showPanel(name) {
   if (name === 'seg_leads') loadSegLeads();
   if (name === 'plantillas') plCargar();
   if (name === 'sdr') loadSdr();
+  if (name === 'email_mkt') loadEmailMkt();
+  if (name === 'linkedin') loadLinkedin();
+  if (name === 'instagram') igCargar();
 }
 
 // ========== Leads / Cola panel ==========
@@ -5054,7 +5584,6 @@ function _demosFilaHtml(d) {
     </div>
     ${d.actualizacion || d.origen !== 'planilla' ? `<div class="demo-texto">${esc(d.actualizacion || 'Sin notas')}</div>` : ''}
     <div class="demo-presu-fila">${presu}</div>
-    ${typeof ifnMotivoHtml === 'function' && d.estado_planilla === 'no_cerro' ? ifnMotivoHtml('demo', d.id, d.motivo_perdida) : ''}
   </div>`;
 }
 
@@ -6616,7 +7145,8 @@ function _calEvento(id) {
 // "Septiembre 2026 · 18 reuniones · 11 hechas · 7 por venir". Siempre habla del
 // MES: en la vista semana, del mes de la semana visible. Cuenta todo lo que el
 // calendario dibuja como reunion (del CRM, de Google y de Calendly; las
-// canceladas ya no vienen del endpoint), sin distinguir tipos.
+// canceladas ya no vienen del endpoint). Las de "otro asunto" no son reuniones
+// de ventas: van aparte, "· 2 de otros asuntos". Una serie cuenta cada vez.
 
 // Hoy en Montevideo como 'AAAA-MM-DDTHH:MM'. Uruguay es UTC-3 fijo (no tiene
 // horario de verano desde 2015), asi que no depende del huso del navegador.
@@ -6668,7 +7198,8 @@ function _calRangoSemana(lunes, anio, mes) {
 // hechas recien cuando termino su dia.
 function _calResumenMes(eventos, anio, mes, ahoraMvd) {
   const clave = anio + '-' + String(mes + 1).padStart(2, '0');
-  const delMes = (eventos || []).filter(ev => String((ev && ev.date) || '').slice(0, 7) === clave);
+  const todasDelMes = (eventos || []).filter(ev => String((ev && ev.date) || '').slice(0, 7) === clave);
+  const delMes = todasDelMes.filter(ev => ev.tipo !== 'asunto');
   const mesDeHoy = ahoraMvd.slice(0, 7);
   const tipo = clave < mesDeHoy ? 'pasado' : (clave > mesDeHoy ? 'futuro' : 'actual');
   let hechas = 0;
@@ -6676,7 +7207,8 @@ function _calResumenMes(eventos, anio, mes, ahoraMvd) {
     const inicio = ev.date + 'T' + (ev.time || '24:00');
     if (inicio <= ahoraMvd) hechas++;
   });
-  return {tipo: tipo, total: delMes.length, hechas: hechas, porVenir: delMes.length - hechas};
+  return {tipo: tipo, total: delMes.length, hechas: hechas, porVenir: delMes.length - hechas,
+          asuntos: todasDelMes.length - delMes.length};
 }
 
 function _calPlural(n, uno, varios) {
@@ -6695,6 +7227,9 @@ function _calTextoContador(resumen, anio, mes) {
   if (resumen.tipo === 'actual') {
     partes.push(_calPlural(resumen.hechas, 'hecha', 'hechas'));
     partes.push(resumen.porVenir + ' por venir');
+  }
+  if (resumen.asuntos) {
+    partes.push(_calPlural(resumen.asuntos, 'de otro asunto', 'de otros asuntos'));
   }
   return partes.join(' · ');
 }
@@ -6722,21 +7257,38 @@ function _calChip(ev) {
 function _calChipHtml(ev, clase) {
   const origen = ev.origen || 'crm';
   const deCalendly = origen === 'calendly';
+  const asunto = ev.tipo === 'asunto';
   const titulo = (ev.time ? ev.time + ' ' : '') + (ev.title || '');
-  const aviso = deCalendly ? ' (de Calendly: se reprograma allá)' : '';
+  const sinGoogle = !!(ev.google && ev.google.estado === 'error');
+  const aviso = (deCalendly ? ' (de Calendly: se reprograma allá)' : '')
+              + (ev.tipo_texto ? ' · ' + ev.tipo_texto : '')
+              + (asunto ? ' · otro asunto' : '')
+              + (ev.serie ? ' · ' + _calTextoRepeticion(ev.repeticion) : '')
+              + (sinGoogle ? ' · No sincronizada con Google (' + (ev.google.error || 'error') + ')' : '');
   const editar = deCalendly
     ? ''
     : '<button class="cal-chip-act cal-act-edit" draggable="false" onclick="event.stopPropagation();_calAbrirEditor(' + escJs(ev.id) + ')">Editar</button>';
+  const esMeet = String(ev.meeting_url || '').indexOf('meet.google.com') !== -1;
   const unirse = ev.meeting_url
-    ? '<a class="cal-chip-act cal-act-join" draggable="false" href="' + esc(ev.meeting_url) + '" target="_blank" onclick="event.stopPropagation()">Unirse</a>'
+    ? '<a class="cal-chip-act cal-act-join' + (esMeet ? ' cal-act-meet' : '') + '" draggable="false" href="' + esc(ev.meeting_url) + '" target="_blank" onclick="event.stopPropagation()">' + (esMeet ? 'Unirse con Google Meet' : 'Unirse') + '</a>'
     : '';
-  return '<div class="' + clase + ' origen-' + origen + '" draggable="' + (deCalendly ? 'false' : 'true') + '"'
+  // Solo lo creado a mano en el CRM (nunca Calendly) y con el envio prendido.
+  const g = ev.google || {};
+  const accionGoogle = g.puede_enviar ? (sinGoogle ? 'Reintentar en Google' : 'Enviar a Google Calendar') : '';
+  const reintentar = accionGoogle
+    ? '<button class="cal-chip-act ' + (sinGoogle ? 'cal-act-retry' : 'cal-act-send') + '" draggable="false" onclick="event.stopPropagation();_calReintentarGoogle(' + escJs(ev.id) + ')">' + accionGoogle + '</button>'
+    : '';
+  return '<div class="' + clase + ' origen-' + origen + (asunto ? ' tipo-asunto' : '') + '" draggable="' + (deCalendly ? 'false' : 'true') + '"'
        + ' title="' + esc(titulo + aviso) + '"'
        + ' ondragstart="_calDragStart(event,' + escJs(ev.id) + ',' + escJs(origen) + ')"'
        + ' ondragend="_calDragEnd(event)">'
        + (ev.time ? '<span class="cal-chip-time">' + esc(ev.time) + '</span>' : '')
+       + (sinGoogle ? '<span class="cal-chip-sync" aria-label="No sincronizada con Google">⚠</span>' : '')
+       + (ev.serie ? '<span class="cal-chip-rep" aria-label="Se repite">↻</span>' : '')
+       + (asunto ? '<span class="cal-chip-tag">Asunto</span>' : '')
+       + (ev.tipo_texto ? '<span class="cal-chip-tipo">' + esc(ev.tipo_texto) + '</span>' : '')
        + '<span class="cal-chip-title">' + esc(ev.title || '') + '</span>'
-       + '<div class="cal-chip-acts">' + editar + unirse
+       + '<div class="cal-chip-acts">' + editar + unirse + reintentar
        + '<button class="cal-chip-act cal-act-del" draggable="false" onclick="event.stopPropagation();deleteCalEvent(' + escJs(ev.id) + ',' + escJs(ev.title || '') + ')">Borrar</button>'
        + '</div></div>';
 }
@@ -6785,12 +7337,21 @@ function _calSoltar(e) {
 
 async function _calMover(ev, fecha, hora) {
   if (ev.date === fecha && ev.time === hora) return;
+  const cuerpo = {date: fecha, time: hora};
+  if (ev.serie) {
+    const alcance = await _calElegirAlcance('mover');
+    if (!alcance) return;
+    cuerpo.ocurrencia = ev.ocurrencia;
+    cuerpo.alcance = alcance;
+    // "Solo esta" conserva el nombre y la duracion que esa reunion ya tenia.
+    if (alcance === 'esta') { cuerpo.title = ev.title; cuerpo.duration_min = ev.duration_min; }
+  }
   let j;
   try {
-    const r = await fetch('/api/calendar/meetings/' + encodeURIComponent(ev.id), {
+    const r = await fetch(_calRutaReunion(ev), {
       method: 'PATCH',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({date: fecha, time: hora}),
+      body: JSON.stringify(cuerpo),
     });
     j = await r.json();
   } catch (err) {
@@ -6798,6 +7359,8 @@ async function _calMover(ev, fecha, hora) {
   }
   if (!j || !j.ok) {
     alert('No se movió la reunión: ' + ((j && j.error) || 'error desconocido'));
+  } else {
+    _calAvisoGoogle(_calTextoGoogle(j.google, 'actualizó'));
   }
   renderCalendar();
 }
@@ -6917,12 +7480,32 @@ function _calAbrirEditor(id) {
   const ev = _calEvento(id);
   if (!ev) return;
   _calEditando = {id: ev.id, title: ev.title, date: ev.date, time: ev.time,
-                  duration_min: ev.duration_min || 60};
-  document.getElementById('reprog-title').textContent = ev.client_name || '';
+                  duration_min: ev.duration_min || 60,
+                  tipo_proyecto: ev.tipo_proyecto || '', tipo_otro: ev.tipo_otro || '',
+                  invitados: (ev.invitados || []).join(', '), evento: ev};
+  document.getElementById('reprog-title').textContent = ev.tipo === 'asunto' ? 'Otro asunto' : (ev.client_name || '');
   document.getElementById('reprog-nombre').value = ev.title || '';
   document.getElementById('reprog-duracion').value = _calEditando.duration_min;
-  document.getElementById('reprog-date').value = ev.date || _calIsoLocal(new Date());
+  document.getElementById('reprog-date').value = ev.date || _calAhoraMvd().slice(0, 10);
   document.getElementById('reprog-time').value = _calHoraDeLaReunion(_calEditando);
+  // Los invitados se muestran tal como quedaron guardados: los tres fijos NO
+  // se vuelven a proponer aca, asi lo que Juan saco al crearla sigue afuera.
+  document.getElementById('reprog-invitados').value = _calEditando.invitados;
+  _calOpcionesTipo('reprog-tipo-proy');
+  document.getElementById('reprog-tipo-proy').value = _calEditando.tipo_proyecto;
+  document.getElementById('reprog-tipo-otro').value = _calEditando.tipo_otro;
+  _calPintarTipo('reprog');
+  const meet = document.getElementById('reprog-meet');
+  const linkMeet = (ev.google && ev.google.meet)
+    || (String(ev.meeting_url || '').indexOf('meet.google.com') !== -1 ? ev.meeting_url : '');
+  meet.href = linkMeet || '#';
+  meet.hidden = !linkMeet;
+  document.getElementById('reprog-google-nota').textContent = _calTextoEstadoGoogle(ev);
+  const serie = document.getElementById('reprog-serie');
+  serie.hidden = !ev.serie;
+  serie.textContent = ev.serie
+    ? '↻ ' + _calTextoRepeticion(ev.repeticion, ev.time) + '. Al guardar elegís si el cambio es solo para esta, para esta y las siguientes o para todas. Los invitados son de toda la serie.'
+    : '';
   const err = document.getElementById('reprog-error');
   err.style.display = 'none';
   err.textContent = '';
@@ -6941,6 +7524,8 @@ async function _calGuardarHorario() {
   const time = document.getElementById('reprog-time').value;
   const nombre = document.getElementById('reprog-nombre').value.trim();
   const duracion = parseInt(document.getElementById('reprog-duracion').value, 10);
+  const mails = _calLeerMails(document.getElementById('reprog-invitados').value);
+  const tipoProy = _calTipoDelModal('reprog');
   const err = document.getElementById('reprog-error');
 
   if (!date || !time) {
@@ -6953,24 +7538,42 @@ async function _calGuardarHorario() {
     err.style.display = 'block';
     return;
   }
+  if (mails.malos.length) {
+    err.textContent = 'Estos mails no son válidos: ' + mails.malos.join(', ');
+    err.style.display = 'block';
+    return;
+  }
   // Sin cambios: cerramos y no molestamos a nadie. El horario lo decide
-  // _calDestinoValido; el nombre y la duración se miran acá.
+  // _calDestinoValido; el nombre, la duración y los invitados se miran acá.
   const cambioNombre = nombre && nombre !== (reunion.title || '');
   const cambioDuracion = duracion !== (reunion.duration_min || 60);
-  if (!_calDestinoValido(reunion, date, time) && !cambioNombre && !cambioDuracion) {
+  const cambioInvitados = mails.lista.join(', ') !== _calLeerMails(reunion.invitados).lista.join(', ');
+  const cambioTipo = tipoProy.tipo_proyecto !== (reunion.tipo_proyecto || '')
+                  || tipoProy.tipo_otro !== (reunion.tipo_otro || '');
+  if (!_calDestinoValido(reunion, date, time) && !cambioNombre && !cambioDuracion && !cambioInvitados && !cambioTipo) {
     _calCerrarEditor();
     return;
+  }
+
+  const ev = reunion.evento || {id: reunion.id};
+  const cuerpo = {date: date, time: time, title: nombre, duration_min: duracion,
+                  invitados: mails.lista,
+                  tipo_proyecto: tipoProy.tipo_proyecto, tipo_otro: tipoProy.tipo_otro};
+  if (ev.serie) {
+    const alcance = await _calElegirAlcance('editar');
+    if (!alcance) return;
+    cuerpo.ocurrencia = ev.ocurrencia;
+    cuerpo.alcance = alcance;
   }
 
   const btn = document.getElementById('reprog-save-btn');
   btn.disabled = true; btn.textContent = 'Guardando...';
   let j;
   try {
-    const r = await fetch('/api/calendar/meetings/' + encodeURIComponent(reunion.id), {
+    const r = await fetch(_calRutaReunion(ev), {
       method: 'PATCH',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({date: date, time: time, title: nombre,
-                            duration_min: duracion}),
+      body: JSON.stringify(cuerpo),
     });
     j = await r.json();
   } catch (e) {
@@ -6984,6 +7587,7 @@ async function _calGuardarHorario() {
     return;
   }
   _calCerrarEditor();
+  _calAvisoGoogle(_calTextoGoogle(j.google, 'actualizó'));
   // En el celular la lista sigue a la reunion a su dia nuevo: si no, queda
   // mostrando un dia donde la reunion ya no esta y parece que se borro.
   if (window.innerWidth <= 768) calDiaMobile = date;
@@ -7028,18 +7632,30 @@ function _calSeleccionarDiaMobile() {
 // Calendly no se editan desde aca, igual que en escritorio.
 function _calItemMobile(ev) {
   const deCalendly = (ev.origen || 'crm') === 'calendly';
+  const asunto = ev.tipo === 'asunto';
   const editar = deCalendly
     ? ''
     : '<button class="cal-mobile-act cal-mobile-act-editar" onclick="_calAbrirEditor(' + escJs(ev.id) + ')">Editar</button>';
+  const esMeet = String(ev.meeting_url || '').indexOf('meet.google.com') !== -1;
   const unirse = ev.meeting_url
-    ? '<a class="cal-mobile-act cal-mobile-act-unirse" href="' + esc(ev.meeting_url) + '" target="_blank" rel="noopener">Unirse</a>'
+    ? '<a class="cal-mobile-act cal-mobile-act-unirse" href="' + esc(ev.meeting_url) + '" target="_blank" rel="noopener">' + (esMeet ? 'Unirse con Google Meet' : 'Unirse') + '</a>'
     : '';
   const borrar = '<button class="cal-mobile-act cal-mobile-act-borrar" onclick="deleteCalEvent(' + escJs(ev.id) + ',' + escJs(ev.title || '') + ')">Borrar</button>';
-  return '<div class="cal-mobile-ev">'
+  const sinGoogle = !!(ev.google && ev.google.estado === 'error');
+  const g = ev.google || {};
+  const accionGoogle = g.puede_enviar ? (sinGoogle ? 'Reintentar en Google' : 'Enviar a Google Calendar') : '';
+  const reintentar = accionGoogle
+    ? '<button class="cal-mobile-act ' + (sinGoogle ? 'cal-mobile-act-reintentar' : 'cal-mobile-act-enviar') + '" onclick="_calReintentarGoogle(' + escJs(ev.id) + ')">' + accionGoogle + '</button>'
+    : '';
+  return '<div class="cal-mobile-ev' + (asunto ? ' tipo-asunto' : '') + '">'
+       + (asunto ? '<div class="cal-mobile-ev-tag">Otro asunto</div>' : '')
+       + (ev.tipo_texto ? '<div class="cal-mobile-ev-tipo">' + esc(ev.tipo_texto) + '</div>' : '')
        + '<div class="cal-mobile-ev-titulo">' + esc(ev.title || '') + '</div>'
        + (ev.time ? '<div class="cal-mobile-ev-hora">🕐 ' + esc(ev.time) + '</div>' : '')
+       + (ev.serie ? '<div class="cal-mobile-ev-rep">↻ ' + esc(_calTextoRepeticion(ev.repeticion)) + '</div>' : '')
        + (deCalendly ? '<div class="cal-mobile-ev-aviso">De Calendly: se reprograma allá</div>' : '')
-       + '<div class="cal-mobile-acts">' + editar + unirse + borrar + '</div>'
+       + (sinGoogle ? '<div class="cal-mobile-ev-sync">⚠ No sincronizada con Google: ' + esc(ev.google.error || 'error desconocido') + '</div>' : '')
+       + '<div class="cal-mobile-acts">' + editar + unirse + reintentar + borrar + '</div>'
        + '</div>';
 }
 
@@ -7096,44 +7712,408 @@ function _calToqueFin(e) {
   zona.addEventListener('touchcancel', function () { _calToque = null; }, {passive: true});
 })();
 
-function openNewEventModal() {
-  const today = isoDate(new Date());
-  document.getElementById('ev-title').value = '';
-  document.getElementById('ev-date').value = today;
-  document.getElementById('ev-time').value = '10:00';
-  document.getElementById('ev-duration').value = '60';
-  document.getElementById('ev-desc').value = '';
-  document.getElementById('ev-email').value = '';
+// ── Nueva reunión ───────────────────────────────────────────────────────────
+// Con un cliente / lead (lo de siempre) u otro asunto (sin cliente, con el
+// titulo que se escriba). Las dos pueden tener invitados y repetirse. Nada de
+// esto crea eventos en Google ni manda mails: se guarda en el CRM, y el
+// servidor expande las repeticiones para el mes o la semana que se mira.
+
+const CAL_DIAS_PLURAL = ['los lunes', 'los martes', 'los miércoles', 'los jueves', 'los viernes', 'los sábados', 'los domingos'];
+
+// ── A quien se invita y de que es la reunion (pedido de Juan, 16/9) ──────────
+// Al elegir un lead, el campo de invitados se llena SOLO y a la vista: el mail
+// del lead y estos tres. Se ven antes de guardar, se pueden borrar, y lo que
+// Juan borre queda borrado (al editar la reunion despues no vuelven a
+// aparecer: el editor muestra lo que quedo guardado y nada mas).
+//
+// Van escritos aca y no en una pantalla de ajustes porque el CRM no tiene
+// tabla de configuracion: el unico patron que existe son variables de entorno,
+// que el navegador no puede leer. Cambiarlos es editar esta linea.
+// Espejo de services/recurrencia.INVITADOS_FIJOS (hay un test que los compara).
+const CAL_INVITADOS_FIJOS = ['juan.pereyra.comunicacion@gmail.com', 'gonzalosiuciak@gmail.com', 'juantomasetti240@gmail.com'];
+
+// Los tipos de proyecto, en el orden del selector. Espejo de
+// services/tipos_proyecto.TIPOS_PROYECTO (hay un test que los compara).
+const CAL_TIPOS = [['automatizacion', 'Automatización'], ['web', 'Página web'], ['ecommerce', 'E-commerce'], ['aMedida', 'Desarrollo a medida'], ['otro', 'Otro']];
+
+// Los mails que el modal puso solo por el lead elegido, para poder sacarlos si
+// se cambia de lead sin tocar lo que Juan haya agregado a mano.
+let _calMailsLead = [];
+let _calFijosPuestos = false;
+
+function _calOpcionesTipo(id) {
+  document.getElementById(id).innerHTML = '<option value="">Sin especificar</option>'
+    + CAL_TIPOS.map(t => '<option value="' + esc(t[0]) + '">' + esc(t[1]) + '</option>').join('');
+}
+
+// "Otro" deja escribir en pocas palabras de que es, igual que "Otro asunto"
+// deja escribir el titulo.
+function _calPintarTipo(prefijo) {
+  const sel = document.getElementById(prefijo + '-tipo-proy');
+  document.getElementById(prefijo + '-tipo-otro').hidden = sel.value !== 'otro';
+}
+
+function _calTipoDelModal(prefijo) {
+  const clave = document.getElementById(prefijo + '-tipo-proy').value || '';
+  const texto = document.getElementById(prefijo + '-tipo-otro').value.trim();
+  return {tipo_proyecto: clave, tipo_otro: clave === 'otro' ? texto : ''};
+}
+
+// Lo que tiene que quedar en el campo: lo que ya hay (menos los mails del lead
+// anterior), los del lead nuevo y, la primera vez, los tres fijos. Sin repetir.
+function _calMezclarInvitados(texto, mailsLead, conFijos) {
+  const fuera = {};
+  _calMailsLead.forEach(m => { fuera[m.toLowerCase()] = true; });
+  const base = _calLeerMails(texto).lista.filter(m => !fuera[m.toLowerCase()]);
+  const todos = base.concat(mailsLead || []).concat(conFijos ? CAL_INVITADOS_FIJOS : []);
+  return _calLeerMails(todos.join(', ')).lista.join(', ');
+}
+
+// El buscador de leads no trae el mail (la lista pagina con pocas columnas):
+// se pide la ficha, que si lo tiene. Un lead sin mail devuelve vacio, y uno con
+// varios los devuelve a todos.
+async function _calMailsDelLead(id) {
+  try {
+    const r = await fetch('/api/leads/' + encodeURIComponent(id));
+    if (!r.ok) return [];
+    const d = await r.json();
+    return _calLeerMails((d && d.email) || '').lista;
+  } catch (e) {
+    return [];
+  }
+}
+
+async function _calSincronizarInvitados(clientId) {
+  const campo = document.getElementById('ev-invitados');
+  const mails = clientId ? await _calMailsDelLead(clientId) : [];
+  campo.value = _calMezclarInvitados(campo.value, mails, !_calFijosPuestos);
+  _calMailsLead = mails;
+  _calFijosPuestos = true;
+}
+
+let _calTipoNueva = 'cliente';
+let _calClienteTimer = null;
+let _calAlcanceResolver = null;
+
+// A que ruta va una reunion: las de otro asunto tienen la suya. Las
+// ocurrencias de una serie comparten `reunion_id` y se distinguen por fecha.
+function _calRutaReunion(ev) {
+  const base = ev.tipo === 'asunto' ? '/api/calendar/asuntos/' : '/api/calendar/meetings/';
+  return base + encodeURIComponent(ev.reunion_id != null ? ev.reunion_id : ev.id);
+}
+
+// ── Google Calendar ─────────────────────────────────────────────────────────
+// El CRM crea las reuniones en Google y Google manda las invitaciones. Si Google
+// falla, la reunion igual queda en el CRM: el aviso de arriba lo dice y la
+// reunion muestra "No sincronizada" con un boton para reintentar. Nunca se
+// reintenta sola.
+
+function _calAvisoGoogle(texto) {
+  const el = document.getElementById('cal-aviso-google');
+  if (!el) return;
+  el.textContent = texto || '';
+  el.hidden = !texto;
+}
+
+function _calTextoGoogle(google, accion) {
+  if (!google || google.estado !== 'error') return '';
+  return 'La reunión quedó guardada en el CRM, pero no se ' + accion + ' en Google Calendar: '
+       + (google.error || 'error desconocido') + '. Tocá "Reintentar en Google" en la reunión.';
+}
+
+// Lo que dice la ventana de editar sobre Google: si los invitados ya recibieron
+// algo o no. Dice lo que pasó, no lo que debería pasar.
+function _calTextoEstadoGoogle(ev) {
+  const g = (ev && ev.google) || {};
+  const origen = (ev && ev.origen) || 'crm';
+  if (origen === 'calendly') return 'Reunión de Calendly: la invitación y los avisos los manda Calendly. El CRM no la toca en Google.';
+  if (origen === 'google') return 'Está en Google Calendar: al guardar se mueve ahí y Google les avisa a los invitados.';
+  if (g.estado === 'ok') return 'Enviada a Google Calendar: los invitados recibieron la invitación, y al guardar Google les avisa del cambio.';
+  if (g.estado === 'error') return 'No se pudo enviar a Google Calendar (' + (g.error || 'error desconocido') + '): los invitados todavía no recibieron nada. Usá "Reintentar en Google".';
+  if (g.puede_enviar) return 'Todavía no está en Google Calendar: los invitados no recibieron ningún mail. Usá "Enviar a Google Calendar" en la reunión.';
+  return 'No está en Google Calendar: el CRM no les manda ningún mail a los invitados.';
+}
+
+async function _calReintentarGoogle(id) {
+  const ev = _calEvento(id);
+  if (!ev) return;
+  let d;
+  try {
+    const r = await fetch(_calRutaReunion(ev) + '/google', {method: 'POST'});
+    d = await r.json();
+  } catch (e) {
+    d = {ok: false, error: 'no se pudo hablar con el servidor'};
+  }
+  _calAvisoGoogle(d && d.ok ? '' : 'No se pudo enviar a Google Calendar: ' + ((d && d.error) || 'error desconocido') + '.');
+  renderCalendar();
+}
+
+// "Todos los viernes a las 19:00, sin fin". Sirve para el modal, el chip y el celular.
+function _calTextoRepeticion(regla, hora, fecha) {
+  if (!regla || !regla.freq) return '';
+  const lista = xs => xs.length > 1 ? xs.slice(0, -1).join(', ') + ' y ' + xs[xs.length - 1] : (xs[0] || '');
+  const dias = (regla.dias || []).map(d => CAL_DIAS_PLURAL[d]).filter(Boolean);
+  let texto;
+  if (regla.freq === 'diaria') texto = 'Todos los días';
+  else if (regla.freq === 'semanal') texto = dias.length === 1 ? 'Todos ' + dias[0] : 'Todas las semanas: ' + lista(dias);
+  else if (regla.freq === 'quincenal') texto = 'Cada 2 semanas: ' + lista(dias);
+  else texto = 'Todos los meses' + (fecha ? ' el día ' + parseInt(String(fecha).slice(8, 10), 10) : '');
+  if (hora) texto += ' a las ' + hora;
+  if (regla.fin === 'fecha' && regla.hasta) texto += ', hasta el ' + String(regla.hasta).split('-').reverse().join('/');
+  else if (regla.fin === 'veces' && regla.veces) texto += ', ' + _calPlural(regla.veces, 'vez', 'veces');
+  else texto += ', sin fin';
+  return texto;
+}
+
+// Los mails de un campo de texto, separados por coma, punto y coma o espacio.
+// El servidor vuelve a validar: esto es para avisar antes de mandar.
+function _calLeerMails(texto) {
+  const lista = [];
+  const malos = [];
+  const vistos = {};
+  String(texto || '').split(/[,; ]+/).forEach(crudo => {
+    const mail = crudo.trim();
+    if (!mail) return;
+    if (!/^[^@ ,;<>]+@[^@ ,;<>]+[.][^@ ,;<>.]{2,}$/.test(mail)) { malos.push(mail); return; }
+    if (vistos[mail.toLowerCase()]) return;
+    vistos[mail.toLowerCase()] = true;
+    lista.push(mail);
+  });
+  return {lista: lista, malos: malos};
+}
+
+// Dia de la semana de una fecha 'AAAA-MM-DD', lunes = 0. Sin pasar por UTC.
+function _calDiaSemana(iso) {
+  const p = String(iso || '').split('-').map(n => parseInt(n, 10));
+  if (p.length < 3 || p.some(isNaN)) return null;
+  return (new Date(p[0], p[1] - 1, p[2]).getDay() + 6) % 7;
+}
+
+// Una reunion que se repite: "Solo esta", "Esta y las siguientes" o "Todas".
+// Devuelve una promesa con la eleccion, o null si se cancela. Las tres se
+// pueden siempre: la serie vive en el CRM, no en Google.
+function _calElegirAlcance(accion) {
+  return new Promise(ok => {
+    _calAlcanceResolver = ok;
+    const borrar = accion === 'borrar';
+    document.getElementById('alcance-titulo').textContent = borrar ? 'Borrar una reunión que se repite' : 'Cambiar una reunión que se repite';
+    document.getElementById('alcance-texto').textContent = borrar ? '¿Cuáles se borran?' : '¿A cuáles se aplica el cambio?';
+    document.getElementById('alcance-modal').classList.add('open');
+  });
+}
+
+function _calResolverAlcance(valor) {
+  document.getElementById('alcance-modal').classList.remove('open');
+  const ok = _calAlcanceResolver;
+  _calAlcanceResolver = null;
+  if (ok) ok(valor);
+}
+
+document.getElementById('alcance-modal').addEventListener('click', e => {
+  if (e.target === e.currentTarget) _calResolverAlcance(null);
+});
+
+function _calElegirTipo(tipo) {
+  _calTipoNueva = tipo === 'asunto' ? 'asunto' : 'cliente';
+  const asunto = _calTipoNueva === 'asunto';
+  [['ev-tipo-cliente', !asunto], ['ev-tipo-asunto', asunto]].forEach(par => {
+    const b = document.getElementById(par[0]);
+    b.classList.toggle('active', par[1]);
+    b.setAttribute('aria-checked', par[1] ? 'true' : 'false');
+  });
+  document.getElementById('ev-bloque-cliente').hidden = asunto;
+  document.getElementById('ev-title-label').textContent = asunto ? 'Asunto' : 'Título';
+  document.getElementById('ev-title').placeholder = asunto ? 'Ej: Marketing semanal' : 'Ej: Reunión con El Fogón';
+}
+
+function _calPonerCliente(id, nombre) {
+  document.getElementById('ev-client-id').value = id;
+  const elegido = document.getElementById('ev-cliente-elegido');
+  elegido.innerHTML = '<span>' + esc(nombre || 'Cliente elegido') + '</span>'
+    + '<button type="button" class="cal-cliente-cambiar" onclick="_calQuitarCliente()">Cambiar</button>';
+  elegido.hidden = false;
+  document.getElementById('ev-cliente-buscar').hidden = true;
+  document.getElementById('ev-cliente-resultados').innerHTML = '';
+  const titulo = document.getElementById('ev-title');
+  if (!titulo.value.trim() && nombre) titulo.value = 'Reunión con ' + nombre;
+  // Devuelve la promesa para que se pueda esperar: los invitados se llenan en
+  // cuanto contesta la ficha del lead.
+  return _calSincronizarInvitados(id);
+}
+
+function _calQuitarCliente() {
   document.getElementById('ev-client-id').value = '';
+  const elegido = document.getElementById('ev-cliente-elegido');
+  elegido.innerHTML = '';
+  elegido.hidden = true;
+  const buscar = document.getElementById('ev-cliente-buscar');
+  buscar.hidden = false;
+  buscar.value = '';
+  document.getElementById('ev-cliente-resultados').innerHTML = '';
+}
+
+function _calBuscarClienteTecla(v) {
+  clearTimeout(_calClienteTimer);
+  _calClienteTimer = setTimeout(() => _calBuscarCliente(v), 250);
+}
+
+async function _calBuscarCliente(texto) {
+  const lista = document.getElementById('ev-cliente-resultados');
+  const q = (texto || '').trim();
+  if (q.length < 2) { lista.innerHTML = ''; return; }
+  let items = [];
+  try {
+    // Con `page` la busqueda va por SQL con LIMIT; sin `page` trae todos los
+    // leads a memoria (el 502 del 28/8).
+    const r = await fetch('/api/leads?page=1&search=' + encodeURIComponent(q));
+    if (!r.ok) throw new Error(r.status);
+    items = ((await r.json()) || {}).items || [];
+  } catch (e) {
+    lista.innerHTML = '<div class="cal-cliente-vacio">No se pudo buscar. Probá de nuevo.</div>';
+    return;
+  }
+  lista.innerHTML = items.length
+    ? items.slice(0, 8).map(p => '<button type="button" class="cal-cliente-opcion" onclick="_calPonerCliente(' + Number(p.id) + ',' + escJs(p.name || '') + ')">'
+        + esc(p.name || 'Sin nombre') + (p.phone ? ' · ' + esc(p.phone) : '') + '</button>').join('')
+    : '<div class="cal-cliente-vacio">No hay nadie en el CRM con ese nombre. Si no es de ventas, elegí "Otro asunto".</div>';
+}
+
+// La regla que arma el modal, null si no se repite, o {error} si falta algo.
+function _calReglaDelModal() {
+  const freq = document.getElementById('ev-rep-freq').value;
+  if (freq === 'no') return null;
+  const regla = {freq: freq, fin: document.getElementById('ev-rep-fin').value};
+  if (freq === 'semanal' || freq === 'quincenal') {
+    regla.dias = Array.from(document.querySelectorAll('#ev-rep-dias input'))
+      .filter(c => c.checked).map(c => parseInt(c.value, 10));
+    if (!regla.dias.length) return {error: 'Elegí al menos un día de la semana.'};
+  }
+  if (regla.fin === 'fecha') {
+    regla.hasta = document.getElementById('ev-rep-hasta').value;
+    if (!regla.hasta) return {error: 'Poné hasta qué fecha se repite.'};
+    if (regla.hasta < document.getElementById('ev-date').value) return {error: 'La fecha de fin no puede ser antes de la primera reunión.'};
+  }
+  if (regla.fin === 'veces') {
+    regla.veces = parseInt(document.getElementById('ev-rep-veces').value, 10);
+    if (!(regla.veces >= 1 && regla.veces <= 500)) return {error: 'Las veces tienen que ir de 1 a 500.'};
+  }
+  return regla;
+}
+
+function _calPintarRepeticion() {
+  const freq = document.getElementById('ev-rep-freq').value;
+  const conDias = freq === 'semanal' || freq === 'quincenal';
+  const fin = document.getElementById('ev-rep-fin').value;
+  const fecha = document.getElementById('ev-date').value;
+  document.getElementById('ev-rep-opciones').hidden = freq === 'no';
+  document.getElementById('ev-rep-dias-bloque').hidden = !conDias;
+  document.getElementById('ev-rep-hasta-bloque').hidden = fin !== 'fecha';
+  document.getElementById('ev-rep-veces-bloque').hidden = fin !== 'veces';
+  // Semanal sin ningun dia marcado arranca con el dia de la fecha elegida.
+  const casillas = Array.from(document.querySelectorAll('#ev-rep-dias input'));
+  if (conDias && !casillas.some(c => c.checked)) {
+    const dia = _calDiaSemana(fecha);
+    casillas.forEach(c => { c.checked = parseInt(c.value, 10) === dia; });
+  }
+  const regla = _calReglaDelModal();
+  document.getElementById('ev-rep-resumen').textContent = regla && !regla.error
+    ? _calTextoRepeticion(regla, document.getElementById('ev-time').value, fecha)
+    : ((regla && regla.error) || '');
+}
+
+// `opciones`: {tipo, clientId, clientName}, lo que manda la ficha del cliente.
+function openNewEventModal(opciones) {
+  const o = opciones || {};
+  const poner = (id, v) => { document.getElementById(id).value = v; };
+  poner('ev-title', '');
+  // Hoy en Montevideo: de noche, la fecha del navegador en UTC ya es mañana.
+  poner('ev-date', _calAhoraMvd().slice(0, 10));
+  poner('ev-time', '10:00');
+  poner('ev-duration', '60');
+  poner('ev-desc', '');
+  poner('ev-email', '');
+  poner('ev-invitados', '');
+  poner('ev-rep-freq', 'no');
+  poner('ev-rep-fin', 'nunca');
+  poner('ev-rep-hasta', '');
+  poner('ev-rep-veces', '10');
+  document.querySelectorAll('#ev-rep-dias input').forEach(c => { c.checked = false; });
+  document.getElementById('ev-error').style.display = 'none';
+  _calQuitarCliente();
+  _calElegirTipo(o.tipo || 'cliente');
+  // Cada reunion nueva arranca limpia: los tres fijos se proponen una sola vez,
+  // recien cuando se elige el lead.
+  _calMailsLead = [];
+  _calFijosPuestos = false;
+  _calOpcionesTipo('ev-tipo-proy');
+  poner('ev-tipo-proy', '');
+  poner('ev-tipo-otro', '');
+  _calPintarTipo('ev');
+  const listo = o.clientId ? _calPonerCliente(o.clientId, o.clientName || '') : null;
+  _calPintarRepeticion();
   document.getElementById('event-modal').classList.add('open');
+  return listo;
 }
 function closeNewEventModal() { document.getElementById('event-modal').classList.remove('open'); }
 document.getElementById('event-modal').addEventListener('click', e => { if(e.target===e.currentTarget) closeNewEventModal(); });
 
 async function deleteCalEvent(eventId, title) {
-  if (!confirm('¿Borrar "' + title + '" del calendario?')) return;
-  const r = await fetch('/api/calendar/meetings/' + eventId, { method: 'DELETE' });
+  const ev = _calEvento(eventId) || {id: eventId};
+  let consulta = '';
+  if (ev.serie) {
+    const alcance = await _calElegirAlcance('borrar');
+    if (!alcance) return;
+    consulta = '?alcance=' + encodeURIComponent(alcance) + '&ocurrencia=' + encodeURIComponent(ev.ocurrencia || '');
+  } else if (!confirm('¿Borrar "' + title + '" del calendario?')) {
+    return;
+  }
+  const r = await fetch(_calRutaReunion(ev) + consulta, { method: 'DELETE' });
   const d = await r.json();
   if (d.ok) { renderCalendar(); }
   else { alert('Error al borrar: ' + (d.error || 'desconocido')); }
 }
 
 async function saveEvent() {
+  const tipo = _calTipoNueva;
   const title = document.getElementById('ev-title').value.trim();
   const date = document.getElementById('ev-date').value;
   const time = document.getElementById('ev-time').value;
   const duration = parseInt(document.getElementById('ev-duration').value) || 60;
   const desc = document.getElementById('ev-desc').value.trim();
-  if (!title || !date || !time) { alert('Completá el título, fecha y hora'); return; }
   const meet_link = document.getElementById('ev-email').value.trim();
   const clientId = document.getElementById('ev-client-id').value.trim() || null;
+  const err = document.getElementById('ev-error');
+  const falla = texto => { err.textContent = texto; err.style.display = 'block'; };
+  err.style.display = 'none';
+
+  if (tipo === 'asunto' && !title) return falla('Escribí de qué es la reunión (el asunto).');
+  if (!title || !date || !time) return falla('Completá el título, la fecha y la hora.');
+  if (tipo === 'cliente' && !clientId) return falla('Elegí el cliente o lead. Si no es con un cliente, elegí "Otro asunto".');
+  const mails = _calLeerMails(document.getElementById('ev-invitados').value);
+  if (mails.malos.length) return falla('Estos mails no son válidos: ' + mails.malos.join(', '));
+  const regla = _calReglaDelModal();
+  if (regla && regla.error) return falla(regla.error);
+
+  const tipoProy = _calTipoDelModal('ev');
+  const cuerpo = {tipo: tipo, title: title, date: date, time: time, duration_min: duration,
+                  description: desc, meet_link: meet_link,
+                  client_id: tipo === 'cliente' ? clientId : null,
+                  invitados: mails.lista, repeticion: regla,
+                  tipo_proyecto: tipoProy.tipo_proyecto, tipo_otro: tipoProy.tipo_otro};
   const btn = document.getElementById('ev-save-btn');
   btn.disabled = true; btn.textContent = '...';
-  const r = await fetch('/api/calendar/events', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({title,date,time,duration_min:duration,description:desc,meet_link,client_id:clientId})});
-  const d = await r.json();
+  let d;
+  try {
+    const r = await fetch('/api/calendar/events', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(cuerpo)});
+    d = await r.json();
+  } catch (e) {
+    d = {ok: false, error: 'no se pudo hablar con el servidor'};
+  }
   btn.disabled = false; btn.textContent = '📅 Crear reunión';
-  if (!d.ok) { alert('Error: '+(d.error||'Error desconocido')); return; }
+  if (!d || !d.ok) return falla('No se guardó: ' + ((d && d.error) || 'error desconocido'));
   closeNewEventModal();
+  _calAvisoGoogle(_calTextoGoogle(d.google, 'creó'));
+  if (window.innerWidth <= 768) calDiaMobile = date;
   renderCalendar();
 }
 
@@ -7396,7 +8376,6 @@ async function loadProjects() {
             }</span> ${esc(t.title)}</div>`).join('')
           : '<div class="proj-task proj-vacio">Sin tareas</div>'
       }</div>
-      ${typeof ifnEsfuerzoHtml === 'function' ? ifnEsfuerzoHtml(p) : ''}
     </div>`;
   }).join('');
 }
@@ -7504,7 +8483,6 @@ function _notionClientCardHtml(c, arrastrable) {
     ${meta ? `<div class="kanban-card-meta">${meta}</div>` : ''}
     ${c.descripcion ? `<div class="kanban-card-who">${esc(c.descripcion)}</div>` : ''}
     ${_ncVinculoHtml(c)}
-    ${typeof ifnMotivoHtml === 'function' && ['Perdido', 'Presupuesto Rechazado'].includes(c.status) ? ifnMotivoHtml('notion_client', c.id, c.motivo_perdida) : ''}
     ${slBotonNotionHtml(c)}
   </div>`;
 }
@@ -7752,7 +8730,19 @@ function renderTasksList() {
       : _taskStatusFilter === 'todo' ? 'Pendientes'
       : _taskStatusFilter === 'in_progress' ? 'En progreso'
       : 'Hechas';
-    summary.textContent = `${tasks.length} tarea${tasks.length !== 1 ? 's' : ''} · ${userLabel} · ${filterLabel}`;
+    // Los números que importan, grandes: cuántas se están mirando, cuántas
+    // están vencidas y cuántas ya están hechas. Las vencidas solo aparecen si
+    // hay alguna: un "0 vencidas" permanente deja de mirarse.
+    const ahoraR = new Date();
+    const vencidas = tasks.filter(t => t.deadline && new Date(t.deadline) < ahoraR
+                                       && t.status !== 'done').length;
+    const hechas = tasks.filter(t => t.status === 'done').length;
+    const plural = (n, una, varias) => n === 1 ? una : varias;
+    summary.innerHTML =
+      `<span><b>${tasks.length}</b>${plural(tasks.length, 'tarea', 'tareas')}`
+      + ` <i>${esc(userLabel)} · ${esc(filterLabel)}</i></span>`
+      + (vencidas ? `<span><b>${vencidas}</b>${plural(vencidas, 'vencida', 'vencidas')}</span>` : '')
+      + `<span><b>${hechas}</b>${plural(hechas, 'hecha', 'hechas')}</span>`;
   }
   const board = document.getElementById('tasks-board');
   if (_taskView === 'board') {
@@ -7763,7 +8753,14 @@ function renderTasksList() {
   }
   if (board) board.style.display = 'none';
   container.style.display = '';
-  if (!tasks.length) { container.innerHTML = '<div class="tasks-empty">Sin tareas para este filtro.</div>'; return; }
+  if (!tasks.length) {
+    container.innerHTML = '<div class="tasks-empty">'
+      + '<div class="tasks-empty-icono" aria-hidden="true">📋</div>'
+      + '<div class="tasks-empty-tit">No hay tareas para este filtro</div>'
+      + '<div class="tasks-empty-sub">Probá con otro filtro o con otra persona, '
+      + 'o creá una con el botón “+ Nueva tarea”.</div></div>';
+    return;
+  }
   container.innerHTML = tasks.map(t => _taskRowHtml(t)).join('');
 }
 
@@ -7795,12 +8792,22 @@ function _renderTasksBoard(tasks) {
   const columnaDe = t => t.notion_status || _COLUMNA_POR_DEFECTO[t.status] || 'Backlog';
   board.innerHTML = _COLUMNAS_NOTION.map(col => {
     const dentro = tasks.filter(t => columnaDe(t) === col.estado);
-    return `<div class="kanban-col" data-estado="${esc(col.estado)}"
+    // El nombre de la clase va entero y no armado con un pedazo: asi se puede
+    // buscar `task-col-curso` en el archivo y encontrarlo (hay un test que
+    // avisa si una clase del CSS no la arma nadie).
+    const tono = {todo:'task-col-todo', in_progress:'task-col-curso',
+                  done:'task-col-hecho'}[col.grupo] || 'task-col-todo';
+    return `<div class="kanban-col task-col ${tono}" data-estado="${esc(col.estado)}"
                  ondragover="_kanbanOver(event)" ondragleave="_kanbanLeave(event)"
                  ondrop="_kanbanDrop(event, '${esc(col.estado)}')">
-      <div class="kanban-head"><span class="kanban-name">${esc(col.estado)}</span>
-        <span class="kanban-count">${dentro.length}</span></div>
-      <div class="kanban-cards">${dentro.map(t => _taskCardHtml(t)).join('')}</div>
+      <div class="kanban-head"><span class="task-col-punto" aria-hidden="true"></span>
+        <span class="kanban-name">${esc(col.estado)}</span>
+        <span class="kanban-count task-col-n">${dentro.length}</span></div>
+      <div class="kanban-cards">${
+        dentro.length
+          ? dentro.map(t => _taskCardHtml(t)).join('')
+          : '<div class="kanban-vacia">Sin tareas</div>'
+      }</div>
     </div>`;
   }).join('');
 }
@@ -7809,18 +8816,20 @@ function _taskCardHtml(t) {
   const lead = t.client_id ? _allLeads.find(l => l.id === t.client_id) : null;
   const dl = t.deadline ? new Date(t.deadline) : null;
   const overdue = dl && dl < new Date() && t.status !== 'done';
-  const dlStr = dl ? dl.toLocaleDateString('es-UY',{day:'2-digit',month:'2-digit'}) : '';
-  return `<div class="kanban-card${overdue ? ' overdue' : ''}" draggable="true"
+  const enCurso = t.status === 'in_progress';
+  return `<div class="kanban-card task-card${overdue ? ' overdue' : ''}${enCurso ? ' en-curso' : ''}" draggable="true"
                ondragstart="_kanbanDragStart(event, ${t.id})"
                ondblclick="openEditTaskModal(${t.id})" title="Doble clic para editar">
-    <div class="kanban-card-title">${esc(t.title)}</div>
+    <div class="kanban-card-title task-card-tit">${esc(t.title)}</div>
     <div class="kanban-card-meta">
       ${t.notion_page_id ? '<span class="task-notion-badge">Notion</span>' : ''}
       ${t.notion_project_page_id && _proyectosPorPagina && _proyectosPorPagina[t.notion_project_page_id] ? `<span class="proj-stage">${esc(_proyectosPorPagina[t.notion_project_page_id])}</span>` : ''}
       ${t.priority === 'high' ? '<span class="task-priority high">Alta</span>' : ''}
       ${lead ? `<span class="task-client-link" onclick="openClientPanel(${lead.id})">${esc(lead.name||'')}</span>` : ''}
-      ${dlStr ? `<span class="task-deadline ${overdue ? 'overdue' : ''}">${dlStr}</span>` : ''}
-      ${t.assignee_name ? `<span class="kanban-card-who">${esc(t.assignee_name)}</span>` : ''}
+    </div>
+    <div class="task-card-pie">
+      ${_taskQuienHtml(t, 'kanban-card-who')}
+      ${_taskFechaHtml(t, t.status === 'done')}
     </div>
   </div>`;
 }
@@ -7869,6 +8878,49 @@ async function _kanbanDrop(ev, estado) {
   renderTasksList();
 }
 
+// ── Quién y cuándo, que son las dos cosas que se buscan de un vistazo ────────
+// El color de una persona NO se inventa acá: es el de su rol en Flujos, el
+// mismo que tiene en el organigrama. Lo manda /api/users en `color` y se pinta
+// con la clase `.eq-rol-COLOR`, que ya existe. Quien no está en el equipo cae
+// en `neutro` (gris), no en un color de nadie.
+function _taskColorDe(id) {
+  const u = _allUsers.find(x => String(x.id) === String(id));
+  return (u && u.color) ? u.color : 'neutro';
+}
+
+function _taskAvatarHtml(id, nombre) {
+  return '<span class="task-av eq-rol-' + esc(_taskColorDe(id)) + '" aria-hidden="true">'
+    + esc(_upickInitials(nombre)) + '</span>';
+}
+
+function _taskQuienHtml(t, clase) {
+  const extra = clase ? ' ' + clase : '';
+  if (!t.assignee_name) {
+    return '<span class="task-quien task-sin-duenio' + extra + '">Sin asignar</span>';
+  }
+  return '<span class="task-quien' + extra + '">'
+    + _taskAvatarHtml(t.assignee_id, t.assignee_name)
+    + esc(t.assignee_name) + '</span>';
+}
+
+// Una fecha se lee de un vistazo o no sirve: "Venció 10/9" en rojo, "Hoy 18:00"
+// en ámbar, y el resto en gris. Una tarea hecha no vence.
+function _taskFechaHtml(t, done) {
+  if (!t.deadline) return '';
+  const dl = new Date(t.deadline);
+  if (isNaN(dl.getTime())) return '';
+  const ahora = new Date();
+  const esHoy = dl.toDateString() === ahora.toDateString();
+  const vencida = dl < ahora && !done && !esHoy;
+  const conHora = dl.getHours() !== 0 || dl.getMinutes() !== 0;
+  const dia = dl.toLocaleDateString('es-UY', {day:'2-digit', month:'2-digit'});
+  const hora = conHora ? dl.toLocaleTimeString('es-UY', {hour:'2-digit', minute:'2-digit'}) : '';
+  let clase = '', texto = dia + (hora ? ' ' + hora : '');
+  if (vencida) { clase = ' vencida'; texto = 'Venció ' + dia; }
+  else if (esHoy && !done) { clase = ' es-hoy'; texto = hora ? 'Hoy ' + hora : 'Hoy'; }
+  return '<span class="task-fecha' + clase + '">' + esc(texto) + '</span>';
+}
+
 function _taskRowHtml(t) {
   const done = t.status === 'done';
   const inProgress = t.status === 'in_progress';
@@ -7905,8 +8957,8 @@ function _taskRowHtml(t) {
       </div>
       <div id="task-history-${t.id}" style="display:none;margin-top:6px;padding:6px 0;border-top:1px solid var(--borde)"></div>
     </div>` : '';
-  const assigneeBadge = t.assignee_name ? `<span style="font-size:.72rem;color:var(--texto-debil);background:var(--relleno);padding:2px 7px;border-radius:10px">→ ${esc(t.assignee_name)}</span>` : '';
-  const createdByBadge = t.created_by_name && t.assignee_name ? `<span style="font-size:.72rem;color:var(--texto-debil)">de ${esc(t.created_by_name)}</span>` : '';
+  const assigneeBadge = _taskQuienHtml(t);
+  const createdByBadge = t.created_by_name && t.assignee_name ? `<span class="task-de">de ${esc(t.created_by_name)}</span>` : '';
   const notionBadge = t.notion_page_id
     ? `<a href="https://www.notion.so/${t.notion_page_id.replace(/-/g,'')}" target="_blank" rel="noopener"
           class="task-notion-badge" title="${esc(t.notion_status||'')}">Notion</a>`
@@ -7920,7 +8972,7 @@ function _taskRowHtml(t) {
         <span class="task-status-badge ${statusClass}" onclick="_setTaskStatus(${t.id})" title="Click para cambiar estado">${statusLabel}</span>
         ${t.priority ? `<span class="task-priority ${t.priority}">${prioLabel}</span>` : ''}
         ${lead ? `<span class="task-client-link" onclick="openClientPanel(${lead.id})">${esc(lead.name||'')}</span>` : ''}
-        ${dlStr ? `<span class="task-deadline ${overdue ? 'overdue' : ''}">📅 ${dlStr}${overdue?' (vencida)':''}</span>` : ''}
+        ${_taskFechaHtml(t, done)}
         ${assigneeBadge}${createdByBadge}${notionBadge}
       </div>
       ${progressBar}
@@ -8211,8 +9263,12 @@ async function submitAddTask() {
 
 // ── Custom user picker ────────────────────────────────────────────────────────
 
-const _upickColors = ['#0369a1','#7e22ce','#065f46','#9a3412','#be185d','#0f766e','#1d4ed8','#a16207'];
-function _upickColor(id) { return _upickColors[Number(id||0) % _upickColors.length]; }
+// El avatar del selector usa el MISMO color que la persona tiene en el
+// organigrama y en Flujos, igual que el de las tareas: se devuelve el nombre de
+// la familia (`azul`, `rojo`...) y lo pinta la clase `.eq-rol-COLOR`. Antes
+// había acá una paleta propia de 8 hex que no coincidía con ninguna otra
+// pantalla, y la misma persona salía de un color en Tareas y de otro en RRHH.
+function _upickColor(id) { return _taskColorDe(id); }
 function _upickInitials(name) { return (name||'').split(' ').slice(0,2).map(w=>w[0]||'').join('').toUpperCase()||'?'; }
 
 function _upickToggle(id) {
@@ -8416,20 +9472,20 @@ function _showScoreBreakdown(event, el) {
 
 // ── Mobile navigation ─────────────────────────────────────────────────────────
 // El mismo orden que el menu de la izquierda (Juan, 14/9).
-const NAV_PRIORITY = ['cal','meta','finanzas','simulador','inteligencia_fin','seg_leads','wa','notion_clients','plantillas','clientes','projects','tasks','daily','daily_admin','activity','equipo','ausencias','flujos','horarios','cola','metrics'];
+const NAV_PRIORITY = ['cal','meta','email_mkt','linkedin','instagram','finanzas','simulador','inteligencia_fin','seg_leads','wa','notion_clients','plantillas','clientes','projects','tasks','daily','daily_admin','activity','equipo','ausencias','flujos','horarios','cola','metrics'];
 const NAV_ICONS = {
   cola:'inbox',meta:'instagram',cal:'calendar',
   tasks:'check-square',pipeline:'trending-up',clientes:'users',
   wa:'message-circle',metrics:'bar-chart-2',activity:'clock',projects:'target',
   notion_clients:'handshake',finanzas:'wallet',simulador:'calculator',inteligencia_fin:'lightbulb',equipo:'network',
-  ausencias:'calendar-clock',horarios:'clock-4',flujos:'workflow',seg_leads:'phone-call',daily:'clipboard-list',plantillas:'message-square-text',daily_admin:'clipboard-check'
+  ausencias:'calendar-clock',horarios:'clock-4',flujos:'workflow',seg_leads:'phone-call',daily:'clipboard-list',plantillas:'message-square-text',daily_admin:'clipboard-check',email_mkt:'mail',linkedin:'linkedin',instagram:'image'
 };
 const NAV_LABELS = {
   cola:'Outbound',meta:'Meta',cal:'Agenda',
   tasks:'Tareas',pipeline:'Pipeline',clientes:'Clientes',
   wa:'WA',metrics:'Intel. comercial',activity:'Actividad',projects:'Proyectos',
-  notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador',inteligencia_fin:'Intel. financiera',equipo:'Organigrama',
-  ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento',daily:'Daily',plantillas:'Plantillas',daily_admin:'Daily Admin'
+  notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',
+  ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento',daily:'Daily',plantillas:'Plantillas',daily_admin:'Daily Admin',email_mkt:'Email mkt',linkedin:'LinkedIn',instagram:'Instagram'
 };
 let _mobileNavOverflow = [];
 
@@ -8509,7 +9565,7 @@ function closeMasSheet() {
 }
 
 // ── Panel access control ──────────────────────────────────────────────────────
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin'];
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram'];
 (async () => {
   try {
     const r = await fetch('/api/me');
@@ -9089,12 +10145,8 @@ async function _cpSummarize(meetingId) {
 function _cpOpenNewMeeting() {
   showPanel('cal');
   closeClientPanel();
-  openNewEventModal();
-  if (_cpClientId) {
-    document.getElementById('ev-client-id').value = _cpClientId;
-    const clientName = _cpData.info && _cpData.info.name ? _cpData.info.name : '';
-    if (clientName) document.getElementById('ev-title').value = 'Reunión con ' + clientName;
-  }
+  const clientName = _cpData.info && _cpData.info.name ? _cpData.info.name : '';
+  openNewEventModal(_cpClientId ? {tipo: 'cliente', clientId: _cpClientId, clientName: clientName} : {});
 }
 
 
@@ -11716,280 +12768,6 @@ function slFichaHtml(seg) {
     + '<div class="cp-section"><div class="cp-section-title">Historial de llamados</div>' + llamados + '</div>';
 }
 // ========== FIN Seguimiento de leads ==========
-// ========== Inteligencia financiera ==========
-// Que hacer este mes para ganar plata. Todo lo calcula el servidor una vez por
-// dia (services/inteligencia_fin.py); aca solo se pinta, y se mandan los tres
-// datos que faltaban: motivo de perdida, esfuerzo por proyecto y origen de la
-// venta. El selector de motivo y el campo de esfuerzo tambien se usan en las
-// tarjetas de Proceso de venta, Demos y Proyectos.
-const IFN_MOTIVOS = [['precio', 'Precio'], ['se_enfrio', 'Se enfrió'], ['eligio_otro', 'Eligió a otro'], ['no_era_momento', 'No era el momento'], ['no_calificaba', 'No calificaba']];
-const IFN_CANALES = [['meta_ads', 'Meta Ads'], ['outbound', 'Outbound'], ['referido', 'Referido'], ['otro', 'Otro']];
-const IFN_PERDIDO_NOTION = ['Perdido', 'Presupuesto Rechazado'];
-const IFN_CONFIANZA = {alta: 'Confianza alta', media: 'Confianza media', baja: 'Confianza baja'};
-const IFN_RESULTADO = {midiendo: 'Midiendo', funciono: 'Funcionó', no_funciono: 'No funcionó'};
-let ifnEstado = null;
-
-function ifnMiles(n) {
-  const s = String(Math.round(Math.abs(Number(n) || 0)));
-  let out = '';
-  for (let i = 0; i < s.length; i++) {
-    if (i && (s.length - i) % 3 === 0) out += '.';
-    out += s[i];
-  }
-  return out;
-}
-
-function ifnUsd(n) {
-  const x = Number(n) || 0;
-  return (x < 0 ? '−' : '') + 'USD ' + ifnMiles(x);
-}
-
-function ifnOpciones(lista, elegido, vacio) {
-  return (vacio ? '<option value="">' + esc(vacio) + '</option>' : '')
-    + lista.map(par => '<option value="' + par[0] + '"' + (par[0] === elegido ? ' selected' : '') + '>' + esc(par[1]) + '</option>').join('');
-}
-
-function ifnMotivoHtml(entidad, id, motivo) {
-  const falta = !motivo;
-  return `<label class="ifn-motivo${falta ? ' ifn-motivo-falta' : ''}" draggable="false" onclick="event.stopPropagation()">
-    <span>${falta ? 'Falta el motivo de pérdida' : 'Motivo de pérdida'}</span>
-    <select class="filter-select" onchange="ifnGuardarMotivo('${esc(entidad)}', ${Number(id)}, this.value)">${ifnOpciones(IFN_MOTIVOS, motivo || '', falta ? 'Elegí el motivo' : '')}</select>
-  </label>`;
-}
-
-function ifnEsfuerzoHtml(p) {
-  const id = Number(p.id);
-  const tiene = p.esfuerzo_horas !== null && p.esfuerzo_horas !== undefined;
-  const dias = p.esfuerzo_unidad === 'dias';
-  const rotulo = tiene
-    ? 'Esfuerzo: ' + esc(String(p.esfuerzo_valor)) + (dias ? ' días (' + ifnMiles(p.esfuerzo_horas) + ' h)' : ' h')
-    : 'Esfuerzo total: cargalo al cerrar';
-  return `<div class="ifn-esfuerzo${tiene ? '' : ' ifn-esfuerzo-falta'}">
-    <span class="ifn-esfuerzo-rotulo">${rotulo}</span>
-    <input type="number" min="0" step="any" class="ifn-input" id="ifn-esf-valor-${id}" aria-label="Esfuerzo del proyecto" value="${tiene ? esc(String(p.esfuerzo_valor)) : ''}">
-    <select class="filter-select" id="ifn-esf-unidad-${id}" aria-label="Unidad del esfuerzo">${ifnOpciones([['horas', 'horas'], ['dias', 'días']], p.esfuerzo_unidad || 'horas')}</select>
-    <button class="btn-ghost" onclick="ifnGuardarEsfuerzo(${id})">Guardar</button>
-  </div>`;
-}
-
-async function ifnPedir(url, metodo, cuerpo) {
-  try {
-    const opciones = {method: metodo, headers: {'Content-Type': 'application/json'}};
-    if (cuerpo !== undefined) opciones.body = JSON.stringify(cuerpo);
-    const r = await fetch(url, opciones);
-    let datos = {};
-    try { datos = await r.json(); } catch (e) { datos = {}; }
-    if (!r.ok) {
-      alert((datos && datos.error) || 'No se pudo guardar.');
-      return null;
-    }
-    return datos;
-  } catch (e) {
-    alert('No se pudo conectar con el servidor.');
-    return null;
-  }
-}
-
-async function ifnGuardarMotivo(entidad, id, motivo) {
-  if (!motivo) return;
-  const r = await ifnPedir('/api/perdidas/' + entidad + '/' + id + '/motivo', 'PUT', {motivo: motivo});
-  if (!r) return;
-  if (entidad === 'notion_client' && typeof _ncClientes !== 'undefined') {
-    const c = _ncClientes.find(x => Number(x.id) === Number(id));
-    if (c) { c.motivo_perdida = motivo; if (activePanel === 'notion_clients') _ncDibujar(); }
-  }
-  if (entidad === 'demo' && typeof _demos !== 'undefined') {
-    const d = _demos.find(x => Number(x.id) === Number(id));
-    if (d) { d.motivo_perdida = motivo; if (activePanel === 'demos') renderDemos(); }
-  }
-  if (activePanel === 'inteligencia_fin') ifnCargar();
-}
-
-async function ifnGuardarEsfuerzo(id) {
-  const valor = (document.getElementById('ifn-esf-valor-' + id) || {}).value;
-  const unidad = (document.getElementById('ifn-esf-unidad-' + id) || {}).value || 'horas';
-  const r = await ifnPedir('/api/proyectos/' + id + '/esfuerzo', 'PUT', {valor: valor, unidad: unidad});
-  if (!r) return;
-  if (activePanel === 'projects') loadProjects();
-  if (activePanel === 'inteligencia_fin') ifnCargar();
-}
-
-async function ifnGuardarOrigen(entidad, id, canal) {
-  if (!canal) return;
-  const r = await ifnPedir('/api/ventas/' + entidad + '/' + id + '/origen', 'PUT', {canal: canal});
-  if (r) ifnCargar();
-}
-
-async function ifnGuardarCanalFijo(id, canal) {
-  const r = await ifnPedir('/api/inteligencia-fin/fijos/' + id + '/canal', 'PUT', {canal: canal});
-  if (r) ifnCargar();
-}
-
-async function ifnGuardarComision() {
-  const campo = document.getElementById('ifn-comision');
-  const r = await ifnPedir('/api/inteligencia-fin/supuestos', 'PUT', {comision_cobro_pct: campo ? campo.value : ''});
-  if (r) ifnCargar();
-}
-
-async function ifnTomar(id) {
-  const r = await ifnPedir('/api/inteligencia-fin/recomendaciones/' + id + '/tomar', 'POST');
-  if (r) ifnCargar();
-}
-
-async function ifnDescartar(id) {
-  const r = await ifnPedir('/api/inteligencia-fin/recomendaciones/' + id + '/descartar', 'POST');
-  if (r) ifnCargar();
-}
-
-async function ifnRecalcular() {
-  const boton = document.getElementById('ifn-recalcular');
-  if (boton) boton.disabled = true;
-  const r = await ifnPedir('/api/inteligencia-fin/recalcular', 'POST');
-  if (boton) boton.disabled = false;
-  if (r) ifnCargar();
-}
-
-async function ifnCargar() {
-  const lista = document.getElementById('ifn-lista');
-  if (!lista) return;
-  let datos;
-  try {
-    const r = await fetch('/api/inteligencia-fin');
-    if (!r.ok) throw new Error(String(r.status));
-    datos = await r.json();
-  } catch (e) {
-    lista.innerHTML = '<div class="ifn-vacio">No se pudo cargar Inteligencia financiera.</div>';
-    return;
-  }
-  ifnEstado = datos;
-  ifnPintar();
-}
-
-function ifnPintar() {
-  const d = ifnEstado || {};
-  document.getElementById('ifn-bajada').textContent = d.bajada || '';
-  const boton = document.getElementById('ifn-recalcular');
-  if (boton) boton.classList.toggle('ifn-oculto', !d.es_admin);
-  document.getElementById('ifn-datos').innerHTML = ifnDatosHtml(d.datos || {}, !!d.es_admin);
-  document.getElementById('ifn-contraste').innerHTML = ifnContrasteHtml(d.encabezado || {});
-  document.getElementById('ifn-avisos').innerHTML = (d.avisos || []).map(ifnAvisoHtml).join('');
-  const recs = d.recomendaciones || [];
-  document.getElementById('ifn-lista').innerHTML = recs.length
-    ? recs.map(ifnTarjetaHtml).join('')
-    : '<div class="ifn-vacio">Hoy no hay recomendaciones que muevan ' + ifnUsd(d.umbral_usd) + ' o más por mes con los datos que hay.</div>';
-  document.getElementById('ifn-seguimiento').innerHTML = ifnSeguimientoHtml(d.seguimiento || []);
-}
-
-function ifnDatosHtml(datos, esAdmin) {
-  const m = datos.motivo || {};
-  const e = datos.esfuerzo || {};
-  const o = datos.origen || {};
-  const chip = completo => completo
-    ? '<span class="ifn-chip ifn-chip-ok">Completo</span>'
-    : '<span class="ifn-chip ifn-chip-falta">Falta</span>';
-  const motivos = (m.pendientes || []).map(p =>
-    `<li class="ifn-pend"><span>${esc(p.nombre)} · ${esc(p.estado)}</span>${ifnMotivoHtml(p.entidad, p.entidad_id, null)}</li>`).join('');
-  const esfuerzos = (e.pendientes || []).map(p =>
-    `<li class="ifn-pend"><span>${esc(p.nombre)}${p.stage ? ' · ' + esc(p.stage) : ''}</span>${ifnEsfuerzoHtml({id: p.id, esfuerzo_horas: null})}</li>`).join('');
-  const origenes = (o.pendientes || []).map(v =>
-    `<li class="ifn-pend"><span>${esc(v.nombre)}${v.sin_lead ? ' · venta sin lead vinculado' : (v.source ? ' · origen «' + esc(v.source) + '»' : ' · el lead no dice de dónde vino')}</span><select class="filter-select" onchange="ifnGuardarOrigen('${esc(v.entidad)}', ${Number(v.id)}, this.value)">${ifnOpciones(IFN_CANALES, '', 'Elegí el canal')}</select></li>`).join('');
-  const fijos = (datos.fijos || []).map(f =>
-    `<li class="ifn-pend"><span>${esc(f.concepto)} · ${f.monto_usd === null ? 'en pesos sin tipo de cambio' : ifnUsd(f.monto_usd) + ' por mes'}</span><select class="filter-select" onchange="ifnGuardarCanalFijo(${Number(f.id)}, this.value)">${ifnOpciones(IFN_CANALES, f.canal || '', 'Sin canal')}</select></li>`).join('');
-  const com = (datos.supuestos || {}).comision_cobro_pct || {};
-  const valorCom = com.valor === null || com.valor === undefined ? '' : String(com.valor);
-  const supuesto = esAdmin
-    ? `<label class="ifn-supuesto">${esc(com.etiqueta || 'Comisión de cobro')} <input type="number" min="0" max="99" step="any" class="ifn-input" id="ifn-comision" value="${esc(valorCom)}"> <button class="btn-ghost" onclick="ifnGuardarComision()">Guardar</button></label>`
-    : `<span class="ifn-supuesto">${esc(com.etiqueta || 'Comisión de cobro')}: ${valorCom ? esc(valorCom) + ' %' : 'sin cargar (la carga un admin)'}</span>`;
-  const sinMotivo = Number(m.sin_motivo) || 0;
-  const sinOrigen = Number(o.sin_origen) || 0;
-  return `<h3 class="ifn-seccion">Los tres datos que hacen falta</h3>
-  <div class="ifn-datos-grid">
-    <div class="ifn-dato" id="ifn-dato-motivo">
-      <div class="ifn-dato-cab">1. Motivo de pérdida ${chip(m.completo)}</div>
-      <p class="ifn-dato-num">${sinMotivo} ${sinMotivo === 1 ? 'pérdida sin motivo' : 'pérdidas sin motivo'} de ${Number(m.perdidas) || 0}</p>
-      ${motivos ? '<ul class="ifn-pends">' + motivos + '</ul>' : ''}
-    </div>
-    <div class="ifn-dato" id="ifn-dato-esfuerzo">
-      <div class="ifn-dato-cab">2. Esfuerzo por proyecto ${chip(e.completo)}</div>
-      <p class="ifn-dato-num">${Number(e.con_esfuerzo) || 0} de ${Number(e.proyectos) || 0} proyectos con esfuerzo cargado</p>
-      ${esfuerzos ? '<ul class="ifn-pends">' + esfuerzos + '</ul>' : ''}
-    </div>
-    <div class="ifn-dato" id="ifn-dato-origen">
-      <div class="ifn-dato-cab">3. Origen de la venta ${chip(o.completo)}</div>
-      <p class="ifn-dato-num">${sinOrigen} ${sinOrigen === 1 ? 'venta sin origen' : 'ventas sin origen'} de ${Number(o.ventas) || 0}</p>
-      ${o.cobros_sin_cliente ? '<p class="ifn-nota">' + Number(o.cobros_sin_cliente) + ' cobros de los últimos 3 meses no tienen cliente en Finanzas: no llegan a ningún lead.</p>' : ''}
-      ${origenes ? '<ul class="ifn-pends">' + origenes + '</ul>' : ''}
-    </div>
-  </div>
-  <div class="ifn-supuestos">${supuesto}</div>
-  ${fijos ? '<p class="ifn-nota">Gastos fijos de Finanzas por canal (para ver cuáles no traen ventas):</p><ul class="ifn-pends">' + fijos + '</ul>' : ''}`;
-}
-
-function ifnContrasteHtml(enc) {
-  if (enc.hoy === undefined) return '';
-  return `<div class="ifn-contraste-col">
-      <div class="ifn-contraste-rotulo">Cómo cierra el mes hoy</div>
-      <div class="ifn-contraste-num">${ifnUsd(enc.hoy)}</div>
-      <div class="ifn-contraste-cuenta">${esc(enc.calculo_hoy || '')}</div>
-    </div>
-    <div class="ifn-contraste-col">
-      <div class="ifn-contraste-rotulo">Aplicando las tres primeras</div>
-      <div class="ifn-contraste-num ifn-suma">${ifnUsd(enc.con_tres)}</div>
-      <div class="ifn-contraste-cuenta">${esc(enc.calculo_con_tres || '')}</div>
-    </div>`;
-}
-
-function ifnAvisoHtml(a) {
-  const cantidad = a.cantidad === null || a.cantidad === undefined ? '' : ' (' + Number(a.cantidad) + ')';
-  return `<div class="ifn-aviso">
-    <div class="ifn-aviso-titulo">${esc(a.titulo)}${cantidad}</div>
-    <p>${esc(a.detalle)}</p>
-    <div class="ifn-aviso-reglas">No se muestra hasta tener el dato: ${(a.reglas || []).map(esc).join(', ')}</div>
-  </div>`;
-}
-
-function ifnTarjetaHtml(r) {
-  const id = Number(r.id);
-  const impacto = r.impacto_mensual === null || r.impacto_mensual === undefined
-    ? '<div class="ifn-impacto ifn-revisar">Revisar</div>'
-    : `<div class="ifn-impacto ifn-suma">+${ifnUsd(r.impacto_mensual)}<span>${r.unica_vez ? 'por única vez' : 'por mes'}</span></div>`;
-  const acciones = (r.acciones || []).map(a =>
-    `<li class="ifn-accion"><span>${esc(a.cliente)} · ${ifnUsd(a.monto)}</span>${a.wa
-      ? `<a class="btn-primary" href="https://wa.me/${esc(a.wa)}?text=${encodeURIComponent(a.texto)}" target="_blank" rel="noopener">Abrir mensaje de cobranza</a>`
-      : '<span class="ifn-sin-tel">Sin teléfono en el CRM</span>'}</li>`).join('');
-  return `<article class="ifn-rec ifn-rec-${esc(r.tipo)}" id="ifn-rec-${id}">
-    <div class="ifn-rec-cab">
-      <div><span class="ifn-regla">${esc(r.regla)}</span><h3 class="ifn-rec-titulo">${esc(r.titulo)}</h3></div>
-      ${impacto}
-    </div>
-    <p class="ifn-rec-detalle">${esc(r.detalle)}</p>
-    ${r.advertencia ? `<p class="ifn-advertencia">${esc(r.advertencia)}</p>` : ''}
-    <pre class="ifn-calculo">${esc(r.calculo)}</pre>
-    ${acciones ? `<ul class="ifn-acciones">${acciones}</ul>` : ''}
-    <div class="ifn-rec-pie">
-      <span class="ifn-confianza ifn-conf-${esc(r.confianza)}">${IFN_CONFIANZA[r.confianza] || 'Confianza sin dato'}</span>
-      <button class="btn-primary" onclick="ifnTomar(${id})">Lo voy a hacer</button>
-      <button class="btn-ghost" onclick="ifnDescartar(${id})">Descartar</button>
-    </div>
-  </article>`;
-}
-
-function ifnSeguimientoHtml(lista) {
-  const filas = lista.map(t => {
-    const esperado = t.impacto_esperado === null || t.impacto_esperado === undefined ? 'revisar' : ifnUsd(t.impacto_esperado);
-    const real = t.regla === 'R6'
-      ? (Number(t.impacto_real) || 0).toFixed(1) + ' puntos de margen'
-      : ifnUsd(t.impacto_real);
-    return `<li class="ifn-seg">
-      <div><span class="ifn-regla">${esc(t.regla)}</span> <span class="ifn-seg-titulo">${esc(t.titulo)}</span> <span class="ifn-res ifn-res-${esc(t.resultado)}">${IFN_RESULTADO[t.resultado] || esc(t.resultado)}</span></div>
-      <div class="ifn-seg-meta">Tomada el ${esc(t.tomada_el)} · esperado ${esperado} · ${t.resultado === 'midiendo' ? 'se mide el ' + esc(t.se_mide_el) : 'real ' + real}</div>
-      ${t.detalle_real ? `<div class="ifn-seg-detalle">${esc(t.detalle_real)}</div>` : ''}
-    </li>`;
-  }).join('');
-  return '<h3 class="ifn-seccion">Seguimiento de lo que tomaste</h3>'
-    + (filas ? '<ul class="ifn-segs">' + filas + '</ul>' : '<div class="ifn-vacio">Todavía no tomaste ninguna recomendación.</div>');
-}
-// ========== FIN Inteligencia financiera ==========
 // ========== Horarios ==========
 // Recursos Humanos > Horarios: la semana de trabajo de cada programador, con
 // sus tramos por dia, las horas de cada dia y el total. En la compu es una
@@ -12020,11 +12798,23 @@ async function hrCargar() {
   if (caja) caja.innerHTML = hrPantallaHtml(hrDatos);
 }
 
-// Los tramos de un dia y sus horas; sin tramos, "No trabaja".
-function hrDiaHtml(dia) {
+// El color de cada persona es el de Daily: su lugar en la lista de Daily
+// Programador (orden_daily, lo manda el servidor) sobre los mismos DY_COLORES
+// que usa dyColor. Quien no esta en Daily toma uno estable por su id.
+function hrColor(p) {
+  const orden = p ? p.orden_daily : null;
+  const base = (orden === null || orden === undefined) ? (Number(p && p.id) || 0) : Number(orden);
+  return ((base % DY_COLORES) + DY_COLORES) % DY_COLORES;
+}
+
+// Los tramos de un dia como pastillas, y sus horas. Sin tramos: en la grilla
+// la celda queda vacia y apagada; en la tarjeta dice "No trabaja".
+function hrDiaHtml(dia, enGrilla) {
   const tramos = (dia && dia.tramos) || [];
-  if (!tramos.length) return '<span class="hr-libre">No trabaja</span>';
-  return tramos.map(t => '<span class="hr-tramo-txt">' + esc(t.desde) + '–' + esc(t.hasta) + '</span>').join('')
+  if (!tramos.length) {
+    return enGrilla ? '<span class="hr-oculto">No trabaja</span>' : '<span class="hr-libre">No trabaja</span>';
+  }
+  return tramos.map(t => '<span class="hr-tramo-txt hr-pastilla">' + esc(t.desde) + '–' + esc(t.hasta) + '</span>').join('')
     + '<span class="hr-horas">' + esc(dia.texto || '') + '</span>';
 }
 
@@ -12041,19 +12831,22 @@ function hrPantallaHtml(d) {
     + visibles.map(i => '<th scope="col" class="hr-col-dia">' + HR_DIAS_CORTOS[i] + '</th>').join('')
     + '<th scope="col" class="hr-total">Semana</th>'
     + '<th scope="col" class="hr-acciones"><span class="hr-oculto">Editar</span></th></tr>';
-  const filas = personas.map(p => '<tr><th scope="row" class="hr-persona">' + esc(p.nombre_corto) + '</th>'
+  const punto = '<span class="hr-punto" aria-hidden="true"></span>';
+  const filas = personas.map(p => '<tr class="hr-fila hr-color-' + hrColor(p) + '"><th scope="row" class="hr-persona">'
+    + punto + esc(p.nombre_corto) + '</th>'
     + visibles.map(i => {
       const dia = (p.dias || [])[i] || {};
       const libre = !(dia.tramos && dia.tramos.length);
-      return '<td class="hr-celda' + (libre ? ' hr-celda-libre' : '') + '">' + hrDiaHtml(dia) + '</td>';
+      return '<td class="hr-celda' + (libre ? ' hr-celda-libre' : '') + '">' + hrDiaHtml(dia, true) + '</td>';
     }).join('')
-    + '<td class="hr-total">' + esc(p.texto_semana) + '</td>'
+    + '<td class="hr-total"><span class="hr-total-chip">' + esc(p.texto_semana) + '</span></td>'
     + '<td class="hr-acciones">' + hrBotonEditar(p) + '</td></tr>').join('');
-  const tarjetas = personas.map(p => '<article class="hr-tarjeta">'
-    + '<div class="hr-tarjeta-cab"><div><div class="hr-tarjeta-nombre">' + esc(p.nombre_corto) + '</div>'
-    + '<div class="hr-tarjeta-total">' + esc(p.texto_semana) + ' por semana</div></div>' + hrBotonEditar(p) + '</div>'
+  const tarjetas = personas.map(p => '<article class="hr-tarjeta hr-color-' + hrColor(p) + '">'
+    + '<div class="hr-tarjeta-cab"><div><div class="hr-tarjeta-nombre">' + punto + esc(p.nombre_corto) + '</div>'
+    + '<div class="hr-tarjeta-total"><span class="hr-total-chip">' + esc(p.texto_semana) + '</span> por semana</div></div>'
+    + hrBotonEditar(p) + '</div>'
     + visibles.map(i => '<div class="hr-tarjeta-dia"><span class="hr-tarjeta-dia-nombre">' + HR_DIAS_LARGOS[i] + '</span>'
-      + '<span class="hr-tarjeta-dia-tramos">' + hrDiaHtml((p.dias || [])[i]) + '</span></div>').join('')
+      + '<span class="hr-tarjeta-dia-tramos">' + hrDiaHtml((p.dias || [])[i], false) + '</span></div>').join('')
     + '</article>').join('');
   return '<div class="hr-tabla-wrap"><table class="hr-tabla"><thead>' + cabecera + '</thead><tbody>' + filas
     + '</tbody></table></div><div class="hr-tarjetas">' + tarjetas + '</div>';
@@ -12195,6 +12988,1003 @@ async function hrGuardar() {
   await hrCargar();
 }
 // ========== FIN Horarios ==========
+
+// ========== LinkedIn ==========
+// Los borradores de la pagina de Scalerics en LinkedIn, semana por semana. Los
+// arma el cron de los martes y viernes; aca se copian, se editan y se marcan.
+// Sin template literals: el texto se arma concatenando.
+let liSemanaSel = '';
+let liDatos = null;
+let liPedido = 0;
+let liEditandoId = null;
+let liPublicandoId = null;
+
+const LI_ESTADOS = {
+  borrador: ['Borrador', 'li-chip-azul'],
+  publicado: ['Publicada', 'li-chip-verde'],
+  descartado: ['Descartada', 'li-chip-gris']
+};
+
+function liEsc(texto) {
+  return String(texto === null || texto === undefined ? '' : texto)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function liClase(id, poner, clase) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (poner) el.classList.add(clase);
+  else el.classList.remove(clase);
+}
+
+function liSumarDias(iso, dias) {
+  const p = String(iso).split('-');
+  const d = new Date(Date.UTC(parseInt(p[0], 10), parseInt(p[1], 10) - 1, parseInt(p[2], 10) + dias));
+  return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0') + '-' +
+    String(d.getUTCDate()).padStart(2, '0');
+}
+
+function liFechaCorta(iso) {
+  const s = String(iso || '');
+  return s.slice(8, 10) + '/' + s.slice(5, 7);
+}
+
+function liFechaLarga(iso) {
+  const s = String(iso || '');
+  return s.slice(8, 10) + '/' + s.slice(5, 7) + '/' + s.slice(0, 4);
+}
+
+function liEtiquetaSemana(lunes) {
+  return 'Semana del lun ' + liFechaCorta(lunes) + ' al dom ' + liFechaCorta(liSumarDias(lunes, 6));
+}
+
+// Como cuenta LinkedIn: un emoji o una letra con tilde es un caracter.
+function liCaracteres(texto) {
+  return Array.from(String(texto || '')).length;
+}
+
+function liContadorTexto(n, limite) {
+  return n + ' / ' + limite + ' caracteres' + (n > limite ? ' · pasa el límite de LinkedIn' : '');
+}
+
+function liBorrador(id) {
+  const lista = (liDatos && liDatos.borradores) || [];
+  return lista.find(b => Number(b.id) === Number(id)) || null;
+}
+
+async function loadLinkedin() {
+  const estado = document.getElementById('li-estado');
+  if (!estado) return;
+  const pedido = ++liPedido;
+  let d;
+  try {
+    const r = await fetch('/api/linkedin/borradores' + (liSemanaSel ? '?semana=' + encodeURIComponent(liSemanaSel) : ''));
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    d = await r.json();
+    if (!d || !Array.isArray(d.borradores)) throw new Error('respuesta incompleta');
+  } catch (e) {
+    if (pedido !== liPedido) return;
+    estado.textContent = 'No se pudieron cargar los borradores. Probá de nuevo en un rato.';
+    liClase('li-estado', false, 'li-oculto');
+    return;
+  }
+  if (pedido !== liPedido) return;
+  liDatos = d;
+  liPintar(d);
+}
+
+function liPintar(d) {
+  const etiqueta = document.getElementById('li-semana-label');
+  if (etiqueta) etiqueta.textContent = liEtiquetaSemana(d.semana);
+  const siguiente = document.getElementById('li-semana-sig');
+  if (siguiente) siguiente.disabled = d.semana >= d.semana_actual;
+  const estado = document.getElementById('li-estado');
+  if (estado) {
+    const hay = d.borradores.length > 0;
+    const proximos = d.proxima_generacion ? ' Los próximos se generan el ' + d.proxima_generacion + '.' : '';
+    estado.textContent = hay ? '' : (d.semana === d.semana_actual
+      ? 'Todavía no hay borradores esta semana.' : 'No hubo borradores esa semana.') + proximos;
+    liClase('li-estado', hay, 'li-oculto');
+  }
+  const tarjetas = document.getElementById('li-tarjetas');
+  if (tarjetas) tarjetas.innerHTML = d.borradores.map(b => liTarjeta(b, d.limite || 3000)).join('');
+  liClase('li-btn-generar', !d.puede_generar, 'li-oculto');
+}
+
+function liTarjeta(b, limite) {
+  const est = LI_ESTADOS[b.estado] || [b.estado, 'li-chip-gris'];
+  const n = liCaracteres(b.texto);
+  const contador = '<span class="li-contador' + (n > limite ? ' li-pasa' : '') + '">' +
+    liContadorTexto(n, limite) + '</span>';
+  const publicada = b.estado === 'publicado' && b.publicado_en
+    ? '<span class="li-meta">Publicada el ' + liEsc(liFechaLarga(b.publicado_en)) + '</span>' : '';
+  const editada = b.editado_por ? '<span class="li-meta">Editada por ' + liEsc(b.editado_por) + '</span>' : '';
+  const id = Number(b.id);
+  // La tarjeta que salio en el mail, si el runner la mando. Se muestra y se baja
+  // desde el CRM, detras del mismo permiso del panel.
+  const visual = b.tiene_imagen
+    ? '<div class="li-visual"><img class="li-imagen" src="/api/linkedin/borradores/' + id + '/imagen" ' +
+      'alt="Imagen del post" loading="lazy">' +
+      '<a class="li-btn" href="/api/linkedin/borradores/' + id + '/imagen?descargar=1" download="linkedin-' + id +
+      '.png">Descargar imagen</a></div>'
+    : '';
+  const acciones = [
+    '<button type="button" class="li-btn" id="li-copiar-' + id + '" onclick="liCopiar(' + id + ')">Copiar texto</button>',
+    '<button type="button" class="li-btn" onclick="liEditar(' + id + ')">Editar</button>',
+    b.estado === 'publicado' ? '' :
+      '<button type="button" class="li-btn" onclick="liAbrirPublicar(' + id + ')">Marcar como publicada</button>',
+    b.estado === 'descartado' ? '' :
+      '<button type="button" class="li-btn li-btn-suave" onclick="liCambiarEstado(' + id + ', ' + "'descartado'" + ')">Descartar</button>',
+    b.estado === 'borrador' ? '' :
+      '<button type="button" class="li-btn li-btn-suave" onclick="liCambiarEstado(' + id + ', ' + "'borrador'" + ')">Volver a borrador</button>'
+  ].join('');
+  return '<article class="li-tarjeta li-' + liEsc(b.estado) + '">' +
+    '<div class="li-cab"><span class="li-orden">N.º ' + Number(b.orden) + '</span>' +
+    '<span class="li-tema">' + liEsc(b.tema || 'Publicación') + '</span>' +
+    '<span class="li-chip ' + est[1] + '">' + liEsc(est[0]) + '</span></div>' +
+    '<div class="li-texto">' + liEsc(b.texto) + '</div>' + visual +
+    '<div class="li-pie">' + contador + publicada + editada + '</div>' +
+    '<div class="li-acciones-tarjeta">' + acciones + '</div></article>';
+}
+
+function liCopiarViejo(texto) {
+  try {
+    const area = document.createElement('textarea');
+    area.value = texto;
+    area.setAttribute('readonly', '');
+    area.className = 'li-copia-oculta';
+    document.body.appendChild(area);
+    area.select();
+    const ok = document.execCommand('copy');
+    area.remove();
+    return !!ok;
+  } catch (e) {
+    return false;
+  }
+}
+
+async function liCopiar(id) {
+  const b = liBorrador(id);
+  if (!b) return;
+  let ok = false;
+  try {
+    if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(b.texto);
+      ok = true;
+    }
+  } catch (e) {
+    ok = false;
+  }
+  if (!ok) ok = liCopiarViejo(b.texto);
+  const boton = document.getElementById('li-copiar-' + Number(id));
+  if (!boton) return;
+  boton.textContent = ok ? 'Copiado' : 'No se pudo copiar';
+  setTimeout(() => {
+    const otra = document.getElementById('li-copiar-' + Number(id));
+    if (otra) otra.textContent = 'Copiar texto';
+  }, 2000);
+}
+
+function liEditar(id) {
+  const b = liBorrador(id);
+  if (!b) return;
+  liEditandoId = id;
+  const area = document.getElementById('li-editar-texto');
+  if (area) area.value = b.texto;
+  const error = document.getElementById('li-editar-error');
+  if (error) error.textContent = '';
+  liContarEdicion();
+  liClase('li-editar-modal', true, 'open');
+}
+
+function liContarEdicion() {
+  const area = document.getElementById('li-editar-texto');
+  const contador = document.getElementById('li-editar-contador');
+  if (!area || !contador) return;
+  const n = liCaracteres(area.value);
+  const limite = (liDatos && liDatos.limite) || 3000;
+  contador.textContent = liContadorTexto(n, limite);
+  liClase('li-editar-contador', n > limite, 'li-pasa');
+}
+
+function liCerrarEditar() {
+  liEditandoId = null;
+  liClase('li-editar-modal', false, 'open');
+}
+
+async function liGuardarEdicion() {
+  const id = liEditandoId;
+  const area = document.getElementById('li-editar-texto');
+  const error = document.getElementById('li-editar-error');
+  if (!id || !area) return;
+  const texto = String(area.value || '');
+  if (!texto.trim()) {
+    if (error) error.textContent = 'El texto no puede quedar vacío.';
+    return;
+  }
+  try {
+    const r = await fetch('/api/linkedin/borradores/' + Number(id), {
+      method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({texto: texto})
+    });
+    let d = {};
+    try { d = await r.json(); } catch (e) { d = {}; }
+    if (!r.ok || !d.ok) {
+      if (error) error.textContent = d.error || 'No se pudo guardar.';
+      return;
+    }
+  } catch (e) {
+    if (error) error.textContent = 'No se pudo guardar.';
+    return;
+  }
+  liCerrarEditar();
+  await loadLinkedin();
+}
+
+function liAbrirPublicar(id) {
+  liPublicandoId = id;
+  const fecha = document.getElementById('li-publicar-fecha');
+  if (fecha) fecha.value = (liDatos && liDatos.hoy) || '';
+  const error = document.getElementById('li-publicar-error');
+  if (error) error.textContent = '';
+  liClase('li-publicar-modal', true, 'open');
+}
+
+function liCerrarPublicar() {
+  liPublicandoId = null;
+  liClase('li-publicar-modal', false, 'open');
+}
+
+async function liConfirmarPublicar() {
+  const id = liPublicandoId;
+  const fecha = document.getElementById('li-publicar-fecha');
+  const error = document.getElementById('li-publicar-error');
+  if (!id) return;
+  const valor = fecha ? String(fecha.value || '') : '';
+  if (!valor) {
+    if (error) error.textContent = 'Elegí el día en que se publicó.';
+    return;
+  }
+  if (await liEnviarEstado(id, 'publicado', valor, 'li-publicar-error')) liCerrarPublicar();
+}
+
+async function liCambiarEstado(id, estado) {
+  await liEnviarEstado(id, estado, '', 'li-nota');
+}
+
+async function liEnviarEstado(id, estado, fecha, idError) {
+  const error = document.getElementById(idError);
+  try {
+    const r = await fetch('/api/linkedin/borradores/' + Number(id) + '/estado', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({estado: estado, fecha: fecha || null})
+    });
+    let d = {};
+    try { d = await r.json(); } catch (e) { d = {}; }
+    if (!r.ok || !d.ok) {
+      if (error) error.textContent = d.error || 'No se pudo cambiar el estado.';
+      return false;
+    }
+  } catch (e) {
+    if (error) error.textContent = 'No se pudo cambiar el estado.';
+    return false;
+  }
+  await loadLinkedin();
+  return true;
+}
+
+function liSemana(delta) {
+  const base = liSemanaSel || (liDatos && liDatos.semana) || '';
+  if (!base) return;
+  const actual = (liDatos && liDatos.semana_actual) || '';
+  let nueva = liSumarDias(base, 7 * delta);
+  if (actual && nueva > actual) nueva = actual;   // el futuro no tiene borradores
+  liSemanaSel = actual && nueva === actual ? '' : nueva;
+  loadLinkedin();
+}
+
+function liSemanaHoy() {
+  liSemanaSel = '';
+  loadLinkedin();
+}
+
+// Solo admin. Encola lo mismo que el cron al empezar: dos borradores del
+// banco. No manda el mail, que sale con la corrida automatica.
+async function liGenerar() {
+  const pregunta = 'Esto arma ahora dos borradores nuevos con los textos del banco y los deja en esta ' +
+    'pantalla. No manda el mail: el mail con las imágenes sale con la corrida automática de los martes ' +
+    'y viernes. ¿Seguir?';
+  if (!confirm(pregunta)) return;
+  const boton = document.getElementById('li-btn-generar');
+  const nota = document.getElementById('li-nota');
+  if (boton) boton.disabled = true;
+  if (nota) nota.textContent = 'Generando…';
+  try {
+    const r = await fetch('/api/linkedin/borradores/generar', {method: 'POST'});
+    let d = {};
+    try { d = await r.json(); } catch (e) { d = {}; }
+    if (!r.ok || !d.ok) {
+      if (nota) nota.textContent = d.error || 'No se pudo generar.';
+      return;
+    }
+    if (nota) nota.textContent = 'Listo: se están armando. Aparecen acá en unos segundos.';
+    setTimeout(() => { loadLinkedin(); }, 4000);
+  } catch (e) {
+    if (nota) nota.textContent = 'No se pudo generar.';
+  } finally {
+    if (boton) boton.disabled = false;
+  }
+}
+// ========== FIN LinkedIn ==========
+
+// ========== Instagram ==========
+// Sin barras invertidas en este bloque: vive dentro de un string de Python.
+let igDatos = null;
+let igSemanaSel = '';
+let igPedido = 0;
+const igVista = {};
+const IG_ESTADOS = {
+  borrador: ['Para revisar', ''], aprobada: ['Aprobada', 'ig-chip-verde'],
+  publicando: ['Publicando…', 'ig-chip-azul'], publicada: ['Publicada', 'ig-chip-azul'],
+  error: ['Error al publicar', 'ig-chip-rojo'], vencida: ['No salió a tiempo', 'ig-chip-rojo'],
+  descartada: ['Descartada', '']
+};
+const IG_FORMATOS = {imagen: 'Imagen', carrusel: 'Carrusel', historia: 'Historia'};
+const IG_DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+const IG_EDITABLES = ['borrador', 'aprobada', 'error', 'vencida'];
+const IG_Q = "'";
+
+function igFechaLarga(iso) {
+  const p = String(iso || '').split('-');
+  if (p.length !== 3) return iso || '';
+  const d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+  return IG_DIAS[d.getDay()] + ' ' + p[2] + '/' + p[1];
+}
+
+function igSemana(delta) {
+  const base = (igDatos && igDatos.semana) || '';
+  if (!base) return;
+  const p = base.split('-');
+  const d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]) + 7 * delta);
+  igSemanaSel = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  igCargar();
+}
+
+function igSemanaHoy() { igSemanaSel = ''; igCargar(); }
+
+async function igCargar() {
+  const estado = document.getElementById('ig-estado');
+  if (!estado) return;
+  const pedido = ++igPedido;
+  let d;
+  try {
+    const r = await fetch('/api/instagram/semana' + (igSemanaSel ? '?semana=' + encodeURIComponent(igSemanaSel) : ''));
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    d = await r.json();
+    if (!d || !Array.isArray(d.publicaciones)) throw new Error('respuesta incompleta');
+  } catch (e) {
+    if (pedido !== igPedido) return;
+    estado.textContent = 'No se pudieron cargar las publicaciones. Probá de nuevo en un rato.';
+    liClase('ig-estado', false, 'ig-oculto');
+    return;
+  }
+  if (pedido !== igPedido) return;
+  igDatos = d;
+  igPintar();
+}
+
+function igPintar() {
+  const d = igDatos;
+  const etiqueta = document.getElementById('ig-semana-label');
+  if (etiqueta) etiqueta.textContent = 'Semana del ' + igFechaLarga(d.semana);
+  const banco = document.getElementById('ig-banco');
+  if (banco) banco.textContent = 'Ideas sin usar: ' + d.banco.feed + ' publicaciones y ' + d.banco.historia + ' historias';
+  const hay = d.publicaciones.length > 0;
+  const estado = document.getElementById('ig-estado');
+  estado.textContent = hay ? '' : 'No hay publicaciones para esta semana. Las de la semana siguiente se arman solas los jueves.';
+  liClase('ig-estado', hay, 'ig-oculto');
+  liClase('ig-btn-armar', !(d.puede_armar && d.semana >= d.semana_actual), 'ig-oculto');
+  document.getElementById('ig-tarjetas').innerHTML = d.publicaciones.map(igTarjeta).join('');
+}
+
+function igBuscar(id) {
+  return ((igDatos && igDatos.publicaciones) || []).find(p => Number(p.id) === Number(id));
+}
+
+function igBoton(id, accion, texto, clase) {
+  return '<button type="button" class="ig-btn' + (clase ? ' ' + clase : '') + '" onclick="igAccion(' + id + ', ' +
+    IG_Q + accion + IG_Q + ')">' + texto + '</button>';
+}
+
+function igCampo(id, k, campo, valor, texto, dis) {
+  const base = ' class="ig-input" data-ig="' + id + '" data-slide="' + k + '" data-campo="' + campo + '" placeholder="' + texto + '"' + dis;
+  if (campo === 'texto') return '<textarea rows="2"' + base + '>' + liEsc(valor || '') + '</textarea>';
+  return '<input' + base + ' value="' + liEsc(valor || '') + '">';
+}
+
+function igTarjeta(p) {
+  const id = Number(p.id);
+  const est = IG_ESTADOS[p.estado] || [p.estado, ''];
+  const editable = IG_EDITABLES.includes(p.estado);
+  const n = p.imagenes_url.length;
+  const i = Math.min(igVista[id] || 0, Math.max(0, n - 1));
+  const visor = n ? '<div class="ig-visor"><img id="ig-img-' + id + '" src="' + liEsc(p.imagenes_url[i]) +
+    '" alt="Vista previa" onclick="igZoom(this.src)">' +
+    (n > 1 ? '<button type="button" class="ig-flecha izq" onclick="igMover(' + id + ', -1)" aria-label="Imagen anterior">‹</button>' +
+      '<button type="button" class="ig-flecha der" onclick="igMover(' + id + ', 1)" aria-label="Imagen siguiente">›</button>' +
+      '<span class="ig-contador" id="ig-cont-' + id + '">' + (i + 1) + '/' + n + '</span>' : '') +
+    '</div>' : '<div class="li-vacio">Sin imágenes todavía.</div>';
+  const dis = editable ? '' : ' disabled';
+  const slides = p.slides.map((s, k) =>
+    '<div class="ig-slide"><b>' + (p.formato === 'carrusel' ? 'Imagen ' + (k + 1) : 'Imagen') + '</b>' +
+    igCampo(id, k, 'etiqueta', s.etiqueta, 'Etiqueta chica (opcional)', dis) +
+    igCampo(id, k, 'titulo', s.titulo, 'Título', dis) +
+    igCampo(id, k, 'texto', s.texto, 'Texto (opcional)', dis) +
+    igCampo(id, k, 'cta', s.cta, 'Botón (opcional)', dis) + '</div>').join('');
+  const estilos = p.estilos.length > 1
+    ? '<div><label class="ig-rotulo" for="ig-estilo-' + id + '">Fondo</label><select class="ig-input" id="ig-estilo-' + id + '"' + dis + '>' +
+      p.estilos.map(e => '<option value="' + e + '"' + (e === p.estilo ? ' selected' : '') + '>' +
+        (e === 'degradado' ? 'Azul' : 'Oscuro') + '</option>').join('') + '</select></div>'
+    : '';
+  const b = [];
+  if (editable) b.push('<button type="button" class="ig-btn" onclick="igGuardar(' + id + ')">Guardar cambios</button>');
+  if (['borrador', 'error', 'vencida'].includes(p.estado)) b.push('<button type="button" class="ig-btn ig-btn-aprobar" onclick="igAprobar(' + id + ')">Aprobar</button>');
+  if (p.estado === 'aprobada') b.push(igBoton(id, 'desaprobar', 'Quitar aprobación'));
+  if (editable || p.estado === 'descartada') b.push(igBoton(id, 'otra-idea', 'Otra idea', 'ig-btn-suave'));
+  if (editable) b.push(igBoton(id, 'descartar', 'Descartar', 'ig-btn-suave'));
+  if (p.estado === 'descartada') b.push(igBoton(id, 'restaurar', 'Recuperar', 'ig-btn-suave'));
+  if (p.permalink) b.push('<a class="ig-btn" href="' + liEsc(p.permalink) + '" target="_blank" rel="noopener">Ver en Instagram</a>');
+  const extra = p.estado === 'aprobada' ? 'Se publica el ' + igFechaLarga(p.fecha) + ' a las ' + p.hora + '.' :
+    (p.error ? 'Error: ' + p.error : '');
+  const caption = p.formato === 'historia' ? '' :
+    '<div><label class="ig-rotulo" for="ig-cap-' + id + '">Texto de la publicación</label>' +
+    '<textarea class="ig-caption" id="ig-cap-' + id + '" oninput="igContar(' + id + ')"' + dis + '>' + liEsc(p.caption) + '</textarea>' +
+    '<div class="ig-contador-txt" id="ig-cc-' + id + '">' + p.caption.length + ' / 2200</div></div>';
+  return '<article class="ig-tarjeta ig-' + liEsc(p.estado) + '" id="ig-t-' + id + '">' +
+    '<div class="ig-cab"><span class="ig-dia">' + liEsc(igFechaLarga(p.fecha)) + ' · ' + liEsc(p.hora) + '</span>' +
+    '<span class="ig-chip">' + liEsc(IG_FORMATOS[p.formato] || p.formato) + '</span>' +
+    '<span class="ig-chip ' + est[1] + '">' + liEsc(est[0]) + '</span></div>' + visor + caption +
+    '<details class="ig-slides"><summary>Textos de ' + (n > 1 ? 'las imágenes' : 'la imagen') + '</summary>' + slides + '</details>' +
+    '<div class="ig-fila"><div><label class="ig-rotulo" for="ig-fecha-' + id + '">Día</label><input type="date" class="ig-input" id="ig-fecha-' + id + '" value="' + liEsc(p.fecha) + '"' + dis + '></div>' +
+    '<div><label class="ig-rotulo" for="ig-hora-' + id + '">Hora</label><input type="time" class="ig-input" id="ig-hora-' + id + '" value="' + liEsc(p.hora) + '"' + dis + '></div>' + estilos + '</div>' +
+    igPedidoHtml(p, editable) +
+    '<div class="ig-msg" id="ig-msg-' + id + '" role="status">' + liEsc(extra) + '</div>' +
+    '<div class="ig-acciones">' + b.join('') + '</div></article>';
+}
+
+const IG_PEDIDO_ESTADOS = {pendiente: 'En espera: Claude lo revisa en menos de 30 minutos',
+  hecha: 'Corregido', no_se_pudo: 'No se pudo'};
+
+function igPedidoHtml(p, editable) {
+  const id = Number(p.id);
+  const lista = (p.correcciones || []);
+  const espera = lista.some(c => c.estado === 'pendiente');
+  const items = lista.map(c => '<div class="ig-pedido-item"><b>' + liEsc(IG_PEDIDO_ESTADOS[c.estado] || c.estado) +
+    ':</b> ' + liEsc(c.pedido) + (c.respuesta ? '<br>Claude: ' + liEsc(c.respuesta) : '') + '</div>').join('');
+  const form = editable && !espera
+    ? '<textarea class="ig-input" id="ig-pedido-' + id + '" maxlength="1000" placeholder="Ej: buena imagen, pero cambiá el botón por Agendá tu demo y hacé el título más corto"></textarea>' +
+      '<div><button type="button" class="ig-btn" onclick="igPedir(' + id + ')">Enviar pedido a Claude</button></div>'
+    : '';
+  if (!form && !items) return '';
+  return '<div class="ig-pedido"><span class="ig-rotulo">Pedile un cambio a Claude</span>' + form + items + '</div>';
+}
+
+async function igPedir(id) {
+  const area = document.getElementById('ig-pedido-' + id);
+  const pedido = area ? area.value.trim() : '';
+  if (!pedido) { igMsg(id, 'Escribí qué querés cambiar.', 'error'); return; }
+  igBotones(id, true);
+  try {
+    const r = await fetch('/api/instagram/publicaciones/' + id + '/correccion', {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({pedido: pedido})});
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.ok) throw new Error(d.error || 'No se pudo enviar el pedido.');
+    const p = igBuscar(id);
+    p.correcciones = d.correcciones;
+    igReemplazar(p);
+    igMsg(id, 'Pedido enviado. Cuando esté la versión corregida la vas a ver acá, lista para aprobar.', 'ok');
+  } catch (e) {
+    igBotones(id, false);
+    igMsg(id, e.message, 'error');
+  }
+}
+
+function igContar(id) {
+  const a = document.getElementById('ig-cap-' + id);
+  const c = document.getElementById('ig-cc-' + id);
+  if (a && c) c.textContent = a.value.length + ' / 2200';
+}
+
+function igMover(id, delta) {
+  const p = igBuscar(id);
+  if (!p) return;
+  const n = p.imagenes_url.length;
+  igVista[id] = ((igVista[id] || 0) + delta + n) % n;
+  document.getElementById('ig-img-' + id).src = p.imagenes_url[igVista[id]];
+  document.getElementById('ig-cont-' + id).textContent = (igVista[id] + 1) + '/' + n;
+}
+
+function igZoom(src) {
+  document.getElementById('ig-zoom-img').src = src;
+  document.getElementById('ig-zoom').classList.add('open');
+}
+
+function igMsg(id, texto, tipo) {
+  const el = document.getElementById('ig-msg-' + id);
+  if (!el) return;
+  el.textContent = texto;
+  el.className = 'ig-msg' + (tipo ? ' ' + tipo : '');
+}
+
+function igLeer(id) {
+  const p = igBuscar(id);
+  const slides = p.slides.map(s => Object.assign({}, s));
+  document.querySelectorAll('[data-ig="' + id + '"]').forEach(el => {
+    slides[Number(el.dataset.slide)][el.dataset.campo] = el.value;
+  });
+  const datos = {slides: slides,
+    fecha: document.getElementById('ig-fecha-' + id).value,
+    hora: document.getElementById('ig-hora-' + id).value};
+  const cap = document.getElementById('ig-cap-' + id);
+  if (cap) datos.caption = cap.value;
+  const est = document.getElementById('ig-estilo-' + id);
+  if (est) datos.estilo = est.value;
+  return datos;
+}
+
+function igBotones(id, apagar) {
+  document.querySelectorAll('#ig-t-' + id + ' button.ig-btn').forEach(b => { b.disabled = apagar; });
+}
+
+function igReemplazar(p) {
+  const i = igDatos.publicaciones.findIndex(x => Number(x.id) === Number(p.id));
+  if (i >= 0) igDatos.publicaciones[i] = p;
+  const vieja = document.getElementById('ig-t-' + p.id);
+  if (vieja) vieja.outerHTML = igTarjeta(p);
+}
+
+async function igLlamar(id, url, opciones, espera) {
+  igBotones(id, true);
+  igMsg(id, espera, '');
+  try {
+    const r = await fetch(url, opciones);
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.ok) throw new Error(d.error || 'No se pudo completar la acción.');
+    igReemplazar(d.publicacion);
+    return d.publicacion;
+  } catch (e) {
+    igBotones(id, false);
+    igMsg(id, e.message, 'error');
+    return null;
+  }
+}
+
+function igGuardar(id) {
+  return igLlamar(id, '/api/instagram/publicaciones/' + id, {
+    method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(igLeer(id))
+  }, 'Guardando y actualizando la imagen…');
+}
+
+async function igAprobar(id) {
+  const datos = igLeer(id);
+  if (!confirm('¿Aprobar esta publicación? Se va a subir sola a Instagram el ' + igFechaLarga(datos.fecha) + ' a las ' + datos.hora + '.')) return;
+  const guardada = await igGuardar(id);
+  if (!guardada) return;
+  const p = await igLlamar(id, '/api/instagram/publicaciones/' + id + '/aprobar', {method: 'POST'}, 'Aprobando…');
+  if (p) igMsg(id, 'Aprobada. Se publica el ' + igFechaLarga(p.fecha) + ' a las ' + p.hora + '.', 'ok');
+}
+
+async function igAccion(id, accion) {
+  const preguntas = {'otra-idea': '¿Cambiar esta publicación por otra idea? Se pierden los cambios que le hayas hecho.',
+    descartar: '¿Descartar esta publicación? No se va a publicar.'};
+  if (preguntas[accion] && !confirm(preguntas[accion])) return;
+  const esperas = {'otra-idea': 'Buscando otra idea…', desaprobar: 'Quitando la aprobación…',
+    descartar: 'Descartando…', restaurar: 'Recuperando…'};
+  if (accion === 'otra-idea') igVista[id] = 0;
+  await igLlamar(id, '/api/instagram/publicaciones/' + id + '/' + accion, {method: 'POST'}, esperas[accion] || 'Un momento…');
+}
+
+async function igArmar() {
+  const btn = document.getElementById('ig-btn-armar');
+  if (btn) btn.disabled = true;
+  try {
+    const r = await fetch('/api/instagram/armar-semana', {method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({semana: igDatos.semana})});
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.ok) throw new Error(d.error || 'No se pudo armar la semana.');
+    await igCargar();
+  } catch (e) {
+    alert(e.message);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+// ========== FIN Instagram ==========
+
+// ========== Email marketing ==========
+// Lo que sale por Resend, con lo que Resend cuenta despues. Los numeros y las
+// fechas (ya en hora de Montevideo) vienen armados de /api/email-marketing:
+// aca solo se pinta. Sin template literals: el texto se arma concatenando.
+let emMesSel = '';
+let emPagina = 1;
+let emPedido = 0;
+let emBusquedaTimer = null;
+let emDatos = null;
+
+const EM_ESTADOS = {
+  enviado: ['Enviado', 'em-chip-azul'],
+  entregado: ['Entregado', 'em-chip-verde'],
+  abierto: ['Abierto', 'em-chip-verde'],
+  clic: ['Con clic', 'em-chip-fuerte'],
+  rebotado: ['Rebotado', 'em-chip-rojo'],
+  spam: ['Marcado como spam', 'em-chip-rojo'],
+  demorado: ['Demorado', 'em-chip-ambar'],
+  fallido: ['No salió', 'em-chip-rojo'],
+  incierto: ['Sin confirmar', 'em-chip-ambar']
+};
+const EM_CONTADORES = [
+  ['enviados', 'Enviados'], ['entregados', 'Entregados'], ['abiertos', 'Abiertos'],
+  ['clics', 'Con clic'], ['rebotados', 'Rebotados'], ['spam', 'Marcados como spam']
+];
+const EM_MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto',
+  'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+
+function emEsc(texto) {
+  return String(texto === null || texto === undefined ? '' : texto)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function emEtiquetaMes(mes) {
+  const partes = String(mes || '').split('-');
+  const nombre = EM_MESES[parseInt(partes[1], 10) - 1];
+  return nombre ? nombre + ' ' + partes[0] : String(mes || '');
+}
+
+function emMesSumar(mes, delta) {
+  const partes = String(mes).split('-');
+  const total = parseInt(partes[0], 10) * 12 + (parseInt(partes[1], 10) - 1) + delta;
+  return Math.floor(total / 12) + '-' + String(total % 12 + 1).padStart(2, '0');
+}
+
+function emValor(id) {
+  const el = document.getElementById(id);
+  return el && el.value ? String(el.value) : '';
+}
+
+function emUrl() {
+  const partes = [];
+  if (emMesSel) partes.push('mes=' + encodeURIComponent(emMesSel));
+  const tipo = emValor('em-tipo');
+  if (tipo) partes.push('tipo=' + encodeURIComponent(tipo));
+  const q = emValor('em-buscar').trim();
+  if (q) partes.push('q=' + encodeURIComponent(q));
+  if (emPagina > 1) partes.push('pagina=' + emPagina);
+  return '/api/email-marketing' + (partes.length ? '?' + partes.join('&') : '');
+}
+
+async function loadEmailMkt() {
+  const estado = document.getElementById('em-estado');
+  if (!estado) return;
+  // Buscar rapido dispara varios pedidos que pueden volver desordenados: solo
+  // se pinta la respuesta del ultimo.
+  const pedido = ++emPedido;
+  let datos;
+  try {
+    const r = await fetch(emUrl());
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    datos = await r.json();
+    if (!datos || !datos.contadores) throw new Error('respuesta incompleta');
+  } catch (e) {
+    if (pedido !== emPedido) return;
+    estado.textContent = 'No se pudieron cargar los envíos. Probá de nuevo en un rato.';
+    estado.classList.remove('em-oculto');
+    return;
+  }
+  if (pedido !== emPedido) return;
+  emDatos = datos;
+  emPintar(datos);
+}
+
+function emPoner(id, html) {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = html;
+}
+
+function emPintar(d) {
+  const estado = document.getElementById('em-estado');
+  if (estado) {
+    const hay = Number(d.contadores.enviados || 0) > 0;
+    estado.textContent = hay ? '' : 'No hay envíos registrados en ' + emEtiquetaMes(d.mes) + '.';
+    if (hay) estado.classList.add('em-oculto');
+    else estado.classList.remove('em-oculto');
+  }
+  const etiqueta = document.getElementById('em-mes-label');
+  if (etiqueta) etiqueta.textContent = emEtiquetaMes(d.mes);
+  const siguiente = document.getElementById('em-mes-sig');
+  if (siguiente) siguiente.disabled = d.mes >= d.mes_actual;
+  emPintarTipos(d.tipos || []);
+  emPoner('em-contadores', emContadores(d.contadores, d.tasas || {}));
+  emPoner('em-aviso', emAviso(d.contadores));
+  emPoner('em-grafico', emGrafico(d.por_dia || []));
+  emPoner('em-tabla', emTabla(d.envios || []));
+  emPoner('em-paginas', emPaginas(d));
+  emBotonEstados(d);
+}
+
+function emPintarTipos(tipos) {
+  const sel = document.getElementById('em-tipo');
+  if (!sel) return;
+  const actual = sel.value || '';
+  sel.innerHTML = '<option value="">Todos los tipos</option>' + tipos.map(t =>
+    '<option value="' + emEsc(t.clave) + '"' + (t.clave === actual ? ' selected' : '') + '>' +
+    emEsc(t.etiqueta) + '</option>').join('');
+  sel.value = actual;
+}
+
+function emTasaTexto(tasa) {
+  if (tasa === null || tasa === undefined) return '';
+  return String(tasa).replace('.', ',') + ' % de los enviados';
+}
+
+function emContadores(c, tasas) {
+  return EM_CONTADORES.map(par => {
+    const clave = par[0];
+    let nota = emTasaTexto(tasas[clave]);
+    if (clave === 'enviados') nota = c.sin_eventos ? c.sin_eventos + ' sin datos de Resend' : 'en el mes';
+    return '<div class="em-contador em-contador-' + clave + '">' +
+      '<div class="em-contador-num">' + Number(c[clave] || 0) + '</div>' +
+      '<div class="em-contador-rotulo">' + par[1] + '</div>' +
+      '<div class="em-contador-tasa">' + emEsc(nota) + '</div></div>';
+  }).join('');
+}
+
+function emAviso(c) {
+  if (!c.enviados || !c.sin_eventos) return '';
+  return '<div class="em-aviso">' + c.sin_eventos + ' de ' + c.enviados + ' envíos todavía no tienen ' +
+    'datos de Resend (entregado, abierto, clic). Los envíos anteriores a este registro no los ' +
+    'tienen; los nuevos los reciben por el webhook de Resend.</div>';
+}
+
+function emGrafico(porDia) {
+  const total = porDia.reduce((suma, p) => suma + Number(p.n || 0), 0);
+  if (!total) return '<div class="em-vacio">Sin envíos en este mes.</div>';
+  if (typeof SC === 'undefined' || !SC.serie) {
+    return '<div class="em-vacio">' + total + ' envíos en el mes.</div>';
+  }
+  const tema = document.body.classList.contains('light') ? 'claro' : 'oscuro';
+  const puntos = porDia.map(p => ({x: String(p.dia).slice(8, 10), y: Number(p.n || 0)}));
+  return SC.serie(puntos, {etiqueta: 'Enviados por día, en hora de Montevideo', formato: 'numero', alto: 170}, tema);
+}
+
+function emTabla(envios) {
+  if (!envios.length) return '<div class="em-vacio">No hay envíos que coincidan.</div>';
+  const filas = envios.map(e => {
+    const est = EM_ESTADOS[e.estado] || [e.estado, 'em-chip-gris'];
+    const historico = e.origen === 'historico'
+      ? '<span class="em-nota">histórico, sin eventos</span>' : '';
+    const lead = e.business_id
+      ? '<button type="button" class="em-link" onclick="openClientPanel(' + Number(e.business_id) + ')">' +
+        emEsc(e.negocio || 'Ver ficha') + '</button>'
+      : '<span class="em-nota">—</span>';
+    const extracto = e.extracto ? '<span class="em-extracto">' + emEsc(e.extracto) + '</span>' : '';
+    return '<tr><td class="em-fecha">' + emEsc(e.fecha_local) + '</td>' +
+      '<td>' + emEsc(e.tipo_etiqueta) + '</td>' +
+      '<td class="em-dest">' + emEsc(e.destinatario || '—') + '</td>' +
+      '<td class="em-asunto">' + emEsc(e.asunto) + extracto +
+      '<button type="button" class="em-ver" onclick="emVerMail(' + Number(e.id) + ')">Ver mail</button></td>' +
+      '<td><span class="em-chip ' + est[1] + '">' + emEsc(est[0]) + '</span>' + historico + '</td>' +
+      '<td>' + lead + '</td></tr>';
+  }).join('');
+  return '<table class="em-tabla"><thead><tr><th>Fecha</th><th>Tipo</th><th>Destinatario</th>' +
+    '<th>Asunto</th><th>Estado</th><th>Lead</th></tr></thead><tbody>' + filas + '</tbody></table>';
+}
+
+function emPaginas(d) {
+  if (!d.encontrados) return '';
+  return '<button type="button" class="cal-nav-btn" onclick="emIrPagina(-1)" aria-label="Página anterior"' +
+    (d.pagina <= 1 ? ' disabled' : '') + '>&larr;</button>' +
+    '<span>Página ' + d.pagina + ' de ' + d.paginas + ' · ' + d.encontrados + ' envíos</span>' +
+    '<button type="button" class="cal-nav-btn" onclick="emIrPagina(1)" aria-label="Página siguiente"' +
+    (d.pagina >= d.paginas ? ' disabled' : '') + '>&rarr;</button>';
+}
+
+function emIrPagina(delta) {
+  if (!emDatos) return;
+  const nueva = Math.min(Math.max(1, emDatos.pagina + delta), emDatos.paginas);
+  if (nueva === emDatos.pagina) return;
+  emPagina = nueva;
+  loadEmailMkt();
+}
+
+function emMes(delta) {
+  const base = emMesSel || (emDatos && emDatos.mes) || '';
+  if (!base) return;
+  const actual = (emDatos && emDatos.mes_actual) || '';
+  let nuevo = emMesSumar(base, delta);
+  if (actual && nuevo > actual) nuevo = actual;   // el futuro no tiene envios
+  emMesSel = actual && nuevo === actual ? '' : nuevo;
+  emPagina = 1;
+  loadEmailMkt();
+}
+
+function emMesHoy() {
+  emMesSel = '';
+  emPagina = 1;
+  loadEmailMkt();
+}
+
+function emFiltrar() {
+  emPagina = 1;
+  loadEmailMkt();
+}
+
+function emBuscar() {
+  if (emBusquedaTimer) clearTimeout(emBusquedaTimer);
+  emBusquedaTimer = setTimeout(() => {
+    emBusquedaTimer = null;
+    emPagina = 1;
+    loadEmailMkt();
+  }, 300);
+}
+
+// Solo admin, y solo con la clave de Resend en el servidor. El servidor lo
+// vuelve a chequear: esconder el boton no es la seguridad.
+function emBotonEstados(d) {
+  const boton = document.getElementById('em-btn-estados');
+  const nota = document.getElementById('em-estados-nota');
+  if (!boton) return;
+  if (!d.es_admin) {
+    boton.classList.add('em-oculto');
+    if (nota) nota.textContent = '';
+    return;
+  }
+  boton.classList.remove('em-oculto');
+  boton.disabled = !d.hay_api_key;
+  if (nota && !d.hay_api_key) {
+    nota.textContent = 'Actualizar estados está deshabilitado: falta la clave de Resend (RESEND_API_KEY) en el servidor.';
+  }
+}
+
+async function emActualizarEstados() {
+  const boton = document.getElementById('em-btn-estados');
+  const nota = document.getElementById('em-estados-nota');
+  if (!boton || boton.disabled) return;
+  boton.disabled = true;
+  if (nota) nota.textContent = 'Consultando a Resend…';
+  try {
+    const r = await fetch('/api/email-marketing/actualizar-estados', {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({limite: 20})
+    });
+    let d = {};
+    try { d = await r.json(); } catch (e) { d = {}; }
+    if (!r.ok || !d.ok) {
+      if (nota) nota.textContent = d.error || 'No se pudo consultar a Resend.';
+      return;
+    }
+    if (nota) {
+      nota.textContent = 'Consultados ' + d.consultados + ' de ' + d.pendientes + ' sin eventos, ' +
+        d.actualizados + ' actualizados.' +
+        (d.cortado_por_limite ? ' Resend pidió esperar: probá de nuevo en un minuto.' : '');
+    }
+    await loadEmailMkt();
+  } catch (e) {
+    if (nota) nota.textContent = 'No se pudo consultar a Resend.';
+  } finally {
+    boton.disabled = !(emDatos && emDatos.hay_api_key);
+  }
+}
+
+// ── Ver el mail ──────────────────────────────────────────────────────────────
+// El contenido llega de /api/email-mkt/envios/ID/contenido, ya sanitizado en el
+// servidor, y se carga con srcdoc en un iframe con sandbox vacio: sin scripts,
+// sin mismo origen y sin navegacion. Nunca se mete en el DOM del CRM.
+let emMailPedido = 0;
+let emMailDatos = null;
+
+function emEnvioPorId(id) {
+  const lista = (emDatos && emDatos.envios) || [];
+  return lista.find(e => Number(e.id) === Number(id)) || null;
+}
+
+function emMailClase(id, poner, clase) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (poner) el.classList.add(clase);
+  else el.classList.remove(clase);
+}
+
+function emMailCabecera(d) {
+  const asunto = document.getElementById('em-mail-asunto');
+  if (asunto) asunto.textContent = d.asunto || '(sin asunto)';
+  const est = EM_ESTADOS[d.estado] || [d.estado || '—', 'em-chip-gris'];
+  const filas = [
+    ['Remitente', emEsc(d.remitente || '—')],
+    ['Destinatario', emEsc(d.destinatario || '—')],
+    ['Fecha', emEsc(d.fecha_local ? d.fecha_local + ' (Montevideo)' : '—')],
+    ['Tipo', emEsc(d.tipo_etiqueta || d.tipo || '—')],
+    ['Estado', '<span class="em-chip ' + est[1] + '">' + emEsc(est[0]) + '</span>']
+  ];
+  emPoner('em-mail-datos', filas.map(f => '<dt>' + f[0] + '</dt><dd>' + f[1] + '</dd>').join(''));
+}
+
+function emMailVacio(texto) {
+  const vacio = document.getElementById('em-mail-vacio');
+  if (vacio) vacio.textContent = texto;
+  emMailClase('em-mail-vacio', false, 'em-oculto');
+  emMailClase('em-mail-iframe', true, 'em-oculto');
+  emMailClase('em-mail-texto', true, 'em-oculto');
+  emMailClase('em-mail-tabs', true, 'em-oculto');
+  const iframe = document.getElementById('em-mail-iframe');
+  if (iframe) iframe.srcdoc = '';
+}
+
+async function emVerMail(id) {
+  const modal = document.getElementById('em-mail-modal');
+  if (!modal) return;
+  const pedido = ++emMailPedido;
+  emMailDatos = null;
+  emMailCabecera(emEnvioPorId(id) || {});
+  const aviso = document.getElementById('em-mail-aviso');
+  if (aviso) aviso.textContent = '';
+  emMailClase('em-mail-aviso', true, 'em-oculto');
+  emMailVacio('Cargando el mail…');
+  modal.classList.add('open');
+  let d = null;
+  try {
+    const r = await fetch('/api/email-mkt/envios/' + Number(id) + '/contenido');
+    try { d = await r.json(); } catch (e) { d = null; }
+    if (!r.ok || !d || !d.ok) throw new Error((d && d.error) || ('HTTP ' + r.status));
+  } catch (e) {
+    if (pedido !== emMailPedido) return;
+    emMailVacio('No se pudo cargar el contenido de este mail. Probá de nuevo en un rato.');
+    return;
+  }
+  if (pedido !== emMailPedido) return;
+  emMailDatos = d;
+  emMailPintar(d);
+}
+
+function emMailPintar(d) {
+  emMailCabecera(d);
+  const avisos = (d.avisos || []).filter(Boolean);
+  const aviso = document.getElementById('em-mail-aviso');
+  if (aviso) aviso.textContent = avisos.join(' ');
+  emMailClase('em-mail-aviso', !avisos.length, 'em-oculto');
+  if (!d.html && !d.text) {
+    emMailVacio(d.motivo || 'El contenido de este mail no está disponible.');
+    return;
+  }
+  const iframe = document.getElementById('em-mail-iframe');
+  if (iframe) {
+    // El sandbox vacio se vuelve a fijar antes de cargar: es lo que impide
+    // scripts, formularios y navegacion adentro del mail.
+    iframe.setAttribute('sandbox', '');
+    iframe.srcdoc = d.html || '';
+  }
+  const texto = document.getElementById('em-mail-texto');
+  if (texto) texto.textContent = d.text || 'Este mail no tiene versión en texto plano.';
+  emMailClase('em-mail-vacio', true, 'em-oculto');
+  emMailClase('em-mail-tabs', false, 'em-oculto');
+  emMailPestana(d.html ? 'html' : 'texto');
+}
+
+function emMailPestana(cual) {
+  const vista = cual === 'html' && !!(emMailDatos && emMailDatos.html);
+  emMailClase('em-mail-iframe', !vista, 'em-oculto');
+  emMailClase('em-mail-texto', vista, 'em-oculto');
+  emMailClase('em-mail-tab-html', vista, 'em-activo');
+  emMailClase('em-mail-tab-texto', !vista, 'em-activo');
+}
+
+function emCerrarMail() {
+  emMailPedido++;
+  emMailDatos = null;
+  const modal = document.getElementById('em-mail-modal');
+  if (modal) modal.classList.remove('open');
+  const iframe = document.getElementById('em-mail-iframe');
+  if (iframe) iframe.srcdoc = '';
+}
 
 // ========== Daily Programador ==========
 // Daily Programador y Daily Admin (Juan, 15 y 16/9): actividades del dia y
@@ -12901,6 +14691,7 @@ async function loadEquipo() {
   } catch (e) {
     eqDatos = null;
     const falla = '<div class="eq-vacio">No se pudieron cargar los datos (' + esc(e.message) + ').</div>';
+    eqPoner('eq-org-leyenda', () => '');
     eqPoner('eq-organigrama', () => falla);
     eqPoner('eq-calendario', () => falla);
     eqPoner('eq-avisos', () => '');
@@ -12919,7 +14710,8 @@ function eqPoner(id, armar) {
 }
 
 function eqPintar(d) {
-  eqPoner('eq-organigrama', () => eqOrganigramaSvg(d.organigrama || []));
+  eqPoner('eq-org-leyenda', () => eqOrgLeyendaHtml(d.leyenda_organigrama || [], d.es_admin === true));
+  eqPoner('eq-organigrama', () => eqOrganigramaSvg(d.organigrama || [], {editable: d.es_admin === true}));
   eqPoner('eq-avisos', () => eqAvisosHtml(d.avisos || []));
   eqPoner('eq-calendario', () => eqCalendarioHtml(d));
   const rango = document.getElementById('eq-cal-rango');
@@ -13020,8 +14812,9 @@ function eqConector(lineas, xPadre, yPadre, xsHijos, yHijos) {
 // Las personas sin reporta_a son la fila de arriba. Los hijos de TODAS las
 // raices cuelgan juntos de un conector comun que las une, como en el dibujo de
 // Juan (Juan Pereyra y Javier arriba). Mas abajo, cada uno bajo su jefe.
-function eqOrganigramaSvg(personas) {
+function eqOrganigramaSvg(personas, opciones) {
   if (!personas.length) return '<div class="eq-vacio">No hay personas cargadas.</div>';
+  const op = opciones || {};
   const N = EQ_NODO;
   const hijos = {};
   personas.forEach(p => { hijos[p.id] = []; });
@@ -13087,8 +14880,14 @@ function eqOrganigramaSvg(personas) {
   const H = alto + m;
   const nodos = personas.filter(p => pos[p.id]).map(p => {
     const c = pos[p.id];
-    return '<g class="eq-nodo' + (p.destacado ? ' eq-destacado' : '') + '">'
-      + '<title>' + esc(p.nombre + (p.rol ? ' · ' + p.rol : '')) + '</title>'
+    // El color lo manda el servidor (color de su rol en Flujos, o rosa si no
+    // participa). Para el admin, tocar el nodo abre el cambio de rol.
+    const editable = op.editable
+      ? ' eq-nodo-editable" role="button" tabindex="0" data-persona="' + Number(p.id)
+        + '" onclick="eqOrgEditar(Number(this.dataset.persona))" onkeydown="eqOrgTecla(event, Number(this.dataset.persona))'
+      : '';
+    return '<g class="eq-nodo eq-rol-' + esc(p.color || 'rosa') + (p.destacado ? ' eq-destacado' : '') + editable + '">'
+      + '<title>' + esc(p.nombre + (p.rol ? ' · ' + p.rol : '') + ' · ' + (p.etiqueta_flujo || 'Fuera de Flujos')) + '</title>'
       + '<rect x="' + (c.x - N.ancho / 2) + '" y="' + c.y + '" width="' + N.ancho + '" height="' + N.alto + '" rx="8"></rect>'
       + '<text class="eq-nodo-nombre" x="' + c.x + '" y="' + (c.y + 22) + '" text-anchor="middle">' + esc(eqRecortar(p.nombre, 24)) + '</text>'
       + '<text class="eq-nodo-rol" x="' + c.x + '" y="' + (c.y + 39) + '" text-anchor="middle">' + esc(eqRecortar(p.rol, 32)) + '</text>'
@@ -13097,6 +14896,77 @@ function eqOrganigramaSvg(personas) {
   return '<svg class="eq-svg" xmlns="http://www.w3.org/2000/svg" width="' + W + '" height="' + H
     + '" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Organigrama del equipo">'
     + lineas.join('') + nodos + '</svg>';
+}
+
+// ── colores del organigrama ──
+let eqOrgPersona = null;
+
+function eqOrgChipHtml(color, etiqueta) {
+  return '<span class="eq-rol-chip eq-rol-' + esc(color) + '"><i class="eq-rol-punto" aria-hidden="true"></i>'
+    + esc(etiqueta) + '</span>';
+}
+
+// Arriba del organigrama: los colores que aparecen, en el orden de los roles
+// de Flujos y al final "Fuera de Flujos". La lista la arma el servidor.
+function eqOrgLeyendaHtml(leyenda, admin) {
+  const chips = leyenda.map(e => eqOrgChipHtml(e.color, e.etiqueta)).join('');
+  return (chips ? '<div class="eq-flujo-leyenda eq-org-leyenda" role="group" aria-label="Color de cada rol en Flujos">' + chips + '</div>' : '')
+    + (admin ? '<div class="eq-org-ayuda">Tocá a una persona para cambiar su rol en Flujos.</div>' : '');
+}
+
+function eqOrgTecla(ev, id) {
+  if (ev.key === 'Enter' || ev.key === ' ') {
+    ev.preventDefault();
+    eqOrgEditar(id);
+  }
+}
+
+function eqOrgEditar(id) {
+  if (!eqDatos || eqDatos.es_admin !== true) return;
+  const p = (eqDatos.organigrama || []).find(x => x.id === id);
+  if (!p) return;
+  eqOrgPersona = p;
+  document.getElementById('eq-rol-persona').textContent = p.nombre + (p.rol ? ' · ' + p.rol : '');
+  const roles = eqDatos.roles_flujo || [];
+  const sel = document.getElementById('eq-rol-select');
+  sel.innerHTML = roles.map(e => '<option value="' + esc(e.rol) + '"' + (p.rol_flujo === e.rol ? ' selected' : '') + '>'
+    + esc(e.etiqueta) + '</option>').join('')
+    + '<option value=""' + (p.rol_flujo ? '' : ' selected') + '>No participa</option>';
+  sel.value = p.rol_flujo || '';
+  document.getElementById('eq-rol-error').textContent = '';
+  eqOrgRolMuestra();
+  eqAbrirModal('eq-modal-rol');
+}
+
+// Al elegir el rol, el modal muestra con que color va a quedar la persona.
+function eqOrgRolMuestra() {
+  const sel = document.getElementById('eq-rol-select');
+  const valor = sel ? sel.value : '';
+  const e = ((eqDatos && eqDatos.roles_flujo) || []).find(x => x.rol === valor);
+  const fuera = (eqDatos && eqDatos.fuera_de_flujos) || {color: 'rosa', etiqueta: 'Fuera de Flujos'};
+  const estilo = e || fuera;
+  eqPoner('eq-rol-muestra', () => eqOrgChipHtml(estilo.color, estilo.etiqueta));
+}
+
+async function eqOrgGuardarRol() {
+  if (!eqOrgPersona) return;
+  const valor = document.getElementById('eq-rol-select').value;
+  const error = document.getElementById('eq-rol-error');
+  const roles = ((eqDatos && eqDatos.roles_flujo) || []).map(e => e.rol);
+  if (valor && !roles.includes(valor)) { error.textContent = 'Elegí un rol de la lista.'; return; }
+  error.textContent = '';
+  try {
+    const r = await fetch('/api/equipo/personas/' + Number(eqOrgPersona.id) + '/rol-flujo', {method: 'PUT',
+      headers: {'Content-Type': 'application/json'}, body: JSON.stringify({rol_flujo: valor || null})});
+    const j = await eqLeerRespuesta(r);
+    if (!r.ok) { error.textContent = j.error || 'No se pudo guardar (HTTP ' + r.status + ').'; return; }
+  } catch (e) {
+    error.textContent = 'No se pudo guardar: ' + e.message;
+    return;
+  }
+  eqCerrarModal('eq-modal-rol');
+  eqOrgPersona = null;
+  await loadEquipo();
 }
 
 // ── ausencias ──
@@ -13335,6 +15205,7 @@ function eqBorrarRecupero(id) {
 // servidor le responde 403 a cualquier otro.
 let eqFlujos = [];
 let eqFlujosRoles = [];
+let eqFlujosEstilos = [];
 let eqFlujosAdmin = false;
 let eqFlujosEditando = false;
 let eqFlujoActivo = null;
@@ -13360,6 +15231,7 @@ async function eqCargarFlujos() {
     if (!d || !Array.isArray(d.flujos)) throw new Error('respuesta sin flujos');
     eqFlujos = d.flujos;
     eqFlujosRoles = Array.isArray(d.roles) ? d.roles : [];
+    eqFlujosEstilos = Array.isArray(d.estilos) ? d.estilos : [];
     eqFlujosAdmin = d.es_admin === true;
   } catch (e) {
     eqFlujos = [];
@@ -13433,6 +15305,31 @@ function eqPorcentaje(x) {
   return String(n).replace('.', ',') + '%';
 }
 
+// El color y el nombre que se ve de cada rol. El mapa vive en el servidor
+// (services/flujos.ROL_ESTILOS) y llega con /api/flujos; un rol sin estilo se
+// pinta neutro con su nombre tal cual.
+function eqRolEstilo(rol) {
+  const e = eqFlujosEstilos.find(x => x.rol === rol);
+  return e ? {etiqueta: e.etiqueta || rol, color: e.color || 'neutro'} : {etiqueta: String(rol || ''), color: 'neutro'};
+}
+
+function eqRolChipHtml(rol) {
+  const e = eqRolEstilo(rol);
+  return '<span class="eq-rol-chip eq-rol-' + esc(e.color) + '"><i class="eq-rol-punto" aria-hidden="true"></i>'
+    + esc(e.etiqueta) + '</span>';
+}
+
+// Arriba del flujo: los roles que aparecen en sus pasos, en el orden de la
+// lista de roles, cada uno con su color. Sin pasos no hay leyenda.
+function eqFlujoLeyendaHtml(pasos) {
+  const usados = pasos.map(p => p.rol);
+  const orden = eqFlujosEstilos.map(e => e.rol).filter(r => usados.includes(r));
+  usados.forEach(r => { if (!orden.includes(r)) orden.push(r); });
+  if (!orden.length) return '';
+  return '<div class="eq-flujo-leyenda" role="group" aria-label="Roles de este flujo">'
+    + orden.map(eqRolChipHtml).join('') + '</div>';
+}
+
 // El numero que se ve es la posicion: si en la base quedo un hueco, la
 // pantalla igual muestra 01, 02, 03.
 function eqPasosHtml(flujo, opciones) {
@@ -13447,7 +15344,8 @@ function eqPasosHtml(flujo, opciones) {
   }
   const items = pasos.map((p, i) => {
     const link = !op.editando && eqFlujoPuedeAbrir(p.pantalla);
-    const clases = 'eq-paso' + (p.destacado ? ' eq-paso-destacado' : '') + (link ? ' eq-paso-link' : '');
+    const estilo = eqRolEstilo(p.rol);
+    const clases = 'eq-paso eq-rol-' + esc(estilo.color) + (p.destacado ? ' eq-paso-destacado' : '') + (link ? ' eq-paso-link' : '');
     const attrs = link
       ? ' role="link" tabindex="0" data-pantalla="' + esc(p.pantalla) + '" onclick="eqFlujoIr(this.dataset.pantalla)"'
         + ' onkeydown="eqFlujoTecla(event, this.dataset.pantalla)"'
@@ -13467,14 +15365,15 @@ function eqPasosHtml(flujo, opciones) {
     return '<li class="' + clases + '"' + attrs + '>'
       + '<div class="eq-paso-cab"><span class="eq-paso-num">' + eqDosDigitos(i + 1) + '</span>'
       + '<span class="eq-paso-titulo">' + esc(p.titulo) + '</span>'
-      + '<span class="eq-paso-rol">' + esc(p.rol) + '</span></div>'
+      + '<span class="eq-paso-rol">' + esc(estilo.etiqueta) + '</span></div>'
       + (p.detalle ? '<div class="eq-paso-detalle">' + esc(p.detalle) + '</div>' : '')
+      + (p.destacado ? '<span class="eq-paso-recurrente">Ingreso recurrente</span>' : '')
       + cobros + ir + edicion + '</li>';
   }).join('');
   const agregar = op.editando
     ? '<button type="button" class="btn-primary eq-btn-chico" onclick="eqPasoAbrir(' + Number(flujo.id) + ', null)">+ Agregar paso</button>'
     : '';
-  return '<ol class="eq-pasos">' + items + '</ol>' + agregar;
+  return eqFlujoLeyendaHtml(pasos) + '<ol class="eq-pasos">' + items + '</ol>' + agregar;
 }
 
 function eqPantallasOpciones(actual) {
@@ -13495,8 +15394,9 @@ function eqPasoAbrir(flujoId, pasoId) {
   document.getElementById('eq-paso-titulo-modal').textContent = paso ? 'Editar paso' : 'Agregar paso a ' + flujo.nombre;
   document.getElementById('eq-paso-titulo').value = paso ? paso.titulo : '';
   document.getElementById('eq-paso-rol').innerHTML = eqFlujosRoles.map(r => '<option value="' + esc(r) + '"'
-    + (paso && paso.rol === r ? ' selected' : '') + '>' + esc(r) + '</option>').join('');
+    + (paso && paso.rol === r ? ' selected' : '') + '>' + esc(eqRolEstilo(r).etiqueta) + '</option>').join('');
   document.getElementById('eq-paso-rol').value = paso ? paso.rol : (eqFlujosRoles[0] || '');
+  eqPasoRolMuestra();
   document.getElementById('eq-paso-detalle').value = paso ? paso.detalle : '';
   document.getElementById('eq-paso-pantalla').innerHTML = eqPantallasOpciones(paso ? paso.pantalla : null);
   document.getElementById('eq-paso-pantalla').value = paso && paso.pantalla ? paso.pantalla : '';
@@ -13505,6 +15405,12 @@ function eqPasoAbrir(flujoId, pasoId) {
   eqPasoCobrosPintar();
   document.getElementById('eq-paso-error').textContent = '';
   eqAbrirModal('eq-modal-paso');
+}
+
+// Al elegir el rol, el modal muestra con que color va a quedar el paso.
+function eqPasoRolMuestra() {
+  const sel = document.getElementById('eq-paso-rol');
+  eqPoner('eq-paso-rol-muestra', () => (sel && sel.value) ? eqRolChipHtml(sel.value) : '');
 }
 
 function eqPasoCobrosPintar() {
@@ -15770,6 +17676,8 @@ const _actActionLabels = {
   task_updated:  (i) => `actualizó tarea: <b>${esc(i.entity_name)}</b>${i.detail ? ' ('+esc(i.detail)+')' : ''}`,
   task_deleted:  (i) => `eliminó tarea: <b>${esc(i.entity_name)}</b>`,
   meeting_scheduled: (i) => `agendó reunión${i.entity_name ? ' con '+_actEntityLink(i) : ''}${i.detail ? ': '+esc(i.detail) : ''}`,
+  asunto_agendado: (i) => `agendó una reunión de otro asunto: <b>${esc(i.entity_name)}</b>${i.detail ? ' ('+esc(i.detail)+')' : ''}`,
+  asunto_movido: (i) => `cambió la reunión <b>${esc(i.entity_name)}</b>${i.detail ? ' a '+esc(i.detail) : ''}`,
   lead_deleted:  (i) => `eliminó lead: <b>${esc(i.entity_name)}</b>`,
   batch_status:  (i) => i.detail || 'actualizó múltiples leads',
   notion_sync:   (i) => `sincronizó con Notion${i.detail ? ': '+esc(i.detail) : ''}`,
@@ -15778,7 +17686,7 @@ const _actActionLabels = {
 const _actCrmMap = {sin_contactar:'Sin contactar',contactado:'Contactado',reunion_agendada:'Reunión agendada',reunion_hecha:'Reunión hecha',presupuesto_enviado:'Presupuesto enviado',negociacion:'Negociación',cliente_cerrado:'Cliente cerrado',en_desarrollo:'En desarrollo',finalizado:'Finalizado'};
 function _actCrmLabel(s) { return _actCrmMap[s] || s || ''; }
 function _actCallLabel(s) { return {contestó:'Contestó',no_contestó:'No contestó',buzón:'Buzón'}[s] || s || ''; }
-const _actIcons = {status_change:'🔄',note_updated:'📝',attachment_added:'📎',call_logged:'📞',budget_generated:'💰',budget_sent:'📨',task_created:'✅',task_updated:'✏️',task_deleted:'🗑️',meeting_scheduled:'📅',lead_deleted:'🗑️',batch_status:'🔄',notion_sync:'🔄',notion_client_moved:'🔀'};
+const _actIcons = {status_change:'🔄',note_updated:'📝',attachment_added:'📎',call_logged:'📞',budget_generated:'💰',budget_sent:'📨',task_created:'✅',task_updated:'✏️',task_deleted:'🗑️',meeting_scheduled:'📅',asunto_agendado:'📅',asunto_movido:'📅',lead_deleted:'🗑️',batch_status:'🔄',notion_sync:'🔄',notion_client_moved:'🔀'};
 
 // ── SDR panel ──────────────────────────────────────────────────────────────────
 let _sdrPeriod = 'month';
@@ -16202,6 +18110,10 @@ def create_app(db_path: str) -> Flask:
     app = Flask(__name__)
     app.secret_key = os.environ.get("SECRET_KEY") or "scalerics-dev-key-change-in-prod"
     app.config["DB_PATH"] = db_path
+    # Los envios que salen fuera de un request (los hilos de las campanas) se
+    # registran en esta base para el panel Email marketing.
+    from services.email_service import configurar_registro
+    configurar_registro(db_path)
     # Cuando arranco este proceso. Lo usa /api/marketing/version para
     # poder contestar "¿estoy viendo lo ultimo?" sin entrar por SSH.
     import time as _t
@@ -16211,8 +18123,8 @@ def create_app(db_path: str) -> Flask:
 
     for bp in (leads_bp, demos_bp, calendar_bp, wa_bp, pipeline_bp, tasks_bp, budgets_bp, tokens_bp, meta_bp, calendly_bp, notion_bp, projects_bp, preclientes_bp,
                 notion_clients_bp, resend_bp, linkedin_bp, web_bp, finanzas_bp, marketing_bp,
-                simulador_bp, inteligencia_fin_bp, equipo_bp, horarios_bp, flujos_bp, seg_leads_bp, daily_bp, plantillas_bp,
-                backups_bp):
+                simulador_bp, equipo_bp, horarios_bp, flujos_bp, seg_leads_bp, daily_bp, plantillas_bp,
+                backups_bp, email_mkt_bp, linkedin_panel_bp, instagram_bp, instagram_pub_bp):
         app.register_blueprint(bp)
 
     @app.before_request
@@ -16235,6 +18147,14 @@ def create_app(db_path: str) -> Flask:
         # El link "ya lo publique" se abre desde un mail: no puede mandar headers,
         # asi que lleva su propio token de un solo uso en la query.
         if request.path.startswith("/api/linkedin/marcar"):
+            return
+        # Meta baja las imagenes de Instagram sin sesion. Cada publicacion tiene
+        # su token al azar y solo se sirve mientras esta aprobada o saliendo.
+        if request.path.startswith("/pub/ig/"):
+            return
+        # La sesion de Claude que corrige publicaciones: IG_BOT_TOKEN, que solo
+        # abre estas rutas y se valida con compare_digest adentro del blueprint.
+        if request.path.startswith("/api/instagram-bot/"):
             return
         # El Apps Script del semaforo no puede llevar el ADMIN_TOKEN: vive pegado
         # a una planilla que es de la agencia, y cualquiera con permiso de
@@ -16501,7 +18421,9 @@ def create_app(db_path: str) -> Flask:
 
     @app.route("/api/users", methods=["GET"])
     def api_users():
-        from database import get_all_users
+        from database import get_all_users, listar_personas_equipo
+        from services.equipo import colores_por_persona
+        from services.flujos import estilo_de_persona
         admin_email = os.environ.get("ADMIN_EMAIL", "").lower()
         users = get_all_users(db_path)
         filtered = [
@@ -16509,6 +18431,21 @@ def create_app(db_path: str) -> Flask:
             if not (admin_email and u["email"].lower() == admin_email)
             and not (not admin_email and u["id"] == 1)
         ]
+        # Solo para pintar: el color con el que cada persona ya aparece en el
+        # organigrama y en Flujos, para que el avatar de Tareas sea el mismo.
+        # No cambia ningun permiso ni ninguna decision: si la persona no esta
+        # en `equipo_personas`, cae en "fuera de Flujos" (rosa), como alla.
+        try:
+            colores = colores_por_persona(
+                listar_personas_equipo(db_path, incluir_inactivas=True))
+        except Exception:      # una base vieja sin la tabla no rompe el panel
+            colores = {}
+        afuera = estilo_de_persona(None)
+        for u in filtered:
+            estilo = colores.get((u.get("name") or "").strip().casefold(), afuera)
+            u["rol_flujo"] = estilo["rol"]
+            u["color"] = estilo["color"]
+            u["etiqueta_flujo"] = estilo["etiqueta"]
         return jsonify(filtered)
 
     @app.route("/api/activity", methods=["GET"])
@@ -17186,8 +19123,8 @@ select:focus{border-color:#0088cc}
 </div>
 
 <script>
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin'];
-const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Inteligencia financiera',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas'};
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram'];
+const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas',email_mkt:'Email marketing',linkedin:'LinkedIn',instagram:'Instagram'};
 let _roles = [];
 
 // Paneles que muestran el check "solo lectura". El dato (roles.paneles_solo_lectura)
@@ -17419,14 +19356,18 @@ loadBackups();
         from services.discovery_emails import start_discovery_emails
         start_discovery_emails(app)
 
+        # Mail diario de la pauta a contacto@. ALERTAS_META=off lo apaga.
+        from services.alertas_meta import start_alertas_meta
+        start_alertas_meta(app)
+
+        # Instagram: publica solo lo aprobado. INSTAGRAM_AGENTE=off lo apaga.
+        from services.instagram import start_instagram
+        start_instagram(app)
+
         # Backup diario de la base (docs/BACKUPS.md). Prendido por defecto,
         # BACKUP_DB=off lo apaga; trae su propia marca en `corridas`.
         from services.backup_db import start_backup_db
         start_backup_db(app)
-
-        # Una corrida por dia, sin mails ni llamadas afuera (marca en `corridas`).
-        from services.inteligencia_fin import start_inteligencia_fin
-        start_inteligencia_fin(app)
 
     try:
         from database import get_all_users

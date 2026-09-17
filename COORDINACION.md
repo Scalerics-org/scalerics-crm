@@ -83,6 +83,75 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 | F (finanzas) | la sección financiera del CRM | `services/finanzas.py`, `routes/finanzas.py`, `database.py` (tablas de finanzas), `dashboard.py` (panel Finanzas) | 8/9 |
 
+> **MARKETING: Email marketing y panel LinkedIn (15/9, pedido de Juan).** Misma
+> rama `feat/email-mkt-ver-mail`, commit aparte. Sin PR, sin merge y sin deploy.
+>
+> - **Menú:** MARKETING queda Meta Ads, Inteligencia marketing, Email marketing y
+>   LinkedIn. Email marketing salió de CAPTACIÓN; el permiso sigue siendo `email_mkt`.
+> - **Cómo se generan los borradores de LinkedIn NO cambió:** el cron de GitHub
+>   corre martes y viernes a las 08:00 (Montevideo), saca 2 posts del banco ya
+>   escrito (sin IA) en cada corrida, o sea **4 por semana**, y el runner
+>   renderiza las tarjetas y manda el mail por `/api/linkedin/enviar`.
+> - **Lo nuevo:** cada borrador además queda en `linkedin_borradores` cuando el job
+>   lo arma (`linkedin_job_handler`, en try/except) y su imagen cuando el runner la
+>   manda para el mail (`enviar`, también en try/except). El histórico de
+>   `linkedin_posts` se copió una vez al crear la tabla, sin imágenes: esas solo
+>   viajaron adjuntas a los mails.
+> - **Sincronizado:** marcar publicada en el panel también marca `linkedin_posts`, y
+>   el link "ya lo publiqué" del mail también marca la tarjeta.
+> - **"Generar ahora" (solo admin)** encola el mismo job que el cron: arma 2
+>   borradores y consume temas del banco, pero **no manda mail ni hace imagen**
+>   (eso lo hace solo la corrida de GitHub).
+> - **Ojo, no lo toqué:** `/api/linkedin/generar` y `/api/linkedin/enviar` pasan con
+>   cualquier sesión iniciada, no solo con `x-admin-token`.
+> - Reparto una vez a los roles con `marketing`.
+
+> **Email marketing: ver el mail (15/9, pedido de Juan).** Rama
+> `feat/email-mkt-ver-mail`, worktree `crm-email-ver`. Sin PR, sin merge y sin
+> deploy. Botón "Ver mail" en la tabla, que abre un modal con el mail.
+>
+> - **De dónde sale el cuerpo** (nunca se guarda en la base):
+>   1. Envíos con id de Resend: `GET /emails/{id}` en el momento, con timeout,
+>      pausa mínima y cache en memoria de 5 minutos (`services/email_contenido.py`).
+>   2. Si Resend no lo tiene, no hay clave o es histórico: discovery y
+>      recordatorios de Meta se reconstruyen con la MISMA función de envío,
+>      corrida dentro de `email_service.capturar_envio()`, que arma el mail sin
+>      mandarlo ni registrarlo. Va con aviso de "reconstruido".
+>   3. Los otros tipos sin id: "no disponible".
+> - **Si tocás `_send_estado`:** el `capturar_envio` va antes de mirar la clave de
+>   Resend. Si lo movés abajo, reconstruir un mail en producción lo MANDA.
+> - **HTML:** se sanitiza en el servidor (sin scripts, `on*`, `javascript:`,
+>   iframes, formularios, `href` ni pixel de apertura) y la pantalla lo carga
+>   con `srcdoc` en un iframe con `sandbox=""`.
+
+> **Email marketing (15/9, pedido de Juan).** Rama `feat/email-marketing`,
+> worktree `crm-email-mkt`. Sin PR, sin merge y sin deploy. Panel nuevo
+> `email_mkt` al final de CAPTACIÓN.
+>
+> **Cruce de territorio, todo aditivo:**
+> - `services/email_service.py` (de A): `_send_estado` registra cada envío
+>   aceptado en la tabla nueva `emails_enviados`, con el id de Resend. No cambia
+>   ninguna firma. El tipo lo pone un decorador `@_tipo_envio(...)` en cada
+>   `send_*`; el negocio lo pasa quien llama con `contexto_envio(...)`.
+>   Registrar va en try/except: si falla, el mail sale igual.
+>   **Si agregás un `send_*` nuevo, ponele su `@_tipo_envio`** (hay un test).
+> - `services/discovery_emails.py` (de A) y `services/meta_reminders.py` (de D):
+>   solo un `with contexto_envio(business_id=..., numero=...)` alrededor del envío.
+> - `routes/resend_webhook.py` (de A): antes de vedar, guarda el evento
+>   (entregado, abierto, clic, rebote, spam) en `emails_enviados`. Si eso falla,
+>   el vedado sigue igual.
+> - `database.py`: tabla `emails_enviados`. En el arranque que la crea copia
+>   una sola vez lo histórico de `meta_reminders` y `discovery_reminders`, y
+>   reparte el panel a los roles con `cola` o `metrics`.
+> - `dashboard.py`: ítem de menú, panel, CSS y JS con prefijo `em`, y el
+>   blueprint `email_mkt_bp`.
+>
+> **Para que se vean aperturas y clics hace falta configurar Resend:** el
+> webhook tiene que suscribir `email.delivered`, `email.opened`,
+> `email.clicked`, `email.bounced`, `email.complained` (y opcionalmente
+> `email.delivery_delayed`, `email.failed`, `email.suppressed`), y el dominio
+> tiene que tener prendido el seguimiento de aperturas y de clics.
+
 > **F (finanzas) acá (8/9).** Trabajé en un worktree aparte sobre la rama
 > `feat/finanzas`. Me habia anotado como E, pero E ya estaba tomada por pre-clientes/demos, que llego primero y ya deployo: me corri a **F**. Agrega dos tablas
 > nuevas, `finanzas_movimientos` y `finanzas_recurrentes`, más
@@ -464,13 +533,159 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
-- **17/9 — J (Jev en el bot de WhatsApp): worktree propio, no toco nada del CRM.**
+- **17/9 — J (agente de marketing): panel Instagram con aprobación (Etapa 2).**
 
-  Worktree `../scalerics-crm-wa-a-main`, ramas `feat/wa-service-a-main` (PR #61: trae `wa-service/` a `main`) y encima `feat/jev-sombra` (PR #79, borrador). **Toco solo `wa-service/`**, más este archivo. Sin deploy: `scalerics-wa` sigue en v100 y el CRM no se toca.
+  Nuevo panel `instagram` en MARKETING. **Nada se publica sin que una persona lo
+  apruebe** (pedido explícito de Juan); editar una aprobada la devuelve a
+  borrador. Todo gratis, sin API de Anthropic.
+
+  - `services/instagram.py`: los jueves desde las 10 (marca `ig_semana`) arma la
+    semana siguiente desde `ig_banco` (semilla en `services/ig_banco_semilla.py`,
+    41 ideas): feed lun/mié/vie y historias mar/jue a las 19 de Montevideo, y
+    avisa a contacto@. Un hilo cada 10 min publica lo aprobado vencido con
+    `META_ADS_TOKEN` (ya tiene `instagram_content_publish`). Una aprobada que no
+    salió en 6 h queda `vencida`. `INSTAGRAM_AGENTE=off` lo apaga.
+  - `services/ig_render.py`: las piezas se dibujan con **Pillow** (nueva en
+    `requirements.txt`; Fly no tiene Chromium) y DM Sans en `static/fonts/`
+    (OFL). El feed siempre sale fondo oscuro + acento verde para respetar la
+    grilla actual; el degradado azul solo en historias.
+  - Imágenes en `<carpeta de la base>/instagram/<id>/`. Meta las baja de
+    `/pub/ig/<token>/<n>.jpg`, **exento del login** en `require_login`, con token
+    al azar por publicación y solo mientras está aprobada o publicándose.
+  - Zona compartida, aditivo: `database.py` (tablas `ig_banco`,
+    `ig_publicaciones` + grant del panel a quien tiene `marketing` o
+    `linkedin`), `dashboard.py` (menú, panel, CSS antes de LinkedIn, JS después
+    de "FIN LinkedIn", arranque del hilo), `services/email_service.py` (tres
+    avisos). Se actualizaron los tests que fijan el orden del menú MARKETING.
+  - **Pedidos de corrección en texto libre** (tabla `ig_correcciones`): Juan los
+    escribe en la tarjeta y los resuelve una tarea programada de Claude Code
+    cada 30 min con `scripts/ig_correcciones.py`, contra `/api/instagram-bot/`
+    (**exento del login**, validado con `IG_BOT_TOKEN` y compare_digest; solo
+    abre esas rutas). La versión corregida queda en borrador.
+
+- **16/9 — J (agente de marketing, pedido de Juan): alertas diarias de la pauta por mail.**
+
+  Etapa 1 de un plan por fases para cubrir al de marketing (después: contenido
+  de Instagram con aprobación, recomendaciones de pauta en modo sombra). Todo
+  **gratis**: nada de esto llama a la API de Anthropic.
+
+  - **Token nuevo en Fly.** `META_ADS_TOKEN` es ahora un token de
+    `crm-insights` que suma `pages_show_list`, `pages_read_engagement`,
+    `instagram_basic`, `instagram_content_publish`, `instagram_manage_insights`
+    y `instagram_manage_comments`. A `crm-insights` se le asignó la página
+    (contenido, comunidad, mensajes, estadísticas) y a la app se le sumaron los
+    casos de uso de Instagram (login con Facebook) y de páginas. Webhook
+    `leadgen` verificado intacto después. **Juan pidió explícitamente que no se
+    publique nada en Instagram sin su OK.**
+  - **`services/alertas_meta.py`** (nuevo): hilo que mira cada 30 min y corre
+    una vez por día desde las 8 de Montevideo (marca `alertas_meta` en
+    `corridas`). Compara 7 días contra los 28 anteriores con reglas fijas y
+    muestra mínima; manda a `contacto@scalerics.com` (`ALERTAS_META_EMAIL`)
+    solo si hay alertas, y los lunes siempre. Una alerta no se repite antes de
+    72 h (marca `alertas_meta:<clave>`). `ALERTAS_META=off` lo apaga.
+    `POST /api/marketing/alertas/enviar-ahora` lo manda a pedido, pausa de 15 min.
+    **Actualización (PR siguiente):** el resumen sale lunes y miércoles, y esos
+    días también a `andres@simondigitalgroup.com` (externo, sin botón al CRM,
+    sin avisos de error). `ALERTAS_META_RESUMEN` reemplaza la lista.
+  - Zona compartida, todo aditivo: `dashboard.py` (dos líneas en el arranque),
+    `services/email_service.py` (dos funciones), `routes/marketing.py` (un endpoint).
+
+  **Hallazgo de los datos, para quien toque marketing:** el costo por lead pasó
+  de ~USD 11-16 (julio) a USD 33-56 (setiembre) y lo que cayó es la conversión
+  clic → lead (de ~10% a 2-3,5%), no el CPM. Campañas nuevas de setiembre
+  (`Set26 - Winners`, `Brand`, `Video View`, `RMKTG`) gastaron ~USD 100 en 30
+  días sin leads.
+
+- **16/9 — Inteligencia financiera pasa a llamarse "Métricas financieras" y queda vacía, en `feat/metricas-financieras` (worktree `../crm-metricas-fin`). Push sin PR, sin merge, sin deploy.** Juan: "Vamos a borrar la seccion inteligencia financiera, no es eficiente [...] cambiale el nombre borra lo que contiene ahora y despues en un futuro le ire agregando metricas".
+  - **Solo cambia el nombre visible** (menú, título, barra del celular, editor de roles). **El id sigue siendo `inteligencia_fin`**: Admin y Contador lo tienen guardado en `panel_access`, y R20 sigue (no se reparte solo). El panel muestra el título y "Acá van a ir las métricas financieras.".
+  - **Borrado:** `routes/inteligencia_fin.py` (todas las `/api/inteligencia-fin/*`, más `/api/perdidas/.../motivo`, `/api/proyectos/<id>/esfuerzo` y `/api/ventas/.../origen`), `services/inteligencia_fin.py`, `services/inteligencia_fin_ia.py`, `services/intel_objetivo.py`, el hilo diario `start_inteligencia_fin`, el CSS `ifn-*` y los tokens `--pal-*`/`--obj-*`, el JS `ifn*`, el selector de motivo de pérdida (Proceso de venta y Demos) y el de esfuerzo (Proyectos), los campos `motivo_perdida`/`esfuerzo_*` de sus APIs, el emparejado de gastos esperados al cargar un egreso en Finanzas, la marca de pérdida del sync de Notion, y los 5 tests de la sección. `RADIOGRAFIA_IA_ACTIVA` no se tocó (vive en `services/radiografia_ia.py`, la usa Marketing).
+  - **Tablas que QUEDAN, sin tocar, con su `CREATE TABLE IF NOT EXISTS` en `database.py`:** `perdidas_motivo`, `proyectos_esfuerzo`, `ventas_origen_manual`, `fijos_canal`, `if_supuestos`, `if_calculos`, `if_recomendaciones`, `if_recomendaciones_tomadas`, `if_objetivo`, `if_equipo_costos`, `if_costos_activos`, `if_gastos_esperados`, `if_fijo_clasificacion` (y la fila `inteligencia_fin` de `corridas`). Ningún código las lee ni las escribe; están para las métricas futuras. **No borrarlas.**
+  - Test nuevo: `tests/test_metricas_financieras.py`. Choca con cualquier rama viva de intel-fin (`fix/intel-fin-*`, `feat/intel-fin-*`): esas quedan obsoletas.
+
+- **16/9 (segunda vuelta) — Inteligencia financiera: todos los costos, recortes y recomendacion. Sigue en `feat/intel-fin-sueldos`.** Juan vio v254 y dijo que "por ahora fue una perdida de tiempo": faltaba poder echar un programador, ver TODOS los costos, y que al elegir una alternativa le diga que pasa.
+  - **Todos los costos visibles, con interruptor, como en el Simulador** (`costos_del_mes`). Tres grupos, los que el pidio: **sueldos, honorarios y fijos de estructura**. Entra tambien lo que solo existe como movimiento y se repite (2 de 3 meses), que antes era invisible. Apagar una linea la saca del objetivo pero NO la esconde (`if_costos_activos`, ausente = prendido).
+  - **Los fijos se toman TODOS de la pestana Fijos, sin filtrar por fecha** (Juan: "agarra todos incluso los que se van a pagar cobrar el mes que viene"). Los que arrancan despues entran igual y dicen "desde octubre"; los terminados se listan apagados con el motivo. Los ingresos recurrentes (mantenimientos, todos desde octubre) se cuentan como cubierto para no mostrar un agujero que no existe.
+  - **Ojo, decision consciente:** `_fijos_vigentes` (el del punto de equilibrio) sigue filtrando por vigencia. El punto de equilibrio responde "que pagas este mes" y el objetivo responde "con que planificas". Son numeros distintos a proposito.
+  - **Recortes concretos:** R13 echar uno o los dos programadores (50 c/u reales, contra lo que se deja de entregar), R14 no pagarle a marketing **si el mes cierra sin ventas** -condicional, dice cuantas ventas van y si no aplica lo dice en vez de ofrecer plata que no se puede tomar-, y R15 generico sobre cualquier costo prendido. `MAX_RECOMENDACIONES` sube de 8 a 12: con ocho, los recortes quedaban afuera justo cuando son lo que Juan pide ver.
+  - **Consecuencias y recomendacion:** cada alternativa trae `consecuencia` (que dejas de poder hacer) y `dano` (0-2), y `plan_recomendado()` arma la combinacion que llega al objetivo rompiendo lo menos posible, con su "por que" en una linea.
+  - **Escenarios del Simulador, de solo lectura** (`escenarios_guardados`, `escenario_para_panel`): se leen `equipo.cantidadProgramadores`, `ventas.pauta`, `embudo.*` y `meta.sueldoObjetivo`. El panel NUNCA los escribe: el duenio es el Simulador.
+  - **Bug que encontre y arregle:** la deduplicacion entre la lista del equipo y los movimientos comparaba palabras exactas, asi que "Sueldo Programadores" no matcheaba con la linea "Programador" y el costo se contaba DOS veces. Ahora compara raices (sin plural).
+
+- **16/9 — Inteligencia financiera: lo que cobra cada uno, en `feat/intel-fin-sueldos` (worktree `../crm-intel-pdf`). Push sin PR, sin merge, sin deploy.** Sale de PR #71 (v254). Juan paso los numeros reales y el promedio de 3 meses daba ~4 veces de mas.
+  - **El costo del equipo deja de ser un promedio y pasa a ser una lista** (`if_equipo_costos`, una linea por rol o persona, con monto y cuantos son). Precargada UNA sola vez, en el arranque que crea la tabla, con lo que dijo Juan el 16/9: honorarios marketing 300, programador 50 x2, contador 75. **Fijo = 475.** Se edita, se suma y se saca gente desde la pantalla (`POST/PUT/DELETE /api/inteligencia-fin/equipo`); cambiar cuantos programadores hay es cambiar un numero.
+  - **El promedio de los movimientos queda SOLO de respaldo**, para una base sin lista, y cuando se usa la pantalla lo dice ("promedio de 3 meses"). `costo_equipo()` devuelve `fuente` y `es_promedio` para eso.
+  - **Matias Dominguez no tiene costo fijo**: cobra el 50 % del desarrollo y solo si se le da un proyecto. Va en la misma tabla con `tipo = 'comision'` y `pct`, **no suma al objetivo del mes** y entra en el margen del proyecto (`_margen_por_tipo` devuelve `comision` y `margen_con_comision`; R6 lo dice en la cuenta).
+  - **La palanca de pausa cambia de sentido para el.** Antes decia "te ahorras su sueldo pero perdes capacidad". Ahora dice lo que de verdad pasa: no se ahorra ningun fijo -si no trabaja no cobra-, se deja de pagar la mitad del desarrollo y se deja de facturar el desarrollo entero, asi que el neto es la otra mitad en contra (`_r12_comision`, toma precedencia sobre el caso de sueldo fijo, que sigue vivo para los demas).
+  - **Ojo con los tests:** la precarga corre en `init_db`, asi que toda base nueva nace con los 475 y eso corre los numeros de cualquier test que mire el objetivo. Los que no son sobre el equipo usan el helper `_sin_equipo(db)` para vaciar la lista, asi cada test sigue siendo sobre una sola cosa.
+
+- **16/9 — Inteligencia financiera: menú de alternativas, en `feat/intel-fin-alternativas` (worktree `../crm-intel-pdf`). Push sin PR, sin merge, sin deploy.** Spec de Juan en PDF (`Scalerics_Inteligencia_Financiera.pdf`): el panel tenía que dejar de ser un informe y pasar a ser una herramienta de decisión. Es el tercer intento; los dos anteriores los rechazó.
+  - **Arriba, el objetivo real del mes**: fijos + aportes externos a reemplazar + sueldo que se quiere pagar, las tres editables (`if_objetivo`, una fila por mes). Los fijos salen de Finanzas y se pueden pisar; se guarda NULL y no el número copiado, así el objetivo sigue a los fijos cuando cambian.
+  - **El menú de alternativas es la pantalla principal**: tarjetas seleccionables, una por palanca (más pauta / mejorar conversión / nuevo canal / recorte de costo / pausa de trabajo), cada una con impacto en USD, nota de riesgo y color por palanca. Elegir actualiza en vivo el total contra el objetivo y arma el "Plan resultante" abajo. El diagnóstico de antes (R1-R10, caja, equilibrio, embudo) sigue entero, como contexto de apoyo debajo, y el seguimiento a 30 días sigue funcionando para lo que se toma.
+  - **Reglas nuevas R11 (canal nuevo) y R12 (pausa de trabajo).** R12 es la regla de negocio del PDF: no darle trabajo a alguien ahorra su costo pero saca capacidad de entregar, así que muestra el **neto, negativo y en rojo**, no un ahorro limpio. `ordenar()` ahora mira el VALOR ABSOLUTO contra el umbral: con el filtro viejo (`>= 100`) las negativas desaparecían justo cuando hay que verlas. `MAX_RECOMENDACIONES` pasa de 6 a 8 para que entren las cinco palancas más las reglas con números reales.
+  - **Ojo con R12:** en la base NO hay ninguna relación entre una persona y lo que factura (el organigrama no se cruza con Clientes ni con Proyectos). Lo único real que los une es el nombre adentro del concepto de un gasto ("Honorarios Matías"), así que se busca por ahí, y la atribución de ingreso va declarada como supuesto con confianza baja. Si alguna vez se carga esa relación de verdad, esta regla es el primer lugar donde conviene usarla.
+  - **Gastos esperados** (`if_gastos_esperados`): se cargan cuando se sabe, no al cierre, y suman al objetivo en vivo al lado de los fijos confirmados. Cuando el gasto cae de verdad en Finanzas se empareja y sale de la lista para no contarlo dos veces. **No adivina**: empareja solo con UN candidato que coincida en monto y concepto; si hay dudas, la pantalla se lo pregunta a Juan. El emparejado corre también al abrir el panel, así agarra los movimientos que no pasan por la pantalla de carga (la materialización de un fijo).
+  - **Qué es un gasto fijo (corrección de Juan, 16/9).** Fijos = los sueldos del equipo + la estructura (herramientas, infra). NO son fijos los costos indirectos de un cliente de mantenimiento ("Servidores Diego Heinze" USD 25, "VPS Jose" USD 6,24): existen solo mientras exista ese cliente y se descuentan de lo que ese cliente deja. Consecuencias: el objetivo y el punto de equilibrio no los cuentan, y R1 (mantenimiento) razona en NETO (cuota − costo indirecto).
+    - **Los sueldos no están en la pestaña de Fijos**: se cargan como movimientos sueltos mes a mes ("Sueldo Programadores", "Honorarios Marketing"). Si el objetivo mirara solo `finanzas_recurrentes` daría ~USD 336 y quedaría por el piso. `costo_equipo()` los saca de los movimientos: promedio de los 3 meses previos, contando solo lo que aparece en 2 de esos 3 meses (un pago suelto no es un sueldo). El objetivo muestra equipo y estructura por separado.
+    - **La separación NO puede usar `client_id`**: en producción está vacío y esos costos están cargados como infraestructura común. `clasificar_fijos()` la PROPONE mirando si el concepto nombra a un cliente (tokens normalizados contra los nombres de negocios y de los mantenimientos, porque los datos tienen erratas: "Cloudfare", "Mnatenimiento Blende"). Las palabras técnicas (servidor, vps, pasarela, pagos, sistema…) no matchean nunca, si no "Pasarela de Pagos" se cruzaba con cualquier negocio con "pagos" en el nombre. Cada línea dice por qué quedó donde quedó y **Juan la puede mover** (`PUT /api/inteligencia-fin/fijos/<id>/clase`, tabla `if_fijo_clasificacion`). Orden: lo que marcó él > el `client_id` del fijo > la propuesta.
+    - **Publicidad, impuestos y retiros quedan afuera** de la base estructural (la pauta es de las palancas de Meta; los impuestos caen de a saltos; los retiros son lo que el objetivo quiere poder pagar). Se muestran aparte, no se esconden.
+  - **Menos texto (corrección de Juan, 16/9: "hay mucho texto").** Cada tarjeta es título + UNA línea de ≤60 caracteres + el número grande (hay test). Se fueron el título de sección de las alternativas y la bajada larga (quedó "Calculado el …"). La cuenta, los supuestos y los botones de cada alternativa van en un `<details>` plegado ("Ver la cuenta"); los gastos y el análisis del mes (resumen, diagnóstico, contraste, seguimiento), en dos `<details>` más. Ninguno arranca abierto. El motivo de clasificación de cada gasto va en el `title`, no escrito en la lista.
+  - **La pantalla nunca abre vacía** (pedido explícito: "no quiero que me diga que con los datos proporcionados no hay análisis aún"). Sin datos, cada palanca igual aparece contando qué haría y con qué se enciende (regla `R0`, `siempre = 1`), y el diagnóstico se esconde entero en vez de mostrar un cartel. Hay tests que lo fijan contra una base vacía.
+  - **`database.py`:** tablas `if_objetivo` y `if_gastos_esperados`; columnas `palanca`, `nota` y `siempre` en `if_recomendaciones`. Todo aditivo.
+  - **Zona compartida:** toqué `dashboard.py` (tokens nuevos `--pal-*` y `--obj-*` en los dos temas, CSS/panel/JS de `ifn`), `database.py` y `routes/finanzas.py` (solo un hook: al cargar un egreso intenta emparejarlo con un gasto esperado, dentro de try/except para que no pueda tumbar la carga de un movimiento).
+  - **OJO, choca con `fix/intel-fin-mobile`:** esa rama toca el mismo bloque CSS. Ya incorporé sus reglas del `@media (max-width:768px)` tal cual dentro de mi bloque (que es único, como pide su test) y dejé la clase `ifn-panel` en el div. Al mergear, la resolución es quedarse con la unión. Su `tests/test_inteligencia_fin_mobile.py` va a necesitar una pasada: el panel se rehízo, así que algunas clases que medía (`.ifn-rec-cab`, `.ifn-impacto`) ahora solo aparecen en el detalle que se abre al elegir una alternativa. Lo nuevo quedó cubierto por `tests/test_intel_alternativas_pantalla.py`, que mide a 360/375/414 con Playwright.
+- **16/9 — rama `feat/tareas-visual` (worktree `../crm-tareas-visual`). Sin PR, sin merge, sin deploy.** Pedido de Juan: "a Tareas también hacela más atractiva visualmente". Es una pasada **de presentación**: no se tocó el sync con Notion, ni el modelo de datos, ni los permisos.
+  - **Lo que se midió antes de tocar nada** (el panel renderizado con una base de mentira, a 1280 y a 390): seis columnas idénticas de gris sobre gris, sin un punto de color ni un número que pese; la fila de meta con seis textos del mismo tamaño y del mismo gris (estado, prioridad, cliente, fecha, "→ Persona", "de Jefe", "Notion"), así que no había por dónde empezar a leer; el responsable en texto plano, sin cara ni color; el vencimiento como "13/9 11:00 a. m. (vencida)" y el de hoy sin ninguna marca; y el vacío, una línea de gris en el medio de la nada.
+  - **La persona lleva el color que YA tiene**: el de su rol en Flujos, el mismo del organigrama (`--rol-*` vía `.eq-rol-COLOR`). **`_upickColors` se fue**: eran 8 hex propios del selector de usuario que no coincidían con ninguna otra pantalla, así que la misma persona salía de un color en Tareas y de otro en Recursos Humanos. Ahora `_upickColor` delega en `_taskColorDe`.
+  - **Único agregado de backend, y es solo para pintar:** `/api/users` devuelve `color`, `rol_flujo` y `etiqueta_flujo`. Salen de `services/equipo.colores_por_persona`, que parea `users.name` con `equipo_personas.nombre` (el único vínculo entre las dos tablas; la precarga de `rol_flujo` parea igual). Quien no está en el equipo cae en rosa, "Fuera de Flujos". No cambia ningún permiso ni saca ningún campo, y `get_all_users` no se tocó (tiene tests propios).
+  - **Cada familia de color dice una sola cosa:** el vencimiento es rojo si pasó, ámbar si es hoy y gris si falta (y una tarea hecha no vence); el punto y el número de cada columna salen del grupo de Notion (todo / in progress / done).
+  - **Ojo con esto si tocás el tablero:** `.kanban-col` y `.kanban-card` los dibuja **también Pipeline Notion**. Todo lo nuevo va en `.task-col` y `.task-card` justamente para no cambiarle el tablero a ese panel, y la regla del celular va por `#tasks-board` y no por `.kanban`. Hay tests que lo fijan.
+  - **En el celular** el tablero pasa a una sola columna (a 260px fijos había que arrastrar de costado para ver las seis) y los botones de la fila llegan a 44px. Medido en el navegador: `scrollWidth == clientWidth == 390`, sin scroll horizontal.
+  - Tests en `tests/test_tareas_visual.py` (29), con el JS corriendo en node contra un DOM de mentira, como `test_panel_se_pinta`. **Trampa que me comí y queda anotada:** `_upickInitials` está escrita en una sola línea, así que el `_funcion()` de siempre (busca hasta el primer `\n}`) se lleva puesto todo hasta el final de la función siguiente y el archivo generado no parsea. Va con un `_una_linea()`, igual que `escJs` en `test_calendario_mobile`.
+
+- **16/9 — rama `feat/colores-organigrama` (worktree `../crm-colores-org`). Sin PR ni deploy.** Pedido de Juan: el organigrama con los colores de Flujos.
+  - Columna `equipo_personas.rol_flujo` (nullable, uno de `services/flujos.ROLES`; NULL es "no participa"). Precarga UNA sola vez, en el arranque que crea la columna (`_precargar_rol_flujo`, solo por nombre exacto): Andrés Marketing, Juan Pereyra Comercial, Gonzalo Project manager, Juan Tomasetti y Matías Desarrollo, Guillermo Administración, Javier sin rol.
+  - El color de cada nodo lo arma el servidor con el MISMO mapa de Flujos (`estilo_de_persona`); quien no participa va en **rosa** ("Fuera de Flujos", tokens `--rol-rosa` y `--rol-rosa-tinte`). `/api/equipo` suma `leyenda_organigrama` (solo los colores presentes), `roles_flujo`, `fuera_de_flujos` y `es_admin`.
+  - Edición: el admin toca un nodo y elige el rol en un modal (`PUT /api/equipo/personas/<id>/rol-flujo`, solo admin, validado contra la lista cerrada). Horarios sigue con el color de Daily.
+
+- **15/9 — Inteligencia financiera automática, en `feat/intel-fin-automatica` (worktree `../crm-intel-auto`). Push sin PR, sin merge, sin deploy.** Pedido de Juan: "no quiero que me pida datos".
+  - **Se fue todo lo que pedía datos:** el bloque de datos previos, los avisos de "falta cargar" y el campo de comisión. Motivo de pérdida (Proceso de venta, Demos) y esfuerzo (Proyectos) quedan en un "Afinar (opcional)" colapsado; las tablas siguen y, si alguien carga algo, se usa.
+  - **Arriba, diagnóstico del mes** (hasta 6, las alertas primero): resultado y margen, meses de caja (la caja de `balance_general`), punto de equilibrio, costo por lead y por venta contra el ticket, caída más grande del embudo, concentración, fijos, vencidos.
+  - **Sugerencias R1-R10** con datos existentes: mantenimiento (cuota y comisión del Simulador si no hay en Finanzas, marcadas como supuesto), subí o **bajá** la pauta, vencidos, fijos que crecieron o pesan, precio por tipo, pérdidas por etapa del embudo, caja corta, concentración, demos que no se hacen. Horas por proyecto: el esfuerzo cargado o, si no hay, timelines × horas por día (supuesto, confianza baja).
+  - **`database.py`:** `if_recomendaciones` pasa a `CHECK (regla GLOB 'R[0-9]*')`. En producción la tabla vieja se reconstruye UNA vez (`_ampliar_reglas_if`), conservando filas e ids. Columnas nuevas: `if_recomendaciones.supuestos` y `if_calculos.diagnostico` / `resumen` / `resumen_origen`.
+  - **IA opcional** (`services/inteligencia_fin_ia.py`): la misma integración que la radiografía (modelo, cliente y bandera `RADIOGRAFIA_IA_ACTIVA`, que nace apagada). Solo recibe los números ya calculados, se descarta si escribe un número que no está en el JSON, y cae al texto determinístico. Se guarda con el recálculo diario.
+  - **Zona compartida tocada:** `dashboard.py` (solo el panel Inteligencia financiera y los dos `ifnMotivoHtml`/`ifnEsfuerzoHtml` que usan las tarjetas) y `database.py` (lo de arriba).
+- **15/9 — rama `feat/calendario-google-invitaciones` (worktree `../crm-cal-google`), encima de `feat/calendario-asunto-repeticion`. Sin PR, sin merge, sin deploy.** Pedido de Juan: que el CRM vuelva a crear las reuniones en Google Calendar y que Google mande las invitaciones.
+  - **Por qué se había sacado (`81f19fb`, 1/6):** el calendario leía Google en vivo y la app de OAuth estaba "En prueba" (refresh token de 7 días): al vencer se caían el panel y el alta. Hoy la app está publicada (`routes/tokens.py`) y la base del CRM manda: si Google falla, la reunión queda igual, marcada "No sincronizada", con botón "Reintentar en Google" (nunca reintenta sola).
+  - **El riesgo real era el import** (`_sync_gcal_to_db`, volvió el 4/6), que trae todo evento desconocido y le inventa un lead al primer invitado. Ahora saltea por `google_event_id` los eventos que creó el CRM y sus instancias (`<id>_<fecha>`, `recurringEventId`). El id se elige antes de crear y se guarda: un reintento tras una respuesta perdida da 409 y no un evento ni una invitación duplicados.
+  - **Qué hace:** crear = `events.insert` con attendees (mail del cliente + invitados), Meet, `sendUpdates="all"` y RRULE si se repite (un solo evento recurrente). Editar: todas = patch; solo esta = `instances(originalStart)` + patch de la instancia; esta y las siguientes = UNTIL + serie nueva. Borrar: Google primero (si falla no se borra nada). Calendly no se toca.
+  - **Interruptor `GCAL_CREAR_EVENTOS`:** `on` por defecto si hay credenciales `GCAL_*`; `off` deja las nuevas solo en el CRM (las que ya están en Google se siguen actualizando). Qué habilitar y cómo verificar el scope de escritura, en `docs/puesta-en-produccion-google-calendar.md`.
+  - **Calendly nunca va a Google desde el CRM (pedido de Juan):** columna nueva `meetings.origen` (`crm` / `calendly` / `google`). La escriben el webhook y el sync de Calendly (`calendly`), el import de Google (`calendly` si la descripción tiene un link de calendly.com, si no `google`) y el alta manual (`crm`). Toda escritura a Google pasa por `routes/calendar._va_a_google`: solo `crm` y "otro asunto". Una de Calendly hace cero llamadas a Google al moverla, borrarla, enviarla o agregarle invitados (hay tests).
+  - **Google Meet siempre** (`conferenceData` + `conferenceDataVersion=1`), también en series; el link queda en `google_meet` y se ve como "Unirse con Google Meet" en el calendario y en la ventana de editar.
+  - **Reuniones de antes de publicar** (ej. "Marketing Semanal"): nada se manda solo, ni al arrancar ni al abrir el calendario. Botón "Enviar a Google Calendar" (misma ruta que "Reintentar"): un solo evento recurrente con Meet e invitaciones; un segundo toque actualiza, no duplica. La ventana de editar dice el estado real (enviada / no enviada / falló / de Calendly).
+  - **Zona compartida tocada, todo aditivo:** `database.py` (`google_event_id`, `google_sync`, `google_error`, `google_meet` en `meetings` y `reuniones_asunto`; `origen` en `meetings`), `dashboard.py` (aviso `#cal-aviso-google`, marca ⚠, "Reintentar" / "Enviar a Google Calendar" y "Unirse con Google Meet" en el chip y en el celular, botón de Meet y nota de estado en la ventana de editar), `routes/calendar.py`, `routes/calendly.py` y `services/calendly_gcal.py` (solo `origen="calendly"`). Nuevo: `services/gcal_eventos.py`.
+
+- **15/9 — rama `feat/calendario-asunto-repeticion` (worktree `../crm-cal-repeticion`). Sin PR, sin merge, sin deploy.** Pedido de Juan: reuniones de "otro asunto" (sin cliente) y reuniones que se repiten.
+  - **Dónde viven:** en la base del CRM. Crear una reunión NO crea evento en Google desde `81f19fb` (1/6) y eso no cambió: los invitados quedan guardados y **no se les manda nada**. Google solo se toca, como antes, al mover o borrar una reunión importada de Google.
+  - **Otro asunto:** tabla nueva `reuniones_asunto`, aparte de `meetings` porque ahí `client_id` es NOT NULL y así ninguna métrica de ventas, presupuesto, plantilla ni fusión de leads las ve. Rutas `PATCH/DELETE/GET /api/calendar/asuntos/<id>`. Actividad `asunto_agendado` / `asunto_movido` con `entity_type='asunto'` (el SDR no las cuenta).
+  - **Repetición:** columnas nuevas en `meetings` (`description`, `invitados`, `repeticion`, `excepciones`) y las mismas en `reuniones_asunto`. Lógica pura en `services/recurrencia.py`; `GET /api/calendar/events` expande las ocurrencias del rango con id `<id>@<fecha original>`. Hora de pared de Montevideo, sin pasar por UTC. Editar y borrar aceptan `ocurrencia` + `alcance` (`esta` / `siguientes` / `todas`).
+  - **Sync de Google:** `_sync_gcal_to_db` ya no importa un evento de Google que coincide en fecha, hora y título con una ocurrencia de serie o un "otro asunto" del CRM. Sin eso, crear "Marketing semanal" también en Google (para mandar invitaciones) inventaba un lead con el primer invitado.
+  - **Contador del mes:** las de otro asunto no suman a reuniones / hechas / por venir; van al final, "· 4 de otros asuntos". Una serie de cliente cuenta cada ocurrencia.
+  - **Zona compartida tocada, todo aditivo:** `database.py` (4 columnas en `meetings`, tabla `reuniones_asunto` y su CRUD), `dashboard.py` (botón "+ Nueva reunión" en el Calendario, que no tenía; modal nuevo, modal de alcance, invitados en el editor, token `--violeta`, CSS `.cal-tipo*`/`.cal-rep*`/`.cal-alcance*`, etiquetas de actividad), `routes/calendar.py`.
+
+- **15/9 — rama `feat/colores-flujos-horarios` (worktree `../crm-colores-rrhh`). Sin PR ni deploy.** Pedido de Juan: colores en Flujos y Horarios.
+  - **Flujos, un color por rol:** el mapa vive en `services/flujos.ROL_ESTILOS` (rol → color y etiqueta) y llega a la pantalla con `/api/flujos` (`estilos`). Marketing rojo, Project manager naranja, Comercial verde, Desarrollo azul, Administración violeta, Soporte teal. Tokens `--rol-<color>` y `--rol-<color>-tinte` en los dos temas, clase `.eq-rol-<color>`; todos los pares miden ≥ 4,5:1 (hay test).
+  - **"Marketing" se muestra como "Líder marketing digital"** (leyenda, tarjetas y modal). En la base sigue siendo `Marketing`: cambió la etiqueta, no el valor.
+  - Leyenda arriba del flujo con los roles que aparecen en él; tarjeta con el tinte de su rol y borde izquierdo pleno; el destacado ya no es verde: usa el color de su rol y lleva la etiqueta "Ingreso recurrente". El modal muestra el color al elegir el rol.
+  - **Horarios, el color de Daily:** `/api/horarios` manda `orden_daily` (el lugar de la persona en Daily Programador) y la pantalla usa los mismos `DY_COLORES`; `.hr-color-N` usa el mismo token que `.dy-color-N` (hay test que los compara). Tramos como pastillas, total en chip, encabezados alternados, tarjeta del celular con borde superior del color.
+
+- **17/9 — K (Jev en el bot de WhatsApp): worktree propio, no toco nada del CRM.**
+  Me anoté como J y ya había otra J (Instagram): me corro a K, como hizo D en su momento.
+
+  Worktree `../scalerics-crm-wa-a-main`, rama `feat/jev-sombra` (PR #79). **Toco solo `wa-service/`**, más este archivo. El PR #61, que trajo `wa-service/` a `main`, ya está mergeado y deployado: **`scalerics-wa` v101 es el primer deploy del bot desde git**. El CRM no se toca.
 
   **Qué es Jev:** un modelo de TypeSafe que no escribe, decide. Se le manda la conversación y preguntas tipadas, y contesta con probabilidades y confianza en ~300 ms. Lo usamos en dos decisiones donde el modelo que conversa se viene equivocando: qué necesita el lead al darlo por calificado, y si el mensaje que ofrece la reunión le atribuye algo que no dijo (pasó el 11 y el 12/9).
 
-  **Estado:** modo sombra (anota y no cambia nada) y modo `decide` escritos y probados, los dos **apagados por defecto** (`JEV_MODO=apagado`). Antes de prender `decide` hay que medir en sombra: `npm run jev:informe` saca acuerdo, matriz, curva de umbral, latencia y costo.
+  **Estado:** modo sombra (anota y no cambia nada) y modo `decide` escritos y probados, los dos **apagados por defecto** (`JEV_MODO=apagado`). v101 todavía NO los tiene: entran con el #79. Antes de prender `decide` hay que medir en sombra: `npm run jev:informe` saca acuerdo, matriz, curva de umbral, latencia y costo. Con 11 leads desde el 13/8 y 3 calificados, eso son semanas: lo que decide es leer los desacuerdos a mano.
 
   **Para quien deploye `scalerics-wa`:** la clave va como secret de Fly (`JEV_API_KEY`), nunca al `.env` del repo. Y ojo con la regla 1: `flyctl deploy` sube el árbol entero, así que el worktree tiene que estar limpio.
 

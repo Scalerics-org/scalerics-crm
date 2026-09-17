@@ -10,7 +10,7 @@ import time
 from datetime import datetime, timezone
 
 from services.corridas import marcar_corrida, puede_correr, ultima_corrida
-from services.email_service import send_meta_lead_reminder
+from services.email_service import contexto_envio, send_meta_lead_reminder
 from services.secuencia_contactos import (
     DIAS_DE_CADA_CONTACTO,
     ESTADOS_CON_SECUENCIA,
@@ -473,11 +473,14 @@ def enviar_recordatorios(db_path: str, base_url: str, dry_run: bool = False) -> 
                 f"({lead['email']}) se manda a {override} en vez de a esa direccion"
             )
             destino = override
-        estado = send_meta_lead_reminder(
-            destino, lead["negocio"], lead["rubro"],
-            f"{base_url.rstrip('/')}/baja/{token}",
-            numero, estado_crm,
-        )
+        # El contexto solo le dice al registro de Email marketing a que lead y
+        # a que contacto corresponde el mail.
+        with contexto_envio(business_id=lead["id"], numero=numero):
+            estado = send_meta_lead_reminder(
+                destino, lead["negocio"], lead["rubro"],
+                f"{base_url.rstrip('/')}/baja/{token}",
+                numero, estado_crm,
+            )
         ya_hubo_intento = True
         if estado == "ok":
             res["enviados"] += 1
