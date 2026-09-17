@@ -540,3 +540,63 @@ def test_flujo_de_correccion_por_http(app, monkeypatch):
     r = bot.post(f"/api/instagram-bot/correcciones/{pend['id']}/resolver", headers=h,
                  json={"cambios": {"slides": slides}, "respuesta": "Listo"})
     assert r.get_json() == {"ok": True, "version": p["version"] + 1, "estado": "borrador"}
+
+
+# ── vista del perfil ─────────────────────────────────────────────────────────
+
+VIEJAS = [{"id": f"m{i}", "fecha": "2026-09-0" + str(i), "imagen": f"https://cdn/{i}.jpg",
+           "permalink": None, "video": i == 2} for i in range(1, 10)]
+
+
+def test_la_grilla_pone_lo_nuevo_arriba_y_completa_con_lo_publicado(db):
+    semana = _semana(db)
+    ig.descartar(db, semana["feed_vie"]["id"])
+    g = ig.grilla(db, LUNES, JUEVES, publicadas=VIEJAS)
+    assert [n["id"] for n in g["nuevas"]] == [semana["feed_mie"]["id"], semana["feed_lun"]["id"]]
+    assert all(n["formato"] != "historia" for n in g["nuevas"])
+    assert len(g["publicadas"]) == 7 and g["publicadas"][0]["id"] == "m1"
+    assert g["error"] is None
+
+
+def test_la_grilla_no_muestra_lo_de_otras_semanas_ni_lo_publicado(db):
+    semana = _semana(db)
+    _sql(db, "UPDATE ig_publicaciones SET estado = 'publicada' WHERE id = ?", semana["feed_lun"]["id"])
+    g = ig.grilla(db, LUNES, JUEVES, publicadas=[])
+    assert {n["id"] for n in g["nuevas"]} == {semana["feed_mie"]["id"], semana["feed_vie"]["id"]}
+    semana_anterior = ig.grilla(db, date(2026, 9, 14), JUEVES, publicadas=[])
+    assert semana_anterior["nuevas"] == []
+
+
+def test_si_meta_falla_muestra_solo_lo_nuevo(db, monkeypatch):
+    _semana(db)
+    monkeypatch.setattr(ig, "feed_publicado", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("x")))
+    g = ig.grilla(db, LUNES, JUEVES)
+    assert len(g["nuevas"]) == 3 and g["publicadas"] == [] and g["error"]
+
+
+def test_el_feed_publicado_se_guarda_media_hora(monkeypatch):
+    llamadas = []
+
+    def traer():
+        llamadas.append(1)
+        return [{"id": "1", "timestamp": "2026-09-02T10:00:00+0000", "media_type": "VIDEO",
+                 "thumbnail_url": "https://cdn/t.jpg", "media_url": "https://cdn/v.mp4"},
+                {"id": "2", "timestamp": "2026-09-01T10:00:00+0000", "media_type": "IMAGE"}]
+
+    monkeypatch.setattr(ig, "_CACHE_FEED", {"cuando": 0.0, "items": None})
+    items = ig.feed_publicado(traer=traer)
+    assert items == [{"id": "1", "fecha": "2026-09-02", "imagen": "https://cdn/t.jpg",
+                      "permalink": None, "video": True}]
+    assert ig.feed_publicado() == items and llamadas == [1]
+
+
+def test_la_grilla_por_http(app, monkeypatch):
+    db = app.config["DB_PATH"]
+    ig.armar_semana(db, LUNES, JUEVES)
+    monkeypatch.setattr(ig, "feed_publicado", lambda *a, **k: VIEJAS)
+    cli = _cli(app, "mkt@scalerics.com", ["instagram"])
+    d = cli.get("/api/instagram/grilla?semana=2026-09-21").get_json()
+    assert len(d["nuevas"]) == 3 and len(d["publicadas"]) == 6
+    assert d["nuevas"][0]["imagen"].startswith("/api/instagram/publicaciones/")
+    assert cli.get("/api/instagram/grilla?semana=mal").status_code == 400
+    assert _cli(app, "otro@scalerics.com", ["cal"]).get("/api/instagram/grilla").status_code == 403

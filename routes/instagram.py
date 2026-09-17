@@ -126,6 +126,19 @@ def api_pedir_correccion(pub_id):
                     "correcciones": ig.correcciones_de(_db(), [pub_id]).get(pub_id, [])[:3]})
 
 
+@instagram_bp.route("/api/instagram/grilla")
+def api_grilla():
+    crudo = request.args.get("semana")
+    try:
+        lunes = ig.lunes_de(date.fromisoformat(crudo)) if crudo else ig.semana_actual(ig.ahora_utc())
+    except ValueError:
+        return jsonify({"ok": False, "error": "semana tiene que ser AAAA-MM-DD"}), 400
+    g = ig.grilla(_db(), lunes)
+    for n in g["nuevas"]:
+        n["imagen"] = f"/api/instagram/publicaciones/{n['id']}/imagen/1?v={n['version']}"
+    return jsonify({"ok": True, "semana": lunes.isoformat(), **g})
+
+
 @instagram_bp.route("/api/instagram/armar-semana", methods=["POST"])
 def api_armar():
     if not is_admin(_db(), session.get("user_id")):

@@ -2369,6 +2369,17 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .ig-msg.error{color:var(--rojo-texto)}
 .ig-msg.ok{color:var(--verde-texto)}
 .ig-grande{max-width:min(92vw,560px);max-height:88vh;border-radius:10px}
+.ig-tabs{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}
+.ig-tab{background:var(--relleno);border:1px solid var(--borde);color:var(--texto-debil);border-radius:99px;padding:6px 14px;font-size:.8rem;font-weight:600;font-family:inherit;cursor:pointer}
+.ig-tab.activa{background:var(--azul-tinte);border-color:var(--azul);color:var(--texto-fuerte)}
+.ig-perfil-nota{font-size:.78rem;color:var(--texto-debil);margin-bottom:10px;line-height:1.5}
+.ig-grilla{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:3px;max-width:540px}
+.ig-celda{position:relative;aspect-ratio:3/4;overflow:hidden;background:var(--fondo-hundido);cursor:zoom-in}
+.ig-celda img{display:block;width:100%;height:100%;object-fit:cover}
+.ig-marca{position:absolute;left:4px;top:4px;right:4px;display:flex;gap:4px;flex-wrap:wrap}
+.ig-marca span{background:var(--superficie-alta);color:var(--texto-fuerte);border-radius:99px;padding:1px 7px;font-size:.62rem;font-weight:700;white-space:nowrap}
+.ig-celda.nueva{outline:2px solid var(--azul);outline-offset:-2px}
+.ig-celda.aprobada{outline-color:var(--verde)}
 .ig-pedido{border:1px solid var(--borde);border-radius:8px;padding:10px;background:var(--superficie);display:grid;gap:6px}
 .ig-pedido textarea{min-height:56px;resize:vertical}
 .ig-pedido-item{font-size:.74rem;color:var(--texto-debil);border-top:1px solid var(--borde);padding-top:6px;line-height:1.45}
@@ -3688,8 +3699,18 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       </div>
       <span class="ig-banco" id="ig-banco"></span>
     </div>
-    <div id="ig-estado" class="li-vacio" role="status" aria-live="polite">Cargando…</div>
-    <div id="ig-tarjetas" class="ig-tarjetas"></div>
+    <div class="ig-tabs" role="tablist">
+      <button type="button" class="ig-tab activa" id="ig-tab-pub" role="tab" onclick="igModo('pub')">Publicaciones</button>
+      <button type="button" class="ig-tab" id="ig-tab-perfil" role="tab" onclick="igModo('perfil')">Vista del perfil</button>
+    </div>
+    <div id="ig-vista-pub">
+      <div id="ig-estado" class="li-vacio" role="status" aria-live="polite">Cargando…</div>
+      <div id="ig-tarjetas" class="ig-tarjetas"></div>
+    </div>
+    <div id="ig-vista-perfil" class="ig-oculto">
+      <div class="ig-perfil-nota" id="ig-perfil-nota">Así quedaría el perfil al final de la semana: las piezas con borde son las nuevas (verde si ya están aprobadas) y el resto son las últimas publicadas. No incluye las descartadas ni las historias.</div>
+      <div class="ig-grilla" id="ig-grilla"></div>
+    </div>
     <div class="modal-overlay" id="ig-zoom" onclick="this.classList.remove('open')">
       <img id="ig-zoom-img" class="ig-grande" alt="Vista ampliada">
     </div>
@@ -13409,6 +13430,50 @@ function igSemana(delta) {
 
 function igSemanaHoy() { igSemanaSel = ''; igCargar(); }
 
+let igModoActual = 'pub';
+let igPedidoGrilla = 0;
+
+function igModo(modo) {
+  igModoActual = modo;
+  liClase('ig-tab-pub', modo === 'pub', 'activa');
+  liClase('ig-tab-perfil', modo === 'perfil', 'activa');
+  liClase('ig-vista-pub', modo !== 'pub', 'ig-oculto');
+  liClase('ig-vista-perfil', modo !== 'perfil', 'ig-oculto');
+  if (modo === 'perfil') igCargarGrilla();
+}
+
+async function igCargarGrilla() {
+  const cont = document.getElementById('ig-grilla');
+  if (!cont || !igDatos) return;
+  const pedido = ++igPedidoGrilla;
+  cont.innerHTML = '<div class="ig-perfil-nota">Armando la vista…</div>';
+  let d;
+  try {
+    const r = await fetch('/api/instagram/grilla?semana=' + encodeURIComponent(igDatos.semana));
+    d = await r.json();
+    if (!r.ok || !d.ok) throw new Error(d.error || 'HTTP ' + r.status);
+  } catch (e) {
+    if (pedido === igPedidoGrilla) cont.innerHTML = '<div class="ig-perfil-nota">No se pudo armar la vista del perfil.</div>';
+    return;
+  }
+  if (pedido !== igPedidoGrilla) return;
+  const nuevas = d.nuevas.map(n =>
+    '<div class="ig-celda nueva' + (n.estado === 'aprobada' ? ' aprobada' : '') + '" onclick="igZoom(this.querySelector(' + IG_Q + 'img' + IG_Q + ').src)">' +
+    '<img src="' + liEsc(n.imagen) + '" alt="Publicación nueva" loading="lazy">' +
+    '<div class="ig-marca"><span>' + liEsc(igFechaLarga(n.fecha)) + '</span><span>' +
+    liEsc((IG_ESTADOS[n.estado] || [n.estado])[0]) + '</span>' +
+    (n.formato === 'carrusel' ? '<span>Carrusel</span>' : '') + '</div></div>');
+  const viejas = d.publicadas.map(v =>
+    '<div class="ig-celda" onclick="igZoom(this.querySelector(' + IG_Q + 'img' + IG_Q + ').src)">' +
+    '<img src="' + liEsc(v.imagen) + '" alt="Publicación anterior" loading="lazy" referrerpolicy="no-referrer">' +
+    (v.video ? '<div class="ig-marca"><span>Video</span></div>' : '') + '</div>');
+  cont.innerHTML = nuevas.concat(viejas).join('') ||
+    '<div class="ig-perfil-nota">No hay publicaciones para mostrar.</div>';
+  document.getElementById('ig-perfil-nota').textContent = d.error
+    ? 'Solo se muestran las nuevas: ' + d.error.toLowerCase() + '.'
+    : 'Así quedaría el perfil al final de la semana: las piezas con borde son las nuevas (verde si ya están aprobadas) y el resto son las últimas publicadas. No incluye las descartadas ni las historias.';
+}
+
 async function igCargar() {
   const estado = document.getElementById('ig-estado');
   if (!estado) return;
@@ -13442,6 +13507,7 @@ function igPintar() {
   liClase('ig-estado', hay, 'ig-oculto');
   liClase('ig-btn-armar', !(d.puede_armar && d.semana >= d.semana_actual), 'ig-oculto');
   document.getElementById('ig-tarjetas').innerHTML = d.publicaciones.map(igTarjeta).join('');
+  if (igModoActual === 'perfil') igCargarGrilla();
 }
 
 function igBuscar(id) {

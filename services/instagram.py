@@ -663,6 +663,68 @@ def imagen_publica(db_path: str, token: str, n: int) -> str | None:
     return ruta if os.path.isfile(ruta) else None
 
 
+# ── vista del perfil ─────────────────────────────────────────────────────────
+# Como quedaria la grilla de @scalerics_ al final de una semana: lo nuevo arriba
+# y lo ya publicado abajo. Las ultimas publicaciones se piden a Meta y se
+# guardan media hora en memoria: el panel se abre seguido y no hace falta
+# pedirlas cada vez.
+
+GRILLA = 9
+_CACHE_FEED = {"cuando": 0.0, "items": None}
+_CACHE_SEGUNDOS = 1800
+
+
+def feed_publicado(cantidad: int = GRILLA, traer=None) -> list[dict]:
+    ahora = time.time()
+    if traer is None and _CACHE_FEED["items"] is not None \
+            and ahora - _CACHE_FEED["cuando"] < _CACHE_SEGUNDOS:
+        return _CACHE_FEED["items"][:cantidad]
+    if traer is None:
+        def traer():
+            d = _get(f"{_cuenta_ig()}/media", limit=GRILLA + 3,
+                     fields="id,timestamp,media_type,media_url,thumbnail_url,permalink")
+            return d.get("data", [])
+    items = [{"id": m.get("id"), "fecha": (m.get("timestamp") or "")[:10],
+              "imagen": m.get("thumbnail_url") or m.get("media_url"),
+              "permalink": m.get("permalink"), "video": m.get("media_type") == "VIDEO"}
+             for m in traer() if m.get("thumbnail_url") or m.get("media_url")]
+    _CACHE_FEED.update(cuando=ahora, items=items)
+    return items[:cantidad]
+
+
+def grilla(db_path: str, lunes: date, ahora: datetime | None = None, publicadas=None) -> dict:
+    """{'nuevas': [...], 'publicadas': [...], 'error': str|None}, en orden de perfil."""
+    ahora = ahora or ahora_utc()
+    fin = datetime.combine(lunes + timedelta(days=7), datetime.min.time(), _UY)
+    conn = _connect(db_path)
+    try:
+        filas = conn.execute(
+            "SELECT * FROM ig_publicaciones WHERE formato != 'historia' "
+            "AND estado IN ('borrador','aprobada','publicando','error','vencida') "
+            "AND programada_para >= ? AND programada_para < ? AND imagenes > 0 "
+            "ORDER BY programada_para DESC",
+            (_txt(ahora), _txt(fin))).fetchall()
+    finally:
+        conn.close()
+    nuevas = []
+    for f in filas[:GRILLA]:
+        p = dict(f)
+        local = _dt(p["programada_para"]).astimezone(_UY)
+        nuevas.append({"id": p["id"], "estado": p["estado"], "formato": p["formato"],
+                       "fecha": local.date().isoformat(), "hora": local.strftime("%H:%M"),
+                       "version": p["version"]})
+    error = None
+    viejas = []
+    faltan = GRILLA - len(nuevas)
+    if faltan > 0:
+        try:
+            viejas = (publicadas if publicadas is not None else feed_publicado())[:faltan]
+        except Exception as e:
+            error = "No se pudieron traer las publicaciones de Instagram"
+            logger.warning(f"Instagram: grilla sin publicadas ({e})")
+    return {"nuevas": nuevas, "publicadas": viejas, "error": error}
+
+
 # ── rutina ───────────────────────────────────────────────────────────────────
 
 def rutina(db_path: str, ahora: datetime | None = None, avisar_semana=None) -> dict:
