@@ -609,7 +609,7 @@ def test_esta_registrado_en_todos_lados():
     menu = HTML[HTML.index('<div class="nav-scroll">'):HTML.index('<div class="sidebar-bottom">')]
     # Juan (15/9): Email marketing pasa a MARKETING, abajo de Inteligencia marketing.
     marketing = menu[menu.index('nav-section-label">MARKETING'):menu.index('nav-section-label">FINANZAS')]
-    assert re.findall(r'id="nav-(\w+)"', marketing) == ["meta", "marketing", "email_mkt", "linkedin", "instagram"]
+    assert re.findall(r'id="nav-(\w+)"', marketing) == ["meta", "marketing", "email_mkt", "linkedin", "instagram", "sombra"]
     assert ('<div class="nav-item" id="nav-email_mkt" onclick="showPanel(\'email_mkt\')">'
             '<i data-lucide="mail" class="nav-icon"></i> Email marketing</div>') in marketing
     captacion = menu[menu.index('nav-section-label">CAPTACIÓN'):]

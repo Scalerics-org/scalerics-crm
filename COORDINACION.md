@@ -533,6 +533,21 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **17/9 — J (agente de marketing): Recomendaciones de pauta, "modo sombra" (Etapa 3).**
+
+  Panel nuevo `sombra` ("Recomendaciones de pauta") en MARKETING, con grant a
+  quien ya tiene `marketing`. `services/sombra_meta.py`: los lunes desde las 9
+  (marca `sombra_meta`, una por semana) lee la pauta **solo con lecturas** y
+  arma recomendaciones con reglas fijas (pausar anuncio sin leads, renovar
+  creatividad gastada, subir o bajar presupuesto de campaña, confirmar
+  objetivo de campañas que no buscan leads). El lunes siguiente evalúa cada
+  una: si se hizo algo equivalente (estado y presupuestos) y cómo resultó
+  (`coincidencia` / `agente` / `marketing` / `sin_definir`). **Sin mails**
+  (Juan: las recomendaciones no le llegan a Andrés). La evaluación y el
+  marcador se sacan en `routes/sombra.py` para quien no es admin: el
+  proveedor ve las recomendaciones, no su evaluación. `SOMBRA_META=off` lo
+  apaga. Tabla nueva `sombra_recomendaciones`.
+
 - **17/9 — J (agente de marketing): panel Instagram con aprobación (Etapa 2).**
 
   Nuevo panel `instagram` en MARKETING. **Nada se publica sin que una persona lo

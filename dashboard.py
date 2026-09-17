@@ -30,6 +30,7 @@ from routes.simulador import simulador_bp
 from routes.email_marketing import email_mkt_bp
 from routes.linkedin_panel import linkedin_panel_bp
 from routes.instagram import instagram_bp, instagram_pub_bp
+from routes.sombra import sombra_bp
 from routes.equipo import equipo_bp
 from routes.horarios import horarios_bp
 from routes.flujos import flujos_bp
@@ -1370,6 +1371,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-email_mkt .nav-icon{stroke:#6ee7b7}
 #nav-linkedin .nav-icon{stroke:#4f9cf9}
 #nav-instagram .nav-icon{stroke:#d946ef}
+#nav-sombra .nav-icon{stroke:#a8a29e}
 .nav-item.active #nav-cola .nav-icon,
 .nav-item.active .nav-icon{opacity:1}
 /* active item keeps its color but brighter */
@@ -1399,6 +1401,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-email_mkt.active .nav-icon{stroke:#a7f3d0}
 #nav-linkedin.active .nav-icon{stroke:#8ec2ff}
 #nav-instagram.active .nav-icon{stroke:#fae8ff}
+#nav-sombra.active .nav-icon{stroke:#e2e8f0}
 /* light mode — slightly darker tones */
 body.light #nav-cola .nav-icon{stroke:#2563eb}
 body.light #nav-clientes .nav-icon{stroke:#7c3aed}
@@ -1426,6 +1429,7 @@ body.light #nav-plantillas .nav-icon{stroke:#9333ea}
 body.light #nav-email_mkt .nav-icon{stroke:#065f46}
 body.light #nav-linkedin .nav-icon{stroke:#0a66c2}
 body.light #nav-instagram .nav-icon{stroke:#c026d3}
+body.light #nav-sombra .nav-icon{stroke:#57534e}
 /* ── Lucide icons ─────────────────────────────────────────────────────────── */
 .nav-icon{width:15px;height:15px;stroke-width:2;flex-shrink:0}
 /* Frase de equipo, version compacta del PDF de identidad de marca. Es la
@@ -2303,6 +2307,27 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   .em-mail-datos{grid-template-columns:1fr}
   .em-mail-datos dd{margin-bottom:4px}
 }
+/* ── Modo sombra ── */
+.so-oculto{display:none!important}
+.so-nota{font-size:.8rem;color:var(--texto-debil);background:var(--superficie-honda);border:1px solid var(--borde);border-radius:10px;padding:10px 14px;margin-bottom:14px;line-height:1.5}
+.so-marcador{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:16px}
+.so-tile{background:var(--superficie-honda);border:1px solid var(--borde);border-radius:10px;padding:12px}
+.so-tile b{display:block;font-size:1.5rem;color:var(--texto-fuerte);font-variant-numeric:tabular-nums}
+.so-tile span{font-size:.74rem;color:var(--texto-debil)}
+.so-barra{display:flex;align-items:center;justify-content:space-between;gap:8px 12px;flex-wrap:wrap;margin-bottom:14px}
+.so-lista{display:grid;gap:10px}
+.so-item{background:var(--superficie-honda);border:1px solid var(--borde);border-radius:10px;padding:12px 14px;display:grid;gap:6px}
+.so-cab{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.so-nombre{font-size:.86rem;font-weight:700;color:var(--texto-fuerte);overflow-wrap:anywhere}
+.so-campana{font-size:.72rem;color:var(--texto-tenue)}
+.so-evidencia{font-size:.82rem;color:var(--texto);line-height:1.5}
+.so-resultado{font-size:.78rem;color:var(--texto-debil);border-top:1px solid var(--borde);padding-top:6px;line-height:1.45}
+.so-chip{display:inline-block;border-radius:99px;padding:2px 9px;font-size:.7rem;font-weight:700;white-space:nowrap;background:var(--relleno);color:var(--texto-debil)}
+.so-chip-azul{background:var(--azul-tinte);color:var(--azul-claro)}
+.so-chip-verde{background:var(--verde-tinte);color:var(--verde-texto)}
+.so-chip-rojo{background:var(--rojo-tinte);color:var(--rojo-texto)}
+.so-msg{font-size:.78rem;color:var(--texto-debil)}
+.so-msg:empty{display:none}
 /* ── Instagram ── */
 .ig-oculto{display:none!important}
 .ig-barra{display:flex;align-items:center;justify-content:space-between;gap:8px 12px;flex-wrap:wrap;margin-bottom:14px}
@@ -2632,6 +2657,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div class="nav-item" id="nav-email_mkt" onclick="showPanel('email_mkt')"><i data-lucide="mail" class="nav-icon"></i> Email marketing</div>
   <div class="nav-item" id="nav-linkedin" onclick="showPanel('linkedin')"><i data-lucide="linkedin" class="nav-icon"></i> LinkedIn</div>
   <div class="nav-item" id="nav-instagram" onclick="showPanel('instagram')"><i data-lucide="image" class="nav-icon"></i> Instagram</div>
+  <div class="nav-item" id="nav-sombra" onclick="showPanel('sombra')"><i data-lucide="eye" class="nav-icon"></i> Recomendaciones de pauta</div>
   <div class="nav-section-label">FINANZAS</div>
   <div class="nav-item" id="nav-finanzas" onclick="showPanel('finanzas')"><i data-lucide="wallet" class="nav-icon"></i> Finanzas</div>
   <div class="nav-item" id="nav-simulador" onclick="showPanel('simulador')"><i data-lucide="calculator" class="nav-icon"></i> Simulador financiero</div>
@@ -3669,6 +3695,36 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     </div>
   </div>
   <!-- ======= FIN INSTAGRAM PANEL ======= -->
+
+  <!-- ======= MODO SOMBRA PANEL ======= -->
+  <!-- Recomendaciones de pauta (id interno: sombra). Marketing ve las
+       recomendaciones; la evaluacion y el marcador, solo administradores.
+       Ver services/sombra_meta.py. -->
+  <div id="sombra-panel" class="panel">
+    <div class="page-header">
+      <div>
+        <h1>Recomendaciones de pauta</h1>
+        <div class="page-date">Qué conviene cambiar en los anuncios, con los números de la semana</div>
+      </div>
+      <div>
+        <button type="button" class="export-btn so-oculto" id="so-btn-calcular" onclick="soCalcular()">Calcular ahora</button>
+      </div>
+    </div>
+    <div class="so-nota"><b>No se toca nada en Meta.</b> Los lunes se arman las recomendaciones con los números de los últimos 7 días.<span id="so-nota-admin" class="so-oculto"> El lunes siguiente se compara con lo que se hizo y con cómo le fue a cada anuncio (esto lo ven solo los administradores). Con pocos leads por semana, mirá la tendencia después de 4 a 6 semanas.</span></div>
+    <div class="so-marcador so-oculto" id="so-marcador"></div>
+    <div class="so-barra">
+      <div class="li-nav-semana">
+        <button type="button" class="cal-nav-btn" onclick="soSemana(-1)" aria-label="Semana anterior">&larr;</button>
+        <span id="so-semana-label" aria-live="polite"></span>
+        <button type="button" class="cal-nav-btn" onclick="soSemana(1)" aria-label="Semana siguiente">&rarr;</button>
+        <button type="button" class="cal-today-btn" onclick="soSemanaHoy()">Esta semana</button>
+      </div>
+      <span class="so-msg" id="so-msg" role="status"></span>
+    </div>
+    <div id="so-estado" class="li-vacio" role="status" aria-live="polite">Cargando…</div>
+    <div id="so-lista" class="so-lista"></div>
+  </div>
+  <!-- ======= FIN MODO SOMBRA PANEL ======= -->
 
 
   <div id="activity-panel" class="panel">
@@ -4723,6 +4779,7 @@ function showPanel(name) {
   if (name === 'email_mkt') loadEmailMkt();
   if (name === 'linkedin') loadLinkedin();
   if (name === 'instagram') igCargar();
+  if (name === 'sombra') soCargar();
 }
 
 // ========== Leads / Cola panel ==========
@@ -9472,20 +9529,20 @@ function _showScoreBreakdown(event, el) {
 
 // ── Mobile navigation ─────────────────────────────────────────────────────────
 // El mismo orden que el menu de la izquierda (Juan, 14/9).
-const NAV_PRIORITY = ['cal','meta','email_mkt','linkedin','instagram','finanzas','simulador','inteligencia_fin','seg_leads','wa','notion_clients','plantillas','clientes','projects','tasks','daily','daily_admin','activity','equipo','ausencias','flujos','horarios','cola','metrics'];
+const NAV_PRIORITY = ['cal','meta','email_mkt','linkedin','instagram','sombra','finanzas','simulador','inteligencia_fin','seg_leads','wa','notion_clients','plantillas','clientes','projects','tasks','daily','daily_admin','activity','equipo','ausencias','flujos','horarios','cola','metrics'];
 const NAV_ICONS = {
   cola:'inbox',meta:'instagram',cal:'calendar',
   tasks:'check-square',pipeline:'trending-up',clientes:'users',
   wa:'message-circle',metrics:'bar-chart-2',activity:'clock',projects:'target',
   notion_clients:'handshake',finanzas:'wallet',simulador:'calculator',inteligencia_fin:'lightbulb',equipo:'network',
-  ausencias:'calendar-clock',horarios:'clock-4',flujos:'workflow',seg_leads:'phone-call',daily:'clipboard-list',plantillas:'message-square-text',daily_admin:'clipboard-check',email_mkt:'mail',linkedin:'linkedin',instagram:'image'
+  ausencias:'calendar-clock',horarios:'clock-4',flujos:'workflow',seg_leads:'phone-call',daily:'clipboard-list',plantillas:'message-square-text',daily_admin:'clipboard-check',email_mkt:'mail',linkedin:'linkedin',instagram:'image',sombra:'eye'
 };
 const NAV_LABELS = {
   cola:'Outbound',meta:'Meta',cal:'Agenda',
   tasks:'Tareas',pipeline:'Pipeline',clientes:'Clientes',
   wa:'WA',metrics:'Intel. comercial',activity:'Actividad',projects:'Proyectos',
   notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',
-  ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento',daily:'Daily',plantillas:'Plantillas',daily_admin:'Daily Admin',email_mkt:'Email mkt',linkedin:'LinkedIn',instagram:'Instagram'
+  ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento',daily:'Daily',plantillas:'Plantillas',daily_admin:'Daily Admin',email_mkt:'Email mkt',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomend.'
 };
 let _mobileNavOverflow = [];
 
@@ -9565,7 +9622,7 @@ function closeMasSheet() {
 }
 
 // ── Panel access control ──────────────────────────────────────────────────────
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram'];
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra'];
 (async () => {
   try {
     const r = await fetch('/api/me');
@@ -13600,6 +13657,101 @@ async function igArmar() {
   }
 }
 // ========== FIN Instagram ==========
+
+// ========== Modo sombra ==========
+// Sin barras invertidas en este bloque: vive dentro de un string de Python.
+let soDatos = null;
+let soSemanaSel = '';
+let soPedido = 0;
+const SO_TIPOS = {pausar: 'so-chip-rojo', bajar: 'so-chip-rojo', escalar: 'so-chip-verde', renovar: 'so-chip-azul', confirmar: ''};
+const SO_VEREDICTOS = {
+  coincidencia: ['Coincidieron', 'so-chip-verde'],
+  agente: ['Tenía razón la recomendación', 'so-chip-azul'],
+  marketing: ['Tenía razón el de marketing', 'so-chip-rojo'],
+  sin_definir: ['Sin definir', '']
+};
+
+function soSemana(delta) {
+  if (!soDatos) return;
+  const p = soDatos.semana.split('-');
+  const d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]) + 7 * delta);
+  soSemanaSel = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  soCargar();
+}
+
+function soSemanaHoy() { soSemanaSel = ''; soCargar(); }
+
+async function soCargar() {
+  const estado = document.getElementById('so-estado');
+  if (!estado) return;
+  const pedido = ++soPedido;
+  let d;
+  try {
+    const r = await fetch('/api/sombra/semana' + (soSemanaSel ? '?semana=' + encodeURIComponent(soSemanaSel) : ''));
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    d = await r.json();
+    if (!d || !Array.isArray(d.recomendaciones)) throw new Error('respuesta incompleta');
+  } catch (e) {
+    if (pedido !== soPedido) return;
+    estado.textContent = 'No se pudieron cargar las recomendaciones. Probá de nuevo en un rato.';
+    liClase('so-estado', false, 'so-oculto');
+    return;
+  }
+  if (pedido !== soPedido) return;
+  soDatos = d;
+  soPintar();
+}
+
+function soPintar() {
+  const d = soDatos;
+  document.getElementById('so-semana-label').textContent = 'Semana del ' + igFechaLarga(d.semana);
+  liClase('so-nota-admin', !d.es_admin, 'so-oculto');
+  liClase('so-marcador', !d.es_admin, 'so-oculto');
+  const m = d.marcador || {};
+  const tiles = [['coincidencia', 'Coincidieron'], ['agente', 'Tenía razón la recomendación'],
+    ['marketing', 'Tenía razón el de marketing'], ['sin_definir', 'Sin definir']];
+  document.getElementById('so-marcador').innerHTML = tiles.map(t =>
+    '<div class="so-tile"><b>' + Number(m[t[0]] || 0) + '</b><span>' + t[1] + '</span></div>').join('');
+  const hay = d.recomendaciones.length > 0;
+  const estado = document.getElementById('so-estado');
+  estado.textContent = hay ? '' : (d.semana === d.semana_actual
+    ? 'Todavía no hay recomendaciones esta semana. Se arman solas los lunes a las 9.'
+    : 'No hubo recomendaciones esa semana.');
+  liClase('so-estado', hay, 'so-oculto');
+  liClase('so-btn-calcular', !(d.puede_calcular && d.semana === d.semana_actual), 'so-oculto');
+  document.getElementById('so-lista').innerHTML = d.recomendaciones.map(soItem).join('');
+}
+
+function soItem(r) {
+  const v = SO_VEREDICTOS[r.veredicto];
+  const resultado = !soDatos.es_admin ? '' : r.veredicto
+    ? '<div class="so-resultado"><span class="so-chip ' + v[1] + '">' + liEsc(v[0]) + '</span> ' + liEsc(r.detalle || '') + '</div>'
+    : '<div class="so-resultado">Se evalúa el lunes siguiente, con lo que pase esta semana.</div>';
+  const campana = r.campana_nombre && r.campana_nombre !== r.objeto_nombre
+    ? '<div class="so-campana">Campaña: ' + liEsc(r.campana_nombre) + '</div>' : '';
+  return '<article class="so-item"><div class="so-cab"><span class="so-chip ' + (SO_TIPOS[r.tipo] || '') + '">' +
+    liEsc(r.tipo_texto) + '</span><span class="so-nombre">' + liEsc(r.objeto_nombre || '') + '</span></div>' +
+    campana + '<div class="so-evidencia">' + liEsc(r.evidencia) + '</div>' + resultado + '</article>';
+}
+
+async function soCalcular() {
+  const btn = document.getElementById('so-btn-calcular');
+  const msg = document.getElementById('so-msg');
+  btn.disabled = true;
+  msg.textContent = 'Leyendo la pauta en Meta…';
+  try {
+    const r = await fetch('/api/sombra/calcular', {method: 'POST'});
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.ok) throw new Error(d.error || (d.estado === 'sin_credenciales' ? 'Falta el acceso a Meta.' : 'No se pudo calcular.'));
+    msg.textContent = 'Listo: ' + d.recomendaciones + ' recomendaciones.';
+    await soCargar();
+  } catch (e) {
+    msg.textContent = e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+// ========== FIN Modo sombra ==========
 
 // ========== Email marketing ==========
 // Lo que sale por Resend, con lo que Resend cuenta despues. Los numeros y las
@@ -18124,7 +18276,7 @@ def create_app(db_path: str) -> Flask:
     for bp in (leads_bp, demos_bp, calendar_bp, wa_bp, pipeline_bp, tasks_bp, budgets_bp, tokens_bp, meta_bp, calendly_bp, notion_bp, projects_bp, preclientes_bp,
                 notion_clients_bp, resend_bp, linkedin_bp, web_bp, finanzas_bp, marketing_bp,
                 simulador_bp, equipo_bp, horarios_bp, flujos_bp, seg_leads_bp, daily_bp, plantillas_bp,
-                backups_bp, email_mkt_bp, linkedin_panel_bp, instagram_bp, instagram_pub_bp):
+                backups_bp, email_mkt_bp, linkedin_panel_bp, instagram_bp, instagram_pub_bp, sombra_bp):
         app.register_blueprint(bp)
 
     @app.before_request
@@ -19123,8 +19275,8 @@ select:focus{border-color:#0088cc}
 </div>
 
 <script>
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram'];
-const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas',email_mkt:'Email marketing',linkedin:'LinkedIn',instagram:'Instagram'};
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra'];
+const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas',email_mkt:'Email marketing',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomendaciones de pauta'};
 let _roles = [];
 
 // Paneles que muestran el check "solo lectura". El dato (roles.paneles_solo_lectura)
@@ -19363,6 +19515,10 @@ loadBackups();
         # Instagram: publica solo lo aprobado. INSTAGRAM_AGENTE=off lo apaga.
         from services.instagram import start_instagram
         start_instagram(app)
+
+        # Modo sombra: recomendaciones de pauta los lunes, sin tocar Meta.
+        from services.sombra_meta import start_sombra_meta
+        start_sombra_meta(app)
 
         # Backup diario de la base (docs/BACKUPS.md). Prendido por defecto,
         # BACKUP_DB=off lo apaga; trae su propia marca en `corridas`.
