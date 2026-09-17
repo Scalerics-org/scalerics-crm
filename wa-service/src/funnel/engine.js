@@ -149,8 +149,13 @@ function crearEmbudo({
      */
     const veredicto = await sombra?.revisarOferta?.(lead, situacion, texto);
     if (veredicto?.bloquear) {
-      const segundo = await redactor?.escribir(lead, situacion, extra + SIN_ATRIBUIR);
-      const otra = segundo ? await sombra.revisarOferta(lead, situacion, segundo, { intento: 2 }) : null;
+      // Si la primera revision ya se comio el presupuesto de tiempo del turno,
+      // no se reescribe nada: el lead esta esperando y el texto fijo es seguro.
+      const hayTiempo = (veredicto.ms ?? 0) < (sombra.presupuestoMs ?? Infinity);
+      const segundo = hayTiempo ? await redactor?.escribir(lead, situacion, extra + SIN_ATRIBUIR) : null;
+      const otra = segundo
+        ? await sombra.revisarOferta(lead, situacion, segundo, { intento: 2, gastadoMs: veredicto.ms })
+        : null;
       if (segundo && otra && !otra.bloquear) {
         texto = segundo;
       } else {

@@ -66,10 +66,16 @@ const PREGUNTA_OFERTA = {
   },
 };
 
-function crearSombra({ jev, repo, logger = null, modo = 'apagado', umbral = 0.8 }) {
+function crearSombra({ jev, repo, logger = null, modo = 'apagado', umbral = 0.8, presupuestoMs = 3000 }) {
   const activa = Boolean(jev?.activo) && modo !== 'apagado';
   const decide = activa && modo === 'decide';
   const enCurso = new Set();
+  /**
+   * Leads cuya necesidad ya se decidio en este turno, para no preguntar dos
+   * veces lo mismo: al cerrar el descubrimiento se decide, y un rato despues el
+   * embudo entra a SCORED y llama a `alCalificar`.
+   */
+  const yaDecididos = new Set();
 
   /** Corre sin que nadie espere, y nunca deja una promesa rechazada suelta. */
   function enSegundoPlano(fn) {
@@ -94,7 +100,7 @@ function crearSombra({ jev, repo, logger = null, modo = 'apagado', umbral = 0.8 
     const a = r.answers.necesidad;
     const tipoJev = NECESIDAD[a?.choice]?.tipo ?? null;
     // Para el bot, no tener tipo y "no sabe" son lo mismo: no sabe que necesita.
-    const tipoBot = lead.business_type ?? 6;
+    const tipoBot = lead.business_type ?? NECESIDAD.no_queda_claro.tipo;
     const coincide = tipoJev === null ? null : tipoJev === tipoBot;
 
     repo.registrarSombra({
@@ -134,20 +140,28 @@ function crearSombra({ jev, repo, logger = null, modo = 'apagado', umbral = 0.8 
     if (typeof p === 'number' && p >= umbral) {
       logger?.info({ leadId: lead.id, situacion, probabilidad: p, intento }, 'jev cree que la oferta inventa algo del lead');
     }
-    return typeof p === 'number' ? { probabilidad: p } : null;
+    return typeof p === 'number' ? { probabilidad: p, ms: r.ms } : null;
   }
 
   return {
     activa,
     decide,
     umbral,
+    presupuestoMs,
 
     /**
-     * Modo sombra, al dar por calificado. En decide no hace nada: la decision
-     * ya se tomo antes de cerrar el descubrimiento, en `decidirNecesidad`.
+     * Al dar por calificado: se anota, sin decidir nada.
+     *
+     * En decide, si la decision ya se tomo al cerrar el descubrimiento, esto no
+     * vuelve a preguntar. Pero hay un camino que llega a calificado sin pasar
+     * por ahi —el guardia de promesas, cuando el modelo se pone a agendar solo—
+     * y por ese sigue quedando la anotacion: es justo un lead que califico sin
+     * que nadie revisara que necesita, o sea el que mas interesa mirar despues.
      */
     alCalificar(lead) {
-      if (activa && !decide && lead) enSegundoPlano(() => necesidad(lead));
+      if (!activa || !lead) return;
+      if (decide && yaDecididos.delete(lead.id)) return;
+      enSegundoPlano(() => necesidad(lead));
     },
 
     /** Modo sombra, despues de mandar la oferta. En decide se revisa antes. */
@@ -170,6 +184,7 @@ function crearSombra({ jev, repo, logger = null, modo = 'apagado', umbral = 0.8 
       if (!decide || !lead) return null;
       let r = null;
       try {
+        yaDecididos.add(lead.id);
         r = await necesidad(lead);
       } catch (e) {
         logger?.warn({ leadId: lead.id, err: String(e.message || e) }, 'fallo la decision de necesidad de jev');
@@ -179,16 +194,26 @@ function crearSombra({ jev, repo, logger = null, modo = 'apagado', umbral = 0.8 
 
       if (r.choice === 'no_queda_claro') return { repreguntar: true };
       // Ya guardaba eso mismo: no hay nada que pisar.
-      if (r.tipo === (lead.business_type ?? 6)) return null;
+      if (r.tipo === (lead.business_type ?? NECESIDAD.no_queda_claro.tipo)) return null;
       return { pisar: r.tipo };
     },
 
     /**
      * Modo decide: si el mensaje de la oferta se puede mandar.
-     * @returns {Promise<{bloquear: boolean}|null>}
+     *
+     * `gastadoMs` es lo que Jev ya demoro en este turno. Pasado el presupuesto
+     * no se pregunta de nuevo —el lead esta esperando— y se contesta bloquear:
+     * el texto fijo no le atribuye nada, asi que no hace falta verificarlo.
+     *
+     * @returns {Promise<{bloquear: boolean, probabilidad?: number, ms: number}|null>}
      */
     async revisarOferta(lead, situacion, texto, opciones = {}) {
       if (!decide || !lead || !SITUACIONES_DE_OFERTA.has(situacion)) return null;
+      const { gastadoMs = 0 } = opciones;
+      if (gastadoMs >= presupuestoMs) {
+        logger?.warn({ leadId: lead.id, situacion, gastadoMs }, 'sin tiempo para revisar el reintento: sale el texto fijo');
+        return { bloquear: true, ms: 0, sinTiempo: true };
+      }
       let r = null;
       try {
         r = await oferta(lead, situacion, texto, opciones);
@@ -197,7 +222,7 @@ function crearSombra({ jev, repo, logger = null, modo = 'apagado', umbral = 0.8 
         return null;
       }
       if (!r) return null;
-      return { bloquear: r.probabilidad >= umbral, probabilidad: r.probabilidad };
+      return { bloquear: r.probabilidad >= umbral, probabilidad: r.probabilidad, ms: r.ms };
     },
 
     /** Para los tests: espera lo que quedo corriendo en segundo plano. */

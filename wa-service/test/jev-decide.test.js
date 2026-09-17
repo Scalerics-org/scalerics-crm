@@ -20,7 +20,7 @@ const noul = (p) => ({ type: 'noul', noul: p });
  * Jev de mentira. `porTurno` deja contestar distinto en cada llamada de la
  * misma pregunta, que es como se prueba el reintento de la oferta.
  */
-function stubJev({ necesidad = null, inventa = 0, porTurno = {}, falla = false, tira = false } = {}) {
+function stubJev({ necesidad = null, inventa = 0, porTurno = {}, falla = false, tira = false, ms = 5 } = {}) {
   const consultas = [];
   const cuenta = {};
   return {
@@ -39,7 +39,7 @@ function stubJev({ necesidad = null, inventa = 0, porTurno = {}, falla = false, 
         else if (k === 'es_cliente') answers[k] = noul(0.9);
         else if (k === 'inventa') answers[k] = noul(inventa);
       }
-      return { answers, model: 'jev-stub', ms: 5, usage: { input_tokens: 500 } };
+      return { answers, model: 'jev-stub', ms, usage: { input_tokens: 500 } };
     },
   };
 }
@@ -182,6 +182,47 @@ test('con Jev callado la oferta sale tal cual la escribio el modelo', async () =
   assert.equal(msgs.at(-1), '[link_reunion]');
   const pedidos = modelo.llamadas.map((l) => l.mensajes?.[0]?.content || '').filter((p) => p.includes('link_reunion'));
   assert.equal(pedidos.length, 1, 'ni siquiera se reintenta');
+});
+
+/**
+ * Con Jev lento, las llamadas encadenadas de un turno se suman y el lead
+ * espera. Pasado el presupuesto no se reintenta: sale el texto fijo, que no le
+ * atribuye nada y no cuesta otra llamada.
+ */
+test('si la primera revision se comio el presupuesto, no se reintenta', async () => {
+  const modelo = stubModelo({ datos: DATOS_WEBS });
+  const jev = stubJev({ inventa: 0.95, ms: 4000 });
+  const s = await conLead({ ...DECIDE, JEV_PRESUPUESTO_MS: '3000', modelo, _jev: jev });
+
+  const msgs = await conversar(s);
+
+  assert.match(msgs.at(-1), /videollamada de 30 minutos/, 'sale el texto fijo');
+  const pedidos = modelo.llamadas.map((l) => l.mensajes?.[0]?.content || '').filter((p) => p.includes('link_reunion'));
+  assert.equal(pedidos.length, 1, 'ni se le pide al redactor que reescriba');
+  const anotado = s.repo.sombrasDeLead(s.repo.leadPorTelefono(TEL).id).filter((x) => x.decision === 'oferta');
+  assert.equal(anotado.length, 1, 'una sola consulta a Jev');
+});
+
+/**
+ * El guardia de promesas manda al lead a calificado sin pasar por el cierre del
+ * descubrimiento, asi que ahi Jev no decide. Igual se anota: es justo un lead
+ * que califico sin que nadie revisara que necesita.
+ */
+test('si el modelo se pone a agendar solo, Jev no decide pero deja anotado', async () => {
+  const jev = stubJev({ necesidad: choice('no_queda_claro', 0.99) });
+  const s = await conLead({
+    ...DECIDE,
+    modelo: stubModelo({ respuestas: { conversacion: 'Perfecto, quedó agendado para el martes a las 10' } }),
+    _jev: jev,
+  });
+
+  await conversar(s, 'hola, tengo una inmobiliaria');
+
+  const l = s.repo.leadPorTelefono(TEL);
+  assert.equal(l.fsm_state, S.MEETING_LINK_SENT, 'el guardia de promesas hace lo de siempre');
+  const necesidades = s.repo.sombrasDeLead(l.id).filter((x) => x.decision === 'necesidad');
+  assert.equal(necesidades.length, 1, 'queda anotado para el informe');
+  assert.equal(l.business_type, null, 'pero no decide nada por ese camino');
 });
 
 // ── el timeout de verdad, con el cliente ─────────────────────────────────────

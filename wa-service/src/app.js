@@ -161,6 +161,7 @@ function construir(cfg, {
   });
   const sombra = require('./ia/sombra').crearSombra({
     jev, repo, logger: log, modo: cfg.JEV_MODO, umbral: cfg.JEV_UMBRAL,
+    presupuestoMs: cfg.JEV_PRESUPUESTO_MS,
   });
 
   const embudo = crearEmbudo({

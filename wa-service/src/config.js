@@ -223,9 +223,25 @@ const esquema = z.object({
   JEV_UMBRAL: z.coerce.number().min(0).max(1).default(0.8),
   JEV_URL: z.string().default('https://api.typesafe.ai/v1/systemone'),
   JEV_MODELO: z.string().default('jev-latest'),
-  // Jev tarda 150-800ms. El tope es para que una API colgada no deje
-  // promesas vivas: la conversacion no espera a Jev en ningun caso.
-  JEV_TIMEOUT_MS: z.coerce.number().int().positive().default(5000),
+  /**
+   * Jev tarda 150-800ms medido contra la API. En sombra el tope solo evita
+   * promesas colgadas —nadie espera— pero en `decide` el lead SI espera: el
+   * mensaje no sale hasta que Jev conteste o se venza el tope.
+   *
+   * Por eso 2,5s y no 5: peor caso de un turno son tres llamadas (la necesidad
+   * al cerrar, la oferta, y el reintento), y con el presupuesto de abajo eso
+   * queda acotado en vez de sumar sin techo.
+   */
+  JEV_TIMEOUT_MS: z.coerce.number().int().positive().default(2500),
+
+  /**
+   * Cuanto puede demorar Jev en total antes de que salga un mensaje.
+   *
+   * Si la primera revision de la oferta ya se comio el presupuesto, no se
+   * reintenta: sale el texto fijo sin atribuciones, que es seguro y no cuesta
+   * otra llamada. Vale mas un mensaje mas seco a tiempo que uno mejor tarde.
+   */
+  JEV_PRESUPUESTO_MS: z.coerce.number().int().positive().default(3000),
 
   // Cuanto se guardan las notas de voz. La transcripcion queda para siempre; el
   // audio no: guardar la voz de gente sin necesidad no aporta nada y el volumen
