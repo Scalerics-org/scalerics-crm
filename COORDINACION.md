@@ -557,6 +557,11 @@ leads de Meta se renombró a **D** para deshacer el empate.
     `linkedin`), `dashboard.py` (menú, panel, CSS antes de LinkedIn, JS después
     de "FIN LinkedIn", arranque del hilo), `services/email_service.py` (tres
     avisos). Se actualizaron los tests que fijan el orden del menú MARKETING.
+  - **Pedidos de corrección en texto libre** (tabla `ig_correcciones`): Juan los
+    escribe en la tarjeta y los resuelve una tarea programada de Claude Code
+    cada 30 min con `scripts/ig_correcciones.py`, contra `/api/instagram-bot/`
+    (**exento del login**, validado con `IG_BOT_TOKEN` y compare_digest; solo
+    abre esas rutas). La versión corregida queda en borrador.
 
 - **16/9 — J (agente de marketing, pedido de Juan): alertas diarias de la pauta por mail.**
 
