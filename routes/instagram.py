@@ -43,7 +43,8 @@ def _publica(pub: dict) -> dict:
     pub["imagenes_url"] = [
         f"/api/instagram/publicaciones/{pub['id']}/imagen/{n}?v={pub['version']}"
         for n in range(1, pub["imagenes"] + 1)]
-    pub["estilos"] = list(ig.ig_render.estilos_para(pub["formato"]))
+    pub["estilos"] = [{"id": e, "nombre": ig.ig_render.nombre_estilo(e)}
+                      for e in ig.ig_render.estilos_para(pub["formato"])]
     return pub
 
 
@@ -77,6 +78,7 @@ def api_semana():
         "semana_actual": ig.semana_actual(ahora).isoformat(),
         "publicaciones": pubs,
         "banco": quedan,
+        "plan": ig.plan_para_panel(lunes),
         "puede_armar": is_admin(_db(), session.get("user_id")),
     })
 

@@ -74,12 +74,41 @@ def test_los_asteriscos_no_se_ven_y_marcan_el_acento(texto, esperado):
     assert ig_render._palabras(texto, True) == esperado
 
 
-def test_el_feed_siempre_sale_en_la_familia_oscura():
-    """Un estilo de historia pedido para el feed no rompe la grilla."""
-    assert ig_render.estilos_para("imagen") == ("verde",)
-    oscura = ig_render.dibujar({"titulo": "x"}, "verde", "feed")
+def test_el_azul_brillante_es_solo_para_historias():
+    assert "degradado" not in ig_render.estilos_para("imagen")
+    assert "degradado" in ig_render.estilos_para("historia")
     pedida = ig_render.dibujar({"titulo": "x"}, "degradado", "feed")
-    assert Image.open(io.BytesIO(oscura)).getpixel((5, 1300)) == Image.open(io.BytesIO(pedida)).getpixel((5, 1300))
+    verde = ig_render.dibujar({"titulo": "x"}, "verde", "feed")
+    assert _tono(pedida) == _tono(verde)
+
+
+def _tono(jpeg):
+    im = Image.open(io.BytesIO(jpeg)).convert("L").resize((20, 25))
+    return round(sum(im.getdata()) / 500 / 32)
+
+
+def test_cada_fondo_tiene_nombre_y_el_blanco_es_claro():
+    for e in ig_render.ESTILOS_FEED + ig_render.ESTILOS_HISTORIA:
+        assert ig_render.nombre_estilo(e) != e
+    def media(jpeg, caja):
+        im = Image.open(io.BytesIO(jpeg)).convert("L").crop(caja)
+        return sum(im.getdata()) / (im.width * im.height)
+
+    blanco = ig_render.dibujar({"titulo": "x"}, "blanco", "feed")
+    oscuro = ig_render.dibujar({"titulo": "x"}, "grafito", "feed")
+    assert media(blanco, (0, 600, 40, 700)) > 200 and media(oscuro, (0, 600, 40, 700)) < 100
+    marco = ig_render.dibujar({"titulo": "x"}, "marco", "feed")
+    assert media(marco, (5, 600, 40, 700)) > media(marco, (70, 600, 100, 700)) + 30
+
+
+def test_los_planes_usan_fondos_validos_y_varian():
+    for plan in ig.PLANES_FEED:
+        assert set(plan) <= set(ig_render.ESTILOS_FEED) and len(set(plan)) == len(plan)
+        assert any(e.startswith("blanco") for e in plan)
+    for plan in ig.PLANES_HISTORIA:
+        assert set(plan) <= set(ig_render.ESTILOS_HISTORIA)
+    meses = {ig.plan_del_mes(2026, m) for m in range(1, 13)}
+    assert len(meses) > 1
 
 
 # ── banco ────────────────────────────────────────────────────────────────────
@@ -110,6 +139,49 @@ def test_arma_tres_de_feed_y_dos_historias_a_las_19(db):
     assert semana["historia_mar"]["formato"] == "historia"
     assert all(p["estado"] == "borrador" and p["imagenes"] >= 1 for p in semana.values())
     assert len({p["clave_banco"] for p in semana.values()}) == 5
+
+
+def test_la_semana_sigue_el_plan_del_mes(db):
+    semana = _semana(db)
+    plan = ig.plan_del_mes(2026, 9)
+    feed = [semana[s]["estilo"] for s in ("feed_lun", "feed_mie", "feed_vie")]
+    assert feed == [plan[i % len(plan)] for i in range(3)]
+    historias = ig.plan_del_mes(2026, 9, "historia")
+    assert [semana[s]["estilo"] for s in ("historia_mar", "historia_jue")] == list(historias[:2])
+
+
+def test_el_plan_sigue_de_una_semana_a_la_otra(db):
+    _semana(db)
+    ig.armar_semana(db, date(2026, 9, 28), JUEVES)
+    siguiente = {p["slot"]: p for p in ig.listar_semana(db, date(2026, 9, 28))}
+    plan = ig.plan_del_mes(2026, 9)
+    # 28/9 es la cuarta pieza de feed de septiembre; el 30/9, la quinta.
+    assert siguiente["feed_lun"]["estilo"] == plan[3 % len(plan)]
+    assert siguiente["feed_mie"]["estilo"] == plan[4 % len(plan)]
+    # el viernes 2/10 ya es octubre: arranca el plan de octubre
+    assert siguiente["feed_vie"]["estilo"] == ig.plan_del_mes(2026, 10)[0]
+
+
+def test_otra_idea_mantiene_el_fondo(db):
+    p = _semana(db)["feed_mie"]
+    assert ig.otra_idea(db, p["id"], JUEVES)["estilo"] == p["estilo"]
+
+
+def test_replanificar_ajusta_lo_que_no_salio(db):
+    semana = _semana(db)
+    ids = [semana[s]["id"] for s in ("feed_lun", "feed_mie", "feed_vie")]
+    _sql(db, "UPDATE ig_publicaciones SET estilo = 'verde'")
+    ig.aprobar(db, ids[0], "Juan", JUEVES)
+    _sql(db, "UPDATE ig_publicaciones SET estado = 'publicada' WHERE id = ?", ids[2])
+    antes = {i: ig.obtener(db, i)["version"] for i in ids}
+    ig.replanificar(db, JUEVES)
+    plan = ig.plan_del_mes(2026, 9)
+    lun, mie, vie = (ig.obtener(db, i) for i in ids)
+    assert lun["estilo"] == plan[0] and mie["estilo"] == plan[1]
+    if plan[0] != "verde":
+        assert lun["estado"] == "borrador" and lun["version"] == antes[ids[0]] + 1
+    assert vie["estilo"] == "verde" and vie["version"] == antes[ids[2]]
+    assert ig.replanificar(db, JUEVES) == 0
 
 
 def test_armar_de_nuevo_no_duplica(db):

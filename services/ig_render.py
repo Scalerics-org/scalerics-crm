@@ -5,11 +5,15 @@ piezas se dibujan a mano. Manual de marca de Scalerics: DM Sans, fondo oscuro
 #0F2430, claro #EFEFEF, degradado A #1897D3 -> #052670, degradado B
 #80CD2A -> #299849.
 
-**La grilla manda.** El feed de @scalerics_ (analizado el 17/9/2026) es fondo
-oscuro con textura, titulo en mayusculas centrado, palabras clave en verde y el
-logo chico abajo al centro. Todas las piezas de feed salen de esa familia: lo
-unico que cambia es el color de acento. Los fondos claros o de color van solo
-en historias, que no aparecen en la grilla.
+**La grilla manda.** Los fondos copian las piezas que armo el de marketing
+(medidas el 17/9/2026 sobre las publicadas): verde oliva con mucha textura y
+gris oscuro con textura, con o sin un recuadro casi negro adentro, y un negro
+con brillo verdoso. Se suman los azules de la marca (las piezas de mayo y el
+degradado A del manual), tambien con o sin recuadro, y el claro del manual
+(#EFEFEF) con texto #0F2430, que la grilla usa de golpe de contraste. Texto en mayusculas centrado, palabras clave en verde y el
+logo abajo al centro. Lo que rota de pieza en pieza es el fondo, segun el plan
+del mes (`services/instagram.plan_del_mes`). Juan (17/9): "asi todo azul es
+monotono".
 
 Una diapositiva es un dict con `titulo` y, opcionales, `etiqueta` (arriba, en
 chico), `texto` (debajo) y `cta` (boton al pie). Las palabras entre asteriscos
@@ -34,15 +38,33 @@ GRIS = (170, 184, 192)
 
 TAMANOS = {"feed": (1080, 1350), "historia": (1080, 1920)}
 
-# Feed: siempre fondo oscuro; cambia el acento. Historias: ademas degradado.
+_BOTON = (VERDE_1, VERDE_2)
+# "verde" era el azul noche de la primera version: el nombre queda para las
+# filas guardadas y ahora es el verde con textura.
 ESTILOS = {
-    "verde": {"fondo": "oscuro", "acento": VERDE_1, "boton": (VERDE_1, VERDE_2)},
-    "azul": {"fondo": "oscuro", "acento": AZUL_1, "boton": (AZUL_1, AZUL_2)},
-    "degradado": {"fondo": "degradado", "acento": VERDE_1, "boton": (VERDE_1, VERDE_2)},
+    "verde": {"nombre": "Verde con textura", "fondo": "oliva", "tarjeta": False},
+    "marco": {"nombre": "Verde con recuadro", "fondo": "oliva", "tarjeta": True},
+    "grafito": {"nombre": "Gris con textura", "fondo": "gris", "tarjeta": False},
+    "grafito_marco": {"nombre": "Gris con recuadro", "fondo": "gris", "tarjeta": True},
+    "bruma": {"nombre": "Negro con brillo verde", "fondo": "bruma", "tarjeta": False},
+    "azul": {"nombre": "Azul con textura", "fondo": "azul", "tarjeta": False},
+    "azul_marco": {"nombre": "Azul con recuadro", "fondo": "azul", "tarjeta": True},
+    "bruma_azul": {"nombre": "Negro con brillo azul", "fondo": "bruma_azul", "tarjeta": False},
+    "blanco": {"nombre": "Blanco", "fondo": "blanco", "tarjeta": False, "claro": True},
+    "blanco_marco": {"nombre": "Blanco con recuadro", "fondo": "gris_claro", "tarjeta": True,
+                     "claro": True},
+    "degradado": {"nombre": "Azul brillante", "fondo": "degradado", "tarjeta": False},
 }
-# El azul existe pero el feed va en verde: es la linea que ya tiene la grilla.
-ESTILOS_FEED = ("verde",)
-ESTILOS_HISTORIA = ("verde", "degradado")
+ESTILOS_FEED = ("verde", "marco", "grafito", "grafito_marco", "bruma",
+                "azul", "azul_marco", "bruma_azul", "blanco", "blanco_marco")
+ESTILOS_HISTORIA = ("verde", "grafito", "bruma", "azul", "bruma_azul", "blanco", "degradado")
+VERDE_OSCURO = (41, 152, 73)
+TEXTO_SUAVE_CLARO = (70, 88, 100)
+TARJETA = (24, 26, 25)
+
+
+def nombre_estilo(estilo: str) -> str:
+    return (ESTILOS.get(estilo) or {}).get("nombre", estilo)
 
 
 def estilos_para(formato: str) -> tuple:
@@ -57,11 +79,14 @@ def _fuente(peso: str, tamano: int) -> ImageFont.FreeTypeFont:
 
 
 @lru_cache(maxsize=4)
-def _logo(alto: int) -> Image.Image:
-    """Version negativa: la palabra en #EFEFEF, el isotipo con sus colores."""
+def _logo(alto: int, negativo: bool = True) -> Image.Image:
+    """Negativo: la palabra en #EFEFEF, el isotipo con sus colores. Si no, el
+    logo tal cual, para fondos claros."""
     logo = Image.open(_LOGO).convert("RGBA")
     ancho = round(logo.width * alto / logo.height)
     logo = logo.resize((ancho, alto), Image.LANCZOS)
+    if not negativo:
+        return logo
     px = logo.load()
     for x in range(logo.width):
         for y in range(logo.height):
@@ -82,18 +107,68 @@ def _degradado(tamano, c1, c2) -> Image.Image:
     return chico.resize((ancho, alto), Image.BILINEAR)
 
 
-@lru_cache(maxsize=4)
-def _fondo_oscuro(tamano) -> Image.Image:
-    """#0F2430 con un brillo suave arriba y grano, como el feed actual."""
+def _brillo(base: Image.Image, color, fuerza: int) -> Image.Image:
+    """Una luz suave arriba a la izquierda."""
+    ancho, alto = base.size
+    luz = Image.new("L", (ancho // 8, alto // 8), 0)
+    ImageDraw.Draw(luz).ellipse(
+        (-ancho // 16, -alto // 20, ancho // 8 + ancho // 16, alto // 16 + alto // 20), fill=fuerza)
+    luz = luz.filter(ImageFilter.GaussianBlur(ancho // 40)).resize(base.size, Image.BILINEAR)
+    return Image.composite(Image.new("RGB", base.size, color), base, luz)
+
+
+def _con_grano(base: Image.Image, sigma: float) -> Image.Image:
+    """Grano monocromo sumado, centrado: oscurece y aclara por igual."""
+    from PIL import ImageChops
+    ruido = Image.effect_noise(base.size, sigma).convert("RGB")
+    return ImageChops.add(base, ruido, 1.0, -128)
+
+
+@lru_cache(maxsize=12)
+def _fondo(tipo: str, tamano) -> Image.Image:
     ancho, alto = tamano
-    base = Image.new("RGB", tamano, OSCURO)
-    brillo = Image.new("L", (ancho // 8, alto // 8), 0)
-    ImageDraw.Draw(brillo).ellipse(
-        (-ancho // 16, -alto // 20, ancho // 8 + ancho // 16, alto // 16 + alto // 20), fill=90)
-    brillo = brillo.filter(ImageFilter.GaussianBlur(ancho // 40)).resize(tamano, Image.BILINEAR)
-    base = Image.composite(Image.new("RGB", tamano, (38, 70, 88)), base, brillo)
-    grano = Image.effect_noise(tamano, 22).convert("RGB")
-    return Image.blend(base, grano, 0.09)
+    if tipo == "degradado":
+        return _degradado(tamano, AZUL_1, AZUL_2)
+    if tipo == "oliva":
+        base = _brillo(Image.new("RGB", tamano, (84, 94, 76)), (108, 118, 90), 70)
+        puntos = Image.new("L", tamano, 0)
+        d = ImageDraw.Draw(puntos)
+        for y in range(0, alto, 8):
+            for x in range(4 if y % 16 else 0, ancho, 8):
+                d.ellipse((x - 1.4, y - 1.4, x + 1.4, y + 1.4), fill=150)
+        base = Image.composite(Image.new("RGB", tamano, (58, 66, 54)), base, puntos)
+        return _con_grano(base, 26)
+    if tipo == "gris":
+        base = _brillo(Image.new("RGB", tamano, (44, 43, 44)), (62, 61, 62), 60)
+        return _con_grano(base, 30)
+    if tipo in ("bruma", "bruma_azul"):
+        color = (46, 74, 62) if tipo == "bruma" else (20, 72, 118)
+        base = Image.new("RGB", tamano, (10, 12, 14))
+        luz = Image.new("L", (ancho // 8, alto // 8), 0)
+        ImageDraw.Draw(luz).ellipse((-ancho // 16, -alto // 10, ancho // 8 + ancho // 16, alto // 18),
+                                    fill=150)
+        luz = luz.filter(ImageFilter.GaussianBlur(ancho // 45)).resize(tamano, Image.BILINEAR)
+        base = Image.composite(Image.new("RGB", tamano, color), base, luz)
+        return _con_grano(base, 14)
+    if tipo == "blanco":
+        return _con_grano(Image.new("RGB", tamano, CLARO), 6)
+    if tipo == "gris_claro":
+        return _con_grano(Image.new("RGB", tamano, (214, 216, 214)), 10)
+    if tipo == "azul":
+        base = _degradado(tamano, (14, 44, 96), (5, 14, 34))
+        base = _brillo(base, (24, 80, 140), 60)
+        return _con_grano(base, 16)
+    return _con_grano(Image.new("RGB", tamano, OSCURO), 14)
+
+
+@lru_cache(maxsize=4)
+def _tarjeta(tamano, claro: bool = False) -> tuple:
+    """El recuadro (casi negro, o blanco en los claros) con grano fino y su mascara."""
+    ancho, alto = tamano
+    tarjeta = _con_grano(Image.new("RGB", tamano, (250, 250, 249) if claro else TARJETA), 4 if claro else 8)
+    mascara = Image.new("L", tamano, 0)
+    ImageDraw.Draw(mascara).rounded_rectangle((0, 0, ancho - 1, alto - 1), radius=4, fill=255)
+    return tarjeta, mascara
 
 
 def _palabras(texto: str, mayusculas: bool):
@@ -162,31 +237,40 @@ def _centrado(d, lineas, f, centro, y, color, acento, titulo):
 def dibujar(slide: dict, estilo: str = "verde", formato: str = "feed",
             numero: int | None = None, total: int | None = None) -> bytes:
     """Una diapositiva a JPEG."""
-    e = ESTILOS.get(estilo) or ESTILOS["verde"]
-    if formato != "historia" and e["fondo"] != "oscuro":
-        e = ESTILOS["verde"]
+    if estilo not in estilos_para(formato):
+        estilo = "verde"
+    claro = ESTILOS[estilo].get("claro", False)
+    e = {**ESTILOS[estilo], "acento": VERDE_OSCURO if claro else VERDE_1, "boton": _BOTON}
+    color_titulo = OSCURO if claro else CLARO
+    color_texto = TEXTO_SUAVE_CLARO if claro else (205, 214, 219)
     ancho, alto = TAMANOS["historia" if formato == "historia" else "feed"]
-    if e["fondo"] == "degradado":
-        img = _degradado((ancho, alto), AZUL_1, AZUL_2)
-    else:
-        img = _fondo_oscuro((ancho, alto)).copy()
+    img = _fondo(e["fondo"], (ancho, alto)).copy()
     d = ImageDraw.Draw(img)
     centro = ancho // 2
     util = ancho - 2 * 110
     arriba = 250 if formato == "historia" else 80
     abajo = alto - (340 if formato == "historia" else 70)
+    borde = 80
+    if e["tarjeta"]:
+        # Un recuadro casi negro adentro, con el contenido y el logo dentro.
+        m = 52
+        tarjeta, mascara = _tarjeta((ancho - 2 * m, alto - 2 * m), claro)
+        img.paste(tarjeta, (m, m), mascara)
+        util = ancho - 2 * 145
+        arriba, abajo, borde = m + 40, alto - m - 36, m + 36
 
     # Logo abajo al centro, como en el feed actual.
-    logo = _logo(50)
+    logo = _logo(50, not claro)
     img.paste(logo, (centro - logo.width // 2, abajo - logo.height), logo)
 
     f_chica = _fuente("Medium", 30)
     if total and total > 1:
         txt = f"{numero}/{total}"
-        d.text((ancho - 80 - f_chica.getlength(txt), arriba), txt, font=f_chica, fill=GRIS)
+        d.text((ancho - borde - f_chica.getlength(txt), arriba), txt, font=f_chica,
+               fill=TEXTO_SUAVE_CLARO if claro else GRIS)
         if numero < total:
             txt = "DESLIZÁ →"
-            d.text((ancho - 80 - f_chica.getlength(txt), abajo - 38), txt,
+            d.text((ancho - borde - f_chica.getlength(txt), abajo - 38), txt,
                    font=f_chica, fill=e["acento"])
 
     es_portada = numero in (None, 1)
@@ -225,12 +309,10 @@ def dibujar(slide: dict, estilo: str = "verde", formato: str = "feed",
             mascara = Image.new("L", (w, 100), 0)
             ImageDraw.Draw(mascara).rounded_rectangle((0, 0, w - 1, 99), radius=50, fill=255)
             img.paste(boton, (centro - w // 2, y), mascara)
-            color = OSCURO if e["boton"][0] == VERDE_1 else CLARO
-            d.text((centro, y + 50), txt, font=f, fill=color, anchor="mm")
+            d.text((centro, y + 50), txt, font=f, fill=OSCURO, anchor="mm")
             y += 100
             continue
-        color = {"etiqueta": e["acento"], "titulo": CLARO,
-                 "texto": (205, 214, 219)}[tipo]
+        color = {"etiqueta": e["acento"], "titulo": color_titulo, "texto": color_texto}[tipo]
         if e["fondo"] == "degradado" and tipo == "texto":
             color = CLARO
         y = _centrado(d, lineas, f, centro, y, color, e["acento"], tipo == "titulo")

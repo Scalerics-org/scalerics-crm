@@ -3699,6 +3699,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       </div>
       <span class="ig-banco" id="ig-banco"></span>
     </div>
+    <div class="ig-perfil-nota" id="ig-plan"></div>
     <div class="ig-tabs" role="tablist">
       <button type="button" class="ig-tab activa" id="ig-tab-pub" role="tab" onclick="igModo('pub')">Publicaciones</button>
       <button type="button" class="ig-tab" id="ig-tab-perfil" role="tab" onclick="igModo('perfil')">Vista del perfil</button>
@@ -13499,6 +13500,9 @@ function igPintar() {
   const d = igDatos;
   const etiqueta = document.getElementById('ig-semana-label');
   if (etiqueta) etiqueta.textContent = 'Semana del ' + igFechaLarga(d.semana);
+  const plan = document.getElementById('ig-plan');
+  if (plan && d.plan) plan.innerHTML = '<b>Plan de fondos de ' + liEsc(d.plan.mes) + ':</b> ' +
+    liEsc(d.plan.feed.join(' → ')) + ', y vuelve a empezar. Historias: ' + liEsc(d.plan.historias.join(' → ')) + '.';
   const banco = document.getElementById('ig-banco');
   if (banco) banco.textContent = 'Ideas sin usar: ' + d.banco.feed + ' publicaciones y ' + d.banco.historia + ' historias';
   const hay = d.publicaciones.length > 0;
@@ -13546,8 +13550,8 @@ function igTarjeta(p) {
     igCampo(id, k, 'cta', s.cta, 'Botón (opcional)', dis) + '</div>').join('');
   const estilos = p.estilos.length > 1
     ? '<div><label class="ig-rotulo" for="ig-estilo-' + id + '">Fondo</label><select class="ig-input" id="ig-estilo-' + id + '"' + dis + '>' +
-      p.estilos.map(e => '<option value="' + e + '"' + (e === p.estilo ? ' selected' : '') + '>' +
-        (e === 'degradado' ? 'Azul' : 'Oscuro') + '</option>').join('') + '</select></div>'
+      p.estilos.map(e => '<option value="' + liEsc(e.id) + '"' + (e.id === p.estilo ? ' selected' : '') + '>' +
+        liEsc(e.nombre) + '</option>').join('') + '</select></div>'
     : '';
   const b = [];
   if (editable) b.push('<button type="button" class="ig-btn" onclick="igGuardar(' + id + ')">Guardar cambios</button>');

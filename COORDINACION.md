@@ -548,6 +548,14 @@ leads de Meta se renombró a **D** para deshacer el empate.
   proveedor ve las recomendaciones, no su evaluación. `SOMBRA_META=off` lo
   apaga. Tabla nueva `sombra_recomendaciones`.
 
+  **En el mismo PR, Instagram:** pestaña "Vista del perfil" (`/api/instagram/grilla`)
+  y **plan mensual de fondos** (`PLANES_FEED`/`PLANES_HISTORIA` en
+  `services/instagram.py`): 10 fondos de feed que copian la línea del de
+  marketing (oliva y gris con textura, con o sin recuadro, negro con brillo) más
+  azules y blancos de la marca. `estilo='verde'` ahora es "Verde con textura".
+  Al arrancar corre **una vez** `replanificar` (marca `ig_replan_fondos_v2`):
+  aplica el plan a lo no publicado y lo redibuja; una aprobada vuelve a borrador.
+
 - **17/9 — J (agente de marketing): panel Instagram con aprobación (Etapa 2).**
 
   Nuevo panel `instagram` en MARKETING. **Nada se publica sin que una persona lo

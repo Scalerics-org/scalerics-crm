@@ -189,6 +189,93 @@ def renderizar(db_path: str, pub_id: int) -> dict:
     return obtener(db_path, pub_id)
 
 
+# ── plan de fondos ───────────────────────────────────────────────────────────
+# Juan (17/9): "todo del mismo fondo es monotono; arma cada mes una
+# planificacion de fondos y colores y variala". Cada mes toma una secuencia y
+# la recorre pieza por pieza. Son de 5 y el feed sale de a 3 por semana, asi que
+# el patron no arma columnas del mismo color en la grilla.
+
+# Cada plan lleva un blanco: rompe la serie de oscuros sin salirse de la marca.
+PLANES_FEED = (
+    ("marco", "blanco", "azul_marco", "verde", "bruma_azul"),
+    ("azul", "grafito_marco", "blanco_marco", "verde", "bruma"),
+    ("grafito", "marco", "blanco", "azul", "bruma"),
+    ("verde", "azul_marco", "grafito", "blanco_marco", "bruma_azul"),
+    ("bruma", "blanco", "azul", "grafito_marco", "marco"),
+    ("azul_marco", "verde", "bruma_azul", "blanco_marco", "grafito"),
+)
+PLANES_HISTORIA = (
+    ("degradado", "bruma", "blanco"),
+    ("verde", "degradado", "blanco"),
+    ("degradado", "azul", "blanco"),
+    ("grafito", "blanco", "degradado"),
+)
+MESES = ("enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto",
+         "septiembre", "octubre", "noviembre", "diciembre")
+
+
+def plan_del_mes(anio: int, mes: int, tipo: str = "feed") -> tuple:
+    planes = PLANES_HISTORIA if tipo == "historia" else PLANES_FEED
+    return planes[(anio * 12 + mes) % len(planes)]
+
+
+def _estilo_planificado(conn, tipo: str, cuando: datetime) -> str:
+    local = cuando.astimezone(_UY)
+    inicio = local.replace(day=1, hour=0, minute=0)
+    fin = (inicio + timedelta(days=32)).replace(day=1)
+    igual = "=" if tipo == "historia" else "!="
+    n = conn.execute(
+        f"SELECT COUNT(*) FROM ig_publicaciones WHERE formato {igual} 'historia' "
+        "AND estado != 'descartada' AND programada_para >= ? AND programada_para < ?",
+        (_txt(inicio), _txt(cuando))).fetchone()[0]
+    plan = plan_del_mes(local.year, local.month, tipo)
+    return plan[n % len(plan)]
+
+
+def plan_para_panel(lunes: date) -> dict:
+    return {
+        "mes": MESES[lunes.month - 1],
+        "feed": [ig_render.nombre_estilo(e) for e in plan_del_mes(lunes.year, lunes.month)],
+        "historias": [ig_render.nombre_estilo(e)
+                      for e in plan_del_mes(lunes.year, lunes.month, "historia")],
+    }
+
+
+_JOB_REPLAN = "ig_replan_fondos_v2"
+
+
+def replanificar(db_path: str, ahora: datetime | None = None) -> int:
+    """Aplica el plan de fondos a lo que todavia no salio y lo redibuja.
+
+    Una aprobada vuelve a borrador: cambio como se ve y la aprobacion era por
+    la version anterior.
+    """
+    ahora = ahora or ahora_utc()
+    cambiadas = []
+    conn = _connect(db_path)
+    try:
+        filas = conn.execute(
+            "SELECT id, formato, estilo, programada_para FROM ig_publicaciones "
+            "WHERE programada_para > ? AND estado IN ('borrador','aprobada','error','vencida') "
+            "ORDER BY programada_para", (_txt(ahora),)).fetchall()
+        for f in filas:
+            tipo = "historia" if f["formato"] == "historia" else "feed"
+            estilo = _estilo_planificado(conn, tipo, _dt(f["programada_para"]))
+            if estilo == f["estilo"]:
+                continue
+            conn.execute(
+                "UPDATE ig_publicaciones SET estilo = ?, estado = CASE WHEN estado = 'aprobada' "
+                "THEN 'borrador' ELSE estado END, aprobada_por = NULL, aprobada_en = NULL, "
+                "actualizado_en = CURRENT_TIMESTAMP WHERE id = ?", (estilo, f["id"]))
+            cambiadas.append(f["id"])
+        conn.commit()
+    finally:
+        conn.close()
+    for pub_id in cambiadas:
+        renderizar(db_path, pub_id)
+    return len(cambiadas)
+
+
 def armar_semana(db_path: str, lunes: date, ahora: datetime | None = None) -> list[int]:
     """Llena los slots vacios de esa semana. Idempotente."""
     ahora = ahora or ahora_utc()
@@ -211,12 +298,13 @@ def armar_semana(db_path: str, lunes: date, ahora: datetime | None = None) -> li
                 continue
             usadas.add(fila["clave"])
             _usar(conn, fila, ahora)
+            estilo = _estilo_planificado(conn, tipo, cuando)
             cur = conn.execute(
                 "INSERT INTO ig_publicaciones (semana, slot, clave_banco, formato, pilar, "
                 "slides_json, caption, estilo, programada_para, img_token) "
                 "VALUES (?,?,?,?,?,?,?,?,?,?)",
                 (lunes.isoformat(), slot, fila["clave"], fila["formato"], fila["pilar"],
-                 fila["slides_json"], fila["caption"], "verde", _txt(cuando),
+                 fila["slides_json"], fila["caption"], estilo, _txt(cuando),
                  secrets.token_hex(16)))
             creadas.append(cur.lastrowid)
         conn.commit()
@@ -380,7 +468,7 @@ def otra_idea(db_path: str, pub_id: int, ahora: datetime | None = None) -> dict:
         _usar(conn, fila, ahora)
         conn.execute(
             "UPDATE ig_publicaciones SET clave_banco = ?, formato = ?, pilar = ?, "
-            "slides_json = ?, caption = ?, estilo = 'verde', estado = 'borrador', error = NULL, "
+            "slides_json = ?, caption = ?, estado = 'borrador', error = NULL, "
             "aprobada_por = NULL, aprobada_en = NULL, actualizado_en = CURRENT_TIMESTAMP "
             "WHERE id = ?",
             (fila["clave"], fila["formato"], fila["pilar"], fila["slides_json"],
@@ -767,6 +855,13 @@ def start_instagram(app) -> None:
             logger.info(f"Instagram: {n} ideas nuevas en el banco")
     except Exception as e:
         logger.warning(f"Instagram: no se pudo sembrar el banco ({e})")
+    # Una sola vez: las piezas armadas antes del plan de fondos se ajustan a el.
+    if puede_correr(db_path, _JOB_REPLAN, 24 * 3650):
+        try:
+            marcar_corrida(db_path, _JOB_REPLAN)
+            logger.info(f"Instagram: {replanificar(db_path)} piezas ajustadas al plan de fondos")
+        except Exception as e:
+            logger.warning(f"Instagram: no se pudo ajustar al plan de fondos ({e})")
 
     def _loop():
         time.sleep(300)
