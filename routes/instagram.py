@@ -2,8 +2,13 @@
 
 El panel pide `instagram`. Las imagenes publicas (`/pub/ig/...`) van en otro
 blueprint sin candado: Meta las baja sin sesion. Ver services/instagram.py.
+
+`/api/instagram-bot/` es lo que usa la sesion de Claude Code que resuelve los
+pedidos de correccion. Va sin sesion y se valida con IG_BOT_TOKEN, que solo
+abre estas rutas (mismo criterio que PLANILLA_TOKEN).
 """
 
+import hmac
 import os
 from datetime import date
 
@@ -62,11 +67,15 @@ def api_semana():
         quedan = ig.disponibles(conn, ahora)
     finally:
         conn.close()
+    pubs = [_publica(p) for p in ig.listar_semana(_db(), lunes)]
+    pedidos = ig.correcciones_de(_db(), [p["id"] for p in pubs])
+    for p in pubs:
+        p["correcciones"] = pedidos.get(p["id"], [])[:3]
     return jsonify({
         "ok": True,
         "semana": lunes.isoformat(),
         "semana_actual": ig.semana_actual(ahora).isoformat(),
-        "publicaciones": [_publica(p) for p in ig.listar_semana(_db(), lunes)],
+        "publicaciones": pubs,
         "banco": quedan,
         "puede_armar": is_admin(_db(), session.get("user_id")),
     })
@@ -106,6 +115,17 @@ def api_accion(pub_id, accion):
     return _responder(acciones[accion])
 
 
+@instagram_bp.route("/api/instagram/publicaciones/<int:pub_id>/correccion", methods=["POST"])
+def api_pedir_correccion(pub_id):
+    datos = request.get_json(silent=True) or {}
+    try:
+        ig.pedir_correccion(_db(), pub_id, datos.get("pedido"), _usuario())
+    except ig.NoSePuede as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    return jsonify({"ok": True,
+                    "correcciones": ig.correcciones_de(_db(), [pub_id]).get(pub_id, [])[:3]})
+
+
 @instagram_bp.route("/api/instagram/armar-semana", methods=["POST"])
 def api_armar():
     if not is_admin(_db(), session.get("user_id")):
@@ -129,3 +149,57 @@ def imagen_publica(token, n):
     resp.headers["Cache-Control"] = "no-store"
     resp.headers["X-Robots-Tag"] = "noindex"
     return resp
+
+
+# ── robot de correcciones ────────────────────────────────────────────────────
+
+def _bot_ok() -> bool:
+    esperado = os.environ.get("IG_BOT_TOKEN", "")
+    recibido = request.headers.get("x-ig-token", "")
+    return bool(esperado) and len(esperado) >= 32 and hmac.compare_digest(esperado, recibido)
+
+
+@instagram_pub_bp.before_request
+def _candado_bot():
+    if request.path.startswith("/api/instagram-bot/") and not _bot_ok():
+        return jsonify({"ok": False, "error": "No autorizado"}), 403
+    return None
+
+
+@instagram_pub_bp.route("/api/instagram-bot/pendientes")
+def bot_pendientes():
+    return jsonify({"ok": True, "pendientes": ig.pendientes(current_app.config["DB_PATH"])})
+
+
+@instagram_pub_bp.route("/api/instagram-bot/correcciones/<int:corr_id>/resolver", methods=["POST"])
+def bot_resolver(corr_id):
+    datos = request.get_json(silent=True) or {}
+    try:
+        pub = ig.resolver_correccion(current_app.config["DB_PATH"], corr_id,
+                                     datos.get("cambios") or {}, datos.get("respuesta") or "")
+    except ig.NoSePuede as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    return jsonify({"ok": True, "version": pub["version"], "estado": pub["estado"]})
+
+
+@instagram_pub_bp.route("/api/instagram-bot/correcciones/<int:corr_id>/rechazar", methods=["POST"])
+def bot_rechazar(corr_id):
+    datos = request.get_json(silent=True) or {}
+    try:
+        ig.rechazar_correccion(current_app.config["DB_PATH"], corr_id, datos.get("respuesta") or "")
+    except ig.NoSePuede as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    return jsonify({"ok": True})
+
+
+@instagram_pub_bp.route("/api/instagram-bot/publicaciones/<int:pub_id>/imagen/<int:n>")
+def bot_imagen(pub_id, n):
+    """Para que la sesion de Claude mire como quedo la version corregida."""
+    db = current_app.config["DB_PATH"]
+    pub = ig.obtener(db, pub_id)
+    if not pub or not 1 <= n <= pub["imagenes"]:
+        abort(404)
+    ruta = ig.ruta_imagen(db, pub, n)
+    if not os.path.isfile(ruta):
+        abort(404)
+    return send_file(ruta, mimetype="image/jpeg", max_age=0)

@@ -2344,6 +2344,10 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .ig-msg.error{color:var(--rojo-texto)}
 .ig-msg.ok{color:var(--verde-texto)}
 .ig-grande{max-width:min(92vw,560px);max-height:88vh;border-radius:10px}
+.ig-pedido{border:1px solid var(--borde);border-radius:8px;padding:10px;background:var(--superficie);display:grid;gap:6px}
+.ig-pedido textarea{min-height:56px;resize:vertical}
+.ig-pedido-item{font-size:.74rem;color:var(--texto-debil);border-top:1px solid var(--borde);padding-top:6px;line-height:1.45}
+.ig-pedido-item b{color:var(--texto-fuerte)}
 @media(max-width:480px){.ig-tarjetas{grid-template-columns:1fr}}
 /* ── LinkedIn ─────────────────────────────────────────────────────────────────
    Borradores para la pagina de Scalerics en LinkedIn. Solo tokens, sin reglas
@@ -13443,8 +13447,46 @@ function igTarjeta(p) {
     '<details class="ig-slides"><summary>Textos de ' + (n > 1 ? 'las imágenes' : 'la imagen') + '</summary>' + slides + '</details>' +
     '<div class="ig-fila"><div><label class="ig-rotulo" for="ig-fecha-' + id + '">Día</label><input type="date" class="ig-input" id="ig-fecha-' + id + '" value="' + liEsc(p.fecha) + '"' + dis + '></div>' +
     '<div><label class="ig-rotulo" for="ig-hora-' + id + '">Hora</label><input type="time" class="ig-input" id="ig-hora-' + id + '" value="' + liEsc(p.hora) + '"' + dis + '></div>' + estilos + '</div>' +
+    igPedidoHtml(p, editable) +
     '<div class="ig-msg" id="ig-msg-' + id + '" role="status">' + liEsc(extra) + '</div>' +
     '<div class="ig-acciones">' + b.join('') + '</div></article>';
+}
+
+const IG_PEDIDO_ESTADOS = {pendiente: 'En espera: Claude lo revisa en menos de 30 minutos',
+  hecha: 'Corregido', no_se_pudo: 'No se pudo'};
+
+function igPedidoHtml(p, editable) {
+  const id = Number(p.id);
+  const lista = (p.correcciones || []);
+  const espera = lista.some(c => c.estado === 'pendiente');
+  const items = lista.map(c => '<div class="ig-pedido-item"><b>' + liEsc(IG_PEDIDO_ESTADOS[c.estado] || c.estado) +
+    ':</b> ' + liEsc(c.pedido) + (c.respuesta ? '<br>Claude: ' + liEsc(c.respuesta) : '') + '</div>').join('');
+  const form = editable && !espera
+    ? '<textarea class="ig-input" id="ig-pedido-' + id + '" maxlength="1000" placeholder="Ej: buena imagen, pero cambiá el botón por Agendá tu demo y hacé el título más corto"></textarea>' +
+      '<div><button type="button" class="ig-btn" onclick="igPedir(' + id + ')">Enviar pedido a Claude</button></div>'
+    : '';
+  if (!form && !items) return '';
+  return '<div class="ig-pedido"><span class="ig-rotulo">Pedile un cambio a Claude</span>' + form + items + '</div>';
+}
+
+async function igPedir(id) {
+  const area = document.getElementById('ig-pedido-' + id);
+  const pedido = area ? area.value.trim() : '';
+  if (!pedido) { igMsg(id, 'Escribí qué querés cambiar.', 'error'); return; }
+  igBotones(id, true);
+  try {
+    const r = await fetch('/api/instagram/publicaciones/' + id + '/correccion', {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({pedido: pedido})});
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.ok) throw new Error(d.error || 'No se pudo enviar el pedido.');
+    const p = igBuscar(id);
+    p.correcciones = d.correcciones;
+    igReemplazar(p);
+    igMsg(id, 'Pedido enviado. Cuando esté la versión corregida la vas a ver acá, lista para aprobar.', 'ok');
+  } catch (e) {
+    igBotones(id, false);
+    igMsg(id, e.message, 'error');
+  }
 }
 
 function igContar(id) {
@@ -18109,6 +18151,10 @@ def create_app(db_path: str) -> Flask:
         # Meta baja las imagenes de Instagram sin sesion. Cada publicacion tiene
         # su token al azar y solo se sirve mientras esta aprobada o saliendo.
         if request.path.startswith("/pub/ig/"):
+            return
+        # La sesion de Claude que corrige publicaciones: IG_BOT_TOKEN, que solo
+        # abre estas rutas y se valida con compare_digest adentro del blueprint.
+        if request.path.startswith("/api/instagram-bot/"):
             return
         # El Apps Script del semaforo no puede llevar el ADMIN_TOKEN: vive pegado
         # a una planilla que es de la agencia, y cualquiera con permiso de

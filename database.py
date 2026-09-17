@@ -1957,6 +1957,20 @@ def init_db(db_path: str) -> None:
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_ig_pub_estado "
                      "ON ig_publicaciones(estado, programada_para)")
+        # Pedidos de correccion en texto libre. Los resuelve una sesion de
+        # Claude Code por /api/instagram-bot/ (gratis, con demora).
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS ig_correcciones (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                publicacion_id  INTEGER NOT NULL REFERENCES ig_publicaciones(id),
+                pedido          TEXT NOT NULL,
+                estado          TEXT NOT NULL DEFAULT 'pendiente',
+                respuesta       TEXT,
+                pedido_por      TEXT,
+                creado_en       TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                resuelto_en     TEXT
+            )
+        """)
         conn.commit()
         _grant_panel_to_existing_roles(conn, "instagram", si_tiene=("marketing", "linkedin"))
 

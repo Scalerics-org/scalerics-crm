@@ -391,6 +391,117 @@ def otra_idea(db_path: str, pub_id: int, ahora: datetime | None = None) -> dict:
     return renderizar(db_path, pub_id)
 
 
+# ── pedidos de correccion ────────────────────────────────────────────────────
+# Juan escribe en texto libre ("cambia el boton por Agenda tu demo"). No hay
+# modelo pago: los resuelve una sesion de Claude Code programada, que lee los
+# pendientes y guarda la version corregida por /api/instagram-bot/. El
+# resultado queda en borrador: hay que volver a aprobarlo.
+
+MAX_PEDIDO = 1000
+AUTOR_BOT = "Claude"
+
+
+def pedir_correccion(db_path: str, pub_id: int, pedido: str, usuario: str) -> dict:
+    pedido = (pedido or "").strip()
+    if not pedido:
+        raise NoSePuede("Escribí qué querés cambiar")
+    if len(pedido) > MAX_PEDIDO:
+        raise NoSePuede(f"El pedido es muy largo (máximo {MAX_PEDIDO} caracteres)")
+    pub = obtener(db_path, pub_id)
+    if not pub or pub["estado"] not in ESTADOS_EDITABLES:
+        raise NoSePuede("Esta publicación ya no se puede corregir")
+    conn = _connect(db_path)
+    try:
+        abierta = conn.execute("SELECT 1 FROM ig_correcciones WHERE publicacion_id = ? "
+                               "AND estado = 'pendiente'", (pub_id,)).fetchone()
+        if abierta:
+            raise NoSePuede("Ya hay un pedido en espera para esta publicación")
+        conn.execute("INSERT INTO ig_correcciones (publicacion_id, pedido, pedido_por) "
+                     "VALUES (?,?,?)", (pub_id, pedido, usuario))
+        conn.commit()
+    finally:
+        conn.close()
+    return pub
+
+
+def correcciones_de(db_path: str, pub_ids: list[int]) -> dict:
+    """{pub_id: [pedidos, el mas nuevo primero]} para el panel."""
+    if not pub_ids:
+        return {}
+    conn = _connect(db_path)
+    try:
+        marcas = ",".join("?" * len(pub_ids))
+        filas = conn.execute(
+            f"SELECT id, publicacion_id, pedido, estado, respuesta, creado_en "
+            f"FROM ig_correcciones WHERE publicacion_id IN ({marcas}) ORDER BY id DESC",
+            pub_ids).fetchall()
+    finally:
+        conn.close()
+    salida = {}
+    for f in filas:
+        salida.setdefault(f["publicacion_id"], []).append(dict(f))
+    return salida
+
+
+def pendientes(db_path: str) -> list[dict]:
+    """Lo que tiene que resolver la sesion de Claude, con todo el contexto."""
+    conn = _connect(db_path)
+    try:
+        filas = conn.execute(
+            "SELECT c.id, c.pedido, c.creado_en, p.id AS publicacion_id, p.formato, p.estado, "
+            "p.slides_json, p.caption, p.estilo FROM ig_correcciones c "
+            "JOIN ig_publicaciones p ON p.id = c.publicacion_id "
+            "WHERE c.estado = 'pendiente' ORDER BY c.id").fetchall()
+    finally:
+        conn.close()
+    salida = []
+    for f in filas:
+        d = dict(f)
+        d["slides"] = json.loads(d.pop("slides_json"))
+        d["estilos"] = list(ig_render.estilos_para(d["formato"]))
+        salida.append(d)
+    return salida
+
+
+def _cerrar_pedido(db_path, corr_id, estado, respuesta):
+    conn = _connect(db_path)
+    try:
+        cur = conn.execute(
+            "UPDATE ig_correcciones SET estado = ?, respuesta = ?, resuelto_en = CURRENT_TIMESTAMP "
+            "WHERE id = ? AND estado = 'pendiente'", (estado, (respuesta or "")[:500], corr_id))
+        conn.commit()
+        return cur.rowcount
+    finally:
+        conn.close()
+
+
+def _pedido(db_path, corr_id):
+    conn = _connect(db_path)
+    try:
+        return conn.execute("SELECT * FROM ig_correcciones WHERE id = ?", (corr_id,)).fetchone()
+    finally:
+        conn.close()
+
+
+def resolver_correccion(db_path: str, corr_id: int, cambios: dict, respuesta: str) -> dict:
+    fila = _pedido(db_path, corr_id)
+    if not fila or fila["estado"] != "pendiente":
+        raise NoSePuede("Ese pedido ya no está pendiente")
+    permitidos = {k: cambios[k] for k in ("caption", "slides", "estilo") if k in cambios}
+    if not permitidos:
+        raise NoSePuede("No vino ningún cambio")
+    pub = editar(db_path, fila["publicacion_id"], permitidos, AUTOR_BOT)
+    _cerrar_pedido(db_path, corr_id, "hecha", respuesta or "Listo.")
+    return pub
+
+
+def rechazar_correccion(db_path: str, corr_id: int, respuesta: str) -> None:
+    if not (respuesta or "").strip():
+        raise NoSePuede("Hay que explicar por qué no se pudo")
+    if not _cerrar_pedido(db_path, corr_id, "no_se_pudo", respuesta.strip()):
+        raise NoSePuede("Ese pedido ya no está pendiente")
+
+
 # ── publicar ─────────────────────────────────────────────────────────────────
 
 def _post(ruta: str, **params) -> dict:

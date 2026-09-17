@@ -454,3 +454,89 @@ def test_el_panel_esta_en_el_menu_y_sin_barras_invertidas():
     assert html.count('id="instagram-panel"') == 1
     assert "if (name === 'instagram') igCargar();" in html
     assert 'id="nav-instagram"' in html
+
+
+# ── pedidos de correccion ────────────────────────────────────────────────────
+
+BOT = "b" * 48
+
+
+def test_pedir_y_resolver_una_correccion(db):
+    p = _semana(db)["feed_mie"]
+    ig.aprobar(db, p["id"], "Juan", JUEVES)
+    ig.pedir_correccion(db, p["id"], "Cambiá el botón por Agendá tu demo", "Juan")
+    with pytest.raises(ig.NoSePuede, match="en espera"):
+        ig.pedir_correccion(db, p["id"], "otra cosa", "Juan")
+    [pend] = ig.pendientes(db)
+    assert pend["publicacion_id"] == p["id"] and pend["slides"] == p["slides"]
+    slides = [dict(p["slides"][0], cta="Agendá tu demo")]
+    q = ig.resolver_correccion(db, pend["id"], {"slides": slides, "fecha": "2030-01-01"}, "Cambié el botón.")
+    assert q["slides"] == slides and q["estado"] == "borrador"
+    assert q["editada_por"] == "Claude" and q["programada_para"] == p["programada_para"]
+    assert ig.pendientes(db) == []
+    [c] = ig.correcciones_de(db, [p["id"]])[p["id"]]
+    assert (c["estado"], c["respuesta"]) == ("hecha", "Cambié el botón.")
+    with pytest.raises(ig.NoSePuede, match="ya no está"):
+        ig.resolver_correccion(db, pend["id"], {"caption": "x"}, "")
+
+
+@pytest.mark.parametrize("pedido,mensaje", [("  ", "Escribí"), ("x" * 1001, "largo")])
+def test_el_pedido_se_valida(db, pedido, mensaje):
+    p = _semana(db)["feed_mie"]
+    with pytest.raises(ig.NoSePuede, match=mensaje):
+        ig.pedir_correccion(db, p["id"], pedido, "Juan")
+
+
+def test_no_se_corrige_lo_publicado(db):
+    p = _semana(db)["feed_mie"]
+    _sql(db, "UPDATE ig_publicaciones SET estado = 'publicada' WHERE id = ?", p["id"])
+    with pytest.raises(ig.NoSePuede, match="ya no se puede"):
+        ig.pedir_correccion(db, p["id"], "algo", "Juan")
+
+
+def test_rechazar_pide_motivo(db):
+    p = _semana(db)["feed_mie"]
+    ig.pedir_correccion(db, p["id"], "hacelo en video", "Juan")
+    [pend] = ig.pendientes(db)
+    with pytest.raises(ig.NoSePuede, match="explicar"):
+        ig.rechazar_correccion(db, pend["id"], " ")
+    ig.rechazar_correccion(db, pend["id"], "Por ahora solo imágenes.")
+    assert ig.correcciones_de(db, [p["id"]])[p["id"]][0]["estado"] == "no_se_pudo"
+
+
+def test_el_robot_necesita_su_token(app, monkeypatch):
+    cli = app.test_client()
+    monkeypatch.delenv("IG_BOT_TOKEN", raising=False)
+    assert cli.get("/api/instagram-bot/pendientes", headers={"x-ig-token": ""}).status_code == 403
+    monkeypatch.setenv("IG_BOT_TOKEN", "corto")
+    assert cli.get("/api/instagram-bot/pendientes", headers={"x-ig-token": "corto"}).status_code == 403
+    monkeypatch.setenv("IG_BOT_TOKEN", BOT)
+    assert cli.get("/api/instagram-bot/pendientes", headers={"x-ig-token": "c" * 48}).status_code == 403
+    assert cli.get("/api/instagram-bot/pendientes", headers={"x-ig-token": BOT}).status_code == 200
+    # El token del robot no abre el panel.
+    assert cli.get("/api/instagram/semana", headers={"x-ig-token": BOT}).status_code == 401
+
+
+def test_flujo_de_correccion_por_http(app, monkeypatch):
+    monkeypatch.setenv("IG_BOT_TOKEN", BOT)
+    db = app.config["DB_PATH"]
+    ig.armar_semana(db, LUNES, JUEVES)
+    cli = _cli(app, "mkt@scalerics.com", ["instagram"])
+    p = next(x for x in ig.listar_semana(db, LUNES) if x["slot"] == "feed_mie")
+    r = cli.post(f"/api/instagram/publicaciones/{p['id']}/correccion", json={"pedido": "botón: Agendá tu demo"})
+    assert r.status_code == 200 and r.get_json()["correcciones"][0]["estado"] == "pendiente"
+    d = cli.get("/api/instagram/semana?semana=2026-09-21").get_json()
+    assert next(x for x in d["publicaciones"] if x["id"] == p["id"])["correcciones"][0]["pedido"] == "botón: Agendá tu demo"
+
+    bot = app.test_client()
+    h = {"x-ig-token": BOT}
+    [pend] = bot.get("/api/instagram-bot/pendientes", headers=h).get_json()["pendientes"]
+    img = bot.get(f"/api/instagram-bot/publicaciones/{p['id']}/imagen/1", headers=h)
+    assert img.status_code == 200 and img.mimetype == "image/jpeg"
+    malo = bot.post(f"/api/instagram-bot/correcciones/{pend['id']}/resolver", headers=h,
+                    json={"cambios": {"slides": [{"titulo": ""}]}})
+    assert malo.status_code == 400
+    slides = [dict(pend["slides"][0], cta="Agendá tu demo")]
+    r = bot.post(f"/api/instagram-bot/correcciones/{pend['id']}/resolver", headers=h,
+                 json={"cambios": {"slides": slides}, "respuesta": "Listo"})
+    assert r.get_json() == {"ok": True, "version": p["version"] + 1, "estado": "borrador"}
