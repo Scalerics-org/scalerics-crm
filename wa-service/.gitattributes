@@ -1,0 +1,24 @@
+# Fin de linea LF para todo lo del bot, aunque se clone en Windows.
+#
+# El .gitattributes de la raiz solo cubre *.sh, Dockerfile y Procfile. Sin esto,
+# en Windows core.autocrlf deja el codigo con \r\n en el disco, y lo que se
+# deploya desde ese disco viaja asi: v100 salio a produccion con cinco archivos
+# en CRLF (ver prod/v100-recovered). Va aca y no en la raiz para no obligar a
+# renormalizar el resto del repo.
+*.js            text eol=lf
+*.json          text eol=lf
+*.sql           text eol=lf
+*.md            text eol=lf
+*.sh            text eol=lf
+*.toml          text eol=lf
+*.service       text eol=lf
+*.timer         text eol=lf
+*.example       text eol=lf
+Dockerfile      text eol=lf
+.dockerignore   text eol=lf
+.gitignore      text eol=lf
+
+*.db    binary
+*.ogg   binary
+*.jpg   binary
+*.png   binary

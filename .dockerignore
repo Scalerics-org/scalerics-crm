@@ -34,3 +34,9 @@ budgets/
 
 # Node del bot, que es un servicio aparte
 bot/node_modules/
+
+# El bot de WhatsApp es otra app de Fly, con su propio Dockerfile y contexto de
+# build (se deploya desde wa-service/). No tiene nada que hacer en la imagen del
+# CRM, y en un disco de desarrollo trae wa-service/auth/ —la sesion de WhatsApp
+# de la empresa— y bases con conversaciones de leads.
+wa-service/

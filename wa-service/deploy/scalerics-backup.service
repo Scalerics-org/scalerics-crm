@@ -1,0 +1,10 @@
+[Unit]
+Description=Backup de las bases de Scalerics
+After=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/default/scalerics-backup
+ExecStart=/opt/scalerics-wa/deploy/respaldar.sh
+# Corre como root: tiene que leer /opt/scalerics-wa/auth, que es 700 de scalerics.
+User=root
