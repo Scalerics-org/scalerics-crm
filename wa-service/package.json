@@ -8,7 +8,9 @@
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
     "chat": "node scripts/chat.js",
-    "test": "node --test \"test/*.test.js\""
+    "test": "node --test \"test/*.test.js\"",
+    "jev:informe": "node scripts/jev-informe.js",
+    "jev:casos": "node scripts/jev-casos.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.123.0",

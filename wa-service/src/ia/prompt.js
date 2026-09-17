@@ -287,6 +287,12 @@ Si no puede, que avise — mejor reprogramar que faltar.`,
     recordatorio_30min: `La videollamada es en media hora. Avisale con el link para entrar.
 Dos líneas, nada más.`,
 
+    necesidad_confusa: `Contestó, pero de lo que dijo no se entiende qué necesita: puede haber descrito a qué se dedica su negocio, o haber contestado algo que no responde la pregunta.
+
+Preguntale de nuevo qué necesita, UNA vez, sin hacerlo sentir mal y sin repetir la pregunta con las mismas palabras. Que se note que lo escuchaste: mencioná lo que sí entendiste de su negocio.
+Ofrecele las cinco: página web, e-commerce, sistema a medida, automatización, o un agente de IA.
+Y decile que si todavía no lo tiene claro, no pasa nada — para eso es la videollamada.`,
+
     oferta_reunion: `Terminaste de entender lo que necesita y encaja con lo que hacemos.
 Ofrecele la videollamada de 30 minutos, gratis y sin compromiso. Decile en concreto qué se lleva: entender bien lo que necesita, ver ejemplos parecidos, y un presupuesto claro.
 Enganchá con algo puntual de lo que te contó, para que no suene a plantilla.

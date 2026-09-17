@@ -41,6 +41,26 @@ function crearTextos({ horarioAtencion = 'Lun a sáb, 9 a 19hs' } = {}) {
      * que se puede hacer sin el modelo.
      */
     SIN_IA: `Dame un momento que te paso con alguien del equipo 👤\n\n_Horario de atención: ${horarioAtencion} (GMT-3)_`,
+
+    /**
+     * La oferta sin una sola suposicion, para cuando el modelo insiste en
+     * atribuirle cosas al lead.
+     *
+     * Con JEV_MODO=decide, si Jev dice que el mensaje afirma algo que el lead
+     * nunca dijo, se le pide al modelo que lo reescriba. Si el segundo intento
+     * tambien lo hace, sale esto: no dice nada del lead, y por eso no puede
+     * inventar nada. Es peor mensaje y mejor que mentirle — el 11 y el 12/9 la
+     * oferta arranco con "Entendí que necesitás…" y algo que nadie habia dicho.
+     */
+    ofertaNeutra(situacion, { extra = '', calendly = '' } = {}) {
+      const base = 'Te propongo una videollamada de 30 minutos: vemos en detalle qué necesitás '
+        + 'y el equipo te arma un prototipo de lo que estés buscando.';
+      if (situacion === 'oferta_con_horarios' && extra) {
+        return `${base}\n\nTengo libre ${extra}\n\n¿Qué día y hora te viene bien?`;
+      }
+      if (calendly) return `${base}\n\nElegí el horario que te quede bien acá: ${calendly}`;
+      return `${base}\n\n¿Te sirve? Decime qué día y hora te viene bien.`;
+    },
   };
 }
 

@@ -80,13 +80,16 @@ function stubJev(respuestas, { falla = false } = {}) {
 const DATOS_WEBS = { business_name: 'Estudio Norte', rubro: 'software', business_type: 'web' };
 const DIJO_WEBS = 'somos Estudio Norte, hacemos software, webs';
 
+/** La sombra tiene que estar prendida por config: inyectar Jev no alcanza. */
+const SOMBRA = { JEV_MODO: 'sombra' };
+
 test('al calificar, anota lo que Jev cree que necesita al lado de lo que guardo el bot', async () => {
   const jev = stubJev({
     necesidad: { type: 'choice', choice: 'no_queda_claro', confidence: 0.81, probabilities: { no_queda_claro: 0.84, pagina_web: 0.16 } },
     es_cliente: { type: 'noul', noul: 0.18 },
     inventa: { type: 'noul', noul: 0.9 },
   });
-  const s = await conLead({ modelo: stubModelo({ datos: DATOS_WEBS }), _jev: jev });
+  const s = await conLead({ ...SOMBRA, modelo: stubModelo({ datos: DATOS_WEBS }), _jev: jev });
 
   await s.servicioLeads.registrarRespuesta(TEL, DIJO_WEBS);
   await s.cola.vacia();
@@ -114,7 +117,7 @@ test('la oferta se revisa con el texto que salio', async () => {
     es_cliente: { type: 'noul', noul: 0.9 },
     inventa: { type: 'noul', noul: 0.8 },
   });
-  const s = await conLead({ modelo: stubModelo({ datos: DATOS_WEBS }), _jev: jev });
+  const s = await conLead({ ...SOMBRA, modelo: stubModelo({ datos: DATOS_WEBS }), _jev: jev });
 
   await s.servicioLeads.registrarRespuesta(TEL, DIJO_WEBS);
   await s.cola.vacia();
@@ -122,7 +125,7 @@ test('la oferta se revisa con el texto que salio', async () => {
 
   const oferta = s.repo.sombrasDeLead(s.repo.leadPorTelefono(TEL).id).find((x) => x.decision === 'oferta');
   assert.ok(oferta);
-  assert.deepEqual(oferta.bot, { situacion: 'link_reunion', texto: '[link_reunion]' });
+  assert.deepEqual(oferta.bot, { situacion: 'link_reunion', texto: '[link_reunion]', intento: 1 });
   assert.equal(oferta.coincide, false, 'Jev cree que inventa algo');
   const consulta = jev.consultas.find((c) => c.questions.inventa);
   assert.equal(consulta.state.mensaje_del_bot, '[link_reunion]');
@@ -130,7 +133,7 @@ test('la oferta se revisa con el texto que salio', async () => {
 
 test('los mensajes que no son la oferta no se le mandan a Jev', async () => {
   const jev = stubJev({});
-  const s = await conLead({ modelo: stubModelo(), _jev: jev });
+  const s = await conLead({ ...SOMBRA, modelo: stubModelo(), _jev: jev });
 
   await s.servicioLeads.registrarRespuesta(TEL, 'hola, tengo una inmobiliaria');
   await s.cola.vacia();
@@ -143,7 +146,7 @@ test('los mensajes que no son la oferta no se le mandan a Jev', async () => {
 /** Si Jev no contesta, no se anota nada y el lead recibe exactamente lo mismo. */
 test('con Jev caido el embudo sigue igual y no se anota nada', async () => {
   const jev = stubJev({}, { falla: true });
-  const s = await conLead({ modelo: stubModelo({ datos: DATOS_WEBS }), _jev: jev });
+  const s = await conLead({ ...SOMBRA, modelo: stubModelo({ datos: DATOS_WEBS }), _jev: jev });
 
   await s.servicioLeads.registrarRespuesta(TEL, DIJO_WEBS);
   await s.cola.vacia();
@@ -166,6 +169,7 @@ test('con o sin sombra, al lead le llega lo mismo', async () => {
 
   const sinSombra = await conversar({});
   const conSombra = await conversar({
+    ...SOMBRA,
     _jev: stubJev({
       necesidad: { type: 'choice', choice: 'no_queda_claro', confidence: 1 },
       es_cliente: { type: 'noul', noul: 0 },

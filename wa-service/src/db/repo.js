@@ -52,7 +52,7 @@ const CAMPOS_FUNNEL = [
   'colors', 'instagram_web', 'needs', 'rubro', 'rubro_norm',
   'score', 'priority', 'score_reason', 'meeting_url', 'meeting_time',
   'consultas_precio', 'motivo_derivacion',
-  'horarios_ofrecidos', 'meeting_event_id', 'dia_en_foco',
+  'horarios_ofrecidos', 'meeting_event_id', 'dia_en_foco', 'necesidad_repreguntada',
   'nurture_desde', 'nurture_motivo',
   'no_cliente_motivo', 'no_cliente_desde',
 ];
@@ -229,7 +229,7 @@ function crearRepo(db) {
         -- arrastra la lista de otra conversacion, que ademas puede ser de antes
         -- de que se cambiara la franja de atencion: elegiria "las 12" de una
         -- lista que ya no existe. Mismo olvido que la reunion colgada de arriba.
-        horarios_ofrecidos = NULL, dia_en_foco = NULL,
+        horarios_ofrecidos = NULL, dia_en_foco = NULL, necesidad_repreguntada = 0,
         status = 'new', replied_at = NULL, followup_sent_at = NULL,
         -- Tambien el saludo: reiniciar es empezar de cero, y sin esto el lead
         -- reiniciado nunca vuelve a recibir la presentacion.
@@ -408,16 +408,19 @@ function crearRepo(db) {
       return filas.reverse().map((f) => ({ de: f.direction === 'in' ? 'lead' : 'bot', texto: f.body }));
     },
 
-    registrarSombra({ leadId, decision, bot = null, jev = null, coincide = null, confianza = null, ms = null }) {
+    registrarSombra({
+      leadId, decision, bot = null, jev = null, coincide = null,
+      confianza = null, ms = null, inputTokens = null,
+    }) {
       db.prepare(`
-        INSERT INTO jev_sombra (lead_id, decision, bot, jev, coincide, confianza, ms)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO jev_sombra (lead_id, decision, bot, jev, coincide, confianza, ms, input_tokens)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         leadId ?? null, decision,
         bot === null ? null : JSON.stringify(bot),
         jev === null ? null : JSON.stringify(jev),
         coincide === null ? null : (coincide ? 1 : 0),
-        confianza, ms,
+        confianza, ms, inputTokens,
       );
     },
 

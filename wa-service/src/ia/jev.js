@@ -22,7 +22,9 @@ function crearJev({
     /**
      * @param {string|object|Array} state lo que Jev tiene que mirar.
      * @param {Record<string, object>} questions preguntas por nombre.
-     * @returns {Promise<{answers: object, model: string, ms: number}|null>}
+     * @returns {Promise<{answers: object, model: string, ms: number, usage: object}|null>}
+     *   `usage.input_tokens` es lo unico que se cobra —la salida es gratis— y
+     *   es lo que despues deja calcular cuanto sale por lead.
      */
     async preguntar(state, questions) {
       if (!activo) return null;
@@ -43,7 +45,12 @@ function crearJev({
           logger?.warn('jev contesto sin answers');
           return null;
         }
-        return { answers: cuerpo.answers, model: cuerpo.model || modelo, ms: Date.now() - t0 };
+        return {
+          answers: cuerpo.answers,
+          model: cuerpo.model || modelo,
+          ms: Date.now() - t0,
+          usage: cuerpo.usage || {},
+        };
       } catch (e) {
         logger?.warn({ err: String(e.message || e) }, 'no se pudo consultar a jev');
         return null;

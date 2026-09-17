@@ -123,6 +123,11 @@ function crearEmbudo({
 }) {
   const CALENDLY = cfg.CALENDLY_LINK || '';
 
+  /** Lo que se le suma al pedido cuando el primer intento invento algo. */
+  const SIN_ATRIBUIR = '\n\nIMPORTANTE: no le atribuyas al lead ninguna necesidad, problema ni objetivo '
+    + 'que no haya dicho él mismo. Si no te dijo para qué lo quiere, no lo supongas: hablá de lo que sí dijo, '
+    + 'o no hables de su situación en absoluto.';
+
   function decir(lead, texto) {
     cola.encolar({ to: lead.telefono, texto, kind: 'manual', leadId: lead.id });
   }
@@ -132,8 +137,31 @@ function crearEmbudo({
    * @returns {Promise<boolean>} false si no se pudo escribir.
    */
   async function decirIA(lead, situacion, extra = '') {
-    const texto = await redactor?.escribir(lead, situacion, extra);
+    let texto = await redactor?.escribir(lead, situacion, extra);
     if (!texto) return false;
+
+    /**
+     * Con JEV_MODO=decide, la oferta pasa por Jev antes de salir: es el mensaje
+     * donde el modelo se pone a suponer para que suene a medida. Un reintento y
+     * nada mas — el lead esta esperando, y dos llamadas de mas ya se notan.
+     *
+     * En sombra y apagado esto devuelve null y no cambia nada.
+     */
+    const veredicto = await sombra?.revisarOferta?.(lead, situacion, texto);
+    if (veredicto?.bloquear) {
+      const segundo = await redactor?.escribir(lead, situacion, extra + SIN_ATRIBUIR);
+      const otra = segundo ? await sombra.revisarOferta(lead, situacion, segundo, { intento: 2 }) : null;
+      if (segundo && otra && !otra.bloquear) {
+        texto = segundo;
+      } else {
+        texto = textos.ofertaNeutra(situacion, { extra, calendly: CALENDLY });
+        logger?.warn(
+          { leadId: lead.id, situacion, probabilidad: veredicto.probabilidad },
+          'la oferta le atribuia algo al lead y el reintento tambien: sale el texto fijo'
+        );
+      }
+    }
+
     decir(lead, texto);
     sombra?.alMandarIA(lead, situacion, texto);
     return true;
@@ -973,7 +1001,55 @@ ${await loQueHay()}`
 
       if (puedeCerrar) {
         const fresco = repo.leadPorId(lead.id);
-        if (!agente.faltantes(fresco).length) return this._transicionar(fresco, entrada, S.SCORED);
+        if (!agente.faltantes(fresco).length) {
+          /**
+           * El ultimo control antes de darlo por calificado, con
+           * JEV_MODO=decide.
+           *
+           * El embudo cierra cuando los tres campos estan llenos, pero llenos
+           * no es lo mismo que ciertos: el 11-9 "Webs" —lo que el lead HACE—
+           * quedo guardado como lo que necesitaba, y el 12-9 un "Sii" a una
+           * pregunta de cinco opciones tambien cerro. Jev vuelve a leer la
+           * conversacion entera y dice que necesita.
+           *
+           * Null —Jev callado, o con menos confianza que el umbral— es seguir
+           * como siempre. Jev nunca frena nada por su cuenta.
+           */
+          const veredicto = await sombra?.decidirNecesidad?.(fresco);
+
+          if (veredicto?.pisar) {
+            repo.actualizarFunnel(fresco.id, { business_type: veredicto.pisar });
+            logger?.info(
+              { leadId: fresco.id, bot: fresco.business_type ?? null, jev: veredicto.pisar },
+              'jev corrigio la necesidad antes de calificar'
+            );
+            return this._transicionar(repo.leadPorId(fresco.id), entrada, S.SCORED);
+          }
+
+          /**
+           * No se entiende que necesita: no se lo da por calificado.
+           *
+           * Se le pregunta de nuevo UNA vez —la marca en la base es lo que lo
+           * hace una y no un loop— y si sigue sin quedar claro lo atiende una
+           * persona. Es lo que tendria que haber pasado el 11 y el 12/9 en vez
+           * de ofrecerle una reunion sin saber para que.
+           */
+          if (veredicto?.repreguntar) {
+            if (fresco.necesidad_repreguntada) {
+              logger?.info({ leadId: fresco.id }, 'sigue sin quedar claro que necesita: va a una persona');
+              derivar(fresco, 'necesidad');
+              return this._transicionar(fresco, entrada, S.HUMAN_QUEUED);
+            }
+
+            repo.actualizarFunnel(fresco.id, { business_type: null, necesidad_repreguntada: 1 });
+            const conMarca = repo.leadPorId(fresco.id);
+            if (!await decirIA(conMarca, 'necesidad_confusa')) return sinIA(conMarca, 'necesidad_confusa');
+            repo.actualizarFunnel(fresco.id, { fsm_state: S.CONVERSANDO, fsm_retries: 0 });
+            return S.CONVERSANDO;
+          }
+
+          return this._transicionar(fresco, entrada, S.SCORED);
+        }
       }
 
       decir(lead, texto);

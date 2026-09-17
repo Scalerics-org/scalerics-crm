@@ -153,13 +153,15 @@ function construir(cfg, {
   // Jev en modo sombra. `deps.jev` es lo que inyectan los tests; si no viene se
   // arma contra la API, y sin clave o con JEV_MODO=apagado no consulta nada.
   const jev = clienteJev || require('./ia/jev').crearJev({
-    apiKey: cfg.JEV_MODO === 'sombra' ? cfg.JEV_API_KEY : '',
+    apiKey: cfg.JEV_MODO === 'apagado' ? '' : cfg.JEV_API_KEY,
     url: cfg.JEV_URL,
     modelo: cfg.JEV_MODELO,
     timeoutMs: cfg.JEV_TIMEOUT_MS,
     logger: log,
   });
-  const sombra = require('./ia/sombra').crearSombra({ jev, repo, logger: log });
+  const sombra = require('./ia/sombra').crearSombra({
+    jev, repo, logger: log, modo: cfg.JEV_MODO, umbral: cfg.JEV_UMBRAL,
+  });
 
   const embudo = crearEmbudo({
     repo, cola, textos, scorer, logger: log, cfg, crmNotify, agente, redactor, agenda, ahora, sombra,

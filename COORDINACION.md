@@ -464,6 +464,16 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **17/9 — J (Jev en el bot de WhatsApp): worktree propio, no toco nada del CRM.**
+
+  Worktree `../scalerics-crm-wa-a-main`, ramas `feat/wa-service-a-main` (PR #61: trae `wa-service/` a `main`) y encima `feat/jev-sombra` (PR #79, borrador). **Toco solo `wa-service/`**, más este archivo. Sin deploy: `scalerics-wa` sigue en v100 y el CRM no se toca.
+
+  **Qué es Jev:** un modelo de TypeSafe que no escribe, decide. Se le manda la conversación y preguntas tipadas, y contesta con probabilidades y confianza en ~300 ms. Lo usamos en dos decisiones donde el modelo que conversa se viene equivocando: qué necesita el lead al darlo por calificado, y si el mensaje que ofrece la reunión le atribuye algo que no dijo (pasó el 11 y el 12/9).
+
+  **Estado:** modo sombra (anota y no cambia nada) y modo `decide` escritos y probados, los dos **apagados por defecto** (`JEV_MODO=apagado`). Antes de prender `decide` hay que medir en sombra: `npm run jev:informe` saca acuerdo, matriz, curva de umbral, latencia y costo.
+
+  **Para quien deploye `scalerics-wa`:** la clave va como secret de Fly (`JEV_API_KEY`), nunca al `.env` del repo. Y ojo con la regla 1: `flyctl deploy` sube el árbol entero, así que el worktree tiene que estar limpio.
+
 - **15/9 — rama `fix/simulador-guardar-escenario` (worktree `../crm-sim-guardar`). Sin PR, sin merge, sin deploy.** Pedido de Juan: abrir un escenario guardado, editarlo y guardarlo tiene que corregir ese mismo escenario.
   - **Causa:** el backend ya tenía `PUT`, pero el panel elegía entre actualizar y crear comparando el texto del nombre con el del abierto (`nombre === simNombreCargado`). Si no era idéntico (le cambiaste el nombre, lo elegiste en la lista sin tocar "Abrir", recargaste) hacía `POST` y creaba OTRO en silencio, con el aviso "Guardado:" casi igual a "Actualizado:". El original quedaba viejo y en la lista aparecían dos con el mismo nombre. Nada en pantalla decía cuál estaba abierto.
   - **Ahora manda el id:** `simEditar`/`simDejarDeEditar` son el único lugar que cambia cuál está abierto. "Guardar" hace `PUT` al abierto con todo `simEstado` (formas de cobro por tipo y meses hasta entregar incluidos) y avisa "Cambios guardados en <nombre>"; cambiarle el nombre lo renombra. "Guardar como nuevo" pide nombre con `prompt` y es el único que crea otro. "Restablecer" pasa a llamarse "Nuevo escenario" y deja de editar. Si el `PUT` da 404 (lo borró otro), avisa y ofrece guardarlo como nuevo. Línea "Editando: <nombre> (última modificación …)" debajo de la barra, y la lista muestra "· modificado <fecha>" (`updated_at` en hora de Montevideo).

@@ -210,7 +210,17 @@ const esquema = z.object({
    * decidir. Apagado por defecto, y sin clave no hace nada aunque se prenda.
    */
   JEV_API_KEY: z.string().default(''),
-  JEV_MODO: z.enum(['apagado', 'sombra']).default('apagado'),
+  /**
+   * `decide` deja que Jev pise la necesidad que guardo el bot y que frene una
+   * oferta que le atribuye al lead algo que no dijo. Solo por ARRIBA del
+   * umbral: con menos confianza, o sin respuesta, el bot hace lo de siempre.
+   *
+   * No se prende sin haber mirado antes `npm run jev:informe` sobre datos de
+   * sombra. El umbral sale de la curva que imprime ese informe, no de una
+   * corazonada.
+   */
+  JEV_MODO: z.enum(['apagado', 'sombra', 'decide']).default('apagado'),
+  JEV_UMBRAL: z.coerce.number().min(0).max(1).default(0.8),
   JEV_URL: z.string().default('https://api.typesafe.ai/v1/systemone'),
   JEV_MODELO: z.string().default('jev-latest'),
   // Jev tarda 150-800ms. El tope es para que una API colgada no deje
