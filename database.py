@@ -1914,6 +1914,52 @@ def init_db(db_path: str) -> None:
         # plata.
         _grant_panel_to_existing_roles(conn, "linkedin", si_tiene=("marketing",))
 
+        # ── Instagram ─────────────────────────────────────────────────────────
+        # Banco de ideas y publicaciones con aprobacion. services/instagram.py.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS ig_banco (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                clave       TEXT NOT NULL UNIQUE,
+                formato     TEXT NOT NULL,
+                pilar       TEXT NOT NULL,
+                slides_json TEXT NOT NULL,
+                caption     TEXT NOT NULL,
+                usado_en    TEXT
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS ig_publicaciones (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                semana          TEXT NOT NULL,
+                slot            TEXT NOT NULL,
+                clave_banco     TEXT,
+                formato         TEXT NOT NULL,
+                pilar           TEXT,
+                slides_json     TEXT NOT NULL,
+                caption         TEXT NOT NULL,
+                estilo          TEXT NOT NULL DEFAULT 'verde',
+                programada_para TEXT NOT NULL,
+                estado          TEXT NOT NULL DEFAULT 'borrador',
+                version         INTEGER NOT NULL DEFAULT 0,
+                imagenes        INTEGER NOT NULL DEFAULT 0,
+                img_token       TEXT NOT NULL,
+                ig_media_id     TEXT,
+                permalink       TEXT,
+                error           TEXT,
+                aprobada_por    TEXT,
+                aprobada_en     TEXT,
+                publicada_en    TEXT,
+                editada_por     TEXT,
+                creado_en       TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                actualizado_en  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE (semana, slot)
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_ig_pub_estado "
+                     "ON ig_publicaciones(estado, programada_para)")
+        conn.commit()
+        _grant_panel_to_existing_roles(conn, "instagram", si_tiene=("marketing", "linkedin"))
+
         # Backfill scores for leads that were scraped before scoring was added
         conn.execute("""
             UPDATE businesses SET score = (

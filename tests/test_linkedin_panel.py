@@ -135,13 +135,14 @@ def _menu():
     return HTML[HTML.index('<div class="nav-scroll">'):HTML.index('<div class="sidebar-bottom">')]
 
 
-def test_marketing_tiene_los_cuatro_en_orden_y_captacion_ya_no_tiene_email():
+def test_marketing_tiene_sus_paneles_en_orden_y_captacion_ya_no_tiene_email():
     marketing = _entre(_menu(), 'nav-section-label">MARKETING</div>', 'nav-section-label">FINANZAS</div>')
     items = re.findall(r'id="nav-(\w+)"[^>]*><i data-lucide="([\w-]+)" class="nav-icon"></i> ([^<]+?)(?: <span|</div>)',
                        marketing)
     assert [(p, texto.strip()) for p, _, texto in items] == [
         ("meta", "Meta Ads"), ("marketing", "Inteligencia marketing"),
-        ("email_mkt", "Email marketing"), ("linkedin", "LinkedIn")]
+        ("email_mkt", "Email marketing"), ("linkedin", "LinkedIn"),
+        ("instagram", "Instagram")]
     assert dict((p, icono) for p, icono, _ in items)["linkedin"] == "linkedin"
     captacion = _menu()[_menu().index('nav-section-label">CAPTACIÓN'):]
     assert re.findall(r'id="nav-(\w+)"', captacion) == ["cola", "metrics", "sdr"]
