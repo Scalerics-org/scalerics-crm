@@ -533,6 +533,36 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **17/9 — J (agente de marketing): panel Instagram con aprobación (Etapa 2).**
+
+  Nuevo panel `instagram` en MARKETING. **Nada se publica sin que una persona lo
+  apruebe** (pedido explícito de Juan); editar una aprobada la devuelve a
+  borrador. Todo gratis, sin API de Anthropic.
+
+  - `services/instagram.py`: los jueves desde las 10 (marca `ig_semana`) arma la
+    semana siguiente desde `ig_banco` (semilla en `services/ig_banco_semilla.py`,
+    41 ideas): feed lun/mié/vie y historias mar/jue a las 19 de Montevideo, y
+    avisa a contacto@. Un hilo cada 10 min publica lo aprobado vencido con
+    `META_ADS_TOKEN` (ya tiene `instagram_content_publish`). Una aprobada que no
+    salió en 6 h queda `vencida`. `INSTAGRAM_AGENTE=off` lo apaga.
+  - `services/ig_render.py`: las piezas se dibujan con **Pillow** (nueva en
+    `requirements.txt`; Fly no tiene Chromium) y DM Sans en `static/fonts/`
+    (OFL). El feed siempre sale fondo oscuro + acento verde para respetar la
+    grilla actual; el degradado azul solo en historias.
+  - Imágenes en `<carpeta de la base>/instagram/<id>/`. Meta las baja de
+    `/pub/ig/<token>/<n>.jpg`, **exento del login** en `require_login`, con token
+    al azar por publicación y solo mientras está aprobada o publicándose.
+  - Zona compartida, aditivo: `database.py` (tablas `ig_banco`,
+    `ig_publicaciones` + grant del panel a quien tiene `marketing` o
+    `linkedin`), `dashboard.py` (menú, panel, CSS antes de LinkedIn, JS después
+    de "FIN LinkedIn", arranque del hilo), `services/email_service.py` (tres
+    avisos). Se actualizaron los tests que fijan el orden del menú MARKETING.
+  - **Pedidos de corrección en texto libre** (tabla `ig_correcciones`): Juan los
+    escribe en la tarjeta y los resuelve una tarea programada de Claude Code
+    cada 30 min con `scripts/ig_correcciones.py`, contra `/api/instagram-bot/`
+    (**exento del login**, validado con `IG_BOT_TOKEN` y compare_digest; solo
+    abre esas rutas). La versión corregida queda en borrador.
+
 - **16/9 — J (agente de marketing, pedido de Juan): alertas diarias de la pauta por mail.**
 
   Etapa 1 de un plan por fases para cubrir al de marketing (después: contenido

@@ -29,6 +29,7 @@ from routes.finanzas import finanzas_bp
 from routes.simulador import simulador_bp
 from routes.email_marketing import email_mkt_bp
 from routes.linkedin_panel import linkedin_panel_bp
+from routes.instagram import instagram_bp, instagram_pub_bp
 from routes.equipo import equipo_bp
 from routes.horarios import horarios_bp
 from routes.flujos import flujos_bp
@@ -1368,6 +1369,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-plantillas .nav-icon{stroke:#c084fc}
 #nav-email_mkt .nav-icon{stroke:#6ee7b7}
 #nav-linkedin .nav-icon{stroke:#4f9cf9}
+#nav-instagram .nav-icon{stroke:#d946ef}
 .nav-item.active #nav-cola .nav-icon,
 .nav-item.active .nav-icon{opacity:1}
 /* active item keeps its color but brighter */
@@ -1396,6 +1398,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-plantillas.active .nav-icon{stroke:#d8b4fe}
 #nav-email_mkt.active .nav-icon{stroke:#a7f3d0}
 #nav-linkedin.active .nav-icon{stroke:#8ec2ff}
+#nav-instagram.active .nav-icon{stroke:#fae8ff}
 /* light mode — slightly darker tones */
 body.light #nav-cola .nav-icon{stroke:#2563eb}
 body.light #nav-clientes .nav-icon{stroke:#7c3aed}
@@ -1422,6 +1425,7 @@ body.light #nav-seg_leads .nav-icon{stroke:#be123c}
 body.light #nav-plantillas .nav-icon{stroke:#9333ea}
 body.light #nav-email_mkt .nav-icon{stroke:#065f46}
 body.light #nav-linkedin .nav-icon{stroke:#0a66c2}
+body.light #nav-instagram .nav-icon{stroke:#c026d3}
 /* ── Lucide icons ─────────────────────────────────────────────────────────── */
 .nav-icon{width:15px;height:15px;stroke-width:2;flex-shrink:0}
 /* Frase de equipo, version compacta del PDF de identidad de marca. Es la
@@ -2299,6 +2303,52 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   .em-mail-datos{grid-template-columns:1fr}
   .em-mail-datos dd{margin-bottom:4px}
 }
+/* ── Instagram ── */
+.ig-oculto{display:none!important}
+.ig-barra{display:flex;align-items:center;justify-content:space-between;gap:8px 12px;flex-wrap:wrap;margin-bottom:14px}
+.ig-banco{font-size:.76rem;color:var(--texto-debil)}
+.ig-nota{font-size:.8rem;color:var(--texto-debil);background:var(--superficie-honda);border:1px solid var(--borde);border-radius:10px;padding:10px 14px;margin-bottom:14px;line-height:1.5}
+.ig-tarjetas{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px}
+.ig-tarjeta{background:var(--superficie-honda);border:1px solid var(--borde);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.ig-tarjeta.ig-descartada{opacity:.6}
+.ig-cab{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.ig-dia{flex:1;min-width:0;font-size:.86rem;font-weight:700;color:var(--texto-fuerte);text-transform:capitalize}
+.ig-chip{display:inline-block;border-radius:99px;padding:2px 9px;font-size:.7rem;font-weight:700;white-space:nowrap;background:var(--relleno);color:var(--texto-debil)}
+.ig-chip-verde{background:var(--verde-tinte);color:var(--verde-texto)}
+.ig-chip-azul{background:var(--azul-tinte);color:var(--azul-claro)}
+.ig-chip-rojo{background:var(--rojo-tinte);color:var(--rojo-texto)}
+.ig-visor{position:relative;border-radius:10px;overflow:hidden;border:1px solid var(--borde);background:var(--fondo-hundido)}
+.ig-visor img{display:block;width:100%;height:auto;cursor:zoom-in}
+.ig-flecha{position:absolute;top:50%;transform:translateY(-50%);width:34px;height:34px;border-radius:50%;border:1px solid var(--borde-fuerte);background:var(--superficie-alta);color:var(--texto-fuerte);font-size:1.1rem;cursor:pointer;opacity:.9}
+.ig-flecha.izq{left:8px}
+.ig-flecha.der{right:8px}
+.ig-contador{position:absolute;top:8px;left:8px;background:var(--superficie-alta);color:var(--texto-fuerte);font-size:.7rem;font-weight:700;border-radius:99px;padding:2px 8px}
+.ig-rotulo{font-size:.72rem;font-weight:700;color:var(--texto-debil);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;display:block}
+.ig-caption{width:100%;min-height:150px;resize:vertical;font-family:inherit;font-size:.82rem;line-height:1.5;color:var(--texto);background:var(--superficie);border:1px solid var(--borde);border-radius:8px;padding:10px;box-sizing:border-box}
+.ig-contador-txt{font-size:.7rem;color:var(--texto-tenue);text-align:right}
+.ig-slides summary{cursor:pointer;font-size:.8rem;font-weight:600;color:var(--texto-fuerte)}
+.ig-slide{border-top:1px solid var(--borde);padding-top:8px;margin-top:8px;display:grid;gap:6px}
+.ig-slide b{font-size:.72rem;color:var(--texto-debil)}
+.ig-input{width:100%;box-sizing:border-box;font-family:inherit;font-size:.8rem;color:var(--texto);background:var(--superficie);border:1px solid var(--borde);border-radius:6px;padding:6px 8px}
+.ig-fila{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end}
+.ig-fila>div{flex:1;min-width:120px}
+.ig-acciones{display:flex;flex-wrap:wrap;gap:6px}
+.ig-btn{background:var(--relleno);border:1px solid var(--borde-fuerte);color:var(--texto);border-radius:8px;padding:7px 12px;font-size:.78rem;font-weight:600;font-family:inherit;cursor:pointer;text-decoration:none}
+.ig-btn:hover{background:var(--hover);border-color:var(--azul)}
+.ig-btn:disabled{opacity:.5;cursor:wait}
+.ig-btn-aprobar{background:var(--verde-tinte);border-color:var(--verde);color:var(--verde-texto)}
+.ig-btn-aprobar:hover{background:var(--verde-tinte);border-color:var(--verde-texto)}
+.ig-btn-suave{background:none;color:var(--texto-debil)}
+.ig-msg{font-size:.76rem;color:var(--texto-debil)}
+.ig-msg:empty{display:none}
+.ig-msg.error{color:var(--rojo-texto)}
+.ig-msg.ok{color:var(--verde-texto)}
+.ig-grande{max-width:min(92vw,560px);max-height:88vh;border-radius:10px}
+.ig-pedido{border:1px solid var(--borde);border-radius:8px;padding:10px;background:var(--superficie);display:grid;gap:6px}
+.ig-pedido textarea{min-height:56px;resize:vertical}
+.ig-pedido-item{font-size:.74rem;color:var(--texto-debil);border-top:1px solid var(--borde);padding-top:6px;line-height:1.45}
+.ig-pedido-item b{color:var(--texto-fuerte)}
+@media(max-width:480px){.ig-tarjetas{grid-template-columns:1fr}}
 /* ── LinkedIn ─────────────────────────────────────────────────────────────────
    Borradores para la pagina de Scalerics en LinkedIn. Solo tokens, sin reglas
    de tema claro. */
@@ -2581,6 +2631,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div class="nav-item" id="nav-marketing" onclick="showPanel('marketing')"><i data-lucide="target" class="nav-icon"></i> Inteligencia marketing</div>
   <div class="nav-item" id="nav-email_mkt" onclick="showPanel('email_mkt')"><i data-lucide="mail" class="nav-icon"></i> Email marketing</div>
   <div class="nav-item" id="nav-linkedin" onclick="showPanel('linkedin')"><i data-lucide="linkedin" class="nav-icon"></i> LinkedIn</div>
+  <div class="nav-item" id="nav-instagram" onclick="showPanel('instagram')"><i data-lucide="image" class="nav-icon"></i> Instagram</div>
   <div class="nav-section-label">FINANZAS</div>
   <div class="nav-item" id="nav-finanzas" onclick="showPanel('finanzas')"><i data-lucide="wallet" class="nav-icon"></i> Finanzas</div>
   <div class="nav-item" id="nav-simulador" onclick="showPanel('simulador')"><i data-lucide="calculator" class="nav-icon"></i> Simulador financiero</div>
@@ -3587,6 +3638,37 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     </div>
   </div>
   <!-- ======= FIN LINKEDIN PANEL ======= -->
+
+  <!-- ======= INSTAGRAM PANEL ======= -->
+  <!-- Publicaciones de @scalerics_ con aprobacion. Nada se publica sin
+       aprobar. Ver services/instagram.py. -->
+  <div id="instagram-panel" class="panel">
+    <div class="page-header">
+      <div>
+        <h1>Instagram</h1>
+        <div class="page-date">Revisá, corregí y aprobá lo que se publica en @scalerics_</div>
+      </div>
+      <div class="ig-acciones">
+        <button type="button" class="export-btn ig-oculto" id="ig-btn-armar" onclick="igArmar()">Armar esta semana</button>
+      </div>
+    </div>
+    <div class="ig-nota"><b>Nada se publica sin tu aprobación.</b> Si cambiás algo de una publicación aprobada, vuelve a quedar para revisar y hay que aprobarla de nuevo. En los títulos, lo que escribas entre <b>*asteriscos*</b> sale en verde.</div>
+    <div class="ig-barra">
+      <div class="li-nav-semana">
+        <button type="button" class="cal-nav-btn" onclick="igSemana(-1)" aria-label="Semana anterior">&larr;</button>
+        <span id="ig-semana-label" aria-live="polite"></span>
+        <button type="button" class="cal-nav-btn" onclick="igSemana(1)" aria-label="Semana siguiente">&rarr;</button>
+        <button type="button" class="cal-today-btn" onclick="igSemanaHoy()">Esta semana</button>
+      </div>
+      <span class="ig-banco" id="ig-banco"></span>
+    </div>
+    <div id="ig-estado" class="li-vacio" role="status" aria-live="polite">Cargando…</div>
+    <div id="ig-tarjetas" class="ig-tarjetas"></div>
+    <div class="modal-overlay" id="ig-zoom" onclick="this.classList.remove('open')">
+      <img id="ig-zoom-img" class="ig-grande" alt="Vista ampliada">
+    </div>
+  </div>
+  <!-- ======= FIN INSTAGRAM PANEL ======= -->
 
 
   <div id="activity-panel" class="panel">
@@ -4640,6 +4722,7 @@ function showPanel(name) {
   if (name === 'sdr') loadSdr();
   if (name === 'email_mkt') loadEmailMkt();
   if (name === 'linkedin') loadLinkedin();
+  if (name === 'instagram') igCargar();
 }
 
 // ========== Leads / Cola panel ==========
@@ -9389,20 +9472,20 @@ function _showScoreBreakdown(event, el) {
 
 // ── Mobile navigation ─────────────────────────────────────────────────────────
 // El mismo orden que el menu de la izquierda (Juan, 14/9).
-const NAV_PRIORITY = ['cal','meta','email_mkt','linkedin','finanzas','simulador','inteligencia_fin','seg_leads','wa','notion_clients','plantillas','clientes','projects','tasks','daily','daily_admin','activity','equipo','ausencias','flujos','horarios','cola','metrics'];
+const NAV_PRIORITY = ['cal','meta','email_mkt','linkedin','instagram','finanzas','simulador','inteligencia_fin','seg_leads','wa','notion_clients','plantillas','clientes','projects','tasks','daily','daily_admin','activity','equipo','ausencias','flujos','horarios','cola','metrics'];
 const NAV_ICONS = {
   cola:'inbox',meta:'instagram',cal:'calendar',
   tasks:'check-square',pipeline:'trending-up',clientes:'users',
   wa:'message-circle',metrics:'bar-chart-2',activity:'clock',projects:'target',
   notion_clients:'handshake',finanzas:'wallet',simulador:'calculator',inteligencia_fin:'lightbulb',equipo:'network',
-  ausencias:'calendar-clock',horarios:'clock-4',flujos:'workflow',seg_leads:'phone-call',daily:'clipboard-list',plantillas:'message-square-text',daily_admin:'clipboard-check',email_mkt:'mail',linkedin:'linkedin'
+  ausencias:'calendar-clock',horarios:'clock-4',flujos:'workflow',seg_leads:'phone-call',daily:'clipboard-list',plantillas:'message-square-text',daily_admin:'clipboard-check',email_mkt:'mail',linkedin:'linkedin',instagram:'image'
 };
 const NAV_LABELS = {
   cola:'Outbound',meta:'Meta',cal:'Agenda',
   tasks:'Tareas',pipeline:'Pipeline',clientes:'Clientes',
   wa:'WA',metrics:'Intel. comercial',activity:'Actividad',projects:'Proyectos',
   notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',
-  ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento',daily:'Daily',plantillas:'Plantillas',daily_admin:'Daily Admin',email_mkt:'Email mkt',linkedin:'LinkedIn'
+  ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento',daily:'Daily',plantillas:'Plantillas',daily_admin:'Daily Admin',email_mkt:'Email mkt',linkedin:'LinkedIn',instagram:'Instagram'
 };
 let _mobileNavOverflow = [];
 
@@ -9482,7 +9565,7 @@ function closeMasSheet() {
 }
 
 // ── Panel access control ──────────────────────────────────────────────────────
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin'];
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram'];
 (async () => {
   try {
     const r = await fetch('/api/me');
@@ -13233,6 +13316,290 @@ async function liGenerar() {
   }
 }
 // ========== FIN LinkedIn ==========
+
+// ========== Instagram ==========
+// Sin barras invertidas en este bloque: vive dentro de un string de Python.
+let igDatos = null;
+let igSemanaSel = '';
+let igPedido = 0;
+const igVista = {};
+const IG_ESTADOS = {
+  borrador: ['Para revisar', ''], aprobada: ['Aprobada', 'ig-chip-verde'],
+  publicando: ['Publicando…', 'ig-chip-azul'], publicada: ['Publicada', 'ig-chip-azul'],
+  error: ['Error al publicar', 'ig-chip-rojo'], vencida: ['No salió a tiempo', 'ig-chip-rojo'],
+  descartada: ['Descartada', '']
+};
+const IG_FORMATOS = {imagen: 'Imagen', carrusel: 'Carrusel', historia: 'Historia'};
+const IG_DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+const IG_EDITABLES = ['borrador', 'aprobada', 'error', 'vencida'];
+const IG_Q = "'";
+
+function igFechaLarga(iso) {
+  const p = String(iso || '').split('-');
+  if (p.length !== 3) return iso || '';
+  const d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+  return IG_DIAS[d.getDay()] + ' ' + p[2] + '/' + p[1];
+}
+
+function igSemana(delta) {
+  const base = (igDatos && igDatos.semana) || '';
+  if (!base) return;
+  const p = base.split('-');
+  const d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]) + 7 * delta);
+  igSemanaSel = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  igCargar();
+}
+
+function igSemanaHoy() { igSemanaSel = ''; igCargar(); }
+
+async function igCargar() {
+  const estado = document.getElementById('ig-estado');
+  if (!estado) return;
+  const pedido = ++igPedido;
+  let d;
+  try {
+    const r = await fetch('/api/instagram/semana' + (igSemanaSel ? '?semana=' + encodeURIComponent(igSemanaSel) : ''));
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    d = await r.json();
+    if (!d || !Array.isArray(d.publicaciones)) throw new Error('respuesta incompleta');
+  } catch (e) {
+    if (pedido !== igPedido) return;
+    estado.textContent = 'No se pudieron cargar las publicaciones. Probá de nuevo en un rato.';
+    liClase('ig-estado', false, 'ig-oculto');
+    return;
+  }
+  if (pedido !== igPedido) return;
+  igDatos = d;
+  igPintar();
+}
+
+function igPintar() {
+  const d = igDatos;
+  const etiqueta = document.getElementById('ig-semana-label');
+  if (etiqueta) etiqueta.textContent = 'Semana del ' + igFechaLarga(d.semana);
+  const banco = document.getElementById('ig-banco');
+  if (banco) banco.textContent = 'Ideas sin usar: ' + d.banco.feed + ' publicaciones y ' + d.banco.historia + ' historias';
+  const hay = d.publicaciones.length > 0;
+  const estado = document.getElementById('ig-estado');
+  estado.textContent = hay ? '' : 'No hay publicaciones para esta semana. Las de la semana siguiente se arman solas los jueves.';
+  liClase('ig-estado', hay, 'ig-oculto');
+  liClase('ig-btn-armar', !(d.puede_armar && d.semana >= d.semana_actual), 'ig-oculto');
+  document.getElementById('ig-tarjetas').innerHTML = d.publicaciones.map(igTarjeta).join('');
+}
+
+function igBuscar(id) {
+  return ((igDatos && igDatos.publicaciones) || []).find(p => Number(p.id) === Number(id));
+}
+
+function igBoton(id, accion, texto, clase) {
+  return '<button type="button" class="ig-btn' + (clase ? ' ' + clase : '') + '" onclick="igAccion(' + id + ', ' +
+    IG_Q + accion + IG_Q + ')">' + texto + '</button>';
+}
+
+function igCampo(id, k, campo, valor, texto, dis) {
+  const base = ' class="ig-input" data-ig="' + id + '" data-slide="' + k + '" data-campo="' + campo + '" placeholder="' + texto + '"' + dis;
+  if (campo === 'texto') return '<textarea rows="2"' + base + '>' + liEsc(valor || '') + '</textarea>';
+  return '<input' + base + ' value="' + liEsc(valor || '') + '">';
+}
+
+function igTarjeta(p) {
+  const id = Number(p.id);
+  const est = IG_ESTADOS[p.estado] || [p.estado, ''];
+  const editable = IG_EDITABLES.includes(p.estado);
+  const n = p.imagenes_url.length;
+  const i = Math.min(igVista[id] || 0, Math.max(0, n - 1));
+  const visor = n ? '<div class="ig-visor"><img id="ig-img-' + id + '" src="' + liEsc(p.imagenes_url[i]) +
+    '" alt="Vista previa" onclick="igZoom(this.src)">' +
+    (n > 1 ? '<button type="button" class="ig-flecha izq" onclick="igMover(' + id + ', -1)" aria-label="Imagen anterior">‹</button>' +
+      '<button type="button" class="ig-flecha der" onclick="igMover(' + id + ', 1)" aria-label="Imagen siguiente">›</button>' +
+      '<span class="ig-contador" id="ig-cont-' + id + '">' + (i + 1) + '/' + n + '</span>' : '') +
+    '</div>' : '<div class="li-vacio">Sin imágenes todavía.</div>';
+  const dis = editable ? '' : ' disabled';
+  const slides = p.slides.map((s, k) =>
+    '<div class="ig-slide"><b>' + (p.formato === 'carrusel' ? 'Imagen ' + (k + 1) : 'Imagen') + '</b>' +
+    igCampo(id, k, 'etiqueta', s.etiqueta, 'Etiqueta chica (opcional)', dis) +
+    igCampo(id, k, 'titulo', s.titulo, 'Título', dis) +
+    igCampo(id, k, 'texto', s.texto, 'Texto (opcional)', dis) +
+    igCampo(id, k, 'cta', s.cta, 'Botón (opcional)', dis) + '</div>').join('');
+  const estilos = p.estilos.length > 1
+    ? '<div><label class="ig-rotulo" for="ig-estilo-' + id + '">Fondo</label><select class="ig-input" id="ig-estilo-' + id + '"' + dis + '>' +
+      p.estilos.map(e => '<option value="' + e + '"' + (e === p.estilo ? ' selected' : '') + '>' +
+        (e === 'degradado' ? 'Azul' : 'Oscuro') + '</option>').join('') + '</select></div>'
+    : '';
+  const b = [];
+  if (editable) b.push('<button type="button" class="ig-btn" onclick="igGuardar(' + id + ')">Guardar cambios</button>');
+  if (['borrador', 'error', 'vencida'].includes(p.estado)) b.push('<button type="button" class="ig-btn ig-btn-aprobar" onclick="igAprobar(' + id + ')">Aprobar</button>');
+  if (p.estado === 'aprobada') b.push(igBoton(id, 'desaprobar', 'Quitar aprobación'));
+  if (editable || p.estado === 'descartada') b.push(igBoton(id, 'otra-idea', 'Otra idea', 'ig-btn-suave'));
+  if (editable) b.push(igBoton(id, 'descartar', 'Descartar', 'ig-btn-suave'));
+  if (p.estado === 'descartada') b.push(igBoton(id, 'restaurar', 'Recuperar', 'ig-btn-suave'));
+  if (p.permalink) b.push('<a class="ig-btn" href="' + liEsc(p.permalink) + '" target="_blank" rel="noopener">Ver en Instagram</a>');
+  const extra = p.estado === 'aprobada' ? 'Se publica el ' + igFechaLarga(p.fecha) + ' a las ' + p.hora + '.' :
+    (p.error ? 'Error: ' + p.error : '');
+  const caption = p.formato === 'historia' ? '' :
+    '<div><label class="ig-rotulo" for="ig-cap-' + id + '">Texto de la publicación</label>' +
+    '<textarea class="ig-caption" id="ig-cap-' + id + '" oninput="igContar(' + id + ')"' + dis + '>' + liEsc(p.caption) + '</textarea>' +
+    '<div class="ig-contador-txt" id="ig-cc-' + id + '">' + p.caption.length + ' / 2200</div></div>';
+  return '<article class="ig-tarjeta ig-' + liEsc(p.estado) + '" id="ig-t-' + id + '">' +
+    '<div class="ig-cab"><span class="ig-dia">' + liEsc(igFechaLarga(p.fecha)) + ' · ' + liEsc(p.hora) + '</span>' +
+    '<span class="ig-chip">' + liEsc(IG_FORMATOS[p.formato] || p.formato) + '</span>' +
+    '<span class="ig-chip ' + est[1] + '">' + liEsc(est[0]) + '</span></div>' + visor + caption +
+    '<details class="ig-slides"><summary>Textos de ' + (n > 1 ? 'las imágenes' : 'la imagen') + '</summary>' + slides + '</details>' +
+    '<div class="ig-fila"><div><label class="ig-rotulo" for="ig-fecha-' + id + '">Día</label><input type="date" class="ig-input" id="ig-fecha-' + id + '" value="' + liEsc(p.fecha) + '"' + dis + '></div>' +
+    '<div><label class="ig-rotulo" for="ig-hora-' + id + '">Hora</label><input type="time" class="ig-input" id="ig-hora-' + id + '" value="' + liEsc(p.hora) + '"' + dis + '></div>' + estilos + '</div>' +
+    igPedidoHtml(p, editable) +
+    '<div class="ig-msg" id="ig-msg-' + id + '" role="status">' + liEsc(extra) + '</div>' +
+    '<div class="ig-acciones">' + b.join('') + '</div></article>';
+}
+
+const IG_PEDIDO_ESTADOS = {pendiente: 'En espera: Claude lo revisa en menos de 30 minutos',
+  hecha: 'Corregido', no_se_pudo: 'No se pudo'};
+
+function igPedidoHtml(p, editable) {
+  const id = Number(p.id);
+  const lista = (p.correcciones || []);
+  const espera = lista.some(c => c.estado === 'pendiente');
+  const items = lista.map(c => '<div class="ig-pedido-item"><b>' + liEsc(IG_PEDIDO_ESTADOS[c.estado] || c.estado) +
+    ':</b> ' + liEsc(c.pedido) + (c.respuesta ? '<br>Claude: ' + liEsc(c.respuesta) : '') + '</div>').join('');
+  const form = editable && !espera
+    ? '<textarea class="ig-input" id="ig-pedido-' + id + '" maxlength="1000" placeholder="Ej: buena imagen, pero cambiá el botón por Agendá tu demo y hacé el título más corto"></textarea>' +
+      '<div><button type="button" class="ig-btn" onclick="igPedir(' + id + ')">Enviar pedido a Claude</button></div>'
+    : '';
+  if (!form && !items) return '';
+  return '<div class="ig-pedido"><span class="ig-rotulo">Pedile un cambio a Claude</span>' + form + items + '</div>';
+}
+
+async function igPedir(id) {
+  const area = document.getElementById('ig-pedido-' + id);
+  const pedido = area ? area.value.trim() : '';
+  if (!pedido) { igMsg(id, 'Escribí qué querés cambiar.', 'error'); return; }
+  igBotones(id, true);
+  try {
+    const r = await fetch('/api/instagram/publicaciones/' + id + '/correccion', {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({pedido: pedido})});
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.ok) throw new Error(d.error || 'No se pudo enviar el pedido.');
+    const p = igBuscar(id);
+    p.correcciones = d.correcciones;
+    igReemplazar(p);
+    igMsg(id, 'Pedido enviado. Cuando esté la versión corregida la vas a ver acá, lista para aprobar.', 'ok');
+  } catch (e) {
+    igBotones(id, false);
+    igMsg(id, e.message, 'error');
+  }
+}
+
+function igContar(id) {
+  const a = document.getElementById('ig-cap-' + id);
+  const c = document.getElementById('ig-cc-' + id);
+  if (a && c) c.textContent = a.value.length + ' / 2200';
+}
+
+function igMover(id, delta) {
+  const p = igBuscar(id);
+  if (!p) return;
+  const n = p.imagenes_url.length;
+  igVista[id] = ((igVista[id] || 0) + delta + n) % n;
+  document.getElementById('ig-img-' + id).src = p.imagenes_url[igVista[id]];
+  document.getElementById('ig-cont-' + id).textContent = (igVista[id] + 1) + '/' + n;
+}
+
+function igZoom(src) {
+  document.getElementById('ig-zoom-img').src = src;
+  document.getElementById('ig-zoom').classList.add('open');
+}
+
+function igMsg(id, texto, tipo) {
+  const el = document.getElementById('ig-msg-' + id);
+  if (!el) return;
+  el.textContent = texto;
+  el.className = 'ig-msg' + (tipo ? ' ' + tipo : '');
+}
+
+function igLeer(id) {
+  const p = igBuscar(id);
+  const slides = p.slides.map(s => Object.assign({}, s));
+  document.querySelectorAll('[data-ig="' + id + '"]').forEach(el => {
+    slides[Number(el.dataset.slide)][el.dataset.campo] = el.value;
+  });
+  const datos = {slides: slides,
+    fecha: document.getElementById('ig-fecha-' + id).value,
+    hora: document.getElementById('ig-hora-' + id).value};
+  const cap = document.getElementById('ig-cap-' + id);
+  if (cap) datos.caption = cap.value;
+  const est = document.getElementById('ig-estilo-' + id);
+  if (est) datos.estilo = est.value;
+  return datos;
+}
+
+function igBotones(id, apagar) {
+  document.querySelectorAll('#ig-t-' + id + ' button.ig-btn').forEach(b => { b.disabled = apagar; });
+}
+
+function igReemplazar(p) {
+  const i = igDatos.publicaciones.findIndex(x => Number(x.id) === Number(p.id));
+  if (i >= 0) igDatos.publicaciones[i] = p;
+  const vieja = document.getElementById('ig-t-' + p.id);
+  if (vieja) vieja.outerHTML = igTarjeta(p);
+}
+
+async function igLlamar(id, url, opciones, espera) {
+  igBotones(id, true);
+  igMsg(id, espera, '');
+  try {
+    const r = await fetch(url, opciones);
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.ok) throw new Error(d.error || 'No se pudo completar la acción.');
+    igReemplazar(d.publicacion);
+    return d.publicacion;
+  } catch (e) {
+    igBotones(id, false);
+    igMsg(id, e.message, 'error');
+    return null;
+  }
+}
+
+function igGuardar(id) {
+  return igLlamar(id, '/api/instagram/publicaciones/' + id, {
+    method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(igLeer(id))
+  }, 'Guardando y actualizando la imagen…');
+}
+
+async function igAprobar(id) {
+  const datos = igLeer(id);
+  if (!confirm('¿Aprobar esta publicación? Se va a subir sola a Instagram el ' + igFechaLarga(datos.fecha) + ' a las ' + datos.hora + '.')) return;
+  const guardada = await igGuardar(id);
+  if (!guardada) return;
+  const p = await igLlamar(id, '/api/instagram/publicaciones/' + id + '/aprobar', {method: 'POST'}, 'Aprobando…');
+  if (p) igMsg(id, 'Aprobada. Se publica el ' + igFechaLarga(p.fecha) + ' a las ' + p.hora + '.', 'ok');
+}
+
+async function igAccion(id, accion) {
+  const preguntas = {'otra-idea': '¿Cambiar esta publicación por otra idea? Se pierden los cambios que le hayas hecho.',
+    descartar: '¿Descartar esta publicación? No se va a publicar.'};
+  if (preguntas[accion] && !confirm(preguntas[accion])) return;
+  const esperas = {'otra-idea': 'Buscando otra idea…', desaprobar: 'Quitando la aprobación…',
+    descartar: 'Descartando…', restaurar: 'Recuperando…'};
+  if (accion === 'otra-idea') igVista[id] = 0;
+  await igLlamar(id, '/api/instagram/publicaciones/' + id + '/' + accion, {method: 'POST'}, esperas[accion] || 'Un momento…');
+}
+
+async function igArmar() {
+  const btn = document.getElementById('ig-btn-armar');
+  if (btn) btn.disabled = true;
+  try {
+    const r = await fetch('/api/instagram/armar-semana', {method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({semana: igDatos.semana})});
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.ok) throw new Error(d.error || 'No se pudo armar la semana.');
+    await igCargar();
+  } catch (e) {
+    alert(e.message);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+// ========== FIN Instagram ==========
 
 // ========== Email marketing ==========
 // Lo que sale por Resend, con lo que Resend cuenta despues. Los numeros y las
@@ -17757,7 +18124,7 @@ def create_app(db_path: str) -> Flask:
     for bp in (leads_bp, demos_bp, calendar_bp, wa_bp, pipeline_bp, tasks_bp, budgets_bp, tokens_bp, meta_bp, calendly_bp, notion_bp, projects_bp, preclientes_bp,
                 notion_clients_bp, resend_bp, linkedin_bp, web_bp, finanzas_bp, marketing_bp,
                 simulador_bp, equipo_bp, horarios_bp, flujos_bp, seg_leads_bp, daily_bp, plantillas_bp,
-                backups_bp, email_mkt_bp, linkedin_panel_bp):
+                backups_bp, email_mkt_bp, linkedin_panel_bp, instagram_bp, instagram_pub_bp):
         app.register_blueprint(bp)
 
     @app.before_request
@@ -17780,6 +18147,14 @@ def create_app(db_path: str) -> Flask:
         # El link "ya lo publique" se abre desde un mail: no puede mandar headers,
         # asi que lleva su propio token de un solo uso en la query.
         if request.path.startswith("/api/linkedin/marcar"):
+            return
+        # Meta baja las imagenes de Instagram sin sesion. Cada publicacion tiene
+        # su token al azar y solo se sirve mientras esta aprobada o saliendo.
+        if request.path.startswith("/pub/ig/"):
+            return
+        # La sesion de Claude que corrige publicaciones: IG_BOT_TOKEN, que solo
+        # abre estas rutas y se valida con compare_digest adentro del blueprint.
+        if request.path.startswith("/api/instagram-bot/"):
             return
         # El Apps Script del semaforo no puede llevar el ADMIN_TOKEN: vive pegado
         # a una planilla que es de la agencia, y cualquiera con permiso de
@@ -18748,8 +19123,8 @@ select:focus{border-color:#0088cc}
 </div>
 
 <script>
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin'];
-const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas',email_mkt:'Email marketing',linkedin:'LinkedIn'};
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram'];
+const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas',email_mkt:'Email marketing',linkedin:'LinkedIn',instagram:'Instagram'};
 let _roles = [];
 
 // Paneles que muestran el check "solo lectura". El dato (roles.paneles_solo_lectura)
@@ -18984,6 +19359,10 @@ loadBackups();
         # Mail diario de la pauta a contacto@. ALERTAS_META=off lo apaga.
         from services.alertas_meta import start_alertas_meta
         start_alertas_meta(app)
+
+        # Instagram: publica solo lo aprobado. INSTAGRAM_AGENTE=off lo apaga.
+        from services.instagram import start_instagram
+        start_instagram(app)
 
         # Backup diario de la base (docs/BACKUPS.md). Prendido por defecto,
         # BACKUP_DB=off lo apaga; trae su propia marca en `corridas`.

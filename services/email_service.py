@@ -454,6 +454,46 @@ def send_alertas_meta_error(to_email: str, error_detail: str) -> bool:
     return _send(to_email, "ALERTA: las alertas de Meta no pueden leer la cuenta", html_mail)
 
 
+def _destino_instagram() -> str:
+    return os.environ.get("ALERTAS_META_EMAIL", "").strip() or "contacto@scalerics.com"
+
+
+@_tipo_envio("aviso_equipo")
+def send_instagram_semana(cantidad: int, lunes) -> bool:
+    body = (
+        _muted(f"Ya están listas <b>{cantidad} publicaciones de Instagram</b> para la semana "
+               f"del {lunes.strftime('%d/%m')}. <b>Ninguna se publica hasta que la apruebes.</b>")
+        + _muted("Entrá a la sección Instagram del CRM: podés cambiar los textos, la fecha, "
+                 "pedir otra idea o descartarlas. Lo que no apruebes no sale.")
+    )
+    html_mail = _layout(badge="Instagram", title="Tenés publicaciones para revisar", body=body,
+                        cta_url=f"{_CRM_URL}", cta_label="Revisar en el CRM →")
+    return _send(_destino_instagram(),
+                 f"Instagram: {cantidad} publicaciones para aprobar", html_mail)
+
+
+@_tipo_envio("alerta")
+def send_instagram_error(pub_id: int, error_detail: str) -> bool:
+    body = (
+        _muted("Una publicación aprobada <b>no se pudo subir a Instagram</b>. Quedó marcada "
+               "con error en el CRM: podés revisarla y volver a aprobarla con otra fecha.")
+        + _info_card([("Publicación", f"#{pub_id}"), ("Error", html.escape(error_detail or ""))])
+    )
+    html_mail = _layout(badge="Instagram", title="No se pudo publicar", body=body,
+                        cta_url=f"{_CRM_URL}", cta_label="Ver en el CRM →")
+    return _send(_destino_instagram(), "ALERTA: no se pudo publicar en Instagram", html_mail)
+
+
+@_tipo_envio("alerta")
+def send_instagram_banco_bajo(feed: int, historias: int) -> bool:
+    body = _muted(
+        f"Al banco de ideas de Instagram le quedan <b>{feed} publicaciones</b> y "
+        f"<b>{historias} historias</b> sin usar. Pedile a Claude que escriba una tanda nueva "
+        "antes de que se acaben.")
+    html_mail = _layout(badge="Instagram", title="Se están acabando las ideas", body=body)
+    return _send(_destino_instagram(), "Instagram: quedan pocas ideas en el banco", html_mail)
+
+
 @_tipo_envio("alerta")
 def send_backup_alert(to_email: str, error_detail: str) -> bool:
     """El backup diario de la base fallo (integridad, subida a R2 o excepcion).
