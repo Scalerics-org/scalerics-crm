@@ -9,10 +9,11 @@ from database import init_db
 from services import alertas_meta as am
 from services import email_service as es
 
-# Martes 16/9/2026, 9:00 de Montevideo.
-MARTES_9 = datetime(2026, 9, 16, 12, 0, tzinfo=timezone.utc)
-MARTES_7 = datetime(2026, 9, 16, 10, 0, tzinfo=timezone.utc)
+# Setiembre de 2026, 9:00 y 7:00 de Montevideo. El 14 es lunes.
 LUNES_9 = datetime(2026, 9, 14, 12, 0, tzinfo=timezone.utc)
+MARTES_9 = datetime(2026, 9, 15, 12, 0, tzinfo=timezone.utc)
+MARTES_7 = datetime(2026, 9, 15, 10, 0, tzinfo=timezone.utc)
+MIERCOLES_9 = datetime(2026, 9, 16, 12, 0, tzinfo=timezone.utc)
 
 
 @pytest.fixture
@@ -131,11 +132,15 @@ def test_sin_datos_no_rompe():
 
 class _Buzon:
     def __init__(self, ok=True):
-        self.mails, self.ok = [], ok
+        self.mails, self.botones, self.ok = [], [], ok
 
-    def __call__(self, to, asunto, cuerpo):
+    def __call__(self, to, asunto, cuerpo, con_boton=True):
         self.mails.append((to, asunto, cuerpo))
+        self.botones.append((to, con_boton))
         return self.ok
+
+    def a(self):
+        return [m[0] for m in self.mails]
 
 
 def _traer(datos):
@@ -274,3 +279,71 @@ def test_el_endpoint_pide_permiso(tmp_path, monkeypatch):
     r = cliente.post("/api/marketing/alertas/enviar-ahora",
                      headers={"x-admin-token": "secreto"})
     assert r.status_code == 200 and llamadas
+
+
+# ── resumen a externos ───────────────────────────────────────────────────────
+
+ANDRES = "andres@simondigitalgroup.com"
+
+
+def test_el_lunes_el_resumen_tambien_va_a_andres_sin_boton(db):
+    buzon = _Buzon()
+    r = am.corrida(db, ahora=LUNES_9, traer=_traer(_datos(SEMANA_MALA)), enviar=buzon)
+    assert buzon.a() == ["contacto@scalerics.com", ANDRES]
+    assert buzon.botones == [("contacto@scalerics.com", True), (ANDRES, False)]
+    assert r["resumen_a"] == [ANDRES]
+
+
+def test_el_miercoles_tambien_y_aunque_no_haya_alertas(db):
+    buzon = _Buzon()
+    am.corrida(db, ahora=MIERCOLES_9, traer=_traer(_datos(SEMANA_NORMAL)), enviar=buzon)
+    assert buzon.a() == ["contacto@scalerics.com", ANDRES]
+    assert "sin alertas" in buzon.mails[1][1]
+
+
+def test_los_otros_dias_andres_no_recibe_las_alertas(db):
+    buzon = _Buzon()
+    am.corrida(db, ahora=MARTES_9, traer=_traer(_datos(SEMANA_MALA)), enviar=buzon)
+    assert buzon.a() == ["contacto@scalerics.com"]
+
+
+def test_el_envio_a_pedido_no_va_a_externos(db):
+    buzon = _Buzon()
+    am.corrida(db, ahora=LUNES_9, traer=_traer(_datos(SEMANA_MALA)),
+               enviar=buzon, forzar=True)
+    assert buzon.a() == ["contacto@scalerics.com"]
+
+
+def test_la_lista_de_externos_se_puede_cambiar_o_vaciar(db, monkeypatch):
+    monkeypatch.setenv("ALERTAS_META_RESUMEN", " a@x.com, b@y.com ,")
+    assert am.destinos_resumen() == ["a@x.com", "b@y.com"]
+    monkeypatch.setenv("ALERTAS_META_RESUMEN", "")
+    buzon = _Buzon()
+    am.corrida(db, ahora=LUNES_9, traer=_traer(_datos(SEMANA_MALA)), enviar=buzon)
+    assert buzon.a() == ["contacto@scalerics.com"]
+
+
+def test_un_error_de_meta_no_le_llega_a_andres(db, monkeypatch):
+    avisos = []
+    monkeypatch.setattr(es, "send_alertas_meta_error",
+                        lambda to, err: avisos.append(to) or True)
+
+    def _falla(hoy):
+        raise am.ErrorDeMeta("code=190")
+
+    am.corrida(db, ahora=LUNES_9, traer=_falla, enviar=_Buzon())
+    assert avisos == ["contacto@scalerics.com"]
+
+
+def test_el_mail_externo_no_trae_el_link_al_crm():
+    with es.capturar_envio() as capturados:
+        es.send_alertas_meta(ANDRES, "asunto", "<p>cuerpo</p>", con_boton=False)
+    assert "Ver el panel de Marketing" not in capturados[0]["html"]
+
+
+def test_los_consejos_no_hablan_del_de_marketing():
+    alertas = am.evaluar(_datos(_fila(120, 20000, 150, 0)), date(2026, 9, 16))
+    alertas += am.evaluar(_datos(SEMANA_MALA, ultimo_post="2026-09-01T00:00:00+0000"),
+                          date(2026, 9, 16))
+    for a in alertas:
+        assert "de marketing" not in a.que_hacer.lower()

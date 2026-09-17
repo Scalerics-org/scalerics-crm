@@ -2,8 +2,8 @@
 
 Etapa 1 del agente de marketing: mirar y avisar, sin tocar nada en Meta. Una vez
 por dia, despues de las 8 de Montevideo, compara los ultimos 7 dias contra los
-28 anteriores y manda un mail solo si algo se desvio. Los lunes manda el resumen
-aunque no haya alertas.
+28 anteriores y manda un mail solo si algo se desvio. Los lunes y miercoles manda
+el resumen aunque no haya alertas, y esos dias tambien a los externos.
 
 **Semana contra mes, no ayer contra la semana.** La cuenta trae alrededor de un
 lead por dia: un costo por lead diario es ruido puro. Siete dias es la ventana
@@ -32,6 +32,9 @@ from services.corridas import marcar_corrida, puede_correr
 logger = logging.getLogger(__name__)
 
 DESTINO_POR_DEFECTO = "contacto@scalerics.com"
+# Externos: reciben solo el resumen. ALERTAS_META_RESUMEN los reemplaza ("" = nadie).
+RESUMEN_POR_DEFECTO = ("andres@simondigitalgroup.com",)
+DIAS_DE_RESUMEN = (0, 2)  # lunes y miercoles
 
 # Uruguay no tiene horario de verano desde 2015: el offset fijo alcanza y evita
 # depender de que la imagen traiga la base de zonas horarias.
@@ -84,6 +87,14 @@ def activo() -> bool:
 
 def destino() -> str:
     return os.environ.get("ALERTAS_META_EMAIL", "").strip() or DESTINO_POR_DEFECTO
+
+
+def destinos_resumen() -> list[str]:
+    """Quienes reciben solo el resumen de los lunes y miercoles, sin el boton al CRM."""
+    crudo = os.environ.get("ALERTAS_META_RESUMEN")
+    if crudo is None:
+        return list(RESUMEN_POR_DEFECTO)
+    return [m.strip() for m in crudo.split(",") if m.strip()]
 
 
 # ── datos ────────────────────────────────────────────────────────────────────
@@ -230,14 +241,14 @@ def evaluar(datos: dict, hoy: date) -> list[Alerta]:
             f"Esta semana cada lead costó <b>{_plata(r['cpl'], m)}</b> "
             f"({r['leads']} leads). El mes anterior costaba {_plata(f['cpl'], m)}: "
             f"{_veces(r['cpl'], f['cpl'])} veces más.",
-            "Mirá las alertas de abajo para ver en qué parte del camino se pierde.",
+            "Las alertas de abajo muestran en qué parte del camino se pierde.",
         ))
     if ref_valida and not r["leads"] and r["gasto"] >= 2 * f["cpl"]:
         alertas.append(Alerta(
             "sin_leads",
             "Una semana entera sin leads",
             f"Se gastaron <b>{_plata(r['gasto'], m)}</b> en 7 días y no entró ningún lead.",
-            "Preguntale al de marketing si cambió algo en las campañas o el formulario.",
+            "Revisar si cambió algo en las campañas o en el formulario.",
         ))
     if (r["clics"] >= MIN_CLICS and f["conversion"]
             and r["conversion"] is not None
@@ -248,7 +259,7 @@ def evaluar(datos: dict, hoy: date) -> list[Alerta]:
             f"De cada 100 que hacen clic, <b>{_pct(r['conversion'])}</b> completan el "
             f"formulario. El mes anterior eran {_pct(f['conversion'])}.",
             "El problema está después del clic: el formulario, la página o el público. "
-            "Preguntá si se cambió el formulario o el objetivo de las campañas.",
+            "Revisar si se cambió el formulario o el objetivo de las campañas.",
         ))
     if (r["impresiones"] >= MIN_IMPRESIONES and f["ctr"]
             and r["ctr"] is not None and r["ctr"] < CAIDA_CTR * f["ctr"]):
@@ -274,7 +285,7 @@ def evaluar(datos: dict, hoy: date) -> list[Alerta]:
             "Subió el gasto semanal",
             f"Esta semana se gastaron <b>{_plata(r['gasto'], m)}</b>. El promedio "
             f"semanal del mes anterior era {_plata(gasto_ref_semanal, m)}.",
-            "Confirmá que el aumento de presupuesto fue a propósito.",
+            "Confirmar que el aumento de presupuesto fue a propósito.",
         ))
     if r["frecuencia"] > FRECUENCIA_MAXIMA:
         alertas.append(Alerta(
@@ -309,7 +320,7 @@ def evaluar(datos: dict, hoy: date) -> list[Alerta]:
                 "instagram",
                 "Instagram sin publicaciones",
                 f"La última publicación de @scalerics_ fue hace <b>{dias} días</b>.",
-                "Pedí contenido para esta semana.",
+                "Hace falta contenido para esta semana.",
             ))
     return alertas
 
@@ -364,7 +375,7 @@ def componer(datos: dict, alertas: list[Alerta]) -> tuple[str, str]:
         intro = "Esto se salió de lo normal en la última semana:"
         bloques = "".join(_bloque(a) for a in alertas)
     else:
-        asunto = "Meta Ads: resumen semanal, sin alertas"
+        asunto = "Meta Ads: resumen, sin alertas"
         intro = "Nada se salió de lo normal esta semana."
         bloques = ""
     cuerpo = (
@@ -413,15 +424,15 @@ def corrida(db_path: str, ahora: datetime | None = None, traer=None,
         return {"estado": "error", "error": str(e)}
 
     todas = evaluar(datos, hoy)
-    es_lunes = hoy.weekday() == 0
-    if forzar or es_lunes:
+    es_resumen = hoy.weekday() in DIAS_DE_RESUMEN
+    if forzar or es_resumen:
         nuevas = todas
     else:
         nuevas = [a for a in todas
                   if puede_correr(db_path, f"{_JOB}:{a.clave}", _NO_REPETIR_HORAS)]
 
     marcar_corrida(db_path, _JOB)
-    if not nuevas and not (forzar or es_lunes):
+    if not nuevas and not (forzar or es_resumen):
         return {"estado": "sin_novedades", "alertas": len(todas)}
 
     asunto, cuerpo = componer(datos, nuevas)
@@ -429,8 +440,14 @@ def corrida(db_path: str, ahora: datetime | None = None, traer=None,
     if ok:
         for a in nuevas:
             marcar_corrida(db_path, f"{_JOB}:{a.clave}")
+
+    externos = []
+    if es_resumen and not forzar:
+        for mail in destinos_resumen():
+            if enviar(mail, asunto, cuerpo, con_boton=False):
+                externos.append(mail)
     return {"estado": "enviado" if ok else "fallo_envio",
-            "alertas": [a.clave for a in nuevas]}
+            "alertas": [a.clave for a in nuevas], "resumen_a": externos}
 
 
 def enviar_ahora(db_path: str) -> dict:

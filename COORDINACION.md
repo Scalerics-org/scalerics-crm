@@ -554,6 +554,9 @@ leads de Meta se renombró a **D** para deshacer el empate.
     solo si hay alertas, y los lunes siempre. Una alerta no se repite antes de
     72 h (marca `alertas_meta:<clave>`). `ALERTAS_META=off` lo apaga.
     `POST /api/marketing/alertas/enviar-ahora` lo manda a pedido, pausa de 15 min.
+    **Actualización (PR siguiente):** el resumen sale lunes y miércoles, y esos
+    días también a `andres@simondigitalgroup.com` (externo, sin botón al CRM,
+    sin avisos de error). `ALERTAS_META_RESUMEN` reemplaza la lista.
   - Zona compartida, todo aditivo: `dashboard.py` (dos líneas en el arranque),
     `services/email_service.py` (dos funciones), `routes/marketing.py` (un endpoint).
 
