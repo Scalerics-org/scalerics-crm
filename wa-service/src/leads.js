@@ -5,6 +5,7 @@ const { botActivo, pausarHasta, HORAS_PAUSA } = require('./funnel/pausa');
 const plantillas = require('./templates');
 const { entre } = require('./outbound/queue');
 const { correspondeDerivar } = require('./funnel/abandono');
+const { paraUnaPersona } = require('./funnel/derivacion');
 
 /** Como se nombra cada medio en el aviso al equipo. */
 const ARTICULO = {
@@ -374,7 +375,14 @@ function crearServicioLeads({ repo, cola, cfg, logger, textos, redactor = null, 
       //
       // Va antes de la respuesta, no en lugar de ella: recibe la presentacion y
       // ademas lo que vino a preguntar.
-      if (!lead.welcomed_at) {
+      // Salvo al que le escribio a una persona del equipo ("Hola Juan…"): a ese
+      // no se le presenta el agente comercial, porque no vino a comprar nada.
+      // El embudo le contesta una linea y pasa el chat a esa persona.
+      const esParaUnaPersona = paraUnaPersona(texto, {
+        nombres: cfg.nombresEquipo || [],
+        tieneReunion: Boolean(lead.meeting_booked_at || lead.horarios_ofrecidos),
+      });
+      if (!lead.welcomed_at && !esParaUnaPersona) {
         cola.encolar({
           to: telefono,
           texto: textos.BIENVENIDA,

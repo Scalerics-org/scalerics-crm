@@ -74,6 +74,78 @@ function alguna(texto, frases) {
 }
 
 /**
+ * Un mensaje que es para una persona del equipo, no para el embudo.
+ *
+ * El numero del bot es el WhatsApp de la empresa, y por ahi escribe tambien
+ * gente que no es un lead: proveedores, socios, alguien con quien Juan ya tiene
+ * una reunion. El 18-9, 3:09 de la mañana:
+ *
+ *   ← Hola Juan podemos mover nuestra reunión para el Lunes?
+ *   → ¡Buenas! Soy el agente comercial de Scalerics…
+ *   → Claro, sin problema. Decime el nombre de tu negocio…
+ *   ← Agendaste con nosotros de hecho. Soy David, la mano derecha de Alexis
+ *   → Uh, perdón — me cruzaste los cables. Vos sos del equipo, no un lead.
+ *
+ * Le acepto mover una reunion que no conocia, le invento quien era, y Juan no
+ * se entero de nada. Eso no se arregla pidiendole al modelo que se de cuenta:
+ * se detecta aca y la conversacion pasa entera a la persona.
+ *
+ * Mismo criterio que el resto del archivo: si se equivoca, que sea derivando de
+ * mas. Que un lead de verdad que saluda a Juan por su nombre le llegue a Juan
+ * no le hace daño a nadie.
+ */
+const VERBOS_DE_MOVER = [
+  'mover', 'movemos', 'moverla', 'moverlo', 'cambiar', 'cambiamos', 'pasar',
+  'pasamos', 'reprogramar', 'reprogramamos', 'reagendar', 'reagendamos',
+  'posponer', 'postergar', 'correr', 'corremos', 'adelantar', 'atrasar',
+  'suspender', 'cancelar', 'cancelamos',
+];
+const REUNIONES = ['reunion', 'llamada', 'videollamada', 'meet', 'call', 'meeting', 'cita', 'charla'];
+
+/** "Agendaste con nosotros": la reunion la pidio alguien de aca. */
+const REUNION_NUESTRA = ['agendaste con nosotros', 'agendamos con ustedes', 'agendaron con nosotros',
+  'nuestra reunion', 'la reunion que tenemos', 'la reunion que teniamos', 'la reunion del', 'la llamada que tenemos'];
+
+/**
+ * @param {string} textoCrudo
+ * @param {{nombres?: string[], tieneReunion?: boolean}} contexto
+ * @returns {{motivo: 'para_una_persona'|'reunion_ajena', nombre: string|null}|null}
+ */
+function paraUnaPersona(textoCrudo, { nombres = [], tieneReunion = false } = {}) {
+  const t = normalizar(textoCrudo).trim();
+  if (!t) return null;
+  // Lo que viene antes de la primera letra no es parte del saludo: el "¡" de
+  // "¡Hola Juan!", el "¿" de "¿Juan, podemos…?", un emoji de saludo.
+  const inicio = t.replace(/^[^a-z0-9]+/, '');
+
+  // Lo llama por el nombre al principio: "Hola Juan", "Juan,", "buenas juan!".
+  for (const nombre of nombres) {
+    // Escapado: el nombre viene de la config y termina adentro de una
+    // expresion regular. Sin esto, un "[" o un "(" en EQUIPO_NOMBRES hacia
+    // tirar este chequeo, que corre con CADA mensaje entrante: el bot quedaba
+    // mudo para todo el mundo por un typo en una variable.
+    const n = normalizar(nombre).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (!n) continue;
+    // Hasta tres saludos seguidos: "hola buen dia Juan", "hola que tal juan".
+    const saludo = new RegExp(
+      `^(?:(?:hola+|buenas|buen dia|buenos dias|buenas tardes|buenas noches|che|hey|ey|que tal)[\\s,!.¡¿]*){0,3}${n}(?![a-z])`
+    );
+    if (saludo.test(inicio)) return { motivo: 'para_una_persona', nombre };
+  }
+
+  // Una reunion que el bot no tiene: el que agendo lo sabe una persona.
+  if (!tieneReunion) {
+    const hablaDeReunion = REUNIONES.some((r) => new RegExp(`(?<![a-z])${r}(?![a-z])`).test(t));
+    const quiereMoverla = VERBOS_DE_MOVER.some((v) => new RegExp(`(?<![a-z])${v}(?![a-z])`).test(t));
+    if ((hablaDeReunion && quiereMoverla) || alguna(t, REUNION_NUESTRA)) {
+      return { motivo: 'reunion_ajena', nombre: null };
+    }
+  }
+
+  return null;
+}
+
+/**
  * @returns {{motivo: 'precio'|'queja'|'facturacion', frase: string}|null}
  */
 function detectar(textoCrudo) {
@@ -104,6 +176,10 @@ const ETIQUETA = {
   abandono: 'dejo de contestar en el medio',
   necesidad: 'no se entiende que necesita, ni preguntandole de nuevo',
   reprograma: 'quiere mover una reunion ya agendada',
+  para_una_persona: 'le escribio a una persona del equipo por su nombre: no parece un lead',
+  reunion_ajena: 'habla de una reunion que el bot no tiene registrada (¿la agendo alguien del equipo?)',
 };
 
-module.exports = { detectar, normalizar, ETIQUETA, PRECIO, PRECIO_DE_PRODUCTO, QUEJA, FACTURACION };
+module.exports = {
+  detectar, paraUnaPersona, normalizar, ETIQUETA, PRECIO, PRECIO_DE_PRODUCTO, QUEJA, FACTURACION,
+};

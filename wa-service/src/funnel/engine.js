@@ -5,7 +5,7 @@ const { eligioEsaHora, revisarFranja, textoDeFranja } = require('../agenda/elecc
 const { enZona, instanteLocal } = require('../agenda/gcal');
 const { TRANSICIONES } = require('./transitions');
 const plantillas = require('../templates');
-const { detectar, ETIQUETA } = require('./derivacion');
+const { detectar, paraUnaPersona, ETIQUETA } = require('./derivacion');
 const { cuandoVolver } = require('./nurture');
 const { prometeAgendar } = require('../ia/promesas');
 
@@ -29,6 +29,9 @@ function normalizar(texto) {
  * se ofrece —o no— la reunion, y esa decision es del score, no del modelo.
  */
 const FASE_CALIFICACION = new Set([S.NEW, S.CONVERSANDO, S.NURTURE, S.DISQUALIFIED]);
+
+/** Donde el bot ya le ofrecio una reunion: ahi hablar de moverla es del embudo. */
+const OFRECIO_REUNION = new Set([S.MEETING_SENT, S.HORARIOS_OFRECIDOS, S.MEETING_LINK_SENT, S.SCHEDULED]);
 
 /**
  * Que decirle a cada uno. Va como contexto al redactor: sin esto tendria que
@@ -810,6 +813,30 @@ ${await loQueHay()}`
       if (global) {
         if (global === S.HUMAN_QUEUED) derivar(lead, 'pedido');
         return this._transicionar(lead, entrada, global);
+      }
+
+      /**
+       * Le escribio a una persona, no al bot: el chat pasa entero a esa
+       * persona, sin presentarse, sin preguntar nada y sin prometer nada.
+       *
+       * "Una reunion que no tenemos" solo cuenta mientras el bot no le ofrecio
+       * ninguna: al que esta eligiendo horario, "¿podemos pasar la llamada al
+       * martes?" le contesta el embudo, que es quien tiene los horarios.
+       */
+      const paraAlguien = paraUnaPersona(textoCrudo, {
+        nombres: cfg.nombresEquipo || [],
+        tieneReunion: Boolean(lead.meeting_booked_at || lead.horarios_ofrecidos)
+          || OFRECIO_REUNION.has(lead.fsm_state),
+      });
+      if (paraAlguien) {
+        decir(lead, textos.paraUnaPersona(paraAlguien.nombre));
+        derivar(lead, paraAlguien.motivo);
+        repo.actualizarFunnel(lead.id, { human_requested: 1, fsm_state: S.HUMAN_QUEUED });
+        logger?.info(
+          { leadId: lead.id, motivo: paraAlguien.motivo, nombre: paraAlguien.nombre },
+          'le escribio a una persona del equipo: el chat pasa a esa persona'
+        );
+        return S.HUMAN_QUEUED;
       }
 
       // Casos que el superprompt manda derivar sin excepcion. Van antes de la
