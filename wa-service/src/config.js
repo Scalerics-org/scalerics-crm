@@ -60,6 +60,14 @@ const esquema = z.object({
    * numero puede estar en las dos listas o en una sola.
    */
   EQUIPO_TELEFONOS: z.string().default(''),
+  /**
+   * Los nombres de la gente del equipo, coma-separado.
+   *
+   * El que escribe "Hola Juan…" no le esta hablando al bot: es un proveedor, un
+   * socio, alguien con quien Juan ya tiene algo. Ese chat pasa entero a una
+   * persona en vez de entrar al embudo (ver paraUnaPersona en derivacion.js).
+   */
+  EQUIPO_NOMBRES: z.string().default('Juan'),
   DEFAULT_COUNTRY_CODE: z.string().default('598'),
   TZ: z.string().default('America/Montevideo'),
 
@@ -514,6 +522,7 @@ function cargar(env = process.env) {
     ...cfg,
     amPhones: cfg.AM_PHONES.split(',').map((p) => p.trim()).filter(Boolean),
     equipo: cfg.EQUIPO_TELEFONOS.split(',').map((p) => p.trim()).filter(Boolean),
+    nombresEquipo: cfg.EQUIPO_NOMBRES.split(',').map((n) => n.trim()).filter(Boolean),
     descalificaSolo: cfg.DESCALIFICACION_AUTOMATICA.split(',').map((m) => m.trim()).filter(Boolean),
   });
 }

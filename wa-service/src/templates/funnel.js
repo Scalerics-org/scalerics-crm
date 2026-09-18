@@ -43,6 +43,20 @@ function crearTextos({ horarioAtencion = 'Lun a sáb, 9 a 19hs' } = {}) {
     SIN_IA: `Dame un momento que te paso con alguien del equipo 👤\n\n_Horario de atención: ${horarioAtencion} (GMT-3)_`,
 
     /**
+     * Al que le escribio a una persona del equipo, no al bot.
+     *
+     * Fijo a proposito: el 18-9 el modelo, puesto a contestarle a alguien con
+     * quien Juan ya tenia una reunion, le acepto moverla y le invento quien
+     * era. Aca no hay nada que conversar: una linea, sin presentarse como
+     * agente comercial, sin preguntar nada y sin prometer nada sobre la reunion.
+     */
+    paraUnaPersona(nombre) {
+      return nombre
+        ? `Le paso tu mensaje a ${nombre} 👍 Te contesta él directamente.`
+        : 'Le paso tu mensaje a alguien del equipo 👍 Te contestan directamente.';
+    },
+
+    /**
      * La oferta sin una sola suposicion, para cuando el modelo insiste en
      * atribuirle cosas al lead.
      *

@@ -701,6 +701,8 @@ leads de Meta se renombró a **D** para deshacer el empate.
   - Leyenda arriba del flujo con los roles que aparecen en él; tarjeta con el tinte de su rol y borde izquierdo pleno; el destacado ya no es verde: usa el color de su rol y lleva la etiqueta "Ingreso recurrente". El modal muestra el color al elegir el rol.
   - **Horarios, el color de Daily:** `/api/horarios` manda `orden_daily` (el lugar de la persona en Daily Programador) y la pantalla usa los mismos `DY_COLORES`; `.hr-color-N` usa el mismo token que `.dy-color-N` (hay test que los compara). Tramos como pastillas, total en chip, encabezados alternados, tarjeta del celular con borde superior del color.
 
+- **18/9 — K: rama `fix/wa-derivar-a-juan`, solo `wa-service/`.** El bot atendia como lead a quien le escribe a Juan por su nombre o pide mover una reunion que el bot no conoce (paso el 18/9 a las 3:09: le acepto mover la reunion y le invento quien era). Ahora ese chat pasa entero a una persona con una linea fija. Nombres en `EQUIPO_NOMBRES` (default `Juan`).
+
 - **17/9 — K (Jev en el bot de WhatsApp): worktree propio, no toco nada del CRM.**
   Me anoté como J y ya había otra J (Instagram): me corro a K, como hizo D en su momento.
 
