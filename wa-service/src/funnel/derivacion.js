@@ -114,15 +114,23 @@ const REUNION_NUESTRA = ['agendaste con nosotros', 'agendamos con ustedes', 'age
 function paraUnaPersona(textoCrudo, { nombres = [], tieneReunion = false } = {}) {
   const t = normalizar(textoCrudo).trim();
   if (!t) return null;
+  // Lo que viene antes de la primera letra no es parte del saludo: el "¡" de
+  // "¡Hola Juan!", el "¿" de "¿Juan, podemos…?", un emoji de saludo.
+  const inicio = t.replace(/^[^a-z0-9]+/, '');
 
   // Lo llama por el nombre al principio: "Hola Juan", "Juan,", "buenas juan!".
   for (const nombre of nombres) {
-    const n = normalizar(nombre).trim();
+    // Escapado: el nombre viene de la config y termina adentro de una
+    // expresion regular. Sin esto, un "[" o un "(" en EQUIPO_NOMBRES hacia
+    // tirar este chequeo, que corre con CADA mensaje entrante: el bot quedaba
+    // mudo para todo el mundo por un typo en una variable.
+    const n = normalizar(nombre).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     if (!n) continue;
+    // Hasta tres saludos seguidos: "hola buen dia Juan", "hola que tal juan".
     const saludo = new RegExp(
-      `^(?:(?:hola|holaa+|buenas|buen dia|buenos dias|buenas tardes|buenas noches|che|hey|ey|que tal)[\\s,!.]*)?${n}(?![a-z])`
+      `^(?:(?:hola+|buenas|buen dia|buenos dias|buenas tardes|buenas noches|che|hey|ey|que tal)[\\s,!.¡¿]*){0,3}${n}(?![a-z])`
     );
-    if (saludo.test(t)) return { motivo: 'para_una_persona', nombre };
+    if (saludo.test(inicio)) return { motivo: 'para_una_persona', nombre };
   }
 
   // Una reunion que el bot no tiene: el que agendo lo sabe una persona.
