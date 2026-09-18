@@ -1974,6 +1974,33 @@ def init_db(db_path: str) -> None:
         conn.commit()
         _grant_panel_to_existing_roles(conn, "instagram", si_tiene=("marketing", "linkedin"))
 
+        # ── Modo sombra (services/sombra_meta.py) ─────────────────────────────
+        # Que haria el agente con la pauta y como resulto. El panel `sombra`
+        # ("Recomendaciones de pauta") va a quien ve Marketing; la evaluacion
+        # del proveedor se filtra en la ruta y solo la ven los administradores.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS sombra_recomendaciones (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                semana          TEXT NOT NULL,
+                clave           TEXT NOT NULL,
+                tipo            TEXT NOT NULL,
+                objeto_id       TEXT NOT NULL,
+                objeto_nombre   TEXT,
+                campana_id      TEXT,
+                campana_nombre  TEXT,
+                evidencia       TEXT NOT NULL,
+                antes_json      TEXT NOT NULL,
+                creada_en       TEXT NOT NULL,
+                evaluada_en     TEXT,
+                seguida         INTEGER,
+                veredicto       TEXT,
+                detalle         TEXT,
+                UNIQUE (semana, clave)
+            )
+        """)
+        conn.commit()
+        _grant_panel_to_existing_roles(conn, "sombra", si_tiene=("marketing",))
+
         # Backfill scores for leads that were scraped before scoring was added
         conn.execute("""
             UPDATE businesses SET score = (

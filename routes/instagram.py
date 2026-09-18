@@ -43,7 +43,8 @@ def _publica(pub: dict) -> dict:
     pub["imagenes_url"] = [
         f"/api/instagram/publicaciones/{pub['id']}/imagen/{n}?v={pub['version']}"
         for n in range(1, pub["imagenes"] + 1)]
-    pub["estilos"] = list(ig.ig_render.estilos_para(pub["formato"]))
+    pub["estilos"] = [{"id": e, "nombre": ig.ig_render.nombre_estilo(e)}
+                      for e in ig.ig_render.estilos_para(pub["formato"])]
     return pub
 
 
@@ -77,6 +78,7 @@ def api_semana():
         "semana_actual": ig.semana_actual(ahora).isoformat(),
         "publicaciones": pubs,
         "banco": quedan,
+        "plan": ig.plan_para_panel(lunes),
         "puede_armar": is_admin(_db(), session.get("user_id")),
     })
 
@@ -124,6 +126,19 @@ def api_pedir_correccion(pub_id):
         return jsonify({"ok": False, "error": str(e)}), 400
     return jsonify({"ok": True,
                     "correcciones": ig.correcciones_de(_db(), [pub_id]).get(pub_id, [])[:3]})
+
+
+@instagram_bp.route("/api/instagram/grilla")
+def api_grilla():
+    crudo = request.args.get("semana")
+    try:
+        lunes = ig.lunes_de(date.fromisoformat(crudo)) if crudo else ig.semana_actual(ig.ahora_utc())
+    except ValueError:
+        return jsonify({"ok": False, "error": "semana tiene que ser AAAA-MM-DD"}), 400
+    g = ig.grilla(_db(), lunes)
+    for n in g["nuevas"]:
+        n["imagen"] = f"/api/instagram/publicaciones/{n['id']}/imagen/1?v={n['version']}"
+    return jsonify({"ok": True, "semana": lunes.isoformat(), **g})
 
 
 @instagram_bp.route("/api/instagram/armar-semana", methods=["POST"])

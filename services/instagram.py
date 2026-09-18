@@ -189,6 +189,93 @@ def renderizar(db_path: str, pub_id: int) -> dict:
     return obtener(db_path, pub_id)
 
 
+# ── plan de fondos ───────────────────────────────────────────────────────────
+# Juan (17/9): "todo del mismo fondo es monotono; arma cada mes una
+# planificacion de fondos y colores y variala". Cada mes toma una secuencia y
+# la recorre pieza por pieza. Son de 5 y el feed sale de a 3 por semana, asi que
+# el patron no arma columnas del mismo color en la grilla.
+
+# Cada plan lleva un blanco: rompe la serie de oscuros sin salirse de la marca.
+PLANES_FEED = (
+    ("marco", "blanco", "azul_marco", "verde", "bruma_azul"),
+    ("azul", "grafito_marco", "blanco_marco", "verde", "bruma"),
+    ("grafito", "marco", "blanco", "azul", "bruma"),
+    ("verde", "azul_marco", "grafito", "blanco_marco", "bruma_azul"),
+    ("bruma", "blanco", "azul", "grafito_marco", "marco"),
+    ("azul_marco", "verde", "bruma_azul", "blanco_marco", "grafito"),
+)
+PLANES_HISTORIA = (
+    ("degradado", "bruma", "blanco"),
+    ("verde", "degradado", "blanco"),
+    ("degradado", "azul", "blanco"),
+    ("grafito", "blanco", "degradado"),
+)
+MESES = ("enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto",
+         "septiembre", "octubre", "noviembre", "diciembre")
+
+
+def plan_del_mes(anio: int, mes: int, tipo: str = "feed") -> tuple:
+    planes = PLANES_HISTORIA if tipo == "historia" else PLANES_FEED
+    return planes[(anio * 12 + mes) % len(planes)]
+
+
+def _estilo_planificado(conn, tipo: str, cuando: datetime) -> str:
+    local = cuando.astimezone(_UY)
+    inicio = local.replace(day=1, hour=0, minute=0)
+    fin = (inicio + timedelta(days=32)).replace(day=1)
+    igual = "=" if tipo == "historia" else "!="
+    n = conn.execute(
+        f"SELECT COUNT(*) FROM ig_publicaciones WHERE formato {igual} 'historia' "
+        "AND estado != 'descartada' AND programada_para >= ? AND programada_para < ?",
+        (_txt(inicio), _txt(cuando))).fetchone()[0]
+    plan = plan_del_mes(local.year, local.month, tipo)
+    return plan[n % len(plan)]
+
+
+def plan_para_panel(lunes: date) -> dict:
+    return {
+        "mes": MESES[lunes.month - 1],
+        "feed": [ig_render.nombre_estilo(e) for e in plan_del_mes(lunes.year, lunes.month)],
+        "historias": [ig_render.nombre_estilo(e)
+                      for e in plan_del_mes(lunes.year, lunes.month, "historia")],
+    }
+
+
+_JOB_REPLAN = "ig_replan_fondos_v2"
+
+
+def replanificar(db_path: str, ahora: datetime | None = None) -> int:
+    """Aplica el plan de fondos a lo que todavia no salio y lo redibuja.
+
+    Una aprobada vuelve a borrador: cambio como se ve y la aprobacion era por
+    la version anterior.
+    """
+    ahora = ahora or ahora_utc()
+    cambiadas = []
+    conn = _connect(db_path)
+    try:
+        filas = conn.execute(
+            "SELECT id, formato, estilo, programada_para FROM ig_publicaciones "
+            "WHERE programada_para > ? AND estado IN ('borrador','aprobada','error','vencida') "
+            "ORDER BY programada_para", (_txt(ahora),)).fetchall()
+        for f in filas:
+            tipo = "historia" if f["formato"] == "historia" else "feed"
+            estilo = _estilo_planificado(conn, tipo, _dt(f["programada_para"]))
+            if estilo == f["estilo"]:
+                continue
+            conn.execute(
+                "UPDATE ig_publicaciones SET estilo = ?, estado = CASE WHEN estado = 'aprobada' "
+                "THEN 'borrador' ELSE estado END, aprobada_por = NULL, aprobada_en = NULL, "
+                "actualizado_en = CURRENT_TIMESTAMP WHERE id = ?", (estilo, f["id"]))
+            cambiadas.append(f["id"])
+        conn.commit()
+    finally:
+        conn.close()
+    for pub_id in cambiadas:
+        renderizar(db_path, pub_id)
+    return len(cambiadas)
+
+
 def armar_semana(db_path: str, lunes: date, ahora: datetime | None = None) -> list[int]:
     """Llena los slots vacios de esa semana. Idempotente."""
     ahora = ahora or ahora_utc()
@@ -211,12 +298,13 @@ def armar_semana(db_path: str, lunes: date, ahora: datetime | None = None) -> li
                 continue
             usadas.add(fila["clave"])
             _usar(conn, fila, ahora)
+            estilo = _estilo_planificado(conn, tipo, cuando)
             cur = conn.execute(
                 "INSERT INTO ig_publicaciones (semana, slot, clave_banco, formato, pilar, "
                 "slides_json, caption, estilo, programada_para, img_token) "
                 "VALUES (?,?,?,?,?,?,?,?,?,?)",
                 (lunes.isoformat(), slot, fila["clave"], fila["formato"], fila["pilar"],
-                 fila["slides_json"], fila["caption"], "verde", _txt(cuando),
+                 fila["slides_json"], fila["caption"], estilo, _txt(cuando),
                  secrets.token_hex(16)))
             creadas.append(cur.lastrowid)
         conn.commit()
@@ -380,7 +468,7 @@ def otra_idea(db_path: str, pub_id: int, ahora: datetime | None = None) -> dict:
         _usar(conn, fila, ahora)
         conn.execute(
             "UPDATE ig_publicaciones SET clave_banco = ?, formato = ?, pilar = ?, "
-            "slides_json = ?, caption = ?, estilo = 'verde', estado = 'borrador', error = NULL, "
+            "slides_json = ?, caption = ?, estado = 'borrador', error = NULL, "
             "aprobada_por = NULL, aprobada_en = NULL, actualizado_en = CURRENT_TIMESTAMP "
             "WHERE id = ?",
             (fila["clave"], fila["formato"], fila["pilar"], fila["slides_json"],
@@ -663,6 +751,68 @@ def imagen_publica(db_path: str, token: str, n: int) -> str | None:
     return ruta if os.path.isfile(ruta) else None
 
 
+# ── vista del perfil ─────────────────────────────────────────────────────────
+# Como quedaria la grilla de @scalerics_ al final de una semana: lo nuevo arriba
+# y lo ya publicado abajo. Las ultimas publicaciones se piden a Meta y se
+# guardan media hora en memoria: el panel se abre seguido y no hace falta
+# pedirlas cada vez.
+
+GRILLA = 9
+_CACHE_FEED = {"cuando": 0.0, "items": None}
+_CACHE_SEGUNDOS = 1800
+
+
+def feed_publicado(cantidad: int = GRILLA, traer=None) -> list[dict]:
+    ahora = time.time()
+    if traer is None and _CACHE_FEED["items"] is not None \
+            and ahora - _CACHE_FEED["cuando"] < _CACHE_SEGUNDOS:
+        return _CACHE_FEED["items"][:cantidad]
+    if traer is None:
+        def traer():
+            d = _get(f"{_cuenta_ig()}/media", limit=GRILLA + 3,
+                     fields="id,timestamp,media_type,media_url,thumbnail_url,permalink")
+            return d.get("data", [])
+    items = [{"id": m.get("id"), "fecha": (m.get("timestamp") or "")[:10],
+              "imagen": m.get("thumbnail_url") or m.get("media_url"),
+              "permalink": m.get("permalink"), "video": m.get("media_type") == "VIDEO"}
+             for m in traer() if m.get("thumbnail_url") or m.get("media_url")]
+    _CACHE_FEED.update(cuando=ahora, items=items)
+    return items[:cantidad]
+
+
+def grilla(db_path: str, lunes: date, ahora: datetime | None = None, publicadas=None) -> dict:
+    """{'nuevas': [...], 'publicadas': [...], 'error': str|None}, en orden de perfil."""
+    ahora = ahora or ahora_utc()
+    fin = datetime.combine(lunes + timedelta(days=7), datetime.min.time(), _UY)
+    conn = _connect(db_path)
+    try:
+        filas = conn.execute(
+            "SELECT * FROM ig_publicaciones WHERE formato != 'historia' "
+            "AND estado IN ('borrador','aprobada','publicando','error','vencida') "
+            "AND programada_para >= ? AND programada_para < ? AND imagenes > 0 "
+            "ORDER BY programada_para DESC",
+            (_txt(ahora), _txt(fin))).fetchall()
+    finally:
+        conn.close()
+    nuevas = []
+    for f in filas[:GRILLA]:
+        p = dict(f)
+        local = _dt(p["programada_para"]).astimezone(_UY)
+        nuevas.append({"id": p["id"], "estado": p["estado"], "formato": p["formato"],
+                       "fecha": local.date().isoformat(), "hora": local.strftime("%H:%M"),
+                       "version": p["version"]})
+    error = None
+    viejas = []
+    faltan = GRILLA - len(nuevas)
+    if faltan > 0:
+        try:
+            viejas = (publicadas if publicadas is not None else feed_publicado())[:faltan]
+        except Exception as e:
+            error = "No se pudieron traer las publicaciones de Instagram"
+            logger.warning(f"Instagram: grilla sin publicadas ({e})")
+    return {"nuevas": nuevas, "publicadas": viejas, "error": error}
+
+
 # ── rutina ───────────────────────────────────────────────────────────────────
 
 def rutina(db_path: str, ahora: datetime | None = None, avisar_semana=None) -> dict:
@@ -705,6 +855,13 @@ def start_instagram(app) -> None:
             logger.info(f"Instagram: {n} ideas nuevas en el banco")
     except Exception as e:
         logger.warning(f"Instagram: no se pudo sembrar el banco ({e})")
+    # Una sola vez: las piezas armadas antes del plan de fondos se ajustan a el.
+    if puede_correr(db_path, _JOB_REPLAN, 24 * 3650):
+        try:
+            marcar_corrida(db_path, _JOB_REPLAN)
+            logger.info(f"Instagram: {replanificar(db_path)} piezas ajustadas al plan de fondos")
+        except Exception as e:
+            logger.warning(f"Instagram: no se pudo ajustar al plan de fondos ({e})")
 
     def _loop():
         time.sleep(300)
