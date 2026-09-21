@@ -6,6 +6,9 @@ Cada idea tiene un `pilar`, para que la semana no repita el mismo angulo:
 - `servicio`: que hace Scalerics y que cambia para el cliente.
 - `objecion`: las dudas que frenan la llamada ("es caro", "soy chico").
 - `consejo`: algo util por si solo, que posiciona como quien sabe.
+- `caso`: como resolvemos un problema real, sin nombrar al cliente ni
+  prometer resultados que no estan medidos.
+- `propio`: lo que usamos en Scalerics (el CRM), que es verificable.
 
 No hay casos de clientes: se suman cuando haya casos reales y permiso para
 contarlos. Nada de cifras inventadas: donde hay un numero, es una pregunta o
@@ -331,4 +334,64 @@ BANCO = [
     {"clave": "his-seguimiento", "formato": "historia", "pilar": "consejo",
      "slides": [_s("¿Quién le escribe al que *no compró?*", "Ahí se cierran muchas ventas.", "Consejo", "Escribinos DEMO")],
      "caption": "Historia: seguimiento."},
+    # ── como lo resolvemos (sin nombres ni resultados inventados) ────────────
+    {"clave": "car-caso-preventa", "formato": "carrusel", "pilar": "caso",
+     "slides": [
+         _s("El almacenero *no quiere* hacer inventario", "Así pensamos un sistema de preventa para una distribuidora.", "Cómo lo resolvemos"),
+         _s("El pedido que *nadie cargaba*", "La idea original era que cada comercio cargara su stock en una app. Un almacenero no cuenta cajas: esa app se abandona.", "El problema"),
+         _s("El sistema *sugiere* el pedido", "Mira lo que se entregó antes y lo que rota, y arma el pedido solo.", "La vuelta"),
+         _s("Ajustar y enviar: *dos toques*", "El comercio abre el celular, ve el pedido armado, cambia lo que haga falta y lo manda.", "Para el comercio"),
+         _s("Todo llega *ordenado*", "La distribuidora recibe los pedidos, los prepara y arma el reparto sin llamadas ni planillas.", "Para la distribuidora"),
+         _s("Si el usuario tiene que hacer la cuenta, *el sistema no sirve*", "¿Tu operación tiene un paso que nadie quiere hacer? Contanos.", cta="Agendá tu videollamada"),
+     ],
+     "caption": _c(
+         "Un pedido común: \"quiero que mis clientes carguen su stock en una app\". Suena bien, pero un almacenero no hace inventario, y si la app depende de eso, nadie la usa.",
+         "Por eso el sistema hace la cuenta: sugiere el pedido según lo que se vendió y el comercio solo ajusta y envía. La distribuidora recibe todo ordenado.",
+         "Así pensamos cada sistema: la persona hace lo mínimo y el sistema deduce el resto.")},
+
+    {"clave": "img-caso-una-accion", "formato": "imagen", "pilar": "caso",
+     "slides": [_s("Si el usuario tiene que hacer la cuenta, *el sistema no sirve*", "Diseñamos para que la persona haga una sola acción. El resto lo deduce el sistema.")],
+     "caption": _c(
+         "Es la regla con la que arrancamos cada proyecto. Si alguien del equipo tiene que cargar el mismo dato en dos lugares, o sumar a mano lo que el sistema ya sabe, el sistema está mal diseñado.",
+         "Por eso primero miramos cómo trabajan de verdad, y recién después diseñamos las pantallas.")},
+
+    {"clave": "car-caso-cuaderno", "formato": "carrusel", "pilar": "caso",
+     "slides": [
+         _s("Reemplazamos *el cuaderno*, no a la persona", "Cómo encaramos un sistema para una pyme.", "Cómo lo resolvemos"),
+         _s("Primero, *mirar* cómo trabajan", "Antes de proponer nada, entendemos el día a día: qué se anota, dónde y quién lo usa.", "Paso 1"),
+         _s("Después, sacar *lo repetido*", "Lo que se copia de un lado a otro lo hace el sistema.", "Paso 2"),
+         _s("Una pantalla por *tarea*", "Cada persona ve solo lo que necesita para lo suyo, desde el celular.", "Paso 3"),
+         _s("Tu equipo sigue igual, *con menos vueltas*", "Te mostramos cómo quedaría en tu empresa.", cta="Agendá tu videollamada"),
+     ],
+     "caption": _c(
+         "Un sistema a medida no cambia cómo trabaja tu equipo: le saca lo que sobra.",
+         "Empezamos mirando cómo se trabaja hoy, identificamos lo que se hace dos veces y armamos pantallas simples para cada tarea.")},
+
+    # ── lo que usamos nosotros ───────────────────────────────────────────────
+    {"clave": "car-propio-crm", "formato": "carrusel", "pilar": "propio",
+     "slides": [
+         _s("El sistema que usamos *nosotros*", "Así funciona el CRM de Scalerics por dentro.", "Detrás de escena"),
+         _s("Cada consulta entra *sola*", "Los formularios de Meta llegan al CRM al instante, sin copiar nada a mano.", "1"),
+         _s("Aviso *al momento*", "Cuando entra una consulta, el equipo se entera en el acto para responder rápido.", "2"),
+         _s("Seguimiento *ordenado*", "Cada contacto tiene su estado y su historia: nadie queda sin respuesta.", "3"),
+         _s("La publicidad, *vigilada*", "Todos los días revisa los números de los anuncios y avisa si algo se sale de lo normal.", "4"),
+         _s("Lo mismo, *para tu empresa*", "Te mostramos cómo sería el tuyo.", cta="Agendá tu videollamada"),
+     ],
+     "caption": _c(
+         "No recomendamos nada que no usemos. Nuestro propio CRM recibe las consultas de Meta solo, avisa al equipo en el momento, ordena el seguimiento de cada contacto y vigila la publicidad todos los días.",
+         "Es el mismo tipo de sistema que armamos para nuestros clientes, adaptado a cómo vende cada uno.")},
+
+    {"clave": "img-propio-alertas", "formato": "imagen", "pilar": "propio",
+     "slides": [_s("Nuestra publicidad nos avisa *cuando algo anda mal*", "Todos los días revisa los números y manda una alerta si se desvían.")],
+     "caption": _c(
+         "Si invertís en publicidad, no alcanza con mirar los números una vez por semana. Nosotros armamos un sistema que revisa cada día el costo, los clics y las consultas, y nos avisa por mail cuando algo cambia.",
+         "¿Querés lo mismo para tus campañas o tus ventas?")},
+
+    {"clave": "his-caso-dos-toques", "formato": "historia", "pilar": "caso",
+     "slides": [_s("Pedidos en *dos toques*", "El sistema arma el pedido. El cliente ajusta y envía.", "Cómo lo resolvemos", "Escribinos DEMO")],
+     "caption": "Historia: pedido sugerido en dos toques."},
+
+    {"clave": "his-propio-crm", "formato": "historia", "pilar": "propio",
+     "slides": [_s("Usamos lo que *hacemos*", "Nuestro CRM recibe y ordena cada consulta solo.", "Detrás de escena", "Escribinos DEMO")],
+     "caption": "Historia: el CRM propio."},
 ]

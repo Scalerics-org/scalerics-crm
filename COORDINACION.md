@@ -543,6 +543,12 @@ leads de Meta se renombró a **D** para deshacer el empate.
   Pestaña "Comentarios" en el panel. `IG_RESPUESTAS=off` lo apaga. Facebook no:
   falta `pages_read_user_content`.
 
+- **21/9 — J (agente de marketing): 7 ideas nuevas en el banco de Instagram.**
+  Pilares nuevos `caso` (cómo resolvemos un problema, sin nombrar al cliente ni
+  inventar resultados; uno toma la preventa de la demo de Diego Peirano) y
+  `propio` (el CRM de Scalerics). Solo `services/ig_banco_semilla.py` y el test
+  de pilares; se siembran solas al arrancar.
+
 - **17/9 — J (agente de marketing): Recomendaciones de pauta, "modo sombra" (Etapa 3).**
 
   Panel nuevo `sombra` ("Recomendaciones de pauta") en MARKETING, con grant a
