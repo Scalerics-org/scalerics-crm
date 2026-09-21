@@ -714,3 +714,34 @@ def test_un_error_que_no_es_9007_no_se_reintenta_y_9007_eterno_termina(monkeypat
     with pytest.raises(RuntimeError, match="9007"):
         ig.publicar_en_meta("imagen", "hola", ["u1"], espera=lambda s: None)
     assert len(llamadas) == ig.REINTENTOS_PUBLICAR
+
+
+def test_las_imagenes_del_carrusel_no_llevan_el_contador_1_de_n(monkeypatch):
+    import re
+
+    from PIL import ImageDraw
+
+    textos = []
+    original = ImageDraw.ImageDraw.text
+
+    def espia(self, xy, text, *a, **k):
+        textos.append(text)
+        return original(self, xy, text, *a, **k)
+
+    monkeypatch.setattr(ImageDraw.ImageDraw, "text", espia)
+    slides = [{"titulo": "Uno"}, {"titulo": "Dos", "texto": "x"}, {"titulo": "Tres"}]
+    assert len(ig_render.dibujar_publicacion("carrusel", slides, ig_render.estilos_para("carrusel")[0])) == 3
+    assert not [t for t in textos if re.fullmatch(r"\d+/\d+", t)]
+    assert "DESLIZÁ →" in textos          # la pista de deslizar se mantiene
+
+
+def test_redibujar_sin_contador_conserva_la_aprobacion_y_sube_la_version(db):
+    ids = ig.armar_semana(db, LUNES, JUEVES)
+    carrusel = next(i for i in ids if ig.obtener(db, i)["formato"] == "carrusel")
+    antes = ig.obtener(db, carrusel)
+    ig.aprobar(db, carrusel, "juan", ahora=JUEVES)
+    n = ig.redibujar_sin_contador(db, JUEVES)
+    despues = ig.obtener(db, carrusel)
+    assert n >= 1 and despues["estado"] == "aprobada" and despues["version"] == antes["version"] + 1
+    assert all(ig.obtener(db, i)["formato"] != "carrusel" or ig.obtener(db, i)["version"] > antes["version"]
+               for i in ids)

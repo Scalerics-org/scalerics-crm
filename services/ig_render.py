@@ -264,10 +264,8 @@ def dibujar(slide: dict, estilo: str = "verde", formato: str = "feed",
     img.paste(logo, (centro - logo.width // 2, abajo - logo.height), logo)
 
     f_chica = _fuente("Medium", 30)
+    # Sin "1/6": Instagram ya muestra su propio contador (Juan, 21/9/2026).
     if total and total > 1:
-        txt = f"{numero}/{total}"
-        d.text((ancho - borde - f_chica.getlength(txt), arriba), txt, font=f_chica,
-               fill=TEXTO_SUAVE_CLARO if claro else GRIS)
         if numero < total:
             txt = "DESLIZÁ →"
             d.text((ancho - borde - f_chica.getlength(txt), abajo - 38), txt,

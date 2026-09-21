@@ -189,6 +189,29 @@ def renderizar(db_path: str, pub_id: int) -> dict:
     return obtener(db_path, pub_id)
 
 
+_JOB_SIN_CONTADOR = "ig_sin_contador_v1"
+
+
+def redibujar_sin_contador(db_path: str, ahora: datetime | None = None) -> int:
+    """Redibuja los carruseles que todavia no salieron, ahora sin el "1/6".
+
+    Solo cambia como se dibuja: el texto es el mismo, asi que la aprobacion se
+    conserva (a diferencia de un cambio de fondo o de contenido).
+    """
+    ahora = ahora or ahora_utc()
+    conn = _connect(db_path)
+    try:
+        ids = [f["id"] for f in conn.execute(
+            "SELECT id FROM ig_publicaciones WHERE formato = 'carrusel' AND programada_para > ? "
+            "AND estado IN ('borrador','aprobada','error','vencida') AND imagenes > 0",
+            (_txt(ahora),))]
+    finally:
+        conn.close()
+    for pub_id in ids:
+        renderizar(db_path, pub_id)
+    return len(ids)
+
+
 # ── plan de fondos ───────────────────────────────────────────────────────────
 # Juan (17/9): "todo del mismo fondo es monotono; arma cada mes una
 # planificacion de fondos y colores y variala". Cada mes toma una secuencia y
@@ -876,6 +899,14 @@ def start_instagram(app) -> None:
             logger.info(f"Instagram: {replanificar(db_path)} piezas ajustadas al plan de fondos")
         except Exception as e:
             logger.warning(f"Instagram: no se pudo ajustar al plan de fondos ({e})")
+
+    # Una sola vez: se redibujan sin el contador "1/6" las piezas que todavia no salieron.
+    if puede_correr(db_path, _JOB_SIN_CONTADOR, 24 * 3650):
+        try:
+            marcar_corrida(db_path, _JOB_SIN_CONTADOR)
+            logger.info(f"Instagram: {redibujar_sin_contador(db_path)} carruseles redibujados sin contador")
+        except Exception as e:
+            logger.warning(f"Instagram: no se pudo redibujar sin contador ({e})")
 
     def _loop():
         time.sleep(300)
