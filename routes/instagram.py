@@ -141,6 +141,14 @@ def api_grilla():
     return jsonify({"ok": True, "semana": lunes.isoformat(), **g})
 
 
+@instagram_bp.route("/api/instagram/comentarios")
+def api_comentarios():
+    from services import ig_comentarios
+    return jsonify({"ok": True, "whatsapp": ig_comentarios.whatsapp(),
+                    "activo": ig_comentarios.activo(),
+                    "comentarios": ig_comentarios.listar(_db())})
+
+
 @instagram_bp.route("/api/instagram/armar-semana", methods=["POST"])
 def api_armar():
     if not is_admin(_db(), session.get("user_id")):

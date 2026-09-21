@@ -823,6 +823,8 @@ def rutina(db_path: str, ahora: datetime | None = None, avisar_semana=None) -> d
     avisar_semana = avisar_semana or send_instagram_semana
     local = ahora.astimezone(_UY)
     salida = {"publicadas": publicar_pendientes(db_path, ahora)}
+    from services import ig_comentarios
+    salida["comentarios"] = ig_comentarios.corrida(db_path, ahora)
 
     if (local.weekday() == DIA_DE_ARMADO and local.hour >= HORA_DE_ARMADO
             and puede_correr(db_path, _JOB_SEMANA)):

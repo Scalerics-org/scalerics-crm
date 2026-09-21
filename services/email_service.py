@@ -484,6 +484,25 @@ def send_instagram_error(pub_id: int, error_detail: str) -> bool:
     return _send(_destino_instagram(), "ALERTA: no se pudo publicar en Instagram", html_mail)
 
 
+@_tipo_envio("aviso_equipo")
+def send_instagram_comentario(usuario: str, texto: str, respuesta: str | None, estado: str,
+                              origen: str, nombre: str) -> bool:
+    """Un comentario nuevo en Instagram: es un posible cliente."""
+    donde = f"el anuncio «{nombre}»" if origen == "anuncio" else "una publicación"
+    filas = [("Quién", f"@{html.escape(usuario or '')}"), ("Dónde", html.escape(donde)),
+             ("Comentario", html.escape(texto or ""))]
+    if estado == "respondido":
+        filas.append(("Le respondimos", html.escape(respuesta or "")))
+        intro = "Alguien comentó en Instagram y ya le respondimos que escriba por WhatsApp."
+    else:
+        intro = ("Alguien comentó en Instagram y <b>no se pudo responder solo</b>. "
+                 "Contestale a mano desde la app.")
+    body = (_muted(intro) + _info_card(filas)
+            + _muted("Si no escribe por WhatsApp en el día, conviene mandarle un mensaje directo."))
+    html_mail = _layout(badge="Instagram", title="Nuevo comentario", body=body)
+    return _send(_destino_instagram(), f"Instagram: comentario de @{usuario}", html_mail)
+
+
 @_tipo_envio("alerta")
 def send_instagram_banco_bajo(feed: int, historias: int) -> bool:
     body = _muted(

@@ -117,7 +117,7 @@ def test_el_banco_es_valido():
     assert len({b["clave"] for b in BANCO}) == len(BANCO)
     for b in BANCO:
         ig._validar_slides(b["formato"], b["slides"])
-        assert b["pilar"] in ("dolor", "servicio", "objecion", "consejo")
+        assert b["pilar"] in ("dolor", "servicio", "objecion", "consejo", "caso", "propio")
         assert len(b["caption"]) <= 2200 and b["caption"].count("#") <= 30
     assert sum(b["formato"] == "historia" for b in BANCO) >= 10
     assert sum(b["formato"] != "historia" for b in BANCO) >= 20

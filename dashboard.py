@@ -3703,6 +3703,11 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     <div class="ig-tabs" role="tablist">
       <button type="button" class="ig-tab activa" id="ig-tab-pub" role="tab" onclick="igModo('pub')">Publicaciones</button>
       <button type="button" class="ig-tab" id="ig-tab-perfil" role="tab" onclick="igModo('perfil')">Vista del perfil</button>
+      <button type="button" class="ig-tab" id="ig-tab-coment" role="tab" onclick="igModo('coment')">Comentarios</button>
+    </div>
+    <div id="ig-vista-coment" class="ig-oculto">
+      <div class="ig-perfil-nota" id="ig-coment-nota"></div>
+      <div class="so-lista" id="ig-coment-lista"></div>
     </div>
     <div id="ig-vista-pub">
       <div id="ig-estado" class="li-vacio" role="status" aria-live="polite">Cargando…</div>
@@ -13440,7 +13445,49 @@ function igModo(modo) {
   liClase('ig-tab-perfil', modo === 'perfil', 'activa');
   liClase('ig-vista-pub', modo !== 'pub', 'ig-oculto');
   liClase('ig-vista-perfil', modo !== 'perfil', 'ig-oculto');
+  liClase('ig-tab-coment', modo === 'coment', 'activa');
+  liClase('ig-vista-coment', modo !== 'coment', 'ig-oculto');
   if (modo === 'perfil') igCargarGrilla();
+  if (modo === 'coment') igCargarComentarios();
+}
+
+const IG_COMENT_ESTADOS = {respondido: ['Respondido', 'so-chip-verde'], error: ['Responder a mano', 'so-chip-rojo'],
+  omitido: ['Sin responder', '']};
+
+async function igCargarComentarios() {
+  const lista = document.getElementById('ig-coment-lista');
+  const nota = document.getElementById('ig-coment-nota');
+  if (!lista) return;
+  lista.innerHTML = '';
+  nota.textContent = 'Cargando…';
+  let d;
+  try {
+    const r = await fetch('/api/instagram/comentarios');
+    d = await r.json();
+    if (!r.ok || !d.ok) throw new Error('HTTP ' + r.status);
+  } catch (e) {
+    nota.textContent = 'No se pudieron cargar los comentarios.';
+    return;
+  }
+  nota.textContent = (d.activo
+    ? 'Cada hora se revisan los comentarios de tus publicaciones y anuncios activos, y se responde solo, derivando al WhatsApp ' + d.whatsapp + '. Te llega un mail por cada uno.'
+    : 'Las respuestas automáticas están apagadas.') + ' Solo Instagram: los de Facebook no se pueden leer con el permiso actual.';
+  if (!d.comentarios.length) {
+    lista.innerHTML = '<div class="li-vacio">Todavía no hay comentarios.</div>';
+    return;
+  }
+  lista.innerHTML = d.comentarios.map(c => {
+    const est = IG_COMENT_ESTADOS[c.estado] || [c.estado, ''];
+    const donde = c.origen === 'anuncio' ? 'Anuncio: ' + (c.origen_nombre || '') : 'Publicación';
+    const motivo = c.estado === 'omitido' && c.error ? ' (' + c.error + ')' : '';
+    return '<article class="so-item"><div class="so-cab"><span class="so-chip ' + est[1] + '">' + liEsc(est[0] + motivo) +
+      '</span><span class="so-nombre">@' + liEsc(c.usuario || '') + '</span></div>' +
+      '<div class="so-campana">' + liEsc(donde) + ' · ' + liEsc((c.creado_en || '').slice(0, 10)) + '</div>' +
+      '<div class="so-evidencia">' + liEsc(c.texto || '') + '</div>' +
+      (c.respuesta ? '<div class="so-resultado">Respuesta: ' + liEsc(c.respuesta) + '</div>' : '') +
+      (c.estado === 'error' ? '<div class="so-resultado">No se pudo responder solo: ' + liEsc(c.error || '') + '</div>' : '') +
+      '</article>';
+  }).join('');
 }
 
 async function igCargarGrilla() {
