@@ -3738,6 +3738,13 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       </div>
     </div>
     <div class="so-nota"><b>No se toca nada en Meta.</b> Los lunes se arman las recomendaciones con los números de los últimos 7 días.<span id="so-nota-admin" class="so-oculto"> El lunes siguiente se compara con lo que se hizo y con cómo le fue a cada anuncio (esto lo ven solo los administradores). Con pocos leads por semana, mirá la tendencia después de 4 a 6 semanas.</span></div>
+    <div class="so-nota" id="so-tope-caja">
+      <label for="so-tope"><b>Tope de costo por lead (USD).</b></label>
+      <input type="number" id="so-tope" min="1" max="500" step="0.5" placeholder="Sin tope: se usa el promedio de la cuenta" style="width:260px;max-width:100%;margin:0 8px">
+      <button type="button" class="export-btn" onclick="soGuardarTope()">Guardar</button>
+      <span class="so-msg" id="so-tope-msg" role="status"></span>
+      <div>Los anuncios se comparan contra este número. Lo pueden cambiar Juan o el de marketing cuando haga falta. Vacío y Guardar vuelve al promedio.</div>
+    </div>
     <div class="so-marcador so-oculto" id="so-marcador"></div>
     <div class="so-barra">
       <div class="li-nav-semana">
@@ -13823,6 +13830,8 @@ function soPintar() {
   const d = soDatos;
   document.getElementById('so-semana-label').textContent = 'Semana del ' + igFechaLarga(d.semana);
   liClase('so-nota-admin', !d.es_admin, 'so-oculto');
+  const topeInput = document.getElementById('so-tope');
+  if (topeInput && document.activeElement !== topeInput) topeInput.value = d.tope_cpl == null ? '' : d.tope_cpl;
   liClase('so-marcador', !d.es_admin, 'so-oculto');
   const m = d.marcador || {};
   const tiles = [['coincidencia', 'Coincidieron'], ['agente', 'Tenía razón la recomendación'],
@@ -13866,6 +13875,19 @@ async function soCalcular() {
     msg.textContent = e.message;
   } finally {
     btn.disabled = false;
+  }
+}
+async function soGuardarTope() {
+  const msg = document.getElementById('so-tope-msg');
+  msg.textContent = 'Guardando…';
+  try {
+    const r = await fetch('/api/sombra/tope', {method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({valor: document.getElementById('so-tope').value})});
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.ok) throw new Error(d.error || 'No se pudo guardar.');
+    msg.textContent = d.tope_cpl == null ? 'Sin tope: se usa el promedio.' : 'Guardado. Rige desde el próximo lunes.';
+  } catch (e) {
+    msg.textContent = e.message;
   }
 }
 // ========== FIN Modo sombra ==========

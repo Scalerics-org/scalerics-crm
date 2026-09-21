@@ -46,7 +46,25 @@ def api_semana():
         "marcador": sm.marcador(_db()) if admin else {},
         "es_admin": admin,
         "puede_calcular": admin,
+        "tope_cpl": sm.tope_cpl(_db()),
     })
+
+
+@sombra_bp.route("/api/sombra/tope", methods=["POST"])
+def api_tope():
+    """Fija o borra el tope de costo por lead. Lo puede cambiar quien ve el panel."""
+    crudo = (request.get_json(silent=True) or {}).get("valor")
+    if crudo in (None, ""):
+        valor = None
+    else:
+        try:
+            valor = round(float(str(crudo).replace(",", ".")), 2)
+        except ValueError:
+            return jsonify({"ok": False, "error": "El tope tiene que ser un número."}), 400
+        if not 1 <= valor <= 500:
+            return jsonify({"ok": False, "error": "El tope tiene que estar entre 1 y 500 USD."}), 400
+    sm.fijar_tope_cpl(_db(), valor, str(session.get("user_name") or session.get("user_id") or ""))
+    return jsonify({"ok": True, "tope_cpl": valor})
 
 
 @sombra_bp.route("/api/sombra/calcular", methods=["POST"])

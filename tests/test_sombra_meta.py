@@ -355,3 +355,32 @@ def test_la_recomendacion_del_formulario_no_se_evalua_contra_meta(db):
     assert rec["tipo_texto"] == "Revisar el formulario"
     seguida, veredicto, _ = sm.evaluar(rec, _datos())
     assert seguida is None and veredicto == "sin_definir"
+
+
+# ── tope de costo por lead ───────────────────────────────────────────────────
+
+def test_con_tope_los_anuncios_se_comparan_contra_el_tope_y_no_contra_el_promedio():
+    caro = _ad("A1", 30, 1)        # CPL 30: mas del doble del promedio (15,30)
+    assert "pausar:A1" not in _tipos(sm.recomendar(_datos([caro])))
+    camp = _camp("C1", 100, 5)     # CPL 20
+    assert "bajar:C1" not in _tipos(sm.recomendar(_datos(campanas_7d=[camp])))
+    recs = _tipos(sm.recomendar(_datos(campanas_7d=[camp]), cpl_tope=10.0))
+    assert "bajar:C1" in recs and "tope" in recs["bajar:C1"]["evidencia"]
+    assert recs["bajar:C1"]["antes"]["cpl_ref"] == 10.0
+
+
+def test_marketing_y_admin_cambian_el_tope_y_se_usa_en_la_corrida(app):
+    db = app.config["DB_PATH"]
+    mkt = _cli(app, "mkt@scalerics.com", ["sombra"])
+    otro = _cli(app, "otro@scalerics.com", ["cal"])
+    assert otro.post("/api/sombra/tope", json={"valor": 10}).status_code == 403
+    assert mkt.post("/api/sombra/tope", json={"valor": "abc"}).status_code == 400
+    assert mkt.post("/api/sombra/tope", json={"valor": 0}).status_code == 400
+    assert mkt.post("/api/sombra/tope", json={"valor": "12,5"}).get_json()["tope_cpl"] == 12.5
+    assert mkt.get("/api/sombra/semana").get_json()["tope_cpl"] == 12.5
+    assert sm.tope_cpl(db) == 12.5
+    sm.corrida(db, LUNES_9, _traer(_datos(campanas_7d=[_camp("C1", 100, 5)])))
+    [rec] = sm.semana_de(db, "2026-09-21")
+    assert rec["clave"] == "bajar:C1" and rec["antes"]["cpl_ref"] == 12.5
+    assert mkt.post("/api/sombra/tope", json={"valor": ""}).get_json()["tope_cpl"] is None
+    assert sm.tope_cpl(db) is None
