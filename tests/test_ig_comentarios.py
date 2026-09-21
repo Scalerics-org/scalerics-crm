@@ -148,3 +148,17 @@ def test_el_mail_del_comentario_se_arma(monkeypatch):
                                      "anuncio", "UGC 1")
     html = capturados[0]["html"]
     assert "@cliente1" in capturados[0]["subject"] and "&lt;b&gt;Info" in html and "097 250 713" in html
+
+
+def test_los_conteos_se_piden_uno_por_uno_sin_el_parametro_ids():
+    llamadas = []
+
+    class Fake(ic.Api):
+        def _get(self, ruta, **params):
+            llamadas.append((ruta, params))
+            if ruta == "MALO":
+                raise RuntimeError("borrada")
+            return {"comments_count": 2}
+
+    assert Fake().conteos(["A", "MALO", "B"]) == {"A": 2, "B": 2}
+    assert all("ids" not in p and r for r, p in llamadas)

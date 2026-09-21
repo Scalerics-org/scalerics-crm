@@ -672,3 +672,45 @@ def test_la_grilla_por_http(app, monkeypatch):
     assert d["nuevas"][0]["imagen"].startswith("/api/instagram/publicaciones/")
     assert cli.get("/api/instagram/grilla?semana=mal").status_code == 400
     assert _cli(app, "otro@scalerics.com", ["cal"]).get("/api/instagram/grilla").status_code == 403
+
+
+def test_si_meta_dice_9007_al_publicar_se_reintenta(monkeypatch):
+    g = _Graph()
+    fallas = {"n": 2}
+    esperas = []
+
+    def post(ruta, **p):
+        if ruta.endswith("media_publish") and fallas["n"]:
+            fallas["n"] -= 1
+            raise RuntimeError("code=9007 Media ID is not available")
+        return g.post(ruta, **p)
+
+    monkeypatch.setenv("INSTAGRAM_USER_ID", "IG")
+    monkeypatch.setattr(ig, "_post", post)
+    monkeypatch.setattr(ig, "_get", g.get)
+    r = ig.publicar_en_meta("imagen", "hola", ["u1"], espera=esperas.append)
+    assert r["id"] and esperas.count(10) == 2
+
+
+def test_un_error_que_no_es_9007_no_se_reintenta_y_9007_eterno_termina(monkeypatch):
+    g = _Graph()
+    llamadas = []
+
+    def post(ruta, **p):
+        if ruta.endswith("media_publish"):
+            llamadas.append(1)
+            raise RuntimeError(p_error["m"])
+        return g.post(ruta, **p)
+
+    p_error = {"m": "code=190 token vencido"}
+    monkeypatch.setenv("INSTAGRAM_USER_ID", "IG")
+    monkeypatch.setattr(ig, "_post", post)
+    monkeypatch.setattr(ig, "_get", g.get)
+    with pytest.raises(RuntimeError, match="190"):
+        ig.publicar_en_meta("imagen", "hola", ["u1"], espera=lambda s: None)
+    assert len(llamadas) == 1
+    llamadas.clear()
+    p_error["m"] = "code=9007 Media ID is not available"
+    with pytest.raises(RuntimeError, match="9007"):
+        ig.publicar_en_meta("imagen", "hola", ["u1"], espera=lambda s: None)
+    assert len(llamadas) == ig.REINTENTOS_PUBLICAR

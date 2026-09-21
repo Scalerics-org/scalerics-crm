@@ -110,12 +110,15 @@ class Api:
         return salida
 
     def conteos(self, ids: list[str]) -> dict:
+        """Una llamada por publicacion: el parametro `ids` de Meta dejo de andar en v26."""
         salida = {}
-        for i in range(0, len(ids), 50):
-            lote = ids[i:i + 50]
-            d = self._get("", ids=",".join(lote), fields="comments_count")
-            for mid, v in d.items():
-                salida[mid] = int((v or {}).get("comments_count") or 0)
+        for mid in ids:
+            try:
+                d = self._get(mid, fields="comments_count")
+            except Exception as e:      # una publicacion borrada no frena a las demas
+                logger.warning(f"Comentarios IG: no se pudo leer {mid} ({e})")
+                continue
+            salida[mid] = int((d or {}).get("comments_count") or 0)
         return salida
 
     def comentarios(self, media_id: str) -> list[dict]:
