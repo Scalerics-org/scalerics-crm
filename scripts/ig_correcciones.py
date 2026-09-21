@@ -10,6 +10,11 @@ Uso:
         el JSON: {"cambios": {"slides": [...], "caption": "..."}, "respuesta": "..."}
     python scripts/ig_correcciones.py rechazar <id> "motivo"
     python scripts/ig_correcciones.py imagen <publicacion_id> <n> <destino.jpg>
+    python scripts/ig_correcciones.py estrategias
+        los PDF mensuales que todavia no se leyeron
+    python scripts/ig_correcciones.py estrategia-pdf <id> <destino.pdf>
+    python scripts/ig_correcciones.py estrategia-plan <id> <archivo.json>
+        el JSON: {"plan": {"linea_de_color": "...", "piezas": [...], "objetivos": "..."}}
 """
 
 import json
@@ -65,6 +70,18 @@ def main(args):
         with open(args[3], "wb") as f:
             f.write(r.content)
         print(args[3])
+    elif cmd == "estrategias":
+        print(json.dumps(_pedir("GET", "/api/instagram-bot/estrategias/pendientes")["pendientes"],
+                         ensure_ascii=False, indent=2))
+    elif cmd == "estrategia-pdf" and len(args) == 3:
+        r = _pedir("GET", f"/api/instagram-bot/estrategias/{int(args[1])}/pdf")
+        with open(args[2], "wb") as f:
+            f.write(r.content)
+        print(args[2])
+    elif cmd == "estrategia-plan" and len(args) == 3:
+        cuerpo = json.load(open(args[2], encoding="utf-8"))
+        print(json.dumps(_pedir("POST", f"/api/instagram-bot/estrategias/{int(args[1])}/plan",
+                                json=cuerpo), ensure_ascii=False))
     else:
         sys.exit(__doc__)
 

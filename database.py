@@ -2008,6 +2008,22 @@ def init_db(db_path: str) -> None:
                 actualizado_en  TEXT
             )
         """)
+        # PDF mensual con la estrategia de marketing; el plan lo escribe el agente
+        # despues de leerlo (services/estrategia.py).
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS estrategias_mensuales (
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                mes            TEXT NOT NULL,
+                nombre_archivo TEXT NOT NULL,
+                pdf            BLOB NOT NULL,
+                tamano         INTEGER NOT NULL,
+                subido_por     TEXT,
+                subido_en      TEXT NOT NULL,
+                estado         TEXT NOT NULL DEFAULT 'nueva',
+                plan_json      TEXT,
+                plan_en        TEXT
+            )
+        """)
         conn.commit()
         _grant_panel_to_existing_roles(conn, "sombra", si_tiene=("marketing",))
 

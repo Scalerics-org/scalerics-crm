@@ -3745,6 +3745,16 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       <span class="so-msg" id="so-tope-msg" role="status"></span>
       <div>Los anuncios se comparan contra este número. Lo pueden cambiar Juan o el de marketing cuando haga falta. Vacío y Guardar vuelve al promedio.</div>
     </div>
+    <div class="so-nota" id="es-caja">
+      <b>Estrategia del mes (PDF).</b> El de marketing o Juan suben el PDF de cada mes. El agente lo lee y arma un resumen de la línea de color y las piezas.
+      <div style="margin-top:8px">
+        <input type="month" id="es-mes" style="margin-right:8px">
+        <input type="file" id="es-archivo" accept="application/pdf" style="max-width:260px">
+        <button type="button" class="export-btn" onclick="esSubir()">Subir</button>
+        <span class="so-msg" id="es-msg" role="status"></span>
+      </div>
+      <div id="es-lista" style="margin-top:8px"></div>
+    </div>
     <div class="so-marcador so-oculto" id="so-marcador"></div>
     <div class="so-barra">
       <div class="li-nav-semana">
@@ -13830,6 +13840,7 @@ function soPintar() {
   const d = soDatos;
   document.getElementById('so-semana-label').textContent = 'Semana del ' + igFechaLarga(d.semana);
   liClase('so-nota-admin', !d.es_admin, 'so-oculto');
+  esCargar();
   const topeInput = document.getElementById('so-tope');
   if (topeInput && document.activeElement !== topeInput) topeInput.value = d.tope_cpl == null ? '' : d.tope_cpl;
   liClase('so-marcador', !d.es_admin, 'so-oculto');
@@ -13877,6 +13888,44 @@ async function soCalcular() {
     btn.disabled = false;
   }
 }
+async function esCargar() {
+  const lista = document.getElementById('es-lista');
+  if (!lista) return;
+  try {
+    const r = await fetch('/api/sombra/estrategias');
+    const d = await r.json();
+    if (!r.ok || !d.ok) throw new Error('x');
+    lista.innerHTML = d.estrategias.length ? d.estrategias.map(function (e) {
+      const plan = e.plan ? 'El agente ya la leyó.' : 'Falta que el agente la lea.';
+      return '<div>' + liEsc(e.mes) + ' · <a href="/api/sombra/estrategias/' + e.id + '/pdf" target="_blank" rel="noopener">' +
+        liEsc(e.nombre_archivo) + '</a> · subido por ' + liEsc(e.subido_por || '') + ' · ' + plan + '</div>';
+    }).join('') : 'Todavía no hay PDF subidos.';
+  } catch (e) {
+    lista.textContent = 'No se pudo cargar la lista.';
+  }
+}
+
+async function esSubir() {
+  const msg = document.getElementById('es-msg');
+  const archivo = document.getElementById('es-archivo').files[0];
+  const mes = document.getElementById('es-mes').value;
+  if (!archivo || !mes) { msg.textContent = 'Elegí el mes y el PDF.'; return; }
+  const f = new FormData();
+  f.append('archivo', archivo);
+  f.append('mes', mes);
+  msg.textContent = 'Subiendo…';
+  try {
+    const r = await fetch('/api/sombra/estrategias', {method: 'POST', body: f});
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.ok) throw new Error(d.error || 'No se pudo subir.');
+    msg.textContent = 'Subido. El agente lo lee en las próximas horas.';
+    document.getElementById('es-archivo').value = '';
+    esCargar();
+  } catch (e) {
+    msg.textContent = e.message;
+  }
+}
+
 async function soGuardarTope() {
   const msg = document.getElementById('so-tope-msg');
   msg.textContent = 'Guardando…';

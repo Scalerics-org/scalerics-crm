@@ -7,8 +7,9 @@ administrador: a los demas se les sacan antes de responder.
 
 from datetime import date
 
-from flask import Blueprint, current_app, jsonify, request, session
+from flask import Blueprint, Response, current_app, jsonify, request, session
 
+from services import estrategia as est
 from services import sombra_meta as sm
 from services.auth import is_admin, require_panel
 
@@ -74,3 +75,34 @@ def api_calcular():
     r = sm.calcular_ahora(_db())
     codigo = 429 if r["estado"] == "esperar" else (502 if r["estado"] == "error" else 200)
     return jsonify({"ok": r["estado"] == "ok", **r}), codigo
+
+
+# ── estrategia mensual (PDF) ─────────────────────────────────────────────────
+
+@sombra_bp.route("/api/sombra/estrategias")
+def api_estrategias():
+    return jsonify({"ok": True, "estrategias": est.listar(_db())})
+
+
+@sombra_bp.route("/api/sombra/estrategias", methods=["POST"])
+def api_subir_estrategia():
+    archivo = request.files.get("archivo")
+    if not archivo:
+        return jsonify({"ok": False, "error": "Falta el archivo."}), 400
+    datos = archivo.read(est.MAX_BYTES + 1)
+    try:
+        est_id = est.guardar(_db(), request.form.get("mes", ""), archivo.filename or "", datos,
+                             str(session.get("user_name") or session.get("user_id") or ""))
+    except est.NoSePuede as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    return jsonify({"ok": True, "id": est_id})
+
+
+@sombra_bp.route("/api/sombra/estrategias/<int:est_id>/pdf")
+def api_pdf_estrategia(est_id):
+    fila = est.pdf_de(_db(), est_id)
+    if not fila:
+        return jsonify({"ok": False, "error": "No existe"}), 404
+    nombre, datos = fila
+    return Response(datos, mimetype="application/pdf",
+                    headers={"Content-Disposition": f'inline; filename="{nombre}"'})
