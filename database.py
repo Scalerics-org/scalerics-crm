@@ -1998,6 +1998,16 @@ def init_db(db_path: str) -> None:
                 UNIQUE (semana, clave)
             )
         """)
+        # Ajustes del modo sombra que edita quien ve el panel (hoy: el tope de
+        # costo por lead). Una fila por clave.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS sombra_ajustes (
+                clave           TEXT PRIMARY KEY,
+                valor           TEXT,
+                actualizado_por TEXT,
+                actualizado_en  TEXT
+            )
+        """)
         conn.commit()
         _grant_panel_to_existing_roles(conn, "sombra", si_tiene=("marketing",))
 

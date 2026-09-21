@@ -129,9 +129,41 @@ def _campana(datos, campana_id):
 
 # ── recomendaciones ──────────────────────────────────────────────────────────
 
-def recomendar(datos: dict) -> list[dict]:
+def tope_cpl(db_path: str) -> float | None:
+    """El tope de costo por lead (USD) que fijaron Juan o el de marketing, o None."""
+    conn = _connect(db_path)
+    try:
+        fila = conn.execute("SELECT valor FROM sombra_ajustes WHERE clave = 'cpl_tope'").fetchone()
+    finally:
+        conn.close()
+    try:
+        valor = float(fila["valor"]) if fila and fila["valor"] else None
+    except ValueError:
+        return None
+    return valor if valor and valor > 0 else None
+
+
+def fijar_tope_cpl(db_path: str, valor: float | None, usuario: str) -> None:
+    """Guarda el tope; `None` lo borra y se vuelve al promedio de la cuenta."""
+    conn = _connect(db_path)
+    try:
+        conn.execute("INSERT INTO sombra_ajustes (clave, valor, actualizado_por, actualizado_en) "
+                     "VALUES ('cpl_tope', ?, ?, ?) ON CONFLICT(clave) DO UPDATE SET "
+                     "valor = excluded.valor, actualizado_por = excluded.actualizado_por, "
+                     "actualizado_en = excluded.actualizado_en",
+                     (None if valor is None else str(valor), usuario,
+                      datetime.now(_UY).strftime("%Y-%m-%d %H:%M")))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def recomendar(datos: dict, cpl_tope: float | None = None) -> list[dict]:
+    """Con `cpl_tope` el costo por lead se compara contra ese tope; sin el, contra
+    el promedio de los 28 dias anteriores de la cuenta."""
     ref = am.resumir(datos.get("referencia") or {})
-    cpl_ref, ctr_ref = ref["cpl"], ref["ctr"]
+    cpl_ref, ctr_ref = cpl_tope or ref["cpl"], ref["ctr"]
+    del_ref = "del tope" if cpl_tope else "del promedio"
     m = ref["moneda"]
     recs = []
     activos = {a["id"] for a in datos.get("anuncios", []) if a.get("effective_status") == "ACTIVE"}
@@ -151,7 +183,7 @@ def recomendar(datos: dict) -> list[dict]:
         if de_leads and cpl_ref and a["leads"] == 0 and a["gasto"] >= max(CARO * cpl_ref, MIN_GASTO):
             recs.append({**base, "clave": f"pausar:{ad_id}", "tipo": "pausar",
                          "evidencia": f"Gastó {am._plata(a['gasto'], m)} en 7 días sin traer leads "
-                                      f"(un lead cuesta en promedio {am._plata(cpl_ref, m)})."})
+                                      f"(un lead cuesta {'como máximo' if cpl_tope else 'en promedio'} {am._plata(cpl_ref, m)})."})
             continue
         # Pocos clics es normal en una campana de alcance: el CTR solo cuenta en las de leads.
         if a["frecuencia"] > FRECUENCIA_ALTA or (
@@ -188,14 +220,14 @@ def recomendar(datos: dict) -> list[dict]:
         if c["leads"] >= MIN_LEADS_ESCALAR and c["cpl"] <= BARATO * cpl_ref:
             recs.append({**base, "clave": f"escalar:{cid}", "tipo": "escalar",
                          "evidencia": f"Trajo {c['leads']} leads a {am._plata(c['cpl'], m)} cada uno, "
-                                      f"por debajo del promedio ({am._plata(cpl_ref, m)}). Subir el "
+                                      f"por debajo {del_ref} ({am._plata(cpl_ref, m)}). Subir el "
                                       f"presupuesto un 20%: de {am._plata(presupuesto, m)} a "
                                       f"{am._plata(presupuesto * 1.2, m)} por día."})
         elif c["gasto"] >= MIN_GASTO and (c["leads"] == 0 or c["cpl"] >= CARO * cpl_ref):
             costo = am._plata(c["cpl"], m) if c["leads"] else "sin leads"
             recs.append({**base, "clave": f"bajar:{cid}", "tipo": "bajar",
                          "evidencia": f"Gastó {am._plata(c['gasto'], m)} en 7 días ({costo}), contra "
-                                      f"{am._plata(cpl_ref, m)} de promedio. Bajar el presupuesto un 20% "
+                                      f"{am._plata(cpl_ref, m)} {'de tope' if cpl_tope else 'de promedio'}. Bajar el presupuesto un 20% "
                                       "mientras se revisan los anuncios."})
     return recs
 
@@ -398,7 +430,7 @@ def corrida(db_path: str, ahora: datetime | None = None, traer=None, forzar: boo
     if not forzar:
         marcar_corrida(db_path, _JOB)
     evaluadas = evaluar_pendientes(db_path, semana, datos, ahora)
-    recs = recomendar(datos)
+    recs = recomendar(datos, tope_cpl(db_path))
     try:
         recs += recomendar_formulario(db_path, hoy)
     except Exception as e:
