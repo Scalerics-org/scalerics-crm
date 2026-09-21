@@ -14,6 +14,7 @@ from datetime import date
 
 from flask import Blueprint, abort, current_app, jsonify, request, send_file, session
 
+from services import estrategia as est
 from services import instagram as ig
 from services.auth import is_admin, require_panel
 
@@ -226,3 +227,26 @@ def bot_imagen(pub_id, n):
     if not os.path.isfile(ruta):
         abort(404)
     return send_file(ruta, mimetype="image/jpeg", max_age=0)
+
+
+@instagram_pub_bp.route("/api/instagram-bot/estrategias/pendientes")
+def bot_estrategias_pendientes():
+    """Los PDF mensuales que el agente todavia no leyo."""
+    return jsonify({"ok": True, "pendientes": est.pendientes(_db())})
+
+
+@instagram_pub_bp.route("/api/instagram-bot/estrategias/<int:est_id>/pdf")
+def bot_estrategia_pdf(est_id):
+    fila = est.pdf_de(_db(), est_id)
+    if not fila:
+        abort(404)
+    return current_app.response_class(fila[1], mimetype="application/pdf")
+
+
+@instagram_pub_bp.route("/api/instagram-bot/estrategias/<int:est_id>/plan", methods=["POST"])
+def bot_estrategia_plan(est_id):
+    try:
+        est.guardar_plan(_db(), est_id, (request.get_json(silent=True) or {}).get("plan"))
+    except est.NoSePuede as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    return jsonify({"ok": True})

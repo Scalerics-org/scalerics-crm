@@ -173,6 +173,7 @@ def test_evaluar_renovar_y_confirmar():
 def db(tmp_path):
     ruta = str(tmp_path / "leads.db")
     init_db(ruta)
+    sm.fijar_tope_cpl(ruta, None, "test")   # estas pruebas comparan contra el promedio
     return ruta
 
 
@@ -240,6 +241,7 @@ def app(tmp_path, monkeypatch):
     monkeypatch.setenv("ADMIN_EMAIL", "jefe@scalerics.com")
     ruta = str(tmp_path / "app.db")
     init_db(ruta)
+    sm.fijar_tope_cpl(ruta, None, "test")
     a = dashboard.create_app(ruta)
     a.config["TESTING"] = True
     return a
@@ -384,3 +386,49 @@ def test_marketing_y_admin_cambian_el_tope_y_se_usa_en_la_corrida(app):
     assert rec["clave"] == "bajar:C1" and rec["antes"]["cpl_ref"] == 12.5
     assert mkt.post("/api/sombra/tope", json={"valor": ""}).get_json()["tope_cpl"] is None
     assert sm.tope_cpl(db) is None
+
+
+def test_el_tope_arranca_en_25_y_vaciarlo_vuelve_al_promedio(tmp_path):
+    db = str(tmp_path / "nuevo.db")
+    init_db(db)
+    assert sm.tope_cpl(db) == 25.0
+    sm.fijar_tope_cpl(db, 18.0, "juan")
+    assert sm.tope_cpl(db) == 18.0
+    sm.fijar_tope_cpl(db, None, "juan")
+    assert sm.tope_cpl(db) is None
+
+
+# ── estrategia mensual (PDF) ─────────────────────────────────────────────────
+
+PDF = b"%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF"
+
+
+def test_marketing_sube_el_pdf_y_el_agente_lo_lee_y_devuelve_el_plan(app, monkeypatch):
+    monkeypatch.setenv("IG_BOT_TOKEN", "t" * 40)
+    mkt = _cli(app, "mkt@scalerics.com", ["sombra"])
+    otro = _cli(app, "otro@scalerics.com", ["cal"])
+    subir = lambda c, **kw: c.post("/api/sombra/estrategias", data=kw, content_type="multipart/form-data")
+    from io import BytesIO
+    assert subir(otro, mes="2026-10", archivo=(BytesIO(PDF), "e.pdf")).status_code == 403
+    assert subir(mkt, mes="octubre", archivo=(BytesIO(PDF), "e.pdf")).status_code == 400
+    assert subir(mkt, mes="2026-10", archivo=(BytesIO(b"no soy pdf"), "e.pdf")).status_code == 400
+    assert subir(mkt, mes="2026-10").status_code == 400
+    r = subir(mkt, mes="2026-10", archivo=(BytesIO(PDF), "Estrategia octubre.pdf"))
+    assert r.status_code == 200
+    est_id = r.get_json()["id"]
+    [e] = mkt.get("/api/sombra/estrategias").get_json()["estrategias"]
+    assert e["estado"] == "nueva" and e["plan"] is None and e["subido_por"] == "Juan"
+    assert mkt.get(f"/api/sombra/estrategias/{est_id}/pdf").data == PDF
+
+    bot = app.test_client()
+    assert bot.get("/api/instagram-bot/estrategias/pendientes").status_code == 403
+    h = {"x-ig-token": "t" * 40}
+    [p] = bot.get("/api/instagram-bot/estrategias/pendientes", headers=h).get_json()["pendientes"]
+    assert p["id"] == est_id and p["mes"] == "2026-10"
+    assert bot.get(f"/api/instagram-bot/estrategias/{est_id}/pdf", headers=h).data == PDF
+    assert bot.post(f"/api/instagram-bot/estrategias/{est_id}/plan", headers=h, json={"plan": {}}).status_code == 400
+    plan = {"linea_de_color": "verde oliva con textura", "piezas": [{"titulo": "Uno"}]}
+    assert bot.post(f"/api/instagram-bot/estrategias/{est_id}/plan", headers=h, json={"plan": plan}).status_code == 200
+    assert bot.get("/api/instagram-bot/estrategias/pendientes", headers=h).get_json()["pendientes"] == []
+    [e] = mkt.get("/api/sombra/estrategias").get_json()["estrategias"]
+    assert e["estado"] == "leida" and e["plan"]["linea_de_color"].startswith("verde")

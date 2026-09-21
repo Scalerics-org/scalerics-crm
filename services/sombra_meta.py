@@ -129,13 +129,19 @@ def _campana(datos, campana_id):
 
 # ── recomendaciones ──────────────────────────────────────────────────────────
 
+TOPE_CPL_INICIAL = 25.0   # fijado por Juan el 21/9/2026; se edita desde el panel
+
+
 def tope_cpl(db_path: str) -> float | None:
-    """El tope de costo por lead (USD) que fijaron Juan o el de marketing, o None."""
+    """El tope de costo por lead (USD): el que fijaron Juan o el de marketing, el inicial si
+    nadie lo tocó, o None si lo vaciaron (se usa el promedio de la cuenta)."""
     conn = _connect(db_path)
     try:
         fila = conn.execute("SELECT valor FROM sombra_ajustes WHERE clave = 'cpl_tope'").fetchone()
     finally:
         conn.close()
+    if fila is None:
+        return TOPE_CPL_INICIAL        # nadie lo tocó todavía
     try:
         valor = float(fila["valor"]) if fila and fila["valor"] else None
     except ValueError:
