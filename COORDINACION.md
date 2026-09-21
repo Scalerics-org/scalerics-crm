@@ -533,6 +533,16 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **21/9 — J (agente de marketing): respuesta automática a comentarios de Instagram.**
+  `services/ig_comentarios.py`, corre dentro de la rutina de Instagram una vez por
+  hora (marca `ig_comentarios`). Mira las últimas 12 publicaciones y los anuncios
+  activos; responde **solo, sin aprobación** (pedido explícito de Juan) cada
+  comentario nuevo con una de tres frases que derivan al WhatsApp 097 250 713
+  (`IG_WHATSAPP`), una vez por comentario, tope 10 por vuelta, y manda mail a
+  contacto@. Tablas nuevas `ig_comentarios` y `ig_media_conteo` (se crean solas).
+  Pestaña "Comentarios" en el panel. `IG_RESPUESTAS=off` lo apaga. Facebook no:
+  falta `pages_read_user_content`.
+
 - **17/9 — J (agente de marketing): Recomendaciones de pauta, "modo sombra" (Etapa 3).**
 
   Panel nuevo `sombra` ("Recomendaciones de pauta") en MARKETING, con grant a
