@@ -628,6 +628,9 @@ def _cuenta_ig() -> str:
     return d["instagram_business_account"]["id"]
 
 
+REINTENTOS_PUBLICAR = 6
+
+
 def _esperar_contenedor(cid: str, espera=time.sleep):
     for _ in range(20):
         estado = _get(cid, fields="status_code").get("status_code")
@@ -655,7 +658,16 @@ def publicar_en_meta(formato: str, caption: str, urls: list[str], espera=time.sl
     else:
         cid = _post(f"{ig}/media", image_url=urls[0], caption=caption)["id"]
     _esperar_contenedor(cid, espera)
-    media_id = _post(f"{ig}/media_publish", creation_id=cid)["id"]
+    # Meta a veces dice FINISHED y aun asi rechaza publicar con 9007 ("Media ID is not
+    # available"): el 21/9/2026 dejo sin salir el carrusel de las 19 h. Se reintenta.
+    for intento in range(REINTENTOS_PUBLICAR):
+        try:
+            media_id = _post(f"{ig}/media_publish", creation_id=cid)["id"]
+            break
+        except RuntimeError as e:
+            if "code=9007" not in str(e) or intento == REINTENTOS_PUBLICAR - 1:
+                raise
+            espera(10)
     try:
         permalink = _get(media_id, fields="permalink").get("permalink")
     except RuntimeError:
