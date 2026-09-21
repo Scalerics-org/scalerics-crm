@@ -55,7 +55,16 @@ TIPOS = {
     "escalar": "Subir presupuesto",
     "bajar": "Bajar presupuesto",
     "confirmar": "Confirmar objetivo",
+    "formulario": "Revisar el formulario",
 }
+
+# Formulario de leads: se recomienda revisarlo cuando llegan bastante menos leads
+# que antes pero los que llegan siguen avanzando (o sea, no es un problema de calidad).
+MIN_LEADS_FORMULARIO = 20
+CAIDA_FORMULARIO = 0.7      # leads de los ultimos 28 dias <= 70% de los 28 anteriores
+AVANCE_FORMULARIO = 0.4     # y al menos 40% de esos leads paso de "sin contactar"
+ESTADOS_QUE_AVANZAN = ("interesado", "demo_1", "demo_agendada", "presupuesto_enviado",
+                       "follow_up_1", "en_desarrollo", "finalizado")
 
 
 def activo() -> bool:
@@ -191,6 +200,41 @@ def recomendar(datos: dict) -> list[dict]:
     return recs
 
 
+def recomendar_formulario(db_path: str, hoy) -> list[dict]:
+    """Recomendacion de revisar el formulario de Meta, con los leads del CRM.
+
+    Solo lectura y solo una sugerencia: no propone sacar preguntas. El CRM ve a
+    los que terminaron el formulario; cuantos lo abandonan se ve en Meta.
+    """
+    reciente = (hoy - timedelta(days=28)).isoformat()
+    anterior = (hoy - timedelta(days=56)).isoformat()
+    marcas = ",".join("?" * len(ESTADOS_QUE_AVANZAN))
+    conn = _connect(db_path)
+    try:
+        def contar(desde, hasta):
+            fila = conn.execute(
+                f"SELECT COUNT(*) n, COALESCE(SUM(crm_status IN ({marcas})), 0) a FROM businesses "
+                "WHERE source = 'meta' AND form_data IS NOT NULL AND date(scraped_at) >= ? "
+                "AND date(scraped_at) < ?", (*ESTADOS_QUE_AVANZAN, desde, hasta)).fetchone()
+            return fila["n"], fila["a"]
+        n_ahora, a_ahora = contar(reciente, (hoy + timedelta(days=1)).isoformat())
+        n_antes, _ = contar(anterior, reciente)
+    finally:
+        conn.close()
+    if n_antes < MIN_LEADS_FORMULARIO or n_ahora > CAIDA_FORMULARIO * n_antes:
+        return []
+    if not n_ahora or a_ahora / n_ahora < AVANCE_FORMULARIO:
+        return []
+    return [{"clave": "formulario", "tipo": "formulario", "objeto_id": "formulario",
+             "objeto_nombre": "Formulario de leads de Meta", "campana_id": None,
+             "campana_nombre": None,
+             "antes": {"leads": n_ahora, "leads_antes": n_antes, "avanzan": a_ahora},
+             "evidencia": (f"Llegaron {n_ahora} leads en 28 días contra {n_antes} en los 28 anteriores, "
+                           f"pero {a_ahora} de los {n_ahora} avanzaron: la calidad se sostiene. "
+                           "Conviene mirar en Meta cuántos abren el formulario y lo abandonan, y en qué "
+                           "pregunta. No se sugiere cambiar preguntas todavía.")}]
+
+
 # ── evaluacion ───────────────────────────────────────────────────────────────
 
 def _metricas(datos, clave_tipo, objeto_id):
@@ -204,6 +248,8 @@ def evaluar(rec: dict, datos: dict) -> tuple[bool | None, str, str]:
     """(la siguio el de marketing, veredicto, detalle) una semana despues."""
     tipo, oid = rec["tipo"], rec["objeto_id"]
     antes = rec["antes"]
+    if tipo == "formulario":
+        return None, "sin_definir", "Es una revisión manual del formulario: no se compara contra Meta."
     ahora = _metricas(datos, tipo, oid)
     cpl_ref = antes.get("cpl_ref")
     m = "USD"
@@ -353,6 +399,10 @@ def corrida(db_path: str, ahora: datetime | None = None, traer=None, forzar: boo
         marcar_corrida(db_path, _JOB)
     evaluadas = evaluar_pendientes(db_path, semana, datos, ahora)
     recs = recomendar(datos)
+    try:
+        recs += recomendar_formulario(db_path, hoy)
+    except Exception as e:
+        logger.warning(f"Modo sombra: no se pudo revisar el formulario ({e})")
     nuevas = guardar(db_path, semana, recs, ahora)
     return {"estado": "ok", "semana": semana, "recomendaciones": len(recs),
             "nuevas": nuevas, "evaluadas": len(evaluadas)}

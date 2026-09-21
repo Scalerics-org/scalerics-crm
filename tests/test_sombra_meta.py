@@ -2,7 +2,7 @@
 
 import json
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from werkzeug.security import generate_password_hash
@@ -309,3 +309,49 @@ def test_esta_en_el_menu_sin_barras_invertidas():
     html = dashboard.DASHBOARD_HTML
     assert html.count('id="sombra-panel"') == 1
     assert "if (name === 'sombra') soCargar();" in html
+
+
+# ── formulario de leads ──────────────────────────────────────────────────────
+
+def _leads(db, desde_dias, cantidad, avanzan, hoy=datetime(2026, 9, 21)):
+    c = sqlite3.connect(db)
+    for i in range(cantidad):
+        dia = (hoy - timedelta(days=desde_dias + i % 20)).strftime("%Y-%m-%d 10:00:00")
+        c.execute("INSERT INTO businesses (name, phone, source, form_data, crm_status, scraped_at) "
+                  "VALUES (?,?,?,?,?,?)",
+                  (f"L{desde_dias}-{i}", f"09{desde_dias:02d}{i:05d}", "meta", "{}",
+                   "interesado" if i < avanzan else "no_interesa", dia))
+    c.commit()
+    c.close()
+
+
+def test_recomienda_revisar_el_formulario_si_caen_los_leads_y_la_calidad_se_sostiene(db):
+    _leads(db, 30, 40, 20)   # 28 dias anteriores
+    _leads(db, 3, 20, 12)    # ultimos 28 dias
+    [rec] = sm.recomendar_formulario(db, LUNES_9.date())
+    assert rec["tipo"] == "formulario" and rec["antes"]["leads"] == 20 and rec["antes"]["leads_antes"] == 40
+    assert "No se sugiere cambiar preguntas" in rec["evidencia"]
+
+
+def test_no_recomienda_si_no_cayeron_o_no_hay_datos_o_la_calidad_cayo(db):
+    assert sm.recomendar_formulario(db, LUNES_9.date()) == []
+    _leads(db, 30, 40, 20)
+    _leads(db, 3, 35, 20)
+    assert sm.recomendar_formulario(db, LUNES_9.date()) == []       # casi no cayeron
+
+
+def test_no_recomienda_si_los_que_llegan_no_avanzan(db):
+    _leads(db, 30, 40, 20)
+    _leads(db, 3, 15, 2)
+    assert sm.recomendar_formulario(db, LUNES_9.date()) == []
+
+
+def test_la_recomendacion_del_formulario_no_se_evalua_contra_meta(db):
+    _leads(db, 30, 40, 20)
+    _leads(db, 3, 20, 12)
+    r = sm.corrida(db, LUNES_9, _traer(_datos()))
+    assert r["estado"] == "ok" and r["recomendaciones"] == 1
+    [rec] = sm.semana_de(db, "2026-09-21")
+    assert rec["tipo_texto"] == "Revisar el formulario"
+    seguida, veredicto, _ = sm.evaluar(rec, _datos())
+    assert seguida is None and veredicto == "sin_definir"
