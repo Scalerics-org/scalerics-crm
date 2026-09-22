@@ -258,6 +258,13 @@ function crearEmbudo({
       const actual = repo.leadPorId(leadId);
       if (actual?.business_type && actual.business_type !== 6) {
         const { business_type, ...resto } = conNorm;
+        // Rastro para cuando el lead SI se retracto de verdad ("mejor no se,
+        // dejame pensarlo"): sin este log, un business_type que dejo de
+        // actualizarse es indistinguible de uno que nunca se toco.
+        logger?.info(
+          { leadId, teniaBusinessType: actual.business_type },
+          'el modelo dijo "todavia no sabe" pero el lead ya tenia un business_type concreto: se descarta ese campo'
+        );
         repo.actualizarFunnel(leadId, resto);
         return;
       }
