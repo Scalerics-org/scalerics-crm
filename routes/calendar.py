@@ -469,7 +469,8 @@ def _subir_a_google(db: str, tipo: str, rid: int, *, reintento: bool = False) ->
     email = _email_cliente(db, fila, tipo)
 
     def operacion(service):
-        sin_meet = not fila.get("google_meet")
+        # No agregarle Meet a una reunion presencial, aunque todavia no tenga.
+        sin_meet = not fila.get("google_meet") and not fila.get("presencial")
         if reintento and fila.get("google_sync") == "ok":
             evento = gce.actualizar(service, gid, fila, email, con_meet=sin_meet)
         else:
@@ -571,7 +572,10 @@ def api_calendar_events():
     title = (data.get("title") or "").strip()
     date = data.get("date", "")
     time = data.get("time", "")
-    meet_link = (data.get("meet_link") or "").strip()
+    presencial = bool(data.get("presencial"))
+    # Presencial no lleva link de ningun tipo, ni el que se hubiera escrito a
+    # mano: la reunion es en persona, no tiene sentido un link para clickear.
+    meet_link = "" if presencial else (data.get("meet_link") or "").strip()
     description = (data.get("description") or "").strip()
     client_id = data.get("client_id")
 
@@ -609,6 +613,7 @@ def api_calendar_events():
         "repeticion": json.dumps(regla) if regla else None,
         "tipo_proyecto": tipo_clave,
         "tipo_otro": tipo_otro,
+        "presencial": 1 if presencial else 0,
     }
 
     try:
@@ -1100,6 +1105,17 @@ def _tipo_del_pedido(data: dict):
     return {"tipo_proyecto": clave, "tipo_otro": texto}, None
 
 
+def _presencial_del_pedido(data: dict) -> dict:
+    """El campo presencial de un PATCH, listo para el UPDATE.
+
+    {} si el pedido no lo trae: no se toca. Sin validacion de error porque
+    cualquier valor (incluido ausente) tiene una lectura valida como booleano.
+    """
+    if "presencial" not in data:
+        return {}
+    return {"presencial": 1 if data.get("presencial") else 0}
+
+
 def _plan_de_serie(fila: dict, data: dict, cambios: dict):
     """Que cambia en la serie segun el alcance elegido. Sin `ocurrencia` (una
     pestaña vieja) se toma la serie entera desde su primera reunion."""
@@ -1137,6 +1153,7 @@ def api_reschedule_meeting(meeting_id):
         tipo, error = _tipo_del_pedido(data)
         if error:
             return error
+        presencial = _presencial_del_pedido(data)
         plan, alcance, error = _plan_de_serie(meeting, data, cambios)
         if error:
             return error
@@ -1146,6 +1163,8 @@ def api_reschedule_meeting(meeting_id):
             actualizar["invitados"] = invitados
         if tipo and not plan["nueva"]:
             actualizar.update(tipo)
+        if presencial and not plan["nueva"]:
+            actualizar.update(presencial)
         update_meeting(db, meeting_id, **actualizar)
         nueva_id = None
         if plan["nueva"]:
@@ -1153,11 +1172,12 @@ def api_reschedule_meeting(meeting_id):
             # se acaba de elegir, o con el que ya tenia la vieja.
             tipo_nuevo = tipo or {"tipo_proyecto": meeting.get("tipo_proyecto"),
                                   "tipo_otro": meeting.get("tipo_otro")}
+            presencial_nuevo = presencial or {"presencial": meeting.get("presencial") or 0}
             nueva_id = create_meeting(
                 db, meeting["client_id"], meet_link=meeting.get("meet_link"),
                 description=meeting.get("description"), status="scheduled", origen="crm",
                 invitados=meeting.get("invitados") if invitados is False else invitados,
-                **tipo_nuevo, **plan["nueva"])
+                **tipo_nuevo, **presencial_nuevo, **plan["nueva"])
         client = get_business(db, int(meeting["client_id"])) or {}
         log_activity(db, session.get("user_name", "sistema"), "meeting_rescheduled",
                      "lead", meeting["client_id"], client.get("name", ""),
@@ -1209,6 +1229,7 @@ def api_reschedule_meeting(meeting_id):
     if error:
         return error
     extra.update(tipo)
+    extra.update(_presencial_del_pedido(data))
 
     cal_event_id = meeting.get("calendar_event_id")
     # Por URI (webhook, sync) o por origen (evento de Calendly importado de
@@ -1292,6 +1313,7 @@ def api_editar_asunto(asunto_id):
     tipo, error = _tipo_del_pedido(data)
     if error:
         return error
+    presencial = _presencial_del_pedido(data)
 
     alcance = None
     if rec.regla_de(fila):
@@ -1304,16 +1326,19 @@ def api_editar_asunto(asunto_id):
             actualizar["invitados"] = invitados
         if tipo and not plan["nueva"]:
             actualizar.update(tipo)
+        if presencial and not plan["nueva"]:
+            actualizar.update(presencial)
         update_reunion_asunto(db, asunto_id, **actualizar)
         nueva_id = None
         if plan["nueva"]:
             tipo_nuevo = tipo or {"tipo_proyecto": fila.get("tipo_proyecto"),
                                   "tipo_otro": fila.get("tipo_otro")}
+            presencial_nuevo = presencial or {"presencial": fila.get("presencial") or 0}
             nueva_id = create_reunion_asunto(
                 db, meet_link=fila.get("meet_link"), description=fila.get("description"),
                 invitados=fila.get("invitados") if invitados is False else invitados,
                 status="scheduled", created_by=session.get("user_name", "sistema"),
-                **tipo_nuevo, **plan["nueva"])
+                **tipo_nuevo, **presencial_nuevo, **plan["nueva"])
         google = _editar_en_google(db, "asunto", asunto_id, fila, alcance=alcance,
                                    ocurrencia=ocurrencia, cambios=cambios,
                                    invitados_cambiaron=invitados is not False,
@@ -1328,6 +1353,7 @@ def api_editar_asunto(asunto_id):
         if invitados is not False:
             campos["invitados"] = invitados
         campos.update(tipo)
+        campos.update(presencial)
         update_reunion_asunto(db, asunto_id, **campos)
         google = _editar_en_google(db, "asunto", asunto_id, fila,
                                    invitados_cambiaron=invitados is not False)

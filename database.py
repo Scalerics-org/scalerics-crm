@@ -702,6 +702,12 @@ def init_db(db_path: str) -> None:
         for _tabla in ("meetings", "reuniones_asunto"):
             _add_column(conn, _tabla, "tipo_proyecto", "TEXT")
             _add_column(conn, _tabla, "tipo_otro", "TEXT")
+        # Si la reunion es presencial (pedido de Juan, 22/9): en ese caso no se
+        # le agrega Google Meet al crearla, porque no hace falta un link de
+        # videollamada. Va en las dos tablas por el mismo motivo que
+        # tipo_proyecto: un solo modal de "Nueva reunion" para las dos.
+        for _tabla in ("meetings", "reuniones_asunto"):
+            _add_column(conn, _tabla, "presencial", "INTEGER NOT NULL DEFAULT 0")
 
         conn.execute("""
             CREATE TABLE IF NOT EXISTS wa_templates (
@@ -2640,7 +2646,7 @@ _MEETING_COLUMNS = {
     "status", "transcript", "summary", "requirements", "recall_bot_id",
     "description", "invitados", "repeticion", "excepciones",
     "google_event_id", "google_sync", "google_error", "google_meet", "origen",
-    "tipo_proyecto", "tipo_otro",
+    "tipo_proyecto", "tipo_otro", "presencial",
 }
 
 
@@ -2725,7 +2731,7 @@ _ASUNTO_COLUMNS = {
     "title", "description", "start_at", "end_at", "meet_link", "invitados",
     "repeticion", "excepciones", "status", "created_by",
     "google_event_id", "google_sync", "google_error", "google_meet",
-    "tipo_proyecto", "tipo_otro",
+    "tipo_proyecto", "tipo_otro", "presencial",
 }
 
 

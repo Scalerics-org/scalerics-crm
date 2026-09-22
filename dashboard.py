@@ -1085,6 +1085,8 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .cal-rep-dia input:checked+span{background:var(--azul);border-color:var(--azul);color:#fff}
 .cal-rep-dia input:focus-visible+span{outline:2px solid var(--azul-claro);outline-offset:2px}
 .cal-rep-resumen{font-size:.76rem;font-weight:600;color:var(--azul-claro);margin:0 0 12px}
+.cal-check{display:flex;align-items:center;gap:8px;font-size:.82rem;color:var(--texto);margin:4px 0 14px;cursor:pointer}
+.cal-check input{accent-color:var(--azul);width:16px;height:16px}
 .cal-modal-nota{font-size:.72rem;color:var(--texto-debil);margin:-6px 0 12px}
 .cal-serie-aviso{font-size:.74rem;color:var(--texto-tenue);background:var(--relleno);border-radius:8px;padding:8px 10px;margin-bottom:12px}
 .cal-alcance-btns{display:flex;flex-direction:column;gap:8px;margin-bottom:14px}
@@ -4224,8 +4226,11 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     <label class="modal-label">Invitados</label>
     <input type="text" id="ev-invitados" placeholder="mail@ejemplo.com, otro@ejemplo.com" autocomplete="off">
     <div class="cal-modal-nota">Separados por coma. Al crear la reunión, Google Calendar les manda la invitación por mail con el link de Google Meet (y al cliente, si tiene mail cargado).</div>
-    <label class="modal-label">Link de reunión</label>
-    <input type="url" id="ev-email" placeholder="(opcional) https://meet.google.com/..." style="margin-bottom:12px">
+    <label class="cal-check"><input type="checkbox" id="ev-presencial" onchange="_calTogglePresencial()"> Es presencial (sin link de reunión)</label>
+    <div id="ev-link-bloque">
+      <label class="modal-label">Link de reunión</label>
+      <input type="url" id="ev-email" placeholder="(opcional) https://meet.google.com/..." style="margin-bottom:12px">
+    </div>
     <label class="modal-label">Descripción</label>
     <textarea id="ev-desc" placeholder="(opcional)" style="min-height:60px"></textarea>
     <input type="hidden" id="ev-client-id" value="">
@@ -7867,6 +7872,12 @@ function _calTipoDelModal(prefijo) {
   return {tipo_proyecto: clave, tipo_otro: clave === 'otro' ? texto : ''};
 }
 
+// Presencial no lleva link (pedido de Juan, 22/9): el campo se esconde para
+// que no quede un link cargado que despues nadie clickea.
+function _calTogglePresencial() {
+  document.getElementById('ev-link-bloque').hidden = document.getElementById('ev-presencial').checked;
+}
+
 // Lo que tiene que quedar en el campo: lo que ya hay (menos los mails del lead
 // anterior), los del lead nuevo y, la primera vez, los tres fijos. Sin repetir.
 function _calMezclarInvitados(texto, mailsLead, conFijos) {
@@ -8140,6 +8151,8 @@ function openNewEventModal(opciones) {
   poner('ev-duration', '60');
   poner('ev-desc', '');
   poner('ev-email', '');
+  document.getElementById('ev-presencial').checked = false;
+  _calTogglePresencial();
   poner('ev-invitados', '');
   poner('ev-rep-freq', 'no');
   poner('ev-rep-fin', 'nunca');
@@ -8188,7 +8201,8 @@ async function saveEvent() {
   const time = document.getElementById('ev-time').value;
   const duration = parseInt(document.getElementById('ev-duration').value) || 60;
   const desc = document.getElementById('ev-desc').value.trim();
-  const meet_link = document.getElementById('ev-email').value.trim();
+  const presencial = document.getElementById('ev-presencial').checked;
+  const meet_link = presencial ? '' : document.getElementById('ev-email').value.trim();
   const clientId = document.getElementById('ev-client-id').value.trim() || null;
   const err = document.getElementById('ev-error');
   const falla = texto => { err.textContent = texto; err.style.display = 'block'; };
@@ -8204,7 +8218,7 @@ async function saveEvent() {
 
   const tipoProy = _calTipoDelModal('ev');
   const cuerpo = {tipo: tipo, title: title, date: date, time: time, duration_min: duration,
-                  description: desc, meet_link: meet_link,
+                  description: desc, meet_link: meet_link, presencial: presencial,
                   client_id: tipo === 'cliente' ? clientId : null,
                   invitados: mails.lista, repeticion: regla,
                   tipo_proyecto: tipoProy.tipo_proyecto, tipo_otro: tipoProy.tipo_otro};

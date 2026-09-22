@@ -533,6 +533,18 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **22/9 — J (agente de marketing): reuniones presenciales, sin link de Meet (pedido de Juan).**
+  Rama `feat/reunion-presencial`, sale de `main`,
+  [PR #95](https://github.com/Scalerics-org/scalerics-crm/pull/95). Sin mergear ni
+  deployar. Columna nueva `presencial` en `meetings` y `reuniones_asunto` (mismo
+  motivo que `tipo_proyecto`: un solo modal de "Nueva reunión" para las dos).
+  Presencial: no se le agrega Google Meet al crear el evento (`gce.crear`,
+  `con_meet=not fila.get("presencial")`), y tampoco si se reintenta o se le
+  escribe un link a mano — se ignora, no tiene sentido un link para clickear en
+  una reunión en persona. Checkbox nuevo en el modal ("Es presencial"), que
+  esconde el campo de link. Wireado en los 4 lugares donde ya se leía
+  `tipo_proyecto` en un PATCH (reunión suelta y serie, cliente y asunto).
+
 - **22/9 — J (agente de marketing): Finanzas, opción "el monto ya incluye el IVA" (pedido de Juan).**
   Rama `feat/finanzas-iva-incluido`, sale de `main`,
   [PR #93](https://github.com/Scalerics-org/scalerics-crm/pull/93). Sin mergear ni
