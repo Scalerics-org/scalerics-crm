@@ -94,7 +94,12 @@ function crearScheduler({ repo, cola, cfg, redactor = null, embudo = null, limit
       const texto = await redactor?.escribir(lead, 'retomar', extraRetomar);
       if (!texto) return false;
       cola.encolar({ to: lead.telefono, texto, kind: 'followup', leadId: lead.id });
-      repo.actualizarLead(lead.id, { followup_sent_at: momento.toISOString() });
+      // retomado_at, no followup_sent_at: ese tambien lo pone el follow-up
+      // clasico de 72 horas, y confundirlos hacia que un lead que ya habia
+      // recibido ESE follow-up hace tiempo nunca se retomara de nuevo.
+      repo.actualizarLead(lead.id, {
+        followup_sent_at: momento.toISOString(), retomado_at: momento.toISOString(),
+      });
       return true;
     }
 
@@ -228,7 +233,14 @@ function crearScheduler({ repo, cola, cfg, redactor = null, embudo = null, limit
        */
       if (job.type === 'abandono' && limites && !limites.enHorario(momento)) {
         const apertura = limites.proximaApertura(momento);
-        if (!lead.followup_sent_at) {
+        // retomado_at y no followup_sent_at: ese ultimo tambien lo pone el
+        // follow-up clasico de 72 horas (el del formulario que nunca
+        // contesto). Un lead que lo recibio hace meses, despues escribio y
+        // siguio conversando, y una noche se durmio en el medio de una
+        // charla real, con followup_sent_at se leia como "ya se le retomo" y
+        // se lo mandaba derecho a una persona en la apertura, sin haberlo
+        // intentado.
+        if (!lead.retomado_at) {
           repo.programarJob(lead.id, 'followup', apertura.toISOString(), 'retomar');
           repo.marcarJob(job.id, 'cancelled', 'se callo fuera de hora: se retoma a la apertura');
         } else {

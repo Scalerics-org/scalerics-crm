@@ -390,6 +390,94 @@ test('si el lead escribe antes de la apertura, el followup de retomar se cancela
  * como siempre cuando el lead responde por primera vez: esto no le cambia nada
  * a ese caso, que no tiene motivo 'retomar'.
  */
+/**
+ * Correccion pedida en la revision del PR #89: "no retomar dos veces" usaba
+ * followup_sent_at, que TAMBIEN lo pone el follow-up clasico de 72 horas (el
+ * del formulario que nunca contesto). Un lead que recibio ese follow-up hace
+ * tiempo, despues contesto y siguio una charla real, y una noche se durmio en
+ * medio de esa charla, no se retomaba nunca: followup_sent_at ya estaba
+ * puesto de antes y se lo mandaba derecho a una persona a la apertura.
+ */
+test('el follow-up clasico de 72h no bloquea el retomar de una charla real, meses despues', async () => {
+  const s = await conLead(
+    { BUSINESS_HOURS: '09:00-19:00', BUSINESS_DAYS: 'mon-fri' },
+    undefined,
+    instanteLocal('2026-09-07', 10, 0, TZ), // lunes en horario
+  );
+  const l = s.repo.leadPorTelefono(TEL);
+
+  // El follow-up clasico le llega porque nunca habia contestado.
+  const jobClasico = s.repo.db.prepare(
+    "SELECT * FROM jobs WHERE lead_id = ? AND type = 'followup' AND status = 'pending'"
+  ).get(l.id);
+  assert.ok(jobClasico, 'el alta le dejo el de siempre, sin motivo');
+  assert.equal(jobClasico.motivo, null);
+
+  await s.scheduler.correrVencidos(new Date(new Date(jobClasico.run_at).getTime() + 60_000));
+  await s.cola.vacia();
+  assert.ok(s.repo.leadPorTelefono(TEL).followup_sent_at, 'se le mando el follow-up clasico');
+  assert.equal(s.repo.leadPorTelefono(TEL).retomado_at, null, 'ese no es un retomar');
+
+  // Meses despues, contesta y arranca una charla real.
+  await s.servicioLeads.registrarRespuesta(TEL, 'hola, perdon la demora, quiero agendar');
+  await s.cola.vacia();
+  s.proveedor.limpiar();
+
+  // Y una noche se calla fuera de horario, en medio de esa charla.
+  await s.scheduler.correrVencidos(instanteLocal('2026-09-08', 3, 40, TZ)); // martes de madrugada
+  await s.cola.vacia();
+
+  const jobRetomar = s.repo.db.prepare(
+    "SELECT * FROM jobs WHERE lead_id = ? AND type = 'followup' AND status = 'pending' AND motivo = 'retomar'"
+  ).get(l.id);
+  assert.ok(jobRetomar, 'SI se lo retoma: followup_sent_at del follow-up viejo no lo bloquea');
+});
+
+test('pero si ya se lo retomo una vez, no se lo retoma de nuevo (va a persona en horario)', async () => {
+  const modelo = stubModelo({ respuestas: { retomar: 'retomando' } });
+  const s = await conLead(
+    { BUSINESS_HOURS: '09:00-19:00', BUSINESS_DAYS: 'mon-fri', modelo },
+    undefined,
+    instanteLocal('2026-09-06', 2, 30, TZ),
+  );
+  await s.servicioLeads.registrarRespuesta(TEL, 'hola, quiero agendar');
+  await s.cola.vacia();
+  s.proveedor.limpiar();
+
+  await s.scheduler.correrVencidos(instanteLocal('2026-09-06', 3, 40, TZ));
+  await s.cola.vacia();
+
+  const jobRetomar = s.repo.db.prepare(
+    "SELECT * FROM jobs WHERE lead_id = (SELECT id FROM leads WHERE telefono = ?) AND type = 'followup' AND status = 'pending'"
+  ).get(TEL);
+  await s.scheduler.correrVencidos(new Date(new Date(jobRetomar.run_at).getTime() + 60_000));
+  await s.cola.vacia();
+
+  const l = s.repo.leadPorTelefono(TEL);
+  assert.ok(l.retomado_at, 'ya se lo retomo');
+
+  await s.servicioLeads.registrarRespuesta(TEL, 'perdon, me dormi de nuevo');
+  await s.cola.vacia();
+  s.proveedor.limpiar();
+
+  await s.scheduler.correrVencidos(instanteLocal('2026-09-08', 3, 40, TZ)); // martes de madrugada
+  await s.cola.vacia();
+
+  assert.equal(pendientes(s, l.id, 'followup').length, 0, 'no se lo retoma una segunda vez');
+  assert.equal(pendientes(s, l.id, 'abandono').length, 1, 'el abandono se reprograma para la apertura');
+});
+
+test('reiniciar un lead borra la marca de que ya se lo retomo', async () => {
+  const s = await conLead();
+  const l = s.repo.leadPorTelefono(TEL);
+  s.repo.actualizarLead(l.id, { retomado_at: '2026-09-01T10:00:00.000Z' });
+  assert.ok(s.repo.leadPorTelefono(TEL).retomado_at);
+
+  s.repo.reiniciarLead(l.id, new Date().toISOString());
+
+  assert.equal(s.repo.leadPorTelefono(TEL).retomado_at, null);
+});
+
 test('el followup normal del formulario se sigue cancelando si el lead responde', async () => {
   const s = await montar({ BUSINESS_HOURS: '09:00-19:00', BUSINESS_DAYS: 'mon-fri' });
   await s.servicioLeads.alta(LEAD);
