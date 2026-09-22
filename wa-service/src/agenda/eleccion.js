@@ -69,6 +69,35 @@ function diasQueNombro(texto) {
 }
 
 /**
+ * Los numeros que pueden ser "el dia" y no una hora.
+ *
+ * horasQueDijo agarra el "23" de "23:00" igual que el de "el 23": los dos son
+ * "un numero de una o dos cifras", y para leer una HORA eso esta bien. Pero
+ * nombroEseDia lo usaba para decidir si el lead nombro una FECHA, y ahi "23"
+ * con los dos puntos pegados no es un dia, es una hora que quedo fuera de la
+ * franja. Paso el 19-8, probando: el bot ofrecio horarios de un dia 23,
+ * escribio "23:00" —una hora invalida, no una fecha— y el codigo lo tomo como
+ * "nombro el dia 23", confirmo que eligio ESE horario y lo agendo a las 12:00
+ * como si el lead hubiera pedido justo eso.
+ *
+ * Un numero pegado a minutos ("23:00", "13.30") es una hora, nunca un dia. Uno
+ * que viene despues de "la"/"las" ("a las 14") tambien: ahi el articulo ya
+ * dice que es una hora.
+ */
+function diasNumeroQueNombro(texto) {
+  const t = String(texto || '');
+  const numeros = [];
+  for (const m of t.matchAll(/(?<![\d:.,])(\d{1,2})(?:[:.](\d{2}))?(?![\d:.,])/g)) {
+    if (m[2]) continue; // "23:00": los minutos pegados lo delatan como hora.
+    const antes = t.slice(0, m.index);
+    if (/\bla\s*$|\blas\s*$/i.test(antes)) continue; // "a las 14"
+    const n = parseInt(m[1], 10);
+    if (n >= 1 && n <= 31) numeros.push(n);
+  }
+  return numeros;
+}
+
+/**
  * Si el lead nombro el dia del horario elegido, por nombre o por numero.
  *
  * Desde que los horarios abarcan varios dias, elegir diciendo "el viernes" es
@@ -80,7 +109,7 @@ function nombroEseDia(texto, elegido, tz) {
   if (diasQueNombro(texto).includes(diaSemana)) return true;
 
   const numeroDelDia = Number(dia.slice(8));
-  return horasQueDijo(texto).includes(numeroDelDia);
+  return diasNumeroQueNombro(texto).includes(numeroDelDia);
 }
 
 /**
@@ -264,6 +293,6 @@ function nombroAlgunDia(texto) {
 }
 
 module.exports = {
-  horasQueDijo, diasQueNombro, eligioEsaHora, revisarFranja,
+  horasQueDijo, diasQueNombro, diasNumeroQueNombro, eligioEsaHora, revisarFranja,
   franjaDelDia, textoDeFranja, nombroAlgunDia,
 };

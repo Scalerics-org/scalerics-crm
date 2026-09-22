@@ -364,6 +364,15 @@ test('sin agenda conectada el cierre sigue por el camino del link', async () => 
  * el que el lead quiere no esta no puede decir "ninguno": devuelve el que menos
  * le disgusta. Ahora el codigo lo verifica.
  */
+/**
+ * Reloj fijo para este test: sin esto, el dia que se ofrece depende de la
+ * fecha real de la corrida, y "23:00" a veces cae en un dia ofrecido que
+ * termina en 23 — que es justo el numero que activaba el bug de abajo. El
+ * 19-8 se vio con la fecha real, pero el bug no depende de esa fecha: depende
+ * de que el numero del dia ofrecido coincida con la hora que se pidio.
+ */
+const HOY_TEST = instanteLocal('2026-09-23', 10, 0, TZ); // miercoles 23, en horario
+
 test('si pide una hora que no se le ofrecio, no se le agenda otra', async () => {
   const google = googleFalso();
   // El modelo elige de un enum cerrado con los horarios ofrecidos: cuando el
@@ -376,9 +385,11 @@ test('si pide una hora que no se le ofrecio, no se le agenda otra', async () => 
       const opciones = args.herramienta.parametros.properties.opcion.enum;
       return { texto: null, argumentos: { opcion: opciones[0] } };
     }
-    // Las 23:00 de hoy: el lead las pidio, y estan fuera de la franja.
+    // Las 23:00 de hoy (miercoles 23): el lead las pidio, y estan fuera de la
+    // franja. El dia ofrecido termina justo en 23, a proposito: es el caso
+    // que delataba el bug de nombroEseDia.
     if (args.herramienta?.nombre === 'momento') {
-      return { texto: null, argumentos: { pide: true, dia: '2026-08-19', hora: 23, minuto: 0 } };
+      return { texto: null, argumentos: { pide: true, dia: '2026-09-23', hora: 23, minuto: 0 } };
     }
     return original(args);
   };
@@ -387,7 +398,7 @@ test('si pide una hora que no se le ofrecio, no se le agenda otra', async () => 
     modelo,
     AGENDA_OFRECE_HORARIOS: 'true',
     _google: google.fetch,
-  });
+  }, undefined, HOY_TEST);
 
   const responder = async (t) => {
     await s.servicioLeads.registrarRespuesta('59899123456', t);
@@ -396,7 +407,9 @@ test('si pide una hora que no se le ofrecio, no se le agenda otra', async () => 
   };
 
   await responder(DIJO_TODO);
-  assert.equal(s.repo.leadPorTelefono('59899123456').fsm_state, S.HORARIOS_OFRECIDOS);
+  const ofrecido = s.repo.leadPorTelefono('59899123456');
+  assert.equal(ofrecido.fsm_state, S.HORARIOS_OFRECIDOS);
+  assert.match(JSON.parse(ofrecido.horarios_ofrecidos)[0], /^2026-09-23/, 'el primer dia ofrecido es el 23, a proposito');
 
   // La franja es 12 a 16, asi que las 23 no se ofrecieron nunca.
   const msgs = await responder('23:00');

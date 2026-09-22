@@ -104,6 +104,35 @@ test('con dia y hora, los dos tienen que coincidir', () => {
   assert.equal(eligioEsaHora('el jueves 12:30', viernes4alas1230, TZ), false);
 });
 
+/**
+ * El bug del 19-8/22-9: un numero que es parte de una HORA ("23:00", "13.30",
+ * "a las 14") no puede colarse como si nombrara un DIA. El dia 13 ofrecido a
+ * las 12:00 y "13:00" (una hora invalida, fuera de franja) no son la misma
+ * cosa, aunque el "13" aparezca en los dos.
+ */
+test('un numero pegado a una hora no cuenta como el dia, aunque coincida', () => {
+  const dia13alas12 = new Date(Date.UTC(2026, 8, 13, 15)); // dia 13, 12:00 en MVD
+  assert.equal(eligioEsaHora('13:00', dia13alas12, TZ), false, '"13:00" es una hora, no el dia 13');
+  assert.equal(eligioEsaHora('13.00', dia13alas12, TZ), false, 'con punto tambien');
+  assert.equal(eligioEsaHora('a las 13', dia13alas12, TZ), false, '"las 13" es una hora, no el dia');
+});
+
+test('pero "el 13" si nombra el dia, aunque la hora sea otra', () => {
+  const dia13alas12 = new Date(Date.UTC(2026, 8, 13, 15));
+  assert.equal(eligioEsaHora('el 13 a las 12', dia13alas12, TZ), true);
+  assert.equal(eligioEsaHora('el 13, dale', dia13alas12, TZ), true);
+});
+
+test('una fecha con barra tambien nombra el dia', () => {
+  const dia23alas12 = new Date(Date.UTC(2026, 8, 23, 15));
+  assert.equal(eligioEsaHora('23/9 a las 12', dia23alas12, TZ), true);
+});
+
+test('"a las 3" sigue siendo las 15hs, aunque el dia ofrecido sea el 3', () => {
+  const dia3alas15 = new Date(Date.UTC(2026, 8, 3, 18)); // dia 3, 15:00 en MVD
+  assert.equal(eligioEsaHora('a las 3', dia3alas15, TZ), true);
+});
+
 // ── una hora que el lead propone, fuera de la lista ──────────────────────────
 
 const { revisarFranja } = require('../src/agenda/eleccion');
