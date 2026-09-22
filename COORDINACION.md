@@ -533,6 +533,18 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **22/9 — J (agente de marketing): Finanzas, opción "el monto ya incluye el IVA" (pedido de Juan).**
+  Rama `feat/finanzas-iva-incluido`, sale de `main`,
+  [PR #93](https://github.com/Scalerics-org/scalerics-crm/pull/93). Sin mergear ni
+  deployar. `desglosar_iva_incluido()` en `services/finanzas.py` (contracara de
+  `iva_sobre()`) separa neto e IVA de un monto que ya viene con el impuesto
+  adentro. Columna nueva `finanzas_movimientos.iva_incluido`: hace falta guardar
+  el modo aparte porque `monto_usd`/`iva_usd` dan la misma relación en los dos
+  casos y sin eso, editar el movimiento volvería a sumar el IVA dos veces.
+  (Nota: esto salió primero sobre `fix/finanzas-sin-tc-en-la-lista`, PR #92; Juan
+  pidió volver a mostrar el tipo de cambio en la lista, así que el #92 se cerró
+  sin mergear y este PR se re-armó directo sobre `main`.)
+
 - **22/9 — L (bot de WhatsApp, 4 arreglos): worktree `../scalerics-crm-wa-a-main`, rama
   `fix/wa-formulario-y-seguimiento`, solo `wa-service/`. Trabajo pedido por K (sesión
   orquestadora). Completo lo que K dejó a medias (migración `023_jobs_motivo.sql`,
