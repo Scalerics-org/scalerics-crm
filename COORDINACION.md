@@ -533,6 +533,14 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **22/9 — L (bot de WhatsApp, 4 arreglos): worktree `../scalerics-crm-wa-a-main`, rama
+  `fix/wa-formulario-y-seguimiento`, solo `wa-service/`. Trabajo pedido por K (sesión
+  orquestadora). Completo lo que K dejó a medias (migración `023_jobs_motivo.sql`,
+  `mismoInstante` en `reservas.js`, followup `retomar`) y agrego cuatro arreglos:
+  lectura del formulario de Meta en código, aviso de reunión duplicado, retomar al
+  que se calla fuera de horario, y no repetir acuse cuando ya está agendado. Sin
+  deploy, sin merge, sin mensajes reales de WhatsApp — solo tests con stubs.
+
 - **21/9 — J (agente de marketing): respuesta automática a comentarios de Instagram.**
   `services/ig_comentarios.py`, corre dentro de la rutina de Instagram una vez por
   hora (marca `ig_comentarios`). Mira las últimas 12 publicaciones y los anuncios
