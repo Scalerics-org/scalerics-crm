@@ -533,12 +533,12 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
-- **22/9 — J (agente de marketing): Finanzas, sacar el tipo de cambio de la lista (pedido de Juan).**
-  Rama `fix/finanzas-sin-tc-en-la-lista`, sale de `main`,
-  [PR #92](https://github.com/Scalerics-org/scalerics-crm/pull/92). Sin mergear ni
-  deployar. Un solo cambio chico en `dashboard.py` (`loadMovimientos`): la lista de
-  movimientos ya no muestra "($ 4.880 @ 40)" en gris al lado del monto en USD. El
-  monto en pesos y el tipo de cambio siguen guardados, solo se sacaron de la lista.
+- **22/9 — J (agente de marketing): Finanzas, el tipo de cambio vuelve a la lista.**
+  Rama `fix/finanzas-sin-tc-en-la-lista`, [PR #92](https://github.com/Scalerics-org/scalerics-crm/pull/92).
+  Juan pidió sacar el "($ 4.880 @ 40)" de la lista de movimientos y después pidió
+  volver a ponerlo: quedó revertido, `dashboard.py` en esta rama ya no difiere de
+  `main`. El PR queda cerrado sin mergear nada; lo dejo anotado para que no se
+  confunda con trabajo real si alguien lo encuentra.
 
 - **22/9 — L (bot de WhatsApp, 4 arreglos): worktree `../scalerics-crm-wa-a-main`, rama
   `fix/wa-formulario-y-seguimiento`, solo `wa-service/`. Trabajo pedido por K (sesión
