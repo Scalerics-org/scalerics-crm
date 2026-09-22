@@ -312,7 +312,10 @@ test('y despues de agendar, si escribe, el bot le contesta', async () => {
   await s.cola.vacia();
   s.proveedor.limpiar();
 
-  await s.servicioLeads.registrarRespuesta(TEL, 'Gracias!');
+  // No "Gracias!": un acuse a alguien ya agendado no se contesta (fix aparte,
+  // ver acuse.test.js). Lo que este test verifica es que el bot deja de estar
+  // mudo, no la redaccion puntual.
+  await s.servicioLeads.registrarRespuesta(TEL, 'una consulta antes de la reunion');
   await s.cola.vacia();
 
   assert.ok(s.proveedor.getEnviados().some((e) => e.to === TEL), 'no se queda mudo');
