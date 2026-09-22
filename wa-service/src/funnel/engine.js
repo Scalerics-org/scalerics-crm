@@ -528,7 +528,7 @@ function crearEmbudo({
    * ninguno de los ofrecidos, se lo dice y se vuelve a ofrecer.
    */
   async function decidirDia(lead, entrada, diasOfrecidos) {
-    const elegido = elegirDiaPorCodigo(entrada, diasOfrecidos, cfg.TZ);
+    const elegido = elegirDiaPorCodigo(entrada, diasOfrecidos, cfg.TZ, ahora());
     if (elegido) return mostrarHorasDelDia(lead, elegido);
 
     if (nombroAlgunDia(entrada)) return ofrecerDias(lead, 'dia_no_ofrecido', entrada);
@@ -562,7 +562,7 @@ function crearEmbudo({
       // vuelve a buscar que dias hay y se elige de ahi, no del dia de hoy.
       const dias = await agenda.diasConHueco(ahora());
       const inicios = dias.map((d) => d.inicio);
-      const otroDia = elegirDiaPorCodigo(entrada, inicios, cfg.TZ);
+      const otroDia = elegirDiaPorCodigo(entrada, inicios, cfg.TZ, ahora());
       if (otroDia) return mostrarHorasDelDia(lead, otroDia);
       return ofrecerDias(lead, 'dia_no_ofrecido', entrada);
     } else {

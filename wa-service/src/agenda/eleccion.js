@@ -324,26 +324,57 @@ function nombroAlgunDia(texto) {
 }
 
 /**
+ * "hoy", "mañana", "pasado mañana": cuantos dias sumarle a `ahora` para
+ * llegar al dia que nombran. null si no nombran ninguno de estos tres.
+ *
+ * Aparte de diasQueNombro (nombre del dia de semana) y diasNumeroQueNombro
+ * (una fecha): estos tres no traen ni nombre de dia ni numero, asi que sin
+ * esto elegirDiaPorCodigo no los reconocia — "mañana" contaba como "nombro un
+ * dia" para nombroAlgunDia (que sí lo entiende) pero no para elegirDiaPorCodigo,
+ * y el lead que contestaba "mañana" recibia "ese dia no esta" aunque mañana
+ * fuera justo uno de los ofrecidos.
+ */
+function diaRelativoQueNombro(texto) {
+  const t = sinAcentos(String(texto || '')).split('ñ').join('n');
+  if (/\bpasado\s*manana\b/.test(t)) return 2;
+  if (/\bmanana\b/.test(t)) return 1;
+  if (/\bhoy\b/.test(t)) return 0;
+  return null;
+}
+
+/**
  * Cual de los DIAS ofrecidos (agendar dia-primero-hora-despues) eligio,
  * resuelto en codigo: la lista y la eleccion las resuelve el codigo, no el
  * modelo, para que "1" o "2" nunca dependan de una interpretacion.
  *
- * Tres formas, en este orden de prioridad:
- *  1. El nombre del dia de semana ("el viernes", "miercoles").
- *  2. Un numero de fecha que coincide con alguno de los ofrecidos ("el 24",
+ * Cuatro formas, en este orden de prioridad:
+ *  1. "hoy" / "mañana" / "pasado mañana", contra la fecha real de `ahora`.
+ *  2. El nombre del dia de semana ("el viernes", "miercoles").
+ *  3. Un numero de fecha que coincide con alguno de los ofrecidos ("el 24",
  *     "24/9"). diasNumeroQueNombro ya descarta los numeros que son en
  *     realidad una hora.
- *  3. Un numero de lista corto ("1", "2.", "opcion 1") — SOLO si el mensaje
+ *  4. Un numero de lista corto ("1", "2.", "opcion 1") — SOLO si el mensaje
  *     es basicamente ese numero y nada mas: un "12" dentro de una frase mas
  *     larga no es "elijo la opcion 12", es otra cosa (una hora, un error).
  *
  * @param {string} texto
  * @param {Date[]} diasOfrecidos en el mismo orden en que se listaron.
  * @param {string} tz
+ * @param {Date} ahora para resolver "hoy"/"mañana"/"pasado mañana". Inyectable
+ *   para los tests; en produccion es el reloj real.
  * @returns {Date|null}
  */
-function elegirDiaPorCodigo(texto, diasOfrecidos, tz = 'America/Montevideo') {
+function elegirDiaPorCodigo(texto, diasOfrecidos, tz = 'America/Montevideo', ahora = new Date()) {
   const t = sinAcentos(String(texto || ''));
+
+  const relativo = diaRelativoQueNombro(t);
+  if (relativo !== null) {
+    const { dia: diaBuscado } = enZona(new Date(ahora.getTime() + relativo * 86400_000), tz);
+    // Es un dia real y puntual: si no esta entre los ofrecidos, no hay nada
+    // mas que probar (no es "quiza nombro otra cosa") — el que llama decide
+    // que hacer con un dia real que no es ninguno de los que hay.
+    return diasOfrecidos.find((d) => enZona(d, tz).dia === diaBuscado) || null;
+  }
 
   const nombrados = diasQueNombro(t);
   for (const d of diasOfrecidos) {
@@ -374,17 +405,37 @@ function elegirDiaPorCodigo(texto, diasOfrecidos, tz = 'America/Montevideo') {
  * otra cosa": en el paso de horas, un numero de 1 a 2 cifras que no es un
  * indice de lista solo puede ser una hora.
  *
+ * Un numero suelto, sin "opcion" ni punto, es ambiguo si la franja es ancha:
+ * con turnos de 07:00 a 20:00, "12" puede ser "la opcion numero 12" (que
+ * segun cuantos turnos entren antes puede ser cualquier hora) o "las 12:00"
+ * —que es como lo va a leer casi todo el mundo—. Con la franja de siempre
+ * (12:00 a 15:30) nunca chocan, asi que esto no se notaba; cualquier cambio
+ * de AGENDA_* lo iba a activar sin aviso. Gana la hora en punto cuando el
+ * numero coincide con una; "opcion 12" o "12." siguen siendo el indice, sin
+ * ambiguedad posible.
+ *
  * @param {string} texto
  * @param {Date[]} horasOfrecidas
  * @param {string} tz
  * @returns {Date|null}
  */
 function elegirHoraPorCodigo(texto, horasOfrecidas, tz = 'America/Montevideo') {
-  const t = sinAcentos(String(texto || ''));
+  const t = sinAcentos(String(texto || '')).trim();
 
-  const m = t.trim().match(/^(?:opcion\s*)?(\d{1,2})\.?$/);
+  const m = t.match(/^(opcion\s*)?(\d{1,2})(\.)?$/);
   if (m) {
-    const i = parseInt(m[1], 10) - 1;
+    const [, dijoOpcion, numero, puntoFinal] = m;
+    const n = parseInt(numero, 10);
+
+    if (!dijoOpcion && !puntoFinal) {
+      const porHora = horasOfrecidas.find((d) => {
+        const { hora, minuto } = enZona(d, tz);
+        return minuto === 0 && n === hora;
+      });
+      if (porHora) return porHora;
+    }
+
+    const i = n - 1;
     if (i >= 0 && i < horasOfrecidas.length) return horasOfrecidas[i];
   }
 

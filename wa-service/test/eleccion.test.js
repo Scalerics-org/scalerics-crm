@@ -390,6 +390,32 @@ test('elegirDiaPorCodigo: entradas raras no rompen nada', () => {
   assert.equal(elegirDiaPorCodigo('hola', [], TZ), null, 'sin dias ofrecidos');
 });
 
+/**
+ * Revision del PR #90: "mañana" nombra un dia real (nombroAlgunDia ya lo
+ * detecta), pero elegirDiaPorCodigo no lo resolvia contra ninguna fecha, asi
+ * que el lead que contestaba "mañana" recibia "ese dia no esta" aunque mañana
+ * fuera justo uno de los dos dias ofrecidos.
+ */
+test('elegirDiaPorCodigo: "hoy", "mañana" y "pasado mañana" se resuelven contra la fecha real', () => {
+  const ahoraFijo = instanteLocal('2026-09-22', 10, 0, TZ); // martes 22
+  assert.equal(elegirDiaPorCodigo('hoy', DIAS, TZ, ahoraFijo), null, 'hoy (22) no esta ofrecido');
+  assert.equal(elegirDiaPorCodigo('mañana', DIAS, TZ, ahoraFijo), MIE23, 'mañana (23) SI esta ofrecido');
+  assert.equal(elegirDiaPorCodigo('Mañana', DIAS, TZ, ahoraFijo), MIE23, 'con mayuscula');
+  assert.equal(elegirDiaPorCodigo('manana', DIAS, TZ, ahoraFijo), MIE23, 'sin tilde');
+  assert.equal(elegirDiaPorCodigo('pasado mañana', DIAS, TZ, ahoraFijo), JUE24, 'pasado mañana (24) tambien esta');
+});
+
+test('elegirDiaPorCodigo: "mañana" que NO esta entre los ofrecidos no elige nada', () => {
+  const ahoraFijo = instanteLocal('2026-09-01', 10, 0, TZ); // mañana seria el 2, lejos de la lista
+  assert.equal(elegirDiaPorCodigo('mañana', DIAS, TZ, ahoraFijo), null);
+});
+
+test('elegirDiaPorCodigo: "hoy" cuando hoy SI esta entre los ofrecidos', () => {
+  const ahoraFijo = instanteLocal('2026-09-23', 10, 0, TZ); // hoy es el 23
+  assert.equal(elegirDiaPorCodigo('hoy', DIAS, TZ, ahoraFijo), MIE23);
+  assert.equal(elegirDiaPorCodigo('dale, hoy mismo', DIAS, TZ, ahoraFijo), MIE23);
+});
+
 const HORAS = [12, 12.5, 13, 13.5, 14].map(
   (h) => instanteLocal('2026-09-23', Math.floor(h), h % 1 ? 30 : 0, TZ),
 );
@@ -412,4 +438,37 @@ test('elegirHoraPorCodigo: fuera de rango o sin nada reconocible no elige nada',
   assert.equal(elegirHoraPorCodigo('la primera', HORAS, TZ), null, 'eso lo entiende el modelo, no el codigo');
   assert.equal(elegirHoraPorCodigo('', HORAS, TZ), null);
   assert.equal(elegirHoraPorCodigo(null, HORAS, TZ), null);
+});
+
+/**
+ * Revision del PR #90: con la franja de siempre (12:00 a 15:30, 7-8 turnos)
+ * el indice y la hora nunca chocan, asi que el bug no se notaba. Con una
+ * franja mas ancha (07:00 a 20:00, 26 turnos de media hora) "12" como INDICE
+ * es el turno de las 12:30 (el numero 12), pero casi todo el mundo que
+ * escribe "12" quiere decir las 12:00 — que es el turno numero 11. Un cambio
+ * de AGENDA_* activaba esto sin aviso.
+ */
+const HORAS_26 = Array.from({ length: 26 }, (_, i) => {
+  const minutos = 7 * 60 + i * 30; // 07:00 en adelante, cada 30 min
+  return instanteLocal('2026-09-23', Math.floor(minutos / 60), minutos % 60, TZ);
+});
+
+test('elegirHoraPorCodigo: un numero suelto que coincide con una hora en punto gana sobre el indice', () => {
+  // Item 11 = 12:00 (07:00 + 10*30min). "12" tiene que ser las 12:00, no el
+  // item 12 (que serian las 12:30).
+  assert.equal(elegirHoraPorCodigo('12', HORAS_26, TZ), HORAS_26[10]);
+  assert.match(new Intl.DateTimeFormat('es-UY', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hour12: false })
+    .format(elegirHoraPorCodigo('12', HORAS_26, TZ)), /^12:00$/);
+});
+
+test('elegirHoraPorCodigo: sin choque con ninguna hora, sigue siendo el indice', () => {
+  // No hay ningun turno a las 3 (van de 07 a 20): "3" es el item 3 (08:00).
+  assert.equal(elegirHoraPorCodigo('3', HORAS_26, TZ), HORAS_26[2]);
+});
+
+test('elegirHoraPorCodigo: "opcion N" o "N." fuerzan el indice, sin ambiguedad', () => {
+  // Item 12 = 12:30. Con "opcion" o el punto, es inequivocamente el indice,
+  // aunque el numero tambien coincida con una hora en punto de la lista.
+  assert.equal(elegirHoraPorCodigo('12.', HORAS_26, TZ), HORAS_26[11]);
+  assert.equal(elegirHoraPorCodigo('opcion 12', HORAS_26, TZ), HORAS_26[11]);
 });
