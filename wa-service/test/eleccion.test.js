@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 
-const { horasQueDijo, eligioEsaHora } = require('../src/agenda/eleccion');
+const { horasQueDijo, eligioEsaHora, diasNumeroQueNombro } = require('../src/agenda/eleccion');
 
 const TZ = 'America/Montevideo';
 
@@ -131,6 +131,43 @@ test('una fecha con barra tambien nombra el dia', () => {
 test('"a las 3" sigue siendo las 15hs, aunque el dia ofrecido sea el 3', () => {
   const dia3alas15 = new Date(Date.UTC(2026, 8, 3, 18)); // dia 3, 15:00 en MVD
   assert.equal(eligioEsaHora('a las 3', dia3alas15, TZ), true);
+});
+
+/**
+ * Segunda vuelta del mismo bug: "13hs", "13 y media", "tipo 13" son formas tan
+ * comunes de decir una hora como "13:00", y ninguna tiene dos puntos. Andres
+ * escribio "Lunes 17hs" el 11-9: con la version anterior, "17hs" contaba como
+ * si hubiera nombrado el dia 17.
+ */
+test('formas de decir una hora sin dos puntos tampoco cuentan como el dia', () => {
+  assert.deepEqual(diasNumeroQueNombro('13hs'), []);
+  assert.deepEqual(diasNumeroQueNombro('13 hs'), []);
+  assert.deepEqual(diasNumeroQueNombro('13h'), []);
+  assert.deepEqual(diasNumeroQueNombro('13hrs'), []);
+  assert.deepEqual(diasNumeroQueNombro('13 horas'), []);
+  assert.deepEqual(diasNumeroQueNombro('13 y media'), []);
+  assert.deepEqual(diasNumeroQueNombro('13 y cuarto'), []);
+  assert.deepEqual(diasNumeroQueNombro('13 y 30'), [], 'ni el 13 ni el 30: los dos son la hora');
+  assert.deepEqual(diasNumeroQueNombro('tipo 13'), []);
+  assert.deepEqual(diasNumeroQueNombro('a eso de las 14'), []);
+  assert.deepEqual(diasNumeroQueNombro('a partir de las 9'), []);
+  assert.deepEqual(diasNumeroQueNombro('desde las 9'), []);
+  assert.deepEqual(diasNumeroQueNombro('despues de las 14'), []);
+  assert.deepEqual(diasNumeroQueNombro('antes de las 14'), []);
+});
+
+test('pero siguen contando como dia: "el 13", "miercoles 13", "13/9", "13 de setiembre"', () => {
+  assert.deepEqual(diasNumeroQueNombro('el 13'), [13]);
+  assert.deepEqual(diasNumeroQueNombro('miercoles 13'), [13]);
+  assert.deepEqual(diasNumeroQueNombro('13/9'), [13], 'dia/mes: solo el dia, no el mes');
+  assert.deepEqual(diasNumeroQueNombro('13 de setiembre'), [13]);
+  assert.deepEqual(diasNumeroQueNombro('el 13 a las 12'), [13]);
+});
+
+test('"17hs" no hace confundir el dia 17 con la hora, de punta a punta', () => {
+  // El caso real de Andres, 11-9: "Lunes 17hs".
+  const lunes17alas10 = new Date(Date.UTC(2026, 8, 17, 13)); // dia 17, 10:00 en MVD
+  assert.equal(eligioEsaHora('17hs', lunes17alas10, TZ), false, '17hs no es el dia 17, ni ninguna hora del horario ofrecido');
 });
 
 // ── una hora que el lead propone, fuera de la lista ──────────────────────────

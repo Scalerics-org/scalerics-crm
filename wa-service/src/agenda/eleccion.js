@@ -80,17 +80,48 @@ function diasQueNombro(texto) {
  * "nombro el dia 23", confirmo que eligio ESE horario y lo agendo a las 12:00
  * como si el lead hubiera pedido justo eso.
  *
- * Un numero pegado a minutos ("23:00", "13.30") es una hora, nunca un dia. Uno
- * que viene despues de "la"/"las" ("a las 14") tambien: ahi el articulo ya
- * dice que es una hora.
+ * Los minutos pegados ("23:00", "13.30") ya delataban la hora. Pero "13hs",
+ * "13 h", "tipo 13" y "13 y media" son formas tan comunes de decir una hora
+ * como esas, y ninguna tenia dos puntos: Andres escribio "Lunes 17hs" el
+ * 11-9, y con la version anterior "17hs" contaba como si hubiera nombrado el
+ * dia 17.
+ *
+ * Se "blanquean" primero las formas que son claramente una hora (para que el
+ * numero que les queda pegado, si hay uno, no se lea aparte) y recien despues
+ * se buscan los numeros sueltos que quedan, que ahi si pueden ser un dia.
  */
 function diasNumeroQueNombro(texto) {
-  const t = String(texto || '');
+  let t = sinAcentos(String(texto || ''));
   const numeros = [];
+
+  const blanquear = (regex, sacarDia) => {
+    t = t.replace(regex, (...args) => {
+      const m0 = args[0];
+      if (sacarDia) {
+        const n = parseInt(sacarDia(args), 10);
+        if (n >= 1 && n <= 31) numeros.push(n);
+      }
+      return ' '.repeat(m0.length);
+    });
+  };
+
+  // "13/9", "13-9": dia/mes. Solo el primero —el dia— cuenta; el segundo,
+  // el mes, no tiene que leerse como otro dia suelto.
+  blanquear(/\b(\d{1,2})\s*[/-]\s*\d{1,2}\b/g, (m) => m[1]);
+
+  // "13hs", "13 h", "13hrs", "13 horas", con o sin "y media"/"y cuarto"/"y
+  // 30" pegado atras.
+  blanquear(/\b\d{1,2}\s*(?:h|hs|hrs?|horas?)\b(?:\s*y\s*(?:media|cuarto|\d{1,2}))?/g);
+  // "13 y media", "13 y cuarto", "13 y 30": sin "h" pero igual es una hora.
+  blanquear(/\b\d{1,2}\s*y\s*(?:media|cuarto|\d{1,2})\b/g);
+
+  // Con una palabra de hora ADELANTE: "a las 14", "tipo 13", "a eso de las
+  // 14", "a partir de las 9", "desde las 9", "despues de las 9", "antes de
+  // las 9".
+  blanquear(/\b(?:la|las|tipo|a eso de(?: las)?|a partir de(?: las)?|desde(?: las)?|despues de(?: las)?|antes de(?: las)?)\s+\d{1,2}\b/g);
+
   for (const m of t.matchAll(/(?<![\d:.,])(\d{1,2})(?:[:.](\d{2}))?(?![\d:.,])/g)) {
-    if (m[2]) continue; // "23:00": los minutos pegados lo delatan como hora.
-    const antes = t.slice(0, m.index);
-    if (/\bla\s*$|\blas\s*$/i.test(antes)) continue; // "a las 14"
+    if (m[2]) continue; // "23.00": los minutos pegados lo delatan como hora.
     const n = parseInt(m[1], 10);
     if (n >= 1 && n <= 31) numeros.push(n);
   }
