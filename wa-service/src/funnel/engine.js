@@ -1,7 +1,10 @@
 'use strict';
 
 const { S, palabraGlobal } = require('./states');
-const { eligioEsaHora, revisarFranja, textoDeFranja } = require('../agenda/eleccion');
+const {
+  eligioEsaHora, revisarFranja, textoDeFranja, nombroAlgunDia,
+  elegirDiaPorCodigo, elegirHoraPorCodigo,
+} = require('../agenda/eleccion');
 const { enZona, instanteLocal } = require('../agenda/gcal');
 const { TRANSICIONES } = require('./transitions');
 const plantillas = require('../templates');
@@ -138,9 +141,15 @@ function crearEmbudo({
 
   /**
    * Le pide a la IA el mensaje de una situacion y lo manda.
+   *
+   * @param {string} sufijoCodigo se pega al final del mensaje SIN pasar por
+   *   el modelo ni por Jev: la lista de dias u horas de agendar dia-primero,
+   *   que arma el codigo. Jev sigue revisando el pitch que escribe la IA -el
+   *   sufijo no se le muestra- porque ahi es donde se inventan cosas; una
+   *   lista de fechas que arma el codigo no tiene nada que revisar.
    * @returns {Promise<boolean>} false si no se pudo escribir.
    */
-  async function decirIA(lead, situacion, extra = '') {
+  async function decirIA(lead, situacion, extra = '', sufijoCodigo = '') {
     let texto = await redactor?.escribir(lead, situacion, extra);
     if (!texto) return false;
 
@@ -171,8 +180,9 @@ function crearEmbudo({
       }
     }
 
-    decir(lead, texto);
-    sombra?.alMandarIA(lead, situacion, texto);
+    const final = sufijoCodigo ? `${texto}\n\n${sufijoCodigo}` : texto;
+    decir(lead, final);
+    sombra?.alMandarIA(lead, situacion, final);
     return true;
   }
 
@@ -282,51 +292,38 @@ function crearEmbudo({
     }
   }
 
-  /**
-   * Los horarios en palabras, para que el modelo los escriba y para que sepa
-   * cuales son los validos. Se le pasan como contexto, no como texto final.
-   */
-  /**
-   * Lo que hay libre, en tramos. Es lo que se le dice al lead.
-   *
-   * En una franja de 07 a 20 cada media hora hay 25 huecos por dia. Listar tres
-   * hace parecer que no hay lugar —el lead compara con la pagina de Calendly y
-   * ve el dia entero abierto— y listar los 25 es ilegible por WhatsApp. En
-   * tramos se dice como lo diria una persona.
-   */
-  function describirTramos(bloques) {
-    if (!bloques?.length) return '';
-    const porDia = new Map();
-    for (const b of bloques) {
-      const dia = new Intl.DateTimeFormat('es-UY', {
-        timeZone: cfg.TZ, weekday: 'long', day: 'numeric', month: 'long',
-      }).format(b.desde);
-      const hora = (d) => new Intl.DateTimeFormat('es-UY', {
-        timeZone: cfg.TZ, hour: '2-digit', minute: '2-digit', hour12: false,
-      }).format(d);
-      if (!porDia.has(dia)) porDia.set(dia, []);
-      porDia.get(dia).push(`de ${hora(b.desde)} a ${hora(b.hasta)}`);
-    }
-    const lineas = [...porDia].map(([dia, rangos]) => `- ${dia}: ${rangos.join(' y ')}`);
-    return `Lo que hay libre:\n${lineas.join('\n')}`;
+  /** "Miércoles 23", con mayuscula inicial y sin repetir el mes. */
+  function nombreDia(fecha) {
+    const crudo = new Intl.DateTimeFormat('es-UY', {
+      timeZone: cfg.TZ, weekday: 'long', day: 'numeric',
+    }).format(fecha);
+    return crudo.charAt(0).toUpperCase() + crudo.slice(1);
   }
 
-  function describirHorarios({ slots }) {
-    // Cada uno con su dia. Antes se nombraba el dia una sola vez —el del
-    // primero— y se listaban las horas sueltas, porque los horarios salian
-    // todos del mismo dia. Ahora abarcan varios, asi que esa forma seria
-    // mentira: el lead elegiria "13:00" creyendo que es el jueves cuando es el
-    // viernes.
-    const lineas = slots.map((d) => {
-      const dia = new Intl.DateTimeFormat('es-UY', {
-        timeZone: cfg.TZ, weekday: 'long', day: 'numeric', month: 'long',
-      }).format(d);
-      const hora = new Intl.DateTimeFormat('es-UY', {
-        timeZone: cfg.TZ, hour: '2-digit', minute: '2-digit', hour12: false,
-      }).format(d);
-      return `- ${dia} a las ${hora}`;
-    });
-    return `Horarios libres:\n${lineas.join('\n')}\n\nSon los únicos que podés ofrecer. Mostráselos con el día, no solo la hora: son de días distintos y sin el día no sabe cuál está eligiendo.`;
+  /** "12:00", en formato 24 horas. */
+  function nombreHora(fecha) {
+    return new Intl.DateTimeFormat('es-UY', {
+      timeZone: cfg.TZ, hour: '2-digit', minute: '2-digit', hour12: false,
+    }).format(fecha);
+  }
+
+  /**
+   * Paso 1 de agendar (dia primero): la lista numerada de dias, que arma el
+   * codigo y se pega abajo del pitch de la IA. El modelo no la escribe —no
+   * sabe que dias hay libres de verdad— asi que si la escribiera, inventaria.
+   */
+  function listaDeDias(dias) {
+    const lineas = dias.map((d, i) => `${i + 1}. ${nombreDia(d)}`);
+    return `¿Qué día te queda mejor?\n\n${lineas.join('\n')}`;
+  }
+
+  /**
+   * Paso 2: la lista numerada de horas de UN dia ya elegido. El pitch de la
+   * IA (situacion disponibilidad_del_dia) ya cierra pidiendo que elija; esto
+   * es solo la lista, sin pregunta propia.
+   */
+  function listaDeHoras(horas) {
+    return horas.map((h, i) => `${i + 1}. ${nombreHora(h)}`).join('\n');
   }
 
   /**
@@ -449,20 +446,16 @@ function crearEmbudo({
   async function responderHorarios(lead, decision, ofrecidos) {
     const enFoco = decision.dia || (ofrecidos.length ? ofrecidos[0] : null);
 
-    const loQueHay = async () => {
-      if (enFoco && agenda?.activo) {
-        const delDia = await agenda.tramosDelDia(enFoco, ahora());
-        if (delDia.length) return describirTramos(delDia);
-      }
-      const nuevos = await agenda?.horariosDisponibles(ahora());
-      if (nuevos?.slots?.length) {
-        repo.actualizarFunnel(lead.id, {
-          horarios_ofrecidos: JSON.stringify(nuevos.slots.map((d) => d.toISOString())),
-        });
-        return describirTramos(nuevos.bloques);
-      }
-      return describirHorarios({ slots: ofrecidos });
-    };
+    // Las horas de ESE dia, numeradas igual que en el resto del flujo nuevo.
+    // Si el dia en foco ya no tiene nada libre (se lleno entre medio, o Google
+    // no contesto), no hay lista que mostrar: se vuelve al paso de elegir dia.
+    const horas = (enFoco && agenda?.activo) ? await agenda.slotsDelDia(enFoco, ahora()) : [];
+    if (!horas.length) return ofrecerDias(lead, 'dia_no_ofrecido', '');
+
+    repo.actualizarFunnel(lead.id, {
+      horarios_ofrecidos: JSON.stringify(horas.map((d) => d.toISOString())),
+      dia_en_foco: enZona(enFoco, cfg.TZ).dia,
+    });
 
     const SITUACION = {
       mostrar_dia: 'disponibilidad_del_dia',
@@ -473,13 +466,152 @@ function crearEmbudo({
     const situacion = SITUACION[decision.accion];
 
     const extra = decision.accion === 'rechazar'
-      ? `${MOTIVO_FRANJA[decision.motivo](cfg, decision.inicio)}
+      ? MOTIVO_FRANJA[decision.motivo](cfg, decision.inicio)
+      : `El día es ${nombreDia(enFoco)}.`;
 
-${await loQueHay()}`
-      : await loQueHay();
-
-    if (!await decirIA(lead, situacion, extra)) return sinIA(lead, situacion);
+    if (!await decirIA(lead, situacion, extra, listaDeHoras(horas))) return sinIA(lead, situacion);
     return S.HORARIOS_OFRECIDOS;
+  }
+
+  /**
+   * Paso 1: le ofrece la lista de dias con hueco. La usa tanto la entrada a
+   * MEETING_SENT (con el pitch de siempre) como cualquier "che, no te entendí
+   * / ese día no es de los que hay" del paso de elegir dia (con un pitch mas
+   * corto): las dos veces hay que ir a buscar los dias de nuevo y guardar el
+   * estado igual.
+   */
+  async function ofrecerDias(lead, situacion, entrada) {
+    const dias = await agenda.diasConHueco(ahora());
+
+    // Que Google deje de contestar no puede pasar en silencio. El lead igual
+    // puede agendar —cae al camino del link— pero el bot deja de hacer lo
+    // unico que lo diferencia, y sin este aviso nadie se entera hasta que
+    // alguien mira los logs. El token de Google es lo que sostiene todo esto:
+    // si se revoca o vence, esto es lo que lo delata.
+    if (!dias.length) {
+      avisarAgendaCaida();
+      return alEntrar(lead, S.MEETING_LINK_SENT, entrada);
+    }
+
+    const inicios = dias.map((d) => d.inicio);
+    repo.actualizarFunnel(lead.id, {
+      horarios_ofrecidos: JSON.stringify(inicios.map((d) => d.toISOString())),
+      dia_en_foco: null,
+    });
+
+    if (!await decirIA(lead, situacion, '', listaDeDias(inicios))) return sinIA(lead, situacion);
+    return S.HORARIOS_OFRECIDOS;
+  }
+
+  /** Paso 2: le muestra las horas de un dia YA elegido. */
+  async function mostrarHorasDelDia(lead, diaElegido) {
+    const horas = await agenda.slotsDelDia(diaElegido, ahora());
+    // Se llenó justo entre que se ofreció la lista de días y que eligió uno:
+    // no hay nada que mostrar de ESE día. Se vuelve a ofrecer, de nuevo.
+    if (!horas.length) return ofrecerDias(lead, 'dia_no_ofrecido', '');
+
+    repo.actualizarFunnel(lead.id, {
+      horarios_ofrecidos: JSON.stringify(horas.map((d) => d.toISOString())),
+      dia_en_foco: enZona(diaElegido, cfg.TZ).dia,
+    });
+
+    const extra = `El día es ${nombreDia(diaElegido)}.`;
+    if (!await decirIA(lead, 'disponibilidad_del_dia', extra, listaDeHoras(horas))) {
+      return sinIA(lead, 'disponibilidad_del_dia');
+    }
+    return S.HORARIOS_OFRECIDOS;
+  }
+
+  /**
+   * Paso 1, el turno: elige un dia de la lista, en codigo (numero, nombre del
+   * dia, o fecha). Si no se entiende nada, o si nombro un dia real que no es
+   * ninguno de los ofrecidos, se lo dice y se vuelve a ofrecer.
+   */
+  async function decidirDia(lead, entrada, diasOfrecidos) {
+    const elegido = elegirDiaPorCodigo(entrada, diasOfrecidos, cfg.TZ);
+    if (elegido) return mostrarHorasDelDia(lead, elegido);
+
+    if (nombroAlgunDia(entrada)) return ofrecerDias(lead, 'dia_no_ofrecido', entrada);
+
+    // Un numero de lista que no matcheo ninguna opcion ("5" con solo dos
+    // dias ofrecidos) tampoco es conversacion: es que no se entendio bien.
+    if (/^(?:opcion\s*)?\d{1,2}\.?$/.test(entrada.trim())) {
+      return ofrecerDias(lead, 'dia_no_entendido', entrada);
+    }
+
+    // No habla de dias: lo atiende la conversacion. "¿cuánto sale?", "no
+    // puedo esos días" y similares caen aca, igual que en el flujo de horas.
+    return CONVERSAR;
+  }
+
+  /**
+   * Paso 2, el turno: elige una hora del dia ya elegido, en codigo (numero
+   * de lista, o una hora que coincide con alguna ofrecida). Si nombra otro
+   * dia, se cambia de dia. Si no, el modelo queda de respaldo —entiende "la
+   * primera", "a la una y media", y frases que no estan en la lista— para lo
+   * que el codigo no pudo resolver solo.
+   */
+  async function decidirHora(lead, entrada, horasOfrecidas) {
+    const elegida = elegirHoraPorCodigo(entrada, horasOfrecidas, cfg.TZ);
+
+    let decision;
+    if (elegida) {
+      decision = { accion: 'agendar', inicio: elegida };
+    } else if (nombroAlgunDia(entrada)) {
+      // Quiere otro dia. Se resuelve en codigo, igual que el paso 1: se
+      // vuelve a buscar que dias hay y se elige de ahi, no del dia de hoy.
+      const dias = await agenda.diasConHueco(ahora());
+      const inicios = dias.map((d) => d.inicio);
+      const otroDia = elegirDiaPorCodigo(entrada, inicios, cfg.TZ);
+      if (otroDia) return mostrarHorasDelDia(lead, otroDia);
+      return ofrecerDias(lead, 'dia_no_ofrecido', entrada);
+    } else {
+      decision = await decidirSobreHorarios(lead, entrada, horasOfrecidas);
+    }
+
+    // No habla de horarios: lo atiende la conversacion. El 3-9 el lead
+    // corrigio "quiero página web no ecommerce" mientras elegia horario y
+    // recibio la lista de horarios, con la correccion perdida.
+    if (decision.accion === 'no_es_de_horarios') return CONVERSAR;
+
+    if (decision.accion !== 'agendar') {
+      return responderHorarios(lead, decision, horasOfrecidas);
+    }
+
+    const elegido = decision.inicio;
+
+    const r = await agenda.reservar({
+      inicio: elegido,
+      nombre: lead.business_name || lead.nombre,
+      telefono: lead.telefono,
+      resumen: lead.needs || lead.necesidad || '',
+    });
+
+    if (r.motivo === 'ocupado') {
+      // Se lo tomaron entre medio: se muestra lo que queda de ESE dia, no se
+      // salta a otro — el lead ya eligio el dia, lo que cambio es la hora.
+      const diaEnFoco = instanteLocal(lead.dia_en_foco, 12, 0, cfg.TZ);
+      const horasDeVuelta = await agenda.slotsDelDia(diaEnFoco, ahora());
+      if (horasDeVuelta.length) {
+        repo.actualizarFunnel(lead.id, {
+          horarios_ofrecidos: JSON.stringify(horasDeVuelta.map((d) => d.toISOString())),
+        });
+        if (!await decirIA(lead, 'horario_ocupado', '', listaDeHoras(horasDeVuelta))) {
+          return sinIA(lead, 'horario_ocupado');
+        }
+        return S.HORARIOS_OFRECIDOS;
+      }
+      return ofrecerDias(lead, 'dia_no_ofrecido', entrada);
+    }
+
+    if (!r.ok) {
+      // Falló la agenda. No se le promete nada: va a una persona.
+      derivar(lead, 'agenda');
+      return alEntrar(lead, S.HUMAN_QUEUED, entrada);
+    }
+
+    servicioReunion(lead, r);
+    return alEntrar(repo.leadPorId(lead.id), S.SCHEDULED, entrada);
   }
 
   /** Deja la reunion registrada: recordatorios, aviso al AM y estado. */
@@ -602,37 +734,17 @@ ${await loQueHay()}`
       }
 
       case S.MEETING_SENT: {
-        // Con AGENDA_OFRECE_HORARIOS se le muestran horarios reales y el bot
-        // reserva. Apagado —que es como esta— se le manda el link de Calendly y
-        // se agenda solo: el formulario le pregunta empresa, que necesita y
-        // telefono, y esos datos despues sirven para preparar la reunion.
+        // Con AGENDA_OFRECE_HORARIOS se le muestra primero una lista de dias
+        // y, cuando elige uno, las horas de ESE dia. Apagado —que es como
+        // esta— se le manda el link de Calendly y se agenda solo: el
+        // formulario le pregunta empresa, que necesita y telefono, y esos
+        // datos despues sirven para preparar la reunion.
         //
         // La agenda sigue conectada igual: se la usa para leer el calendario y
         // enterarse de quien agendo.
         const conAgenda = Boolean(agenda?.activo && cfg.AGENDA_OFRECE_HORARIOS);
-        const libres = conAgenda ? await agenda.horariosDisponibles(ahora()) : null;
 
-        // Que Google deje de contestar no puede pasar en silencio. El lead
-        // igual puede agendar —cae al camino del link— pero el bot deja de
-        // hacer lo unico que lo diferencia, y sin este aviso nadie se entera
-        // hasta que alguien mira los logs. El token de Google es lo que
-        // sostiene todo esto: si se revoca o vence, esto es lo que lo delata.
-        if (conAgenda && !libres) avisarAgendaCaida();
-
-        if (libres?.slots?.length) {
-          const iso = libres.slots.map((d) => d.toISOString());
-          repo.actualizarFunnel(lead.id, { horarios_ofrecidos: JSON.stringify(iso) });
-          // Solo los tramos. Dandole ademas la lista de horas sueltas, el
-          // modelo elegia esa y volvia a mostrar cinco horarios como si fueran
-          // los unicos: justo lo que los tramos venian a arreglar. Que el lead
-          // pida una hora que no este listada ya no es problema — se verifica
-          // contra el calendario y se agenda.
-          const contexto = describirTramos(libres.bloques) || describirHorarios(libres);
-          if (!await decirIA(lead, 'oferta_con_horarios', contexto)) {
-            return sinIA(lead, 'oferta_con_horarios');
-          }
-          return S.HORARIOS_OFRECIDOS;
-        }
+        if (conAgenda) return ofrecerDias(lead, 'oferta_con_horarios', entrada);
 
         // El camino del link. Se va derecho: MEETING_LINK_SENT ya manda el
         // link al entrar, y su mensaje explica el proceso entero. Preguntarle
@@ -641,58 +753,20 @@ ${await loQueHay()}`
       }
 
       /**
-       * Eligio —o no— uno de los horarios que se le mostraron.
+       * Eligio —o no— un dia, y despues una hora de ese dia.
        *
-       * Cual eligio lo resuelve el modelo, que entiende "las 13" y "la de la
-       * una y media"; que ese horario exista y siga libre lo verifica el
-       * codigo. El modelo interpreta, el codigo confirma.
+       * `lead.dia_en_foco` distingue los dos pasos: sin el, `horarios_ofrecidos`
+       * son los DIAS que se le ofrecieron (paso 1); con el, son las HORAS de
+       * ese dia (paso 2). La lista y la eleccion las resuelve el codigo —un
+       * numero, el nombre del dia o de la hora—; el modelo queda de respaldo
+       * solo para lo que el codigo no entiende.
        */
       case S.HORARIOS_OFRECIDOS: {
         const ofrecidos = leerHorarios(lead);
         if (!ofrecidos.length) return alEntrar(lead, S.MEETING_SENT, entrada);
 
-        const decision = await decidirSobreHorarios(lead, entrada, ofrecidos);
-
-        // No habla de horarios: lo atiende la conversacion. El 3-9 el lead
-        // corrigio "quiero página web no ecommerce" mientras elegia horario y
-        // recibio la lista de horarios, con la correccion perdida.
-        if (decision.accion === 'no_es_de_horarios') return CONVERSAR;
-
-        if (decision.accion !== 'agendar') {
-          return responderHorarios(lead, decision, ofrecidos);
-        }
-
-        const elegido = decision.inicio;
-
-        const r = await agenda.reservar({
-          inicio: elegido,
-          nombre: lead.business_name || lead.nombre,
-          telefono: lead.telefono,
-          resumen: lead.needs || lead.necesidad || '',
-        });
-
-        if (r.motivo === 'ocupado') {
-          // Se lo tomaron entre medio. Se buscan nuevos y se le explica.
-          const nuevos = await agenda.horariosDisponibles(ahora());
-          if (nuevos?.slots?.length) {
-            repo.actualizarFunnel(lead.id, {
-              horarios_ofrecidos: JSON.stringify(nuevos.slots.map((d) => d.toISOString())),
-            });
-            await decirIA(lead, 'horario_ocupado', describirHorarios(nuevos));
-            return estado;
-          }
-          derivar(lead, 'agenda');
-          return alEntrar(lead, S.HUMAN_QUEUED, entrada);
-        }
-
-        if (!r.ok) {
-          // Falló la agenda. No se le promete nada: va a una persona.
-          derivar(lead, 'agenda');
-          return alEntrar(lead, S.HUMAN_QUEUED, entrada);
-        }
-
-        servicioReunion(lead, r);
-        return alEntrar(repo.leadPorId(lead.id), S.SCHEDULED, entrada);
+        if (!lead.dia_en_foco) return decidirDia(lead, entrada, ofrecidos);
+        return decidirHora(lead, entrada, ofrecidos);
       }
 
       case S.MEETING_INFO:

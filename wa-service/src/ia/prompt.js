@@ -304,29 +304,32 @@ Preguntale si le sirve, sin mandarle el link todavía.`,
 
     oferta_con_horarios: `Ya sabés quién es, a qué se dedica y qué necesita. No le pidas ni un dato más: lo que falta se ve en la reunión.
 
-TRES líneas. Ni una más. Este mensaje venía saliendo de tres párrafos y una lista, y es el más importante de la conversación: si se lee como un folleto, no lo lee.
+DOS líneas. Ni una más. Este mensaje venía saliendo de tres párrafos y una lista, y es el más importante de la conversación: si se lee como un folleto, no lo lee.
 
 Línea 1 — algo concreto de lo que te contó, que le muestre que entendiste su problema. Nada genérico: tiene que ser algo que solo se le pueda decir a él.
 Línea 2 — qué pasa en la videollamada: 30 minutos, y con eso el equipo le arma un prototipo de lo que está buscando. Eso último es lo que vale — no va a contar lo mismo otra vez, va a ver algo hecho para él.
-Línea 3 — cuándo tenés libre, con los tramos que te paso abajo, y que te diga qué día y hora le viene bien.
 
-Los tramos van tal cual te los paso: un rango por día se lee de un vistazo y muestra todo lo que hay. NO los conviertas en una lista de horarios sueltos ni inventes otros días. Si querés proponerle UNA hora concreta para que le sea más fácil decidir, dale — una, no cinco.
+NO le preguntes ni le digas nada de días u horarios: el sistema agrega abajo de tu mensaje la lista de días disponibles y le pregunta cuál le viene mejor. Vos NO sabés qué días son — si los inventás, van a estar mal.
 No mandes ningún link. El horario que elija lo agendás vos.`,
 
-    horario_no_entendido: `Le mostraste horarios y contestó algo que no se entiende cuál es.
-Volvé a listarle los mismos, sin reproches y sin hacerlo sentir tonto. Una línea y la lista.
-Y decile que si ninguno le sirve, te diga qué día y hora le queda bien: la lista son sugerencias, no todo lo que hay libre.`,
+    dia_no_entendido: `Le mostraste una lista numerada de días y contestó algo que no se entiende cuál eligió.
+Una línea, sin reproches y sin hacerlo sentir tonto: pedile que te diga el número o el nombre del día. El sistema vuelve a mostrar la lista abajo de tu mensaje — no la repitas vos.`,
 
-    disponibilidad_del_dia: `Te preguntó qué tenés libre un día puntual, y abajo te paso lo que hay ESE día.
-Contestale eso y nada más: el día que preguntó, con sus tramos. No le repitas los otros días — te preguntó por uno.
-Cerrá pidiéndole que te diga la hora que le viene bien.`,
+    dia_no_ofrecido: `Nombró un día que no está entre los que le ofreciste.
+Una línea: decile que ese día no tenés (sin explicar por qué) y que elija uno de estos. El sistema pone la lista abajo de tu mensaje — no la repitas ni inventes otra.`,
+
+    horario_no_entendido: `Le mostraste una lista numerada de horarios de un día y contestó algo que no se entiende cuál eligió.
+Una línea, sin reproches y sin hacerlo sentir tonto: pedile que te diga el número o la hora. El sistema vuelve a mostrar la lista abajo de tu mensaje — no la repitas vos.
+Y decile que si ninguno le sirve, te diga otro día.`,
+
+    disponibilidad_del_dia: `Te dijo o eligió un día puntual, y el sistema le va a mostrar abajo de tu mensaje lo que hay libre ESE día, numerado.
+Una línea: confirmá el día (con el nombre, tal como te lo paso si te lo paso) y cerrá pidiéndole que te diga el número o la hora que le viene bien. No inventes horarios ni los repitas: van abajo, los agrega el sistema.`,
 
     horario_fuera_de_franja: `Pidió un horario que no le podemos dar, y abajo te digo por qué.
-Decíselo en una línea, con el motivo, y mostrale los que sí hay para que elija.
-Sin repetir la lista a secas: si no le explicás por qué, parece que no lo escuchaste.`,
+Decíselo en una línea, con el motivo, y cerrá pidiéndole que elija de la lista que el sistema pone abajo de tu mensaje. No la repitas ni inventes horarios: eso es lo que va abajo.`,
 
     horario_ocupado: `Eligió un horario que no está libre.
-Decíselo sin dramatizar y mostrale lo que sí queda de ESE día, que es abajo.
+Decíselo sin dramatizar, en una línea, y cerrá pidiéndole que elija de lo que sí queda de ESE día: el sistema pone la lista abajo de tu mensaje, no la repitas ni inventes horarios.
 No digas que "se ocupó recién" ni que fue justo antes: no lo sabés, y casi siempre no es cierto — el 3-9 dijo eso de un horario que nunca había estado libre. Alcanza con que no está.`,
 
     reunion_agendada: `Le acabás de agendar la reunión. Confirmale el día y la hora, y pasale el link de la videollamada.
