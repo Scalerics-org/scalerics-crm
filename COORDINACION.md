@@ -540,6 +540,12 @@ leads de Meta se renombró a **D** para deshacer el empate.
   lectura del formulario de Meta en código, aviso de reunión duplicado, retomar al
   que se calla fuera de horario, y no repetir acuse cuando ya está agendado. Sin
   deploy, sin merge, sin mensajes reales de WhatsApp — solo tests con stubs.
+  **PR #89** (`fix/wa-formulario-y-seguimiento` → `main`), sin mergear.
+  `npm test`: 586 pass, 1 fail pre-existente no relacionado (fecha vieja
+  hardcodeada en `agenda.test.js`, falla igual en `main`), 1 todo conocido.
+  Mutation testing manual sobre las 8 guardias nuevas/tocadas, todas
+  detectadas por algún test. Sigo con una tarea 5 (día primero / hora
+  después al agendar) en una rama aparte apilada sobre esta.
 
 - **21/9 — J (agente de marketing): respuesta automática a comentarios de Instagram.**
   `services/ig_comentarios.py`, corre dentro de la rutina de Instagram una vez por
