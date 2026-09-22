@@ -435,9 +435,17 @@ test('elegirHoraPorCodigo: por la hora, cuando no es un indice valido', () => {
 test('elegirHoraPorCodigo: fuera de rango o sin nada reconocible no elige nada', () => {
   assert.equal(elegirHoraPorCodigo('8', HORAS, TZ), null, 'como indice, fuera de rango (solo hay 5)');
   assert.equal(elegirHoraPorCodigo('20', HORAS, TZ), null, 'ni como indice ni como hora ofrecida');
-  assert.equal(elegirHoraPorCodigo('la primera', HORAS, TZ), null, 'eso lo entiende el modelo, no el codigo');
+  assert.equal(elegirHoraPorCodigo('dale esa', HORAS, TZ), null, 'eso lo entiende el modelo, no el codigo');
   assert.equal(elegirHoraPorCodigo('', HORAS, TZ), null);
   assert.equal(elegirHoraPorCodigo(null, HORAS, TZ), null);
+});
+
+/**
+ * "la primera" pasa a resolverse por codigo con el pulido de numeros en
+ * palabras (antes caia al modelo, como "dale esa" arriba).
+ */
+test('elegirHoraPorCodigo: "la primera" ahora se entiende como indice 1', () => {
+  assert.equal(elegirHoraPorCodigo('la primera', HORAS, TZ), HORAS[0]);
 });
 
 /**
@@ -533,4 +541,61 @@ test('elegirHoraPorCodigo: "N no, M si" elige la afirmada', () => {
 
 test('elegirHoraPorCodigo: negacion sin ninguna hora clara no elige nada', () => {
   assert.equal(elegirHoraPorCodigo('no puedo ninguna', HORAS_26, TZ), null);
+});
+
+// ── indice de lista con adornos y en palabras ───────────────────────────────
+
+/**
+ * Pulido post-aprobacion del PR #90: un numero de lista con signos, emoji o
+ * parentesis alrededor no se entendia ("2!", "2 👍", "el 2)" volvian null),
+ * y solo los digitos servian ("dos" no). "el"/"la" solo cuentan como
+ * respaldo de indice cuando el numero esta SOLO en el mensaje: "el 24" sigue
+ * siendo una fecha primero (ya probado arriba), esto es lo que pasa cuando
+ * esa fecha no es ninguna de las ofrecidas.
+ */
+test('elegirDiaPorCodigo: un indice con signos o emoji alrededor se entiende igual', () => {
+  assert.equal(elegirDiaPorCodigo('2!', DIAS, TZ), JUE24);
+  assert.equal(elegirDiaPorCodigo('2 👍', DIAS, TZ), JUE24);
+  assert.equal(elegirDiaPorCodigo('el 2)', DIAS, TZ), JUE24);
+  assert.equal(elegirDiaPorCodigo('¡2!', DIAS, TZ), JUE24);
+  assert.equal(elegirDiaPorCodigo('"1"', DIAS, TZ), MIE23);
+});
+
+test('elegirDiaPorCodigo: "el"/"la" antes del numero es respaldo de indice, no le gana a una fecha real', () => {
+  // DIAS son 23 y 24: "el 2" no es fecha de ninguno de los dos, asi que cae
+  // al indice (opcion 2 = JUE24). "el 24" en cambio YA es una fecha ofrecida
+  // (probado en el test de arriba) y esa lectura sigue ganando siempre.
+  assert.equal(elegirDiaPorCodigo('el 2', DIAS, TZ), JUE24);
+  assert.equal(elegirDiaPorCodigo('la 2', DIAS, TZ), JUE24);
+  assert.equal(elegirDiaPorCodigo('el 24', DIAS, TZ), JUE24, 'fecha real, no cambia por el pulido');
+});
+
+test('elegirDiaPorCodigo: numeros en palabras valen igual que en digitos', () => {
+  assert.equal(elegirDiaPorCodigo('uno', DIAS, TZ), MIE23);
+  assert.equal(elegirDiaPorCodigo('una', DIAS, TZ), MIE23);
+  assert.equal(elegirDiaPorCodigo('primero', DIAS, TZ), MIE23);
+  assert.equal(elegirDiaPorCodigo('dos', DIAS, TZ), JUE24);
+  assert.equal(elegirDiaPorCodigo('segunda', DIAS, TZ), JUE24);
+  assert.equal(elegirDiaPorCodigo('dos!', DIAS, TZ), JUE24, 'palabra y adorno juntos');
+  assert.equal(elegirDiaPorCodigo('opcion dos', DIAS, TZ), JUE24);
+});
+
+test('elegirHoraPorCodigo: un indice con signos o emoji alrededor se entiende igual', () => {
+  // "3" no choca con ninguna hora en punto de HORAS_26 (van de 07 a 20), asi
+  // que es el indice sin ambiguedad: item 3 = 08:00.
+  assert.equal(elegirHoraPorCodigo('3!', HORAS_26, TZ), HORAS_26[2]);
+  assert.equal(elegirHoraPorCodigo('3 👍', HORAS_26, TZ), HORAS_26[2]);
+  assert.equal(elegirHoraPorCodigo('la 3)', HORAS_26, TZ), HORAS_26[2]);
+});
+
+test('elegirHoraPorCodigo: un adorno no le gana la prioridad a la hora en punto', () => {
+  // Igual que "12" solo: con decoracion sigue siendo las 12:00 (item 11), no
+  // el item 12 (12:30).
+  assert.equal(elegirHoraPorCodigo('12!', HORAS_26, TZ), HORAS_26[10]);
+  assert.equal(elegirHoraPorCodigo('12 👍', HORAS_26, TZ), HORAS_26[10]);
+});
+
+test('elegirHoraPorCodigo: numeros en palabras valen igual que en digitos', () => {
+  assert.equal(elegirHoraPorCodigo('tres', HORAS_26, TZ), HORAS_26[2], 'sin hora en punto que choque, es el indice');
+  assert.equal(elegirHoraPorCodigo('opcion dos', HORAS_26, TZ), HORAS_26[1], '"opcion" fuerza el indice');
 });

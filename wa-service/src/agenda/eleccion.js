@@ -57,6 +57,66 @@ function sinAcentos(texto) {
   return String(texto || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 }
 
+/** Numeros en palabras, para "dos" o "la segunda" igual que "2" o "opcion 2". */
+const PALABRAS_NUMERO = {
+  uno: 1, una: 1, primero: 1, primera: 1,
+  dos: 2, segundo: 2, segunda: 2,
+  tres: 3, tercero: 3, tercera: 3,
+  cuatro: 4,
+  cinco: 5,
+  seis: 6,
+  siete: 7,
+  ocho: 8,
+  nueve: 9,
+  diez: 10,
+};
+
+/** Emojis, para sacarlos de un mensaje que aparte de eso es solo un numero. */
+const RE_EMOJI = /\p{Emoji_Presentation}|\p{Extended_Pictographic}/gu;
+
+/**
+ * Si el mensaje, sacando los adornos de las puntas (signos, parentesis,
+ * emojis) y un "opcion"/"el"/"la" adelante, es UN SOLO numero de lista —en
+ * digitos o en palabras— lo devuelve. Ninguno de esos adornos cambia lo que
+ * el lead quiso decir: "2!", "2 👍", "el 2)" y "dos" son la misma eleccion
+ * que "2".
+ *
+ * `esExplicito` distingue "opcion 2" y "2." —donde no hay AMBIGUEDAD posible
+ * con una hora— de un numero suelto tipo "2" o "dos", que en elegirHoraPorCodigo
+ * puede perder contra una hora en punto que coincida (ver ahi el porque).
+ * "el 2" y "la 2" NO cuentan como explicitos: son la forma mas comun de decir
+ * una fecha ("el 2 de setiembre"), y esa lectura ya se prueba antes en
+ * elegirDiaPorCodigo — esto es solo el respaldo para cuando esa fecha no es
+ * ninguna de las ofrecidas.
+ *
+ * @returns {{n: number, esExplicito: boolean}|null}
+ */
+function indiceDeLista(texto) {
+  let t = sinAcentos(String(texto || '')).replace(RE_EMOJI, ' ').trim();
+
+  const lead = t.match(/^[¡!¿?"'(]+\s*/);
+  if (lead) t = t.slice(lead[0].length);
+  const trail = t.match(/\s*([!?"').,;:]+)$/);
+  if (trail) t = t.slice(0, t.length - trail[0].length);
+  t = t.trim();
+
+  const m = t.match(/^(opcion\s+|el\s+|la\s+)?(\d{1,2}|[a-z]+)$/);
+  if (!m) return null;
+  const [, prefijo, token] = m;
+
+  let n;
+  if (/^\d+$/.test(token)) {
+    n = parseInt(token, 10);
+  } else {
+    n = PALABRAS_NUMERO[token];
+    if (n === undefined) return null;
+  }
+
+  const dijoOpcion = /^opcion/.test(prefijo || '');
+  const puntoFinal = Boolean(trail && trail[1].includes('.'));
+  return { n, esExplicito: dijoOpcion || puntoFinal };
+}
+
 /** Los dias de semana que nombro, en el codigo corto que usa enZona. */
 function diasQueNombro(texto) {
   const t = sinAcentos(texto);
@@ -454,9 +514,9 @@ function elegirDiaPorCodigo(texto, diasOfrecidos, tz = 'America/Montevideo', aho
     if (numerados.includes(Number(dia.slice(8)))) return d;
   }
 
-  const m = t.trim().match(/^(?:opcion\s*)?(\d{1,2})\.?$/);
-  if (m) {
-    const i = parseInt(m[1], 10) - 1;
+  const idx = indiceDeLista(t);
+  if (idx) {
+    const i = idx.n - 1;
     if (i >= 0 && i < diasOfrecidos.length) return diasOfrecidos[i];
   }
 
@@ -489,12 +549,11 @@ function elegirDiaPorCodigo(texto, diasOfrecidos, tz = 'America/Montevideo', aho
 function elegirHoraPorCodigo(texto, horasOfrecidas, tz = 'America/Montevideo') {
   const t = sinAcentos(String(texto || '')).trim();
 
-  const m = t.match(/^(opcion\s*)?(\d{1,2})(\.)?$/);
-  if (m) {
-    const [, dijoOpcion, numero, puntoFinal] = m;
-    const n = parseInt(numero, 10);
+  const idx = indiceDeLista(t);
+  if (idx) {
+    const { n, esExplicito } = idx;
 
-    if (!dijoOpcion && !puntoFinal) {
+    if (!esExplicito) {
       const porHora = horasOfrecidas.find((d) => {
         const { hora, minuto } = enZona(d, tz);
         return minuto === 0 && n === hora;
