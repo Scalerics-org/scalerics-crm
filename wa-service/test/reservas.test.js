@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const { conLead } = require('./helpers');
-const { crearVigilanteDeReservas } = require('../src/agenda/reservas');
+const { crearVigilanteDeReservas, mismoInstante } = require('../src/agenda/reservas');
 const { S } = require('../src/funnel/states');
 
 const TEL = '59899123456';
@@ -312,7 +312,10 @@ test('y despues de agendar, si escribe, el bot le contesta', async () => {
   await s.cola.vacia();
   s.proveedor.limpiar();
 
-  await s.servicioLeads.registrarRespuesta(TEL, 'Gracias!');
+  // No "Gracias!": un acuse a alguien ya agendado no se contesta (fix aparte,
+  // ver acuse.test.js). Lo que este test verifica es que el bot deja de estar
+  // mudo, no la redaccion puntual.
+  await s.servicioLeads.registrarRespuesta(TEL, 'una consulta antes de la reunion');
   await s.cola.vacia();
 
   assert.ok(s.proveedor.getEnviados().some((e) => e.to === TEL), 'no se queda mudo');
@@ -341,4 +344,92 @@ test('pero la de un cliente sigue registrandose igual', async () => {
 
   const r = await conCalendario(s, [reservaDeCalendly()]).revisar();
   assert.equal(r.agendadas, 1);
+});
+
+test('mismoInstante: el mismo instante en dos formatos distintos', () => {
+  assert.equal(mismoInstante('2026-09-23T13:00:00.000Z', '2026-09-23T10:00:00-03:00'), true);
+});
+
+test('mismoInstante: formatos distintos, instante distinto', () => {
+  assert.equal(mismoInstante('2026-09-23T13:00:00.000Z', '2026-09-23T13:00:00-03:00'), false);
+});
+
+test('mismoInstante: si falta alguno de los dos, no es el mismo instante', () => {
+  assert.equal(mismoInstante(null, '2026-09-23T10:00:00-03:00'), false);
+  assert.equal(mismoInstante('2026-09-23T13:00:00.000Z', null), false);
+  assert.equal(mismoInstante(null, null), false);
+  assert.equal(mismoInstante(undefined, undefined), false);
+});
+
+test('mismoInstante: una fecha invalida no explota, solo no es el mismo instante', () => {
+  assert.equal(mismoInstante('esto no es una fecha', '2026-09-23T10:00:00-03:00'), false);
+  assert.equal(mismoInstante('2026-09-23T13:00:00.000Z', 'tampoco esto'), false);
+});
+
+function conReunionDelBot(s, { eventId = 'ev_bot', meetingTime = '2026-09-23T13:00:00.000Z' } = {}) {
+  const l = s.repo.leadPorTelefono(TEL);
+  s.repo.registrarReunion(l.id, {
+    meetingTime, meetingUrl: 'https://meet.google.com/abc-defg-hij', ahoraIso: '2026-09-01T12:00:00.000Z',
+  });
+  s.repo.actualizarFunnel(l.id, { meeting_event_id: eventId });
+  return s.repo.leadPorTelefono(TEL);
+}
+
+/**
+ * El bug de Patricia (22-9): el vigilante lee "WhatsApp: wa.me/…" en la
+ * descripcion del evento que crea EL PROPIO BOT y lo registra de nuevo,
+ * pisando meeting_booked_at y mandando "Reunión agendada" dos veces al equipo.
+ */
+test('la reunion que agendo el propio bot, misma hora en formato de Google, no avisa ni pisa meeting_booked_at', async () => {
+  const s = await conLead();
+  const antes = conReunionDelBot(s);
+
+  const r = await conCalendario(
+    s, [reservaDeCalendly({ id: 'ev_bot', inicio: '2026-09-23T10:00:00-03:00' })]
+  ).revisar();
+
+  assert.equal(r.agendadas, 0, 'ya estaba registrada, no es una reserva nueva');
+  const despues = s.repo.leadPorTelefono(TEL);
+  assert.equal(despues.meeting_booked_at, antes.meeting_booked_at, 'no se pisa');
+  assert.equal(despues.meeting_time, antes.meeting_time);
+
+  await s.cola.vacia();
+  assert.equal(s.proveedor.getEnviados().length, 0, 'no se avisa dos veces al equipo');
+});
+
+test('la reunion del bot movida de hora si es una reserva nueva', async () => {
+  const s = await conLead();
+  conReunionDelBot(s);
+
+  const r = await conCalendario(
+    s, [reservaDeCalendly({ id: 'ev_bot', inicio: '2026-09-24T10:00:00-03:00' })]
+  ).revisar();
+
+  assert.equal(r.agendadas, 1, 'la hora cambio: hay que avisar de nuevo');
+  assert.match(s.repo.leadPorTelefono(TEL).meeting_time, /2026-09-24/);
+});
+
+test('una reserva de Calendly de verdad, con otro event id, sigue funcionando', async () => {
+  const s = await conLead();
+  conReunionDelBot(s, { eventId: 'ev_bot' });
+  await s.cola.vacia();
+  s.proveedor.limpiar();
+
+  // El lead reservo OTRA consultoria por Calendly, evento distinto.
+  const r = await conCalendario(
+    s, [reservaDeCalendly({ id: 'ev_calendly_de_verdad', inicio: '2026-09-30T10:00:00-03:00' })]
+  ).revisar();
+
+  assert.equal(r.agendadas, 1);
+  assert.match(s.repo.leadPorTelefono(TEL).meeting_time, /2026-09-30/);
+});
+
+test('meeting_time invalido no rompe el vigilante', async () => {
+  const s = await conLead();
+  const l = s.repo.leadPorTelefono(TEL);
+  s.repo.actualizarFunnel(l.id, { meeting_event_id: 'ev_bot', meeting_time: 'no-es-una-fecha' });
+
+  await assert.doesNotReject(
+    conCalendario(s, [reservaDeCalendly({ id: 'ev_bot', inicio: '2026-09-23T10:00:00-03:00' })]).revisar()
+  );
 });

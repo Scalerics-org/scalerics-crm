@@ -280,6 +280,10 @@ function situaciones(calendly) {
 Retomá lo que te había contado. Sin reproches y sin recordarle que no contestó: quedó en la nada por algo, y echárselo en cara no lo trae de vuelta.
 Cerrá dejándole el link por si le sirve agendar: ${calendly}`,
 
+    retomar: `Anoche, fuera de horario, venían conversando y dejó de contestar. Ahora es la mañana siguiente: retomá donde quedó la charla.
+Abajo tenés lo último que le escribiste. No lo repitas textual: retomalo en una o dos líneas, como quien sigue una conversación que quedó por la mitad.
+Sin reproches ni "no me contestaste": de noche la gente se duerme. Si le habías ofrecido horarios, preguntale si alguno le sirve.`,
+
     recordatorio_dia_antes: `Se viene la videollamada. Recordáselo con el día y la hora, corto y cordial.
 Usá la fecha exacta que te paso abajo. NO asumas que es mañana ni inventes cuánto falta: si el mensaje sale con un día equivocado, la persona se presenta cuando no es.
 Si no puede, que avise — mejor reprogramar que faltar.`,
@@ -405,7 +409,7 @@ Pedile que te cuente por escrito de qué se trata.`,
  * ya pasó. El 2-9 la oferta salió con "Hola Juan," arriba de siete mensajes.
  */
 const ROMPEN_EL_SILENCIO = new Set([
-  'followup', 'nurture_vuelta', 'recordatorio_dia_antes', 'recordatorio_30min',
+  'followup', 'retomar', 'nurture_vuelta', 'recordatorio_dia_antes', 'recordatorio_30min',
 ]);
 
 const EN_MEDIO = `# Dónde cae este mensaje
