@@ -11702,9 +11702,6 @@ async function loadMovimientos(desde, hasta) {
   const soloLectura = _finSoloLectura();
   cuerpo.innerHTML = movs.map(m => {
     const esIngreso = m.tipo === 'ingreso';
-    const original = m.moneda === 'UYU'
-      ? ` <span class="fin-kpi-var">($ ${m.monto.toLocaleString('es-UY')} @ ${m.tipo_cambio})</span>`
-      : '';
     return `
     <div class="table-row no-cb">
       <div style="flex:0 0 92px" class="fin-kpi-var">${m.fecha}</div>
@@ -11714,7 +11711,7 @@ async function loadMovimientos(desde, hasta) {
       </div>
       <div style="flex:0 0 170px;text-align:right"
            class="${esIngreso ? 'fin-verde' : 'fin-rojo'}">
-        ${esIngreso ? '+' : '−'}${_finUsd(m.monto_usd)}${original}
+        ${esIngreso ? '+' : '−'}${_finUsd(m.monto_usd)}
       </div>
       <div style="flex:0 0 76px;text-align:right">${soloLectura ? '' : `
         <button class="btn-ghost btn-icono" onclick='abrirMovimiento(${_finAttr(m)})'
