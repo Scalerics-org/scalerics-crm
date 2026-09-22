@@ -243,6 +243,25 @@ function crearEmbudo({
     if (campos.business_name !== undefined) {
       conNorm.business_name_por_audio = porAudio ? 1 : 0;
     }
+
+    /**
+     * El modelo dijo business_type=6 ("todavia no sabe") pero el lead ya
+     * tenia uno concreto (1 a 5) guardado. Le paso a Patricia el 22-9: el
+     * formulario de Meta decia "Crear mi ecommerce" (2), y una respuesta vaga
+     * de despues ("Quisiera vender de todo un poco") hizo que el modelo
+     * volviera a elegir "todavia no sabe", pisando el dato bueno y avisandole
+     * al equipo que no se sabia que necesitaba. Un "no se" tardio no borra un
+     * "si se" anterior: se descarta ese campo y se guarda el resto igual.
+     */
+    if (conNorm.business_type === 6) {
+      const actual = repo.leadPorId(leadId);
+      if (actual?.business_type && actual.business_type !== 6) {
+        const { business_type, ...resto } = conNorm;
+        repo.actualizarFunnel(leadId, resto);
+        return;
+      }
+    }
+
     repo.actualizarFunnel(leadId, conNorm);
   }
 
