@@ -533,14 +533,30 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **22/9 — J (agente de marketing): reuniones presenciales, sin link de Meet (pedido de Juan).**
+  Rama `feat/reunion-presencial`, sale de `main`,
+  [PR #95](https://github.com/Scalerics-org/scalerics-crm/pull/95). Sin mergear ni
+  deployar. Columna nueva `presencial` en `meetings` y `reuniones_asunto` (mismo
+  motivo que `tipo_proyecto`: un solo modal de "Nueva reunión" para las dos).
+  Presencial: no se le agrega Google Meet al crear el evento (`gce.crear`,
+  `con_meet=not fila.get("presencial")`), y tampoco si se reintenta o se le
+  escribe un link a mano — se ignora, no tiene sentido un link para clickear en
+  una reunión en persona. Checkbox nuevo en el modal ("Es presencial"), que
+  esconde el campo de link. Wireado en los 4 lugares donde ya se leía
+  `tipo_proyecto` en un PATCH (reunión suelta y serie, cliente y asunto).
+  **CI (más tarde):** el primer envío rompía 3 harness de node
+  (`test_reunion_invitados_tipo_js.py` y otros dos) porque esos tests armas el
+  JS del modal juntando funciones por nombre, una por una, y
+  `_calTogglePresencial` no estaba en esa lista. Arreglado sumándola a los 3.
+
 - **22/9 — J (agente de marketing): Finanzas, las 3 opciones de IVA en un solo toggle (pedido de Juan).**
   Rama `fix/finanzas-iva-tres-opciones`, sale de `main` (ya con el #93 mergeado),
-  [PR #94](https://github.com/Scalerics-org/scalerics-crm/pull/94). El PR #93 armaba
-  esto con dos toggles anidados (Sí/No lleva IVA, y si Sí, un segundo Sí/No de "ya
-  incluido"); Juan pidió las 3 opciones juntas y directas: Sin IVA / Con IVA (se
-  suma) / IVA incluido. Es solo la pantalla (`dashboard.py`): el backend no cambia,
-  sigue mandando los mismos dos campos (`facturado`, `iva_incluido`) que ya
-  entendía `routes/finanzas.py` desde el #93.
+  [PR #94](https://github.com/Scalerics-org/scalerics-crm/pull/94). **Mergeado.**
+  El PR #93 armaba esto con dos toggles anidados (Sí/No lleva IVA, y si Sí, un
+  segundo Sí/No de "ya incluido"); Juan pidió las 3 opciones juntas y directas:
+  Sin IVA / Con IVA (se suma) / IVA incluido. Es solo la pantalla
+  (`dashboard.py`): el backend no cambia, sigue mandando los mismos dos campos
+  (`facturado`, `iva_incluido`) que ya entendía `routes/finanzas.py` desde el #93.
 
 - **22/9 — J (agente de marketing): LinkedIn, los posts a mano ya no salen sin foto (pedido de Juan).**
   Rama `fix/linkedin-siempre-foto`, [PR #88](https://github.com/Scalerics-org/scalerics-crm/pull/88).

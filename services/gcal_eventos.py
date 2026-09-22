@@ -195,9 +195,11 @@ def nuevo_id(tipo: str, rid: int) -> str:
 
 def crear(service, fila: dict, email_cliente: str | None = None, *, event_id: str) -> dict:
     """Un solo evento (recurrente si la reunion se repite): una sola invitacion.
-    Siempre con Google Meet (pedido de Juan, 15/9): el link les llega adentro de
-    la invitacion. Si la reunion ya traia otro link, ese sigue en el CRM."""
-    body = cuerpo(fila, email_cliente, con_meet=True)
+    Siempre con Google Meet (pedido de Juan, 15/9), salvo que sea presencial
+    (pedido de Juan, 22/9): ahi no tiene sentido un link para clickear, la
+    reunion es en persona. Si la reunion ya traia otro link, ese sigue en el
+    CRM."""
+    body = cuerpo(fila, email_cliente, con_meet=not fila.get("presencial"))
     body["id"] = event_id
     return service.events().insert(
         calendarId=CALENDARIO, body=body, conferenceDataVersion=1,
