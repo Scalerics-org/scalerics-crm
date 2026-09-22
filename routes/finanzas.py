@@ -21,7 +21,8 @@ from database import (actualizar_dato_balance, borrar_dato_balance,
                       listar_datos_balance)
 from services.finanzas import BALANCE_CLASES, balance_general
 from services.finanzas import (BALANCE_TIPOS, CATEGORIAS, MONEDAS, a_usd,
-                               balance, estado_de_cobro, fecha_valida,
+                               balance, desglosar_iva_incluido,
+                               estado_de_cobro, fecha_valida,
                                iva_sobre, materializar_recurrentes,
                                mes_editable, meses_con_datos, periodo_balance,
                                periodo_de, primer_movimiento,
@@ -125,18 +126,28 @@ def _validar_movimiento(data: dict) -> tuple[dict | None, str | None]:
     if not concepto:
         return None, "concepto es obligatorio"
 
-    # El IVA se SUMA al monto cargado: se escribe el líquido, no el total.
-    # Se calcula acá y se guarda, no se deriva al leer: si la tasa cambia, lo
-    # ya facturado tiene que seguir mostrando lo que se cobró. Sobre
-    # `monto_usd` porque todo el módulo cuenta en dólares.
+    # El IVA por default se SUMA al monto cargado: se escribe el líquido, no
+    # el total. Con `iva_incluido` es al revés (pedido de Juan, 22/9: "a
+    # veces me dan los precios con IVA"): el monto que se escribe YA es el
+    # total, y de ahí se separan neto e IVA hacia atrás. Se calcula acá y se
+    # guarda, no se deriva al leer: si la tasa cambia, lo ya facturado tiene
+    # que seguir mostrando lo que se cobró. Sobre `monto_usd` porque todo el
+    # módulo cuenta en dólares; `monto` (lo que se tipeó, en su moneda
+    # original) no cambia en ningún caso, es la prueba de lo que se acordó.
     facturado = 1 if data.get("facturado") else 0
-    iva_usd = iva_sobre(monto_usd) if facturado else 0.0
+    iva_incluido = 1 if (facturado and data.get("iva_incluido")) else 0
+    if iva_incluido:
+        monto_usd, iva_usd = desglosar_iva_incluido(monto_usd)
+    elif facturado:
+        iva_usd = iva_sobre(monto_usd)
+    else:
+        iva_usd = 0.0
 
     campos = {
         "tipo": tipo, "fecha": fecha, "periodo": periodo_de(fecha),
         "concepto": concepto, "categoria": categoria, "monto": monto,
         "moneda": moneda, "tipo_cambio": tipo_cambio, "monto_usd": monto_usd,
-        "facturado": facturado, "iva_usd": iva_usd,
+        "facturado": facturado, "iva_usd": iva_usd, "iva_incluido": iva_incluido,
     }
     for campo in ("client_id", "budget_id"):
         if campo in data:
