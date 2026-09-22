@@ -190,7 +190,10 @@ def main() -> int:
     args = parser.parse_args()
 
     resultado = esperar_job(args.crm, args.token, args.job_id)
-    borradores = resultado.get("borradores", [])
+    # "rerender" son borradores viejos que "Otra idea" o una correccion de
+    # Claude cambiaron en el panel y quedaron sin tarjeta: se dibujan en esta
+    # misma pasada, pero no van en el mail (ver linkedin_job_handler).
+    borradores = resultado.get("borradores", []) + resultado.get("rerender", [])
     if not borradores:
         print("el job no dejo borradores; no hay nada que renderizar")
         return 0

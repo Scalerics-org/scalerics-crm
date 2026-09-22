@@ -423,6 +423,152 @@ def test_los_borradores_que_ya_existian_se_copian_una_vez(tmp_path):
     assert (filas[nuevo]["semana"], filas[nuevo]["orden"], filas[nuevo]["tema"]) == ("2026-09-14", 1, "Tema nuevo")
 
 
+# ── otra idea y correcciones ─────────────────────────────────────────────────
+# Pedido de Juan (22/9): "si no me gustan generar otra idea o poder
+# comentarle a claude una mejora". Mismo patron que Instagram
+# (services/instagram.py): sin API paga, lo resuelve una sesion de Claude
+# Code programada por /api/linkedin-bot/.
+
+BOT = "b" * 48
+
+
+def test_otra_idea_cambia_el_tema_y_deja_pendiente_la_imagen(db):
+    bid, pid = _borrador(db, TEXTO_1, tema="Planillas que nadie mira")
+    lb.guardar_imagenes(db, {pid: base64.b64encode(PNG).decode()})
+    antes = lb.obtener(db, bid)
+    assert antes["tiene_imagen"] is True
+
+    nuevo = lb.otra_idea(db, bid, AHORA)
+    assert nuevo["tema"] != "Planillas que nadie mira" and nuevo["tema"]
+    assert nuevo["texto"] != TEXTO_1
+    assert nuevo["estado"] == "borrador" and nuevo["tiene_imagen"] is False
+    fila = _sql(db, "SELECT frase FROM linkedin_borradores WHERE id = ?", (bid,))[0]
+    assert fila["frase"], "la frase nueva queda guardada para el proximo render"
+    # El tema elegido queda marcado usado en el banco, como el resto del banco.
+    assert _sql(db, "SELECT usado_en FROM linkedin_banco WHERE tema = ? LIMIT 1",
+               (nuevo["tema"],))[0]["usado_en"]
+
+
+def test_otra_idea_no_repite_tema_de_la_misma_semana(db):
+    uno, _ = _borrador(db, "Uno " * 60, tema="Planillas que nadie mira")
+    dos, _ = _borrador(db, "Dos " * 60, tema="Stock a mano")
+    nuevo = lb.otra_idea(db, uno, AHORA)
+    assert nuevo["tema"] not in ("Planillas que nadie mira", "Stock a mano")
+
+
+def test_otra_idea_solo_desde_borrador_o_descartado(db):
+    bid, _ = _borrador(db, TEXTO_1)
+    lb.cambiar_estado(db, bid, "publicado", None, AHORA)
+    with pytest.raises(lb.NoSePuede, match="ya no se puede"):
+        lb.otra_idea(db, bid, AHORA)
+    lb.cambiar_estado(db, bid, "descartado", None, AHORA)
+    assert lb.otra_idea(db, bid, AHORA)["estado"] == "borrador"
+
+
+def test_pedir_y_resolver_una_correccion(db):
+    bid, _ = _borrador(db, TEXTO_1)
+    lb.pedir_correccion(db, bid, "Hacelo más corto", "Juan")
+    with pytest.raises(lb.NoSePuede, match="en espera"):
+        lb.pedir_correccion(db, bid, "otra cosa", "Juan")
+    [pend] = lb.pendientes(db)
+    assert pend["borrador_id"] == bid and pend["texto"] == TEXTO_1
+
+    corregido = lb.resolver_correccion(db, pend["id"], "Texto corregido y más corto.", "", "Listo, más corto.")
+    assert corregido["texto"] == "Texto corregido y más corto." and corregido["estado"] == "borrador"
+    assert corregido["tiene_imagen"] is False and corregido["editado_por"] == "Claude"
+    fila = _sql(db, "SELECT frase FROM linkedin_borradores WHERE id = ?", (bid,))[0]
+    assert fila["frase"] == "Texto corregido y más corto"
+    assert lb.pendientes(db) == []
+    [c] = lb.correcciones_de(db, [bid])[bid]
+    assert (c["estado"], c["respuesta"]) == ("hecha", "Listo, más corto.")
+    with pytest.raises(lb.NoSePuede, match="ya no está"):
+        lb.resolver_correccion(db, pend["id"], "x", "", "")
+
+
+@pytest.mark.parametrize("pedido,mensaje", [("  ", "Escribí"), ("x" * 1001, "largo")])
+def test_el_pedido_se_valida(db, pedido, mensaje):
+    bid, _ = _borrador(db, TEXTO_1)
+    with pytest.raises(lb.NoSePuede, match=mensaje):
+        lb.pedir_correccion(db, bid, pedido, "Juan")
+
+
+def test_no_se_corrige_lo_publicado(db):
+    bid, _ = _borrador(db, TEXTO_1)
+    lb.cambiar_estado(db, bid, "publicado", None, AHORA)
+    with pytest.raises(lb.NoSePuede, match="ya no se puede"):
+        lb.pedir_correccion(db, bid, "algo", "Juan")
+
+
+def test_rechazar_pide_motivo(db):
+    bid, _ = _borrador(db, TEXTO_1)
+    lb.pedir_correccion(db, bid, "hacelo en video", "Juan")
+    [pend] = lb.pendientes(db)
+    with pytest.raises(lb.NoSePuede, match="explicar"):
+        lb.rechazar_correccion(db, pend["id"], " ")
+    lb.rechazar_correccion(db, pend["id"], "Por ahora no se puede.")
+    assert lb.correcciones_de(db, [bid])[bid][0]["estado"] == "no_se_pudo"
+
+
+def test_endpoints_del_panel_para_otra_idea_y_correccion(app, jefe):
+    db_path = app.config["DB_PATH"]
+    bid, _ = _borrador(db_path, TEXTO_1)
+
+    r = jefe.post(f"/api/linkedin/borradores/{bid}/correccion", json={"pedido": "Hacelo más corto"})
+    assert r.status_code == 200 and r.get_json()["correcciones"][0]["estado"] == "pendiente"
+    d = jefe.get("/api/linkedin/borradores").get_json()
+    assert d["borradores"][0]["correcciones"][0]["pedido"] == "Hacelo más corto"
+    assert jefe.post(f"/api/linkedin/borradores/{bid}/correccion", json={"pedido": ""}).status_code == 400
+
+    r = jefe.post(f"/api/linkedin/borradores/{bid}/otra-idea")
+    assert r.status_code == 200 and r.get_json()["borrador"]["tema"]
+    assert jefe.post("/api/linkedin/borradores/999999/otra-idea").status_code == 400
+
+
+def test_el_robot_de_linkedin_necesita_su_token(app, monkeypatch):
+    cli = app.test_client()
+    monkeypatch.delenv("LINKEDIN_BOT_TOKEN", raising=False)
+    assert cli.get("/api/linkedin-bot/pendientes", headers={"x-linkedin-token": ""}).status_code == 403
+    monkeypatch.setenv("LINKEDIN_BOT_TOKEN", "corto")
+    assert cli.get("/api/linkedin-bot/pendientes", headers={"x-linkedin-token": "corto"}).status_code == 403
+    monkeypatch.setenv("LINKEDIN_BOT_TOKEN", BOT)
+    assert cli.get("/api/linkedin-bot/pendientes", headers={"x-linkedin-token": "c" * 48}).status_code == 403
+    assert cli.get("/api/linkedin-bot/pendientes", headers={"x-linkedin-token": BOT}).status_code == 200
+    # El token del robot no abre el panel.
+    assert cli.get("/api/linkedin/borradores", headers={"x-linkedin-token": BOT}).status_code in (401, 302)
+
+
+def test_flujo_de_correccion_de_linkedin_por_http(app, jefe, monkeypatch):
+    monkeypatch.setenv("LINKEDIN_BOT_TOKEN", BOT)
+    db_path = app.config["DB_PATH"]
+    bid, _ = _borrador(db_path, TEXTO_1)
+    jefe.post(f"/api/linkedin/borradores/{bid}/correccion", json={"pedido": "Hacelo más corto"})
+
+    bot = app.test_client()
+    h = {"x-linkedin-token": BOT}
+    [pend] = bot.get("/api/linkedin-bot/pendientes", headers=h).get_json()["pendientes"]
+    assert pend["borrador_id"] == bid
+
+    malo = bot.post(f"/api/linkedin-bot/correcciones/{pend['id']}/resolver", headers=h, json={"texto": "   "})
+    assert malo.status_code == 400
+    r = bot.post(f"/api/linkedin-bot/correcciones/{pend['id']}/resolver", headers=h,
+                 json={"texto": "Texto corregido.", "respuesta": "Listo"})
+    assert r.get_json() == {"ok": True, "estado": "borrador"}
+    assert bot.get("/api/linkedin-bot/pendientes", headers=h).get_json()["pendientes"] == []
+
+
+def test_las_pendientes_de_render_no_ensucian_los_borradores_del_job(app, monkeypatch):
+    db_path = app.config["DB_PATH"]
+    monkeypatch.setattr(lb, "ahora_utc", lambda: AHORA)
+    otro_bid, _ = _borrador(db_path, "Un post viejo sin imagen todavia " * 5, ahora=AHORA, tema="Stock a mano")
+    lb.otra_idea(db_path, otro_bid, AHORA)  # queda con frase y sin imagen: pendiente de render
+
+    res = linkedin_job_handler({"db_path": db_path, "lote": "lote-rerender", "ahora": "2026-09-15T08:00:00"})
+    assert len(res["borradores"]) == 2, "el job nuevo no se mezcla con lo pendiente de re-renderizar"
+    assert all("texto" in b for b in res["borradores"])
+    assert [r["id"] for r in res["rerender"]] == [_sql(db_path, "SELECT post_id FROM linkedin_borradores WHERE id = ?",
+                                                       (otro_bid,))[0]["post_id"]]
+
+
 # ── pantalla ─────────────────────────────────────────────────────────────────
 
 @pytest.mark.parametrize("nombre", sorted(FUENTES))

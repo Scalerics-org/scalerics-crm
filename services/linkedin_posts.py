@@ -219,7 +219,7 @@ def _borrador_manual(db_path: str, job_id, lote: str, texto: str,
         imagen_tipo = "screenshot"
         imagen_spec = json.dumps({"url": imagen_url})
     else:
-        frase = _recortar_frase(frase) if (frase or "").strip() else _primera_frase(texto)
+        frase = recortar_frase(frase) if (frase or "").strip() else primera_frase(texto)
         imagen_tipo = "tarjeta"
         imagen_spec = json.dumps({"frase": frase})
 
@@ -241,7 +241,7 @@ def _borrador_manual(db_path: str, job_id, lote: str, texto: str,
     }
 
 
-def _recortar_frase(frase: str) -> str:
+def recortar_frase(frase: str) -> str:
     """Recorta una frase al limite de la tarjeta, con puntos suspensivos.
 
     Antes una frase mas larga que MAX_FRASE se descartaba entera y el post
@@ -255,14 +255,14 @@ def _recortar_frase(frase: str) -> str:
     return (recorte or frase[:MAX_FRASE - 1]) + "…"
 
 
-def _primera_frase(texto: str) -> str:
+def primera_frase(texto: str) -> str:
     """La primera oracion del post, recortada si hace falta para la tarjeta.
 
     Respaldo para el post manual sin frase propia: toda tarjeta lleva texto,
     aunque la primera oracion sea mas larga que el limite.
     """
     primera = texto.strip().splitlines()[0].split(". ")[0].strip().rstrip(".")
-    return _recortar_frase(primera) if primera else ""
+    return recortar_frase(primera) if primera else ""
 
 
 def _borrador_educativo(db_path: str, job_id, lote: str, fila: dict):
@@ -318,6 +318,19 @@ def linkedin_job_handler(payload: dict) -> dict:
     ahora = datetime.fromisoformat(payload["ahora"])
     manual = (payload.get("contexto_manual") or "").strip()
 
+    # "Otra idea" y las correcciones de Claude arman contenido nuevo en el
+    # panel sin tarjeta (no hay Chromium en Fly para dibujarla ahi mismo). Se
+    # miran ANTES de armar los borradores de esta corrida: si no, los que
+    # esta misma llamada esta a punto de crear (recien insertados, todavia
+    # sin imagen) se verian a si mismos como pendientes de re-renderizar y
+    # quedarian duplicados entre "borradores" y "rerender".
+    rerender = []
+    try:
+        from services.linkedin_borradores import necesita_render
+        rerender = necesita_render(db_path)
+    except Exception as e:
+        logger.error(f"LinkedIn: no se pudo revisar que borradores faltan de imagen ({type(e).__name__}: {e})")
+
     borradores = []
     aviso_cooldown = False
 
@@ -350,4 +363,4 @@ def linkedin_job_handler(payload: dict) -> dict:
         except Exception as e:
             logger.error(f"LinkedIn: no se pudieron guardar los borradores en el panel ({type(e).__name__}: {e})")
 
-    return {"lote": lote, "borradores": borradores, "aviso_cooldown": aviso_cooldown}
+    return {"lote": lote, "borradores": borradores, "rerender": rerender, "aviso_cooldown": aviso_cooldown}
