@@ -4,6 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 
 const { horasQueDijo, eligioEsaHora, diasNumeroQueNombro } = require('../src/agenda/eleccion');
+const { instanteLocal } = require('../src/agenda/gcal');
 
 const TZ = 'America/Montevideo';
 
@@ -346,4 +347,69 @@ test('pero un día nombrado sí, por nombre o por número', () => {
   assert.equal(nombroAlgunDia('mañana a las 10'), true);
   assert.equal(nombroAlgunDia('hoy si se puede?'), true);
   assert.equal(nombroAlgunDia('11 de setiembre'), true);
+});
+
+// ── agendar dia-primero-hora-despues: elegir de una lista numerada ──────────
+
+const { elegirDiaPorCodigo, elegirHoraPorCodigo } = require('../src/agenda/eleccion');
+
+const MIE23 = instanteLocal('2026-09-23', 12, 0, TZ);
+const JUE24 = instanteLocal('2026-09-24', 12, 0, TZ);
+const DIAS = [MIE23, JUE24];
+
+test('elegirDiaPorCodigo: por numero de lista', () => {
+  assert.equal(elegirDiaPorCodigo('1', DIAS, TZ), MIE23);
+  assert.equal(elegirDiaPorCodigo('2', DIAS, TZ), JUE24);
+  assert.equal(elegirDiaPorCodigo('2.', DIAS, TZ), JUE24, 'con punto');
+  assert.equal(elegirDiaPorCodigo('opcion 2', DIAS, TZ), JUE24);
+});
+
+test('elegirDiaPorCodigo: por nombre del dia o por fecha', () => {
+  assert.equal(elegirDiaPorCodigo('miercoles', DIAS, TZ), MIE23);
+  assert.equal(elegirDiaPorCodigo('el jueves', DIAS, TZ), JUE24);
+  assert.equal(elegirDiaPorCodigo('el 24', DIAS, TZ), JUE24);
+  assert.equal(elegirDiaPorCodigo('24/9', DIAS, TZ), JUE24);
+});
+
+test('elegirDiaPorCodigo: un numero fuera de rango no elige nada', () => {
+  assert.equal(elegirDiaPorCodigo('5', DIAS, TZ), null);
+  assert.equal(elegirDiaPorCodigo('0', DIAS, TZ), null);
+});
+
+test('elegirDiaPorCodigo: un dia real que no es ninguno de los ofrecidos no elige nada', () => {
+  assert.equal(elegirDiaPorCodigo('viernes', DIAS, TZ), null);
+  assert.equal(elegirDiaPorCodigo('el 30', DIAS, TZ), null);
+});
+
+test('elegirDiaPorCodigo: entradas raras no rompen nada', () => {
+  assert.equal(elegirDiaPorCodigo('', DIAS, TZ), null);
+  assert.equal(elegirDiaPorCodigo('   ', DIAS, TZ), null);
+  assert.equal(elegirDiaPorCodigo('¿cuánto sale?', DIAS, TZ), null);
+  assert.equal(elegirDiaPorCodigo(null, DIAS, TZ), null);
+  assert.equal(elegirDiaPorCodigo(undefined, DIAS, TZ), null);
+  assert.equal(elegirDiaPorCodigo('hola', [], TZ), null, 'sin dias ofrecidos');
+});
+
+const HORAS = [12, 12.5, 13, 13.5, 14].map(
+  (h) => instanteLocal('2026-09-23', Math.floor(h), h % 1 ? 30 : 0, TZ),
+);
+
+test('elegirHoraPorCodigo: por numero de lista, tiene prioridad sobre la hora', () => {
+  // "3" es la opcion 3 (13:00), no las 3 de la mañana ni las 15.
+  assert.equal(elegirHoraPorCodigo('3', HORAS, TZ), HORAS[2]);
+  assert.equal(elegirHoraPorCodigo('1', HORAS, TZ), HORAS[0]);
+});
+
+test('elegirHoraPorCodigo: por la hora, cuando no es un indice valido', () => {
+  assert.equal(elegirHoraPorCodigo('13:00', HORAS, TZ), HORAS[2]);
+  assert.equal(elegirHoraPorCodigo('a las 13', HORAS, TZ), HORAS[2]);
+  assert.equal(elegirHoraPorCodigo('12:30', HORAS, TZ), HORAS[1]);
+});
+
+test('elegirHoraPorCodigo: fuera de rango o sin nada reconocible no elige nada', () => {
+  assert.equal(elegirHoraPorCodigo('8', HORAS, TZ), null, 'como indice, fuera de rango (solo hay 5)');
+  assert.equal(elegirHoraPorCodigo('20', HORAS, TZ), null, 'ni como indice ni como hora ofrecida');
+  assert.equal(elegirHoraPorCodigo('la primera', HORAS, TZ), null, 'eso lo entiende el modelo, no el codigo');
+  assert.equal(elegirHoraPorCodigo('', HORAS, TZ), null);
+  assert.equal(elegirHoraPorCodigo(null, HORAS, TZ), null);
 });

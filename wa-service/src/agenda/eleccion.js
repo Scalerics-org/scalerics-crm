@@ -323,7 +323,101 @@ function nombroAlgunDia(texto) {
   return RE_NOMBRA_DIA.test(t);
 }
 
+/**
+ * Cual de los DIAS ofrecidos (agendar dia-primero-hora-despues) eligio,
+ * resuelto en codigo: la lista y la eleccion las resuelve el codigo, no el
+ * modelo, para que "1" o "2" nunca dependan de una interpretacion.
+ *
+ * Tres formas, en este orden de prioridad:
+ *  1. El nombre del dia de semana ("el viernes", "miercoles").
+ *  2. Un numero de fecha que coincide con alguno de los ofrecidos ("el 24",
+ *     "24/9"). diasNumeroQueNombro ya descarta los numeros que son en
+ *     realidad una hora.
+ *  3. Un numero de lista corto ("1", "2.", "opcion 1") — SOLO si el mensaje
+ *     es basicamente ese numero y nada mas: un "12" dentro de una frase mas
+ *     larga no es "elijo la opcion 12", es otra cosa (una hora, un error).
+ *
+ * @param {string} texto
+ * @param {Date[]} diasOfrecidos en el mismo orden en que se listaron.
+ * @param {string} tz
+ * @returns {Date|null}
+ */
+function elegirDiaPorCodigo(texto, diasOfrecidos, tz = 'America/Montevideo') {
+  const t = sinAcentos(String(texto || ''));
+
+  const nombrados = diasQueNombro(t);
+  for (const d of diasOfrecidos) {
+    if (nombrados.includes(enZona(d, tz).diaSemana)) return d;
+  }
+
+  const numerados = diasNumeroQueNombro(t);
+  for (const d of diasOfrecidos) {
+    const { dia } = enZona(d, tz);
+    if (numerados.includes(Number(dia.slice(8)))) return d;
+  }
+
+  const m = t.trim().match(/^(?:opcion\s*)?(\d{1,2})\.?$/);
+  if (m) {
+    const i = parseInt(m[1], 10) - 1;
+    if (i >= 0 && i < diasOfrecidos.length) return diasOfrecidos[i];
+  }
+
+  return null;
+}
+
+/**
+ * Cual de las HORAS ofrecidas de un dia ya elegido eligio, resuelto en
+ * codigo. Mismo criterio que elegirDiaPorCodigo: numero de lista, o una hora
+ * que coincide exactamente con alguna de las ofrecidas (reloj de 24 o de 12).
+ *
+ * A diferencia del dia, ACA no hace falta mirar si el numero "podria ser
+ * otra cosa": en el paso de horas, un numero de 1 a 2 cifras que no es un
+ * indice de lista solo puede ser una hora.
+ *
+ * @param {string} texto
+ * @param {Date[]} horasOfrecidas
+ * @param {string} tz
+ * @returns {Date|null}
+ */
+function elegirHoraPorCodigo(texto, horasOfrecidas, tz = 'America/Montevideo') {
+  const t = sinAcentos(String(texto || ''));
+
+  const m = t.trim().match(/^(?:opcion\s*)?(\d{1,2})\.?$/);
+  if (m) {
+    const i = parseInt(m[1], 10) - 1;
+    if (i >= 0 && i < horasOfrecidas.length) return horasOfrecidas[i];
+  }
+
+  /**
+   * Si trae minutos explicitos ("13:30", "13.30"), tienen que coincidir.
+   *
+   * horasQueDijo descarta los minutos a proposito —"alcanza con la hora
+   * para agarrar el error que importa"— pero eso vale para elegirEsaHora,
+   * que compara contra UN solo horario ya elegido. Aca se compara contra
+   * una LISTA con paso de media hora, y con eso "13:30" matcheaba el primer
+   * horario de las 13 en punto, no el que de verdad pidio.
+   */
+  const conMinutos = t.match(/(?<![\d:.,])(\d{1,2})[:.](\d{2})(?![\d:.,])/);
+  if (conMinutos) {
+    const hh = parseInt(conMinutos[1], 10);
+    const mm = parseInt(conMinutos[2], 10);
+    for (const d of horasOfrecidas) {
+      const { hora, minuto } = enZona(d, tz);
+      if (minuto === mm && (hh === hora || (hh + 12) === hora || (hh - 12) === hora)) return d;
+    }
+    return null;
+  }
+
+  const dichas = horasQueDijo(t);
+  if (!dichas.length) return null;
+  for (const d of horasOfrecidas) {
+    const { hora } = enZona(d, tz);
+    if (dichas.some((h) => h === hora || (h + 12) === hora || (h - 12) === hora)) return d;
+  }
+  return null;
+}
+
 module.exports = {
   horasQueDijo, diasQueNombro, diasNumeroQueNombro, eligioEsaHora, revisarFranja,
-  franjaDelDia, textoDeFranja, nombroAlgunDia,
+  franjaDelDia, textoDeFranja, nombroAlgunDia, elegirDiaPorCodigo, elegirHoraPorCodigo,
 };
