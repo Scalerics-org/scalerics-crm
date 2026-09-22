@@ -48,6 +48,10 @@ def api_borradores():
         semana = lb.lunes_de(dia).isoformat()
     else:
         semana = lb.semana_actual(ahora)
+    borradores = lb.listar_semana(_db(), semana)
+    pedidos = lb.correcciones_de(_db(), [b["id"] for b in borradores])
+    for b in borradores:
+        b["correcciones"] = pedidos.get(b["id"], [])[:3]
     return jsonify({
         "ok": True,
         "semana": semana,
@@ -55,7 +59,7 @@ def api_borradores():
         "hoy": lb.hoy_montevideo(ahora).isoformat(),
         "limite": lb.LIMITE_LINKEDIN,
         "proxima_generacion": lb.proxima_generacion(ahora),
-        "borradores": lb.listar_semana(_db(), semana),
+        "borradores": borradores,
         "puede_generar": is_admin(_db(), session.get("user_id")),
     })
 
@@ -89,6 +93,27 @@ def api_estado(borrador_id):
     if not fila:
         return jsonify({"ok": False, "error": "No existe ese borrador"}), 404
     return jsonify({"ok": True, "borrador": fila})
+
+
+@linkedin_panel_bp.route("/api/linkedin/borradores/<int:borrador_id>/otra-idea", methods=["POST"])
+def api_otra_idea(borrador_id):
+    try:
+        fila = lb.otra_idea(_db(), borrador_id, _ahora())
+    except lb.NoSePuede as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    return jsonify({"ok": True, "borrador": fila})
+
+
+@linkedin_panel_bp.route("/api/linkedin/borradores/<int:borrador_id>/correccion", methods=["POST"])
+def api_pedir_correccion(borrador_id):
+    data = request.get_json(silent=True) or {}
+    quien = session.get("user_name") or session.get("user_email") or ""
+    try:
+        lb.pedir_correccion(_db(), borrador_id, data.get("pedido"), quien)
+    except lb.NoSePuede as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    return jsonify({"ok": True,
+                    "correcciones": lb.correcciones_de(_db(), [borrador_id]).get(borrador_id, [])[:3]})
 
 
 @linkedin_panel_bp.route("/api/linkedin/borradores/<int:borrador_id>/imagen")
