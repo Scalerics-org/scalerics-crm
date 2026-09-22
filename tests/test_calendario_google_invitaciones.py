@@ -205,6 +205,20 @@ def test_todo_evento_del_crm_lleva_meet_aunque_la_reunion_traiga_otro_link(app, 
     assert fila["meet_link"] == "https://zoom.us/j/123"
 
 
+def test_presencial_no_lleva_meet(app, cliente, google):
+    """Pedido de Juan (22/9): una reunion presencial no tiene link para
+    clickear, ni el de Meet ni uno que se haya escrito a mano."""
+    d = _crear(cliente, presencial=True, meet_link="https://zoom.us/j/123")
+
+    [pedido] = google.de("insert")
+    assert "conferenceData" not in pedido["body"]
+    fila = get_reunion_asunto(app.config["DB_PATH"], d["asunto_id"])
+    assert fila["presencial"] == 1
+    assert fila["meet_link"] is None or fila["meet_link"] == ""
+    assert fila["google_meet"] in (None, "")
+    assert d["meet_url"] == ""
+
+
 def test_con_cliente_el_mail_del_cliente_va_como_invitado(app, cliente, google):
     db = app.config["DB_PATH"]
     lid = insert_business(db, {"name": "Optica Luz"})

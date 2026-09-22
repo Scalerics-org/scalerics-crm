@@ -207,6 +207,51 @@ def test_el_manual_sin_frase_cae_a_la_primera_linea(db_path):
     assert b["imagen_spec"]["frase"] == "El mostrador dejó el cuaderno"
 
 
+def test_el_manual_con_primera_linea_larga_recorta_y_no_se_queda_sin_imagen(db_path):
+    """Antes, si la primera oracion pasaba de MAX_FRASE el post salia sin
+    tarjeta (imagen_tipo='ninguna'). Juan pidio que todas las publicaciones
+    de LinkedIn lleven foto (22/9): ahora se recorta en vez de descartarse."""
+    from services.linkedin_posts import MAX_FRASE
+
+    texto_largo = (
+        "Entregamos el sistema completo de facturacion y stock para una "
+        "distribuidora que hasta ahora llevaba todo en planillas sueltas y "
+        "cuadernos, y ya esta corriendo en las tres sucursales."
+    )
+    resultado = linkedin_job_handler({
+        "db_path": db_path,
+        "lote": "l-man-largo",
+        "job_id": None,
+        "ahora": AHORA.isoformat(),
+        "contexto_manual": texto_largo,
+    })
+
+    b = resultado["borradores"][0]
+    assert b["imagen_tipo"] == "tarjeta"
+    frase = b["imagen_spec"]["frase"]
+    assert frase
+    assert len(frase) <= MAX_FRASE
+    assert frase.endswith("…")
+
+
+def test_una_frase_manual_explicita_tambien_se_recorta(db_path):
+    from services.linkedin_posts import MAX_FRASE
+
+    frase_larga = "Una frase de tarjeta escrita a mano que se pasa largo a proposito del limite"
+    resultado = linkedin_job_handler({
+        "db_path": db_path,
+        "lote": "l-man-frase-larga",
+        "job_id": None,
+        "ahora": AHORA.isoformat(),
+        "contexto_manual": "Entregamos algo real esta semana.",
+        "frase": frase_larga,
+    })
+
+    b = resultado["borradores"][0]
+    assert b["imagen_tipo"] == "tarjeta"
+    assert len(b["imagen_spec"]["frase"]) <= MAX_FRASE
+
+
 def test_el_manual_no_consume_posts_del_banco(db_path):
     """Un post a mano no puede quemar uno del banco."""
     linkedin_job_handler({

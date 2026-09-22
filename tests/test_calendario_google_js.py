@@ -174,7 +174,8 @@ def test_crear_con_google_caido_avisa_arriba_del_calendario(tmp_path):
             "_calReglaDelModal", "_calPintarRepeticion", "_calTextoRepeticion", "_calPlural",
             "_calLeerMails", "_calDiaSemana", "_calAhoraMvd", "saveEvent", "_calAvisoGoogle",
             "_calTextoGoogle", "_calOpcionesTipo", "_calPintarTipo", "_calTipoDelModal",
-            "_calMezclarInvitados", "_calMailsDelLead", "_calSincronizarInvitados")] + [_DOM_MODAL]
+            "_calMezclarInvitados", "_calMailsDelLead", "_calSincronizarInvitados",
+            "_calTogglePresencial")] + [_DOM_MODAL]
     _node(partes, """
       openNewEventModal();
       _calElegirTipo('asunto');

@@ -1085,6 +1085,8 @@ body{font-family:'Inter',sans-serif;background:#0a0f1a;color:#e2e8f0;min-height:
 .cal-rep-dia input:checked+span{background:var(--azul);border-color:var(--azul);color:#fff}
 .cal-rep-dia input:focus-visible+span{outline:2px solid var(--azul-claro);outline-offset:2px}
 .cal-rep-resumen{font-size:.76rem;font-weight:600;color:var(--azul-claro);margin:0 0 12px}
+.cal-check{display:flex;align-items:center;gap:8px;font-size:.82rem;color:var(--texto);margin:4px 0 14px;cursor:pointer}
+.cal-check input{accent-color:var(--azul);width:16px;height:16px}
 .cal-modal-nota{font-size:.72rem;color:var(--texto-debil);margin:-6px 0 12px}
 .cal-serie-aviso{font-size:.74rem;color:var(--texto-tenue);background:var(--relleno);border-radius:8px;padding:8px 10px;margin-bottom:12px}
 .cal-alcance-btns{display:flex;flex-direction:column;gap:8px;margin-bottom:14px}
@@ -4224,8 +4226,11 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     <label class="modal-label">Invitados</label>
     <input type="text" id="ev-invitados" placeholder="mail@ejemplo.com, otro@ejemplo.com" autocomplete="off">
     <div class="cal-modal-nota">Separados por coma. Al crear la reunión, Google Calendar les manda la invitación por mail con el link de Google Meet (y al cliente, si tiene mail cargado).</div>
-    <label class="modal-label">Link de reunión</label>
-    <input type="url" id="ev-email" placeholder="(opcional) https://meet.google.com/..." style="margin-bottom:12px">
+    <label class="cal-check"><input type="checkbox" id="ev-presencial" onchange="_calTogglePresencial()"> Es presencial (sin link de reunión)</label>
+    <div id="ev-link-bloque">
+      <label class="modal-label">Link de reunión</label>
+      <input type="url" id="ev-email" placeholder="(opcional) https://meet.google.com/..." style="margin-bottom:12px">
+    </div>
     <label class="modal-label">Descripción</label>
     <textarea id="ev-desc" placeholder="(opcional)" style="min-height:60px"></textarea>
     <input type="hidden" id="ev-client-id" value="">
@@ -4337,17 +4342,11 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       </div>
     </div>
 
-    <label class="modal-label">¿Lleva IVA (22%)?</label>
+    <label class="modal-label">¿Lleva IVA?</label>
     <div class="fin-toggle" style="margin-bottom:6px">
-      <button class="pill" id="fin-fact-si" onclick="finSetFacturado(true)">Sí</button>
-      <button class="pill active" id="fin-fact-no" onclick="finSetFacturado(false)">No</button>
-    </div>
-    <div id="fin-incluido-row" style="display:none">
-      <label class="modal-label">¿El monto que pusiste ya incluye el IVA?</label>
-      <div class="fin-toggle" style="margin-bottom:6px">
-        <button class="pill" id="fin-incluido-si" onclick="finSetIvaIncluido(true)">Sí, ya viene con IVA</button>
-        <button class="pill active" id="fin-incluido-no" onclick="finSetIvaIncluido(false)">No, hay que sumarlo</button>
-      </div>
+      <button class="pill active" id="fin-iva-sin" onclick="finSetModoIva('sin')">Sin IVA</button>
+      <button class="pill" id="fin-iva-sobre" onclick="finSetModoIva('sobre')">Con IVA (se suma 22%)</button>
+      <button class="pill" id="fin-iva-incluido" onclick="finSetModoIva('incluido')">IVA incluido</button>
     </div>
     <div id="fin-iva-preview" class="fin-kpi-var" style="margin-bottom:12px"></div>
 
@@ -7867,6 +7866,12 @@ function _calTipoDelModal(prefijo) {
   return {tipo_proyecto: clave, tipo_otro: clave === 'otro' ? texto : ''};
 }
 
+// Presencial no lleva link (pedido de Juan, 22/9): el campo se esconde para
+// que no quede un link cargado que despues nadie clickea.
+function _calTogglePresencial() {
+  document.getElementById('ev-link-bloque').hidden = document.getElementById('ev-presencial').checked;
+}
+
 // Lo que tiene que quedar en el campo: lo que ya hay (menos los mails del lead
 // anterior), los del lead nuevo y, la primera vez, los tres fijos. Sin repetir.
 function _calMezclarInvitados(texto, mailsLead, conFijos) {
@@ -8140,6 +8145,8 @@ function openNewEventModal(opciones) {
   poner('ev-duration', '60');
   poner('ev-desc', '');
   poner('ev-email', '');
+  document.getElementById('ev-presencial').checked = false;
+  _calTogglePresencial();
   poner('ev-invitados', '');
   poner('ev-rep-freq', 'no');
   poner('ev-rep-fin', 'nunca');
@@ -8188,7 +8195,8 @@ async function saveEvent() {
   const time = document.getElementById('ev-time').value;
   const duration = parseInt(document.getElementById('ev-duration').value) || 60;
   const desc = document.getElementById('ev-desc').value.trim();
-  const meet_link = document.getElementById('ev-email').value.trim();
+  const presencial = document.getElementById('ev-presencial').checked;
+  const meet_link = presencial ? '' : document.getElementById('ev-email').value.trim();
   const clientId = document.getElementById('ev-client-id').value.trim() || null;
   const err = document.getElementById('ev-error');
   const falla = texto => { err.textContent = texto; err.style.display = 'block'; };
@@ -8204,7 +8212,7 @@ async function saveEvent() {
 
   const tipoProy = _calTipoDelModal('ev');
   const cuerpo = {tipo: tipo, title: title, date: date, time: time, duration_min: duration,
-                  description: desc, meet_link: meet_link,
+                  description: desc, meet_link: meet_link, presencial: presencial,
                   client_id: tipo === 'cliente' ? clientId : null,
                   invitados: mails.lista, repeticion: regla,
                   tipo_proyecto: tipoProy.tipo_proyecto, tipo_otro: tipoProy.tipo_otro};
@@ -11079,42 +11087,31 @@ async function borrarPendiente(id) {
   loadFinanzas();
 }
 
-// El IVA se factura o no se factura: no hay medias tintas por movimiento. Un
-// gasto que pago alguien del equipo de su bolsillo no descuenta nada.
-let _finFacturado = false;
-// Por default el monto que se escribe es el LIQUIDO y el IVA se SUMA encima.
-// Pedido de Juan (22/9): "a veces me dan los precios con IVA" — para eso es
-// esta bandera, que da vuelta el sentido del desglose para ese movimiento.
-let _finIvaIncluido = false;
+// Tres opciones, no dos toggles anidados (pedido de Juan, 22/9): sin IVA,
+// con IVA que se SUMA al monto (el default de siempre), o con IVA ya
+// incluido en el monto (a veces el precio viene asi de afuera).
+let _finModoIva = 'sin';   // 'sin' | 'sobre' | 'incluido'
 
-function finSetFacturado(valor) {
-  _finFacturado = !!valor;
-  document.getElementById('fin-fact-si').classList.toggle('active', _finFacturado);
-  document.getElementById('fin-fact-no').classList.toggle('active', !_finFacturado);
-  document.getElementById('fin-incluido-row').style.display = _finFacturado ? '' : 'none';
-  if (!_finFacturado) finSetIvaIncluido(false);
-  _finPreviewIva();
-}
-
-function finSetIvaIncluido(valor) {
-  _finIvaIncluido = !!valor;
-  document.getElementById('fin-incluido-si').classList.toggle('active', _finIvaIncluido);
-  document.getElementById('fin-incluido-no').classList.toggle('active', !_finIvaIncluido);
+function finSetModoIva(modo) {
+  _finModoIva = modo;
+  document.getElementById('fin-iva-sin').classList.toggle('active', modo === 'sin');
+  document.getElementById('fin-iva-sobre').classList.toggle('active', modo === 'sobre');
+  document.getElementById('fin-iva-incluido').classList.toggle('active', modo === 'incluido');
   _finPreviewIva();
 }
 
 // El desglose se ve ANTES de guardar, igual que el monto en dolares.
 function _finPreviewIva() {
   const caja = document.getElementById('fin-iva-preview');
-  if (!_finFacturado) { caja.textContent = 'Sin IVA: no suma ni descuenta nada.'; return; }
+  if (_finModoIva === 'sin') { caja.textContent = 'Sin IVA: no suma ni descuenta nada.'; return; }
   const monto = parseFloat(document.getElementById('fin-mov-monto').value);
   if (!monto || monto <= 0) {
-    caja.textContent = _finIvaIncluido ? 'El IVA (22%) se separa del monto.' : 'El IVA (22%) se suma al monto.';
+    caja.textContent = _finModoIva === 'incluido' ? 'El IVA (22%) se separa del monto.' : 'El IVA (22%) se suma al monto.';
     return;
   }
   const usd = _finMontoUsd();
   if (!usd) { caja.textContent = 'Poné el tipo de cambio para ver el desglose.'; return; }
-  if (_finIvaIncluido) {
+  if (_finModoIva === 'incluido') {
     // El monto que se escribe YA es el total, con el IVA adentro: se separa
     // hacia atrás en vez de sumarse. 122 -> 100 + 22, no 122 + 26,84.
     const neto = usd / 1.22;
@@ -11634,8 +11631,7 @@ async function abrirMovimiento(prefill) {
   document.getElementById('fin-modal-error').textContent = '';
 
   finSetTipo(p.tipo || 'egreso');
-  finSetFacturado(!!p.facturado);
-  finSetIvaIncluido(!!p.iva_incluido);
+  finSetModoIva(!p.facturado ? 'sin' : (p.iva_incluido ? 'incluido' : 'sobre'));
   document.getElementById('fin-mov-total').value = '';
   document.getElementById('fin-mov-vence').value = '';
   finSetParcial(false);
@@ -11693,8 +11689,8 @@ async function guardarMovimiento() {
       ? parseFloat(document.getElementById('fin-mov-tc').value) : null,
     client_id: document.getElementById('fin-mov-cliente').value || null,
     budget_id: document.getElementById('fin-mov-budget').value || null,
-    facturado: _finFacturado,
-    iva_incluido: _finIvaIncluido,
+    facturado: _finModoIva !== 'sin',
+    iva_incluido: _finModoIva === 'incluido',
     notas: document.getElementById('fin-mov-notas').value,
   };
   if (_finParcial && _finTipo === 'ingreso') {

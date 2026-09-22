@@ -541,6 +541,45 @@ leads de Meta se renombró a **D** para deshacer el empate.
   **PR #90** (`feat/wa-dia-primero` → `main`), sin mergear. `npm test`: 618 pass,
   0 fail, 1 todo. Mutation testing sobre las guardias nuevas, todas detectadas.
 
+- **22/9 — J (agente de marketing): reuniones presenciales, sin link de Meet (pedido de Juan).**
+  Rama `feat/reunion-presencial`, sale de `main`,
+  [PR #95](https://github.com/Scalerics-org/scalerics-crm/pull/95). Sin mergear ni
+  deployar. Columna nueva `presencial` en `meetings` y `reuniones_asunto` (mismo
+  motivo que `tipo_proyecto`: un solo modal de "Nueva reunión" para las dos).
+  Presencial: no se le agrega Google Meet al crear el evento (`gce.crear`,
+  `con_meet=not fila.get("presencial")`), y tampoco si se reintenta o se le
+  escribe un link a mano — se ignora, no tiene sentido un link para clickear en
+  una reunión en persona. Checkbox nuevo en el modal ("Es presencial"), que
+  esconde el campo de link. Wireado en los 4 lugares donde ya se leía
+  `tipo_proyecto` en un PATCH (reunión suelta y serie, cliente y asunto).
+  **CI (más tarde):** el primer envío rompía 3 harness de node
+  (`test_reunion_invitados_tipo_js.py` y otros dos) porque esos tests armas el
+  JS del modal juntando funciones por nombre, una por una, y
+  `_calTogglePresencial` no estaba en esa lista. Arreglado sumándola a los 3.
+
+- **22/9 — J (agente de marketing): Finanzas, las 3 opciones de IVA en un solo toggle (pedido de Juan).**
+  Rama `fix/finanzas-iva-tres-opciones`, sale de `main` (ya con el #93 mergeado),
+  [PR #94](https://github.com/Scalerics-org/scalerics-crm/pull/94). **Mergeado.**
+  El PR #93 armaba esto con dos toggles anidados (Sí/No lleva IVA, y si Sí, un
+  segundo Sí/No de "ya incluido"); Juan pidió las 3 opciones juntas y directas:
+  Sin IVA / Con IVA (se suma) / IVA incluido. Es solo la pantalla
+  (`dashboard.py`): el backend no cambia, sigue mandando los mismos dos campos
+  (`facturado`, `iva_incluido`) que ya entendía `routes/finanzas.py` desde el #93.
+
+- **22/9 — J (agente de marketing): LinkedIn, los posts a mano ya no salen sin foto (pedido de Juan).**
+  Rama `fix/linkedin-siempre-foto`, [PR #88](https://github.com/Scalerics-org/scalerics-crm/pull/88).
+  **Mergeado.** Solo `services/linkedin_posts.py` y su test.
+  Los educativos del banco (4 por semana, el cron mar/vie) siempre tuvieron
+  tarjeta. El hueco era el post armado a mano con `contexto_manual` sin URL y
+  sin frase propia: si la primera oración pasaba los 70 caracteres que entran
+  en la tarjeta, se descartaba entera y el post quedaba con
+  `imagen_tipo='ninguna'`. Ahora la frase (la escrita a mano o la sacada de la
+  primera oración) se recorta con puntos suspensivos en vez de descartarse.
+  Sin tocar `scripts/render_linkedin.py`: si el render de una tarjeta falla en
+  el runner (screenshot que no carga, navegador que no arranca), ese caso
+  sigue saliendo sin imagen a propósito ("un mail sin foto sirve, uno que no
+  llega no"); lo que se cerró es el hueco de diseño, no el de infraestructura.
+
 - **22/9 — J (agente de marketing): Finanzas, opción "el monto ya incluye el IVA" (pedido de Juan).**
   Rama `feat/finanzas-iva-incluido`, sale de `main`,
   [PR #93](https://github.com/Scalerics-org/scalerics-crm/pull/93). Sin mergear ni
