@@ -4337,17 +4337,11 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       </div>
     </div>
 
-    <label class="modal-label">¿Lleva IVA (22%)?</label>
+    <label class="modal-label">¿Lleva IVA?</label>
     <div class="fin-toggle" style="margin-bottom:6px">
-      <button class="pill" id="fin-fact-si" onclick="finSetFacturado(true)">Sí</button>
-      <button class="pill active" id="fin-fact-no" onclick="finSetFacturado(false)">No</button>
-    </div>
-    <div id="fin-incluido-row" style="display:none">
-      <label class="modal-label">¿El monto que pusiste ya incluye el IVA?</label>
-      <div class="fin-toggle" style="margin-bottom:6px">
-        <button class="pill" id="fin-incluido-si" onclick="finSetIvaIncluido(true)">Sí, ya viene con IVA</button>
-        <button class="pill active" id="fin-incluido-no" onclick="finSetIvaIncluido(false)">No, hay que sumarlo</button>
-      </div>
+      <button class="pill active" id="fin-iva-sin" onclick="finSetModoIva('sin')">Sin IVA</button>
+      <button class="pill" id="fin-iva-sobre" onclick="finSetModoIva('sobre')">Con IVA (se suma 22%)</button>
+      <button class="pill" id="fin-iva-incluido" onclick="finSetModoIva('incluido')">IVA incluido</button>
     </div>
     <div id="fin-iva-preview" class="fin-kpi-var" style="margin-bottom:12px"></div>
 
@@ -11079,42 +11073,31 @@ async function borrarPendiente(id) {
   loadFinanzas();
 }
 
-// El IVA se factura o no se factura: no hay medias tintas por movimiento. Un
-// gasto que pago alguien del equipo de su bolsillo no descuenta nada.
-let _finFacturado = false;
-// Por default el monto que se escribe es el LIQUIDO y el IVA se SUMA encima.
-// Pedido de Juan (22/9): "a veces me dan los precios con IVA" — para eso es
-// esta bandera, que da vuelta el sentido del desglose para ese movimiento.
-let _finIvaIncluido = false;
+// Tres opciones, no dos toggles anidados (pedido de Juan, 22/9): sin IVA,
+// con IVA que se SUMA al monto (el default de siempre), o con IVA ya
+// incluido en el monto (a veces el precio viene asi de afuera).
+let _finModoIva = 'sin';   // 'sin' | 'sobre' | 'incluido'
 
-function finSetFacturado(valor) {
-  _finFacturado = !!valor;
-  document.getElementById('fin-fact-si').classList.toggle('active', _finFacturado);
-  document.getElementById('fin-fact-no').classList.toggle('active', !_finFacturado);
-  document.getElementById('fin-incluido-row').style.display = _finFacturado ? '' : 'none';
-  if (!_finFacturado) finSetIvaIncluido(false);
-  _finPreviewIva();
-}
-
-function finSetIvaIncluido(valor) {
-  _finIvaIncluido = !!valor;
-  document.getElementById('fin-incluido-si').classList.toggle('active', _finIvaIncluido);
-  document.getElementById('fin-incluido-no').classList.toggle('active', !_finIvaIncluido);
+function finSetModoIva(modo) {
+  _finModoIva = modo;
+  document.getElementById('fin-iva-sin').classList.toggle('active', modo === 'sin');
+  document.getElementById('fin-iva-sobre').classList.toggle('active', modo === 'sobre');
+  document.getElementById('fin-iva-incluido').classList.toggle('active', modo === 'incluido');
   _finPreviewIva();
 }
 
 // El desglose se ve ANTES de guardar, igual que el monto en dolares.
 function _finPreviewIva() {
   const caja = document.getElementById('fin-iva-preview');
-  if (!_finFacturado) { caja.textContent = 'Sin IVA: no suma ni descuenta nada.'; return; }
+  if (_finModoIva === 'sin') { caja.textContent = 'Sin IVA: no suma ni descuenta nada.'; return; }
   const monto = parseFloat(document.getElementById('fin-mov-monto').value);
   if (!monto || monto <= 0) {
-    caja.textContent = _finIvaIncluido ? 'El IVA (22%) se separa del monto.' : 'El IVA (22%) se suma al monto.';
+    caja.textContent = _finModoIva === 'incluido' ? 'El IVA (22%) se separa del monto.' : 'El IVA (22%) se suma al monto.';
     return;
   }
   const usd = _finMontoUsd();
   if (!usd) { caja.textContent = 'Poné el tipo de cambio para ver el desglose.'; return; }
-  if (_finIvaIncluido) {
+  if (_finModoIva === 'incluido') {
     // El monto que se escribe YA es el total, con el IVA adentro: se separa
     // hacia atrás en vez de sumarse. 122 -> 100 + 22, no 122 + 26,84.
     const neto = usd / 1.22;
@@ -11634,8 +11617,7 @@ async function abrirMovimiento(prefill) {
   document.getElementById('fin-modal-error').textContent = '';
 
   finSetTipo(p.tipo || 'egreso');
-  finSetFacturado(!!p.facturado);
-  finSetIvaIncluido(!!p.iva_incluido);
+  finSetModoIva(!p.facturado ? 'sin' : (p.iva_incluido ? 'incluido' : 'sobre'));
   document.getElementById('fin-mov-total').value = '';
   document.getElementById('fin-mov-vence').value = '';
   finSetParcial(false);
@@ -11693,8 +11675,8 @@ async function guardarMovimiento() {
       ? parseFloat(document.getElementById('fin-mov-tc').value) : null,
     client_id: document.getElementById('fin-mov-cliente').value || null,
     budget_id: document.getElementById('fin-mov-budget').value || null,
-    facturado: _finFacturado,
-    iva_incluido: _finIvaIncluido,
+    facturado: _finModoIva !== 'sin',
+    iva_incluido: _finModoIva === 'incluido',
     notas: document.getElementById('fin-mov-notas').value,
   };
   if (_finParcial && _finTipo === 'ingreso') {

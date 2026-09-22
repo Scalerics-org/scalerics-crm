@@ -533,6 +533,15 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **22/9 — J (agente de marketing): Finanzas, las 3 opciones de IVA en un solo toggle (pedido de Juan).**
+  Rama `fix/finanzas-iva-tres-opciones`, sale de `main` (ya con el #93 mergeado),
+  [PR #94](https://github.com/Scalerics-org/scalerics-crm/pull/94). El PR #93 armaba
+  esto con dos toggles anidados (Sí/No lleva IVA, y si Sí, un segundo Sí/No de "ya
+  incluido"); Juan pidió las 3 opciones juntas y directas: Sin IVA / Con IVA (se
+  suma) / IVA incluido. Es solo la pantalla (`dashboard.py`): el backend no cambia,
+  sigue mandando los mismos dos campos (`facturado`, `iva_incluido`) que ya
+  entendía `routes/finanzas.py` desde el #93.
+
 - **22/9 — J (agente de marketing): Finanzas, opción "el monto ya incluye el IVA" (pedido de Juan).**
   Rama `feat/finanzas-iva-incluido`, sale de `main`,
   [PR #93](https://github.com/Scalerics-org/scalerics-crm/pull/93). Sin mergear ni
