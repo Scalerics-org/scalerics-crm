@@ -48,10 +48,11 @@ def iva_sobre(neto) -> float:
     """El IVA que se SUMA a ese monto. 100 -> 22, y el total es 122.
 
     El monto que se carga es el LIQUIDO, no el total: es como se acuerda un
-    precio y como se cargan los gastos acá. La primera version hacia lo
-    contrario —tomaba el monto como total y sacaba el impuesto de adentro, 100
-    -> 81,97 + 18,03— y estaba mal: nadie escribe el numero con el IVA ya
-    metido.
+    precio y como se cargan los gastos acá, por default. La primera version
+    hacia lo contrario —tomaba el monto como total y sacaba el impuesto de
+    adentro, 100 -> 81,97 + 18,03— y estaba mal como comportamiento UNICO:
+    nadie escribe el numero con el IVA ya metido, salvo cuando sí (ver
+    `desglosar_iva_incluido`, para cuando el precio viene asi de afuera).
 
     Se llama `iva_sobre` y no `desglosar_iva` a proposito: la funcion vieja
     devolvia una tupla con el sentido invertido, y un renombre hace que
@@ -59,6 +60,22 @@ def iva_sobre(neto) -> float:
     seguir calculando mal en silencio.
     """
     return float(neto or 0) * IVA_TASA
+
+
+def desglosar_iva_incluido(total) -> tuple[float, float]:
+    """Separa (neto, iva) de un monto que YA INCLUYE el IVA. 122 -> (100, 22).
+
+    Pedido de Juan (22/9): a veces el precio se lo dan con el IVA adentro
+    ("son 4.880 pesos con IVA"), y ahi cargar ese numero como liquido y
+    sumarle otro 22% encima estaria mal. Es la contracara de `iva_sobre()`,
+    para el otro caso: el monto que se escribe en el formulario no cambia
+    (se guarda tal cual, es prueba de lo que dijeron), lo que cambia es como
+    se separa entre `monto_usd` (neto) e `iva_usd`, para que sigan sumando
+    el mismo total.
+    """
+    total = float(total or 0)
+    neto = _r2(total / (1 + IVA_TASA))
+    return neto, _r2(total - neto)
 
 
 def a_usd(monto: float, moneda: str, tipo_cambio: float | None) -> float:

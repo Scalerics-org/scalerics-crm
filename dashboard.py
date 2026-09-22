@@ -4342,6 +4342,13 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       <button class="pill" id="fin-fact-si" onclick="finSetFacturado(true)">Sí</button>
       <button class="pill active" id="fin-fact-no" onclick="finSetFacturado(false)">No</button>
     </div>
+    <div id="fin-incluido-row" style="display:none">
+      <label class="modal-label">¿El monto que pusiste ya incluye el IVA?</label>
+      <div class="fin-toggle" style="margin-bottom:6px">
+        <button class="pill" id="fin-incluido-si" onclick="finSetIvaIncluido(true)">Sí, ya viene con IVA</button>
+        <button class="pill active" id="fin-incluido-no" onclick="finSetIvaIncluido(false)">No, hay que sumarlo</button>
+      </div>
+    </div>
     <div id="fin-iva-preview" class="fin-kpi-var" style="margin-bottom:12px"></div>
 
     <label class="modal-label">Cliente (opcional)</label>
@@ -11075,26 +11082,48 @@ async function borrarPendiente(id) {
 // El IVA se factura o no se factura: no hay medias tintas por movimiento. Un
 // gasto que pago alguien del equipo de su bolsillo no descuenta nada.
 let _finFacturado = false;
+// Por default el monto que se escribe es el LIQUIDO y el IVA se SUMA encima.
+// Pedido de Juan (22/9): "a veces me dan los precios con IVA" — para eso es
+// esta bandera, que da vuelta el sentido del desglose para ese movimiento.
+let _finIvaIncluido = false;
 
 function finSetFacturado(valor) {
   _finFacturado = !!valor;
   document.getElementById('fin-fact-si').classList.toggle('active', _finFacturado);
   document.getElementById('fin-fact-no').classList.toggle('active', !_finFacturado);
+  document.getElementById('fin-incluido-row').style.display = _finFacturado ? '' : 'none';
+  if (!_finFacturado) finSetIvaIncluido(false);
   _finPreviewIva();
 }
 
-// El desglose se ve ANTES de guardar, igual que el monto en dolares: el numero
-// que se carga es el TOTAL y de ahi salen el neto y el impuesto hacia atras.
+function finSetIvaIncluido(valor) {
+  _finIvaIncluido = !!valor;
+  document.getElementById('fin-incluido-si').classList.toggle('active', _finIvaIncluido);
+  document.getElementById('fin-incluido-no').classList.toggle('active', !_finIvaIncluido);
+  _finPreviewIva();
+}
+
+// El desglose se ve ANTES de guardar, igual que el monto en dolares.
 function _finPreviewIva() {
   const caja = document.getElementById('fin-iva-preview');
   if (!_finFacturado) { caja.textContent = 'Sin IVA: no suma ni descuenta nada.'; return; }
   const monto = parseFloat(document.getElementById('fin-mov-monto').value);
-  if (!monto || monto <= 0) { caja.textContent = 'El IVA (22%) se suma al monto.'; return; }
+  if (!monto || monto <= 0) {
+    caja.textContent = _finIvaIncluido ? 'El IVA (22%) se separa del monto.' : 'El IVA (22%) se suma al monto.';
+    return;
+  }
   const usd = _finMontoUsd();
   if (!usd) { caja.textContent = 'Poné el tipo de cambio para ver el desglose.'; return; }
+  if (_finIvaIncluido) {
+    // El monto que se escribe YA es el total, con el IVA adentro: se separa
+    // hacia atrás en vez de sumarse. 122 -> 100 + 22, no 122 + 26,84.
+    const neto = usd / 1.22;
+    const iva = usd - neto;
+    caja.textContent = 'Total con IVA ' + _finUsd(usd) + '  =  Líquido ' + _finUsd(neto)
+      + '  +  IVA (22%) ' + _finUsd(iva);
+    return;
+  }
   // El monto que se escribe es el LIQUIDO y el impuesto se SUMA: 100 -> 122.
-  // Antes lo tomaba como total y sacaba el IVA de adentro (100 -> 81,97 +
-  // 18,03), que no es como se carga un gasto ni como se acuerda un precio.
   const iva = usd * 0.22;
   caja.textContent = 'Líquido ' + _finUsd(usd) + '  +  IVA (22%) ' + _finUsd(iva)
     + '  =  ' + _finUsd(usd + iva);
@@ -11606,6 +11635,7 @@ async function abrirMovimiento(prefill) {
 
   finSetTipo(p.tipo || 'egreso');
   finSetFacturado(!!p.facturado);
+  finSetIvaIncluido(!!p.iva_incluido);
   document.getElementById('fin-mov-total').value = '';
   document.getElementById('fin-mov-vence').value = '';
   finSetParcial(false);
@@ -11664,6 +11694,7 @@ async function guardarMovimiento() {
     client_id: document.getElementById('fin-mov-cliente').value || null,
     budget_id: document.getElementById('fin-mov-budget').value || null,
     facturado: _finFacturado,
+    iva_incluido: _finIvaIncluido,
     notas: document.getElementById('fin-mov-notas').value,
   };
   if (_finParcial && _finTipo === 'ingreso') {

@@ -20,7 +20,7 @@ saldo a pagar no se arrastra: se paga y queda en cero.
 import pytest
 
 from database import crear_movimiento, get_movimiento, init_db
-from services.finanzas import IVA_TASA, iva_sobre, resumen_iva
+from services.finanzas import IVA_TASA, desglosar_iva_incluido, iva_sobre, resumen_iva
 
 
 @pytest.fixture
@@ -61,6 +61,45 @@ def test_la_tasa_es_la_basica_de_uruguay(db):
 def test_un_monto_vacio_no_explota(db):
     assert iva_sobre(0) == 0
     assert iva_sobre(None) == 0
+
+
+# ── cuando el precio ya viene con el IVA adentro (pedido de Juan, 22/9) ─────
+
+def test_desglosar_iva_incluido_separa_neto_e_iva_de_un_total(db):
+    """122 con IVA incluido son 100 de neto más 22 de IVA, no al revés."""
+    assert desglosar_iva_incluido(122) == (100.0, 22.0)
+
+
+@pytest.mark.parametrize("total,neto,iva", [
+    (122, 100.0, 22.0), (610, 500.0, 110.0), (1220, 1000.0, 220.0),
+])
+def test_desglosar_iva_incluido_reconstruye_el_total_exacto(db, total, neto, iva):
+    """Que neto + iva vuelva a dar el total es lo que garantiza que el saldo
+    de IVA no se corra ni un centavo por redondeo."""
+    n, i = desglosar_iva_incluido(total)
+    assert (n, i) == (neto, iva)
+    assert round(n + i, 2) == total
+
+
+def test_desglosar_iva_incluido_con_vacio_no_explota(db):
+    assert desglosar_iva_incluido(0) == (0.0, 0.0)
+    assert desglosar_iva_incluido(None) == (0.0, 0.0)
+
+
+def test_un_movimiento_con_iva_incluido_guarda_el_neto_separado(db):
+    """El monto que se tipea (122, "con IVA") no cambia: lo que se separa es
+    monto_usd (neto) e iva_usd, para que sigan sumando lo mismo que antes."""
+    mid = crear_movimiento(
+        db, tipo="ingreso", fecha="2026-09-15", periodo="2026-09",
+        concepto="Cobro con IVA incluido", categoria="desarrollo_web",
+        monto=122, moneda="USD", monto_usd=100.0, facturado=1, iva_usd=22.0,
+        iva_incluido=1)
+
+    mov = get_movimiento(db, mid)
+    assert mov["monto"] == 122, "lo que se tipeó no se toca"
+    assert mov["monto_usd"] == 100.0 and mov["iva_usd"] == 22.0
+    assert mov["iva_incluido"] == 1
+    assert mov["monto_usd"] + mov["iva_usd"] == 122.0
 
 
 def test_un_movimiento_sin_factura_no_tiene_iva(db):

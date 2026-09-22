@@ -1005,6 +1005,13 @@ def init_db(db_path: str) -> None:
         # se cobro. La pestania arranca vacia y se llena con lo que se cargue.
         _add_column(conn, "finanzas_movimientos", "facturado", "INTEGER NOT NULL DEFAULT 0")
         _add_column(conn, "finanzas_movimientos", "iva_usd", "REAL NOT NULL DEFAULT 0")
+        # Si el monto que se cargó YA incluía el IVA (pedido de Juan, 22/9: "a
+        # veces me dan los precios con IVA"). `monto_usd` e `iva_usd` quedan
+        # iguales en los dos casos (siempre neto + su 22%), así que esto no se
+        # puede reconstruir a partir de ellos: hace falta guardarlo aparte
+        # para que editar el movimiento no vuelva a sumar el IVA encima de un
+        # monto que ya lo tenía adentro.
+        _add_column(conn, "finanzas_movimientos", "iva_incluido", "INTEGER NOT NULL DEFAULT 0")
 
         # Lo que falta cobrar. El caso real es el 50% final de un desarrollo:
         # se cobra la mitad al empezar y el resto queda pendiente con una fecha
@@ -4216,7 +4223,7 @@ _MOVIMIENTO_COLUMNS = {
     "tipo", "fecha", "periodo", "concepto", "categoria", "monto", "moneda",
     "tipo_cambio", "monto_usd", "client_id", "budget_id", "recurrente_id",
     "anulado", "notas", "created_by_id", "created_by_name",
-    "facturado", "iva_usd",
+    "facturado", "iva_usd", "iva_incluido",
 }
 
 _RECURRENTE_COLUMNS = {
