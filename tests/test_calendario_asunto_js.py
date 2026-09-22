@@ -268,7 +268,7 @@ _MODAL = ([_linea("function closeNewEventModal("),
     "_calPlural", "_calLeerMails", "_calDiaSemana", "_calAhoraMvd", "saveEvent",
     "_calAvisoGoogle", "_calTextoGoogle", "_calOpcionesTipo", "_calPintarTipo",
     "_calTipoDelModal", "_calMezclarInvitados", "_calMailsDelLead",
-    "_calSincronizarInvitados",
+    "_calSincronizarInvitados", "_calTogglePresencial",
 ))
 
 
