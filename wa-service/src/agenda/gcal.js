@@ -318,17 +318,18 @@ function crearAgenda({ cfg, logger = null, fetch: _fetch = globalThis.fetch } = 
     },
 
     /**
-     * Lo libre de UN dia concreto, en tramos.
+     * Los huecos individuales de UN dia, uno por turno (no en tramos).
      *
-     * horariosDisponibles busca los proximos dias con hueco; esto contesta por
-     * el dia que el lead nombro, este cerca o lejos. El 3-9 pregunto "¿que hora
-     * tenes libre el viernes 18?" dos veces y las dos recibio la lista de los
-     * dias cercanos: el bot no tenia forma de mirar un dia puntual.
+     * Paso 2 de agendar dia-primero-hora-despues: una vez elegido el dia, se
+     * le numeran las horas sueltas ("1. 12:00, 2. 12:30...") para que el
+     * codigo pueda leer un numero o una hora sin ambiguedad. `tramosDelDia`
+     * junta esto en rangos para describirselo en prosa; esto da cada turno
+     * agendable, que es lo que hace falta para numerarlos.
      *
-     * @returns {Promise<{desde: Date, hasta: Date}[]>} vacio si ese dia no se
-     *   atiende, ya paso, o esta lleno.
+     * @returns {Promise<Date[]>} vacio si ese dia no se atiende, ya paso, o
+     *   esta lleno.
      */
-    async tramosDelDia(fecha, ahora = new Date()) {
+    async slotsDelDia(fecha, ahora = new Date()) {
       if (!activo) return [];
 
       const { franjaDelDia } = require('./eleccion');
@@ -358,7 +359,79 @@ function crearAgenda({ cfg, logger = null, fetch: _fetch = globalThis.fetch } = 
         const fin = new Date(inicio.getTime() + duracion * 60_000);
         if (!ocupados.some((o) => inicio < o.hasta && fin > o.desde)) libres.push(inicio);
       }
-      return enTramos(libres, cfg.AGENDA_PASO_MIN, duracion);
+      return libres;
+    },
+
+    /**
+     * Lo libre de UN dia concreto, en tramos.
+     *
+     * horariosDisponibles busca los proximos dias con hueco; esto contesta por
+     * el dia que el lead nombro, este cerca o lejos. El 3-9 pregunto "¿que hora
+     * tenes libre el viernes 18?" dos veces y las dos recibio la lista de los
+     * dias cercanos: el bot no tenia forma de mirar un dia puntual.
+     *
+     * @returns {Promise<{desde: Date, hasta: Date}[]>} vacio si ese dia no se
+     *   atiende, ya paso, o esta lleno.
+     */
+    async tramosDelDia(fecha, ahora = new Date()) {
+      const libres = await this.slotsDelDia(fecha, ahora);
+      return enTramos(libres, cfg.AGENDA_PASO_MIN, cfg.AGENDA_DURACION_MIN);
+    },
+
+    /**
+     * Los proximos dias que tienen al menos un hueco, hasta AGENDA_MAX_DIAS.
+     *
+     * Paso 1 de agendar dia-primero-hora-despues: antes de mostrar horas, el
+     * lead elige el DIA de una lista numerada. `horariosDisponibles` mezcla
+     * sugerencias de varios dias en una sola lista de horarios —sirve para el
+     * flujo viejo, que muestra todo junto— pero para listar dias hace falta
+     * saber, dia por dia, si tiene algo libre, sin mezclar las horas.
+     *
+     * @returns {Promise<{dia: string, inicio: Date}[]>} un representante (el
+     *   primer hueco) por dia, en orden. `inicio` sirve para tramosDelDia /
+     *   slotsDelDia del paso siguiente y para armar la fecha en palabras.
+     */
+    async diasConHueco(ahora = new Date()) {
+      if (!activo) return [];
+
+      const { franjaDelDia } = require('./eleccion');
+      const unica = { desde: cfg.AGENDA_DESDE, hasta: cfg.AGENDA_HASTA, dias: cfg.AGENDA_DIAS };
+      const piso = new Date(ahora.getTime() + cfg.AGENDA_AVISO_MIN_HORAS * 3600_000);
+      const techo = new Date(ahora.getTime() + cfg.AGENDA_DIAS_ADELANTE * 86400_000);
+
+      let ocupados;
+      try {
+        ocupados = await ocupado(piso, techo);
+      } catch (e) {
+        logger?.warn({ err: String(e.message || e) }, 'no se pudo leer la agenda');
+        return [];
+      }
+
+      const duracion = cfg.AGENDA_DURACION_MIN;
+      const libre = (inicio) => {
+        const fin = new Date(inicio.getTime() + duracion * 60_000);
+        return !ocupados.some((o) => inicio < o.hasta && fin > o.desde);
+      };
+
+      const dias = [];
+      for (let d = 0; d <= cfg.AGENDA_DIAS_ADELANTE; d++) {
+        if (dias.length >= cfg.AGENDA_MAX_DIAS) break;
+
+        const ref = new Date(ahora.getTime() + d * 86400_000);
+        const { dia } = enZona(ref, tz);
+        const { diaSemana } = enZona(instanteLocal(dia, 12, 0, tz), tz);
+        const franja = franjaDelDia(diaSemana, cfg.AGENDA_HORARIOS, unica);
+        if (!franja) continue;
+
+        let primero = null;
+        for (let min = franja.desde; min + duracion <= franja.hasta; min += cfg.AGENDA_PASO_MIN) {
+          const inicio = instanteLocal(dia, Math.floor(min / 60), min % 60, tz);
+          if (inicio < piso) continue;
+          if (libre(inicio)) { primero = inicio; break; }
+        }
+        if (primero) dias.push({ dia, inicio: primero });
+      }
+      return dias;
     },
 
     async reservar({ inicio, nombre, telefono, resumen }) {
