@@ -61,27 +61,56 @@ function mapearBusiness(valorNormalizado) {
   return null;
 }
 
-/** Junta separadores de miles/decimales para sacar un numero de un texto libre. */
-function primerNumero(texto) {
-  const m = String(texto).match(/[\d][\d.,]*/);
-  if (!m) return null;
-  const limpio = m[0].replace(/[.,]/g, '');
-  const n = parseInt(limpio, 10);
-  return Number.isFinite(n) ? n : null;
+/**
+ * Todos los numeros de un texto libre, juntando separadores de miles/decimales
+ * y el sufijo "k" ("3k" -> 3000). "USD 1.500", "u$s 2000" y "1,500" quedan
+ * iguales: el prefijo de moneda no forma parte del match, y "." y "," dentro
+ * del numero se descartan por igual.
+ */
+function numerosDelTexto(texto) {
+  const t = String(texto || '');
+  const numeros = [];
+  for (const m of t.matchAll(/(\d[\d.,]*)\s*(k)?\b/gi)) {
+    const limpio = m[1].replace(/[.,]/g, '');
+    const n = parseInt(limpio, 10);
+    if (!Number.isFinite(n)) continue;
+    numeros.push(m[2] ? n * 1000 : n);
+  }
+  return numeros;
 }
+
+/** El tramo de budget que le corresponde a un monto (1 <500, 2 500-3000, 3 >3000). */
+function tramoDeMonto(n) {
+  if (n < 500) return 1;
+  if (n <= 3000) return 2;
+  return 3;
+}
+
+const RE_MENOS = /\b(menos de|hasta|debajo de)\b/;
+const RE_MAS = /\b(mas de|arriba de)\b|(?:^|\s)\+\s*\d|\d\s*\+(?:\s|$)/;
 
 /**
  * ¿Contas con un presupuesto? -> budget (1 <500, 2 500-3000, 3 >3000, 4 no
  * sabe). Sin numero y sin "no se", se deja vacio: adivinar un tramo de algo
  * que no se dijo es peor que no guardar nada.
+ *
+ * "Más de USD 3000" y "Menos de USD 500" son las opciones tal cual las da el
+ * formulario de Meta: tomar el primer numero sin mirar el calificador les
+ * daba tramo 2 a las dos, cuando la respuesta dice justo el tramo de punta
+ * (3 y 1). Un rango ("500 - 3000", "entre 500 y 3000") usa el punto medio.
  */
 function mapearPresupuesto(valorNormalizado) {
   if (/no se|no lo se|aun no|todavia no|sin presupuesto/.test(valorNormalizado)) return 4;
-  const n = primerNumero(valorNormalizado);
-  if (n === null) return undefined;
-  if (n < 500) return 1;
-  if (n <= 3000) return 2;
-  return 3;
+
+  const numeros = numerosDelTexto(valorNormalizado);
+  if (!numeros.length) return undefined;
+
+  if (numeros.length >= 2) return tramoDeMonto((numeros[0] + numeros[1]) / 2);
+
+  const n = numeros[0];
+  if (RE_MENOS.test(valorNormalizado)) return tramoDeMonto(Math.max(0, n - 1));
+  if (RE_MAS.test(valorNormalizado)) return tramoDeMonto(n + 1);
+  return tramoDeMonto(n);
 }
 
 /**

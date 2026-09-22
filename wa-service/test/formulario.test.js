@@ -219,3 +219,65 @@ test('mapearPresupuesto: tramos', () => {
   assert.equal(mapearPresupuesto('3001'), 3);
   assert.equal(mapearPresupuesto('mucho'), undefined, 'sin numero y sin "no se": no se adivina');
 });
+
+/**
+ * Correccion pedida en la revision del PR #89: mapearPresupuesto tomaba el
+ * primer numero sin mirar el calificador. "Mas de USD 3000" y "Menos de USD
+ * 500" son, casi seguro, las opciones textuales reales del formulario de
+ * Meta —calcan los bordes de nuestros propios tramos— y las dos daban 2 en
+ * vez de 3 y 1.
+ */
+test('mapearPresupuesto: "mas de" y "arriba de" usan el tramo de arriba', () => {
+  assert.equal(mapearPresupuesto('mas de usd 3000'), 3, 'no 2: es MAS de 3000');
+  assert.equal(mapearPresupuesto('mas de 500'), 2);
+  assert.equal(mapearPresupuesto('arriba de 3000'), 3);
+  assert.equal(mapearPresupuesto('3000+'), 3);
+  assert.equal(mapearPresupuesto('+3000'), 3);
+});
+
+test('mapearPresupuesto: "menos de", "hasta" y "debajo de" usan el tramo de abajo', () => {
+  assert.equal(mapearPresupuesto('menos de usd 500'), 1, 'no 2: es MENOS de 500');
+  assert.equal(mapearPresupuesto('hasta 500'), 1);
+  assert.equal(mapearPresupuesto('debajo de 500'), 1);
+  assert.equal(mapearPresupuesto('menos de 3000'), 2);
+});
+
+test('mapearPresupuesto: un rango usa el punto medio', () => {
+  assert.equal(mapearPresupuesto('500 - 3000'), 2);
+  assert.equal(mapearPresupuesto('entre 500 y 3000'), 2);
+  assert.equal(mapearPresupuesto('100-400'), 1);
+  assert.equal(mapearPresupuesto('4000-6000'), 3);
+});
+
+test('mapearPresupuesto: formatos de moneda comunes', () => {
+  assert.equal(mapearPresupuesto('usd 1.500'), 2);
+  assert.equal(mapearPresupuesto('u$s 2000'), 2);
+  assert.equal(mapearPresupuesto('1,500'), 2, 'coma de miles, no decimal');
+  assert.equal(mapearPresupuesto('3k'), 2, '"3k" son 3000, tramo 2 (limite de arriba)');
+  assert.equal(mapearPresupuesto('400 dolares'), 1);
+});
+
+test('mapearPresupuesto: lo que no se entiende queda vacio, no se inventa', () => {
+  assert.equal(mapearPresupuesto('lo que haga falta'), undefined);
+  assert.equal(mapearPresupuesto(''), undefined);
+});
+
+/**
+ * De punta a punta, con el texto tal cual lo escribiria el formulario:
+ * mayusculas, acentos y el signo de pregunta de la etiqueta.
+ */
+test('leerFormulario: "Más de USD 3000" en el formulario real da tramo 3', () => {
+  const texto = [
+    '¿Que es lo que buscás para tu negocio?: Página web',
+    '¿Contás con un presupuesto para este proyecto?: Más de USD 3000',
+  ].join('\n');
+  assert.equal(leerFormulario(texto).budget, 3);
+});
+
+test('leerFormulario: "Menos de USD 500" en el formulario real da tramo 1', () => {
+  const texto = [
+    '¿Que es lo que buscás para tu negocio?: Página web',
+    '¿Contás con un presupuesto para este proyecto?: Menos de USD 500',
+  ].join('\n');
+  assert.equal(leerFormulario(texto).budget, 1);
+});
