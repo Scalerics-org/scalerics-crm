@@ -294,10 +294,17 @@ const COMPLETO = {
 const DIJO_TODO = 'te cuento todo: es la Panadería PanesAhora, una panadería, '
   + 'estamos en @panesahora y quiero vender online';
 
-test('con todos los datos le muestra horarios reales y agenda el que elige', async () => {
+test('con todos los datos le muestra los dias, despues las horas, y agenda la que elige', async () => {
   // El camino de horarios ya no es el de por defecto —hoy se manda el link de
   // Calendly— pero se conserva entero y se prende con esta variable.
-  const google = googleFalso({ ocupados: ['13:30-14:00'] });
+  //
+  // Sin ocupados: el mock de freeBusy de este archivo no filtra por rango
+  // (devuelve siempre los mismos "ocupados" sin mirar que hora se pidio), asi
+  // que agenda.reservar() -que vuelve a consultar el hueco puntual antes de
+  // crear el evento- veria "ocupado" para CUALQUIER hora en cuanto hubiera
+  // algun ocupado configurado. Que los ocupados se excluyan de la lista
+  // ofrecida ya se prueba en otros tests; este agenda de punta a punta.
+  const google = googleFalso();
   const s = await conLead({
     modelo: stubModelo({ datos: COMPLETO }),
     AGENDA_OFRECE_HORARIOS: 'true',
@@ -311,17 +318,27 @@ test('con todos los datos le muestra horarios reales y agenda el que elige', asy
   };
 
   const ofrece = await responder(DIJO_TODO);
-  assert.equal(s.repo.leadPorTelefono('59899123456').fsm_state, S.HORARIOS_OFRECIDOS);
-  assert.equal(ofrece.at(-1), '[oferta_con_horarios]');
+  let l = s.repo.leadPorTelefono('59899123456');
+  assert.equal(l.fsm_state, S.HORARIOS_OFRECIDOS);
+  assert.equal(l.dia_en_foco, null, 'paso 1: todavia eligiendo el dia');
+  assert.match(ofrece.at(-1), /^\[oferta_con_horarios\]/);
 
-  // Los horarios quedan guardados: sin eso, cuando conteste "las 13" no habria
-  // contra que validarlo. Que se excluyan los ocupados se prueba arriba, con el
-  // reloj fijo: aca el dia que elige depende de la hora real de la corrida.
-  const guardados = JSON.parse(s.repo.leadPorTelefono('59899123456').horarios_ofrecidos);
-  // Cuantos son depende de la hora de la corrida: a las 15 ya entra uno solo.
-  // El conteo exacto se prueba arriba, con el reloj fijo.
-  assert.ok(guardados.length >= 1, 'se le ofrecio al menos uno');
-  assert.ok(guardados.every((x) => !Number.isNaN(Date.parse(x))), 'son fechas validas');
+  // Los dias quedan guardados: sin eso no habria contra que validar "1".
+  const diasGuardados = JSON.parse(l.horarios_ofrecidos);
+  assert.ok(diasGuardados.length >= 1, 'se le ofrecio al menos un dia');
+  assert.ok(diasGuardados.every((x) => !Number.isNaN(Date.parse(x))), 'son fechas validas');
+
+  const horas = await responder('1');
+  l = s.repo.leadPorTelefono('59899123456');
+  assert.ok(l.dia_en_foco, 'paso 2: ya eligio el dia');
+  assert.match(horas.at(-1), /^\[disponibilidad_del_dia\]/);
+  const horasGuardadas = JSON.parse(l.horarios_ofrecidos);
+  assert.ok(horasGuardadas.length >= 1, 'se le ofrecio al menos una hora de ese dia');
+
+  await responder('1');
+  l = s.repo.leadPorTelefono('59899123456');
+  assert.equal(l.fsm_state, S.SCHEDULED, 'agendo la primera hora de la lista');
+  assert.ok(l.meeting_time);
 });
 
 test('el horario que se ofrece nunca sale de la franja configurada', async () => {
@@ -411,13 +428,17 @@ test('si pide una hora que no se le ofrecio, no se le agenda otra', async () => 
   assert.equal(ofrecido.fsm_state, S.HORARIOS_OFRECIDOS);
   assert.match(JSON.parse(ofrecido.horarios_ofrecidos)[0], /^2026-09-23/, 'el primer dia ofrecido es el 23, a proposito');
 
+  // Elige el primer dia (el 23) para pasar al paso de horas.
+  await responder('1');
+  assert.ok(s.repo.leadPorTelefono('59899123456').dia_en_foco, 'ya eligio el dia 23');
+
   // La franja es 12 a 16, asi que las 23 no se ofrecieron nunca.
   const msgs = await responder('23:00');
 
   const l = s.repo.leadPorTelefono('59899123456');
   assert.equal(l.meeting_time, null, 'no agendo nada');
   assert.equal(l.fsm_state, S.HORARIOS_OFRECIDOS, 'sigue esperando que elija');
-  assert.equal(msgs.at(-1), '[horario_fuera_de_franja]', 'le dice por que no y le muestra lo que hay');
+  assert.match(msgs.at(-1), /^\[horario_fuera_de_franja\]/, 'le dice por que no y le muestra lo que hay');
   assert.ok(!google.llamadas.some((c) => c.url.includes('/events?')), 'y no toco el calendario');
 });
 
@@ -446,13 +467,15 @@ test('los horarios ofrecidos abarcan varios dias, no solo el primero', async () 
 });
 
 /**
- * Los horarios ahora vienen de varios dias, asi que decir "libres para el
- * jueves" y listar horas sueltas seria mentira: el lead elegiria "13:00"
- * creyendo que es el jueves cuando es el viernes.
+ * Dia-primero-hora-despues: la lista de dias y, despues, la de horas las arma
+ * el codigo, no el modelo — sin eso, el modelo inventaria fechas que no
+ * existen (no sabe que dias hay libres de verdad). El pitch que escribe la IA
+ * no tiene que ver ninguna fecha, y la lista tiene que llegarle al lead
+ * pegada abajo de ese pitch, tal cual la armo el codigo.
  */
-test('el contexto que recibe el modelo dice el dia de cada tramo', async () => {
+test('el modelo no recibe ni escribe la lista de dias: la agrega el codigo', async () => {
   const google = googleFalso();
-  const modelo = stubModelo({ datos: COMPLETO });
+  const modelo = stubModelo({ datos: COMPLETO, respuestas: { oferta_con_horarios: 'Dale, veamos cuándo.' } });
   const s = await conLead({ modelo, AGENDA_OFRECE_HORARIOS: 'true', _google: google.fetch });
 
   await s.servicioLeads.registrarRespuesta('59899123456', DIJO_TODO);
@@ -462,18 +485,16 @@ test('el contexto que recibe el modelo dice el dia de cada tramo', async () => {
     .map((a) => a.mensajes?.[0]?.content || '')
     .find((c) => c.includes('oferta_con_horarios'));
   assert.ok(prompt, 'se le pidio el mensaje de oferta');
+  // Nada de tramos ni de dias armados por el codigo en lo que ve el modelo.
+  assert.ok(!/^\d\. /m.test(prompt), `el prompt no deberia traer la lista numerada:\n${prompt.slice(0, 400)}`);
 
-  // Cada tramo con su dia y sus dos puntas. Sin el dia, "de 10:00 a 19:00"
-  // no dice de cuando, y con horarios de varios dias eso es una mentira.
-  const lineas = prompt.split(String.fromCharCode(10))
-    .filter((l) => /^- .+: de \d{2}:\d{2} a \d{2}:\d{2}/.test(l));
-  assert.ok(lineas.length >= 1, `esperaba tramos con dia: ${prompt.slice(0, 400)}`);
-  for (const l of lineas) {
-    assert.match(l, /lunes|martes|miércoles|jueves|viernes/, l);
-  }
-
-  // Y NO la lista de horas sueltas: dandole las dos, el modelo elegia esa.
-  assert.ok(!prompt.includes('Son los únicos que podés ofrecer'), 'sin la lista discreta');
+  const l = s.repo.leadPorTelefono('59899123456');
+  const dias = JSON.parse(l.horarios_ofrecidos);
+  const enviado = s.proveedor.getEnviados().find((e) => e.to === '59899123456');
+  assert.match(enviado.texto, /Dale, veamos cuándo\./, 'el pitch del modelo llega tal cual');
+  assert.match(enviado.texto, /¿Qué día te queda mejor\?/, 'la pregunta de dia la agrega el codigo');
+  assert.match(enviado.texto, /^1\. /m, 'la lista numerada la agrega el codigo');
+  assert.equal((enviado.texto.match(/^\d+\. /gm) || []).length, dias.length, 'un numero por dia ofrecido');
 });
 
 
@@ -540,6 +561,9 @@ test('una hora libre que no estaba en la lista igual se agenda', async () => {
 
   await s.servicioLeads.registrarRespuesta('59899123456', DIJO_TODO);
   await s.cola.vacia();
+  // Elige el primer dia ofrecido (hoy, 3-9: tiene hueco a la tarde).
+  await s.servicioLeads.registrarRespuesta('59899123456', '1');
+  await s.cola.vacia();
   await s.servicioLeads.registrarRespuesta('59899123456', 'las 15:00 me sirve más');
   await s.cola.vacia();
 
@@ -558,12 +582,15 @@ test('una hora fuera de la franja se rechaza diciendo por que', async () => {
 
   await s.servicioLeads.registrarRespuesta('59899123456', DIJO_TODO);
   await s.cola.vacia();
-  await s.servicioLeads.registrarRespuesta('59899123456', 'jueves a las 5 de la mañana');
+  // Elige el primer dia ofrecido (jueves 3, hoy) para pasar al paso de horas.
+  await s.servicioLeads.registrarRespuesta('59899123456', '1');
+  await s.cola.vacia();
+  await s.servicioLeads.registrarRespuesta('59899123456', 'las 5');
   await s.cola.vacia();
 
   const msgs = s.proveedor.getEnviados().filter((e) => e.to === '59899123456').map((e) => e.texto);
   assert.equal(s.repo.leadPorTelefono('59899123456').meeting_time, null, 'no agendo nada');
-  assert.equal(msgs.at(-1), '[horario_fuera_de_franja]', 'le explica, no repite la lista');
+  assert.match(msgs.at(-1), /^\[horario_fuera_de_franja\]/, 'le explica, no repite la lista');
 });
 
 /**
@@ -720,34 +747,30 @@ test('un dia sin atencion no tiene tramos', () => {
  * por un dia puntual, y lo unico que sabia hacer con un dia y una hora era
  * reservar.
  */
-test('una pregunta con dia y hora no agenda nada', async () => {
+/**
+ * Con dia-primero-hora-despues, una frase con dia y hora en el paso de elegir
+ * dia se resuelve en codigo: si el dia que nombro esta entre los ofrecidos,
+ * pasa a mostrarle sus horas (no agenda de un salto, aunque la frase ya trajera
+ * una hora) — el paso 2 sigue pidiendo que la elija de la lista.
+ */
+test('una frase con dia y hora, en el paso de elegir dia, no agenda nada', async () => {
   const google = googleFalso();
   const modelo = stubModelo({ datos: COMPLETO });
-  const original = modelo.pedir.bind(modelo);
-  modelo.pedir = async (args) => {
-    if (args.herramienta?.nombre === 'elegir') return { texto: null, argumentos: { opcion: 'ninguno' } };
-    if (args.herramienta?.nombre === 'momento') {
-      // Trae dia y hora, pero es una pregunta.
-      return { texto: null, argumentos: { pide: false, consulta: true, dia: '2026-09-18', hora: 14, minuto: 0 } };
-    }
-    return original(args);
-  };
-
   const s = await conLead({
     modelo, AGENDA_OFRECE_HORARIOS: 'true', _google: google.fetch,
-  }, undefined, instanteLocal('2026-09-03', 9, 0, TZ));
+  }, undefined, instanteLocal('2026-09-03', 9, 0, TZ)); // jueves 3
 
   await s.servicioLeads.registrarRespuesta('59899123456', DIJO_TODO);
   await s.cola.vacia();
-  const msgs = await (async () => {
-    await s.servicioLeads.registrarRespuesta('59899123456', 'viernes 18 a las 14 no puedo entonces?');
-    await s.cola.vacia();
-    return s.proveedor.getEnviados().filter((e) => e.to === '59899123456').map((e) => e.texto);
-  })();
+  // Viernes 4 es el segundo dia ofrecido (jueves 3 hoy, viernes 4 despues).
+  await s.servicioLeads.registrarRespuesta('59899123456', 'viernes a las 14 dale');
+  await s.cola.vacia();
+  const msgs = s.proveedor.getEnviados().filter((e) => e.to === '59899123456').map((e) => e.texto);
 
   assert.equal(s.repo.leadPorTelefono('59899123456').meeting_time, null, 'NO agendo');
   assert.ok(!google.llamadas.some((c) => c.url.includes('/events?')), 'ni toco el calendario');
-  assert.equal(msgs.at(-1), '[disponibilidad_del_dia]', 'le contesta que hay ese dia');
+  assert.match(msgs.at(-1), /^\[disponibilidad_del_dia\]/, 'le muestra las horas de ese dia, no agenda');
+  assert.equal(s.repo.leadPorTelefono('59899123456').dia_en_foco, '2026-09-04');
 });
 
 /**
@@ -763,15 +786,15 @@ test('una pregunta con dia y hora no agenda nada', async () => {
  * despues eran los dias CERCANOS, no el dia del que hablaba el lead. Cuando
  * alguien te nombra un dia, lo que hay que mostrarle es ese dia.
  */
-test('al rechazar una hora, se muestra lo libre de ESE dia', async () => {
+test('al rechazar una hora, se muestra lo libre de ESE dia (el que ya eligio, no otro)', async () => {
   const google = googleFalso();
   const modelo = stubModelo({ datos: COMPLETO });
   const original = modelo.pedir.bind(modelo);
   modelo.pedir = async (args) => {
     if (args.herramienta?.nombre === 'elegir') return { texto: null, argumentos: { opcion: 'ninguno' } };
     if (args.herramienta?.nombre === 'momento') {
-      // 09:30 del viernes 18: fuera de la franja de ese dia.
-      return { texto: null, argumentos: { pide: true, dia: '2026-09-18', hora: 9, minuto: 30 } };
+      // 9:30 del dia ya elegido (jueves 3): fuera de la franja de ese dia.
+      return { texto: null, argumentos: { pide: true, dia: '2026-09-03', hora: 9, minuto: 30 } };
     }
     return original(args);
   };
@@ -782,15 +805,20 @@ test('al rechazar una hora, se muestra lo libre de ESE dia', async () => {
 
   await s.servicioLeads.registrarRespuesta('59899123456', DIJO_TODO);
   await s.cola.vacia();
-  await s.servicioLeads.registrarRespuesta('59899123456', '9:30 del 11');
+  // Elige el primer dia ofrecido (jueves 3, hoy).
+  await s.servicioLeads.registrarRespuesta('59899123456', '1');
+  await s.cola.vacia();
+  assert.equal(s.repo.leadPorTelefono('59899123456').dia_en_foco, '2026-09-03');
+
+  await s.servicioLeads.registrarRespuesta('59899123456', '9:30');
   await s.cola.vacia();
 
-  const prompt = modelo.llamadas
-    .map((a) => a.mensajes?.[0]?.content || '')
-    .find((c) => c.includes('horario_fuera_de_franja'));
-  assert.ok(prompt, 'se le pidio el mensaje de rechazo');
-  assert.match(prompt, /viernes, 18 de septiembre|viernes, 18 de setiembre/,
-    `esperaba el dia que pidio, no los cercanos:\n${prompt.slice(-400)}`);
+  const l = s.repo.leadPorTelefono('59899123456');
+  assert.equal(l.meeting_time, null, 'no agendo nada');
+  assert.equal(l.dia_en_foco, '2026-09-03', 'sigue en el mismo dia, no salto a otro');
+
+  const msgs = s.proveedor.getEnviados().filter((e) => e.to === '59899123456').map((e) => e.texto);
+  assert.match(msgs.at(-1), /^\[horario_fuera_de_franja\]/);
 });
 
 /**
@@ -844,26 +872,16 @@ test('lo que no habla de horarios lo atiende la conversacion', async () => {
  * empezado. De ahi salian las dos cosas que el lead vio: un motivo falso y la
  * vuelta a los dias de la lista en vez de seguir en el que estaba mirando.
  */
-test('una hora sin día es del día del que se viene hablando', async () => {
+/**
+ * Con dia-primero-hora-despues, el "dia del que se viene hablando" es
+ * directamente `dia_en_foco`, que ya quedo marcado al elegir el dia en el
+ * paso 1 — no hace falta que el modelo lo adivine de una hora suelta. Una
+ * hora sin dia, en el paso 2, es del dia ya elegido.
+ */
+test('una hora sin día, en el paso de elegir hora, es del día ya elegido', async () => {
   const google = googleFalso();
-  const momentos = [
-    // "¿el viernes 11 qué hora tenés?" — pregunta por un dia, no elige.
-    { consulta: true, pide: false, dia: '2026-09-11' },
-    // "a las 15" — el modelo, que solo conoce hoy, la ubica hoy.
-    { pide: true, dia: '2026-09-03', hora: 15, minuto: 0 },
-  ];
-  const modelo = stubModelo({ datos: COMPLETO });
-  const original = modelo.pedir.bind(modelo);
-  modelo.pedir = async (args) => {
-    if (args.herramienta?.nombre === 'elegir') return { texto: null, argumentos: { opcion: 'ninguno' } };
-    if (args.herramienta?.nombre === 'momento') {
-      return { texto: null, argumentos: momentos.shift() || { pide: false } };
-    }
-    return original(args);
-  };
-
   const s = await conLead({
-    modelo,
+    modelo: conHoraPedida('15:00'), // dia por defecto: 2026-09-03
     AGENDA_OFRECE_HORARIOS: 'true',
     AGENDA_DIAS_ADELANTE: '60',
     _google: google.fetch,
@@ -871,14 +889,17 @@ test('una hora sin día es del día del que se viene hablando', async () => {
 
   await s.servicioLeads.registrarRespuesta('59899123456', DIJO_TODO);
   await s.cola.vacia();
-  await s.servicioLeads.registrarRespuesta('59899123456', 'el viernes 11 qué hora tenés libre?');
+  // Elige el primer dia ofrecido (jueves 3, hoy).
+  await s.servicioLeads.registrarRespuesta('59899123456', '1');
   await s.cola.vacia();
-  await s.servicioLeads.registrarRespuesta('59899123456', 'a las 15');
+  assert.equal(s.repo.leadPorTelefono('59899123456').dia_en_foco, '2026-09-03');
+
+  await s.servicioLeads.registrarRespuesta('59899123456', 'mejor a las 15');
   await s.cola.vacia();
 
   const l = s.repo.leadPorTelefono('59899123456');
   assert.ok(l.meeting_time, 'agendó');
-  assert.equal(enZona(new Date(l.meeting_time), TZ).dia, '2026-09-11', 'el día del que se venía hablando');
+  assert.equal(enZona(new Date(l.meeting_time), TZ).dia, '2026-09-03', 'el día que ya había elegido');
   assert.equal(enZona(new Date(l.meeting_time), TZ).hora, 15);
 });
 
@@ -896,7 +917,7 @@ test('una hora sin día es del día del que se viene hablando', async () => {
 test('la reunión que agenda el bot programa sus recordatorios', async () => {
   const google = googleFalso();
   const s = await conLead({
-    modelo: conHoraPedida('15:00', { dia: '2026-09-11' }),
+    modelo: stubModelo({ datos: COMPLETO }),
     AGENDA_OFRECE_HORARIOS: 'true',
     AGENDA_DIAS_ADELANTE: '60',
     _google: google.fetch,
@@ -904,7 +925,11 @@ test('la reunión que agenda el bot programa sus recordatorios', async () => {
 
   await s.servicioLeads.registrarRespuesta('59899123456', DIJO_TODO);
   await s.cola.vacia();
-  await s.servicioLeads.registrarRespuesta('59899123456', 'el viernes 11 a las 15');
+  // Elige el SEGUNDO dia (viernes 4, no hoy): el de hoy queda a solo unas
+  // horas, y el recordatorio del dia antes no se programa si ya no alcanza.
+  await s.servicioLeads.registrarRespuesta('59899123456', '2');
+  await s.cola.vacia();
+  await s.servicioLeads.registrarRespuesta('59899123456', '1');
   await s.cola.vacia();
 
   const l = s.repo.leadPorTelefono('59899123456');
@@ -916,4 +941,274 @@ test('la reunión que agenda el bot programa sus recordatorios', async () => {
   const tipos = Object.fromEntries(jobs.map((j) => [j.type, j.status]));
   assert.equal(tipos.reminder_24h, 'pending', 'el del día antes');
   assert.equal(tipos.reminder_30m, 'pending', 'el de los 30 minutos');
+});
+
+// ── dia-primero-hora-despues: casos borde del paso de elegir dia ────────────
+
+test('un numero fuera de rango en el paso de elegir dia: se lo dice y vuelve a mostrar la lista', async () => {
+  const google = googleFalso();
+  const s = await conLead({
+    modelo: stubModelo({ datos: COMPLETO }), AGENDA_OFRECE_HORARIOS: 'true', _google: google.fetch,
+  }, undefined, HOY_TEST);
+
+  await s.servicioLeads.registrarRespuesta('59899123456', DIJO_TODO);
+  await s.cola.vacia();
+  s.proveedor.limpiar();
+
+  // Solo hay 2 dias ofrecidos: "5" no es ninguno de los dos.
+  await s.servicioLeads.registrarRespuesta('59899123456', '5');
+  await s.cola.vacia();
+
+  const l = s.repo.leadPorTelefono('59899123456');
+  assert.equal(l.dia_en_foco, null, 'sigue en el paso de elegir dia');
+  assert.equal(l.meeting_time, null);
+  const msgs = s.proveedor.getEnviados().filter((e) => e.to === '59899123456').map((e) => e.texto);
+  assert.match(msgs.at(-1), /^\[dia_no_entendido\]/);
+  assert.match(msgs.at(-1), /^\d+\. /m, 'vuelve a traer la lista numerada');
+});
+
+test('un dia real que no esta entre los ofrecidos: se lo dice y vuelve a ofrecer', async () => {
+  const google = googleFalso();
+  const s = await conLead({
+    modelo: stubModelo({ datos: COMPLETO }), AGENDA_OFRECE_HORARIOS: 'true', _google: google.fetch,
+  }, undefined, HOY_TEST);
+
+  await s.servicioLeads.registrarRespuesta('59899123456', DIJO_TODO);
+  await s.cola.vacia();
+  s.proveedor.limpiar();
+
+  // Solo se ofrecen miercoles 23 y jueves 24: el sabado no es ninguno.
+  await s.servicioLeads.registrarRespuesta('59899123456', 'el sabado mejor');
+  await s.cola.vacia();
+
+  const l = s.repo.leadPorTelefono('59899123456');
+  assert.equal(l.dia_en_foco, null, 'sigue en el paso de elegir dia');
+  const msgs = s.proveedor.getEnviados().filter((e) => e.to === '59899123456').map((e) => e.texto);
+  assert.match(msgs.at(-1), /^\[dia_no_ofrecido\]/);
+});
+
+test('"ninguno me sirve" no es un dia: lo atiende la conversacion, como siempre', async () => {
+  const google = googleFalso();
+  const modelo = stubModelo({ datos: COMPLETO, respuestas: { conversacion: 'Contame que dias te sirven y vemos.' } });
+  const s = await conLead({
+    modelo, AGENDA_OFRECE_HORARIOS: 'true', _google: google.fetch,
+  }, undefined, HOY_TEST);
+
+  await s.servicioLeads.registrarRespuesta('59899123456', DIJO_TODO);
+  await s.cola.vacia();
+  s.proveedor.limpiar();
+
+  await s.servicioLeads.registrarRespuesta('59899123456', 'ninguno de esos me sirve');
+  await s.cola.vacia();
+
+  const l = s.repo.leadPorTelefono('59899123456');
+  assert.equal(l.meeting_time, null);
+  const msgs = s.proveedor.getEnviados().filter((e) => e.to === '59899123456').map((e) => e.texto);
+  assert.equal(msgs.at(-1), 'Contame que dias te sirven y vemos.', 'lo contesta la conversacion normal');
+});
+
+/**
+ * El bug real detras de "una pregunta con dia y hora no agenda nada": "el
+ * miercoles no puedo" (o cualquier frase con negacion, sin otro dia afirmado)
+ * nombra un dia real, y sin mirar la negacion el codigo lo elegia igual. Va a
+ * la conversacion, NO a "ese dia no esta" (que le mentiria: el dia SI esta,
+ * lo que no puede es el lead).
+ */
+test('un dia negado, sin otro dia afirmado, va a la conversacion (no "ese dia no esta")', async () => {
+  const google = googleFalso();
+  const modelo = stubModelo({ datos: COMPLETO, respuestas: { conversacion: 'Ah, tranquilo. Avisame cuando puedas.' } });
+  const s = await conLead({
+    modelo, AGENDA_OFRECE_HORARIOS: 'true', _google: google.fetch,
+  }, undefined, HOY_TEST); // ofrece Mie 23 y Jue 24
+
+  await s.servicioLeads.registrarRespuesta('59899123456', DIJO_TODO);
+  await s.cola.vacia();
+  s.proveedor.limpiar();
+
+  await s.servicioLeads.registrarRespuesta('59899123456', 'el miercoles no puedo');
+  await s.cola.vacia();
+
+  const l = s.repo.leadPorTelefono('59899123456');
+  assert.equal(l.meeting_time, null);
+  assert.equal(l.dia_en_foco, null, 'sigue en el paso de elegir dia, no eligio miercoles');
+  const msgs = s.proveedor.getEnviados().filter((e) => e.to === '59899123456').map((e) => e.texto);
+  assert.equal(msgs.at(-1), 'Ah, tranquilo. Avisame cuando puedas.', 'lo atiende la conversacion');
+});
+
+test('un dia afirmado y el otro negado en la misma frase: elige el dia afirmado', async () => {
+  const google = googleFalso();
+  const s = await conLead({
+    modelo: stubModelo({ datos: COMPLETO }), AGENDA_OFRECE_HORARIOS: 'true', _google: google.fetch,
+  }, undefined, HOY_TEST); // ofrece Mie 23 y Jue 24
+
+  await s.servicioLeads.registrarRespuesta('59899123456', DIJO_TODO);
+  await s.cola.vacia();
+  s.proveedor.limpiar();
+
+  await s.servicioLeads.registrarRespuesta('59899123456', 'el jueves mejor, el miercoles no puedo');
+  await s.cola.vacia();
+
+  const l = s.repo.leadPorTelefono('59899123456');
+  assert.equal(l.dia_en_foco, '2026-09-24', 'eligio el jueves, no el miercoles negado');
+  const msgs = s.proveedor.getEnviados().filter((e) => e.to === '59899123456').map((e) => e.texto);
+  assert.match(msgs.at(-1), /^\[disponibilidad_del_dia\]/);
+});
+
+test('"no, el jueves" es una eleccion real: elige el jueves', async () => {
+  const google = googleFalso();
+  const s = await conLead({
+    modelo: stubModelo({ datos: COMPLETO }), AGENDA_OFRECE_HORARIOS: 'true', _google: google.fetch,
+  }, undefined, HOY_TEST);
+
+  await s.servicioLeads.registrarRespuesta('59899123456', DIJO_TODO);
+  await s.cola.vacia();
+  s.proveedor.limpiar();
+
+  await s.servicioLeads.registrarRespuesta('59899123456', 'no, el jueves');
+  await s.cola.vacia();
+
+  const l = s.repo.leadPorTelefono('59899123456');
+  assert.equal(l.dia_en_foco, '2026-09-24');
+  const msgs = s.proveedor.getEnviados().filter((e) => e.to === '59899123456').map((e) => e.texto);
+  assert.match(msgs.at(-1), /^\[disponibilidad_del_dia\]/);
+});
+
+test('una hora negada, en el paso de elegir hora, no agenda: el modelo queda de respaldo', async () => {
+  const google = googleFalso();
+  const modelo = stubModelo({ datos: COMPLETO });
+  const original = modelo.pedir.bind(modelo);
+  modelo.pedir = async (args) => {
+    // El modelo de respaldo entiende bien la negacion: no elige nada.
+    if (args.herramienta?.nombre === 'elegir') return { texto: null, argumentos: { opcion: 'ninguno' } };
+    if (args.herramienta?.nombre === 'momento') return { texto: null, argumentos: { pide: false } };
+    return original(args);
+  };
+  const s = await conLead({
+    modelo, AGENDA_OFRECE_HORARIOS: 'true', _google: google.fetch,
+  }, undefined, HOY_TEST);
+
+  await s.servicioLeads.registrarRespuesta('59899123456', DIJO_TODO);
+  await s.cola.vacia();
+  await s.servicioLeads.registrarRespuesta('59899123456', '1'); // elige el primer dia
+  await s.cola.vacia();
+  s.proveedor.limpiar();
+
+  await s.servicioLeads.registrarRespuesta('59899123456', 'a las 12 no puedo');
+  await s.cola.vacia();
+
+  assert.equal(s.repo.leadPorTelefono('59899123456').meeting_time, null, 'no agendo la hora negada');
+});
+
+/**
+ * En el paso de elegir hora, si nombra otro dia pero lo niega a los dos ("el
+ * miercoles no puedo, ni el jueves") no hay ningun dia claro para cambiarse:
+ * va al modelo de respaldo, no a "ese dia no esta" (los dos dias SI estan,
+ * el lead dijo que no podia ninguno).
+ */
+test('en el paso de elegir hora, un cambio de dia negado y ambiguo va al modelo, no a "ese dia no esta"', async () => {
+  const google = googleFalso();
+  const modelo = stubModelo({
+    datos: COMPLETO, respuestas: { conversacion: 'Uh, entiendo. ¿Alguna otra semana te queda mejor?' },
+  });
+  const original = modelo.pedir.bind(modelo);
+  modelo.pedir = async (args) => {
+    if (args.herramienta?.nombre === 'elegir') return { texto: null, argumentos: { opcion: 'ninguno' } };
+    if (args.herramienta?.nombre === 'momento') return { texto: null, argumentos: { pide: false } };
+    return original(args);
+  };
+  const s = await conLead({
+    modelo, AGENDA_OFRECE_HORARIOS: 'true', _google: google.fetch,
+  }, undefined, HOY_TEST); // ofrece Mie 23 y Jue 24
+
+  await s.servicioLeads.registrarRespuesta('59899123456', DIJO_TODO);
+  await s.cola.vacia();
+  await s.servicioLeads.registrarRespuesta('59899123456', '1'); // elige miercoles
+  await s.cola.vacia();
+  s.proveedor.limpiar();
+
+  await s.servicioLeads.registrarRespuesta('59899123456', 'el miercoles no puedo, ni el jueves');
+  await s.cola.vacia();
+
+  const l = s.repo.leadPorTelefono('59899123456');
+  assert.equal(l.meeting_time, null);
+  const msgs = s.proveedor.getEnviados().filter((e) => e.to === '59899123456').map((e) => e.texto);
+  assert.equal(msgs.at(-1), 'Uh, entiendo. ¿Alguna otra semana te queda mejor?', 'lo atiende el modelo');
+});
+
+// ── dia-primero-hora-despues: casos borde del paso de elegir hora ───────────
+
+test('un numero fuera de rango en el paso de elegir hora: vuelve a mostrar las horas de ese dia', async () => {
+  const google = googleFalso();
+  const s = await conLead({
+    modelo: stubModelo({ datos: COMPLETO }), AGENDA_OFRECE_HORARIOS: 'true', _google: google.fetch,
+  }, undefined, HOY_TEST);
+
+  await s.servicioLeads.registrarRespuesta('59899123456', DIJO_TODO);
+  await s.cola.vacia();
+  await s.servicioLeads.registrarRespuesta('59899123456', '1');
+  await s.cola.vacia();
+  const antes = s.repo.leadPorTelefono('59899123456');
+  const cuantasHoras = JSON.parse(antes.horarios_ofrecidos).length;
+  s.proveedor.limpiar();
+
+  // Un indice bien fuera de rango: no puede ser ninguna de las horas.
+  await s.servicioLeads.registrarRespuesta('59899123456', '99');
+  await s.cola.vacia();
+
+  const l = s.repo.leadPorTelefono('59899123456');
+  assert.equal(l.meeting_time, null, 'no agendo nada');
+  assert.equal(l.dia_en_foco, antes.dia_en_foco, 'sigue en el mismo dia');
+  assert.ok(cuantasHoras >= 1);
+});
+
+test('el turno se ocupa entre que se ofrece y se elige: muestra lo que queda de ESE dia', async () => {
+  // El mock de freeBusy de este archivo no filtra por rango horario: en cuanto
+  // hay algun "ocupado" configurado, agenda.reservar() -que vuelve a
+  // consultar antes de crear el evento- ve "ocupado" para cualquier hora. Es
+  // justo la simulacion que hace falta: alguien se lo llevo en el medio.
+  const google = googleFalso({ ocupados: ['12:00-12:30'] });
+  const s = await conLead({
+    modelo: stubModelo({ datos: COMPLETO }), AGENDA_OFRECE_HORARIOS: 'true', _google: google.fetch,
+  }, undefined, HOY_TEST);
+
+  await s.servicioLeads.registrarRespuesta('59899123456', DIJO_TODO);
+  await s.cola.vacia();
+  await s.servicioLeads.registrarRespuesta('59899123456', '1');
+  await s.cola.vacia();
+  const antes = s.repo.leadPorTelefono('59899123456');
+  s.proveedor.limpiar();
+
+  await s.servicioLeads.registrarRespuesta('59899123456', '1');
+  await s.cola.vacia();
+
+  const l = s.repo.leadPorTelefono('59899123456');
+  assert.equal(l.meeting_time, null, 'no agendo: se lo llevaron');
+  assert.equal(l.dia_en_foco, antes.dia_en_foco, 'sigue en el mismo dia, no salta a otro');
+  const msgs = s.proveedor.getEnviados().filter((e) => e.to === '59899123456').map((e) => e.texto);
+  assert.match(msgs.at(-1), /^\[horario_ocupado\]/);
+  assert.match(msgs.at(-1), /^\d+\. /m, 'con la lista de lo que queda ESE dia');
+});
+
+test('en el paso de elegir hora, si nombra otro dia, se cambia de dia', async () => {
+  const google = googleFalso();
+  const s = await conLead({
+    modelo: stubModelo({ datos: COMPLETO }), AGENDA_OFRECE_HORARIOS: 'true', _google: google.fetch,
+  }, undefined, HOY_TEST); // miercoles 23 en horario
+
+  await s.servicioLeads.registrarRespuesta('59899123456', DIJO_TODO);
+  await s.cola.vacia();
+  // Elige el miercoles (dia 1).
+  await s.servicioLeads.registrarRespuesta('59899123456', '1');
+  await s.cola.vacia();
+  assert.equal(s.repo.leadPorTelefono('59899123456').dia_en_foco, '2026-09-23');
+  s.proveedor.limpiar();
+
+  // Se arrepiente: quiere el jueves, el otro dia ofrecido.
+  await s.servicioLeads.registrarRespuesta('59899123456', 'mejor el jueves');
+  await s.cola.vacia();
+
+  const l = s.repo.leadPorTelefono('59899123456');
+  assert.equal(l.dia_en_foco, '2026-09-24', 'se cambio de dia');
+  const msgs = s.proveedor.getEnviados().filter((e) => e.to === '59899123456').map((e) => e.texto);
+  assert.match(msgs.at(-1), /^\[disponibilidad_del_dia\]/);
 });

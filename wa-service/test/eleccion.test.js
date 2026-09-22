@@ -3,7 +3,8 @@
 const test = require('node:test');
 const assert = require('node:assert');
 
-const { horasQueDijo, eligioEsaHora, diasNumeroQueNombro } = require('../src/agenda/eleccion');
+const { horasQueDijo, eligioEsaHora, diasNumeroQueNombro, tieneNegacion } = require('../src/agenda/eleccion');
+const { instanteLocal } = require('../src/agenda/gcal');
 
 const TZ = 'America/Montevideo';
 
@@ -346,4 +347,255 @@ test('pero un día nombrado sí, por nombre o por número', () => {
   assert.equal(nombroAlgunDia('mañana a las 10'), true);
   assert.equal(nombroAlgunDia('hoy si se puede?'), true);
   assert.equal(nombroAlgunDia('11 de setiembre'), true);
+});
+
+// ── agendar dia-primero-hora-despues: elegir de una lista numerada ──────────
+
+const { elegirDiaPorCodigo, elegirHoraPorCodigo } = require('../src/agenda/eleccion');
+
+const MIE23 = instanteLocal('2026-09-23', 12, 0, TZ);
+const JUE24 = instanteLocal('2026-09-24', 12, 0, TZ);
+const DIAS = [MIE23, JUE24];
+
+test('elegirDiaPorCodigo: por numero de lista', () => {
+  assert.equal(elegirDiaPorCodigo('1', DIAS, TZ), MIE23);
+  assert.equal(elegirDiaPorCodigo('2', DIAS, TZ), JUE24);
+  assert.equal(elegirDiaPorCodigo('2.', DIAS, TZ), JUE24, 'con punto');
+  assert.equal(elegirDiaPorCodigo('opcion 2', DIAS, TZ), JUE24);
+});
+
+test('elegirDiaPorCodigo: por nombre del dia o por fecha', () => {
+  assert.equal(elegirDiaPorCodigo('miercoles', DIAS, TZ), MIE23);
+  assert.equal(elegirDiaPorCodigo('el jueves', DIAS, TZ), JUE24);
+  assert.equal(elegirDiaPorCodigo('el 24', DIAS, TZ), JUE24);
+  assert.equal(elegirDiaPorCodigo('24/9', DIAS, TZ), JUE24);
+});
+
+test('elegirDiaPorCodigo: un numero fuera de rango no elige nada', () => {
+  assert.equal(elegirDiaPorCodigo('5', DIAS, TZ), null);
+  assert.equal(elegirDiaPorCodigo('0', DIAS, TZ), null);
+});
+
+test('elegirDiaPorCodigo: un dia real que no es ninguno de los ofrecidos no elige nada', () => {
+  assert.equal(elegirDiaPorCodigo('viernes', DIAS, TZ), null);
+  assert.equal(elegirDiaPorCodigo('el 30', DIAS, TZ), null);
+});
+
+test('elegirDiaPorCodigo: entradas raras no rompen nada', () => {
+  assert.equal(elegirDiaPorCodigo('', DIAS, TZ), null);
+  assert.equal(elegirDiaPorCodigo('   ', DIAS, TZ), null);
+  assert.equal(elegirDiaPorCodigo('¿cuánto sale?', DIAS, TZ), null);
+  assert.equal(elegirDiaPorCodigo(null, DIAS, TZ), null);
+  assert.equal(elegirDiaPorCodigo(undefined, DIAS, TZ), null);
+  assert.equal(elegirDiaPorCodigo('hola', [], TZ), null, 'sin dias ofrecidos');
+});
+
+/**
+ * Revision del PR #90: "mañana" nombra un dia real (nombroAlgunDia ya lo
+ * detecta), pero elegirDiaPorCodigo no lo resolvia contra ninguna fecha, asi
+ * que el lead que contestaba "mañana" recibia "ese dia no esta" aunque mañana
+ * fuera justo uno de los dos dias ofrecidos.
+ */
+test('elegirDiaPorCodigo: "hoy", "mañana" y "pasado mañana" se resuelven contra la fecha real', () => {
+  const ahoraFijo = instanteLocal('2026-09-22', 10, 0, TZ); // martes 22
+  assert.equal(elegirDiaPorCodigo('hoy', DIAS, TZ, ahoraFijo), null, 'hoy (22) no esta ofrecido');
+  assert.equal(elegirDiaPorCodigo('mañana', DIAS, TZ, ahoraFijo), MIE23, 'mañana (23) SI esta ofrecido');
+  assert.equal(elegirDiaPorCodigo('Mañana', DIAS, TZ, ahoraFijo), MIE23, 'con mayuscula');
+  assert.equal(elegirDiaPorCodigo('manana', DIAS, TZ, ahoraFijo), MIE23, 'sin tilde');
+  assert.equal(elegirDiaPorCodigo('pasado mañana', DIAS, TZ, ahoraFijo), JUE24, 'pasado mañana (24) tambien esta');
+});
+
+test('elegirDiaPorCodigo: "mañana" que NO esta entre los ofrecidos no elige nada', () => {
+  const ahoraFijo = instanteLocal('2026-09-01', 10, 0, TZ); // mañana seria el 2, lejos de la lista
+  assert.equal(elegirDiaPorCodigo('mañana', DIAS, TZ, ahoraFijo), null);
+});
+
+test('elegirDiaPorCodigo: "hoy" cuando hoy SI esta entre los ofrecidos', () => {
+  const ahoraFijo = instanteLocal('2026-09-23', 10, 0, TZ); // hoy es el 23
+  assert.equal(elegirDiaPorCodigo('hoy', DIAS, TZ, ahoraFijo), MIE23);
+  assert.equal(elegirDiaPorCodigo('dale, hoy mismo', DIAS, TZ, ahoraFijo), MIE23);
+});
+
+const HORAS = [12, 12.5, 13, 13.5, 14].map(
+  (h) => instanteLocal('2026-09-23', Math.floor(h), h % 1 ? 30 : 0, TZ),
+);
+
+test('elegirHoraPorCodigo: por numero de lista, tiene prioridad sobre la hora', () => {
+  // "3" es la opcion 3 (13:00), no las 3 de la mañana ni las 15.
+  assert.equal(elegirHoraPorCodigo('3', HORAS, TZ), HORAS[2]);
+  assert.equal(elegirHoraPorCodigo('1', HORAS, TZ), HORAS[0]);
+});
+
+test('elegirHoraPorCodigo: por la hora, cuando no es un indice valido', () => {
+  assert.equal(elegirHoraPorCodigo('13:00', HORAS, TZ), HORAS[2]);
+  assert.equal(elegirHoraPorCodigo('a las 13', HORAS, TZ), HORAS[2]);
+  assert.equal(elegirHoraPorCodigo('12:30', HORAS, TZ), HORAS[1]);
+});
+
+test('elegirHoraPorCodigo: fuera de rango o sin nada reconocible no elige nada', () => {
+  assert.equal(elegirHoraPorCodigo('8', HORAS, TZ), null, 'como indice, fuera de rango (solo hay 5)');
+  assert.equal(elegirHoraPorCodigo('20', HORAS, TZ), null, 'ni como indice ni como hora ofrecida');
+  assert.equal(elegirHoraPorCodigo('dale esa', HORAS, TZ), null, 'eso lo entiende el modelo, no el codigo');
+  assert.equal(elegirHoraPorCodigo('', HORAS, TZ), null);
+  assert.equal(elegirHoraPorCodigo(null, HORAS, TZ), null);
+});
+
+/**
+ * "la primera" pasa a resolverse por codigo con el pulido de numeros en
+ * palabras (antes caia al modelo, como "dale esa" arriba).
+ */
+test('elegirHoraPorCodigo: "la primera" ahora se entiende como indice 1', () => {
+  assert.equal(elegirHoraPorCodigo('la primera', HORAS, TZ), HORAS[0]);
+});
+
+/**
+ * Revision del PR #90: con la franja de siempre (12:00 a 15:30, 7-8 turnos)
+ * el indice y la hora nunca chocan, asi que el bug no se notaba. Con una
+ * franja mas ancha (07:00 a 20:00, 26 turnos de media hora) "12" como INDICE
+ * es el turno de las 12:30 (el numero 12), pero casi todo el mundo que
+ * escribe "12" quiere decir las 12:00 — que es el turno numero 11. Un cambio
+ * de AGENDA_* activaba esto sin aviso.
+ */
+const HORAS_26 = Array.from({ length: 26 }, (_, i) => {
+  const minutos = 7 * 60 + i * 30; // 07:00 en adelante, cada 30 min
+  return instanteLocal('2026-09-23', Math.floor(minutos / 60), minutos % 60, TZ);
+});
+
+test('elegirHoraPorCodigo: un numero suelto que coincide con una hora en punto gana sobre el indice', () => {
+  // Item 11 = 12:00 (07:00 + 10*30min). "12" tiene que ser las 12:00, no el
+  // item 12 (que serian las 12:30).
+  assert.equal(elegirHoraPorCodigo('12', HORAS_26, TZ), HORAS_26[10]);
+  assert.match(new Intl.DateTimeFormat('es-UY', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hour12: false })
+    .format(elegirHoraPorCodigo('12', HORAS_26, TZ)), /^12:00$/);
+});
+
+test('elegirHoraPorCodigo: sin choque con ninguna hora, sigue siendo el indice', () => {
+  // No hay ningun turno a las 3 (van de 07 a 20): "3" es el item 3 (08:00).
+  assert.equal(elegirHoraPorCodigo('3', HORAS_26, TZ), HORAS_26[2]);
+});
+
+test('elegirHoraPorCodigo: "opcion N" o "N." fuerzan el indice, sin ambiguedad', () => {
+  // Item 12 = 12:30. Con "opcion" o el punto, es inequivocamente el indice,
+  // aunque el numero tambien coincida con una hora en punto de la lista.
+  assert.equal(elegirHoraPorCodigo('12.', HORAS_26, TZ), HORAS_26[11]);
+  assert.equal(elegirHoraPorCodigo('opcion 12', HORAS_26, TZ), HORAS_26[11]);
+});
+
+// ── negaciones: no confundir "no puedo ese dia/hora" con una eleccion ───────
+
+/**
+ * Revision del PR #90. Con [Mie 23, Jue 24] ofrecidos, "el miercoles no
+ * puedo" quedaba con miercoles elegido: el codigo encontraba el nombre del
+ * dia sin mirar el resto de la frase. Lo mismo con una hora ofrecida.
+ */
+test('tieneNegacion: reconoce las formas comunes', () => {
+  assert.equal(tieneNegacion('el miercoles no puedo'), true);
+  assert.equal(tieneNegacion('miercoles no'), true);
+  assert.equal(tieneNegacion('ni loco'), true);
+  assert.equal(tieneNegacion('tampoco'), true);
+  assert.equal(tieneNegacion('imposible'), true);
+  assert.equal(tieneNegacion('complicado ese dia'), true);
+  assert.equal(tieneNegacion('el jueves'), false);
+  assert.equal(tieneNegacion('el 2 de septiembre'), false, '"septiembre" no tiene la palabra "no" suelta');
+});
+
+test('elegirDiaPorCodigo: un dia negado, solo, no elige nada', () => {
+  assert.equal(elegirDiaPorCodigo('el miercoles no puedo', DIAS, TZ), null);
+  assert.equal(elegirDiaPorCodigo('miercoles no', DIAS, TZ), null);
+  assert.equal(
+    elegirDiaPorCodigo('mañana no', DIAS, TZ, instanteLocal('2026-09-22', 10, 0, TZ)),
+    null,
+    '"mañana" (23) tambien se descarta si esta negado',
+  );
+});
+
+test('elegirDiaPorCodigo: un dia afirmado y el otro negado en la misma frase, elige el afirmado', () => {
+  assert.equal(elegirDiaPorCodigo('el jueves mejor, el miercoles no puedo', DIAS, TZ), JUE24);
+  assert.equal(elegirDiaPorCodigo('el miercoles no puedo, mejor el jueves', DIAS, TZ), JUE24);
+});
+
+test('elegirDiaPorCodigo: "no, <dia>" es una eleccion real, no una negacion del dia', () => {
+  assert.equal(elegirDiaPorCodigo('no, el jueves', DIAS, TZ), JUE24);
+  assert.equal(elegirDiaPorCodigo('no no, mejor el jueves', DIAS, TZ), JUE24);
+});
+
+test('elegirDiaPorCodigo: negacion sin ningun dia claro no elige nada', () => {
+  assert.equal(elegirDiaPorCodigo('no puedo ninguno de esos dos', DIAS, TZ), null);
+  assert.equal(elegirDiaPorCodigo('no', DIAS, TZ), null);
+});
+
+test('elegirDiaPorCodigo: negacion con dos dias afirmados (ambiguo) no elige nada', () => {
+  // "no se" trae negacion, pero no descarta a ninguno de los dos dias: los
+  // dos quedan afirmados, y con dos no hay uno solo claro.
+  assert.equal(elegirDiaPorCodigo('miercoles o jueves, no se cual, avisame', DIAS, TZ), null);
+});
+
+test('elegirHoraPorCodigo: una hora negada, sola, no elige nada', () => {
+  assert.equal(elegirHoraPorCodigo('a las 12 no puedo', HORAS_26, TZ), null);
+  assert.equal(elegirHoraPorCodigo('12 no', HORAS_26, TZ), null);
+});
+
+test('elegirHoraPorCodigo: "N no, M si" elige la afirmada', () => {
+  assert.equal(elegirHoraPorCodigo('12 no, 13 si', HORAS_26, TZ), HORAS_26[12]); // 13:00 = item 13
+});
+
+test('elegirHoraPorCodigo: negacion sin ninguna hora clara no elige nada', () => {
+  assert.equal(elegirHoraPorCodigo('no puedo ninguna', HORAS_26, TZ), null);
+});
+
+// ── indice de lista con adornos y en palabras ───────────────────────────────
+
+/**
+ * Pulido post-aprobacion del PR #90: un numero de lista con signos, emoji o
+ * parentesis alrededor no se entendia ("2!", "2 👍", "el 2)" volvian null),
+ * y solo los digitos servian ("dos" no). "el"/"la" solo cuentan como
+ * respaldo de indice cuando el numero esta SOLO en el mensaje: "el 24" sigue
+ * siendo una fecha primero (ya probado arriba), esto es lo que pasa cuando
+ * esa fecha no es ninguna de las ofrecidas.
+ */
+test('elegirDiaPorCodigo: un indice con signos o emoji alrededor se entiende igual', () => {
+  assert.equal(elegirDiaPorCodigo('2!', DIAS, TZ), JUE24);
+  assert.equal(elegirDiaPorCodigo('2 👍', DIAS, TZ), JUE24);
+  assert.equal(elegirDiaPorCodigo('el 2)', DIAS, TZ), JUE24);
+  assert.equal(elegirDiaPorCodigo('¡2!', DIAS, TZ), JUE24);
+  assert.equal(elegirDiaPorCodigo('"1"', DIAS, TZ), MIE23);
+});
+
+test('elegirDiaPorCodigo: "el"/"la" antes del numero es respaldo de indice, no le gana a una fecha real', () => {
+  // DIAS son 23 y 24: "el 2" no es fecha de ninguno de los dos, asi que cae
+  // al indice (opcion 2 = JUE24). "el 24" en cambio YA es una fecha ofrecida
+  // (probado en el test de arriba) y esa lectura sigue ganando siempre.
+  assert.equal(elegirDiaPorCodigo('el 2', DIAS, TZ), JUE24);
+  assert.equal(elegirDiaPorCodigo('la 2', DIAS, TZ), JUE24);
+  assert.equal(elegirDiaPorCodigo('el 24', DIAS, TZ), JUE24, 'fecha real, no cambia por el pulido');
+});
+
+test('elegirDiaPorCodigo: numeros en palabras valen igual que en digitos', () => {
+  assert.equal(elegirDiaPorCodigo('uno', DIAS, TZ), MIE23);
+  assert.equal(elegirDiaPorCodigo('una', DIAS, TZ), MIE23);
+  assert.equal(elegirDiaPorCodigo('primero', DIAS, TZ), MIE23);
+  assert.equal(elegirDiaPorCodigo('dos', DIAS, TZ), JUE24);
+  assert.equal(elegirDiaPorCodigo('segunda', DIAS, TZ), JUE24);
+  assert.equal(elegirDiaPorCodigo('dos!', DIAS, TZ), JUE24, 'palabra y adorno juntos');
+  assert.equal(elegirDiaPorCodigo('opcion dos', DIAS, TZ), JUE24);
+});
+
+test('elegirHoraPorCodigo: un indice con signos o emoji alrededor se entiende igual', () => {
+  // "3" no choca con ninguna hora en punto de HORAS_26 (van de 07 a 20), asi
+  // que es el indice sin ambiguedad: item 3 = 08:00.
+  assert.equal(elegirHoraPorCodigo('3!', HORAS_26, TZ), HORAS_26[2]);
+  assert.equal(elegirHoraPorCodigo('3 👍', HORAS_26, TZ), HORAS_26[2]);
+  assert.equal(elegirHoraPorCodigo('la 3)', HORAS_26, TZ), HORAS_26[2]);
+});
+
+test('elegirHoraPorCodigo: un adorno no le gana la prioridad a la hora en punto', () => {
+  // Igual que "12" solo: con decoracion sigue siendo las 12:00 (item 11), no
+  // el item 12 (12:30).
+  assert.equal(elegirHoraPorCodigo('12!', HORAS_26, TZ), HORAS_26[10]);
+  assert.equal(elegirHoraPorCodigo('12 👍', HORAS_26, TZ), HORAS_26[10]);
+});
+
+test('elegirHoraPorCodigo: numeros en palabras valen igual que en digitos', () => {
+  assert.equal(elegirHoraPorCodigo('tres', HORAS_26, TZ), HORAS_26[2], 'sin hora en punto que choque, es el indice');
+  assert.equal(elegirHoraPorCodigo('opcion dos', HORAS_26, TZ), HORAS_26[1], '"opcion" fuerza el indice');
 });

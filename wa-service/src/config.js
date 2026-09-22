@@ -486,6 +486,9 @@ const esquema = z.object({
   // Tope por dia, para que las opciones abarquen varios. Sin esto las cinco se
   // las come el primer dia con hueco y el lead no puede pedir otro.
   AGENDA_MAX_POR_DIA: z.coerce.number().int().positive().default(3),
+  // Cuantos dias se ofrecen en la lista numerada (paso 1 de agendar). Dos es
+  // lo que salia de hecho con el resto de los topes antes de este cambio.
+  AGENDA_MAX_DIAS: z.coerce.number().int().positive().default(2),
   /**
    * Hasta cuando se puede agendar. Estaba en 10 sin ninguna razon escrita, y
    * era incoherente con el propio bot: RESERVAS_DIAS_ADELANTE mira 60 dias de
