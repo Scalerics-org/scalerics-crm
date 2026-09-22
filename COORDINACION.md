@@ -534,10 +534,12 @@ leads de Meta se renombró a **D** para deshacer el empate.
 ## Bitácora
 
 - **22/9 — L (bot de WhatsApp, tarea 5 — dia primero, hora despues): rama
-  `feat/wa-dia-primero`, apilada sobre `fix/wa-formulario-y-seguimiento` (PR #89,
-  sin mergear). Mismo worktree `../scalerics-crm-wa-a-main`, solo `wa-service/`.
+  `feat/wa-dia-primero`, worktree `../scalerics-crm-wa-a-main`, solo `wa-service/`.
   Pedido de K/Juan: al ofrecer horarios, primero lista de dias numerada, y recien
-  al elegir un dia se muestran sus horas. En curso.
+  al elegir un dia se muestran sus horas. El PR #89 (base original) se mergeo a
+  `main`; esta rama quedo rebaseada sobre `main` despues de eso.
+  **PR #90** (`feat/wa-dia-primero` → `main`), sin mergear. `npm test`: 618 pass,
+  0 fail, 1 todo. Mutation testing sobre las guardias nuevas, todas detectadas.
 
 - **22/9 — L (bot de WhatsApp, 4 arreglos): worktree `../scalerics-crm-wa-a-main`, rama
   `fix/wa-formulario-y-seguimiento`, solo `wa-service/`. Trabajo pedido por K (sesión
