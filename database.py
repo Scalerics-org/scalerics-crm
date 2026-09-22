@@ -1915,11 +1915,34 @@ def init_db(db_path: str) -> None:
             # Una sola vez: lo que ya se genero esta en linkedin_posts.
             from services.linkedin_borradores import copiar_historico
             copiar_historico(conn)
+        # La frase de la tarjeta (pedido de Juan, 22/9: "otra idea" y las
+        # correcciones de Claude arman contenido nuevo que todavia no tiene
+        # imagen). No hay Chromium en Fly, asi que la tarjeta se dibuja en la
+        # proxima corrida del cron: mientras tanto queda guardada aca la frase
+        # para que el render sepa que dibujar. Ver
+        # services/linkedin_borradores.necesita_render().
+        _add_column(conn, "linkedin_borradores", "frase", "TEXT")
         conn.commit()
         # LinkedIn va a quien ya ve Inteligencia marketing, una sola vez
         # (desde ahi manda lo que Juan tilde en el editor). No es un panel de
         # plata.
         _grant_panel_to_existing_roles(conn, "linkedin", si_tiene=("marketing",))
+        # Pedidos de correccion en texto libre sobre un borrador de LinkedIn.
+        # Mismo patron que ig_correcciones: los resuelve una sesion de Claude
+        # Code por /api/linkedin-bot/ (gratis, con demora), no un modelo pago.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS linkedin_correcciones (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                borrador_id     INTEGER NOT NULL REFERENCES linkedin_borradores(id),
+                pedido          TEXT NOT NULL,
+                estado          TEXT NOT NULL DEFAULT 'pendiente',
+                respuesta       TEXT,
+                pedido_por      TEXT,
+                creado_en       TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                resuelto_en     TEXT
+            )
+        """)
+        conn.commit()
 
         # ── Instagram ─────────────────────────────────────────────────────────
         # Banco de ideas y publicaciones con aprobacion. services/instagram.py.

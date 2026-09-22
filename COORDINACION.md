@@ -533,6 +533,30 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **22/9 — J (agente de marketing): LinkedIn, "otra idea" y comentarle una mejora a Claude (pedido de Juan).**
+  Rama `feat/linkedin-otra-idea-correcciones`, sale de `fix/linkedin-siempre-foto`
+  (todavía sin mergear), [PR #91](https://github.com/Scalerics-org/scalerics-crm/pull/91).
+  Sin mergear ni deployar. Mismo patrón que Instagram (`services/instagram.py`):
+  `otra_idea()` cambia el borrador por otro tema del banco (sin repetir temas
+  de esa semana), y `pedir_correccion()`/`resolver_correccion()` encolan un
+  pedido en texto libre que resuelve una sesión de Claude Code programada por
+  `/api/linkedin-bot/` (token `LINKEDIN_BOT_TOKEN`, nuevo, mismo criterio que
+  `IG_BOT_TOKEN`). Cliente en `scripts/linkedin_correcciones.py`.
+  **No dibuja la tarjeta al toque:** no hay Chromium en Fly, así que el
+  borrador queda con `imagen_png` vacío y la frase guardada; se dibuja en la
+  próxima corrida del cron de `.github/workflows/linkedin.yml` (martes o
+  viernes) o si alguien corre el `workflow_dispatch` a mano — ese resultado
+  va en `resultado["rerender"]`, aparte de `resultado["borradores"]`, para no
+  romper la forma que ya esperan los tests y el resto del pipeline.
+  **Pendiente, no lo resolví:** busqué la tarea programada de Windows que
+  corre `scripts/ig_correcciones.py` cada 30 min (la que dice la memoria del
+  agente) y no la encontré activa en esta máquina con `Get-ScheduledTask`.
+  Antes de dar por hecho que las correcciones de LinkedIn (o las de
+  Instagram) se resuelven solas, alguien tiene que confirmar que esa tarea
+  sigue viva o armar una de nuevo — para LinkedIn armé
+  `Activar correcciones LinkedIn.bat` en el Escritorio (mismo patrón que el
+  de Instagram) pero eso solo pone el token en Fly, no programa nada.
+
 - **22/9 — J (agente de marketing): LinkedIn, los posts a mano ya no salen sin foto (pedido de Juan).**
   Rama `fix/linkedin-siempre-foto`, [PR #88](https://github.com/Scalerics-org/scalerics-crm/pull/88).
   Sin mergear ni deployar. Solo `services/linkedin_posts.py` y su test.

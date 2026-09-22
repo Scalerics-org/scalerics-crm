@@ -29,6 +29,7 @@ from routes.finanzas import finanzas_bp
 from routes.simulador import simulador_bp
 from routes.email_marketing import email_mkt_bp
 from routes.linkedin_panel import linkedin_panel_bp
+from routes.linkedin_bot import linkedin_bot_bp
 from routes.instagram import instagram_bp, instagram_pub_bp
 from routes.sombra import sombra_bp
 from routes.equipo import equipo_bp
@@ -2424,6 +2425,14 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
 .li-error{font-size:.76rem;color:var(--rojo-texto);margin:4px 0 10px}
 .li-error:empty{display:none}
 .li-copia-oculta{position:fixed;top:0;left:0;opacity:0;pointer-events:none}
+.li-pedido{border:1px solid var(--borde);border-radius:8px;padding:10px;background:var(--superficie);display:grid;gap:6px}
+.li-pedido textarea{min-height:56px;resize:vertical}
+.li-pedido-item{font-size:.74rem;color:var(--texto-debil);border-top:1px solid var(--borde);padding-top:6px;line-height:1.45}
+.li-pedido-item b{color:var(--texto-fuerte)}
+.li-msg{font-size:.76rem;color:var(--texto-debil)}
+.li-msg:empty{display:none}
+.li-msg.error{color:var(--rojo-texto)}
+.li-msg.ok{color:var(--verde-texto)}
 @media(max-width:768px){
   .li-tarjetas{grid-template-columns:1fr}
 }
@@ -13241,23 +13250,52 @@ function liTarjeta(b, limite) {
       '<a class="li-btn" href="/api/linkedin/borradores/' + id + '/imagen?descargar=1" download="linkedin-' + id +
       '.png">Descargar imagen</a></div>'
     : '';
+  // Sin imagen: la tarjeta la dibuja el runner de Actions en la proxima
+  // corrida (no hay Chromium en Fly). Pasa con lo recien generado y con lo
+  // que cambio "Otra idea" o una correccion de Claude. Solo en borrador: uno
+  // descartado no la va a tener nunca, y uno viejo ya publicado sin imagen es
+  // historico (de antes de que el panel las guardara) y tampoco la consigue.
+  const pendiente = !b.tiene_imagen && b.estado === 'borrador'
+    ? '<span class="li-meta">Falta la imagen: sale en la próxima corrida del cron (martes o viernes a las 08:00)</span>' : '';
+  const puedeCambiar = b.estado === 'borrador' || b.estado === 'descartado';
   const acciones = [
     '<button type="button" class="li-btn" id="li-copiar-' + id + '" onclick="liCopiar(' + id + ')">Copiar texto</button>',
     '<button type="button" class="li-btn" onclick="liEditar(' + id + ')">Editar</button>',
     b.estado === 'publicado' ? '' :
       '<button type="button" class="li-btn" onclick="liAbrirPublicar(' + id + ')">Marcar como publicada</button>',
+    puedeCambiar ? '<button type="button" class="li-btn li-btn-suave" onclick="liOtraIdea(' + id + ')">Otra idea</button>' : '',
     b.estado === 'descartado' ? '' :
       '<button type="button" class="li-btn li-btn-suave" onclick="liCambiarEstado(' + id + ', ' + "'descartado'" + ')">Descartar</button>',
     b.estado === 'borrador' ? '' :
       '<button type="button" class="li-btn li-btn-suave" onclick="liCambiarEstado(' + id + ', ' + "'borrador'" + ')">Volver a borrador</button>'
   ].join('');
-  return '<article class="li-tarjeta li-' + liEsc(b.estado) + '">' +
+  return '<article class="li-tarjeta li-' + liEsc(b.estado) + '" id="li-t-' + id + '">' +
     '<div class="li-cab"><span class="li-orden">N.º ' + Number(b.orden) + '</span>' +
     '<span class="li-tema">' + liEsc(b.tema || 'Publicación') + '</span>' +
     '<span class="li-chip ' + est[1] + '">' + liEsc(est[0]) + '</span></div>' +
     '<div class="li-texto">' + liEsc(b.texto) + '</div>' + visual +
-    '<div class="li-pie">' + contador + publicada + editada + '</div>' +
+    '<div class="li-pie">' + contador + publicada + editada + pendiente + '</div>' +
+    liPedidoHtml(b) +
+    '<div class="li-msg" id="li-msg-' + id + '" role="status"></div>' +
     '<div class="li-acciones-tarjeta">' + acciones + '</div></article>';
+}
+
+const LI_PEDIDO_ESTADOS = {pendiente: 'En espera: Claude lo revisa en menos de 30 minutos',
+  hecha: 'Corregido', no_se_pudo: 'No se pudo'};
+
+function liPedidoHtml(b) {
+  const id = Number(b.id);
+  const lista = b.correcciones || [];
+  const espera = lista.some(c => c.estado === 'pendiente');
+  const items = lista.map(c => '<div class="li-pedido-item"><b>' + liEsc(LI_PEDIDO_ESTADOS[c.estado] || c.estado) +
+    ':</b> ' + liEsc(c.pedido) + (c.respuesta ? '<br>Claude: ' + liEsc(c.respuesta) : '') + '</div>').join('');
+  const form = b.estado === 'borrador' && !espera
+    ? '<textarea class="li-textarea" id="li-pedido-' + id + '" maxlength="1000" ' +
+      'placeholder="Ej: el segundo párrafo suena muy formal, hacelo más directo" rows="2"></textarea>' +
+      '<div><button type="button" class="li-btn" onclick="liPedir(' + id + ')">Enviar pedido a Claude</button></div>'
+    : '';
+  if (!form && !items) return '';
+  return '<div class="li-pedido"><span class="li-rotulo">Pedile un cambio a Claude</span>' + form + items + '</div>';
 }
 
 function liCopiarViejo(texto) {
@@ -13403,6 +13441,46 @@ async function liEnviarEstado(id, estado, fecha, idError) {
   }
   await loadLinkedin();
   return true;
+}
+
+async function liOtraIdea(id) {
+  if (!confirm('¿Cambiar este borrador por otra idea del banco? Se pierde el texto y la imagen actuales, y la nueva tarjeta sale en la próxima corrida del cron.')) return;
+  const msg = document.getElementById('li-msg-' + Number(id));
+  if (msg) { msg.textContent = 'Buscando otra idea…'; msg.className = 'li-msg'; }
+  try {
+    const r = await fetch('/api/linkedin/borradores/' + Number(id) + '/otra-idea', {method: 'POST'});
+    let d = {};
+    try { d = await r.json(); } catch (e) { d = {}; }
+    if (!r.ok || !d.ok) {
+      if (msg) { msg.textContent = d.error || 'No se pudo cambiar la idea.'; msg.className = 'li-msg error'; }
+      return;
+    }
+  } catch (e) {
+    if (msg) { msg.textContent = 'No se pudo cambiar la idea.'; msg.className = 'li-msg error'; }
+    return;
+  }
+  await loadLinkedin();
+}
+
+async function liPedir(id) {
+  const area = document.getElementById('li-pedido-' + Number(id));
+  const pedido = area ? area.value.trim() : '';
+  const msg = document.getElementById('li-msg-' + Number(id));
+  if (!pedido) { if (msg) { msg.textContent = 'Escribí qué querés cambiar.'; msg.className = 'li-msg error'; } return; }
+  try {
+    const r = await fetch('/api/linkedin/borradores/' + Number(id) + '/correccion', {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({pedido: pedido})});
+    let d = {};
+    try { d = await r.json(); } catch (e) { d = {}; }
+    if (!r.ok || !d.ok) {
+      if (msg) { msg.textContent = d.error || 'No se pudo enviar el pedido.'; msg.className = 'li-msg error'; }
+      return;
+    }
+  } catch (e) {
+    if (msg) { msg.textContent = 'No se pudo enviar el pedido.'; msg.className = 'li-msg error'; }
+    return;
+  }
+  await loadLinkedin();
 }
 
 function liSemana(delta) {
@@ -18495,7 +18573,7 @@ def create_app(db_path: str) -> Flask:
     for bp in (leads_bp, demos_bp, calendar_bp, wa_bp, pipeline_bp, tasks_bp, budgets_bp, tokens_bp, meta_bp, calendly_bp, notion_bp, projects_bp, preclientes_bp,
                 notion_clients_bp, resend_bp, linkedin_bp, web_bp, finanzas_bp, marketing_bp,
                 simulador_bp, equipo_bp, horarios_bp, flujos_bp, seg_leads_bp, daily_bp, plantillas_bp,
-                backups_bp, email_mkt_bp, linkedin_panel_bp, instagram_bp, instagram_pub_bp, sombra_bp):
+                backups_bp, email_mkt_bp, linkedin_panel_bp, linkedin_bot_bp, instagram_bp, instagram_pub_bp, sombra_bp):
         app.register_blueprint(bp)
 
     @app.before_request
@@ -18526,6 +18604,9 @@ def create_app(db_path: str) -> Flask:
         # La sesion de Claude que corrige publicaciones: IG_BOT_TOKEN, que solo
         # abre estas rutas y se valida con compare_digest adentro del blueprint.
         if request.path.startswith("/api/instagram-bot/"):
+            return
+        # Lo mismo para LinkedIn: LINKEDIN_BOT_TOKEN, que solo abre estas rutas.
+        if request.path.startswith("/api/linkedin-bot/"):
             return
         # El Apps Script del semaforo no puede llevar el ADMIN_TOKEN: vive pegado
         # a una planilla que es de la agencia, y cualquiera con permiso de

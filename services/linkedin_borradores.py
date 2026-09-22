@@ -27,6 +27,11 @@ import pytz
 
 logger = logging.getLogger(__name__)
 
+
+class NoSePuede(ValueError):
+    """Una accion del panel que no aplica al estado actual del borrador."""
+
+
 MVD = pytz.timezone("America/Montevideo")
 LIMITE_LINKEDIN = 3000
 ESTADOS = ("borrador", "publicado", "descartado")
@@ -34,6 +39,8 @@ _FORMATO = "%Y-%m-%d %H:%M:%S"
 _HASHTAG = re.compile(r"#\w+")
 _FIRMA_PNG = b"\x89PNG\r\n\x1a\n"
 _TOPE_IMAGEN = 5 * 1024 * 1024
+MAX_PEDIDO = 1000
+AUTOR_BOT = "Claude"
 
 # Lo que dice el cron: martes (1) y viernes (4) a las 08:00 de Montevideo.
 DIAS_DE_GENERACION = (1, 4)
@@ -157,13 +164,14 @@ def guardar_borradores(db_path: str, borradores: list[dict], ahora: datetime | N
             if post_id is not None and conn.execute(
                     "SELECT 1 FROM linkedin_borradores WHERE post_id = ?", (post_id,)).fetchone():
                 continue
+            frase = (b.get("imagen_spec") or {}).get("frase") if b.get("imagen_tipo") == "tarjeta" else None
             for _ in range(3):
                 try:
                     conn.execute(
                         "INSERT INTO linkedin_borradores (post_id, semana, orden, tema, texto, texto_original, "
-                        "hashtags, estado, created_at) VALUES (?,?,?,?,?,?,?,'borrador',?)",
+                        "hashtags, estado, created_at, frase) VALUES (?,?,?,?,?,?,?,'borrador',?,?)",
                         (post_id, semana, _siguiente_orden(conn, semana), tema_de(b), texto, texto,
-                         hashtags_de(texto), creado))
+                         hashtags_de(texto), creado, frase))
                     nuevos += 1
                     break
                 except sqlite3.IntegrityError:
@@ -329,3 +337,176 @@ def marcar_publicado_por_post(db_path: str, post_id: int, ahora: datetime | None
         conn.commit()
     finally:
         conn.close()
+
+
+# ── otra idea ────────────────────────────────────────────────────────────────
+# Pedido de Juan (22/9): "si no me gustan generar otra idea o poder
+# comentarle a Claude una mejora". Esto es lo primero: cambia el borrador por
+# otro tema del banco, sin tocar linkedin_posts (que sigue siendo el registro
+# original e inmutable del mail).
+
+def otra_idea(db_path: str, borrador_id: int, ahora: datetime | None = None) -> dict:
+    """Reemplaza texto y tema por otro del banco. La tarjeta queda pendiente.
+
+    Solo desde borrador o descartado: uno ya publicado no se cambia solo.
+    """
+    from database import marcar_banco_usado
+    from services.linkedin_posts import elegir_del_banco
+
+    ahora = ahora or ahora_utc()
+    actual = obtener(db_path, borrador_id)
+    if not actual or actual["estado"] not in ("borrador", "descartado"):
+        raise NoSePuede("Este borrador ya no se puede cambiar")
+    conn = _conn(db_path)
+    try:
+        en_semana = {r["tema"] for r in conn.execute(
+            "SELECT tema FROM linkedin_borradores WHERE semana = ? AND id <> ?",
+            (actual["semana"], borrador_id))}
+        fila, _en_cooldown = elegir_del_banco(db_path, ahora, en_semana)
+        marcar_banco_usado(db_path, fila["id"], ahora.isoformat())
+        conn.execute(
+            "UPDATE linkedin_borradores SET tema = ?, texto = ?, texto_original = ?, hashtags = ?, "
+            "frase = ?, estado = 'borrador', publicado_en = NULL, imagen_png = NULL, "
+            "editado_por = NULL, editado_en = NULL WHERE id = ?",
+            (fila["tema"], fila["texto"], fila["texto"], hashtags_de(fila["texto"]),
+             fila["frase"], borrador_id))
+        conn.commit()
+    finally:
+        conn.close()
+    return obtener(db_path, borrador_id)
+
+
+def necesita_render(db_path: str) -> list[dict]:
+    """Borradores con tarjeta pendiente de dibujar (otra_idea o una correccion).
+
+    No hay Chromium en Fly: la tarjeta se dibuja en la proxima corrida del
+    cron (o un workflow_dispatch a mano), junto con los educativos de esa
+    corrida. Misma forma que devuelve linkedin_job_handler, para que
+    render_linkedin.py no tenga que distinguir el origen.
+    """
+    conn = _conn(db_path)
+    try:
+        filas = conn.execute(
+            "SELECT post_id, frase FROM linkedin_borradores WHERE imagen_png IS NULL "
+            "AND post_id IS NOT NULL AND frase IS NOT NULL AND frase <> '' "
+            "AND estado <> 'descartado'").fetchall()
+    finally:
+        conn.close()
+    return [{"id": f["post_id"], "imagen_tipo": "tarjeta", "imagen_spec": {"frase": f["frase"]}}
+            for f in filas]
+
+
+# ── pedidos de correccion ────────────────────────────────────────────────────
+# Juan escribe en texto libre lo que quiere cambiar. No hay modelo pago: los
+# resuelve una sesion de Claude Code programada, que lee los pendientes por
+# /api/linkedin-bot/ y guarda la version corregida. El resultado queda en
+# borrador (con la tarjeta pendiente, como otra_idea): hay que aprobarlo de
+# nuevo. Mismo patron que services/instagram.py.
+
+def pedir_correccion(db_path: str, borrador_id: int, pedido: str, usuario: str) -> dict:
+    pedido = (pedido or "").strip()
+    if not pedido:
+        raise NoSePuede("Escribí qué querés cambiar")
+    if len(pedido) > MAX_PEDIDO:
+        raise NoSePuede(f"El pedido es muy largo (máximo {MAX_PEDIDO} caracteres)")
+    actual = obtener(db_path, borrador_id)
+    if not actual or actual["estado"] != "borrador":
+        raise NoSePuede("Este borrador ya no se puede corregir")
+    conn = _conn(db_path)
+    try:
+        abierta = conn.execute(
+            "SELECT 1 FROM linkedin_correcciones WHERE borrador_id = ? AND estado = 'pendiente'",
+            (borrador_id,)).fetchone()
+        if abierta:
+            raise NoSePuede("Ya hay un pedido en espera para este borrador")
+        conn.execute("INSERT INTO linkedin_correcciones (borrador_id, pedido, pedido_por) VALUES (?,?,?)",
+                     (borrador_id, pedido, usuario))
+        conn.commit()
+    finally:
+        conn.close()
+    return actual
+
+
+def correcciones_de(db_path: str, borrador_ids: list[int]) -> dict:
+    """{borrador_id: [pedidos, el mas nuevo primero]} para el panel."""
+    if not borrador_ids:
+        return {}
+    conn = _conn(db_path)
+    try:
+        marcas = ",".join("?" * len(borrador_ids))
+        filas = conn.execute(
+            f"SELECT id, borrador_id, pedido, estado, respuesta, creado_en "
+            f"FROM linkedin_correcciones WHERE borrador_id IN ({marcas}) ORDER BY id DESC",
+            borrador_ids).fetchall()
+    finally:
+        conn.close()
+    salida: dict = {}
+    for f in filas:
+        salida.setdefault(f["borrador_id"], []).append(dict(f))
+    return salida
+
+
+def pendientes(db_path: str) -> list[dict]:
+    """Lo que tiene que resolver la sesion de Claude, con todo el contexto."""
+    conn = _conn(db_path)
+    try:
+        filas = conn.execute(
+            "SELECT c.id, c.pedido, c.creado_en, b.id AS borrador_id, b.tema, b.texto, b.estado "
+            "FROM linkedin_correcciones c JOIN linkedin_borradores b ON b.id = c.borrador_id "
+            "WHERE c.estado = 'pendiente' ORDER BY c.id").fetchall()
+    finally:
+        conn.close()
+    return [dict(f) for f in filas]
+
+
+def _pedido(db_path: str, corr_id: int):
+    conn = _conn(db_path)
+    try:
+        return conn.execute("SELECT * FROM linkedin_correcciones WHERE id = ?", (corr_id,)).fetchone()
+    finally:
+        conn.close()
+
+
+def _cerrar_pedido(db_path: str, corr_id: int, estado: str, respuesta: str) -> int:
+    conn = _conn(db_path)
+    try:
+        cur = conn.execute(
+            "UPDATE linkedin_correcciones SET estado = ?, respuesta = ?, resuelto_en = ? "
+            "WHERE id = ? AND estado = 'pendiente'",
+            (estado, (respuesta or "")[:500], ahora_utc().strftime(_FORMATO), corr_id))
+        conn.commit()
+        return cur.rowcount
+    finally:
+        conn.close()
+
+
+def resolver_correccion(db_path: str, corr_id: int, texto: str, frase: str, respuesta: str) -> dict:
+    """Guarda la version corregida. La tarjeta queda pendiente, como otra_idea."""
+    from services.linkedin_posts import primera_frase, recortar_frase
+
+    fila = _pedido(db_path, corr_id)
+    if not fila or fila["estado"] != "pendiente":
+        raise NoSePuede("Ese pedido ya no está pendiente")
+    texto = (texto or "").strip()
+    if not texto:
+        raise NoSePuede("Hace falta el texto corregido")
+    borrador_id = fila["borrador_id"]
+    frase_final = recortar_frase(frase) if (frase or "").strip() else primera_frase(texto)
+    conn = _conn(db_path)
+    try:
+        conn.execute(
+            "UPDATE linkedin_borradores SET texto = ?, hashtags = ?, frase = ?, imagen_png = NULL, "
+            "editado_por = ?, editado_en = ? WHERE id = ?",
+            (texto, hashtags_de(texto), frase_final, AUTOR_BOT, ahora_utc().strftime(_FORMATO), borrador_id))
+        conn.commit()
+    finally:
+        conn.close()
+    _cerrar_pedido(db_path, corr_id, "hecha", respuesta or "Listo.")
+    return obtener(db_path, borrador_id)
+
+
+def rechazar_correccion(db_path: str, corr_id: int, respuesta: str) -> None:
+    if not (respuesta or "").strip():
+        raise NoSePuede("Hay que explicar por qué no se pudo")
+    if not _cerrar_pedido(db_path, corr_id, "no_se_pudo", respuesta.strip()):
+        raise NoSePuede("Ese pedido ya no está pendiente")
