@@ -416,6 +416,17 @@ function crearServicioLeads({ repo, cola, cfg, logger, textos, redactor = null, 
             leadId: lead.id,
           });
         }
+      } else {
+        /**
+         * El unico followup que puede seguir pendiente para un lead que YA
+         * habia contestado antes es el de "retomar" (el de "no contestaste
+         * el formulario" se cancela arriba, en la primera respuesta, y no se
+         * vuelve a crear). Si escribio de nuevo antes de la apertura, ya
+         * retomo la charla solo: mandarle igual el mensaje de "seguimos donde
+         * quedamos" a la mañana siguiente le llega pisado por la conversacion
+         * que el mismo ya siguio. Sebastian, 22-9.
+         */
+        repo.cancelarJobs(lead.id, 'followup');
       }
 
       if (embudo && cfg.FUNNEL_ENABLED) {

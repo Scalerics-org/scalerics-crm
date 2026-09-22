@@ -285,11 +285,15 @@ function crearRepo(db) {
      * cada turno, y con DO NOTHING quedaria clavado en la hora del primer
      * mensaje —el lead seguiria conversando y a la hora lo derivarian igual—.
      */
-    programarJob(leadId, tipo, runAtIso) {
+    /** @param {string|null} motivo ver la migracion 023: 'retomar' o nada. */
+    programarJob(leadId, tipo, runAtIso, motivo = null) {
       const r = db.prepare(
-        "UPDATE jobs SET run_at = ?, attempts = 0 WHERE lead_id = ? AND type = ? AND status = 'pending'"
-      ).run(runAtIso, leadId, tipo);
-      if (!r.changes) stmt.insertJob.run(leadId, tipo, runAtIso);
+        "UPDATE jobs SET run_at = ?, attempts = 0, motivo = ? WHERE lead_id = ? AND type = ? AND status = 'pending'"
+      ).run(runAtIso, motivo, leadId, tipo);
+      if (!r.changes) {
+        db.prepare('INSERT INTO jobs (lead_id, type, run_at, motivo) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING')
+          .run(leadId, tipo, runAtIso, motivo);
+      }
     },
 
     /**

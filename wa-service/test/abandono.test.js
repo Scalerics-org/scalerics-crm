@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
-const { conLead, stubModelo } = require('./helpers');
+const { conLead, montar, stubModelo, LEAD } = require('./helpers');
 const { S } = require('../src/funnel/states');
 const { correspondeDerivar } = require('../src/funnel/abandono');
 
@@ -272,6 +272,188 @@ test('si se calla de madrugada, no se lo deriva: se retoma a la apertura', async
  * En hora se deriva como siempre. La regla es contra la madrugada, no contra
  * derivar.
  */
+// ── retomar al que se calla fuera de horario, sin mentirle "hace tres dias" ──
+
+/**
+ * Sebastian escribio a las 5:56, el bot le ofrecio horarios y se durmio en
+ * medio de la charla. El abandono programa un followup con motivo 'retomar' a
+ * la apertura, que tiene que salir con la situacion 'retomar' (no la de "no
+ * contestaste el formulario") y con lo ultimo que dijo el bot como contexto,
+ * para no repetirse ni inventar que paso.
+ */
+test('el followup de retomar sale con la situacion retomar y cita lo ultimo que dijo el bot', async () => {
+  const modelo = stubModelo({
+    respuestas: { conversacion: 'Tengo libre a las 10 y a las 11, ¿cuál te sirve?', retomar: 'retomando' },
+  });
+  const s = await conLead(
+    { BUSINESS_HOURS: '09:00-19:00', BUSINESS_DAYS: 'mon-fri', modelo },
+    undefined,
+    instanteLocal('2026-09-06', 2, 30, TZ), // domingo de madrugada
+  );
+  await s.servicioLeads.registrarRespuesta(TEL, 'hola, quiero agendar');
+  await s.cola.vacia();
+  s.proveedor.limpiar();
+
+  // Se calla de madrugada: el abandono reprograma el followup como 'retomar'.
+  await s.scheduler.correrVencidos(instanteLocal('2026-09-06', 3, 40, TZ));
+  await s.cola.vacia();
+
+  const l = s.repo.leadPorTelefono(TEL);
+  const job = s.repo.db.prepare(
+    "SELECT * FROM jobs WHERE lead_id = ? AND type = 'followup' AND status = 'pending'"
+  ).get(l.id);
+  assert.ok(job, 'quedo el followup pendiente');
+  assert.equal(job.motivo, 'retomar');
+
+  modelo.llamadas.length = 0;
+  // A la hora en que quedo programado (la apertura del lunes en UTC).
+  await s.scheduler.correrVencidos(new Date(new Date(job.run_at).getTime() + 60_000));
+  await s.cola.vacia();
+
+  const prompt = modelo.llamadas.at(-1).mensajes[0].content;
+  assert.match(prompt, /situación: retomar/, 'usa la situacion de retomar, no la de "hace tres dias"');
+  assert.match(prompt, /Tengo libre a las 10 y a las 11/, 'le pasa lo ultimo que dijo el bot');
+
+  // El envio en si queda regido por el horario comercial (otra franja, con
+  // sus propios tests); lo que importa aca es que el job se dio por hecho y
+  // quedo la marca de que se le mando el retomar.
+  const jobDespues = s.repo.db.prepare('SELECT status FROM jobs WHERE id = ?').get(job.id);
+  assert.equal(jobDespues.status, 'done');
+  assert.ok(s.repo.leadPorTelefono(TEL).followup_sent_at);
+});
+
+/**
+ * Caso raro pero posible: no hay ningun saliente de tipo bot registrado (base
+ * rota, o un lead cargado a mano). ultimosMensajes().filter(...).at(-1) puede
+ * dar undefined, y eso no tiene que explotar el scheduler: se manda igual, sin
+ * la cita.
+ */
+test('el retomar sin ningun mensaje previo del bot no explota, sale sin cita', async () => {
+  const { crearScheduler } = require('../src/scheduler/followup');
+  const encolados = [];
+  const marcados = [];
+  const lead = { id: 1, telefono: TEL, conversacion_desde: null };
+  const job = { id: 9, type: 'followup', motivo: 'retomar', lead_id: 1, run_at: new Date().toISOString() };
+
+  const repo = {
+    jobsVencidos: () => [job],
+    leadPorId: () => lead,
+    ultimosMensajes: () => [], // nada registrado
+    actualizarLead: () => {},
+    marcarJob: (id, estado, error) => marcados.push({ id, estado, error }),
+    reprogramarJob: () => {},
+  };
+  let pedido = null;
+  const redactor = { escribir: async (l, situacion, extra) => { pedido = { situacion, extra }; return 'retomando igual'; } };
+  const cola = { encolar: (m) => encolados.push(m) };
+
+  const scheduler = crearScheduler({ repo, cola, cfg: {}, redactor, ahora: () => new Date() });
+  await assert.doesNotReject(scheduler.correrVencidos());
+
+  assert.equal(pedido.situacion, 'retomar');
+  assert.equal(pedido.extra, '', 'sin mensaje del bot, no hay cita: extra vacio');
+  assert.equal(encolados.length, 1);
+  assert.equal(encolados[0].texto, 'retomando igual');
+  assert.equal(marcados[0].estado, 'done');
+});
+
+/**
+ * Si volvio a escribir antes de la apertura, ya retomo la charla solo: el
+ * followup de "seguimos donde quedamos" no tiene que salirle igual, pisado
+ * arriba de lo que ya esta charlando.
+ */
+test('si el lead escribe antes de la apertura, el followup de retomar se cancela', async () => {
+  const s = await conLead(
+    { BUSINESS_HOURS: '09:00-19:00', BUSINESS_DAYS: 'mon-fri' },
+    undefined,
+    instanteLocal('2026-09-06', 2, 30, TZ),
+  );
+  await s.servicioLeads.registrarRespuesta(TEL, 'hola, quiero agendar');
+  await s.cola.vacia();
+
+  await s.scheduler.correrVencidos(instanteLocal('2026-09-06', 3, 40, TZ));
+  await s.cola.vacia();
+  s.proveedor.limpiar();
+
+  const l = s.repo.leadPorTelefono(TEL);
+  assert.equal(pendientes(s, l.id, 'followup').length, 1, 'quedo el de retomar');
+
+  // Se despierta antes de la apertura y sigue solo.
+  await s.servicioLeads.registrarRespuesta(TEL, 'che, perdon, me dormi. sigo interesado');
+  await s.cola.vacia();
+
+  assert.equal(pendientes(s, l.id, 'followup').length, 0, 'se cancela: ya no hace falta retomarlo');
+});
+
+/**
+ * El seguimiento clasico de "no contestaste el formulario" sigue cancelandose
+ * como siempre cuando el lead responde por primera vez: esto no le cambia nada
+ * a ese caso, que no tiene motivo 'retomar'.
+ */
+test('el followup normal del formulario se sigue cancelando si el lead responde', async () => {
+  const s = await montar({ BUSINESS_HOURS: '09:00-19:00', BUSINESS_DAYS: 'mon-fri' });
+  await s.servicioLeads.alta(LEAD);
+  await s.cola.vacia();
+
+  const l = s.repo.leadPorTelefono(TEL);
+  assert.equal(pendientes(s, l.id, 'followup').length, 1, 'el alta le dejo el de siempre, sin motivo');
+
+  await s.servicioLeads.registrarRespuesta(TEL, 'hola');
+  await s.cola.vacia();
+
+  assert.equal(pendientes(s, l.id, 'followup').length, 0, 'se cancela igual que siempre');
+});
+
+/**
+ * Si ya se le mando el retomar una vez y se vuelve a callar fuera de horario,
+ * no se le manda un segundo "seguimos donde quedamos": el abandono se
+ * reprograma para la proxima apertura, y de ahi en mas sigue el camino normal
+ * (derivar si corresponde).
+ */
+test('si ya se retomo una vez y se vuelve a callar fuera de horario, no se retoma dos veces', async () => {
+  const modelo = stubModelo({
+    respuestas: { conversacion: 'dale, contame', retomar: 'retomando' },
+  });
+  const s = await conLead(
+    { BUSINESS_HOURS: '09:00-19:00', BUSINESS_DAYS: 'mon-fri', modelo },
+    undefined,
+    instanteLocal('2026-09-06', 2, 30, TZ),
+  );
+  await s.servicioLeads.registrarRespuesta(TEL, 'hola, quiero agendar');
+  await s.cola.vacia();
+  s.proveedor.limpiar();
+
+  await s.scheduler.correrVencidos(instanteLocal('2026-09-06', 3, 40, TZ));
+  await s.cola.vacia();
+
+  const jobRetomar = s.repo.db.prepare(
+    "SELECT * FROM jobs WHERE lead_id = (SELECT id FROM leads WHERE telefono = ?) AND type = 'followup' AND status = 'pending'"
+  ).get(TEL);
+  assert.ok(jobRetomar, 'quedo el followup de retomar programado');
+
+  // Se manda el retomar a la hora en que quedo programado.
+  await s.scheduler.correrVencidos(new Date(new Date(jobRetomar.run_at).getTime() + 60_000));
+  await s.cola.vacia();
+
+  const l = s.repo.leadPorTelefono(TEL);
+  assert.ok(l.followup_sent_at, 'ya se le mando el retomar');
+  assert.equal(pendientes(s, l.id, 'followup').length, 0, 'no queda otro followup pendiente');
+
+  // Se vuelve a callar, de nuevo fuera de horario.
+  s.proveedor.limpiar();
+  await s.servicioLeads.registrarRespuesta(TEL, 'perdon, me dormi de nuevo');
+  await s.cola.vacia();
+  s.proveedor.limpiar();
+
+  await s.scheduler.correrVencidos(instanteLocal('2026-09-08', 3, 40, TZ)); // martes de madrugada
+  await s.cola.vacia();
+
+  // No se crea un followup nuevo: el abandono se reprograma para la apertura.
+  assert.equal(pendientes(s, l.id, 'followup').length, 0, 'no se retoma una segunda vez');
+  const abandono = pendientes(s, l.id, 'abandono');
+  assert.equal(abandono.length, 1, 'el abandono sigue vivo, reprogramado');
+});
+
 test('en horario se deriva igual', async () => {
   const s = await conLead(
     { BUSINESS_HOURS: '09:00-19:00', BUSINESS_DAYS: 'mon-fri' },

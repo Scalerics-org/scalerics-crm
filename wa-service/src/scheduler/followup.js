@@ -78,6 +78,26 @@ function crearScheduler({ repo, cola, cfg, redactor = null, embudo = null, limit
       return embudo.derivarPorAbandono(lead.id);
     }
 
+    /**
+     * Retomar no es el follow-up de los tres dias: el lead estaba conversando
+     * anoche y se durmio. "Te escribi hace tres dias" le mentiria. El redactor
+     * no ve el historial, asi que se le pasa lo ultimo que le dijo el bot:
+     * sin eso no sabe donde quedo la charla.
+     */
+    if (job.type === 'followup' && job.motivo === 'retomar') {
+      const ultimoDelBot = repo.ultimosMensajes(lead.id, 6, lead.conversacion_desde)
+        .filter((m) => m.direction === 'out' && m.body)
+        .at(-1);
+      const extraRetomar = ultimoDelBot
+        ? `Lo último que le escribiste fue: «${String(ultimoDelBot.body).slice(0, 600)}»`
+        : '';
+      const texto = await redactor?.escribir(lead, 'retomar', extraRetomar);
+      if (!texto) return false;
+      cola.encolar({ to: lead.telefono, texto, kind: 'followup', leadId: lead.id });
+      repo.actualizarLead(lead.id, { followup_sent_at: momento.toISOString() });
+      return true;
+    }
+
     const situacion = SITUACION[job.type];
     if (!situacion) return true;
 
@@ -153,7 +173,12 @@ function crearScheduler({ repo, cola, cfg, redactor = null, embudo = null, limit
           repo.marcarJob(job.id, 'cancelled', 'ya agendo la reunion');
           continue;
         }
-        if (lead.replied_at) {
+        // "El lead respondio" cancela el follow-up del formulario, que es para
+        // el que nunca contesto. El de retomar es para uno que YA habia
+        // contestado —por eso es lead— y se durmio en medio de la charla: si
+        // se cancelara por eso, no saldria nunca. Si volvio a escribir antes de
+        // la apertura, lo cancela registrarRespuesta, que es donde corresponde.
+        if (lead.replied_at && job.motivo !== 'retomar') {
           repo.marcarJob(job.id, 'cancelled', 'el lead respondio');
           continue;
         }
@@ -204,7 +229,7 @@ function crearScheduler({ repo, cola, cfg, redactor = null, embudo = null, limit
       if (job.type === 'abandono' && limites && !limites.enHorario(momento)) {
         const apertura = limites.proximaApertura(momento);
         if (!lead.followup_sent_at) {
-          repo.programarJob(lead.id, 'followup', apertura.toISOString());
+          repo.programarJob(lead.id, 'followup', apertura.toISOString(), 'retomar');
           repo.marcarJob(job.id, 'cancelled', 'se callo fuera de hora: se retoma a la apertura');
         } else {
           repo.reprogramarJob(job.id, apertura.toISOString());
