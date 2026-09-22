@@ -343,11 +343,76 @@ function diaRelativoQueNombro(texto) {
 }
 
 /**
+ * Si el mensaje trae una negacion. "no", "ni", "tampoco", "imposible" y
+ * "complicado" alcanzan para las frases que importan ("no puedo" y "no me
+ * sirve" ya traen el "no" suelto).
+ *
+ * Sin esto, "el miercoles no puedo" se leia como "eligio el miercoles": el
+ * codigo encontraba el nombre del dia y no miraba el resto de la frase.
+ */
+const RE_NEGACION = /\b(no|ni|tampoco|imposible|complicado)\b/;
+
+function tieneNegacion(texto) {
+  return RE_NEGACION.test(sinAcentos(String(texto || '')));
+}
+
+/** Corta un mensaje en clausulas, para poder mirar cada una por separado. */
+function segmentos(texto) {
+  return String(texto || '').split(/[,.;]|\bpero\b|\bsino\b/).map((s) => s.trim()).filter(Boolean);
+}
+
+/** Si ESE dia ofrecido esta nombrado en ESE segmento (por nombre, fecha, o relativo). */
+function diaEnSegmento(segmento, dia, tz, ahora) {
+  const { diaSemana, dia: diaISO } = enZona(dia, tz);
+  if (diasQueNombro(segmento).includes(diaSemana)) return true;
+  if (diasNumeroQueNombro(segmento).includes(Number(diaISO.slice(8)))) return true;
+
+  const relativo = diaRelativoQueNombro(segmento);
+  if (relativo !== null) {
+    const { dia: diaRelISO } = enZona(new Date(ahora.getTime() + relativo * 86400_000), tz);
+    if (diaRelISO === diaISO) return true;
+  }
+  return false;
+}
+
+/**
+ * Cuando el mensaje trae una negacion, se corta en clausulas y cada una se
+ * mira por separado: un dia nombrado en una clausula CON negacion queda
+ * descartado; uno nombrado en una clausula SIN negacion queda afirmado.
+ *
+ * "el jueves mejor, el miercoles no puedo" -> jueves afirmado, miercoles
+ * descartado -> se elige el jueves. "no, el jueves" -> el "no" esta solo, sin
+ * ningun dia al lado -> no descarta nada, y "el jueves" en su propia clausula
+ * queda afirmado -> se elige el jueves. "el miercoles no puedo" -> una sola
+ * clausula, con negacion y con el miercoles -> descartado, nada afirmado ->
+ * null: mejor no adivinar que dejarlo pasar como si fuera una eleccion.
+ *
+ * Si queda mas de un dia afirmado, o el mismo dia queda afirmado en una
+ * clausula y descartado en otra, tambien null: ambiguo no es lo mismo que
+ * claro.
+ */
+function elegirDiaConNegacion(texto, diasOfrecidos, tz, ahora) {
+  const afirmados = new Set();
+  const descartados = new Set();
+  for (const seg of segmentos(texto)) {
+    const segNegado = tieneNegacion(seg);
+    for (const d of diasOfrecidos) {
+      if (diaEnSegmento(seg, d, tz, ahora)) (segNegado ? descartados : afirmados).add(d.getTime());
+    }
+  }
+  const candidatos = diasOfrecidos.filter((d) => afirmados.has(d.getTime()) && !descartados.has(d.getTime()));
+  return candidatos.length === 1 ? candidatos[0] : null;
+}
+
+/**
  * Cual de los DIAS ofrecidos (agendar dia-primero-hora-despues) eligio,
  * resuelto en codigo: la lista y la eleccion las resuelve el codigo, no el
  * modelo, para que "1" o "2" nunca dependan de una interpretacion.
  *
- * Cuatro formas, en este orden de prioridad:
+ * Con una negacion en el medio, ver elegirDiaConNegacion: "priorizar no
+ * equivocarse sobre resolver mas" — si no queda clarisimo, null.
+ *
+ * Sin negacion, cuatro formas, en este orden de prioridad:
  *  1. "hoy" / "mañana" / "pasado mañana", contra la fecha real de `ahora`.
  *  2. El nombre del dia de semana ("el viernes", "miercoles").
  *  3. Un numero de fecha que coincide con alguno de los ofrecidos ("el 24",
@@ -366,6 +431,8 @@ function diaRelativoQueNombro(texto) {
  */
 function elegirDiaPorCodigo(texto, diasOfrecidos, tz = 'America/Montevideo', ahora = new Date()) {
   const t = sinAcentos(String(texto || ''));
+
+  if (tieneNegacion(t)) return elegirDiaConNegacion(t, diasOfrecidos, tz, ahora);
 
   const relativo = diaRelativoQueNombro(t);
   if (relativo !== null) {
@@ -440,6 +507,14 @@ function elegirHoraPorCodigo(texto, horasOfrecidas, tz = 'America/Montevideo') {
   }
 
   /**
+   * Con mas texto que un numero solo, puede venir una negacion mezclada
+   * ("a las 12 no puedo", "12 no, 13 si"): sin esto, horasQueDijo saca el
+   * numero igual, sin mirar el "no" al lado, y agendaba justo lo que el lead
+   * dijo que no podia.
+   */
+  if (tieneNegacion(t)) return elegirHoraConNegacion(t, horasOfrecidas, tz);
+
+  /**
    * Si trae minutos explicitos ("13:30", "13.30"), tienen que coincidir.
    *
    * horasQueDijo descarta los minutos a proposito —"alcanza con la hora
@@ -468,7 +543,46 @@ function elegirHoraPorCodigo(texto, horasOfrecidas, tz = 'America/Montevideo') {
   return null;
 }
 
+/**
+ * Si ESA hora ofrecida esta nombrada en ESE segmento (con o sin minutos
+ * explicitos). Sin minutos, solo cuenta el turno EN PUNTO: "12 no" no puede
+ * marcar el turno de las 12:30 como descartado, o "13 si" en la misma frase
+ * terminaria confundiendose con el de las 13:30.
+ */
+function horaEnSegmento(segmento, d, tz) {
+  const { hora, minuto } = enZona(d, tz);
+  const conMinutos = segmento.match(/(?<![\d:.,])(\d{1,2})[:.](\d{2})(?![\d:.,])/);
+  if (conMinutos) {
+    const hh = parseInt(conMinutos[1], 10);
+    const mm = parseInt(conMinutos[2], 10);
+    return minuto === mm && (hh === hora || (hh + 12) === hora || (hh - 12) === hora);
+  }
+  if (minuto !== 0) return false;
+  const dichas = horasQueDijo(segmento);
+  return dichas.some((h) => h === hora || (h + 12) === hora || (h - 12) === hora);
+}
+
+/**
+ * Mismo criterio que elegirDiaConNegacion, para las horas: por clausula, una
+ * hora nombrada junto con una negacion queda descartada; sin negacion en su
+ * clausula, afirmada. Si queda exactamente una afirmada (y no descartada en
+ * otra clausula), esa gana; si no, null.
+ */
+function elegirHoraConNegacion(texto, horasOfrecidas, tz) {
+  const afirmadas = new Set();
+  const descartadas = new Set();
+  for (const seg of segmentos(texto)) {
+    const segNegado = tieneNegacion(seg);
+    for (const d of horasOfrecidas) {
+      if (horaEnSegmento(seg, d, tz)) (segNegado ? descartadas : afirmadas).add(d.getTime());
+    }
+  }
+  const candidatas = horasOfrecidas.filter((d) => afirmadas.has(d.getTime()) && !descartadas.has(d.getTime()));
+  return candidatas.length === 1 ? candidatas[0] : null;
+}
+
 module.exports = {
   horasQueDijo, diasQueNombro, diasNumeroQueNombro, eligioEsaHora, revisarFranja,
   franjaDelDia, textoDeFranja, nombroAlgunDia, elegirDiaPorCodigo, elegirHoraPorCodigo,
+  tieneNegacion,
 };

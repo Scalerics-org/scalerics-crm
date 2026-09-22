@@ -763,7 +763,7 @@ test('una frase con dia y hora, en el paso de elegir dia, no agenda nada', async
   await s.servicioLeads.registrarRespuesta('59899123456', DIJO_TODO);
   await s.cola.vacia();
   // Viernes 4 es el segundo dia ofrecido (jueves 3 hoy, viernes 4 despues).
-  await s.servicioLeads.registrarRespuesta('59899123456', 'viernes a las 14 no puedo entonces?');
+  await s.servicioLeads.registrarRespuesta('59899123456', 'viernes a las 14 dale');
   await s.cola.vacia();
   const msgs = s.proveedor.getEnviados().filter((e) => e.to === '59899123456').map((e) => e.texto);
 
@@ -1005,6 +1005,134 @@ test('"ninguno me sirve" no es un dia: lo atiende la conversacion, como siempre'
   assert.equal(l.meeting_time, null);
   const msgs = s.proveedor.getEnviados().filter((e) => e.to === '59899123456').map((e) => e.texto);
   assert.equal(msgs.at(-1), 'Contame que dias te sirven y vemos.', 'lo contesta la conversacion normal');
+});
+
+/**
+ * El bug real detras de "una pregunta con dia y hora no agenda nada": "el
+ * miercoles no puedo" (o cualquier frase con negacion, sin otro dia afirmado)
+ * nombra un dia real, y sin mirar la negacion el codigo lo elegia igual. Va a
+ * la conversacion, NO a "ese dia no esta" (que le mentiria: el dia SI esta,
+ * lo que no puede es el lead).
+ */
+test('un dia negado, sin otro dia afirmado, va a la conversacion (no "ese dia no esta")', async () => {
+  const google = googleFalso();
+  const modelo = stubModelo({ datos: COMPLETO, respuestas: { conversacion: 'Ah, tranquilo. Avisame cuando puedas.' } });
+  const s = await conLead({
+    modelo, AGENDA_OFRECE_HORARIOS: 'true', _google: google.fetch,
+  }, undefined, HOY_TEST); // ofrece Mie 23 y Jue 24
+
+  await s.servicioLeads.registrarRespuesta('59899123456', DIJO_TODO);
+  await s.cola.vacia();
+  s.proveedor.limpiar();
+
+  await s.servicioLeads.registrarRespuesta('59899123456', 'el miercoles no puedo');
+  await s.cola.vacia();
+
+  const l = s.repo.leadPorTelefono('59899123456');
+  assert.equal(l.meeting_time, null);
+  assert.equal(l.dia_en_foco, null, 'sigue en el paso de elegir dia, no eligio miercoles');
+  const msgs = s.proveedor.getEnviados().filter((e) => e.to === '59899123456').map((e) => e.texto);
+  assert.equal(msgs.at(-1), 'Ah, tranquilo. Avisame cuando puedas.', 'lo atiende la conversacion');
+});
+
+test('un dia afirmado y el otro negado en la misma frase: elige el dia afirmado', async () => {
+  const google = googleFalso();
+  const s = await conLead({
+    modelo: stubModelo({ datos: COMPLETO }), AGENDA_OFRECE_HORARIOS: 'true', _google: google.fetch,
+  }, undefined, HOY_TEST); // ofrece Mie 23 y Jue 24
+
+  await s.servicioLeads.registrarRespuesta('59899123456', DIJO_TODO);
+  await s.cola.vacia();
+  s.proveedor.limpiar();
+
+  await s.servicioLeads.registrarRespuesta('59899123456', 'el jueves mejor, el miercoles no puedo');
+  await s.cola.vacia();
+
+  const l = s.repo.leadPorTelefono('59899123456');
+  assert.equal(l.dia_en_foco, '2026-09-24', 'eligio el jueves, no el miercoles negado');
+  const msgs = s.proveedor.getEnviados().filter((e) => e.to === '59899123456').map((e) => e.texto);
+  assert.match(msgs.at(-1), /^\[disponibilidad_del_dia\]/);
+});
+
+test('"no, el jueves" es una eleccion real: elige el jueves', async () => {
+  const google = googleFalso();
+  const s = await conLead({
+    modelo: stubModelo({ datos: COMPLETO }), AGENDA_OFRECE_HORARIOS: 'true', _google: google.fetch,
+  }, undefined, HOY_TEST);
+
+  await s.servicioLeads.registrarRespuesta('59899123456', DIJO_TODO);
+  await s.cola.vacia();
+  s.proveedor.limpiar();
+
+  await s.servicioLeads.registrarRespuesta('59899123456', 'no, el jueves');
+  await s.cola.vacia();
+
+  const l = s.repo.leadPorTelefono('59899123456');
+  assert.equal(l.dia_en_foco, '2026-09-24');
+  const msgs = s.proveedor.getEnviados().filter((e) => e.to === '59899123456').map((e) => e.texto);
+  assert.match(msgs.at(-1), /^\[disponibilidad_del_dia\]/);
+});
+
+test('una hora negada, en el paso de elegir hora, no agenda: el modelo queda de respaldo', async () => {
+  const google = googleFalso();
+  const modelo = stubModelo({ datos: COMPLETO });
+  const original = modelo.pedir.bind(modelo);
+  modelo.pedir = async (args) => {
+    // El modelo de respaldo entiende bien la negacion: no elige nada.
+    if (args.herramienta?.nombre === 'elegir') return { texto: null, argumentos: { opcion: 'ninguno' } };
+    if (args.herramienta?.nombre === 'momento') return { texto: null, argumentos: { pide: false } };
+    return original(args);
+  };
+  const s = await conLead({
+    modelo, AGENDA_OFRECE_HORARIOS: 'true', _google: google.fetch,
+  }, undefined, HOY_TEST);
+
+  await s.servicioLeads.registrarRespuesta('59899123456', DIJO_TODO);
+  await s.cola.vacia();
+  await s.servicioLeads.registrarRespuesta('59899123456', '1'); // elige el primer dia
+  await s.cola.vacia();
+  s.proveedor.limpiar();
+
+  await s.servicioLeads.registrarRespuesta('59899123456', 'a las 12 no puedo');
+  await s.cola.vacia();
+
+  assert.equal(s.repo.leadPorTelefono('59899123456').meeting_time, null, 'no agendo la hora negada');
+});
+
+/**
+ * En el paso de elegir hora, si nombra otro dia pero lo niega a los dos ("el
+ * miercoles no puedo, ni el jueves") no hay ningun dia claro para cambiarse:
+ * va al modelo de respaldo, no a "ese dia no esta" (los dos dias SI estan,
+ * el lead dijo que no podia ninguno).
+ */
+test('en el paso de elegir hora, un cambio de dia negado y ambiguo va al modelo, no a "ese dia no esta"', async () => {
+  const google = googleFalso();
+  const modelo = stubModelo({
+    datos: COMPLETO, respuestas: { conversacion: 'Uh, entiendo. ¿Alguna otra semana te queda mejor?' },
+  });
+  const original = modelo.pedir.bind(modelo);
+  modelo.pedir = async (args) => {
+    if (args.herramienta?.nombre === 'elegir') return { texto: null, argumentos: { opcion: 'ninguno' } };
+    if (args.herramienta?.nombre === 'momento') return { texto: null, argumentos: { pide: false } };
+    return original(args);
+  };
+  const s = await conLead({
+    modelo, AGENDA_OFRECE_HORARIOS: 'true', _google: google.fetch,
+  }, undefined, HOY_TEST); // ofrece Mie 23 y Jue 24
+
+  await s.servicioLeads.registrarRespuesta('59899123456', DIJO_TODO);
+  await s.cola.vacia();
+  await s.servicioLeads.registrarRespuesta('59899123456', '1'); // elige miercoles
+  await s.cola.vacia();
+  s.proveedor.limpiar();
+
+  await s.servicioLeads.registrarRespuesta('59899123456', 'el miercoles no puedo, ni el jueves');
+  await s.cola.vacia();
+
+  const l = s.repo.leadPorTelefono('59899123456');
+  assert.equal(l.meeting_time, null);
+  const msgs = s.proveedor.getEnviados().filter((e) => e.to === '59899123456').map((e) => e.texto);
+  assert.equal(msgs.at(-1), 'Uh, entiendo. ¿Alguna otra semana te queda mejor?', 'lo atiende el modelo');
 });
 
 // ── dia-primero-hora-despues: casos borde del paso de elegir hora ───────────

@@ -2,7 +2,7 @@
 
 const { S, palabraGlobal } = require('./states');
 const {
-  eligioEsaHora, revisarFranja, textoDeFranja, nombroAlgunDia,
+  eligioEsaHora, revisarFranja, textoDeFranja, nombroAlgunDia, tieneNegacion,
   elegirDiaPorCodigo, elegirHoraPorCodigo,
 } = require('../agenda/eleccion');
 const { enZona, instanteLocal } = require('../agenda/gcal');
@@ -531,6 +531,16 @@ function crearEmbudo({
     const elegido = elegirDiaPorCodigo(entrada, diasOfrecidos, cfg.TZ, ahora());
     if (elegido) return mostrarHorasDelDia(lead, elegido);
 
+    /**
+     * Una negacion que elegirDiaPorCodigo no supo resolver en un solo dia
+     * claro ("el miercoles no puedo", sin otro dia afirmado en la frase):
+     * mejor no adivinar. Sin este chequeo, nombroAlgunDia decia true —
+     * "miercoles" es un nombre de dia como cualquier otro— y contestaba "el
+     * miercoles no esta", que es peor: el lead dijo que no PODIA ese dia, no
+     * que ese dia no existiera.
+     */
+    if (tieneNegacion(entrada)) return CONVERSAR;
+
     if (nombroAlgunDia(entrada)) return ofrecerDias(lead, 'dia_no_ofrecido', entrada);
 
     // Un numero de lista que no matcheo ninguna opcion ("5" con solo dos
@@ -564,7 +574,15 @@ function crearEmbudo({
       const inicios = dias.map((d) => d.inicio);
       const otroDia = elegirDiaPorCodigo(entrada, inicios, cfg.TZ, ahora());
       if (otroDia) return mostrarHorasDelDia(lead, otroDia);
-      return ofrecerDias(lead, 'dia_no_ofrecido', entrada);
+      // Con una negacion de por medio ("el miercoles no puedo, y a las 12
+      // tampoco") y sin un dia claro para cambiarse, "ese dia no esta" seria
+      // el mensaje equivocado: se lo dejamos al modelo, que entiende mejor
+      // una frase asi.
+      if (tieneNegacion(entrada)) {
+        decision = await decidirSobreHorarios(lead, entrada, horasOfrecidas);
+      } else {
+        return ofrecerDias(lead, 'dia_no_ofrecido', entrada);
+      }
     } else {
       decision = await decidirSobreHorarios(lead, entrada, horasOfrecidas);
     }

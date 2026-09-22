@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 
-const { horasQueDijo, eligioEsaHora, diasNumeroQueNombro } = require('../src/agenda/eleccion');
+const { horasQueDijo, eligioEsaHora, diasNumeroQueNombro, tieneNegacion } = require('../src/agenda/eleccion');
 const { instanteLocal } = require('../src/agenda/gcal');
 
 const TZ = 'America/Montevideo';
@@ -471,4 +471,66 @@ test('elegirHoraPorCodigo: "opcion N" o "N." fuerzan el indice, sin ambiguedad',
   // aunque el numero tambien coincida con una hora en punto de la lista.
   assert.equal(elegirHoraPorCodigo('12.', HORAS_26, TZ), HORAS_26[11]);
   assert.equal(elegirHoraPorCodigo('opcion 12', HORAS_26, TZ), HORAS_26[11]);
+});
+
+// ── negaciones: no confundir "no puedo ese dia/hora" con una eleccion ───────
+
+/**
+ * Revision del PR #90. Con [Mie 23, Jue 24] ofrecidos, "el miercoles no
+ * puedo" quedaba con miercoles elegido: el codigo encontraba el nombre del
+ * dia sin mirar el resto de la frase. Lo mismo con una hora ofrecida.
+ */
+test('tieneNegacion: reconoce las formas comunes', () => {
+  assert.equal(tieneNegacion('el miercoles no puedo'), true);
+  assert.equal(tieneNegacion('miercoles no'), true);
+  assert.equal(tieneNegacion('ni loco'), true);
+  assert.equal(tieneNegacion('tampoco'), true);
+  assert.equal(tieneNegacion('imposible'), true);
+  assert.equal(tieneNegacion('complicado ese dia'), true);
+  assert.equal(tieneNegacion('el jueves'), false);
+  assert.equal(tieneNegacion('el 2 de septiembre'), false, '"septiembre" no tiene la palabra "no" suelta');
+});
+
+test('elegirDiaPorCodigo: un dia negado, solo, no elige nada', () => {
+  assert.equal(elegirDiaPorCodigo('el miercoles no puedo', DIAS, TZ), null);
+  assert.equal(elegirDiaPorCodigo('miercoles no', DIAS, TZ), null);
+  assert.equal(
+    elegirDiaPorCodigo('mañana no', DIAS, TZ, instanteLocal('2026-09-22', 10, 0, TZ)),
+    null,
+    '"mañana" (23) tambien se descarta si esta negado',
+  );
+});
+
+test('elegirDiaPorCodigo: un dia afirmado y el otro negado en la misma frase, elige el afirmado', () => {
+  assert.equal(elegirDiaPorCodigo('el jueves mejor, el miercoles no puedo', DIAS, TZ), JUE24);
+  assert.equal(elegirDiaPorCodigo('el miercoles no puedo, mejor el jueves', DIAS, TZ), JUE24);
+});
+
+test('elegirDiaPorCodigo: "no, <dia>" es una eleccion real, no una negacion del dia', () => {
+  assert.equal(elegirDiaPorCodigo('no, el jueves', DIAS, TZ), JUE24);
+  assert.equal(elegirDiaPorCodigo('no no, mejor el jueves', DIAS, TZ), JUE24);
+});
+
+test('elegirDiaPorCodigo: negacion sin ningun dia claro no elige nada', () => {
+  assert.equal(elegirDiaPorCodigo('no puedo ninguno de esos dos', DIAS, TZ), null);
+  assert.equal(elegirDiaPorCodigo('no', DIAS, TZ), null);
+});
+
+test('elegirDiaPorCodigo: negacion con dos dias afirmados (ambiguo) no elige nada', () => {
+  // "no se" trae negacion, pero no descarta a ninguno de los dos dias: los
+  // dos quedan afirmados, y con dos no hay uno solo claro.
+  assert.equal(elegirDiaPorCodigo('miercoles o jueves, no se cual, avisame', DIAS, TZ), null);
+});
+
+test('elegirHoraPorCodigo: una hora negada, sola, no elige nada', () => {
+  assert.equal(elegirHoraPorCodigo('a las 12 no puedo', HORAS_26, TZ), null);
+  assert.equal(elegirHoraPorCodigo('12 no', HORAS_26, TZ), null);
+});
+
+test('elegirHoraPorCodigo: "N no, M si" elige la afirmada', () => {
+  assert.equal(elegirHoraPorCodigo('12 no, 13 si', HORAS_26, TZ), HORAS_26[12]); // 13:00 = item 13
+});
+
+test('elegirHoraPorCodigo: negacion sin ninguna hora clara no elige nada', () => {
+  assert.equal(elegirHoraPorCodigo('no puedo ninguna', HORAS_26, TZ), null);
 });
