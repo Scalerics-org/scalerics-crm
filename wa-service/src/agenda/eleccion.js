@@ -69,6 +69,66 @@ function diasQueNombro(texto) {
 }
 
 /**
+ * Los numeros que pueden ser "el dia" y no una hora.
+ *
+ * horasQueDijo agarra el "23" de "23:00" igual que el de "el 23": los dos son
+ * "un numero de una o dos cifras", y para leer una HORA eso esta bien. Pero
+ * nombroEseDia lo usaba para decidir si el lead nombro una FECHA, y ahi "23"
+ * con los dos puntos pegados no es un dia, es una hora que quedo fuera de la
+ * franja. Paso el 19-8, probando: el bot ofrecio horarios de un dia 23,
+ * escribio "23:00" —una hora invalida, no una fecha— y el codigo lo tomo como
+ * "nombro el dia 23", confirmo que eligio ESE horario y lo agendo a las 12:00
+ * como si el lead hubiera pedido justo eso.
+ *
+ * Los minutos pegados ("23:00", "13.30") ya delataban la hora. Pero "13hs",
+ * "13 h", "tipo 13" y "13 y media" son formas tan comunes de decir una hora
+ * como esas, y ninguna tenia dos puntos: Andres escribio "Lunes 17hs" el
+ * 11-9, y con la version anterior "17hs" contaba como si hubiera nombrado el
+ * dia 17.
+ *
+ * Se "blanquean" primero las formas que son claramente una hora (para que el
+ * numero que les queda pegado, si hay uno, no se lea aparte) y recien despues
+ * se buscan los numeros sueltos que quedan, que ahi si pueden ser un dia.
+ */
+function diasNumeroQueNombro(texto) {
+  let t = sinAcentos(String(texto || ''));
+  const numeros = [];
+
+  const blanquear = (regex, sacarDia) => {
+    t = t.replace(regex, (...args) => {
+      const m0 = args[0];
+      if (sacarDia) {
+        const n = parseInt(sacarDia(args), 10);
+        if (n >= 1 && n <= 31) numeros.push(n);
+      }
+      return ' '.repeat(m0.length);
+    });
+  };
+
+  // "13/9", "13-9": dia/mes. Solo el primero —el dia— cuenta; el segundo,
+  // el mes, no tiene que leerse como otro dia suelto.
+  blanquear(/\b(\d{1,2})\s*[/-]\s*\d{1,2}\b/g, (m) => m[1]);
+
+  // "13hs", "13 h", "13hrs", "13 horas", con o sin "y media"/"y cuarto"/"y
+  // 30" pegado atras.
+  blanquear(/\b\d{1,2}\s*(?:h|hs|hrs?|horas?)\b(?:\s*y\s*(?:media|cuarto|\d{1,2}))?/g);
+  // "13 y media", "13 y cuarto", "13 y 30": sin "h" pero igual es una hora.
+  blanquear(/\b\d{1,2}\s*y\s*(?:media|cuarto|\d{1,2})\b/g);
+
+  // Con una palabra de hora ADELANTE: "a las 14", "tipo 13", "a eso de las
+  // 14", "a partir de las 9", "desde las 9", "despues de las 9", "antes de
+  // las 9".
+  blanquear(/\b(?:la|las|tipo|a eso de(?: las)?|a partir de(?: las)?|desde(?: las)?|despues de(?: las)?|antes de(?: las)?)\s+\d{1,2}\b/g);
+
+  for (const m of t.matchAll(/(?<![\d:.,])(\d{1,2})(?:[:.](\d{2}))?(?![\d:.,])/g)) {
+    if (m[2]) continue; // "23.00": los minutos pegados lo delatan como hora.
+    const n = parseInt(m[1], 10);
+    if (n >= 1 && n <= 31) numeros.push(n);
+  }
+  return numeros;
+}
+
+/**
  * Si el lead nombro el dia del horario elegido, por nombre o por numero.
  *
  * Desde que los horarios abarcan varios dias, elegir diciendo "el viernes" es
@@ -80,7 +140,7 @@ function nombroEseDia(texto, elegido, tz) {
   if (diasQueNombro(texto).includes(diaSemana)) return true;
 
   const numeroDelDia = Number(dia.slice(8));
-  return horasQueDijo(texto).includes(numeroDelDia);
+  return diasNumeroQueNombro(texto).includes(numeroDelDia);
 }
 
 /**
@@ -264,6 +324,6 @@ function nombroAlgunDia(texto) {
 }
 
 module.exports = {
-  horasQueDijo, diasQueNombro, eligioEsaHora, revisarFranja,
+  horasQueDijo, diasQueNombro, diasNumeroQueNombro, eligioEsaHora, revisarFranja,
   franjaDelDia, textoDeFranja, nombroAlgunDia,
 };

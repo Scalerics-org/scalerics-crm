@@ -48,6 +48,22 @@ function estaCancelado(evento) {
 }
 
 /**
+ * Compara dos fechas por el instante que representan, no por el texto.
+ *
+ * El bot guarda "2026-09-23T13:00:00.000Z" (UTC) y Google devuelve
+ * "2026-09-23T10:00:00-03:00" (con offset de Montevideo): mismo instante,
+ * texto distinto. Comparar los strings a mano las trataria como reservas
+ * diferentes.
+ */
+function mismoInstante(a, b) {
+  if (!a || !b) return false;
+  const ta = Date.parse(a);
+  const tb = Date.parse(b);
+  if (Number.isNaN(ta) || Number.isNaN(tb)) return false;
+  return ta === tb;
+}
+
+/**
  * @param {object} deps.servicioLeads  para registrarReunion, que es lo que
  *   cancela el seguimiento, avisa al equipo y programa los recordatorios.
  */
@@ -141,6 +157,24 @@ function crearVigilanteDeReservas({
     }
 
     for (const { ev, lead, inicio } of proxima.values()) {
+      /**
+       * La reunion la agendo el propio bot: ya esta registrada.
+       *
+       * El evento que crea el bot lleva "WhatsApp: wa.me/…" en la descripcion,
+       * y CAMPO_TELEFONO lo lee como el telefono del formulario de Calendly.
+       * Sin esto, cinco minutos despues de agendar el vigilante la registraba
+       * de nuevo: al equipo le llegaba "Reunión agendada" dos veces —paso con
+       * TODAS las que agendo el bot: Andres el 11-9, CD Montevideo el 12-9,
+       * Patricia el 22-9— y se pisaba la hora en que se habia agendado.
+       *
+       * Mismo evento y mismo instante: se deja marcada como vista y se sigue.
+       * Si la movieron de hora, el instante cambia y si es una reserva nueva.
+       */
+      if (lead.meeting_event_id === ev.id && mismoInstante(lead.meeting_time, inicio)) {
+        repo.reservaEsNueva(ev.id, inicio);
+        continue;
+      }
+
       // La red de seguridad: aunque la eleccion de arriba fallara, una reserva
       // ya registrada no se vuelve a registrar nunca.
       if (!repo.reservaEsNueva(ev.id, inicio)) continue;
@@ -185,4 +219,4 @@ function crearVigilanteDeReservas({
   };
 }
 
-module.exports = { crearVigilanteDeReservas, telefonoDe, estaCancelado };
+module.exports = { crearVigilanteDeReservas, telefonoDe, estaCancelado, mismoInstante };

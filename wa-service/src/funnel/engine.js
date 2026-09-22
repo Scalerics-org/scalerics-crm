@@ -6,6 +6,7 @@ const { enZona, instanteLocal } = require('../agenda/gcal');
 const { TRANSICIONES } = require('./transitions');
 const plantillas = require('../templates');
 const { detectar, paraUnaPersona, ETIQUETA } = require('./derivacion');
+const { esAcuse } = require('./acuse');
 const { cuandoVolver } = require('./nurture');
 const { prometeAgendar } = require('../ia/promesas');
 
@@ -243,6 +244,32 @@ function crearEmbudo({
     if (campos.business_name !== undefined) {
       conNorm.business_name_por_audio = porAudio ? 1 : 0;
     }
+
+    /**
+     * El modelo dijo business_type=6 ("todavia no sabe") pero el lead ya
+     * tenia uno concreto (1 a 5) guardado. Le paso a Patricia el 22-9: el
+     * formulario de Meta decia "Crear mi ecommerce" (2), y una respuesta vaga
+     * de despues ("Quisiera vender de todo un poco") hizo que el modelo
+     * volviera a elegir "todavia no sabe", pisando el dato bueno y avisandole
+     * al equipo que no se sabia que necesitaba. Un "no se" tardio no borra un
+     * "si se" anterior: se descarta ese campo y se guarda el resto igual.
+     */
+    if (conNorm.business_type === 6) {
+      const actual = repo.leadPorId(leadId);
+      if (actual?.business_type && actual.business_type !== 6) {
+        const { business_type, ...resto } = conNorm;
+        // Rastro para cuando el lead SI se retracto de verdad ("mejor no se,
+        // dejame pensarlo"): sin este log, un business_type que dejo de
+        // actualizarse es indistinguible de uno que nunca se toco.
+        logger?.info(
+          { leadId, teniaBusinessType: actual.business_type },
+          'el modelo dijo "todavia no sabe" pero el lead ya tenia un business_type concreto: se descarta ese campo'
+        );
+        repo.actualizarFunnel(leadId, resto);
+        return;
+      }
+    }
+
     repo.actualizarFunnel(leadId, conNorm);
   }
 
@@ -837,6 +864,18 @@ ${await loQueHay()}`
           'le escribio a una persona del equipo: el chat pasa a esa persona'
         );
         return S.HUMAN_QUEUED;
+      }
+
+      /**
+       * Ya esta agendado y esto es solo un acuse: no hace falta contestar.
+       *
+       * Despues de confirmar, Patricia mando "Ok perfecto", "Ok", y al
+       * recordatorio "Ok bien", "Perfecto si" — y el bot le repitio la fecha
+       * de la reunion las cuatro veces. El mensaje ya quedo registrado (mas
+       * arriba, en leads.js): no responder no es lo mismo que no escuchar.
+       */
+      if (lead.meeting_booked_at && lead.fsm_state === S.SCHEDULED && esAcuse(textoCrudo)) {
+        return lead.fsm_state;
       }
 
       // Casos que el superprompt manda derivar sin excepcion. Van antes de la

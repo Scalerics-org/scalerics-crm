@@ -126,7 +126,7 @@ function crearRepo(db) {
     /** Solo se actualizan campos conocidos: evita que un payload arbitrario toque columnas. */
     actualizarLead(id, campos) {
       const permitidos = [
-        'status', 'welcomed_at', 'replied_at', 'followup_sent_at',
+        'status', 'welcomed_at', 'replied_at', 'followup_sent_at', 'retomado_at',
         'am_notified_at', 'humano_avisado_at', 'rubro_norm', 'nombre', 'necesidad',
       ];
       const set = Object.keys(campos).filter((k) => permitidos.includes(k));
@@ -230,7 +230,7 @@ function crearRepo(db) {
         -- de que se cambiara la franja de atencion: elegiria "las 12" de una
         -- lista que ya no existe. Mismo olvido que la reunion colgada de arriba.
         horarios_ofrecidos = NULL, dia_en_foco = NULL, necesidad_repreguntada = 0,
-        status = 'new', replied_at = NULL, followup_sent_at = NULL,
+        status = 'new', replied_at = NULL, followup_sent_at = NULL, retomado_at = NULL,
         -- Tambien el saludo: reiniciar es empezar de cero, y sin esto el lead
         -- reiniciado nunca vuelve a recibir la presentacion.
         welcomed_at = NULL,
@@ -285,11 +285,15 @@ function crearRepo(db) {
      * cada turno, y con DO NOTHING quedaria clavado en la hora del primer
      * mensaje —el lead seguiria conversando y a la hora lo derivarian igual—.
      */
-    programarJob(leadId, tipo, runAtIso) {
+    /** @param {string|null} motivo ver la migracion 023: 'retomar' o nada. */
+    programarJob(leadId, tipo, runAtIso, motivo = null) {
       const r = db.prepare(
-        "UPDATE jobs SET run_at = ?, attempts = 0 WHERE lead_id = ? AND type = ? AND status = 'pending'"
-      ).run(runAtIso, leadId, tipo);
-      if (!r.changes) stmt.insertJob.run(leadId, tipo, runAtIso);
+        "UPDATE jobs SET run_at = ?, attempts = 0, motivo = ? WHERE lead_id = ? AND type = ? AND status = 'pending'"
+      ).run(runAtIso, motivo, leadId, tipo);
+      if (!r.changes) {
+        db.prepare('INSERT INTO jobs (lead_id, type, run_at, motivo) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING')
+          .run(leadId, tipo, runAtIso, motivo);
+      }
     },
 
     /**

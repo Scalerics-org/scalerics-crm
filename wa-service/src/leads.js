@@ -6,6 +6,7 @@ const plantillas = require('./templates');
 const { entre } = require('./outbound/queue');
 const { correspondeDerivar } = require('./funnel/abandono');
 const { paraUnaPersona } = require('./funnel/derivacion');
+const { leerFormulario } = require('./funnel/formulario');
 
 /** Como se nombra cada medio en el aviso al equipo. */
 const ARTICULO = {
@@ -353,6 +354,26 @@ function crearServicioLeads({ repo, cola, cfg, logger, textos, redactor = null, 
         media: medios,
       });
 
+      /**
+       * El formulario de Meta llega como el mensaje mismo, con las preguntas
+       * y respuestas armadas ("Etiqueta: valor" una por linea). Se lee en
+       * codigo, sin IA, y solo llena lo que el lead todavia no tenia cargado:
+       * nunca pisa una respuesta ya guardada de un mensaje anterior.
+       */
+      const datosFormulario = leerFormulario(texto);
+      if (datosFormulario) {
+        const funnelVacio = {};
+        for (const campo of ['business_type', 'business_name', 'budget', 'needs']) {
+          const yaTenia = lead[campo] !== null && lead[campo] !== undefined && lead[campo] !== '';
+          if (datosFormulario[campo] !== undefined && !yaTenia) funnelVacio[campo] = datosFormulario[campo];
+        }
+        const nombreVacio = datosFormulario.nombre && !lead.nombre;
+
+        if (Object.keys(funnelVacio).length) repo.actualizarFunnel(lead.id, funnelVacio);
+        if (nombreVacio) repo.actualizarLead(lead.id, { nombre: datosFormulario.nombre });
+        if (Object.keys(funnelVacio).length || nombreVacio) lead = repo.leadPorId(lead.id);
+      }
+
       // Apagado desde el panel, o pausado porque entraste vos al chat desde el
       // telefono. Igual que con human_requested: el bot se calla pero el que
       // esta atendiendo tiene que enterarse de que le escribieron.
@@ -416,6 +437,17 @@ function crearServicioLeads({ repo, cola, cfg, logger, textos, redactor = null, 
             leadId: lead.id,
           });
         }
+      } else {
+        /**
+         * El unico followup que puede seguir pendiente para un lead que YA
+         * habia contestado antes es el de "retomar" (el de "no contestaste
+         * el formulario" se cancela arriba, en la primera respuesta, y no se
+         * vuelve a crear). Si escribio de nuevo antes de la apertura, ya
+         * retomo la charla solo: mandarle igual el mensaje de "seguimos donde
+         * quedamos" a la mañana siguiente le llega pisado por la conversacion
+         * que el mismo ya siguio. Sebastian, 22-9.
+         */
+        repo.cancelarJobs(lead.id, 'followup');
       }
 
       if (embudo && cfg.FUNNEL_ENABLED) {
