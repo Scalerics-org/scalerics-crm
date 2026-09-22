@@ -533,6 +533,23 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **22/9 — J (agente de marketing): LinkedIn, los posts a mano ya no salen sin foto (pedido de Juan).**
+  Rama `fix/linkedin-siempre-foto`, [PR #88](https://github.com/Scalerics-org/scalerics-crm/pull/88).
+  Sin mergear ni deployar. Solo `services/linkedin_posts.py` y su test.
+  Los educativos del banco (4 por semana, el cron mar/vie) siempre tuvieron
+  tarjeta. El hueco era el post armado a mano con `contexto_manual` sin URL y
+  sin frase propia: si la primera oración pasaba los 70 caracteres que entran
+  en la tarjeta, se descartaba entera y el post quedaba con
+  `imagen_tipo='ninguna'`. Ahora la frase (la escrita a mano o la sacada de la
+  primera oración) se recorta con puntos suspensivos en vez de descartarse.
+  Sin tocar `scripts/render_linkedin.py`: si el render de una tarjeta falla en
+  el runner (screenshot que no carga, navegador que no arranca), ese caso
+  sigue saliendo sin imagen a propósito ("un mail sin foto sirve, uno que no
+  llega no"); lo que se cerró es el hueco de diseño, no el de infraestructura.
+  **Ojo (22/9, más tarde):** este PR se pisó de vuelta con `main` dos veces por
+  el mismo motivo (choque en esta bitácora); si vas a tocarlo de nuevo,
+  `git fetch origin main` y mergealo a la rama antes de nada.
+
 - **22/9 — J (agente de marketing): Finanzas, opción "el monto ya incluye el IVA" (pedido de Juan).**
   Rama `feat/finanzas-iva-incluido`, sale de `main`,
   [PR #93](https://github.com/Scalerics-org/scalerics-crm/pull/93). Sin mergear ni
