@@ -213,13 +213,14 @@ def _borrador_manual(db_path: str, job_id, lote: str, texto: str,
         return None
 
     # Con URL se muestra lo que se hizo; sin URL, una frase en la tarjeta de
-    # marca. Un post sin imagen rinde bastante menos en LinkedIn.
+    # marca. Todo post lleva imagen: uno sin foto rinde bastante menos en
+    # LinkedIn, asi que ya no hay salida sin tarjeta (Juan, pedido 22/9).
     if imagen_url:
         imagen_tipo = "screenshot"
         imagen_spec = json.dumps({"url": imagen_url})
     else:
-        frase = (frase or "").strip() or _primera_frase(texto)
-        imagen_tipo = "tarjeta" if frase else "ninguna"
+        frase = _recortar_frase(frase) if (frase or "").strip() else _primera_frase(texto)
+        imagen_tipo = "tarjeta"
         imagen_spec = json.dumps({"frase": frase})
 
     token = secrets.token_urlsafe(16)
@@ -240,15 +241,28 @@ def _borrador_manual(db_path: str, job_id, lote: str, texto: str,
     }
 
 
-def _primera_frase(texto: str) -> str:
-    """La primera oracion, si entra en la tarjeta. Si no entra, cadena vacia.
+def _recortar_frase(frase: str) -> str:
+    """Recorta una frase al limite de la tarjeta, con puntos suspensivos.
 
-    Respaldo para el post manual sin frase propia: mejor la primera linea del
-    post que una tarjeta vacia. Recortar a la mitad una oracion queda peor que
-    no poner tarjeta, asi que si no entra entera no se usa.
+    Antes una frase mas larga que MAX_FRASE se descartaba entera y el post
+    quedaba sin imagen. Ahora toda tarjeta lleva texto: se corta en el ultimo
+    espacio antes del limite para no partir una palabra al medio.
+    """
+    frase = (frase or "").strip()
+    if len(frase) <= MAX_FRASE:
+        return frase
+    recorte = frase[:MAX_FRASE - 1].rsplit(" ", 1)[0].rstrip(",.;:")
+    return (recorte or frase[:MAX_FRASE - 1]) + "…"
+
+
+def _primera_frase(texto: str) -> str:
+    """La primera oracion del post, recortada si hace falta para la tarjeta.
+
+    Respaldo para el post manual sin frase propia: toda tarjeta lleva texto,
+    aunque la primera oracion sea mas larga que el limite.
     """
     primera = texto.strip().splitlines()[0].split(". ")[0].strip().rstrip(".")
-    return primera if 0 < len(primera) <= MAX_FRASE else ""
+    return _recortar_frase(primera) if primera else ""
 
 
 def _borrador_educativo(db_path: str, job_id, lote: str, fila: dict):
