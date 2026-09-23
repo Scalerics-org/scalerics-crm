@@ -3852,6 +3852,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
         <button class="pill" id="fin-tab-cobrar" onclick="finVista('cobrar')">Por cobrar</button>
         <button class="pill" id="fin-tab-fijos" onclick="finVista('fijos')">Fijos</button>
         <button class="pill" id="fin-tab-iva" onclick="finVista('iva')">IVA</button>
+        <button class="pill" id="fin-tab-tarjeta" onclick="finVista('tarjeta')">Cobro con tarjeta</button>
         <button class="pill" id="fin-tab-pauta" onclick="finVista('pauta')">Pauta</button>
         <button class="pill" id="fin-tab-balance" onclick="finVista('balance')">Balance</button>
       </div>
@@ -3893,6 +3894,67 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
       <div class="fin-kpis" id="fin-iva-kpis"></div>
       <div class="fin-card"><div class="fin-card-title" id="fin-iva-titulo">IVA</div>
         <div id="fin-iva-tabla"></div></div>
+    </div>
+
+    <div id="fin-vista-tarjeta" style="display:none">
+      <div class="fin-card">
+        <div class="fin-card-title">Calculadora de cobro con tarjeta</div>
+        <div class="fb-controles">
+          <label class="fb-label">Qué querés calcular
+            <select id="ft-modo" class="filter-select" onchange="ftCalcular()">
+              <option value="quiero_llevarme" selected>Quiero que me quede</option>
+              <option value="precio">Le cobro (sin IVA)</option>
+              <option value="total">Le cobro a la tarjeta (con IVA)</option>
+            </select>
+          </label>
+          <label class="fb-label">Monto <input type="number" id="ft-monto" class="fb-campo" step="0.01" min="0" value="300" oninput="ftCalcular()"></label>
+          <label class="fb-label">Moneda
+            <select id="ft-moneda" class="filter-select" onchange="ftCalcular()">
+              <option value="USD" selected>Dólares</option>
+              <option value="UYU">Pesos</option>
+            </select>
+          </label>
+          <label class="fb-label">Tarjeta
+            <select id="ft-tarjeta" class="filter-select" onchange="ftCalcular()"></select>
+          </label>
+          <label class="fb-label">Tipo de cambio <input type="number" id="ft-tc" class="fb-campo" step="0.01" min="0" oninput="ftCalcular()"></label>
+          <label class="fbd-check"><input type="checkbox" id="ft-fijo" checked onchange="ftCalcular()"> Sumar el fijo de Plexo repartido entre</label>
+          <label class="fb-label">Clientes <input type="number" id="ft-clientes" class="fb-campo" step="1" min="1" style="width:80px" oninput="ftCalcular()"></label>
+        </div>
+        <div class="fin-kpis" id="ft-kpis" style="margin-top:18px"></div>
+        <div id="ft-desglose"></div>
+        <div class="fb-error" id="ft-error" style="display:none"></div>
+      </div>
+
+      <div class="fin-card" id="ft-registrar-card">
+        <div class="fin-card-title">Registrar este cobro</div>
+        <div class="fb-ayuda" style="margin-top:0;margin-bottom:12px">Con los números de la calculadora carga de una vez el ingreso con su IVA ventas, la comisión de la tarjeta y lo que cobra Plexo por el cobro (los dos con IVA compras), y anota cuándo tiene que llegar el depósito. El fijo mensual de Plexo no va acá: cargalo una sola vez en Fijos, con IVA, cuando empieces a cobrar en serio.</div>
+        <div class="fb-controles">
+          <label class="fb-label">Cliente <select id="ft-cliente" class="filter-select"><option value="">Sin atribuir</option></select></label>
+          <label class="fb-label">Fecha del cobro <input type="date" id="ft-fecha" class="fb-campo" onchange="ftCalcular()"></label>
+          <label class="fb-label">Concepto <input type="text" id="ft-concepto" class="fb-campo" value="Mantenimiento mensual"></label>
+          <label class="fb-label">Categoría <select id="ft-categoria" class="filter-select"></select></label>
+          <button class="btn-primary" id="ft-registrar" onclick="ftRegistrar()">Registrar cobro</button>
+        </div>
+        <div class="fb-error" id="ft-reg-error" style="display:none"></div>
+      </div>
+
+      <div class="fin-card">
+        <div class="fin-card-title">Depósitos de la tarjeta</div>
+        <div class="fin-kpis" id="ft-dep-kpis"></div>
+        <div id="ft-depositos"></div>
+      </div>
+
+      <div class="fin-card">
+        <div class="fin-card-title">Ajustes: comisiones y costos</div>
+        <div class="fb-ayuda" style="margin-top:0;margin-bottom:12px">Comisión en % sobre lo que se le cobra a la tarjeta (IVA incluido). Arrancan con el Plan Clásico que pasó OCA. Si una queda vacía, la calculadora avisa en vez de suponer 0%. Cambiar un número acá no toca los cobros ya registrados.</div>
+        <div class="fb-controles" id="ft-ajustes"></div>
+        <div class="fb-controles" style="margin-top:12px">
+          <button class="btn-primary" id="ft-guardar-ajustes" onclick="ftGuardarAjustes()">Guardar ajustes</button>
+          <span id="ft-ajustes-ok" style="font-size:.8rem;color:var(--verde);display:none">Guardado</span>
+        </div>
+        <div class="fb-error" id="ft-ajustes-error" style="display:none"></div>
+      </div>
     </div>
 
     <div id="fin-vista-pauta" style="display:none">
@@ -11428,7 +11490,7 @@ function _funnelBars(items, stateLabels, stateColors) {
 }
 
 // ========== Finanzas panel ==========
-const FIN_VISTAS = ['movimientos', 'cobrar', 'fijos', 'iva', 'pauta', 'balance'];
+const FIN_VISTAS = ['movimientos', 'cobrar', 'fijos', 'iva', 'tarjeta', 'pauta', 'balance'];
 
 // ── Finanzas en solo lectura (el Contador) ──
 // No se dibujan los botones de alta, edicion ni borrado, y arriba va un aviso.
@@ -11469,6 +11531,7 @@ function finVista(cual) {
   document.getElementById('fin-tab-cobrar').classList.toggle('active', cual === 'cobrar');
   document.getElementById('fin-tab-fijos').classList.toggle('active', cual === 'fijos');
   document.getElementById('fin-tab-iva').classList.toggle('active', cual === 'iva');
+  document.getElementById('fin-tab-tarjeta').classList.toggle('active', cual === 'tarjeta');
   document.getElementById('fin-tab-pauta').classList.toggle('active', cual === 'pauta');
   document.getElementById('fin-tab-balance').classList.toggle('active', cual === 'balance');
   // El Balance tiene su propio periodo (Este año / Desde el inicio /
@@ -11480,10 +11543,11 @@ function finVista(cual) {
   // Ni el IVA ni lo que falta cobrar dependen del rango: el IVA se liquida por
   // mes y un pendiente esta o no esta, no pertenece a ningun periodo.
   document.getElementById('fin-rango').style.display =
-    (cual === 'iva' || cual === 'cobrar' || cual === 'balance') ? 'none' : '';
+    (cual === 'iva' || cual === 'cobrar' || cual === 'balance' || cual === 'tarjeta') ? 'none' : '';
   if (cual === 'cobrar') loadPorCobrar();
   if (cual === 'fijos') loadFijos();
   if (cual === 'iva') loadIva();
+  if (cual === 'tarjeta') loadCobroTarjeta();
   if (cual === 'pauta') loadPauta();
   if (cual === 'balance') loadBalanceDatos();
 }
@@ -12040,6 +12104,313 @@ async function loadIva() {
         + '<td style="text-align:right">' + _finUsd(m.iva) + '</td>'
         + '<td style="text-align:right">' + _finUsd(m.total) + '</td></tr>').join('')
     + '</tbody></table>';
+}
+
+// ========== Finanzas: Cobro con tarjeta (Plexo) ==========
+// Pedido de Juan (23/9): cuanto cobrar para llevarse tanto, y que el IVA
+// compras y ventas se cargue solo. Las cuentas las hace el servidor
+// (services/cobro_tarjeta.py): aca solo se pide y se pinta, asi la
+// calculadora y lo que se registra no pueden dar numeros distintos.
+let _ftAjustes = null;
+let _ftTarjetas = {};
+let _ftTimer = null;
+let _ftUltimo = null;
+
+function _ftMonto(n, moneda) {
+  const txt = (n || 0).toLocaleString('es-UY', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  return (moneda === 'UYU' ? '$ ' : 'USD ') + txt;
+}
+
+function _ftFecha(iso) {
+  if (!iso) return '';
+  const p = String(iso).slice(0, 10).split('-');
+  return p[2] + '/' + p[1];
+}
+
+async function loadCobroTarjeta() {
+  const solo = _finSoloLectura();
+  document.getElementById('ft-registrar-card').style.display = solo ? 'none' : '';
+  document.getElementById('ft-guardar-ajustes').style.display = solo ? 'none' : '';
+  if (!document.getElementById('ft-fecha').value) {
+    document.getElementById('ft-fecha').value = _finBalHoy();
+  }
+  try {
+    const r = await fetch('/api/finanzas/tarjeta/ajustes');
+    if (!r.ok) throw new Error('no se pudieron cargar los ajustes');
+    const d = await r.json();
+    _ftAjustes = d.ajustes;
+    // Llegan como pares [clave, nombre] para conservar el orden.
+    _ftTarjetas = {};
+    d.tarjetas.forEach(t => { _ftTarjetas[t[0]] = t[1]; });
+  } catch (e) {
+    const err = document.getElementById('ft-error');
+    err.textContent = 'Error: ' + e.message;
+    err.style.display = '';
+    return;
+  }
+  const sel = document.getElementById('ft-tarjeta');
+  const previa = sel.value;
+  sel.innerHTML = Object.keys(_ftTarjetas).map(k => {
+    const pct = _ftAjustes.comisiones[k];
+    const txt = _ftTarjetas[k] + (pct === null || pct === undefined ? ' (sin comisión cargada)' : ' ' + String(pct).replace('.', ',') + '%');
+    return '<option value="' + k + '">' + esc(txt) + '</option>';
+  }).join('');
+  sel.value = previa || 'visa_credito';
+  const tc = document.getElementById('ft-tc');
+  if (!tc.value) tc.value = _ftAjustes.tipo_cambio;
+  const cl = document.getElementById('ft-clientes');
+  if (!cl.value) cl.value = _ftAjustes.clientes_tarjeta;
+  _ftPintarAjustes();
+  _ftCargarSelects();
+  ftCalcular();
+  ftCargarDepositos();
+}
+
+async function _ftCargarSelects() {
+  const cat = document.getElementById('ft-categoria');
+  if (cat.dataset.cargado !== '1') {
+    try {
+      const r = await fetch('/api/finanzas/categorias');
+      const cats = await r.json();
+      cat.innerHTML = cats.ingreso.map(c =>
+        '<option value="' + c + '"' + (c === 'mantenimiento' ? ' selected' : '') + '>'
+        + esc(c.replace(/_/g, ' ')) + '</option>').join('');
+      cat.dataset.cargado = '1';
+    } catch (e) { /* queda vacio y el servidor usa mantenimiento */ }
+  }
+  const sel = document.getElementById('ft-cliente');
+  if (sel.dataset.cargado !== '1') {
+    try {
+      const r = await fetch('/api/leads?crm_group=clientes');
+      const data = await r.json();
+      const leads = Array.isArray(data) ? data : (data.items || []);
+      sel.innerHTML = '<option value="">Sin atribuir</option>'
+        + leads.map(b => '<option value="' + b.id + '">' + esc(b.name) + '</option>').join('');
+      sel.dataset.cargado = '1';
+    } catch (e) { /* se puede registrar sin cliente */ }
+  }
+}
+
+function ftCalcular() {
+  clearTimeout(_ftTimer);
+  _ftTimer = setTimeout(_ftCalcularYa, 250);
+}
+
+function _ftParams() {
+  const q = new URLSearchParams();
+  q.set('modo', document.getElementById('ft-modo').value);
+  q.set('monto', document.getElementById('ft-monto').value);
+  q.set('moneda', document.getElementById('ft-moneda').value);
+  q.set('tarjeta', document.getElementById('ft-tarjeta').value);
+  q.set('tipo_cambio', document.getElementById('ft-tc').value);
+  q.set('incluir_fijo', document.getElementById('ft-fijo').checked ? '1' : '0');
+  q.set('clientes', document.getElementById('ft-clientes').value);
+  q.set('fecha', document.getElementById('ft-fecha').value || _finBalHoy());
+  return q;
+}
+
+async function _ftCalcularYa() {
+  const err = document.getElementById('ft-error');
+  const kpis = document.getElementById('ft-kpis');
+  const tabla = document.getElementById('ft-desglose');
+  let d;
+  try {
+    const r = await fetch('/api/finanzas/tarjeta/desglose?' + _ftParams().toString());
+    d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'no se pudo calcular');
+  } catch (e) {
+    _ftUltimo = null;
+    err.textContent = e.message;
+    err.style.display = '';
+    kpis.innerHTML = '';
+    tabla.innerHTML = '';
+    return;
+  }
+  err.style.display = 'none';
+  _ftUltimo = d;
+  const m = d.moneda;
+  const f = n => _ftMonto(n, m);
+  const pct = String(d.comision_pct).replace('.', ',');
+  kpis.innerHTML =
+    '<div class="fin-kpi"><div class="fin-kpi-label">Le cobrás a la tarjeta</div>'
+    + '<div class="fin-kpi-valor">' + f(d.total) + '</div>'
+    + '<div class="fin-kpi-var">' + f(d.precio) + ' + IVA</div></div>'
+    + '<div class="fin-kpi"><div class="fin-kpi-label">Entra al banco</div>'
+    + '<div class="fin-kpi-valor">' + f(d.deposito) + '</div>'
+    + '<div class="fin-kpi-var">el ' + _ftFecha(d.acreditacion_esperada) + ' (' + d.dias_habiles + ' días hábiles)</div></div>'
+    + '<div class="fin-kpi"><div class="fin-kpi-label">Te queda de verdad</div>'
+    + '<div class="fin-kpi-valor fin-verde">' + f(d.te_queda) + '</div>'
+    + '<div class="fin-kpi-var">tarjeta y Plexo se llevan el ' + String(d.costo_pct).replace('.', ',') + '% del precio</div></div>';
+
+  const fila = (signo, nombre, monto, nota, fuerte) =>
+    '<tr' + (fuerte ? ' style="font-weight:700"' : '') + '><td>' + signo + ' ' + esc(nombre) + '</td>'
+    + '<td style="text-align:right">' + f(monto) + '</td>'
+    + '<td style="white-space:normal;color:var(--texto-debil)">' + esc(nota) + '</td></tr>';
+  let filas =
+    fila('', 'Precio (sin IVA)', d.precio, 'Lo que acordás con el cliente. Va en la factura.')
+    + fila('+', 'IVA 22%', d.iva_venta, 'IVA ventas. No es tuyo: es de DGI.')
+    + fila('=', 'Le cobrás a la tarjeta', d.total, 'Lo que ve el cliente en su resumen.', true)
+    + fila('−', 'Comisión ' + d.tarjeta_nombre + ' ' + pct + '%', d.comision, 'La tarjeta la descuenta del depósito. Es un gasto tuyo.')
+    + fila('−', 'IVA de la comisión', d.comision_iva, 'IVA compras: se resta de lo que le pagás a DGI.')
+    + fila('=', 'Entra al banco', d.deposito, 'Lo que vas a ver en la cuenta, el ' + _ftFecha(d.acreditacion_esperada) + '.', true)
+    + fila('−', 'Plexo por este cobro + IVA', d.plexo + d.plexo_iva, 'Te lo factura Plexo a fin de mes, junto con el fijo.');
+  if (d.incluir_fijo) {
+    filas += fila('−', 'Parte del fijo de Plexo + IVA', d.fijo + d.fijo_iva, 'El fijo mensual repartido entre ' + d.clientes + ' clientes. Se paga una vez por mes, no por cobro.');
+  }
+  filas += fila('−', 'IVA a pagar a DGI', d.iva_dgi, 'IVA ventas menos IVA compras (' + f(d.iva_compras) + ').')
+    + fila('=', 'Te queda de verdad', d.te_queda, 'Tu plata, ya sin impuestos ni comisiones.', true);
+  tabla.innerHTML = '<div class="fb-scroll"><table class="fin-tabla"><thead><tr><th>Concepto</th>'
+    + '<th style="text-align:right">Monto</th><th>A dónde va</th></tr></thead><tbody>'
+    + filas + '</tbody></table></div>';
+}
+
+async function ftRegistrar() {
+  const err = document.getElementById('ft-reg-error');
+  err.style.display = 'none';
+  if (!_ftUltimo) {
+    err.textContent = 'Primero la calculadora tiene que dar un resultado.';
+    err.style.display = '';
+    return;
+  }
+  const d = _ftUltimo;
+  const cuerpo = {
+    modo: 'precio', monto: d.precio, moneda: d.moneda, tarjeta: d.tarjeta,
+    tipo_cambio: d.tipo_cambio,
+    fecha: document.getElementById('ft-fecha').value,
+    concepto: document.getElementById('ft-concepto').value,
+    categoria: document.getElementById('ft-categoria').value || 'mantenimiento',
+    client_id: document.getElementById('ft-cliente').value || null,
+  };
+  const aviso = 'Registrar el cobro de ' + _ftMonto(d.total, d.moneda) + ' con '
+    + d.tarjeta_nombre + '?' + String.fromCharCode(10) + String.fromCharCode(10)
+    + 'Se cargan el ingreso con IVA, la comisión y el costo de Plexo.';
+  if (!confirm(aviso)) return;
+  const btn = document.getElementById('ft-registrar');
+  btn.disabled = true;
+  try {
+    const r = await fetch('/api/finanzas/cobros-tarjeta', {method: 'POST',
+      headers: {'Content-Type': 'application/json'}, body: JSON.stringify(cuerpo)});
+    const res = await r.json();
+    if (!r.ok) throw new Error(res.error || 'no se pudo registrar');
+    ftCargarDepositos();
+    if (typeof loadFinanzas === 'function') loadFinanzas();
+  } catch (e) {
+    err.textContent = 'Error: ' + e.message;
+    err.style.display = '';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function ftCargarDepositos() {
+  const caja = document.getElementById('ft-depositos');
+  const kpis = document.getElementById('ft-dep-kpis');
+  let lista;
+  try {
+    const r = await fetch('/api/finanzas/cobros-tarjeta');
+    if (!r.ok) throw new Error('no se pudieron cargar los depósitos');
+    lista = await r.json();
+  } catch (e) {
+    caja.innerHTML = '<div class="fb-error">Error: ' + esc(e.message) + '</div>';
+    return;
+  }
+  if (!lista.length) {
+    kpis.innerHTML = '';
+    caja.innerHTML = '<div class="empty-state">Todavía no hay cobros con tarjeta registrados.</div>';
+    return;
+  }
+  const hoy = _finBalHoy();
+  const pendientes = lista.filter(c => !c.acreditado_fecha);
+  const porMoneda = {};
+  pendientes.forEach(c => { porMoneda[c.moneda] = (porMoneda[c.moneda] || 0) + c.deposito; });
+  const atrasados = pendientes.filter(c => c.acreditacion_esperada < hoy).length;
+  kpis.innerHTML = '<div class="fin-kpi"><div class="fin-kpi-label">Por llegar</div>'
+    + '<div class="fin-kpi-valor">' + (Object.keys(porMoneda).map(k => _ftMonto(porMoneda[k], k)).join(' + ') || _ftMonto(0, 'USD')) + '</div>'
+    + '<div class="fin-kpi-var">' + pendientes.length + ' depósito' + (pendientes.length === 1 ? '' : 's')
+    + (atrasados ? ' · <span class="fin-rojo">' + atrasados + ' atrasado' + (atrasados === 1 ? '' : 's') + '</span>' : '') + '</div></div>';
+  const solo = _finSoloLectura();
+  const visibles = pendientes.concat(lista.filter(c => c.acreditado_fecha).slice(0, 20));
+  caja.innerHTML = '<div class="fb-scroll"><table class="fin-tabla"><thead><tr><th>Cobro</th><th>Cliente</th><th>Tarjeta</th>'
+    + '<th style="text-align:right">Cobrado</th><th style="text-align:right">Deposita</th><th>Llega</th><th></th></tr></thead><tbody>'
+    + visibles.map(c => {
+      let estado;
+      if (c.acreditado_fecha) estado = '<span class="fin-verde">llegó ' + _ftFecha(c.acreditado_fecha) + '</span>';
+      else if (c.acreditacion_esperada < hoy) estado = '<span class="fin-rojo">atrasado · era ' + _ftFecha(c.acreditacion_esperada) + '</span>';
+      else estado = _ftFecha(c.acreditacion_esperada);
+      const acciones = solo ? '' : (c.acreditado_fecha
+        ? '<button class="cal-today-btn" onclick="ftAcreditar(' + c.id + ', false)">Deshacer</button>'
+        : '<button class="cal-today-btn" onclick="ftAcreditar(' + c.id + ', true)">Llegó</button>')
+        + ' <button class="cal-today-btn" onclick="ftBorrarCobro(' + c.id + ')">Borrar</button>';
+      return '<tr><td>' + _ftFecha(c.fecha) + '</td>'
+        + '<td>' + esc(c.client_name || c.concepto) + '</td>'
+        + '<td>' + esc(_ftTarjetas[c.tarjeta] || c.tarjeta) + '</td>'
+        + '<td style="text-align:right">' + _ftMonto(c.total, c.moneda) + '</td>'
+        + '<td style="text-align:right">' + _ftMonto(c.deposito, c.moneda) + '</td>'
+        + '<td>' + estado + '</td><td style="text-align:right">' + acciones + '</td></tr>';
+    }).join('') + '</tbody></table></div>';
+}
+
+async function ftAcreditar(id, llego) {
+  const r = await fetch('/api/finanzas/cobros-tarjeta/' + id + '/acreditado', {method: 'PUT',
+    headers: {'Content-Type': 'application/json'}, body: JSON.stringify({llego: llego})});
+  if (!r.ok) {
+    const res = await r.json().catch(() => ({}));
+    alert('Error: ' + (res.error || 'no se pudo guardar'));
+  }
+  ftCargarDepositos();
+}
+
+async function ftBorrarCobro(id) {
+  if (!confirm('Borrar este cobro? Se borran también su ingreso, su comisión y el costo de Plexo.')) return;
+  const r = await fetch('/api/finanzas/cobros-tarjeta/' + id, {method: 'DELETE'});
+  if (!r.ok) {
+    const res = await r.json().catch(() => ({}));
+    alert('Error: ' + (res.error || 'no se pudo borrar'));
+  }
+  ftCargarDepositos();
+  if (typeof loadFinanzas === 'function') loadFinanzas();
+}
+
+function _ftPintarAjustes() {
+  const a = _ftAjustes;
+  const campo = (id, rotulo, valor, paso) =>
+    '<label class="fb-label">' + esc(rotulo) + ' <input type="number" id="' + id + '" class="fb-campo"'
+    + ' step="' + paso + '" min="0" style="width:120px" value="' + (valor === null || valor === undefined ? '' : valor) + '"></label>';
+  let html = Object.keys(_ftTarjetas).map(k =>
+    campo('ft-aj-' + k, _ftTarjetas[k] + ' %', a.comisiones[k], '0.01')).join('');
+  html += campo('ft-aj-dias_credito', 'Días hábiles crédito', a.dias_credito, '1')
+    + campo('ft-aj-dias_debito', 'Días hábiles débito', a.dias_debito, '1')
+    + campo('ft-aj-plexo_por_cobro_uyu', 'Plexo por cobro $ sin IVA', a.plexo_por_cobro_uyu, '0.01')
+    + campo('ft-aj-plexo_fijo_uyu', 'Plexo fijo mensual $ sin IVA', a.plexo_fijo_uyu, '0.01')
+    + campo('ft-aj-tipo_cambio', 'Tipo de cambio', a.tipo_cambio, '0.01')
+    + campo('ft-aj-clientes_tarjeta', 'Clientes con tarjeta', a.clientes_tarjeta, '1');
+  document.getElementById('ft-ajustes').innerHTML = html;
+}
+
+async function ftGuardarAjustes() {
+  const err = document.getElementById('ft-ajustes-error');
+  const ok = document.getElementById('ft-ajustes-ok');
+  err.style.display = 'none';
+  ok.style.display = 'none';
+  const v = id => document.getElementById('ft-aj-' + id).value;
+  const comisiones = {};
+  Object.keys(_ftTarjetas).forEach(k => { comisiones[k] = v(k) === '' ? null : v(k); });
+  const cuerpo = {comisiones: comisiones};
+  ['dias_credito', 'dias_debito', 'plexo_por_cobro_uyu', 'plexo_fijo_uyu', 'tipo_cambio',
+   'clientes_tarjeta'].forEach(k => { cuerpo[k] = v(k); });
+  try {
+    const r = await fetch('/api/finanzas/tarjeta/ajustes', {method: 'PUT',
+      headers: {'Content-Type': 'application/json'}, body: JSON.stringify(cuerpo)});
+    const res = await r.json();
+    if (!r.ok) throw new Error(res.error || 'no se pudo guardar');
+    ok.style.display = '';
+    document.getElementById('ft-tc').value = '';
+    document.getElementById('ft-clientes').value = '';
+    loadCobroTarjeta();
+  } catch (e) {
+    err.textContent = 'Error: ' + e.message;
+    err.style.display = '';
+  }
 }
 
 // ========== Finanzas: Balance ==========
@@ -19439,9 +19810,12 @@ async function loadActivity() {
 </html>"""
 
 # Los pedazos de JS que viven afuera para poder probarse se pegan aca.
+# Las marcas de Jinja de FID_JS van dentro de un comentario de JS: Jinja las
+# procesa igual, y los tests que corren el <script> crudo en node (sin pasar
+# por Jinja) ven un comentario en vez de un "{%" suelto que no compila.
 DASHBOARD_HTML = DASHBOARD_HTML.replace("/*ESC_JS*/", ESC_JS).replace(
     "/*WA_MEDIOS_JS*/", WA_MEDIOS_JS
-).replace("/*FID_JS*/", "{% raw %}" + FID_JS + "{% endraw %}")
+).replace("/*FID_JS*/", "/* {% raw %} */" + FID_JS + "/* {% endraw %} */")
 
 
 _calendly_sync_state = {"at": 0.0}

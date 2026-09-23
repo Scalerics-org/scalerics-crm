@@ -222,13 +222,23 @@ ESCRITURAS = [
     ("POST", "/api/finanzas/balance-datos", "/api/finanzas/balance-datos", "dato"),
     ("PUT", "/api/finanzas/balance-datos/<int:dato_id>", "/api/finanzas/balance-datos/{dato}", "dato"),
     ("DELETE", "/api/finanzas/balance-datos/<int:dato_id>", "/api/finanzas/balance-datos/{dato}", None),
+    # Cobro con tarjeta (23/9): registrar un cobro, marcar que llegó el
+    # depósito o cambiar las comisiones es modificar Finanzas. La calculadora
+    # no (es GET, está en LECTURAS). El id no importa: el candado corta antes.
+    ("PUT", "/api/finanzas/tarjeta/ajustes", "/api/finanzas/tarjeta/ajustes", None),
+    ("POST", "/api/finanzas/cobros-tarjeta", "/api/finanzas/cobros-tarjeta", None),
+    ("PUT", "/api/finanzas/cobros-tarjeta/<int:cobro_id>/acreditado",
+     "/api/finanzas/cobros-tarjeta/1/acreditado", None),
+    ("DELETE", "/api/finanzas/cobros-tarjeta/<int:cobro_id>", "/api/finanzas/cobros-tarjeta/1", None),
 ]
 
 LECTURAS = ["/api/finanzas/movimientos", "/api/finanzas/recurrentes", "/api/finanzas/resumen",
             "/api/finanzas/pauta", "/api/finanzas/meses", "/api/finanzas/por-cobrar",
             "/api/finanzas/iva", "/api/finanzas/categorias", "/api/finanzas/balance-datos",
             "/api/finanzas/balance?tipo=blanco", "/api/finanzas/balance?tipo=interno",
-            "/api/finanzas/balance-general?tipo=blanco", "/api/finanzas/balance-general?tipo=interno"]
+            "/api/finanzas/balance-general?tipo=blanco", "/api/finanzas/balance-general?tipo=interno",
+            "/api/finanzas/tarjeta/ajustes", "/api/finanzas/cobros-tarjeta",
+            "/api/finanzas/tarjeta/desglose?modo=precio&monto=300&tarjeta=visa_credito"]
 
 
 def _pedir(cli, metodo, url, cuerpo, datos):
