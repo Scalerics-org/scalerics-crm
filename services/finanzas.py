@@ -27,7 +27,7 @@ MONEDAS = ("USD", "UYU")
 # categoría se parta en dos sin que nadie lo note.
 CATEGORIAS = {
     "egreso": ["infraestructura", "herramientas", "publicidad",
-               "retiros", "impuestos", "servicios", "otros"],
+               "retiros", "impuestos", "servicios", "comisiones", "otros"],
     "ingreso": ["desarrollo_web", "software_medida", "mantenimiento",
                 "marketing", "otros"],
 }

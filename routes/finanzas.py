@@ -29,6 +29,13 @@ from services.finanzas import (BALANCE_TIPOS, CATEGORIAS, MONEDAS, a_usd,
                                rendimiento_pauta, resumen, resumen_iva,
                                saldar_por_cobrar)
 
+from database import (borrar_cobro_tarjeta, crear_cobro_tarjeta, get_ajuste,
+                      get_cobro_tarjeta, guardar_ajuste, listar_cobros_tarjeta,
+                      marcar_acreditado)
+from services.cobro_tarjeta import (MODOS, TARJETAS, desglosar,
+                                    sumar_dias_habiles, unir_ajustes,
+                                    validar_ajustes)
+
 finanzas_bp = Blueprint("finanzas", __name__)
 
 
@@ -765,3 +772,181 @@ def api_borrar_dato_balance(dato_id):
 @finanzas_bp.route("/api/finanzas/categorias")
 def api_categorias():
     return jsonify(CATEGORIAS)
+
+
+# ── cobros con tarjeta (Plexo) ───────────────────────────────────────────────
+# Las cuentas viven en services/cobro_tarjeta.py. Acá se leen los ajustes
+# guardados, se valida y se guarda.
+
+_AJUSTE_TARJETA = "cobro_tarjeta"
+
+
+def _ajustes_tarjeta() -> dict:
+    return unir_ajustes(get_ajuste(_db(), _AJUSTE_TARJETA))
+
+
+def _si(valor) -> bool:
+    return str(valor).lower() in ("1", "true", "si", "on")
+
+
+@finanzas_bp.route("/api/finanzas/tarjeta/ajustes", methods=["GET"])
+def api_ajustes_tarjeta():
+    # Lista de pares y no un objeto: jsonify ordena las claves y las
+    # tarjetas saldrían en orden alfabético en vez de Visa, Master, OCA.
+    return jsonify({"ajustes": _ajustes_tarjeta(), "tarjetas": list(TARJETAS.items()),
+                    "modos": list(MODOS.items())})
+
+
+@finanzas_bp.route("/api/finanzas/tarjeta/ajustes", methods=["PUT"])
+def api_guardar_ajustes_tarjeta():
+    ajustes, error = validar_ajustes(request.get_json(silent=True) or {})
+    if error:
+        return jsonify({"ok": False, "error": error}), 400
+    db = _db()
+    guardar_ajuste(db, _AJUSTE_TARJETA, ajustes)
+    uid, nombre = _quien()
+    log_activity(db, nombre, "finanzas_ajustes_tarjeta", "finanzas", None,
+                 "Ajustes de cobro con tarjeta", "", user_id=uid)
+    return jsonify({"ok": True, "ajustes": _ajustes_tarjeta()})
+
+
+def _desglose_de(data) -> tuple[dict | None, str | None]:
+    try:
+        return desglosar(
+            modo=data.get("modo") or "quiero_llevarme",
+            monto=data.get("monto"),
+            tarjeta=data.get("tarjeta") or "",
+            ajustes=_ajustes_tarjeta(),
+            moneda=data.get("moneda") or "USD",
+            tipo_cambio=data.get("tipo_cambio") or None,
+            incluir_fijo=_si(data.get("incluir_fijo", True)),
+            clientes=data.get("clientes") or None,
+        ), None
+    except (TypeError, ValueError) as e:
+        return None, str(e)
+
+
+@finanzas_bp.route("/api/finanzas/tarjeta/desglose", methods=["GET"])
+def api_desglose_tarjeta():
+    """La calculadora. GET a propósito: no guarda nada, y así el Contador (que
+    tiene Finanzas en solo lectura) también la puede usar."""
+    d, error = _desglose_de(request.args)
+    if error:
+        return jsonify({"ok": False, "error": error}), 400
+    fecha = request.args.get("fecha") or ""
+    desde = date.fromisoformat(fecha) if fecha_valida(fecha) else date.today()
+    esperada = sumar_dias_habiles(desde, d["dias_habiles"])
+    return jsonify({"ok": True, **d, "acreditacion_esperada": esperada.isoformat()})
+
+
+@finanzas_bp.route("/api/finanzas/cobros-tarjeta", methods=["GET"])
+def api_listar_cobros_tarjeta():
+    return jsonify(listar_cobros_tarjeta(_db()))
+
+
+@finanzas_bp.route("/api/finanzas/cobros-tarjeta", methods=["POST"])
+def api_crear_cobro_tarjeta():
+    """Registra el cobro: el ingreso con IVA ventas, la comisión de la tarjeta
+    y lo que cobra Plexo (los dos con IVA compras), y el depósito esperado.
+
+    Los números se recalculan acá con los ajustes guardados en vez de tomar
+    los que mandó la pantalla: lo que queda en la caja no puede depender de
+    lo que diga el navegador.
+
+    La parte del fijo de Plexo NO se registra en el cobro: es una sola
+    factura por mes, que va como un gasto fijo. Si se cargara en cada cobro
+    se pagaría varias veces.
+    """
+    data = request.get_json(silent=True) or {}
+    d, error = _desglose_de({**data, "incluir_fijo": False})
+    if error:
+        return jsonify({"ok": False, "error": error}), 400
+
+    fecha = (data.get("fecha") or "").strip()
+    if not fecha_valida(fecha):
+        return jsonify({"ok": False, "error": "fecha tiene que ser 'YYYY-MM-DD'"}), 400
+    concepto = (data.get("concepto") or "").strip()
+    if not concepto:
+        return jsonify({"ok": False, "error": "concepto es obligatorio"}), 400
+    categoria = data.get("categoria") or "mantenimiento"
+    if categoria not in CATEGORIAS["ingreso"]:
+        return jsonify({"ok": False, "error": f"categoría inválida: {categoria!r}"}), 400
+    periodo = periodo_de(fecha)
+    trabado = _mes_trabado(periodo)
+    if trabado:
+        return jsonify({"ok": False, "error": trabado}), 400
+
+    moneda, tc = d["moneda"], d["tipo_cambio"]
+    tc_mov = tc if moneda == "UYU" else None
+    client_id = data.get("client_id") or None
+    uid, nombre = _quien()
+    comunes = {"fecha": fecha, "periodo": periodo, "facturado": 1,
+               "created_by_id": uid, "created_by_name": nombre}
+
+    def _mov(tipo, cat, texto, monto, mon, tipo_cambio, cliente=None, notas=None):
+        usd = a_usd(monto, mon, tipo_cambio)
+        return {**comunes, "tipo": tipo, "categoria": cat, "concepto": texto,
+                "monto": monto, "moneda": mon, "tipo_cambio": tipo_cambio,
+                "monto_usd": usd, "iva_usd": iva_sobre(usd),
+                "client_id": cliente, "notas": notas}
+
+    pct = f"{d['comision_pct']:g}".replace(".", ",")
+    ingreso = _mov("ingreso", categoria, concepto, d["precio"], moneda, tc_mov,
+                   cliente=client_id, notas=f"Cobro con tarjeta: {d['tarjeta_nombre']}")
+    comision = _mov("egreso", "comisiones",
+                    f"Comisión {d['tarjeta_nombre']} {pct}% · {concepto}",
+                    d["comision"], moneda, tc_mov)
+    # Plexo cobra en pesos: su movimiento va siempre en pesos, con el tipo
+    # de cambio del cobro, aunque el cobro sea en dólares.
+    plexo_uyu = float(_ajustes_tarjeta()["plexo_por_cobro_uyu"])
+    plexo = (_mov("egreso", "comisiones", f"Plexo por cobro · {concepto}",
+                  plexo_uyu, "UYU", tc) if plexo_uyu > 0 else None)
+
+    esperada = sumar_dias_habiles(date.fromisoformat(fecha), d["dias_habiles"])
+    db = _db()
+    cid = crear_cobro_tarjeta(db, {
+        "fecha": fecha, "client_id": client_id, "concepto": concepto,
+        "tarjeta": d["tarjeta"], "comision_pct": d["comision_pct"],
+        "moneda": moneda, "tipo_cambio": tc, "precio": d["precio"],
+        "total": d["total"], "deposito": d["deposito"],
+        "acreditacion_esperada": esperada.isoformat(),
+        "created_by_name": nombre,
+    }, ingreso, comision, plexo)
+    log_activity(db, nombre, "finanzas_cobro_tarjeta_creado", "finanzas", cid,
+                 concepto, f"{moneda} {d['total']} {d['tarjeta']}", user_id=uid)
+    return jsonify({"ok": True, "id": cid, "desglose": d,
+                    "acreditacion_esperada": esperada.isoformat()}), 201
+
+
+@finanzas_bp.route("/api/finanzas/cobros-tarjeta/<int:cobro_id>/acreditado",
+                   methods=["PUT"])
+def api_acreditar_cobro_tarjeta(cobro_id):
+    """Marca que el depósito llegó al banco (o lo desmarca)."""
+    db = _db()
+    if not get_cobro_tarjeta(db, cobro_id):
+        return jsonify({"ok": False, "error": "no existe"}), 404
+    data = request.get_json(silent=True) or {}
+    fecha = None
+    if data.get("llego", True):
+        fecha = (data.get("fecha") or "").strip() or date.today().isoformat()
+        if not fecha_valida(fecha):
+            return jsonify({"ok": False, "error": "fecha tiene que ser 'YYYY-MM-DD'"}), 400
+    marcar_acreditado(db, cobro_id, fecha)
+    return jsonify({"ok": True, "acreditado_fecha": fecha})
+
+
+@finanzas_bp.route("/api/finanzas/cobros-tarjeta/<int:cobro_id>", methods=["DELETE"])
+def api_borrar_cobro_tarjeta(cobro_id):
+    """Borra el cobro con sus movimientos. Solo si su mes está abierto."""
+    db = _db()
+    cobro = get_cobro_tarjeta(db, cobro_id)
+    if not cobro:
+        return jsonify({"ok": False, "error": "no existe"}), 404
+    trabado = _mes_trabado(periodo_de(cobro["fecha"]))
+    if trabado:
+        return jsonify({"ok": False, "error": trabado}), 400
+    borrar_cobro_tarjeta(db, cobro_id)
+    uid, nombre = _quien()
+    log_activity(db, nombre, "finanzas_cobro_tarjeta_borrado", "finanzas", cobro_id,
+                 cobro["concepto"], "", user_id=uid)
+    return jsonify({"ok": True})
