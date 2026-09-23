@@ -89,7 +89,10 @@ const RE_EMOJI = /\p{Emoji_Presentation}|\p{Extended_Pictographic}/gu;
  * elegirDiaPorCodigo — esto es solo el respaldo para cuando esa fecha no es
  * ninguna de las ofrecidas.
  *
- * @returns {{n: number, esExplicito: boolean}|null}
+ * `conArticulo` avisa que dijo "el 2" / "la 2": ahi el numero puede ser una
+ * fecha, y elegirDiaPorCodigo la prueba antes de leerlo como opcion.
+ *
+ * @returns {{n: number, esExplicito: boolean, conArticulo: boolean}|null}
  */
 function indiceDeLista(texto) {
   let t = sinAcentos(String(texto || '')).replace(RE_EMOJI, ' ').trim();
@@ -114,7 +117,26 @@ function indiceDeLista(texto) {
 
   const dijoOpcion = /^opcion/.test(prefijo || '');
   const puntoFinal = Boolean(trail && trail[1].includes('.'));
-  return { n, esExplicito: dijoOpcion || puntoFinal };
+  const conArticulo = /^(el|la)\s/.test(prefijo || '');
+  return { n, esExplicito: dijoOpcion || puntoFinal, conArticulo };
+}
+
+const NOMBRES_DIA = 'lunes|martes|miercoles|jueves|viernes|sabado|domingo';
+
+/**
+ * Si pide ver la semana siguiente: "la semana que viene", "la proxima", "la que
+ * viene", y tambien "el jueves que viene" / "el proximo jueves", que nombran un
+ * dia de la semana siguiente aunque este mismo dia tambien exista esta semana.
+ * Sin esto ultimo, "el jueves que viene" elegia el jueves de ESTA semana.
+ */
+const RE_SEMANA_QUE_VIENE = new RegExp(
+  String.raw`\b(?:semana\s+(?:que\s+viene|proxima|siguiente|entrante)`
+  + String.raw`|la\s+proxima|la\s+que\s+viene|la\s+siguiente|proxima\s+semana`
+  + String.raw`|(?:${NOMBRES_DIA})\s+que\s+viene|proximo\s+(?:${NOMBRES_DIA}))\b`,
+);
+
+function pideSemanaQueViene(texto) {
+  return RE_SEMANA_QUE_VIENE.test(sinAcentos(texto));
 }
 
 /** Los dias de semana que nombro, en el codigo corto que usa enZona. */
@@ -508,17 +530,30 @@ function elegirDiaPorCodigo(texto, diasOfrecidos, tz = 'America/Montevideo', aho
     if (nombrados.includes(enZona(d, tz).diaSemana)) return d;
   }
 
+  const idx = indiceDeLista(t);
+  const enLista = (n) => (n >= 1 && n <= diasOfrecidos.length ? diasOfrecidos[n - 1] : null);
+
+  /**
+   * Un numero SOLO ("2", "2!", "dos") contestando una lista numerada es el
+   * numero de la opcion, no el dia del mes. Con la semana que viene en la
+   * lista pasa seguido que los dos se pisan: "1. Lunes 28 ... 5. Viernes 2", y
+   * el "2" es el martes 29 para quien lee la lista y el viernes 2 para quien
+   * lee fechas. "el 2" y "la 2" son las que dicen fecha, y esas se prueban
+   * abajo, antes de caer al indice. Un numero solo que no es opcion de la
+   * lista ("25" con tres dias) sigue pudiendo ser una fecha.
+   */
+  if (idx && !idx.conArticulo) {
+    const porNumero = enLista(idx.n);
+    if (porNumero) return porNumero;
+  }
+
   const numerados = diasNumeroQueNombro(t);
   for (const d of diasOfrecidos) {
     const { dia } = enZona(d, tz);
     if (numerados.includes(Number(dia.slice(8)))) return d;
   }
 
-  const idx = indiceDeLista(t);
-  if (idx) {
-    const i = idx.n - 1;
-    if (i >= 0 && i < diasOfrecidos.length) return diasOfrecidos[i];
-  }
+  if (idx) return enLista(idx.n);
 
   return null;
 }
@@ -644,4 +679,6 @@ module.exports = {
   horasQueDijo, diasQueNombro, diasNumeroQueNombro, eligioEsaHora, revisarFranja,
   franjaDelDia, textoDeFranja, nombroAlgunDia, elegirDiaPorCodigo, elegirHoraPorCodigo,
   tieneNegacion,
+  indiceDeLista,
+  pideSemanaQueViene,
 };

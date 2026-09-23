@@ -533,6 +533,12 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **23/9 — L (bot de WhatsApp, semana completa + lista en conversación + pitch): worktree
+  `../scalerics-crm-wa-a-main`, rama `feat/wa-semana-completa` (sale de `main`), solo
+  `wa-service/`. Pedido de K. Lista de días = lo que queda de la semana + "La semana que
+  viene"; la lista de días/horas no se pierde cuando la respuesta cae a conversación;
+  el pitch deja de contradecir la necesidad guardada. Sin merge ni deploy.
+
 - **23/9 — J (agente de marketing): panel de Contraseñas, solo admin (pedido de Juan).**
   Rama `feat/contrasenas`, sale de `main`, [PR #98](https://github.com/Scalerics-org/scalerics-crm/pull/98).
   Sin mergear ni deployar. Tabla nueva `credenciales` (servicio, usuario, clave
