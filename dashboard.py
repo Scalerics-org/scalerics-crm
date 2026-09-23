@@ -13216,16 +13216,20 @@ function liPintar(d) {
   if (etiqueta) etiqueta.textContent = liEtiquetaSemana(d.semana);
   const siguiente = document.getElementById('li-semana-sig');
   if (siguiente) siguiente.disabled = d.semana >= d.semana_actual;
+  // Descartado no se muestra mas (pedido de Juan, 22/9): antes quedaba la
+  // tarjeta atenuada con un boton para volver a borrador, y no queria verla
+  // en absoluto. Sigue en la base para historial, solo se esconde en pantalla.
+  const visibles = d.borradores.filter(b => b.estado !== 'descartado');
   const estado = document.getElementById('li-estado');
   if (estado) {
-    const hay = d.borradores.length > 0;
+    const hay = visibles.length > 0;
     const proximos = d.proxima_generacion ? ' Los próximos se generan el ' + d.proxima_generacion + '.' : '';
     estado.textContent = hay ? '' : (d.semana === d.semana_actual
       ? 'Todavía no hay borradores esta semana.' : 'No hubo borradores esa semana.') + proximos;
     liClase('li-estado', hay, 'li-oculto');
   }
   const tarjetas = document.getElementById('li-tarjetas');
-  if (tarjetas) tarjetas.innerHTML = d.borradores.map(b => liTarjeta(b, d.limite || 3000)).join('');
+  if (tarjetas) tarjetas.innerHTML = visibles.map(b => liTarjeta(b, d.limite || 3000)).join('');
   liClase('li-btn-generar', !d.puede_generar, 'li-oculto');
 }
 
