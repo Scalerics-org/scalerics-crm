@@ -19810,9 +19810,12 @@ async function loadActivity() {
 </html>"""
 
 # Los pedazos de JS que viven afuera para poder probarse se pegan aca.
+# Las marcas de Jinja de FID_JS van dentro de un comentario de JS: Jinja las
+# procesa igual, y los tests que corren el <script> crudo en node (sin pasar
+# por Jinja) ven un comentario en vez de un "{%" suelto que no compila.
 DASHBOARD_HTML = DASHBOARD_HTML.replace("/*ESC_JS*/", ESC_JS).replace(
     "/*WA_MEDIOS_JS*/", WA_MEDIOS_JS
-).replace("/*FID_JS*/", "{% raw %}" + FID_JS + "{% endraw %}")
+).replace("/*FID_JS*/", "/* {% raw %} */" + FID_JS + "/* {% endraw %} */")
 
 
 _calendly_sync_state = {"at": 0.0}
