@@ -533,6 +533,21 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **23/9 — J (agente de marketing): panel de Contraseñas, solo admin (pedido de Juan).**
+  Rama `feat/contrasenas`, sale de `main`, [PR #98](https://github.com/Scalerics-org/scalerics-crm/pull/98).
+  Sin mergear ni deployar. Tabla nueva `credenciales` (servicio, usuario, clave
+  cifrada, código 2FA, notas). `services/credenciales.py` cifra con Fernet
+  (paquete `cryptography`, ya estaba de transitiva, ahora explícito en
+  `requirements.txt`); la clave sale de `CREDENCIALES_KEY` (secret de Fly,
+  nuevo `.bat` en el Escritorio, "Activar contraseñas.bat"). **A propósito no
+  está en ninguno de los dos `ALL_PANELS`** (ni el del dashboard ni el del
+  editor de roles): así nunca se puede asignar a un rol por accidente, ni
+  siquiera desde el editor. La visibilidad del ítem de menú (sección
+  "SEGURIDAD", al final de todo) se resuelve aparte, con el mismo chequeo
+  `m.is_admin` que ya mostraba "Usuarios". El servidor bloquea igual con
+  `require_admin` en todo el blueprint, aunque alguien fuerce el fetch.
+  Sin `CREDENCIALES_KEY` puesta, el panel avisa en vez de tirar 500.
+
 - **22/9 — L (bot de WhatsApp, tarea 5 — dia primero, hora despues): rama
   `feat/wa-dia-primero`, worktree `../scalerics-crm-wa-a-main`, solo `wa-service/`.
   Pedido de K/Juan: al ofrecer horarios, primero lista de dias numerada, y recien

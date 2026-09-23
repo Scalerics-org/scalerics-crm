@@ -709,6 +709,25 @@ def init_db(db_path: str) -> None:
         for _tabla in ("meetings", "reuniones_asunto"):
             _add_column(conn, _tabla, "presencial", "INTEGER NOT NULL DEFAULT 0")
 
+        # Contraseñas de las cuentas de la empresa (pedido de Juan, 22/9): mail,
+        # Instagram, Plexo, lo que sea. Solo para admin (Ruling R20, igual que
+        # Finanzas): arranca sin nadie asignado, `require_admin` en la ruta.
+        # `clave_cifrada` nunca se guarda en texto plano: ver
+        # services/credenciales.py.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS credenciales (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                servicio        TEXT NOT NULL,
+                usuario         TEXT,
+                clave_cifrada   TEXT NOT NULL,
+                codigo_2fa      TEXT,
+                notas           TEXT,
+                creado_en       TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                actualizado_en  TEXT
+            )
+        """)
+        conn.commit()
+
         conn.execute("""
             CREATE TABLE IF NOT EXISTS wa_templates (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -3639,6 +3658,64 @@ def delete_wa_template(db_path: str, template_id: int) -> None:
     conn = _connect(db_path)
     try:
         conn.execute("DELETE FROM wa_templates WHERE id = ?", (template_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+# ─── Credenciales ─────────────────────────────────────────────────────────────
+# Solo admin (services/credenciales.py cifra/descifra `clave_cifrada`; esto
+# solo guarda y lee filas, nunca ve el texto plano).
+
+def listar_credenciales(db_path: str) -> list[dict]:
+    conn = _connect(db_path)
+    try:
+        cursor = conn.execute("SELECT * FROM credenciales ORDER BY servicio COLLATE NOCASE")
+        return [dict(r) for r in cursor.fetchall()]
+    finally:
+        conn.close()
+
+
+def get_credencial(db_path: str, cred_id: int) -> Optional[dict]:
+    conn = _connect(db_path)
+    try:
+        row = conn.execute("SELECT * FROM credenciales WHERE id = ?", (cred_id,)).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def crear_credencial(db_path: str, servicio: str, usuario: str, clave_cifrada: str,
+                     codigo_2fa: str = "", notas: str = "") -> int:
+    conn = _connect(db_path)
+    try:
+        cursor = conn.execute(
+            "INSERT INTO credenciales (servicio, usuario, clave_cifrada, codigo_2fa, notas) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (servicio, usuario or None, clave_cifrada, codigo_2fa or None, notas or None))
+        conn.commit()
+        return cursor.lastrowid
+    finally:
+        conn.close()
+
+
+def actualizar_credencial(db_path: str, cred_id: int, servicio: str, usuario: str,
+                          clave_cifrada: str, codigo_2fa: str = "", notas: str = "") -> None:
+    conn = _connect(db_path)
+    try:
+        conn.execute(
+            "UPDATE credenciales SET servicio = ?, usuario = ?, clave_cifrada = ?, "
+            "codigo_2fa = ?, notas = ?, actualizado_en = CURRENT_TIMESTAMP WHERE id = ?",
+            (servicio, usuario or None, clave_cifrada, codigo_2fa or None, notas or None, cred_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def borrar_credencial(db_path: str, cred_id: int) -> None:
+    conn = _connect(db_path)
+    try:
+        conn.execute("DELETE FROM credenciales WHERE id = ?", (cred_id,))
         conn.commit()
     finally:
         conn.close()
