@@ -503,3 +503,72 @@ def test_ningun_reparto_de_paneles_le_suma_nada_al_vendedor(db):
     fila = _uno(db, "SELECT panel_access FROM roles WHERE name = ?", (fid.ROL_VENDEDOR,))
     assert json.loads(fila[0]) == ["cola", "metrics"]
     assert "panel_nuevo" in json.loads(_uno(db, "SELECT panel_access FROM roles WHERE name='Admin'")[0])
+
+
+# ── la agenda del vendedor (24/9) ────────────────────────────────────────────
+
+def test_la_agenda_junta_reuniones_llamadas_y_eventos(db):
+    a = _p(db, "A", telefono="091000001")
+    b = _p(db, "B", telefono="091000002")
+    fid.registrar_llamada(db, a, "llamar_despues", "Lucas", fecha="2026-09-24T16:00", cuando=AHORA)
+    p, err = fid.agendar_reunion(db, b, "2026-09-25T11:00", "Lucas", minutos=60, lugar="En el local")
+    assert err is None and p["estado"] == "reunion_agendada" and p["fecha_reunion"] == "2026-09-25 11:00"
+    eid, err = fid.crear_evento(db, {"titulo": "Visita", "inicio": "2026-09-25T11:30", "minutos": 30}, "Lucas")
+    assert err is None
+    d = fid.armar_agenda(db, "2026-09-21", "2026-09-27")
+    por_tipo = {x["tipo"]: x for x in d["items"]}
+    assert set(por_tipo) == {"llamada", "reunion", "evento"}
+    assert por_tipo["reunion"]["fin"] == "2026-09-25 12:00" and por_tipo["reunion"]["lugar"] == "En el local"
+    assert por_tipo["llamada"]["inicio"] == "2026-09-24 16:00"
+    # La reunión y la visita se pisan: se avisa en las dos.
+    assert por_tipo["evento"]["choca_con"] == ["Reunión · B"]
+    assert por_tipo["reunion"]["choca_con"] == ["Visita"]
+    assert [x["tipo"] for x in fid.armar_agenda(db, "2026-09-21", "2026-09-27", con_llamadas=False)["items"]] == ["reunion", "evento"]
+
+
+def test_mover_la_reunion_no_duplica_el_cambio_de_etapa(db):
+    pid = _p(db)
+    fid.agendar_reunion(db, pid, "2026-09-25T11:00", "Lucas")
+    p, _ = fid.agendar_reunion(db, pid, "2026-09-26T15:00", "Lucas")
+    assert p["fecha_reunion"] == "2026-09-26 15:00" and p["reunion_minutos"] == fid.REUNION_MINUTOS
+    assert [c["a"] for c in p["cambios"]] == ["reunion_agendada"]
+
+
+def test_los_eventos_se_validan(db):
+    assert fid.crear_evento(db, {"titulo": "", "inicio": "2026-09-25T10:00"}, "L")[1] == "falta el título"
+    assert fid.crear_evento(db, {"titulo": "X", "inicio": "2026-09-25"}, "L")[1] == "falta el día y la hora"
+    assert fid.crear_evento(db, {"titulo": "X", "inicio": "2026-09-25T10:00", "minutos": 900}, "L")[1] == "dura más de 12 horas"
+    eid, _ = fid.crear_evento(db, {"titulo": "X", "inicio": "2026-09-25T10:00", "minutos": 30}, "L")
+    assert fid.editar_evento(db, eid, {"inicio": "2026-09-26T09:00"}) is None
+    e = fid.armar_agenda(db, "2026-09-26", "2026-09-26")["items"][0]
+    assert (e["inicio"], e["fin"]) == ("2026-09-26 09:00", "2026-09-26 09:30")   # conserva la duración
+    assert fid.borrar_evento(db, eid) and not fid.borrar_evento(db, eid)
+
+
+def test_el_vendedor_usa_su_agenda_pero_no_la_de_la_agencia(app):
+    db = app.config["_DB"]
+    cli = _cli(app, _usuario(db, "lucas@ejemplo.com", rol=fid.ROL_VENDEDOR))
+    pid = _p(db)
+    assert cli.post(f"/api/fidelidad/prospectos/{pid}/reunion", json={"inicio": "2026-09-25T11:00"}).status_code == 200
+    r = cli.post("/api/fidelidad/eventos", json={"titulo": "Degustación", "inicio": "2026-09-25T15:00", "minutos": 60})
+    assert r.status_code == 201
+    eid = r.get_json()["id"]
+    assert cli.put(f"/api/fidelidad/eventos/{eid}", json={"titulo": "Degustación Bruta"}).status_code == 200
+    items = cli.get("/api/fidelidad/agenda?desde=2026-09-21&hasta=2026-09-27").get_json()["items"]
+    assert [x["titulo"] for x in items] == ["Reunión · La Perdiz", "Degustación Bruta"]
+    assert items[1]["usuario"] == "Lucas"
+    # El calendario de Scalerics sigue cerrado para él, en todas sus rutas.
+    for ruta in ("/api/calendar/events?start=2026-09-01&end=2026-09-30", "/api/calendar/meetings/1",
+                 "/api/calendar/clients/1/meetings"):
+        assert cli.get(ruta).status_code == 403, ruta
+    assert cli.delete(f"/api/fidelidad/eventos/{eid}").status_code == 200
+    assert cli.get("/api/fidelidad/agenda?desde=2026-09-27&hasta=2026-09-21").status_code == 400
+
+
+def test_la_agenda_esta_en_outbound():
+    html = dashboard.DASHBOARD_HTML
+    assert 'id="fid-t-agenda"' in html and 'id="fid-v-agenda"' in html
+    assert "function fidCargarAgenda" in html
+    # La agenda nunca le pide nada al calendario de la agencia.
+    js = html[html.index("// ── Agenda ─"):html.index("// ========== FIN Fidelidad ==========")]
+    assert "'/api/calendar" not in js and '"/api/calendar' not in js

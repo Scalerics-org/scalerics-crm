@@ -75,6 +75,48 @@ def api_reuniones():
     return jsonify(fid.listar_reuniones(_db(), _ahora()))
 
 
+@fidelidad_bp.route("/api/fidelidad/agenda")
+def api_agenda():
+    d = fid.armar_agenda(_db(), request.args.get("desde") or "", request.args.get("hasta") or "",
+                         con_llamadas=request.args.get("llamadas") != "0")
+    if d.get("error"):
+        return _error(d["error"], 400)
+    return jsonify(d)
+
+
+@fidelidad_bp.route("/api/fidelidad/eventos", methods=["POST"])
+def api_evento_crear():
+    eid, error = fid.crear_evento(_db(), request.get_json(silent=True) or {}, _usuario())
+    if error:
+        return _error(error, 400)
+    return jsonify({"ok": True, "id": eid}), 201
+
+
+@fidelidad_bp.route("/api/fidelidad/eventos/<int:eid>", methods=["PUT"])
+def api_evento_editar(eid):
+    error = fid.editar_evento(_db(), eid, request.get_json(silent=True) or {})
+    if error:
+        return _error(error, 404 if error == "el evento no existe" else 400)
+    return jsonify({"ok": True})
+
+
+@fidelidad_bp.route("/api/fidelidad/eventos/<int:eid>", methods=["DELETE"])
+def api_evento_borrar(eid):
+    if not fid.borrar_evento(_db(), eid):
+        return _error("el evento no existe", 404)
+    return jsonify({"ok": True})
+
+
+@fidelidad_bp.route("/api/fidelidad/prospectos/<int:pid>/reunion", methods=["POST"])
+def api_reunion(pid):
+    d = request.get_json(silent=True) or {}
+    p, error = fid.agendar_reunion(_db(), pid, d.get("inicio") or "", _usuario(),
+                                   minutos=d.get("minutos"), lugar=d.get("lugar"))
+    if error:
+        return _error(error, 404 if error == "el prospecto no existe" else 400)
+    return jsonify({"ok": True, "prospecto": p})
+
+
 @fidelidad_bp.route("/api/fidelidad/prospectos", methods=["POST"])
 def api_crear():
     datos = request.get_json(silent=True) or {}
