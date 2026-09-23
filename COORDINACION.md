@@ -533,10 +533,25 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **22/9 — J (agente de marketing): PR #91 se perdió al mergear, recuperado (pedido de Juan).**
+  Rama `fix/linkedin-otra-idea-recuperado`, sale de `main`,
+  [PR #96](https://github.com/Scalerics-org/scalerics-crm/pull/96). **Importante para
+  quien lea esto:** GitHub marca el PR #91 ("LinkedIn: otra idea y comentarle una
+  mejora a Claude") como *Merged* el 22/9 18:57, pero su commit
+  (`a64b5c8`) **no es ancestro de `main`** — no llegó a estar en producción a
+  pesar de la marca verde. No tengo explicación de por qué; lo verifiqué con
+  `git merge-base --is-ancestor` y con el propio código corriendo (Juan no
+  veía el cuadro de "pedile un cambio a Claude"). Este PR #96 lo recupera con
+  un cherry-pick de `a64b5c8` sobre el `main` actual. **Si en algún momento
+  desaparece de nuevo algo que GitHub dice mergeado, no confiar en la marca:
+  chequear `git log origin/main | grep '#N'` o
+  `git merge-base --is-ancestor <sha> origin/main`.**
+  De paso, en el mismo PR: los borradores **descartados ya no se muestran** en
+  el panel (antes quedaban atenuados con un botón para volver a borrador).
+
 - **22/9 — J (agente de marketing): Finanzas, el tipo de cambio en su propia línea (pedido de Juan).**
-  Rama `fix/finanzas-lista-alineada-2`, sale de `main`,
-  [PR #97](https://github.com/Scalerics-org/scalerics-crm/pull/97). Sin mergear ni
-  deployar. El texto gris del original en pesos ("$ 4.880 @ 40") corría el
+  Rama `fix/finanzas-lista-alineada-2`, [PR #97](https://github.com/Scalerics-org/scalerics-crm/pull/97).
+  **Mergeado.** El texto gris del original en pesos ("$ 4.880 @ 40") corría el
   monto en rojo/verde de columna porque estaba al lado, en un bloque
   `text-align:right`. Ahora es una segunda línea, misma columna: el monto
   siempre queda alineado.
