@@ -72,7 +72,9 @@ def test_el_panel_marketing_le_llega_a_los_roles_que_ya_existian(db):
     """Un panel nuevo no le llega a nadie salvo admins si no se migra."""
     conn = _connect(db)
     try:
-        filas = conn.execute("SELECT panel_access FROM roles").fetchall()
+        # El vendedor de Fidelidad es de afuera: ningun reparto le suma paneles.
+        filas = conn.execute("SELECT panel_access FROM roles "
+                             "WHERE name != 'Vendedor Fidelidad'").fetchall()
     finally:
         conn.close()
     assert filas, "la siembra de roles no corrio"

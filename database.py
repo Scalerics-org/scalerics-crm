@@ -58,7 +58,10 @@ def _grant_panel_to_existing_roles(conn: sqlite3.Connection, panel: str,
         return 0
     tocadas = 0
     try:
-        filas = conn.execute("SELECT id, panel_access FROM roles").fetchall()
+        # El vendedor de Scalerics Fidelidad es de afuera: solo tiene sus dos
+        # pantallas y ningun reparto le suma otra (services/fidelidad.py).
+        filas = conn.execute("SELECT id, panel_access FROM roles "
+                             "WHERE name != 'Vendedor Fidelidad'").fetchall()
     except sqlite3.Error as e:
         logger.warning(f"panel_access migration: no se pudo leer roles ({e})")
         return 0

@@ -345,7 +345,8 @@ def test_los_roles_reciben_el_panel_una_sola_vez(tmp_path):
     db = str(tmp_path / "h.db")
     init_db(db)
     conn = sqlite3.connect(db)
-    acceso = {n: json.loads(p) for n, p in conn.execute("SELECT name, panel_access FROM roles")}
+    # El vendedor de Fidelidad es de afuera: ningun reparto le suma paneles.
+    acceso = {n: json.loads(p) for n, p in conn.execute("SELECT name, panel_access FROM roles") if n != "Vendedor Fidelidad"}
     assert acceso and all("horarios" in p for p in acceso.values()), acceso
 
     # Si Juan se lo saca a un rol, un arranque no se lo vuelve a poner.

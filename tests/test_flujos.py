@@ -175,7 +175,8 @@ def _olvidar_reparto(conn, panel):
 def test_el_panel_les_llega_a_quien_tiene_organigrama_o_ausencias(tmp_path):
     db = str(tmp_path / "roles.db")
     init_db(db)
-    acceso = {n: json.loads(p) for n, p in _sql(db, "SELECT name, panel_access FROM roles")}
+    # El vendedor de Fidelidad es de afuera: ningun reparto le suma paneles.
+    acceso = {n: json.loads(p) for n, p in _sql(db, "SELECT name, panel_access FROM roles") if n != "Vendedor Fidelidad"}
     assert acceso and all(p.count("flujos") == 1 for p in acceso.values()), acceso
 
     conn = sqlite3.connect(db)

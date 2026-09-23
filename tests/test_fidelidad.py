@@ -491,3 +491,15 @@ def test_el_comando_recorre_los_barrios_de_la_zona(monkeypatch):
     assert llamadas == [("restaurantes en Carrasco, Montevideo", 5, "Carrasco"),
                         ("restaurantes en Carrasco Norte, Montevideo", 5, "Carrasco Norte"),
                         ("restaurantes en Barra de Carrasco, Canelones", 5, "Barra de Carrasco")]
+
+
+def test_ningun_reparto_de_paneles_le_suma_nada_al_vendedor(db):
+    from database import _grant_panel_to_existing_roles
+    c = sqlite3.connect(db)
+    try:
+        _grant_panel_to_existing_roles(c, "panel_nuevo", si_tiene=("cola", "metrics"))
+    finally:
+        c.close()
+    fila = _uno(db, "SELECT panel_access FROM roles WHERE name = ?", (fid.ROL_VENDEDOR,))
+    assert json.loads(fila[0]) == ["cola", "metrics"]
+    assert "panel_nuevo" in json.loads(_uno(db, "SELECT panel_access FROM roles WHERE name='Admin'")[0])

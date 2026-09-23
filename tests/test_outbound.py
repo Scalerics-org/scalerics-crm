@@ -5,6 +5,9 @@
 - Cola: pasa a llamarse "Outbound".
 - Marketing: pasa a llamarse "Inteligencia marketing".
 
+El 23/9 Outbound e Inteligencia comercial pasaron a ser de Scalerics Fidelidad
+(tests/test_fidelidad.py): los titulos dicen "· Fidelidad" y el menu no cambia.
+
 Por dentro los paneles siguen siendo `metrics`, `cola` y `marketing`: los
 permisos de cada rol estan guardados con esos nombres, y renombrarlos les
 sacaria el panel a todos. Solo cambia lo que se ve.
@@ -30,7 +33,7 @@ def _nav(panel: str) -> str:
 
 def test_metricas_se_llama_inteligencia_comercial():
     assert _nav("metrics") == "Inteligencia comercial"
-    assert "<h1>Inteligencia comercial</h1>" in HTML
+    assert "<h1>Inteligencia comercial · Fidelidad</h1>" in HTML
     assert "<h1>Métricas</h1>" not in HTML
     assert "metrics:'Intel. comercial'" in HTML            # barra del celular
     assert "metrics:'Inteligencia comercial'" in SRC       # permisos
@@ -38,7 +41,7 @@ def test_metricas_se_llama_inteligencia_comercial():
 
 def test_cola_se_llama_outbound():
     assert _nav("cola") == "Outbound"
-    assert "<h1>Outbound</h1>" in HTML
+    assert "<h1>Outbound · Scalerics Fidelidad</h1>" in HTML
     assert "<h1>Cola de llamadas</h1>" not in HTML
     assert "cola:'Outbound'" in HTML
     assert "{cola:'Outbound'," in SRC
@@ -53,7 +56,7 @@ def test_outbound_no_quedo_en_dos_paneles():
     """Al renombrar Metricas y Cola en la misma tanda, "Outbound" tiene que
     quedar solo en la Cola."""
     assert _nav("metrics") != "Outbound"
-    assert HTML.count("<h1>Outbound</h1>") == 1
+    assert HTML.count("<h1>Outbound · Scalerics Fidelidad</h1>") == 1
     assert "metrics:'Outbound'" not in SRC
     assert "metrics:'Métricas'" not in SRC
 
@@ -69,14 +72,14 @@ def test_los_paneles_siguen_con_su_nombre_por_dentro():
     for panel in ("metrics", "cola", "marketing"):
         assert f'id="{panel}-panel"' in HTML, panel
         assert f"showPanel('{panel}')" in HTML, panel
-    assert "if (name === 'metrics') loadMetrics();" in HTML
+    assert "if (name === 'metrics') fidCargarIntel();" in HTML
+    assert "if (name === 'cola') fidLoad();" in HTML
     for lista in re.findall(r"const ALL_PANELS = \[([^\]]*)\]", SRC):
         assert "'metrics'" in lista and "'cola'" in lista
 
 
 def test_lo_del_panel_sigue_y_la_pagina_abre(tmp_path, monkeypatch):
-    for id_ in ("m-total", "m-contacted", "m-funnel", "m-calls", "m-months",
-                "m-rubros", "m-cities"):
+    for id_ in ("fid-i-cuerpo", "fid-cola", "fid-kan", "fid-tabla", "fid-reu-prox"):
         assert f'id="{id_}"' in HTML, id_
 
     monkeypatch.setenv("SECRET_KEY", "test")
@@ -94,3 +97,4 @@ def test_lo_del_panel_sigue_y_la_pagina_abre(tmp_path, monkeypatch):
 
     assert cli.get("/").status_code == 200
     assert cli.get("/api/metrics").status_code == 200
+    assert cli.get("/api/fidelidad/intel").status_code == 200
