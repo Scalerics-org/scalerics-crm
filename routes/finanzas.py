@@ -878,7 +878,13 @@ def api_crear_cobro_tarjeta():
 
     moneda, tc = d["moneda"], d["tipo_cambio"]
     tc_mov = tc if moneda == "UYU" else None
-    client_id = data.get("client_id") or None
+    # El <select> de la pantalla manda el id como texto ("7"). Se pasa a
+    # número acá: la base lo guarda como entero, y el control de doble envío
+    # compara contra esa columna, donde "7" y 7 no son iguales.
+    try:
+        client_id = int(data.get("client_id") or 0) or None
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "client_id inválido"}), 400
     uid, nombre = _quien()
     comunes = {"fecha": fecha, "periodo": periodo, "facturado": 1,
                "created_by_id": uid, "created_by_name": nombre}

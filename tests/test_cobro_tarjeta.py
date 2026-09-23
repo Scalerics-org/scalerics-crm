@@ -331,3 +331,15 @@ def test_un_duplicado_no_toca_nada_en_la_base(app, cli):
     antes = sorted(m["id"] for m in listar_movimientos(db))
     cli.post("/api/finanzas/cobros-tarjeta", json=_cobro())
     assert sorted(m["id"] for m in listar_movimientos(db)) == antes
+
+
+def test_doble_envio_con_cliente_elegido_desde_la_pantalla(app, cli):
+    """La pantalla manda el cliente como texto ("1") y la base lo guarda como
+    número: el control de duplicados tiene que reconocerlo igual."""
+    db = app.config["_DB"]
+    cid = insert_business(db, {"name": "Cliente Texto", "phone": "+598700777"})
+    cuerpo = {"modo": "precio", "monto": 300, "tarjeta": "visa_credito",
+              "fecha": _hoy(), "concepto": "Mantenimiento", "client_id": str(cid)}
+    assert cli.post("/api/finanzas/cobros-tarjeta", json=cuerpo).status_code == 201
+    assert cli.post("/api/finanzas/cobros-tarjeta", json=cuerpo).status_code == 409
+    assert len(listar_movimientos(db)) == 3
