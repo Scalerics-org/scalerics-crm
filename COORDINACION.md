@@ -533,6 +533,30 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **23/9 — M (Scalerics Fidelidad): Outbound e Inteligencia comercial pasan a ser del socio vendedor (pedido de Juan).**
+  Rama `feat/outbound-fidelidad`, worktree `../crm-fidelidad`. Scalerics
+  Fidelidad es el sistema de puntos para restaurantes; lo vende un socio de
+  afuera y Captación pasa a ser su espacio de trabajo. Lo que hay que saber:
+  - **Tablas propias `fid_*`** (`services/fidelidad.py`), no `businesses`: los
+    restaurantes del socio no entran a las campañas de mail ni al padrón.
+  - **La cola vieja de Outbound quedó oculta, no borrada.** Una sola vez (marca
+    en `fid_marcas`), `businesses.archivado_en` se llena en los comercios
+    scrapeados (source NULL o `discovery`) sin contactar o "no le interesa";
+    `listar_leads` los saltea. **Las campañas de mail NO miran esa marca**, a
+    propósito. Para reactivarlos: `UPDATE businesses SET archivado_en = NULL
+    WHERE archivado_en = '<fecha de la marca>'`.
+  - **Rol `Vendedor Fidelidad`** (paneles `cola` y `metrics`). Los mails de la
+    variable `VENDEDORES_FIDELIDAD` (secret de Fly, separados por coma) entran
+    con ese rol al registrarse. `require_login` le corta con 403 toda `/api/`
+    que no sea `/api/fidelidad/*` o `/api/me`: la agenda, los leads y Finanzas
+    no piden panel, así que sin ese candado un fetch a mano le mostraba las
+    reuniones de la agencia.
+  - **SDR salió del menú** (el backend `/api/sdr-*` sigue, sin pantalla).
+  - `main.py scrape-fidelidad` junta restaurantes barrio por barrio de CH y
+    Carrasco y los manda a `/api/fidelidad/prospectos` (con `CRM_URL`).
+  - El Excel de prospectos **no va al repo** (es público): se sube desde
+    Outbound → «Importar Excel».
+
 - **22/9 — J (agente de marketing): PR #91 se perdió al mergear, recuperado (pedido de Juan).**
   Rama `fix/linkedin-otra-idea-recuperado`, sale de `main`,
   [PR #96](https://github.com/Scalerics-org/scalerics-crm/pull/96). **Importante para

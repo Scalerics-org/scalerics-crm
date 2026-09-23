@@ -1,3 +1,4 @@
+import os
 import re
 import sqlite3
 import logging
@@ -2063,6 +2064,17 @@ def init_db(db_path: str) -> None:
         conn.commit()
         _grant_panel_to_existing_roles(conn, "sombra", si_tiene=("marketing",))
 
+        # Scalerics Fidelidad (23/9): el Outbound pasa a ser del socio que vende
+        # el sistema de puntos. Sus tablas son propias (services/fidelidad.py);
+        # los comercios que mostraba la cola vieja se ocultan una vez, sin borrar.
+        from services.fidelidad import (archivar_outbound_viejo, asignar_vendedores,
+                                        init_fidelidad)
+        _add_column(conn, "businesses", "archivado_en", "TEXT")
+        init_fidelidad(conn)
+        conn.commit()
+        archivar_outbound_viejo(conn)
+        asignar_vendedores(conn, os.environ.get("VENDEDORES_FIDELIDAD", "").split(","))
+
         # Backfill scores for leads that were scraped before scoring was added
         conn.execute("""
             UPDATE businesses SET score = (
@@ -2292,6 +2304,9 @@ def listar_leads(db_path: str, crm_status: str | None = None, cohorte: str | Non
         "   AND cl.outcome = 'no_interesa') AS no_interesa_count"
     )
     cond, params = [], []
+    # Los comercios que la cola vieja mostraba quedaron ocultos el 23/9, cuando
+    # Outbound paso a ser de Scalerics Fidelidad (services/fidelidad.py).
+    cond.append("b.archivado_en IS NULL")
     if crm_status == "sin_contactar":
         # Los leads de Meta no entran a la cola fria: tienen su propio panel.
         cond.append("(b.crm_status IS NULL OR b.crm_status = ?)")

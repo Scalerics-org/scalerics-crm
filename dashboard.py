@@ -36,6 +36,7 @@ from routes.equipo import equipo_bp
 from routes.horarios import horarios_bp
 from routes.flujos import flujos_bp
 from routes.seg_leads import seg_leads_bp
+from routes.fidelidad import fidelidad_bp
 from routes.daily import daily_bp
 from routes.plantillas import plantillas_bp
 from routes.web import web_bp
@@ -262,6 +263,610 @@ ESC_JS = r"""function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/<
 # Antes esto solo sabia dibujar un <audio> y descartaba todo lo demas con un
 # `if (a.tipo !== 'audio') return ''`. La foto llegaba al CRM y no se veia en
 # ningun lado, asi que la conversacion del panel quedaba con un hueco.
+# Outbound e Inteligencia comercial de Scalerics Fidelidad (services/fidelidad.py).
+# Crudo y entre {% raw %}: el HTML pasa por Jinja y el JS usa barras.
+FID_JS = r"""// ========== Fidelidad ==========
+// Outbound e Inteligencia comercial de Scalerics Fidelidad (23/9). La logica
+// (cuando vuelve a la cola cada prospecto, el puntaje, las metricas) vive en
+// services/fidelidad.py; aca solo se dibuja.
+const FID_ESTADOS = [['sin_contactar','Sin contactar'],['contactado','Contactado'],['reunion_agendada','Reunión agendada'],
+  ['reunion_hecha','Reunión hecha'],['piloto','Piloto'],['cerrado','Cerrado'],['descartado','Descartado']];
+const FID_LABEL = Object.fromEntries(FID_ESTADOS);
+const FID_CATS = ['Parrilla','Pizza','Sushi','Hamburguesas','Café','Bar','Heladería','Restaurante'];
+const FID_MOTIVOS = ['Precio','Ya tiene sistema','No ve el valor','Lo decide otro','Cierra el local','Otro'];
+const FID_DEMO = 'https://trouville.scalerics.workers.dev';
+const FID_DIAS = ['dom','lun','mar','mié','jue','vie','sáb'];
+const _fid = {vista:'hoy', hoy:null, sel:null, ficha:null, rid:null, pag:1, periodo:'mes', cfg:null, listo:false, buscarT:null, cola:[]};
+
+function _fidDt(t) {
+  if (!t) return null;
+  const m = String(t).match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?/);
+  return m ? new Date(+m[1], +m[2]-1, +m[3], +(m[4]||0), +(m[5]||0)) : null;
+}
+function _fidTxt(d) {
+  const p = n => String(n).padStart(2,'0');
+  return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+'T'+p(d.getHours())+':'+p(d.getMinutes());
+}
+function fidFecha(t, conHora=true) {
+  const d = _fidDt(t); if (!d) return '—';
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  const dia = new Date(d); dia.setHours(0,0,0,0);
+  const dif = Math.round((dia - hoy) / 864e5);
+  const h = String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+  const base = dif === 0 ? 'hoy' : dif === 1 ? 'mañana' : dif === -1 ? 'ayer'
+    : FID_DIAS[d.getDay()]+' '+d.getDate()+'/'+(d.getMonth()+1);
+  return conHora && String(t).length > 10 ? base+' · '+h : base;
+}
+function _fidUsd(n) { return 'USD '+Math.round(n||0).toLocaleString('es-UY'); }
+function _fidTelLink(tel) {
+  const d = String(tel||'').replace(/\D/g,'');
+  return d ? 'tel:+'+(d.startsWith('598') ? d : '598'+d.replace(/^0/,'')) : '';
+}
+function _fidWa(tel) {
+  const d = String(tel||'').replace(/\D/g,'');
+  return d ? 'https://wa.me/'+(d.startsWith('598') ? d : '598'+d.replace(/^0/,'')) : '';
+}
+const _FID_TEL_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></svg>';
+
+async function _fidJson(url, opts) {
+  const r = await fetch(url, opts);
+  let d = null; try { d = await r.json(); } catch(e) {}
+  if (!r.ok) throw new Error((d && d.error) || ('Error ' + r.status));
+  return d;
+}
+
+function _fidCats() {
+  if (_fid.listo) return;
+  _fid.listo = true;
+  document.querySelectorAll('.fid-cat').forEach(s => {
+    s.innerHTML = '<option value="">Tipo de local: todos</option>' + FID_CATS.map(c => '<option>'+c+'</option>').join('');
+  });
+  const fe = document.getElementById('fid-f-estado');
+  if (fe) fe.innerHTML = '<option value="">Todas las etapas</option>' + FID_ESTADOS.map(e => '<option value="'+e[0]+'">'+e[1]+'</option>').join('');
+}
+
+function fidLoad() {
+  _fidCats();
+  if (!_fid.cfg) _fidJson('/api/fidelidad/config').then(c => { _fid.cfg = c; }).catch(() => {});
+  const f = document.getElementById('fid-fecha');
+  if (f) f.textContent = new Date().toLocaleDateString('es-UY', {weekday:'long', day:'numeric', month:'long'}) + ' · Restaurantes de Municipio CH y Carrasco';
+  fidVista(_fid.vista);
+}
+
+function fidVista(v) {
+  _fid.vista = v;
+  ['hoy','pipe','todos','reu'].forEach(k => {
+    document.getElementById('fid-v-'+k).style.display = k === v ? '' : 'none';
+    document.getElementById('fid-t-'+k).classList.toggle('on', k === v);
+  });
+  if (v === 'hoy') fidCargarHoy();
+  if (v === 'pipe') fidCargarPipe();
+  if (v === 'todos') fidCargarTodos(_fid.pag);
+  if (v === 'reu') fidCargarReuniones();
+}
+
+function fidAviso(html, tipo) {
+  const a = document.getElementById('fid-aviso');
+  if (!a) return;
+  a.innerHTML = html ? '<div class="fid-card" style="margin-bottom:14px;border-color:var(--'+(tipo==='error'?'rojo':'verde')+')">'+html+'</div>' : '';
+}
+
+// ── Mi dia ──────────────────────────────────────────────────────────────────
+async function fidCargarHoy(abrirId) {
+  let d;
+  try { d = await _fidJson('/api/fidelidad/hoy'); }
+  catch(e) { document.getElementById('fid-cola').innerHTML = '<div class="fid-vacio">'+esc(e.message)+'</div>'; return; }
+  _fid.hoy = d;
+  const k = d.kpis;
+  const pend = k.vencidas + k.para_hoy;
+  document.getElementById('fid-n-hoy').textContent = pend || '';
+  const tasa = k.tasa_efectivo_hoy;
+  const comp = (tasa != null && k.tasa_efectivo_hist != null)
+    ? (tasa >= k.tasa_efectivo_hist ? ' · <span class="fid-up">▲ '+(tasa-k.tasa_efectivo_hist)+' pts</span>' : ' · <span class="fid-dn">▼ '+(k.tasa_efectivo_hist-tasa)+' pts</span>')+' vs tu promedio' : '';
+  document.getElementById('fid-kpis-hoy').innerHTML =
+    '<div class="fid-kpi"><div class="l">Llamadas hoy</div><div class="v">'+k.llamadas_hoy+' <small>/ '+k.meta_llamadas_dia+' meta</small></div><div class="fid-barra"><div style="width:'+Math.min(100, Math.round(100*k.llamadas_hoy/Math.max(1,k.meta_llamadas_dia)))+'%"></div></div></div>'
+    + '<div class="fid-kpi"><div class="l">Hablé con el dueño</div><div class="v">'+k.efectivos_hoy+'</div><div class="d">'+(tasa != null ? tasa+'% de las llamadas'+comp : 'Todavía no llamaste hoy')+'</div></div>'
+    + '<div class="fid-kpi"><div class="l">Reuniones agendadas hoy</div><div class="v">'+k.reuniones_hoy+'</div><div class="d">Semana: '+k.reuniones_semana+' de '+k.meta_reuniones_semana+' meta</div></div>'
+    + '<div class="fid-kpi"><div class="l">Pendientes de hoy</div><div class="v">'+pend+'</div><div class="d">'+(k.vencidas ? '<span class="fid-dn">'+k.vencidas+' vencidas</span> · ' : '')+k.para_hoy+' para hoy · '+k.sin_contactar+' sin tocar</div></div>';
+  const g = d.grupos;
+  _fid.cola = [].concat(g.vencidas, g.post_reunion, g.hoy, g.sugeridos);
+  let html = '';
+  if (d.reuniones_hoy.length) {
+    html += '<div class="fid-grp v">● Reuniones de hoy · '+d.reuniones_hoy.length+'</div>'
+      + d.reuniones_hoy.map(p => _fidFila(p, (p.fecha_reunion||'').slice(11,16), '<span class="fid-pill v">Reunión</span>')).join('');
+  }
+  if (g.vencidas.length) html += '<div class="fid-grp r">● Vencidas · '+g.vencidas.length+'</div>' + g.vencidas.map(p => _fidFila(p, _fidCuandoCorto(p.proxima_llamada))).join('');
+  if (g.post_reunion.length) html += '<div class="fid-grp v">● Reuniones sin resultado · '+g.post_reunion.length+'</div>' + g.post_reunion.map(p => _fidFila(p, _fidCuandoCorto(p.fecha_reunion), '<span class="fid-pill v">¿Cómo salió?</span>')).join('');
+  if (g.hoy.length) html += '<div class="fid-grp a">● Para hoy · '+g.hoy.length+'</div>' + g.hoy.map(p => _fidFila(p, (p.proxima_llamada||'').slice(11,16))).join('');
+  if (g.sugeridos.length) html += '<div class="fid-grp b">● Nuevos sugeridos · para llenar los huecos</div>' + g.sugeridos.map(p => _fidFila(p, '<span class="fid-hr pt">'+p.puntaje+'<small>puntaje</small></span>', null, true)).join('');
+  if (!html) html = '<div class="fid-vacio">No hay nada pendiente. Cargá prospectos con «Importar Excel» o «+ Prospecto».</div>';
+  document.getElementById('fid-cola').innerHTML = html;
+  const quiero = abrirId || _fid.sel || (_fid.cola[0] && _fid.cola[0].id);
+  if (quiero && window.innerWidth > 900) fidAbrir(quiero, true);
+  else if (!quiero) document.getElementById('fid-ficha-inline').innerHTML = '<div class="fid-vacio">No hay restaurantes en la cola.</div>';
+}
+
+function _fidCuandoCorto(t) {
+  const d = _fidDt(t); if (!d) return '';
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  const x = new Date(d); x.setHours(0,0,0,0);
+  const dia = x.getTime() === hoy.getTime() ? 'Hoy' : (FID_DIAS[d.getDay()].charAt(0).toUpperCase() + FID_DIAS[d.getDay()].slice(1) + ' ' + d.getDate() + '/' + (d.getMonth() + 1));
+  return dia + '<small>' + String(t).slice(11,16) + '</small>';
+}
+
+function _fidPillEstado(p) {
+  const u = p.ultimo_resultado;
+  if (p.estado === 'descartado') return '<span class="fid-pill">Reactivar</span>';
+  if (u === 'no_atendio') return '<span class="fid-pill r">No atendió ×'+(p.n_no_atendio||1)+'</span>';
+  if (u === 'no_es_dueno') return '<span class="fid-pill a">No era el dueño</span>';
+  if (u === 'llamar_despues' || u === 'lo_piensa') return '<span class="fid-pill a">Pidió que llame</span>';
+  if (u === 'info_whatsapp') return '<span class="fid-pill b">Info por WhatsApp</span>';
+  if (p.estado === 'piloto') return '<span class="fid-pill g">Piloto</span>';
+  if (p.estado === 'reunion_hecha') return '<span class="fid-pill v">Post reunión</span>';
+  return '<span class="fid-pill">'+esc(FID_LABEL[p.estado] || p.estado)+'</span>';
+}
+
+function _fidFila(p, cuando, pill, nuevo) {
+  const meta = [p.barrio, p.tipo].filter(Boolean).map(esc).join(' · ')
+    + (p.rating ? ' · <span class="fid-star">★</span> '+p.rating+(p.resenas ? ' ('+Number(p.resenas).toLocaleString('es-UY')+')' : '') : '')
+    + (nuevo && p.parecido ? ' · parecido a los que cerraste' : '');
+  const tel = _fidTelLink(p.telefono);
+  return '<div class="fid-fila'+(_fid.sel === p.id ? ' sel' : '')+'" data-id="'+p.id+'" onclick="fidAbrir('+p.id+')">'
+    + '<div class="fid-hr">'+(cuando||'')+'</div>'
+    + '<div><div class="fid-nm">'+esc(p.nombre)+'</div><div class="fid-meta">'+meta+'</div></div>'
+    + (pill || _fidPillEstado(p))
+    + (tel ? '<a class="fid-tel" href="'+tel+'" title="Llamar '+esc(p.telefono)+'" onclick="event.stopPropagation();fidAbrir('+p.id+')">'+_FID_TEL_SVG+'</a>' : '<span class="fid-pill r">Sin tel.</span>')
+    + '</div>';
+}
+
+// ── Ficha ───────────────────────────────────────────────────────────────────
+function _fidInline() { return _fid.vista === 'hoy' && window.innerWidth > 900; }
+
+async function fidAbrir(id, soloInline) {
+  _fid.sel = id; _fid.rid = null;
+  document.querySelectorAll('.fid-fila').forEach(f => f.classList.toggle('sel', Number(f.dataset.id) === id));
+  let p;
+  try { p = await _fidJson('/api/fidelidad/prospectos/'+id); } catch(e) { fidAviso(esc(e.message), 'error'); return; }
+  _fid.ficha = p;
+  const html = fidFichaHTML(p);
+  if (_fidInline()) {
+    document.getElementById('fid-ficha-inline').innerHTML = html;
+  } else if (!soloInline) {
+    const dr = document.getElementById('fid-drawer');
+    dr.innerHTML = '<button class="fid-x" onclick="fidCerrarDrawer()" aria-label="Cerrar">×</button>' + html;
+    dr.classList.add('open'); document.getElementById('fid-drawer-bd').classList.add('open');
+  }
+}
+function fidCerrarDrawer() {
+  document.getElementById('fid-drawer').classList.remove('open');
+  document.getElementById('fid-drawer-bd').classList.remove('open');
+}
+function _fidRefrescarFicha() {
+  const html = fidFichaHTML(_fid.ficha);
+  if (_fidInline()) document.getElementById('fid-ficha-inline').innerHTML = html;
+  else document.getElementById('fid-drawer').innerHTML = '<button class="fid-x" onclick="fidCerrarDrawer()" aria-label="Cerrar">×</button>' + html;
+}
+
+function _fidGuion(p) {
+  const precio = (_fid.cfg && _fid.cfg.precio_usd) || 150;
+  if (p.estado === 'reunion_agendada') return '<b>En la reunión:</b> preguntá cuántos clientes vuelven por semana y qué promo les gustaría dar. Cerrá con el piloto de 30 días. · <b>Demo:</b> <a href="'+FID_DEMO+'" target="_blank" rel="noopener">trouville.scalerics.workers.dev</a>';
+  if (p.estado === 'piloto') return '<b>Antes de llamar:</b> mirá cuántos clientes se registraron y cuántos canjearon. Con eso en la mano, pedí el cierre a USD '+precio+' por mes.';
+  const res = p.resenas ? 'Con '+Number(p.resenas).toLocaleString('es-UY')+' reseñas ya tienen clientela fiel: ' : 'La idea es simple: ';
+  return '<b>Para arrancar:</b> «'+res+'que vuelvan más seguido. Cada compra suma puntos en el celular y los canjean por promos del local; además ven la carta digital. Sin app para descargar, USD '+precio+' por mes.» · <b>Demo:</b> <a href="'+FID_DEMO+'" target="_blank" rel="noopener">trouville.scalerics.workers.dev</a>';
+}
+
+function fidFichaHTML(p) {
+  const tel = _fidTelLink(p.telefono), wa = _fidWa(p.telefono);
+  const estadoCls = {cerrado:'g', piloto:'g', reunion_agendada:'b', reunion_hecha:'v', descartado:'r', contactado:'a'}[p.estado] || '';
+  let h = '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">'
+    + '<div><h2>'+esc(p.nombre)+'</h2><div class="fid-meta" style="margin-top:3px">'+esc([p.direccion, p.barrio].filter(Boolean).join(' · '))+'</div></div>'
+    + '<select class="fid-sel" title="Cambiar etapa" onchange="fidMover('+p.id+', this.value)">'
+    + FID_ESTADOS.map(e => '<option value="'+e[0]+'"'+(e[0]===p.estado?' selected':'')+'>'+e[1]+'</option>').join('') + '</select></div>';
+  if (p.estado === 'reunion_agendada' && p.fecha_reunion) h += '<div style="margin-top:8px"><span class="fid-pill b">Reunión: '+esc(fidFecha(p.fecha_reunion))+'</span></div>';
+  if (p.estado === 'piloto' && p.piloto_inicio) {
+    const dia = Math.floor((new Date() - _fidDt(p.piloto_inicio)) / 864e5) + 1;
+    h += '<div style="margin-top:8px"><span class="fid-pill g">Piloto: día '+dia+' de 30</span></div>';
+  }
+  if (p.estado === 'descartado' && p.motivo_descarte) h += '<div style="margin-top:8px"><span class="fid-pill r">Descartado: '+esc(p.motivo_descarte)+'</span></div>';
+  h += '<div class="fid-facts">'
+    + '<div><label>Teléfono</label>'+(tel ? '<a href="'+tel+'">'+esc(p.telefono)+'</a> · <a href="'+wa+'" target="_blank" rel="noopener">WhatsApp</a>' : '<input class="fid-in" placeholder="Agregar teléfono" onchange="fidEditar('+p.id+',\'telefono\',this.value)">')+'</div>'
+    + '<div><label>Dueño / contacto</label><input class="fid-in" value="'+esc(p.contacto||'')+'" placeholder="Nombre, IG o celular" onchange="fidEditar('+p.id+',\'contacto\',this.value)"></div>'
+    + '<div><label>Google</label>'+(p.rating ? '<span class="fid-star">★</span> '+p.rating+' · '+(p.resenas||0).toLocaleString('es-UY')+' reseñas' : '—')+(p.maps_url ? ' · <a href="'+esc(p.maps_url)+'" target="_blank" rel="noopener">Maps</a>' : '')+'</div>'
+    + '<div><label>Facilidad</label><select class="fid-in" onchange="fidEditar('+p.id+',\'facilidad\',this.value)"><option value="">Sin clasificar</option>'
+    + ['Alta','Media','Baja'].map(x => '<option'+(p.facilidad===x?' selected':'')+'>'+x+'</option>').join('')+'</select></div>'
+    + '<div><label>Tipo</label>'+esc(p.tipo||'—')+'</div>'
+    + '<div><label>Mensual (USD)</label><input class="fid-in" type="number" min="0" value="'+(p.mensual_usd!=null?p.mensual_usd:'')+'" placeholder="'+((_fid.cfg&&_fid.cfg.precio_usd)||150)+'" onchange="fidEditar('+p.id+',\'mensual_usd\',this.value)"></div>'
+    + '<div style="grid-column:1/-1"><label>Notas del local</label><textarea class="fid-in" rows="2" onchange="fidEditar('+p.id+',\'notas\',this.value)">'+esc(p.notas||'')+'</textarea></div>'
+    + '</div>';
+  h += '<div class="fid-guion">'+_fidGuion(p)+'</div>';
+  if (p.estado !== 'cerrado') {
+    h += '<div class="fid-ct" style="margin:16px 0 4px">'+(p.estado === 'reunion_agendada' ? '¿Cómo salió la reunión?' : p.estado === 'piloto' ? '¿Cómo va el piloto?' : '¿Cómo salió la llamada?')+'</div><div class="fid-res">'
+      + (p.resultados||[]).map(r => '<button class="fid-rb'+(_fid.rid===r.id?' on':'')+'" onclick="fidElegir(\''+r.id+'\')"><b>'+esc(r.label)+'</b><span>'+esc(r.desc)+'</span></button>').join('')
+      + '</div><div id="fid-extra" class="fid-extra"></div>'
+      + '<textarea class="fid-in" id="fid-nota" style="margin-top:10px" placeholder="Qué te dijo (opcional)"></textarea>'
+      + '<div class="fid-next gris" id="fid-next"><div>Elegí cómo salió para ver cuándo vuelve a tu cola.</div><button class="fid-btn p" id="fid-guardar" disabled onclick="fidGuardar()">Guardar y siguiente →</button></div>'
+      + '<div class="fid-err" id="fid-err"></div>';
+  } else {
+    h += '<div class="fid-next" style="margin-top:14px"><div>Cliente desde <b>'+esc(fidFecha(p.cerrado_en, false))+'</b> · '+_fidUsd(p.mensual_usd)+' por mes</div></div>';
+  }
+  const hist = [].concat(
+    (p.llamadas||[]).map(l => ({en:l.hecha_en, t:'<b>'+esc(fidFecha(l.hecha_en))+'</b> — '+esc(_fidResLabel(l.resultado))+(l.nota ? ' · «'+esc(l.nota)+'»' : '')+(l.usuario ? ' · '+esc(l.usuario) : '')})),
+    (p.cambios||[]).map(c => ({en:c.en, t:'<b>'+esc(fidFecha(c.en))+'</b> — pasó a '+esc(FID_LABEL[c.a]||c.a)}))
+  ).sort((a,b) => (b.en||'').localeCompare(a.en||''));
+  hist.push({t:'<b>'+esc(fidFecha(p.creado_en, false))+'</b> — '+(p.fuente === 'excel' ? 'importado del Excel' : p.fuente === 'scraper' ? 'traído de Google Maps' : 'cargado a mano')});
+  h += '<div class="fid-tl">'+hist.slice(0, 15).map(x => '<div>'+x.t+'</div>').join('')+'</div>';
+  return h;
+}
+
+function _fidResLabel(id) {
+  const todos = (_fid.hoy && _fid.hoy.resultados) ? Object.values(_fid.hoy.resultados).flat() : [];
+  const r = todos.find(x => x.id === id) || (_fid.ficha && (_fid.ficha.resultados||[]).find(x => x.id === id));
+  return r ? r.label.replace(' ✓','') : id;
+}
+
+function _fidHabil(d, n) {
+  d = new Date(d);
+  while (n > 0) { d.setDate(d.getDate()+1); if (d.getDay() !== 0 && d.getDay() !== 6) n--; }
+  return d;
+}
+function _fidSemana(d) { d = new Date(d); while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate()+1); return d; }
+function _fidPrevia(rid) {
+  const ahora = new Date();
+  const hora = (d, h) => { d.setHours(h, 0, 0, 0); return d; };
+  if (rid === 'no_atendio' || rid === 'no_es_dueno') return hora(_fidHabil(ahora, 1), ahora.getHours() < 14 ? 16 : 11);
+  if (rid === 'info_whatsapp') return hora(_fidHabil(ahora, 2), Math.max(10, Math.min(ahora.getHours(), 18)));
+  if (rid === 'piloto') { const d = new Date(ahora); d.setDate(d.getDate()+14); return hora(_fidSemana(d), 15); }
+  if (rid === 'no_interesa' || rid === 'no_sigue') { const d = new Date(ahora); d.setDate(d.getDate()+90); return hora(_fidSemana(d), 15); }
+  return null;
+}
+
+function _fidChips(inputId) {
+  const a = new Date();
+  const op = [['Mañana 11:00', hora(_fidHabil(a,1), 11)], ['Mañana 16:00', hora(_fidHabil(a,1), 16)],
+    ['En 2 días', hora(_fidHabil(a,2), 11)], ['En 1 semana', hora(_fidSemana(new Date(a.getTime()+7*864e5)), 11)]];
+  function hora(d, h) { d.setHours(h,0,0,0); return d; }
+  return '<div class="fid-chips">' + op.map(o => '<button class="fid-chip" onclick="document.getElementById(\''+inputId+'\').value=\''+_fidTxt(o[1])+'\';fidPrevia()">'+o[0]+'</button>').join('') + '</div>';
+}
+
+function fidElegir(rid) {
+  _fid.rid = rid;
+  const r = (_fid.ficha.resultados||[]).find(x => x.id === rid);
+  document.querySelectorAll('.fid-rb').forEach(b => b.classList.toggle('on', b.getAttribute('onclick').indexOf("'"+rid+"'") >= 0));
+  let ex = '';
+  if (r.pide === 'fecha') ex = '<label class="fid-meta">¿Cuándo lo volvés a llamar?</label><input class="fid-in" type="datetime-local" id="fid-fecha-in" oninput="fidPrevia()">' + _fidChips('fid-fecha-in');
+  if (r.pide === 'reunion') ex = '<label class="fid-meta">Fecha y hora de la reunión</label><input class="fid-in" type="datetime-local" id="fid-reu-in" oninput="fidPrevia()">' + _fidChips('fid-reu-in');
+  if (r.pide === 'motivo') ex = '<label class="fid-meta">¿Por qué no?</label><select class="fid-in" id="fid-motivo-in" onchange="fidPrevia()"><option value="">Elegí el motivo</option>'+FID_MOTIVOS.map(m => '<option>'+m+'</option>').join('')+'</select>';
+  if (rid === 'no_es_dueno') ex = '<label class="fid-meta">¿Con quién hay que hablar?</label><input class="fid-in" id="fid-quien-in" placeholder="Nombre, horario, celular">';
+  document.getElementById('fid-extra').innerHTML = ex;
+  fidPrevia();
+}
+
+function fidPrevia() {
+  const rid = _fid.rid; if (!rid) return;
+  const r = (_fid.ficha.resultados||[]).find(x => x.id === rid);
+  const nx = document.getElementById('fid-next'), btn = document.getElementById('fid-guardar');
+  let txt = '', ok = true;
+  if (r.pide === 'fecha') { const v = (document.getElementById('fid-fecha-in')||{}).value; ok = !!v; txt = v ? 'Próxima llamada: <b>'+esc(fidFecha(v))+'</b>' : 'Elegí cuándo volver a llamar'; }
+  else if (r.pide === 'reunion') { const v = (document.getElementById('fid-reu-in')||{}).value; ok = !!v; txt = v ? 'Reunión: <b>'+esc(fidFecha(v))+'</b>' : 'Elegí la fecha de la reunión'; }
+  else if (r.pide === 'motivo') { const v = (document.getElementById('fid-motivo-in')||{}).value; ok = !!v; const d = _fidPrevia(rid); txt = v ? 'Vuelve a tu cola el <b>'+esc(fidFecha(_fidTxt(d)))+'</b>, por si cambió algo' : 'Elegí el motivo'; }
+  else if (r.estado === 'cerrado') txt = '<b>Pasa a Cerrado</b> y suma al MRR';
+  else { const d = _fidPrevia(rid); txt = d ? 'Próxima llamada: <b>'+esc(fidFecha(_fidTxt(d)))+'</b> (automático)' : ''; }
+  nx.classList.toggle('gris', !ok);
+  nx.firstElementChild.innerHTML = txt;
+  btn.disabled = !ok;
+}
+
+async function fidGuardar() {
+  const p = _fid.ficha, rid = _fid.rid; if (!p || !rid) return;
+  const btn = document.getElementById('fid-guardar'); btn.disabled = true;
+  let nota = (document.getElementById('fid-nota')||{}).value || '';
+  const quien = (document.getElementById('fid-quien-in')||{}).value;
+  if (quien) nota = ('Hablar con: ' + quien + (nota ? ' · ' + nota : ''));
+  const body = {resultado: rid, nota: nota,
+    fecha: (document.getElementById('fid-fecha-in')||{}).value || null,
+    fecha_reunion: (document.getElementById('fid-reu-in')||{}).value || null,
+    motivo: (document.getElementById('fid-motivo-in')||{}).value || null};
+  try {
+    await _fidJson('/api/fidelidad/prospectos/'+p.id+'/llamadas', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    if (quien && !p.contacto) fidEditar(p.id, 'contacto', quien, true);
+  } catch(e) { document.getElementById('fid-err').textContent = e.message; btn.disabled = false; return; }
+  if (_fid.vista === 'hoy') {
+    // El siguiente de la cola, no el primero: el que se acaba de guardar puede
+    // seguir estando (lo reagendaron para hoy mas tarde).
+    const i = _fid.cola.findIndex(x => x.id === p.id);
+    const sig = _fid.cola.slice(i + 1).find(x => x.id !== p.id);
+    _fid.sel = sig ? sig.id : null;
+    if (!_fidInline()) fidCerrarDrawer();
+    fidCargarHoy(sig && sig.id);
+  } else {
+    fidAbrir(p.id);
+    fidVista(_fid.vista);
+  }
+}
+
+async function fidEditar(id, campo, valor, silencioso) {
+  try {
+    const d = await _fidJson('/api/fidelidad/prospectos/'+id, {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({[campo]: valor})});
+    if (_fid.ficha && _fid.ficha.id === id) { Object.assign(_fid.ficha, d.prospecto); if (campo === 'telefono' && !silencioso) _fidRefrescarFicha(); }
+  } catch(e) { fidAviso(esc(e.message), 'error'); }
+}
+
+async function fidMover(id, estado) {
+  const body = {estado: estado};
+  if (estado === 'descartado') {
+    const m = prompt('¿Por qué se descarta? (' + FID_MOTIVOS.join(', ') + ')', 'Precio');
+    if (m === null) { fidVista(_fid.vista); if (_fid.ficha) _fidRefrescarFicha(); return; }
+    body.motivo = m;
+  }
+  if (estado === 'reunion_agendada') {
+    const f = prompt('Fecha y hora de la reunión (AAAA-MM-DD HH:MM). Podés dejarlo vacío.', '');
+    if (f) body.fecha_reunion = f;
+  }
+  try {
+    const d = await _fidJson('/api/fidelidad/prospectos/'+id+'/estado', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    if (_fid.ficha && _fid.ficha.id === id) { d.prospecto.resultados = null; fidAbrir(id, _fid.vista === 'hoy'); }
+    if (_fid.vista !== 'hoy') fidVista(_fid.vista);
+  } catch(e) { fidAviso(esc(e.message), 'error'); }
+}
+
+// ── Pipeline ────────────────────────────────────────────────────────────────
+async function fidCargarPipe() {
+  const q = new URLSearchParams({zona: document.getElementById('fid-p-zona').value, categoria: document.getElementById('fid-p-cat').value});
+  let d; try { d = await _fidJson('/api/fidelidad/pipeline?'+q); } catch(e) { document.getElementById('fid-kan').innerHTML = '<div class="fid-vacio">'+esc(e.message)+'</div>'; return; }
+  document.getElementById('fid-kan').innerHTML = d.columnas.map(c => {
+    let sub = c.estado === 'sin_contactar' ? 'Ordenados por puntaje'
+      : c.estado === 'cerrado' ? '<span class="fid-up">'+_fidUsd(c.potencial_usd)+' MRR</span>'
+      : c.estado === 'descartado' ? 'Vuelven a los 90 días'
+      : _fidUsd(c.potencial_usd)+' potencial'+(c.probabilidad ? ' · prob. '+Math.round(c.probabilidad*100)+'%' : '');
+    return '<div class="fid-col" data-estado="'+c.estado+'" ondragover="event.preventDefault();this.classList.add(\'drop\')" ondragleave="this.classList.remove(\'drop\')" ondrop="fidSoltar(event,this)">'
+      + '<div class="fid-colh"><b>'+c.label+'</b><span>'+c.total+'</span></div><div class="fid-colm">'+sub+'</div>'
+      + (c.items.length ? c.items.map(p => _fidTarjeta(p)).join('') : '<div class="fid-mas">Vacío</div>')
+      + (c.total > c.items.length ? '<div class="fid-mas">+ '+(c.total - c.items.length)+' más · ver en «Todos»</div>' : '')
+      + '</div>';
+  }).join('');
+}
+function _fidTarjeta(p) {
+  let pie = '';
+  if (p.estado === 'sin_contactar') pie = p.rating ? '<span class="fid-pill">★ '+p.rating+' · '+(p.resenas||0).toLocaleString('es-UY')+'</span>' : '';
+  else if (p.estado === 'reunion_agendada' && p.fecha_reunion) {
+    const paso = _fidDt(p.fecha_reunion) < new Date();
+    pie = '<span class="fid-pill '+(paso ? 'r' : 'b')+'">'+(paso ? 'Falta el resultado · ' : '')+esc(fidFecha(p.fecha_reunion))+'</span>';
+  }
+  else if (p.estado === 'piloto' && p.piloto_inicio) pie = '<span class="fid-pill g">Día '+(Math.floor((new Date() - _fidDt(p.piloto_inicio)) / 864e5) + 1)+' de 30</span>';
+  else if (p.estado === 'cerrado') pie = '<span class="fid-pill g">Desde '+esc(fidFecha(p.cerrado_en, false))+'</span>';
+  else if (p.estado === 'descartado') pie = '<span class="fid-meta">'+esc(p.motivo_descarte||'')+'</span>';
+  else if (p.proxima_llamada) {
+    const venc = p.proxima_llamada.slice(0,10) < _fidTxt(new Date()).slice(0,10);
+    pie = '<span class="fid-pill '+(venc ? 'r' : 'a')+'">'+(venc ? 'Vencida' : esc(fidFecha(p.proxima_llamada)))+'</span>';
+  }
+  return '<div class="fid-kc" draggable="true" ondragstart="event.dataTransfer.setData(\'text/plain\',\''+p.id+'\')" onclick="fidAbrir('+p.id+')">'
+    + '<div class="fid-nm">'+esc(p.nombre)+'</div><div class="fid-meta">'+esc([p.barrio, p.tipo].filter(Boolean).join(' · '))+'</div>'
+    + (pie ? '<div class="ft">'+pie+'</div>' : '') + '</div>';
+}
+function fidSoltar(ev, col) {
+  ev.preventDefault(); col.classList.remove('drop');
+  const id = Number(ev.dataTransfer.getData('text/plain'));
+  if (id) fidMover(id, col.dataset.estado);
+}
+
+// ── Todos ───────────────────────────────────────────────────────────────────
+function fidBuscar() { clearTimeout(_fid.buscarT); _fid.buscarT = setTimeout(() => fidCargarTodos(1), 250); }
+async function fidCargarTodos(pag) {
+  _fid.pag = pag || 1;
+  const q = new URLSearchParams({pagina: _fid.pag, q: document.getElementById('fid-q').value,
+    estado: document.getElementById('fid-f-estado').value, zona: document.getElementById('fid-f-zona').value,
+    categoria: document.getElementById('fid-f-cat').value});
+  let d; try { d = await _fidJson('/api/fidelidad/prospectos?'+q); } catch(e) { document.getElementById('fid-tabla').innerHTML = '<div class="fid-vacio">'+esc(e.message)+'</div>'; return; }
+  document.getElementById('fid-n-todos').textContent = d.total;
+  if (!d.items.length) { document.getElementById('fid-tabla').innerHTML = '<div class="fid-vacio">No hay prospectos con ese filtro.</div>'; return; }
+  document.getElementById('fid-tabla').innerHTML = '<table class="fid-tabla"><thead><tr><th>Restaurante</th><th>Barrio</th><th>Tipo</th><th>Teléfono</th><th class="r">Google</th><th class="r">Puntaje</th><th>Etapa</th><th>Próxima</th></tr></thead><tbody>'
+    + d.items.map(p => '<tr class="cl" onclick="fidAbrir('+p.id+')"><td><b>'+esc(p.nombre)+'</b></td><td>'+esc(p.barrio||'')+'</td><td>'+esc(p.tipo||'')+'</td><td>'+esc(p.telefono||'—')+'</td>'
+      + '<td class="r">'+(p.rating ? '★ '+p.rating+' · '+(p.resenas||0).toLocaleString('es-UY') : '—')+'</td><td class="r">'+p.puntaje+'</td>'
+      + '<td>'+esc(FID_LABEL[p.estado]||p.estado)+'</td><td>'+esc(p.estado === 'reunion_agendada' ? fidFecha(p.fecha_reunion) : p.proxima_llamada ? fidFecha(p.proxima_llamada) : '—')+'</td></tr>').join('')
+    + '</tbody></table>'
+    + (d.paginas > 1 ? '<div class="fid-pag"><button class="fid-btn" '+(d.pagina<=1?'disabled':'')+' onclick="fidCargarTodos('+(d.pagina-1)+')">←</button> Página '+d.pagina+' de '+d.paginas+' <button class="fid-btn" '+(d.pagina>=d.paginas?'disabled':'')+' onclick="fidCargarTodos('+(d.pagina+1)+')">→</button></div>' : '');
+}
+
+// ── Reuniones ───────────────────────────────────────────────────────────────
+async function fidCargarReuniones() {
+  let d; try { d = await _fidJson('/api/fidelidad/reuniones'); } catch(e) { return; }
+  document.getElementById('fid-n-reu').textContent = d.proximas.length || '';
+  const fila = p => _fidFila(p, _fidCuandoCorto(p.fecha_reunion), '<span class="fid-pill b">'+esc(p.direccion || p.barrio || '')+'</span>');
+  document.getElementById('fid-reu-prox').innerHTML = d.proximas.length ? d.proximas.map(fila).join('') : '<div class="fid-vacio">No hay reuniones agendadas. Se agendan desde la ficha: «Agendar reunión».</div>';
+  document.getElementById('fid-reu-pend').innerHTML = d.sin_resultado.length ? d.sin_resultado.map(fila).join('') : '<div class="fid-vacio">Todas las reuniones tienen resultado cargado.</div>';
+}
+
+// ── Alta, importacion y metas ───────────────────────────────────────────────
+function _fidModal(html) {
+  document.getElementById('fid-modal').innerHTML = html;
+  document.getElementById('fid-modal').classList.add('open');
+  document.getElementById('fid-modal-bd').classList.add('open');
+}
+function fidCerrarModal() {
+  document.getElementById('fid-modal').classList.remove('open');
+  document.getElementById('fid-modal-bd').classList.remove('open');
+}
+function fidNuevoAbrir() {
+  const campo = (id, label, extra) => '<div'+(extra||'')+'><label for="fid-n-'+id+'">'+label+'</label><input class="fid-in" id="fid-n-'+id+'"></div>';
+  _fidModal('<button class="fid-x" onclick="fidCerrarModal()" aria-label="Cerrar">×</button><h3>Nuevo prospecto</h3><div class="fid-form">'
+    + campo('nombre', 'Restaurante *', ' class="full"')
+    + '<div><label for="fid-n-zona">Zona *</label><select class="fid-in" id="fid-n-zona"><option>Municipio CH</option><option>Carrasco</option></select></div>'
+    + campo('barrio', 'Barrio') + campo('tipo', 'Tipo (parrilla, pizza…)') + campo('telefono', 'Teléfono')
+    + campo('direccion', 'Dirección', ' class="full"') + campo('contacto', 'Dueño / contacto')
+    + '<div><label for="fid-n-facilidad">Facilidad</label><select class="fid-in" id="fid-n-facilidad"><option value="">Sin clasificar</option><option>Alta</option><option>Media</option><option>Baja</option></select></div>'
+    + campo('maps_url', 'Link de Google Maps', ' class="full"')
+    + '<div class="full"><label for="fid-n-notas">Notas</label><textarea class="fid-in" id="fid-n-notas"></textarea></div>'
+    + '</div><div class="fid-err" id="fid-n-err"></div><div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px"><button class="fid-btn" onclick="fidCerrarModal()">Cancelar</button><button class="fid-btn p" onclick="fidNuevoGuardar()">Guardar</button></div>');
+  setTimeout(() => document.getElementById('fid-n-nombre').focus(), 30);
+}
+async function fidNuevoGuardar() {
+  const body = {};
+  ['nombre','zona','barrio','tipo','telefono','direccion','contacto','facilidad','maps_url','notas'].forEach(k => { body[k] = document.getElementById('fid-n-'+k).value; });
+  try {
+    const d = await _fidJson('/api/fidelidad/prospectos', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    fidCerrarModal();
+    fidAviso(d.duplicado ? 'Ese restaurante ya estaba cargado: te abro su ficha.' : 'Prospecto cargado.');
+    fidVista(_fid.vista);
+    fidAbrir(d.id);
+  } catch(e) { document.getElementById('fid-n-err').textContent = e.message; }
+}
+async function fidImportar(input) {
+  const f = input.files[0]; if (!f) return;
+  const fd = new FormData(); fd.append('archivo', f);
+  fidAviso('Importando '+esc(f.name)+'…');
+  try {
+    const d = await _fidJson('/api/fidelidad/importar', {method:'POST', body: fd});
+    fidAviso('<b>'+d.creados+' prospectos nuevos</b> de '+d.leidos+' filas. '+(d.duplicados ? d.duplicados+' ya estaban cargados. ' : '')
+      + (d.fuera_de_zona ? d.fuera_de_zona+' son de fuera de Municipio CH y Carrasco: quedaron guardados pero ocultos.' : ''));
+    fidVista(_fid.vista);
+  } catch(e) { fidAviso(esc(e.message), 'error'); }
+  input.value = '';
+}
+async function fidMetasAbrir() {
+  const c = await _fidJson('/api/fidelidad/config');
+  const campo = (k, l) => '<div><label for="fid-m-'+k+'">'+l+'</label><input class="fid-in" type="number" min="0" id="fid-m-'+k+'" value="'+c[k]+'"></div>';
+  _fidModal('<button class="fid-x" onclick="fidCerrarModal()" aria-label="Cerrar">×</button><h3>Metas y comisión</h3><div class="fid-form">'
+    + campo('precio_usd', 'Precio mensual (USD)') + campo('comision_pct', 'Comisión del vendedor (% del MRR)')
+    + campo('meta_llamadas_dia', 'Llamadas por día') + campo('meta_reuniones_semana', 'Reuniones por semana')
+    + campo('meta_cierres_mes', 'Cierres por mes') + campo('meta_mrr', 'Meta de MRR a diciembre (USD)')
+    + '</div><div class="fid-err" id="fid-m-err"></div><div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px"><button class="fid-btn" onclick="fidCerrarModal()">Cancelar</button><button class="fid-btn p" onclick="fidMetasGuardar()">Guardar</button></div>');
+}
+async function fidMetasGuardar() {
+  const body = {};
+  ['precio_usd','comision_pct','meta_llamadas_dia','meta_reuniones_semana','meta_cierres_mes','meta_mrr'].forEach(k => { body[k] = document.getElementById('fid-m-'+k).value; });
+  try {
+    const d = await _fidJson('/api/fidelidad/config', {method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    _fid.cfg = d.config; fidCerrarModal(); fidCargarIntel();
+  } catch(e) { document.getElementById('fid-m-err').textContent = e.message; }
+}
+
+// ── Inteligencia comercial ──────────────────────────────────────────────────
+function fidPeriodo(p) {
+  _fid.periodo = p;
+  document.querySelectorAll('#fid-i-periodo button').forEach(b => b.classList.toggle('on', b.dataset.p === p));
+  fidCargarIntel();
+}
+async function fidCargarIntel() {
+  _fidCats();
+  const mb = document.getElementById('fid-metas-btn'); if (mb) mb.style.display = window._isAdmin ? '' : 'none';
+  const q = new URLSearchParams({periodo: _fid.periodo, zona: document.getElementById('fid-i-zona').value, categoria: document.getElementById('fid-i-cat').value});
+  const cuerpo = document.getElementById('fid-i-cuerpo');
+  let d; try { d = await _fidJson('/api/fidelidad/intel?'+q); } catch(e) { cuerpo.innerHTML = '<div class="fid-vacio">'+esc(e.message)+'</div>'; return; }
+  const k = d.kpis, cfg = d.config;
+  const f = document.getElementById('fid-i-fecha');
+  if (f) f.textContent = 'Cómo viene la venta de Scalerics Fidelidad · del '+fidFecha(d.desde, false)+' al '+fidFecha(d.hasta, false);
+  let h = '';
+  if (!k.llamadas && !k.cerrados) h += '<div class="fid-card" style="margin-bottom:16px">Todavía no hay llamadas en este período. Los números se arman solos a medida que se registran llamadas en Outbound.</div>';
+  const kpi = (l, v, dd) => '<div class="fid-kpi"><div class="l">'+l+'</div><div class="v">'+v+'</div><div class="d">'+dd+'</div></div>';
+  h += '<div class="fid-kpis seis">'
+    + kpi('MRR cerrado', _fidUsd(k.mrr), k.mrr_mes ? '<span class="fid-up">▲ '+_fidUsd(k.mrr_mes)+'</span> este mes' : 'Nada nuevo este mes')
+    + kpi('Locales cerrados', k.cerrados, k.cerrados_periodo+' en el período · meta '+cfg.meta_cierres_mes+'/mes')
+    + kpi('Pipeline ponderado', _fidUsd(k.ponderado), 'lo que probablemente entra')
+    + kpi('Llamadas', k.llamadas, k.llamadas ? String(k.llamadas_por_dia).replace('.', ',')+' por día con llamadas · '+(k.tasa_efectivo||0)+'% con el dueño' : '—')
+    + kpi('Llamada → reunión', k.llamada_a_reunion != null ? String(k.llamada_a_reunion).replace('.', ',')+'%' : '—', k.llamadas_por_reunion ? '1 reunión cada '+k.llamadas_por_reunion+' llamadas' : k.reuniones+' reuniones')
+    + kpi('Ciclo de venta', k.ciclo_dias != null ? k.ciclo_dias+' <small>días</small>' : '—', '1ª llamada → cierre')
+    + '</div>';
+  // Embudo
+  const max = Math.max(1, d.embudo[0].n);
+  const emb = d.embudo.map((e, i) => '<div class="fid-fun"><span>'+e.etapa+'</span><div class="b'+(i === d.embudo.length-1 ? ' ok' : '')+'" style="width:'+Math.max(4, Math.round(100*e.n/max))+'%">'+e.n+'</div><span class="cv">'+(e.pasa != null ? e.pasa+'%' : '')+'</span></div>').join('');
+  h += '<div class="fid-g3"><div class="fid-card"><div class="fid-ct">Embudo <small>% que pasa a la etapa siguiente</small></div>'+emb
+    + (d.peor_paso ? '<div class="fid-nota">Donde más se pierde: <b>'+esc(d.peor_paso[0])+' → '+esc(d.peor_paso[1])+'</b> ('+d.peor_paso[2]+'%).</div>' : '')+'</div>';
+  h += '<div class="fid-card"><div class="fid-ct">MRR acumulado <small>meta '+_fidUsd(cfg.meta_mrr)+' a diciembre</small></div>'+_fidSvgMrr(d)
+    + '<div class="fid-nota">A este ritmo llegás a <b>'+_fidUsd(d.proyeccion_dic)+'</b> en diciembre'+(d.proyeccion_dic < cfg.meta_mrr ? '; para la meta faltan <b>'+Math.ceil((cfg.meta_mrr - d.proyeccion_dic) / Math.max(1, cfg.precio_usd))+' cierres</b>.' : '. <b>Llegás a la meta.</b>')+'</div></div>';
+  h += '<div class="fid-card"><div class="fid-ct">Actividad por semana <small>llamadas</small></div>'+_fidSvgSemanas(d.semanas)
+    + '<div class="fid-nota">Reuniones <b>'+d.semanas.slice(-4).map(s => s.reuniones).join(' · ')+'</b> &nbsp; Cierres <b>'+d.semanas.slice(-4).map(s => s.cierres).join(' · ')+'</b> <span style="color:var(--texto-debil)">(últimas 4 semanas)</span></div></div></div>';
+  // Horarios, zonas, motivos
+  h += '<div class="fid-g3"><div class="fid-card"><div class="fid-ct">Cuándo atienden los dueños <small>% de llamadas donde hablaste con el dueño</small></div>'+_fidHeat(d.mapa)+'</div>';
+  const barras = (lista, n) => {
+    const top = lista.filter(x => x.contactados).slice(0, n);
+    if (!top.length) return '<div class="fid-vacio">Sin contactados todavía.</div>';
+    const mx = Math.max(1, ...top.map(x => x.tasa || 0));
+    return top.map(x => '<div class="fid-hb"><span>'+esc(x.nombre)+'</span><div class="t"><div style="width:'+Math.round(100*(x.tasa||0)/mx)+'%"></div></div><span class="n"><b>'+x.cerrados+'</b> / '+x.contactados+' · '+(x.tasa||0)+'%</span></div>').join('');
+  };
+  h += '<div class="fid-card"><div class="fid-ct">Cierre por barrio <small>cerrados / contactados</small></div>'+barras(d.por_zona, 6)
+    + '<div class="fid-ct" style="margin-top:18px">Cierre por tipo de local</div>'+barras(d.por_categoria, 6)+'</div>';
+  const tot = d.motivos.reduce((a, m) => a + m.n, 0);
+  const mm = Math.max(1, ...d.motivos.map(m => m.n));
+  const cob = d.cobertura;
+  h += '<div class="fid-card"><div class="fid-ct">Por qué dicen que no <small>'+tot+' descartados</small></div>'
+    + (d.motivos.length ? d.motivos.map(m => '<div class="fid-hb"><span>'+esc(m.motivo)+'</span><div class="t"><div style="width:'+Math.round(100*m.n/mm)+'%;background:var(--azul-claro)"></div></div><span class="n"><b>'+m.n+'</b> · '+Math.round(100*m.n/tot)+'%</span></div>').join('') : '<div class="fid-vacio">Nadie descartado todavía.</div>')
+    + '<div class="fid-ct" style="margin-top:18px">Cobertura del territorio</div>'
+    + '<div class="fid-hb"><span>Contactados</span><div class="t"><div style="width:'+Math.round(100*cob.contactados/Math.max(1,cob.total))+'%"></div></div><span class="n"><b>'+cob.contactados+'</b> / '+cob.total+'</span></div>'
+    + '<div class="fid-nota">Quedan <b>'+cob.sin_tocar+'</b> sin tocar'+(cob.semanas_para_barrer ? ': al ritmo actual, <b>~'+cob.semanas_para_barrer+' semanas</b> para barrer todo.' : '.')+'</div></div></div>';
+  // Hallazgos y cierres
+  const ic = {bueno:['↑','var(--verde-tinte)','var(--verde-texto)'], alerta:['!','var(--ambar-tinte)','var(--ambar)'], info:['i','var(--azul-tinte)','var(--azul-claro)'], malo:['↓','var(--rojo-tinte)','var(--rojo-texto)']};
+  h += '<div class="fid-g2"><div class="fid-card"><div class="fid-ct">Qué está pasando <small>reglas sobre estos mismos números</small></div>'
+    + (d.hallazgos.length ? d.hallazgos.map(x => { const c = ic[x.tipo] || ic.info; return '<div class="fid-ins"><div class="ic" style="background:'+c[1]+';color:'+c[2]+'">'+c[0]+'</div><div><b>'+esc(x.titulo)+'</b> '+esc(x.texto)+'</div></div>'; }).join('')
+      : '<div class="fid-vacio">Todavía hay pocos datos para sacar conclusiones.</div>')+'</div>';
+  h += '<div class="fid-card" style="overflow-x:auto"><div class="fid-ct">Cierres <small>'+(k.comision != null ? 'comisión '+cfg.comision_pct+'% del MRR' : 'para calcular la comisión')+'</small></div>'
+    + (d.cierres.length ? '<table class="fid-tabla"><thead><tr><th>Local</th><th>Barrio</th><th>Alta</th><th class="r">Mensual</th><th class="r">Ciclo</th></tr></thead><tbody>'
+      + d.cierres.map(c => '<tr class="cl" onclick="showPanel(\'cola\');fidAbrir('+c.id+')"><td>'+esc(c.nombre)+'</td><td>'+esc(c.barrio||'')+'</td><td>'+esc(fidFecha(c.alta, false))+'</td><td class="r">'+_fidUsd(c.mensual)+'</td><td class="r">'+(c.ciclo != null ? c.ciclo+' d' : '—')+'</td></tr>').join('')
+      + '<tr><td><b>Total</b></td><td></td><td></td><td class="r"><b>'+_fidUsd(k.mrr)+'</b></td><td class="r">'+(k.ciclo_dias != null ? k.ciclo_dias+' d' : '')+'</td></tr>'
+      + (k.comision != null ? '<tr><td><b>Comisión</b></td><td></td><td></td><td class="r"><b>'+_fidUsd(k.comision)+'</b></td><td></td></tr>' : '')
+      + '</tbody></table>' : '<div class="fid-vacio">Todavía no hay cierres.</div>')+'</div></div>';
+  cuerpo.innerHTML = h;
+}
+
+function _fidSvgMrr(d) {
+  const s = d.serie_mrr, meta = d.config.meta_mrr;
+  const top = Math.max(meta, d.proyeccion_dic, ...s.map(x => x.mrr), 1) * 1.1;
+  const W = 300, x0 = 36, x1 = 290, y0 = 20, y1 = 140;
+  const X = i => x0 + (x1 - x0) * i / 6, Y = v => y1 - (y1 - y0) * v / top;
+  const meses = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  let g = '';
+  [0, 0.5, 1].forEach(t => { const v = top * t / 1.1; g += '<line x1="'+x0+'" x2="'+x1+'" y1="'+Y(v)+'" y2="'+Y(v)+'" style="stroke:var(--borde)"/><text x="'+(x0-5)+'" y="'+(Y(v)+3)+'" text-anchor="end" font-size="9" style="fill:var(--texto-debil)">'+Math.round(v).toLocaleString('es-UY')+'</text>'; });
+  g += '<line x1="'+x0+'" x2="'+x1+'" y1="'+Y(meta)+'" y2="'+Y(meta)+'" stroke-dasharray="4 4" style="stroke:var(--texto-debil)"/><text x="'+x1+'" y="'+(Y(meta)-4)+'" text-anchor="end" font-size="9" style="fill:var(--texto-tenue)">meta</text>';
+  const pts = s.map((x, i) => X(i)+','+Y(x.mrr)).join(' ');
+  g += '<polyline points="'+pts+'" fill="none" stroke-width="2" style="stroke:var(--azul)"/>';
+  const last = s[s.length - 1];
+  g += '<line x1="'+X(5)+'" y1="'+Y(last.mrr)+'" x2="'+X(6)+'" y2="'+Y(d.proyeccion_dic)+'" stroke-width="2" stroke-dasharray="2 4" style="stroke:var(--azul);opacity:.7"><title>Proyección a diciembre: '+_fidUsd(d.proyeccion_dic)+'</title></line>';
+  s.forEach((x, i) => { g += '<circle cx="'+X(i)+'" cy="'+Y(x.mrr)+'" r="'+(i === 5 ? 5 : 4)+'" stroke-width="2" style="fill:var(--azul);stroke:var(--superficie)"><title>'+meses[+x.mes.slice(5)-1]+': '+_fidUsd(x.mrr)+'</title></circle>'
+    + '<text x="'+X(i)+'" y="156" text-anchor="middle" font-size="9" style="fill:var(--texto-debil)">'+meses[+x.mes.slice(5)-1]+'</text>'; });
+  g += '<text x="'+X(5)+'" y="'+(Y(last.mrr)-9)+'" text-anchor="middle" font-size="10" font-weight="700" style="fill:var(--texto-fuerte)">'+Math.round(last.mrr)+'</text>';
+  g += '<text x="'+X(6)+'" y="156" text-anchor="middle" font-size="9" style="fill:var(--texto-debil)">dic</text>';
+  return '<svg class="fid-svg" viewBox="0 0 '+W+' 164" width="100%" role="img" aria-label="MRR acumulado por mes">'+g+'</svg>';
+}
+
+function _fidSvgSemanas(sem) {
+  const mx = Math.max(10, ...sem.map(s => s.llamadas));
+  const top = Math.ceil(mx / 10) * 10;
+  const x0 = 28, x1 = 296, y0 = 16, y1 = 130, n = sem.length;
+  const bw = (x1 - x0) / n * 0.62, paso = (x1 - x0) / n;
+  const Y = v => y1 - (y1 - y0) * v / top;
+  let g = '';
+  [0, 0.5, 1].forEach(t => { const v = Math.round(top * t); g += '<line x1="'+x0+'" x2="'+x1+'" y1="'+Y(v)+'" y2="'+Y(v)+'" style="stroke:var(--borde)"/><text x="'+(x0-5)+'" y="'+(Y(v)+3)+'" text-anchor="end" font-size="9" style="fill:var(--texto-debil)">'+v+'</text>'; });
+  sem.forEach((s, i) => {
+    const x = x0 + paso * i + (paso - bw) / 2, y = Y(s.llamadas), hgt = y1 - y;
+    const actual = i === n - 1;
+    if (s.llamadas) g += '<path d="M'+x+' '+y1+'V'+(y+Math.min(4,hgt))+'a4 4 0 0 1 4-4h'+Math.max(0,bw-8)+'a4 4 0 0 1 4 4V'+y1+'z" style="fill:var(--azul);opacity:'+(actual?'.6':'1')+'"><title>Semana del '+s.etiqueta+': '+s.llamadas+' llamadas, '+s.reuniones+' reuniones, '+s.cierres+' cierres</title></path>';
+    g += '<text x="'+(x+bw/2)+'" y="'+(y-4)+'" text-anchor="middle" font-size="9" font-weight="700" style="fill:var(--texto-fuerte)">'+(s.llamadas||'')+'</text>';
+    g += '<text x="'+(x+bw/2)+'" y="144" text-anchor="middle" font-size="8.5" style="fill:var(--texto-debil)">'+(actual ? 'esta' : s.etiqueta)+'</text>';
+  });
+  return '<svg class="fid-svg" viewBox="0 0 300 150" width="100%" role="img" aria-label="Llamadas por semana">'+g+'</svg>';
+}
+
+function _fidHeat(mapa) {
+  const dias = ['Lun','Mar','Mié','Jue','Vie','Sáb'], horas = [9,10,11,12,13,14,15,16,17,18,19,20];
+  const idx = {}; mapa.forEach(m => { idx[m.dia+'-'+m.hora] = m; });
+  let h = '<div class="fid-heat"><div class="h"></div>' + horas.map(x => '<div class="h">'+x+'</div>').join('');
+  dias.forEach((d, i) => {
+    h += '<div style="height:26px;display:flex;align-items:center">'+d+'</div>';
+    horas.forEach(hr => {
+      const m = idx[i+'-'+hr];
+      if (!m) { h += '<div style="background:var(--relleno)"></div>'; return; }
+      const a = 0.15 + 0.85 * Math.min(1, m.pct / 70);
+      h += '<div style="background:rgba(0,136,204,'+a.toFixed(2)+');color:'+(a > 0.55 ? '#fff' : 'var(--texto)')+'" title="'+dias[i]+' '+hr+' h: '+m.pct+'% ('+m.llamadas+' llamadas)">'+m.pct+'</div>';
+    });
+  });
+  h += '</div>';
+  const buenas = mapa.filter(m => m.llamadas >= 5).sort((a, b) => b.pct - a.pct);
+  h += '<div class="fid-lg">0%<i style="background:rgba(0,136,204,.15)"></i><i style="background:rgba(0,136,204,.45)"></i><i style="background:rgba(0,136,204,.75)"></i><i style="background:rgba(0,136,204,1)"></i>70%+'
+    + (buenas.length ? ' · <span>Mejor franja: <b style="color:var(--texto-fuerte)">'+dias[buenas[0].dia]+' '+buenas[0].hora+' h</b></span>' : ' · <span>Hacen falta más llamadas para ver la mejor franja.</span>') + '</div>';
+  return h;
+}
+// ========== FIN Fidelidad ==========
+"""
+
 WA_MEDIOS_JS = r"""
 function mediosDeMensaje(m) {
   if (!m.media || !m.media.length) return '';
@@ -2174,6 +2779,153 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   .dy-rec{flex-wrap:wrap}
   .dy-rec-cuerpo{flex-basis:100%}
 }
+/* ── Fidelidad (Outbound e Inteligencia comercial del socio, 23/9) ───────────
+   Todo con los tokens del tema: el vendedor puede usar el modo claro. */
+.fid-sub{color:var(--texto-debil);font-size:.8rem;margin-top:4px}
+.fid-acciones{display:flex;gap:8px;flex-wrap:wrap}
+.fid-btn{padding:7px 14px;border-radius:8px;border:1px solid var(--borde-fuerte);background:transparent;color:var(--texto);font:600 .78rem 'Inter',sans-serif;cursor:pointer;display:inline-flex;gap:6px;align-items:center}
+.fid-btn:hover{background:var(--hover)}
+.fid-btn.p{background:var(--azul);border-color:var(--azul);color:#fff}
+.fid-btn.p:hover{filter:brightness(1.08)}
+.fid-btn:disabled{opacity:.5;cursor:default}
+.fid-tabs{display:flex;gap:4px;border-bottom:1px solid var(--borde);margin:4px 0 18px;overflow-x:auto}
+.fid-tab{padding:9px 16px;font-weight:600;font-size:.82rem;color:var(--texto-debil);border:0;border-bottom:2px solid transparent;margin-bottom:-1px;background:none;cursor:pointer;white-space:nowrap;font-family:'Inter',sans-serif}
+.fid-tab.on{color:var(--texto-fuerte);border-bottom-color:var(--azul)}
+.fid-tab b{font-weight:600;color:var(--texto-debil);margin-left:5px;font-size:.72rem}
+.fid-card{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:16px;min-width:0}
+.fid-ct{font-size:.72rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--texto-tenue);margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:10px}
+.fid-ct small{text-transform:none;letter-spacing:0;font-weight:500;color:var(--texto-debil);text-align:right}
+.fid-kpis{display:grid;gap:12px;margin-bottom:16px;grid-template-columns:repeat(4,1fr)}
+.fid-kpis.seis{grid-template-columns:repeat(6,1fr)}
+.fid-kpi{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:14px 16px;min-width:0}
+.fid-kpi .l{font-size:.68rem;color:var(--texto-debil);font-weight:600;text-transform:uppercase;letter-spacing:.05em}
+.fid-kpi .v{font-size:1.55rem;font-weight:800;color:var(--texto-fuerte);margin-top:6px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.fid-kpi .v small{font-size:.82rem;color:var(--texto-debil);font-weight:600}
+.fid-kpi .d{font-size:.72rem;margin-top:4px;color:var(--texto-tenue)}
+.fid-up{color:var(--verde-texto)}.fid-dn{color:var(--rojo-texto)}
+.fid-barra{height:6px;background:var(--relleno);border-radius:99px;margin-top:9px;overflow:hidden}
+.fid-barra>div{height:100%;background:var(--azul);border-radius:99px}
+.fid-pill{display:inline-flex;align-items:center;gap:4px;font-size:.68rem;font-weight:600;padding:2px 8px;border-radius:99px;border:1px solid var(--borde-fuerte);color:var(--texto-tenue);white-space:nowrap}
+.fid-pill.r{color:var(--rojo-texto);border-color:var(--rojo-borde);background:var(--rojo-tinte)}
+.fid-pill.a{color:var(--ambar);border-color:var(--ambar-borde);background:var(--ambar-tinte)}
+.fid-pill.g{color:var(--verde-texto);border-color:var(--verde);background:var(--verde-tinte)}
+.fid-pill.b{color:var(--azul-claro);border-color:var(--azul);background:var(--azul-tinte)}
+.fid-pill.v{color:var(--violeta);border-color:var(--violeta);background:transparent}
+.fid-grid2{display:grid;grid-template-columns:1.35fr 1fr;gap:16px;align-items:start}
+.fid-grp{font-size:.7rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin:16px 0 6px;display:flex;align-items:center;gap:8px}
+.fid-grp:first-child{margin-top:0}
+.fid-grp.r{color:var(--rojo-texto)}.fid-grp.a{color:var(--ambar)}.fid-grp.b{color:var(--azul-claro)}.fid-grp.v{color:var(--violeta)}
+.fid-fila{display:grid;grid-template-columns:52px 1fr auto auto;gap:12px;align-items:center;padding:10px;border-radius:9px;border:1px solid transparent;cursor:pointer}
+.fid-fila+.fid-fila{border-top-color:var(--borde)}
+.fid-fila:hover{background:var(--hover)}
+.fid-fila.sel{background:var(--azul-tinte);border-color:var(--azul)}
+.fid-hr{font-weight:700;color:var(--texto-fuerte);font-variant-numeric:tabular-nums;font-size:.85rem}
+.fid-hr small{display:block;color:var(--texto-debil);font-weight:500;font-size:.66rem}
+.fid-hr.pt{color:var(--azul-claro)}
+.fid-nm{font-weight:600;color:var(--texto-fuerte);font-size:.86rem}
+.fid-meta{color:var(--texto-debil);font-size:.72rem;margin-top:2px}
+.fid-star{color:#f59e0b}
+.fid-tel{width:32px;height:32px;border-radius:8px;background:var(--verde);display:grid;place-items:center;color:#fff;text-decoration:none;flex-shrink:0}
+.fid-tel svg{width:16px;height:16px}
+.fid-vacio{color:var(--texto-debil);font-size:.8rem;padding:14px 4px;text-align:center}
+.fid-mas{text-align:center;color:var(--texto-debil);font-size:.72rem;padding:6px}
+.fid-ficha h2{font-size:1.15rem;color:var(--texto-fuerte);font-weight:800;margin:0}
+.fid-facts{display:grid;grid-template-columns:1fr 1fr;gap:10px 16px;margin:14px 0;font-size:.8rem}
+.fid-facts label{display:block;color:var(--texto-debil);font-size:.64rem;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;font-weight:600}
+.fid-facts a{color:var(--azul-claro)}
+.fid-in{width:100%;background:var(--superficie-honda);border:1px solid var(--borde-fuerte);border-radius:7px;color:var(--texto);font:12.5px 'Inter',sans-serif;padding:6px 8px;box-sizing:border-box}
+.fid-in:focus{outline:none;border-color:var(--azul)}
+textarea.fid-in{resize:vertical;min-height:54px}
+.fid-guion{background:var(--superficie-honda);border:1px dashed var(--borde-fuerte);border-radius:10px;padding:10px 12px;font-size:.75rem;color:var(--texto-tenue);line-height:1.5}
+.fid-guion b{color:var(--azul-claro)}
+.fid-guion a{color:var(--azul-claro)}
+.fid-res{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+.fid-rb{border:1px solid var(--borde-fuerte);border-radius:10px;padding:10px 12px;background:var(--superficie-honda);text-align:left;cursor:pointer;font-family:'Inter',sans-serif;color:var(--texto)}
+.fid-rb:hover{border-color:var(--azul)}
+.fid-rb b{display:block;color:var(--texto-fuerte);font-size:.8rem;margin-bottom:3px}
+.fid-rb span{color:var(--texto-debil);font-size:.7rem}
+.fid-rb.on{border-color:var(--azul);background:var(--azul-tinte);box-shadow:0 0 0 1px var(--azul) inset}
+.fid-extra{margin-top:10px;display:grid;gap:8px}
+.fid-chips{display:flex;gap:6px;flex-wrap:wrap}
+.fid-chip{padding:4px 10px;border-radius:99px;border:1px solid var(--borde-fuerte);background:transparent;color:var(--texto-tenue);font:600 .7rem 'Inter',sans-serif;cursor:pointer}
+.fid-chip:hover,.fid-chip.on{border-color:var(--azul);color:var(--azul-claro)}
+.fid-next{margin-top:12px;padding:12px;border-radius:10px;background:var(--verde-tinte);border:1px solid var(--verde);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;font-size:.82rem;color:var(--texto)}
+.fid-next b{color:var(--verde-texto)}
+.fid-next.gris{background:var(--superficie-honda);border-color:var(--borde-fuerte)}
+.fid-err{color:var(--rojo-texto);font-size:.76rem;margin-top:6px}
+.fid-tl{margin-top:16px;border-left:2px solid var(--borde-fuerte);padding-left:14px}
+.fid-tl div{position:relative;font-size:.74rem;color:var(--texto-tenue);margin-bottom:9px;line-height:1.4}
+.fid-tl div::before{content:'';position:absolute;left:-19px;top:4px;width:8px;height:8px;border-radius:50%;background:var(--borde-fuerte)}
+.fid-tl div b{color:var(--texto);font-weight:600}
+.fid-filtros{display:flex;gap:8px;margin-bottom:14px;align-items:center;flex-wrap:wrap}
+.fid-sel{padding:6px 10px;border:1px solid var(--borde-fuerte);border-radius:8px;font:500 .78rem 'Inter',sans-serif;color:var(--texto);background:var(--superficie-honda)}
+.fid-seg{display:flex;border:1px solid var(--borde-fuerte);border-radius:8px;overflow:hidden}
+.fid-seg button{padding:6px 13px;font:600 .76rem 'Inter',sans-serif;color:var(--texto-debil);background:none;border:0;cursor:pointer}
+.fid-seg button.on{background:var(--azul);color:#fff}
+.fid-kan{display:grid;grid-template-columns:repeat(7,minmax(170px,1fr));gap:10px;overflow-x:auto;padding-bottom:6px}
+.fid-col{background:var(--superficie-honda);border:1px solid var(--borde);border-radius:12px;padding:10px;min-height:420px}
+.fid-col.drop{border-color:var(--azul);background:var(--azul-tinte)}
+.fid-colh{display:flex;justify-content:space-between;align-items:baseline}
+.fid-colh b{color:var(--texto-fuerte);font-size:.8rem}.fid-colh span{color:var(--texto-debil);font-weight:700;font-size:.8rem}
+.fid-colm{font-size:.68rem;color:var(--texto-debil);margin:4px 0 10px;padding-bottom:8px;border-bottom:1px solid var(--borde)}
+.fid-kc{background:var(--superficie);border:1px solid var(--borde);border-radius:9px;padding:9px;margin-bottom:8px;cursor:grab}
+.fid-kc:hover{border-color:var(--borde-fuerte)}
+.fid-kc .fid-nm{font-size:.78rem}.fid-kc .fid-meta{font-size:.66rem}
+.fid-kc .ft{margin-top:7px}
+.fid-tabla{width:100%;border-collapse:collapse;font-size:.78rem}
+.fid-tabla th{text-align:left;color:var(--texto-debil);font-weight:600;font-size:.66rem;text-transform:uppercase;letter-spacing:.05em;padding:0 8px 8px;white-space:nowrap}
+.fid-tabla td{padding:9px 8px;border-top:1px solid var(--borde);font-variant-numeric:tabular-nums;color:var(--texto)}
+.fid-tabla tr.cl{cursor:pointer}.fid-tabla tr.cl:hover td{background:var(--hover)}
+.fid-tabla .r{text-align:right}
+.fid-pag{display:flex;gap:10px;justify-content:center;align-items:center;padding:14px 0 0;font-size:.8rem;color:var(--texto-debil)}
+.fid-drawer-bd{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1200;display:none}
+.fid-drawer{position:fixed;top:0;right:0;bottom:0;width:min(520px,100vw);background:var(--superficie);border-left:1px solid var(--borde);z-index:1201;overflow-y:auto;padding:18px;box-sizing:border-box;display:none}
+.fid-drawer.open,.fid-drawer-bd.open{display:block}
+.fid-x{float:right;background:none;border:0;color:var(--texto-debil);font-size:1.3rem;cursor:pointer;line-height:1}
+.fid-modal{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:min(520px,94vw);max-height:88vh;overflow-y:auto;background:var(--superficie);border:1px solid var(--borde);border-radius:14px;z-index:1201;padding:20px;box-sizing:border-box;display:none}
+.fid-modal.open{display:block}
+.fid-modal h3{margin:0 0 14px;color:var(--texto-fuerte);font-size:1rem}
+.fid-form{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.fid-form label{font-size:.68rem;color:var(--texto-debil);font-weight:600;display:block;margin-bottom:3px}
+.fid-form .full{grid-column:1/-1}
+/* Inteligencia comercial */
+.fid-g3{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:16px;margin-bottom:16px}
+.fid-g2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+.fid-fun{display:grid;grid-template-columns:130px 1fr 44px;gap:10px;align-items:center;margin-bottom:7px;font-size:.76rem;color:var(--texto)}
+.fid-fun .b{height:22px;border-radius:0 4px 4px 0;background:var(--azul);display:flex;align-items:center;padding-left:8px;color:#fff;font-weight:700;font-size:.72rem;min-width:24px;box-sizing:border-box}
+.fid-fun .b.ok{background:var(--verde)}
+.fid-fun .cv{color:var(--texto-tenue);text-align:right;font-weight:600;font-variant-numeric:tabular-nums}
+.fid-hb{display:grid;grid-template-columns:110px 1fr 96px;gap:10px;align-items:center;margin-bottom:8px;font-size:.76rem;color:var(--texto)}
+.fid-hb .t{height:12px}.fid-hb .t>div{height:100%;background:var(--azul);border-radius:0 4px 4px 0;min-width:2px}
+.fid-hb .n{text-align:right;color:var(--texto-tenue);font-variant-numeric:tabular-nums;white-space:nowrap}
+.fid-hb .n b{color:var(--texto-fuerte)}
+.fid-heat{display:grid;grid-template-columns:34px repeat(12,1fr);gap:2px;font-size:.62rem;color:var(--texto-debil)}
+.fid-heat div{height:26px;border-radius:3px;display:grid;place-items:center;font-weight:600}
+.fid-heat .h{height:auto;padding-bottom:3px}
+.fid-lg{display:flex;gap:6px;align-items:center;font-size:.66rem;color:var(--texto-debil);margin-top:10px;flex-wrap:wrap}
+.fid-lg i{width:22px;height:8px;border-radius:2px;display:inline-block}
+.fid-ins{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--borde);font-size:.78rem;line-height:1.45;color:var(--texto-tenue)}
+.fid-ins:last-child{border-bottom:0}.fid-ins b{color:var(--texto-fuerte)}
+.fid-ins .ic{width:24px;height:24px;border-radius:7px;flex-shrink:0;display:grid;place-items:center;font-weight:800;font-size:.75rem}
+.fid-nota{font-size:.76rem;color:var(--texto-tenue);margin-top:8px;line-height:1.45}
+.fid-nota b{color:var(--texto-fuerte)}
+.fid-svg text{font-family:'Inter',sans-serif}
+@media (max-width:1100px){
+  .fid-kpis.seis{grid-template-columns:repeat(3,1fr)}
+  .fid-g3{grid-template-columns:1fr 1fr}
+}
+@media (max-width:900px){
+  .fid-grid2,.fid-g3,.fid-g2{grid-template-columns:1fr}
+  .fid-kpis{grid-template-columns:repeat(2,1fr)}
+  .fid-kpis.seis{grid-template-columns:repeat(2,1fr)}
+  #fid-ficha-inline{display:none}
+}
+@media (max-width:520px){
+  .fid-res,.fid-facts,.fid-form{grid-template-columns:1fr}
+  .fid-fila{grid-template-columns:44px 1fr auto;gap:8px}
+  .fid-fila .fid-pill{display:none}
+  .fid-hb{grid-template-columns:90px 1fr 84px}
+}
 /* ── Seguimiento de leads ─────────────────────────────────────────────────────
    La agenda de llamados. Solo tokens, sin reglas `body.light`: el rojo de
    vencido y el verde de Hecho son los de la familia de estados, que llegan a
@@ -2704,10 +3456,9 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div class="nav-item" id="nav-ausencias" onclick="showPanel('ausencias')"><i data-lucide="calendar-clock" class="nav-icon"></i> Ausencias</div>
   <div class="nav-item" id="nav-flujos" onclick="showPanel('flujos')"><i data-lucide="workflow" class="nav-icon"></i> Flujos</div>
   <div class="nav-item" id="nav-horarios" onclick="showPanel('horarios')"><i data-lucide="clock-4" class="nav-icon"></i> Horarios</div>
-  <div class="nav-section-label">CAPTACIÓN</div>
+  <div class="nav-section-label">CAPTACIÓN · FIDELIDAD</div>
   <div class="nav-item" id="nav-cola" onclick="showPanel('cola')"><i data-lucide="inbox" class="nav-icon"></i> Outbound</div>
   <div class="nav-item" id="nav-metrics" onclick="showPanel('metrics')"><i data-lucide="bar-chart-2" class="nav-icon"></i> Inteligencia comercial</div>
-  <div class="nav-item" id="nav-sdr" onclick="showPanel('sdr')"><i data-lucide="phone-call" class="nav-icon"></i> SDR</div>
   </div>
   <div class="sidebar-bottom">
     <a id="admin-link" href="/admin/users" style="display:none;background:none;border:1px solid var(--borde);border-radius:8px;padding:6px 12px;font-size:.75rem;color:var(--texto-debil);cursor:pointer;width:100%;text-align:left;text-decoration:none;box-sizing:border-box">&#9881; Usuarios</a>
@@ -2728,44 +3479,72 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
     <p class="frase-equipo-texto">La IA avanza rápido, es cierto. Pero el mercado la entiende lento. <strong>Ahí están nuestras oportunidades.</strong></p>
   </div>
   <!-- ======= COLA PANEL ======= -->
+  <!-- Desde el 23/9 es el Outbound de Scalerics Fidelidad (services/fidelidad.py).
+       El panel sigue siendo 'cola' por dentro porque asi estan guardados los
+       permisos. La cola vieja de comercios quedo archivada, no borrada. -->
   <div id="cola-panel" class="panel">
     <div class="page-header">
       <div>
-        <h1>Outbound</h1>
-        <div class="page-date" id="cola-date"></div>
+        <h1>Outbound · Scalerics Fidelidad</h1>
+        <div class="fid-sub" id="fid-fecha">Restaurantes de Municipio CH y Carrasco</div>
       </div>
-      <button class="export-btn" onclick="exportCSV()"><i data-lucide="download" class="btn-icon"></i> Exportar CSV</button>
-    </div>
-    <div class="stats">
-      <div class="stat-card"><div class="stat-label">Sin contactar</div><div class="stat-val" id="stat-cola">—</div></div>
-      <div class="stat-card"><div class="stat-label">No le interesa</div><div class="stat-val" id="stat-no-interesa">—</div></div>
-    </div>
-    <div class="filters">
-      <select class="filter-select" id="cola-category-filter">
-        <option value="">Todos los rubros</option>
-      </select>
-      <select class="filter-select" id="cola-cohorte-filter" onchange="setColaCohorte(this.value)">
-        <option value="">Todas las cohortes</option>
-        <option value="sin_web">Padrón sin web</option>
-        <option value="discovery">Discovery</option>
-        <option value="meta">Meta Ads</option>
-        <option value="calendly_gcal">Calendly</option>
-      </select>
-      <input class="search-box" id="cola-search-input" placeholder="🔍 Buscar negocio..." oninput="colaSearch(this.value)">
-      <span id="cola-count" style="color:#64748b;font-size:.8rem;align-self:center;margin-left:auto"></span>
-    </div>
-    <div style="display:flex;gap:8px;margin-bottom:12px">
-      <button id="cola-filter-sin" onclick="setColaFilter('sin_contactar')" style="padding:5px 14px;border-radius:8px;border:1px solid #0088cc;background:#0088cc;color:#fff;font-size:.78rem;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">Sin contactar</button>
-      <button id="cola-filter-no" onclick="setColaFilter('no_interesa')" style="padding:5px 14px;border-radius:8px;border:1px solid #1e293b;background:transparent;color:#64748b;font-size:.78rem;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif">No interesa</button>
-    </div>
-    <div class="table-wrap">
-      <div class="table-header no-cb">
-        <span>Negocio</span><span>Teléfono</span><span>Notas</span><span>Acciones</span>
+      <div class="fid-acciones">
+        <a class="fid-btn" href="/api/fidelidad/export.csv">Exportar CSV</a>
+        <label class="fid-btn" for="fid-archivo">Importar Excel</label>
+        <input type="file" id="fid-archivo" accept=".xlsx" style="display:none" onchange="fidImportar(this)">
+        <button class="fid-btn p" onclick="fidNuevoAbrir()">+ Prospecto</button>
       </div>
-      <div id="cola-body"></div>
-      <div id="cola-pagination" style="display:none;justify-content:center;align-items:center;gap:12px;padding:16px 0;font-size:.85rem;color:#94a3b8"></div>
+    </div>
+    <div class="fid-tabs" role="tablist">
+      <button class="fid-tab on" id="fid-t-hoy" onclick="fidVista('hoy')">Mi día<b id="fid-n-hoy"></b></button>
+      <button class="fid-tab" id="fid-t-pipe" onclick="fidVista('pipe')">Pipeline</button>
+      <button class="fid-tab" id="fid-t-todos" onclick="fidVista('todos')">Todos los prospectos<b id="fid-n-todos"></b></button>
+      <button class="fid-tab" id="fid-t-reu" onclick="fidVista('reu')">Reuniones<b id="fid-n-reu"></b></button>
+    </div>
+    <div id="fid-aviso"></div>
+
+    <div id="fid-v-hoy">
+      <div class="fid-kpis" id="fid-kpis-hoy"></div>
+      <div class="fid-grid2">
+        <div class="fid-card">
+          <div class="fid-ct">Tu cola de llamadas <small>Se ordena sola: vencidas, reuniones sin resultado, hora agendada y los mejores sin tocar</small></div>
+          <div id="fid-cola"><div class="fid-vacio">Cargando…</div></div>
+        </div>
+        <div class="fid-card fid-ficha" id="fid-ficha-inline"><div class="fid-vacio">Elegí un restaurante de la cola.</div></div>
+      </div>
+    </div>
+
+    <div id="fid-v-pipe" style="display:none">
+      <div class="fid-filtros">
+        <select class="fid-sel" id="fid-p-zona" onchange="fidCargarPipe()"><option value="">Zona: todas</option><option>Municipio CH</option><option>Carrasco</option></select>
+        <select class="fid-sel fid-cat" id="fid-p-cat" onchange="fidCargarPipe()"></select>
+        <span class="fid-sub" style="margin:0 0 0 auto">Arrastrá la tarjeta para cambiarla de etapa</span>
+      </div>
+      <div class="fid-kan" id="fid-kan"></div>
+    </div>
+
+    <div id="fid-v-todos" style="display:none">
+      <div class="fid-filtros">
+        <input class="fid-sel" id="fid-q" placeholder="Buscar restaurante, barrio, dueño…" oninput="fidBuscar()" style="min-width:220px">
+        <select class="fid-sel" id="fid-f-estado" onchange="fidCargarTodos(1)"><option value="">Todas las etapas</option></select>
+        <select class="fid-sel" id="fid-f-zona" onchange="fidCargarTodos(1)"><option value="">Zona: todas</option><option>Municipio CH</option><option>Carrasco</option></select>
+        <select class="fid-sel fid-cat" id="fid-f-cat" onchange="fidCargarTodos(1)"></select>
+      </div>
+      <div class="fid-card" style="overflow-x:auto"><div id="fid-tabla"></div></div>
+    </div>
+
+    <div id="fid-v-reu" style="display:none">
+      <div class="fid-g2">
+        <div class="fid-card"><div class="fid-ct">Próximas reuniones</div><div id="fid-reu-prox"></div></div>
+        <div class="fid-card"><div class="fid-ct">Ya pasaron, falta cargar cómo salieron</div><div id="fid-reu-pend"></div></div>
+      </div>
     </div>
   </div>
+
+  <div class="fid-drawer-bd" id="fid-drawer-bd" onclick="fidCerrarDrawer()"></div>
+  <div class="fid-drawer fid-ficha" id="fid-drawer" role="dialog" aria-label="Ficha del restaurante"></div>
+  <div class="fid-drawer-bd" id="fid-modal-bd" onclick="fidCerrarModal()"></div>
+  <div class="fid-modal" id="fid-modal" role="dialog"></div>
 
   <!-- ======= SEGUIMIENTOS PANEL ======= -->
 
@@ -3404,41 +4183,31 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   </div>
 
   <!-- ======= METRICS PANEL ======= -->
+  <!-- Desde el 23/9 es la Inteligencia comercial de Scalerics Fidelidad. El
+       panel sigue siendo 'metrics' por dentro porque asi estan guardados los
+       permisos de cada rol. Lo de Meta Ads se mira en Marketing (14/9). -->
   <div id="metrics-panel" class="panel">
     <div class="page-header">
       <div>
-        <h1>Inteligencia comercial</h1>
-        <div class="page-date" id="metrics-date"></div>
+        <h1>Inteligencia comercial · Fidelidad</h1>
+        <div class="fid-sub" id="fid-i-fecha">Cómo viene la venta de Scalerics Fidelidad</div>
       </div>
-      <button class="export-btn" onclick="loadMetrics()">↻ Actualizar</button>
-    </div>
-    <!-- Lo de Meta Ads se saco de aca el 14/9: se mira en Marketing. El panel
-         sigue siendo 'metrics' por dentro porque asi estan guardados los
-         permisos de cada rol; solo cambio el nombre que se ve. -->
-    <div id="metrics-sdr">
-      <div class="metrics-grid" style="grid-template-columns:repeat(4,1fr)">
-        <div class="stat-card"><div class="stat-label">Total leads SDR</div><div class="stat-val" id="m-total">—</div></div>
-        <div class="stat-card"><div class="stat-label">Contactados</div><div class="stat-val blue" id="m-contacted">—</div></div>
-        <div class="stat-card"><div class="stat-label">Reuniones agendadas</div><div class="stat-val yellow" id="m-meetings">—</div></div>
-        <div class="stat-card"><div class="stat-label">Clientes cerrados</div><div class="stat-val green" id="m-closed">—</div></div>
-      </div>
-      <div class="metrics-grid" style="grid-template-columns:repeat(3,1fr)">
-        <div class="stat-card"><div class="stat-label">Tasa de contacto</div><div class="stat-val blue" id="m-contact-rate">—</div></div>
-        <div class="stat-card"><div class="stat-label">Tasa de reunión</div><div class="stat-val yellow" id="m-meeting-rate">—</div></div>
-        <div class="stat-card"><div class="stat-label">Tasa de conversión</div><div class="stat-val green" id="m-conv">—</div></div>
-      </div>
-      <div class="metrics-grid-2">
-        <div class="m-card"><div class="m-card-title">Funnel CRM</div><div id="m-funnel"></div></div>
-        <div class="m-card"><div class="m-card-title">Llamadas</div><div id="m-calls"></div></div>
-      </div>
-      <div class="metrics-grid-2">
-        <div class="m-card"><div class="m-card-title">Leads por mes</div><div id="m-months"></div></div>
-        <div class="m-card"><div class="m-card-title">Top rubros</div><div id="m-rubros"></div></div>
-      </div>
-      <div class="metrics-grid-2">
-        <div class="m-card"><div class="m-card-title">Top ciudades</div><div id="m-cities"></div></div>
+      <div class="fid-acciones">
+        <button class="fid-btn" id="fid-metas-btn" style="display:none" onclick="fidMetasAbrir()">Metas y comisión</button>
+        <button class="fid-btn" onclick="fidCargarIntel()">↻ Actualizar</button>
       </div>
     </div>
+    <div class="fid-filtros">
+      <div class="fid-seg" id="fid-i-periodo">
+        <button data-p="semana" onclick="fidPeriodo('semana')">Semana</button>
+        <button data-p="mes" class="on" onclick="fidPeriodo('mes')">Mes</button>
+        <button data-p="trimestre" onclick="fidPeriodo('trimestre')">Trimestre</button>
+        <button data-p="todo" onclick="fidPeriodo('todo')">Todo</button>
+      </div>
+      <select class="fid-sel" id="fid-i-zona" onchange="fidCargarIntel()"><option value="">Zona: todas</option><option>Municipio CH</option><option>Carrasco</option></select>
+      <select class="fid-sel fid-cat" id="fid-i-cat" onchange="fidCargarIntel()"></select>
+    </div>
+    <div id="fid-i-cuerpo"><div class="fid-vacio">Cargando…</div></div>
   </div>
   <div id="marketing-panel" class="panel">
     <div class="page-header">
@@ -4812,7 +5581,7 @@ function showPanel(name) {
   activePanel = name;
   _syncMobileNav(name);
   closeSidebar();
-  if (name === 'cola') loadCola();
+  if (name === 'cola') fidLoad();
   if (name === 'demos') cargarDemos();
   if (name === 'clientes') loadClientesPanel();
   if (name === 'meta') loadMetaPanel();
@@ -4827,7 +5596,7 @@ function showPanel(name) {
   if (name === 'notion_clients') loadNotionClients();
   if (name === 'finanzas') loadFinanzas();
   if (name === 'simulador') loadSimulador();
-  if (name === 'metrics') loadMetrics();
+  if (name === 'metrics') fidCargarIntel();
   if (name === 'activity') loadActivity();
   if (name === 'equipo' || name === 'ausencias') loadEquipo();
   if (name === 'flujos') eqCargarFlujos();
@@ -5339,6 +6108,8 @@ function renderMetaTable() {
 
 // ── Cola stats ────────────────────────────────────────────────────────────────
 async function loadColaStats() {
+  // La cola vieja se reemplazo por la de Fidelidad (23/9): sin su HTML no hay nada que contar.
+  if (!document.getElementById('stat-cola')) return;
   try {
     const r = await fetch('/api/stats');
     if (!r.ok) return;
@@ -5423,6 +6194,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function loadCola() {
   const body = document.getElementById('cola-body');
+  if (!body) return;
   body.innerHTML = '<div style="color:#475569;padding:16px;font-size:.85rem">Cargando...</div>';
   try {
     // Todo del lado del servidor: con 6.200 leads en la cola, traerlos para
@@ -9690,7 +10462,7 @@ function closeMasSheet() {
 }
 
 // ── Panel access control ──────────────────────────────────────────────────────
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra'];
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra'];
 (async () => {
   try {
     const r = await fetch('/api/me');
@@ -9717,6 +10489,11 @@ const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activ
           const nav = document.getElementById('nav-' + p);
           if (nav) nav.style.display = 'none';
         }
+      });
+      // El vendedor de Fidelidad es de afuera: fuera de sus dos pantallas no ve
+      // ningun item, tampoco los que no estan en ALL_PANELS (Demos, Marketing).
+      if (m.solo_fidelidad) document.querySelectorAll('.nav-item[id^="nav-"]').forEach(nav => {
+        if (!access.includes(nav.id.slice(4))) nav.style.display = 'none';
       });
       _ocultarGruposVacios();
       if (!access.includes(activePanel)) {
@@ -12501,6 +13278,7 @@ async function plBorrar(id) {
   await plCargar();
 }
 
+/*FID_JS*/
 // ========== Seguimiento de leads ==========
 // La agenda de llamados de Juan: solo lo pendiente, en vencidos, hoy, esta
 // semana y mas adelante. Los grupos, el "hace 6 dias" y los numeros para tel:
@@ -15670,7 +16448,7 @@ let eqPasoCobros = [];
 const EQ_PANTALLAS = [['seg_leads', 'Seguimiento de leads'], ['notion_clients', 'Proceso de venta'], ['demos', 'Demos'],
   ['clientes', 'Clientes'], ['projects', 'Proyectos'], ['tasks', 'Tareas'], ['wa', 'WhatsApp'],
   ['cal', 'Calendario'], ['meta', 'Meta Ads'], ['marketing', 'Inteligencia marketing'],
-  ['cola', 'Outbound'], ['metrics', 'Inteligencia comercial'], ['sdr', 'SDR'],
+  ['cola', 'Outbound'], ['metrics', 'Inteligencia comercial'],
   ['finanzas', 'Finanzas'], ['simulador', 'Simulador financiero'], ['activity', 'Actividad'],
   ['equipo', 'Organigrama'], ['ausencias', 'Ausencias']];
 
@@ -18464,7 +19242,7 @@ async function loadActivity() {
 # Los pedazos de JS que viven afuera para poder probarse se pegan aca.
 DASHBOARD_HTML = DASHBOARD_HTML.replace("/*ESC_JS*/", ESC_JS).replace(
     "/*WA_MEDIOS_JS*/", WA_MEDIOS_JS
-)
+).replace("/*FID_JS*/", "{% raw %}" + FID_JS + "{% endraw %}")
 
 
 _calendly_sync_state = {"at": 0.0}
@@ -18576,7 +19354,7 @@ def create_app(db_path: str) -> Flask:
     for bp in (leads_bp, demos_bp, calendar_bp, wa_bp, pipeline_bp, tasks_bp, budgets_bp, tokens_bp, meta_bp, calendly_bp, notion_bp, projects_bp, preclientes_bp,
                 notion_clients_bp, resend_bp, linkedin_bp, web_bp, finanzas_bp, marketing_bp,
                 simulador_bp, equipo_bp, horarios_bp, flujos_bp, seg_leads_bp, daily_bp, plantillas_bp,
-                backups_bp, email_mkt_bp, linkedin_panel_bp, linkedin_bot_bp, instagram_bp, instagram_pub_bp, sombra_bp):
+                backups_bp, email_mkt_bp, linkedin_panel_bp, linkedin_bot_bp, instagram_bp, instagram_pub_bp, sombra_bp, fidelidad_bp):
         app.register_blueprint(bp)
 
     @app.before_request
@@ -18635,6 +19413,16 @@ def create_app(db_path: str) -> Flask:
             if request.path.startswith("/api/"):
                 return jsonify({"error": "session_expired"}), 401
             return redirect(url_for("login"))
+
+        # El vendedor de Fidelidad es de afuera de Scalerics: entra solo a sus
+        # dos pantallas. El menu ya se las esconde, pero el candado es este:
+        # las APIs del resto (agenda, leads, finanzas) no piden panel, y sin
+        # esto un fetch a mano le mostraba las reuniones de la agencia.
+        if (request.path.startswith("/api/") and request.path != "/api/me"
+                and not request.path.startswith("/api/fidelidad/")):
+            from services.fidelidad import es_vendedor
+            if es_vendedor(app.config["DB_PATH"], session.get("user_id")):
+                return jsonify({"ok": False, "error": "No autorizado"}), 403
 
         # Sesión válida: aprovechamos la visita para traer lo de Calendly.
         if not request.path.startswith(("/api/", "/static/")):
@@ -18800,6 +19588,15 @@ def create_app(db_path: str) -> Flask:
                 uid = create_user(db_path, name=name, email=email, phone=phone,
                                   password_hash=generate_password_hash(password))
                 if uid:
+                    # Los mails de VENDEDORES_FIDELIDAD entran directo con el
+                    # rol del socio (services/fidelidad.py), sin esperar a Juan.
+                    import sqlite3 as _sq3
+                    from services.fidelidad import asignar_vendedores
+                    _c = _sq3.connect(db_path)
+                    try:
+                        asignar_vendedores(_c, os.environ.get("VENDEDORES_FIDELIDAD", "").split(","))
+                    finally:
+                        _c.close()
                     session["logged_in"] = True
                     session["user_id"] = uid
                     session["user_name"] = name
@@ -19192,6 +19989,7 @@ def create_app(db_path: str) -> Flask:
             else:
                 panel_access = "[]"  # sin rol = sin acceso
         from services.auth import paneles_solo_lectura
+        from services.fidelidad import es_vendedor
         return jsonify({
             "id": user["id"],
             "name": user["name"],
@@ -19204,6 +20002,7 @@ def create_app(db_path: str) -> Flask:
             # como panel_access. El servidor bloquea igual: esto es solo para
             # no mostrar botones que van a dar 403.
             "paneles_solo_lectura": [] if es_admin else paneles_solo_lectura(db_path, user_id),
+            "solo_fidelidad": (not es_admin) and es_vendedor(db_path, user_id),
         })
 
     @app.route("/api/me", methods=["PUT"])
@@ -19578,7 +20377,7 @@ select:focus{border-color:#0088cc}
 </div>
 
 <script>
-const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','sdr','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra'];
+const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activity','projects','notion_clients','finanzas','simulador','inteligencia_fin','equipo','ausencias','flujos','horarios','seg_leads','daily','plantillas','daily_admin','email_mkt','linkedin','instagram','sombra'];
 const PANEL_LABELS = {cola:'Outbound',meta:'Meta Ads',pipeline:'Pipeline',clientes:'Clientes',tasks:'Tareas',wa:'WhatsApp',cal:'Calendario',metrics:'Inteligencia comercial',activity:'Actividad',sdr:'SDR',projects:'Proyectos',notion_clients:'Proceso de venta',finanzas:'Finanzas',simulador:'Simulador financiero',inteligencia_fin:'Métricas financieras',equipo:'Organigrama',ausencias:'Ausencias',flujos:'Flujos',horarios:'Horarios',seg_leads:'Seguimiento de leads',daily:'Daily Programador',daily_admin:'Daily Admin',plantillas:'Plantillas',email_mkt:'Email marketing',linkedin:'LinkedIn',instagram:'Instagram',sombra:'Recomendaciones de pauta'};
 let _roles = [];
 

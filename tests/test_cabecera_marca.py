@@ -60,11 +60,11 @@ def test_cada_seccion_del_menu_tiene_su_color():
     assert not claros, f"sin color en tema claro: {claros}"
 
 
-def test_sdr_esta_en_captacion():
+def test_captacion_es_de_fidelidad_y_sin_sdr():
+    # 23/9: Captación pasó a ser de Scalerics Fidelidad y SDR salió del menú.
     bloque = HTML[HTML.index('nav-section-label">CAPTACIÓN'):HTML.index('<div class="sidebar-bottom">')]
-    assert 'id="nav-sdr"' in bloque
-    ventas = HTML[HTML.index('nav-section-label">VENTAS'):HTML.index('nav-section-label">OPERACIÓN')]
-    assert 'id="nav-sdr"' not in ventas
+    assert 'id="nav-cola"' in bloque and 'id="nav-metrics"' in bloque
+    assert 'id="nav-sdr"' not in HTML
 
 
 def test_lo_primero_sigue_siendo_el_calendario():
