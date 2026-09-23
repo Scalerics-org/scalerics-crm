@@ -11729,8 +11729,11 @@ async function loadMovimientos(desde, hasta) {
   const soloLectura = _finSoloLectura();
   cuerpo.innerHTML = movs.map(m => {
     const esIngreso = m.tipo === 'ingreso';
+    // El original en pesos va en su propia linea, abajo del monto en dolares:
+    // al lado (pedido de Juan, 22/9) el rojo/verde se corria de columna segun
+    // si habia texto gris o no, porque el bloque entero es text-align:right.
     const original = m.moneda === 'UYU'
-      ? ` <span class="fin-kpi-var">($ ${m.monto.toLocaleString('es-UY')} @ ${m.tipo_cambio})</span>`
+      ? `<div class="fin-kpi-var">$ ${m.monto.toLocaleString('es-UY')} @ ${m.tipo_cambio}</div>`
       : '';
     return `
     <div class="table-row no-cb">
@@ -11739,9 +11742,9 @@ async function loadMovimientos(desde, hasta) {
         <div class="biz-name">${esc(m.concepto)}</div>
         <div class="fin-kpi-var">${esc(m.categoria.replace(/_/g, ' '))}${m.recurrente_id ? ' · fijo' : ''}</div>
       </div>
-      <div style="flex:0 0 170px;text-align:right"
-           class="${esIngreso ? 'fin-verde' : 'fin-rojo'}">
-        ${esIngreso ? '+' : '−'}${_finUsd(m.monto_usd)}${original}
+      <div style="flex:0 0 170px;text-align:right">
+        <div class="${esIngreso ? 'fin-verde' : 'fin-rojo'}">${esIngreso ? '+' : '−'}${_finUsd(m.monto_usd)}</div>
+        ${original}
       </div>
       <div style="flex:0 0 76px;text-align:right">${soloLectura ? '' : `
         <button class="btn-ghost btn-icono" onclick='abrirMovimiento(${_finAttr(m)})'
