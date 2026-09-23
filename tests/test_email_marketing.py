@@ -613,7 +613,8 @@ def test_esta_registrado_en_todos_lados():
     assert ('<div class="nav-item" id="nav-email_mkt" onclick="showPanel(\'email_mkt\')">'
             '<i data-lucide="mail" class="nav-icon"></i> Email marketing</div>') in marketing
     captacion = menu[menu.index('nav-section-label">CAPTACIÓN'):]
-    assert re.findall(r'id="nav-(\w+)"', captacion) == ["cola", "metrics", "sdr"]
+    # "credenciales" (SEGURIDAD) es la ultima sección del menú, admin-only.
+    assert re.findall(r'id="nav-(\w+)"', captacion) == ["cola", "metrics", "sdr", "credenciales"]
 
     prioridad = re.findall(r"'(\w+)'", re.search(r"const NAV_PRIORITY = \[([^\]]*)\]", HTML).group(1))
     assert prioridad.index("email_mkt") == prioridad.index("meta") + 1
