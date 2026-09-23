@@ -3,6 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const { crearAgenda, enZona, instanteLocal } = require('../src/agenda/gcal');
+const { googleFalso } = require('./google-falso');
 
 const TZ = 'America/Montevideo';
 
@@ -21,46 +22,6 @@ const CFG = {
   // reparto entre dias tiene su propio test, que baja el tope a 2.
   AGENDA_MAX_POR_DIA: 10,
 };
-
-/**
- * Google falso. `ocupados` son tramos locales del dia que se le pidan, en
- * formato ['13:30-14:00', ...].
- */
-function googleFalso({ ocupados = [], fallaFreeBusy = false, eventoCreado = null } = {}) {
-  const llamadas = [];
-  return {
-    llamadas,
-    fetch: async (url, opciones = {}) => {
-      llamadas.push({ url, body: opciones.body });
-
-      if (url.includes('oauth2')) {
-        return { ok: true, json: async () => ({ access_token: 'tok', expires_in: 3600 }) };
-      }
-
-      if (url.includes('/freeBusy')) {
-        if (fallaFreeBusy) return { ok: false, status: 500, text: async () => 'boom' };
-        const { timeMin } = JSON.parse(opciones.body);
-        const dia = enZona(new Date(timeMin), TZ).dia;
-        const busy = ocupados.map((r) => {
-          const [a, b] = r.split('-');
-          const [ha, ma] = a.split(':').map(Number);
-          const [hb, mb] = b.split(':').map(Number);
-          return {
-            start: instanteLocal(dia, ha, ma, TZ).toISOString(),
-            end: instanteLocal(dia, hb, mb, TZ).toISOString(),
-          };
-        });
-        return { ok: true, json: async () => ({ calendars: { 'agenda@scalerics': { busy } } }) };
-      }
-
-      // crear evento
-      return {
-        ok: true,
-        json: async () => eventoCreado || { id: 'ev1', hangoutLink: 'https://meet.google.com/abc-defg-hij' },
-      };
-    },
-  };
-}
 
 /** Un miércoles a las 9 de la mañana de Montevideo. */
 const MIERCOLES_9AM = instanteLocal('2026-08-19', 9, 0, TZ);
@@ -324,7 +285,7 @@ test('con todos los datos le muestra los dias, despues las horas, y agenda la qu
   assert.match(ofrece.at(-1), /^\[oferta_con_horarios\]/);
 
   // Los dias quedan guardados: sin eso no habria contra que validar "1".
-  const diasGuardados = JSON.parse(l.horarios_ofrecidos);
+  const diasGuardados = JSON.parse(l.horarios_ofrecidos).filter((x) => x !== 'semana_que_viene');
   assert.ok(diasGuardados.length >= 1, 'se le ofrecio al menos un dia');
   assert.ok(diasGuardados.every((x) => !Number.isNaN(Date.parse(x))), 'son fechas validas');
 
@@ -389,6 +350,9 @@ test('sin agenda conectada el cierre sigue por el camino del link', async () => 
  * de que el numero del dia ofrecido coincida con la hora que se pidio.
  */
 const HOY_TEST = instanteLocal('2026-09-23', 10, 0, TZ); // miercoles 23, en horario
+
+// Lo que ve el lead un miercoles: lo que queda de la semana y, ultima, la que viene.
+const LISTA_MIE_23 = '¿Qué día te queda mejor?\n\n1. Miércoles 23\n2. Jueves 24\n3. Viernes 25\n4. La semana que viene';
 
 test('si pide una hora que no se le ofrecio, no se le agenda otra', async () => {
   const google = googleFalso();
@@ -850,7 +814,8 @@ test('lo que no habla de horarios lo atiende la conversacion', async () => {
   await s.cola.vacia();
 
   const msgs = s.proveedor.getEnviados().filter((e) => e.to === '59899123456').map((e) => e.texto);
-  assert.equal(msgs.at(-1), '[conversacion]', 'lo contesta el modelo, no la lista');
+  assert.match(msgs.at(-1), /^\[conversacion\]/, 'lo contesta el modelo');
+  assert.match(msgs.at(-1), /¿Qué día te queda mejor\?\n\n1\. /, 'y la lista sale igual, abajo: sin ella el lead no tiene opciones');
   assert.equal(s.repo.leadPorTelefono('59899123456').fsm_state, S.HORARIOS_OFRECIDOS,
     'y sigue eligiendo horario');
 });
@@ -1004,7 +969,7 @@ test('"ninguno me sirve" no es un dia: lo atiende la conversacion, como siempre'
   const l = s.repo.leadPorTelefono('59899123456');
   assert.equal(l.meeting_time, null);
   const msgs = s.proveedor.getEnviados().filter((e) => e.to === '59899123456').map((e) => e.texto);
-  assert.equal(msgs.at(-1), 'Contame que dias te sirven y vemos.', 'lo contesta la conversacion normal');
+  assert.equal(msgs.at(-1), `Contame que dias te sirven y vemos.\n\n${LISTA_MIE_23}`, 'lo contesta la conversacion normal, con la lista abajo');
 });
 
 /**
@@ -1032,7 +997,7 @@ test('un dia negado, sin otro dia afirmado, va a la conversacion (no "ese dia no
   assert.equal(l.meeting_time, null);
   assert.equal(l.dia_en_foco, null, 'sigue en el paso de elegir dia, no eligio miercoles');
   const msgs = s.proveedor.getEnviados().filter((e) => e.to === '59899123456').map((e) => e.texto);
-  assert.equal(msgs.at(-1), 'Ah, tranquilo. Avisame cuando puedas.', 'lo atiende la conversacion');
+  assert.equal(msgs.at(-1), `Ah, tranquilo. Avisame cuando puedas.\n\n${LISTA_MIE_23}`, 'lo atiende la conversacion, con la lista abajo');
 });
 
 test('un dia afirmado y el otro negado en la misma frase: elige el dia afirmado', async () => {
@@ -1132,7 +1097,7 @@ test('en el paso de elegir hora, un cambio de dia negado y ambiguo va al modelo,
   const l = s.repo.leadPorTelefono('59899123456');
   assert.equal(l.meeting_time, null);
   const msgs = s.proveedor.getEnviados().filter((e) => e.to === '59899123456').map((e) => e.texto);
-  assert.equal(msgs.at(-1), 'Uh, entiendo. ¿Alguna otra semana te queda mejor?', 'lo atiende el modelo');
+  assert.match(msgs.at(-1), /^Uh, entiendo\. ¿Alguna otra semana te queda mejor\?\n\nHorarios del .+:\n1\. \d\d:\d\d/, 'lo atiende el modelo, con las horas de ese dia abajo');
 });
 
 // ── dia-primero-hora-despues: casos borde del paso de elegir hora ───────────

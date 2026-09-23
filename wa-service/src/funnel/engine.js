@@ -3,8 +3,9 @@
 const { S, palabraGlobal } = require('./states');
 const {
   eligioEsaHora, revisarFranja, textoDeFranja, nombroAlgunDia, tieneNegacion,
-  elegirDiaPorCodigo, elegirHoraPorCodigo,
+  elegirDiaPorCodigo, elegirHoraPorCodigo, indiceDeLista, pideSemanaQueViene,
 } = require('../agenda/eleccion');
+const { pegarLista } = require('./lista');
 const { enZona, instanteLocal } = require('../agenda/gcal');
 const { TRANSICIONES } = require('./transitions');
 const plantillas = require('../templates');
@@ -283,12 +284,25 @@ function crearEmbudo({
     repo.actualizarFunnel(leadId, conNorm);
   }
 
-  /** Los horarios que se le mostraron, tal como quedaron guardados. */
-  function leerHorarios(lead) {
+  /**
+   * Marca que va al final de `horarios_ofrecidos` cuando la lista de dias
+   * termino con "La semana que viene". No es una fecha: es lo unico que
+   * distingue "el numero 4 es la semana que viene" de "el 4 no existe", y se
+   * guarda porque lo que se le mostro al lead no se puede volver a calcular
+   * (el calendario cambia entre un mensaje y el siguiente).
+   */
+  const SEMANA_QUE_VIENE = 'semana_que_viene';
+
+  /** Lo que se le mostro, tal como quedo guardado: las fechas, y si cerraba con la semana que viene. */
+  function leerOferta(lead) {
     try {
-      return JSON.parse(lead.horarios_ofrecidos || '[]').map((s) => new Date(s));
+      const crudo = JSON.parse(lead.horarios_ofrecidos || '[]');
+      return {
+        fechas: crudo.filter((s) => s !== SEMANA_QUE_VIENE).map((s) => new Date(s)),
+        conSemanaQueViene: crudo.includes(SEMANA_QUE_VIENE),
+      };
     } catch (e) {
-      return [];
+      return { fechas: [], conSemanaQueViene: false };
     }
   }
 
@@ -312,9 +326,24 @@ function crearEmbudo({
    * codigo y se pega abajo del pitch de la IA. El modelo no la escribe —no
    * sabe que dias hay libres de verdad— asi que si la escribiera, inventaria.
    */
-  function listaDeDias(dias) {
+  function listaDeDias(dias, conSemanaQueViene = false) {
     const lineas = dias.map((d, i) => `${i + 1}. ${nombreDia(d)}`);
+    // Siempre ultima: su numero depende de cuantos dias haya.
+    if (conSemanaQueViene) lineas.push(`${dias.length + 1}. La semana que viene`);
     return `¿Qué día te queda mejor?\n\n${lineas.join('\n')}`;
+  }
+
+  /**
+   * La lista que el lead tiene a la vista, rearmada de lo guardado. La usa la
+   * conversacion: cuando el turno cae al modelo (una correccion, una duda), su
+   * respuesta tiene que salir con la lista de nuevo, o el lead se queda sin
+   * opciones. Vacia si no hay nada ofrecido.
+   */
+  function listaPendiente(lead) {
+    const { fechas, conSemanaQueViene } = leerOferta(lead);
+    if (!fechas.length) return '';
+    if (!lead.dia_en_foco) return listaDeDias(fechas, conSemanaQueViene);
+    return `Horarios del ${nombreDia(fechas[0])}:\n${listaDeHoras(fechas)}`;
   }
 
   /**
@@ -481,7 +510,22 @@ function crearEmbudo({
    * estado igual.
    */
   async function ofrecerDias(lead, situacion, entrada) {
-    const dias = await agenda.diasConHueco(ahora());
+    /**
+     * Lo que queda de la semana en curso y, ultima, "La semana que viene".
+     * Sin dias con hueco esta semana (viernes de tarde, sabado, domingo) se
+     * muestra directo la semana que viene, sin la opcion extra y sin nombrar la
+     * semana en curso: el lead no tiene por que enterarse de que esta vacia.
+     */
+    const estaSemana = await agenda.diasConHueco(ahora(), { semana: 'actual' });
+    let dias = estaSemana;
+    let conSemanaQueViene = false;
+    if (estaSemana.length) {
+      // Solo se ofrece si la semana siguiente tiene algo: una opcion que lleva
+      // a una lista vacia es peor que no ofrecerla.
+      conSemanaQueViene = (await agenda.diasConHueco(ahora(), { semana: 'proxima' })).length > 0;
+    } else {
+      dias = await agenda.diasConHueco(ahora(), { semana: 'proxima' });
+    }
 
     // Que Google deje de contestar no puede pasar en silencio. El lead igual
     // puede agendar —cae al camino del link— pero el bot deja de hacer lo
@@ -495,12 +539,49 @@ function crearEmbudo({
 
     const inicios = dias.map((d) => d.inicio);
     repo.actualizarFunnel(lead.id, {
-      horarios_ofrecidos: JSON.stringify(inicios.map((d) => d.toISOString())),
+      horarios_ofrecidos: JSON.stringify([
+        ...inicios.map((d) => d.toISOString()),
+        ...(conSemanaQueViene ? [SEMANA_QUE_VIENE] : []),
+      ]),
       dia_en_foco: null,
     });
 
-    if (!await decirIA(lead, situacion, '', listaDeDias(inicios))) return sinIA(lead, situacion);
+    if (!await decirIA(lead, situacion, '', listaDeDias(inicios, conSemanaQueViene))) return sinIA(lead, situacion);
     return S.HORARIOS_OFRECIDOS;
+  }
+
+  /**
+   * Eligio "La semana que viene": se le muestra esa semana, sin la opcion
+   * extra. Si en la misma frase ya dijo el dia ("el jueves que viene") se salta
+   * la lista y va directo a las horas de ese jueves.
+   */
+  async function irALaSemanaQueViene(lead, entrada) {
+    const dias = await agenda.diasConHueco(ahora(), { semana: 'proxima' });
+    if (!dias.length) return ofrecerDias(lead, 'dia_no_ofrecido', entrada);
+
+    const inicios = dias.map((d) => d.inicio);
+    // Solo si NOMBRO un dia: el "4" (o "el 4)") con que eligio la semana no es
+    // el cuarto dia de la lista nueva, y sin este chequeo se leia asi.
+    const directo = (!indiceDeLista(entrada) && nombroAlgunDia(entrada))
+      ? elegirDiaPorCodigo(entrada, inicios, cfg.TZ, ahora())
+      : null;
+    if (directo) return mostrarHorasDelDia(lead, directo);
+
+    repo.actualizarFunnel(lead.id, {
+      horarios_ofrecidos: JSON.stringify(inicios.map((d) => d.toISOString())),
+      dia_en_foco: null,
+    });
+    if (!await decirIA(lead, 'semana_que_viene', '', listaDeDias(inicios))) return sinIA(lead, 'semana_que_viene');
+    return S.HORARIOS_OFRECIDOS;
+  }
+
+  /** Todos los dias con hueco de esta semana y la que viene, para cambiar de dia a mitad de las horas. */
+  async function todosLosDias() {
+    const [estaSemana, proxima] = await Promise.all([
+      agenda.diasConHueco(ahora(), { semana: 'actual' }),
+      agenda.diasConHueco(ahora(), { semana: 'proxima' }),
+    ]);
+    return [...estaSemana, ...proxima].map((d) => d.inicio);
   }
 
   /** Paso 2: le muestra las horas de un dia YA elegido. */
@@ -527,9 +608,26 @@ function crearEmbudo({
    * dia, o fecha). Si no se entiende nada, o si nombro un dia real que no es
    * ninguno de los ofrecidos, se lo dice y se vuelve a ofrecer.
    */
-  async function decidirDia(lead, entrada, diasOfrecidos) {
+  async function decidirDia(lead, entrada, diasOfrecidos, conSemanaQueViene = false) {
+    /**
+     * "La semana que viene", por nombre o por su numero (el ultimo de la lista).
+     *
+     * Por nombre va ANTES de elegir dia: "el jueves que viene" nombra un
+     * jueves, y sin esto se agendaba el de esta semana. Con una negacion de por
+     * medio ("esta semana no puedo") no se decide aca: no es lo mismo pedirla
+     * que decir que esta no sirve, y de eso se ocupa la conversacion.
+     */
+    if (conSemanaQueViene && !tieneNegacion(entrada) && pideSemanaQueViene(entrada)) {
+      return irALaSemanaQueViene(lead, entrada);
+    }
+
     const elegido = elegirDiaPorCodigo(entrada, diasOfrecidos, cfg.TZ, ahora());
     if (elegido) return mostrarHorasDelDia(lead, elegido);
+
+    // El numero que sigue al ultimo dia: "4" en una lista de tres dias mas la semana que viene.
+    if (conSemanaQueViene && indiceDeLista(entrada)?.n === diasOfrecidos.length + 1) {
+      return irALaSemanaQueViene(lead, entrada);
+    }
 
     /**
      * Una negacion que elegirDiaPorCodigo no supo resolver en un solo dia
@@ -567,11 +665,13 @@ function crearEmbudo({
     let decision;
     if (elegida) {
       decision = { accion: 'agendar', inicio: elegida };
+    } else if (!tieneNegacion(entrada) && pideSemanaQueViene(entrada)) {
+      return irALaSemanaQueViene(lead, entrada);
     } else if (nombroAlgunDia(entrada)) {
       // Quiere otro dia. Se resuelve en codigo, igual que el paso 1: se
-      // vuelve a buscar que dias hay y se elige de ahi, no del dia de hoy.
-      const dias = await agenda.diasConHueco(ahora());
-      const inicios = dias.map((d) => d.inicio);
+      // vuelve a buscar que dias hay (esta semana y la que viene) y se elige
+      // de ahi, no del dia de hoy.
+      const inicios = await todosLosDias();
       const otroDia = elegirDiaPorCodigo(entrada, inicios, cfg.TZ, ahora());
       if (otroDia) return mostrarHorasDelDia(lead, otroDia);
       // Con una negacion de por medio ("el miercoles no puedo, y a las 12
@@ -780,10 +880,10 @@ function crearEmbudo({
        * solo para lo que el codigo no entiende.
        */
       case S.HORARIOS_OFRECIDOS: {
-        const ofrecidos = leerHorarios(lead);
+        const { fechas: ofrecidos, conSemanaQueViene } = leerOferta(lead);
         if (!ofrecidos.length) return alEntrar(lead, S.MEETING_SENT, entrada);
 
-        if (!lead.dia_en_foco) return decidirDia(lead, entrada, ofrecidos);
+        if (!lead.dia_en_foco) return decidirDia(lead, entrada, ofrecidos, conSemanaQueViene);
         return decidirHora(lead, entrada, ofrecidos);
       }
 
@@ -1054,8 +1154,15 @@ function crearEmbudo({
           { porAudio },
         );
         if (!r) return sinIA(lead, 'conversacion');
+        /**
+         * La lista que tenia a la vista vuelve a salir abajo de la respuesta.
+         * El 22-9 a las 21:40 el lead corrigio "dije pagina web" en vez de
+         * elegir dia; el modelo contesto bien pero sin lista, y el lead quedo
+         * sin opciones para elegir.
+         */
         await this._conversar(lead, entrada, r, {
           actual, califica: false, puedeCerrar: false, porAudio,
+          sufijoLista: listaPendiente(repo.leadPorId(lead.id)),
         });
         // Sigue eligiendo horario: la conversacion no lo saca de ahi.
         repo.actualizarFunnel(lead.id, { fsm_state: S.HORARIOS_OFRECIDOS });
@@ -1070,7 +1177,7 @@ function crearEmbudo({
      * no falta ningun dato, el cierre lo hace el codigo — ofrecer la reunion
      * sale del score, no de lo que le parezca al modelo.
      */
-    async _conversar(lead, entrada, { texto, datos, aplaza, aplazaFrase, queQuiere }, { actual, califica, puedeCerrar, porAudio = false }) {
+    async _conversar(lead, entrada, { texto, datos, aplaza, aplazaFrase, queQuiere }, { actual, califica, puedeCerrar, porAudio = false, sufijoLista = '' }) {
       if (Object.keys(datos).length) {
         guardarCampos(lead.id, datos, { porAudio });
         logger?.info({ leadId: lead.id, campos: Object.keys(datos) }, 'la IA extrajo datos');
@@ -1215,7 +1322,7 @@ function crearEmbudo({
         }
       }
 
-      decir(lead, texto);
+      decir(lead, pegarLista(texto, sufijoLista));
 
       // Quien decide mandar el link es la IA —lo tiene en las instrucciones de
       // su etapa— pero quien se entera de que salio tiene que ser el codigo.
