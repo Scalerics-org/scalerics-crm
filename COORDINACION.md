@@ -533,6 +533,14 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **22/9 — J (agente de marketing): Finanzas, el tipo de cambio en su propia línea (pedido de Juan).**
+  Rama `fix/finanzas-lista-alineada-2`, sale de `main`,
+  [PR #97](https://github.com/Scalerics-org/scalerics-crm/pull/97). Sin mergear ni
+  deployar. El texto gris del original en pesos ("$ 4.880 @ 40") corría el
+  monto en rojo/verde de columna porque estaba al lado, en un bloque
+  `text-align:right`. Ahora es una segunda línea, misma columna: el monto
+  siempre queda alineado.
+
 - **22/9 — L (bot de WhatsApp, tarea 5 — dia primero, hora despues): rama
   `feat/wa-dia-primero`, worktree `../scalerics-crm-wa-a-main`, solo `wa-service/`.
   Pedido de K/Juan: al ofrecer horarios, primero lista de dias numerada, y recien
