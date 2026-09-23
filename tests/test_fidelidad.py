@@ -572,3 +572,9 @@ def test_la_agenda_esta_en_outbound():
     # La agenda nunca le pide nada al calendario de la agencia.
     js = html[html.index("// ── Agenda ─"):html.index("// ========== FIN Fidelidad ==========")]
     assert "'/api/calendar" not in js and '"/api/calendar' not in js
+
+
+def test_el_js_de_fidelidad_no_tiene_marcadores_de_jinja():
+    # Va pegado al HTML sin {% raw %}: los tests con node leen el HTML crudo.
+    for marca in ("{{", "{%", "{#", "}}", "%}", "#}"):
+        assert marca not in dashboard.FID_JS, marca

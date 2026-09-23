@@ -162,6 +162,8 @@ def test_roles_existentes_reciben_el_panel_meta(tmp_path):
     init_db(db)  # el arranque siguiente
 
     for nombre, paneles in _roles(db).items():
+        if nombre == "Vendedor Fidelidad":   # de afuera: ningun reparto le suma paneles
+            continue
         assert "meta" in paneles, f"el rol {nombre} tiene que ver el panel de Meta"
         assert "cola" in paneles and "wa" in paneles, "no se pisa el resto del array"
 
@@ -189,7 +191,9 @@ def test_migracion_de_panel_es_idempotente(tmp_path):
     tercera = _roles(db)
 
     assert primera == tercera, "arrancar de nuevo no cambia nada"
-    for paneles in tercera.values():
+    for nombre, paneles in tercera.items():
+        if nombre == "Vendedor Fidelidad":   # de afuera: ningun reparto le suma paneles
+            continue
         assert paneles.count("meta") == 1, "'meta' no se puede duplicar en el array"
 
 

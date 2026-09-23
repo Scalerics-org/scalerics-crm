@@ -265,7 +265,9 @@ ESC_JS = r"""function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/<
 # `if (a.tipo !== 'audio') return ''`. La foto llegaba al CRM y no se veia en
 # ningun lado, asi que la conversacion del panel quedaba con un hueco.
 # Outbound e Inteligencia comercial de Scalerics Fidelidad (services/fidelidad.py).
-# Crudo y entre {% raw %}: el HTML pasa por Jinja y el JS usa barras.
+# Crudo porque el JS usa barras. Va sin {% raw %}: los tests con node leen el
+# HTML antes de Jinja y el marcador les rompe el script. Por eso FID_JS no
+# puede tener marcadores de Jinja (lo chequea tests/test_fidelidad.py).
 FID_JS = r"""// ========== Fidelidad ==========
 // Outbound e Inteligencia comercial de Scalerics Fidelidad (23/9). La logica
 // (cuando vuelve a la cola cada prospecto, el puntaje, las metricas) vive en
@@ -19686,7 +19688,7 @@ async function loadActivity() {
 # Los pedazos de JS que viven afuera para poder probarse se pegan aca.
 DASHBOARD_HTML = DASHBOARD_HTML.replace("/*ESC_JS*/", ESC_JS).replace(
     "/*WA_MEDIOS_JS*/", WA_MEDIOS_JS
-).replace("/*FID_JS*/", "{% raw %}" + FID_JS + "{% endraw %}")
+).replace("/*FID_JS*/", FID_JS)
 
 
 _calendly_sync_state = {"at": 0.0}
