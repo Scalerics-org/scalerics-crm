@@ -145,7 +145,8 @@ def test_marketing_tiene_sus_paneles_en_orden_y_captacion_ya_no_tiene_email():
         ("instagram", "Instagram"), ("sombra", "Recomendaciones de pauta")]
     assert dict((p, icono) for p, icono, _ in items)["linkedin"] == "linkedin"
     captacion = _menu()[_menu().index('nav-section-label">CAPTACIÓN'):]
-    assert re.findall(r'id="nav-(\w+)"', captacion) == ["cola", "metrics", "sdr"]
+    # "credenciales" (SEGURIDAD) es la ultima sección del menú, admin-only.
+    assert re.findall(r'id="nav-(\w+)"', captacion) == ["cola", "metrics", "sdr", "credenciales"]
     assert _menu().count('id="nav-email_mkt"') == 1
 
 

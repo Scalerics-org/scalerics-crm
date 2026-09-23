@@ -1366,6 +1366,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-equipo .nav-icon{stroke:#a3e635}
 #nav-ausencias .nav-icon{stroke:#e879f9}
 #nav-horarios .nav-icon{stroke:#fbbf24}
+#nav-credenciales .nav-icon{stroke:#94a3b8}
 #nav-flujos .nav-icon{stroke:#5eead4}
 #nav-seg_leads .nav-icon{stroke:#fb7185}
 #nav-daily .nav-icon{stroke:#38bdf8}
@@ -1398,6 +1399,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-equipo.active .nav-icon{stroke:#bef264}
 #nav-ausencias.active .nav-icon{stroke:#f0abfc}
 #nav-horarios.active .nav-icon{stroke:#fde68a}
+#nav-credenciales.active .nav-icon{stroke:#cbd5e1}
 #nav-flujos.active .nav-icon{stroke:#99f6e4}
 #nav-seg_leads.active .nav-icon{stroke:#fda4af}
 #nav-plantillas.active .nav-icon{stroke:#d8b4fe}
@@ -1426,6 +1428,7 @@ body.light #nav-projects .nav-icon{stroke:#a16207}
 body.light #nav-equipo .nav-icon{stroke:#4d7c0f}
 body.light #nav-ausencias .nav-icon{stroke:#a21caf}
 body.light #nav-horarios .nav-icon{stroke:#92400e}
+body.light #nav-credenciales .nav-icon{stroke:#475569}
 body.light #nav-flujos .nav-icon{stroke:#0f766e}
 body.light #nav-seg_leads .nav-icon{stroke:#be123c}
 body.light #nav-plantillas .nav-icon{stroke:#9333ea}
@@ -2719,7 +2722,7 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div class="nav-item" id="nav-cola" onclick="showPanel('cola')"><i data-lucide="inbox" class="nav-icon"></i> Outbound</div>
   <div class="nav-item" id="nav-metrics" onclick="showPanel('metrics')"><i data-lucide="bar-chart-2" class="nav-icon"></i> Inteligencia comercial</div>
   <div class="nav-item" id="nav-sdr" onclick="showPanel('sdr')"><i data-lucide="phone-call" class="nav-icon"></i> SDR</div>
-  <div class="nav-section-label" id="nav-section-seguridad" style="display:none">SEGURIDAD</div>
+  <div class="nav-section-label">SEGURIDAD</div>
   <div class="nav-item" id="nav-credenciales" onclick="showPanel('credenciales')" style="display:none"><i data-lucide="key-round" class="nav-icon"></i> Contraseñas</div>
   </div>
   <div class="sidebar-bottom">
@@ -9769,9 +9772,8 @@ const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activ
       const a = document.getElementById('admin-link');
       if (a) a.style.display = 'block';
       // Contraseñas es solo para admin, aparte del sistema de panel_access
-      // (pedido de Juan, 22/9: nunca se puede asignar a un rol).
-      const sec = document.getElementById('nav-section-seguridad');
-      if (sec) sec.style.display = 'block';
+      // (pedido de Juan, 22/9: nunca se puede asignar a un rol). El titulo
+      // "SEGURIDAD" se muestra u oculta solo, via _ocultarGruposVacios().
       const navCred = document.getElementById('nav-credenciales');
       if (navCred) navCred.style.display = 'flex';
     }
@@ -9786,7 +9788,6 @@ const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activ
           if (nav) nav.style.display = 'none';
         }
       });
-      _ocultarGruposVacios();
       if (!access.includes(activePanel)) {
         // El primero en el orden del menu que el rol tenga Y que exista. Los
         // permisos guardados pueden traer paneles que ya no estan en la
@@ -9798,6 +9799,9 @@ const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activ
         if (first) showPanel(first);
       }
     }
+    // Corre siempre (no solo con access restringido): "SEGURIDAD" queda
+    // solo si Contraseñas sigue oculta por no ser admin.
+    _ocultarGruposVacios();
     _buildMobileNav(allowedPanels);
     _syncMobileNav(activePanel);
     // Las opciones por persona debajo de "Daily Programador" salen de la base.
