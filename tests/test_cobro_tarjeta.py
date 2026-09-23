@@ -246,3 +246,88 @@ def test_sin_el_panel_de_finanzas_no_se_ve(app):
     assert c.get("/api/finanzas/tarjeta/desglose?modo=precio&monto=1"
                  "&tarjeta=visa_credito").status_code in (302, 401, 403)
     assert c.post("/api/finanzas/cobros-tarjeta", json={}).status_code in (302, 401, 403)
+
+
+# ── doble envío: el mismo cobro no se registra dos veces ─────────────────────
+
+def _cobro(**cambios):
+    return {"modo": "precio", "monto": 300, "tarjeta": "visa_credito",
+            "fecha": _hoy(), "concepto": "Mantenimiento", **cambios}
+
+
+def test_el_mismo_cobro_dos_veces_seguidas_se_registra_una_sola(app, cli):
+    """Doble clic, reintento de red o segunda pestaña: cada registro crea 3
+    movimientos, así que duplicarlo infla ventas e IVA."""
+    db = app.config["_DB"]
+    primero = cli.post("/api/finanzas/cobros-tarjeta", json=_cobro())
+    segundo = cli.post("/api/finanzas/cobros-tarjeta", json=_cobro())
+
+    assert primero.status_code == 201
+    assert segundo.status_code == 409
+    cuerpo = segundo.get_json()
+    assert cuerpo["duplicado"] is True and cuerpo["id"] == primero.get_json()["id"]
+    assert "ya se registró" in cuerpo["error"]
+    assert len(listar_movimientos(db)) == 3, "los movimientos del primero, no seis"
+    assert len(cli.get("/api/finanzas/cobros-tarjeta").get_json()) == 1
+    assert round(resumen_iva(db, _hoy()[:7])["iva_cobrado"], 2) == 66.0
+
+
+def test_un_cobro_distinto_no_es_duplicado(app, cli):
+    """Cada dato que cambia hace que sea otro cobro."""
+    db = app.config["_DB"]
+    cid = insert_business(db, {"name": "Panadería López", "phone": "+598700001"})
+    variantes = [
+        _cobro(), _cobro(monto=301), _cobro(concepto="Otro"),
+        _cobro(tarjeta="master_credito"), _cobro(client_id=cid),
+        _cobro(moneda="UYU", tipo_cambio=40),
+    ]
+    for v in variantes:
+        r = cli.post("/api/finanzas/cobros-tarjeta", json=v)
+        assert r.status_code == 201, (v, r.get_json())
+    assert len(cli.get("/api/finanzas/cobros-tarjeta").get_json()) == len(variantes)
+
+
+def test_pasada_la_ventana_el_mismo_cobro_se_acepta(app, cli):
+    """Dos cuotas iguales del mismo cliente son posibles: el bloqueo es solo
+    para el doble envío de hace instantes."""
+    db = app.config["_DB"]
+    assert cli.post("/api/finanzas/cobros-tarjeta", json=_cobro()).status_code == 201
+
+    conn = sqlite3.connect(db)
+    conn.execute("UPDATE finanzas_cobros_tarjeta SET created_at = datetime('now', '-5 minutes')")
+    conn.commit()
+    conn.close()
+
+    assert cli.post("/api/finanzas/cobros-tarjeta", json=_cobro()).status_code == 201
+    assert len(cli.get("/api/finanzas/cobros-tarjeta").get_json()) == 2
+
+
+def test_dos_pedidos_simultaneos_registran_uno_solo(app):
+    """Dos pestañas a la vez: el candado de escritura hace que el segundo vea
+    la fila del primero."""
+    import threading
+    db = app.config["_DB"]
+    clientes = [_cliente_http(app, f"socio{i}@scalerics.com", ["finanzas"]) for i in range(4)]
+    codigos, barrera = [], threading.Barrier(len(clientes))
+
+    def _enviar(c):
+        barrera.wait()
+        codigos.append(c.post("/api/finanzas/cobros-tarjeta", json=_cobro()).status_code)
+
+    hilos = [threading.Thread(target=_enviar, args=(c,)) for c in clientes]
+    for h in hilos:
+        h.start()
+    for h in hilos:
+        h.join()
+
+    assert sorted(codigos) == [201, 409, 409, 409], codigos
+    assert len(listar_movimientos(db)) == 3
+
+
+def test_un_duplicado_no_toca_nada_en_la_base(app, cli):
+    """El rechazo es todo o nada: ni un movimiento suelto."""
+    db = app.config["_DB"]
+    cli.post("/api/finanzas/cobros-tarjeta", json=_cobro())
+    antes = sorted(m["id"] for m in listar_movimientos(db))
+    cli.post("/api/finanzas/cobros-tarjeta", json=_cobro())
+    assert sorted(m["id"] for m in listar_movimientos(db)) == antes

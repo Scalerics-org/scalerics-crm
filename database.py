@@ -4486,6 +4486,22 @@ _COBRO_TARJETA_COLUMNS = {
 }
 
 
+# Un cobro idéntico (fecha, cliente, concepto, tarjeta, moneda y total) dentro
+# de esta ventana es un doble envío, no dos cobros: un doble clic, un reintento
+# de red o dos pestañas. Cada registro crea 3 movimientos, así que duplicarlo
+# infla ventas e IVA. Pasada la ventana, dos cobros iguales SÍ son posibles
+# (dos cuotas del mismo monto) y se aceptan.
+COBRO_DUPLICADO_SEGUNDOS = 60
+
+
+class CobroDuplicado(Exception):
+    """El cobro ya se registró hace instantes; `id` es el que quedó."""
+
+    def __init__(self, cobro_id: int):
+        super().__init__(f"cobro duplicado (ya existe el {cobro_id})")
+        self.id = cobro_id
+
+
 def crear_cobro_tarjeta(db_path: str, cobro: dict, ingreso: dict,
                         comision: dict, plexo: dict | None) -> int:
     """Crea los movimientos del cobro y la fila que los ata, todo o nada.
@@ -4511,7 +4527,23 @@ def crear_cobro_tarjeta(db_path: str, cobro: dict, ingreso: dict,
 
     conn = _connect(db_path)
     try:
+        # BEGIN IMMEDIATE toma el candado de escritura ANTES de mirar si ya está:
+        # con dos pedidos simultáneos (doble clic, dos pestañas) el segundo
+        # espera al primero y ve su fila; sin esto los dos miraban, no veían
+        # nada, y registraban los dos.
+        conn.execute("BEGIN IMMEDIATE")
         cur = conn.cursor()
+        previo = cur.execute(
+            "SELECT id FROM finanzas_cobros_tarjeta "
+            "WHERE fecha = ? AND COALESCE(client_id, 0) = COALESCE(?, 0) "
+            "AND concepto = ? AND tarjeta = ? AND moneda = ? AND total = ? "
+            "AND created_at >= datetime('now', ?) ORDER BY id LIMIT 1",
+            (cobro["fecha"], cobro.get("client_id"), cobro["concepto"],
+             cobro["tarjeta"], cobro["moneda"], cobro["total"],
+             f"-{COBRO_DUPLICADO_SEGUNDOS} seconds")).fetchone()
+        if previo:
+            conn.rollback()
+            raise CobroDuplicado(previo["id"])
         ids = {"ingreso_id": _ins(cur, "finanzas_movimientos", ingreso),
                "comision_id": _ins(cur, "finanzas_movimientos", comision),
                "plexo_id": _ins(cur, "finanzas_movimientos", plexo) if plexo else None}
