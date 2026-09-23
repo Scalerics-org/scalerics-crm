@@ -29,7 +29,7 @@ from services.finanzas import (BALANCE_TIPOS, CATEGORIAS, MONEDAS, a_usd,
                                rendimiento_pauta, resumen, resumen_iva,
                                saldar_por_cobrar)
 
-from database import (borrar_cobro_tarjeta, crear_cobro_tarjeta, get_ajuste,
+from database import (CobroDuplicado, borrar_cobro_tarjeta, crear_cobro_tarjeta, get_ajuste,
                       get_cobro_tarjeta, guardar_ajuste, listar_cobros_tarjeta,
                       marcar_acreditado)
 from services.cobro_tarjeta import (MODOS, TARJETAS, desglosar,
@@ -904,14 +904,21 @@ def api_crear_cobro_tarjeta():
 
     esperada = sumar_dias_habiles(date.fromisoformat(fecha), d["dias_habiles"])
     db = _db()
-    cid = crear_cobro_tarjeta(db, {
-        "fecha": fecha, "client_id": client_id, "concepto": concepto,
-        "tarjeta": d["tarjeta"], "comision_pct": d["comision_pct"],
-        "moneda": moneda, "tipo_cambio": tc, "precio": d["precio"],
-        "total": d["total"], "deposito": d["deposito"],
-        "acreditacion_esperada": esperada.isoformat(),
-        "created_by_name": nombre,
-    }, ingreso, comision, plexo)
+    try:
+        cid = crear_cobro_tarjeta(db, {
+            "fecha": fecha, "client_id": client_id, "concepto": concepto,
+            "tarjeta": d["tarjeta"], "comision_pct": d["comision_pct"],
+            "moneda": moneda, "tipo_cambio": tc, "precio": d["precio"],
+            "total": d["total"], "deposito": d["deposito"],
+            "acreditacion_esperada": esperada.isoformat(),
+            "created_by_name": nombre,
+        }, ingreso, comision, plexo)
+    except CobroDuplicado as dup:
+        # Doble clic, reintento o segunda pestaña: el primero ya quedó. 409 y
+        # no 201, para que nadie crea que este pedido creó algo.
+        return jsonify({"ok": False, "duplicado": True, "id": dup.id,
+                        "error": "Ese cobro ya se registró hace un momento. "
+                                 "Revisá la lista antes de cargarlo de nuevo."}), 409
     log_activity(db, nombre, "finanzas_cobro_tarjeta_creado", "finanzas", cid,
                  concepto, f"{moneda} {d['total']} {d['tarjeta']}", user_id=uid)
     return jsonify({"ok": True, "id": cid, "desglose": d,
