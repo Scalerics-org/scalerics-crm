@@ -543,10 +543,35 @@ leads de Meta se renombró a **D** para deshacer el empate.
   está en ninguno de los dos `ALL_PANELS`** (ni el del dashboard ni el del
   editor de roles): así nunca se puede asignar a un rol por accidente, ni
   siquiera desde el editor. La visibilidad del ítem de menú (sección
-  "SEGURIDAD", al final de todo) se resuelve aparte, con el mismo chequeo
+  "SEGURIDAD", al final de todo) se resuelve con el mismo mecanismo genérico
+  que ya ocultaba grupos vacíos (`_ocultarGruposVacios`), más el chequeo
   `m.is_admin` que ya mostraba "Usuarios". El servidor bloquea igual con
   `require_admin` en todo el blueprint, aunque alguien fuerce el fetch.
   Sin `CREDENCIALES_KEY` puesta, el panel avisa en vez de tirar 500.
+
+- **22/9 — J (agente de marketing): PR #91 se perdió al mergear, recuperado (pedido de Juan).**
+  Rama `fix/linkedin-otra-idea-recuperado`, sale de `main`,
+  [PR #96](https://github.com/Scalerics-org/scalerics-crm/pull/96). **Mergeado** (23/9,
+  verificado con `git merge-base --is-ancestor` — esta vez sí llegó a `main`).
+  **Importante para quien lea esto:** GitHub marca el PR #91 ("LinkedIn: otra idea
+  y comentarle una mejora a Claude") como *Merged* el 22/9 18:57, pero su commit
+  (`a64b5c8`) **no es ancestro de `main`** — no llegó a estar en producción a
+  pesar de la marca verde. No tengo explicación de por qué; lo verifiqué con
+  `git merge-base --is-ancestor` y con el propio código corriendo (Juan no
+  veía el cuadro de "pedile un cambio a Claude"). Este PR #96 lo recupera con
+  un cherry-pick de `a64b5c8` sobre el `main` actual. **Si en algún momento
+  desaparece de nuevo algo que GitHub dice mergeado, no confiar en la marca:
+  chequear `git log origin/main | grep '#N'` o
+  `git merge-base --is-ancestor <sha> origin/main`.**
+  De paso, en el mismo PR: los borradores **descartados ya no se muestran** en
+  el panel (antes quedaban atenuados con un botón para volver a borrador).
+
+- **22/9 — J (agente de marketing): Finanzas, el tipo de cambio en su propia línea (pedido de Juan).**
+  Rama `fix/finanzas-lista-alineada-2`, [PR #97](https://github.com/Scalerics-org/scalerics-crm/pull/97).
+  **Mergeado.** El texto gris del original en pesos ("$ 4.880 @ 40") corría el
+  monto en rojo/verde de columna porque estaba al lado, en un bloque
+  `text-align:right`. Ahora es una segunda línea, misma columna: el monto
+  siempre queda alineado.
 
 - **22/9 — L (bot de WhatsApp, tarea 5 — dia primero, hora despues): rama
   `feat/wa-dia-primero`, worktree `../scalerics-crm-wa-a-main`, solo `wa-service/`.
