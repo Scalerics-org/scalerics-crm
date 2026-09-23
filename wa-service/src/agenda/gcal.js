@@ -20,6 +20,9 @@ const API = 'https://www.googleapis.com/calendar/v3';
 // parecia un problema de credenciales y no lo era.
 const AGENTE = 'scalerics-wa/1.0';
 
+/** Los dias en el codigo corto de enZona, lunes primero: la semana termina el domingo. */
+const ORDEN_SEMANA = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+
 /** Partes de una fecha en una zona horaria, sin librerias. */
 function enZona(fecha, tz) {
   const p = new Intl.DateTimeFormat('en-CA', {
@@ -379,7 +382,7 @@ function crearAgenda({ cfg, logger = null, fetch: _fetch = globalThis.fetch } = 
     },
 
     /**
-     * Los proximos dias que tienen al menos un hueco, hasta AGENDA_MAX_DIAS.
+     * Los dias de UNA semana que tienen al menos un hueco.
      *
      * Paso 1 de agendar dia-primero-hora-despues: antes de mostrar horas, el
      * lead elige el DIA de una lista numerada. `horariosDisponibles` mezcla
@@ -387,17 +390,30 @@ function crearAgenda({ cfg, logger = null, fetch: _fetch = globalThis.fetch } = 
      * flujo viejo, que muestra todo junto— pero para listar dias hace falta
      * saber, dia por dia, si tiene algo libre, sin mezclar las horas.
      *
+     * `semana`: 'actual' es lo que queda de la semana en curso, de hoy hasta el
+     * domingo (los fines de semana no salen solos: no tienen franja salvo que
+     * la config los incluya); 'proxima' es la semana siguiente, de lunes a
+     * domingo. El dia sin ningun hueco no aparece.
+     *
      * @returns {Promise<{dia: string, inicio: Date}[]>} un representante (el
      *   primer hueco) por dia, en orden. `inicio` sirve para tramosDelDia /
      *   slotsDelDia del paso siguiente y para armar la fecha en palabras.
      */
-    async diasConHueco(ahora = new Date()) {
+    async diasConHueco(ahora = new Date(), { semana = 'actual' } = {}) {
       if (!activo) return [];
 
       const { franjaDelDia } = require('./eleccion');
       const unica = { desde: cfg.AGENDA_DESDE, hasta: cfg.AGENDA_HASTA, dias: cfg.AGENDA_DIAS };
       const piso = new Date(ahora.getTime() + cfg.AGENDA_AVISO_MIN_HORAS * 3600_000);
-      const techo = new Date(ahora.getTime() + cfg.AGENDA_DIAS_ADELANTE * 86400_000);
+
+      // Cuantos dias faltan para el domingo, contando desde hoy en la zona del
+      // bot (no la del servidor: a las 22:00 de un viernes en Montevideo ya es
+      // sabado en UTC).
+      const { diaSemana: hoySemana } = enZona(ahora, tz);
+      const hastaElDomingo = 6 - ORDEN_SEMANA.indexOf(hoySemana);
+      const desdeDia = semana === 'proxima' ? hastaElDomingo + 1 : 0;
+      const hastaDia = semana === 'proxima' ? hastaElDomingo + 7 : hastaElDomingo;
+      const techo = new Date(ahora.getTime() + (hastaDia + 1) * 86400_000);
 
       let ocupados;
       try {
@@ -414,7 +430,7 @@ function crearAgenda({ cfg, logger = null, fetch: _fetch = globalThis.fetch } = 
       };
 
       const dias = [];
-      for (let d = 0; d <= cfg.AGENDA_DIAS_ADELANTE; d++) {
+      for (let d = desdeDia; d <= hastaDia && d <= cfg.AGENDA_DIAS_ADELANTE; d++) {
         if (dias.length >= cfg.AGENDA_MAX_DIAS) break;
 
         const ref = new Date(ahora.getTime() + d * 86400_000);

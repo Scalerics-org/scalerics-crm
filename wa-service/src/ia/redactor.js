@@ -6,6 +6,7 @@ const { quitar: quitarJerga } = require('./jerga');
 const { construirRedaccion, situaciones } = require('./prompt');
 const { mencionaPlata } = require('./precio');
 const { cambiaLaNecesidad } = require('./necesidad');
+const { TIPO_PROYECTO } = require('../templates/messages');
 
 const MAX_CARACTERES = 900;
 
@@ -76,12 +77,12 @@ function crearRedactor({ modelo = null, calendly = '', logger = null } = {}) {
        * un mensaje con la solucion equivocada es malo, pero no contestar es
        * peor, y del otro lado hay alguien esperando.
        */
-      if (cambiaLaNecesidad(lead.needs, crudo)) {
+      if (cambiaLaNecesidad(lead.needs, crudo, lead.business_type)) {
         logger?.warn({ leadId: lead.id, situacion, needs: lead.needs, crudo },
           'el mensaje le cambiaba lo que pidio: se reescribe');
         const salto = String.fromCharCode(10);
         const otra = await pedir(
-          salto + salto + `OJO: el lead pidió ${lead.needs}. Hablale de eso y no de otra cosa.`,
+          salto + salto + `OJO: el lead pidió ${lead.needs || TIPO_PROYECTO[lead.business_type]}. Hablale de eso y no de otra cosa.`,
         );
         if (otra) crudo = otra;
       }

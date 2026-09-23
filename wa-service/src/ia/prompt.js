@@ -1,6 +1,6 @@
 'use strict';
 
-const { GANCHOS } = require('../templates/messages');
+const { GANCHOS, TIPO_PROYECTO } = require('../templates/messages');
 
 /**
  * Todo lo que el lead lee lo escribe el modelo, en el momento. Aca no hay
@@ -136,7 +136,14 @@ function contextoDelLead(lead) {
     l.push(`Su negocio es ${lead.business_name}.`);
   }
   if (lead.rubro) l.push(`Rubro: ${lead.rubro}.`);
-  if (lead.business_type) l.push(`Tipo de proyecto: ${lead.business_type}.`);
+  /**
+   * Lo que necesita, en palabras. Antes esto imprimia el numero de opcion
+   * ("Tipo de proyecto: 1.") que al modelo no le dice nada, y con un rubro con
+   * gancho se quedaba con el gancho: el 22-9 a Los Sopranos, que habia pedido
+   * una pagina web, el pitch le hablo de "tu sistema de pedidos online".
+   */
+  const tipo = TIPO_PROYECTO[lead.business_type];
+  if (tipo) l.push(`Tipo de proyecto: ${tipo}.`);
   if (lead.budget) l.push(`Presupuesto: opción ${lead.budget}.`);
   if (lead.team_size) l.push(`Equipo: opción ${lead.team_size}.`);
   if (lead.instagram_web) l.push(`Redes: ${lead.instagram_web}.`);
@@ -158,7 +165,19 @@ function contextoDelLead(lead) {
     l.push(`YA TIENE una videollamada agendada: ${cuando}.`);
   }
 
-  const gancho = GANCHOS[lead.rubro_norm];
+  /**
+   * El gancho es lo que se les dice a los que TODAVIA no contaron que
+   * necesitan: "los locales como el tuyo suelen pedir un sistema de pedidos".
+   * Si ya lo dijeron —el tipo de proyecto, lo que buscan o lo que pusieron en
+   * el formulario— el gancho compite con su pedido y el modelo puede quedarse
+   * con el gancho. Ahi se omite, y se le dice que hable de lo que pidio.
+   */
+  const yaDijoQueNecesita = Boolean(tipo && lead.business_type !== 6) || Boolean(lead.needs || lead.necesidad);
+  if (yaDijoQueNecesita) {
+    l.push('Ya te dijo qué necesita: hablale de eso, no de otra cosa ni de lo que suele pedirse en su rubro.');
+  }
+
+  const gancho = yaDijoQueNecesita ? null : GANCHOS[lead.rubro_norm];
   const base = l.length ? l.join(' ') : 'Todavía no sabemos nada de él.';
   return `# Este lead\n${base}${gancho ? `\n\nGancho útil para su rubro: ${gancho}` : ''}`;
 }
@@ -317,6 +336,9 @@ Una línea, sin reproches y sin hacerlo sentir tonto: pedile que te diga el núm
 
     dia_no_ofrecido: `Nombró un día que no está entre los que le ofreciste.
 Una línea: decile que ese día no tenés (sin explicar por qué) y que elija uno de estos. El sistema pone la lista abajo de tu mensaje — no la repitas ni inventes otra.`,
+
+    semana_que_viene: `Le mostraste los días que quedaban de esta semana y eligió ver la semana que viene.
+Una línea, sin pitch: confirmale que vas con la semana que viene y pedile que elija día. El sistema pone la lista abajo de tu mensaje — no la repitas ni inventes días.`,
 
     horario_no_entendido: `Le mostraste una lista numerada de horarios de un día y contestó algo que no se entiende cuál eligió.
 Una línea, sin reproches y sin hacerlo sentir tonto: pedile que te diga el número o la hora. El sistema vuelve a mostrar la lista abajo de tu mensaje — no la repitas vos.

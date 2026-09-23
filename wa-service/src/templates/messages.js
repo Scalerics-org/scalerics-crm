@@ -244,6 +244,7 @@ module.exports = {
   AVISO_AGENDA_CAIDA,
   PLANTILLAS,
   GANCHOS,
+  TIPO_PROYECTO,
   fichaAM,
   avisoRespuesta,
   avisoContactoNuevo,
