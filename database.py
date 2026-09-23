@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import sqlite3
@@ -1137,6 +1138,47 @@ def init_db(db_path: str) -> None:
         # se descontó.
         _add_column(conn, "finanzas_recurrentes", "facturado",
                     "INTEGER NOT NULL DEFAULT 0")
+
+        # ── cobros con tarjeta (Plexo) ────────────────────────────────────────
+        # Ajustes de Finanzas que se editan desde la pantalla: clave -> JSON.
+        # Hoy la única clave es 'cobro_tarjeta' (comisiones de cada tarjeta,
+        # días de acreditación, costos de Plexo).
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS finanzas_ajustes (
+                clave      TEXT PRIMARY KEY,
+                valor      TEXT NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        # Un cobro con tarjeta son TRES movimientos (el ingreso con su IVA
+        # ventas, la comisión de la tarjeta y lo que cobra Plexo, los dos con
+        # IVA compras) más un dato que ningún movimiento tiene: cuánto y cuándo
+        # tiene que depositar la tarjeta. Esta fila los ata y guarda eso, para
+        # la lista de "depósitos por llegar". Los montos quedan congelados como
+        # se calcularon ese día: cambiar una comisión en Ajustes no reescribe
+        # cobros ya hechos.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS finanzas_cobros_tarjeta (
+                id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+                fecha                 TEXT NOT NULL,
+                client_id             INTEGER REFERENCES businesses(id),
+                concepto              TEXT NOT NULL,
+                tarjeta               TEXT NOT NULL,
+                comision_pct          REAL NOT NULL,
+                moneda                TEXT NOT NULL,
+                tipo_cambio           REAL,
+                precio                REAL NOT NULL,
+                total                 REAL NOT NULL,
+                deposito              REAL NOT NULL,
+                acreditacion_esperada TEXT NOT NULL,
+                acreditado_fecha      TEXT,
+                ingreso_id            INTEGER REFERENCES finanzas_movimientos(id),
+                comision_id           INTEGER REFERENCES finanzas_movimientos(id),
+                plexo_id              INTEGER REFERENCES finanzas_movimientos(id),
+                created_by_name       TEXT,
+                created_at            TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
 
         # A propósito, sin la migración que suma este panel al panel_access
         # de los roles que ya existen (Ruling R20): todos los demás paneles
@@ -4426,6 +4468,160 @@ def crear_movimiento(db_path: str, **fields) -> int:
 
 def actualizar_movimiento(db_path: str, mov_id: int, **fields) -> None:
     _update(db_path, "finanzas_movimientos", _MOVIMIENTO_COLUMNS, mov_id, fields)
+
+
+# ─── Cobros con tarjeta ──────────────────────────────────────────────────────
+
+def get_ajuste(db_path: str, clave: str) -> Optional[dict]:
+    """El ajuste guardado (JSON ya leído), o None si nunca se guardó."""
+    conn = _connect(db_path)
+    try:
+        fila = conn.execute("SELECT valor FROM finanzas_ajustes WHERE clave = ?",
+                            (clave,)).fetchone()
+    finally:
+        conn.close()
+    return json.loads(fila["valor"]) if fila else None
+
+
+def guardar_ajuste(db_path: str, clave: str, valor: dict) -> None:
+    conn = _connect(db_path)
+    try:
+        conn.execute(
+            "INSERT INTO finanzas_ajustes (clave, valor, updated_at) "
+            "VALUES (?, ?, CURRENT_TIMESTAMP) "
+            "ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor, "
+            "updated_at = CURRENT_TIMESTAMP",
+            (clave, json.dumps(valor)))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+_COBRO_TARJETA_COLUMNS = {
+    "fecha", "client_id", "concepto", "tarjeta", "comision_pct", "moneda",
+    "tipo_cambio", "precio", "total", "deposito", "acreditacion_esperada",
+    "created_by_name",
+}
+
+
+# Un cobro idéntico (fecha, cliente, concepto, tarjeta, moneda y total) dentro
+# de esta ventana es un doble envío, no dos cobros: un doble clic, un reintento
+# de red o dos pestañas. Cada registro crea 3 movimientos, así que duplicarlo
+# infla ventas e IVA. Pasada la ventana, dos cobros iguales SÍ son posibles
+# (dos cuotas del mismo monto) y se aceptan.
+COBRO_DUPLICADO_SEGUNDOS = 60
+
+
+class CobroDuplicado(Exception):
+    """El cobro ya se registró hace instantes; `id` es el que quedó."""
+
+    def __init__(self, cobro_id: int):
+        super().__init__(f"cobro duplicado (ya existe el {cobro_id})")
+        self.id = cobro_id
+
+
+def crear_cobro_tarjeta(db_path: str, cobro: dict, ingreso: dict,
+                        comision: dict, plexo: dict | None) -> int:
+    """Crea los movimientos del cobro y la fila que los ata, todo o nada.
+
+    En una sola transacción a propósito: si el tercer INSERT fallara con los
+    dos primeros ya guardados, quedaría un ingreso sin su comisión y el IVA
+    del mes daría mal sin que nada avise.
+    """
+    for campos in (ingreso, comision, plexo or {}):
+        invalidos = set(campos) - _MOVIMIENTO_COLUMNS
+        if invalidos:
+            raise ValueError(f"finanzas_movimientos: columnas inválidas {invalidos}")
+    invalidos = set(cobro) - _COBRO_TARJETA_COLUMNS
+    if invalidos:
+        raise ValueError(f"finanzas_cobros_tarjeta: columnas inválidas {invalidos}")
+
+    def _ins(cur, tabla, campos):
+        cols = list(campos)
+        cur.execute(f"INSERT INTO {tabla} ({', '.join(cols)}) "
+                    f"VALUES ({', '.join('?' for _ in cols)})",
+                    [campos[c] for c in cols])
+        return cur.lastrowid
+
+    conn = _connect(db_path)
+    try:
+        # BEGIN IMMEDIATE toma el candado de escritura ANTES de mirar si ya está:
+        # con dos pedidos simultáneos (doble clic, dos pestañas) el segundo
+        # espera al primero y ve su fila; sin esto los dos miraban, no veían
+        # nada, y registraban los dos.
+        conn.execute("BEGIN IMMEDIATE")
+        cur = conn.cursor()
+        previo = cur.execute(
+            "SELECT id FROM finanzas_cobros_tarjeta "
+            "WHERE fecha = ? AND COALESCE(client_id, 0) = COALESCE(?, 0) "
+            "AND concepto = ? AND tarjeta = ? AND moneda = ? AND total = ? "
+            "AND created_at >= datetime('now', ?) ORDER BY id LIMIT 1",
+            (cobro["fecha"], cobro.get("client_id"), cobro["concepto"],
+             cobro["tarjeta"], cobro["moneda"], cobro["total"],
+             f"-{COBRO_DUPLICADO_SEGUNDOS} seconds")).fetchone()
+        if previo:
+            conn.rollback()
+            raise CobroDuplicado(previo["id"])
+        ids = {"ingreso_id": _ins(cur, "finanzas_movimientos", ingreso),
+               "comision_id": _ins(cur, "finanzas_movimientos", comision),
+               "plexo_id": _ins(cur, "finanzas_movimientos", plexo) if plexo else None}
+        cid = _ins(cur, "finanzas_cobros_tarjeta", {**cobro, **ids})
+        conn.commit()
+        return cid
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def listar_cobros_tarjeta(db_path: str) -> list[dict]:
+    """Todos los cobros con tarjeta, los más nuevos primero, con el cliente."""
+    conn = _connect(db_path)
+    try:
+        filas = conn.execute(
+            "SELECT c.*, b.name AS client_name FROM finanzas_cobros_tarjeta c "
+            "LEFT JOIN businesses b ON b.id = c.client_id "
+            "ORDER BY c.fecha DESC, c.id DESC").fetchall()
+    finally:
+        conn.close()
+    return [dict(f) for f in filas]
+
+
+def get_cobro_tarjeta(db_path: str, cobro_id: int) -> Optional[dict]:
+    return _get_one(db_path, "finanzas_cobros_tarjeta", cobro_id)
+
+
+def marcar_acreditado(db_path: str, cobro_id: int, fecha: str | None) -> None:
+    """Anota que el depósito llegó (o lo desmarca con None)."""
+    conn = _connect(db_path)
+    try:
+        conn.execute("UPDATE finanzas_cobros_tarjeta SET acreditado_fecha = ? "
+                     "WHERE id = ?", (fecha, cobro_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def borrar_cobro_tarjeta(db_path: str, cobro_id: int) -> None:
+    """Borra el cobro y sus movimientos, todo junto."""
+    conn = _connect(db_path)
+    try:
+        fila = conn.execute(
+            "SELECT ingreso_id, comision_id, plexo_id FROM finanzas_cobros_tarjeta "
+            "WHERE id = ?", (cobro_id,)).fetchone()
+        if not fila:
+            return
+        for mid in (fila["ingreso_id"], fila["comision_id"], fila["plexo_id"]):
+            if mid:
+                conn.execute("DELETE FROM finanzas_movimientos WHERE id = ?", (mid,))
+        conn.execute("DELETE FROM finanzas_cobros_tarjeta WHERE id = ?", (cobro_id,))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def borrar_movimiento(db_path: str, mov_id: int) -> None:

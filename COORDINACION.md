@@ -533,6 +533,21 @@ leads de Meta se renombró a **D** para deshacer el empate.
 
 ## Bitácora
 
+- **23/9 — Finanzas: "Cobro con tarjeta" (Plexo + OCA), pedido de Juan.**
+  Rama `feat/cobro-tarjeta`, sale de `main`. Pestaña nueva en Finanzas con:
+  calculadora en los dos sentidos ("quiero que me quede X" → cuánto cobrar, o
+  "le cobro X" → cuánto queda), botón que registra el cobro de una vez (ingreso
+  con IVA ventas + comisión de la tarjeta y Plexo por cobro, los dos con IVA
+  compras, categoría nueva de egreso `comisiones`), lista de depósitos por
+  llegar con botón "Llegó", y ajustes editables. Las cuentas en
+  `services/cobro_tarjeta.py` (puras); tablas nuevas `finanzas_ajustes` y
+  `finanzas_cobros_tarjeta`. Aranceles: Plan Clásico de OCA (foto del 23/9):
+  Visa crédito 3,30%, Master crédito 3,35% (15 días hábiles), débito 1,05% /
+  1,15% (24 h). **La tarjeta OCA propia no venía en la tabla: arranca vacía y
+  la calculadora avisa.** La comisión va sobre el total con IVA. El fijo de
+  Plexo ($4.019 + IVA) NO se registra en cada cobro: va como gasto fijo.
+  Los feriados no se saltean en la fecha esperada del depósito.
+
 - **23/9 — M (Scalerics Fidelidad): Outbound e Inteligencia comercial pasan a ser del socio vendedor (pedido de Juan).**
   Rama `feat/outbound-fidelidad`, worktree `../crm-fidelidad`. Scalerics
   Fidelidad es el sistema de puntos para restaurantes; lo vende un socio de
