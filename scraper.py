@@ -251,6 +251,28 @@ def _remote_insert(data: dict) -> bool:
         return False
 
 
+def _guardar_fidelidad(data: dict, barrio: str, db_path: str) -> bool:
+    """Un restaurante para el Outbound de Scalerics Fidelidad (services/fidelidad.py).
+
+    Va a sus propias tablas, no a `businesses`: no entra a las campañas de mail.
+    Con CRM_URL lo manda al CRM de produccion; si no, a la base local."""
+    from services.fidelidad import crear_prospecto, prospecto_desde_maps
+    datos = prospecto_desde_maps(data, barrio)
+    crm_url = os.environ.get("CRM_URL", "").rstrip("/")
+    token = os.environ.get("ADMIN_TOKEN", "")
+    if crm_url and token:
+        try:
+            resp = http_requests.post(f"{crm_url}/api/fidelidad/prospectos",
+                                      json={**datos, "fuente": "scraper"},
+                                      headers={"x-admin-token": token}, timeout=10)
+            return resp.status_code == 201
+        except Exception as e:
+            logger.warning(f"Error al enviar a Fidelidad: {e}")
+            return False
+    _, que = crear_prospecto(db_path, datos, fuente="scraper")
+    return que == "creado"
+
+
 def _debe_guardar(data: dict, solo_con_web: bool, skip_branded: bool) -> tuple[bool, str]:
     """Decide si un negocio se guarda. Devuelve (guardar, motivo_del_descarte).
 
@@ -337,7 +359,7 @@ def recolectar_fichas(page, tope: int, ya_vistos: set[str] | None = None) -> lis
     return vistas[:tope]
 
 
-def scrape_google_maps(query: str, max_results: int, db_path: str, verify_web: bool = False, default_category: str = "", skip_branded: bool = False, solo_con_web: bool = False, ya_vistos: set[str] | None = None) -> int:
+def scrape_google_maps(query: str, max_results: int, db_path: str, verify_web: bool = False, default_category: str = "", skip_branded: bool = False, solo_con_web: bool = False, ya_vistos: set[str] | None = None, fidelidad_barrio: str | None = None) -> int:
     inserted = 0
     maps_list_url = f"https://www.google.com/maps/search/{query.replace(' ', '+')}"
 
@@ -409,6 +431,20 @@ def scrape_google_maps(query: str, max_results: int, db_path: str, verify_web: b
 
                     data = extract_business_data(page)
 
+                    # Scalerics Fidelidad: cualquier restaurante sirve, tenga web
+                    # o no. Solo se saltean los que no son de comida.
+                    if fidelidad_barrio:
+                        from services.fidelidad import es_de_comida
+                        if not data.get("name") or not es_de_comida(data.get("category")):
+                            logger.info(f"Saltando (no es de comida): {data.get('name')} · {data.get('category')}")
+                            break
+                        if _guardar_fidelidad(data, fidelidad_barrio, db_path):
+                            inserted += 1
+                            logger.info(f"[{inserted}/{max_results}] Fidelidad: {data['name']}")
+                        else:
+                            logger.info(f"No guardado (ya estaba): {data['name']}")
+                        break
+
                     # default_category always wins — whatever Maps says gets replaced
                     if default_category:
                         data["category"] = default_category
@@ -458,6 +494,6 @@ def scrape_google_maps(query: str, max_results: int, db_path: str, verify_web: b
     logger.info(f"Scraping completo. Guardados: {inserted} negocios")
     return inserted
 
-def run(query: str, max_results: int, db_path: str, verify_web: bool = False, default_category: str = "", skip_branded: bool = False, solo_con_web: bool = False, ya_vistos: set[str] | None = None) -> int:
+def run(query: str, max_results: int, db_path: str, verify_web: bool = False, default_category: str = "", skip_branded: bool = False, solo_con_web: bool = False, ya_vistos: set[str] | None = None, fidelidad_barrio: str | None = None) -> int:
     init_db(db_path)
-    return scrape_google_maps(query, max_results, db_path, verify_web=verify_web, default_category=default_category, skip_branded=skip_branded, solo_con_web=solo_con_web, ya_vistos=ya_vistos)
+    return scrape_google_maps(query, max_results, db_path, verify_web=verify_web, default_category=default_category, skip_branded=skip_branded, solo_con_web=solo_con_web, ya_vistos=ya_vistos, fidelidad_barrio=fidelidad_barrio)

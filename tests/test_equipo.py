@@ -220,6 +220,9 @@ def test_los_roles_existentes_reciben_el_panel(tmp_path):
     conn.close()
     assert filas
     for nombre, acceso in filas:
+        if nombre == "Vendedor Fidelidad":   # de afuera: solo sus dos pantallas
+            assert json.loads(acceso) == ["cola", "metrics"]
+            continue
         assert "equipo" in json.loads(acceso), nombre
         assert "ausencias" in json.loads(acceso), nombre
 

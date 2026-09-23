@@ -475,7 +475,9 @@ def test_el_panel_se_reparte_una_vez_a_quien_tiene_outbound_o_inteligencia(db):
         # El Contador no tiene ninguno de los dos y no lo recibe.
         acceso = {n: json.loads(p) for n, p in conn.execute("SELECT name, panel_access FROM roles")}
         for nombre, paneles in acceso.items():
-            espera = "cola" in paneles or "metrics" in paneles
+            # El vendedor de Fidelidad tiene Outbound e Inteligencia, pero es de
+            # afuera: ningun reparto le suma paneles (services/fidelidad.py).
+            espera = ("cola" in paneles or "metrics" in paneles) and nombre != "Vendedor Fidelidad"
             assert ("email_mkt" in paneles) is espera, (nombre, paneles)
         assert "email_mkt" in acceso["Admin"] and "email_mkt" in acceso["Ventas"]
         assert "email_mkt" not in acceso["Contador"]
@@ -613,8 +615,8 @@ def test_esta_registrado_en_todos_lados():
     assert ('<div class="nav-item" id="nav-email_mkt" onclick="showPanel(\'email_mkt\')">'
             '<i data-lucide="mail" class="nav-icon"></i> Email marketing</div>') in marketing
     captacion = menu[menu.index('nav-section-label">CAPTACIÓN'):]
-    # "credenciales" (SEGURIDAD) es la ultima sección del menú, admin-only.
-    assert re.findall(r'id="nav-(\w+)"', captacion) == ["cola", "metrics", "sdr", "credenciales"]
+    # "credenciales" (SEGURIDAD) es la ultima sección del menú, admin-only; SDR salio el 23/9.
+    assert re.findall(r'id="nav-(\w+)"', captacion) == ["cola", "metrics", "credenciales"]
 
     prioridad = re.findall(r"'(\w+)'", re.search(r"const NAV_PRIORITY = \[([^\]]*)\]", HTML).group(1))
     assert prioridad.index("email_mkt") == prioridad.index("meta") + 1

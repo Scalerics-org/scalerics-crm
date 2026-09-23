@@ -49,7 +49,9 @@ def test_no_figura_en_ninguna_lista_de_paneles():
 def test_la_cola_y_lo_compartido_siguen():
     assert 'id="cola-panel"' in HTML
     assert "async function loadColaStats()" in HTML
-    assert 'id="stat-cola"' in HTML and 'id="stat-no-interesa"' in HTML
+    # La cola vieja la reemplazo la de Fidelidad (23/9); sus contadores ya no
+    # estan y loadColaStats sale sola si no los encuentra.
+    assert "if (!document.getElementById('stat-cola')) return;" in HTML
     assert ".row-llamar_despues" in HTML
     assert "function _calendlyBadge(" in HTML
     assert "function _sdrNameColor(" in HTML

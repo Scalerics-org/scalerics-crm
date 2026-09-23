@@ -37,7 +37,7 @@ ORDEN = [
     ("VENTAS", ["seg_leads", "wa", "notion_clients", "demos", "plantillas"]),
     ("OPERACIÓN", ["clientes", "projects", "tasks", "daily", "daily_admin", "activity"]),
     ("RECURSOS HUMANOS", ["equipo", "ausencias", "flujos", "horarios"]),
-    ("CAPTACIÓN", ["cola", "metrics", "sdr"]),
+    ("CAPTACIÓN", ["cola", "metrics"]),   # SDR salio el 23/9
     ("SEGURIDAD", ["credenciales"]),
 ]
 

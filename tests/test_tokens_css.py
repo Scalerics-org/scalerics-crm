@@ -329,9 +329,9 @@ def test_no_quedan_important_en_la_cabecera():
 def test_los_kpis_ambar_de_metricas_usan_la_clase():
     html = dashboard.DASHBOARD_HTML
     # "mm-week" era el KPI ambar de la pestaña Meta Ads, que se saco del panel
-    # el 14/9 (se mira en Marketing).
-    for id_ in ("m-meetings", "m-meeting-rate"):
-        assert f'class="stat-val yellow" id="{id_}"' in html, id_
+    # el 14/9 (se mira en Marketing). Los m-* se fueron el 23/9 con el panel
+    # viejo: Inteligencia comercial ahora es la de Fidelidad, con sus tokens.
+    assert "fid-kpi" in html
     assert 'style="color:#f59e0b"' not in html, "volvió el ámbar inline"
 
 
