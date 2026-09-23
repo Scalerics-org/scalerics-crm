@@ -13,6 +13,7 @@ from routes.leads import leads_bp
 from routes.demos import demos_bp
 from routes.calendar import calendar_bp
 from routes.wa import wa_bp
+from routes.credenciales import credenciales_bp
 from routes.pipeline import pipeline_bp
 from routes.tasks import tasks_bp
 from routes.budgets import budgets_bp
@@ -1366,6 +1367,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-equipo .nav-icon{stroke:#a3e635}
 #nav-ausencias .nav-icon{stroke:#e879f9}
 #nav-horarios .nav-icon{stroke:#fbbf24}
+#nav-credenciales .nav-icon{stroke:#94a3b8}
 #nav-flujos .nav-icon{stroke:#5eead4}
 #nav-seg_leads .nav-icon{stroke:#fb7185}
 #nav-daily .nav-icon{stroke:#38bdf8}
@@ -1398,6 +1400,7 @@ body.light #nav-meta .nav-icon{stroke:#c13584}
 #nav-equipo.active .nav-icon{stroke:#bef264}
 #nav-ausencias.active .nav-icon{stroke:#f0abfc}
 #nav-horarios.active .nav-icon{stroke:#fde68a}
+#nav-credenciales.active .nav-icon{stroke:#cbd5e1}
 #nav-flujos.active .nav-icon{stroke:#99f6e4}
 #nav-seg_leads.active .nav-icon{stroke:#fda4af}
 #nav-plantillas.active .nav-icon{stroke:#d8b4fe}
@@ -1426,6 +1429,7 @@ body.light #nav-projects .nav-icon{stroke:#a16207}
 body.light #nav-equipo .nav-icon{stroke:#4d7c0f}
 body.light #nav-ausencias .nav-icon{stroke:#a21caf}
 body.light #nav-horarios .nav-icon{stroke:#92400e}
+body.light #nav-credenciales .nav-icon{stroke:#475569}
 body.light #nav-flujos .nav-icon{stroke:#0f766e}
 body.light #nav-seg_leads .nav-icon{stroke:#be123c}
 body.light #nav-plantillas .nav-icon{stroke:#9333ea}
@@ -2442,6 +2446,25 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   .li-tarjeta{padding:12px}
   .li-btn{flex:1 1 auto;min-height:40px}
 }
+/* ── Credenciales ─────────────────────────────────────────────────────────────
+   Contraseñas de la empresa. Solo tokens, panel admin-only. */
+.cr-nota{font-size:.8rem;color:var(--rojo-texto);margin:-6px 0 12px}
+.cr-nota:empty{display:none}
+.cr-tabla-wrap{overflow-x:auto}
+.cr-tabla{width:100%;border-collapse:collapse;font-size:.84rem}
+.cr-tabla th{text-align:left;padding:8px 10px;color:var(--texto-debil);font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--borde)}
+.cr-tabla td{padding:8px 10px;border-bottom:1px solid var(--borde);color:var(--texto);vertical-align:top}
+.cr-clave-fila{display:flex;align-items:center;gap:6px;font-variant-numeric:tabular-nums}
+.cr-clave-fila button{background:none;border:none;color:var(--azul-claro);cursor:pointer;padding:2px;display:flex}
+.cr-acciones{display:flex;gap:6px}
+.cr-acciones button{background:var(--relleno);border:1px solid var(--borde-fuerte);color:var(--texto);border-radius:6px;padding:4px 8px;font-size:.72rem;font-family:inherit;cursor:pointer}
+.cr-acciones button:hover{background:var(--hover)}
+.cr-error{font-size:.76rem;color:var(--rojo-texto);margin:4px 0 10px}
+.cr-error:empty{display:none}
+@media(max-width:768px){
+  .cr-tabla{font-size:.78rem}
+  .cr-tabla th,.cr-tabla td{padding:6px 8px}
+}
 /* ── Equipo ───────────────────────────────────────────────────────────────────
    Organigrama (SVG) y ausencias con recupero. Solo tokens, sin reglas
    `body.light`: los tintes rojo/verde/ambar son los de la familia de estados,
@@ -2708,6 +2731,8 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   <div class="nav-item" id="nav-cola" onclick="showPanel('cola')"><i data-lucide="inbox" class="nav-icon"></i> Outbound</div>
   <div class="nav-item" id="nav-metrics" onclick="showPanel('metrics')"><i data-lucide="bar-chart-2" class="nav-icon"></i> Inteligencia comercial</div>
   <div class="nav-item" id="nav-sdr" onclick="showPanel('sdr')"><i data-lucide="phone-call" class="nav-icon"></i> SDR</div>
+  <div class="nav-section-label">SEGURIDAD</div>
+  <div class="nav-item" id="nav-credenciales" onclick="showPanel('credenciales')" style="display:none"><i data-lucide="key-round" class="nav-icon"></i> Contraseñas</div>
   </div>
   <div class="sidebar-bottom">
     <a id="admin-link" href="/admin/users" style="display:none;background:none;border:1px solid var(--borde);border-radius:8px;padding:6px 12px;font-size:.75rem;color:var(--texto-debil);cursor:pointer;width:100%;text-align:left;text-decoration:none;box-sizing:border-box">&#9881; Usuarios</a>
@@ -3843,6 +3868,54 @@ body.light .fin-tabla td{border-top-color:var(--borde)}
   </div>
   <!-- ======= FIN MODO SOMBRA PANEL ======= -->
 
+  <!-- ======= CREDENCIALES PANEL ======= -->
+  <!-- Contraseñas de las cuentas de la empresa (pedido de Juan, 22/9). Solo
+       admin: no se reparte por rol, ver require_admin en routes/credenciales.py. -->
+  <div id="credenciales-panel" class="panel">
+    <div class="page-header">
+      <div>
+        <h1>Contraseñas</h1>
+        <div class="page-date">Mail, Instagram, Plexo y demás cuentas de la empresa</div>
+      </div>
+      <div>
+        <button type="button" class="export-btn" onclick="crAbrir()">+ Agregar</button>
+      </div>
+    </div>
+    <div class="cr-nota" id="cr-nota" role="status" aria-live="polite"></div>
+    <div class="cr-tabla-wrap">
+      <table class="cr-tabla">
+        <thead>
+          <tr><th>Servicio</th><th>Usuario / de quién es</th><th>Contraseña</th>
+              <th>Código de verificación (2FA)</th><th>Notas</th><th></th></tr>
+        </thead>
+        <tbody id="cr-filas"></tbody>
+      </table>
+    </div>
+
+    <div class="modal-overlay" id="cr-modal" onclick="if(event.target===this)crCerrar()">
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="cr-modal-titulo">
+        <h3 id="cr-modal-titulo">Nueva contraseña</h3>
+        <input type="hidden" id="cr-id">
+        <label class="modal-label">Servicio (mail, Instagram, Plexo...)</label>
+        <input type="text" id="cr-servicio" class="modal-input" placeholder="Ej: Instagram">
+        <label class="modal-label">Usuario / de quién es</label>
+        <input type="text" id="cr-usuario" class="modal-input" placeholder="Ej: contacto@scalerics.com">
+        <label class="modal-label">Contraseña</label>
+        <input type="text" id="cr-clave" class="modal-input" placeholder="Contraseña">
+        <label class="modal-label">Código de verificación (2FA), si tiene</label>
+        <input type="text" id="cr-2fa" class="modal-input" placeholder="Ej: llega por mail a juan@... / app de autenticación">
+        <label class="modal-label">Notas</label>
+        <textarea id="cr-notas" class="modal-input" style="min-height:60px" placeholder="(opcional)"></textarea>
+        <div class="cr-error" id="cr-error" role="alert"></div>
+        <div class="modal-btns">
+          <button type="button" class="btn-cancel" onclick="crCerrar()">Cancelar</button>
+          <button type="button" class="btn-confirm" onclick="crGuardar()">Guardar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- ======= FIN CREDENCIALES PANEL ======= -->
+
 
   <div id="activity-panel" class="panel">
     <div class="page-header">
@@ -4901,6 +4974,7 @@ function showPanel(name) {
   if (name === 'linkedin') loadLinkedin();
   if (name === 'instagram') igCargar();
   if (name === 'sombra') soCargar();
+  if (name === 'credenciales') crCargar();
 }
 
 // ========== Leads / Cola panel ==========
@@ -9768,6 +9842,11 @@ const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activ
     if (m.is_admin) {
       const a = document.getElementById('admin-link');
       if (a) a.style.display = 'block';
+      // Contraseñas es solo para admin, aparte del sistema de panel_access
+      // (pedido de Juan, 22/9: nunca se puede asignar a un rol). El titulo
+      // "SEGURIDAD" se muestra u oculta solo, via _ocultarGruposVacios().
+      const navCred = document.getElementById('nav-credenciales');
+      if (navCred) navCred.style.display = 'flex';
     }
     const access = m.panel_access ? JSON.parse(m.panel_access) : null;
     const allowedPanels = (access && !m.is_admin) ? access : ALL_PANELS;
@@ -9780,7 +9859,6 @@ const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activ
           if (nav) nav.style.display = 'none';
         }
       });
-      _ocultarGruposVacios();
       if (!access.includes(activePanel)) {
         // El primero en el orden del menu que el rol tenga Y que exista. Los
         // permisos guardados pueden traer paneles que ya no estan en la
@@ -9792,6 +9870,9 @@ const ALL_PANELS = ['cola','meta','clientes','tasks','wa','cal','metrics','activ
         if (first) showPanel(first);
       }
     }
+    // Corre siempre (no solo con access restringido): "SEGURIDAD" queda
+    // solo si Contraseñas sigue oculta por no ser admin.
+    _ocultarGruposVacios();
     _buildMobileNav(allowedPanels);
     _syncMobileNav(activePanel);
     // Las opciones por persona debajo de "Daily Programador" salen de la base.
@@ -13900,6 +13981,124 @@ async function liGenerar() {
   }
 }
 // ========== FIN LinkedIn ==========
+
+// ========== Credenciales ==========
+// Contraseñas de la empresa (pedido de Juan, 22/9). Solo admin: el panel ni
+// se muestra en el menu para quien no lo es (ver el bloque de /api/me), y el
+// servidor bloquea igual con require_admin.
+let crDatos = [];
+let crVistas = {};
+
+function crEsc(texto) {
+  return String(texto === null || texto === undefined ? '' : texto)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+async function crCargar() {
+  const nota = document.getElementById('cr-nota');
+  const filas = document.getElementById('cr-filas');
+  if (nota) nota.textContent = '';
+  try {
+    const r = await fetch('/api/credenciales');
+    const d = await r.json();
+    if (!r.ok || !d.ok) {
+      if (nota) nota.textContent = d.error || 'No se pudieron cargar las contraseñas.';
+      if (filas) filas.innerHTML = '';
+      return;
+    }
+    crDatos = d.credenciales;
+    crVistas = {};
+    if (filas) filas.innerHTML = crDatos.length
+      ? crDatos.map(crFilaHtml).join('')
+      : '<tr><td colspan="6" class="cr-nota">Todavía no hay ninguna guardada.</td></tr>';
+  } catch (e) {
+    if (nota) nota.textContent = 'No se pudieron cargar las contraseñas.';
+  }
+}
+
+function crFilaHtml(c) {
+  const id = Number(c.id);
+  const vista = !!crVistas[id];
+  const clave = vista ? crEsc(c.clave) : '••••••••';
+  return '<tr>'
+    + '<td>' + crEsc(c.servicio) + '</td>'
+    + '<td>' + crEsc(c.usuario) + '</td>'
+    + '<td><div class="cr-clave-fila"><span id="cr-clave-txt-' + id + '">' + clave + '</span>'
+    + '<button type="button" onclick="crToggleClave(' + id + ')" aria-label="Mostrar u ocultar">'
+    + '<i data-lucide="' + (vista ? 'eye-off' : 'eye') + '" class="nav-icon" id="cr-ojo-' + id + '"></i></button></div></td>'
+    + '<td>' + crEsc(c.codigo_2fa) + '</td>'
+    + '<td>' + crEsc(c.notas) + '</td>'
+    + '<td><div class="cr-acciones">'
+    + '<button type="button" onclick="crAbrir(' + id + ')">Editar</button>'
+    + '<button type="button" onclick="crBorrar(' + id + ')">Borrar</button>'
+    + '</div></td></tr>';
+}
+
+function crToggleClave(id) {
+  crVistas[id] = !crVistas[id];
+  const c = crDatos.find(x => Number(x.id) === Number(id));
+  if (!c) return;
+  const span = document.getElementById('cr-clave-txt-' + id);
+  if (span) span.textContent = crVistas[id] ? c.clave : '••••••••';
+  const ojo = document.getElementById('cr-ojo-' + id);
+  if (ojo) { ojo.setAttribute('data-lucide', crVistas[id] ? 'eye-off' : 'eye'); }
+  if (window.lucide) lucide.createIcons();
+}
+
+function crAbrir(id) {
+  const c = id ? crDatos.find(x => Number(x.id) === Number(id)) : null;
+  document.getElementById('cr-modal-titulo').textContent = c ? 'Editar contraseña' : 'Nueva contraseña';
+  document.getElementById('cr-id').value = c ? c.id : '';
+  document.getElementById('cr-servicio').value = c ? c.servicio : '';
+  document.getElementById('cr-usuario').value = c ? c.usuario : '';
+  document.getElementById('cr-clave').value = c ? c.clave : '';
+  document.getElementById('cr-2fa').value = c ? c.codigo_2fa : '';
+  document.getElementById('cr-notas').value = c ? c.notas : '';
+  document.getElementById('cr-error').textContent = '';
+  document.getElementById('cr-modal').classList.add('open');
+}
+
+function crCerrar() {
+  document.getElementById('cr-modal').classList.remove('open');
+}
+
+async function crGuardar() {
+  const id = document.getElementById('cr-id').value;
+  const error = document.getElementById('cr-error');
+  const cuerpo = {
+    servicio: document.getElementById('cr-servicio').value,
+    usuario: document.getElementById('cr-usuario').value,
+    clave: document.getElementById('cr-clave').value,
+    codigo_2fa: document.getElementById('cr-2fa').value,
+    notas: document.getElementById('cr-notas').value,
+  };
+  try {
+    const r = await fetch(id ? '/api/credenciales/' + Number(id) : '/api/credenciales',
+                          {method: id ? 'PUT' : 'POST', headers: {'Content-Type': 'application/json'},
+                           body: JSON.stringify(cuerpo)});
+    let d = {};
+    try { d = await r.json(); } catch (e) { d = {}; }
+    if (!r.ok || !d.ok) {
+      if (error) error.textContent = d.error || 'No se pudo guardar.';
+      return;
+    }
+  } catch (e) {
+    if (error) error.textContent = 'No se pudo guardar.';
+    return;
+  }
+  crCerrar();
+  await crCargar();
+}
+
+async function crBorrar(id) {
+  if (!confirm('¿Borrar esta contraseña? No se puede deshacer.')) return;
+  try {
+    await fetch('/api/credenciales/' + Number(id), {method: 'DELETE'});
+  } catch (e) {}
+  await crCargar();
+}
+// ========== FIN Credenciales ==========
 
 // ========== Instagram ==========
 // Sin barras invertidas en este bloque: vive dentro de un string de Python.
@@ -18947,7 +19146,8 @@ def create_app(db_path: str) -> Flask:
     for bp in (leads_bp, demos_bp, calendar_bp, wa_bp, pipeline_bp, tasks_bp, budgets_bp, tokens_bp, meta_bp, calendly_bp, notion_bp, projects_bp, preclientes_bp,
                 notion_clients_bp, resend_bp, linkedin_bp, web_bp, finanzas_bp, marketing_bp,
                 simulador_bp, equipo_bp, horarios_bp, flujos_bp, seg_leads_bp, daily_bp, plantillas_bp,
-                backups_bp, email_mkt_bp, linkedin_panel_bp, linkedin_bot_bp, instagram_bp, instagram_pub_bp, sombra_bp):
+                backups_bp, email_mkt_bp, linkedin_panel_bp, linkedin_bot_bp, instagram_bp, instagram_pub_bp, sombra_bp,
+                credenciales_bp):
         app.register_blueprint(bp)
 
     @app.before_request

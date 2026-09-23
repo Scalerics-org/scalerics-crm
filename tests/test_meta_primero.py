@@ -38,6 +38,7 @@ ORDEN = [
     ("OPERACIÓN", ["clientes", "projects", "tasks", "daily", "daily_admin", "activity"]),
     ("RECURSOS HUMANOS", ["equipo", "ausencias", "flujos", "horarios"]),
     ("CAPTACIÓN", ["cola", "metrics", "sdr"]),
+    ("SEGURIDAD", ["credenciales"]),
 ]
 
 
